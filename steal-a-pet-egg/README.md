@@ -64,6 +64,7 @@ Game Settings > Security > **Enable Studio Access to API Services**.
   - Stolen eggs have a 25% chance to hatch shiny (normal: 5%). Shiny = 3x income.
 - **Bonk Bat:** swing it (slash animation, sound, "BONK!" pop). Hit an egg carrier and they drop it. An egg stolen from a base flies back to its owner.
 - **Base Lock:** the blue pad. Blocks stealing from your base for 60s, then recharges for 90s.
+- **Egg size = pet size:** every pet's size is rolled when its egg appears, and the egg is scaled to match: big pets (1.35x-2x) come in eggs up to 1.5x bigger labelled **BIG**, huge pets (2x-3x) in eggs up to 2x bigger labelled **HUGE**. What you see is what hatches (`Config.EggScale`).
 - **Fuse Machine:** the pink pad. 3 of the same pet become 1 **Big** pet (4x income), and 3 Big pets become 1 **Huge** pet (16x). They don't have to match exactly: the fused pet keeps the best of the three (shiny if any was, the strongest mutation, the biggest size and the oldest age). With more than 3 copies it uses your best 3.
 - **Bases:** each base (in its own accent color) has a cottage out back, flagpoles, a striped canopy over the treadmill, a crystal arch over the fuse pad, garden lights along the carpet, flower planters, pet beds, a toy ball, a food trough, a welcome mat, a mailbox and stepping stones. See `base_preview.png`.
 - **Pet pen and selling:** every base has one wide open pen (no roof, no slots) that holds 24 eggs and pets. Hold E on your own pet to sell it.

@@ -217,6 +217,11 @@ local function refreshEggLabel(rec)
 	if rec.Stolen then
 		title = "Stolen " .. title
 	end
+	if (rec.PetSize or 1) >= Config.HugePetSize then
+		title = "HUGE " .. title
+	elseif (rec.PetSize or 1) >= Config.BigPetSize then
+		title = "BIG " .. title
+	end
 	local sub = ""
 	if rec.State == "Wild" then
 		sub = "Guarded!"
@@ -262,17 +267,22 @@ local function endHunt(rec)
 	end
 end
 
-local function createEgg(rarityId, remaining, stolen, mutation)
+-- petSize is optional: by default the pet's size is rolled now, and the egg
+-- is scaled to match, so a big pet always comes in a big egg.
+local function createEgg(rarityId, remaining, stolen, mutation, petSize)
 	local rarity = Config.RarityById[rarityId]
 	local part = Visuals.MakeEgg(rarityId)
 	if mutation and not Visuals.ApplyMutation(part, mutation) then
 		mutation = nil
 	end
+	petSize = if petSize and petSize > 0 then petSize else Config.RollSize(rng)
+	Visuals.ScaleEgg(part, Config.EggScale(petSize))
 	part.Parent = eggsFolder
 	local rec = {
 		Part = part,
 		Rarity = rarityId,
 		Mutation = mutation,
+		PetSize = petSize,
 		Remaining = remaining or rarity.HatchTime,
 		Stolen = stolen or false,
 		State = "None",
@@ -323,7 +333,7 @@ local function placeInSpot(biome, spot, rec)
 	rec.Carrier = nil
 	rec.DespawnToken = nil
 	rec.Part.Anchored = true
-	local home = CFrame.new(spot.Position + Vector3.new(0, Visuals.EggHalfHeight + 0.3, 0))
+	local home = CFrame.new(spot.Position + Vector3.new(0, rec.Part.Size.Y / 2 + 0.3, 0))
 	rec.Part.CFrame = home
 	rec.Part:SetAttribute("WildHome", home) -- clients use this to spin and bob it
 	-- glowing ring in the egg's rarity color under the nest
@@ -605,7 +615,7 @@ local function placeEggInBase(player, index, rec)
 	rec.Owner = player
 	rec.SlotIndex = index
 	rec.Part.Anchored = true
-	rec.Part.CFrame = CFrame.new(state.Plot.SlotTops[index] + Vector3.new(0, Visuals.EggHalfHeight, 0))
+	rec.Part.CFrame = CFrame.new(state.Plot.SlotTops[index] + Vector3.new(0, rec.Part.Size.Y / 2, 0))
 	rec.BaseCFrame = rec.Part.CFrame
 	rec.Prompt.ActionText = "Steal"
 	rec.Prompt.ObjectText = player.DisplayName .. "'s " .. rec.Rarity .. " Egg"
@@ -642,7 +652,7 @@ local function startCarry(player, rec)
 
 	local part = rec.Part
 	part.Anchored = true
-	part.CFrame = root.CFrame * CFrame.new(0, 4.7, -0.3) -- held up in both hands
+	part.CFrame = root.CFrame * CFrame.new(0, 4.7 + (part.Size.Y - Visuals.EggHalfHeight * 2) / 2, -0.3) -- held up in both hands
 	local weld = Instance.new("WeldConstraint")
 	weld.Name = "CarryWeld"
 	weld.Part0 = root
@@ -711,7 +721,7 @@ local function dropCarried(player)
 		end
 	end
 
-	rec.Part.CFrame = CFrame.new(position.X, Visuals.EggHalfHeight + 0.3, position.Z)
+	rec.Part.CFrame = CFrame.new(position.X, rec.Part.Size.Y / 2 + 0.3, position.Z)
 	makeGrabbable(rec, "Dropped", Config.DroppedEggLifetime)
 end
 
@@ -963,6 +973,7 @@ local function hatch(player, index)
 	local rec = state.Nest[index].Egg
 	local data = rollCreature(rec.Rarity, rec.Stolen)
 	data.Mutation = rec.Mutation
+	data.Size = rec.PetSize or data.Size -- the size the egg showed
 	local eggVariant = rec.Part:GetAttribute("EggVariant")
 	local burstColor = if rec.Mutation and Config.MutationById[rec.Mutation] then Config.MutationById[rec.Mutation].Color else Config.RarityById[rec.Rarity].Color
 	hatchBurst(rec.Part, burstColor)
@@ -1990,7 +2001,8 @@ function GameService.AddPlayer(player, profile)
 		local index = tonumber(key)
 		if index and index >= 1 and index <= profile.Slots and type(entry) == "table" and not state.Nest[index] then
 			if entry.Kind == "Egg" and Config.RarityById[entry.Rarity] then
-				local rec = createEgg(entry.Rarity, tonumber(entry.Remaining), entry.Stolen == true, Config.MutationById[entry.Mutation or ""] and entry.Mutation or nil)
+				local savedSize = tonumber(entry.PetSize)
+				local rec = createEgg(entry.Rarity, tonumber(entry.Remaining), entry.Stolen == true, Config.MutationById[entry.Mutation or ""] and entry.Mutation or nil, if savedSize then math.clamp(savedSize, 0.5, 3) else nil)
 				placeEggInBase(player, index, rec)
 			elseif entry.Kind == "Creature" and Config.CreatureByName[entry.Name] then
 				local def = Config.CreatureByName[entry.Name]
@@ -2050,6 +2062,7 @@ function GameService.Snapshot(player)
 				Remaining = math.max(0, math.floor(slot.Egg.Remaining)),
 				Stolen = slot.Egg.Stolen,
 				Mutation = slot.Egg.Mutation,
+				PetSize = slot.Egg.PetSize,
 			}
 		else
 			nest[tostring(index)] = {
@@ -2175,7 +2188,7 @@ function GameService.EggRain(byPlayer)
 			return Config.EggRainWeights[r.Id] or 0
 		end, rng)
 		local rec = createEgg(rarity.Id, nil, false, Config.RollMutation(rng, currentLuck()))
-		local ground = Vector3.new(rng:NextNumber(-area.HalfWidth, area.HalfWidth), Visuals.EggHalfHeight + 0.3, rng:NextNumber(area.MinZ, area.MaxZ))
+		local ground = Vector3.new(rng:NextNumber(-area.HalfWidth, area.HalfWidth), rec.Part.Size.Y / 2 + 0.3, rng:NextNumber(area.MinZ, area.MaxZ))
 		rec.Part.CFrame = CFrame.new(ground + Vector3.new(0, 60 + i * 3, 0))
 		makeGrabbable(rec, "Rain", Config.EggRainLifetime)
 		local tween = TweenService:Create(rec.Part, TweenInfo.new(1.6 + i * 0.1, Enum.EasingStyle.Bounce, Enum.EasingDirection.Out), { CFrame = CFrame.new(ground) })

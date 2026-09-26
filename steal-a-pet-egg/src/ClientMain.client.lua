@@ -2627,7 +2627,8 @@ local function setupExtraGui()
 				ray.BackgroundColor3 = color:Lerp(Color3.new(1, 1, 1), 0.3)
 				ray.BackgroundTransparency = 1
 			end
-			caption.Text = "Hatching..."
+			local petSize = data.Size or 1
+			caption.Text = if petSize >= Config.HugePetSize then "A HUGE egg is hatching..." elseif petSize >= Config.BigPetSize then "A BIG egg is hatching..." else "Hatching..."
 			caption.TextColor3 = Color3.new(1, 1, 1)
 			skipHint.Text = if UserInputService.GamepadEnabled then "Press Ⓐ to skip" else "Tap to skip"
 			flash.BackgroundTransparency = 1

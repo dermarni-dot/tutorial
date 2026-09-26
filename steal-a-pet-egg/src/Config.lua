@@ -153,6 +153,17 @@ function Config.RollSize(rng)
 	return math.floor(rng:NextNumber(0.75, 1.3) * 100) / 100
 end
 
+-- How big an egg looks for the size of pet inside it: normal eggs look about
+-- the same, big pets (1.35-2) come in eggs up to 1.5x bigger, and huge pets
+-- (2-3) in eggs up to about 2x bigger. The pet's size is rolled when the egg
+-- is made, so what you see is what hatches.
+Config.EggScalePower = 0.6
+function Config.EggScale(size)
+	return (size or 1) ^ Config.EggScalePower
+end
+Config.BigPetSize = 1.35 -- sizes from here up show "BIG" on the egg, 2+ show "HUGE"
+Config.HugePetSize = 2
+
 function Config.GrowTime(rarityId)
 	local rarity = Config.RarityById[rarityId]
 	return (if rarity then rarity.HatchTime else 10) * Config.GrowthFactor

@@ -871,7 +871,12 @@ function Visuals.CrackEgg(egg, stage, glowColor)
 	local marker = Instance.new("BoolValue")
 	marker.Name = "CrackStage" .. stage
 	marker.Parent = egg
-	local add = rigger(egg, egg)
+	-- cracks are laid out for a normal egg, then scaled to this egg's size
+	local s = egg:GetAttribute("EggScale") or 1
+	local raw = rigger(egg, egg)
+	local function add(name, shape, size, offset, color, material)
+		return raw(name, shape, size * s, CFrame.new(offset.Position * s) * (offset - offset.Position), color, material)
+	end
 	local crack = Color3.fromRGB(45, 35, 30)
 	local count = if stage == 1 then 3 else 6
 	for i = 1, count do
@@ -921,6 +926,30 @@ function Visuals.SetProgress(part, fraction, color)
 	bar.Visible = true
 	bar.Fill.BackgroundColor3 = color or WHITE
 	bar.Fill.Size = UDim2.fromScale(math.clamp(fraction, 0, 1), 1)
+end
+
+-- Scale a finished egg (and all its decorations, label and lights) by `factor`
+-- around its center. Used so bigger pets come in bigger eggs.
+function Visuals.ScaleEgg(egg, factor)
+	if not factor or math.abs(factor - 1) < 0.01 then
+		return
+	end
+	local center = egg.CFrame
+	for _, d in ipairs(egg:GetDescendants()) do
+		if d:IsA("BasePart") then
+			local rel = center:ToObjectSpace(d.CFrame)
+			d.Size *= factor
+			d.CFrame = center * CFrame.new(rel.Position * factor) * (rel - rel.Position)
+		elseif d:IsA("SpecialMesh") and d.MeshType == Enum.MeshType.FileMesh then
+			d.Scale *= factor
+		elseif d:IsA("BillboardGui") then
+			d.StudsOffset *= factor
+		elseif d:IsA("PointLight") then
+			d.Range *= factor
+		end
+	end
+	egg.Size *= factor
+	egg:SetAttribute("EggScale", factor)
 end
 
 -- Names of every design an egg of this rarity can have (Classic first)

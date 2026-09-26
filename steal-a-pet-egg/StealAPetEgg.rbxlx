@@ -153,6 +153,17 @@ function Config.RollSize(rng)
 	return math.floor(rng:NextNumber(0.75, 1.3) * 100) / 100
 end
 
+-- How big an egg looks for the size of pet inside it: normal eggs look about
+-- the same, big pets (1.35-2) come in eggs up to 1.5x bigger, and huge pets
+-- (2-3) in eggs up to about 2x bigger. The pet's size is rolled when the egg
+-- is made, so what you see is what hatches.
+Config.EggScalePower = 0.6
+function Config.EggScale(size)
+	return (size or 1) ^ Config.EggScalePower
+end
+Config.BigPetSize = 1.35 -- sizes from here up show "BIG" on the egg, 2+ show "HUGE"
+Config.HugePetSize = 2
+
 function Config.GrowTime(rarityId)
 	local rarity = Config.RarityById[rarityId]
 	return (if rarity then rarity.HatchTime else 10) * Config.GrowthFactor
@@ -2280,7 +2291,12 @@ function Visuals.CrackEgg(egg, stage, glowColor)
 	local marker = Instance.new("BoolValue")
 	marker.Name = "CrackStage" .. stage
 	marker.Parent = egg
-	local add = rigger(egg, egg)
+	-- cracks are laid out for a normal egg, then scaled to this egg's size
+	local s = egg:GetAttribute("EggScale") or 1
+	local raw = rigger(egg, egg)
+	local function add(name, shape, size, offset, color, material)
+		return raw(name, shape, size * s, CFrame.new(offset.Position * s) * (offset - offset.Position), color, material)
+	end
 	local crack = Color3.fromRGB(45, 35, 30)
 	local count = if stage == 1 then 3 else 6
 	for i = 1, count do
@@ -2330,6 +2346,30 @@ function Visuals.SetProgress(part, fraction, color)
 	bar.Visible = true
 	bar.Fill.BackgroundColor3 = color or WHITE
 	bar.Fill.Size = UDim2.fromScale(math.clamp(fraction, 0, 1), 1)
+end
+
+-- Scale a finished egg (and all its decorations, label and lights) by `factor`
+-- around its center. Used so bigger pets come in bigger eggs.
+function Visuals.ScaleEgg(egg, factor)
+	if not factor or math.abs(factor - 1) < 0.01 then
+		return
+	end
+	local center = egg.CFrame
+	for _, d in ipairs(egg:GetDescendants()) do
+		if d:IsA("BasePart") then
+			local rel = center:ToObjectSpace(d.CFrame)
+			d.Size *= factor
+			d.CFrame = center * CFrame.new(rel.Position * factor) * (rel - rel.Position)
+		elseif d:IsA("SpecialMesh") and d.MeshType == Enum.MeshType.FileMesh then
+			d.Scale *= factor
+		elseif d:IsA("BillboardGui") then
+			d.StudsOffset *= factor
+		elseif d:IsA("PointLight") then
+			d.Range *= factor
+		end
+	end
+	egg.Size *= factor
+	egg:SetAttribute("EggScale", factor)
 end
 
 -- Names of every design an egg of this rarity can have (Classic first)
@@ -9623,6 +9663,11 @@ local function refreshEggLabel(rec)
 	if rec.Stolen then
 		title = "Stolen " .. title
 	end
+	if (rec.PetSize or 1) >= Config.HugePetSize then
+		title = "HUGE " .. title
+	elseif (rec.PetSize or 1) >= Config.BigPetSize then
+		title = "BIG " .. title
+	end
 	local sub = ""
 	if rec.State == "Wild" then
 		sub = "Guarded!"
@@ -9668,17 +9713,22 @@ local function endHunt(rec)
 	end
 end
 
-local function createEgg(rarityId, remaining, stolen, mutation)
+-- petSize is optional: by default the pet's size is rolled now, and the egg
+-- is scaled to match, so a big pet always comes in a big egg.
+local function createEgg(rarityId, remaining, stolen, mutation, petSize)
 	local rarity = Config.RarityById[rarityId]
 	local part = Visuals.MakeEgg(rarityId)
 	if mutation and not Visuals.ApplyMutation(part, mutation) then
 		mutation = nil
 	end
+	petSize = if petSize and petSize > 0 then petSize else Config.RollSize(rng)
+	Visuals.ScaleEgg(part, Config.EggScale(petSize))
 	part.Parent = eggsFolder
 	local rec = {
 		Part = part,
 		Rarity = rarityId,
 		Mutation = mutation,
+		PetSize = petSize,
 		Remaining = remaining or rarity.HatchTime,
 		Stolen = stolen or false,
 		State = "None",
@@ -9729,7 +9779,7 @@ local function placeInSpot(biome, spot, rec)
 	rec.Carrier = nil
 	rec.DespawnToken = nil
 	rec.Part.Anchored = true
-	local home = CFrame.new(spot.Position + Vector3.new(0, Visuals.EggHalfHeight + 0.3, 0))
+	local home = CFrame.new(spot.Position + Vector3.new(0, rec.Part.Size.Y / 2 + 0.3, 0))
 	rec.Part.CFrame = home
 	rec.Part:SetAttribute("WildHome", home) -- clients use this to spin and bob it
 	-- glowing ring in the egg's rarity color under the nest
@@ -10011,7 +10061,7 @@ local function placeEggInBase(player, index, rec)
 	rec.Owner = player
 	rec.SlotIndex = index
 	rec.Part.Anchored = true
-	rec.Part.CFrame = CFrame.new(state.Plot.SlotTops[index] + Vector3.new(0, Visuals.EggHalfHeight, 0))
+	rec.Part.CFrame = CFrame.new(state.Plot.SlotTops[index] + Vector3.new(0, rec.Part.Size.Y / 2, 0))
 	rec.BaseCFrame = rec.Part.CFrame
 	rec.Prompt.ActionText = "Steal"
 	rec.Prompt.ObjectText = player.DisplayName .. "'s " .. rec.Rarity .. " Egg"
@@ -10048,7 +10098,7 @@ local function startCarry(player, rec)
 
 	local part = rec.Part
 	part.Anchored = true
-	part.CFrame = root.CFrame * CFrame.new(0, 4.7, -0.3) -- held up in both hands
+	part.CFrame = root.CFrame * CFrame.new(0, 4.7 + (part.Size.Y - Visuals.EggHalfHeight * 2) / 2, -0.3) -- held up in both hands
 	local weld = Instance.new("WeldConstraint")
 	weld.Name = "CarryWeld"
 	weld.Part0 = root
@@ -10117,7 +10167,7 @@ local function dropCarried(player)
 		end
 	end
 
-	rec.Part.CFrame = CFrame.new(position.X, Visuals.EggHalfHeight + 0.3, position.Z)
+	rec.Part.CFrame = CFrame.new(position.X, rec.Part.Size.Y / 2 + 0.3, position.Z)
 	makeGrabbable(rec, "Dropped", Config.DroppedEggLifetime)
 end
 
@@ -10369,6 +10419,7 @@ local function hatch(player, index)
 	local rec = state.Nest[index].Egg
 	local data = rollCreature(rec.Rarity, rec.Stolen)
 	data.Mutation = rec.Mutation
+	data.Size = rec.PetSize or data.Size -- the size the egg showed
 	local eggVariant = rec.Part:GetAttribute("EggVariant")
 	local burstColor = if rec.Mutation and Config.MutationById[rec.Mutation] then Config.MutationById[rec.Mutation].Color else Config.RarityById[rec.Rarity].Color
 	hatchBurst(rec.Part, burstColor)
@@ -11396,7 +11447,8 @@ function GameService.AddPlayer(player, profile)
 		local index = tonumber(key)
 		if index and index >= 1 and index <= profile.Slots and type(entry) == "table" and not state.Nest[index] then
 			if entry.Kind == "Egg" and Config.RarityById[entry.Rarity] then
-				local rec = createEgg(entry.Rarity, tonumber(entry.Remaining), entry.Stolen == true, Config.MutationById[entry.Mutation or ""] and entry.Mutation or nil)
+				local savedSize = tonumber(entry.PetSize)
+				local rec = createEgg(entry.Rarity, tonumber(entry.Remaining), entry.Stolen == true, Config.MutationById[entry.Mutation or ""] and entry.Mutation or nil, if savedSize then math.clamp(savedSize, 0.5, 3) else nil)
 				placeEggInBase(player, index, rec)
 			elseif entry.Kind == "Creature" and Config.CreatureByName[entry.Name] then
 				local def = Config.CreatureByName[entry.Name]
@@ -11456,6 +11508,7 @@ function GameService.Snapshot(player)
 				Remaining = math.max(0, math.floor(slot.Egg.Remaining)),
 				Stolen = slot.Egg.Stolen,
 				Mutation = slot.Egg.Mutation,
+				PetSize = slot.Egg.PetSize,
 			}
 		else
 			nest[tostring(index)] = {
@@ -11581,7 +11634,7 @@ function GameService.EggRain(byPlayer)
 			return Config.EggRainWeights[r.Id] or 0
 		end, rng)
 		local rec = createEgg(rarity.Id, nil, false, Config.RollMutation(rng, currentLuck()))
-		local ground = Vector3.new(rng:NextNumber(-area.HalfWidth, area.HalfWidth), Visuals.EggHalfHeight + 0.3, rng:NextNumber(area.MinZ, area.MaxZ))
+		local ground = Vector3.new(rng:NextNumber(-area.HalfWidth, area.HalfWidth), rec.Part.Size.Y / 2 + 0.3, rng:NextNumber(area.MinZ, area.MaxZ))
 		rec.Part.CFrame = CFrame.new(ground + Vector3.new(0, 60 + i * 3, 0))
 		makeGrabbable(rec, "Rain", Config.EggRainLifetime)
 		local tween = TweenService:Create(rec.Part, TweenInfo.new(1.6 + i * 0.1, Enum.EasingStyle.Bounce, Enum.EasingDirection.Out), { CFrame = CFrame.new(ground) })
@@ -15261,7 +15314,8 @@ local function setupExtraGui()
 				ray.BackgroundColor3 = color:Lerp(Color3.new(1, 1, 1), 0.3)
 				ray.BackgroundTransparency = 1
 			end
-			caption.Text = "Hatching..."
+			local petSize = data.Size or 1
+			caption.Text = if petSize >= Config.HugePetSize then "A HUGE egg is hatching..." elseif petSize >= Config.BigPetSize then "A BIG egg is hatching..." else "Hatching..."
 			caption.TextColor3 = Color3.new(1, 1, 1)
 			skipHint.Text = if UserInputService.GamepadEnabled then "Press Ⓐ to skip" else "Tap to skip"
 			flash.BackgroundTransparency = 1
