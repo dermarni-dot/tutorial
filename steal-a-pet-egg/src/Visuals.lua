@@ -55,8 +55,16 @@ local function newPart(name, shape, size, color)
 end
 
 -- Returns an `add` function that welds parts onto `body` at an offset.
+-- While a pet is being built, cartoon-only details are left off so pets look
+-- like real animals (guardians keep their cartoon faces).
+local PET_BUILD = false
+local PET_SKIP = { Blush = true, ToeBean = true, Smile = true, Tongue = true, Lash = true, Gloss = true, Mouth = false }
+
 local function rigger(model, body)
 	return function(name, shape, size, offset, color, material)
+		if PET_BUILD and PET_SKIP[name] then
+			return newPart(name, shape, size, color) -- never parented
+		end
 		local p = newPart(name, shape, size, color)
 		if material then
 			p.Material = material
@@ -2157,13 +2165,16 @@ function Visuals.RefreshPetLabel(body, data)
 end
 
 -- Detailed cartoon eye: white, colored iris, pupil, two shines and a lid line
+local EYE_SCALE = 0.62 -- realistic eyes are much smaller than cartoon ones
 local function petEye(add, cf, size, iris)
-	add("Eye", "Blob", Vector3.new(size, size * 1.18, size * 0.6), cf, WHITE)
-	add("Iris", "Blob", Vector3.new(size * 0.74, size * 0.88, size * 0.4), cf * CFrame.new(0, -size * 0.06, -size * 0.14), iris)
-	add("Pupil", "Blob", Vector3.new(size * 0.44, size * 0.56, size * 0.36), cf * CFrame.new(0, -size * 0.08, -size * 0.2), BLACK)
-	add("Shine", "Ball", Vector3.one * size * 0.26, cf * CFrame.new(size * 0.14, size * 0.16, -size * 0.3), WHITE, Enum.Material.Neon)
-	add("Shine", "Ball", Vector3.one * size * 0.12, cf * CFrame.new(-size * 0.12, -size * 0.2, -size * 0.3), WHITE, Enum.Material.Neon)
-	add("Lash", "Blob", Vector3.new(size * 0.34, size * 0.1, size * 0.14), cf * CFrame.new(size * 0.42, size * 0.46, -size * 0.1) * CFrame.Angles(0, 0, math.rad(-30)), BLACK)
+	size *= EYE_SCALE
+	-- a thin rim of white around a big dark iris, a round pupil and one small
+	-- catch-light, like a real animal's eye
+	local irisColor = iris:Lerp(Color3.fromRGB(45, 30, 20), 0.55)
+	add("Eye", "Blob", Vector3.new(size, size * 1.05, size * 0.8), cf, Color3.fromRGB(235, 230, 220))
+	add("Iris", "Blob", Vector3.new(size * 0.9, size * 0.94, size * 0.6), cf * CFrame.new(0, 0, -size * 0.14), irisColor)
+	add("Pupil", "Blob", Vector3.new(size * 0.5, size * 0.52, size * 0.5), cf * CFrame.new(0, 0, -size * 0.2), Color3.fromRGB(10, 8, 12))
+	add("Shine", "Ball", Vector3.one * size * 0.16, cf * CFrame.new(size * 0.16, size * 0.18, -size * 0.36), WHITE, Enum.Material.Neon)
 end
 
 --------------------------------------------------------------------------------
@@ -2768,7 +2779,7 @@ local function fishBuild(ctx, kind)
 	for _, sx in ipairs({ -1, 1 }) do
 		petEye(add, CFrame.new(sx * T.X * 0.38, T.Y * 0.12, -T.Z * 0.3) * CFrame.Angles(0, math.rad(-55 * sx), 0), S * 0.24, ctx.iris)
 		add("Blush", "Blob", Vector3.new(S * 0.14, S * 0.08, S * 0.05), CFrame.new(sx * T.X * 0.42, -T.Y * 0.08, -T.Z * 0.22) * CFrame.Angles(0, math.rad(-60 * sx), 0), BLUSH)
-		add("SideFin", "Blob", Vector3.new(S * 0.05, S * 0.26, S * 0.34), CFrame.new(sx * T.X * 0.5, -T.Y * 0.2, -T.Z * 0.05) * CFrame.Angles(0, math.rad(20 * sx), math.rad(-40 * sx)), fin, finMat)
+		add("SideFin", "Blob", Vector3.new(S * 0.3, S * 0.04, S * 0.22), CFrame.new(sx * T.X * 0.55, -T.Y * 0.22, -T.Z * 0.1) * CFrame.Angles(0, math.rad(-30 * sx), math.rad(-25 * sx)), fin, finMat)
 	end
 	ctx.headCf, ctx.H = CFrame.new(0, 0, -T.Z * 0.1), T.Y
 	ctx.headAdd = function(name, shape, size, cf, col, mat)
@@ -2790,7 +2801,7 @@ local function fishBuild(ctx, kind)
 		end
 	else
 		add("Mouth", "Blob", Vector3.new(S * 0.16, S * 0.1, S * 0.06), CFrame.new(0, -T.Y * 0.08, -T.Z * 0.5), Color3.fromRGB(255, 120, 140))
-		triangle(add, "DorsalFin", S * 0.5, S * 0.3, S * 0.05, CFrame.new(0, T.Y * 0.55, T.Z * 0.1) * CFrame.Angles(0, math.rad(90), 0), fin, finMat)
+		triangle(add, "DorsalFin", S * 0.8, S * 0.2, S * 0.04, CFrame.new(0, T.Y * 0.5, T.Z * 0.12) * CFrame.Angles(0, math.rad(90), 0), fin, finMat)
 		if kind == "Koi" then
 			for i, p in ipairs({ { 0.2, 0.3, -0.2 }, { -0.25, 0.2, 0.15 }, { 0.15, -0.1, 0.3 } }) do
 				local pos = Vector3.new(p[1] * T.X * 2, p[2] * T.Y * 1.5, p[3] * T.Z * 1.4)
@@ -2804,8 +2815,8 @@ local function fishBuild(ctx, kind)
 		end
 	end
 end
-ANATOMY.Fish = { Torso = Vector3.new(0.62, 0.72, 1.1), Float = true, Build = function(ctx) fishBuild(ctx, "Fish") end }
-ANATOMY.Koi = { Torso = Vector3.new(0.6, 0.62, 1.25), Float = true, Build = function(ctx) fishBuild(ctx, "Koi") end }
+ANATOMY.Fish = { Torso = Vector3.new(0.46, 0.7, 1.25), Float = true, Build = function(ctx) fishBuild(ctx, "Fish") end }
+ANATOMY.Koi = { Torso = Vector3.new(0.5, 0.58, 1.4), Float = true, Build = function(ctx) fishBuild(ctx, "Koi") end }
 ANATOMY.Shark = { Torso = Vector3.new(0.7, 0.66, 1.5), Float = true, Build = function(ctx) fishBuild(ctx, "Shark") end }
 
 -- Birds -----------------------------------------------------------------------------
@@ -2816,7 +2827,7 @@ local function birdBuild(ctx, kind)
 	ctx.footDrop = birdLegs(ctx, if kind == "Penguin" or kind == "Chick" then 0.06 else 0.16, legColor)
 	add("Belly", "Blob", Vector3.new(T.X * 0.72, T.Y * 0.65, S * 0.2), CFrame.new(0, -T.Y * 0.08, -T.Z * 0.4), if kind == "Penguin" then WHITE else ctx.light)
 	local H, headCf
-	if kind == "Chick" then
+	if false then -- (old round chick; chicks now get a real head below)
 		H, headCf = T.Y * 0.9, CFrame.new(0, T.Y * 0.05, 0)
 		ctx.headCf, ctx.H = headCf, H
 		ctx.headAdd = function(name, shape, size, cf, col, mat)
@@ -2827,7 +2838,7 @@ local function birdBuild(ctx, kind)
 			ctx.headAdd("Blush", "Blob", Vector3.new(H * 0.17, H * 0.09, H * 0.06), CFrame.new(sx * H * 0.33, -H * 0.03, -H * 0.42), BLUSH)
 		end
 	else
-		H = S * (if kind == "Owl" then 0.78 else 0.6)
+		H = S * (if kind == "Owl" then 0.78 elseif kind == "Chick" then 0.56 else 0.6)
 		headCf = CFrame.new(0, T.Y * 0.45 + H * (if kind == "Owl" then 0.2 else 0.32), -T.Z * (if kind == "Duck" then 0.35 else 0.1))
 		makeHead(ctx, headCf, H, if kind == "Penguin" then BLACK else ctx.color, { Mouth = false, EyeSize = if kind == "Owl" then 0.34 else 0.27 })
 	end
@@ -3203,6 +3214,104 @@ ANATOMY.Cerberus = { Torso = Vector3.new(0.9, 0.72, 1.15), Build = function(ctx)
 	tailOn(ctx, "Flame", CFrame.new(0, T.Y * 0.12, T.Z * 0.46), ctx.color)
 end }
 
+
+-- Frog: squat body, wide flat head with bulging eyes on top, folded back legs
+-- and webbed feet
+ANATOMY.Frog = { Torso = Vector3.new(0.9, 0.55, 0.8), Build = function(ctx)
+	local S, T, add = ctx.S, ctx.T, ctx.add
+	local c, light, dark = ctx.color, ctx.light, ctx.dark
+	add("Belly", "Blob", Vector3.new(T.X * 0.8, T.Y * 0.5, T.Z * 0.8), CFrame.new(0, -T.Y * 0.22, -T.Z * 0.05), light)
+	local headCf = CFrame.new(0, T.Y * 0.12, -T.Z * 0.42)
+	add("Head", "Blob", Vector3.new(T.X * 1.02, S * 0.4, S * 0.62), headCf, c)
+	add("Chin", "Blob", Vector3.new(T.X * 0.8, S * 0.16, S * 0.5), headCf * CFrame.new(0, -S * 0.14, -S * 0.02), light)
+	add("MouthLine", "Block", Vector3.new(T.X * 0.78, S * 0.025, S * 0.03), headCf * CFrame.new(0, -S * 0.06, -S * 0.3), dark)
+	for _, sx in ipairs({ -1, 1 }) do
+		local bump = headCf * CFrame.new(sx * S * 0.2, S * 0.2, -S * 0.08)
+		add("EyeBump", "Ball", Vector3.one * S * 0.26, bump, c)
+		petEye(add, bump * CFrame.new(0, S * 0.02, -S * 0.1) * CFrame.Angles(math.rad(-10), math.rad(-25 * sx), 0), S * 0.34, ctx.iris)
+		add("Nostril", "Ball", Vector3.one * S * 0.035, headCf * CFrame.new(sx * S * 0.07, S * 0.08, -S * 0.3), dark)
+		-- folded back legs: big thigh, shin along the ground, long webbed foot
+		add("Thigh", "Blob", Vector3.new(S * 0.3, S * 0.3, S * 0.46), CFrame.new(sx * T.X * 0.5, -T.Y * 0.05, T.Z * 0.18) * CFrame.Angles(math.rad(-20), 0, 0), c)
+		add("Shin", "Blob", Vector3.new(S * 0.16, S * 0.14, S * 0.44), CFrame.new(sx * T.X * 0.55, -T.Y * 0.38, T.Z * 0.05), c)
+		add("BackFoot", "Blob", Vector3.new(S * 0.3, S * 0.06, S * 0.4), CFrame.new(sx * T.X * 0.6, -T.Y * 0.5, -T.Z * 0.18), dark)
+		-- front legs
+		add("Arm", "Blob", Vector3.new(S * 0.12, S * 0.3, S * 0.12), CFrame.new(sx * T.X * 0.34, -T.Y * 0.3, -T.Z * 0.32) * CFrame.Angles(0, 0, math.rad(10 * sx)), c)
+		add("FrontFoot", "Blob", Vector3.new(S * 0.2, S * 0.05, S * 0.18), CFrame.new(sx * T.X * 0.38, -T.Y * 0.5, -T.Z * 0.4), dark)
+	end
+	for i = 1, 5 do
+		add("BackSpot", "Blob", Vector3.new(S * 0.14, S * 0.05, S * 0.12), CFrame.new(((i * 37) % 7 - 3) * T.X * 0.1, T.Y * 0.46, ((i * 23) % 5 - 2) * T.Z * 0.15), dark)
+	end
+	ctx.footDrop = T.Y * 0.5 + S * 0.03
+	ctx.headCf, ctx.H = headCf * CFrame.new(0, S * 0.15, 0), S * 0.55
+	ctx.headAdd = function(name, shape, size, cf, col, mat)
+		return add(name, shape, size, ctx.headCf * cf, col, mat)
+	end
+end }
+
+-- Octopus / Kraken: a tall mantle with eyes low on the front and eight curling
+-- tentacles spread out on the ground
+local function octoBuild(ctx, kraken)
+	local S, T, add = ctx.S, ctx.T, ctx.add
+	local c, dark, light = ctx.color, ctx.dark, ctx.light
+	local sucker = if kraken then Color3.fromRGB(140, 255, 230) else light
+	local suckerMat = if kraken then Enum.Material.Neon else nil
+	add("MantleTop", "Blob", Vector3.new(T.X * 0.9, T.Y * 0.6, T.Z * 0.95), CFrame.new(0, T.Y * 0.3, T.Z * 0.12), c)
+	for _, sx in ipairs({ -1, 1 }) do
+		petEye(add, CFrame.new(sx * T.X * 0.28, -T.Y * 0.12, -T.Z * 0.4) * CFrame.Angles(0, math.rad(-25 * sx), 0), S * 0.3, ctx.iris)
+		add("EyeRidge", "Blob", Vector3.new(S * 0.22, S * 0.08, S * 0.12), CFrame.new(sx * T.X * 0.28, -T.Y * 0.02, -T.Z * 0.4), dark)
+	end
+	add("Siphon", "Blob", Vector3.new(S * 0.1, S * 0.08, S * 0.12), CFrame.new(T.X * 0.4, -T.Y * 0.3, -T.Z * 0.15), dark)
+	local groundY = -T.Y * 0.5 - S * 0.2
+	for i = 0, 7 do
+		local a = (i + 0.5) / 8 * math.pi * 2
+		local dir = Vector3.new(math.cos(a), 0, math.sin(a))
+		local root = Vector3.new(0, -T.Y * 0.4, 0) + dir * T.X * 0.28
+		local knee = Vector3.new(0, groundY + S * 0.06, 0) + dir * (T.X * 0.55 + S * 0.25)
+		local tip = knee + dir * S * 0.45 + Vector3.new(0, S * 0.12, 0)
+		local curl = tip + dir * S * 0.08 + Vector3.new(0, S * 0.12, 0)
+		local w = S * 0.16
+		add("Tentacle", "Blob", Vector3.new(w, w, (knee - root).Magnitude + w * 0.5), CFrame.lookAt((root + knee) / 2, knee), if i % 2 == 0 then c else dark)
+		add("TentacleEnd", "Blob", Vector3.new(w * 0.75, w * 0.75, (tip - knee).Magnitude + w * 0.4), CFrame.lookAt((knee + tip) / 2, tip), if i % 2 == 0 then c else dark)
+		add("TentacleCurl", "Ball", Vector3.one * w * 0.6, CFrame.new(curl), if i % 2 == 0 then c else dark)
+		for k = 1, 2 do
+			local p = root:Lerp(knee, k / 3) - Vector3.new(0, w * 0.4, 0)
+			add("Sucker", "Ball", Vector3.one * w * 0.35, CFrame.new(p), sucker, suckerMat)
+		end
+	end
+	ctx.footDrop = -groundY
+	ctx.headCf, ctx.H = CFrame.new(0, T.Y * 0.4, T.Z * 0.1), T.X * 0.9
+	ctx.headAdd = function(name, shape, size, cf, col, mat)
+		return add(name, shape, size, ctx.headCf * cf, col, mat)
+	end
+	if kraken then
+		local GOLD_C = Color3.fromRGB(255, 205, 60)
+		ctx.headAdd("KrakenCrown", "Cyl", Vector3.new(S * 0.14, S * 0.46, S * 0.46), CFrame.new(0, T.Y * 0.32, 0) * CFrame.Angles(0, 0, math.rad(90)), GOLD_C, Enum.Material.Metal)
+		for i = 0, 4 do
+			local a = i / 5 * math.pi * 2
+			triangle(ctx.headAdd, "CrownSpike", S * 0.1, S * 0.2, S * 0.04, CFrame.new(math.cos(a) * S * 0.2, T.Y * 0.46, math.sin(a) * S * 0.2) * CFrame.Angles(0, -a - math.pi / 2, 0), sucker, Enum.Material.Neon)
+		end
+	end
+end
+ANATOMY.Octopus = { Torso = Vector3.new(0.8, 0.9, 0.8), Build = function(ctx) octoBuild(ctx, false) end }
+ANATOMY.Kraken = { Torso = Vector3.new(0.85, 1.0, 0.85), Build = function(ctx) octoBuild(ctx, true) end }
+
+-- Bat: small furry body, big pointed ears, a pug nose with fangs and wide
+-- leathery wings; it hovers
+ANATOMY.Bat = { Torso = Vector3.new(0.5, 0.55, 0.45), Float = true, Build = function(ctx)
+	local S, T, add = ctx.S, ctx.T, ctx.add
+	add("Belly", "Blob", Vector3.new(T.X * 0.75, T.Y * 0.7, T.Z * 0.5), CFrame.new(0, -T.Y * 0.05, -T.Z * 0.2), ctx.light)
+	local H = S * 0.5
+	local headAdd = makeHead(ctx, CFrame.new(0, T.Y * 0.55, -T.Z * 0.08), H, ctx.color, { Mouth = false })
+	earsOn(headAdd, H, "Tall", ctx.color, ctx.dark)
+	headAdd("PugNose", "Blob", Vector3.new(H * 0.28, H * 0.18, H * 0.14), CFrame.new(0, -H * 0.1, -H * 0.45), ctx.dark)
+	for _, sx in ipairs({ -1, 1 }) do
+		triangle(headAdd, "Fang", H * 0.07, H * 0.12, H * 0.03, CFrame.new(sx * H * 0.07, -H * 0.3, -H * 0.42) * CFrame.Angles(0, 0, math.pi), WHITE)
+		batWing(ctx, sx, CFrame.new(sx * T.X * 0.4, T.Y * 0.2, 0), 0.75, ctx.dark, ctx.color:Lerp(Color3.new(0, 0, 0), 0.5))
+		add("Foot", "Blob", Vector3.new(S * 0.08, S * 0.14, S * 0.08), CFrame.new(sx * T.X * 0.2, -T.Y * 0.55, T.Z * 0.1), ctx.dark)
+	end
+	ctx.footDrop = T.Y * 0.62
+end }
+
 -- Builds a pet from its ANATOMY entry (called by Visuals.MakeCreature)
 local function buildAnatomy(spec, data, def, rarity, tier, S, color, dark, light)
 	local model = Instance.new("Model")
@@ -3222,6 +3331,27 @@ local function buildAnatomy(spec, data, def, rarity, tier, S, color, dark, light
 	local gloss = add("Gloss", "Blob", Vector3.new(T.X * 0.4, S * 0.12, T.Z * 0.3), CFrame.new(-T.X * 0.18, T.Y * 0.42, -T.Z * 0.1) * CFrame.Angles(math.rad(-10), 0, math.rad(15)), WHITE)
 	gloss.Transparency = 0.5
 	spec.Build(ctx)
+
+	-- Detail pass: toes on paws and feet, nostrils on noses and soft eyelids
+	-- over the eyes (the body sits at the origin while building, so each
+	-- part's CFrame is already relative to it).
+	local lidColor = dark:Lerp(color, 0.35)
+	for _, part in ipairs(model:GetChildren()) do
+		if part:IsA("BasePart") then
+			local n, cf, sz = part.Name, part.CFrame, part.Size
+			if n == "Paw" or n == "Foot" or n == "FrontFoot" or n == "BackFoot" then
+				for k = -1, 1 do
+					add("Toe", "Blob", Vector3.new(sz.X * 0.3, sz.Y * 0.55, sz.Z * 0.28), cf * CFrame.new(k * sz.X * 0.3, -sz.Y * 0.12, -sz.Z * 0.42), part.Color:Lerp(Color3.new(0, 0, 0), 0.12))
+				end
+			elseif n == "Nose" and sz.X > S * 0.05 then
+				for _, sx in ipairs({ -1, 1 }) do
+					add("Nostril", "Ball", Vector3.one * math.min(sz.X, sz.Y) * 0.28, cf * CFrame.new(sx * sz.X * 0.22, -sz.Y * 0.12, -sz.Z * 0.42), Color3.fromRGB(15, 12, 14))
+				end
+			elseif n == "Eye" then
+				add("EyeLid", "Blob", Vector3.new(sz.X * 1.1, sz.Y * 0.24, sz.Z * 0.9), cf * CFrame.new(0, sz.Y * 0.5, -sz.Z * 0.02), lidColor)
+			end
+		end
+	end
 
 	-- patterns wrap the torso; accessories sit on the head
 	if def and def.Pattern and PATTERNS[def.Pattern] then
@@ -3302,7 +3432,7 @@ local function buildAnatomy(spec, data, def, rarity, tier, S, color, dark, light
 end
 
 -- data = { Name, Rarity, Shiny, Tier, Mutation, Size, Age }
-function Visuals.MakeCreature(data)
+local function buildCreature(data)
 	local rarity = Config.RarityById[data.Rarity]
 	local def = Config.CreatureByName[data.Name]
 	local color = if def then def.Color else rarity.Color
@@ -4094,6 +4224,52 @@ function Visuals.MakeGuardian(def)
 	sleep.Parent = body
 
 	return model, height
+end
+
+-- Natural surfaces: fur and feathers get a soft fabric texture, reptiles,
+-- amphibians and sea animals get slightly glossy skin. Only the pet's own
+-- body colors change; eyes, accessories, gems and glow stay as they are.
+local FUR_STYLES = {}
+for _, s in ipairs({ "Pup", "Cat", "Fox", "Wolf", "Lion", "Bear", "Cub", "Panda", "Raccoon", "Pig", "Cow", "Sheep", "Hamster", "Bunny", "Stag", "Unicorn", "Kitsune", "Elephant", "Monkey", "Hedgehog", "Pony", "Pegasus", "Giraffe", "Kangaroo", "Koala", "Sloth", "Otter", "Squirrel", "Mouse", "Hippo", "Rhino", "Griffin", "Cerberus", "Bat", "Bird", "Chick", "Duck", "Owl", "Phoenix", "Penguin", "Flamingo", "Swan", "Parrot", "Peacock", "Moth", "Bee" }) do
+	FUR_STYLES[s] = true
+end
+local SKIN_STYLES = {}
+for _, s in ipairs({ "Drake", "Dino", "Serpent", "Croc", "Newt", "Axolotl", "Turtle", "Frog", "Fish", "Koi", "Shark", "Dolphin", "Whale", "Seal", "Octopus", "Kraken", "Crab", "Snail" }) do
+	SKIN_STYLES[s] = true
+end
+
+function Visuals.MakeCreature(data)
+	PET_BUILD = true
+	local ok, model = pcall(buildCreature, data)
+	PET_BUILD = false
+	if not ok then
+		error(model, 2)
+	end
+	local def = Config.CreatureByName[data.Name]
+	local style = def and def.Style
+	if style and (FUR_STYLES[style] or SKIN_STYLES[style]) then
+		local rarity = Config.RarityById[data.Rarity]
+		local color = if def then def.Color else rarity.Color
+		local palette = { color, color:Lerp(Color3.new(0, 0, 0), 0.3), color:Lerp(WHITE, 0.45) }
+		local function isBody(c)
+			for _, pc in ipairs(palette) do
+				if math.abs(c.R - pc.R) + math.abs(c.G - pc.G) + math.abs(c.B - pc.B) < 0.03 then
+					return true
+				end
+			end
+			return false
+		end
+		for _, part in ipairs(model:GetDescendants()) do
+			if part:IsA("BasePart") and part.Material == Enum.Material.SmoothPlastic and isBody(part.Color) then
+				if FUR_STYLES[style] then
+					part.Material = Enum.Material.Fabric
+				else
+					part.Reflectance = 0.06
+				end
+			end
+		end
+	end
+	return model
 end
 
 -- Gentle idle bob for pets. Call after the model is placed.
