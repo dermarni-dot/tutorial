@@ -35,6 +35,7 @@ Game Settings > Security > **Enable Studio Access to API Services**.
 - **Carrying:** you run 10% slower with an egg. Step into your base and the egg drops into your open pet pen to incubate.
 - **Speed:** stand on the **treadmill** in your base to gain Speed. The gold pad sells 12 treadmill tiers, each doubling what it gives: Basic x1, Bronze x2, Silver x4, Gold x8, Diamond x16, Emerald x32, Cosmic x64, Galaxy x128, Nebula x256, Supernova x512, Quantum x1024 and Celestial x2048.
   - Every tier looks fancier: tier-colored belt stripes, neon side trims, a light under the belt, then shiny rails from Gold, glass frames and rising sparkles, a spinning halo of orbs from Cosmic, flames for Supernova and a rainbow belt for Celestial.
+  - See `treadmill_preview.png` (Basic, Gold, Cosmic, Supernova, Celestial).
   - A live screen on the console shows your tier, multiplier and Speed per second; a row of lights shows how many tiers you own.
   - While you train the belt speeds up and kicks out speed streaks, and buying a tier sets off a burst of sparkles.
 - **Stealing:**
