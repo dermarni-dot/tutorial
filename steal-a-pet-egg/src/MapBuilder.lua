@@ -14,8 +14,8 @@ local Util = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Util
 
 local MapBuilder = {}
 
-local PLOT_SIZE = 84 -- base depth (front to back)
-local PLOT_WIDTH = 140 -- base width (side to side)
+local PLOT_SIZE = 140 -- base depth (front to back): room for giant pets
+local PLOT_WIDTH = 210 -- base width (side to side)
 local PLOT_SCALE = PLOT_SIZE / 60 -- base layouts are drawn on a 60-stud grid, then scaled
 local PLOT_COUNT = 6 -- bases per server (fewer, bigger bases)
 local PLOT_GAP = 36 -- room between bases
@@ -2691,19 +2691,19 @@ local function buildPlot(plotsFolder, index, center, frontDir)
 	local bowl = deco({ Name = "WaterBowl", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.7, 3.4, 3.4), CFrame = cylinderAlongY(at(0, 0.85, PEN_FRONT + 2.2)), Color = accent, Material = Enum.Material.SmoothPlastic, Parent = model })
 	deco({ Name = "Water", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.1, 2.8, 2.8), CFrame = cylinderAlongY(at(0, 1.2, PEN_FRONT + 2.2)), Color = Color3.fromRGB(90, 180, 255), Material = Enum.Material.Glass, Transparency = 0.2, Parent = bowl.Parent })
 
-	-- Where eggs and pets sit: 3 loose rows across the pen, slightly scattered
-	-- so it looks like a free-roaming pen, not a grid of slots.
-	local COLS = 8
+	-- Where eggs and pets sit: 4 loose rows of 10 across the pen, slightly
+	-- scattered so it looks like a free-roaming pen, not a grid of slots.
+	local COLS = 10
 	local spotRng = Random.new(1234) -- same layout in every base
 	local xEdge = ex - 7
 	for slot = 1, Config.MaxSlots do
 		local row = (slot - 1) // COLS
 		local col = (slot - 1) % COLS
 		-- fill the front row first, from the middle outward
-		local order = { 4, 5, 3, 6, 2, 7, 1, 8 }
+		local order = { 5, 6, 4, 7, 3, 8, 2, 9, 1, 10 }
 		local c = order[col + 1] - 1
 		local x = -xEdge + c * (2 * xEdge / (COLS - 1)) + spotRng:NextNumber(-1.2, 1.2) + (if row == 1 then 1.5 else 0)
-		local z = PEN_FRONT + 6 + row * 7.5 + spotRng:NextNumber(-1, 1)
+		local z = PEN_FRONT + 4.5 + row * 6.2 + spotRng:NextNumber(-0.8, 0.8)
 		plot.SlotTops[slot] = at(x, 0.54, z).Position
 	end
 

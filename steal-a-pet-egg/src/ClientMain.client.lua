@@ -892,7 +892,7 @@ task.spawn(function()
 			Wait = rng:NextNumber(0.5, 4),
 			Rng = rng,
 			Float = float,
-			Speed = if float then rng:NextNumber(2.5, 3.5) else rng:NextNumber(4, 6.5),
+			Speed = (if float then rng:NextNumber(2.5, 3.5) else rng:NextNumber(4, 6.5)) * math.max(1, radius / 4) ^ 0.5,
 			Hop = body.Size.Y * 0.09,
 			Phase = rng:NextNumber(0, 10),
 		}
@@ -2445,10 +2445,9 @@ local function setupIncubator()
 				if mutation then
 					title = mutation.Icon .. " " .. mutation.Id .. " " .. title
 				end
-				if size >= Config.HugePetSize then
-					title = "HUGE " .. title
-				elseif size >= Config.BigPetSize then
-					title = "BIG " .. title
+				local sizeLabel = Config.SizeLabel(size)
+				if sizeLabel then
+					title = sizeLabel .. " " .. title
 				end
 				r.Name.Text = title
 				r.Name.TextColor3 = color:Lerp(Color3.new(1, 1, 1), 0.4)
@@ -2776,7 +2775,8 @@ local function setupExtraGui()
 				ray.BackgroundTransparency = 1
 			end
 			local petSize = data.Size or 1
-			caption.Text = if petSize >= Config.HugePetSize then "A HUGE egg is hatching..." elseif petSize >= Config.BigPetSize then "A BIG egg is hatching..." else "Hatching..."
+			local sizeLabel = Config.SizeLabel(petSize)
+			caption.Text = if sizeLabel then "A " .. sizeLabel .. " egg is hatching..." else "Hatching..."
 			caption.TextColor3 = Color3.new(1, 1, 1)
 			skipHint.Text = if UserInputService.GamepadEnabled then "Press Ⓐ to skip" else "Tap to skip"
 			flash.BackgroundTransparency = 1

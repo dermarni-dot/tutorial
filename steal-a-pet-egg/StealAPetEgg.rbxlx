@@ -8,7 +8,7 @@ local Config = {}
 --------------------------------------------------------------------------------
 Config.StartingCash = 0
 -- Every base has one open pen that holds this many eggs and pets (no slots to buy)
-Config.MaxSlots = 24
+Config.MaxSlots = 40
 Config.StartingSlots = Config.MaxSlots
 Config.SellSeconds = 45 -- a pet sells for this many seconds of its income
 
@@ -146,26 +146,45 @@ Config.Stages = {
 Config.BaseWeight = { Common = 8, Uncommon = 12, Rare = 18, Epic = 26, Legendary = 38, Mythic = 55, Divine = 75, Secret = 100, Astral = 140, Cosmic = 190, Omega = 260 }
 Config.SizeIncomePower = 0.5 -- cash bonus = size ^ this (a 2x size pet earns ~1.4x)
 
+Config.MaxPetSize = 10 -- the biggest pets are 10x an average pet
+-- Size tiers, biggest first: { from size, label, chance to roll this tier, roll range }
+Config.SizeTiers = {
+	{ Min = 7, Label = "COLOSSAL", Chance = 0.003, Roll = { 7, 10 } },
+	{ Min = 4, Label = "GIANT", Chance = 0.009, Roll = { 4, 7 } },
+	{ Min = 2, Label = "HUGE", Chance = 0.028, Roll = { 2, 4 } },
+	{ Min = 1.35, Label = "BIG", Chance = 0.08, Roll = { 1.35, 2 } },
+}
+
 function Config.RollSize(rng)
 	local r = rng:NextNumber()
-	if r < 0.01 then
-		return math.floor(rng:NextNumber(2, 3) * 100) / 100 -- HUGE
-	elseif r < 0.08 then
-		return math.floor(rng:NextNumber(1.35, 2) * 100) / 100 -- big
+	for _, tier in ipairs(Config.SizeTiers) do
+		if r < tier.Chance then
+			return math.floor(rng:NextNumber(tier.Roll[1], tier.Roll[2]) * 100) / 100
+		end
+		r -= tier.Chance
 	end
 	return math.floor(rng:NextNumber(0.75, 1.3) * 100) / 100
 end
 
--- How big an egg looks for the size of pet inside it: normal eggs look about
--- the same, big pets (1.35-2) come in eggs up to about 1.9x bigger, and huge
--- pets (2-3) in eggs up to 2.4x bigger. The pet's size is rolled when the egg
--- is made, so what you see is what hatches.
-Config.EggScalePower = 0.9
-Config.MaxEggScale = 2.4
+-- "COLOSSAL", "GIANT", "HUGE", "BIG" or nil for a normal-size pet
+function Config.SizeLabel(size)
+	for _, tier in ipairs(Config.SizeTiers) do
+		if (size or 1) >= tier.Min then
+			return tier.Label
+		end
+	end
+	return nil
+end
+
+-- How big an egg looks for the size of pet inside it: a 2x pet comes in an
+-- egg about 1.8x bigger, a 5x pet in a 3.9x egg and a 10x pet in a 7x egg.
+-- The pet's size is rolled when the egg is made, so what you see is what hatches.
+Config.EggScalePower = 0.85
+Config.MaxEggScale = 7
 function Config.EggScale(size)
 	return math.min((size or 1) ^ Config.EggScalePower, Config.MaxEggScale)
 end
-Config.BigPetSize = 1.35 -- sizes from here up show "BIG" on the egg, 2+ show "HUGE"
+Config.BigPetSize = 1.35 -- sizes from here up show a size label (see SizeTiers)
 Config.HugePetSize = 2
 
 function Config.GrowTime(rarityId)
@@ -199,7 +218,8 @@ end
 Config.PetSizeBoost = 1.6 -- pets are big, chunky showpieces in your base
 function Config.PetVisualScale(data)
 	local stage = Config.Stages[Config.PetStage(data)]
-	return stage.Scale * (data.Size or 1) ^ (1 / 3) * Config.PetSizeBoost
+	-- size is how many times bigger than average the pet looks: 10 = 10x
+	return stage.Scale * (data.Size or 1) * Config.PetSizeBoost
 end
 
 Config.FuseCount = 3 -- this many identical pets fuse into one of the next tier
@@ -7320,8 +7340,8 @@ local Util = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Util
 
 local MapBuilder = {}
 
-local PLOT_SIZE = 84 -- base depth (front to back)
-local PLOT_WIDTH = 140 -- base width (side to side)
+local PLOT_SIZE = 140 -- base depth (front to back): room for giant pets
+local PLOT_WIDTH = 210 -- base width (side to side)
 local PLOT_SCALE = PLOT_SIZE / 60 -- base layouts are drawn on a 60-stud grid, then scaled
 local PLOT_COUNT = 6 -- bases per server (fewer, bigger bases)
 local PLOT_GAP = 36 -- room between bases
@@ -9997,19 +10017,19 @@ local function buildPlot(plotsFolder, index, center, frontDir)
 	local bowl = deco({ Name = "WaterBowl", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.7, 3.4, 3.4), CFrame = cylinderAlongY(at(0, 0.85, PEN_FRONT + 2.2)), Color = accent, Material = Enum.Material.SmoothPlastic, Parent = model })
 	deco({ Name = "Water", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.1, 2.8, 2.8), CFrame = cylinderAlongY(at(0, 1.2, PEN_FRONT + 2.2)), Color = Color3.fromRGB(90, 180, 255), Material = Enum.Material.Glass, Transparency = 0.2, Parent = bowl.Parent })
 
-	-- Where eggs and pets sit: 3 loose rows across the pen, slightly scattered
-	-- so it looks like a free-roaming pen, not a grid of slots.
-	local COLS = 8
+	-- Where eggs and pets sit: 4 loose rows of 10 across the pen, slightly
+	-- scattered so it looks like a free-roaming pen, not a grid of slots.
+	local COLS = 10
 	local spotRng = Random.new(1234) -- same layout in every base
 	local xEdge = ex - 7
 	for slot = 1, Config.MaxSlots do
 		local row = (slot - 1) // COLS
 		local col = (slot - 1) % COLS
 		-- fill the front row first, from the middle outward
-		local order = { 4, 5, 3, 6, 2, 7, 1, 8 }
+		local order = { 5, 6, 4, 7, 3, 8, 2, 9, 1, 10 }
 		local c = order[col + 1] - 1
 		local x = -xEdge + c * (2 * xEdge / (COLS - 1)) + spotRng:NextNumber(-1.2, 1.2) + (if row == 1 then 1.5 else 0)
-		local z = PEN_FRONT + 6 + row * 7.5 + spotRng:NextNumber(-1, 1)
+		local z = PEN_FRONT + 4.5 + row * 6.2 + spotRng:NextNumber(-0.8, 0.8)
 		plot.SlotTops[slot] = at(x, 0.54, z).Position
 	end
 
@@ -11283,10 +11303,9 @@ local function refreshEggLabel(rec)
 	if rec.Stolen then
 		title = "Stolen " .. title
 	end
-	if (rec.PetSize or 1) >= Config.HugePetSize then
-		title = "HUGE " .. title
-	elseif (rec.PetSize or 1) >= Config.BigPetSize then
-		title = "BIG " .. title
+	local sizeLabel = Config.SizeLabel(rec.PetSize)
+	if sizeLabel then
+		title = sizeLabel .. " " .. title
 	end
 	local sub = ""
 	if rec.State == "Wild" then
@@ -11492,7 +11511,11 @@ local function spawnWildEgg(biome, spot)
 	local rec = createEgg(rarity.Id, nil, false, mutation, nil, species)
 	placeInSpot(biome, spot, rec)
 	local mdef = mutation and Config.MutationById[mutation]
-	if Config.AnnounceSpawnRarities[rarity.Id] or (mdef and Config.AnnounceMutations[mutation]) then
+	local sizeLabel = Config.SizeLabel(rec.PetSize)
+	if sizeLabel == "GIANT" or sizeLabel == "COLOSSAL" then
+		-- giant eggs are worth running across the map for
+		notifyAll("🥚 A " .. sizeLabel .. " " .. (species or rarity.Id) .. " Egg (" .. string.format("%.1fx", rec.PetSize) .. " size) appeared in " .. biome.Def.Name .. "!", Color3.fromRGB(255, 200, 80))
+	elseif Config.AnnounceSpawnRarities[rarity.Id] or (mdef and Config.AnnounceMutations[mutation]) then
 		local name = (if mdef then mdef.Icon .. " " .. mutation .. " " else "") .. (species or rarity.Id)
 		notifyAll("🥚 A " .. name .. " Egg (" .. rarity.Id .. ") appeared in " .. biome.Def.Name .. "!", if mdef then mdef.Color else rarity.Color)
 	end
@@ -13127,7 +13150,7 @@ function GameService.AddPlayer(player, profile)
 		if index and index >= 1 and index <= profile.Slots and type(entry) == "table" and not state.Nest[index] then
 			if entry.Kind == "Egg" and Config.RarityById[entry.Rarity] then
 				local savedSize = tonumber(entry.PetSize)
-				local rec = createEgg(entry.Rarity, tonumber(entry.Remaining), entry.Stolen == true, Config.MutationById[entry.Mutation or ""] and entry.Mutation or nil, if savedSize then math.clamp(savedSize, 0.5, 3) else nil, if type(entry.Species) == "string" then entry.Species else nil)
+				local rec = createEgg(entry.Rarity, tonumber(entry.Remaining), entry.Stolen == true, Config.MutationById[entry.Mutation or ""] and entry.Mutation or nil, if savedSize then math.clamp(savedSize, 0.5, Config.MaxPetSize) else nil, if type(entry.Species) == "string" then entry.Species else nil)
 				placeEggInBase(player, index, rec)
 			elseif entry.Kind == "Creature" and Config.CreatureByName[entry.Name] then
 				local def = Config.CreatureByName[entry.Name]
@@ -13140,7 +13163,7 @@ function GameService.AddPlayer(player, profile)
 					Tier = tier,
 					Mutation = mutation,
 					-- size 0 came from an old fusing bug: those pets get their normal size back
-					Size = if (tonumber(entry.Size) or 0) > 0 then math.clamp(tonumber(entry.Size), 0.5, 3) else 1,
+					Size = if (tonumber(entry.Size) or 0) > 0 then math.clamp(tonumber(entry.Size), 0.5, Config.MaxPetSize) else 1,
 					Age = math.max(0, tonumber(entry.Age) or 0),
 				})
 			end
@@ -15259,7 +15282,7 @@ task.spawn(function()
 			Wait = rng:NextNumber(0.5, 4),
 			Rng = rng,
 			Float = float,
-			Speed = if float then rng:NextNumber(2.5, 3.5) else rng:NextNumber(4, 6.5),
+			Speed = (if float then rng:NextNumber(2.5, 3.5) else rng:NextNumber(4, 6.5)) * math.max(1, radius / 4) ^ 0.5,
 			Hop = body.Size.Y * 0.09,
 			Phase = rng:NextNumber(0, 10),
 		}
@@ -16812,10 +16835,9 @@ local function setupIncubator()
 				if mutation then
 					title = mutation.Icon .. " " .. mutation.Id .. " " .. title
 				end
-				if size >= Config.HugePetSize then
-					title = "HUGE " .. title
-				elseif size >= Config.BigPetSize then
-					title = "BIG " .. title
+				local sizeLabel = Config.SizeLabel(size)
+				if sizeLabel then
+					title = sizeLabel .. " " .. title
 				end
 				r.Name.Text = title
 				r.Name.TextColor3 = color:Lerp(Color3.new(1, 1, 1), 0.4)
@@ -17143,7 +17165,8 @@ local function setupExtraGui()
 				ray.BackgroundTransparency = 1
 			end
 			local petSize = data.Size or 1
-			caption.Text = if petSize >= Config.HugePetSize then "A HUGE egg is hatching..." elseif petSize >= Config.BigPetSize then "A BIG egg is hatching..." else "Hatching..."
+			local sizeLabel = Config.SizeLabel(petSize)
+			caption.Text = if sizeLabel then "A " .. sizeLabel .. " egg is hatching..." else "Hatching..."
 			caption.TextColor3 = Color3.new(1, 1, 1)
 			skipHint.Text = if UserInputService.GamepadEnabled then "Press Ⓐ to skip" else "Tap to skip"
 			flash.BackgroundTransparency = 1

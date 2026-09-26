@@ -219,10 +219,9 @@ local function refreshEggLabel(rec)
 	if rec.Stolen then
 		title = "Stolen " .. title
 	end
-	if (rec.PetSize or 1) >= Config.HugePetSize then
-		title = "HUGE " .. title
-	elseif (rec.PetSize or 1) >= Config.BigPetSize then
-		title = "BIG " .. title
+	local sizeLabel = Config.SizeLabel(rec.PetSize)
+	if sizeLabel then
+		title = sizeLabel .. " " .. title
 	end
 	local sub = ""
 	if rec.State == "Wild" then
@@ -428,7 +427,11 @@ local function spawnWildEgg(biome, spot)
 	local rec = createEgg(rarity.Id, nil, false, mutation, nil, species)
 	placeInSpot(biome, spot, rec)
 	local mdef = mutation and Config.MutationById[mutation]
-	if Config.AnnounceSpawnRarities[rarity.Id] or (mdef and Config.AnnounceMutations[mutation]) then
+	local sizeLabel = Config.SizeLabel(rec.PetSize)
+	if sizeLabel == "GIANT" or sizeLabel == "COLOSSAL" then
+		-- giant eggs are worth running across the map for
+		notifyAll("🥚 A " .. sizeLabel .. " " .. (species or rarity.Id) .. " Egg (" .. string.format("%.1fx", rec.PetSize) .. " size) appeared in " .. biome.Def.Name .. "!", Color3.fromRGB(255, 200, 80))
+	elseif Config.AnnounceSpawnRarities[rarity.Id] or (mdef and Config.AnnounceMutations[mutation]) then
 		local name = (if mdef then mdef.Icon .. " " .. mutation .. " " else "") .. (species or rarity.Id)
 		notifyAll("🥚 A " .. name .. " Egg (" .. rarity.Id .. ") appeared in " .. biome.Def.Name .. "!", if mdef then mdef.Color else rarity.Color)
 	end
@@ -2063,7 +2066,7 @@ function GameService.AddPlayer(player, profile)
 		if index and index >= 1 and index <= profile.Slots and type(entry) == "table" and not state.Nest[index] then
 			if entry.Kind == "Egg" and Config.RarityById[entry.Rarity] then
 				local savedSize = tonumber(entry.PetSize)
-				local rec = createEgg(entry.Rarity, tonumber(entry.Remaining), entry.Stolen == true, Config.MutationById[entry.Mutation or ""] and entry.Mutation or nil, if savedSize then math.clamp(savedSize, 0.5, 3) else nil, if type(entry.Species) == "string" then entry.Species else nil)
+				local rec = createEgg(entry.Rarity, tonumber(entry.Remaining), entry.Stolen == true, Config.MutationById[entry.Mutation or ""] and entry.Mutation or nil, if savedSize then math.clamp(savedSize, 0.5, Config.MaxPetSize) else nil, if type(entry.Species) == "string" then entry.Species else nil)
 				placeEggInBase(player, index, rec)
 			elseif entry.Kind == "Creature" and Config.CreatureByName[entry.Name] then
 				local def = Config.CreatureByName[entry.Name]
@@ -2076,7 +2079,7 @@ function GameService.AddPlayer(player, profile)
 					Tier = tier,
 					Mutation = mutation,
 					-- size 0 came from an old fusing bug: those pets get their normal size back
-					Size = if (tonumber(entry.Size) or 0) > 0 then math.clamp(tonumber(entry.Size), 0.5, 3) else 1,
+					Size = if (tonumber(entry.Size) or 0) > 0 then math.clamp(tonumber(entry.Size), 0.5, Config.MaxPetSize) else 1,
 					Age = math.max(0, tonumber(entry.Age) or 0),
 				})
 			end

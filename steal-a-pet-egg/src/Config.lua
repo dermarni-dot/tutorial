@@ -8,7 +8,7 @@ local Config = {}
 --------------------------------------------------------------------------------
 Config.StartingCash = 0
 -- Every base has one open pen that holds this many eggs and pets (no slots to buy)
-Config.MaxSlots = 24
+Config.MaxSlots = 40
 Config.StartingSlots = Config.MaxSlots
 Config.SellSeconds = 45 -- a pet sells for this many seconds of its income
 
@@ -146,26 +146,45 @@ Config.Stages = {
 Config.BaseWeight = { Common = 8, Uncommon = 12, Rare = 18, Epic = 26, Legendary = 38, Mythic = 55, Divine = 75, Secret = 100, Astral = 140, Cosmic = 190, Omega = 260 }
 Config.SizeIncomePower = 0.5 -- cash bonus = size ^ this (a 2x size pet earns ~1.4x)
 
+Config.MaxPetSize = 10 -- the biggest pets are 10x an average pet
+-- Size tiers, biggest first: { from size, label, chance to roll this tier, roll range }
+Config.SizeTiers = {
+	{ Min = 7, Label = "COLOSSAL", Chance = 0.003, Roll = { 7, 10 } },
+	{ Min = 4, Label = "GIANT", Chance = 0.009, Roll = { 4, 7 } },
+	{ Min = 2, Label = "HUGE", Chance = 0.028, Roll = { 2, 4 } },
+	{ Min = 1.35, Label = "BIG", Chance = 0.08, Roll = { 1.35, 2 } },
+}
+
 function Config.RollSize(rng)
 	local r = rng:NextNumber()
-	if r < 0.01 then
-		return math.floor(rng:NextNumber(2, 3) * 100) / 100 -- HUGE
-	elseif r < 0.08 then
-		return math.floor(rng:NextNumber(1.35, 2) * 100) / 100 -- big
+	for _, tier in ipairs(Config.SizeTiers) do
+		if r < tier.Chance then
+			return math.floor(rng:NextNumber(tier.Roll[1], tier.Roll[2]) * 100) / 100
+		end
+		r -= tier.Chance
 	end
 	return math.floor(rng:NextNumber(0.75, 1.3) * 100) / 100
 end
 
--- How big an egg looks for the size of pet inside it: normal eggs look about
--- the same, big pets (1.35-2) come in eggs up to about 1.9x bigger, and huge
--- pets (2-3) in eggs up to 2.4x bigger. The pet's size is rolled when the egg
--- is made, so what you see is what hatches.
-Config.EggScalePower = 0.9
-Config.MaxEggScale = 2.4
+-- "COLOSSAL", "GIANT", "HUGE", "BIG" or nil for a normal-size pet
+function Config.SizeLabel(size)
+	for _, tier in ipairs(Config.SizeTiers) do
+		if (size or 1) >= tier.Min then
+			return tier.Label
+		end
+	end
+	return nil
+end
+
+-- How big an egg looks for the size of pet inside it: a 2x pet comes in an
+-- egg about 1.8x bigger, a 5x pet in a 3.9x egg and a 10x pet in a 7x egg.
+-- The pet's size is rolled when the egg is made, so what you see is what hatches.
+Config.EggScalePower = 0.85
+Config.MaxEggScale = 7
 function Config.EggScale(size)
 	return math.min((size or 1) ^ Config.EggScalePower, Config.MaxEggScale)
 end
-Config.BigPetSize = 1.35 -- sizes from here up show "BIG" on the egg, 2+ show "HUGE"
+Config.BigPetSize = 1.35 -- sizes from here up show a size label (see SizeTiers)
 Config.HugePetSize = 2
 
 function Config.GrowTime(rarityId)
@@ -199,7 +218,8 @@ end
 Config.PetSizeBoost = 1.6 -- pets are big, chunky showpieces in your base
 function Config.PetVisualScale(data)
 	local stage = Config.Stages[Config.PetStage(data)]
-	return stage.Scale * (data.Size or 1) ^ (1 / 3) * Config.PetSizeBoost
+	-- size is how many times bigger than average the pet looks: 10 = 10x
+	return stage.Scale * (data.Size or 1) * Config.PetSizeBoost
 end
 
 Config.FuseCount = 3 -- this many identical pets fuse into one of the next tier
