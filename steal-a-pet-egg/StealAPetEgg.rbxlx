@@ -131,9 +131,12 @@ Config.AnnounceSpawnRarities = { Legendary = true, Mythic = true, Divine = true,
 -- Each stage lasts rarity.HatchTime * GrowthFactor seconds. Older = more cash.
 --------------------------------------------------------------------------------
 Config.GrowthFactor = 6
+-- Every pet's income is multiplied by this (raise it to make leveling up faster)
+Config.IncomeMultiplier = 3
+
 Config.Stages = {
-	{ Name = "Baby", Mult = 1, Scale = 0.6, Weight = 0.25 },
-	{ Name = "Juvenile", Mult = 1.5, Scale = 0.75, Weight = 0.5 },
+	{ Name = "Baby", Mult = 1.5, Scale = 0.6, Weight = 0.25 },
+	{ Name = "Juvenile", Mult = 2, Scale = 0.75, Weight = 0.5 },
 	{ Name = "Adolescent", Mult = 2.2, Scale = 0.88, Weight = 0.75 },
 	{ Name = "Adult", Mult = 3, Scale = 1, Weight = 1 },
 }
@@ -1434,7 +1437,7 @@ function Config.CreatureIncome(data): number
 		return 0
 	end
 	local tier = Config.Tiers[data.Tier or 1] or Config.Tiers[1]
-	local income = def.Income * tier.Multiplier
+	local income = def.Income * Config.IncomeMultiplier * tier.Multiplier
 	if data.Shiny then
 		income *= Config.ShinyMultiplier
 	end
@@ -15872,7 +15875,7 @@ local function setupExtraGui()
 		detailName.TextColor3 = if found then rarity.Color:Lerp(Color3.new(1, 1, 1), 0.35) else Color3.fromRGB(160, 155, 185)
 		detailRarity.Text = rarity.Id:upper() .. (if found then "  ·  ✅ Collected" else "  ·  Not found yet")
 		detailRarity.TextColor3 = rarity.Color
-		local lines = { "💰 Earns +" .. Util.Money(def.Income) .. "/s as a baby (up to " .. Util.Money(def.Income * Config.Stages[#Config.Stages].Mult) .. "/s grown)" }
+		local lines = { "💰 Earns +" .. Util.Money(def.Income * Config.IncomeMultiplier * Config.Stages[1].Mult) .. "/s as a baby (up to " .. Util.Money(def.Income * Config.IncomeMultiplier * Config.Stages[#Config.Stages].Mult) .. "/s grown)" }
 		table.insert(lines, "🥚 Found in: " .. whereToFind(def.Rarity))
 		if found and (def.Pattern or def.Accessory) then
 			table.insert(lines, "🎨 " .. (def.Pattern or "") .. (if def.Pattern and def.Accessory then " · " else "") .. (def.Accessory or ""))
@@ -16467,7 +16470,7 @@ local function setupStalls()
 			TextColor3 = Color3.fromRGB(225, 225, 240),
 			TextStrokeTransparency = 1,
 			TextWrapped = true,
-			Text = "⏱ Hatches in " .. Util.FormatTime(rarity.HatchTime) .. "   🐾 " .. #rarity.Creatures .. " pets   💰 " .. Util.Money(minIncome) .. " to " .. Util.Money(maxIncome) .. "/s as babies\n"
+			Text = "⏱ Hatches in " .. Util.FormatTime(rarity.HatchTime) .. "   🐾 " .. #rarity.Creatures .. " pets   💰 " .. Util.Money(minIncome * Config.IncomeMultiplier * Config.Stages[1].Mult) .. " to " .. Util.Money(maxIncome * Config.IncomeMultiplier * Config.Stages[1].Mult) .. "/s as babies\n"
 				.. "📍 Spawns in: " .. spawnsText(rarity.Id) .. "\n"
 				.. "🎨 Looks: " .. table.concat(Visuals.EggVariantNames(rarity.Id), ", ") .. "\n"
 				.. "💡 " .. (EGG_FUN_FACTS[rarity.Id] or ""),

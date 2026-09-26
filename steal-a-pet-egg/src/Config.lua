@@ -131,9 +131,12 @@ Config.AnnounceSpawnRarities = { Legendary = true, Mythic = true, Divine = true,
 -- Each stage lasts rarity.HatchTime * GrowthFactor seconds. Older = more cash.
 --------------------------------------------------------------------------------
 Config.GrowthFactor = 6
+-- Every pet's income is multiplied by this (raise it to make leveling up faster)
+Config.IncomeMultiplier = 3
+
 Config.Stages = {
-	{ Name = "Baby", Mult = 1, Scale = 0.6, Weight = 0.25 },
-	{ Name = "Juvenile", Mult = 1.5, Scale = 0.75, Weight = 0.5 },
+	{ Name = "Baby", Mult = 1.5, Scale = 0.6, Weight = 0.25 },
+	{ Name = "Juvenile", Mult = 2, Scale = 0.75, Weight = 0.5 },
 	{ Name = "Adolescent", Mult = 2.2, Scale = 0.88, Weight = 0.75 },
 	{ Name = "Adult", Mult = 3, Scale = 1, Weight = 1 },
 }
@@ -1434,7 +1437,7 @@ function Config.CreatureIncome(data): number
 		return 0
 	end
 	local tier = Config.Tiers[data.Tier or 1] or Config.Tiers[1]
-	local income = def.Income * tier.Multiplier
+	local income = def.Income * Config.IncomeMultiplier * tier.Multiplier
 	if data.Shiny then
 		income *= Config.ShinyMultiplier
 	end

@@ -2888,7 +2888,7 @@ local function setupExtraGui()
 		detailName.TextColor3 = if found then rarity.Color:Lerp(Color3.new(1, 1, 1), 0.35) else Color3.fromRGB(160, 155, 185)
 		detailRarity.Text = rarity.Id:upper() .. (if found then "  ·  ✅ Collected" else "  ·  Not found yet")
 		detailRarity.TextColor3 = rarity.Color
-		local lines = { "💰 Earns +" .. Util.Money(def.Income) .. "/s as a baby (up to " .. Util.Money(def.Income * Config.Stages[#Config.Stages].Mult) .. "/s grown)" }
+		local lines = { "💰 Earns +" .. Util.Money(def.Income * Config.IncomeMultiplier * Config.Stages[1].Mult) .. "/s as a baby (up to " .. Util.Money(def.Income * Config.IncomeMultiplier * Config.Stages[#Config.Stages].Mult) .. "/s grown)" }
 		table.insert(lines, "🥚 Found in: " .. whereToFind(def.Rarity))
 		if found and (def.Pattern or def.Accessory) then
 			table.insert(lines, "🎨 " .. (def.Pattern or "") .. (if def.Pattern and def.Accessory then " · " else "") .. (def.Accessory or ""))
@@ -3483,7 +3483,7 @@ local function setupStalls()
 			TextColor3 = Color3.fromRGB(225, 225, 240),
 			TextStrokeTransparency = 1,
 			TextWrapped = true,
-			Text = "⏱ Hatches in " .. Util.FormatTime(rarity.HatchTime) .. "   🐾 " .. #rarity.Creatures .. " pets   💰 " .. Util.Money(minIncome) .. " to " .. Util.Money(maxIncome) .. "/s as babies\n"
+			Text = "⏱ Hatches in " .. Util.FormatTime(rarity.HatchTime) .. "   🐾 " .. #rarity.Creatures .. " pets   💰 " .. Util.Money(minIncome * Config.IncomeMultiplier * Config.Stages[1].Mult) .. " to " .. Util.Money(maxIncome * Config.IncomeMultiplier * Config.Stages[1].Mult) .. "/s as babies\n"
 				.. "📍 Spawns in: " .. spawnsText(rarity.Id) .. "\n"
 				.. "🎨 Looks: " .. table.concat(Visuals.EggVariantNames(rarity.Id), ", ") .. "\n"
 				.. "💡 " .. (EGG_FUN_FACTS[rarity.Id] or ""),
