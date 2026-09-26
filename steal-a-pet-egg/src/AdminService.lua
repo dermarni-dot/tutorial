@@ -15,6 +15,7 @@
 --   !rain              egg rain           !refill   respawn all wild eggs
 --   !tp void           teleport (town, forest, desert, snow, volcano, void)
 --   !daily             make today's daily reward claimable again (!daily reset = back to Day 1)
+--   !time night        set the time for everyone (day, sunset, night, 0-24; !time cycle = back to normal)
 --   !reset             wipe your progress
 --   !help              list the commands
 
@@ -179,13 +180,21 @@ COMMANDS.daily = function(player, args)
 	end
 end
 
+local TIMES = { day = 13, noon = 12, morning = 8, sunset = 18.2, dusk = 18.7, night = 0, midnight = 0 }
+COMMANDS.time = function(player, args)
+	local word = string.lower(args[1] or "")
+	local clock = TIMES[word] or tonumber(word)
+	workspace:SetAttribute("ClockOverride", if clock then clock % 24 else nil)
+	say(player, if clock then "Time set to " .. word .. " for everyone" else "Day/night cycle is running again")
+end
+
 COMMANDS.reset = function(player)
 	GameService.Admin.Reset(player)
 	say(player, "Progress reset", RED)
 end
 
 COMMANDS.help = function(player)
-	say(player, "!cash !speed !setspeed !egg !pet !shiny !hatch !grow !treadmill !luck !rain !refill !tp !daily !reset")
+	say(player, "!cash !speed !setspeed !egg !pet !shiny !hatch !grow !treadmill !luck !rain !refill !tp !daily !time !reset")
 end
 
 local function run(player, message)

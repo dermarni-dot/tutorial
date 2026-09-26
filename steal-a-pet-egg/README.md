@@ -43,6 +43,14 @@ Game Settings > Security > **Enable Studio Access to API Services**.
 - **Pet Index:** the blue 📖 Index button. A collection book of all 199 pets; ones you haven't had yet show as ???. Every new pet pops a message. Finishing a whole rarity row gives **+5% cash from all your pets, forever** (up to +40%). Tune it with `Config.IndexBonusPerRarity`.
 - **Revenge:** when someone steals your egg and gets it home, a red timer appears top-right and the thief glows red (only you see it). Steal any egg from them within 5 minutes for bonus cash (5 minutes of your income). A revenge steal can't be revenged back, and after a payout there's a 15-minute cooldown so friends can't farm it. Tune it with the `Config.Revenge...` settings.
 - **Egg designs:** every rarity has 4 egg looks (32 in all), e.g. Polka, Gift, Mint Candy, Frost, Geode, Dragon, Treasure, Inferno, Moon, Seraph, Void, Prism. Each egg picks one at random, and its name shows on the egg's label. Add your own in `EGG_VARIANTS` in Visuals.
+- **Day and night:** a full day passes every 16 minutes (about 11.5 minutes of daylight, then sunset, a starry night and sunrise). Everyone on a server sees the same time. Street lamps, windows and string lights glow after dark. Each zone has its own lighting: sunbeams in the forest, heat glare in the desert, a sparkly cold look at Frostpeak, a permanent red sunset in Magma Crater and endless night in the Void. Tune it with `Config.DayCycleMinutes` (0 = always afternoon) and each zone's `Mood`. Test it with `!time day`, `!time sunset`, `!time night` and `!time cycle`, or the Admin panel.
+- **Map scenery:**
+  - **Town:** a cobbled main street with string lights, cottages with picket fences, picnic tables and bunting.
+  - **Set pieces, 4 per zone:** Forest has a treehouse with a rope swing, a waterfall, a glowing mushroom grove and a campsite. Desert has an oasis, a giant ribcage, a sandstone arch and temple ruins. Frostpeak has a log cabin, frozen waterfalls, a snow fort and a sled hill. Magma Crater has basalt columns, a lava lake with a rope bridge, a forge and geysers. The Void has a rune circle, floating stairs, a portal and an observatory.
+  - **Beyond the walls:** mountains, mesas and snowy peaks, smoking volcanoes and floating islands.
+  - **Sky:** an aurora over Frostpeak, and a ringed planet, moon and nebula clouds over the Void.
+  - **Walls:** vines, carvings, icicles, lava cracks or runes, depending on the zone.
+  - **Extra effects:** falling leaves, ash and rising stardust.
 - 6 bases per server (set Max Players to 6 in your game settings). Cash, Speed, treadmill tier, eggs and pets save automatically.
 
 ## Where things live

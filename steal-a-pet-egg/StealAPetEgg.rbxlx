@@ -569,7 +569,7 @@ Config.Biomes = {
 		RespawnTime = 12,
 		EggSpots = 16,
 		Eggs = { Common = 80, Uncommon = 20 },
-		Mood = { Color = Color3.fromRGB(175, 215, 240), Decay = Color3.fromRGB(95, 135, 110), Density = 0.3, Haze = 0.6, Glare = 0.2, Tint = Color3.fromRGB(245, 255, 242), Brightness = 0, Saturation = 0.18, CloudColor = Color3.fromRGB(255, 255, 255), CloudCover = 0.6 },
+		Mood = { Color = Color3.fromRGB(175, 215, 240), Decay = Color3.fromRGB(95, 135, 110), Density = 0.3, Haze = 0.6, Glare = 0.2, Tint = Color3.fromRGB(245, 255, 242), Brightness = 0, Saturation = 0.18, CloudColor = Color3.fromRGB(255, 255, 255), CloudCover = 0.6, Bloom = 0.45, Rays = 0.12, Contrast = 0.12, Ambient = Color3.fromRGB(118, 140, 118) },
 	},
 	{
 		Id = "Desert",
@@ -587,7 +587,7 @@ Config.Biomes = {
 		RespawnTime = 25,
 		EggSpots = 15,
 		Eggs = { Uncommon = 60, Rare = 40 },
-		Mood = { Color = Color3.fromRGB(240, 215, 175), Decay = Color3.fromRGB(200, 150, 100), Density = 0.34, Haze = 1.2, Glare = 0.4, Tint = Color3.fromRGB(255, 246, 228), Brightness = 0.01, Saturation = 0.15, CloudColor = Color3.fromRGB(255, 238, 215), CloudCover = 0.45 },
+		Mood = { Color = Color3.fromRGB(240, 215, 175), Decay = Color3.fromRGB(200, 150, 100), Density = 0.34, Haze = 1.2, Glare = 0.4, Tint = Color3.fromRGB(255, 246, 228), Brightness = 0.01, Saturation = 0.15, CloudColor = Color3.fromRGB(255, 238, 215), CloudCover = 0.45, Bloom = 0.55, Rays = 0.09, Contrast = 0.16, Ambient = Color3.fromRGB(160, 140, 115) },
 	},
 	{
 		Id = "Snow",
@@ -605,7 +605,7 @@ Config.Biomes = {
 		RespawnTime = 45,
 		EggSpots = 14,
 		Eggs = { Rare = 65, Epic = 35 },
-		Mood = { Color = Color3.fromRGB(210, 228, 255), Decay = Color3.fromRGB(150, 180, 220), Density = 0.4, Haze = 1.2, Glare = 0.15, Tint = Color3.fromRGB(236, 246, 255), Brightness = 0, Saturation = 0.02, CloudColor = Color3.fromRGB(235, 242, 255), CloudCover = 0.75 },
+		Mood = { Color = Color3.fromRGB(210, 228, 255), Decay = Color3.fromRGB(150, 180, 220), Density = 0.4, Haze = 1.2, Glare = 0.15, Tint = Color3.fromRGB(236, 246, 255), Brightness = 0, Saturation = 0.02, CloudColor = Color3.fromRGB(235, 242, 255), CloudCover = 0.75, Bloom = 0.6, Rays = 0.06, Contrast = 0.08, Ambient = Color3.fromRGB(150, 165, 190) },
 	},
 	{
 		Id = "Volcano",
@@ -623,7 +623,7 @@ Config.Biomes = {
 		RespawnTime = 90,
 		EggSpots = 13,
 		Eggs = { Epic = 65, Legendary = 35 },
-		Mood = { Color = Color3.fromRGB(230, 130, 95), Decay = Color3.fromRGB(110, 40, 25), Density = 0.44, Haze = 1.6, Glare = 0.3, Tint = Color3.fromRGB(255, 224, 208), Brightness = -0.02, Saturation = 0.2, CloudColor = Color3.fromRGB(95, 65, 60), CloudCover = 0.8 },
+		Mood = { Color = Color3.fromRGB(230, 130, 95), Decay = Color3.fromRGB(110, 40, 25), Density = 0.44, Haze = 1.6, Glare = 0.3, Tint = Color3.fromRGB(255, 224, 208), Brightness = -0.02, Saturation = 0.2, CloudColor = Color3.fromRGB(95, 65, 60), CloudCover = 0.8, Clock = 18.15, Bloom = 0.85, Rays = 0.16, Contrast = 0.2, Ambient = Color3.fromRGB(140, 80, 65) },
 	},
 	{
 		Id = "Void",
@@ -642,7 +642,7 @@ Config.Biomes = {
 		RespawnTime = 180,
 		EggSpots = 12,
 		Eggs = { Legendary = 65, Mythic = 30, Divine = 4.5, Secret = 0.5 },
-		Mood = { Color = Color3.fromRGB(140, 100, 215), Decay = Color3.fromRGB(45, 20, 90), Density = 0.44, Haze = 1, Glare = 0.2, Tint = Color3.fromRGB(222, 205, 255), Brightness = -0.05, Saturation = 0.25, CloudColor = Color3.fromRGB(150, 105, 220), CloudCover = 0.7 },
+		Mood = { Color = Color3.fromRGB(140, 100, 215), Decay = Color3.fromRGB(45, 20, 90), Density = 0.44, Haze = 1, Glare = 0.2, Tint = Color3.fromRGB(222, 205, 255), Brightness = -0.05, Saturation = 0.25, CloudColor = Color3.fromRGB(150, 105, 220), CloudCover = 0.7, Clock = 0.5, Bloom = 1, Rays = 0, Contrast = 0.2, Ambient = Color3.fromRGB(110, 90, 160) },
 	},
 }
 
@@ -651,7 +651,18 @@ Config.TownFloor = { Color3.fromRGB(116, 206, 78), Color3.fromRGB(100, 190, 66) 
 Config.TownWalls = { Color3.fromRGB(214, 122, 82), Color3.fromRGB(230, 142, 98) }
 
 -- Lighting mood in town (the client blends between moods as you travel).
-Config.TownMood = { Color = Color3.fromRGB(180, 212, 255), Decay = Color3.fromRGB(92, 122, 172), Density = 0.26, Haze = 0.35, Glare = 0.2, Tint = Color3.fromRGB(255, 251, 245), Brightness = 0, Saturation = 0.15, CloudColor = Color3.fromRGB(255, 255, 255), CloudCover = 0.6 }
+Config.TownMood = { Color = Color3.fromRGB(180, 212, 255), Decay = Color3.fromRGB(92, 122, 172), Density = 0.26, Haze = 0.35, Glare = 0.2, Tint = Color3.fromRGB(255, 251, 245), Brightness = 0, Saturation = 0.15, CloudColor = Color3.fromRGB(255, 255, 255), CloudCover = 0.6, Bloom = 0.4, Rays = 0.04, Contrast = 0.1, Ambient = Color3.fromRGB(126, 132, 148) }
+-- Mood extras: Clock pins the time of day in that zone (Volcano = sunset,
+-- Void = night), Bloom / Rays / Contrast tune the glow, sun rays and punch,
+-- and Ambient is the outdoor shadow color in daylight.
+
+--------------------------------------------------------------------------------
+-- Day and night. Everyone on a server sees the same time. Set
+-- DayCycleMinutes to 0 to keep it afternoon forever. Admins can test with
+-- !time day / sunset / night / cycle.
+--------------------------------------------------------------------------------
+Config.DayCycleMinutes = 16 -- one full day + night
+Config.DayFraction = 0.72 -- share of the cycle that is daytime
 
 --------------------------------------------------------------------------------
 -- Lookup tables and helpers (built automatically, don't edit)
@@ -1077,18 +1088,20 @@ local function setupLighting()
 	local sky = Instance.new("Sky")
 	sky.SunAngularSize = 11
 	sky.MoonAngularSize = 9
-	sky.StarCount = 3000
+	sky.StarCount = 5000
 	sky.CelestialBodiesShown = true
 	sky.Parent = Lighting
 
 	-- Bloom only catches truly bright things (neon, lanterns), not every surface
 	local bloom = Instance.new("BloomEffect")
+	bloom.Name = "MoodBloom"
 	bloom.Intensity = 0.4
 	bloom.Size = 22
 	bloom.Threshold = 2
 	bloom.Parent = Lighting
 
 	local rays = Instance.new("SunRaysEffect")
+	rays.Name = "MoodRays"
 	rays.Intensity = 0.035
 	rays.Spread = 0.6
 	rays.Parent = Lighting
@@ -1593,8 +1606,14 @@ local AMBIENT = {
 	Dust = { Y = 2, Props = { Color = ColorSequence.new(Color3.fromRGB(235, 205, 150)), LightEmission = 0.2, Size = NumberSequence.new(0.35), Transparency = NumberSequence.new(0.4), Lifetime = NumberRange.new(4, 7), Rate = 40, Speed = NumberRange.new(2, 5), SpreadAngle = Vector2.new(20, 20), Acceleration = Vector3.new(4, 0.5, 0), EmissionDirection = Enum.NormalId.Top } },
 	Snowfall = { Y = 45, Props = { Color = ColorSequence.new(WHITE), LightEmission = 0.4, Size = NumberSequence.new(0.35), Transparency = NumberSequence.new(0.1), Lifetime = NumberRange.new(8, 10), Rate = 160, Speed = NumberRange.new(0, 1), Acceleration = Vector3.new(0.6, -5, 0), EmissionDirection = Enum.NormalId.Bottom } },
 	Embers = { Y = 1, Props = { Color = ColorSequence.new(Color3.fromRGB(255, 140, 40), Color3.fromRGB(255, 60, 20)), LightEmission = 1, Size = NumberSequence.new(0.3, 0.05), Transparency = NumberSequence.new(0, 1), Lifetime = NumberRange.new(3, 6), Rate = 70, Speed = NumberRange.new(3, 7), SpreadAngle = Vector2.new(25, 25), EmissionDirection = Enum.NormalId.Top } },
+	Leaves = { Y = 40, Props = { Color = ColorSequence.new(Color3.fromRGB(120, 190, 70), Color3.fromRGB(230, 170, 60)), LightEmission = 0, Size = NumberSequence.new(0.5), Transparency = NumberSequence.new(0.1), Lifetime = NumberRange.new(8, 12), Rate = 25, Speed = NumberRange.new(0, 1), RotSpeed = NumberRange.new(-90, 90), Rotation = NumberRange.new(0, 360), Acceleration = Vector3.new(1.5, -4, 0.5), EmissionDirection = Enum.NormalId.Bottom } },
+	Ash = { Y = 50, Props = { Color = ColorSequence.new(Color3.fromRGB(90, 85, 85)), LightEmission = 0, Size = NumberSequence.new(0.3), Transparency = NumberSequence.new(0.3), Lifetime = NumberRange.new(10, 14), Rate = 70, Speed = NumberRange.new(0, 1), Acceleration = Vector3.new(0.8, -4, 0), EmissionDirection = Enum.NormalId.Bottom } },
+	Stardust = { Y = 1, Props = { Color = ColorSequence.new(WHITE, Color3.fromRGB(200, 170, 255)), LightEmission = 1, Size = NumberSequence.new(0.2, 0), Transparency = NumberSequence.new(0, 1), Lifetime = NumberRange.new(6, 10), Rate = 40, Speed = NumberRange.new(2, 4), EmissionDirection = Enum.NormalId.Top } },
 	Motes = { Y = 2, Props = { Color = ColorSequence.new(Color3.fromRGB(200, 140, 255), Color3.fromRGB(120, 200, 255)), LightEmission = 1, Size = NumberSequence.new(0.4, 0), Transparency = NumberSequence.new(0.1, 1), Lifetime = NumberRange.new(5, 8), Rate = 60, Speed = NumberRange.new(1, 3), SpreadAngle = Vector2.new(30, 30), EmissionDirection = Enum.NormalId.Top } },
 }
+
+-- A second particle layer for some zones
+local EXTRA_AMBIENT = { Forest = "Leaves", Volcano = "Ash", Void = "Stardust" }
 
 local function ambientParticles(folder, kind, centerZ)
 	local info = AMBIENT[kind]
@@ -1686,6 +1705,695 @@ function FEATURES.FloatingIslands(folder, centerZ, rng)
 	-- a glowing ring over the road
 	local ring = deco({ Name = "PortalRing", Shape = Enum.PartType.Cylinder, Size = Vector3.new(1, 40, 40), CFrame = CFrame.new(0, 22, centerZ - 60) * CFrame.Angles(0, math.rad(90), 0), Color = Color3.fromRGB(170, 90, 255), Material = Enum.Material.ForceField, CanCollide = false, CastShadow = false, Parent = folder })
 	ring.Transparency = 0.2
+end
+
+--------------------------------------------------------------------------------
+-- Building helpers for set pieces
+--------------------------------------------------------------------------------
+-- Gable roof. `cf` is the center of the roof's base; the ridge runs along X.
+local function roof(folder, cf, length, width, height, color, material)
+	deco({ Name = "Roof", Shape = Enum.PartType.Wedge, Size = Vector3.new(length, height, width / 2), CFrame = cf * CFrame.new(0, height / 2, -width / 4), Color = color, Material = material or Enum.Material.SmoothPlastic, Parent = folder })
+	deco({ Name = "Roof", Shape = Enum.PartType.Wedge, Size = Vector3.new(length, height, width / 2), CFrame = cf * CFrame.new(0, height / 2, width / 4) * CFrame.Angles(0, math.pi, 0), Color = color, Material = material or Enum.Material.SmoothPlastic, Parent = folder })
+end
+
+-- A cozy little house. `cf` sits on the ground at the house's center; the door faces local -Z.
+local function house(folder, cf, w, h, d, opts)
+	opts = opts or {}
+	local wallColor = opts.Wall or Color3.fromRGB(240, 225, 200)
+	local trim = opts.Trim or DARK_WOOD
+	local glow = Color3.fromRGB(255, 200, 120)
+	deco({ Name = "HouseWalls", Size = Vector3.new(w, h, d), CFrame = cf * CFrame.new(0, h / 2, 0), Color = wallColor, Material = opts.WallMaterial or Enum.Material.SmoothPlastic, Parent = folder })
+	for _, sx in ipairs({ -1, 1 }) do
+		deco({ Name = "CornerBeam", Size = Vector3.new(0.8, h, 0.8), CFrame = cf * CFrame.new(sx * w / 2, h / 2, -d / 2), Color = trim, Material = Enum.Material.Wood, Parent = folder })
+		deco({ Name = "CornerBeam", Size = Vector3.new(0.8, h, 0.8), CFrame = cf * CFrame.new(sx * w / 2, h / 2, d / 2), Color = trim, Material = Enum.Material.Wood, Parent = folder })
+		-- glowing windows with frames and flower boxes
+		local win = cf * CFrame.new(sx * w * 0.28, h * 0.58, -d / 2 - 0.1)
+		deco({ Name = "WindowFrame", Size = Vector3.new(3.4, 3.4, 0.3), CFrame = win, Color = trim, Material = Enum.Material.Wood, Parent = folder })
+		local pane = deco({ Name = "Window", Size = Vector3.new(2.8, 2.8, 0.35), CFrame = win, Color = glow, Material = Enum.Material.Neon, CastShadow = false, Parent = folder })
+		deco({ Name = "WindowBar", Size = Vector3.new(0.25, 2.8, 0.45), CFrame = win, Color = trim, Material = Enum.Material.Wood, Parent = folder })
+		deco({ Name = "WindowBar", Size = Vector3.new(2.8, 0.25, 0.45), CFrame = win, Color = trim, Material = Enum.Material.Wood, Parent = folder })
+		deco({ Name = "FlowerBox", Size = Vector3.new(3.6, 0.8, 1), CFrame = win * CFrame.new(0, -2.1, -0.4), Color = trim, Material = Enum.Material.Wood, Parent = folder })
+		for k = -1, 1 do
+			deco({ Name = "BoxFlower", Shape = Enum.PartType.Ball, Size = Vector3.one * 0.8, CFrame = win * CFrame.new(k * 1.1, -1.5, -0.4), Color = ({ Color3.fromRGB(255, 110, 150), Color3.fromRGB(255, 225, 80), WHITE })[k + 2], Material = Enum.Material.SmoothPlastic, Parent = folder })
+		end
+		if sx == 1 then
+			light(pane, glow, 16, 0.8)
+		end
+	end
+	deco({ Name = "Door", Size = Vector3.new(3.2, 5.6, 0.4), CFrame = cf * CFrame.new(0, 2.8, -d / 2 - 0.15), Color = trim, Material = Enum.Material.WoodPlanks, Parent = folder })
+	deco({ Name = "DoorKnob", Shape = Enum.PartType.Ball, Size = Vector3.one * 0.4, CFrame = cf * CFrame.new(1, 2.8, -d / 2 - 0.45), Color = Color3.fromRGB(255, 205, 70), Material = Enum.Material.Metal, Parent = folder })
+	deco({ Name = "DoorStep", Size = Vector3.new(5, 0.5, 2), CFrame = cf * CFrame.new(0, 0.25, -d / 2 - 1), Color = STONE, Material = Enum.Material.Slate, Parent = folder })
+	lantern(folder, (cf * CFrame.new(2.6, 5.4, -d / 2 - 0.7)).Position, WARM_LIGHT, 12)
+	local roofH = opts.RoofHeight or h * 0.6
+	roof(folder, cf * CFrame.new(0, h, 0), w + 2, d + 2, roofH, opts.Roof or Color3.fromRGB(190, 70, 60), opts.RoofMaterial)
+	if opts.Chimney ~= false then
+		local chimney = deco({ Name = "Chimney", Size = Vector3.new(2, roofH + 2, 2), CFrame = cf * CFrame.new(w * 0.3, h + (roofH + 2) / 2, d * 0.15), Color = Color3.fromRGB(150, 90, 70), Material = Enum.Material.Brick, Parent = folder })
+		local smoke = Instance.new("Smoke")
+		smoke.Color = Color3.fromRGB(220, 220, 225)
+		smoke.Opacity = 0.12
+		smoke.Size = 3
+		smoke.RiseVelocity = 4
+		smoke.Parent = chimney
+	end
+end
+
+local function column(folder, pos, h, color, material)
+	deco({ Name = "ColumnBase", Size = Vector3.new(4.4, 1, 4.4), Position = pos + Vector3.new(0, 0.5, 0), Color = color:Lerp(BLACK, 0.1), Material = material, Parent = folder })
+	deco({ Name = "Column", Shape = Enum.PartType.Cylinder, Size = Vector3.new(h, 3.2, 3.2), CFrame = cylinderAlongY(CFrame.new(pos + Vector3.new(0, 1 + h / 2, 0))), Color = color, Material = material, Parent = folder })
+	deco({ Name = "ColumnTop", Size = Vector3.new(4.4, 1, 4.4), Position = pos + Vector3.new(0, 1.5 + h, 0), Color = color:Lerp(BLACK, 0.1), Material = material, Parent = folder })
+end
+
+local function palm(folder, pos, s, rng)
+	local lean = rng:NextNumber(-0.25, 0.25)
+	local top = pos
+	for i = 0, 5 do
+		local seg = CFrame.new(pos + Vector3.new(lean * i * i * 0.35 * s, (1.2 + i * 2.2) * s, 0)) * CFrame.Angles(0, 0, -lean * i * 0.12)
+		deco({ Name = "PalmTrunk", Size = Vector3.new(1.6 - i * 0.1, 2.4, 1.6 - i * 0.1) * s, CFrame = seg, Color = Color3.fromRGB(150 - i * 5, 110 - i * 4, 70), Material = Enum.Material.Wood, Parent = folder })
+		top = seg.Position
+	end
+	for i = 0, 6 do
+		local a = i / 7 * math.pi * 2
+		deco({ Name = "Frond", Size = Vector3.new(1.6, 0.3, 7) * s, CFrame = CFrame.new(top + Vector3.new(0, 1.2 * s, 0)) * CFrame.Angles(0, a, 0) * CFrame.Angles(math.rad(-25), 0, 0) * CFrame.new(0, 0, -3.2 * s), Color = Color3.fromRGB(70, 160 + (i % 2) * 20, 60), Material = Enum.Material.Grass, Parent = folder })
+	end
+	for i = 0, 2 do
+		deco({ Name = "Coconut", Shape = Enum.PartType.Ball, Size = Vector3.one * 1 * s, Position = top + Vector3.new(math.cos(i * 2.1) * 0.8 * s, 0.4 * s, math.sin(i * 2.1) * 0.8 * s), Color = Color3.fromRGB(110, 75, 45), Material = Enum.Material.SmoothPlastic, Parent = folder })
+	end
+end
+
+--------------------------------------------------------------------------------
+-- Set pieces: four hand-built scenes per zone, out toward the walls.
+-- Offsets are from the zone center (x, z, radius kept clear of eggs).
+--------------------------------------------------------------------------------
+local SETPIECE_SPOTS = {
+	Forest = { { "Treehouse", -350, 30, 38 }, { "Waterfall", 385, 60, 36 }, { "GlowGrove", -360, -95, 30 }, { "Campsite", 350, -85, 28 } },
+	Desert = { { "Oasis", -360, 50, 40 }, { "Ribcage", 370, -70, 40 }, { "SandArch", -350, -100, 30 }, { "Ruins", 360, 95, 34 } },
+	Snow = { { "Cabin", -360, -70, 34 }, { "IceFalls", 385, 35, 36 }, { "SnowFort", -350, 100, 30 }, { "SledHill", 360, -100, 30 } },
+	Volcano = { { "Basalt", -365, -20, 38 }, { "LavaLake", 360, -85, 44 }, { "Forge", 360, 95, 32 }, { "Geysers", -350, 110, 28 } },
+	Void = { { "RuneCircle", -360, 30, 36 }, { "SkyStairs", 370, -60, 32 }, { "Portal", 360, 100, 30 }, { "Observatory", -350, -100, 30 } },
+}
+
+local SETPIECES = {}
+
+function SETPIECES.Treehouse(folder, o, rng)
+	deco({ Name = "GiantTrunk", Size = Vector3.new(8, 36, 8), Position = o + Vector3.new(0, 18, 0), Color = Color3.fromRGB(115, 78, 48), Material = Enum.Material.Wood, Parent = folder })
+	for _, a in ipairs({ 0, 1.6, 3.2, 4.7 }) do
+		deco({ Name = "Root", Size = Vector3.new(2.4, 3, 8), CFrame = CFrame.new(o + Vector3.new(math.cos(a) * 5, 1.2, math.sin(a) * 5)) * CFrame.Angles(0, -a + math.pi / 2, 0) * CFrame.Angles(math.rad(-20), 0, 0), Color = Color3.fromRGB(105, 70, 44), Material = Enum.Material.Wood, Parent = folder })
+	end
+	for layer = 0, 1 do
+		for ix = -1, 1 do
+			for iz = -1, 1 do
+				if not (layer == 1 and math.abs(ix) + math.abs(iz) == 2) then
+					leafCube(folder, o + Vector3.new(ix * 9, 40 + layer * 8, iz * 9), 9.5, rng)
+				end
+			end
+		end
+	end
+	local deck = o + Vector3.new(0, 20, 0)
+	deco({ Name = "Deck", Size = Vector3.new(24, 1.2, 24), Position = deck, Color = WOOD, Material = Enum.Material.WoodPlanks, Parent = folder })
+	for _, sx in ipairs({ -1, 1 }) do
+		for _, axis in ipairs({ "X", "Z" }) do
+			local off = if axis == "X" then Vector3.new(sx * 11.5, 0, 0) else Vector3.new(0, 0, sx * 11.5)
+			deco({ Name = "Rail", Size = if axis == "X" then Vector3.new(0.6, 0.6, 24) else Vector3.new(24, 0.6, 0.6), Position = deck + off + Vector3.new(0, 3, 0), Color = DARK_WOOD, Material = Enum.Material.Wood, Parent = folder })
+			for k = -2, 2 do
+				local post = if axis == "X" then Vector3.new(0, 0, k * 5.5) else Vector3.new(k * 5.5, 0, 0)
+				deco({ Name = "RailPost", Size = Vector3.new(0.6, 3, 0.6), Position = deck + off + post + Vector3.new(0, 1.5, 0), Color = DARK_WOOD, Material = Enum.Material.Wood, Parent = folder })
+			end
+		end
+	end
+	house(folder, CFrame.new(deck + Vector3.new(4, 0.6, 3)) * CFrame.Angles(0, math.rad(20), 0), 11, 7, 9, { Wall = Color3.fromRGB(200, 150, 100), WallMaterial = Enum.Material.WoodPlanks, Roof = Color3.fromRGB(70, 130, 70), Chimney = false })
+	-- ladder down the front
+	for _, sx in ipairs({ -1, 1 }) do
+		deco({ Name = "LadderRail", Size = Vector3.new(0.5, 20, 0.5), Position = o + Vector3.new(sx * 1.4, 10, -12.5), Color = DARK_WOOD, Material = Enum.Material.Wood, Parent = folder })
+	end
+	for y = 1.5, 19, 2 do
+		deco({ Name = "Rung", Size = Vector3.new(3, 0.35, 0.35), Position = o + Vector3.new(0, y, -12.5), Color = WOOD, Material = Enum.Material.Wood, Parent = folder })
+	end
+	-- rope swing from a branch
+	deco({ Name = "Branch", Size = Vector3.new(14, 1.6, 1.6), Position = o + Vector3.new(-10, 30, 0), Color = Color3.fromRGB(110, 75, 46), Material = Enum.Material.Wood, Parent = folder })
+	for _, sz in ipairs({ -0.8, 0.8 }) do
+		deco({ Name = "Rope", Size = Vector3.new(0.2, 22, 0.2), Position = o + Vector3.new(-15, 18.5, sz), Color = Color3.fromRGB(220, 195, 140), Material = Enum.Material.Fabric, Parent = folder })
+	end
+	deco({ Name = "SwingSeat", Size = Vector3.new(2.6, 0.4, 2.2), Position = o + Vector3.new(-15, 7.5, 0), Color = WOOD, Material = Enum.Material.WoodPlanks, Parent = folder })
+	for i = -2, 2 do
+		lantern(folder, deck + Vector3.new(i * 5, 7.5 - math.abs(i) * 0.4, -12), Color3.fromRGB(255, 225, 140), 10)
+	end
+end
+
+function SETPIECES.Waterfall(folder, o, rng)
+	local rockColor = Color3.fromRGB(120, 125, 120)
+	for i = 0, 3 do
+		deco({ Name = "Cliff", Size = Vector3.new(26 - i * 4, 12, 20 - i * 3), CFrame = CFrame.new(o + Vector3.new(30 - i * 2, 6 + i * 11, 0)) * CFrame.Angles(0, rng:NextNumber(-0.1, 0.1), 0), Color = rockColor:Lerp(BLACK, i * 0.05), Material = Enum.Material.Slate, Parent = folder })
+		leafCube(folder, o + Vector3.new(24 - i * 2, 12.5 + i * 11, rng:NextNumber(-7, 7)), 4, rng)
+	end
+	local fall = deco({ Name = "Waterfall", Size = Vector3.new(1, 44, 12), Position = o + Vector3.new(17, 22, 0), Color = Color3.fromRGB(140, 210, 255), Material = Enum.Material.Glass, Transparency = 0.3, Reflectance = 0.2, CanCollide = false, CastShadow = false, Parent = folder })
+	particles(fall, { Color = ColorSequence.new(WHITE), LightEmission = 0.2, Size = NumberSequence.new(1.2, 2.5), Transparency = NumberSequence.new(0.4, 1), Lifetime = NumberRange.new(1, 2), Rate = 25, Speed = NumberRange.new(4, 8), Acceleration = Vector3.new(0, -20, 0), SpreadAngle = Vector2.new(10, 10), EmissionDirection = Enum.NormalId.Left })
+	deco({ Name = "PoolRim", Shape = Enum.PartType.Cylinder, Size = Vector3.new(1.2, 34, 34), CFrame = cylinderAlongY(CFrame.new(o + Vector3.new(0, 0.6, 0))), Color = rockColor, Material = Enum.Material.Slate, Parent = folder })
+	local pool = deco({ Name = "Pool", Shape = Enum.PartType.Cylinder, Size = Vector3.new(1.3, 30, 30), CFrame = cylinderAlongY(CFrame.new(o + Vector3.new(0, 0.65, 0))), Color = Color3.fromRGB(60, 160, 220), Material = Enum.Material.Glass, Transparency = 0.15, Reflectance = 0.3, CanCollide = false, Parent = folder })
+	particles(pool, { Color = ColorSequence.new(WHITE), LightEmission = 0.3, Size = NumberSequence.new(1.5, 3), Transparency = NumberSequence.new(0.6, 1), Lifetime = NumberRange.new(1.5, 2.5), Rate = 12, Speed = NumberRange.new(1, 3), SpreadAngle = Vector2.new(60, 60), EmissionDirection = Enum.NormalId.Top })
+	for _ = 1, 5 do
+		local a = rng:NextNumber(0, math.pi * 2)
+		deco({ Name = "LilyPad", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.2, 3, 3), CFrame = cylinderAlongY(CFrame.new(o + Vector3.new(math.cos(a) * rng:NextNumber(3, 11), 1.35, math.sin(a) * rng:NextNumber(3, 11)))), Color = Color3.fromRGB(80, 170, 70), Material = Enum.Material.SmoothPlastic, CanCollide = false, Parent = folder })
+	end
+	for i = 0, 9 do
+		local a = i / 10 * math.pi * 2
+		rock(folder, o + Vector3.new(math.cos(a) * 17, 0, math.sin(a) * 17), 0.45, rng, rockColor, Enum.Material.Slate)
+	end
+end
+
+function SETPIECES.GlowGrove(folder, o, rng)
+	local glowColors = { Color3.fromRGB(90, 230, 255), Color3.fromRGB(200, 120, 255), Color3.fromRGB(120, 255, 170) }
+	for i = 1, 9 do
+		local a = i * 2.4
+		local r = if i == 1 then 0 else rng:NextNumber(6, 20)
+		local s = if i == 1 then 2.4 else rng:NextNumber(0.8, 1.6)
+		local p = o + Vector3.new(math.cos(a) * r, 0, math.sin(a) * r)
+		local col = glowColors[(i % 3) + 1]
+		deco({ Name = "ShroomStem", Shape = Enum.PartType.Cylinder, Size = Vector3.new(3.5 * s, 1.2 * s, 1.2 * s), CFrame = cylinderAlongY(CFrame.new(p + Vector3.new(0, 1.75 * s, 0))), Color = Color3.fromRGB(235, 230, 215), Material = Enum.Material.SmoothPlastic, Parent = folder })
+		local cap = deco({ Name = "GlowCap", Shape = Enum.PartType.Ball, Size = Vector3.new(4.4, 2.2, 4.4) * s, Position = p + Vector3.new(0, 3.6 * s, 0), Color = col, Material = Enum.Material.Neon, CastShadow = false, Parent = folder })
+		local mesh = Instance.new("SpecialMesh")
+		mesh.MeshType = Enum.MeshType.Sphere
+		mesh.Parent = cap
+		if i <= 3 then
+			light(cap, col, 22, 1.2)
+		end
+	end
+	local sprite = deco({ Name = "FairyDust", Size = Vector3.new(40, 1, 40), Position = o + Vector3.new(0, 3, 0), Transparency = 1, CanCollide = false, CastShadow = false, Parent = folder })
+	particles(sprite, { Color = ColorSequence.new(Color3.fromRGB(180, 255, 240), Color3.fromRGB(220, 170, 255)), LightEmission = 1, Size = NumberSequence.new(0.35, 0), Lifetime = NumberRange.new(3, 5), Rate = 15, Speed = NumberRange.new(0.5, 1.5), SpreadAngle = Vector2.new(180, 180), EmissionDirection = Enum.NormalId.Top })
+end
+
+function SETPIECES.Campsite(folder, o, rng)
+	local tentCf = CFrame.new(o + Vector3.new(-8, 0, 4)) * CFrame.Angles(0, math.rad(15), 0)
+	roof(folder, tentCf, 10, 9, 6, Color3.fromRGB(230, 120, 50), Enum.Material.Fabric)
+	deco({ Name = "TentDoor", Size = Vector3.new(0.3, 4, 3), CFrame = tentCf * CFrame.new(-5.05, 2, 0), Color = Color3.fromRGB(60, 40, 30), Material = Enum.Material.Fabric, Parent = folder })
+	local fireRing = o + Vector3.new(6, 0, -4)
+	for i = 0, 7 do
+		local a = i / 8 * math.pi * 2
+		deco({ Name = "FireStone", Shape = Enum.PartType.Ball, Size = Vector3.one * 1.2, Position = fireRing + Vector3.new(math.cos(a) * 2, 0.4, math.sin(a) * 2), Color = STONE, Material = Enum.Material.Slate, Parent = folder })
+	end
+	for i = 0, 2 do
+		deco({ Name = "FireLog", Shape = Enum.PartType.Cylinder, Size = Vector3.new(3, 0.6, 0.6), CFrame = CFrame.new(fireRing + Vector3.new(0, 0.5, 0)) * CFrame.Angles(0, i * 1.05, math.rad(15)), Color = DARK_WOOD, Material = Enum.Material.Wood, Parent = folder })
+	end
+	local embers = deco({ Name = "Embers", Size = Vector3.new(1.6, 0.4, 1.6), Position = fireRing + Vector3.new(0, 0.6, 0), Color = Color3.fromRGB(255, 130, 40), Material = Enum.Material.Neon, CastShadow = false, Parent = folder })
+	local fire = Instance.new("Fire")
+	fire.Size = 5
+	fire.Heat = 9
+	fire.Parent = embers
+	light(embers, Color3.fromRGB(255, 150, 70), 26, 1.8)
+	for _, off in ipairs({ Vector3.new(6, 0, 3), Vector3.new(12, 0, -4) }) do
+		deco({ Name = "LogSeat", Shape = Enum.PartType.Cylinder, Size = Vector3.new(5, 1.4, 1.4), CFrame = CFrame.lookAt(fireRing + off + Vector3.new(0, 0.7, 0), fireRing + Vector3.new(0, 0.7, 0)) * CFrame.Angles(0, math.rad(90), 0), Color = WOOD, Material = Enum.Material.Wood, Parent = folder })
+	end
+	deco({ Name = "Backpack", Size = Vector3.new(1.6, 2.2, 1.2), Position = o + Vector3.new(-2, 1.1, -3), Color = Color3.fromRGB(60, 110, 190), Material = Enum.Material.Fabric, Parent = folder })
+	deco({ Name = "Firewood", Size = Vector3.new(4, 1.6, 1.6), Position = o + Vector3.new(-12, 0.8, -6), Color = WOOD, Material = Enum.Material.Wood, Parent = folder })
+end
+
+function SETPIECES.Oasis(folder, o, rng)
+	deco({ Name = "OasisSand", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.6, 46, 46), CFrame = cylinderAlongY(CFrame.new(o + Vector3.new(0, 0.3, 0))), Color = Color3.fromRGB(230, 210, 160), Material = Enum.Material.Sand, Parent = folder })
+	deco({ Name = "OasisGrass", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.7, 36, 36), CFrame = cylinderAlongY(CFrame.new(o + Vector3.new(0, 0.35, 0))), Color = Color3.fromRGB(110, 180, 80), Material = Enum.Material.Grass, Parent = folder })
+	deco({ Name = "OasisWater", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.8, 24, 24), CFrame = cylinderAlongY(CFrame.new(o + Vector3.new(0, 0.4, 0))), Color = Color3.fromRGB(40, 190, 210), Material = Enum.Material.Glass, Transparency = 0.1, Reflectance = 0.35, CanCollide = false, Parent = folder })
+	for i = 0, 5 do
+		local a = i / 6 * math.pi * 2 + 0.3
+		palm(folder, o + Vector3.new(math.cos(a) * 15, 0, math.sin(a) * 15), rng:NextNumber(1.1, 1.5), rng)
+	end
+	for i = 0, 11 do
+		local a = i / 12 * math.pi * 2
+		deco({ Name = "Reed", Size = Vector3.new(0.3, rng:NextNumber(2, 3.5), 0.3), Position = o + Vector3.new(math.cos(a) * 12.4, 1.4, math.sin(a) * 12.4), Color = Color3.fromRGB(90, 150, 60), Material = Enum.Material.Grass, Parent = folder })
+	end
+end
+
+function SETPIECES.Ribcage(folder, o, rng)
+	local bone = Color3.fromRGB(240, 230, 205)
+	for i = 0, 8 do
+		deco({ Name = "Vertebra", Shape = Enum.PartType.Ball, Size = Vector3.one * (3.2 - i * 0.12), Position = o + Vector3.new(0, 1.3 + math.sin(i / 8 * math.pi) * 3, -20 + i * 4.5), Color = bone, Material = Enum.Material.SmoothPlastic, Parent = folder })
+	end
+	for i = 1, 6 do
+		local z = -18 + i * 5.5
+		local size = 1 - math.abs(i - 3.5) * 0.1
+		for _, sx in ipairs({ -1, 1 }) do
+			local prev = o + Vector3.new(0, 4 + math.sin(i / 8 * math.pi) * 3, z)
+			for k = 1, 4 do
+				local ang = k / 4 * math.rad(150)
+				local p = o + Vector3.new(sx * math.sin(ang) * 11 * size, (4 + math.cos(ang) * 9) * size + 2, z)
+				local mid = (prev + p) / 2
+				deco({ Name = "Rib", Size = Vector3.new(1.1, 1.1, (p - prev).Magnitude + 0.6), CFrame = CFrame.lookAt(mid, p), Color = bone, Material = Enum.Material.SmoothPlastic, Parent = folder })
+				prev = p
+			end
+		end
+	end
+	local skull = o + Vector3.new(0, 4, -26)
+	deco({ Name = "GiantSkull", Shape = Enum.PartType.Ball, Size = Vector3.new(11, 9, 13), Position = skull, Color = bone, Material = Enum.Material.SmoothPlastic, Parent = folder })
+	deco({ Name = "Jaw", Size = Vector3.new(8, 2.4, 9), Position = skull + Vector3.new(0, -4, -3), Color = bone:Lerp(BLACK, 0.08), Material = Enum.Material.SmoothPlastic, Parent = folder })
+	for _, sx in ipairs({ -1, 1 }) do
+		deco({ Name = "EyeSocket", Shape = Enum.PartType.Ball, Size = Vector3.one * 3, Position = skull + Vector3.new(sx * 2.4, 1.2, -5.4), Color = Color3.fromRGB(50, 35, 30), Material = Enum.Material.SmoothPlastic, Parent = folder })
+		deco({ Name = "SkullHorn", Size = Vector3.new(1.6, 1.6, 10), CFrame = CFrame.new(skull + Vector3.new(sx * 6, 4, 1)) * CFrame.Angles(math.rad(35), math.rad(40 * sx), 0), Color = bone, Material = Enum.Material.SmoothPlastic, Parent = folder })
+	end
+	for i = 1, 3 do
+		deco({ Name = "SandDrift", Size = Vector3.new(rng:NextNumber(8, 14), 1.4, rng:NextNumber(6, 10)), CFrame = CFrame.new(o + Vector3.new(rng:NextNumber(-10, 10), 0.5, -20 + i * 12)) * CFrame.Angles(0, rng:NextNumber(0, 3), 0), Color = Color3.fromRGB(236, 205, 138), Material = Enum.Material.Sand, Parent = folder })
+	end
+end
+
+function SETPIECES.SandArch(folder, o, rng)
+	local stone = Color3.fromRGB(210, 150, 100)
+	for _, sx in ipairs({ -1, 1 }) do
+		for i = 0, 3 do
+			deco({ Name = "ArchLeg", Size = Vector3.new(7 - i * 0.6, 6, 7 - i * 0.6), CFrame = CFrame.new(o + Vector3.new(sx * (14 - i * 0.8), 3 + i * 6, 0)) * CFrame.Angles(0, rng:NextNumber(-0.1, 0.1), 0), Color = stone:Lerp(WHITE, i * 0.04), Material = Enum.Material.Sandstone, Parent = folder })
+		end
+	end
+	local prev = o + Vector3.new(-13, 24, 0)
+	for k = 1, 6 do
+		local ang = k / 6 * math.pi
+		local p = o + Vector3.new(-math.cos(ang) * 13, 24 + math.sin(ang) * 7, 0)
+		deco({ Name = "ArchTop", Size = Vector3.new(6, 5, (p - prev).Magnitude + 2), CFrame = CFrame.lookAt((prev + p) / 2, p), Color = stone:Lerp(WHITE, 0.12), Material = Enum.Material.Sandstone, Parent = folder })
+		prev = p
+	end
+	for _ = 1, 4 do
+		rock(folder, o + Vector3.new(rng:NextNumber(-18, 18), 0, rng:NextNumber(-10, 10)), 0.6, rng, stone, Enum.Material.Sandstone)
+	end
+end
+
+function SETPIECES.Ruins(folder, o, rng)
+	local stone = Color3.fromRGB(230, 210, 170)
+	deco({ Name = "RuinFloor", Size = Vector3.new(40, 0.6, 22), Position = o + Vector3.new(0, 0.3, 0), Color = stone:Lerp(BLACK, 0.08), Material = Enum.Material.Sandstone, Parent = folder })
+	for i = -2, 2 do
+		for _, sz in ipairs({ -8, 8 }) do
+			local h = if (i + sz) % 3 == 0 then rng:NextNumber(4, 8) else rng:NextNumber(12, 18)
+			column(folder, o + Vector3.new(i * 8, 0.6, sz), h, stone, Enum.Material.Sandstone)
+		end
+	end
+	deco({ Name = "Lintel", Size = Vector3.new(26, 2, 4.4), Position = o + Vector3.new(4, 20.2, 8), Color = stone, Material = Enum.Material.Sandstone, Parent = folder })
+	deco({ Name = "FallenColumn", Shape = Enum.PartType.Cylinder, Size = Vector3.new(16, 3.2, 3.2), CFrame = CFrame.new(o + Vector3.new(-4, 2.2, 0)) * CFrame.Angles(0, math.rad(20), 0), Color = stone, Material = Enum.Material.Sandstone, Parent = folder })
+	local idol = deco({ Name = "GoldenIdol", Shape = Enum.PartType.Ball, Size = Vector3.new(2, 2.6, 2), Position = o + Vector3.new(0, 3.2, 0), Color = Color3.fromRGB(255, 200, 60), Material = Enum.Material.Foil, Parent = folder })
+	deco({ Name = "IdolPedestal", Size = Vector3.new(3, 1.6, 3), Position = o + Vector3.new(0, 1.4, 0), Color = stone, Material = Enum.Material.Sandstone, Parent = folder })
+	light(idol, Color3.fromRGB(255, 210, 110), 14, 1)
+end
+
+function SETPIECES.Cabin(folder, o, rng)
+	local cf = CFrame.lookAt(o, o + Vector3.new(if o.X < 0 then 1 else -1, 0, 0))
+	house(folder, cf, 18, 10, 14, { Wall = Color3.fromRGB(130, 85, 55), WallMaterial = Enum.Material.WoodPlanks, Trim = Color3.fromRGB(80, 55, 38), Roof = Color3.fromRGB(245, 250, 255), RoofMaterial = Enum.Material.Snow })
+	for i = -3, 3 do
+		deco({ Name = "Icicle", Size = Vector3.new(0.4, 1.2 + (i % 2) * 0.8, 0.4), CFrame = cf * CFrame.new(i * 2.6, 9.4 - (i % 2) * 0.4, -8), Color = Color3.fromRGB(200, 235, 255), Material = Enum.Material.Glass, Transparency = 0.2, Parent = folder })
+	end
+	for i = 0, 5 do
+		deco({ Name = "WoodPile", Shape = Enum.PartType.Cylinder, Size = Vector3.new(4, 1.1, 1.1), CFrame = cf * CFrame.new(-12, 0.6 + (i // 3) * 1, -2 + (i % 3) * 1.1) * CFrame.Angles(0, math.rad(90), 0), Color = WOOD, Material = Enum.Material.Wood, Parent = folder })
+	end
+	PROPS.Snowman(folder, (cf * CFrame.new(9, 0, -12)).Position, 0.9)
+	deco({ Name = "Sled", Size = Vector3.new(2.4, 0.6, 5), CFrame = cf * CFrame.new(-6, 0.5, -11) * CFrame.Angles(0, 0.3, 0), Color = Color3.fromRGB(200, 50, 50), Material = Enum.Material.Wood, Parent = folder })
+end
+
+function SETPIECES.IceFalls(folder, o, rng)
+	local rockColor = Color3.fromRGB(110, 120, 140)
+	for i = 0, 3 do
+		local c = deco({ Name = "Cliff", Size = Vector3.new(26 - i * 4, 12, 22 - i * 3), Position = o + Vector3.new(30 - i * 2, 6 + i * 11, 0), Color = rockColor:Lerp(BLACK, i * 0.04), Material = Enum.Material.Slate, Parent = folder })
+		deco({ Name = "SnowCap", Size = Vector3.new(c.Size.X * 0.95, 1, c.Size.Z * 0.95), Position = c.Position + Vector3.new(0, 6.3, 0), Color = WHITE, Material = Enum.Material.Snow, Parent = folder })
+	end
+	for i = -2, 2 do
+		deco({ Name = "FrozenFall", Size = Vector3.new(1.5, 40 - math.abs(i) * 6, 2.6), Position = o + Vector3.new(17, 20 - math.abs(i) * 3, i * 2.5), Color = Color3.fromRGB(180, 230, 255), Material = Enum.Material.Glass, Transparency = 0.2, Reflectance = 0.3, CastShadow = false, Parent = folder })
+	end
+	deco({ Name = "FrozenPool", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.5, 30, 30), CFrame = cylinderAlongY(CFrame.new(o + Vector3.new(0, 0.25, 0))), Color = Color3.fromRGB(175, 220, 250), Material = Enum.Material.Glass, Transparency = 0.1, Reflectance = 0.4, Parent = folder })
+	for i = 0, 7 do
+		local a = i / 8 * math.pi * 2
+		local h = rng:NextNumber(5, 12)
+		deco({ Name = "IceSpike", Size = Vector3.new(1.6, h, 1.6), CFrame = CFrame.new(o + Vector3.new(math.cos(a) * 17, h / 2 - 0.5, math.sin(a) * 17)) * CFrame.Angles(rng:NextNumber(-0.3, 0.3), rng:NextNumber(0, 3), rng:NextNumber(-0.3, 0.3)), Color = Color3.fromRGB(170, 225, 255), Material = Enum.Material.Glass, Transparency = 0.15, Parent = folder })
+	end
+	local glow = deco({ Name = "IceGlow", Shape = Enum.PartType.Ball, Size = Vector3.one * 2, Position = o + Vector3.new(0, 1, 0), Color = Color3.fromRGB(150, 220, 255), Material = Enum.Material.Neon, CastShadow = false, Parent = folder })
+	light(glow, Color3.fromRGB(150, 220, 255), 28, 1.2)
+end
+
+function SETPIECES.SnowFort(folder, o, rng)
+	for i = 0, 15 do
+		local a = i / 16 * math.pi * 2
+		if i ~= 4 and i ~= 12 then
+			for layer = 0, 1 do
+				deco({ Name = "SnowBlock", Size = Vector3.new(5, 3, 3), CFrame = CFrame.new(o + Vector3.new(math.cos(a) * 14, 1.5 + layer * 3, math.sin(a) * 14)) * CFrame.Angles(0, -a + math.pi / 2 + layer * 0.1, 0), Color = Color3.fromRGB(240 - layer * 8, 246, 255), Material = Enum.Material.Snow, Parent = folder })
+			end
+		end
+	end
+	deco({ Name = "FlagPole", Size = Vector3.new(0.4, 14, 0.4), Position = o + Vector3.new(0, 7, 0), Color = Color3.fromRGB(90, 90, 100), Material = Enum.Material.Metal, Parent = folder })
+	deco({ Name = "Flag", Size = Vector3.new(0.2, 3, 5), Position = o + Vector3.new(0, 12.4, 2.6), Color = Color3.fromRGB(80, 150, 255), Material = Enum.Material.Fabric, Parent = folder })
+	for i = 0, 9 do
+		deco({ Name = "Snowball", Shape = Enum.PartType.Ball, Size = Vector3.one * 1.2, Position = o + Vector3.new(4 + (i % 4) * 1.1 - (i // 4) * 0.5, 0.6 + (i // 4) * 0.9, -4), Color = WHITE, Material = Enum.Material.Snow, Parent = folder })
+	end
+end
+
+function SETPIECES.SledHill(folder, o, rng)
+	for i = 0, 4 do
+		deco({ Name = "Hill", Size = Vector3.new(34 - i * 6, 4, 30 - i * 5), CFrame = CFrame.new(o + Vector3.new(i * 1.5, 2 + i * 4, 0)) * CFrame.Angles(0, rng:NextNumber(-0.1, 0.1), 0), Color = Color3.fromRGB(245 - i * 3, 250, 255), Material = Enum.Material.Snow, Parent = folder })
+	end
+	deco({ Name = "SledTrack", Size = Vector3.new(3, 0.3, 26), CFrame = CFrame.new(o + Vector3.new(-6, 9, -6)) * CFrame.Angles(math.rad(-30), 0, 0), Color = Color3.fromRGB(215, 230, 250), Material = Enum.Material.Ice, Parent = folder })
+	for i = 0, 2 do
+		PROPS.Pine(folder, o + Vector3.new(14, 0, -12 + i * 12), 0.8)
+	end
+	for i = 0, 4 do
+		local post = o + Vector3.new(-16 + i * 7, 0, -16)
+		deco({ Name = "FencePost", Size = Vector3.new(0.6, 3, 0.6), Position = post + Vector3.new(0, 1.5, 0), Color = DARK_WOOD, Material = Enum.Material.Wood, Parent = folder })
+		lantern(folder, post + Vector3.new(0, 3.4, 0), Color3.fromRGB(255, 220, 150), 10)
+	end
+end
+
+function SETPIECES.Basalt(folder, o, rng)
+	for i = 1, 22 do
+		local a = i * 2.4
+		local r = math.sqrt(i) * 5
+		local h = rng:NextNumber(4, 22) * (1 - r / 40)
+		local p = o + Vector3.new(math.cos(a) * r, h / 2, math.sin(a) * r)
+		deco({ Name = "BasaltColumn", Shape = Enum.PartType.Cylinder, Size = Vector3.new(h, 4.4, 4.4), CFrame = cylinderAlongY(CFrame.new(p)), Color = Color3.fromRGB(48 + (i % 3) * 6, 42, 44), Material = Enum.Material.Basalt, Parent = folder })
+		if i % 4 == 0 then
+			deco({ Name = "LavaSeam", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.3, 4.6, 4.6), CFrame = cylinderAlongY(CFrame.new(p - Vector3.new(0, h / 2 - 1, 0))), Color = Color3.fromRGB(255, 110, 30), Material = Enum.Material.Neon, CastShadow = false, Parent = folder })
+		end
+	end
+end
+
+function SETPIECES.LavaLake(folder, o, rng)
+	deco({ Name = "LakeRim", Shape = Enum.PartType.Cylinder, Size = Vector3.new(1, 58, 58), CFrame = cylinderAlongY(CFrame.new(o + Vector3.new(0, 0.5, 0))), Color = Color3.fromRGB(40, 32, 32), Material = Enum.Material.Basalt, Parent = folder })
+	local lava = deco({ Name = "LavaLake", Shape = Enum.PartType.Cylinder, Size = Vector3.new(1.1, 52, 52), CFrame = cylinderAlongY(CFrame.new(o + Vector3.new(0, 0.55, 0))), Color = Color3.fromRGB(255, 100, 20), Material = Enum.Material.Neon, CanCollide = false, CastShadow = false, Parent = folder })
+	light(lava, Color3.fromRGB(255, 110, 40), 50, 2.5)
+	particles(lava, { Color = ColorSequence.new(Color3.fromRGB(255, 180, 60), Color3.fromRGB(255, 70, 20)), LightEmission = 1, Size = NumberSequence.new(0.6, 0), Lifetime = NumberRange.new(1, 2), Rate = 25, Speed = NumberRange.new(4, 9), SpreadAngle = Vector2.new(20, 20), Acceleration = Vector3.new(0, -12, 0), EmissionDirection = Enum.NormalId.Top })
+	-- rope bridge across the lake
+	for z = -27, 27, 2 do
+		deco({ Name = "Plank", Size = Vector3.new(5, 0.4, 1.6), CFrame = CFrame.new(o + Vector3.new(0, 2.4 - math.cos(z / 27 * math.pi / 2) * 1.2, z)) * CFrame.Angles(0, rng:NextNumber(-0.05, 0.05), 0), Color = WOOD, Material = Enum.Material.WoodPlanks, Parent = folder })
+	end
+	for _, sx in ipairs({ -1, 1 }) do
+		for _, sz in ipairs({ -1, 1 }) do
+			deco({ Name = "BridgePost", Size = Vector3.new(0.8, 6, 0.8), Position = o + Vector3.new(sx * 2.8, 3, sz * 28), Color = DARK_WOOD, Material = Enum.Material.Wood, Parent = folder })
+		end
+		deco({ Name = "BridgeRope", Size = Vector3.new(0.25, 0.25, 56), Position = o + Vector3.new(sx * 2.8, 4.6, 0), Color = Color3.fromRGB(200, 170, 120), Material = Enum.Material.Fabric, Parent = folder })
+	end
+	for _ = 1, 6 do
+		local a = rng:NextNumber(0, math.pi * 2)
+		rock(folder, o + Vector3.new(math.cos(a) * rng:NextNumber(8, 20), 0, math.sin(a) * rng:NextNumber(8, 20)), 0.5, rng, Color3.fromRGB(45, 38, 38), Enum.Material.Basalt)
+	end
+end
+
+function SETPIECES.Forge(folder, o, rng)
+	local wall = Color3.fromRGB(70, 60, 60)
+	for _, w in ipairs({ { -10, 0, 1, 20, 12 }, { 10, 0, 1, 20, 7 }, { 0, 10, 20, 1, 9 } }) do
+		deco({ Name = "RuinWall", Size = Vector3.new(w[3] * 2 + 1, w[5], w[4]), Position = o + Vector3.new(w[1], w[5] / 2, w[2]), Color = wall, Material = Enum.Material.Brick, Parent = folder })
+	end
+	deco({ Name = "AnvilBase", Size = Vector3.new(2, 2.4, 1.6), Position = o + Vector3.new(0, 1.2, -2), Color = Color3.fromRGB(50, 50, 55), Material = Enum.Material.Metal, Parent = folder })
+	deco({ Name = "Anvil", Size = Vector3.new(4.4, 1.4, 2), Position = o + Vector3.new(0, 3.1, -2), Color = Color3.fromRGB(60, 60, 66), Material = Enum.Material.Metal, Parent = folder })
+	local blade = deco({ Name = "HotBlade", Size = Vector3.new(0.3, 0.2, 4), Position = o + Vector3.new(0.5, 3.9, -2), Color = Color3.fromRGB(255, 160, 60), Material = Enum.Material.Neon, CastShadow = false, Parent = folder })
+	particles(blade, { Color = ColorSequence.new(Color3.fromRGB(255, 200, 80)), LightEmission = 1, Size = NumberSequence.new(0.2, 0), Lifetime = NumberRange.new(0.4, 0.8), Rate = 12, Speed = NumberRange.new(4, 8), SpreadAngle = Vector2.new(60, 60), Acceleration = Vector3.new(0, -20, 0) })
+	local furnace = deco({ Name = "Furnace", Size = Vector3.new(7, 8, 6), Position = o + Vector3.new(-5, 4, 6), Color = wall:Lerp(BLACK, 0.2), Material = Enum.Material.Brick, Parent = folder })
+	local mouth = deco({ Name = "FurnaceFire", Size = Vector3.new(3.4, 2.6, 0.4), Position = furnace.Position + Vector3.new(0, -1.5, -3), Color = Color3.fromRGB(255, 120, 30), Material = Enum.Material.Neon, CastShadow = false, Parent = folder })
+	light(mouth, Color3.fromRGB(255, 130, 50), 24, 2)
+	local smoke = Instance.new("Smoke")
+	smoke.Color = Color3.fromRGB(60, 55, 55)
+	smoke.Size = 6
+	smoke.Opacity = 0.25
+	smoke.RiseVelocity = 6
+	smoke.Parent = furnace
+	for i = 0, 3 do
+		deco({ Name = "Chain", Size = Vector3.new(0.3, 5, 0.3), Position = o + Vector3.new(-6 + i * 4, 9.5, 9.5), Color = Color3.fromRGB(80, 80, 85), Material = Enum.Material.Metal, Parent = folder })
+	end
+	PROPS.Torch(folder, o + Vector3.new(8, 0, -8))
+end
+
+function SETPIECES.Geysers(folder, o, rng)
+	for i = 0, 2 do
+		local a = i / 3 * math.pi * 2
+		local p = o + Vector3.new(math.cos(a) * 10, 0, math.sin(a) * 10)
+		for k = 0, 2 do
+			deco({ Name = "Vent", Shape = Enum.PartType.Cylinder, Size = Vector3.new(1.4, 7 - k * 2, 7 - k * 2), CFrame = cylinderAlongY(CFrame.new(p + Vector3.new(0, 0.7 + k * 1.4, 0))), Color = Color3.fromRGB(70 - k * 8, 55, 50), Material = Enum.Material.Basalt, Parent = folder })
+		end
+		local hole = deco({ Name = "VentGlow", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.3, 2.4, 2.4), CFrame = cylinderAlongY(CFrame.new(p + Vector3.new(0, 4.3, 0))), Color = Color3.fromRGB(255, 140, 40), Material = Enum.Material.Neon, CastShadow = false, Parent = folder })
+		particles(hole, { Color = ColorSequence.new(Color3.fromRGB(255, 200, 100), Color3.fromRGB(120, 100, 100)), LightEmission = 0.5, Size = NumberSequence.new(1, 4), Transparency = NumberSequence.new(0.2, 1), Lifetime = NumberRange.new(1.5, 2.5), Rate = 20, Speed = NumberRange.new(18, 26), SpreadAngle = Vector2.new(8, 8), EmissionDirection = Enum.NormalId.Top })
+	end
+end
+
+function SETPIECES.RuneCircle(folder, o, rng)
+	local purple = Color3.fromRGB(190, 120, 255)
+	for i, r in ipairs({ 30, 24, 14 }) do
+		deco({ Name = "RuneRing", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.2, r, r), CFrame = cylinderAlongY(CFrame.new(o + Vector3.new(0, 0.12 + i * 0.02, 0))), Color = if i == 2 then Color3.fromRGB(45, 30, 80) else purple, Material = if i == 2 then Enum.Material.Slate else Enum.Material.Neon, CastShadow = false, Parent = folder })
+	end
+	for i = 0, 5 do
+		local a = i / 6 * math.pi * 2
+		local p = o + Vector3.new(math.cos(a) * 19, 0, math.sin(a) * 19)
+		deco({ Name = "StandingStone", Size = Vector3.new(3, 12, 2), CFrame = CFrame.lookAt(p + Vector3.new(0, 6, 0), o + Vector3.new(0, 6, 0)), Color = Color3.fromRGB(40, 32, 60), Material = Enum.Material.Slate, Parent = folder })
+		deco({ Name = "StoneRune", Size = Vector3.new(0.8, 6, 0.2), CFrame = CFrame.lookAt(p + Vector3.new(0, 6, 0), o + Vector3.new(0, 6, 0)) * CFrame.new(0, 0, -1.05), Color = purple, Material = Enum.Material.Neon, CastShadow = false, Parent = folder })
+	end
+	local core = deco({ Name = "FloatingCore", Size = Vector3.new(3, 5, 3), CFrame = CFrame.new(o + Vector3.new(0, 8, 0)) * CFrame.Angles(0, math.rad(45), 0), Color = Color3.fromRGB(220, 170, 255), Material = Enum.Material.Neon, CastShadow = false, Parent = folder })
+	light(core, purple, 34, 2)
+	particles(core, { Color = ColorSequence.new(purple, Color3.fromRGB(120, 200, 255)), LightEmission = 1, Size = NumberSequence.new(0.4, 0), Lifetime = NumberRange.new(2, 3), Rate = 20, Speed = NumberRange.new(2, 5), SpreadAngle = Vector2.new(180, 180) })
+end
+
+function SETPIECES.SkyStairs(folder, o, rng)
+	for i = 0, 15 do
+		local a = i * 0.45
+		local p = o + Vector3.new(math.cos(a) * 10, 1 + i * 2.2, math.sin(a) * 10)
+		deco({ Name = "FloatingStep", Size = Vector3.new(6, 1, 3.4), CFrame = CFrame.new(p) * CFrame.Angles(0, -a, 0), Color = Color3.fromRGB(60, 45, 95), Material = Enum.Material.Slate, Parent = folder })
+		deco({ Name = "StepGlow", Size = Vector3.new(6.2, 0.2, 0.3), CFrame = CFrame.new(p) * CFrame.Angles(0, -a, 0) * CFrame.new(0, -0.5, -1.6), Color = Color3.fromRGB(150, 200, 255), Material = Enum.Material.Neon, CastShadow = false, Parent = folder })
+	end
+	local top = o + Vector3.new(math.cos(16 * 0.45) * 10, 37, math.sin(16 * 0.45) * 10)
+	deco({ Name = "TopPlatform", Shape = Enum.PartType.Cylinder, Size = Vector3.new(1.2, 12, 12), CFrame = cylinderAlongY(CFrame.new(top)), Color = Color3.fromRGB(50, 40, 80), Material = Enum.Material.Slate, Parent = folder })
+	local star = deco({ Name = "StarCrystal", Size = Vector3.new(2.4, 2.4, 2.4), CFrame = CFrame.new(top + Vector3.new(0, 3.5, 0)) * CFrame.Angles(math.rad(45), math.rad(45), 0), Color = Color3.fromRGB(255, 240, 150), Material = Enum.Material.Neon, CastShadow = false, Parent = folder })
+	light(star, Color3.fromRGB(255, 230, 150), 30, 1.5)
+end
+
+function SETPIECES.Portal(folder, o, rng)
+	local stone = Color3.fromRGB(45, 35, 75)
+	local face = CFrame.lookAt(o, o + Vector3.new(if o.X < 0 then 1 else -1, 0, 0))
+	for _, sx in ipairs({ -1, 1 }) do
+		deco({ Name = "PortalPillar", Size = Vector3.new(3.6, 22, 3.6), CFrame = face * CFrame.new(sx * 9, 11, 0), Color = stone, Material = Enum.Material.Slate, Parent = folder })
+		deco({ Name = "PillarRune", Size = Vector3.new(0.8, 16, 0.2), CFrame = face * CFrame.new(sx * 9, 11, -1.85), Color = Color3.fromRGB(120, 220, 255), Material = Enum.Material.Neon, CastShadow = false, Parent = folder })
+	end
+	deco({ Name = "PortalTop", Size = Vector3.new(24, 3.6, 4.4), CFrame = face * CFrame.new(0, 23.8, 0), Color = stone, Material = Enum.Material.Slate, Parent = folder })
+	local gate = deco({ Name = "PortalField", Size = Vector3.new(14.4, 20, 0.4), CFrame = face * CFrame.new(0, 11, 0), Color = Color3.fromRGB(170, 100, 255), Material = Enum.Material.ForceField, CanCollide = false, CastShadow = false, Parent = folder })
+	gate.Transparency = 0.1
+	light(gate, Color3.fromRGB(170, 100, 255), 30, 2)
+	particles(gate, { Color = ColorSequence.new(Color3.fromRGB(200, 150, 255), Color3.fromRGB(120, 220, 255)), LightEmission = 1, Size = NumberSequence.new(0.5, 0), Lifetime = NumberRange.new(1, 2), Rate = 30, Speed = NumberRange.new(1, 4), SpreadAngle = Vector2.new(180, 180) })
+end
+
+function SETPIECES.Observatory(folder, o, rng)
+	deco({ Name = "ObsBase", Shape = Enum.PartType.Cylinder, Size = Vector3.new(10, 20, 20), CFrame = cylinderAlongY(CFrame.new(o + Vector3.new(0, 5, 0))), Color = Color3.fromRGB(70, 60, 100), Material = Enum.Material.Slate, Parent = folder })
+	local dome = deco({ Name = "ObsDome", Shape = Enum.PartType.Ball, Size = Vector3.one * 19, Position = o + Vector3.new(0, 10, 0), Color = Color3.fromRGB(200, 205, 230), Material = Enum.Material.Metal, Parent = folder })
+	deco({ Name = "DomeSlit", Size = Vector3.new(3, 10, 19.4), Position = o + Vector3.new(0, 15, 0), Color = Color3.fromRGB(30, 25, 50), Material = Enum.Material.SmoothPlastic, Parent = folder })
+	deco({ Name = "Telescope", Shape = Enum.PartType.Cylinder, Size = Vector3.new(14, 2.4, 2.4), CFrame = CFrame.new(o + Vector3.new(0, 20, 3)) * CFrame.Angles(0, math.rad(90), math.rad(50)), Color = Color3.fromRGB(230, 190, 90), Material = Enum.Material.Metal, Parent = folder })
+	deco({ Name = "ObsDoor", Size = Vector3.new(4, 6, 0.4), Position = o + Vector3.new(0, 3, -10), Color = Color3.fromRGB(40, 30, 60), Material = Enum.Material.Wood, Parent = folder })
+	for i = 0, 7 do
+		local a = i / 8 * math.pi * 2
+		lantern(folder, o + Vector3.new(math.cos(a) * 11, 10.4, math.sin(a) * 11), Color3.fromRGB(190, 150, 255), 8)
+	end
+	light(dome, Color3.fromRGB(200, 170, 255), 20, 0.8)
+end
+
+--------------------------------------------------------------------------------
+-- Details on the inside of the zone walls
+--------------------------------------------------------------------------------
+local WALL_TRIMS = {}
+function WALL_TRIMS.Forest(folder, x, z, side, rng)
+	for k = -1, 1 do
+		local len = rng:NextNumber(6, 16)
+		deco({ Name = "Vine", Size = Vector3.new(0.4, len, 1), Position = Vector3.new(x, WALL_HEIGHT - len / 2, z + k * 2), Color = LEAF_GREENS[rng:NextInteger(1, #LEAF_GREENS)], Material = Enum.Material.Grass, CanCollide = false, CastShadow = false, Parent = folder })
+		if rng:NextNumber() < 0.4 then
+			deco({ Name = "VineFlower", Shape = Enum.PartType.Ball, Size = Vector3.one * 0.9, Position = Vector3.new(x - side * 0.3, WALL_HEIGHT - len + 0.5, z + k * 2), Color = ({ Color3.fromRGB(255, 120, 160), Color3.fromRGB(255, 230, 90) })[rng:NextInteger(1, 2)], Material = Enum.Material.SmoothPlastic, CanCollide = false, CastShadow = false, Parent = folder })
+		end
+	end
+end
+function WALL_TRIMS.Desert(folder, x, z, side, rng)
+	local carve = Color3.fromRGB(180, 130, 80)
+	deco({ Name = "Carving", Size = Vector3.new(0.3, 6, 6), Position = Vector3.new(x, 8, z), Color = carve, Material = Enum.Material.Sandstone, CanCollide = false, Parent = folder })
+	deco({ Name = "CarvingEye", Shape = Enum.PartType.Ball, Size = Vector3.new(0.4, 1.6, 3), Position = Vector3.new(x - side * 0.1, 8.4, z), Color = Color3.fromRGB(60, 150, 170), Material = Enum.Material.SmoothPlastic, CanCollide = false, Parent = folder })
+end
+function WALL_TRIMS.Snow(folder, x, z, side, rng)
+	deco({ Name = "SnowLedge", Size = Vector3.new(1.4, 1, 14), Position = Vector3.new(x, WALL_HEIGHT - 0.3, z), Color = WHITE, Material = Enum.Material.Snow, CanCollide = false, Parent = folder })
+	for k = -2, 2 do
+		local len = rng:NextNumber(1.5, 4)
+		deco({ Name = "Icicle", Size = Vector3.new(0.5, len, 0.5), Position = Vector3.new(x, WALL_HEIGHT - 0.8 - len / 2, z + k * 2.6), Color = Color3.fromRGB(200, 235, 255), Material = Enum.Material.Glass, Transparency = 0.2, CanCollide = false, CastShadow = false, Parent = folder })
+	end
+end
+function WALL_TRIMS.Volcano(folder, x, z, side, rng)
+	local y = rng:NextNumber(10, 30)
+	for k = 0, 3 do
+		deco({ Name = "LavaCrack", Size = Vector3.new(0.3, 4.5, 0.6), CFrame = CFrame.new(x, y - k * 4, z + (k % 2) * 1.2) * CFrame.Angles(if k % 2 == 0 then 0.35 else -0.35, 0, 0), Color = Color3.fromRGB(255, 110, 30), Material = Enum.Material.Neon, CanCollide = false, CastShadow = false, Parent = folder })
+	end
+end
+function WALL_TRIMS.Void(folder, x, z, side, rng)
+	for k = 0, 2 do
+		deco({ Name = "WallRune", Size = Vector3.new(0.3, 2.4, 0.6), Position = Vector3.new(x, 14 + k * 3.2, z + (k - 1) * 1.2), Color = Color3.fromRGB(170, 120, 255):Lerp(Color3.fromRGB(120, 220, 255), k / 2), Material = Enum.Material.Neon, CanCollide = false, CastShadow = false, Parent = folder })
+	end
+	deco({ Name = "WallStar", Shape = Enum.PartType.Ball, Size = Vector3.one * 0.8, Position = Vector3.new(x, rng:NextNumber(25, 36), z + rng:NextNumber(-6, 6)), Color = WHITE, Material = Enum.Material.Neon, CanCollide = false, CastShadow = false, Parent = folder })
+end
+
+local function wallTrims(folder, id, zMin, zMax, rng)
+	local fn = WALL_TRIMS[id]
+	if not fn then
+		return
+	end
+	local trims = Instance.new("Folder")
+	trims.Name = "WallDetail"
+	trims.Parent = folder
+	for z = zMin + 12, zMax - 8, 16 do
+		for _, side in ipairs({ -1, 1 }) do
+			fn(trims, side * (CORRIDOR_HALF - 0.35), z, side, rng)
+		end
+	end
+end
+
+--------------------------------------------------------------------------------
+-- Scenery beyond the walls: mountains, mesas, peaks and floating rocks, so the
+-- world doesn't end at the wall. Also sky pieces (aurora, planets).
+--------------------------------------------------------------------------------
+local BACKDROPS = {
+	Town = { Base = Color3.fromRGB(96, 165, 78), Top = Color3.fromRGB(130, 195, 95), Material = Enum.Material.Grass, MinH = 50, MaxH = 95 },
+	Forest = { Base = Color3.fromRGB(60, 120, 62), Top = Color3.fromRGB(85, 150, 75), Material = Enum.Material.Grass, MinH = 70, MaxH = 130, Trees = true },
+	Desert = { Base = Color3.fromRGB(195, 115, 75), Top = Color3.fromRGB(225, 160, 105), Material = Enum.Material.Sandstone, MinH = 55, MaxH = 110, Flat = true },
+	Snow = { Base = Color3.fromRGB(115, 125, 145), Top = Color3.fromRGB(250, 252, 255), Material = Enum.Material.Slate, MinH = 90, MaxH = 170, Cap = Enum.Material.Snow },
+	Volcano = { Base = Color3.fromRGB(45, 34, 34), Top = Color3.fromRGB(70, 48, 44), Material = Enum.Material.Basalt, MinH = 80, MaxH = 150, Lava = true },
+	Void = { Base = Color3.fromRGB(45, 34, 72), Top = Color3.fromRGB(80, 60, 120), Material = Enum.Material.Slate, MinH = 40, MaxH = 90, Floating = true },
+}
+
+local function mountain(folder, pos, width, height, style, rng)
+	local steps = 5
+	local top
+	for i = 0, steps - 1 do
+		local f = 1 - i / steps
+		local w = width * (if style.Flat then (1 - i * 0.06) else f)
+		local h = height / steps
+		local p = pos + Vector3.new(rng:NextNumber(-2, 2), h * (i + 0.5), rng:NextNumber(-2, 2))
+		local isTop = i == steps - 1
+		deco({ Name = "Mountain", Size = Vector3.new(w, h + 0.5, w * rng:NextNumber(0.8, 1.1)), CFrame = CFrame.new(p) * CFrame.Angles(0, rng:NextNumber(0, 0.4), 0), Color = style.Base:Lerp(style.Top, i / (steps - 1)), Material = if isTop and style.Cap then style.Cap else style.Material, CastShadow = false, Parent = folder })
+		top = p + Vector3.new(0, h / 2, 0)
+	end
+	if style.Lava and rng:NextNumber() < 0.5 then
+		local crater = deco({ Name = "MountainLava", Size = Vector3.new(width * 0.15, 1, width * 0.15), Position = top + Vector3.new(0, 0.3, 0), Color = Color3.fromRGB(255, 110, 30), Material = Enum.Material.Neon, CastShadow = false, Parent = folder })
+		local smoke = Instance.new("Smoke")
+		smoke.Color = Color3.fromRGB(60, 50, 50)
+		smoke.Size = 30
+		smoke.Opacity = 0.15
+		smoke.RiseVelocity = 10
+		smoke.Parent = crater
+	end
+	if style.Trees then
+		for _ = 1, 3 do
+			local p = top + Vector3.new(rng:NextNumber(-width * 0.12, width * 0.12), 0, rng:NextNumber(-width * 0.12, width * 0.12))
+			deco({ Name = "PeakTree", Size = Vector3.new(7, 12, 7), Position = p + Vector3.new(0, 6, 0), Color = LEAF_GREENS[rng:NextInteger(1, #LEAF_GREENS)], Material = Enum.Material.Grass, CastShadow = false, Parent = folder })
+		end
+	end
+end
+
+local function backdrop(folder, id, xHalf, zMin, zMax, rng, ends)
+	local style = BACKDROPS[id]
+	if not style then
+		return
+	end
+	local scenery = Instance.new("Folder")
+	scenery.Name = "Scenery"
+	scenery.Parent = folder
+	for _, side in ipairs({ -1, 1 }) do
+		local z = zMin
+		while z < zMax do
+			local width = rng:NextNumber(50, 90)
+			local x = side * (xHalf + 40 + rng:NextNumber(0, 70))
+			local base = if style.Floating then rng:NextNumber(20, 60) else 0
+			mountain(scenery, Vector3.new(x, base, z + width / 2), width, rng:NextNumber(style.MinH, style.MaxH), style, rng)
+			if style.Floating then
+				deco({ Name = "FloatingUnderside", Size = Vector3.new(width * 0.6, base * 0.6, width * 0.6), Position = Vector3.new(x, base - base * 0.3, z + width / 2), Color = style.Base:Lerp(BLACK, 0.2), Material = style.Material, CastShadow = false, Parent = scenery })
+			end
+			z += width * 0.75
+		end
+	end
+	for _, endZ in ipairs(ends or {}) do
+		for x = -xHalf, xHalf, 90 do
+			mountain(scenery, Vector3.new(x + rng:NextNumber(-10, 10), 0, endZ.Z + endZ.Dir * (50 + rng:NextNumber(0, 50))), rng:NextNumber(70, 110), rng:NextNumber(style.MinH, style.MaxH), style, rng)
+		end
+	end
+end
+
+local SKY = {}
+function SKY.Snow(folder, centerZ, rng)
+	-- aurora: soft glowing ribbons high above the zone
+	local colors = { Color3.fromRGB(90, 255, 170), Color3.fromRGB(80, 220, 255), Color3.fromRGB(190, 120, 255) }
+	for band = 0, 2 do
+		for i = 0, 11 do
+			local x = -CORRIDOR_HALF + i * (CORRIDOR_HALF * 2 / 11)
+			local p = Vector3.new(x, 150 + band * 14 + math.sin(i * 0.8 + band) * 10, centerZ + 60 - band * 50 + math.cos(i * 0.6) * 25)
+			local ribbon = deco({ Name = "Aurora", Size = Vector3.new(CORRIDOR_HALF * 2 / 11 + 8, 26, 1), CFrame = CFrame.new(p) * CFrame.Angles(0, math.sin(i) * 0.3, 0), Color = colors[band + 1], Material = Enum.Material.Neon, CanCollide = false, CastShadow = false, Parent = folder })
+			ribbon.Transparency = 0.72
+		end
+	end
+end
+function SKY.Void(folder, centerZ, rng)
+	local planet = deco({ Name = "Planet", Shape = Enum.PartType.Ball, Size = Vector3.one * 140, Position = Vector3.new(-CORRIDOR_HALF - 220, 230, centerZ + 40), Color = Color3.fromRGB(120, 80, 200), Material = Enum.Material.SmoothPlastic, CastShadow = false, Parent = folder })
+	deco({ Name = "PlanetRing", Shape = Enum.PartType.Cylinder, Size = Vector3.new(2, 250, 250), CFrame = CFrame.new(planet.Position) * CFrame.Angles(math.rad(70), 0, math.rad(20)), Color = Color3.fromRGB(230, 180, 255), Material = Enum.Material.Neon, CanCollide = false, CastShadow = false, Transparency = 0.5, Parent = folder })
+	deco({ Name = "Moon", Shape = Enum.PartType.Ball, Size = Vector3.one * 70, Position = Vector3.new(CORRIDOR_HALF + 180, 260, centerZ - 60), Color = Color3.fromRGB(200, 220, 255), Material = Enum.Material.Neon, CastShadow = false, Parent = folder }).Transparency = 0.1
+	for i = 1, 5 do
+		deco({ Name = "Nebula", Shape = Enum.PartType.Ball, Size = Vector3.new(rng:NextNumber(120, 200), rng:NextNumber(40, 70), rng:NextNumber(80, 140)), Position = Vector3.new(rng:NextNumber(-CORRIDOR_HALF, CORRIDOR_HALF), rng:NextNumber(180, 240), centerZ + rng:NextNumber(-130, 130)), Color = ({ Color3.fromRGB(255, 100, 200), Color3.fromRGB(110, 140, 255), Color3.fromRGB(170, 90, 255) })[(i % 3) + 1], Material = Enum.Material.Neon, CanCollide = false, CastShadow = false, Transparency = 0.88, Parent = folder })
+	end
+end
+
+--------------------------------------------------------------------------------
+-- Town extras: a cobbled main street with string lights, and cottages
+--------------------------------------------------------------------------------
+local function stringLights(folder, a, b, rng)
+	local colors = { Color3.fromRGB(255, 220, 130), Color3.fromRGB(255, 130, 160), Color3.fromRGB(140, 200, 255), Color3.fromRGB(170, 255, 150) }
+	local bulbs = 11
+	for i = 0, bulbs do
+		local t = i / bulbs
+		local p = a:Lerp(b, t) - Vector3.new(0, math.sin(t * math.pi) * 2.5, 0)
+		local bulb = deco({ Name = "StringBulb", Shape = Enum.PartType.Ball, Size = Vector3.one * 0.7, Position = p, Color = colors[(i % #colors) + 1], Material = Enum.Material.Neon, CastShadow = false, Parent = folder })
+		if i == bulbs // 2 then
+			light(bulb, WARM_LIGHT, 20, 0.8)
+		end
+		if i < bulbs then
+			local q = a:Lerp(b, (i + 1) / bulbs) - Vector3.new(0, math.sin((i + 1) / bulbs * math.pi) * 2.5, 0)
+			deco({ Name = "Wire", Size = Vector3.new(0.1, 0.1, (q - p).Magnitude), CFrame = CFrame.lookAt((p + q) / 2, q), Color = Color3.fromRGB(40, 40, 45), Material = Enum.Material.SmoothPlastic, CastShadow = false, Parent = folder })
+		end
+	end
+end
+
+local function buildTownExtras(folder, rng)
+	local extras = Instance.new("Folder")
+	extras.Name = "TownDetail"
+	extras.Parent = folder
+	-- Main street from the bases to the safe line
+	local z1, z2 = PLOT_SIZE / 2 + 4, TOWN_END_Z - 44
+	local mid, len = (z1 + z2) / 2, z2 - z1
+	deco({ Name = "MainStreet", Size = Vector3.new(30, 0.12, len), Position = Vector3.new(0, 0.07, mid), Color = Color3.fromRGB(175, 165, 150), Material = Enum.Material.Cobblestone, CanCollide = false, CastShadow = false, Parent = extras })
+	for _, sx in ipairs({ -1, 1 }) do
+		deco({ Name = "Curb", Size = Vector3.new(1.2, 0.5, len), Position = Vector3.new(sx * 15.6, 0.25, mid), Color = Color3.fromRGB(210, 205, 195), Material = Enum.Material.Concrete, CanCollide = false, Parent = extras })
+	end
+	-- String lights across the street
+	for z = z1 + 16, z2 - 4, 36 do
+		for _, sx in ipairs({ -1, 1 }) do
+			deco({ Name = "LightPole", Size = Vector3.new(0.6, 15, 0.6), Position = Vector3.new(sx * 17, 7.5, z), Color = DARK_WOOD, Material = Enum.Material.Wood, Parent = extras })
+		end
+		stringLights(extras, Vector3.new(-17, 14.5, z), Vector3.new(17, 14.5, z), rng)
+	end
+	-- Bunting between the title board posts
+	for i = 0, 10 do
+		local x = -22 + i * 4.4
+		deco({ Name = "Bunting", Size = Vector3.new(2.6, 2.6, 0.2), CFrame = CFrame.new(x, 36 - math.sin(i / 10 * math.pi) * 3, TOWN_START_Z + 6.5) * CFrame.Angles(0, 0, math.rad(45)), Color = PLOT_ACCENTS[(i % #PLOT_ACCENTS) + 1], Material = Enum.Material.Fabric, CanCollide = false, Parent = extras })
+	end
+	-- Cottages along the side walls, facing into town
+	for _, side in ipairs({ -1, 1 }) do
+		for i, z in ipairs({ 90, 150, 205 }) do
+			local pos = Vector3.new(side * (TOWN_HALF - 38), 0, z)
+			local cf = CFrame.lookAt(pos, pos + Vector3.new(-side, 0, 0))
+			local roofs = { Color3.fromRGB(190, 70, 60), Color3.fromRGB(70, 110, 190), Color3.fromRGB(90, 150, 90) }
+			local walls = { Color3.fromRGB(245, 230, 205), Color3.fromRGB(250, 215, 200), Color3.fromRGB(225, 235, 245) }
+			house(extras, cf, 16, 10, 14, { Wall = walls[i], Roof = roofs[(i + (if side > 0 then 1 else 0)) % 3 + 1] })
+			-- picket fence and a mailbox in front
+			for k = -4, 4 do
+				deco({ Name = "Picket", Size = Vector3.new(0.5, 2.4, 0.3), CFrame = cf * CFrame.new(k * 2, 1.2, -13), Color = WHITE, Material = Enum.Material.WoodPlanks, Parent = extras })
+			end
+			deco({ Name = "FenceRail", Size = Vector3.new(17, 0.4, 0.3), CFrame = cf * CFrame.new(0, 1.6, -13), Color = WHITE, Material = Enum.Material.WoodPlanks, Parent = extras })
+			deco({ Name = "MailPost", Size = Vector3.new(0.4, 3, 0.4), CFrame = cf * CFrame.new(10, 1.5, -12), Color = DARK_WOOD, Material = Enum.Material.Wood, Parent = extras })
+			deco({ Name = "Mailbox", Size = Vector3.new(1.2, 1, 2), CFrame = cf * CFrame.new(10, 3.3, -12), Color = PLOT_ACCENTS[i], Material = Enum.Material.Metal, Parent = extras })
+		end
+	end
+	-- Picnic tables on the lawn between bases and street
+	for _, x in ipairs({ -250, 250 }) do
+		local p = Vector3.new(x, 0, 175)
+		deco({ Name = "PicnicTop", Size = Vector3.new(8, 0.4, 3.6), Position = p + Vector3.new(0, 2.6, 0), Color = WOOD, Material = Enum.Material.WoodPlanks, Parent = extras })
+		for _, sz in ipairs({ -2.6, 2.6 }) do
+			deco({ Name = "PicnicBench", Size = Vector3.new(8, 0.3, 1.2), Position = p + Vector3.new(0, 1.5, sz), Color = WOOD, Material = Enum.Material.WoodPlanks, Parent = extras })
+		end
+		for _, sx in ipairs({ -3.4, 3.4 }) do
+			deco({ Name = "PicnicLeg", Size = Vector3.new(0.4, 2.6, 5.8), Position = p + Vector3.new(sx, 1.3, 0), Color = DARK_WOOD, Material = Enum.Material.Wood, Parent = extras })
+		end
+		deco({ Name = "Umbrella", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.4, 9, 9), CFrame = cylinderAlongY(CFrame.new(p + Vector3.new(0, 7.5, 0))), Color = Color3.fromRGB(240, 90, 90), Material = Enum.Material.Fabric, Parent = extras })
+		deco({ Name = "UmbrellaPole", Size = Vector3.new(0.3, 7.5, 0.3), Position = p + Vector3.new(0, 3.75, 0), Color = WHITE, Material = Enum.Material.Metal, Parent = extras })
+	end
+	backdrop(folder, "Town", TOWN_HALF, TOWN_START_Z - 60, TOWN_END_Z, rng, { { Z = TOWN_START_Z, Dir = -1 } })
 end
 
 --------------------------------------------------------------------------------
@@ -2056,6 +2764,8 @@ local function buildTown(folder, rng)
 	gui.TextTransparency = 0.25
 	gui.TextStrokeTransparency = 1
 	gui.Rotation = 180
+
+	buildTownExtras(folder, rng)
 end
 
 --------------------------------------------------------------------------------
@@ -2239,6 +2949,9 @@ local function buildBiome(biomesFolder, index, def, centerZ)
 	for _, zone in ipairs(LANDMARK_AREAS[def.Id] or {}) do
 		table.insert(avoid, { zone[1], centerZ + zone[2], zone[3] })
 	end
+	for _, piece in ipairs(SETPIECE_SPOTS[def.Id] or {}) do
+		table.insert(avoid, { piece[2], centerZ + piece[3], piece[4] })
+	end
 	local spotGround = scatterSpots(def, centerZ, rng, avoid)
 	local spots = {}
 	for i, p in ipairs(spotGround) do
@@ -2257,9 +2970,26 @@ local function buildBiome(biomesFolder, index, def, centerZ)
 	for _, zone in ipairs(LANDMARK_AREAS[def.Id] or {}) do
 		table.insert(keepClear, Vector3.new(zone[1], zone[3] + 8, centerZ + zone[2])) -- Y carries the clearance radius
 	end
+	for _, piece in ipairs(SETPIECE_SPOTS[def.Id] or {}) do
+		table.insert(keepClear, Vector3.new(piece[2], piece[4] + 6, centerZ + piece[3]))
+	end
 	placeProps(folder, def, centerZ, rng, keepClear)
 	scatterClutter(folder, def, centerZ, rng)
 	ambientParticles(folder, def.Particles, centerZ)
+	ambientParticles(folder, EXTRA_AMBIENT[def.Id], centerZ)
+
+	-- Set pieces, wall details, scenery beyond the walls and sky pieces
+	for _, piece in ipairs(SETPIECE_SPOTS[def.Id] or {}) do
+		local model = Instance.new("Model")
+		model.Name = piece[1]
+		model.Parent = folder
+		SETPIECES[piece[1]](model, Vector3.new(piece[2], 0, centerZ + piece[3]), rng)
+	end
+	wallTrims(folder, def.Id, zMin, zMax, rng)
+	backdrop(folder, def.Id, CORRIDOR_HALF, zMin, zMax, rng, if index == #Config.Biomes then { { Z = zMax, Dir = 1 } } else nil)
+	if SKY[def.Id] then
+		SKY[def.Id](folder, centerZ, rng)
+	end
 
 	return {
 		Index = index,
@@ -6918,6 +7648,7 @@ return DailyRewardService
 --   !rain              egg rain           !refill   respawn all wild eggs
 --   !tp void           teleport (town, forest, desert, snow, volcano, void)
 --   !daily             make today's daily reward claimable again (!daily reset = back to Day 1)
+--   !time night        set the time for everyone (day, sunset, night, 0-24; !time cycle = back to normal)
 --   !reset             wipe your progress
 --   !help              list the commands
 
@@ -7082,13 +7813,21 @@ COMMANDS.daily = function(player, args)
 	end
 end
 
+local TIMES = { day = 13, noon = 12, morning = 8, sunset = 18.2, dusk = 18.7, night = 0, midnight = 0 }
+COMMANDS.time = function(player, args)
+	local word = string.lower(args[1] or "")
+	local clock = TIMES[word] or tonumber(word)
+	workspace:SetAttribute("ClockOverride", if clock then clock % 24 else nil)
+	say(player, if clock then "Time set to " .. word .. " for everyone" else "Day/night cycle is running again")
+end
+
 COMMANDS.reset = function(player)
 	GameService.Admin.Reset(player)
 	say(player, "Progress reset", RED)
 end
 
 COMMANDS.help = function(player)
-	say(player, "!cash !speed !setspeed !egg !pet !shiny !hatch !grow !treadmill !luck !rain !refill !tp !daily !reset")
+	say(player, "!cash !speed !setspeed !egg !pet !shiny !hatch !grow !treadmill !luck !rain !refill !tp !daily !time !reset")
 end
 
 local function run(player, message)
@@ -7824,6 +8563,67 @@ local function showZone(title, sub, color)
 	end)
 end
 
+--------------------------------------------------------------------------------
+-- Day and night. The clock comes from server time so everyone sees the same
+-- sky; some zones pin their own time (Magma Crater = sunset, Void = night).
+--------------------------------------------------------------------------------
+local zoneClock = 15
+local zoneClockBlend = Instance.new("NumberValue") -- 0 = follow the day cycle, 1 = zone's own time
+zoneClockBlend.Value = 0
+local dayAmbient = Instance.new("Color3Value")
+dayAmbient.Value = Config.TownMood.Ambient or Color3.fromRGB(126, 132, 148)
+local NIGHT_AMBIENT = Color3.fromRGB(64, 74, 118)
+local NIGHT_INDOOR = Color3.fromRGB(38, 42, 66)
+local DAY_INDOOR = Color3.fromRGB(58, 62, 74)
+
+local function cycleClock()
+	local fixed = workspace:GetAttribute("ClockOverride")
+	if type(fixed) == "number" then
+		return fixed
+	end
+	local minutes = Config.DayCycleMinutes or 0
+	if minutes <= 0 then
+		return 15
+	end
+	local dayShare = Config.DayFraction or 0.72
+	local t = (workspace:GetServerTimeNow() / (minutes * 60)) % 1
+	if t < dayShare then
+		return 6.5 + t / dayShare * 12 -- 6:30 sunrise to 18:30 sunset
+	end
+	return (18.5 + (t - dayShare) / (1 - dayShare) * 12) % 24
+end
+
+local function blendClock(a, b, t)
+	local d = (b - a + 12) % 24 - 12
+	return (a + d * t) % 24
+end
+
+-- 1 in full daylight, 0 at night, smooth through dawn and dusk
+local function daylight(clock)
+	if clock >= 7.5 and clock <= 17 then
+		return 1
+	elseif clock >= 19.5 or clock <= 5 then
+		return 0
+	elseif clock < 7.5 then
+		return (clock - 5) / 2.5
+	end
+	return 1 - (clock - 17) / 2.5
+end
+
+local clockTime = 15
+game:GetService("RunService").Heartbeat:Connect(function()
+	clockTime = blendClock(cycleClock(), zoneClock, zoneClockBlend.Value)
+	local d = daylight(clockTime)
+	Lighting.ClockTime = clockTime
+	Lighting.Brightness = 0.9 + 1.3 * d
+	Lighting.OutdoorAmbient = NIGHT_AMBIENT:Lerp(dayAmbient.Value, d)
+	Lighting.Ambient = NIGHT_INDOOR:Lerp(DAY_INDOOR, d)
+	Lighting.ExposureCompensation = -0.15 + (1 - d) * 0.3
+	-- warm light at the edges of the day
+	local golden = math.max(0, 1 - math.abs(d - 0.5) * 2)
+	Lighting.ColorShift_Top = Color3.fromRGB(255, 240, 215):Lerp(Color3.fromRGB(255, 170, 110), golden)
+end)
+
 local function applyMood(mood)
 	local atmosphere = Lighting:FindFirstChild("MoodAtmosphere")
 	local cc = Lighting:FindFirstChild("MoodCC")
@@ -7832,8 +8632,21 @@ local function applyMood(mood)
 		TweenService:Create(atmosphere, info, { Color = mood.Color, Decay = mood.Decay, Density = mood.Density, Haze = mood.Haze, Glare = mood.Glare or 0.2 }):Play()
 	end
 	if cc then
-		TweenService:Create(cc, info, { TintColor = mood.Tint, Brightness = mood.Brightness, Saturation = mood.Saturation }):Play()
+		TweenService:Create(cc, info, { TintColor = mood.Tint, Brightness = mood.Brightness, Saturation = mood.Saturation, Contrast = mood.Contrast or 0.1 }):Play()
 	end
+	local bloom = Lighting:FindFirstChild("MoodBloom")
+	if bloom then
+		TweenService:Create(bloom, info, { Intensity = mood.Bloom or 0.4 }):Play()
+	end
+	local rays = Lighting:FindFirstChild("MoodRays")
+	if rays then
+		TweenService:Create(rays, info, { Intensity = mood.Rays or 0.04 }):Play()
+	end
+	if mood.Clock then
+		zoneClock = mood.Clock
+	end
+	TweenService:Create(zoneClockBlend, TweenInfo.new(3, Enum.EasingStyle.Sine), { Value = if mood.Clock then 1 else 0 }):Play()
+	TweenService:Create(dayAmbient, info, { Value = mood.Ambient or Color3.fromRGB(126, 132, 148) }):Play()
 	local clouds = workspace.Terrain:FindFirstChild("MoodClouds")
 	if clouds and mood.CloudColor then
 		TweenService:Create(clouds, info, { Color = mood.CloudColor, Cover = mood.CloudCover or 0.6 }):Play()
@@ -8379,12 +9192,14 @@ adminRow({ { "2x Luck", "luck 2", GREEN_BTN }, { "5x Luck", "luck 5", GREEN_BTN 
 adminHeader("🚀 Teleport")
 adminRow({ { "Town", "tp town" }, { "Forest", "tp forest" }, { "Desert", "tp desert" } })
 adminRow({ { "Snow", "tp snow" }, { "Volcano", "tp volcano" }, { "Void", "tp void" } })
+adminHeader("🌙 Time of day (everyone)")
+adminRow({ { "Day", "time day", GOLD_BTN }, { "Sunset", "time sunset", GOLD_BTN }, { "Night", "time night", GOLD_BTN }, { "Cycle", "time cycle", GOLD_BTN } })
 adminHeader("🎁 Daily reward")
 adminRow({ { "Next Day", "daily", GOLD_BTN }, { "Back to Day 1", "daily reset", GOLD_BTN } })
 adminHeader("⚠️ Danger")
 adminRow({ { "Reset My Progress", "reset", RED_BTN } })
 adminOrder += 1
-local chatHelp = label(adminPanel, { LayoutOrder = adminOrder, Size = UDim2.new(1, 0, 0, 60), Font = Enum.Font.Gotham, TextStrokeTransparency = 1, TextColor3 = Color3.fromRGB(200, 200, 215), Text = "Chat commands: !cash 500 · !speed 50 · !egg mythic · !pet galaxy dragon · !shiny divine · !luck 10 · !tp void · !daily · !help" })
+local chatHelp = label(adminPanel, { LayoutOrder = adminOrder, Size = UDim2.new(1, 0, 0, 60), Font = Enum.Font.Gotham, TextStrokeTransparency = 1, TextColor3 = Color3.fromRGB(200, 200, 215), Text = "Chat commands: !cash 500 · !speed 50 · !egg mythic · !pet galaxy dragon · !shiny divine · !luck 10 · !tp void · !daily · !time night · !help" })
 chatHelp.TextScaled = false
 chatHelp.TextSize = 13
 chatHelp.TextWrapped = true

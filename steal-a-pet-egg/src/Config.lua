@@ -569,7 +569,7 @@ Config.Biomes = {
 		RespawnTime = 12,
 		EggSpots = 16,
 		Eggs = { Common = 80, Uncommon = 20 },
-		Mood = { Color = Color3.fromRGB(175, 215, 240), Decay = Color3.fromRGB(95, 135, 110), Density = 0.3, Haze = 0.6, Glare = 0.2, Tint = Color3.fromRGB(245, 255, 242), Brightness = 0, Saturation = 0.18, CloudColor = Color3.fromRGB(255, 255, 255), CloudCover = 0.6 },
+		Mood = { Color = Color3.fromRGB(175, 215, 240), Decay = Color3.fromRGB(95, 135, 110), Density = 0.3, Haze = 0.6, Glare = 0.2, Tint = Color3.fromRGB(245, 255, 242), Brightness = 0, Saturation = 0.18, CloudColor = Color3.fromRGB(255, 255, 255), CloudCover = 0.6, Bloom = 0.45, Rays = 0.12, Contrast = 0.12, Ambient = Color3.fromRGB(118, 140, 118) },
 	},
 	{
 		Id = "Desert",
@@ -587,7 +587,7 @@ Config.Biomes = {
 		RespawnTime = 25,
 		EggSpots = 15,
 		Eggs = { Uncommon = 60, Rare = 40 },
-		Mood = { Color = Color3.fromRGB(240, 215, 175), Decay = Color3.fromRGB(200, 150, 100), Density = 0.34, Haze = 1.2, Glare = 0.4, Tint = Color3.fromRGB(255, 246, 228), Brightness = 0.01, Saturation = 0.15, CloudColor = Color3.fromRGB(255, 238, 215), CloudCover = 0.45 },
+		Mood = { Color = Color3.fromRGB(240, 215, 175), Decay = Color3.fromRGB(200, 150, 100), Density = 0.34, Haze = 1.2, Glare = 0.4, Tint = Color3.fromRGB(255, 246, 228), Brightness = 0.01, Saturation = 0.15, CloudColor = Color3.fromRGB(255, 238, 215), CloudCover = 0.45, Bloom = 0.55, Rays = 0.09, Contrast = 0.16, Ambient = Color3.fromRGB(160, 140, 115) },
 	},
 	{
 		Id = "Snow",
@@ -605,7 +605,7 @@ Config.Biomes = {
 		RespawnTime = 45,
 		EggSpots = 14,
 		Eggs = { Rare = 65, Epic = 35 },
-		Mood = { Color = Color3.fromRGB(210, 228, 255), Decay = Color3.fromRGB(150, 180, 220), Density = 0.4, Haze = 1.2, Glare = 0.15, Tint = Color3.fromRGB(236, 246, 255), Brightness = 0, Saturation = 0.02, CloudColor = Color3.fromRGB(235, 242, 255), CloudCover = 0.75 },
+		Mood = { Color = Color3.fromRGB(210, 228, 255), Decay = Color3.fromRGB(150, 180, 220), Density = 0.4, Haze = 1.2, Glare = 0.15, Tint = Color3.fromRGB(236, 246, 255), Brightness = 0, Saturation = 0.02, CloudColor = Color3.fromRGB(235, 242, 255), CloudCover = 0.75, Bloom = 0.6, Rays = 0.06, Contrast = 0.08, Ambient = Color3.fromRGB(150, 165, 190) },
 	},
 	{
 		Id = "Volcano",
@@ -623,7 +623,7 @@ Config.Biomes = {
 		RespawnTime = 90,
 		EggSpots = 13,
 		Eggs = { Epic = 65, Legendary = 35 },
-		Mood = { Color = Color3.fromRGB(230, 130, 95), Decay = Color3.fromRGB(110, 40, 25), Density = 0.44, Haze = 1.6, Glare = 0.3, Tint = Color3.fromRGB(255, 224, 208), Brightness = -0.02, Saturation = 0.2, CloudColor = Color3.fromRGB(95, 65, 60), CloudCover = 0.8 },
+		Mood = { Color = Color3.fromRGB(230, 130, 95), Decay = Color3.fromRGB(110, 40, 25), Density = 0.44, Haze = 1.6, Glare = 0.3, Tint = Color3.fromRGB(255, 224, 208), Brightness = -0.02, Saturation = 0.2, CloudColor = Color3.fromRGB(95, 65, 60), CloudCover = 0.8, Clock = 18.15, Bloom = 0.85, Rays = 0.16, Contrast = 0.2, Ambient = Color3.fromRGB(140, 80, 65) },
 	},
 	{
 		Id = "Void",
@@ -642,7 +642,7 @@ Config.Biomes = {
 		RespawnTime = 180,
 		EggSpots = 12,
 		Eggs = { Legendary = 65, Mythic = 30, Divine = 4.5, Secret = 0.5 },
-		Mood = { Color = Color3.fromRGB(140, 100, 215), Decay = Color3.fromRGB(45, 20, 90), Density = 0.44, Haze = 1, Glare = 0.2, Tint = Color3.fromRGB(222, 205, 255), Brightness = -0.05, Saturation = 0.25, CloudColor = Color3.fromRGB(150, 105, 220), CloudCover = 0.7 },
+		Mood = { Color = Color3.fromRGB(140, 100, 215), Decay = Color3.fromRGB(45, 20, 90), Density = 0.44, Haze = 1, Glare = 0.2, Tint = Color3.fromRGB(222, 205, 255), Brightness = -0.05, Saturation = 0.25, CloudColor = Color3.fromRGB(150, 105, 220), CloudCover = 0.7, Clock = 0.5, Bloom = 1, Rays = 0, Contrast = 0.2, Ambient = Color3.fromRGB(110, 90, 160) },
 	},
 }
 
@@ -651,7 +651,18 @@ Config.TownFloor = { Color3.fromRGB(116, 206, 78), Color3.fromRGB(100, 190, 66) 
 Config.TownWalls = { Color3.fromRGB(214, 122, 82), Color3.fromRGB(230, 142, 98) }
 
 -- Lighting mood in town (the client blends between moods as you travel).
-Config.TownMood = { Color = Color3.fromRGB(180, 212, 255), Decay = Color3.fromRGB(92, 122, 172), Density = 0.26, Haze = 0.35, Glare = 0.2, Tint = Color3.fromRGB(255, 251, 245), Brightness = 0, Saturation = 0.15, CloudColor = Color3.fromRGB(255, 255, 255), CloudCover = 0.6 }
+Config.TownMood = { Color = Color3.fromRGB(180, 212, 255), Decay = Color3.fromRGB(92, 122, 172), Density = 0.26, Haze = 0.35, Glare = 0.2, Tint = Color3.fromRGB(255, 251, 245), Brightness = 0, Saturation = 0.15, CloudColor = Color3.fromRGB(255, 255, 255), CloudCover = 0.6, Bloom = 0.4, Rays = 0.04, Contrast = 0.1, Ambient = Color3.fromRGB(126, 132, 148) }
+-- Mood extras: Clock pins the time of day in that zone (Volcano = sunset,
+-- Void = night), Bloom / Rays / Contrast tune the glow, sun rays and punch,
+-- and Ambient is the outdoor shadow color in daylight.
+
+--------------------------------------------------------------------------------
+-- Day and night. Everyone on a server sees the same time. Set
+-- DayCycleMinutes to 0 to keep it afternoon forever. Admins can test with
+-- !time day / sunset / night / cycle.
+--------------------------------------------------------------------------------
+Config.DayCycleMinutes = 16 -- one full day + night
+Config.DayFraction = 0.72 -- share of the cycle that is daytime
 
 --------------------------------------------------------------------------------
 -- Lookup tables and helpers (built automatically, don't edit)

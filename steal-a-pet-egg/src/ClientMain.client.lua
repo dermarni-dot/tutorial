@@ -681,6 +681,67 @@ local function showZone(title, sub, color)
 	end)
 end
 
+--------------------------------------------------------------------------------
+-- Day and night. The clock comes from server time so everyone sees the same
+-- sky; some zones pin their own time (Magma Crater = sunset, Void = night).
+--------------------------------------------------------------------------------
+local zoneClock = 15
+local zoneClockBlend = Instance.new("NumberValue") -- 0 = follow the day cycle, 1 = zone's own time
+zoneClockBlend.Value = 0
+local dayAmbient = Instance.new("Color3Value")
+dayAmbient.Value = Config.TownMood.Ambient or Color3.fromRGB(126, 132, 148)
+local NIGHT_AMBIENT = Color3.fromRGB(64, 74, 118)
+local NIGHT_INDOOR = Color3.fromRGB(38, 42, 66)
+local DAY_INDOOR = Color3.fromRGB(58, 62, 74)
+
+local function cycleClock()
+	local fixed = workspace:GetAttribute("ClockOverride")
+	if type(fixed) == "number" then
+		return fixed
+	end
+	local minutes = Config.DayCycleMinutes or 0
+	if minutes <= 0 then
+		return 15
+	end
+	local dayShare = Config.DayFraction or 0.72
+	local t = (workspace:GetServerTimeNow() / (minutes * 60)) % 1
+	if t < dayShare then
+		return 6.5 + t / dayShare * 12 -- 6:30 sunrise to 18:30 sunset
+	end
+	return (18.5 + (t - dayShare) / (1 - dayShare) * 12) % 24
+end
+
+local function blendClock(a, b, t)
+	local d = (b - a + 12) % 24 - 12
+	return (a + d * t) % 24
+end
+
+-- 1 in full daylight, 0 at night, smooth through dawn and dusk
+local function daylight(clock)
+	if clock >= 7.5 and clock <= 17 then
+		return 1
+	elseif clock >= 19.5 or clock <= 5 then
+		return 0
+	elseif clock < 7.5 then
+		return (clock - 5) / 2.5
+	end
+	return 1 - (clock - 17) / 2.5
+end
+
+local clockTime = 15
+game:GetService("RunService").Heartbeat:Connect(function()
+	clockTime = blendClock(cycleClock(), zoneClock, zoneClockBlend.Value)
+	local d = daylight(clockTime)
+	Lighting.ClockTime = clockTime
+	Lighting.Brightness = 0.9 + 1.3 * d
+	Lighting.OutdoorAmbient = NIGHT_AMBIENT:Lerp(dayAmbient.Value, d)
+	Lighting.Ambient = NIGHT_INDOOR:Lerp(DAY_INDOOR, d)
+	Lighting.ExposureCompensation = -0.15 + (1 - d) * 0.3
+	-- warm light at the edges of the day
+	local golden = math.max(0, 1 - math.abs(d - 0.5) * 2)
+	Lighting.ColorShift_Top = Color3.fromRGB(255, 240, 215):Lerp(Color3.fromRGB(255, 170, 110), golden)
+end)
+
 local function applyMood(mood)
 	local atmosphere = Lighting:FindFirstChild("MoodAtmosphere")
 	local cc = Lighting:FindFirstChild("MoodCC")
@@ -689,8 +750,21 @@ local function applyMood(mood)
 		TweenService:Create(atmosphere, info, { Color = mood.Color, Decay = mood.Decay, Density = mood.Density, Haze = mood.Haze, Glare = mood.Glare or 0.2 }):Play()
 	end
 	if cc then
-		TweenService:Create(cc, info, { TintColor = mood.Tint, Brightness = mood.Brightness, Saturation = mood.Saturation }):Play()
+		TweenService:Create(cc, info, { TintColor = mood.Tint, Brightness = mood.Brightness, Saturation = mood.Saturation, Contrast = mood.Contrast or 0.1 }):Play()
 	end
+	local bloom = Lighting:FindFirstChild("MoodBloom")
+	if bloom then
+		TweenService:Create(bloom, info, { Intensity = mood.Bloom or 0.4 }):Play()
+	end
+	local rays = Lighting:FindFirstChild("MoodRays")
+	if rays then
+		TweenService:Create(rays, info, { Intensity = mood.Rays or 0.04 }):Play()
+	end
+	if mood.Clock then
+		zoneClock = mood.Clock
+	end
+	TweenService:Create(zoneClockBlend, TweenInfo.new(3, Enum.EasingStyle.Sine), { Value = if mood.Clock then 1 else 0 }):Play()
+	TweenService:Create(dayAmbient, info, { Value = mood.Ambient or Color3.fromRGB(126, 132, 148) }):Play()
 	local clouds = workspace.Terrain:FindFirstChild("MoodClouds")
 	if clouds and mood.CloudColor then
 		TweenService:Create(clouds, info, { Color = mood.CloudColor, Cover = mood.CloudCover or 0.6 }):Play()
@@ -1236,12 +1310,14 @@ adminRow({ { "2x Luck", "luck 2", GREEN_BTN }, { "5x Luck", "luck 5", GREEN_BTN 
 adminHeader("🚀 Teleport")
 adminRow({ { "Town", "tp town" }, { "Forest", "tp forest" }, { "Desert", "tp desert" } })
 adminRow({ { "Snow", "tp snow" }, { "Volcano", "tp volcano" }, { "Void", "tp void" } })
+adminHeader("🌙 Time of day (everyone)")
+adminRow({ { "Day", "time day", GOLD_BTN }, { "Sunset", "time sunset", GOLD_BTN }, { "Night", "time night", GOLD_BTN }, { "Cycle", "time cycle", GOLD_BTN } })
 adminHeader("🎁 Daily reward")
 adminRow({ { "Next Day", "daily", GOLD_BTN }, { "Back to Day 1", "daily reset", GOLD_BTN } })
 adminHeader("⚠️ Danger")
 adminRow({ { "Reset My Progress", "reset", RED_BTN } })
 adminOrder += 1
-local chatHelp = label(adminPanel, { LayoutOrder = adminOrder, Size = UDim2.new(1, 0, 0, 60), Font = Enum.Font.Gotham, TextStrokeTransparency = 1, TextColor3 = Color3.fromRGB(200, 200, 215), Text = "Chat commands: !cash 500 · !speed 50 · !egg mythic · !pet galaxy dragon · !shiny divine · !luck 10 · !tp void · !daily · !help" })
+local chatHelp = label(adminPanel, { LayoutOrder = adminOrder, Size = UDim2.new(1, 0, 0, 60), Font = Enum.Font.Gotham, TextStrokeTransparency = 1, TextColor3 = Color3.fromRGB(200, 200, 215), Text = "Chat commands: !cash 500 · !speed 50 · !egg mythic · !pet galaxy dragon · !shiny divine · !luck 10 · !tp void · !daily · !time night · !help" })
 chatHelp.TextScaled = false
 chatHelp.TextSize = 13
 chatHelp.TextWrapped = true
