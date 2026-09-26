@@ -18,17 +18,17 @@ local PLOT_SIZE = 84 -- base depth (front to back)
 local PLOT_WIDTH = 140 -- base width (side to side)
 local PLOT_SCALE = PLOT_SIZE / 60 -- base layouts are drawn on a 60-stud grid, then scaled
 local PLOT_COUNT = 6 -- bases per server (fewer, bigger bases)
-local PLOT_GAP = 9
+local PLOT_GAP = 36 -- room between bases
 local PLOT_ROW_SPAN = PLOT_COUNT * PLOT_WIDTH + (PLOT_COUNT - 1) * PLOT_GAP -- all bases side by side
 local TOWN_START_Z = -75
 local TOWN_END_Z = 230
-local BIOME_SPACING = 300
+local BIOME_SPACING = 450 -- how long each zone is
 local BIOME_START_Z = TOWN_END_Z + BIOME_SPACING / 2
 local TOWN_HALF = PLOT_ROW_SPAN / 2 + 20 -- the town is as wide as the row of bases
 local CORRIDOR_HALF = TOWN_HALF -- zones are as wide as the town
 local TILE = 10 -- wall checker size
 local FLOOR_TILE = 5 -- floor checker size (small squares, like Steal an Egg)
-local ZONE_FLOOR_TILE = 10 -- bigger squares in the zones: 4x fewer parts, and easier to read at top speed
+local ZONE_FLOOR_TILE = 12 -- bigger squares in the zones: far fewer parts, and easier to read at top speed
 local WALL_HEIGHT = 40
 local DOOR_HALF = 35
 local DOOR_HEIGHT = 30
@@ -659,7 +659,7 @@ function LANDMARKS.Void(folder, centerZ, rng)
 	end
 end
 
-local PROPS_PER_ZONE = 120 -- fewer props = clearer lanes to run through
+local PROPS_PER_ZONE = 150 -- spread over the bigger zones, still leaving clear lanes
 local function placeProps(folder, def, centerZ, rng, keepClear)
 	-- each entry: { position, clearance radius }
 	local placed = {}
@@ -3306,6 +3306,7 @@ end
 
 -- Scatter egg spots across the zone, spread apart and clear of the entrance,
 -- the guardian's den and big features.
+local EGG_SPACING = 60 -- eggs are at least this far apart
 local function scatterSpots(def, centerZ, rng, avoid)
 	local zMin, zMax = centerZ - BIOME_SPACING / 2, centerZ + BIOME_SPACING / 2
 	local spots = {}
@@ -3315,7 +3316,7 @@ local function scatterSpots(def, centerZ, rng, avoid)
 		local p = Vector3.new(rng:NextNumber(-CORRIDOR_HALF + 14, CORRIDOR_HALF - 14), 0, rng:NextNumber(zMin + 28, zMax - 14))
 		local ok = true
 		for _, other in ipairs(spots) do
-			if (other - p).Magnitude < 32 then
+			if (other - p).Magnitude < EGG_SPACING then
 				ok = false
 				break
 			end
@@ -3333,6 +3334,7 @@ local function scatterSpots(def, centerZ, rng, avoid)
 end
 
 local SOLID_NAMES = { Floor = true, Wall = true, WallCap = true }
+local SETPIECE_X = CORRIDOR_HALF / 462.5 -- set piece spots were laid out for a narrower map
 
 local function buildBiome(biomesFolder, index, def, centerZ)
 	local folder = Instance.new("Model")
@@ -3449,7 +3451,7 @@ local function buildBiome(biomesFolder, index, def, centerZ)
 		table.insert(avoid, { zone[1], centerZ + zone[2], zone[3] })
 	end
 	for _, piece in ipairs(SETPIECE_SPOTS[def.Id] or {}) do
-		table.insert(avoid, { piece[2], centerZ + piece[3], piece[4] })
+		table.insert(avoid, { piece[2] * SETPIECE_X, centerZ + piece[3], piece[4] })
 	end
 	local spotGround = scatterSpots(def, centerZ, rng, avoid)
 	local spots = {}
@@ -3470,7 +3472,7 @@ local function buildBiome(biomesFolder, index, def, centerZ)
 		table.insert(keepClear, Vector3.new(zone[1], zone[3] + 8, centerZ + zone[2])) -- Y carries the clearance radius
 	end
 	for _, piece in ipairs(SETPIECE_SPOTS[def.Id] or {}) do
-		table.insert(keepClear, Vector3.new(piece[2], piece[4] + 6, centerZ + piece[3]))
+		table.insert(keepClear, Vector3.new(piece[2] * SETPIECE_X, piece[4] + 6, centerZ + piece[3]))
 	end
 	placeProps(folder, def, centerZ, rng, keepClear)
 	scatterClutter(folder, def, centerZ, rng)
@@ -3482,7 +3484,7 @@ local function buildBiome(biomesFolder, index, def, centerZ)
 		local model = Instance.new("Model")
 		model.Name = piece[1]
 		model.Parent = folder
-		SETPIECES[piece[1]](model, Vector3.new(piece[2], 0, centerZ + piece[3]), rng)
+		SETPIECES[piece[1]](model, Vector3.new(piece[2] * SETPIECE_X, 0, centerZ + piece[3]), rng)
 	end
 	wallTrims(folder, def.Id, zMin, zMax, rng)
 	backdrop(folder, def.Id, CORRIDOR_HALF, zMin, zMax, rng, if index == #Config.Biomes then { { Z = zMax, Dir = 1 } } else nil)
@@ -3586,7 +3588,7 @@ function MapBuilder.Build()
 	return {
 		Plots = plots,
 		Biomes = biomes,
-		RainArea = { MinZ = 70, MaxZ = 180, HalfWidth = 200 },
+		RainArea = { MinZ = 70, MaxZ = 180, HalfWidth = TOWN_HALF - 80 },
 		SafeZoneZ = TOWN_END_Z - 40, -- guardians give up at the red safe-zone line
 	}
 end

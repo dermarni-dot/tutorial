@@ -16,7 +16,7 @@ Game Settings > Security > **Enable Studio Access to API Services**.
 
 ## How it plays
 
-- **The map:** your base sits in town. A road leads out through 20 zones, each harder than the last:
+- **The map:** your base sits in town, with plenty of room between bases. Zones are long (450 studs) and wide, and eggs in them are spread at least 60 studs apart. Your base sits in town. A road leads out through 20 zones, each harder than the last:
 
   | Biome | Guardian | Guardian speed | Speed needed | Eggs |
   |---|---|---|---|---|
@@ -47,7 +47,7 @@ Game Settings > Security > **Enable Studio Access to API Services**.
 
   **Running at top speed:** everything in the zones, the town and the bases except floors, walls, the treadmill and the leaderboard screens is walk-through (so the base gate, stone border and fences can't fling you anymore, and invisible ramps smooth the step onto your base floor), so you never snag on a tree or rock at 500 speed; there are fewer props for clearer lanes; and while you carry an egg a glowing trail runs from you back to your base.
 
-  **Behind the red line** (the town and your base) everyone walks at a normal pace (`Config.TownWalkSpeed`, 32); your full Speed kicks in the moment you cross into the zones.
+  **Behind the red line** (the town and your base) everyone walks at a normal pace (`Config.TownWalkSpeed`, 48); your full Speed kicks in the moment you cross into the zones.
 
   Walk speed climbs with every tenfold of your Speed stat, faster and faster: 5 Speed walks at 49, 300 at 100, 11K at 162, 1M at 260, 100M at 384, 2.5B at 485 and 50B at 589; after that it grows more slowly (1T at 628, 10Qa at 748, max 800). Guardian speed is in studs per second; each guardian is just a hair slower than you are while carrying an egg with its zone's Speed needed. Tune it with `Config.BaseWalkSpeed`, `WalkPerTenfold` and `WalkCurve`.
 
