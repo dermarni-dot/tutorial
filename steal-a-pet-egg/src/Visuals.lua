@@ -2688,16 +2688,16 @@ function Visuals.RefreshPetLabel(body, data)
 end
 
 -- Detailed cartoon eye: white, colored iris, pupil, two shines and a lid line
-local EYE_SCALE = 0.62 -- realistic eyes are much smaller than cartoon ones
+local EYE_SCALE = 1.05 -- big, clear cartoon eyes that read from across the map
 local function petEye(add, cf, size, iris)
 	size *= EYE_SCALE
-	-- a thin rim of white around a big dark iris, a round pupil and one small
-	-- catch-light, like a real animal's eye
-	local irisColor = iris:Lerp(Color3.fromRGB(45, 30, 20), 0.55)
-	add("Eye", "Blob", Vector3.new(size, size * 1.05, size * 0.8), cf, Color3.fromRGB(235, 230, 220))
-	add("Iris", "Blob", Vector3.new(size * 0.9, size * 0.94, size * 0.6), cf * CFrame.new(0, 0, -size * 0.14), irisColor)
-	add("Pupil", "Blob", Vector3.new(size * 0.5, size * 0.52, size * 0.5), cf * CFrame.new(0, 0, -size * 0.2), Color3.fromRGB(10, 8, 12))
-	add("Shine", "Ball", Vector3.one * size * 0.16, cf * CFrame.new(size * 0.16, size * 0.18, -size * 0.36), WHITE, Enum.Material.Neon)
+	-- a white eye that sticks out of the face, a bright iris, a big black
+	-- pupil and a sparkle in the top corner
+	local irisColor = iris:Lerp(Color3.fromRGB(60, 40, 25), 0.2)
+	add("Eye", "Block", Vector3.new(size, size * 1.15, size * 0.5), cf * CFrame.new(0, 0, -size * 0.08), Color3.fromRGB(250, 250, 248))
+	add("Iris", "Block", Vector3.new(size * 0.72, size * 0.86, size * 0.5), cf * CFrame.new(0, -size * 0.06, -size * 0.14), irisColor)
+	add("Pupil", "Block", Vector3.new(size * 0.4, size * 0.52, size * 0.5), cf * CFrame.new(0, -size * 0.08, -size * 0.18), Color3.fromRGB(12, 10, 14))
+	add("Shine", "Block", Vector3.new(size * 0.22, size * 0.22, size * 0.5), cf * CFrame.new(-size * 0.16, size * 0.18, -size * 0.22), WHITE, Enum.Material.Neon)
 end
 
 --------------------------------------------------------------------------------
@@ -3777,7 +3777,7 @@ ANATOMY.Frog = { Torso = Vector3.new(0.9, 0.55, 0.8), Build = function(ctx)
 	for _, sx in ipairs({ -1, 1 }) do
 		local bump = headCf * CFrame.new(sx * S * 0.2, S * 0.2, -S * 0.08)
 		add("EyeBump", "Ball", Vector3.one * S * 0.26, bump, c)
-		petEye(add, bump * CFrame.new(0, S * 0.02, -S * 0.1) * CFrame.Angles(math.rad(-10), math.rad(-25 * sx), 0), S * 0.34, ctx.iris)
+		petEye(add, bump * CFrame.new(0, S * 0.02, -S * 0.1) * CFrame.Angles(math.rad(-10), math.rad(-25 * sx), 0), S * 0.22, ctx.iris)
 		add("Nostril", "Ball", Vector3.one * S * 0.035, headCf * CFrame.new(sx * S * 0.07, S * 0.08, -S * 0.3), dark)
 		-- folded back legs: big thigh, shin along the ground, long webbed foot
 		add("Thigh", "Blob", Vector3.new(S * 0.3, S * 0.3, S * 0.46), CFrame.new(sx * T.X * 0.5, -T.Y * 0.05, T.Z * 0.18) * CFrame.Angles(math.rad(-20), 0, 0), c)
@@ -4457,7 +4457,8 @@ local function buildAnatomy(spec, data, def, rarity, tier, S, color, dark, light
 					add("Nostril", "Ball", Vector3.one * math.min(sz.X, sz.Y) * 0.28, cf * CFrame.new(sx * sz.X * 0.22, -sz.Y * 0.12, -sz.Z * 0.42), Color3.fromRGB(15, 12, 14))
 				end
 			elseif n == "Eye" then
-				add("EyeLid", "Blob", Vector3.new(sz.X * 1.1, sz.Y * 0.24, sz.Z * 0.9), cf * CFrame.new(0, sz.Y * 0.5, -sz.Z * 0.02), lidColor)
+				-- a short brow above each eye gives the face some expression
+				add("Brow", "Block", Vector3.new(sz.X * 0.9, sz.Y * 0.12, sz.Z * 0.6), cf * CFrame.new(0, sz.Y * 0.62, -sz.Z * 0.1), lidColor)
 			elseif ctx.glowEyes and (n == "Iris" or n == "SpiderEye") then
 				part.Material = Enum.Material.Neon
 				part.Color = Color3.fromRGB(255, 50, 40)
@@ -5404,7 +5405,10 @@ blockify = function(model, data)
 			for _, part in ipairs(model:GetDescendants()) do
 				if part:IsA("BasePart") and (part.Name == "Pupil" or part.Name == "Iris") then
 					part.Material = Enum.Material.Neon
-					part.Color = if part.Name == "Pupil" then rarity.Color:Lerp(Color3.new(1, 1, 1), 0.3) else rarity.Color
+					part.Color = if part.Name == "Pupil" then Color3.fromRGB(12, 10, 14) else rarity.Color:Lerp(Color3.new(1, 1, 1), 0.15)
+					if part.Name == "Pupil" then
+						part.Material = Enum.Material.SmoothPlastic
+					end
 				end
 			end
 		end

@@ -41,6 +41,21 @@ local function defaults()
 	}
 end
 
+-- Pets that were renamed keep working in old saves: swap old names for new
+-- ones anywhere in the saved nest (pets and the species of eggs).
+local function renameSaved(value, depth)
+	if type(value) ~= "table" or depth > 4 then
+		return
+	end
+	for key, v in pairs(value) do
+		if (key == "Name" or key == "Species") and type(v) == "string" and Config.RenamedPets[v] then
+			value[key] = Config.RenamedPets[v]
+		else
+			renameSaved(v, depth + 1)
+		end
+	end
+end
+
 function DataService.Load(player)
 	local profile = defaults()
 	canSave[player.UserId] = false
@@ -70,12 +85,13 @@ function DataService.Load(player)
 		profile.SpeedBuys = math.max(0, math.floor(tonumber(data.SpeedBuys) or 0))
 		profile.TreadmillLevel = math.clamp(math.floor(tonumber(data.TreadmillLevel) or 1), 1, #Config.TreadmillLevels)
 		if type(data.Nest) == "table" then
+			renameSaved(data.Nest, 1)
 			profile.Nest = data.Nest
 		end
 		if type(data.Index) == "table" then
 			for name, found in pairs(data.Index) do
 				if type(name) == "string" and found == true then
-					profile.Index[name] = true
+					profile.Index[Config.RenamedPets[name] or name] = true
 				end
 			end
 		end
