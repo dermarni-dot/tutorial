@@ -1777,8 +1777,12 @@ function GameService.AddPlayer(player, profile)
 	plotOwners[plot.Index] = player
 	plot.Model:SetAttribute("OwnerUserId", player.UserId)
 
+	-- Parent the folder first, then add Cash and then Speed one at a time: the
+	-- player list builds its columns in the order stats arrive, and adding them
+	-- all at once can put the numbers under the wrong column names.
 	local leaderstats = Instance.new("Folder")
 	leaderstats.Name = "leaderstats"
+	leaderstats.Parent = player
 	local cashValue = Instance.new("IntValue")
 	cashValue.Name = "Cash"
 	cashValue.Value = math.floor(profile.Cash)
@@ -1787,7 +1791,6 @@ function GameService.AddPlayer(player, profile)
 	speedValue.Name = "Speed"
 	speedValue.Value = profile.Speed
 	speedValue.Parent = leaderstats
-	leaderstats.Parent = player
 
 	local state = {
 		Player = player,
