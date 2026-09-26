@@ -2379,7 +2379,7 @@ local function setupExtraGui()
 	titleStroke.Thickness = 4
 	titleStroke.Color = Color3.fromRGB(120, 60, 20)
 	titleStroke.Parent = splashTitle
-	label(splash, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.54), Size = UDim2.fromOffset(560, 30), Font = Enum.Font.GothamBold, TextColor3 = Color3.fromRGB(220, 215, 240), Text = "Grab eggs · Outrun guardians · Hatch 199 pets" })
+	label(splash, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.54), Size = UDim2.fromOffset(560, 30), Font = Enum.Font.GothamBold, TextColor3 = Color3.fromRGB(220, 215, 240), Text = "Grab eggs · Outrun guardians · Hatch 499 pets" })
 	local playButton = Instance.new("TextButton")
 	playButton.Name = "PlayButton"
 	playButton.AnchorPoint = Vector2.new(0.5, 0.5)
