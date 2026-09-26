@@ -2260,12 +2260,16 @@ local ANATOMY = {}
 local ORANGE_FOOT = Color3.fromRGB(255, 160, 50)
 
 -- Head with the cartoon face. Returns an `add` that works in head space.
+local HEAD_SCALE = 0.85 -- smaller heads look more like real animals
 local function makeHead(ctx, cf, H, color, opts)
 	opts = opts or {}
 	local add = ctx.add
-	add("Head", "Blob", Vector3.new(H, H * 0.95, H * 0.95), cf, color)
+	-- the whole head (and everything built on it) shrinks around its center;
+	-- the shared four-legged body already sizes its heads, so it skips this
+	local k = if opts.Real then 1 else HEAD_SCALE
+	add("Head", "Blob", Vector3.new(H, H * 0.95, H * 0.95) * k, cf, color)
 	local function headAdd(name, shape, size, localCf, col, mat)
-		return add(name, shape, size, cf * localCf, col, mat)
+		return add(name, shape, size * k, cf * CFrame.new(localCf.Position * k) * (localCf - localCf.Position), col, mat)
 	end
 	local eyeX, eyeY, eyeSize = (opts.EyeX or 0.21) * H, (opts.EyeY or 0.1) * H, (opts.EyeSize or 0.27) * H
 	for _, sx in ipairs({ -1, 1 }) do
@@ -2427,21 +2431,36 @@ local function batWing(ctx, sx, root, span, color, bone)
 end
 
 -- Mammals ---------------------------------------------------------------------
+-- Realistic proportions for four-legged animals: a longer, slimmer body,
+-- longer legs, a smaller head held up on a neck and a longer muzzle.
+local REAL_BODY = Vector3.new(0.9, 0.86, 1.25)
+local REAL_LEG = 1.5
+local REAL_LEG_W = 1
+local REAL_HEAD = 0.8
+local REAL_SNOUT = 1.35
+
 local function mammal(ctx, o)
+	-- stretch the torso to real-animal proportions first
+	ctx.T = ctx.T * REAL_BODY
+	if ctx.body then
+		ctx.body.Size = ctx.T
+	end
 	local S, T, add = ctx.S, ctx.T, ctx.add
 	local c = ctx.color
 	if o.Belly ~= false then
 		add("Belly", "Blob", Vector3.new(T.X * 0.72, T.Y * 0.55, T.Z * 0.78), CFrame.new(0, -T.Y * 0.2, 0), o.Belly or ctx.light)
 	end
-	ctx.footDrop = legs4(ctx, o.Leg or 0.3, o.LegW or 0.2, o.LegColor or c, o.Paw or ctx.dark, o.LegOpts)
-	if o.Neck then
-		add("Neck", "Blob", Vector3.new(S * 0.3, S * (0.35 + o.Neck), S * 0.3), CFrame.new(0, T.Y * 0.3 + S * o.Neck * 0.4, -T.Z * 0.42) * CFrame.Angles(math.rad(-25), 0, 0), c)
-	end
-	local H = (o.Head or 0.7) * S
-	local headCf = CFrame.new(0, T.Y * 0.32 + S * ((o.Neck or 0) + (o.HeadUp or 0.22)), -T.Z * 0.5 - S * (o.HeadFwd or 0.08))
-	local headAdd = makeHead(ctx, headCf, H, o.HeadColor or c, { Fur = o.Fur, Mouth = o.Snout == nil, EyeY = o.EyeY })
+	ctx.footDrop = legs4(ctx, (o.Leg or 0.3) * REAL_LEG, (o.LegW or 0.2) * REAL_LEG_W, o.LegColor or c, o.Paw or ctx.dark, o.LegOpts)
+	local H = (o.Head or 0.7) * S * REAL_HEAD
+	local headCf = CFrame.new(0, T.Y * 0.32 + S * ((o.Neck or 0) + (o.HeadUp or 0.22) + 0.1), -T.Z * 0.5 - S * (o.HeadFwd or 0.08))
+	-- a neck joining the shoulders to the head
+	local shoulder = Vector3.new(0, T.Y * 0.18, -T.Z * 0.36)
+	local headPos = headCf.Position + Vector3.new(0, -H * 0.2, H * 0.15)
+	local neckLen = (headPos - shoulder).Magnitude
+	add("Neck", "Blob", Vector3.new(S * (0.34 + (o.Neck or 0) * 0.2), S * (0.34 + (o.Neck or 0) * 0.2), neckLen + S * 0.3), CFrame.lookAt((shoulder + headPos) / 2, headPos), c)
+	local headAdd = makeHead(ctx, headCf, H, o.HeadColor or c, { Fur = o.Fur, Mouth = o.Snout == nil, EyeY = o.EyeY, Real = true })
 	if o.Snout then
-		snoutOn(headAdd, H, o.Snout, o.SnoutW or 0.42, o.SnoutColor or ctx.light, o.NoseColor)
+		snoutOn(headAdd, H, o.Snout * REAL_SNOUT, o.SnoutW or 0.42, o.SnoutColor or ctx.light, o.NoseColor)
 	end
 	earsOn(headAdd, H, o.Ears, o.EarColor or c, o.EarInner)
 	tailOn(ctx, o.Tail, CFrame.new(0, T.Y * 0.12, T.Z * 0.46), o.TailColor or c)
@@ -2893,6 +2912,13 @@ ANATOMY.Shark = { Torso = Vector3.new(0.7, 0.66, 1.5), Float = true, Build = fun
 
 -- Birds -----------------------------------------------------------------------------
 local function birdBuild(ctx, kind)
+	if kind == "Bird" or kind == "Duck" or kind == "Phoenix" then
+		-- slimmer, longer body like a real bird
+		ctx.T = ctx.T * Vector3.new(0.85, 0.9, 1.2)
+		if ctx.body then
+			ctx.body.Size = ctx.T
+		end
+	end
 	local S, T, add = ctx.S, ctx.T, ctx.add
 	local orange = Color3.fromRGB(255, 150, 40)
 	local legColor = if kind == "Owl" then Color3.fromRGB(120, 100, 80) elseif kind == "Phoenix" then Color3.fromRGB(255, 200, 80) else ORANGE_FOOT
@@ -3399,6 +3425,7 @@ local function buildAnatomy(spec, data, def, rarity, tier, S, color, dark, light
 		S = S, T = T, add = add, color = color, dark = dark, light = light, rarity = rarity, def = def, data = data,
 		iris = if data.Shiny then Color3.fromRGB(255, 205, 70) else rarity.Color:Lerp(Color3.fromRGB(70, 110, 200), 0.35),
 		footDrop = T.Y * 0.5,
+		body = body,
 	}
 	local gloss = add("Gloss", "Blob", Vector3.new(T.X * 0.4, S * 0.12, T.Z * 0.3), CFrame.new(-T.X * 0.18, T.Y * 0.42, -T.Z * 0.1) * CFrame.Angles(math.rad(-10), 0, math.rad(15)), WHITE)
 	gloss.Transparency = 0.5
@@ -3427,7 +3454,7 @@ local function buildAnatomy(spec, data, def, rarity, tier, S, color, dark, light
 
 	-- patterns wrap the torso; accessories sit on the head
 	if def and def.Pattern and PATTERNS[def.Pattern] then
-		PATTERN_EXTENT = T * 0.5
+		PATTERN_EXTENT = ctx.T * 0.5
 		local glow = def.PatternGlow or rarity.Order >= 5
 		local col = def.PatternColor or (if def.Pattern == "Stars" or def.Pattern == "Hearts" then color:Lerp(WHITE, 0.7) else dark)
 		PATTERNS[def.Pattern](add, S, col, if glow then Enum.Material.Neon else nil)
