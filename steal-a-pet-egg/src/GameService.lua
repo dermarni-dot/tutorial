@@ -189,6 +189,10 @@ end
 local function refreshEggLabel(rec)
 	local rarity = Config.RarityById[rec.Rarity]
 	local title = rarity.Id .. " Egg"
+	local variant = rec.Part:GetAttribute("EggVariant")
+	if variant and variant ~= "Classic" then
+		title = variant .. " " .. title
+	end
 	local mutation = rec.Mutation and Config.MutationById[rec.Mutation]
 	if mutation then
 		title = mutation.Icon .. " " .. mutation.Id .. " " .. title
