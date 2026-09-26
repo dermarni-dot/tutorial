@@ -196,9 +196,10 @@ function Config.PetWeight(data)
 end
 
 -- How big the model looks compared with a normal-size adult
+Config.PetSizeBoost = 1.6 -- pets are big, chunky showpieces in your base
 function Config.PetVisualScale(data)
 	local stage = Config.Stages[Config.PetStage(data)]
-	return stage.Scale * (data.Size or 1) ^ (1 / 3)
+	return stage.Scale * (data.Size or 1) ^ (1 / 3) * Config.PetSizeBoost
 end
 
 Config.FuseCount = 3 -- this many identical pets fuse into one of the next tier
@@ -640,6 +641,7 @@ Config.Rarities = {
 		HatchTime = 75,
 		Color = Color3.fromRGB(180, 90, 255),
 		Creatures = {
+			{ Name = "Silverback", Style = "Gorilla", Income = 240, Color = Color3.fromRGB(70, 68, 72), Pattern = "Patches" },
 			{ Name = "Voidmoth", Style = "Moth", Income = 220, Color = Color3.fromRGB(90, 50, 140) },
 			{ Name = "Crystal Stag", Style = "Stag", Income = 260, Color = Color3.fromRGB(200, 160, 255) },
 			{ Name = "Dino Rex", Style = "Dino", Income = 240, Color = Color3.fromRGB(110, 190, 90), Pattern = "Spots" },
@@ -717,6 +719,7 @@ Config.Rarities = {
 		HatchTime = 120,
 		Color = Color3.fromRGB(255, 180, 40),
 		Creatures = {
+			{ Name = "Jungle Kong", Style = "Gorilla", Income = 2200, Color = Color3.fromRGB(95, 70, 50) },
 			{ Name = "Solar Drake", Style = "Drake", Income = 1500, Color = Color3.fromRGB(255, 160, 40) },
 			{ Name = "Tidal Serpent", Style = "Serpent", Income = 1800, Color = Color3.fromRGB(40, 140, 220) },
 			{ Name = "Starlight Unicorn", Style = "Unicorn", Income = 1700, Color = Color3.fromRGB(255, 250, 255), Pattern = "Stars" },
@@ -975,6 +978,7 @@ Config.Rarities = {
 		HatchTime = 1200,
 		Color = Color3.fromRGB(255, 60, 90),
 		Creatures = {
+			{ Name = "Silver Gorilla King", Style = "Gorilla", Income = 950000000, Color = Color3.fromRGB(215, 215, 225), Weight = 0.3 },
 			{ Name = "Omega Cerberus", Style = "Cerberus", Income = 300000000, Color = Color3.fromRGB(70, 15, 25), Pattern = "Swirl" },
 			{ Name = "Infinity Serpent", Style = "Serpent", Income = 360000000, Color = Color3.fromRGB(255, 80, 120), Pattern = "Rainbow" },
 			{ Name = "Tyrant Rex", Style = "Dino", Income = 420000000, Color = Color3.fromRGB(120, 20, 30), Pattern = "Stripes" },
@@ -5006,7 +5010,7 @@ local NATURAL_COLOR = {
 	Peacock = Color3.fromRGB(40, 90, 170), Dolphin = Color3.fromRGB(130, 150, 175), Whale = Color3.fromRGB(80, 100, 140),
 	Frog = Color3.fromRGB(90, 160, 60), Octopus = Color3.fromRGB(220, 110, 90), Bat = Color3.fromRGB(75, 62, 62),
 	Crab = Color3.fromRGB(220, 90, 60), Snail = Color3.fromRGB(190, 160, 120), Bee = Color3.fromRGB(245, 200, 50),
-	Ladybug = Color3.fromRGB(220, 40, 40), Penguin = Color3.fromRGB(40, 40, 50), Panda = Color3.fromRGB(245, 245, 245),
+	Gorilla = Color3.fromRGB(60, 58, 62), Ladybug = Color3.fromRGB(220, 40, 40), Penguin = Color3.fromRGB(40, 40, 50), Panda = Color3.fromRGB(245, 245, 245),
 }
 local NATURAL_BLEND = { 0.8, 0.7, 0.55, 0.4, 0.25 } -- by rarity order; Mythic and up: 0
 local NATURAL_PATTERNS = { Spots = true, Stripes = true, Patches = true, Freckles = true }
@@ -5026,6 +5030,43 @@ end
 local function isNaturalPet(rarity)
 	return rarity.Order <= 4
 end
+
+
+-- Gorilla: a broad, muscular ape that walks on its knuckles, with a big
+-- chest, a small head with a heavy brow, and a crown if it's a king
+ANATOMY.Gorilla = { Torso = Vector3.new(1.05, 1.0, 0.85), Build = function(ctx)
+	local S, T, add = ctx.S, ctx.T, ctx.add
+	local c, dark, light = ctx.color, ctx.dark, ctx.light
+	local skin = c:Lerp(Color3.fromRGB(40, 35, 40), 0.55)
+	add("Chest", "Blob", Vector3.new(T.X * 0.8, T.Y * 0.7, S * 0.3), CFrame.new(0, T.Y * 0.05, -T.Z * 0.42), skin)
+	for _, sx in ipairs({ -1, 1 }) do
+		add("Shoulder", "Blob", Vector3.new(S * 0.55, S * 0.5, S * 0.55), CFrame.new(sx * T.X * 0.5, T.Y * 0.3, -T.Z * 0.2), c)
+		add("Arm", "Blob", Vector3.new(S * 0.32, S * 0.95, S * 0.34), CFrame.new(sx * T.X * 0.58, -T.Y * 0.1, -T.Z * 0.35) * CFrame.Angles(math.rad(-10), 0, math.rad(6 * sx)), c)
+		add("Fist", "Blob", Vector3.new(S * 0.36, S * 0.28, S * 0.36), CFrame.new(sx * T.X * 0.6, -T.Y * 0.5 - S * 0.12, -T.Z * 0.45), skin)
+		add("Leg", "Blob", Vector3.new(S * 0.3, S * 0.45, S * 0.34), CFrame.new(sx * T.X * 0.3, -T.Y * 0.45, T.Z * 0.25), c)
+		add("Foot", "Blob", Vector3.new(S * 0.32, S * 0.16, S * 0.42), CFrame.new(sx * T.X * 0.3, -T.Y * 0.5 - S * 0.14, T.Z * 0.2), skin)
+	end
+	local H = S * 0.5
+	local headAdd = makeHead(ctx, CFrame.new(0, T.Y * 0.5 + H * 0.2, -T.Z * 0.35), H, c, { Mouth = false })
+	headAdd("Face", "Blob", Vector3.new(H * 0.8, H * 0.7, H * 0.3), CFrame.new(0, -H * 0.08, -H * 0.36), skin)
+	headAdd("Brow", "Block", Vector3.new(H * 0.9, H * 0.16, H * 0.2), CFrame.new(0, H * 0.18, -H * 0.42), dark)
+	headAdd("Nose", "Blob", Vector3.new(H * 0.3, H * 0.14, H * 0.1), CFrame.new(0, -H * 0.05, -H * 0.5), skin:Lerp(Color3.new(0, 0, 0), 0.3))
+	headAdd("Mouth", "Block", Vector3.new(H * 0.36, H * 0.05, H * 0.05), CFrame.new(0, -H * 0.25, -H * 0.5), Color3.fromRGB(30, 20, 25))
+	headAdd("Crest", "Blob", Vector3.new(H * 0.5, H * 0.3, H * 0.6), CFrame.new(0, H * 0.45, H * 0.05), c)
+	for _, sx in ipairs({ -1, 1 }) do
+		headAdd("Ear", "Blob", Vector3.new(H * 0.14, H * 0.2, H * 0.1), CFrame.new(sx * H * 0.48, 0, 0), skin)
+	end
+	if ctx.def and ctx.def.Name:find("King") then
+		local gold = Color3.fromRGB(255, 205, 60)
+		headAdd("KingCrown", "Block", Vector3.new(H * 0.8, H * 0.18, H * 0.8), CFrame.new(0, H * 0.66, 0), gold, Enum.Material.Metal)
+		for i = 0, 4 do
+			local a = i / 5 * math.pi * 2
+			triangle(headAdd, "CrownSpike", H * 0.16, H * 0.3, H * 0.06, CFrame.new(math.cos(a) * H * 0.34, H * 0.88, math.sin(a) * H * 0.34) * CFrame.Angles(0, -a - math.pi / 2, 0), gold, Enum.Material.Metal)
+		end
+		headAdd("CrownGem", "Block", Vector3.new(H * 0.14, H * 0.14, H * 0.06), CFrame.new(0, H * 0.66, -H * 0.42), ctx.rarity.Color, Enum.Material.Neon)
+	end
+	ctx.footDrop = T.Y * 0.5 + S * 0.22
+end }
 
 -- Builds a pet from its ANATOMY entry (called by Visuals.MakeCreature)
 local function buildAnatomy(spec, data, def, rarity, tier, S, color, dark, light)
@@ -5946,13 +5987,85 @@ end
 -- Natural surfaces: fur and feathers get a soft fabric texture, reptiles,
 -- amphibians and sea animals get slightly glossy skin. Only the pet's own
 -- body colors change; eyes, accessories, gems and glow stay as they are.
+local blockify -- defined below
 local FUR_STYLES = {}
-for _, s in ipairs({ "Pup", "Cat", "Fox", "Wolf", "Lion", "Bear", "Cub", "Panda", "Raccoon", "Pig", "Cow", "Sheep", "Hamster", "Bunny", "Stag", "Unicorn", "Kitsune", "Elephant", "Monkey", "Hedgehog", "Pony", "Pegasus", "Giraffe", "Kangaroo", "Koala", "Sloth", "Otter", "Squirrel", "Mouse", "Hippo", "Rhino", "Griffin", "Cerberus", "Bat", "Bird", "Chick", "Duck", "Owl", "Phoenix", "Penguin", "Flamingo", "Swan", "Parrot", "Peacock", "Moth", "Bee" }) do
+for _, s in ipairs({ "Gorilla", "Pup", "Cat", "Fox", "Wolf", "Lion", "Bear", "Cub", "Panda", "Raccoon", "Pig", "Cow", "Sheep", "Hamster", "Bunny", "Stag", "Unicorn", "Kitsune", "Elephant", "Monkey", "Hedgehog", "Pony", "Pegasus", "Giraffe", "Kangaroo", "Koala", "Sloth", "Otter", "Squirrel", "Mouse", "Hippo", "Rhino", "Griffin", "Cerberus", "Bat", "Bird", "Chick", "Duck", "Owl", "Phoenix", "Penguin", "Flamingo", "Swan", "Parrot", "Peacock", "Moth", "Bee" }) do
 	FUR_STYLES[s] = true
 end
 local SKIN_STYLES = {}
 for _, s in ipairs({ "Drake", "Dino", "Serpent", "Croc", "Newt", "Axolotl", "Turtle", "Frog", "Fish", "Koi", "Shark", "Dolphin", "Whale", "Seal", "Octopus", "Kraken", "Crab", "Snail" }) do
 	SKIN_STYLES[s] = true
+end
+
+-- Blocky, studded look (like the big showpiece pets in Steal an Egg): every
+-- rounded part becomes a block sized to sit inside its old shape, every face
+-- gets classic studs, and rare pets get a spiky back and glowing eyes.
+local PET_BLOCKY = true
+local BLOCK_FIT = 0.84 -- a block this fraction of an ellipsoid's size stays inside it
+local STUD_FACES = { "TopSurface", "BottomSurface", "LeftSurface", "RightSurface", "FrontSurface", "BackSurface" }
+local SHINY_MATERIALS = { [Enum.Material.Neon] = true, [Enum.Material.Glass] = true, [Enum.Material.ForceField] = true }
+
+blockify = function(model, data)
+	if not PET_BLOCKY then
+		return
+	end
+	local rarity = Config.RarityById[data.Rarity]
+	for _, part in ipairs(model:GetDescendants()) do
+		if part:IsA("BasePart") then
+			local mesh = part:FindFirstChildOfClass("SpecialMesh")
+			if mesh and mesh.MeshType == Enum.MeshType.Sphere then
+				mesh:Destroy()
+				part.Size *= BLOCK_FIT
+			elseif part.Shape == Enum.PartType.Ball then
+				part.Shape = Enum.PartType.Block
+				part.Size *= BLOCK_FIT
+			elseif part.Shape == Enum.PartType.Cylinder then
+				part.Shape = Enum.PartType.Block
+				part.Size = Vector3.new(part.Size.X, part.Size.Y * BLOCK_FIT, part.Size.Z * BLOCK_FIT)
+			end
+			if not SHINY_MATERIALS[part.Material] and part.Material ~= Enum.Material.Metal then
+				part.Material = Enum.Material.Plastic
+				for _, face in ipairs(STUD_FACES) do
+					part[face] = Enum.SurfaceType.Studs
+				end
+			end
+		end
+	end
+	local body = model.PrimaryPart
+	if body and rarity then
+		local add = rigger(model, body)
+		local sz = body.Size
+		-- Legendary and up: a row of spikes down the back
+		if rarity.Order >= 5 then
+			for i = 0, 4 do
+				local spike = add("BackSpike", "Wedge", Vector3.new(sz.X * 0.12, sz.Y * (0.22 + (i % 2) * 0.08), sz.Z * 0.14), CFrame.new(0, sz.Y * 0.5 + sz.Y * 0.08, -sz.Z * 0.32 + i * sz.Z * 0.16), rarity.Color:Lerp(Color3.new(1, 1, 1), 0.25), Enum.Material.Plastic)
+				for _, face in ipairs(STUD_FACES) do
+					spike[face] = Enum.SurfaceType.Studs
+				end
+			end
+		end
+		-- Mythic and up: glowing eyes in the rarity's color
+		if rarity.Order >= 6 then
+			for _, part in ipairs(model:GetDescendants()) do
+				if part:IsA("BasePart") and (part.Name == "Pupil" or part.Name == "Iris") then
+					part.Material = Enum.Material.Neon
+					part.Color = if part.Name == "Pupil" then rarity.Color:Lerp(Color3.new(1, 1, 1), 0.3) else rarity.Color
+				end
+			end
+		end
+	end
+	-- the blocks are a bit smaller than the round parts were: re-plant the feet
+	if model:GetAttribute("FootDrop") ~= nil then
+		local lowest = math.huge
+		for _, part in ipairs(model:GetDescendants()) do
+			if part:IsA("BasePart") and part.Name ~= "Orb" then
+				lowest = math.min(lowest, part.CFrame.Position.Y - part.Size.Y / 2)
+			end
+		end
+		if lowest < math.huge then
+			model:SetAttribute("FootDrop", -lowest)
+		end
+	end
 end
 
 function Visuals.MakeCreature(data)
@@ -5986,6 +6099,7 @@ function Visuals.MakeCreature(data)
 			end
 		end
 	end
+	blockify(model, data)
 	return model
 end
 

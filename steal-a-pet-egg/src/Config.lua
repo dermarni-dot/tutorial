@@ -196,9 +196,10 @@ function Config.PetWeight(data)
 end
 
 -- How big the model looks compared with a normal-size adult
+Config.PetSizeBoost = 1.6 -- pets are big, chunky showpieces in your base
 function Config.PetVisualScale(data)
 	local stage = Config.Stages[Config.PetStage(data)]
-	return stage.Scale * (data.Size or 1) ^ (1 / 3)
+	return stage.Scale * (data.Size or 1) ^ (1 / 3) * Config.PetSizeBoost
 end
 
 Config.FuseCount = 3 -- this many identical pets fuse into one of the next tier
@@ -640,6 +641,7 @@ Config.Rarities = {
 		HatchTime = 75,
 		Color = Color3.fromRGB(180, 90, 255),
 		Creatures = {
+			{ Name = "Silverback", Style = "Gorilla", Income = 240, Color = Color3.fromRGB(70, 68, 72), Pattern = "Patches" },
 			{ Name = "Voidmoth", Style = "Moth", Income = 220, Color = Color3.fromRGB(90, 50, 140) },
 			{ Name = "Crystal Stag", Style = "Stag", Income = 260, Color = Color3.fromRGB(200, 160, 255) },
 			{ Name = "Dino Rex", Style = "Dino", Income = 240, Color = Color3.fromRGB(110, 190, 90), Pattern = "Spots" },
@@ -717,6 +719,7 @@ Config.Rarities = {
 		HatchTime = 120,
 		Color = Color3.fromRGB(255, 180, 40),
 		Creatures = {
+			{ Name = "Jungle Kong", Style = "Gorilla", Income = 2200, Color = Color3.fromRGB(95, 70, 50) },
 			{ Name = "Solar Drake", Style = "Drake", Income = 1500, Color = Color3.fromRGB(255, 160, 40) },
 			{ Name = "Tidal Serpent", Style = "Serpent", Income = 1800, Color = Color3.fromRGB(40, 140, 220) },
 			{ Name = "Starlight Unicorn", Style = "Unicorn", Income = 1700, Color = Color3.fromRGB(255, 250, 255), Pattern = "Stars" },
@@ -975,6 +978,7 @@ Config.Rarities = {
 		HatchTime = 1200,
 		Color = Color3.fromRGB(255, 60, 90),
 		Creatures = {
+			{ Name = "Silver Gorilla King", Style = "Gorilla", Income = 950000000, Color = Color3.fromRGB(215, 215, 225), Weight = 0.3 },
 			{ Name = "Omega Cerberus", Style = "Cerberus", Income = 300000000, Color = Color3.fromRGB(70, 15, 25), Pattern = "Swirl" },
 			{ Name = "Infinity Serpent", Style = "Serpent", Income = 360000000, Color = Color3.fromRGB(255, 80, 120), Pattern = "Rainbow" },
 			{ Name = "Tyrant Rex", Style = "Dino", Income = 420000000, Color = Color3.fromRGB(120, 20, 30), Pattern = "Stripes" },
