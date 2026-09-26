@@ -157,12 +157,13 @@ function Config.RollSize(rng)
 end
 
 -- How big an egg looks for the size of pet inside it: normal eggs look about
--- the same, big pets (1.35-2) come in eggs up to 1.5x bigger, and huge pets
--- (2-3) in eggs up to about 2x bigger. The pet's size is rolled when the egg
+-- the same, big pets (1.35-2) come in eggs up to about 1.9x bigger, and huge
+-- pets (2-3) in eggs up to 2.4x bigger. The pet's size is rolled when the egg
 -- is made, so what you see is what hatches.
-Config.EggScalePower = 0.6
+Config.EggScalePower = 0.9
+Config.MaxEggScale = 2.4
 function Config.EggScale(size)
-	return (size or 1) ^ Config.EggScalePower
+	return math.min((size or 1) ^ Config.EggScalePower, Config.MaxEggScale)
 end
 Config.BigPetSize = 1.35 -- sizes from here up show "BIG" on the egg, 2+ show "HUGE"
 Config.HugePetSize = 2
@@ -213,15 +214,24 @@ Config.Tiers = {
 -- (server luck raises it). Rarest listed first.
 --------------------------------------------------------------------------------
 Config.Mutations = {
+	{ Id = "Void", Icon = "🕳️", Chance = 0.002, Mult = 12, Color = Color3.fromRGB(70, 20, 110) },
+	{ Id = "Solar", Icon = "☀️", Chance = 0.006, Mult = 6, Color = Color3.fromRGB(255, 190, 60) },
+	{ Id = "Neon", Icon = "💡", Chance = 0.008, Mult = 6, Color = Color3.fromRGB(255, 60, 220) },
 	{ Id = "Galaxy", Icon = "🌌", Chance = 0.003, Mult = 10, Color = Color3.fromRGB(120, 70, 220) },
 	{ Id = "Rainbow", Icon = "🌈", Chance = 0.005, Mult = 7, Color = Color3.fromRGB(255, 120, 200) },
 	{ Id = "Lava", Icon = "🔥", Chance = 0.012, Mult = 4, Color = Color3.fromRGB(255, 100, 30) },
 	{ Id = "Frozen", Icon = "❄️", Chance = 0.012, Mult = 4, Color = Color3.fromRGB(150, 220, 255) },
 	{ Id = "Electric", Icon = "⚡", Chance = 0.015, Mult = 3.5, Color = Color3.fromRGB(255, 240, 80) },
 	{ Id = "Diamond", Icon = "💎", Chance = 0.02, Mult = 3, Color = Color3.fromRGB(120, 230, 255) },
+	{ Id = "Shadow", Icon = "🌑", Chance = 0.01, Mult = 5, Color = Color3.fromRGB(50, 40, 70) },
+	{ Id = "Ghostly", Icon = "👻", Chance = 0.01, Mult = 5, Color = Color3.fromRGB(210, 240, 255) },
+	{ Id = "Toxic", Icon = "☢️", Chance = 0.012, Mult = 4.5, Color = Color3.fromRGB(130, 255, 60) },
+	{ Id = "Crystal", Icon = "🔷", Chance = 0.015, Mult = 3.5, Color = Color3.fromRGB(120, 200, 255) },
+	{ Id = "Candy", Icon = "🍬", Chance = 0.02, Mult = 2.5, Color = Color3.fromRGB(255, 150, 210) },
+	{ Id = "Aqua", Icon = "💧", Chance = 0.02, Mult = 2.5, Color = Color3.fromRGB(60, 150, 255) },
 	{ Id = "Golden", Icon = "🌟", Chance = 0.05, Mult = 2, Color = Color3.fromRGB(255, 200, 50) },
 }
-Config.AnnounceMutations = { Galaxy = true, Rainbow = true }
+Config.AnnounceMutations = { Void = true, Solar = true, Neon = true, Galaxy = true, Rainbow = true }
 Config.MutationById = {}
 for _, m in ipairs(Config.Mutations) do
 	Config.MutationById[m.Id] = m

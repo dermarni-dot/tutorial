@@ -326,6 +326,25 @@ end
 --------------------------------------------------------------------------------
 -- Wild nests
 --------------------------------------------------------------------------------
+-- Resize a wild nest (straw and twigs) to fit an egg of scale k
+local function fitNest(nest, k)
+	if not nest then
+		return
+	end
+	local center = CFrame.new(nest:GetAttribute("Center") or nest:GetPivot().Position)
+	for _, part in ipairs(nest:GetDescendants()) do
+		if part:IsA("BasePart") then
+			if part:GetAttribute("BaseSize") == nil then
+				part:SetAttribute("BaseSize", part.Size)
+				part:SetAttribute("BaseOffset", center:ToObjectSpace(part.CFrame))
+			end
+			local offset = part:GetAttribute("BaseOffset")
+			part.Size = part:GetAttribute("BaseSize") * k
+			part.CFrame = center * CFrame.new(offset.Position * k) * (offset - offset.Position)
+		end
+	end
+end
+
 local function placeInSpot(biome, spot, rec)
 	rec.State = "Wild"
 	rec.Spot = spot
@@ -333,7 +352,11 @@ local function placeInSpot(biome, spot, rec)
 	rec.Carrier = nil
 	rec.DespawnToken = nil
 	rec.Part.Anchored = true
-	local home = CFrame.new(spot.Position + Vector3.new(0, rec.Part.Size.Y / 2 + 0.3, 0))
+	-- the nest, the ring and the egg's resting height all fit the egg's size
+	local k = rec.Part:GetAttribute("EggScale") or 1
+	fitNest(spot.Nest, k)
+	local ground = spot.Position - Vector3.new(0, 1, 0)
+	local home = CFrame.new(ground + Vector3.new(0, k + 0.3 + rec.Part.Size.Y / 2, 0))
 	rec.Part.CFrame = home
 	rec.Part:SetAttribute("WildHome", home) -- clients use this to spin and bob it
 	-- glowing ring in the egg's rarity color under the nest
@@ -341,6 +364,7 @@ local function placeInSpot(biome, spot, rec)
 		spot.Ring:Destroy()
 	end
 	spot.Ring = Visuals.MakeRarityRing(rec.Rarity, spot.Position)
+	spot.Ring.Size = Vector3.new(spot.Ring.Size.X, spot.Ring.Size.Y * k, spot.Ring.Size.Z * k)
 	spot.Ring.Parent = ringsFolder
 	rec.Prompt.ActionText = "Grab"
 	rec.Prompt.ObjectText = rec.Rarity .. " Egg (guarded by " .. biome.Def.GuardianName .. ")"
@@ -1889,7 +1913,7 @@ function GameService.Init(mapData, notifyEvent, treadmillEvent)
 		biome.Hunted = {}
 		local spots = {}
 		for i, position in ipairs(biome.Spots) do
-			spots[i] = { Position = position }
+			spots[i] = { Position = position, Nest = biome.Nests and biome.Nests[i] }
 		end
 		biome.Spots = spots
 		spawnGuardian(biome)

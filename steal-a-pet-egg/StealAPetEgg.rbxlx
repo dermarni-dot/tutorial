@@ -157,12 +157,13 @@ function Config.RollSize(rng)
 end
 
 -- How big an egg looks for the size of pet inside it: normal eggs look about
--- the same, big pets (1.35-2) come in eggs up to 1.5x bigger, and huge pets
--- (2-3) in eggs up to about 2x bigger. The pet's size is rolled when the egg
+-- the same, big pets (1.35-2) come in eggs up to about 1.9x bigger, and huge
+-- pets (2-3) in eggs up to 2.4x bigger. The pet's size is rolled when the egg
 -- is made, so what you see is what hatches.
-Config.EggScalePower = 0.6
+Config.EggScalePower = 0.9
+Config.MaxEggScale = 2.4
 function Config.EggScale(size)
-	return (size or 1) ^ Config.EggScalePower
+	return math.min((size or 1) ^ Config.EggScalePower, Config.MaxEggScale)
 end
 Config.BigPetSize = 1.35 -- sizes from here up show "BIG" on the egg, 2+ show "HUGE"
 Config.HugePetSize = 2
@@ -213,15 +214,24 @@ Config.Tiers = {
 -- (server luck raises it). Rarest listed first.
 --------------------------------------------------------------------------------
 Config.Mutations = {
+	{ Id = "Void", Icon = "🕳️", Chance = 0.002, Mult = 12, Color = Color3.fromRGB(70, 20, 110) },
+	{ Id = "Solar", Icon = "☀️", Chance = 0.006, Mult = 6, Color = Color3.fromRGB(255, 190, 60) },
+	{ Id = "Neon", Icon = "💡", Chance = 0.008, Mult = 6, Color = Color3.fromRGB(255, 60, 220) },
 	{ Id = "Galaxy", Icon = "🌌", Chance = 0.003, Mult = 10, Color = Color3.fromRGB(120, 70, 220) },
 	{ Id = "Rainbow", Icon = "🌈", Chance = 0.005, Mult = 7, Color = Color3.fromRGB(255, 120, 200) },
 	{ Id = "Lava", Icon = "🔥", Chance = 0.012, Mult = 4, Color = Color3.fromRGB(255, 100, 30) },
 	{ Id = "Frozen", Icon = "❄️", Chance = 0.012, Mult = 4, Color = Color3.fromRGB(150, 220, 255) },
 	{ Id = "Electric", Icon = "⚡", Chance = 0.015, Mult = 3.5, Color = Color3.fromRGB(255, 240, 80) },
 	{ Id = "Diamond", Icon = "💎", Chance = 0.02, Mult = 3, Color = Color3.fromRGB(120, 230, 255) },
+	{ Id = "Shadow", Icon = "🌑", Chance = 0.01, Mult = 5, Color = Color3.fromRGB(50, 40, 70) },
+	{ Id = "Ghostly", Icon = "👻", Chance = 0.01, Mult = 5, Color = Color3.fromRGB(210, 240, 255) },
+	{ Id = "Toxic", Icon = "☢️", Chance = 0.012, Mult = 4.5, Color = Color3.fromRGB(130, 255, 60) },
+	{ Id = "Crystal", Icon = "🔷", Chance = 0.015, Mult = 3.5, Color = Color3.fromRGB(120, 200, 255) },
+	{ Id = "Candy", Icon = "🍬", Chance = 0.02, Mult = 2.5, Color = Color3.fromRGB(255, 150, 210) },
+	{ Id = "Aqua", Icon = "💧", Chance = 0.02, Mult = 2.5, Color = Color3.fromRGB(60, 150, 255) },
 	{ Id = "Golden", Icon = "🌟", Chance = 0.05, Mult = 2, Color = Color3.fromRGB(255, 200, 50) },
 }
-Config.AnnounceMutations = { Galaxy = true, Rainbow = true }
+Config.AnnounceMutations = { Void = true, Solar = true, Neon = true, Galaxy = true, Rainbow = true }
 Config.MutationById = {}
 for _, m in ipairs(Config.Mutations) do
 	Config.MutationById[m.Id] = m
@@ -1824,6 +1834,87 @@ local MUTATION_FX = {
 		l.Parent = main
 	end,
 }
+
+local function glowLight(main, color, range, brightness)
+	local l = Instance.new("PointLight")
+	l.Color = color
+	l.Range = range
+	l.Brightness = brightness
+	l.Parent = main
+	return l
+end
+local SMOKE = "rbxasset://textures/particles/smoke_main.dds"
+
+MUTATION_FX.Void = function(main, parts)
+	for _, p in ipairs(parts) do
+		p.Color = p.Color:Lerp(Color3.fromRGB(12, 6, 22), 0.8)
+	end
+	-- purple sparks pulled inward, like a black hole
+	emitter(main, { Color = ColorSequence.new(Color3.fromRGB(200, 120, 255), Color3.fromRGB(60, 10, 120)), Size = NumberSequence.new(0.4, 0), Lifetime = NumberRange.new(0.8, 1.2), Rate = 26, Speed = NumberRange.new(-4, -2), SpreadAngle = Vector2.new(180, 180) })
+	emitter(main, { Texture = SMOKE, Color = ColorSequence.new(Color3.fromRGB(40, 10, 70)), LightEmission = 0, Size = NumberSequence.new(1, 2.5), Transparency = NumberSequence.new(0.5, 1), Lifetime = NumberRange.new(1, 2), Rate = 8, Speed = NumberRange.new(0.5, 1), SpreadAngle = Vector2.new(180, 180) })
+	glowLight(main, Color3.fromRGB(150, 60, 255), 14, 2.5)
+end
+MUTATION_FX.Solar = function(main, parts)
+	for _, p in ipairs(parts) do
+		p.Color = p.Color:Lerp(Color3.fromRGB(255, 190, 60), 0.55)
+	end
+	emitter(main, { Color = ColorSequence.new(Color3.fromRGB(255, 240, 150), Color3.fromRGB(255, 140, 30)), Size = NumberSequence.new(0.6, 0), Lifetime = NumberRange.new(0.6, 1), Rate = 30, Speed = NumberRange.new(4, 7), SpreadAngle = Vector2.new(180, 180) })
+	glowLight(main, Color3.fromRGB(255, 200, 90), 18, 3)
+end
+MUTATION_FX.Neon = function(main, parts)
+	local cols = { Color3.fromRGB(255, 60, 220), Color3.fromRGB(40, 240, 255) }
+	for i, p in ipairs(parts) do
+		if i % 3 == 0 then
+			p.Material = Enum.Material.Neon
+			p.Color = cols[(i // 3) % 2 + 1]
+		else
+			p.Color = p.Color:Lerp(Color3.fromRGB(30, 20, 50), 0.5)
+		end
+	end
+	glowLight(main, Color3.fromRGB(255, 80, 230), 16, 2.5)
+end
+MUTATION_FX.Shadow = function(main, parts)
+	for _, p in ipairs(parts) do
+		p.Color = p.Color:Lerp(Color3.fromRGB(25, 20, 35), 0.65)
+	end
+	emitter(main, { Texture = SMOKE, Color = ColorSequence.new(Color3.fromRGB(20, 15, 30)), LightEmission = 0, Size = NumberSequence.new(0.8, 2), Transparency = NumberSequence.new(0.4, 1), Lifetime = NumberRange.new(1.2, 2), Rate = 12, Speed = NumberRange.new(1, 2), EmissionDirection = Enum.NormalId.Top })
+	glowLight(main, Color3.fromRGB(120, 80, 200), 10, 1)
+end
+MUTATION_FX.Ghostly = function(main, parts)
+	for _, p in ipairs(parts) do
+		p.Color = p.Color:Lerp(Color3.fromRGB(230, 245, 255), 0.6)
+		p.Transparency = math.max(p.Transparency, 0.35)
+	end
+	emitter(main, { Texture = SMOKE, Color = ColorSequence.new(Color3.fromRGB(220, 245, 255)), LightEmission = 0.5, Size = NumberSequence.new(0.6, 1.4), Transparency = NumberSequence.new(0.5, 1), Lifetime = NumberRange.new(1.5, 2.5), Rate = 8, Speed = NumberRange.new(0.5, 1.2), EmissionDirection = Enum.NormalId.Top })
+end
+MUTATION_FX.Toxic = function(main, parts)
+	for _, p in ipairs(parts) do
+		p.Color = p.Color:Lerp(Color3.fromRGB(110, 230, 60), 0.5)
+	end
+	emitter(main, { Color = ColorSequence.new(Color3.fromRGB(170, 255, 90), Color3.fromRGB(60, 180, 40)), Size = NumberSequence.new(0.35, 0.6), Transparency = NumberSequence.new(0.2, 1), Lifetime = NumberRange.new(1, 1.8), Rate = 16, Speed = NumberRange.new(1.5, 3), SpreadAngle = Vector2.new(20, 20), EmissionDirection = Enum.NormalId.Top })
+	glowLight(main, Color3.fromRGB(140, 255, 80), 12, 1.5)
+end
+MUTATION_FX.Crystal = function(main, parts)
+	for _, p in ipairs(parts) do
+		p.Color = p.Color:Lerp(Color3.fromRGB(170, 225, 255), 0.5)
+		p.Material = Enum.Material.Glass
+		p.Reflectance = 0.15
+	end
+	emitter(main, { Color = ColorSequence.new(WHITE, Color3.fromRGB(150, 220, 255)), Size = NumberSequence.new(0.3, 0), Lifetime = NumberRange.new(0.8, 1.4), Rate = 12, Speed = NumberRange.new(0.5, 1.5), SpreadAngle = Vector2.new(180, 180) })
+end
+MUTATION_FX.Candy = function(main, parts)
+	for _, p in ipairs(parts) do
+		p.Color = p.Color:Lerp(Color3.fromRGB(255, 170, 215), 0.45)
+	end
+	emitter(main, { Color = ColorSequence.new({ ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 90, 170)), ColorSequenceKeypoint.new(0.5, Color3.fromRGB(255, 230, 80)), ColorSequenceKeypoint.new(1, Color3.fromRGB(110, 220, 255)) }), LightEmission = 0.3, Size = NumberSequence.new(0.25), Lifetime = NumberRange.new(1, 1.6), Rate = 14, Speed = NumberRange.new(0.5, 1.5), Acceleration = Vector3.new(0, -4, 0), SpreadAngle = Vector2.new(180, 180) })
+end
+MUTATION_FX.Aqua = function(main, parts)
+	for _, p in ipairs(parts) do
+		p.Color = p.Color:Lerp(Color3.fromRGB(70, 160, 255), 0.5)
+		p.Reflectance = 0.1
+	end
+	emitter(main, { Color = ColorSequence.new(Color3.fromRGB(210, 240, 255)), LightEmission = 0.4, Size = NumberSequence.new(0.25, 0.5), Transparency = NumberSequence.new(0.2, 1), Lifetime = NumberRange.new(1.2, 2), Rate = 14, Speed = NumberRange.new(1.5, 3), SpreadAngle = Vector2.new(25, 25), EmissionDirection = Enum.NormalId.Top })
+end
 
 -- target: an egg part or a pet model. Returns the mutation def (or nil).
 function Visuals.ApplyMutation(target, mutationId)
@@ -9308,7 +9399,13 @@ end
 -- Biomes
 --------------------------------------------------------------------------------
 -- A little straw nest that one egg sits in. Its top is at y = 1.
-local function buildEggNest(folder, position, rng)
+-- Each nest is its own model (centered on the ground under the egg) so the
+-- game can resize it to fit whatever size of egg spawns in it.
+local function buildEggNest(parent, position, rng)
+	local folder = Instance.new("Model")
+	folder.Name = "EggNest"
+	folder:SetAttribute("Center", position)
+	folder.Parent = parent
 	deco({ Name = "NestStraw", Shape = Enum.PartType.Cylinder, Size = Vector3.new(1, 5.6, 5.6), CFrame = cylinderAlongY(CFrame.new(position + Vector3.new(0, 0.5, 0))), Color = Color3.fromRGB(215, 175, 95), Material = Enum.Material.Fabric, Parent = folder })
 	for i = 1, 9 do
 		local a = i / 9 * math.pi * 2 + rng:NextNumber(-0.1, 0.1)
@@ -9324,6 +9421,7 @@ local function buildEggNest(folder, position, rng)
 			Parent = folder,
 		})
 	end
+	return folder
 end
 
 -- Where the guardian naps: a mossy rock den with a glowing campfire of its color.
@@ -9493,9 +9591,9 @@ local function buildBiome(biomesFolder, index, def, centerZ)
 		table.insert(avoid, { piece[2] * SETPIECE_X, centerZ + piece[3], piece[4] })
 	end
 	local spotGround = scatterSpots(def, centerZ, rng, avoid)
-	local spots = {}
+	local spots, nests = {}, {}
 	for i, p in ipairs(spotGround) do
-		buildEggNest(folder, p, rng)
+		nests[i] = buildEggNest(folder, p, rng)
 		spots[i] = p + Vector3.new(0, 1, 0)
 	end
 
@@ -9545,6 +9643,7 @@ local function buildBiome(biomesFolder, index, def, centerZ)
 		Center = center,
 		NestCenter = nestCenter,
 		Spots = spots,
+		Nests = nests,
 		GuardianHome = home,
 	}
 end
@@ -10099,6 +10198,25 @@ end
 --------------------------------------------------------------------------------
 -- Wild nests
 --------------------------------------------------------------------------------
+-- Resize a wild nest (straw and twigs) to fit an egg of scale k
+local function fitNest(nest, k)
+	if not nest then
+		return
+	end
+	local center = CFrame.new(nest:GetAttribute("Center") or nest:GetPivot().Position)
+	for _, part in ipairs(nest:GetDescendants()) do
+		if part:IsA("BasePart") then
+			if part:GetAttribute("BaseSize") == nil then
+				part:SetAttribute("BaseSize", part.Size)
+				part:SetAttribute("BaseOffset", center:ToObjectSpace(part.CFrame))
+			end
+			local offset = part:GetAttribute("BaseOffset")
+			part.Size = part:GetAttribute("BaseSize") * k
+			part.CFrame = center * CFrame.new(offset.Position * k) * (offset - offset.Position)
+		end
+	end
+end
+
 local function placeInSpot(biome, spot, rec)
 	rec.State = "Wild"
 	rec.Spot = spot
@@ -10106,7 +10224,11 @@ local function placeInSpot(biome, spot, rec)
 	rec.Carrier = nil
 	rec.DespawnToken = nil
 	rec.Part.Anchored = true
-	local home = CFrame.new(spot.Position + Vector3.new(0, rec.Part.Size.Y / 2 + 0.3, 0))
+	-- the nest, the ring and the egg's resting height all fit the egg's size
+	local k = rec.Part:GetAttribute("EggScale") or 1
+	fitNest(spot.Nest, k)
+	local ground = spot.Position - Vector3.new(0, 1, 0)
+	local home = CFrame.new(ground + Vector3.new(0, k + 0.3 + rec.Part.Size.Y / 2, 0))
 	rec.Part.CFrame = home
 	rec.Part:SetAttribute("WildHome", home) -- clients use this to spin and bob it
 	-- glowing ring in the egg's rarity color under the nest
@@ -10114,6 +10236,7 @@ local function placeInSpot(biome, spot, rec)
 		spot.Ring:Destroy()
 	end
 	spot.Ring = Visuals.MakeRarityRing(rec.Rarity, spot.Position)
+	spot.Ring.Size = Vector3.new(spot.Ring.Size.X, spot.Ring.Size.Y * k, spot.Ring.Size.Z * k)
 	spot.Ring.Parent = ringsFolder
 	rec.Prompt.ActionText = "Grab"
 	rec.Prompt.ObjectText = rec.Rarity .. " Egg (guarded by " .. biome.Def.GuardianName .. ")"
@@ -11662,7 +11785,7 @@ function GameService.Init(mapData, notifyEvent, treadmillEvent)
 		biome.Hunted = {}
 		local spots = {}
 		for i, position in ipairs(biome.Spots) do
-			spots[i] = { Position = position }
+			spots[i] = { Position = position, Nest = biome.Nests and biome.Nests[i] }
 		end
 		biome.Spots = spots
 		spawnGuardian(biome)

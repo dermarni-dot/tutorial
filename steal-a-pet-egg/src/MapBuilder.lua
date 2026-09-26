@@ -3269,7 +3269,13 @@ end
 -- Biomes
 --------------------------------------------------------------------------------
 -- A little straw nest that one egg sits in. Its top is at y = 1.
-local function buildEggNest(folder, position, rng)
+-- Each nest is its own model (centered on the ground under the egg) so the
+-- game can resize it to fit whatever size of egg spawns in it.
+local function buildEggNest(parent, position, rng)
+	local folder = Instance.new("Model")
+	folder.Name = "EggNest"
+	folder:SetAttribute("Center", position)
+	folder.Parent = parent
 	deco({ Name = "NestStraw", Shape = Enum.PartType.Cylinder, Size = Vector3.new(1, 5.6, 5.6), CFrame = cylinderAlongY(CFrame.new(position + Vector3.new(0, 0.5, 0))), Color = Color3.fromRGB(215, 175, 95), Material = Enum.Material.Fabric, Parent = folder })
 	for i = 1, 9 do
 		local a = i / 9 * math.pi * 2 + rng:NextNumber(-0.1, 0.1)
@@ -3285,6 +3291,7 @@ local function buildEggNest(folder, position, rng)
 			Parent = folder,
 		})
 	end
+	return folder
 end
 
 -- Where the guardian naps: a mossy rock den with a glowing campfire of its color.
@@ -3454,9 +3461,9 @@ local function buildBiome(biomesFolder, index, def, centerZ)
 		table.insert(avoid, { piece[2] * SETPIECE_X, centerZ + piece[3], piece[4] })
 	end
 	local spotGround = scatterSpots(def, centerZ, rng, avoid)
-	local spots = {}
+	local spots, nests = {}, {}
 	for i, p in ipairs(spotGround) do
-		buildEggNest(folder, p, rng)
+		nests[i] = buildEggNest(folder, p, rng)
 		spots[i] = p + Vector3.new(0, 1, 0)
 	end
 
@@ -3506,6 +3513,7 @@ local function buildBiome(biomesFolder, index, def, centerZ)
 		Center = center,
 		NestCenter = nestCenter,
 		Spots = spots,
+		Nests = nests,
 		GuardianHome = home,
 	}
 end

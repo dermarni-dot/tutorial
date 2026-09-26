@@ -356,6 +356,87 @@ local MUTATION_FX = {
 	end,
 }
 
+local function glowLight(main, color, range, brightness)
+	local l = Instance.new("PointLight")
+	l.Color = color
+	l.Range = range
+	l.Brightness = brightness
+	l.Parent = main
+	return l
+end
+local SMOKE = "rbxasset://textures/particles/smoke_main.dds"
+
+MUTATION_FX.Void = function(main, parts)
+	for _, p in ipairs(parts) do
+		p.Color = p.Color:Lerp(Color3.fromRGB(12, 6, 22), 0.8)
+	end
+	-- purple sparks pulled inward, like a black hole
+	emitter(main, { Color = ColorSequence.new(Color3.fromRGB(200, 120, 255), Color3.fromRGB(60, 10, 120)), Size = NumberSequence.new(0.4, 0), Lifetime = NumberRange.new(0.8, 1.2), Rate = 26, Speed = NumberRange.new(-4, -2), SpreadAngle = Vector2.new(180, 180) })
+	emitter(main, { Texture = SMOKE, Color = ColorSequence.new(Color3.fromRGB(40, 10, 70)), LightEmission = 0, Size = NumberSequence.new(1, 2.5), Transparency = NumberSequence.new(0.5, 1), Lifetime = NumberRange.new(1, 2), Rate = 8, Speed = NumberRange.new(0.5, 1), SpreadAngle = Vector2.new(180, 180) })
+	glowLight(main, Color3.fromRGB(150, 60, 255), 14, 2.5)
+end
+MUTATION_FX.Solar = function(main, parts)
+	for _, p in ipairs(parts) do
+		p.Color = p.Color:Lerp(Color3.fromRGB(255, 190, 60), 0.55)
+	end
+	emitter(main, { Color = ColorSequence.new(Color3.fromRGB(255, 240, 150), Color3.fromRGB(255, 140, 30)), Size = NumberSequence.new(0.6, 0), Lifetime = NumberRange.new(0.6, 1), Rate = 30, Speed = NumberRange.new(4, 7), SpreadAngle = Vector2.new(180, 180) })
+	glowLight(main, Color3.fromRGB(255, 200, 90), 18, 3)
+end
+MUTATION_FX.Neon = function(main, parts)
+	local cols = { Color3.fromRGB(255, 60, 220), Color3.fromRGB(40, 240, 255) }
+	for i, p in ipairs(parts) do
+		if i % 3 == 0 then
+			p.Material = Enum.Material.Neon
+			p.Color = cols[(i // 3) % 2 + 1]
+		else
+			p.Color = p.Color:Lerp(Color3.fromRGB(30, 20, 50), 0.5)
+		end
+	end
+	glowLight(main, Color3.fromRGB(255, 80, 230), 16, 2.5)
+end
+MUTATION_FX.Shadow = function(main, parts)
+	for _, p in ipairs(parts) do
+		p.Color = p.Color:Lerp(Color3.fromRGB(25, 20, 35), 0.65)
+	end
+	emitter(main, { Texture = SMOKE, Color = ColorSequence.new(Color3.fromRGB(20, 15, 30)), LightEmission = 0, Size = NumberSequence.new(0.8, 2), Transparency = NumberSequence.new(0.4, 1), Lifetime = NumberRange.new(1.2, 2), Rate = 12, Speed = NumberRange.new(1, 2), EmissionDirection = Enum.NormalId.Top })
+	glowLight(main, Color3.fromRGB(120, 80, 200), 10, 1)
+end
+MUTATION_FX.Ghostly = function(main, parts)
+	for _, p in ipairs(parts) do
+		p.Color = p.Color:Lerp(Color3.fromRGB(230, 245, 255), 0.6)
+		p.Transparency = math.max(p.Transparency, 0.35)
+	end
+	emitter(main, { Texture = SMOKE, Color = ColorSequence.new(Color3.fromRGB(220, 245, 255)), LightEmission = 0.5, Size = NumberSequence.new(0.6, 1.4), Transparency = NumberSequence.new(0.5, 1), Lifetime = NumberRange.new(1.5, 2.5), Rate = 8, Speed = NumberRange.new(0.5, 1.2), EmissionDirection = Enum.NormalId.Top })
+end
+MUTATION_FX.Toxic = function(main, parts)
+	for _, p in ipairs(parts) do
+		p.Color = p.Color:Lerp(Color3.fromRGB(110, 230, 60), 0.5)
+	end
+	emitter(main, { Color = ColorSequence.new(Color3.fromRGB(170, 255, 90), Color3.fromRGB(60, 180, 40)), Size = NumberSequence.new(0.35, 0.6), Transparency = NumberSequence.new(0.2, 1), Lifetime = NumberRange.new(1, 1.8), Rate = 16, Speed = NumberRange.new(1.5, 3), SpreadAngle = Vector2.new(20, 20), EmissionDirection = Enum.NormalId.Top })
+	glowLight(main, Color3.fromRGB(140, 255, 80), 12, 1.5)
+end
+MUTATION_FX.Crystal = function(main, parts)
+	for _, p in ipairs(parts) do
+		p.Color = p.Color:Lerp(Color3.fromRGB(170, 225, 255), 0.5)
+		p.Material = Enum.Material.Glass
+		p.Reflectance = 0.15
+	end
+	emitter(main, { Color = ColorSequence.new(WHITE, Color3.fromRGB(150, 220, 255)), Size = NumberSequence.new(0.3, 0), Lifetime = NumberRange.new(0.8, 1.4), Rate = 12, Speed = NumberRange.new(0.5, 1.5), SpreadAngle = Vector2.new(180, 180) })
+end
+MUTATION_FX.Candy = function(main, parts)
+	for _, p in ipairs(parts) do
+		p.Color = p.Color:Lerp(Color3.fromRGB(255, 170, 215), 0.45)
+	end
+	emitter(main, { Color = ColorSequence.new({ ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 90, 170)), ColorSequenceKeypoint.new(0.5, Color3.fromRGB(255, 230, 80)), ColorSequenceKeypoint.new(1, Color3.fromRGB(110, 220, 255)) }), LightEmission = 0.3, Size = NumberSequence.new(0.25), Lifetime = NumberRange.new(1, 1.6), Rate = 14, Speed = NumberRange.new(0.5, 1.5), Acceleration = Vector3.new(0, -4, 0), SpreadAngle = Vector2.new(180, 180) })
+end
+MUTATION_FX.Aqua = function(main, parts)
+	for _, p in ipairs(parts) do
+		p.Color = p.Color:Lerp(Color3.fromRGB(70, 160, 255), 0.5)
+		p.Reflectance = 0.1
+	end
+	emitter(main, { Color = ColorSequence.new(Color3.fromRGB(210, 240, 255)), LightEmission = 0.4, Size = NumberSequence.new(0.25, 0.5), Transparency = NumberSequence.new(0.2, 1), Lifetime = NumberRange.new(1.2, 2), Rate = 14, Speed = NumberRange.new(1.5, 3), SpreadAngle = Vector2.new(25, 25), EmissionDirection = Enum.NormalId.Top })
+end
+
 -- target: an egg part or a pet model. Returns the mutation def (or nil).
 function Visuals.ApplyMutation(target, mutationId)
 	local def = mutationId and Config.MutationById[mutationId]
