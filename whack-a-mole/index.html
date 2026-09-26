@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Whack-a-Mole</title>
+<style>
+  :root {
+    --bg: #f4efe6; --ink: #2b2118; --grass: #7cb35b; --hole: #3d2b1f;
+    --mole: #8a5a3b; --accent: #e0583a; --card: #fffaf2;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #1b1713; --ink: #f1e8dc; --grass: #3f6b2e; --hole: #0f0a07; --card: #2a231d; }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; background: var(--bg); color: var(--ink);
+    font-family: system-ui, sans-serif; display: flex; flex-direction: column;
+    align-items: center; padding: 24px 16px; user-select: none;
+  }
+  h1 { margin: 0 0 8px; font-size: 2rem; }
+  .hud { display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; justify-content: center; }
+  .stat { background: var(--card); padding: 8px 14px; border-radius: 10px; font-weight: 600; }
+  .stat span { font-variant-numeric: tabular-nums; }
+  .board {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px;
+    background: var(--grass); padding: 18px; border-radius: 18px;
+    width: min(420px, 100%);
+  }
+  .hole {
+    position: relative; aspect-ratio: 1; border-radius: 50%; background: var(--hole);
+    overflow: hidden; cursor: pointer; border: none; padding: 0;
+  }
+  .hole .key {
+    position: absolute; bottom: 6%; left: 0; right: 0; text-align: center;
+    font-size: .8rem; font-weight: 600; color: #fff9; z-index: 2;
+  }
+  .mole {
+    position: absolute; left: 12%; width: 76%; height: 80%; top: 100%;
+    background: var(--mole); border-radius: 50% 50% 40% 40%;
+    transition: top .12s ease-out;
+  }
+  .mole::before, .mole::after {  /* eyes */
+    content: ""; position: absolute; top: 28%; width: 12%; height: 12%;
+    background: #111; border-radius: 50%;
+  }
+  .mole::before { left: 30%; } .mole::after { right: 30%; }
+  .hole.up .mole { top: 22%; }
+  .hole.hit .mole { background: var(--accent); }
+  button.start {
+    margin-top: 18px; font-size: 1.1rem; padding: 10px 26px; border-radius: 999px;
+    border: none; background: var(--accent); color: #fff; font-weight: 700; cursor: pointer;
+  }
+  button.start:disabled { opacity: .5; cursor: default; }
+  p.help { opacity: .7; font-size: .9rem; text-align: center; }
+</style>
+</head>
+<body>
+  <h1>Whack-a-Mole</h1>
+  <div class="hud">
+    <div class="stat">Score: <span id="score">0</span></div>
+    <div class="stat">Time: <span id="time">30</span>s</div>
+    <div class="stat">Best: <span id="best">0</span></div>
+  </div>
+  <div class="board" id="board"></div>
+  <button class="start" id="start">Start</button>
+  <p class="help">Click the moles or use keys 1–9 (numpad layout: 7 8 9 top row).<br>
+  They get faster as time runs out. Missing a click costs a point.</p>
+
+<script>
+const ROUND_SECONDS = 30;
+// Numpad layout: top row 7-8-9, middle 4-5-6, bottom 1-2-3.
+const KEYS = ["7", "8", "9", "4", "5", "6", "1", "2", "3"];
+
+const board = document.getElementById("board");
+const scoreEl = document.getElementById("score");
+const timeEl = document.getElementById("time");
+const bestEl = document.getElementById("best");
+const startBtn = document.getElementById("start");
+
+let score = 0, timeLeft = ROUND_SECONDS, playing = false, timers = [];
+
+function loadBest() {
+  try { return Number(localStorage.getItem("wam-best")) || 0; } catch { return 0; }
+}
+function saveBest(v) {
+  try { localStorage.setItem("wam-best", String(v)); } catch {}
+}
+bestEl.textContent = loadBest();
+
+const holes = KEYS.map((key, i) => {
+  const hole = document.createElement("button");
+  hole.className = "hole";
+  hole.setAttribute("aria-label", `Hole ${key}`);
+  hole.innerHTML = `<div class="mole"></div><span class="key">${key}</span>`;
+  hole.addEventListener("pointerdown", () => whack(i));
+  board.appendChild(hole);
+  return hole;
+});
+
+function whack(i) {
+  if (!playing) return;
+  const hole = holes[i];
+  if (hole.classList.contains("up") && !hole.classList.contains("hit")) {
+    score++;
+    hole.classList.add("hit");
+    setTimeout(() => hole.classList.remove("up", "hit"), 150);
+  } else {
+    score = Math.max(0, score - 1);
+  }
+  scoreEl.textContent = score;
+}
+
+document.addEventListener("keydown", (e) => {
+  const i = KEYS.indexOf(e.key);
+  if (i !== -1) whack(i);
+  if (e.key === " " && !playing) { e.preventDefault(); start(); }
+});
+
+function popMole() {
+  if (!playing) return;
+  const free = holes.filter(h => !h.classList.contains("up"));
+  if (free.length) {
+    const hole = free[Math.floor(Math.random() * free.length)];
+    hole.classList.add("up");
+    // Moles stay up for less time as the round goes on.
+    const progress = 1 - timeLeft / ROUND_SECONDS;
+    const upFor = 1000 - progress * 550;
+    timers.push(setTimeout(() => hole.classList.remove("up"), upFor));
+  }
+  const nextIn = 700 - (1 - timeLeft / ROUND_SECONDS) * 400 + Math.random() * 200;
+  timers.push(setTimeout(popMole, nextIn));
+}
+
+function tick() {
+  timeLeft--;
+  timeEl.textContent = timeLeft;
+  if (timeLeft <= 0) end(); else timers.push(setTimeout(tick, 1000));
+}
+
+function start() {
+  score = 0; timeLeft = ROUND_SECONDS; playing = true;
+  scoreEl.textContent = 0; timeEl.textContent = timeLeft;
+  startBtn.disabled = true; startBtn.textContent = "Go!";
+  timers.push(setTimeout(tick, 1000));
+  popMole();
+}
+
+function end() {
+  playing = false;
+  timers.forEach(clearTimeout); timers = [];
+  holes.forEach(h => h.classList.remove("up", "hit"));
+  if (score > loadBest()) { saveBest(score); bestEl.textContent = score; }
+  startBtn.disabled = false;
+  startBtn.textContent = `Play again (scored ${score})`;
+}
+
+startBtn.addEventListener("click", start);
+</script>
+</body>
+</html>
