@@ -2465,6 +2465,265 @@ local function setupExtraGui()
 	local stopRevealModel = nil
 	local revealToken = 0
 
+	--------------------------------------------------------------------------------
+	-- Egg opening: before the pet card, the egg drops in, shakes three times
+	-- (harder each time) as cracks spread and its glow grows, then bursts open in
+	-- a flash with flying shell pieces (and confetti for rare pets). Rarer eggs
+	-- take a little longer. Tap anywhere to skip.
+	--------------------------------------------------------------------------------
+	local playOpening
+	do
+		local overlay = Instance.new("TextButton")
+		overlay.Name = "EggOpening"
+		juiced[overlay] = true
+		overlay.Text = ""
+		overlay.AutoButtonColor = false
+		overlay.Size = UDim2.fromScale(1, 1)
+		overlay.BackgroundColor3 = Color3.fromRGB(8, 6, 16)
+		overlay.BackgroundTransparency = 1
+		overlay.BorderSizePixel = 0
+		overlay.ZIndex = 30
+		overlay.Visible = false
+		overlay.Parent = gui
+
+		local glow = Instance.new("Frame")
+		glow.Name = "Glow"
+		glow.AnchorPoint = Vector2.new(0.5, 0.5)
+		glow.Position = UDim2.fromScale(0.5, 0.47)
+		glow.Size = UDim2.fromOffset(160, 160)
+		glow.BackgroundTransparency = 0.55
+		glow.BorderSizePixel = 0
+		glow.ZIndex = 31
+		glow.Parent = overlay
+		corner(glow, 999)
+		local openRays = Instance.new("Frame")
+		openRays.BackgroundTransparency = 1
+		openRays.AnchorPoint = Vector2.new(0.5, 0.5)
+		openRays.Position = UDim2.fromScale(0.5, 0.47)
+		openRays.Size = UDim2.fromOffset(10, 10)
+		openRays.ZIndex = 31
+		openRays.Parent = overlay
+		local openRayParts = {}
+		for i = 0, 11 do
+			local ray = Instance.new("Frame")
+			ray.AnchorPoint = Vector2.new(0.5, 0.5)
+			ray.Position = UDim2.fromScale(0.5, 0.5)
+			ray.Size = UDim2.fromOffset(22, 520)
+			ray.Rotation = i * 15
+			ray.BackgroundTransparency = 1
+			ray.BorderSizePixel = 0
+			ray.ZIndex = 31
+			ray.Parent = openRays
+			table.insert(openRayParts, ray)
+		end
+
+		local stage = Instance.new("ViewportFrame")
+		stage.Name = "EggStage"
+		stage.AnchorPoint = Vector2.new(0.5, 0.5)
+		stage.Position = UDim2.fromScale(0.5, 0.47)
+		stage.Size = UDim2.fromOffset(260, 300)
+		stage.BackgroundTransparency = 1
+		stage.Ambient = Color3.fromRGB(180, 175, 195)
+		stage.LightColor = Color3.fromRGB(255, 250, 240)
+		stage.LightDirection = Vector3.new(-0.5, -1, -0.8)
+		stage.ZIndex = 32
+		stage.Parent = overlay
+		local stageCam = Instance.new("Camera")
+		stageCam.FieldOfView = 30
+		stageCam.Parent = stage
+		stage.CurrentCamera = stageCam
+
+		local caption = label(overlay, { AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.fromScale(0.5, 0.75), Size = UDim2.fromOffset(420, 44), ZIndex = 33, Text = "" })
+		local skipHint = label(overlay, { AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -24), Size = UDim2.fromOffset(300, 20), Font = Enum.Font.Gotham, TextColor3 = Color3.fromRGB(190, 185, 210), TextStrokeTransparency = 1, ZIndex = 33, Text = "Tap to skip" })
+		local flash = Instance.new("Frame")
+		flash.Name = "Flash"
+		flash.Size = UDim2.fromScale(1, 1)
+		flash.BackgroundColor3 = Color3.new(1, 1, 1)
+		flash.BackgroundTransparency = 1
+		flash.BorderSizePixel = 0
+		flash.ZIndex = 36
+		flash.Parent = overlay
+
+		local skipped = false
+		overlay.Activated:Connect(function()
+			skipped = true
+		end)
+
+		local spinRays = false
+		RenderStepped:Connect(function(dt)
+			if spinRays then
+				openRays.Rotation = (openRays.Rotation + dt * 40) % 360
+			end
+		end)
+
+		-- UI shell pieces and confetti flying out from the middle
+		local function burstPieces(color, count, confetti)
+			for i = 1, count do
+				local piece = Instance.new("Frame")
+				piece.AnchorPoint = Vector2.new(0.5, 0.5)
+				piece.Position = UDim2.fromScale(0.5, 0.47)
+				local w = if confetti then math.random(8, 14) else math.random(26, 46)
+				piece.Size = UDim2.fromOffset(w, if confetti then w * 0.5 else math.random(18, 34))
+				piece.BackgroundColor3 = if confetti then Color3.fromHSV(math.random(), 0.7, 1) else (if i % 3 == 0 then Color3.new(1, 1, 1) else color)
+				piece.BorderSizePixel = 0
+				piece.Rotation = math.random(0, 360)
+				piece.ZIndex = 35
+				piece.Parent = overlay
+				if not confetti then
+					corner(piece, 6)
+				end
+				local a = math.random() * math.pi * 2
+				local dist = if confetti then math.random(260, 520) else math.random(180, 340)
+				local target = UDim2.new(0.5, math.cos(a) * dist, 0.47, math.sin(a) * dist * 0.8 + (if confetti then 160 else 60))
+				local t = if confetti then 1.4 else 0.8
+				TweenService:Create(piece, TweenInfo.new(t, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Position = target, Rotation = piece.Rotation + math.random(-360, 360), BackgroundTransparency = 1 }):Play()
+				task.delay(t + 0.05, function()
+					piece:Destroy()
+				end)
+			end
+		end
+
+		-- Plays the opening for `data` (the hatched pet), then calls done().
+		playOpening = function(data, done)
+			local rarity = Config.RarityById[data.Rarity]
+			local mutation = data.Mutation and Config.MutationById[data.Mutation]
+			local color = if mutation then mutation.Color else rarity.Color
+			local order = rarity.Order
+			local pace = 1 + math.min(order, 8) * 0.06 -- rarer eggs take a little longer
+			skipped = false
+
+			-- the egg model, the same design as the one that hatched
+			stage:ClearAllChildren()
+			stageCam.Parent = stage
+			local model = Instance.new("Model")
+			local ok, egg = pcall(Visuals.MakeEgg, data.Rarity, data.EggVariant)
+			if ok and egg then
+				if mutation then
+					pcall(Visuals.ApplyMutation, egg, data.Mutation)
+				end
+				for _, d in ipairs(egg:GetDescendants()) do
+					if d:IsA("BillboardGui") or d:IsA("ParticleEmitter") or d:IsA("Sparkles") or d:IsA("PointLight") then
+						d:Destroy()
+					end
+				end
+				egg.Anchored = true
+				egg.CFrame = CFrame.new()
+				egg.Parent = model
+				model.PrimaryPart = egg
+				model.Parent = stage
+				local _, size = model:GetBoundingBox()
+				stageCam.CFrame = CFrame.lookAt(Vector3.new(0, size.Y * 0.1, -size.Magnitude * 2.6), Vector3.zero)
+			end
+			local function pose(cf)
+				if model.PrimaryPart then
+					model:PivotTo(cf)
+				end
+			end
+
+			glow.BackgroundColor3 = color
+			glow.Size = UDim2.fromOffset(120, 120)
+			glow.BackgroundTransparency = 0.7
+			for _, ray in ipairs(openRayParts) do
+				ray.BackgroundColor3 = color:Lerp(Color3.new(1, 1, 1), 0.3)
+				ray.BackgroundTransparency = 1
+			end
+			caption.Text = "Hatching..."
+			caption.TextColor3 = Color3.new(1, 1, 1)
+			skipHint.Text = if UserInputService.GamepadEnabled then "Press Ⓐ to skip" else "Tap to skip"
+			flash.BackgroundTransparency = 1
+			stage.Position = UDim2.new(0.5, 0, 0.47, -400)
+			overlay.BackgroundTransparency = 1
+			overlay.Visible = true
+			if UserInputService.GamepadEnabled then
+				GuiService.SelectedObject = overlay
+			end
+			TweenService:Create(overlay, TweenInfo.new(0.25), { BackgroundTransparency = 0.3 }):Play()
+
+			local function wait(seconds)
+				local t0 = os.clock()
+				while os.clock() - t0 < seconds do
+					if skipped then
+						return false
+					end
+					RenderStepped:Wait()
+				end
+				return not skipped
+			end
+			-- shake the egg for `seconds` at `strength` degrees, jiggling the stage too
+			local function shake(seconds, strength)
+				local t0 = os.clock()
+				while os.clock() - t0 < seconds do
+					if skipped then
+						return false
+					end
+					local t = os.clock() - t0
+					local s = strength * math.sin(t / seconds * math.pi)
+					pose(CFrame.Angles(math.rad(math.sin(t * 38) * s * 0.4), 0, math.rad(math.sin(t * 45) * s)))
+					stage.Position = UDim2.new(0.5, math.sin(t * 60) * s * 0.4, 0.47, 0)
+					RenderStepped:Wait()
+				end
+				pose(CFrame.new())
+				stage.Position = UDim2.fromScale(0.5, 0.47)
+				return not skipped
+			end
+
+			task.spawn(function()
+				local ok2 = true
+				-- 1. drop in with a bounce
+				TweenService:Create(stage, TweenInfo.new(0.45, Enum.EasingStyle.Bounce, Enum.EasingDirection.Out), { Position = UDim2.fromScale(0.5, 0.47) }):Play()
+				ok2 = wait(0.55)
+				-- 2. three shakes, harder each time, with cracks and a growing glow
+				for i = 1, 3 do
+					if not ok2 then
+						break
+					end
+					ok2 = shake(0.32 * pace, 10 + i * 8)
+					if ok2 and egg and i <= 2 then
+						pcall(Visuals.CrackEgg, egg, i, color)
+					end
+					TweenService:Create(glow, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Size = UDim2.fromOffset(150 + i * 50, 150 + i * 50), BackgroundTransparency = 0.65 - i * 0.12 }):Play()
+					if i == 2 then
+						caption.Text = if order >= 5 then "Something rare is coming..." else "Almost there..."
+						caption.TextColor3 = color:Lerp(Color3.new(1, 1, 1), 0.3)
+						spinRays = true
+						for _, ray in ipairs(openRayParts) do
+							TweenService:Create(ray, TweenInfo.new(0.3), { BackgroundTransparency = 0.8 }):Play()
+						end
+					end
+					ok2 = ok2 and wait(0.22 * pace)
+				end
+				-- 3. a last frantic wiggle, then it bursts
+				if ok2 then
+					ok2 = shake(0.4 * pace, 34)
+				end
+				flash.BackgroundTransparency = 0
+				stage:ClearAllChildren()
+				stageCam.Parent = stage
+				burstPieces(color, 12, false)
+				if order >= 4 or mutation or data.Shiny then
+					burstPieces(color, 40, true)
+				end
+				TweenService:Create(flash, TweenInfo.new(0.5), { BackgroundTransparency = 1 }):Play()
+				TweenService:Create(glow, TweenInfo.new(0.4), { Size = UDim2.fromOffset(900, 900), BackgroundTransparency = 1 }):Play()
+				caption.Text = ""
+				task.wait(0.12)
+				-- 4. hand over to the pet card, fading the overlay out behind it
+				done()
+				TweenService:Create(overlay, TweenInfo.new(0.35), { BackgroundTransparency = 1 }):Play()
+				for _, ray in ipairs(openRayParts) do
+					TweenService:Create(ray, TweenInfo.new(0.35), { BackgroundTransparency = 1 }):Play()
+				end
+				task.wait(0.4)
+				spinRays = false
+				overlay.Visible = false
+				if GuiService.SelectedObject == overlay then
+					GuiService.SelectedObject = nil
+				end
+			end)
+		end
+	end
+
+	local presentReveal
 	local function showNextReveal()
 		if revealing or #revealQueue == 0 then
 			return
@@ -2473,6 +2732,14 @@ local function setupExtraGui()
 		revealToken += 1
 		local token = revealToken
 		local data = table.remove(revealQueue, 1)
+		playOpening(data, function()
+			if token == revealToken and revealing then
+				presentReveal(data, token)
+			end
+		end)
+	end
+
+	presentReveal = function(data, token)
 		local rarity = Config.RarityById[data.Rarity]
 		local mutation = data.Mutation and Config.MutationById[data.Mutation]
 		local color = if mutation then mutation.Color else rarity.Color

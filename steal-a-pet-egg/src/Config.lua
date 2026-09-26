@@ -30,6 +30,7 @@ Config.WalkPerTenfoldLate = 30
 Config.MaxWalkSpeed = 800
 Config.GuardianEdge = 0.995 -- guardians run this fraction of your carry speed at their zone's SpeedNeeded
 Config.CarrySpeedMultiplier = 0.9
+Config.TownWalkSpeed = 32 -- walk speed behind the red line (town and bases), whatever your Speed
 Config.StartingSpeed = 5 -- enough to outrun the first guardian
 
 -- Treadmill: step on it to auto-run. Every second you gain

@@ -11,6 +11,7 @@ local MarketplaceService = game:GetService("MarketplaceService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
+local WHITE = Color3.new(1, 1, 1)
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
@@ -119,10 +120,13 @@ local function applyWalkSpeed(player)
 		return
 	end
 	local speed = Config.WalkSpeed(state.Profile.Speed)
+	if state.InTown then
+		speed = math.min(speed, Config.TownWalkSpeed) -- normal pace behind the red line
+	end
 	if state.Carrying then
 		speed *= Config.CarrySpeedMultiplier
 	end
-	if state.BoostUntil and now() < state.BoostUntil then
+	if state.BoostUntil and now() < state.BoostUntil and not state.InTown then
 		speed *= Config.GrabBoostMultiplier -- adrenaline right after grabbing an egg
 	end
 	hum.WalkSpeed = speed
@@ -887,11 +891,81 @@ local function rollCreature(rarityId, stolen)
 	return { Name = def.Name, Rarity = rarityId, Shiny = rng:NextNumber() < chance, Tier = 1, Size = Config.RollSize(rng), Age = 0 }
 end
 
+-- The egg bursts open in the world: shell pieces fly out, a flash of light
+-- and a puff of sparkles in the rarity color (everyone nearby sees it).
+local function hatchBurst(eggPart, color)
+	local folder = workspace:FindFirstChild("Effects") or Instance.new("Folder")
+	folder.Name = "Effects"
+	folder.Parent = workspace
+	local pos, size, shellColor = eggPart.Position, eggPart.Size, eggPart.Color
+	local pieces = {}
+	for i = 1, 10 do
+		local a = i / 10 * math.pi * 2
+		local shard = Instance.new("Part")
+		shard.Name = "EggShard"
+		shard.Size = Vector3.new(size.X * 0.34, size.Y * 0.28, 0.25)
+		shard.CFrame = CFrame.new(pos + Vector3.new(math.cos(a), (i % 3 - 1) * 0.5, math.sin(a)) * size.X * 0.3) * CFrame.Angles(math.random() * 3, a, math.random() * 3)
+		shard.Color = if i % 3 == 0 then WHITE else shellColor
+		shard.Material = Enum.Material.SmoothPlastic
+		shard.CanCollide = false
+		shard.CanQuery = false
+		shard.CanTouch = false
+		shard.CastShadow = false
+		shard.Parent = folder
+		shard.AssemblyLinearVelocity = Vector3.new(math.cos(a) * 14, 18 + math.random() * 10, math.sin(a) * 14)
+		shard.AssemblyAngularVelocity = Vector3.new(math.random() - 0.5, math.random() - 0.5, math.random() - 0.5) * 20
+		TweenService:Create(shard, TweenInfo.new(0.5, Enum.EasingStyle.Linear, Enum.EasingDirection.In, 0, false, 0.45), { Transparency = 1 }):Play()
+		table.insert(pieces, shard)
+	end
+	local flash = Instance.new("Part")
+	flash.Name = "HatchFlash"
+	flash.Shape = Enum.PartType.Ball
+	flash.Size = size
+	flash.Position = pos
+	flash.Anchored = true
+	flash.CanCollide = false
+	flash.CanQuery = false
+	flash.CanTouch = false
+	flash.CastShadow = false
+	flash.Color = color:Lerp(WHITE, 0.5)
+	flash.Material = Enum.Material.Neon
+	flash.Transparency = 0.1
+	flash.Parent = folder
+	table.insert(pieces, flash)
+	TweenService:Create(flash, TweenInfo.new(0.45, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Size = size * 3.2, Transparency = 1 }):Play()
+	local light = Instance.new("PointLight")
+	light.Color = color
+	light.Range = 22
+	light.Brightness = 5
+	light.Parent = flash
+	TweenService:Create(light, TweenInfo.new(0.6), { Brightness = 0 }):Play()
+	local sparkles = Instance.new("ParticleEmitter")
+	sparkles.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+	sparkles.Color = ColorSequence.new(color, WHITE)
+	sparkles.LightEmission = 1
+	sparkles.Size = NumberSequence.new(0.8, 0)
+	sparkles.Lifetime = NumberRange.new(0.6, 1.2)
+	sparkles.Speed = NumberRange.new(10, 20)
+	sparkles.SpreadAngle = Vector2.new(180, 180)
+	sparkles.Drag = 3
+	sparkles.Rate = 0
+	sparkles.Parent = flash
+	sparkles:Emit(35)
+	task.delay(1.4, function()
+		for _, piece in ipairs(pieces) do
+			piece:Destroy()
+		end
+	end)
+end
+
 local function hatch(player, index)
 	local state = states[player]
 	local rec = state.Nest[index].Egg
 	local data = rollCreature(rec.Rarity, rec.Stolen)
 	data.Mutation = rec.Mutation
+	local eggVariant = rec.Part:GetAttribute("EggVariant")
+	local burstColor = if rec.Mutation and Config.MutationById[rec.Mutation] then Config.MutationById[rec.Mutation].Color else Config.RarityById[rec.Rarity].Color
+	hatchBurst(rec.Part, burstColor)
 	destroyEgg(rec)
 	state.Nest[index] = nil
 	local isNew = not state.Profile.Index[data.Name]
@@ -899,7 +973,7 @@ local function hatch(player, index)
 	addStat(state, "Hatched")
 	if hatchRemote then
 		-- the client shows a big reveal with a 3D preview of the pet
-		hatchRemote:FireClient(player, { Name = data.Name, Rarity = data.Rarity, Shiny = data.Shiny, Mutation = data.Mutation, Size = data.Size, Tier = data.Tier, Age = 0, New = isNew })
+		hatchRemote:FireClient(player, { Name = data.Name, Rarity = data.Rarity, Shiny = data.Shiny, Mutation = data.Mutation, Size = data.Size, Tier = data.Tier, Age = 0, New = isNew, EggVariant = eggVariant })
 	end
 
 	local rarity = Config.RarityById[data.Rarity]
@@ -1788,6 +1862,18 @@ function GameService.Init(mapData, notifyEvent, treadmillEvent)
 	RunService.Heartbeat:Connect(function(dt)
 		for _, biome in ipairs(map.Biomes) do
 			updateGuardian(biome, dt)
+		end
+		-- behind the red line (town and bases) everyone walks at a normal pace;
+		-- your full Speed kicks in once you cross into the zones
+		for player, state in pairs(states) do
+			local root = getRoot(player)
+			if root then
+				local inTown = root.Position.Z < map.SafeZoneZ
+				if inTown ~= state.InTown then
+					state.InTown = inTown
+					applyWalkSpeed(player)
+				end
+			end
 		end
 	end)
 	task.spawn(fastLoop)

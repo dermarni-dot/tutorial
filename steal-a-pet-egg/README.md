@@ -47,6 +47,8 @@ Game Settings > Security > **Enable Studio Access to API Services**.
 
   **Running at top speed:** everything in the zones, the town and the bases except floors, walls, the treadmill and the leaderboard screens is walk-through (so the base gate, stone border and fences can't fling you anymore, and invisible ramps smooth the step onto your base floor), so you never snag on a tree or rock at 500 speed; there are fewer props for clearer lanes; and while you carry an egg a glowing trail runs from you back to your base.
 
+  **Behind the red line** (the town and your base) everyone walks at a normal pace (`Config.TownWalkSpeed`, 32); your full Speed kicks in the moment you cross into the zones.
+
   Walk speed climbs with every tenfold of your Speed stat, faster and faster: 5 Speed walks at 49, 300 at 100, 11K at 162, 1M at 260, 100M at 384, 2.5B at 485 and 50B at 589; after that it grows more slowly (1T at 628, 10Qa at 748, max 800). Guardian speed is in studs per second; each guardian is just a hair slower than you are while carrying an egg with its zone's Speed needed. Tune it with `Config.BaseWalkSpeed`, `WalkPerTenfold` and `WalkCurve`.
 
 - **Grabbing eggs:** hold E on an egg in a nest. A napping guardian takes 1.3 seconds to wake up and you get a 1.6-second burst of speed, so even eggs right next to a guardian or boss can be stolen (`Config.GuardianWakeTime`, `GrabBoostTime`). Then the guardian chases you. If it catches you: **SLAP!** A giant glove smacks you, you go spinning through the air with a screen flash, shake and a big SLAP! text, then land back at the start of your base with dizzy stars while it takes its egg back. Get far enough from its nest and it gives up.
@@ -97,7 +99,8 @@ Game Settings > Security > **Enable Studio Access to API Services**.
 - **🏆 Leaderboards** on the lawn right in front of the bases (you see them when you spawn): 8 boards ranking the top 10 players across every server for 💰 Richest, ⏱️ Most Time Played, 🐣 Pets Hatched, 😈 Eggs Stolen, ⚡ Fastest, 📖 Pet Index, 🥚 Eggs Brought Home and 💥 Most Slapped. They update every 90 seconds (saved with OrderedDataStores; in Studio without API access they rank the players in your server instead). Pick the boards in `Config.Leaderboards`.
 - **Screens:**
   - **Title screen** with a Play button when you join.
-  - **Hatch reveal:** your new pet spins in 3D with light rays in its rarity color, its stats, and a NEW PET! tag the first time.
+  - **Egg opening:** when an egg hatches it bursts open in your base (shell pieces, a flash and sparkles everyone can see). On your screen the same egg drops in, shakes three times harder and harder as cracks spread and its glow grows, then bursts in a white flash with flying shell pieces (and confetti for rare, shiny or mutated pets). Rarer eggs take a little longer; tap to skip.
+  - **Hatch reveal:** then your new pet spins in 3D with light rays in its rarity color, its stats, and a NEW PET! tag the first time.
   - **Pet cards:** tap any pet in the 📖 Index to see it in 3D, how much it earns and where its eggs spawn. Pets you haven't found yet show as a silhouette.
   - **Top-left badge** with the time of day and the zone you're in.
 - **Console / gamepad controls:**
