@@ -1072,7 +1072,7 @@ local AdminRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Admi
 
 local adminButton = shopButton:Clone()
 adminButton.Name = "AdminButton"
-adminButton.Position = UDim2.new(0, 14, 0.45, 70)
+adminButton.Position = UDim2.new(0, 14, 0.45, 128)
 adminButton.Size = UDim2.fromOffset(150, 46)
 adminButton.BackgroundColor3 = Color3.fromRGB(70, 70, 90)
 adminButton.Text = "🛠 Admin"
@@ -1443,6 +1443,247 @@ task.spawn(function()
 				DailyRemote:FireServer("Refresh")
 			end
 		end
+	end
+end)
+
+--------------------------------------------------------------------------------
+-- Pet Index: a collection book of every pet. The server mirrors the pets you've
+-- found into player.PetIndex; finished rarity rows give a cash bonus.
+--------------------------------------------------------------------------------
+local INDEX_W, INDEX_H = 760, 470
+local indexButton = shopButton:Clone()
+indexButton.Name = "IndexButton"
+indexButton.Position = UDim2.new(0, 14, 0.45, 70)
+indexButton.Size = UDim2.fromOffset(150, 50)
+indexButton.BackgroundColor3 = Color3.fromRGB(80, 140, 240)
+indexButton.Text = "📖 Index"
+indexButton.Parent = gui
+indexButton:FindFirstChildOfClass("UIStroke").Color = Color3.fromRGB(20, 50, 120)
+
+local indexPanel = Instance.new("Frame")
+indexPanel.Name = "IndexPanel"
+indexPanel.AnchorPoint = Vector2.new(0.5, 0.5)
+indexPanel.Position = UDim2.fromScale(0.5, 0.52)
+indexPanel.Size = UDim2.fromOffset(INDEX_W, INDEX_H)
+indexPanel.BackgroundColor3 = Color3.fromRGB(34, 30, 52)
+indexPanel.ZIndex = 5
+indexPanel.Visible = false
+indexPanel.Parent = gui
+corner(indexPanel, 20)
+stroke(indexPanel, 4, Color3.fromRGB(110, 170, 255))
+local indexScale = Instance.new("UIScale")
+indexScale.Parent = indexPanel
+panelGradient:Clone().Parent = indexPanel
+
+label(indexPanel, {
+	Position = UDim2.fromOffset(24, 10),
+	Size = UDim2.new(1, -110, 0, 48),
+	Text = "📖 PET INDEX",
+	TextXAlignment = Enum.TextXAlignment.Left,
+	TextColor3 = Color3.fromRGB(150, 200, 255),
+})
+local indexSummary = label(indexPanel, {
+	Position = UDim2.fromOffset(26, 60),
+	Size = UDim2.new(1, -52, 0, 22),
+	Font = Enum.Font.GothamBold,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	TextColor3 = Color3.fromRGB(230, 230, 240),
+	TextStrokeTransparency = 1,
+	Text = "",
+})
+local indexClose = closeButton:Clone()
+indexClose.Parent = indexPanel
+
+local indexList = Instance.new("ScrollingFrame")
+indexList.BackgroundTransparency = 1
+indexList.BorderSizePixel = 0
+indexList.Position = UDim2.fromOffset(20, 92)
+indexList.Size = UDim2.new(1, -30, 1, -104)
+indexList.ScrollBarThickness = 6
+indexList.AutomaticCanvasSize = Enum.AutomaticSize.Y
+indexList.CanvasSize = UDim2.new()
+indexList.Parent = indexPanel
+local indexLayout = Instance.new("UIListLayout")
+indexLayout.Padding = UDim.new(0, 8)
+indexLayout.SortOrder = Enum.SortOrder.LayoutOrder
+indexLayout.Parent = indexList
+
+local indexTiles = {} -- [pet name] = { Frame, Name, Icon }
+local indexHeaders = {} -- [rarity id] = header label
+local bonusPercent = math.floor(Config.IndexBonusPerRarity * 100 + 0.5)
+
+for order, rarity in ipairs(Config.Rarities) do
+	indexHeaders[rarity.Id] = label(indexList, {
+		LayoutOrder = order * 2 - 1,
+		Size = UDim2.new(1, -10, 0, 26),
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextColor3 = rarity.Color,
+		Text = rarity.Id,
+	})
+	local grid = Instance.new("Frame")
+	grid.LayoutOrder = order * 2
+	grid.BackgroundTransparency = 1
+	grid.AutomaticSize = Enum.AutomaticSize.Y
+	grid.Size = UDim2.new(1, -10, 0, 0)
+	grid.Parent = indexList
+	local gridLayout2 = Instance.new("UIGridLayout")
+	gridLayout2.CellSize = UDim2.fromOffset(160, 44)
+	gridLayout2.CellPadding = UDim2.fromOffset(8, 8)
+	gridLayout2.SortOrder = Enum.SortOrder.LayoutOrder
+	gridLayout2.Parent = grid
+	for i, def in ipairs(rarity.Creatures) do
+		local tile = Instance.new("Frame")
+		tile.LayoutOrder = i
+		tile.BackgroundColor3 = Color3.fromRGB(52, 46, 78)
+		tile.Parent = grid
+		corner(tile, 10)
+		stroke(tile, 2, rarity.Color)
+		local dot = Instance.new("Frame")
+		dot.AnchorPoint = Vector2.new(0, 0.5)
+		dot.Position = UDim2.new(0, 8, 0.5, 0)
+		dot.Size = UDim2.fromOffset(28, 28)
+		dot.Parent = tile
+		corner(dot, 14)
+		local icon = label(dot, { Size = UDim2.fromScale(1, 1), Text = "?", TextStrokeTransparency = 1 })
+		local name = label(tile, {
+			Position = UDim2.fromOffset(42, 0),
+			Size = UDim2.new(1, -48, 1, 0),
+			Font = Enum.Font.GothamBold,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			TextStrokeTransparency = 1,
+			TextWrapped = true,
+		})
+		local maxSize = Instance.new("UITextSizeConstraint")
+		maxSize.MaxTextSize = 15
+		maxSize.Parent = name
+		indexTiles[def.Name] = { Frame = tile, Dot = dot, Icon = icon, Name = name, Def = def }
+	end
+end
+
+local function refreshIndex()
+	local folder = player:FindFirstChild("PetIndex")
+	local foundAll, totalAll, completeRows = 0, 0, 0
+	for _, rarity in ipairs(Config.Rarities) do
+		local found = 0
+		for _, def in ipairs(rarity.Creatures) do
+			local tile = indexTiles[def.Name]
+			local have = folder ~= nil and folder:FindFirstChild(def.Name) ~= nil
+			if have then
+				found += 1
+				tile.Dot.BackgroundColor3 = def.Color
+				tile.Icon.Text = ""
+				tile.Name.Text = def.Name
+				tile.Name.TextColor3 = Color3.new(1, 1, 1)
+				tile.Frame.BackgroundTransparency = 0
+			else
+				tile.Dot.BackgroundColor3 = Color3.fromRGB(20, 18, 30)
+				tile.Icon.Text = "?"
+				tile.Name.Text = "???"
+				tile.Name.TextColor3 = Color3.fromRGB(140, 135, 165)
+				tile.Frame.BackgroundTransparency = 0.4
+			end
+		end
+		local total = #rarity.Creatures
+		foundAll += found
+		totalAll += total
+		local done = found == total
+		if done then
+			completeRows += 1
+		end
+		indexHeaders[rarity.Id].Text = rarity.Id .. "  " .. found .. "/" .. total .. (if done then "  ✅ +" .. bonusPercent .. "% cash" else "  (finish for +" .. bonusPercent .. "% cash)")
+	end
+	indexSummary.Text = "Found " .. foundAll .. "/" .. totalAll .. " pets  ·  Bonus: +" .. (completeRows * bonusPercent) .. "% cash from all your pets"
+end
+
+task.spawn(function()
+	local folder = player:WaitForChild("PetIndex")
+	folder.ChildAdded:Connect(refreshIndex)
+	folder.ChildRemoved:Connect(refreshIndex)
+	refreshIndex()
+end)
+refreshIndex()
+
+local indexFit = 1
+local function fitIndex()
+	local camera = workspace.CurrentCamera
+	if camera then
+		local vp = camera.ViewportSize
+		indexFit = math.min(1, (vp.X - 40) / INDEX_W, (vp.Y - 60) / INDEX_H)
+		indexScale.Scale = indexFit
+	end
+end
+fitIndex()
+if workspace.CurrentCamera then
+	workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(fitIndex)
+end
+local function setIndexOpen(open)
+	indexPanel.Visible = open
+	if open then
+		indexScale.Scale = 0.7 * indexFit
+		TweenService:Create(indexScale, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = indexFit }):Play()
+	end
+end
+indexButton.Activated:Connect(function()
+	setIndexOpen(not indexPanel.Visible)
+end)
+indexClose.Activated:Connect(function()
+	setIndexOpen(false)
+end)
+
+--------------------------------------------------------------------------------
+-- Revenge: when someone steals your egg, show a timer and outline the thief
+-- in red (only you see it) until you steal from them or time runs out.
+--------------------------------------------------------------------------------
+local revengeBox = Instance.new("Frame")
+revengeBox.Name = "RevengeTimer"
+revengeBox.AnchorPoint = Vector2.new(1, 0)
+revengeBox.Position = UDim2.new(1, -14, 0, 70)
+revengeBox.Size = UDim2.fromOffset(270, 64)
+revengeBox.BackgroundColor3 = Color3.fromRGB(120, 20, 30)
+revengeBox.BackgroundTransparency = 0.1
+revengeBox.Visible = false
+revengeBox.Parent = gui
+corner(revengeBox, 12)
+stroke(revengeBox, 3, Color3.fromRGB(255, 90, 90))
+local revengeTitle = label(revengeBox, { Position = UDim2.fromOffset(10, 4), Size = UDim2.new(1, -20, 0, 30), TextColor3 = Color3.fromRGB(255, 220, 90), Text = "" })
+local revengeSub = label(revengeBox, { Position = UDim2.fromOffset(10, 34), Size = UDim2.new(1, -20, 0, 24), Font = Enum.Font.GothamBold, TextStrokeTransparency = 1, Text = "" })
+
+local revengeHighlight = Instance.new("Highlight")
+revengeHighlight.FillColor = Color3.fromRGB(255, 40, 40)
+revengeHighlight.FillTransparency = 0.6
+revengeHighlight.OutlineColor = Color3.fromRGB(255, 220, 90)
+revengeHighlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+revengeHighlight.Enabled = false
+revengeHighlight.Parent = workspace.CurrentCamera or workspace
+
+local lastRevengeTarget = nil
+local function updateRevenge()
+	local targetId = player:GetAttribute("RevengeTarget")
+	local untilTime = player:GetAttribute("RevengeUntil") or 0
+	local target = targetId and Players:GetPlayerByUserId(targetId)
+	local remaining = untilTime - workspace:GetServerTimeNow()
+	if not target or remaining <= 0 then
+		revengeBox.Visible = false
+		revengeHighlight.Enabled = false
+		revengeHighlight.Adornee = nil
+		lastRevengeTarget = nil
+		return
+	end
+	if target ~= lastRevengeTarget then
+		lastRevengeTarget = target
+		showZone("🚨 EGG STOLEN!", target.DisplayName .. " took your egg. Steal from them for REVENGE cash!", Color3.fromRGB(255, 90, 90))
+	end
+	revengeBox.Visible = true
+	revengeTitle.Text = "😤 REVENGE on " .. target.DisplayName
+	revengeSub.Text = "Steal any egg from them: " .. Util.FormatTime(remaining)
+	revengeHighlight.Adornee = target.Character
+	revengeHighlight.Enabled = target.Character ~= nil
+end
+player:GetAttributeChangedSignal("RevengeTarget"):Connect(updateRevenge)
+task.spawn(function()
+	while true do
+		updateRevenge()
+		task.wait(0.5)
 	end
 end)
 

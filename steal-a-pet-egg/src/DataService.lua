@@ -33,6 +33,7 @@ local function defaults()
 		TreadmillLevel = 1,
 		Nest = {},
 		Daily = { Streak = 0, LastDay = -1 },
+		Index = {}, -- [pet name] = true for every pet you've ever had
 	}
 end
 
@@ -67,6 +68,13 @@ function DataService.Load(player)
 		if type(data.Nest) == "table" then
 			profile.Nest = data.Nest
 		end
+		if type(data.Index) == "table" then
+			for name, found in pairs(data.Index) do
+				if type(name) == "string" and found == true then
+					profile.Index[name] = true
+				end
+			end
+		end
 		if type(data.Daily) == "table" then
 			profile.Daily.Streak = math.max(0, math.floor(tonumber(data.Daily.Streak) or 0))
 			profile.Daily.LastDay = math.floor(tonumber(data.Daily.LastDay) or -1)
@@ -87,6 +95,7 @@ function DataService.Save(player, profile)
 		TreadmillLevel = profile.TreadmillLevel,
 		Nest = profile.Nest,
 		Daily = profile.Daily,
+		Index = profile.Index,
 		Version = 2,
 	}
 	for attempt = 1, 3 do

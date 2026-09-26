@@ -454,6 +454,7 @@ local function placeEggInBase(player, index, rec)
 	local state = states[player]
 	rec.State = "Base"
 	rec.Carrier = nil
+	rec.TakenFrom = nil
 	rec.Owner = player
 	rec.SlotIndex = index
 	rec.Part.Anchored = true
@@ -562,6 +563,97 @@ local function dropCarried(player)
 end
 
 --------------------------------------------------------------------------------
+-- Pet Index: every pet you get is recorded (profile.Index, mirrored into a
+-- player.PetIndex folder for the client). Finishing a rarity row gives a
+-- permanent cash bonus of Config.IndexBonusPerRarity.
+--------------------------------------------------------------------------------
+local function indexProgress(profile, rarityId)
+	local rarity = Config.RarityById[rarityId]
+	local found = 0
+	for _, def in ipairs(rarity.Creatures) do
+		if profile.Index[def.Name] then
+			found += 1
+		end
+	end
+	return found, #rarity.Creatures
+end
+
+local function refreshIndexBonus(state)
+	local complete = 0
+	for _, rarity in ipairs(Config.Rarities) do
+		local found, total = indexProgress(state.Profile, rarity.Id)
+		if found == total then
+			complete += 1
+		end
+	end
+	state.IndexBonus = complete * Config.IndexBonusPerRarity
+	state.Player:SetAttribute("IndexBonus", state.IndexBonus)
+end
+
+local function addIndexFlag(state, name)
+	local flag = Instance.new("BoolValue")
+	flag.Name = name
+	flag.Value = true
+	flag.Parent = state.IndexFolder
+end
+
+local function discoverPet(state, name)
+	local profile = state.Profile
+	local def = Config.CreatureByName[name]
+	if not def or profile.Index[name] then
+		return
+	end
+	profile.Index[name] = true
+	addIndexFlag(state, name)
+	if state.Loading then
+		return -- old saves: quietly add pets that are already in the base
+	end
+	local rarity = Config.RarityById[def.Rarity]
+	local found, total = indexProgress(profile, def.Rarity)
+	notify(state.Player, "📖 New pet in your Index: " .. name .. "! (" .. def.Rarity .. " " .. found .. "/" .. total .. ")", rarity.Color)
+	if found == total then
+		refreshIndexBonus(state)
+		notify(state.Player, "🏆 " .. def.Rarity .. " Index complete! +" .. math.floor(Config.IndexBonusPerRarity * 100 + 0.5) .. "% cash from all your pets, forever!", GOLD)
+		notifyAll("🏆 " .. state.Player.DisplayName .. " completed the " .. def.Rarity .. " Pet Index!", rarity.Color)
+	end
+end
+
+--------------------------------------------------------------------------------
+-- Revenge: when a thief gets your egg home, you get Config.RevengeTime seconds
+-- to steal any egg from them for bonus cash. The client reads the
+-- RevengeTarget / RevengeUntil attributes to show a timer and highlight them.
+--------------------------------------------------------------------------------
+local function setRevenge(state, target, untilTime)
+	state.RevengeOn = target
+	state.RevengeUntil = if target then untilTime else 0
+	state.Player:SetAttribute("RevengeTarget", if target then target.UserId else nil)
+	state.Player:SetAttribute("RevengeUntil", if target then untilTime else nil)
+end
+
+-- thief just got an egg that belonged to victim home
+local function onEggStolen(thief, victim, rarityId)
+	local thiefState, victimState = states[thief], states[victim]
+	if not thiefState or not victimState or thief == victim then
+		return
+	end
+	if thiefState.RevengeOn == victim and now() < thiefState.RevengeUntil then
+		local income = thief:GetAttribute("IncomePerSec") or 0
+		local bonus = math.max(Config.RevengeMinCash, math.floor(income * 60 * Config.RevengeCashMinutes))
+		setCash(thiefState, thiefState.Profile.Cash + bonus)
+		setRevenge(thiefState, nil)
+		thiefState.RevengeReadyAt = now() + Config.RevengeCooldown
+		notify(thief, "😤 REVENGE on " .. victim.DisplayName .. "! +" .. Util.Money(bonus) .. " bonus cash!", GOLD)
+		notifyAll("😤 " .. thief.DisplayName .. " got revenge on " .. victim.DisplayName .. "!", ORANGE)
+		return -- a revenge steal doesn't open a counter-revenge
+	end
+	if now() < (victimState.RevengeReadyAt or 0) then
+		return
+	end
+	setRevenge(victimState, thief, now() + Config.RevengeTime)
+	notify(victim, "🚨 " .. thief.DisplayName .. " stole your " .. rarityId .. " Egg! Steal any egg from them within " .. Util.FormatTime(Config.RevengeTime) .. " for REVENGE cash!", RED)
+end
+
+--------------------------------------------------------------------------------
 -- Pets, hatching and fusing
 --------------------------------------------------------------------------------
 local spawnCreature
@@ -606,6 +698,7 @@ spawnCreature = function(player, index, data)
 	end)
 
 	state.Nest[index] = { Kind = "Creature", Model = model, Data = data }
+	discoverPet(state, data.Name)
 end
 
 local function rollCreature(rarityId, stolen)
@@ -712,6 +805,7 @@ onEggPrompt = function(player, rec)
 			spot.Ring = nil
 		end
 		spot.NextSpawn = now() + biome.Def.RespawnTime
+		rec.TakenFrom = nil
 		rec.GrabPos = spot.Position -- the guardian chases until you're Leash studs from here
 		rec.Spot = nil
 		rec.HomeBiome = biome
@@ -733,6 +827,7 @@ onEggPrompt = function(player, rec)
 		end
 		rec.Stolen = true
 		rec.OriginalOwner = owner
+		rec.TakenFrom = owner
 		rec.StolenFromName = if owner then owner.DisplayName else "someone"
 		startCarry(player, rec)
 		notify(player, "😈 You grabbed " .. rec.StolenFromName .. "'s " .. rec.Rarity .. " Egg! RUN home!", ORANGE)
@@ -746,11 +841,13 @@ onEggPrompt = function(player, rec)
 		end
 		releaseCarry(victim)
 		rec.Stolen = true
+		rec.TakenFrom = victim
 		rec.StolenFromName = victim.DisplayName
 		startCarry(player, rec)
 		notify(player, "😈 You snatched " .. victim.DisplayName .. "'s " .. rec.Rarity .. " Egg!", ORANGE)
 		notify(victim, "⚠️ " .. player.DisplayName .. " snatched your egg!", RED)
 	elseif rec.State == "Dropped" or rec.State == "Rain" then
+		rec.TakenFrom = nil
 		startCarry(player, rec)
 	end
 end
@@ -1098,6 +1195,7 @@ local function fastLoop()
 						local wasHunted = rec.HomeBiome ~= nil
 						local stolenFrom = rec.OriginalOwner
 						local stolenName = rec.StolenFromName
+						local takenFrom = rec.TakenFrom
 						releaseCarry(player)
 						endHunt(rec)
 						if stolenFrom == player then
@@ -1113,6 +1211,9 @@ local function fastLoop()
 							notify(player, "🏠 Made it home! " .. rec.Rarity .. " Egg is incubating.", GREEN)
 						else
 							notify(player, rec.Rarity .. " Egg is incubating. Guard it!", GREEN)
+						end
+						if takenFrom and takenFrom ~= player then
+							onEggStolen(player, takenFrom, rec.Rarity)
 						end
 					elseif now() - state.LastFullWarn > 3 then
 						state.LastFullWarn = now()
@@ -1208,10 +1309,16 @@ local function tickLoop()
 			if state.Passes.DoubleCashPass then
 				income *= 2
 			end
+			income *= 1 + (state.IndexBonus or 0)
 			if income > 0 then
 				setCash(state, state.Profile.Cash + income)
 			end
 			player:SetAttribute("IncomePerSec", income)
+
+			if state.RevengeOn and t >= state.RevengeUntil then
+				setRevenge(state, nil)
+				notify(player, "⌛ Your revenge chance ran out.", ORANGE)
+			end
 
 			if state.LockActive and t >= state.LockedUntil then
 				setLocked(state, false)
@@ -1367,6 +1474,20 @@ function GameService.AddPlayer(player, profile)
 	}
 	states[player] = state
 
+	local indexFolder = Instance.new("Folder")
+	indexFolder.Name = "PetIndex"
+	indexFolder.Parent = player
+	state.IndexFolder = indexFolder
+	state.IndexBonus = 0
+	for name in pairs(profile.Index) do
+		if Config.CreatureByName[name] then
+			addIndexFlag(state, name)
+		else
+			profile.Index[name] = nil -- pet was removed from Config
+		end
+	end
+	state.Loading = true
+
 	for _, label in ipairs(plot.SignLabels) do
 		label.Text = player.DisplayName .. "'s Base"
 	end
@@ -1403,7 +1524,9 @@ function GameService.AddPlayer(player, profile)
 		end
 	end
 
-	-- 2x Cash game pass
+	state.Loading = false
+	refreshIndexBonus(state)
+
 	-- Game passes
 	for _, key in ipairs(PASS_KEYS) do
 		local passId = Config.Products[key]
@@ -1479,6 +1602,14 @@ function GameService.RemovePlayer(player)
 	for _, other in pairs(eggs) do
 		if other.OriginalOwner == player then
 			other.OriginalOwner = nil
+		end
+		if other.TakenFrom == player then
+			other.TakenFrom = nil
+		end
+	end
+	for _, otherState in pairs(states) do
+		if otherState.RevengeOn == player then
+			setRevenge(otherState, nil)
 		end
 	end
 	for _, biome in ipairs(map.Biomes) do
@@ -1742,6 +1873,9 @@ function GameService.Admin.Reset(player)
 	state.Profile.TreadmillLevel = 1
 	paintTreadmill(state)
 	setCash(state, Config.StartingCash)
+	state.Profile.Index = {}
+	state.IndexFolder:ClearAllChildren()
+	refreshIndexBonus(state)
 	GameService.Admin.SetSpeed(player, Config.StartingSpeed)
 	refreshSlots(state)
 	refreshSpeedPad(state)

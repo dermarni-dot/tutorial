@@ -255,6 +255,23 @@ Config.DailyRewards = {
 }
 
 --------------------------------------------------------------------------------
+-- Pet Index: every pet you get is recorded in your 📖 Index. Collecting every
+-- pet of a rarity gives a permanent cash bonus on all your pets.
+--------------------------------------------------------------------------------
+Config.IndexBonusPerRarity = 0.05 -- +5% cash for each completed rarity row
+
+--------------------------------------------------------------------------------
+-- Revenge: when someone steals your egg and gets it home, you have RevengeTime
+-- seconds to steal any egg back from them for bonus cash (RevengeCashMinutes
+-- of your income, at least RevengeMinCash). After a payout you can't get a new
+-- revenge chance for RevengeCooldown seconds, so friends can't farm it.
+--------------------------------------------------------------------------------
+Config.RevengeTime = 5 * 60
+Config.RevengeCashMinutes = 5
+Config.RevengeMinCash = 1000
+Config.RevengeCooldown = 15 * 60
+
+--------------------------------------------------------------------------------
 -- Admins: these UserIds can use the Admin panel and "!" chat commands in the
 -- live game. The game's owner (or group rank 254+) always can, and everyone can
 -- while testing in Roblox Studio.

@@ -255,6 +255,23 @@ Config.DailyRewards = {
 }
 
 --------------------------------------------------------------------------------
+-- Pet Index: every pet you get is recorded in your 📖 Index. Collecting every
+-- pet of a rarity gives a permanent cash bonus on all your pets.
+--------------------------------------------------------------------------------
+Config.IndexBonusPerRarity = 0.05 -- +5% cash for each completed rarity row
+
+--------------------------------------------------------------------------------
+-- Revenge: when someone steals your egg and gets it home, you have RevengeTime
+-- seconds to steal any egg back from them for bonus cash (RevengeCashMinutes
+-- of your income, at least RevengeMinCash). After a payout you can't get a new
+-- revenge chance for RevengeCooldown seconds, so friends can't farm it.
+--------------------------------------------------------------------------------
+Config.RevengeTime = 5 * 60
+Config.RevengeCashMinutes = 5
+Config.RevengeMinCash = 1000
+Config.RevengeCooldown = 15 * 60
+
+--------------------------------------------------------------------------------
 -- Admins: these UserIds can use the Admin panel and "!" chat commands in the
 -- live game. The game's owner (or group rank 254+) always can, and everyone can
 -- while testing in Roblox Studio.
@@ -3665,6 +3682,7 @@ local function defaults()
 		TreadmillLevel = 1,
 		Nest = {},
 		Daily = { Streak = 0, LastDay = -1 },
+		Index = {}, -- [pet name] = true for every pet you've ever had
 	}
 end
 
@@ -3699,6 +3717,13 @@ function DataService.Load(player)
 		if type(data.Nest) == "table" then
 			profile.Nest = data.Nest
 		end
+		if type(data.Index) == "table" then
+			for name, found in pairs(data.Index) do
+				if type(name) == "string" and found == true then
+					profile.Index[name] = true
+				end
+			end
+		end
 		if type(data.Daily) == "table" then
 			profile.Daily.Streak = math.max(0, math.floor(tonumber(data.Daily.Streak) or 0))
 			profile.Daily.LastDay = math.floor(tonumber(data.Daily.LastDay) or -1)
@@ -3719,6 +3744,7 @@ function DataService.Save(player, profile)
 		TreadmillLevel = profile.TreadmillLevel,
 		Nest = profile.Nest,
 		Daily = profile.Daily,
+		Index = profile.Index,
 		Version = 2,
 	}
 	for attempt = 1, 3 do
@@ -4193,6 +4219,7 @@ local function placeEggInBase(player, index, rec)
 	local state = states[player]
 	rec.State = "Base"
 	rec.Carrier = nil
+	rec.TakenFrom = nil
 	rec.Owner = player
 	rec.SlotIndex = index
 	rec.Part.Anchored = true
@@ -4301,6 +4328,97 @@ local function dropCarried(player)
 end
 
 --------------------------------------------------------------------------------
+-- Pet Index: every pet you get is recorded (profile.Index, mirrored into a
+-- player.PetIndex folder for the client). Finishing a rarity row gives a
+-- permanent cash bonus of Config.IndexBonusPerRarity.
+--------------------------------------------------------------------------------
+local function indexProgress(profile, rarityId)
+	local rarity = Config.RarityById[rarityId]
+	local found = 0
+	for _, def in ipairs(rarity.Creatures) do
+		if profile.Index[def.Name] then
+			found += 1
+		end
+	end
+	return found, #rarity.Creatures
+end
+
+local function refreshIndexBonus(state)
+	local complete = 0
+	for _, rarity in ipairs(Config.Rarities) do
+		local found, total = indexProgress(state.Profile, rarity.Id)
+		if found == total then
+			complete += 1
+		end
+	end
+	state.IndexBonus = complete * Config.IndexBonusPerRarity
+	state.Player:SetAttribute("IndexBonus", state.IndexBonus)
+end
+
+local function addIndexFlag(state, name)
+	local flag = Instance.new("BoolValue")
+	flag.Name = name
+	flag.Value = true
+	flag.Parent = state.IndexFolder
+end
+
+local function discoverPet(state, name)
+	local profile = state.Profile
+	local def = Config.CreatureByName[name]
+	if not def or profile.Index[name] then
+		return
+	end
+	profile.Index[name] = true
+	addIndexFlag(state, name)
+	if state.Loading then
+		return -- old saves: quietly add pets that are already in the base
+	end
+	local rarity = Config.RarityById[def.Rarity]
+	local found, total = indexProgress(profile, def.Rarity)
+	notify(state.Player, "📖 New pet in your Index: " .. name .. "! (" .. def.Rarity .. " " .. found .. "/" .. total .. ")", rarity.Color)
+	if found == total then
+		refreshIndexBonus(state)
+		notify(state.Player, "🏆 " .. def.Rarity .. " Index complete! +" .. math.floor(Config.IndexBonusPerRarity * 100 + 0.5) .. "% cash from all your pets, forever!", GOLD)
+		notifyAll("🏆 " .. state.Player.DisplayName .. " completed the " .. def.Rarity .. " Pet Index!", rarity.Color)
+	end
+end
+
+--------------------------------------------------------------------------------
+-- Revenge: when a thief gets your egg home, you get Config.RevengeTime seconds
+-- to steal any egg from them for bonus cash. The client reads the
+-- RevengeTarget / RevengeUntil attributes to show a timer and highlight them.
+--------------------------------------------------------------------------------
+local function setRevenge(state, target, untilTime)
+	state.RevengeOn = target
+	state.RevengeUntil = if target then untilTime else 0
+	state.Player:SetAttribute("RevengeTarget", if target then target.UserId else nil)
+	state.Player:SetAttribute("RevengeUntil", if target then untilTime else nil)
+end
+
+-- thief just got an egg that belonged to victim home
+local function onEggStolen(thief, victim, rarityId)
+	local thiefState, victimState = states[thief], states[victim]
+	if not thiefState or not victimState or thief == victim then
+		return
+	end
+	if thiefState.RevengeOn == victim and now() < thiefState.RevengeUntil then
+		local income = thief:GetAttribute("IncomePerSec") or 0
+		local bonus = math.max(Config.RevengeMinCash, math.floor(income * 60 * Config.RevengeCashMinutes))
+		setCash(thiefState, thiefState.Profile.Cash + bonus)
+		setRevenge(thiefState, nil)
+		thiefState.RevengeReadyAt = now() + Config.RevengeCooldown
+		notify(thief, "😤 REVENGE on " .. victim.DisplayName .. "! +" .. Util.Money(bonus) .. " bonus cash!", GOLD)
+		notifyAll("😤 " .. thief.DisplayName .. " got revenge on " .. victim.DisplayName .. "!", ORANGE)
+		return -- a revenge steal doesn't open a counter-revenge
+	end
+	if now() < (victimState.RevengeReadyAt or 0) then
+		return
+	end
+	setRevenge(victimState, thief, now() + Config.RevengeTime)
+	notify(victim, "🚨 " .. thief.DisplayName .. " stole your " .. rarityId .. " Egg! Steal any egg from them within " .. Util.FormatTime(Config.RevengeTime) .. " for REVENGE cash!", RED)
+end
+
+--------------------------------------------------------------------------------
 -- Pets, hatching and fusing
 --------------------------------------------------------------------------------
 local spawnCreature
@@ -4345,6 +4463,7 @@ spawnCreature = function(player, index, data)
 	end)
 
 	state.Nest[index] = { Kind = "Creature", Model = model, Data = data }
+	discoverPet(state, data.Name)
 end
 
 local function rollCreature(rarityId, stolen)
@@ -4451,6 +4570,7 @@ onEggPrompt = function(player, rec)
 			spot.Ring = nil
 		end
 		spot.NextSpawn = now() + biome.Def.RespawnTime
+		rec.TakenFrom = nil
 		rec.GrabPos = spot.Position -- the guardian chases until you're Leash studs from here
 		rec.Spot = nil
 		rec.HomeBiome = biome
@@ -4472,6 +4592,7 @@ onEggPrompt = function(player, rec)
 		end
 		rec.Stolen = true
 		rec.OriginalOwner = owner
+		rec.TakenFrom = owner
 		rec.StolenFromName = if owner then owner.DisplayName else "someone"
 		startCarry(player, rec)
 		notify(player, "😈 You grabbed " .. rec.StolenFromName .. "'s " .. rec.Rarity .. " Egg! RUN home!", ORANGE)
@@ -4485,11 +4606,13 @@ onEggPrompt = function(player, rec)
 		end
 		releaseCarry(victim)
 		rec.Stolen = true
+		rec.TakenFrom = victim
 		rec.StolenFromName = victim.DisplayName
 		startCarry(player, rec)
 		notify(player, "😈 You snatched " .. victim.DisplayName .. "'s " .. rec.Rarity .. " Egg!", ORANGE)
 		notify(victim, "⚠️ " .. player.DisplayName .. " snatched your egg!", RED)
 	elseif rec.State == "Dropped" or rec.State == "Rain" then
+		rec.TakenFrom = nil
 		startCarry(player, rec)
 	end
 end
@@ -4837,6 +4960,7 @@ local function fastLoop()
 						local wasHunted = rec.HomeBiome ~= nil
 						local stolenFrom = rec.OriginalOwner
 						local stolenName = rec.StolenFromName
+						local takenFrom = rec.TakenFrom
 						releaseCarry(player)
 						endHunt(rec)
 						if stolenFrom == player then
@@ -4852,6 +4976,9 @@ local function fastLoop()
 							notify(player, "🏠 Made it home! " .. rec.Rarity .. " Egg is incubating.", GREEN)
 						else
 							notify(player, rec.Rarity .. " Egg is incubating. Guard it!", GREEN)
+						end
+						if takenFrom and takenFrom ~= player then
+							onEggStolen(player, takenFrom, rec.Rarity)
 						end
 					elseif now() - state.LastFullWarn > 3 then
 						state.LastFullWarn = now()
@@ -4947,10 +5074,16 @@ local function tickLoop()
 			if state.Passes.DoubleCashPass then
 				income *= 2
 			end
+			income *= 1 + (state.IndexBonus or 0)
 			if income > 0 then
 				setCash(state, state.Profile.Cash + income)
 			end
 			player:SetAttribute("IncomePerSec", income)
+
+			if state.RevengeOn and t >= state.RevengeUntil then
+				setRevenge(state, nil)
+				notify(player, "⌛ Your revenge chance ran out.", ORANGE)
+			end
 
 			if state.LockActive and t >= state.LockedUntil then
 				setLocked(state, false)
@@ -5106,6 +5239,20 @@ function GameService.AddPlayer(player, profile)
 	}
 	states[player] = state
 
+	local indexFolder = Instance.new("Folder")
+	indexFolder.Name = "PetIndex"
+	indexFolder.Parent = player
+	state.IndexFolder = indexFolder
+	state.IndexBonus = 0
+	for name in pairs(profile.Index) do
+		if Config.CreatureByName[name] then
+			addIndexFlag(state, name)
+		else
+			profile.Index[name] = nil -- pet was removed from Config
+		end
+	end
+	state.Loading = true
+
 	for _, label in ipairs(plot.SignLabels) do
 		label.Text = player.DisplayName .. "'s Base"
 	end
@@ -5142,7 +5289,9 @@ function GameService.AddPlayer(player, profile)
 		end
 	end
 
-	-- 2x Cash game pass
+	state.Loading = false
+	refreshIndexBonus(state)
+
 	-- Game passes
 	for _, key in ipairs(PASS_KEYS) do
 		local passId = Config.Products[key]
@@ -5218,6 +5367,14 @@ function GameService.RemovePlayer(player)
 	for _, other in pairs(eggs) do
 		if other.OriginalOwner == player then
 			other.OriginalOwner = nil
+		end
+		if other.TakenFrom == player then
+			other.TakenFrom = nil
+		end
+	end
+	for _, otherState in pairs(states) do
+		if otherState.RevengeOn == player then
+			setRevenge(otherState, nil)
 		end
 	end
 	for _, biome in ipairs(map.Biomes) do
@@ -5481,6 +5638,9 @@ function GameService.Admin.Reset(player)
 	state.Profile.TreadmillLevel = 1
 	paintTreadmill(state)
 	setCash(state, Config.StartingCash)
+	state.Profile.Index = {}
+	state.IndexFolder:ClearAllChildren()
+	refreshIndexBonus(state)
 	GameService.Admin.SetSpeed(player, Config.StartingSpeed)
 	refreshSlots(state)
 	refreshSpeedPad(state)
@@ -7057,7 +7217,7 @@ local AdminRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Admi
 
 local adminButton = shopButton:Clone()
 adminButton.Name = "AdminButton"
-adminButton.Position = UDim2.new(0, 14, 0.45, 70)
+adminButton.Position = UDim2.new(0, 14, 0.45, 128)
 adminButton.Size = UDim2.fromOffset(150, 46)
 adminButton.BackgroundColor3 = Color3.fromRGB(70, 70, 90)
 adminButton.Text = "🛠 Admin"
@@ -7428,6 +7588,247 @@ task.spawn(function()
 				DailyRemote:FireServer("Refresh")
 			end
 		end
+	end
+end)
+
+--------------------------------------------------------------------------------
+-- Pet Index: a collection book of every pet. The server mirrors the pets you've
+-- found into player.PetIndex; finished rarity rows give a cash bonus.
+--------------------------------------------------------------------------------
+local INDEX_W, INDEX_H = 760, 470
+local indexButton = shopButton:Clone()
+indexButton.Name = "IndexButton"
+indexButton.Position = UDim2.new(0, 14, 0.45, 70)
+indexButton.Size = UDim2.fromOffset(150, 50)
+indexButton.BackgroundColor3 = Color3.fromRGB(80, 140, 240)
+indexButton.Text = "📖 Index"
+indexButton.Parent = gui
+indexButton:FindFirstChildOfClass("UIStroke").Color = Color3.fromRGB(20, 50, 120)
+
+local indexPanel = Instance.new("Frame")
+indexPanel.Name = "IndexPanel"
+indexPanel.AnchorPoint = Vector2.new(0.5, 0.5)
+indexPanel.Position = UDim2.fromScale(0.5, 0.52)
+indexPanel.Size = UDim2.fromOffset(INDEX_W, INDEX_H)
+indexPanel.BackgroundColor3 = Color3.fromRGB(34, 30, 52)
+indexPanel.ZIndex = 5
+indexPanel.Visible = false
+indexPanel.Parent = gui
+corner(indexPanel, 20)
+stroke(indexPanel, 4, Color3.fromRGB(110, 170, 255))
+local indexScale = Instance.new("UIScale")
+indexScale.Parent = indexPanel
+panelGradient:Clone().Parent = indexPanel
+
+label(indexPanel, {
+	Position = UDim2.fromOffset(24, 10),
+	Size = UDim2.new(1, -110, 0, 48),
+	Text = "📖 PET INDEX",
+	TextXAlignment = Enum.TextXAlignment.Left,
+	TextColor3 = Color3.fromRGB(150, 200, 255),
+})
+local indexSummary = label(indexPanel, {
+	Position = UDim2.fromOffset(26, 60),
+	Size = UDim2.new(1, -52, 0, 22),
+	Font = Enum.Font.GothamBold,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	TextColor3 = Color3.fromRGB(230, 230, 240),
+	TextStrokeTransparency = 1,
+	Text = "",
+})
+local indexClose = closeButton:Clone()
+indexClose.Parent = indexPanel
+
+local indexList = Instance.new("ScrollingFrame")
+indexList.BackgroundTransparency = 1
+indexList.BorderSizePixel = 0
+indexList.Position = UDim2.fromOffset(20, 92)
+indexList.Size = UDim2.new(1, -30, 1, -104)
+indexList.ScrollBarThickness = 6
+indexList.AutomaticCanvasSize = Enum.AutomaticSize.Y
+indexList.CanvasSize = UDim2.new()
+indexList.Parent = indexPanel
+local indexLayout = Instance.new("UIListLayout")
+indexLayout.Padding = UDim.new(0, 8)
+indexLayout.SortOrder = Enum.SortOrder.LayoutOrder
+indexLayout.Parent = indexList
+
+local indexTiles = {} -- [pet name] = { Frame, Name, Icon }
+local indexHeaders = {} -- [rarity id] = header label
+local bonusPercent = math.floor(Config.IndexBonusPerRarity * 100 + 0.5)
+
+for order, rarity in ipairs(Config.Rarities) do
+	indexHeaders[rarity.Id] = label(indexList, {
+		LayoutOrder = order * 2 - 1,
+		Size = UDim2.new(1, -10, 0, 26),
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextColor3 = rarity.Color,
+		Text = rarity.Id,
+	})
+	local grid = Instance.new("Frame")
+	grid.LayoutOrder = order * 2
+	grid.BackgroundTransparency = 1
+	grid.AutomaticSize = Enum.AutomaticSize.Y
+	grid.Size = UDim2.new(1, -10, 0, 0)
+	grid.Parent = indexList
+	local gridLayout2 = Instance.new("UIGridLayout")
+	gridLayout2.CellSize = UDim2.fromOffset(160, 44)
+	gridLayout2.CellPadding = UDim2.fromOffset(8, 8)
+	gridLayout2.SortOrder = Enum.SortOrder.LayoutOrder
+	gridLayout2.Parent = grid
+	for i, def in ipairs(rarity.Creatures) do
+		local tile = Instance.new("Frame")
+		tile.LayoutOrder = i
+		tile.BackgroundColor3 = Color3.fromRGB(52, 46, 78)
+		tile.Parent = grid
+		corner(tile, 10)
+		stroke(tile, 2, rarity.Color)
+		local dot = Instance.new("Frame")
+		dot.AnchorPoint = Vector2.new(0, 0.5)
+		dot.Position = UDim2.new(0, 8, 0.5, 0)
+		dot.Size = UDim2.fromOffset(28, 28)
+		dot.Parent = tile
+		corner(dot, 14)
+		local icon = label(dot, { Size = UDim2.fromScale(1, 1), Text = "?", TextStrokeTransparency = 1 })
+		local name = label(tile, {
+			Position = UDim2.fromOffset(42, 0),
+			Size = UDim2.new(1, -48, 1, 0),
+			Font = Enum.Font.GothamBold,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			TextStrokeTransparency = 1,
+			TextWrapped = true,
+		})
+		local maxSize = Instance.new("UITextSizeConstraint")
+		maxSize.MaxTextSize = 15
+		maxSize.Parent = name
+		indexTiles[def.Name] = { Frame = tile, Dot = dot, Icon = icon, Name = name, Def = def }
+	end
+end
+
+local function refreshIndex()
+	local folder = player:FindFirstChild("PetIndex")
+	local foundAll, totalAll, completeRows = 0, 0, 0
+	for _, rarity in ipairs(Config.Rarities) do
+		local found = 0
+		for _, def in ipairs(rarity.Creatures) do
+			local tile = indexTiles[def.Name]
+			local have = folder ~= nil and folder:FindFirstChild(def.Name) ~= nil
+			if have then
+				found += 1
+				tile.Dot.BackgroundColor3 = def.Color
+				tile.Icon.Text = ""
+				tile.Name.Text = def.Name
+				tile.Name.TextColor3 = Color3.new(1, 1, 1)
+				tile.Frame.BackgroundTransparency = 0
+			else
+				tile.Dot.BackgroundColor3 = Color3.fromRGB(20, 18, 30)
+				tile.Icon.Text = "?"
+				tile.Name.Text = "???"
+				tile.Name.TextColor3 = Color3.fromRGB(140, 135, 165)
+				tile.Frame.BackgroundTransparency = 0.4
+			end
+		end
+		local total = #rarity.Creatures
+		foundAll += found
+		totalAll += total
+		local done = found == total
+		if done then
+			completeRows += 1
+		end
+		indexHeaders[rarity.Id].Text = rarity.Id .. "  " .. found .. "/" .. total .. (if done then "  ✅ +" .. bonusPercent .. "% cash" else "  (finish for +" .. bonusPercent .. "% cash)")
+	end
+	indexSummary.Text = "Found " .. foundAll .. "/" .. totalAll .. " pets  ·  Bonus: +" .. (completeRows * bonusPercent) .. "% cash from all your pets"
+end
+
+task.spawn(function()
+	local folder = player:WaitForChild("PetIndex")
+	folder.ChildAdded:Connect(refreshIndex)
+	folder.ChildRemoved:Connect(refreshIndex)
+	refreshIndex()
+end)
+refreshIndex()
+
+local indexFit = 1
+local function fitIndex()
+	local camera = workspace.CurrentCamera
+	if camera then
+		local vp = camera.ViewportSize
+		indexFit = math.min(1, (vp.X - 40) / INDEX_W, (vp.Y - 60) / INDEX_H)
+		indexScale.Scale = indexFit
+	end
+end
+fitIndex()
+if workspace.CurrentCamera then
+	workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(fitIndex)
+end
+local function setIndexOpen(open)
+	indexPanel.Visible = open
+	if open then
+		indexScale.Scale = 0.7 * indexFit
+		TweenService:Create(indexScale, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = indexFit }):Play()
+	end
+end
+indexButton.Activated:Connect(function()
+	setIndexOpen(not indexPanel.Visible)
+end)
+indexClose.Activated:Connect(function()
+	setIndexOpen(false)
+end)
+
+--------------------------------------------------------------------------------
+-- Revenge: when someone steals your egg, show a timer and outline the thief
+-- in red (only you see it) until you steal from them or time runs out.
+--------------------------------------------------------------------------------
+local revengeBox = Instance.new("Frame")
+revengeBox.Name = "RevengeTimer"
+revengeBox.AnchorPoint = Vector2.new(1, 0)
+revengeBox.Position = UDim2.new(1, -14, 0, 70)
+revengeBox.Size = UDim2.fromOffset(270, 64)
+revengeBox.BackgroundColor3 = Color3.fromRGB(120, 20, 30)
+revengeBox.BackgroundTransparency = 0.1
+revengeBox.Visible = false
+revengeBox.Parent = gui
+corner(revengeBox, 12)
+stroke(revengeBox, 3, Color3.fromRGB(255, 90, 90))
+local revengeTitle = label(revengeBox, { Position = UDim2.fromOffset(10, 4), Size = UDim2.new(1, -20, 0, 30), TextColor3 = Color3.fromRGB(255, 220, 90), Text = "" })
+local revengeSub = label(revengeBox, { Position = UDim2.fromOffset(10, 34), Size = UDim2.new(1, -20, 0, 24), Font = Enum.Font.GothamBold, TextStrokeTransparency = 1, Text = "" })
+
+local revengeHighlight = Instance.new("Highlight")
+revengeHighlight.FillColor = Color3.fromRGB(255, 40, 40)
+revengeHighlight.FillTransparency = 0.6
+revengeHighlight.OutlineColor = Color3.fromRGB(255, 220, 90)
+revengeHighlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+revengeHighlight.Enabled = false
+revengeHighlight.Parent = workspace.CurrentCamera or workspace
+
+local lastRevengeTarget = nil
+local function updateRevenge()
+	local targetId = player:GetAttribute("RevengeTarget")
+	local untilTime = player:GetAttribute("RevengeUntil") or 0
+	local target = targetId and Players:GetPlayerByUserId(targetId)
+	local remaining = untilTime - workspace:GetServerTimeNow()
+	if not target or remaining <= 0 then
+		revengeBox.Visible = false
+		revengeHighlight.Enabled = false
+		revengeHighlight.Adornee = nil
+		lastRevengeTarget = nil
+		return
+	end
+	if target ~= lastRevengeTarget then
+		lastRevengeTarget = target
+		showZone("🚨 EGG STOLEN!", target.DisplayName .. " took your egg. Steal from them for REVENGE cash!", Color3.fromRGB(255, 90, 90))
+	end
+	revengeBox.Visible = true
+	revengeTitle.Text = "😤 REVENGE on " .. target.DisplayName
+	revengeSub.Text = "Steal any egg from them: " .. Util.FormatTime(remaining)
+	revengeHighlight.Adornee = target.Character
+	revengeHighlight.Enabled = target.Character ~= nil
+end
+player:GetAttributeChangedSignal("RevengeTarget"):Connect(updateRevenge)
+task.spawn(function()
+	while true do
+		updateRevenge()
+		task.wait(0.5)
 	end
 end)
 
