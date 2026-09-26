@@ -4,7 +4,7 @@
 --   * Grab one and a guardian chases you until you escape its range
 --   * Carry it home, where it incubates and can be stolen from your base
 --   * Other players can snatch an egg off your head or bonk you to drop it
---   * Hatched pets earn cash; 3 identical pets fuse into a bigger one
+--   * Hatched pets earn cash; 3 of the same pet fuse into a bigger one
 --   * Treadmill + speed shop make you faster so you can raid farther biomes
 
 local MarketplaceService = game:GetService("MarketplaceService")
@@ -990,43 +990,71 @@ local function onFuse(player)
 	if not state then
 		return
 	end
-	-- Group identical pets (same name, tier and shininess) that can still level up.
+	-- Group pets of the same kind and tier. Shiny, mutation, size and age don't
+	-- have to match: the fused pet keeps the best of each.
 	local groups = {}
+	local maxed = 0
 	for index = 1, Config.MaxSlots do
 		local slot = state.Nest[index]
-		if slot and slot.Kind == "Creature" and (slot.Data.Tier or 1) < #Config.Tiers then
+		if slot and slot.Kind == "Creature" then
 			local d = slot.Data
-			local key = d.Name .. "|" .. (d.Tier or 1) .. "|" .. tostring(d.Shiny) .. "|" .. tostring(d.Mutation)
-			groups[key] = groups[key] or { Data = d, Slots = {} }
-			table.insert(groups[key].Slots, index)
+			if (d.Tier or 1) >= #Config.Tiers then
+				maxed += 1
+			else
+				local key = d.Name .. "|" .. (d.Tier or 1)
+				groups[key] = groups[key] or { Name = d.Name, Tier = d.Tier or 1, Slots = {} }
+				table.insert(groups[key].Slots, index)
+			end
 		end
 	end
-	local best
+
+	-- Pick the group that makes the best pet; inside a group, fuse the best
+	-- three (most valuable first) if there are more than three.
+	local function value(index)
+		return Config.CreatureIncome(state.Nest[index].Data)
+	end
+	local best, bestValue
 	for _, group in pairs(groups) do
 		if #group.Slots >= Config.FuseCount then
-			if not best or Config.CreatureIncome(group.Data) > Config.CreatureIncome(best.Data) then
-				best = group
+			table.sort(group.Slots, function(a, b)
+				return value(a) > value(b)
+			end)
+			local total = 0
+			for i = 1, Config.FuseCount do
+				total += value(group.Slots[i])
+			end
+			if not best or total > bestValue then
+				best, bestValue = group, total
 			end
 		end
 	end
 	if not best then
-		notify(player, "You need " .. Config.FuseCount .. " identical pets in your base to fuse.", RED)
+		if maxed > 0 and next(groups) == nil then
+			notify(player, "Your pets are already " .. Config.Tiers[#Config.Tiers].Prefix .. "— the biggest they can get!", RED)
+		else
+			notify(player, "You need " .. Config.FuseCount .. " of the same pet (below " .. Config.Tiers[#Config.Tiers].Prefix .. "size) in your base to fuse.", RED)
+		end
 		return
 	end
 
-	local base = best.Data
+	-- read everything we keep BEFORE the pets are removed
+	local shiny, mutation, bestMult, size, age = false, nil, 0, 0, 0
+	local rarityId
+	for i = 1, Config.FuseCount do
+		local d = state.Nest[best.Slots[i]].Data
+		rarityId = d.Rarity
+		shiny = shiny or d.Shiny == true
+		local m = d.Mutation and Config.MutationById[d.Mutation]
+		if m and m.Mult > bestMult then
+			mutation, bestMult = d.Mutation, m.Mult
+		end
+		size = math.max(size, d.Size or 1)
+		age = math.max(age, d.Age or 0)
+	end
+	local fused = { Name = best.Name, Rarity = rarityId, Shiny = shiny, Mutation = mutation, Tier = best.Tier + 1, Size = if size > 0 then size else 1, Age = age }
 	for i = 1, Config.FuseCount do
 		removeCreature(state, best.Slots[i])
 	end
-	local bestSize, bestAge = 0, 0
-	for i = 1, Config.FuseCount do
-		local slotData = state.Nest[best.Slots[i]] and state.Nest[best.Slots[i]].Data
-		if slotData then
-			bestSize = math.max(bestSize, slotData.Size or 1)
-			bestAge = math.max(bestAge, slotData.Age or 0)
-		end
-	end
-	local fused = { Name = base.Name, Rarity = base.Rarity, Shiny = base.Shiny, Mutation = base.Mutation, Tier = (base.Tier or 1) + 1, Size = bestSize, Age = bestAge }
 	spawnCreature(player, best.Slots[1], fused)
 	local rarity = Config.RarityById[fused.Rarity]
 	notify(player, "🧬 Fused into " .. Config.CreatureTitle(fused) .. "! +" .. Util.Money(Config.CreatureIncome(fused)) .. "/s", PINK)
@@ -1974,7 +2002,8 @@ function GameService.AddPlayer(player, profile)
 					Shiny = entry.Shiny == true,
 					Tier = tier,
 					Mutation = mutation,
-					Size = math.clamp(tonumber(entry.Size) or 1, 0.5, 3),
+					-- size 0 came from an old fusing bug: those pets get their normal size back
+					Size = if (tonumber(entry.Size) or 0) > 0 then math.clamp(tonumber(entry.Size), 0.5, 3) else 1,
 					Age = math.max(0, tonumber(entry.Age) or 0),
 				})
 			end
