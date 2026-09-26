@@ -3458,7 +3458,7 @@ local function buildBiome(biomesFolder, index, def, centerZ)
 		table.insert(avoid, { zone[1], centerZ + zone[2], zone[3] })
 	end
 	for _, piece in ipairs(SETPIECE_SPOTS[def.Id] or {}) do
-		table.insert(avoid, { piece[2] * SETPIECE_X, centerZ + piece[3], piece[4] })
+		table.insert(avoid, { piece[2] * SETPIECE_X, centerZ + piece[3], piece[4] * SETPIECE_X + 14 }) -- eggs keep well clear of set pieces
 	end
 	local spotGround = scatterSpots(def, centerZ, rng, avoid)
 	local spots, nests = {}, {}

@@ -4985,6 +4985,48 @@ ANATOMY.Bat = { Torso = Vector3.new(0.5, 0.55, 0.45), Float = true, Build = func
 	ctx.footDrop = T.Y * 0.62
 end }
 
+-- Real-animal colors. Common pets are almost exactly their real color,
+-- rarer ones keep more of their own fantasy color, and Mythic and up are
+-- fully their own (they're magical).
+local NATURAL_COLOR = {
+	Pup = Color3.fromRGB(165, 120, 80), Cat = Color3.fromRGB(200, 150, 95), Fox = Color3.fromRGB(215, 110, 45),
+	Wolf = Color3.fromRGB(140, 140, 145), Lion = Color3.fromRGB(205, 160, 95), Bear = Color3.fromRGB(115, 78, 50),
+	Raccoon = Color3.fromRGB(120, 115, 110), Pig = Color3.fromRGB(240, 180, 175), Cow = Color3.fromRGB(245, 243, 238),
+	Sheep = Color3.fromRGB(240, 236, 225), Hamster = Color3.fromRGB(215, 165, 110), Bunny = Color3.fromRGB(190, 170, 150),
+	Stag = Color3.fromRGB(160, 105, 65), Elephant = Color3.fromRGB(150, 150, 155), Monkey = Color3.fromRGB(120, 85, 55),
+	Seal = Color3.fromRGB(140, 145, 150), Newt = Color3.fromRGB(215, 120, 50), Axolotl = Color3.fromRGB(250, 190, 200),
+	Turtle = Color3.fromRGB(100, 130, 80), Hedgehog = Color3.fromRGB(140, 110, 85), Dino = Color3.fromRGB(100, 130, 80),
+	Fish = Color3.fromRGB(150, 160, 175), Koi = Color3.fromRGB(240, 140, 60), Shark = Color3.fromRGB(120, 135, 150),
+	Bird = Color3.fromRGB(110, 140, 195), Chick = Color3.fromRGB(250, 225, 120), Duck = Color3.fromRGB(245, 240, 230),
+	Owl = Color3.fromRGB(140, 110, 80), Pony = Color3.fromRGB(150, 100, 60), Giraffe = Color3.fromRGB(225, 180, 100),
+	Kangaroo = Color3.fromRGB(180, 120, 80), Koala = Color3.fromRGB(150, 150, 155), Sloth = Color3.fromRGB(140, 115, 90),
+	Otter = Color3.fromRGB(110, 80, 55), Squirrel = Color3.fromRGB(170, 100, 55), Mouse = Color3.fromRGB(160, 150, 145),
+	Hippo = Color3.fromRGB(145, 120, 130), Rhino = Color3.fromRGB(140, 140, 140), Croc = Color3.fromRGB(80, 110, 60),
+	Flamingo = Color3.fromRGB(250, 140, 170), Swan = Color3.fromRGB(250, 250, 250), Parrot = Color3.fromRGB(60, 180, 80),
+	Peacock = Color3.fromRGB(40, 90, 170), Dolphin = Color3.fromRGB(130, 150, 175), Whale = Color3.fromRGB(80, 100, 140),
+	Frog = Color3.fromRGB(90, 160, 60), Octopus = Color3.fromRGB(220, 110, 90), Bat = Color3.fromRGB(75, 62, 62),
+	Crab = Color3.fromRGB(220, 90, 60), Snail = Color3.fromRGB(190, 160, 120), Bee = Color3.fromRGB(245, 200, 50),
+	Ladybug = Color3.fromRGB(220, 40, 40), Penguin = Color3.fromRGB(40, 40, 50), Panda = Color3.fromRGB(245, 245, 245),
+}
+local NATURAL_BLEND = { 0.8, 0.7, 0.55, 0.4, 0.25 } -- by rarity order; Mythic and up: 0
+local NATURAL_PATTERNS = { Spots = true, Stripes = true, Patches = true, Freckles = true }
+
+function Visuals.PetColor(def, rarity)
+	local color = if def then def.Color else rarity.Color
+	local natural = def and NATURAL_COLOR[def.Style]
+	local blend = NATURAL_BLEND[rarity.Order] or 0
+	if natural and blend > 0 then
+		color = color:Lerp(natural, blend)
+	end
+	return color
+end
+
+-- Everyday pets (Common to Epic) look like real animals: no hats or costumes,
+-- and only natural markings.
+local function isNaturalPet(rarity)
+	return rarity.Order <= 4
+end
+
 -- Builds a pet from its ANATOMY entry (called by Visuals.MakeCreature)
 local function buildAnatomy(spec, data, def, rarity, tier, S, color, dark, light)
 	local model = Instance.new("Model")
@@ -5028,7 +5070,7 @@ local function buildAnatomy(spec, data, def, rarity, tier, S, color, dark, light
 	end
 
 	-- patterns wrap the torso; accessories sit on the head
-	if def and def.Pattern and PATTERNS[def.Pattern] then
+	if def and def.Pattern and PATTERNS[def.Pattern] and (not isNaturalPet(rarity) or NATURAL_PATTERNS[def.Pattern]) then
 		PATTERN_EXTENT = ctx.T * 0.5
 		local glow = def.PatternGlow or rarity.Order >= 5
 		local col = def.PatternColor or (if def.Pattern == "Stars" or def.Pattern == "Hearts" then color:Lerp(WHITE, 0.7) else dark)
@@ -5036,7 +5078,7 @@ local function buildAnatomy(spec, data, def, rarity, tier, S, color, dark, light
 		PATTERN_EXTENT = nil
 	end
 	local H, headAdd = ctx.H or S * 0.7, ctx.headAdd or add
-	if def and def.Accessory and ACCESSORIES[def.Accessory] then
+	if def and def.Accessory and ACCESSORIES[def.Accessory] and not isNaturalPet(rarity) then
 		ACCESSORIES[def.Accessory](headAdd, H, def.Accent or ACCESSORY_COLORS[def.Accessory] or GOLD)
 	end
 	if tier.Multiplier > 1 then
@@ -5109,7 +5151,7 @@ end
 local function buildCreature(data)
 	local rarity = Config.RarityById[data.Rarity]
 	local def = Config.CreatureByName[data.Name]
-	local color = if def then def.Color else rarity.Color
+	local color = Visuals.PetColor(def, rarity)
 	local dark = color:Lerp(Color3.new(0, 0, 0), 0.3)
 	local light = color:Lerp(WHITE, 0.45)
 	local tier = Config.Tiers[data.Tier or 1] or Config.Tiers[1]
@@ -5924,7 +5966,7 @@ function Visuals.MakeCreature(data)
 	local style = def and def.Style
 	if style and (FUR_STYLES[style] or SKIN_STYLES[style]) then
 		local rarity = Config.RarityById[data.Rarity]
-		local color = if def then def.Color else rarity.Color
+		local color = Visuals.PetColor(def, rarity)
 		local palette = { color, color:Lerp(Color3.new(0, 0, 0), 0.3), color:Lerp(WHITE, 0.45) }
 		local function isBody(c)
 			for _, pc in ipairs(palette) do
@@ -9603,7 +9645,7 @@ local function buildBiome(biomesFolder, index, def, centerZ)
 		table.insert(avoid, { zone[1], centerZ + zone[2], zone[3] })
 	end
 	for _, piece in ipairs(SETPIECE_SPOTS[def.Id] or {}) do
-		table.insert(avoid, { piece[2] * SETPIECE_X, centerZ + piece[3], piece[4] })
+		table.insert(avoid, { piece[2] * SETPIECE_X, centerZ + piece[3], piece[4] * SETPIECE_X + 14 }) -- eggs keep well clear of set pieces
 	end
 	local spotGround = scatterSpots(def, centerZ, rng, avoid)
 	local spots, nests = {}, {}
