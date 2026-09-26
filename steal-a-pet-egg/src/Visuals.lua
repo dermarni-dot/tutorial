@@ -97,6 +97,7 @@ function Visuals.AddLabel(part, offsetY, width)
 	local bb = Instance.new("BillboardGui")
 	bb.Name = "Label"
 	bb.Size = UDim2.fromOffset(width or 190, 58)
+	bb:SetAttribute("Width", width or 190)
 	bb.StudsOffset = Vector3.new(0, offsetY, 0)
 	bb.MaxDistance = 80
 	bb.LightInfluence = 0
@@ -452,6 +453,18 @@ end
 -- Egg variants: every rarity has its Classic design plus three more. Each
 -- egg picks one at random when it spawns (Visuals.MakeEgg).
 --------------------------------------------------------------------------------
+-- A line running bottom to top that follows the curve of the shell
+local function eggMeridian(add, angle, width, color, material, name)
+	local h = EGG_SIZE.Y / 2
+	local segments = 8
+	for i = 0, segments - 1 do
+		local y = -h * 0.92 + (i + 0.5) * (h * 1.84 / segments)
+		local R = EGG_SIZE.X / 2
+		local slope = -R * y / (h * h * math.sqrt(math.max(0.02, 1 - (y / h) ^ 2)))
+		add(name or "Line", "Block", Vector3.new(width, h * 1.84 / segments + 0.06, 0.12), surface(angle, y, 1.0) * CFrame.Angles(math.atan(slope), 0, 0), color, material)
+	end
+end
+
 local function eggDots(add, count, size, colors, material, seed)
 	for i = 1, count do
 		local a = i * 2.39996 + (seed or 0)
@@ -549,8 +562,7 @@ local EGG_VARIANTS = {
 		end },
 		{ Name = "Mint Candy", Color = Color3.fromRGB(190, 250, 220), Design = function(add)
 			for i = 0, 7 do
-				local a = i / 8 * math.pi * 2
-				add("CandyStripe", "Blob", Vector3.new(0.35, 3.2, 0.1), surface(a, 0, 1.0) * CFrame.Angles(0, 0, math.rad(25)), WHITE)
+				eggMeridian(add, i / 8 * math.pi * 2, 0.34, WHITE, nil, "CandyStripe")
 			end
 			ring(add, 1.05, Color3.fromRGB(255, 240, 245), nil, 0.4)
 			for i = 0, 5 do
@@ -673,8 +685,7 @@ local EGG_VARIANTS = {
 		end },
 		{ Name = "Holy Crystal", Color = Color3.fromRGB(255, 245, 200), Material = Enum.Material.Glass, Design = function(add)
 			for i = 0, 7 do
-				local a = i / 8 * math.pi * 2
-				add("Ray", "Block", Vector3.new(0.12, 3.2, 0.12), surface(a, 0, 1.0), GOLD, Enum.Material.Neon)
+				eggMeridian(add, i / 8 * math.pi * 2, 0.14, GOLD, Enum.Material.Neon, "Ray")
 			end
 			add("Core", "Ball", Vector3.one * 1.1, CFrame.new(), Color3.fromRGB(255, 255, 230), Enum.Material.Neon)
 			add("Halo", "Cyl", Vector3.new(0.14, 1.7, 1.7), CFrame.new(0, 2.5, 0) * CFrame.Angles(0, 0, math.rad(90)), GOLD, Enum.Material.Neon)
@@ -712,6 +723,205 @@ local EGG_VARIANTS = {
 		end },
 	},
 }
+
+-- Two more designs per rarity
+local function addVariant(rarityId, v)
+	table.insert(EGG_VARIANTS[rarityId], v)
+end
+local SPRINKLES = { Color3.fromRGB(255, 90, 170), Color3.fromRGB(255, 220, 70), Color3.fromRGB(110, 220, 255), Color3.fromRGB(140, 230, 120), Color3.fromRGB(190, 130, 255) }
+addVariant("Common", { Name = "Sprinkle", Color = Color3.fromRGB(255, 245, 240), Design = function(add)
+	for i = 1, 26 do
+		add("Sprinkle", "Block", Vector3.new(0.14, 0.14, 0.45), surface(i * 2.39996, ((i * 37) % 30) / 10 - 1.5, 1.0) * CFrame.Angles(0, 0, i), SPRINKLES[(i % #SPRINKLES) + 1])
+	end
+end })
+addVariant("Common", { Name = "Cloudy", Color = Color3.fromRGB(150, 205, 255), Design = function(add)
+	for i = 0, 5 do
+		local cf = surface(i / 6 * math.pi * 2, if i % 2 == 0 then 0.5 else -0.5, 0.98)
+		for k = -1, 1 do
+			add("Cloud", "Ball", Vector3.one * (0.45 + (k == 0 and 0.15 or 0)), cf * CFrame.new(k * 0.3, k == 0 and 0.08 or 0, 0), WHITE)
+		end
+	end
+	add("Sun", "Ball", Vector3.one * 0.6, CFrame.new(0, 1.72, 0), Color3.fromRGB(255, 220, 80), Enum.Material.Neon)
+end })
+addVariant("Uncommon", { Name = "Ladybug", Color = Color3.fromRGB(220, 50, 50), Design = function(add)
+	eggMeridian(add, math.pi / 2, 0.16, BLACK, nil, "Stripe")
+	eggMeridian(add, -math.pi / 2, 0.16, BLACK, nil, "Stripe")
+	eggDots(add, 12, 0.5, { BLACK }, nil, 4)
+	add("Head", "Blob", Vector3.new(1.4, 0.6, 1.4), CFrame.new(0, 1.7, 0), BLACK)
+	for _, sx in ipairs({ -1, 1 }) do
+		add("Antenna", "Block", Vector3.new(0.08, 0.8, 0.08), CFrame.new(sx * 0.3, 2.2, 0) * CFrame.Angles(0, 0, math.rad(-25 * sx)), BLACK)
+		add("AntennaTip", "Ball", Vector3.one * 0.22, CFrame.new(sx * 0.5, 2.6, 0), BLACK)
+	end
+end })
+addVariant("Uncommon", { Name = "Bamboo", Color = Color3.fromRGB(150, 205, 110), Design = function(add)
+	for _, y in ipairs({ -1, -0.3, 0.4, 1.1 }) do
+		ring(add, y, Color3.fromRGB(110, 170, 80), nil, 0.16)
+	end
+	for i = 0, 3 do
+		add("Leaf", "Blob", Vector3.new(0.3, 0.9, 0.12), surface(i * 1.6, 0.8 - i * 0.4, 1.02) * CFrame.Angles(0, 0, math.rad(40)), Color3.fromRGB(80, 160, 70))
+	end
+end })
+addVariant("Rare", { Name = "Seashell", Color = Color3.fromRGB(255, 205, 190), Design = function(add)
+	for i = 0, 9 do
+		eggMeridian(add, i / 10 * math.pi * 2, 0.22, Color3.fromRGB(240, 170, 160), nil, "Ridge")
+	end
+	local pearl = add("Pearl", "Ball", Vector3.one * 0.7, CFrame.new(0, 1.8, 0), Color3.fromRGB(250, 245, 255), Enum.Material.Neon)
+	pearl.Transparency = 0.1
+end })
+addVariant("Rare", { Name = "Honeycomb", Color = Color3.fromRGB(255, 190, 60), Design = function(add)
+	for row = 0, 5 do
+		for i = 0, 7 do
+			add("Cell", "Cyl", Vector3.new(0.1, 0.42, 0.42), surface(i / 8 * math.pi * 2 + (row % 2) * 0.39, -1.25 + row * 0.5, 1.0) * CFrame.Angles(0, math.rad(90), 0), Color3.fromRGB(220, 140, 30))
+		end
+	end
+	add("Drip", "Blob", Vector3.new(0.5, 0.9, 0.3), surface(0.5, 0.9, 1.02), Color3.fromRGB(255, 170, 40), Enum.Material.Glass)
+end })
+addVariant("Epic", { Name = "Circuit", Color = Color3.fromRGB(25, 30, 45), Design = function(add)
+	local cyan = Color3.fromRGB(60, 240, 255)
+	for i = 0, 7 do
+		local a = i / 8 * math.pi * 2
+		add("Trace", "Block", Vector3.new(0.08, 1.4, 0.08), surface(a, 0.2 - (i % 2) * 0.6, 1.0), cyan, Enum.Material.Neon)
+		add("Trace", "Block", Vector3.new(0.5, 0.08, 0.08), surface(a + 0.18, 0.9 - (i % 2) * 1.4, 1.0), cyan, Enum.Material.Neon)
+		add("Chip", "Block", Vector3.new(0.28, 0.28, 0.1), surface(a, 0.9 - (i % 2) * 1.4, 1.01), Color3.fromRGB(255, 80, 200), Enum.Material.Neon)
+	end
+end })
+addVariant("Epic", { Name = "Toadstool", Color = Color3.fromRGB(245, 235, 215), Design = function(add)
+	add("Cap", "Blob", Vector3.new(3.4, 1.8, 3.4), CFrame.new(0, 1.2, 0), Color3.fromRGB(220, 40, 60))
+	for i = 0, 6 do
+		add("CapDot", "Blob", Vector3.new(0.5, 0.2, 0.5), CFrame.new(math.cos(i) * 1.1, 1.95 - (i % 2) * 0.25, math.sin(i) * 1.1), WHITE)
+	end
+	eggDots(add, 6, 0.3, { Color3.fromRGB(190, 170, 140) }, nil, 9)
+end })
+addVariant("Legendary", { Name = "Crown Jewel", Color = Color3.fromRGB(110, 50, 180), Design = function(add)
+	ring(add, 1.15, GOLD, Enum.Material.Metal, 0.3)
+	for i = 0, 7 do
+		local a = i / 8 * math.pi * 2
+		add("CrownPoint", "Block", Vector3.new(0.3, 0.7, 0.3), CFrame.new(math.cos(a) * 0.95, 1.65, math.sin(a) * 0.95) * CFrame.Angles(0, -a, math.rad(-15)), GOLD, Enum.Material.Metal)
+		add("Gem", "Ball", Vector3.one * 0.3, surface(a, -0.2, 1.03), ({ Color3.fromRGB(255, 60, 90), Color3.fromRGB(80, 170, 255), Color3.fromRGB(80, 230, 120) })[(i % 3) + 1], Enum.Material.Neon)
+	end
+end })
+addVariant("Legendary", { Name = "Sun Temple", Color = Color3.fromRGB(230, 195, 130), Design = function(add)
+	for _, y in ipairs({ -0.9, 0, 0.9 }) do
+		ring(add, y, Color3.fromRGB(190, 150, 90), Enum.Material.Sandstone, 0.22)
+	end
+	for side = 0, 1 do
+		local cf = surface(side * math.pi, 0.45, 1.02)
+		add("Eye", "Blob", Vector3.new(0.8, 0.4, 0.1), cf, GOLD, Enum.Material.Neon)
+		add("Pupil", "Ball", Vector3.one * 0.26, cf * CFrame.new(0, 0, 0.05), Color3.fromRGB(40, 90, 110))
+	end
+end })
+addVariant("Mythic", { Name = "Aurora", Color = Color3.fromRGB(15, 35, 50), Design = function(add)
+	local cols = { Color3.fromRGB(90, 255, 170), Color3.fromRGB(80, 220, 255), Color3.fromRGB(190, 120, 255) }
+	for band = 0, 2 do
+		for i = 0, 11 do
+			add("AuroraBand", "Block", Vector3.new(0.5, 0.3, 0.1), surface(i / 12 * math.pi * 2, 0.8 - band * 0.45 + math.sin(i + band) * 0.15, 1.0), cols[band + 1], Enum.Material.Neon)
+		end
+	end
+	eggDots(add, 10, 0.12, { WHITE }, Enum.Material.Neon, 11)
+end })
+addVariant("Mythic", { Name = "Clockwork", Color = Color3.fromRGB(180, 130, 60), Design = function(add)
+	for i = 0, 4 do
+		local cf = surface(i * 1.25, 0.9 - i * 0.45, 1.0)
+		add("Gear", "Cyl", Vector3.new(0.12, 0.8, 0.8), cf * CFrame.Angles(0, math.rad(90), 0), Color3.fromRGB(230, 190, 90), Enum.Material.Metal)
+		for k = 0, 5 do
+			add("Tooth", "Block", Vector3.new(0.16, 0.16, 0.14), cf * CFrame.Angles(0, 0, k / 6 * math.pi * 2) * CFrame.new(0, 0.45, 0), Color3.fromRGB(230, 190, 90), Enum.Material.Metal)
+		end
+	end
+	add("Key", "Block", Vector3.new(0.2, 0.9, 0.2), CFrame.new(0, 2.1, 0), GOLD, Enum.Material.Metal)
+end })
+addVariant("Divine", { Name = "Angel Feather", Color = Color3.fromRGB(255, 252, 245), Design = function(add)
+	for row = 0, 3 do
+		for i = 0, 7 do
+			add("Feather", "Blob", Vector3.new(0.5, 0.9, 0.12), surface(i / 8 * math.pi * 2 + row * 0.3, 1.0 - row * 0.65, 1.02) * CFrame.Angles(math.rad(-20), 0, 0), if row % 2 == 0 then WHITE else Color3.fromRGB(255, 240, 210))
+		end
+	end
+	add("Halo", "Cyl", Vector3.new(0.14, 1.8, 1.8), CFrame.new(0, 2.5, 0) * CFrame.Angles(0, 0, math.rad(90)), GOLD, Enum.Material.Neon)
+end })
+addVariant("Divine", { Name = "Sunrise", Color = Color3.fromRGB(255, 200, 120), Design = function(add)
+	ring(add, -0.7, Color3.fromRGB(255, 150, 90), Enum.Material.Neon, 0.3)
+	ring(add, 0, Color3.fromRGB(255, 190, 110), Enum.Material.Neon, 0.24)
+	ring(add, 0.7, Color3.fromRGB(255, 235, 170), Enum.Material.Neon, 0.18)
+	for i = 0, 9 do
+		add("Ray", "Block", Vector3.new(0.14, 0.14, 1.1), surface(i / 10 * math.pi * 2, 1.2, 0.95) * CFrame.new(0, 0.2, 0.4), GOLD, Enum.Material.Neon)
+	end
+end })
+addVariant("Secret", { Name = "Static", Color = Color3.fromRGB(120, 120, 125), Design = function(add)
+	for i = 1, 40 do
+		local g = ((i * 53) % 255)
+		add("Noise", "Block", Vector3.new(0.3, 0.2, 0.12), surface(i * 2.1, ((i * 29) % 32) / 10 - 1.6, 1.0), Color3.fromRGB(g, g, g))
+	end
+	ring(add, 0.3, WHITE, Enum.Material.Neon, 0.08)
+	eggSymbol(add, "?", -0.2, WHITE, BLACK)
+end })
+addVariant("Secret", { Name = "Void Eye", Color = Color3.fromRGB(10, 5, 20), Design = function(add)
+	for side = 0, 1 do
+		local cf = surface(side * math.pi, 0.2, 1.01)
+		add("EyeWhite", "Blob", Vector3.new(1.6, 1.1, 0.14), cf, Color3.fromRGB(255, 240, 250), Enum.Material.Neon)
+		add("Iris", "Ball", Vector3.one * 0.8, cf * CFrame.new(0, 0, 0.05), Color3.fromRGB(190, 60, 255), Enum.Material.Neon)
+		add("Pupil", "Blob", Vector3.new(0.2, 0.7, 0.2), cf * CFrame.new(0, 0, 0.1), BLACK)
+	end
+	eggDots(add, 12, 0.14, { Color3.fromRGB(190, 60, 255) }, Enum.Material.Neon, 13)
+end })
+
+-- Cracks spread over an egg as it gets close to hatching (stage 1 and 2)
+function Visuals.CrackEgg(egg, stage, glowColor)
+	if egg:FindFirstChild("CrackStage" .. stage) then
+		return
+	end
+	local marker = Instance.new("BoolValue")
+	marker.Name = "CrackStage" .. stage
+	marker.Parent = egg
+	local add = rigger(egg, egg)
+	local crack = Color3.fromRGB(45, 35, 30)
+	local count = if stage == 1 then 3 else 6
+	for i = 1, count do
+		local a = i * 2.2 + stage
+		local y = 0.9 - ((i * 7) % 5) * 0.35
+		for k = 0, 2 do
+			add("Crack", "Block", Vector3.new(0.1, 0.5, 0.06), surface(a + k * 0.14, y - k * 0.25, 1.01) * CFrame.Angles(0, 0, math.rad(if k % 2 == 0 then 30 else -30)), if stage == 2 and k == 1 then glowColor or WHITE else crack, if stage == 2 and k == 1 then Enum.Material.Neon else nil)
+		end
+	end
+end
+
+-- Hatch progress bar under an egg's label (fraction nil hides it)
+function Visuals.SetProgress(part, fraction, color)
+	local bb = part:FindFirstChild("Label")
+	if not bb then
+		return
+	end
+	local bar = bb:FindFirstChild("Progress")
+	if fraction == nil then
+		if bar then
+			bar.Visible = false
+		end
+		return
+	end
+	if not bar then
+		bb.Size = UDim2.fromOffset(bb:GetAttribute("Width") or 190, 72)
+		bar = Instance.new("Frame")
+		bar.Name = "Progress"
+		bar.AnchorPoint = Vector2.new(0.5, 1)
+		bar.Position = UDim2.new(0.5, 0, 1, 0)
+		bar.Size = UDim2.new(0.7, 0, 0, 9)
+		bar.BackgroundColor3 = Color3.fromRGB(20, 18, 30)
+		bar.BackgroundTransparency = 0.2
+		bar.Parent = bb
+		local c = Instance.new("UICorner")
+		c.CornerRadius = UDim.new(0.5, 0)
+		c.Parent = bar
+		local fill = Instance.new("Frame")
+		fill.Name = "Fill"
+		fill.Size = UDim2.fromScale(0, 1)
+		fill.Parent = bar
+		local c2 = c:Clone()
+		c2.Parent = fill
+		bb.Pill.Size = UDim2.new(1, 0, 1, -14)
+		bb.Pill.Position = UDim2.new(0.5, 0, 0.5, -7)
+	end
+	bar.Visible = true
+	bar.Fill.BackgroundColor3 = color or WHITE
+	bar.Fill.Size = UDim2.fromScale(math.clamp(fraction, 0, 1), 1)
+end
 
 -- Names of every design an egg of this rarity can have (Classic first)
 function Visuals.EggVariantNames(rarityId)

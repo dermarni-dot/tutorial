@@ -214,6 +214,29 @@ local function refreshEggLabel(rec)
 		sub = "FREE!"
 	end
 	Visuals.SetLabel(rec.Part, title, sub, if mutation then mutation.Color else rarity.Color)
+	if rec.State == "Base" then
+		-- progress bar, and cracks that spread as it gets close to hatching
+		local progress = 1 - rec.Remaining / rarity.HatchTime
+		Visuals.SetProgress(rec.Part, progress, rarity.Color:Lerp(Color3.new(1, 1, 1), 0.2))
+		if progress >= 0.5 then
+			Visuals.CrackEgg(rec.Part, 1)
+		end
+		if progress >= 0.8 then
+			Visuals.CrackEgg(rec.Part, 2, rarity.Color)
+		end
+	else
+		Visuals.SetProgress(rec.Part, nil)
+	end
+end
+
+-- The last few seconds before hatching, the egg wobbles in its spot
+local function wobbleEgg(rec)
+	if not rec.BaseCFrame or rec.State ~= "Base" then
+		return
+	end
+	rec.WobbleDir = -(rec.WobbleDir or 1)
+	rec.WobbleTween = TweenService:Create(rec.Part, TweenInfo.new(0.22, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, 1, true), { CFrame = rec.BaseCFrame * CFrame.Angles(0, 0, math.rad(14 * rec.WobbleDir)) })
+	rec.WobbleTween:Play()
 end
 
 local function endHunt(rec)
@@ -464,6 +487,7 @@ local function placeEggInBase(player, index, rec)
 	rec.SlotIndex = index
 	rec.Part.Anchored = true
 	rec.Part.CFrame = CFrame.new(state.Plot.SlotTops[index] + Vector3.new(0, Visuals.EggHalfHeight, 0))
+	rec.BaseCFrame = rec.Part.CFrame
 	rec.Prompt.ActionText = "Steal"
 	rec.Prompt.ObjectText = player.DisplayName .. "'s " .. rec.Rarity .. " Egg"
 	rec.Prompt.HoldDuration = Config.BaseStealHoldTime
@@ -474,6 +498,11 @@ local function placeEggInBase(player, index, rec)
 end
 
 local function startCarry(player, rec)
+	if rec.WobbleTween then
+		rec.WobbleTween:Cancel()
+		rec.WobbleTween = nil
+	end
+	rec.BaseCFrame = nil
 	local state = states[player]
 	local root = getRoot(player)
 	if not state or not root then
@@ -1317,6 +1346,9 @@ local function tickLoop()
 							hatch(player, i)
 						else
 							refreshEggLabel(slot.Egg)
+							if slot.Egg.Remaining <= 6 then
+								wobbleEgg(slot.Egg)
+							end
 						end
 					else
 						-- growing up: age the pet, rebuild it bigger when it reaches a new stage
