@@ -3412,7 +3412,10 @@ local function setupStalls()
 		Legendary = "Golden eggs with wings. Guardians get fast here, so train your Speed first!",
 		Mythic = "Cosmic eggs with their own orbiting stars. Found past Magma Crater, and most common in the Sunken Reef.",
 		Divine = "Holy eggs with halos. Over half the eggs in Celestial Heights are Divine!",
-		Secret = "The rarest eggs in the game. Your best odds are 8% in Celestial Heights. Nobody knows what's inside until it hatches!",
+		Secret = "The rarest eggs in the game. Most common in Jungle Ruins, Crystal Caverns and Toy Town. Nobody knows what's inside until it hatches!",
+		Astral = "Starlit eggs from Jungle Ruins and beyond. Astral pets earn millions every second!",
+		Cosmic = "Galaxy eggs that swirl with stars. Found from Toy Town onward, and each pet earns tens of millions per second.",
+		Omega = "The most powerful eggs of all, cracked with red light. Only in Sakura Gardens and past it; Omega pets earn hundreds of millions per second.",
 	}
 
 	local factsPanel = makePanel("EggFacts", "🥚 EGG FACTS", Color3.fromRGB(255, 200, 90), 780, 490)

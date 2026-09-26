@@ -32,14 +32,14 @@ Game Settings > Security > **Enable Studio Access to API Services**.
   | 🎃 Haunted Hollow | Pumpkin King | 434.2 | 2.5B | Mythic, Divine, Secret (14%) |
   | ⚙️ Clockwork Citadel | Brass Automaton | 476.4 | 10B | Mythic, Divine, Secret (20%) |
   | 🌐 Neon Nexus (boss) | Omega Mech | 527.7 | 50B | Divine, Secret (30%) |
-  | 🌴 Jungle Ruins | Temple Gorilla | 544 | 200B | Divine, Secret (35%) |
-  | 💎 Crystal Caverns | Crystal Scorpion | 562.7 | 1T | Divine, Secret (40%) |
-  | 🧸 Toy Town | Teddy Titan | 581.5 | 5T | Divine, Secret (45%) |
-  | 🌌 Aurora Tundra | Glacier Crab King | 600.3 | 25T | Divine, Secret (50%) |
-  | 🌸 Sakura Gardens | Kitsune Spirit | 616.5 | 100T | Divine, Secret (55%) |
-  | 🔥 Infernal Abyss | Hellfire Mech | 635.3 | 500T | Divine, Secret (60%) |
-  | 🪐 Galaxy Rift | Astral Seraph | 654 | 2.5Qa | Divine, Secret (65%) |
-  | 🌈 Rainbow Realm (final boss) | Prism Dragon | 670.2 | 10Qa | Divine, Secret (75%!) |
+  | 🌴 Jungle Ruins | Temple Gorilla | 544 | 200B | Divine, Secret, 🌟 Astral (20%) |
+  | 💎 Crystal Caverns | Crystal Scorpion | 562.7 | 1T | Divine, Secret, 🌟 Astral (30%) |
+  | 🧸 Toy Town | Teddy Titan | 581.5 | 5T | Secret, Astral, 🌌 Cosmic (15%) |
+  | 🌌 Aurora Tundra | Glacier Crab King | 600.3 | 25T | Secret, Astral, 🌌 Cosmic (25%) |
+  | 🌸 Sakura Gardens | Kitsune Spirit | 616.5 | 100T | Astral, Cosmic, 🔴 Omega (10%) |
+  | 🔥 Infernal Abyss | Hellfire Mech | 635.3 | 500T | Astral, Cosmic, 🔴 Omega (20%) |
+  | 🪐 Galaxy Rift | Astral Seraph | 654 | 2.5Qa | Cosmic, 🔴 Omega (40%) |
+  | 🌈 Rainbow Realm (final boss) | Prism Dragon | 670.2 | 10Qa | Cosmic, 🔴 Omega (55%!) |
 
   Zones 13-20 also roll mutations 1.5x-5x as often (`MutationBoost`), so late eggs earn much more. Jungle Ruins has palm trees, totems and parrots; Crystal Caverns glows; Toy Town has giant toy blocks and balls; Aurora Tundra has the northern lights; Sakura Gardens has cherry trees, stone lanterns, a pagoda and a path of torii gates under falling petals; the Infernal Abyss has meteors; the Galaxy Rift has planets; and the Rainbow Realm has rainbows everywhere. See `guardians2_preview.png`.
 
@@ -64,14 +64,16 @@ Game Settings > Security > **Enable Studio Access to API Services**.
   - Stolen eggs have a 25% chance to hatch shiny (normal: 5%). Shiny = 3x income.
 - **Bonk Bat:** swing it (slash animation, sound, "BONK!" pop). Hit an egg carrier and they drop it. An egg stolen from a base flies back to its owner.
 - **Base Lock:** the blue pad. Blocks stealing from your base for 60s, then recharges for 90s.
+- **Top rarities for the late game:** above Secret are 🌟 **Astral** (9 pets, $2M-6M/s each), 🌌 **Cosmic** (8 pets, $25M-70M/s) and 🔴 **Omega** (8 pets, $300M-900M/s), only found in zones 13-20, each with their own egg designs. Grown, fused Omega pets earn hundreds of billions per second, enough for the late treadmill tiers.
+- **Pets look like real animals:** realistic eyes (a dark iris with a thin rim of white), fur and feather textures on mammals and birds, glossy skin on reptiles and sea animals, toes, nostrils and a soft brow; frogs, octopuses, krakens and bats have their own bodies. See `pets_realistic_preview.png`.
 - **Egg size = pet size:** every pet's size is rolled when its egg appears, and the egg is scaled to match: big pets (1.35x-2x) come in eggs up to 1.5x bigger labelled **BIG**, huge pets (2x-3x) in eggs up to 2x bigger labelled **HUGE**. What you see is what hatches (`Config.EggScale`).
 - **Fuse Machine:** the pink pad. 3 of the same pet become 1 **Big** pet (4x income), and 3 Big pets become 1 **Huge** pet (16x). They don't have to match exactly: the fused pet keeps the best of the three (shiny if any was, the strongest mutation, the biggest size and the oldest age). With more than 3 copies it uses your best 3.
 - **Bases:** each base (in its own accent color) has a cottage out back, flagpoles, a striped canopy over the treadmill, a crystal arch over the fuse pad, garden lights along the carpet, flower planters, pet beds, a toy ball, a food trough, a welcome mat, a mailbox and stepping stones. See `base_preview.png`.
 - **Pet pen and selling:** every base has one wide open pen (no roof, no slots) that holds 24 eggs and pets. Hold E on your own pet to sell it.
 - **Daily rewards:** the orange 🎁 Daily button (it pops open by itself when a reward is waiting). Claim once a day: Day 1 $, Day 2 $$, Day 3 Speed, Day 4 $$$, Day 5 Rare Egg, Day 6 $$$$, Day 7 Epic Egg, then it loops. Cash and Speed rewards grow with your income and Speed. Miss a day and the streak starts over. Days reset at midnight UTC. Tune it in `Config.DailyRewards`. Test it with `!daily` (next day) and `!daily reset`.
-- **Pet Index:** the blue 📖 Index button. A collection book of all 499 pets; ones you haven't had yet show as ???. Every new pet pops a message. Finishing a whole rarity row gives **+5% cash from all your pets, forever** (up to +40%). Tune it with `Config.IndexBonusPerRarity`.
+- **Pet Index:** the blue 📖 Index button. A collection book of all 524 pets; ones you haven't had yet show as ???. Every new pet pops a message. Finishing a whole rarity row gives **+5% cash from all your pets, forever** (up to +40%). Tune it with `Config.IndexBonusPerRarity`.
 - **Revenge:** when someone steals your egg and gets it home, a red timer appears top-right and the thief glows red (only you see it). Steal any egg from them within 5 minutes for bonus cash (5 minutes of your income). A revenge steal can't be revenged back, and after a payout there's a 15-minute cooldown so friends can't farm it. Tune it with the `Config.Revenge...` settings.
-- **Pet models:** 499 pets across 75 species. 58 species are built like their real animal (torso, head, legs, neck, ears and tail in the right proportions): dragons have long necks, wings and spiked tails; bunnies sit up with long ears; unicorns and deer have long legs, manes, horns and antlers; birds stand upright with beaks and wings; fish have fins and tails. Round critters (slimes, ghosts, ladybugs, jellies...) stay round. See `pet_preview.png` for every species. The builders are the `ANATOMY` entries in Visuals.
+- **Pet models:** 524 pets across 75 species. 58 species are built like their real animal (torso, head, legs, neck, ears and tail in the right proportions): dragons have long necks, wings and spiked tails; bunnies sit up with long ears; unicorns and deer have long legs, manes, horns and antlers; birds stand upright with beaks and wings; fish have fins and tails. Round critters (slimes, ghosts, ladybugs, jellies...) stay round. See `pet_preview.png` for every species. The builders are the `ANATOMY` entries in Visuals.
 - **Egg designs:** every rarity has 6 egg looks (48 in all), e.g. Polka, Sprinkle, Ladybug, Honeycomb, Seashell, Circuit, Toadstool, Crown Jewel, Clockwork, Aurora, Angel Feather, Static, Void Eye. See `egg_preview.png`. Eggs in your base show a hatch progress bar, crack as they get close to hatching and wobble in the last few seconds. Each egg picks one at random, and its name shows on the egg's label. Add your own in `EGG_VARIANTS` in Visuals.
 - **Day and night:** a full day passes every 16 minutes (about 11.5 minutes of daylight, then sunset, a starry night and sunrise). Everyone on a server sees the same time. Street lamps, windows and string lights glow after dark. Each zone has its own lighting: sunbeams in the forest, heat glare in the desert, a sparkly cold look at Frostpeak, a permanent red sunset in Magma Crater and endless night in the Void. Tune it with `Config.DayCycleMinutes` (0 = always afternoon) and each zone's `Mood`. Test it with `!time day`, `!time sunset`, `!time night` and `!time cycle`, or the Admin panel.
 - **Sky:** the sky's colors follow the time of day: golden-pink haze and clouds at sunrise and sunset, a deep blue night with thinner clouds so the stars and a bigger moon show, and a bright midday. Hot air balloons drift over town and bird flocks fly across during the day (client-side, so they cost the server nothing).

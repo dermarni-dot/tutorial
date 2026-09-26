@@ -534,6 +534,39 @@ local function eggBow(add, color)
 	ring(add, 0, color, nil, 0.3)
 end
 
+
+-- Astral: pale starlit shell with a glowing ring and constellation dots
+function EGG_DESIGNS.Astral(add, c)
+	ring(add, 0.1, Color3.fromRGB(140, 230, 255), Enum.Material.Neon, 0.18)
+	eggDots(add, 18, 0.16, { WHITE, Color3.fromRGB(150, 230, 255) }, Enum.Material.Neon, 21)
+	for i = 0, 3 do
+		eggMeridian(add, i * math.pi / 2, 0.08, Color3.fromRGB(190, 240, 255), Enum.Material.Neon)
+	end
+end
+-- Cosmic: a deep purple galaxy swirl with colorful stars
+function EGG_DESIGNS.Cosmic(add, c)
+	local cols = { Color3.fromRGB(255, 120, 220), Color3.fromRGB(120, 200, 255), Color3.fromRGB(255, 230, 120), Color3.fromRGB(190, 120, 255) }
+	for i = 0, 29 do
+		local a = i * 0.55
+		local y = 1.5 - i * 0.1
+		add("GalaxyArm", "Ball", Vector3.one * (0.18 + (i % 3) * 0.06), surface(a, y, 1.0), cols[(i % #cols) + 1], Enum.Material.Neon)
+	end
+	ring(add, -0.2, Color3.fromRGB(200, 140, 255), Enum.Material.Neon, 0.14)
+	eggWings(add, 3, Color3.fromRGB(210, 170, 255), Enum.Material.Neon)
+end
+-- Omega: a dark crimson shell split by glowing cracks, with a gold crown band
+function EGG_DESIGNS.Omega(add, c)
+	local glow = Color3.fromRGB(255, 70, 90)
+	for i = 0, 13 do
+		local a = i / 14 * math.pi * 2
+		for k = 0, 2 do
+			add("Rift", "Block", Vector3.new(0.12, 0.55, 0.08), surface(a + k * 0.12, 1.1 - k * 0.55 - (i % 2) * 0.3, 1.01) * CFrame.Angles(0, 0, math.rad(if k % 2 == 0 then 25 else -25)), glow, Enum.Material.Neon)
+		end
+	end
+	ring(add, 0.95, Color3.fromRGB(255, 205, 60), Enum.Material.Metal, 0.26)
+	eggDots(add, 8, 0.2, { Color3.fromRGB(255, 205, 60) }, Enum.Material.Neon, 5)
+end
+
 local EGG_VARIANTS = {
 	Common = {
 		{ Name = "Polka", Color = Color3.fromRGB(255, 235, 240), Design = function(add)
@@ -736,6 +769,39 @@ local EGG_VARIANTS = {
 local function addVariant(rarityId, v)
 	table.insert(EGG_VARIANTS[rarityId], v)
 end
+
+EGG_VARIANTS.Astral = {}
+EGG_VARIANTS.Cosmic = {}
+EGG_VARIANTS.Omega = {}
+addVariant("Astral", { Name = "Moonstone", Color = Color3.fromRGB(220, 230, 255), Material = Enum.Material.Glass, Design = function(add)
+	eggDots(add, 10, 0.3, { Color3.fromRGB(255, 250, 220) }, Enum.Material.Neon, 3)
+	ring(add, -0.4, Color3.fromRGB(180, 200, 255), Enum.Material.Neon, 0.12)
+end })
+addVariant("Astral", { Name = "Constellation", Color = Color3.fromRGB(25, 40, 90), Design = function(add)
+	eggDots(add, 24, 0.14, { WHITE, Color3.fromRGB(160, 220, 255) }, Enum.Material.Neon, 17)
+	eggMeridian(add, 0.4, 0.06, Color3.fromRGB(160, 220, 255), Enum.Material.Neon)
+	eggMeridian(add, 2.2, 0.06, Color3.fromRGB(160, 220, 255), Enum.Material.Neon)
+end })
+addVariant("Cosmic", { Name = "Nebula", Color = Color3.fromRGB(90, 40, 140), Design = function(add)
+	eggDots(add, 30, 0.2, { Color3.fromRGB(255, 120, 220), Color3.fromRGB(120, 200, 255), Color3.fromRGB(255, 255, 255) }, Enum.Material.Neon, 11)
+end })
+addVariant("Cosmic", { Name = "Wormhole", Color = Color3.fromRGB(10, 5, 25), Design = function(add)
+	for i = 0, 5 do
+		ring(add, -1.2 + i * 0.5, Color3.fromRGB(150 + i * 15, 90, 255), Enum.Material.Neon, 0.1)
+	end
+end })
+addVariant("Omega", { Name = "Inferno", Color = Color3.fromRGB(90, 10, 5), Design = function(add)
+	eggDots(add, 20, 0.22, { Color3.fromRGB(255, 120, 40), Color3.fromRGB(255, 220, 80) }, Enum.Material.Neon, 9)
+	ring(add, 0.3, Color3.fromRGB(255, 90, 30), Enum.Material.Neon, 0.2)
+end })
+addVariant("Omega", { Name = "Final Form", Color = Color3.fromRGB(245, 240, 250), Material = Enum.Material.Glass, Design = function(add)
+	for i = 0, 3 do
+		eggMeridian(add, i * math.pi / 2, 0.1, Color3.fromRGB(255, 60, 90), Enum.Material.Neon)
+	end
+	ring(add, 0, Color3.fromRGB(255, 205, 60), Enum.Material.Metal, 0.24)
+	eggWings(add, 4, Color3.fromRGB(255, 220, 230), Enum.Material.Neon)
+end })
+
 local SPRINKLES = { Color3.fromRGB(255, 90, 170), Color3.fromRGB(255, 220, 70), Color3.fromRGB(110, 220, 255), Color3.fromRGB(140, 230, 120), Color3.fromRGB(190, 130, 255) }
 addVariant("Common", { Name = "Sprinkle", Color = Color3.fromRGB(255, 245, 240), Design = function(add)
 	for i = 1, 26 do
@@ -994,6 +1060,12 @@ function Visuals.MakeEgg(rarityId, variantName)
 		baseColor = Color3.fromRGB(255, 250, 240)
 	elseif rarityId == "Secret" then
 		baseColor = Color3.fromRGB(20, 20, 26)
+	elseif rarityId == "Astral" then
+		baseColor = Color3.fromRGB(200, 235, 255)
+	elseif rarityId == "Cosmic" then
+		baseColor = Color3.fromRGB(45, 20, 80)
+	elseif rarityId == "Omega" then
+		baseColor = Color3.fromRGB(40, 5, 12)
 	end
 	local egg = newPart(rarityId .. "Egg", "Blob", EGG_SIZE, baseColor)
 	egg.Anchored = true
@@ -3440,7 +3512,8 @@ local function buildCreature(data)
 	local light = color:Lerp(WHITE, 0.45)
 	local tier = Config.Tiers[data.Tier or 1] or Config.Tiers[1]
 	-- grows with age (Baby -> Adult) and with its rolled size / weight
-	local S = (2.8 + rarity.Order * 0.45) * tier.Scale * Config.PetVisualScale(data)
+	-- bigger for rarer pets, growing more slowly past Secret so top pets stay a sensible size
+	local S = (2.8 + math.min(rarity.Order, 8) * 0.45 + math.max(0, rarity.Order - 8) * 0.15) * tier.Scale * Config.PetVisualScale(data)
 	local style = def and def.Style
 	if style and ANATOMY[style] then
 		return buildAnatomy(ANATOMY[style], data, def, rarity, tier, S, color, dark, light)

@@ -123,8 +123,8 @@ Config.BonkStunSpeed = 5
 Config.ShinyChance = 0.05
 Config.StolenShinyChance = 0.25 -- eggs stolen from another player are more likely to hatch shiny
 Config.ShinyMultiplier = 3
-Config.AnnounceHatchRarities = { Legendary = true, Mythic = true, Divine = true, Secret = true }
-Config.AnnounceSpawnRarities = { Legendary = true, Mythic = true, Divine = true, Secret = true }
+Config.AnnounceHatchRarities = { Legendary = true, Mythic = true, Divine = true, Secret = true, Astral = true, Cosmic = true, Omega = true }
+Config.AnnounceSpawnRarities = { Legendary = true, Mythic = true, Divine = true, Secret = true, Astral = true, Cosmic = true, Omega = true }
 
 --------------------------------------------------------------------------------
 -- Growing up: pets hatch as babies and grow while they sit in your base.
@@ -140,7 +140,7 @@ Config.Stages = {
 
 -- Size: every pet rolls a size when it hatches. It sets the adult weight
 -- (BaseWeight of its rarity x size), how big it looks, and a small cash bonus.
-Config.BaseWeight = { Common = 8, Uncommon = 12, Rare = 18, Epic = 26, Legendary = 38, Mythic = 55, Divine = 75, Secret = 100 }
+Config.BaseWeight = { Common = 8, Uncommon = 12, Rare = 18, Epic = 26, Legendary = 38, Mythic = 55, Divine = 75, Secret = 100, Astral = 140, Cosmic = 190, Omega = 260 }
 Config.SizeIncomePower = 0.5 -- cash bonus = size ^ this (a 2x size pet earns ~1.4x)
 
 function Config.RollSize(rng)
@@ -926,6 +926,52 @@ Config.Rarities = {
 			{ Name = "Rainbow Pegasus", Style = "Pegasus", Income = 387100, Color = Color3.fromRGB(255, 154, 221), Pattern = "Rainbow" },
 		},
 	},
+	{
+		Id = "Astral",
+		HatchTime = 780,
+		Color = Color3.fromRGB(120, 220, 255),
+		Creatures = {
+			{ Name = "Astral Wolf", Style = "Wolf", Income = 2200000, Color = Color3.fromRGB(140, 200, 255), Pattern = "Stars" },
+			{ Name = "Nova Lion", Style = "Lion", Income = 2600000, Color = Color3.fromRGB(255, 230, 160), Pattern = "Stars" },
+			{ Name = "Comet Fox", Style = "Fox", Income = 2400000, Color = Color3.fromRGB(120, 220, 255), Pattern = "Swirl" },
+			{ Name = "Starlight Stag", Style = "Stag", Income = 3000000, Color = Color3.fromRGB(200, 230, 255), Pattern = "Stars" },
+			{ Name = "Aurora Owl", Style = "Owl", Income = 3400000, Color = Color3.fromRGB(150, 255, 210), Pattern = "Gems" },
+			{ Name = "Nebula Whale", Style = "Whale", Income = 4000000, Color = Color3.fromRGB(110, 90, 220), Pattern = "Stars" },
+			{ Name = "Meteor Drake", Style = "Drake", Income = 4800000, Color = Color3.fromRGB(255, 150, 80), Pattern = "Gems", Weight = 0.5 },
+			{ Name = "Moonbeam Unicorn", Style = "Unicorn", Income = 5500000, Color = Color3.fromRGB(230, 235, 255), Pattern = "Stars", Weight = 0.5 },
+			{ Name = "Zodiac Griffin", Style = "Griffin", Income = 6000000, Color = Color3.fromRGB(255, 215, 120), Accessory = "Halo", Weight = 0.4 },
+		},
+	},
+	{
+		Id = "Cosmic",
+		HatchTime = 960,
+		Color = Color3.fromRGB(180, 90, 255),
+		Creatures = {
+			{ Name = "Galaxy Cat", Style = "Cat", Income = 25000000, Color = Color3.fromRGB(60, 30, 110), Pattern = "Stars" },
+			{ Name = "Blackhole Bear", Style = "Bear", Income = 30000000, Color = Color3.fromRGB(25, 20, 40), Pattern = "Swirl" },
+			{ Name = "Quasar Kitsune", Style = "Kitsune", Income = 35000000, Color = Color3.fromRGB(190, 110, 255), Pattern = "Stars" },
+			{ Name = "Pulsar Shark", Style = "Shark", Income = 40000000, Color = Color3.fromRGB(80, 120, 255), Pattern = "Gems" },
+			{ Name = "Supernova Phoenix", Style = "Phoenix", Income = 48000000, Color = Color3.fromRGB(255, 120, 60), Pattern = "Rainbow" },
+			{ Name = "Cosmic Kraken", Style = "Kraken", Income = 55000000, Color = Color3.fromRGB(120, 60, 200), Pattern = "Stars", Weight = 0.6 },
+			{ Name = "Starforge Dragon", Style = "Drake", Income = 62000000, Color = Color3.fromRGB(255, 190, 90), Pattern = "Gems", Weight = 0.5 },
+			{ Name = "Eclipse Pegasus", Style = "Pegasus", Income = 70000000, Color = Color3.fromRGB(35, 25, 50), Accessory = "Halo", Weight = 0.4 },
+		},
+	},
+	{
+		Id = "Omega",
+		HatchTime = 1200,
+		Color = Color3.fromRGB(255, 60, 90),
+		Creatures = {
+			{ Name = "Omega Cerberus", Style = "Cerberus", Income = 300000000, Color = Color3.fromRGB(70, 15, 25), Pattern = "Swirl" },
+			{ Name = "Infinity Serpent", Style = "Serpent", Income = 360000000, Color = Color3.fromRGB(255, 80, 120), Pattern = "Rainbow" },
+			{ Name = "Tyrant Rex", Style = "Dino", Income = 420000000, Color = Color3.fromRGB(120, 20, 30), Pattern = "Stripes" },
+			{ Name = "Crimson Leviathan", Style = "Whale", Income = 500000000, Color = Color3.fromRGB(180, 20, 50), Pattern = "Gems" },
+			{ Name = "Paradox Griffin", Style = "Griffin", Income = 600000000, Color = Color3.fromRGB(245, 245, 255), Pattern = "Pixels", Weight = 0.6 },
+			{ Name = "Doomsday Unicorn", Style = "Unicorn", Income = 700000000, Color = Color3.fromRGB(45, 5, 25), Pattern = "Stars", Weight = 0.5 },
+			{ Name = "Worldeater Dragon", Style = "Drake", Income = 820000000, Color = Color3.fromRGB(255, 40, 70), Pattern = "Gems", Accessory = "Horns", Weight = 0.4 },
+			{ Name = "Genesis Phoenix", Style = "Phoenix", Income = 900000000, Color = Color3.fromRGB(255, 250, 220), Pattern = "Rainbow", Accessory = "Halo", Weight = 0.3 },
+		},
+	},
 }
 
 --------------------------------------------------------------------------------
@@ -1163,7 +1209,7 @@ Config.Biomes = {
 		Leash = 330,
 		RespawnTime = 650,
 		EggSpots = 10,
-		Eggs = { Divine = 65, Secret = 35 },
+		Eggs = { Divine = 45, Secret = 35, Astral = 20 },
 		MutationBoost = 1.5, -- eggs here roll mutations this many times as often
 		Mood = { Color = Color3.fromRGB(170, 215, 170), Decay = Color3.fromRGB(60, 110, 70), Density = 0.45, Haze = 1.6, Glare = 0.3, Tint = Color3.fromRGB(240, 255, 235), Brightness = 0, Saturation = 0.25, CloudColor = Color3.fromRGB(235, 245, 235), CloudCover = 0.7, Clock = 15, Bloom = 0.5, Rays = 0.2, Contrast = 0.14, Ambient = Color3.fromRGB(110, 140, 105) },
 	},
@@ -1181,7 +1227,7 @@ Config.Biomes = {
 		Leash = 330,
 		RespawnTime = 700,
 		EggSpots = 10,
-		Eggs = { Divine = 60, Secret = 40 },
+		Eggs = { Divine = 30, Secret = 40, Astral = 30 },
 		MutationBoost = 2, -- eggs here roll mutations this many times as often
 		Mood = { Color = Color3.fromRGB(120, 110, 220), Decay = Color3.fromRGB(30, 60, 120), Density = 0.45, Haze = 1.2, Glare = 0, Tint = Color3.fromRGB(225, 235, 255), Brightness = -0.02, Saturation = 0.3, CloudColor = Color3.fromRGB(110, 90, 170), CloudCover = 0.7, Clock = 22, Bloom = 1.1, Rays = 0, Contrast = 0.2, Ambient = Color3.fromRGB(100, 110, 170) },
 	},
@@ -1199,7 +1245,7 @@ Config.Biomes = {
 		Leash = 330,
 		RespawnTime = 750,
 		EggSpots = 10,
-		Eggs = { Divine = 55, Secret = 45 },
+		Eggs = { Secret = 40, Astral = 45, Cosmic = 15 },
 		MutationBoost = 2.5, -- eggs here roll mutations this many times as often
 		Mood = { Color = Color3.fromRGB(200, 225, 255), Decay = Color3.fromRGB(150, 180, 230), Density = 0.25, Haze = 0.5, Glare = 0.3, Tint = Color3.fromRGB(255, 250, 245), Brightness = 0.02, Saturation = 0.35, CloudColor = Color3.fromRGB(255, 255, 255), CloudCover = 0.5, Clock = 13, Bloom = 0.45, Rays = 0.1, Contrast = 0.12, Ambient = Color3.fromRGB(170, 165, 175) },
 	},
@@ -1217,7 +1263,7 @@ Config.Biomes = {
 		Leash = 330,
 		RespawnTime = 800,
 		EggSpots = 10,
-		Eggs = { Divine = 50, Secret = 50 },
+		Eggs = { Secret = 30, Astral = 45, Cosmic = 25 },
 		MutationBoost = 3, -- eggs here roll mutations this many times as often
 		Mood = { Color = Color3.fromRGB(110, 200, 190), Decay = Color3.fromRGB(40, 90, 120), Density = 0.4, Haze = 1, Glare = 0.1, Tint = Color3.fromRGB(225, 245, 255), Brightness = -0.02, Saturation = 0.2, CloudColor = Color3.fromRGB(150, 190, 220), CloudCover = 0.6, Clock = 23, Bloom = 0.9, Rays = 0, Contrast = 0.16, Ambient = Color3.fromRGB(110, 140, 160) },
 	},
@@ -1235,7 +1281,7 @@ Config.Biomes = {
 		Leash = 330,
 		RespawnTime = 850,
 		EggSpots = 10,
-		Eggs = { Divine = 45, Secret = 55 },
+		Eggs = { Astral = 45, Cosmic = 45, Omega = 10 },
 		MutationBoost = 3.5, -- eggs here roll mutations this many times as often
 		Mood = { Color = Color3.fromRGB(255, 200, 210), Decay = Color3.fromRGB(200, 140, 160), Density = 0.3, Haze = 1, Glare = 0.4, Tint = Color3.fromRGB(255, 242, 240), Brightness = 0.01, Saturation = 0.2, CloudColor = Color3.fromRGB(255, 230, 235), CloudCover = 0.5, Clock = 17.2, Bloom = 0.6, Rays = 0.15, Contrast = 0.12, Ambient = Color3.fromRGB(170, 150, 150) },
 	},
@@ -1253,7 +1299,7 @@ Config.Biomes = {
 		Leash = 330,
 		RespawnTime = 900,
 		EggSpots = 10,
-		Eggs = { Divine = 40, Secret = 60 },
+		Eggs = { Astral = 30, Cosmic = 50, Omega = 20 },
 		MutationBoost = 4, -- eggs here roll mutations this many times as often
 		Mood = { Color = Color3.fromRGB(220, 90, 60), Decay = Color3.fromRGB(90, 20, 10), Density = 0.5, Haze = 1.8, Glare = 0.2, Tint = Color3.fromRGB(255, 215, 200), Brightness = -0.03, Saturation = 0.25, CloudColor = Color3.fromRGB(90, 40, 35), CloudCover = 0.85, Clock = 0.2, Bloom = 1, Rays = 0.1, Contrast = 0.24, Ambient = Color3.fromRGB(140, 70, 55) },
 	},
@@ -1271,7 +1317,7 @@ Config.Biomes = {
 		Leash = 330,
 		RespawnTime = 950,
 		EggSpots = 10,
-		Eggs = { Divine = 35, Secret = 65 },
+		Eggs = { Cosmic = 60, Omega = 40 },
 		MutationBoost = 4.5, -- eggs here roll mutations this many times as often
 		Mood = { Color = Color3.fromRGB(110, 80, 220), Decay = Color3.fromRGB(20, 10, 60), Density = 0.35, Haze = 0.8, Glare = 0.3, Tint = Color3.fromRGB(230, 220, 255), Brightness = -0.03, Saturation = 0.3, CloudColor = Color3.fromRGB(80, 60, 150), CloudCover = 0.3, Clock = 0.5, Bloom = 1.2, Rays = 0, Contrast = 0.22, Ambient = Color3.fromRGB(95, 80, 160) },
 	},
@@ -1290,7 +1336,7 @@ Config.Biomes = {
 		Leash = 330,
 		RespawnTime = 1000,
 		EggSpots = 10,
-		Eggs = { Divine = 25, Secret = 75 },
+		Eggs = { Cosmic = 45, Omega = 55 },
 		MutationBoost = 5, -- eggs here roll mutations this many times as often
 		Mood = { Color = Color3.fromRGB(255, 230, 250), Decay = Color3.fromRGB(230, 200, 255), Density = 0.28, Haze = 1, Glare = 0.5, Tint = Color3.fromRGB(255, 248, 255), Brightness = 0.04, Saturation = 0.4, CloudColor = Color3.fromRGB(255, 245, 255), CloudCover = 0.7, Clock = 12, Bloom = 0.9, Rays = 0.25, Contrast = 0.1, Ambient = Color3.fromRGB(200, 185, 200) },
 	},
