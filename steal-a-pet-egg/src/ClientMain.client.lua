@@ -728,18 +728,55 @@ local function daylight(clock)
 	return 1 - (clock - 17) / 2.5
 end
 
+-- The zone's own sky (tweened when you change zones); the time of day tints it
+local zoneSky = {
+	AtmoColor = Instance.new("Color3Value"),
+	AtmoDecay = Instance.new("Color3Value"),
+	CloudColor = Instance.new("Color3Value"),
+	Haze = Instance.new("NumberValue"),
+	Glare = Instance.new("NumberValue"),
+	Density = Instance.new("NumberValue"),
+	Cover = Instance.new("NumberValue"),
+}
+zoneSky.AtmoColor.Value = Config.TownMood.Color
+zoneSky.AtmoDecay.Value = Config.TownMood.Decay
+zoneSky.CloudColor.Value = Config.TownMood.CloudColor or Color3.new(1, 1, 1)
+zoneSky.Haze.Value = Config.TownMood.Haze
+zoneSky.Glare.Value = Config.TownMood.Glare or 0.2
+zoneSky.Density.Value = Config.TownMood.Density
+zoneSky.Cover.Value = Config.TownMood.CloudCover or 0.6
+local SUNSET_SKY, SUNSET_DECAY, SUNSET_CLOUD = Color3.fromRGB(255, 175, 145), Color3.fromRGB(235, 110, 95), Color3.fromRGB(255, 175, 165)
+local NIGHT_SKY, NIGHT_DECAY, NIGHT_CLOUD = Color3.fromRGB(45, 55, 115), Color3.fromRGB(15, 20, 55), Color3.fromRGB(70, 75, 110)
+
 local clockTime = 15
 game:GetService("RunService").Heartbeat:Connect(function()
 	clockTime = blendClock(cycleClock(), zoneClock, zoneClockBlend.Value)
 	local d = daylight(clockTime)
 	Lighting.ClockTime = clockTime
-	Lighting.Brightness = 0.9 + 1.3 * d
+	Lighting.Brightness = 0.9 + 1.4 * d
 	Lighting.OutdoorAmbient = NIGHT_AMBIENT:Lerp(dayAmbient.Value, d)
 	Lighting.Ambient = NIGHT_INDOOR:Lerp(DAY_INDOOR, d)
-	Lighting.ExposureCompensation = -0.15 + (1 - d) * 0.3
+	Lighting.ExposureCompensation = -0.12 + (1 - d) * 0.3
 	-- warm light at the edges of the day
 	local golden = math.max(0, 1 - math.abs(d - 0.5) * 2)
 	Lighting.ColorShift_Top = Color3.fromRGB(255, 240, 215):Lerp(Color3.fromRGB(255, 170, 110), golden)
+	-- sky colors: golden-pink at sunrise/sunset, deep blue at night. Zones that
+	-- pin their own time (Void, Magma Crater...) keep their own sky.
+	local follow = 1 - zoneClockBlend.Value
+	local sunset, night = golden * follow, (1 - d) * follow
+	local atmosphere = Lighting:FindFirstChild("MoodAtmosphere")
+	if atmosphere then
+		atmosphere.Color = zoneSky.AtmoColor.Value:Lerp(SUNSET_SKY, sunset * 0.55):Lerp(NIGHT_SKY, night * 0.7)
+		atmosphere.Decay = zoneSky.AtmoDecay.Value:Lerp(SUNSET_DECAY, sunset * 0.5):Lerp(NIGHT_DECAY, night * 0.8)
+		atmosphere.Haze = zoneSky.Haze.Value + sunset * 0.8
+		atmosphere.Glare = zoneSky.Glare.Value + sunset * 0.7
+		atmosphere.Density = zoneSky.Density.Value
+	end
+	local clouds = workspace.Terrain:FindFirstChild("MoodClouds")
+	if clouds then
+		clouds.Color = zoneSky.CloudColor.Value:Lerp(SUNSET_CLOUD, sunset * 0.6):Lerp(NIGHT_CLOUD, night * 0.8)
+		clouds.Cover = zoneSky.Cover.Value * (1 - night * 0.35)
+	end
 end)
 
 local function applyMood(mood)
@@ -747,7 +784,11 @@ local function applyMood(mood)
 	local cc = Lighting:FindFirstChild("MoodCC")
 	local info = TweenInfo.new(2.5, Enum.EasingStyle.Sine)
 	if atmosphere then
-		TweenService:Create(atmosphere, info, { Color = mood.Color, Decay = mood.Decay, Density = mood.Density, Haze = mood.Haze, Glare = mood.Glare or 0.2 }):Play()
+		TweenService:Create(zoneSky.AtmoColor, info, { Value = mood.Color }):Play()
+		TweenService:Create(zoneSky.AtmoDecay, info, { Value = mood.Decay }):Play()
+		TweenService:Create(zoneSky.Haze, info, { Value = mood.Haze }):Play()
+		TweenService:Create(zoneSky.Glare, info, { Value = mood.Glare or 0.2 }):Play()
+		TweenService:Create(zoneSky.Density, info, { Value = mood.Density }):Play()
 	end
 	if cc then
 		TweenService:Create(cc, info, { TintColor = mood.Tint, Brightness = mood.Brightness, Saturation = mood.Saturation, Contrast = mood.Contrast or 0.1 }):Play()
@@ -765,9 +806,9 @@ local function applyMood(mood)
 	end
 	TweenService:Create(zoneClockBlend, TweenInfo.new(3, Enum.EasingStyle.Sine), { Value = if mood.Clock then 1 else 0 }):Play()
 	TweenService:Create(dayAmbient, info, { Value = mood.Ambient or Color3.fromRGB(126, 132, 148) }):Play()
-	local clouds = workspace.Terrain:FindFirstChild("MoodClouds")
-	if clouds and mood.CloudColor then
-		TweenService:Create(clouds, info, { Color = mood.CloudColor, Cover = mood.CloudCover or 0.6 }):Play()
+	if mood.CloudColor then
+		TweenService:Create(zoneSky.CloudColor, info, { Value = mood.CloudColor }):Play()
+		TweenService:Create(zoneSky.Cover, info, { Value = mood.CloudCover or 0.6 }):Play()
 	end
 end
 
@@ -1992,6 +2033,112 @@ task.spawn(function()
 		end
 	end
 end)
+
+
+-- Sky life: hot air balloons drifting over town and bird flocks by day.
+-- Client-only decorations, so they cost the server nothing.
+local function setupSkyLife()
+	local RunService = game:GetService("RunService")
+	local folder = Instance.new("Folder")
+	folder.Name = "SkyLife"
+	folder.Parent = workspace
+	local function skyPart(props)
+		local p = Instance.new("Part")
+		p.Anchored = true
+		p.CanCollide = false
+		p.CanQuery = false
+		p.CanTouch = false
+		p.CastShadow = false
+		p.TopSurface = Enum.SurfaceType.Smooth
+		p.BottomSurface = Enum.SurfaceType.Smooth
+		for k, v in pairs(props) do
+			p[k] = v
+		end
+		p.Parent = folder
+		return p
+	end
+
+	-- balloons: a striped envelope, a basket and ropes, all welded to the envelope
+	local balloonColors = { { Color3.fromRGB(255, 90, 110), Color3.fromRGB(255, 220, 90) }, { Color3.fromRGB(90, 170, 255), Color3.new(1, 1, 1) }, { Color3.fromRGB(120, 220, 130), Color3.fromRGB(255, 150, 60) }, { Color3.fromRGB(190, 120, 255), Color3.fromRGB(255, 190, 230) }, { Color3.fromRGB(255, 170, 60), Color3.fromRGB(255, 90, 90) } }
+	local balloons = {}
+	for i, pair in ipairs(balloonColors) do
+		local model = Instance.new("Model")
+		model.Name = "Balloon"
+		model.Parent = folder
+		local envelope = skyPart({ Name = "Envelope", Shape = Enum.PartType.Ball, Size = Vector3.one * 22, Color = pair[1], Material = Enum.Material.Fabric })
+		envelope.Parent = model
+		model.PrimaryPart = envelope
+		local parts = { { envelope, CFrame.new() } }
+		for band = -2, 2 do
+			local r = 11 * math.cos(math.asin(band * 3.2 / 11))
+			local b = skyPart({ Name = "Stripe", Shape = Enum.PartType.Cylinder, Size = Vector3.new(1.4, r * 2 + 0.3, r * 2 + 0.3), Color = if band % 2 == 0 then pair[2] else pair[1], Material = Enum.Material.Fabric })
+			b.Parent = model
+			table.insert(parts, { b, CFrame.new(0, band * 3.2, 0) * CFrame.Angles(0, 0, math.rad(90)) })
+		end
+		local basket = skyPart({ Name = "Basket", Size = Vector3.new(4, 3, 4), Color = Color3.fromRGB(150, 100, 60), Material = Enum.Material.WoodPlanks })
+		basket.Parent = model
+		table.insert(parts, { basket, CFrame.new(0, -17, 0) })
+		for _, c in ipairs({ { -1.6, -1.6 }, { 1.6, -1.6 }, { -1.6, 1.6 }, { 1.6, 1.6 } }) do
+			local rope = skyPart({ Name = "Rope", Size = Vector3.new(0.2, 8, 0.2), Color = Color3.fromRGB(90, 70, 50), Material = Enum.Material.Fabric })
+			rope.Parent = model
+			table.insert(parts, { rope, CFrame.new(c[1] * 1.3, -12, c[2] * 1.3) })
+		end
+		local flame = skyPart({ Name = "Burner", Shape = Enum.PartType.Ball, Size = Vector3.one * 1.4, Color = Color3.fromRGB(255, 170, 60), Material = Enum.Material.Neon })
+		flame.Parent = model
+		table.insert(parts, { flame, CFrame.new(0, -11, 0) })
+		local center = Vector3.new(-420 + i * 150, 0, -10 + (i % 2) * 120)
+		table.insert(balloons, { Parts = parts, Center = center, Radius = 40 + i * 8, Height = 115 + i * 12, Speed = 0.02 + i * 0.004, Phase = i * 1.3 })
+	end
+
+	-- birds: little V flocks that cross the sky while it's light out
+	local flocks = {}
+	local function newFlock()
+		local parts = {}
+		local dir = if math.random() < 0.5 then 1 else -1
+		for k = 0, 6 do
+			local row = math.ceil(k / 2)
+			local side = if k % 2 == 0 then 1 else -1
+			for w = -1, 1, 2 do
+				local wing = skyPart({ Name = "Wing", Size = Vector3.new(1.6, 0.15, 0.5), Color = Color3.fromRGB(40, 40, 50), Material = Enum.Material.SmoothPlastic })
+				table.insert(parts, { wing, Vector3.new(-dir * row * 3, 0, side * row * 3), w })
+			end
+		end
+		return { Parts = parts, Dir = dir, X = -dir * 800, Z = math.random(-60, 1600), Y = math.random(90, 140), Speed = math.random(22, 32) }
+	end
+
+	local t = 0
+	RunService.Heartbeat:Connect(function(dt)
+		t += dt
+		for _, b in ipairs(balloons) do
+			local a = t * b.Speed + b.Phase
+			local pos = b.Center + Vector3.new(math.cos(a) * b.Radius, b.Height + math.sin(t * 0.3 + b.Phase) * 4, math.sin(a) * b.Radius)
+			local root = CFrame.new(pos) * CFrame.Angles(0, a, 0)
+			for _, entry in ipairs(b.Parts) do
+				entry[1].CFrame = root * entry[2]
+			end
+		end
+		local light = Lighting.ClockTime > 6.5 and Lighting.ClockTime < 18
+		if light and #flocks < 2 and math.random() < dt * 0.05 then
+			table.insert(flocks, newFlock())
+		end
+		for i = #flocks, 1, -1 do
+			local f = flocks[i]
+			f.X += f.Dir * f.Speed * dt
+			local flap = math.sin(t * 10) * 0.5
+			for _, entry in ipairs(f.Parts) do
+				local base = Vector3.new(f.X, f.Y, f.Z) + entry[2]
+				entry[1].CFrame = CFrame.new(base + Vector3.new(0, 0, entry[3] * 0.8)) * CFrame.Angles(entry[3] * flap, 0, 0)
+			end
+			if math.abs(f.X) > 820 then
+				for _, entry in ipairs(f.Parts) do
+					entry[1]:Destroy()
+				end
+				table.remove(flocks, i)
+			end
+		end
+	end)
+end
+setupSkyLife()
 
 -- 3D previews, hatch reveal, pet details, clock badge, title screen and
 -- console controls. In their own function to stay under Luau's local limit.

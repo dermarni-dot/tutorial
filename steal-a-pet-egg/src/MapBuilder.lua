@@ -158,9 +158,9 @@ local function setupLighting()
 	Lighting.OutdoorAmbient = Color3.fromRGB(126, 132, 148)
 	Lighting.ColorShift_Top = Color3.fromRGB(255, 240, 215)
 	Lighting.ColorShift_Bottom = Color3.fromRGB(0, 0, 0)
-	Lighting.EnvironmentDiffuseScale = 0.8
-	Lighting.EnvironmentSpecularScale = 0.55
-	Lighting.ShadowSoftness = 0.3
+	Lighting.EnvironmentDiffuseScale = 1
+	Lighting.EnvironmentSpecularScale = 0.9
+	Lighting.ShadowSoftness = 0.2
 	Lighting.ExposureCompensation = -0.15
 	Lighting.GlobalShadows = true
 
@@ -177,8 +177,8 @@ local function setupLighting()
 	atmosphere.Parent = Lighting
 
 	local sky = Instance.new("Sky")
-	sky.SunAngularSize = 11
-	sky.MoonAngularSize = 9
+	sky.SunAngularSize = 16
+	sky.MoonAngularSize = 14
 	sky.StarCount = 5000
 	sky.CelestialBodiesShown = true
 	sky.Parent = Lighting
@@ -216,7 +216,7 @@ local function setupLighting()
 	local clouds = Instance.new("Clouds")
 	clouds.Name = "MoodClouds"
 	clouds.Cover = mood.CloudCover or 0.6
-	clouds.Density = 0.55
+	clouds.Density = 0.62
 	clouds.Color = mood.CloudColor or Color3.new(1, 1, 1)
 	clouds.Parent = terrain
 
