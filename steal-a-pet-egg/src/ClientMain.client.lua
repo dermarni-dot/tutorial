@@ -2440,7 +2440,8 @@ local function setupIncubator()
 				local mutation = Config.MutationById[egg:GetAttribute("Mutation") or ""]
 				local size = egg:GetAttribute("PetSize") or 1
 				local color = if rarity then rarity.Color else Color3.new(1, 1, 1)
-				local title = (if rarity then rarity.Id else "?") .. " Egg"
+				local species = egg:GetAttribute("Species")
+				local title = (if species and species ~= "" then species else if rarity then rarity.Id else "?") .. " Egg"
 				if mutation then
 					title = mutation.Icon .. " " .. mutation.Id .. " " .. title
 				end
@@ -2736,7 +2737,14 @@ local function setupExtraGui()
 			stage:ClearAllChildren()
 			stageCam.Parent = stage
 			local model = Instance.new("Model")
-			local ok, egg = pcall(Visuals.MakeEgg, data.Rarity, data.EggVariant)
+			local ok, egg
+			if data.Species then
+				ok, egg = pcall(Visuals.MakeSpeciesEgg, data.Species)
+				ok = ok and egg ~= nil
+			end
+			if not ok then
+				ok, egg = pcall(Visuals.MakeEgg, data.Rarity, data.EggVariant)
+			end
 			if ok and egg then
 				if mutation then
 					pcall(Visuals.ApplyMutation, egg, data.Mutation)

@@ -207,7 +207,9 @@ local function refreshEggLabel(rec)
 	local rarity = Config.RarityById[rec.Rarity]
 	local title = rarity.Id .. " Egg"
 	local variant = rec.Part:GetAttribute("EggVariant")
-	if variant and variant ~= "Classic" then
+	if rec.Species then
+		title = rec.Species .. " Egg"
+	elseif variant and variant ~= "Classic" then
 		title = variant .. " " .. title
 	end
 	local mutation = rec.Mutation and Config.MutationById[rec.Mutation]
@@ -257,6 +259,7 @@ local function refreshEggLabel(rec)
 		rec.Part:SetAttribute("HatchTotal", rarity.HatchTime)
 		rec.Part:SetAttribute("Progress", math.clamp(1 - rec.Remaining / rarity.HatchTime, 0, 1))
 		rec.Part:SetAttribute("Rarity", rec.Rarity)
+		rec.Part:SetAttribute("Species", rec.Species)
 		rec.Part:SetAttribute("PetSize", rec.PetSize or 1)
 		rec.Part:SetAttribute("Mutation", rec.Mutation)
 		rec.Part:SetAttribute("Stolen", rec.Stolen == true)
@@ -284,9 +287,10 @@ end
 
 -- petSize is optional: by default the pet's size is rolled now, and the egg
 -- is scaled to match, so a big pet always comes in a big egg.
-local function createEgg(rarityId, remaining, stolen, mutation, petSize)
+local function createEgg(rarityId, remaining, stolen, mutation, petSize, species)
 	local rarity = Config.RarityById[rarityId]
-	local part = Visuals.MakeEgg(rarityId)
+	species = if species and Config.CreatureByName[species] then species else nil
+	local part = if species then Visuals.MakeSpeciesEgg(species) else Visuals.MakeEgg(rarityId)
 	if mutation and not Visuals.ApplyMutation(part, mutation) then
 		mutation = nil
 	end
@@ -298,6 +302,7 @@ local function createEgg(rarityId, remaining, stolen, mutation, petSize)
 		Rarity = rarityId,
 		Mutation = mutation,
 		PetSize = petSize,
+		Species = species,
 		Remaining = remaining or rarity.HatchTime,
 		Stolen = stolen or false,
 		State = "None",
@@ -405,12 +410,27 @@ local function spawnWildEgg(biome, spot)
 	end, rng)
 	-- late zones roll mutations more often (the roll takes the square root of luck)
 	local mutation = Config.RollMutation(rng, luck * (biome.Def.MutationBoost or 1) ^ 2)
-	local rec = createEgg(rarity.Id, nil, false, mutation)
+	-- zones with their own animals spawn species eggs (a Tiger Egg hatches a tiger)
+	local species
+	if biome.Def.Pets then
+		local options = {}
+		for _, name in ipairs(biome.Def.Pets) do
+			local def = Config.CreatureByName[name]
+			if def and def.Rarity == rarity.Id then
+				table.insert(options, def)
+			end
+		end
+		local pick = #options > 0 and Util.WeightedPick(options, function(c)
+			return c.Weight or 1
+		end, rng)
+		species = pick and pick.Name
+	end
+	local rec = createEgg(rarity.Id, nil, false, mutation, nil, species)
 	placeInSpot(biome, spot, rec)
 	local mdef = mutation and Config.MutationById[mutation]
 	if Config.AnnounceSpawnRarities[rarity.Id] or (mdef and Config.AnnounceMutations[mutation]) then
-		local name = (if mdef then mdef.Icon .. " " .. mutation .. " " else "") .. rarity.Id
-		notifyAll("🥚 A " .. name .. " Egg appeared in " .. biome.Def.Name .. "!", if mdef then mdef.Color else rarity.Color)
+		local name = (if mdef then mdef.Icon .. " " .. mutation .. " " else "") .. (species or rarity.Id)
+		notifyAll("🥚 A " .. name .. " Egg (" .. rarity.Id .. ") appeared in " .. biome.Def.Name .. "!", if mdef then mdef.Color else rarity.Color)
 	end
 end
 
@@ -929,11 +949,13 @@ spawnCreature = function(player, index, data)
 	discoverPet(state, data.Name)
 end
 
-local function rollCreature(rarityId, stolen)
+-- species: a species egg always hatches that animal
+local function rollCreature(rarityId, stolen, species)
 	local rarity = Config.RarityById[rarityId]
-	-- rarer pets inside a rarity can have a lower Weight (default 1)
-	local def = Util.WeightedPick(rarity.Creatures, function(c)
-		return c.Weight or 1
+	-- rarer pets inside a rarity can have a lower Weight (default 1); zone
+	-- animals (ZoneOnly) only come from their own zone's species eggs
+	local def = species and Config.CreatureByName[species] or Util.WeightedPick(rarity.Creatures, function(c)
+		return if c.ZoneOnly then 0 else (c.Weight or 1)
 	end, rng)
 	local chance = if stolen then Config.StolenShinyChance else Config.ShinyChance
 	chance = math.min(0.5, chance * math.sqrt(currentLuck()))
@@ -1010,7 +1032,7 @@ end
 local function hatch(player, index)
 	local state = states[player]
 	local rec = state.Nest[index].Egg
-	local data = rollCreature(rec.Rarity, rec.Stolen)
+	local data = rollCreature(rec.Rarity, rec.Stolen, rec.Species)
 	data.Mutation = rec.Mutation
 	data.Size = rec.PetSize or data.Size -- the size the egg showed
 	local eggVariant = rec.Part:GetAttribute("EggVariant")
@@ -1023,7 +1045,7 @@ local function hatch(player, index)
 	addStat(state, "Hatched")
 	if hatchRemote then
 		-- the client shows a big reveal with a 3D preview of the pet
-		hatchRemote:FireClient(player, { Name = data.Name, Rarity = data.Rarity, Shiny = data.Shiny, Mutation = data.Mutation, Size = data.Size, Tier = data.Tier, Age = 0, New = isNew, EggVariant = eggVariant })
+		hatchRemote:FireClient(player, { Name = data.Name, Rarity = data.Rarity, Shiny = data.Shiny, Mutation = data.Mutation, Size = data.Size, Tier = data.Tier, Age = 0, New = isNew, EggVariant = eggVariant, Species = rec.Species })
 	end
 
 	local rarity = Config.RarityById[data.Rarity]
@@ -2041,7 +2063,7 @@ function GameService.AddPlayer(player, profile)
 		if index and index >= 1 and index <= profile.Slots and type(entry) == "table" and not state.Nest[index] then
 			if entry.Kind == "Egg" and Config.RarityById[entry.Rarity] then
 				local savedSize = tonumber(entry.PetSize)
-				local rec = createEgg(entry.Rarity, tonumber(entry.Remaining), entry.Stolen == true, Config.MutationById[entry.Mutation or ""] and entry.Mutation or nil, if savedSize then math.clamp(savedSize, 0.5, 3) else nil)
+				local rec = createEgg(entry.Rarity, tonumber(entry.Remaining), entry.Stolen == true, Config.MutationById[entry.Mutation or ""] and entry.Mutation or nil, if savedSize then math.clamp(savedSize, 0.5, 3) else nil, if type(entry.Species) == "string" then entry.Species else nil)
 				placeEggInBase(player, index, rec)
 			elseif entry.Kind == "Creature" and Config.CreatureByName[entry.Name] then
 				local def = Config.CreatureByName[entry.Name]
@@ -2102,6 +2124,7 @@ function GameService.Snapshot(player)
 				Stolen = slot.Egg.Stolen,
 				Mutation = slot.Egg.Mutation,
 				PetSize = slot.Egg.PetSize,
+				Species = slot.Egg.Species,
 			}
 		else
 			nest[tostring(index)] = {

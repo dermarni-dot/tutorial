@@ -474,6 +474,10 @@ Config.Rarities = {
 		HatchTime = 20,
 		Color = Color3.fromRGB(110, 220, 120),
 		Creatures = {
+			{ Name = "Jerboa", Style = "Kangaroo", Income = 7, Color = Color3.fromRGB(225, 195, 150), ZoneOnly = true, Exact = true, Features = { "LongEars" } },
+			{ Name = "Fennec", Style = "Fox", Income = 8, Color = Color3.fromRGB(235, 200, 150), ZoneOnly = true, Exact = true, Features = { "BigEars" } },
+			{ Name = "Camel", Style = "Pony", Income = 9, Color = Color3.fromRGB(190, 145, 95), ZoneOnly = true, Exact = true, Features = { "Hump" } },
+			{ Name = "Sand Snake", Style = "Serpent", Income = 9, Color = Color3.fromRGB(215, 180, 120), ZoneOnly = true, Exact = true, Pattern = "Stripes", PatternColor = Color3.fromRGB(150, 110, 70) },
 			{ Name = "Glow Newt", Style = "Newt", Income = 6, Color = Color3.fromRGB(120, 255, 170) },
 			{ Name = "Puffcap", Style = "Mushroom", Income = 7, Color = Color3.fromRGB(230, 120, 160) },
 			{ Name = "Snugbat", Style = "Bat", Income = 8, Color = Color3.fromRGB(120, 100, 160) },
@@ -558,6 +562,14 @@ Config.Rarities = {
 		HatchTime = 40,
 		Color = Color3.fromRGB(80, 160, 255),
 		Creatures = {
+			{ Name = "Tarantula", Style = "Spider", Income = 40, Color = Color3.fromRGB(120, 85, 60), ZoneOnly = true, Exact = true },
+			{ Name = "Desert Scorpion", Style = "Scorpion", Income = 45, Color = Color3.fromRGB(220, 120, 50), ZoneOnly = true, Exact = true },
+			{ Name = "Cactus Llama", Style = "Pony", Income = 42, Color = Color3.fromRGB(90, 170, 80), ZoneOnly = true, Exact = true, Features = { "Leaves", "Spines" } },
+			{ Name = "Sphinx Cat", Style = "Cat", Income = 50, Color = Color3.fromRGB(215, 180, 110), ZoneOnly = true, Exact = true, Features = { "Pharaoh" } },
+			{ Name = "Snow Penguin", Style = "Penguin", Income = 38, Color = Color3.fromRGB(40, 40, 50), ZoneOnly = true, Exact = true },
+			{ Name = "Walrus", Style = "Seal", Income = 44, Color = Color3.fromRGB(150, 110, 90), ZoneOnly = true, Exact = true, Features = { "Tusks", "Whiskers" } },
+			{ Name = "Polar Bear", Style = "Bear", Income = 46, Color = Color3.fromRGB(245, 245, 250), ZoneOnly = true, Exact = true },
+			{ Name = "Sabertooth Tiger", Style = "Cat", Income = 50, Color = Color3.fromRGB(235, 225, 210), ZoneOnly = true, Exact = true, Pattern = "Stripes", PatternColor = Color3.fromRGB(90, 80, 75), Features = { "Fangs" } },
 			{ Name = "Frostfin", Style = "Fish", Income = 35, Color = Color3.fromRGB(150, 220, 255) },
 			{ Name = "Emberkit", Style = "Cat", Income = 40, Color = Color3.fromRGB(255, 120, 60) },
 			{ Name = "Thundercub", Style = "Cub", Income = 45, Color = Color3.fromRGB(255, 230, 80) },
@@ -641,6 +653,14 @@ Config.Rarities = {
 		HatchTime = 75,
 		Color = Color3.fromRGB(180, 90, 255),
 		Creatures = {
+			{ Name = "Woolly Mammoth", Style = "Elephant", Income = 240, Color = Color3.fromRGB(110, 75, 60), ZoneOnly = true, Exact = true, Features = { "Tusks", "Shaggy" } },
+			{ Name = "King Mammoth", Style = "Elephant", Income = 290, Color = Color3.fromRGB(170, 220, 255), ZoneOnly = true, Exact = true, Features = { "Tusks", "Shaggy", "Crown" } },
+			{ Name = "Snow Yeti", Style = "Gorilla", Income = 260, Color = Color3.fromRGB(240, 245, 255), ZoneOnly = true, Exact = true, Features = { "Shaggy" } },
+			{ Name = "Frost Wyvern", Style = "Drake", Income = 280, Color = Color3.fromRGB(150, 210, 255), ZoneOnly = true, Exact = true, Features = { "Spikes" } },
+			{ Name = "Lava Hound", Style = "Wolf", Income = 230, Color = Color3.fromRGB(50, 40, 40), ZoneOnly = true, Exact = true, Pattern = "Stripes", PatternColor = Color3.fromRGB(255, 120, 30), PatternGlow = true },
+			{ Name = "Magma Golem", Style = "Gorilla", Income = 250, Color = Color3.fromRGB(45, 38, 38), ZoneOnly = true, Exact = true, Pattern = "Spots", PatternColor = Color3.fromRGB(255, 110, 30), PatternGlow = true },
+			{ Name = "Lava Lizard", Style = "Croc", Income = 265, Color = Color3.fromRGB(35, 30, 30), ZoneOnly = true, Exact = true, Pattern = "Stripes", PatternColor = Color3.fromRGB(255, 130, 40), PatternGlow = true, Features = { "Spikes" } },
+			{ Name = "Ember Salamander", Style = "Newt", Income = 280, Color = Color3.fromRGB(220, 60, 40), ZoneOnly = true, Exact = true },
 			{ Name = "Silverback", Style = "Gorilla", Income = 240, Color = Color3.fromRGB(70, 68, 72), Pattern = "Patches" },
 			{ Name = "Voidmoth", Style = "Moth", Income = 220, Color = Color3.fromRGB(90, 50, 140) },
 			{ Name = "Crystal Stag", Style = "Stag", Income = 260, Color = Color3.fromRGB(200, 160, 255) },
@@ -719,6 +739,10 @@ Config.Rarities = {
 		HatchTime = 120,
 		Color = Color3.fromRGB(255, 180, 40),
 		Creatures = {
+			{ Name = "Ember Phoenix", Style = "Phoenix", Income = 1600, Color = Color3.fromRGB(255, 170, 40), ZoneOnly = true, Exact = true },
+			{ Name = "Obsidian Wyrm", Style = "Drake", Income = 1900, Color = Color3.fromRGB(40, 30, 45), ZoneOnly = true, Exact = true, Features = { "Spikes", "GlowEyes" } },
+			{ Name = "Hell Bat", Style = "Bat", Income = 1700, Color = Color3.fromRGB(120, 20, 30), ZoneOnly = true, Exact = true, Features = { "GlowEyes" } },
+			{ Name = "Magma Rhino", Style = "Rhino", Income = 2100, Color = Color3.fromRGB(60, 40, 40), ZoneOnly = true, Exact = true, Pattern = "Stripes", PatternColor = Color3.fromRGB(255, 110, 30), PatternGlow = true },
 			{ Name = "Jungle Kong", Style = "Gorilla", Income = 2200, Color = Color3.fromRGB(95, 70, 50) },
 			{ Name = "Solar Drake", Style = "Drake", Income = 1500, Color = Color3.fromRGB(255, 160, 40) },
 			{ Name = "Tidal Serpent", Style = "Serpent", Income = 1800, Color = Color3.fromRGB(40, 140, 220) },
@@ -793,6 +817,10 @@ Config.Rarities = {
 		HatchTime = 240,
 		Color = Color3.fromRGB(255, 70, 110),
 		Creatures = {
+			{ Name = "Parrotfish", Style = "Fish", Income = 11500, Color = Color3.fromRGB(120, 220, 200), ZoneOnly = true, Exact = true, Features = { "Beak" } },
+			{ Name = "Swordfish", Style = "Fish", Income = 12500, Color = Color3.fromRGB(90, 110, 160), ZoneOnly = true, Exact = true, Features = { "Sword" } },
+			{ Name = "Reef Shark", Style = "Shark", Income = 13500, Color = Color3.fromRGB(100, 120, 150), ZoneOnly = true, Exact = true },
+			{ Name = "Manta Ray", Style = "Manta", Income = 14500, Color = Color3.fromRGB(40, 70, 110), ZoneOnly = true, Exact = true },
 			{ Name = "Cosmic Phoenix", Style = "Phoenix", Income = 11000, Color = Color3.fromRGB(255, 90, 150) },
 			{ Name = "Galaxy Dragon", Style = "Drake", Income = 12500, Color = Color3.fromRGB(120, 70, 220), Pattern = "Stars" },
 			{ Name = "Void Kraken", Style = "Kraken", Income = 14000, Color = Color3.fromRGB(70, 40, 120), Weight = 0.5 },
@@ -858,6 +886,12 @@ Config.Rarities = {
 		HatchTime = 420,
 		Color = Color3.fromRGB(255, 240, 170),
 		Creatures = {
+			{ Name = "Orca", Style = "Whale", Income = 65000, Color = Color3.fromRGB(25, 25, 30), ZoneOnly = true, Exact = true, Features = { "OrcaPatches" } },
+			{ Name = "Narwhal", Style = "Whale", Income = 72000, Color = Color3.fromRGB(200, 210, 225), ZoneOnly = true, Exact = true, Features = { "Horn" } },
+			{ Name = "Giant Octopus", Style = "Octopus", Income = 80000, Color = Color3.fromRGB(220, 90, 70), ZoneOnly = true, Exact = true },
+			{ Name = "Chimpanzee", Style = "Monkey", Income = 62000, Color = Color3.fromRGB(90, 60, 40), ZoneOnly = true, Exact = true },
+			{ Name = "Toucan", Style = "Parrot", Income = 70000, Color = Color3.fromRGB(30, 30, 35), ZoneOnly = true, Exact = true, Features = { "BigBeak" } },
+			{ Name = "Crocodile", Style = "Croc", Income = 78000, Color = Color3.fromRGB(70, 110, 60), ZoneOnly = true, Exact = true, Features = { "Spikes" } },
 			{ Name = "Celestial Unicorn", Style = "Unicorn", Income = 65000, Color = Color3.fromRGB(255, 245, 210) },
 			{ Name = "Seraph Kitsune", Style = "Kitsune", Income = 80000, Color = Color3.fromRGB(255, 230, 160), Weight = 0.6 },
 			{ Name = "Halo Owl", Style = "Owl", Income = 60000, Color = Color3.fromRGB(250, 235, 200) },
@@ -909,6 +943,10 @@ Config.Rarities = {
 		HatchTime = 600,
 		Color = Color3.fromRGB(40, 40, 50),
 		Creatures = {
+			{ Name = "Abyss Megalodon", Style = "Shark", Income = 600000, Color = Color3.fromRGB(60, 110, 180), ZoneOnly = true, Exact = true, Features = { "Jaws" } },
+			{ Name = "Jungle Gorilla", Style = "Gorilla", Income = 400000, Color = Color3.fromRGB(40, 40, 50), ZoneOnly = true, Exact = true },
+			{ Name = "Orangutan", Style = "Monkey", Income = 450000, Color = Color3.fromRGB(210, 110, 40), ZoneOnly = true, Exact = true, Features = { "Shaggy" } },
+			{ Name = "Jungle Spider", Style = "Spider", Income = 520000, Color = Color3.fromRGB(20, 20, 25), ZoneOnly = true, Exact = true, Features = { "GlowEyes" } },
 			{ Name = "Glitch Cat", Style = "GlitchCat", Income = 350000, Color = Color3.fromRGB(35, 35, 45) },
 			{ Name = "Rainbow Dragon", Style = "Drake", Income = 500000, Color = Color3.fromRGB(255, 120, 200), Pattern = "Rainbow", Weight = 0.5 },
 			{ Name = "404 Bunny", Style = "GlitchBunny", Income = 400000, Color = Color3.fromRGB(30, 30, 38) },
@@ -947,6 +985,8 @@ Config.Rarities = {
 		HatchTime = 780,
 		Color = Color3.fromRGB(120, 220, 255),
 		Creatures = {
+			{ Name = "Bengal Tiger", Style = "Cat", Income = 3000000, Color = Color3.fromRGB(240, 140, 40), ZoneOnly = true, Exact = true, Pattern = "Stripes", PatternColor = Color3.fromRGB(30, 25, 25) },
+			{ Name = "King Snake", Style = "Serpent", Income = 5000000, Color = Color3.fromRGB(60, 180, 70), ZoneOnly = true, Exact = true, Features = { "Crown", "Hood" } },
 			{ Name = "Astral Wolf", Style = "Wolf", Income = 2200000, Color = Color3.fromRGB(140, 200, 255), Pattern = "Stars" },
 			{ Name = "Nova Lion", Style = "Lion", Income = 2600000, Color = Color3.fromRGB(255, 230, 160), Pattern = "Stars" },
 			{ Name = "Comet Fox", Style = "Fox", Income = 2400000, Color = Color3.fromRGB(120, 220, 255), Pattern = "Swirl" },
@@ -1032,6 +1072,7 @@ Config.Biomes = {
 		Leash = 230,
 		RespawnTime = 25,
 		EggSpots = 15,
+		Pets = { "Jerboa", "Fennec", "Camel", "Sand Snake", "Tarantula", "Desert Scorpion", "Cactus Llama", "Sphinx Cat" }, -- this zone's own animals: its eggs are their species eggs
 		Eggs = { Uncommon = 60, Rare = 40 },
 		Mood = { Color = Color3.fromRGB(240, 215, 175), Decay = Color3.fromRGB(200, 150, 100), Density = 0.34, Haze = 1.2, Glare = 0.4, Tint = Color3.fromRGB(255, 246, 228), Brightness = 0.01, Saturation = 0.15, CloudColor = Color3.fromRGB(255, 238, 215), CloudCover = 0.45, Bloom = 0.55, Rays = 0.09, Contrast = 0.16, Ambient = Color3.fromRGB(160, 140, 115) },
 	},
@@ -1050,6 +1091,7 @@ Config.Biomes = {
 		Leash = 240,
 		RespawnTime = 45,
 		EggSpots = 14,
+		Pets = { "Snow Penguin", "Walrus", "Polar Bear", "Sabertooth Tiger", "Woolly Mammoth", "King Mammoth", "Snow Yeti", "Frost Wyvern" }, -- this zone's own animals: its eggs are their species eggs
 		Eggs = { Rare = 65, Epic = 35 },
 		Mood = { Color = Color3.fromRGB(210, 228, 255), Decay = Color3.fromRGB(150, 180, 220), Density = 0.4, Haze = 1.2, Glare = 0.15, Tint = Color3.fromRGB(236, 246, 255), Brightness = 0, Saturation = 0.02, CloudColor = Color3.fromRGB(235, 242, 255), CloudCover = 0.75, Bloom = 0.6, Rays = 0.06, Contrast = 0.08, Ambient = Color3.fromRGB(150, 165, 190) },
 	},
@@ -1068,6 +1110,7 @@ Config.Biomes = {
 		Leash = 250,
 		RespawnTime = 90,
 		EggSpots = 13,
+		Pets = { "Lava Hound", "Magma Golem", "Lava Lizard", "Ember Salamander", "Ember Phoenix", "Obsidian Wyrm", "Hell Bat", "Magma Rhino" }, -- this zone's own animals: its eggs are their species eggs
 		Eggs = { Epic = 65, Legendary = 35 },
 		Mood = { Color = Color3.fromRGB(230, 130, 95), Decay = Color3.fromRGB(110, 40, 25), Density = 0.44, Haze = 1.6, Glare = 0.3, Tint = Color3.fromRGB(255, 224, 208), Brightness = -0.02, Saturation = 0.2, CloudColor = Color3.fromRGB(95, 65, 60), CloudCover = 0.8, Clock = 18.15, Bloom = 0.85, Rays = 0.16, Contrast = 0.2, Ambient = Color3.fromRGB(140, 80, 65) },
 	},
@@ -1122,6 +1165,7 @@ Config.Biomes = {
 		Leash = 280,
 		RespawnTime = 300,
 		EggSpots = 11,
+		Pets = { "Parrotfish", "Swordfish", "Reef Shark", "Manta Ray", "Orca", "Narwhal", "Giant Octopus", "Abyss Megalodon" }, -- this zone's own animals: its eggs are their species eggs
 		Eggs = { Mythic = 65, Divine = 31, Secret = 4 },
 		Mood = { Color = Color3.fromRGB(80, 170, 200), Decay = Color3.fromRGB(20, 70, 110), Density = 0.55, Haze = 2, Glare = 0, Tint = Color3.fromRGB(200, 235, 255), Brightness = -0.03, Saturation = 0.1, CloudColor = Color3.fromRGB(120, 180, 210), CloudCover = 0.8, Clock = 13, Bloom = 0.6, Rays = 0.2, Contrast = 0.15, Ambient = Color3.fromRGB(70, 130, 160) },
 	},
@@ -1226,6 +1270,7 @@ Config.Biomes = {
 		Leash = 330,
 		RespawnTime = 650,
 		EggSpots = 10,
+		Pets = { "Chimpanzee", "Toucan", "Crocodile", "Jungle Gorilla", "Orangutan", "Jungle Spider", "Bengal Tiger", "King Snake" }, -- this zone's own animals: its eggs are their species eggs
 		Eggs = { Divine = 45, Secret = 35, Astral = 20 },
 		MutationBoost = 1.5, -- eggs here roll mutations this many times as often
 		Mood = { Color = Color3.fromRGB(170, 215, 170), Decay = Color3.fromRGB(60, 110, 70), Density = 0.45, Haze = 1.6, Glare = 0.3, Tint = Color3.fromRGB(240, 255, 235), Brightness = 0, Saturation = 0.25, CloudColor = Color3.fromRGB(235, 245, 235), CloudCover = 0.7, Clock = 15, Bloom = 0.5, Rays = 0.2, Contrast = 0.14, Ambient = Color3.fromRGB(110, 140, 105) },
