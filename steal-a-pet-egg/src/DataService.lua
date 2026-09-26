@@ -36,6 +36,8 @@ local function defaults()
 		Index = {}, -- [pet name] = true for every pet you've ever had
 		Treat = nil, -- { Key, Until } while a treat is active (Until = os.time())
 		Codes = {}, -- [code] = true for every code this player has used
+		-- lifetime stats for the leaderboards
+		Stats = { TimePlayed = 0, Hatched = 0, Stolen = 0, Collected = 0, Slapped = 0 },
 	}
 end
 
@@ -87,6 +89,11 @@ function DataService.Load(player)
 				end
 			end
 		end
+		if type(data.Stats) == "table" then
+			for key in pairs(profile.Stats) do
+				profile.Stats[key] = math.max(0, math.floor(tonumber(data.Stats[key]) or 0))
+			end
+		end
 		if type(data.Daily) == "table" then
 			profile.Daily.Streak = math.max(0, math.floor(tonumber(data.Daily.Streak) or 0))
 			profile.Daily.LastDay = math.floor(tonumber(data.Daily.LastDay) or -1)
@@ -110,6 +117,7 @@ function DataService.Save(player, profile)
 		Index = profile.Index,
 		Treat = profile.Treat,
 		Codes = profile.Codes,
+		Stats = profile.Stats,
 		Version = 2,
 	}
 	for attempt = 1, 3 do

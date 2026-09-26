@@ -13,6 +13,7 @@ local Monetization = require(Modules:WaitForChild("Monetization"))
 local AdminService = require(Modules:WaitForChild("AdminService"))
 local DailyRewardService = require(Modules:WaitForChild("DailyRewardService"))
 local CodesService = require(Modules:WaitForChild("CodesService"))
+local LeaderboardService = require(Modules:WaitForChild("LeaderboardService"))
 
 -- Remotes
 local remotes = Instance.new("Folder")
@@ -50,6 +51,7 @@ Monetization.Init(GameService)
 AdminService.Init(GameService, notify, admin)
 DailyRewardService.Init(GameService, daily, notify)
 CodesService.Init(GameService, codes)
+LeaderboardService.Init(GameService, workspace.Map.Town:FindFirstChild("Leaderboards"))
 treats.OnServerEvent:Connect(function(player, action, key)
 	if action == "Buy" and type(key) == "string" then
 		GameService.BuyTreat(player, key)
@@ -72,6 +74,7 @@ for _, player in ipairs(Players:GetPlayers()) do
 end
 
 Players.PlayerRemoving:Connect(function(player)
+	task.spawn(LeaderboardService.SavePlayer, player) -- reads their stats right away, saves in the background
 	local profile = GameService.RemovePlayer(player)
 	if profile then
 		DataService.Save(player, profile)

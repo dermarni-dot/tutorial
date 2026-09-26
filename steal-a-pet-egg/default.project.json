@@ -20,7 +20,8 @@
         "Monetization": { "$path": "src/Monetization.lua" },
         "AdminService": { "$path": "src/AdminService.lua" },
         "DailyRewardService": { "$path": "src/DailyRewardService.lua" },
-        "CodesService": { "$path": "src/CodesService.lua" }
+        "CodesService": { "$path": "src/CodesService.lua" },
+        "LeaderboardService": { "$path": "src/LeaderboardService.lua" }
       }
     },
     "StarterPlayer": {

@@ -1122,6 +1122,21 @@ Config.Biomes = {
 	},
 }
 
+-- Leaderboards: big boards in town (in front of the bases) that rank the top
+-- players across every server. Format: "Money", "Time" or "Number".
+Config.Leaderboards = {
+	{ Key = "Cash", Title = "RICHEST", Icon = "💰", Format = "Money", Color = Color3.fromRGB(90, 220, 110) },
+	{ Key = "TimePlayed", Title = "MOST TIME PLAYED", Icon = "⏱️", Format = "Time", Color = Color3.fromRGB(110, 190, 255) },
+	{ Key = "Hatched", Title = "PETS HATCHED", Icon = "🐣", Format = "Number", Color = Color3.fromRGB(255, 205, 80) },
+	{ Key = "Stolen", Title = "EGGS STOLEN", Icon = "😈", Format = "Number", Color = Color3.fromRGB(255, 95, 95) },
+	{ Key = "Speed", Title = "FASTEST", Icon = "⚡", Format = "Number", Color = Color3.fromRGB(255, 240, 90) },
+	{ Key = "Index", Title = "PET INDEX", Icon = "📖", Format = "Number", Color = Color3.fromRGB(190, 130, 255) },
+	{ Key = "Collected", Title = "EGGS BROUGHT HOME", Icon = "🥚", Format = "Number", Color = Color3.fromRGB(255, 160, 200) },
+	{ Key = "Slapped", Title = "MOST SLAPPED", Icon = "💥", Format = "Number", Color = Color3.fromRGB(255, 150, 60) },
+}
+Config.LeaderboardSize = 10 -- rows per board
+Config.LeaderboardRefresh = 90 -- seconds between updates (kept slow for Roblox's DataStore limits)
+
 -- Town floor and wall colors (checkerboard pairs)
 Config.TownFloor = { Color3.fromRGB(116, 206, 78), Color3.fromRGB(100, 190, 66) }
 Config.TownWalls = { Color3.fromRGB(214, 122, 82), Color3.fromRGB(230, 142, 98) }
@@ -5271,6 +5286,7 @@ local Monetization = require(Modules:WaitForChild("Monetization"))
 local AdminService = require(Modules:WaitForChild("AdminService"))
 local DailyRewardService = require(Modules:WaitForChild("DailyRewardService"))
 local CodesService = require(Modules:WaitForChild("CodesService"))
+local LeaderboardService = require(Modules:WaitForChild("LeaderboardService"))
 
 -- Remotes
 local remotes = Instance.new("Folder")
@@ -5308,6 +5324,7 @@ Monetization.Init(GameService)
 AdminService.Init(GameService, notify, admin)
 DailyRewardService.Init(GameService, daily, notify)
 CodesService.Init(GameService, codes)
+LeaderboardService.Init(GameService, workspace.Map.Town:FindFirstChild("Leaderboards"))
 treats.OnServerEvent:Connect(function(player, action, key)
 	if action == "Buy" and type(key) == "string" then
 		GameService.BuyTreat(player, key)
@@ -5330,6 +5347,7 @@ for _, player in ipairs(Players:GetPlayers()) do
 end
 
 Players.PlayerRemoving:Connect(function(player)
+	task.spawn(LeaderboardService.SavePlayer, player) -- reads their stats right away, saves in the background
 	local profile = GameService.RemovePlayer(player)
 	if profile then
 		DataService.Save(player, profile)
@@ -8117,6 +8135,133 @@ local function streetLamp(folder, position, faceX)
 	bulb.Size = Vector3.new(1.4, 1.4, 1.4)
 end
 
+
+--------------------------------------------------------------------------------
+-- Leaderboards: 8 boards on the lawn in front of the bases, 4 each side of the
+-- main street, facing the bases so you see them as soon as you spawn.
+-- LeaderboardService fills in the rows.
+--------------------------------------------------------------------------------
+local function buildLeaderboards(parent)
+	local folder = Instance.new("Folder")
+	folder.Name = "Leaderboards"
+	folder.Parent = parent
+	local z = 86
+	local xs = { -160, -120, -80, -40, 40, 80, 120, 160 }
+	local W, H = 17, 21
+	local rows = Config.LeaderboardSize
+	for i, info in ipairs(Config.Leaderboards) do
+		local x = xs[i]
+		if not x then
+			break
+		end
+		local board = Instance.new("Model")
+		board.Name = info.Key
+		board.Parent = folder
+		-- face the bases (-Z), angled a little toward the main street
+		local base = CFrame.lookAt(Vector3.new(x, 0, z), Vector3.new(x * 0.8, 0, z - 40))
+		local wood = Color3.fromRGB(55, 40, 70)
+		local accent = info.Color
+		deco({ Name = "Pedestal", Size = Vector3.new(W + 3, 1.2, 5), CFrame = base * CFrame.new(0, 0.6, 0), Color = Color3.fromRGB(230, 228, 235), Material = Enum.Material.Marble, Parent = board })
+		deco({ Name = "PedestalGlow", Size = Vector3.new(W + 3.2, 0.3, 5.2), CFrame = base * CFrame.new(0, 1.3, 0), Color = accent, Material = Enum.Material.Neon, CastShadow = false, Parent = board })
+		for _, sx in ipairs({ -1, 1 }) do
+			deco({ Name = "BoardPost", Size = Vector3.new(1.4, H + 4, 1.4), CFrame = base * CFrame.new(sx * (W / 2 + 0.7), (H + 4) / 2 + 1.2, 0.4), Color = wood, Material = Enum.Material.Wood, Parent = board })
+			deco({ Name = "PostCap", Shape = Enum.PartType.Ball, Size = Vector3.one * 2, CFrame = base * CFrame.new(sx * (W / 2 + 0.7), H + 6.2, 0.4), Color = accent, Material = Enum.Material.Neon, CastShadow = false, Parent = board })
+		end
+		local screen = part({ Name = "Screen", Size = Vector3.new(W, H, 0.6), CFrame = base * CFrame.new(0, H / 2 + 3, 0), Color = Color3.fromRGB(24, 20, 36), Material = Enum.Material.SmoothPlastic, CanQuery = false, Parent = board })
+		for _, sy in ipairs({ -1, 1 }) do
+			deco({ Name = "Frame", Size = Vector3.new(W + 0.6, 0.5, 0.8), CFrame = base * CFrame.new(0, H / 2 + 3 + sy * (H / 2 + 0.2), 0), Color = accent, Material = Enum.Material.Neon, CastShadow = false, Parent = board })
+		end
+		-- a crown on top
+		local crownY = H + 5.2
+		deco({ Name = "CrownBand", Size = Vector3.new(5, 1, 1), CFrame = base * CFrame.new(0, crownY, 0.3), Color = Color3.fromRGB(255, 205, 60), Material = Enum.Material.Metal, Parent = board })
+		for k = -1, 1 do
+			deco({ Name = "CrownSpike", Shape = Enum.PartType.Wedge, Size = Vector3.new(1, 1.8, 1.2), CFrame = base * CFrame.new(k * 1.8, crownY + 1.3, 0.3), Color = Color3.fromRGB(255, 205, 60), Material = Enum.Material.Metal, Parent = board })
+		end
+		light(screen, accent, 18, 0.6)
+
+		-- the board face: title, column of 10 rows and an "updated" line
+		local gui = Instance.new("SurfaceGui")
+		gui.Name = "Board"
+		gui.Face = Enum.NormalId.Front
+		gui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+		gui.PixelsPerStud = 30
+		gui.LightInfluence = 0
+		gui.Parent = screen
+		local bg = Instance.new("Frame")
+		bg.Name = "Bg"
+		bg.Size = UDim2.fromScale(1, 1)
+		bg.BackgroundColor3 = Color3.fromRGB(24, 20, 36)
+		bg.Parent = gui
+		local grad = Instance.new("UIGradient")
+		grad.Color = ColorSequence.new(accent:Lerp(Color3.fromRGB(24, 20, 36), 0.7), Color3.fromRGB(18, 15, 28))
+		grad.Rotation = 90
+		grad.Parent = bg
+		local title = Instance.new("TextLabel")
+		title.Name = "Title"
+		title.BackgroundTransparency = 1
+		title.Position = UDim2.fromScale(0.04, 0.015)
+		title.Size = UDim2.fromScale(0.92, 0.1)
+		title.Font = Enum.Font.FredokaOne
+		title.TextScaled = true
+		title.TextColor3 = accent
+		title.TextStrokeTransparency = 0.3
+		title.Text = info.Icon .. " " .. info.Title
+		title.Parent = bg
+		local sub = Instance.new("TextLabel")
+		sub.Name = "Sub"
+		sub.BackgroundTransparency = 1
+		sub.Position = UDim2.fromScale(0.04, 0.11)
+		sub.Size = UDim2.fromScale(0.92, 0.04)
+		sub.Font = Enum.Font.GothamBold
+		sub.TextScaled = true
+		sub.TextColor3 = Color3.fromRGB(200, 195, 220)
+		sub.Text = "TOP " .. rows .. " • ALL SERVERS"
+		sub.Parent = bg
+		local rowH = 0.8 / rows
+		for r = 1, rows do
+			local row = Instance.new("Frame")
+			row.Name = "Row" .. r
+			row.Position = UDim2.new(0.03, 0, 0.165 + (r - 1) * rowH, 0)
+			row.Size = UDim2.new(0.94, 0, rowH * 0.9, 0)
+			row.BackgroundColor3 = if r == 1 then Color3.fromRGB(255, 205, 60) elseif r == 2 then Color3.fromRGB(200, 205, 215) elseif r == 3 then Color3.fromRGB(205, 130, 70) else Color3.fromRGB(45, 40, 65)
+			row.BackgroundTransparency = if r <= 3 then 0.55 else 0.35
+			row.Parent = bg
+			local corner = Instance.new("UICorner")
+			corner.CornerRadius = UDim.new(0.25, 0)
+			corner.Parent = row
+			local function cell(name, xs2, w, align, font, text)
+				local l = Instance.new("TextLabel")
+				l.Name = name
+				l.BackgroundTransparency = 1
+				l.Position = UDim2.fromScale(xs2, 0.1)
+				l.Size = UDim2.fromScale(w, 0.8)
+				l.Font = font
+				l.TextScaled = true
+				l.TextXAlignment = align
+				l.TextColor3 = Color3.new(1, 1, 1)
+				l.TextStrokeTransparency = 0.5
+				l.Text = text
+				l.Parent = row
+				return l
+			end
+			cell("Rank", 0.02, 0.13, Enum.TextXAlignment.Center, Enum.Font.FredokaOne, if r == 1 then "👑" else "#" .. r)
+			cell("PlayerName", 0.17, 0.5, Enum.TextXAlignment.Left, Enum.Font.GothamBold, "---")
+			cell("Value", 0.66, 0.32, Enum.TextXAlignment.Right, Enum.Font.GothamBlack, "")
+		end
+		local updated = Instance.new("TextLabel")
+		updated.Name = "Updated"
+		updated.BackgroundTransparency = 1
+		updated.Position = UDim2.fromScale(0.04, 0.965)
+		updated.Size = UDim2.fromScale(0.92, 0.03)
+		updated.Font = Enum.Font.Gotham
+		updated.TextScaled = true
+		updated.TextColor3 = Color3.fromRGB(160, 155, 185)
+		updated.Text = "Loading..."
+		updated.Parent = bg
+	end
+	return folder
+end
+
 local function buildTown(folder, rng)
 	-- Street lamps along the front of the row of bases
 	for x = -PLOT_ROW_SPAN / 2 + PLOT_WIDTH + PLOT_GAP / 2, PLOT_ROW_SPAN / 2 - PLOT_WIDTH, PLOT_WIDTH + PLOT_GAP do
@@ -8559,6 +8704,7 @@ function MapBuilder.Build()
 
 	-- Town decoration
 	buildTown(townFolder, Random.new(7))
+	buildLeaderboards(townFolder)
 
 	-- Bases: one horizontal row across the town, all facing the zones (+Z)
 	local plotsFolder = Instance.new("Folder")
@@ -8626,6 +8772,8 @@ local function defaults()
 		Index = {}, -- [pet name] = true for every pet you've ever had
 		Treat = nil, -- { Key, Until } while a treat is active (Until = os.time())
 		Codes = {}, -- [code] = true for every code this player has used
+		-- lifetime stats for the leaderboards
+		Stats = { TimePlayed = 0, Hatched = 0, Stolen = 0, Collected = 0, Slapped = 0 },
 	}
 end
 
@@ -8677,6 +8825,11 @@ function DataService.Load(player)
 				end
 			end
 		end
+		if type(data.Stats) == "table" then
+			for key in pairs(profile.Stats) do
+				profile.Stats[key] = math.max(0, math.floor(tonumber(data.Stats[key]) or 0))
+			end
+		end
 		if type(data.Daily) == "table" then
 			profile.Daily.Streak = math.max(0, math.floor(tonumber(data.Daily.Streak) or 0))
 			profile.Daily.LastDay = math.floor(tonumber(data.Daily.LastDay) or -1)
@@ -8700,6 +8853,7 @@ function DataService.Save(player, profile)
 		Index = profile.Index,
 		Treat = profile.Treat,
 		Codes = profile.Codes,
+		Stats = profile.Stats,
 		Version = 2,
 	}
 	for attempt = 1, 3 do
@@ -8756,6 +8910,14 @@ local creaturesFolder
 
 local eggs = {} -- [BasePart] = egg record
 local states = {} -- [Player] = player state
+
+-- Lifetime stats for the leaderboards (profile.Stats)
+local function addStat(state, key, amount)
+	local stats = state and state.Profile.Stats
+	if stats then
+		stats[key] = (stats[key] or 0) + (amount or 1)
+	end
+end
 local plotOwners = {} -- [plotIndex] = Player
 
 local rng = Random.new()
@@ -9604,6 +9766,7 @@ local function hatch(player, index)
 	state.Nest[index] = nil
 	local isNew = not state.Profile.Index[data.Name]
 	spawnCreature(player, index, data)
+	addStat(state, "Hatched")
 	if hatchRemote then
 		-- the client shows a big reveal with a 3D preview of the pet
 		hatchRemote:FireClient(player, { Name = data.Name, Rarity = data.Rarity, Shiny = data.Shiny, Mutation = data.Mutation, Size = data.Size, Tier = data.Tier, Age = 0, New = isNew })
@@ -9900,6 +10063,7 @@ end
 
 local function caught(biome, player, rec)
 	releaseCarry(player)
+	addStat(states[player], "Slapped")
 	returnToNest(rec)
 	stun(player, Config.GuardianStunTime + Config.SlapFlightTime, Config.GuardianStunSpeed)
 	notify(player, "💥 SLAP! The " .. biome.Def.GuardianName .. " caught you, took the egg back and sent you home!", RED)
@@ -10257,6 +10421,9 @@ local function fastLoop()
 						end
 						if takenFrom and takenFrom ~= player then
 							onEggStolen(player, takenFrom, rec.Rarity)
+							addStat(state, "Stolen")
+						elseif wasHunted then
+							addStat(state, "Collected")
 						end
 					elseif now() - state.LastFullWarn > 3 then
 						state.LastFullWarn = now()
@@ -10520,6 +10687,7 @@ function GameService.AddPlayer(player, profile)
 		Carrying = nil,
 		CashValue = cashValue,
 		SpeedValue = speedValue,
+		SessionClock = os.clock(),
 		LockActive = false,
 		LockedUntil = 0,
 		LockReadyAt = 0,
@@ -10636,7 +10804,35 @@ function GameService.Snapshot(player)
 		end
 	end
 	state.Profile.Nest = nest
+	-- fold this session's play time into the saved total
+	local t = os.clock()
+	addStat(state, "TimePlayed", math.floor(t - (state.SessionClock or t)))
+	state.SessionClock = t - ((t - (state.SessionClock or t)) % 1)
 	return state.Profile
+end
+
+-- Everything the leaderboards rank, for one player (nil if not loaded).
+function GameService.GetLeaderStats(player)
+	local state = states[player]
+	if not state then
+		return nil
+	end
+	local profile = state.Profile
+	local stats = profile.Stats or {}
+	local found = 0
+	for _ in pairs(profile.Index) do
+		found += 1
+	end
+	return {
+		Cash = profile.Cash,
+		Speed = profile.Speed,
+		TimePlayed = (stats.TimePlayed or 0) + math.floor(os.clock() - (state.SessionClock or os.clock())),
+		Hatched = stats.Hatched or 0,
+		Stolen = stats.Stolen or 0,
+		Collected = stats.Collected or 0,
+		Index = found,
+		Slapped = stats.Slapped or 0,
+	}
 end
 
 function GameService.RemovePlayer(player)
@@ -11332,6 +11528,195 @@ function CodesService.Init(gameService, codesEvent)
 end
 
 return CodesService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX102"><Properties><string name="Name">LeaderboardService</string><ProtectedString name="Source"><![CDATA[-- LeaderboardService (ModuleScript) — ServerScriptService.Modules.LeaderboardService
+-- Global leaderboards: every 90 seconds this server saves its players' stats to one
+-- OrderedDataStore per board (Config.Leaderboards) and reads back the top 10,
+-- then writes them onto the boards in town (built by MapBuilder).
+-- If DataStores aren't available (Studio without API access), the boards rank
+-- the players in this server instead.
+-- Boards are read one at a time, a few seconds apart, to stay inside Roblox's
+-- DataStore request limits.
+
+local DataStoreService = game:GetService("DataStoreService")
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Config = require(Shared:WaitForChild("Config"))
+local Util = require(Shared:WaitForChild("Util"))
+
+local LeaderboardService = {}
+
+local GameService
+local boardsFolder
+local stores = {} -- [key] = OrderedDataStore
+local lastSaved = {} -- [userId] = { [key] = value }
+local nameCache = {} -- [userId] = name
+local globalOk = true
+
+local MAX_VALUE = 2 ^ 53 -- OrderedDataStore needs whole numbers
+
+local function format(info, value)
+	if info.Format == "Money" then
+		return Util.Money(value)
+	elseif info.Format == "Time" then
+		local minutes = math.floor(value / 60)
+		if minutes < 60 then
+			return minutes .. "m"
+		end
+		local hours = minutes // 60
+		if hours < 100 then
+			return hours .. "h " .. (minutes % 60) .. "m"
+		end
+		return Util.FormatNumber(hours) .. "h"
+	end
+	return Util.FormatNumber(value)
+end
+
+local function nameFor(userId)
+	if nameCache[userId] then
+		return nameCache[userId]
+	end
+	local online = Players:GetPlayerByUserId(userId)
+	if online then
+		nameCache[userId] = online.DisplayName
+		return online.DisplayName
+	end
+	local ok, name = pcall(Players.GetNameFromUserIdAsync, Players, userId)
+	nameCache[userId] = if ok and name then name else "Player"
+	return nameCache[userId]
+end
+
+local function budget(requestType)
+	local ok, left = pcall(DataStoreService.GetRequestBudgetForRequestType, DataStoreService, requestType)
+	return if ok then left else 0
+end
+
+-- Write rows onto one board. entries = { { UserId, Value } } sorted high to low.
+local function draw(info, entries, note)
+	local board = boardsFolder and boardsFolder:FindFirstChild(info.Key)
+	local bg = board and board:FindFirstChild("Screen") and board.Screen:FindFirstChild("Board") and board.Screen.Board:FindFirstChild("Bg")
+	if not bg then
+		return
+	end
+	for r = 1, Config.LeaderboardSize do
+		local row = bg:FindFirstChild("Row" .. r)
+		if row then
+			local entry = entries[r]
+			row.PlayerName.Text = if entry then nameFor(entry.UserId) else "---"
+			row.Value.Text = if entry then format(info, entry.Value) else ""
+		end
+	end
+	bg.Updated.Text = note
+end
+
+-- Save the stats of everyone in this server (only values that changed).
+local function saveAll()
+	for _, player in ipairs(Players:GetPlayers()) do
+		LeaderboardService.SavePlayer(player)
+	end
+end
+
+function LeaderboardService.SavePlayer(player)
+	if not globalOk then
+		return
+	end
+	local stats = GameService.GetLeaderStats(player)
+	if not stats then
+		return
+	end
+	local saved = lastSaved[player.UserId] or {}
+	lastSaved[player.UserId] = saved
+	for _, info in ipairs(Config.Leaderboards) do
+		local value = math.clamp(math.floor(tonumber(stats[info.Key]) or 0), 0, MAX_VALUE)
+		local store = stores[info.Key]
+		if store and value > 0 and saved[info.Key] ~= value and budget(Enum.DataStoreRequestType.SetIncrementSortedAsync) > 0 then
+			local ok = pcall(store.SetAsync, store, tostring(player.UserId), value)
+			if ok then
+				saved[info.Key] = value
+			end
+		end
+	end
+end
+
+-- This server's players only, for when the global boards can't be read.
+local function localTop(info)
+	local entries = {}
+	for _, player in ipairs(Players:GetPlayers()) do
+		local stats = GameService.GetLeaderStats(player)
+		if stats then
+			table.insert(entries, { UserId = player.UserId, Value = math.floor(tonumber(stats[info.Key]) or 0) })
+		end
+	end
+	table.sort(entries, function(a, b)
+		return a.Value > b.Value
+	end)
+	return entries
+end
+
+local function refreshBoard(info)
+	local store = stores[info.Key]
+	if globalOk and store and budget(Enum.DataStoreRequestType.GetSortedAsync) > 0 then
+		local ok, pages = pcall(store.GetSortedAsync, store, false, Config.LeaderboardSize)
+		if ok and pages then
+			local entries = {}
+			for _, item in ipairs(pages:GetCurrentPage()) do
+				table.insert(entries, { UserId = tonumber(item.key) or 0, Value = item.value })
+			end
+			-- players online right now show their live value if it's higher
+			local byId = {}
+			for _, e in ipairs(entries) do
+				byId[e.UserId] = e
+			end
+			for _, e in ipairs(localTop(info)) do
+				local existing = byId[e.UserId]
+				if existing then
+					existing.Value = math.max(existing.Value, e.Value)
+				elseif e.Value > 0 then
+					table.insert(entries, e)
+				end
+			end
+			table.sort(entries, function(a, b)
+				return a.Value > b.Value
+			end)
+			draw(info, entries, "🌍 All servers • updates every 90s")
+			return
+		end
+	end
+	draw(info, localTop(info), "🏠 This server • updates every 90s")
+end
+
+function LeaderboardService.Init(gameService, folder)
+	GameService = gameService
+	boardsFolder = folder
+	for _, info in ipairs(Config.Leaderboards) do
+		local ok, store = pcall(DataStoreService.GetOrderedDataStore, DataStoreService, "Leaderboard_" .. info.Key)
+		if ok then
+			stores[info.Key] = store
+		else
+			globalOk = false
+		end
+	end
+
+	Players.PlayerRemoving:Connect(function(player)
+		lastSaved[player.UserId] = nil
+	end)
+
+	task.spawn(function()
+		task.wait(8) -- let the first players load in
+		while true do
+			saveAll()
+			-- spread the board reads out across the refresh interval
+			local gap = Config.LeaderboardRefresh / #Config.Leaderboards
+			for _, info in ipairs(Config.Leaderboards) do
+				refreshBoard(info)
+				task.wait(gap)
+			end
+		end
+	end)
+end
+
+return LeaderboardService
 ]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX12"><Properties><string name="Name">AdminService</string><ProtectedString name="Source"><![CDATA[-- AdminService (ModuleScript) — ServerScriptService.Modules.AdminService
 -- Testing commands for you (the game owner), anyone in Config.Admins, and
 -- everyone while playing in Roblox Studio.

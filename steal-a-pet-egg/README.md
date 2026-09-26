@@ -84,6 +84,7 @@ Game Settings > Security > **Enable Studio Access to API Services**.
 
   Add or change codes in `Config.Codes`. Codes can give `Egg`, `Treat`, `SpeedPercent` or `CashMinutes`.
 - **⚙️ Settings** (next to Codes, just for you): turn pet name tags, particle effects (for slower devices), always-daytime and the sky balloons/birds on or off.
+- **🏆 Leaderboards** on the lawn right in front of the bases (you see them when you spawn): 8 boards ranking the top 10 players across every server for 💰 Richest, ⏱️ Most Time Played, 🐣 Pets Hatched, 😈 Eggs Stolen, ⚡ Fastest, 📖 Pet Index, 🥚 Eggs Brought Home and 💥 Most Slapped. They update every 90 seconds (saved with OrderedDataStores; in Studio without API access they rank the players in your server instead). Pick the boards in `Config.Leaderboards`.
 - **Screens:**
   - **Title screen** with a Play button when you join.
   - **Hatch reveal:** your new pet spins in 3D with light rays in its rarity color, its stats, and a NEW PET! tag the first time.
@@ -118,6 +119,7 @@ Game Settings > Security > **Enable Studio Access to API Services**.
 | Monetization | ServerScriptService.Modules | Robux purchases |
 | DailyRewardService | ServerScriptService.Modules | Daily streak rewards |
 | CodesService | ServerScriptService.Modules | Redeems codes (Config.Codes) |
+| LeaderboardService | ServerScriptService.Modules | Global leaderboards on the boards in town |
 | ClientMain | StarterPlayer.StarterPlayerScripts | HUD, chase warning, biome lighting moods and banners, notifications, shop buttons |
 
 ## Turning on Robux purchases

@@ -36,6 +36,14 @@ local creaturesFolder
 
 local eggs = {} -- [BasePart] = egg record
 local states = {} -- [Player] = player state
+
+-- Lifetime stats for the leaderboards (profile.Stats)
+local function addStat(state, key, amount)
+	local stats = state and state.Profile.Stats
+	if stats then
+		stats[key] = (stats[key] or 0) + (amount or 1)
+	end
+end
 local plotOwners = {} -- [plotIndex] = Player
 
 local rng = Random.new()
@@ -884,6 +892,7 @@ local function hatch(player, index)
 	state.Nest[index] = nil
 	local isNew = not state.Profile.Index[data.Name]
 	spawnCreature(player, index, data)
+	addStat(state, "Hatched")
 	if hatchRemote then
 		-- the client shows a big reveal with a 3D preview of the pet
 		hatchRemote:FireClient(player, { Name = data.Name, Rarity = data.Rarity, Shiny = data.Shiny, Mutation = data.Mutation, Size = data.Size, Tier = data.Tier, Age = 0, New = isNew })
@@ -1180,6 +1189,7 @@ end
 
 local function caught(biome, player, rec)
 	releaseCarry(player)
+	addStat(states[player], "Slapped")
 	returnToNest(rec)
 	stun(player, Config.GuardianStunTime + Config.SlapFlightTime, Config.GuardianStunSpeed)
 	notify(player, "💥 SLAP! The " .. biome.Def.GuardianName .. " caught you, took the egg back and sent you home!", RED)
@@ -1537,6 +1547,9 @@ local function fastLoop()
 						end
 						if takenFrom and takenFrom ~= player then
 							onEggStolen(player, takenFrom, rec.Rarity)
+							addStat(state, "Stolen")
+						elseif wasHunted then
+							addStat(state, "Collected")
 						end
 					elseif now() - state.LastFullWarn > 3 then
 						state.LastFullWarn = now()
@@ -1800,6 +1813,7 @@ function GameService.AddPlayer(player, profile)
 		Carrying = nil,
 		CashValue = cashValue,
 		SpeedValue = speedValue,
+		SessionClock = os.clock(),
 		LockActive = false,
 		LockedUntil = 0,
 		LockReadyAt = 0,
@@ -1916,7 +1930,35 @@ function GameService.Snapshot(player)
 		end
 	end
 	state.Profile.Nest = nest
+	-- fold this session's play time into the saved total
+	local t = os.clock()
+	addStat(state, "TimePlayed", math.floor(t - (state.SessionClock or t)))
+	state.SessionClock = t - ((t - (state.SessionClock or t)) % 1)
 	return state.Profile
+end
+
+-- Everything the leaderboards rank, for one player (nil if not loaded).
+function GameService.GetLeaderStats(player)
+	local state = states[player]
+	if not state then
+		return nil
+	end
+	local profile = state.Profile
+	local stats = profile.Stats or {}
+	local found = 0
+	for _ in pairs(profile.Index) do
+		found += 1
+	end
+	return {
+		Cash = profile.Cash,
+		Speed = profile.Speed,
+		TimePlayed = (stats.TimePlayed or 0) + math.floor(os.clock() - (state.SessionClock or os.clock())),
+		Hatched = stats.Hatched or 0,
+		Stolen = stats.Stolen or 0,
+		Collected = stats.Collected or 0,
+		Index = found,
+		Slapped = stats.Slapped or 0,
+	}
 end
 
 function GameService.RemovePlayer(player)

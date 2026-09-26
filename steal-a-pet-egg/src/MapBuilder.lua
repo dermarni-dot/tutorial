@@ -2747,6 +2747,133 @@ local function streetLamp(folder, position, faceX)
 	bulb.Size = Vector3.new(1.4, 1.4, 1.4)
 end
 
+
+--------------------------------------------------------------------------------
+-- Leaderboards: 8 boards on the lawn in front of the bases, 4 each side of the
+-- main street, facing the bases so you see them as soon as you spawn.
+-- LeaderboardService fills in the rows.
+--------------------------------------------------------------------------------
+local function buildLeaderboards(parent)
+	local folder = Instance.new("Folder")
+	folder.Name = "Leaderboards"
+	folder.Parent = parent
+	local z = 86
+	local xs = { -160, -120, -80, -40, 40, 80, 120, 160 }
+	local W, H = 17, 21
+	local rows = Config.LeaderboardSize
+	for i, info in ipairs(Config.Leaderboards) do
+		local x = xs[i]
+		if not x then
+			break
+		end
+		local board = Instance.new("Model")
+		board.Name = info.Key
+		board.Parent = folder
+		-- face the bases (-Z), angled a little toward the main street
+		local base = CFrame.lookAt(Vector3.new(x, 0, z), Vector3.new(x * 0.8, 0, z - 40))
+		local wood = Color3.fromRGB(55, 40, 70)
+		local accent = info.Color
+		deco({ Name = "Pedestal", Size = Vector3.new(W + 3, 1.2, 5), CFrame = base * CFrame.new(0, 0.6, 0), Color = Color3.fromRGB(230, 228, 235), Material = Enum.Material.Marble, Parent = board })
+		deco({ Name = "PedestalGlow", Size = Vector3.new(W + 3.2, 0.3, 5.2), CFrame = base * CFrame.new(0, 1.3, 0), Color = accent, Material = Enum.Material.Neon, CastShadow = false, Parent = board })
+		for _, sx in ipairs({ -1, 1 }) do
+			deco({ Name = "BoardPost", Size = Vector3.new(1.4, H + 4, 1.4), CFrame = base * CFrame.new(sx * (W / 2 + 0.7), (H + 4) / 2 + 1.2, 0.4), Color = wood, Material = Enum.Material.Wood, Parent = board })
+			deco({ Name = "PostCap", Shape = Enum.PartType.Ball, Size = Vector3.one * 2, CFrame = base * CFrame.new(sx * (W / 2 + 0.7), H + 6.2, 0.4), Color = accent, Material = Enum.Material.Neon, CastShadow = false, Parent = board })
+		end
+		local screen = part({ Name = "Screen", Size = Vector3.new(W, H, 0.6), CFrame = base * CFrame.new(0, H / 2 + 3, 0), Color = Color3.fromRGB(24, 20, 36), Material = Enum.Material.SmoothPlastic, CanQuery = false, Parent = board })
+		for _, sy in ipairs({ -1, 1 }) do
+			deco({ Name = "Frame", Size = Vector3.new(W + 0.6, 0.5, 0.8), CFrame = base * CFrame.new(0, H / 2 + 3 + sy * (H / 2 + 0.2), 0), Color = accent, Material = Enum.Material.Neon, CastShadow = false, Parent = board })
+		end
+		-- a crown on top
+		local crownY = H + 5.2
+		deco({ Name = "CrownBand", Size = Vector3.new(5, 1, 1), CFrame = base * CFrame.new(0, crownY, 0.3), Color = Color3.fromRGB(255, 205, 60), Material = Enum.Material.Metal, Parent = board })
+		for k = -1, 1 do
+			deco({ Name = "CrownSpike", Shape = Enum.PartType.Wedge, Size = Vector3.new(1, 1.8, 1.2), CFrame = base * CFrame.new(k * 1.8, crownY + 1.3, 0.3), Color = Color3.fromRGB(255, 205, 60), Material = Enum.Material.Metal, Parent = board })
+		end
+		light(screen, accent, 18, 0.6)
+
+		-- the board face: title, column of 10 rows and an "updated" line
+		local gui = Instance.new("SurfaceGui")
+		gui.Name = "Board"
+		gui.Face = Enum.NormalId.Front
+		gui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+		gui.PixelsPerStud = 30
+		gui.LightInfluence = 0
+		gui.Parent = screen
+		local bg = Instance.new("Frame")
+		bg.Name = "Bg"
+		bg.Size = UDim2.fromScale(1, 1)
+		bg.BackgroundColor3 = Color3.fromRGB(24, 20, 36)
+		bg.Parent = gui
+		local grad = Instance.new("UIGradient")
+		grad.Color = ColorSequence.new(accent:Lerp(Color3.fromRGB(24, 20, 36), 0.7), Color3.fromRGB(18, 15, 28))
+		grad.Rotation = 90
+		grad.Parent = bg
+		local title = Instance.new("TextLabel")
+		title.Name = "Title"
+		title.BackgroundTransparency = 1
+		title.Position = UDim2.fromScale(0.04, 0.015)
+		title.Size = UDim2.fromScale(0.92, 0.1)
+		title.Font = Enum.Font.FredokaOne
+		title.TextScaled = true
+		title.TextColor3 = accent
+		title.TextStrokeTransparency = 0.3
+		title.Text = info.Icon .. " " .. info.Title
+		title.Parent = bg
+		local sub = Instance.new("TextLabel")
+		sub.Name = "Sub"
+		sub.BackgroundTransparency = 1
+		sub.Position = UDim2.fromScale(0.04, 0.11)
+		sub.Size = UDim2.fromScale(0.92, 0.04)
+		sub.Font = Enum.Font.GothamBold
+		sub.TextScaled = true
+		sub.TextColor3 = Color3.fromRGB(200, 195, 220)
+		sub.Text = "TOP " .. rows .. " • ALL SERVERS"
+		sub.Parent = bg
+		local rowH = 0.8 / rows
+		for r = 1, rows do
+			local row = Instance.new("Frame")
+			row.Name = "Row" .. r
+			row.Position = UDim2.new(0.03, 0, 0.165 + (r - 1) * rowH, 0)
+			row.Size = UDim2.new(0.94, 0, rowH * 0.9, 0)
+			row.BackgroundColor3 = if r == 1 then Color3.fromRGB(255, 205, 60) elseif r == 2 then Color3.fromRGB(200, 205, 215) elseif r == 3 then Color3.fromRGB(205, 130, 70) else Color3.fromRGB(45, 40, 65)
+			row.BackgroundTransparency = if r <= 3 then 0.55 else 0.35
+			row.Parent = bg
+			local corner = Instance.new("UICorner")
+			corner.CornerRadius = UDim.new(0.25, 0)
+			corner.Parent = row
+			local function cell(name, xs2, w, align, font, text)
+				local l = Instance.new("TextLabel")
+				l.Name = name
+				l.BackgroundTransparency = 1
+				l.Position = UDim2.fromScale(xs2, 0.1)
+				l.Size = UDim2.fromScale(w, 0.8)
+				l.Font = font
+				l.TextScaled = true
+				l.TextXAlignment = align
+				l.TextColor3 = Color3.new(1, 1, 1)
+				l.TextStrokeTransparency = 0.5
+				l.Text = text
+				l.Parent = row
+				return l
+			end
+			cell("Rank", 0.02, 0.13, Enum.TextXAlignment.Center, Enum.Font.FredokaOne, if r == 1 then "👑" else "#" .. r)
+			cell("PlayerName", 0.17, 0.5, Enum.TextXAlignment.Left, Enum.Font.GothamBold, "---")
+			cell("Value", 0.66, 0.32, Enum.TextXAlignment.Right, Enum.Font.GothamBlack, "")
+		end
+		local updated = Instance.new("TextLabel")
+		updated.Name = "Updated"
+		updated.BackgroundTransparency = 1
+		updated.Position = UDim2.fromScale(0.04, 0.965)
+		updated.Size = UDim2.fromScale(0.92, 0.03)
+		updated.Font = Enum.Font.Gotham
+		updated.TextScaled = true
+		updated.TextColor3 = Color3.fromRGB(160, 155, 185)
+		updated.Text = "Loading..."
+		updated.Parent = bg
+	end
+	return folder
+end
+
 local function buildTown(folder, rng)
 	-- Street lamps along the front of the row of bases
 	for x = -PLOT_ROW_SPAN / 2 + PLOT_WIDTH + PLOT_GAP / 2, PLOT_ROW_SPAN / 2 - PLOT_WIDTH, PLOT_WIDTH + PLOT_GAP do
@@ -3189,6 +3316,7 @@ function MapBuilder.Build()
 
 	-- Town decoration
 	buildTown(townFolder, Random.new(7))
+	buildLeaderboards(townFolder)
 
 	-- Bases: one horizontal row across the town, all facing the zones (+Z)
 	local plotsFolder = Instance.new("Folder")

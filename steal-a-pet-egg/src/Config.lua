@@ -1122,6 +1122,21 @@ Config.Biomes = {
 	},
 }
 
+-- Leaderboards: big boards in town (in front of the bases) that rank the top
+-- players across every server. Format: "Money", "Time" or "Number".
+Config.Leaderboards = {
+	{ Key = "Cash", Title = "RICHEST", Icon = "💰", Format = "Money", Color = Color3.fromRGB(90, 220, 110) },
+	{ Key = "TimePlayed", Title = "MOST TIME PLAYED", Icon = "⏱️", Format = "Time", Color = Color3.fromRGB(110, 190, 255) },
+	{ Key = "Hatched", Title = "PETS HATCHED", Icon = "🐣", Format = "Number", Color = Color3.fromRGB(255, 205, 80) },
+	{ Key = "Stolen", Title = "EGGS STOLEN", Icon = "😈", Format = "Number", Color = Color3.fromRGB(255, 95, 95) },
+	{ Key = "Speed", Title = "FASTEST", Icon = "⚡", Format = "Number", Color = Color3.fromRGB(255, 240, 90) },
+	{ Key = "Index", Title = "PET INDEX", Icon = "📖", Format = "Number", Color = Color3.fromRGB(190, 130, 255) },
+	{ Key = "Collected", Title = "EGGS BROUGHT HOME", Icon = "🥚", Format = "Number", Color = Color3.fromRGB(255, 160, 200) },
+	{ Key = "Slapped", Title = "MOST SLAPPED", Icon = "💥", Format = "Number", Color = Color3.fromRGB(255, 150, 60) },
+}
+Config.LeaderboardSize = 10 -- rows per board
+Config.LeaderboardRefresh = 90 -- seconds between updates (kept slow for Roblox's DataStore limits)
+
 -- Town floor and wall colors (checkerboard pairs)
 Config.TownFloor = { Color3.fromRGB(116, 206, 78), Color3.fromRGB(100, 190, 66) }
 Config.TownWalls = { Color3.fromRGB(214, 122, 82), Color3.fromRGB(230, 142, 98) }
