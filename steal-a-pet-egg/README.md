@@ -16,7 +16,7 @@ Game Settings > Security > **Enable Studio Access to API Services**.
 
 ## How it plays
 
-- **The map:** your base sits in town, with plenty of room between bases. Zones are long (450 studs) and wide, and eggs in them are spread at least 60 studs apart. Your base sits in town. A road leads out through 20 zones, each harder than the last:
+- **The map:** your base sits in town, with plenty of room between bases. Zones are long (450 studs) and wide, with 1.8x as many eggs as before (`Config.EggSpotsMultiplier`), spread at least 60 studs apart. Every egg has speckles, a light band, a metal band from Rare up and a glowing tip gem from Epic up. Your base sits in town. A road leads out through 20 zones, each harder than the last:
 
   | Biome | Guardian | Guardian speed | Speed needed | Eggs |
   |---|---|---|---|---|
@@ -102,6 +102,7 @@ Game Settings > Security > **Enable Studio Access to API Services**.
   Add or change codes in `Config.Codes`. Codes can give `Egg`, `Treat`, `SpeedPercent` or `CashMinutes`.
 - **⚙️ Settings** (next to Codes, just for you): turn pet name tags, particle effects (for slower devices), always-daytime and the sky balloons/birds on or off.
 - **🏆 Leaderboards** on the lawn right in front of the bases (you see them when you spawn): 8 boards ranking the top 10 players across every server for 💰 Richest, ⏱️ Most Time Played, 🐣 Pets Hatched, 😈 Eggs Stolen, ⚡ Fastest, 📖 Pet Index, 🥚 Eggs Brought Home and 💥 Most Slapped. They update every 90 seconds (saved with OrderedDataStores; in Studio without API access they rank the players in your server instead). Pick the boards in `Config.Leaderboards`.
+- **🥚 Incubator panel** (right side of the screen): every egg in your pet pen with its rarity, BIG/HUGE size, mutation, a progress bar and the time left until it hatches, soonest first. Tap the header to fold it away.
 - **Screens:**
   - **Title screen** with a Play button when you join.
   - **Egg opening:** when an egg hatches it bursts open in your base (shell pieces, a flash and sparkles everyone can see). On your screen the same egg drops in, shakes three times harder and harder as cracks spread and its glow grows, then bursts in a white flash with flying shell pieces (and confetti for rare, shiny or mutated pets). Rarer eggs take a little longer; tap to skip.

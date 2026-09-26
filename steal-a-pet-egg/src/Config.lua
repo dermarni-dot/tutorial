@@ -1422,8 +1422,13 @@ function Config.SpeedShopAmountFor(speedStat: number): number
 	return math.max(Config.SpeedShopAmount, math.floor(speedStat * Config.SpeedShopPercent))
 end
 
+-- More eggs per zone: every zone's EggSpots is multiplied by this (the zones
+-- are big, so there's plenty of room)
+Config.EggSpotsMultiplier = 1.8
+
 -- Each guardian runs just under your carry speed at its zone's SpeedNeeded
 for _, biome in ipairs(Config.Biomes) do
+	biome.EggSpots = math.floor(biome.EggSpots * Config.EggSpotsMultiplier + 0.5)
 	biome.GuardianSpeed = math.floor(Config.WalkSpeed(biome.SpeedNeeded) * Config.CarrySpeedMultiplier * Config.GuardianEdge * 10) / 10
 end
 

@@ -1174,6 +1174,16 @@ function Visuals.MakeEgg(rarityId, variantName)
 	if design then
 		design(add, baseColor, dark)
 	end
+	-- extra detail on every egg: natural speckles, a soft light band near the
+	-- top, a metal band for rarer eggs and a glowing gem on the tip
+	eggDots(add, 14, 0.13, { baseColor:Lerp(Color3.new(0, 0, 0), 0.25), baseColor:Lerp(Color3.new(1, 1, 1), 0.3) }, nil, #rarityId * 7)
+	ring(add, 1.15, baseColor:Lerp(Color3.new(1, 1, 1), 0.55), nil, 0.08)
+	if rarity.Order >= 3 then
+		ring(add, -0.05, if rarity.Order >= 5 then GOLD else Color3.fromRGB(215, 220, 230), Enum.Material.Metal, 0.1)
+	end
+	if rarity.Order >= 4 then
+		add("TipGem", "Block", Vector3.new(0.34, 0.34, 0.34), CFrame.new(0, EGG_SIZE.Y / 2 - 0.02, 0) * CFrame.Angles(math.rad(45), 0, math.rad(45)), rarity.Color:Lerp(Color3.new(1, 1, 1), 0.2), Enum.Material.Neon)
+	end
 	-- cartoon shine on every egg
 	add("Shine", "Blob", Vector3.new(0.5, 0.95, 0.25), CFrame.new(-0.62, 0.95, -1.1) * CFrame.Angles(0, 0, math.rad(-20)), WHITE, Enum.Material.Neon)
 	add("Shine", "Ball", Vector3.one * 0.28, CFrame.new(-0.32, 1.55, -0.88), WHITE, Enum.Material.Neon)

@@ -248,6 +248,21 @@ local function refreshEggLabel(rec)
 	else
 		Visuals.SetProgress(rec.Part, nil)
 	end
+	-- the owner's incubator panel reads these
+	local ownerState = rec.State == "Base" and rec.Owner and states[rec.Owner]
+	if ownerState then
+		local rate = if ownerState.Passes.FastHatchPass then 2 else 1
+		rec.Part:SetAttribute("OwnerUserId", rec.Owner.UserId)
+		rec.Part:SetAttribute("TimeLeft", math.max(0, math.ceil(rec.Remaining / rate)))
+		rec.Part:SetAttribute("HatchTotal", rarity.HatchTime)
+		rec.Part:SetAttribute("Progress", math.clamp(1 - rec.Remaining / rarity.HatchTime, 0, 1))
+		rec.Part:SetAttribute("Rarity", rec.Rarity)
+		rec.Part:SetAttribute("PetSize", rec.PetSize or 1)
+		rec.Part:SetAttribute("Mutation", rec.Mutation)
+		rec.Part:SetAttribute("Stolen", rec.Stolen == true)
+	elseif rec.Part:GetAttribute("OwnerUserId") then
+		rec.Part:SetAttribute("OwnerUserId", nil)
+	end
 end
 
 -- The last few seconds before hatching, the egg wobbles in its spot

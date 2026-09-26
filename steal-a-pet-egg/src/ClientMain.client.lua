@@ -2331,6 +2331,146 @@ local function setupHomeTrail()
 end
 setupHomeTrail()
 
+--------------------------------------------------------------------------------
+-- Incubator panel: every egg in your pet pen with how long until it hatches.
+-- Soonest first; tap the header to fold it away.
+--------------------------------------------------------------------------------
+local function setupIncubator()
+	local MAX_ROWS = 8
+	local panel = Instance.new("Frame")
+	panel.Name = "Incubator"
+	panel.AnchorPoint = Vector2.new(1, 0.5)
+	panel.Position = UDim2.new(1, -14, 0.56, 0)
+	panel.Size = UDim2.fromOffset(250, 40)
+	panel.AutomaticSize = Enum.AutomaticSize.Y
+	panel.BackgroundColor3 = Color3.fromRGB(28, 24, 44)
+	panel.BackgroundTransparency = 0.15
+	panel.Visible = false
+	panel.Parent = gui
+	corner(panel, 14)
+	stroke(panel, 2, Color3.fromRGB(255, 205, 90))
+	local pad = Instance.new("UIPadding")
+	pad.PaddingTop = UDim.new(0, 6)
+	pad.PaddingBottom = UDim.new(0, 8)
+	pad.PaddingLeft = UDim.new(0, 8)
+	pad.PaddingRight = UDim.new(0, 8)
+	pad.Parent = panel
+	local layout = Instance.new("UIListLayout")
+	layout.Padding = UDim.new(0, 5)
+	layout.SortOrder = Enum.SortOrder.LayoutOrder
+	layout.Parent = panel
+
+	local header = Instance.new("TextButton")
+	header.Name = "Header"
+	header.LayoutOrder = 0
+	header.Size = UDim2.new(1, 0, 0, 26)
+	header.BackgroundTransparency = 1
+	header.Font = Enum.Font.FredokaOne
+	header.TextScaled = true
+	header.TextColor3 = Color3.fromRGB(255, 225, 120)
+	header.TextStrokeTransparency = 0.5
+	header.Text = "🥚 Incubating"
+	header.Parent = panel
+	juiced[header] = true
+	local folded = false
+	header.Activated:Connect(function()
+		folded = not folded
+	end)
+
+	local rows = {}
+	for i = 1, MAX_ROWS do
+		local row = Instance.new("Frame")
+		row.Name = "Row" .. i
+		row.LayoutOrder = i
+		row.Size = UDim2.new(1, 0, 0, 40)
+		row.BackgroundColor3 = Color3.fromRGB(45, 40, 70)
+		row.Visible = false
+		row.Parent = panel
+		corner(row, 10)
+		local icon = Instance.new("Frame")
+		icon.Name = "EggIcon"
+		icon.AnchorPoint = Vector2.new(0, 0.5)
+		icon.Position = UDim2.new(0, 6, 0.5, 0)
+		icon.Size = UDim2.fromOffset(22, 28)
+		icon.Parent = row
+		local iconCorner = Instance.new("UICorner")
+		iconCorner.CornerRadius = UDim.new(0.5, 0)
+		iconCorner.Parent = icon
+		local iconStroke = Instance.new("UIStroke")
+		iconStroke.Thickness = 2
+		iconStroke.Parent = icon
+		local name = label(row, { Name = "EggName", Position = UDim2.fromOffset(34, 2), Size = UDim2.new(1, -96, 0, 18), TextXAlignment = Enum.TextXAlignment.Left, Font = Enum.Font.GothamBold, Text = "" })
+		local time = label(row, { Name = "TimeLeft", AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -6, 0, 2), Size = UDim2.fromOffset(58, 18), TextXAlignment = Enum.TextXAlignment.Right, Font = Enum.Font.GothamBlack, TextColor3 = Color3.fromRGB(150, 255, 160), Text = "" })
+		local bar = Instance.new("Frame")
+		bar.Name = "Bar"
+		bar.Position = UDim2.fromOffset(34, 25)
+		bar.Size = UDim2.new(1, -40, 0, 9)
+		bar.BackgroundColor3 = Color3.fromRGB(20, 18, 30)
+		bar.Parent = row
+		corner(bar, 5)
+		local fill = Instance.new("Frame")
+		fill.Name = "Fill"
+		fill.Size = UDim2.fromScale(0, 1)
+		fill.Parent = bar
+		corner(fill, 5)
+		rows[i] = { Row = row, Icon = icon, IconStroke = iconStroke, Name = name, Time = time, Fill = fill }
+	end
+	local more = label(panel, { Name = "More", LayoutOrder = MAX_ROWS + 1, Size = UDim2.new(1, 0, 0, 16), Font = Enum.Font.Gotham, TextColor3 = Color3.fromRGB(200, 195, 220), TextStrokeTransparency = 1, Text = "" })
+
+	local function refresh()
+		local eggsFolder = workspace:FindFirstChild("Eggs")
+		local mine = {}
+		if eggsFolder then
+			for _, egg in ipairs(eggsFolder:GetChildren()) do
+				if egg:GetAttribute("OwnerUserId") == player.UserId then
+					table.insert(mine, egg)
+				end
+			end
+		end
+		table.sort(mine, function(a, b)
+			return (a:GetAttribute("TimeLeft") or 0) < (b:GetAttribute("TimeLeft") or 0)
+		end)
+		panel.Visible = #mine > 0
+		header.Text = "🥚 Incubating (" .. #mine .. ")" .. (if folded then "  ▸" else "  ▾")
+		for i, r in ipairs(rows) do
+			local egg = mine[i]
+			r.Row.Visible = egg ~= nil and not folded
+			if egg then
+				local rarity = Config.RarityById[egg:GetAttribute("Rarity") or ""]
+				local mutation = Config.MutationById[egg:GetAttribute("Mutation") or ""]
+				local size = egg:GetAttribute("PetSize") or 1
+				local color = if rarity then rarity.Color else Color3.new(1, 1, 1)
+				local title = (if rarity then rarity.Id else "?") .. " Egg"
+				if mutation then
+					title = mutation.Icon .. " " .. mutation.Id .. " " .. title
+				end
+				if size >= Config.HugePetSize then
+					title = "HUGE " .. title
+				elseif size >= Config.BigPetSize then
+					title = "BIG " .. title
+				end
+				r.Name.Text = title
+				r.Name.TextColor3 = color:Lerp(Color3.new(1, 1, 1), 0.4)
+				r.Icon.BackgroundColor3 = color
+				r.IconStroke.Color = if mutation then mutation.Color else color:Lerp(Color3.new(0, 0, 0), 0.3)
+				local left = egg:GetAttribute("TimeLeft") or 0
+				r.Time.Text = if left <= 0 then "Hatching!" else Util.FormatTime(left)
+				r.Fill.BackgroundColor3 = color:Lerp(Color3.fromRGB(120, 255, 140), 0.35)
+				r.Fill.Size = UDim2.fromScale(egg:GetAttribute("Progress") or 0, 1)
+			end
+		end
+		more.Visible = #mine > MAX_ROWS and not folded
+		more.Text = "+" .. (#mine - MAX_ROWS) .. " more in your pen"
+	end
+	task.spawn(function()
+		while true do
+			refresh()
+			task.wait(0.5)
+		end
+	end)
+end
+setupIncubator()
+
 -- 3D previews, hatch reveal, pet details, clock badge, title screen and
 -- console controls. In their own function to stay under Luau's local limit.
 local function setupExtraGui()
