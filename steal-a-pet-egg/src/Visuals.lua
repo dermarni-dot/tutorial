@@ -1284,9 +1284,10 @@ local EAR_KIND = {
 	Cat = "Pointy", Fox = "Big", Wolf = "Pointy", Pup = "Floppy", Bunny = "Long", Kangaroo = "Long",
 	Bear = "Round", Panda = "Round", Hamster = "Round", Mouse = "Round", Monkey = "Round", Gorilla = "Round",
 	Pony = "Pointy", Deer = "Pointy", Goat = "Pointy", Pig = "Floppy", Cow = "Floppy", Elephant = "Floppy",
+	Kitsune = "Big", Raccoon = "Pointy", Pegasus = "Pointy", Sheep = "Floppy",
 }
 local SEA = { Fish = true, Koi = true, Shark = true, Dolphin = true, Whale = true, Manta = true }
-local BIRD = { Penguin = true, Parrot = true, Owl = true, Chick = true, Duck = true, Phoenix = true, Eagle = true }
+local BIRD = { Penguin = true, Parrot = true, Owl = true, Chick = true, Duck = true, Phoenix = true, Eagle = true, Swan = true, Bird = true, Flamingo = true }
 local WINGED = { Drake = true, Phoenix = true, Bat = true, Dragon = true }
 
 local function speciesDesign(def, c, dark, light)
@@ -1308,8 +1309,116 @@ local function speciesDesign(def, c, dark, light)
 		if ears then
 			eggEars(add, ears, c, inner)
 		end
+		local theme = def.EggTheme
+		if theme == "Demon" then
+			-- dark red egg bound in crossed chains, with glowing cracks and eye slits
+			for _, dir in ipairs({ -1, 1 }) do
+				for k = -4, 4 do
+					local y = k * 0.32
+					local link = add("Chain", "Block", Vector3.new(0.34, 0.2, 0.12), surface(FRONT + dir * k * 0.16, y, 1.03) * CFrame.Angles(0, 0, math.rad(45 * dir + (k % 2) * 90)), Color3.fromRGB(190, 190, 200), Enum.Material.Metal)
+					link.Name = "Chain"
+				end
+			end
+			add("ChainLock", "Block", Vector3.new(0.5, 0.5, 0.25), surface(FRONT, 0, 1.06) * CFrame.Angles(0, 0, math.rad(45)), Color3.fromRGB(230, 30, 40), Enum.Material.Neon)
+			for i = 0, 5 do
+				add("Crack", "Block", Vector3.new(0.08, 0.7, 0.08), surface(FRONT + math.pi * 0.5 + i * 0.5, -0.6 + (i % 3) * 0.5, 1.0) * CFrame.Angles(0, 0, math.rad(if i % 2 == 0 then 25 else -25)), Color3.fromRGB(255, 60, 30), Enum.Material.Neon)
+			end
+			eggSpikes(add, EGG_TOP - 0.7, 6, 0.5, Color3.fromRGB(30, 20, 22))
+		elseif theme == "Angel" then
+			-- white and gold: a gold swirl band, a gold diamond and a halo
+			for i = 0, 17 do
+				local a = i / 18 * math.pi * 2
+				add("GoldSwirl", "Block", Vector3.new(0.6, 0.3, 0.12), surface(a, math.sin(a) * 1.0, 1.0) * CFrame.Angles(0, 0, math.rad(35)), GOLD, Enum.Material.Metal)
+			end
+			add("GoldDiamond", "Block", Vector3.new(0.7, 0.7, 0.15), surface(FRONT, 0.2, 1.0) * CFrame.Angles(0, 0, math.rad(45)), GOLD, Enum.Material.Metal)
+			add("GoldDiamondGem", "Block", Vector3.new(0.35, 0.35, 0.18), surface(FRONT, 0.2, 1.03) * CFrame.Angles(0, 0, math.rad(45)), Color3.fromRGB(255, 245, 190), Enum.Material.Neon)
+		end
 		-- a face on the front
-		eggFace(add, 0.75, features.GlowEyes)
+		if not theme then
+			eggFace(add, 0.75, features.GlowEyes)
+		elseif theme == "Demon" then
+			for _, sx in ipairs({ -1, 1 }) do
+				add("EggEyeSlit", "Block", Vector3.new(0.3, 0.1, 0.1), surface(FRONT + sx * 0.3, 0.85, 1.02) * CFrame.Angles(0, 0, math.rad(-15 * sx)), Color3.fromRGB(255, 40, 30), Enum.Material.Neon)
+			end
+		end
+		if def.Accessory == "Halo" then
+			add("EggHalo", "Cyl", Vector3.new(0.12, 1.5, 1.5), CFrame.new(0, EGG_TOP + 0.45, 0) * CFrame.Angles(0, 0, math.rad(90)), GOLD, Enum.Material.Neon)
+		end
+		if def.Accessory == "Horns" then
+			for _, sx in ipairs({ -1, 1 }) do
+				add("EggHorn", "Block", Vector3.new(0.22, 0.7, 0.22), CFrame.new(sx * 0.6, EGG_TOP - 0.1, 0) * CFrame.Angles(0, 0, math.rad(-25 * sx)), Color3.fromRGB(40, 30, 30))
+				add("EggHornTip", "Block", Vector3.new(0.16, 0.4, 0.16), CFrame.new(sx * 0.85, EGG_TOP + 0.35, 0) * CFrame.Angles(0, 0, math.rad(20 * sx)), Color3.fromRGB(230, 30, 40))
+			end
+		end
+		if features.BullHorns then
+			for _, sx in ipairs({ -1, 1 }) do
+				add("EggBullHorn", "Block", Vector3.new(0.9, 0.22, 0.22), CFrame.new(sx * 1.15, 1.1, 0) * CFrame.Angles(0, 0, math.rad(20 * sx)), ivory)
+				add("EggBullHornTip", "Block", Vector3.new(0.18, 0.5, 0.18), CFrame.new(sx * 1.6, 1.45, 0), ivory)
+			end
+		end
+		if features.NoseRing then
+			add("EggNoseRing", "Cyl", Vector3.new(0.08, 0.45, 0.45), surface(FRONT, 0.0, 1.05) * CFrame.Angles(0, math.rad(90), 0), GOLD, Enum.Material.Metal)
+		end
+		if features.AngelWings then
+			eggWings(add, 3, WHITE, nil, 0.36)
+			for _, sx in ipairs({ -1, 1 }) do
+				add("EggWingGold", "Blob", Vector3.new(0.2, 0.3, 1.5), CFrame.new(sx * 1.55, 0.75, 0.25) * CFrame.Angles(math.rad(-12), 0, math.rad(-32 * sx)), GOLD, Enum.Material.Metal)
+			end
+		end
+		if features.BatWings then
+			for _, sx in ipairs({ -1, 1 }) do
+				add("EggBatBone", "Block", Vector3.new(1.4, 0.12, 0.12), CFrame.new(sx * 1.9, 1.0, 0.3) * CFrame.Angles(0, 0, math.rad(25 * sx)), Color3.fromRGB(30, 20, 25))
+				for j = 0, 2 do
+					triangle(add, "EggBatWing", 0.6, 0.9, 0.06, CFrame.new(sx * (1.5 + j * 0.4), 0.5 + j * 0.15, 0.3) * CFrame.Angles(0, math.rad(90), math.pi), Color3.fromRGB(150, 15, 25))
+				end
+			end
+		end
+		if features.Comb then
+			for i = -1, 1 do
+				add("EggComb", "Block", Vector3.new(0.18, 0.45, 0.3), CFrame.new(0, EGG_TOP + 0.05 + (1 - math.abs(i)) * 0.1, i * 0.25), Color3.fromRGB(220, 30, 30))
+			end
+		end
+		if features.Barbels then
+			for _, sx in ipairs({ -1, 1 }) do
+				add("EggBarbel", "Block", Vector3.new(0.06, 0.06, 1.0), surface(FRONT + sx * 0.25, 0.1, 1.0) * CFrame.new(0, 0, 0.4) * CFrame.Angles(math.rad(-25), math.rad(30 * sx), 0), Color3.fromRGB(150, 90, 200))
+			end
+		end
+		if features.Bones then
+			for k = -2, 2 do
+				add("EggRib", "Block", Vector3.new(0.14, 1.6, 0.1), surface(FRONT + math.pi + k * 0.35, -0.2, 1.02), ivory)
+			end
+			add("EggSkull", "Blob", Vector3.new(0.9, 0.8, 0.25), surface(FRONT, -0.35, 1.02), ivory)
+		end
+		if features.Blades then
+			for _, sx in ipairs({ -1, 1 }) do
+				triangle(add, "EggBlade", 0.4, 1.5, 0.1, CFrame.new(sx * 0.9, EGG_TOP - 0.2, 0.3) * CFrame.Angles(0, 0, math.rad(-15 * sx)), Color3.fromRGB(25, 20, 25))
+			end
+		end
+		if features.FlameMane or style == "Sprite" then
+			for i = 0, 6 do
+				local a = (i - 3) * 0.35
+				triangle(add, "EggFlame", 0.35, 0.6 + (i % 2) * 0.3, 0.1, CFrame.new(math.sin(a) * 0.9, EGG_TOP - 0.3 + math.cos(a) * 0.2, 0.2) * CFrame.Angles(0, 0, -a), if i % 2 == 0 then Color3.fromRGB(255, 120, 20) else Color3.fromRGB(255, 220, 60), Enum.Material.Neon)
+			end
+		end
+		if features.SpiritFlames then
+			for i = 0, 3 do
+				local a = i / 4 * math.pi * 2 + 0.4
+				add("EggSpiritFlame", "Blob", Vector3.new(0.3, 0.55, 0.3), CFrame.new(math.cos(a) * 1.8, 1.3 + (i % 2) * 0.4, math.sin(a) * 1.8), (def.PatternColor or Color3.fromRGB(120, 170, 255)):Lerp(WHITE, 0.4), Enum.Material.Neon)
+			end
+		end
+		if features.KitsuneMarks then
+			local red = def.PatternColor or Color3.fromRGB(210, 40, 50)
+			add("EggMarkRing", "Cyl", Vector3.new(0.08, 0.6, 0.6), surface(FRONT, 1.2, 1.0) * CFrame.Angles(0, math.rad(90), 0), red)
+			for k = 0, 5 do
+				add("EggMark", "Block", Vector3.new(0.14, 0.9, 0.1), surface(FRONT + 0.9 + k * 0.75, -0.3, 1.02) * CFrame.Angles(0, 0, math.rad(30)), red)
+			end
+		end
+		if style == "Moth" then
+			for _, sx in ipairs({ -1, 1 }) do
+				add("EggMothWing", "Blob", Vector3.new(1.4, 1.6, 0.12), CFrame.new(sx * 1.5, 0.4, 0.5) * CFrame.Angles(0, math.rad(-30 * sx), math.rad(-20 * sx)), GOLD:Lerp(WHITE, 0.3))
+				add("EggMothWingEye", "Blob", Vector3.new(0.5, 0.5, 0.14), CFrame.new(sx * 1.55, 0.5, 0.5) * CFrame.Angles(0, math.rad(-30 * sx), 0), Color3.fromRGB(60, 90, 200))
+			end
+		end
 		-- a snout or muzzle for mammals
 		if EAR_KIND[style] and style ~= "Elephant" then
 			add("EggMuzzle", "Blob", Vector3.new(0.9, 0.55, 0.3), surface(FRONT, 0.2, 1.0), light)
@@ -1440,10 +1549,22 @@ local function speciesDesign(def, c, dark, light)
 				add("EggClaw", "Blob", Vector3.new(0.5, 0.35, 0.6), CFrame.new(sx * 0.75, -1.2, -1.05), c)
 				add("EggPincer", "Wedge", Vector3.new(0.14, 0.2, 0.4), CFrame.new(sx * 0.75, -1.15, -1.45), dark)
 			end
-		elseif style == "Octopus" or style == "Kraken" then
+		elseif style == "Octopus" or style == "Kraken" or style == "Jelly" then
 			for i = 0, 7 do
 				local a = i / 8 * math.pi * 2
 				add("EggTentacle", "Blob", Vector3.new(0.38, 0.9, 0.38), CFrame.new(math.cos(a) * 1.05, -1.65, math.sin(a) * 1.05) * CFrame.Angles(math.sin(a) * 0.5, 0, -math.cos(a) * 0.5), dark)
+			end
+		elseif style == "Frog" then
+			for _, sx in ipairs({ -1, 1 }) do
+				add("EggFrogEye", "Ball", Vector3.one * 0.7, CFrame.new(sx * 0.5, EGG_TOP - 0.3, -0.4), c)
+				add("EggFrogPupil", "Ball", Vector3.one * 0.4, CFrame.new(sx * 0.5, EGG_TOP - 0.2, -0.65), Color3.fromRGB(20, 20, 20))
+			end
+			add("EggFrogMouth", "Block", Vector3.new(1.2, 0.08, 0.1), surface(FRONT, 0.1, 1.02), dark)
+		elseif style == "Turtle" then
+			for i = 0, 6 do
+				local a = if i == 0 then 0 else (i - 1) / 6 * math.pi * 2
+				local y = if i == 0 then 1.0 else 0.1
+				add("EggShellPlate", "Cyl", Vector3.new(0.12, 0.8, 0.8), surface(a + FRONT + math.pi, y, 1.0) * CFrame.Angles(0, math.rad(90), 0), Color3.fromRGB(140, 95, 55))
 			end
 		elseif style == "Serpent" then
 			add("EggTongue", "Block", Vector3.new(0.1, 0.05, 0.5), surface(FRONT, 0.2, 1.0) * CFrame.new(0, 0, 0.25), Color3.fromRGB(220, 40, 60))
@@ -1459,6 +1580,11 @@ function Visuals.MakeSpeciesEgg(name)
 	end
 	local rarity = Config.RarityById[def.Rarity]
 	local c = Visuals.PetColor(def, rarity)
+	if def.EggTheme == "Demon" then
+		c = Color3.fromRGB(120, 15, 22)
+	elseif def.EggTheme == "Angel" then
+		c = Color3.fromRGB(252, 250, 244)
+	end
 	local dark = c:Lerp(Color3.new(0, 0, 0), 0.35)
 	local light = c:Lerp(Color3.new(1, 1, 1), 0.45)
 	local egg = Visuals.MakeEgg(def.Rarity, nil, {
@@ -2963,7 +3089,7 @@ ANATOMY.Unicorn = { Torso = Vector3.new(0.72, 0.66, 1.18), Build = function(ctx)
 end }
 
 ANATOMY.Kitsune = { Torso = Vector3.new(0.62, 0.56, 1.0), Build = function(ctx)
-	local fire = Color3.fromRGB(255, 130, 200)
+	local fire = if ctx.def and ctx.def.Exact and ctx.def.PatternColor then ctx.def.PatternColor else Color3.fromRGB(255, 130, 200)
 	local headAdd, H = mammal(ctx, { Head = 0.68, Snout = 0.56, SnoutW = 0.34, SnoutColor = WHITE, Ears = "Tall", EarInner = fire, Leg = 0.32, LegW = 0.15, Paw = fire, Tail = "Nine", Fur = true })
 	headAdd("ForeheadGem", "Ball", Vector3.one * H * 0.12, CFrame.new(0, H * 0.33, -H * 0.43), fire, Enum.Material.Neon)
 	for _, sx in ipairs({ -1, 1 }) do
@@ -3972,6 +4098,234 @@ PET_FEATURES_EXTRA.Spines = function(ctx)
 end
 PET_FEATURES_EXTRA.GlowEyes = function(ctx)
 	ctx.glowEyes = true
+end
+
+-- Angel / imp: a small standing figure with a head, arms and legs (wings,
+-- halos, horns and spears come from Features and accessories)
+ANATOMY.Angel = { Torso = Vector3.new(0.62, 0.8, 0.4), Build = function(ctx)
+	local S, T, add = ctx.S, ctx.T, ctx.add
+	local c, dark, light = ctx.color, ctx.dark, ctx.light
+	local H = S * 0.5
+	local headCf = CFrame.new(0, T.Y * 0.5 + H * 0.55, 0)
+	add("Head", "Blob", Vector3.new(H, H, H * 0.95), headCf, c)
+	for _, sx in ipairs({ -1, 1 }) do
+		petEye(add, headCf * CFrame.new(sx * H * 0.2, H * 0.05, -H * 0.44), H * 0.3, ctx.iris)
+		add("Arm", "Block", Vector3.new(S * 0.16, T.Y * 0.8, S * 0.16), CFrame.new(sx * (T.X * 0.5 + S * 0.1), -T.Y * 0.05, 0) * CFrame.Angles(0, 0, math.rad(8 * sx)), c)
+		add("Hand", "Blob", Vector3.one * S * 0.18, CFrame.new(sx * (T.X * 0.5 + S * 0.16), -T.Y * 0.47, 0), light)
+		add("Leg", "Block", Vector3.new(S * 0.2, S * 0.5, S * 0.2), CFrame.new(sx * T.X * 0.24, -T.Y * 0.5 - S * 0.25, 0), dark)
+		add("Foot", "Block", Vector3.new(S * 0.22, S * 0.1, S * 0.3), CFrame.new(sx * T.X * 0.24, -T.Y * 0.5 - S * 0.46, -S * 0.04), dark)
+	end
+	add("Mouth", "Block", Vector3.new(H * 0.3, H * 0.05, H * 0.05), headCf * CFrame.new(0, -H * 0.22, -H * 0.47), dark)
+	add("Belt", "Block", Vector3.new(T.X * 1.02, S * 0.08, T.Z * 1.02), CFrame.new(0, -T.Y * 0.2, 0), dark)
+	ctx.headCf, ctx.H = headCf, H
+	ctx.headAdd = function(name, shape, size, cf, col, mat)
+		return add(name, shape, size, headCf * cf, col, mat)
+	end
+	ctx.footDrop = T.Y * 0.5 + S * 0.5
+end }
+
+-- Flame sprite: a floating fireball with a face and flickering flame tips
+ANATOMY.Sprite = { Torso = Vector3.new(0.8, 0.8, 0.8), Float = true, Build = function(ctx)
+	local S, T, add = ctx.S, ctx.T, ctx.add
+	local yellow = Color3.fromRGB(255, 220, 60)
+	add("Core", "Blob", Vector3.new(T.X * 0.7, T.Y * 0.7, T.Z * 0.5), CFrame.new(0, -T.Y * 0.05, -T.Z * 0.2), yellow, Enum.Material.Neon)
+	for i = 0, 6 do
+		local a = (i - 3) * 0.42
+		add("Flame", "Wedge", Vector3.new(S * 0.12, S * (0.45 + (i % 2) * 0.25), S * 0.3), CFrame.new(math.sin(a) * T.X * 0.4, T.Y * 0.5 + S * 0.12, math.cos(a) * T.Z * 0.1) * CFrame.Angles(0, 0, -a * 0.8), if i % 2 == 0 then ctx.color else yellow, Enum.Material.Neon)
+	end
+	for _, sx in ipairs({ -1, 1 }) do
+		add("SpriteEye", "Block", Vector3.new(S * 0.16, S * 0.2, S * 0.06), CFrame.new(sx * S * 0.13, T.Y * 0.05, -T.Z * 0.5) * CFrame.Angles(0, 0, math.rad(-20 * sx)), Color3.fromRGB(20, 10, 10))
+	end
+	add("Mouth", "Block", Vector3.new(S * 0.2, S * 0.05, S * 0.05), CFrame.new(0, -T.Y * 0.18, -T.Z * 0.5), Color3.fromRGB(20, 10, 10))
+	ctx.headCf, ctx.H = CFrame.new(0, 0, 0), T.Y * 0.8
+	ctx.headAdd = function(name, shape, size, cf, col, mat)
+		return add(name, shape, size, cf, col, mat)
+	end
+	ctx.footDrop = T.Y * 0.5
+end }
+
+-- Moth: a fuzzy body, feathery antennae and four big patterned wings
+ANATOMY.Moth = { Torso = Vector3.new(0.4, 0.4, 0.8), Float = true, Build = function(ctx)
+	local S, T, add = ctx.S, ctx.T, ctx.add
+	local c, dark, light = ctx.color, ctx.dark, ctx.light
+	local H = S * 0.4
+	local headCf = CFrame.new(0, T.Y * 0.1, -T.Z * 0.5 - H * 0.3)
+	add("Head", "Blob", Vector3.one * H, headCf, light)
+	for _, sx in ipairs({ -1, 1 }) do
+		petEye(add, headCf * CFrame.new(sx * H * 0.3, H * 0.05, -H * 0.3), H * 0.45, ctx.iris)
+		add("Antenna", "Block", Vector3.new(S * 0.05, S * 0.5, S * 0.14), headCf * CFrame.new(sx * H * 0.25, H * 0.6, 0) * CFrame.Angles(0, 0, math.rad(-20 * sx)), dark)
+		add("Wing", "Block", Vector3.new(S * 1.1, S * 0.05, S * 0.8), CFrame.new(sx * (T.X * 0.5 + S * 0.5), S * 0.1, -S * 0.15) * CFrame.Angles(0, math.rad(-12 * sx), math.rad(18 * sx)), c)
+		add("WingEdge", "Block", Vector3.new(S * 0.4, S * 0.06, S * 0.84), CFrame.new(sx * (T.X * 0.5 + S * 0.95), S * 0.25, -S * 0.18) * CFrame.Angles(0, math.rad(-12 * sx), math.rad(18 * sx)), dark)
+		add("WingEye", "Blob", Vector3.new(S * 0.26, S * 0.07, S * 0.26), CFrame.new(sx * (T.X * 0.5 + S * 0.5), S * 0.14, -S * 0.12), light)
+		add("HindWing", "Block", Vector3.new(S * 0.75, S * 0.05, S * 0.6), CFrame.new(sx * (T.X * 0.5 + S * 0.32), -S * 0.02, S * 0.45) * CFrame.Angles(0, math.rad(20 * sx), math.rad(12 * sx)), light)
+		for j = 0, 2 do
+			add("Leg", "Block", Vector3.new(S * 0.04, S * 0.3, S * 0.04), CFrame.new(sx * T.X * 0.3, -T.Y * 0.5 - S * 0.1, -T.Z * 0.3 + j * T.Z * 0.3) * CFrame.Angles(0, 0, math.rad(20 * sx)), dark)
+		end
+	end
+	add("Fuzz", "Blob", Vector3.new(T.X * 1.1, T.Y * 0.5, T.Z * 0.3), CFrame.new(0, 0, -T.Z * 0.35), WHITE)
+	ctx.headCf, ctx.H = headCf, H
+	ctx.headAdd = function(name, shape, size, cf, col, mat)
+		return add(name, shape, size, headCf * cf, col, mat)
+	end
+	ctx.footDrop = T.Y * 0.5 + S * 0.25
+end }
+
+-- Jellyfish: a see-through bell with frilly arms and long trailing tentacles
+ANATOMY.Jelly = { Torso = Vector3.new(0.9, 0.6, 0.9), Float = true, Build = function(ctx)
+	local S, T, add = ctx.S, ctx.T, ctx.add
+	local c, dark, light = ctx.color, ctx.dark, ctx.light
+	add("BellRim", "Cyl", Vector3.new(S * 0.08, T.X * 1.05, T.Z * 1.05), CFrame.new(0, -T.Y * 0.35, 0) * CFrame.Angles(0, 0, math.rad(90)), dark)
+	add("Inner", "Blob", Vector3.new(T.X * 0.45, T.Y * 0.4, T.Z * 0.45), CFrame.new(0, 0, 0), light, Enum.Material.Neon)
+	for _, sx in ipairs({ -1, 1 }) do
+		petEye(add, CFrame.new(sx * S * 0.16, T.Y * 0.05, -T.Z * 0.48), S * 0.2, ctx.iris)
+	end
+	for i = 0, 7 do
+		local a = i / 8 * math.pi * 2
+		local x, z = math.cos(a) * T.X * 0.38, math.sin(a) * T.Z * 0.38
+		for k = 0, 2 do
+			add("Tentacle", "Block", Vector3.new(S * 0.06, S * 0.34, S * 0.06), CFrame.new(x + math.sin(k + i) * S * 0.06, -T.Y * 0.45 - S * 0.17 - k * S * 0.32, z) * CFrame.Angles(0, 0, math.sin(k * 1.7 + i) * 0.3), if k % 2 == 0 then c else light)
+		end
+	end
+	for i = 0, 3 do
+		local a = i / 4 * math.pi * 2 + 0.4
+		add("OralArm", "Block", Vector3.new(S * 0.14, S * 0.7, S * 0.1), CFrame.new(math.cos(a) * S * 0.1, -T.Y * 0.5 - S * 0.35, math.sin(a) * S * 0.1) * CFrame.Angles(0, a, math.rad(8)), light)
+	end
+	ctx.headCf, ctx.H = CFrame.new(0, T.Y * 0.1, 0), T.Y * 0.9
+	ctx.headAdd = function(name, shape, size, cf, col, mat)
+		return add(name, shape, size, ctx.headCf * cf, col, mat)
+	end
+	ctx.footDrop = T.Y * 0.5 + S * 1.1
+end }
+
+local function wingPair(ctx, color, tip, bat)
+	local S, T = ctx.S, ctx.T
+	for _, sx in ipairs({ -1, 1 }) do
+		local base = CFrame.new(sx * T.X * 0.35, T.Y * 0.45, T.Z * 0.1) * CFrame.Angles(0, 0, math.rad(-30 * sx))
+		if bat then
+			ctx.add("BatWingBone", "Block", Vector3.new(S * 1.3, S * 0.08, S * 0.08), base * CFrame.new(sx * S * 0.6, S * 0.1, 0), tip)
+			for j = 0, 2 do
+				triangle(ctx.add, "BatWing", S * 0.5, S * 0.7, S * 0.04, base * CFrame.new(sx * S * (0.2 + j * 0.42), -S * 0.25, 0) * CFrame.Angles(0, math.rad(90), math.pi), color)
+			end
+		else
+			for j = 0, 3 do
+				ctx.add("Feather", "Block", Vector3.new(S * (1.1 - j * 0.2), S * 0.06, S * 0.22), base * CFrame.new(sx * S * (0.55 - j * 0.05), -j * S * 0.16, j * S * 0.05) * CFrame.Angles(0, 0, math.rad(j * 10 * sx)), if j == 0 then tip else color)
+			end
+		end
+	end
+end
+PET_FEATURES_EXTRA.AngelWings = function(ctx)
+	wingPair(ctx, WHITE, GOLD, false)
+end
+PET_FEATURES_EXTRA.BatWings = function(ctx)
+	wingPair(ctx, Color3.fromRGB(150, 15, 25), Color3.fromRGB(30, 20, 25), true)
+end
+PET_FEATURES_EXTRA.Comb = function(ctx)
+	local H, headAdd = ctx.H, ctx.headAdd
+	if not headAdd then return end
+	local red = Color3.fromRGB(220, 30, 30)
+	for i = -1, 1 do
+		headAdd("Comb", "Block", Vector3.new(H * 0.1, H * 0.26, H * 0.16), CFrame.new(0, H * 0.55 + (1 - math.abs(i)) * H * 0.06, i * H * 0.14), red)
+	end
+	headAdd("Wattle", "Block", Vector3.new(H * 0.12, H * 0.22, H * 0.1), CFrame.new(0, -H * 0.35, -H * 0.42), red)
+end
+PET_FEATURES_EXTRA.YellowBelly = function(ctx)
+	ctx.add("Belly", "Block", Vector3.new(ctx.T.X * 0.8, ctx.T.Y * 0.5, ctx.T.Z * 0.7), CFrame.new(0, -ctx.T.Y * 0.2, -ctx.T.Z * 0.1), Color3.fromRGB(250, 230, 120))
+end
+PET_FEATURES_EXTRA.Barbels = function(ctx)
+	local S, T = ctx.S, ctx.T
+	for _, sx in ipairs({ -1, 1 }) do
+		ctx.add("Barbel", "Block", Vector3.new(S * 0.04, S * 0.04, S * 0.7), CFrame.new(sx * T.X * 0.2, -T.Y * 0.2, -T.Z * 0.5 - S * 0.2) * CFrame.Angles(math.rad(-20), math.rad(35 * sx), 0), Color3.fromRGB(150, 90, 200))
+	end
+end
+PET_FEATURES_EXTRA.GoldCollar = function(ctx)
+	local H, headAdd = ctx.H, ctx.headAdd
+	if not headAdd then return end
+	headAdd("GoldCollar", "Cyl", Vector3.new(H * 0.15, H * 0.9, H * 0.9), CFrame.new(0, -H * 0.5, H * 0.1) * CFrame.Angles(0, 0, math.rad(90)), GOLD, Enum.Material.Metal)
+	headAdd("CollarGem", "Block", Vector3.one * H * 0.16, CFrame.new(0, -H * 0.55, -H * 0.36) * CFrame.Angles(0, 0, math.rad(45)), Color3.fromRGB(255, 240, 150), Enum.Material.Neon)
+end
+PET_FEATURES_EXTRA.GoldArmor = function(ctx)
+	local S, T = ctx.S, ctx.T
+	ctx.add("ArmorBack", "Block", Vector3.new(T.X * 1.05, S * 0.1, T.Z * 0.5), CFrame.new(0, T.Y * 0.5, 0), GOLD, Enum.Material.Metal)
+	ctx.add("ArmorChest", "Block", Vector3.new(T.X * 0.8, T.Y * 0.6, S * 0.08), CFrame.new(0, 0, -T.Z * 0.52), GOLD, Enum.Material.Metal)
+	ctx.add("ArmorGem", "Block", Vector3.one * S * 0.16, CFrame.new(0, 0, -T.Z * 0.56) * CFrame.Angles(0, 0, math.rad(45)), Color3.fromRGB(255, 240, 150), Enum.Material.Neon)
+	if ctx.headAdd then
+		ctx.headAdd("Crest", "Block", Vector3.new(ctx.H * 0.12, ctx.H * 0.4, ctx.H * 0.6), CFrame.new(0, ctx.H * 0.6, 0), GOLD, Enum.Material.Metal)
+	end
+end
+PET_FEATURES_EXTRA.Spear = function(ctx)
+	local S, T = ctx.S, ctx.T
+	local cf = CFrame.new(T.X * 0.5 + S * 0.25, T.Y * 0.2, -S * 0.1) * CFrame.Angles(math.rad(15), 0, 0)
+	ctx.add("SpearShaft", "Block", Vector3.new(S * 0.06, S * 1.8, S * 0.06), cf, GOLD, Enum.Material.Metal)
+	triangle(ctx.add, "SpearTip", S * 0.2, S * 0.3, S * 0.05, cf * CFrame.new(0, S * 1.05, 0), Color3.fromRGB(255, 245, 200), Enum.Material.Neon)
+end
+PET_FEATURES_EXTRA.BullHorns = function(ctx)
+	local H, headAdd = ctx.H, ctx.headAdd
+	if not headAdd then return end
+	for _, sx in ipairs({ -1, 1 }) do
+		headAdd("BullHorn", "Block", Vector3.new(H * 0.5, H * 0.14, H * 0.14), CFrame.new(sx * H * 0.55, H * 0.42, 0) * CFrame.Angles(0, 0, math.rad(15 * sx)), IVORY)
+		headAdd("BullHornTip", "Block", Vector3.new(H * 0.12, H * 0.34, H * 0.12), CFrame.new(sx * H * 0.8, H * 0.6, 0), IVORY)
+	end
+end
+PET_FEATURES_EXTRA.NoseRing = function(ctx)
+	local H, headAdd = ctx.H, ctx.headAdd
+	if not headAdd then return end
+	headAdd("NoseRing", "Cyl", Vector3.new(H * 0.05, H * 0.28, H * 0.28), CFrame.new(0, -H * 0.35, -H * 0.72) * CFrame.Angles(0, math.rad(90), 0), GOLD, Enum.Material.Metal)
+end
+PET_FEATURES_EXTRA.DevilTail = function(ctx)
+	local S, T = ctx.S, ctx.T
+	ctx.add("DevilTail", "Block", Vector3.new(S * 0.06, S * 0.06, S * 0.7), CFrame.new(0, -T.Y * 0.3, T.Z * 0.5 + S * 0.3) * CFrame.Angles(math.rad(25), 0, 0), ctx.color)
+	triangle(ctx.add, "TailTip", S * 0.22, S * 0.24, S * 0.05, CFrame.new(0, -T.Y * 0.15, T.Z * 0.5 + S * 0.66) * CFrame.Angles(0, math.rad(90), 0), ctx.color)
+end
+PET_FEATURES_EXTRA.Blades = function(ctx)
+	local S, T = ctx.S, ctx.T
+	for _, sx in ipairs({ -1, 1 }) do
+		triangle(ctx.add, "Blade", S * 0.35, S * 1.4, S * 0.08, CFrame.new(sx * T.X * 0.4, T.Y * 0.5 + S * 0.55, T.Z * 0.1) * CFrame.Angles(0, 0, math.rad(-12 * sx)), Color3.fromRGB(25, 20, 25))
+		ctx.add("BladeEdge", "Block", Vector3.new(S * 0.05, S * 1.0, S * 0.09), CFrame.new(sx * (T.X * 0.4 + S * 0.08), T.Y * 0.5 + S * 0.45, T.Z * 0.1) * CFrame.Angles(0, 0, math.rad(-12 * sx)), Color3.fromRGB(230, 30, 30), Enum.Material.Neon)
+	end
+end
+PET_FEATURES_EXTRA.Bones = function(ctx)
+	local S, T = ctx.S, ctx.T
+	for i = 0, 4 do
+		for _, sx in ipairs({ -1, 1 }) do
+			ctx.add("Rib", "Block", Vector3.new(S * 0.05, T.Y * 0.7, S * 0.08), CFrame.new(sx * T.X * 0.51, 0, -T.Z * 0.3 + i * T.Z * 0.15), IVORY)
+		end
+	end
+	ctx.add("Spine", "Block", Vector3.new(S * 0.1, S * 0.06, T.Z * 0.9), CFrame.new(0, T.Y * 0.51, 0), IVORY)
+	if ctx.headAdd then
+		ctx.headAdd("SkullFace", "Block", Vector3.new(ctx.H * 0.5, ctx.H * 0.5, ctx.H * 0.06), CFrame.new(0, 0, -ctx.H * 0.52), IVORY)
+	end
+end
+PET_FEATURES_EXTRA.FlameMane = function(ctx)
+	local S, T = ctx.S, ctx.T
+	local neck = ctx.headCf or CFrame.new(0, T.Y * 0.5, -T.Z * 0.4)
+	for i = 0, 5 do
+		local col = if i % 2 == 0 then Color3.fromRGB(255, 120, 20) else Color3.fromRGB(255, 220, 60)
+		triangle(ctx.add, "FlameMane", S * 0.2, S * (0.35 + (i % 3) * 0.1), S * 0.06, neck * CFrame.new(0, ctx.H * 0.4 - i * S * 0.08, ctx.H * 0.3 + i * S * 0.12) * CFrame.Angles(0, math.rad(90), math.rad(-30)), col, Enum.Material.Neon)
+	end
+	triangle(ctx.add, "FlameTail", S * 0.3, S * 0.6, S * 0.06, CFrame.new(0, T.Y * 0.3, T.Z * 0.5 + S * 0.25) * CFrame.Angles(0, math.rad(90), math.rad(-60)), Color3.fromRGB(255, 120, 20), Enum.Material.Neon)
+end
+PET_FEATURES_EXTRA.SpiritFlames = function(ctx)
+	local S, T = ctx.S, ctx.T
+	local col = (ctx.def and ctx.def.PatternColor) or Color3.fromRGB(120, 170, 255)
+	for i = 0, 3 do
+		local a = i / 4 * math.pi * 2 + 0.6
+		local wisp = ctx.add("SpiritFlame", "Blob", Vector3.new(S * 0.16, S * 0.3, S * 0.16), CFrame.new(math.cos(a) * (T.X * 0.5 + S * 0.35), T.Y * 0.6 + (i % 2) * S * 0.2, math.sin(a) * (T.Z * 0.5 + S * 0.2)), col:Lerp(WHITE, 0.4), Enum.Material.Neon)
+		wisp.Transparency = 0.25
+	end
+end
+PET_FEATURES_EXTRA.KitsuneMarks = function(ctx)
+	local S, T = ctx.S, ctx.T
+	local red = (ctx.def and ctx.def.PatternColor) or Color3.fromRGB(210, 40, 50)
+	for _, sx in ipairs({ -1, 1 }) do
+		for i = 0, 1 do
+			ctx.add("KitsuneMark", "Block", Vector3.new(S * 0.04, S * 0.08, T.Z * 0.35), CFrame.new(sx * T.X * 0.51, T.Y * (0.15 - i * 0.3), -T.Z * 0.1 + i * T.Z * 0.2) * CFrame.Angles(math.rad(20 - i * 40), 0, 0), red)
+		end
+	end
+	if ctx.headAdd then
+		local H = ctx.H
+		ctx.headAdd("ForeheadRing", "Cyl", Vector3.new(H * 0.04, H * 0.3, H * 0.3), CFrame.new(0, H * 0.32, -H * 0.42) * CFrame.Angles(0, math.rad(90), 0), red)
+		ctx.headAdd("ForeheadDot", "Block", Vector3.new(H * 0.1, H * 0.1, H * 0.05), CFrame.new(0, H * 0.32, -H * 0.44), red)
+	end
 end
 
 -- Real-animal colors. Common pets are almost exactly their real color,
@@ -4990,11 +5344,11 @@ end
 -- body colors change; eyes, accessories, gems and glow stay as they are.
 local blockify -- defined below
 local FUR_STYLES = {}
-for _, s in ipairs({ "Spider", "Gorilla", "Pup", "Cat", "Fox", "Wolf", "Lion", "Bear", "Cub", "Panda", "Raccoon", "Pig", "Cow", "Sheep", "Hamster", "Bunny", "Stag", "Unicorn", "Kitsune", "Elephant", "Monkey", "Hedgehog", "Pony", "Pegasus", "Giraffe", "Kangaroo", "Koala", "Sloth", "Otter", "Squirrel", "Mouse", "Hippo", "Rhino", "Griffin", "Cerberus", "Bat", "Bird", "Chick", "Duck", "Owl", "Phoenix", "Penguin", "Flamingo", "Swan", "Parrot", "Peacock", "Moth", "Bee" }) do
+for _, s in ipairs({ "Spider", "Gorilla", "Pup", "Cat", "Fox", "Wolf", "Lion", "Bear", "Cub", "Panda", "Raccoon", "Pig", "Cow", "Sheep", "Hamster", "Bunny", "Stag", "Unicorn", "Kitsune", "Elephant", "Monkey", "Hedgehog", "Pony", "Pegasus", "Giraffe", "Kangaroo", "Koala", "Sloth", "Otter", "Squirrel", "Mouse", "Hippo", "Rhino", "Griffin", "Cerberus", "Bat", "Bird", "Chick", "Duck", "Owl", "Phoenix", "Penguin", "Flamingo", "Swan", "Parrot", "Peacock", "Moth", "Bee", "Angel" }) do
 	FUR_STYLES[s] = true
 end
 local SKIN_STYLES = {}
-for _, s in ipairs({ "Scorpion", "Manta", "Drake", "Dino", "Serpent", "Croc", "Newt", "Axolotl", "Turtle", "Frog", "Fish", "Koi", "Shark", "Dolphin", "Whale", "Seal", "Octopus", "Kraken", "Crab", "Snail" }) do
+for _, s in ipairs({ "Sprite", "Jelly", "Scorpion", "Manta", "Drake", "Dino", "Serpent", "Croc", "Newt", "Axolotl", "Turtle", "Frog", "Fish", "Koi", "Shark", "Dolphin", "Whale", "Seal", "Octopus", "Kraken", "Crab", "Snail" }) do
 	SKIN_STYLES[s] = true
 end
 

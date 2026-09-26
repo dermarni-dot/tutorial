@@ -390,6 +390,13 @@ Config.Rarities = {
 		HatchTime = 10,
 		Color = Color3.fromRGB(215, 215, 215),
 		Creatures = {
+			{ Name = "Chicken", Style = "Chick", Income = 2, Color = Color3.fromRGB(245, 245, 240), ZoneOnly = true, Exact = true, Features = { "Comb" } },
+			{ Name = "Dog", Style = "Pup", Income = 2, Color = Color3.fromRGB(170, 60, 90), ZoneOnly = true, Exact = true, Pattern = "Patches", PatternColor = Color3.fromRGB(235, 225, 225) },
+			{ Name = "Bird", Style = "Bird", Income = 1, Color = Color3.fromRGB(160, 140, 120), ZoneOnly = true, Exact = true },
+			{ Name = "Frog", Style = "Frog", Income = 2, Color = Color3.fromRGB(60, 150, 60), ZoneOnly = true, Exact = true },
+			{ Name = "Duckling", Style = "Duck", Income = 1, Color = Color3.fromRGB(120, 110, 90), ZoneOnly = true, Exact = true, Features = { "YellowBelly" } },
+			{ Name = "Turtle", Style = "Turtle", Income = 2, Color = Color3.fromRGB(80, 160, 70), ZoneOnly = true, Exact = true },
+			{ Name = "Catfish", Style = "Fish", Income = 2, Color = Color3.fromRGB(165, 160, 215), ZoneOnly = true, Exact = true, Features = { "Whiskers", "Barbels" } },
 			{ Name = "Pebble Pup", Style = "Pup", Income = 1, Color = Color3.fromRGB(150, 140, 130), Pattern = "Spots" },
 			{ Name = "Mossling", Style = "Moss", Income = 1, Color = Color3.fromRGB(110, 170, 90) },
 			{ Name = "Chirpy", Style = "Bird", Income = 2, Color = Color3.fromRGB(250, 210, 90) },
@@ -474,6 +481,12 @@ Config.Rarities = {
 		HatchTime = 20,
 		Color = Color3.fromRGB(110, 220, 120),
 		Creatures = {
+			{ Name = "Burrowing Owl", Style = "Owl", Income = 8, Color = Color3.fromRGB(120, 85, 60), ZoneOnly = true, Exact = true, Pattern = "Spots", PatternColor = Color3.fromRGB(230, 215, 190) },
+			{ Name = "Raccoon", Style = "Raccoon", Income = 8, Color = Color3.fromRGB(60, 70, 120), ZoneOnly = true, Exact = true },
+			{ Name = "Fox", Style = "Fox", Income = 9, Color = Color3.fromRGB(235, 80, 30), ZoneOnly = true, Exact = true },
+			{ Name = "Bear", Style = "Bear", Income = 9, Color = Color3.fromRGB(130, 85, 55), ZoneOnly = true, Exact = true },
+			{ Name = "Swan", Style = "Swan", Income = 8, Color = Color3.fromRGB(240, 240, 250), ZoneOnly = true, Exact = true },
+			{ Name = "Lake Pike", Style = "Fish", Income = 9, Color = Color3.fromRGB(35, 45, 90), ZoneOnly = true, Exact = true, Features = { "Jaws" } },
 			{ Name = "Jerboa", Style = "Kangaroo", Income = 7, Color = Color3.fromRGB(225, 195, 150), ZoneOnly = true, Exact = true, Features = { "LongEars" } },
 			{ Name = "Fennec", Style = "Fox", Income = 8, Color = Color3.fromRGB(235, 200, 150), ZoneOnly = true, Exact = true, Features = { "BigEars" } },
 			{ Name = "Camel", Style = "Pony", Income = 9, Color = Color3.fromRGB(190, 145, 95), ZoneOnly = true, Exact = true, Features = { "Hump" } },
@@ -817,6 +830,9 @@ Config.Rarities = {
 		HatchTime = 240,
 		Color = Color3.fromRGB(255, 70, 110),
 		Creatures = {
+			{ Name = "Light Dove", Style = "Bird", Income = 11800, Color = Color3.fromRGB(250, 250, 255), ZoneOnly = true, Exact = true, Accessory = "Halo", Features = { "AngelWings" }, EggTheme = "Angel" },
+			{ Name = "Winged Lamb", Style = "Sheep", Income = 12600, Color = Color3.fromRGB(255, 252, 240), ZoneOnly = true, Exact = true, Features = { "AngelWings", "GoldCollar" }, EggTheme = "Angel" },
+			{ Name = "Sacred Moth", Style = "Moth", Income = 13400, Color = Color3.fromRGB(255, 240, 190), ZoneOnly = true, Exact = true, EggTheme = "Angel" },
 			{ Name = "Parrotfish", Style = "Fish", Income = 11500, Color = Color3.fromRGB(120, 220, 200), ZoneOnly = true, Exact = true, Features = { "Beak" } },
 			{ Name = "Swordfish", Style = "Fish", Income = 12500, Color = Color3.fromRGB(90, 110, 160), ZoneOnly = true, Exact = true, Features = { "Sword" } },
 			{ Name = "Reef Shark", Style = "Shark", Income = 13500, Color = Color3.fromRGB(100, 120, 150), ZoneOnly = true, Exact = true },
@@ -886,6 +902,10 @@ Config.Rarities = {
 		HatchTime = 420,
 		Color = Color3.fromRGB(255, 240, 170),
 		Creatures = {
+			{ Name = "Holy Peacock", Style = "Peacock", Income = 68000, Color = Color3.fromRGB(255, 250, 235), ZoneOnly = true, Exact = true, Pattern = "Gems", PatternColor = Color3.fromRGB(255, 200, 40), EggTheme = "Angel" },
+			{ Name = "Pure Jellyfish", Style = "Jelly", Income = 72000, Color = Color3.fromRGB(235, 215, 150), ZoneOnly = true, Exact = true, Accessory = "Halo", EggTheme = "Angel" },
+			{ Name = "Holy Centaur", Style = "Pony", Income = 76000, Color = Color3.fromRGB(250, 245, 230), ZoneOnly = true, Exact = true, Features = { "GoldArmor", "Spear" }, EggTheme = "Angel" },
+			{ Name = "Sun Pegasus", Style = "Pegasus", Income = 82000, Color = Color3.fromRGB(255, 250, 240), ZoneOnly = true, Exact = true, Features = { "GoldArmor" }, EggTheme = "Angel" },
 			{ Name = "Orca", Style = "Whale", Income = 65000, Color = Color3.fromRGB(25, 25, 30), ZoneOnly = true, Exact = true, Features = { "OrcaPatches" } },
 			{ Name = "Narwhal", Style = "Whale", Income = 72000, Color = Color3.fromRGB(200, 210, 225), ZoneOnly = true, Exact = true, Features = { "Horn" } },
 			{ Name = "Giant Octopus", Style = "Octopus", Income = 80000, Color = Color3.fromRGB(220, 90, 70), ZoneOnly = true, Exact = true },
@@ -943,6 +963,7 @@ Config.Rarities = {
 		HatchTime = 600,
 		Color = Color3.fromRGB(40, 40, 50),
 		Creatures = {
+			{ Name = "ArchAngel", Style = "Angel", Income = 650000, Color = Color3.fromRGB(255, 245, 225), ZoneOnly = true, Exact = true, Accessory = "Halo", Features = { "AngelWings", "GoldArmor", "Spear" }, EggTheme = "Angel" },
 			{ Name = "Abyss Megalodon", Style = "Shark", Income = 600000, Color = Color3.fromRGB(60, 110, 180), ZoneOnly = true, Exact = true, Features = { "Jaws" } },
 			{ Name = "Jungle Gorilla", Style = "Gorilla", Income = 400000, Color = Color3.fromRGB(40, 40, 50), ZoneOnly = true, Exact = true },
 			{ Name = "Orangutan", Style = "Monkey", Income = 450000, Color = Color3.fromRGB(210, 110, 40), ZoneOnly = true, Exact = true, Features = { "Shaggy" } },
@@ -985,6 +1006,10 @@ Config.Rarities = {
 		HatchTime = 780,
 		Color = Color3.fromRGB(120, 220, 255),
 		Creatures = {
+			{ Name = "Flame Sprite", Style = "Sprite", Income = 3200000, Color = Color3.fromRGB(255, 120, 30), ZoneOnly = true, Exact = true, EggTheme = "Demon" },
+			{ Name = "Toro", Style = "Cow", Income = 3600000, Color = Color3.fromRGB(30, 28, 30), ZoneOnly = true, Exact = true, Features = { "BullHorns", "NoseRing", "GlowEyes" }, EggTheme = "Demon" },
+			{ Name = "Demon Hound", Style = "Wolf", Income = 4200000, Color = Color3.fromRGB(30, 20, 22), ZoneOnly = true, Exact = true, Pattern = "Stripes", PatternColor = Color3.fromRGB(230, 30, 30), PatternGlow = true, Accessory = "Horns", Features = { "Spikes", "GlowEyes" }, EggTheme = "Demon" },
+			{ Name = "Spirit Kitsune", Style = "Kitsune", Income = 4000000, Color = Color3.fromRGB(245, 245, 250), ZoneOnly = true, Exact = true, PatternColor = Color3.fromRGB(120, 170, 255), Features = { "SpiritFlames" } },
 			{ Name = "Bengal Tiger", Style = "Cat", Income = 3000000, Color = Color3.fromRGB(240, 140, 40), ZoneOnly = true, Exact = true, Pattern = "Stripes", PatternColor = Color3.fromRGB(30, 25, 25) },
 			{ Name = "King Snake", Style = "Serpent", Income = 5000000, Color = Color3.fromRGB(60, 180, 70), ZoneOnly = true, Exact = true, Features = { "Crown", "Hood" } },
 			{ Name = "Astral Wolf", Style = "Wolf", Income = 2200000, Color = Color3.fromRGB(140, 200, 255), Pattern = "Stars" },
@@ -1003,6 +1028,11 @@ Config.Rarities = {
 		HatchTime = 960,
 		Color = Color3.fromRGB(180, 90, 255),
 		Creatures = {
+			{ Name = "Imp", Style = "Angel", Income = 30000000, Color = Color3.fromRGB(200, 25, 30), ZoneOnly = true, Exact = true, Accessory = "Horns", Features = { "BatWings", "DevilTail" }, EggTheme = "Demon" },
+			{ Name = "Gargoyle", Style = "Gorilla", Income = 38000000, Color = Color3.fromRGB(35, 35, 40), ZoneOnly = true, Exact = true, Accessory = "Horns", Features = { "BatWings", "GlowEyes" }, EggTheme = "Demon" },
+			{ Name = "Razor Fang", Style = "Gorilla", Income = 46000000, Color = Color3.fromRGB(25, 20, 25), ZoneOnly = true, Exact = true, Features = { "Blades", "Spikes", "GlowEyes" }, EggTheme = "Demon" },
+			{ Name = "Skeleton Horse", Style = "Pony", Income = 55000000, Color = Color3.fromRGB(30, 25, 28), ZoneOnly = true, Exact = true, Features = { "Bones", "FlameMane", "GlowEyes" }, EggTheme = "Demon" },
+			{ Name = "Divine Kitsune", Style = "Kitsune", Income = 60000000, Color = Color3.fromRGB(250, 250, 255), ZoneOnly = true, Exact = true, PatternColor = Color3.fromRGB(210, 40, 50), Features = { "KitsuneMarks", "SpiritFlames" } },
 			{ Name = "Galaxy Cat", Style = "Cat", Income = 25000000, Color = Color3.fromRGB(60, 30, 110), Pattern = "Stars" },
 			{ Name = "Blackhole Bear", Style = "Bear", Income = 30000000, Color = Color3.fromRGB(25, 20, 40), Pattern = "Swirl" },
 			{ Name = "Quasar Kitsune", Style = "Kitsune", Income = 35000000, Color = Color3.fromRGB(190, 110, 255), Pattern = "Stars" },
@@ -1018,6 +1048,8 @@ Config.Rarities = {
 		HatchTime = 1200,
 		Color = Color3.fromRGB(255, 60, 90),
 		Creatures = {
+			{ Name = "World Burner", Style = "Drake", Income = 850000000, Color = Color3.fromRGB(90, 10, 15), ZoneOnly = true, Exact = true, Pattern = "Stripes", PatternColor = Color3.fromRGB(255, 40, 30), PatternGlow = true, Accessory = "Horns", Features = { "BatWings", "Spikes", "GlowEyes" }, EggTheme = "Demon", Weight = 0.5 },
+			{ Name = "Nine-Flame Kitsune", Style = "Kitsune", Income = 780000000, Color = Color3.fromRGB(255, 250, 245), ZoneOnly = true, Exact = true, PatternColor = Color3.fromRGB(255, 90, 40), Features = { "KitsuneMarks", "SpiritFlames", "Crown" }, Weight = 0.6 },
 			{ Name = "Silver Gorilla King", Style = "Gorilla", Income = 950000000, Color = Color3.fromRGB(215, 215, 225), Weight = 0.3 },
 			{ Name = "Omega Cerberus", Style = "Cerberus", Income = 300000000, Color = Color3.fromRGB(70, 15, 25), Pattern = "Swirl" },
 			{ Name = "Infinity Serpent", Style = "Serpent", Income = 360000000, Color = Color3.fromRGB(255, 80, 120), Pattern = "Rainbow" },
@@ -1054,6 +1086,7 @@ Config.Biomes = {
 		Leash = 220,
 		RespawnTime = 12,
 		EggSpots = 16,
+		Pets = { "Chicken", "Dog", "Bird", "Frog", "Duckling", "Turtle", "Catfish", "Burrowing Owl", "Raccoon", "Fox", "Bear", "Swan", "Lake Pike" }, -- this zone's own animals: its eggs are their species eggs
 		Eggs = { Common = 80, Uncommon = 20 },
 		Mood = { Color = Color3.fromRGB(175, 215, 240), Decay = Color3.fromRGB(95, 135, 110), Density = 0.3, Haze = 0.6, Glare = 0.2, Tint = Color3.fromRGB(245, 255, 242), Brightness = 0, Saturation = 0.18, CloudColor = Color3.fromRGB(255, 255, 255), CloudCover = 0.6, Bloom = 0.45, Rays = 0.12, Contrast = 0.12, Ambient = Color3.fromRGB(118, 140, 118) },
 	},
@@ -1184,6 +1217,7 @@ Config.Biomes = {
 		Leash = 290,
 		RespawnTime = 360,
 		EggSpots = 10,
+		Pets = { "Light Dove", "Winged Lamb", "Sacred Moth", "Holy Peacock", "Pure Jellyfish", "Holy Centaur", "Sun Pegasus", "ArchAngel" }, -- this zone's own animals: its eggs are their species eggs
 		Eggs = { Mythic = 35, Divine = 57, Secret = 8 },
 		Mood = { Color = Color3.fromRGB(255, 245, 220), Decay = Color3.fromRGB(255, 220, 170), Density = 0.32, Haze = 1.2, Glare = 0.6, Tint = Color3.fromRGB(255, 250, 235), Brightness = 0.04, Saturation = 0.05, CloudColor = Color3.fromRGB(255, 250, 240), CloudCover = 0.9, Clock = 12, Bloom = 0.9, Rays = 0.25, Contrast = 0.08, Ambient = Color3.fromRGB(200, 190, 170) },
 	},
@@ -1343,6 +1377,7 @@ Config.Biomes = {
 		Leash = 330,
 		RespawnTime = 850,
 		EggSpots = 10,
+		Pets = { "Spirit Kitsune", "Divine Kitsune", "Nine-Flame Kitsune" }, -- this zone's own animals: its eggs are their species eggs
 		Eggs = { Astral = 45, Cosmic = 45, Omega = 10 },
 		MutationBoost = 3.5, -- eggs here roll mutations this many times as often
 		Mood = { Color = Color3.fromRGB(255, 200, 210), Decay = Color3.fromRGB(200, 140, 160), Density = 0.3, Haze = 1, Glare = 0.4, Tint = Color3.fromRGB(255, 242, 240), Brightness = 0.01, Saturation = 0.2, CloudColor = Color3.fromRGB(255, 230, 235), CloudCover = 0.5, Clock = 17.2, Bloom = 0.6, Rays = 0.15, Contrast = 0.12, Ambient = Color3.fromRGB(170, 150, 150) },
@@ -1361,6 +1396,7 @@ Config.Biomes = {
 		Leash = 330,
 		RespawnTime = 900,
 		EggSpots = 10,
+		Pets = { "Flame Sprite", "Toro", "Demon Hound", "Imp", "Gargoyle", "Razor Fang", "Skeleton Horse", "World Burner" }, -- this zone's own animals: its eggs are their species eggs
 		Eggs = { Astral = 30, Cosmic = 50, Omega = 20 },
 		MutationBoost = 4, -- eggs here roll mutations this many times as often
 		Mood = { Color = Color3.fromRGB(220, 90, 60), Decay = Color3.fromRGB(90, 20, 10), Density = 0.5, Haze = 1.8, Glare = 0.2, Tint = Color3.fromRGB(255, 215, 200), Brightness = -0.03, Saturation = 0.25, CloudColor = Color3.fromRGB(90, 40, 35), CloudCover = 0.85, Clock = 0.2, Bloom = 1, Rays = 0.1, Contrast = 0.24, Ambient = Color3.fromRGB(140, 70, 55) },
