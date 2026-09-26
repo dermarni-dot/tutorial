@@ -702,7 +702,8 @@ spawnCreature = function(player, index, data)
 	local model = Visuals.MakeCreature(data)
 	local bodyHeight = model.PrimaryPart.Size.Y
 	-- feet reach about 0.6 of the body height below its center; floaters hover
-	local position = plot.SlotTops[index] + Vector3.new(0, bodyHeight * 0.62 + (model:GetAttribute("Hover") or 0), 0)
+	local footDrop = model:GetAttribute("FootDrop") or bodyHeight * 0.62
+	local position = plot.SlotTops[index] + Vector3.new(0, footDrop + (model:GetAttribute("Hover") or 0), 0)
 	model:PivotTo(CFrame.lookAt(position, position + plot.FrontDir))
 	-- the owner's pen: every client walks the pet around inside it
 	model:SetAttribute("PenCFrame", plot.PenCFrame)
