@@ -713,6 +713,15 @@ local EGG_VARIANTS = {
 	},
 }
 
+-- Names of every design an egg of this rarity can have (Classic first)
+function Visuals.EggVariantNames(rarityId)
+	local names = { "Classic" }
+	for _, v in ipairs(EGG_VARIANTS[rarityId] or {}) do
+		table.insert(names, v.Name)
+	end
+	return names
+end
+
 -- variantName is optional; by default the egg picks a random design.
 function Visuals.MakeEgg(rarityId, variantName)
 	local rarity = Config.RarityById[rarityId]

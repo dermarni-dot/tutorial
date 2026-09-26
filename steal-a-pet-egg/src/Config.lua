@@ -255,6 +255,29 @@ Config.DailyRewards = {
 }
 
 --------------------------------------------------------------------------------
+-- Treats, sold at the 🍦 stall in town for cash. While a treat is active your
+-- pets grow up faster (Growth x) and earn a little more (Cash = +%).
+-- One treat at a time: buying the same one adds time (up to TreatMaxMinutes),
+-- buying a different one replaces it. Price = CostSeconds of your income,
+-- at least MinCost, so treats stay worth it as you get richer.
+--------------------------------------------------------------------------------
+Config.Treats = {
+	{ Key = "Cookie", Name = "Crunchy Cookie", Icon = "🍪", Growth = 1.5, Cash = 0.10, Minutes = 3, CostSeconds = 60, MinCost = 100, Color = Color3.fromRGB(210, 150, 90) },
+	{ Key = "Cupcake", Name = "Sprinkle Cupcake", Icon = "🧁", Growth = 2, Cash = 0.15, Minutes = 5, CostSeconds = 180, MinCost = 1000, Color = Color3.fromRGB(255, 140, 190) },
+	{ Key = "IceCream", Name = "Triple Ice Cream", Icon = "🍦", Growth = 3, Cash = 0.20, Minutes = 5, CostSeconds = 420, MinCost = 5000, Color = Color3.fromRGB(120, 200, 255) },
+	{ Key = "Cake", Name = "Golden Pet Cake", Icon = "🎂", Growth = 5, Cash = 0.25, Minutes = 10, CostSeconds = 1500, MinCost = 25000, Color = Color3.fromRGB(255, 200, 70) },
+}
+Config.TreatMaxMinutes = 30
+Config.TreatByKey = {}
+for _, treat in ipairs(Config.Treats) do
+	Config.TreatByKey[treat.Key] = treat
+end
+
+function Config.TreatCost(treat, incomePerSec)
+	return math.max(treat.MinCost, math.floor((incomePerSec or 0) * treat.CostSeconds))
+end
+
+--------------------------------------------------------------------------------
 -- Pet Index: every pet you get is recorded in your 📖 Index. Collecting every
 -- pet of a rarity gives a permanent cash bonus on all your pets.
 --------------------------------------------------------------------------------

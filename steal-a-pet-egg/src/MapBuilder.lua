@@ -1827,12 +1827,43 @@ local function buildTown(folder, rng)
 		end
 		local sign = deco({ Name = "StallSign", Size = Vector3.new(10, 2, 0.4), CFrame = base * CFrame.new(0, 10.8, 2.6), Color = Color3.fromRGB(45, 35, 30), Material = Enum.Material.Wood, Parent = folder })
 		surfaceText(sign, Enum.NormalId.Front, stallText[i], Color3.fromRGB(255, 230, 150))
-		for j = -1, 1 do
-			local egg = deco({ Name = "DisplayEgg", Size = Vector3.new(1.4, 1.9, 1.4), CFrame = base * CFrame.new(j * 3.5, 4.8, 0), Color = Config.Rarities[j + 3].Color, Material = Enum.Material.SmoothPlastic, Parent = folder })
-			local mesh = Instance.new("SpecialMesh")
-			mesh.MeshType = Enum.MeshType.Sphere
-			mesh.Parent = egg
+		if i == 1 then
+			for j = -1, 1 do
+				local egg = deco({ Name = "DisplayEgg", Size = Vector3.new(1.4, 1.9, 1.4), CFrame = base * CFrame.new(j * 3.5, 4.8, 0), Color = Config.Rarities[j + 3].Color, Material = Enum.Material.SmoothPlastic, Parent = folder })
+				local mesh = Instance.new("SpecialMesh")
+				mesh.MeshType = Enum.MeshType.Sphere
+				mesh.Parent = egg
+			end
+		else
+			-- treats on the counter: cookie, cupcake, ice cream cone
+			local cookie = base * CFrame.new(-3.5, 4.05, 0)
+			deco({ Name = "Cookie", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.3, 1.8, 1.8), CFrame = cylinderAlongY(cookie), Color = Color3.fromRGB(210, 150, 90), Material = Enum.Material.SmoothPlastic, Parent = folder })
+			for k = 0, 3 do
+				deco({ Name = "Chip", Size = Vector3.one * 0.25, CFrame = cookie * CFrame.new(math.cos(k * 1.7) * 0.5, 0.18, math.sin(k * 1.7) * 0.5), Color = Color3.fromRGB(70, 40, 25), Material = Enum.Material.SmoothPlastic, Parent = folder })
+			end
+			local cake = base * CFrame.new(0, 4.3, 0)
+			deco({ Name = "CupcakeBase", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.8, 1.2, 1.2), CFrame = cylinderAlongY(cake), Color = Color3.fromRGB(240, 200, 150), Material = Enum.Material.SmoothPlastic, Parent = folder })
+			deco({ Name = "Frosting", Shape = Enum.PartType.Ball, Size = Vector3.new(1.5, 1.1, 1.5), CFrame = cake * CFrame.new(0, 0.6, 0), Color = Color3.fromRGB(255, 150, 200), Material = Enum.Material.SmoothPlastic, Parent = folder })
+			deco({ Name = "Cherry", Shape = Enum.PartType.Ball, Size = Vector3.one * 0.45, CFrame = cake * CFrame.new(0, 1.2, 0), Color = Color3.fromRGB(220, 30, 50), Material = Enum.Material.SmoothPlastic, Parent = folder })
+			local cone = base * CFrame.new(3.5, 3.9, 0)
+			for k = 0, 3 do
+				deco({ Name = "Cone", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.4, 0.3 + k * 0.28, 0.3 + k * 0.28), CFrame = cylinderAlongY(cone * CFrame.new(0, k * 0.4, 0)), Color = Color3.fromRGB(220, 170, 100), Material = Enum.Material.SmoothPlastic, Parent = folder })
+			end
+			for k, col in ipairs({ Color3.fromRGB(255, 240, 220), Color3.fromRGB(255, 160, 200), Color3.fromRGB(150, 220, 255) }) do
+				deco({ Name = "Scoop", Shape = Enum.PartType.Ball, Size = Vector3.one * 1.1, CFrame = cone * CFrame.new(0, 1.6 + (k - 1) * 0.8, 0), Color = col, Material = Enum.Material.SmoothPlastic, Parent = folder })
+			end
 		end
+		-- walk up and press E / hold X to open the stall's menu
+		local anchor = deco({ Name = if i == 1 then "EggFactsStall" else "TreatShopStall", Size = Vector3.new(2, 2, 2), CFrame = base * CFrame.new(0, 3, -3), Transparency = 1, CanCollide = false, Parent = folder })
+		local prompt = Instance.new("ProximityPrompt")
+		prompt.Name = if i == 1 then "EggFactsPrompt" else "TreatShopPrompt"
+		prompt.ActionText = if i == 1 then "Read" else "Shop"
+		prompt.ObjectText = if i == 1 then "🥚 Egg Facts" else "🍦 Treat Shop"
+		prompt.HoldDuration = 0
+		prompt.RequiresLineOfSight = false
+		prompt.MaxActivationDistance = 14
+		prompt:SetAttribute("Range", 14)
+		prompt.Parent = anchor
 	end
 
 	-- Flower beds along the street

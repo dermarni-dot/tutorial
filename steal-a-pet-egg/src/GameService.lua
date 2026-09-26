@@ -659,6 +659,31 @@ local function onEggStolen(thief, victim, rarityId)
 end
 
 --------------------------------------------------------------------------------
+-- Treats: timed growth + cash boosts bought at the town stall
+--------------------------------------------------------------------------------
+local function showTreat(state)
+	local treat = state.Profile.Treat
+	state.Player:SetAttribute("TreatKey", if treat then treat.Key else nil)
+	state.Player:SetAttribute("TreatUntil", if treat then treat.Until else nil)
+end
+
+-- The active treat's definition, or nil (and clears it once it runs out)
+local function activeTreat(state)
+	local treat = state.Profile.Treat
+	if not treat then
+		return nil
+	end
+	if os.time() >= treat.Until then
+		state.Profile.Treat = nil
+		showTreat(state)
+		local def = Config.TreatByKey[treat.Key]
+		notify(state.Player, (if def then def.Icon .. " Your " .. def.Name else "Your treat") .. " wore off.", ORANGE)
+		return nil
+	end
+	return Config.TreatByKey[treat.Key]
+end
+
+--------------------------------------------------------------------------------
 -- Pets, hatching and fusing
 --------------------------------------------------------------------------------
 local spawnCreature
@@ -1280,6 +1305,8 @@ local function tickLoop()
 
 		for player, state in pairs(states) do
 			local income = 0
+			local treat = activeTreat(state)
+			local growth = if treat then treat.Growth else 1
 			for i = 1, Config.MaxSlots do
 				local slot = state.Nest[i]
 				if slot then
@@ -1295,7 +1322,7 @@ local function tickLoop()
 						local data = slot.Data
 						local before = Config.PetStage(data)
 						if before < #Config.Stages then
-							data.Age = (data.Age or 0) + dt
+							data.Age = (data.Age or 0) + dt * growth
 							local after = Config.PetStage(data)
 							if after ~= before then
 								removeCreature(state, i)
@@ -1320,6 +1347,9 @@ local function tickLoop()
 				income *= 2
 			end
 			income *= 1 + (state.IndexBonus or 0)
+			if treat then
+				income *= 1 + treat.Cash
+			end
 			if income > 0 then
 				setCash(state, state.Profile.Cash + income)
 			end
@@ -1537,6 +1567,7 @@ function GameService.AddPlayer(player, profile)
 
 	state.Loading = false
 	refreshIndexBonus(state)
+	showTreat(state)
 
 	-- Game passes
 	for _, key in ipairs(PASS_KEYS) do
@@ -1736,6 +1767,37 @@ function GameService.GetSpeed(player)
 	return if state then state.Profile.Speed else 0
 end
 
+-- Treats (the 🍦 stall in town) ----------------------------------------------
+function GameService.BuyTreat(player, key)
+	local state = states[player]
+	local def = Config.TreatByKey[key]
+	if not state or not def then
+		return false
+	end
+	local t = os.clock()
+	if t - (state.LastTreatBuy or 0) < 0.4 then
+		return false
+	end
+	state.LastTreatBuy = t
+	local cost = Config.TreatCost(def, player:GetAttribute("IncomePerSec") or 0)
+	if not trySpend(state, cost) then
+		notify(player, "You need " .. Util.Money(cost) .. " for a " .. def.Name .. ".", RED)
+		return false
+	end
+	local current = state.Profile.Treat
+	local now = os.time()
+	local maxUntil = now + Config.TreatMaxMinutes * 60
+	if current and current.Key == key and current.Until > now then
+		current.Until = math.min(current.Until + def.Minutes * 60, maxUntil)
+		notify(player, def.Icon .. " More " .. def.Name .. "! " .. Util.FormatTime(current.Until - now) .. " left.", GOLD)
+	else
+		state.Profile.Treat = { Key = key, Until = now + def.Minutes * 60 }
+		notify(player, def.Icon .. " " .. def.Name .. "! Pets grow " .. def.Growth .. "x faster and earn +" .. math.floor(def.Cash * 100 + 0.5) .. "% for " .. def.Minutes .. " min.", GOLD)
+	end
+	showTreat(state)
+	return true
+end
+
 -- Daily reward helpers (used by DailyRewardService) --------------------------
 function GameService.GetProfile(player)
 	local state = states[player]
@@ -1885,6 +1947,8 @@ function GameService.Admin.Reset(player)
 	paintTreadmill(state)
 	setCash(state, Config.StartingCash)
 	state.Profile.Index = {}
+	state.Profile.Treat = nil
+	showTreat(state)
 	state.IndexFolder:ClearAllChildren()
 	refreshIndexBonus(state)
 	GameService.Admin.SetSpeed(player, Config.StartingSpeed)

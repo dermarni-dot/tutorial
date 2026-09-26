@@ -51,6 +51,9 @@ Game Settings > Security > **Enable Studio Access to API Services**.
   - **Sky:** an aurora over Frostpeak, and a ringed planet, moon and nebula clouds over the Void.
   - **Walls:** vines, carvings, icicles, lava cracks or runes, depending on the zone.
   - **Extra effects:** falling leaves, ash and rising stardust.
+- **Market stalls in town** (walk up and press E / hold Ⓧ):
+  - **🍦 Treat Shop:** treats make your pets grow faster and earn a bit more for a while. Cookie (1.5x grow, +10%, 3 min), Cupcake (2x, +15%, 5 min), Ice Cream (3x, +20%, 5 min), Golden Cake (5x, +25%, 10 min). Prices scale with your income. One treat at a time; buying the same one adds time (up to 30 min). A timer shows top-left, and treats keep going if you rejoin. Tune them in `Config.Treats`.
+  - **🥚 Egg Facts:** every egg rarity in 3D with its hatch time, pet count, income range, which zones it spawns in (and how often), its egg designs and a fun fact, plus shiny and mutation odds.
 - **Screens:**
   - **Title screen** with a Play button when you join.
   - **Hatch reveal:** your new pet spins in 3D with light rays in its rarity color, its stats, and a NEW PET! tag the first time.

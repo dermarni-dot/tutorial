@@ -255,6 +255,29 @@ Config.DailyRewards = {
 }
 
 --------------------------------------------------------------------------------
+-- Treats, sold at the 🍦 stall in town for cash. While a treat is active your
+-- pets grow up faster (Growth x) and earn a little more (Cash = +%).
+-- One treat at a time: buying the same one adds time (up to TreatMaxMinutes),
+-- buying a different one replaces it. Price = CostSeconds of your income,
+-- at least MinCost, so treats stay worth it as you get richer.
+--------------------------------------------------------------------------------
+Config.Treats = {
+	{ Key = "Cookie", Name = "Crunchy Cookie", Icon = "🍪", Growth = 1.5, Cash = 0.10, Minutes = 3, CostSeconds = 60, MinCost = 100, Color = Color3.fromRGB(210, 150, 90) },
+	{ Key = "Cupcake", Name = "Sprinkle Cupcake", Icon = "🧁", Growth = 2, Cash = 0.15, Minutes = 5, CostSeconds = 180, MinCost = 1000, Color = Color3.fromRGB(255, 140, 190) },
+	{ Key = "IceCream", Name = "Triple Ice Cream", Icon = "🍦", Growth = 3, Cash = 0.20, Minutes = 5, CostSeconds = 420, MinCost = 5000, Color = Color3.fromRGB(120, 200, 255) },
+	{ Key = "Cake", Name = "Golden Pet Cake", Icon = "🎂", Growth = 5, Cash = 0.25, Minutes = 10, CostSeconds = 1500, MinCost = 25000, Color = Color3.fromRGB(255, 200, 70) },
+}
+Config.TreatMaxMinutes = 30
+Config.TreatByKey = {}
+for _, treat in ipairs(Config.Treats) do
+	Config.TreatByKey[treat.Key] = treat
+end
+
+function Config.TreatCost(treat, incomePerSec)
+	return math.max(treat.MinCost, math.floor((incomePerSec or 0) * treat.CostSeconds))
+end
+
+--------------------------------------------------------------------------------
 -- Pet Index: every pet you get is recorded in your 📖 Index. Collecting every
 -- pet of a rarity gives a permanent cash bonus on all your pets.
 --------------------------------------------------------------------------------
@@ -1460,6 +1483,15 @@ local EGG_VARIANTS = {
 		end },
 	},
 }
+
+-- Names of every design an egg of this rarity can have (Classic first)
+function Visuals.EggVariantNames(rarityId)
+	local names = { "Classic" }
+	for _, v in ipairs(EGG_VARIANTS[rarityId] or {}) do
+		table.insert(names, v.Name)
+	end
+	return names
+end
 
 -- variantName is optional; by default the egg picks a random design.
 function Visuals.MakeEgg(rarityId, variantName)
@@ -3136,6 +3168,9 @@ treadmill.Parent = remotes
 local admin = Instance.new("RemoteEvent")
 admin.Name = "Admin"
 admin.Parent = remotes
+local treats = Instance.new("RemoteEvent")
+treats.Name = "Treats"
+treats.Parent = remotes
 local hatched = Instance.new("RemoteEvent")
 hatched.Name = "Hatched"
 hatched.Parent = remotes
@@ -3150,6 +3185,11 @@ GameService.Init(map, notify, treadmill)
 Monetization.Init(GameService)
 AdminService.Init(GameService, notify, admin)
 DailyRewardService.Init(GameService, daily, notify)
+treats.OnServerEvent:Connect(function(player, action, key)
+	if action == "Buy" and type(key) == "string" then
+		GameService.BuyTreat(player, key)
+	end
+end)
 
 -- Players
 local function onPlayerAdded(player)
@@ -5034,12 +5074,43 @@ local function buildTown(folder, rng)
 		end
 		local sign = deco({ Name = "StallSign", Size = Vector3.new(10, 2, 0.4), CFrame = base * CFrame.new(0, 10.8, 2.6), Color = Color3.fromRGB(45, 35, 30), Material = Enum.Material.Wood, Parent = folder })
 		surfaceText(sign, Enum.NormalId.Front, stallText[i], Color3.fromRGB(255, 230, 150))
-		for j = -1, 1 do
-			local egg = deco({ Name = "DisplayEgg", Size = Vector3.new(1.4, 1.9, 1.4), CFrame = base * CFrame.new(j * 3.5, 4.8, 0), Color = Config.Rarities[j + 3].Color, Material = Enum.Material.SmoothPlastic, Parent = folder })
-			local mesh = Instance.new("SpecialMesh")
-			mesh.MeshType = Enum.MeshType.Sphere
-			mesh.Parent = egg
+		if i == 1 then
+			for j = -1, 1 do
+				local egg = deco({ Name = "DisplayEgg", Size = Vector3.new(1.4, 1.9, 1.4), CFrame = base * CFrame.new(j * 3.5, 4.8, 0), Color = Config.Rarities[j + 3].Color, Material = Enum.Material.SmoothPlastic, Parent = folder })
+				local mesh = Instance.new("SpecialMesh")
+				mesh.MeshType = Enum.MeshType.Sphere
+				mesh.Parent = egg
+			end
+		else
+			-- treats on the counter: cookie, cupcake, ice cream cone
+			local cookie = base * CFrame.new(-3.5, 4.05, 0)
+			deco({ Name = "Cookie", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.3, 1.8, 1.8), CFrame = cylinderAlongY(cookie), Color = Color3.fromRGB(210, 150, 90), Material = Enum.Material.SmoothPlastic, Parent = folder })
+			for k = 0, 3 do
+				deco({ Name = "Chip", Size = Vector3.one * 0.25, CFrame = cookie * CFrame.new(math.cos(k * 1.7) * 0.5, 0.18, math.sin(k * 1.7) * 0.5), Color = Color3.fromRGB(70, 40, 25), Material = Enum.Material.SmoothPlastic, Parent = folder })
+			end
+			local cake = base * CFrame.new(0, 4.3, 0)
+			deco({ Name = "CupcakeBase", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.8, 1.2, 1.2), CFrame = cylinderAlongY(cake), Color = Color3.fromRGB(240, 200, 150), Material = Enum.Material.SmoothPlastic, Parent = folder })
+			deco({ Name = "Frosting", Shape = Enum.PartType.Ball, Size = Vector3.new(1.5, 1.1, 1.5), CFrame = cake * CFrame.new(0, 0.6, 0), Color = Color3.fromRGB(255, 150, 200), Material = Enum.Material.SmoothPlastic, Parent = folder })
+			deco({ Name = "Cherry", Shape = Enum.PartType.Ball, Size = Vector3.one * 0.45, CFrame = cake * CFrame.new(0, 1.2, 0), Color = Color3.fromRGB(220, 30, 50), Material = Enum.Material.SmoothPlastic, Parent = folder })
+			local cone = base * CFrame.new(3.5, 3.9, 0)
+			for k = 0, 3 do
+				deco({ Name = "Cone", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.4, 0.3 + k * 0.28, 0.3 + k * 0.28), CFrame = cylinderAlongY(cone * CFrame.new(0, k * 0.4, 0)), Color = Color3.fromRGB(220, 170, 100), Material = Enum.Material.SmoothPlastic, Parent = folder })
+			end
+			for k, col in ipairs({ Color3.fromRGB(255, 240, 220), Color3.fromRGB(255, 160, 200), Color3.fromRGB(150, 220, 255) }) do
+				deco({ Name = "Scoop", Shape = Enum.PartType.Ball, Size = Vector3.one * 1.1, CFrame = cone * CFrame.new(0, 1.6 + (k - 1) * 0.8, 0), Color = col, Material = Enum.Material.SmoothPlastic, Parent = folder })
+			end
 		end
+		-- walk up and press E / hold X to open the stall's menu
+		local anchor = deco({ Name = if i == 1 then "EggFactsStall" else "TreatShopStall", Size = Vector3.new(2, 2, 2), CFrame = base * CFrame.new(0, 3, -3), Transparency = 1, CanCollide = false, Parent = folder })
+		local prompt = Instance.new("ProximityPrompt")
+		prompt.Name = if i == 1 then "EggFactsPrompt" else "TreatShopPrompt"
+		prompt.ActionText = if i == 1 then "Read" else "Shop"
+		prompt.ObjectText = if i == 1 then "🥚 Egg Facts" else "🍦 Treat Shop"
+		prompt.HoldDuration = 0
+		prompt.RequiresLineOfSight = false
+		prompt.MaxActivationDistance = 14
+		prompt:SetAttribute("Range", 14)
+		prompt.Parent = anchor
 	end
 
 	-- Flower beds along the street
@@ -5411,6 +5482,7 @@ local function defaults()
 		Nest = {},
 		Daily = { Streak = 0, LastDay = -1 },
 		Index = {}, -- [pet name] = true for every pet you've ever had
+		Treat = nil, -- { Key, Until } while a treat is active (Until = os.time())
 	}
 end
 
@@ -5452,6 +5524,9 @@ function DataService.Load(player)
 				end
 			end
 		end
+		if type(data.Treat) == "table" and Config.TreatByKey[data.Treat.Key] and (tonumber(data.Treat.Until) or 0) > os.time() then
+			profile.Treat = { Key = data.Treat.Key, Until = math.floor(tonumber(data.Treat.Until)) }
+		end
 		if type(data.Daily) == "table" then
 			profile.Daily.Streak = math.max(0, math.floor(tonumber(data.Daily.Streak) or 0))
 			profile.Daily.LastDay = math.floor(tonumber(data.Daily.LastDay) or -1)
@@ -5473,6 +5548,7 @@ function DataService.Save(player, profile)
 		Nest = profile.Nest,
 		Daily = profile.Daily,
 		Index = profile.Index,
+		Treat = profile.Treat,
 		Version = 2,
 	}
 	for attempt = 1, 3 do
@@ -6152,6 +6228,31 @@ local function onEggStolen(thief, victim, rarityId)
 end
 
 --------------------------------------------------------------------------------
+-- Treats: timed growth + cash boosts bought at the town stall
+--------------------------------------------------------------------------------
+local function showTreat(state)
+	local treat = state.Profile.Treat
+	state.Player:SetAttribute("TreatKey", if treat then treat.Key else nil)
+	state.Player:SetAttribute("TreatUntil", if treat then treat.Until else nil)
+end
+
+-- The active treat's definition, or nil (and clears it once it runs out)
+local function activeTreat(state)
+	local treat = state.Profile.Treat
+	if not treat then
+		return nil
+	end
+	if os.time() >= treat.Until then
+		state.Profile.Treat = nil
+		showTreat(state)
+		local def = Config.TreatByKey[treat.Key]
+		notify(state.Player, (if def then def.Icon .. " Your " .. def.Name else "Your treat") .. " wore off.", ORANGE)
+		return nil
+	end
+	return Config.TreatByKey[treat.Key]
+end
+
+--------------------------------------------------------------------------------
 -- Pets, hatching and fusing
 --------------------------------------------------------------------------------
 local spawnCreature
@@ -6773,6 +6874,8 @@ local function tickLoop()
 
 		for player, state in pairs(states) do
 			local income = 0
+			local treat = activeTreat(state)
+			local growth = if treat then treat.Growth else 1
 			for i = 1, Config.MaxSlots do
 				local slot = state.Nest[i]
 				if slot then
@@ -6788,7 +6891,7 @@ local function tickLoop()
 						local data = slot.Data
 						local before = Config.PetStage(data)
 						if before < #Config.Stages then
-							data.Age = (data.Age or 0) + dt
+							data.Age = (data.Age or 0) + dt * growth
 							local after = Config.PetStage(data)
 							if after ~= before then
 								removeCreature(state, i)
@@ -6813,6 +6916,9 @@ local function tickLoop()
 				income *= 2
 			end
 			income *= 1 + (state.IndexBonus or 0)
+			if treat then
+				income *= 1 + treat.Cash
+			end
 			if income > 0 then
 				setCash(state, state.Profile.Cash + income)
 			end
@@ -7030,6 +7136,7 @@ function GameService.AddPlayer(player, profile)
 
 	state.Loading = false
 	refreshIndexBonus(state)
+	showTreat(state)
 
 	-- Game passes
 	for _, key in ipairs(PASS_KEYS) do
@@ -7229,6 +7336,37 @@ function GameService.GetSpeed(player)
 	return if state then state.Profile.Speed else 0
 end
 
+-- Treats (the 🍦 stall in town) ----------------------------------------------
+function GameService.BuyTreat(player, key)
+	local state = states[player]
+	local def = Config.TreatByKey[key]
+	if not state or not def then
+		return false
+	end
+	local t = os.clock()
+	if t - (state.LastTreatBuy or 0) < 0.4 then
+		return false
+	end
+	state.LastTreatBuy = t
+	local cost = Config.TreatCost(def, player:GetAttribute("IncomePerSec") or 0)
+	if not trySpend(state, cost) then
+		notify(player, "You need " .. Util.Money(cost) .. " for a " .. def.Name .. ".", RED)
+		return false
+	end
+	local current = state.Profile.Treat
+	local now = os.time()
+	local maxUntil = now + Config.TreatMaxMinutes * 60
+	if current and current.Key == key and current.Until > now then
+		current.Until = math.min(current.Until + def.Minutes * 60, maxUntil)
+		notify(player, def.Icon .. " More " .. def.Name .. "! " .. Util.FormatTime(current.Until - now) .. " left.", GOLD)
+	else
+		state.Profile.Treat = { Key = key, Until = now + def.Minutes * 60 }
+		notify(player, def.Icon .. " " .. def.Name .. "! Pets grow " .. def.Growth .. "x faster and earn +" .. math.floor(def.Cash * 100 + 0.5) .. "% for " .. def.Minutes .. " min.", GOLD)
+	end
+	showTreat(state)
+	return true
+end
+
 -- Daily reward helpers (used by DailyRewardService) --------------------------
 function GameService.GetProfile(player)
 	local state = states[player]
@@ -7378,6 +7516,8 @@ function GameService.Admin.Reset(player)
 	paintTreadmill(state)
 	setCash(state, Config.StartingCash)
 	state.Profile.Index = {}
+	state.Profile.Treat = nil
+	showTreat(state)
 	state.IndexFolder:ClearAllChildren()
 	refreshIndexBonus(state)
 	GameService.Admin.SetSpeed(player, Config.StartingSpeed)
@@ -10504,6 +10644,393 @@ local function setupExtraGui()
 	end
 end
 setupExtraGui()
+
+-- Treat Shop and Egg Facts: opened from the two market stalls in town.
+local function setupStalls()
+	local Visuals = require(Shared:WaitForChild("Visuals"))
+	local UserInputService = game:GetService("UserInputService")
+	local GuiService = game:GetService("GuiService")
+	local ContextActionService = game:GetService("ContextActionService")
+	local TreatsRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Treats")
+
+	-- A panel in the same style as the Shop: gradient, colored border, title, X
+	local function makePanel(name, title, accent, width, height)
+		local frame = Instance.new("Frame")
+		frame.Name = name
+		frame.AnchorPoint = Vector2.new(0.5, 0.5)
+		frame.Position = UDim2.fromScale(0.5, 0.52)
+		frame.Size = UDim2.fromOffset(width, height)
+		frame.BackgroundColor3 = Color3.fromRGB(34, 30, 52)
+		frame.ZIndex = 5
+		frame.Visible = false
+		frame.Parent = gui
+		corner(frame, 20)
+		stroke(frame, 4, accent)
+		panelGradient:Clone().Parent = frame
+		local scale = Instance.new("UIScale")
+		scale.Parent = frame
+		label(frame, { Position = UDim2.fromOffset(24, 10), Size = UDim2.new(1, -110, 0, 48), Text = title, TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = accent:Lerp(Color3.new(1, 1, 1), 0.3) })
+		local close = closeButton:Clone()
+		close.Parent = frame
+		close.Activated:Connect(function()
+			frame.Visible = false
+		end)
+		local fit = 1
+		local function refit()
+			local camera = workspace.CurrentCamera
+			if camera then
+				local vp = camera.ViewportSize
+				fit = math.min(1, (vp.X - 40) / width, (vp.Y - 60) / height)
+				scale.Scale = fit
+			end
+		end
+		refit()
+		if workspace.CurrentCamera then
+			workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(refit)
+		end
+		frame:GetPropertyChangedSignal("Visible"):Connect(function()
+			if frame.Visible then
+				scale.Scale = 0.7 * fit
+				TweenService:Create(scale, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = fit }):Play()
+				for _, other in ipairs(menuPanels) do
+					if other ~= frame then
+						other.Visible = false
+					end
+				end
+			end
+			refreshBackdrop()
+		end)
+		table.insert(menuPanels, frame)
+		return frame
+	end
+
+	------------------------------------------------------------------------
+	-- 🍦 Treat Shop
+	------------------------------------------------------------------------
+	local treatPanel = makePanel("TreatShop", "🍦 TREAT SHOP", Color3.fromRGB(255, 140, 190), 760, 430)
+	label(treatPanel, {
+		Position = UDim2.fromOffset(26, 58),
+		Size = UDim2.new(1, -52, 0, 20),
+		Font = Enum.Font.GothamBold,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextColor3 = Color3.fromRGB(230, 225, 240),
+		TextStrokeTransparency = 1,
+		Text = "Treats make your pets grow up faster and earn a bit more. One at a time; the same treat again adds time.",
+	})
+	local row = Instance.new("Frame")
+	row.BackgroundTransparency = 1
+	row.Position = UDim2.fromOffset(20, 92)
+	row.Size = UDim2.new(1, -40, 0, 316)
+	row.Parent = treatPanel
+	local rowLayout = Instance.new("UIListLayout")
+	rowLayout.FillDirection = Enum.FillDirection.Horizontal
+	rowLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+	rowLayout.Padding = UDim.new(0, 12)
+	rowLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	rowLayout.Parent = row
+
+	local treatCards = {}
+	for i, treat in ipairs(Config.Treats) do
+		local card = Instance.new("Frame")
+		card.LayoutOrder = i
+		card.Size = UDim2.fromOffset(170, 316)
+		card.BackgroundColor3 = Color3.new(1, 1, 1)
+		card.Parent = row
+		corner(card, 16)
+		local cardStroke = Instance.new("UIStroke")
+		cardStroke.Thickness = 3
+		cardStroke.Color = treat.Color
+		cardStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+		cardStroke.Parent = card
+		local g = Instance.new("UIGradient")
+		g.Color = ColorSequence.new(treat.Color:Lerp(Color3.new(0, 0, 0), 0.35), treat.Color:Lerp(Color3.new(0, 0, 0), 0.75))
+		g.Rotation = 90
+		g.Parent = card
+		label(card, { Position = UDim2.fromOffset(0, 10), Size = UDim2.new(1, 0, 0, 70), Text = treat.Icon, TextStrokeTransparency = 1 })
+		label(card, { Position = UDim2.fromOffset(8, 84), Size = UDim2.new(1, -16, 0, 30), Text = treat.Name })
+		local stats = label(card, { Position = UDim2.fromOffset(10, 118), Size = UDim2.new(1, -20, 0, 76), Font = Enum.Font.GothamBold, TextColor3 = Color3.fromRGB(235, 235, 245), TextStrokeTransparency = 1, TextWrapped = true, Text = "🌱 Grow " .. treat.Growth .. "x faster\n💰 +" .. math.floor(treat.Cash * 100 + 0.5) .. "% cash\n⏱ " .. treat.Minutes .. " minutes" })
+		stats.TextScaled = false
+		stats.TextSize = 16
+		local status = label(card, { Position = UDim2.fromOffset(8, 200), Size = UDim2.new(1, -16, 0, 26), TextColor3 = Color3.fromRGB(150, 255, 160), Text = "" })
+		local buy = Instance.new("TextButton")
+		buy.Name = "BuyTreat"
+		buy.AnchorPoint = Vector2.new(0.5, 1)
+		buy.Position = UDim2.new(0.5, 0, 1, -14)
+		buy.Size = UDim2.new(1, -24, 0, 50)
+		buy.BackgroundColor3 = Color3.fromRGB(80, 210, 90)
+		buy.Font = Enum.Font.FredokaOne
+		buy.TextScaled = true
+		buy.TextColor3 = Color3.new(1, 1, 1)
+		buy.TextStrokeTransparency = 0.3
+		buy.Text = "$" .. treat.MinCost
+		buy.Parent = card
+		corner(buy, 12)
+		stroke(buy, 3, Color3.fromRGB(30, 100, 30))
+		local pad = Instance.new("UIPadding")
+		pad.PaddingTop = UDim.new(0, 8)
+		pad.PaddingBottom = UDim.new(0, 8)
+		pad.Parent = buy
+		buy.Activated:Connect(function()
+			TreatsRemote:FireServer("Buy", treat.Key)
+		end)
+		treatCards[treat.Key] = { Buy = buy, Status = status, Stroke = cardStroke, Treat = treat }
+	end
+
+	-- HUD timer while a treat is active
+	local treatChip = label(gui, {
+		Name = "TreatTimer",
+		Position = UDim2.fromOffset(14, 74),
+		Size = UDim2.fromOffset(230, 30),
+		BackgroundTransparency = 0.1,
+		BackgroundColor3 = Color3.fromRGB(26, 22, 40),
+		Font = Enum.Font.GothamBold,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Visible = false,
+		Text = "",
+	})
+	corner(treatChip, 12)
+	local chipStroke = Instance.new("UIStroke")
+	chipStroke.Thickness = 2
+	chipStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	chipStroke.Parent = treatChip
+	local chipPad = Instance.new("UIPadding")
+	chipPad.PaddingLeft = UDim.new(0, 10)
+	chipPad.PaddingTop = UDim.new(0, 5)
+	chipPad.PaddingBottom = UDim.new(0, 5)
+	chipPad.Parent = treatChip
+
+	local function refreshTreats()
+		local key = player:GetAttribute("TreatKey")
+		local untilTime = player:GetAttribute("TreatUntil") or 0
+		local left = untilTime - workspace:GetServerTimeNow()
+		local active = key and left > 0 and Config.TreatByKey[key]
+		local income = player:GetAttribute("IncomePerSec") or 0
+		for k, c in pairs(treatCards) do
+			c.Buy.Text = Util.Money(Config.TreatCost(c.Treat, income))
+			local isActive = active and k == key
+			c.Status.Text = if isActive then "ACTIVE " .. Util.FormatTime(left) else ""
+			c.Stroke.Thickness = if isActive then 5 else 3
+		end
+		if active then
+			treatChip.Visible = true
+			treatChip.Text = active.Icon .. " " .. active.Growth .. "x grow · +" .. math.floor(active.Cash * 100 + 0.5) .. "% · " .. Util.FormatTime(left)
+			treatChip.TextColor3 = active.Color:Lerp(Color3.new(1, 1, 1), 0.4)
+			chipStroke.Color = active.Color
+		else
+			treatChip.Visible = false
+		end
+	end
+	task.spawn(function()
+		while true do
+			refreshTreats()
+			task.wait(0.5)
+		end
+	end)
+
+	------------------------------------------------------------------------
+	-- 🥚 Egg Facts
+	------------------------------------------------------------------------
+	local EGG_FUN_FACTS = {
+		Common = "The easiest eggs to grab. The Bramble Bear is slow, so these are perfect for beginners.",
+		Uncommon = "Leafy shells! Found in the forest and the dunes. Great for filling your Index early on.",
+		Rare = "Rare eggs glow and can hatch into sharks, tigers and robots.",
+		Epic = "Crystal shells. Epic pets earn over 200x more than Commons.",
+		Legendary = "Golden eggs with wings. Guardians get fast here, so train your Speed first!",
+		Mythic = "Cosmic eggs with their own orbiting stars. Only found in the Starfall Void.",
+		Divine = "Holy eggs with halos. Only 4.5% of Void eggs are Divine, and luck boosts help a lot.",
+		Secret = "The rarest eggs in the game: 1 in 200 Void eggs. Nobody knows what's inside until it hatches!",
+	}
+
+	local factsPanel = makePanel("EggFacts", "🥚 EGG FACTS", Color3.fromRGB(255, 200, 90), 780, 490)
+	local list = Instance.new("ScrollingFrame")
+	list.BackgroundTransparency = 1
+	list.BorderSizePixel = 0
+	list.Position = UDim2.fromOffset(20, 66)
+	list.Size = UDim2.new(1, -30, 1, -78)
+	list.ScrollBarThickness = 6
+	list.AutomaticCanvasSize = Enum.AutomaticSize.Y
+	list.CanvasSize = UDim2.new()
+	list.Parent = factsPanel
+	local listLayout = Instance.new("UIListLayout")
+	listLayout.Padding = UDim.new(0, 10)
+	listLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	listLayout.Parent = list
+
+	local function spawnsText(rarityId)
+		local parts = {}
+		for _, biome in ipairs(Config.Biomes) do
+			local weight = biome.Eggs[rarityId] or 0
+			if weight > 0 then
+				local total = 0
+				for _, w in pairs(biome.Eggs) do
+					total += w
+				end
+				local pct = weight / total * 100
+				table.insert(parts, biome.Name .. " (" .. (if pct < 1 then string.format("%.1f", pct) else tostring(math.floor(pct + 0.5))) .. "%)")
+			end
+		end
+		if (Config.EggRainWeights[rarityId] or 0) > 0 then
+			table.insert(parts, "🌧️ Egg Rain")
+		end
+		return table.concat(parts, ", ")
+	end
+
+	local eggStages = {}
+	for order, rarity in ipairs(Config.Rarities) do
+		local rowFrame = Instance.new("Frame")
+		rowFrame.LayoutOrder = order
+		rowFrame.Size = UDim2.new(1, -10, 0, 128)
+		rowFrame.BackgroundColor3 = Color3.fromRGB(48, 42, 72)
+		rowFrame.Parent = list
+		corner(rowFrame, 14)
+		stroke(rowFrame, 2, rarity.Color)
+		local stage = Instance.new("Frame")
+		stage.BackgroundColor3 = Color3.fromRGB(30, 26, 46)
+		stage.Position = UDim2.fromOffset(10, 10)
+		stage.Size = UDim2.fromOffset(108, 108)
+		stage.Parent = rowFrame
+		corner(stage, 12)
+		eggStages[rarity.Id] = stage
+		local minIncome, maxIncome = math.huge, 0
+		for _, def in ipairs(rarity.Creatures) do
+			minIncome = math.min(minIncome, def.Income)
+			maxIncome = math.max(maxIncome, def.Income)
+		end
+		label(rowFrame, { Position = UDim2.fromOffset(130, 8), Size = UDim2.new(1, -140, 0, 28), TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = rarity.Color:Lerp(Color3.new(1, 1, 1), 0.2), Text = rarity.Id .. " Egg" })
+		local info = label(rowFrame, {
+			Position = UDim2.fromOffset(130, 38),
+			Size = UDim2.new(1, -140, 0, 84),
+			Font = Enum.Font.GothamBold,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			TextYAlignment = Enum.TextYAlignment.Top,
+			TextColor3 = Color3.fromRGB(225, 225, 240),
+			TextStrokeTransparency = 1,
+			TextWrapped = true,
+			Text = "⏱ Hatches in " .. Util.FormatTime(rarity.HatchTime) .. "   🐾 " .. #rarity.Creatures .. " pets   💰 " .. Util.Money(minIncome) .. " to " .. Util.Money(maxIncome) .. "/s as babies\n"
+				.. "📍 Spawns in: " .. spawnsText(rarity.Id) .. "\n"
+				.. "🎨 Looks: " .. table.concat(Visuals.EggVariantNames(rarity.Id), ", ") .. "\n"
+				.. "💡 " .. (EGG_FUN_FACTS[rarity.Id] or ""),
+		})
+		info.TextScaled = false
+		info.TextSize = 14
+	end
+
+	-- general facts at the bottom
+	local mutationBits = {}
+	for _, m in ipairs(Config.Mutations) do
+		table.insert(mutationBits, m.Icon .. " " .. m.Id .. " " .. (m.Chance * 100) .. "% (" .. m.Mult .. "x)")
+	end
+	local footer = label(list, {
+		LayoutOrder = 100,
+		Size = UDim2.new(1, -10, 0, 150),
+		BackgroundTransparency = 0.2,
+		BackgroundColor3 = Color3.fromRGB(26, 22, 40),
+		Font = Enum.Font.GothamBold,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextYAlignment = Enum.TextYAlignment.Top,
+		TextStrokeTransparency = 1,
+		TextColor3 = Color3.fromRGB(230, 225, 245),
+		TextWrapped = true,
+		Text = "✨ Shiny: " .. math.floor(Config.ShinyChance * 100) .. "% of eggs hatch shiny, " .. math.floor(Config.StolenShinyChance * 100) .. "% if you stole the egg from another player. Shiny pets earn " .. Config.ShinyMultiplier .. "x.\n"
+			.. "🧬 Mutations (rolled when an egg spawns): " .. table.concat(mutationBits, ", ") .. ". Server Luck makes them more common.\n"
+			.. "🥚 Wild eggs regrow in their nests. The guardian chases you until you get far enough from its nest, and never past the red Safe Zone line.\n"
+			.. "🏃 You run 10% slower while carrying an egg. Eggs in your base can be stolen unless you lock it.",
+	})
+	footer.TextScaled = false
+	footer.TextSize = 14
+	corner(footer, 12)
+	local footerPad = Instance.new("UIPadding")
+	footerPad.PaddingLeft = UDim.new(0, 12)
+	footerPad.PaddingRight = UDim.new(0, 12)
+	footerPad.PaddingTop = UDim.new(0, 10)
+	footerPad.Parent = footer
+
+	-- 3D eggs, built the first time the panel opens and spinning while it's open
+	local eggModels = {}
+	local spinConn = nil
+	factsPanel:GetPropertyChangedSignal("Visible"):Connect(function()
+		if factsPanel.Visible then
+			if #eggModels == 0 then
+				for rarityId, stage in pairs(eggStages) do
+					local vp = Instance.new("ViewportFrame")
+					vp.BackgroundTransparency = 1
+					vp.Size = UDim2.fromScale(1, 1)
+					vp.Ambient = Color3.fromRGB(180, 180, 195)
+					vp.LightDirection = Vector3.new(-0.5, -1, -0.8)
+					local ok, egg = pcall(Visuals.MakeEgg, rarityId, "Classic")
+					if ok and egg then
+						for _, d in ipairs(egg:GetDescendants()) do
+							if d:IsA("BillboardGui") or d:IsA("ParticleEmitter") or d:IsA("PointLight") then
+								d:Destroy()
+							end
+						end
+						egg.CFrame = CFrame.new()
+						egg.Parent = vp
+						local cam = Instance.new("Camera")
+						cam.FieldOfView = 40
+						cam.CFrame = CFrame.lookAt(Vector3.new(0, 1.5, -9.5), Vector3.new(0, 0.2, 0))
+						cam.Parent = vp
+						vp.CurrentCamera = cam
+						table.insert(eggModels, egg)
+					end
+					vp.Parent = stage
+				end
+			end
+			spinConn = game:GetService("RunService").RenderStepped:Connect(function(dt)
+				for _, egg in ipairs(eggModels) do
+					egg.CFrame = egg.CFrame * CFrame.Angles(0, dt * 0.8, 0)
+				end
+			end)
+		elseif spinConn then
+			spinConn:Disconnect()
+			spinConn = nil
+		end
+	end)
+
+	------------------------------------------------------------------------
+	-- Open them from the stall prompts
+	------------------------------------------------------------------------
+	local function hook(prompt)
+		if prompt.Name == "TreatShopPrompt" then
+			prompt.Triggered:Connect(function()
+				treatPanel.Visible = true
+			end)
+		elseif prompt.Name == "EggFactsPrompt" then
+			prompt.Triggered:Connect(function()
+				factsPanel.Visible = true
+			end)
+		end
+	end
+	for _, d in ipairs(workspace:GetDescendants()) do
+		if d:IsA("ProximityPrompt") then
+			hook(d)
+		end
+	end
+	workspace.DescendantAdded:Connect(function(d)
+		if d:IsA("ProximityPrompt") then
+			hook(d)
+		end
+	end)
+
+	-- Controller: select the first treat when the shop opens; B closes both panels
+	treatPanel:GetPropertyChangedSignal("Visible"):Connect(function()
+		if treatPanel.Visible and UserInputService:GetLastInputType().Name:find("Gamepad") then
+			task.defer(function()
+				GuiService.SelectedObject = treatCards[Config.Treats[1].Key].Buy
+			end)
+		end
+	end)
+	ContextActionService:BindActionAtPriority("EggStallBack", function(_, inputState)
+		if inputState == Enum.UserInputState.Begin and (treatPanel.Visible or factsPanel.Visible) then
+			treatPanel.Visible = false
+			factsPanel.Visible = false
+			GuiService.SelectedObject = nil
+			return Enum.ContextActionResult.Sink
+		end
+		return Enum.ContextActionResult.Pass
+	end, false, 3001, Enum.KeyCode.ButtonB)
+end
+setupStalls()
 
 --------------------------------------------------------------------------------
 -- Welcome tips

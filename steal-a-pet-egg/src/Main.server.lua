@@ -25,6 +25,9 @@ treadmill.Parent = remotes
 local admin = Instance.new("RemoteEvent")
 admin.Name = "Admin"
 admin.Parent = remotes
+local treats = Instance.new("RemoteEvent")
+treats.Name = "Treats"
+treats.Parent = remotes
 local hatched = Instance.new("RemoteEvent")
 hatched.Name = "Hatched"
 hatched.Parent = remotes
@@ -39,6 +42,11 @@ GameService.Init(map, notify, treadmill)
 Monetization.Init(GameService)
 AdminService.Init(GameService, notify, admin)
 DailyRewardService.Init(GameService, daily, notify)
+treats.OnServerEvent:Connect(function(player, action, key)
+	if action == "Buy" and type(key) == "string" then
+		GameService.BuyTreat(player, key)
+	end
+end)
 
 -- Players
 local function onPlayerAdded(player)
