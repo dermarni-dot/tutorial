@@ -1831,6 +1831,25 @@ function GameService.BuyTreat(player, key)
 	return true
 end
 
+-- A free treat (codes, rewards). Replaces or extends like buying one.
+function GameService.GrantTreat(player, key, minutes)
+	local state = states[player]
+	local def = Config.TreatByKey[key]
+	if not state or not def then
+		return false
+	end
+	local now = os.time()
+	local length = (minutes or def.Minutes) * 60
+	local current = state.Profile.Treat
+	if current and current.Key == key and current.Until > now then
+		current.Until = math.min(current.Until + length, now + Config.TreatMaxMinutes * 60)
+	else
+		state.Profile.Treat = { Key = key, Until = now + length }
+	end
+	showTreat(state)
+	return true
+end
+
 -- Daily reward helpers (used by DailyRewardService) --------------------------
 function GameService.GetProfile(player)
 	local state = states[player]

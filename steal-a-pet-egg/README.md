@@ -60,6 +60,18 @@ Game Settings > Security > **Enable Studio Access to API Services**.
 - **Market stalls in town** (walk up and press E / hold Ⓧ):
   - **🍦 Treat Shop:** treats make your pets grow faster and earn a bit more for a while. Cookie (1.5x grow, +10%, 3 min), Cupcake (2x, +15%, 5 min), Ice Cream (3x, +20%, 5 min), Golden Cake (5x, +25%, 10 min). Prices scale with your income. One treat at a time; buying the same one adds time (up to 30 min). A timer shows top-left, and treats keep going if you rejoin. Tune them in `Config.Treats`.
   - **🥚 Egg Facts:** every egg rarity in 3D with its hatch time, pet count, income range, which zones it spawns in (and how often), its egg designs and a fun fact, plus shiny and mutation odds.
+- **🎟️ Codes** (small button under the side menu): type a code for a free reward. Each code works once per player, and a code isn't used up if your pen is full.
+
+  | Code | Reward |
+  |---|---|
+  | RELEASE | 10 minutes of your income (at least $2.5K) |
+  | EGGSTRA | Free Rare Egg |
+  | PETS499 | Free Epic Egg |
+  | ZOOM | +15% Speed (at least +50) |
+  | SWEETTOOTH | Free 🧁 Sprinkle Cupcake treat |
+
+  Add or change codes in `Config.Codes`. Codes can give `Egg`, `Treat`, `SpeedPercent` or `CashMinutes`.
+- **⚙️ Settings** (next to Codes, just for you): turn pet name tags, particle effects (for slower devices), always-daytime and the sky balloons/birds on or off.
 - **Screens:**
   - **Title screen** with a Play button when you join.
   - **Hatch reveal:** your new pet spins in 3D with light rays in its rarity color, its stats, and a NEW PET! tag the first time.
@@ -69,7 +81,7 @@ Game Settings > Security > **Enable Studio Access to API Services**.
 
   | Button | Does |
   |---|---|
-  | View (Back) | Opens the side menu (Daily, Shop, Index, Admin) to move through with the D-pad |
+  | View (Back) | Opens the side menu (Daily, Shop, Index, Admin, Settings, Codes) to move through with the D-pad |
   | Ⓐ | Presses the highlighted button (it has a gold glow) |
   | Ⓨ | Opens Daily Rewards |
   | Ⓑ | Closes whatever is open (menus, pet cards, hatch reveal) or steps off the treadmill |
@@ -93,6 +105,7 @@ Game Settings > Security > **Enable Studio Access to API Services**.
 | DataService | ServerScriptService.Modules | DataStore saving |
 | Monetization | ServerScriptService.Modules | Robux purchases |
 | DailyRewardService | ServerScriptService.Modules | Daily streak rewards |
+| CodesService | ServerScriptService.Modules | Redeems codes (Config.Codes) |
 | ClientMain | StarterPlayer.StarterPlayerScripts | HUD, chase warning, biome lighting moods and banners, notifications, shop buttons |
 
 ## Turning on Robux purchases

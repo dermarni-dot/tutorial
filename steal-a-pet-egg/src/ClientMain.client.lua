@@ -695,6 +695,9 @@ local NIGHT_INDOOR = Color3.fromRGB(38, 42, 66)
 local DAY_INDOOR = Color3.fromRGB(58, 62, 74)
 
 local function cycleClock()
+	if gui:GetAttribute("AlwaysDay") then
+		return 13
+	end
 	local fixed = workspace:GetAttribute("ClockOverride")
 	if type(fixed) == "number" then
 		return fixed
@@ -3146,6 +3149,260 @@ local function setupStalls()
 	end, false, 3001, Enum.KeyCode.ButtonB)
 end
 setupStalls()
+
+-- ⚙️ Settings and 🎟️ Codes: two small buttons under the side menu
+local function setupSettingsAndCodes()
+	local CodesRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Codes")
+
+	local function makeMenu(name, title, accent, width, height)
+		local frame = Instance.new("Frame")
+		frame.Name = name
+		frame.AnchorPoint = Vector2.new(0.5, 0.5)
+		frame.Position = UDim2.fromScale(0.5, 0.5)
+		frame.Size = UDim2.fromOffset(width, height)
+		frame.BackgroundColor3 = Color3.fromRGB(34, 30, 52)
+		frame.ZIndex = 5
+		frame.Visible = false
+		frame.Parent = gui
+		corner(frame, 20)
+		stroke(frame, 4, accent)
+		panelGradient:Clone().Parent = frame
+		local scale = Instance.new("UIScale")
+		scale.Parent = frame
+		label(frame, { Position = UDim2.fromOffset(24, 10), Size = UDim2.new(1, -110, 0, 46), Text = title, TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = accent:Lerp(Color3.new(1, 1, 1), 0.3) })
+		local close = closeButton:Clone()
+		close.Parent = frame
+		close.Activated:Connect(function()
+			frame.Visible = false
+		end)
+		frame:GetPropertyChangedSignal("Visible"):Connect(function()
+			if frame.Visible then
+				scale.Scale = 0.7
+				TweenService:Create(scale, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
+				for _, other in ipairs(menuPanels) do
+					if other ~= frame then
+						other.Visible = false
+					end
+				end
+			end
+			refreshBackdrop()
+		end)
+		table.insert(menuPanels, frame)
+		return frame
+	end
+
+	-- two small buttons side by side at the bottom of the side menu
+	local row = Instance.new("Frame")
+	row.Name = "SmallButtons"
+	row.LayoutOrder = 10
+	row.BackgroundTransparency = 1
+	row.Size = UDim2.fromOffset(160, 46)
+	row.Parent = sideMenu
+	local rowLayout = Instance.new("UIListLayout")
+	rowLayout.FillDirection = Enum.FillDirection.Horizontal
+	rowLayout.Padding = UDim.new(0, 8)
+	rowLayout.Parent = row
+	sideMenu.Size = UDim2.fromOffset(160, 340)
+	local function smallButton(text, color)
+		local b = shopButton:Clone()
+		b.Name = text
+		b.Size = UDim2.fromOffset(76, 46)
+		b.Text = text
+		b.BackgroundColor3 = color
+		b.Parent = row
+		return b
+	end
+	local settingsButton = smallButton("⚙️", Color3.fromRGB(110, 110, 135))
+	local codesButton = smallButton("🎟️", Color3.fromRGB(240, 110, 150))
+
+	----------------------------------------------------------------------------
+	-- Codes
+	----------------------------------------------------------------------------
+	local codesPanel = makeMenu("CodesPanel", "🎟️ CODES", Color3.fromRGB(240, 110, 150), 460, 270)
+	label(codesPanel, { Position = UDim2.fromOffset(26, 58), Size = UDim2.new(1, -52, 0, 20), Font = Enum.Font.GothamBold, TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = Color3.fromRGB(225, 220, 240), TextStrokeTransparency = 1, Text = "Type a code for a free reward! Each code works once." })
+	local box = Instance.new("TextBox")
+	box.Name = "CodeBox"
+	box.Position = UDim2.fromOffset(26, 92)
+	box.Size = UDim2.new(1, -52, 0, 52)
+	box.BackgroundColor3 = Color3.fromRGB(22, 20, 34)
+	box.Font = Enum.Font.FredokaOne
+	box.TextScaled = true
+	box.PlaceholderText = "ENTER CODE"
+	box.PlaceholderColor3 = Color3.fromRGB(120, 115, 145)
+	box.Text = ""
+	box.TextColor3 = Color3.new(1, 1, 1)
+	box.ClearTextOnFocus = false
+	box.Parent = codesPanel
+	corner(box, 12)
+	stroke(box, 2, Color3.fromRGB(240, 110, 150))
+	local boxPad = Instance.new("UIPadding")
+	boxPad.PaddingTop = UDim.new(0, 10)
+	boxPad.PaddingBottom = UDim.new(0, 10)
+	boxPad.Parent = box
+	local redeem = Instance.new("TextButton")
+	redeem.Name = "Redeem"
+	redeem.AnchorPoint = Vector2.new(0.5, 0)
+	redeem.Position = UDim2.new(0.5, 0, 0, 156)
+	redeem.Size = UDim2.fromOffset(200, 50)
+	redeem.BackgroundColor3 = Color3.fromRGB(80, 210, 90)
+	redeem.Font = Enum.Font.FredokaOne
+	redeem.TextScaled = true
+	redeem.Text = "REDEEM"
+	redeem.TextColor3 = Color3.new(1, 1, 1)
+	redeem.Parent = codesPanel
+	corner(redeem, 12)
+	stroke(redeem, 3, Color3.fromRGB(30, 100, 30))
+	local rPad = Instance.new("UIPadding")
+	rPad.PaddingTop = UDim.new(0, 8)
+	rPad.PaddingBottom = UDim.new(0, 8)
+	rPad.Parent = redeem
+	local result = label(codesPanel, { Position = UDim2.fromOffset(20, 214), Size = UDim2.new(1, -40, 0, 28), Font = Enum.Font.GothamBold, Text = "" })
+	local function send()
+		if box.Text:gsub("%s", "") ~= "" then
+			result.Text = "Checking..."
+			result.TextColor3 = Color3.fromRGB(220, 220, 235)
+			CodesRemote:FireServer(box.Text)
+		end
+	end
+	redeem.Activated:Connect(send)
+	box.FocusLost:Connect(function(enter)
+		if enter then
+			send()
+		end
+	end)
+	CodesRemote.OnClientEvent:Connect(function(ok, message)
+		result.Text = message
+		result.TextColor3 = if ok then Color3.fromRGB(130, 255, 150) else Color3.fromRGB(255, 130, 130)
+		if ok then
+			box.Text = ""
+		end
+	end)
+	codesButton.Activated:Connect(function()
+		codesPanel.Visible = not codesPanel.Visible
+		result.Text = ""
+	end)
+
+	----------------------------------------------------------------------------
+	-- Settings (just for you, this session)
+	----------------------------------------------------------------------------
+	local settingsPanel = makeMenu("SettingsPanel", "⚙️ SETTINGS", Color3.fromRGB(150, 150, 190), 460, 340)
+	local list = Instance.new("Frame")
+	list.BackgroundTransparency = 1
+	list.Position = UDim2.fromOffset(24, 64)
+	list.Size = UDim2.new(1, -48, 1, -76)
+	list.Parent = settingsPanel
+	local listLayout = Instance.new("UIListLayout")
+	listLayout.Padding = UDim.new(0, 10)
+	listLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	listLayout.Parent = list
+
+	local settings = { Labels = true, Effects = true, AlwaysDay = false, SkyLife = true }
+	local function applySettings()
+		local pets = workspace:FindFirstChild("Pets")
+		if pets then
+			for _, d in ipairs(pets:GetDescendants()) do
+				if d:IsA("BillboardGui") and d.Name == "Label" then
+					d.Enabled = settings.Labels
+				end
+			end
+		end
+		for _, d in ipairs(workspace:GetDescendants()) do
+			if d:IsA("ParticleEmitter") or d:IsA("Sparkles") or d:IsA("Fire") or d:IsA("Smoke") then
+				if d:GetAttribute("WasEnabled") == nil then
+					d:SetAttribute("WasEnabled", d.Enabled)
+				end
+				d.Enabled = settings.Effects and d:GetAttribute("WasEnabled")
+			end
+		end
+		gui:SetAttribute("AlwaysDay", settings.AlwaysDay)
+		local sky = workspace:FindFirstChild("SkyLife")
+		if sky then
+			for _, d in ipairs(sky:GetDescendants()) do
+				if d:IsA("BasePart") then
+					d.LocalTransparencyModifier = if settings.SkyLife then 0 else 1
+				end
+			end
+		end
+	end
+	workspace.DescendantAdded:Connect(function(d)
+		if not settings.Effects and (d:IsA("ParticleEmitter") or d:IsA("Sparkles") or d:IsA("Fire") or d:IsA("Smoke")) then
+			d:SetAttribute("WasEnabled", d.Enabled)
+			d.Enabled = false
+		elseif not settings.Labels and d:IsA("BillboardGui") and d.Name == "Label" and d:FindFirstAncestor("Pets") then
+			d.Enabled = false
+		end
+	end)
+
+	local function toggleRow(order, key, title, sub)
+		local r = Instance.new("Frame")
+		r.LayoutOrder = order
+		r.Size = UDim2.new(1, 0, 0, 52)
+		r.BackgroundColor3 = Color3.fromRGB(48, 42, 72)
+		r.Parent = list
+		corner(r, 12)
+		label(r, { Position = UDim2.fromOffset(14, 4), Size = UDim2.new(1, -130, 0, 26), TextXAlignment = Enum.TextXAlignment.Left, Text = title })
+		local s2 = label(r, { Position = UDim2.fromOffset(14, 30), Size = UDim2.new(1, -130, 0, 16), Font = Enum.Font.Gotham, TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = Color3.fromRGB(200, 195, 220), TextStrokeTransparency = 1, Text = sub })
+		s2.TextScaled = false
+		s2.TextSize = 13
+		local b = Instance.new("TextButton")
+		b.Name = "Toggle"
+		b.AnchorPoint = Vector2.new(1, 0.5)
+		b.Position = UDim2.new(1, -12, 0.5, 0)
+		b.Size = UDim2.fromOffset(96, 36)
+		b.Font = Enum.Font.FredokaOne
+		b.TextScaled = true
+		b.TextColor3 = Color3.new(1, 1, 1)
+		b.Parent = r
+		corner(b, 18)
+		local pad = Instance.new("UIPadding")
+		pad.PaddingTop = UDim.new(0, 6)
+		pad.PaddingBottom = UDim.new(0, 6)
+		pad.Parent = b
+		local function show()
+			b.Text = if settings[key] then "ON" else "OFF"
+			b.BackgroundColor3 = if settings[key] then Color3.fromRGB(80, 200, 90) else Color3.fromRGB(110, 105, 130)
+		end
+		b.Activated:Connect(function()
+			settings[key] = not settings[key]
+			show()
+			applySettings()
+		end)
+		show()
+	end
+	toggleRow(1, "Labels", "🏷️ Pet name tags", "Show names and income above pets")
+	toggleRow(2, "Effects", "✨ Particle effects", "Turn off for smoother play on slow devices")
+	toggleRow(3, "AlwaysDay", "☀️ Always daytime", "Skip night (only for you)")
+	toggleRow(4, "SkyLife", "🎈 Balloons & birds", "Things flying around the sky")
+	settingsButton.Activated:Connect(function()
+		settingsPanel.Visible = not settingsPanel.Visible
+	end)
+
+	-- Controller: select the main button when a panel opens; B closes it
+	local GuiService = game:GetService("GuiService")
+	local UserInputService = game:GetService("UserInputService")
+	local ContextActionService = game:GetService("ContextActionService")
+	local firstToggle = list:FindFirstChildWhichIsA("Frame"):FindFirstChild("Toggle")
+	for p, target in pairs({ [codesPanel] = box, [settingsPanel] = firstToggle }) do
+		p:GetPropertyChangedSignal("Visible"):Connect(function()
+			if p.Visible and UserInputService:GetLastInputType().Name:find("Gamepad") then
+				task.defer(function()
+					GuiService.SelectedObject = target
+				end)
+			end
+		end)
+	end
+	ContextActionService:BindActionAtPriority("EggSettingsBack", function(_, inputState)
+		if inputState == Enum.UserInputState.Begin and (codesPanel.Visible or settingsPanel.Visible) then
+			codesPanel.Visible = false
+			settingsPanel.Visible = false
+			GuiService.SelectedObject = nil
+			return Enum.ContextActionResult.Sink
+		end
+		return Enum.ContextActionResult.Pass
+	end, false, 3002, Enum.KeyCode.ButtonB)
+end
+setupSettingsAndCodes()
+
 
 --------------------------------------------------------------------------------
 -- Welcome tips

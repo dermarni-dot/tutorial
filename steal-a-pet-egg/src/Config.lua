@@ -278,6 +278,20 @@ function Config.TreatCost(treat, incomePerSec)
 end
 
 --------------------------------------------------------------------------------
+-- Codes players can type in the 🎟️ Codes menu. Each works once per player.
+-- Rewards: CashMinutes (of the player's income, at least MinCash),
+-- Egg = rarity (goes in the pet pen), Treat = treat key, SpeedPercent / MinSpeed.
+-- Add a line to make a new code; codes are not case-sensitive.
+--------------------------------------------------------------------------------
+Config.Codes = {
+	RELEASE = { CashMinutes = 10, MinCash = 2500 },
+	EGGSTRA = { Egg = "Rare" },
+	ZOOM = { SpeedPercent = 0.15, MinSpeed = 50 },
+	SWEETTOOTH = { Treat = "Cupcake" },
+	PETS499 = { Egg = "Epic" },
+}
+
+--------------------------------------------------------------------------------
 -- Pet Index: every pet you get is recorded in your 📖 Index. Collecting every
 -- pet of a rarity gives a permanent cash bonus on all your pets.
 --------------------------------------------------------------------------------

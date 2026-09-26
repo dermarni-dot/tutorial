@@ -12,6 +12,7 @@ local GameService = require(Modules:WaitForChild("GameService"))
 local Monetization = require(Modules:WaitForChild("Monetization"))
 local AdminService = require(Modules:WaitForChild("AdminService"))
 local DailyRewardService = require(Modules:WaitForChild("DailyRewardService"))
+local CodesService = require(Modules:WaitForChild("CodesService"))
 
 -- Remotes
 local remotes = Instance.new("Folder")
@@ -25,6 +26,9 @@ treadmill.Parent = remotes
 local admin = Instance.new("RemoteEvent")
 admin.Name = "Admin"
 admin.Parent = remotes
+local codes = Instance.new("RemoteEvent")
+codes.Name = "Codes"
+codes.Parent = remotes
 local treats = Instance.new("RemoteEvent")
 treats.Name = "Treats"
 treats.Parent = remotes
@@ -42,6 +46,7 @@ GameService.Init(map, notify, treadmill)
 Monetization.Init(GameService)
 AdminService.Init(GameService, notify, admin)
 DailyRewardService.Init(GameService, daily, notify)
+CodesService.Init(GameService, codes)
 treats.OnServerEvent:Connect(function(player, action, key)
 	if action == "Buy" and type(key) == "string" then
 		GameService.BuyTreat(player, key)

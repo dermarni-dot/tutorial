@@ -35,6 +35,7 @@ local function defaults()
 		Daily = { Streak = 0, LastDay = -1 },
 		Index = {}, -- [pet name] = true for every pet you've ever had
 		Treat = nil, -- { Key, Until } while a treat is active (Until = os.time())
+		Codes = {}, -- [code] = true for every code this player has used
 	}
 end
 
@@ -79,6 +80,13 @@ function DataService.Load(player)
 		if type(data.Treat) == "table" and Config.TreatByKey[data.Treat.Key] and (tonumber(data.Treat.Until) or 0) > os.time() then
 			profile.Treat = { Key = data.Treat.Key, Until = math.floor(tonumber(data.Treat.Until)) }
 		end
+		if type(data.Codes) == "table" then
+			for code, used in pairs(data.Codes) do
+				if type(code) == "string" and used == true then
+					profile.Codes[code] = true
+				end
+			end
+		end
 		if type(data.Daily) == "table" then
 			profile.Daily.Streak = math.max(0, math.floor(tonumber(data.Daily.Streak) or 0))
 			profile.Daily.LastDay = math.floor(tonumber(data.Daily.LastDay) or -1)
@@ -101,6 +109,7 @@ function DataService.Save(player, profile)
 		Daily = profile.Daily,
 		Index = profile.Index,
 		Treat = profile.Treat,
+		Codes = profile.Codes,
 		Version = 2,
 	}
 	for attempt = 1, 3 do
