@@ -1985,11 +1985,84 @@ local function buildPlot(plotsFolder, index, center, frontDir)
 	end
 	-- console at the front end, facing the runner
 	local console = deco({ Name = "Console", Size = Vector3.new(beltWidth + 1, 2.4, 0.6), CFrame = at(TX, 5.6, -13.4) * CFrame.Angles(math.rad(-20), 0, 0), Color = Color3.fromRGB(35, 35, 45), Material = Enum.Material.SmoothPlastic, Parent = model })
-	surfaceText(console, Enum.NormalId.Back, "🏃 TRAINING SPEED", Color3.fromRGB(120, 255, 140))
+	-- live screen: tier, multiplier and what you're gaining (GameService fills it in)
+	local screen = Instance.new("SurfaceGui")
+	screen.Name = "Screen"
+	screen.Face = Enum.NormalId.Back
+	screen.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+	screen.PixelsPerStud = 40
+	screen.LightInfluence = 0
+	screen.Parent = console
+	local screenBg = Instance.new("Frame")
+	screenBg.Name = "Bg"
+	screenBg.AnchorPoint = Vector2.new(0.5, 0.5)
+	screenBg.Position = UDim2.fromScale(0.5, 0.5)
+	screenBg.Size = UDim2.fromScale(0.94, 0.86)
+	screenBg.BackgroundColor3 = Color3.fromRGB(12, 16, 28)
+	screenBg.Parent = screen
+	local screenCorner = Instance.new("UICorner")
+	screenCorner.CornerRadius = UDim.new(0.12, 0)
+	screenCorner.Parent = screenBg
+	local screenStroke = Instance.new("UIStroke")
+	screenStroke.Name = "Edge"
+	screenStroke.Thickness = 4
+	screenStroke.Color = accent
+	screenStroke.Parent = screenBg
+	local function screenLabel(name, y, h, text, color, font)
+		local l = Instance.new("TextLabel")
+		l.Name = name
+		l.BackgroundTransparency = 1
+		l.Position = UDim2.fromScale(0.05, y)
+		l.Size = UDim2.fromScale(0.9, h)
+		l.Font = font or Enum.Font.FredokaOne
+		l.TextScaled = true
+		l.TextColor3 = color
+		l.Text = text
+		l.Parent = screenBg
+		return l
+	end
+	screenLabel("TierLabel", 0.06, 0.34, "BASIC TREADMILL", Color3.fromRGB(255, 225, 120))
+	screenLabel("MultLabel", 0.4, 0.28, "x1 SPEED", Color3.fromRGB(120, 255, 140))
+	screenLabel("StatusLabel", 0.7, 0.24, "Step on to train!", Color3.fromRGB(200, 210, 235), Enum.Font.GothamBold)
 	deco({ Name = "ConsoleGlow", Size = Vector3.new(beltWidth + 1.2, 0.2, 0.7), CFrame = at(TX, 4.3, -13.4), Color = accent, Material = Enum.Material.Neon, CastShadow = false, Parent = model })
 	local treadSign = deco({ Name = "TreadmillSign", Size = Vector3.new(8 * K, 1.8, 0.4), CFrame = at(TX, 8.6, -13.4), Color = Color3.fromRGB(30, 30, 40), Material = Enum.Material.SmoothPlastic, Parent = model })
 	surfaceText(treadSign, Enum.NormalId.Front, "🏃 TREADMILL", Color3.fromRGB(255, 225, 120))
 	surfaceText(treadSign, Enum.NormalId.Back, "Step on to train Speed!", Color3.fromRGB(255, 225, 120))
+
+	-- Tier looks (GameService paints these for your treadmill tier): neon trim and
+	-- glowing skirts along the sides, a light under the belt, one pip per tier on
+	-- the console, a spinning halo of orbs for the top tiers and belt particles.
+	local dark = Color3.fromRGB(45, 45, 55)
+	for _, sx in ipairs({ -1, 1 }) do
+		deco({ Name = "TreadTrim", Size = Vector3.new(0.25, 0.25, beltLength + 1.6), CFrame = at(TX + sx * (beltWidth / 2 + 0.8) / K, 1.05, -6.5), Color = accent, Material = Enum.Material.Neon, CastShadow = false, CanCollide = false, Parent = model })
+		deco({ Name = "TreadSkirt", Size = Vector3.new(0.15, 0.45, beltLength + 1.2), CFrame = at(TX + sx * (beltWidth / 2 + 0.83) / K, 0.62, -6.5), Color = accent, Material = Enum.Material.Neon, Transparency = 0.45, CastShadow = false, CanCollide = false, Parent = model })
+	end
+	light(plot.Treadmill, accent, 16, 0).Name = "TreadLight"
+	local pips = Instance.new("Folder")
+	pips.Name = "TreadPips"
+	pips.Parent = model
+	local tiers = #Config.TreadmillLevels
+	for i = 1, tiers do
+		local x = TX + ((i - 0.5) / tiers - 0.5) * (beltWidth - 0.4) / K
+		local pip = deco({ Name = "Pip", Shape = Enum.PartType.Ball, Size = Vector3.one * 0.42, CFrame = at(x, 4.62, -12.95), Color = dark, Material = Enum.Material.SmoothPlastic, CastShadow = false, CanCollide = false, Parent = pips })
+		pip:SetAttribute("Tier", i)
+	end
+	local halo = Instance.new("Folder")
+	halo.Name = "TreadHalo"
+	local haloCenter = at(TX, 12.6, -6.5).Position
+	halo:SetAttribute("Center", haloCenter)
+	halo:SetAttribute("Radius", 3.2)
+	halo.Parent = model
+	for i = 1, 10 do
+		local a = i / 10 * math.pi * 2
+		deco({ Name = "HaloOrb", Shape = Enum.PartType.Ball, Size = Vector3.one * (if i % 2 == 0 then 0.8 else 0.5), CFrame = CFrame.new(haloCenter + Vector3.new(math.cos(a), 0, math.sin(a)) * 3.2), Color = accent, Material = Enum.Material.Neon, Transparency = 1, CastShadow = false, CanCollide = false, Parent = halo })
+	end
+	local tierFx = particles(plot.Treadmill, { Name = "TierFx", Enabled = false, LightEmission = 1, Lifetime = NumberRange.new(1, 2), Rate = 0, SpreadAngle = Vector2.new(15, 15), EmissionDirection = Enum.NormalId.Top, Transparency = NumberSequence.new(0.1, 1) })
+	tierFx.Acceleration = Vector3.new(0, 2, 0)
+	particles(plot.Treadmill, { Name = "BurstFx", Enabled = false, LightEmission = 1, Lifetime = NumberRange.new(0.8, 1.6), Rate = 0, Speed = NumberRange.new(14, 26), SpreadAngle = Vector2.new(60, 60), EmissionDirection = Enum.NormalId.Top, Size = NumberSequence.new(0.9, 0), Drag = 2 })
+	-- speed streaks shooting off the back of the belt while someone trains
+	local backEnd = deco({ Name = "TreadBackFx", Size = Vector3.new(beltWidth, 0.2, 0.2), CFrame = at(TX, 1.5, -6.5 + 7.3), Transparency = 1, CastShadow = false, CanCollide = false, Parent = model })
+	particles(backEnd, { Name = "RunFx", Enabled = false, Texture = "rbxasset://textures/particles/smoke_main.dds", Color = ColorSequence.new(Color3.fromRGB(235, 235, 245)), LightEmission = 0.3, Lifetime = NumberRange.new(0.3, 0.6), Rate = 30, Speed = NumberRange.new(10, 16), SpreadAngle = Vector2.new(10, 10), EmissionDirection = Enum.NormalId.Back, Size = NumberSequence.new(0.6, 1.4), Transparency = NumberSequence.new(0.5, 1) })
 
 	-- Golden egg statue on the other side
 	local SX = 24

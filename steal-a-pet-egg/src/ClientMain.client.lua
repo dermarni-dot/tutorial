@@ -994,7 +994,14 @@ task.spawn(function()
 			for _, stripe in ipairs(stripes:GetChildren()) do
 				table.insert(list, { Part = stripe, Offset = stripe:GetAttribute("Offset") or 0, Y = stripe.Position.Y })
 			end
-			table.insert(belts, { Tread = tread, Length = stripes:GetAttribute("Length") or tread.Size.Z, Stripes = list })
+			local orbs = {}
+			local halo = plot:FindFirstChild("TreadHalo")
+			if halo then
+				for i, orb in ipairs(halo:GetChildren()) do
+					orbs[i] = orb
+				end
+			end
+			table.insert(belts, { Tread = tread, Length = stripes:GetAttribute("Length") or tread.Size.Z, Stripes = list, Halo = halo, Orbs = orbs, Pos = 0, Speed = 1 })
 		end
 	end
 	local t = 0
@@ -1003,77 +1010,34 @@ task.spawn(function()
 		for _, belt in ipairs(belts) do
 			local cf = belt.Tread.CFrame
 			local back = -cf.LookVector
-			for _, s in ipairs(belt.Stripes) do
-				local frac = (s.Offset + t * Config.TreadmillBeltSpeed / belt.Length) % 1
+			-- the belt speeds up smoothly while someone is training on it
+			local want = if belt.Tread:GetAttribute("Running") then 2.6 else 1
+			belt.Speed += (want - belt.Speed) * math.min(1, dt * 3)
+			belt.Pos += dt * belt.Speed * Config.TreadmillBeltSpeed / belt.Length
+			local rainbow = belt.Tread:GetAttribute("Rainbow")
+			for i, s in ipairs(belt.Stripes) do
+				local frac = (s.Offset + belt.Pos) % 1
 				local pos = cf.Position + back * ((frac - 0.5) * belt.Length)
 				s.Part.CFrame = CFrame.lookAt(Vector3.new(pos.X, s.Y, pos.Z), Vector3.new(pos.X, s.Y, pos.Z) + cf.LookVector)
+				if rainbow then
+					s.Part.Color = Color3.fromHSV((t * 0.25 + i / #belt.Stripes) % 1, 0.6, 1)
+				end
+			end
+			-- top tiers: a ring of orbs spins and bobs above the treadmill
+			local halo = belt.Halo
+			if halo and #belt.Orbs > 0 and belt.Orbs[1].Transparency < 1 then
+				local center = halo:GetAttribute("Center")
+				local radius = halo:GetAttribute("Radius") or 3
+				if center then
+					local spin = t * belt.Speed * 0.9
+					for i, orb in ipairs(belt.Orbs) do
+						local a = spin + i / #belt.Orbs * math.pi * 2
+						orb.CFrame = CFrame.new(center + Vector3.new(math.cos(a) * radius, math.sin(t * 2 + i) * 0.35, math.sin(a) * radius))
+					end
+				end
 			end
 		end
 	end)
-end)
-
---------------------------------------------------------------------------------
--- Wild eggs slowly spin and bob in their nests
---------------------------------------------------------------------------------
-task.spawn(function()
-	local eggsFolder = workspace:WaitForChild("Eggs")
-	local t = 0
-	RunService.RenderStepped:Connect(function(dt)
-		t += dt
-		for i, egg in ipairs(eggsFolder:GetChildren()) do
-			local home = egg:GetAttribute("WildHome")
-			if home and egg:IsA("BasePart") and egg.Anchored then
-				local phase = t * 1.6 + i
-				egg.CFrame = home * CFrame.new(0, math.sin(phase) * 0.25 + 0.25, 0) * CFrame.Angles(0, t * 0.8 + i, math.sin(phase * 0.5) * 0.08)
-			end
-		end
-	end)
-end)
-
---------------------------------------------------------------------------------
--- Carry pose: anyone carrying an egg holds it up over their head with both
--- arms raised (overrides the arm swing of the run animation). Runs for every
--- player so you see other carriers doing it too.
---------------------------------------------------------------------------------
-local function shoulders(char)
-	local upper = char:FindFirstChild("RightUpperArm")
-	if upper then -- R15
-		local r = upper:FindFirstChild("RightShoulder")
-		local l = char:FindFirstChild("LeftUpperArm") and char.LeftUpperArm:FindFirstChild("LeftShoulder")
-		return r, l, "R15"
-	end
-	local torso = char:FindFirstChild("Torso")
-	if torso then -- R6
-		return torso:FindFirstChild("Right Shoulder"), torso:FindFirstChild("Left Shoulder"), "R6"
-	end
-	return nil
-end
-
-local carryTime = 0
-RunService.Stepped:Connect(function(_, dt)
-	carryTime += dt
-	for _, other in ipairs(Players:GetPlayers()) do
-		local char = other.Character
-		if char and other:GetAttribute("CarryingEgg") then
-			local right, left, rig = shoulders(char)
-			local wobble = math.sin(carryTime * 10) * 0.06 -- little bounce while running
-			if rig == "R15" then
-				if right then
-					right.Transform = CFrame.Angles(math.rad(165) + wobble, 0, math.rad(-12))
-				end
-				if left then
-					left.Transform = CFrame.Angles(math.rad(165) - wobble, 0, math.rad(12))
-				end
-			elseif rig == "R6" then
-				if right then
-					right.Transform = CFrame.Angles(0, 0, math.rad(165) + wobble)
-				end
-				if left then
-					left.Transform = CFrame.Angles(0, 0, math.rad(-165) - wobble)
-				end
-			end
-		end
-	end
 end)
 
 --------------------------------------------------------------------------------
@@ -1353,7 +1317,7 @@ end
 adminHeader("🧪 Base & world")
 adminRow({ { "Hatch All", "hatch" }, { "Refill Eggs", "refill" } })
 adminRow({ { "Grow +1 Stage", "grow", GREEN_BTN }, { "Grow to Adult", "grow adult", GREEN_BTN } })
-adminRow({ { "Max Treadmill", "treadmill 7", GOLD_BTN }, { "Basic Treadmill", "treadmill 1", GOLD_BTN } })
+adminRow({ { "Max Treadmill", "treadmill " .. #Config.TreadmillLevels, GOLD_BTN }, { "Basic Treadmill", "treadmill 1", GOLD_BTN } })
 adminRow({ { "2x Luck", "luck 2", GREEN_BTN }, { "5x Luck", "luck 5", GREEN_BTN }, { "10x Luck", "luck 10", GREEN_BTN }, { "Egg Rain", "rain" } })
 adminHeader("🚀 Teleport")
 adminRow({ { "Town", "tp town" }, { "Forest", "tp forest" }, { "Desert", "tp desert" } })
@@ -2142,6 +2106,159 @@ local function setupSkyLife()
 	end)
 end
 setupSkyLife()
+
+--------------------------------------------------------------------------------
+-- Slapped! When a guardian catches you: white flash, camera shake, a big SLAP!,
+-- you spin through the air, then land at home with dizzy stars.
+--------------------------------------------------------------------------------
+local function setupSlap()
+	local SlapRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Slapped")
+	local RunService = game:GetService("RunService")
+
+	local flash = Instance.new("Frame")
+	flash.Name = "SlapFlash"
+	flash.Size = UDim2.fromScale(1, 1)
+	flash.BackgroundColor3 = Color3.new(1, 1, 1)
+	flash.BackgroundTransparency = 1
+	flash.BorderSizePixel = 0
+	flash.ZIndex = 50
+	flash.Visible = false
+	flash.Parent = gui
+
+	local slapText = Instance.new("TextLabel")
+	slapText.Name = "SlapText"
+	slapText.AnchorPoint = Vector2.new(0.5, 0.5)
+	slapText.Position = UDim2.fromScale(0.5, 0.4)
+	slapText.Size = UDim2.fromOffset(520, 170)
+	slapText.BackgroundTransparency = 1
+	slapText.Font = Enum.Font.FredokaOne
+	slapText.TextScaled = true
+	slapText.Text = "SLAP!"
+	slapText.TextColor3 = Color3.fromRGB(255, 230, 70)
+	slapText.TextStrokeTransparency = 1
+	slapText.ZIndex = 51
+	slapText.Visible = false
+	slapText.Parent = gui
+	local slapStroke = Instance.new("UIStroke")
+	slapStroke.Thickness = 6
+	slapStroke.Color = Color3.fromRGB(150, 20, 20)
+	slapStroke.Parent = slapText
+	local slapScale = Instance.new("UIScale")
+	slapScale.Parent = slapText
+	local subText = Instance.new("TextLabel")
+	subText.Name = "SlapSub"
+	subText.AnchorPoint = Vector2.new(0.5, 0)
+	subText.Position = UDim2.new(0.5, 0, 1, -8)
+	subText.Size = UDim2.new(1, 0, 0, 36)
+	subText.BackgroundTransparency = 1
+	subText.Font = Enum.Font.GothamBlack
+	subText.TextScaled = true
+	subText.TextColor3 = Color3.new(1, 1, 1)
+	subText.TextStrokeTransparency = 0.2
+	subText.ZIndex = 51
+	subText.Parent = slapText
+
+	local shakeUntil, shakeStrength = 0, 0
+	RunService:BindToRenderStep("SlapShake", Enum.RenderPriority.Camera.Value + 1, function()
+		local left = shakeUntil - os.clock()
+		if left > 0 then
+			local s = shakeStrength * math.min(1, left / 0.5)
+			local cam = workspace.CurrentCamera
+			cam.CFrame = cam.CFrame * CFrame.Angles(math.rad((math.random() - 0.5) * s), math.rad((math.random() - 0.5) * s), math.rad((math.random() - 0.5) * s * 1.5))
+		end
+	end)
+
+	-- dizzy stars circling your head after you land
+	local function dizzy(char, seconds)
+		local head = char:FindFirstChild("Head")
+		if not head then
+			return
+		end
+		local stars = Instance.new("BillboardGui")
+		stars.Name = "DizzyStars"
+		stars.Size = UDim2.fromOffset(90, 40)
+		stars.StudsOffset = Vector3.new(0, 2.2, 0)
+		stars.LightInfluence = 0
+		stars.Parent = head
+		local labels = {}
+		for i = 1, 3 do
+			local l = Instance.new("TextLabel")
+			l.BackgroundTransparency = 1
+			l.Size = UDim2.fromOffset(26, 26)
+			l.AnchorPoint = Vector2.new(0.5, 0.5)
+			l.TextScaled = true
+			l.Text = if i == 2 then "💫" else "⭐"
+			l.Parent = stars
+			labels[i] = l
+		end
+		local start = os.clock()
+		local conn
+		conn = RunService.RenderStepped:Connect(function()
+			local t = os.clock() - start
+			if t > seconds or not stars.Parent then
+				conn:Disconnect()
+				stars:Destroy()
+				return
+			end
+			for i, l in ipairs(labels) do
+				local a = t * 6 + i * math.pi * 2 / 3
+				l.Position = UDim2.new(0.5, math.cos(a) * 34, 0.5, math.sin(a) * 9)
+				l.ZIndex = if math.sin(a) > 0 then 2 else 1
+			end
+		end)
+	end
+
+	local lines = { "Back to the start!", "Ouch! Sent home!", "That's gotta hurt!", "Yeeted home!", "Bonk! Try again!" }
+	SlapRemote.OnClientEvent:Connect(function(away, guardianName)
+		local char = player.Character
+		local root = char and char:FindFirstChild("HumanoidRootPart")
+		local humanoid = char and char:FindFirstChildOfClass("Humanoid")
+		local flightTime = Config.SlapFlightTime or 1.1
+
+		-- flash + shake + SLAP!
+		flash.Visible = true
+		flash.BackgroundTransparency = 0.1
+		TweenService:Create(flash, TweenInfo.new(0.35), { BackgroundTransparency = 1 }):Play()
+		task.delay(0.36, function()
+			flash.Visible = false
+		end)
+		shakeUntil, shakeStrength = os.clock() + 0.6, 6
+		slapText.Visible = true
+		slapText.Rotation = math.random(-12, 12)
+		slapText.TextTransparency = 0
+		slapStroke.Transparency = 0
+		subText.Text = (if guardianName then "The " .. guardianName .. " got you! " else "") .. lines[math.random(#lines)]
+		subText.TextTransparency = 0
+		slapScale.Scale = 2.4
+		TweenService:Create(slapScale, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
+		task.delay(flightTime + 0.4, function()
+			local info = TweenInfo.new(0.35)
+			TweenService:Create(slapText, info, { TextTransparency = 1 }):Play()
+			TweenService:Create(slapStroke, info, { Transparency = 1 }):Play()
+			TweenService:Create(subText, info, { TextTransparency = 1, TextStrokeTransparency = 1 }):Play()
+			task.delay(0.36, function()
+				slapText.Visible = false
+				subText.TextStrokeTransparency = 0.2
+			end)
+		end)
+
+		-- fly! spinning up and away until the server lands you at home
+		if root and humanoid then
+			local dir = if typeof(away) == "Vector3" and away.Magnitude > 0 then away.Unit else root.CFrame.LookVector
+			humanoid.PlatformStand = true
+			root.AssemblyLinearVelocity = dir * 90 + Vector3.new(0, 75, 0)
+			root.AssemblyAngularVelocity = dir:Cross(Vector3.yAxis) * -14 + Vector3.new(0, 8, 0)
+			task.delay(flightTime + 0.1, function()
+				if humanoid.Parent then
+					humanoid.PlatformStand = false
+					humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+					dizzy(char, Config.GuardianStunTime or 1.5)
+				end
+			end)
+		end
+	end)
+end
+setupSlap()
 
 -- 3D previews, hatch reveal, pet details, clock badge, title screen and
 -- console controls. In their own function to stay under Luau's local limit.

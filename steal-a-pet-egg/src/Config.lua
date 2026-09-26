@@ -14,14 +14,17 @@ Config.SellSeconds = 45 -- a pet sells for this many seconds of its income
 
 --------------------------------------------------------------------------------
 -- Speed
--- Walk speed = BaseWalkSpeed + your Speed stat (capped at MaxWalkSpeed).
+-- Walk speed comes from your Speed stat (see Config.WalkSpeed below).
 -- Carrying an egg multiplies it by CarrySpeedMultiplier.
 --------------------------------------------------------------------------------
--- Speed stat can grow into the millions; walk speed grows with its log so you
--- never get silly fast: 0 -> 28, 1K -> 75, 25K -> 96, 1M -> 121 (capped at 135).
-Config.BaseWalkSpeed = 28
-Config.WalkPerTenfold = 15.5 -- extra walk speed every time your Speed goes x10
-Config.MaxWalkSpeed = 160 -- high enough for the fastest zone (Celestial Heights)
+-- Speed stat can grow into the millions. Walk speed climbs faster the more
+-- tenfolds of Speed you have, so every upgrade feels quicker:
+-- 5 -> 49, 300 -> 100, 1K -> 119, 11K -> 162, 200K -> 222, 1M -> 260,
+-- 25M -> 344, 100M -> 384 (capped at 420).
+Config.BaseWalkSpeed = 32
+Config.WalkPerTenfold = 20 -- extra walk speed every time your Speed goes x10...
+Config.WalkCurve = 3 -- ...plus this x (tenfolds squared), so later tenfolds add more
+Config.MaxWalkSpeed = 420
 Config.GuardianEdge = 0.995 -- guardians run this fraction of your carry speed at their zone's SpeedNeeded
 Config.CarrySpeedMultiplier = 0.9
 Config.StartingSpeed = 5 -- enough to outrun the first guardian
@@ -35,15 +38,25 @@ Config.TreadmillGainPercent = 0.009 -- each second you gain 1 + 0.9% of your Spe
 Config.TreadmillBeltSpeed = 12 -- how fast the belt stripes scroll
 
 -- Treadmill upgrades: the gold pad in your base buys better treadmills with
--- cash. Each one multiplies the Speed your treadmill gives.
+-- cash. Each one multiplies the Speed your treadmill gives, and looks fancier:
+--   Glow  = brightness of the light under the belt
+--   Frame = frame material (Metal if not set)
+--   Fx    = sparkles rising off the belt { Rate, Size, Speed, Fire = true for flames }
+--   Halo  = a ring of orbs spinning above the treadmill
+--   Rainbow = belt stripes cycle through every color
 Config.TreadmillLevels = {
-	{ Name = "Basic", Mult = 1, Cost = 0, Color = Color3.fromRGB(255, 120, 120) },
-	{ Name = "Bronze", Mult = 2, Cost = 2500, Color = Color3.fromRGB(205, 127, 50) },
-	{ Name = "Silver", Mult = 4, Cost = 40000, Color = Color3.fromRGB(200, 205, 215) },
-	{ Name = "Gold", Mult = 8, Cost = 500000, Color = Color3.fromRGB(255, 200, 50) },
-	{ Name = "Diamond", Mult = 16, Cost = 8000000, Color = Color3.fromRGB(110, 230, 255) },
-	{ Name = "Emerald", Mult = 32, Cost = 150000000, Color = Color3.fromRGB(60, 230, 120) },
-	{ Name = "Cosmic", Mult = 64, Cost = 3000000000, Color = Color3.fromRGB(190, 110, 255) },
+	{ Name = "Basic", Mult = 1, Cost = 0, Color = Color3.fromRGB(255, 120, 120), Glow = 0 },
+	{ Name = "Bronze", Mult = 2, Cost = 2500, Color = Color3.fromRGB(205, 127, 50), Glow = 0.4 },
+	{ Name = "Silver", Mult = 4, Cost = 40000, Color = Color3.fromRGB(200, 205, 215), Glow = 0.6, Fx = { Rate = 3, Size = 0.3, Speed = 2 } },
+	{ Name = "Gold", Mult = 8, Cost = 500000, Color = Color3.fromRGB(255, 200, 50), Glow = 0.8, Frame = "Foil", Fx = { Rate = 5, Size = 0.35, Speed = 2 } },
+	{ Name = "Diamond", Mult = 16, Cost = 8000000, Color = Color3.fromRGB(110, 230, 255), Glow = 1, Frame = "Glass", Fx = { Rate = 8, Size = 0.4, Speed = 3 } },
+	{ Name = "Emerald", Mult = 32, Cost = 150000000, Color = Color3.fromRGB(60, 230, 120), Glow = 1.2, Frame = "Glass", Fx = { Rate = 10, Size = 0.45, Speed = 3 } },
+	{ Name = "Cosmic", Mult = 64, Cost = 3000000000, Color = Color3.fromRGB(190, 110, 255), Glow = 1.4, Frame = "Glass", Fx = { Rate = 14, Size = 0.5, Speed = 4 }, Halo = true },
+	{ Name = "Galaxy", Mult = 128, Cost = 60000000000, Color = Color3.fromRGB(90, 130, 255), Glow = 1.6, Frame = "Glass", Fx = { Rate = 16, Size = 0.55, Speed = 4 }, Halo = true },
+	{ Name = "Nebula", Mult = 256, Cost = 1200000000000, Color = Color3.fromRGB(255, 110, 200), Glow = 1.8, Frame = "Glass", Fx = { Rate = 18, Size = 0.8, Speed = 2.5 }, Halo = true },
+	{ Name = "Supernova", Mult = 512, Cost = 25000000000000, Color = Color3.fromRGB(255, 150, 40), Glow = 2, Frame = "Foil", Fx = { Rate = 22, Size = 0.9, Speed = 6, Fire = true }, Halo = true },
+	{ Name = "Quantum", Mult = 1024, Cost = 500000000000000, Color = Color3.fromRGB(60, 255, 230), Glow = 2.2, Frame = "Glass", Fx = { Rate = 26, Size = 0.5, Speed = 8 }, Halo = true },
+	{ Name = "Celestial", Mult = 2048, Cost = 10000000000000000, Color = Color3.fromRGB(255, 245, 200), Glow = 2.5, Frame = "Foil", Fx = { Rate = 30, Size = 0.7, Speed = 5 }, Halo = true, Rainbow = true },
 }
 
 -- (old Speed pad settings, no longer used by the base)
@@ -65,6 +78,7 @@ Config.PromptRange = 10
 -- Guardians
 --------------------------------------------------------------------------------
 Config.GuardianCatchRange = 7
+Config.SlapFlightTime = 1.1 -- seconds you fly through the air after a guardian slaps you, before landing back home
 Config.GuardianStunTime = 1.5
 Config.GuardianStunSpeed = 4
 
@@ -1069,7 +1083,8 @@ for order, rarity in ipairs(Config.Rarities) do
 end
 
 function Config.WalkSpeed(speedStat: number): number
-	return math.min(Config.BaseWalkSpeed + Config.WalkPerTenfold * math.log10(1 + math.max(0, speedStat)), Config.MaxWalkSpeed)
+	local tens = math.log10(1 + math.max(0, speedStat))
+	return math.min(Config.BaseWalkSpeed + Config.WalkPerTenfold * tens + Config.WalkCurve * tens * tens, Config.MaxWalkSpeed)
 end
 
 -- Speed stat needed to outrun a biome's guardian while carrying an egg.

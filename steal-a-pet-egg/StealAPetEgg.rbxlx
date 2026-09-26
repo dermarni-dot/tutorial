@@ -14,14 +14,17 @@ Config.SellSeconds = 45 -- a pet sells for this many seconds of its income
 
 --------------------------------------------------------------------------------
 -- Speed
--- Walk speed = BaseWalkSpeed + your Speed stat (capped at MaxWalkSpeed).
+-- Walk speed comes from your Speed stat (see Config.WalkSpeed below).
 -- Carrying an egg multiplies it by CarrySpeedMultiplier.
 --------------------------------------------------------------------------------
--- Speed stat can grow into the millions; walk speed grows with its log so you
--- never get silly fast: 0 -> 28, 1K -> 75, 25K -> 96, 1M -> 121 (capped at 135).
-Config.BaseWalkSpeed = 28
-Config.WalkPerTenfold = 15.5 -- extra walk speed every time your Speed goes x10
-Config.MaxWalkSpeed = 160 -- high enough for the fastest zone (Celestial Heights)
+-- Speed stat can grow into the millions. Walk speed climbs faster the more
+-- tenfolds of Speed you have, so every upgrade feels quicker:
+-- 5 -> 49, 300 -> 100, 1K -> 119, 11K -> 162, 200K -> 222, 1M -> 260,
+-- 25M -> 344, 100M -> 384 (capped at 420).
+Config.BaseWalkSpeed = 32
+Config.WalkPerTenfold = 20 -- extra walk speed every time your Speed goes x10...
+Config.WalkCurve = 3 -- ...plus this x (tenfolds squared), so later tenfolds add more
+Config.MaxWalkSpeed = 420
 Config.GuardianEdge = 0.995 -- guardians run this fraction of your carry speed at their zone's SpeedNeeded
 Config.CarrySpeedMultiplier = 0.9
 Config.StartingSpeed = 5 -- enough to outrun the first guardian
@@ -35,15 +38,25 @@ Config.TreadmillGainPercent = 0.009 -- each second you gain 1 + 0.9% of your Spe
 Config.TreadmillBeltSpeed = 12 -- how fast the belt stripes scroll
 
 -- Treadmill upgrades: the gold pad in your base buys better treadmills with
--- cash. Each one multiplies the Speed your treadmill gives.
+-- cash. Each one multiplies the Speed your treadmill gives, and looks fancier:
+--   Glow  = brightness of the light under the belt
+--   Frame = frame material (Metal if not set)
+--   Fx    = sparkles rising off the belt { Rate, Size, Speed, Fire = true for flames }
+--   Halo  = a ring of orbs spinning above the treadmill
+--   Rainbow = belt stripes cycle through every color
 Config.TreadmillLevels = {
-	{ Name = "Basic", Mult = 1, Cost = 0, Color = Color3.fromRGB(255, 120, 120) },
-	{ Name = "Bronze", Mult = 2, Cost = 2500, Color = Color3.fromRGB(205, 127, 50) },
-	{ Name = "Silver", Mult = 4, Cost = 40000, Color = Color3.fromRGB(200, 205, 215) },
-	{ Name = "Gold", Mult = 8, Cost = 500000, Color = Color3.fromRGB(255, 200, 50) },
-	{ Name = "Diamond", Mult = 16, Cost = 8000000, Color = Color3.fromRGB(110, 230, 255) },
-	{ Name = "Emerald", Mult = 32, Cost = 150000000, Color = Color3.fromRGB(60, 230, 120) },
-	{ Name = "Cosmic", Mult = 64, Cost = 3000000000, Color = Color3.fromRGB(190, 110, 255) },
+	{ Name = "Basic", Mult = 1, Cost = 0, Color = Color3.fromRGB(255, 120, 120), Glow = 0 },
+	{ Name = "Bronze", Mult = 2, Cost = 2500, Color = Color3.fromRGB(205, 127, 50), Glow = 0.4 },
+	{ Name = "Silver", Mult = 4, Cost = 40000, Color = Color3.fromRGB(200, 205, 215), Glow = 0.6, Fx = { Rate = 3, Size = 0.3, Speed = 2 } },
+	{ Name = "Gold", Mult = 8, Cost = 500000, Color = Color3.fromRGB(255, 200, 50), Glow = 0.8, Frame = "Foil", Fx = { Rate = 5, Size = 0.35, Speed = 2 } },
+	{ Name = "Diamond", Mult = 16, Cost = 8000000, Color = Color3.fromRGB(110, 230, 255), Glow = 1, Frame = "Glass", Fx = { Rate = 8, Size = 0.4, Speed = 3 } },
+	{ Name = "Emerald", Mult = 32, Cost = 150000000, Color = Color3.fromRGB(60, 230, 120), Glow = 1.2, Frame = "Glass", Fx = { Rate = 10, Size = 0.45, Speed = 3 } },
+	{ Name = "Cosmic", Mult = 64, Cost = 3000000000, Color = Color3.fromRGB(190, 110, 255), Glow = 1.4, Frame = "Glass", Fx = { Rate = 14, Size = 0.5, Speed = 4 }, Halo = true },
+	{ Name = "Galaxy", Mult = 128, Cost = 60000000000, Color = Color3.fromRGB(90, 130, 255), Glow = 1.6, Frame = "Glass", Fx = { Rate = 16, Size = 0.55, Speed = 4 }, Halo = true },
+	{ Name = "Nebula", Mult = 256, Cost = 1200000000000, Color = Color3.fromRGB(255, 110, 200), Glow = 1.8, Frame = "Glass", Fx = { Rate = 18, Size = 0.8, Speed = 2.5 }, Halo = true },
+	{ Name = "Supernova", Mult = 512, Cost = 25000000000000, Color = Color3.fromRGB(255, 150, 40), Glow = 2, Frame = "Foil", Fx = { Rate = 22, Size = 0.9, Speed = 6, Fire = true }, Halo = true },
+	{ Name = "Quantum", Mult = 1024, Cost = 500000000000000, Color = Color3.fromRGB(60, 255, 230), Glow = 2.2, Frame = "Glass", Fx = { Rate = 26, Size = 0.5, Speed = 8 }, Halo = true },
+	{ Name = "Celestial", Mult = 2048, Cost = 10000000000000000, Color = Color3.fromRGB(255, 245, 200), Glow = 2.5, Frame = "Foil", Fx = { Rate = 30, Size = 0.7, Speed = 5 }, Halo = true, Rainbow = true },
 }
 
 -- (old Speed pad settings, no longer used by the base)
@@ -65,6 +78,7 @@ Config.PromptRange = 10
 -- Guardians
 --------------------------------------------------------------------------------
 Config.GuardianCatchRange = 7
+Config.SlapFlightTime = 1.1 -- seconds you fly through the air after a guardian slaps you, before landing back home
 Config.GuardianStunTime = 1.5
 Config.GuardianStunSpeed = 4
 
@@ -1069,7 +1083,8 @@ for order, rarity in ipairs(Config.Rarities) do
 end
 
 function Config.WalkSpeed(speedStat: number): number
-	return math.min(Config.BaseWalkSpeed + Config.WalkPerTenfold * math.log10(1 + math.max(0, speedStat)), Config.MaxWalkSpeed)
+	local tens = math.log10(1 + math.max(0, speedStat))
+	return math.min(Config.BaseWalkSpeed + Config.WalkPerTenfold * tens + Config.WalkCurve * tens * tens, Config.MaxWalkSpeed)
 end
 
 -- Speed stat needed to outrun a biome's guardian while carrying an egg.
@@ -4876,11 +4891,11 @@ function Visuals.MakeGuardian(def)
 	local labelY = body.Size.Y / 2 + (if def.Boss then 16 else 8)
 	Visuals.AddLabel(body, labelY, if def.Boss then 300 else 230)
 	if def.Boss then
-		Visuals.SetLabel(body, "👑 " .. def.GuardianName, "BOSS  •  Speed " .. def.GuardianSpeed, Color3.fromRGB(240, 150, 255))
+		Visuals.SetLabel(body, "👑 " .. def.GuardianName, "BOSS  •  Outrun with " .. Util.FormatNumber(def.SpeedNeeded) .. " Speed", Color3.fromRGB(240, 150, 255))
 		body.Label.Size = UDim2.fromOffset(300, 72)
 		body.Label.MaxDistance = 250
 	else
-		Visuals.SetLabel(body, def.GuardianName, "Speed " .. def.GuardianSpeed, Color3.fromRGB(255, 140, 110))
+		Visuals.SetLabel(body, def.GuardianName, if def.SpeedNeeded > 0 then "Outrun with " .. Util.FormatNumber(def.SpeedNeeded) .. " Speed" else "Slow and sleepy", Color3.fromRGB(255, 140, 110))
 	end
 
 	-- "Zzz" shown while it naps next to the nest
@@ -5022,6 +5037,9 @@ treats.Parent = remotes
 local hatched = Instance.new("RemoteEvent")
 hatched.Name = "Hatched"
 hatched.Parent = remotes
+local slapped = Instance.new("RemoteEvent")
+slapped.Name = "Slapped"
+slapped.Parent = remotes
 local daily = Instance.new("RemoteEvent")
 daily.Name = "DailyReward"
 daily.Parent = remotes
@@ -7081,11 +7099,84 @@ local function buildPlot(plotsFolder, index, center, frontDir)
 	end
 	-- console at the front end, facing the runner
 	local console = deco({ Name = "Console", Size = Vector3.new(beltWidth + 1, 2.4, 0.6), CFrame = at(TX, 5.6, -13.4) * CFrame.Angles(math.rad(-20), 0, 0), Color = Color3.fromRGB(35, 35, 45), Material = Enum.Material.SmoothPlastic, Parent = model })
-	surfaceText(console, Enum.NormalId.Back, "🏃 TRAINING SPEED", Color3.fromRGB(120, 255, 140))
+	-- live screen: tier, multiplier and what you're gaining (GameService fills it in)
+	local screen = Instance.new("SurfaceGui")
+	screen.Name = "Screen"
+	screen.Face = Enum.NormalId.Back
+	screen.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+	screen.PixelsPerStud = 40
+	screen.LightInfluence = 0
+	screen.Parent = console
+	local screenBg = Instance.new("Frame")
+	screenBg.Name = "Bg"
+	screenBg.AnchorPoint = Vector2.new(0.5, 0.5)
+	screenBg.Position = UDim2.fromScale(0.5, 0.5)
+	screenBg.Size = UDim2.fromScale(0.94, 0.86)
+	screenBg.BackgroundColor3 = Color3.fromRGB(12, 16, 28)
+	screenBg.Parent = screen
+	local screenCorner = Instance.new("UICorner")
+	screenCorner.CornerRadius = UDim.new(0.12, 0)
+	screenCorner.Parent = screenBg
+	local screenStroke = Instance.new("UIStroke")
+	screenStroke.Name = "Edge"
+	screenStroke.Thickness = 4
+	screenStroke.Color = accent
+	screenStroke.Parent = screenBg
+	local function screenLabel(name, y, h, text, color, font)
+		local l = Instance.new("TextLabel")
+		l.Name = name
+		l.BackgroundTransparency = 1
+		l.Position = UDim2.fromScale(0.05, y)
+		l.Size = UDim2.fromScale(0.9, h)
+		l.Font = font or Enum.Font.FredokaOne
+		l.TextScaled = true
+		l.TextColor3 = color
+		l.Text = text
+		l.Parent = screenBg
+		return l
+	end
+	screenLabel("TierLabel", 0.06, 0.34, "BASIC TREADMILL", Color3.fromRGB(255, 225, 120))
+	screenLabel("MultLabel", 0.4, 0.28, "x1 SPEED", Color3.fromRGB(120, 255, 140))
+	screenLabel("StatusLabel", 0.7, 0.24, "Step on to train!", Color3.fromRGB(200, 210, 235), Enum.Font.GothamBold)
 	deco({ Name = "ConsoleGlow", Size = Vector3.new(beltWidth + 1.2, 0.2, 0.7), CFrame = at(TX, 4.3, -13.4), Color = accent, Material = Enum.Material.Neon, CastShadow = false, Parent = model })
 	local treadSign = deco({ Name = "TreadmillSign", Size = Vector3.new(8 * K, 1.8, 0.4), CFrame = at(TX, 8.6, -13.4), Color = Color3.fromRGB(30, 30, 40), Material = Enum.Material.SmoothPlastic, Parent = model })
 	surfaceText(treadSign, Enum.NormalId.Front, "🏃 TREADMILL", Color3.fromRGB(255, 225, 120))
 	surfaceText(treadSign, Enum.NormalId.Back, "Step on to train Speed!", Color3.fromRGB(255, 225, 120))
+
+	-- Tier looks (GameService paints these for your treadmill tier): neon trim and
+	-- glowing skirts along the sides, a light under the belt, one pip per tier on
+	-- the console, a spinning halo of orbs for the top tiers and belt particles.
+	local dark = Color3.fromRGB(45, 45, 55)
+	for _, sx in ipairs({ -1, 1 }) do
+		deco({ Name = "TreadTrim", Size = Vector3.new(0.25, 0.25, beltLength + 1.6), CFrame = at(TX + sx * (beltWidth / 2 + 0.8) / K, 1.05, -6.5), Color = accent, Material = Enum.Material.Neon, CastShadow = false, CanCollide = false, Parent = model })
+		deco({ Name = "TreadSkirt", Size = Vector3.new(0.15, 0.45, beltLength + 1.2), CFrame = at(TX + sx * (beltWidth / 2 + 0.83) / K, 0.62, -6.5), Color = accent, Material = Enum.Material.Neon, Transparency = 0.45, CastShadow = false, CanCollide = false, Parent = model })
+	end
+	light(plot.Treadmill, accent, 16, 0).Name = "TreadLight"
+	local pips = Instance.new("Folder")
+	pips.Name = "TreadPips"
+	pips.Parent = model
+	local tiers = #Config.TreadmillLevels
+	for i = 1, tiers do
+		local x = TX + ((i - 0.5) / tiers - 0.5) * (beltWidth - 0.4) / K
+		local pip = deco({ Name = "Pip", Shape = Enum.PartType.Ball, Size = Vector3.one * 0.42, CFrame = at(x, 4.62, -12.95), Color = dark, Material = Enum.Material.SmoothPlastic, CastShadow = false, CanCollide = false, Parent = pips })
+		pip:SetAttribute("Tier", i)
+	end
+	local halo = Instance.new("Folder")
+	halo.Name = "TreadHalo"
+	local haloCenter = at(TX, 12.6, -6.5).Position
+	halo:SetAttribute("Center", haloCenter)
+	halo:SetAttribute("Radius", 3.2)
+	halo.Parent = model
+	for i = 1, 10 do
+		local a = i / 10 * math.pi * 2
+		deco({ Name = "HaloOrb", Shape = Enum.PartType.Ball, Size = Vector3.one * (if i % 2 == 0 then 0.8 else 0.5), CFrame = CFrame.new(haloCenter + Vector3.new(math.cos(a), 0, math.sin(a)) * 3.2), Color = accent, Material = Enum.Material.Neon, Transparency = 1, CastShadow = false, CanCollide = false, Parent = halo })
+	end
+	local tierFx = particles(plot.Treadmill, { Name = "TierFx", Enabled = false, LightEmission = 1, Lifetime = NumberRange.new(1, 2), Rate = 0, SpreadAngle = Vector2.new(15, 15), EmissionDirection = Enum.NormalId.Top, Transparency = NumberSequence.new(0.1, 1) })
+	tierFx.Acceleration = Vector3.new(0, 2, 0)
+	particles(plot.Treadmill, { Name = "BurstFx", Enabled = false, LightEmission = 1, Lifetime = NumberRange.new(0.8, 1.6), Rate = 0, Speed = NumberRange.new(14, 26), SpreadAngle = Vector2.new(60, 60), EmissionDirection = Enum.NormalId.Top, Size = NumberSequence.new(0.9, 0), Drag = 2 })
+	-- speed streaks shooting off the back of the belt while someone trains
+	local backEnd = deco({ Name = "TreadBackFx", Size = Vector3.new(beltWidth, 0.2, 0.2), CFrame = at(TX, 1.5, -6.5 + 7.3), Transparency = 1, CastShadow = false, CanCollide = false, Parent = model })
+	particles(backEnd, { Name = "RunFx", Enabled = false, Texture = "rbxasset://textures/particles/smoke_main.dds", Color = ColorSequence.new(Color3.fromRGB(235, 235, 245)), LightEmission = 0.3, Lifetime = NumberRange.new(0.3, 0.6), Rate = 30, Speed = NumberRange.new(10, 16), SpreadAngle = Vector2.new(10, 10), EmissionDirection = Enum.NormalId.Back, Size = NumberSequence.new(0.6, 1.4), Transparency = NumberSequence.new(0.5, 1) })
 
 	-- Golden egg statue on the other side
 	local SX = 24
@@ -7859,6 +7950,7 @@ local PINK = Color3.fromRGB(240, 130, 240)
 local map
 local notifyRemote
 local hatchRemote
+local slapRemote
 local eggsFolder
 local ringsFolder
 local creaturesFolder
@@ -8254,19 +8346,120 @@ local function treadmillLevel(state)
 	return Config.TreadmillLevels[state.Profile.TreadmillLevel or 1] or Config.TreadmillLevels[1]
 end
 
--- Recolor the belt stripes and frame to match the treadmill tier
+-- Dress the treadmill for its tier: belt stripes, frame, rails, neon trim,
+-- light, console screen and pips, halo and particles (see Config.TreadmillLevels)
+local TREAD_METAL = Color3.fromRGB(205, 208, 218)
 local function paintTreadmill(state)
+	local current = state.Profile.TreadmillLevel or 1
 	local level = treadmillLevel(state)
 	local model = state.Plot.Model
+	local tread = state.Plot.Treadmill
+	local color = level.Color
+	local fancy = current >= 4 -- Gold and up get shiny tier-colored rails
 	local stripes = model:FindFirstChild("TreadmillStripes")
 	if stripes then
 		for _, stripe in ipairs(stripes:GetChildren()) do
-			stripe.Color = level.Color
+			stripe.Color = color
 		end
 	end
-	local frame = model:FindFirstChild("TreadmillFrame")
-	if frame then
-		frame.Color = level.Color:Lerp(Color3.new(0, 0, 0), 0.5)
+	for _, d in ipairs(model:GetChildren()) do
+		if d:IsA("BasePart") then
+			if d.Name == "TreadmillFrame" then
+				d.Color = color:Lerp(Color3.new(0, 0, 0), 0.5)
+				d.Material = Enum.Material[level.Frame or "Metal"]
+			elseif d.Name == "TreadTrim" or d.Name == "TreadSkirt" or d.Name == "ConsoleGlow" then
+				d.Color = color
+			elseif d.Name == "SideRail" or d.Name == "RailPost" or d.Name == "ConsolePost" or d.Name == "Roller" then
+				d.Color = if fancy then color:Lerp(Color3.new(1, 1, 1), 0.35) else TREAD_METAL
+				d.Material = if fancy then Enum.Material.Foil else Enum.Material.Metal
+			end
+		end
+	end
+	local pips = model:FindFirstChild("TreadPips")
+	if pips then
+		for _, pip in ipairs(pips:GetChildren()) do
+			local tier = pip:GetAttribute("Tier") or 99
+			local owned = tier <= current
+			pip.Color = if owned then Config.TreadmillLevels[tier].Color else Color3.fromRGB(45, 45, 55)
+			pip.Material = if owned then Enum.Material.Neon else Enum.Material.SmoothPlastic
+		end
+	end
+	local halo = model:FindFirstChild("TreadHalo")
+	if halo then
+		for _, orb in ipairs(halo:GetChildren()) do
+			orb.Color = color
+			orb.Transparency = if level.Halo then 0 else 1
+		end
+	end
+	local light = tread:FindFirstChild("TreadLight")
+	if light then
+		light.Color = color
+		light.Brightness = level.Glow or 0
+		light.Enabled = (level.Glow or 0) > 0
+	end
+	local fx = tread:FindFirstChild("TierFx")
+	if fx then
+		local def = level.Fx
+		fx.Enabled = def ~= nil
+		if def then
+			fx.Rate = def.Rate
+			fx.Size = NumberSequence.new(def.Size, 0)
+			fx.Speed = NumberRange.new(def.Speed * 0.6, def.Speed)
+			fx.Texture = if def.Fire then "rbxasset://textures/particles/fire_main.dds" else "rbxasset://textures/particles/sparkles_main.dds"
+			fx.Color = ColorSequence.new(color, color:Lerp(Color3.new(1, 1, 1), 0.6))
+		end
+	end
+	tread:SetAttribute("Rainbow", level.Rainbow == true)
+	local console = model:FindFirstChild("Console")
+	local screen = console and console:FindFirstChild("Screen")
+	local bg = screen and screen:FindFirstChild("Bg")
+	if bg then
+		bg.TierLabel.Text = string.upper(level.Name) .. " TREADMILL"
+		bg.TierLabel.TextColor3 = color
+		bg.MultLabel.Text = "x" .. Util.FormatNumber(level.Mult) .. " SPEED"
+		bg.Edge.Color = color
+	end
+	state.ScreenStatus = nil -- redraw the status line on the next tick
+end
+
+-- Burst of sparkles when you buy a new treadmill tier
+local function treadmillBurst(state)
+	local tread = state.Plot.Treadmill
+	local burst = tread:FindFirstChild("BurstFx")
+	if burst then
+		local color = treadmillLevel(state).Color
+		burst.Color = ColorSequence.new(color, Color3.new(1, 1, 1))
+		burst:Emit(80)
+	end
+	local light = tread:FindFirstChild("TreadLight")
+	if light then
+		local glow = light.Brightness
+		light.Enabled = true
+		light.Brightness = 6
+		TweenService:Create(light, TweenInfo.new(1.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Brightness = glow }):Play()
+	end
+end
+
+-- Screen status line and belt "running" state, only touched when they change
+local function setTreadmillStatus(state, running, gain)
+	local text = if running then "▶ +" .. Util.FormatNumber(gain) .. " Speed / sec" else "Step on to train!"
+	if state.ScreenStatus == text then
+		return
+	end
+	state.ScreenStatus = text
+	local tread = state.Plot.Treadmill
+	tread:SetAttribute("Running", running)
+	local back = state.Plot.Model:FindFirstChild("TreadBackFx")
+	local runFx = back and back:FindFirstChild("RunFx")
+	if runFx then
+		runFx.Enabled = running
+	end
+	local console = state.Plot.Model:FindFirstChild("Console")
+	local screen = console and console:FindFirstChild("Screen")
+	local bg = screen and screen:FindFirstChild("Bg")
+	if bg then
+		bg.StatusLabel.Text = text
+		bg.StatusLabel.TextColor3 = if running then Color3.fromRGB(120, 255, 140) else Color3.fromRGB(200, 210, 235)
 	end
 end
 
@@ -8301,6 +8494,7 @@ local function onBuySpeed(player) -- buys the next treadmill upgrade
 	end
 	state.Profile.TreadmillLevel = current + 1
 	paintTreadmill(state)
+	treadmillBurst(state)
 	refreshSpeedPad(state)
 	notify(player, "🏃 " .. nextLevel.Name .. " Treadmill unlocked! Training now gives x" .. nextLevel.Mult .. " Speed", nextLevel.Color)
 end
@@ -8779,11 +8973,166 @@ local function setChased(guardian, player)
 	end
 end
 
+-- A giant cartoon glove: a white palm with fingers, a thumb and a red cuff,
+-- welded to the palm so tweening the palm moves the whole glove.
+local function makeSlapGlove()
+	local glove = Instance.new("Model")
+	glove.Name = "SlapGlove"
+	local WHITE = Color3.fromRGB(250, 250, 250)
+	local function piece(name, size, offset, color, shape)
+		local p = Instance.new("Part")
+		p.Name = name
+		p.Shape = shape or Enum.PartType.Block
+		p.Size = size
+		p.Color = color or WHITE
+		p.Material = Enum.Material.SmoothPlastic
+		p.CanCollide = false
+		p.CanQuery = false
+		p.CanTouch = false
+		p.CastShadow = false
+		p.Parent = glove
+		return p, offset
+	end
+	local palm = piece("Palm", Vector3.new(5, 5.6, 1.8), nil, WHITE, Enum.PartType.Ball)
+	palm.Anchored = true
+	glove.PrimaryPart = palm
+	local parts = {
+		{ piece("Cuff", Vector3.new(1.6, 4.4, 4.4), CFrame.new(0, -3.4, 0) * CFrame.Angles(0, 0, math.rad(90)), Color3.fromRGB(230, 50, 60), Enum.PartType.Cylinder) },
+	}
+	for i, x in ipairs({ -1.65, -0.55, 0.55, 1.65 }) do
+		local len = if i == 1 or i == 4 then 3 else 3.6
+		table.insert(parts, { piece("Finger", Vector3.new(1.1, len, 1.1), CFrame.new(x, 2.6 + len / 2 - 0.9, 0)) })
+	end
+	table.insert(parts, { piece("Thumb", Vector3.new(1.2, 2.6, 1.2), CFrame.new(-3, 0.2, 0) * CFrame.Angles(0, 0, math.rad(50))) })
+	for _, info in ipairs(parts) do
+		local p, offset = info[1], info[2]
+		p.CFrame = palm.CFrame * offset
+		p.Massless = true
+		local weld = Instance.new("WeldConstraint")
+		weld.Part0 = palm
+		weld.Part1 = p
+		weld.Parent = p
+	end
+	return glove, palm
+end
+
+-- The slap everyone can see: the glove swings through the player, a ring and
+-- stars burst out, and a "SLAP!" pops up over them.
+local function slapEffect(fromPosition, hit, away)
+	local folder = workspace:FindFirstChild("Effects") or Instance.new("Folder")
+	folder.Name = "Effects"
+	folder.Parent = workspace
+
+	local glove, palm = makeSlapGlove()
+	local up = Vector3.yAxis
+	local startCF = CFrame.lookAt(hit - away * 9 + up * 7, hit - away * 9 + up * 7 + away) * CFrame.Angles(math.rad(-60), 0, 0)
+	local endCF = CFrame.lookAt(hit + away * 3 + up * 1.5, hit + away * 3 + up * 1.5 + away) * CFrame.Angles(math.rad(20), 0, 0)
+	palm.CFrame = startCF
+	for _, d in ipairs(glove:GetChildren()) do
+		if d ~= palm and d:IsA("BasePart") then
+			d.Anchored = false
+		end
+	end
+	glove.Parent = folder
+	TweenService:Create(palm, TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { CFrame = endCF }):Play()
+	task.delay(0.16, function()
+		-- impact: a ring that shoots out, a star burst and the SLAP! sign
+		local ring = Instance.new("Part")
+		ring.Name = "SlapRing"
+		ring.Shape = Enum.PartType.Cylinder
+		ring.Size = Vector3.new(0.3, 2, 2)
+		ring.CFrame = CFrame.new(hit) * CFrame.Angles(0, 0, math.rad(90))
+		ring.Color = Color3.fromRGB(255, 240, 150)
+		ring.Material = Enum.Material.Neon
+		ring.Anchored = true
+		ring.CanCollide = false
+		ring.CanQuery = false
+		ring.CanTouch = false
+		ring.CastShadow = false
+		ring.Parent = folder
+		TweenService:Create(ring, TweenInfo.new(0.45, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Size = Vector3.new(0.3, 22, 22), Transparency = 1 }):Play()
+
+		local burst = Instance.new("ParticleEmitter")
+		burst.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+		burst.Color = ColorSequence.new(Color3.fromRGB(255, 230, 90), Color3.fromRGB(255, 120, 60))
+		burst.LightEmission = 0.8
+		burst.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1.6), NumberSequenceKeypoint.new(1, 0) })
+		burst.Lifetime = NumberRange.new(0.4, 0.8)
+		burst.Speed = NumberRange.new(25, 45)
+		burst.SpreadAngle = Vector2.new(180, 180)
+		burst.Drag = 4
+		burst.Rate = 0
+		burst.Parent = ring
+		burst:Emit(40)
+
+		local sign = Instance.new("BillboardGui")
+		sign.Name = "SlapText"
+		sign.Size = UDim2.fromScale(12, 4)
+		sign.StudsOffsetWorldSpace = Vector3.new(0, 4, 0)
+		sign.AlwaysOnTop = true
+		sign.LightInfluence = 0
+		sign.Parent = ring
+		local text = Instance.new("TextLabel")
+		text.BackgroundTransparency = 1
+		text.Size = UDim2.fromScale(1, 1)
+		text.Font = Enum.Font.FredokaOne
+		text.TextScaled = true
+		text.Text = "SLAP!"
+		text.Rotation = -8
+		text.TextColor3 = Color3.fromRGB(255, 230, 70)
+		text.TextStrokeColor3 = Color3.fromRGB(150, 20, 20)
+		text.TextStrokeTransparency = 0
+		text.Parent = sign
+		TweenService:Create(text, TweenInfo.new(0.9, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { TextTransparency = 1, TextStrokeTransparency = 1 }):Play()
+
+		-- the glove follows through and fades away
+		TweenService:Create(palm, TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { CFrame = endCF * CFrame.new(0, 2, -4) }):Play()
+		for _, d in ipairs(glove:GetChildren()) do
+			if d:IsA("BasePart") then
+				TweenService:Create(d, TweenInfo.new(0.5, Enum.EasingStyle.Linear, Enum.EasingDirection.In, 0, false, 0.25), { Transparency = 1 }):Play()
+			end
+		end
+		task.delay(1, function()
+			ring:Destroy()
+			glove:Destroy()
+		end)
+	end)
+end
+
 local function caught(biome, player, rec)
 	releaseCarry(player)
 	returnToNest(rec)
-	stun(player, Config.GuardianStunTime, Config.GuardianStunSpeed)
-	notify(player, "💥 The " .. biome.Def.GuardianName .. " caught you and took the egg back!", RED)
+	stun(player, Config.GuardianStunTime + Config.SlapFlightTime, Config.GuardianStunSpeed)
+	notify(player, "💥 SLAP! The " .. biome.Def.GuardianName .. " caught you, took the egg back and sent you home!", RED)
+
+	-- Slap! The glove hits you, you go flying (your client does the flight,
+	-- shake and SLAP! text) and land back at the start of your base.
+	local root = getRoot(player)
+	local state = states[player]
+	if not root or not state then
+		return
+	end
+	local from = biome.Guardian.Position
+	local away = (root.Position - from) * Vector3.new(1, 0, 1)
+	away = if away.Magnitude > 0.1 then away.Unit else root.CFrame.LookVector
+	slapEffect(from, root.Position, away)
+	if slapRemote then
+		slapRemote:FireClient(player, away, biome.Def.GuardianName)
+	end
+	state.SlapToken = (state.SlapToken or 0) + 1
+	local token = state.SlapToken
+	task.delay(Config.SlapFlightTime, function()
+		local s = states[player]
+		local char = player.Character
+		if s and s.SlapToken == token and char and char.Parent then
+			char:PivotTo(s.Plot.SpawnCFrame)
+			local r = getRoot(player)
+			if r then
+				r.AssemblyLinearVelocity = Vector3.zero
+				r.AssemblyAngularVelocity = Vector3.zero
+			end
+		end
+	end)
 end
 
 local function updateGuardian(biome, dt)
@@ -8839,7 +9188,7 @@ local function updateGuardian(biome, dt)
 
 	-- Cartoon motion: bouncy waddle while running, slow breathing while napping,
 	-- and the boss always hovers.
-	guardian.Phase += dt * (if moving then 2 + speed * 0.12 else 1.5)
+	guardian.Phase += dt * (if moving then 2 + math.min(speed, 130) * 0.12 else 1.5) -- fast guardians don't waddle into a blur
 	local bob, roll = 0, 0
 	if def.Boss then
 		bob = math.sin(guardian.Phase * 0.8) * 1.2
@@ -9140,9 +9489,11 @@ local function fastLoop()
 					player:SetAttribute("OnTreadmill", true)
 					player:SetAttribute("TrainGain", Config.TreadmillGain(state.Profile.Speed) * treadmillLevel(state).Mult * (if state.Passes.DoubleSpeedPass then 2 else 1))
 					player:SetAttribute("TrainNext", math.max(0, nextInterval - state.TreadProgress))
+					setTreadmillStatus(state, true, player:GetAttribute("TrainGain") / math.max(nextInterval, 0.01))
 				else
 					player:SetAttribute("OnTreadmill", nil)
 					player:SetAttribute("TrainNext", nil)
+					setTreadmillStatus(state, false)
 				end
 			end
 		end
@@ -9255,6 +9606,7 @@ function GameService.Init(mapData, notifyEvent, treadmillEvent)
 	map = mapData
 	notifyRemote = notifyEvent
 	hatchRemote = ReplicatedStorage:WaitForChild("Remotes"):FindFirstChild("Hatched")
+	slapRemote = ReplicatedStorage:WaitForChild("Remotes"):FindFirstChild("Slapped")
 
 	-- treadmill start / stop from the client
 	if treadmillEvent then
@@ -9524,6 +9876,10 @@ function GameService.RemovePlayer(player)
 	end
 
 	local profile = GameService.Snapshot(player)
+
+	-- the empty base goes back to a plain, stopped treadmill
+	setTreadmillStatus(state, false)
+	paintTreadmill({ Profile = { TreadmillLevel = 1 }, Plot = state.Plot })
 
 	for _, slot in pairs(state.Nest) do
 		if slot.Kind == "Egg" then
@@ -11419,7 +11775,14 @@ task.spawn(function()
 			for _, stripe in ipairs(stripes:GetChildren()) do
 				table.insert(list, { Part = stripe, Offset = stripe:GetAttribute("Offset") or 0, Y = stripe.Position.Y })
 			end
-			table.insert(belts, { Tread = tread, Length = stripes:GetAttribute("Length") or tread.Size.Z, Stripes = list })
+			local orbs = {}
+			local halo = plot:FindFirstChild("TreadHalo")
+			if halo then
+				for i, orb in ipairs(halo:GetChildren()) do
+					orbs[i] = orb
+				end
+			end
+			table.insert(belts, { Tread = tread, Length = stripes:GetAttribute("Length") or tread.Size.Z, Stripes = list, Halo = halo, Orbs = orbs, Pos = 0, Speed = 1 })
 		end
 	end
 	local t = 0
@@ -11428,77 +11791,34 @@ task.spawn(function()
 		for _, belt in ipairs(belts) do
 			local cf = belt.Tread.CFrame
 			local back = -cf.LookVector
-			for _, s in ipairs(belt.Stripes) do
-				local frac = (s.Offset + t * Config.TreadmillBeltSpeed / belt.Length) % 1
+			-- the belt speeds up smoothly while someone is training on it
+			local want = if belt.Tread:GetAttribute("Running") then 2.6 else 1
+			belt.Speed += (want - belt.Speed) * math.min(1, dt * 3)
+			belt.Pos += dt * belt.Speed * Config.TreadmillBeltSpeed / belt.Length
+			local rainbow = belt.Tread:GetAttribute("Rainbow")
+			for i, s in ipairs(belt.Stripes) do
+				local frac = (s.Offset + belt.Pos) % 1
 				local pos = cf.Position + back * ((frac - 0.5) * belt.Length)
 				s.Part.CFrame = CFrame.lookAt(Vector3.new(pos.X, s.Y, pos.Z), Vector3.new(pos.X, s.Y, pos.Z) + cf.LookVector)
+				if rainbow then
+					s.Part.Color = Color3.fromHSV((t * 0.25 + i / #belt.Stripes) % 1, 0.6, 1)
+				end
+			end
+			-- top tiers: a ring of orbs spins and bobs above the treadmill
+			local halo = belt.Halo
+			if halo and #belt.Orbs > 0 and belt.Orbs[1].Transparency < 1 then
+				local center = halo:GetAttribute("Center")
+				local radius = halo:GetAttribute("Radius") or 3
+				if center then
+					local spin = t * belt.Speed * 0.9
+					for i, orb in ipairs(belt.Orbs) do
+						local a = spin + i / #belt.Orbs * math.pi * 2
+						orb.CFrame = CFrame.new(center + Vector3.new(math.cos(a) * radius, math.sin(t * 2 + i) * 0.35, math.sin(a) * radius))
+					end
+				end
 			end
 		end
 	end)
-end)
-
---------------------------------------------------------------------------------
--- Wild eggs slowly spin and bob in their nests
---------------------------------------------------------------------------------
-task.spawn(function()
-	local eggsFolder = workspace:WaitForChild("Eggs")
-	local t = 0
-	RunService.RenderStepped:Connect(function(dt)
-		t += dt
-		for i, egg in ipairs(eggsFolder:GetChildren()) do
-			local home = egg:GetAttribute("WildHome")
-			if home and egg:IsA("BasePart") and egg.Anchored then
-				local phase = t * 1.6 + i
-				egg.CFrame = home * CFrame.new(0, math.sin(phase) * 0.25 + 0.25, 0) * CFrame.Angles(0, t * 0.8 + i, math.sin(phase * 0.5) * 0.08)
-			end
-		end
-	end)
-end)
-
---------------------------------------------------------------------------------
--- Carry pose: anyone carrying an egg holds it up over their head with both
--- arms raised (overrides the arm swing of the run animation). Runs for every
--- player so you see other carriers doing it too.
---------------------------------------------------------------------------------
-local function shoulders(char)
-	local upper = char:FindFirstChild("RightUpperArm")
-	if upper then -- R15
-		local r = upper:FindFirstChild("RightShoulder")
-		local l = char:FindFirstChild("LeftUpperArm") and char.LeftUpperArm:FindFirstChild("LeftShoulder")
-		return r, l, "R15"
-	end
-	local torso = char:FindFirstChild("Torso")
-	if torso then -- R6
-		return torso:FindFirstChild("Right Shoulder"), torso:FindFirstChild("Left Shoulder"), "R6"
-	end
-	return nil
-end
-
-local carryTime = 0
-RunService.Stepped:Connect(function(_, dt)
-	carryTime += dt
-	for _, other in ipairs(Players:GetPlayers()) do
-		local char = other.Character
-		if char and other:GetAttribute("CarryingEgg") then
-			local right, left, rig = shoulders(char)
-			local wobble = math.sin(carryTime * 10) * 0.06 -- little bounce while running
-			if rig == "R15" then
-				if right then
-					right.Transform = CFrame.Angles(math.rad(165) + wobble, 0, math.rad(-12))
-				end
-				if left then
-					left.Transform = CFrame.Angles(math.rad(165) - wobble, 0, math.rad(12))
-				end
-			elseif rig == "R6" then
-				if right then
-					right.Transform = CFrame.Angles(0, 0, math.rad(165) + wobble)
-				end
-				if left then
-					left.Transform = CFrame.Angles(0, 0, math.rad(-165) - wobble)
-				end
-			end
-		end
-	end
 end)
 
 --------------------------------------------------------------------------------
@@ -11778,7 +12098,7 @@ end
 adminHeader("🧪 Base & world")
 adminRow({ { "Hatch All", "hatch" }, { "Refill Eggs", "refill" } })
 adminRow({ { "Grow +1 Stage", "grow", GREEN_BTN }, { "Grow to Adult", "grow adult", GREEN_BTN } })
-adminRow({ { "Max Treadmill", "treadmill 7", GOLD_BTN }, { "Basic Treadmill", "treadmill 1", GOLD_BTN } })
+adminRow({ { "Max Treadmill", "treadmill " .. #Config.TreadmillLevels, GOLD_BTN }, { "Basic Treadmill", "treadmill 1", GOLD_BTN } })
 adminRow({ { "2x Luck", "luck 2", GREEN_BTN }, { "5x Luck", "luck 5", GREEN_BTN }, { "10x Luck", "luck 10", GREEN_BTN }, { "Egg Rain", "rain" } })
 adminHeader("🚀 Teleport")
 adminRow({ { "Town", "tp town" }, { "Forest", "tp forest" }, { "Desert", "tp desert" } })
@@ -12567,6 +12887,159 @@ local function setupSkyLife()
 	end)
 end
 setupSkyLife()
+
+--------------------------------------------------------------------------------
+-- Slapped! When a guardian catches you: white flash, camera shake, a big SLAP!,
+-- you spin through the air, then land at home with dizzy stars.
+--------------------------------------------------------------------------------
+local function setupSlap()
+	local SlapRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Slapped")
+	local RunService = game:GetService("RunService")
+
+	local flash = Instance.new("Frame")
+	flash.Name = "SlapFlash"
+	flash.Size = UDim2.fromScale(1, 1)
+	flash.BackgroundColor3 = Color3.new(1, 1, 1)
+	flash.BackgroundTransparency = 1
+	flash.BorderSizePixel = 0
+	flash.ZIndex = 50
+	flash.Visible = false
+	flash.Parent = gui
+
+	local slapText = Instance.new("TextLabel")
+	slapText.Name = "SlapText"
+	slapText.AnchorPoint = Vector2.new(0.5, 0.5)
+	slapText.Position = UDim2.fromScale(0.5, 0.4)
+	slapText.Size = UDim2.fromOffset(520, 170)
+	slapText.BackgroundTransparency = 1
+	slapText.Font = Enum.Font.FredokaOne
+	slapText.TextScaled = true
+	slapText.Text = "SLAP!"
+	slapText.TextColor3 = Color3.fromRGB(255, 230, 70)
+	slapText.TextStrokeTransparency = 1
+	slapText.ZIndex = 51
+	slapText.Visible = false
+	slapText.Parent = gui
+	local slapStroke = Instance.new("UIStroke")
+	slapStroke.Thickness = 6
+	slapStroke.Color = Color3.fromRGB(150, 20, 20)
+	slapStroke.Parent = slapText
+	local slapScale = Instance.new("UIScale")
+	slapScale.Parent = slapText
+	local subText = Instance.new("TextLabel")
+	subText.Name = "SlapSub"
+	subText.AnchorPoint = Vector2.new(0.5, 0)
+	subText.Position = UDim2.new(0.5, 0, 1, -8)
+	subText.Size = UDim2.new(1, 0, 0, 36)
+	subText.BackgroundTransparency = 1
+	subText.Font = Enum.Font.GothamBlack
+	subText.TextScaled = true
+	subText.TextColor3 = Color3.new(1, 1, 1)
+	subText.TextStrokeTransparency = 0.2
+	subText.ZIndex = 51
+	subText.Parent = slapText
+
+	local shakeUntil, shakeStrength = 0, 0
+	RunService:BindToRenderStep("SlapShake", Enum.RenderPriority.Camera.Value + 1, function()
+		local left = shakeUntil - os.clock()
+		if left > 0 then
+			local s = shakeStrength * math.min(1, left / 0.5)
+			local cam = workspace.CurrentCamera
+			cam.CFrame = cam.CFrame * CFrame.Angles(math.rad((math.random() - 0.5) * s), math.rad((math.random() - 0.5) * s), math.rad((math.random() - 0.5) * s * 1.5))
+		end
+	end)
+
+	-- dizzy stars circling your head after you land
+	local function dizzy(char, seconds)
+		local head = char:FindFirstChild("Head")
+		if not head then
+			return
+		end
+		local stars = Instance.new("BillboardGui")
+		stars.Name = "DizzyStars"
+		stars.Size = UDim2.fromOffset(90, 40)
+		stars.StudsOffset = Vector3.new(0, 2.2, 0)
+		stars.LightInfluence = 0
+		stars.Parent = head
+		local labels = {}
+		for i = 1, 3 do
+			local l = Instance.new("TextLabel")
+			l.BackgroundTransparency = 1
+			l.Size = UDim2.fromOffset(26, 26)
+			l.AnchorPoint = Vector2.new(0.5, 0.5)
+			l.TextScaled = true
+			l.Text = if i == 2 then "💫" else "⭐"
+			l.Parent = stars
+			labels[i] = l
+		end
+		local start = os.clock()
+		local conn
+		conn = RunService.RenderStepped:Connect(function()
+			local t = os.clock() - start
+			if t > seconds or not stars.Parent then
+				conn:Disconnect()
+				stars:Destroy()
+				return
+			end
+			for i, l in ipairs(labels) do
+				local a = t * 6 + i * math.pi * 2 / 3
+				l.Position = UDim2.new(0.5, math.cos(a) * 34, 0.5, math.sin(a) * 9)
+				l.ZIndex = if math.sin(a) > 0 then 2 else 1
+			end
+		end)
+	end
+
+	local lines = { "Back to the start!", "Ouch! Sent home!", "That's gotta hurt!", "Yeeted home!", "Bonk! Try again!" }
+	SlapRemote.OnClientEvent:Connect(function(away, guardianName)
+		local char = player.Character
+		local root = char and char:FindFirstChild("HumanoidRootPart")
+		local humanoid = char and char:FindFirstChildOfClass("Humanoid")
+		local flightTime = Config.SlapFlightTime or 1.1
+
+		-- flash + shake + SLAP!
+		flash.Visible = true
+		flash.BackgroundTransparency = 0.1
+		TweenService:Create(flash, TweenInfo.new(0.35), { BackgroundTransparency = 1 }):Play()
+		task.delay(0.36, function()
+			flash.Visible = false
+		end)
+		shakeUntil, shakeStrength = os.clock() + 0.6, 6
+		slapText.Visible = true
+		slapText.Rotation = math.random(-12, 12)
+		slapText.TextTransparency = 0
+		slapStroke.Transparency = 0
+		subText.Text = (if guardianName then "The " .. guardianName .. " got you! " else "") .. lines[math.random(#lines)]
+		subText.TextTransparency = 0
+		slapScale.Scale = 2.4
+		TweenService:Create(slapScale, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
+		task.delay(flightTime + 0.4, function()
+			local info = TweenInfo.new(0.35)
+			TweenService:Create(slapText, info, { TextTransparency = 1 }):Play()
+			TweenService:Create(slapStroke, info, { Transparency = 1 }):Play()
+			TweenService:Create(subText, info, { TextTransparency = 1, TextStrokeTransparency = 1 }):Play()
+			task.delay(0.36, function()
+				slapText.Visible = false
+				subText.TextStrokeTransparency = 0.2
+			end)
+		end)
+
+		-- fly! spinning up and away until the server lands you at home
+		if root and humanoid then
+			local dir = if typeof(away) == "Vector3" and away.Magnitude > 0 then away.Unit else root.CFrame.LookVector
+			humanoid.PlatformStand = true
+			root.AssemblyLinearVelocity = dir * 90 + Vector3.new(0, 75, 0)
+			root.AssemblyAngularVelocity = dir:Cross(Vector3.yAxis) * -14 + Vector3.new(0, 8, 0)
+			task.delay(flightTime + 0.1, function()
+				if humanoid.Parent then
+					humanoid.PlatformStand = false
+					humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+					dizzy(char, Config.GuardianStunTime or 1.5)
+				end
+			end)
+		end
+	end)
+end
+setupSlap()
 
 -- 3D previews, hatch reveal, pet details, clock badge, title screen and
 -- console controls. In their own function to stay under Luau's local limit.

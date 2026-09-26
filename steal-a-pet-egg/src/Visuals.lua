@@ -3738,11 +3738,11 @@ function Visuals.MakeGuardian(def)
 	local labelY = body.Size.Y / 2 + (if def.Boss then 16 else 8)
 	Visuals.AddLabel(body, labelY, if def.Boss then 300 else 230)
 	if def.Boss then
-		Visuals.SetLabel(body, "👑 " .. def.GuardianName, "BOSS  •  Speed " .. def.GuardianSpeed, Color3.fromRGB(240, 150, 255))
+		Visuals.SetLabel(body, "👑 " .. def.GuardianName, "BOSS  •  Outrun with " .. Util.FormatNumber(def.SpeedNeeded) .. " Speed", Color3.fromRGB(240, 150, 255))
 		body.Label.Size = UDim2.fromOffset(300, 72)
 		body.Label.MaxDistance = 250
 	else
-		Visuals.SetLabel(body, def.GuardianName, "Speed " .. def.GuardianSpeed, Color3.fromRGB(255, 140, 110))
+		Visuals.SetLabel(body, def.GuardianName, if def.SpeedNeeded > 0 then "Outrun with " .. Util.FormatNumber(def.SpeedNeeded) .. " Speed" else "Slow and sleepy", Color3.fromRGB(255, 140, 110))
 	end
 
 	-- "Zzz" shown while it naps next to the nest

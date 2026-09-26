@@ -29,6 +29,7 @@ local PINK = Color3.fromRGB(240, 130, 240)
 local map
 local notifyRemote
 local hatchRemote
+local slapRemote
 local eggsFolder
 local ringsFolder
 local creaturesFolder
@@ -424,19 +425,120 @@ local function treadmillLevel(state)
 	return Config.TreadmillLevels[state.Profile.TreadmillLevel or 1] or Config.TreadmillLevels[1]
 end
 
--- Recolor the belt stripes and frame to match the treadmill tier
+-- Dress the treadmill for its tier: belt stripes, frame, rails, neon trim,
+-- light, console screen and pips, halo and particles (see Config.TreadmillLevels)
+local TREAD_METAL = Color3.fromRGB(205, 208, 218)
 local function paintTreadmill(state)
+	local current = state.Profile.TreadmillLevel or 1
 	local level = treadmillLevel(state)
 	local model = state.Plot.Model
+	local tread = state.Plot.Treadmill
+	local color = level.Color
+	local fancy = current >= 4 -- Gold and up get shiny tier-colored rails
 	local stripes = model:FindFirstChild("TreadmillStripes")
 	if stripes then
 		for _, stripe in ipairs(stripes:GetChildren()) do
-			stripe.Color = level.Color
+			stripe.Color = color
 		end
 	end
-	local frame = model:FindFirstChild("TreadmillFrame")
-	if frame then
-		frame.Color = level.Color:Lerp(Color3.new(0, 0, 0), 0.5)
+	for _, d in ipairs(model:GetChildren()) do
+		if d:IsA("BasePart") then
+			if d.Name == "TreadmillFrame" then
+				d.Color = color:Lerp(Color3.new(0, 0, 0), 0.5)
+				d.Material = Enum.Material[level.Frame or "Metal"]
+			elseif d.Name == "TreadTrim" or d.Name == "TreadSkirt" or d.Name == "ConsoleGlow" then
+				d.Color = color
+			elseif d.Name == "SideRail" or d.Name == "RailPost" or d.Name == "ConsolePost" or d.Name == "Roller" then
+				d.Color = if fancy then color:Lerp(Color3.new(1, 1, 1), 0.35) else TREAD_METAL
+				d.Material = if fancy then Enum.Material.Foil else Enum.Material.Metal
+			end
+		end
+	end
+	local pips = model:FindFirstChild("TreadPips")
+	if pips then
+		for _, pip in ipairs(pips:GetChildren()) do
+			local tier = pip:GetAttribute("Tier") or 99
+			local owned = tier <= current
+			pip.Color = if owned then Config.TreadmillLevels[tier].Color else Color3.fromRGB(45, 45, 55)
+			pip.Material = if owned then Enum.Material.Neon else Enum.Material.SmoothPlastic
+		end
+	end
+	local halo = model:FindFirstChild("TreadHalo")
+	if halo then
+		for _, orb in ipairs(halo:GetChildren()) do
+			orb.Color = color
+			orb.Transparency = if level.Halo then 0 else 1
+		end
+	end
+	local light = tread:FindFirstChild("TreadLight")
+	if light then
+		light.Color = color
+		light.Brightness = level.Glow or 0
+		light.Enabled = (level.Glow or 0) > 0
+	end
+	local fx = tread:FindFirstChild("TierFx")
+	if fx then
+		local def = level.Fx
+		fx.Enabled = def ~= nil
+		if def then
+			fx.Rate = def.Rate
+			fx.Size = NumberSequence.new(def.Size, 0)
+			fx.Speed = NumberRange.new(def.Speed * 0.6, def.Speed)
+			fx.Texture = if def.Fire then "rbxasset://textures/particles/fire_main.dds" else "rbxasset://textures/particles/sparkles_main.dds"
+			fx.Color = ColorSequence.new(color, color:Lerp(Color3.new(1, 1, 1), 0.6))
+		end
+	end
+	tread:SetAttribute("Rainbow", level.Rainbow == true)
+	local console = model:FindFirstChild("Console")
+	local screen = console and console:FindFirstChild("Screen")
+	local bg = screen and screen:FindFirstChild("Bg")
+	if bg then
+		bg.TierLabel.Text = string.upper(level.Name) .. " TREADMILL"
+		bg.TierLabel.TextColor3 = color
+		bg.MultLabel.Text = "x" .. Util.FormatNumber(level.Mult) .. " SPEED"
+		bg.Edge.Color = color
+	end
+	state.ScreenStatus = nil -- redraw the status line on the next tick
+end
+
+-- Burst of sparkles when you buy a new treadmill tier
+local function treadmillBurst(state)
+	local tread = state.Plot.Treadmill
+	local burst = tread:FindFirstChild("BurstFx")
+	if burst then
+		local color = treadmillLevel(state).Color
+		burst.Color = ColorSequence.new(color, Color3.new(1, 1, 1))
+		burst:Emit(80)
+	end
+	local light = tread:FindFirstChild("TreadLight")
+	if light then
+		local glow = light.Brightness
+		light.Enabled = true
+		light.Brightness = 6
+		TweenService:Create(light, TweenInfo.new(1.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Brightness = glow }):Play()
+	end
+end
+
+-- Screen status line and belt "running" state, only touched when they change
+local function setTreadmillStatus(state, running, gain)
+	local text = if running then "▶ +" .. Util.FormatNumber(gain) .. " Speed / sec" else "Step on to train!"
+	if state.ScreenStatus == text then
+		return
+	end
+	state.ScreenStatus = text
+	local tread = state.Plot.Treadmill
+	tread:SetAttribute("Running", running)
+	local back = state.Plot.Model:FindFirstChild("TreadBackFx")
+	local runFx = back and back:FindFirstChild("RunFx")
+	if runFx then
+		runFx.Enabled = running
+	end
+	local console = state.Plot.Model:FindFirstChild("Console")
+	local screen = console and console:FindFirstChild("Screen")
+	local bg = screen and screen:FindFirstChild("Bg")
+	if bg then
+		bg.StatusLabel.Text = text
+		bg.StatusLabel.TextColor3 = if running then Color3.fromRGB(120, 255, 140) else Color3.fromRGB(200, 210, 235)
 	end
 end
 
@@ -471,6 +573,7 @@ local function onBuySpeed(player) -- buys the next treadmill upgrade
 	end
 	state.Profile.TreadmillLevel = current + 1
 	paintTreadmill(state)
+	treadmillBurst(state)
 	refreshSpeedPad(state)
 	notify(player, "🏃 " .. nextLevel.Name .. " Treadmill unlocked! Training now gives x" .. nextLevel.Mult .. " Speed", nextLevel.Color)
 end
@@ -949,11 +1052,166 @@ local function setChased(guardian, player)
 	end
 end
 
+-- A giant cartoon glove: a white palm with fingers, a thumb and a red cuff,
+-- welded to the palm so tweening the palm moves the whole glove.
+local function makeSlapGlove()
+	local glove = Instance.new("Model")
+	glove.Name = "SlapGlove"
+	local WHITE = Color3.fromRGB(250, 250, 250)
+	local function piece(name, size, offset, color, shape)
+		local p = Instance.new("Part")
+		p.Name = name
+		p.Shape = shape or Enum.PartType.Block
+		p.Size = size
+		p.Color = color or WHITE
+		p.Material = Enum.Material.SmoothPlastic
+		p.CanCollide = false
+		p.CanQuery = false
+		p.CanTouch = false
+		p.CastShadow = false
+		p.Parent = glove
+		return p, offset
+	end
+	local palm = piece("Palm", Vector3.new(5, 5.6, 1.8), nil, WHITE, Enum.PartType.Ball)
+	palm.Anchored = true
+	glove.PrimaryPart = palm
+	local parts = {
+		{ piece("Cuff", Vector3.new(1.6, 4.4, 4.4), CFrame.new(0, -3.4, 0) * CFrame.Angles(0, 0, math.rad(90)), Color3.fromRGB(230, 50, 60), Enum.PartType.Cylinder) },
+	}
+	for i, x in ipairs({ -1.65, -0.55, 0.55, 1.65 }) do
+		local len = if i == 1 or i == 4 then 3 else 3.6
+		table.insert(parts, { piece("Finger", Vector3.new(1.1, len, 1.1), CFrame.new(x, 2.6 + len / 2 - 0.9, 0)) })
+	end
+	table.insert(parts, { piece("Thumb", Vector3.new(1.2, 2.6, 1.2), CFrame.new(-3, 0.2, 0) * CFrame.Angles(0, 0, math.rad(50))) })
+	for _, info in ipairs(parts) do
+		local p, offset = info[1], info[2]
+		p.CFrame = palm.CFrame * offset
+		p.Massless = true
+		local weld = Instance.new("WeldConstraint")
+		weld.Part0 = palm
+		weld.Part1 = p
+		weld.Parent = p
+	end
+	return glove, palm
+end
+
+-- The slap everyone can see: the glove swings through the player, a ring and
+-- stars burst out, and a "SLAP!" pops up over them.
+local function slapEffect(fromPosition, hit, away)
+	local folder = workspace:FindFirstChild("Effects") or Instance.new("Folder")
+	folder.Name = "Effects"
+	folder.Parent = workspace
+
+	local glove, palm = makeSlapGlove()
+	local up = Vector3.yAxis
+	local startCF = CFrame.lookAt(hit - away * 9 + up * 7, hit - away * 9 + up * 7 + away) * CFrame.Angles(math.rad(-60), 0, 0)
+	local endCF = CFrame.lookAt(hit + away * 3 + up * 1.5, hit + away * 3 + up * 1.5 + away) * CFrame.Angles(math.rad(20), 0, 0)
+	palm.CFrame = startCF
+	for _, d in ipairs(glove:GetChildren()) do
+		if d ~= palm and d:IsA("BasePart") then
+			d.Anchored = false
+		end
+	end
+	glove.Parent = folder
+	TweenService:Create(palm, TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { CFrame = endCF }):Play()
+	task.delay(0.16, function()
+		-- impact: a ring that shoots out, a star burst and the SLAP! sign
+		local ring = Instance.new("Part")
+		ring.Name = "SlapRing"
+		ring.Shape = Enum.PartType.Cylinder
+		ring.Size = Vector3.new(0.3, 2, 2)
+		ring.CFrame = CFrame.new(hit) * CFrame.Angles(0, 0, math.rad(90))
+		ring.Color = Color3.fromRGB(255, 240, 150)
+		ring.Material = Enum.Material.Neon
+		ring.Anchored = true
+		ring.CanCollide = false
+		ring.CanQuery = false
+		ring.CanTouch = false
+		ring.CastShadow = false
+		ring.Parent = folder
+		TweenService:Create(ring, TweenInfo.new(0.45, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Size = Vector3.new(0.3, 22, 22), Transparency = 1 }):Play()
+
+		local burst = Instance.new("ParticleEmitter")
+		burst.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+		burst.Color = ColorSequence.new(Color3.fromRGB(255, 230, 90), Color3.fromRGB(255, 120, 60))
+		burst.LightEmission = 0.8
+		burst.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1.6), NumberSequenceKeypoint.new(1, 0) })
+		burst.Lifetime = NumberRange.new(0.4, 0.8)
+		burst.Speed = NumberRange.new(25, 45)
+		burst.SpreadAngle = Vector2.new(180, 180)
+		burst.Drag = 4
+		burst.Rate = 0
+		burst.Parent = ring
+		burst:Emit(40)
+
+		local sign = Instance.new("BillboardGui")
+		sign.Name = "SlapText"
+		sign.Size = UDim2.fromScale(12, 4)
+		sign.StudsOffsetWorldSpace = Vector3.new(0, 4, 0)
+		sign.AlwaysOnTop = true
+		sign.LightInfluence = 0
+		sign.Parent = ring
+		local text = Instance.new("TextLabel")
+		text.BackgroundTransparency = 1
+		text.Size = UDim2.fromScale(1, 1)
+		text.Font = Enum.Font.FredokaOne
+		text.TextScaled = true
+		text.Text = "SLAP!"
+		text.Rotation = -8
+		text.TextColor3 = Color3.fromRGB(255, 230, 70)
+		text.TextStrokeColor3 = Color3.fromRGB(150, 20, 20)
+		text.TextStrokeTransparency = 0
+		text.Parent = sign
+		TweenService:Create(text, TweenInfo.new(0.9, Enum.EasingStyle.Quad, Enum.EasingDirection.In), { TextTransparency = 1, TextStrokeTransparency = 1 }):Play()
+
+		-- the glove follows through and fades away
+		TweenService:Create(palm, TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { CFrame = endCF * CFrame.new(0, 2, -4) }):Play()
+		for _, d in ipairs(glove:GetChildren()) do
+			if d:IsA("BasePart") then
+				TweenService:Create(d, TweenInfo.new(0.5, Enum.EasingStyle.Linear, Enum.EasingDirection.In, 0, false, 0.25), { Transparency = 1 }):Play()
+			end
+		end
+		task.delay(1, function()
+			ring:Destroy()
+			glove:Destroy()
+		end)
+	end)
+end
+
 local function caught(biome, player, rec)
 	releaseCarry(player)
 	returnToNest(rec)
-	stun(player, Config.GuardianStunTime, Config.GuardianStunSpeed)
-	notify(player, "💥 The " .. biome.Def.GuardianName .. " caught you and took the egg back!", RED)
+	stun(player, Config.GuardianStunTime + Config.SlapFlightTime, Config.GuardianStunSpeed)
+	notify(player, "💥 SLAP! The " .. biome.Def.GuardianName .. " caught you, took the egg back and sent you home!", RED)
+
+	-- Slap! The glove hits you, you go flying (your client does the flight,
+	-- shake and SLAP! text) and land back at the start of your base.
+	local root = getRoot(player)
+	local state = states[player]
+	if not root or not state then
+		return
+	end
+	local from = biome.Guardian.Position
+	local away = (root.Position - from) * Vector3.new(1, 0, 1)
+	away = if away.Magnitude > 0.1 then away.Unit else root.CFrame.LookVector
+	slapEffect(from, root.Position, away)
+	if slapRemote then
+		slapRemote:FireClient(player, away, biome.Def.GuardianName)
+	end
+	state.SlapToken = (state.SlapToken or 0) + 1
+	local token = state.SlapToken
+	task.delay(Config.SlapFlightTime, function()
+		local s = states[player]
+		local char = player.Character
+		if s and s.SlapToken == token and char and char.Parent then
+			char:PivotTo(s.Plot.SpawnCFrame)
+			local r = getRoot(player)
+			if r then
+				r.AssemblyLinearVelocity = Vector3.zero
+				r.AssemblyAngularVelocity = Vector3.zero
+			end
+		end
+	end)
 end
 
 local function updateGuardian(biome, dt)
@@ -1009,7 +1267,7 @@ local function updateGuardian(biome, dt)
 
 	-- Cartoon motion: bouncy waddle while running, slow breathing while napping,
 	-- and the boss always hovers.
-	guardian.Phase += dt * (if moving then 2 + speed * 0.12 else 1.5)
+	guardian.Phase += dt * (if moving then 2 + math.min(speed, 130) * 0.12 else 1.5) -- fast guardians don't waddle into a blur
 	local bob, roll = 0, 0
 	if def.Boss then
 		bob = math.sin(guardian.Phase * 0.8) * 1.2
@@ -1310,9 +1568,11 @@ local function fastLoop()
 					player:SetAttribute("OnTreadmill", true)
 					player:SetAttribute("TrainGain", Config.TreadmillGain(state.Profile.Speed) * treadmillLevel(state).Mult * (if state.Passes.DoubleSpeedPass then 2 else 1))
 					player:SetAttribute("TrainNext", math.max(0, nextInterval - state.TreadProgress))
+					setTreadmillStatus(state, true, player:GetAttribute("TrainGain") / math.max(nextInterval, 0.01))
 				else
 					player:SetAttribute("OnTreadmill", nil)
 					player:SetAttribute("TrainNext", nil)
+					setTreadmillStatus(state, false)
 				end
 			end
 		end
@@ -1425,6 +1685,7 @@ function GameService.Init(mapData, notifyEvent, treadmillEvent)
 	map = mapData
 	notifyRemote = notifyEvent
 	hatchRemote = ReplicatedStorage:WaitForChild("Remotes"):FindFirstChild("Hatched")
+	slapRemote = ReplicatedStorage:WaitForChild("Remotes"):FindFirstChild("Slapped")
 
 	-- treadmill start / stop from the client
 	if treadmillEvent then
@@ -1694,6 +1955,10 @@ function GameService.RemovePlayer(player)
 	end
 
 	local profile = GameService.Snapshot(player)
+
+	-- the empty base goes back to a plain, stopped treadmill
+	setTreadmillStatus(state, false)
+	paintTreadmill({ Profile = { TreadmillLevel = 1 }, Plot = state.Plot })
 
 	for _, slot in pairs(state.Nest) do
 		if slot.Kind == "Egg" then

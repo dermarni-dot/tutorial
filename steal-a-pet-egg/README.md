@@ -20,20 +20,23 @@ Game Settings > Security > **Enable Studio Access to API Services**.
 
   | Biome | Guardian | Guardian speed | Speed needed | Eggs |
   |---|---|---|---|---|
-  | Whispering Forest | Bramble Bear | 20 | 0 | Common, Uncommon |
-  | Scorch Dunes | Dune Scorpion | 30 | 11 | Uncommon, Rare |
-  | Frostpeak | Frost Yeti | 42 | 24 | Rare, Epic |
-  | Magma Crater | Lava Golem | 56 | 40 | Epic, Legendary |
-  | Starfall Void | Void Wraith | 75 | 61 | Legendary, Mythic |
-  | Candy Kingdom | Gummy Titan | 118 | 5M | Legendary, Mythic, Divine, Secret |
-  | Sunken Reef | Reef King | 128 | 25M | Mythic, Divine, Secret |
-  | Celestial Heights (boss) | Seraph Sentinel | 136 | 100M | Mythic, Divine, Secret (8%!) |
+  | Whispering Forest | Bramble Bear | 28.6 | 0 | Common, Uncommon |
+  | Scorch Dunes | Dune Scorpion | 106.5 | 1K | Uncommon, Rare |
+  | Frostpeak | Frost Yeti | 159.3 | 25K | Rare, Epic |
+  | Magma Crater | Lava Golem | 199 | 200K | Epic, Legendary |
+  | Starfall Void | Void Wraith | 232.8 | 1M | Legendary, Mythic |
+  | Candy Kingdom | Gummy Titan | 269.1 | 5M | Legendary, Mythic, Divine, Secret |
+  | Sunken Reef | Reef King | 308.1 | 25M | Mythic, Divine, Secret |
+  | Celestial Heights (boss) | Seraph Sentinel | 343.8 | 100M | Mythic, Divine, Secret (8%!) |
 
-  Base walk speed is 24, plus your Speed stat (you start with 5).
+  Walk speed climbs with every tenfold of your Speed stat, faster and faster: 5 Speed walks at 49, 300 at 100, 11K at 162, 1M at 260 and 100M at 384 (max 420). Guardian speed is in studs per second; each guardian is just a hair slower than you are while carrying an egg with its zone's Speed needed. Tune it with `Config.BaseWalkSpeed`, `WalkPerTenfold` and `WalkCurve`.
 
-- **Grabbing eggs:** hold E on an egg in a nest. The guardian chases you. If it touches you, it takes the egg back and stuns you. Get far enough from its nest and it gives up.
+- **Grabbing eggs:** hold E on an egg in a nest. The guardian chases you. If it catches you: **SLAP!** A giant glove smacks you, you go spinning through the air with a screen flash, shake and a big SLAP! text, then land back at the start of your base with dizzy stars while it takes its egg back. Get far enough from its nest and it gives up.
 - **Carrying:** you run 10% slower with an egg. Step into your base and the egg drops into your open pet pen to incubate.
-- **Speed:** stand on the **treadmill** in your base to gain Speed (it gets slower the faster you are), or buy +5 Speed on the yellow pad.
+- **Speed:** stand on the **treadmill** in your base to gain Speed. The gold pad sells 12 treadmill tiers, each doubling what it gives: Basic x1, Bronze x2, Silver x4, Gold x8, Diamond x16, Emerald x32, Cosmic x64, Galaxy x128, Nebula x256, Supernova x512, Quantum x1024 and Celestial x2048.
+  - Every tier looks fancier: tier-colored belt stripes, neon side trims, a light under the belt, then shiny rails from Gold, glass frames and rising sparkles, a spinning halo of orbs from Cosmic, flames for Supernova and a rainbow belt for Celestial.
+  - A live screen on the console shows your tier, multiplier and Speed per second; a row of lights shows how many tiers you own.
+  - While you train the belt speeds up and kicks out speed streaks, and buying a tier sets off a burst of sparkles.
 - **Stealing:**
   - Hold E on an egg incubating in someone's base (1.25s).
   - Hold E on the egg on another player's head (0.6s) to snatch it.
