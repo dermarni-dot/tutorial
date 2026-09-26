@@ -1,0 +1,30 @@
+{
+  "name": "StealAPetEgg",
+  "tree": {
+    "$className": "DataModel",
+    "ReplicatedStorage": {
+      "Shared": {
+        "$className": "Folder",
+        "Config": { "$path": "src/Config.lua" },
+        "Util": { "$path": "src/Util.lua" }
+      }
+    },
+    "ServerScriptService": {
+      "Main": { "$path": "src/Main.server.lua" },
+      "Modules": {
+        "$className": "Folder",
+        "MapBuilder": { "$path": "src/MapBuilder.lua" },
+        "Visuals": { "$path": "src/Visuals.lua" },
+        "DataService": { "$path": "src/DataService.lua" },
+        "GameService": { "$path": "src/GameService.lua" },
+        "Monetization": { "$path": "src/Monetization.lua" },
+        "AdminService": { "$path": "src/AdminService.lua" }
+      }
+    },
+    "StarterPlayer": {
+      "StarterPlayerScripts": {
+        "ClientMain": { "$path": "src/ClientMain.client.lua" }
+      }
+    }
+  }
+}
