@@ -1287,6 +1287,7 @@ adminHeader("💰 Cash")
 adminRow({ { "+$1K", "cash 1000", GREEN_BTN }, { "+$1M", "cash 1000000", GREEN_BTN }, { "+$1B", "cash 1000000000", GREEN_BTN }, { "+$1T", "cash 1000000000000", GREEN_BTN } })
 adminHeader("⚡ Speed")
 adminRow({ { "+1K", "speed 1000", GOLD_BTN }, { "+100K", "speed 100000", GOLD_BTN }, { "+1M", "speed 1000000", GOLD_BTN }, { "Reset", "setspeed " .. Config.StartingSpeed, GOLD_BTN } })
+adminRow({ { "+100M", "speed 100000000", GOLD_BTN }, { "+1B", "speed 1000000000", GOLD_BTN }, { "+10B", "speed 10000000000", GOLD_BTN }, { "+50B", "speed 50000000000", GOLD_BTN } })
 adminHeader("🥚 Get an egg (in your hands)")
 local eggButtons = {}
 for i, r in ipairs(Config.Rarities) do
@@ -1323,6 +1324,7 @@ adminHeader("🚀 Teleport")
 adminRow({ { "Town", "tp town" }, { "Forest", "tp forest" }, { "Desert", "tp desert" } })
 adminRow({ { "Snow", "tp snow" }, { "Volcano", "tp volcano" }, { "Void", "tp void" } })
 adminRow({ { "Candy", "tp candy" }, { "Reef", "tp ocean" }, { "Heaven", "tp heaven" } })
+adminRow({ { "Shroom", "tp shroom" }, { "Spooky", "tp spooky" }, { "Clock", "tp clockwork" }, { "Neon", "tp cyber" } })
 adminHeader("🌙 Time of day (everyone)")
 adminRow({ { "Day", "time day", GOLD_BTN }, { "Sunset", "time sunset", GOLD_BTN }, { "Night", "time night", GOLD_BTN }, { "Cycle", "time cycle", GOLD_BTN } })
 adminHeader("🎁 Daily reward")
@@ -2259,6 +2261,72 @@ local function setupSlap()
 	end)
 end
 setupSlap()
+
+--------------------------------------------------------------------------------
+-- Trail home: while you carry an egg, a glowing beam runs from you to your base
+-- so you can find your way back at top speed without slowing down to look.
+--------------------------------------------------------------------------------
+local function setupHomeTrail()
+	local target = Instance.new("Part")
+	target.Name = "HomeTrailTarget"
+	target.Anchored = true
+	target.CanCollide = false
+	target.CanQuery = false
+	target.CanTouch = false
+	target.Transparency = 1
+	target.Size = Vector3.one
+	local targetAttach = Instance.new("Attachment")
+	targetAttach.Parent = target
+	local beam = Instance.new("Beam")
+	beam.Name = "HomeTrail"
+	beam.Attachment1 = targetAttach
+	beam.Color = ColorSequence.new(Color3.fromRGB(255, 225, 90), Color3.fromRGB(120, 255, 150))
+	beam.Transparency = NumberSequence.new(0.15, 0.5)
+	beam.LightEmission = 1
+	beam.Width0 = 1.4
+	beam.Width1 = 3
+	beam.FaceCamera = true
+	beam.Segments = 20
+	beam.Enabled = false
+	beam.Parent = target
+
+	local function myFloor()
+		local plots = workspace:FindFirstChild("Map") and workspace.Map:FindFirstChild("Plots")
+		if not plots then
+			return nil
+		end
+		for _, plot in ipairs(plots:GetChildren()) do
+			if plot:GetAttribute("OwnerUserId") == player.UserId then
+				return plot:FindFirstChild("Floor")
+			end
+		end
+		return nil
+	end
+
+	local function refresh()
+		local char = player.Character
+		local root = char and char:FindFirstChild("HumanoidRootPart")
+		local floor = myFloor()
+		if player:GetAttribute("CarryingEgg") and root and floor then
+			local rootAttach = root:FindFirstChild("HomeTrailAttach") or Instance.new("Attachment")
+			rootAttach.Name = "HomeTrailAttach"
+			rootAttach.Position = Vector3.new(0, -2.2, 0)
+			rootAttach.Parent = root
+			target.Position = floor.Position + Vector3.new(0, 2, 0)
+			target.Parent = workspace
+			beam.Attachment0 = rootAttach
+			beam.Enabled = true
+		else
+			beam.Enabled = false
+		end
+	end
+	player:GetAttributeChangedSignal("CarryingEgg"):Connect(refresh)
+	player.CharacterAdded:Connect(function()
+		task.defer(refresh)
+	end)
+	refresh()
+end
+setupHomeTrail()
 
 -- 3D previews, hatch reveal, pet details, clock badge, title screen and
 -- console controls. In their own function to stay under Luau's local limit.

@@ -28,6 +28,7 @@ local TOWN_HALF = PLOT_ROW_SPAN / 2 + 20 -- the town is as wide as the row of ba
 local CORRIDOR_HALF = TOWN_HALF -- zones are as wide as the town
 local TILE = 10 -- wall checker size
 local FLOOR_TILE = 5 -- floor checker size (small squares, like Steal an Egg)
+local ZONE_FLOOR_TILE = 10 -- bigger squares in the zones: 4x fewer parts, and easier to read at top speed
 local WALL_HEIGHT = 40
 local DOOR_HALF = 35
 local DOOR_HEIGHT = 30
@@ -238,15 +239,16 @@ end
 --------------------------------------------------------------------------------
 -- A floor whose top sits at y = 0: one solid base plus every other tile in the
 -- second color. `skip(x, z)` can leave out tiles hidden under bases.
-local function checkerFloor(folder, xMin, xMax, zMin, zMax, colors, skip)
+local function checkerFloor(folder, xMin, xMax, zMin, zMax, colors, skip, tile)
+	tile = tile or FLOOR_TILE
 	part({ Name = "Floor", Size = Vector3.new(xMax - xMin, 2, zMax - zMin), Position = Vector3.new((xMin + xMax) / 2, -1, (zMin + zMax) / 2), Color = colors[1], Material = Enum.Material.SmoothPlastic, Parent = folder })
 	local ix = 0
-	for x = xMin, xMax - FLOOR_TILE, FLOOR_TILE do
+	for x = xMin, xMax - tile, tile do
 		local iz = 0
-		for z = zMin, zMax - FLOOR_TILE, FLOOR_TILE do
-			local cx, cz = x + FLOOR_TILE / 2, z + FLOOR_TILE / 2
+		for z = zMin, zMax - tile, tile do
+			local cx, cz = x + tile / 2, z + tile / 2
 			if (ix + iz) % 2 == 1 and not (skip and skip(cx, cz)) then
-				deco({ Name = "Tile", Size = Vector3.new(FLOOR_TILE, 0.2, FLOOR_TILE), Position = Vector3.new(cx, -0.05, cz), Color = colors[2], Material = Enum.Material.SmoothPlastic, CanCollide = false, CastShadow = false, Parent = folder })
+				deco({ Name = "Tile", Size = Vector3.new(tile, 0.2, tile), Position = Vector3.new(cx, -0.05, cz), Color = colors[2], Material = Enum.Material.SmoothPlastic, CanCollide = false, CastShadow = false, Parent = folder })
 			end
 			iz += 1
 		end
@@ -657,6 +659,7 @@ function LANDMARKS.Void(folder, centerZ, rng)
 	end
 end
 
+local PROPS_PER_ZONE = 120 -- fewer props = clearer lanes to run through
 local function placeProps(folder, def, centerZ, rng, keepClear)
 	-- each entry: { position, clearance radius }
 	local placed = {}
@@ -665,7 +668,7 @@ local function placeProps(folder, def, centerZ, rng, keepClear)
 	end
 	local count = 0
 	local tries = 0
-	while count < 170 and tries < 3000 do
+	while count < PROPS_PER_ZONE and tries < 3000 do
 		tries += 1
 		local side = if rng:NextNumber() < 0.5 then -1 else 1
 		local x = side * rng:NextNumber(26, CORRIDOR_HALF - 8)
@@ -1805,6 +1808,536 @@ function SETPIECES.RainbowBridge(folder, o, rng)
 end
 
 --------------------------------------------------------------------------------
+-- Glowshroom Grotto, Haunted Hollow, Clockwork Citadel and Neon Nexus
+--------------------------------------------------------------------------------
+local SHROOM_GLOW = { Color3.fromRGB(80, 230, 255), Color3.fromRGB(255, 90, 220), Color3.fromRGB(150, 255, 90), Color3.fromRGB(170, 110, 255) }
+local PUMPKIN = Color3.fromRGB(255, 130, 30)
+local GHOST = Color3.fromRGB(150, 255, 180)
+local BRASS = Color3.fromRGB(205, 155, 65)
+local COPPER = Color3.fromRGB(190, 105, 60)
+local IRON = Color3.fromRGB(70, 70, 80)
+local NEON = { Color3.fromRGB(255, 60, 200), Color3.fromRGB(40, 240, 255), Color3.fromRGB(150, 80, 255), Color3.fromRGB(255, 220, 60) }
+local CYBER_DARK = Color3.fromRGB(20, 16, 36)
+
+-- A mushroom: stem, domed cap with glowing spots and dark gills underneath
+local function shroom(folder, pos, h, capW, stemColor, capColor, glowSpots, rng)
+	local stemW = capW * 0.28
+	deco({ Name = "Stem", Shape = Enum.PartType.Cylinder, Size = Vector3.new(h, stemW, stemW), CFrame = cylinderAlongY(CFrame.new(pos + Vector3.new(0, h / 2, 0))), Color = stemColor, Material = Enum.Material.SmoothPlastic, Parent = folder })
+	deco({ Name = "Gills", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.4, capW * 0.9, capW * 0.9), CFrame = cylinderAlongY(CFrame.new(pos + Vector3.new(0, h - 0.1, 0))), Color = capColor:Lerp(BLACK, 0.55), Material = Enum.Material.SmoothPlastic, Parent = folder })
+	local cap = deco({ Name = "Cap", Shape = Enum.PartType.Ball, Size = Vector3.new(capW, capW * 0.5, capW), Position = pos + Vector3.new(0, h + capW * 0.12, 0), Color = capColor, Material = Enum.Material.SmoothPlastic, Parent = folder })
+	for i = 1, glowSpots do
+		local a = rng:NextNumber(0, math.pi * 2)
+		local r = rng:NextNumber(0.05, 0.32) * capW
+		local y = math.sqrt(math.max(0, 1 - (r / (capW / 2)) ^ 2)) * capW * 0.25
+		deco({ Name = "CapSpot", Shape = Enum.PartType.Ball, Size = Vector3.new(0.18, 0.08, 0.18) * capW, Position = cap.Position + Vector3.new(math.cos(a) * r, y - 0.05, math.sin(a) * r), Color = WHITE:Lerp(capColor, 0.3), Material = Enum.Material.Neon, CastShadow = false, Parent = folder })
+	end
+	return cap
+end
+
+function PROPS.GiantShroom(folder, pos, s, rng)
+	local col = SHROOM_GLOW[rng:NextInteger(1, #SHROOM_GLOW)]
+	local cap = shroom(folder, pos, rng:NextNumber(10, 17) * s, rng:NextNumber(10, 14) * s, Color3.fromRGB(215, 225, 235), col:Lerp(BLACK, 0.25), 5, rng)
+	local rim = deco({ Name = "CapGlow", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.3, cap.Size.X * 0.98, cap.Size.X * 0.98), CFrame = cylinderAlongY(CFrame.new(cap.Position - Vector3.new(0, cap.Size.Y * 0.12, 0))), Color = col, Material = Enum.Material.Neon, CastShadow = false, Parent = folder })
+	if rng:NextNumber() < 0.35 then
+		light(rim, col, 26, 1.2)
+	end
+end
+
+function PROPS.ShroomCluster(folder, pos, s, rng)
+	local col = SHROOM_GLOW[rng:NextInteger(1, #SHROOM_GLOW)]
+	for i = 1, rng:NextInteger(3, 5) do
+		local p = pos + Vector3.new(rng:NextNumber(-3, 3), 0, rng:NextNumber(-3, 3)) * s
+		local h = rng:NextNumber(1.5, 4) * s
+		deco({ Name = "Stem", Size = Vector3.new(0.5, h, 0.5) * Vector3.new(s, 1, s), Position = p + Vector3.new(0, h / 2, 0), Color = Color3.fromRGB(220, 230, 240), Material = Enum.Material.SmoothPlastic, Parent = folder })
+		local w = rng:NextNumber(1.6, 2.8) * s
+		deco({ Name = "GlowCap", Shape = Enum.PartType.Ball, Size = Vector3.new(w, w * 0.55, w), Position = p + Vector3.new(0, h, 0), Color = col, Material = Enum.Material.Neon, CastShadow = false, Parent = folder })
+	end
+end
+
+function PROPS.GlowRock(folder, pos, s, rng)
+	local r = rock(folder, pos, s, rng, Color3.fromRGB(55, 50, 80), Enum.Material.Slate)
+	local col = SHROOM_GLOW[rng:NextInteger(1, #SHROOM_GLOW)]
+	for _ = 1, 4 do
+		deco({ Name = "GlowMoss", Shape = Enum.PartType.Ball, Size = Vector3.new(rng:NextNumber(1, 2), 0.3, rng:NextNumber(1, 2)) * s, CFrame = r.CFrame * CFrame.new(rng:NextNumber(-0.4, 0.4) * r.Size.X, r.Size.Y * 0.48, rng:NextNumber(-0.4, 0.4) * r.Size.Z), Color = col, Material = Enum.Material.Neon, CastShadow = false, Parent = folder })
+	end
+end
+
+function PROPS.Pumpkin(folder, pos, s, rng)
+	local size = rng:NextNumber(3, 5.5) * s
+	local base = CFrame.new(pos + Vector3.new(0, size * 0.4, 0)) * CFrame.Angles(0, rng:NextNumber(0, math.pi * 2), 0)
+	for k = -1, 1 do
+		deco({ Name = "Pumpkin", Shape = Enum.PartType.Ball, Size = Vector3.new(size * 0.6, size * 0.8, size), CFrame = base * CFrame.new(k * size * 0.28, 0, 0), Color = PUMPKIN:Lerp(Color3.fromRGB(200, 80, 20), math.abs(k) * 0.4), Material = Enum.Material.SmoothPlastic, Parent = folder })
+	end
+	deco({ Name = "PumpkinStem", Size = Vector3.new(0.5, 1.2, 0.5) * s, CFrame = base * CFrame.new(0, size * 0.45, 0) * CFrame.Angles(0, 0, 0.3), Color = Color3.fromRGB(80, 110, 40), Material = Enum.Material.Wood, Parent = folder })
+	if rng:NextNumber() < 0.5 then
+		-- carved face glowing from inside
+		local faceGlow = Color3.fromRGB(255, 220, 90)
+		for _, sx in ipairs({ -1, 1 }) do
+			deco({ Name = "PumpkinEye", Shape = Enum.PartType.Wedge, Size = Vector3.new(0.2, 0.8, 0.8) * size / 3, CFrame = base * CFrame.new(sx * size * 0.2, size * 0.1, -size * 0.49) * CFrame.Angles(0, math.rad(90), 0), Color = faceGlow, Material = Enum.Material.Neon, CastShadow = false, Parent = folder })
+		end
+		local mouth = deco({ Name = "PumpkinMouth", Size = Vector3.new(size * 0.5, size * 0.12, 0.2), CFrame = base * CFrame.new(0, -size * 0.14, -size * 0.49), Color = faceGlow, Material = Enum.Material.Neon, CastShadow = false, Parent = folder })
+		if rng:NextNumber() < 0.4 then
+			light(mouth, Color3.fromRGB(255, 170, 60), 14, 1)
+		end
+	end
+end
+
+function PROPS.Gravestone(folder, pos, s, rng)
+	local stone = Color3.fromRGB(125, 125, 135):Lerp(Color3.fromRGB(90, 100, 90), rng:NextNumber())
+	local base = CFrame.new(pos) * CFrame.Angles(0, rng:NextNumber(-0.3, 0.3), rng:NextNumber(-0.12, 0.12))
+	deco({ Name = "Mound", Shape = Enum.PartType.Ball, Size = Vector3.new(4, 1, 6.5) * s, CFrame = base * CFrame.new(0, 0, 3 * s), Color = Color3.fromRGB(70, 60, 50), Material = Enum.Material.Ground, Parent = folder })
+	if rng:NextNumber() < 0.3 then
+		deco({ Name = "CrossPost", Size = Vector3.new(0.9, 6, 0.9) * s, CFrame = base * CFrame.new(0, 3 * s, 0), Color = stone, Material = Enum.Material.Slate, Parent = folder })
+		deco({ Name = "CrossBar", Size = Vector3.new(3.6, 0.9, 0.9) * s, CFrame = base * CFrame.new(0, 4.3 * s, 0), Color = stone, Material = Enum.Material.Slate, Parent = folder })
+	else
+		deco({ Name = "Headstone", Size = Vector3.new(3.4, 3.6, 0.8) * s, CFrame = base * CFrame.new(0, 1.8 * s, 0), Color = stone, Material = Enum.Material.Slate, Parent = folder })
+		deco({ Name = "HeadstoneTop", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.8 * s, 3.4 * s, 3.4 * s), CFrame = base * CFrame.new(0, 3.6 * s, 0) * CFrame.Angles(0, math.rad(90), 0), Color = stone, Material = Enum.Material.Slate, Parent = folder })
+		deco({ Name = "RIP", Size = Vector3.new(1.8, 0.35, 0.2) * s, CFrame = base * CFrame.new(0, 2.6 * s, -0.45 * s), Color = stone:Lerp(BLACK, 0.4), Material = Enum.Material.Slate, Parent = folder })
+	end
+	if rng:NextNumber() < 0.25 then
+		deco({ Name = "GraveCandle", Size = Vector3.new(0.4, 0.8, 0.4), CFrame = base * CFrame.new(1.4 * s, 0.4, -1 * s), Color = Color3.fromRGB(240, 235, 210), Material = Enum.Material.SmoothPlastic, Parent = folder })
+		deco({ Name = "CandleFlame", Shape = Enum.PartType.Ball, Size = Vector3.new(0.3, 0.5, 0.3), CFrame = base * CFrame.new(1.4 * s, 1, -1 * s), Color = GHOST, Material = Enum.Material.Neon, CastShadow = false, Parent = folder })
+	end
+end
+
+function PROPS.SpookyTree(folder, pos, s, rng)
+	local bark = Color3.fromRGB(48, 38, 48)
+	local p = pos
+	local dir = Vector3.yAxis
+	for i = 1, 4 do
+		dir = (dir + Vector3.new(rng:NextNumber(-0.35, 0.35), 0, rng:NextNumber(-0.35, 0.35))).Unit
+		local len = rng:NextNumber(3.5, 5) * s
+		local nextP = p + dir * len
+		deco({ Name = "Trunk", Size = Vector3.new((2.2 - i * 0.35) * s, (2.2 - i * 0.35) * s, len + 0.6), CFrame = CFrame.lookAt((p + nextP) / 2, nextP), Color = bark, Material = Enum.Material.Wood, Parent = folder })
+		if i >= 2 then
+			for _ = 1, 2 do
+				local bdir = (dir + Vector3.new(rng:NextNumber(-1.2, 1.2), rng:NextNumber(-0.2, 0.4), rng:NextNumber(-1.2, 1.2))).Unit
+				local blen = rng:NextNumber(3, 6) * s
+				local tip = nextP + bdir * blen
+				deco({ Name = "Branch", Size = Vector3.new(0.5 * s, 0.5 * s, blen), CFrame = CFrame.lookAt((nextP + tip) / 2, tip), Color = bark, Material = Enum.Material.Wood, Parent = folder })
+			end
+		end
+		p = nextP
+	end
+	if rng:NextNumber() < 0.3 then
+		lantern(folder, p + Vector3.new(1.5, -2.5, 0), GHOST, 14)
+	end
+end
+
+-- A gear: a disc with teeth around the rim and a hub, standing on its edge
+local function gear(folder, cf, radius, color, material)
+	deco({ Name = "GearDisc", Shape = Enum.PartType.Cylinder, Size = Vector3.new(radius * 0.25, radius * 2, radius * 2), CFrame = cf, Color = color, Material = material or Enum.Material.Metal, Parent = folder })
+	local teeth = math.clamp(math.floor(radius * 2.4), 8, 16)
+	for i = 0, teeth - 1 do
+		local a = i / teeth * math.pi * 2
+		deco({ Name = "GearTooth", Size = Vector3.new(radius * 0.25, radius * 0.32, radius * 0.32), CFrame = cf * CFrame.Angles(a, 0, 0) * CFrame.new(0, radius + radius * 0.1, 0), Color = color, Material = material or Enum.Material.Metal, Parent = folder })
+	end
+	deco({ Name = "GearHub", Shape = Enum.PartType.Cylinder, Size = Vector3.new(radius * 0.4, radius * 0.6, radius * 0.6), CFrame = cf, Color = color:Lerp(BLACK, 0.35), Material = Enum.Material.Metal, Parent = folder })
+end
+
+function PROPS.Gear(folder, pos, s, rng)
+	local r = rng:NextNumber(3, 6) * s
+	gear(folder, CFrame.new(pos + Vector3.new(0, r * 0.75, 0)) * CFrame.Angles(0, rng:NextNumber(0, math.pi), 0) * CFrame.Angles(rng:NextNumber(0, 1), 0, 0), r, if rng:NextNumber() < 0.5 then BRASS else COPPER)
+end
+
+function PROPS.SteamPipe(folder, pos, s, rng)
+	local yaw = CFrame.new(pos) * CFrame.Angles(0, rng:NextNumber(0, math.pi * 2), 0)
+	local h = rng:NextNumber(6, 10) * s
+	local w = 1.4 * s
+	deco({ Name = "Pipe", Shape = Enum.PartType.Cylinder, Size = Vector3.new(h, w, w), CFrame = cylinderAlongY(yaw * CFrame.new(0, h / 2, 0)), Color = COPPER, Material = Enum.Material.Metal, Parent = folder })
+	deco({ Name = "PipeElbow", Shape = Enum.PartType.Ball, Size = Vector3.one * w * 1.2, CFrame = yaw * CFrame.new(0, h, 0), Color = COPPER, Material = Enum.Material.Metal, Parent = folder })
+	deco({ Name = "Pipe", Shape = Enum.PartType.Cylinder, Size = Vector3.new(5 * s, w, w), CFrame = yaw * CFrame.new(2.5 * s, h, 0), Color = COPPER, Material = Enum.Material.Metal, Parent = folder })
+	local vent = deco({ Name = "Vent", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.8, w * 1.6, w * 1.6), CFrame = yaw * CFrame.new(5 * s, h, 0), Color = IRON, Material = Enum.Material.Metal, Parent = folder })
+	for _, y in ipairs({ 1.2, h * 0.6 }) do
+		deco({ Name = "PipeRing", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.5, w * 1.3, w * 1.3), CFrame = cylinderAlongY(yaw * CFrame.new(0, y, 0)), Color = BRASS, Material = Enum.Material.Metal, Parent = folder })
+	end
+	gear(folder, yaw * CFrame.new(0, h * 0.4, -w * 0.9) * CFrame.Angles(0, math.rad(90), 0), 1.1 * s, Color3.fromRGB(200, 50, 50))
+	if rng:NextNumber() < 0.5 then
+		local smoke = Instance.new("Smoke")
+		smoke.Color = Color3.fromRGB(235, 235, 240)
+		smoke.Opacity = 0.18
+		smoke.Size = 2
+		smoke.RiseVelocity = 5
+		smoke.Parent = vent
+	end
+end
+
+function PROPS.Lamppost(folder, pos, s)
+	deco({ Name = "LampBase", Size = Vector3.new(1.6, 1, 1.6), Position = pos + Vector3.new(0, 0.5, 0), Color = IRON, Material = Enum.Material.Metal, Parent = folder })
+	deco({ Name = "LampPost", Shape = Enum.PartType.Cylinder, Size = Vector3.new(10 * s, 0.6, 0.6), CFrame = cylinderAlongY(CFrame.new(pos + Vector3.new(0, 5 * s, 0))), Color = IRON, Material = Enum.Material.Metal, Parent = folder })
+	deco({ Name = "LampCage", Size = Vector3.new(1.6, 2.2, 1.6), Position = pos + Vector3.new(0, 10 * s + 1, 0), Color = BRASS, Material = Enum.Material.Metal, Transparency = 0.2, Parent = folder })
+	local bulb = deco({ Name = "LampBulb", Shape = Enum.PartType.Ball, Size = Vector3.one * 1.3, Position = pos + Vector3.new(0, 10 * s + 1, 0), Color = Color3.fromRGB(255, 210, 130), Material = Enum.Material.Neon, CastShadow = false, Parent = folder })
+	light(bulb, Color3.fromRGB(255, 190, 110), 18, 1)
+	deco({ Name = "LampCap", Shape = Enum.PartType.Wedge, Size = Vector3.new(2, 0.8, 2), Position = pos + Vector3.new(0, 10 * s + 2.5, 0), Color = IRON, Material = Enum.Material.Metal, Parent = folder })
+end
+
+function PROPS.CogTower(folder, pos, s, rng)
+	local y = 0
+	for i = 0, 2 do
+		local h = (5 - i) * s
+		local w = (6 - i * 1.4) * s
+		deco({ Name = "TowerDrum", Shape = Enum.PartType.Cylinder, Size = Vector3.new(h, w, w), CFrame = cylinderAlongY(CFrame.new(pos + Vector3.new(0, y + h / 2, 0))), Color = if i % 2 == 0 then COPPER else BRASS, Material = Enum.Material.Metal, Parent = folder })
+		y += h
+	end
+	gear(folder, CFrame.new(pos + Vector3.new(0, y * 0.55, -3.4 * s)) * CFrame.Angles(0, math.rad(90), 0), 2.2 * s, BRASS)
+	local top = deco({ Name = "TowerLight", Shape = Enum.PartType.Ball, Size = Vector3.one * 1.6 * s, Position = pos + Vector3.new(0, y + 0.8 * s, 0), Color = Color3.fromRGB(120, 230, 255), Material = Enum.Material.Neon, CastShadow = false, Parent = folder })
+	if rng:NextNumber() < 0.3 then
+		light(top, Color3.fromRGB(120, 230, 255), 18, 1)
+	end
+end
+
+function PROPS.NeonTower(folder, pos, s, rng)
+	local w = rng:NextNumber(5, 8) * s
+	local h = rng:NextNumber(14, 26) * s
+	local col = NEON[rng:NextInteger(1, #NEON)]
+	local base = CFrame.new(pos) * CFrame.Angles(0, rng:NextInteger(0, 3) * math.pi / 2, 0)
+	deco({ Name = "Tower", Size = Vector3.new(w, h, w), CFrame = base * CFrame.new(0, h / 2, 0), Color = CYBER_DARK, Material = Enum.Material.Glass, Reflectance = 0.2, Parent = folder })
+	for _, sx in ipairs({ -1, 1 }) do
+		for _, sz in ipairs({ -1, 1 }) do
+			deco({ Name = "TowerEdge", Size = Vector3.new(0.3, h, 0.3), CFrame = base * CFrame.new(sx * w / 2, h / 2, sz * w / 2), Color = col, Material = Enum.Material.Neon, CastShadow = false, Parent = folder })
+		end
+	end
+	for y = 3, h - 2, 4 do
+		deco({ Name = "WindowBand", Size = Vector3.new(w + 0.1, 0.6, w + 0.1), CFrame = base * CFrame.new(0, y, 0), Color = col:Lerp(WHITE, 0.3), Material = Enum.Material.Neon, Transparency = 0.35, CastShadow = false, Parent = folder })
+	end
+	local top = deco({ Name = "TowerBeacon", Shape = Enum.PartType.Ball, Size = Vector3.one * 1.2, CFrame = base * CFrame.new(0, h + 1.5, 0), Color = col, Material = Enum.Material.Neon, CastShadow = false, Parent = folder })
+	deco({ Name = "Antenna", Size = Vector3.new(0.3, 3, 0.3), CFrame = base * CFrame.new(0, h + 0.5, 0), Color = IRON, Material = Enum.Material.Metal, Parent = folder })
+	if rng:NextNumber() < 0.3 then
+		light(top, col, 24, 1.4)
+	end
+end
+
+function PROPS.HoloTree(folder, pos, s, rng)
+	local col = NEON[rng:NextInteger(1, 3)]
+	local h = rng:NextNumber(6, 9) * s
+	deco({ Name = "HoloTrunk", Size = Vector3.new(0.8, h, 0.8) * Vector3.new(s, 1, s), Position = pos + Vector3.new(0, h / 2, 0), Color = col:Lerp(WHITE, 0.4), Material = Enum.Material.Neon, CastShadow = false, Parent = folder })
+	for i = 0, 2 do
+		local size = (6 - i * 1.6) * s
+		local leaf = deco({ Name = "HoloLeaves", Size = Vector3.one * size, CFrame = CFrame.new(pos + Vector3.new(0, h + i * 2.6 * s, 0)) * CFrame.Angles(0, i * 0.5, math.rad(45)), Color = col, Material = Enum.Material.Neon, CastShadow = false, CanCollide = false, Parent = folder })
+		leaf.Transparency = 0.55
+	end
+end
+
+function PROPS.DataPillar(folder, pos, s, rng)
+	local h = rng:NextNumber(8, 14) * s
+	local col = NEON[rng:NextInteger(1, #NEON)]
+	deco({ Name = "PillarBase", Size = Vector3.new(4, 1, 4) * Vector3.new(s, 1, s), Position = pos + Vector3.new(0, 0.5, 0), Color = CYBER_DARK, Material = Enum.Material.Metal, Parent = folder })
+	local core = deco({ Name = "DataCore", Size = Vector3.new(2.2 * s, h, 2.2 * s), Position = pos + Vector3.new(0, h / 2 + 1, 0), Color = col:Lerp(CYBER_DARK, 0.6), Material = Enum.Material.Glass, Transparency = 0.3, Parent = folder })
+	for y = 2, h, 2.5 do
+		deco({ Name = "DataRing", Size = Vector3.new(2.8 * s, 0.35, 2.8 * s), Position = pos + Vector3.new(0, y + 1, 0), Color = col, Material = Enum.Material.Neon, CastShadow = false, Parent = folder })
+	end
+	particles(core, { Color = ColorSequence.new(col), LightEmission = 1, Size = NumberSequence.new(0.25, 0), Lifetime = NumberRange.new(1, 2), Rate = 4, Speed = NumberRange.new(3, 5), EmissionDirection = Enum.NormalId.Top })
+end
+
+function PROPS.NeonSign(folder, pos, s, rng)
+	local col = NEON[rng:NextInteger(1, #NEON)]
+	local base = CFrame.new(pos) * CFrame.Angles(0, rng:NextNumber(0, math.pi * 2), 0)
+	for _, sx in ipairs({ -1, 1 }) do
+		deco({ Name = "SignPole", Size = Vector3.new(0.5, 8 * s, 0.5), CFrame = base * CFrame.new(sx * 3.5 * s, 4 * s, 0), Color = IRON, Material = Enum.Material.Metal, Parent = folder })
+	end
+	local board = deco({ Name = "SignBoard", Size = Vector3.new(8 * s, 3.6 * s, 0.4), CFrame = base * CFrame.new(0, 8 * s, 0), Color = CYBER_DARK, Material = Enum.Material.SmoothPlastic, Parent = folder })
+	for _, info in ipairs({ { 0, 1.8 }, { 0, -1.8 } }) do
+		deco({ Name = "SignFrame", Size = Vector3.new(8.2 * s, 0.3, 0.5), CFrame = board.CFrame * CFrame.new(0, info[2] * s, 0), Color = col, Material = Enum.Material.Neon, CastShadow = false, Parent = folder })
+	end
+	local words = { "EGGS 24/7", "PET SHOP", "NEXUS", "SPEED++", "HATCH!", "404 EGG" }
+	surfaceText(board, Enum.NormalId.Front, words[rng:NextInteger(1, #words)], col, Enum.Font.Arcade)
+end
+
+CLUTTER.Shroom = function(folder, p, rng)
+	deco({ Name = "TinyShroom", Shape = Enum.PartType.Ball, Size = Vector3.new(0.9, 0.5, 0.9), Position = p + Vector3.new(0, 0.7, 0), Color = SHROOM_GLOW[rng:NextInteger(1, #SHROOM_GLOW)], Material = Enum.Material.Neon, CanCollide = false, CastShadow = false, Parent = folder })
+	deco({ Name = "TinyStem", Size = Vector3.new(0.25, 0.6, 0.25), Position = p + Vector3.new(0, 0.3, 0), Color = Color3.fromRGB(220, 230, 240), Material = Enum.Material.SmoothPlastic, CanCollide = false, CastShadow = false, Parent = folder })
+end
+CLUTTER.Spooky = function(folder, p, rng)
+	if rng:NextNumber() < 0.5 then
+		deco({ Name = "DeadLeaf", Size = Vector3.new(0.8, 0.1, 0.6), CFrame = CFrame.new(p + Vector3.new(0, 0.1, 0)) * CFrame.Angles(0, rng:NextNumber(0, 3), 0), Color = ({ Color3.fromRGB(150, 80, 30), Color3.fromRGB(110, 60, 30), Color3.fromRGB(170, 120, 40) })[rng:NextInteger(1, 3)], Material = Enum.Material.SmoothPlastic, CanCollide = false, CastShadow = false, Parent = folder })
+	else
+		deco({ Name = "Bone", Size = Vector3.new(0.3, 0.3, 1.4), CFrame = CFrame.new(p + Vector3.new(0, 0.15, 0)) * CFrame.Angles(0, rng:NextNumber(0, 3), 0), Color = Color3.fromRGB(235, 230, 215), Material = Enum.Material.SmoothPlastic, CanCollide = false, Parent = folder })
+	end
+end
+CLUTTER.Clockwork = function(folder, p, rng)
+	if rng:NextNumber() < 0.6 then
+		deco({ Name = "Bolt", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.3, 0.7, 0.7), CFrame = cylinderAlongY(CFrame.new(p + Vector3.new(0, 0.15, 0))), Color = BRASS, Material = Enum.Material.Metal, CanCollide = false, Parent = folder })
+	else
+		deco({ Name = "Spring", Shape = Enum.PartType.Cylinder, Size = Vector3.new(1, 0.5, 0.5), CFrame = CFrame.new(p + Vector3.new(0, 0.25, 0)) * CFrame.Angles(0, rng:NextNumber(0, 3), 0), Color = Color3.fromRGB(170, 170, 180), Material = Enum.Material.Metal, CanCollide = false, Parent = folder })
+	end
+end
+CLUTTER.Cyber = function(folder, p, rng)
+	deco({ Name = "GridLight", Size = Vector3.new(rng:NextNumber(1, 3), 0.08, 0.2), CFrame = CFrame.new(p + Vector3.new(0, 0.06, 0)) * CFrame.Angles(0, rng:NextInteger(0, 1) * math.pi / 2, 0), Color = NEON[rng:NextInteger(1, #NEON)], Material = Enum.Material.Neon, CanCollide = false, CastShadow = false, Parent = folder })
+end
+
+AMBIENT.Spores = { Y = 1, Props = { Color = ColorSequence.new(Color3.fromRGB(120, 240, 255), Color3.fromRGB(255, 120, 230)), LightEmission = 1, Size = NumberSequence.new(0.35, 0.1), Transparency = NumberSequence.new(0.2, 1), Lifetime = NumberRange.new(6, 10), Rate = 50, Speed = NumberRange.new(1, 2.5), SpreadAngle = Vector2.new(30, 30), EmissionDirection = Enum.NormalId.Top } }
+AMBIENT.Mist = { Y = 1.5, Props = { Texture = "rbxasset://textures/particles/smoke_main.dds", Color = ColorSequence.new(Color3.fromRGB(170, 230, 190)), LightEmission = 0.2, Size = NumberSequence.new(8, 14), Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.4, 0.8), NumberSequenceKeypoint.new(1, 1) }), Lifetime = NumberRange.new(8, 12), Rate = 18, Speed = NumberRange.new(0.5, 1.5), RotSpeed = NumberRange.new(-10, 10), SpreadAngle = Vector2.new(80, 80), EmissionDirection = Enum.NormalId.Top } }
+AMBIENT.Steam = { Y = 1, Props = { Texture = "rbxasset://textures/particles/smoke_main.dds", Color = ColorSequence.new(Color3.fromRGB(245, 240, 235)), LightEmission = 0.1, Size = NumberSequence.new(2, 6), Transparency = NumberSequence.new(0.85, 1), Lifetime = NumberRange.new(4, 7), Rate = 25, Speed = NumberRange.new(2, 4), SpreadAngle = Vector2.new(20, 20), EmissionDirection = Enum.NormalId.Top } }
+AMBIENT.Data = { Y = 1, Props = { Color = ColorSequence.new(Color3.fromRGB(40, 240, 255), Color3.fromRGB(255, 60, 200)), LightEmission = 1, Size = NumberSequence.new(0.3), Transparency = NumberSequence.new(0, 1), Lifetime = NumberRange.new(4, 7), Rate = 60, Speed = NumberRange.new(3, 6), EmissionDirection = Enum.NormalId.Top } }
+EXTRA_AMBIENT.Shroom = "Fireflies"
+EXTRA_AMBIENT.Spooky = "Motes"
+EXTRA_AMBIENT.Cyber = "Stardust"
+
+WALL_TRIMS.Shroom = function(folder, x, z, side, rng)
+	local col = SHROOM_GLOW[rng:NextInteger(1, #SHROOM_GLOW)]
+	local h = rng:NextNumber(10, 26)
+	deco({ Name = "GlowVine", Size = Vector3.new(0.3, h, 0.4), CFrame = CFrame.new(x, WALL_HEIGHT - h / 2, z) * CFrame.Angles(rng:NextNumber(-0.1, 0.1), 0, 0), Color = col, Material = Enum.Material.Neon, CanCollide = false, CastShadow = false, Parent = folder })
+	deco({ Name = "WallShroom", Shape = Enum.PartType.Ball, Size = Vector3.new(1.6, 0.8, 2.4), Position = Vector3.new(x - side * 0.6, rng:NextNumber(4, 14), z + rng:NextNumber(-5, 5)), Color = col, Material = Enum.Material.Neon, CanCollide = false, CastShadow = false, Parent = folder })
+end
+WALL_TRIMS.Spooky = function(folder, x, z, side, rng)
+	if rng:NextNumber() < 0.5 then
+		local web = CFrame.new(x - side * 0.2, WALL_HEIGHT - 4, z)
+		for k = 0, 2 do
+			local strand = deco({ Name = "Cobweb", Size = Vector3.new(0.1, 7, 0.12), CFrame = web * CFrame.Angles(k * math.pi / 3, 0, 0), Color = Color3.fromRGB(230, 230, 235), Material = Enum.Material.SmoothPlastic, CanCollide = false, CastShadow = false, Parent = folder })
+			strand.Transparency = 0.4
+		end
+	else
+		deco({ Name = "WallCrack", Size = Vector3.new(0.2, rng:NextNumber(4, 9), 0.3), CFrame = CFrame.new(x - side * 0.1, rng:NextNumber(8, 28), z) * CFrame.Angles(rng:NextNumber(-0.6, 0.6), 0, 0), Color = Color3.fromRGB(30, 28, 36), Material = Enum.Material.SmoothPlastic, CanCollide = false, CastShadow = false, Parent = folder })
+	end
+	if rng:NextNumber() < 0.2 then
+		PROPS.Pumpkin(folder, Vector3.new(x - side * 3, WALL_HEIGHT, z), 0.5, rng)
+	end
+end
+WALL_TRIMS.Clockwork = function(folder, x, z, side, rng)
+	deco({ Name = "WallPipe", Shape = Enum.PartType.Cylinder, Size = Vector3.new(16.2, 1.2, 1.2), CFrame = CFrame.new(x - side * 0.6, 8, z) * CFrame.Angles(0, math.rad(90), 0), Color = COPPER, Material = Enum.Material.Metal, CanCollide = false, Parent = folder })
+	deco({ Name = "Rivet", Shape = Enum.PartType.Ball, Size = Vector3.one * 0.6, Position = Vector3.new(x - side * 0.2, 30, z), Color = BRASS, Material = Enum.Material.Metal, CanCollide = false, CastShadow = false, Parent = folder })
+	if rng:NextNumber() < 0.3 then
+		gear(folder, CFrame.new(x - side * 0.4, rng:NextNumber(16, 28), z), rng:NextNumber(2, 4), BRASS)
+	end
+end
+WALL_TRIMS.Cyber = function(folder, x, z, side, rng)
+	local col = NEON[rng:NextInteger(1, 3)]
+	deco({ Name = "NeonStripe", Size = Vector3.new(0.2, WALL_HEIGHT - 6, 0.4), Position = Vector3.new(x - side * 0.1, WALL_HEIGHT / 2, z), Color = col, Material = Enum.Material.Neon, CanCollide = false, CastShadow = false, Parent = folder })
+	deco({ Name = "NeonBand", Size = Vector3.new(0.2, 0.4, 16.2), Position = Vector3.new(x - side * 0.1, 6, z), Color = NEON[2], Material = Enum.Material.Neon, CanCollide = false, CastShadow = false, Parent = folder })
+end
+
+BACKDROPS.Shroom = { Base = Color3.fromRGB(40, 30, 64), Top = Color3.fromRGB(70, 50, 105), Material = Enum.Material.Slate, MinH = 90, MaxH = 160, Cap = Enum.Material.Slate }
+BACKDROPS.Spooky = { Base = Color3.fromRGB(40, 40, 48), Top = Color3.fromRGB(62, 60, 72), Material = Enum.Material.Slate, MinH = 45, MaxH = 95 }
+BACKDROPS.Clockwork = { Base = Color3.fromRGB(95, 70, 45), Top = Color3.fromRGB(170, 125, 70), Material = Enum.Material.Metal, MinH = 60, MaxH = 120, Flat = true }
+BACKDROPS.Cyber = { Base = Color3.fromRGB(22, 16, 42), Top = Color3.fromRGB(70, 35, 120), Material = Enum.Material.Glass, MinH = 100, MaxH = 190, Flat = true }
+
+function SKY.Shroom(folder, centerZ, rng)
+	-- big glowing spore-jellies drifting overhead
+	for _ = 1, 12 do
+		local col = SHROOM_GLOW[rng:NextInteger(1, #SHROOM_GLOW)]
+		local c = Vector3.new(rng:NextNumber(-380, 380), rng:NextNumber(70, 130), centerZ + rng:NextNumber(-140, 140))
+		local size = rng:NextNumber(10, 20)
+		local bell = deco({ Name = "SporeJelly", Shape = Enum.PartType.Ball, Size = Vector3.new(size, size * 0.6, size), Position = c, Color = col, Material = Enum.Material.Neon, CanCollide = false, CastShadow = false, Parent = folder })
+		bell.Transparency = 0.45
+		for k = 1, 5 do
+			local a = k / 5 * math.pi * 2
+			local len = rng:NextNumber(8, 16)
+			local tendril = deco({ Name = "Tendril", Size = Vector3.new(0.4, len, 0.4), Position = c + Vector3.new(math.cos(a) * size * 0.3, -len / 2 - size * 0.2, math.sin(a) * size * 0.3), Color = col, Material = Enum.Material.Neon, CanCollide = false, CastShadow = false, Parent = folder })
+			tendril.Transparency = 0.5
+		end
+	end
+end
+
+function SKY.Spooky(folder, centerZ, rng)
+	local moon = deco({ Name = "HauntedMoon", Shape = Enum.PartType.Ball, Size = Vector3.one * 80, Position = Vector3.new(-120, 210, centerZ + 300), Color = Color3.fromRGB(235, 245, 225), Material = Enum.Material.Neon, CanCollide = false, CastShadow = false, Parent = folder })
+	for _ = 1, 5 do
+		deco({ Name = "MoonCrater", Shape = Enum.PartType.Ball, Size = Vector3.one * rng:NextNumber(8, 16), Position = moon.Position + Vector3.new(rng:NextNumber(-25, 25), rng:NextNumber(-25, 25), -36), Color = Color3.fromRGB(200, 210, 195), Material = Enum.Material.SmoothPlastic, CanCollide = false, CastShadow = false, Parent = folder })
+	end
+	-- bat flocks
+	for flock = 1, 6 do
+		local c = Vector3.new(rng:NextNumber(-350, 350), rng:NextNumber(50, 110), centerZ + rng:NextNumber(-130, 130))
+		for _ = 1, 7 do
+			local p = c + Vector3.new(rng:NextNumber(-12, 12), rng:NextNumber(-5, 5), rng:NextNumber(-12, 12))
+			local yaw = rng:NextNumber(0, math.pi * 2)
+			deco({ Name = "Bat", Shape = Enum.PartType.Ball, Size = Vector3.new(1.2, 1.2, 1.6), Position = p, Color = Color3.fromRGB(25, 20, 30), Material = Enum.Material.SmoothPlastic, CanCollide = false, CastShadow = false, Parent = folder })
+			for _, sx in ipairs({ -1, 1 }) do
+				deco({ Name = "BatWing", Shape = Enum.PartType.Wedge, Size = Vector3.new(0.2, 1.2, 2.6), CFrame = CFrame.new(p) * CFrame.Angles(0, yaw, 0) * CFrame.new(sx * 1.6, 0.2, 0) * CFrame.Angles(0, math.rad(90 * sx), math.rad(-15 * sx)), Color = Color3.fromRGB(25, 20, 30), Material = Enum.Material.SmoothPlastic, CanCollide = false, CastShadow = false, Parent = folder })
+			end
+		end
+	end
+end
+
+function SKY.Clockwork(folder, centerZ, rng)
+	-- airships drifting over the citadel, and a giant clock gear in the sky
+	for i = 1, 3 do
+		local c = Vector3.new(rng:NextNumber(-320, 320), rng:NextNumber(90, 140), centerZ + rng:NextNumber(-120, 120))
+		local yaw = CFrame.new(c) * CFrame.Angles(0, rng:NextNumber(0, math.pi * 2), 0)
+		deco({ Name = "Blimp", Shape = Enum.PartType.Ball, Size = Vector3.new(16, 16, 44), CFrame = yaw, Color = Color3.fromRGB(190, 70, 60):Lerp(Color3.fromRGB(230, 200, 150), i / 3), Material = Enum.Material.Fabric, CanCollide = false, CastShadow = false, Parent = folder })
+		deco({ Name = "BlimpBand", Shape = Enum.PartType.Cylinder, Size = Vector3.new(1.2, 16.4, 16.4), CFrame = yaw * CFrame.Angles(0, math.rad(90), 0), Color = BRASS, Material = Enum.Material.Metal, CanCollide = false, CastShadow = false, Parent = folder })
+		deco({ Name = "Gondola", Size = Vector3.new(6, 3.5, 14), CFrame = yaw * CFrame.new(0, -10.5, 0), Color = Color3.fromRGB(110, 75, 45), Material = Enum.Material.WoodPlanks, CanCollide = false, CastShadow = false, Parent = folder })
+		for _, sx in ipairs({ -1, 1 }) do
+			deco({ Name = "Rope", Size = Vector3.new(0.3, 6, 0.3), CFrame = yaw * CFrame.new(sx * 2.6, -7, sx * 5), Color = Color3.fromRGB(80, 60, 40), Material = Enum.Material.Fabric, CanCollide = false, CastShadow = false, Parent = folder })
+		end
+		deco({ Name = "Fin", Shape = Enum.PartType.Wedge, Size = Vector3.new(0.6, 8, 8), CFrame = yaw * CFrame.new(0, 6, 20), Color = BRASS, Material = Enum.Material.Metal, CanCollide = false, CastShadow = false, Parent = folder })
+		gear(folder, yaw * CFrame.new(0, -10.5, 8.5) * CFrame.Angles(0, math.rad(90), 0), 2.5, IRON)
+	end
+	gear(folder, CFrame.new(160, 170, centerZ + 280) * CFrame.Angles(0, math.rad(90), 0) * CFrame.Angles(0.3, 0, 0), 40, BRASS)
+end
+
+function SKY.Cyber(folder, centerZ, rng)
+	-- a synthwave sun on the horizon with stripes cut through it
+	local sunC = Vector3.new(0, 110, centerZ + 320)
+	deco({ Name = "SynthSun", Shape = Enum.PartType.Cylinder, Size = Vector3.new(2, 150, 150), CFrame = CFrame.new(sunC) * CFrame.Angles(0, math.rad(90), 0), Color = Color3.fromRGB(255, 120, 90), Material = Enum.Material.Neon, CanCollide = false, CastShadow = false, Parent = folder })
+	deco({ Name = "SynthSunTop", Shape = Enum.PartType.Cylinder, Size = Vector3.new(2.2, 110, 110), CFrame = CFrame.new(sunC + Vector3.new(0, 18, -0.5)) * CFrame.Angles(0, math.rad(90), 0), Color = Color3.fromRGB(255, 210, 80), Material = Enum.Material.Neon, CanCollide = false, CastShadow = false, Parent = folder })
+	for i = 0, 5 do
+		deco({ Name = "SunStripe", Size = Vector3.new(160, 2 + i * 1.2, 1), Position = sunC + Vector3.new(0, -10 - i * 11, -2), Color = Color3.fromRGB(35, 15, 60), Material = Enum.Material.SmoothPlastic, CanCollide = false, CastShadow = false, Parent = folder })
+	end
+	-- flying cars zipping across
+	for _ = 1, 14 do
+		local col = NEON[rng:NextInteger(1, #NEON)]
+		local p = Vector3.new(rng:NextNumber(-380, 380), rng:NextNumber(45, 100), centerZ + rng:NextNumber(-140, 140))
+		local cf = CFrame.new(p) * CFrame.Angles(0, rng:NextInteger(0, 1) * math.pi / 2, 0)
+		deco({ Name = "FlyingCar", Size = Vector3.new(3, 1.4, 6), CFrame = cf, Color = CYBER_DARK, Material = Enum.Material.Metal, CanCollide = false, CastShadow = false, Parent = folder })
+		deco({ Name = "CarGlow", Size = Vector3.new(3.2, 0.3, 6.2), CFrame = cf * CFrame.new(0, -0.8, 0), Color = col, Material = Enum.Material.Neon, CanCollide = false, CastShadow = false, Parent = folder })
+		local trail = deco({ Name = "CarTrail", Size = Vector3.new(1.2, 0.4, 16), CFrame = cf * CFrame.new(0, 0, 11), Color = col, Material = Enum.Material.Neon, CanCollide = false, CastShadow = false, Parent = folder })
+		trail.Transparency = 0.6
+	end
+end
+
+SETPIECE_SPOTS.Shroom = { { "ShroomHouse", -355, 30, 36 }, { "GlowPool", 360, -60, 38 } }
+SETPIECE_SPOTS.Spooky = { { "HauntedManor", -352, -20, 42 }, { "Graveyard", 360, 60, 40 } }
+SETPIECE_SPOTS.Clockwork = { { "ClockTower", -355, 10, 36 }, { "GearWorks", 360, -50, 40 } }
+SETPIECE_SPOTS.Cyber = { { "DataCoreHub", -355, 30, 38 }, { "NeonPyramid", 360, -40, 40 } }
+
+function SETPIECES.ShroomHouse(folder, o, rng)
+	-- a mushroom you can live in: a round stem-house with a door, windows and a huge cap
+	local col = SHROOM_GLOW[2]
+	local facing = CFrame.lookAt(o, o + Vector3.new(if o.X < 0 then 1 else -1, 0, 0))
+	deco({ Name = "HouseStem", Shape = Enum.PartType.Cylinder, Size = Vector3.new(16, 14, 14), CFrame = cylinderAlongY(CFrame.new(o + Vector3.new(0, 8, 0))), Color = Color3.fromRGB(235, 225, 210), Material = Enum.Material.SmoothPlastic, Parent = folder })
+	local cap = shroom(folder, o + Vector3.new(0, 14, 0), 2, 30, Color3.fromRGB(235, 225, 210), Color3.fromRGB(200, 50, 150), 10, rng)
+	light(cap, col, 40, 1.4)
+	deco({ Name = "Door", Size = Vector3.new(4, 7, 0.6), CFrame = facing * CFrame.new(0, 3.5, -7), Color = Color3.fromRGB(110, 70, 45), Material = Enum.Material.WoodPlanks, Parent = folder })
+	for _, sx in ipairs({ -1, 1 }) do
+		deco({ Name = "RoundWindow", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.6, 3, 3), CFrame = facing * CFrame.new(sx * 4.2, 10, -6.2) * CFrame.Angles(0, math.rad(90), 0), Color = Color3.fromRGB(255, 220, 140), Material = Enum.Material.Neon, CastShadow = false, Parent = folder })
+	end
+	for i = 0, 5 do
+		deco({ Name = "SteppingShroom", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.5, 3, 3), CFrame = cylinderAlongY(facing * CFrame.new(0, 0.3, -10 - i * 3.6)), Color = SHROOM_GLOW[(i % #SHROOM_GLOW) + 1], Material = Enum.Material.Neon, CastShadow = false, Parent = folder })
+	end
+	for _ = 1, 4 do
+		PROPS.ShroomCluster(folder, o + Vector3.new(rng:NextNumber(-20, 20), 0, rng:NextNumber(-20, 20)), 1, rng)
+	end
+end
+
+function SETPIECES.GlowPool(folder, o, rng)
+	local pool = deco({ Name = "GlowPool", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.4, 50, 50), CFrame = cylinderAlongY(CFrame.new(o + Vector3.new(0, 0.2, 0))), Color = Color3.fromRGB(40, 200, 230), Material = Enum.Material.Neon, CanCollide = false, CastShadow = false, Parent = folder })
+	pool.Transparency = 0.35
+	deco({ Name = "PoolRim", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.6, 53, 53), CFrame = cylinderAlongY(CFrame.new(o + Vector3.new(0, 0.1, 0))), Color = Color3.fromRGB(60, 55, 85), Material = Enum.Material.Slate, Parent = folder })
+	for _ = 1, 8 do
+		local a = rng:NextNumber(0, math.pi * 2)
+		local r = rng:NextNumber(4, 18)
+		deco({ Name = "LilyPad", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.2, 4, 4), CFrame = cylinderAlongY(CFrame.new(o + Vector3.new(math.cos(a) * r, 0.5, math.sin(a) * r))), Color = Color3.fromRGB(70, 170, 90), Material = Enum.Material.SmoothPlastic, Parent = folder })
+	end
+	for i = 0, 7 do
+		local a = i / 8 * math.pi * 2
+		PROPS.GiantShroom(folder, o + Vector3.new(math.cos(a) * 32, 0, math.sin(a) * 32), 0.6, rng)
+	end
+	light(pool, Color3.fromRGB(80, 230, 255), 40, 1.5)
+end
+
+function SETPIECES.HauntedManor(folder, o, rng)
+	local cf = CFrame.lookAt(o, o + Vector3.new(if o.X < 0 then 1 else -1, 0, 0))
+	house(folder, cf, 26, 16, 20, { Wall = Color3.fromRGB(75, 70, 85), Trim = Color3.fromRGB(35, 30, 40), Roof = Color3.fromRGB(45, 40, 55), RoofHeight = 12, Chimney = false })
+	for _, sx in ipairs({ -1, 1 }) do
+		-- two crooked towers
+		local t = cf * CFrame.new(sx * 14, 0, 4) * CFrame.Angles(0, 0, math.rad(3 * sx))
+		deco({ Name = "Tower", Size = Vector3.new(7, 26, 7), CFrame = t * CFrame.new(0, 13, 0), Color = Color3.fromRGB(65, 60, 75), Material = Enum.Material.Brick, Parent = folder })
+		deco({ Name = "TowerSpire", Shape = Enum.PartType.Wedge, Size = Vector3.new(8, 10, 4), CFrame = t * CFrame.new(0, 31, -2), Color = Color3.fromRGB(45, 40, 55), Material = Enum.Material.Slate, Parent = folder })
+		deco({ Name = "TowerSpire", Shape = Enum.PartType.Wedge, Size = Vector3.new(8, 10, 4), CFrame = t * CFrame.new(0, 31, 2) * CFrame.Angles(0, math.pi, 0), Color = Color3.fromRGB(45, 40, 55), Material = Enum.Material.Slate, Parent = folder })
+		local win = deco({ Name = "TowerWindow", Size = Vector3.new(2, 3, 0.4), CFrame = t * CFrame.new(0, 20, -3.6), Color = GHOST, Material = Enum.Material.Neon, CastShadow = false, Parent = folder })
+		light(win, GHOST, 20, 1)
+	end
+	-- a ghost floating by the door
+	local ghost = deco({ Name = "Ghost", Shape = Enum.PartType.Ball, Size = Vector3.new(4, 6, 4), CFrame = cf * CFrame.new(-6, 7, -16), Color = Color3.fromRGB(235, 255, 240), Material = Enum.Material.Neon, CastShadow = false, CanCollide = false, Parent = folder })
+	ghost.Transparency = 0.35
+	for _, sx in ipairs({ -1, 1 }) do
+		deco({ Name = "GhostEye", Shape = Enum.PartType.Ball, Size = Vector3.new(0.7, 1.1, 0.4), CFrame = ghost.CFrame * CFrame.new(sx * 0.8, 1, -1.8), Color = BLACK, Material = Enum.Material.SmoothPlastic, CanCollide = false, Parent = folder })
+	end
+	for i = -3, 3 do
+		deco({ Name = "IronFence", Size = Vector3.new(0.4, 5, 0.4), CFrame = cf * CFrame.new(i * 4, 2.5, -20), Color = Color3.fromRGB(30, 28, 35), Material = Enum.Material.Metal, Parent = folder })
+	end
+	deco({ Name = "FenceRail", Size = Vector3.new(24.4, 0.4, 0.4), CFrame = cf * CFrame.new(0, 4.2, -20), Color = Color3.fromRGB(30, 28, 35), Material = Enum.Material.Metal, Parent = folder })
+end
+
+function SETPIECES.Graveyard(folder, o, rng)
+	for ix = -2, 2 do
+		for iz = -2, 2 do
+			if rng:NextNumber() < 0.8 then
+				PROPS.Gravestone(folder, o + Vector3.new(ix * 7, 0, iz * 8), 0.9, rng)
+			end
+		end
+	end
+	-- a spooky gate arch and a big dead tree in the corner
+	deco({ Name = "GateArch", Size = Vector3.new(1, 12, 1), Position = o + Vector3.new(-18, 6, -6), Color = Color3.fromRGB(30, 28, 35), Material = Enum.Material.Metal, Parent = folder })
+	deco({ Name = "GateArch", Size = Vector3.new(1, 12, 1), Position = o + Vector3.new(-18, 6, 6), Color = Color3.fromRGB(30, 28, 35), Material = Enum.Material.Metal, Parent = folder })
+	deco({ Name = "GateTop", Size = Vector3.new(1, 1, 13), Position = o + Vector3.new(-18, 12, 0), Color = Color3.fromRGB(30, 28, 35), Material = Enum.Material.Metal, Parent = folder })
+	PROPS.SpookyTree(folder, o + Vector3.new(16, 0, 20), 1.6, rng)
+	for _ = 1, 3 do
+		PROPS.Pumpkin(folder, o + Vector3.new(rng:NextNumber(-16, 16), 0, rng:NextNumber(-20, -16)), 1.2, rng)
+	end
+	local glow = deco({ Name = "GraveGlow", Size = Vector3.new(36, 0.2, 44), Position = o + Vector3.new(0, 0.12, 0), Color = GHOST, Material = Enum.Material.Neon, CanCollide = false, CastShadow = false, Parent = folder })
+	glow.Transparency = 0.85
+end
+
+function SETPIECES.ClockTower(folder, o, rng)
+	local cf = CFrame.lookAt(o, o + Vector3.new(if o.X < 0 then 1 else -1, 0, 0))
+	deco({ Name = "TowerBody", Size = Vector3.new(14, 40, 14), CFrame = cf * CFrame.new(0, 20, 0), Color = Color3.fromRGB(150, 100, 60), Material = Enum.Material.Brick, Parent = folder })
+	deco({ Name = "TowerTrim", Size = Vector3.new(15, 1.4, 15), CFrame = cf * CFrame.new(0, 28, 0), Color = BRASS, Material = Enum.Material.Metal, Parent = folder })
+	roof(folder, cf * CFrame.new(0, 40, 0), 16, 16, 10, COPPER:Lerp(Color3.fromRGB(80, 160, 130), 0.5), Enum.Material.Metal)
+	local face = deco({ Name = "ClockFace", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.6, 11, 11), CFrame = cf * CFrame.new(0, 34, -7.2) * CFrame.Angles(0, math.rad(90), 0), Color = Color3.fromRGB(250, 240, 210), Material = Enum.Material.Neon, CastShadow = false, Parent = folder })
+	deco({ Name = "ClockRim", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.5, 12.4, 12.4), CFrame = cf * CFrame.new(0, 34, -7.05) * CFrame.Angles(0, math.rad(90), 0), Color = BRASS, Material = Enum.Material.Metal, Parent = folder })
+	for i = 0, 11 do
+		local a = i / 12 * math.pi * 2
+		deco({ Name = "HourMark", Size = Vector3.new(0.4, 1.2, 0.3), CFrame = cf * CFrame.new(math.sin(a) * 4.4, 34 + math.cos(a) * 4.4, -7.6) * CFrame.Angles(0, 0, -a), Color = IRON, Material = Enum.Material.Metal, Parent = folder })
+	end
+	deco({ Name = "HourHand", Size = Vector3.new(0.5, 3.2, 0.3), CFrame = cf * CFrame.new(0.9, 35.2, -7.8) * CFrame.Angles(0, 0, math.rad(-40)), Color = IRON, Material = Enum.Material.Metal, Parent = folder })
+	deco({ Name = "MinuteHand", Size = Vector3.new(0.4, 4.6, 0.3), CFrame = cf * CFrame.new(-1.2, 35.8, -7.9) * CFrame.Angles(0, 0, math.rad(30)), Color = IRON, Material = Enum.Material.Metal, Parent = folder })
+	light(face, Color3.fromRGB(255, 230, 170), 30, 1.2)
+	for _, sx in ipairs({ -1, 1 }) do
+		gear(folder, cf * CFrame.new(sx * 7.4, 14, 0), 4, BRASS)
+	end
+	deco({ Name = "TowerDoor", Size = Vector3.new(5, 8, 0.5), CFrame = cf * CFrame.new(0, 4, -7.2), Color = Color3.fromRGB(90, 60, 40), Material = Enum.Material.WoodPlanks, Parent = folder })
+end
+
+function SETPIECES.GearWorks(folder, o, rng)
+	deco({ Name = "Platform", Size = Vector3.new(34, 1, 44), Position = o + Vector3.new(0, 0.5, 0), Color = IRON, Material = Enum.Material.DiamondPlate, Parent = folder })
+	-- a wall of big interlocking gears
+	local gears = { { 0, 12, -14, 10 }, { 0, 20, 4, 7 }, { 0, 9, 14, 6 }, { 0, 28, -6, 5 } }
+	for i, g in ipairs(gears) do
+		gear(folder, CFrame.new(o + Vector3.new(g[1], g[2], g[3])), g[4], if i % 2 == 0 then COPPER else BRASS)
+	end
+	for _, sz in ipairs({ -18, 18 }) do
+		PROPS.SteamPipe(folder, o + Vector3.new(8, 1, sz), 1.2, rng)
+		PROPS.Lamppost(folder, o + Vector3.new(-12, 1, sz), 1)
+	end
+	local furnace = deco({ Name = "Furnace", Size = Vector3.new(8, 8, 8), Position = o + Vector3.new(-8, 5, 0), Color = IRON, Material = Enum.Material.Metal, Parent = folder })
+	local fire = deco({ Name = "FurnaceFire", Size = Vector3.new(0.4, 3, 4), Position = furnace.Position + Vector3.new(4.1, -1, 0), Color = Color3.fromRGB(255, 130, 40), Material = Enum.Material.Neon, CastShadow = false, Parent = folder })
+	light(fire, Color3.fromRGB(255, 150, 60), 24, 1.6)
+end
+
+function SETPIECES.DataCoreHub(folder, o, rng)
+	deco({ Name = "HubFloor", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.6, 46, 46), CFrame = cylinderAlongY(CFrame.new(o + Vector3.new(0, 0.3, 0))), Color = CYBER_DARK, Material = Enum.Material.Metal, Parent = folder })
+	for r = 1, 3 do
+		deco({ Name = "HubRing", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.7, r * 14, r * 14), CFrame = cylinderAlongY(CFrame.new(o + Vector3.new(0, 0.25, 0))), Color = NEON[r], Material = Enum.Material.Neon, CastShadow = false, Parent = folder })
+		deco({ Name = "HubRingFill", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.75, r * 14 - 1.4, r * 14 - 1.4), CFrame = cylinderAlongY(CFrame.new(o + Vector3.new(0, 0.26, 0))), Color = CYBER_DARK, Material = Enum.Material.Metal, Parent = folder })
+	end
+	local core = deco({ Name = "BigCore", Shape = Enum.PartType.Ball, Size = Vector3.one * 9, Position = o + Vector3.new(0, 16, 0), Color = NEON[2], Material = Enum.Material.Neon, CastShadow = false, Parent = folder })
+	light(core, NEON[2], 45, 2)
+	particles(core, { Color = ColorSequence.new(NEON[2], NEON[1]), LightEmission = 1, Size = NumberSequence.new(0.6, 0), Lifetime = NumberRange.new(1, 2), Rate = 25, Speed = NumberRange.new(4, 8), SpreadAngle = Vector2.new(180, 180) })
+	for i = 0, 3 do
+		local a = i / 4 * math.pi * 2 + math.pi / 4
+		local p = o + Vector3.new(math.cos(a) * 14, 0, math.sin(a) * 14)
+		PROPS.DataPillar(folder, p, 1.3, rng)
+		local top = p + Vector3.new(0, 18, 0)
+		deco({ Name = "DataBeam", Size = Vector3.new(0.5, 0.5, (core.Position - top).Magnitude), CFrame = CFrame.lookAt((core.Position + top) / 2, core.Position), Color = NEON[1], Material = Enum.Material.Neon, CastShadow = false, CanCollide = false, Parent = folder })
+	end
+end
+
+function SETPIECES.NeonPyramid(folder, o, rng)
+	for i = 0, 5 do
+		local w = 40 - i * 6.5
+		deco({ Name = "PyramidStep", Size = Vector3.new(w, 3, w), Position = o + Vector3.new(0, 1.5 + i * 3, 0), Color = CYBER_DARK, Material = Enum.Material.Glass, Reflectance = 0.2, Parent = folder })
+		for _, sx in ipairs({ -1, 1 }) do
+			deco({ Name = "StepEdge", Size = Vector3.new(0.3, 0.3, w + 0.2), Position = o + Vector3.new(sx * w / 2, 3 + i * 3, 0), Color = NEON[(i % 3) + 1], Material = Enum.Material.Neon, CastShadow = false, Parent = folder })
+			deco({ Name = "StepEdge", Size = Vector3.new(w + 0.2, 0.3, 0.3), Position = o + Vector3.new(0, 3 + i * 3, sx * w / 2), Color = NEON[(i % 3) + 1], Material = Enum.Material.Neon, CastShadow = false, Parent = folder })
+		end
+	end
+	local crystal = deco({ Name = "TopCrystal", Size = Vector3.new(4, 4, 4), CFrame = CFrame.new(o + Vector3.new(0, 24, 0)) * CFrame.Angles(math.rad(45), 0, math.rad(45)), Color = NEON[1], Material = Enum.Material.Neon, CastShadow = false, Parent = folder })
+	light(crystal, NEON[1], 40, 2)
+	local beam = deco({ Name = "SkyBeam", Size = Vector3.new(1.5, 140, 1.5), Position = o + Vector3.new(0, 96, 0), Color = NEON[1], Material = Enum.Material.Neon, CastShadow = false, CanCollide = false, Parent = folder })
+	beam.Transparency = 0.5
+end
+
+--------------------------------------------------------------------------------
 -- Player bases
 -- Built in the plot's local space: local -Z is the open front (facing the road).
 --------------------------------------------------------------------------------
@@ -2432,6 +2965,8 @@ local function scatterSpots(def, centerZ, rng, avoid)
 	return spots
 end
 
+local SOLID_NAMES = { Floor = true, Wall = true, WallCap = true }
+
 local function buildBiome(biomesFolder, index, def, centerZ)
 	local folder = Instance.new("Model")
 	folder.Name = def.Id
@@ -2443,7 +2978,7 @@ local function buildBiome(biomesFolder, index, def, centerZ)
 
 	local center = Vector3.new(0, 0, centerZ)
 	local zMin, zMax = centerZ - BIOME_SPACING / 2, centerZ + BIOME_SPACING / 2
-	checkerFloor(folder, -CORRIDOR_HALF, CORRIDOR_HALF, zMin, zMax, def.Floor)
+	checkerFloor(folder, -CORRIDOR_HALF, CORRIDOR_HALF, zMin, zMax, def.Floor, nil, ZONE_FLOOR_TILE)
 	-- a clean path down the middle of the zone, around the guardian's den
 	local pathColor = def.Floor[1]:Lerp(WHITE, 0.35)
 	local edgeColor = def.Floor[2]:Lerp(BLACK, 0.2)
@@ -2586,6 +3121,14 @@ local function buildBiome(biomesFolder, index, def, centerZ)
 	backdrop(folder, def.Id, CORRIDOR_HALF, zMin, zMax, rng, if index == #Config.Biomes then { { Z = zMax, Dir = 1 } } else nil)
 	if SKY[def.Id] then
 		SKY[def.Id](folder, centerZ, rng)
+	end
+
+	-- At top speeds you'd snag on every tree and rock, so everything in a zone
+	-- except the floor and walls is walk-through: just run past (or through) it.
+	for _, d in ipairs(folder:GetDescendants()) do
+		if d:IsA("BasePart") and not SOLID_NAMES[d.Name] then
+			d.CanCollide = false
+		end
 	end
 
 	return {

@@ -20,21 +20,24 @@ Config.SellSeconds = 45 -- a pet sells for this many seconds of its income
 -- Speed stat can grow into the millions. Walk speed climbs faster the more
 -- tenfolds of Speed you have, so every upgrade feels quicker:
 -- 5 -> 49, 300 -> 100, 1K -> 119, 11K -> 162, 200K -> 222, 1M -> 260,
--- 25M -> 344, 100M -> 384 (capped at 420).
+-- 25M -> 344, 100M -> 384, 2.5B -> 485, 50B -> 589 (capped at 650).
 Config.BaseWalkSpeed = 32
 Config.WalkPerTenfold = 20 -- extra walk speed every time your Speed goes x10...
 Config.WalkCurve = 3 -- ...plus this x (tenfolds squared), so later tenfolds add more
-Config.MaxWalkSpeed = 420
+Config.MaxWalkSpeed = 650
 Config.GuardianEdge = 0.995 -- guardians run this fraction of your carry speed at their zone's SpeedNeeded
 Config.CarrySpeedMultiplier = 0.9
 Config.StartingSpeed = 5 -- enough to outrun the first guardian
 
--- Treadmill: step on it to auto-run and gain +1 Speed every
--- TreadmillBaseInterval * (1 + Speed / TreadmillSlowdown) seconds.
+-- Treadmill: step on it to auto-run. Every second you gain
+-- (1 + TreadmillGainScale x the square root of your Speed) x your treadmill tier.
+-- The square root keeps it from snowballing: going 10x faster takes about 3x
+-- longer each time, so every new zone takes a few minutes of training with the
+-- matching tier (1K on Basic ~3.5 min, 1M on Diamond ~7 min, 50B on Celestial ~12 min).
 Config.TreadmillBaseInterval = 1
 Config.TreadmillSlowdown = 4
 Config.TreadmillMaxInterval = 1 -- a gain every second
-Config.TreadmillGainPercent = 0.009 -- each second you gain 1 + 0.9% of your Speed
+Config.TreadmillGainScale = 0.3
 Config.TreadmillBeltSpeed = 12 -- how fast the belt stripes scroll
 
 -- Treadmill upgrades: the gold pad in your base buys better treadmills with
@@ -1048,6 +1051,75 @@ Config.Biomes = {
 		Eggs = { Mythic = 35, Divine = 57, Secret = 8 },
 		Mood = { Color = Color3.fromRGB(255, 245, 220), Decay = Color3.fromRGB(255, 220, 170), Density = 0.32, Haze = 1.2, Glare = 0.6, Tint = Color3.fromRGB(255, 250, 235), Brightness = 0.04, Saturation = 0.05, CloudColor = Color3.fromRGB(255, 250, 240), CloudCover = 0.9, Clock = 12, Bloom = 0.9, Rays = 0.25, Contrast = 0.08, Ambient = Color3.fromRGB(200, 190, 170) },
 	},
+	{
+		Id = "Shroom",
+		Name = "Glowshroom Grotto",
+		Floor = { Color3.fromRGB(48, 70, 84), Color3.fromRGB(40, 60, 74) },
+		Walls = { Color3.fromRGB(78, 46, 118), Color3.fromRGB(96, 60, 140) },
+		Props = { "GiantShroom", "GiantShroom", "ShroomCluster", "ShroomCluster", "GlowRock" },
+		Particles = "Spores",
+		GuardianName = "Spore Colossus",
+		GuardianStyle = "Shroom",
+		GuardianColor = Color3.fromRGB(80, 230, 255),
+		SpeedNeeded = 500000000, -- Speed needed to outrun this guardian (its speed is worked out from this)
+		Leash = 300,
+		RespawnTime = 400,
+		EggSpots = 10,
+		Eggs = { Mythic = 30, Divine = 60, Secret = 10 },
+		Mood = { Color = Color3.fromRGB(120, 95, 200), Decay = Color3.fromRGB(40, 80, 110), Density = 0.45, Haze = 1.4, Glare = 0, Tint = Color3.fromRGB(220, 232, 255), Brightness = -0.02, Saturation = 0.3, CloudColor = Color3.fromRGB(100, 80, 150), CloudCover = 0.7, Clock = 21, Bloom = 1, Rays = 0, Contrast = 0.18, Ambient = Color3.fromRGB(95, 115, 160) },
+	},
+	{
+		Id = "Spooky",
+		Name = "Haunted Hollow",
+		Floor = { Color3.fromRGB(72, 82, 60), Color3.fromRGB(60, 70, 50) },
+		Walls = { Color3.fromRGB(62, 56, 74), Color3.fromRGB(78, 72, 90) },
+		Props = { "Pumpkin", "Pumpkin", "Gravestone", "Gravestone", "SpookyTree", "SpookyTree" },
+		Particles = "Mist",
+		GuardianName = "Pumpkin King",
+		GuardianStyle = "Pumpkin",
+		GuardianColor = Color3.fromRGB(255, 130, 30),
+		SpeedNeeded = 2500000000, -- Speed needed to outrun this guardian (its speed is worked out from this)
+		Leash = 310,
+		RespawnTime = 450,
+		EggSpots = 10,
+		Eggs = { Mythic = 20, Divine = 66, Secret = 14 },
+		Mood = { Color = Color3.fromRGB(110, 140, 120), Decay = Color3.fromRGB(40, 70, 50), Density = 0.55, Haze = 2.2, Glare = 0, Tint = Color3.fromRGB(215, 240, 222), Brightness = -0.04, Saturation = -0.1, CloudColor = Color3.fromRGB(80, 90, 85), CloudCover = 0.85, Clock = 23.5, Bloom = 0.8, Rays = 0, Contrast = 0.22, Ambient = Color3.fromRGB(95, 115, 105) },
+	},
+	{
+		Id = "Clockwork",
+		Name = "Clockwork Citadel",
+		Floor = { Color3.fromRGB(160, 118, 76), Color3.fromRGB(140, 102, 64) },
+		Walls = { Color3.fromRGB(112, 82, 52), Color3.fromRGB(132, 98, 62) },
+		Props = { "Gear", "Gear", "SteamPipe", "Lamppost", "CogTower" },
+		Particles = "Steam",
+		GuardianName = "Brass Automaton",
+		GuardianStyle = "Automaton",
+		GuardianColor = Color3.fromRGB(210, 160, 70),
+		SpeedNeeded = 10000000000, -- Speed needed to outrun this guardian (its speed is worked out from this)
+		Leash = 320,
+		RespawnTime = 500,
+		EggSpots = 10,
+		Eggs = { Mythic = 10, Divine = 70, Secret = 20 },
+		Mood = { Color = Color3.fromRGB(240, 190, 130), Decay = Color3.fromRGB(150, 90, 50), Density = 0.38, Haze = 1.3, Glare = 0.5, Tint = Color3.fromRGB(255, 238, 210), Brightness = 0.01, Saturation = 0.12, CloudColor = Color3.fromRGB(230, 190, 150), CloudCover = 0.5, Clock = 17.6, Bloom = 0.6, Rays = 0.18, Contrast = 0.16, Ambient = Color3.fromRGB(160, 130, 100) },
+	},
+	{
+		Id = "Cyber",
+		Name = "Neon Nexus",
+		Floor = { Color3.fromRGB(28, 22, 50), Color3.fromRGB(38, 30, 66) },
+		Walls = { Color3.fromRGB(42, 30, 84), Color3.fromRGB(56, 40, 108) },
+		Props = { "NeonTower", "NeonTower", "HoloTree", "DataPillar", "NeonSign" },
+		Particles = "Data",
+		GuardianName = "Omega Mech",
+		GuardianStyle = "Mech",
+		Boss = true,
+		GuardianColor = Color3.fromRGB(255, 60, 200),
+		SpeedNeeded = 50000000000, -- Speed needed to outrun this guardian (its speed is worked out from this)
+		Leash = 330,
+		RespawnTime = 600,
+		EggSpots = 10,
+		Eggs = { Divine = 70, Secret = 30 },
+		Mood = { Color = Color3.fromRGB(150, 70, 220), Decay = Color3.fromRGB(30, 10, 70), Density = 0.4, Haze = 1, Glare = 0.3, Tint = Color3.fromRGB(235, 215, 255), Brightness = -0.02, Saturation = 0.35, CloudColor = Color3.fromRGB(120, 60, 180), CloudCover = 0.5, Clock = 0.3, Bloom = 1.2, Rays = 0.05, Contrast = 0.25, Ambient = Color3.fromRGB(110, 80, 170) },
+	},
 }
 
 -- Town floor and wall colors (checkerboard pairs)
@@ -1111,7 +1183,7 @@ end
 
 -- How much Speed one treadmill tick gives: grows with your Speed so it stays worth it
 function Config.TreadmillGain(speedStat: number): number
-	return math.floor(1 + speedStat * Config.TreadmillGainPercent)
+	return math.floor(1 + Config.TreadmillGainScale * math.sqrt(math.max(0, speedStat)))
 end
 
 -- data = { Name, Shiny, Tier }

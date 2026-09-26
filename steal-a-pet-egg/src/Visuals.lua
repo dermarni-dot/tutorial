@@ -3728,6 +3728,190 @@ function GUARDIANS.Seraph(def)
 	return model, height
 end
 
+-- Glowshroom Grotto: a walking mushroom giant with a glowing spotted cap
+function GUARDIANS.Shroom(def)
+	local stem = Color3.fromRGB(230, 225, 215)
+	local cap = Color3.fromRGB(150, 60, 190)
+	local glowC = def.GuardianColor
+	local model, body, add, eye, height = startGuardian(def, Vector3.new(7, 9, 6.5), 6.5, 1.2, stem)
+	add("Cap", "Blob", Vector3.new(16, 7, 16), 0, 13.5, 0, cap)
+	add("CapRim", "Cyl", Vector3.new(0.6, 15.4, 15.4), 0, 11.2, 0, glowC, Enum.Material.Neon, CFrame.Angles(0, 0, math.rad(90)))
+	add("Gills", "Cyl", Vector3.new(0.4, 14, 14), 0, 10.9, 0, cap:Lerp(BLACK, 0.5), nil, CFrame.Angles(0, 0, math.rad(90)))
+	for i = 0, 6 do
+		local a = i / 7 * math.pi * 2
+		local r = if i == 0 then 0 else 4.4
+		add("CapSpot", "Blob", Vector3.new(2.2, 0.8, 2.2), math.cos(a) * r, (if i == 0 then 17 else 15.8), math.sin(a) * r, glowC:Lerp(WHITE, 0.4), Enum.Material.Neon)
+	end
+	add("Mouth", "Blob", Vector3.new(2.4, 0.9, 0.4), 0, 6.2, -3.2, Color3.fromRGB(70, 40, 60))
+	for _, sx in ipairs({ -1, 1 }) do
+		eye(sx * 1.4, 8.2, -3.1, 1.6, sx)
+		add("Cheek", "Blob", Vector3.new(1.2, 0.7, 0.3), sx * 2.4, 7, -3.1, BLUSH)
+		add("Arm", "Blob", Vector3.new(2, 5.2, 2), sx * 4.6, 6.2, -0.6, stem, nil, CFrame.Angles(0, 0, math.rad(25 * sx)))
+		add("Leg", "Blob", Vector3.new(2.6, 3, 2.8), sx * 1.9, 1.5, 0, stem:Lerp(BLACK, 0.1))
+		-- little mushrooms growing on its shoulders
+		add("ShoulderStem", "Block", Vector3.new(0.5, 1.4, 0.5), sx * 3, 10.5, 1.4, stem)
+		add("ShoulderCap", "Blob", Vector3.new(2, 1, 2), sx * 3, 11.3, 1.4, glowC, Enum.Material.Neon)
+	end
+	local spores = Instance.new("ParticleEmitter")
+	spores.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+	spores.Color = ColorSequence.new(glowC, Color3.fromRGB(255, 120, 230))
+	spores.LightEmission = 1
+	spores.Size = NumberSequence.new(0.5, 0)
+	spores.Lifetime = NumberRange.new(2, 3)
+	spores.Rate = 14
+	spores.Speed = NumberRange.new(1, 3)
+	spores.SpreadAngle = Vector2.new(180, 180)
+	spores.Parent = body
+	local pl = Instance.new("PointLight")
+	pl.Color = glowC
+	pl.Range = 28
+	pl.Brightness = 1.5
+	pl.Parent = body
+	return model, height
+end
+
+-- Haunted Hollow: a floating pumpkin-headed king in a tattered cloak with a lantern
+function GUARDIANS.Pumpkin(def)
+	local cloak = Color3.fromRGB(40, 30, 50)
+	local orange = def.GuardianColor
+	local glowC = Color3.fromRGB(255, 220, 90)
+	local sc = 1.25
+	local model, body, add, eye, height = startGuardian(def, Vector3.new(7, 9, 6), 11, sc, cloak)
+	-- pumpkin head: three overlapping lobes with a carved glowing face
+	for k = -1, 1 do
+		add("PumpkinHead", "Blob", Vector3.new(4.4, 6, 7), k * 2, 18, 0, orange:Lerp(Color3.fromRGB(200, 80, 20), math.abs(k) * 0.4))
+	end
+	add("HeadStem", "Block", Vector3.new(0.8, 2, 0.8), 0, 21.6, 0, Color3.fromRGB(80, 110, 40), nil, CFrame.Angles(0, 0, 0.3))
+	for _, sx in ipairs({ -1, 1 }) do
+		add("CarvedEye", "Wedge", Vector3.new(0.4, 1.6, 1.8), sx * 1.4, 19, -3.45, glowC, Enum.Material.Neon, CFrame.Angles(0, math.rad(90), 0))
+		add("Sleeve", "Blob", Vector3.new(2.6, 6, 2.6), sx * 4.6, 12, -1, cloak, nil, CFrame.Angles(math.rad(-25), 0, math.rad(30 * sx)))
+		add("Hand", "Ball", Vector3.one * 1.6, sx * 6.3, 9.4, -3, Color3.fromRGB(150, 220, 160))
+		add("Collar", "Wedge", Vector3.new(1.4, 3.4, 3), sx * 2.8, 15.6, 0.6, Color3.fromRGB(110, 30, 40), nil, CFrame.Angles(0, 0, math.rad(-25 * sx)))
+	end
+	add("CarvedNose", "Wedge", Vector3.new(0.4, 0.9, 0.9), 0, 17.9, -3.5, glowC, Enum.Material.Neon)
+	add("CarvedMouth", "Block", Vector3.new(4, 0.8, 0.4), 0, 16.6, -3.35, glowC, Enum.Material.Neon)
+	for i = -1, 1 do
+		add("MouthTooth", "Block", Vector3.new(0.5, 0.5, 0.45), i * 1.2, 16.9, -3.45, orange)
+	end
+	-- crooked crown, tattered cloak hem and a hanging lantern
+	for i = 0, 4 do
+		local a = i / 5 * math.pi * 2
+		add("CrownSpike", "Wedge", Vector3.new(0.8, 1.8, 0.8), math.cos(a) * 2.2, 22.2, math.sin(a) * 2.2, GOLD, Enum.Material.Metal, CFrame.Angles(0, -a, 0.2))
+	end
+	for i = 0, 7 do
+		local a = i / 8 * math.pi * 2
+		add("Tatter", "Wedge", Vector3.new(1.8, 3.4, 1.4), math.cos(a) * 3.1, 5.6 - (i % 2) * 0.8, math.sin(a) * 2.7, cloak:Lerp(BLACK, 0.3), nil, CFrame.Angles(math.rad(180), -a, 0))
+	end
+	add("LanternChain", "Block", Vector3.new(0.2, 3, 0.2), 6.6, 7.4, -3.4, Color3.fromRGB(60, 60, 60))
+	local lantern = add("Lantern", "Block", Vector3.new(1.8, 2.2, 1.8), 6.6, 5, -3.4, Color3.fromRGB(120, 255, 150), Enum.Material.Neon)
+	local pl = Instance.new("PointLight")
+	pl.Color = Color3.fromRGB(140, 255, 170)
+	pl.Range = 26
+	pl.Brightness = 1.6
+	pl.Parent = lantern
+	local wisps = Instance.new("ParticleEmitter")
+	wisps.Texture = "rbxasset://textures/particles/smoke_main.dds"
+	wisps.Color = ColorSequence.new(Color3.fromRGB(150, 255, 180))
+	wisps.LightEmission = 0.6
+	wisps.Size = NumberSequence.new(1.5, 3)
+	wisps.Transparency = NumberSequence.new(0.6, 1)
+	wisps.Lifetime = NumberRange.new(1, 2)
+	wisps.Rate = 12
+	wisps.Speed = NumberRange.new(1, 2)
+	wisps.EmissionDirection = Enum.NormalId.Bottom
+	wisps.Parent = body
+	return model, height
+end
+
+-- Clockwork Citadel: a brass robot with a clock in its chest and a gear on its back
+function GUARDIANS.Automaton(def)
+	local brass = def.GuardianColor
+	local copper = Color3.fromRGB(190, 105, 60)
+	local iron = Color3.fromRGB(70, 70, 80)
+	local glowC = Color3.fromRGB(120, 230, 255)
+	local model, body, add, eye, height = startGuardian(def, Vector3.new(9, 8, 6.5), 9, 1.2, brass)
+	body.Material = Enum.Material.Metal
+	add("Head", "Block", Vector3.new(6, 5, 5), 0, 15.6, 0, brass, Enum.Material.Metal)
+	add("Visor", "Block", Vector3.new(5, 1.4, 0.4), 0, 16, -2.55, Color3.fromRGB(30, 30, 40))
+	for _, sx in ipairs({ -1, 1 }) do
+		add("EyeLens", "Cyl", Vector3.new(0.4, 1.4, 1.4), sx * 1.3, 16, -2.8, glowC, Enum.Material.Neon, CFrame.Angles(0, math.rad(90), 0))
+		add("EarBolt", "Cyl", Vector3.new(0.8, 1.6, 1.6), sx * 3.3, 15.6, 0, copper, Enum.Material.Metal)
+		add("Shoulder", "Ball", Vector3.one * 3, sx * 5.4, 12.2, 0, copper, Enum.Material.Metal)
+		add("Arm", "Cyl", Vector3.new(5, 1.6, 1.6), sx * 6, 9.2, -0.4, iron, Enum.Material.Metal, CFrame.Angles(0, 0, math.rad(90 + 15 * sx)))
+		add("Claw", "Block", Vector3.new(2.2, 2, 2.2), sx * 6.7, 6.4, -0.8, brass, Enum.Material.Metal)
+		add("Leg", "Cyl", Vector3.new(4, 2, 2), sx * 2.2, 3.4, 0, iron, Enum.Material.Metal, CFrame.Angles(0, 0, math.rad(90)))
+		add("Foot", "Block", Vector3.new(3, 1.2, 4.2), sx * 2.2, 0.6, -0.6, copper, Enum.Material.Metal)
+	end
+	add("Mouth", "Block", Vector3.new(3, 0.5, 0.3), 0, 14.2, -2.6, iron)
+	add("Antenna", "Block", Vector3.new(0.3, 3, 0.3), 0, 19.6, 0, iron, Enum.Material.Metal)
+	add("AntennaBulb", "Ball", Vector3.one * 1.1, 0, 21.2, 0, Color3.fromRGB(255, 80, 60), Enum.Material.Neon)
+	-- a clock set into its chest
+	add("ChestClock", "Cyl", Vector3.new(0.4, 4.4, 4.4), 0, 9.6, -3.3, Color3.fromRGB(250, 240, 210), Enum.Material.Neon, CFrame.Angles(0, math.rad(90), 0))
+	add("ClockRim", "Cyl", Vector3.new(0.3, 5, 5), 0, 9.6, -3.2, brass, Enum.Material.Metal, CFrame.Angles(0, math.rad(90), 0))
+	add("ClockHand", "Block", Vector3.new(0.3, 1.8, 0.2), 0.3, 10.2, -3.6, iron, nil, CFrame.Angles(0, 0, math.rad(-30)))
+	add("ClockHand", "Block", Vector3.new(0.25, 1.4, 0.2), -0.4, 9.9, -3.62, iron, nil, CFrame.Angles(0, 0, math.rad(60)))
+	-- a big wind-up key on its back
+	add("KeyShaft", "Cyl", Vector3.new(3, 0.8, 0.8), 0, 10, 4.4, brass, Enum.Material.Metal, CFrame.Angles(0, math.rad(90), 0))
+	for _, sx in ipairs({ -1, 1 }) do
+		add("KeyBow", "Ball", Vector3.new(0.8, 2.6, 2.6), sx * 1.4, 10, 6, brass, Enum.Material.Metal)
+	end
+	local steam = Instance.new("ParticleEmitter")
+	steam.Texture = "rbxasset://textures/particles/smoke_main.dds"
+	steam.Color = ColorSequence.new(Color3.fromRGB(240, 240, 240))
+	steam.Size = NumberSequence.new(1, 3)
+	steam.Transparency = NumberSequence.new(0.6, 1)
+	steam.Lifetime = NumberRange.new(1, 1.6)
+	steam.Rate = 10
+	steam.Speed = NumberRange.new(3, 5)
+	steam.EmissionDirection = Enum.NormalId.Top
+	steam.Parent = body
+	return model, height
+end
+
+-- Neon Nexus boss: a giant hovering mech with a glowing visor and jet boosters
+function GUARDIANS.Mech(def)
+	local armor = Color3.fromRGB(40, 36, 60)
+	local neon = def.GuardianColor
+	local cyan = Color3.fromRGB(40, 240, 255)
+	local sc = 1.35
+	local model, body, add, eye, height = startGuardian(def, Vector3.new(10, 9, 7), 12, sc, armor)
+	body.Material = Enum.Material.Metal
+	add("ChestPlate", "Block", Vector3.new(8, 5, 1), 0, 13, -3.4, armor:Lerp(WHITE, 0.1), Enum.Material.Metal)
+	add("Core", "Ball", Vector3.one * 2.6, 0, 13, -4, cyan, Enum.Material.Neon)
+	add("Head", "Block", Vector3.new(5.5, 4.2, 5), 0, 19, 0, armor, Enum.Material.Metal)
+	add("Visor", "Block", Vector3.new(4.8, 1.2, 0.4), 0, 19.4, -2.55, neon, Enum.Material.Neon)
+	add("Crest", "Wedge", Vector3.new(0.8, 2.6, 4), 0, 22.2, 0.4, neon, Enum.Material.Neon)
+	for _, sx in ipairs({ -1, 1 }) do
+		add("ShoulderPad", "Block", Vector3.new(4, 2.2, 5), sx * 6.4, 16.4, 0, armor:Lerp(WHITE, 0.15), Enum.Material.Metal, CFrame.Angles(0, 0, math.rad(-15 * sx)))
+		add("ShoulderStripe", "Block", Vector3.new(4.1, 0.4, 5.1), sx * 6.4, 16.9, 0, neon, Enum.Material.Neon, CFrame.Angles(0, 0, math.rad(-15 * sx)))
+		add("Arm", "Block", Vector3.new(2.4, 7, 2.6), sx * 7, 11, -0.6, armor, Enum.Material.Metal)
+		add("Cannon", "Cyl", Vector3.new(4, 1.8, 1.8), sx * 7, 7.4, -2.4, armor:Lerp(WHITE, 0.2), Enum.Material.Metal, CFrame.Angles(0, math.rad(90), 0))
+		add("CannonGlow", "Cyl", Vector3.new(0.3, 1.4, 1.4), sx * 7, 7.4, -4.45, cyan, Enum.Material.Neon, CFrame.Angles(0, math.rad(90), 0))
+		add("Jet", "Cyl", Vector3.new(3, 2.2, 2.2), sx * 2.6, 6.4, 1.2, armor:Lerp(WHITE, 0.2), Enum.Material.Metal, CFrame.Angles(0, 0, math.rad(90)))
+		add("JetFlame", "Ball", Vector3.new(1.8, 3, 1.8), sx * 2.6, 4.2, 1.2, Color3.fromRGB(120, 200, 255), Enum.Material.Neon)
+		add("Fin", "Wedge", Vector3.new(0.6, 5, 4), sx * 4, 17, 4, neon, Enum.Material.Neon, CFrame.Angles(0, math.rad(180), math.rad(20 * sx)))
+	end
+	-- a spinning holo ring around it
+	local ring = add("HoloRing", "Cyl", Vector3.new(0.3, 18, 18), 0, 10, 0, cyan, Enum.Material.Neon, CFrame.Angles(0, 0, math.rad(90)))
+	ring.Transparency = 0.6
+	local jets = Instance.new("ParticleEmitter")
+	jets.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+	jets.Color = ColorSequence.new(cyan, neon)
+	jets.LightEmission = 1
+	jets.Size = NumberSequence.new(1, 0)
+	jets.Lifetime = NumberRange.new(0.4, 0.8)
+	jets.Rate = 40
+	jets.Speed = NumberRange.new(8, 14)
+	jets.EmissionDirection = Enum.NormalId.Bottom
+	jets.Parent = body
+	local pl = Instance.new("PointLight")
+	pl.Color = neon
+	pl.Range = 34
+	pl.Brightness = 2
+	pl.Parent = body
+	return model, height
+end
+
 function Visuals.MakeGuardian(def)
 	local builder = GUARDIANS[def.GuardianStyle or "Bear"] or GUARDIANS.Bear
 	local model, height = builder(def)
