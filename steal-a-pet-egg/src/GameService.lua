@@ -633,37 +633,55 @@ end
 refreshSpeedPad = function(state)
 	local levels = Config.TreadmillLevels
 	local current = state.Profile.TreadmillLevel or 1
+	-- the Treadmill Upgrades menu reads these
+	state.Player:SetAttribute("TreadmillLevel", current)
+	state.Player:SetAttribute("SpeedPass", state.Passes ~= nil and state.Passes.DoubleSpeedPass == true)
 	local nextLevel = levels[current + 1]
 	if nextLevel then
 		Visuals.SetLabel(state.Plot.SpeedPad, "🏃 " .. nextLevel.Name .. " Treadmill x" .. nextLevel.Mult, Util.Money(nextLevel.Cost), nextLevel.Color)
-		state.Plot.SpeedPrompt.ObjectText = nextLevel.Name .. " Treadmill: x" .. nextLevel.Mult .. " Speed (" .. Util.Money(nextLevel.Cost) .. ")"
-		state.Plot.SpeedPrompt.Enabled = true
+		state.Plot.SpeedPrompt.ObjectText = "Next: " .. nextLevel.Name .. " x" .. nextLevel.Mult .. " (" .. Util.Money(nextLevel.Cost) .. ")"
 	else
 		Visuals.SetLabel(state.Plot.SpeedPad, "🏃 MAX TREADMILL", levels[current].Name .. " x" .. levels[current].Mult, levels[current].Color)
 		state.Plot.SpeedPrompt.ObjectText = "Your treadmill is maxed out"
-		state.Plot.SpeedPrompt.Enabled = false
 	end
+	state.Plot.SpeedPrompt.Enabled = true -- always opens the upgrades menu
 end
 
-local function onBuySpeed(player) -- buys the next treadmill upgrade
+-- Buys the next treadmill upgrade, or (buyMax) as many in a row as you can afford.
+local function onBuySpeed(player, buyMax)
 	local state = states[player]
 	if not state then
 		return
 	end
-	local current = state.Profile.TreadmillLevel or 1
-	local nextLevel = Config.TreadmillLevels[current + 1]
-	if not nextLevel then
+	local bought = 0
+	local last
+	repeat
+		local current = state.Profile.TreadmillLevel or 1
+		local nextLevel = Config.TreadmillLevels[current + 1]
+		if not nextLevel then
+			if bought == 0 then
+				notify(player, "Your treadmill is already maxed out!", GOLD)
+			end
+			break
+		end
+		if not trySpend(state, nextLevel.Cost) then
+			if bought == 0 then
+				notify(player, "Not enough cash! The " .. nextLevel.Name .. " Treadmill costs " .. Util.Money(nextLevel.Cost), RED)
+			end
+			break
+		end
+		state.Profile.TreadmillLevel = current + 1
+		bought += 1
+		last = nextLevel
+	until not buyMax
+	if bought == 0 then
 		return
 	end
-	if not trySpend(state, nextLevel.Cost) then
-		notify(player, "Not enough cash! The " .. nextLevel.Name .. " Treadmill costs " .. Util.Money(nextLevel.Cost), RED)
-		return
-	end
-	state.Profile.TreadmillLevel = current + 1
 	paintTreadmill(state)
 	treadmillBurst(state)
 	refreshSpeedPad(state)
-	notify(player, "🏃 " .. nextLevel.Name .. " Treadmill unlocked! Training now gives x" .. nextLevel.Mult .. " Speed", nextLevel.Color)
+	local extra = if bought > 1 then " (" .. bought .. " upgrades)" else ""
+	notify(player, "🏃 " .. last.Name .. " Treadmill unlocked" .. extra .. "! Training now gives x" .. Util.FormatNumber(last.Mult) .. " Speed", last.Color)
 end
 
 --------------------------------------------------------------------------------
@@ -1912,6 +1930,12 @@ function GameService.Init(mapData, notifyEvent, treadmillEvent)
 				end
 			elseif action == "stop" then
 				state.Training = false
+			elseif action == "buy" or action == "buymax" then
+				local now = os.clock()
+				if now - (state.LastTreadBuy or 0) > 0.25 then
+					state.LastTreadBuy = now
+					onBuySpeed(player, action == "buymax")
+				end
 			end
 		end)
 	end
@@ -1936,7 +1960,12 @@ function GameService.Init(mapData, notifyEvent, treadmillEvent)
 		plot.FusePrompt = makePrompt(plot.FusePad, "Fuse", Config.FuseCount .. " identical pets → 1 bigger pet", 0.5)
 		local handlers = {
 			[plot.LockPrompt] = onLockPressed,
-			[plot.SpeedPrompt] = onBuySpeed,
+			[plot.SpeedPrompt] = function(player)
+				-- the gold pad opens the Treadmill Upgrades menu
+				if treadmillEvent then
+					treadmillEvent:FireClient(player, "open")
+				end
+			end,
 			[plot.FusePrompt] = onFuse,
 		}
 		for prompt, handler in pairs(handlers) do

@@ -11717,37 +11717,55 @@ end
 refreshSpeedPad = function(state)
 	local levels = Config.TreadmillLevels
 	local current = state.Profile.TreadmillLevel or 1
+	-- the Treadmill Upgrades menu reads these
+	state.Player:SetAttribute("TreadmillLevel", current)
+	state.Player:SetAttribute("SpeedPass", state.Passes ~= nil and state.Passes.DoubleSpeedPass == true)
 	local nextLevel = levels[current + 1]
 	if nextLevel then
 		Visuals.SetLabel(state.Plot.SpeedPad, "🏃 " .. nextLevel.Name .. " Treadmill x" .. nextLevel.Mult, Util.Money(nextLevel.Cost), nextLevel.Color)
-		state.Plot.SpeedPrompt.ObjectText = nextLevel.Name .. " Treadmill: x" .. nextLevel.Mult .. " Speed (" .. Util.Money(nextLevel.Cost) .. ")"
-		state.Plot.SpeedPrompt.Enabled = true
+		state.Plot.SpeedPrompt.ObjectText = "Next: " .. nextLevel.Name .. " x" .. nextLevel.Mult .. " (" .. Util.Money(nextLevel.Cost) .. ")"
 	else
 		Visuals.SetLabel(state.Plot.SpeedPad, "🏃 MAX TREADMILL", levels[current].Name .. " x" .. levels[current].Mult, levels[current].Color)
 		state.Plot.SpeedPrompt.ObjectText = "Your treadmill is maxed out"
-		state.Plot.SpeedPrompt.Enabled = false
 	end
+	state.Plot.SpeedPrompt.Enabled = true -- always opens the upgrades menu
 end
 
-local function onBuySpeed(player) -- buys the next treadmill upgrade
+-- Buys the next treadmill upgrade, or (buyMax) as many in a row as you can afford.
+local function onBuySpeed(player, buyMax)
 	local state = states[player]
 	if not state then
 		return
 	end
-	local current = state.Profile.TreadmillLevel or 1
-	local nextLevel = Config.TreadmillLevels[current + 1]
-	if not nextLevel then
+	local bought = 0
+	local last
+	repeat
+		local current = state.Profile.TreadmillLevel or 1
+		local nextLevel = Config.TreadmillLevels[current + 1]
+		if not nextLevel then
+			if bought == 0 then
+				notify(player, "Your treadmill is already maxed out!", GOLD)
+			end
+			break
+		end
+		if not trySpend(state, nextLevel.Cost) then
+			if bought == 0 then
+				notify(player, "Not enough cash! The " .. nextLevel.Name .. " Treadmill costs " .. Util.Money(nextLevel.Cost), RED)
+			end
+			break
+		end
+		state.Profile.TreadmillLevel = current + 1
+		bought += 1
+		last = nextLevel
+	until not buyMax
+	if bought == 0 then
 		return
 	end
-	if not trySpend(state, nextLevel.Cost) then
-		notify(player, "Not enough cash! The " .. nextLevel.Name .. " Treadmill costs " .. Util.Money(nextLevel.Cost), RED)
-		return
-	end
-	state.Profile.TreadmillLevel = current + 1
 	paintTreadmill(state)
 	treadmillBurst(state)
 	refreshSpeedPad(state)
-	notify(player, "🏃 " .. nextLevel.Name .. " Treadmill unlocked! Training now gives x" .. nextLevel.Mult .. " Speed", nextLevel.Color)
+	local extra = if bought > 1 then " (" .. bought .. " upgrades)" else ""
+	notify(player, "🏃 " .. last.Name .. " Treadmill unlocked" .. extra .. "! Training now gives x" .. Util.FormatNumber(last.Mult) .. " Speed", last.Color)
 end
 
 --------------------------------------------------------------------------------
@@ -12996,6 +13014,12 @@ function GameService.Init(mapData, notifyEvent, treadmillEvent)
 				end
 			elseif action == "stop" then
 				state.Training = false
+			elseif action == "buy" or action == "buymax" then
+				local now = os.clock()
+				if now - (state.LastTreadBuy or 0) > 0.25 then
+					state.LastTreadBuy = now
+					onBuySpeed(player, action == "buymax")
+				end
 			end
 		end)
 	end
@@ -13020,7 +13044,12 @@ function GameService.Init(mapData, notifyEvent, treadmillEvent)
 		plot.FusePrompt = makePrompt(plot.FusePad, "Fuse", Config.FuseCount .. " identical pets → 1 bigger pet", 0.5)
 		local handlers = {
 			[plot.LockPrompt] = onLockPressed,
-			[plot.SpeedPrompt] = onBuySpeed,
+			[plot.SpeedPrompt] = function(player)
+				-- the gold pad opens the Treadmill Upgrades menu
+				if treadmillEvent then
+					treadmillEvent:FireClient(player, "open")
+				end
+			end,
 			[plot.FusePrompt] = onFuse,
 		}
 		for prompt, handler in pairs(handlers) do
@@ -18103,6 +18132,263 @@ local function setupStalls()
 	end)
 
 	------------------------------------------------------------------------
+	-- 🏃 Treadmill Upgrades (opened from the gold pad in your base)
+	------------------------------------------------------------------------
+	local TreadRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Treadmill")
+	local GOLD_ACCENT = Color3.fromRGB(255, 200, 70)
+	local treadPanel = makePanel("TreadmillShop", "🏃 TREADMILL UPGRADES", GOLD_ACCENT, 860, 520)
+	label(treadPanel, {
+		Position = UDim2.fromOffset(26, 56),
+		Size = UDim2.new(1, -52, 0, 20),
+		Font = Enum.Font.GothamBold,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextColor3 = Color3.fromRGB(230, 225, 240),
+		TextStrokeTransparency = 1,
+		Text = "Better treadmills multiply the Speed you gain while training. Each tier is made for one zone.",
+	})
+
+	local function box(parent, pos, size, color)
+		local f = Instance.new("Frame")
+		f.Position = pos
+		f.Size = size
+		f.BackgroundColor3 = Color3.new(1, 1, 1)
+		f.Parent = parent
+		corner(f, 16)
+		local s = Instance.new("UIStroke")
+		s.Thickness = 3
+		s.Color = color
+		s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+		s.Parent = f
+		local g = Instance.new("UIGradient")
+		g.Color = ColorSequence.new(color:Lerp(Color3.new(0, 0, 0), 0.4), color:Lerp(Color3.new(0, 0, 0), 0.78))
+		g.Rotation = 90
+		g.Parent = f
+		return f, s, g
+	end
+	-- small fixed-size text (the default label scales text to fill the box)
+	local function textLabel(parent, props)
+		local l = label(parent, props)
+		l.TextScaled = false
+		l.TextSize = props.TextSize or 17
+		return l
+	end
+	local function bigButton(parent, text, color, edge, pos, size)
+		local b = Instance.new("TextButton")
+		b.Position = pos
+		b.Size = size
+		b.BackgroundColor3 = color
+		b.Font = Enum.Font.FredokaOne
+		b.TextScaled = true
+		b.TextColor3 = Color3.new(1, 1, 1)
+		b.TextStrokeTransparency = 0.3
+		b.Text = text
+		b.Parent = parent
+		corner(b, 12)
+		stroke(b, 3, edge)
+		local pad = Instance.new("UIPadding")
+		pad.PaddingTop = UDim.new(0, 7)
+		pad.PaddingBottom = UDim.new(0, 7)
+		pad.Parent = b
+		return b
+	end
+
+	-- Left: your treadmill now, and the next upgrade
+	local nowCard, nowStroke, nowGrad = box(treadPanel, UDim2.fromOffset(20, 88), UDim2.fromOffset(330, 130), GOLD_ACCENT)
+	textLabel(nowCard, { Position = UDim2.fromOffset(16, 10), Size = UDim2.new(1, -32, 0, 20), Font = Enum.Font.GothamBold, TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = Color3.fromRGB(220, 220, 235), Text = "YOUR TREADMILL", TextSize = 15 })
+	local nowName = label(nowCard, { Position = UDim2.fromOffset(16, 32), Size = UDim2.new(1, -32, 0, 40), TextXAlignment = Enum.TextXAlignment.Left, Text = "" })
+	local nowStats = textLabel(nowCard, { Position = UDim2.fromOffset(16, 78), Size = UDim2.new(1, -32, 0, 22), Font = Enum.Font.GothamBold, TextXAlignment = Enum.TextXAlignment.Left, Text = "" })
+	local nowZone = textLabel(nowCard, { Position = UDim2.fromOffset(16, 102), Size = UDim2.new(1, -32, 0, 20), Font = Enum.Font.Gotham, TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = Color3.fromRGB(215, 215, 230), Text = "", TextSize = 15 })
+
+	local nextCard, nextStroke, nextGrad = box(treadPanel, UDim2.fromOffset(20, 230), UDim2.fromOffset(330, 270), GOLD_ACCENT)
+	textLabel(nextCard, { Position = UDim2.fromOffset(16, 10), Size = UDim2.new(1, -32, 0, 20), Font = Enum.Font.GothamBold, TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = Color3.fromRGB(220, 220, 235), Text = "NEXT UPGRADE", TextSize = 15 })
+	local nextName = label(nextCard, { Position = UDim2.fromOffset(16, 32), Size = UDim2.new(1, -32, 0, 40), TextXAlignment = Enum.TextXAlignment.Left, Text = "" })
+	local nextGain = textLabel(nextCard, { Position = UDim2.fromOffset(16, 76), Size = UDim2.new(1, -32, 0, 22), Font = Enum.Font.GothamBold, TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = Color3.fromRGB(150, 255, 160), Text = "" })
+	local nextCost = textLabel(nextCard, { Position = UDim2.fromOffset(16, 100), Size = UDim2.new(1, -32, 0, 22), Font = Enum.Font.GothamBold, TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = Color3.fromRGB(255, 225, 120), Text = "" })
+	-- how close you are to affording it
+	local bar = Instance.new("Frame")
+	bar.Position = UDim2.fromOffset(16, 130)
+	bar.Size = UDim2.new(1, -32, 0, 22)
+	bar.BackgroundColor3 = Color3.fromRGB(20, 18, 30)
+	bar.Parent = nextCard
+	corner(bar, 11)
+	local fill = Instance.new("Frame")
+	fill.Size = UDim2.fromScale(0, 1)
+	fill.BackgroundColor3 = Color3.fromRGB(90, 220, 100)
+	fill.Parent = bar
+	corner(fill, 11)
+	local barText = textLabel(bar, { Size = UDim2.fromScale(1, 1), Font = Enum.Font.GothamBold, Text = "", TextSize = 14 })
+	local buyButton = bigButton(nextCard, "BUY", Color3.fromRGB(80, 210, 90), Color3.fromRGB(30, 100, 30), UDim2.fromOffset(16, 166), UDim2.new(1, -32, 0, 50))
+	local maxButton = bigButton(nextCard, "BUY MAX", Color3.fromRGB(230, 170, 40), Color3.fromRGB(120, 80, 10), UDim2.fromOffset(16, 222), UDim2.new(1, -32, 0, 38))
+	buyButton.Activated:Connect(function()
+		TreadRemote:FireServer("buy")
+	end)
+	maxButton.Activated:Connect(function()
+		TreadRemote:FireServer("buymax")
+	end)
+
+	-- Right: every tier, with the zone it's made for
+	local list = Instance.new("ScrollingFrame")
+	list.Position = UDim2.fromOffset(366, 88)
+	list.Size = UDim2.fromOffset(474, 412)
+	list.BackgroundColor3 = Color3.fromRGB(20, 18, 32)
+	list.BackgroundTransparency = 0.3
+	list.BorderSizePixel = 0
+	list.ScrollBarThickness = 8
+	list.ScrollBarImageColor3 = GOLD_ACCENT
+	list.AutomaticCanvasSize = Enum.AutomaticSize.Y
+	list.CanvasSize = UDim2.new()
+	list.Parent = treadPanel
+	corner(list, 14)
+	local listLayout = Instance.new("UIListLayout")
+	listLayout.Padding = UDim.new(0, 6)
+	listLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	listLayout.Parent = list
+	local listPad = Instance.new("UIPadding")
+	listPad.PaddingTop = UDim.new(0, 8)
+	listPad.PaddingBottom = UDim.new(0, 8)
+	listPad.PaddingLeft = UDim.new(0, 8)
+	listPad.PaddingRight = UDim.new(0, 14)
+	listPad.Parent = list
+
+	local rows = {}
+	for i, level in ipairs(Config.TreadmillLevels) do
+		local row, rowStroke = box(list, UDim2.new(), UDim2.new(1, 0, 0, 56), level.Color)
+		row.LayoutOrder = i
+		local chip = label(row, { Position = UDim2.fromOffset(8, 8), Size = UDim2.fromOffset(40, 40), BackgroundTransparency = 0, BackgroundColor3 = level.Color, Text = tostring(i) })
+		corner(chip, 10)
+		local name = label(row, { Position = UDim2.fromOffset(58, 5), Size = UDim2.new(1, -200, 0, 26), TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = level.Color:Lerp(Color3.new(1, 1, 1), 0.45), Text = level.Name .. "  x" .. Util.FormatNumber(level.Mult) })
+		local zone = Config.Biomes[i]
+		textLabel(row, { Position = UDim2.fromOffset(58, 31), Size = UDim2.new(1, -200, 0, 20), Font = Enum.Font.Gotham, TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = Color3.fromRGB(210, 210, 225), Text = if zone then "for " .. zone.Name else "", TextSize = 14 })
+		local status = label(row, { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -10, 0.5, 0), Size = UDim2.fromOffset(130, 30), TextXAlignment = Enum.TextXAlignment.Right, Text = "" })
+		rows[i] = { Row = row, Stroke = rowStroke, Status = status, Name = name }
+	end
+
+	local function speedStat()
+		local ls = player:FindFirstChild("leaderstats")
+		local s = ls and ls:FindFirstChild("Speed")
+		return if s then s.Value else 0
+	end
+	local function cashStat()
+		local ls = player:FindFirstChild("leaderstats")
+		local c = ls and ls:FindFirstChild("Cash")
+		return if c then c.Value else 0
+	end
+	local function gainFor(mult)
+		return Config.TreadmillGain(speedStat()) * mult * (if player:GetAttribute("SpeedPass") then 2 else 1)
+	end
+
+	local lastLevel = nil
+	local function refreshTread()
+		local levels = Config.TreadmillLevels
+		local current = math.clamp(player:GetAttribute("TreadmillLevel") or 1, 1, #levels)
+		local cur = levels[current]
+		local nxt = levels[current + 1]
+		local cash = cashStat()
+
+		nowName.Text = cur.Name .. " Treadmill"
+		nowName.TextColor3 = cur.Color:Lerp(Color3.new(1, 1, 1), 0.35)
+		nowStroke.Color = cur.Color
+		nowGrad.Color = ColorSequence.new(cur.Color:Lerp(Color3.new(0, 0, 0), 0.4), cur.Color:Lerp(Color3.new(0, 0, 0), 0.78))
+		nowStats.Text = "x" .. Util.FormatNumber(cur.Mult) .. " Speed  ·  +" .. Util.FormatNumber(gainFor(cur.Mult)) .. " Speed/sec"
+		nowZone.Text = if Config.Biomes[current] then "Made for " .. Config.Biomes[current].Name else ""
+
+		if nxt then
+			nextName.Text = nxt.Name .. " Treadmill"
+			nextName.TextColor3 = nxt.Color:Lerp(Color3.new(1, 1, 1), 0.35)
+			nextStroke.Color = nxt.Color
+			nextGrad.Color = ColorSequence.new(nxt.Color:Lerp(Color3.new(0, 0, 0), 0.4), nxt.Color:Lerp(Color3.new(0, 0, 0), 0.78))
+			nextGain.Text = "+" .. Util.FormatNumber(gainFor(cur.Mult)) .. "  →  +" .. Util.FormatNumber(gainFor(nxt.Mult)) .. " Speed/sec  (x" .. Util.FormatNumber(nxt.Mult / cur.Mult) .. ")"
+			nextCost.Text = "Cost: " .. Util.Money(nxt.Cost)
+			local ratio = math.clamp(cash / nxt.Cost, 0, 1)
+			fill.Size = UDim2.fromScale(ratio, 1)
+			fill.BackgroundColor3 = if ratio >= 1 then Color3.fromRGB(90, 220, 100) else Color3.fromRGB(230, 170, 40)
+			barText.Text = if ratio >= 1 then "Ready to buy!" else Util.Money(cash) .. " / " .. Util.Money(nxt.Cost) .. "  (" .. math.floor(ratio * 100) .. "%)"
+			local afford = ratio >= 1
+			buyButton.Text = if afford then "BUY  " .. Util.Money(nxt.Cost) else "NEED " .. Util.Money(nxt.Cost - cash)
+			buyButton.BackgroundColor3 = if afford then Color3.fromRGB(80, 210, 90) else Color3.fromRGB(110, 110, 125)
+			-- how many tiers "Buy Max" would get you
+			local count, left = 0, cash
+			for k = current + 1, #levels do
+				if left < levels[k].Cost then
+					break
+				end
+				left -= levels[k].Cost
+				count += 1
+			end
+			maxButton.Visible = true
+			maxButton.Text = if count > 1 then "BUY MAX (" .. count .. " tiers)" else "BUY MAX"
+			maxButton.BackgroundColor3 = if count > 0 then Color3.fromRGB(230, 170, 40) else Color3.fromRGB(110, 110, 125)
+		else
+			nextName.Text = "🏆 MAXED OUT"
+			nextName.TextColor3 = GOLD_ACCENT
+			nextGain.Text = "You have the best treadmill in the game!"
+			nextCost.Text = ""
+			fill.Size = UDim2.fromScale(1, 1)
+			barText.Text = "Complete"
+			buyButton.Text = "MAXED"
+			buyButton.BackgroundColor3 = Color3.fromRGB(110, 110, 125)
+			maxButton.Visible = false
+		end
+
+		for i, r in ipairs(rows) do
+			local level = levels[i]
+			if i < current then
+				r.Status.Text = "✅ Owned"
+				r.Status.TextColor3 = Color3.fromRGB(150, 255, 160)
+				r.Row.BackgroundTransparency = 0.35
+				r.Stroke.Thickness = 2
+			elseif i == current then
+				r.Status.Text = "⭐ Current"
+				r.Status.TextColor3 = GOLD_ACCENT
+				r.Row.BackgroundTransparency = 0
+				r.Stroke.Thickness = 5
+			else
+				r.Status.Text = (if i == current + 1 then "" else "🔒 ") .. Util.Money(level.Cost)
+				r.Status.TextColor3 = if cash >= level.Cost then Color3.fromRGB(150, 255, 160) else Color3.fromRGB(235, 235, 245)
+				r.Row.BackgroundTransparency = 0
+				r.Stroke.Thickness = if i == current + 1 then 4 else 2
+			end
+		end
+		if lastLevel ~= current then
+			-- keep your current tier in view
+			if lastLevel ~= nil then
+				-- flash your treadmill card after an upgrade
+				nowStroke.Thickness = 9
+				TweenService:Create(nowStroke, TweenInfo.new(0.6, Enum.EasingStyle.Quad), { Thickness = 3 }):Play()
+			end
+			lastLevel = current
+			task.defer(function()
+				list.CanvasPosition = Vector2.new(0, math.max(0, (current - 2) * 62))
+			end)
+		end
+	end
+	player:GetAttributeChangedSignal("TreadmillLevel"):Connect(refreshTread)
+	player:GetAttributeChangedSignal("SpeedPass"):Connect(refreshTread)
+	treadPanel:GetPropertyChangedSignal("Visible"):Connect(function()
+		if treadPanel.Visible then
+			refreshTread()
+			if UserInputService:GetLastInputType().Name:find("Gamepad") then
+				task.defer(function()
+					GuiService.SelectedObject = buyButton
+				end)
+			end
+		end
+	end)
+	task.spawn(function()
+		while true do
+			if treadPanel.Visible then
+				refreshTread()
+			end
+			task.wait(0.3)
+		end
+	end)
+	TreadRemote.OnClientEvent:Connect(function(action)
+		if action == "open" then
+			treadPanel.Visible = true
+		end
+	end)
+
+	------------------------------------------------------------------------
 	-- Open them from the stall prompts
 	------------------------------------------------------------------------
 	local function hook(prompt)
@@ -18136,9 +18422,10 @@ local function setupStalls()
 		end
 	end)
 	ContextActionService:BindActionAtPriority("EggStallBack", function(_, inputState)
-		if inputState == Enum.UserInputState.Begin and (treatPanel.Visible or factsPanel.Visible) then
+		if inputState == Enum.UserInputState.Begin and (treatPanel.Visible or factsPanel.Visible or treadPanel.Visible) then
 			treatPanel.Visible = false
 			factsPanel.Visible = false
+			treadPanel.Visible = false
 			GuiService.SelectedObject = nil
 			return Enum.ContextActionResult.Sink
 		end
