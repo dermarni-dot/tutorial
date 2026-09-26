@@ -2251,6 +2251,133 @@ function GUARDIANS.Wraith(def)
 	return model, height
 end
 
+-- Candy Kingdom: a giant see-through gummy bear with a candy crown
+function GUARDIANS.Gummy(def)
+	local gummy = def.GuardianColor
+	local light = gummy:Lerp(WHITE, 0.35)
+	local model, body, add, eye, height = startGuardian(def, Vector3.new(9, 9, 8), 7, 1.15, gummy)
+	body.Material = Enum.Material.Glass
+	body.Transparency = 0.12
+	local function g(name, shape, size, x, y, z, rot)
+		local p = add(name, shape, size, x, y, z, gummy, Enum.Material.Glass, rot)
+		p.Transparency = 0.12
+		return p
+	end
+	g("Head", "Ball", Vector3.one * 7, 0, 13.4, -0.8)
+	add("Muzzle", "Blob", Vector3.new(3.6, 2.6, 2.2), 0, 12.3, -3.8, light, Enum.Material.Glass)
+	add("Nose", "Blob", Vector3.new(1.4, 1, 0.8), 0, 13.1, -4.9, gummy:Lerp(BLACK, 0.4))
+	add("Mouth", "Blob", Vector3.new(1.8, 0.5, 0.3), 0, 11.5, -4.8, Color3.fromRGB(90, 20, 40))
+	for _, sx in ipairs({ -1, 1 }) do
+		eye(sx * 1.5, 14.5, -3.9, 1.6, sx)
+		g("Ear", "Ball", Vector3.one * 2.4, sx * 2.9, 16.6, -0.6)
+		g("Arm", "Blob", Vector3.new(2.8, 5.2, 2.8), sx * 5, 7.6, -1.2, CFrame.Angles(0, 0, math.rad(25 * sx)))
+		g("Leg", "Blob", Vector3.new(3.4, 3.6, 3.6), sx * 2.6, 1.8, -0.2)
+		add("Tooth", "Block", Vector3.new(0.4, 0.5, 0.2), sx * 0.5, 11.3, -4.95, WHITE)
+	end
+	-- sugar sparkle, gumdrop buttons and a lollipop scepter
+	for i, col in ipairs({ Color3.fromRGB(255, 220, 70), Color3.fromRGB(90, 200, 255), Color3.fromRGB(120, 230, 110) }) do
+		add("Gumdrop", "Ball", Vector3.one * 1.3, 0, 8.6 - i * 1.6, -3.9, col)
+	end
+	add("ScepterStick", "Cyl", Vector3.new(9, 0.6, 0.6), 6.2, 8.5, -4, WHITE, nil, CFrame.Angles(0, 0, math.rad(90)))
+	add("ScepterCandy", "Cyl", Vector3.new(0.8, 4.2, 4.2), 6.2, 13.2, -4, Color3.fromRGB(255, 90, 170), nil, CFrame.Angles(0, math.rad(90), 0))
+	add("ScepterSwirl", "Cyl", Vector3.new(0.9, 2.6, 2.6), 6.2, 13.2, -4, WHITE, nil, CFrame.Angles(0, math.rad(90), 0))
+	for i = 0, 6 do
+		local a = i / 7 * math.pi * 2
+		add("CandyCrown", "Ball", Vector3.one * 1.1, math.cos(a) * 2.2, 17.2 + (i % 2) * 0.5, -0.8 + math.sin(a) * 2.2, ({ Color3.fromRGB(255, 90, 170), Color3.fromRGB(255, 230, 80), Color3.fromRGB(110, 220, 255) })[(i % 3) + 1], Enum.Material.Neon)
+	end
+	local sparkle = Instance.new("Sparkles")
+	sparkle.SparkleColor = Color3.fromRGB(255, 220, 240)
+	sparkle.Parent = body
+	return model, height
+end
+
+-- Sunken Reef: a huge crab king with barnacles and a coral crown
+function GUARDIANS.ReefKing(def)
+	local shell = def.GuardianColor
+	local dark = shell:Lerp(BLACK, 0.3)
+	local model, body, add, eye, height = startGuardian(def, Vector3.new(11, 5, 8), 4.5, 1.2, shell)
+	add("ShellTop", "Blob", Vector3.new(10, 3.4, 7.4), 0, 6.2, 0.2, shell:Lerp(WHITE, 0.1))
+	add("Belly", "Blob", Vector3.new(8, 2, 6), 0, 3.2, 0, shell:Lerp(WHITE, 0.4))
+	for _, sx in ipairs({ -1, 1 }) do
+		add("EyeStalk", "Block", Vector3.new(0.6, 3, 0.6), sx * 1.8, 8.6, -2.4, dark)
+		eye(sx * 1.8, 10.6, -2.6, 1.6, sx)
+		add("Arm", "Blob", Vector3.new(5, 1.6, 1.6), sx * 7, 5.5, -2.6, shell, nil, CFrame.Angles(0, math.rad(30 * sx), math.rad(25 * sx)))
+		add("Claw", "Blob", Vector3.new(4.4, 3.6, 3), sx * 9.4, 8, -4.8, shell)
+		add("Pincer", "Wedge", Vector3.new(1.6, 1.6, 2.8), sx * 9.4, 10, -6.4, shell:Lerp(WHITE, 0.25))
+		add("Pincer", "Wedge", Vector3.new(1.6, 1.2, 2.4), sx * 9.4, 6.6, -6.4, shell:Lerp(WHITE, 0.25), nil, CFrame.Angles(0, 0, math.pi))
+		for j = 0, 2 do
+			add("CrabLeg", "Blob", Vector3.new(5, 1, 1), sx * 6.5, 2.2, -0.8 + j * 2.2, dark, nil, CFrame.Angles(0, 0, math.rad(-40 * sx)))
+		end
+	end
+	for i = 0, 7 do
+		local a = i * 2.1
+		add("Barnacle", "Ball", Vector3.one * (0.8 + (i % 3) * 0.2), math.cos(a) * 3.6, 7.4, 0.4 + math.sin(a) * 2.4, Color3.fromRGB(235, 225, 205))
+	end
+	local coral = { Color3.fromRGB(255, 120, 160), Color3.fromRGB(255, 190, 80), Color3.fromRGB(150, 110, 255) }
+	for i = 0, 4 do
+		local a = i / 5 * math.pi * 2
+		add("CoralCrown", "Block", Vector3.new(0.7, 2.6, 0.7), math.cos(a) * 2, 8.6, 0.4 + math.sin(a) * 1.6, coral[(i % 3) + 1], Enum.Material.Neon, CFrame.Angles(math.sin(a) * 0.4, 0, -math.cos(a) * 0.4))
+	end
+	local bubbles = Instance.new("ParticleEmitter")
+	bubbles.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+	bubbles.Color = ColorSequence.new(Color3.fromRGB(200, 240, 255))
+	bubbles.Size = NumberSequence.new(0.6, 0.2)
+	bubbles.Transparency = NumberSequence.new(0.3, 1)
+	bubbles.Lifetime = NumberRange.new(2, 3)
+	bubbles.Rate = 8
+	bubbles.Speed = NumberRange.new(2, 4)
+	bubbles.EmissionDirection = Enum.NormalId.Top
+	bubbles.Parent = body
+	return model, height
+end
+
+-- Celestial Heights boss: a floating winged guardian in gold and white
+function GUARDIANS.Seraph(def)
+	local robe = Color3.fromRGB(250, 248, 240)
+	local gold = def.GuardianColor
+	local glowC = Color3.fromRGB(255, 240, 170)
+	local sc = 1.35
+	local model, body, add, eye, height = startGuardian(def, Vector3.new(8, 10, 7), 12, sc, robe)
+	add("Sash", "Blob", Vector3.new(8.2, 1.4, 7.2), 0, 13, 0, gold, Enum.Material.Metal, CFrame.Angles(0, 0, math.rad(20)))
+	add("Head", "Ball", Vector3.one * 6, 0, 18.5, 0, Color3.fromRGB(255, 235, 215))
+	add("Hair", "Blob", Vector3.new(6.4, 3.4, 6.4), 0, 20.2, 0.6, gold)
+	for _, sx in ipairs({ -1, 1 }) do
+		add("Eye", "Blob", Vector3.new(1.1, 1.3, 0.4), sx * 1.1, 18.6, -2.85, Color3.fromRGB(120, 200, 255), Enum.Material.Neon)
+		add("Sleeve", "Blob", Vector3.new(2.6, 6, 2.6), sx * 5, 12.8, -0.6, robe, nil, CFrame.Angles(math.rad(-20), 0, math.rad(30 * sx)))
+		add("Hand", "Ball", Vector3.one * 1.8, sx * 6.6, 10.2, -2.4, Color3.fromRGB(255, 235, 215))
+		-- two pairs of big feathered wings
+		for pair = 0, 1 do
+			for f = 0, 3 do
+				add("Feather", "Blob", Vector3.new(1.2, 3.2 - f * 0.4, 7 - f * 1.1 - pair * 1.5), sx * (5.5 + f * 1.4 + pair * 0.6), 17 - pair * 5 - f * 0.9, 3 + f * 0.4, if f == 0 then gold:Lerp(WHITE, 0.5) else WHITE, Enum.Material.Neon, CFrame.Angles(math.rad(-20 - pair * 15), math.rad(-30 * sx), math.rad(-25 * sx)))
+			end
+		end
+	end
+	add("Spear", "Block", Vector3.new(0.6, 16, 0.6), 7, 12, -3, gold, Enum.Material.Metal)
+	add("SpearTip", "Block", Vector3.new(1.4, 2.6, 0.5), 7, 21, -3, glowC, Enum.Material.Neon, CFrame.Angles(0, 0, math.rad(45)))
+	for i = 0, 7 do
+		local a = i / 8 * math.pi * 2
+		add("RobeHem", "Wedge", Vector3.new(1.8, 3, 1.4), math.cos(a) * 3.2, 5.8 - (i % 2) * 0.6, math.sin(a) * 2.8, robe, nil, CFrame.Angles(math.rad(180), -a, 0))
+	end
+	local halo = add("Halo", "Cyl", Vector3.new(0.5, 6, 6), 0, 23, 0.4, glowC, Enum.Material.Neon, CFrame.Angles(0, 0, math.rad(90)))
+	halo.Transparency = 0.1
+	local aura = Instance.new("ParticleEmitter")
+	aura.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+	aura.Color = ColorSequence.new(glowC, WHITE)
+	aura.LightEmission = 1
+	aura.Size = NumberSequence.new(0.9, 0)
+	aura.Lifetime = NumberRange.new(1, 2)
+	aura.Rate = 30
+	aura.Speed = NumberRange.new(2, 4)
+	aura.SpreadAngle = Vector2.new(180, 180)
+	aura.Parent = body
+	local pl = Instance.new("PointLight")
+	pl.Color = glowC
+	pl.Range = 34
+	pl.Brightness = 2
+	pl.Parent = body
+	return model, height
+end
+
 function Visuals.MakeGuardian(def)
 	local builder = GUARDIANS[def.GuardianStyle or "Bear"] or GUARDIANS.Bear
 	local model, height = builder(def)

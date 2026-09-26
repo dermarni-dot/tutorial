@@ -13,7 +13,7 @@
 --   !treadmill 7       set your treadmill tier (1 = Basic ... 7 = Cosmic)
 --   !luck 10           start 10x server luck
 --   !rain              egg rain           !refill   respawn all wild eggs
---   !tp void           teleport (town, forest, desert, snow, volcano, void)
+--   !tp void           teleport (town, forest, desert, snow, volcano, void, candy, ocean, heaven)
 --   !daily             make today's daily reward claimable again (!daily reset = back to Day 1)
 --   !time night        set the time for everyone (day, sunset, night, 0-24; !time cycle = back to normal)
 --   !reset             wipe your progress
@@ -169,7 +169,7 @@ end
 COMMANDS.tp = function(player, args)
 	local zone = table.concat(args, " ")
 	if not GameService.Admin.Teleport(player, zone) then
-		say(player, "Unknown place. Try: town, forest, desert, snow, volcano, void", RED)
+		say(player, "Unknown place. Try: town, forest, desert, snow, volcano, void, candy, ocean, heaven", RED)
 	end
 end
 

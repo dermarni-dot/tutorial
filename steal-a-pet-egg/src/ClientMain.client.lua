@@ -1314,6 +1314,7 @@ adminRow({ { "2x Luck", "luck 2", GREEN_BTN }, { "5x Luck", "luck 5", GREEN_BTN 
 adminHeader("🚀 Teleport")
 adminRow({ { "Town", "tp town" }, { "Forest", "tp forest" }, { "Desert", "tp desert" } })
 adminRow({ { "Snow", "tp snow" }, { "Volcano", "tp volcano" }, { "Void", "tp void" } })
+adminRow({ { "Candy", "tp candy" }, { "Reef", "tp ocean" }, { "Heaven", "tp heaven" } })
 adminHeader("🌙 Time of day (everyone)")
 adminRow({ { "Day", "time day", GOLD_BTN }, { "Sunset", "time sunset", GOLD_BTN }, { "Night", "time night", GOLD_BTN }, { "Cycle", "time cycle", GOLD_BTN } })
 adminHeader("🎁 Daily reward")
@@ -2803,9 +2804,9 @@ local function setupStalls()
 		Rare = "Rare eggs glow and can hatch into sharks, tigers and robots.",
 		Epic = "Crystal shells. Epic pets earn over 200x more than Commons.",
 		Legendary = "Golden eggs with wings. Guardians get fast here, so train your Speed first!",
-		Mythic = "Cosmic eggs with their own orbiting stars. Only found in the Starfall Void.",
-		Divine = "Holy eggs with halos. Only 4.5% of Void eggs are Divine, and luck boosts help a lot.",
-		Secret = "The rarest eggs in the game: 1 in 200 Void eggs. Nobody knows what's inside until it hatches!",
+		Mythic = "Cosmic eggs with their own orbiting stars. Found past Magma Crater, and most common in the Sunken Reef.",
+		Divine = "Holy eggs with halos. Over half the eggs in Celestial Heights are Divine!",
+		Secret = "The rarest eggs in the game. Your best odds are 8% in Celestial Heights. Nobody knows what's inside until it hatches!",
 	}
 
 	local factsPanel = makePanel("EggFacts", "🥚 EGG FACTS", Color3.fromRGB(255, 200, 90), 780, 490)

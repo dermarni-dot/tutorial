@@ -16,7 +16,7 @@ Game Settings > Security > **Enable Studio Access to API Services**.
 
 ## How it plays
 
-- **The map:** your base sits in town. A road leads out through 5 biomes, each harder than the last:
+- **The map:** your base sits in town. A road leads out through 8 biomes, each harder than the last:
 
   | Biome | Guardian | Guardian speed | Speed needed | Eggs |
   |---|---|---|---|---|
@@ -25,6 +25,9 @@ Game Settings > Security > **Enable Studio Access to API Services**.
   | Frostpeak | Frost Yeti | 42 | 24 | Rare, Epic |
   | Magma Crater | Lava Golem | 56 | 40 | Epic, Legendary |
   | Starfall Void | Void Wraith | 75 | 61 | Legendary, Mythic |
+  | Candy Kingdom | Gummy Titan | 118 | 5M | Legendary, Mythic, Divine, Secret |
+  | Sunken Reef | Reef King | 128 | 25M | Mythic, Divine, Secret |
+  | Celestial Heights (boss) | Seraph Sentinel | 136 | 100M | Mythic, Divine, Secret (8%!) |
 
   Base walk speed is 24, plus your Speed stat (you start with 5).
 

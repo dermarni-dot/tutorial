@@ -21,7 +21,7 @@ Config.SellSeconds = 45 -- a pet sells for this many seconds of its income
 -- never get silly fast: 0 -> 28, 1K -> 75, 25K -> 96, 1M -> 121 (capped at 135).
 Config.BaseWalkSpeed = 28
 Config.WalkPerTenfold = 15.5 -- extra walk speed every time your Speed goes x10
-Config.MaxWalkSpeed = 135
+Config.MaxWalkSpeed = 160 -- high enough for the fastest zone (Celestial Heights)
 Config.GuardianEdge = 0.995 -- guardians run this fraction of your carry speed at their zone's SpeedNeeded
 Config.CarrySpeedMultiplier = 0.9
 Config.StartingSpeed = 5 -- enough to outrun the first guardian
@@ -666,6 +666,59 @@ Config.Biomes = {
 		EggSpots = 12,
 		Eggs = { Legendary = 65, Mythic = 30, Divine = 4.5, Secret = 0.5 },
 		Mood = { Color = Color3.fromRGB(140, 100, 215), Decay = Color3.fromRGB(45, 20, 90), Density = 0.44, Haze = 1, Glare = 0.2, Tint = Color3.fromRGB(222, 205, 255), Brightness = -0.05, Saturation = 0.25, CloudColor = Color3.fromRGB(150, 105, 220), CloudCover = 0.7, Clock = 0.5, Bloom = 1, Rays = 0, Contrast = 0.2, Ambient = Color3.fromRGB(110, 90, 160) },
+	},
+
+	{
+		Id = "Candy",
+		Name = "Candy Kingdom",
+		Floor = { Color3.fromRGB(255, 190, 220), Color3.fromRGB(255, 170, 205) },
+		Walls = { Color3.fromRGB(170, 110, 210), Color3.fromRGB(190, 130, 225) },
+		Props = { "Lollipop", "Lollipop", "CandyCane", "Gumdrop", "CottonCandyTree", "CottonCandyTree" },
+		Particles = "Sprinkles",
+		GuardianName = "Gummy Titan",
+		GuardianStyle = "Gummy",
+		GuardianColor = Color3.fromRGB(240, 60, 90),
+		SpeedNeeded = 5000000, -- Speed needed to outrun this guardian (its speed is worked out from this)
+		Leash = 270,
+		RespawnTime = 240,
+		EggSpots = 12,
+		Eggs = { Legendary = 40, Mythic = 50, Divine = 9, Secret = 1 },
+		Mood = { Color = Color3.fromRGB(255, 200, 230), Decay = Color3.fromRGB(230, 140, 200), Density = 0.3, Haze = 0.8, Glare = 0.2, Tint = Color3.fromRGB(255, 240, 250), Brightness = 0.02, Saturation = 0.3, CloudColor = Color3.fromRGB(255, 210, 240), CloudCover = 0.55, Bloom = 0.55, Rays = 0.08, Contrast = 0.1, Ambient = Color3.fromRGB(180, 140, 170) },
+	},
+	{
+		Id = "Ocean",
+		Name = "Sunken Reef",
+		Floor = { Color3.fromRGB(225, 210, 160), Color3.fromRGB(210, 195, 145) },
+		Walls = { Color3.fromRGB(40, 110, 140), Color3.fromRGB(50, 130, 160) },
+		Props = { "Coral", "Coral", "Kelp", "Kelp", "Clam", "SeaRock" },
+		Particles = "Bubbles",
+		GuardianName = "Reef King",
+		GuardianStyle = "ReefKing",
+		GuardianColor = Color3.fromRGB(255, 110, 80),
+		SpeedNeeded = 25000000, -- Speed needed to outrun this guardian (its speed is worked out from this)
+		Leash = 280,
+		RespawnTime = 300,
+		EggSpots = 11,
+		Eggs = { Mythic = 65, Divine = 31, Secret = 4 },
+		Mood = { Color = Color3.fromRGB(80, 170, 200), Decay = Color3.fromRGB(20, 70, 110), Density = 0.55, Haze = 2, Glare = 0, Tint = Color3.fromRGB(200, 235, 255), Brightness = -0.03, Saturation = 0.1, CloudColor = Color3.fromRGB(120, 180, 210), CloudCover = 0.8, Clock = 13, Bloom = 0.6, Rays = 0.2, Contrast = 0.15, Ambient = Color3.fromRGB(70, 130, 160) },
+	},
+	{
+		Id = "Heaven",
+		Name = "Celestial Heights",
+		Floor = { Color3.fromRGB(255, 255, 255), Color3.fromRGB(238, 238, 250) },
+		Walls = { Color3.fromRGB(255, 225, 150), Color3.fromRGB(255, 235, 175) },
+		Props = { "CloudPuff", "CloudPuff", "GoldPillar", "HeavenTree", "HeavenTree" },
+		Particles = "Feathers",
+		GuardianName = "Seraph Sentinel",
+		GuardianStyle = "Seraph",
+		Boss = true,
+		GuardianColor = Color3.fromRGB(255, 205, 90),
+		SpeedNeeded = 100000000, -- Speed needed to outrun this guardian (its speed is worked out from this)
+		Leash = 290,
+		RespawnTime = 360,
+		EggSpots = 10,
+		Eggs = { Mythic = 35, Divine = 57, Secret = 8 },
+		Mood = { Color = Color3.fromRGB(255, 245, 220), Decay = Color3.fromRGB(255, 220, 170), Density = 0.32, Haze = 1.2, Glare = 0.6, Tint = Color3.fromRGB(255, 250, 235), Brightness = 0.04, Saturation = 0.05, CloudColor = Color3.fromRGB(255, 250, 240), CloudCover = 0.9, Clock = 12, Bloom = 0.9, Rays = 0.25, Contrast = 0.08, Ambient = Color3.fromRGB(200, 190, 170) },
 	},
 }
 

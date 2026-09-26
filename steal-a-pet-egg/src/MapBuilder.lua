@@ -1487,6 +1487,323 @@ local function buildTownExtras(folder, rng)
 end
 
 --------------------------------------------------------------------------------
+-- Candy Kingdom, Sunken Reef and Celestial Heights
+--------------------------------------------------------------------------------
+local CANDY = { Color3.fromRGB(255, 90, 170), Color3.fromRGB(255, 220, 70), Color3.fromRGB(110, 220, 255), Color3.fromRGB(140, 230, 120), Color3.fromRGB(190, 130, 255) }
+local CORAL = { Color3.fromRGB(255, 120, 160), Color3.fromRGB(255, 170, 80), Color3.fromRGB(160, 110, 255), Color3.fromRGB(255, 90, 90) }
+local HEAVEN_GOLD = Color3.fromRGB(255, 210, 100)
+
+function PROPS.Lollipop(folder, pos, s, rng)
+	local h = rng:NextNumber(8, 13) * s
+	deco({ Name = "Stick", Shape = Enum.PartType.Cylinder, Size = Vector3.new(h, 0.8 * s, 0.8 * s), CFrame = cylinderAlongY(CFrame.new(pos + Vector3.new(0, h / 2, 0))), Color = WHITE, Material = Enum.Material.SmoothPlastic, Parent = folder })
+	local center = CFrame.new(pos + Vector3.new(0, h + 2.6 * s, 0)) * CFrame.Angles(0, rng:NextNumber(0, math.pi), 0)
+	local col = CANDY[rng:NextInteger(1, #CANDY)]
+	deco({ Name = "Candy", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.9 * s, 6 * s, 6 * s), CFrame = center * CFrame.Angles(0, math.rad(90), 0), Color = col, Material = Enum.Material.SmoothPlastic, Parent = folder })
+	for i = 0, 11 do
+		local a = i * 0.9
+		local r = (0.4 + i * 0.22) * s
+		deco({ Name = "Swirl", Shape = Enum.PartType.Ball, Size = Vector3.one * 0.7 * s, CFrame = center * CFrame.new(math.cos(a) * r, math.sin(a) * r, -0.45 * s), Color = WHITE, Material = Enum.Material.SmoothPlastic, Parent = folder })
+	end
+	deco({ Name = "Bow", Shape = Enum.PartType.Ball, Size = Vector3.new(2, 1, 1) * s, Position = pos + Vector3.new(0, h - 0.5, 0), Color = CANDY[rng:NextInteger(1, #CANDY)], Material = Enum.Material.SmoothPlastic, Parent = folder })
+end
+
+function PROPS.CandyCane(folder, pos, s, rng)
+	local yaw = rng:NextNumber(0, math.pi * 2)
+	local base = CFrame.new(pos) * CFrame.Angles(0, yaw, 0)
+	for i = 0, 7 do
+		deco({ Name = "Cane", Size = Vector3.new(1.4, 1.6, 1.4) * s, CFrame = base * CFrame.new(0, (0.8 + i * 1.6) * s, 0), Color = if i % 2 == 0 then Color3.fromRGB(230, 40, 60) else WHITE, Material = Enum.Material.SmoothPlastic, Parent = folder })
+	end
+	for i = 1, 5 do
+		local a = i / 5 * math.pi
+		deco({ Name = "CaneHook", Size = Vector3.new(1.4, 1.5, 1.4) * s, CFrame = base * CFrame.new((1 - math.cos(a)) * 1.6 * s, (12.8 + math.sin(a) * 1.8) * s, 0) * CFrame.Angles(0, 0, -a), Color = if i % 2 == 0 then Color3.fromRGB(230, 40, 60) else WHITE, Material = Enum.Material.SmoothPlastic, Parent = folder })
+	end
+end
+
+function PROPS.Gumdrop(folder, pos, s, rng)
+	for i = 1, 3 do
+		local size = rng:NextNumber(2.5, 4.5) * s
+		local p = pos + Vector3.new(rng:NextNumber(-3, 3), size * 0.3, rng:NextNumber(-3, 3))
+		local drop = deco({ Name = "Gumdrop", Shape = Enum.PartType.Ball, Size = Vector3.new(size, size * 1.1, size), Position = p, Color = CANDY[rng:NextInteger(1, #CANDY)], Material = Enum.Material.Glass, Transparency = 0.1, Parent = folder })
+		for k = 1, 4 do
+			deco({ Name = "Sugar", Size = Vector3.one * 0.25 * s, Position = drop.Position + Vector3.new(rng:NextNumber(-0.4, 0.4), 0.45, rng:NextNumber(-0.4, 0.4)) * size, Color = WHITE, Material = Enum.Material.Neon, CastShadow = false, Parent = folder })
+		end
+	end
+end
+
+function PROPS.CottonCandyTree(folder, pos, s, rng)
+	local trunkH = rng:NextNumber(7, 10) * s
+	deco({ Name = "Trunk", Shape = Enum.PartType.Cylinder, Size = Vector3.new(trunkH, 1.2 * s, 1.2 * s), CFrame = cylinderAlongY(CFrame.new(pos + Vector3.new(0, trunkH / 2, 0))), Color = Color3.fromRGB(245, 235, 220), Material = Enum.Material.SmoothPlastic, Parent = folder })
+	local fluff = ({ Color3.fromRGB(255, 180, 220), Color3.fromRGB(180, 210, 255), Color3.fromRGB(230, 190, 255) })[rng:NextInteger(1, 3)]
+	for i = 1, 7 do
+		local a = i * 2.3
+		deco({ Name = "CottonCandy", Shape = Enum.PartType.Ball, Size = Vector3.one * rng:NextNumber(4, 6.5) * s, Position = pos + Vector3.new(math.cos(a) * 2.4 * s, trunkH + rng:NextNumber(0, 4) * s, math.sin(a) * 2.4 * s), Color = fluff:Lerp(WHITE, rng:NextNumber(0, 0.25)), Material = Enum.Material.SmoothPlastic, Parent = folder })
+	end
+end
+
+function PROPS.Coral(folder, pos, s, rng)
+	local col = CORAL[rng:NextInteger(1, #CORAL)]
+	local function branch(from, dir, len, depth)
+		local to = from + dir * len
+		deco({ Name = "Coral", Size = Vector3.new(0.9, 0.9, len + 0.5) * s, CFrame = CFrame.lookAt((from + to) / 2, to), Color = col, Material = Enum.Material.SmoothPlastic, Parent = folder })
+		deco({ Name = "CoralTip", Shape = Enum.PartType.Ball, Size = Vector3.one * 1.2 * s, Position = to, Color = col:Lerp(WHITE, 0.4), Material = Enum.Material.Neon, CastShadow = false, Parent = folder })
+		if depth > 0 then
+			for side = -1, 1, 2 do
+				branch(to, (dir + Vector3.new(side * 0.6, 0.2, rng:NextNumber(-0.5, 0.5))).Unit, len * 0.7, depth - 1)
+			end
+		end
+	end
+	branch(pos, Vector3.yAxis, 4 * s, 2)
+end
+
+function PROPS.Kelp(folder, pos, s, rng)
+	local p = pos
+	local segs = rng:NextInteger(6, 10)
+	for i = 1, segs do
+		local nextP = p + Vector3.new(math.sin(i * 0.9) * 0.8, 2.4 * s, math.cos(i * 0.7) * 0.5)
+		deco({ Name = "Kelp", Size = Vector3.new(1.2 * s, 2.8 * s, 0.3), CFrame = CFrame.lookAt((p + nextP) / 2, nextP) * CFrame.Angles(math.rad(90), 0, 0), Color = Color3.fromRGB(60, 140 + i * 5, 70), Material = Enum.Material.SmoothPlastic, CanCollide = false, Parent = folder })
+		if i % 2 == 0 then
+			deco({ Name = "KelpBulb", Shape = Enum.PartType.Ball, Size = Vector3.one * 0.7 * s, Position = nextP + Vector3.new(0.6, 0, 0), Color = Color3.fromRGB(190, 170, 60), Material = Enum.Material.SmoothPlastic, Parent = folder })
+		end
+		p = nextP
+	end
+end
+
+function PROPS.Clam(folder, pos, s, rng)
+	local base = CFrame.new(pos) * CFrame.Angles(0, rng:NextNumber(0, math.pi * 2), 0)
+	local shell = Color3.fromRGB(240, 200, 220)
+	deco({ Name = "ClamBottom", Shape = Enum.PartType.Ball, Size = Vector3.new(5, 1.6, 4) * s, CFrame = base * CFrame.new(0, 0.6 * s, 0), Color = shell, Material = Enum.Material.SmoothPlastic, Parent = folder })
+	deco({ Name = "ClamTop", Shape = Enum.PartType.Ball, Size = Vector3.new(5, 1.6, 4) * s, CFrame = base * CFrame.new(0, 2 * s, 1.2 * s) * CFrame.Angles(math.rad(-35), 0, 0), Color = shell:Lerp(WHITE, 0.2), Material = Enum.Material.SmoothPlastic, Parent = folder })
+	local pearl = deco({ Name = "Pearl", Shape = Enum.PartType.Ball, Size = Vector3.one * 1.3 * s, CFrame = base * CFrame.new(0, 1.4 * s, -0.3 * s), Color = Color3.fromRGB(250, 245, 255), Material = Enum.Material.Neon, CastShadow = false, Parent = folder })
+	light(pearl, Color3.fromRGB(200, 230, 255), 8, 0.8)
+end
+
+function PROPS.SeaRock(folder, pos, s, rng)
+	local r = rock(folder, pos, s, rng, Color3.fromRGB(70, 95, 105), Enum.Material.Slate)
+	for _ = 1, 5 do
+		deco({ Name = "Barnacle", Shape = Enum.PartType.Ball, Size = Vector3.one * rng:NextNumber(0.5, 0.9) * s, CFrame = r.CFrame * CFrame.new(rng:NextNumber(-1, 1) * r.Size.X * 0.4, r.Size.Y * 0.45, rng:NextNumber(-1, 1) * r.Size.Z * 0.4), Color = Color3.fromRGB(230, 220, 200), Material = Enum.Material.SmoothPlastic, Parent = folder })
+	end
+	PROPS.Coral(folder, (r.CFrame * CFrame.new(0, r.Size.Y / 2, 0)).Position, s * 0.5, rng)
+end
+
+function PROPS.CloudPuff(folder, pos, s, rng)
+	local y = rng:NextNumber(0, 6)
+	for i = 1, 6 do
+		deco({ Name = "Cloud", Shape = Enum.PartType.Ball, Size = Vector3.one * rng:NextNumber(4, 7) * s, Position = pos + Vector3.new(rng:NextNumber(-4, 4) * s, y + rng:NextNumber(1.5, 3.5) * s, rng:NextNumber(-3, 3) * s), Color = Color3.fromRGB(255, 255, 255):Lerp(Color3.fromRGB(235, 235, 255), rng:NextNumber()), Material = Enum.Material.SmoothPlastic, CastShadow = false, Parent = folder })
+	end
+end
+
+function PROPS.GoldPillar(folder, pos, s, rng)
+	local h = rng:NextNumber(10, 18) * s
+	column(folder, pos, h, Color3.fromRGB(250, 248, 240), Enum.Material.Marble)
+	deco({ Name = "GoldBand", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.8, 3.5, 3.5), CFrame = cylinderAlongY(CFrame.new(pos + Vector3.new(0, 1 + h * 0.5, 0))), Color = HEAVEN_GOLD, Material = Enum.Material.Metal, Parent = folder })
+	local orb = deco({ Name = "PillarOrb", Shape = Enum.PartType.Ball, Size = Vector3.one * 2, Position = pos + Vector3.new(0, h + 3, 0), Color = Color3.fromRGB(255, 240, 180), Material = Enum.Material.Neon, CastShadow = false, Parent = folder })
+	if rng:NextNumber() < 0.4 then
+		light(orb, Color3.fromRGB(255, 235, 170), 16, 1)
+	end
+end
+
+function PROPS.HeavenTree(folder, pos, s, rng)
+	local trunkH = 9 * s
+	deco({ Name = "Trunk", Size = Vector3.new(2 * s, trunkH, 2 * s), Position = pos + Vector3.new(0, trunkH / 2, 0), Color = Color3.fromRGB(245, 240, 230), Material = Enum.Material.Marble, Parent = folder })
+	local c = 3.6 * s
+	for layer = 0, 1 do
+		for ix = -1, 1 do
+			for iz = -1, 1 do
+				if layer == 0 or (ix == 0 and iz == 0) then
+					local gold = (ix + iz + layer) % 2 == 0
+					deco({ Name = "Leaves", Size = Vector3.one * c, Position = pos + Vector3.new(ix * c, trunkH + layer * c, iz * c), Color = if gold then Color3.fromRGB(255, 225, 130) else WHITE, Material = if gold then Enum.Material.Neon else Enum.Material.SmoothPlastic, CastShadow = false, Parent = folder })
+				end
+			end
+		end
+	end
+end
+
+CLUTTER.Candy = function(folder, p, rng)
+	for _ = 1, 3 do
+		deco({ Name = "Sprinkle", Size = Vector3.new(0.3, 0.25, 1), CFrame = CFrame.new(p + Vector3.new(rng:NextNumber(-1.5, 1.5), 0.15, rng:NextNumber(-1.5, 1.5))) * CFrame.Angles(0, rng:NextNumber(0, 3), 0), Color = CANDY[rng:NextInteger(1, #CANDY)], Material = Enum.Material.SmoothPlastic, CanCollide = false, CastShadow = false, Parent = folder })
+	end
+end
+CLUTTER.Ocean = function(folder, p, rng)
+	if rng:NextNumber() < 0.5 then
+		deco({ Name = "Seagrass", Size = Vector3.new(0.3, rng:NextNumber(1.5, 3), 0.3), CFrame = CFrame.new(p + Vector3.new(0, 1, 0)) * CFrame.Angles(rng:NextNumber(-0.3, 0.3), 0, rng:NextNumber(-0.3, 0.3)), Color = Color3.fromRGB(70, 160, 90), Material = Enum.Material.SmoothPlastic, CanCollide = false, CastShadow = false, Parent = folder })
+	else
+		deco({ Name = "Shell", Shape = Enum.PartType.Ball, Size = Vector3.new(1, 0.4, 0.8), Position = p + Vector3.new(0, 0.2, 0), Color = ({ Color3.fromRGB(250, 220, 230), Color3.fromRGB(255, 200, 150), WHITE })[rng:NextInteger(1, 3)], Material = Enum.Material.SmoothPlastic, CanCollide = false, Parent = folder })
+	end
+end
+CLUTTER.Heaven = function(folder, p, rng)
+	deco({ Name = "Wisp", Shape = Enum.PartType.Ball, Size = Vector3.new(rng:NextNumber(2, 4), 0.8, rng:NextNumber(1.5, 3)), Position = p + Vector3.new(0, 0.3, 0), Color = WHITE, Material = Enum.Material.SmoothPlastic, CanCollide = false, CastShadow = false, Parent = folder })
+	if rng:NextNumber() < 0.25 then
+		deco({ Name = "GoldSpark", Size = Vector3.one * 0.4, CFrame = CFrame.new(p + Vector3.new(0, 1.2, 0)) * CFrame.Angles(0.8, 0.8, 0), Color = HEAVEN_GOLD, Material = Enum.Material.Neon, CanCollide = false, CastShadow = false, Parent = folder })
+	end
+end
+
+AMBIENT.Sprinkles = { Y = 45, Props = { Color = ColorSequence.new({ ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 90, 170)), ColorSequenceKeypoint.new(0.5, Color3.fromRGB(255, 230, 80)), ColorSequenceKeypoint.new(1, Color3.fromRGB(110, 220, 255)) }), LightEmission = 0.3, Size = NumberSequence.new(0.35), Lifetime = NumberRange.new(8, 11), Rate = 60, Speed = NumberRange.new(0, 1), RotSpeed = NumberRange.new(-180, 180), Rotation = NumberRange.new(0, 360), Acceleration = Vector3.new(0.5, -5, 0), EmissionDirection = Enum.NormalId.Bottom } }
+AMBIENT.Bubbles = { Y = 1, Props = { Color = ColorSequence.new(Color3.fromRGB(210, 240, 255)), LightEmission = 0.4, Size = NumberSequence.new(0.3, 0.7), Transparency = NumberSequence.new(0.2, 1), Lifetime = NumberRange.new(5, 9), Rate = 70, Speed = NumberRange.new(3, 6), SpreadAngle = Vector2.new(15, 15), EmissionDirection = Enum.NormalId.Top } }
+AMBIENT.Feathers = { Y = 50, Props = { Color = ColorSequence.new(WHITE, Color3.fromRGB(255, 235, 170)), LightEmission = 0.6, Size = NumberSequence.new(0.45), Transparency = NumberSequence.new(0.1, 0.6), Lifetime = NumberRange.new(10, 14), Rate = 35, Speed = NumberRange.new(0, 1), RotSpeed = NumberRange.new(-60, 60), Rotation = NumberRange.new(0, 360), Acceleration = Vector3.new(1, -3, 0.5), EmissionDirection = Enum.NormalId.Bottom } }
+EXTRA_AMBIENT.Heaven = "Stardust"
+
+WALL_TRIMS.Candy = function(folder, x, z, side, rng)
+	for k = 0, 2 do
+		deco({ Name = "CandyStripe", Size = Vector3.new(0.3, 12, 1.4), CFrame = CFrame.new(x, 14, z + (k - 1) * 3) * CFrame.Angles(math.rad(30), 0, 0), Color = if k % 2 == 0 then Color3.fromRGB(230, 40, 60) else WHITE, Material = Enum.Material.SmoothPlastic, CanCollide = false, Parent = folder })
+	end
+	for k = -2, 2 do
+		deco({ Name = "FrostingDrip", Shape = Enum.PartType.Ball, Size = Vector3.new(0.6, rng:NextNumber(2, 4), 1.6), Position = Vector3.new(x, WALL_HEIGHT - 1.5, z + k * 3), Color = Color3.fromRGB(255, 245, 250), Material = Enum.Material.SmoothPlastic, CanCollide = false, CastShadow = false, Parent = folder })
+	end
+end
+WALL_TRIMS.Ocean = function(folder, x, z, side, rng)
+	for k = 0, 2 do
+		local h = rng:NextNumber(5, 12)
+		deco({ Name = "WallKelp", Size = Vector3.new(0.3, h, 1.2), CFrame = CFrame.new(x, h / 2, z + (k - 1) * 3) * CFrame.Angles(rng:NextNumber(-0.15, 0.15), 0, 0), Color = Color3.fromRGB(60, 150, 80), Material = Enum.Material.SmoothPlastic, CanCollide = false, CastShadow = false, Parent = folder })
+	end
+	for _ = 1, 3 do
+		deco({ Name = "WallBarnacle", Shape = Enum.PartType.Ball, Size = Vector3.one * rng:NextNumber(0.8, 1.4), Position = Vector3.new(x, rng:NextNumber(3, 30), z + rng:NextNumber(-6, 6)), Color = Color3.fromRGB(230, 220, 200), Material = Enum.Material.SmoothPlastic, CanCollide = false, Parent = folder })
+	end
+end
+WALL_TRIMS.Heaven = function(folder, x, z, side, rng)
+	deco({ Name = "Filigree", Size = Vector3.new(0.3, 8, 0.6), Position = Vector3.new(x, 18, z), Color = HEAVEN_GOLD, Material = Enum.Material.Neon, CanCollide = false, CastShadow = false, Parent = folder })
+	deco({ Name = "Filigree", Size = Vector3.new(0.3, 0.6, 5), Position = Vector3.new(x, 20, z), Color = HEAVEN_GOLD, Material = Enum.Material.Neon, CanCollide = false, CastShadow = false, Parent = folder })
+	deco({ Name = "WallCloud", Shape = Enum.PartType.Ball, Size = Vector3.new(3, 3, 7), Position = Vector3.new(x - side * 0.5, WALL_HEIGHT, z), Color = WHITE, Material = Enum.Material.SmoothPlastic, CanCollide = false, CastShadow = false, Parent = folder })
+end
+
+BACKDROPS.Candy = { Base = Color3.fromRGB(200, 130, 220), Top = Color3.fromRGB(255, 245, 250), Material = Enum.Material.SmoothPlastic, MinH = 60, MaxH = 120, Cap = Enum.Material.SmoothPlastic }
+BACKDROPS.Ocean = { Base = Color3.fromRGB(35, 70, 85), Top = Color3.fromRGB(60, 110, 120), Material = Enum.Material.Slate, MinH = 70, MaxH = 140 }
+BACKDROPS.Heaven = { Base = Color3.fromRGB(235, 235, 250), Top = Color3.fromRGB(255, 255, 255), Material = Enum.Material.SmoothPlastic, MinH = 30, MaxH = 70, Floating = true }
+
+function SKY.Candy(folder, centerZ, rng)
+	-- a rainbow arching over the zone
+	local colors = { Color3.fromRGB(255, 80, 90), Color3.fromRGB(255, 170, 60), Color3.fromRGB(255, 235, 80), Color3.fromRGB(90, 220, 120), Color3.fromRGB(80, 160, 255), Color3.fromRGB(170, 100, 255) }
+	for band, col in ipairs(colors) do
+		local r = 260 - band * 9
+		for i = 0, 17 do
+			local a1, a2 = i / 18 * math.pi, (i + 1) / 18 * math.pi
+			local p1 = Vector3.new(-math.cos(a1) * r, math.sin(a1) * r * 0.7 + 20, centerZ + 90)
+			local p2 = Vector3.new(-math.cos(a2) * r, math.sin(a2) * r * 0.7 + 20, centerZ + 90)
+			local seg = deco({ Name = "Rainbow", Size = Vector3.new(10, 1, (p2 - p1).Magnitude + 1), CFrame = CFrame.lookAt((p1 + p2) / 2, p2), Color = col, Material = Enum.Material.Neon, CanCollide = false, CastShadow = false, Parent = folder })
+			seg.Transparency = 0.45
+		end
+	end
+end
+function SKY.Ocean(folder, centerZ, rng)
+	-- sunbeams slanting down through the water, and fish schools
+	for i = 1, 10 do
+		local beam = deco({ Name = "LightShaft", Size = Vector3.new(rng:NextNumber(10, 20), 140, 4), CFrame = CFrame.new(rng:NextNumber(-CORRIDOR_HALF + 40, CORRIDOR_HALF - 40), 70, centerZ + rng:NextNumber(-130, 130)) * CFrame.Angles(0, rng:NextNumber(0, 3), math.rad(15)), Color = Color3.fromRGB(200, 240, 255), Material = Enum.Material.Neon, CanCollide = false, CastShadow = false, Parent = folder })
+		beam.Transparency = 0.9
+	end
+	for school = 1, 5 do
+		local c = Vector3.new(rng:NextNumber(-300, 300), rng:NextNumber(25, 60), centerZ + rng:NextNumber(-120, 120))
+		local col = CORAL[rng:NextInteger(1, #CORAL)]
+		for _ = 1, 9 do
+			local p = c + Vector3.new(rng:NextNumber(-8, 8), rng:NextNumber(-3, 3), rng:NextNumber(-8, 8))
+			deco({ Name = "Fish", Shape = Enum.PartType.Ball, Size = Vector3.new(0.8, 1, 2), Position = p, Color = col, Material = Enum.Material.SmoothPlastic, CanCollide = false, CastShadow = false, Parent = folder })
+			deco({ Name = "FishTail", Size = Vector3.new(0.2, 1, 0.8), Position = p + Vector3.new(0, 0, 1.2), Color = col:Lerp(BLACK, 0.2), Material = Enum.Material.SmoothPlastic, CanCollide = false, CastShadow = false, Parent = folder })
+		end
+	end
+end
+function SKY.Heaven(folder, centerZ, rng)
+	local sun = deco({ Name = "HeavenSun", Shape = Enum.PartType.Ball, Size = Vector3.one * 60, Position = Vector3.new(0, 230, centerZ + 260), Color = Color3.fromRGB(255, 240, 180), Material = Enum.Material.Neon, CanCollide = false, CastShadow = false, Parent = folder })
+	for i = 0, 11 do
+		local a = i / 12 * math.pi * 2
+		local ray = deco({ Name = "SunRay", Size = Vector3.new(6, 90, 1), CFrame = CFrame.new(sun.Position) * CFrame.Angles(0, 0, a) * CFrame.new(0, 80, 0), Color = Color3.fromRGB(255, 230, 150), Material = Enum.Material.Neon, CanCollide = false, CastShadow = false, Parent = folder })
+		ray.Transparency = 0.6
+	end
+end
+
+SETPIECE_SPOTS.Candy = { { "GingerbreadHouse", -360, 40, 36 }, { "ChocolateRiver", 365, -60, 44 } }
+SETPIECE_SPOTS.Ocean = { { "Shipwreck", -360, -40, 42 }, { "GiantClam", 360, 70, 30 } }
+SETPIECE_SPOTS.Heaven = { { "SkyTemple", -355, 20, 40 }, { "RainbowBridge", 365, -70, 38 } }
+
+function SETPIECES.GingerbreadHouse(folder, o, rng)
+	local cf = CFrame.lookAt(o, o + Vector3.new(if o.X < 0 then 1 else -1, 0, 0))
+	house(folder, cf, 20, 12, 16, { Wall = Color3.fromRGB(190, 120, 70), Trim = Color3.fromRGB(255, 250, 245), Roof = Color3.fromRGB(255, 245, 250), Chimney = false })
+	for i = -4, 4 do
+		deco({ Name = "Gumdrop", Shape = Enum.PartType.Ball, Size = Vector3.one * 1.4, CFrame = cf * CFrame.new(i * 2.3, 12.4, -9.3), Color = CANDY[(i % #CANDY) + 1], Material = Enum.Material.Glass, Parent = folder })
+	end
+	for _, sx in ipairs({ -1, 1 }) do
+		PROPS.CandyCane(folder, (cf * CFrame.new(sx * 12, 0, -10)).Position, 0.9, rng)
+		PROPS.Lollipop(folder, (cf * CFrame.new(sx * 16, 0, -4)).Position, 0.8, rng)
+	end
+	for i = 0, 6 do
+		deco({ Name = "PathCookie", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.3, 3, 3), CFrame = cylinderAlongY(cf * CFrame.new(0, 0.15, -11 - i * 3.4)), Color = Color3.fromRGB(210, 150, 90), Material = Enum.Material.SmoothPlastic, Parent = folder })
+	end
+end
+
+function SETPIECES.ChocolateRiver(folder, o, rng)
+	local choc = deco({ Name = "ChocolateRiver", Size = Vector3.new(16, 0.4, 80), Position = o + Vector3.new(0, 0.2, 0), Color = Color3.fromRGB(100, 55, 30), Material = Enum.Material.SmoothPlastic, Reflectance = 0.15, CanCollide = false, Parent = folder })
+	for _, sx in ipairs({ -1, 1 }) do
+		deco({ Name = "RiverBank", Size = Vector3.new(2, 0.8, 80), Position = o + Vector3.new(sx * 9, 0.4, 0), Color = Color3.fromRGB(255, 230, 240), Material = Enum.Material.SmoothPlastic, Parent = folder })
+	end
+	for i = 0, 5 do
+		deco({ Name = "Wafer", Size = Vector3.new(20, 0.8, 1.8), Position = o + Vector3.new(0, 1.4, -5 + i * 2), Color = if i % 2 == 0 then Color3.fromRGB(230, 190, 130) else Color3.fromRGB(245, 215, 160), Material = Enum.Material.SmoothPlastic, Parent = folder })
+	end
+	local fall = deco({ Name = "ChocolateFall", Size = Vector3.new(12, 24, 3), Position = o + Vector3.new(0, 12, 41), Color = Color3.fromRGB(110, 60, 35), Material = Enum.Material.SmoothPlastic, Reflectance = 0.1, Parent = folder })
+	particles(fall, { Color = ColorSequence.new(Color3.fromRGB(120, 70, 40)), Size = NumberSequence.new(1, 2), Transparency = NumberSequence.new(0.2, 1), Lifetime = NumberRange.new(0.8, 1.2), Rate = 20, Speed = NumberRange.new(3, 6), EmissionDirection = Enum.NormalId.Bottom })
+	light(choc, Color3.fromRGB(255, 200, 150), 10, 0.3)
+end
+
+function SETPIECES.Shipwreck(folder, o, rng)
+	local hull = CFrame.new(o + Vector3.new(0, 4, 0)) * CFrame.Angles(0, math.rad(20), math.rad(-14))
+	local wood = Color3.fromRGB(95, 70, 50)
+	deco({ Name = "Hull", Size = Vector3.new(14, 8, 40), CFrame = hull, Color = wood, Material = Enum.Material.WoodPlanks, Parent = folder })
+	deco({ Name = "Bow", Shape = Enum.PartType.Wedge, Size = Vector3.new(14, 8, 10), CFrame = hull * CFrame.new(0, 0, -25) * CFrame.Angles(0, math.pi, 0), Color = wood, Material = Enum.Material.WoodPlanks, Parent = folder })
+	deco({ Name = "Deck", Size = Vector3.new(13, 0.6, 38), CFrame = hull * CFrame.new(0, 4.2, 0), Color = wood:Lerp(WHITE, 0.15), Material = Enum.Material.WoodPlanks, Parent = folder })
+	deco({ Name = "Hole", Size = Vector3.new(0.4, 4, 6), CFrame = hull * CFrame.new(7.1, -1, 6), Color = Color3.fromRGB(20, 25, 30), Material = Enum.Material.SmoothPlastic, Parent = folder })
+	deco({ Name = "Mast", Shape = Enum.PartType.Cylinder, Size = Vector3.new(28, 1.4, 1.4), CFrame = hull * CFrame.new(0, 16, 4) * CFrame.Angles(0, 0, math.rad(80)), Color = wood, Material = Enum.Material.Wood, Parent = folder })
+	local sail = deco({ Name = "TornSail", Size = Vector3.new(0.3, 10, 12), CFrame = hull * CFrame.new(-4, 18, 4) * CFrame.Angles(0, 0, math.rad(-10)), Color = Color3.fromRGB(220, 210, 185), Material = Enum.Material.Fabric, Parent = folder })
+	sail.Transparency = 0.1
+	local chest = deco({ Name = "TreasureChest", Size = Vector3.new(4, 2.6, 2.8), Position = o + Vector3.new(-12, 1.3, -8), Color = Color3.fromRGB(120, 80, 40), Material = Enum.Material.WoodPlanks, Parent = folder })
+	local gold = deco({ Name = "Gold", Size = Vector3.new(3.4, 0.6, 2.2), Position = chest.Position + Vector3.new(0, 1.5, 0), Color = Color3.fromRGB(255, 210, 70), Material = Enum.Material.Neon, CastShadow = false, Parent = folder })
+	light(gold, Color3.fromRGB(255, 220, 120), 16, 1.2)
+	for _ = 1, 4 do
+		PROPS.Coral(folder, o + Vector3.new(rng:NextNumber(-18, 18), 0, rng:NextNumber(-20, 20)), 0.8, rng)
+	end
+end
+
+function SETPIECES.GiantClam(folder, o, rng)
+	PROPS.Clam(folder, o, 4, rng)
+	for i = 0, 9 do
+		local a = i / 10 * math.pi * 2
+		PROPS.Kelp(folder, o + Vector3.new(math.cos(a) * 22, 0, math.sin(a) * 22), 1.1, rng)
+	end
+	local glow = deco({ Name = "PearlGlow", Shape = Enum.PartType.Ball, Size = Vector3.one * 7, Position = o + Vector3.new(0, 6, -1.2), Color = Color3.fromRGB(230, 240, 255), Material = Enum.Material.Neon, CastShadow = false, Parent = folder })
+	glow.Transparency = 0.5
+	light(glow, Color3.fromRGB(200, 230, 255), 30, 1.5)
+end
+
+function SETPIECES.SkyTemple(folder, o, rng)
+	local marble = Color3.fromRGB(250, 248, 240)
+	for i = 0, 2 do
+		deco({ Name = "TempleStep", Size = Vector3.new(34 - i * 3, 1.2, 26 - i * 3), Position = o + Vector3.new(0, 0.6 + i * 1.2, 0), Color = marble:Lerp(BLACK, i * 0.03), Material = Enum.Material.Marble, Parent = folder })
+	end
+	for ix = -2, 2 do
+		for _, sz in ipairs({ -9, 9 }) do
+			column(folder, o + Vector3.new(ix * 6.5, 3.6, sz), 14, marble, Enum.Material.Marble)
+		end
+	end
+	deco({ Name = "Entablature", Size = Vector3.new(32, 2.4, 22), Position = o + Vector3.new(0, 21.4, 0), Color = marble, Material = Enum.Material.Marble, Parent = folder })
+	roof(folder, CFrame.new(o + Vector3.new(0, 22.6, 0)), 33, 23, 6, marble, Enum.Material.Marble)
+	deco({ Name = "GoldTrim", Size = Vector3.new(32.4, 0.6, 22.4), Position = o + Vector3.new(0, 20.2, 0), Color = HEAVEN_GOLD, Material = Enum.Material.Metal, Parent = folder })
+	local orb = deco({ Name = "AltarOrb", Shape = Enum.PartType.Ball, Size = Vector3.one * 3, Position = o + Vector3.new(0, 6.5, 0), Color = Color3.fromRGB(255, 240, 170), Material = Enum.Material.Neon, CastShadow = false, Parent = folder })
+	deco({ Name = "Altar", Size = Vector3.new(4, 2.4, 4), Position = o + Vector3.new(0, 4.4, 0), Color = HEAVEN_GOLD, Material = Enum.Material.Metal, Parent = folder })
+	light(orb, Color3.fromRGB(255, 235, 170), 32, 2)
+	particles(orb, { Color = ColorSequence.new(Color3.fromRGB(255, 240, 180)), LightEmission = 1, Size = NumberSequence.new(0.5, 0), Lifetime = NumberRange.new(1.5, 2.5), Rate = 15, Speed = NumberRange.new(2, 4), SpreadAngle = Vector2.new(180, 180) })
+end
+
+function SETPIECES.RainbowBridge(folder, o, rng)
+	local colors = { Color3.fromRGB(255, 80, 90), Color3.fromRGB(255, 170, 60), Color3.fromRGB(255, 235, 80), Color3.fromRGB(90, 220, 120), Color3.fromRGB(80, 160, 255), Color3.fromRGB(170, 100, 255) }
+	for band, col in ipairs(colors) do
+		for i = 0, 11 do
+			local a1, a2 = i / 12 * math.pi, (i + 1) / 12 * math.pi
+			local p1 = o + Vector3.new(0, math.sin(a1) * 16 + 1, -math.cos(a1) * 30) + Vector3.new((band - 3.5) * 1.6, 0, 0)
+			local p2 = o + Vector3.new(0, math.sin(a2) * 16 + 1, -math.cos(a2) * 30) + Vector3.new((band - 3.5) * 1.6, 0, 0)
+			deco({ Name = "RainbowBand", Size = Vector3.new(1.6, 0.8, (p2 - p1).Magnitude + 0.4), CFrame = CFrame.lookAt((p1 + p2) / 2, p2), Color = col, Material = Enum.Material.Neon, CastShadow = false, Parent = folder })
+		end
+	end
+	for _, sz in ipairs({ -1, 1 }) do
+		PROPS.CloudPuff(folder, o + Vector3.new(0, 0, sz * 30), 1.6, rng)
+	end
+end
+
+--------------------------------------------------------------------------------
 -- Player bases
 -- Built in the plot's local space: local -Z is the open front (facing the road).
 --------------------------------------------------------------------------------
