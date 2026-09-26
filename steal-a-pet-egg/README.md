@@ -35,7 +35,7 @@ Game Settings > Security > **Enable Studio Access to API Services**.
 
   The four newest zones each have their own look: a glowing mushroom cave at night (giant mushrooms, a mushroom house, a glowing pool, drifting spore-jellies), a haunted graveyard (pumpkins, gravestones, twisted trees, a haunted manor, a huge moon and bats), a steampunk city at sunset (gears, steam pipes, lampposts, a clock tower, airships) and a synthwave neon city (neon towers, holo trees, a data core, a neon pyramid, a striped sun and flying cars). See `zones_preview.png` and `guardians_preview.png`.
 
-  **Running at top speed:** everything in the zones except the floor and walls is walk-through, so you never snag on a tree or rock at 500 speed; there are fewer props for clearer lanes; and while you carry an egg a glowing trail runs from you back to your base.
+  **Running at top speed:** everything in the zones, the town and the bases except floors, walls, the treadmill and the leaderboard screens is walk-through (so the base gate, stone border and fences can't fling you anymore, and invisible ramps smooth the step onto your base floor), so you never snag on a tree or rock at 500 speed; there are fewer props for clearer lanes; and while you carry an egg a glowing trail runs from you back to your base.
 
   Walk speed climbs with every tenfold of your Speed stat, faster and faster: 5 Speed walks at 49, 300 at 100, 11K at 162, 1M at 260, 100M at 384, 2.5B at 485 and 50B at 589 (max 650). Guardian speed is in studs per second; each guardian is just a hair slower than you are while carrying an egg with its zone's Speed needed. Tune it with `Config.BaseWalkSpeed`, `WalkPerTenfold` and `WalkCurve`.
 

@@ -2359,6 +2359,8 @@ local function fenceLine(parent, at, x1, z1, x2, z2, color)
 	end
 end
 
+local PLOT_SOLID = { Floor = true, PenGrass = true, Treadmill = true, EdgeRamp = true }
+
 local function buildPlot(plotsFolder, index, center, frontDir)
 	local model = Instance.new("Model")
 	model.Name = "Plot" .. index
@@ -2733,6 +2735,24 @@ local function buildPlot(plotsFolder, index, center, frontDir)
 	end
 
 	plot.SpawnCFrame = at(0, 4, -14)
+	-- Running in at top speed used to fling you off the stone border, gate posts
+	-- and fence rails, so only the floor, pen grass and treadmill are solid now,
+	-- and invisible ramps smooth the small step up onto the floor.
+	for _, d in ipairs(model:GetDescendants()) do
+		if d:IsA("BasePart") and not PLOT_SOLID[d.Name] then
+			d.CanCollide = false
+		end
+	end
+	local floorTop = 0.4
+	for _, edge in ipairs({
+		{ Vector3.new(0, 0, PLOT_SIZE / 2), Vector3.zAxis, PLOT_WIDTH },
+		{ Vector3.new(0, 0, -PLOT_SIZE / 2), -Vector3.zAxis, PLOT_WIDTH },
+		{ Vector3.new(PLOT_WIDTH / 2, 0, 0), Vector3.xAxis, PLOT_SIZE },
+		{ Vector3.new(-PLOT_WIDTH / 2, 0, 0), -Vector3.xAxis, PLOT_SIZE },
+	}) do
+		local mid = center + edge[1] + edge[2] * 1.5 + Vector3.new(0, floorTop / 2, 0)
+		part({ Name = "EdgeRamp", Shape = Enum.PartType.Wedge, Size = Vector3.new(edge[3] + 6, floorTop, 3), CFrame = CFrame.lookAt(mid, mid + edge[2]), Transparency = 1, CanQuery = false, CanTouch = false, CastShadow = false, Parent = model })
+	end
 	return plot
 end
 
@@ -3317,6 +3337,12 @@ function MapBuilder.Build()
 	-- Town decoration
 	buildTown(townFolder, Random.new(7))
 	buildLeaderboards(townFolder)
+	-- nothing low in town to trip over or get launched off at top speed
+	for _, d in ipairs(townFolder:GetDescendants()) do
+		if d:IsA("BasePart") and not SOLID_NAMES[d.Name] and d.Name ~= "Screen" then
+			d.CanCollide = false
+		end
+	end
 
 	-- Bases: one horizontal row across the town, all facing the zones (+Z)
 	local plotsFolder = Instance.new("Folder")
