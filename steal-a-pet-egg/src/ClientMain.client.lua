@@ -790,12 +790,16 @@ task.spawn(function()
 				local first = current == nil
 				current = zone
 				if zone == "Town" then
+					gui:SetAttribute("ZoneColor", Color3.fromRGB(255, 240, 200))
+					gui:SetAttribute("ZoneName", "🏠 Town")
 					applyMood(Config.TownMood)
 					if not first then
 						showZone("🏠 Town", "You're safe here. Get your egg home!", Color3.fromRGB(255, 240, 200))
 					end
 				else
 					local def = Config.Biomes[zone]
+					gui:SetAttribute("ZoneColor", def.GuardianColor:Lerp(Color3.new(1, 1, 1), 0.35))
+					gui:SetAttribute("ZoneName", "📍 " .. def.Name)
 					applyMood(def.Mood)
 					showZone(def.Name, def.GuardianName .. " guards these eggs  •  Speed " .. Util.FormatNumber(Config.RecommendedSpeed(def)) .. "+ needed", def.GuardianColor:Lerp(Color3.new(1, 1, 1), 0.35))
 				end
@@ -1987,6 +1991,626 @@ task.spawn(function()
 		end
 	end
 end)
+
+-- 3D previews, hatch reveal, pet details, clock badge, title screen and
+-- console controls. In their own function to stay under Luau's local limit.
+local function setupExtraGui()
+	--------------------------------------------------------------------------------
+	-- 3D pet previews: builds the real pet model inside a ViewportFrame and spins it
+	--------------------------------------------------------------------------------
+	local Visuals = require(Shared:WaitForChild("Visuals"))
+	local UserInputService = game:GetService("UserInputService")
+	local GuiService = game:GetService("GuiService")
+	local ContextActionService = game:GetService("ContextActionService")
+	local RenderStepped = game:GetService("RunService").RenderStepped
+
+	local function petViewport(parent, data, silhouette)
+		local vp = Instance.new("ViewportFrame")
+		vp.Name = "PetPreview"
+		vp.BackgroundTransparency = 1
+		vp.Size = UDim2.fromScale(1, 1)
+		vp.Ambient = if silhouette then Color3.fromRGB(40, 36, 60) else Color3.fromRGB(175, 175, 190)
+		vp.LightColor = Color3.fromRGB(255, 250, 240)
+		vp.LightDirection = Vector3.new(-0.5, -1, -0.8)
+		local ok, model = pcall(Visuals.MakeCreature, data)
+		if not ok or not model then
+			vp.Parent = parent
+			return vp, function() end
+		end
+		for _, d in ipairs(model:GetDescendants()) do
+			if d:IsA("BillboardGui") or d:IsA("ParticleEmitter") or d:IsA("Sparkles") or d:IsA("PointLight") or d:IsA("Highlight") then
+				d:Destroy()
+			elseif silhouette and d:IsA("BasePart") then
+				d.Color = Color3.fromRGB(22, 20, 34)
+				d.Material = Enum.Material.SmoothPlastic
+			end
+		end
+		model.Parent = vp
+		local camera = Instance.new("Camera")
+		camera.FieldOfView = 40
+		camera.Parent = vp
+		vp.CurrentCamera = camera
+		local center, size = model:GetBoundingBox()
+		local dist = size.Magnitude * 1.35
+		local angle = math.rad(-25)
+		local function place()
+			local offset = Vector3.new(math.sin(angle), 0.32, -math.cos(angle)) * dist
+			camera.CFrame = CFrame.lookAt(center.Position + offset, center.Position)
+		end
+		place()
+		local conn = RenderStepped:Connect(function(dt)
+			angle += dt * 0.9
+			place()
+		end)
+		vp.Parent = parent
+		return vp, function()
+			conn:Disconnect()
+			vp:Destroy()
+		end
+	end
+
+	local function whereToFind(rarityId)
+		local zones = {}
+		for _, biome in ipairs(Config.Biomes) do
+			if (biome.Eggs[rarityId] or 0) > 0 then
+				table.insert(zones, biome.Name)
+			end
+		end
+		if (Config.EggRainWeights[rarityId] or 0) > 0 then
+			table.insert(zones, "Egg Rain")
+		end
+		return if #zones > 0 then table.concat(zones, ", ") else "???"
+	end
+
+	--------------------------------------------------------------------------------
+	-- Hatch reveal: a big card with the new pet spinning in 3D
+	--------------------------------------------------------------------------------
+	local HatchedRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Hatched")
+
+	local reveal = Instance.new("TextButton") -- click / tap / A anywhere on it to dismiss
+	reveal.Name = "HatchReveal"
+	juiced[reveal] = true -- has its own gradient and pop animation
+	reveal.Text = ""
+	reveal.AutoButtonColor = false
+	reveal.AnchorPoint = Vector2.new(0.5, 0.5)
+	reveal.Position = UDim2.fromScale(0.5, 0.48)
+	reveal.Size = UDim2.fromOffset(340, 430)
+	reveal.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	reveal.ZIndex = 8
+	reveal.Visible = false
+	reveal.Parent = gui
+	corner(reveal, 22)
+	local revealStroke = Instance.new("UIStroke")
+	revealStroke.Thickness = 5
+	revealStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	revealStroke.Parent = reveal
+	local revealGradient = Instance.new("UIGradient")
+	revealGradient.Rotation = 90
+	revealGradient.Parent = reveal
+	local revealScale = Instance.new("UIScale")
+	revealScale.Parent = reveal
+
+	local rays = Instance.new("Frame")
+	rays.Name = "Rays"
+	rays.BackgroundTransparency = 1
+	rays.AnchorPoint = Vector2.new(0.5, 0.5)
+	rays.Position = UDim2.new(0.5, 0, 0, 170)
+	rays.Size = UDim2.fromOffset(10, 10)
+	rays.Rotation = 0
+	rays.Parent = reveal
+	local rayParts = {}
+	for i = 0, 7 do
+		local ray = Instance.new("Frame")
+		ray.AnchorPoint = Vector2.new(0.5, 0.5)
+		ray.Position = UDim2.fromScale(0.5, 0.5)
+		ray.Size = UDim2.fromOffset(26, 300)
+		ray.Rotation = i * 22.5
+		ray.BackgroundTransparency = 0.82
+		ray.BorderSizePixel = 0
+		ray.Parent = rays
+		table.insert(rayParts, ray)
+	end
+	local revealNew = label(reveal, { Position = UDim2.fromOffset(0, 14), Size = UDim2.new(1, 0, 0, 34), Text = "✨ NEW PET! ✨", TextColor3 = Color3.fromRGB(255, 230, 110) })
+	local revealStage = Instance.new("Frame")
+	revealStage.BackgroundTransparency = 1
+	revealStage.Position = UDim2.fromOffset(20, 52)
+	revealStage.Size = UDim2.new(1, -40, 0, 236)
+	revealStage.Parent = reveal
+	local revealName = label(reveal, { Position = UDim2.fromOffset(14, 292), Size = UDim2.new(1, -28, 0, 40), Text = "" })
+	local revealRarity = label(reveal, { Position = UDim2.fromOffset(14, 332), Size = UDim2.new(1, -28, 0, 26), Font = Enum.Font.GothamBold, Text = "" })
+	local revealStats = label(reveal, { Position = UDim2.fromOffset(14, 362), Size = UDim2.new(1, -28, 0, 22), Font = Enum.Font.GothamBold, TextColor3 = Color3.fromRGB(150, 255, 160), Text = "" })
+	local revealHint = label(reveal, { Position = UDim2.fromOffset(14, 396), Size = UDim2.new(1, -28, 0, 18), Font = Enum.Font.Gotham, TextColor3 = Color3.fromRGB(200, 200, 215), TextStrokeTransparency = 1, Text = "Tap to continue" })
+
+	local revealQueue = {}
+	local revealing = false
+	local stopRevealModel = nil
+	local revealToken = 0
+
+	local function showNextReveal()
+		if revealing or #revealQueue == 0 then
+			return
+		end
+		revealing = true
+		revealToken += 1
+		local token = revealToken
+		local data = table.remove(revealQueue, 1)
+		local rarity = Config.RarityById[data.Rarity]
+		local mutation = data.Mutation and Config.MutationById[data.Mutation]
+		local color = if mutation then mutation.Color else rarity.Color
+		revealGradient.Color = ColorSequence.new(color:Lerp(Color3.fromRGB(40, 30, 70), 0.55), Color3.fromRGB(22, 18, 36))
+		revealStroke.Color = color
+		for _, ray in ipairs(rayParts) do
+			ray.BackgroundColor3 = color:Lerp(Color3.new(1, 1, 1), 0.3)
+		end
+		revealNew.Visible = data.New == true
+		revealName.Text = (if data.Shiny then "✨ " else "") .. Config.CreatureTitle(data)
+		revealName.TextColor3 = color:Lerp(Color3.new(1, 1, 1), 0.35)
+		revealRarity.Text = rarity.Id:upper() .. (if mutation then "  ·  " .. mutation.Icon .. " " .. mutation.Id else "") .. (if (data.Size or 1) >= 2 then "  ·  HUGE" else "")
+		revealRarity.TextColor3 = rarity.Color
+		revealStats.Text = "+" .. Util.Money(Config.CreatureIncome(data)) .. "/s  ·  " .. string.format("%.1f kg", Config.PetWeight(data)) .. "  ·  grows up over time"
+		revealHint.Text = if UserInputService.GamepadEnabled then "Press Ⓐ to continue" else "Tap to continue"
+		if stopRevealModel then
+			stopRevealModel()
+		end
+		local _, stop = petViewport(revealStage, data, false)
+		stopRevealModel = stop
+		reveal.Visible = true
+		revealScale.Scale = 0.3
+		TweenService:Create(revealScale, TweenInfo.new(0.45, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = 1 }):Play()
+		if UserInputService.GamepadEnabled then
+			GuiService.SelectedObject = reveal
+		end
+		task.delay(if rarity.Order >= 5 then 5 else 3.2, function()
+			if token == revealToken and revealing then
+				reveal:SetAttribute("Dismiss", true)
+			end
+		end)
+	end
+
+	local function dismissReveal()
+		if not revealing then
+			return
+		end
+		revealing = false
+		reveal.Visible = false
+		if GuiService.SelectedObject == reveal then
+			GuiService.SelectedObject = nil
+		end
+		if stopRevealModel then
+			stopRevealModel()
+			stopRevealModel = nil
+		end
+		task.delay(0.15, showNextReveal)
+	end
+	reveal.Activated:Connect(dismissReveal)
+	reveal:GetAttributeChangedSignal("Dismiss"):Connect(function()
+		if reveal:GetAttribute("Dismiss") then
+			reveal:SetAttribute("Dismiss", nil)
+			dismissReveal()
+		end
+	end)
+	RenderStepped:Connect(function(dt)
+		if reveal.Visible then
+			rays.Rotation = (rays.Rotation + dt * 25) % 360
+		end
+	end)
+
+	HatchedRemote.OnClientEvent:Connect(function(data)
+		if type(data) ~= "table" or not Config.RarityById[data.Rarity] then
+			return
+		end
+		table.insert(revealQueue, data)
+		-- hatching lots at once (Instant Hatch): keep only the 3 rarest
+		if #revealQueue > 3 then
+			table.sort(revealQueue, function(a, b)
+				return Config.RarityById[a.Rarity].Order > Config.RarityById[b.Rarity].Order
+			end)
+			for i = #revealQueue, 4, -1 do
+				table.remove(revealQueue, i)
+			end
+		end
+		showNextReveal()
+	end)
+
+	--------------------------------------------------------------------------------
+	-- Pet Index details: tap a pet to see it in 3D (a silhouette if not found yet)
+	--------------------------------------------------------------------------------
+	local detail = Instance.new("Frame")
+	detail.Name = "PetDetail"
+	detail.AnchorPoint = Vector2.new(0.5, 0.5)
+	detail.Position = UDim2.fromScale(0.5, 0.5)
+	detail.Size = UDim2.fromOffset(330, 420)
+	detail.BackgroundColor3 = Color3.fromRGB(28, 24, 44)
+	detail.ZIndex = 20
+	detail.Visible = false
+	detail.Parent = indexPanel
+	corner(detail, 18)
+	local detailStroke = Instance.new("UIStroke")
+	detailStroke.Thickness = 4
+	detailStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	detailStroke.Parent = detail
+	local detailStage = Instance.new("Frame")
+	detailStage.BackgroundColor3 = Color3.fromRGB(45, 40, 70)
+	detailStage.Position = UDim2.fromOffset(16, 16)
+	detailStage.Size = UDim2.new(1, -32, 0, 210)
+	detailStage.Parent = detail
+	corner(detailStage, 14)
+	local detailName = label(detail, { Position = UDim2.fromOffset(16, 234), Size = UDim2.new(1, -32, 0, 36), Text = "" })
+	local detailRarity = label(detail, { Position = UDim2.fromOffset(16, 270), Size = UDim2.new(1, -32, 0, 22), Font = Enum.Font.GothamBold, Text = "" })
+	local detailInfo = label(detail, { Position = UDim2.fromOffset(20, 298), Size = UDim2.new(1, -40, 0, 64), Font = Enum.Font.GothamBold, TextColor3 = Color3.fromRGB(225, 225, 240), TextStrokeTransparency = 1, TextWrapped = true, Text = "" })
+	detailInfo.TextScaled = false
+	detailInfo.TextSize = 15
+	detailInfo.TextYAlignment = Enum.TextYAlignment.Top
+	local detailClose = Instance.new("TextButton")
+	detailClose.AnchorPoint = Vector2.new(0.5, 1)
+	detailClose.Position = UDim2.new(0.5, 0, 1, -14)
+	detailClose.Size = UDim2.fromOffset(160, 42)
+	detailClose.BackgroundColor3 = Color3.fromRGB(90, 140, 240)
+	detailClose.Font = Enum.Font.FredokaOne
+	detailClose.TextScaled = true
+	detailClose.Text = "Back"
+	detailClose.TextColor3 = Color3.new(1, 1, 1)
+	detailClose.Parent = detail
+	corner(detailClose, 12)
+	local detailPad = Instance.new("UIPadding")
+	detailPad.PaddingTop = UDim.new(0, 7)
+	detailPad.PaddingBottom = UDim.new(0, 7)
+	detailPad.Parent = detailClose
+
+	local stopDetailModel = nil
+	local lastTile = nil
+	local function closeDetail()
+		detail.Visible = false
+		if stopDetailModel then
+			stopDetailModel()
+			stopDetailModel = nil
+		end
+		if UserInputService.GamepadEnabled and lastTile and indexPanel.Visible then
+			GuiService.SelectedObject = lastTile
+		end
+	end
+	detailClose.Activated:Connect(closeDetail)
+
+	local function openDetail(def, hit)
+		lastTile = hit
+		local folder = player:FindFirstChild("PetIndex")
+		local found = folder ~= nil and folder:FindFirstChild(def.Name) ~= nil
+		local rarity = Config.RarityById[def.Rarity]
+		detailStroke.Color = rarity.Color
+		detailName.Text = if found then def.Name else "???"
+		detailName.TextColor3 = if found then rarity.Color:Lerp(Color3.new(1, 1, 1), 0.35) else Color3.fromRGB(160, 155, 185)
+		detailRarity.Text = rarity.Id:upper() .. (if found then "  ·  ✅ Collected" else "  ·  Not found yet")
+		detailRarity.TextColor3 = rarity.Color
+		local lines = { "💰 Earns +" .. Util.Money(def.Income) .. "/s as a baby (up to " .. Util.Money(def.Income * Config.Stages[#Config.Stages].Mult) .. "/s grown)" }
+		table.insert(lines, "🥚 Found in: " .. whereToFind(def.Rarity))
+		if found and (def.Pattern or def.Accessory) then
+			table.insert(lines, "🎨 " .. (def.Pattern or "") .. (if def.Pattern and def.Accessory then " · " else "") .. (def.Accessory or ""))
+		end
+		detailInfo.Text = table.concat(lines, "\n")
+		if stopDetailModel then
+			stopDetailModel()
+		end
+		local _, stop = petViewport(detailStage, { Name = def.Name, Rarity = def.Rarity, Tier = 1, Size = 1, Age = 1e9 }, not found)
+		stopDetailModel = stop
+		detail.Visible = true
+		if UserInputService.GamepadEnabled then
+			GuiService.SelectedObject = detailClose
+		end
+	end
+
+	for _, tile in pairs(indexTiles) do
+		local hit = Instance.new("TextButton")
+		hit.Name = "Open"
+		hit.Text = ""
+		hit.BackgroundTransparency = 1
+		hit.Size = UDim2.fromScale(1, 1)
+		hit.ZIndex = 3
+		hit.Parent = tile.Frame
+		hit.Activated:Connect(function()
+			openDetail(tile.Def, hit)
+		end)
+	end
+	indexPanel:GetPropertyChangedSignal("Visible"):Connect(function()
+		if not indexPanel.Visible then
+			closeDetail()
+		end
+	end)
+
+	--------------------------------------------------------------------------------
+	-- Top-left badge: time of day and the zone you're in
+	--------------------------------------------------------------------------------
+	local infoChip = Instance.new("Frame")
+	infoChip.Name = "InfoChip"
+	infoChip.Position = UDim2.fromOffset(14, 8)
+	infoChip.Size = UDim2.fromOffset(230, 58)
+	infoChip.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	infoChip.Parent = gui
+	corner(infoChip, 14)
+	local chipStroke = Instance.new("UIStroke")
+	chipStroke.Thickness = 2.5
+	chipStroke.Color = Color3.fromRGB(255, 240, 200)
+	chipStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	chipStroke.Parent = infoChip
+	local chipGradient = Instance.new("UIGradient")
+	chipGradient.Color = ColorSequence.new(Color3.fromRGB(58, 46, 92), Color3.fromRGB(24, 20, 38))
+	chipGradient.Rotation = 90
+	chipGradient.Parent = infoChip
+	local timeLabel = label(infoChip, { Position = UDim2.fromOffset(12, 5), Size = UDim2.new(1, -24, 0, 26), TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = Color3.fromRGB(255, 230, 140), Text = "☀️ 3:00 PM" })
+	local zoneLabel = label(infoChip, { Position = UDim2.fromOffset(12, 31), Size = UDim2.new(1, -24, 0, 20), Font = Enum.Font.GothamBold, TextXAlignment = Enum.TextXAlignment.Left, Text = "🏠 Town" })
+
+	local function refreshZoneChip()
+		zoneLabel.Text = gui:GetAttribute("ZoneName") or "🏠 Town"
+		local c = gui:GetAttribute("ZoneColor")
+		zoneLabel.TextColor3 = if typeof(c) == "Color3" then c else Color3.new(1, 1, 1)
+		chipStroke.Color = if typeof(c) == "Color3" then c else Color3.fromRGB(255, 240, 200)
+	end
+	gui:GetAttributeChangedSignal("ZoneName"):Connect(refreshZoneChip)
+	refreshZoneChip()
+
+	task.spawn(function()
+		while true do
+			local clock = clockTime
+			local h = math.floor(clock)
+			local m = math.floor((clock - h) * 60)
+			local icon = if clock >= 7.5 and clock < 17 then "☀️" elseif (clock >= 5 and clock < 7.5) or (clock >= 17 and clock < 19.5) then "🌅" else "🌙"
+			timeLabel.Text = string.format("%s %d:%02d %s", icon, (h + 11) % 12 + 1, m, if h < 12 then "AM" else "PM")
+			task.wait(0.5)
+		end
+	end)
+
+	--------------------------------------------------------------------------------
+	-- Title screen when you join
+	--------------------------------------------------------------------------------
+	local splash = Instance.new("Frame")
+	splash.Name = "TitleScreen"
+	splash.Size = UDim2.new(1, 0, 1, 80)
+	splash.Position = UDim2.fromOffset(0, -80)
+	splash.BackgroundColor3 = Color3.new(1, 1, 1)
+	splash.ZIndex = 30
+	splash.Parent = gui
+	local splashGradient = Instance.new("UIGradient")
+	splashGradient.Color = ColorSequence.new({ ColorSequenceKeypoint.new(0, Color3.fromRGB(70, 50, 130)), ColorSequenceKeypoint.new(0.6, Color3.fromRGB(35, 25, 70)), ColorSequenceKeypoint.new(1, Color3.fromRGB(20, 15, 40)) })
+	splashGradient.Rotation = 90
+	splashGradient.Parent = splash
+	local eggRow = label(splash, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.3), Size = UDim2.fromOffset(420, 80), Text = "🥚 🐣 🥚", TextStrokeTransparency = 1 })
+	local splashTitle = label(splash, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.44), Size = UDim2.fromOffset(640, 100), Text = "STEAL A PET EGG", TextColor3 = Color3.fromRGB(255, 220, 90), TextStrokeTransparency = 0 })
+	local titleStroke = Instance.new("UIStroke")
+	titleStroke.Thickness = 4
+	titleStroke.Color = Color3.fromRGB(120, 60, 20)
+	titleStroke.Parent = splashTitle
+	label(splash, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.54), Size = UDim2.fromOffset(560, 30), Font = Enum.Font.GothamBold, TextColor3 = Color3.fromRGB(220, 215, 240), Text = "Grab eggs · Outrun guardians · Hatch 199 pets" })
+	local playButton = Instance.new("TextButton")
+	playButton.Name = "PlayButton"
+	playButton.AnchorPoint = Vector2.new(0.5, 0.5)
+	playButton.Position = UDim2.fromScale(0.5, 0.7)
+	playButton.Size = UDim2.fromOffset(260, 74)
+	playButton.BackgroundColor3 = Color3.fromRGB(90, 220, 80)
+	playButton.Font = Enum.Font.FredokaOne
+	playButton.TextScaled = true
+	playButton.Text = "▶ PLAY"
+	playButton.TextColor3 = Color3.new(1, 1, 1)
+	playButton.TextStrokeTransparency = 0.2
+	playButton.Parent = splash
+	corner(playButton, 18)
+	stroke(playButton, 4, Color3.fromRGB(30, 100, 30))
+	local playPad = Instance.new("UIPadding")
+	playPad.PaddingTop = UDim.new(0, 12)
+	playPad.PaddingBottom = UDim.new(0, 12)
+	playPad.Parent = playButton
+	local splashHint = label(splash, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.8), Size = UDim2.fromOffset(400, 22), Font = Enum.Font.Gotham, TextColor3 = Color3.fromRGB(190, 185, 215), TextStrokeTransparency = 1, Text = "" })
+
+	task.spawn(function()
+		local t = 0
+		while splash.Parent do
+			t += task.wait(0.03)
+			eggRow.Rotation = math.sin(t * 2) * 6
+			eggRow.Position = UDim2.fromScale(0.5, 0.3 + math.sin(t * 3) * 0.01)
+		end
+	end)
+
+	local function closeSplash()
+		if not splash.Parent then
+			return
+		end
+		if GuiService.SelectedObject == playButton then
+			GuiService.SelectedObject = nil
+		end
+		local fade = TweenInfo.new(0.5)
+		for _, d in ipairs(splash:GetDescendants()) do
+			if d:IsA("TextLabel") or d:IsA("TextButton") then
+				TweenService:Create(d, fade, { TextTransparency = 1, TextStrokeTransparency = 1, BackgroundTransparency = 1 }):Play()
+			elseif d:IsA("UIStroke") then
+				TweenService:Create(d, fade, { Transparency = 1 }):Play()
+			end
+		end
+		TweenService:Create(splash, fade, { BackgroundTransparency = 1 }):Play()
+		task.delay(0.55, function()
+			splash:Destroy()
+		end)
+	end
+	playButton.Activated:Connect(closeSplash)
+
+	--------------------------------------------------------------------------------
+	-- Console / gamepad controls
+	--   View (Back) button  open the side menu so the D-pad can move through it
+	--   Y                   Daily Rewards
+	--   B                   close whatever is open (menus, pet details, reveal, treadmill)
+	--   A                   press the highlighted button
+	-- Walking, holding X to grab eggs and R2 to swing the Bonk Bat are Roblox defaults.
+	--------------------------------------------------------------------------------
+	-- Gold highlight around the selected button
+	local selection = Instance.new("Frame")
+	selection.Name = "GamepadSelection"
+	selection.BackgroundTransparency = 1
+	selection.Size = UDim2.fromScale(1, 1)
+	local selectionStroke = Instance.new("UIStroke")
+	selectionStroke.Thickness = 4
+	selectionStroke.Color = Color3.fromRGB(255, 215, 80)
+	selectionStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	selectionStroke.Parent = selection
+	corner(selection, 12)
+	pcall(function()
+		player.PlayerGui.SelectionImageObject = selection
+	end)
+	task.spawn(function()
+		while true do
+			selectionStroke.Transparency = 0.15 + math.abs(math.sin(os.clock() * 3)) * 0.35
+			task.wait(0.05)
+		end
+	end)
+	for _, name in ipairs({ "Backdrop" }) do
+		local b = gui:FindFirstChild(name)
+		if b then
+			b.Selectable = false
+		end
+	end
+
+	local function usingGamepad()
+		local last = UserInputService:GetLastInputType()
+		return last.Name:find("Gamepad") ~= nil
+	end
+
+	-- the main button of each menu, selected when it opens with a gamepad
+	local function firstVisibleButton(root)
+		for _, d in ipairs(root:GetDescendants()) do
+			if d:IsA("TextButton") and d.Visible and d.Selectable and d.Name ~= "Backdrop" then
+				local ok = true
+				local p = d.Parent
+				while p and p ~= root do
+					if p:IsA("GuiObject") and not p.Visible then
+						ok = false
+						break
+					end
+					p = p.Parent
+				end
+				if ok then
+					return d
+				end
+			end
+		end
+		return nil
+	end
+	local MENU_FOCUS = {
+		[panel] = function()
+			return firstVisibleButton(grid)
+		end,
+		[dailyPanel] = function()
+			return claimButton
+		end,
+		[indexPanel] = function()
+			return firstVisibleButton(indexList)
+		end,
+	}
+	for menu, focus in pairs(MENU_FOCUS) do
+		menu:GetPropertyChangedSignal("Visible"):Connect(function()
+			if menu.Visible and usingGamepad() then
+				task.defer(function()
+					GuiService.SelectedObject = focus()
+				end)
+			end
+		end)
+	end
+
+	local function anyMenuOpen()
+		return panel.Visible or dailyPanel.Visible or indexPanel.Visible or adminPanel.Visible or reveal.Visible or detail.Visible
+	end
+
+	local function closeTop()
+		if splash.Parent then
+			closeSplash()
+		elseif reveal.Visible then
+			dismissReveal()
+		elseif detail.Visible then
+			closeDetail()
+		elseif panel.Visible or dailyPanel.Visible or indexPanel.Visible then
+			panel.Visible = false
+			dailyPanel.Visible = false
+			indexPanel.Visible = false
+		elseif adminPanel.Visible then
+			adminPanel.Visible = false
+		elseif stopButton.Visible then
+			stopTraining()
+		else
+			return false
+		end
+		GuiService.SelectedObject = nil
+		return true
+	end
+
+	ContextActionService:BindActionAtPriority("EggMenuNav", function(_, inputState)
+		if inputState ~= Enum.UserInputState.Begin then
+			return Enum.ContextActionResult.Pass
+		end
+		if splash.Parent then
+			closeSplash()
+		elseif GuiService.SelectedObject and not anyMenuOpen() then
+			GuiService.SelectedObject = nil
+		else
+			GuiService.SelectedObject = dailyButton
+		end
+		return Enum.ContextActionResult.Sink
+	end, false, 3000, Enum.KeyCode.ButtonSelect)
+
+	ContextActionService:BindActionAtPriority("EggBack", function(_, inputState)
+		if inputState ~= Enum.UserInputState.Begin then
+			return Enum.ContextActionResult.Pass
+		end
+		if closeTop() then
+			return Enum.ContextActionResult.Sink
+		end
+		return Enum.ContextActionResult.Pass
+	end, false, 3000, Enum.KeyCode.ButtonB)
+
+	ContextActionService:BindActionAtPriority("EggDaily", function(_, inputState)
+		if inputState ~= Enum.UserInputState.Begin or splash.Parent then
+			return Enum.ContextActionResult.Pass
+		end
+		dailyPanel.Visible = not dailyPanel.Visible
+		if not dailyPanel.Visible then
+			GuiService.SelectedObject = nil
+		end
+		return Enum.ContextActionResult.Sink
+	end, false, 3000, Enum.KeyCode.ButtonY)
+
+	ContextActionService:BindActionAtPriority("EggStart", function(_, inputState)
+		if inputState == Enum.UserInputState.Begin and splash.Parent then
+			closeSplash()
+			return Enum.ContextActionResult.Sink
+		end
+		return Enum.ContextActionResult.Pass
+	end, false, 3000, Enum.KeyCode.ButtonStart, Enum.KeyCode.ButtonA)
+
+	-- Button hints, only while a controller is being used
+	local hints = label(gui, {
+		Name = "GamepadHints",
+		AnchorPoint = Vector2.new(0, 1),
+		Position = UDim2.new(0, 14, 1, -14),
+		Size = UDim2.fromOffset(430, 30),
+		BackgroundTransparency = 0.25,
+		BackgroundColor3 = Color3.fromRGB(24, 20, 38),
+		Font = Enum.Font.GothamBold,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Text = "  ⧉ View: menu   Ⓨ Daily   Ⓑ Close   Ⓧ Grab   R2 Bonk",
+		Visible = false,
+	})
+	corner(hints, 10)
+	local hintPad = Instance.new("UIPadding")
+	hintPad.PaddingTop = UDim.new(0, 5)
+	hintPad.PaddingBottom = UDim.new(0, 5)
+	hintPad.Parent = hints
+	local function refreshInputHints()
+		local pad = usingGamepad()
+		hints.Visible = pad
+		splashHint.Text = if pad then "Press Ⓐ or Start to play" else ""
+		revealHint.Text = if pad then "Press Ⓐ to continue" else "Tap to continue"
+	end
+	UserInputService.LastInputTypeChanged:Connect(refreshInputHints)
+	refreshInputHints()
+	if usingGamepad() then
+		GuiService.SelectedObject = playButton
+	end
+end
+setupExtraGui()
 
 --------------------------------------------------------------------------------
 -- Welcome tips

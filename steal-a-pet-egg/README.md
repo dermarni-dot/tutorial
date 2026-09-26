@@ -51,6 +51,24 @@ Game Settings > Security > **Enable Studio Access to API Services**.
   - **Sky:** an aurora over Frostpeak, and a ringed planet, moon and nebula clouds over the Void.
   - **Walls:** vines, carvings, icicles, lava cracks or runes, depending on the zone.
   - **Extra effects:** falling leaves, ash and rising stardust.
+- **Screens:**
+  - **Title screen** with a Play button when you join.
+  - **Hatch reveal:** your new pet spins in 3D with light rays in its rarity color, its stats, and a NEW PET! tag the first time.
+  - **Pet cards:** tap any pet in the 📖 Index to see it in 3D, how much it earns and where its eggs spawn. Pets you haven't found yet show as a silhouette.
+  - **Top-left badge** with the time of day and the zone you're in.
+- **Console / gamepad controls:**
+
+  | Button | Does |
+  |---|---|
+  | View (Back) | Opens the side menu (Daily, Shop, Index, Admin) to move through with the D-pad |
+  | Ⓐ | Presses the highlighted button (it has a gold glow) |
+  | Ⓨ | Opens Daily Rewards |
+  | Ⓑ | Closes whatever is open (menus, pet cards, hatch reveal) or steps off the treadmill |
+  | Ⓧ (hold) | Grabs or steals an egg |
+  | R2 | Swings the Bonk Bat |
+  | Left stick / Ⓐ | Moves / jumps |
+
+  Each menu highlights its main button when it opens, and a button guide shows at the bottom-left while you use a controller.
 - 6 bases per server (set Max Players to 6 in your game settings). Cash, Speed, treadmill tier, eggs and pets save automatically.
 
 ## Where things live
@@ -61,7 +79,7 @@ Game Settings > Security > **Enable Studio Access to API Services**.
 | Util | ReplicatedStorage.Shared | Number/time formatting, weighted random |
 | Main | ServerScriptService | Starts everything, loads and saves players |
 | MapBuilder | ServerScriptService.Modules | Builds the lighting, terrain, town, bases, biomes, nests and particles |
-| Visuals | ServerScriptService.Modules | Egg, pet and guardian models (placeholder shapes) |
+| Visuals | ReplicatedStorage.Shared | Egg, pet and guardian models (shared so the UI can show pets in 3D) |
 | GameService | ServerScriptService.Modules | Core gameplay: nests, guardians, carrying, stealing, hatching, fusing, treadmill |
 | DataService | ServerScriptService.Modules | DataStore saving |
 | Monetization | ServerScriptService.Modules | Robux purchases |

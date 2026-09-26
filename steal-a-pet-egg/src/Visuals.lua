@@ -1,4 +1,5 @@
--- Visuals (ModuleScript) — ServerScriptService.Modules.Visuals
+-- Visuals (ModuleScript) — ReplicatedStorage.Shared.Visuals
+-- Shared so the client can build pet models for 3D previews in the UI.
 -- Builds every egg, pet and guardian from code in a chunky cartoon style:
 -- big shiny eyes, blush, outlines on guardians, and a unique look per species.
 

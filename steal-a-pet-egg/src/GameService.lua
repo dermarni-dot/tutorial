@@ -15,7 +15,7 @@ local TweenService = game:GetService("TweenService")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
 local Util = require(Shared:WaitForChild("Util"))
-local Visuals = require(script.Parent:WaitForChild("Visuals"))
+local Visuals = require(Shared:WaitForChild("Visuals"))
 
 local GameService = {}
 
@@ -28,6 +28,7 @@ local PINK = Color3.fromRGB(240, 130, 240)
 
 local map
 local notifyRemote
+local hatchRemote
 local eggsFolder
 local ringsFolder
 local creaturesFolder
@@ -723,7 +724,12 @@ local function hatch(player, index)
 	data.Mutation = rec.Mutation
 	destroyEgg(rec)
 	state.Nest[index] = nil
+	local isNew = not state.Profile.Index[data.Name]
 	spawnCreature(player, index, data)
+	if hatchRemote then
+		-- the client shows a big reveal with a 3D preview of the pet
+		hatchRemote:FireClient(player, { Name = data.Name, Rarity = data.Rarity, Shiny = data.Shiny, Mutation = data.Mutation, Size = data.Size, Tier = data.Tier, Age = 0, New = isNew })
+	end
 
 	local rarity = Config.RarityById[data.Rarity]
 	local name = Config.CreatureTitle(data)
@@ -1355,6 +1361,7 @@ end
 function GameService.Init(mapData, notifyEvent, treadmillEvent)
 	map = mapData
 	notifyRemote = notifyEvent
+	hatchRemote = ReplicatedStorage:WaitForChild("Remotes"):FindFirstChild("Hatched")
 
 	-- treadmill start / stop from the client
 	if treadmillEvent then
