@@ -237,6 +237,24 @@ Config.Shop = {
 }
 
 --------------------------------------------------------------------------------
+-- Daily streak rewards. Players claim one reward per day from the 🎁 Daily
+-- button (days roll over at midnight UTC). Coming back the next day moves you
+-- up the streak; missing a day starts you over at Day 1. After Day 7 it loops.
+--   Kind = "Cash":  CashMinutes worth of your current income, at least MinCash
+--   Kind = "Speed": SpeedPercent of your Speed, at least MinSpeed
+--   Kind = "Egg":   an egg of that Rarity drops into your pet pen (it can roll a mutation)
+--------------------------------------------------------------------------------
+Config.DailyRewards = {
+	{ Kind = "Cash", CashMinutes = 5, MinCash = 500 },
+	{ Kind = "Cash", CashMinutes = 10, MinCash = 1500 },
+	{ Kind = "Speed", SpeedPercent = 0.10, MinSpeed = 10 },
+	{ Kind = "Cash", CashMinutes = 20, MinCash = 5000 },
+	{ Kind = "Egg", Rarity = "Rare" },
+	{ Kind = "Cash", CashMinutes = 30, MinCash = 15000 },
+	{ Kind = "Egg", Rarity = "Epic" },
+}
+
+--------------------------------------------------------------------------------
 -- Admins: these UserIds can use the Admin panel and "!" chat commands in the
 -- live game. The game's owner (or group rank 254+) always can, and everyone can
 -- while testing in Roblox Studio.

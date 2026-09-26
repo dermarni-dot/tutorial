@@ -237,6 +237,24 @@ Config.Shop = {
 }
 
 --------------------------------------------------------------------------------
+-- Daily streak rewards. Players claim one reward per day from the 🎁 Daily
+-- button (days roll over at midnight UTC). Coming back the next day moves you
+-- up the streak; missing a day starts you over at Day 1. After Day 7 it loops.
+--   Kind = "Cash":  CashMinutes worth of your current income, at least MinCash
+--   Kind = "Speed": SpeedPercent of your Speed, at least MinSpeed
+--   Kind = "Egg":   an egg of that Rarity drops into your pet pen (it can roll a mutation)
+--------------------------------------------------------------------------------
+Config.DailyRewards = {
+	{ Kind = "Cash", CashMinutes = 5, MinCash = 500 },
+	{ Kind = "Cash", CashMinutes = 10, MinCash = 1500 },
+	{ Kind = "Speed", SpeedPercent = 0.10, MinSpeed = 10 },
+	{ Kind = "Cash", CashMinutes = 20, MinCash = 5000 },
+	{ Kind = "Egg", Rarity = "Rare" },
+	{ Kind = "Cash", CashMinutes = 30, MinCash = 15000 },
+	{ Kind = "Egg", Rarity = "Epic" },
+}
+
+--------------------------------------------------------------------------------
 -- Admins: these UserIds can use the Admin panel and "!" chat commands in the
 -- live game. The game's owner (or group rank 254+) always can, and everyone can
 -- while testing in Roblox Studio.
@@ -630,6 +648,7 @@ local DataService = require(Modules:WaitForChild("DataService"))
 local GameService = require(Modules:WaitForChild("GameService"))
 local Monetization = require(Modules:WaitForChild("Monetization"))
 local AdminService = require(Modules:WaitForChild("AdminService"))
+local DailyRewardService = require(Modules:WaitForChild("DailyRewardService"))
 
 -- Remotes
 local remotes = Instance.new("Folder")
@@ -643,6 +662,9 @@ treadmill.Parent = remotes
 local admin = Instance.new("RemoteEvent")
 admin.Name = "Admin"
 admin.Parent = remotes
+local daily = Instance.new("RemoteEvent")
+daily.Name = "DailyReward"
+daily.Parent = remotes
 remotes.Parent = ReplicatedStorage
 
 -- World + systems
@@ -650,6 +672,7 @@ local map = MapBuilder.Build()
 GameService.Init(map, notify, treadmill)
 Monetization.Init(GameService)
 AdminService.Init(GameService, notify, admin)
+DailyRewardService.Init(GameService, daily, notify)
 
 -- Players
 local function onPlayerAdded(player)
@@ -658,6 +681,7 @@ local function onPlayerAdded(player)
 		return -- left while loading
 	end
 	GameService.AddPlayer(player, profile)
+	DailyRewardService.PlayerReady(player)
 end
 
 Players.PlayerAdded:Connect(onPlayerAdded)
@@ -3640,6 +3664,7 @@ local function defaults()
 		SpeedBuys = 0,
 		TreadmillLevel = 1,
 		Nest = {},
+		Daily = { Streak = 0, LastDay = -1 },
 	}
 end
 
@@ -3674,6 +3699,10 @@ function DataService.Load(player)
 		if type(data.Nest) == "table" then
 			profile.Nest = data.Nest
 		end
+		if type(data.Daily) == "table" then
+			profile.Daily.Streak = math.max(0, math.floor(tonumber(data.Daily.Streak) or 0))
+			profile.Daily.LastDay = math.floor(tonumber(data.Daily.LastDay) or -1)
+		end
 	end
 	return profile
 end
@@ -3689,6 +3718,7 @@ function DataService.Save(player, profile)
 		SpeedBuys = profile.SpeedBuys,
 		TreadmillLevel = profile.TreadmillLevel,
 		Nest = profile.Nest,
+		Daily = profile.Daily,
 		Version = 2,
 	}
 	for attempt = 1, 3 do
@@ -5303,6 +5333,36 @@ function GameService.GetSpeed(player)
 	return if state then state.Profile.Speed else 0
 end
 
+-- Daily reward helpers (used by DailyRewardService) --------------------------
+function GameService.GetProfile(player)
+	local state = states[player]
+	return if state then state.Profile else nil
+end
+
+function GameService.GrantCash(player, amount)
+	local state = states[player]
+	if not state then
+		return false
+	end
+	setCash(state, state.Profile.Cash + amount)
+	return true
+end
+
+-- Drops a fresh egg straight into the player's pet pen. Fails if the pen is full.
+function GameService.GiveBaseEgg(player, rarityId)
+	local state = states[player]
+	if not state or not Config.RarityById[rarityId] then
+		return false
+	end
+	local index = freeSlot(state)
+	if not index then
+		return false
+	end
+	local rec = createEgg(rarityId, nil, false, Config.RollMutation(rng, currentLuck()))
+	placeEggInBase(player, index, rec)
+	return true, rec.Mutation
+end
+
 --------------------------------------------------------------------------------
 -- Admin / testing helpers (used by AdminService)
 --------------------------------------------------------------------------------
@@ -5526,6 +5586,163 @@ function Monetization.Init(GameService)
 end
 
 return Monetization
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX100"><Properties><string name="Name">DailyRewardService</string><ProtectedString name="Source"><![CDATA[-- DailyRewardService (ModuleScript) — ServerScriptService.Modules.DailyRewardService
+-- Daily streak rewards: players claim one reward per day from the 🎁 Daily
+-- button. Every day in a row moves them to a better reward (Config.DailyRewards);
+-- missing a day starts them over at Day 1. Days roll over at midnight UTC.
+-- The streak is saved in the player's profile as profile.Daily.
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Config = require(Shared:WaitForChild("Config"))
+local Util = require(Shared:WaitForChild("Util"))
+
+local DailyRewardService = {}
+
+local GameService
+local remote
+local notifyRemote
+
+local GOLD = Color3.fromRGB(255, 215, 90)
+local RED = Color3.fromRGB(255, 100, 100)
+local DAY = 24 * 60 * 60
+
+local function today()
+	return os.time() // DAY
+end
+
+-- Which card (1-7) a streak number lands on. After the last day it loops.
+local function dayIndex(streak)
+	return (streak - 1) % #Config.DailyRewards + 1
+end
+
+-- The streak number the next claim would give, and whether it can be claimed now.
+local function nextClaim(daily, t)
+	if daily.LastDay == t then
+		return daily.Streak + 1, false -- already claimed today
+	elseif daily.LastDay == t - 1 then
+		return daily.Streak + 1, true -- claimed yesterday: streak continues
+	end
+	return 1, true -- first claim, or missed a day
+end
+
+-- Cash and Speed rewards grow with the player so they stay worth claiming.
+local function rewardAmount(player, reward)
+	if reward.Kind == "Cash" then
+		local income = player:GetAttribute("IncomePerSec") or 0
+		return math.max(reward.MinCash, math.floor(income * 60 * reward.CashMinutes))
+	elseif reward.Kind == "Speed" then
+		return math.max(reward.MinSpeed, math.floor(GameService.GetSpeed(player) * reward.SpeedPercent))
+	end
+	return nil
+end
+
+local function describe(player, reward)
+	if reward.Kind == "Cash" then
+		return Util.Money(rewardAmount(player, reward))
+	elseif reward.Kind == "Speed" then
+		return "+" .. Util.FormatNumber(rewardAmount(player, reward)) .. " Speed"
+	end
+	return reward.Rarity .. " Egg"
+end
+
+local function sendState(player)
+	local profile = GameService.GetProfile(player)
+	if not profile or not player.Parent then
+		return
+	end
+	local t = today()
+	local daily = profile.Daily
+	local streak, canClaim = nextClaim(daily, t)
+	local rewards = {}
+	for i, reward in ipairs(Config.DailyRewards) do
+		rewards[i] = { Kind = reward.Kind, Rarity = reward.Rarity, Text = describe(player, reward) }
+	end
+	remote:FireClient(player, {
+		Day = dayIndex(streak), -- the card the next claim is for
+		CanClaim = canClaim,
+		CurrentStreak = if daily.LastDay >= t - 1 then daily.Streak else 0,
+		NextAt = (t + 1) * DAY, -- unix time the next day starts
+		Rewards = rewards,
+	})
+end
+
+local function claim(player)
+	local profile = GameService.GetProfile(player)
+	if not profile then
+		return
+	end
+	local t = today()
+	local streak, canClaim = nextClaim(profile.Daily, t)
+	if not canClaim then
+		sendState(player)
+		return
+	end
+
+	local day = dayIndex(streak)
+	local reward = Config.DailyRewards[day]
+	local ok, text = false, describe(player, reward)
+	if reward.Kind == "Cash" then
+		ok = GameService.GrantCash(player, rewardAmount(player, reward))
+	elseif reward.Kind == "Speed" then
+		ok = GameService.GrantSpeed(player, rewardAmount(player, reward))
+	elseif reward.Kind == "Egg" then
+		local mutation
+		ok, mutation = GameService.GiveBaseEgg(player, reward.Rarity)
+		if ok and mutation then
+			text = mutation .. " " .. text
+		elseif not ok then
+			notifyRemote:FireClient(player, "🥚 Your pet pen is full! Sell or fuse a pet, then claim your egg.", RED)
+		end
+	end
+
+	if ok then
+		profile.Daily.Streak = streak
+		profile.Daily.LastDay = t
+		local where = if reward.Kind == "Egg" then " It's in your pet pen." else ""
+		notifyRemote:FireClient(player, "🎁 Day " .. day .. " reward: " .. text .. "!" .. where .. " 🔥 " .. streak .. "-day streak", GOLD)
+	end
+	sendState(player)
+end
+
+function DailyRewardService.Init(gameService, dailyEvent, notifyEvent)
+	GameService = gameService
+	remote = dailyEvent
+	notifyRemote = notifyEvent
+
+	remote.OnServerEvent:Connect(function(player, action)
+		if action == "Claim" then
+			claim(player)
+		elseif action == "Refresh" then
+			sendState(player)
+		end
+	end)
+end
+
+-- Call once the player's profile has loaded.
+function DailyRewardService.PlayerReady(player)
+	sendState(player)
+end
+
+-- Admin testing: "next" pretends a day has passed (streak continues),
+-- "reset" starts the streak over at Day 1.
+function DailyRewardService.AdminSet(player, mode)
+	local profile = GameService.GetProfile(player)
+	if not profile then
+		return false
+	end
+	if mode == "reset" then
+		profile.Daily.Streak = 0
+		profile.Daily.LastDay = -1
+	else
+		profile.Daily.LastDay = today() - 1
+	end
+	sendState(player)
+	return true
+end
+
+return DailyRewardService
 ]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX12"><Properties><string name="Name">AdminService</string><ProtectedString name="Source"><![CDATA[-- AdminService (ModuleScript) — ServerScriptService.Modules.AdminService
 -- Testing commands for you (the game owner), anyone in Config.Admins, and
 -- everyone while playing in Roblox Studio.
@@ -5542,6 +5759,7 @@ return Monetization
 --   !luck 10           start 10x server luck
 --   !rain              egg rain           !refill   respawn all wild eggs
 --   !tp void           teleport (town, forest, desert, snow, volcano, void)
+--   !daily             make today's daily reward claimable again (!daily reset = back to Day 1)
 --   !reset             wipe your progress
 --   !help              list the commands
 
@@ -5550,6 +5768,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
 local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
+local DailyRewardService = require(script.Parent:WaitForChild("DailyRewardService"))
 
 local AdminService = {}
 
@@ -5698,13 +5917,20 @@ COMMANDS.tp = function(player, args)
 	end
 end
 
+COMMANDS.daily = function(player, args)
+	local mode = string.lower(args[1] or "")
+	if DailyRewardService.AdminSet(player, if mode == "reset" then "reset" else "next") then
+		say(player, if mode == "reset" then "Daily streak reset to Day 1" else "Skipped to the next day: your daily reward is ready")
+	end
+end
+
 COMMANDS.reset = function(player)
 	GameService.Admin.Reset(player)
 	say(player, "Progress reset", RED)
 end
 
 COMMANDS.help = function(player)
-	say(player, "!cash !speed !setspeed !egg !pet !shiny !hatch !grow !treadmill !luck !rain !refill !tp !reset")
+	say(player, "!cash !speed !setspeed !egg !pet !shiny !hatch !grow !treadmill !luck !rain !refill !tp !daily !reset")
 end
 
 local function run(player, message)
@@ -6945,10 +7171,12 @@ adminRow({ { "2x Luck", "luck 2", GREEN_BTN }, { "5x Luck", "luck 5", GREEN_BTN 
 adminHeader("🚀 Teleport")
 adminRow({ { "Town", "tp town" }, { "Forest", "tp forest" }, { "Desert", "tp desert" } })
 adminRow({ { "Snow", "tp snow" }, { "Volcano", "tp volcano" }, { "Void", "tp void" } })
+adminHeader("🎁 Daily reward")
+adminRow({ { "Next Day", "daily", GOLD_BTN }, { "Back to Day 1", "daily reset", GOLD_BTN } })
 adminHeader("⚠️ Danger")
 adminRow({ { "Reset My Progress", "reset", RED_BTN } })
 adminOrder += 1
-local chatHelp = label(adminPanel, { LayoutOrder = adminOrder, Size = UDim2.new(1, 0, 0, 60), Font = Enum.Font.Gotham, TextStrokeTransparency = 1, TextColor3 = Color3.fromRGB(200, 200, 215), Text = "Chat commands: !cash 500 · !speed 50 · !egg mythic · !pet galaxy dragon · !shiny divine · !luck 10 · !tp void · !help" })
+local chatHelp = label(adminPanel, { LayoutOrder = adminOrder, Size = UDim2.new(1, 0, 0, 60), Font = Enum.Font.Gotham, TextStrokeTransparency = 1, TextColor3 = Color3.fromRGB(200, 200, 215), Text = "Chat commands: !cash 500 · !speed 50 · !egg mythic · !pet galaxy dragon · !shiny divine · !luck 10 · !tp void · !daily · !help" })
 chatHelp.TextScaled = false
 chatHelp.TextSize = 13
 chatHelp.TextWrapped = true
@@ -6964,6 +7192,244 @@ local function refreshAdmin()
 end
 player:GetAttributeChangedSignal("IsAdmin"):Connect(refreshAdmin)
 refreshAdmin()
+
+--------------------------------------------------------------------------------
+-- Daily streak rewards (the server side is DailyRewardService)
+--------------------------------------------------------------------------------
+local DailyRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("DailyReward")
+local DAILY_GOLD = Color3.fromRGB(255, 200, 80)
+
+local dailyButton = shopButton:Clone()
+dailyButton.Name = "DailyButton"
+dailyButton.Position = UDim2.new(0, 14, 0.45, -70)
+dailyButton.BackgroundColor3 = Color3.fromRGB(255, 150, 60)
+dailyButton.Text = "🎁 Daily"
+dailyButton.Parent = gui
+dailyButton:FindFirstChildOfClass("UIStroke").Color = Color3.fromRGB(130, 60, 10)
+
+-- red "!" dot while a reward is waiting
+local dailyBadge = label(dailyButton, {
+	Name = "Badge",
+	AnchorPoint = Vector2.new(0.5, 0.5),
+	Position = UDim2.new(1, -2, 0, -6),
+	Size = UDim2.fromOffset(28, 28),
+	BackgroundTransparency = 0,
+	BackgroundColor3 = Color3.fromRGB(235, 50, 60),
+	Text = "!",
+	Visible = false,
+})
+corner(dailyBadge, 14)
+
+local DAILY_W, DAILY_H = 660, 350
+local dailyPanel = Instance.new("Frame")
+dailyPanel.Name = "DailyPanel"
+dailyPanel.AnchorPoint = Vector2.new(0.5, 0.5)
+dailyPanel.Position = UDim2.fromScale(0.5, 0.5)
+dailyPanel.Size = UDim2.fromOffset(DAILY_W, DAILY_H)
+dailyPanel.BackgroundColor3 = Color3.fromRGB(34, 30, 52)
+dailyPanel.ZIndex = 5
+dailyPanel.Visible = false
+dailyPanel.Parent = gui
+corner(dailyPanel, 20)
+stroke(dailyPanel, 4, Color3.fromRGB(255, 170, 70))
+local dailyScale = Instance.new("UIScale")
+dailyScale.Parent = dailyPanel
+local dailyGradient = panelGradient:Clone()
+dailyGradient.Parent = dailyPanel
+
+label(dailyPanel, {
+	Position = UDim2.fromOffset(24, 10),
+	Size = UDim2.new(1, -110, 0, 48),
+	Text = "🎁 DAILY REWARDS",
+	TextXAlignment = Enum.TextXAlignment.Left,
+	TextColor3 = DAILY_GOLD,
+})
+local streakLabel = label(dailyPanel, {
+	Position = UDim2.fromOffset(26, 60),
+	Size = UDim2.new(1, -52, 0, 22),
+	Font = Enum.Font.GothamBold,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	TextColor3 = Color3.fromRGB(230, 230, 240),
+	TextStrokeTransparency = 1,
+	Text = "",
+})
+local dailyClose = closeButton:Clone()
+dailyClose.Parent = dailyPanel
+
+local dailyCards = Instance.new("Frame")
+dailyCards.BackgroundTransparency = 1
+dailyCards.Position = UDim2.fromOffset(20, 96)
+dailyCards.Size = UDim2.new(1, -40, 0, 156)
+dailyCards.Parent = dailyPanel
+local cardLayout = Instance.new("UIListLayout")
+cardLayout.FillDirection = Enum.FillDirection.Horizontal
+cardLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+cardLayout.Padding = UDim.new(0, 8)
+cardLayout.SortOrder = Enum.SortOrder.LayoutOrder
+cardLayout.Parent = dailyCards
+
+local claimButton = Instance.new("TextButton")
+claimButton.AnchorPoint = Vector2.new(0.5, 1)
+claimButton.Position = UDim2.new(0.5, 0, 1, -18)
+claimButton.Size = UDim2.fromOffset(300, 56)
+claimButton.Font = Enum.Font.FredokaOne
+claimButton.TextScaled = true
+claimButton.TextColor3 = Color3.new(1, 1, 1)
+claimButton.TextStrokeTransparency = 0.2
+claimButton.Parent = dailyPanel
+corner(claimButton, 14)
+stroke(claimButton, 3, Color3.fromRGB(20, 60, 20))
+local claimPad = Instance.new("UIPadding")
+claimPad.PaddingTop = UDim.new(0, 9)
+claimPad.PaddingBottom = UDim.new(0, 9)
+claimPad.Parent = claimButton
+
+local REWARD_ICONS = { Cash = "💰", Speed = "⚡", Egg = "🥚" }
+local dailyState = nil
+local dailyAutoOpened = false
+local dailyRefreshAsked = 0
+
+local function dailyCard(i, reward, status) -- status: "Claimed", "Ready", "Tomorrow" or "Later"
+	local highlight = status == "Ready" or status == "Tomorrow"
+	local card = Instance.new("Frame")
+	card.LayoutOrder = i
+	card.Size = UDim2.fromOffset(80, 156)
+	card.BackgroundColor3 = if status == "Ready" then Color3.fromRGB(110, 80, 30) else Color3.fromRGB(52, 46, 78)
+	card.BackgroundTransparency = if status == "Claimed" then 0.5 else 0
+	card.Parent = dailyCards
+	corner(card, 12)
+	stroke(card, if highlight then 3 else 2, if status == "Ready" then DAILY_GOLD elseif status == "Tomorrow" then Color3.fromRGB(130, 195, 255) else Color3.fromRGB(95, 90, 125))
+
+	local title = if status == "Ready" then "TODAY" elseif status == "Tomorrow" then "Next" else "Day " .. i
+	label(card, { Position = UDim2.fromOffset(4, 6), Size = UDim2.new(1, -8, 0, 22), Text = title, TextColor3 = if highlight then DAILY_GOLD else Color3.fromRGB(210, 210, 225) })
+	label(card, { Position = UDim2.fromOffset(0, 34), Size = UDim2.new(1, 0, 0, 50), Text = REWARD_ICONS[reward.Kind] or "🎁", TextStrokeTransparency = 1 })
+	local rarity = reward.Rarity and Config.RarityById[reward.Rarity]
+	local text = label(card, {
+		Position = UDim2.fromOffset(4, 92),
+		Size = UDim2.new(1, -8, 0, 54),
+		Text = reward.Text,
+		Font = Enum.Font.GothamBold,
+		TextWrapped = true,
+		TextColor3 = if rarity then rarity.Color else Color3.new(1, 1, 1),
+	})
+	local maxSize = Instance.new("UITextSizeConstraint")
+	maxSize.MaxTextSize = 17
+	maxSize.Parent = text
+	if status == "Claimed" then
+		label(card, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.45), Size = UDim2.fromOffset(52, 52), Text = "✅", TextStrokeTransparency = 1, ZIndex = 2 })
+	end
+end
+
+local function formatCountdown(seconds)
+	seconds = math.max(0, math.floor(seconds))
+	return string.format("%d:%02d:%02d", seconds // 3600, seconds // 60 % 60, seconds % 60)
+end
+
+local function refreshClaimButton()
+	local st = dailyState
+	if not st then
+		claimButton.Text = "Loading..."
+		claimButton.BackgroundColor3 = Color3.fromRGB(90, 90, 110)
+	elseif st.CanClaim then
+		claimButton.Text = "🎁 CLAIM DAY " .. st.Day .. "!"
+		claimButton.BackgroundColor3 = Color3.fromRGB(80, 200, 90)
+	else
+		claimButton.Text = "Next reward in " .. formatCountdown(st.NextAt - workspace:GetServerTimeNow())
+		claimButton.BackgroundColor3 = Color3.fromRGB(90, 90, 110)
+	end
+end
+
+local function rebuildDaily()
+	for _, child in ipairs(dailyCards:GetChildren()) do
+		if child:IsA("Frame") then
+			child:Destroy()
+		end
+	end
+	local st = dailyState
+	if not st then
+		return
+	end
+	for i, reward in ipairs(st.Rewards) do
+		local status = "Later"
+		if i < st.Day then
+			status = "Claimed"
+		elseif i == st.Day then
+			status = if st.CanClaim then "Ready" else "Tomorrow"
+		end
+		dailyCard(i, reward, status)
+	end
+	if st.CurrentStreak > 0 then
+		streakLabel.Text = "🔥 " .. st.CurrentStreak .. "-day streak! Come back tomorrow to keep it going."
+	else
+		streakLabel.Text = "Claim every day in a row for bigger rewards. Miss a day and you start over!"
+	end
+	dailyBadge.Visible = st.CanClaim
+	refreshClaimButton()
+end
+
+local dailyFit = 1
+local function setDailyOpen(open)
+	if open then
+		dailyPanel.Visible = true
+		DailyRemote:FireServer("Refresh") -- cash rewards grow with your income
+		dailyScale.Scale = 0.7 * dailyFit
+		TweenService:Create(dailyScale, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = dailyFit }):Play()
+	else
+		dailyPanel.Visible = false
+	end
+end
+local function fitDaily()
+	local camera = workspace.CurrentCamera
+	if camera then
+		local vp = camera.ViewportSize
+		dailyFit = math.min(1, (vp.X - 40) / DAILY_W, (vp.Y - 60) / DAILY_H)
+		dailyScale.Scale = dailyFit
+	end
+end
+fitDaily()
+if workspace.CurrentCamera then
+	workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(fitDaily)
+end
+
+dailyButton.Activated:Connect(function()
+	setDailyOpen(not dailyPanel.Visible)
+end)
+dailyClose.Activated:Connect(function()
+	setDailyOpen(false)
+end)
+claimButton.Activated:Connect(function()
+	if dailyState and dailyState.CanClaim then
+		DailyRemote:FireServer("Claim")
+	end
+end)
+
+DailyRemote.OnClientEvent:Connect(function(state)
+	dailyState = state
+	rebuildDaily()
+	-- pop the panel open the first time a reward is waiting
+	if state.CanClaim and not dailyAutoOpened then
+		dailyAutoOpened = true
+		task.delay(1.5, setDailyOpen, true)
+	end
+end)
+DailyRemote:FireServer("Refresh")
+
+-- countdown, and ask for a fresh state once the new day starts
+task.spawn(function()
+	while true do
+		task.wait(1)
+		local st = dailyState
+		if st and not st.CanClaim then
+			if dailyPanel.Visible then
+				refreshClaimButton()
+			end
+			if workspace:GetServerTimeNow() >= st.NextAt and dailyRefreshAsked ~= st.NextAt then
+				dailyRefreshAsked = st.NextAt
+				DailyRemote:FireServer("Refresh")
+			end
+		end
+	end
+end)
 
 --------------------------------------------------------------------------------
 -- Rainbow mutation: cycle tagged parts through the rainbow

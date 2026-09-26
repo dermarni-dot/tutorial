@@ -39,6 +39,7 @@ Game Settings > Security > **Enable Studio Access to API Services**.
 - **Base Lock:** the blue pad. Blocks stealing from your base for 60s, then recharges for 90s.
 - **Fuse Machine:** the pink pad. 3 identical pets become 1 **Big** pet (4x income), and 3 Big pets become 1 **Huge** pet (16x).
 - **Pet pen and selling:** every base has one wide open pen (no roof, no slots) that holds 24 eggs and pets. Hold E on your own pet to sell it.
+- **Daily rewards:** the orange 🎁 Daily button (it pops open by itself when a reward is waiting). Claim once a day: Day 1 $, Day 2 $$, Day 3 Speed, Day 4 $$$, Day 5 Rare Egg, Day 6 $$$$, Day 7 Epic Egg, then it loops. Cash and Speed rewards grow with your income and Speed. Miss a day and the streak starts over. Days reset at midnight UTC. Tune it in `Config.DailyRewards`. Test it with `!daily` (next day) and `!daily reset`.
 - 6 bases per server (set Max Players to 6 in your game settings). Cash, Speed, treadmill tier, eggs and pets save automatically.
 
 ## Where things live
@@ -53,6 +54,7 @@ Game Settings > Security > **Enable Studio Access to API Services**.
 | GameService | ServerScriptService.Modules | Core gameplay: nests, guardians, carrying, stealing, hatching, fusing, treadmill |
 | DataService | ServerScriptService.Modules | DataStore saving |
 | Monetization | ServerScriptService.Modules | Robux purchases |
+| DailyRewardService | ServerScriptService.Modules | Daily streak rewards |
 | ClientMain | StarterPlayer.StarterPlayerScripts | HUD, chase warning, biome lighting moods and banners, notifications, shop buttons |
 
 ## Turning on Robux purchases

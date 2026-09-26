@@ -1186,10 +1186,12 @@ adminRow({ { "2x Luck", "luck 2", GREEN_BTN }, { "5x Luck", "luck 5", GREEN_BTN 
 adminHeader("🚀 Teleport")
 adminRow({ { "Town", "tp town" }, { "Forest", "tp forest" }, { "Desert", "tp desert" } })
 adminRow({ { "Snow", "tp snow" }, { "Volcano", "tp volcano" }, { "Void", "tp void" } })
+adminHeader("🎁 Daily reward")
+adminRow({ { "Next Day", "daily", GOLD_BTN }, { "Back to Day 1", "daily reset", GOLD_BTN } })
 adminHeader("⚠️ Danger")
 adminRow({ { "Reset My Progress", "reset", RED_BTN } })
 adminOrder += 1
-local chatHelp = label(adminPanel, { LayoutOrder = adminOrder, Size = UDim2.new(1, 0, 0, 60), Font = Enum.Font.Gotham, TextStrokeTransparency = 1, TextColor3 = Color3.fromRGB(200, 200, 215), Text = "Chat commands: !cash 500 · !speed 50 · !egg mythic · !pet galaxy dragon · !shiny divine · !luck 10 · !tp void · !help" })
+local chatHelp = label(adminPanel, { LayoutOrder = adminOrder, Size = UDim2.new(1, 0, 0, 60), Font = Enum.Font.Gotham, TextStrokeTransparency = 1, TextColor3 = Color3.fromRGB(200, 200, 215), Text = "Chat commands: !cash 500 · !speed 50 · !egg mythic · !pet galaxy dragon · !shiny divine · !luck 10 · !tp void · !daily · !help" })
 chatHelp.TextScaled = false
 chatHelp.TextSize = 13
 chatHelp.TextWrapped = true
@@ -1205,6 +1207,244 @@ local function refreshAdmin()
 end
 player:GetAttributeChangedSignal("IsAdmin"):Connect(refreshAdmin)
 refreshAdmin()
+
+--------------------------------------------------------------------------------
+-- Daily streak rewards (the server side is DailyRewardService)
+--------------------------------------------------------------------------------
+local DailyRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("DailyReward")
+local DAILY_GOLD = Color3.fromRGB(255, 200, 80)
+
+local dailyButton = shopButton:Clone()
+dailyButton.Name = "DailyButton"
+dailyButton.Position = UDim2.new(0, 14, 0.45, -70)
+dailyButton.BackgroundColor3 = Color3.fromRGB(255, 150, 60)
+dailyButton.Text = "🎁 Daily"
+dailyButton.Parent = gui
+dailyButton:FindFirstChildOfClass("UIStroke").Color = Color3.fromRGB(130, 60, 10)
+
+-- red "!" dot while a reward is waiting
+local dailyBadge = label(dailyButton, {
+	Name = "Badge",
+	AnchorPoint = Vector2.new(0.5, 0.5),
+	Position = UDim2.new(1, -2, 0, -6),
+	Size = UDim2.fromOffset(28, 28),
+	BackgroundTransparency = 0,
+	BackgroundColor3 = Color3.fromRGB(235, 50, 60),
+	Text = "!",
+	Visible = false,
+})
+corner(dailyBadge, 14)
+
+local DAILY_W, DAILY_H = 660, 350
+local dailyPanel = Instance.new("Frame")
+dailyPanel.Name = "DailyPanel"
+dailyPanel.AnchorPoint = Vector2.new(0.5, 0.5)
+dailyPanel.Position = UDim2.fromScale(0.5, 0.5)
+dailyPanel.Size = UDim2.fromOffset(DAILY_W, DAILY_H)
+dailyPanel.BackgroundColor3 = Color3.fromRGB(34, 30, 52)
+dailyPanel.ZIndex = 5
+dailyPanel.Visible = false
+dailyPanel.Parent = gui
+corner(dailyPanel, 20)
+stroke(dailyPanel, 4, Color3.fromRGB(255, 170, 70))
+local dailyScale = Instance.new("UIScale")
+dailyScale.Parent = dailyPanel
+local dailyGradient = panelGradient:Clone()
+dailyGradient.Parent = dailyPanel
+
+label(dailyPanel, {
+	Position = UDim2.fromOffset(24, 10),
+	Size = UDim2.new(1, -110, 0, 48),
+	Text = "🎁 DAILY REWARDS",
+	TextXAlignment = Enum.TextXAlignment.Left,
+	TextColor3 = DAILY_GOLD,
+})
+local streakLabel = label(dailyPanel, {
+	Position = UDim2.fromOffset(26, 60),
+	Size = UDim2.new(1, -52, 0, 22),
+	Font = Enum.Font.GothamBold,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	TextColor3 = Color3.fromRGB(230, 230, 240),
+	TextStrokeTransparency = 1,
+	Text = "",
+})
+local dailyClose = closeButton:Clone()
+dailyClose.Parent = dailyPanel
+
+local dailyCards = Instance.new("Frame")
+dailyCards.BackgroundTransparency = 1
+dailyCards.Position = UDim2.fromOffset(20, 96)
+dailyCards.Size = UDim2.new(1, -40, 0, 156)
+dailyCards.Parent = dailyPanel
+local cardLayout = Instance.new("UIListLayout")
+cardLayout.FillDirection = Enum.FillDirection.Horizontal
+cardLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+cardLayout.Padding = UDim.new(0, 8)
+cardLayout.SortOrder = Enum.SortOrder.LayoutOrder
+cardLayout.Parent = dailyCards
+
+local claimButton = Instance.new("TextButton")
+claimButton.AnchorPoint = Vector2.new(0.5, 1)
+claimButton.Position = UDim2.new(0.5, 0, 1, -18)
+claimButton.Size = UDim2.fromOffset(300, 56)
+claimButton.Font = Enum.Font.FredokaOne
+claimButton.TextScaled = true
+claimButton.TextColor3 = Color3.new(1, 1, 1)
+claimButton.TextStrokeTransparency = 0.2
+claimButton.Parent = dailyPanel
+corner(claimButton, 14)
+stroke(claimButton, 3, Color3.fromRGB(20, 60, 20))
+local claimPad = Instance.new("UIPadding")
+claimPad.PaddingTop = UDim.new(0, 9)
+claimPad.PaddingBottom = UDim.new(0, 9)
+claimPad.Parent = claimButton
+
+local REWARD_ICONS = { Cash = "💰", Speed = "⚡", Egg = "🥚" }
+local dailyState = nil
+local dailyAutoOpened = false
+local dailyRefreshAsked = 0
+
+local function dailyCard(i, reward, status) -- status: "Claimed", "Ready", "Tomorrow" or "Later"
+	local highlight = status == "Ready" or status == "Tomorrow"
+	local card = Instance.new("Frame")
+	card.LayoutOrder = i
+	card.Size = UDim2.fromOffset(80, 156)
+	card.BackgroundColor3 = if status == "Ready" then Color3.fromRGB(110, 80, 30) else Color3.fromRGB(52, 46, 78)
+	card.BackgroundTransparency = if status == "Claimed" then 0.5 else 0
+	card.Parent = dailyCards
+	corner(card, 12)
+	stroke(card, if highlight then 3 else 2, if status == "Ready" then DAILY_GOLD elseif status == "Tomorrow" then Color3.fromRGB(130, 195, 255) else Color3.fromRGB(95, 90, 125))
+
+	local title = if status == "Ready" then "TODAY" elseif status == "Tomorrow" then "Next" else "Day " .. i
+	label(card, { Position = UDim2.fromOffset(4, 6), Size = UDim2.new(1, -8, 0, 22), Text = title, TextColor3 = if highlight then DAILY_GOLD else Color3.fromRGB(210, 210, 225) })
+	label(card, { Position = UDim2.fromOffset(0, 34), Size = UDim2.new(1, 0, 0, 50), Text = REWARD_ICONS[reward.Kind] or "🎁", TextStrokeTransparency = 1 })
+	local rarity = reward.Rarity and Config.RarityById[reward.Rarity]
+	local text = label(card, {
+		Position = UDim2.fromOffset(4, 92),
+		Size = UDim2.new(1, -8, 0, 54),
+		Text = reward.Text,
+		Font = Enum.Font.GothamBold,
+		TextWrapped = true,
+		TextColor3 = if rarity then rarity.Color else Color3.new(1, 1, 1),
+	})
+	local maxSize = Instance.new("UITextSizeConstraint")
+	maxSize.MaxTextSize = 17
+	maxSize.Parent = text
+	if status == "Claimed" then
+		label(card, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.45), Size = UDim2.fromOffset(52, 52), Text = "✅", TextStrokeTransparency = 1, ZIndex = 2 })
+	end
+end
+
+local function formatCountdown(seconds)
+	seconds = math.max(0, math.floor(seconds))
+	return string.format("%d:%02d:%02d", seconds // 3600, seconds // 60 % 60, seconds % 60)
+end
+
+local function refreshClaimButton()
+	local st = dailyState
+	if not st then
+		claimButton.Text = "Loading..."
+		claimButton.BackgroundColor3 = Color3.fromRGB(90, 90, 110)
+	elseif st.CanClaim then
+		claimButton.Text = "🎁 CLAIM DAY " .. st.Day .. "!"
+		claimButton.BackgroundColor3 = Color3.fromRGB(80, 200, 90)
+	else
+		claimButton.Text = "Next reward in " .. formatCountdown(st.NextAt - workspace:GetServerTimeNow())
+		claimButton.BackgroundColor3 = Color3.fromRGB(90, 90, 110)
+	end
+end
+
+local function rebuildDaily()
+	for _, child in ipairs(dailyCards:GetChildren()) do
+		if child:IsA("Frame") then
+			child:Destroy()
+		end
+	end
+	local st = dailyState
+	if not st then
+		return
+	end
+	for i, reward in ipairs(st.Rewards) do
+		local status = "Later"
+		if i < st.Day then
+			status = "Claimed"
+		elseif i == st.Day then
+			status = if st.CanClaim then "Ready" else "Tomorrow"
+		end
+		dailyCard(i, reward, status)
+	end
+	if st.CurrentStreak > 0 then
+		streakLabel.Text = "🔥 " .. st.CurrentStreak .. "-day streak! Come back tomorrow to keep it going."
+	else
+		streakLabel.Text = "Claim every day in a row for bigger rewards. Miss a day and you start over!"
+	end
+	dailyBadge.Visible = st.CanClaim
+	refreshClaimButton()
+end
+
+local dailyFit = 1
+local function setDailyOpen(open)
+	if open then
+		dailyPanel.Visible = true
+		DailyRemote:FireServer("Refresh") -- cash rewards grow with your income
+		dailyScale.Scale = 0.7 * dailyFit
+		TweenService:Create(dailyScale, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { Scale = dailyFit }):Play()
+	else
+		dailyPanel.Visible = false
+	end
+end
+local function fitDaily()
+	local camera = workspace.CurrentCamera
+	if camera then
+		local vp = camera.ViewportSize
+		dailyFit = math.min(1, (vp.X - 40) / DAILY_W, (vp.Y - 60) / DAILY_H)
+		dailyScale.Scale = dailyFit
+	end
+end
+fitDaily()
+if workspace.CurrentCamera then
+	workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(fitDaily)
+end
+
+dailyButton.Activated:Connect(function()
+	setDailyOpen(not dailyPanel.Visible)
+end)
+dailyClose.Activated:Connect(function()
+	setDailyOpen(false)
+end)
+claimButton.Activated:Connect(function()
+	if dailyState and dailyState.CanClaim then
+		DailyRemote:FireServer("Claim")
+	end
+end)
+
+DailyRemote.OnClientEvent:Connect(function(state)
+	dailyState = state
+	rebuildDaily()
+	-- pop the panel open the first time a reward is waiting
+	if state.CanClaim and not dailyAutoOpened then
+		dailyAutoOpened = true
+		task.delay(1.5, setDailyOpen, true)
+	end
+end)
+DailyRemote:FireServer("Refresh")
+
+-- countdown, and ask for a fresh state once the new day starts
+task.spawn(function()
+	while true do
+		task.wait(1)
+		local st = dailyState
+		if st and not st.CanClaim then
+			if dailyPanel.Visible then
+				refreshClaimButton()
+			end
+			if workspace:GetServerTimeNow() >= st.NextAt and dailyRefreshAsked ~= st.NextAt then
+				dailyRefreshAsked = st.NextAt
+				DailyRemote:FireServer("Refresh")
+			end
+		end
+	end
+end)
 
 --------------------------------------------------------------------------------
 -- Rainbow mutation: cycle tagged parts through the rainbow

@@ -14,6 +14,7 @@
 --   !luck 10           start 10x server luck
 --   !rain              egg rain           !refill   respawn all wild eggs
 --   !tp void           teleport (town, forest, desert, snow, volcano, void)
+--   !daily             make today's daily reward claimable again (!daily reset = back to Day 1)
 --   !reset             wipe your progress
 --   !help              list the commands
 
@@ -22,6 +23,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
 local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
+local DailyRewardService = require(script.Parent:WaitForChild("DailyRewardService"))
 
 local AdminService = {}
 
@@ -170,13 +172,20 @@ COMMANDS.tp = function(player, args)
 	end
 end
 
+COMMANDS.daily = function(player, args)
+	local mode = string.lower(args[1] or "")
+	if DailyRewardService.AdminSet(player, if mode == "reset" then "reset" else "next") then
+		say(player, if mode == "reset" then "Daily streak reset to Day 1" else "Skipped to the next day: your daily reward is ready")
+	end
+end
+
 COMMANDS.reset = function(player)
 	GameService.Admin.Reset(player)
 	say(player, "Progress reset", RED)
 end
 
 COMMANDS.help = function(player)
-	say(player, "!cash !speed !setspeed !egg !pet !shiny !hatch !grow !treadmill !luck !rain !refill !tp !reset")
+	say(player, "!cash !speed !setspeed !egg !pet !shiny !hatch !grow !treadmill !luck !rain !refill !tp !daily !reset")
 end
 
 local function run(player, message)

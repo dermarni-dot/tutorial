@@ -11,6 +11,7 @@ local DataService = require(Modules:WaitForChild("DataService"))
 local GameService = require(Modules:WaitForChild("GameService"))
 local Monetization = require(Modules:WaitForChild("Monetization"))
 local AdminService = require(Modules:WaitForChild("AdminService"))
+local DailyRewardService = require(Modules:WaitForChild("DailyRewardService"))
 
 -- Remotes
 local remotes = Instance.new("Folder")
@@ -24,6 +25,9 @@ treadmill.Parent = remotes
 local admin = Instance.new("RemoteEvent")
 admin.Name = "Admin"
 admin.Parent = remotes
+local daily = Instance.new("RemoteEvent")
+daily.Name = "DailyReward"
+daily.Parent = remotes
 remotes.Parent = ReplicatedStorage
 
 -- World + systems
@@ -31,6 +35,7 @@ local map = MapBuilder.Build()
 GameService.Init(map, notify, treadmill)
 Monetization.Init(GameService)
 AdminService.Init(GameService, notify, admin)
+DailyRewardService.Init(GameService, daily, notify)
 
 -- Players
 local function onPlayerAdded(player)
@@ -39,6 +44,7 @@ local function onPlayerAdded(player)
 		return -- left while loading
 	end
 	GameService.AddPlayer(player, profile)
+	DailyRewardService.PlayerReady(player)
 end
 
 Players.PlayerAdded:Connect(onPlayerAdded)

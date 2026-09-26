@@ -32,6 +32,7 @@ local function defaults()
 		SpeedBuys = 0,
 		TreadmillLevel = 1,
 		Nest = {},
+		Daily = { Streak = 0, LastDay = -1 },
 	}
 end
 
@@ -66,6 +67,10 @@ function DataService.Load(player)
 		if type(data.Nest) == "table" then
 			profile.Nest = data.Nest
 		end
+		if type(data.Daily) == "table" then
+			profile.Daily.Streak = math.max(0, math.floor(tonumber(data.Daily.Streak) or 0))
+			profile.Daily.LastDay = math.floor(tonumber(data.Daily.LastDay) or -1)
+		end
 	end
 	return profile
 end
@@ -81,6 +86,7 @@ function DataService.Save(player, profile)
 		SpeedBuys = profile.SpeedBuys,
 		TreadmillLevel = profile.TreadmillLevel,
 		Nest = profile.Nest,
+		Daily = profile.Daily,
 		Version = 2,
 	}
 	for attempt = 1, 3 do

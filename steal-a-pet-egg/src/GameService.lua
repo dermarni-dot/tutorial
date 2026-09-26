@@ -1594,6 +1594,36 @@ function GameService.GetSpeed(player)
 	return if state then state.Profile.Speed else 0
 end
 
+-- Daily reward helpers (used by DailyRewardService) --------------------------
+function GameService.GetProfile(player)
+	local state = states[player]
+	return if state then state.Profile else nil
+end
+
+function GameService.GrantCash(player, amount)
+	local state = states[player]
+	if not state then
+		return false
+	end
+	setCash(state, state.Profile.Cash + amount)
+	return true
+end
+
+-- Drops a fresh egg straight into the player's pet pen. Fails if the pen is full.
+function GameService.GiveBaseEgg(player, rarityId)
+	local state = states[player]
+	if not state or not Config.RarityById[rarityId] then
+		return false
+	end
+	local index = freeSlot(state)
+	if not index then
+		return false
+	end
+	local rec = createEgg(rarityId, nil, false, Config.RollMutation(rng, currentLuck()))
+	placeEggInBase(player, index, rec)
+	return true, rec.Mutation
+end
+
 --------------------------------------------------------------------------------
 -- Admin / testing helpers (used by AdminService)
 --------------------------------------------------------------------------------
