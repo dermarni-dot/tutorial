@@ -2783,6 +2783,69 @@ function Visuals.EggVariantNames(rarityId)
 end
 
 -- variantName is optional; by default the egg picks a random design.
+-- Keeps an egg's decorations close to the shell: pieces floating off the egg
+-- are pulled onto it, and pieces that still stick out more than `limit`
+-- studs are shrunk until they fit (tiny leftovers are removed).
+local function flattenOnShell(egg, parts, limit)
+	local a, b = EGG_SIZE.X / 2, EGG_SIZE.Y / 2
+	local maxE = 1 + limit / a
+	local function e(v)
+		return math.sqrt((v.X / a) ^ 2 + (v.Y / b) ^ 2 + (v.Z / a) ^ 2)
+	end
+	local function reach(cf, size, round)
+		local h = size / 2
+		local pts
+		if round then
+			pts = { Vector3.new(h.X, 0, 0), Vector3.new(-h.X, 0, 0), Vector3.new(0, h.Y, 0), Vector3.new(0, -h.Y, 0), Vector3.new(0, 0, h.Z), Vector3.new(0, 0, -h.Z) }
+		else
+			pts = {}
+			for _, sx in ipairs({ -1, 1 }) do
+				for _, sy in ipairs({ -1, 1 }) do
+					for _, sz in ipairs({ -1, 1 }) do
+						table.insert(pts, Vector3.new(sx * h.X, sy * h.Y, sz * h.Z))
+					end
+				end
+			end
+		end
+		local m = 0
+		for _, pt in ipairs(pts) do
+			m = math.max(m, e(cf * pt))
+		end
+		return m
+	end
+	local center = egg.CFrame
+	for _, part in ipairs(parts) do
+		local rel = center:ToObjectSpace(part.CFrame)
+		local rot = rel - rel.Position
+		local pos = rel.Position
+		local ce = e(pos)
+		if ce > 0.98 then
+			pos = pos * (0.98 / ce) -- pull it onto the shell
+		end
+		local round = part:FindFirstChildOfClass("SpecialMesh") ~= nil or part.Shape == Enum.PartType.Ball
+		local s = 1
+		for _ = 1, 12 do
+			if reach(CFrame.new(pos) * rot, part.Size * s, round) <= maxE then
+				break
+			end
+			s *= 0.85
+		end
+		if s < 0.3 then
+			part:Destroy()
+		else
+			local weld = part:FindFirstChildOfClass("WeldConstraint")
+			if weld then
+				weld.Enabled = false
+			end
+			part.Size *= s
+			part.CFrame = center * CFrame.new(pos) * rot
+			if weld then
+				weld.Enabled = true
+			end
+		end
+	end
+end
+
 function Visuals.MakeEgg(rarityId, variantName, custom)
 	local rarity = Config.RarityById[rarityId]
 	local variants = EGG_VARIANTS[rarityId] or {}
@@ -2840,7 +2903,22 @@ function Visuals.MakeEgg(rarityId, variantName, custom)
 	local dark = baseColor:Lerp(Color3.new(0, 0, 0), 0.35)
 	local design = if variant then variant.Design else EGG_DESIGNS[rarityId]
 	if design then
+		local before = {}
+		for _, c in ipairs(egg:GetChildren()) do
+			before[c] = true
+		end
 		design(add, baseColor, dark)
+		if not custom then
+			-- rarity and variant designs sit flush on the shell instead of
+			-- sticking out (species eggs keep their ears, tusks and tails)
+			local added = {}
+			for _, c in ipairs(egg:GetChildren()) do
+				if not before[c] and c:IsA("BasePart") then
+					table.insert(added, c)
+				end
+			end
+			flattenOnShell(egg, added, 0.15)
+		end
 	end
 	-- Modern finish on every egg: a glossy shell, a glowing hatch seam, a tech
 	-- band with a light strip, a core badge on the front, a jeweled tip on rare
