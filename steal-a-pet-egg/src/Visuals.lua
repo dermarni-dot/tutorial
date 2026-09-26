@@ -3912,6 +3912,123 @@ function GUARDIANS.Mech(def)
 	return model, height
 end
 
+-- Jungle Ruins: a huge silverback gorilla with a vine headband
+function GUARDIANS.Gorilla(def)
+	local fur = def.GuardianColor
+	local skin = Color3.fromRGB(110, 95, 100)
+	local model, body, add, eye, height = startGuardian(def, Vector3.new(10, 8, 8), 7.5, 1.1, fur)
+	add("Chest", "Blob", Vector3.new(6, 5, 1.6), 0, 8.4, -3.6, skin)
+	add("Head", "Ball", Vector3.one * 6, 0, 13.4, -1.8, fur)
+	add("Face", "Blob", Vector3.new(4.4, 4, 1.8), 0, 12.8, -4, skin)
+	add("Brow", "Block", Vector3.new(4.6, 0.9, 1.2), 0, 14.4, -4.4, fur:Lerp(BLACK, 0.2))
+	add("Nose", "Blob", Vector3.new(1.8, 0.9, 0.6), 0, 12.6, -4.9, skin:Lerp(BLACK, 0.3))
+	add("Mouth", "Blob", Vector3.new(2.4, 0.5, 0.3), 0, 11.4, -4.85, Color3.fromRGB(70, 30, 35))
+	for _, sx in ipairs({ -1, 1 }) do
+		eye(sx * 1.1, 13.5, -4.7, 1.2, sx)
+		add("Shoulder", "Ball", Vector3.one * 4, sx * 5, 10.4, -0.8, fur)
+		-- long arms reaching down to the knuckles
+		add("Arm", "Blob", Vector3.new(3, 8, 3), sx * 6.4, 6.2, -1.8, fur, nil, CFrame.Angles(math.rad(-10), 0, math.rad(8 * sx)))
+		add("Fist", "Ball", Vector3.one * 3.2, sx * 6.8, 1.8, -3, skin)
+		add("Leg", "Blob", Vector3.new(3.2, 3.6, 3.4), sx * 2.8, 1.8, 0.4, fur)
+		add("Ear", "Ball", Vector3.one * 1.2, sx * 3, 13.4, -1.6, skin)
+	end
+	-- vine headband with a gold temple medallion
+	add("Headband", "Cyl", Vector3.new(0.8, 6.2, 6.2), 0, 15.2, -1.8, Color3.fromRGB(70, 150, 60), nil, CFrame.Angles(0, 0, math.rad(90)))
+	add("Medallion", "Cyl", Vector3.new(0.4, 1.6, 1.6), 0, 15.2, -4.9, Color3.fromRGB(255, 200, 60), Enum.Material.Neon, CFrame.Angles(0, math.rad(90), 0))
+	for i = 0, 4 do
+		local a = i / 5 * math.pi - math.pi / 2
+		add("Leaf", "Blob", Vector3.new(1.4, 0.3, 2.2), math.cos(a) * 3.2, 15.6, -1.8 + math.sin(a) * 3.2, Color3.fromRGB(80, 180, 70), nil, CFrame.Angles(0, -a, 0.3))
+	end
+	return model, height
+end
+
+-- Sakura Gardens: a floating nine-tailed fox spirit with glowing tails
+function GUARDIANS.Kitsune(def)
+	local fur = Color3.fromRGB(255, 245, 240)
+	local glowC = def.GuardianColor
+	local model, body, add, eye, height = startGuardian(def, Vector3.new(6, 6.5, 9), 7, 1.25, fur)
+	add("Head", "Ball", Vector3.one * 5.4, 0, 11, -4.2, fur)
+	add("Snout", "Blob", Vector3.new(2.4, 2, 3), 0, 10.2, -7, fur)
+	add("Nose", "Ball", Vector3.one * 0.8, 0, 10.6, -8.5, BLACK)
+	add("Marking", "Blob", Vector3.new(0.6, 1.8, 0.3), 0, 12.6, -6.7, glowC, Enum.Material.Neon)
+	for _, sx in ipairs({ -1, 1 }) do
+		eye(sx * 1.2, 11.6, -6.2, 1.1, sx)
+		add("Ear", "Wedge", Vector3.new(0.6, 3, 2.4), sx * 1.8, 14.6, -3.8, fur, nil, CFrame.Angles(0, math.rad(90), math.rad(-10 * sx)))
+		add("EarTip", "Wedge", Vector3.new(0.65, 1.2, 1.1), sx * 1.8, 15.6, -3.8, glowC, Enum.Material.Neon, CFrame.Angles(0, math.rad(90), math.rad(-10 * sx)))
+		add("FrontLeg", "Blob", Vector3.new(1.6, 4.5, 1.6), sx * 1.8, 3, -3, fur)
+		add("BackLeg", "Blob", Vector3.new(1.8, 4.5, 2.2), sx * 1.9, 3, 3, fur)
+		add("Paw", "Ball", Vector3.one * 1.8, sx * 1.8, 0.9, -3.3, glowC:Lerp(WHITE, 0.4))
+	end
+	-- nine fanned tails, each tipped with glowing fire
+	for i = 0, 8 do
+		local a = (i / 8 - 0.5) * math.rad(150)
+		local dir = Vector3.new(math.sin(a), 0.9, 0.6).Unit
+		local base = Vector3.new(0, 7.5, 4.5)
+		local tip = base + dir * 7
+		local mid = (base + tip) / 2
+		add("Tail", "Blob", Vector3.new(1.8, 1.8, 7.5), mid.X, mid.Y, mid.Z, fur, nil, CFrame.lookAt(Vector3.zero, dir))
+		add("TailFlame", "Ball", Vector3.new(1.6, 2.4, 1.6), tip.X, tip.Y, tip.Z, glowC, Enum.Material.Neon)
+	end
+	local sparks = Instance.new("ParticleEmitter")
+	sparks.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+	sparks.Color = ColorSequence.new(glowC, WHITE)
+	sparks.LightEmission = 1
+	sparks.Size = NumberSequence.new(0.6, 0)
+	sparks.Lifetime = NumberRange.new(1, 2)
+	sparks.Rate = 18
+	sparks.Speed = NumberRange.new(1, 3)
+	sparks.SpreadAngle = Vector2.new(180, 180)
+	sparks.Parent = body
+	return model, height
+end
+
+-- Rainbow Realm final boss: a huge crystal dragon shimmering in every color
+function GUARDIANS.Dragon(def)
+	local scales = Color3.fromRGB(245, 240, 255)
+	local glowC = def.GuardianColor
+	local rainbow = { Color3.fromRGB(255, 90, 90), Color3.fromRGB(255, 190, 70), Color3.fromRGB(255, 240, 90), Color3.fromRGB(100, 230, 120), Color3.fromRGB(90, 170, 255), Color3.fromRGB(180, 110, 255) }
+	local sc = 1.35
+	local model, body, add, eye, height = startGuardian(def, Vector3.new(9, 8, 12), 9, sc, scales)
+	add("Belly", "Blob", Vector3.new(6.4, 5.4, 9), 0, 7.6, -0.6, Color3.fromRGB(255, 225, 245))
+	add("Neck", "Blob", Vector3.new(3.4, 7, 3.4), 0, 13, -5.6, scales, nil, CFrame.Angles(math.rad(-30), 0, 0))
+	add("Head", "Blob", Vector3.new(5, 4, 6), 0, 17, -8, scales)
+	add("Jaw", "Blob", Vector3.new(4, 1.6, 4.6), 0, 15.4, -9.6, Color3.fromRGB(255, 225, 245))
+	for _, sx in ipairs({ -1, 1 }) do
+		add("Eye", "Blob", Vector3.new(1.3, 1, 0.5), sx * 1.5, 17.8, -10.6, glowC, Enum.Material.Neon, CFrame.Angles(0, 0, math.rad(-12 * sx)))
+		add("Horn", "Wedge", Vector3.new(0.8, 3.4, 2), sx * 1.6, 20, -6.8, Color3.fromRGB(255, 220, 120), Enum.Material.Metal, CFrame.Angles(math.rad(-30), 0, 0))
+		add("Nostril", "Ball", Vector3.one * 0.5, sx * 0.8, 16.6, -11, BLACK)
+		add("Leg", "Blob", Vector3.new(2.6, 5, 2.8), sx * 3.8, 2.8, -3.4, scales)
+		add("BackLeg", "Blob", Vector3.new(3, 5, 3.4), sx * 3.8, 2.8, 3.6, scales)
+		-- big crystal wings in rainbow bands
+		for f = 0, 5 do
+			add("WingPanel", "Wedge", Vector3.new(0.5, 6 - f * 0.5, 4), sx * (7 + f * 2.6), 14 + f * 0.8, 1 + f * 0.4, rainbow[f + 1], Enum.Material.Neon, CFrame.Angles(math.rad(-15), math.rad(90 * sx), math.rad(-15 * sx)))
+		end
+	end
+	-- spines and a rainbow tail
+	for i = 0, 4 do
+		add("Spine", "Wedge", Vector3.new(0.6, 1.8, 1.8), 0, 12.4, -3 + i * 2.2, rainbow[i + 1], Enum.Material.Neon)
+	end
+	for i = 0, 5 do
+		add("TailSegment", "Blob", Vector3.new(2.6 - i * 0.3, 2.2 - i * 0.25, 3.2), 0, 7 - i * 0.6, 7 + i * 2.6, rainbow[i + 1])
+	end
+	local aura = Instance.new("ParticleEmitter")
+	aura.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+	aura.Color = ColorSequence.new({ ColorSequenceKeypoint.new(0, rainbow[1]), ColorSequenceKeypoint.new(0.5, rainbow[4]), ColorSequenceKeypoint.new(1, rainbow[6]) })
+	aura.LightEmission = 1
+	aura.Size = NumberSequence.new(1, 0)
+	aura.Lifetime = NumberRange.new(1, 2)
+	aura.Rate = 35
+	aura.Speed = NumberRange.new(2, 5)
+	aura.SpreadAngle = Vector2.new(180, 180)
+	aura.Parent = body
+	local pl = Instance.new("PointLight")
+	pl.Color = glowC
+	pl.Range = 36
+	pl.Brightness = 2
+	pl.Parent = body
+	return model, height
+end
+
 function Visuals.MakeGuardian(def)
 	local builder = GUARDIANS[def.GuardianStyle or "Bear"] or GUARDIANS.Bear
 	local model, height = builder(def)

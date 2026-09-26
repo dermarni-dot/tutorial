@@ -2338,6 +2338,226 @@ function SETPIECES.NeonPyramid(folder, o, rng)
 end
 
 --------------------------------------------------------------------------------
+-- Zones 13-20: Jungle Ruins, Crystal Caverns, Toy Town, Aurora Tundra,
+-- Sakura Gardens, Infernal Abyss, Galaxy Rift and Rainbow Realm
+--------------------------------------------------------------------------------
+local TOY = { Color3.fromRGB(255, 80, 80), Color3.fromRGB(255, 205, 60), Color3.fromRGB(80, 170, 255), Color3.fromRGB(90, 210, 110), Color3.fromRGB(190, 110, 255) }
+local SAKURA_PINK = Color3.fromRGB(255, 185, 215)
+local TORII_RED = Color3.fromRGB(200, 50, 45)
+
+function PROPS.PalmTree(folder, pos, s, rng)
+	local p = pos
+	local lean = Vector3.new(rng:NextNumber(-0.25, 0.25), 1, rng:NextNumber(-0.25, 0.25)).Unit
+	for i = 1, 6 do
+		local nextP = p + (lean + Vector3.new(0, 0, 0)) * 2.4 * s
+		deco({ Name = "PalmTrunk", Size = Vector3.new(1.4 * s, 1.4 * s, 2.8 * s), CFrame = CFrame.lookAt((p + nextP) / 2, nextP), Color = Color3.fromRGB(150, 110, 70):Lerp(Color3.fromRGB(120, 85, 55), i % 2), Material = Enum.Material.Wood, Parent = folder })
+		p = nextP
+	end
+	for i = 0, 6 do
+		local a = i / 7 * math.pi * 2
+		local dir = Vector3.new(math.cos(a), -0.35, math.sin(a)).Unit
+		local tip = p + dir * 7 * s
+		deco({ Name = "PalmLeaf", Size = Vector3.new(2.4 * s, 0.25, 7.5 * s), CFrame = CFrame.lookAt((p + tip) / 2, tip), Color = Color3.fromRGB(60, 160, 70):Lerp(Color3.fromRGB(90, 190, 80), rng:NextNumber()), Material = Enum.Material.Grass, Parent = folder })
+	end
+	for i = 1, 3 do
+		deco({ Name = "Coconut", Shape = Enum.PartType.Ball, Size = Vector3.one * 1.1 * s, Position = p + Vector3.new(math.cos(i * 2.1) * 0.8, -0.8, math.sin(i * 2.1) * 0.8) * s, Color = Color3.fromRGB(110, 75, 40), Material = Enum.Material.SmoothPlastic, Parent = folder })
+	end
+end
+
+function PROPS.Totem(folder, pos, s, rng)
+	local colors = { Color3.fromRGB(190, 70, 50), Color3.fromRGB(60, 140, 120), Color3.fromRGB(220, 170, 60) }
+	local y = 0
+	for i = 1, 3 do
+		local h = 3.4 * s
+		local c = colors[(i + rng:NextInteger(0, 2)) % 3 + 1]
+		deco({ Name = "TotemBlock", Size = Vector3.new(3 * s, h, 3 * s), Position = pos + Vector3.new(0, y + h / 2, 0), Color = c, Material = Enum.Material.Wood, Parent = folder })
+		for _, sx in ipairs({ -1, 1 }) do
+			deco({ Name = "TotemEye", Size = Vector3.new(0.7, 0.5, 0.2) * s, Position = pos + Vector3.new(sx * 0.7 * s, y + h * 0.65, -1.55 * s), Color = WHITE, Material = Enum.Material.SmoothPlastic, Parent = folder })
+		end
+		deco({ Name = "TotemMouth", Size = Vector3.new(1.8, 0.5, 0.2) * s, Position = pos + Vector3.new(0, y + h * 0.25, -1.55 * s), Color = BLACK, Material = Enum.Material.SmoothPlastic, Parent = folder })
+		y += h
+	end
+	for _, sx in ipairs({ -1, 1 }) do
+		deco({ Name = "TotemWing", Shape = Enum.PartType.Wedge, Size = Vector3.new(0.6, 2.2, 3) * s, CFrame = CFrame.new(pos + Vector3.new(sx * 2.6 * s, y - 1.5 * s, 0)) * CFrame.Angles(0, math.rad(90 * sx), 0), Color = colors[3], Material = Enum.Material.Wood, Parent = folder })
+	end
+end
+
+function PROPS.ToyBlocks(folder, pos, s, rng)
+	local y = 0
+	for i = 1, rng:NextInteger(2, 4) do
+		local size = rng:NextNumber(3, 4.5) * s
+		local b = deco({ Name = "ToyBlock", Size = Vector3.one * size, CFrame = CFrame.new(pos + Vector3.new(rng:NextNumber(-0.6, 0.6), y + size / 2, rng:NextNumber(-0.6, 0.6))) * CFrame.Angles(0, rng:NextNumber(0, 1.5), 0), Color = TOY[rng:NextInteger(1, #TOY)], Material = Enum.Material.SmoothPlastic, Parent = folder })
+		local letters = { "A", "B", "C", "1", "2", "3", "★" }
+		surfaceText(b, Enum.NormalId.Front, letters[rng:NextInteger(1, #letters)], WHITE)
+		y += size
+	end
+end
+
+function PROPS.GiantBall(folder, pos, s, rng)
+	local size = rng:NextNumber(5, 8) * s
+	local c = pos + Vector3.new(0, size / 2, 0)
+	deco({ Name = "Ball", Shape = Enum.PartType.Ball, Size = Vector3.one * size, Position = c, Color = TOY[rng:NextInteger(1, #TOY)], Material = Enum.Material.SmoothPlastic, Parent = folder })
+	deco({ Name = "BallStripe", Shape = Enum.PartType.Cylinder, Size = Vector3.new(size * 0.3, size * 1.01, size * 1.01), CFrame = CFrame.new(c) * CFrame.Angles(0, rng:NextNumber(0, 3), 0), Color = WHITE, Material = Enum.Material.SmoothPlastic, Parent = folder })
+	deco({ Name = "BallStar", Shape = Enum.PartType.Ball, Size = Vector3.one * size * 0.3, Position = c + Vector3.new(0, size * 0.36, 0), Color = TOY[rng:NextInteger(1, #TOY)], Material = Enum.Material.SmoothPlastic, Parent = folder })
+end
+
+function PROPS.CherryTree(folder, pos, s, rng)
+	local bark = Color3.fromRGB(90, 55, 50)
+	local trunkH = rng:NextNumber(6, 8) * s
+	deco({ Name = "Trunk", Size = Vector3.new(1.6 * s, trunkH, 1.6 * s), CFrame = CFrame.new(pos + Vector3.new(0, trunkH / 2, 0)) * CFrame.Angles(0, 0, rng:NextNumber(-0.1, 0.1)), Color = bark, Material = Enum.Material.Wood, Parent = folder })
+	local top = pos + Vector3.new(0, trunkH, 0)
+	for i = 0, 2 do
+		local a = i / 3 * math.pi * 2 + rng:NextNumber(0, 1)
+		local tip = top + Vector3.new(math.cos(a) * 3.5, 2, math.sin(a) * 3.5) * s
+		deco({ Name = "Branch", Size = Vector3.new(0.7 * s, 0.7 * s, (tip - top).Magnitude), CFrame = CFrame.lookAt((top + tip) / 2, tip), Color = bark, Material = Enum.Material.Wood, Parent = folder })
+		deco({ Name = "Blossom", Shape = Enum.PartType.Ball, Size = Vector3.one * rng:NextNumber(5, 6.5) * s, Position = tip + Vector3.new(0, 1, 0), Color = SAKURA_PINK:Lerp(WHITE, rng:NextNumber(0, 0.35)), Material = Enum.Material.SmoothPlastic, Parent = folder })
+	end
+	deco({ Name = "Blossom", Shape = Enum.PartType.Ball, Size = Vector3.one * 7 * s, Position = top + Vector3.new(0, 3.5 * s, 0), Color = SAKURA_PINK, Material = Enum.Material.SmoothPlastic, Parent = folder })
+	for _ = 1, 4 do
+		deco({ Name = "FallenPetal", Size = Vector3.new(0.6, 0.08, 0.4), CFrame = CFrame.new(pos + Vector3.new(rng:NextNumber(-4, 4), 0.06, rng:NextNumber(-4, 4))) * CFrame.Angles(0, rng:NextNumber(0, 3), 0), Color = SAKURA_PINK, Material = Enum.Material.SmoothPlastic, CastShadow = false, Parent = folder })
+	end
+end
+
+function PROPS.StoneLantern(folder, pos, s, rng)
+	local stone = Color3.fromRGB(150, 150, 145)
+	deco({ Name = "LanternBase", Size = Vector3.new(2.4, 0.8, 2.4) * s, Position = pos + Vector3.new(0, 0.4 * s, 0), Color = stone, Material = Enum.Material.Slate, Parent = folder })
+	deco({ Name = "LanternPost", Size = Vector3.new(0.9, 3, 0.9) * s, Position = pos + Vector3.new(0, 2.3 * s, 0), Color = stone, Material = Enum.Material.Slate, Parent = folder })
+	local box = deco({ Name = "LanternBox", Size = Vector3.new(1.8, 1.6, 1.8) * s, Position = pos + Vector3.new(0, 4.6 * s, 0), Color = Color3.fromRGB(255, 210, 140), Material = Enum.Material.Neon, CastShadow = false, Parent = folder })
+	deco({ Name = "LanternRoof", Shape = Enum.PartType.Wedge, Size = Vector3.new(3, 1, 1.5) * s, CFrame = CFrame.new(pos + Vector3.new(0, 5.9 * s, -0.75 * s)), Color = stone, Material = Enum.Material.Slate, Parent = folder })
+	deco({ Name = "LanternRoof", Shape = Enum.PartType.Wedge, Size = Vector3.new(3, 1, 1.5) * s, CFrame = CFrame.new(pos + Vector3.new(0, 5.9 * s, 0.75 * s)) * CFrame.Angles(0, math.pi, 0), Color = stone, Material = Enum.Material.Slate, Parent = folder })
+	if rng:NextNumber() < 0.35 then
+		light(box, Color3.fromRGB(255, 190, 120), 16, 1)
+	end
+end
+
+CLUTTER.Jungle = CLUTTER.Forest
+CLUTTER.Crystal = CLUTTER.Void
+CLUTTER.Toy = CLUTTER.Candy
+CLUTTER.Aurora = CLUTTER.Snow
+CLUTTER.Sakura = function(folder, p, rng)
+	deco({ Name = "Petal", Size = Vector3.new(0.6, 0.08, 0.45), CFrame = CFrame.new(p + Vector3.new(0, 0.06, 0)) * CFrame.Angles(0, rng:NextNumber(0, 3), 0), Color = SAKURA_PINK:Lerp(WHITE, rng:NextNumber(0, 0.4)), Material = Enum.Material.SmoothPlastic, CanCollide = false, CastShadow = false, Parent = folder })
+end
+CLUTTER.Inferno = CLUTTER.Volcano
+CLUTTER.Galaxy = CLUTTER.Void
+CLUTTER.Rainbow = CLUTTER.Candy
+
+AMBIENT.Petals = { Y = 45, Props = { Color = ColorSequence.new(SAKURA_PINK, WHITE), LightEmission = 0.2, Size = NumberSequence.new(0.45), Lifetime = NumberRange.new(10, 14), Rate = 45, Speed = NumberRange.new(0, 1), RotSpeed = NumberRange.new(-90, 90), Rotation = NumberRange.new(0, 360), Acceleration = Vector3.new(2, -3, 1), EmissionDirection = Enum.NormalId.Bottom } }
+EXTRA_AMBIENT.Jungle = "Fireflies"
+EXTRA_AMBIENT.Crystal = "Stardust"
+EXTRA_AMBIENT.Aurora = "Stardust"
+EXTRA_AMBIENT.Inferno = "Ash"
+EXTRA_AMBIENT.Galaxy = "Motes"
+EXTRA_AMBIENT.Rainbow = "Feathers"
+
+WALL_TRIMS.Jungle = WALL_TRIMS.Forest
+WALL_TRIMS.Crystal = WALL_TRIMS.Void
+WALL_TRIMS.Toy = WALL_TRIMS.Candy
+WALL_TRIMS.Aurora = WALL_TRIMS.Snow
+WALL_TRIMS.Sakura = function(folder, x, z, side, rng)
+	if rng:NextNumber() < 0.5 then
+		local lamp = deco({ Name = "PaperLantern", Shape = Enum.PartType.Ball, Size = Vector3.new(2, 2.6, 2), Position = Vector3.new(x - side * 1.4, rng:NextNumber(20, 30), z), Color = Color3.fromRGB(255, 120, 100), Material = Enum.Material.Neon, CanCollide = false, CastShadow = false, Parent = folder })
+		lamp.Transparency = 0.1
+	end
+	deco({ Name = "WallBeam", Size = Vector3.new(0.4, 0.8, 16.2), Position = Vector3.new(x - side * 0.2, 12, z), Color = Color3.fromRGB(70, 45, 40), Material = Enum.Material.Wood, CanCollide = false, Parent = folder })
+end
+WALL_TRIMS.Inferno = WALL_TRIMS.Volcano
+WALL_TRIMS.Galaxy = WALL_TRIMS.Void
+WALL_TRIMS.Rainbow = WALL_TRIMS.Heaven
+
+BACKDROPS.Jungle = { Base = Color3.fromRGB(50, 110, 55), Top = Color3.fromRGB(80, 150, 70), Material = Enum.Material.Grass, MinH = 80, MaxH = 150, Trees = true }
+BACKDROPS.Crystal = { Base = Color3.fromRGB(45, 38, 80), Top = Color3.fromRGB(110, 90, 190), Material = Enum.Material.Glass, MinH = 90, MaxH = 170 }
+BACKDROPS.Toy = { Base = Color3.fromRGB(255, 140, 140), Top = Color3.fromRGB(255, 230, 120), Material = Enum.Material.SmoothPlastic, MinH = 50, MaxH = 100, Flat = true }
+BACKDROPS.Aurora = BACKDROPS.Snow
+BACKDROPS.Sakura = { Base = Color3.fromRGB(95, 130, 90), Top = Color3.fromRGB(250, 250, 255), Material = Enum.Material.Grass, MinH = 90, MaxH = 170, Cap = Enum.Material.Snow }
+BACKDROPS.Inferno = BACKDROPS.Volcano
+BACKDROPS.Galaxy = BACKDROPS.Void
+BACKDROPS.Rainbow = BACKDROPS.Heaven
+
+SKY.Aurora = SKY.Snow
+SKY.Toy = SKY.Candy
+SKY.Galaxy = SKY.Void
+function SKY.Rainbow(folder, centerZ, rng)
+	SKY.Candy(folder, centerZ, rng)
+	SKY.Heaven(folder, centerZ, rng)
+end
+function SKY.Sakura(folder, centerZ, rng)
+	-- a big soft sunset sun behind a snowy mountain
+	local sun = deco({ Name = "SakuraSun", Shape = Enum.PartType.Ball, Size = Vector3.one * 70, Position = Vector3.new(140, 160, centerZ + 300), Color = Color3.fromRGB(255, 170, 140), Material = Enum.Material.Neon, CanCollide = false, CastShadow = false, Parent = folder })
+	sun.Transparency = 0.1
+end
+function SKY.Inferno(folder, centerZ, rng)
+	-- burning meteors streaking across a red sky
+	for _ = 1, 10 do
+		local p = Vector3.new(rng:NextNumber(-380, 380), rng:NextNumber(80, 150), centerZ + rng:NextNumber(-140, 140))
+		local dir = Vector3.new(rng:NextNumber(-1, 1), -0.6, rng:NextNumber(-1, 1)).Unit
+		deco({ Name = "Meteor", Shape = Enum.PartType.Ball, Size = Vector3.one * rng:NextNumber(3, 6), Position = p, Color = Color3.fromRGB(255, 140, 50), Material = Enum.Material.Neon, CanCollide = false, CastShadow = false, Parent = folder })
+		local tail = deco({ Name = "MeteorTail", Size = Vector3.new(2, 2, 26), CFrame = CFrame.lookAt(p - dir * 13, p), Color = Color3.fromRGB(255, 90, 30), Material = Enum.Material.Neon, CanCollide = false, CastShadow = false, Parent = folder })
+		tail.Transparency = 0.5
+	end
+end
+function SKY.Jungle(folder, centerZ, rng)
+	-- a flock of bright parrots
+	for _ = 1, 12 do
+		local p = Vector3.new(rng:NextNumber(-350, 350), rng:NextNumber(40, 80), centerZ + rng:NextNumber(-130, 130))
+		local col = ({ Color3.fromRGB(230, 50, 50), Color3.fromRGB(60, 150, 255), Color3.fromRGB(255, 210, 50) })[rng:NextInteger(1, 3)]
+		deco({ Name = "Parrot", Shape = Enum.PartType.Ball, Size = Vector3.new(1.2, 1.2, 2.2), Position = p, Color = col, Material = Enum.Material.SmoothPlastic, CanCollide = false, CastShadow = false, Parent = folder })
+		for _, sx in ipairs({ -1, 1 }) do
+			deco({ Name = "ParrotWing", Size = Vector3.new(2.2, 0.2, 1), Position = p + Vector3.new(sx * 1.5, 0.3, 0), Color = col:Lerp(Color3.fromRGB(60, 200, 90), 0.4), Material = Enum.Material.SmoothPlastic, CanCollide = false, CastShadow = false, Parent = folder })
+		end
+	end
+end
+
+SETPIECE_SPOTS.Jungle = { { "Ruins", 360, 95, 34 }, { "Waterfall", 385, -60, 36 }, { "Treehouse", -350, 30, 38 } }
+SETPIECE_SPOTS.Crystal = { { "RuneCircle", -360, 30, 36 }, { "IceFalls", 385, 35, 36 } }
+SETPIECE_SPOTS.Toy = { { "GingerbreadHouse", -360, 40, 36 }, { "RainbowBridge", 365, -70, 38 } }
+SETPIECE_SPOTS.Aurora = { { "SnowFort", -350, 100, 30 }, { "Cabin", -360, -70, 34 }, { "IceFalls", 385, 35, 36 } }
+SETPIECE_SPOTS.Sakura = { { "Pagoda", -355, 20, 38 }, { "ToriiPath", 365, -40, 40 } }
+SETPIECE_SPOTS.Inferno = { { "LavaLake", 360, -85, 44 }, { "Forge", 360, 95, 32 }, { "Basalt", -365, -20, 38 } }
+SETPIECE_SPOTS.Galaxy = { { "Portal", 360, 100, 30 }, { "Observatory", -350, -100, 30 }, { "SkyStairs", 370, -60, 32 } }
+SETPIECE_SPOTS.Rainbow = { { "RainbowBridge", 365, -70, 38 }, { "SkyTemple", -355, 20, 40 } }
+
+function SETPIECES.Pagoda(folder, o, rng)
+	local cf = CFrame.lookAt(o, o + Vector3.new(if o.X < 0 then 1 else -1, 0, 0))
+	local wood = Color3.fromRGB(180, 50, 45)
+	local roofC = Color3.fromRGB(50, 60, 70)
+	deco({ Name = "PagodaBase", Size = Vector3.new(24, 2, 24), CFrame = cf * CFrame.new(0, 1, 0), Color = Color3.fromRGB(160, 155, 150), Material = Enum.Material.Slate, Parent = folder })
+	local y = 2
+	for i = 0, 3 do
+		local w = 16 - i * 3
+		local h = 7 - i * 0.8
+		deco({ Name = "PagodaFloor", Size = Vector3.new(w, h, w), CFrame = cf * CFrame.new(0, y + h / 2, 0), Color = wood, Material = Enum.Material.Wood, Parent = folder })
+		deco({ Name = "PagodaWindow", Size = Vector3.new(w * 0.5, h * 0.4, 0.3), CFrame = cf * CFrame.new(0, y + h * 0.55, -w / 2 - 0.1), Color = Color3.fromRGB(255, 220, 150), Material = Enum.Material.Neon, CastShadow = false, Parent = folder })
+		y += h
+		roof(folder, cf * CFrame.new(0, y, 0), w + 6, w + 6, 2.4, roofC, Enum.Material.Slate)
+		for _, sx in ipairs({ -1, 1 }) do
+			deco({ Name = "EaveTip", Shape = Enum.PartType.Wedge, Size = Vector3.new(1, 1.4, 2), CFrame = cf * CFrame.new(sx * (w / 2 + 3), y + 0.6, -(w / 2 + 2)), Color = roofC, Material = Enum.Material.Slate, Parent = folder })
+		end
+		y += 2.4
+	end
+	deco({ Name = "Spire", Size = Vector3.new(0.6, 6, 0.6), CFrame = cf * CFrame.new(0, y + 3, 0), Color = Color3.fromRGB(230, 180, 60), Material = Enum.Material.Metal, Parent = folder })
+	for _, sx in ipairs({ -1, 1 }) do
+		PROPS.StoneLantern(folder, (cf * CFrame.new(sx * 9, 2, -14)).Position, 1, rng)
+		PROPS.CherryTree(folder, (cf * CFrame.new(sx * 16, 0, -6)).Position, 1.1, rng)
+	end
+end
+
+function SETPIECES.ToriiPath(folder, o, rng)
+	-- a line of red torii gates over a stone path
+	for i = 0, 4 do
+		local c = o + Vector3.new(0, 0, -30 + i * 15)
+		for _, sx in ipairs({ -1, 1 }) do
+			deco({ Name = "ToriiPost", Shape = Enum.PartType.Cylinder, Size = Vector3.new(14, 1.4, 1.4), CFrame = cylinderAlongY(CFrame.new(c + Vector3.new(sx * 5, 7, 0))), Color = TORII_RED, Material = Enum.Material.SmoothPlastic, Parent = folder })
+		end
+		deco({ Name = "ToriiTop", Size = Vector3.new(15, 1.2, 1.8), Position = c + Vector3.new(0, 14.4, 0), Color = Color3.fromRGB(40, 35, 35), Material = Enum.Material.Wood, Parent = folder })
+		deco({ Name = "ToriiBeam", Size = Vector3.new(12, 0.9, 1.2), Position = c + Vector3.new(0, 11.8, 0), Color = TORII_RED, Material = Enum.Material.SmoothPlastic, Parent = folder })
+		deco({ Name = "PathStone", Size = Vector3.new(6, 0.3, 4), Position = c + Vector3.new(0, 0.15, 0), Color = Color3.fromRGB(165, 160, 155), Material = Enum.Material.Slate, Parent = folder })
+	end
+	for _, sx in ipairs({ -1, 1 }) do
+		PROPS.CherryTree(folder, o + Vector3.new(sx * 13, 0, 0), 1.2, rng)
+	end
+end
+
+--------------------------------------------------------------------------------
 -- Player bases
 -- Built in the plot's local space: local -Z is the open front (facing the road).
 --------------------------------------------------------------------------------
@@ -2579,7 +2799,7 @@ local function buildPlot(plotsFolder, index, center, frontDir)
 	local tiers = #Config.TreadmillLevels
 	for i = 1, tiers do
 		local x = TX + ((i - 0.5) / tiers - 0.5) * (beltWidth - 0.4) / K
-		local pip = deco({ Name = "Pip", Shape = Enum.PartType.Ball, Size = Vector3.one * 0.42, CFrame = at(x, 4.62, -12.95), Color = dark, Material = Enum.Material.SmoothPlastic, CastShadow = false, CanCollide = false, Parent = pips })
+		local pip = deco({ Name = "Pip", Shape = Enum.PartType.Ball, Size = Vector3.one * math.min(0.42, (beltWidth - 0.4) / tiers * 0.85), CFrame = at(x, 4.62, -12.95), Color = dark, Material = Enum.Material.SmoothPlastic, CastShadow = false, CanCollide = false, Parent = pips })
 		pip:SetAttribute("Tier", i)
 	end
 	local halo = Instance.new("Folder")

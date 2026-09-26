@@ -122,6 +122,9 @@ local function applyWalkSpeed(player)
 	if state.Carrying then
 		speed *= Config.CarrySpeedMultiplier
 	end
+	if state.BoostUntil and now() < state.BoostUntil then
+		speed *= Config.GrabBoostMultiplier -- adrenaline right after grabbing an egg
+	end
 	hum.WalkSpeed = speed
 end
 
@@ -347,7 +350,8 @@ local function spawnWildEgg(biome, spot)
 		local w = weights[r.Id] or 0
 		return w * luck ^ ((r.Order - lowest) * 0.5)
 	end, rng)
-	local mutation = Config.RollMutation(rng, luck)
+	-- late zones roll mutations more often (the roll takes the square root of luck)
+	local mutation = Config.RollMutation(rng, luck * (biome.Def.MutationBoost or 1) ^ 2)
 	local rec = createEgg(rarity.Id, nil, false, mutation)
 	placeInSpot(biome, spot, rec)
 	local mdef = mutation and Config.MutationById[mutation]
@@ -986,8 +990,18 @@ onEggPrompt = function(player, rec)
 		rec.GrabPos = spot.Position -- the guardian chases until you're Leash studs from here
 		rec.Spot = nil
 		rec.HomeBiome = biome
+		local guardian = biome.Guardian
+		if guardian and not guardian.Target then
+			guardian.WakeUntil = now() + Config.GuardianWakeTime -- it was napping
+		end
 		biome.Hunted[rec] = true
+		state.BoostUntil = now() + Config.GrabBoostTime
 		startCarry(player, rec)
+		task.delay(Config.GrabBoostTime + 0.05, function()
+			if states[player] then
+				applyWalkSpeed(player)
+			end
+		end)
 		notify(player, "🥚 Got a " .. rec.Rarity .. " Egg! The " .. biome.Def.GuardianName .. " is coming. RUN!", ORANGE)
 	elseif rec.State == "Base" then
 		local owner = rec.Owner
@@ -1234,6 +1248,11 @@ local function updateGuardian(biome, dt)
 		guardian.Target = target
 	end
 
+	local waking = guardian.WakeUntil and now() < guardian.WakeUntil
+	if waking then
+		target = nil -- still rubbing its eyes: no chasing or catching yet
+	end
+
 	local goal
 	local chasedPlayer = nil
 	if target then
@@ -1258,7 +1277,7 @@ local function updateGuardian(biome, dt)
 	setChased(guardian, chasedPlayer)
 
 	local home = not goal
-	goal = goal or biome.GuardianHome
+	goal = goal or (if waking then guardian.Position else biome.GuardianHome)
 	local offset = flat(goal) - flat(guardian.Position)
 	local distance = offset.Magnitude
 	local speed = if home then def.GuardianSpeed * 0.6 else def.GuardianSpeed
@@ -1273,7 +1292,7 @@ local function updateGuardian(biome, dt)
 	elseif home then
 		guardian.Facing = -Vector3.zAxis
 	end
-	guardian.Resting = home and distance <= 0.05
+	guardian.Resting = home and distance <= 0.05 and not waking
 
 	-- Cartoon motion: bouncy waddle while running, slow breathing while napping,
 	-- and the boss always hovers.
@@ -1293,7 +1312,7 @@ local function updateGuardian(biome, dt)
 		guardian.Sleep.Enabled = guardian.Resting
 	end
 
-	if target and guardian.Target == target and distance <= Config.GuardianCatchRange then
+	if not waking and target and guardian.Target == target and distance <= Config.GuardianCatchRange then
 		if target.State == "Carried" and target.Carrier then
 			caught(biome, target.Carrier, target)
 		elseif target.State == "Dropped" then

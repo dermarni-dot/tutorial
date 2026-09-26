@@ -169,7 +169,7 @@ end
 COMMANDS.tp = function(player, args)
 	local zone = table.concat(args, " ")
 	if not GameService.Admin.Teleport(player, zone) then
-		say(player, "Unknown place. Try: town, forest, desert, snow, volcano, void, candy, ocean, heaven, shroom, spooky, clockwork, cyber", RED)
+		say(player, "Unknown place. Try: town, forest, desert, snow, volcano, void, candy, ocean, heaven, shroom, spooky, clockwork, cyber, jungle, crystal, toy, aurora, sakura, inferno, galaxy, rainbow (or a zone number 1-20)", RED)
 	end
 end
 

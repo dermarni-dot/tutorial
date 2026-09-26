@@ -20,11 +20,14 @@ Config.SellSeconds = 45 -- a pet sells for this many seconds of its income
 -- Speed stat can grow into the millions. Walk speed climbs faster the more
 -- tenfolds of Speed you have, so every upgrade feels quicker:
 -- 5 -> 49, 300 -> 100, 1K -> 119, 11K -> 162, 200K -> 222, 1M -> 260,
--- 25M -> 344, 100M -> 384, 2.5B -> 485, 50B -> 589 (capped at 650).
+-- 25M -> 344, 100M -> 384, 2.5B -> 485, 50B -> 589. Past 50B it grows by
+-- WalkPerTenfoldLate per tenfold: 1T -> 628, 100T -> 688, 10Qa -> 748 (capped at 800).
 Config.BaseWalkSpeed = 32
 Config.WalkPerTenfold = 20 -- extra walk speed every time your Speed goes x10...
 Config.WalkCurve = 3 -- ...plus this x (tenfolds squared), so later tenfolds add more
-Config.MaxWalkSpeed = 650
+Config.WalkCurveKnee = 10.7 -- tenfolds (about 50B Speed) where the curve slows down
+Config.WalkPerTenfoldLate = 30
+Config.MaxWalkSpeed = 800
 Config.GuardianEdge = 0.995 -- guardians run this fraction of your carry speed at their zone's SpeedNeeded
 Config.CarrySpeedMultiplier = 0.9
 Config.StartingSpeed = 5 -- enough to outrun the first guardian
@@ -54,12 +57,20 @@ Config.TreadmillLevels = {
 	{ Name = "Gold", Mult = 8, Cost = 500000, Color = Color3.fromRGB(255, 200, 50), Glow = 0.8, Frame = "Foil", Fx = { Rate = 5, Size = 0.35, Speed = 2 } },
 	{ Name = "Diamond", Mult = 16, Cost = 8000000, Color = Color3.fromRGB(110, 230, 255), Glow = 1, Frame = "Glass", Fx = { Rate = 8, Size = 0.4, Speed = 3 } },
 	{ Name = "Emerald", Mult = 32, Cost = 150000000, Color = Color3.fromRGB(60, 230, 120), Glow = 1.2, Frame = "Glass", Fx = { Rate = 10, Size = 0.45, Speed = 3 } },
-	{ Name = "Cosmic", Mult = 64, Cost = 3000000000, Color = Color3.fromRGB(190, 110, 255), Glow = 1.4, Frame = "Glass", Fx = { Rate = 14, Size = 0.5, Speed = 4 }, Halo = true },
-	{ Name = "Galaxy", Mult = 128, Cost = 60000000000, Color = Color3.fromRGB(90, 130, 255), Glow = 1.6, Frame = "Glass", Fx = { Rate = 16, Size = 0.55, Speed = 4 }, Halo = true },
-	{ Name = "Nebula", Mult = 256, Cost = 1200000000000, Color = Color3.fromRGB(255, 110, 200), Glow = 1.8, Frame = "Glass", Fx = { Rate = 18, Size = 0.8, Speed = 2.5 }, Halo = true },
-	{ Name = "Supernova", Mult = 512, Cost = 25000000000000, Color = Color3.fromRGB(255, 150, 40), Glow = 2, Frame = "Foil", Fx = { Rate = 22, Size = 0.9, Speed = 6, Fire = true }, Halo = true },
-	{ Name = "Quantum", Mult = 1024, Cost = 500000000000000, Color = Color3.fromRGB(60, 255, 230), Glow = 2.2, Frame = "Glass", Fx = { Rate = 26, Size = 0.5, Speed = 8 }, Halo = true },
-	{ Name = "Celestial", Mult = 2048, Cost = 10000000000000000, Color = Color3.fromRGB(255, 245, 200), Glow = 2.5, Frame = "Foil", Fx = { Rate = 30, Size = 0.7, Speed = 5 }, Halo = true, Rainbow = true },
+	{ Name = "Cosmic", Mult = 64, Cost = 1500000000, Color = Color3.fromRGB(190, 110, 255), Glow = 1.4, Frame = "Glass", Fx = { Rate = 14, Size = 0.5, Speed = 4 }, Halo = true },
+	{ Name = "Galaxy", Mult = 128, Cost = 6000000000, Color = Color3.fromRGB(90, 130, 255), Glow = 1.6, Frame = "Glass", Fx = { Rate = 16, Size = 0.55, Speed = 4 }, Halo = true },
+	{ Name = "Nebula", Mult = 256, Cost = 20000000000, Color = Color3.fromRGB(255, 110, 200), Glow = 1.8, Frame = "Glass", Fx = { Rate = 18, Size = 0.8, Speed = 2.5 }, Halo = true },
+	{ Name = "Supernova", Mult = 512, Cost = 60000000000, Color = Color3.fromRGB(255, 150, 40), Glow = 2, Frame = "Foil", Fx = { Rate = 22, Size = 0.9, Speed = 6, Fire = true }, Halo = true },
+	{ Name = "Quantum", Mult = 1024, Cost = 150000000000, Color = Color3.fromRGB(60, 255, 230), Glow = 2.2, Frame = "Glass", Fx = { Rate = 26, Size = 0.5, Speed = 8 }, Halo = true },
+	{ Name = "Celestial", Mult = 2048, Cost = 400000000000, Color = Color3.fromRGB(255, 245, 200), Glow = 2.5, Frame = "Foil", Fx = { Rate = 30, Size = 0.7, Speed = 5 }, Halo = true, Rainbow = true },
+	{ Name = "Eclipse", Mult = 4096, Cost = 1000000000000, Color = Color3.fromRGB(255, 180, 60), Glow = 2.6, Frame = "Glass", Fx = { Rate = 30, Size = 0.7, Speed = 5 }, Halo = true },
+	{ Name = "Aurora", Mult = 9000, Cost = 2500000000000, Color = Color3.fromRGB(90, 255, 180), Glow = 2.7, Frame = "Glass", Fx = { Rate = 32, Size = 0.7, Speed = 5 }, Halo = true },
+	{ Name = "Pulsar", Mult = 20000, Cost = 6000000000000, Color = Color3.fromRGB(120, 180, 255), Glow = 2.8, Frame = "Glass", Fx = { Rate = 34, Size = 0.6, Speed = 9 }, Halo = true },
+	{ Name = "Quasar", Mult = 45000, Cost = 15000000000000, Color = Color3.fromRGB(255, 90, 160), Glow = 2.9, Frame = "Foil", Fx = { Rate = 36, Size = 0.8, Speed = 7 }, Halo = true },
+	{ Name = "Singularity", Mult = 90000, Cost = 35000000000000, Color = Color3.fromRGB(150, 60, 255), Glow = 3, Frame = "Glass", Fx = { Rate = 38, Size = 0.9, Speed = 3 }, Halo = true },
+	{ Name = "Multiverse", Mult = 200000, Cost = 80000000000000, Color = Color3.fromRGB(80, 255, 255), Glow = 3.1, Frame = "Glass", Fx = { Rate = 40, Size = 0.8, Speed = 6 }, Halo = true, Rainbow = true },
+	{ Name = "Infinity", Mult = 450000, Cost = 200000000000000, Color = Color3.fromRGB(255, 255, 255), Glow = 3.2, Frame = "Foil", Fx = { Rate = 44, Size = 0.9, Speed = 6 }, Halo = true, Rainbow = true },
+	{ Name = "Omega", Mult = 900000, Cost = 500000000000000, Color = Color3.fromRGB(255, 80, 220), Glow = 3.4, Frame = "Foil", Fx = { Rate = 50, Size = 1, Speed = 7, Fire = true }, Halo = true, Rainbow = true },
 }
 
 -- (old Speed pad settings, no longer used by the base)
@@ -81,6 +92,12 @@ Config.PromptRange = 10
 -- Guardians
 --------------------------------------------------------------------------------
 Config.GuardianCatchRange = 7
+-- Grabbing an egg from a sleeping guardian: it takes this long to wake up
+-- before it chases, and you get a short burst of speed, so eggs right next to
+-- a guardian (or boss) can actually be stolen.
+Config.GuardianWakeTime = 1.3
+Config.GrabBoostTime = 1.6
+Config.GrabBoostMultiplier = 1.25
 Config.SlapFlightTime = 1.1 -- seconds you fly through the air after a guardian slaps you, before landing back home
 Config.GuardianStunTime = 1.5
 Config.GuardianStunSpeed = 4
@@ -1111,7 +1128,7 @@ Config.Biomes = {
 		Particles = "Data",
 		GuardianName = "Omega Mech",
 		GuardianStyle = "Mech",
-		Boss = true,
+		Boss = true, -- a mid-game boss
 		GuardianColor = Color3.fromRGB(255, 60, 200),
 		SpeedNeeded = 50000000000, -- Speed needed to outrun this guardian (its speed is worked out from this)
 		Leash = 330,
@@ -1119,6 +1136,151 @@ Config.Biomes = {
 		EggSpots = 10,
 		Eggs = { Divine = 70, Secret = 30 },
 		Mood = { Color = Color3.fromRGB(150, 70, 220), Decay = Color3.fromRGB(30, 10, 70), Density = 0.4, Haze = 1, Glare = 0.3, Tint = Color3.fromRGB(235, 215, 255), Brightness = -0.02, Saturation = 0.35, CloudColor = Color3.fromRGB(120, 60, 180), CloudCover = 0.5, Clock = 0.3, Bloom = 1.2, Rays = 0.05, Contrast = 0.25, Ambient = Color3.fromRGB(110, 80, 170) },
+	},
+	{
+		Id = "Jungle",
+		Name = "Jungle Ruins",
+		Floor = { Color3.fromRGB(74, 140, 62), Color3.fromRGB(62, 124, 52) },
+		Walls = { Color3.fromRGB(108, 118, 92), Color3.fromRGB(124, 134, 106) },
+		Props = { "PalmTree", "PalmTree", "TallTree", "Bush", "Totem", "Tree" },
+		Particles = "Leaves",
+		GuardianName = "Temple Gorilla",
+		GuardianStyle = "Gorilla",
+		GuardianColor = Color3.fromRGB(70, 70, 80),
+		SpeedNeeded = 200000000000, -- Speed needed to outrun this guardian (its speed is worked out from this)
+		Leash = 330,
+		RespawnTime = 650,
+		EggSpots = 10,
+		Eggs = { Divine = 65, Secret = 35 },
+		MutationBoost = 1.5, -- eggs here roll mutations this many times as often
+		Mood = { Color = Color3.fromRGB(170, 215, 170), Decay = Color3.fromRGB(60, 110, 70), Density = 0.45, Haze = 1.6, Glare = 0.3, Tint = Color3.fromRGB(240, 255, 235), Brightness = 0, Saturation = 0.25, CloudColor = Color3.fromRGB(235, 245, 235), CloudCover = 0.7, Clock = 15, Bloom = 0.5, Rays = 0.2, Contrast = 0.14, Ambient = Color3.fromRGB(110, 140, 105) },
+	},
+	{
+		Id = "Crystal",
+		Name = "Crystal Caverns",
+		Floor = { Color3.fromRGB(66, 56, 108), Color3.fromRGB(56, 46, 92) },
+		Walls = { Color3.fromRGB(88, 78, 150), Color3.fromRGB(108, 94, 176) },
+		Props = { "Crystal", "Crystal", "GlowRock", "ShroomCluster", "Obelisk" },
+		Particles = "Motes",
+		GuardianName = "Crystal Scorpion",
+		GuardianStyle = "Scorpion",
+		GuardianColor = Color3.fromRGB(110, 230, 255),
+		SpeedNeeded = 1000000000000, -- Speed needed to outrun this guardian (its speed is worked out from this)
+		Leash = 330,
+		RespawnTime = 700,
+		EggSpots = 10,
+		Eggs = { Divine = 60, Secret = 40 },
+		MutationBoost = 2, -- eggs here roll mutations this many times as often
+		Mood = { Color = Color3.fromRGB(120, 110, 220), Decay = Color3.fromRGB(30, 60, 120), Density = 0.45, Haze = 1.2, Glare = 0, Tint = Color3.fromRGB(225, 235, 255), Brightness = -0.02, Saturation = 0.3, CloudColor = Color3.fromRGB(110, 90, 170), CloudCover = 0.7, Clock = 22, Bloom = 1.1, Rays = 0, Contrast = 0.2, Ambient = Color3.fromRGB(100, 110, 170) },
+	},
+	{
+		Id = "Toy",
+		Name = "Toy Town",
+		Floor = { Color3.fromRGB(255, 228, 120), Color3.fromRGB(130, 205, 255) },
+		Walls = { Color3.fromRGB(255, 120, 120), Color3.fromRGB(120, 200, 255) },
+		Props = { "ToyBlocks", "ToyBlocks", "GiantBall", "Lollipop", "Gumdrop" },
+		Particles = "Sprinkles",
+		GuardianName = "Teddy Titan",
+		GuardianStyle = "Bear",
+		GuardianColor = Color3.fromRGB(240, 150, 190),
+		SpeedNeeded = 5000000000000, -- Speed needed to outrun this guardian (its speed is worked out from this)
+		Leash = 330,
+		RespawnTime = 750,
+		EggSpots = 10,
+		Eggs = { Divine = 55, Secret = 45 },
+		MutationBoost = 2.5, -- eggs here roll mutations this many times as often
+		Mood = { Color = Color3.fromRGB(200, 225, 255), Decay = Color3.fromRGB(150, 180, 230), Density = 0.25, Haze = 0.5, Glare = 0.3, Tint = Color3.fromRGB(255, 250, 245), Brightness = 0.02, Saturation = 0.35, CloudColor = Color3.fromRGB(255, 255, 255), CloudCover = 0.5, Clock = 13, Bloom = 0.45, Rays = 0.1, Contrast = 0.12, Ambient = Color3.fromRGB(170, 165, 175) },
+	},
+	{
+		Id = "Aurora",
+		Name = "Aurora Tundra",
+		Floor = { Color3.fromRGB(236, 244, 255), Color3.fromRGB(210, 226, 246) },
+		Walls = { Color3.fromRGB(120, 170, 230), Color3.fromRGB(146, 192, 242) },
+		Props = { "Pine", "Pine", "IceCrystal", "SnowRock", "Snowman" },
+		Particles = "Snowfall",
+		GuardianName = "Glacier Crab King",
+		GuardianStyle = "ReefKing",
+		GuardianColor = Color3.fromRGB(140, 210, 255),
+		SpeedNeeded = 25000000000000, -- Speed needed to outrun this guardian (its speed is worked out from this)
+		Leash = 330,
+		RespawnTime = 800,
+		EggSpots = 10,
+		Eggs = { Divine = 50, Secret = 50 },
+		MutationBoost = 3, -- eggs here roll mutations this many times as often
+		Mood = { Color = Color3.fromRGB(110, 200, 190), Decay = Color3.fromRGB(40, 90, 120), Density = 0.4, Haze = 1, Glare = 0.1, Tint = Color3.fromRGB(225, 245, 255), Brightness = -0.02, Saturation = 0.2, CloudColor = Color3.fromRGB(150, 190, 220), CloudCover = 0.6, Clock = 23, Bloom = 0.9, Rays = 0, Contrast = 0.16, Ambient = Color3.fromRGB(110, 140, 160) },
+	},
+	{
+		Id = "Sakura",
+		Name = "Sakura Gardens",
+		Floor = { Color3.fromRGB(150, 200, 120), Color3.fromRGB(136, 186, 108) },
+		Walls = { Color3.fromRGB(190, 55, 55), Color3.fromRGB(210, 75, 65) },
+		Props = { "CherryTree", "CherryTree", "CherryTree", "StoneLantern", "Bush", "Rock" },
+		Particles = "Petals",
+		GuardianName = "Kitsune Spirit",
+		GuardianStyle = "Kitsune",
+		GuardianColor = Color3.fromRGB(255, 160, 210),
+		SpeedNeeded = 100000000000000, -- Speed needed to outrun this guardian (its speed is worked out from this)
+		Leash = 330,
+		RespawnTime = 850,
+		EggSpots = 10,
+		Eggs = { Divine = 45, Secret = 55 },
+		MutationBoost = 3.5, -- eggs here roll mutations this many times as often
+		Mood = { Color = Color3.fromRGB(255, 200, 210), Decay = Color3.fromRGB(200, 140, 160), Density = 0.3, Haze = 1, Glare = 0.4, Tint = Color3.fromRGB(255, 242, 240), Brightness = 0.01, Saturation = 0.2, CloudColor = Color3.fromRGB(255, 230, 235), CloudCover = 0.5, Clock = 17.2, Bloom = 0.6, Rays = 0.15, Contrast = 0.12, Ambient = Color3.fromRGB(170, 150, 150) },
+	},
+	{
+		Id = "Inferno",
+		Name = "Infernal Abyss",
+		Floor = { Color3.fromRGB(62, 26, 24), Color3.fromRGB(46, 18, 18) },
+		Walls = { Color3.fromRGB(92, 30, 20), Color3.fromRGB(112, 40, 26) },
+		Props = { "LavaRock", "LavaRock", "Obsidian", "Torch", "DeadTree" },
+		Particles = "Embers",
+		GuardianName = "Hellfire Mech",
+		GuardianStyle = "Mech",
+		GuardianColor = Color3.fromRGB(255, 110, 30),
+		SpeedNeeded = 500000000000000, -- Speed needed to outrun this guardian (its speed is worked out from this)
+		Leash = 330,
+		RespawnTime = 900,
+		EggSpots = 10,
+		Eggs = { Divine = 40, Secret = 60 },
+		MutationBoost = 4, -- eggs here roll mutations this many times as often
+		Mood = { Color = Color3.fromRGB(220, 90, 60), Decay = Color3.fromRGB(90, 20, 10), Density = 0.5, Haze = 1.8, Glare = 0.2, Tint = Color3.fromRGB(255, 215, 200), Brightness = -0.03, Saturation = 0.25, CloudColor = Color3.fromRGB(90, 40, 35), CloudCover = 0.85, Clock = 0.2, Bloom = 1, Rays = 0.1, Contrast = 0.24, Ambient = Color3.fromRGB(140, 70, 55) },
+	},
+	{
+		Id = "Galaxy",
+		Name = "Galaxy Rift",
+		Floor = { Color3.fromRGB(32, 26, 62), Color3.fromRGB(22, 18, 46) },
+		Walls = { Color3.fromRGB(62, 42, 122), Color3.fromRGB(82, 56, 152) },
+		Props = { "FloatingRock", "FloatingRock", "Crystal", "Obelisk", "DataPillar" },
+		Particles = "Stardust",
+		GuardianName = "Astral Seraph",
+		GuardianStyle = "Seraph",
+		GuardianColor = Color3.fromRGB(160, 130, 255),
+		SpeedNeeded = 2500000000000000, -- Speed needed to outrun this guardian (its speed is worked out from this)
+		Leash = 330,
+		RespawnTime = 950,
+		EggSpots = 10,
+		Eggs = { Divine = 35, Secret = 65 },
+		MutationBoost = 4.5, -- eggs here roll mutations this many times as often
+		Mood = { Color = Color3.fromRGB(110, 80, 220), Decay = Color3.fromRGB(20, 10, 60), Density = 0.35, Haze = 0.8, Glare = 0.3, Tint = Color3.fromRGB(230, 220, 255), Brightness = -0.03, Saturation = 0.3, CloudColor = Color3.fromRGB(80, 60, 150), CloudCover = 0.3, Clock = 0.5, Bloom = 1.2, Rays = 0, Contrast = 0.22, Ambient = Color3.fromRGB(95, 80, 160) },
+	},
+	{
+		Id = "Rainbow",
+		Name = "Rainbow Realm",
+		Floor = { Color3.fromRGB(255, 255, 255), Color3.fromRGB(255, 222, 245) },
+		Walls = { Color3.fromRGB(255, 170, 220), Color3.fromRGB(170, 220, 255) },
+		Props = { "CloudPuff", "HeavenTree", "Lollipop", "Crystal", "CottonCandyTree" },
+		Particles = "Sprinkles",
+		GuardianName = "Prism Dragon",
+		GuardianStyle = "Dragon",
+		Boss = true,
+		GuardianColor = Color3.fromRGB(255, 120, 220),
+		SpeedNeeded = 10000000000000000, -- Speed needed to outrun this guardian (its speed is worked out from this)
+		Leash = 330,
+		RespawnTime = 1000,
+		EggSpots = 10,
+		Eggs = { Divine = 25, Secret = 75 },
+		MutationBoost = 5, -- eggs here roll mutations this many times as often
+		Mood = { Color = Color3.fromRGB(255, 230, 250), Decay = Color3.fromRGB(230, 200, 255), Density = 0.28, Haze = 1, Glare = 0.5, Tint = Color3.fromRGB(255, 248, 255), Brightness = 0.04, Saturation = 0.4, CloudColor = Color3.fromRGB(255, 245, 255), CloudCover = 0.7, Clock = 12, Bloom = 0.9, Rays = 0.25, Contrast = 0.1, Ambient = Color3.fromRGB(200, 185, 200) },
 	},
 }
 
@@ -1171,7 +1333,13 @@ end
 
 function Config.WalkSpeed(speedStat: number): number
 	local tens = math.log10(1 + math.max(0, speedStat))
-	return math.min(Config.BaseWalkSpeed + Config.WalkPerTenfold * tens + Config.WalkCurve * tens * tens, Config.MaxWalkSpeed)
+	local knee = Config.WalkCurveKnee
+	local early = math.min(tens, knee)
+	local walk = Config.BaseWalkSpeed + Config.WalkPerTenfold * early + Config.WalkCurve * early * early
+	if tens > knee then
+		walk += Config.WalkPerTenfoldLate * (tens - knee)
+	end
+	return math.min(walk, Config.MaxWalkSpeed)
 end
 
 -- Speed stat needed to outrun a biome's guardian while carrying an egg.

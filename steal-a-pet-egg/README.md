@@ -16,7 +16,7 @@ Game Settings > Security > **Enable Studio Access to API Services**.
 
 ## How it plays
 
-- **The map:** your base sits in town. A road leads out through 12 zones, each harder than the last:
+- **The map:** your base sits in town. A road leads out through 20 zones, each harder than the last:
 
   | Biome | Guardian | Guardian speed | Speed needed | Eggs |
   |---|---|---|---|---|
@@ -31,17 +31,27 @@ Game Settings > Security > **Enable Studio Access to API Services**.
   | 🍄 Glowshroom Grotto | Spore Colossus | 387.7 | 500M | Mythic, Divine, Secret (10%) |
   | 🎃 Haunted Hollow | Pumpkin King | 434.2 | 2.5B | Mythic, Divine, Secret (14%) |
   | ⚙️ Clockwork Citadel | Brass Automaton | 476.4 | 10B | Mythic, Divine, Secret (20%) |
-  | 🌐 Neon Nexus (final boss) | Omega Mech | 527.7 | 50B | Divine, Secret (30%!) |
+  | 🌐 Neon Nexus (boss) | Omega Mech | 527.7 | 50B | Divine, Secret (30%) |
+  | 🌴 Jungle Ruins | Temple Gorilla | 544 | 200B | Divine, Secret (35%) |
+  | 💎 Crystal Caverns | Crystal Scorpion | 562.7 | 1T | Divine, Secret (40%) |
+  | 🧸 Toy Town | Teddy Titan | 581.5 | 5T | Divine, Secret (45%) |
+  | 🌌 Aurora Tundra | Glacier Crab King | 600.3 | 25T | Divine, Secret (50%) |
+  | 🌸 Sakura Gardens | Kitsune Spirit | 616.5 | 100T | Divine, Secret (55%) |
+  | 🔥 Infernal Abyss | Hellfire Mech | 635.3 | 500T | Divine, Secret (60%) |
+  | 🪐 Galaxy Rift | Astral Seraph | 654 | 2.5Qa | Divine, Secret (65%) |
+  | 🌈 Rainbow Realm (final boss) | Prism Dragon | 670.2 | 10Qa | Divine, Secret (75%!) |
+
+  Zones 13-20 also roll mutations 1.5x-5x as often (`MutationBoost`), so late eggs earn much more. Jungle Ruins has palm trees, totems and parrots; Crystal Caverns glows; Toy Town has giant toy blocks and balls; Aurora Tundra has the northern lights; Sakura Gardens has cherry trees, stone lanterns, a pagoda and a path of torii gates under falling petals; the Infernal Abyss has meteors; the Galaxy Rift has planets; and the Rainbow Realm has rainbows everywhere. See `guardians2_preview.png`.
 
   The four newest zones each have their own look: a glowing mushroom cave at night (giant mushrooms, a mushroom house, a glowing pool, drifting spore-jellies), a haunted graveyard (pumpkins, gravestones, twisted trees, a haunted manor, a huge moon and bats), a steampunk city at sunset (gears, steam pipes, lampposts, a clock tower, airships) and a synthwave neon city (neon towers, holo trees, a data core, a neon pyramid, a striped sun and flying cars). See `zones_preview.png` and `guardians_preview.png`.
 
   **Running at top speed:** everything in the zones, the town and the bases except floors, walls, the treadmill and the leaderboard screens is walk-through (so the base gate, stone border and fences can't fling you anymore, and invisible ramps smooth the step onto your base floor), so you never snag on a tree or rock at 500 speed; there are fewer props for clearer lanes; and while you carry an egg a glowing trail runs from you back to your base.
 
-  Walk speed climbs with every tenfold of your Speed stat, faster and faster: 5 Speed walks at 49, 300 at 100, 11K at 162, 1M at 260, 100M at 384, 2.5B at 485 and 50B at 589 (max 650). Guardian speed is in studs per second; each guardian is just a hair slower than you are while carrying an egg with its zone's Speed needed. Tune it with `Config.BaseWalkSpeed`, `WalkPerTenfold` and `WalkCurve`.
+  Walk speed climbs with every tenfold of your Speed stat, faster and faster: 5 Speed walks at 49, 300 at 100, 11K at 162, 1M at 260, 100M at 384, 2.5B at 485 and 50B at 589; after that it grows more slowly (1T at 628, 10Qa at 748, max 800). Guardian speed is in studs per second; each guardian is just a hair slower than you are while carrying an egg with its zone's Speed needed. Tune it with `Config.BaseWalkSpeed`, `WalkPerTenfold` and `WalkCurve`.
 
-- **Grabbing eggs:** hold E on an egg in a nest. The guardian chases you. If it catches you: **SLAP!** A giant glove smacks you, you go spinning through the air with a screen flash, shake and a big SLAP! text, then land back at the start of your base with dizzy stars while it takes its egg back. Get far enough from its nest and it gives up.
+- **Grabbing eggs:** hold E on an egg in a nest. A napping guardian takes 1.3 seconds to wake up and you get a 1.6-second burst of speed, so even eggs right next to a guardian or boss can be stolen (`Config.GuardianWakeTime`, `GrabBoostTime`). Then the guardian chases you. If it catches you: **SLAP!** A giant glove smacks you, you go spinning through the air with a screen flash, shake and a big SLAP! text, then land back at the start of your base with dizzy stars while it takes its egg back. Get far enough from its nest and it gives up.
 - **Carrying:** you run 10% slower with an egg. Step into your base and the egg drops into your open pet pen to incubate.
-- **Speed:** stand on the **treadmill** in your base to gain Speed. Each second gives (1 + 0.3 x the square root of your Speed) x your tier, so it doesn't snowball: each new zone takes about 4-7 minutes of training with the matching tier (longer on a lower one). Tune it with `Config.TreadmillGainScale`. The gold pad sells 12 treadmill tiers, each doubling what it gives: Basic x1, Bronze x2, Silver x4, Gold x8, Diamond x16, Emerald x32, Cosmic x64, Galaxy x128, Nebula x256, Supernova x512, Quantum x1024 and Celestial x2048.
+- **Speed:** stand on the **treadmill** in your base to gain Speed. Each second gives (1 + 0.3 x the square root of your Speed) x your tier, so it doesn't snowball: each new zone takes about 4-7 minutes of training with the matching tier (longer on a lower one). Tune it with `Config.TreadmillGainScale`. The gold pad sells 20 treadmill tiers, one for each zone: Basic x1, Bronze x2, Silver x4, Gold x8, Diamond x16, Emerald x32, Cosmic x64, Galaxy x128, Nebula x256, Supernova x512, Quantum x1024, Celestial x2048, Eclipse x4096, Aurora x9000, Pulsar x20K, Quasar x45K, Singularity x90K, Multiverse x200K, Infinity x450K and Omega x900K. Prices top out at $500T so a strong pet pen can afford them.
   - Every tier looks fancier: tier-colored belt stripes, neon side trims, a light under the belt, then shiny rails from Gold, glass frames and rising sparkles, a spinning halo of orbs from Cosmic, flames for Supernova and a rainbow belt for Celestial.
   - See `treadmill_preview.png` (Basic, Gold, Cosmic, Supernova, Celestial).
   - A live screen on the console shows your tier, multiplier and Speed per second; a row of lights shows how many tiers you own.

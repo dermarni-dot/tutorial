@@ -1288,6 +1288,7 @@ adminRow({ { "+$1K", "cash 1000", GREEN_BTN }, { "+$1M", "cash 1000000", GREEN_B
 adminHeader("⚡ Speed")
 adminRow({ { "+1K", "speed 1000", GOLD_BTN }, { "+100K", "speed 100000", GOLD_BTN }, { "+1M", "speed 1000000", GOLD_BTN }, { "Reset", "setspeed " .. Config.StartingSpeed, GOLD_BTN } })
 adminRow({ { "+100M", "speed 100000000", GOLD_BTN }, { "+1B", "speed 1000000000", GOLD_BTN }, { "+10B", "speed 10000000000", GOLD_BTN }, { "+50B", "speed 50000000000", GOLD_BTN } })
+adminRow({ { "+1T", "speed 1000000000000", GOLD_BTN }, { "+100T", "speed 100000000000000", GOLD_BTN }, { "+2.5Qa", "speed 2500000000000000", GOLD_BTN }, { "+10Qa", "speed 10000000000000000", GOLD_BTN } })
 adminHeader("🥚 Get an egg (in your hands)")
 local eggButtons = {}
 for i, r in ipairs(Config.Rarities) do
@@ -1325,6 +1326,8 @@ adminRow({ { "Town", "tp town" }, { "Forest", "tp forest" }, { "Desert", "tp des
 adminRow({ { "Snow", "tp snow" }, { "Volcano", "tp volcano" }, { "Void", "tp void" } })
 adminRow({ { "Candy", "tp candy" }, { "Reef", "tp ocean" }, { "Heaven", "tp heaven" } })
 adminRow({ { "Shroom", "tp shroom" }, { "Spooky", "tp spooky" }, { "Clock", "tp clockwork" }, { "Neon", "tp cyber" } })
+adminRow({ { "Jungle", "tp jungle" }, { "Crystal", "tp crystal" }, { "Toy", "tp toy" }, { "Aurora", "tp aurora" } })
+adminRow({ { "Sakura", "tp sakura" }, { "Inferno", "tp inferno" }, { "Galaxy", "tp galaxy" }, { "Rainbow", "tp rainbow" } })
 adminHeader("🌙 Time of day (everyone)")
 adminRow({ { "Day", "time day", GOLD_BTN }, { "Sunset", "time sunset", GOLD_BTN }, { "Night", "time night", GOLD_BTN }, { "Cycle", "time cycle", GOLD_BTN } })
 adminHeader("🎁 Daily reward")

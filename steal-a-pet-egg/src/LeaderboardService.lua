@@ -24,7 +24,7 @@ local lastSaved = {} -- [userId] = { [key] = value }
 local nameCache = {} -- [userId] = name
 local globalOk = true
 
-local MAX_VALUE = 2 ^ 53 -- OrderedDataStore needs whole numbers
+local MAX_VALUE = 2 ^ 62 -- OrderedDataStore needs whole numbers that fit in 64 bits
 
 local function format(info, value)
 	if info.Format == "Money" then

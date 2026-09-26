@@ -20,11 +20,14 @@ Config.SellSeconds = 45 -- a pet sells for this many seconds of its income
 -- Speed stat can grow into the millions. Walk speed climbs faster the more
 -- tenfolds of Speed you have, so every upgrade feels quicker:
 -- 5 -> 49, 300 -> 100, 1K -> 119, 11K -> 162, 200K -> 222, 1M -> 260,
--- 25M -> 344, 100M -> 384, 2.5B -> 485, 50B -> 589 (capped at 650).
+-- 25M -> 344, 100M -> 384, 2.5B -> 485, 50B -> 589. Past 50B it grows by
+-- WalkPerTenfoldLate per tenfold: 1T -> 628, 100T -> 688, 10Qa -> 748 (capped at 800).
 Config.BaseWalkSpeed = 32
 Config.WalkPerTenfold = 20 -- extra walk speed every time your Speed goes x10...
 Config.WalkCurve = 3 -- ...plus this x (tenfolds squared), so later tenfolds add more
-Config.MaxWalkSpeed = 650
+Config.WalkCurveKnee = 10.7 -- tenfolds (about 50B Speed) where the curve slows down
+Config.WalkPerTenfoldLate = 30
+Config.MaxWalkSpeed = 800
 Config.GuardianEdge = 0.995 -- guardians run this fraction of your carry speed at their zone's SpeedNeeded
 Config.CarrySpeedMultiplier = 0.9
 Config.StartingSpeed = 5 -- enough to outrun the first guardian
@@ -54,12 +57,20 @@ Config.TreadmillLevels = {
 	{ Name = "Gold", Mult = 8, Cost = 500000, Color = Color3.fromRGB(255, 200, 50), Glow = 0.8, Frame = "Foil", Fx = { Rate = 5, Size = 0.35, Speed = 2 } },
 	{ Name = "Diamond", Mult = 16, Cost = 8000000, Color = Color3.fromRGB(110, 230, 255), Glow = 1, Frame = "Glass", Fx = { Rate = 8, Size = 0.4, Speed = 3 } },
 	{ Name = "Emerald", Mult = 32, Cost = 150000000, Color = Color3.fromRGB(60, 230, 120), Glow = 1.2, Frame = "Glass", Fx = { Rate = 10, Size = 0.45, Speed = 3 } },
-	{ Name = "Cosmic", Mult = 64, Cost = 3000000000, Color = Color3.fromRGB(190, 110, 255), Glow = 1.4, Frame = "Glass", Fx = { Rate = 14, Size = 0.5, Speed = 4 }, Halo = true },
-	{ Name = "Galaxy", Mult = 128, Cost = 60000000000, Color = Color3.fromRGB(90, 130, 255), Glow = 1.6, Frame = "Glass", Fx = { Rate = 16, Size = 0.55, Speed = 4 }, Halo = true },
-	{ Name = "Nebula", Mult = 256, Cost = 1200000000000, Color = Color3.fromRGB(255, 110, 200), Glow = 1.8, Frame = "Glass", Fx = { Rate = 18, Size = 0.8, Speed = 2.5 }, Halo = true },
-	{ Name = "Supernova", Mult = 512, Cost = 25000000000000, Color = Color3.fromRGB(255, 150, 40), Glow = 2, Frame = "Foil", Fx = { Rate = 22, Size = 0.9, Speed = 6, Fire = true }, Halo = true },
-	{ Name = "Quantum", Mult = 1024, Cost = 500000000000000, Color = Color3.fromRGB(60, 255, 230), Glow = 2.2, Frame = "Glass", Fx = { Rate = 26, Size = 0.5, Speed = 8 }, Halo = true },
-	{ Name = "Celestial", Mult = 2048, Cost = 10000000000000000, Color = Color3.fromRGB(255, 245, 200), Glow = 2.5, Frame = "Foil", Fx = { Rate = 30, Size = 0.7, Speed = 5 }, Halo = true, Rainbow = true },
+	{ Name = "Cosmic", Mult = 64, Cost = 1500000000, Color = Color3.fromRGB(190, 110, 255), Glow = 1.4, Frame = "Glass", Fx = { Rate = 14, Size = 0.5, Speed = 4 }, Halo = true },
+	{ Name = "Galaxy", Mult = 128, Cost = 6000000000, Color = Color3.fromRGB(90, 130, 255), Glow = 1.6, Frame = "Glass", Fx = { Rate = 16, Size = 0.55, Speed = 4 }, Halo = true },
+	{ Name = "Nebula", Mult = 256, Cost = 20000000000, Color = Color3.fromRGB(255, 110, 200), Glow = 1.8, Frame = "Glass", Fx = { Rate = 18, Size = 0.8, Speed = 2.5 }, Halo = true },
+	{ Name = "Supernova", Mult = 512, Cost = 60000000000, Color = Color3.fromRGB(255, 150, 40), Glow = 2, Frame = "Foil", Fx = { Rate = 22, Size = 0.9, Speed = 6, Fire = true }, Halo = true },
+	{ Name = "Quantum", Mult = 1024, Cost = 150000000000, Color = Color3.fromRGB(60, 255, 230), Glow = 2.2, Frame = "Glass", Fx = { Rate = 26, Size = 0.5, Speed = 8 }, Halo = true },
+	{ Name = "Celestial", Mult = 2048, Cost = 400000000000, Color = Color3.fromRGB(255, 245, 200), Glow = 2.5, Frame = "Foil", Fx = { Rate = 30, Size = 0.7, Speed = 5 }, Halo = true, Rainbow = true },
+	{ Name = "Eclipse", Mult = 4096, Cost = 1000000000000, Color = Color3.fromRGB(255, 180, 60), Glow = 2.6, Frame = "Glass", Fx = { Rate = 30, Size = 0.7, Speed = 5 }, Halo = true },
+	{ Name = "Aurora", Mult = 9000, Cost = 2500000000000, Color = Color3.fromRGB(90, 255, 180), Glow = 2.7, Frame = "Glass", Fx = { Rate = 32, Size = 0.7, Speed = 5 }, Halo = true },
+	{ Name = "Pulsar", Mult = 20000, Cost = 6000000000000, Color = Color3.fromRGB(120, 180, 255), Glow = 2.8, Frame = "Glass", Fx = { Rate = 34, Size = 0.6, Speed = 9 }, Halo = true },
+	{ Name = "Quasar", Mult = 45000, Cost = 15000000000000, Color = Color3.fromRGB(255, 90, 160), Glow = 2.9, Frame = "Foil", Fx = { Rate = 36, Size = 0.8, Speed = 7 }, Halo = true },
+	{ Name = "Singularity", Mult = 90000, Cost = 35000000000000, Color = Color3.fromRGB(150, 60, 255), Glow = 3, Frame = "Glass", Fx = { Rate = 38, Size = 0.9, Speed = 3 }, Halo = true },
+	{ Name = "Multiverse", Mult = 200000, Cost = 80000000000000, Color = Color3.fromRGB(80, 255, 255), Glow = 3.1, Frame = "Glass", Fx = { Rate = 40, Size = 0.8, Speed = 6 }, Halo = true, Rainbow = true },
+	{ Name = "Infinity", Mult = 450000, Cost = 200000000000000, Color = Color3.fromRGB(255, 255, 255), Glow = 3.2, Frame = "Foil", Fx = { Rate = 44, Size = 0.9, Speed = 6 }, Halo = true, Rainbow = true },
+	{ Name = "Omega", Mult = 900000, Cost = 500000000000000, Color = Color3.fromRGB(255, 80, 220), Glow = 3.4, Frame = "Foil", Fx = { Rate = 50, Size = 1, Speed = 7, Fire = true }, Halo = true, Rainbow = true },
 }
 
 -- (old Speed pad settings, no longer used by the base)
@@ -81,6 +92,12 @@ Config.PromptRange = 10
 -- Guardians
 --------------------------------------------------------------------------------
 Config.GuardianCatchRange = 7
+-- Grabbing an egg from a sleeping guardian: it takes this long to wake up
+-- before it chases, and you get a short burst of speed, so eggs right next to
+-- a guardian (or boss) can actually be stolen.
+Config.GuardianWakeTime = 1.3
+Config.GrabBoostTime = 1.6
+Config.GrabBoostMultiplier = 1.25
 Config.SlapFlightTime = 1.1 -- seconds you fly through the air after a guardian slaps you, before landing back home
 Config.GuardianStunTime = 1.5
 Config.GuardianStunSpeed = 4
@@ -1111,7 +1128,7 @@ Config.Biomes = {
 		Particles = "Data",
 		GuardianName = "Omega Mech",
 		GuardianStyle = "Mech",
-		Boss = true,
+		Boss = true, -- a mid-game boss
 		GuardianColor = Color3.fromRGB(255, 60, 200),
 		SpeedNeeded = 50000000000, -- Speed needed to outrun this guardian (its speed is worked out from this)
 		Leash = 330,
@@ -1119,6 +1136,151 @@ Config.Biomes = {
 		EggSpots = 10,
 		Eggs = { Divine = 70, Secret = 30 },
 		Mood = { Color = Color3.fromRGB(150, 70, 220), Decay = Color3.fromRGB(30, 10, 70), Density = 0.4, Haze = 1, Glare = 0.3, Tint = Color3.fromRGB(235, 215, 255), Brightness = -0.02, Saturation = 0.35, CloudColor = Color3.fromRGB(120, 60, 180), CloudCover = 0.5, Clock = 0.3, Bloom = 1.2, Rays = 0.05, Contrast = 0.25, Ambient = Color3.fromRGB(110, 80, 170) },
+	},
+	{
+		Id = "Jungle",
+		Name = "Jungle Ruins",
+		Floor = { Color3.fromRGB(74, 140, 62), Color3.fromRGB(62, 124, 52) },
+		Walls = { Color3.fromRGB(108, 118, 92), Color3.fromRGB(124, 134, 106) },
+		Props = { "PalmTree", "PalmTree", "TallTree", "Bush", "Totem", "Tree" },
+		Particles = "Leaves",
+		GuardianName = "Temple Gorilla",
+		GuardianStyle = "Gorilla",
+		GuardianColor = Color3.fromRGB(70, 70, 80),
+		SpeedNeeded = 200000000000, -- Speed needed to outrun this guardian (its speed is worked out from this)
+		Leash = 330,
+		RespawnTime = 650,
+		EggSpots = 10,
+		Eggs = { Divine = 65, Secret = 35 },
+		MutationBoost = 1.5, -- eggs here roll mutations this many times as often
+		Mood = { Color = Color3.fromRGB(170, 215, 170), Decay = Color3.fromRGB(60, 110, 70), Density = 0.45, Haze = 1.6, Glare = 0.3, Tint = Color3.fromRGB(240, 255, 235), Brightness = 0, Saturation = 0.25, CloudColor = Color3.fromRGB(235, 245, 235), CloudCover = 0.7, Clock = 15, Bloom = 0.5, Rays = 0.2, Contrast = 0.14, Ambient = Color3.fromRGB(110, 140, 105) },
+	},
+	{
+		Id = "Crystal",
+		Name = "Crystal Caverns",
+		Floor = { Color3.fromRGB(66, 56, 108), Color3.fromRGB(56, 46, 92) },
+		Walls = { Color3.fromRGB(88, 78, 150), Color3.fromRGB(108, 94, 176) },
+		Props = { "Crystal", "Crystal", "GlowRock", "ShroomCluster", "Obelisk" },
+		Particles = "Motes",
+		GuardianName = "Crystal Scorpion",
+		GuardianStyle = "Scorpion",
+		GuardianColor = Color3.fromRGB(110, 230, 255),
+		SpeedNeeded = 1000000000000, -- Speed needed to outrun this guardian (its speed is worked out from this)
+		Leash = 330,
+		RespawnTime = 700,
+		EggSpots = 10,
+		Eggs = { Divine = 60, Secret = 40 },
+		MutationBoost = 2, -- eggs here roll mutations this many times as often
+		Mood = { Color = Color3.fromRGB(120, 110, 220), Decay = Color3.fromRGB(30, 60, 120), Density = 0.45, Haze = 1.2, Glare = 0, Tint = Color3.fromRGB(225, 235, 255), Brightness = -0.02, Saturation = 0.3, CloudColor = Color3.fromRGB(110, 90, 170), CloudCover = 0.7, Clock = 22, Bloom = 1.1, Rays = 0, Contrast = 0.2, Ambient = Color3.fromRGB(100, 110, 170) },
+	},
+	{
+		Id = "Toy",
+		Name = "Toy Town",
+		Floor = { Color3.fromRGB(255, 228, 120), Color3.fromRGB(130, 205, 255) },
+		Walls = { Color3.fromRGB(255, 120, 120), Color3.fromRGB(120, 200, 255) },
+		Props = { "ToyBlocks", "ToyBlocks", "GiantBall", "Lollipop", "Gumdrop" },
+		Particles = "Sprinkles",
+		GuardianName = "Teddy Titan",
+		GuardianStyle = "Bear",
+		GuardianColor = Color3.fromRGB(240, 150, 190),
+		SpeedNeeded = 5000000000000, -- Speed needed to outrun this guardian (its speed is worked out from this)
+		Leash = 330,
+		RespawnTime = 750,
+		EggSpots = 10,
+		Eggs = { Divine = 55, Secret = 45 },
+		MutationBoost = 2.5, -- eggs here roll mutations this many times as often
+		Mood = { Color = Color3.fromRGB(200, 225, 255), Decay = Color3.fromRGB(150, 180, 230), Density = 0.25, Haze = 0.5, Glare = 0.3, Tint = Color3.fromRGB(255, 250, 245), Brightness = 0.02, Saturation = 0.35, CloudColor = Color3.fromRGB(255, 255, 255), CloudCover = 0.5, Clock = 13, Bloom = 0.45, Rays = 0.1, Contrast = 0.12, Ambient = Color3.fromRGB(170, 165, 175) },
+	},
+	{
+		Id = "Aurora",
+		Name = "Aurora Tundra",
+		Floor = { Color3.fromRGB(236, 244, 255), Color3.fromRGB(210, 226, 246) },
+		Walls = { Color3.fromRGB(120, 170, 230), Color3.fromRGB(146, 192, 242) },
+		Props = { "Pine", "Pine", "IceCrystal", "SnowRock", "Snowman" },
+		Particles = "Snowfall",
+		GuardianName = "Glacier Crab King",
+		GuardianStyle = "ReefKing",
+		GuardianColor = Color3.fromRGB(140, 210, 255),
+		SpeedNeeded = 25000000000000, -- Speed needed to outrun this guardian (its speed is worked out from this)
+		Leash = 330,
+		RespawnTime = 800,
+		EggSpots = 10,
+		Eggs = { Divine = 50, Secret = 50 },
+		MutationBoost = 3, -- eggs here roll mutations this many times as often
+		Mood = { Color = Color3.fromRGB(110, 200, 190), Decay = Color3.fromRGB(40, 90, 120), Density = 0.4, Haze = 1, Glare = 0.1, Tint = Color3.fromRGB(225, 245, 255), Brightness = -0.02, Saturation = 0.2, CloudColor = Color3.fromRGB(150, 190, 220), CloudCover = 0.6, Clock = 23, Bloom = 0.9, Rays = 0, Contrast = 0.16, Ambient = Color3.fromRGB(110, 140, 160) },
+	},
+	{
+		Id = "Sakura",
+		Name = "Sakura Gardens",
+		Floor = { Color3.fromRGB(150, 200, 120), Color3.fromRGB(136, 186, 108) },
+		Walls = { Color3.fromRGB(190, 55, 55), Color3.fromRGB(210, 75, 65) },
+		Props = { "CherryTree", "CherryTree", "CherryTree", "StoneLantern", "Bush", "Rock" },
+		Particles = "Petals",
+		GuardianName = "Kitsune Spirit",
+		GuardianStyle = "Kitsune",
+		GuardianColor = Color3.fromRGB(255, 160, 210),
+		SpeedNeeded = 100000000000000, -- Speed needed to outrun this guardian (its speed is worked out from this)
+		Leash = 330,
+		RespawnTime = 850,
+		EggSpots = 10,
+		Eggs = { Divine = 45, Secret = 55 },
+		MutationBoost = 3.5, -- eggs here roll mutations this many times as often
+		Mood = { Color = Color3.fromRGB(255, 200, 210), Decay = Color3.fromRGB(200, 140, 160), Density = 0.3, Haze = 1, Glare = 0.4, Tint = Color3.fromRGB(255, 242, 240), Brightness = 0.01, Saturation = 0.2, CloudColor = Color3.fromRGB(255, 230, 235), CloudCover = 0.5, Clock = 17.2, Bloom = 0.6, Rays = 0.15, Contrast = 0.12, Ambient = Color3.fromRGB(170, 150, 150) },
+	},
+	{
+		Id = "Inferno",
+		Name = "Infernal Abyss",
+		Floor = { Color3.fromRGB(62, 26, 24), Color3.fromRGB(46, 18, 18) },
+		Walls = { Color3.fromRGB(92, 30, 20), Color3.fromRGB(112, 40, 26) },
+		Props = { "LavaRock", "LavaRock", "Obsidian", "Torch", "DeadTree" },
+		Particles = "Embers",
+		GuardianName = "Hellfire Mech",
+		GuardianStyle = "Mech",
+		GuardianColor = Color3.fromRGB(255, 110, 30),
+		SpeedNeeded = 500000000000000, -- Speed needed to outrun this guardian (its speed is worked out from this)
+		Leash = 330,
+		RespawnTime = 900,
+		EggSpots = 10,
+		Eggs = { Divine = 40, Secret = 60 },
+		MutationBoost = 4, -- eggs here roll mutations this many times as often
+		Mood = { Color = Color3.fromRGB(220, 90, 60), Decay = Color3.fromRGB(90, 20, 10), Density = 0.5, Haze = 1.8, Glare = 0.2, Tint = Color3.fromRGB(255, 215, 200), Brightness = -0.03, Saturation = 0.25, CloudColor = Color3.fromRGB(90, 40, 35), CloudCover = 0.85, Clock = 0.2, Bloom = 1, Rays = 0.1, Contrast = 0.24, Ambient = Color3.fromRGB(140, 70, 55) },
+	},
+	{
+		Id = "Galaxy",
+		Name = "Galaxy Rift",
+		Floor = { Color3.fromRGB(32, 26, 62), Color3.fromRGB(22, 18, 46) },
+		Walls = { Color3.fromRGB(62, 42, 122), Color3.fromRGB(82, 56, 152) },
+		Props = { "FloatingRock", "FloatingRock", "Crystal", "Obelisk", "DataPillar" },
+		Particles = "Stardust",
+		GuardianName = "Astral Seraph",
+		GuardianStyle = "Seraph",
+		GuardianColor = Color3.fromRGB(160, 130, 255),
+		SpeedNeeded = 2500000000000000, -- Speed needed to outrun this guardian (its speed is worked out from this)
+		Leash = 330,
+		RespawnTime = 950,
+		EggSpots = 10,
+		Eggs = { Divine = 35, Secret = 65 },
+		MutationBoost = 4.5, -- eggs here roll mutations this many times as often
+		Mood = { Color = Color3.fromRGB(110, 80, 220), Decay = Color3.fromRGB(20, 10, 60), Density = 0.35, Haze = 0.8, Glare = 0.3, Tint = Color3.fromRGB(230, 220, 255), Brightness = -0.03, Saturation = 0.3, CloudColor = Color3.fromRGB(80, 60, 150), CloudCover = 0.3, Clock = 0.5, Bloom = 1.2, Rays = 0, Contrast = 0.22, Ambient = Color3.fromRGB(95, 80, 160) },
+	},
+	{
+		Id = "Rainbow",
+		Name = "Rainbow Realm",
+		Floor = { Color3.fromRGB(255, 255, 255), Color3.fromRGB(255, 222, 245) },
+		Walls = { Color3.fromRGB(255, 170, 220), Color3.fromRGB(170, 220, 255) },
+		Props = { "CloudPuff", "HeavenTree", "Lollipop", "Crystal", "CottonCandyTree" },
+		Particles = "Sprinkles",
+		GuardianName = "Prism Dragon",
+		GuardianStyle = "Dragon",
+		Boss = true,
+		GuardianColor = Color3.fromRGB(255, 120, 220),
+		SpeedNeeded = 10000000000000000, -- Speed needed to outrun this guardian (its speed is worked out from this)
+		Leash = 330,
+		RespawnTime = 1000,
+		EggSpots = 10,
+		Eggs = { Divine = 25, Secret = 75 },
+		MutationBoost = 5, -- eggs here roll mutations this many times as often
+		Mood = { Color = Color3.fromRGB(255, 230, 250), Decay = Color3.fromRGB(230, 200, 255), Density = 0.28, Haze = 1, Glare = 0.5, Tint = Color3.fromRGB(255, 248, 255), Brightness = 0.04, Saturation = 0.4, CloudColor = Color3.fromRGB(255, 245, 255), CloudCover = 0.7, Clock = 12, Bloom = 0.9, Rays = 0.25, Contrast = 0.1, Ambient = Color3.fromRGB(200, 185, 200) },
 	},
 }
 
@@ -1171,7 +1333,13 @@ end
 
 function Config.WalkSpeed(speedStat: number): number
 	local tens = math.log10(1 + math.max(0, speedStat))
-	return math.min(Config.BaseWalkSpeed + Config.WalkPerTenfold * tens + Config.WalkCurve * tens * tens, Config.MaxWalkSpeed)
+	local knee = Config.WalkCurveKnee
+	local early = math.min(tens, knee)
+	local walk = Config.BaseWalkSpeed + Config.WalkPerTenfold * early + Config.WalkCurve * early * early
+	if tens > knee then
+		walk += Config.WalkPerTenfoldLate * (tens - knee)
+	end
+	return math.min(walk, Config.MaxWalkSpeed)
 end
 
 -- Speed stat needed to outrun a biome's guardian while carrying an egg.
@@ -5152,6 +5320,123 @@ function GUARDIANS.Mech(def)
 	return model, height
 end
 
+-- Jungle Ruins: a huge silverback gorilla with a vine headband
+function GUARDIANS.Gorilla(def)
+	local fur = def.GuardianColor
+	local skin = Color3.fromRGB(110, 95, 100)
+	local model, body, add, eye, height = startGuardian(def, Vector3.new(10, 8, 8), 7.5, 1.1, fur)
+	add("Chest", "Blob", Vector3.new(6, 5, 1.6), 0, 8.4, -3.6, skin)
+	add("Head", "Ball", Vector3.one * 6, 0, 13.4, -1.8, fur)
+	add("Face", "Blob", Vector3.new(4.4, 4, 1.8), 0, 12.8, -4, skin)
+	add("Brow", "Block", Vector3.new(4.6, 0.9, 1.2), 0, 14.4, -4.4, fur:Lerp(BLACK, 0.2))
+	add("Nose", "Blob", Vector3.new(1.8, 0.9, 0.6), 0, 12.6, -4.9, skin:Lerp(BLACK, 0.3))
+	add("Mouth", "Blob", Vector3.new(2.4, 0.5, 0.3), 0, 11.4, -4.85, Color3.fromRGB(70, 30, 35))
+	for _, sx in ipairs({ -1, 1 }) do
+		eye(sx * 1.1, 13.5, -4.7, 1.2, sx)
+		add("Shoulder", "Ball", Vector3.one * 4, sx * 5, 10.4, -0.8, fur)
+		-- long arms reaching down to the knuckles
+		add("Arm", "Blob", Vector3.new(3, 8, 3), sx * 6.4, 6.2, -1.8, fur, nil, CFrame.Angles(math.rad(-10), 0, math.rad(8 * sx)))
+		add("Fist", "Ball", Vector3.one * 3.2, sx * 6.8, 1.8, -3, skin)
+		add("Leg", "Blob", Vector3.new(3.2, 3.6, 3.4), sx * 2.8, 1.8, 0.4, fur)
+		add("Ear", "Ball", Vector3.one * 1.2, sx * 3, 13.4, -1.6, skin)
+	end
+	-- vine headband with a gold temple medallion
+	add("Headband", "Cyl", Vector3.new(0.8, 6.2, 6.2), 0, 15.2, -1.8, Color3.fromRGB(70, 150, 60), nil, CFrame.Angles(0, 0, math.rad(90)))
+	add("Medallion", "Cyl", Vector3.new(0.4, 1.6, 1.6), 0, 15.2, -4.9, Color3.fromRGB(255, 200, 60), Enum.Material.Neon, CFrame.Angles(0, math.rad(90), 0))
+	for i = 0, 4 do
+		local a = i / 5 * math.pi - math.pi / 2
+		add("Leaf", "Blob", Vector3.new(1.4, 0.3, 2.2), math.cos(a) * 3.2, 15.6, -1.8 + math.sin(a) * 3.2, Color3.fromRGB(80, 180, 70), nil, CFrame.Angles(0, -a, 0.3))
+	end
+	return model, height
+end
+
+-- Sakura Gardens: a floating nine-tailed fox spirit with glowing tails
+function GUARDIANS.Kitsune(def)
+	local fur = Color3.fromRGB(255, 245, 240)
+	local glowC = def.GuardianColor
+	local model, body, add, eye, height = startGuardian(def, Vector3.new(6, 6.5, 9), 7, 1.25, fur)
+	add("Head", "Ball", Vector3.one * 5.4, 0, 11, -4.2, fur)
+	add("Snout", "Blob", Vector3.new(2.4, 2, 3), 0, 10.2, -7, fur)
+	add("Nose", "Ball", Vector3.one * 0.8, 0, 10.6, -8.5, BLACK)
+	add("Marking", "Blob", Vector3.new(0.6, 1.8, 0.3), 0, 12.6, -6.7, glowC, Enum.Material.Neon)
+	for _, sx in ipairs({ -1, 1 }) do
+		eye(sx * 1.2, 11.6, -6.2, 1.1, sx)
+		add("Ear", "Wedge", Vector3.new(0.6, 3, 2.4), sx * 1.8, 14.6, -3.8, fur, nil, CFrame.Angles(0, math.rad(90), math.rad(-10 * sx)))
+		add("EarTip", "Wedge", Vector3.new(0.65, 1.2, 1.1), sx * 1.8, 15.6, -3.8, glowC, Enum.Material.Neon, CFrame.Angles(0, math.rad(90), math.rad(-10 * sx)))
+		add("FrontLeg", "Blob", Vector3.new(1.6, 4.5, 1.6), sx * 1.8, 3, -3, fur)
+		add("BackLeg", "Blob", Vector3.new(1.8, 4.5, 2.2), sx * 1.9, 3, 3, fur)
+		add("Paw", "Ball", Vector3.one * 1.8, sx * 1.8, 0.9, -3.3, glowC:Lerp(WHITE, 0.4))
+	end
+	-- nine fanned tails, each tipped with glowing fire
+	for i = 0, 8 do
+		local a = (i / 8 - 0.5) * math.rad(150)
+		local dir = Vector3.new(math.sin(a), 0.9, 0.6).Unit
+		local base = Vector3.new(0, 7.5, 4.5)
+		local tip = base + dir * 7
+		local mid = (base + tip) / 2
+		add("Tail", "Blob", Vector3.new(1.8, 1.8, 7.5), mid.X, mid.Y, mid.Z, fur, nil, CFrame.lookAt(Vector3.zero, dir))
+		add("TailFlame", "Ball", Vector3.new(1.6, 2.4, 1.6), tip.X, tip.Y, tip.Z, glowC, Enum.Material.Neon)
+	end
+	local sparks = Instance.new("ParticleEmitter")
+	sparks.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+	sparks.Color = ColorSequence.new(glowC, WHITE)
+	sparks.LightEmission = 1
+	sparks.Size = NumberSequence.new(0.6, 0)
+	sparks.Lifetime = NumberRange.new(1, 2)
+	sparks.Rate = 18
+	sparks.Speed = NumberRange.new(1, 3)
+	sparks.SpreadAngle = Vector2.new(180, 180)
+	sparks.Parent = body
+	return model, height
+end
+
+-- Rainbow Realm final boss: a huge crystal dragon shimmering in every color
+function GUARDIANS.Dragon(def)
+	local scales = Color3.fromRGB(245, 240, 255)
+	local glowC = def.GuardianColor
+	local rainbow = { Color3.fromRGB(255, 90, 90), Color3.fromRGB(255, 190, 70), Color3.fromRGB(255, 240, 90), Color3.fromRGB(100, 230, 120), Color3.fromRGB(90, 170, 255), Color3.fromRGB(180, 110, 255) }
+	local sc = 1.35
+	local model, body, add, eye, height = startGuardian(def, Vector3.new(9, 8, 12), 9, sc, scales)
+	add("Belly", "Blob", Vector3.new(6.4, 5.4, 9), 0, 7.6, -0.6, Color3.fromRGB(255, 225, 245))
+	add("Neck", "Blob", Vector3.new(3.4, 7, 3.4), 0, 13, -5.6, scales, nil, CFrame.Angles(math.rad(-30), 0, 0))
+	add("Head", "Blob", Vector3.new(5, 4, 6), 0, 17, -8, scales)
+	add("Jaw", "Blob", Vector3.new(4, 1.6, 4.6), 0, 15.4, -9.6, Color3.fromRGB(255, 225, 245))
+	for _, sx in ipairs({ -1, 1 }) do
+		add("Eye", "Blob", Vector3.new(1.3, 1, 0.5), sx * 1.5, 17.8, -10.6, glowC, Enum.Material.Neon, CFrame.Angles(0, 0, math.rad(-12 * sx)))
+		add("Horn", "Wedge", Vector3.new(0.8, 3.4, 2), sx * 1.6, 20, -6.8, Color3.fromRGB(255, 220, 120), Enum.Material.Metal, CFrame.Angles(math.rad(-30), 0, 0))
+		add("Nostril", "Ball", Vector3.one * 0.5, sx * 0.8, 16.6, -11, BLACK)
+		add("Leg", "Blob", Vector3.new(2.6, 5, 2.8), sx * 3.8, 2.8, -3.4, scales)
+		add("BackLeg", "Blob", Vector3.new(3, 5, 3.4), sx * 3.8, 2.8, 3.6, scales)
+		-- big crystal wings in rainbow bands
+		for f = 0, 5 do
+			add("WingPanel", "Wedge", Vector3.new(0.5, 6 - f * 0.5, 4), sx * (7 + f * 2.6), 14 + f * 0.8, 1 + f * 0.4, rainbow[f + 1], Enum.Material.Neon, CFrame.Angles(math.rad(-15), math.rad(90 * sx), math.rad(-15 * sx)))
+		end
+	end
+	-- spines and a rainbow tail
+	for i = 0, 4 do
+		add("Spine", "Wedge", Vector3.new(0.6, 1.8, 1.8), 0, 12.4, -3 + i * 2.2, rainbow[i + 1], Enum.Material.Neon)
+	end
+	for i = 0, 5 do
+		add("TailSegment", "Blob", Vector3.new(2.6 - i * 0.3, 2.2 - i * 0.25, 3.2), 0, 7 - i * 0.6, 7 + i * 2.6, rainbow[i + 1])
+	end
+	local aura = Instance.new("ParticleEmitter")
+	aura.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+	aura.Color = ColorSequence.new({ ColorSequenceKeypoint.new(0, rainbow[1]), ColorSequenceKeypoint.new(0.5, rainbow[4]), ColorSequenceKeypoint.new(1, rainbow[6]) })
+	aura.LightEmission = 1
+	aura.Size = NumberSequence.new(1, 0)
+	aura.Lifetime = NumberRange.new(1, 2)
+	aura.Rate = 35
+	aura.Speed = NumberRange.new(2, 5)
+	aura.SpreadAngle = Vector2.new(180, 180)
+	aura.Parent = body
+	local pl = Instance.new("PointLight")
+	pl.Color = glowC
+	pl.Range = 36
+	pl.Brightness = 2
+	pl.Parent = body
+	return model, height
+end
+
 function Visuals.MakeGuardian(def)
 	local builder = GUARDIANS[def.GuardianStyle or "Bear"] or GUARDIANS.Bear
 	local model, height = builder(def)
@@ -7726,6 +8011,226 @@ function SETPIECES.NeonPyramid(folder, o, rng)
 end
 
 --------------------------------------------------------------------------------
+-- Zones 13-20: Jungle Ruins, Crystal Caverns, Toy Town, Aurora Tundra,
+-- Sakura Gardens, Infernal Abyss, Galaxy Rift and Rainbow Realm
+--------------------------------------------------------------------------------
+local TOY = { Color3.fromRGB(255, 80, 80), Color3.fromRGB(255, 205, 60), Color3.fromRGB(80, 170, 255), Color3.fromRGB(90, 210, 110), Color3.fromRGB(190, 110, 255) }
+local SAKURA_PINK = Color3.fromRGB(255, 185, 215)
+local TORII_RED = Color3.fromRGB(200, 50, 45)
+
+function PROPS.PalmTree(folder, pos, s, rng)
+	local p = pos
+	local lean = Vector3.new(rng:NextNumber(-0.25, 0.25), 1, rng:NextNumber(-0.25, 0.25)).Unit
+	for i = 1, 6 do
+		local nextP = p + (lean + Vector3.new(0, 0, 0)) * 2.4 * s
+		deco({ Name = "PalmTrunk", Size = Vector3.new(1.4 * s, 1.4 * s, 2.8 * s), CFrame = CFrame.lookAt((p + nextP) / 2, nextP), Color = Color3.fromRGB(150, 110, 70):Lerp(Color3.fromRGB(120, 85, 55), i % 2), Material = Enum.Material.Wood, Parent = folder })
+		p = nextP
+	end
+	for i = 0, 6 do
+		local a = i / 7 * math.pi * 2
+		local dir = Vector3.new(math.cos(a), -0.35, math.sin(a)).Unit
+		local tip = p + dir * 7 * s
+		deco({ Name = "PalmLeaf", Size = Vector3.new(2.4 * s, 0.25, 7.5 * s), CFrame = CFrame.lookAt((p + tip) / 2, tip), Color = Color3.fromRGB(60, 160, 70):Lerp(Color3.fromRGB(90, 190, 80), rng:NextNumber()), Material = Enum.Material.Grass, Parent = folder })
+	end
+	for i = 1, 3 do
+		deco({ Name = "Coconut", Shape = Enum.PartType.Ball, Size = Vector3.one * 1.1 * s, Position = p + Vector3.new(math.cos(i * 2.1) * 0.8, -0.8, math.sin(i * 2.1) * 0.8) * s, Color = Color3.fromRGB(110, 75, 40), Material = Enum.Material.SmoothPlastic, Parent = folder })
+	end
+end
+
+function PROPS.Totem(folder, pos, s, rng)
+	local colors = { Color3.fromRGB(190, 70, 50), Color3.fromRGB(60, 140, 120), Color3.fromRGB(220, 170, 60) }
+	local y = 0
+	for i = 1, 3 do
+		local h = 3.4 * s
+		local c = colors[(i + rng:NextInteger(0, 2)) % 3 + 1]
+		deco({ Name = "TotemBlock", Size = Vector3.new(3 * s, h, 3 * s), Position = pos + Vector3.new(0, y + h / 2, 0), Color = c, Material = Enum.Material.Wood, Parent = folder })
+		for _, sx in ipairs({ -1, 1 }) do
+			deco({ Name = "TotemEye", Size = Vector3.new(0.7, 0.5, 0.2) * s, Position = pos + Vector3.new(sx * 0.7 * s, y + h * 0.65, -1.55 * s), Color = WHITE, Material = Enum.Material.SmoothPlastic, Parent = folder })
+		end
+		deco({ Name = "TotemMouth", Size = Vector3.new(1.8, 0.5, 0.2) * s, Position = pos + Vector3.new(0, y + h * 0.25, -1.55 * s), Color = BLACK, Material = Enum.Material.SmoothPlastic, Parent = folder })
+		y += h
+	end
+	for _, sx in ipairs({ -1, 1 }) do
+		deco({ Name = "TotemWing", Shape = Enum.PartType.Wedge, Size = Vector3.new(0.6, 2.2, 3) * s, CFrame = CFrame.new(pos + Vector3.new(sx * 2.6 * s, y - 1.5 * s, 0)) * CFrame.Angles(0, math.rad(90 * sx), 0), Color = colors[3], Material = Enum.Material.Wood, Parent = folder })
+	end
+end
+
+function PROPS.ToyBlocks(folder, pos, s, rng)
+	local y = 0
+	for i = 1, rng:NextInteger(2, 4) do
+		local size = rng:NextNumber(3, 4.5) * s
+		local b = deco({ Name = "ToyBlock", Size = Vector3.one * size, CFrame = CFrame.new(pos + Vector3.new(rng:NextNumber(-0.6, 0.6), y + size / 2, rng:NextNumber(-0.6, 0.6))) * CFrame.Angles(0, rng:NextNumber(0, 1.5), 0), Color = TOY[rng:NextInteger(1, #TOY)], Material = Enum.Material.SmoothPlastic, Parent = folder })
+		local letters = { "A", "B", "C", "1", "2", "3", "★" }
+		surfaceText(b, Enum.NormalId.Front, letters[rng:NextInteger(1, #letters)], WHITE)
+		y += size
+	end
+end
+
+function PROPS.GiantBall(folder, pos, s, rng)
+	local size = rng:NextNumber(5, 8) * s
+	local c = pos + Vector3.new(0, size / 2, 0)
+	deco({ Name = "Ball", Shape = Enum.PartType.Ball, Size = Vector3.one * size, Position = c, Color = TOY[rng:NextInteger(1, #TOY)], Material = Enum.Material.SmoothPlastic, Parent = folder })
+	deco({ Name = "BallStripe", Shape = Enum.PartType.Cylinder, Size = Vector3.new(size * 0.3, size * 1.01, size * 1.01), CFrame = CFrame.new(c) * CFrame.Angles(0, rng:NextNumber(0, 3), 0), Color = WHITE, Material = Enum.Material.SmoothPlastic, Parent = folder })
+	deco({ Name = "BallStar", Shape = Enum.PartType.Ball, Size = Vector3.one * size * 0.3, Position = c + Vector3.new(0, size * 0.36, 0), Color = TOY[rng:NextInteger(1, #TOY)], Material = Enum.Material.SmoothPlastic, Parent = folder })
+end
+
+function PROPS.CherryTree(folder, pos, s, rng)
+	local bark = Color3.fromRGB(90, 55, 50)
+	local trunkH = rng:NextNumber(6, 8) * s
+	deco({ Name = "Trunk", Size = Vector3.new(1.6 * s, trunkH, 1.6 * s), CFrame = CFrame.new(pos + Vector3.new(0, trunkH / 2, 0)) * CFrame.Angles(0, 0, rng:NextNumber(-0.1, 0.1)), Color = bark, Material = Enum.Material.Wood, Parent = folder })
+	local top = pos + Vector3.new(0, trunkH, 0)
+	for i = 0, 2 do
+		local a = i / 3 * math.pi * 2 + rng:NextNumber(0, 1)
+		local tip = top + Vector3.new(math.cos(a) * 3.5, 2, math.sin(a) * 3.5) * s
+		deco({ Name = "Branch", Size = Vector3.new(0.7 * s, 0.7 * s, (tip - top).Magnitude), CFrame = CFrame.lookAt((top + tip) / 2, tip), Color = bark, Material = Enum.Material.Wood, Parent = folder })
+		deco({ Name = "Blossom", Shape = Enum.PartType.Ball, Size = Vector3.one * rng:NextNumber(5, 6.5) * s, Position = tip + Vector3.new(0, 1, 0), Color = SAKURA_PINK:Lerp(WHITE, rng:NextNumber(0, 0.35)), Material = Enum.Material.SmoothPlastic, Parent = folder })
+	end
+	deco({ Name = "Blossom", Shape = Enum.PartType.Ball, Size = Vector3.one * 7 * s, Position = top + Vector3.new(0, 3.5 * s, 0), Color = SAKURA_PINK, Material = Enum.Material.SmoothPlastic, Parent = folder })
+	for _ = 1, 4 do
+		deco({ Name = "FallenPetal", Size = Vector3.new(0.6, 0.08, 0.4), CFrame = CFrame.new(pos + Vector3.new(rng:NextNumber(-4, 4), 0.06, rng:NextNumber(-4, 4))) * CFrame.Angles(0, rng:NextNumber(0, 3), 0), Color = SAKURA_PINK, Material = Enum.Material.SmoothPlastic, CastShadow = false, Parent = folder })
+	end
+end
+
+function PROPS.StoneLantern(folder, pos, s, rng)
+	local stone = Color3.fromRGB(150, 150, 145)
+	deco({ Name = "LanternBase", Size = Vector3.new(2.4, 0.8, 2.4) * s, Position = pos + Vector3.new(0, 0.4 * s, 0), Color = stone, Material = Enum.Material.Slate, Parent = folder })
+	deco({ Name = "LanternPost", Size = Vector3.new(0.9, 3, 0.9) * s, Position = pos + Vector3.new(0, 2.3 * s, 0), Color = stone, Material = Enum.Material.Slate, Parent = folder })
+	local box = deco({ Name = "LanternBox", Size = Vector3.new(1.8, 1.6, 1.8) * s, Position = pos + Vector3.new(0, 4.6 * s, 0), Color = Color3.fromRGB(255, 210, 140), Material = Enum.Material.Neon, CastShadow = false, Parent = folder })
+	deco({ Name = "LanternRoof", Shape = Enum.PartType.Wedge, Size = Vector3.new(3, 1, 1.5) * s, CFrame = CFrame.new(pos + Vector3.new(0, 5.9 * s, -0.75 * s)), Color = stone, Material = Enum.Material.Slate, Parent = folder })
+	deco({ Name = "LanternRoof", Shape = Enum.PartType.Wedge, Size = Vector3.new(3, 1, 1.5) * s, CFrame = CFrame.new(pos + Vector3.new(0, 5.9 * s, 0.75 * s)) * CFrame.Angles(0, math.pi, 0), Color = stone, Material = Enum.Material.Slate, Parent = folder })
+	if rng:NextNumber() < 0.35 then
+		light(box, Color3.fromRGB(255, 190, 120), 16, 1)
+	end
+end
+
+CLUTTER.Jungle = CLUTTER.Forest
+CLUTTER.Crystal = CLUTTER.Void
+CLUTTER.Toy = CLUTTER.Candy
+CLUTTER.Aurora = CLUTTER.Snow
+CLUTTER.Sakura = function(folder, p, rng)
+	deco({ Name = "Petal", Size = Vector3.new(0.6, 0.08, 0.45), CFrame = CFrame.new(p + Vector3.new(0, 0.06, 0)) * CFrame.Angles(0, rng:NextNumber(0, 3), 0), Color = SAKURA_PINK:Lerp(WHITE, rng:NextNumber(0, 0.4)), Material = Enum.Material.SmoothPlastic, CanCollide = false, CastShadow = false, Parent = folder })
+end
+CLUTTER.Inferno = CLUTTER.Volcano
+CLUTTER.Galaxy = CLUTTER.Void
+CLUTTER.Rainbow = CLUTTER.Candy
+
+AMBIENT.Petals = { Y = 45, Props = { Color = ColorSequence.new(SAKURA_PINK, WHITE), LightEmission = 0.2, Size = NumberSequence.new(0.45), Lifetime = NumberRange.new(10, 14), Rate = 45, Speed = NumberRange.new(0, 1), RotSpeed = NumberRange.new(-90, 90), Rotation = NumberRange.new(0, 360), Acceleration = Vector3.new(2, -3, 1), EmissionDirection = Enum.NormalId.Bottom } }
+EXTRA_AMBIENT.Jungle = "Fireflies"
+EXTRA_AMBIENT.Crystal = "Stardust"
+EXTRA_AMBIENT.Aurora = "Stardust"
+EXTRA_AMBIENT.Inferno = "Ash"
+EXTRA_AMBIENT.Galaxy = "Motes"
+EXTRA_AMBIENT.Rainbow = "Feathers"
+
+WALL_TRIMS.Jungle = WALL_TRIMS.Forest
+WALL_TRIMS.Crystal = WALL_TRIMS.Void
+WALL_TRIMS.Toy = WALL_TRIMS.Candy
+WALL_TRIMS.Aurora = WALL_TRIMS.Snow
+WALL_TRIMS.Sakura = function(folder, x, z, side, rng)
+	if rng:NextNumber() < 0.5 then
+		local lamp = deco({ Name = "PaperLantern", Shape = Enum.PartType.Ball, Size = Vector3.new(2, 2.6, 2), Position = Vector3.new(x - side * 1.4, rng:NextNumber(20, 30), z), Color = Color3.fromRGB(255, 120, 100), Material = Enum.Material.Neon, CanCollide = false, CastShadow = false, Parent = folder })
+		lamp.Transparency = 0.1
+	end
+	deco({ Name = "WallBeam", Size = Vector3.new(0.4, 0.8, 16.2), Position = Vector3.new(x - side * 0.2, 12, z), Color = Color3.fromRGB(70, 45, 40), Material = Enum.Material.Wood, CanCollide = false, Parent = folder })
+end
+WALL_TRIMS.Inferno = WALL_TRIMS.Volcano
+WALL_TRIMS.Galaxy = WALL_TRIMS.Void
+WALL_TRIMS.Rainbow = WALL_TRIMS.Heaven
+
+BACKDROPS.Jungle = { Base = Color3.fromRGB(50, 110, 55), Top = Color3.fromRGB(80, 150, 70), Material = Enum.Material.Grass, MinH = 80, MaxH = 150, Trees = true }
+BACKDROPS.Crystal = { Base = Color3.fromRGB(45, 38, 80), Top = Color3.fromRGB(110, 90, 190), Material = Enum.Material.Glass, MinH = 90, MaxH = 170 }
+BACKDROPS.Toy = { Base = Color3.fromRGB(255, 140, 140), Top = Color3.fromRGB(255, 230, 120), Material = Enum.Material.SmoothPlastic, MinH = 50, MaxH = 100, Flat = true }
+BACKDROPS.Aurora = BACKDROPS.Snow
+BACKDROPS.Sakura = { Base = Color3.fromRGB(95, 130, 90), Top = Color3.fromRGB(250, 250, 255), Material = Enum.Material.Grass, MinH = 90, MaxH = 170, Cap = Enum.Material.Snow }
+BACKDROPS.Inferno = BACKDROPS.Volcano
+BACKDROPS.Galaxy = BACKDROPS.Void
+BACKDROPS.Rainbow = BACKDROPS.Heaven
+
+SKY.Aurora = SKY.Snow
+SKY.Toy = SKY.Candy
+SKY.Galaxy = SKY.Void
+function SKY.Rainbow(folder, centerZ, rng)
+	SKY.Candy(folder, centerZ, rng)
+	SKY.Heaven(folder, centerZ, rng)
+end
+function SKY.Sakura(folder, centerZ, rng)
+	-- a big soft sunset sun behind a snowy mountain
+	local sun = deco({ Name = "SakuraSun", Shape = Enum.PartType.Ball, Size = Vector3.one * 70, Position = Vector3.new(140, 160, centerZ + 300), Color = Color3.fromRGB(255, 170, 140), Material = Enum.Material.Neon, CanCollide = false, CastShadow = false, Parent = folder })
+	sun.Transparency = 0.1
+end
+function SKY.Inferno(folder, centerZ, rng)
+	-- burning meteors streaking across a red sky
+	for _ = 1, 10 do
+		local p = Vector3.new(rng:NextNumber(-380, 380), rng:NextNumber(80, 150), centerZ + rng:NextNumber(-140, 140))
+		local dir = Vector3.new(rng:NextNumber(-1, 1), -0.6, rng:NextNumber(-1, 1)).Unit
+		deco({ Name = "Meteor", Shape = Enum.PartType.Ball, Size = Vector3.one * rng:NextNumber(3, 6), Position = p, Color = Color3.fromRGB(255, 140, 50), Material = Enum.Material.Neon, CanCollide = false, CastShadow = false, Parent = folder })
+		local tail = deco({ Name = "MeteorTail", Size = Vector3.new(2, 2, 26), CFrame = CFrame.lookAt(p - dir * 13, p), Color = Color3.fromRGB(255, 90, 30), Material = Enum.Material.Neon, CanCollide = false, CastShadow = false, Parent = folder })
+		tail.Transparency = 0.5
+	end
+end
+function SKY.Jungle(folder, centerZ, rng)
+	-- a flock of bright parrots
+	for _ = 1, 12 do
+		local p = Vector3.new(rng:NextNumber(-350, 350), rng:NextNumber(40, 80), centerZ + rng:NextNumber(-130, 130))
+		local col = ({ Color3.fromRGB(230, 50, 50), Color3.fromRGB(60, 150, 255), Color3.fromRGB(255, 210, 50) })[rng:NextInteger(1, 3)]
+		deco({ Name = "Parrot", Shape = Enum.PartType.Ball, Size = Vector3.new(1.2, 1.2, 2.2), Position = p, Color = col, Material = Enum.Material.SmoothPlastic, CanCollide = false, CastShadow = false, Parent = folder })
+		for _, sx in ipairs({ -1, 1 }) do
+			deco({ Name = "ParrotWing", Size = Vector3.new(2.2, 0.2, 1), Position = p + Vector3.new(sx * 1.5, 0.3, 0), Color = col:Lerp(Color3.fromRGB(60, 200, 90), 0.4), Material = Enum.Material.SmoothPlastic, CanCollide = false, CastShadow = false, Parent = folder })
+		end
+	end
+end
+
+SETPIECE_SPOTS.Jungle = { { "Ruins", 360, 95, 34 }, { "Waterfall", 385, -60, 36 }, { "Treehouse", -350, 30, 38 } }
+SETPIECE_SPOTS.Crystal = { { "RuneCircle", -360, 30, 36 }, { "IceFalls", 385, 35, 36 } }
+SETPIECE_SPOTS.Toy = { { "GingerbreadHouse", -360, 40, 36 }, { "RainbowBridge", 365, -70, 38 } }
+SETPIECE_SPOTS.Aurora = { { "SnowFort", -350, 100, 30 }, { "Cabin", -360, -70, 34 }, { "IceFalls", 385, 35, 36 } }
+SETPIECE_SPOTS.Sakura = { { "Pagoda", -355, 20, 38 }, { "ToriiPath", 365, -40, 40 } }
+SETPIECE_SPOTS.Inferno = { { "LavaLake", 360, -85, 44 }, { "Forge", 360, 95, 32 }, { "Basalt", -365, -20, 38 } }
+SETPIECE_SPOTS.Galaxy = { { "Portal", 360, 100, 30 }, { "Observatory", -350, -100, 30 }, { "SkyStairs", 370, -60, 32 } }
+SETPIECE_SPOTS.Rainbow = { { "RainbowBridge", 365, -70, 38 }, { "SkyTemple", -355, 20, 40 } }
+
+function SETPIECES.Pagoda(folder, o, rng)
+	local cf = CFrame.lookAt(o, o + Vector3.new(if o.X < 0 then 1 else -1, 0, 0))
+	local wood = Color3.fromRGB(180, 50, 45)
+	local roofC = Color3.fromRGB(50, 60, 70)
+	deco({ Name = "PagodaBase", Size = Vector3.new(24, 2, 24), CFrame = cf * CFrame.new(0, 1, 0), Color = Color3.fromRGB(160, 155, 150), Material = Enum.Material.Slate, Parent = folder })
+	local y = 2
+	for i = 0, 3 do
+		local w = 16 - i * 3
+		local h = 7 - i * 0.8
+		deco({ Name = "PagodaFloor", Size = Vector3.new(w, h, w), CFrame = cf * CFrame.new(0, y + h / 2, 0), Color = wood, Material = Enum.Material.Wood, Parent = folder })
+		deco({ Name = "PagodaWindow", Size = Vector3.new(w * 0.5, h * 0.4, 0.3), CFrame = cf * CFrame.new(0, y + h * 0.55, -w / 2 - 0.1), Color = Color3.fromRGB(255, 220, 150), Material = Enum.Material.Neon, CastShadow = false, Parent = folder })
+		y += h
+		roof(folder, cf * CFrame.new(0, y, 0), w + 6, w + 6, 2.4, roofC, Enum.Material.Slate)
+		for _, sx in ipairs({ -1, 1 }) do
+			deco({ Name = "EaveTip", Shape = Enum.PartType.Wedge, Size = Vector3.new(1, 1.4, 2), CFrame = cf * CFrame.new(sx * (w / 2 + 3), y + 0.6, -(w / 2 + 2)), Color = roofC, Material = Enum.Material.Slate, Parent = folder })
+		end
+		y += 2.4
+	end
+	deco({ Name = "Spire", Size = Vector3.new(0.6, 6, 0.6), CFrame = cf * CFrame.new(0, y + 3, 0), Color = Color3.fromRGB(230, 180, 60), Material = Enum.Material.Metal, Parent = folder })
+	for _, sx in ipairs({ -1, 1 }) do
+		PROPS.StoneLantern(folder, (cf * CFrame.new(sx * 9, 2, -14)).Position, 1, rng)
+		PROPS.CherryTree(folder, (cf * CFrame.new(sx * 16, 0, -6)).Position, 1.1, rng)
+	end
+end
+
+function SETPIECES.ToriiPath(folder, o, rng)
+	-- a line of red torii gates over a stone path
+	for i = 0, 4 do
+		local c = o + Vector3.new(0, 0, -30 + i * 15)
+		for _, sx in ipairs({ -1, 1 }) do
+			deco({ Name = "ToriiPost", Shape = Enum.PartType.Cylinder, Size = Vector3.new(14, 1.4, 1.4), CFrame = cylinderAlongY(CFrame.new(c + Vector3.new(sx * 5, 7, 0))), Color = TORII_RED, Material = Enum.Material.SmoothPlastic, Parent = folder })
+		end
+		deco({ Name = "ToriiTop", Size = Vector3.new(15, 1.2, 1.8), Position = c + Vector3.new(0, 14.4, 0), Color = Color3.fromRGB(40, 35, 35), Material = Enum.Material.Wood, Parent = folder })
+		deco({ Name = "ToriiBeam", Size = Vector3.new(12, 0.9, 1.2), Position = c + Vector3.new(0, 11.8, 0), Color = TORII_RED, Material = Enum.Material.SmoothPlastic, Parent = folder })
+		deco({ Name = "PathStone", Size = Vector3.new(6, 0.3, 4), Position = c + Vector3.new(0, 0.15, 0), Color = Color3.fromRGB(165, 160, 155), Material = Enum.Material.Slate, Parent = folder })
+	end
+	for _, sx in ipairs({ -1, 1 }) do
+		PROPS.CherryTree(folder, o + Vector3.new(sx * 13, 0, 0), 1.2, rng)
+	end
+end
+
+--------------------------------------------------------------------------------
 -- Player bases
 -- Built in the plot's local space: local -Z is the open front (facing the road).
 --------------------------------------------------------------------------------
@@ -7967,7 +8472,7 @@ local function buildPlot(plotsFolder, index, center, frontDir)
 	local tiers = #Config.TreadmillLevels
 	for i = 1, tiers do
 		local x = TX + ((i - 0.5) / tiers - 0.5) * (beltWidth - 0.4) / K
-		local pip = deco({ Name = "Pip", Shape = Enum.PartType.Ball, Size = Vector3.one * 0.42, CFrame = at(x, 4.62, -12.95), Color = dark, Material = Enum.Material.SmoothPlastic, CastShadow = false, CanCollide = false, Parent = pips })
+		local pip = deco({ Name = "Pip", Shape = Enum.PartType.Ball, Size = Vector3.one * math.min(0.42, (beltWidth - 0.4) / tiers * 0.85), CFrame = at(x, 4.62, -12.95), Color = dark, Material = Enum.Material.SmoothPlastic, CastShadow = false, CanCollide = false, Parent = pips })
 		pip:SetAttribute("Tier", i)
 	end
 	local halo = Instance.new("Folder")
@@ -9022,6 +9527,9 @@ local function applyWalkSpeed(player)
 	if state.Carrying then
 		speed *= Config.CarrySpeedMultiplier
 	end
+	if state.BoostUntil and now() < state.BoostUntil then
+		speed *= Config.GrabBoostMultiplier -- adrenaline right after grabbing an egg
+	end
 	hum.WalkSpeed = speed
 end
 
@@ -9247,7 +9755,8 @@ local function spawnWildEgg(biome, spot)
 		local w = weights[r.Id] or 0
 		return w * luck ^ ((r.Order - lowest) * 0.5)
 	end, rng)
-	local mutation = Config.RollMutation(rng, luck)
+	-- late zones roll mutations more often (the roll takes the square root of luck)
+	local mutation = Config.RollMutation(rng, luck * (biome.Def.MutationBoost or 1) ^ 2)
 	local rec = createEgg(rarity.Id, nil, false, mutation)
 	placeInSpot(biome, spot, rec)
 	local mdef = mutation and Config.MutationById[mutation]
@@ -9886,8 +10395,18 @@ onEggPrompt = function(player, rec)
 		rec.GrabPos = spot.Position -- the guardian chases until you're Leash studs from here
 		rec.Spot = nil
 		rec.HomeBiome = biome
+		local guardian = biome.Guardian
+		if guardian and not guardian.Target then
+			guardian.WakeUntil = now() + Config.GuardianWakeTime -- it was napping
+		end
 		biome.Hunted[rec] = true
+		state.BoostUntil = now() + Config.GrabBoostTime
 		startCarry(player, rec)
+		task.delay(Config.GrabBoostTime + 0.05, function()
+			if states[player] then
+				applyWalkSpeed(player)
+			end
+		end)
 		notify(player, "🥚 Got a " .. rec.Rarity .. " Egg! The " .. biome.Def.GuardianName .. " is coming. RUN!", ORANGE)
 	elseif rec.State == "Base" then
 		local owner = rec.Owner
@@ -10134,6 +10653,11 @@ local function updateGuardian(biome, dt)
 		guardian.Target = target
 	end
 
+	local waking = guardian.WakeUntil and now() < guardian.WakeUntil
+	if waking then
+		target = nil -- still rubbing its eyes: no chasing or catching yet
+	end
+
 	local goal
 	local chasedPlayer = nil
 	if target then
@@ -10158,7 +10682,7 @@ local function updateGuardian(biome, dt)
 	setChased(guardian, chasedPlayer)
 
 	local home = not goal
-	goal = goal or biome.GuardianHome
+	goal = goal or (if waking then guardian.Position else biome.GuardianHome)
 	local offset = flat(goal) - flat(guardian.Position)
 	local distance = offset.Magnitude
 	local speed = if home then def.GuardianSpeed * 0.6 else def.GuardianSpeed
@@ -10173,7 +10697,7 @@ local function updateGuardian(biome, dt)
 	elseif home then
 		guardian.Facing = -Vector3.zAxis
 	end
-	guardian.Resting = home and distance <= 0.05
+	guardian.Resting = home and distance <= 0.05 and not waking
 
 	-- Cartoon motion: bouncy waddle while running, slow breathing while napping,
 	-- and the boss always hovers.
@@ -10193,7 +10717,7 @@ local function updateGuardian(biome, dt)
 		guardian.Sleep.Enabled = guardian.Resting
 	end
 
-	if target and guardian.Target == target and distance <= Config.GuardianCatchRange then
+	if not waking and target and guardian.Target == target and distance <= Config.GuardianCatchRange then
 		if target.State == "Carried" and target.Carrier then
 			caught(biome, target.Carrier, target)
 		elseif target.State == "Dropped" then
@@ -11580,7 +12104,7 @@ local lastSaved = {} -- [userId] = { [key] = value }
 local nameCache = {} -- [userId] = name
 local globalOk = true
 
-local MAX_VALUE = 2 ^ 53 -- OrderedDataStore needs whole numbers
+local MAX_VALUE = 2 ^ 62 -- OrderedDataStore needs whole numbers that fit in 64 bits
 
 local function format(info, value)
 	if info.Format == "Money" then
@@ -11914,7 +12438,7 @@ end
 COMMANDS.tp = function(player, args)
 	local zone = table.concat(args, " ")
 	if not GameService.Admin.Teleport(player, zone) then
-		say(player, "Unknown place. Try: town, forest, desert, snow, volcano, void, candy, ocean, heaven, shroom, spooky, clockwork, cyber", RED)
+		say(player, "Unknown place. Try: town, forest, desert, snow, volcano, void, candy, ocean, heaven, shroom, spooky, clockwork, cyber, jungle, crystal, toy, aurora, sakura, inferno, galaxy, rainbow (or a zone number 1-20)", RED)
 	end
 end
 
@@ -13282,6 +13806,7 @@ adminRow({ { "+$1K", "cash 1000", GREEN_BTN }, { "+$1M", "cash 1000000", GREEN_B
 adminHeader("⚡ Speed")
 adminRow({ { "+1K", "speed 1000", GOLD_BTN }, { "+100K", "speed 100000", GOLD_BTN }, { "+1M", "speed 1000000", GOLD_BTN }, { "Reset", "setspeed " .. Config.StartingSpeed, GOLD_BTN } })
 adminRow({ { "+100M", "speed 100000000", GOLD_BTN }, { "+1B", "speed 1000000000", GOLD_BTN }, { "+10B", "speed 10000000000", GOLD_BTN }, { "+50B", "speed 50000000000", GOLD_BTN } })
+adminRow({ { "+1T", "speed 1000000000000", GOLD_BTN }, { "+100T", "speed 100000000000000", GOLD_BTN }, { "+2.5Qa", "speed 2500000000000000", GOLD_BTN }, { "+10Qa", "speed 10000000000000000", GOLD_BTN } })
 adminHeader("🥚 Get an egg (in your hands)")
 local eggButtons = {}
 for i, r in ipairs(Config.Rarities) do
@@ -13319,6 +13844,8 @@ adminRow({ { "Town", "tp town" }, { "Forest", "tp forest" }, { "Desert", "tp des
 adminRow({ { "Snow", "tp snow" }, { "Volcano", "tp volcano" }, { "Void", "tp void" } })
 adminRow({ { "Candy", "tp candy" }, { "Reef", "tp ocean" }, { "Heaven", "tp heaven" } })
 adminRow({ { "Shroom", "tp shroom" }, { "Spooky", "tp spooky" }, { "Clock", "tp clockwork" }, { "Neon", "tp cyber" } })
+adminRow({ { "Jungle", "tp jungle" }, { "Crystal", "tp crystal" }, { "Toy", "tp toy" }, { "Aurora", "tp aurora" } })
+adminRow({ { "Sakura", "tp sakura" }, { "Inferno", "tp inferno" }, { "Galaxy", "tp galaxy" }, { "Rainbow", "tp rainbow" } })
 adminHeader("🌙 Time of day (everyone)")
 adminRow({ { "Day", "time day", GOLD_BTN }, { "Sunset", "time sunset", GOLD_BTN }, { "Night", "time night", GOLD_BTN }, { "Cycle", "time cycle", GOLD_BTN } })
 adminHeader("🎁 Daily reward")
