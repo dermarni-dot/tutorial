@@ -1176,24 +1176,90 @@ function Visuals.MakeEgg(rarityId, variantName, custom)
 	if design then
 		design(add, baseColor, dark)
 	end
-	-- extra detail on every egg: natural speckles, a soft light band near the
-	-- top, a metal band for rarer eggs and a glowing gem on the tip
-	eggDots(add, 14, 0.13, { baseColor:Lerp(Color3.new(0, 0, 0), 0.25), baseColor:Lerp(Color3.new(1, 1, 1), 0.3) }, nil, #rarityId * 7)
-	ring(add, 1.15, baseColor:Lerp(Color3.new(1, 1, 1), 0.55), nil, 0.08)
-	if rarity.Order >= 3 then
-		ring(add, -0.05, if rarity.Order >= 5 then GOLD else Color3.fromRGB(215, 220, 230), Enum.Material.Metal, 0.1)
+	-- Modern finish on every egg: a glossy shell, a glowing hatch seam, a tech
+	-- band with a light strip, a core badge on the front, a jeweled tip on rare
+	-- eggs and a small stand with a glowing rim.
+	local accent = rarity.Color
+	local glow = accent:Lerp(WHITE, 0.25)
+	local metal = if rarity.Order >= 5 then GOLD else Color3.fromRGB(210, 215, 228)
+	local FRONT_ANGLE = -math.pi / 2
+	if egg.Material == Enum.Material.SmoothPlastic or egg.Material == Enum.Material.Plastic then
+		egg.Material = Enum.Material.SmoothPlastic
+		egg.Reflectance = 0.06
 	end
+	-- common eggs keep a few natural speckles
+	if rarity.Order <= 2 and not custom then
+		eggDots(add, 10, 0.12, { baseColor:Lerp(Color3.new(0, 0, 0), 0.25) }, nil, #rarityId * 7)
+	end
+
+	-- hatch seam: a zig-zag line around the shell (glowing from Uncommon up)
+	local seamY = 0.5
+	local seamColor = if rarity.Order >= 2 then glow else baseColor:Lerp(Color3.new(0, 0, 0), 0.4)
+	for i = 0, 15 do
+		local a = i / 16 * math.pi * 2
+		local d = (a - FRONT_ANGLE + math.pi) % (math.pi * 2) - math.pi
+		if not (custom and math.abs(d) < 0.95) then -- leave room for a species egg's face
+			add("Seam", "Block", Vector3.new(0.6, 0.06, 0.05), surface(a, seamY + (if i % 2 == 0 then 0.08 else -0.08), 1.005) * CFrame.Angles(0, 0, math.rad(if i % 2 == 0 then 18 else -18)), seamColor, if rarity.Order >= 2 then Enum.Material.Neon else nil)
+		end
+	end
+
+	-- tech band: a dark band with a thin light strip and rivets
+	local bandY = -0.45
+	local r = EGG_SIZE.X / 2 * math.sqrt(1 - (bandY / (EGG_SIZE.Y / 2)) ^ 2)
+	local bandCf = CFrame.new(0, bandY, 0) * CFrame.Angles(0, 0, math.rad(90))
+	add("Band", "Cyl", Vector3.new(0.3, r * 2 + 0.06, r * 2 + 0.06), bandCf, Color3.fromRGB(38, 36, 50), Enum.Material.Metal)
+	add("BandStrip", "Cyl", Vector3.new(0.07, r * 2 + 0.12, r * 2 + 0.12), bandCf, if rarity.Order >= 2 then accent else metal, if rarity.Order >= 2 then Enum.Material.Neon else Enum.Material.Metal)
+	for _, dy in ipairs({ -0.17, 0.17 }) do
+		add("BandTrim", "Cyl", Vector3.new(0.04, r * 2 + 0.1, r * 2 + 0.1), CFrame.new(0, bandY + dy, 0) * CFrame.Angles(0, 0, math.rad(90)), metal, Enum.Material.Metal)
+	end
+	for i = 0, 5 do
+		local a = i / 6 * math.pi * 2 + math.pi / 6
+		add("Rivet", "Block", Vector3.new(0.1, 0.1, 0.08), surface(a, bandY, 1.0) * CFrame.new(0, 0, 0.05), metal, Enum.Material.Metal)
+	end
+
+	-- core badge on the front (species eggs have their face there instead)
+	if not custom then
+		local badge = surface(FRONT_ANGLE, bandY, 1.0) * CFrame.new(0, 0, 0.08)
+		add("BadgeBezel", "Cyl", Vector3.new(0.12, 0.86, 0.86), badge * CFrame.Angles(0, math.rad(90), 0), metal, Enum.Material.Metal)
+		add("BadgeFace", "Cyl", Vector3.new(0.13, 0.68, 0.68), badge * CFrame.new(0, 0, 0.01) * CFrame.Angles(0, math.rad(90), 0), Color3.fromRGB(28, 26, 38))
+		add("BadgeCore", "Block", Vector3.new(0.34, 0.34, 0.14), badge * CFrame.new(0, 0, 0.06) * CFrame.Angles(0, 0, math.rad(45)), glow, Enum.Material.Neon)
+		add("BadgeCoreShine", "Block", Vector3.new(0.1, 0.1, 0.15), badge * CFrame.new(-0.06, 0.07, 0.07), WHITE, Enum.Material.Neon)
+	end
+
+	-- a jeweled tip on rarer eggs: a faceted gem in a metal crown
 	if rarity.Order >= 4 then
-		add("TipGem", "Block", Vector3.new(0.34, 0.34, 0.34), CFrame.new(0, EGG_SIZE.Y / 2 - 0.02, 0) * CFrame.Angles(math.rad(45), 0, math.rad(45)), rarity.Color:Lerp(Color3.new(1, 1, 1), 0.2), Enum.Material.Neon)
+		local tip = CFrame.new(0, EGG_SIZE.Y / 2 - 0.06, 0)
+		add("TipBezel", "Cyl", Vector3.new(0.1, 0.62, 0.62), tip * CFrame.Angles(0, 0, math.rad(90)), metal, Enum.Material.Metal)
+		for i = 0, 3 do
+			local a = i / 4 * math.pi * 2
+			add("TipProng", "Block", Vector3.new(0.07, 0.24, 0.07), tip * CFrame.new(math.cos(a) * 0.24, 0.12, math.sin(a) * 0.24) * CFrame.Angles(0, -a, math.rad(-15)), metal, Enum.Material.Metal)
+		end
+		add("TipGem", "Block", Vector3.new(0.34, 0.34, 0.34), tip * CFrame.new(0, 0.2, 0) * CFrame.Angles(math.rad(45), 0, math.rad(45)), glow, Enum.Material.Neon)
 	end
-	-- cartoon shine on every egg
-	if custom then
-		-- species eggs have a face on the front, so the shine goes on the side
-		add("Shine", "Blob", Vector3.new(0.25, 0.7, 0.4), CFrame.new(-1.3, 0.5, 0.1) * CFrame.Angles(0, 0, math.rad(-15)), WHITE, Enum.Material.Neon)
-	else
-		add("Shine", "Blob", Vector3.new(0.5, 0.95, 0.25), CFrame.new(-0.62, 0.95, -1.1) * CFrame.Angles(0, 0, math.rad(-20)), WHITE, Enum.Material.Neon)
-		add("Shine", "Ball", Vector3.one * 0.28, CFrame.new(-0.32, 1.55, -0.88), WHITE, Enum.Material.Neon)
+	-- the rarest eggs get glowing lines running top to bottom
+	if rarity.Order >= 7 then
+		for i = 0, 3 do
+			local a = i / 4 * math.pi * 2 + math.pi / 4
+			for k = -3, 3 do
+				local y = k * 0.42
+				if math.abs(y - bandY) > 0.3 and math.abs(y - seamY) > 0.2 then
+					add("Meridian", "Block", Vector3.new(0.05, 0.36, 0.05), surface(a, y, 1.005), glow, Enum.Material.Neon)
+				end
+			end
+		end
 	end
+
+	-- a small stand with a glowing rim
+	local standY = -EGG_SIZE.Y / 2 + 0.1
+	add("Stand", "Cyl", Vector3.new(0.2, 1.5, 1.5), CFrame.new(0, standY, 0) * CFrame.Angles(0, 0, math.rad(90)), Color3.fromRGB(38, 36, 50), Enum.Material.Metal)
+	add("StandRim", "Cyl", Vector3.new(0.06, 1.58, 1.58), CFrame.new(0, standY + 0.08, 0) * CFrame.Angles(0, 0, math.rad(90)), if rarity.Order >= 2 then accent else metal, if rarity.Order >= 2 then Enum.Material.Neon else Enum.Material.Metal)
+
+	-- glossy highlight: one soft curved sheen high on the side of the shell
+	local shineAngle = if custom then math.pi * 0.95 else FRONT_ANGLE - 1.2
+	local sheen = add("Shine", "Blob", Vector3.new(0.26, 0.95, 0.08), surface(shineAngle, 0.95, 1.0) * CFrame.new(0, 0, 0.03) * CFrame.Angles(0, 0, math.rad(-12)), WHITE, Enum.Material.Neon)
+	sheen.Transparency = 0.3
+	local dot = add("Shine", "Blob", Vector3.new(0.14, 0.18, 0.06), surface(shineAngle + 0.05, 1.55, 1.0) * CFrame.new(0, 0, 0.03), WHITE, Enum.Material.Neon)
+	dot.Transparency = 0.2
 
 	if rarity.Order >= 3 then
 		local light = Instance.new("PointLight")
