@@ -53,8 +53,36 @@ local function makePlate(model, isPlayer)
 	local badge = UI.chip(nameRow, "", C.Pink, { LayoutOrder = 3, Visible = false, TextSize = 12, Size = UDim2.fromOffset(0, 20) })
 	local activity = UI.text(gui, "", 13, UI.Font, Color3.fromRGB(235, 238, 250), { Position = UDim2.fromOffset(0, 26), Size = UDim2.new(1, 0, 0, 18), TextXAlignment = Enum.TextXAlignment.Center, TextTransparency = 0.05 })
 	UI.new("UIStroke", { Color = Color3.new(0, 0, 0), Thickness = 1.2, Transparency = 0.45, Parent = activity })
+	-- a health bar when they're hurt
+	local hpBack = UI.new("Frame", { BackgroundColor3 = Color3.new(0, 0, 0), BackgroundTransparency = 0.35, AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 46), Size = UDim2.fromOffset(90, 7), Visible = false, Parent = gui })
+	UI.corner(hpBack, 3)
+	local hpFill = UI.new("Frame", { BackgroundColor3 = C.Red, BorderSizePixel = 0, Size = UDim2.fromScale(1, 1), Parent = hpBack })
+	UI.corner(hpFill, 3)
 	gui.Parent = head
 	local entry = { Gui = gui, Name = name, Mood = mood, Badge = badge, Activity = activity, Model = model, IsPlayer = isPlayer }
+	local function refreshHP()
+		local hp, maxHp = model:GetAttribute("HP"), model:GetAttribute("MaxHP")
+		if isPlayer then
+			local humanoid = model:FindFirstChildOfClass("Humanoid")
+			hp, maxHp = humanoid and humanoid.Health, humanoid and humanoid.MaxHealth
+			if hp and maxHp and hp >= maxHp then
+				hp = nil
+			end
+		end
+		hpBack.Visible = hp ~= nil and maxHp ~= nil and hp > 0
+		if hpBack.Visible then
+			local f = math.clamp(hp / maxHp, 0, 1)
+			UI.tween(hpFill, 0.2, { Size = UDim2.fromScale(f, 1) })
+			hpFill.BackgroundColor3 = if f > 0.5 then C.Gold else C.Red
+		end
+	end
+	model:GetAttributeChangedSignal("HP"):Connect(refreshHP)
+	if isPlayer then
+		local humanoid = model:FindFirstChildOfClass("Humanoid")
+		if humanoid then
+			humanoid.HealthChanged:Connect(refreshHP)
+		end
+	end
 	plates[model] = entry
 	local function refresh()
 		if isPlayer then
@@ -490,6 +518,13 @@ function World.Attack()
 	end)
 end
 World.Punch = World.Attack
+
+-- how much of the current weapon's cooldown is left (0..1), for the hotbar
+function World.Cooldown()
+	local id = World.Equipped()
+	local w = Weapons.Get(id)
+	return { Id = id, Left = math.clamp(1 - (os.clock() - lastAttack) / w.Cooldown, 0, 1) }
+end
 
 local blockingNow = false
 function World.SetBlock(on)

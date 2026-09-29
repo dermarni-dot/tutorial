@@ -172,6 +172,9 @@ local function onNewDay()
 		CityService.Fire(e.Kind, e.Text, e.Citizen or e.Household)
 	end
 	CityService.News("☀️ Good morning, AI City! It's " .. weekday(state.Day) .. ", day " .. state.Day .. ".", "Day", true)
+	for player in pairs(playerData) do
+		CityService.Send(player, { Type = "Goals", Goals = CityService.Goals(player), NewDay = true })
+	end
 	if S.Citizens and S.Citizens.OnNewDay then
 		S.Citizens.OnNewDay(state.Day, events)
 	end
@@ -441,6 +444,7 @@ local function loadPlayer(player)
 	player:SetAttribute("Title", if state.Mayor and state.Mayor.UserId == player.UserId then "Mayor" else "Citizen")
 	player:SetAttribute("Wanted", 0)
 	player:SetAttribute("Notoriety", math.floor(data.Notoriety))
+	CityService.Send(player, { Type = "Goals", Goals = CityService.Goals(player) })
 	CityService.Send(player, { Type = "Welcome", Day = state.Day, Weekday = weekday(state.Day), Mayor = state.Mayor and state.Mayor.Name, State = CityService.CityState() })
 end
 
@@ -511,6 +515,7 @@ handlers.Speech = function(player, data)
 		return { Ok = false, Error = "Pick at least one idea to talk about." }
 	end
 	pd.LastSpeech = os.clock()
+	CityService.Progress(player, "speech", 1)
 	pd.Stances = picked
 	candidates["p" .. player.UserId] = { Key = "p" .. player.UserId, Name = player.DisplayName, Kind = "player", UserId = player.UserId, Stances = picked }
 	local lines = {}
@@ -734,6 +739,7 @@ handlers.Vote = function(player, data)
 		return { Ok = false, Error = "That person isn't running." }
 	end
 	votes[player] = data.Candidate
+	CityService.Progress(player, "vote", 1)
 	return { Ok = true, Text = "You voted for " .. candidates[data.Candidate].Name .. "! Results at the next election." }
 end
 
@@ -792,6 +798,90 @@ handlers.CityInfo = function(player)
 		Stances = Config.Stances,
 		Me = playerData[player] and { Coins = playerData[player].Coins, Crimes = playerData[player].Crimes, Talks = playerData[player].Talks, Arrests = playerData[player].Arrests, Terms = playerData[player].Terms },
 	}
+end
+
+--------------------------------------------------------------------------------
+-- Daily goals: four little things to do each in-game day, for coins
+--------------------------------------------------------------------------------
+local GOALS = {
+	{ Id = "talk", Text = "Chat with 3 citizens", Emoji = "💬", Need = 3, Reward = 20 },
+	{ Id = "gift", Text = "Give someone a gift", Emoji = "🎁", Need = 1, Reward = 25 },
+	{ Id = "laugh", Text = "Make someone laugh with a joke", Emoji = "😂", Need = 1, Reward = 20 },
+	{ Id = "speech", Text = "Give a speech on the plaza", Emoji = "🎤", Need = 1, Reward = 30 },
+	{ Id = "vote", Text = "Vote in the election", Emoji = "🗳️", Need = 1, Reward = 20 },
+	{ Id = "tower", Text = "Ride an elevator to floor 8 or higher", Emoji = "🏢", Need = 1, Reward = 20 },
+	{ Id = "directions", Text = "Ask someone for directions", Emoji = "🧭", Need = 1, Reward = 15 },
+	{ Id = "friend", Text = "Make a friend (❤️❤️❤️ or more)", Emoji = "🤝", Need = 1, Reward = 40 },
+	{ Id = "lake", Text = "Visit Mirror Lake", Emoji = "🎣", Need = 1, Reward = 20 },
+	{ Id = "compliment", Text = "Compliment 2 people", Emoji = "😊", Need = 2, Reward = 20 },
+	{ Id = "places", Text = "Visit 4 different places", Emoji = "🗺️", Need = 4, Reward = 30 },
+}
+local goalById = {}
+for _, g in ipairs(GOALS) do
+	goalById[g.Id] = g
+end
+
+-- Today's goals for a player: { { Id, Text, Emoji, Need, Have, Reward, Done } }
+function CityService.Goals(player)
+	local pd = playerData[player]
+	if not pd then
+		return {}
+	end
+	if not pd.Goals or pd.Goals.Day ~= state.Day then
+		local rng = Random.new(state.Day * 7919 + player.UserId % 100000)
+		local pool = table.clone(GOALS)
+		local list = {}
+		for _ = 1, 4 do
+			local g = table.remove(pool, rng:NextInteger(1, #pool))
+			table.insert(list, { Id = g.Id, Text = g.Text, Emoji = g.Emoji, Need = g.Need, Have = 0, Reward = g.Reward, Done = false })
+		end
+		pd.Goals = { Day = state.Day, List = list, Visited = {} }
+	end
+	return pd.Goals.List
+end
+
+-- Something happened that might count toward a goal
+function CityService.Progress(player, id, amount)
+	local list = CityService.Goals(player)
+	for _, g in ipairs(list) do
+		if g.Id == id and not g.Done then
+			g.Have = math.min(g.Need, g.Have + (amount or 1))
+			if g.Have >= g.Need then
+				g.Done = true
+				CityService.AddCoins(player, g.Reward, g.Emoji .. " Goal complete")
+				CityService.Send(player, { Type = "Goals", Goals = list, Done = g })
+			else
+				CityService.Send(player, { Type = "Goals", Goals = list })
+			end
+		end
+	end
+end
+
+handlers.Goals = function(player)
+	return { Ok = true, Goals = CityService.Goals(player) }
+end
+
+-- where players are: visiting places and the lake
+local function visitTick()
+	for player, pd in pairs(playerData) do
+		local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+		if root then
+			CityService.Goals(player)
+			for _, place in ipairs(S.Map.PlaceList) do
+				if place.Door and (place.Door - root.Position).Magnitude < 22 and not pd.Goals.Visited[place.Id] then
+					pd.Goals.Visited[place.Id] = true
+					CityService.Progress(player, "places", 1)
+					if place.Id == "Lake" then
+						CityService.Progress(player, "lake", 1)
+					end
+				end
+			end
+			if S.Map.Lake and (Vector3.new(root.Position.X, 0, root.Position.Z) - Vector3.new(S.Map.Lake.X, 0, S.Map.Lake.Z)).Magnitude < 150 and not pd.Goals.Visited.Lake then
+				pd.Goals.Visited.Lake = true
+				CityService.Progress(player, "lake", 1)
+			end
+		end
+	end
 end
 
 --------------------------------------------------------------------------------
@@ -935,11 +1025,16 @@ function CityService.Start()
 	-- the slow loop: HUD numbers, coins, drift, elections, autosave
 	task.spawn(function()
 		local lastCoins, lastSave, lastHour = os.clock(), os.clock(), math.floor(CityService.Hour())
+		local lastVisit = 0
 		local warned = false
 		while true do
 			task.wait(1)
 			local now = os.clock()
 			publish()
+			if now - lastVisit >= 3 then
+				lastVisit = now
+				pcall(visitTick)
+			end
 			if now - lastCoins >= 60 then
 				lastCoins = now
 				for player in pairs(playerData) do

@@ -496,6 +496,14 @@ local function buildDirectory()
 		end)
 	end
 	search:GetPropertyChangedSignal("Text"):Connect(rebuild)
+	function Panels.OpenDirectory(which)
+		tab, sortBy = which or "People", "Name"
+		if win.IsOpen() then
+			rebuild()
+		else
+			win.Open()
+		end
+	end
 	win.OnOpen = function()
 		local result = request({ Action = "Directory" })
 		if result.Ok then
@@ -855,7 +863,7 @@ local function buildHelp()
 		{ "⚔️ Fighting", "<b>F</b> (or click with a weapon) attacks, <b>hold X</b> blocks (you take a third of the damage). Buy a 🏏 bat, 🔨 hammer or 🔪 knife at the Hardware store: they hit harder, but using them is a much more serious crime. Tough citizens and the police fight back, so watch your ❤️ health. If you get knocked out, you wake up at the hospital (wanted stars cleared, but there's a bill)." },
 		{ "🚨 Crime", "<b>F</b> attacks, <b>G</b> (hold) picks a pocket, <b>R</b> (hold) robs a register or the bank vault. If anyone sees you, you get wanted stars and the police come after you. Get caught and you're BUSTED: a fine and time in jail. Kids can't be hurt." },
 		{ "🫥 Losing the police", "The police only know where they <b>last saw</b> you. Break their line of sight (around a corner, into a building) and they'll run there and search around. Hide in a <b>trash can, hedge or park bush</b> (hold <b>Q</b>): they can't see you, unless they search right next to your spot (or saw you climb in!). Stay out of sight and the stars fade one by one, faster while you're hiding. <b>Space</b> gets you out." },
-		{ "⌨️ Keys", "E talk / use · M map · P people · V vote · B speech · N mayor · F attack · X block · 1-3 weapons · G pickpocket · R rob · Q hide · H help · 1-9 answer in conversations · Esc close windows" },
+		{ "⌨️ Keys", "Tab phone · E talk / use · M map · P people · V vote · B speech · N mayor · F attack · X block · 1-4 hotbar · G pickpocket · R rob · Q hide · H help · 1-9 answer in conversations · Esc close windows" },
 	}
 	for _, s in ipairs(sections) do
 		local card = UI.panel(list, { Size = UDim2.new(1, -10, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundColor3 = C.Panel2, Radius = 12 })
@@ -901,7 +909,8 @@ local function buildSettings()
 end
 
 local function buildWelcome()
-	local cover = UI.new("Frame", { BackgroundColor3 = C.Bg, BackgroundTransparency = 0.25, Size = UDim2.fromScale(1, 1), ZIndex = 40, Visible = false, Parent = screen })
+	local cover = UI.new("Frame", { BackgroundColor3 = C.Bg, BackgroundTransparency = 0.55, Size = UDim2.fromScale(1, 1), ZIndex = 40, Visible = false, Parent = screen })
+	UI.gradient(cover, C.White, C.White, 90, NumberSequence.new(0.4, 0))
 	local card = UI.panel(cover, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(720, 460), ZIndex = 41, Radius = 22 })
 	UI.gradient(card, C.Panel2, C.Panel, 90)
 	local scale = UI.new("UIScale", { Parent = card })
@@ -925,7 +934,25 @@ local function buildWelcome()
 		end)
 	end)
 	go.ZIndex = 44
+	local orbiting
+	local function stopOrbit()
+		if orbiting then
+			orbiting:Disconnect()
+			orbiting = nil
+			workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
+		end
+	end
+	go.Activated:Connect(stopOrbit)
 	function Panels.Welcome()
+		-- a slow flight over downtown behind the welcome card
+		local camera = workspace.CurrentCamera
+		camera.CameraType = Enum.CameraType.Scriptable
+		local start = os.clock()
+		orbiting = RunService.RenderStepped:Connect(function()
+			local a = (os.clock() - start) * 0.08
+			local pos = Vector3.new(math.cos(a) * 190, 95 + math.sin(a * 0.7) * 15, math.sin(a) * 190)
+			camera.CFrame = CFrame.lookAt(pos, Vector3.new(0, 15, 0))
+		end)
 		cover.Visible = true
 		scale.Scale = 0.8
 		UI.tween(scale, 0.4, { Scale = 1 }, Enum.EasingStyle.Back)
@@ -978,6 +1005,155 @@ local function buildBusted()
 			task.wait(0.5)
 			cover.Visible = false
 		end)
+	end
+end
+
+--------------------------------------------------------------------------------
+-- The phone (Tab): every app in one place
+--------------------------------------------------------------------------------
+local function buildPhone()
+	local phone = UI.new("Frame", { Name = "Phone", AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -24, 1, 600), Size = UDim2.fromOffset(300, 560), BackgroundColor3 = UI.rgb(12, 12, 16), Visible = false, ZIndex = 30, Parent = screen })
+	UI.corner(phone, 38)
+	UI.stroke(phone, UI.rgb(80, 80, 96), 3, 0)
+	local screenArea = UI.new("Frame", { Name = "Screen", Position = UDim2.fromOffset(10, 10), Size = UDim2.new(1, -20, 1, -20), ClipsDescendants = true, BackgroundColor3 = UI.rgb(40, 30, 90), ZIndex = 31, Parent = phone })
+	UI.corner(screenArea, 30)
+	UI.gradient(screenArea, UI.rgb(90, 70, 200), UI.rgb(20, 60, 120), 135)
+	-- the status bar: time, coins
+	local status = UI.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 34), ZIndex = 32, Parent = screenArea })
+	local clock = UI.text(status, "9:30", 14, UI.Bold, C.White, { Position = UDim2.fromOffset(24, 8), Size = UDim2.fromOffset(80, 20), ZIndex = 33 })
+	local coins = UI.text(status, "🪙 0", 13, UI.Bold, C.White, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -22, 0, 8), Size = UDim2.fromOffset(120, 20), TextXAlignment = Enum.TextXAlignment.Right, ZIndex = 33 })
+	local notch = UI.new("Frame", { BackgroundColor3 = UI.rgb(12, 12, 16), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 6), Size = UDim2.fromOffset(90, 22), ZIndex = 33, Parent = screenArea })
+	UI.corner(notch, 11)
+	-- home screen: a greeting and the apps
+	local home = UI.new("Frame", { BackgroundTransparency = 1, Position = UDim2.fromOffset(0, 40), Size = UDim2.new(1, 0, 1, -80), ZIndex = 32, Parent = screenArea })
+	local hello = UI.text(home, "", 26, UI.Title, C.White, { Position = UDim2.fromOffset(20, 6), Size = UDim2.new(1, -40, 0, 32), TextScaled = true, ZIndex = 33 })
+	UI.new("UITextSizeConstraint", { MaxTextSize = 26, MinTextSize = 14, Parent = hello })
+	local sub = UI.text(home, "", 13, UI.Font, UI.rgb(220, 220, 255), { Position = UDim2.fromOffset(20, 38), Size = UDim2.new(1, -40, 0, 18), ZIndex = 33 })
+	local grid = UI.new("Frame", { BackgroundTransparency = 1, Position = UDim2.fromOffset(16, 76), Size = UDim2.new(1, -32, 1, -80), ZIndex = 32, Parent = home })
+	UI.new("UIGridLayout", { CellSize = UDim2.fromOffset(74, 86), CellPadding = UDim2.fromOffset(8, 8), SortOrder = Enum.SortOrder.LayoutOrder, Parent = grid })
+	-- the goals page
+	local page = UI.new("Frame", { BackgroundTransparency = 1, Position = UDim2.fromOffset(0, 40), Size = UDim2.new(1, 0, 1, -80), Visible = false, ZIndex = 32, Parent = screenArea })
+	UI.text(page, "🎯 Today's goals", 22, UI.Title, C.White, { Position = UDim2.fromOffset(20, 6), Size = UDim2.new(1, -40, 0, 30), ZIndex = 33 })
+	local goalList = UI.new("Frame", { BackgroundTransparency = 1, Position = UDim2.fromOffset(16, 46), Size = UDim2.new(1, -32, 1, -50), ZIndex = 32, Parent = page })
+	UI.list(goalList, Enum.FillDirection.Vertical, 8)
+	local open = false
+	local P = {}
+	Panels.Phone = P
+	local function showHome()
+		home.Visible, page.Visible = true, false
+	end
+	local function showGoals()
+		home.Visible, page.Visible = false, true
+		clear(goalList)
+		local goals = ctx.Hud.GoalData or {}
+		for k, g in ipairs(goals) do
+			local card = UI.new("Frame", { BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = 0.85, Size = UDim2.new(1, 0, 0, 64), LayoutOrder = k, ZIndex = 33, Parent = goalList })
+			UI.corner(card, 14)
+			UI.text(card, g.Emoji, 26, UI.Font, C.White, { Position = UDim2.fromOffset(8, 10), Size = UDim2.fromOffset(40, 40), TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 34 })
+			UI.text(card, g.Text, 13, UI.Bold, C.White, { Position = UDim2.fromOffset(54, 8), Size = UDim2.new(1, -62, 0, 32), TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top, ZIndex = 34 })
+			UI.text(card, if g.Done then "✅ Done! +" .. g.Reward .. " 🪙" else g.Have .. " / " .. g.Need .. "   ·   🪙 " .. g.Reward, 12, UI.Bold, if g.Done then C.Green else C.Gold, { Position = UDim2.fromOffset(54, 40), Size = UDim2.new(1, -62, 0, 16), ZIndex = 34 })
+		end
+		if #goals == 0 then
+			UI.text(goalList, "New goals every morning!", 14, UI.Font, C.White, { ZIndex = 33 })
+		end
+	end
+	local function app(order, emoji, name, color, fn)
+		local b = UI.new("TextButton", { BackgroundTransparency = 1, Text = "", LayoutOrder = order, ZIndex = 33, Parent = grid })
+		local icon = UI.new("TextLabel", { BackgroundColor3 = color, Text = emoji, TextSize = 30, Font = UI.Font, AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 0), Size = UDim2.fromOffset(60, 60), ZIndex = 34, Parent = b })
+		UI.corner(icon, 16)
+		UI.gradient(icon, C.White, UI.rgb(200, 200, 215), 90)
+		UI.text(b, name, 12, UI.Bold, C.White, { Position = UDim2.fromOffset(0, 64), Size = UDim2.new(1, 0, 0, 16), TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 34 })
+		local scale = UI.new("UIScale", { Parent = icon })
+		b.MouseEnter:Connect(function()
+			UI.tween(scale, 0.12, { Scale = 1.08 })
+		end)
+		b.MouseLeave:Connect(function()
+			UI.tween(scale, 0.12, { Scale = 1 })
+		end)
+		b.Activated:Connect(function()
+			UI.sound("pop", 0.25, 1.2)
+			UI.tween(scale, 0.06, { Scale = 0.9 })
+			task.delay(0.08, function()
+				fn()
+			end)
+		end)
+	end
+	app(1, "🗺️", "Map", UI.rgb(60, 170, 110), function()
+		P.Close()
+		Panels.Map.Open()
+	end)
+	app(2, "👥", "People", UI.rgb(150, 90, 230), function()
+		P.Close()
+		Panels.OpenDirectory("People")
+	end)
+	app(3, "📰", "News", UI.rgb(230, 90, 80), function()
+		P.Close()
+		Panels.OpenDirectory("News")
+	end)
+	app(4, "🗳️", "Vote", UI.rgb(70, 130, 240), function()
+		P.Close()
+		Panels.Vote.Open()
+	end)
+	app(5, "🎯", "Goals", UI.rgb(240, 170, 40), showGoals)
+	app(6, "🎤", "Speech", UI.rgb(200, 140, 30), function()
+		P.Close()
+		Panels.Speech.Open()
+	end)
+	app(7, "🏛️", "Mayor", UI.rgb(130, 100, 50), function()
+		P.Close()
+		Panels.Mayor.Open()
+	end)
+	app(8, "❓", "Help", UI.rgb(80, 90, 120), function()
+		P.Close()
+		Panels.Help.Open()
+	end)
+	app(9, "⚙️", "Settings", UI.rgb(110, 110, 130), function()
+		P.Close()
+		Panels.Settings.Open()
+	end)
+	-- the home bar: back to the home screen
+	local homeBar = UI.new("TextButton", { BackgroundColor3 = C.White, BackgroundTransparency = 0.3, Text = "", AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -10), Size = UDim2.fromOffset(110, 6), ZIndex = 35, Parent = screenArea })
+	UI.corner(homeBar, 3)
+	homeBar.Activated:Connect(showHome)
+	function P.IsOpen()
+		return open
+	end
+	function P.Open()
+		if open then
+			return
+		end
+		open = true
+		showHome()
+		phone.Visible = true
+		local name = player.DisplayName
+		local h = game:GetService("Lighting").ClockTime
+		hello.Text = (if h < 12 then "Good morning" elseif h < 18 then "Good afternoon" else "Good evening") .. "!"
+		local state = ReplicatedStorage:FindFirstChild("CityState")
+		sub.Text = name .. (if state then " · " .. (state:GetAttribute("Weekday") or "") .. " · " .. string.lower(state:GetAttribute("StateLabel") or "stable") else "")
+		clock.Text = (UI.formatHour(h))
+		coins.Text = "🪙 " .. UI.commas(player:GetAttribute("Coins") or 0)
+		phone.Position = UDim2.new(1, -24, 1, 600)
+		UI.tween(phone, 0.35, { Position = UDim2.new(1, -24, 1, -110) }, Enum.EasingStyle.Back)
+		UI.sound("click", 0.3, 1.5)
+	end
+	function P.Close()
+		if not open then
+			return
+		end
+		open = false
+		UI.tween(phone, 0.25, { Position = UDim2.new(1, -24, 1, 600) }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+		task.delay(0.25, function()
+			if not open then
+				phone.Visible = false
+			end
+		end)
+	end
+	function P.Toggle()
+		if open then
+			P.Close()
+		else
+			P.Open()
+		end
 	end
 end
 
@@ -1076,6 +1252,7 @@ function Panels.Start(context)
 	buildBusted()
 	buildShop()
 	buildDown()
+	buildPhone()
 end
 
 return Panels

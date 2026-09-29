@@ -16,6 +16,7 @@ local CollectionService = game:GetService("CollectionService")
 local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
 
 local DialogueService = {}
+DialogueService.Talked = {} -- who talked to whom today (for the daily goals)
 local S
 local sessions = {} -- [player] = { Brain, Last, Depth, Used = {} }
 local chattedToday = {} -- ["citizenId:userId"] = day
@@ -536,6 +537,7 @@ local function respond(player, session, key)
 		local roll = math.random()
 		if p == "funny" or (p == "cheerful" and roll < 0.8) or (p ~= "grumpy" and roll < 0.45) then
 			text, expr, action = pick({ "HAHAHA! Oh that's a good one!", "Hahaha! I'm stealing that one!", "😂 Stop, stop, my sides!", "Haha! Okay, okay, my turn: " .. pick(NPC_JOKES) }), "laugh", "cheer"
+			S.City.Progress(player, "laugh", 1)
 			remember(c, player, "told me a great joke", if repeated then 1 else 5, "told " .. c.First .. " a hilarious joke")
 		elseif p == "grumpy" then
 			text, expr = pick({ "...Was that supposed to be funny?", "*stares blankly*", "I've heard better jokes from a parking meter." }), "focused"
@@ -579,6 +581,7 @@ local function respond(player, session, key)
 			local times = session.Used[key]
 			text = if t == "afraid" then "...Oh. Um. Thank you. I guess you're not all bad." elseif p == "grumpy" then "Hm. Coins? ...Fine. Thanks." elseif p == "shy" then "F-for me? Thank you so much!" elseif times > 2 then "You're too generous! Really, it's fine!" else pick({ "For me?! Oh, you shouldn't have! Thank you!", "Wow, thank you so much! 😊", "You're the best, " .. player.DisplayName .. "!" })
 			expr, action = "love", "cheer"
+			S.City.Progress(player, "gift", 1)
 			remember(c, player, "gave me a gift", if times > 2 then 3 else 12, "gave " .. c.First .. " a gift")
 			S.City.Boost(c, 10)
 		end
@@ -612,6 +615,7 @@ local function respond(player, session, key)
 			local near = if dist < 60 then "It's right around here! " else ""
 			text = near .. "The " .. placeLabel(id) .. " is " .. compass(from, place.Door) .. " of here, on " .. streetOf(place.Door) .. ". About " .. math.floor(dist / 10 + 0.5) * 10 .. " studs. I've marked it for you!"
 			expr, action = "happy", "point"
+			S.City.Progress(player, "directions", 1)
 			S.City.Send(player, { Type = "Waypoint", Position = place.Door, Label = placeLabel(id), Emoji = Config.PlaceById[id] and Config.PlaceById[id].emoji or "📍" })
 			remember(c, player, "asked me for directions", 1)
 		end
@@ -728,6 +732,11 @@ function DialogueService.Begin(player, brain)
 	local c = brain.C
 	local session = { Brain = brain, Last = os.clock(), Used = {} }
 	sessions[player] = session
+	local talkKey = c.Id .. ":" .. player.UserId .. ":" .. S.City.Day()
+	if not DialogueService.Talked[talkKey] then
+		DialogueService.Talked[talkKey] = true
+		S.City.Progress(player, "talk", 1)
+	end
 	local line, expr = greetingFor(c, player)
 	-- context: busy at work, asleep, in class
 	local action = brain.Model:GetAttribute("Action") or ""
@@ -772,6 +781,12 @@ local function onChoose(player, data)
 	session.Last = os.clock()
 	local brain = session.Brain
 	local result = respond(player, session, data.Option)
+	if data.Option == "compliment" and (session.Used.compliment or 0) <= 2 then
+		S.City.Progress(player, "compliment", 1)
+	end
+	if S.City.Opinion(brain.C, player) >= 50 then
+		S.City.Progress(player, "friend", 1)
+	end
 	result.Ok = true
 	result.Opinion = math.floor(S.City.Opinion(brain.C, player))
 	result.Mood = math.floor(S.City.MoodOf(brain.C))

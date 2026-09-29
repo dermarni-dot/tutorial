@@ -386,10 +386,13 @@ local function attack(player, data)
 	end
 	brain.HP = (brain.HP or hpFor(brain)) - w.Damage
 	brain.LastHit = now
+	brain.Model:SetAttribute("MaxHP", hpFor(brain))
+	brain.Model:SetAttribute("HP", math.max(0, brain.HP))
 	local c = brain.C
 	S.City.SendNear(brain.Root.Position, 120, { Type = "Hit", Position = brain.Root.Position + Vector3.new(0, 2, 0), Damage = w.Damage, KO = brain.HP <= 0, Weapon = id })
 	if brain.HP <= 0 then
 		brain.HP = nil
+		brain.Model:SetAttribute("HP", nil)
 		stopFight(brain)
 		local name = c.Name
 		S.Citizens.KnockOut(brain, player.DisplayName)
@@ -1158,6 +1161,7 @@ function CrimeService.Start(services)
 				if brain.HP and os.clock() - (brain.LastHit or 0) > 20 then
 					brain.HP = nil
 					brain.Hits = 0
+					brain.Model:SetAttribute("HP", nil)
 				end
 			end
 		end

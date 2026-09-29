@@ -193,7 +193,10 @@ local function build()
 	workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(rescale)
 
 	-- the clock card
-	local card = UI.panel(screen, { Name = "Clock", Position = UDim2.fromOffset(16, 14), Size = UDim2.fromOffset(290, 0), AutomaticSize = Enum.AutomaticSize.Y, Radius = 16 })
+	-- the left column: the clock card, then today's goals under it
+	local column = UI.new("Frame", { Name = "LeftColumn", BackgroundTransparency = 1, Position = UDim2.fromOffset(16, 14), Size = UDim2.fromOffset(290, 0), AutomaticSize = Enum.AutomaticSize.Y, Parent = screen })
+	UI.list(column, Enum.FillDirection.Vertical, 10)
+	local card = UI.panel(column, { Name = "Clock", Size = UDim2.fromOffset(290, 0), AutomaticSize = Enum.AutomaticSize.Y, Radius = 16, LayoutOrder = 1 })
 	UI.pad(card, 12, 10, 14, 12, 14)
 	UI.list(card, Enum.FillDirection.Vertical, 6)
 	local top = UI.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 40), LayoutOrder = 1, Parent = card })
@@ -265,14 +268,11 @@ local function build()
 	UI.pad(bar, 7)
 	UI.list(bar, Enum.FillDirection.Horizontal, 7, Enum.HorizontalAlignment.Center, Enum.VerticalAlignment.Center)
 	refs.Bar = bar
+	refs.PhoneButton = actionButton(bar, "📱", "Phone", "Tab", 0, function()
+		ctx.Panels.Phone.Toggle()
+	end, UI.rgb(70, 50, 130))
 	actionButton(bar, "🗺️", "Map", "M", 1, function()
 		ctx.Panels.Map.Toggle()
-	end)
-	actionButton(bar, "👥", "People", "P", 2, function()
-		ctx.Panels.Directory.Toggle()
-	end)
-	actionButton(bar, "🗳️", "Vote", "V", 3, function()
-		ctx.Panels.Vote.Toggle()
 	end)
 	refs.SpeechButton = actionButton(bar, "🎤", "Speech", "B", 4, function()
 		ctx.Panels.Speech.Toggle()
@@ -296,12 +296,6 @@ local function build()
 		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 			ctx.World.SetBlock(false)
 		end
-	end)
-	actionButton(bar, "⚙️", "Settings", nil, 7, function()
-		ctx.Panels.Settings.Toggle()
-	end)
-	actionButton(bar, "❓", "Help", "H", 8, function()
-		ctx.Panels.Help.Toggle()
 	end)
 
 	-- health (bottom left)
@@ -535,8 +529,11 @@ local function frame(dt)
 	end
 	-- near the podium?
 	local podium = ctx.SpeechSpot
-	refs.Hint.Visible = root ~= nil and podium ~= nil and (root.Position - podium).Magnitude < 14 and not ctx.Panels.Speech.IsOpen()
-	refs.SpeechButton.BackgroundColor3 = if refs.Hint.Visible then UI.rgb(130, 95, 20) else C.Panel2
+	local nearPodium = root ~= nil and podium ~= nil and (root.Position - podium).Magnitude < 14
+	refs.Hint.Visible = nearPodium and not ctx.Panels.Speech.IsOpen()
+	refs.SpeechButton.Visible = nearPodium
+	refs.SpeechButton.BackgroundColor3 = UI.rgb(130, 95, 20)
+	Hud.UpdateExtras(dt, root)
 end
 
 local function dotsTick()
@@ -570,10 +567,252 @@ local function dotsTick()
 	end
 end
 
+--------------------------------------------------------------------------------
+-- Daily goals (under the clock)
+--------------------------------------------------------------------------------
+local goalsPanel, goalsList, goalsOpen = nil, nil, true
+function Hud.SetGoals(goals, done)
+	if not goalsPanel then
+		return
+	end
+	Hud.GoalData = goals
+	for _, child in ipairs(goalsList:GetChildren()) do
+		if child:IsA("Frame") then
+			child:Destroy()
+		end
+	end
+	local finished = 0
+	for k, g in ipairs(goals or {}) do
+		if g.Done then
+			finished += 1
+		end
+		local row = UI.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 30), LayoutOrder = k, Parent = goalsList })
+		UI.text(row, (if g.Done then "✅" else g.Emoji) .. "  " .. g.Text, 13, if g.Done then UI.Font else UI.Bold, if g.Done then C.Dim else C.Text, { Size = UDim2.new(1, -54, 0, 16), TextTruncate = Enum.TextTruncate.AtEnd })
+		UI.text(row, if g.Done then "+" .. g.Reward .. "🪙" else g.Have .. "/" .. g.Need, 12, UI.Bold, if g.Done then C.Green else C.Gold, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(1, 0), Size = UDim2.fromOffset(52, 16), TextXAlignment = Enum.TextXAlignment.Right })
+		local _, set = UI.bar(row, if g.Done then C.Green else C.Gold, 5, { Position = UDim2.fromOffset(0, 20) })
+		set(g.Have / math.max(1, g.Need))
+	end
+	goalsPanel.Title.Text = "🎯 Today's goals  <font color='#a0a8c6'>" .. finished .. "/" .. #(goals or {}) .. "</font>" .. (if goalsOpen then "  ▾" else "  ▸")
+	if done then
+		Hud.Banner("🎯 GOAL COMPLETE!  +" .. done.Reward .. " 🪙", C.Green, 2.5)
+		Hud.Toast("🎯", "Goal complete: " .. done.Text, "+" .. done.Reward .. " coins", C.Green)
+		local scale = goalsPanel.Frame:FindFirstChildOfClass("UIScale")
+		scale.Scale = 1.08
+		UI.tween(scale, 0.4, { Scale = 1 }, Enum.EasingStyle.Back)
+	end
+end
+
+local function buildGoals(column)
+	local frame = UI.panel(column, { Name = "Goals", LayoutOrder = 2, Size = UDim2.fromOffset(290, 0), AutomaticSize = Enum.AutomaticSize.Y, Radius = 16 })
+	UI.new("UIScale", { Parent = frame })
+	UI.pad(frame, 10, 8, 14, 10, 14)
+	UI.list(frame, Enum.FillDirection.Vertical, 6)
+	local title = UI.new("TextButton", { BackgroundTransparency = 1, Text = "🎯 Today's goals", TextColor3 = C.Gold, Font = UI.Title, TextSize = 16, RichText = true, TextXAlignment = Enum.TextXAlignment.Left, Size = UDim2.new(1, 0, 0, 22), LayoutOrder = 0, Parent = frame })
+	goalsList = UI.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 1, Parent = frame })
+	UI.list(goalsList, Enum.FillDirection.Vertical, 4)
+	title.Activated:Connect(function()
+		goalsOpen = not goalsOpen
+		goalsList.Visible = goalsOpen
+		Hud.SetGoals(Hud.GoalData)
+	end)
+	goalsPanel = { Frame = frame, Title = title }
+end
+
+--------------------------------------------------------------------------------
+-- The weapon hotbar (bottom right): 1 = fists, 2+ = your weapons
+--------------------------------------------------------------------------------
+local hotbar, slots = nil, {}
+local EMOJI = { Fists = "👊", Bat = "🏏", Hammer = "🔨", Knife = "🔪" }
+local function tools()
+	local list = {}
+	local backpack = player:FindFirstChildOfClass("Backpack")
+	for _, container in ipairs({ player.Character, backpack }) do
+		if container then
+			for _, t in ipairs(container:GetChildren()) do
+				if t:IsA("Tool") and t:GetAttribute("Weapon") then
+					table.insert(list, t)
+				end
+			end
+		end
+	end
+	local order = { Bat = 1, Hammer = 2, Knife = 3 }
+	table.sort(list, function(a, b)
+		return (order[a:GetAttribute("Weapon")] or 9) < (order[b:GetAttribute("Weapon")] or 9)
+	end)
+	return list
+end
+
+-- equip slot n (1 = fists)
+function Hud.Equip(n)
+	local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+	if not humanoid then
+		return false
+	end
+	local list = tools()
+	if n == 1 then
+		humanoid:UnequipTools()
+		return true
+	end
+	local tool = list[n - 1]
+	if tool then
+		if tool.Parent == player.Character then
+			humanoid:UnequipTools()
+		else
+			humanoid:EquipTool(tool)
+		end
+		UI.sound("click", 0.25, 1.4)
+		return true
+	end
+	return false
+end
+
+local function buildHotbar()
+	hotbar = UI.new("Frame", { Name = "Hotbar", BackgroundTransparency = 1, AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -16, 1, -16), Size = UDim2.fromOffset(0, 64), AutomaticSize = Enum.AutomaticSize.X, Visible = false, Parent = screen })
+	UI.list(hotbar, Enum.FillDirection.Horizontal, 8, Enum.HorizontalAlignment.Right, Enum.VerticalAlignment.Bottom)
+end
+
+local function refreshHotbar()
+	local list = tools()
+	hotbar.Visible = #list > 0
+	local wanted = { "Fists" }
+	for _, t in ipairs(list) do
+		table.insert(wanted, t:GetAttribute("Weapon"))
+	end
+	local equipped = ctx.World.Equipped and ctx.World.Equipped() or "Fists"
+	for k, id in ipairs(wanted) do
+		local slot = slots[k]
+		if not slot then
+			local button = UI.button(hotbar, "", { Size = UDim2.fromOffset(60, 60), Color = C.Panel2, LayoutOrder = k }, function()
+				Hud.Equip(k)
+			end)
+			local icon = UI.text(button, "", 28, UI.Font, C.White, { Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center })
+			local num = UI.new("TextLabel", { BackgroundColor3 = C.Bg, Text = tostring(k), TextColor3 = C.Gold, Font = UI.Black, TextSize = 11, Size = UDim2.fromOffset(16, 16), Position = UDim2.fromOffset(3, 3), Parent = button })
+			UI.corner(num, 5)
+			-- the cooldown sweeps down after each attack
+			local cool = UI.new("Frame", { BackgroundColor3 = Color3.new(0, 0, 0), BackgroundTransparency = 0.45, AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.fromScale(1, 0), BorderSizePixel = 0, Parent = button })
+			UI.corner(cool, 10)
+			slot = { Button = button, Icon = icon, Cool = cool }
+			slots[k] = slot
+		end
+		slot.Button.Visible = true
+		slot.Icon.Text = EMOJI[id] or "❔"
+		slot.Id = id
+		local selected = id == equipped
+		slot.Button.BackgroundColor3 = if selected then UI.rgb(120, 40, 50) else C.Panel2
+	end
+	for k = #wanted + 1, #slots do
+		slots[k].Button.Visible = false
+	end
+end
+
+--------------------------------------------------------------------------------
+-- The target card: who you're facing up close
+--------------------------------------------------------------------------------
+local card
+local function buildTargetCard()
+	card = UI.panel(screen, { Name = "Target", AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 16), Size = UDim2.fromOffset(320, 0), AutomaticSize = Enum.AutomaticSize.Y, Visible = false, Radius = 16 })
+	UI.new("UIScale", { Parent = card })
+	UI.pad(card, 10, 8, 14, 10, 14)
+	UI.list(card, Enum.FillDirection.Vertical, 4, Enum.HorizontalAlignment.Center)
+	refs.TargetName = UI.text(card, "", 18, UI.Title, C.White, { Size = UDim2.new(1, 0, 0, 22), TextXAlignment = Enum.TextXAlignment.Center, LayoutOrder = 1 })
+	refs.TargetSub = UI.text(card, "", 12, UI.Font, C.Sub, { Size = UDim2.new(1, 0, 0, 16), TextXAlignment = Enum.TextXAlignment.Center, TextTruncate = Enum.TextTruncate.AtEnd, LayoutOrder = 2 })
+	local hpRow
+	hpRow, refs.TargetHPSet = UI.bar(card, C.Red, 8, { LayoutOrder = 3 })
+	refs.TargetHP = hpRow
+	refs.TargetKeys = UI.text(card, "", 12, UI.Bold, C.Gold, { Size = UDim2.new(1, 0, 0, 16), TextXAlignment = Enum.TextXAlignment.Center, LayoutOrder = 4 })
+end
+
+local lastTarget
+local function updateTarget(root)
+	if not root or ctx.Panels.InDialogue() or player:GetAttribute("JailUntil") then
+		card.Visible = false
+		lastTarget = nil
+		return
+	end
+	local look = root.CFrame.LookVector
+	local best, bestScore = nil, math.huge
+	for _, model in ipairs(CollectionService:GetTagged("Citizen")) do
+		local r = model:FindFirstChild("HumanoidRootPart")
+		if r then
+			local d = r.Position - root.Position
+			local flat = Vector3.new(d.X, 0, d.Z)
+			if flat.Magnitude < 11 and flat.Magnitude > 0.1 and look:Dot(flat.Unit) > 0.45 then
+				local score = flat.Magnitude - look:Dot(flat.Unit) * 3
+				if score < bestScore then
+					best, bestScore = model, score
+				end
+			end
+		end
+	end
+	card.Visible = best ~= nil
+	if not best then
+		lastTarget = nil
+		return
+	end
+	if best ~= lastTarget then
+		lastTarget = best
+		local scale = card:FindFirstChildOfClass("UIScale")
+		scale.Scale = 0.85
+		UI.tween(scale, 0.18, { Scale = 1 }, Enum.EasingStyle.Back)
+	end
+	local stage = best:GetAttribute("Stage") or ""
+	local job = best:GetAttribute("Job") or ""
+	local role = if job ~= "" then job elseif (best:GetAttribute("School") or "") ~= "" then best:GetAttribute("School") else stage
+	refs.TargetName.Text = UI.moodEmoji(best:GetAttribute("Mood") or 60) .. "  " .. (best:GetAttribute("DisplayName") or best.Name)
+	refs.TargetSub.Text = (best:GetAttribute("Age") or "?") .. " · " .. role .. "  ·  " .. (best:GetAttribute("Activity") or "")
+	local hp, maxHp = best:GetAttribute("HP"), best:GetAttribute("MaxHP")
+	refs.TargetHP.Visible = hp ~= nil and maxHp ~= nil
+	if hp and maxHp then
+		refs.TargetHPSet(hp / maxHp, if hp / maxHp > 0.5 then C.Gold else C.Red)
+	end
+	local kid = stage == "Baby" or stage == "Toddler" or stage == "Child" or stage == "Teen"
+	local ko = best:GetAttribute("KnockedOut")
+	refs.TargetKeys.Text = if ko then "💫 Knocked out" elseif kid then "[E] Talk" else "[E] Talk   [G] Pickpocket   [F] Attack"
+	card.Position = UDim2.new(0.5, 0, 0, if refs.Jail.Visible then 90 else 16)
+end
+
+--------------------------------------------------------------------------------
+-- Low health: the screen glows red
+--------------------------------------------------------------------------------
+local lastHurt = 0
+function Hud.Hurt()
+	lastHurt = os.clock()
+end
+
+local slowExtras = 0
+function Hud.UpdateExtras(dt, root)
+	slowExtras += dt
+	-- cooldown sweep on the selected weapon
+	local w = ctx.World.Cooldown and ctx.World.Cooldown()
+	for _, slot in ipairs(slots) do
+		if slot.Button.Visible then
+			slot.Cool.Size = UDim2.fromScale(1, if w and slot.Id == w.Id then w.Left else 0)
+		end
+	end
+	local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+	local frac = if humanoid then humanoid.Health / math.max(1, humanoid.MaxHealth) else 1
+	local stars = player:GetAttribute("Wanted") or 0
+	if stars == 0 and not player:GetAttribute("Hiding") then
+		local hurt = math.max(0, 1 - (os.clock() - lastHurt) / 0.4)
+		local low = if frac < 0.35 and frac > 0 then 0.35 + (math.sin(os.clock() * 4) + 1) * 0.15 else 0
+		local glow = math.max(hurt * 0.8, low)
+		refs.EdgeStroke.Color = C.Red
+		refs.EdgeStroke.Transparency = 1 - glow
+	end
+	if slowExtras >= 0.1 then
+		slowExtras = 0
+		refreshHotbar()
+		updateTarget(root)
+	end
+end
+
 function Hud.Start(context)
 	ctx = context
 	cityState = ReplicatedStorage:WaitForChild("CityState")
 	build()
+	buildGoals(screen:FindFirstChild("LeftColumn"))
+	buildHotbar()
+	buildTargetCard()
 	Hud.SetCoins(player:GetAttribute("Coins") or 0)
 	player:GetAttributeChangedSignal("Coins"):Connect(function()
 		Hud.SetCoins(player:GetAttribute("Coins") or 0, true)

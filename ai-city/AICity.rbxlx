@@ -7031,6 +7031,9 @@ local function onNewDay()
 		CityService.Fire(e.Kind, e.Text, e.Citizen or e.Household)
 	end
 	CityService.News("☀️ Good morning, AI City! It's " .. weekday(state.Day) .. ", day " .. state.Day .. ".", "Day", true)
+	for player in pairs(playerData) do
+		CityService.Send(player, { Type = "Goals", Goals = CityService.Goals(player), NewDay = true })
+	end
 	if S.Citizens and S.Citizens.OnNewDay then
 		S.Citizens.OnNewDay(state.Day, events)
 	end
@@ -7300,6 +7303,7 @@ local function loadPlayer(player)
 	player:SetAttribute("Title", if state.Mayor and state.Mayor.UserId == player.UserId then "Mayor" else "Citizen")
 	player:SetAttribute("Wanted", 0)
 	player:SetAttribute("Notoriety", math.floor(data.Notoriety))
+	CityService.Send(player, { Type = "Goals", Goals = CityService.Goals(player) })
 	CityService.Send(player, { Type = "Welcome", Day = state.Day, Weekday = weekday(state.Day), Mayor = state.Mayor and state.Mayor.Name, State = CityService.CityState() })
 end
 
@@ -7370,6 +7374,7 @@ handlers.Speech = function(player, data)
 		return { Ok = false, Error = "Pick at least one idea to talk about." }
 	end
 	pd.LastSpeech = os.clock()
+	CityService.Progress(player, "speech", 1)
 	pd.Stances = picked
 	candidates["p" .. player.UserId] = { Key = "p" .. player.UserId, Name = player.DisplayName, Kind = "player", UserId = player.UserId, Stances = picked }
 	local lines = {}
@@ -7593,6 +7598,7 @@ handlers.Vote = function(player, data)
 		return { Ok = false, Error = "That person isn't running." }
 	end
 	votes[player] = data.Candidate
+	CityService.Progress(player, "vote", 1)
 	return { Ok = true, Text = "You voted for " .. candidates[data.Candidate].Name .. "! Results at the next election." }
 end
 
@@ -7651,6 +7657,90 @@ handlers.CityInfo = function(player)
 		Stances = Config.Stances,
 		Me = playerData[player] and { Coins = playerData[player].Coins, Crimes = playerData[player].Crimes, Talks = playerData[player].Talks, Arrests = playerData[player].Arrests, Terms = playerData[player].Terms },
 	}
+end
+
+--------------------------------------------------------------------------------
+-- Daily goals: four little things to do each in-game day, for coins
+--------------------------------------------------------------------------------
+local GOALS = {
+	{ Id = "talk", Text = "Chat with 3 citizens", Emoji = "💬", Need = 3, Reward = 20 },
+	{ Id = "gift", Text = "Give someone a gift", Emoji = "🎁", Need = 1, Reward = 25 },
+	{ Id = "laugh", Text = "Make someone laugh with a joke", Emoji = "😂", Need = 1, Reward = 20 },
+	{ Id = "speech", Text = "Give a speech on the plaza", Emoji = "🎤", Need = 1, Reward = 30 },
+	{ Id = "vote", Text = "Vote in the election", Emoji = "🗳️", Need = 1, Reward = 20 },
+	{ Id = "tower", Text = "Ride an elevator to floor 8 or higher", Emoji = "🏢", Need = 1, Reward = 20 },
+	{ Id = "directions", Text = "Ask someone for directions", Emoji = "🧭", Need = 1, Reward = 15 },
+	{ Id = "friend", Text = "Make a friend (❤️❤️❤️ or more)", Emoji = "🤝", Need = 1, Reward = 40 },
+	{ Id = "lake", Text = "Visit Mirror Lake", Emoji = "🎣", Need = 1, Reward = 20 },
+	{ Id = "compliment", Text = "Compliment 2 people", Emoji = "😊", Need = 2, Reward = 20 },
+	{ Id = "places", Text = "Visit 4 different places", Emoji = "🗺️", Need = 4, Reward = 30 },
+}
+local goalById = {}
+for _, g in ipairs(GOALS) do
+	goalById[g.Id] = g
+end
+
+-- Today's goals for a player: { { Id, Text, Emoji, Need, Have, Reward, Done } }
+function CityService.Goals(player)
+	local pd = playerData[player]
+	if not pd then
+		return {}
+	end
+	if not pd.Goals or pd.Goals.Day ~= state.Day then
+		local rng = Random.new(state.Day * 7919 + player.UserId % 100000)
+		local pool = table.clone(GOALS)
+		local list = {}
+		for _ = 1, 4 do
+			local g = table.remove(pool, rng:NextInteger(1, #pool))
+			table.insert(list, { Id = g.Id, Text = g.Text, Emoji = g.Emoji, Need = g.Need, Have = 0, Reward = g.Reward, Done = false })
+		end
+		pd.Goals = { Day = state.Day, List = list, Visited = {} }
+	end
+	return pd.Goals.List
+end
+
+-- Something happened that might count toward a goal
+function CityService.Progress(player, id, amount)
+	local list = CityService.Goals(player)
+	for _, g in ipairs(list) do
+		if g.Id == id and not g.Done then
+			g.Have = math.min(g.Need, g.Have + (amount or 1))
+			if g.Have >= g.Need then
+				g.Done = true
+				CityService.AddCoins(player, g.Reward, g.Emoji .. " Goal complete")
+				CityService.Send(player, { Type = "Goals", Goals = list, Done = g })
+			else
+				CityService.Send(player, { Type = "Goals", Goals = list })
+			end
+		end
+	end
+end
+
+handlers.Goals = function(player)
+	return { Ok = true, Goals = CityService.Goals(player) }
+end
+
+-- where players are: visiting places and the lake
+local function visitTick()
+	for player, pd in pairs(playerData) do
+		local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+		if root then
+			CityService.Goals(player)
+			for _, place in ipairs(S.Map.PlaceList) do
+				if place.Door and (place.Door - root.Position).Magnitude < 22 and not pd.Goals.Visited[place.Id] then
+					pd.Goals.Visited[place.Id] = true
+					CityService.Progress(player, "places", 1)
+					if place.Id == "Lake" then
+						CityService.Progress(player, "lake", 1)
+					end
+				end
+			end
+			if S.Map.Lake and (Vector3.new(root.Position.X, 0, root.Position.Z) - Vector3.new(S.Map.Lake.X, 0, S.Map.Lake.Z)).Magnitude < 150 and not pd.Goals.Visited.Lake then
+				pd.Goals.Visited.Lake = true
+				CityService.Progress(player, "lake", 1)
+			end
+		end
+	end
 end
 
 --------------------------------------------------------------------------------
@@ -7794,11 +7884,16 @@ function CityService.Start()
 	-- the slow loop: HUD numbers, coins, drift, elections, autosave
 	task.spawn(function()
 		local lastCoins, lastSave, lastHour = os.clock(), os.clock(), math.floor(CityService.Hour())
+		local lastVisit = 0
 		local warned = false
 		while true do
 			task.wait(1)
 			local now = os.clock()
 			publish()
+			if now - lastVisit >= 3 then
+				lastVisit = now
+				pcall(visitTick)
+			end
 			if now - lastCoins >= 60 then
 				lastCoins = now
 				for player in pairs(playerData) do
@@ -9665,6 +9760,7 @@ local CollectionService = game:GetService("CollectionService")
 local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
 
 local DialogueService = {}
+DialogueService.Talked = {} -- who talked to whom today (for the daily goals)
 local S
 local sessions = {} -- [player] = { Brain, Last, Depth, Used = {} }
 local chattedToday = {} -- ["citizenId:userId"] = day
@@ -10185,6 +10281,7 @@ local function respond(player, session, key)
 		local roll = math.random()
 		if p == "funny" or (p == "cheerful" and roll < 0.8) or (p ~= "grumpy" and roll < 0.45) then
 			text, expr, action = pick({ "HAHAHA! Oh that's a good one!", "Hahaha! I'm stealing that one!", "😂 Stop, stop, my sides!", "Haha! Okay, okay, my turn: " .. pick(NPC_JOKES) }), "laugh", "cheer"
+			S.City.Progress(player, "laugh", 1)
 			remember(c, player, "told me a great joke", if repeated then 1 else 5, "told " .. c.First .. " a hilarious joke")
 		elseif p == "grumpy" then
 			text, expr = pick({ "...Was that supposed to be funny?", "*stares blankly*", "I've heard better jokes from a parking meter." }), "focused"
@@ -10228,6 +10325,7 @@ local function respond(player, session, key)
 			local times = session.Used[key]
 			text = if t == "afraid" then "...Oh. Um. Thank you. I guess you're not all bad." elseif p == "grumpy" then "Hm. Coins? ...Fine. Thanks." elseif p == "shy" then "F-for me? Thank you so much!" elseif times > 2 then "You're too generous! Really, it's fine!" else pick({ "For me?! Oh, you shouldn't have! Thank you!", "Wow, thank you so much! 😊", "You're the best, " .. player.DisplayName .. "!" })
 			expr, action = "love", "cheer"
+			S.City.Progress(player, "gift", 1)
 			remember(c, player, "gave me a gift", if times > 2 then 3 else 12, "gave " .. c.First .. " a gift")
 			S.City.Boost(c, 10)
 		end
@@ -10261,6 +10359,7 @@ local function respond(player, session, key)
 			local near = if dist < 60 then "It's right around here! " else ""
 			text = near .. "The " .. placeLabel(id) .. " is " .. compass(from, place.Door) .. " of here, on " .. streetOf(place.Door) .. ". About " .. math.floor(dist / 10 + 0.5) * 10 .. " studs. I've marked it for you!"
 			expr, action = "happy", "point"
+			S.City.Progress(player, "directions", 1)
 			S.City.Send(player, { Type = "Waypoint", Position = place.Door, Label = placeLabel(id), Emoji = Config.PlaceById[id] and Config.PlaceById[id].emoji or "📍" })
 			remember(c, player, "asked me for directions", 1)
 		end
@@ -10377,6 +10476,11 @@ function DialogueService.Begin(player, brain)
 	local c = brain.C
 	local session = { Brain = brain, Last = os.clock(), Used = {} }
 	sessions[player] = session
+	local talkKey = c.Id .. ":" .. player.UserId .. ":" .. S.City.Day()
+	if not DialogueService.Talked[talkKey] then
+		DialogueService.Talked[talkKey] = true
+		S.City.Progress(player, "talk", 1)
+	end
 	local line, expr = greetingFor(c, player)
 	-- context: busy at work, asleep, in class
 	local action = brain.Model:GetAttribute("Action") or ""
@@ -10421,6 +10525,12 @@ local function onChoose(player, data)
 	session.Last = os.clock()
 	local brain = session.Brain
 	local result = respond(player, session, data.Option)
+	if data.Option == "compliment" and (session.Used.compliment or 0) <= 2 then
+		S.City.Progress(player, "compliment", 1)
+	end
+	if S.City.Opinion(brain.C, player) >= 50 then
+		S.City.Progress(player, "friend", 1)
+	end
 	result.Ok = true
 	result.Opinion = math.floor(S.City.Opinion(brain.C, player))
 	result.Mood = math.floor(S.City.MoodOf(brain.C))
@@ -11006,10 +11116,13 @@ local function attack(player, data)
 	end
 	brain.HP = (brain.HP or hpFor(brain)) - w.Damage
 	brain.LastHit = now
+	brain.Model:SetAttribute("MaxHP", hpFor(brain))
+	brain.Model:SetAttribute("HP", math.max(0, brain.HP))
 	local c = brain.C
 	S.City.SendNear(brain.Root.Position, 120, { Type = "Hit", Position = brain.Root.Position + Vector3.new(0, 2, 0), Damage = w.Damage, KO = brain.HP <= 0, Weapon = id })
 	if brain.HP <= 0 then
 		brain.HP = nil
+		brain.Model:SetAttribute("HP", nil)
 		stopFight(brain)
 		local name = c.Name
 		S.Citizens.KnockOut(brain, player.DisplayName)
@@ -11778,6 +11891,7 @@ function CrimeService.Start(services)
 				if brain.HP and os.clock() - (brain.LastHit or 0) > 20 then
 					brain.HP = nil
 					brain.Hits = 0
+					brain.Model:SetAttribute("HP", nil)
 				end
 			end
 		end
@@ -11889,6 +12003,9 @@ local function onElevator(player, data)
 			root.AssemblyLinearVelocity = Vector3.zero
 		end
 	end)
+	if floor >= 8 then
+		S.City.Progress(player, "tower", 1)
+	end
 	return { Ok = true, Floor = floor }
 end
 
@@ -12425,6 +12542,14 @@ handlers.Waypoint = function(d)
 end
 handlers.Hit = function(d)
 	World.Hit(d.Position, d.Damage, d.KO, d.Player, d.Blocked, d.Weapon)
+	local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+	if d.Player and root and (root.Position - d.Position).Magnitude < 5 then
+		Hud.Hurt()
+		World.Shake(0.5, 0.2)
+	end
+end
+handlers.Goals = function(d)
+	Hud.SetGoals(d.Goals, d.Done)
 end
 handlers.Shop = function(d)
 	Panels.OpenShop(d)
@@ -12476,7 +12601,18 @@ end)
 
 -- our own health bar replaces Roblox's
 pcall(function()
-	game:GetService("StarterGui"):SetCoreGuiEnabled(Enum.CoreGuiType.Health, false)
+	local StarterGui = game:GetService("StarterGui")
+	StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Health, false)
+	StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Backpack, false) -- our own weapon hotbar
+end)
+-- the first goals (in case they arrived before the HUD was ready)
+task.spawn(function()
+	local ok, result = pcall(function()
+		return ctx.Remotes.Request:InvokeServer({ Action = "Goals" })
+	end)
+	if ok and result and result.Goals then
+		Hud.SetGoals(result.Goals)
+	end
 end)
 
 --------------------------------------------------------------------------------
@@ -12499,6 +12635,10 @@ UserInputService.InputBegan:Connect(function(input, processed)
 	end
 	if NUMBER_KEYS[key] and Panels.InDialogue() then
 		Panels.DialogueKey(NUMBER_KEYS[key])
+	elseif NUMBER_KEYS[key] then
+		Hud.Equip(NUMBER_KEYS[key])
+	elseif key == Enum.KeyCode.Tab then
+		Panels.Phone.Toggle()
 	elseif key == Enum.KeyCode.M then
 		Panels.Map.Toggle()
 	elseif key == Enum.KeyCode.P then
@@ -12518,6 +12658,8 @@ UserInputService.InputBegan:Connect(function(input, processed)
 	elseif key == Enum.KeyCode.Escape or key == Enum.KeyCode.Backspace then
 		if Panels.InDialogue() then
 			Panels.EndDialogue(true)
+		elseif Panels.Phone.IsOpen() then
+			Panels.Phone.Close()
 		else
 			UI.closeAll()
 		end
@@ -12676,10 +12818,14 @@ function UI.panel(parent, props)
 		Parent = parent,
 	})
 	for k, v in pairs(props or {}) do
-		frame[k] = v
+		if k ~= "Radius" and k ~= "Shadow" and k ~= "Glass" then -- our own options, not Frame properties
+			frame[k] = v
+		end
 	end
 	UI.corner(frame, (props and props.Radius) or 14)
 	UI.stroke(frame, UI.C.Line, 1, 0.45)
+	-- a soft top-to-bottom shade gives panels some depth
+	UI.gradient(frame, UI.C.White, UI.rgb(196, 200, 222), 90)
 	return frame
 end
 
@@ -12708,6 +12854,7 @@ function UI.button(parent, text, props, onClick)
 	end
 	UI.corner(button, props.Radius or 10)
 	local stroke = UI.stroke(button, color:Lerp(UI.C.White, 0.25), 1, 0.5)
+	UI.gradient(button, UI.C.White, UI.rgb(200, 200, 215), 90)
 	local scale = UI.new("UIScale", { Parent = button })
 	button.MouseEnter:Connect(function()
 		UI.tween(scale, 0.12, { Scale = 1.04 })
@@ -12836,6 +12983,8 @@ function UI.window(screen, title, icon, size, accent)
 	UI.corner(header, 18)
 	UI.new("Frame", { BackgroundColor3 = UI.C.Panel2, BorderSizePixel = 0, Size = UDim2.new(1, 0, 0, 18), Position = UDim2.new(0, 0, 1, -18), ZIndex = 21, Parent = header })
 	UI.new("Frame", { BackgroundColor3 = accent, BorderSizePixel = 0, Size = UDim2.new(1, 0, 0, 3), Position = UDim2.new(0, 0, 1, 0), ZIndex = 22, Parent = header })
+	-- the header glows faintly in the window's color
+	UI.gradient(header, accent:Lerp(UI.C.White, 0.2), UI.C.White, 0, NumberSequence.new(0.2, 0))
 	local iconLabel = UI.text(header, icon or "", 26, UI.Font, UI.C.Text, { Size = UDim2.fromOffset(40, 40), Position = UDim2.fromOffset(14, 7), TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 22 })
 	local titleLabel = UI.text(header, title, 22, UI.Title, UI.C.Text, { Size = UDim2.new(1, -140, 0, 30), Position = UDim2.fromOffset(60, 12), ZIndex = 22 })
 	local close = UI.button(header, "✕", { Size = UDim2.fromOffset(36, 36), Position = UDim2.new(1, -46, 0, 9), Color = UI.C.Panel3, TextSize = 16 }, function()
@@ -13154,7 +13303,10 @@ local function build()
 	workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(rescale)
 
 	-- the clock card
-	local card = UI.panel(screen, { Name = "Clock", Position = UDim2.fromOffset(16, 14), Size = UDim2.fromOffset(290, 0), AutomaticSize = Enum.AutomaticSize.Y, Radius = 16 })
+	-- the left column: the clock card, then today's goals under it
+	local column = UI.new("Frame", { Name = "LeftColumn", BackgroundTransparency = 1, Position = UDim2.fromOffset(16, 14), Size = UDim2.fromOffset(290, 0), AutomaticSize = Enum.AutomaticSize.Y, Parent = screen })
+	UI.list(column, Enum.FillDirection.Vertical, 10)
+	local card = UI.panel(column, { Name = "Clock", Size = UDim2.fromOffset(290, 0), AutomaticSize = Enum.AutomaticSize.Y, Radius = 16, LayoutOrder = 1 })
 	UI.pad(card, 12, 10, 14, 12, 14)
 	UI.list(card, Enum.FillDirection.Vertical, 6)
 	local top = UI.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 40), LayoutOrder = 1, Parent = card })
@@ -13226,14 +13378,11 @@ local function build()
 	UI.pad(bar, 7)
 	UI.list(bar, Enum.FillDirection.Horizontal, 7, Enum.HorizontalAlignment.Center, Enum.VerticalAlignment.Center)
 	refs.Bar = bar
+	refs.PhoneButton = actionButton(bar, "📱", "Phone", "Tab", 0, function()
+		ctx.Panels.Phone.Toggle()
+	end, UI.rgb(70, 50, 130))
 	actionButton(bar, "🗺️", "Map", "M", 1, function()
 		ctx.Panels.Map.Toggle()
-	end)
-	actionButton(bar, "👥", "People", "P", 2, function()
-		ctx.Panels.Directory.Toggle()
-	end)
-	actionButton(bar, "🗳️", "Vote", "V", 3, function()
-		ctx.Panels.Vote.Toggle()
 	end)
 	refs.SpeechButton = actionButton(bar, "🎤", "Speech", "B", 4, function()
 		ctx.Panels.Speech.Toggle()
@@ -13257,12 +13406,6 @@ local function build()
 		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 			ctx.World.SetBlock(false)
 		end
-	end)
-	actionButton(bar, "⚙️", "Settings", nil, 7, function()
-		ctx.Panels.Settings.Toggle()
-	end)
-	actionButton(bar, "❓", "Help", "H", 8, function()
-		ctx.Panels.Help.Toggle()
 	end)
 
 	-- health (bottom left)
@@ -13496,8 +13639,11 @@ local function frame(dt)
 	end
 	-- near the podium?
 	local podium = ctx.SpeechSpot
-	refs.Hint.Visible = root ~= nil and podium ~= nil and (root.Position - podium).Magnitude < 14 and not ctx.Panels.Speech.IsOpen()
-	refs.SpeechButton.BackgroundColor3 = if refs.Hint.Visible then UI.rgb(130, 95, 20) else C.Panel2
+	local nearPodium = root ~= nil and podium ~= nil and (root.Position - podium).Magnitude < 14
+	refs.Hint.Visible = nearPodium and not ctx.Panels.Speech.IsOpen()
+	refs.SpeechButton.Visible = nearPodium
+	refs.SpeechButton.BackgroundColor3 = UI.rgb(130, 95, 20)
+	Hud.UpdateExtras(dt, root)
 end
 
 local function dotsTick()
@@ -13531,10 +13677,252 @@ local function dotsTick()
 	end
 end
 
+--------------------------------------------------------------------------------
+-- Daily goals (under the clock)
+--------------------------------------------------------------------------------
+local goalsPanel, goalsList, goalsOpen = nil, nil, true
+function Hud.SetGoals(goals, done)
+	if not goalsPanel then
+		return
+	end
+	Hud.GoalData = goals
+	for _, child in ipairs(goalsList:GetChildren()) do
+		if child:IsA("Frame") then
+			child:Destroy()
+		end
+	end
+	local finished = 0
+	for k, g in ipairs(goals or {}) do
+		if g.Done then
+			finished += 1
+		end
+		local row = UI.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 30), LayoutOrder = k, Parent = goalsList })
+		UI.text(row, (if g.Done then "✅" else g.Emoji) .. "  " .. g.Text, 13, if g.Done then UI.Font else UI.Bold, if g.Done then C.Dim else C.Text, { Size = UDim2.new(1, -54, 0, 16), TextTruncate = Enum.TextTruncate.AtEnd })
+		UI.text(row, if g.Done then "+" .. g.Reward .. "🪙" else g.Have .. "/" .. g.Need, 12, UI.Bold, if g.Done then C.Green else C.Gold, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(1, 0), Size = UDim2.fromOffset(52, 16), TextXAlignment = Enum.TextXAlignment.Right })
+		local _, set = UI.bar(row, if g.Done then C.Green else C.Gold, 5, { Position = UDim2.fromOffset(0, 20) })
+		set(g.Have / math.max(1, g.Need))
+	end
+	goalsPanel.Title.Text = "🎯 Today's goals  <font color='#a0a8c6'>" .. finished .. "/" .. #(goals or {}) .. "</font>" .. (if goalsOpen then "  ▾" else "  ▸")
+	if done then
+		Hud.Banner("🎯 GOAL COMPLETE!  +" .. done.Reward .. " 🪙", C.Green, 2.5)
+		Hud.Toast("🎯", "Goal complete: " .. done.Text, "+" .. done.Reward .. " coins", C.Green)
+		local scale = goalsPanel.Frame:FindFirstChildOfClass("UIScale")
+		scale.Scale = 1.08
+		UI.tween(scale, 0.4, { Scale = 1 }, Enum.EasingStyle.Back)
+	end
+end
+
+local function buildGoals(column)
+	local frame = UI.panel(column, { Name = "Goals", LayoutOrder = 2, Size = UDim2.fromOffset(290, 0), AutomaticSize = Enum.AutomaticSize.Y, Radius = 16 })
+	UI.new("UIScale", { Parent = frame })
+	UI.pad(frame, 10, 8, 14, 10, 14)
+	UI.list(frame, Enum.FillDirection.Vertical, 6)
+	local title = UI.new("TextButton", { BackgroundTransparency = 1, Text = "🎯 Today's goals", TextColor3 = C.Gold, Font = UI.Title, TextSize = 16, RichText = true, TextXAlignment = Enum.TextXAlignment.Left, Size = UDim2.new(1, 0, 0, 22), LayoutOrder = 0, Parent = frame })
+	goalsList = UI.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 1, Parent = frame })
+	UI.list(goalsList, Enum.FillDirection.Vertical, 4)
+	title.Activated:Connect(function()
+		goalsOpen = not goalsOpen
+		goalsList.Visible = goalsOpen
+		Hud.SetGoals(Hud.GoalData)
+	end)
+	goalsPanel = { Frame = frame, Title = title }
+end
+
+--------------------------------------------------------------------------------
+-- The weapon hotbar (bottom right): 1 = fists, 2+ = your weapons
+--------------------------------------------------------------------------------
+local hotbar, slots = nil, {}
+local EMOJI = { Fists = "👊", Bat = "🏏", Hammer = "🔨", Knife = "🔪" }
+local function tools()
+	local list = {}
+	local backpack = player:FindFirstChildOfClass("Backpack")
+	for _, container in ipairs({ player.Character, backpack }) do
+		if container then
+			for _, t in ipairs(container:GetChildren()) do
+				if t:IsA("Tool") and t:GetAttribute("Weapon") then
+					table.insert(list, t)
+				end
+			end
+		end
+	end
+	local order = { Bat = 1, Hammer = 2, Knife = 3 }
+	table.sort(list, function(a, b)
+		return (order[a:GetAttribute("Weapon")] or 9) < (order[b:GetAttribute("Weapon")] or 9)
+	end)
+	return list
+end
+
+-- equip slot n (1 = fists)
+function Hud.Equip(n)
+	local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+	if not humanoid then
+		return false
+	end
+	local list = tools()
+	if n == 1 then
+		humanoid:UnequipTools()
+		return true
+	end
+	local tool = list[n - 1]
+	if tool then
+		if tool.Parent == player.Character then
+			humanoid:UnequipTools()
+		else
+			humanoid:EquipTool(tool)
+		end
+		UI.sound("click", 0.25, 1.4)
+		return true
+	end
+	return false
+end
+
+local function buildHotbar()
+	hotbar = UI.new("Frame", { Name = "Hotbar", BackgroundTransparency = 1, AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -16, 1, -16), Size = UDim2.fromOffset(0, 64), AutomaticSize = Enum.AutomaticSize.X, Visible = false, Parent = screen })
+	UI.list(hotbar, Enum.FillDirection.Horizontal, 8, Enum.HorizontalAlignment.Right, Enum.VerticalAlignment.Bottom)
+end
+
+local function refreshHotbar()
+	local list = tools()
+	hotbar.Visible = #list > 0
+	local wanted = { "Fists" }
+	for _, t in ipairs(list) do
+		table.insert(wanted, t:GetAttribute("Weapon"))
+	end
+	local equipped = ctx.World.Equipped and ctx.World.Equipped() or "Fists"
+	for k, id in ipairs(wanted) do
+		local slot = slots[k]
+		if not slot then
+			local button = UI.button(hotbar, "", { Size = UDim2.fromOffset(60, 60), Color = C.Panel2, LayoutOrder = k }, function()
+				Hud.Equip(k)
+			end)
+			local icon = UI.text(button, "", 28, UI.Font, C.White, { Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center })
+			local num = UI.new("TextLabel", { BackgroundColor3 = C.Bg, Text = tostring(k), TextColor3 = C.Gold, Font = UI.Black, TextSize = 11, Size = UDim2.fromOffset(16, 16), Position = UDim2.fromOffset(3, 3), Parent = button })
+			UI.corner(num, 5)
+			-- the cooldown sweeps down after each attack
+			local cool = UI.new("Frame", { BackgroundColor3 = Color3.new(0, 0, 0), BackgroundTransparency = 0.45, AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.fromScale(1, 0), BorderSizePixel = 0, Parent = button })
+			UI.corner(cool, 10)
+			slot = { Button = button, Icon = icon, Cool = cool }
+			slots[k] = slot
+		end
+		slot.Button.Visible = true
+		slot.Icon.Text = EMOJI[id] or "❔"
+		slot.Id = id
+		local selected = id == equipped
+		slot.Button.BackgroundColor3 = if selected then UI.rgb(120, 40, 50) else C.Panel2
+	end
+	for k = #wanted + 1, #slots do
+		slots[k].Button.Visible = false
+	end
+end
+
+--------------------------------------------------------------------------------
+-- The target card: who you're facing up close
+--------------------------------------------------------------------------------
+local card
+local function buildTargetCard()
+	card = UI.panel(screen, { Name = "Target", AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 16), Size = UDim2.fromOffset(320, 0), AutomaticSize = Enum.AutomaticSize.Y, Visible = false, Radius = 16 })
+	UI.new("UIScale", { Parent = card })
+	UI.pad(card, 10, 8, 14, 10, 14)
+	UI.list(card, Enum.FillDirection.Vertical, 4, Enum.HorizontalAlignment.Center)
+	refs.TargetName = UI.text(card, "", 18, UI.Title, C.White, { Size = UDim2.new(1, 0, 0, 22), TextXAlignment = Enum.TextXAlignment.Center, LayoutOrder = 1 })
+	refs.TargetSub = UI.text(card, "", 12, UI.Font, C.Sub, { Size = UDim2.new(1, 0, 0, 16), TextXAlignment = Enum.TextXAlignment.Center, TextTruncate = Enum.TextTruncate.AtEnd, LayoutOrder = 2 })
+	local hpRow
+	hpRow, refs.TargetHPSet = UI.bar(card, C.Red, 8, { LayoutOrder = 3 })
+	refs.TargetHP = hpRow
+	refs.TargetKeys = UI.text(card, "", 12, UI.Bold, C.Gold, { Size = UDim2.new(1, 0, 0, 16), TextXAlignment = Enum.TextXAlignment.Center, LayoutOrder = 4 })
+end
+
+local lastTarget
+local function updateTarget(root)
+	if not root or ctx.Panels.InDialogue() or player:GetAttribute("JailUntil") then
+		card.Visible = false
+		lastTarget = nil
+		return
+	end
+	local look = root.CFrame.LookVector
+	local best, bestScore = nil, math.huge
+	for _, model in ipairs(CollectionService:GetTagged("Citizen")) do
+		local r = model:FindFirstChild("HumanoidRootPart")
+		if r then
+			local d = r.Position - root.Position
+			local flat = Vector3.new(d.X, 0, d.Z)
+			if flat.Magnitude < 11 and flat.Magnitude > 0.1 and look:Dot(flat.Unit) > 0.45 then
+				local score = flat.Magnitude - look:Dot(flat.Unit) * 3
+				if score < bestScore then
+					best, bestScore = model, score
+				end
+			end
+		end
+	end
+	card.Visible = best ~= nil
+	if not best then
+		lastTarget = nil
+		return
+	end
+	if best ~= lastTarget then
+		lastTarget = best
+		local scale = card:FindFirstChildOfClass("UIScale")
+		scale.Scale = 0.85
+		UI.tween(scale, 0.18, { Scale = 1 }, Enum.EasingStyle.Back)
+	end
+	local stage = best:GetAttribute("Stage") or ""
+	local job = best:GetAttribute("Job") or ""
+	local role = if job ~= "" then job elseif (best:GetAttribute("School") or "") ~= "" then best:GetAttribute("School") else stage
+	refs.TargetName.Text = UI.moodEmoji(best:GetAttribute("Mood") or 60) .. "  " .. (best:GetAttribute("DisplayName") or best.Name)
+	refs.TargetSub.Text = (best:GetAttribute("Age") or "?") .. " · " .. role .. "  ·  " .. (best:GetAttribute("Activity") or "")
+	local hp, maxHp = best:GetAttribute("HP"), best:GetAttribute("MaxHP")
+	refs.TargetHP.Visible = hp ~= nil and maxHp ~= nil
+	if hp and maxHp then
+		refs.TargetHPSet(hp / maxHp, if hp / maxHp > 0.5 then C.Gold else C.Red)
+	end
+	local kid = stage == "Baby" or stage == "Toddler" or stage == "Child" or stage == "Teen"
+	local ko = best:GetAttribute("KnockedOut")
+	refs.TargetKeys.Text = if ko then "💫 Knocked out" elseif kid then "[E] Talk" else "[E] Talk   [G] Pickpocket   [F] Attack"
+	card.Position = UDim2.new(0.5, 0, 0, if refs.Jail.Visible then 90 else 16)
+end
+
+--------------------------------------------------------------------------------
+-- Low health: the screen glows red
+--------------------------------------------------------------------------------
+local lastHurt = 0
+function Hud.Hurt()
+	lastHurt = os.clock()
+end
+
+local slowExtras = 0
+function Hud.UpdateExtras(dt, root)
+	slowExtras += dt
+	-- cooldown sweep on the selected weapon
+	local w = ctx.World.Cooldown and ctx.World.Cooldown()
+	for _, slot in ipairs(slots) do
+		if slot.Button.Visible then
+			slot.Cool.Size = UDim2.fromScale(1, if w and slot.Id == w.Id then w.Left else 0)
+		end
+	end
+	local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+	local frac = if humanoid then humanoid.Health / math.max(1, humanoid.MaxHealth) else 1
+	local stars = player:GetAttribute("Wanted") or 0
+	if stars == 0 and not player:GetAttribute("Hiding") then
+		local hurt = math.max(0, 1 - (os.clock() - lastHurt) / 0.4)
+		local low = if frac < 0.35 and frac > 0 then 0.35 + (math.sin(os.clock() * 4) + 1) * 0.15 else 0
+		local glow = math.max(hurt * 0.8, low)
+		refs.EdgeStroke.Color = C.Red
+		refs.EdgeStroke.Transparency = 1 - glow
+	end
+	if slowExtras >= 0.1 then
+		slowExtras = 0
+		refreshHotbar()
+		updateTarget(root)
+	end
+end
+
 function Hud.Start(context)
 	ctx = context
 	cityState = ReplicatedStorage:WaitForChild("CityState")
 	build()
+	buildGoals(screen:FindFirstChild("LeftColumn"))
+	buildHotbar()
+	buildTargetCard()
 	Hud.SetCoins(player:GetAttribute("Coins") or 0)
 	player:GetAttributeChangedSignal("Coins"):Connect(function()
 		Hud.SetCoins(player:GetAttribute("Coins") or 0, true)
@@ -14061,6 +14449,14 @@ local function buildDirectory()
 		end)
 	end
 	search:GetPropertyChangedSignal("Text"):Connect(rebuild)
+	function Panels.OpenDirectory(which)
+		tab, sortBy = which or "People", "Name"
+		if win.IsOpen() then
+			rebuild()
+		else
+			win.Open()
+		end
+	end
 	win.OnOpen = function()
 		local result = request({ Action = "Directory" })
 		if result.Ok then
@@ -14420,7 +14816,7 @@ local function buildHelp()
 		{ "⚔️ Fighting", "<b>F</b> (or click with a weapon) attacks, <b>hold X</b> blocks (you take a third of the damage). Buy a 🏏 bat, 🔨 hammer or 🔪 knife at the Hardware store: they hit harder, but using them is a much more serious crime. Tough citizens and the police fight back, so watch your ❤️ health. If you get knocked out, you wake up at the hospital (wanted stars cleared, but there's a bill)." },
 		{ "🚨 Crime", "<b>F</b> attacks, <b>G</b> (hold) picks a pocket, <b>R</b> (hold) robs a register or the bank vault. If anyone sees you, you get wanted stars and the police come after you. Get caught and you're BUSTED: a fine and time in jail. Kids can't be hurt." },
 		{ "🫥 Losing the police", "The police only know where they <b>last saw</b> you. Break their line of sight (around a corner, into a building) and they'll run there and search around. Hide in a <b>trash can, hedge or park bush</b> (hold <b>Q</b>): they can't see you, unless they search right next to your spot (or saw you climb in!). Stay out of sight and the stars fade one by one, faster while you're hiding. <b>Space</b> gets you out." },
-		{ "⌨️ Keys", "E talk / use · M map · P people · V vote · B speech · N mayor · F attack · X block · 1-3 weapons · G pickpocket · R rob · Q hide · H help · 1-9 answer in conversations · Esc close windows" },
+		{ "⌨️ Keys", "Tab phone · E talk / use · M map · P people · V vote · B speech · N mayor · F attack · X block · 1-4 hotbar · G pickpocket · R rob · Q hide · H help · 1-9 answer in conversations · Esc close windows" },
 	}
 	for _, s in ipairs(sections) do
 		local card = UI.panel(list, { Size = UDim2.new(1, -10, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundColor3 = C.Panel2, Radius = 12 })
@@ -14466,7 +14862,8 @@ local function buildSettings()
 end
 
 local function buildWelcome()
-	local cover = UI.new("Frame", { BackgroundColor3 = C.Bg, BackgroundTransparency = 0.25, Size = UDim2.fromScale(1, 1), ZIndex = 40, Visible = false, Parent = screen })
+	local cover = UI.new("Frame", { BackgroundColor3 = C.Bg, BackgroundTransparency = 0.55, Size = UDim2.fromScale(1, 1), ZIndex = 40, Visible = false, Parent = screen })
+	UI.gradient(cover, C.White, C.White, 90, NumberSequence.new(0.4, 0))
 	local card = UI.panel(cover, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(720, 460), ZIndex = 41, Radius = 22 })
 	UI.gradient(card, C.Panel2, C.Panel, 90)
 	local scale = UI.new("UIScale", { Parent = card })
@@ -14490,7 +14887,25 @@ local function buildWelcome()
 		end)
 	end)
 	go.ZIndex = 44
+	local orbiting
+	local function stopOrbit()
+		if orbiting then
+			orbiting:Disconnect()
+			orbiting = nil
+			workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
+		end
+	end
+	go.Activated:Connect(stopOrbit)
 	function Panels.Welcome()
+		-- a slow flight over downtown behind the welcome card
+		local camera = workspace.CurrentCamera
+		camera.CameraType = Enum.CameraType.Scriptable
+		local start = os.clock()
+		orbiting = RunService.RenderStepped:Connect(function()
+			local a = (os.clock() - start) * 0.08
+			local pos = Vector3.new(math.cos(a) * 190, 95 + math.sin(a * 0.7) * 15, math.sin(a) * 190)
+			camera.CFrame = CFrame.lookAt(pos, Vector3.new(0, 15, 0))
+		end)
 		cover.Visible = true
 		scale.Scale = 0.8
 		UI.tween(scale, 0.4, { Scale = 1 }, Enum.EasingStyle.Back)
@@ -14543,6 +14958,155 @@ local function buildBusted()
 			task.wait(0.5)
 			cover.Visible = false
 		end)
+	end
+end
+
+--------------------------------------------------------------------------------
+-- The phone (Tab): every app in one place
+--------------------------------------------------------------------------------
+local function buildPhone()
+	local phone = UI.new("Frame", { Name = "Phone", AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -24, 1, 600), Size = UDim2.fromOffset(300, 560), BackgroundColor3 = UI.rgb(12, 12, 16), Visible = false, ZIndex = 30, Parent = screen })
+	UI.corner(phone, 38)
+	UI.stroke(phone, UI.rgb(80, 80, 96), 3, 0)
+	local screenArea = UI.new("Frame", { Name = "Screen", Position = UDim2.fromOffset(10, 10), Size = UDim2.new(1, -20, 1, -20), ClipsDescendants = true, BackgroundColor3 = UI.rgb(40, 30, 90), ZIndex = 31, Parent = phone })
+	UI.corner(screenArea, 30)
+	UI.gradient(screenArea, UI.rgb(90, 70, 200), UI.rgb(20, 60, 120), 135)
+	-- the status bar: time, coins
+	local status = UI.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 34), ZIndex = 32, Parent = screenArea })
+	local clock = UI.text(status, "9:30", 14, UI.Bold, C.White, { Position = UDim2.fromOffset(24, 8), Size = UDim2.fromOffset(80, 20), ZIndex = 33 })
+	local coins = UI.text(status, "🪙 0", 13, UI.Bold, C.White, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -22, 0, 8), Size = UDim2.fromOffset(120, 20), TextXAlignment = Enum.TextXAlignment.Right, ZIndex = 33 })
+	local notch = UI.new("Frame", { BackgroundColor3 = UI.rgb(12, 12, 16), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 6), Size = UDim2.fromOffset(90, 22), ZIndex = 33, Parent = screenArea })
+	UI.corner(notch, 11)
+	-- home screen: a greeting and the apps
+	local home = UI.new("Frame", { BackgroundTransparency = 1, Position = UDim2.fromOffset(0, 40), Size = UDim2.new(1, 0, 1, -80), ZIndex = 32, Parent = screenArea })
+	local hello = UI.text(home, "", 26, UI.Title, C.White, { Position = UDim2.fromOffset(20, 6), Size = UDim2.new(1, -40, 0, 32), TextScaled = true, ZIndex = 33 })
+	UI.new("UITextSizeConstraint", { MaxTextSize = 26, MinTextSize = 14, Parent = hello })
+	local sub = UI.text(home, "", 13, UI.Font, UI.rgb(220, 220, 255), { Position = UDim2.fromOffset(20, 38), Size = UDim2.new(1, -40, 0, 18), ZIndex = 33 })
+	local grid = UI.new("Frame", { BackgroundTransparency = 1, Position = UDim2.fromOffset(16, 76), Size = UDim2.new(1, -32, 1, -80), ZIndex = 32, Parent = home })
+	UI.new("UIGridLayout", { CellSize = UDim2.fromOffset(74, 86), CellPadding = UDim2.fromOffset(8, 8), SortOrder = Enum.SortOrder.LayoutOrder, Parent = grid })
+	-- the goals page
+	local page = UI.new("Frame", { BackgroundTransparency = 1, Position = UDim2.fromOffset(0, 40), Size = UDim2.new(1, 0, 1, -80), Visible = false, ZIndex = 32, Parent = screenArea })
+	UI.text(page, "🎯 Today's goals", 22, UI.Title, C.White, { Position = UDim2.fromOffset(20, 6), Size = UDim2.new(1, -40, 0, 30), ZIndex = 33 })
+	local goalList = UI.new("Frame", { BackgroundTransparency = 1, Position = UDim2.fromOffset(16, 46), Size = UDim2.new(1, -32, 1, -50), ZIndex = 32, Parent = page })
+	UI.list(goalList, Enum.FillDirection.Vertical, 8)
+	local open = false
+	local P = {}
+	Panels.Phone = P
+	local function showHome()
+		home.Visible, page.Visible = true, false
+	end
+	local function showGoals()
+		home.Visible, page.Visible = false, true
+		clear(goalList)
+		local goals = ctx.Hud.GoalData or {}
+		for k, g in ipairs(goals) do
+			local card = UI.new("Frame", { BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = 0.85, Size = UDim2.new(1, 0, 0, 64), LayoutOrder = k, ZIndex = 33, Parent = goalList })
+			UI.corner(card, 14)
+			UI.text(card, g.Emoji, 26, UI.Font, C.White, { Position = UDim2.fromOffset(8, 10), Size = UDim2.fromOffset(40, 40), TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 34 })
+			UI.text(card, g.Text, 13, UI.Bold, C.White, { Position = UDim2.fromOffset(54, 8), Size = UDim2.new(1, -62, 0, 32), TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top, ZIndex = 34 })
+			UI.text(card, if g.Done then "✅ Done! +" .. g.Reward .. " 🪙" else g.Have .. " / " .. g.Need .. "   ·   🪙 " .. g.Reward, 12, UI.Bold, if g.Done then C.Green else C.Gold, { Position = UDim2.fromOffset(54, 40), Size = UDim2.new(1, -62, 0, 16), ZIndex = 34 })
+		end
+		if #goals == 0 then
+			UI.text(goalList, "New goals every morning!", 14, UI.Font, C.White, { ZIndex = 33 })
+		end
+	end
+	local function app(order, emoji, name, color, fn)
+		local b = UI.new("TextButton", { BackgroundTransparency = 1, Text = "", LayoutOrder = order, ZIndex = 33, Parent = grid })
+		local icon = UI.new("TextLabel", { BackgroundColor3 = color, Text = emoji, TextSize = 30, Font = UI.Font, AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 0), Size = UDim2.fromOffset(60, 60), ZIndex = 34, Parent = b })
+		UI.corner(icon, 16)
+		UI.gradient(icon, C.White, UI.rgb(200, 200, 215), 90)
+		UI.text(b, name, 12, UI.Bold, C.White, { Position = UDim2.fromOffset(0, 64), Size = UDim2.new(1, 0, 0, 16), TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 34 })
+		local scale = UI.new("UIScale", { Parent = icon })
+		b.MouseEnter:Connect(function()
+			UI.tween(scale, 0.12, { Scale = 1.08 })
+		end)
+		b.MouseLeave:Connect(function()
+			UI.tween(scale, 0.12, { Scale = 1 })
+		end)
+		b.Activated:Connect(function()
+			UI.sound("pop", 0.25, 1.2)
+			UI.tween(scale, 0.06, { Scale = 0.9 })
+			task.delay(0.08, function()
+				fn()
+			end)
+		end)
+	end
+	app(1, "🗺️", "Map", UI.rgb(60, 170, 110), function()
+		P.Close()
+		Panels.Map.Open()
+	end)
+	app(2, "👥", "People", UI.rgb(150, 90, 230), function()
+		P.Close()
+		Panels.OpenDirectory("People")
+	end)
+	app(3, "📰", "News", UI.rgb(230, 90, 80), function()
+		P.Close()
+		Panels.OpenDirectory("News")
+	end)
+	app(4, "🗳️", "Vote", UI.rgb(70, 130, 240), function()
+		P.Close()
+		Panels.Vote.Open()
+	end)
+	app(5, "🎯", "Goals", UI.rgb(240, 170, 40), showGoals)
+	app(6, "🎤", "Speech", UI.rgb(200, 140, 30), function()
+		P.Close()
+		Panels.Speech.Open()
+	end)
+	app(7, "🏛️", "Mayor", UI.rgb(130, 100, 50), function()
+		P.Close()
+		Panels.Mayor.Open()
+	end)
+	app(8, "❓", "Help", UI.rgb(80, 90, 120), function()
+		P.Close()
+		Panels.Help.Open()
+	end)
+	app(9, "⚙️", "Settings", UI.rgb(110, 110, 130), function()
+		P.Close()
+		Panels.Settings.Open()
+	end)
+	-- the home bar: back to the home screen
+	local homeBar = UI.new("TextButton", { BackgroundColor3 = C.White, BackgroundTransparency = 0.3, Text = "", AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -10), Size = UDim2.fromOffset(110, 6), ZIndex = 35, Parent = screenArea })
+	UI.corner(homeBar, 3)
+	homeBar.Activated:Connect(showHome)
+	function P.IsOpen()
+		return open
+	end
+	function P.Open()
+		if open then
+			return
+		end
+		open = true
+		showHome()
+		phone.Visible = true
+		local name = player.DisplayName
+		local h = game:GetService("Lighting").ClockTime
+		hello.Text = (if h < 12 then "Good morning" elseif h < 18 then "Good afternoon" else "Good evening") .. "!"
+		local state = ReplicatedStorage:FindFirstChild("CityState")
+		sub.Text = name .. (if state then " · " .. (state:GetAttribute("Weekday") or "") .. " · " .. string.lower(state:GetAttribute("StateLabel") or "stable") else "")
+		clock.Text = (UI.formatHour(h))
+		coins.Text = "🪙 " .. UI.commas(player:GetAttribute("Coins") or 0)
+		phone.Position = UDim2.new(1, -24, 1, 600)
+		UI.tween(phone, 0.35, { Position = UDim2.new(1, -24, 1, -110) }, Enum.EasingStyle.Back)
+		UI.sound("click", 0.3, 1.5)
+	end
+	function P.Close()
+		if not open then
+			return
+		end
+		open = false
+		UI.tween(phone, 0.25, { Position = UDim2.new(1, -24, 1, 600) }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+		task.delay(0.25, function()
+			if not open then
+				phone.Visible = false
+			end
+		end)
+	end
+	function P.Toggle()
+		if open then
+			P.Close()
+		else
+			P.Open()
+		end
 	end
 end
 
@@ -14641,6 +15205,7 @@ function Panels.Start(context)
 	buildBusted()
 	buildShop()
 	buildDown()
+	buildPhone()
 end
 
 return Panels
@@ -14699,8 +15264,36 @@ local function makePlate(model, isPlayer)
 	local badge = UI.chip(nameRow, "", C.Pink, { LayoutOrder = 3, Visible = false, TextSize = 12, Size = UDim2.fromOffset(0, 20) })
 	local activity = UI.text(gui, "", 13, UI.Font, Color3.fromRGB(235, 238, 250), { Position = UDim2.fromOffset(0, 26), Size = UDim2.new(1, 0, 0, 18), TextXAlignment = Enum.TextXAlignment.Center, TextTransparency = 0.05 })
 	UI.new("UIStroke", { Color = Color3.new(0, 0, 0), Thickness = 1.2, Transparency = 0.45, Parent = activity })
+	-- a health bar when they're hurt
+	local hpBack = UI.new("Frame", { BackgroundColor3 = Color3.new(0, 0, 0), BackgroundTransparency = 0.35, AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 46), Size = UDim2.fromOffset(90, 7), Visible = false, Parent = gui })
+	UI.corner(hpBack, 3)
+	local hpFill = UI.new("Frame", { BackgroundColor3 = C.Red, BorderSizePixel = 0, Size = UDim2.fromScale(1, 1), Parent = hpBack })
+	UI.corner(hpFill, 3)
 	gui.Parent = head
 	local entry = { Gui = gui, Name = name, Mood = mood, Badge = badge, Activity = activity, Model = model, IsPlayer = isPlayer }
+	local function refreshHP()
+		local hp, maxHp = model:GetAttribute("HP"), model:GetAttribute("MaxHP")
+		if isPlayer then
+			local humanoid = model:FindFirstChildOfClass("Humanoid")
+			hp, maxHp = humanoid and humanoid.Health, humanoid and humanoid.MaxHealth
+			if hp and maxHp and hp >= maxHp then
+				hp = nil
+			end
+		end
+		hpBack.Visible = hp ~= nil and maxHp ~= nil and hp > 0
+		if hpBack.Visible then
+			local f = math.clamp(hp / maxHp, 0, 1)
+			UI.tween(hpFill, 0.2, { Size = UDim2.fromScale(f, 1) })
+			hpFill.BackgroundColor3 = if f > 0.5 then C.Gold else C.Red
+		end
+	end
+	model:GetAttributeChangedSignal("HP"):Connect(refreshHP)
+	if isPlayer then
+		local humanoid = model:FindFirstChildOfClass("Humanoid")
+		if humanoid then
+			humanoid.HealthChanged:Connect(refreshHP)
+		end
+	end
 	plates[model] = entry
 	local function refresh()
 		if isPlayer then
@@ -15136,6 +15729,13 @@ function World.Attack()
 	end)
 end
 World.Punch = World.Attack
+
+-- how much of the current weapon's cooldown is left (0..1), for the hotbar
+function World.Cooldown()
+	local id = World.Equipped()
+	local w = Weapons.Get(id)
+	return { Id = id, Left = math.clamp(1 - (os.clock() - lastAttack) / w.Cooldown, 0, 1) }
+end
 
 local blockingNow = false
 function World.SetBlock(on)

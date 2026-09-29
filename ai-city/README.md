@@ -28,7 +28,7 @@ Players can talk to anyone, give speeches, run for mayor and pass laws. They can
 | 💬 **Dialogue** | Talk to anyone. Answers depend on their personality, mood, job, the city and what they remember about you. |
 | 🗳️ **Politics** | Speeches, elections with citizen candidates, votes, a mayor's salary and daily policies. |
 | ⚔️ **Fighting and crime** | Fists, a bat, a hammer and a knife, with attack animations, blocking, and citizens who fight back. Also pickpocketing and robberies. Witnesses need line of sight. Wanted stars bring police chases with backup, and getting caught means jail and a fine. |
-| 🖥️ **A full interface** | <ul><li>HUD: clock, city mood, rotating minimap, coins, wanted stars and a news ticker.</li><li>Windows: a city map, a people directory, profile cards with a 3D portrait, voting, speeches, the mayor's desk, conversations, elevators, help and settings.</li></ul> |
+| 🖥️ **A full interface** | <ul><li>HUD: clock, city mood, rotating minimap, coins, wanted stars, a news ticker and a health bar that glows red when you're hurt.</li><li>📱 **A phone** (**Tab**) with every app: map, people, news, vote, goals, speech, mayor, help and settings.</li><li>🎯 **Daily goals**: four new ones every day, such as "chat with 3 citizens" or "visit Mirror Lake". Each pays coins.</li><li>A weapon hotbar with a cooldown sweep, a **target card** for whoever you're facing (name, job, health), and health bars over people who are hurt.</li><li>A camera flyover behind the welcome screen.</li><li>Windows: a city map, a people directory, profile cards with a 3D portrait, voting, speeches, the mayor's desk, conversations, elevators, the weapons shop, help and settings.</li></ul> |
 
 ## The city
 
@@ -101,6 +101,7 @@ Street lamps, windows, porch lights, neon signs and stadium floodlights switch o
 | 🎤 **Give a speech** | Stand at the plaza podium and press **B**. Pick up to 2 ideas. Listeners cheer or boo depending on their values, and you're now running for mayor. |
 | 🗳️ **Vote** | Press **V**. Elections happen every `ELECTION_INTERVAL`. Citizens vote for whoever shares their values and whoever they like. |
 | 🏛️ **Be the mayor** | The winner gets a salary and passes one policy a day (**N**), which changes the economy, safety and happiness. |
+| 🎯 **Daily goals** | Four goals every day, shown under the clock (click the title to fold them). Examples: talk to people, give a gift, make a friend, visit places, go up a tower, give a speech, vote. Each one pays coins when you finish it. |
 | 🗺️ **Explore** | **M** opens the city map: search places, see what's open and who's inside, and set a waypoint. **P** opens the People directory: find anyone, see their card, or follow a waypoint to them. Press **E** at elevator doors to ride the towers. |
 
 ## Crime and punishment
@@ -144,19 +145,21 @@ Street lamps, windows, porch lights, neon signs and stadium floodlights switch o
 
 ## The screen
 
-| HUD | Talking to someone |
+| HUD: goals, target card, hotbar | The phone (Tab) |
 |---|---|
-| ![HUD](ui_hud_preview.png) | ![Dialogue](ui_dialogue_preview.png) |
+| ![HUD](ui_hud_preview.png) | ![Phone](ui_phone_preview.png) |
+| **Talking to someone** | **Weapons shop** |
+| ![Dialogue](ui_dialogue_preview.png) | ![Weapons shop](ui_shop_preview.png) |
 | **Citizen card** | **City map** |
 | ![Profile](ui_profile_preview.png) | ![Map](ui_map_preview.png) |
 
 ![Speech](ui_speech_preview.png)
-![Weapons shop](ui_shop_preview.png)
 
 *(These previews were drawn from the game's real UI in a test harness. In Roblox, the portraits show the 3D citizen.)*
 
 | Key | |
 |---|---|
+| Tab | phone (all the apps) |
 | E | talk / use elevator |
 | M | map |
 | P | people |
@@ -165,7 +168,7 @@ Street lamps, windows, porch lights, neon signs and stadium floodlights switch o
 | N | mayor's desk |
 | F | attack (or click with a weapon) |
 | X | block (hold) |
-| 1–3 | weapons in your hotbar |
+| 1–4 | hotbar: 1 = fists, then your weapons |
 | G | pickpocket |
 | R | rob |
 | Q | hide (at trash cans, hedges and bushes) · Space gets out |
@@ -251,6 +254,7 @@ The game was run in a Luau test harness (a small Roblox simulation), and these c
 - **A player's session, start to finish:**
   - a speech;
   - a conversation covering every topic, plus a gift and directions;
+  - daily goals completing and paying out;
   - a profile card, the directory and the places list;
   - four punches, a knockout, a witness and wanted stars;
   - a police chase, an arrest, jail and release;

@@ -86,6 +86,14 @@ handlers.Waypoint = function(d)
 end
 handlers.Hit = function(d)
 	World.Hit(d.Position, d.Damage, d.KO, d.Player, d.Blocked, d.Weapon)
+	local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+	if d.Player and root and (root.Position - d.Position).Magnitude < 5 then
+		Hud.Hurt()
+		World.Shake(0.5, 0.2)
+	end
+end
+handlers.Goals = function(d)
+	Hud.SetGoals(d.Goals, d.Done)
 end
 handlers.Shop = function(d)
 	Panels.OpenShop(d)
@@ -137,7 +145,18 @@ end)
 
 -- our own health bar replaces Roblox's
 pcall(function()
-	game:GetService("StarterGui"):SetCoreGuiEnabled(Enum.CoreGuiType.Health, false)
+	local StarterGui = game:GetService("StarterGui")
+	StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Health, false)
+	StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Backpack, false) -- our own weapon hotbar
+end)
+-- the first goals (in case they arrived before the HUD was ready)
+task.spawn(function()
+	local ok, result = pcall(function()
+		return ctx.Remotes.Request:InvokeServer({ Action = "Goals" })
+	end)
+	if ok and result and result.Goals then
+		Hud.SetGoals(result.Goals)
+	end
 end)
 
 --------------------------------------------------------------------------------
@@ -160,6 +179,10 @@ UserInputService.InputBegan:Connect(function(input, processed)
 	end
 	if NUMBER_KEYS[key] and Panels.InDialogue() then
 		Panels.DialogueKey(NUMBER_KEYS[key])
+	elseif NUMBER_KEYS[key] then
+		Hud.Equip(NUMBER_KEYS[key])
+	elseif key == Enum.KeyCode.Tab then
+		Panels.Phone.Toggle()
 	elseif key == Enum.KeyCode.M then
 		Panels.Map.Toggle()
 	elseif key == Enum.KeyCode.P then
@@ -179,6 +202,8 @@ UserInputService.InputBegan:Connect(function(input, processed)
 	elseif key == Enum.KeyCode.Escape or key == Enum.KeyCode.Backspace then
 		if Panels.InDialogue() then
 			Panels.EndDialogue(true)
+		elseif Panels.Phone.IsOpen() then
+			Panels.Phone.Close()
 		else
 			UI.closeAll()
 		end

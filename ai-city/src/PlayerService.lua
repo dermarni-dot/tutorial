@@ -79,6 +79,9 @@ local function onElevator(player, data)
 			root.AssemblyLinearVelocity = Vector3.zero
 		end
 	end)
+	if floor >= 8 then
+		S.City.Progress(player, "tower", 1)
+	end
 	return { Ok = true, Floor = floor }
 end
 

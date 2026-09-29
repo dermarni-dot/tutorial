@@ -146,10 +146,14 @@ function UI.panel(parent, props)
 		Parent = parent,
 	})
 	for k, v in pairs(props or {}) do
-		frame[k] = v
+		if k ~= "Radius" and k ~= "Shadow" and k ~= "Glass" then -- our own options, not Frame properties
+			frame[k] = v
+		end
 	end
 	UI.corner(frame, (props and props.Radius) or 14)
 	UI.stroke(frame, UI.C.Line, 1, 0.45)
+	-- a soft top-to-bottom shade gives panels some depth
+	UI.gradient(frame, UI.C.White, UI.rgb(196, 200, 222), 90)
 	return frame
 end
 
@@ -178,6 +182,7 @@ function UI.button(parent, text, props, onClick)
 	end
 	UI.corner(button, props.Radius or 10)
 	local stroke = UI.stroke(button, color:Lerp(UI.C.White, 0.25), 1, 0.5)
+	UI.gradient(button, UI.C.White, UI.rgb(200, 200, 215), 90)
 	local scale = UI.new("UIScale", { Parent = button })
 	button.MouseEnter:Connect(function()
 		UI.tween(scale, 0.12, { Scale = 1.04 })
@@ -306,6 +311,8 @@ function UI.window(screen, title, icon, size, accent)
 	UI.corner(header, 18)
 	UI.new("Frame", { BackgroundColor3 = UI.C.Panel2, BorderSizePixel = 0, Size = UDim2.new(1, 0, 0, 18), Position = UDim2.new(0, 0, 1, -18), ZIndex = 21, Parent = header })
 	UI.new("Frame", { BackgroundColor3 = accent, BorderSizePixel = 0, Size = UDim2.new(1, 0, 0, 3), Position = UDim2.new(0, 0, 1, 0), ZIndex = 22, Parent = header })
+	-- the header glows faintly in the window's color
+	UI.gradient(header, accent:Lerp(UI.C.White, 0.2), UI.C.White, 0, NumberSequence.new(0.2, 0))
 	local iconLabel = UI.text(header, icon or "", 26, UI.Font, UI.C.Text, { Size = UDim2.fromOffset(40, 40), Position = UDim2.fromOffset(14, 7), TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 22 })
 	local titleLabel = UI.text(header, title, 22, UI.Title, UI.C.Text, { Size = UDim2.new(1, -140, 0, 30), Position = UDim2.fromOffset(60, 12), ZIndex = 22 })
 	local close = UI.button(header, "✕", { Size = UDim2.fromOffset(36, 36), Position = UDim2.new(1, -46, 0, 9), Color = UI.C.Panel3, TextSize = 16 }, function()
