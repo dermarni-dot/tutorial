@@ -112,6 +112,18 @@ local function makePlate(model, isPlayer)
 			badge.Visible = true
 			badge.Text = if team == 1 then "⚽ Blue" else "⚽ Red"
 			badge.BackgroundColor3 = if team == 1 then C.Blue else C.Red
+		elseif model:GetAttribute("Jailed") then
+			badge.Visible = true
+			badge.Text = "🔒 IN JAIL"
+			badge.BackgroundColor3 = C.Panel3
+		elseif model:GetAttribute("Arrested") then
+			badge.Visible = true
+			badge.Text = "🚓 ARRESTED"
+			badge.BackgroundColor3 = C.Blue
+		elseif model:GetAttribute("Criminal") then
+			badge.Visible = true
+			badge.Text = "🦹 THIEF"
+			badge.BackgroundColor3 = C.Red
 		elseif model:GetAttribute("Fighting") or model:GetAttribute("Brawling") then
 			badge.Visible = true
 			badge.Text = "👊 FIGHTING"
@@ -126,7 +138,7 @@ local function makePlate(model, isPlayer)
 		end
 		gui.StudsOffset = plateOffset(model)
 	end
-	for _, attr in ipairs({ "Activity", "Mood", "Expecting", "Team", "DisplayName", "Scale", "Chasing", "ChaseState", "Fighting", "Brawling", "Watching" }) do
+	for _, attr in ipairs({ "Activity", "Mood", "Expecting", "Team", "DisplayName", "Scale", "Chasing", "ChaseState", "Fighting", "Brawling", "Watching", "Criminal", "Arrested", "Jailed" }) do
 		model:GetAttributeChangedSignal(attr):Connect(refresh)
 	end
 	if isPlayer then

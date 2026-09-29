@@ -436,6 +436,12 @@ Actions.List = {
 	point = { Pose = "point", Label = "👉 Pointing the way" },
 	boo = { Pose = "boo", Label = "👎 Booing" },
 	scared = { Pose = "scared", Label = "😱 Scared" },
+	-- street crime
+	cuffed = { Pose = "cuffed", Props = { "Cuffs" }, Label = "🚓 Under arrest" },
+	handsup = { Pose = "handsup", Label = "🙌 Giving up" },
+	spray = { Pose = "spray", Props = { "SprayCan" }, Label = "🎨 Spraying graffiti" },
+	jailed = { Pose = "jailed", Label = "🔒 In jail" },
+	getaway = { Pose = "none", Props = { "Loot" }, Label = "💰 Running away" },
 	ko = { Pose = "ko", Lying = true, Label = "💫 Knocked out" },
 	carry = { Pose = "carry", Label = "👶 Carrying the baby" },
 }
@@ -946,6 +952,25 @@ L.phone = function(t, ph)
 	local tap = if (t + ph) % 3 < 1.5 then osc(t, 10, ph) * 4 else 0
 	return { RS = A(26, 0, -6), RE = A(112), RW = A(-20 + tap), LS = A(20, 0, 10), LE = A(80), Neck = A(-24) }, false
 end
+-- hands cuffed behind the back, head down (legs keep walking)
+L.cuffed = function(t, ph)
+	return { LS = A(-38, 0, 14), RS = A(-38, 0, -14), LE = A(38), RE = A(38), LW = A(0, 40, 0), RW = A(0, -40, 0), Neck = A(-20 + osc(t, 0.5, ph) * 3), Waist = A(-4) }, false
+end
+-- giving up: hands in the air
+L.handsup = function(t, ph)
+	local s = osc(t, 7, ph) * 3
+	return { LS = A(168, 0, -24 + s), RS = A(168, 0, 24 - s), LE = A(28), RE = A(28), Neck = A(6) }, false
+end
+-- shaking a spray can at a wall
+L.spray = function(t, ph)
+	local s, c = osc(t, 3, ph), osc(t, 2.1, ph)
+	return { RS = A(88 + s * 12, 0, -8 + c * 14), RE = A(8), RW = A(osc(t, 16, ph) * 6), LS = A(24, 0, 12), LE = A(64), Neck = A(4, c * 8, 0), Waist = A(-2) }, false
+end
+-- in a cell: arms crossed, shifting from foot to foot
+L.jailed = function(t, ph)
+	local s = osc(t, 0.35, ph)
+	return { LS = A(46, 0, 28), RS = A(46, 0, -28), LE = A(100), RE = A(100), Waist = A(0, 0, s * 3), Neck = A(-14, s * 20, 0) }, false
+end
 L.paint = function(t, ph)
 	local s = osc(t, 2.2, ph)
 	return { RS = A(72 + s * 16, 0, -14 + s * 8), RE = A(28 + s * 10), LS = A(34, 0, 18), LE = A(84), Neck = A(0, s * 6, 0), Waist = A(-3) }, true
@@ -1119,6 +1144,21 @@ PROPS.Phone = function(f, b, s)
 	local phone = prop(b.RightHand, "Phone", Vector3.new(0.4, 0.75, 0.06) * s, CFrame.new(0, -0.35 * s, -0.15 * s) * A(-20, 0, 0), rgb(25, 25, 30))
 	phone.Parent = f
 	prop(phone, "Screen", Vector3.new(0.34, 0.65, 0.02) * s, CFrame.new(0, 0, -0.04 * s), rgb(120, 190, 255), nil, Enum.Material.Neon).Parent = f
+end
+PROPS.Cuffs = function(f, b, s)
+	for _, hand in ipairs({ b.LeftHand, b.RightHand }) do
+		prop(hand, "Cuff", Vector3.new(0.14, 0.5, 0.5) * s, CFrame.new(0, 0.2 * s, 0) * A(0, 0, 90), rgb(190, 194, 200), Cyl, Enum.Material.Metal).Parent = f
+	end
+	prop(b.RightHand, "Chain", Vector3.new(0.08, 0.08, 0.7) * s, CFrame.new(0, 0.2 * s, 0.25 * s), rgb(160, 164, 170), nil, Enum.Material.Metal).Parent = f
+end
+PROPS.SprayCan = function(f, b, s)
+	local can = prop(b.RightHand, "SprayCan", Vector3.new(0.7, 0.32, 0.32) * s, CFrame.new(0, -0.35 * s, -0.1 * s) * A(0, 0, 90), rgb(230, 60, 110), Cyl, Enum.Material.Metal)
+	can.Parent = f
+	prop(b.RightHand, "Nozzle", Vector3.new(0.12, 0.12, 0.12) * s, CFrame.new(0, 0.05 * s, -0.1 * s), rgb(240, 240, 240)).Parent = f
+end
+PROPS.Loot = function(f, b, s)
+	prop(b.LeftHand, "Loot", Vector3.new(0.8, 0.7, 0.35) * s, CFrame.new(0, -0.55 * s, 0), rgb(150, 90, 60), nil, Enum.Material.Leather).Parent = f
+	prop(b.LeftHand, "LootStrap", Vector3.new(0.6, 0.08, 0.08) * s, CFrame.new(0, -0.15 * s, 0), rgb(110, 70, 45), nil, Enum.Material.Leather).Parent = f
 end
 PROPS.Brush = function(f, b, s)
 	prop(b.RightHand, "Brush", Vector3.new(0.08, 0.9, 0.08) * s, CFrame.new(0, -0.5 * s, -0.1 * s), rgb(150, 110, 70), nil, Enum.Material.Wood).Parent = f
@@ -1660,6 +1700,7 @@ return Disguises
 --   DialogueService talking to citizens (and them talking to each other)
 --   CrimeService    fighting, stabbing, pickpocketing, robberies, witnesses, police, jail
 --   CombatService   weapons (the Hardware store shop), blocking, waking up at the hospital
+--   StreetCrimeService other people's crimes (pickpockets, bag snatchers, robbers, graffiti), arrests, the jail
 --   BrawlService    street fights between citizens (crowds, police, breaking them up)
 --   DisguiseService hoodies, ski masks and disguises (the Clothing store), wearing them
 --   PlayerService   elevators, citizen profiles, the directory
@@ -1710,15 +1751,17 @@ if Config.RUN_CITIZENS ~= false then
 	services.Combat = require(Modules:WaitForChild("CombatService"))
 	services.Disguise = require(Modules:WaitForChild("DisguiseService"))
 	services.Brawl = require(Modules:WaitForChild("BrawlService"))
+	services.StreetCrime = require(Modules:WaitForChild("StreetCrimeService"))
 	services.Dialogue.Start(services)
 	services.Crime.Start(services)
 	services.Players.Start(services)
 	services.Combat.Start(services)
 	services.Disguise.Start(services)
 	services.Brawl.Start(services)
+	services.StreetCrime.Start(services)
 	task.spawn(services.Citizens.Start, services)
 end
-]]></ProtectedString></Properties></Item><Item class="Folder" referent="RBX31"><Properties><string name="Name">Modules</string></Properties><Item class="ModuleScript" referent="RBX14"><Properties><string name="Name">MapKit</string><ProtectedString name="Source"><![CDATA[-- MapKit (ModuleScript) — ServerScriptService.Modules.MapKit
+]]></ProtectedString></Properties></Item><Item class="Folder" referent="RBX32"><Properties><string name="Name">Modules</string></Properties><Item class="ModuleScript" referent="RBX14"><Properties><string name="Name">MapKit</string><ProtectedString name="Source"><![CDATA[-- MapKit (ModuleScript) — ServerScriptService.Modules.MapKit
 -- Small building blocks shared by the map modules: part helpers, colors, signs,
 -- lights, seats, and a registry of things that change between day and night.
 
@@ -5951,6 +5994,7 @@ local UNIFORMS = {
 	["Doctor"] = { Top = rgb(170, 210, 240), Bottom = rgb(60, 70, 90), Sleeves = "long", Items = { "LabCoat", "Stethoscope", "NameTag" } },
 	["Nurse"] = { Top = rgb(70, 170, 170), Bottom = rgb(70, 170, 170), Items = { "Stethoscope", "NameTag" } },
 	["Police Officer"] = { Top = rgb(40, 55, 110), Bottom = rgb(30, 40, 80), Sleeves = "long", Items = { "PoliceCap", "Badge", "Belt:25,25,30", "Radio" } },
+	["Thief"] = { Top = rgb(38, 40, 48), Bottom = rgb(30, 32, 38), Sleeves = "long", Items = { "Hoodie:38,40,50", "Beanie:28,28,32", "Gloves" } },
 	["SWAT Officer"] = { Top = rgb(32, 34, 40), Bottom = rgb(32, 34, 40), Sleeves = "long", Items = { "SWATHelmet", "Vest:22,24,28", "Badge", "Belt:20,20,22", "Gloves", "Radio" } },
 	["Night Officer"] = { Top = rgb(28, 36, 70), Bottom = rgb(22, 28, 55), Sleeves = "long", Items = { "PoliceCap", "Badge", "Belt:25,25,30", "HiVisVest", "Radio" } },
 	["Teacher"] = { Top = rgb(180, 90, 70), Bottom = rgb(70, 70, 90), Sleeves = "long", Items = { "Cardigan:140,60,50", "Glasses", "Lanyard" } },
@@ -7798,6 +7842,7 @@ local GOALS = {
 	{ Id = "compliment", Text = "Compliment 2 people", Emoji = "😊", Need = 2, Reward = 20 },
 	{ Id = "places", Text = "Visit 4 different places", Emoji = "🗺️", Need = 4, Reward = 30 },
 	{ Id = "peace", Text = "Break up a street fight", Emoji = "🤝", Need = 1, Reward = 30 },
+	{ Id = "thief", Text = "Catch a thief", Emoji = "🦸", Need = 1, Reward = 40 },
 }
 local goalById = {}
 for _, g in ipairs(GOALS) do
@@ -11303,6 +11348,10 @@ local function attack(player, data)
 	if S.Brawl then
 		S.Brawl.Interrupt(brain)
 	end
+	-- catching a thief isn't a crime: they give up
+	if S.StreetCrime and S.StreetCrime.IsCriminal(brain) then
+		return S.StreetCrime.PlayerHit(player, brain, w, id, root.Position)
+	end
 	brain.HP = (brain.HP or hpFor(brain)) - w.Damage
 	brain.LastHit = now
 	brain.Model:SetAttribute("MaxHP", hpFor(brain))
@@ -13346,43 +13395,41 @@ local function finish(b, outcome, info)
 		release(b, a)
 		release(b, c)
 	elseif outcome == "police" then
-		local starter = b.A
-		local other = b.B
-		S.City.News("🚓 Police broke up a street fight on " .. street .. ". " .. starter.C.Name .. " was taken to the station.", "Crime")
-		S.City.Adjust("Safety", 1)
-		release(b, other)
-		S.Citizens.Say(other, "Finally...", "sad", 2)
-		-- the one who started it goes to the station, with the officer
+		-- the one who started it (sometimes both of them) gets arrested
+		local starter, other = b.A, b.B
 		local officer = b.Officer
-		local station = S.Map.Places.PoliceStation
-		starter.Model:SetAttribute("Brawling", nil)
-		setPrompts(b, starter, false)
-		S.Citizens.Say(starter, "Hey! HE started it!", "angry", 2.5)
-		starter.Model:SetAttribute("Activity", "🚓 Arrested for fighting")
-		S.Citizens.SetGait(starter, 10, "walk")
-		if officer and officer.Model.Parent then
-			S.Citizens.SetGait(officer, 10, "walk")
+		local both = math.random() < 0.35
+		for _, f in ipairs({ starter, other }) do
+			inBrawl[f] = nil
+			f.Model:SetAttribute("Brawling", nil)
+			setPrompts(b, f, false)
 		end
-		task.spawn(function()
-			local t0 = os.clock()
-			while os.clock() - t0 < 30 and starter.Model.Parent and starter.State == "police" and station do
-				starter.Humanoid:MoveTo(station.Door)
-				if officer and officer.Model.Parent then
-					officer.Humanoid:MoveTo(starter.Root.Position + flat(starter.Root.CFrame.RightVector) * 3)
-				end
-				if (starter.Root.Position - station.Door).Magnitude < 8 then
-					break
-				end
-				task.wait(0.5)
-			end
-			if starter.Model.Parent and starter.State == "police" and station then
-				starter.Root.CFrame = CFrame.new((station.Inside or station.Door) + Vector3.new(0, 3.5, 0))
+		if officer then
+			inBrawl[officer] = nil
+		end
+		if both then
+			S.Citizens.Say(officer or starter, "Both of you! You're coming with me!", "angry", 2.5)
+		else
+			S.Citizens.Control(other, false)
+			S.Citizens.Say(other, "Finally...", "sad", 2)
+			S.Citizens.Say(starter, "Hey! THEY started it!", "angry", 2.5)
+		end
+		if S.StreetCrime then
+			S.StreetCrime.Arrest(officer, if both then { starter, other } else { starter }, "fighting in the street")
+		else
+			S.City.News("🚓 Police broke up a street fight on " .. street .. ".", "Crime")
+			S.Citizens.Control(starter, false)
+			if both then
+				S.Citizens.Control(other, false)
 			end
 			if officer then
-				release(b, officer)
+				if officer.C.Temp then
+					S.Citizens.Despawn(officer)
+				else
+					S.Citizens.Control(officer, false)
+				end
 			end
-			release(b, starter)
-		end)
+		end
 		return
 	elseif outcome == "player" then
 		local player = info.Player
@@ -13780,9 +13827,6 @@ end
 
 function BrawlService.Start(services)
 	S = services
-	if Config.STREET_FIGHTS == false then
-		return
-	end
 	nextFight = os.clock() + (Config.FIGHT_COOLDOWN or 140) * 0.4
 	task.spawn(function()
 		local lastPick = 0
@@ -13794,7 +13838,7 @@ function BrawlService.Start(services)
 					tick(b, now)
 				end
 			end
-			if now - lastPick > 5 then
+			if Config.STREET_FIGHTS ~= false and now - lastPick > 5 then
 				lastPick = now
 				pickFight()
 			end
@@ -13803,7 +13847,956 @@ function BrawlService.Start(services)
 end
 
 return BrawlService
-]]></ProtectedString></Properties></Item></Item></Item><Item class="StarterPlayer" referent="RBX32"><Properties><string name="Name">StarterPlayer</string></Properties><Item class="StarterPlayerScripts" referent="RBX33"><Properties><string name="Name">StarterPlayerScripts</string></Properties><Item class="LocalScript" referent="RBX39"><Properties><string name="Name">CityClient</string><ProtectedString name="Source"><![CDATA[-- CityClient (LocalScript) — StarterPlayer.StarterPlayerScripts.CityClient
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX31"><Properties><string name="Name">StreetCrimeService</string><ProtectedString name="Source"><![CDATA[-- StreetCrimeService (ModuleScript) — ServerScriptService.Modules.StreetCrimeService
+-- Other people commit crimes too, and the police arrest them.
+--
+-- Now and then (more at night, and when Safety or the Economy is low) someone
+-- near a player turns to crime. Sometimes it's a stranger in a dark hoodie and
+-- a beanie, sometimes a fed-up local:
+--   🫳 pickpocketing   sneaks up behind someone and lifts their wallet
+--   👜 bag snatching   grabs a bag and runs
+--   🧾 store robbery   "Hands up! Give me the money!" at a store's register
+--   🎨 graffiti        sprays a tag on a wall (it stays until the city cleans it)
+--   💸 your pocket     ...or yours, if you stand still too long near one
+--
+-- If someone sees it, they shout "STOP, THIEF!" and call the police. Officers
+-- chase the thief; if they catch them: hands up, handcuffs, a walk to the
+-- police station and some time in the jail cell (go look!). Thieves who
+-- get far enough away escape.
+--
+-- Players can chase a thief down and hit them (F). That's not a crime: they
+-- give up with their hands in the air, you get the loot back to its owner and
+-- a reward, and the police come and take them away.
+--
+-- StreetCrimeService.Arrest(officer, suspects, reason) is also used for street
+-- fights. Config.NPC_CRIME = false turns it off; Config.NPC_CRIME_COOLDOWN is
+-- the average seconds between crimes near a player (default 110).
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
+local Weapons = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Weapons"))
+
+local StreetCrime = {}
+local S
+
+local WATCH = 160 -- crimes only happen this close to a player
+local SIGHT = 45 -- bystanders this close (with a clear view) notice
+
+local cases = {} -- crimes in progress
+local byBrain = {} -- [thief brain] = case
+local inmates = {} -- [brain] = { Until, Slot }
+local escorts = {} -- [brain] = true while being walked to the station (officers too)
+local graffiti = {}
+local nextCrime = 0
+local robbedAt = {} -- [register] = time it can be robbed again
+
+local NAMES = { "Vinnie", "Slick", "Rico", "Dash", "Shady Sam", "Nico", "Jax", "Mags", "Lefty", "Roxy" }
+local TAGS = { "ZAP!", "K1NG", "★CREW★", "BOOM", "RAT PACK", "NO RULES", "WILD", "404", "SKRRT", "CITY RATS" }
+local TAG_COLORS = { Color3.fromRGB(255, 70, 140), Color3.fromRGB(70, 220, 255), Color3.fromRGB(255, 210, 40), Color3.fromRGB(120, 255, 90), Color3.fromRGB(190, 110, 255), Color3.fromRGB(255, 120, 40) }
+local STOP = { "STOP, THIEF!", "Hey! Stop that person!", "THIEF! THIEF!", "Somebody stop them!" }
+local COPS = { "Freeze! Police!", "Stop right there!", "Police! Don't move!" }
+
+local function rgb(r, g, b)
+	return Color3.fromRGB(r, g, b)
+end
+
+local function flat(v)
+	return Vector3.new(v.X, 0, v.Z)
+end
+
+local function isPolice(brain)
+	local job = brain.C and brain.C.Job
+	return job == "Police Officer" or job == "Night Officer" or job == "SWAT Officer"
+end
+
+local function streetNear(pos)
+	local sp = S.Map.Spacing or 100
+	return S.Map.StreetName and S.Map.StreetName(math.floor(pos.Z / sp + 0.5)) or "downtown"
+end
+
+local function rootOf(player)
+	local character = player.Character
+	return character and character:FindFirstChild("HumanoidRootPart")
+end
+
+local function nearestPlayer(pos)
+	local best, bestD = nil, math.huge
+	for _, player in ipairs(Players:GetPlayers()) do
+		local root = rootOf(player)
+		if root then
+			local d = (root.Position - pos).Magnitude
+			if d < bestD then
+				best, bestD = player, d
+			end
+		end
+	end
+	return best, bestD
+end
+
+local function busy(brain)
+	return byBrain[brain] ~= nil or inmates[brain] ~= nil or escorts[brain] ~= nil or brain.State == "ko" or brain.State == "hospital" or brain.State == "police" or brain.State == "talk" or brain.State == "chat" or brain.Held ~= nil or brain.Model:GetAttribute("Fighting") ~= nil or brain.Model:GetAttribute("Chasing") ~= nil or brain.Model:GetAttribute("Brawling") ~= nil
+end
+
+local rayParams = RaycastParams.new()
+rayParams.FilterType = Enum.RaycastFilterType.Exclude
+rayParams.IgnoreWater = true
+
+local function canSee(brain, target)
+	local head = brain.Model:FindFirstChild("Head")
+	if not head then
+		return false
+	end
+	local d = target - head.Position
+	if d.Magnitude < 10 then
+		return true
+	end
+	if d.Magnitude > SIGHT then
+		return false
+	end
+	local filter = { workspace:FindFirstChild("Citizens") }
+	for _, p in ipairs(Players:GetPlayers()) do
+		if p.Character then
+			table.insert(filter, p.Character)
+		end
+	end
+	rayParams.FilterDescendantsInstances = filter
+	local hit = workspace:Raycast(head.Position, d, rayParams)
+	return hit == nil or (hit.Position - target).Magnitude < 3
+end
+
+-- a street node at a distance from a spot (for strangers arriving and getaways)
+local function nodeAround(pos, minD, maxD, awayFrom)
+	local best, bestScore = nil, -math.huge
+	for _ = 1, 30 do
+		local node = S.Map.Nodes[math.random(1, #S.Map.Nodes)]
+		local d = (node - pos).Magnitude
+		if d >= minD and d <= maxD then
+			local score = if awayFrom then (node - awayFrom).Magnitude else math.random()
+			if score > bestScore then
+				best, bestScore = node, score
+			end
+		end
+	end
+	return best or (pos + Vector3.new(maxD * 0.7, 0, 0))
+end
+
+local function toast(pos, radius, icon, title, text, color)
+	for _, player in ipairs(Players:GetPlayers()) do
+		local root = rootOf(player)
+		if root and (root.Position - pos).Magnitude < radius then
+			S.City.Toast(player, icon, title, text, color)
+		end
+	end
+end
+
+--------------------------------------------------------------------------------
+-- Jail: the cell at the police station
+--------------------------------------------------------------------------------
+local SLOTS = { Vector3.new(-2, 0, 1), Vector3.new(0, 0, 1.5), Vector3.new(2, 0, 1), Vector3.new(-2, 0, -1.2), Vector3.new(0, 0, -1), Vector3.new(2, 0, -1.2) }
+
+local function freeSlot()
+	local used = {}
+	for _, j in pairs(inmates) do
+		used[j.Slot] = true
+	end
+	for k = 1, #SLOTS do
+		if not used[k] then
+			return k
+		end
+	end
+	return math.random(1, #SLOTS)
+end
+
+local function jail(brain, reason)
+	local station = S.Map.Places.PoliceStation
+	local cell = S.Map.Jail or (station and (station.Inside or station.Door))
+	if not cell then
+		return
+	end
+	local slot = freeSlot()
+	inmates[brain] = { Until = os.clock() + (if brain.C.Temp then math.random(90, 150) else math.random(120, 200)), Slot = slot, Reason = reason }
+	local pos = cell + SLOTS[slot] + Vector3.new(0, 3.2, 0)
+	brain.Root.Anchored = false
+	brain.Root.CFrame = CFrame.new(pos) * CFrame.Angles(0, math.rad(180), 0)
+	brain.Root.AssemblyLinearVelocity = Vector3.zero
+	brain.Humanoid:MoveTo(pos)
+	S.Citizens.SetGait(brain, 8, "idle")
+	brain.Model:SetAttribute("Action", "jailed")
+	brain.Model:SetAttribute("Arrested", nil)
+	brain.Model:SetAttribute("Jailed", true)
+	brain.Model:SetAttribute("Activity", "🔒 In jail: " .. reason)
+	brain.Model:SetAttribute("Expression", "sad")
+end
+
+local function releaseInmate(brain)
+	local j = inmates[brain]
+	inmates[brain] = nil
+	if not brain.Model.Parent then
+		return
+	end
+	brain.Model:SetAttribute("Jailed", nil)
+	brain.Model:SetAttribute("Action", "")
+	if brain.C.Temp then
+		S.Citizens.Despawn(brain)
+		return
+	end
+	local station = S.Map.Places.PoliceStation
+	if station then
+		brain.Root.CFrame = CFrame.new(station.Door + Vector3.new(0, 3.5, 0))
+	end
+	S.Citizens.Say(brain, ({ "Freedom!", "I'm never doing that again...", "Finally out!" })[math.random(1, 3)], "sad", 2.5)
+	S.Citizens.Control(brain, false)
+	if j and j.Reason then
+		S.City.Boost(brain.C, -10)
+	end
+end
+
+function StreetCrime.IsJailed(brain)
+	return inmates[brain] ~= nil
+end
+
+--------------------------------------------------------------------------------
+-- Arrests: hands up, cuffs, a walk to the station, the cell
+--------------------------------------------------------------------------------
+-- officer: the arresting officer (walks them in); suspects: a brain or a list
+function StreetCrime.Arrest(officer, suspects, reason)
+	if suspects.Model then
+		suspects = { suspects }
+	end
+	local station = S.Map.Places.PoliceStation
+	for _, s in ipairs(suspects) do
+		escorts[s] = true
+		if s.State ~= "police" then
+			S.Citizens.Control(s, true)
+		end
+		s.Humanoid:MoveTo(s.Root.Position)
+		s.Model:SetAttribute("Criminal", nil)
+		s.Model:SetAttribute("Arrested", true)
+		s.Model:SetAttribute("Action", "handsup")
+		s.Model:SetAttribute("Activity", "🚓 Arrested: " .. reason)
+		S.Citizens.Say(s, ({ "Okay, okay! I give up!", "Alright! Don't shoot!", "Ugh... fine." })[math.random(1, 3)], "scared", 2.5)
+	end
+	if officer then
+		escorts[officer] = true
+		if officer.State ~= "police" then
+			S.Citizens.Control(officer, true)
+		end
+		officer.Humanoid:MoveTo(officer.Root.Position)
+		officer.Model:SetAttribute("Activity", "🚓 Making an arrest")
+		S.Citizens.Say(officer, "You're under arrest for " .. reason .. "!", "angry", 3)
+	end
+	local names = {}
+	for _, s in ipairs(suspects) do
+		table.insert(names, s.C.Name)
+	end
+	local where = streetNear(suspects[1].Root.Position)
+	S.City.News("🚓 " .. (if officer then officer.C.Name else "The police") .. " arrested " .. table.concat(names, " and ") .. " for " .. reason .. " on " .. where .. ".", "Crime")
+	S.City.Adjust("Safety", 1)
+	task.spawn(function()
+		task.wait(1.6)
+		for _, s in ipairs(suspects) do
+			if s.Model.Parent then
+				s.Model:SetAttribute("Action", "cuffed")
+				S.Citizens.SetGait(s, 9, "walk")
+			end
+		end
+		if officer and officer.Model.Parent then
+			S.Citizens.SetGait(officer, 9, "walk")
+		end
+		-- walk them in along the sidewalks
+		local lead = suspects[1]
+		local path = if station and S.Map.Route then S.Map.Route(lead.Root.Position, station.Door) else {}
+		if station then
+			table.insert(path, station.Door)
+		end
+		local i, t0 = 1, os.clock()
+		while station and i <= #path and os.clock() - t0 < 60 and lead.Model.Parent and escorts[lead] do
+			local target = path[i]
+			for k, s in ipairs(suspects) do
+				if s.Model.Parent then
+					s.Humanoid:MoveTo(target + Vector3.new((k - 1) * 2.5, 0, 0))
+				end
+			end
+			if officer and officer.Model.Parent then
+				officer.Humanoid:MoveTo(lead.Root.Position + flat(lead.Root.CFrame.RightVector) * -3 + flat(lead.Root.CFrame.LookVector) * -1.5)
+			end
+			if flat(lead.Root.Position - target).Magnitude < 4 then
+				i += 1
+			end
+			task.wait(0.4)
+		end
+		for _, s in ipairs(suspects) do
+			escorts[s] = nil
+			if s.Model.Parent and s.State ~= "ko" and s.State ~= "hospital" then
+				jail(s, reason)
+			end
+		end
+		if officer then
+			escorts[officer] = nil
+			if officer.Model.Parent then
+				if officer.C.Temp then
+					S.Citizens.Despawn(officer)
+				elseif officer.State == "police" and not officer.Model:GetAttribute("Chasing") and not officer.Model:GetAttribute("Fighting") then
+					S.Citizens.Control(officer, false)
+				end
+			end
+		end
+	end)
+end
+
+--------------------------------------------------------------------------------
+-- The crimes
+--------------------------------------------------------------------------------
+local function finishCase(case)
+	if case.Done then
+		return
+	end
+	case.Done = true
+	local i = table.find(cases, case)
+	if i then
+		table.remove(cases, i)
+	end
+	byBrain[case.Thief] = nil
+	for _, officer in ipairs(case.Officers) do
+		if officer.Model.Parent and not escorts[officer] then
+			officer.Model:SetAttribute("Chasing", nil)
+			officer.Model:SetAttribute("ChaseState", nil)
+			if officer.C.Temp then
+				S.Citizens.Despawn(officer)
+			elseif officer.State == "police" and not officer.Model:GetAttribute("Fighting") then
+				S.Citizens.Control(officer, false)
+			end
+		end
+	end
+end
+
+-- the thief walks away as if nothing happened (or disappears, for strangers)
+local function slipAway(case)
+	local thief = case.Thief
+	thief.Model:SetAttribute("Criminal", nil)
+	finishCase(case)
+	if not thief.Model.Parent then
+		return
+	end
+	if thief.C.Temp then
+		thief.Model:SetAttribute("Action", "")
+		S.Citizens.SetGait(thief, 11, "walk")
+		thief.Humanoid:MoveTo(nodeAround(thief.Root.Position, 80, 140))
+		task.delay(14, function()
+			if thief.Model.Parent and not byBrain[thief] and not escorts[thief] and not inmates[thief] then
+				S.Citizens.Despawn(thief)
+			end
+		end)
+	else
+		thief.Model:SetAttribute("Action", "")
+		S.Citizens.Control(thief, false)
+	end
+end
+
+local function callPolice(case, caller)
+	if case.Called then
+		return
+	end
+	case.Called = true
+	local pos = case.Thief.Root.Position
+	if caller and caller.Model and caller.Model.Parent then
+		S.Citizens.Say(caller, "Police! There's a thief on " .. streetNear(pos) .. "!", "scared", 3)
+	end
+	-- up to two officers: on duty nearby first, then a patrol car
+	local want = if case.Kind == "robbery" then 2 else 1
+	local pool = {}
+	for _, brain in ipairs(S.Citizens.List) do
+		if isPolice(brain) and not brain.Temp and not busy(brain) and brain.Plan and brain.Plan.Kind == "Work" and (brain.Root.Position - pos).Magnitude < 500 then
+			table.insert(pool, brain)
+		end
+	end
+	table.sort(pool, function(a, b)
+		return (a.Root.Position - pos).Magnitude < (b.Root.Position - pos).Magnitude
+	end)
+	for k = 1, want do
+		local officer = pool[k]
+		if officer then
+			S.Citizens.Control(officer, true)
+		else
+			local spot = nodeAround(pos, 70, 130)
+			officer = S.Citizens.SpawnExtra({ Name = "Officer " .. ({ "Reyes", "Park", "Novak", "Walsh", "Chen" })[math.random(1, 5)], Job = "Police Officer", Age = math.random(26, 44), Activity = "🚓 Chasing a thief" }, CFrame.new(spot + Vector3.new(0, 3, 0)))
+			officer.HP = Weapons.POLICE_HP
+			S.Citizens.Control(officer, true)
+		end
+		officer.C.First = officer.C.First or officer.C.Name
+		officer.Model:SetAttribute("Activity", "🚓 Chasing a thief")
+		officer.Model:SetAttribute("Chasing", -1)
+		officer.Model:SetAttribute("ChaseState", "chasing")
+		S.Citizens.Say(officer, "On my way!", "focused", 1.5)
+		table.insert(case.Officers, officer)
+	end
+end
+
+-- noticed! the thief runs for it
+local function bolt(case, caller)
+	if case.Phase == "flee" or case.Phase == "caught" then
+		return
+	end
+	local thief = case.Thief
+	case.Phase = "flee"
+	case.FleeStart = os.clock()
+	thief.Model:SetAttribute("Criminal", true)
+	thief.Model:SetAttribute("Action", if case.Kind == "graffiti" then "" else "getaway")
+	thief.Model:SetAttribute("Expression", "scared")
+	thief.Model:SetAttribute("Activity", "🦹 Running from the police!")
+	S.Citizens.SetGait(thief, 16.5, "run")
+	-- a getaway spot away from whoever noticed
+	local from = if caller and caller.Root then caller.Root.Position else thief.Root.Position
+	local dest = nodeAround(thief.Root.Position, 170, 260, from)
+	case.Path = if S.Map.Route then S.Map.Route(thief.Root.Position, dest) else { dest }
+	table.insert(case.Path, dest)
+	case.PathIndex = 1
+	case.CallAt = os.clock() + math.random(15, 35) / 10
+	case.Caller = caller
+	-- players nearby: catch them!
+	local what = case.What
+	for _, player in ipairs(Players:GetPlayers()) do
+		local root = rootOf(player)
+		if root and (root.Position - thief.Root.Position).Magnitude < 130 then
+			S.City.Toast(player, "🦹", "Stop, thief!", what .. " on " .. streetNear(thief.Root.Position) .. ". Chase them down and hit them (F) before they get away!", rgb(255, 120, 60))
+			S.City.Send(player, { Type = "Waypoint", Position = thief.Root.Position, Label = "Thief", Emoji = "🦹", Model = thief.Model })
+		end
+	end
+end
+
+-- bystanders who saw it happen
+local function witnesses(case, pos)
+	local out = {}
+	for _, brain in ipairs(S.Citizens.Nearby(pos, SIGHT)) do
+		if brain ~= case.Thief and brain ~= case.Victim and not brain.Temp and brain.State ~= "ko" and brain.State ~= "hospital" and brain.Model:GetAttribute("Action") ~= "sleep" and canSee(brain, pos) then
+			table.insert(out, brain)
+		end
+	end
+	return out
+end
+
+local function commit(case)
+	local thief = case.Thief
+	local pos = thief.Root.Position
+	local victim = case.Victim
+	case.Phase = "done-act"
+	S.City.Crime(if case.Kind == "robbery" then 3 elseif case.Kind == "graffiti" then 1 else 2)
+	if case.Kind == "pickpocket" then
+		local noticed = math.random() < 0.6
+		case.What = "Someone stole " .. victim.C.First .. "'s wallet"
+		S.City.Boost(victim.C, -10)
+		if noticed then
+			S.Citizens.Say(victim, ({ "Hey!! My wallet!", "THIEF! They took my wallet!", "Wait... my wallet! STOP!" })[math.random(1, 3)], "angry", 3)
+			bolt(case, victim)
+		else
+			-- maybe someone else saw it
+			for _, w in ipairs(witnesses(case, pos)) do
+				if math.random() < 0.35 then
+					S.Citizens.Say(w, "Hey! That person just took your wallet!", "surprised", 3)
+					bolt(case, w)
+					break
+				end
+			end
+			if case.Phase ~= "flee" then
+				S.City.News("🫳 A pickpocket struck on " .. streetNear(pos) .. ". " .. victim.C.Name .. " lost their wallet.", "Crime", true)
+				slipAway(case)
+			end
+		end
+	elseif case.Kind == "snatch" then
+		case.What = "Someone snatched " .. victim.C.First .. "'s bag"
+		S.City.Boost(victim.C, -15)
+		S.Citizens.Hurt(victim, pos, "MY BAG!!", 10)
+		bolt(case, victim)
+	elseif case.Kind == "player" then
+		local player = case.Player
+		local amount = math.min(S.City.Coins(player), math.random(6, 16))
+		case.Stolen = amount
+		case.What = "Someone picked your pocket"
+		if amount > 0 then
+			S.City.AddCoins(player, -amount, "💸 Pickpocketed")
+		end
+		S.City.Toast(player, "💸", "Your pocket was picked! -" .. amount .. " coins", "Chase the thief and hit them (F) to get it back!", rgb(255, 90, 90))
+		bolt(case, nil)
+	elseif case.Kind == "robbery" then
+		S.Citizens.Say(thief, "Hands up! Give me the money!", "angry", 3)
+		thief.Model:SetAttribute("Action", "point")
+		case.What = "The " .. case.StoreLabel .. " is being robbed"
+		S.City.SendNear(pos, 150, { Type = "Alarm", Position = pos, Seconds = 10 })
+		S.City.News("🚨 The " .. case.StoreLabel .. " was robbed!", "Crime")
+		for _, w in ipairs(S.Citizens.Nearby(pos, 26)) do
+			if w ~= thief and not isPolice(w) and w.State ~= "ko" and w.State ~= "hospital" then
+				S.Citizens.Flee(w, pos, 8, if math.random() < 0.5 then "It's a robbery!!" else nil)
+			end
+		end
+		task.delay(2.5, function()
+			if not case.Done and case.Phase == "done-act" then
+				bolt(case, nil)
+				callPolice(case, nil)
+			end
+		end)
+	elseif case.Kind == "graffiti" then
+		case.What = "Someone is spraying graffiti"
+		thief.Model:SetAttribute("Action", "spray")
+		thief.Humanoid:MoveTo(thief.Root.Position)
+		thief.Root.CFrame = CFrame.lookAt(thief.Root.Position, Vector3.new(case.Wall.Position.X, thief.Root.Position.Y, case.Wall.Position.Z))
+		task.delay(6, function()
+			if case.Done or case.Phase ~= "done-act" then
+				return
+			end
+			-- the tag on the wall
+			local w = case.Wall
+			local tag = Instance.new("Part")
+			tag.Name = "Graffiti"
+			tag.Anchored = true
+			tag.CanCollide = false
+			tag.CanQuery = false
+			tag.CanTouch = false
+			tag.Transparency = 1
+			tag.Size = Vector3.new(6, 3, 0.1)
+			tag.CFrame = CFrame.lookAt(w.Position + w.Normal * 0.08, w.Position + w.Normal * 2)
+			local gui = Instance.new("SurfaceGui")
+			gui.Face = Enum.NormalId.Front
+			gui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+			gui.PixelsPerStud = 40
+			gui.LightInfluence = 1
+			local label = Instance.new("TextLabel")
+			label.BackgroundTransparency = 1
+			label.Size = UDim2.fromScale(1, 1)
+			label.Text = TAGS[math.random(1, #TAGS)]
+			label.TextColor3 = TAG_COLORS[math.random(1, #TAG_COLORS)]
+			label.Font = Enum.Font.FredokaOne
+			label.TextScaled = true
+			label.Rotation = math.random(-12, 12)
+			local stroke = Instance.new("UIStroke")
+			stroke.Thickness = 4
+			stroke.Color = Color3.new(0.05, 0.05, 0.08)
+			stroke.Parent = label
+			label.Parent = gui
+			gui.Parent = tag
+			tag.Parent = workspace
+			table.insert(graffiti, { Part = tag, Day = S.City.State.Day })
+			S.City.Adjust("Happiness", -1)
+			local seen = witnesses(case, thief.Root.Position)
+			if #seen > 0 and math.random() < 0.6 then
+				S.Citizens.Say(seen[1], "Hey! Stop that! That's vandalism!", "angry", 3)
+				bolt(case, seen[1])
+			else
+				S.City.News("🎨 Someone sprayed graffiti on a wall on " .. streetNear(w.Position) .. ".", "Crime", true)
+				slipAway(case)
+			end
+		end)
+	end
+	-- passers-by react
+	if case.Kind ~= "graffiti" then
+		for _, w in ipairs(witnesses(case, pos)) do
+			if S.Citizens.CanReact(w) and math.random() < 0.6 then
+				S.Citizens.React(w, "scared", if math.random() < 0.5 then STOP[math.random(1, #STOP)] else nil, "surprised", 3, pos)
+			end
+		end
+	end
+end
+
+-- caught: by an officer, or given up to a player
+local function caught(case, officer, byPlayer)
+	if case.Phase == "caught" then
+		return
+	end
+	case.Phase = "caught"
+	local thief = case.Thief
+	local reason = ({ pickpocket = "pickpocketing", snatch = "bag snatching", robbery = "robbing the " .. (case.StoreLabel or "store"), graffiti = "vandalism", player = "pickpocketing" })[case.Kind] or "theft"
+	-- the loot goes back
+	if case.Kind == "player" and case.Player and case.Player.Parent and (case.Stolen or 0) > 0 then
+		S.City.AddCoins(case.Player, case.Stolen, "💸 Got your coins back")
+		if not byPlayer then
+			S.City.Toast(case.Player, "🚓", "The police caught your pickpocket!", "You got your " .. case.Stolen .. " coins back.", rgb(90, 180, 120))
+		end
+	end
+	if case.Victim and case.Victim.C and not case.Victim.C.Temp then
+		S.City.Boost(case.Victim.C, 8)
+	end
+	byBrain[thief] = nil
+	finishCase(case)
+	StreetCrime.Arrest(officer, thief, reason)
+end
+
+local function pickCrime(force)
+	local now = os.clock()
+	if not force and (now < nextCrime or #cases >= 2) then
+		return
+	end
+	local hour = S.City.Hour()
+	local night = hour >= 20 or hour < 5
+	local safety = S.City.State.Safety or 60
+	local economy = S.City.State.Economy or 55
+	local chance = 0.35 * (if night then 1.6 else 1) * math.clamp((120 - safety - economy * 0.3) / 60, 0.4, 1.8)
+	if not force and math.random() > chance then
+		return
+	end
+	-- a player to be near
+	local players = {}
+	for _, p in ipairs(Players:GetPlayers()) do
+		if rootOf(p) then
+			table.insert(players, p)
+		end
+	end
+	if #players == 0 then
+		return
+	end
+	local player = players[math.random(1, #players)]
+	local proot = rootOf(player)
+	-- what kind of crime?
+	local kinds = {
+		{ "pickpocket", 3 },
+		{ "snatch", 2 },
+		{ "robbery", if night then 1 else 1.5 },
+		{ "graffiti", if night then 3 else 0.6 },
+		{ "player", if (proot.AssemblyLinearVelocity or Vector3.zero).Magnitude < 2 and (player:GetAttribute("Coins") or 0) >= 10 and not player:GetAttribute("Hiding") and (player:GetAttribute("JailUntil") or 0) < workspace:GetServerTimeNow() then 1 else 0 },
+	}
+	local total = 0
+	for _, k in ipairs(kinds) do
+		total += k[2]
+	end
+	local roll, kind = math.random() * total, "pickpocket"
+	for _, k in ipairs(kinds) do
+		roll -= k[2]
+		if roll <= 0 then
+			kind = k[1]
+			break
+		end
+	end
+	kind = force or kind
+	-- the target
+	local case = { Kind = kind, Phase = "approach", Started = now, Officers = {} }
+	local near = S.Citizens.Nearby(proot.Position, WATCH)
+	local targetPos
+	if kind == "player" then
+		case.Player = player
+		targetPos = proot.Position
+	elseif kind == "robbery" then
+		local best
+		for _, place in ipairs(S.Map.PlaceList) do
+			if place.Kind == "store" and place.Model and (place.Door - proot.Position).Magnitude < WATCH then
+				for _, d in ipairs(place.Model:GetDescendants()) do
+					if d:IsA("BasePart") and d.Name == "Register" and (robbedAt[d] or 0) < now and math.abs(d.Position.Y - place.Door.Y) < 8 then
+						best = { Place = place, Register = d }
+						break
+					end
+				end
+			end
+			if best then
+				break
+			end
+		end
+		if not best then
+			return
+		end
+		case.Store, case.Register = best.Place, best.Register
+		case.StoreLabel = Config.PlaceById[best.Place.Id] and Config.PlaceById[best.Place.Id].label or best.Place.Label or "store"
+		robbedAt[best.Register] = now + 400
+		targetPos = best.Register.Position
+	elseif kind == "graffiti" then
+		-- a building wall close to a sidewalk near the player
+		local filter = { workspace:FindFirstChild("Citizens") }
+		for _, p in ipairs(Players:GetPlayers()) do
+			if p.Character then
+				table.insert(filter, p.Character)
+			end
+		end
+		rayParams.FilterDescendantsInstances = filter
+		for _ = 1, 10 do
+			local start = nodeAround(proot.Position, 20, 100)
+			for _, dir in ipairs({ Vector3.new(1, 0, 0), Vector3.new(-1, 0, 0), Vector3.new(0, 0, 1), Vector3.new(0, 0, -1) }) do
+				local hit = workspace:Raycast(start + Vector3.new(0, 4, 0), dir * 30, rayParams)
+				if hit and hit.Instance and hit.Instance.Anchored and math.abs(hit.Normal.Y) < 0.2 and hit.Instance.Size.Y > 6 and not hit.Instance:FindFirstAncestorOfClass("Tool") then
+					case.Wall = { Position = hit.Position, Normal = hit.Normal }
+					break
+				end
+			end
+			if case.Wall then
+				break
+			end
+		end
+		if not case.Wall then
+			return
+		end
+		targetPos = case.Wall.Position + case.Wall.Normal * 2.5
+	else
+		-- someone out on the street
+		local options = {}
+		for _, brain in ipairs(near) do
+			if not brain.Temp and not busy(brain) and (brain.State == "walk" or brain.State == "act") and (brain.Floor or 1) == 1 and S.Life:Age(brain.C) >= 16 and not isPolice(brain) then
+				local place = brain.Target and brain.Target.Place
+				if brain.State == "walk" or (place and place.Outdoor) then
+					table.insert(options, brain)
+				end
+			end
+		end
+		if #options == 0 then
+			return
+		end
+		case.Victim = options[math.random(1, #options)]
+		targetPos = case.Victim.Root.Position
+	end
+	-- the thief: a local in a bad mood, or a stranger in a hoodie
+	local thief
+	if math.random() < 0.4 and kind ~= "robbery" then
+		local best, worst = nil, math.huge
+		for _, brain in ipairs(near) do
+			if brain ~= case.Victim and not brain.Temp and not busy(brain) and brain.State == "walk" and S.Life:Age(brain.C) >= 16 and S.Life:Age(brain.C) < 60 and not isPolice(brain) then
+				local mood = S.City.MoodOf(brain.C) + (if brain.C.Personality == "grumpy" then -15 else 0)
+				if mood < 45 and mood < worst and (brain.Root.Position - targetPos).Magnitude < 90 then
+					best, worst = brain, mood
+				end
+			end
+		end
+		if best then
+			thief = best
+			S.Citizens.Control(thief, true)
+		end
+	end
+	if not thief then
+		local spot = nodeAround(targetPos, 45, 80)
+		local name = NAMES[math.random(1, #NAMES)]
+		thief = S.Citizens.SpawnExtra({ Name = name, First = name, Job = "Thief", Age = math.random(19, 38), Activity = "🚶 Just walking" }, CFrame.new(spot + Vector3.new(0, 3, 0)))
+		thief.HP = Weapons.CITIZEN_HP
+		S.Citizens.Control(thief, true)
+		thief.Model:SetAttribute("Activity", "🚶 Just walking")
+	end
+	case.Thief = thief
+	byBrain[thief] = case
+	table.insert(cases, case)
+	-- walking there (through the store door for a robbery)
+	if kind == "robbery" and S.Map.Route then
+		case.Path = S.Map.Route(thief.Root.Position, case.Store.Door)
+		table.insert(case.Path, case.Store.Door)
+		table.insert(case.Path, case.Store.Inside or case.Store.Door)
+		table.insert(case.Path, case.Register.Position)
+		case.PathIndex = 1
+	end
+	-- snatchers run up; pickpockets hurry to catch up with someone walking, then slow down
+	S.Citizens.SetGait(thief, if kind == "snatch" then 17 elseif kind == "pickpocket" or kind == "player" then 13 else 10, if kind == "snatch" or kind == "pickpocket" then "run" else "walk")
+	local every = Config.NPC_CRIME_COOLDOWN or 110
+	nextCrime = now + every * (0.6 + math.random() * 0.8)
+	return case
+end
+
+--------------------------------------------------------------------------------
+-- Every tick
+--------------------------------------------------------------------------------
+local function followPath(case, brain)
+	local p = case.Path and case.Path[case.PathIndex]
+	if not p then
+		return true
+	end
+	brain.Humanoid:MoveTo(p)
+	if flat(brain.Root.Position - p).Magnitude < 4 then
+		case.PathIndex += 1
+	end
+	return case.PathIndex > #case.Path
+end
+
+local function tick(case, now)
+	local thief = case.Thief
+	if not thief.Model.Parent or thief.State == "ko" or thief.State == "hospital" then
+		finishCase(case)
+		return
+	end
+	if case.Phase == "approach" then
+		if now - case.Started > 45 then
+			slipAway(case)
+			return
+		end
+		local target
+		if case.Kind == "player" then
+			local r = case.Player.Parent and rootOf(case.Player)
+			if not r or (r.AssemblyLinearVelocity or Vector3.zero).Magnitude > 12 then
+				slipAway(case)
+				return
+			end
+			target = r.Position - flat(r.CFrame.LookVector) * 2.5
+		elseif case.Kind == "robbery" then
+			if followPath(case, thief) then
+				commit(case)
+			end
+			return
+		elseif case.Kind == "graffiti" then
+			target = case.Wall.Position + case.Wall.Normal * 2.5
+		else
+			local v = case.Victim
+			if not v.Model.Parent or busy(v) and not v.Held then
+				slipAway(case)
+				return
+			end
+			target = v.Root.Position - flat(v.Root.CFrame.LookVector) * 2
+		end
+		thief.Humanoid:MoveTo(target)
+		local d = flat(thief.Root.Position - target).Magnitude
+		if case.Kind == "pickpocket" or case.Kind == "player" then
+			-- sneak the last few steps
+			S.Citizens.SetGait(thief, if d > 12 then 13 else 9, if d > 12 then "run" else "walk")
+		end
+		if d < 3.4 then
+			commit(case)
+		end
+	elseif case.Phase == "flee" then
+		if case.Called ~= true and case.CallAt and now >= case.CallAt then
+			callPolice(case, case.Caller)
+		end
+		local done = followPath(case, thief)
+		-- officers chase
+		local closest = math.huge
+		for _, officer in ipairs(case.Officers) do
+			if officer.Model.Parent and officer.State ~= "ko" then
+				local d = (officer.Root.Position - thief.Root.Position).Magnitude
+				closest = math.min(closest, d)
+				S.Citizens.SetGait(officer, if d < 30 then 18.5 else 20, "run")
+				officer.Humanoid:MoveTo(thief.Root.Position)
+				if math.random() < 0.02 then
+					S.Citizens.Say(officer, COPS[math.random(1, #COPS)], "angry", 1.6)
+				end
+				if d < 4.5 then
+					caught(case, officer)
+					return
+				end
+			end
+		end
+		-- a thief who got far enough away (and isn't being tailed) escapes
+		if (done and closest > 25) or now - case.FleeStart > 70 then
+			S.City.News("🏃 The thief got away on " .. streetNear(thief.Root.Position) .. ".", "Crime", true)
+			for _, player in ipairs(Players:GetPlayers()) do
+				local r = rootOf(player)
+				if r and (r.Position - thief.Root.Position).Magnitude < 200 then
+					S.City.Send(player, { Type = "Waypoint", Clear = true })
+				end
+			end
+			slipAway(case)
+		end
+	elseif case.Phase == "surrender" then
+		thief.Humanoid:MoveTo(thief.Root.Position)
+		if not case.Called then
+			callPolice(case, nil)
+		end
+		for _, officer in ipairs(case.Officers) do
+			if officer.Model.Parent then
+				S.Citizens.SetGait(officer, 18, "run")
+				officer.Humanoid:MoveTo(thief.Root.Position)
+				if (officer.Root.Position - thief.Root.Position).Magnitude < 5 then
+					caught(case, officer, true)
+					return
+				end
+			end
+		end
+		if now - case.SurrenderAt > 50 then
+			caught(case, nil, true)
+		end
+	end
+end
+
+--------------------------------------------------------------------------------
+-- Players catching thieves
+--------------------------------------------------------------------------------
+function StreetCrime.IsCriminal(brain)
+	local case = byBrain[brain]
+	return case ~= nil and (case.Phase == "flee" or case.Phase == "done-act" or case.Phase == "surrender")
+end
+
+-- a player hit a fleeing thief: that's not a crime. They give up.
+function StreetCrime.PlayerHit(player, brain, weapon, weaponId, fromPos)
+	local case = byBrain[brain]
+	local damage = math.floor(weapon.Damage * 0.6)
+	brain.HP = (brain.HP or Weapons.CITIZEN_HP) - damage
+	brain.LastHit = os.clock()
+	brain.Model:SetAttribute("MaxHP", Weapons.CITIZEN_HP)
+	brain.Model:SetAttribute("HP", math.max(1, brain.HP))
+	brain.HP = math.max(1, brain.HP)
+	S.Citizens.Hurt(brain, fromPos, "OW! Okay, okay!", weapon.Knock * 0.5)
+	S.City.SendNear(brain.Root.Position, 120, { Type = "Hit", Position = brain.Root.Position + Vector3.new(0, 2, 0), Damage = damage, Weapon = weaponId })
+	if case and case.Phase ~= "surrender" and case.Phase ~= "caught" then
+		case.Phase = "surrender"
+		case.SurrenderAt = os.clock()
+		brain.Humanoid:MoveTo(brain.Root.Position)
+		brain.Model:SetAttribute("Action", "handsup")
+		brain.Model:SetAttribute("Activity", "🙌 Caught by " .. player.DisplayName)
+		S.Citizens.Say(brain, "Okay! OKAY! I give up! Don't hurt me!", "scared", 3)
+		-- the reward: the loot back to its owner, and something for the hero
+		local reward = if case.Kind == "robbery" then 60 elseif case.Kind == "player" then 15 else 30
+		S.City.AddCoins(player, reward, "🦸 Caught a thief")
+		if case.Kind == "player" and case.Player == player and (case.Stolen or 0) > 0 then
+			S.City.AddCoins(player, case.Stolen, "💸 Got your coins back")
+			case.Stolen = 0
+		end
+		if case.Victim and case.Victim.C and not case.Victim.C.Temp then
+			S.City.Remember(case.Victim.C, player, "caught the thief who robbed me", 30, "caught a thief")
+			S.Citizens.Say(case.Victim, "My hero! Thank you!", "happy", 3)
+		end
+		for _, w in ipairs(S.Citizens.Nearby(brain.Root.Position, 40)) do
+			if w ~= brain and w ~= case.Victim and not w.Temp then
+				S.City.Remember(w.C, player, "caught a thief", 8, "caught a thief")
+			end
+		end
+		S.City.Toast(player, "🦸", "You caught the thief! +" .. reward .. " coins", "Hold on, the police are coming to take them away.", rgb(90, 180, 120))
+		S.City.News("🦸 " .. player.DisplayName .. " caught a thief on " .. streetNear(brain.Root.Position) .. "!", "City")
+		S.City.Progress(player, "thief", 1)
+		S.City.Send(player, { Type = "Waypoint", Clear = true })
+	end
+	return { Ok = true, Hit = true, Name = brain.C.First, HP = brain.HP, Weapon = weaponId }
+end
+
+--------------------------------------------------------------------------------
+-- Start
+--------------------------------------------------------------------------------
+function StreetCrime.Start(services)
+	S = services
+	nextCrime = os.clock() + (Config.NPC_CRIME_COOLDOWN or 110) * 0.5
+	task.spawn(function()
+		local lastPick = 0
+		local lastDay = S.City.State.Day
+		while true do
+			task.wait(0.3)
+			local now = os.clock()
+			for _, case in ipairs(table.clone(cases)) do
+				if not case.Done then
+					tick(case, now)
+				end
+			end
+			for brain, j in pairs(inmates) do
+				if not brain.Model.Parent then
+					inmates[brain] = nil
+				elseif now >= j.Until then
+					releaseInmate(brain)
+				elseif S.Map.Jail and (brain.Root.Position - S.Map.Jail).Magnitude > 10 then
+					-- no escaping
+					brain.Root.CFrame = CFrame.new(S.Map.Jail + SLOTS[j.Slot] + Vector3.new(0, 3.2, 0))
+				end
+			end
+			-- the city cleans the graffiti every morning
+			if S.City.State.Day ~= lastDay then
+				lastDay = S.City.State.Day
+				for _, g in ipairs(graffiti) do
+					g.Part:Destroy()
+				end
+				graffiti = {}
+			end
+			if Config.NPC_CRIME ~= false and now - lastPick > 5 then
+				lastPick = now
+				pickCrime()
+			end
+		end
+	end)
+end
+
+StreetCrime.Cases = cases
+StreetCrime.Inmates = inmates
+-- for tests and your own scripts: a crime near a player right now
+-- ("pickpocket", "snatch", "robbery", "graffiti" or "player")
+function StreetCrime.Commit(kind)
+	return pickCrime(kind or "pickpocket")
+end
+
+return StreetCrime
+]]></ProtectedString></Properties></Item></Item></Item><Item class="StarterPlayer" referent="RBX33"><Properties><string name="Name">StarterPlayer</string></Properties><Item class="StarterPlayerScripts" referent="RBX34"><Properties><string name="Name">StarterPlayerScripts</string></Properties><Item class="LocalScript" referent="RBX40"><Properties><string name="Name">CityClient</string><ProtectedString name="Source"><![CDATA[-- CityClient (LocalScript) — StarterPlayer.StarterPlayerScripts.CityClient
 -- AI City on your screen. Starts the HUD, the windows, the world effects and
 -- the citizens' body language, and routes everything the server sends.
 --
@@ -13887,6 +14880,10 @@ handlers.DialogueEnd = function()
 	Panels.EndDialogue(false)
 end
 handlers.Waypoint = function(d)
+	if d.Clear then
+		World.ClearWaypoint()
+		return
+	end
 	World.Waypoint(d.Position, d.Label, d.Emoji, d.Model)
 end
 handlers.Hit = function(d)
@@ -14024,7 +15021,7 @@ UserInputService.InputEnded:Connect(function(input)
 		World.SetBlock(false)
 	end
 end)
-]]></ProtectedString></Properties><Item class="ModuleScript" referent="RBX34"><Properties><string name="Name">UI</string><ProtectedString name="Source"><![CDATA[-- UI (ModuleScript) — StarterPlayerScripts.CityClient.UI
+]]></ProtectedString></Properties><Item class="ModuleScript" referent="RBX35"><Properties><string name="Name">UI</string><ProtectedString name="Source"><![CDATA[-- UI (ModuleScript) — StarterPlayerScripts.CityClient.UI
 -- AI City's look: colors, fonts, and helpers for building the interface
 -- (rounded panels, buttons that bounce, windows that pop open, bars...).
 
@@ -14477,7 +15474,7 @@ function UI.commas(n)
 end
 
 return UI
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX35"><Properties><string name="Name">Icons</string><ProtectedString name="Source"><![CDATA[-- Icons (ModuleScript) — StarterPlayerScripts.CityClient.Icons
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX36"><Properties><string name="Name">Icons</string><ProtectedString name="Source"><![CDATA[-- Icons (ModuleScript) — StarterPlayerScripts.CityClient.Icons
 -- AI City's own icon set, drawn from rounded shapes (no image uploads needed,
 -- and they stay sharp at any size).
 --
@@ -15111,7 +16108,7 @@ end
 table.sort(Icons.Names)
 
 return Icons
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX36"><Properties><string name="Name">Hud</string><ProtectedString name="Source"><![CDATA[-- Hud (ModuleScript) — StarterPlayerScripts.CityClient.Hud
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX37"><Properties><string name="Name">Hud</string><ProtectedString name="Source"><![CDATA[-- Hud (ModuleScript) — StarterPlayerScripts.CityClient.Hud
 -- The always-on screen: the clock and calendar, the city's mood and stats,
 -- a rotating minimap, coins, wanted stars, the mayor and the next election,
 -- the action bar, notifications and the news ticker.
@@ -15965,7 +16962,7 @@ function Hud.Start(context)
 end
 
 return Hud
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX37"><Properties><string name="Name">Panels</string><ProtectedString name="Source"><![CDATA[-- Panels (ModuleScript) — StarterPlayerScripts.CityClient.Panels
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX38"><Properties><string name="Name">Panels</string><ProtectedString name="Source"><![CDATA[-- Panels (ModuleScript) — StarterPlayerScripts.CityClient.Panels
 -- The windows you open: the city map, the People directory and profile
 -- cards, voting, speeches, the mayor's desk, conversations with citizens,
 -- elevators, help, settings, the welcome screen, election results and the
@@ -16830,6 +17827,7 @@ local function buildHelp()
 		{ "⚔️ Fighting", "<b>F</b> (or click with a weapon) attacks, <b>hold X</b> blocks (you take a third of the damage). Buy a 🏏 bat, 🔨 hammer or 🔪 knife at the Hardware store: they hit harder, but using them is a much more serious crime. Tough citizens and the police fight back, so watch your ❤️ health. If you get knocked out, you wake up at the hospital (wanted stars cleared, but there's a bill)." },
 		{ "🚨 Crime", "<b>F</b> attacks, <b>G</b> (hold) picks a pocket, <b>R</b> (hold) robs a register or the bank vault. If anyone sees you, you get wanted stars and the police come after you. Get caught and you're BUSTED: a fine and time in jail. Kids can't be hurt." },
 		{ "🫥 Losing the police", "The police only know where they <b>last saw</b> you. Break their line of sight (around a corner, into a building) and they'll run there and search around. Hide in a <b>trash can, hedge or park bush</b> (hold <b>Q</b>): they can't see you, unless they search right next to your spot (or saw you climb in!). Stay out of sight and the stars fade one by one, faster while you're hiding. <b>Space</b> gets you out." },
+		{ "🦹 Other people's crimes", "You're not the only criminal in town. Pickpockets, bag snatchers, store robbers and graffiti taggers show up now and then (more at night). If someone shouts <b>STOP, THIEF!</b>, chase them down and hit them (<b>F</b>): they give up, the owner gets their things back, you get a reward, and the police take them to jail. Watch your own pockets too: stand still too long and someone might pick them. Visit the police station to see who's locked up in the cell." },
 		{ "🥷 Disguises", "Buy a 🧥 <b>hoodie</b>, a 🥷 <b>ski mask</b> or a 🥸 <b>disguise kit</b> at the 👕 Clothing store, and wear them with <b>C</b>. Witnesses may not recognize you (fewer stars, no notoriety, nobody remembers it was you), the police have to get closer to spot you, and it all works much better <b>at night</b>. After a crime, change or take off your outfit where nobody can see: the police keep looking for the old one. But a ski mask in daylight makes people nervous..." },
 		{ "⌨️ Keys", "Tab phone · E talk / use · M map · P people · V vote · B speech · N mayor · F attack · X block · 1-4 hotbar · G pickpocket · R rob · Q hide · C wardrobe · H help · 1-9 answer in conversations · Esc close windows" },
 	}
@@ -17303,7 +18301,7 @@ function Panels.Start(context)
 end
 
 return Panels
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX38"><Properties><string name="Name">World</string><ProtectedString name="Source"><![CDATA[-- World (ModuleScript) — StarterPlayerScripts.CityClient.World
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX39"><Properties><string name="Name">World</string><ProtectedString name="Source"><![CDATA[-- World (ModuleScript) — StarterPlayerScripts.CityClient.World
 -- Everything drawn in the 3D world: nameplates over citizens and players,
 -- speech bubbles, the interaction prompts (talk, elevators, crimes), the
 -- waypoint beam, hit effects, alarms, confetti, the sky and the traffic lights.
@@ -17417,6 +18415,18 @@ local function makePlate(model, isPlayer)
 			badge.Visible = true
 			badge.Text = if team == 1 then "⚽ Blue" else "⚽ Red"
 			badge.BackgroundColor3 = if team == 1 then C.Blue else C.Red
+		elseif model:GetAttribute("Jailed") then
+			badge.Visible = true
+			badge.Text = "🔒 IN JAIL"
+			badge.BackgroundColor3 = C.Panel3
+		elseif model:GetAttribute("Arrested") then
+			badge.Visible = true
+			badge.Text = "🚓 ARRESTED"
+			badge.BackgroundColor3 = C.Blue
+		elseif model:GetAttribute("Criminal") then
+			badge.Visible = true
+			badge.Text = "🦹 THIEF"
+			badge.BackgroundColor3 = C.Red
 		elseif model:GetAttribute("Fighting") or model:GetAttribute("Brawling") then
 			badge.Visible = true
 			badge.Text = "👊 FIGHTING"
@@ -17431,7 +18441,7 @@ local function makePlate(model, isPlayer)
 		end
 		gui.StudsOffset = plateOffset(model)
 	end
-	for _, attr in ipairs({ "Activity", "Mood", "Expecting", "Team", "DisplayName", "Scale", "Chasing", "ChaseState", "Fighting", "Brawling", "Watching" }) do
+	for _, attr in ipairs({ "Activity", "Mood", "Expecting", "Team", "DisplayName", "Scale", "Chasing", "ChaseState", "Fighting", "Brawling", "Watching", "Criminal", "Arrested", "Jailed" }) do
 		model:GetAttributeChangedSignal(attr):Connect(refresh)
 	end
 	if isPlayer then

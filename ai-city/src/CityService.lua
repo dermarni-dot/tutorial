@@ -818,6 +818,7 @@ local GOALS = {
 	{ Id = "compliment", Text = "Compliment 2 people", Emoji = "😊", Need = 2, Reward = 20 },
 	{ Id = "places", Text = "Visit 4 different places", Emoji = "🗺️", Need = 4, Reward = 30 },
 	{ Id = "peace", Text = "Break up a street fight", Emoji = "🤝", Need = 1, Reward = 30 },
+	{ Id = "thief", Text = "Catch a thief", Emoji = "🦸", Need = 1, Reward = 40 },
 }
 local goalById = {}
 for _, g in ipairs(GOALS) do

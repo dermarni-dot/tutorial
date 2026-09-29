@@ -82,6 +82,10 @@ handlers.DialogueEnd = function()
 	Panels.EndDialogue(false)
 end
 handlers.Waypoint = function(d)
+	if d.Clear then
+		World.ClearWaypoint()
+		return
+	end
 	World.Waypoint(d.Position, d.Label, d.Emoji, d.Model)
 end
 handlers.Hit = function(d)

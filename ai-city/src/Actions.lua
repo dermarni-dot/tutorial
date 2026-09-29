@@ -77,6 +77,12 @@ Actions.List = {
 	point = { Pose = "point", Label = "👉 Pointing the way" },
 	boo = { Pose = "boo", Label = "👎 Booing" },
 	scared = { Pose = "scared", Label = "😱 Scared" },
+	-- street crime
+	cuffed = { Pose = "cuffed", Props = { "Cuffs" }, Label = "🚓 Under arrest" },
+	handsup = { Pose = "handsup", Label = "🙌 Giving up" },
+	spray = { Pose = "spray", Props = { "SprayCan" }, Label = "🎨 Spraying graffiti" },
+	jailed = { Pose = "jailed", Label = "🔒 In jail" },
+	getaway = { Pose = "none", Props = { "Loot" }, Label = "💰 Running away" },
 	ko = { Pose = "ko", Lying = true, Label = "💫 Knocked out" },
 	carry = { Pose = "carry", Label = "👶 Carrying the baby" },
 }

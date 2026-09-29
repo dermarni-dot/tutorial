@@ -209,6 +209,25 @@ L.phone = function(t, ph)
 	local tap = if (t + ph) % 3 < 1.5 then osc(t, 10, ph) * 4 else 0
 	return { RS = A(26, 0, -6), RE = A(112), RW = A(-20 + tap), LS = A(20, 0, 10), LE = A(80), Neck = A(-24) }, false
 end
+-- hands cuffed behind the back, head down (legs keep walking)
+L.cuffed = function(t, ph)
+	return { LS = A(-38, 0, 14), RS = A(-38, 0, -14), LE = A(38), RE = A(38), LW = A(0, 40, 0), RW = A(0, -40, 0), Neck = A(-20 + osc(t, 0.5, ph) * 3), Waist = A(-4) }, false
+end
+-- giving up: hands in the air
+L.handsup = function(t, ph)
+	local s = osc(t, 7, ph) * 3
+	return { LS = A(168, 0, -24 + s), RS = A(168, 0, 24 - s), LE = A(28), RE = A(28), Neck = A(6) }, false
+end
+-- shaking a spray can at a wall
+L.spray = function(t, ph)
+	local s, c = osc(t, 3, ph), osc(t, 2.1, ph)
+	return { RS = A(88 + s * 12, 0, -8 + c * 14), RE = A(8), RW = A(osc(t, 16, ph) * 6), LS = A(24, 0, 12), LE = A(64), Neck = A(4, c * 8, 0), Waist = A(-2) }, false
+end
+-- in a cell: arms crossed, shifting from foot to foot
+L.jailed = function(t, ph)
+	local s = osc(t, 0.35, ph)
+	return { LS = A(46, 0, 28), RS = A(46, 0, -28), LE = A(100), RE = A(100), Waist = A(0, 0, s * 3), Neck = A(-14, s * 20, 0) }, false
+end
 L.paint = function(t, ph)
 	local s = osc(t, 2.2, ph)
 	return { RS = A(72 + s * 16, 0, -14 + s * 8), RE = A(28 + s * 10), LS = A(34, 0, 18), LE = A(84), Neck = A(0, s * 6, 0), Waist = A(-3) }, true
@@ -382,6 +401,21 @@ PROPS.Phone = function(f, b, s)
 	local phone = prop(b.RightHand, "Phone", Vector3.new(0.4, 0.75, 0.06) * s, CFrame.new(0, -0.35 * s, -0.15 * s) * A(-20, 0, 0), rgb(25, 25, 30))
 	phone.Parent = f
 	prop(phone, "Screen", Vector3.new(0.34, 0.65, 0.02) * s, CFrame.new(0, 0, -0.04 * s), rgb(120, 190, 255), nil, Enum.Material.Neon).Parent = f
+end
+PROPS.Cuffs = function(f, b, s)
+	for _, hand in ipairs({ b.LeftHand, b.RightHand }) do
+		prop(hand, "Cuff", Vector3.new(0.14, 0.5, 0.5) * s, CFrame.new(0, 0.2 * s, 0) * A(0, 0, 90), rgb(190, 194, 200), Cyl, Enum.Material.Metal).Parent = f
+	end
+	prop(b.RightHand, "Chain", Vector3.new(0.08, 0.08, 0.7) * s, CFrame.new(0, 0.2 * s, 0.25 * s), rgb(160, 164, 170), nil, Enum.Material.Metal).Parent = f
+end
+PROPS.SprayCan = function(f, b, s)
+	local can = prop(b.RightHand, "SprayCan", Vector3.new(0.7, 0.32, 0.32) * s, CFrame.new(0, -0.35 * s, -0.1 * s) * A(0, 0, 90), rgb(230, 60, 110), Cyl, Enum.Material.Metal)
+	can.Parent = f
+	prop(b.RightHand, "Nozzle", Vector3.new(0.12, 0.12, 0.12) * s, CFrame.new(0, 0.05 * s, -0.1 * s), rgb(240, 240, 240)).Parent = f
+end
+PROPS.Loot = function(f, b, s)
+	prop(b.LeftHand, "Loot", Vector3.new(0.8, 0.7, 0.35) * s, CFrame.new(0, -0.55 * s, 0), rgb(150, 90, 60), nil, Enum.Material.Leather).Parent = f
+	prop(b.LeftHand, "LootStrap", Vector3.new(0.6, 0.08, 0.08) * s, CFrame.new(0, -0.15 * s, 0), rgb(110, 70, 45), nil, Enum.Material.Leather).Parent = f
 end
 PROPS.Brush = function(f, b, s)
 	prop(b.RightHand, "Brush", Vector3.new(0.08, 0.9, 0.08) * s, CFrame.new(0, -0.5 * s, -0.1 * s), rgb(150, 110, 70), nil, Enum.Material.Wood).Parent = f

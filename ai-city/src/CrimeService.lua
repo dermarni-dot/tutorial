@@ -449,6 +449,10 @@ local function attack(player, data)
 	if S.Brawl then
 		S.Brawl.Interrupt(brain)
 	end
+	-- catching a thief isn't a crime: they give up
+	if S.StreetCrime and S.StreetCrime.IsCriminal(brain) then
+		return S.StreetCrime.PlayerHit(player, brain, w, id, root.Position)
+	end
 	brain.HP = (brain.HP or hpFor(brain)) - w.Damage
 	brain.LastHit = now
 	brain.Model:SetAttribute("MaxHP", hpFor(brain))

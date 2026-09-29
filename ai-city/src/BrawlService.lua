@@ -235,43 +235,41 @@ local function finish(b, outcome, info)
 		release(b, a)
 		release(b, c)
 	elseif outcome == "police" then
-		local starter = b.A
-		local other = b.B
-		S.City.News("🚓 Police broke up a street fight on " .. street .. ". " .. starter.C.Name .. " was taken to the station.", "Crime")
-		S.City.Adjust("Safety", 1)
-		release(b, other)
-		S.Citizens.Say(other, "Finally...", "sad", 2)
-		-- the one who started it goes to the station, with the officer
+		-- the one who started it (sometimes both of them) gets arrested
+		local starter, other = b.A, b.B
 		local officer = b.Officer
-		local station = S.Map.Places.PoliceStation
-		starter.Model:SetAttribute("Brawling", nil)
-		setPrompts(b, starter, false)
-		S.Citizens.Say(starter, "Hey! HE started it!", "angry", 2.5)
-		starter.Model:SetAttribute("Activity", "🚓 Arrested for fighting")
-		S.Citizens.SetGait(starter, 10, "walk")
-		if officer and officer.Model.Parent then
-			S.Citizens.SetGait(officer, 10, "walk")
+		local both = math.random() < 0.35
+		for _, f in ipairs({ starter, other }) do
+			inBrawl[f] = nil
+			f.Model:SetAttribute("Brawling", nil)
+			setPrompts(b, f, false)
 		end
-		task.spawn(function()
-			local t0 = os.clock()
-			while os.clock() - t0 < 30 and starter.Model.Parent and starter.State == "police" and station do
-				starter.Humanoid:MoveTo(station.Door)
-				if officer and officer.Model.Parent then
-					officer.Humanoid:MoveTo(starter.Root.Position + flat(starter.Root.CFrame.RightVector) * 3)
-				end
-				if (starter.Root.Position - station.Door).Magnitude < 8 then
-					break
-				end
-				task.wait(0.5)
-			end
-			if starter.Model.Parent and starter.State == "police" and station then
-				starter.Root.CFrame = CFrame.new((station.Inside or station.Door) + Vector3.new(0, 3.5, 0))
+		if officer then
+			inBrawl[officer] = nil
+		end
+		if both then
+			S.Citizens.Say(officer or starter, "Both of you! You're coming with me!", "angry", 2.5)
+		else
+			S.Citizens.Control(other, false)
+			S.Citizens.Say(other, "Finally...", "sad", 2)
+			S.Citizens.Say(starter, "Hey! THEY started it!", "angry", 2.5)
+		end
+		if S.StreetCrime then
+			S.StreetCrime.Arrest(officer, if both then { starter, other } else { starter }, "fighting in the street")
+		else
+			S.City.News("🚓 Police broke up a street fight on " .. street .. ".", "Crime")
+			S.Citizens.Control(starter, false)
+			if both then
+				S.Citizens.Control(other, false)
 			end
 			if officer then
-				release(b, officer)
+				if officer.C.Temp then
+					S.Citizens.Despawn(officer)
+				else
+					S.Citizens.Control(officer, false)
+				end
 			end
-			release(b, starter)
-		end)
+		end
 		return
 	elseif outcome == "player" then
 		local player = info.Player
@@ -669,9 +667,6 @@ end
 
 function BrawlService.Start(services)
 	S = services
-	if Config.STREET_FIGHTS == false then
-		return
-	end
 	nextFight = os.clock() + (Config.FIGHT_COOLDOWN or 140) * 0.4
 	task.spawn(function()
 		local lastPick = 0
@@ -683,7 +678,7 @@ function BrawlService.Start(services)
 					tick(b, now)
 				end
 			end
-			if now - lastPick > 5 then
+			if Config.STREET_FIGHTS ~= false and now - lastPick > 5 then
 				lastPick = now
 				pickFight()
 			end

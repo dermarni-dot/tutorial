@@ -10,6 +10,7 @@
 --   DialogueService talking to citizens (and them talking to each other)
 --   CrimeService    fighting, stabbing, pickpocketing, robberies, witnesses, police, jail
 --   CombatService   weapons (the Hardware store shop), blocking, waking up at the hospital
+--   StreetCrimeService other people's crimes (pickpockets, bag snatchers, robbers, graffiti), arrests, the jail
 --   BrawlService    street fights between citizens (crowds, police, breaking them up)
 --   DisguiseService hoodies, ski masks and disguises (the Clothing store), wearing them
 --   PlayerService   elevators, citizen profiles, the directory
@@ -60,11 +61,13 @@ if Config.RUN_CITIZENS ~= false then
 	services.Combat = require(Modules:WaitForChild("CombatService"))
 	services.Disguise = require(Modules:WaitForChild("DisguiseService"))
 	services.Brawl = require(Modules:WaitForChild("BrawlService"))
+	services.StreetCrime = require(Modules:WaitForChild("StreetCrimeService"))
 	services.Dialogue.Start(services)
 	services.Crime.Start(services)
 	services.Players.Start(services)
 	services.Combat.Start(services)
 	services.Disguise.Start(services)
 	services.Brawl.Start(services)
+	services.StreetCrime.Start(services)
 	task.spawn(services.Citizens.Start, services)
 end
