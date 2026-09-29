@@ -964,7 +964,12 @@ function B.Woods(ctx, parent, i, j, rng)
 		MapKit.cylinder(model, "Log", 4, 1.2, facing(p + Vector3.new(0, 0.6, 0), c) * CFrame.Angles(0, math.pi / 2, 0), MapKit.WOOD, Enum.Material.Wood)
 		table.insert(spots, outSpot(facing(p, c), if k % 2 == 0 then "guitar" else "sit", "visit"))
 	end
-	ctx.outdoor("Woods" .. i .. "_" .. j, model, i, j, c + Vector3.new(0, 0, HALF - 4), Vector3.new(0, 0, 1), spots)
+	local place = ctx.outdoor("Woods" .. i .. "_" .. j, model, i, j, c + Vector3.new(0, 0, HALF - 4), Vector3.new(0, 0, 1), spots)
+	local ns = if j < 0 then "North" elseif j > 0 then "South" else ""
+	local ew = if i < 0 then "West" elseif i > 0 then "East" else ""
+	place.Label = "🌲 " .. ns .. (if ns ~= "" and ew ~= "" then "-" else "") .. ew .. " Woods"
+	place.Emoji = "🌲"
+	place.Kind = "fun"
 end
 
 function B.Houses(ctx, parent, i, j, rng)

@@ -549,6 +549,15 @@ function MapBuilder.Build()
 	end
 
 	map.Route = route
+	-- from inside one place (or home) to inside another, along the sidewalks
+	map.RouteBetween = function(a, b)
+		local points = { a.Inside or a.Door, a.Door }
+		for _, p in ipairs(route(a.Door, b.Door)) do
+			table.insert(points, p)
+		end
+		table.insert(points, b.Inside or b.Door)
+		return points
+	end
 	map.BusSeats = streets.BusSeats
 	map.Bounds = { Min = Vector3.new(-EXTENT, 0, -EXTENT), Max = Vector3.new(EXTENT, 0, EXTENT) }
 	map.Spacing = SPACING
@@ -568,6 +577,9 @@ function MapBuilder.Build()
 		v:SetAttribute("Label", place.Label)
 		v:SetAttribute("Kind", place.Kind)
 		v:SetAttribute("Outdoor", place.Outdoor == true)
+		if place.Emoji then
+			v:SetAttribute("Emoji", place.Emoji)
+		end
 		v.Parent = info
 	end
 	info:SetAttribute("Extent", EXTENT)
@@ -639,5 +651,8 @@ function MapBuilder.SetNews(text)
 end
 
 MapBuilder.Route = route
+function MapBuilder.RouteBetween(a, b)
+	return map.RouteBetween(a, b)
+end
 MapBuilder.Kit = MapKit
 return MapBuilder

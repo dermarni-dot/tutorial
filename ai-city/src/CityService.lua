@@ -47,6 +47,17 @@ end
 CityService.StanceById = stanceById
 
 local stateFolder, remotes
+
+-- For your own scripts: CityService.Event.Event:Connect(function(kind, ...) end)
+-- kinds: "NewDay" (day), "Expecting" / "GrewUp" / "Retired" (text, citizen or household),
+-- "Born" (baby), "Crime" (severity), "Speech" (player, stances), "Election" (winner, results),
+-- "Policy" (stanceId, byName), "News" (text, kind)
+local event = Instance.new("BindableEvent")
+event.Name = "CityEvent"
+CityService.Event = event
+function CityService.Fire(kind, ...)
+	event:Fire(kind, ...)
+end
 local store = nil
 local SAVE_KEY = "City_v3"
 
@@ -153,10 +164,12 @@ local function onNewDay()
 	state.Day += 1
 	state.Crimes = 0
 	local events = S.Life:NewDay(state.Day)
+	CityService.Fire("NewDay", state.Day)
 	for _, e in ipairs(events) do
 		if e.Kind == "Expecting" or e.Kind == "GrewUp" or e.Kind == "Retired" then
 			CityService.News(e.Text, e.Kind)
 		end
+		CityService.Fire(e.Kind, e.Text, e.Citizen or e.Household)
 	end
 	CityService.News("☀️ Good morning, AI City! It's " .. weekday(state.Day) .. ", day " .. state.Day .. ".", "Day", true)
 	if S.Citizens and S.Citizens.OnNewDay then
@@ -209,6 +222,7 @@ end
 
 -- Records a crime: lowers safety and raises "heat" (which makes the city tense)
 function CityService.Crime(severity)
+	CityService.Fire("Crime", severity)
 	state.Crimes += 1
 	state.Heat = math.min(100, state.Heat + severity * 6)
 	CityService.Adjust("Safety", -severity * 1.5)
@@ -360,6 +374,7 @@ function CityService.News(text, kind, quiet)
 		table.remove(state.News)
 	end
 	S.MapBuilder.SetNews(text)
+	CityService.Fire("News", text, kind or "News")
 	if not quiet then
 		CityService.Broadcast({ Type = "News", Text = text, Kind = kind or "News" })
 	end
@@ -501,6 +516,7 @@ handlers.Speech = function(player, data)
 		table.insert(lines, s.label .. "! " .. s.pitch)
 	end
 	local speechText = table.concat(lines, "  ")
+	CityService.Fire("Speech", player, picked)
 	CityService.Broadcast({ Type = "Speech", Name = player.DisplayName, UserId = player.UserId, Text = speechText, Stances = picked, Character = player.Character })
 	-- everyone in earshot reacts
 	local liked, disliked, meh = 0, 0, 0
@@ -685,6 +701,7 @@ local function runElection()
 	for _, cand in ipairs(list) do
 		table.insert(results, { Name = cand.Name, Votes = cand.Votes, Kind = cand.Kind, UserId = cand.UserId })
 	end
+	CityService.Fire("Election", winner.Name, results)
 	CityService.Broadcast({ Type = "Election", Winner = winner.Name, WinnerKind = winner.Kind, WinnerUserId = winner.UserId, Results = results, Reelected = previous and previous.Name == winner.Name })
 	CityService.News("🗳️ " .. winner.Name .. (if previous and previous.Name == winner.Name then " was re-elected mayor" else " is the new mayor") .. " with " .. winner.Votes .. " votes!", "Election")
 	for _, player in ipairs(Players:GetPlayers()) do
@@ -730,6 +747,7 @@ function CityService.PassPolicy(stanceId, byName)
 		CityService.Adjust(name, amount)
 	end
 	table.insert(state.Policies, 1, { Id = stanceId, Label = stance.label, Day = state.Day, By = byName })
+	CityService.Fire("Policy", stanceId, byName)
 	while #state.Policies > 6 do
 		table.remove(state.Policies)
 	end

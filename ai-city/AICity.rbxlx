@@ -4241,7 +4241,12 @@ function B.Woods(ctx, parent, i, j, rng)
 		MapKit.cylinder(model, "Log", 4, 1.2, facing(p + Vector3.new(0, 0.6, 0), c) * CFrame.Angles(0, math.pi / 2, 0), MapKit.WOOD, Enum.Material.Wood)
 		table.insert(spots, outSpot(facing(p, c), if k % 2 == 0 then "guitar" else "sit", "visit"))
 	end
-	ctx.outdoor("Woods" .. i .. "_" .. j, model, i, j, c + Vector3.new(0, 0, HALF - 4), Vector3.new(0, 0, 1), spots)
+	local place = ctx.outdoor("Woods" .. i .. "_" .. j, model, i, j, c + Vector3.new(0, 0, HALF - 4), Vector3.new(0, 0, 1), spots)
+	local ns = if j < 0 then "North" elseif j > 0 then "South" else ""
+	local ew = if i < 0 then "West" elseif i > 0 then "East" else ""
+	place.Label = "🌲 " .. ns .. (if ns ~= "" and ew ~= "" then "-" else "") .. ew .. " Woods"
+	place.Emoji = "🌲"
+	place.Kind = "fun"
 end
 
 function B.Houses(ctx, parent, i, j, rng)
@@ -4808,6 +4813,15 @@ function MapBuilder.Build()
 	end
 
 	map.Route = route
+	-- from inside one place (or home) to inside another, along the sidewalks
+	map.RouteBetween = function(a, b)
+		local points = { a.Inside or a.Door, a.Door }
+		for _, p in ipairs(route(a.Door, b.Door)) do
+			table.insert(points, p)
+		end
+		table.insert(points, b.Inside or b.Door)
+		return points
+	end
 	map.BusSeats = streets.BusSeats
 	map.Bounds = { Min = Vector3.new(-EXTENT, 0, -EXTENT), Max = Vector3.new(EXTENT, 0, EXTENT) }
 	map.Spacing = SPACING
@@ -4827,6 +4841,9 @@ function MapBuilder.Build()
 		v:SetAttribute("Label", place.Label)
 		v:SetAttribute("Kind", place.Kind)
 		v:SetAttribute("Outdoor", place.Outdoor == true)
+		if place.Emoji then
+			v:SetAttribute("Emoji", place.Emoji)
+		end
 		v.Parent = info
 	end
 	info:SetAttribute("Extent", EXTENT)
@@ -4898,6 +4915,9 @@ function MapBuilder.SetNews(text)
 end
 
 MapBuilder.Route = route
+function MapBuilder.RouteBetween(a, b)
+	return map.RouteBetween(a, b)
+end
 MapBuilder.Kit = MapKit
 return MapBuilder
 ]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX19"><Properties><string name="Name">Life</string><ProtectedString name="Source"><![CDATA[-- Life (ModuleScript) — ServerScriptService.Modules.Life
@@ -6797,6 +6817,17 @@ end
 CityService.StanceById = stanceById
 
 local stateFolder, remotes
+
+-- For your own scripts: CityService.Event.Event:Connect(function(kind, ...) end)
+-- kinds: "NewDay" (day), "Expecting" / "GrewUp" / "Retired" (text, citizen or household),
+-- "Born" (baby), "Crime" (severity), "Speech" (player, stances), "Election" (winner, results),
+-- "Policy" (stanceId, byName), "News" (text, kind)
+local event = Instance.new("BindableEvent")
+event.Name = "CityEvent"
+CityService.Event = event
+function CityService.Fire(kind, ...)
+	event:Fire(kind, ...)
+end
 local store = nil
 local SAVE_KEY = "City_v3"
 
@@ -6903,10 +6934,12 @@ local function onNewDay()
 	state.Day += 1
 	state.Crimes = 0
 	local events = S.Life:NewDay(state.Day)
+	CityService.Fire("NewDay", state.Day)
 	for _, e in ipairs(events) do
 		if e.Kind == "Expecting" or e.Kind == "GrewUp" or e.Kind == "Retired" then
 			CityService.News(e.Text, e.Kind)
 		end
+		CityService.Fire(e.Kind, e.Text, e.Citizen or e.Household)
 	end
 	CityService.News("☀️ Good morning, AI City! It's " .. weekday(state.Day) .. ", day " .. state.Day .. ".", "Day", true)
 	if S.Citizens and S.Citizens.OnNewDay then
@@ -6959,6 +6992,7 @@ end
 
 -- Records a crime: lowers safety and raises "heat" (which makes the city tense)
 function CityService.Crime(severity)
+	CityService.Fire("Crime", severity)
 	state.Crimes += 1
 	state.Heat = math.min(100, state.Heat + severity * 6)
 	CityService.Adjust("Safety", -severity * 1.5)
@@ -7110,6 +7144,7 @@ function CityService.News(text, kind, quiet)
 		table.remove(state.News)
 	end
 	S.MapBuilder.SetNews(text)
+	CityService.Fire("News", text, kind or "News")
 	if not quiet then
 		CityService.Broadcast({ Type = "News", Text = text, Kind = kind or "News" })
 	end
@@ -7251,6 +7286,7 @@ handlers.Speech = function(player, data)
 		table.insert(lines, s.label .. "! " .. s.pitch)
 	end
 	local speechText = table.concat(lines, "  ")
+	CityService.Fire("Speech", player, picked)
 	CityService.Broadcast({ Type = "Speech", Name = player.DisplayName, UserId = player.UserId, Text = speechText, Stances = picked, Character = player.Character })
 	-- everyone in earshot reacts
 	local liked, disliked, meh = 0, 0, 0
@@ -7435,6 +7471,7 @@ local function runElection()
 	for _, cand in ipairs(list) do
 		table.insert(results, { Name = cand.Name, Votes = cand.Votes, Kind = cand.Kind, UserId = cand.UserId })
 	end
+	CityService.Fire("Election", winner.Name, results)
 	CityService.Broadcast({ Type = "Election", Winner = winner.Name, WinnerKind = winner.Kind, WinnerUserId = winner.UserId, Results = results, Reelected = previous and previous.Name == winner.Name })
 	CityService.News("🗳️ " .. winner.Name .. (if previous and previous.Name == winner.Name then " was re-elected mayor" else " is the new mayor") .. " with " .. winner.Votes .. " votes!", "Election")
 	for _, player in ipairs(Players:GetPlayers()) do
@@ -7480,6 +7517,7 @@ function CityService.PassPolicy(stanceId, byName)
 		CityService.Adjust(name, amount)
 	end
 	table.insert(state.Policies, 1, { Id = stanceId, Label = stance.label, Day = state.Day, By = byName })
+	CityService.Fire("Policy", stanceId, byName)
 	while #state.Policies > 6 do
 		table.remove(state.Policies)
 	end
@@ -8191,8 +8229,9 @@ local function buildRoute(brain, t)
 	local from = brain.Building
 	local dest = t.Spot and t.Spot.CFrame.Position or t.Pos
 	local destFloor = t.Floor or 1
-	local function walk(points)
-		table.insert(steps, { Kind = "walk", Points = points })
+	-- After(brain) runs when a step is done (so we always know if they're inside)
+	local function walk(points, after)
+		table.insert(steps, { Kind = "walk", Points = points, After = after })
 	end
 	local function ride(b, floor)
 		table.insert(steps, { Kind = "ride", Building = b, Floor = floor })
@@ -8218,7 +8257,9 @@ local function buildRoute(brain, t)
 			end
 			ride(from, 1)
 		end
-		walk({ from.Inside, from.Door })
+		walk({ from.Inside, from.Door }, function(b)
+			b.Building, b.Floor = nil, 1
+		end)
 		pos = from.Door
 	end
 	-- along the sidewalks
@@ -8226,13 +8267,16 @@ local function buildRoute(brain, t)
 	local path = map.Route(pos, doorTarget)
 	walk(withLane(path, brain.Lane))
 	if t.Building then
-		walk({ t.Building.Inside })
+		local b = t.Building
+		walk({ b.Inside }, function(br)
+			br.Building, br.Floor = b, 1
+		end)
 		if destFloor > 1 then
-			local exit = elevatorExit(t.Building, 1)
+			local exit = elevatorExit(b, 1)
 			if exit then
 				walk({ exit })
 			end
-			ride(t.Building, destFloor)
+			ride(b, destFloor)
 		end
 	end
 	walk({ dest })
@@ -8327,6 +8371,7 @@ local function stop(brain)
 	brain.Steps = nil
 	brain.Points = nil
 	brain.Jog = nil
+	brain.Looping = nil
 	if not brain.Root.Anchored then
 		brain.Humanoid:MoveTo(brain.Root.Position)
 	end
@@ -8335,6 +8380,10 @@ end
 local arrive -- forward
 
 local function nextStep(brain)
+	local done = brain.Steps and brain.Steps[brain.StepIndex]
+	if done and done.After then
+		done.After(brain)
+	end
 	brain.StepIndex += 1
 	local step = brain.Steps and brain.Steps[brain.StepIndex]
 	if not step then
@@ -8382,6 +8431,7 @@ local function go(brain, t)
 	brain.Token = {}
 	brain.Target = t
 	brain.Jog = nil
+	brain.Looping = nil
 	local oldSpot = brain.Spot
 	reserve(brain, t.Spot)
 	if brain.Root.Anchored then
@@ -8408,6 +8458,8 @@ end
 local function jump(brain, t)
 	brain.Token = {}
 	brain.Target = t
+	brain.Jog = nil
+	brain.Looping = nil
 	reserve(brain, t.Spot)
 	local dest = t.Spot and t.Spot.CFrame or CFrame.new(t.Pos or brain.Root.Position)
 	standAt(brain, dest)
@@ -9094,6 +9146,7 @@ local function checkBirths()
 				S.City.Adjust("Happiness", 1)
 				S.City.State.Births += 1
 				S.City.News("👶 Welcome to the world, " .. baby.Name .. "! Born to " .. table.concat(parents, " & ") .. " at the hospital.", "Birth")
+				S.City.Fire("Born", baby)
 				local b = spawnCitizen(baby)
 				-- announce it in the hospital
 				for _, id in ipairs(household.Partners) do
@@ -9185,7 +9238,21 @@ local function walkTick(brain)
 	local final = brain.Steps and brain.StepIndex == #brain.Steps and brain.PointIndex == #points
 	local d = flatDist(root.Position, target)
 	local now = os.clock()
-	if d < (if final then 1.3 else 2.2) and math.abs(root.Position.Y - rootHeight(brain) - target.Y) < 6 then
+	-- level of detail: far from every player (and the next waypoint too), people
+	-- hop from waypoint to waypoint instead of walking the whole way. Nobody can
+	-- see it, the server saves work, and cross-town trips still fit the day.
+	local hop = false
+	if brain.State == "walk" and not brain.Looping then
+		local far = WATCH_RADIUS * 2
+		if nearestPlayerDistance(root.Position) > far and nearestPlayerDistance(target) > far then
+			hop = true
+			local nxt = points[brain.PointIndex + 1]
+			local look = if nxt and flatDist(nxt, target) > 0.5 then Vector3.new(nxt.X, target.Y, nxt.Z) else target + root.CFrame.LookVector
+			root.CFrame = CFrame.lookAt(target + Vector3.new(0, rootHeight(brain) + 0.1, 0), look + Vector3.new(0, rootHeight(brain) + 0.1, 0))
+			root.AssemblyLinearVelocity = Vector3.zero
+		end
+	end
+	if hop or (d < (if final then 1.3 else 2.2) and math.abs(root.Position.Y - rootHeight(brain) - target.Y) < 6) then
 		brain.PointIndex += 1
 		brain.LastMoveAt = now
 		brain.LastPos = root.Position
@@ -9398,6 +9465,7 @@ end
 --------------------------------------------------------------------------------
 function CitizenService.Start(services)
 	S = services
+	CitizenService.Event = S.City.Event -- same events as CityService.Event (kept for older scripts)
 	map, pop = S.Map, S.Life
 	setupPhysics()
 	folder = workspace:FindFirstChild("Citizens") or Instance.new("Folder")
@@ -12011,7 +12079,7 @@ function Hud.DrawCity(frame, scale, opts)
 				AnchorPoint = Vector2.new(0.5, 0.5),
 				Position = UDim2.fromOffset(px(v.Value.X), px(v.Value.Z)),
 				Size = UDim2.fromOffset(opts.PinSize or 18, opts.PinSize or 18),
-				Text = placeInfo and placeInfo.emoji or "📍",
+				Text = placeInfo and placeInfo.emoji or v:GetAttribute("Emoji") or "📍",
 				TextSize = (opts.PinSize or 18) - 5,
 				Font = UI.Font,
 				ZIndex = 6,
@@ -12689,7 +12757,7 @@ local function buildMap()
 				local row = UI.button(list, "", { Size = UDim2.new(1, -8, 0, 44), Color = C.Panel2 }, function()
 					select(place)
 				end)
-				local emoji = Config.PlaceById[place.Id] and Config.PlaceById[place.Id].emoji or "📍"
+				local emoji = Config.PlaceById[place.Id] and Config.PlaceById[place.Id].emoji or (string.find(place.Id, "^Woods") and "🌲") or "📍"
 				local dot = UI.new("TextLabel", { BackgroundColor3 = UI.KIND_COLORS[place.Kind] or C.Sub, Text = emoji, TextSize = 16, Size = UDim2.fromOffset(32, 32), Position = UDim2.fromOffset(6, 6), Parent = row })
 				UI.corner(dot, UDim.new(0.5, 0))
 				UI.text(row, place.Label, 14, UI.Bold, C.Text, { Position = UDim2.fromOffset(46, 3), Size = UDim2.new(1, -52, 0, 18) })

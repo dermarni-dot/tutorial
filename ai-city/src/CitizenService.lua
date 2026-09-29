@@ -1405,6 +1405,7 @@ local function checkBirths()
 				S.City.Adjust("Happiness", 1)
 				S.City.State.Births += 1
 				S.City.News("👶 Welcome to the world, " .. baby.Name .. "! Born to " .. table.concat(parents, " & ") .. " at the hospital.", "Birth")
+				S.City.Fire("Born", baby)
 				local b = spawnCitizen(baby)
 				-- announce it in the hospital
 				for _, id in ipairs(household.Partners) do
@@ -1723,6 +1724,7 @@ end
 --------------------------------------------------------------------------------
 function CitizenService.Start(services)
 	S = services
+	CitizenService.Event = S.City.Event -- same events as CityService.Event (kept for older scripts)
 	map, pop = S.Map, S.Life
 	setupPhysics()
 	folder = workspace:FindFirstChild("Citizens") or Instance.new("Folder")

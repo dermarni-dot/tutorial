@@ -1,121 +1,225 @@
-# AI City — city map
+# AI City — v3
 
-A full city for AI City's citizens to live, work and vote in: 30 places, 132 homes and a sidewalk walking network. Everything is built by code when the server starts.
+A living city for Roblox. It holds 90 citizens, each with a name, a face, a family, a personality, a job or a school, a daily routine, friends, opinions and a memory. They wake up, walk to work along the sidewalks, sit at their desks on the 12th floor, bake bread at 5 AM, lift weights at the gym, play soccer after school, gossip on the plaza, have babies and grow up.
+
+Players can talk to anyone, give speeches, run for mayor and pass laws. They can also commit crimes, but anyone who sees it will call the police.
 
 ![The whole city](city_preview.png)
-![Downtown](downtown_preview.png)
 
 ## Open it
 
-- **Roblox Studio:** open `AICity.rbxlx` and press Play. The city builds itself in a few seconds.
-- **Rojo:** `rojo serve` in this folder (see `default.project.json`).
-- **Your existing game:** copy the modules in `src/` (`MapBuilder`, `Population`, `CitizenLook`, `CitizenService`) into `ServerScriptService.Modules` and replace your Config with `src/Config.lua`.
+- **Roblox Studio:** open `AICity.rbxlx` and press **Play**. The city builds itself in a few seconds and everyone walks to where their day takes them.
+- **Rojo:** run `rojo serve` in this folder (see `default.project.json`).
+- **Saving:** citizens, families, memories, the mayor and players' coins are saved with DataStores once the place is published (turn on *Studio Access to API Services* to test saving in Studio). Without access the game still runs; it just doesn't save.
 
-## What's in the city
+## What's new in v3
 
-It's a 7×7 grid of city blocks (about 700 × 700 studs) with streets, sidewalks, downtown crosswalks, 196 street lamps that turn on at night, parked cars and a ring of trees.
-
-| Area | Buildings |
+| | |
 |---|---|
-| Downtown | ⛲ City Plaza (fountain, **speech stage and podium**, **ballot box**, **city news board**, benches, chess tables, dance floor), 🏛️ Town Hall (columns, steps, clock tower, dome), 🏦 City Bank (vault, ATM) + 🏢 Offices, 🚓 Police (cars, siren), 🥐 Bakery, ☕ Cafe (outdoor tables), 🛒 Market (fruit stalls), 💊 Pharmacy, 📚 Library, 🍝 Restaurant, 🏫 School (playground, bell tower), 🌳 Central Park (pond, gazebo, garden plots, easels, jogging loop) |
-| Around downtown | 🏨 Grand Hotel, office towers, 🚒 Fire Station (fire truck, hose tower), 🏥 Hospital (helipad, ambulance), 🎬 Cinema (lit marquee, seats), 🏋️ Gym + basketball court, two shopping streets (👕 Clothing, 🧸 Toys, 📱 Electronics, 💐 Flowers, 🐶 Pet Shop, 📖 Books, 🍦 Ice Cream, 🔨 Hardware), two apartment buildings (Sunset Towers, Maple Court), ⚽ Sports Field |
-| Edges | 100 houses with street addresses (e.g. "12 Oak Street"), 🏭 Factory (smoking chimneys), 📦 Warehouse, ⛽ Gas & Garage |
+| 🗺️ **A bigger, more detailed city** | 9×9 blocks (about 900 studs across) and 46 places, including office towers 12–16 floors tall. It also has a lake with a pier, hills, mountains, forests, traffic lights, crosswalks, bus stops and 70 parked cars. |
+| 🏢 **Real insides** | Every building is furnished: <ul><li>the gym has treadmills, dumbbells, a squat rack, punching bags and yoga mats;</li><li>the offices have desk rows with elevators to every floor;</li><li>there are classrooms, hospital beds, a cinema with rows of seats, a bank vault, a police holding cell, and a kitchen in the restaurant.</li></ul> |
+| 🏫 **Three schools and a daycare** | Kids go to the right school for their age: elementary 6–10, middle 11–13, high 14–17. Toddlers go to daycare while their parents work. |
+| 🙂 **Faces** | Drawn faces with 14 expressions. People blink, look at you when you come close, and move their mouths when they talk. |
+| 👕 **Looks and sizes** | Casual outfits (hoodies, jackets, stripes, dresses, overalls), beards, earrings, hair bows and sneakers. Everyone has their own height, and kids have bigger heads for their size. |
+| 💃 **Body language** | 50+ poses: typing, cooking, kneading dough, teaching at the board, curling dumbbells, squatting, running on the treadmill, yoga, reading, eating, sleeping, fishing, dancing, swinging, shooting hoops... Each comes with props: cups, books, dumbbells, fishing rods, phones and more. |
+| 🧠 **Personalities and a social life** | Ten personalities change how people walk, talk, spend free time and react. Friends wave on the street, stop to chat and pass on gossip about players. |
+| 🚶 **Natural movement** | Everyone has their own pace and keeps to their own side of the sidewalk. They stop to check their phone, kids run ahead, and people hurry when they're late. |
+| ⚽ **After-school life** | Real soccer games (two teams, a ball, goals, cheering), shooting hoops, swings, the arcade, homework at the library, and weekend family outings. |
+| 💬 **Dialogue** | Talk to anyone. Answers depend on their personality, mood, job, the city and what they remember about you. |
+| 🗳️ **Politics** | Speeches, elections with citizen candidates, votes, a mayor's salary and daily policies. |
+| 🚨 **Crime** | Punches, knockouts, pickpocketing and robberies. Witnesses need line of sight. Wanted stars bring police chases with backup, and getting caught means jail and a fine. |
+| 🖥️ **A full interface** | <ul><li>HUD: clock, city mood, rotating minimap, coins, wanted stars and a news ticker.</li><li>Windows: a city map, a people directory, profile cards with a 3D portrait, voting, speeches, the mayor's desk, conversations, elevators, help and settings.</li></ul> |
 
-## Citizens: looks, families, babies and daily routines
+## The city
 
-![Citizen looks](citizens_preview.png)
+![Downtown](downtown_preview.png)
 
-The citizens are spawned by `CitizenService` when `Config.RUN_CITIZENS = true`. Set it to `false` if your own scripts already spawn citizens; `CitizenLook` and `Population` still work on their own.
+| Area | What's there |
+|---|---|
+| **Downtown** | <ul><li>⛲ City Plaza: fountain, speech stage and podium, ballot box, news board, chess tables, dance floor, musicians.</li><li>🏛️ Town Hall and 🏦 City Bank (vault and ATM).</li><li>🚓 Police (holding cell), 🥐 Bakery, ☕ Cafe, 🛒 Market, 💊 Pharmacy, 📚 Library, 🍝 Restaurant.</li></ul> |
+| **Around downtown** | <ul><li>🏢 Two office blocks with glass towers 12–16 floors tall.</li><li>🏨 Grand Hotel, 🏥 Hospital (helipad), 🚒 Fire Station, 🎬 Cinema, 🏋️ Gym (with a basketball court).</li><li>🏺 City Museum (a dinosaur!), 📮 Post Office, 🕹️ Arcade and 🍔 Diner, 🤝 Community Center.</li><li>Two shopping streets: 👕 🧸 📱 💐 🐶 📖 🍦 🔨.</li><li>Two apartment buildings (6 floors, with elevators).</li></ul> |
+| **Schools and parks** | <ul><li>🏫 Elementary (playground), 🏫 Middle School (basketball hoop), 🎓 High School (3 floors, court) and 🧸 Daycare.</li><li>⚽ Sports Field (bleachers, floodlights, running track).</li><li>🌳 Central Park and 🌿 Willow Park (ponds, gazebos, gardens, easels, jogging loops).</li></ul> |
+| **Edges** | <ul><li>Houses and suburbs, each with a street address like "12 Oak Street". Styles are cottages, two-story houses with garages, modern houses and bungalows, all with porches and mailboxes.</li><li>🏭 Factory, 📦 Warehouse, ⛽ Gas & Garage.</li><li>🌲 Woods, and 🎣 Mirror Lake with a fishing pier.</li></ul> |
 
-**Looks (`CitizenLook`)**
-- **Uniforms:** every job has its own, for example:
-  - police caps, badges and radios;
-  - doctors' coats and stethoscopes, chefs' tall hats;
-  - firefighter helmets with reflective stripes, hard hats with hi-vis vests;
-  - bank managers' bow ties and gold watches, gardeners' straw hats and overalls.
-- **Hair:** 12 hairstyles in natural colors (a few young people have dyed hair), gray from 55.
-- **Skin tones:** 10.
-- **Hobbies:** a beret for painters, headphones for gamers, a bucket hat for fishers, binoculars for birdwatchers, a scarf for knitters, and more.
-- **Kids:** school backpacks.
-- **Babies:** soft hair and a bib.
-- **Retirees:** a cardigan, glasses and a cane.
-- **Size:** everyone is sized by age: babies are small, toddlers and kids grow, teens are nearly full size.
-- **Same look every server:** it comes from the citizen's name.
+Inside the buildings:
+
+| Gym | Offices (a floor of a tower) | Elementary school |
+|---|---|---|
+| ![Gym](gym_preview.png) | ![Office floor](office_preview.png) | ![School](school_preview.png) |
+
+Street lamps, windows, porch lights, neon signs and stadium floodlights switch on at dusk. The sky runs through dawn, morning, noon, golden hour, sunset and night (see `Atmosphere`).
+
+## The citizens
+
+![Citizens](citizens_preview.png)
+![Kids of every age](families_preview.png)
+
+- **Faces:**
+  - eyes with irises, pupils and a shine;
+  - eyebrows, lashes, freckles, blush and wrinkles;
+  - a mouth that smiles, frowns, grins, laughs, gasps, wobbles when scared and moves while talking.
+
+  Every player's screen animates the blinking and glancing, so the server doesn't have to.
+
+  ![Faces and expressions](faces_preview.png)
+- **Looks:**
+  - every job has a uniform (police caps, doctors' coats, chefs' hats, hard hats, the coach's whistle, the mail carrier's bag...);
+  - off duty, people wear their own outfits;
+  - hobbies show too: a painter's beret, a gamer's headphones.
+- **Sizes:**
+  - babies are tiny and grow steadily year by year;
+  - two 8-year-olds aren't the same height;
+  - adults vary from short to tall.
+- **Personalities:** cheerful, shy, grumpy, chatty, bookish, sporty, artsy, curious, calm or funny. This changes:
+  - how fast they walk and how often they chat;
+  - what they say;
+  - what they do after work (sporty people go to the gym);
+  - how they react to you.
+- **Values:** what they care about in politics (wealth, community, safety, freedom, nature, tradition). This decides how they react to speeches and who they vote for.
+- **Friends:** classmates, coworkers and people their age. Friends wave and say hi on the street, stop to chat and pass on gossip.
+
+### A day in AI City
+
+| Time | Who's where |
+|---|---|
+| 5 AM | Bakers are already kneading dough. Everyone else is asleep. |
+| 7–9 AM | Breakfast, a morning jog, then the rush hour: commuters head to the towers and kids walk to their school. |
+| 9 AM–5 PM | Offices full, classes on, recess and lunch on the playgrounds, lunch breaks at the cafe, toddlers at daycare, retirees fishing at the lake, playing chess and napping. |
+| 3–5:30 PM | After school: soccer on the sports field, hoops, swings, the arcade, homework at the library. |
+| Evening | The gym, hobbies, friends at the diner, family dinner at home, date night at the restaurant or cinema, dancing on the plaza. |
+| Night | Kids in bed at 8, adults by 10–11. Night officers and the night janitor work until midnight. |
+| Weekends | Offices, banks and schools are closed. Saturday soccer, family outings (the park, the lake, the museum, a movie, ice cream), shopping, nights out. |
+
+- **Families and babies:** couples start expecting (their nameplates show "🍼 2 days"). On the due day they walk to the hospital, the baby is born, the whole city hears about it, and the family goes home.
+- **Growing up:** people age with `DAYS_PER_YEAR`. Kids move up from daycare through elementary, middle and high school, get a job at 18 and retire at 67.
+
+## Things to do
+
+| | |
+|---|---|
+| 💬 **Talk** | Walk up to anyone and press **E**. Ask about their day, their job, the city, the mayor or the gossip. You can also tell a joke, give a compliment or a gift, ask for directions (they mark it on your screen), ask them to walk with you, or insult them. They remember everything, and they tell their friends. |
+| 🎤 **Give a speech** | Stand at the plaza podium and press **B**. Pick up to 2 ideas. Listeners cheer or boo depending on their values, and you're now running for mayor. |
+| 🗳️ **Vote** | Press **V**. Elections happen every `ELECTION_INTERVAL`. Citizens vote for whoever shares their values and whoever they like. |
+| 🏛️ **Be the mayor** | The winner gets a salary and passes one policy a day (**N**), which changes the economy, safety and happiness. |
+| 🗺️ **Explore** | **M** opens the city map: search places, see what's open and who's inside, and set a waypoint. **P** opens the People directory: find anyone, see their card, or follow a waypoint to them. Press **E** at elevator doors to ride the towers. |
+
+## Crime and punishment
+
+- 👊 **Punch** with **F**. Three or four hits knock someone out. They fall down and see stars, then wake up later in a hospital bed.
+- 🫳 **Pickpocket:** hold **G** next to someone. Facing them makes it more likely they'll notice.
+- 💰 **Rob a register or the bank vault:** hold **R**. The bank has a silent alarm.
+- **Witnesses** need to see it happen (walls block their view), or be very close. They scream, run and remember it, tell everyone, and call the police.
+- **Wanted stars ⭐:** on-duty police officers come after you, plus backup units from 2 stars up. Your screen pulses red and blue while they can see you. Stay out of sight and the stars fade one by one.
+- **BUSTED:** a fine and time in the police station's jail cell.
+- **Kids and babies can't be hurt.**
+
+## The screen
+
+| HUD | Talking to someone |
+|---|---|
+| ![HUD](ui_hud_preview.png) | ![Dialogue](ui_dialogue_preview.png) |
+| **Citizen card** | **City map** |
+| ![Profile](ui_profile_preview.png) | ![Map](ui_map_preview.png) |
+
+![Speech](ui_speech_preview.png)
+
+*(These previews were drawn from the game's real UI in a test harness. In Roblox, the portraits show the 3D citizen.)*
+
+| Key | |
+|---|---|
+| E | talk / use elevator |
+| M | map |
+| P | people |
+| V | vote |
+| B | speech |
+| N | mayor's desk |
+| F | punch |
+| G | pickpocket |
+| R | rob |
+| H | help |
+| 1–9 | answer in conversations |
+| Esc | close |
+
+Every action is also a button on the action bar for mobile players.
+
+## How it works
+
+| Script | Where | What it does |
+|---|---|---|
+| `Main` | ServerScriptService | Builds the map, loads or creates the citizens, starts everything. |
+| `MapBuilder` + `MapKit`, `Buildings`, `Interiors`, `Streets`, `Landscape`, `Places` | Modules | The city, its interiors and the "spots" where people stand, sit, work and sleep. |
+| `Life` | Modules | Who lives here: families, ages, jobs, schools, personalities, friends, and where each person should be at any hour. Pure logic, no parts. |
+| `CityService` | Modules | Clock and calendar, city stats and mood, mayor, elections, speeches, policies, coins, memories, gossip, news, saving, and the remotes. |
+| `CitizenService` | Modules | The NPC bodies: walking, elevators, spots, soccer, chatting, greetings, reactions, knockouts, births, growing up. |
+| `DialogueService` | Modules | Conversations with players, and citizens' small talk. |
+| `CrimeService` | Modules | Crimes, witnesses, wanted stars, police chases, jail. |
+| `PlayerService` | Modules | Elevators, profiles, the directory, finding people. |
+| `CitizenLook` | Modules | Outfits, hair, items, faces and sizes. |
+| `Config`, `Actions`, `Atmosphere`, `Faces`, `Poses` | ReplicatedStorage.Shared | Settings; the list of actions; the sky; drawn faces; the pose and prop library. |
+| `CityClient` (+ `UI`, `Hud`, `Panels`, `World`) | StarterPlayerScripts | Everything on screen, and the citizens' body language, faces, nameplates and speech bubbles. |
+
+It's built to stay light on the server:
+- **The server only decides where people are and what they're doing.** Each citizen carries this in their `Action`, `Expression` and `Activity` attributes.
+- **Each player's own client handles the look.** It plays the poses, adds the props, blinks the faces and turns heads toward you, but only for people near the camera.
+- **Nobody walks where nobody can see.** People near a player walk at `WALK_SPEED`, people further out at `TRAVEL_SPEED`. People and waypoints that are far from every player (over 2× `WATCH_RADIUS`) hop along their route instead of walking it, so cross-town trips still fit the day.
+- **Crowds don't jam.** Citizens don't collide with each other.
+- **Only nearby houses are furnished.** A house is furnished the first time a family moves in.
+- **The place uses `StreamingEnabled`,** and citizens stream in whole.
+
+### For your own scripts
 
 ```lua
-CitizenLook.Apply(characterModel, { Name = "Maria Lopez", Job = "Baker", Age = 34, Hobby = "painting" }) -- R15 or R6
-local npc = CitizenLook.Build(citizen) -- a new dressed R15 NPC
+local Modules = game.ServerScriptService.Modules
+local map = require(Modules.MapBuilder).Build()          -- builds once, then returns the same map
+map.Places.Bakery.Door, map.Places.Bakery.Inside, map.Places.Bakery.Spots
+map.Homes[1].Address, map.Route(fromPos, toPos), map.RouteBetween(placeA, placeB)
+
+local CityService = require(Modules.CityService)
+CityService.Event.Event:Connect(function(kind, ...)      -- "NewDay", "Born", "Expecting", "GrewUp",
+	print(kind, ...)                                     -- "Retired", "Crime", "Speech", "Election",
+end)                                                     -- "Policy", "News"
+CityService.News("Something happened!")                 -- the news board, ticker and toasts
+CityService.AddCoins(player, 50, "🎁 Reward")
+CityService.Remember(citizen, player, "helped me", 10, "helped Maria")   -- memories and opinions
 ```
 
-**Families and babies (`Population`)**
-- **The starting city:** singles, couples, families with 1–3 kids, and retirees, each in their own home.
-- **Expecting a baby:** couples aged 21–45 can start expecting (`BABY_CHANCE` per in-game day). Their nameplates show "🍼 Baby due in 2 days".
-- **The birth:** after `PREGNANCY_DAYS`, the parents walk to the hospital and the baby is born there. It gets the family's last name, the news board announces it, and the family walks home.
-- **Growing up:** at `DAYS_PER_YEAR = 4`, a newborn grows up in about 10 real hours. Kids go to school, get a job at 18 and retire at `RETIRE_AGE`.
-- **Population cap:** no new babies once the city reaches `MAX_POPULATION`.
-- **Saving:** ages, families and new babies are saved between servers (`SAVE_POPULATION`).
+Set `Config.RUN_CITIZENS = false` if your own scripts spawn citizens; the map and `CityService` still run. To change what's built where, edit `PLAN` in `MapBuilder.lua`: each block (`"i,j"`, the plaza is `"0,0"`) names what goes there.
 
-**Daily routine (like 9 to 5)**
-- **Work:** everyone stays at their job for their whole shift (the start and stop hours in `Config.Jobs`). They leave home a little before it starts (`COMMUTE_BUFFER`), so the streets are quiet in the day and you can always find people at work.
-- **School:** kids are at school from `SCHOOL_START` to `SCHOOL_END`, then at the park or around town, and home by `KIDS_BEDTIME`.
-- **After work:** errands, hobbies (fishing at the pond, chess on the plaza...) or an evening out, and home by `ADULT_BEDTIME`.
-- **No job:** retired and unemployed people run errands, visit the park, library and café, and go out in the evening.
-- **Night:** night officers work 18:00 to 24:00; everyone else is at home asleep.
+## Config
 
-In a simulated day at 11:00, 26 of 30 workers were at work, 11 kids at school and only 18% of people out on the streets.
+Your Config is the base. Every key you had is still there, and these were added:
 
-`CitizenService.Event` (a BindableEvent) fires `"Born"`, `"Expecting"`, `"GrewUp"`, `"Retired"` and `"NewDay"`, so your election, memory and gossip scripts can react to them.
-
-## Using the map from your scripts
-
-```lua
-local MapBuilder = require(game.ServerScriptService.Modules.MapBuilder)
-local map = MapBuilder.Build() -- builds once; later calls return the same map
-
-local bakery = map.Places.Bakery      -- also map.PlaceList for all of them
-bakery.Door, bakery.Inside            -- ground positions for Humanoid:MoveTo
-bakery.WorkSpots                      -- at least one per job slot in Config.Jobs
-bakery.Kind                           -- "civic", "work", "store" or "fun"
-
-local home = map.Homes[1]             -- .Door, .Inside, .Address, .Capacity, .Kind
-
--- walking on the sidewalks (shortest path, crosses at the corners)
-for _, point in ipairs(map.RouteBetween(home, bakery)) do
-	humanoid:MoveTo(point)
-	humanoid.MoveToFinished:Wait()
-end
-map.Route(fromPosition, toPosition)   -- same, between any two positions
-
-map.SpeechSpot, map.StageCFrame       -- where speeches are given
-map.BallotBox                         -- the ballot box part
-map.HobbySpots["fishing"]             -- spots for the outdoor hobbies
-map.BenchSpots                        -- places to sit
-map.Places.Hospital.Beds, map.Places.Cinema.Seats, map.Places.TownHall.MayorOffice
-
-MapBuilder.SetNews("Mayor Rosa passed: Build more parks!")  -- the plaza news board
-MapBuilder.SetNight(true)             -- lamps and windows (Main does this for you)
-```
-
-`Main.server.lua` builds the city and runs the day/night cycle from `Config.DAY_LENGTH`: lamps and windows light up from 18:30 to 6:30, and the Town Hall clock shows the time. If your game already moves `Lighting.ClockTime`, set `RUN_DAY_CYCLE = false` and it just follows your clock.
-
-To change what goes where, edit `PLAN` near the bottom of `MapBuilder.lua`: each block (`"i,j"`, the plaza is `"0,0"`) names what's built on it. Any block not listed gets houses.
-
-## What changed in Config
-
-Every original key is still there with the same shape, so your other scripts keep working.
-
-| Change | Why |
+| Key | What it does |
 |---|---|
-| `POPULATION` 42 → 60 | The city is much bigger; 42 people would feel empty. Lower it if the server struggles. |
-| `WALK_SPEED` 10 → 14 | The longest walk across the city is ~1,050 studs. At speed 10 that was over 5 in-game hours. |
-| `ELECTION_INTERVAL` 420 → 480 | Exactly one election per in-game day, always at the same hour. |
-| `COIN_TICK` comment | It said "coins every minute", which was unclear. It now says 10 coins per player every real minute. Check your script uses it that way. |
-| **FreeFestival** now offends safety a little | It appealed to every value with no downside, so it always won. |
-| **MorePolice** and **NewFactory** city effects toned down | Both added up to +9 to city stats; now +6 and +5. |
-| 5 new stances | Plant Trees, Protect the Old Town, Night Market, Neighborhood Watch, Cheap Bank Loans. Nature and tradition only had one or two ideas each. |
-| 15 new jobs | The new buildings need staff: bank teller and manager, firefighter, librarian, chef, waiter, pharmacist, office worker, receptionist, cinema clerk, fitness coach, store clerk, mechanic, warehouse worker. |
-| Night Officer job (18:00–24:00) | Nobody watched the city at night, even though crime and curfews happen then. |
-| `Config.Places` (+ `PlaceById`) | Every building's id, name, emoji and kind, for the map signs and for your code. |
-| `OutdoorHobbies` | Chess, guitar and dancing added (the plaza has spots for them). |
+| `Config.Schools` | The three schools and the ages that go to each. |
+| `DAYCARE_AGE` | Toddlers from this age go to daycare while their parents work. |
+| 12 new jobs | Middle and high school teachers, coach, daycare worker, museum guide, mail carrier, arcade attendant, cook, programmer, accountant, night janitor, community organizer. |
+| 10 new places | Middle School, High School, Daycare, Museum, Post Office, Arcade, Diner, Community Center, Willow Park, Mirror Lake. |
+| `WEEKENDS` (optional) | Set to `false` to turn off weekends. |
+| `RUN_CITIZENS`, `SAVE_POPULATION` (optional) | Both default to on. |
 
-Balance rule used for stances: every stance offends at least one value, and every policy's city effects add up to between +2 and +6.
+## Tested
+
+The game was run in a Luau test harness (a small Roblox simulation), and these checks pass:
+
+- **The map:**
+  - every job and school has enough spots;
+  - every upper floor can be reached;
+  - no buildings overlap and nothing sticks into the roads;
+  - every place can be walked to.
+- **Two full simulated days:**
+  - up to 45 people at work at once;
+  - kids at the right schools;
+  - soccer after school;
+  - 160+ speech bubbles;
+  - 45 different actions;
+  - nobody out walking at 2 AM.
+- **A player's session, start to finish:**
+  - a speech;
+  - a conversation covering every topic, plus a gift and directions;
+  - a profile card, the directory and the places list;
+  - three punches, a knockout, a witness and 3 wanted stars;
+  - a police chase, an arrest, jail and release;
+  - an elevator ride to floor 9;
+  - a vote and an election (and winning it).
+- **The client:** every window and every server message, and poses on 20 citizens at once.

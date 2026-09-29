@@ -225,7 +225,7 @@ local function buildMap()
 				local row = UI.button(list, "", { Size = UDim2.new(1, -8, 0, 44), Color = C.Panel2 }, function()
 					select(place)
 				end)
-				local emoji = Config.PlaceById[place.Id] and Config.PlaceById[place.Id].emoji or "📍"
+				local emoji = Config.PlaceById[place.Id] and Config.PlaceById[place.Id].emoji or (string.find(place.Id, "^Woods") and "🌲") or "📍"
 				local dot = UI.new("TextLabel", { BackgroundColor3 = UI.KIND_COLORS[place.Kind] or C.Sub, Text = emoji, TextSize = 16, Size = UDim2.fromOffset(32, 32), Position = UDim2.fromOffset(6, 6), Parent = row })
 				UI.corner(dot, UDim.new(0.5, 0))
 				UI.text(row, place.Label, 14, UI.Bold, C.Text, { Position = UDim2.fromOffset(46, 3), Size = UDim2.new(1, -52, 0, 18) })

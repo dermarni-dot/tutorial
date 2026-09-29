@@ -72,7 +72,7 @@ function Hud.DrawCity(frame, scale, opts)
 				AnchorPoint = Vector2.new(0.5, 0.5),
 				Position = UDim2.fromOffset(px(v.Value.X), px(v.Value.Z)),
 				Size = UDim2.fromOffset(opts.PinSize or 18, opts.PinSize or 18),
-				Text = placeInfo and placeInfo.emoji or "📍",
+				Text = placeInfo and placeInfo.emoji or v:GetAttribute("Emoji") or "📍",
 				TextSize = (opts.PinSize or 18) - 5,
 				Font = UI.Font,
 				ZIndex = 6,
