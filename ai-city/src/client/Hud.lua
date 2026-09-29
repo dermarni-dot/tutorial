@@ -163,7 +163,7 @@ local refs = {}
 
 local function statRow(parent, icon, name, color, order)
 	local row = UI.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 18), LayoutOrder = order, Parent = parent })
-	UI.text(row, icon, 13, UI.Font, C.Text, { Size = UDim2.fromOffset(18, 18), TextXAlignment = Enum.TextXAlignment.Center })
+	UI.Icons.Glyph(row, icon, 17, { Color = color, Hole = C.Panel })
 	UI.text(row, name, 12, UI.Bold, C.Sub, { Position = UDim2.fromOffset(22, 0), Size = UDim2.fromOffset(74, 18) })
 	local bar, set = UI.bar(row, color, 8, { Position = UDim2.new(0, 98, 0.5, -4), Size = UDim2.new(1, -134, 0, 8) })
 	local value = UI.text(row, "50", 12, UI.Bold, C.Text, { Position = UDim2.new(1, -32, 0, 0), Size = UDim2.fromOffset(32, 18), TextXAlignment = Enum.TextXAlignment.Right })
@@ -172,7 +172,7 @@ end
 
 local function actionButton(parent, emoji, label, key, order, onClick, color)
 	local button = UI.button(parent, "", { Size = UDim2.fromOffset(66, 62), Color = color or C.Panel2, LayoutOrder = order }, onClick)
-	UI.text(button, emoji, 24, UI.Font, C.White, { Size = UDim2.new(1, 0, 0, 30), Position = UDim2.fromOffset(0, 5), TextXAlignment = Enum.TextXAlignment.Center })
+	UI.Icons.Glyph(button, emoji, 30, { Name = "ActionIcon", AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 6), Hole = color or C.Panel2 })
 	UI.text(button, label, 11, UI.Bold, C.Sub, { Size = UDim2.new(1, 0, 0, 14), Position = UDim2.fromOffset(0, 36), TextXAlignment = Enum.TextXAlignment.Center })
 	if key and not UserInputService.TouchEnabled then
 		local keycap = UI.new("TextLabel", { BackgroundColor3 = C.Bg, Text = key, TextColor3 = C.Gold, Font = UI.Black, TextSize = 10, Size = UDim2.fromOffset(16, 16), Position = UDim2.new(1, -18, 0, 2), Parent = button })
@@ -202,7 +202,7 @@ local function build()
 	local top = UI.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 40), LayoutOrder = 1, Parent = card })
 	refs.Time = UI.text(top, "8:00", 36, UI.Title, C.White, { Size = UDim2.fromOffset(110, 40), AutomaticSize = Enum.AutomaticSize.X })
 	refs.AmPm = UI.text(top, "AM", 15, UI.Bold, C.Sub, { Position = UDim2.fromOffset(100, 6), Size = UDim2.fromOffset(40, 18) })
-	refs.Sky = UI.text(top, "☀️", 30, UI.Font, C.White, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 2), Size = UDim2.fromOffset(40, 36), TextXAlignment = Enum.TextXAlignment.Right })
+	refs.Sky = UI.Icons.Glyph(top, "sun", 38, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 1), Hole = C.Panel })
 	refs.Day = UI.text(card, "Monday · Day 1", 14, UI.Bold, C.Sub, { LayoutOrder = 2, Size = UDim2.new(1, 0, 0, 18) })
 	local stateRow = UI.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 26), LayoutOrder = 3, Parent = card })
 	UI.list(stateRow, Enum.FillDirection.Horizontal, 6, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center)
@@ -243,7 +243,7 @@ local function build()
 	local coins = UI.panel(right, { Size = UDim2.fromOffset(0, 40), AutomaticSize = Enum.AutomaticSize.X, LayoutOrder = 1, Radius = 20 })
 	UI.pad(coins, 0, 0, 16, 0, 12)
 	UI.list(coins, Enum.FillDirection.Horizontal, 6, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center)
-	UI.text(coins, "🪙", 22, UI.Font, C.White, { Size = UDim2.fromOffset(26, 30), TextXAlignment = Enum.TextXAlignment.Center, LayoutOrder = 1 })
+	UI.Icons.Glyph(coins, "coin", 26, { LayoutOrder = 1 })
 	refs.Coins = UI.text(coins, "100", 22, UI.Title, C.Gold, { AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.fromOffset(0, 30), LayoutOrder = 2 })
 	local wanted = UI.panel(right, { Size = UDim2.fromOffset(0, 36), AutomaticSize = Enum.AutomaticSize.X, LayoutOrder = 2, Radius = 18, Visible = false })
 	UI.pad(wanted, 0, 0, 12, 0, 12)
@@ -286,7 +286,7 @@ local function build()
 	refs.AttackButton = actionButton(bar, "👊", "Attack", "F", 6, function()
 		ctx.World.Attack()
 	end, UI.rgb(110, 40, 48))
-	refs.AttackEmoji = refs.AttackButton:FindFirstChildOfClass("TextLabel")
+	refs.AttackEmoji = refs.AttackButton:FindFirstChild("ActionIcon")
 	-- block: hold the button (or X)
 	local blockButton = actionButton(bar, "🛡️", "Block", "X", 6, nil, UI.rgb(40, 60, 110))
 	blockButton.InputBegan:Connect(function(input)
@@ -302,7 +302,7 @@ local function build()
 
 	-- health (bottom left)
 	local health = UI.panel(screen, { Name = "Health", AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 16, 1, -16), Size = UDim2.fromOffset(250, 44), Radius = 14 })
-	UI.text(health, "❤️", 22, UI.Font, C.White, { Position = UDim2.fromOffset(10, 4), Size = UDim2.fromOffset(30, 36), TextXAlignment = Enum.TextXAlignment.Center })
+	UI.Icons.Glyph(health, "heart", 28, { Position = UDim2.fromOffset(11, 8) })
 	local hb, hset, hfill = UI.bar(health, C.Green, 12, { Position = UDim2.fromOffset(46, 16), Size = UDim2.new(1, -100, 0, 12) })
 	refs.HealthSet, refs.HealthFill = hset, hfill
 	refs.HealthText = UI.text(health, "100", 16, UI.Title, C.White, { Position = UDim2.new(1, -50, 0, 4), Size = UDim2.fromOffset(42, 36), TextXAlignment = Enum.TextXAlignment.Right })
@@ -357,7 +357,7 @@ local function refreshCity()
 	refs.Time.Text = time
 	refs.AmPm.Text = ampm
 	refs.AmPm.Position = UDim2.fromOffset(refs.Time.TextBounds.X + 6, 6)
-	refs.Sky.Text = skyIcon(h)
+	UI.Icons.Set(refs.Sky, skyIcon(h))
 	refs.Day.Text = (s:GetAttribute("Weekday") or "Monday") .. " · Day " .. ((s:GetAttribute("Day") or 0) + 1) .. (if s:GetAttribute("Weekend") then "  ·  🎉 Weekend" else "")
 	local color = s:GetAttribute("StateColor") or C.Blue
 	refs.State.Text = (s:GetAttribute("StateEmoji") or "🙂") .. " " .. (s:GetAttribute("StateLabel") or "Stable")
@@ -527,8 +527,7 @@ local function frame(dt)
 	local weapon = ctx.World.Equipped and ctx.World.Equipped() or "Fists"
 	if refs.AttackEmoji and refs.ShownWeapon ~= weapon then
 		refs.ShownWeapon = weapon
-		local emojis = { Fists = "👊", Bat = "🏏", Hammer = "🔨", Knife = "🔪" }
-		refs.AttackEmoji.Text = emojis[weapon] or "👊"
+		UI.Icons.Set(refs.AttackEmoji, if UI.Icons.Has(weapon) then weapon else "fist")
 	end
 	-- jail
 	local jailUntil = player:GetAttribute("JailUntil")
@@ -635,7 +634,6 @@ end
 -- The weapon hotbar (bottom right): 1 = fists, 2+ = your weapons
 --------------------------------------------------------------------------------
 local hotbar, slots = nil, {}
-local EMOJI = { Fists = "👊", Bat = "🏏", Hammer = "🔨", Knife = "🔪" }
 local function tools()
 	local list = {}
 	local backpack = player:FindFirstChildOfClass("Backpack")
@@ -698,7 +696,7 @@ local function refreshHotbar()
 			local button = UI.button(hotbar, "", { Size = UDim2.fromOffset(60, 60), Color = C.Panel2, LayoutOrder = k }, function()
 				Hud.Equip(k)
 			end)
-			local icon = UI.text(button, "", 28, UI.Font, C.White, { Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center })
+			local icon = UI.Icons.Glyph(button, "fist", 38, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Hole = C.Panel2 })
 			local num = UI.new("TextLabel", { BackgroundColor3 = C.Bg, Text = tostring(k), TextColor3 = C.Gold, Font = UI.Black, TextSize = 11, Size = UDim2.fromOffset(16, 16), Position = UDim2.fromOffset(3, 3), Parent = button })
 			UI.corner(num, 5)
 			-- the cooldown sweeps down after each attack
@@ -708,7 +706,7 @@ local function refreshHotbar()
 			slots[k] = slot
 		end
 		slot.Button.Visible = true
-		slot.Icon.Text = EMOJI[id] or "❔"
+		UI.Icons.Set(slot.Icon, id)
 		slot.Id = id
 		local selected = id == equipped
 		slot.Button.BackgroundColor3 = if selected then UI.rgb(120, 40, 50) else C.Panel2

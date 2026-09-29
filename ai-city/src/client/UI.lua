@@ -7,6 +7,8 @@ local SoundService = game:GetService("SoundService")
 local Lighting = game:GetService("Lighting")
 
 local UI = {}
+local Icons = require(script.Parent:WaitForChild("Icons"))
+UI.Icons = Icons
 
 local function rgb(r, g, b)
 	return Color3.fromRGB(r, g, b)
@@ -313,7 +315,20 @@ function UI.window(screen, title, icon, size, accent)
 	UI.new("Frame", { BackgroundColor3 = accent, BorderSizePixel = 0, Size = UDim2.new(1, 0, 0, 3), Position = UDim2.new(0, 0, 1, 0), ZIndex = 22, Parent = header })
 	-- the header glows faintly in the window's color
 	UI.gradient(header, accent:Lerp(UI.C.White, 0.2), UI.C.White, 0, NumberSequence.new(0.2, 0))
-	local iconLabel = UI.text(header, icon or "", 26, UI.Font, UI.C.Text, { Size = UDim2.fromOffset(40, 40), Position = UDim2.fromOffset(14, 7), TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 22 })
+	local iconLabel = UI.text(header, "", 26, UI.Font, UI.C.Text, { Size = UDim2.fromOffset(40, 40), Position = UDim2.fromOffset(14, 7), TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 22 })
+	-- the window's icon: a little app badge in the window's color (or an emoji if there's no icon for it)
+	local badge, glyph = Icons.Badge(header, Icons.Has(icon) and icon or "help", 38, accent:Lerp(UI.C.Panel, 0.15), { Position = UDim2.fromOffset(15, 8), ZIndex = 22 })
+	function win.SetIcon(name)
+		if Icons.Has(name) then
+			Icons.Set(glyph, name)
+			badge.Visible = true
+			iconLabel.Text = ""
+		else
+			badge.Visible = false
+			iconLabel.Text = name or ""
+		end
+	end
+	win.SetIcon(icon)
 	local titleLabel = UI.text(header, title, 22, UI.Title, UI.C.Text, { Size = UDim2.new(1, -140, 0, 30), Position = UDim2.fromOffset(60, 12), ZIndex = 22 })
 	local close = UI.button(header, "✕", { Size = UDim2.fromOffset(36, 36), Position = UDim2.new(1, -46, 0, 9), Color = UI.C.Panel3, TextSize = 16 }, function()
 		win.Close()

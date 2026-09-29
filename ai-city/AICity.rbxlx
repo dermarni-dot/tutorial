@@ -13101,7 +13101,7 @@ function DisguiseService.Start(services)
 end
 
 return DisguiseService
-]]></ProtectedString></Properties></Item></Item></Item><Item class="StarterPlayer" referent="RBX31"><Properties><string name="Name">StarterPlayer</string></Properties><Item class="StarterPlayerScripts" referent="RBX32"><Properties><string name="Name">StarterPlayerScripts</string></Properties><Item class="LocalScript" referent="RBX37"><Properties><string name="Name">CityClient</string><ProtectedString name="Source"><![CDATA[-- CityClient (LocalScript) — StarterPlayer.StarterPlayerScripts.CityClient
+]]></ProtectedString></Properties></Item></Item></Item><Item class="StarterPlayer" referent="RBX31"><Properties><string name="Name">StarterPlayer</string></Properties><Item class="StarterPlayerScripts" referent="RBX32"><Properties><string name="Name">StarterPlayerScripts</string></Properties><Item class="LocalScript" referent="RBX38"><Properties><string name="Name">CityClient</string><ProtectedString name="Source"><![CDATA[-- CityClient (LocalScript) — StarterPlayer.StarterPlayerScripts.CityClient
 -- AI City on your screen. Starts the HUD, the windows, the world effects and
 -- the citizens' body language, and routes everything the server sends.
 --
@@ -13331,6 +13331,8 @@ local SoundService = game:GetService("SoundService")
 local Lighting = game:GetService("Lighting")
 
 local UI = {}
+local Icons = require(script.Parent:WaitForChild("Icons"))
+UI.Icons = Icons
 
 local function rgb(r, g, b)
 	return Color3.fromRGB(r, g, b)
@@ -13637,7 +13639,20 @@ function UI.window(screen, title, icon, size, accent)
 	UI.new("Frame", { BackgroundColor3 = accent, BorderSizePixel = 0, Size = UDim2.new(1, 0, 0, 3), Position = UDim2.new(0, 0, 1, 0), ZIndex = 22, Parent = header })
 	-- the header glows faintly in the window's color
 	UI.gradient(header, accent:Lerp(UI.C.White, 0.2), UI.C.White, 0, NumberSequence.new(0.2, 0))
-	local iconLabel = UI.text(header, icon or "", 26, UI.Font, UI.C.Text, { Size = UDim2.fromOffset(40, 40), Position = UDim2.fromOffset(14, 7), TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 22 })
+	local iconLabel = UI.text(header, "", 26, UI.Font, UI.C.Text, { Size = UDim2.fromOffset(40, 40), Position = UDim2.fromOffset(14, 7), TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 22 })
+	-- the window's icon: a little app badge in the window's color (or an emoji if there's no icon for it)
+	local badge, glyph = Icons.Badge(header, Icons.Has(icon) and icon or "help", 38, accent:Lerp(UI.C.Panel, 0.15), { Position = UDim2.fromOffset(15, 8), ZIndex = 22 })
+	function win.SetIcon(name)
+		if Icons.Has(name) then
+			Icons.Set(glyph, name)
+			badge.Visible = true
+			iconLabel.Text = ""
+		else
+			badge.Visible = false
+			iconLabel.Text = name or ""
+		end
+	end
+	win.SetIcon(icon)
 	local titleLabel = UI.text(header, title, 22, UI.Title, UI.C.Text, { Size = UDim2.new(1, -140, 0, 30), Position = UDim2.fromOffset(60, 12), ZIndex = 22 })
 	local close = UI.button(header, "✕", { Size = UDim2.fromOffset(36, 36), Position = UDim2.new(1, -46, 0, 9), Color = UI.C.Panel3, TextSize = 16 }, function()
 		win.Close()
@@ -13760,7 +13775,641 @@ function UI.commas(n)
 end
 
 return UI
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX34"><Properties><string name="Name">Hud</string><ProtectedString name="Source"><![CDATA[-- Hud (ModuleScript) — StarterPlayerScripts.CityClient.Hud
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX34"><Properties><string name="Name">Icons</string><ProtectedString name="Source"><![CDATA[-- Icons (ModuleScript) — StarterPlayerScripts.CityClient.Icons
+-- AI City's own icon set, drawn from rounded shapes (no image uploads needed,
+-- and they stay sharp at any size).
+--
+--   Icons.Glyph(parent, "map", 28, props)          just the drawing
+--   Icons.Badge(parent, "map", 60, color, props)   an app icon: the drawing on a
+--                                                  glossy rounded square
+--   Icons.Set(icon, "moon")                        swap the drawing in place
+--   Icons.Has(name)
+--
+-- Every icon is drawn on a 1×1 grid (0,0 is the top left, 0.5,0.5 the middle).
+-- "fg" is the icon's main color (white by default); "hole" is the color of the
+-- cut-outs (the badge or background color behind it). Some icons (coins,
+-- hearts, weapons...) have their own colors.
+
+local Icons = {}
+
+local function rgb(r, g, b)
+	return Color3.fromRGB(r, g, b)
+end
+local BLACK = Color3.new(0, 0, 0)
+local WHITE = Color3.new(1, 1, 1)
+local GOLD, GOLD_DARK, GOLD_LIGHT = rgb(255, 196, 72), rgb(214, 146, 36), rgb(255, 226, 130)
+local RED, RED_DARK = rgb(240, 70, 84), rgb(190, 40, 56)
+local WOOD, WOOD_DARK = rgb(206, 150, 90), rgb(150, 100, 56)
+local METAL, METAL_DARK = rgb(206, 212, 224), rgb(130, 138, 156)
+local SKIN = rgb(236, 190, 150)
+local KNIT = rgb(38, 38, 46)
+
+--------------------------------------------------------------------------------
+-- Drawing
+--------------------------------------------------------------------------------
+-- a drawing context maps grid coordinates into a frame (clip boxes get their own)
+local function context(frame, px, fg, hole, z)
+	return { Frame = frame, X0 = 0, Y0 = 0, SX = 1, SY = 1, Px = px, Fg = fg, Hole = hole, Z = z, N = 0 }
+end
+
+local function place(ctx, gui, x, y, w, h)
+	gui.AnchorPoint = Vector2.new(0.5, 0.5)
+	gui.Position = UDim2.fromScale((x - ctx.X0) / ctx.SX, (y - ctx.Y0) / ctx.SY)
+	gui.Size = UDim2.fromScale(w / ctx.SX, h / ctx.SY)
+	ctx.N += 1
+	gui.ZIndex = ctx.Z + ctx.N
+	gui.BorderSizePixel = 0
+	gui.Name = "Ink"
+	gui.Parent = ctx.Frame
+	return gui
+end
+
+local function decorate(gui, o)
+	if o.r then
+		local c = Instance.new("UICorner")
+		c.CornerRadius = UDim.new(o.r, 0)
+		c.Parent = gui
+	end
+	if o.rot then
+		gui.Rotation = o.rot
+	end
+	if o.grad then
+		local g = Instance.new("UIGradient")
+		g.Color = ColorSequence.new(o.grad[1], o.grad[2])
+		g.Rotation = o.grad[3] or 90
+		g.Parent = gui
+	end
+end
+
+-- a rectangle centered on x, y (o.r = corner roundness 0..0.5, o.rot = degrees)
+local function R(ctx, x, y, w, h, color, o)
+	o = o or {}
+	local f = Instance.new("Frame")
+	f.BackgroundColor3 = color
+	f.BackgroundTransparency = o.t or 0
+	place(ctx, f, x, y, w, h)
+	decorate(f, o)
+	return f
+end
+
+-- a circle
+local function C(ctx, x, y, d, color, o)
+	o = o or {}
+	o.r = 0.5
+	return R(ctx, x, y, d, d, color, o)
+end
+
+-- a ring (d = outer size, t = line width)
+local function O(ctx, x, y, d, t, color, o)
+	o = o or {}
+	local f = Instance.new("Frame")
+	f.BackgroundTransparency = 1
+	place(ctx, f, x, y, d - 2 * t, d - 2 * t)
+	local c = Instance.new("UICorner")
+	c.CornerRadius = UDim.new(o.r or 0.5, 0)
+	c.Parent = f
+	local s = Instance.new("UIStroke")
+	s.Color = color
+	s.Thickness = math.max(1, t * ctx.Px)
+	s.Transparency = o.t or 0
+	s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	s.Parent = f
+	if o.rot then
+		f.Rotation = o.rot
+	end
+	return f
+end
+
+-- a text glyph (★, ?, ...)
+local function T(ctx, x, y, s, text, color, font)
+	local l = Instance.new("TextLabel")
+	l.BackgroundTransparency = 1
+	l.Text = text
+	l.TextColor3 = color
+	l.Font = font or Enum.Font.GothamBlack
+	l.TextScaled = true
+	l.TextSize = math.max(8, math.floor(s * ctx.Px * 0.9))
+	l.TextXAlignment = Enum.TextXAlignment.Center
+	l.TextYAlignment = Enum.TextYAlignment.Center
+	place(ctx, l, x, y, s, s)
+	return l
+end
+
+-- draw inside a box that cuts off everything outside it (x0, y0 → x1, y1)
+local function clip(ctx, x0, y0, x1, y1, fn)
+	local f = Instance.new("Frame")
+	f.BackgroundTransparency = 1
+	f.ClipsDescendants = true
+	place(ctx, f, (x0 + x1) / 2, (y0 + y1) / 2, x1 - x0, y1 - y0)
+	local sub = { Frame = f, X0 = x0, Y0 = y0, SX = x1 - x0, SY = y1 - y0, Px = ctx.Px, Fg = ctx.Fg, Hole = ctx.Hole, Z = f.ZIndex or 1, N = 0 }
+	fn(sub)
+	return f
+end
+
+-- the point `dist` along a rotated line through x, y
+local function along(x, y, rot, dist)
+	local a = math.rad(rot)
+	return x + math.sin(a) * dist, y - math.cos(a) * dist
+end
+
+local function shade(c, k)
+	return c:Lerp(BLACK, k)
+end
+
+--------------------------------------------------------------------------------
+-- The icons
+--------------------------------------------------------------------------------
+local D = {}
+
+D.phone = function(c)
+	R(c, 0.5, 0.5, 0.48, 0.84, c.Fg, { r = 0.2 })
+	R(c, 0.5, 0.48, 0.38, 0.6, c.Hole, { r = 0.08 })
+	R(c, 0.5, 0.155, 0.14, 0.035, c.Hole, { r = 0.5 })
+	C(c, 0.5, 0.86, 0.075, c.Hole)
+	-- a little app grid on the screen
+	for i = 0, 1 do
+		for j = 0, 2 do
+			R(c, 0.4 + i * 0.2, 0.3 + j * 0.16, 0.12, 0.1, c.Fg, { r = 0.3, t = 0.35 })
+		end
+	end
+end
+
+D.map = function(c)
+	local fg = c.Fg
+	R(c, 0.27, 0.52, 0.25, 0.64, fg, { rot = -5, r = 0.06 })
+	R(c, 0.5, 0.52, 0.25, 0.64, shade(fg, 0.18), { rot = 5, r = 0.06 })
+	R(c, 0.73, 0.52, 0.25, 0.64, fg, { rot = -5, r = 0.06 })
+	-- a dotted route
+	for k, p in ipairs({ { 0.22, 0.7 }, { 0.32, 0.62 }, { 0.42, 0.58 }, { 0.52, 0.56 } }) do
+		C(c, p[1], p[2], 0.055, RED, { t = k * 0.1 })
+	end
+	-- the pin
+	R(c, 0.66, 0.44, 0.2, 0.2, RED_DARK, { rot = 45, r = 0.15 })
+	C(c, 0.66, 0.33, 0.3, RED)
+	C(c, 0.66, 0.33, 0.12, WHITE)
+end
+
+D.people = function(c)
+	local back = shade(c.Fg, 0.22)
+	C(c, 0.68, 0.34, 0.24, back)
+	R(c, 0.68, 0.66, 0.36, 0.3, back, { r = 0.5 })
+	R(c, 0.68, 0.75, 0.36, 0.12, back)
+	C(c, 0.4, 0.37, 0.3, c.Hole)
+	C(c, 0.4, 0.37, 0.26, c.Fg)
+	R(c, 0.4, 0.72, 0.5, 0.34, c.Hole, { r = 0.5 })
+	R(c, 0.4, 0.72, 0.44, 0.3, c.Fg, { r = 0.5 })
+	R(c, 0.4, 0.81, 0.44, 0.12, c.Fg)
+end
+
+D.news = function(c)
+	R(c, 0.54, 0.52, 0.6, 0.74, c.Fg, { r = 0.1 })
+	R(c, 0.27, 0.6, 0.14, 0.5, shade(c.Fg, 0.2), { r = 0.3 })
+	R(c, 0.54, 0.27, 0.44, 0.08, c.Hole, { r = 0.5 })
+	R(c, 0.43, 0.46, 0.2, 0.18, rgb(84, 150, 255), { r = 0.15 })
+	R(c, 0.66, 0.41, 0.16, 0.05, c.Hole, { r = 0.5, t = 0.3 })
+	R(c, 0.66, 0.5, 0.16, 0.05, c.Hole, { r = 0.5, t = 0.3 })
+	R(c, 0.54, 0.64, 0.44, 0.05, c.Hole, { r = 0.5, t = 0.3 })
+	R(c, 0.5, 0.74, 0.36, 0.05, c.Hole, { r = 0.5, t = 0.3 })
+end
+
+D.vote = function(c)
+	R(c, 0.5, 0.34, 0.38, 0.4, WHITE, { rot = -8, r = 0.08 })
+	R(c, 0.45, 0.34, 0.09, 0.045, rgb(60, 180, 100), { rot = 45 })
+	R(c, 0.53, 0.31, 0.18, 0.045, rgb(60, 180, 100), { rot = -50 })
+	R(c, 0.5, 0.67, 0.72, 0.4, c.Fg, { r = 0.12 })
+	R(c, 0.5, 0.49, 0.72, 0.06, shade(c.Fg, 0.25), { r = 0.5 })
+	R(c, 0.5, 0.49, 0.42, 0.035, c.Hole, { r = 0.5 })
+	R(c, 0.5, 0.7, 0.24, 0.08, c.Hole, { r = 0.5, t = 0.4 })
+end
+
+D.goals = function(c)
+	C(c, 0.46, 0.54, 0.78, c.Fg)
+	C(c, 0.46, 0.54, 0.58, c.Hole)
+	C(c, 0.46, 0.54, 0.4, c.Fg)
+	C(c, 0.46, 0.54, 0.2, RED)
+	-- the dart
+	R(c, 0.63, 0.37, 0.4, 0.05, shade(c.Fg, 0.6), { rot = -45, r = 0.5 })
+	R(c, 0.8, 0.2, 0.11, 0.11, RED, { rot = 45, r = 0.2 })
+end
+
+D.mic = function(c)
+	clip(c, 0.2, 0.4, 0.8, 0.74, function(k)
+		O(k, 0.5, 0.42, 0.52, 0.06, c.Fg)
+	end)
+	R(c, 0.5, 0.35, 0.3, 0.5, c.Fg, { r = 0.5 })
+	R(c, 0.5, 0.28, 0.16, 0.035, c.Hole, { r = 0.5, t = 0.3 })
+	R(c, 0.5, 0.36, 0.16, 0.035, c.Hole, { r = 0.5, t = 0.3 })
+	R(c, 0.5, 0.44, 0.16, 0.035, c.Hole, { r = 0.5, t = 0.3 })
+	R(c, 0.5, 0.79, 0.07, 0.14, c.Fg)
+	R(c, 0.5, 0.87, 0.34, 0.07, c.Fg, { r = 0.5 })
+end
+
+D.mayor = function(c)
+	clip(c, 0.1, 0.05, 0.9, 0.36, function(k)
+		R(k, 0.5, 0.37, 0.44, 0.44, c.Fg, { rot = 45, r = 0.06 })
+	end)
+	C(c, 0.5, 0.27, 0.08, c.Hole)
+	R(c, 0.5, 0.39, 0.7, 0.07, c.Fg, { r = 0.3 })
+	for _, x in ipairs({ 0.24, 0.41, 0.59, 0.76 }) do
+		R(c, x, 0.59, 0.09, 0.3, c.Fg)
+	end
+	R(c, 0.5, 0.78, 0.72, 0.07, c.Fg)
+	R(c, 0.5, 0.86, 0.82, 0.07, c.Fg, { r = 0.3 })
+end
+
+D.help = function(c)
+	C(c, 0.5, 0.5, 0.82, c.Fg)
+	T(c, 0.51, 0.5, 0.58, "?", c.Hole, Enum.Font.FredokaOne)
+end
+
+D.settings = function(c)
+	for k = 0, 3 do
+		R(c, 0.5, 0.5, 0.17, 0.88, c.Fg, { rot = k * 45, r = 0.25 })
+	end
+	C(c, 0.5, 0.5, 0.68, c.Fg)
+	C(c, 0.5, 0.5, 0.28, c.Hole)
+end
+
+D.chat = function(c)
+	R(c, 0.34, 0.72, 0.18, 0.18, c.Fg, { rot = 30, r = 0.1 })
+	R(c, 0.5, 0.46, 0.84, 0.58, c.Fg, { r = 0.4 })
+	for _, x in ipairs({ 0.32, 0.5, 0.68 }) do
+		C(c, x, 0.46, 0.1, c.Hole)
+	end
+end
+
+D.siren = function(c)
+	for _, a in ipairs({ -55, 0, 55 }) do
+		local x, y = along(0.5, 0.5, a, 0.4)
+		R(c, x, y, 0.06, 0.13, RED, { rot = a, r = 0.5 })
+	end
+	clip(c, 0.1, 0.1, 0.9, 0.66, function(k)
+		C(k, 0.5, 0.66, 0.52, RED, { grad = { rgb(255, 150, 150), RED, 90 } })
+	end)
+	R(c, 0.4, 0.5, 0.07, 0.14, WHITE, { r = 0.5, t = 0.3, rot = -20 })
+	R(c, 0.5, 0.71, 0.66, 0.12, c.Fg, { r = 0.3 })
+	R(c, 0.5, 0.82, 0.74, 0.08, shade(c.Fg, 0.25), { r = 0.3 })
+end
+
+D.fist = function(c)
+	local fg = c.Fg
+	R(c, 0.52, 0.84, 0.36, 0.16, shade(fg, 0.15), { r = 0.2 })
+	R(c, 0.52, 0.56, 0.58, 0.46, fg, { r = 0.22 })
+	for k, x in ipairs({ 0.33, 0.47, 0.61, 0.75 }) do
+		R(c, x, 0.36 + (if k == 1 or k == 4 then 0.03 else 0), 0.13, 0.24, fg, { r = 0.45 })
+		R(c, x + 0.066, 0.4, 0.012, 0.16, c.Hole, { t = 0.5 })
+	end
+	R(c, 0.43, 0.6, 0.36, 0.13, shade(fg, 0.12), { r = 0.5, rot = -12 })
+	R(c, 0.43, 0.6, 0.3, 0.012, c.Hole, { t = 0.6, rot = -12 })
+end
+
+D.shield = function(c, star)
+	R(c, 0.5, 0.6, 0.46, 0.46, c.Fg, { rot = 45, r = 0.12 })
+	R(c, 0.5, 0.38, 0.66, 0.46, c.Fg, { r = 0.14 })
+	-- the right half a little darker, like light from the left
+	clip(c, 0.5, 0, 1, 1, function(k)
+		R(k, 0.5, 0.6, 0.46, 0.46, shade(c.Fg, 0.14), { rot = 45, r = 0.12 })
+		R(k, 0.5, 0.38, 0.66, 0.46, shade(c.Fg, 0.14), { r = 0.14 })
+	end)
+	if star ~= false then
+		T(c, 0.5, 0.47, 0.36, "★", c.Hole)
+	end
+end
+
+D.coin = function(c)
+	C(c, 0.5, 0.54, 0.82, GOLD_DARK)
+	C(c, 0.5, 0.5, 0.82, GOLD, { grad = { GOLD_LIGHT, GOLD, 90 } })
+	O(c, 0.5, 0.5, 0.62, 0.05, GOLD_DARK, { t = 0.3 })
+	T(c, 0.5, 0.51, 0.36, "★", GOLD_DARK)
+	R(c, 0.33, 0.28, 0.16, 0.06, WHITE, { r = 0.5, rot = -40, t = 0.3 })
+end
+
+D.heart = function(c)
+	C(c, 0.36, 0.42, 0.36, RED)
+	C(c, 0.64, 0.42, 0.36, RED)
+	R(c, 0.5, 0.58, 0.36, 0.36, RED, { rot = 45, r = 0.08 })
+	C(c, 0.34, 0.38, 0.12, WHITE, { t = 0.35 })
+end
+
+D.star = function(c)
+	T(c, 0.5, 0.5, 0.95, "★", c.Fg)
+end
+
+D.smile = function(c)
+	C(c, 0.5, 0.5, 0.84, c.Fg)
+	C(c, 0.37, 0.42, 0.11, c.Hole)
+	C(c, 0.63, 0.42, 0.11, c.Hole)
+	clip(c, 0.2, 0.55, 0.8, 0.8, function(k)
+		O(k, 0.5, 0.5, 0.46, 0.075, c.Hole)
+	end)
+end
+
+D.sun = function(c)
+	for k = 0, 3 do
+		R(c, 0.5, 0.5, 0.08, 0.92, GOLD, { rot = k * 45, r = 0.5 })
+	end
+	C(c, 0.5, 0.5, 0.6, c.Hole)
+	C(c, 0.5, 0.5, 0.52, GOLD, { grad = { GOLD_LIGHT, GOLD, 90 } })
+end
+
+D.moon = function(c)
+	C(c, 0.46, 0.52, 0.74, rgb(255, 236, 170), { grad = { rgb(255, 245, 200), rgb(250, 214, 120), 90 } })
+	C(c, 0.66, 0.38, 0.6, c.Hole)
+	C(c, 0.3, 0.6, 0.08, rgb(230, 190, 100), { t = 0.3 })
+	T(c, 0.82, 0.74, 0.18, "★", rgb(255, 236, 170))
+end
+
+D.sunset = function(c)
+	clip(c, 0, 0, 1, 0.66, function(k)
+		for j = -1, 1 do
+			R(k, 0.5, 0.66, 0.07, 0.92, rgb(255, 150, 70), { rot = j * 45, r = 0.5 })
+		end
+		C(k, 0.5, 0.66, 0.52, rgb(255, 150, 70), { grad = { rgb(255, 214, 110), rgb(255, 120, 60), 90 } })
+	end)
+	R(c, 0.5, 0.74, 0.8, 0.06, rgb(255, 150, 70), { r = 0.5 })
+	R(c, 0.5, 0.84, 0.5, 0.05, rgb(255, 150, 70), { r = 0.5, t = 0.35 })
+end
+
+D.bat = function(c)
+	local rot = 40
+	local x, y = along(0.5, 0.5, rot, 0.12)
+	R(c, x, y, 0.22, 0.62, WOOD, { rot = rot, r = 0.5, grad = { rgb(236, 190, 130), WOOD, 0 } })
+	x, y = along(0.5, 0.5, rot, -0.24)
+	R(c, x, y, 0.07, 0.36, WOOD_DARK, { rot = rot, r = 0.5 })
+	x, y = along(0.5, 0.5, rot, -0.3)
+	R(c, x, y, 0.09, 0.18, rgb(60, 60, 70), { rot = rot, r = 0.4 })
+	x, y = along(0.5, 0.5, rot, -0.42)
+	C(c, x, y, 0.12, rgb(60, 60, 70))
+end
+
+D.hammer = function(c)
+	local rot = 40
+	local x, y = along(0.46, 0.56, rot, 0)
+	R(c, x, y, 0.1, 0.66, WOOD, { rot = rot, r = 0.4 })
+	x, y = along(0.46, 0.56, rot, -0.2)
+	R(c, x, y, 0.13, 0.24, RED, { rot = rot, r = 0.4 })
+	local hx, hy = along(0.46, 0.56, rot, 0.3)
+	R(c, hx, hy, 0.54, 0.2, METAL, { rot = rot, r = 0.18, grad = { WHITE, METAL, 90 } })
+	-- the striking face and the claw
+	local a = math.rad(rot)
+	R(c, hx + math.cos(a) * 0.26, hy + math.sin(a) * 0.26, 0.08, 0.24, METAL_DARK, { rot = rot, r = 0.3 })
+	R(c, hx - math.cos(a) * 0.27, hy - math.sin(a) * 0.27, 0.12, 0.12, METAL_DARK, { rot = rot + 45, r = 0.2 })
+end
+
+D.knife = function(c)
+	local rot = 40
+	local x, y = along(0.5, 0.5, rot, 0.14)
+	R(c, x, y, 0.17, 0.5, METAL, { rot = rot, r = 0.5, grad = { WHITE, METAL, 0 } })
+	x, y = along(0.5, 0.5, rot, 0.1)
+	local a = math.rad(rot)
+	R(c, x - math.cos(a) * 0.045, y - math.sin(a) * 0.045, 0.06, 0.44, METAL_DARK, { rot = rot, r = 0.5, t = 0.4 })
+	x, y = along(0.5, 0.5, rot, -0.13)
+	R(c, x, y, 0.3, 0.06, rgb(90, 94, 110), { rot = rot, r = 0.5 })
+	x, y = along(0.5, 0.5, rot, -0.3)
+	R(c, x, y, 0.13, 0.3, rgb(52, 44, 44), { rot = rot, r = 0.35 })
+	for _, d in ipairs({ -0.25, -0.35 }) do
+		local px, py = along(0.5, 0.5, rot, d)
+		C(c, px, py, 0.04, METAL)
+	end
+end
+
+D.hoodie = function(c)
+	local body = rgb(70, 74, 92)
+	R(c, 0.5, 0.7, 0.72, 0.5, body, { r = 0.22 })
+	C(c, 0.5, 0.36, 0.5, body)
+	C(c, 0.5, 0.4, 0.3, rgb(28, 28, 36))
+	C(c, 0.44, 0.4, 0.05, rgb(230, 230, 240))
+	C(c, 0.56, 0.4, 0.05, rgb(230, 230, 240))
+	R(c, 0.45, 0.62, 0.025, 0.14, WHITE, { r = 0.5 })
+	R(c, 0.55, 0.62, 0.025, 0.14, WHITE, { r = 0.5 })
+	R(c, 0.5, 0.82, 0.36, 0.1, shade(body, 0.2), { r = 0.4 })
+end
+
+D.disguise = function(c)
+	local hat = rgb(120, 86, 60)
+	R(c, 0.5, 0.26, 0.46, 0.26, hat, { r = 0.25 })
+	R(c, 0.5, 0.33, 0.46, 0.06, rgb(30, 30, 30))
+	R(c, 0.5, 0.41, 0.82, 0.08, shade(hat, 0.15), { r = 0.5 })
+	for _, x in ipairs({ 0.36, 0.64 }) do
+		C(c, x, 0.58, 0.24, rgb(24, 24, 30))
+		R(c, x - 0.04, 0.55, 0.08, 0.035, WHITE, { r = 0.5, t = 0.45, rot = -30 })
+	end
+	R(c, 0.5, 0.57, 0.1, 0.035, rgb(24, 24, 30))
+	R(c, 0.5, 0.77, 0.34, 0.1, rgb(80, 52, 34), { r = 0.5 })
+	C(c, 0.31, 0.75, 0.12, rgb(80, 52, 34))
+	C(c, 0.69, 0.75, 0.12, rgb(80, 52, 34))
+end
+
+D.mask = function(c)
+	C(c, 0.5, 0.14, 0.14, KNIT)
+	C(c, 0.5, 0.52, 0.76, KNIT, { grad = { rgb(70, 70, 84), KNIT, 90 } })
+	R(c, 0.5, 0.46, 0.52, 0.15, SKIN, { r = 0.5 })
+	C(c, 0.39, 0.46, 0.08, rgb(30, 30, 36))
+	C(c, 0.61, 0.46, 0.08, rgb(30, 30, 36))
+	R(c, 0.5, 0.68, 0.16, 0.06, rgb(170, 70, 70), { r = 0.5 })
+	for _, y in ipairs({ 0.3, 0.84 }) do
+		R(c, 0.5, y, 0.34, 0.02, WHITE, { t = 0.8 })
+	end
+end
+
+D.idcard = function(c)
+	R(c, 0.5, 0.52, 0.86, 0.62, c.Fg, { r = 0.12 })
+	R(c, 0.5, 0.27, 0.86, 0.1, shade(c.Fg, 0.2), { r = 0.3 })
+	C(c, 0.3, 0.47, 0.18, c.Hole)
+	R(c, 0.3, 0.66, 0.24, 0.14, c.Hole, { r = 0.5 })
+	R(c, 0.65, 0.44, 0.3, 0.06, c.Hole, { r = 0.5 })
+	R(c, 0.65, 0.56, 0.3, 0.06, c.Hole, { r = 0.5, t = 0.4 })
+	R(c, 0.61, 0.68, 0.22, 0.06, c.Hole, { r = 0.5, t = 0.4 })
+end
+
+D.elevator = function(c)
+	R(c, 0.5, 0.6, 0.72, 0.68, c.Fg, { r = 0.1 })
+	R(c, 0.36, 0.62, 0.24, 0.56, c.Hole, { t = 0.35, r = 0.05 })
+	R(c, 0.64, 0.62, 0.24, 0.56, c.Hole, { t = 0.35, r = 0.05 })
+	T(c, 0.36, 0.13, 0.2, "▲", c.Fg)
+	T(c, 0.64, 0.13, 0.2, "▼", c.Fg)
+end
+
+D.trophy = function(c)
+	O(c, 0.25, 0.36, 0.24, 0.05, GOLD_DARK)
+	O(c, 0.75, 0.36, 0.24, 0.05, GOLD_DARK)
+	R(c, 0.5, 0.28, 0.52, 0.24, GOLD)
+	C(c, 0.5, 0.4, 0.52, GOLD, { grad = { GOLD_LIGHT, GOLD, 0 } })
+	R(c, 0.5, 0.28, 0.52, 0.24, GOLD, { grad = { GOLD_LIGHT, GOLD, 0 } })
+	T(c, 0.5, 0.38, 0.24, "★", GOLD_DARK)
+	R(c, 0.5, 0.7, 0.09, 0.16, GOLD_DARK)
+	R(c, 0.5, 0.82, 0.42, 0.1, GOLD, { r = 0.3 })
+	R(c, 0.5, 0.89, 0.5, 0.06, GOLD_DARK, { r = 0.3 })
+end
+
+D.close = function(c)
+	R(c, 0.5, 0.5, 0.12, 0.72, c.Fg, { rot = 45, r = 0.5 })
+	R(c, 0.5, 0.5, 0.12, 0.72, c.Fg, { rot = -45, r = 0.5 })
+end
+
+D.police = function(c)
+	D.shield(c, false)
+	T(c, 0.5, 0.47, 0.38, "★", GOLD)
+end
+
+D.city = function(c)
+	local lit = rgb(255, 214, 110)
+	local towers = {
+		{ 0.2, 0.64, 0.2, 0.44, rgb(120, 170, 255) },
+		{ 0.4, 0.5, 0.2, 0.72, rgb(90, 140, 240) },
+		{ 0.6, 0.57, 0.18, 0.58, rgb(140, 190, 255) },
+		{ 0.8, 0.68, 0.2, 0.36, rgb(100, 150, 245) },
+	}
+	R(c, 0.4, 0.1, 0.025, 0.12, c.Fg)
+	C(c, 0.4, 0.05, 0.05, RED)
+	for _, t in ipairs(towers) do
+		R(c, t[1], t[2], t[3], t[4], t[5], { r = 0.08, grad = { WHITE, rgb(150, 170, 220), 90 } })
+		local rows = math.floor(t[4] / 0.11)
+		for row = 1, rows do
+			for col = -1, 1, 2 do
+				local on = (row + col + math.floor(t[1] * 10)) % 3 ~= 0
+				R(c, t[1] + col * t[3] * 0.22, t[2] - t[4] / 2 + row * 0.1 - 0.02, t[3] * 0.24, 0.045, if on then lit else rgb(40, 60, 110), { t = if on then 0 else 0.3 })
+			end
+		end
+	end
+	R(c, 0.5, 0.9, 0.94, 0.05, c.Fg, { r = 0.5 })
+end
+
+D.hospital = function(c)
+	R(c, 0.5, 0.5, 0.24, 0.72, c.Fg, { r = 0.2 })
+	R(c, 0.5, 0.5, 0.72, 0.24, c.Fg, { r = 0.2 })
+end
+
+-- names that mean the same icon
+local ALIAS = {
+	Phone = "phone", Map = "map", People = "people", News = "news", Vote = "vote", Goals = "goals",
+	Speech = "mic", Mayor = "mayor", Help = "help", Settings = "settings", Wardrobe = "mask",
+	Fists = "fist", Bat = "bat", Hammer = "hammer", Knife = "knife", Hoodie = "hoodie", Disguise = "disguise", SkiMask = "mask",
+	["📱"] = "phone", ["🗺️"] = "map", ["👥"] = "people", ["📰"] = "news", ["🗳️"] = "vote", ["🎯"] = "goals",
+	["🎤"] = "mic", ["🏛️"] = "mayor", ["❓"] = "help", ["⚙️"] = "settings", ["🥷"] = "mask", ["👊"] = "fist",
+	["🏏"] = "bat", ["🔨"] = "hammer", ["🔪"] = "knife", ["🛡️"] = "shield", ["🪙"] = "coin", ["❤️"] = "heart",
+	["💬"] = "chat", ["🚨"] = "siren", ["🪪"] = "idcard", ["🛗"] = "elevator", ["🏆"] = "trophy", ["🏙️"] = "city",
+	["🧥"] = "hoodie", ["🥸"] = "disguise", ["☀️"] = "sun", ["🌙"] = "moon", ["🌅"] = "sunset", ["🌇"] = "sunset",
+	["💰"] = "coin", ["😊"] = "smile", ["🏥"] = "hospital", ["🚓"] = "police",
+}
+Icons.Alias = ALIAS
+
+local function resolve(name)
+	return if D[name] then name else ALIAS[name]
+end
+
+function Icons.Has(name)
+	return name ~= nil and resolve(name) ~= nil
+end
+
+local function holeFor(parent)
+	if parent and parent:IsA("GuiObject") and (parent.BackgroundTransparency or 0) < 1 and parent.BackgroundColor3 then
+		return parent.BackgroundColor3
+	end
+	return rgb(24, 27, 41)
+end
+
+local function draw(frame)
+	for _, child in ipairs(frame:GetChildren()) do
+		if child.Name == "Ink" then
+			child:Destroy()
+		end
+	end
+	local name = resolve(frame:GetAttribute("Icon"))
+	local fn = name and D[name]
+	if not fn then
+		return
+	end
+	local px = frame:GetAttribute("Px") or 32
+	local ctx = context(frame, px, frame:GetAttribute("Fg") or WHITE, frame:GetAttribute("Hole") or rgb(24, 27, 41), frame.ZIndex or 1)
+	fn(ctx)
+end
+
+-- just the drawing (a transparent square)
+function Icons.Glyph(parent, name, px, props)
+	props = props or {}
+	local frame = Instance.new("Frame")
+	frame.Name = props.Name or "Icon"
+	frame.BackgroundTransparency = 1
+	frame.Size = UDim2.fromOffset(px, px)
+	frame.AnchorPoint = props.AnchorPoint or Vector2.zero
+	frame.Position = props.Position or UDim2.new()
+	frame.LayoutOrder = props.LayoutOrder or 0
+	frame.ZIndex = props.ZIndex or (if parent and parent:IsA("GuiObject") then parent.ZIndex or 1 else 1)
+	frame.Visible = props.Visible ~= false
+	frame:SetAttribute("Icon", name)
+	frame:SetAttribute("Px", px)
+	frame:SetAttribute("Fg", props.Color or WHITE)
+	frame:SetAttribute("Hole", props.Hole or holeFor(parent))
+	draw(frame)
+	frame.Parent = parent
+	return frame
+end
+
+-- an app icon: a glossy rounded square in `color` with the drawing on it
+function Icons.Badge(parent, name, px, color, props)
+	props = props or {}
+	local badge = Instance.new("Frame")
+	badge.Name = props.Name or "Badge"
+	badge.BackgroundColor3 = color
+	badge.BorderSizePixel = 0
+	badge.Size = UDim2.fromOffset(px, px)
+	badge.AnchorPoint = props.AnchorPoint or Vector2.zero
+	badge.Position = props.Position or UDim2.new()
+	badge.LayoutOrder = props.LayoutOrder or 0
+	badge.ZIndex = props.ZIndex or (if parent and parent:IsA("GuiObject") then parent.ZIndex or 1 else 1)
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(props.Round or 0.26, 0)
+	corner.Parent = badge
+	local g = Instance.new("UIGradient")
+	g.Color = ColorSequence.new(color:Lerp(WHITE, 0.28), shade(color, 0.12))
+	g.Rotation = 90
+	g.Parent = badge
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = color:Lerp(WHITE, 0.45)
+	stroke.Thickness = math.max(1, px / 40)
+	stroke.Transparency = 0.35
+	stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	stroke.Parent = badge
+	-- a soft shine across the top
+	local shine = Instance.new("Frame")
+	shine.Name = "Shine"
+	shine.BackgroundColor3 = WHITE
+	shine.BackgroundTransparency = 0.9
+	shine.BorderSizePixel = 0
+	shine.AnchorPoint = Vector2.new(0.5, 0)
+	shine.Position = UDim2.fromScale(0.5, 0.05)
+	shine.Size = UDim2.fromScale(0.84, 0.34)
+	shine.ZIndex = (badge.ZIndex or 1) + 1
+	local sc = Instance.new("UICorner")
+	sc.CornerRadius = UDim.new(0.4, 0)
+	sc.Parent = shine
+	shine.Parent = badge
+	local glyph = Icons.Glyph(badge, name, math.floor(px * (props.Fill or 0.66)), { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Color = props.Color, Hole = props.Hole or color, ZIndex = (badge.ZIndex or 1) + 2 })
+	badge.Parent = parent
+	return badge, glyph
+end
+
+-- swap the drawing (for icons that change: the sky, the weapon in your hand)
+function Icons.Set(icon, name, color)
+	if icon:GetAttribute("Icon") == name and (color == nil or icon:GetAttribute("Fg") == color) then
+		return
+	end
+	icon:SetAttribute("Icon", name)
+	if color then
+		icon:SetAttribute("Fg", color)
+	end
+	draw(icon)
+end
+
+Icons.Names = {}
+for name in pairs(D) do
+	table.insert(Icons.Names, name)
+end
+table.sort(Icons.Names)
+
+return Icons
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX35"><Properties><string name="Name">Hud</string><ProtectedString name="Source"><![CDATA[-- Hud (ModuleScript) — StarterPlayerScripts.CityClient.Hud
 -- The always-on screen: the clock and calendar, the city's mood and stats,
 -- a rotating minimap, coins, wanted stars, the mayor and the next election,
 -- the action bar, notifications and the news ticker.
@@ -13925,7 +14574,7 @@ local refs = {}
 
 local function statRow(parent, icon, name, color, order)
 	local row = UI.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 18), LayoutOrder = order, Parent = parent })
-	UI.text(row, icon, 13, UI.Font, C.Text, { Size = UDim2.fromOffset(18, 18), TextXAlignment = Enum.TextXAlignment.Center })
+	UI.Icons.Glyph(row, icon, 17, { Color = color, Hole = C.Panel })
 	UI.text(row, name, 12, UI.Bold, C.Sub, { Position = UDim2.fromOffset(22, 0), Size = UDim2.fromOffset(74, 18) })
 	local bar, set = UI.bar(row, color, 8, { Position = UDim2.new(0, 98, 0.5, -4), Size = UDim2.new(1, -134, 0, 8) })
 	local value = UI.text(row, "50", 12, UI.Bold, C.Text, { Position = UDim2.new(1, -32, 0, 0), Size = UDim2.fromOffset(32, 18), TextXAlignment = Enum.TextXAlignment.Right })
@@ -13934,7 +14583,7 @@ end
 
 local function actionButton(parent, emoji, label, key, order, onClick, color)
 	local button = UI.button(parent, "", { Size = UDim2.fromOffset(66, 62), Color = color or C.Panel2, LayoutOrder = order }, onClick)
-	UI.text(button, emoji, 24, UI.Font, C.White, { Size = UDim2.new(1, 0, 0, 30), Position = UDim2.fromOffset(0, 5), TextXAlignment = Enum.TextXAlignment.Center })
+	UI.Icons.Glyph(button, emoji, 30, { Name = "ActionIcon", AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 6), Hole = color or C.Panel2 })
 	UI.text(button, label, 11, UI.Bold, C.Sub, { Size = UDim2.new(1, 0, 0, 14), Position = UDim2.fromOffset(0, 36), TextXAlignment = Enum.TextXAlignment.Center })
 	if key and not UserInputService.TouchEnabled then
 		local keycap = UI.new("TextLabel", { BackgroundColor3 = C.Bg, Text = key, TextColor3 = C.Gold, Font = UI.Black, TextSize = 10, Size = UDim2.fromOffset(16, 16), Position = UDim2.new(1, -18, 0, 2), Parent = button })
@@ -13964,7 +14613,7 @@ local function build()
 	local top = UI.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 40), LayoutOrder = 1, Parent = card })
 	refs.Time = UI.text(top, "8:00", 36, UI.Title, C.White, { Size = UDim2.fromOffset(110, 40), AutomaticSize = Enum.AutomaticSize.X })
 	refs.AmPm = UI.text(top, "AM", 15, UI.Bold, C.Sub, { Position = UDim2.fromOffset(100, 6), Size = UDim2.fromOffset(40, 18) })
-	refs.Sky = UI.text(top, "☀️", 30, UI.Font, C.White, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 2), Size = UDim2.fromOffset(40, 36), TextXAlignment = Enum.TextXAlignment.Right })
+	refs.Sky = UI.Icons.Glyph(top, "sun", 38, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 1), Hole = C.Panel })
 	refs.Day = UI.text(card, "Monday · Day 1", 14, UI.Bold, C.Sub, { LayoutOrder = 2, Size = UDim2.new(1, 0, 0, 18) })
 	local stateRow = UI.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 26), LayoutOrder = 3, Parent = card })
 	UI.list(stateRow, Enum.FillDirection.Horizontal, 6, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center)
@@ -14005,7 +14654,7 @@ local function build()
 	local coins = UI.panel(right, { Size = UDim2.fromOffset(0, 40), AutomaticSize = Enum.AutomaticSize.X, LayoutOrder = 1, Radius = 20 })
 	UI.pad(coins, 0, 0, 16, 0, 12)
 	UI.list(coins, Enum.FillDirection.Horizontal, 6, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center)
-	UI.text(coins, "🪙", 22, UI.Font, C.White, { Size = UDim2.fromOffset(26, 30), TextXAlignment = Enum.TextXAlignment.Center, LayoutOrder = 1 })
+	UI.Icons.Glyph(coins, "coin", 26, { LayoutOrder = 1 })
 	refs.Coins = UI.text(coins, "100", 22, UI.Title, C.Gold, { AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.fromOffset(0, 30), LayoutOrder = 2 })
 	local wanted = UI.panel(right, { Size = UDim2.fromOffset(0, 36), AutomaticSize = Enum.AutomaticSize.X, LayoutOrder = 2, Radius = 18, Visible = false })
 	UI.pad(wanted, 0, 0, 12, 0, 12)
@@ -14048,7 +14697,7 @@ local function build()
 	refs.AttackButton = actionButton(bar, "👊", "Attack", "F", 6, function()
 		ctx.World.Attack()
 	end, UI.rgb(110, 40, 48))
-	refs.AttackEmoji = refs.AttackButton:FindFirstChildOfClass("TextLabel")
+	refs.AttackEmoji = refs.AttackButton:FindFirstChild("ActionIcon")
 	-- block: hold the button (or X)
 	local blockButton = actionButton(bar, "🛡️", "Block", "X", 6, nil, UI.rgb(40, 60, 110))
 	blockButton.InputBegan:Connect(function(input)
@@ -14064,7 +14713,7 @@ local function build()
 
 	-- health (bottom left)
 	local health = UI.panel(screen, { Name = "Health", AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 16, 1, -16), Size = UDim2.fromOffset(250, 44), Radius = 14 })
-	UI.text(health, "❤️", 22, UI.Font, C.White, { Position = UDim2.fromOffset(10, 4), Size = UDim2.fromOffset(30, 36), TextXAlignment = Enum.TextXAlignment.Center })
+	UI.Icons.Glyph(health, "heart", 28, { Position = UDim2.fromOffset(11, 8) })
 	local hb, hset, hfill = UI.bar(health, C.Green, 12, { Position = UDim2.fromOffset(46, 16), Size = UDim2.new(1, -100, 0, 12) })
 	refs.HealthSet, refs.HealthFill = hset, hfill
 	refs.HealthText = UI.text(health, "100", 16, UI.Title, C.White, { Position = UDim2.new(1, -50, 0, 4), Size = UDim2.fromOffset(42, 36), TextXAlignment = Enum.TextXAlignment.Right })
@@ -14119,7 +14768,7 @@ local function refreshCity()
 	refs.Time.Text = time
 	refs.AmPm.Text = ampm
 	refs.AmPm.Position = UDim2.fromOffset(refs.Time.TextBounds.X + 6, 6)
-	refs.Sky.Text = skyIcon(h)
+	UI.Icons.Set(refs.Sky, skyIcon(h))
 	refs.Day.Text = (s:GetAttribute("Weekday") or "Monday") .. " · Day " .. ((s:GetAttribute("Day") or 0) + 1) .. (if s:GetAttribute("Weekend") then "  ·  🎉 Weekend" else "")
 	local color = s:GetAttribute("StateColor") or C.Blue
 	refs.State.Text = (s:GetAttribute("StateEmoji") or "🙂") .. " " .. (s:GetAttribute("StateLabel") or "Stable")
@@ -14289,8 +14938,7 @@ local function frame(dt)
 	local weapon = ctx.World.Equipped and ctx.World.Equipped() or "Fists"
 	if refs.AttackEmoji and refs.ShownWeapon ~= weapon then
 		refs.ShownWeapon = weapon
-		local emojis = { Fists = "👊", Bat = "🏏", Hammer = "🔨", Knife = "🔪" }
-		refs.AttackEmoji.Text = emojis[weapon] or "👊"
+		UI.Icons.Set(refs.AttackEmoji, if UI.Icons.Has(weapon) then weapon else "fist")
 	end
 	-- jail
 	local jailUntil = player:GetAttribute("JailUntil")
@@ -14397,7 +15045,6 @@ end
 -- The weapon hotbar (bottom right): 1 = fists, 2+ = your weapons
 --------------------------------------------------------------------------------
 local hotbar, slots = nil, {}
-local EMOJI = { Fists = "👊", Bat = "🏏", Hammer = "🔨", Knife = "🔪" }
 local function tools()
 	local list = {}
 	local backpack = player:FindFirstChildOfClass("Backpack")
@@ -14460,7 +15107,7 @@ local function refreshHotbar()
 			local button = UI.button(hotbar, "", { Size = UDim2.fromOffset(60, 60), Color = C.Panel2, LayoutOrder = k }, function()
 				Hud.Equip(k)
 			end)
-			local icon = UI.text(button, "", 28, UI.Font, C.White, { Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center })
+			local icon = UI.Icons.Glyph(button, "fist", 38, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Hole = C.Panel2 })
 			local num = UI.new("TextLabel", { BackgroundColor3 = C.Bg, Text = tostring(k), TextColor3 = C.Gold, Font = UI.Black, TextSize = 11, Size = UDim2.fromOffset(16, 16), Position = UDim2.fromOffset(3, 3), Parent = button })
 			UI.corner(num, 5)
 			-- the cooldown sweeps down after each attack
@@ -14470,7 +15117,7 @@ local function refreshHotbar()
 			slots[k] = slot
 		end
 		slot.Button.Visible = true
-		slot.Icon.Text = EMOJI[id] or "❔"
+		UI.Icons.Set(slot.Icon, id)
 		slot.Id = id
 		local selected = id == equipped
 		slot.Button.BackgroundColor3 = if selected then UI.rgb(120, 40, 50) else C.Panel2
@@ -14616,7 +15263,7 @@ function Hud.Start(context)
 end
 
 return Hud
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX35"><Properties><string name="Name">Panels</string><ProtectedString name="Source"><![CDATA[-- Panels (ModuleScript) — StarterPlayerScripts.CityClient.Panels
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX36"><Properties><string name="Name">Panels</string><ProtectedString name="Source"><![CDATA[-- Panels (ModuleScript) — StarterPlayerScripts.CityClient.Panels
 -- The windows you open: the city map, the People directory and profile
 -- cards, voting, speeches, the mayor's desk, conversations with citizens,
 -- elevators, help, settings, the welcome screen, election results and the
@@ -14940,7 +15587,7 @@ local function buildProfile()
 		clear(left)
 		clear(right)
 		win.Title.Text = data.Name
-		win.Icon.Text = STAGE_EMOJI[data.Stage] or "🧑"
+		win.SetIcon(STAGE_EMOJI[data.Stage] or "🪪")
 		portrait(left, data.Model, false, { Size = UDim2.new(1, 0, 0, 290) })
 		local buttons = UI.new("Frame", { BackgroundTransparency = 1, Position = UDim2.fromOffset(0, 300), Size = UDim2.new(1, 0, 0, 40), Parent = left })
 		UI.list(buttons, Enum.FillDirection.Horizontal, 8)
@@ -15447,7 +16094,7 @@ local function buildElevator()
 	UI.new("UIGridLayout", { CellSize = UDim2.fromOffset(94, 50), CellPadding = UDim2.fromOffset(8, 8), SortOrder = Enum.SortOrder.LayoutOrder, Parent = grid })
 	function Panels.OpenElevator(data)
 		win.Title.Text = if data.Stairs then "Stairs" else "Elevator"
-		win.Icon.Text = if data.Stairs then "🪜" else "🛗"
+		win.SetIcon(if data.Stairs then "🪜" else "🛗")
 		title.Text = "🏢 " .. tostring(data.Building) .. " · you're on " .. (if data.Current == 1 then "the lobby" else "floor " .. data.Current)
 		clear(grid)
 		for f = data.Floors, 1, -1 do
@@ -15533,17 +16180,17 @@ local function buildWelcome()
 	local card = UI.panel(cover, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(720, 460), ZIndex = 41, Radius = 22 })
 	UI.gradient(card, C.Panel2, C.Panel, 90)
 	local scale = UI.new("UIScale", { Parent = card })
-	UI.text(card, "🏙️", 64, UI.Font, C.White, { Position = UDim2.fromOffset(0, 16), Size = UDim2.new(1, 0, 0, 70), TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 42 })
+	UI.Icons.Badge(card, "city", 76, UI.rgb(40, 60, 130), { AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 12), ZIndex = 42, Fill = 0.8 })
 	UI.text(card, "AI CITY", 54, UI.Title, C.Gold, { Position = UDim2.fromOffset(0, 84), Size = UDim2.new(1, 0, 0, 60), TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 42 })
 	UI.text(card, "A living city of people with jobs, families, feelings and memories.", 17, UI.Font, C.Sub, { Position = UDim2.fromOffset(0, 146), Size = UDim2.new(1, 0, 0, 24), TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 42 })
 	local row = UI.new("Frame", { BackgroundTransparency = 1, Position = UDim2.fromOffset(30, 190), Size = UDim2.new(1, -60, 0, 170), ZIndex = 42, Parent = card })
 	UI.new("UIGridLayout", { CellSize = UDim2.new(0.25, -9, 1, 0), CellPadding = UDim2.fromOffset(12, 0), Parent = row })
-	for _, f in ipairs({ { "💬", "Talk", "Everyone has their own personality and remembers you" }, { "🎤", "Run for mayor", "Give speeches, win votes, pass laws" }, { "🗺️", "Explore", "Offices, schools, a gym, a lake, a museum..." }, { "🚨", "Crime", "...but if anyone sees you, the police will come" } }) do
+	for _, f in ipairs({ { "chat", "Talk", "Everyone has their own personality and remembers you", C.Blue }, { "mic", "Run for mayor", "Give speeches, win votes, pass laws", UI.rgb(200, 140, 30) }, { "map", "Explore", "Offices, schools, a gym, a lake, a museum...", UI.rgb(60, 170, 110) }, { "siren", "Crime", "...but if anyone sees you, the police will come", UI.rgb(60, 70, 110) } }) do
 		local c = UI.panel(row, { BackgroundColor3 = C.Panel3, Radius = 14, ZIndex = 43 })
 		UI.pad(c, 10)
-		UI.text(c, f[1], 34, UI.Font, C.White, { Size = UDim2.new(1, 0, 0, 44), TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 44 })
-		UI.text(c, f[2], 16, UI.Bold, C.Text, { Position = UDim2.fromOffset(0, 48), Size = UDim2.new(1, 0, 0, 20), TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 44 })
-		UI.text(c, f[3], 13, UI.Font, C.Sub, { Position = UDim2.fromOffset(0, 72), Size = UDim2.new(1, 0, 0, 70), TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Center, TextYAlignment = Enum.TextYAlignment.Top, ZIndex = 44 })
+		UI.Icons.Badge(c, f[1], 42, f[4], { AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 0), ZIndex = 44 })
+		UI.text(c, f[2], 16, UI.Bold, C.Text, { Position = UDim2.fromOffset(0, 52), Size = UDim2.new(1, 0, 0, 20), TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 44 })
+		UI.text(c, f[3], 13, UI.Font, C.Sub, { Position = UDim2.fromOffset(0, 76), Size = UDim2.new(1, 0, 0, 70), TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Center, TextYAlignment = Enum.TextYAlignment.Top, ZIndex = 44 })
 	end
 	local go = UI.button(card, "▶  Start exploring", { AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -22), Size = UDim2.fromOffset(260, 54), Color = C.Gold, TextColor = C.Bg, TextSize = 19 }, function()
 		UI.tween(scale, 0.2, { Scale = 0.8 })
@@ -15678,9 +16325,7 @@ local function buildPhone()
 	end
 	local function app(order, emoji, name, color, fn)
 		local b = UI.new("TextButton", { BackgroundTransparency = 1, Text = "", LayoutOrder = order, ZIndex = 33, Parent = grid })
-		local icon = UI.new("TextLabel", { BackgroundColor3 = color, Text = emoji, TextSize = 30, Font = UI.Font, AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 0), Size = UDim2.fromOffset(60, 60), ZIndex = 34, Parent = b })
-		UI.corner(icon, 16)
-		UI.gradient(icon, C.White, UI.rgb(200, 200, 215), 90)
+		local icon = UI.Icons.Badge(b, emoji, 60, color, { AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 0), ZIndex = 34 })
 		UI.text(b, name, 12, UI.Bold, C.White, { Position = UDim2.fromOffset(0, 64), Size = UDim2.new(1, 0, 0, 16), TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 34 })
 		local scale = UI.new("UIScale", { Parent = icon })
 		b.MouseEnter:Connect(function()
@@ -15802,7 +16447,7 @@ local function buildShop()
 		for k, item in ipairs(data.Items or {}) do
 			local card = UI.panel(grid, { BackgroundColor3 = C.Panel2, Radius = 14, LayoutOrder = k })
 			UI.pad(card, 12)
-			UI.text(card, item.Emoji, 46, UI.Font, C.White, { Size = UDim2.new(1, 0, 0, 56), TextXAlignment = Enum.TextXAlignment.Center })
+			UI.Icons.Badge(card, item.Id, 54, UI.rgb(150, 50, 60), { AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 0), Fill = 0.78 })
 			UI.text(card, item.Name, 18, UI.Title, C.Text, { Position = UDim2.fromOffset(0, 58), Size = UDim2.new(1, 0, 0, 24), TextXAlignment = Enum.TextXAlignment.Center })
 			UI.text(card, item.Desc, 12, UI.Font, C.Sub, { Position = UDim2.fromOffset(0, 84), Size = UDim2.new(1, 0, 0, 48), TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Center, TextYAlignment = Enum.TextYAlignment.Top })
 			stat(card, "Damage", item.Damage, 60, C.Red, 138)
@@ -15854,7 +16499,7 @@ local function buildWardrobe()
 				UI.stroke(card, C.Purple, 2, 0)
 			end
 			UI.pad(card, 12)
-			UI.text(card, item.Emoji, 46, UI.Font, C.White, { Size = UDim2.new(1, 0, 0, 56), TextXAlignment = Enum.TextXAlignment.Center })
+			UI.Icons.Badge(card, item.Id, 54, UI.rgb(110, 80, 180), { AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 0), Fill = 0.78 })
 			UI.text(card, item.Name, 18, UI.Title, C.Text, { Position = UDim2.fromOffset(0, 58), Size = UDim2.new(1, 0, 0, 24), TextXAlignment = Enum.TextXAlignment.Center })
 			UI.text(card, (if item.Slot == "Top" then "TOP · " else "FACE · ") .. item.Desc, 12, UI.Font, C.Sub, { Position = UDim2.fromOffset(0, 84), Size = UDim2.new(1, 0, 0, 62), TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Center, TextYAlignment = Enum.TextYAlignment.Top })
 			stat(card, "☀️ Hidden", item.Hidden, C.Blue, 152, math.floor(item.Hidden * 100) .. "%")
@@ -15956,7 +16601,7 @@ function Panels.Start(context)
 end
 
 return Panels
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX36"><Properties><string name="Name">World</string><ProtectedString name="Source"><![CDATA[-- World (ModuleScript) — StarterPlayerScripts.CityClient.World
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX37"><Properties><string name="Name">World</string><ProtectedString name="Source"><![CDATA[-- World (ModuleScript) — StarterPlayerScripts.CityClient.World
 -- Everything drawn in the 3D world: nameplates over citizens and players,
 -- speech bubbles, the interaction prompts (talk, elevators, crimes), the
 -- waypoint beam, hit effects, alarms, confetti, the sky and the traffic lights.

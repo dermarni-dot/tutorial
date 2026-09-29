@@ -173,6 +173,14 @@ Street lamps, windows, porch lights, neon signs and stadium floodlights switch o
 | **Wardrobe (C) at the Clothing store** | **Giving a speech** |
 | ![Wardrobe](ui_wardrobe_preview.png) | ![Speech](ui_speech_preview.png) |
 
+**Its own icon set.** The HUD, action bar, hotbar, phone apps, window headers, shops and welcome screen use AI City's own icons instead of emojis: 34 vector icons drawn from rounded shapes in `Icons.lua`, so there are no images to upload and they stay sharp at any size. Each icon comes as a plain glyph or as a glossy app badge.
+
+![The icon set](ui_icons_preview.png)
+
+| Welcome screen |
+|---|
+| ![Welcome](ui_welcome_preview.png) |
+
 *(These previews were drawn from the game's real UI in a test harness. In Roblox, the portraits show the 3D citizen.)*
 
 | Key | |
@@ -213,7 +221,7 @@ Every action is also a button on the action bar for mobile players.
 | `PlayerService` | Modules | Elevators, profiles, the directory, finding people. |
 | `CitizenLook` | Modules | Outfits, hair, items, faces and sizes. |
 | `Config`, `Actions`, `Atmosphere`, `Faces`, `Poses`, `Weapons`, `Disguises` | ReplicatedStorage.Shared | Settings; the list of actions; the sky; drawn faces; the pose and prop library; weapon stats; disguise stats. |
-| `CityClient` (+ `UI`, `Hud`, `Panels`, `World`) | StarterPlayerScripts | Everything on screen, and the citizens' body language, faces, nameplates and speech bubbles. |
+| `CityClient` (+ `UI`, `Icons`, `Hud`, `Panels`, `World`) | StarterPlayerScripts | Everything on screen, and the citizens' body language, faces, nameplates and speech bubbles. |
 
 It's built to stay light on the server:
 - **The server only decides where people are and what they're doing.** Each citizen carries this in their `Action`, `Expression` and `Activity` attributes.
