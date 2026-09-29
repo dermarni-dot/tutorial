@@ -52,3 +52,11 @@ end
 refreshNight()
 
 MapBuilder.SetNews("Welcome to AI City! Give a speech on the plaza stage and win the next election.")
+
+-- The citizens: families, kids, jobs, babies and daily routines.
+-- Turn off with Config.RUN_CITIZENS = false if your own scripts spawn citizens
+-- (you can still use CitizenLook to dress them and Population for routines).
+if Config.RUN_CITIZENS then
+	local CitizenService = require(ServerScriptService.Modules:WaitForChild("CitizenService"))
+	task.spawn(CitizenService.Start, map)
+end

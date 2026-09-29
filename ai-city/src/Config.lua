@@ -108,6 +108,30 @@ Config.Jobs = {
 Config.UNEMPLOYED_CHANCE = 0.12
 Config.RETIRE_AGE = 67
 
+--------------------------------------------------------------------------------
+-- Families, children and daily routines (Population + CitizenService)
+--------------------------------------------------------------------------------
+Config.RUN_CITIZENS = true -- false = don't spawn the built-in citizens (use this if your own citizen scripts do it)
+Config.MAX_POPULATION = 100 -- no new babies once the city has this many people
+Config.ADULT_AGE = 18 -- kids get a job (or go unemployed) at this age
+Config.DAYS_PER_YEAR = 4 -- in-game days per year of age (4 days = 32 real minutes; a newborn grows up in ~10 real hours)
+Config.PREGNANCY_DAYS = 2 -- in-game days from "expecting" to the baby being born
+Config.BABY_CHANCE = 0.2 -- chance per in-game day that an eligible couple starts expecting
+Config.PARENT_AGE_MIN = 21 -- couples between these ages can have babies
+Config.PARENT_AGE_MAX = 45
+Config.MAX_KIDS = 4 -- per family
+Config.SAVE_POPULATION = true -- keep ages, families and new babies between servers (DataStore)
+
+-- Daily routine. Everyone stays at work for their whole shift (the start/stop
+-- hours in Config.Jobs), so the streets are quiet during the day and you can
+-- always find people at their jobs. Hours are in-game hours (0-24).
+Config.COMMUTE_BUFFER = 0.75 -- leave home this many hours before a shift starts
+Config.SCHOOL_START = 8 -- kids 6-17 are at school during these hours
+Config.SCHOOL_END = 15
+Config.KIDS_BEDTIME = 20
+Config.ADULT_BEDTIME = 22
+Config.WAKE_UP = 6.5
+
 -- Every building on the map. MapBuilder looks places up here for their sign
 -- (emoji + label). kind: "civic", "work", "store", "fun" or "home".
 Config.Places = {

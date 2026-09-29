@@ -108,6 +108,30 @@ Config.Jobs = {
 Config.UNEMPLOYED_CHANCE = 0.12
 Config.RETIRE_AGE = 67
 
+--------------------------------------------------------------------------------
+-- Families, children and daily routines (Population + CitizenService)
+--------------------------------------------------------------------------------
+Config.RUN_CITIZENS = true -- false = don't spawn the built-in citizens (use this if your own citizen scripts do it)
+Config.MAX_POPULATION = 100 -- no new babies once the city has this many people
+Config.ADULT_AGE = 18 -- kids get a job (or go unemployed) at this age
+Config.DAYS_PER_YEAR = 4 -- in-game days per year of age (4 days = 32 real minutes; a newborn grows up in ~10 real hours)
+Config.PREGNANCY_DAYS = 2 -- in-game days from "expecting" to the baby being born
+Config.BABY_CHANCE = 0.2 -- chance per in-game day that an eligible couple starts expecting
+Config.PARENT_AGE_MIN = 21 -- couples between these ages can have babies
+Config.PARENT_AGE_MAX = 45
+Config.MAX_KIDS = 4 -- per family
+Config.SAVE_POPULATION = true -- keep ages, families and new babies between servers (DataStore)
+
+-- Daily routine. Everyone stays at work for their whole shift (the start/stop
+-- hours in Config.Jobs), so the streets are quiet during the day and you can
+-- always find people at their jobs. Hours are in-game hours (0-24).
+Config.COMMUTE_BUFFER = 0.75 -- leave home this many hours before a shift starts
+Config.SCHOOL_START = 8 -- kids 6-17 are at school during these hours
+Config.SCHOOL_END = 15
+Config.KIDS_BEDTIME = 20
+Config.ADULT_BEDTIME = 22
+Config.WAKE_UP = 6.5
+
 -- Every building on the map. MapBuilder looks places up here for their sign
 -- (emoji + label). kind: "civic", "work", "store", "fun" or "home".
 Config.Places = {
@@ -217,6 +241,14 @@ end
 refreshNight()
 
 MapBuilder.SetNews("Welcome to AI City! Give a speech on the plaza stage and win the next election.")
+
+-- The citizens: families, kids, jobs, babies and daily routines.
+-- Turn off with Config.RUN_CITIZENS = false if your own scripts spawn citizens
+-- (you can still use CitizenLook to dress them and Population for routines).
+if Config.RUN_CITIZENS then
+	local CitizenService = require(ServerScriptService.Modules:WaitForChild("CitizenService"))
+	task.spawn(CitizenService.Start, map)
+end
 ]]></ProtectedString></Properties></Item><Item class="Folder" referent="RBX7"><Properties><string name="Name">Modules</string></Properties><Item class="ModuleScript" referent="RBX8"><Properties><string name="Name">MapBuilder</string><ProtectedString name="Source"><![CDATA[-- MapBuilder (ModuleScript) — ServerScriptService.Modules.MapBuilder
 -- Builds AI City: a 7x7 grid of city blocks with streets, sidewalks,
 -- crosswalks and street lamps. Downtown has the plaza, town hall, bank and
@@ -1273,7 +1305,7 @@ local function buildApartments(parent, i, j, name)
 			Door = b.Door,
 			Inside = b.At(-18 + slot * 12, 0.4, 6).Position,
 			Address = "Apt " .. floor .. (string.char(64 + slot + 1)) .. ", " .. b.Model.Name,
-			Capacity = 2,
+			Capacity = 3,
 			Node = node,
 			Kind = "apartment",
 		}
@@ -1327,7 +1359,7 @@ local function buildHouses(parent, i, j, rng)
 				Door = b.Door,
 				Inside = b.Inside,
 				Address = number .. " " .. street,
-				Capacity = 3,
+				Capacity = 5,
 				Kind = "house",
 			}
 			home.Node = hookDoor(i, j, b.Door, face)
@@ -1722,4 +1754,1716 @@ function MapBuilder.SetNews(text)
 end
 
 return MapBuilder
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX9"><Properties><string name="Name">Population</string><ProtectedString name="Source"><![CDATA[-- Population (ModuleScript) — ServerScriptService.Modules.Population
+-- Who lives in AI City: families with children, jobs, ages, couples expecting
+-- babies and births, plus where each person should be at any hour.
+-- Pure logic (no parts, no Humanoids), so it can be saved and tested on its own.
+-- CitizenService uses it to spawn and move the actual NPCs.
+--
+--   local pop = Population.new(Config, homes)   -- homes = map.Homes
+--   pop:Generate()                              -- the starting families (same every server)
+--   local events = pop:NewDay(day)              -- ages, retirements, new jobs, pregnancies
+--   pop:Birth(household, day)                   -- a baby is born (returns the baby)
+--   pop:Plan(citizen, hour, day)                -- where they should be right now
+--   pop:Serialize() / pop:Load(data)            -- for saving
+
+local Population = {}
+Population.__index = Population
+
+-- Small deterministic random numbers (same results everywhere)
+local function newRng(seed)
+	local state = (seed % 2147483646) + 1
+	local rng = {}
+	function rng:Next()
+		state = (state * 48271) % 2147483647
+		return state / 2147483647
+	end
+	function rng:Int(a, b)
+		return a + math.floor(self:Next() * (b - a + 1))
+	end
+	function rng:Pick(list)
+		return list[self:Int(1, #list)]
+	end
+	return rng
+end
+
+local function hash(...)
+	local h = 5381
+	for _, v in ipairs({ ... }) do
+		local s = tostring(v)
+		for k = 1, #s do
+			h = (h * 33 + string.byte(s, k)) % 2147483647
+		end
+	end
+	return h
+end
+
+function Population.new(config, homes)
+	local self = setmetatable({}, Population)
+	self.Config = config
+	self.Homes = homes or {}
+	self.Citizens = {} -- [id] = citizen
+	self.List = {} -- citizens in order
+	self.Households = {} -- [id] = { Id, Home, Last, Members = { ids }, Partners = { id, id }, Expecting = { DueDay, Carrier } }
+	self.NextId = 1
+	self.Day = 0
+	self.JobsTaken = {} -- [job title] = count
+	self.HomeUse = {} -- [home index] = household id
+	self.rng = newRng(config.SEED or 1776)
+	return self
+end
+
+--------------------------------------------------------------------------------
+-- People
+--------------------------------------------------------------------------------
+function Population:Age(c, day)
+	return math.max(0, math.floor(((day or self.Day) - c.BirthDay) / (self.Config.DAYS_PER_YEAR or 2)))
+end
+
+-- "Baby", "Toddler", "Child", "Teen", "Adult" or "Retired"
+function Population:Stage(c, day)
+	local age = self:Age(c, day)
+	if age < 3 then
+		return "Baby"
+	elseif age < 6 then
+		return "Toddler"
+	elseif age < 13 then
+		return "Child"
+	elseif age < (self.Config.ADULT_AGE or 18) then
+		return "Teen"
+	elseif age < (self.Config.RETIRE_AGE or 67) then
+		return "Adult"
+	end
+	return "Retired"
+end
+
+local function jobByTitle(config, title)
+	for _, job in ipairs(config.Jobs) do
+		if job.title == title then
+			return job
+		end
+	end
+	return nil
+end
+
+-- Gives an adult a job with a free slot (or leaves them unemployed).
+function Population:AssignJob(c, rng)
+	rng = rng or self.rng
+	c.Job = nil
+	if rng:Next() < (self.Config.UNEMPLOYED_CHANCE or 0) then
+		return nil
+	end
+	local open, total = {}, 0
+	for _, job in ipairs(self.Config.Jobs) do
+		local free = job.slots - (self.JobsTaken[job.title] or 0)
+		if free > 0 then
+			table.insert(open, { job, free })
+			total += free
+		end
+	end
+	if total == 0 then
+		return nil
+	end
+	local r = rng:Next() * total
+	for _, entry in ipairs(open) do
+		r -= entry[2]
+		if r <= 0 then
+			c.Job = entry[1].title
+			self.JobsTaken[c.Job] = (self.JobsTaken[c.Job] or 0) + 1
+			-- which of the place's work spots is theirs
+			local n = 0
+			for _, other in ipairs(self.List) do
+				if other ~= c and other.Job and jobByTitle(self.Config, other.Job) and jobByTitle(self.Config, other.Job).place == entry[1].place then
+					n += 1
+				end
+			end
+			c.WorkSpot = n + 1
+			return c.Job
+		end
+	end
+	return nil
+end
+
+function Population:LeaveJob(c)
+	if c.Job then
+		self.JobsTaken[c.Job] = math.max(0, (self.JobsTaken[c.Job] or 1) - 1)
+		c.Job = nil
+		c.WorkSpot = nil
+	end
+end
+
+function Population:AddCitizen(household, first, age, day, rng)
+	rng = rng or self.rng
+	local config = self.Config
+	local c = {
+		Id = self.NextId,
+		First = first,
+		Last = household.Last,
+		Name = first .. " " .. household.Last,
+		BirthDay = (day or self.Day) - age * (config.DAYS_PER_YEAR or 2) - rng:Int(0, (config.DAYS_PER_YEAR or 2) - 1),
+		Household = household.Id,
+		Hobby = rng:Pick(config.Hobbies),
+		Punctual = rng:Next() * 0.6, -- hours: how early they leave for work
+	}
+	self.NextId += 1
+	self.Citizens[c.Id] = c
+	table.insert(self.List, c)
+	table.insert(household.Members, c.Id)
+	local stage = self:Stage(c, day)
+	if stage == "Adult" then
+		self:AssignJob(c, rng)
+	end
+	return c
+end
+
+--------------------------------------------------------------------------------
+-- Families and homes
+--------------------------------------------------------------------------------
+local function capacityOf(home)
+	return home and (home.Capacity or 3) or 3
+end
+
+function Population:FindHome(size, rng)
+	local best
+	for index, home in ipairs(self.Homes) do
+		if not self.HomeUse[index] and capacityOf(home) >= size then
+			best = index
+			if rng:Next() < 0.35 then
+				break
+			end
+		end
+	end
+	if not best then
+		-- city full: squeeze into any free home
+		for index in ipairs(self.Homes) do
+			if not self.HomeUse[index] then
+				best = index
+				break
+			end
+		end
+	end
+	return best
+end
+
+function Population:NewHousehold(last, rng)
+	local h = { Id = #self.Households + 1, Last = last, Members = {}, Partners = {} }
+	self.Households[h.Id] = h
+	return h
+end
+
+-- The starting city: singles, couples, families with kids and retirees.
+function Population:Generate()
+	local config = self.Config
+	local rng = newRng((config.SEED or 1776) * 7 + 3)
+	local target = config.POPULATION or 42
+	local usedNames = {}
+	local function firstName()
+		for _ = 1, 20 do
+			local n = rng:Pick(config.FirstNames)
+			if not usedNames[n] then
+				usedNames[n] = true
+				return n
+			end
+		end
+		return rng:Pick(config.FirstNames)
+	end
+	local lasts = table.clone and table.clone(config.LastNames) or { table.unpack(config.LastNames) }
+	local lastIndex = 0
+	local function lastName()
+		lastIndex += 1
+		return lasts[((lastIndex - 1) % #lasts) + 1]
+	end
+	local adultMax = (config.RETIRE_AGE or 67) - 1
+	while #self.List < target do
+		local roll = rng:Next()
+		local h = self:NewHousehold(lastName(), rng)
+		local left = target - #self.List
+		if roll < 0.25 or left < 2 then
+			-- single adult
+			self:AddCitizen(h, firstName(), rng:Int(19, adultMax), 0, rng)
+		elseif roll < 0.5 then
+			-- a couple
+			local a = rng:Int(22, 60)
+			local p1 = self:AddCitizen(h, firstName(), a, 0, rng)
+			local p2 = self:AddCitizen(h, firstName(), math.clamp(a + rng:Int(-5, 5), 20, 65), 0, rng)
+			h.Partners = { p1.Id, p2.Id }
+		elseif roll < 0.88 then
+			-- a family with kids
+			local a = rng:Int(26, 48)
+			local p1 = self:AddCitizen(h, firstName(), a, 0, rng)
+			local p2 = self:AddCitizen(h, firstName(), math.clamp(a + rng:Int(-4, 4), 22, 55), 0, rng)
+			h.Partners = { p1.Id, p2.Id }
+			local kids = math.min(rng:Int(1, 3), math.max(0, target - #self.List))
+			for _ = 1, kids do
+				self:AddCitizen(h, firstName(), rng:Int(0, math.min(17, a - 20)), 0, rng)
+			end
+		else
+			-- retirees
+			local a = rng:Int(config.RETIRE_AGE or 67, 85)
+			local p1 = self:AddCitizen(h, firstName(), a, 0, rng)
+			if rng:Next() < 0.6 and target - #self.List >= 1 then
+				local p2 = self:AddCitizen(h, firstName(), a + rng:Int(-3, 3), 0, rng)
+				h.Partners = { p1.Id, p2.Id }
+			end
+		end
+		h.Home = self:FindHome(#h.Members + 1, rng) -- room for a baby
+		if h.Home then
+			self.HomeUse[h.Home] = h.Id
+		end
+	end
+	return self.List
+end
+
+--------------------------------------------------------------------------------
+-- Time passing
+--------------------------------------------------------------------------------
+local function namesOf(self, ids)
+	local out = {}
+	for _, id in ipairs(ids) do
+		table.insert(out, self.Citizens[id].First)
+	end
+	return table.concat(out, " & ")
+end
+
+-- Call once when a new in-game day starts. Returns a list of events:
+-- { Kind = "Expecting"/"GrewUp"/"Retired"/"Birthday", Citizen/Household, Text }
+function Population:NewDay(day)
+	local config = self.Config
+	self.Day = day
+	local events = {}
+	local rng = newRng(hash(config.SEED, "day", day))
+	-- ages: new adults get jobs, retirees leave theirs
+	for _, c in ipairs(self.List) do
+		local stage = self:Stage(c, day)
+		if stage ~= c.LastStage then
+			if c.LastStage ~= nil then
+				if stage == "Adult" then
+					local job = self:AssignJob(c, rng)
+					table.insert(events, { Kind = "GrewUp", Citizen = c, Text = "🎓 " .. c.Name .. " grew up" .. (if job then " and started work as a " .. job else "") .. "!" })
+				elseif stage == "Retired" then
+					self:LeaveJob(c)
+					table.insert(events, { Kind = "Retired", Citizen = c, Text = "🎉 " .. c.Name .. " retired!" })
+				else
+					table.insert(events, { Kind = "GrewUp", Citizen = c, Text = "🎂 " .. c.Name .. " is now a " .. string.lower(stage) .. "!" })
+				end
+			end
+			c.LastStage = stage
+		end
+	end
+	-- couples may start expecting a baby
+	if #self.List < (config.MAX_POPULATION or 100) then
+		for _, h in ipairs(self.Households) do
+			if not h.Expecting and #h.Partners == 2 then
+				local a, b = self.Citizens[h.Partners[1]], self.Citizens[h.Partners[2]]
+				local kids = #h.Members - 2
+				local ok = true
+				for _, p in ipairs({ a, b }) do
+					local age = self:Age(p, day)
+					if age < (config.PARENT_AGE_MIN or 21) or age > (config.PARENT_AGE_MAX or 45) then
+						ok = false
+					end
+				end
+				if ok and kids < (config.MAX_KIDS or 4) and rng:Next() < (config.BABY_CHANCE or 0.2) then
+					h.Expecting = { StartDay = day, DueDay = day + (config.PREGNANCY_DAYS or 2), Carrier = h.Partners[rng:Int(1, 2)] }
+					table.insert(events, { Kind = "Expecting", Household = h, Text = "🍼 " .. namesOf(self, h.Partners) .. " " .. h.Last .. " are expecting a baby!" })
+				end
+			end
+		end
+	end
+	return events
+end
+
+-- Days until the baby arrives (nil if the household isn't expecting)
+function Population:DaysToGo(household, day)
+	if not household or not household.Expecting then
+		return nil
+	end
+	return math.max(0, household.Expecting.DueDay - (day or self.Day))
+end
+
+-- Is it time? (the due day has come)
+function Population:IsDue(household, day)
+	return household.Expecting ~= nil and (day or self.Day) >= household.Expecting.DueDay
+end
+
+-- A baby is born into a household. Returns the baby.
+function Population:Birth(household, day)
+	day = day or self.Day
+	local rng = newRng(hash(self.Config.SEED, "baby", household.Id, day, #household.Members))
+	local taken = {}
+	for _, c in ipairs(self.List) do
+		taken[c.First] = true
+	end
+	local first
+	for _ = 1, 30 do
+		first = rng:Pick(self.Config.FirstNames)
+		if not taken[first] then
+			break
+		end
+	end
+	local baby = self:AddCitizen(household, first, 0, day, rng)
+	baby.BirthDay = day
+	baby.LastStage = "Baby"
+	household.Expecting = nil
+	return baby
+end
+
+--------------------------------------------------------------------------------
+-- Daily routine: where someone should be right now
+-- Returns { Kind = "Home"/"Work"/"School"/"Place"/"Hobby"/"Hospital",
+--           Place = place id (Work/School/Place/Hospital), Hobby = name,
+--           Activity = short text for the nameplate }
+--------------------------------------------------------------------------------
+local ERRANDS = { "Shop", "Bakery", "Cafe", "Pharmacy", "Mall", "ToyStore", "Electronics", "Florist", "PetShop", "Bookstore", "IceCream", "Hardware", "Restaurant", "Library", "Cinema", "Gym", "Plaza", "Park", "Bank" }
+local OUTINGS = { "Park", "Plaza", "Library", "Cafe", "IceCream", "SportsField", "Bookstore" }
+
+local function inShift(hour, start, stop)
+	if stop > start then
+		return hour >= start and hour < stop
+	end
+	return hour >= start or hour < stop -- shifts past midnight
+end
+
+function Population:Plan(c, hour, day)
+	local config = self.Config
+	day = day or self.Day
+	local stage = self:Stage(c, day)
+	local h = self.Households[c.Household]
+	local rng = newRng(hash(c.Id, day, "plan"))
+	local errand = rng:Pick(ERRANDS)
+	local outing = rng:Pick(OUTINGS)
+	local hobbyOut = config.OutdoorHobbies and config.OutdoorHobbies[c.Hobby] and rng:Next() < 0.6
+
+	-- the baby is due: the parents go to the hospital during the day
+	if h and h.Expecting and self:IsDue(h, day) and (c.Id == h.Partners[1] or c.Id == h.Partners[2]) and hour >= 7 then
+		return { Kind = "Hospital", Place = "Hospital", Activity = "🏥 Having a baby!" }
+	end
+
+	if stage == "Baby" or stage == "Toddler" then
+		return { Kind = "Home", Activity = if stage == "Baby" then "🍼 Napping" else "🧸 Playing at home" }
+	end
+
+	local bedtime = if stage == "Child" or stage == "Teen" then (config.KIDS_BEDTIME or 20) else (config.ADULT_BEDTIME or 22)
+	local wake = config.WAKE_UP or 6.5
+	if stage == "Child" or stage == "Teen" then
+		local s, e = config.SCHOOL_START or 8, config.SCHOOL_END or 15
+		if hour >= s - 0.6 and hour < e then
+			return { Kind = "School", Place = "School", Activity = "📚 At school" }
+		elseif hour >= e and hour < e + 3 and rng:Next() < 0.7 then
+			local where = if stage == "Child" then "Park" else outing
+			return { Kind = "Place", Place = where, Activity = "🛝 Hanging out" }
+		end
+		return { Kind = "Home", Activity = if hour >= bedtime or hour < wake then "💤 Sleeping" else "🏠 At home" }
+	end
+
+	-- work comes first: early bakers and night officers keep their hours
+	local job = stage == "Adult" and c.Job and jobByTitle(config, c.Job)
+	if job then
+		local leave = (config.COMMUTE_BUFFER or 0.75) + (c.Punctual or 0)
+		if inShift(hour, (job.start - leave) % 24, math.min(job.stop, 24) % 24) then
+			return { Kind = "Work", Place = job.place, Activity = "💼 Working (" .. c.Job .. ")" }
+		end
+	end
+
+	if hour >= bedtime or hour < wake then
+		return { Kind = "Home", Activity = "💤 Sleeping" }
+	end
+
+	if job then
+		do
+			-- free time: before or after the shift
+			if hour < job.start then
+				if hour < 9 then
+					return { Kind = "Home", Activity = "☕ Getting ready" }
+				end
+				if hobbyOut then
+					return { Kind = "Hobby", Hobby = c.Hobby, Activity = "🎨 " .. c.Hobby }
+				end
+				return { Kind = "Place", Place = errand, Activity = "🛍️ Running errands" }
+			end
+			if hour < job.stop + 3 then
+				if hobbyOut then
+					return { Kind = "Hobby", Hobby = c.Hobby, Activity = "🎨 " .. c.Hobby }
+				end
+				return { Kind = "Place", Place = errand, Activity = "🛍️ After work" }
+			end
+			return { Kind = "Home", Activity = "🏠 Relaxing at home" }
+		end
+	end
+
+	-- no job (unemployed or retired): a relaxed day around town
+	if hour < 9.5 then
+		return { Kind = "Home", Activity = "☕ Slow morning" }
+	elseif hour < 12.5 then
+		return { Kind = "Place", Place = errand, Activity = "🛍️ Running errands" }
+	elseif hour < 17 then
+		if hobbyOut then
+			return { Kind = "Hobby", Hobby = c.Hobby, Activity = "🎨 " .. c.Hobby }
+		end
+		return { Kind = "Place", Place = if stage == "Retired" then rng:Pick({ "Park", "Library", "Plaza", "Cafe" }) else outing, Activity = "🌳 Out and about" }
+	elseif hour < 20 then
+		return { Kind = "Place", Place = rng:Pick({ "Plaza", "Restaurant", "Cinema", "Park" }), Activity = "🌆 Evening out" }
+	end
+	return { Kind = "Home", Activity = "🏠 At home" }
+end
+
+--------------------------------------------------------------------------------
+-- Saving
+--------------------------------------------------------------------------------
+function Population:Serialize()
+	local data = { Day = self.Day, NextId = self.NextId, Citizens = {}, Households = {} }
+	for _, c in ipairs(self.List) do
+		table.insert(data.Citizens, { c.Id, c.First, c.Last, c.BirthDay, c.Household, c.Job or false, c.Hobby, c.WorkSpot or 0, c.Punctual })
+	end
+	for _, h in ipairs(self.Households) do
+		table.insert(data.Households, { h.Id, h.Last, h.Home or 0, h.Members, h.Partners, h.Expecting or false })
+	end
+	return data
+end
+
+function Population:Load(data)
+	if type(data) ~= "table" or type(data.Citizens) ~= "table" then
+		return false
+	end
+	self.Citizens, self.List, self.Households, self.JobsTaken, self.HomeUse = {}, {}, {}, {}, {}
+	self.Day = data.Day or 0
+	self.NextId = data.NextId or 1
+	for _, row in ipairs(data.Households) do
+		local h = { Id = row[1], Last = row[2], Home = if row[3] ~= 0 then row[3] else nil, Members = row[4] or {}, Partners = row[5] or {}, Expecting = row[6] or nil }
+		self.Households[h.Id] = h
+		if h.Home then
+			self.HomeUse[h.Home] = h.Id
+		end
+	end
+	for _, row in ipairs(data.Citizens) do
+		local c = { Id = row[1], First = row[2], Last = row[3], BirthDay = row[4], Household = row[5], Job = row[6] or nil, Hobby = row[7], WorkSpot = if row[8] ~= 0 then row[8] else nil, Punctual = row[9] or 0.3 }
+		c.Name = c.First .. " " .. c.Last
+		if c.Job and not jobByTitle(self.Config, c.Job) then
+			c.Job = nil -- that job was removed from Config
+		end
+		if c.Job then
+			self.JobsTaken[c.Job] = (self.JobsTaken[c.Job] or 0) + 1
+		end
+		c.LastStage = self:Stage(c, self.Day)
+		self.Citizens[c.Id] = c
+		table.insert(self.List, c)
+	end
+	return true
+end
+
+Population.Jobs = jobByTitle
+return Population
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX10"><Properties><string name="Name">CitizenLook</string><ProtectedString name="Source"><![CDATA[-- CitizenLook (ModuleScript) — ServerScriptService.Modules.CitizenLook
+-- Gives every citizen their own look: skin tone, hairstyle and color, a
+-- uniform for their job (police cap and badge, doctor's coat, chef's hat,
+-- firefighter helmet...), something for their hobby (a beret for painters,
+-- headphones for gamers...) and gray hair and a cane once they retire.
+-- The look comes from the citizen's name, so the same person always looks the
+-- same in every server.
+--
+--   CitizenLook.Apply(characterModel, citizen)  -- dress an existing R15 or R6 rig
+--   CitizenLook.Build(citizen)                  -- make a new dressed R15 NPC (server only)
+--
+-- `citizen` can use either naming style: { Name/name, Job/job (title or
+-- { title = ... }), Age/age, Hobby/hobby }. Missing fields are fine.
+-- Options: CitizenLook.Apply(model, citizen, { KeepClothing = true }) keeps
+-- existing Shirt/Pants instead of replacing them with the colored outfit.
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
+
+local CitizenLook = {}
+
+local function rgb(r, g, b)
+	return Color3.fromRGB(r, g, b)
+end
+local WHITE = rgb(248, 248, 245)
+local BLACK = rgb(28, 28, 32)
+local GOLD = rgb(245, 200, 70)
+local SILVER = rgb(200, 205, 215)
+
+local SKIN_TONES = {
+	rgb(255, 224, 196), rgb(245, 205, 170), rgb(234, 184, 146), rgb(214, 160, 120), rgb(196, 138, 98),
+	rgb(168, 112, 78), rgb(141, 90, 62), rgb(112, 70, 48), rgb(88, 56, 40), rgb(250, 214, 180),
+}
+local HAIR_COLORS = {
+	rgb(30, 24, 22), rgb(58, 38, 28), rgb(92, 60, 38), rgb(128, 84, 52), rgb(160, 96, 48), -- black to light brown
+	rgb(214, 170, 100), rgb(236, 206, 140), rgb(178, 70, 40), -- blonde, light blonde, red
+}
+local FUN_HAIR = { rgb(240, 110, 170), rgb(90, 150, 240), rgb(140, 90, 220), rgb(90, 200, 160) }
+local GRAY_HAIR = { rgb(200, 200, 200), rgb(170, 170, 172), rgb(235, 235, 235) }
+local HAIRSTYLES = { "short", "buzz", "long", "ponytail", "bun", "afro", "curly", "mohawk", "bob", "spiky", "sidepart", "bald" }
+local CASUAL_TOPS = { rgb(220, 70, 70), rgb(70, 130, 220), rgb(90, 180, 110), rgb(240, 190, 60), rgb(160, 100, 200), rgb(240, 140, 60), rgb(80, 190, 200), rgb(235, 235, 230), rgb(60, 60, 70), rgb(230, 120, 160) }
+local CASUAL_BOTTOMS = { rgb(50, 70, 120), rgb(70, 60, 50), rgb(40, 40, 45), rgb(120, 110, 90), rgb(90, 100, 110), rgb(60, 90, 70) }
+
+--------------------------------------------------------------------------------
+-- Uniforms, by job title. Colors: Top, Sleeves ("long"/"short"), Bottom,
+-- Shoes. Items are extra pieces added to the body (see ITEMS below).
+--------------------------------------------------------------------------------
+local UNIFORMS = {
+	["Baker"] = { Top = WHITE, Bottom = rgb(90, 80, 70), Items = { "Toque", "Apron:240,220,190" } },
+	["Barista"] = { Top = BLACK, Bottom = rgb(60, 50, 45), Items = { "Apron:40,120,80", "Cap:40,120,80", "NameTag" } },
+	["Doctor"] = { Top = rgb(170, 210, 240), Bottom = rgb(60, 70, 90), Sleeves = "long", Items = { "LabCoat", "Stethoscope", "NameTag" } },
+	["Nurse"] = { Top = rgb(70, 170, 170), Bottom = rgb(70, 170, 170), Items = { "Stethoscope", "NameTag" } },
+	["Police Officer"] = { Top = rgb(40, 55, 110), Bottom = rgb(30, 40, 80), Sleeves = "long", Items = { "PoliceCap", "Badge", "Belt:25,25,30", "Radio" } },
+	["Night Officer"] = { Top = rgb(28, 36, 70), Bottom = rgb(22, 28, 55), Sleeves = "long", Items = { "PoliceCap", "Badge", "Belt:25,25,30", "HiVisVest", "Radio" } },
+	["Teacher"] = { Top = rgb(180, 90, 70), Bottom = rgb(70, 70, 90), Sleeves = "long", Items = { "Cardigan:140,60,50", "Glasses", "Lanyard" } },
+	["Factory Worker"] = { Top = rgb(90, 110, 140), Bottom = rgb(50, 60, 80), Items = { "HardHat", "HiVisVest", "Gloves" } },
+	["Shopkeeper"] = { Top = rgb(235, 235, 230), Bottom = rgb(60, 60, 70), Items = { "Apron:200,60,60", "NameTag" } },
+	["City Clerk"] = { Top = rgb(120, 120, 130), Bottom = rgb(80, 80, 90), Sleeves = "long", Items = { "Tie:150,40,50", "Lanyard" } },
+	["Gardener"] = { Top = rgb(200, 180, 140), Bottom = rgb(70, 110, 60), Items = { "StrawHat", "Overalls:70,110,60", "Gloves" } },
+	["Street Musician"] = { Top = rgb(150, 60, 150), Bottom = rgb(40, 40, 60), Items = { "Beanie:230,120,40", "GuitarBack" } },
+	["Bank Teller"] = { Top = rgb(40, 60, 90), Bottom = rgb(35, 45, 70), Sleeves = "long", Items = { "Tie:180,150,60", "NameTag" } },
+	["Bank Manager"] = { Top = BLACK, Bottom = BLACK, Sleeves = "long", Items = { "BowTie:170,30,40", "PocketSquare", "GoldWatch" } },
+	["Firefighter"] = { Top = rgb(190, 160, 100), Bottom = rgb(190, 160, 100), Sleeves = "long", Items = { "FireHelmet", "ReflectiveStripes", "Gloves" } },
+	["Librarian"] = { Top = rgb(110, 140, 110), Bottom = rgb(90, 80, 70), Sleeves = "long", Items = { "Cardigan:70,90,70", "Glasses", "BookUnderArm" } },
+	["Chef"] = { Top = WHITE, Bottom = rgb(40, 40, 45), Sleeves = "long", Items = { "TallToque", "ChefButtons", "Neckerchief:200,50,50" } },
+	["Waiter"] = { Top = WHITE, Bottom = BLACK, Sleeves = "long", Items = { "Vest:30,30,35", "BowTie:30,30,35", "TowelArm" } },
+	["Pharmacist"] = { Top = rgb(200, 230, 210), Bottom = rgb(70, 80, 90), Sleeves = "long", Items = { "LabCoat", "Glasses", "NameTag" } },
+	["Office Worker"] = { Top = rgb(215, 225, 240), Bottom = rgb(60, 65, 80), Sleeves = "long", Items = { "Tie:60,90,160", "Lanyard" } },
+	["Hotel Receptionist"] = { Top = WHITE, Bottom = rgb(40, 40, 50), Sleeves = "long", Items = { "Vest:130,30,45", "NameTag", "Neckerchief:220,180,70" } },
+	["Cinema Clerk"] = { Top = rgb(200, 40, 50), Bottom = BLACK, Items = { "Cap:200,40,50", "NameTag" } },
+	["Fitness Coach"] = { Top = rgb(250, 120, 40), Bottom = rgb(40, 40, 50), Items = { "Headband:250,250,250", "Whistle", "Wristbands" } },
+	["Store Clerk"] = { Top = rgb(60, 150, 200), Bottom = rgb(60, 60, 70), Items = { "Lanyard", "NameTag" } },
+	["Mechanic"] = { Top = rgb(50, 80, 140), Bottom = rgb(50, 80, 140), Sleeves = "long", Items = { "Cap:50,80,140", "Belt:60,50,40", "WrenchBelt", "Smudge" } },
+	["Warehouse Worker"] = { Top = rgb(110, 110, 100), Bottom = rgb(60, 70, 90), Items = { "Beanie:60,60,70", "HiVisVest", "Gloves" } },
+}
+
+-- Something for each hobby. Hats only if the job didn't already give one.
+local HOBBY_ITEMS = {
+	painting = { "Beret:180,40,60", "PaintSmudge" },
+	["playing chess"] = { "Glasses" },
+	gardening = { "Gloves" },
+	jogging = { "Headband:80,200,120", "Wristbands" },
+	cooking = { "Apron:230,230,225" },
+	["playing guitar"] = { "GuitarBack" },
+	reading = { "Glasses" },
+	gaming = { "Headphones" },
+	fishing = { "BucketHat:110,130,90" },
+	dancing = { "Headband:240,110,170" },
+	birdwatching = { "Binoculars" },
+	knitting = { "Scarf" },
+}
+
+--------------------------------------------------------------------------------
+-- Helpers
+--------------------------------------------------------------------------------
+local function hash(text)
+	local h = 5381
+	for k = 1, #text do
+		h = (h * 33 + string.byte(text, k)) % 2147483647
+	end
+	return h
+end
+
+local function field(t, ...)
+	for _, k in ipairs({ ... }) do
+		if t[k] ~= nil then
+			return t[k]
+		end
+	end
+	return nil
+end
+
+local function jobTitle(citizen)
+	local job = field(citizen, "Job", "job")
+	if type(job) == "table" then
+		return job.title or job.Title
+	end
+	return job
+end
+
+local function first(model, ...)
+	for _, name in ipairs({ ... }) do
+		local p = model:FindFirstChild(name)
+		if p and p:IsA("BasePart") then
+			return p
+		end
+	end
+	return nil
+end
+
+local function parseItem(item)
+	local name, color = string.match(item, "^([^:]+):?(.*)$")
+	if color ~= "" then
+		local r, g, b = string.match(color, "(%d+),(%d+),(%d+)")
+		return name, rgb(tonumber(r), tonumber(g), tonumber(b))
+	end
+	return name, nil
+end
+
+--------------------------------------------------------------------------------
+-- The body: finds the parts of an R15 or R6 rig and measures the head
+--------------------------------------------------------------------------------
+local function readBody(model)
+	local body = {
+		Head = first(model, "Head"),
+		Torso = first(model, "UpperTorso", "Torso"),
+		Lower = first(model, "LowerTorso", "Torso"),
+		LeftArm = first(model, "LeftUpperArm", "Left Arm"),
+		RightArm = first(model, "RightUpperArm", "Right Arm"),
+		LeftHand = first(model, "LeftHand", "Left Arm"),
+		RightHand = first(model, "RightHand", "Right Arm"),
+		LeftLeg = first(model, "LeftUpperLeg", "Left Leg"),
+		RightLeg = first(model, "RightUpperLeg", "Right Leg"),
+		R15 = model:FindFirstChild("UpperTorso") ~= nil,
+	}
+	if body.Head then
+		-- R6 heads are 2x1x1 parts drawn with a round mesh about 1.25 across
+		local mesh = body.Head:FindFirstChildOfClass("SpecialMesh")
+		local s = body.Head.Size
+		body.H = if mesh and not body.R15 then mesh.Scale.Y else math.min(s.X, s.Y, s.Z)
+	end
+	return body
+end
+
+-- A decoration welded to a body part; offset is in that part's space.
+local function attach(folder, bodyPart, name, size, offset, color, shape, material)
+	if not bodyPart then
+		return nil
+	end
+	local p = Instance.new("Part")
+	p.Name = name
+	p.Size = size
+	p.Color = color
+	p.Material = material or Enum.Material.SmoothPlastic
+	p.CanCollide = false
+	p.CanQuery = false
+	p.CanTouch = false
+	p.Massless = true
+	p.CastShadow = false
+	p.TopSurface = Enum.SurfaceType.Smooth
+	p.BottomSurface = Enum.SurfaceType.Smooth
+	if shape == "Ball" then
+		p.Shape = Enum.PartType.Ball
+	elseif shape == "Cylinder" then
+		p.Shape = Enum.PartType.Cylinder
+	end
+	p.CFrame = bodyPart.CFrame * offset
+	local weld = Instance.new("WeldConstraint")
+	weld.Part0 = bodyPart
+	weld.Part1 = p
+	weld.Parent = p
+	p.Parent = folder
+	return p
+end
+
+--------------------------------------------------------------------------------
+-- Hair. Head space: +Y up, -Z is the face.
+--------------------------------------------------------------------------------
+local function hair(folder, body, style, color)
+	local head, H = body.Head, body.H
+	if not head or style == "bald" then
+		return
+	end
+	local top = H / 2
+	local function add(name, size, offset, shape)
+		return attach(folder, head, name, size * H, offset, color, shape, Enum.Material.SmoothPlastic)
+	end
+	if style == "buzz" then
+		add("Hair", Vector3.new(1.02, 0.25, 1.02), CFrame.new(0, top - 0.08 * H, 0.02 * H))
+	elseif style == "short" or style == "sidepart" then
+		add("Hair", Vector3.new(1.06, 0.34, 1.06), CFrame.new(0, top - 0.06 * H, 0.03 * H))
+		add("HairBack", Vector3.new(1.04, 0.5, 0.2), CFrame.new(0, 0.12 * H, 0.46 * H))
+		if style == "sidepart" then
+			add("Fringe", Vector3.new(0.6, 0.18, 0.2), CFrame.new(-0.18 * H, top - 0.12 * H, -0.47 * H) * CFrame.Angles(0, 0, math.rad(-12)))
+		else
+			add("Fringe", Vector3.new(0.9, 0.14, 0.16), CFrame.new(0, top - 0.14 * H, -0.47 * H))
+		end
+	elseif style == "long" or style == "bob" then
+		local length = if style == "long" then 1.25 else 0.7
+		add("Hair", Vector3.new(1.08, 0.34, 1.08), CFrame.new(0, top - 0.05 * H, 0.02 * H))
+		add("HairBack", Vector3.new(1.1, length, 0.28), CFrame.new(0, top - length / 2 * H, 0.47 * H))
+		for _, sx in ipairs({ -1, 1 }) do
+			add("HairSide", Vector3.new(0.18, length * 0.85, 0.8), CFrame.new(sx * 0.53 * H, top - length * 0.45 * H, 0.08 * H))
+		end
+		add("Fringe", Vector3.new(0.95, 0.16, 0.14), CFrame.new(0, top - 0.14 * H, -0.48 * H))
+	elseif style == "ponytail" or style == "bun" then
+		add("Hair", Vector3.new(1.06, 0.34, 1.06), CFrame.new(0, top - 0.06 * H, 0.03 * H))
+		add("HairBack", Vector3.new(1.04, 0.45, 0.2), CFrame.new(0, 0.15 * H, 0.46 * H))
+		if style == "bun" then
+			add("Bun", Vector3.new(0.5, 0.5, 0.5), CFrame.new(0, top + 0.12 * H, 0.2 * H), "Ball")
+		else
+			add("Tie", Vector3.new(0.22, 0.22, 0.22), CFrame.new(0, top - 0.15 * H, 0.56 * H), "Ball")
+			add("Ponytail", Vector3.new(0.24, 0.8, 0.24), CFrame.new(0, top - 0.55 * H, 0.64 * H) * CFrame.Angles(math.rad(12), 0, 0))
+		end
+	elseif style == "afro" then
+		add("Hair", Vector3.new(1.55, 1.3, 1.5), CFrame.new(0, top - 0.02 * H, 0.1 * H), "Ball")
+	elseif style == "curly" then
+		for k = 0, 7 do
+			local a = k / 8 * math.pi * 2
+			add("Curl", Vector3.new(0.42, 0.42, 0.42), CFrame.new(math.cos(a) * 0.38 * H, top - 0.02 * H, math.sin(a) * 0.38 * H + 0.05 * H), "Ball")
+		end
+		add("Curl", Vector3.new(0.5, 0.5, 0.5), CFrame.new(0, top + 0.06 * H, 0.05 * H), "Ball")
+	elseif style == "mohawk" then
+		add("Hair", Vector3.new(1.02, 0.14, 1.02), CFrame.new(0, top - 0.1 * H, 0.02 * H))
+		add("Mohawk", Vector3.new(0.18, 0.5, 1.0), CFrame.new(0, top + 0.18 * H, 0.05 * H))
+	elseif style == "spiky" then
+		add("Hair", Vector3.new(1.04, 0.28, 1.04), CFrame.new(0, top - 0.08 * H, 0.03 * H))
+		for k = -2, 2 do
+			local spike = add("Spike", Vector3.new(0.22, 0.4, 0.22), CFrame.new(k * 0.19 * H, top + 0.1 * H, (k % 2) * 0.15 * H) * CFrame.Angles(0, 0, math.rad(-k * 10)))
+			if spike then
+				spike.Name = "Spike"
+			end
+		end
+	end
+end
+
+--------------------------------------------------------------------------------
+-- Items. Each one decorates the head, torso, arms or legs.
+--------------------------------------------------------------------------------
+local HATS = { Toque = true, TallToque = true, Cap = true, PoliceCap = true, HardHat = true, StrawHat = true, Beanie = true, FireHelmet = true, Beret = true, BucketHat = true }
+
+local ITEMS = {}
+
+-- torso helpers: front of the torso is -Z
+local function torsoFront(body, name, size, y, color, material, folder)
+	local t = body.Torso
+	return attach(folder, t, name, size, CFrame.new(0, y, -t.Size.Z / 2 - size.Z / 2 + 0.02), color, nil, material)
+end
+
+function ITEMS.Toque(f, b, c)
+	local H = b.H
+	attach(f, b.Head, "HatBand", Vector3.new(1.04, 0.22, 1.04) * H, CFrame.new(0, H * 0.5, 0), WHITE, "Cylinder").CFrame = b.Head.CFrame * CFrame.new(0, H * 0.5, 0) * CFrame.Angles(0, 0, math.rad(90))
+	attach(f, b.Head, "HatPuff", Vector3.new(1.1, 0.65, 1.1) * H, CFrame.new(0, H * 0.82, 0), c or WHITE, "Ball")
+end
+function ITEMS.TallToque(f, b, c)
+	local H = b.H
+	attach(f, b.Head, "HatBand", Vector3.new(1.04, 0.25, 1.04) * H, CFrame.new(0, H * 0.52, 0), WHITE)
+	attach(f, b.Head, "HatTall", Vector3.new(0.95, 0.9, 0.95) * H, CFrame.new(0, H * 1.05, 0), WHITE)
+	attach(f, b.Head, "HatPuff", Vector3.new(1.2, 0.5, 1.2) * H, CFrame.new(0, H * 1.5, 0), WHITE, "Ball")
+end
+function ITEMS.Cap(f, b, c)
+	local H = b.H
+	c = c or rgb(200, 50, 50)
+	attach(f, b.Head, "Cap", Vector3.new(1.08, 0.36, 1.08) * H, CFrame.new(0, H * 0.46, 0.02 * H), c)
+	attach(f, b.Head, "CapBrim", Vector3.new(0.9, 0.08, 0.5) * H, CFrame.new(0, H * 0.32, -0.7 * H), c:Lerp(BLACK, 0.2))
+end
+function ITEMS.PoliceCap(f, b)
+	local H = b.H
+	local navy = rgb(25, 32, 70)
+	attach(f, b.Head, "CapBand", Vector3.new(1.1, 0.24, 1.1) * H, CFrame.new(0, H * 0.4, 0), BLACK)
+	attach(f, b.Head, "CapTop", Vector3.new(1.3, 0.2, 1.3) * H, CFrame.new(0, H * 0.6, 0), navy)
+	attach(f, b.Head, "CapBrim", Vector3.new(0.9, 0.07, 0.4) * H, CFrame.new(0, H * 0.3, -0.66 * H) * CFrame.Angles(math.rad(-12), 0, 0), BLACK)
+	attach(f, b.Head, "CapBadge", Vector3.new(0.22, 0.2, 0.05) * H, CFrame.new(0, H * 0.43, -0.57 * H), GOLD, nil, Enum.Material.Metal)
+end
+function ITEMS.HardHat(f, b)
+	local H = b.H
+	attach(f, b.Head, "HardHat", Vector3.new(1.2, 0.75, 1.25) * H, CFrame.new(0, H * 0.55, 0), rgb(250, 200, 40), "Ball")
+	attach(f, b.Head, "HardHatBrim", Vector3.new(1.3, 0.07, 1.4) * H, CFrame.new(0, H * 0.35, -0.05 * H), rgb(240, 190, 30))
+end
+function ITEMS.StrawHat(f, b)
+	local H = b.H
+	local straw = rgb(230, 200, 120)
+	attach(f, b.Head, "HatBrim", Vector3.new(0.08, 2.1, 2.1) * H, CFrame.new(0, H * 0.4, 0) * CFrame.Angles(0, 0, math.rad(90)), straw, "Cylinder", Enum.Material.Fabric)
+	attach(f, b.Head, "HatCrown", Vector3.new(0.45, 1.05, 1.05) * H, CFrame.new(0, H * 0.62, 0) * CFrame.Angles(0, 0, math.rad(90)), straw, "Cylinder", Enum.Material.Fabric)
+	attach(f, b.Head, "HatRibbon", Vector3.new(0.1, 1.08, 1.08) * H, CFrame.new(0, H * 0.48, 0) * CFrame.Angles(0, 0, math.rad(90)), rgb(200, 60, 60), "Cylinder")
+end
+function ITEMS.Beanie(f, b, c)
+	local H = b.H
+	c = c or rgb(60, 60, 70)
+	attach(f, b.Head, "Beanie", Vector3.new(1.1, 0.8, 1.1) * H, CFrame.new(0, H * 0.45, 0.02 * H), c, "Ball", Enum.Material.Fabric)
+	attach(f, b.Head, "BeanieFold", Vector3.new(1.12, 0.18, 1.12) * H, CFrame.new(0, H * 0.28, 0.02 * H), c:Lerp(BLACK, 0.2), nil, Enum.Material.Fabric)
+	attach(f, b.Head, "Pompom", Vector3.new(0.3, 0.3, 0.3) * H, CFrame.new(0, H * 0.9, 0), c:Lerp(WHITE, 0.5), "Ball", Enum.Material.Fabric)
+end
+function ITEMS.FireHelmet(f, b)
+	local H = b.H
+	local red = rgb(200, 30, 30)
+	attach(f, b.Head, "Helmet", Vector3.new(1.25, 0.85, 1.3) * H, CFrame.new(0, H * 0.52, 0.05 * H), red, "Ball")
+	attach(f, b.Head, "HelmetBrim", Vector3.new(1.3, 0.07, 1.7) * H, CFrame.new(0, H * 0.3, 0.2 * H), red:Lerp(BLACK, 0.2))
+	attach(f, b.Head, "HelmetShield", Vector3.new(0.45, 0.4, 0.06) * H, CFrame.new(0, H * 0.72, -0.62 * H), GOLD, nil, Enum.Material.Metal)
+end
+function ITEMS.Beret(f, b, c)
+	local H = b.H
+	attach(f, b.Head, "Beret", Vector3.new(1.2, 0.3, 1.15) * H, CFrame.new(0.12 * H, H * 0.55, 0) * CFrame.Angles(0, 0, math.rad(-10)), c or rgb(180, 40, 60), "Ball", Enum.Material.Fabric)
+	attach(f, b.Head, "BeretTip", Vector3.new(0.08, 0.14, 0.08) * H, CFrame.new(0.14 * H, H * 0.72, 0), c or rgb(180, 40, 60))
+end
+function ITEMS.BucketHat(f, b, c)
+	local H = b.H
+	c = c or rgb(110, 130, 90)
+	attach(f, b.Head, "HatBrim", Vector3.new(0.08, 1.5, 1.5) * H, CFrame.new(0, H * 0.36, 0) * CFrame.Angles(0, 0, math.rad(90)), c, "Cylinder", Enum.Material.Fabric)
+	attach(f, b.Head, "HatCrown", Vector3.new(0.5, 1.08, 1.08) * H, CFrame.new(0, H * 0.58, 0) * CFrame.Angles(0, 0, math.rad(90)), c, "Cylinder", Enum.Material.Fabric)
+end
+function ITEMS.Headband(f, b, c)
+	local H = b.H
+	attach(f, b.Head, "Headband", Vector3.new(0.16, 1.06, 1.06) * H, CFrame.new(0, H * 0.25, 0) * CFrame.Angles(0, 0, math.rad(90)), c or WHITE, "Cylinder", Enum.Material.Fabric)
+end
+function ITEMS.Headphones(f, b)
+	local H = b.H
+	attach(f, b.Head, "HeadphoneBand", Vector3.new(1.2, 0.1, 0.18) * H, CFrame.new(0, H * 0.58, 0), BLACK)
+	for _, sx in ipairs({ -1, 1 }) do
+		attach(f, b.Head, "Earcup", Vector3.new(0.2, 0.42, 0.42) * H, CFrame.new(sx * 0.58 * H, H * 0.05, 0) * CFrame.Angles(0, 0, math.rad(90)), rgb(60, 200, 220), "Cylinder", Enum.Material.Neon)
+	end
+end
+function ITEMS.Glasses(f, b)
+	local H = b.H
+	for _, sx in ipairs({ -1, 1 }) do
+		attach(f, b.Head, "Lens", Vector3.new(0.06, 0.28, 0.28) * H, CFrame.new(sx * 0.2 * H, H * 0.1, -0.52 * H) * CFrame.Angles(0, math.rad(90), 0), BLACK, "Cylinder", Enum.Material.Metal)
+	end
+	attach(f, b.Head, "Bridge", Vector3.new(0.14, 0.04, 0.04) * H, CFrame.new(0, H * 0.12, -0.53 * H), BLACK)
+end
+
+function ITEMS.Apron(f, b, c)
+	local t = b.Torso
+	c = c or WHITE
+	torsoFront(b, "Apron", Vector3.new(t.Size.X * 0.7, t.Size.Y * 0.8, 0.08), -t.Size.Y * 0.05, c, Enum.Material.Fabric, f)
+	if b.Lower and b.Lower ~= t then
+		attach(f, b.Lower, "ApronSkirt", Vector3.new(b.Lower.Size.X * 0.75, 1.2, 0.08), CFrame.new(0, -0.35, -b.Lower.Size.Z / 2 - 0.05), c, nil, Enum.Material.Fabric)
+	end
+	torsoFront(b, "ApronPocket", Vector3.new(t.Size.X * 0.35, t.Size.Y * 0.18, 0.1), -t.Size.Y * 0.2, c:Lerp(BLACK, 0.12), Enum.Material.Fabric, f)
+end
+function ITEMS.LabCoat(f, b)
+	local t = b.Torso
+	for _, sx in ipairs({ -1, 1 }) do
+		attach(f, t, "CoatPanel", Vector3.new(t.Size.X * 0.34, t.Size.Y + 0.1, 0.1), CFrame.new(sx * t.Size.X * 0.34, 0, -t.Size.Z / 2 - 0.05), WHITE, nil, Enum.Material.Fabric)
+		attach(f, t, "CoatSide", Vector3.new(0.08, t.Size.Y + 0.1, t.Size.Z + 0.1), CFrame.new(sx * (t.Size.X / 2 + 0.04), 0, 0), WHITE, nil, Enum.Material.Fabric)
+		if b.Lower and b.Lower ~= t then
+			attach(f, b.Lower, "CoatTail", Vector3.new(b.Lower.Size.X * 0.45, 1.4, 0.1), CFrame.new(sx * b.Lower.Size.X * 0.26, -0.45, -b.Lower.Size.Z / 2 - 0.05), WHITE, nil, Enum.Material.Fabric)
+		end
+	end
+	attach(f, t, "CoatBack", Vector3.new(t.Size.X + 0.1, t.Size.Y + 0.1, 0.08), CFrame.new(0, 0, t.Size.Z / 2 + 0.04), WHITE, nil, Enum.Material.Fabric)
+	attach(f, b.LeftArm, "Sleeve", b.LeftArm and (b.LeftArm.Size + Vector3.new(0.08, 0, 0.08)) or Vector3.one, CFrame.new(), WHITE, nil, Enum.Material.Fabric)
+	attach(f, b.RightArm, "Sleeve", b.RightArm and (b.RightArm.Size + Vector3.new(0.08, 0, 0.08)) or Vector3.one, CFrame.new(), WHITE, nil, Enum.Material.Fabric)
+	torsoFront(b, "CoatPen", Vector3.new(0.06, 0.35, 0.06), b.Torso.Size.Y * 0.25, rgb(40, 80, 200), nil, f)
+end
+function ITEMS.Stethoscope(f, b)
+	local t = b.Torso
+	for _, sx in ipairs({ -1, 1 }) do
+		torsoFront(b, "StethTube", Vector3.new(0.08, t.Size.Y * 0.5, 0.08), t.Size.Y * 0.15, BLACK, nil, f).CFrame = t.CFrame * CFrame.new(sx * 0.25, t.Size.Y * 0.15, -t.Size.Z / 2 - 0.12) * CFrame.Angles(0, 0, math.rad(sx * 15))
+	end
+	torsoFront(b, "StethDisk", Vector3.new(0.26, 0.26, 0.1), -t.Size.Y * 0.12, SILVER, Enum.Material.Metal, f)
+end
+function ITEMS.Badge(f, b)
+	local t = b.Torso
+	attach(f, t, "Badge", Vector3.new(0.34, 0.4, 0.06), CFrame.new(-t.Size.X * 0.25, t.Size.Y * 0.2, -t.Size.Z / 2 - 0.04), GOLD, nil, Enum.Material.Metal)
+	attach(f, t, "BadgeStar", Vector3.new(0.18, 0.18, 0.07), CFrame.new(-t.Size.X * 0.25, t.Size.Y * 0.2, -t.Size.Z / 2 - 0.06) * CFrame.Angles(0, 0, math.rad(45)), rgb(210, 160, 40), nil, Enum.Material.Metal)
+	for _, sx in ipairs({ -1, 1 }) do
+		attach(f, t, "Epaulette", Vector3.new(0.5, 0.1, t.Size.Z * 0.9), CFrame.new(sx * t.Size.X * 0.38, t.Size.Y / 2, 0), rgb(20, 25, 55))
+	end
+end
+function ITEMS.Radio(f, b)
+	local t = b.Torso
+	attach(f, t, "Radio", Vector3.new(0.25, 0.4, 0.15), CFrame.new(t.Size.X * 0.3, t.Size.Y * 0.28, -t.Size.Z / 2 - 0.08), BLACK)
+end
+function ITEMS.Belt(f, b, c)
+	local lower = b.Lower or b.Torso
+	attach(f, lower, "Belt", Vector3.new(lower.Size.X + 0.06, 0.25, lower.Size.Z + 0.06), CFrame.new(0, if b.R15 then 0 else -lower.Size.Y / 2 + 0.15, 0), c or BLACK, nil, Enum.Material.Fabric)
+	attach(f, lower, "Buckle", Vector3.new(0.3, 0.2, 0.06), CFrame.new(0, if b.R15 then 0 else -lower.Size.Y / 2 + 0.15, -lower.Size.Z / 2 - 0.04), SILVER, nil, Enum.Material.Metal)
+end
+function ITEMS.HiVisVest(f, b)
+	local t = b.Torso
+	local vest = rgb(250, 140, 30)
+	for _, sx in ipairs({ -1, 1 }) do
+		attach(f, t, "Vest", Vector3.new(t.Size.X * 0.4, t.Size.Y, 0.08), CFrame.new(sx * t.Size.X * 0.3, 0, -t.Size.Z / 2 - 0.04), vest, nil, Enum.Material.Fabric)
+	end
+	attach(f, t, "VestBack", Vector3.new(t.Size.X, t.Size.Y, 0.08), CFrame.new(0, 0, t.Size.Z / 2 + 0.04), vest, nil, Enum.Material.Fabric)
+	attach(f, t, "VestStripe", Vector3.new(t.Size.X + 0.2, 0.14, t.Size.Z + 0.2), CFrame.new(0, -t.Size.Y * 0.15, 0), rgb(230, 240, 240), nil, Enum.Material.Neon)
+end
+function ITEMS.ReflectiveStripes(f, b)
+	local t = b.Torso
+	for _, y in ipairs({ 0.15, -0.25 }) do
+		attach(f, t, "Stripe", Vector3.new(t.Size.X + 0.1, 0.16, t.Size.Z + 0.1), CFrame.new(0, t.Size.Y * y, 0), rgb(240, 240, 120), nil, Enum.Material.Neon)
+	end
+	for _, arm in ipairs({ b.LeftArm, b.RightArm }) do
+		attach(f, arm, "Stripe", arm and Vector3.new(arm.Size.X + 0.08, 0.14, arm.Size.Z + 0.08) or Vector3.one, CFrame.new(0, -0.1, 0), rgb(240, 240, 120), nil, Enum.Material.Neon)
+	end
+end
+function ITEMS.Gloves(f, b)
+	for _, hand in ipairs({ b.LeftHand, b.RightHand }) do
+		if hand then
+			local s = if b.R15 then hand.Size + Vector3.new(0.08, 0.08, 0.08) else Vector3.new(hand.Size.X + 0.06, 0.5, hand.Size.Z + 0.06)
+			attach(f, hand, "Glove", s, CFrame.new(0, if b.R15 then 0 else -hand.Size.Y / 2 + 0.25, 0), rgb(190, 150, 90), nil, Enum.Material.Fabric)
+		end
+	end
+end
+function ITEMS.Overalls(f, b, c)
+	local t = b.Torso
+	torsoFront(b, "Bib", Vector3.new(t.Size.X * 0.6, t.Size.Y * 0.55, 0.08), -t.Size.Y * 0.2, c, Enum.Material.Fabric, f)
+	for _, sx in ipairs({ -1, 1 }) do
+		attach(f, t, "Strap", Vector3.new(0.18, t.Size.Y * 0.5, t.Size.Z + 0.1), CFrame.new(sx * t.Size.X * 0.25, t.Size.Y * 0.25, 0), c, nil, Enum.Material.Fabric)
+		torsoFront(b, "Button", Vector3.new(0.12, 0.12, 0.06), t.Size.Y * 0.07, SILVER, Enum.Material.Metal, f).CFrame = t.CFrame * CFrame.new(sx * t.Size.X * 0.25, t.Size.Y * 0.07, -t.Size.Z / 2 - 0.1)
+	end
+end
+function ITEMS.GuitarBack(f, b)
+	local t = b.Torso
+	local wood = rgb(190, 110, 50)
+	local cf = CFrame.new(0.2, -0.2, t.Size.Z / 2 + 0.3) * CFrame.Angles(0, 0, math.rad(35))
+	attach(f, t, "GuitarBody", Vector3.new(1.1, 1.3, 0.35), cf * CFrame.new(0, -0.3, 0), wood, "Ball")
+	attach(f, t, "GuitarNeck", Vector3.new(0.2, 1.4, 0.15), cf * CFrame.new(0, 0.9, 0), rgb(80, 50, 30))
+	attach(f, t, "GuitarStrap", Vector3.new(0.12, t.Size.Y * 1.1, t.Size.Z + 0.25), CFrame.new(0, 0, 0) * CFrame.Angles(0, 0, math.rad(-35)), rgb(60, 40, 30), nil, Enum.Material.Fabric)
+end
+function ITEMS.Tie(f, b, c)
+	local t = b.Torso
+	c = c or rgb(150, 40, 50)
+	torsoFront(b, "Collar", Vector3.new(0.6, 0.14, 0.06), t.Size.Y / 2 - 0.08, WHITE, nil, f)
+	torsoFront(b, "Tie", Vector3.new(0.22, t.Size.Y * 0.62, 0.06), t.Size.Y * 0.12, c, Enum.Material.Fabric, f)
+	torsoFront(b, "TieKnot", Vector3.new(0.26, 0.2, 0.08), t.Size.Y / 2 - 0.2, c:Lerp(BLACK, 0.15), Enum.Material.Fabric, f)
+end
+function ITEMS.BowTie(f, b, c)
+	local t = b.Torso
+	c = c or BLACK
+	for _, sx in ipairs({ -1, 1 }) do
+		torsoFront(b, "BowWing", Vector3.new(0.24, 0.2, 0.08), t.Size.Y / 2 - 0.16, c, Enum.Material.Fabric, f).CFrame = t.CFrame * CFrame.new(sx * 0.15, t.Size.Y / 2 - 0.16, -t.Size.Z / 2 - 0.05) * CFrame.Angles(0, 0, math.rad(sx * 20))
+	end
+	torsoFront(b, "BowKnot", Vector3.new(0.1, 0.12, 0.1), t.Size.Y / 2 - 0.16, c:Lerp(BLACK, 0.2), nil, f)
+end
+function ITEMS.Vest(f, b, c)
+	local t = b.Torso
+	for _, sx in ipairs({ -1, 1 }) do
+		attach(f, t, "VestPanel", Vector3.new(t.Size.X * 0.38, t.Size.Y * 0.85, 0.08), CFrame.new(sx * t.Size.X * 0.31, -t.Size.Y * 0.07, -t.Size.Z / 2 - 0.04), c, nil, Enum.Material.Fabric)
+	end
+	attach(f, t, "VestBack", Vector3.new(t.Size.X, t.Size.Y * 0.85, 0.08), CFrame.new(0, -t.Size.Y * 0.07, t.Size.Z / 2 + 0.04), c, nil, Enum.Material.Fabric)
+end
+function ITEMS.Cardigan(f, b, c)
+	ITEMS.Vest(f, b, c)
+	for _, arm in ipairs({ b.LeftArm, b.RightArm }) do
+		attach(f, arm, "Sleeve", arm and (arm.Size + Vector3.new(0.08, 0, 0.08)) or Vector3.one, CFrame.new(), c, nil, Enum.Material.Fabric)
+	end
+	for k = 0, 2 do
+		torsoFront(b, "Button", Vector3.new(0.1, 0.1, 0.06), b.Torso.Size.Y * (0.2 - k * 0.25), GOLD, nil, f).CFrame = b.Torso.CFrame * CFrame.new(b.Torso.Size.X * 0.13, b.Torso.Size.Y * (0.2 - k * 0.25), -b.Torso.Size.Z / 2 - 0.1)
+	end
+end
+function ITEMS.ChefButtons(f, b)
+	local t = b.Torso
+	for _, sx in ipairs({ -1, 1 }) do
+		for k = 0, 2 do
+			torsoFront(b, "ChefButton", Vector3.new(0.12, 0.12, 0.06), 0, rgb(40, 40, 45), nil, f).CFrame = t.CFrame * CFrame.new(sx * 0.3, t.Size.Y * (0.25 - k * 0.25), -t.Size.Z / 2 - 0.04)
+		end
+	end
+end
+function ITEMS.Neckerchief(f, b, c)
+	local t = b.Torso
+	torsoFront(b, "Neckerchief", Vector3.new(0.7, 0.3, 0.08), t.Size.Y / 2 - 0.15, c, Enum.Material.Fabric, f)
+	torsoFront(b, "NeckerchiefTip", Vector3.new(0.3, 0.3, 0.08), t.Size.Y / 2 - 0.35, c, Enum.Material.Fabric, f).CFrame = t.CFrame * CFrame.new(0, t.Size.Y / 2 - 0.35, -t.Size.Z / 2 - 0.05) * CFrame.Angles(0, 0, math.rad(45))
+end
+function ITEMS.NameTag(f, b)
+	local t = b.Torso
+	attach(f, t, "NameTag", Vector3.new(0.45, 0.2, 0.05), CFrame.new(t.Size.X * 0.25, t.Size.Y * 0.2, -t.Size.Z / 2 - 0.04), WHITE)
+end
+function ITEMS.Lanyard(f, b)
+	local t = b.Torso
+	for _, sx in ipairs({ -1, 1 }) do
+		torsoFront(b, "Lanyard", Vector3.new(0.06, t.Size.Y * 0.45, 0.05), 0, rgb(40, 90, 200), nil, f).CFrame = t.CFrame * CFrame.new(sx * 0.17, t.Size.Y * 0.2, -t.Size.Z / 2 - 0.04) * CFrame.Angles(0, 0, math.rad(sx * 12))
+	end
+	torsoFront(b, "IdCard", Vector3.new(0.34, 0.44, 0.05), -t.Size.Y * 0.08, WHITE, nil, f)
+end
+function ITEMS.PocketSquare(f, b)
+	local t = b.Torso
+	attach(f, t, "PocketSquare", Vector3.new(0.3, 0.16, 0.06), CFrame.new(-t.Size.X * 0.27, t.Size.Y * 0.22, -t.Size.Z / 2 - 0.04), WHITE)
+end
+function ITEMS.GoldWatch(f, b)
+	local arm = b.LeftHand
+	if arm then
+		attach(f, arm, "Watch", Vector3.new(arm.Size.X + 0.06, 0.16, arm.Size.Z + 0.06), CFrame.new(0, if b.R15 then arm.Size.Y / 2 else -arm.Size.Y / 2 + 0.5, 0), GOLD, nil, Enum.Material.Metal)
+	end
+end
+function ITEMS.Wristbands(f, b)
+	for _, hand in ipairs({ b.LeftHand, b.RightHand }) do
+		if hand then
+			attach(f, hand, "Wristband", Vector3.new(hand.Size.X + 0.08, 0.2, hand.Size.Z + 0.08), CFrame.new(0, if b.R15 then hand.Size.Y / 2 else -hand.Size.Y / 2 + 0.55, 0), WHITE, nil, Enum.Material.Fabric)
+		end
+	end
+end
+function ITEMS.Whistle(f, b)
+	local t = b.Torso
+	torsoFront(b, "WhistleCord", Vector3.new(0.05, t.Size.Y * 0.4, 0.05), t.Size.Y * 0.18, rgb(40, 40, 45), nil, f)
+	torsoFront(b, "Whistle", Vector3.new(0.3, 0.16, 0.16), -t.Size.Y * 0.02, SILVER, Enum.Material.Metal, f)
+end
+function ITEMS.BookUnderArm(f, b)
+	local arm = b.LeftArm
+	if arm then
+		attach(f, arm, "Book", Vector3.new(0.25, 0.9, 0.7), CFrame.new(0.55, -0.2, 0), rgb(120, 40, 50))
+	end
+end
+function ITEMS.TowelArm(f, b)
+	local arm = b.LeftArm
+	if arm then
+		attach(f, arm, "Towel", Vector3.new(arm.Size.X + 0.12, 0.5, arm.Size.Z + 0.12), CFrame.new(0, -arm.Size.Y * 0.2, 0), WHITE, nil, Enum.Material.Fabric)
+	end
+end
+function ITEMS.WrenchBelt(f, b)
+	local lower = b.Lower or b.Torso
+	attach(f, lower, "Wrench", Vector3.new(0.14, 0.8, 0.1), CFrame.new(lower.Size.X * 0.45, -0.3, -lower.Size.Z / 2 - 0.08), SILVER, nil, Enum.Material.Metal)
+end
+function ITEMS.Smudge(f, b)
+	if b.Head then
+		attach(f, b.Head, "Smudge", Vector3.new(0.22, 0.12, 0.04) * b.H, CFrame.new(0.22 * b.H, -0.12 * b.H, -0.5 * b.H), rgb(60, 50, 45))
+	end
+end
+function ITEMS.PaintSmudge(f, b)
+	local t = b.Torso
+	for k, col in ipairs({ rgb(230, 60, 60), rgb(60, 120, 230), rgb(250, 200, 50) }) do
+		attach(f, t, "Paint", Vector3.new(0.2, 0.16, 0.05), CFrame.new(-0.5 + k * 0.3, -t.Size.Y * 0.25 + k * 0.1, -t.Size.Z / 2 - 0.03), col)
+	end
+end
+function ITEMS.Binoculars(f, b)
+	local t = b.Torso
+	torsoFront(b, "Strap", Vector3.new(0.06, t.Size.Y * 0.4, 0.05), t.Size.Y * 0.2, rgb(60, 40, 30), nil, f)
+	for _, sx in ipairs({ -1, 1 }) do
+		torsoFront(b, "Lens", Vector3.new(0.2, 0.36, 0.2), -t.Size.Y * 0.05, rgb(40, 45, 40), Enum.Material.Metal, f).CFrame = t.CFrame * CFrame.new(sx * 0.13, -t.Size.Y * 0.05, -t.Size.Z / 2 - 0.14)
+	end
+end
+function ITEMS.Scarf(f, b)
+	local t = b.Torso
+	local c = rgb(200, 60, 70)
+	attach(f, t, "Scarf", Vector3.new(t.Size.X * 0.7, 0.3, t.Size.Z + 0.2), CFrame.new(0, t.Size.Y / 2 - 0.1, 0), c, nil, Enum.Material.Fabric)
+	torsoFront(b, "ScarfEnd", Vector3.new(0.3, t.Size.Y * 0.5, 0.08), t.Size.Y * 0.1, c, Enum.Material.Fabric, f).CFrame = t.CFrame * CFrame.new(t.Size.X * 0.15, t.Size.Y * 0.1, -t.Size.Z / 2 - 0.08)
+	for k = 0, 2 do
+		attach(f, t, "ScarfStripe", Vector3.new(0.32, 0.06, 0.1), CFrame.new(t.Size.X * 0.15, t.Size.Y * (0.25 - k * 0.12), -t.Size.Z / 2 - 0.12), WHITE, nil, Enum.Material.Fabric)
+	end
+end
+function ITEMS.Backpack(f, b, c)
+	local t = b.Torso
+	c = c or rgb(60, 130, 220)
+	attach(f, t, "Backpack", Vector3.new(t.Size.X * 0.7, t.Size.Y * 0.8, 0.6), CFrame.new(0, -t.Size.Y * 0.05, t.Size.Z / 2 + 0.3), c, nil, Enum.Material.Fabric)
+	attach(f, t, "BackpackPocket", Vector3.new(t.Size.X * 0.5, t.Size.Y * 0.3, 0.2), CFrame.new(0, -t.Size.Y * 0.2, t.Size.Z / 2 + 0.68), c:Lerp(BLACK, 0.2), nil, Enum.Material.Fabric)
+	for _, sx in ipairs({ -1, 1 }) do
+		attach(f, t, "BackpackStrap", Vector3.new(0.14, t.Size.Y * 0.9, t.Size.Z + 0.12), CFrame.new(sx * t.Size.X * 0.22, 0, 0), c:Lerp(BLACK, 0.3), nil, Enum.Material.Fabric)
+	end
+end
+function ITEMS.Bib(f, b, c)
+	local t = b.Torso
+	torsoFront(b, "Bib", Vector3.new(t.Size.X * 0.55, t.Size.Y * 0.5, 0.06), t.Size.Y * 0.1, c or rgb(255, 200, 220), Enum.Material.Fabric, f)
+end
+function ITEMS.Cane(f, b)
+	local hand = b.RightHand
+	if hand then
+		attach(f, hand, "Cane", Vector3.new(0.14, 3, 0.14), CFrame.new(0.1, -1.4, -0.3), rgb(100, 65, 40), nil, Enum.Material.Wood)
+		attach(f, hand, "CaneHandle", Vector3.new(0.14, 0.14, 0.5), CFrame.new(0.1, 0.05, -0.15), rgb(100, 65, 40), nil, Enum.Material.Wood)
+	end
+end
+
+--------------------------------------------------------------------------------
+-- Putting it together
+--------------------------------------------------------------------------------
+
+-- What a citizen will look like (colors, hair, items), without building it.
+function CitizenLook.Describe(citizen)
+	local name = tostring(field(citizen, "Name", "name", "DisplayName") or "Citizen")
+	local rng = Random.new(hash(name) + (Config.SEED or 0))
+	local age = tonumber(field(citizen, "Age", "age")) or rng:NextInteger(20, 60)
+	local job = jobTitle(citizen)
+	local hobby = field(citizen, "Hobby", "hobby")
+	local retired = age >= (Config.RETIRE_AGE or 67)
+	local kid = age < (Config.ADULT_AGE or 18)
+	local uniform = (not retired) and (not kid) and job and UNIFORMS[job] or nil
+
+	local look = {
+		Skin = SKIN_TONES[rng:NextInteger(1, #SKIN_TONES)],
+		Hair = HAIRSTYLES[rng:NextInteger(1, #HAIRSTYLES)],
+		HairColor = HAIR_COLORS[rng:NextInteger(1, #HAIR_COLORS)],
+		Top = CASUAL_TOPS[rng:NextInteger(1, #CASUAL_TOPS)],
+		Bottom = CASUAL_BOTTOMS[rng:NextInteger(1, #CASUAL_BOTTOMS)],
+		Shoes = ({ rgb(40, 35, 32), rgb(240, 240, 240), rgb(110, 70, 45), rgb(200, 60, 60) })[rng:NextInteger(1, 4)],
+		Sleeves = if rng:NextNumber() < 0.5 then "long" else "short",
+		Items = {},
+		Age = age,
+		Job = job,
+	}
+	if age < 3 then
+		-- babies: a little soft hair and a bib
+		look.Hair = if rng:NextNumber() < 0.5 then "buzz" else "bald"
+		look.Sleeves = "long"
+		look.Top = ({ rgb(255, 220, 230), rgb(200, 230, 255), rgb(255, 245, 200), rgb(210, 245, 210) })[rng:NextInteger(1, 4)]
+		look.Bottom = look.Top
+		table.insert(look.Items, "Bib")
+		return look
+	elseif kid and age >= 6 then
+		table.insert(look.Items, "Backpack:" .. ({ "60,130,220", "220,70,90", "90,180,110", "240,170,40", "150,90,210" })[rng:NextInteger(1, 5)])
+	end
+	if age < 30 and rng:NextNumber() < 0.15 then
+		look.HairColor = FUN_HAIR[rng:NextInteger(1, #FUN_HAIR)]
+	elseif age >= 55 then
+		look.HairColor = GRAY_HAIR[rng:NextInteger(1, #GRAY_HAIR)]
+		if look.Hair == "mohawk" or look.Hair == "spiky" then
+			look.Hair = "short"
+		end
+	end
+	if uniform then
+		look.Top = uniform.Top or look.Top
+		look.Bottom = uniform.Bottom or look.Bottom
+		look.Sleeves = uniform.Sleeves or look.Sleeves
+		for _, item in ipairs(uniform.Items or {}) do
+			table.insert(look.Items, item)
+		end
+	end
+	if retired then
+		table.insert(look.Items, "Cardigan:" .. ({ "150,120,100", "120,130,150", "160,110,120" })[rng:NextInteger(1, 3)])
+		table.insert(look.Items, "Glasses")
+		table.insert(look.Items, "Cane")
+	end
+	-- a hobby touch, unless the uniform already covers that spot
+	local hasHat = false
+	for _, item in ipairs(look.Items) do
+		if HATS[(parseItem(item))] then
+			hasHat = true
+		end
+	end
+	for _, item in ipairs((hobby and HOBBY_ITEMS[hobby]) or {}) do
+		local itemName = parseItem(item)
+		local duplicate = false
+		for _, existing in ipairs(look.Items) do
+			if parseItem(existing) == itemName then
+				duplicate = true
+			end
+		end
+		if not duplicate and not (HATS[itemName] and hasHat) and not (itemName == "Headband" and hasHat) then
+			table.insert(look.Items, item)
+		end
+	end
+	-- hats sit better on shorter hair
+	if hasHat and (look.Hair == "afro" or look.Hair == "mohawk" or look.Hair == "spiky" or look.Hair == "bun") then
+		look.Hair = "short"
+	end
+	return look
+end
+
+local function paint(part, color)
+	if part then
+		part.Color = color
+	end
+end
+
+function CitizenLook.Apply(model, citizen, options)
+	options = options or {}
+	local look = CitizenLook.Describe(citizen or {})
+	local old = model:FindFirstChild("CitizenLook")
+	if old then
+		old:Destroy()
+	end
+	local folder = Instance.new("Folder")
+	folder.Name = "CitizenLook"
+	folder.Parent = model
+
+	-- body colors: skin, top, sleeves, bottom and shoes
+	if not options.KeepClothing then
+		for _, c in ipairs(model:GetChildren()) do
+			if c:IsA("Shirt") or c:IsA("Pants") or c:IsA("ShirtGraphic") then
+				c:Destroy()
+			end
+		end
+	end
+	local bodyColors = model:FindFirstChildOfClass("BodyColors")
+	if bodyColors then
+		bodyColors:Destroy() -- we color the parts directly (works for R15 and R6)
+	end
+	local sleeve = if look.Sleeves == "long" then look.Top else look.Skin
+	local r15 = model:FindFirstChild("UpperTorso") ~= nil
+	paint(model:FindFirstChild("Head"), look.Skin)
+	if r15 then
+		paint(model:FindFirstChild("UpperTorso"), look.Top)
+		paint(model:FindFirstChild("LowerTorso"), look.Bottom)
+		for _, side in ipairs({ "Left", "Right" }) do
+			paint(model:FindFirstChild(side .. "UpperArm"), look.Top)
+			paint(model:FindFirstChild(side .. "LowerArm"), sleeve)
+			paint(model:FindFirstChild(side .. "Hand"), look.Skin)
+			paint(model:FindFirstChild(side .. "UpperLeg"), look.Bottom)
+			paint(model:FindFirstChild(side .. "LowerLeg"), look.Bottom)
+			paint(model:FindFirstChild(side .. "Foot"), look.Shoes)
+		end
+	else
+		paint(model:FindFirstChild("Torso"), look.Top)
+		paint(model:FindFirstChild("Left Arm"), sleeve)
+		paint(model:FindFirstChild("Right Arm"), sleeve)
+		paint(model:FindFirstChild("Left Leg"), look.Bottom)
+		paint(model:FindFirstChild("Right Leg"), look.Bottom)
+	end
+	-- everything else is welded on
+	local body = readBody(model)
+	if body.Head and body.Torso then
+		hair(folder, body, look.Hair, look.HairColor)
+		for _, item in ipairs(look.Items) do
+			local name, color = parseItem(item)
+			local build = ITEMS[name]
+			if build then
+				local ok, err = pcall(build, folder, body, color)
+				if not ok then
+					warn("[CitizenLook] " .. name .. ": " .. tostring(err))
+				end
+			end
+		end
+		if not r15 then
+			-- R6 has no shoes: give the bottom of the legs a shoe color band
+			for _, leg in ipairs({ body.LeftLeg, body.RightLeg }) do
+				attach(folder, leg, "Shoe", leg and Vector3.new(leg.Size.X + 0.04, 0.35, leg.Size.Z + 0.12) or Vector3.one, CFrame.new(0, leg and (-leg.Size.Y / 2 + 0.17) or 0, -0.05), look.Shoes)
+			end
+		end
+	end
+	model:SetAttribute("Look", look.Hair .. (if look.Job then " / " .. look.Job else ""))
+	return look
+end
+
+-- A brand new dressed R15 NPC (server only). Parent it and set its position yourself.
+function CitizenLook.Build(citizen)
+	local Players = game:GetService("Players")
+	local description = Instance.new("HumanoidDescription")
+	local look = CitizenLook.Describe(citizen or {})
+	description.HeadColor = look.Skin
+	description.LeftArmColor = look.Skin
+	description.RightArmColor = look.Skin
+	description.TorsoColor = look.Top
+	description.LeftLegColor = look.Bottom
+	description.RightLegColor = look.Bottom
+	local model = Players:CreateHumanoidModelFromDescription(description, Enum.HumanoidRigType.R15)
+	model.Name = tostring(field(citizen or {}, "Name", "name") or "Citizen")
+	CitizenLook.Apply(model, citizen)
+	return model
+end
+
+-- the uniform table, so other scripts can add or tweak outfits
+CitizenLook.Uniforms = UNIFORMS
+CitizenLook.HobbyItems = HOBBY_ITEMS
+
+return CitizenLook
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX11"><Properties><string name="Name">CitizenService</string><ProtectedString name="Source"><![CDATA[-- CitizenService (ModuleScript) — ServerScriptService.Modules.CitizenService
+-- Brings AI City to life: spawns every citizen (dressed by CitizenLook, sized
+-- by age), walks them along the sidewalks to wherever their daily routine
+-- says (home, work for their whole shift, school, errands, hobbies), and
+-- handles couples expecting babies: on the due day the parents go to the
+-- hospital and the baby is born there, then the family walks home together.
+--
+--   CitizenService.Start(map)          -- Main calls this
+--   CitizenService.Population          -- the Population object (families, ages, jobs)
+--   CitizenService.Models[id]          -- a citizen's character model
+--   CitizenService.Event               -- BindableEvent: :Fire(kind, data) for "Born", "Expecting", "GrewUp", "Retired", "NewDay"
+
+local DataStoreService = game:GetService("DataStoreService")
+local Lighting = game:GetService("Lighting")
+local PhysicsService = game:GetService("PhysicsService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ServerScriptService = game:GetService("ServerScriptService")
+
+local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
+local Modules = ServerScriptService:WaitForChild("Modules")
+local Population = require(Modules:WaitForChild("Population"))
+local CitizenLook = require(Modules:WaitForChild("CitizenLook"))
+local MapBuilder = require(Modules:WaitForChild("MapBuilder"))
+
+local CitizenService = {}
+CitizenService.Models = {}
+CitizenService.Event = Instance.new("BindableEvent")
+
+local SCALE = { Baby = 0.42, Toddler = 0.58, Child = 0.72, Teen = 0.9, Adult = 1, Retired = 0.97 }
+local SPEED = { Baby = 0.5, Toddler = 0.6, Child = 0.9, Teen = 1, Adult = 1, Retired = 0.8 }
+local WALK_ANIM = "rbxassetid://507777826" -- Roblox's default R15 walk
+local IDLE_ANIM = "rbxassetid://507766666" -- and idle
+
+local map, pop
+local folder
+local brains = {} -- [id] = { Model, Humanoid, Root, Key, Token, At, Label }
+local day = 0
+local lastHour
+local news = {}
+
+--------------------------------------------------------------------------------
+-- News board
+--------------------------------------------------------------------------------
+local function pushNews(text)
+	table.insert(news, 1, text)
+	while #news > 3 do
+		table.remove(news)
+	end
+	MapBuilder.SetNews(table.concat(news, "\n"))
+	print("[AI City] " .. text)
+end
+
+--------------------------------------------------------------------------------
+-- Nameplates
+--------------------------------------------------------------------------------
+local function roleText(c)
+	local stage = pop:Stage(c, day)
+	local age = pop:Age(c, day)
+	if stage == "Baby" then
+		return "Baby • " .. age
+	elseif stage == "Toddler" then
+		return "Toddler • " .. age
+	elseif stage == "Child" or stage == "Teen" then
+		return "Student • " .. age
+	elseif stage == "Retired" then
+		return "Retired • " .. age
+	end
+	return (c.Job or "Looking for work") .. " • " .. age
+end
+
+local function makePlate(model, c)
+	local head = model:FindFirstChild("Head")
+	if not head then
+		return nil
+	end
+	local gui = Instance.new("BillboardGui")
+	gui.Name = "Nameplate"
+	gui.Size = UDim2.fromOffset(200, 64)
+	gui.StudsOffset = Vector3.new(0, 2.6, 0)
+	gui.MaxDistance = 55
+	gui.AlwaysOnTop = false
+	gui.LightInfluence = 0
+	local function line(name, y, h, font, color)
+		local l = Instance.new("TextLabel")
+		l.Name = name
+		l.BackgroundTransparency = 1
+		l.Position = UDim2.fromOffset(0, y)
+		l.Size = UDim2.new(1, 0, 0, h)
+		l.Font = font
+		l.TextScaled = true
+		l.TextColor3 = color
+		l.TextStrokeTransparency = 0.4
+		l.Text = ""
+		l.Parent = gui
+		return l
+	end
+	line("NameLine", 0, 24, Enum.Font.FredokaOne, Color3.new(1, 1, 1)).Text = c.Name
+	line("RoleLine", 24, 18, Enum.Font.GothamBold, Color3.fromRGB(220, 225, 240))
+	line("StatusLine", 42, 18, Enum.Font.GothamBold, Color3.fromRGB(255, 225, 140))
+	gui.Parent = head
+	return gui
+end
+
+local function refreshPlate(brain, c, activity)
+	local gui = brain.Plate
+	if not gui then
+		return
+	end
+	gui.RoleLine.Text = roleText(c)
+	local h = pop.Households[c.Household]
+	local status = activity or brain.Activity or ""
+	if h and h.Expecting and (c.Id == h.Partners[1] or c.Id == h.Partners[2]) then
+		local left = pop:DaysToGo(h, day)
+		status = (if left and left > 0 then "🍼 Baby due in " .. left .. " day" .. (if left == 1 then "" else "s") else "🍼 Baby due today!") .. "\n" .. status
+		gui.Size = UDim2.fromOffset(200, 82)
+		gui.StatusLine.Size = UDim2.new(1, 0, 0, 36)
+	else
+		gui.Size = UDim2.fromOffset(200, 64)
+		gui.StatusLine.Size = UDim2.new(1, 0, 0, 18)
+	end
+	gui.StatusLine.Text = status
+end
+
+--------------------------------------------------------------------------------
+-- Models
+--------------------------------------------------------------------------------
+local function setupPhysics()
+	pcall(function()
+		PhysicsService:RegisterCollisionGroup("Citizens")
+		PhysicsService:CollisionGroupSetCollidable("Citizens", "Citizens", false)
+	end)
+end
+
+local function animate(humanoid)
+	local animator = humanoid:FindFirstChildOfClass("Animator") or Instance.new("Animator")
+	animator.Parent = humanoid
+	local walk = Instance.new("Animation")
+	walk.AnimationId = WALK_ANIM
+	local idle = Instance.new("Animation")
+	idle.AnimationId = IDLE_ANIM
+	local ok1, walkTrack = pcall(animator.LoadAnimation, animator, walk)
+	local ok2, idleTrack = pcall(animator.LoadAnimation, animator, idle)
+	if not (ok1 and ok2) then
+		return
+	end
+	walkTrack.Looped = true
+	idleTrack.Looped = true
+	idleTrack:Play()
+	humanoid.Running:Connect(function(speed)
+		if speed > 0.5 then
+			if not walkTrack.IsPlaying then
+				walkTrack:Play(0.2)
+				idleTrack:Stop(0.2)
+			end
+		elseif walkTrack.IsPlaying then
+			walkTrack:Stop(0.2)
+			idleTrack:Play(0.2)
+		end
+	end)
+end
+
+-- A spot for a plan: { Point = Vector3, Place = table with Door/Inside or nil }
+local function spread(id, radius)
+	local a = (id * 2.399) % (math.pi * 2)
+	local r = radius * (0.35 + ((id * 7) % 10) / 15)
+	return Vector3.new(math.cos(a) * r, 0, math.sin(a) * r)
+end
+
+local function destination(c, plan)
+	local h = pop.Households[c.Household]
+	if plan.Kind == "Home" then
+		local home = h and h.Home and map.Homes[h.Home]
+		if home then
+			local slot = table.find(h.Members, c.Id) or 1
+			return { Point = home.Inside + spread(slot, 3.5), Place = home }
+		end
+		return { Point = map.Places.Plaza.Inside + spread(c.Id, 12), Place = map.Places.Plaza }
+	elseif plan.Kind == "Hobby" then
+		local spots = map.HobbySpots[plan.Hobby] or map.BenchSpots
+		if spots and #spots > 0 then
+			return { Point = spots[(c.Id % #spots) + 1] + spread(c.Id, 1.5), Place = nil }
+		end
+	end
+	local place = plan.Place and map.Places[plan.Place]
+	if not place then
+		place = map.Places.Plaza
+	end
+	if plan.Kind == "Work" and #place.WorkSpots > 0 then
+		return { Point = place.WorkSpots[((c.WorkSpot or 1) - 1) % #place.WorkSpots + 1], Place = place }
+	elseif plan.Kind == "Hospital" and place.Beds then
+		return { Point = place.Beds[(c.Household % #place.Beds) + 1] + spread(c.Id, 1.5), Place = place }
+	elseif plan.Kind == "School" then
+		return { Point = place.Inside + Vector3.new(((c.Id * 5) % 20) - 10, 0, ((c.Id * 3) % 10) - 3), Place = place }
+	end
+	return { Point = place.Inside + spread(c.Id, 5), Place = place }
+end
+
+local function flat(a, b)
+	return Vector3.new(a.X - b.X, 0, a.Z - b.Z).Magnitude
+end
+
+-- Walks through the points in order. Stops early if a newer walk started.
+local function walk(brain, points, token)
+	local humanoid, root = brain.Humanoid, brain.Root
+	for _, p in ipairs(points) do
+		if brain.Token ~= token or not root.Parent then
+			return false
+		end
+		local started = os.clock()
+		local limit = flat(root.Position, p) / math.max(1, humanoid.WalkSpeed) * 2 + 4
+		local lastMove = os.clock()
+		humanoid:MoveTo(p)
+		while flat(root.Position, p) > 2.2 do
+			task.wait(0.25)
+			if brain.Token ~= token or not root.Parent then
+				return false
+			end
+			if os.clock() - lastMove > 4 then
+				humanoid:MoveTo(p) -- MoveTo gives up after 8 seconds, so keep asking
+				lastMove = os.clock()
+			end
+			if os.clock() - started > limit then
+				root.CFrame = CFrame.new(p + Vector3.new(0, 3, 0)) -- stuck: hop to the point
+				break
+			end
+		end
+	end
+	return true
+end
+
+local function travel(brain, c, plan)
+	local dest = destination(c, plan)
+	brain.Token += 1
+	local token = brain.Token
+	brain.Activity = plan.Activity
+	refreshPlate(brain, c, "🚶 On the way")
+	task.spawn(function()
+		local points = map.RouteBetween(brain.At or brain.Root.Position, dest.Place or dest.Point)
+		table.insert(points, dest.Point)
+		if walk(brain, points, token) then
+			brain.At = dest.Place or dest.Point
+			brain.Arrived = plan.Kind
+			refreshPlate(brain, c, plan.Activity)
+		end
+	end)
+end
+
+local function spawnCitizen(c, atPosition)
+	local stage = pop:Stage(c, day)
+	local ok, model = pcall(CitizenLook.Build, { Name = c.Name, Job = c.Job, Age = pop:Age(c, day), Hobby = c.Hobby })
+	if not ok or not model then
+		warn("[CitizenService] Could not build " .. c.Name .. ": " .. tostring(model))
+		return nil
+	end
+	pcall(function()
+		model:ScaleTo(SCALE[stage] or 1)
+	end)
+	local humanoid = model:FindFirstChildOfClass("Humanoid")
+	local root = model:FindFirstChild("HumanoidRootPart")
+	humanoid.WalkSpeed = (Config.WALK_SPEED or 14) * (SPEED[stage] or 1)
+	humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+	for _, state in ipairs({ Enum.HumanoidStateType.Swimming, Enum.HumanoidStateType.Climbing, Enum.HumanoidStateType.Seated, Enum.HumanoidStateType.FallingDown }) do
+		humanoid:SetStateEnabled(state, false)
+	end
+	for _, d in ipairs(model:GetDescendants()) do
+		if d:IsA("BasePart") then
+			d.CollisionGroup = "Citizens"
+		end
+	end
+	model:SetAttribute("CitizenId", c.Id)
+	model:PivotTo(CFrame.new(atPosition + Vector3.new(0, 3 * (SCALE[stage] or 1) + 0.5, 0)))
+	model.Parent = folder
+	pcall(function()
+		root:SetNetworkOwner(nil) -- the server moves citizens
+	end)
+	animate(humanoid)
+	local old = brains[c.Id]
+	local brain = { Model = model, Humanoid = humanoid, Root = root, Token = (old and old.Token or 0) + 1, Stage = stage }
+	brain.Plate = makePlate(model, c)
+	brains[c.Id] = brain
+	CitizenService.Models[c.Id] = model
+	return brain
+end
+
+--------------------------------------------------------------------------------
+-- Life events
+--------------------------------------------------------------------------------
+local function handleEvents(events)
+	for _, e in ipairs(events) do
+		pushNews(e.Text)
+		CitizenService.Event:Fire(e.Kind, e)
+		if e.Citizen then
+			-- growing up changes size and clothes: rebuild the model where it stands
+			local brain = brains[e.Citizen.Id]
+			if brain and brain.Model then
+				local pos = brain.Root.Position
+				local at = brain.At
+				brain.Model:Destroy()
+				local fresh = spawnCitizen(e.Citizen, Vector3.new(pos.X, 0.5, pos.Z))
+				if fresh then
+					fresh.At = at
+				end
+			end
+		end
+	end
+end
+
+local function checkBirths(hour)
+	for _, h in ipairs(pop.Households) do
+		if h.Expecting and pop:IsDue(h, day) then
+			local carrier = brains[h.Expecting.Carrier]
+			local atHospital = carrier and carrier.Arrived == "Hospital"
+			if atHospital or hour >= 16 then
+				local baby = pop:Birth(h, day)
+				local parents = {}
+				for _, id in ipairs(h.Partners) do
+					table.insert(parents, pop.Citizens[id].First)
+				end
+				local where = if carrier then carrier.Root.Position else map.Places.Hospital.Inside
+				local brain = spawnCitizen(baby, Vector3.new(where.X + 2, 0.5, where.Z))
+				if brain then
+					brain.At = map.Places.Hospital
+				end
+				pushNews("👶 " .. baby.Name .. " was born to " .. table.concat(parents, " & ") .. " " .. h.Last .. "!")
+				CitizenService.Event:Fire("Born", { Citizen = baby, Household = h })
+				for _, id in ipairs(h.Partners) do
+					local b = brains[id]
+					if b then
+						b.Key = nil -- re-plan: time to go home with the baby
+					end
+				end
+			end
+		end
+	end
+end
+
+--------------------------------------------------------------------------------
+-- Saving
+--------------------------------------------------------------------------------
+local store
+local function save()
+	if not store then
+		return
+	end
+	local data = pop:Serialize()
+	pcall(store.SetAsync, store, "Population_v1", data)
+end
+
+--------------------------------------------------------------------------------
+-- Start
+--------------------------------------------------------------------------------
+function CitizenService.Start(builtMap)
+	map = builtMap or MapBuilder.Build()
+	pop = Population.new(Config, map.Homes)
+	CitizenService.Population = pop
+	setupPhysics()
+	folder = Instance.new("Folder")
+	folder.Name = "Citizens"
+	folder.Parent = workspace
+
+	-- load the saved city (ages, families, babies born in earlier servers)
+	local loaded = false
+	if Config.SAVE_POPULATION then
+		local ok, ds = pcall(DataStoreService.GetDataStore, DataStoreService, Config.DATASTORE_NAME or "AICity_v1")
+		if ok then
+			store = ds
+			local ok2, data = pcall(ds.GetAsync, ds, "Population_v1")
+			if ok2 and data then
+				loaded = pop:Load(data)
+			end
+		end
+	end
+	if not loaded then
+		pop:Generate()
+	end
+	day = pop.Day
+	for _, c in ipairs(pop.List) do
+		c.LastStage = pop:Stage(c, day) -- so only changes from now on are announced
+	end
+
+	-- everyone starts where their routine says they should be right now
+	local hour = Lighting.ClockTime
+	for n, c in ipairs(pop.List) do
+		local plan = pop:Plan(c, hour, day)
+		local dest = destination(c, plan)
+		local brain = spawnCitizen(c, dest.Point)
+		if brain then
+			brain.At = dest.Place or dest.Point
+			brain.Key = plan.Kind .. ":" .. tostring(plan.Place or plan.Hobby or "")
+			brain.Activity = plan.Activity
+			brain.Arrived = plan.Kind
+			refreshPlate(brain, c, plan.Activity)
+		end
+		if n % 8 == 0 then
+			task.wait() -- spread the building over a few frames
+		end
+	end
+	pushNews("🏙️ " .. #pop.List .. " people live in AI City. Talk to them, give speeches, win elections!")
+
+	-- the routine: every second, send anyone whose plan changed on their way
+	task.spawn(function()
+		lastHour = Lighting.ClockTime
+		while true do
+			task.wait(1)
+			local hour = Lighting.ClockTime
+			if lastHour and hour < lastHour - 12 then
+				-- midnight: a new day
+				day += 1
+				handleEvents(pop:NewDay(day))
+				CitizenService.Event:Fire("NewDay", { Day = day })
+				for id, brain in pairs(brains) do
+					local c = pop.Citizens[id]
+					if c then
+						refreshPlate(brain, c)
+					end
+				end
+			end
+			lastHour = hour
+			checkBirths(hour)
+			for _, c in ipairs(pop.List) do
+				local brain = brains[c.Id]
+				if brain and brain.Root.Parent then
+					local plan = pop:Plan(c, hour, day)
+					local key = plan.Kind .. ":" .. tostring(plan.Place or plan.Hobby or "")
+					if key ~= brain.Key then
+						brain.Key = key
+						brain.Arrived = nil
+						travel(brain, c, plan)
+					end
+				end
+			end
+		end
+	end)
+
+	-- save every 2 minutes and when the server closes
+	task.spawn(function()
+		while true do
+			task.wait(120)
+			save()
+		end
+	end)
+	game:BindToClose(save)
+	return pop
+end
+
+function CitizenService.GetBrain(id)
+	return brains[id]
+end
+
+return CitizenService
 ]]></ProtectedString></Properties></Item></Item></Item></roblox>

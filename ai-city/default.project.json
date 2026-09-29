@@ -5,14 +5,29 @@
     "ReplicatedStorage": {
       "Shared": {
         "$className": "Folder",
-        "Config": { "$path": "src/Config.lua" }
+        "Config": {
+          "$path": "src/Config.lua"
+        }
       }
     },
     "ServerScriptService": {
-      "Main": { "$path": "src/Main.server.lua" },
+      "Main": {
+        "$path": "src/Main.server.lua"
+      },
       "Modules": {
         "$className": "Folder",
-        "MapBuilder": { "$path": "src/MapBuilder.lua" }
+        "MapBuilder": {
+          "$path": "src/MapBuilder.lua"
+        },
+        "Population": {
+          "$path": "src/Population.lua"
+        },
+        "CitizenLook": {
+          "$path": "src/CitizenLook.lua"
+        },
+        "CitizenService": {
+          "$path": "src/CitizenService.lua"
+        }
       }
     }
   }

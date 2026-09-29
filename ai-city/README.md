@@ -9,7 +9,7 @@ A full city for AI City's citizens to live, work and vote in: 30 places, 132 hom
 
 - **Roblox Studio:** open `AICity.rbxlx` and press Play. The city builds itself in a few seconds.
 - **Rojo:** `rojo serve` in this folder (see `default.project.json`).
-- **Your existing game:** copy `src/MapBuilder.lua` into `ServerScriptService.Modules` and replace your Config with `src/Config.lua`.
+- **Your existing game:** copy the modules in `src/` (`MapBuilder`, `Population`, `CitizenLook`, `CitizenService`) into `ServerScriptService.Modules` and replace your Config with `src/Config.lua`.
 
 ## What's in the city
 
@@ -20,6 +20,51 @@ It's a 7×7 grid of city blocks (about 700 × 700 studs) with streets, sidewalks
 | Downtown | ⛲ City Plaza (fountain, **speech stage and podium**, **ballot box**, **city news board**, benches, chess tables, dance floor), 🏛️ Town Hall (columns, steps, clock tower, dome), 🏦 City Bank (vault, ATM) + 🏢 Offices, 🚓 Police (cars, siren), 🥐 Bakery, ☕ Cafe (outdoor tables), 🛒 Market (fruit stalls), 💊 Pharmacy, 📚 Library, 🍝 Restaurant, 🏫 School (playground, bell tower), 🌳 Central Park (pond, gazebo, garden plots, easels, jogging loop) |
 | Around downtown | 🏨 Grand Hotel, office towers, 🚒 Fire Station (fire truck, hose tower), 🏥 Hospital (helipad, ambulance), 🎬 Cinema (lit marquee, seats), 🏋️ Gym + basketball court, two shopping streets (👕 Clothing, 🧸 Toys, 📱 Electronics, 💐 Flowers, 🐶 Pet Shop, 📖 Books, 🍦 Ice Cream, 🔨 Hardware), two apartment buildings (Sunset Towers, Maple Court), ⚽ Sports Field |
 | Edges | 100 houses with street addresses (e.g. "12 Oak Street"), 🏭 Factory (smoking chimneys), 📦 Warehouse, ⛽ Gas & Garage |
+
+## Citizens: looks, families, babies and daily routines
+
+![Citizen looks](citizens_preview.png)
+
+The citizens are spawned by `CitizenService` when `Config.RUN_CITIZENS = true`. Set it to `false` if your own scripts already spawn citizens; `CitizenLook` and `Population` still work on their own.
+
+**Looks (`CitizenLook`)**
+- **Uniforms:** every job has its own, for example:
+  - police caps, badges and radios;
+  - doctors' coats and stethoscopes, chefs' tall hats;
+  - firefighter helmets with reflective stripes, hard hats with hi-vis vests;
+  - bank managers' bow ties and gold watches, gardeners' straw hats and overalls.
+- **Hair:** 12 hairstyles in natural colors (a few young people have dyed hair), gray from 55.
+- **Skin tones:** 10.
+- **Hobbies:** a beret for painters, headphones for gamers, a bucket hat for fishers, binoculars for birdwatchers, a scarf for knitters, and more.
+- **Kids:** school backpacks.
+- **Babies:** soft hair and a bib.
+- **Retirees:** a cardigan, glasses and a cane.
+- **Size:** everyone is sized by age: babies are small, toddlers and kids grow, teens are nearly full size.
+- **Same look every server:** it comes from the citizen's name.
+
+```lua
+CitizenLook.Apply(characterModel, { Name = "Maria Lopez", Job = "Baker", Age = 34, Hobby = "painting" }) -- R15 or R6
+local npc = CitizenLook.Build(citizen) -- a new dressed R15 NPC
+```
+
+**Families and babies (`Population`)**
+- **The starting city:** singles, couples, families with 1–3 kids, and retirees, each in their own home.
+- **Expecting a baby:** couples aged 21–45 can start expecting (`BABY_CHANCE` per in-game day). Their nameplates show "🍼 Baby due in 2 days".
+- **The birth:** after `PREGNANCY_DAYS`, the parents walk to the hospital and the baby is born there. It gets the family's last name, the news board announces it, and the family walks home.
+- **Growing up:** at `DAYS_PER_YEAR = 4`, a newborn grows up in about 10 real hours. Kids go to school, get a job at 18 and retire at `RETIRE_AGE`.
+- **Population cap:** no new babies once the city reaches `MAX_POPULATION`.
+- **Saving:** ages, families and new babies are saved between servers (`SAVE_POPULATION`).
+
+**Daily routine (like 9 to 5)**
+- **Work:** everyone stays at their job for their whole shift (the start and stop hours in `Config.Jobs`). They leave home a little before it starts (`COMMUTE_BUFFER`), so the streets are quiet in the day and you can always find people at work.
+- **School:** kids are at school from `SCHOOL_START` to `SCHOOL_END`, then at the park or around town, and home by `KIDS_BEDTIME`.
+- **After work:** errands, hobbies (fishing at the pond, chess on the plaza...) or an evening out, and home by `ADULT_BEDTIME`.
+- **No job:** retired and unemployed people run errands, visit the park, library and café, and go out in the evening.
+- **Night:** night officers work 18:00 to 24:00; everyone else is at home asleep.
+
+In a simulated day at 11:00, 26 of 30 workers were at work, 11 kids at school and only 18% of people out on the streets.
+
+`CitizenService.Event` (a BindableEvent) fires `"Born"`, `"Expecting"`, `"GrewUp"`, `"Retired"` and `"NewDay"`, so your election, memory and gossip scripts can react to them.
 
 ## Using the map from your scripts
 

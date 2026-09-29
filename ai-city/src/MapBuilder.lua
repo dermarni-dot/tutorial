@@ -1054,7 +1054,7 @@ local function buildApartments(parent, i, j, name)
 			Door = b.Door,
 			Inside = b.At(-18 + slot * 12, 0.4, 6).Position,
 			Address = "Apt " .. floor .. (string.char(64 + slot + 1)) .. ", " .. b.Model.Name,
-			Capacity = 2,
+			Capacity = 3,
 			Node = node,
 			Kind = "apartment",
 		}
@@ -1108,7 +1108,7 @@ local function buildHouses(parent, i, j, rng)
 				Door = b.Door,
 				Inside = b.Inside,
 				Address = number .. " " .. street,
-				Capacity = 3,
+				Capacity = 5,
 				Kind = "house",
 			}
 			home.Node = hookDoor(i, j, b.Door, face)
