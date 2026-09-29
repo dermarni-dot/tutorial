@@ -71,6 +71,14 @@ Actions.List = {
 	soccer = { Pose = "none", Label = "⚽ Playing soccer" },
 	crawl = { Pose = "crawl", Label = "🧸 Playing" },
 	nap = { Pose = "sleep", Lying = true, Label = "🍼 Napping" },
+	-- reactions (short, set by CitizenService.React and friends)
+	listen = { Pose = "listen", Label = "👂 Listening" },
+	wave = { Pose = "wave", Label = "👋 Waving" },
+	point = { Pose = "point", Label = "👉 Pointing the way" },
+	boo = { Pose = "boo", Label = "👎 Booing" },
+	scared = { Pose = "scared", Label = "😱 Scared" },
+	ko = { Pose = "ko", Lying = true, Label = "💫 Knocked out" },
+	carry = { Pose = "carry", Label = "👶 Carrying the baby" },
 }
 
 function Actions.Get(name)

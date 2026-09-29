@@ -1,62 +1,61 @@
 -- Main (Script) — ServerScriptService.Main
--- Builds AI City and runs the day/night cycle.
--- Your citizen, election and speech scripts can get the map with:
+-- Starts AI City: builds the map, loads the saved city (or makes new
+-- families), starts the clock and brings everyone to life.
+--
+--   MapBuilder      the city: streets, buildings, interiors, parks, the lake
+--   Life            who lives here: families, ages, jobs, schools, daily plans
+--   CityService     the clock, city stats and mood, the mayor, elections,
+--                   speeches, coins, memories, gossip, news, saving
+--   CitizenService  the NPCs: walking, working, sitting, soccer, chatting...
+--   DialogueService talking to citizens (and them talking to each other)
+--   CrimeService    punching, pickpocketing, robberies, witnesses, police, jail
+--   PlayerService   elevators, citizen profiles, the directory
+--
+-- Other scripts can get the map with:
 --   local map = require(ServerScriptService.Modules.MapBuilder).Build()
--- (Build only builds once; every later call returns the same map.)
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
-local Lighting = game:GetService("Lighting")
 
 local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
-local MapBuilder = require(ServerScriptService:WaitForChild("Modules"):WaitForChild("MapBuilder"))
+local Modules = ServerScriptService:WaitForChild("Modules")
 
 local RUN_DAY_CYCLE = true -- set to false if another script already moves Lighting.ClockTime
-local START_HOUR = 8
+local START_HOUR = 7.5
+
+local MapBuilder = require(Modules:WaitForChild("MapBuilder"))
+local Life = require(Modules:WaitForChild("Life"))
+local CityService = require(Modules:WaitForChild("CityService"))
 
 local map = MapBuilder.Build()
 print(string.format("[AI City] Built %d places, %d homes, %d walking points", #map.PlaceList, #map.Homes, #map.Nodes))
 
--- Day and night: one in-game day lasts Config.DAY_LENGTH real seconds.
--- Street lamps and windows light up between 18:30 and 6:30.
-local function hourNow()
-	return Lighting.ClockTime
+local services = {
+	Config = Config,
+	Map = map,
+	MapBuilder = MapBuilder,
+	Life = Life.new(Config, map.Homes),
+	City = CityService,
+}
+CityService.Init(services)
+if not CityService.Load() then
+	services.Life:Generate()
 end
+print(string.format("[AI City] %d citizens in %d households", #services.Life.List, #services.Life.Households))
 
-local function refreshNight()
-	local h = hourNow()
-	MapBuilder.SetNight(h >= 18.5 or h < 6.5)
-	if map.ClockFace then
-		local hour = math.floor(h)
-		local minute = math.floor((h - hour) * 60)
-		map.ClockFace.Text = string.format("%02d:%02d", hour, minute)
-	end
-end
+CityService.StartClock(START_HOUR, RUN_DAY_CYCLE)
+CityService.Start()
+CityService.News("Welcome to AI City! Give a speech on the plaza stage and win the next election.", "Welcome", true)
 
-if RUN_DAY_CYCLE then
-	Lighting.ClockTime = START_HOUR
-	task.spawn(function()
-		local hoursPerSecond = 24 / Config.DAY_LENGTH
-		local last = os.clock()
-		while true do
-			task.wait(0.5)
-			local now = os.clock()
-			Lighting.ClockTime = (Lighting.ClockTime + (now - last) * hoursPerSecond) % 24
-			last = now
-			refreshNight()
-		end
-	end)
-else
-	Lighting:GetPropertyChangedSignal("ClockTime"):Connect(refreshNight)
-end
-refreshNight()
-
-MapBuilder.SetNews("Welcome to AI City! Give a speech on the plaza stage and win the next election.")
-
--- The citizens: families, kids, jobs, babies and daily routines.
--- Turn off with Config.RUN_CITIZENS = false if your own scripts spawn citizens
--- (you can still use CitizenLook to dress them and Population for routines).
-if Config.RUN_CITIZENS then
-	local CitizenService = require(ServerScriptService.Modules:WaitForChild("CitizenService"))
-	task.spawn(CitizenService.Start, map)
+-- The citizens. Turn them off with Config.RUN_CITIZENS = false if your own
+-- scripts spawn citizens (you can still use CitizenLook and Life).
+if Config.RUN_CITIZENS ~= false then
+	services.Citizens = require(Modules:WaitForChild("CitizenService"))
+	services.Dialogue = require(Modules:WaitForChild("DialogueService"))
+	services.Crime = require(Modules:WaitForChild("CrimeService"))
+	services.Players = require(Modules:WaitForChild("PlayerService"))
+	services.Dialogue.Start(services)
+	services.Crime.Start(services)
+	services.Players.Start(services)
+	task.spawn(services.Citizens.Start, services)
 end

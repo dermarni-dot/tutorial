@@ -9,7 +9,11 @@
 --   local events = pop:NewDay(day)              -- ages, retirements, new jobs, pregnancies
 --   pop:Birth(household, day)                   -- a baby is born (returns the baby)
 --   pop:Plan(citizen, hour, day)                -- where they should be right now
+--   pop:SchoolFor(citizen) / pop:WeekdayName(day) / pop:IsWeekend(day)
 --   pop:Serialize() / pop:Load(data)            -- for saving
+--
+-- Every citizen also has a personality (cheerful, shy, grumpy...), values
+-- (what they care about in elections), a favorite spot and a few friends.
 
 local Life = {}
 Life.__index = Life
@@ -41,6 +45,22 @@ local function hash(...)
 	end
 	return h
 end
+
+-- Personalities change how people talk, walk and spend free time
+Life.Personalities = { "cheerful", "shy", "grumpy", "chatty", "bookish", "sporty", "artsy", "curious", "calm", "funny" }
+Life.PersonalityInfo = {
+	cheerful = { Emoji = "😊", Walk = 1.05, Chat = 0.7, Expression = "happy" },
+	shy = { Emoji = "😳", Walk = 0.95, Chat = 0.2, Expression = "neutral" },
+	grumpy = { Emoji = "😒", Walk = 1.0, Chat = 0.25, Expression = "focused" },
+	chatty = { Emoji = "🗣️", Walk = 0.97, Chat = 0.95, Expression = "happy" },
+	bookish = { Emoji = "🤓", Walk = 0.95, Chat = 0.35, Expression = "neutral" },
+	sporty = { Emoji = "💪", Walk = 1.12, Chat = 0.5, Expression = "happy" },
+	artsy = { Emoji = "🎨", Walk = 0.97, Chat = 0.55, Expression = "neutral" },
+	curious = { Emoji = "🧐", Walk = 1.0, Chat = 0.65, Expression = "neutral" },
+	calm = { Emoji = "😌", Walk = 0.92, Chat = 0.45, Expression = "neutral" },
+	funny = { Emoji = "😄", Walk = 1.03, Chat = 0.8, Expression = "grin" },
+}
+Life.Weekdays = { "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday" }
 
 function Life.new(config, homes)
 	local self = setmetatable({}, Life)
@@ -80,6 +100,32 @@ function Life:Stage(c, day)
 	end
 	return "Retired"
 end
+
+function Life:WeekdayName(day)
+	return Life.Weekdays[((day or self.Day) % 7) + 1]
+end
+
+-- Saturdays and Sundays: no school, and offices, banks and the town hall are closed
+function Life:IsWeekend(day)
+	return self.Config.WEEKENDS ~= false and ((day or self.Day) % 7) >= 5
+end
+
+-- Which school a kid goes to (nil if they're too young or too old)
+function Life:SchoolFor(c, day)
+	local age = self:Age(c, day)
+	for _, school in ipairs(self.Config.Schools or {}) do
+		if age >= school.minAge and age <= school.maxAge then
+			return school.place, school.label
+		end
+	end
+	if age >= 6 and age < (self.Config.ADULT_AGE or 18) then
+		return "School", "School"
+	end
+	return nil
+end
+
+-- Jobs that follow office hours and close on weekends
+local WEEKDAY_ONLY = { Office = true, Bank = true, TownHall = true, School = true, MiddleSchool = true, HighSchool = true, Daycare = true, PostOffice = true, Factory = true, Warehouse = true }
 
 local function jobByTitle(config, title)
 	for _, job in ipairs(config.Jobs) do
@@ -148,7 +194,14 @@ function Life:AddCitizen(household, first, age, day, rng)
 		Household = household.Id,
 		Hobby = rng:Pick(config.Hobbies),
 		Punctual = rng:Next() * 0.15, -- a few extra in-game minutes some people leave early
+		Personality = rng:Pick(Life.Personalities),
+		Values = {},
+		Friends = {},
 	}
+	-- what they care about (-1..1 for each of Config.ValueNames)
+	for _, v in ipairs(config.ValueNames or {}) do
+		c.Values[v] = math.floor((rng:Next() * 2 - 1) * 100) / 100
+	end
 	self.NextId += 1
 	self.Citizens[c.Id] = c
 	table.insert(self.List, c)
@@ -222,10 +275,10 @@ function Life:Generate()
 		local roll = rng:Next()
 		local h = self:NewHousehold(lastName(), rng)
 		local left = target - #self.List
-		if roll < 0.25 or left < 2 then
+		if roll < 0.17 or left < 2 then
 			-- single adult
 			self:AddCitizen(h, firstName(), rng:Int(19, adultMax), 0, rng)
-		elseif roll < 0.5 then
+		elseif roll < 0.33 then
 			-- a couple
 			local a = rng:Int(22, 60)
 			local p1 = self:AddCitizen(h, firstName(), a, 0, rng)
@@ -255,7 +308,47 @@ function Life:Generate()
 			self.HomeUse[h.Home] = h.Id
 		end
 	end
+	self:MakeFriends(rng)
 	return self.List
+end
+
+-- Friends: classmates, coworkers and people around the same age
+function Life:MakeFriends(rng)
+	rng = rng or newRng((self.Config.SEED or 1776) + 99)
+	local function groupOf(c)
+		local school = self:SchoolFor(c)
+		if school then
+			return "school:" .. school
+		end
+		local job = c.Job and jobByTitle(self.Config, c.Job)
+		if job then
+			return "work:" .. job.place
+		end
+		return "age:" .. math.floor(self:Age(c) / 15)
+	end
+	local groups = {}
+	for _, c in ipairs(self.List) do
+		if self:Age(c) >= 4 then
+			local g = groupOf(c)
+			groups[g] = groups[g] or {}
+			table.insert(groups[g], c)
+		end
+	end
+	for _, c in ipairs(self.List) do
+		local g = groups[groupOf(c)]
+		if g and #c.Friends < 3 then
+			for _ = 1, 4 do
+				local other = g[rng:Int(1, #g)]
+				if other ~= c and other.Household ~= c.Household and #other.Friends < 4 and not table.find(c.Friends, other.Id) then
+					table.insert(c.Friends, other.Id)
+					table.insert(other.Friends, c.Id)
+					if #c.Friends >= 3 then
+						break
+					end
+				end
+			end
+		end
+	end
 end
 
 --------------------------------------------------------------------------------
@@ -349,17 +442,31 @@ function Life:Birth(household, day)
 	baby.BirthDay = day
 	baby.LastStage = "Baby"
 	household.Expecting = nil
+	household.Newborn = day
 	return baby
 end
 
 --------------------------------------------------------------------------------
 -- Daily routine: where someone should be right now
 -- Returns { Kind = "Home"/"Work"/"School"/"Place"/"Hobby"/"Hospital",
---           Place = place id (Work/School/Place/Hospital), Hobby = name,
---           Activity = short text for the nameplate }
+--           Place = place id, Hobby = name, Activity = text for the nameplate,
+--           Want = the action they'd like to do there ("soccer", "lift", "swing"...),
+--           Recess = true on the school playground, Family = true on family outings }
+-- Everyone's day is a little different: it depends on the day, their
+-- personality, their hobby and their age.
 --------------------------------------------------------------------------------
-local ERRANDS = { "Shop", "Bakery", "Cafe", "Pharmacy", "Mall", "ToyStore", "Electronics", "Florist", "PetShop", "Bookstore", "IceCream", "Hardware", "Restaurant", "Library", "Cinema", "Gym", "Plaza", "Park", "Bank" }
-local OUTINGS = { "Park", "Plaza", "Library", "Cafe", "IceCream", "SportsField", "Bookstore" }
+local ERRANDS = { "Shop", "Bakery", "Cafe", "Pharmacy", "Mall", "ToyStore", "Electronics", "Florist", "PetShop", "Bookstore", "IceCream", "Hardware", "Bank", "PostOffice", "Library" }
+local HANGOUTS = { "Cafe", "Diner", "Restaurant", "Plaza", "IceCream", "Bakery" }
+local FAMILY_OUTINGS = {
+	{ "Park", "🌳 Family day at the park", "play" },
+	{ "WillowPark", "🌿 Picnic at Willow Park", "sit" },
+	{ "Lake", "🎣 Fishing trip at the lake", "fish" },
+	{ "Museum", "🏺 Family museum visit", "browse" },
+	{ "Cinema", "🎬 Family movie", "watch" },
+	{ "IceCream", "🍦 Ice cream with the family", "eat" },
+	{ "SportsField", "⚽ Watching the kids play", "cheer" },
+	{ "Plaza", "⛲ Family walk downtown", "chat" },
+}
 
 local function inShift(hour, start, stop)
 	if stop > start then
@@ -368,93 +475,237 @@ local function inShift(hour, start, stop)
 	return hour >= start or hour < stop -- shifts past midnight
 end
 
+local function home(activity, want)
+	return { Kind = "Home", Activity = activity, Want = want }
+end
+
 function Life:Plan(c, hour, day)
 	local config = self.Config
 	day = day or self.Day
 	local stage = self:Stage(c, day)
+	local age = self:Age(c, day)
 	local h = self.Households[c.Household]
 	local rng = newRng(hash(c.Id, day, "plan"))
-	local errand = rng:Pick(ERRANDS)
-	local outing = rng:Pick(OUTINGS)
+	local weekend = self:IsWeekend(day)
+	local personality = c.Personality or "calm"
+	local sporty = personality == "sporty" or c.Hobby == "jogging"
+	local bookish = personality == "bookish" or c.Hobby == "reading"
 	local hobbyOut = config.OutdoorHobbies and config.OutdoorHobbies[c.Hobby] and rng:Next() < 0.6
+	local wake = config.WAKE_UP or 6.5
+	-- under-13s go to bed early; teens stay up until the adult bedtime
+	local bedtime = if stage == "Child" or stage == "Toddler" or stage == "Baby" then (config.KIDS_BEDTIME or 20) else (config.ADULT_BEDTIME or 22)
+	bedtime += if stage == "Adult" or stage == "Teen" then rng:Next() * 0.6 else 0
+	-- how long before a start time to leave home: the walk plus spare time
+	local leave = (c.CommuteHours or 0.5) + (config.COMMUTE_BUFFER or 0.25) + (c.Punctual or 0)
+	-- the family's weekend outing (the whole household picks the same one)
+	local familyRng = newRng(hash(c.Household, day, "outing"))
+	local outing = familyRng:Pick(FAMILY_OUTINGS)
+	local outingStart = 13 + familyRng:Int(0, 2)
+	local isFamily = h and #h.Members > 1
 
 	-- the baby is due: the parents go to the hospital during the day
 	if h and h.Expecting and self:IsDue(h, day) and (c.Id == h.Partners[1] or c.Id == h.Partners[2]) and hour >= 7 then
 		return { Kind = "Hospital", Place = "Hospital", Activity = "🏥 Having a baby!" }
 	end
 
-	if stage == "Baby" or stage == "Toddler" then
-		return { Kind = "Home", Activity = if stage == "Baby" then "🍼 Napping" else "🧸 Playing at home" }
+	-- sleeping
+	if hour >= bedtime or hour < wake + (if weekend then 1 else 0) then
+		-- early bakers and night officers are already (or still) at work
+		local job = stage == "Adult" and c.Job and jobByTitle(config, c.Job)
+		if job and weekend and WEEKDAY_ONLY[job.place] then
+			job = nil
+		end
+		if not (job and inShift(hour, (job.start - leave) % 24, math.min(job.stop, 24) % 24)) then
+			return home("💤 Sleeping", "sleep")
+		end
 	end
 
-	-- under-13s go to bed early; teens stay up until the adult bedtime
-	local bedtime = if stage == "Child" then (config.KIDS_BEDTIME or 20) else (config.ADULT_BEDTIME or 22)
-	local wake = config.WAKE_UP or 6.5
-	-- how long before a start time to leave home: the walk plus spare time
-	local leave = (c.CommuteHours or 0.5) + (config.COMMUTE_BUFFER or 0.25) + (c.Punctual or 0)
-	if stage == "Child" or stage == "Teen" then
-		local s, e = config.SCHOOL_START or 8, config.SCHOOL_END or 15
-		if hour >= s - leave and hour < e then
-			-- morning recess and lunch on the playground
-			if (hour >= s + 2 and hour < s + 2.5) or (hour >= s + 4 and hour < s + 4.75) then
-				return { Kind = "School", Place = "School", Recess = true, Activity = "🛝 Recess" }
-			end
-			return { Kind = "School", Place = "School", Activity = "📚 At school" }
-		elseif hour >= e and hour < e + 3 and rng:Next() < 0.7 then
-			local where = if stage == "Child" then "Park" else outing
-			return { Kind = "Place", Place = where, Activity = "🛝 Hanging out" }
+	-- family dinner, every evening
+	local dinner = 18.25 + (hash(c.Household, day) % 4) * 0.25
+	local function dinnerTime()
+		return hour >= dinner and hour < dinner + 0.75
+	end
+
+	if stage == "Baby" then
+		-- babies stay home (someone's always looking after them)
+		if hour >= 12.5 and hour < 14.5 then
+			return home("🍼 Napping", "nap")
 		end
-		return { Kind = "Home", Activity = if hour >= bedtime or hour < wake then "💤 Sleeping" else "🏠 At home" }
+		return home(if age < 1 then "🍼 Being a baby" else "🧸 Playing at home", if age < 1 then "nap" else "crawl")
+	end
+
+	-- a new baby today: the parents take it home and stay in
+	if h and h.Newborn == day and (c.Id == h.Partners[1] or c.Id == h.Partners[2]) then
+		return home("👶 Home with the new baby", "sit")
+	end
+
+	if stage == "Toddler" then
+		if not weekend and age >= (config.DAYCARE_AGE or 3) and hour >= 7.75 and hour < 16.5 then
+			if hour >= 12.5 and hour < 14 then
+				return { Kind = "Place", Place = "Daycare", Activity = "😴 Nap time at daycare", Want = "nap" }
+			end
+			return { Kind = "Place", Place = "Daycare", Activity = "🧸 At daycare", Want = "play" }
+		end
+		if weekend and isFamily and hour >= outingStart and hour < outingStart + 3 then
+			return { Kind = "Place", Place = outing[1], Activity = outing[2], Family = true, Want = "play" }
+		end
+		if dinnerTime() then
+			return home("🍽️ Family dinner", "eat")
+		end
+		return home("🧸 Playing at home", "crawl")
+	end
+
+	if stage == "Child" or stage == "Teen" then
+		local teen = stage == "Teen"
+		local school, label = self:SchoolFor(c, day)
+		local s, e = config.SCHOOL_START or 8, config.SCHOOL_END or 15
+		if not weekend and school then
+			if hour >= s - leave and hour < e then
+				-- morning recess and lunch on the playground or the court
+				if (hour >= s + 2 and hour < s + 2.5) or (hour >= s + 4 and hour < s + 4.75) then
+					return { Kind = "School", Place = school, Recess = true, Activity = if teen then "🏀 Lunch break" else "🛝 Recess", Want = if teen then "hoops" else "play" }
+				end
+				return { Kind = "School", Place = school, Activity = "📚 At " .. (label or "school"), Want = "study" }
+			end
+			-- after school: sports, the playground, the arcade, the library...
+			if hour >= e and hour < e + 2.5 then
+				local roll = rng:Next()
+				if sporty or roll < 0.3 then
+					if rng:Next() < 0.65 then
+						return { Kind = "Place", Place = "SportsField", Activity = "⚽ Soccer after school", Want = "soccer" }
+					end
+					return { Kind = "Place", Place = if teen then "HighSchool" else "MiddleSchool", Activity = "🏀 Shooting hoops", Want = "hoops" }
+				elseif bookish or roll < 0.42 then
+					return { Kind = "Place", Place = "Library", Activity = "📖 Homework at the library", Want = "study" }
+				elseif teen then
+					local where = ({ "Arcade", "Diner", "IceCream", "Mall", "Plaza", "Arcade" })[rng:Int(1, 6)]
+					return { Kind = "Place", Place = where, Activity = "😎 Hanging out with friends", Want = if where == "Arcade" then "game" else "chat" }
+				end
+				return { Kind = "Place", Place = if rng:Next() < 0.5 then "Park" else "WillowPark", Activity = "🛝 At the playground", Want = if rng:Next() < 0.5 then "swing" else "play" }
+			end
+			if hour >= e + 2.5 and hour < dinner then
+				return home("📝 Homework", "study")
+			end
+		elseif weekend then
+			-- weekend mornings: Saturday soccer, cartoons, sleeping in
+			if hour < 12 then
+				if (sporty or rng:Next() < 0.4) and hour >= 9 then
+					return { Kind = "Place", Place = "SportsField", Activity = "⚽ Weekend soccer", Want = "soccer" }
+				end
+				return home(if teen then "📱 Sleeping in" else "📺 Weekend cartoons", if teen then "phone" else "tv")
+			end
+			if isFamily and hour >= outingStart and hour < outingStart + 3 then
+				return { Kind = "Place", Place = outing[1], Activity = outing[2], Family = true, Want = outing[3] }
+			end
+			if teen and hour >= 12 and hour < 18 then
+				local where = ({ "Arcade", "Mall", "Cinema", "Plaza", "Lake", "Gym" })[rng:Int(1, 6)]
+				return { Kind = "Place", Place = where, Activity = "😎 Out with friends", Want = if where == "Arcade" then "game" elseif where == "Gym" then "lift" else nil }
+			end
+			if hour >= 12 and hour < 17 then
+				return { Kind = "Place", Place = if rng:Next() < 0.5 then "Park" else "WillowPark", Activity = "🛝 Playing outside", Want = "play" }
+			end
+		end
+		if dinnerTime() then
+			return home("🍽️ Family dinner", "eat")
+		end
+		return home(if teen then "🎮 Gaming at home" else "🧸 Playing at home", if teen then "game" else "tv")
 	end
 
 	-- work comes first: early bakers and night officers keep their hours
 	local job = stage == "Adult" and c.Job and jobByTitle(config, c.Job)
-	if job then
-		if inShift(hour, (job.start - leave) % 24, math.min(job.stop, 24) % 24) then
-			return { Kind = "Work", Place = job.place, Activity = "💼 Working (" .. c.Job .. ")" }
+	if job and weekend and WEEKDAY_ONLY[job.place] then
+		job = nil -- a day off
+	end
+	if job and inShift(hour, (job.start - leave) % 24, math.min(job.stop, 24) % 24) then
+		-- a lunch break in the middle of long shifts
+		local mid = job.start + (job.stop - job.start) / 2
+		if job.stop - job.start >= 8 and hour >= mid and hour < mid + 0.5 and rng:Next() < 0.5 then
+			return { Kind = "Place", Place = rng:Pick({ "Cafe", "Diner", "Bakery", "Plaza" }), Activity = "🥪 Lunch break", Want = "eat", Lunch = true, WorkPlace = job.place }
 		end
+		return { Kind = "Work", Place = job.place, Activity = "💼 " .. c.Job }
 	end
 
-	if hour >= bedtime or hour < wake then
-		return { Kind = "Home", Activity = "💤 Sleeping" }
-	end
-
-	if job then
-		do
-			-- free time: before or after the shift
-			if hour < job.start then
-				if hour < 9 then
-					return { Kind = "Home", Activity = "☕ Getting ready" }
-				end
-				if hobbyOut then
-					return { Kind = "Hobby", Hobby = c.Hobby, Activity = "🎨 " .. c.Hobby }
-				end
-				return { Kind = "Place", Place = errand, Activity = "🛍️ Running errands" }
-			end
-			if hour < job.stop + 3 then
-				if hobbyOut then
-					return { Kind = "Hobby", Hobby = c.Hobby, Activity = "🎨 " .. c.Hobby }
-				end
-				return { Kind = "Place", Place = errand, Activity = "🛍️ After work" }
-			end
-			return { Kind = "Home", Activity = "🏠 Relaxing at home" }
+	-- morning routine
+	if hour < wake + 1 then
+		if sporty and hour >= wake then
+			return { Kind = "Hobby", Hobby = "jogging", Activity = "🏃 Morning jog", Want = "run" }
 		end
+		return home("☕ Breakfast", "eat")
 	end
 
-	-- no job (unemployed or retired): a relaxed day around town
-	if hour < 9.5 then
-		return { Kind = "Home", Activity = "☕ Slow morning" }
-	elseif hour < 12.5 then
-		return { Kind = "Place", Place = errand, Activity = "🛍️ Running errands" }
-	elseif hour < 17 then
+	if dinnerTime() and isFamily then
+		return home("🍽️ Family dinner", "eat")
+	end
+
+	-- weekends: family time, errands, fun
+	if weekend and stage == "Adult" then
+		if isFamily and hour >= outingStart and hour < outingStart + 3 then
+			return { Kind = "Place", Place = outing[1], Activity = outing[2], Family = true, Want = outing[3] }
+		end
+		if hour < 11 then
+			return if rng:Next() < 0.5 then home("☕ Slow weekend morning", "coffee") else { Kind = "Place", Place = rng:Pick({ "Bakery", "Cafe", "Shop" }), Activity = "🥐 Weekend errands" }
+		elseif hour < 17 then
+			if hobbyOut then
+				return { Kind = "Hobby", Hobby = c.Hobby, Activity = "🎨 " .. c.Hobby }
+			end
+			if sporty then
+				return { Kind = "Place", Place = if rng:Next() < 0.5 then "Gym" else "SportsField", Activity = "💪 Weekend workout", Want = if rng:Next() < 0.5 then "lift" else "run" }
+			end
+			return { Kind = "Place", Place = rng:Pick(ERRANDS), Activity = "🛍️ Shopping" }
+		elseif hour < 21 then
+			local where = rng:Pick({ "Restaurant", "Cinema", "Plaza", "Diner" })
+			return { Kind = "Place", Place = where, Activity = if where == "Plaza" then "💃 Evening at the plaza" else "🌆 Night out", Want = if where == "Plaza" then "dance" else nil }
+		end
+		return home("📺 Relaxing at home", "tv")
+	end
+
+	if stage == "Retired" then
+		-- a relaxed day: walks, chess, fishing, a nap, the community center
+		if hour < 10 then
+			return { Kind = "Place", Place = rng:Pick({ "Park", "WillowPark", "Bakery", "Cafe" }), Activity = "🚶 Morning walk", Want = "sit" }
+		elseif hour < 12.5 then
+			if hobbyOut then
+				return { Kind = "Hobby", Hobby = c.Hobby, Activity = "🎨 " .. c.Hobby }
+			end
+			return { Kind = "Place", Place = rng:Pick({ "Plaza", "Library", "CommunityCenter", "Museum" }), Activity = "☀️ Out and about" }
+		elseif hour < 14 then
+			return home("😴 Afternoon nap", "sleep")
+		elseif hour < 17.5 then
+			if rng:Next() < 0.35 then
+				return { Kind = "Place", Place = "Lake", Activity = "🎣 Fishing", Want = "fish" }
+			end
+			return { Kind = "Place", Place = rng:Pick({ "Park", "CommunityCenter", "Plaza", "Cafe" }), Activity = "🌳 Afternoon out" }
+		end
+		return home("📺 Evening at home", "tv")
+	end
+
+	-- a working adult's free time: before or after the shift
+	if job and hour < job.start then
+		if hour < 9 then
+			return home("☕ Getting ready", "coffee")
+		end
 		if hobbyOut then
 			return { Kind = "Hobby", Hobby = c.Hobby, Activity = "🎨 " .. c.Hobby }
 		end
-		return { Kind = "Place", Place = if stage == "Retired" then rng:Pick({ "Park", "Library", "Plaza", "Cafe" }) else outing, Activity = "🌳 Out and about" }
-	elseif hour < 20 then
-		return { Kind = "Place", Place = rng:Pick({ "Plaza", "Restaurant", "Cinema", "Park" }), Activity = "🌆 Evening out" }
+		return { Kind = "Place", Place = rng:Pick(ERRANDS), Activity = "🛍️ Running errands" }
 	end
-	return { Kind = "Home", Activity = "🏠 At home" }
+	if hour < 21 then
+		-- plans change through the evening (a new choice every 1.5 hours)
+		local evening = newRng(hash(c.Id, day, "evening", math.floor(hour / 1.5)))
+		local roll = evening:Next()
+		rng = evening
+		if sporty and roll < 0.6 then
+			return { Kind = "Place", Place = "Gym", Activity = "🏋️ At the gym", Want = rng:Pick({ "run", "lift", "squat", "punch", "yoga" }) }
+		elseif hobbyOut and roll < 0.7 then
+			return { Kind = "Hobby", Hobby = c.Hobby, Activity = "🎨 " .. c.Hobby }
+		elseif #c.Friends > 0 and roll < 0.85 then
+			return { Kind = "Place", Place = rng:Pick(HANGOUTS), Activity = "☕ Meeting a friend", Want = "chat" }
+		elseif roll < 0.95 then
+			return { Kind = "Place", Place = rng:Pick(ERRANDS), Activity = "🛍️ After work" }
+		end
+		return home("📺 Relaxing at home", "tv")
+	end
+	return home(if bookish then "📖 Reading in bed" else "📺 Relaxing at home", if bookish then "read" else "tv")
 end
 
 --------------------------------------------------------------------------------
@@ -463,7 +714,7 @@ end
 function Life:Serialize()
 	local data = { Day = self.Day, NextId = self.NextId, Citizens = {}, Households = {} }
 	for _, c in ipairs(self.List) do
-		table.insert(data.Citizens, { c.Id, c.First, c.Last, c.BirthDay, c.Household, c.Job or false, c.Hobby, c.WorkSpot or 0, c.Punctual })
+		table.insert(data.Citizens, { c.Id, c.First, c.Last, c.BirthDay, c.Household, c.Job or false, c.Hobby, c.WorkSpot or 0, c.Punctual, c.Personality, c.Values, c.Friends })
 	end
 	for _, h in ipairs(self.Households) do
 		table.insert(data.Households, { h.Id, h.Last, h.Home or 0, h.Members, h.Partners, h.Expecting or false })
@@ -486,7 +737,14 @@ function Life:Load(data)
 		end
 	end
 	for _, row in ipairs(data.Citizens) do
-		local c = { Id = row[1], First = row[2], Last = row[3], BirthDay = row[4], Household = row[5], Job = row[6] or nil, Hobby = row[7], WorkSpot = if row[8] ~= 0 then row[8] else nil, Punctual = row[9] or 0.3 }
+		local c = { Id = row[1], First = row[2], Last = row[3], BirthDay = row[4], Household = row[5], Job = row[6] or nil, Hobby = row[7], WorkSpot = if row[8] ~= 0 then row[8] else nil, Punctual = row[9] or 0.3, Personality = row[10], Values = row[11] or {}, Friends = row[12] or {} }
+		if not c.Personality then
+			local rng = newRng(hash(c.Id, c.First, "personality"))
+			c.Personality = rng:Pick(Life.Personalities)
+			for _, v in ipairs(self.Config.ValueNames or {}) do
+				c.Values[v] = math.floor((rng:Next() * 2 - 1) * 100) / 100
+			end
+		end
 		c.Name = c.First .. " " .. c.Last
 		if c.Job and not jobByTitle(self.Config, c.Job) then
 			c.Job = nil -- that job was removed from Config

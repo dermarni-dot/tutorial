@@ -96,7 +96,7 @@ function Atmosphere.Setup(lighting)
 	lighting.GlobalShadows = true
 	lighting.ShadowSoftness = 0.25
 	lighting.GeographicLatitude = 32
-	Atmosphere.Apply(lighting, lighting.ClockTime)
+	Atmosphere.Apply(lighting, lighting.ClockTime or 12)
 end
 
 -- Applies the look for this hour

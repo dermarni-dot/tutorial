@@ -1,128 +1,151 @@
 -- CitizenService (ModuleScript) — ServerScriptService.Modules.CitizenService
--- Brings AI City to life: spawns every citizen (dressed by CitizenLook, sized
--- by age), walks them along the sidewalks to wherever their daily routine
--- says (home, work for their whole shift, school, errands, hobbies), and
--- handles couples expecting babies: on the due day the parents go to the
--- hospital and the baby is born there, then the family walks home together.
+-- Brings the citizens to life: spawns a dressed NPC for every person in Life,
+-- walks them along the sidewalks to where their day takes them (with their
+-- own pace, lane and little pauses), takes elevators, sits at desks, lifts
+-- weights, sleeps in bed, plays soccer after school, chats and gossips with
+-- friends, reacts to speeches and crimes, gets knocked out and wakes up in
+-- the hospital, has babies, and grows up.
 --
---   CitizenService.Start(map)          -- Main calls this
---   CitizenService.Population          -- the Population object (families, ages, jobs)
---   CitizenService.Models[id]          -- a citizen's character model
---   CitizenService.Event               -- BindableEvent: :Fire(kind, data) for "Born", "Expecting", "GrewUp", "Retired", "NewDay"
+-- The server only decides WHERE people are and WHAT they're doing (the
+-- "Action" and "Expression" attributes). Every player's client animates the
+-- poses, props and faces (see CityClient), which keeps the server light.
 
-local DataStoreService = game:GetService("DataStoreService")
-local Lighting = game:GetService("Lighting")
-local PhysicsService = game:GetService("PhysicsService")
+local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local ServerScriptService = game:GetService("ServerScriptService")
+local RunService = game:GetService("RunService")
+local PhysicsService = game:GetService("PhysicsService")
+local CollectionService = game:GetService("CollectionService")
 
-local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
-local Modules = ServerScriptService:WaitForChild("Modules")
-local Life = require(Modules:WaitForChild("Life"))
-local CitizenLook = require(Modules:WaitForChild("CitizenLook"))
-local MapBuilder = require(Modules:WaitForChild("MapBuilder"))
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local Config = require(Shared:WaitForChild("Config"))
+local Actions = require(Shared:WaitForChild("Actions"))
+local CitizenLook = require(script.Parent:WaitForChild("CitizenLook"))
 
 local CitizenService = {}
-CitizenService.Models = {}
-CitizenService.Event = Instance.new("BindableEvent")
-
-local SCALE = { Baby = 0.42, Toddler = 0.58, Child = 0.72, Teen = 0.9, Adult = 1, Retired = 0.97 }
-local SPEED = { Baby = 0.5, Toddler = 0.6, Child = 0.9, Teen = 1, Adult = 1, Retired = 0.8 }
-local WALK_ANIM = "rbxassetid://507777826" -- Roblox's default R15 walk
-local IDLE_ANIM = "rbxassetid://507766666" -- and idle
-
+local S -- services (see Main)
 local map, pop
 local folder
-local brains = {} -- [id] = { Model, Humanoid, Root, Key, Token, At, Label }
-local day = 0
-local lastHour
-local news = {}
+local brains = {} -- [citizen id] = brain
+local list = {} -- all brains (including temporary ones like extra police)
+local byModel = {}
+local taken = {} -- [spot] = brain using it
+local tempId = 0
+
+local ANIM = {
+	walk = "rbxassetid://507777826",
+	run = "rbxassetid://507767714",
+	idle = "rbxassetid://507766666",
+}
+local WALK_SPEED = Config.WALK_SPEED or 7.5
+local TRAVEL_SPEED = Config.TRAVEL_SPEED or 16
+local HURRY_SPEED = Config.HURRY_SPEED or 12
+local WATCH_RADIUS = Config.WATCH_RADIUS or 140
+
+CitizenService.Brains = brains
+CitizenService.List = list
 
 --------------------------------------------------------------------------------
--- News board
+-- Small helpers
 --------------------------------------------------------------------------------
-local function pushNews(text)
-	table.insert(news, 1, text)
-	while #news > 3 do
-		table.remove(news)
+local function flat(v)
+	return Vector3.new(v.X, 0, v.Z)
+end
+
+local function flatDist(a, b)
+	return math.sqrt((a.X - b.X) ^ 2 + (a.Z - b.Z) ^ 2)
+end
+
+local playerSpots = {} -- player positions, refreshed every tick
+local function refreshPlayers()
+	table.clear(playerSpots)
+	for _, player in ipairs(Players:GetPlayers()) do
+		local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+		if root then
+			table.insert(playerSpots, root.Position)
+		end
 	end
-	MapBuilder.SetNews(table.concat(news, "\n"))
-	print("[AI City] " .. text)
+end
+
+local function nearestPlayerDistance(pos)
+	local best = math.huge
+	for _, p in ipairs(playerSpots) do
+		local d = (p - pos).Magnitude
+		if d < best then
+			best = d
+		end
+	end
+	return best
+end
+CitizenService.NearestPlayerDistance = nearestPlayerDistance
+
+local function hour()
+	return S.City.Hour()
+end
+
+local function day()
+	return S.City.Day()
+end
+
+local function gameTime()
+	return day() * 24 + hour()
+end
+
+-- a stable random generator per citizen
+local function rngFor(id, salt)
+	return Random.new((id * 7919 + (salt or 0) * 104729) % 2147483646 + 1)
 end
 
 --------------------------------------------------------------------------------
--- Nameplates
+-- Speech bubbles and reactions
 --------------------------------------------------------------------------------
-local function roleText(c)
-	local stage = pop:Stage(c, day)
-	local age = pop:Age(c, day)
-	if stage == "Baby" then
-		return "Baby • " .. age
-	elseif stage == "Toddler" then
-		return "Toddler • " .. age
-	elseif stage == "Child" or stage == "Teen" then
-		return "Student • " .. age
-	elseif stage == "Retired" then
-		return "Retired • " .. age
-	end
-	return (c.Job or "Looking for work") .. " • " .. age
-end
-
-local function makePlate(model, c)
-	local head = model:FindFirstChild("Head")
-	if not head then
-		return nil
-	end
-	local gui = Instance.new("BillboardGui")
-	gui.Name = "Nameplate"
-	gui.Size = UDim2.fromOffset(200, 64)
-	gui.StudsOffset = Vector3.new(0, 2.6, 0)
-	gui.MaxDistance = 55
-	gui.AlwaysOnTop = false
-	gui.LightInfluence = 0
-	local function line(name, y, h, font, color)
-		local l = Instance.new("TextLabel")
-		l.Name = name
-		l.BackgroundTransparency = 1
-		l.Position = UDim2.fromOffset(0, y)
-		l.Size = UDim2.new(1, 0, 0, h)
-		l.Font = font
-		l.TextScaled = true
-		l.TextColor3 = color
-		l.TextStrokeTransparency = 0.4
-		l.Text = ""
-		l.Parent = gui
-		return l
-	end
-	line("NameLine", 0, 24, Enum.Font.FredokaOne, Color3.new(1, 1, 1)).Text = c.Name
-	line("RoleLine", 24, 18, Enum.Font.GothamBold, Color3.fromRGB(220, 225, 240))
-	line("StatusLine", 42, 18, Enum.Font.GothamBold, Color3.fromRGB(255, 225, 140))
-	gui.Parent = head
-	return gui
-end
-
-local function refreshPlate(brain, c, activity)
-	local gui = brain.Plate
-	if not gui then
+-- Shows a speech bubble over a citizen for everyone nearby
+function CitizenService.Say(brain, text, expression, seconds)
+	if not brain or not brain.Model or not brain.Model.Parent or not text then
 		return
 	end
-	gui.RoleLine.Text = roleText(c)
-	local h = pop.Households[c.Household]
-	local status = activity or brain.Activity or ""
-	if h and h.Expecting and (c.Id == h.Partners[1] or c.Id == h.Partners[2]) then
-		local left = pop:DaysToGo(h, day)
-		status = (if left and left > 0 then "🍼 Baby due in " .. left .. " day" .. (if left == 1 then "" else "s") else "🍼 Baby due today!") .. "\n" .. status
-		gui.Size = UDim2.fromOffset(200, 82)
-		gui.StatusLine.Size = UDim2.new(1, 0, 0, 36)
-	else
-		gui.Size = UDim2.fromOffset(200, 64)
-		gui.StatusLine.Size = UDim2.new(1, 0, 0, 18)
+	seconds = seconds or math.clamp(#text / 14, 2, 6)
+	S.City.SendNear(brain.Root.Position, 110, { Type = "Bubble", Model = brain.Model, Text = text, Seconds = seconds })
+	brain.Model:SetAttribute("Talking", true)
+	if expression then
+		brain.Model:SetAttribute("Expression", expression)
 	end
-	gui.StatusLine.Text = status
+	local token = {}
+	brain.TalkToken = token
+	task.delay(seconds, function()
+		if brain.TalkToken == token and brain.Model then
+			brain.Model:SetAttribute("Talking", false)
+		end
+	end)
+end
+
+local function setAction(brain, action)
+	brain.Model:SetAttribute("Action", action or "")
+end
+
+local function setActivity(brain, text)
+	brain.Model:SetAttribute("Activity", text or "")
+end
+
+local function refreshExpression(brain)
+	if brain.C and not brain.C.Temp and brain.State ~= "ko" then
+		local action = brain.Model:GetAttribute("Action")
+		local expr = S.City.ExpressionFor(brain.C)
+		if action == "sleep" or action == "nap" or action == "patient" then
+			expr = "asleep"
+		elseif action == "type" or action == "study" or action == "machine" or action == "lift" or action == "squat" or action == "fixcar" then
+			if expr == "neutral" then
+				expr = "focused"
+			end
+		elseif action == "dance" or action == "play" or action == "swing" or action == "game" then
+			expr = if expr == "angry" or expr == "sad" then expr else "grin"
+		end
+		brain.Model:SetAttribute("Expression", expr)
+		brain.Model:SetAttribute("Mood", math.floor(S.City.MoodOf(brain.C)))
+	end
 end
 
 --------------------------------------------------------------------------------
--- Models
+-- Bodies
 --------------------------------------------------------------------------------
 local function setupPhysics()
 	pcall(function()
@@ -131,202 +154,735 @@ local function setupPhysics()
 	end)
 end
 
-local function animate(humanoid)
-	local animator = humanoid:FindFirstChildOfClass("Animator") or Instance.new("Animator")
-	animator.Parent = humanoid
-	local walk = Instance.new("Animation")
-	walk.AnimationId = WALK_ANIM
-	local idle = Instance.new("Animation")
-	idle.AnimationId = IDLE_ANIM
-	local ok1, walkTrack = pcall(animator.LoadAnimation, animator, walk)
-	local ok2, idleTrack = pcall(animator.LoadAnimation, animator, idle)
-	if not (ok1 and ok2) then
+local function loadTracks(brain)
+	local animator = brain.Humanoid:FindFirstChildOfClass("Animator") or Instance.new("Animator")
+	animator.Parent = brain.Humanoid
+	brain.Tracks = {}
+	for name, id in pairs(ANIM) do
+		local a = Instance.new("Animation")
+		a.AnimationId = id
+		local ok, track = pcall(animator.LoadAnimation, animator, a)
+		if ok and track then
+			track.Looped = true
+			track.Priority = if name == "idle" then Enum.AnimationPriority.Idle else Enum.AnimationPriority.Movement
+			brain.Tracks[name] = track
+		end
+	end
+end
+
+-- which body animation plays: "walk", "run", "idle" or nil (still: a pose from the client)
+local function playTrack(brain, name, speed)
+	if not brain.Tracks then
 		return
 	end
-	walkTrack.Looped = true
-	idleTrack.Looped = true
-	idleTrack:Play()
-	humanoid.Running:Connect(function(speed)
-		if speed > 0.5 then
-			if not walkTrack.IsPlaying then
-				walkTrack:Play(0.2)
-				idleTrack:Stop(0.2)
+	for n, track in pairs(brain.Tracks) do
+		if n == name then
+			if not track.IsPlaying then
+				track:Play(0.25)
 			end
-		elseif walkTrack.IsPlaying then
-			walkTrack:Stop(0.2)
-			idleTrack:Play(0.2)
+			if speed then
+				track:AdjustSpeed(speed)
+			end
+		elseif track.IsPlaying then
+			track:Stop(0.25)
 		end
-	end)
+	end
 end
 
--- A spot for a plan: { Point = Vector3, Place = table with Door/Inside or nil }
-local function spread(id, radius)
-	local a = (id * 2.399) % (math.pi * 2)
-	local r = radius * (0.35 + ((id * 7) % 10) / 15)
-	return Vector3.new(math.cos(a) * r, 0, math.sin(a) * r)
+local function rootHeight(brain)
+	return brain.Humanoid.HipHeight + brain.Root.Size.Y / 2
 end
 
-local function destination(c, plan)
-	local h = pop.Households[c.Household]
-	if plan.Kind == "Home" then
+local function stageOf(c)
+	return if c.Temp then "Adult" else pop:Stage(c)
+end
+
+local function ageOf(c)
+	return if c.Temp then (c.Age or 30) else pop:Age(c)
+end
+
+local function describe(c)
+	local job = if stageOf(c) == "Adult" then c.Job else nil
+	return { Name = c.Name, Job = job, Age = ageOf(c), Hobby = c.Hobby }
+end
+
+local function jobOf(c)
+	return c.Job and pop.Jobs(Config, c.Job)
+end
+
+local function refreshInfo(brain)
+	local c = brain.C
+	local m = brain.Model
+	local stage = stageOf(c)
+	m:SetAttribute("CitizenId", c.Id)
+	m:SetAttribute("DisplayName", c.Name)
+	m:SetAttribute("First", c.First or c.Name)
+	m:SetAttribute("Age", ageOf(c))
+	m:SetAttribute("Stage", stage)
+	m:SetAttribute("Job", if stage == "Adult" then (c.Job or "") else "")
+	m:SetAttribute("Personality", c.Personality or "")
+	m:SetAttribute("Hobby", c.Hobby or "")
+	if not c.Temp then
+		local h = pop.Households[c.Household]
+		local due = h and pop:DaysToGo(h)
+		m:SetAttribute("Expecting", if due and h.Expecting.Carrier == c.Id then due else -1)
+		local school = pop:SchoolFor(c)
+		m:SetAttribute("School", school and (Config.PlaceById[school] and Config.PlaceById[school].label or school) or "")
 		local home = h and h.Home and map.Homes[h.Home]
-		if home then
-			local slot = table.find(h.Members, c.Id) or 1
-			return { Point = home.Inside + spread(slot, 3.5), Place = home }
-		end
-		return { Point = map.Places.Plaza.Inside + spread(c.Id, 12), Place = map.Places.Plaza }
-	elseif plan.Kind == "Hobby" then
-		local spots = map.HobbySpots[plan.Hobby] or map.BenchSpots
-		if spots and #spots > 0 then
-			return { Point = spots[(c.Id % #spots) + 1] + spread(c.Id, 1.5), Place = nil }
-		end
+		m:SetAttribute("Address", home and home.Address or "")
 	end
-	local place = plan.Place and map.Places[plan.Place]
-	if not place then
-		place = map.Places.Plaza
-	end
-	if plan.Kind == "Work" and #place.WorkSpots > 0 then
-		return { Point = place.WorkSpots[((c.WorkSpot or 1) - 1) % #place.WorkSpots + 1], Place = place }
-	elseif plan.Kind == "Hospital" and place.Beds then
-		return { Point = place.Beds[(c.Household % #place.Beds) + 1] + spread(c.Id, 1.5), Place = place }
-	elseif plan.Kind == "School" then
-		return { Point = place.Inside + Vector3.new(((c.Id * 5) % 20) - 10, 0, ((c.Id * 3) % 10) - 3), Place = place }
-	end
-	return { Point = place.Inside + spread(c.Id, 5), Place = place }
 end
 
-local function flat(a, b)
-	return Vector3.new(a.X - b.X, 0, a.Z - b.Z).Magnitude
-end
-
--- Walks through the points in order. Stops early if a newer walk started.
-local function walk(brain, points, token)
-	local humanoid, root = brain.Humanoid, brain.Root
-	for _, p in ipairs(points) do
-		if brain.Token ~= token or not root.Parent then
-			return false
-		end
-		local started = os.clock()
-		local limit = flat(root.Position, p) / math.max(1, humanoid.WalkSpeed) * 2 + 4
-		local lastMove = os.clock()
-		humanoid:MoveTo(p)
-		while flat(root.Position, p) > 2.2 do
-			task.wait(0.25)
-			if brain.Token ~= token or not root.Parent then
-				return false
-			end
-			if os.clock() - lastMove > 4 then
-				humanoid:MoveTo(p) -- MoveTo gives up after 8 seconds, so keep asking
-				lastMove = os.clock()
-			end
-			if os.clock() - started > limit then
-				root.CFrame = CFrame.new(p + Vector3.new(0, 3, 0)) -- stuck: hop to the point
-				break
-			end
-		end
-	end
-	return true
-end
-
-local function travel(brain, c, plan)
-	local dest = destination(c, plan)
-	brain.Token += 1
-	local token = brain.Token
-	brain.Activity = plan.Activity
-	refreshPlate(brain, c, "🚶 On the way")
-	task.spawn(function()
-		local points = map.RouteBetween(brain.At or brain.Root.Position, dest.Place or dest.Point)
-		table.insert(points, dest.Point)
-		if walk(brain, points, token) then
-			brain.At = dest.Place or dest.Point
-			brain.Arrived = plan.Kind
-			refreshPlate(brain, c, plan.Activity)
-		end
-	end)
-end
-
-local function spawnCitizen(c, atPosition)
-	local stage = pop:Stage(c, day)
-	local ok, model = pcall(CitizenLook.Build, { Name = c.Name, Job = c.Job, Age = pop:Age(c, day), Hobby = c.Hobby })
-	if not ok or not model then
-		warn("[CitizenService] Could not build " .. c.Name .. ": " .. tostring(model))
-		return nil
-	end
-	pcall(function()
-		model:ScaleTo(SCALE[stage] or 1)
-	end)
+local function makeBody(c, cframe)
+	local model, look = CitizenLook.Build(describe(c))
+	look = look or CitizenLook.Describe(describe(c))
+	model.Name = c.Name
 	local humanoid = model:FindFirstChildOfClass("Humanoid")
 	local root = model:FindFirstChild("HumanoidRootPart")
-	humanoid.WalkSpeed = (Config.WALK_SPEED or 14) * (SPEED[stage] or 1)
 	humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
-	for _, state in ipairs({ Enum.HumanoidStateType.Swimming, Enum.HumanoidStateType.Climbing, Enum.HumanoidStateType.Seated, Enum.HumanoidStateType.FallingDown }) do
-		humanoid:SetStateEnabled(state, false)
+	humanoid.HealthDisplayType = Enum.HumanoidHealthDisplayType.AlwaysOff
+	humanoid.BreakJointsOnDeath = false
+	humanoid.RequiresNeck = false
+	humanoid.AutoJumpEnabled = true
+	humanoid.UseJumpPower = true
+	humanoid.JumpPower = 30
+	for _, st in ipairs({ Enum.HumanoidStateType.Seated, Enum.HumanoidStateType.Swimming, Enum.HumanoidStateType.Climbing, Enum.HumanoidStateType.FallingDown, Enum.HumanoidStateType.Ragdoll, Enum.HumanoidStateType.Flying }) do
+		humanoid:SetStateEnabled(st, false)
 	end
-	for _, d in ipairs(model:GetDescendants()) do
-		if d:IsA("BasePart") then
-			d.CollisionGroup = "Citizens"
+	local scale = look.Scale or 1
+	if scale ~= 1 then
+		model:ScaleTo(scale)
+	end
+	for _, p in ipairs(model:GetDescendants()) do
+		if p:IsA("BasePart") then
+			p.CollisionGroup = "Citizens"
 		end
 	end
-	model:SetAttribute("CitizenId", c.Id)
-	model:PivotTo(CFrame.new(atPosition + Vector3.new(0, 3 * (SCALE[stage] or 1) + 0.5, 0)))
+	model:PivotTo(cframe)
 	model.Parent = folder
 	pcall(function()
-		root:SetNetworkOwner(nil) -- the server moves citizens
+		root:SetNetworkOwner(nil)
 	end)
-	animate(humanoid)
-	local old = brains[c.Id]
-	local brain = { Model = model, Humanoid = humanoid, Root = root, Token = (old and old.Token or 0) + 1, Stage = stage }
-	brain.Plate = makePlate(model, c)
-	brains[c.Id] = brain
-	CitizenService.Models[c.Id] = model
-	return brain
+	CollectionService:AddTag(model, "Citizen")
+	model:SetAttribute("Scale", scale)
+	return model, humanoid, root, look
 end
 
 --------------------------------------------------------------------------------
--- Life events
+-- Spots: where people stand, sit, work and sleep
 --------------------------------------------------------------------------------
-local function handleEvents(events)
-	for _, e in ipairs(events) do
-		pushNews(e.Text)
-		CitizenService.Event:Fire(e.Kind, e)
-		if e.Citizen then
-			-- growing up changes size and clothes: rebuild the model where it stands
-			local brain = brains[e.Citizen.Id]
-			if brain and brain.Model then
-				local pos = brain.Root.Position
-				local at = brain.At
-				brain.Model:Destroy()
-				local fresh = spawnCitizen(e.Citizen, Vector3.new(pos.X, 0.5, pos.Z))
-				if fresh then
-					fresh.At = at
-				end
+local function free(spot, brain)
+	return spot and (taken[spot] == nil or taken[spot] == brain)
+end
+
+local function reserve(brain, spot)
+	if brain.Spot and taken[brain.Spot] == brain then
+		taken[brain.Spot] = nil
+	end
+	brain.Spot = spot
+	if spot then
+		taken[spot] = brain
+	end
+end
+
+-- the best free spot in a list: matching the wanted action, then any
+local function pickSpot(spots, brain, want, roles, rng)
+	local matches, others = {}, {}
+	for _, s in ipairs(spots or {}) do
+		if free(s, brain) and (not roles or roles[s.Role]) then
+			if want and s.Action == want then
+				table.insert(matches, s)
+			else
+				table.insert(others, s)
 			end
 		end
 	end
+	local pool = if #matches > 0 then matches else others
+	if #pool == 0 then
+		return nil
+	end
+	return pool[rng:NextInteger(1, #pool)]
 end
 
-local function checkBirths(hour)
-	for _, h in ipairs(pop.Households) do
-		if h.Expecting and pop:IsDue(h, day) then
-			local carrier = brains[h.Expecting.Carrier]
-			local atHospital = carrier and carrier.Arrived == "Hospital"
-			if atHospital or hour >= 16 then
-				local baby = pop:Birth(h, day)
-				local parents = {}
-				for _, id in ipairs(h.Partners) do
-					table.insert(parents, pop.Citizens[id].First)
+local KID_ROLES = { kid = true, visit = true }
+local VISIT_ROLES = { visit = true }
+local STUDENT_ROLES = { student = true }
+local HOME_ROLES = { home = true }
+
+--------------------------------------------------------------------------------
+-- Where a plan takes someone: { Spot, Pos, Door, Building, Floor, Place, Action }
+--------------------------------------------------------------------------------
+local function placeFallback(id)
+	return map.Places[id] or map.Places.Plaza or map.PlaceList[1]
+end
+
+local function homeOf(c)
+	local h = pop.Households[c.Household]
+	return h and h.Home and map.Homes[h.Home]
+end
+
+local function standNear(place, rng)
+	local a = rng:NextNumber(0, math.pi * 2)
+	local r = rng:NextNumber(2, 7)
+	local base = if place.Outdoor then place.Door else (place.Inside or place.Door)
+	return base + Vector3.new(math.cos(a) * r, 0, math.sin(a) * r)
+end
+
+local function workSpotFor(brain, place, rng)
+	local c = brain.C
+	local work = {}
+	for _, s in ipairs(place.Spots) do
+		if s.Role == "work" then
+			table.insert(work, s)
+		end
+	end
+	if #work == 0 then
+		return nil
+	end
+	-- their own desk first (same one every day), then any free one
+	local mine = work[((c.WorkSpot or c.Id) - 1) % #work + 1]
+	if free(mine, brain) then
+		return mine
+	end
+	return pickSpot(work, brain, nil, nil, rng)
+end
+
+local function targetFor(brain, plan)
+	local c = brain.C
+	local rng = rngFor(c.Id, day() * 24 + math.floor(hour()))
+	local t = { Plan = plan }
+	if plan.Kind == "Home" then
+		local home = homeOf(c)
+		if not home then
+			-- no home: a bench in the park
+			local place = placeFallback("Park")
+			t.Place, t.Door, t.Pos, t.Action = place, place.Door, standNear(place, rng), "sit"
+			return t
+		end
+		S.MapBuilder.FurnishHome(home)
+		local want = plan.Want
+		local spots = home.Spots
+		-- beds: each person has their own (kids share with siblings in turns)
+		if want == "sleep" or want == "nap" then
+			local stage = stageOf(c)
+			local beds = {}
+			for _, s in ipairs(spots) do
+				if (s.Action == "sleep" or s.Action == "nap") and free(s, brain) then
+					if stage == "Baby" and s.Crib then
+						table.insert(beds, 1, s)
+					else
+						table.insert(beds, s)
+					end
 				end
-				local where = if carrier then carrier.Root.Position else map.Places.Hospital.Inside
-				local brain = spawnCitizen(baby, Vector3.new(where.X + 2, 0.5, where.Z))
-				if brain then
-					brain.At = map.Places.Hospital
+			end
+			t.Spot = beds[1]
+		end
+		t.Spot = t.Spot or pickSpot(spots, brain, want, HOME_ROLES, rng)
+		t.Door, t.Building, t.Floor = home.Door, home.Building, home.Floor or 1
+		t.Home = home
+		if not t.Spot then
+			t.Pos = home.Inside or home.Door
+			t.Floor = 1
+			t.Action = want or "wait"
+		end
+		return t
+	end
+	if plan.Kind == "Hobby" then
+		if plan.Hobby == "jogging" then
+			t.Jog = true
+			local best, bestD = nil, math.huge
+			for _, loop in ipairs(map.JoggingLoops) do
+				local d = flatDist(loop[1], brain.Root.Position)
+				if d < bestD then
+					best, bestD = loop, d
 				end
-				pushNews("👶 " .. baby.Name .. " was born to " .. table.concat(parents, " & ") .. " " .. h.Last .. "!")
-				CitizenService.Event:Fire("Born", { Citizen = baby, Household = h })
-				for _, id in ipairs(h.Partners) do
-					local b = brains[id]
-					if b then
-						b.Key = nil -- re-plan: time to go home with the baby
+			end
+			t.Loop = best
+			t.Pos = best and best[1] or brain.Root.Position
+			t.Door = t.Pos
+			return t
+		end
+		local spots = map.HobbySpots[plan.Hobby]
+		t.Spot = pickSpot(spots, brain, nil, nil, rng)
+		if t.Spot then
+			t.Door = t.Spot.CFrame.Position
+			t.Place = t.Spot.Place and map.Places[t.Spot.Place]
+			return t
+		end
+		plan = { Kind = "Place", Place = "Park", Want = "sit" }
+	end
+	local place = placeFallback(plan.Place)
+	t.Place = place
+	t.Door = place.Door
+	if plan.Kind == "Work" then
+		t.Spot = workSpotFor(brain, place, rng)
+	elseif plan.Kind == "School" then
+		if plan.Recess then
+			local spots = {}
+			for _, s in ipairs(place.Spots) do
+				if s.Recess then
+					table.insert(spots, s)
+				end
+			end
+			t.Spot = pickSpot(spots, brain, plan.Want, nil, rng)
+		else
+			t.Spot = pickSpot(place.Spots, brain, "study", STUDENT_ROLES, rng)
+		end
+	elseif plan.Want == "soccer" and place.Field then
+		t.Soccer = place.Field
+		t.Pos = place.Field.Center + Vector3.new(rng:NextNumber(-12, 12), 0, rng:NextNumber(-8, 8))
+		return t
+	elseif plan.Kind == "Hospital" then
+		t.Spot = pickSpot(place.Spots, brain, "wait", VISIT_ROLES, rng)
+	else
+		local kid = ageOf(c) < 13
+		t.Spot = pickSpot(place.Spots, brain, plan.Want, if kid then KID_ROLES else VISIT_ROLES, rng)
+	end
+	if t.Spot then
+		t.Building, t.Floor = t.Spot.Building, t.Spot.Floor or 1
+	else
+		t.Pos = standNear(place, rng)
+		t.Building = if place.Outdoor then nil else place.Building
+		t.Floor = 1
+		t.Action = if plan.Want == "chat" or plan.Want == nil then "wait" else plan.Want
+	end
+	return t
+end
+
+--------------------------------------------------------------------------------
+-- Routes: steps of walking and riding elevators
+--------------------------------------------------------------------------------
+-- a waypoint list with this person's lane offset (people keep to their own
+-- side of the sidewalk, so crowds don't walk single file)
+local function withLane(points, lane)
+	local out = {}
+	for k, p in ipairs(points) do
+		if k == 1 or k == #points then
+			out[k] = p
+		else
+			local prev, nxt = points[k - 1], points[k + 1]
+			local dir = flat(nxt - prev)
+			if dir.Magnitude > 0.1 then
+				local right = Vector3.new(-dir.Z, 0, dir.X).Unit
+				out[k] = p + right * lane
+			else
+				out[k] = p
+			end
+		end
+	end
+	return out
+end
+
+local function elevatorExit(b, floor)
+	local f = b and b.Elevator and b.Elevator.Floors[floor]
+	return f and f.Exit
+end
+
+local function buildRoute(brain, t)
+	local steps = {}
+	local pos = brain.Root.Position
+	local from = brain.Building
+	local dest = t.Spot and t.Spot.CFrame.Position or t.Pos
+	local destFloor = t.Floor or 1
+	local function walk(points)
+		table.insert(steps, { Kind = "walk", Points = points })
+	end
+	local function ride(b, floor)
+		table.insert(steps, { Kind = "ride", Building = b, Floor = floor })
+	end
+	if from and from == t.Building then
+		-- same building: maybe another floor
+		if (brain.Floor or 1) ~= destFloor then
+			local exit = elevatorExit(from, brain.Floor or 1)
+			if exit then
+				walk({ exit })
+			end
+			ride(from, destFloor)
+		end
+		walk({ dest })
+		return steps
+	end
+	if from then
+		-- leave the building: down the elevator, out the door
+		if (brain.Floor or 1) > 1 then
+			local exit = elevatorExit(from, brain.Floor)
+			if exit then
+				walk({ exit })
+			end
+			ride(from, 1)
+		end
+		walk({ from.Inside, from.Door })
+		pos = from.Door
+	end
+	-- along the sidewalks
+	local doorTarget = if t.Building then t.Building.Door else (t.Door or dest)
+	local path = map.Route(pos, doorTarget)
+	walk(withLane(path, brain.Lane))
+	if t.Building then
+		walk({ t.Building.Inside })
+		if destFloor > 1 then
+			local exit = elevatorExit(t.Building, 1)
+			if exit then
+				walk({ exit })
+			end
+			ride(t.Building, destFloor)
+		end
+	end
+	walk({ dest })
+	return steps
+end
+
+--------------------------------------------------------------------------------
+-- Standing, sitting and lying at a spot
+--------------------------------------------------------------------------------
+local function unanchor(brain)
+	if brain.Root.Anchored then
+		brain.Root.Anchored = false
+	end
+	brain.Model:SetAttribute("SwingPivot", nil)
+	brain.Model:SetAttribute("Target", nil)
+end
+
+-- stand up at a spot (used when leaving a seat or bed, so nobody gets stuck in furniture)
+local function standAt(brain, cf)
+	unanchor(brain)
+	brain.Root.CFrame = CFrame.new(cf.Position + Vector3.new(0, rootHeight(brain) + 0.1, 0)) * cf.Rotation
+	brain.Root.AssemblyLinearVelocity = Vector3.zero
+end
+
+local function placeAt(brain, spot, action)
+	local cf = spot.CFrame
+	local info = Actions.Get(action) or {}
+	local scale = brain.Model:GetAttribute("Scale") or 1
+	local rh = rootHeight(brain)
+	local rootCf
+	if info.Lying then
+		local top = spot.BedTop or (cf.Position.Y + 2)
+		local base = CFrame.new(cf.Position.X, top + 0.55 * scale, cf.Position.Z) * cf.Rotation * CFrame.Angles(0, math.pi, 0)
+		-- the body lies along the bed with the head on the pillow
+		rootCf = base * CFrame.new(0, 0, -1.2 * scale) * CFrame.Angles(math.rad(90), 0, 0)
+	elseif info.Seated then
+		local seat = spot.Seat
+		if seat and seat.Parent then
+			local top = seat.Position.Y + seat.Size.Y / 2
+			rootCf = CFrame.new(seat.Position.X, top + 0.55 * scale, seat.Position.Z) * cf.Rotation
+		else
+			rootCf = CFrame.new(cf.Position + Vector3.new(0, rh - Actions.SEAT_DROP * scale + (spot.Raise or 0), 0)) * cf.Rotation
+		end
+	else
+		rootCf = CFrame.new(cf.Position + Vector3.new(0, rh + (spot.Raise or 0), 0)) * cf.Rotation
+	end
+	brain.Root.Anchored = true
+	brain.Root.CFrame = rootCf
+	if spot.SwingPivot then
+		brain.Model:SetAttribute("SwingPivot", spot.SwingPivot)
+	end
+	if spot.Hoop then
+		brain.Model:SetAttribute("Target", spot.Hoop)
+	end
+end
+
+--------------------------------------------------------------------------------
+-- Moving
+--------------------------------------------------------------------------------
+local function speedFor(brain)
+	local c = brain.C
+	local base = WALK_SPEED * brain.Pace
+	local d = nearestPlayerDistance(brain.Root.Position)
+	local plan = brain.Plan
+	local late = plan and (plan.Kind == "Work" or plan.Kind == "School") and brain.Late
+	if brain.State == "flee" then
+		return math.max(16, HURRY_SPEED * 1.35), "run"
+	elseif brain.State == "police" then
+		return 19, "run"
+	elseif brain.Jog then
+		return math.max(HURRY_SPEED - 1, 10) * brain.Pace, "run"
+	elseif d > WATCH_RADIUS then
+		return TRAVEL_SPEED, "walk"
+	elseif late then
+		return HURRY_SPEED, "run"
+	end
+	-- kids sometimes run ahead
+	if ageOf(c) < 12 and brain.Skip and os.clock() < brain.Skip then
+		return base * 1.6, "run"
+	end
+	return base, "walk"
+end
+
+local function applySpeed(brain)
+	local speed, gait = speedFor(brain)
+	brain.Humanoid.WalkSpeed = speed
+	local animSpeed = if gait == "run" then speed / 16 else speed / 8
+	playTrack(brain, gait, math.clamp(animSpeed, 0.6, 1.8))
+end
+
+local function stop(brain)
+	brain.Steps = nil
+	brain.Points = nil
+	brain.Jog = nil
+	if not brain.Root.Anchored then
+		brain.Humanoid:MoveTo(brain.Root.Position)
+	end
+end
+
+local arrive -- forward
+
+local function nextStep(brain)
+	brain.StepIndex += 1
+	local step = brain.Steps and brain.Steps[brain.StepIndex]
+	if not step then
+		brain.Steps = nil
+		arrive(brain)
+		return
+	end
+	if step.Kind == "walk" then
+		brain.Points = step.Points
+		brain.PointIndex = 1
+		brain.LastMoveAt = os.clock()
+		brain.LastPos = brain.Root.Position
+		brain.MoveIssued = 0
+		unanchor(brain)
+		applySpeed(brain)
+		brain.Humanoid:MoveTo(brain.Points[1])
+	elseif step.Kind == "ride" then
+		-- the elevator (or the stairs): wait a moment, then step out on the new floor
+		brain.Points = nil
+		brain.State = "ride"
+		stop(brain)
+		playTrack(brain, "idle")
+		setAction(brain, "wait")
+		local token = brain.Token
+		task.delay(if step.Building.Elevator.Stairs then 1.2 else 2.4, function()
+			if brain.Token ~= token or not brain.Model.Parent then
+				return
+			end
+			local exit = elevatorExit(step.Building, step.Floor)
+			if exit then
+				brain.Root.CFrame = CFrame.new(exit + Vector3.new(0, rootHeight(brain) + 0.2, 0))
+				brain.Root.AssemblyLinearVelocity = Vector3.zero
+			end
+			brain.Floor = step.Floor
+			brain.Building = step.Building
+			setAction(brain, "")
+			brain.State = "walk"
+			nextStep(brain)
+		end)
+	end
+end
+
+-- Sends a brain on its way to a target
+local function go(brain, t)
+	brain.Token = {}
+	brain.Target = t
+	brain.Jog = nil
+	local oldSpot = brain.Spot
+	reserve(brain, t.Spot)
+	if brain.Root.Anchored then
+		-- get up first
+		local cf = if oldSpot then oldSpot.CFrame else CFrame.new(brain.Root.Position - Vector3.new(0, rootHeight(brain), 0))
+		standAt(brain, cf)
+	end
+	setAction(brain, "")
+	brain.Model:SetAttribute("Place", t.Place and t.Place.Id or (t.Home and "Home") or "")
+	brain.State = "walk"
+	brain.Steps = buildRoute(brain, t)
+	brain.StepIndex = 0
+	brain.Late = false
+	local plan = t.Plan
+	if plan and (plan.Kind == "Work" or plan.Kind == "School") then
+		local job = jobOf(brain.C)
+		local start = if plan.Kind == "Work" and job then job.start else (Config.SCHOOL_START or 8)
+		brain.Late = hour() > start - 0.1 and hour() < start + 4
+	end
+	nextStep(brain)
+end
+
+-- teleport straight to a target (spawning, or nobody around to see)
+local function jump(brain, t)
+	brain.Token = {}
+	brain.Target = t
+	reserve(brain, t.Spot)
+	local dest = t.Spot and t.Spot.CFrame or CFrame.new(t.Pos or brain.Root.Position)
+	standAt(brain, dest)
+	brain.Building = t.Building
+	brain.Floor = t.Floor or 1
+	brain.Steps = nil
+	arrive(brain)
+end
+
+--------------------------------------------------------------------------------
+-- Soccer after school: a real ball, two teams, goals and cheering
+--------------------------------------------------------------------------------
+local soccer = {} -- [field] = { Ball, Players = { brain = team }, Score = {0, 0}, Kick = {} }
+
+local function fieldOf(field)
+	local match = soccer[field]
+	if not match then
+		match = { Players = {}, Score = { 0, 0 }, Field = field, Count = { 0, 0 }, Kick = {} }
+		soccer[field] = match
+	end
+	return match
+end
+
+local function newBall(field)
+	local ball = Instance.new("Part")
+	ball.Name = "SoccerBall"
+	ball.Shape = Enum.PartType.Ball
+	ball.Size = Vector3.new(1.8, 1.8, 1.8)
+	ball.Color = Color3.fromRGB(245, 245, 245)
+	ball.Material = Enum.Material.SmoothPlastic
+	ball.CustomPhysicalProperties = PhysicalProperties.new(0.25, 0.4, 0.55, 1, 1)
+	ball.Position = field.Center + Vector3.new(0, 2, 0)
+	ball.Parent = folder
+	for k = 0, 2 do
+		local patch = Instance.new("Part")
+		patch.Name = "Patch"
+		patch.Shape = Enum.PartType.Ball
+		patch.Size = Vector3.new(0.8, 0.8, 0.8)
+		patch.Color = Color3.fromRGB(30, 30, 34)
+		patch.Material = Enum.Material.SmoothPlastic
+		patch.CanCollide = false
+		patch.Massless = true
+		patch.CFrame = ball.CFrame * CFrame.Angles(k * 2.1, k * 1.3, 0) * CFrame.new(0, 0, -0.62)
+		local weld = Instance.new("WeldConstraint")
+		weld.Part0, weld.Part1 = ball, patch
+		weld.Parent = patch
+		patch.Parent = ball
+	end
+	pcall(function()
+		ball:SetNetworkOwner(nil)
+	end)
+	-- players can kick it too
+	local lastKick = 0
+	ball.Touched:Connect(function(hit)
+		local character = hit.Parent
+		local player = character and Players:GetPlayerFromCharacter(character)
+		local root = character and character:FindFirstChild("HumanoidRootPart")
+		if player and root and os.clock() - lastKick > 0.35 then
+			lastKick = os.clock()
+			local dir = root.CFrame.LookVector
+			ball.AssemblyLinearVelocity = Vector3.new(dir.X, 0, dir.Z).Unit * 42 + Vector3.new(0, 10, 0)
+		end
+	end)
+	return ball
+end
+
+local function joinSoccer(brain, field)
+	local match = fieldOf(field)
+	local team = if match.Count[1] <= match.Count[2] then 1 else 2
+	match.Players[brain] = team
+	match.Count[team] += 1
+	brain.State = "soccer"
+	brain.Soccer = match
+	brain.Model:SetAttribute("Team", team)
+	setAction(brain, "soccer")
+	setActivity(brain, "⚽ Playing soccer (" .. (if team == 1 then "Blue" else "Red") .. " team)")
+end
+
+local function leaveSoccer(brain)
+	local match = brain.Soccer
+	if match and match.Players[brain] then
+		match.Count[match.Players[brain]] -= 1
+		match.Players[brain] = nil
+	end
+	brain.Soccer = nil
+	brain.Model:SetAttribute("Team", nil)
+end
+
+local GOAL_LINES = { "GOOOAL!!", "YES! GOAL!", "What a shot!", "Get in!!", "⚽⚽⚽" }
+local SOCCER_LINES = { "Pass it!", "I'm open!", "Over here!", "Go go go!", "Nice!", "Defense!", "Shoot!" }
+
+local function soccerTick(dt)
+	for field, match in pairs(soccer) do
+		local n = 0
+		for _ in pairs(match.Players) do
+			n += 1
+		end
+		if n < 2 then
+			if match.Ball then
+				match.Ball:Destroy()
+				match.Ball = nil
+				match.Score = { 0, 0 }
+			end
+			-- waiting for a second player: juggle near the center
+			for brain in pairs(match.Players) do
+				brain.Humanoid:MoveTo(field.Center + Vector3.new(math.sin(os.clock()) * 4, 0, 0))
+			end
+			continue
+		end
+		if not match.Ball or not match.Ball.Parent then
+			match.Ball = newBall(field)
+			match.Score = { 0, 0 }
+		end
+		local ball = match.Ball
+		local bp = ball.Position
+		local c = field.Center
+		local halfL, halfW = field.Length / 2, field.Width / 2
+		-- goals: team 1 attacks +X, team 2 attacks -X
+		local rel = bp - c
+		if math.abs(rel.X) > halfL + 0.5 then
+			if math.abs(rel.Z) < 5 and rel.Y < 7 then
+				local scorer = if rel.X > 0 then 1 else 2
+				match.Score[scorer] += 1
+				local names = {}
+				for brain, team in pairs(match.Players) do
+					if team == scorer then
+						table.insert(names, brain)
+					end
+				end
+				local hero = match.LastKicker and match.Players[match.LastKicker] == scorer and match.LastKicker or names[1]
+				for brain, team in pairs(match.Players) do
+					if team == scorer then
+						CitizenService.React(brain, "cheer", if brain == hero then GOAL_LINES[math.random(1, #GOAL_LINES)] else nil, "grin", 2.5)
+					end
+				end
+				S.City.SendNear(c, 160, { Type = "Toast", Icon = "⚽", Title = "GOAL!", Text = string.format("%s scores! Blue %d – %d Red", hero and hero.C.First or "Someone", match.Score[1], match.Score[2]), Color = if scorer == 1 then Color3.fromRGB(70, 130, 240) else Color3.fromRGB(230, 70, 70) })
+			end
+			ball.AssemblyLinearVelocity = Vector3.zero
+			ball.CFrame = CFrame.new(c + Vector3.new(0, 2, 0))
+			bp = ball.Position
+		elseif math.abs(rel.Z) > halfW + 1 or rel.Y < -5 or rel.Y > 40 then
+			-- out: throw it back in
+			ball.AssemblyLinearVelocity = Vector3.zero
+			ball.CFrame = CFrame.new(c + Vector3.new(math.clamp(rel.X, -halfL + 2, halfL - 2), 2, math.clamp(rel.Z, -halfW + 2, halfW - 2)))
+			bp = ball.Position
+		end
+		-- the two closest players on each team chase the ball, the rest hold positions
+		local byTeam = { {}, {} }
+		for brain, team in pairs(match.Players) do
+			table.insert(byTeam[team], brain)
+		end
+		for team, members in ipairs(byTeam) do
+			table.sort(members, function(a, b)
+				return flatDist(a.Root.Position, bp) < flatDist(b.Root.Position, bp)
+			end)
+			local attackDir = if team == 1 then 1 else -1
+			local goal = c + Vector3.new(attackDir * (halfL + 1), 0, 0)
+			for k, brain in ipairs(members) do
+				brain.Humanoid.WalkSpeed = (if ageOf(brain.C) < 13 then 12 else 14) * brain.Pace
+				playTrack(brain, "run", 0.9)
+				local root = brain.Root
+				local target
+				if k <= 2 then
+					-- come at the ball from behind (so the kick goes toward the goal)
+					local behind = bp - (goal - bp).Unit * 1.6
+					target = if k == 1 then behind else bp + Vector3.new(-attackDir * 8, 0, (if bp.Z > c.Z then -1 else 1) * 6)
+				else
+					local homeX = c.X - attackDir * halfL * (0.5 - (k - 3) * 0.2)
+					target = Vector3.new(homeX, c.Y, math.clamp(bp.Z, c.Z - halfW + 3, c.Z + halfW - 3) + (k % 2 - 0.5) * 8)
+				end
+				brain.Humanoid:MoveTo(target)
+				if flatDist(root.Position, bp) < 3.2 and (match.Kick[brain] or 0) < os.clock() then
+					match.Kick[brain] = os.clock() + 0.8
+					match.LastKicker = brain
+					local aim = (goal + Vector3.new(0, 0, math.random(-4, 4)) - bp)
+					aim = Vector3.new(aim.X, 0, aim.Z).Unit
+					local spin = CFrame.Angles(0, math.rad(math.random(-25, 25)), 0)
+					local power = if flatDist(bp, goal) < 20 then math.random(45, 60) else math.random(25, 42)
+					ball.AssemblyLinearVelocity = spin:VectorToWorldSpace(aim) * power + Vector3.new(0, math.random(2, 12), 0)
+					brain.Model:SetAttribute("Kick", os.clock())
+					if math.random() < 0.12 then
+						CitizenService.Say(brain, SOCCER_LINES[math.random(1, #SOCCER_LINES)], "grin", 1.5)
 					end
 				end
 			end
@@ -335,116 +891,892 @@ local function checkBirths(hour)
 end
 
 --------------------------------------------------------------------------------
--- Saving
+-- Arriving and doing things
 --------------------------------------------------------------------------------
-local store
-local function save()
-	if not store then
+arrive = function(brain)
+	local t = brain.Target
+	brain.Points = nil
+	if not t then
+		brain.State = "idle"
+		playTrack(brain, "idle")
 		return
 	end
-	local data = pop:Serialize()
-	pcall(store.SetAsync, store, "Population_v1", data)
+	local plan = t.Plan or {}
+	brain.Building = t.Building
+	brain.Floor = t.Floor or 1
+	if t.Soccer then
+		joinSoccer(brain, t.Soccer)
+		return
+	end
+	if t.Jog and t.Loop then
+		brain.State = "jog"
+		brain.Jog = true
+		brain.Points = t.Loop
+		brain.PointIndex = 1
+		brain.Looping = true
+		applySpeed(brain)
+		brain.Humanoid:MoveTo(t.Loop[1])
+		setAction(brain, "")
+		return
+	end
+	brain.State = "act"
+	local action
+	if t.Spot then
+		action = t.Spot.Action
+		-- the plan might want something else at a flexible spot (eg. reading on the sofa)
+		if plan.Want and t.Home and t.Spot.Action ~= plan.Want and (plan.Want == "read" or plan.Want == "phone" or plan.Want == "tv") and Actions.Get(t.Spot.Action) and Actions.Get(t.Spot.Action).Seated then
+			action = plan.Want
+		end
+		placeAt(brain, t.Spot, action)
+	else
+		action = t.Action or "wait"
+		brain.Root.Anchored = true
+		local p = t.Pos or brain.Root.Position
+		local look = if t.Place and t.Place.Door then t.Place.Door else p + Vector3.new(0, 0, -1)
+		if flatDist(look, p) < 0.5 then
+			look = p + Vector3.new(0, 0, -1)
+		end
+		brain.Root.CFrame = CFrame.lookAt(Vector3.new(p.X, p.Y + rootHeight(brain), p.Z), Vector3.new(look.X, p.Y + rootHeight(brain), look.Z))
+	end
+	if not Actions.Get(action) then
+		action = "wait"
+	end
+	local info = Actions.Get(action)
+	playTrack(brain, if info.Seated or info.Lying or action == "run" or action == "soccer" then nil else "idle")
+	setAction(brain, action)
+	brain.ActUntil = os.clock() + math.random(35, 90)
+	refreshExpression(brain)
+end
+
+--------------------------------------------------------------------------------
+-- Reactions (used by speeches, crimes, soccer, greetings)
+--------------------------------------------------------------------------------
+function CitizenService.CanReact(brain)
+	return brain.State ~= "ko" and brain.State ~= "hospital" and brain.State ~= "talk" and brain.State ~= "police"
+end
+
+-- A quick reaction: an action (cheer, boo, wave, scared...), a line and a face
+-- for a few seconds, then back to what they were doing.
+function CitizenService.React(brain, action, line, expression, seconds, lookAt)
+	if not CitizenService.CanReact(brain) then
+		return
+	end
+	seconds = seconds or 3
+	local before = brain.Model:GetAttribute("Action")
+	local token = {}
+	brain.ReactToken = token
+	local info = Actions.Get(before or "") or {}
+	local turned = false
+	local oldCf = brain.Root.CFrame
+	if lookAt and brain.Root.Anchored and not info.Seated and not info.Lying then
+		local p = brain.Root.Position
+		brain.Root.CFrame = CFrame.lookAt(p, Vector3.new(lookAt.X, p.Y, lookAt.Z))
+		turned = true
+	end
+	if action and not info.Seated and not info.Lying then
+		setAction(brain, action)
+	end
+	if line then
+		CitizenService.Say(brain, line, expression, seconds)
+	elseif expression then
+		brain.Model:SetAttribute("Expression", expression)
+	end
+	task.delay(seconds, function()
+		if brain.ReactToken ~= token or not brain.Model.Parent then
+			return
+		end
+		brain.ReactToken = nil
+		if brain.Model:GetAttribute("Action") == action then
+			setAction(brain, before)
+		end
+		if turned and brain.Root.Anchored and brain.State == "act" then
+			brain.Root.CFrame = oldCf
+		end
+		refreshExpression(brain)
+	end)
+end
+
+function CitizenService.Nearby(position, radius)
+	local out = {}
+	for _, brain in ipairs(list) do
+		if brain.Model.Parent and (brain.Root.Position - position).Magnitude <= radius then
+			table.insert(out, brain)
+		end
+	end
+	return out
+end
+
+function CitizenService.BrainOf(model)
+	return byModel[model]
+end
+
+function CitizenService.GetBrain(id)
+	return brains[id]
+end
+
+--------------------------------------------------------------------------------
+-- Talking to a player: stop, turn, listen
+--------------------------------------------------------------------------------
+function CitizenService.Hold(brain, player)
+	if brain.State == "ko" or brain.State == "hospital" or brain.State == "police" then
+		return false
+	end
+	brain.Held = { Player = player, State = brain.State, Steps = brain.Steps, StepIndex = brain.StepIndex, Points = brain.Points, PointIndex = brain.PointIndex, Action = brain.Model:GetAttribute("Action"), Cf = brain.Root.CFrame, Anchored = brain.Root.Anchored }
+	if brain.Soccer then
+		leaveSoccer(brain)
+		brain.Held.Steps = nil
+	end
+	brain.State = "talk"
+	brain.Points = nil
+	local root = brain.Root
+	local info = Actions.Get(brain.Held.Action or "") or {}
+	if not root.Anchored then
+		brain.Humanoid:MoveTo(root.Position)
+		root.AssemblyLinearVelocity = Vector3.zero
+		root.Anchored = true
+	end
+	playTrack(brain, if info.Seated or info.Lying then nil else "idle")
+	local proot = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+	if proot and not info.Seated and not info.Lying then
+		local p = root.Position
+		root.CFrame = CFrame.lookAt(p, Vector3.new(proot.Position.X, p.Y, proot.Position.Z))
+		setAction(brain, "listen")
+	end
+	brain.Model:SetAttribute("TalkingTo", player.UserId)
+	return true
+end
+
+function CitizenService.Release(brain)
+	local held = brain.Held
+	brain.Held = nil
+	brain.Model:SetAttribute("TalkingTo", nil)
+	brain.Model:SetAttribute("Talking", false)
+	if brain.State ~= "talk" or not held then
+		return
+	end
+	brain.PlanKey = nil -- think again about where to be
+	if held.State == "act" then
+		brain.Root.CFrame = held.Cf
+		setAction(brain, held.Action)
+		brain.State = "act"
+		refreshExpression(brain)
+	elseif held.State == "walk" and held.Steps then
+		brain.Root.Anchored = false
+		brain.State = "walk"
+		brain.Steps = held.Steps
+		brain.StepIndex = held.StepIndex
+		brain.Points = held.Points
+		brain.PointIndex = held.PointIndex or 1
+		setAction(brain, "")
+		if brain.Points then
+			applySpeed(brain)
+			brain.Humanoid:MoveTo(brain.Points[brain.PointIndex])
+			brain.LastMoveAt = os.clock()
+		end
+	else
+		brain.Root.Anchored = false
+		brain.State = "idle"
+		setAction(brain, "")
+	end
+end
+
+--------------------------------------------------------------------------------
+-- Getting hurt, knocked out, fleeing (see CrimeService)
+--------------------------------------------------------------------------------
+local function interruptMovement(brain)
+	if brain.Soccer then
+		leaveSoccer(brain)
+	end
+	if brain.Held then
+		brain.Held = nil
+		brain.Model:SetAttribute("TalkingTo", nil)
+	end
+	brain.Token = {}
+	brain.Steps = nil
+	brain.Points = nil
+	brain.Looping = nil
+	brain.Jog = nil
+end
+
+-- Runs away from a spot for a while, then carries on with the day
+function CitizenService.Flee(brain, from, seconds, line)
+	if brain.State == "ko" or brain.State == "hospital" or brain.State == "police" then
+		return
+	end
+	interruptMovement(brain)
+	local spot = brain.Spot
+	reserve(brain, nil)
+	if brain.Root.Anchored then
+		standAt(brain, spot and spot.CFrame or CFrame.new(brain.Root.Position - Vector3.new(0, rootHeight(brain), 0)))
+	end
+	brain.State = "flee"
+	setAction(brain, "scared")
+	brain.Model:SetAttribute("Expression", "scared")
+	if line then
+		CitizenService.Say(brain, line, "scared", 2.5)
+	end
+	local away = flat(brain.Root.Position - from)
+	away = if away.Magnitude > 0.1 then away.Unit else Vector3.new(1, 0, 0)
+	away = CFrame.Angles(0, math.rad(math.random(-35, 35)), 0):VectorToWorldSpace(away)
+	local dest = brain.Root.Position + away * math.random(35, 55)
+	-- stay inside the city
+	dest = Vector3.new(math.clamp(dest.X, -map.Extent, map.Extent), brain.Root.Position.Y, math.clamp(dest.Z, -map.Extent, map.Extent))
+	brain.Points = { dest }
+	brain.PointIndex = 1
+	brain.LastMoveAt = os.clock()
+	brain.LastPos = brain.Root.Position
+	brain.FleeUntil = os.clock() + (seconds or 8)
+	applySpeed(brain)
+	brain.Humanoid:MoveTo(dest)
+end
+
+-- A quick flinch when hit
+function CitizenService.Hurt(brain, from, line)
+	if brain.State == "ko" or brain.State == "hospital" then
+		return
+	end
+	brain.Model:SetAttribute("Expression", "hurt")
+	brain.Model:SetAttribute("Hit", os.clock())
+	if line then
+		CitizenService.Say(brain, line, "hurt", 1.8)
+	end
+	if not brain.Root.Anchored then
+		local dir = flat(brain.Root.Position - from)
+		if dir.Magnitude > 0.1 then
+			brain.Root.AssemblyLinearVelocity = dir.Unit * 22 + Vector3.new(0, 12, 0)
+		end
+	end
+end
+
+local function hospitalBed(brain)
+	local hospital = map.Places.Hospital
+	if not hospital then
+		return nil
+	end
+	for _, s in ipairs(hospital.Spots) do
+		if s.HospitalBed and free(s, brain) then
+			return s
+		end
+	end
+	for _, s in ipairs(hospital.Spots) do
+		if s.Action == "patient" and free(s, brain) then
+			return s
+		end
+	end
+	return nil
+end
+
+-- Knocked out: falls down, stars spin, then an ambulance ride to the hospital
+-- where they rest in bed for a couple of in-game hours.
+function CitizenService.KnockOut(brain, byName)
+	if brain.State == "ko" or brain.State == "hospital" then
+		return false
+	end
+	interruptMovement(brain)
+	reserve(brain, nil)
+	brain.State = "ko"
+	playTrack(brain, nil)
+	local root = brain.Root
+	local p = root.Position
+	local groundY = p.Y - rootHeight(brain)
+	root.Anchored = true
+	local facing = flat(root.CFrame.LookVector)
+	facing = if facing.Magnitude > 0.1 then facing.Unit else Vector3.new(0, 0, -1)
+	root.CFrame = CFrame.lookAt(Vector3.new(p.X, groundY + 0.6, p.Z), Vector3.new(p.X, groundY + 0.6, p.Z) + facing) * CFrame.Angles(math.rad(90), 0, 0)
+	setAction(brain, "ko")
+	setActivity(brain, "💫 Knocked out!")
+	brain.Model:SetAttribute("Expression", "hurt")
+	brain.Model:SetAttribute("KnockedOut", true)
+	if brain.C and not brain.C.Temp then
+		S.City.Boost(brain.C, -35)
+	end
+	local token = brain.Token
+	task.delay(9, function()
+		if brain.Token ~= token or not brain.Model.Parent then
+			return
+		end
+		brain.Model:SetAttribute("KnockedOut", false)
+		if brain.C.Temp then
+			-- extra police officers just go back to the station
+			CitizenService.Despawn(brain)
+			return
+		end
+		local bed = hospitalBed(brain)
+		brain.State = "hospital"
+		brain.HospitalUntil = gameTime() + 2
+		setActivity(brain, "🤕 Recovering at the hospital")
+		if bed then
+			reserve(brain, bed)
+			brain.Target = { Spot = bed, Building = bed.Building, Floor = bed.Floor or 1, Place = map.Places.Hospital }
+			brain.Building, brain.Floor = bed.Building, bed.Floor or 1
+			placeAt(brain, bed, "patient")
+			setAction(brain, "patient")
+		else
+			local hospital = map.Places.Hospital or map.PlaceList[1]
+			standAt(brain, CFrame.new(hospital.Inside or hospital.Door))
+			brain.Root.Anchored = true
+			setAction(brain, "patient")
+		end
+		brain.Model:SetAttribute("Expression", "sleepy")
+	end)
+	return true
+end
+
+--------------------------------------------------------------------------------
+-- Extra people (police called in by CrimeService)
+--------------------------------------------------------------------------------
+function CitizenService.SpawnExtra(info, cframe)
+	tempId -= 1
+	local c = { Id = tempId, Name = info.Name, First = info.First or info.Name, Job = info.Job, Age = info.Age or 32, Temp = true, Personality = "calm", Hobby = "jogging" }
+	local model, humanoid, root = makeBody(c, cframe)
+	local brain = { C = c, Id = c.Id, Model = model, Humanoid = humanoid, Root = root, Pace = 1.1, Lane = 0, State = "idle", Floor = 1, Temp = true }
+	loadTracks(brain)
+	refreshInfo(brain)
+	setActivity(brain, info.Activity or "🚓 On patrol")
+	model:SetAttribute("Expression", "focused")
+	byModel[model] = brain
+	table.insert(list, brain)
+	return brain
+end
+
+function CitizenService.Despawn(brain)
+	reserve(brain, nil)
+	leaveSoccer(brain)
+	byModel[brain.Model] = nil
+	local index = table.find(list, brain)
+	if index then
+		table.remove(list, index)
+	end
+	if brain.C and brain.C.Id and brains[brain.C.Id] == brain then
+		brains[brain.C.Id] = nil
+	end
+	brain.Model:Destroy()
+end
+
+-- Lets another module steer a brain directly (police chases)
+function CitizenService.Control(brain, on)
+	if on then
+		interruptMovement(brain)
+		reserve(brain, nil)
+		if brain.Root.Anchored then
+			standAt(brain, CFrame.new(brain.Root.Position - Vector3.new(0, rootHeight(brain), 0)))
+		end
+		brain.State = "police"
+		setAction(brain, "")
+		applySpeed(brain)
+	else
+		brain.State = "idle"
+		brain.PlanKey = nil
+	end
+end
+
+function CitizenService.SetGait(brain, speed, gait)
+	brain.Humanoid.WalkSpeed = speed
+	playTrack(brain, gait or "run", math.clamp(speed / 16, 0.6, 1.6))
+end
+
+--------------------------------------------------------------------------------
+-- Spawning citizens
+--------------------------------------------------------------------------------
+local function planKey(plan)
+	return table.concat({ plan.Kind, tostring(plan.Place), tostring(plan.Hobby), tostring(plan.Want), tostring(plan.Recess) }, "|")
+end
+
+local function spawnCitizen(c)
+	local plan = pop:Plan(c, hour(), day())
+	local model, humanoid, root, look = makeBody(c, CFrame.new(0, 200, 0))
+	local info = S.Life.PersonalityInfo and S.Life.PersonalityInfo[c.Personality] or {}
+	local rng = rngFor(c.Id, 1)
+	local age = ageOf(c)
+	local pace = (info.Walk or 1) * rng:NextNumber(0.9, 1.1)
+	if age >= 75 then
+		pace *= 0.7
+	elseif age >= 60 then
+		pace *= 0.85
+	elseif age < 4 then
+		pace *= 0.55
+	elseif age < 13 then
+		pace *= 1.05
+	end
+	local brain = {
+		C = c,
+		Id = c.Id,
+		Model = model,
+		Humanoid = humanoid,
+		Root = root,
+		Look = look,
+		Pace = pace,
+		Lane = rng:NextNumber(-1.7, 1.7),
+		State = "idle",
+		Floor = 1,
+	}
+	brains[c.Id] = brain
+	byModel[model] = brain
+	table.insert(list, brain)
+	loadTracks(brain)
+	refreshInfo(brain)
+	humanoid.Died:Connect(function()
+		-- shouldn't happen (NPCs don't take damage), but just in case: respawn
+		task.wait(3)
+		if brains[c.Id] == brain then
+			CitizenService.Despawn(brain)
+			spawnCitizen(c)
+		end
+	end)
+	brain.Plan = plan
+	brain.PlanKey = planKey(plan)
+	brain.LastAge = age
+	setActivity(brain, plan.Activity)
+	jump(brain, targetFor(brain, plan))
+	return brain
+end
+
+-- how long someone's walk to work or school takes, in in-game hours
+local function commuteHours(c)
+	local home = homeOf(c)
+	local placeId
+	local job = jobOf(c)
+	if job and pop:Stage(c) == "Adult" then
+		placeId = job.place
+	else
+		placeId = pop:SchoolFor(c)
+	end
+	local place = placeId and map.Places[placeId]
+	if not home or not place then
+		return 0.5
+	end
+	local path = map.Route(home.Door, place.Door)
+	local len = 0
+	for k = 2, #path do
+		len += flatDist(path[k], path[k - 1])
+	end
+	local seconds = len / (TRAVEL_SPEED * 0.85)
+	return math.clamp(seconds * 24 / (Config.DAY_LENGTH or 480), 0.2, 2.5)
+end
+
+--------------------------------------------------------------------------------
+-- Babies
+--------------------------------------------------------------------------------
+local function checkBirths()
+	local h = hour()
+	if h < 9 or h > 18 then
+		return
+	end
+	for _, household in ipairs(pop.Households) do
+		if household.Expecting and pop:IsDue(household) then
+			-- both parents made it to the hospital?
+			local ready = true
+			for _, id in ipairs(household.Partners) do
+				local b = brains[id]
+				if b and b.Target and b.Target.Place ~= map.Places.Hospital then
+					ready = false
+				elseif b and b.State == "walk" then
+					ready = false
+				end
+			end
+			if ready or h > 15 then
+				local baby = pop:Birth(household, day())
+				local parents = {}
+				for _, id in ipairs(household.Partners) do
+					local p = pop.Citizens[id]
+					if p then
+						table.insert(parents, p.First)
+						S.City.Boost(p, 30)
+					end
+				end
+				S.City.Adjust("Happiness", 1)
+				S.City.State.Births += 1
+				S.City.News("👶 Welcome to the world, " .. baby.Name .. "! Born to " .. table.concat(parents, " & ") .. " at the hospital.", "Birth")
+				local b = spawnCitizen(baby)
+				-- announce it in the hospital
+				for _, id in ipairs(household.Partners) do
+					local pb = brains[id]
+					if pb then
+						CitizenService.React(pb, "cheer", if id == household.Partners[1] then "It's a baby! Welcome, " .. baby.First .. "! 💕" else nil, "love", 4)
+					end
+				end
+				if b then
+					refreshInfo(b)
+				end
+			end
+		end
+	end
+end
+
+--------------------------------------------------------------------------------
+-- The brain loop
+--------------------------------------------------------------------------------
+local function planFor(brain)
+	local c = brain.C
+	if brain.State == "hospital" then
+		if gameTime() >= (brain.HospitalUntil or 0) then
+			brain.State = "act"
+			brain.Model:SetAttribute("Expression", "happy")
+			CitizenService.Say(brain, "I feel much better now!", "happy", 2)
+			brain.PlanKey = nil
+		else
+			return nil
+		end
+	end
+	return pop:Plan(c, hour(), day())
+end
+
+local function think(brain)
+	if brain.Temp then
+		return
+	end
+	local st = brain.State
+	if st == "ko" or st == "talk" or st == "police" or st == "ride" or st == "chat" or st == "flee" or st == "hospital" and gameTime() < (brain.HospitalUntil or 0) then
+		return
+	end
+	local plan = planFor(brain)
+	if not plan then
+		return
+	end
+	local key = planKey(plan)
+	setActivity(brain, if brain.Soccer then brain.Model:GetAttribute("Activity") else plan.Activity)
+	if key == brain.PlanKey and st ~= "idle" then
+		-- same plan: now and then move to another spot at the same place (browsing
+		-- different aisles, a new machine at the gym...)
+		if st == "act" and brain.ActUntil and os.clock() > brain.ActUntil and plan.Kind ~= "Work" and plan.Kind ~= "Home" and plan.Kind ~= "School" then
+			brain.ActUntil = os.clock() + math.random(35, 90)
+			local t = targetFor(brain, plan)
+			if t.Spot and t.Spot ~= brain.Spot and t.Place and brain.Target and t.Place == brain.Target.Place then
+				go(brain, t)
+			end
+		end
+		return
+	end
+	if brain.Soccer then
+		leaveSoccer(brain)
+	end
+	brain.Plan = plan
+	brain.PlanKey = key
+	local t = targetFor(brain, plan)
+	-- nobody around to see: skip the walk (babies never walk across town)
+	local dest = t.Spot and t.Spot.CFrame.Position or t.Pos or (t.Door or brain.Root.Position)
+	local unseen = nearestPlayerDistance(brain.Root.Position) > WATCH_RADIUS * 2.2 and nearestPlayerDistance(dest) > WATCH_RADIUS * 2.2
+	if ageOf(brain.C) < 3 or (unseen and math.random() < 0.5) then
+		jump(brain, t)
+	else
+		go(brain, t)
+	end
+end
+
+-- a few little things people do on the way
+local PAUSES = { "phone", "wait", "wave" }
+local function walkTick(brain)
+	local points = brain.Points
+	if not points or brain.Root.Anchored then
+		return
+	end
+	local root = brain.Root
+	local target = points[brain.PointIndex]
+	if not target then
+		return
+	end
+	local final = brain.Steps and brain.StepIndex == #brain.Steps and brain.PointIndex == #points
+	local d = flatDist(root.Position, target)
+	local now = os.clock()
+	if d < (if final then 1.3 else 2.2) and math.abs(root.Position.Y - rootHeight(brain) - target.Y) < 6 then
+		brain.PointIndex += 1
+		brain.LastMoveAt = now
+		brain.LastPos = root.Position
+		if brain.PointIndex > #points then
+			if brain.Looping then
+				brain.PointIndex = 1
+			elseif brain.State == "flee" then
+				return
+			else
+				brain.Points = nil
+				nextStep(brain)
+				return
+			end
+		end
+		-- sometimes stop to check the phone or look around (not when late)
+		if brain.State == "walk" and not brain.Late and math.random() < 0.035 and nearestPlayerDistance(root.Position) < WATCH_RADIUS then
+			local action = PAUSES[math.random(1, 2)]
+			brain.Humanoid:MoveTo(root.Position)
+			playTrack(brain, "idle")
+			setAction(brain, action)
+			local token = brain.Token
+			task.delay(math.random(15, 35) / 10, function()
+				if brain.Token == token and brain.State == "walk" and brain.Points then
+					setAction(brain, "")
+					applySpeed(brain)
+					brain.Humanoid:MoveTo(brain.Points[brain.PointIndex] or root.Position)
+					brain.LastMoveAt = os.clock()
+				end
+			end)
+			return
+		end
+		if ageOf(brain.C) < 12 and math.random() < 0.08 then
+			brain.Skip = now + 2
+		end
+		applySpeed(brain)
+		brain.Humanoid:MoveTo(points[brain.PointIndex])
+		brain.MoveIssued = now
+		return
+	end
+	-- keep MoveTo alive (it times out after 8 seconds)
+	if now - (brain.MoveIssued or 0) > 3 then
+		brain.MoveIssued = now
+		brain.Humanoid:MoveTo(target)
+	end
+	-- stuck? jump, then (if nobody's looking) hop past the obstacle
+	if brain.LastPos and (root.Position - brain.LastPos).Magnitude > 1.5 then
+		brain.LastPos = root.Position
+		brain.LastMoveAt = now
+	elseif now - (brain.LastMoveAt or now) > 2.5 then
+		brain.Humanoid.Jump = true
+		if now - brain.LastMoveAt > 5 and (nearestPlayerDistance(root.Position) > 45 or now - brain.LastMoveAt > 12) then
+			root.CFrame = CFrame.new(target + Vector3.new(0, rootHeight(brain) + 0.3, 0))
+			root.AssemblyLinearVelocity = Vector3.zero
+			brain.LastMoveAt = now
+			brain.LastPos = root.Position
+		end
+	end
+end
+
+-- chatting, greeting friends and gossip
+local chatCooldown = {}
+local function startChat(a, b)
+	local now = os.clock()
+	chatCooldown[a] = now + math.random(50, 110)
+	chatCooldown[b] = now + math.random(50, 110)
+	local lines = S.Dialogue and S.Dialogue.SmallTalk(a.C, b.C) or { { 1, "Hi!" }, { 2, "Hey!" } }
+	for _, brain in ipairs({ a, b }) do
+		brain.ChatBack = { Cf = brain.Root.CFrame, Action = brain.Model:GetAttribute("Action") }
+		brain.State = "chat"
+	end
+	local function face(x, y)
+		local info = Actions.Get(x.ChatBack.Action or "") or {}
+		if not info.Seated and not info.Lying then
+			local p = x.Root.Position
+			x.Root.CFrame = CFrame.lookAt(p, Vector3.new(y.Root.Position.X, p.Y, y.Root.Position.Z))
+			setAction(x, "chat")
+		end
+	end
+	face(a, b)
+	face(b, a)
+	task.spawn(function()
+		for _, line in ipairs(lines) do
+			local speaker = if line[1] == 1 then a else b
+			if speaker.State ~= "chat" then
+				break
+			end
+			CitizenService.Say(speaker, line[2], line[3], 2.8)
+			task.wait(3)
+		end
+		-- gossip: they tell each other what they've heard about players
+		local g = S.City.Gossip(a.C, b.C)
+		if g and a.State == "chat" then
+			CitizenService.Say(a, g, "surprised", 3.5)
+			task.wait(3.5)
+		end
+		for _, brain in ipairs({ a, b }) do
+			if brain.State == "chat" and brain.ChatBack then
+				brain.Root.CFrame = brain.ChatBack.Cf
+				setAction(brain, brain.ChatBack.Action)
+				brain.State = "act"
+				refreshExpression(brain)
+			end
+			brain.ChatBack = nil
+		end
+	end)
+end
+
+local greeted = {}
+local function socialTick()
+	local now = os.clock()
+	local idle, walkers = {}, {}
+	for _, brain in ipairs(list) do
+		if not brain.Temp and brain.Model.Parent and nearestPlayerDistance(brain.Root.Position) < WATCH_RADIUS then
+			local action = brain.Model:GetAttribute("Action")
+			if brain.State == "act" and brain.Plan and brain.Plan.Kind ~= "Work" and brain.Plan.Kind ~= "School" and action ~= "sleep" and action ~= "nap" and action ~= "patient" and ageOf(brain.C) >= 4 and (chatCooldown[brain] or 0) < now then
+				table.insert(idle, brain)
+			elseif brain.State == "walk" then
+				table.insert(walkers, brain)
+			end
+		end
+	end
+	-- two people near each other with nothing urgent to do strike up a conversation
+	for i = 1, #idle do
+		local a = idle[i]
+		if a.State == "act" then
+			for j = i + 1, #idle do
+				local b = idle[j]
+				if b.State == "act" and (a.Root.Position - b.Root.Position).Magnitude < 8 then
+					local infoA = S.Life.PersonalityInfo[a.C.Personality] or {}
+					local infoB = S.Life.PersonalityInfo[b.C.Personality] or {}
+					local friends = table.find(a.C.Friends or {}, b.C.Id) or a.C.Household == b.C.Household
+					local chance = ((infoA.Chat or 0.5) + (infoB.Chat or 0.5)) / 2 * (if friends then 1.4 else 0.6)
+					if math.random() < chance * 0.5 then
+						startChat(a, b)
+						break
+					end
+				end
+			end
+		end
+	end
+	-- friends passing on the street wave and say hi
+	for _, a in ipairs(walkers) do
+		for _, id in ipairs(a.C.Friends or {}) do
+			local b = brains[id]
+			if b and b.Model.Parent and (b.State == "walk" or b.State == "act") and (a.Root.Position - b.Root.Position).Magnitude < 14 then
+				local k = math.min(a.Id, b.Id) .. ":" .. math.max(a.Id, b.Id)
+				if (greeted[k] or 0) < now then
+					greeted[k] = now + 90
+					CitizenService.React(a, "wave", S.Dialogue and S.Dialogue.Greeting(a.C, b.C) or ("Hi " .. b.C.First .. "!"), "happy", 2)
+					task.delay(0.8, function()
+						CitizenService.React(b, "wave", S.Dialogue and S.Dialogue.Greeting(b.C, a.C) or ("Hey " .. a.C.First .. "!"), "happy", 2)
+					end)
+				end
+			end
+		end
+	end
+	-- people who like a player say hi when they come close
+	for _, player in ipairs(Players:GetPlayers()) do
+		local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+		if root then
+			for _, brain in ipairs(CitizenService.Nearby(root.Position, 12)) do
+				if not brain.Temp and CitizenService.CanReact(brain) and brain.State ~= "chat" then
+					local k = brain.Id .. ":" .. player.UserId
+					if (greeted[k] or 0) < now then
+						greeted[k] = now + 150
+						local opinion = S.City.Opinion(brain.C, player)
+						local wanted = (player:GetAttribute("Wanted") or 0) > 0
+						if wanted then
+							CitizenService.React(brain, nil, ({ "Stay away from me!", "Eek! It's that criminal!", "Somebody call the police!" })[math.random(1, 3)], "scared", 2.5)
+						elseif opinion >= 25 then
+							CitizenService.React(brain, "wave", S.Dialogue and S.Dialogue.GreetPlayer(brain.C, player, opinion) or ("Hi " .. player.DisplayName .. "!"), "happy", 2.5, root.Position)
+						elseif opinion <= -25 then
+							CitizenService.React(brain, nil, S.Dialogue and S.Dialogue.GreetPlayer(brain.C, player, opinion) or "Hmph.", "angry", 2.5)
+						end
+					end
+				end
+			end
+		end
+	end
+end
+
+function CitizenService.OnNewDay(newDay, events)
+	for _, brain in ipairs(table.clone(list)) do
+		if not brain.Temp then
+			brain.C.CommuteHours = commuteHours(brain.C)
+			local oldStage = brain.Model:GetAttribute("Stage")
+			refreshInfo(brain)
+			-- growing up: rebuild the body at the new size and look
+			if oldStage ~= brain.Model:GetAttribute("Stage") or (ageOf(brain.C) < 18 and (brain.Model:GetAttribute("Age") or 0) ~= (brain.LastAge or -1)) then
+				brain.LastAge = ageOf(brain.C)
+				local c = brain.C
+				local cf = brain.Root.CFrame
+				CitizenService.Despawn(brain)
+				local fresh = spawnCitizen(c)
+				if fresh and not fresh.Root.Anchored then
+					fresh.Root.CFrame = cf
+				end
+			end
+		end
+	end
+	for _, e in ipairs(events or {}) do
+		if e.Citizen and brains[e.Citizen.Id] then
+			refreshInfo(brains[e.Citizen.Id])
+		end
+	end
 end
 
 --------------------------------------------------------------------------------
 -- Start
 --------------------------------------------------------------------------------
-function CitizenService.Start(builtMap)
-	map = builtMap or MapBuilder.Build()
-	pop = Population.new(Config, map.Homes)
-	CitizenService.Population = pop
+function CitizenService.Start(services)
+	S = services
+	map, pop = S.Map, S.Life
 	setupPhysics()
-	folder = Instance.new("Folder")
+	folder = workspace:FindFirstChild("Citizens") or Instance.new("Folder")
 	folder.Name = "Citizens"
 	folder.Parent = workspace
-
-	-- load the saved city (ages, families, babies born in earlier servers)
-	local loaded = false
-	if Config.SAVE_POPULATION then
-		local ok, ds = pcall(DataStoreService.GetDataStore, DataStoreService, Config.DATASTORE_NAME or "AICity_v1")
-		if ok then
-			store = ds
-			local ok2, data = pcall(ds.GetAsync, ds, "Population_v1")
-			if ok2 and data then
-				loaded = pop:Load(data)
-			end
-		end
-	end
-	if not loaded then
-		pop:Generate()
-	end
-	day = pop.Day
 	for _, c in ipairs(pop.List) do
-		c.LastStage = pop:Stage(c, day) -- so only changes from now on are announced
+		c.CommuteHours = commuteHours(c)
 	end
-
-	-- everyone starts where their routine says they should be right now
-	local hour = Lighting.ClockTime
-	for n, c in ipairs(pop.List) do
-		local plan = pop:Plan(c, hour, day)
-		local dest = destination(c, plan)
-		local brain = spawnCitizen(c, dest.Point)
-		if brain then
-			brain.At = dest.Place or dest.Point
-			brain.Key = plan.Kind .. ":" .. tostring(plan.Place or plan.Hobby or "")
-			brain.Activity = plan.Activity
-			brain.Arrived = plan.Kind
-			refreshPlate(brain, c, plan.Activity)
+	refreshPlayers()
+	for k, c in ipairs(pop.List) do
+		local ok, err = pcall(spawnCitizen, c)
+		if not ok then
+			warn("[CitizenService] Couldn't spawn " .. tostring(c.Name) .. ": " .. tostring(err))
 		end
-		if n % 8 == 0 then
-			task.wait() -- spread the building over a few frames
+		if k % 6 == 0 then
+			task.wait()
 		end
 	end
-	pushNews("🏙️ " .. #pop.List .. " people live in AI City. Talk to them, give speeches, win elections!")
+	for _, brain in ipairs(list) do
+		brain.LastAge = ageOf(brain.C)
+	end
 
-	-- the routine: every second, send anyone whose plan changed on their way
-	task.spawn(function()
-		lastHour = Lighting.ClockTime
-		while true do
-			task.wait(1)
-			local hour = Lighting.ClockTime
-			if lastHour and hour < lastHour - 12 then
-				-- midnight: a new day
-				day += 1
-				handleEvents(pop:NewDay(day))
-				CitizenService.Event:Fire("NewDay", { Day = day })
-				for id, brain in pairs(brains) do
-					local c = pop.Citizens[id]
-					if c then
-						refreshPlate(brain, c)
-					end
+	local acc, slow, social, births, faces = 0, 0, 0, 0, 0
+	local order = 0
+	RunService.Heartbeat:Connect(function(dt)
+		acc += dt
+		if acc < 0.1 then
+			return
+		end
+		local step = acc
+		acc = 0
+		refreshPlayers()
+		for _, brain in ipairs(list) do
+			if brain.Points and brain.Model.Parent then
+				local ok, err = pcall(walkTick, brain)
+				if not ok then
+					warn("[CitizenService] walk: " .. tostring(err))
+					brain.Points = nil
 				end
 			end
-			lastHour = hour
-			checkBirths(hour)
-			for _, c in ipairs(pop.List) do
-				local brain = brains[c.Id]
-				if brain and brain.Root.Parent then
-					local plan = pop:Plan(c, hour, day)
-					local key = plan.Kind .. ":" .. tostring(plan.Place or plan.Hobby or "")
-					if key ~= brain.Key then
-						brain.Key = key
-						brain.Arrived = nil
-						travel(brain, c, plan)
-					end
+			if brain.State == "flee" and brain.FleeUntil and os.clock() > brain.FleeUntil then
+				brain.FleeUntil = nil
+				brain.State = "idle"
+				brain.PlanKey = nil
+				setAction(brain, "")
+			end
+		end
+		soccerTick(step)
+		-- think about a slice of the city every tick (everyone about once a second)
+		slow += step
+		local count = math.max(1, math.ceil(#list * step))
+		for _ = 1, count do
+			order = order % math.max(1, #list) + 1
+			local brain = list[order]
+			if brain and brain.Model.Parent then
+				local ok, err = pcall(think, brain)
+				if not ok then
+					warn("[CitizenService] think: " .. tostring(err))
 				end
 			end
 		end
-	end)
-
-	-- save every 2 minutes and when the server closes
-	task.spawn(function()
-		while true do
-			task.wait(120)
-			save()
+		social += step
+		if social >= 2 then
+			social = 0
+			pcall(socialTick)
+		end
+		faces += step
+		if faces >= 5 then
+			faces = 0
+			for _, brain in ipairs(list) do
+				if brain.State == "act" and not brain.ReactToken and not (brain.Model:GetAttribute("Talking")) then
+					refreshExpression(brain)
+				end
+				if brain.C and not brain.C.Temp then
+					local h = pop.Households[brain.C.Household]
+					local due = h and pop:DaysToGo(h)
+					brain.Model:SetAttribute("Expecting", if due and h.Expecting.Carrier == brain.C.Id then due else -1)
+				end
+			end
+		end
+		births += step
+		if births >= 3 then
+			births = 0
+			pcall(checkBirths)
 		end
 	end)
-	game:BindToClose(save)
-	return pop
-end
-
-function CitizenService.GetBrain(id)
-	return brains[id]
 end
 
 return CitizenService
