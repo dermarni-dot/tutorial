@@ -27,7 +27,7 @@ Players can talk to anyone, give speeches, run for mayor and pass laws. They can
 | ⚽ **After-school life** | Real soccer games (two teams, a ball, goals, cheering), shooting hoops, swings, the arcade, homework at the library, and weekend family outings. |
 | 💬 **Dialogue** | Talk to anyone. Answers depend on their personality, mood, job, the city and what they remember about you. |
 | 🗳️ **Politics** | Speeches, elections with citizen candidates, votes, a mayor's salary and daily policies. |
-| ⚔️ **Fighting and crime** | Fists, a bat, a hammer and a knife, with attack animations, blocking, and citizens who fight back. Also pickpocketing and robberies. Hoodies, ski masks and disguises make you harder to recognize, especially at night. Witnesses need line of sight. Wanted stars bring police chases with backup, and getting caught means jail and a fine. |
+| ⚔️ **Fighting and crime** | Fists, a bat, a hammer and a knife, with attack animations, blocking, and citizens who fight back. Strangers get into street fights too, with crowds, phones out and police breaking them up. Also pickpocketing and robberies. Hoodies, ski masks and disguises make you harder to recognize, especially at night. Witnesses need line of sight. Wanted stars bring police chases with backup, and getting caught means jail and a fine. |
 | 🖥️ **A full interface** | <ul><li>HUD: clock, city mood, rotating minimap, coins, wanted stars, a news ticker and a health bar that glows red when you're hurt.</li><li>📱 **A phone** (**Tab**) with every app: map, people, news, vote, goals, speech, mayor, help and settings.</li><li>🎯 **Daily goals**: four new ones every day, such as "chat with 3 citizens" or "visit Mirror Lake". Each pays coins.</li><li>A weapon hotbar with a cooldown sweep, a **target card** for whoever you're facing (name, job, health), and health bars over people who are hurt.</li><li>A camera flyover behind the welcome screen.</li><li>Windows: a city map, a people directory, profile cards with a 3D portrait, voting, speeches, the mayor's desk, conversations, elevators, the weapons shop, help and settings.</li></ul> |
 
 ## The city
@@ -157,6 +157,12 @@ Street lamps, windows, porch lights, neon signs and stadium floodlights switch o
   - **Change your look.** Take off or swap your outfit where nobody can see you, and the police keep looking for the old one. They only recognize you up close, and the stars fade about 3 times faster (7 seconds instead of 22+ in the test).
   - The HUD shows how hidden you are right now ("🥷 90% hidden 🌙"), and the police tip tells you when they're looking for your old outfit.
   - The police take your ski mask when they arrest you.
+- 👊 **Street fights:** now and then two strangers on the street get into it, and you can watch it happen.
+  - It starts with an argument ("Hey! You bumped into me!" / "So what? Watch where YOU'RE going!"), then they square up, circle each other and swing. They land punches, block, and get knocked back, and health bars and hit numbers show over their heads.
+  - People walking by stop and form a ring. Some cheer ("Fight! Fight! Fight!"), some film it on their phones, and kids and shy people yell for someone to stop them. Usually somebody calls the police.
+  - It ends when someone is knocked out (the ambulance takes them to the hospital), one of them runs for it, they get tired of it, or an officer arrives, breaks it up and walks the one who started it to the station. It makes the news either way.
+  - Hold **E** on a fighter to **break it up**: +20 coins, and everyone who saw it likes you more. It's also a daily goal. Or jump in and hit one of them yourself. That's a crime like any other, and they'll turn on you.
+  - Grumpy and sporty people and anyone in a bad mood start fights more often, and people who've fought before might go again. Fights happen more at night and when the city's Safety is low. Turn them off with `Config.STREET_FIGHTS = false`, or change how often they happen with `Config.FIGHT_COOLDOWN` (seconds, default 140).
 - **BUSTED:** a fine and time in the police station's jail cell.
 - **Kids and babies can't be hurt.**
 
@@ -217,6 +223,7 @@ Every action is also a button on the action bar for mobile players.
 | `DialogueService` | Modules | Conversations with players, and citizens' small talk. |
 | `CrimeService` | Modules | Fighting (attacks, citizens fighting back), crimes, witnesses, wanted stars, police chases, SWAT, the helicopter, hiding, jail. |
 | `CombatService` | Modules | Weapons as tools, the Hardware store shop, blocking, waking up at the hospital, confiscation. |
+| `BrawlService` | Modules | Street fights between citizens: arguments, punches, the crowd, the police, breaking them up. |
 | `DisguiseService` | Modules | Hoodies, ski masks and disguise kits: the Clothing store, the wardrobe, how they look on your character, nervous citizens. |
 | `PlayerService` | Modules | Elevators, profiles, the directory, finding people. |
 | `CitizenLook` | Modules | Outfits, hair, items, faces and sizes. |
@@ -262,6 +269,7 @@ Your Config is the base. Every key you had is still there, and these were added:
 | 10 new places | Middle School, High School, Daycare, Museum, Post Office, Arcade, Diner, Community Center, Willow Park, Mirror Lake. |
 | `WEEKENDS` (optional) | Set to `false` to turn off weekends. |
 | `RUN_CITIZENS`, `SAVE_POPULATION` (optional) | Both default to on. |
+| `STREET_FIGHTS`, `FIGHT_COOLDOWN` (optional) | Street fights between citizens are on, about one every 140 seconds near a player. |
 
 ## Tested
 
@@ -295,6 +303,11 @@ The game was run in a Luau test harness (a small Roblox simulation), and these c
     - a masked crime at night that nobody recognized (no notoriety);
     - changing the outfit out of sight and losing the police 3 times faster;
     - a citizen getting nervous about a ski mask at noon;
+  - street fights:
+    - a fight starting on its own near the player (a grumpy citizen started it);
+    - punches landing, a crowd forming, the police being called;
+    - the player breaking one up (+20 coins, news) and jumping into another;
+    - fights ending with knockouts, people running away, and giving up;
   - an elevator ride to floor 9;
   - a vote and an election (and winning it).
 - **The client:** every window and every server message, and poses on 20 citizens at once.

@@ -95,6 +95,9 @@
         },
         "DisguiseService": {
           "$path": "src/DisguiseService.lua"
+        },
+        "BrawlService": {
+          "$path": "src/BrawlService.lua"
         }
       }
     },

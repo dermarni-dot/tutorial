@@ -445,6 +445,10 @@ local function attack(player, data)
 		S.City.Toast(player, "🚫", "Not a chance", "You can't hurt kids.", Color3.fromRGB(200, 90, 90))
 		return { Ok = true, Hit = false, Weapon = id }
 	end
+	-- jumping into a street fight: this one turns on you
+	if S.Brawl then
+		S.Brawl.Interrupt(brain)
+	end
 	brain.HP = (brain.HP or hpFor(brain)) - w.Damage
 	brain.LastHit = now
 	brain.Model:SetAttribute("MaxHP", hpFor(brain))
