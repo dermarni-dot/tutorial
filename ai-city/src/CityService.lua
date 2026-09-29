@@ -430,6 +430,7 @@ local function loadPlayer(player)
 		LastSpeech = -math.huge,
 		LastPolicyDay = -1,
 		Crimes = tonumber(saved.Crimes) or 0,
+		Notoriety = tonumber(saved.Notoriety) or 0,
 		Talks = tonumber(saved.Talks) or 0,
 		Arrests = tonumber(saved.Arrests) or 0,
 		Terms = tonumber(saved.Terms) or 0,
@@ -438,6 +439,7 @@ local function loadPlayer(player)
 	player:SetAttribute("Coins", data.Coins)
 	player:SetAttribute("Title", if state.Mayor and state.Mayor.UserId == player.UserId then "Mayor" else "Citizen")
 	player:SetAttribute("Wanted", 0)
+	player:SetAttribute("Notoriety", math.floor(data.Notoriety))
 	CityService.Send(player, { Type = "Welcome", Day = state.Day, Weekday = weekday(state.Day), Mayor = state.Mayor and state.Mayor.Name, State = CityService.CityState() })
 end
 
@@ -445,7 +447,7 @@ local function savePlayer(player)
 	local data = playerData[player]
 	if data and playerStore then
 		pcall(function()
-			playerStore:SetAsync("p_" .. player.UserId, { Coins = data.Coins, Crimes = data.Crimes, Talks = data.Talks, Arrests = data.Arrests, Terms = data.Terms })
+			playerStore:SetAsync("p_" .. player.UserId, { Coins = data.Coins, Crimes = data.Crimes, Notoriety = data.Notoriety, Talks = data.Talks, Arrests = data.Arrests, Terms = data.Terms })
 		end)
 	end
 end

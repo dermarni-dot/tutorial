@@ -253,6 +253,7 @@ local function build()
 	-- what the police are doing: chasing you, searching for you, or you're hidden
 	refs.Police = UI.chip(right, "", C.Red, { LayoutOrder = 2, TextSize = 13, Size = UDim2.fromOffset(0, 28), Visible = false })
 	refs.PoliceTip = UI.text(right, "", 12, UI.Font, C.Sub, { LayoutOrder = 2, Size = UDim2.fromOffset(250, 30), TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Right, Visible = false })
+	refs.Notoriety = UI.chip(right, "", UI.rgb(120, 60, 30), { LayoutOrder = 2, TextSize = 12, Size = UDim2.fromOffset(0, 24), Visible = false })
 	refs.Mayor = UI.chip(right, "🏛️ Mayor: —", C.Panel2, { LayoutOrder = 3, TextSize = 13, Size = UDim2.fromOffset(0, 28) })
 	refs.Election = UI.chip(right, "🗳️ Election in 8:00", C.Panel2, { LayoutOrder = 4, TextSize = 13, Size = UDim2.fromOffset(0, 28) })
 	toastHolder = UI.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 5, Parent = right })
@@ -443,6 +444,10 @@ local function frame(dt)
 		local hidden = player:GetAttribute("Hiding")
 		local state = player:GetAttribute("PoliceState")
 		local near = player:GetAttribute("PoliceNear")
+		local count = player:GetAttribute("PoliceCount") or 0
+		local heli = player:GetAttribute("Helicopter")
+		local force = "  ·  👮×" .. count .. (if heli then " 🚁" else "")
+		local level = player:GetAttribute("PoliceLevel")
 		refs.WantedEye.Text = if seen then "👀" elseif hidden then "🫥" else "🔎"
 		for k = 1, stars do
 			refs.Stars[k].TextColor3 = if seen and math.floor(t * 5) % 2 == 0 then C.Red else C.Gold
@@ -450,25 +455,29 @@ local function frame(dt)
 		refs.Police.Visible = true
 		refs.PoliceTip.Visible = true
 		if seen then
-			refs.Police.Text = "🚨 CHASING YOU" .. (if near then "  ·  👮 " .. near .. " studs" else "")
+			refs.Police.Text = "🚨 CHASING YOU" .. force .. (if near then "  ·  " .. near .. " studs" else "")
 			refs.Police.BackgroundColor3 = C.Red
-			refs.PoliceTip.Text = "Break their line of sight: duck around a corner or into a building."
+			refs.PoliceTip.Text = (if level then "<b>" .. level .. "</b>. " else "") .. "Break their line of sight: duck around a corner or into a building."
 		elseif hidden then
-			refs.Police.Text = "🫥 HIDDEN in " .. tostring(hidden) .. (if near then "  ·  👮 " .. near .. " studs" else "")
+			refs.Police.Text = "🫥 HIDDEN in " .. tostring(hidden) .. force .. (if near then "  ·  " .. near .. " studs" else "")
 			refs.Police.BackgroundColor3 = C.Purple
 			refs.PoliceTip.Text = "Stay still... your stars fade faster while you hide. Space to get out."
 			refs.EdgeStroke.Color = C.Purple
 			refs.EdgeStroke.Transparency = 0.75 + (math.sin(t * 2) + 1) / 2 * 0.2
 		else
-			refs.Police.Text = "🔎 THEY'RE SEARCHING" .. (if near then "  ·  👮 " .. near .. " studs" else "")
+			refs.Police.Text = "🔎 THEY'RE SEARCHING" .. force .. (if near then "  ·  " .. near .. " studs" else "")
 			refs.Police.BackgroundColor3 = C.Orange
-			refs.PoliceTip.Text = "They lost sight of you! Hide in a trash can, hedge or bush (Q), or keep running."
+			refs.PoliceTip.Text = (if level then "<b>" .. level .. "</b>. " else "") .. "They lost sight of you! Hide in a trash can, hedge or bush (Q)" .. (if heli then ", or get indoors away from the helicopter." else ", or keep running.")
 		end
 	else
 		refs.EdgeStroke.Transparency = 1
 		refs.Police.Visible = false
 		refs.PoliceTip.Visible = false
 	end
+	-- notoriety: repeat offenders get more police, faster
+	local notoriety = player:GetAttribute("Notoriety") or 0
+	refs.Notoriety.Visible = notoriety >= 4
+	refs.Notoriety.Text = if notoriety >= 12 then "🔥🔥🔥 Most wanted in the city" elseif notoriety >= 8 then "🔥🔥 The police know your face" else "🔥 Known to the police"
 	-- jail
 	local jailUntil = player:GetAttribute("JailUntil")
 	if jailUntil then

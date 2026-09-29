@@ -109,7 +109,17 @@ Street lamps, windows, porch lights, neon signs and stadium floodlights switch o
 - 🫳 **Pickpocket:** hold **G** next to someone. Facing them makes it more likely they'll notice.
 - 💰 **Rob a register or the bank vault:** hold **R**. The bank has a silent alarm.
 - **Witnesses** need to see it happen (walls block their view), or be very close. They scream, run and remember it, tell everyone, and call the police.
-- **Wanted stars ⭐:** the police always come. On-duty officers join the chase, and backup units arrive from out of sight (more of them with more stars). Your screen pulses red and blue while they can see you.
+- **Wanted stars ⭐: the more crime, the harder they come.** Every crime someone sees adds stars. A crime committed right in front of the police adds an extra one.
+
+  | Stars | Who comes after you | How hard |
+  |---|---|---|
+  | ⭐ | 2 officers | They run at 17 and see 85 studs. |
+  | ⭐⭐ | 3 officers | They're faster, see farther and search a wider area. |
+  | ⭐⭐⭐ | 5 officers, from anywhere in the city | They run at 20, backup arrives every 5 s, and the stars take longer to fade. |
+  | ⭐⭐⭐⭐ | 7, half of them SWAT (helmets, armor, harder to knock out) | They check hiding spots more often. |
+  | ⭐⭐⭐⭐⭐ | 10 with SWAT, plus a 🚁 police helicopter | The helicopter circles where you were last seen, and its searchlight spots you from the sky unless you're indoors or hidden. |
+
+- **Notoriety 🔥:** every crime makes the police remember your face. Repeat offenders start at a higher wanted level and take longer to lose. Notoriety slowly cools off while you stay out of trouble, and it's saved between visits. The HUD shows "🔥 Known to the police", then "The police know your face", then "Most wanted in the city".
 - **Losing them:** the police only know where they **last saw** you, and your HUD shows "🚨 CHASING", "🔎 SEARCHING" or "🫥 HIDDEN".
   - Break their line of sight by ducking around a corner or into a building. They run to where they last saw you and search the area, checking nearby hiding spots.
   - **Hide** in one of about 150 hiding spots: trash cans downtown, hedges in front of houses, and bushes in the parks. Hold **Q** next to one and you vanish inside, so the police can't see you. An officer searching right next to your spot might still check it, and if one **saw you climb in**, they'll come straight for it.
@@ -226,6 +236,7 @@ The game was run in a Luau test harness (a small Roblox simulation), and these c
   - three punches, a knockout, a witness and 3 wanted stars;
   - a police chase, an arrest, jail and release;
   - running out of sight (the police search where they last saw you), hiding in a trash can until the stars fade, and getting found after being seen climbing in;
+  - six crimes in a row: 2 stars and 3 officers, then 4 stars with SWAT, then 5 stars with 10 police, SWAT and the helicopter;
   - an elevator ride to floor 9;
   - a vote and an election (and winning it).
 - **The client:** every window and every server message, and poses on 20 citizens at once.

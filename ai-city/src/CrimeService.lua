@@ -47,6 +47,23 @@ local COP_LINES = { "Stop! Police!", "Freeze!", "You're under arrest!", "Don't m
 local SEARCH_LINES = { "Where'd they go?", "Check behind the bins!", "They can't have gone far...", "Spread out!", "I lost visual!", "Search the area!" }
 local FOUND_LINES = { "Found you!", "Gotcha!", "Come on out of there!", "Nice try!" }
 
+-- The more crime, the harder they come: what each wanted level sends after you.
+--   Cops: how many chase you · Speed: how fast they run · Sight: how far they see
+--   Check: chance per tick to check a hiding spot they're standing next to
+--   Search: how wide they search · Fade: seconds out of sight to lose a star
+--   Backup: seconds between backup units · Reach: how far on-duty cops respond from
+local LEVELS = {
+	{ Cops = 2, Speed = 17, Sight = 85, Check = 0.06, Search = 25, Fade = 22, Backup = 9, Reach = 320, Label = "🚓 A patrol is after you" },
+	{ Cops = 3, Speed = 18.5, Sight = 95, Check = 0.08, Search = 30, Fade = 28, Backup = 7, Reach = 420, Label = "🚓🚓 Police units are after you" },
+	{ Cops = 5, Speed = 20, Sight = 110, Check = 0.11, Search = 38, Fade = 36, Backup = 5, Reach = 900, Label = "🚨 Every cop in the city is after you" },
+	{ Cops = 7, Speed = 21.5, Sight = 125, Check = 0.15, Search = 46, Fade = 46, Backup = 4, Reach = 900, Swat = 0.5, Label = "🛡️ SWAT is on the way" },
+	{ Cops = 10, Speed = 23, Sight = 140, Check = 0.2, Search = 55, Fade = 58, Backup = 3, Reach = 900, Swat = 1, Heli = true, Label = "🚁 SWAT and a police helicopter" },
+}
+local function levelOf(w)
+	return LEVELS[math.clamp(w.Stars, 1, #LEVELS)]
+end
+CrimeService.Levels = LEVELS
+
 --------------------------------------------------------------------------------
 -- Helpers
 --------------------------------------------------------------------------------
@@ -57,7 +74,7 @@ end
 
 local function isPolice(brain)
 	local job = brain.C and brain.C.Job
-	return job == "Police Officer" or job == "Night Officer"
+	return job == "Police Officer" or job == "Night Officer" or job == "SWAT Officer"
 end
 
 local function canBeHurt(brain)
@@ -75,7 +92,7 @@ rayParams.FilterType = Enum.RaycastFilterType.Exclude
 rayParams.IgnoreWater = true
 
 -- can this citizen see that spot? (walls block the view)
-local function canSee(brain, target, ignore)
+local function canSee(brain, target, ignore, range)
 	local head = brain.Model:FindFirstChild("Head")
 	if not head then
 		return false
@@ -85,7 +102,7 @@ local function canSee(brain, target, ignore)
 	if d.Magnitude <= HEAR then
 		return true
 	end
-	if d.Magnitude > SIGHT then
+	if d.Magnitude > (range or SIGHT) then
 		return false
 	end
 	-- people see what's roughly in front of them (not behind)
@@ -181,9 +198,23 @@ local function report(player, position, victim, severity, what, gossip, stars)
 	local pd = S.City.Data(player)
 	if pd then
 		pd.Crimes += 1
+		-- notoriety: every crime makes the police remember your face a bit more
+		pd.Notoriety = (pd.Notoriety or 0) + severity
+		player:SetAttribute("Notoriety", math.floor(pd.Notoriety))
 	end
 	if reported then
-		CrimeService.AddStars(player, stars, #seen .. (if #seen == 1 then " person saw" else " people saw") .. " you " .. what .. "!")
+		local w = wanted[player]
+		local extra, why = 0, nil
+		if w and w.Stars > 0 and w.Mode == "chasing" then
+			-- right in front of the police!
+			extra, why = 1, "Right in front of the police! "
+		elseif pd and pd.Notoriety >= 8 and (not w or w.Stars == 0) then
+			extra, why = 1, "The police know your face. "
+		end
+		if w then
+			w.Crimes = (w.Crimes or 0) + 1
+		end
+		CrimeService.AddStars(player, stars + extra, (why or "") .. #seen .. (if #seen == 1 then " person saw" else " people saw") .. " you " .. what .. "!")
 	else
 		S.City.Toast(player, "🤫", "Nobody saw that...", "But the city feels a little less safe.", Color3.fromRGB(120, 120, 140))
 	end
@@ -241,7 +272,7 @@ local function punch(player, data)
 			S.City.Remember(c, player, "knocked me out!", -60, "knocked out " .. c.First)
 			S.City.News("💫 " .. name .. " was knocked out on " .. streetNear(brain.Root.Position) .. "! Paramedics took them to the hospital.", "Crime")
 		end
-		report(player, brain.Root.Position, brain, 3, "knock out " .. c.First, "knocked out " .. c.First .. " in the street", if isPolice(brain) then 3 else 2)
+		report(player, brain.Root.Position, brain, 3, "knock out " .. c.First, "knocked out " .. c.First .. " in the street", if isPolice(brain) then 2 else 1)
 		return { Ok = true, Hit = true, KO = true, Name = c.First }
 	end
 	-- a hit: flinch, then fight back or run
@@ -512,6 +543,10 @@ local function freeChasers(w)
 		end
 	end
 	w.Chasers = {}
+	if w.Heli then
+		w.Heli.Model:Destroy()
+		w.Heli = nil
+	end
 end
 
 local function arrest(player)
@@ -544,7 +579,8 @@ local function arrest(player)
 	S.City.Adjust("Safety", 2 + stars)
 end
 
-local function spawnBackup(player, root)
+local swatNames = { "Carter", "Okafor", "Tanaka", "Silva", "Haddad", "Larsen", "Brooks", "Mensah" }
+local function spawnBackup(player, root, swat)
 	-- backup arrives from a sidewalk out of sight
 	local best
 	for _ = 1, 20 do
@@ -556,10 +592,96 @@ local function spawnBackup(player, root)
 		end
 	end
 	best = best or (root.Position + Vector3.new(60, 0, 0))
-	local name = officerNames[math.random(1, #officerNames)]
-	local brain = S.Citizens.SpawnExtra({ Name = name, First = name, Job = "Police Officer", Age = math.random(25, 50), Activity = "🚓 Chasing a suspect" }, CFrame.new(best + Vector3.new(0, 3, 0)))
+	local name = if swat then "SWAT " .. swatNames[math.random(1, #swatNames)] else officerNames[math.random(1, #officerNames)]
+	local brain = S.Citizens.SpawnExtra({ Name = name, First = name, Job = if swat then "SWAT Officer" else "Police Officer", Age = math.random(25, 45), Activity = if swat then "🛡️ SWAT: moving in" else "🚓 Chasing a suspect" }, CFrame.new(best + Vector3.new(0, 3, 0)))
+	brain.HP = if swat then 250 else 150
 	S.Citizens.Control(brain, true)
 	return brain
+end
+
+--------------------------------------------------------------------------------
+-- The police helicopter (5 stars): circles where you were last seen and
+-- lights you up with its searchlight. It can't see you indoors or hidden.
+--------------------------------------------------------------------------------
+local function makeHelicopter(pos)
+	local model = Instance.new("Model")
+	model.Name = "PoliceHelicopter"
+	local function piece(name, size, offset, color, material, shape)
+		local p = Instance.new("Part")
+		p.Name = name
+		p.Size = size
+		p.Color = color
+		p.Material = material or Enum.Material.SmoothPlastic
+		p.Anchored = true
+		p.CanCollide = false
+		p.CanQuery = false
+		p.CanTouch = false
+		if shape then
+			p.Shape = shape
+		end
+		p:SetAttribute("Offset", offset)
+		p.Parent = model
+		return p
+	end
+	local body = piece("Body", Vector3.new(6, 5, 11), CFrame.new(), Color3.fromRGB(30, 40, 90))
+	piece("Window", Vector3.new(5.6, 3, 3), CFrame.new(0, 0.6, -4.8), Color3.fromRGB(150, 200, 240), Enum.Material.Glass)
+	piece("Stripe", Vector3.new(6.1, 1, 11.1), CFrame.new(0, -0.8, 0), Color3.fromRGB(240, 240, 240))
+	piece("Tail", Vector3.new(1.4, 1.4, 11), CFrame.new(0, 0.8, 10), Color3.fromRGB(30, 40, 90))
+	piece("TailFin", Vector3.new(0.4, 3, 2), CFrame.new(0, 2, 15), Color3.fromRGB(30, 40, 90))
+	piece("Skid", Vector3.new(0.5, 0.5, 10), CFrame.new(-2.6, -3.4, 0), Color3.fromRGB(40, 40, 44), Enum.Material.Metal)
+	piece("Skid", Vector3.new(0.5, 0.5, 10), CFrame.new(2.6, -3.4, 0), Color3.fromRGB(40, 40, 44), Enum.Material.Metal)
+	piece("Rotor", Vector3.new(24, 0.3, 1.2), CFrame.new(0, 3, 0), Color3.fromRGB(30, 30, 34), Enum.Material.Metal)
+	piece("Rotor2", Vector3.new(1.2, 0.3, 24), CFrame.new(0, 3, 0), Color3.fromRGB(30, 30, 34), Enum.Material.Metal)
+	local lamp = piece("Searchlight", Vector3.new(1.6, 1.6, 1.6), CFrame.new(0, -3, -3), Color3.fromRGB(255, 250, 220), Enum.Material.Neon, Enum.PartType.Ball)
+	local light = Instance.new("SpotLight")
+	light.Face = Enum.NormalId.Bottom
+	light.Angle = 40
+	light.Range = 120
+	light.Brightness = 6
+	light.Color = Color3.fromRGB(255, 250, 230)
+	light.Shadows = true
+	light.Parent = lamp
+	model.PrimaryPart = body
+	model.Parent = workspace
+	local heli = { Model = model, Pos = pos, Yaw = 0, Spin = 0 }
+	return heli
+end
+
+local function moveHelicopter(heli, target, dt)
+	local goal = Vector3.new(target.X, target.Y + 70, target.Z)
+	local d = goal - heli.Pos
+	local step = math.min(d.Magnitude, 34 * dt)
+	if d.Magnitude > 0.1 then
+		heli.Pos += d.Unit * step
+		heli.Yaw = math.atan2(-d.X, -d.Z)
+	end
+	heli.Spin += dt * 25
+	local base = CFrame.new(heli.Pos) * CFrame.Angles(0, heli.Yaw, 0) * CFrame.Angles(math.rad(-8), 0, 0)
+	for _, p in ipairs(heli.Model:GetChildren()) do
+		if p:IsA("BasePart") then
+			local offset = p:GetAttribute("Offset") or CFrame.new()
+			if p.Name == "Rotor" or p.Name == "Rotor2" then
+				p.CFrame = base * offset * CFrame.Angles(0, heli.Spin, 0)
+			else
+				p.CFrame = base * offset
+			end
+		end
+	end
+end
+
+local indoorParams = RaycastParams.new()
+indoorParams.FilterType = Enum.RaycastFilterType.Exclude
+local function heliSees(heli, player, root)
+	if hiding[player] then
+		return false
+	end
+	local flat = Vector3.new(root.Position.X - heli.Pos.X, 0, root.Position.Z - heli.Pos.Z)
+	if flat.Magnitude > 38 then
+		return false
+	end
+	-- a roof over your head blocks the searchlight
+	indoorParams.FilterDescendantsInstances = { player.Character, heli.Model, workspace:FindFirstChild("Citizens") }
+	return workspace:Raycast(root.Position + Vector3.new(0, 3, 0), Vector3.new(0, 60, 0), indoorParams) == nil
 end
 
 local function chaseTick(dt)
@@ -585,13 +707,14 @@ local function chaseTick(dt)
 			end
 		end
 		-- enough police on the case? (on-duty officers first, then backup)
-		local want = math.min(w.Stars, 4)
+		local level = levelOf(w)
+		local want = level.Cops
 		if #w.Chasers < want then
 			for _, brain in ipairs(S.Citizens.List) do
 				if #w.Chasers >= want then
 					break
 				end
-				if isPolice(brain) and not brain.C.Temp and brain.State ~= "police" and brain.State ~= "ko" and brain.State ~= "hospital" and brain.Plan and brain.Plan.Kind == "Work" and (brain.Root.Position - root.Position).Magnitude < 320 then
+				if isPolice(brain) and not brain.C.Temp and brain.State ~= "police" and brain.State ~= "ko" and brain.State ~= "hospital" and brain.Plan and brain.Plan.Kind == "Work" and (brain.Root.Position - root.Position).Magnitude < level.Reach then
 					S.Citizens.Control(brain, true)
 					brain.Searching, brain.SearchPoint = nil, nil
 					brain.Model:SetAttribute("Chasing", player.UserId)
@@ -599,9 +722,9 @@ local function chaseTick(dt)
 					table.insert(w.Chasers, brain)
 				end
 			end
-			if #w.Chasers < want and (w.Stars >= 2 or #w.Chasers == 0) and (w.NextBackup or 0) < os.clock() then
-				w.NextBackup = os.clock() + 6
-				local b = spawnBackup(player, root)
+			if #w.Chasers < want and (w.NextBackup or 0) < os.clock() then
+				w.NextBackup = os.clock() + level.Backup
+				local b = spawnBackup(player, root, level.Swat and math.random() < level.Swat)
 				b.Model:SetAttribute("Chasing", player.UserId)
 				table.insert(w.Chasers, b)
 			end
@@ -611,7 +734,7 @@ local function chaseTick(dt)
 		local seen = false
 		if not h then
 			for _, brain in ipairs(w.Chasers) do
-				if (brain.Root.Position - root.Position).Magnitude < 95 and canSee(brain, root.Position) then
+				if (brain.Root.Position - root.Position).Magnitude < level.Sight and canSee(brain, root.Position, nil, level.Sight) then
 					seen = true
 					break
 				end
@@ -626,6 +749,21 @@ local function chaseTick(dt)
 					end
 				end
 			end
+		end
+		-- the helicopter
+		if level.Heli then
+			if not w.Heli then
+				w.Heli = makeHelicopter(root.Position + Vector3.new(140, 70, 0))
+				S.City.Toast(player, "🚁", "Police helicopter!", "Get indoors or hide. Its searchlight can spot you from the sky.", Color3.fromRGB(230, 60, 60))
+			end
+			local target = if seen then root.Position else (w.LastKnown or root.Position) + Vector3.new(math.cos(os.clock() * 0.6) * 30, 0, math.sin(os.clock() * 0.6) * 30)
+			moveHelicopter(w.Heli, target, dt)
+			if not seen and heliSees(w.Heli, player, root) then
+				seen = true
+			end
+		elseif w.Heli then
+			w.Heli.Model:Destroy()
+			w.Heli = nil
 		end
 		local now = os.clock()
 		if seen then
@@ -650,7 +788,7 @@ local function chaseTick(dt)
 			nearest = math.min(nearest, d)
 			brain.Model:SetAttribute("ChaseState", mode)
 			if seen then
-				S.Citizens.SetGait(brain, 18 + w.Stars * 0.8, "run")
+				S.Citizens.SetGait(brain, level.Speed, "run")
 				brain.Humanoid:MoveTo(root.Position)
 				if d < 5 then
 					close = true
@@ -662,7 +800,7 @@ local function chaseTick(dt)
 				-- run to where they were last seen, then search around it
 				local toLast = (brain.Root.Position - w.LastKnown).Magnitude
 				if toLast > 7 and not brain.Searching then
-					S.Citizens.SetGait(brain, 17, "run")
+					S.Citizens.SetGait(brain, level.Speed - 1, "run")
 					brain.Humanoid:MoveTo(w.LastKnown)
 				else
 					brain.Searching = true
@@ -674,7 +812,7 @@ local function chaseTick(dt)
 						elseif math.random() < 0.5 then
 							local spots = {}
 							for _, spot in ipairs(CollectionService:GetTagged("HideSpot")) do
-								if (spot.Position - w.LastKnown).Magnitude < 35 then
+								if (spot.Position - w.LastKnown).Magnitude < level.Search then
 									table.insert(spots, spot)
 								end
 							end
@@ -684,7 +822,7 @@ local function chaseTick(dt)
 						end
 						if not target then
 							local a = math.random() * math.pi * 2
-							local r = math.random(8, 30)
+							local r = math.random(8, level.Search)
 							target = w.LastKnown + Vector3.new(math.cos(a) * r, 0, math.sin(a) * r)
 						end
 						brain.SearchPoint = target
@@ -693,11 +831,11 @@ local function chaseTick(dt)
 							S.Citizens.Say(brain, SEARCH_LINES[math.random(1, #SEARCH_LINES)], "focused", 1.8)
 						end
 					end
-					S.Citizens.SetGait(brain, 10, "walk")
+					S.Citizens.SetGait(brain, 8 + w.Stars * 1.5, if w.Stars >= 3 then "run" else "walk")
 					brain.Humanoid:MoveTo(brain.SearchPoint)
 				end
 				-- checking a hiding spot up close
-				if h and (brain.Root.Position - h.Spot.Position).Magnitude < 5.5 and math.random() < (if w.SawHide then 0.35 else 0.08) then
+				if h and (brain.Root.Position - h.Spot.Position).Magnitude < 5.5 and math.random() < (if w.SawHide then math.max(0.35, level.Check * 2) else level.Check) then
 					S.Citizens.Say(brain, FOUND_LINES[math.random(1, #FOUND_LINES)], "angry", 1.8)
 					CrimeService.Unhide(player, true)
 					w.LastSeen = now
@@ -716,6 +854,9 @@ local function chaseTick(dt)
 		end
 		player:SetAttribute("WantedSeen", seen)
 		player:SetAttribute("PoliceState", mode)
+		player:SetAttribute("PoliceLevel", level.Label)
+		player:SetAttribute("PoliceCount", #w.Chasers)
+		player:SetAttribute("Helicopter", w.Heli ~= nil)
 		player:SetAttribute("PoliceNear", if nearest < math.huge then math.floor(nearest) else nil)
 		if close and not hiding[player] then
 			w.Progress += dt
@@ -729,7 +870,9 @@ local function chaseTick(dt)
 		end
 		-- out of sight long enough: the stars fade one by one
 		-- (hiding makes them give up faster)
-		local hideTime = (18 + w.Stars * 4) * (if hiding[player] and not w.SawHide then 0.6 else 1)
+		local pd = S.City.Data(player)
+		local known = math.min(20, (pd and pd.Notoriety or 0) * 1.2) -- the police remember repeat offenders
+		local hideTime = (level.Fade + known) * (if hiding[player] and not w.SawHide then 0.6 else 1)
 		if os.clock() - w.LastSeen > hideTime then
 			w.LastSeen = os.clock() - hideTime + 8
 			setStars(player, w.Stars - 1)
@@ -739,6 +882,9 @@ local function chaseTick(dt)
 				w.LastKnown, w.Mode, w.SawHide = nil, nil, nil
 				player:SetAttribute("PoliceState", nil)
 				player:SetAttribute("PoliceNear", nil)
+				player:SetAttribute("PoliceLevel", nil)
+				player:SetAttribute("PoliceCount", nil)
+				player:SetAttribute("Helicopter", nil)
 			end
 		end
 	end
@@ -844,6 +990,20 @@ function CrimeService.Start(services)
 			local ok, err = pcall(chaseTick, dt)
 			if not ok then
 				warn("[CrimeService] " .. tostring(err))
+			end
+		end
+	end)
+	-- notoriety cools off slowly while you stay out of trouble
+	task.spawn(function()
+		while true do
+			task.wait(10)
+			for _, player in ipairs(Players:GetPlayers()) do
+				local pd = S.City.Data(player)
+				local w = wanted[player]
+				if pd and (pd.Notoriety or 0) > 0 and not (w and w.Stars > 0) then
+					pd.Notoriety = math.max(0, pd.Notoriety - 0.25)
+					player:SetAttribute("Notoriety", math.floor(pd.Notoriety))
+				end
 			end
 		end
 	end)

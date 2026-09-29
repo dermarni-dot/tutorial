@@ -62,6 +62,7 @@ local UNIFORMS = {
 	["Doctor"] = { Top = rgb(170, 210, 240), Bottom = rgb(60, 70, 90), Sleeves = "long", Items = { "LabCoat", "Stethoscope", "NameTag" } },
 	["Nurse"] = { Top = rgb(70, 170, 170), Bottom = rgb(70, 170, 170), Items = { "Stethoscope", "NameTag" } },
 	["Police Officer"] = { Top = rgb(40, 55, 110), Bottom = rgb(30, 40, 80), Sleeves = "long", Items = { "PoliceCap", "Badge", "Belt:25,25,30", "Radio" } },
+	["SWAT Officer"] = { Top = rgb(32, 34, 40), Bottom = rgb(32, 34, 40), Sleeves = "long", Items = { "SWATHelmet", "Vest:22,24,28", "Badge", "Belt:20,20,22", "Gloves", "Radio" } },
 	["Night Officer"] = { Top = rgb(28, 36, 70), Bottom = rgb(22, 28, 55), Sleeves = "long", Items = { "PoliceCap", "Badge", "Belt:25,25,30", "HiVisVest", "Radio" } },
 	["Teacher"] = { Top = rgb(180, 90, 70), Bottom = rgb(70, 70, 90), Sleeves = "long", Items = { "Cardigan:140,60,50", "Glasses", "Lanyard" } },
 	["Factory Worker"] = { Top = rgb(90, 110, 140), Bottom = rgb(50, 60, 80), Items = { "HardHat", "HiVisVest", "Gloves" } },
@@ -314,6 +315,11 @@ function ITEMS.PoliceCap(f, b)
 	attach(f, b.Head, "CapTop", Vector3.new(1.3, 0.2, 1.3) * H, CFrame.new(0, H * 0.6, 0), navy)
 	attach(f, b.Head, "CapBrim", Vector3.new(0.9, 0.07, 0.4) * H, CFrame.new(0, H * 0.3, -0.66 * H) * CFrame.Angles(math.rad(-12), 0, 0), BLACK)
 	attach(f, b.Head, "CapBadge", Vector3.new(0.22, 0.2, 0.05) * H, CFrame.new(0, H * 0.43, -0.57 * H), GOLD, nil, Enum.Material.Metal)
+end
+function ITEMS.SWATHelmet(f, b)
+	local H = b.H
+	attach(f, b.Head, "SWATHelmet", Vector3.new(1.22, 0.8, 1.26) * H, CFrame.new(0, H * 0.46, 0.02 * H), rgb(28, 30, 34), "Ball")
+	attach(f, b.Head, "Visor", Vector3.new(0.95, 0.22, 0.1) * H, CFrame.new(0, H * 0.28, -0.6 * H), rgb(20, 22, 26), nil, Enum.Material.Glass)
 end
 function ITEMS.HardHat(f, b)
 	local H = b.H
