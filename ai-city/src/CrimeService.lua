@@ -159,6 +159,10 @@ local function setStars(player, stars)
 	elseif stars == 0 and before > 0 then
 		S.City.Send(player, { Type = "Wanted", Stars = 0, Lost = true })
 	end
+	if stars == 0 then
+		w.Look, w.LookText, w.Recognized = nil, nil, nil
+		player:SetAttribute("PoliceLook", nil)
+	end
 end
 
 function CrimeService.AddStars(player, n, reason)
@@ -170,17 +174,58 @@ function CrimeService.AddStars(player, n, reason)
 	end
 end
 
+-- how hidden a player is by what they wear (hoodie, ski mask, disguise; better at night)
+local function hiddenOf(player)
+	return if S.Disguise then S.Disguise.Hidden(player) else 0
+end
+
+-- does anyone recognize the player? Hoodies, masks and disguises (and the
+-- dark) make it harder. The closest witness matters most (up close it's
+-- easier); every extra pair of eyes adds a little.
+local function recognized(people, position, hidden)
+	if #people == 0 then
+		return false
+	end
+	if hidden <= 0 then
+		return true
+	end
+	local nearest = math.huge
+	for _, brain in ipairs(people) do
+		local head = brain.Model:FindFirstChild("Head")
+		nearest = math.min(nearest, if head then (head.Position - position).Magnitude else 30)
+	end
+	local best = 1 - hidden * (if nearest < 8 then 0.85 else 1)
+	local chance = 1 - (1 - best) * 0.9 ^ (#people - 1)
+	return math.random() < chance
+end
+CrimeService.Recognized = recognized
+
 -- a crime happened: witnesses react, remember and report it
 local function report(player, position, victim, severity, what, gossip, stars)
 	local seen = witnesses(position, victim)
 	local reported = false
+	-- did anyone recognize who did it?
+	local hidden = hiddenOf(player)
+	local people = {}
+	for _, brain in ipairs(seen) do
+		if not brain.C.Temp then
+			table.insert(people, brain)
+		end
+	end
+	if victim and victim.State ~= "ko" and not victim.C.Temp then
+		table.insert(people, victim)
+	end
+	local known = recognized(people, position, hidden)
+	local looks = S.Disguise and S.Disguise.Describe(player)
 	for _, brain in ipairs(seen) do
 		if isPolice(brain) and brain.State ~= "police" and not brain.C.Temp then
 			reported = true
 			S.Citizens.Say(brain, COP_LINES[math.random(1, #COP_LINES)], "angry", 2)
 		elseif not brain.C.Temp then
 			reported = true
-			S.City.Remember(brain.C, player, "saw them " .. what, -10 - severity * 8, gossip)
+			if known then
+				S.City.Remember(brain.C, player, "saw them " .. what, -10 - severity * 8, gossip)
+			end
 			S.City.Boost(brain.C, -12)
 			if S.Life:Age(brain.C) < 13 or brain.C.Personality == "shy" or brain.C.Personality == "calm" or math.random() < 0.6 then
 				S.Citizens.Flee(brain, position, math.random(7, 11), if math.random() < 0.6 then HELP_LINES[math.random(1, #HELP_LINES)] else nil)
@@ -197,8 +242,11 @@ local function report(player, position, victim, severity, what, gossip, stars)
 	if pd then
 		pd.Crimes += 1
 		-- notoriety: every crime makes the police remember your face a bit more
-		pd.Notoriety = (pd.Notoriety or 0) + severity
-		player:SetAttribute("Notoriety", math.floor(pd.Notoriety))
+		-- (unless nobody could tell it was you)
+		if known or not reported then
+			pd.Notoriety = (pd.Notoriety or 0) + (if reported then severity else severity * 0.5)
+			player:SetAttribute("Notoriety", math.floor(pd.Notoriety))
+		end
 	end
 	if reported then
 		local w = wanted[player]
@@ -206,13 +254,26 @@ local function report(player, position, victim, severity, what, gossip, stars)
 		if w and w.Stars > 0 and w.Mode == "chasing" then
 			-- right in front of the police!
 			extra, why = 1, "Right in front of the police! "
-		elseif pd and pd.Notoriety >= 8 and (not w or w.Stars == 0) then
+		elseif known and pd and pd.Notoriety >= 8 and (not w or w.Stars == 0) then
 			extra, why = 1, "The police know your face. "
 		end
 		if w then
 			w.Crimes = (w.Crimes or 0) + 1
 		end
-		CrimeService.AddStars(player, stars + extra, (why or "") .. #seen .. (if #seen == 1 then " person saw" else " people saw") .. " you " .. what .. "!")
+		local count = #seen .. (if #seen == 1 then " person saw" else " people saw")
+		if known then
+			CrimeService.AddStars(player, stars + extra, (why or "") .. count .. " you " .. what .. "!")
+		else
+			-- nobody could tell who it was: fewer stars, and the police are looking for an outfit, not a face
+			CrimeService.AddStars(player, math.max(1, stars - 1) + extra, (why or "") .. count .. " " .. (looks or "someone") .. ", but nobody recognized you!")
+			S.City.Toast(player, "🥷", "Nobody knows it was you", "The police are looking for " .. (looks or "someone") .. ". Change or take it off (C) where nobody can see you.", Color3.fromRGB(150, 110, 220))
+		end
+		w = wanted[player]
+		if w then
+			w.Recognized = known or w.Recognized == true
+			w.Look = if S.Disguise then S.Disguise.Signature(player) else ""
+			w.LookText = looks
+		end
 	else
 		S.City.Toast(player, "🤫", "Nobody saw that...", "But the city feels a little less safe.", Color3.fromRGB(120, 120, 140))
 	end
@@ -716,6 +777,9 @@ local function arrest(player)
 	if S.Combat then
 		S.Combat.Confiscate(player)
 	end
+	if S.Disguise then
+		S.Disguise.Confiscate(player)
+	end
 	S.City.Send(player, { Type = "Busted", Seconds = seconds, Fine = fine, Stars = stars })
 	S.City.News("🚔 " .. player.DisplayName .. " was arrested and thrown in jail!", "Crime")
 	S.City.Adjust("Safety", 2 + stars)
@@ -872,19 +936,32 @@ local function chaseTick(dt)
 			end
 		end
 		-- where are they? The police only know what someone has SEEN.
+		-- What you wear matters: a hoodie or a mask (especially at night) means
+		-- they have to be closer to spot you. And if you changed your look where
+		-- nobody could see, they're looking for the wrong outfit.
 		local h = hiding[player]
 		local seen = false
+		local hidden = hiddenOf(player)
+		local suspicious = if S.Disguise then S.Disguise.Suspicious(player) else 0
+		local changed = w.Look ~= nil and S.Disguise ~= nil and S.Disguise.Signature(player) ~= w.Look
+		local sight = level.Sight * (1 - hidden * 0.6)
+		if changed then
+			-- they only know you up close (a bit further if they know your face and it's showing)
+			sight = math.min(sight, if w.Recognized and not S.Disguise.FaceCovered(player) then 30 else 16)
+		end
+		player:SetAttribute("PoliceLook", if changed then w.LookText or "someone else" else nil)
 		if not h then
 			for _, brain in ipairs(w.Chasers) do
-				if (brain.Root.Position - root.Position).Magnitude < level.Sight and canSee(brain, root.Position, nil, level.Sight) then
+				if (brain.Root.Position - root.Position).Magnitude < sight and canSee(brain, root.Position, nil, sight) then
 					seen = true
 					break
 				end
 			end
-			-- citizens who spot you call it in
-			if not seen then
-				for _, brain in ipairs(S.Citizens.Nearby(root.Position, 40)) do
-					if not brain.C.Temp and brain.State ~= "ko" and brain.State ~= "police" and canSee(brain, root.Position) and math.random() < 0.06 then
+			-- citizens who spot you call it in (not if they don't know it's you)
+			local tip = if changed and not w.Recognized then 0 else 0.06 * (1 - hidden) * (1 + suspicious)
+			if not seen and tip > 0 then
+				for _, brain in ipairs(S.Citizens.Nearby(root.Position, 40 * (1 - hidden * 0.5))) do
+					if not brain.C.Temp and brain.State ~= "ko" and brain.State ~= "police" and canSee(brain, root.Position) and math.random() < tip then
 						seen = true
 						S.Citizens.Say(brain, "Officer! They went that way!", "scared", 2)
 						break
@@ -912,6 +989,11 @@ local function chaseTick(dt)
 			w.LastSeen = now
 			w.LastKnown = root.Position
 			w.SawHide = false
+			-- they can see what you're wearing now
+			if S.Disguise then
+				w.Look = S.Disguise.Signature(player)
+				w.LookText = S.Disguise.Describe(player)
+			end
 		end
 		w.LastKnown = w.LastKnown or root.Position
 		local mode = if seen then "chasing" else "searching"
@@ -1013,8 +1095,10 @@ local function chaseTick(dt)
 		-- out of sight long enough: the stars fade one by one
 		-- (hiding makes them give up faster)
 		local pd = S.City.Data(player)
-		local known = math.min(20, (pd and pd.Notoriety or 0) * 1.2) -- the police remember repeat offenders
+		local known = if w.Recognized == false then 0 else math.min(20, (pd and pd.Notoriety or 0) * 1.2) -- the police remember repeat offenders
 		local hideTime = (level.Fade + known) * (if hiding[player] and not w.SawHide then 0.6 else 1)
+		-- a disguise helps them lose track; a new look helps a lot
+		hideTime *= (1 - hidden * 0.35) * (if changed then 0.5 else 1)
 		if os.clock() - w.LastSeen > hideTime then
 			w.LastSeen = os.clock() - hideTime + 8
 			setStars(player, w.Stars - 1)

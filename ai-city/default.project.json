@@ -36,6 +36,9 @@
         },
         "Weapons": {
           "$path": "src/Weapons.lua"
+        },
+        "Disguises": {
+          "$path": "src/Disguises.lua"
         }
       }
     },
@@ -89,6 +92,9 @@
         },
         "CombatService": {
           "$path": "src/CombatService.lua"
+        },
+        "DisguiseService": {
+          "$path": "src/DisguiseService.lua"
         }
       }
     },

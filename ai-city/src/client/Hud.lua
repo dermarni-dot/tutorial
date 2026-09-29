@@ -257,6 +257,8 @@ local function build()
 	refs.Police = UI.chip(right, "", C.Red, { LayoutOrder = 2, TextSize = 13, Size = UDim2.fromOffset(0, 28), Visible = false })
 	refs.PoliceTip = UI.text(right, "", 12, UI.Font, C.Sub, { LayoutOrder = 2, Size = UDim2.fromOffset(250, 30), TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Right, Visible = false })
 	refs.Notoriety = UI.chip(right, "", UI.rgb(120, 60, 30), { LayoutOrder = 2, TextSize = 12, Size = UDim2.fromOffset(0, 24), Visible = false })
+	-- your disguise: how hidden you are right now
+	refs.Disguise = UI.chip(right, "", UI.rgb(88, 60, 140), { LayoutOrder = 2, TextSize = 12, Size = UDim2.fromOffset(0, 24), Visible = false })
 	refs.Mayor = UI.chip(right, "🏛️ Mayor: —", C.Panel2, { LayoutOrder = 3, TextSize = 13, Size = UDim2.fromOffset(0, 28) })
 	refs.Election = UI.chip(right, "🗳️ Election in 8:00", C.Panel2, { LayoutOrder = 4, TextSize = 13, Size = UDim2.fromOffset(0, 28) })
 	toastHolder = UI.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 5, Parent = right })
@@ -489,6 +491,17 @@ local function frame(dt)
 		refs.EdgeStroke.Transparency = 1
 		refs.Police.Visible = false
 		refs.PoliceTip.Visible = false
+	end
+	-- disguise: how hidden you are, and whether the police are looking for your old look
+	local hiddenNow = player:GetAttribute("Hidden")
+	local disguise = player:GetAttribute("Disguise")
+	refs.Disguise.Visible = disguise ~= nil
+	if disguise then
+		refs.Disguise.Text = "🥷 " .. math.floor((hiddenNow or 0) * 100 + 0.5) .. "% hidden" .. (if player:GetAttribute("Night") then " 🌙" else "") .. (if player:GetAttribute("Suspicious") then "  ·  👀 people are nervous" else "")
+	end
+	local look = player:GetAttribute("PoliceLook")
+	if look and refs.PoliceTip.Visible and not player:GetAttribute("WantedSeen") then
+		refs.PoliceTip.Text = "🕵️ They're looking for <b>" .. look .. "</b>. You changed your look, so they'll only know you up close."
 	end
 	-- notoriety: repeat offenders get more police, faster
 	local notoriety = player:GetAttribute("Notoriety") or 0

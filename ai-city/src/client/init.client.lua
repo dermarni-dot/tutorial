@@ -98,6 +98,9 @@ end
 handlers.Shop = function(d)
 	Panels.OpenShop(d)
 end
+handlers.Wardrobe = function(d)
+	Panels.OpenWardrobe(d)
+end
 handlers.Down = function(d)
 	Panels.Down(d)
 end
@@ -195,6 +198,8 @@ UserInputService.InputBegan:Connect(function(input, processed)
 		Panels.Mayor.Toggle()
 	elseif key == Enum.KeyCode.H then
 		Panels.Help.Toggle()
+	elseif key == Enum.KeyCode.C then
+		task.spawn(Panels.ToggleWardrobe)
 	elseif key == Enum.KeyCode.F then
 		World.Attack()
 	elseif key == Enum.KeyCode.X then

@@ -863,7 +863,8 @@ local function buildHelp()
 		{ "⚔️ Fighting", "<b>F</b> (or click with a weapon) attacks, <b>hold X</b> blocks (you take a third of the damage). Buy a 🏏 bat, 🔨 hammer or 🔪 knife at the Hardware store: they hit harder, but using them is a much more serious crime. Tough citizens and the police fight back, so watch your ❤️ health. If you get knocked out, you wake up at the hospital (wanted stars cleared, but there's a bill)." },
 		{ "🚨 Crime", "<b>F</b> attacks, <b>G</b> (hold) picks a pocket, <b>R</b> (hold) robs a register or the bank vault. If anyone sees you, you get wanted stars and the police come after you. Get caught and you're BUSTED: a fine and time in jail. Kids can't be hurt." },
 		{ "🫥 Losing the police", "The police only know where they <b>last saw</b> you. Break their line of sight (around a corner, into a building) and they'll run there and search around. Hide in a <b>trash can, hedge or park bush</b> (hold <b>Q</b>): they can't see you, unless they search right next to your spot (or saw you climb in!). Stay out of sight and the stars fade one by one, faster while you're hiding. <b>Space</b> gets you out." },
-		{ "⌨️ Keys", "Tab phone · E talk / use · M map · P people · V vote · B speech · N mayor · F attack · X block · 1-4 hotbar · G pickpocket · R rob · Q hide · H help · 1-9 answer in conversations · Esc close windows" },
+		{ "🥷 Disguises", "Buy a 🧥 <b>hoodie</b>, a 🥷 <b>ski mask</b> or a 🥸 <b>disguise kit</b> at the 👕 Clothing store, and wear them with <b>C</b>. Witnesses may not recognize you (fewer stars, no notoriety, nobody remembers it was you), the police have to get closer to spot you, and it all works much better <b>at night</b>. After a crime, change or take off your outfit where nobody can see: the police keep looking for the old one. But a ski mask in daylight makes people nervous..." },
+		{ "⌨️ Keys", "Tab phone · E talk / use · M map · P people · V vote · B speech · N mayor · F attack · X block · 1-4 hotbar · G pickpocket · R rob · Q hide · C wardrobe · H help · 1-9 answer in conversations · Esc close windows" },
 	}
 	for _, s in ipairs(sections) do
 		local card = UI.panel(list, { Size = UDim2.new(1, -10, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundColor3 = C.Panel2, Radius = 12 })
@@ -1103,11 +1104,15 @@ local function buildPhone()
 		P.Close()
 		Panels.Mayor.Open()
 	end)
-	app(8, "❓", "Help", UI.rgb(80, 90, 120), function()
+	app(8, "🥷", "Wardrobe", UI.rgb(120, 80, 190), function()
+		P.Close()
+		Panels.ToggleWardrobe()
+	end)
+	app(9, "❓", "Help", UI.rgb(80, 90, 120), function()
 		P.Close()
 		Panels.Help.Open()
 	end)
-	app(9, "⚙️", "Settings", UI.rgb(110, 110, 130), function()
+	app(10, "⚙️", "Settings", UI.rgb(110, 110, 130), function()
 		P.Close()
 		Panels.Settings.Open()
 	end)
@@ -1204,6 +1209,82 @@ local function buildShop()
 	end
 end
 
+-- The wardrobe: hoodies, ski masks and disguises (and the Clothing store)
+local function buildWardrobe()
+	local win = UI.window(screen, "Wardrobe", "🥷", UDim2.fromOffset(760, 480), C.Purple)
+	Panels.Wardrobe = win
+	local body = win.Body
+	local top = UI.text(body, "", 15, UI.Bold, C.Sub, { Size = UDim2.new(1, 0, 0, 22), RichText = true })
+	local grid = UI.new("Frame", { BackgroundTransparency = 1, Position = UDim2.fromOffset(0, 30), Size = UDim2.new(1, 0, 1, -70), Parent = body })
+	UI.new("UIGridLayout", { CellSize = UDim2.new(0.333, -8, 1, 0), CellPadding = UDim2.fromOffset(10, 0), SortOrder = Enum.SortOrder.LayoutOrder, Parent = grid })
+	UI.text(body, "🌙 Everything hides you better at night. Wear a top and a face item together. After a crime, change or take them off (C) where nobody can see you: the police will be looking for the wrong person.", 12, UI.Font, C.Dim, { AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.new(1, 0, 0, 34), TextWrapped = true })
+	local function stat(card, label, value, color, y, text)
+		UI.text(card, label, 12, UI.Bold, C.Sub, { Position = UDim2.fromOffset(0, y), Size = UDim2.fromOffset(78, 16) })
+		local _, set = UI.bar(card, color, 8, { Position = UDim2.new(0, 80, 0, y + 4), Size = UDim2.new(1, -118, 0, 8) })
+		set(value)
+		UI.text(card, text, 12, UI.Bold, C.Text, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, y), Size = UDim2.fromOffset(34, 16), TextXAlignment = Enum.TextXAlignment.Right })
+	end
+	local current
+	function Panels.OpenWardrobe(data)
+		current = data
+		clear(grid)
+		local hidden = math.floor((data.Hidden or 0) * 100 + 0.5)
+		top.Text = (if data.Store then "👕 <b>Clothing store</b> · 🪙 " .. UI.commas(data.Coins or 0) .. " coins · " else "") .. "You're " .. hidden .. "% hidden right now" .. (if data.Night then " 🌙" else " ☀️")
+		for k, item in ipairs(data.Items or {}) do
+			local card = UI.panel(grid, { BackgroundColor3 = if item.Wearing then UI.rgb(58, 44, 86) else C.Panel2, Radius = 14, LayoutOrder = k })
+			if item.Wearing then
+				UI.stroke(card, C.Purple, 2, 0)
+			end
+			UI.pad(card, 12)
+			UI.text(card, item.Emoji, 46, UI.Font, C.White, { Size = UDim2.new(1, 0, 0, 56), TextXAlignment = Enum.TextXAlignment.Center })
+			UI.text(card, item.Name, 18, UI.Title, C.Text, { Position = UDim2.fromOffset(0, 58), Size = UDim2.new(1, 0, 0, 24), TextXAlignment = Enum.TextXAlignment.Center })
+			UI.text(card, (if item.Slot == "Top" then "TOP · " else "FACE · ") .. item.Desc, 12, UI.Font, C.Sub, { Position = UDim2.fromOffset(0, 84), Size = UDim2.new(1, 0, 0, 62), TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Center, TextYAlignment = Enum.TextYAlignment.Top })
+			stat(card, "☀️ Hidden", item.Hidden, C.Blue, 152, math.floor(item.Hidden * 100) .. "%")
+			stat(card, "🌙 At night", math.min(0.95, item.Hidden + item.Night), C.Purple, 172, math.floor(math.min(0.95, item.Hidden + item.Night) * 100) .. "%")
+			stat(card, "👀 Noticed", item.Suspicious, C.Red, 192, if item.Suspicious > 0 then "day" else "no")
+			local label, color, textColor
+			if item.Owned then
+				label, color, textColor = if item.Wearing then "Take off" else "Put on", if item.Wearing then C.Panel3 else C.Purple, C.White
+			elseif data.Store then
+				label, color, textColor = "🪙 " .. item.Price .. "  Buy", C.Gold, C.Bg
+			else
+				label, color, textColor = "👕 At the Clothing store", C.Panel3, C.Sub
+			end
+			UI.button(card, label, { AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.new(1, 0, 0, 40), Color = color, TextColor = textColor }, function()
+				local r
+				if item.Owned then
+					r = request({ Action = "Wear", Id = item.Id, On = not item.Wearing, Store = data.Store })
+				elseif data.Store then
+					r = request({ Action = "BuyOutfit", Id = item.Id })
+				else
+					return
+				end
+				if r.Ok then
+					if r.Text then
+						ctx.Hud.Toast(item.Emoji, r.Text, if item.Owned then "" else "Put it on or take it off anytime with C.", C.Purple)
+					end
+					r.Store = data.Store
+					Panels.OpenWardrobe(r)
+				else
+					fail(r)
+				end
+			end)
+		end
+		win.Open()
+	end
+	-- C: open your wardrobe anywhere
+	function Panels.ToggleWardrobe()
+		if win.IsOpen() then
+			win.Close()
+			return
+		end
+		local r = request({ Action = "Wardrobe" })
+		if r and r.Ok then
+			Panels.OpenWardrobe(r)
+		end
+	end
+end
+
 -- knocked out: the screen fades, you wake up at the hospital
 local function buildDown()
 	local cover = UI.new("Frame", { BackgroundColor3 = Color3.new(0, 0, 0), BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 45, Visible = false, Parent = screen })
@@ -1251,6 +1332,7 @@ function Panels.Start(context)
 	buildResults()
 	buildBusted()
 	buildShop()
+	buildWardrobe()
 	buildDown()
 	buildPhone()
 end

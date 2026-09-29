@@ -27,7 +27,7 @@ Players can talk to anyone, give speeches, run for mayor and pass laws. They can
 | ⚽ **After-school life** | Real soccer games (two teams, a ball, goals, cheering), shooting hoops, swings, the arcade, homework at the library, and weekend family outings. |
 | 💬 **Dialogue** | Talk to anyone. Answers depend on their personality, mood, job, the city and what they remember about you. |
 | 🗳️ **Politics** | Speeches, elections with citizen candidates, votes, a mayor's salary and daily policies. |
-| ⚔️ **Fighting and crime** | Fists, a bat, a hammer and a knife, with attack animations, blocking, and citizens who fight back. Also pickpocketing and robberies. Witnesses need line of sight. Wanted stars bring police chases with backup, and getting caught means jail and a fine. |
+| ⚔️ **Fighting and crime** | Fists, a bat, a hammer and a knife, with attack animations, blocking, and citizens who fight back. Also pickpocketing and robberies. Hoodies, ski masks and disguises make you harder to recognize, especially at night. Witnesses need line of sight. Wanted stars bring police chases with backup, and getting caught means jail and a fine. |
 | 🖥️ **A full interface** | <ul><li>HUD: clock, city mood, rotating minimap, coins, wanted stars, a news ticker and a health bar that glows red when you're hurt.</li><li>📱 **A phone** (**Tab**) with every app: map, people, news, vote, goals, speech, mayor, help and settings.</li><li>🎯 **Daily goals**: four new ones every day, such as "chat with 3 citizens" or "visit Mirror Lake". Each pays coins.</li><li>A weapon hotbar with a cooldown sweep, a **target card** for whoever you're facing (name, job, health), and health bars over people who are hurt.</li><li>A camera flyover behind the welcome screen.</li><li>Windows: a city map, a people directory, profile cards with a 3D portrait, voting, speeches, the mayor's desk, conversations, elevators, the weapons shop, help and settings.</li></ul> |
 
 ## The city
@@ -140,6 +140,23 @@ Street lamps, windows, porch lights, neon signs and stadium floodlights switch o
   - Break their line of sight by ducking around a corner or into a building. They run to where they last saw you and search the area, checking nearby hiding spots.
   - **Hide** in one of about 150 hiding spots: trash cans downtown, hedges in front of houses, and bushes in the parks. Hold **Q** next to one and you vanish inside, so the police can't see you. An officer searching right next to your spot might still check it, and if one **saw you climb in**, they'll come straight for it.
   - Stay out of sight and your stars fade one by one, faster while you hide. Press **Space** (or **Q**) to get out.
+- 🥷 **Disguises: harder to catch, especially at night.** Buy them at the 👕 **Clothing store** (press E at the counter) and put them on or take them off anytime with **C** (or 📱 Wardrobe). You can wear a top and a face item together, and you keep them between visits.
+
+  ![Disguises](disguises_preview.png)
+
+  | Item | Price | Hidden (day / night) | Notes |
+  |---|---|---|---|
+  | 🧥 Hoodie (top) | 30 | 20% / 45% | Blends in, and in the dark it's hard to tell who's inside. |
+  | 🥸 Disguise Kit (face) | 70 | 40% / 50% | A hat, dark glasses and a fake mustache. Looks normal, so nobody gets suspicious. |
+  | 🥷 Ski Mask (face) | 55 | 55% / 80% | Hides your face completely, but in daylight people get nervous and the police keep an eye on you. |
+  | 🥷 + 🧥 together | | 64% / 90% | The most hidden you can be. |
+
+  What being hidden does:
+  - **Witnesses may not recognize you.** In the test, a full outfit at night meant 4 witnesses standing right there recognized you only about 43% of the time (no disguise: 100%). If nobody recognizes you, you get one star fewer, no notoriety, and nobody remembers it was you. The police are looking for "someone in a ski mask and a dark hoodie".
+  - **The police have to get closer** to spot you, and bystanders rarely point you out.
+  - **Change your look.** Take off or swap your outfit where nobody can see you, and the police keep looking for the old one. They only recognize you up close, and the stars fade about 3 times faster (7 seconds instead of 22+ in the test).
+  - The HUD shows how hidden you are right now ("🥷 90% hidden 🌙"), and the police tip tells you when they're looking for your old outfit.
+  - The police take your ski mask when they arrest you.
 - **BUSTED:** a fine and time in the police station's jail cell.
 - **Kids and babies can't be hurt.**
 
@@ -153,7 +170,8 @@ Street lamps, windows, porch lights, neon signs and stadium floodlights switch o
 | **Citizen card** | **City map** |
 | ![Profile](ui_profile_preview.png) | ![Map](ui_map_preview.png) |
 
-![Speech](ui_speech_preview.png)
+| **Wardrobe (C) at the Clothing store** | **Giving a speech** |
+| ![Wardrobe](ui_wardrobe_preview.png) | ![Speech](ui_speech_preview.png) |
 
 *(These previews were drawn from the game's real UI in a test harness. In Roblox, the portraits show the 3D citizen.)*
 
@@ -172,6 +190,7 @@ Street lamps, windows, porch lights, neon signs and stadium floodlights switch o
 | G | pickpocket |
 | R | rob |
 | Q | hide (at trash cans, hedges and bushes) · Space gets out |
+| C | wardrobe: put on or take off your hoodie, ski mask or disguise |
 | H | help |
 | 1–9 | answer in conversations |
 | Esc | close |
@@ -190,9 +209,10 @@ Every action is also a button on the action bar for mobile players.
 | `DialogueService` | Modules | Conversations with players, and citizens' small talk. |
 | `CrimeService` | Modules | Fighting (attacks, citizens fighting back), crimes, witnesses, wanted stars, police chases, SWAT, the helicopter, hiding, jail. |
 | `CombatService` | Modules | Weapons as tools, the Hardware store shop, blocking, waking up at the hospital, confiscation. |
+| `DisguiseService` | Modules | Hoodies, ski masks and disguise kits: the Clothing store, the wardrobe, how they look on your character, nervous citizens. |
 | `PlayerService` | Modules | Elevators, profiles, the directory, finding people. |
 | `CitizenLook` | Modules | Outfits, hair, items, faces and sizes. |
-| `Config`, `Actions`, `Atmosphere`, `Faces`, `Poses`, `Weapons` | ReplicatedStorage.Shared | Settings; the list of actions; the sky; drawn faces; the pose and prop library; weapon stats. |
+| `Config`, `Actions`, `Atmosphere`, `Faces`, `Poses`, `Weapons`, `Disguises` | ReplicatedStorage.Shared | Settings; the list of actions; the sky; drawn faces; the pose and prop library; weapon stats; disguise stats. |
 | `CityClient` (+ `UI`, `Hud`, `Panels`, `World`) | StarterPlayerScripts | Everything on screen, and the citizens' body language, faces, nameplates and speech bubbles. |
 
 It's built to stay light on the server:
@@ -261,6 +281,12 @@ The game was run in a Luau test harness (a small Roblox simulation), and these c
   - running out of sight (the police search where they last saw you), hiding in a trash can until the stars fade, and getting found after being seen climbing in;
   - buying weapons, stabbing someone down in two hits, a grumpy citizen fighting back (blocking takes a third of the damage), getting knocked out and waking up at the hospital, hitting another player with a bat, and the police confiscating the weapons at the arrest;
   - six crimes in a row: 2 stars and 3 officers, then 4 stars with SWAT, then 5 stars with 10 police, SWAT and the helicopter;
+  - disguises:
+    - buying a hoodie, a ski mask and a disguise kit, and wearing a top and a face item together;
+    - how hidden each outfit is by day and by night;
+    - a masked crime at night that nobody recognized (no notoriety);
+    - changing the outfit out of sight and losing the police 3 times faster;
+    - a citizen getting nervous about a ski mask at noon;
   - an elevator ride to floor 9;
   - a vote and an election (and winning it).
 - **The client:** every window and every server message, and poses on 20 citizens at once.

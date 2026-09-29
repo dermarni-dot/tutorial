@@ -1,4 +1,4 @@
-<roblox version="4"><Item class="Workspace" referent="RBX1"><Properties><string name="Name">Workspace</string><bool name="StreamingEnabled">true</bool><float name="StreamingMinRadius">96</float><float name="StreamingTargetRadius">640</float></Properties></Item><Item class="Lighting" referent="RBX2"><Properties><string name="Name">Lighting</string><token name="Technology">4</token><float name="ClockTime">7.5</float><float name="Brightness">2</float><bool name="GlobalShadows">true</bool></Properties></Item><Item class="ReplicatedStorage" referent="RBX3"><Properties><string name="Name">ReplicatedStorage</string></Properties><Item class="Folder" referent="RBX10"><Properties><string name="Name">Shared</string></Properties><Item class="ModuleScript" referent="RBX4"><Properties><string name="Name">Config</string><ProtectedString name="Source"><![CDATA[-- AI City :: shared settings (tweak these to tune the game)
+<roblox version="4"><Item class="Workspace" referent="RBX1"><Properties><string name="Name">Workspace</string><bool name="StreamingEnabled">true</bool><float name="StreamingMinRadius">96</float><float name="StreamingTargetRadius">640</float></Properties></Item><Item class="Lighting" referent="RBX2"><Properties><string name="Name">Lighting</string><token name="Technology">4</token><float name="ClockTime">7.5</float><float name="Brightness">2</float><bool name="GlobalShadows">true</bool></Properties></Item><Item class="ReplicatedStorage" referent="RBX3"><Properties><string name="Name">ReplicatedStorage</string></Properties><Item class="Folder" referent="RBX11"><Properties><string name="Name">Shared</string></Properties><Item class="ModuleScript" referent="RBX4"><Properties><string name="Name">Config</string><ProtectedString name="Source"><![CDATA[-- AI City :: shared settings (tweak these to tune the game)
 -- ReplicatedStorage.Shared.Config
 --
 -- Every key from the original file is still here with the same shape, so the
@@ -1533,7 +1533,122 @@ function Weapons.Get(id)
 end
 
 return Weapons
-]]></ProtectedString></Properties></Item></Item></Item><Item class="ServerScriptService" referent="RBX11"><Properties><string name="Name">ServerScriptService</string></Properties><Item class="Script" referent="RBX12"><Properties><string name="Name">Main</string><ProtectedString name="Source"><![CDATA[-- Main (Script) — ServerScriptService.Main
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX10"><Properties><string name="Name">Disguises</string><ProtectedString name="Source"><![CDATA[-- Disguises (ModuleScript) — ReplicatedStorage.Shared.Disguises
+-- Things you can wear so people don't recognize you. Buy them at the Clothing
+-- store; put them on or take them off anytime with C (or the phone's Wardrobe).
+--
+-- You can wear one TOP (the hoodie) and one FACE item (the ski mask or the
+-- disguise kit) at the same time. Their "Hidden" values stack.
+--
+--   Hidden     how hard you are to recognize (0 = not at all, 1 = impossible)
+--   Night      extra Hidden after dark: a black hoodie in a dark street is
+--              much harder to make out than in broad daylight
+--   Suspicious how much it makes people nervous in the daytime (a ski mask at
+--              noon looks like trouble; police keep an eye on you)
+--
+-- What being hidden does:
+--   • witnesses may not recognize you: you get fewer stars, no notoriety, and
+--     nobody remembers it was YOU ("someone in a ski mask attacked Asha")
+--   • the police can't spot you from as far away, and bystanders rarely point you out
+--   • change or take off what you wore at the crime while they can't see you,
+--     and they're looking for the wrong person: they only know you up close
+--     and give up much faster
+
+local Disguises = {}
+
+Disguises.List = {
+	Hoodie = {
+		Name = "Hoodie", Emoji = "🧥", Slot = "Top", Price = 30,
+		Hidden = 0.2, Night = 0.25, Suspicious = 0,
+		Looks = "someone in a dark hoodie",
+		Desc = "Hood up, head down. Easy to blend in, and in the dark it's hard to tell who's inside.",
+	},
+	Disguise = {
+		Name = "Disguise Kit", Emoji = "🥸", Slot = "Face", Price = 70,
+		Hidden = 0.4, Night = 0.1, Suspicious = 0,
+		Looks = "someone with a hat and a mustache",
+		Desc = "A hat, dark glasses and a fake mustache. Looks totally normal, so nobody gets suspicious.",
+	},
+	SkiMask = {
+		Name = "Ski Mask", Emoji = "🥷", Slot = "Face", Price = 55,
+		Hidden = 0.55, Night = 0.25, Suspicious = 0.6,
+		Looks = "someone in a ski mask",
+		Desc = "Nobody sees your face. But wearing one in broad daylight makes people nervous and the police suspicious.",
+	},
+}
+Disguises.Order = { "Hoodie", "Disguise", "SkiMask" }
+
+Disguises.MAX = 0.9 -- nobody is ever completely invisible
+Disguises.DARK = 0.1 -- after dark, everyone is a little harder to recognize
+
+function Disguises.IsNight(hour)
+	return hour >= 19.5 or hour < 5.5
+end
+
+-- How hidden is someone wearing these item ids (a list or a set)?
+function Disguises.Hidden(worn, night)
+	local visible = if night then 1 - Disguises.DARK else 1
+	for key, value in pairs(worn or {}) do
+		local id = if type(key) == "number" then value else key
+		local d = Disguises.List[id]
+		if d and value then
+			visible *= 1 - math.min(0.95, d.Hidden + (if night then d.Night else 0))
+		end
+	end
+	return math.min(Disguises.MAX, 1 - visible)
+end
+
+-- How suspicious it looks right now (daytime only)
+function Disguises.Suspicious(worn, night)
+	if night then
+		return 0
+	end
+	local s = 0
+	for key, value in pairs(worn or {}) do
+		local id = if type(key) == "number" then value else key
+		local d = Disguises.List[id]
+		if d and value then
+			s = math.max(s, d.Suspicious)
+		end
+	end
+	return s
+end
+
+-- A short description ("someone in a ski mask and a dark hoodie")
+function Disguises.Describe(worn)
+	local face, top
+	for key, value in pairs(worn or {}) do
+		local id = if type(key) == "number" then value else key
+		local d = Disguises.List[id]
+		if d and value then
+			if d.Slot == "Face" then
+				face = d
+			else
+				top = d
+			end
+		end
+	end
+	if face and top then
+		return face.Looks .. " and a dark hoodie"
+	end
+	return (face or top) and (face or top).Looks or nil
+end
+
+-- A key for "the outfit": the police look for this exact outfit
+function Disguises.Signature(worn)
+	local ids = {}
+	for key, value in pairs(worn or {}) do
+		local id = if type(key) == "number" then value else key
+		if Disguises.List[id] and value then
+			table.insert(ids, id)
+		end
+	end
+	table.sort(ids)
+	return table.concat(ids, "+")
+end
+
+return Disguises
+]]></ProtectedString></Properties></Item></Item></Item><Item class="ServerScriptService" referent="RBX12"><Properties><string name="Name">ServerScriptService</string></Properties><Item class="Script" referent="RBX13"><Properties><string name="Name">Main</string><ProtectedString name="Source"><![CDATA[-- Main (Script) — ServerScriptService.Main
 -- Starts AI City: builds the map, loads the saved city (or makes new
 -- families), starts the clock and brings everyone to life.
 --
@@ -1545,6 +1660,7 @@ return Weapons
 --   DialogueService talking to citizens (and them talking to each other)
 --   CrimeService    fighting, stabbing, pickpocketing, robberies, witnesses, police, jail
 --   CombatService   weapons (the Hardware store shop), blocking, waking up at the hospital
+--   DisguiseService hoodies, ski masks and disguises (the Clothing store), wearing them
 --   PlayerService   elevators, citizen profiles, the directory
 --
 -- Other scripts can get the map with:
@@ -1591,13 +1707,15 @@ if Config.RUN_CITIZENS ~= false then
 	services.Crime = require(Modules:WaitForChild("CrimeService"))
 	services.Players = require(Modules:WaitForChild("PlayerService"))
 	services.Combat = require(Modules:WaitForChild("CombatService"))
+	services.Disguise = require(Modules:WaitForChild("DisguiseService"))
 	services.Dialogue.Start(services)
 	services.Crime.Start(services)
 	services.Players.Start(services)
 	services.Combat.Start(services)
+	services.Disguise.Start(services)
 	task.spawn(services.Citizens.Start, services)
 end
-]]></ProtectedString></Properties></Item><Item class="Folder" referent="RBX28"><Properties><string name="Name">Modules</string></Properties><Item class="ModuleScript" referent="RBX13"><Properties><string name="Name">MapKit</string><ProtectedString name="Source"><![CDATA[-- MapKit (ModuleScript) — ServerScriptService.Modules.MapKit
+]]></ProtectedString></Properties></Item><Item class="Folder" referent="RBX30"><Properties><string name="Name">Modules</string></Properties><Item class="ModuleScript" referent="RBX14"><Properties><string name="Name">MapKit</string><ProtectedString name="Source"><![CDATA[-- MapKit (ModuleScript) — ServerScriptService.Modules.MapKit
 -- Small building blocks shared by the map modules: part helpers, colors, signs,
 -- lights, seats, and a registry of things that change between day and night.
 
@@ -1825,7 +1943,7 @@ function MapKit.awning(parent, width, depth, cf, colorA, colorB)
 end
 
 return MapKit
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX14"><Properties><string name="Name">Buildings</string><ProtectedString name="Source"><![CDATA[-- Buildings (ModuleScript) — ServerScriptService.Modules.Buildings
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX15"><Properties><string name="Name">Buildings</string><ProtectedString name="Source"><![CDATA[-- Buildings (ModuleScript) — ServerScriptService.Modules.Buildings
 -- Building shells: walls with a walk-in doorway and glass doors, framed
 -- windows (or glass curtain walls for towers), storefront windows, striped
 -- awnings, real floors on every storey with ceiling lights, an elevator for
@@ -2214,7 +2332,7 @@ function Buildings.house(parent, center, face, style, rng, garageSide)
 end
 
 return Buildings
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX15"><Properties><string name="Name">Interiors</string><ProtectedString name="Source"><![CDATA[-- Interiors (ModuleScript) — ServerScriptService.Modules.Interiors
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX16"><Properties><string name="Name">Interiors</string><ProtectedString name="Source"><![CDATA[-- Interiors (ModuleScript) — ServerScriptService.Modules.Interiors
 -- Furnishes buildings and marks the spots where people do things there:
 -- desks to type at, treadmills to run on, stoves to cook at, tables to eat
 -- at, beds to sleep in... Each spot is
@@ -2931,7 +3049,7 @@ function Interiors.furnish(b, rooms, rng, place)
 end
 
 return Interiors
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX16"><Properties><string name="Name">Streets</string><ProtectedString name="Source"><![CDATA[-- Streets (ModuleScript) — ServerScriptService.Modules.Streets
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX17"><Properties><string name="Name">Streets</string><ProtectedString name="Source"><![CDATA[-- Streets (ModuleScript) — ServerScriptService.Modules.Streets
 -- Roads with lane markings and crosswalks, raised sidewalks with curbs, street
 -- lamps that light the ground at night, traffic lights downtown, street name
 -- signs, fire hydrants, trash cans, bus stops with shelters, sidewalk trees
@@ -3230,7 +3348,7 @@ function Streets.build(parent, rng, blockKind)
 end
 
 return Streets
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX17"><Properties><string name="Name">Landscape</string><ProtectedString name="Source"><![CDATA[-- Landscape (ModuleScript) — ServerScriptService.Modules.Landscape
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX18"><Properties><string name="Name">Landscape</string><ProtectedString name="Source"><![CDATA[-- Landscape (ModuleScript) — ServerScriptService.Modules.Landscape
 -- The land around the city: terrain grass (with swaying grass blades),
 -- rolling hills with pine forests, a lake with a sandy beach and a wooden
 -- pier for fishing, and snowy mountains on the horizon.
@@ -3349,7 +3467,7 @@ function Landscape.build(parent, rng)
 end
 
 return Landscape
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX18"><Properties><string name="Name">Places</string><ProtectedString name="Source"><![CDATA[-- Places (ModuleScript) — ServerScriptService.Modules.Places
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX19"><Properties><string name="Name">Places</string><ProtectedString name="Source"><![CDATA[-- Places (ModuleScript) — ServerScriptService.Modules.Places
 -- What stands on each city block: the plaza, town hall, bank, towers, shops,
 -- three schools, parks with playgrounds and ponds, the sports field, homes...
 -- Every builder registers its places and the spots where people do things
@@ -4343,7 +4461,7 @@ Places.Builders = B
 Places.playground = playground
 
 return Places
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX19"><Properties><string name="Name">MapBuilder</string><ProtectedString name="Source"><![CDATA[-- MapBuilder (ModuleScript) — ServerScriptService.Modules.MapBuilder
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX20"><Properties><string name="Name">MapBuilder</string><ProtectedString name="Source"><![CDATA[-- MapBuilder (ModuleScript) — ServerScriptService.Modules.MapBuilder
 -- Builds AI City: a 9x9 grid of city blocks around a central plaza, with
 -- streets, a landscape of hills, a lake and mountains, and every building
 -- furnished with spots where people work, shop, eat, play and sleep.
@@ -5003,7 +5121,7 @@ function MapBuilder.RouteBetween(a, b)
 end
 MapBuilder.Kit = MapKit
 return MapBuilder
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX20"><Properties><string name="Name">Life</string><ProtectedString name="Source"><![CDATA[-- Life (ModuleScript) — ServerScriptService.Modules.Life
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX21"><Properties><string name="Name">Life</string><ProtectedString name="Source"><![CDATA[-- Life (ModuleScript) — ServerScriptService.Modules.Life
 -- Who lives in AI City: families with children, jobs, ages, couples expecting
 -- babies and births, plus where each person should be at any hour.
 -- Pure logic (no parts, no Humanoids), so it can be saved and tested on its own.
@@ -5766,7 +5884,7 @@ end
 
 Life.Jobs = jobByTitle
 return Life
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX21"><Properties><string name="Name">CitizenLook</string><ProtectedString name="Source"><![CDATA[-- CitizenLook (ModuleScript) — ServerScriptService.Modules.CitizenLook
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX22"><Properties><string name="Name">CitizenLook</string><ProtectedString name="Source"><![CDATA[-- CitizenLook (ModuleScript) — ServerScriptService.Modules.CitizenLook
 -- Gives every citizen their own look: skin tone, hairstyle and color, a
 -- uniform for their job (police cap and badge, doctor's coat, chef's hat,
 -- firefighter helmet...), something for their hobby (a beret for painters,
@@ -6857,7 +6975,7 @@ CitizenLook.Uniforms = UNIFORMS
 CitizenLook.HobbyItems = HOBBY_ITEMS
 
 return CitizenLook
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX22"><Properties><string name="Name">CityService</string><ProtectedString name="Source"><![CDATA[-- CityService (ModuleScript) — ServerScriptService.Modules.CityService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX23"><Properties><string name="Name">CityService</string><ProtectedString name="Source"><![CDATA[-- CityService (ModuleScript) — ServerScriptService.Modules.CityService
 -- The city itself: the clock and calendar, city stats (economy, safety,
 -- happiness) and the city's mood, the mayor, elections, speeches, policies,
 -- coins, what citizens remember about players (and gossip about), the news,
@@ -7294,6 +7412,8 @@ local function loadPlayer(player)
 		Crimes = tonumber(saved.Crimes) or 0,
 		Notoriety = tonumber(saved.Notoriety) or 0,
 		Weapons = type(saved.Weapons) == "table" and saved.Weapons or {},
+		Outfits = type(saved.Outfits) == "table" and saved.Outfits or {},
+		Wearing = type(saved.Wearing) == "table" and saved.Wearing or {},
 		Talks = tonumber(saved.Talks) or 0,
 		Arrests = tonumber(saved.Arrests) or 0,
 		Terms = tonumber(saved.Terms) or 0,
@@ -7311,7 +7431,7 @@ local function savePlayer(player)
 	local data = playerData[player]
 	if data and playerStore then
 		pcall(function()
-			playerStore:SetAsync("p_" .. player.UserId, { Coins = data.Coins, Crimes = data.Crimes, Notoriety = data.Notoriety, Weapons = data.Weapons, Talks = data.Talks, Arrests = data.Arrests, Terms = data.Terms })
+			playerStore:SetAsync("p_" .. player.UserId, { Coins = data.Coins, Crimes = data.Crimes, Notoriety = data.Notoriety, Weapons = data.Weapons, Outfits = data.Outfits, Wearing = data.Wearing, Talks = data.Talks, Arrests = data.Arrests, Terms = data.Terms })
 		end)
 	end
 end
@@ -7926,7 +8046,7 @@ end
 
 CityService.Handlers = handlers
 return CityService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX23"><Properties><string name="Name">CitizenService</string><ProtectedString name="Source"><![CDATA[-- CitizenService (ModuleScript) — ServerScriptService.Modules.CitizenService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX24"><Properties><string name="Name">CitizenService</string><ProtectedString name="Source"><![CDATA[-- CitizenService (ModuleScript) — ServerScriptService.Modules.CitizenService
 -- Brings the citizens to life: spawns a dressed NPC for every person in Life,
 -- walks them along the sidewalks to where their day takes them (with their
 -- own pace, lane and little pauses), takes elevators, sits at desks, lifts
@@ -9742,7 +9862,7 @@ function CitizenService.Start(services)
 end
 
 return CitizenService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX24"><Properties><string name="Name">DialogueService</string><ProtectedString name="Source"><![CDATA[-- DialogueService (ModuleScript) — ServerScriptService.Modules.DialogueService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX25"><Properties><string name="Name">DialogueService</string><ProtectedString name="Source"><![CDATA[-- DialogueService (ModuleScript) — ServerScriptService.Modules.DialogueService
 -- Talking to citizens. Walk up to anyone and press E to talk: they stop what
 -- they're doing, turn to you and answer in their own voice. What they say
 -- depends on their personality (cheerful, shy, grumpy, chatty, bookish,
@@ -10728,7 +10848,7 @@ function DialogueService.Start(services)
 end
 
 return DialogueService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX25"><Properties><string name="Name">CrimeService</string><ProtectedString name="Source"><![CDATA[-- CrimeService (ModuleScript) — ServerScriptService.Modules.CrimeService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX26"><Properties><string name="Name">CrimeService</string><ProtectedString name="Source"><![CDATA[-- CrimeService (ModuleScript) — ServerScriptService.Modules.CrimeService
 -- Crime and punishment. Players can:
 --   👊 punch people (F / the punch button). Three or four hits knock them out:
 --      they fall down, see stars, and wake up later in a hospital bed.
@@ -10889,6 +11009,10 @@ local function setStars(player, stars)
 	elseif stars == 0 and before > 0 then
 		S.City.Send(player, { Type = "Wanted", Stars = 0, Lost = true })
 	end
+	if stars == 0 then
+		w.Look, w.LookText, w.Recognized = nil, nil, nil
+		player:SetAttribute("PoliceLook", nil)
+	end
 end
 
 function CrimeService.AddStars(player, n, reason)
@@ -10900,17 +11024,58 @@ function CrimeService.AddStars(player, n, reason)
 	end
 end
 
+-- how hidden a player is by what they wear (hoodie, ski mask, disguise; better at night)
+local function hiddenOf(player)
+	return if S.Disguise then S.Disguise.Hidden(player) else 0
+end
+
+-- does anyone recognize the player? Hoodies, masks and disguises (and the
+-- dark) make it harder. The closest witness matters most (up close it's
+-- easier); every extra pair of eyes adds a little.
+local function recognized(people, position, hidden)
+	if #people == 0 then
+		return false
+	end
+	if hidden <= 0 then
+		return true
+	end
+	local nearest = math.huge
+	for _, brain in ipairs(people) do
+		local head = brain.Model:FindFirstChild("Head")
+		nearest = math.min(nearest, if head then (head.Position - position).Magnitude else 30)
+	end
+	local best = 1 - hidden * (if nearest < 8 then 0.85 else 1)
+	local chance = 1 - (1 - best) * 0.9 ^ (#people - 1)
+	return math.random() < chance
+end
+CrimeService.Recognized = recognized
+
 -- a crime happened: witnesses react, remember and report it
 local function report(player, position, victim, severity, what, gossip, stars)
 	local seen = witnesses(position, victim)
 	local reported = false
+	-- did anyone recognize who did it?
+	local hidden = hiddenOf(player)
+	local people = {}
+	for _, brain in ipairs(seen) do
+		if not brain.C.Temp then
+			table.insert(people, brain)
+		end
+	end
+	if victim and victim.State ~= "ko" and not victim.C.Temp then
+		table.insert(people, victim)
+	end
+	local known = recognized(people, position, hidden)
+	local looks = S.Disguise and S.Disguise.Describe(player)
 	for _, brain in ipairs(seen) do
 		if isPolice(brain) and brain.State ~= "police" and not brain.C.Temp then
 			reported = true
 			S.Citizens.Say(brain, COP_LINES[math.random(1, #COP_LINES)], "angry", 2)
 		elseif not brain.C.Temp then
 			reported = true
-			S.City.Remember(brain.C, player, "saw them " .. what, -10 - severity * 8, gossip)
+			if known then
+				S.City.Remember(brain.C, player, "saw them " .. what, -10 - severity * 8, gossip)
+			end
 			S.City.Boost(brain.C, -12)
 			if S.Life:Age(brain.C) < 13 or brain.C.Personality == "shy" or brain.C.Personality == "calm" or math.random() < 0.6 then
 				S.Citizens.Flee(brain, position, math.random(7, 11), if math.random() < 0.6 then HELP_LINES[math.random(1, #HELP_LINES)] else nil)
@@ -10927,8 +11092,11 @@ local function report(player, position, victim, severity, what, gossip, stars)
 	if pd then
 		pd.Crimes += 1
 		-- notoriety: every crime makes the police remember your face a bit more
-		pd.Notoriety = (pd.Notoriety or 0) + severity
-		player:SetAttribute("Notoriety", math.floor(pd.Notoriety))
+		-- (unless nobody could tell it was you)
+		if known or not reported then
+			pd.Notoriety = (pd.Notoriety or 0) + (if reported then severity else severity * 0.5)
+			player:SetAttribute("Notoriety", math.floor(pd.Notoriety))
+		end
 	end
 	if reported then
 		local w = wanted[player]
@@ -10936,13 +11104,26 @@ local function report(player, position, victim, severity, what, gossip, stars)
 		if w and w.Stars > 0 and w.Mode == "chasing" then
 			-- right in front of the police!
 			extra, why = 1, "Right in front of the police! "
-		elseif pd and pd.Notoriety >= 8 and (not w or w.Stars == 0) then
+		elseif known and pd and pd.Notoriety >= 8 and (not w or w.Stars == 0) then
 			extra, why = 1, "The police know your face. "
 		end
 		if w then
 			w.Crimes = (w.Crimes or 0) + 1
 		end
-		CrimeService.AddStars(player, stars + extra, (why or "") .. #seen .. (if #seen == 1 then " person saw" else " people saw") .. " you " .. what .. "!")
+		local count = #seen .. (if #seen == 1 then " person saw" else " people saw")
+		if known then
+			CrimeService.AddStars(player, stars + extra, (why or "") .. count .. " you " .. what .. "!")
+		else
+			-- nobody could tell who it was: fewer stars, and the police are looking for an outfit, not a face
+			CrimeService.AddStars(player, math.max(1, stars - 1) + extra, (why or "") .. count .. " " .. (looks or "someone") .. ", but nobody recognized you!")
+			S.City.Toast(player, "🥷", "Nobody knows it was you", "The police are looking for " .. (looks or "someone") .. ". Change or take it off (C) where nobody can see you.", Color3.fromRGB(150, 110, 220))
+		end
+		w = wanted[player]
+		if w then
+			w.Recognized = known or w.Recognized == true
+			w.Look = if S.Disguise then S.Disguise.Signature(player) else ""
+			w.LookText = looks
+		end
 	else
 		S.City.Toast(player, "🤫", "Nobody saw that...", "But the city feels a little less safe.", Color3.fromRGB(120, 120, 140))
 	end
@@ -11446,6 +11627,9 @@ local function arrest(player)
 	if S.Combat then
 		S.Combat.Confiscate(player)
 	end
+	if S.Disguise then
+		S.Disguise.Confiscate(player)
+	end
 	S.City.Send(player, { Type = "Busted", Seconds = seconds, Fine = fine, Stars = stars })
 	S.City.News("🚔 " .. player.DisplayName .. " was arrested and thrown in jail!", "Crime")
 	S.City.Adjust("Safety", 2 + stars)
@@ -11602,19 +11786,32 @@ local function chaseTick(dt)
 			end
 		end
 		-- where are they? The police only know what someone has SEEN.
+		-- What you wear matters: a hoodie or a mask (especially at night) means
+		-- they have to be closer to spot you. And if you changed your look where
+		-- nobody could see, they're looking for the wrong outfit.
 		local h = hiding[player]
 		local seen = false
+		local hidden = hiddenOf(player)
+		local suspicious = if S.Disguise then S.Disguise.Suspicious(player) else 0
+		local changed = w.Look ~= nil and S.Disguise ~= nil and S.Disguise.Signature(player) ~= w.Look
+		local sight = level.Sight * (1 - hidden * 0.6)
+		if changed then
+			-- they only know you up close (a bit further if they know your face and it's showing)
+			sight = math.min(sight, if w.Recognized and not S.Disguise.FaceCovered(player) then 30 else 16)
+		end
+		player:SetAttribute("PoliceLook", if changed then w.LookText or "someone else" else nil)
 		if not h then
 			for _, brain in ipairs(w.Chasers) do
-				if (brain.Root.Position - root.Position).Magnitude < level.Sight and canSee(brain, root.Position, nil, level.Sight) then
+				if (brain.Root.Position - root.Position).Magnitude < sight and canSee(brain, root.Position, nil, sight) then
 					seen = true
 					break
 				end
 			end
-			-- citizens who spot you call it in
-			if not seen then
-				for _, brain in ipairs(S.Citizens.Nearby(root.Position, 40)) do
-					if not brain.C.Temp and brain.State ~= "ko" and brain.State ~= "police" and canSee(brain, root.Position) and math.random() < 0.06 then
+			-- citizens who spot you call it in (not if they don't know it's you)
+			local tip = if changed and not w.Recognized then 0 else 0.06 * (1 - hidden) * (1 + suspicious)
+			if not seen and tip > 0 then
+				for _, brain in ipairs(S.Citizens.Nearby(root.Position, 40 * (1 - hidden * 0.5))) do
+					if not brain.C.Temp and brain.State ~= "ko" and brain.State ~= "police" and canSee(brain, root.Position) and math.random() < tip then
 						seen = true
 						S.Citizens.Say(brain, "Officer! They went that way!", "scared", 2)
 						break
@@ -11642,6 +11839,11 @@ local function chaseTick(dt)
 			w.LastSeen = now
 			w.LastKnown = root.Position
 			w.SawHide = false
+			-- they can see what you're wearing now
+			if S.Disguise then
+				w.Look = S.Disguise.Signature(player)
+				w.LookText = S.Disguise.Describe(player)
+			end
 		end
 		w.LastKnown = w.LastKnown or root.Position
 		local mode = if seen then "chasing" else "searching"
@@ -11743,8 +11945,10 @@ local function chaseTick(dt)
 		-- out of sight long enough: the stars fade one by one
 		-- (hiding makes them give up faster)
 		local pd = S.City.Data(player)
-		local known = math.min(20, (pd and pd.Notoriety or 0) * 1.2) -- the police remember repeat offenders
+		local known = if w.Recognized == false then 0 else math.min(20, (pd and pd.Notoriety or 0) * 1.2) -- the police remember repeat offenders
 		local hideTime = (level.Fade + known) * (if hiding[player] and not w.SawHide then 0.6 else 1)
+		-- a disguise helps them lose track; a new look helps a lot
+		hideTime *= (1 - hidden * 0.35) * (if changed then 0.5 else 1)
 		if os.clock() - w.LastSeen > hideTime then
 			w.LastSeen = os.clock() - hideTime + 8
 			setStars(player, w.Stars - 1)
@@ -11922,7 +12126,7 @@ function CrimeService.IsJailed(player)
 end
 
 return CrimeService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX26"><Properties><string name="Name">PlayerService</string><ProtectedString name="Source"><![CDATA[-- PlayerService (ModuleScript) — ServerScriptService.Modules.PlayerService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX27"><Properties><string name="Name">PlayerService</string><ProtectedString name="Source"><![CDATA[-- PlayerService (ModuleScript) — ServerScriptService.Modules.PlayerService
 -- Things players do that aren't crimes or conversations:
 --   • elevators and stairs (press E at the doors, pick a floor)
 --   • citizen profile cards (click anyone), the People directory, finding someone
@@ -12176,7 +12380,7 @@ function PlayerService.Start(services)
 end
 
 return PlayerService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX27"><Properties><string name="Name">CombatService</string><ProtectedString name="Source"><![CDATA[-- CombatService (ModuleScript) — ServerScriptService.Modules.CombatService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX28"><Properties><string name="Name">CombatService</string><ProtectedString name="Source"><![CDATA[-- CombatService (ModuleScript) — ServerScriptService.Modules.CombatService
 -- Weapons and fighting for players:
 --   • the weapons shop at the Hardware store (a bat, a hammer, a knife)
 --   • your weapons as tools in your hotbar (saved between visits)
@@ -12454,7 +12658,450 @@ function CombatService.Start(services)
 end
 
 return CombatService
-]]></ProtectedString></Properties></Item></Item></Item><Item class="StarterPlayer" referent="RBX29"><Properties><string name="Name">StarterPlayer</string></Properties><Item class="StarterPlayerScripts" referent="RBX30"><Properties><string name="Name">StarterPlayerScripts</string></Properties><Item class="LocalScript" referent="RBX35"><Properties><string name="Name">CityClient</string><ProtectedString name="Source"><![CDATA[-- CityClient (LocalScript) — StarterPlayer.StarterPlayerScripts.CityClient
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX29"><Properties><string name="Name">DisguiseService</string><ProtectedString name="Source"><![CDATA[-- DisguiseService (ModuleScript) — ServerScriptService.Modules.DisguiseService
+-- Hoodies, ski masks and disguise kits:
+--   • buy them at the Clothing store (press E at the counter)
+--   • wear them anytime: C (or 📱 Wardrobe). One top and one face item at a time.
+--   • they show on your character: a hood and sleeves, a knit mask, or a hat,
+--     dark glasses and a fake mustache
+--   • a ski mask in the daytime makes people nervous
+-- How they help you get away with things is in CrimeService (witnesses who
+-- can't recognize you, police who can't spot you, changing your look).
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Disguises = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Disguises"))
+
+local DisguiseService = {}
+local S
+
+local NERVOUS_LINES = { "Why are they wearing a mask...?", "Uh oh. That looks like trouble.", "Is that a ski mask? It's not even cold!", "I'm keeping my eye on that one.", "Hold on to your wallet..." }
+local COP_LINES = { "Take that mask off, pal.", "I've got my eye on you.", "Nice mask. Planning something?", "Don't try anything funny." }
+
+local function rgb(r, g, b)
+	return Color3.fromRGB(r, g, b)
+end
+
+-- what a player is wearing, as a set { [id] = true }
+local function worn(player)
+	local pd = S.City.Data(player)
+	local out = {}
+	for _, id in pairs(pd and pd.Wearing or {}) do
+		if Disguises.List[id] then
+			out[id] = true
+		end
+	end
+	return out
+end
+
+local function isNight()
+	return Disguises.IsNight(S.City.Hour())
+end
+
+function DisguiseService.Worn(player)
+	return worn(player)
+end
+function DisguiseService.Hidden(player)
+	return Disguises.Hidden(worn(player), isNight())
+end
+function DisguiseService.Suspicious(player)
+	return Disguises.Suspicious(worn(player), isNight())
+end
+function DisguiseService.Signature(player)
+	return Disguises.Signature(worn(player))
+end
+function DisguiseService.Describe(player)
+	return Disguises.Describe(worn(player))
+end
+function DisguiseService.FaceCovered(player)
+	local pd = S.City.Data(player)
+	return pd ~= nil and pd.Wearing ~= nil and pd.Wearing.Face ~= nil
+end
+
+--------------------------------------------------------------------------------
+-- How it looks on your character
+--------------------------------------------------------------------------------
+local function part(folder, anchor, name, size, cf, color, material, shape)
+	local p = Instance.new("Part")
+	p.Name = name
+	p.Size = size
+	p.Color = color
+	p.Material = material or Enum.Material.Fabric
+	p.CanCollide = false
+	p.CanQuery = false
+	p.CanTouch = false
+	p.Massless = true
+	p.CastShadow = false
+	if shape then
+		p.Shape = shape
+	end
+	p.CFrame = anchor.CFrame * cf
+	local weld = Instance.new("WeldConstraint")
+	weld.Part0, weld.Part1 = anchor, p
+	weld.Parent = p
+	p.Parent = folder
+	return p
+end
+
+local HOODIE = rgb(46, 48, 58)
+local KNIT = rgb(24, 24, 28)
+local HAT = rgb(84, 62, 44)
+
+-- How big the head LOOKS (classic heads are a (2,1,1) part with a head mesh
+-- that looks about 1.25 studs across; R15 mesh heads look like their size)
+local function headDims(head)
+	local mesh = head:FindFirstChildOfClass("SpecialMesh")
+	if mesh and mesh.MeshType == Enum.MeshType.Head then
+		local m = math.min(head.Size.X, head.Size.Y, head.Size.Z)
+		return Vector3.new(m * mesh.Scale.X, m * mesh.Scale.Y, m * mesh.Scale.Z)
+	end
+	return head.Size
+end
+
+-- a copy of the head's own shape, a bit bigger: fits any avatar's head
+local function headShell(folder, head, name, grow, color)
+	local shell
+	if head:IsA("MeshPart") then
+		shell = head:Clone()
+		shell:ClearAllChildren()
+		shell.Size = head.Size * grow
+		shell.TextureID = ""
+	else
+		shell = Instance.new("Part")
+		local mesh = head:FindFirstChildOfClass("SpecialMesh")
+		if mesh then
+			shell.Size = head.Size
+			local m = Instance.new("SpecialMesh")
+			m.MeshType = mesh.MeshType
+			m.MeshId = mesh.MeshId
+			m.Scale = mesh.Scale * grow
+			m.Parent = shell
+		else
+			shell.Size = head.Size * grow
+		end
+	end
+	shell.Name = name
+	shell.Color = color
+	shell.Material = Enum.Material.Fabric
+	shell.Anchored = false
+	shell.CanCollide = false
+	shell.CanQuery = false
+	shell.CanTouch = false
+	shell.Massless = true
+	shell.CastShadow = false
+	shell.CFrame = head.CFrame
+	local weld = Instance.new("WeldConstraint")
+	weld.Part0, weld.Part1 = head, shell
+	weld.Parent = shell
+	shell.Parent = folder
+	return shell
+end
+
+local BUILD = {}
+BUILD.Hoodie = function(folder, character, head)
+	local torso = character:FindFirstChild("UpperTorso") or character:FindFirstChild("Torso")
+	if torso then
+		local t = torso.Size
+		part(folder, torso, "HoodieBody", t + Vector3.new(0.14, 0.08, 0.14), CFrame.new(0, 0.02, 0), HOODIE)
+		part(folder, torso, "Pocket", Vector3.new(t.X * 0.6, t.Y * 0.22, 0.06), CFrame.new(0, -t.Y * 0.28, -t.Z / 2 - 0.08), rgb(38, 40, 48))
+		for _, side in ipairs({ -1, 1 }) do
+			part(folder, torso, "String", Vector3.new(0.06, t.Y * 0.3, 0.04), CFrame.new(side * 0.18, t.Y * 0.22, -t.Z / 2 - 0.09), rgb(220, 220, 225), Enum.Material.SmoothPlastic)
+		end
+	end
+	for _, name in ipairs({ "LeftUpperArm", "RightUpperArm", "LeftLowerArm", "RightLowerArm", "Left Arm", "Right Arm" }) do
+		local arm = character:FindFirstChild(name)
+		if arm then
+			part(folder, arm, "Sleeve", arm.Size + Vector3.new(0.1, 0.02, 0.1), CFrame.new(), HOODIE)
+		end
+	end
+	-- the hood: top, back and sides, open at the front
+	local h = headDims(head)
+	local w, d = h.X * 1.1, h.Z * 1.1
+	part(folder, head, "HoodTop", Vector3.new(w + 0.2, 0.2, d + 0.15), CFrame.new(0, h.Y * 0.55 + 0.08, 0.06), HOODIE)
+	part(folder, head, "HoodBack", Vector3.new(w + 0.2, h.Y * 1.1 + 0.25, 0.2), CFrame.new(0, 0, d / 2 + 0.1), HOODIE)
+	for _, side in ipairs({ -1, 1 }) do
+		part(folder, head, "HoodSide", Vector3.new(0.18, h.Y * 1.1 + 0.2, d + 0.05), CFrame.new(side * (w / 2 + 0.09), 0, 0.04), HOODIE)
+	end
+end
+BUILD.SkiMask = function(folder, character, head)
+	local h = headDims(head)
+	headShell(folder, head, "SkiMask", 1.1, KNIT)
+	local front = -h.Z * 0.55 - 0.03
+	-- the eye opening, and the eyes looking out of it
+	part(folder, head, "EyeHole", Vector3.new(h.X * 0.62, h.Y * 0.2, 0.05), CFrame.new(0, h.Y * 0.1, front), head.Color, Enum.Material.SmoothPlastic)
+	for _, side in ipairs({ -1, 1 }) do
+		part(folder, head, "Eye", Vector3.new(h.X * 0.11, h.X * 0.11, 0.04), CFrame.new(side * h.X * 0.15, h.Y * 0.1, front - 0.03), rgb(20, 20, 24), Enum.Material.SmoothPlastic, Enum.PartType.Ball)
+	end
+	part(folder, head, "MouthHole", Vector3.new(h.X * 0.26, h.Y * 0.08, 0.05), CFrame.new(0, -h.Y * 0.24, front), rgb(90, 40, 40), Enum.Material.SmoothPlastic)
+end
+BUILD.Disguise = function(folder, character, head)
+	local h = headDims(head)
+	local w = h.X
+	local front = -h.Z / 2 - 0.05
+	local top = h.Y / 2
+	-- a fedora
+	part(folder, head, "HatBrim", Vector3.new(0.1, w * 1.5, w * 1.5), CFrame.new(0, top + 0.02, 0) * CFrame.Angles(0, 0, math.rad(90)), HAT, Enum.Material.Fabric, Enum.PartType.Cylinder)
+	part(folder, head, "HatCrown", Vector3.new(0.55, w * 0.98, w * 0.98), CFrame.new(0, top + 0.3, 0) * CFrame.Angles(0, 0, math.rad(90)), HAT, Enum.Material.Fabric, Enum.PartType.Cylinder)
+	part(folder, head, "HatBand", Vector3.new(0.14, w * 1.01, w * 1.01), CFrame.new(0, top + 0.1, 0) * CFrame.Angles(0, 0, math.rad(90)), rgb(25, 25, 25), Enum.Material.Fabric, Enum.PartType.Cylinder)
+	-- dark glasses
+	for _, side in ipairs({ -1, 1 }) do
+		part(folder, head, "Lens", Vector3.new(w * 0.28, h.Y * 0.18, 0.05), CFrame.new(side * w * 0.18, h.Y * 0.1, front), rgb(18, 18, 22), Enum.Material.Glass)
+	end
+	part(folder, head, "Bridge", Vector3.new(w * 0.1, 0.05, 0.05), CFrame.new(0, h.Y * 0.13, front), rgb(18, 18, 22), Enum.Material.Metal)
+	-- a big fake mustache
+	part(folder, head, "Mustache", Vector3.new(w * 0.42, h.Y * 0.1, 0.08), CFrame.new(0, -h.Y * 0.14, front - 0.02), rgb(60, 40, 28))
+	for _, side in ipairs({ -1, 1 }) do
+		part(folder, head, "MustacheTip", Vector3.new(w * 0.13, h.Y * 0.08, 0.07), CFrame.new(side * w * 0.25, -h.Y * 0.17, front - 0.02) * CFrame.Angles(0, 0, math.rad(side * -25)), rgb(60, 40, 28))
+	end
+end
+
+-- hats and hair get in the way of hoods and masks: hide them while you wear one
+local function setAccessories(character, hide)
+	for _, acc in ipairs(character:GetChildren()) do
+		if acc:IsA("Accessory") then
+			local handle = acc:FindFirstChild("Handle")
+			if handle then
+				if hide then
+					if handle:GetAttribute("DisguiseSaved") == nil then
+						handle:SetAttribute("DisguiseSaved", handle.Transparency)
+					end
+					handle.Transparency = 1
+				elseif handle:GetAttribute("DisguiseSaved") ~= nil then
+					handle.Transparency = handle:GetAttribute("DisguiseSaved")
+					handle:SetAttribute("DisguiseSaved", nil)
+				end
+			end
+		end
+	end
+end
+
+local function dress(player)
+	local character = player.Character
+	local head = character and character:FindFirstChild("Head")
+	if not head then
+		return
+	end
+	local old = character:FindFirstChild("Disguise")
+	if old then
+		old:Destroy()
+	end
+	local set = worn(player)
+	local folder = Instance.new("Folder")
+	folder.Name = "Disguise"
+	for id in pairs(set) do
+		if BUILD[id] then
+			BUILD[id](folder, character, head)
+		end
+	end
+	folder.Parent = character
+	local face = head:FindFirstChild("face") or head:FindFirstChildOfClass("Decal")
+	if face then
+		if set.SkiMask then
+			if face:GetAttribute("DisguiseSaved") == nil then
+				face:SetAttribute("DisguiseSaved", face.Transparency)
+			end
+			face.Transparency = 1
+		elseif face:GetAttribute("DisguiseSaved") ~= nil then
+			face.Transparency = face:GetAttribute("DisguiseSaved")
+			face:SetAttribute("DisguiseSaved", nil)
+		end
+	end
+	setAccessories(character, next(set) ~= nil)
+	player:SetAttribute("Disguise", Disguises.Describe(set))
+end
+
+local function refresh(player)
+	local set = worn(player)
+	local night = isNight()
+	local hidden = Disguises.Hidden(set, night)
+	player:SetAttribute("Hidden", if hidden > 0.001 then math.floor(hidden * 100 + 0.5) / 100 else nil)
+	player:SetAttribute("Suspicious", if Disguises.Suspicious(set, night) > 0 then true else nil)
+	player:SetAttribute("Night", night)
+end
+
+--------------------------------------------------------------------------------
+-- Wardrobe and shop
+--------------------------------------------------------------------------------
+local function wardrobe(player, atStore)
+	local pd = S.City.Data(player)
+	local set = worn(player)
+	local items = {}
+	for _, id in ipairs(Disguises.Order) do
+		local d = Disguises.List[id]
+		table.insert(items, {
+			Id = id, Name = d.Name, Emoji = d.Emoji, Slot = d.Slot, Price = d.Price, Desc = d.Desc,
+			Hidden = d.Hidden, Night = d.Night, Suspicious = d.Suspicious,
+			Owned = pd ~= nil and pd.Outfits ~= nil and pd.Outfits[id] == true,
+			Wearing = set[id] == true,
+		})
+	end
+	return { Ok = true, Items = items, Store = atStore == true, Coins = S.City.Coins(player), Hidden = Disguises.Hidden(set, isNight()), Night = isNight() }
+end
+
+local function wear(player, data)
+	local pd = S.City.Data(player)
+	local d = Disguises.List[data.Id or ""]
+	if not pd or not d then
+		return { Ok = false }
+	end
+	if not (pd.Outfits and pd.Outfits[data.Id]) then
+		return { Ok = false, Error = "You don't have a " .. d.Name .. ". Get one at the 👕 Clothing store." }
+	end
+	if S.Crime and S.Crime.IsHiding(player) then
+		return { Ok = false, Error = "Not while you're hiding." }
+	end
+	pd.Wearing = pd.Wearing or {}
+	if data.On == false or (data.On == nil and pd.Wearing[d.Slot] == data.Id) then
+		pd.Wearing[d.Slot] = nil
+	else
+		pd.Wearing[d.Slot] = data.Id
+	end
+	dress(player)
+	refresh(player)
+	local r = wardrobe(player, data.Store)
+	r.Text = if pd.Wearing[d.Slot] == data.Id then d.Emoji .. " You put on the " .. d.Name .. "." else "You took off the " .. d.Name .. "."
+	return r
+end
+
+local function buy(player, data)
+	local pd = S.City.Data(player)
+	local d = Disguises.List[data.Id or ""]
+	if not pd or not d then
+		return { Ok = false, Error = "That's not for sale." }
+	end
+	pd.Outfits = pd.Outfits or {}
+	if pd.Outfits[data.Id] then
+		return { Ok = false, Error = "You already have one." }
+	end
+	if S.Crime and S.Crime.IsJailed(player) then
+		return { Ok = false, Error = "Not from jail!" }
+	end
+	if not S.City.Spend(player, d.Price, d.Emoji .. " Bought a " .. d.Name) then
+		return { Ok = false, Error = "You need " .. d.Price .. " coins." }
+	end
+	pd.Outfits[data.Id] = true
+	return wear(player, { Id = data.Id, On = true, Store = true })
+end
+
+-- The police take your ski mask when they arrest you
+function DisguiseService.Confiscate(player)
+	local pd = S.City.Data(player)
+	if not pd or not pd.Outfits or not pd.Outfits.SkiMask then
+		return
+	end
+	pd.Outfits.SkiMask = nil
+	if pd.Wearing and pd.Wearing.Face == "SkiMask" then
+		pd.Wearing.Face = nil
+	end
+	dress(player)
+	refresh(player)
+	S.City.Toast(player, "🥷", "Mask confiscated", "The police took your ski mask.", rgb(230, 60, 60))
+end
+
+local function addStore()
+	local store = S.Map.Places.Mall
+	if not store then
+		return
+	end
+	local counter = Instance.new("Part")
+	counter.Name = "DisguiseShop"
+	counter.Anchored = true
+	counter.CanCollide = false
+	counter.CanQuery = false
+	counter.Transparency = 1
+	counter.Size = Vector3.new(2, 2, 2)
+	counter.CFrame = CFrame.new((store.Inside or store.Door) + Vector3.new(0, 3, 0))
+	counter.Parent = store.Model or workspace
+	local prompt = Instance.new("ProximityPrompt")
+	prompt.Name = "ShopPrompt"
+	prompt.ActionText = "Hoodies, masks & disguises"
+	prompt.ObjectText = "👕 Clothing store"
+	prompt.KeyboardKeyCode = Enum.KeyCode.E
+	prompt.MaxActivationDistance = 12
+	prompt.RequiresLineOfSight = false
+	prompt.Style = Enum.ProximityPromptStyle.Custom
+	prompt:SetAttribute("Kind", "Shop")
+	prompt.Parent = counter
+	prompt.Triggered:Connect(function(player)
+		local data = wardrobe(player, true)
+		data.Type = "Wardrobe"
+		S.City.Send(player, data)
+	end)
+end
+
+--------------------------------------------------------------------------------
+-- A ski mask in the daytime makes people nervous
+--------------------------------------------------------------------------------
+local lastLine = {}
+local function suspicionTick()
+	for _, player in ipairs(Players:GetPlayers()) do
+		refresh(player)
+		-- (re)dress anyone whose outfit isn't on yet (their save loaded after they spawned)
+		if player.Character and player.Character:FindFirstChild("Head") and not player.Character:FindFirstChild("Disguise") and next(worn(player)) ~= nil then
+			dress(player)
+		end
+		local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+		if root and player:GetAttribute("Suspicious") and not (S.Crime and S.Crime.IsHiding(player)) and os.clock() - (lastLine[player] or 0) > 6 then
+			for _, brain in ipairs(S.Citizens.Nearby(root.Position, 22)) do
+				if brain.State ~= "ko" and brain.State ~= "hospital" and brain.State ~= "talk" and brain.State ~= "police" and brain.Model:GetAttribute("Action") ~= "sleep" and math.random() < 0.15 then
+					local job = brain.C.Job
+					local cop = job == "Police Officer" or job == "Night Officer" or job == "SWAT Officer"
+					local lines = if cop then COP_LINES else NERVOUS_LINES
+					S.Citizens.Say(brain, lines[math.random(1, #lines)], if cop then "focused" else "scared", 2.5)
+					lastLine[player] = os.clock()
+					break
+				end
+			end
+		end
+	end
+end
+
+function DisguiseService.Start(services)
+	S = services
+	S.City.Handle("Wardrobe", function(player, data)
+		return wardrobe(player, data and data.Store)
+	end)
+	S.City.Handle("Wear", wear)
+	S.City.Handle("BuyOutfit", buy)
+	addStore()
+	local function onPlayer(player)
+		player.CharacterAdded:Connect(function(character)
+			local head = character:WaitForChild("Head", 10)
+			if head then
+				task.wait(0.5) -- let the avatar's hats and face load
+				dress(player)
+				-- hats that load later get hidden too
+				character.ChildAdded:Connect(function(child)
+					if child:IsA("Accessory") and next(worn(player)) ~= nil then
+						task.wait()
+						setAccessories(character, true)
+					end
+				end)
+			end
+		end)
+		if player.Character then
+			task.spawn(dress, player)
+		end
+		refresh(player)
+	end
+	Players.PlayerAdded:Connect(onPlayer)
+	for _, player in ipairs(Players:GetPlayers()) do
+		task.spawn(onPlayer, player)
+	end
+	Players.PlayerRemoving:Connect(function(player)
+		lastLine[player] = nil
+	end)
+	task.spawn(function()
+		while true do
+			task.wait(1)
+			suspicionTick()
+		end
+	end)
+end
+
+return DisguiseService
+]]></ProtectedString></Properties></Item></Item></Item><Item class="StarterPlayer" referent="RBX31"><Properties><string name="Name">StarterPlayer</string></Properties><Item class="StarterPlayerScripts" referent="RBX32"><Properties><string name="Name">StarterPlayerScripts</string></Properties><Item class="LocalScript" referent="RBX37"><Properties><string name="Name">CityClient</string><ProtectedString name="Source"><![CDATA[-- CityClient (LocalScript) — StarterPlayer.StarterPlayerScripts.CityClient
 -- AI City on your screen. Starts the HUD, the windows, the world effects and
 -- the citizens' body language, and routes everything the server sends.
 --
@@ -12554,6 +13201,9 @@ end
 handlers.Shop = function(d)
 	Panels.OpenShop(d)
 end
+handlers.Wardrobe = function(d)
+	Panels.OpenWardrobe(d)
+end
 handlers.Down = function(d)
 	Panels.Down(d)
 end
@@ -12651,6 +13301,8 @@ UserInputService.InputBegan:Connect(function(input, processed)
 		Panels.Mayor.Toggle()
 	elseif key == Enum.KeyCode.H then
 		Panels.Help.Toggle()
+	elseif key == Enum.KeyCode.C then
+		task.spawn(Panels.ToggleWardrobe)
 	elseif key == Enum.KeyCode.F then
 		World.Attack()
 	elseif key == Enum.KeyCode.X then
@@ -12670,7 +13322,7 @@ UserInputService.InputEnded:Connect(function(input)
 		World.SetBlock(false)
 	end
 end)
-]]></ProtectedString></Properties><Item class="ModuleScript" referent="RBX31"><Properties><string name="Name">UI</string><ProtectedString name="Source"><![CDATA[-- UI (ModuleScript) — StarterPlayerScripts.CityClient.UI
+]]></ProtectedString></Properties><Item class="ModuleScript" referent="RBX33"><Properties><string name="Name">UI</string><ProtectedString name="Source"><![CDATA[-- UI (ModuleScript) — StarterPlayerScripts.CityClient.UI
 -- AI City's look: colors, fonts, and helpers for building the interface
 -- (rounded panels, buttons that bounce, windows that pop open, bars...).
 
@@ -13108,7 +13760,7 @@ function UI.commas(n)
 end
 
 return UI
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX32"><Properties><string name="Name">Hud</string><ProtectedString name="Source"><![CDATA[-- Hud (ModuleScript) — StarterPlayerScripts.CityClient.Hud
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX34"><Properties><string name="Name">Hud</string><ProtectedString name="Source"><![CDATA[-- Hud (ModuleScript) — StarterPlayerScripts.CityClient.Hud
 -- The always-on screen: the clock and calendar, the city's mood and stats,
 -- a rotating minimap, coins, wanted stars, the mayor and the next election,
 -- the action bar, notifications and the news ticker.
@@ -13367,6 +14019,8 @@ local function build()
 	refs.Police = UI.chip(right, "", C.Red, { LayoutOrder = 2, TextSize = 13, Size = UDim2.fromOffset(0, 28), Visible = false })
 	refs.PoliceTip = UI.text(right, "", 12, UI.Font, C.Sub, { LayoutOrder = 2, Size = UDim2.fromOffset(250, 30), TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Right, Visible = false })
 	refs.Notoriety = UI.chip(right, "", UI.rgb(120, 60, 30), { LayoutOrder = 2, TextSize = 12, Size = UDim2.fromOffset(0, 24), Visible = false })
+	-- your disguise: how hidden you are right now
+	refs.Disguise = UI.chip(right, "", UI.rgb(88, 60, 140), { LayoutOrder = 2, TextSize = 12, Size = UDim2.fromOffset(0, 24), Visible = false })
 	refs.Mayor = UI.chip(right, "🏛️ Mayor: —", C.Panel2, { LayoutOrder = 3, TextSize = 13, Size = UDim2.fromOffset(0, 28) })
 	refs.Election = UI.chip(right, "🗳️ Election in 8:00", C.Panel2, { LayoutOrder = 4, TextSize = 13, Size = UDim2.fromOffset(0, 28) })
 	toastHolder = UI.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 5, Parent = right })
@@ -13599,6 +14253,17 @@ local function frame(dt)
 		refs.EdgeStroke.Transparency = 1
 		refs.Police.Visible = false
 		refs.PoliceTip.Visible = false
+	end
+	-- disguise: how hidden you are, and whether the police are looking for your old look
+	local hiddenNow = player:GetAttribute("Hidden")
+	local disguise = player:GetAttribute("Disguise")
+	refs.Disguise.Visible = disguise ~= nil
+	if disguise then
+		refs.Disguise.Text = "🥷 " .. math.floor((hiddenNow or 0) * 100 + 0.5) .. "% hidden" .. (if player:GetAttribute("Night") then " 🌙" else "") .. (if player:GetAttribute("Suspicious") then "  ·  👀 people are nervous" else "")
+	end
+	local look = player:GetAttribute("PoliceLook")
+	if look and refs.PoliceTip.Visible and not player:GetAttribute("WantedSeen") then
+		refs.PoliceTip.Text = "🕵️ They're looking for <b>" .. look .. "</b>. You changed your look, so they'll only know you up close."
 	end
 	-- notoriety: repeat offenders get more police, faster
 	local notoriety = player:GetAttribute("Notoriety") or 0
@@ -13951,7 +14616,7 @@ function Hud.Start(context)
 end
 
 return Hud
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX33"><Properties><string name="Name">Panels</string><ProtectedString name="Source"><![CDATA[-- Panels (ModuleScript) — StarterPlayerScripts.CityClient.Panels
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX35"><Properties><string name="Name">Panels</string><ProtectedString name="Source"><![CDATA[-- Panels (ModuleScript) — StarterPlayerScripts.CityClient.Panels
 -- The windows you open: the city map, the People directory and profile
 -- cards, voting, speeches, the mayor's desk, conversations with citizens,
 -- elevators, help, settings, the welcome screen, election results and the
@@ -14816,7 +15481,8 @@ local function buildHelp()
 		{ "⚔️ Fighting", "<b>F</b> (or click with a weapon) attacks, <b>hold X</b> blocks (you take a third of the damage). Buy a 🏏 bat, 🔨 hammer or 🔪 knife at the Hardware store: they hit harder, but using them is a much more serious crime. Tough citizens and the police fight back, so watch your ❤️ health. If you get knocked out, you wake up at the hospital (wanted stars cleared, but there's a bill)." },
 		{ "🚨 Crime", "<b>F</b> attacks, <b>G</b> (hold) picks a pocket, <b>R</b> (hold) robs a register or the bank vault. If anyone sees you, you get wanted stars and the police come after you. Get caught and you're BUSTED: a fine and time in jail. Kids can't be hurt." },
 		{ "🫥 Losing the police", "The police only know where they <b>last saw</b> you. Break their line of sight (around a corner, into a building) and they'll run there and search around. Hide in a <b>trash can, hedge or park bush</b> (hold <b>Q</b>): they can't see you, unless they search right next to your spot (or saw you climb in!). Stay out of sight and the stars fade one by one, faster while you're hiding. <b>Space</b> gets you out." },
-		{ "⌨️ Keys", "Tab phone · E talk / use · M map · P people · V vote · B speech · N mayor · F attack · X block · 1-4 hotbar · G pickpocket · R rob · Q hide · H help · 1-9 answer in conversations · Esc close windows" },
+		{ "🥷 Disguises", "Buy a 🧥 <b>hoodie</b>, a 🥷 <b>ski mask</b> or a 🥸 <b>disguise kit</b> at the 👕 Clothing store, and wear them with <b>C</b>. Witnesses may not recognize you (fewer stars, no notoriety, nobody remembers it was you), the police have to get closer to spot you, and it all works much better <b>at night</b>. After a crime, change or take off your outfit where nobody can see: the police keep looking for the old one. But a ski mask in daylight makes people nervous..." },
+		{ "⌨️ Keys", "Tab phone · E talk / use · M map · P people · V vote · B speech · N mayor · F attack · X block · 1-4 hotbar · G pickpocket · R rob · Q hide · C wardrobe · H help · 1-9 answer in conversations · Esc close windows" },
 	}
 	for _, s in ipairs(sections) do
 		local card = UI.panel(list, { Size = UDim2.new(1, -10, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundColor3 = C.Panel2, Radius = 12 })
@@ -15056,11 +15722,15 @@ local function buildPhone()
 		P.Close()
 		Panels.Mayor.Open()
 	end)
-	app(8, "❓", "Help", UI.rgb(80, 90, 120), function()
+	app(8, "🥷", "Wardrobe", UI.rgb(120, 80, 190), function()
+		P.Close()
+		Panels.ToggleWardrobe()
+	end)
+	app(9, "❓", "Help", UI.rgb(80, 90, 120), function()
 		P.Close()
 		Panels.Help.Open()
 	end)
-	app(9, "⚙️", "Settings", UI.rgb(110, 110, 130), function()
+	app(10, "⚙️", "Settings", UI.rgb(110, 110, 130), function()
 		P.Close()
 		Panels.Settings.Open()
 	end)
@@ -15157,6 +15827,82 @@ local function buildShop()
 	end
 end
 
+-- The wardrobe: hoodies, ski masks and disguises (and the Clothing store)
+local function buildWardrobe()
+	local win = UI.window(screen, "Wardrobe", "🥷", UDim2.fromOffset(760, 480), C.Purple)
+	Panels.Wardrobe = win
+	local body = win.Body
+	local top = UI.text(body, "", 15, UI.Bold, C.Sub, { Size = UDim2.new(1, 0, 0, 22), RichText = true })
+	local grid = UI.new("Frame", { BackgroundTransparency = 1, Position = UDim2.fromOffset(0, 30), Size = UDim2.new(1, 0, 1, -70), Parent = body })
+	UI.new("UIGridLayout", { CellSize = UDim2.new(0.333, -8, 1, 0), CellPadding = UDim2.fromOffset(10, 0), SortOrder = Enum.SortOrder.LayoutOrder, Parent = grid })
+	UI.text(body, "🌙 Everything hides you better at night. Wear a top and a face item together. After a crime, change or take them off (C) where nobody can see you: the police will be looking for the wrong person.", 12, UI.Font, C.Dim, { AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.new(1, 0, 0, 34), TextWrapped = true })
+	local function stat(card, label, value, color, y, text)
+		UI.text(card, label, 12, UI.Bold, C.Sub, { Position = UDim2.fromOffset(0, y), Size = UDim2.fromOffset(78, 16) })
+		local _, set = UI.bar(card, color, 8, { Position = UDim2.new(0, 80, 0, y + 4), Size = UDim2.new(1, -118, 0, 8) })
+		set(value)
+		UI.text(card, text, 12, UI.Bold, C.Text, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, y), Size = UDim2.fromOffset(34, 16), TextXAlignment = Enum.TextXAlignment.Right })
+	end
+	local current
+	function Panels.OpenWardrobe(data)
+		current = data
+		clear(grid)
+		local hidden = math.floor((data.Hidden or 0) * 100 + 0.5)
+		top.Text = (if data.Store then "👕 <b>Clothing store</b> · 🪙 " .. UI.commas(data.Coins or 0) .. " coins · " else "") .. "You're " .. hidden .. "% hidden right now" .. (if data.Night then " 🌙" else " ☀️")
+		for k, item in ipairs(data.Items or {}) do
+			local card = UI.panel(grid, { BackgroundColor3 = if item.Wearing then UI.rgb(58, 44, 86) else C.Panel2, Radius = 14, LayoutOrder = k })
+			if item.Wearing then
+				UI.stroke(card, C.Purple, 2, 0)
+			end
+			UI.pad(card, 12)
+			UI.text(card, item.Emoji, 46, UI.Font, C.White, { Size = UDim2.new(1, 0, 0, 56), TextXAlignment = Enum.TextXAlignment.Center })
+			UI.text(card, item.Name, 18, UI.Title, C.Text, { Position = UDim2.fromOffset(0, 58), Size = UDim2.new(1, 0, 0, 24), TextXAlignment = Enum.TextXAlignment.Center })
+			UI.text(card, (if item.Slot == "Top" then "TOP · " else "FACE · ") .. item.Desc, 12, UI.Font, C.Sub, { Position = UDim2.fromOffset(0, 84), Size = UDim2.new(1, 0, 0, 62), TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Center, TextYAlignment = Enum.TextYAlignment.Top })
+			stat(card, "☀️ Hidden", item.Hidden, C.Blue, 152, math.floor(item.Hidden * 100) .. "%")
+			stat(card, "🌙 At night", math.min(0.95, item.Hidden + item.Night), C.Purple, 172, math.floor(math.min(0.95, item.Hidden + item.Night) * 100) .. "%")
+			stat(card, "👀 Noticed", item.Suspicious, C.Red, 192, if item.Suspicious > 0 then "day" else "no")
+			local label, color, textColor
+			if item.Owned then
+				label, color, textColor = if item.Wearing then "Take off" else "Put on", if item.Wearing then C.Panel3 else C.Purple, C.White
+			elseif data.Store then
+				label, color, textColor = "🪙 " .. item.Price .. "  Buy", C.Gold, C.Bg
+			else
+				label, color, textColor = "👕 At the Clothing store", C.Panel3, C.Sub
+			end
+			UI.button(card, label, { AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.new(1, 0, 0, 40), Color = color, TextColor = textColor }, function()
+				local r
+				if item.Owned then
+					r = request({ Action = "Wear", Id = item.Id, On = not item.Wearing, Store = data.Store })
+				elseif data.Store then
+					r = request({ Action = "BuyOutfit", Id = item.Id })
+				else
+					return
+				end
+				if r.Ok then
+					if r.Text then
+						ctx.Hud.Toast(item.Emoji, r.Text, if item.Owned then "" else "Put it on or take it off anytime with C.", C.Purple)
+					end
+					r.Store = data.Store
+					Panels.OpenWardrobe(r)
+				else
+					fail(r)
+				end
+			end)
+		end
+		win.Open()
+	end
+	-- C: open your wardrobe anywhere
+	function Panels.ToggleWardrobe()
+		if win.IsOpen() then
+			win.Close()
+			return
+		end
+		local r = request({ Action = "Wardrobe" })
+		if r and r.Ok then
+			Panels.OpenWardrobe(r)
+		end
+	end
+end
+
 -- knocked out: the screen fades, you wake up at the hospital
 local function buildDown()
 	local cover = UI.new("Frame", { BackgroundColor3 = Color3.new(0, 0, 0), BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 45, Visible = false, Parent = screen })
@@ -15204,12 +15950,13 @@ function Panels.Start(context)
 	buildResults()
 	buildBusted()
 	buildShop()
+	buildWardrobe()
 	buildDown()
 	buildPhone()
 end
 
 return Panels
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX34"><Properties><string name="Name">World</string><ProtectedString name="Source"><![CDATA[-- World (ModuleScript) — StarterPlayerScripts.CityClient.World
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX36"><Properties><string name="Name">World</string><ProtectedString name="Source"><![CDATA[-- World (ModuleScript) — StarterPlayerScripts.CityClient.World
 -- Everything drawn in the 3D world: nameplates over citizens and players,
 -- speech bubbles, the interaction prompts (talk, elevators, crimes), the
 -- waypoint beam, hit effects, alarms, confetti, the sky and the traffic lights.

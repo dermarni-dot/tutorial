@@ -10,6 +10,7 @@
 --   DialogueService talking to citizens (and them talking to each other)
 --   CrimeService    fighting, stabbing, pickpocketing, robberies, witnesses, police, jail
 --   CombatService   weapons (the Hardware store shop), blocking, waking up at the hospital
+--   DisguiseService hoodies, ski masks and disguises (the Clothing store), wearing them
 --   PlayerService   elevators, citizen profiles, the directory
 --
 -- Other scripts can get the map with:
@@ -56,9 +57,11 @@ if Config.RUN_CITIZENS ~= false then
 	services.Crime = require(Modules:WaitForChild("CrimeService"))
 	services.Players = require(Modules:WaitForChild("PlayerService"))
 	services.Combat = require(Modules:WaitForChild("CombatService"))
+	services.Disguise = require(Modules:WaitForChild("DisguiseService"))
 	services.Dialogue.Start(services)
 	services.Crime.Start(services)
 	services.Players.Start(services)
 	services.Combat.Start(services)
+	services.Disguise.Start(services)
 	task.spawn(services.Citizens.Start, services)
 end
