@@ -86,14 +86,15 @@ local function makePlate(model, isPlayer)
 			badge.BackgroundColor3 = if team == 1 then C.Blue else C.Red
 		elseif model:GetAttribute("Chasing") then
 			badge.Visible = true
-			badge.Text = "🚨 CHASING"
-			badge.BackgroundColor3 = C.Red
+			local searching = model:GetAttribute("ChaseState") == "searching"
+			badge.Text = if searching then "🔎 SEARCHING" else "🚨 CHASING"
+			badge.BackgroundColor3 = if searching then C.Orange else C.Red
 		else
 			badge.Visible = false
 		end
 		gui.StudsOffset = plateOffset(model)
 	end
-	for _, attr in ipairs({ "Activity", "Mood", "Expecting", "Team", "DisplayName", "Scale", "Chasing" }) do
+	for _, attr in ipairs({ "Activity", "Mood", "Expecting", "Team", "DisplayName", "Scale", "Chasing", "ChaseState" }) do
 		model:GetAttributeChangedSignal(attr):Connect(refresh)
 	end
 	if isPlayer then
@@ -209,7 +210,7 @@ end
 --------------------------------------------------------------------------------
 -- Interaction prompts (our own look for Talk / Elevator / crime prompts)
 --------------------------------------------------------------------------------
-local PROMPT_COLORS = { Talk = C.Blue, Elevator = C.Teal, Crime = C.Red }
+local PROMPT_COLORS = { Talk = C.Blue, Elevator = C.Teal, Crime = C.Red, Hide = C.Purple }
 local promptGuis = {}
 
 local function keyName(prompt, inputType)

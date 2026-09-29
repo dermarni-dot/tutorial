@@ -406,7 +406,9 @@ function ctx.houseRow(parent, i, j, rng, slots, big)
 		MapKit.signText(mailbox, Enum.NormalId.Right, tostring(number), MapKit.WHITE)
 		if rng:NextNumber() < 0.5 then
 			for _, px in ipairs({ -1, 1 }) do
-				MapKit.deco(b.Model, "Hedge", Vector3.new(7, 2.6, 1.6), at(px * 6.5, 1.3, -b.D / 2 - 9.5), MapKit.LEAVES[3], Enum.Material.Grass)
+				local hedge = MapKit.deco(b.Model, "Hedge", Vector3.new(7, 2.6, 1.6), at(px * 6.5, 1.3, -b.D / 2 - 9.5), MapKit.LEAVES[3], Enum.Material.Grass)
+				hedge:SetAttribute("HideName", "a hedge")
+				MapKit.tag(hedge, "HideSpot")
 			end
 		else
 			for n = -5, 5 do

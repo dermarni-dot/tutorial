@@ -141,6 +141,12 @@ UserInputService.InputBegan:Connect(function(input, processed)
 		return
 	end
 	local key = input.KeyCode
+	if (key == Enum.KeyCode.Space or key == Enum.KeyCode.ButtonA) and player:GetAttribute("Hiding") then
+		task.spawn(function()
+			ctx.Remotes.Request:InvokeServer({ Action = "Unhide" })
+		end)
+		return
+	end
 	if NUMBER_KEYS[key] and Panels.InDialogue() then
 		Panels.DialogueKey(NUMBER_KEYS[key])
 	elseif key == Enum.KeyCode.M then

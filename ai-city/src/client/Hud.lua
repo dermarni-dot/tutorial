@@ -250,6 +250,9 @@ local function build()
 	for k = 1, 5 do
 		refs.Stars[k] = UI.text(wanted, "★", 22, UI.Black, C.Dim, { Size = UDim2.fromOffset(22, 26), TextXAlignment = Enum.TextXAlignment.Center, LayoutOrder = k })
 	end
+	-- what the police are doing: chasing you, searching for you, or you're hidden
+	refs.Police = UI.chip(right, "", C.Red, { LayoutOrder = 2, TextSize = 13, Size = UDim2.fromOffset(0, 28), Visible = false })
+	refs.PoliceTip = UI.text(right, "", 12, UI.Font, C.Sub, { LayoutOrder = 2, Size = UDim2.fromOffset(250, 30), TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Right, Visible = false })
 	refs.Mayor = UI.chip(right, "🏛️ Mayor: —", C.Panel2, { LayoutOrder = 3, TextSize = 13, Size = UDim2.fromOffset(0, 28) })
 	refs.Election = UI.chip(right, "🗳️ Election in 8:00", C.Panel2, { LayoutOrder = 4, TextSize = 13, Size = UDim2.fromOffset(0, 28) })
 	toastHolder = UI.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 5, Parent = right })
@@ -437,12 +440,34 @@ local function frame(dt)
 		local pulse = (math.sin(t * (if seen then 9 else 3)) + 1) / 2
 		refs.EdgeStroke.Transparency = 0.45 + pulse * 0.45
 		refs.EdgeStroke.Color = if math.floor(t * 4) % 2 == 0 and seen then C.Red else C.Blue
-		refs.WantedEye.Text = if seen then "👀" else "🫥"
+		local hidden = player:GetAttribute("Hiding")
+		local state = player:GetAttribute("PoliceState")
+		local near = player:GetAttribute("PoliceNear")
+		refs.WantedEye.Text = if seen then "👀" elseif hidden then "🫥" else "🔎"
 		for k = 1, stars do
 			refs.Stars[k].TextColor3 = if seen and math.floor(t * 5) % 2 == 0 then C.Red else C.Gold
 		end
+		refs.Police.Visible = true
+		refs.PoliceTip.Visible = true
+		if seen then
+			refs.Police.Text = "🚨 CHASING YOU" .. (if near then "  ·  👮 " .. near .. " studs" else "")
+			refs.Police.BackgroundColor3 = C.Red
+			refs.PoliceTip.Text = "Break their line of sight: duck around a corner or into a building."
+		elseif hidden then
+			refs.Police.Text = "🫥 HIDDEN in " .. tostring(hidden) .. (if near then "  ·  👮 " .. near .. " studs" else "")
+			refs.Police.BackgroundColor3 = C.Purple
+			refs.PoliceTip.Text = "Stay still... your stars fade faster while you hide. Space to get out."
+			refs.EdgeStroke.Color = C.Purple
+			refs.EdgeStroke.Transparency = 0.75 + (math.sin(t * 2) + 1) / 2 * 0.2
+		else
+			refs.Police.Text = "🔎 THEY'RE SEARCHING" .. (if near then "  ·  👮 " .. near .. " studs" else "")
+			refs.Police.BackgroundColor3 = C.Orange
+			refs.PoliceTip.Text = "They lost sight of you! Hide in a trash can, hedge or bush (Q), or keep running."
+		end
 	else
 		refs.EdgeStroke.Transparency = 1
+		refs.Police.Visible = false
+		refs.PoliceTip.Visible = false
 	end
 	-- jail
 	local jailUntil = player:GetAttribute("JailUntil")

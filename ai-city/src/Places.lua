@@ -264,6 +264,13 @@ local function park(ctx, parent, i, j, rng, id, withPlayground)
 	local path = rgb(214, 196, 154)
 	deco(model, "Path", Vector3.new(74, 0.14, 5), CFrame.new(c + Vector3.new(0, 0.12, 0)), path, Enum.Material.Sand)
 	deco(model, "Path", Vector3.new(5, 0.14, 74), CFrame.new(c + Vector3.new(0, 0.12, 0)), path, Enum.Material.Sand)
+	-- thick bushes by the entrances (somewhere to hide)
+	for _, e in ipairs({ { 33, 6 }, { -33, -6 }, { 6, -33 }, { -6, 33 } }) do
+		local bush = MapKit.ball(model, "Bush", 5.5, CFrame.new(c + Vector3.new(e[1], 2.2, e[2])), MapKit.LEAVES[2], Enum.Material.Grass)
+		bush.CanCollide = false
+		bush:SetAttribute("HideName", "a bush")
+		MapKit.tag(bush, "HideSpot")
+	end
 	-- pond with lily pads and ducks
 	local pondC = c + Vector3.new(-18, 0, 18)
 	column(model, "PondEdge", 0.6, 26, pondC + Vector3.new(0, 0.3, 0), STONE, Enum.Material.Pebble)

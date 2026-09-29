@@ -79,7 +79,10 @@ local function hydrant(parent, pos)
 end
 
 local function trashCan(parent, pos)
-	MapKit.column(parent, "TrashCan", 3, 1.8, pos + Vector3.new(0, 1.5, 0), rgb(50, 90, 70), Enum.Material.Metal)
+	local can = MapKit.column(parent, "TrashCan", 3, 1.8, pos + Vector3.new(0, 1.5, 0), rgb(50, 90, 70), Enum.Material.Metal)
+	-- players on the run can hide in it (see CrimeService)
+	can:SetAttribute("HideName", "a trash can")
+	MapKit.tag(can, "HideSpot")
 	MapKit.disc(parent, "TrashLid", 0.3, 2, pos + Vector3.new(0, 3.1, 0), rgb(40, 70, 56), Enum.Material.Metal)
 end
 

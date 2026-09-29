@@ -109,7 +109,11 @@ Street lamps, windows, porch lights, neon signs and stadium floodlights switch o
 - 🫳 **Pickpocket:** hold **G** next to someone. Facing them makes it more likely they'll notice.
 - 💰 **Rob a register or the bank vault:** hold **R**. The bank has a silent alarm.
 - **Witnesses** need to see it happen (walls block their view), or be very close. They scream, run and remember it, tell everyone, and call the police.
-- **Wanted stars ⭐:** on-duty police officers come after you, plus backup units from 2 stars up. Your screen pulses red and blue while they can see you. Stay out of sight and the stars fade one by one.
+- **Wanted stars ⭐:** the police always come. On-duty officers join the chase, and backup units arrive from out of sight (more of them with more stars). Your screen pulses red and blue while they can see you.
+- **Losing them:** the police only know where they **last saw** you, and your HUD shows "🚨 CHASING", "🔎 SEARCHING" or "🫥 HIDDEN".
+  - Break their line of sight by ducking around a corner or into a building. They run to where they last saw you and search the area, checking nearby hiding spots.
+  - **Hide** in one of about 150 hiding spots: trash cans downtown, hedges in front of houses, and bushes in the parks. Hold **Q** next to one and you vanish inside, so the police can't see you. An officer searching right next to your spot might still check it, and if one **saw you climb in**, they'll come straight for it.
+  - Stay out of sight and your stars fade one by one, faster while you hide. Press **Space** (or **Q**) to get out.
 - **BUSTED:** a fine and time in the police station's jail cell.
 - **Kids and babies can't be hurt.**
 
@@ -136,6 +140,7 @@ Street lamps, windows, porch lights, neon signs and stadium floodlights switch o
 | F | punch |
 | G | pickpocket |
 | R | rob |
+| Q | hide (at trash cans, hedges and bushes) · Space gets out |
 | H | help |
 | 1–9 | answer in conversations |
 | Esc | close |
@@ -220,6 +225,7 @@ The game was run in a Luau test harness (a small Roblox simulation), and these c
   - a profile card, the directory and the places list;
   - three punches, a knockout, a witness and 3 wanted stars;
   - a police chase, an arrest, jail and release;
+  - running out of sight (the police search where they last saw you), hiding in a trash can until the stars fade, and getting found after being seen climbing in;
   - an elevator ride to floor 9;
   - a vote and an election (and winning it).
 - **The client:** every window and every server message, and poses on 20 citizens at once.

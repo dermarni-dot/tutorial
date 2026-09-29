@@ -852,8 +852,9 @@ local function buildHelp()
 		{ "💬 Talk to people", "Walk up to anyone and press <b>E</b>. Ask about their day, their job, the mayor, the gossip. Tell jokes, give compliments or gifts, ask for directions, ask them to walk with you... They remember everything you do, and they'll tell their friends." },
 		{ "🎤 Become mayor", "Go to the stage on the city plaza and press <b>B</b> to give a speech. Pick ideas that match what people care about. Then press <b>V</b> to vote. The mayor gets a salary and can pass one policy a day (<b>N</b>)." },
 		{ "🗺️ Find your way", "<b>M</b> opens the city map (tap a place to set a waypoint). <b>P</b> opens the People directory: tap anyone to see their card, or 📍 to find them. Press <b>E</b> at elevator doors to ride up the office towers." },
-		{ "🚨 Crime", "<b>F</b> punches, <b>G</b> (hold) picks a pocket, <b>R</b> (hold) robs a register or the bank vault. If anyone sees you, you get wanted stars and the police come after you. Hide until the stars fade... or get BUSTED and spend time in jail. Kids can't be hurt." },
-		{ "⌨️ Keys", "E talk / use · M map · P people · V vote · B speech · N mayor · F punch · G pickpocket · R rob · H help · 1-9 answer in conversations · Esc close windows" },
+		{ "🚨 Crime", "<b>F</b> punches, <b>G</b> (hold) picks a pocket, <b>R</b> (hold) robs a register or the bank vault. If anyone sees you, you get wanted stars and the police come after you. Get caught and you're BUSTED: a fine and time in jail. Kids can't be hurt." },
+		{ "🫥 Losing the police", "The police only know where they <b>last saw</b> you. Break their line of sight (around a corner, into a building) and they'll run there and search around. Hide in a <b>trash can, hedge or park bush</b> (hold <b>Q</b>): they can't see you, unless they search right next to your spot (or saw you climb in!). Stay out of sight and the stars fade one by one, faster while you're hiding. <b>Space</b> gets you out." },
+		{ "⌨️ Keys", "E talk / use · M map · P people · V vote · B speech · N mayor · F punch · G pickpocket · R rob · Q hide · H help · 1-9 answer in conversations · Esc close windows" },
 	}
 	for _, s in ipairs(sections) do
 		local card = UI.panel(list, { Size = UDim2.new(1, -10, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundColor3 = C.Panel2, Radius = 12 })

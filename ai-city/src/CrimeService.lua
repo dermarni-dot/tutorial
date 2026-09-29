@@ -8,8 +8,14 @@
 -- you), they scream, run, remember it, gossip about it, and call the police:
 -- you get wanted stars ⭐. Police officers on duty (and backup cars for 2+
 -- stars) chase you. If they catch you: BUSTED, a fine and some time in the
--- police station's jail cell. Hide from the police long enough and the stars
--- fade. Kids and babies can't be hurt.
+-- police station's jail cell.
+--
+-- Getting away: the police only know where they LAST SAW you. Break their line
+-- of sight (duck around a corner, into a building) and they run to that spot
+-- and search around it. Hide in a trash can, a hedge or a park bush (press Q)
+-- and they can't see you at all, unless they search right next to your
+-- hiding spot. Stay hidden and the stars fade one by one.
+-- Kids and babies can't be hurt.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -27,7 +33,8 @@ local SIGHT = 70 -- how far witnesses can see
 local HEAR = 14 -- anyone this close notices, line of sight or not
 local MAX_STARS = 5
 
-local wanted = {} -- [player] = { Stars, LastSeen, Chasers = { brain }, Progress }
+local wanted = {} -- [player] = { Stars, LastSeen, LastKnown, Chasers = { brain }, Progress, SawHide }
+local hiding = {} -- [player] = { Spot, Saved = { [part] = transparency }, Since, From }
 local jailed = {} -- [player] = { Until, Cell }
 local lastPunch = {}
 local robbed = {} -- [part] = time it can be robbed again
@@ -37,6 +44,8 @@ local HELP_LINES = { "HELP!!", "Somebody help!", "Police! POLICE!", "Aaah!", "Ca
 local VICTIM_LINES = { "Ow!", "Hey!", "Ouch! What was that for?!", "Stop it!", "Ow! Are you crazy?!" }
 local FIGHT_LINES = { "Back off!", "You want a piece of me?!", "Try that again!", "Big mistake!" }
 local COP_LINES = { "Stop! Police!", "Freeze!", "You're under arrest!", "Don't make this hard!", "Get back here!" }
+local SEARCH_LINES = { "Where'd they go?", "Check behind the bins!", "They can't have gone far...", "Spread out!", "I lost visual!", "Search the area!" }
+local FOUND_LINES = { "Found you!", "Gotcha!", "Come on out of there!", "Nice try!" }
 
 --------------------------------------------------------------------------------
 -- Helpers
@@ -186,7 +195,7 @@ end
 --------------------------------------------------------------------------------
 local function punch(player, data)
 	local root, character = rootOf(player)
-	if not root or jailed[player] then
+	if not root or jailed[player] or hiding[player] then
 		return { Ok = false }
 	end
 	local now = os.clock()
@@ -365,12 +374,135 @@ local function addRobPrompt(part, isVault)
 end
 
 --------------------------------------------------------------------------------
+-- Hiding: trash cans, hedges and park bushes (CollectionService tag "HideSpot")
+--------------------------------------------------------------------------------
+local function setInvisible(character, on, saved)
+	for _, d in ipairs(character:GetDescendants()) do
+		if (d:IsA("BasePart") and d.Name ~= "HumanoidRootPart") or d:IsA("Decal") then
+			if on then
+				saved[d] = d.Transparency
+				d.Transparency = 1
+			elseif saved[d] ~= nil then
+				d.Transparency = saved[d]
+			end
+		end
+	end
+end
+
+local function hidePrompt(spot)
+	return spot:FindFirstChild("HidePrompt")
+end
+
+function CrimeService.Unhide(player, found)
+	local h = hiding[player]
+	if not h then
+		return
+	end
+	hiding[player] = nil
+	local root, character = rootOf(player)
+	if character then
+		setInvisible(character, false, h.Saved)
+	end
+	if root then
+		-- step out on the side you climbed in from
+		local out = Vector3.new(h.From.X - h.Spot.Position.X, 0, h.From.Z - h.Spot.Position.Z)
+		out = if out.Magnitude > 0.1 then out.Unit else Vector3.new(0, 0, 1)
+		root.Anchored = false
+		root.CFrame = CFrame.new(h.Spot.Position + out * (h.Spot.Size.Magnitude / 2 + 2) + Vector3.new(0, 3, 0))
+	end
+	player:SetAttribute("Hiding", nil)
+	local prompt = hidePrompt(h.Spot)
+	if prompt then
+		prompt.ActionText = "Hide"
+	end
+	if found then
+		S.City.Toast(player, "👮", "Found you!", "The police checked your hiding spot. RUN!", Color3.fromRGB(230, 60, 60))
+	end
+end
+
+function CrimeService.IsHiding(player)
+	return hiding[player] ~= nil
+end
+
+local function hide(player, spot)
+	if hiding[player] then
+		if hiding[player].Spot == spot then
+			CrimeService.Unhide(player)
+		end
+		return
+	end
+	local root, character = rootOf(player)
+	if not root or jailed[player] or not spot.Parent then
+		return
+	end
+	if (root.Position - spot.Position).Magnitude > 12 then
+		return
+	end
+	for other, h in pairs(hiding) do
+		if h.Spot == spot and other ~= player then
+			S.City.Toast(player, "🙅", "Taken!", "Someone's already hiding in there.")
+			return
+		end
+	end
+	-- did a police officer see you climb in?
+	local w = wanted[player]
+	if w and w.Stars > 0 then
+		w.SawHide = false
+		for _, cop in ipairs(w.Chasers) do
+			if (cop.Root.Position - root.Position).Magnitude < 70 and canSee(cop, root.Position) then
+				w.SawHide = true
+				w.LastKnown = spot.Position
+			end
+		end
+	end
+	local h = { Spot = spot, Saved = {}, Since = os.clock(), From = root.Position }
+	hiding[player] = h
+	root.Anchored = true
+	root.AssemblyLinearVelocity = Vector3.zero
+	root.CFrame = CFrame.new(spot.Position + Vector3.new(0, 0.5, 0))
+	setInvisible(character, true, h.Saved)
+	local name = spot:GetAttribute("HideName") or "hiding"
+	player:SetAttribute("Hiding", name)
+	local prompt = hidePrompt(spot)
+	if prompt then
+		prompt.ActionText = "Get out"
+	end
+	if w and w.SawHide then
+		S.City.Toast(player, "👀", "They saw you go in!", "The police know where you are. Maybe make a run for it...", Color3.fromRGB(230, 140, 40))
+	else
+		S.City.Toast(player, "🫥", "Hiding in " .. name, "The police can't see you here, unless they search right next to you. Press Q or Space to get out.", Color3.fromRGB(150, 110, 255))
+	end
+end
+
+local function addHidePrompt(spot)
+	if hidePrompt(spot) then
+		return
+	end
+	local prompt = Instance.new("ProximityPrompt")
+	prompt.Name = "HidePrompt"
+	prompt.ActionText = "Hide"
+	prompt.ObjectText = "🫥 " .. (spot:GetAttribute("HideName") or "Hiding spot")
+	prompt.KeyboardKeyCode = Enum.KeyCode.Q
+	prompt.GamepadKeyCode = Enum.KeyCode.ButtonY
+	prompt.HoldDuration = 0.3
+	prompt.MaxActivationDistance = 8
+	prompt.RequiresLineOfSight = false
+	prompt.Style = Enum.ProximityPromptStyle.Custom
+	prompt:SetAttribute("Kind", "Hide")
+	prompt.Parent = spot
+	prompt.Triggered:Connect(function(player)
+		hide(player, spot)
+	end)
+end
+
+--------------------------------------------------------------------------------
 -- Police chases and arrests
 --------------------------------------------------------------------------------
 local function freeChasers(w)
 	for _, brain in ipairs(w.Chasers) do
 		if brain.Model.Parent then
 			brain.Model:SetAttribute("Chasing", nil)
+			brain.Model:SetAttribute("ChaseState", nil)
 			if brain.C.Temp then
 				S.Citizens.Despawn(brain)
 			elseif brain.State == "police" then
@@ -383,6 +515,7 @@ local function freeChasers(w)
 end
 
 local function arrest(player)
+	CrimeService.Unhide(player)
 	local w = wanted[player]
 	local stars = w and w.Stars or 1
 	if w then
@@ -441,6 +574,7 @@ local function chaseTick(dt)
 			if #w.Chasers > 0 then
 				freeChasers(w)
 			end
+			player:SetAttribute("PoliceState", nil)
 			continue
 		end
 		-- clean up knocked-out chasers
@@ -459,69 +593,152 @@ local function chaseTick(dt)
 				end
 				if isPolice(brain) and not brain.C.Temp and brain.State ~= "police" and brain.State ~= "ko" and brain.State ~= "hospital" and brain.Plan and brain.Plan.Kind == "Work" and (brain.Root.Position - root.Position).Magnitude < 320 then
 					S.Citizens.Control(brain, true)
+					brain.Searching, brain.SearchPoint = nil, nil
 					brain.Model:SetAttribute("Chasing", player.UserId)
 					S.Citizens.Say(brain, "On my way!", "angry", 1.5)
 					table.insert(w.Chasers, brain)
 				end
 			end
-			if #w.Chasers < want and w.Stars >= 2 and (w.NextBackup or 0) < os.clock() then
+			if #w.Chasers < want and (w.Stars >= 2 or #w.Chasers == 0) and (w.NextBackup or 0) < os.clock() then
 				w.NextBackup = os.clock() + 6
 				local b = spawnBackup(player, root)
 				b.Model:SetAttribute("Chasing", player.UserId)
 				table.insert(w.Chasers, b)
 			end
 		end
-		-- chase!
+		-- where are they? The police only know what someone has SEEN.
+		local h = hiding[player]
 		local seen = false
+		if not h then
+			for _, brain in ipairs(w.Chasers) do
+				if (brain.Root.Position - root.Position).Magnitude < 95 and canSee(brain, root.Position) then
+					seen = true
+					break
+				end
+			end
+			-- citizens who spot you call it in
+			if not seen then
+				for _, brain in ipairs(S.Citizens.Nearby(root.Position, 40)) do
+					if not brain.C.Temp and brain.State ~= "ko" and brain.State ~= "police" and canSee(brain, root.Position) and math.random() < 0.06 then
+						seen = true
+						S.Citizens.Say(brain, "Officer! They went that way!", "scared", 2)
+						break
+					end
+				end
+			end
+		end
+		local now = os.clock()
+		if seen then
+			w.LastSeen = now
+			w.LastKnown = root.Position
+			w.SawHide = false
+		end
+		w.LastKnown = w.LastKnown or root.Position
+		local mode = if seen then "chasing" else "searching"
+		if w.Mode ~= mode then
+			w.Mode = mode
+			if mode == "searching" and #w.Chasers > 0 then
+				S.Citizens.Say(w.Chasers[1], SEARCH_LINES[math.random(1, #SEARCH_LINES)], "focused", 2)
+			elseif mode == "chasing" and #w.Chasers > 0 then
+				S.Citizens.Say(w.Chasers[1], "There they are!", "angry", 1.6)
+			end
+		end
 		local close = false
+		local nearest = math.huge
 		for _, brain in ipairs(w.Chasers) do
 			local d = (brain.Root.Position - root.Position).Magnitude
-			S.Citizens.SetGait(brain, 18 + w.Stars * 0.8, "run")
-			brain.Humanoid:MoveTo(root.Position)
-			if d < 60 and canSee(brain, root.Position) then
-				seen = true
+			nearest = math.min(nearest, d)
+			brain.Model:SetAttribute("ChaseState", mode)
+			if seen then
+				S.Citizens.SetGait(brain, 18 + w.Stars * 0.8, "run")
+				brain.Humanoid:MoveTo(root.Position)
+				if d < 5 then
+					close = true
+				end
+				if math.random() < 0.02 then
+					S.Citizens.Say(brain, COP_LINES[math.random(1, #COP_LINES)], "angry", 1.6)
+				end
+			else
+				-- run to where they were last seen, then search around it
+				local toLast = (brain.Root.Position - w.LastKnown).Magnitude
+				if toLast > 7 and not brain.Searching then
+					S.Citizens.SetGait(brain, 17, "run")
+					brain.Humanoid:MoveTo(w.LastKnown)
+				else
+					brain.Searching = true
+					if not brain.SearchPoint or (brain.Root.Position - brain.SearchPoint).Magnitude < 3 or now > (brain.SearchUntil or 0) then
+						-- look somewhere new: around the last known spot (hiding spots first)
+						local target
+						if w.SawHide and h then
+							target = h.Spot.Position
+						elseif math.random() < 0.5 then
+							local spots = {}
+							for _, spot in ipairs(CollectionService:GetTagged("HideSpot")) do
+								if (spot.Position - w.LastKnown).Magnitude < 35 then
+									table.insert(spots, spot)
+								end
+							end
+							if #spots > 0 then
+								target = spots[math.random(1, #spots)].Position
+							end
+						end
+						if not target then
+							local a = math.random() * math.pi * 2
+							local r = math.random(8, 30)
+							target = w.LastKnown + Vector3.new(math.cos(a) * r, 0, math.sin(a) * r)
+						end
+						brain.SearchPoint = target
+						brain.SearchUntil = now + math.random(4, 7)
+						if math.random() < 0.3 then
+							S.Citizens.Say(brain, SEARCH_LINES[math.random(1, #SEARCH_LINES)], "focused", 1.8)
+						end
+					end
+					S.Citizens.SetGait(brain, 10, "walk")
+					brain.Humanoid:MoveTo(brain.SearchPoint)
+				end
+				-- checking a hiding spot up close
+				if h and (brain.Root.Position - h.Spot.Position).Magnitude < 5.5 and math.random() < (if w.SawHide then 0.35 else 0.08) then
+					S.Citizens.Say(brain, FOUND_LINES[math.random(1, #FOUND_LINES)], "angry", 1.8)
+					CrimeService.Unhide(player, true)
+					w.LastSeen = now
+					w.LastKnown = root.Position
+					h = nil
+				end
 			end
-			if d < 5 then
-				close = true
-			end
-			if math.random() < 0.02 then
-				S.Citizens.Say(brain, COP_LINES[math.random(1, #COP_LINES)], "angry", 1.6)
+			if seen then
+				brain.Searching = nil
+				brain.SearchPoint = nil
 			end
 			-- stuck behind something? jump
 			if brain.Humanoid.MoveDirection.Magnitude < 0.1 and d > 6 then
 				brain.Humanoid.Jump = true
 			end
 		end
-		-- witnesses also call in where you are
-		if not seen then
-			for _, brain in ipairs(S.Citizens.Nearby(root.Position, 35)) do
-				if not brain.C.Temp and brain.State ~= "ko" and canSee(brain, root.Position) and math.random() < 0.05 then
-					seen = true
-					break
-				end
-			end
-		end
-		if seen then
-			w.LastSeen = os.clock()
-		end
 		player:SetAttribute("WantedSeen", seen)
-		if close then
+		player:SetAttribute("PoliceState", mode)
+		player:SetAttribute("PoliceNear", if nearest < math.huge then math.floor(nearest) else nil)
+		if close and not hiding[player] then
 			w.Progress += dt
 			if w.Progress >= 1.1 then
 				w.Progress = 0
 				arrest(player)
+				continue
 			end
 		else
 			w.Progress = math.max(0, w.Progress - dt * 0.5)
 		end
 		-- out of sight long enough: the stars fade one by one
-		local hide = 18 + w.Stars * 4
-		if os.clock() - w.LastSeen > hide then
-			w.LastSeen = os.clock() - hide + 8
+		-- (hiding makes them give up faster)
+		local hideTime = (18 + w.Stars * 4) * (if hiding[player] and not w.SawHide then 0.6 else 1)
+		if os.clock() - w.LastSeen > hideTime then
+			w.LastSeen = os.clock() - hideTime + 8
 			setStars(player, w.Stars - 1)
 			if w.Stars == 0 then
-				S.City.Toast(player, "😮‍💨", "You lost the police", "Keep your head down for a while.", Color3.fromRGB(90, 180, 120))
+				S.City.Toast(player, "😮‍💨", "You lost the police", "They gave up the search. Keep your head down for a while.", Color3.fromRGB(90, 180, 120))
 				freeChasers(w)
+				w.LastKnown, w.Mode, w.SawHide = nil, nil, nil
+				player:SetAttribute("PoliceState", nil)
+				player:SetAttribute("PoliceNear", nil)
 			end
 		end
 	end
@@ -571,6 +788,20 @@ end
 function CrimeService.Start(services)
 	S = services
 	S.City.Handle("Punch", punch)
+	S.City.Handle("Unhide", function(player)
+		CrimeService.Unhide(player)
+		return { Ok = true }
+	end)
+	for _, spot in ipairs(CollectionService:GetTagged("HideSpot")) do
+		addHidePrompt(spot)
+	end
+	CollectionService:GetInstanceAddedSignal("HideSpot"):Connect(addHidePrompt)
+	Players.PlayerAdded:Connect(function(player)
+		player.CharacterAdded:Connect(function()
+			hiding[player] = nil
+			player:SetAttribute("Hiding", nil)
+		end)
+	end)
 	for _, model in ipairs(CollectionService:GetTagged("Citizen")) do
 		task.spawn(attach, model)
 	end
@@ -599,6 +830,13 @@ function CrimeService.Start(services)
 		wanted[player] = nil
 		jailed[player] = nil
 		lastPunch[player] = nil
+		if hiding[player] then
+			local prompt = hidePrompt(hiding[player].Spot)
+			if prompt then
+				prompt.ActionText = "Hide"
+			end
+			hiding[player] = nil
+		end
 	end)
 	task.spawn(function()
 		while true do
