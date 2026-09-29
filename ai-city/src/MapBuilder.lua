@@ -1,166 +1,138 @@
 -- MapBuilder (ModuleScript) — ServerScriptService.Modules.MapBuilder
--- Builds AI City: a 7x7 grid of city blocks with streets, sidewalks,
--- crosswalks and street lamps. Downtown has the plaza, town hall, bank and
--- shops; around it are offices, a hospital, a fire station, a cinema,
--- shopping streets and apartments; houses and a small industrial zone sit on
--- the edges.
+-- Builds AI City: a 9x9 grid of city blocks around a central plaza, with
+-- streets, a landscape of hills, a lake and mountains, and every building
+-- furnished with spots where people work, shop, eat, play and sleep.
 --
--- Use it from your other scripts:
---   local map = MapBuilder.Build()        -- builds once, later calls return the same map
---   map.Places.Bakery.Door / .Inside / .WorkSpots / .Model
---   map.Homes[i].Door / .Inside / .Address
---   map.Route(fromPos, toPos)              -- sidewalk waypoints between two points
---   map.RouteBetween(placeA, placeB)       -- inside A -> door -> sidewalks -> door -> inside B
---   map.HobbySpots["fishing"], map.BenchSpots, map.SpeechSpot, map.BallotBox
---   MapBuilder.SetNight(true/false)        -- street lamps and lit windows
---   MapBuilder.SetNews("Mayor Rosa passed: Build more parks!")
--- Positions are on the ground (feet level), ready for Humanoid:MoveTo.
+--   local map = MapBuilder.Build()   -- builds once; later calls return the same map
+--   map.Places[id]                   -- { Id, Label, Kind, Door, Inside, Spots, WorkSpots, Buildings, ... }
+--   map.Homes[i]                     -- { Address, Door, Inside, Capacity, Kind, Spots, Building, Floor }
+--   map.Spots                        -- every spot: { CFrame, Action, Role, Floor, Place, Building, Seat }
+--   map.HobbySpots[hobby]            -- spots for outdoor hobbies
+--   map.Route(fromPos, toPos)        -- sidewalk waypoints (crossing at corners)
+--   map.SoccerFields, map.JoggingLoops, map.SpeechSpot, map.StageCFrame, map.BallotBox, map.Jail
+--   MapBuilder.SetNight(on)          -- street lamps, windows, porch lights, neon
+--   MapBuilder.SetNews(text)         -- the plaza's news board
+--   MapBuilder.FurnishHome(home)     -- furnish a house when a family moves in
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local Lighting = game:GetService("Lighting")
 
 local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
+local Modules = script.Parent
+local MapKit = require(Modules:WaitForChild("MapKit"))
+local Buildings = require(Modules:WaitForChild("Buildings"))
+local Interiors = require(Modules:WaitForChild("Interiors"))
+local Streets = require(Modules:WaitForChild("Streets"))
+local Landscape = require(Modules:WaitForChild("Landscape"))
+local Places = require(Modules:WaitForChild("Places"))
 
 local MapBuilder = {}
 
---------------------------------------------------------------------------------
--- Layout
---------------------------------------------------------------------------------
-local SPACING = 100 -- block center to block center
-local ROAD = 16 -- road width
-local BLOCK = SPACING - ROAD -- 84: a block including its sidewalk
-local HALF = BLOCK / 2
-local SIDEWALK = 5
-local RING = HALF - SIDEWALK / 2 -- where people walk on the sidewalk
-local N = 3 -- blocks from the center to the edge (7x7 blocks)
-local EXTENT = N * SPACING + SPACING / 2 -- the city is 2 * EXTENT across
-local LOT_Y = 0.5 -- ground level inside blocks (top of the curb)
-local FLOOR_H = 12
-
-local BLACK = Color3.new(0, 0, 0)
-local WHITE = Color3.new(1, 1, 1)
-local ASPHALT = Color3.fromRGB(58, 60, 66)
-local CONCRETE = Color3.fromRGB(196, 196, 192)
-local GRASS = Color3.fromRGB(96, 170, 78)
-local DARK_GRASS = Color3.fromRGB(78, 148, 64)
-local GLASS = Color3.fromRGB(150, 200, 235)
-local WINDOW_LIT = Color3.fromRGB(255, 214, 140)
-local LAMP_LIGHT = Color3.fromRGB(255, 220, 160)
-local GOLD = Color3.fromRGB(245, 200, 80)
-local WOOD = Color3.fromRGB(150, 105, 65)
-local STONE = Color3.fromRGB(215, 210, 198)
-local LEAVES = { Color3.fromRGB(70, 150, 60), Color3.fromRGB(88, 168, 70), Color3.fromRGB(60, 132, 58) }
-
--- Street names: roads running east-west are streets, north-south are avenues
-local STREETS = { "Pine Street", "Oak Street", "Maple Street", "Elm Street", "Cedar Street", "Birch Street", "Willow Street", "Ash Street" }
-local AVENUES = { "1st Avenue", "2nd Avenue", "3rd Avenue", "4th Avenue", "5th Avenue", "6th Avenue", "7th Avenue", "8th Avenue" }
+local SPACING, HALF, SIDEWALK, RING, N, EXTENT, LOT_Y = MapKit.SPACING, MapKit.HALF, MapKit.SIDEWALK, MapKit.RING, MapKit.N, MapKit.EXTENT, MapKit.LOT_Y
+local Registry = MapKit.Registry
 
 --------------------------------------------------------------------------------
--- Part helpers
+-- The city plan: what goes on each block. i = west(-) to east(+),
+-- j = north(-) to south(+). The plaza is the center block. Anything not
+-- listed gets houses (or suburbs on the outer ring).
 --------------------------------------------------------------------------------
-local function part(parent, name, size, cf, color, material, props)
-	local p = Instance.new("Part")
-	p.Name = name
-	p.Anchored = true
-	p.Size = size
-	p.CFrame = cf
-	p.Color = color
-	p.Material = material or Enum.Material.SmoothPlastic
-	p.TopSurface = Enum.SurfaceType.Smooth
-	p.BottomSurface = Enum.SurfaceType.Smooth
-	if props then
-		for k, v in pairs(props) do
-			p[k] = v
-		end
+local PLAN = {
+	-- downtown
+	["0,0"] = "Plaza",
+	["0,-1"] = "TownHall",
+	["1,-1"] = "Bank",
+	["-1,-1"] = "Police",
+	["-1,0"] = "BakeryCafe",
+	["1,0"] = "MarketPharmacy",
+	["-1,1"] = "LibraryRestaurant",
+	["0,1"] = "School",
+	["1,1"] = "Park",
+	-- around downtown
+	["0,-2"] = "Hotel",
+	["-1,-2"] = "Offices",
+	["1,-2"] = "Offices",
+	["-2,-2"] = "FireStation",
+	["2,-2"] = "Hospital",
+	["-2,-1"] = "Apartments:Sunset Towers",
+	["2,-1"] = "Cinema",
+	["-2,0"] = "ShopsWest",
+	["2,0"] = "ShopsEast",
+	["-2,1"] = "Apartments:Maple Court",
+	["2,1"] = "Gym",
+	["0,2"] = "SportsField",
+	["-1,2"] = "MiddleSchool",
+	["1,2"] = "HighSchool",
+	["-2,2"] = "Daycare",
+	["2,2"] = "CommunityCenter",
+	-- the next ring
+	["0,-3"] = "Museum",
+	["-1,-3"] = "Apartments:Oak Terrace",
+	["1,-3"] = "Apartments:Birch Lofts",
+	["3,-3"] = "PostOffice",
+	["-3,0"] = "ArcadeDiner",
+	["3,-1"] = "GasStation",
+	["3,0"] = "Factory",
+	["3,1"] = "Warehouse",
+	["-3,3"] = "WillowPark",
+	-- woods on the outskirts
+	["4,4"] = "Woods",
+	["-4,4"] = "Woods",
+	["4,-4"] = "Woods",
+	["-4,-4"] = "Woods",
+	["-4,1"] = "Woods",
+	["4,-2"] = "Woods",
+}
+MapBuilder.PLAN = PLAN
+
+local function kindAt(i, j)
+	local entry = PLAN[i .. "," .. j]
+	if entry then
+		return (string.match(entry, "^([^:]+)"))
 	end
-	p.Parent = parent
-	return p
-end
-
--- decoration: you can't bump into it and it doesn't cast big shadows
-local function deco(parent, name, size, cf, color, material, props)
-	local p = part(parent, name, size, cf, color, material, props)
-	p.CanCollide = false
-	return p
-end
-
-local function wedge(parent, name, size, cf, color, material)
-	local p = Instance.new("WedgePart")
-	p.Name = name
-	p.Anchored = true
-	p.Size = size
-	p.CFrame = cf
-	p.Color = color
-	p.Material = material or Enum.Material.SmoothPlastic
-	p.Parent = parent
-	return p
-end
-
-local function ball(parent, name, diameter, cf, color, material)
-	local p = deco(parent, name, Vector3.one * diameter, cf, color, material)
-	p.Shape = Enum.PartType.Ball
-	return p
-end
-
--- a cylinder standing upright (Roblox cylinders lie along X)
-local function column(parent, name, height, diameter, pos, color, material)
-	local p = part(parent, name, Vector3.new(height, diameter, diameter), CFrame.new(pos) * CFrame.Angles(0, 0, math.rad(90)), color, material)
-	p.Shape = Enum.PartType.Cylinder
-	return p
-end
-
-local function signText(p, face, text, color, font)
-	local gui = Instance.new("SurfaceGui")
-	gui.Face = face
-	gui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
-	gui.PixelsPerStud = 30
-	gui.LightInfluence = 0
-	local label = Instance.new("TextLabel")
-	label.Size = UDim2.fromScale(1, 1)
-	label.BackgroundTransparency = 1
-	label.Font = font or Enum.Font.FredokaOne
-	label.TextScaled = true
-	label.Text = text
-	label.TextColor3 = color or WHITE
-	label.TextStrokeTransparency = 0.6
-	label.Parent = gui
-	gui.Parent = p
-	return label
-end
-
-local function light(p, color, range, brightness)
-	local l = Instance.new("PointLight")
-	l.Color = color
-	l.Range = range
-	l.Brightness = brightness or 1
-	l.Shadows = false
-	l.Parent = p
-	return l
+	return if math.max(math.abs(i), math.abs(j)) >= N then "Suburb" else "Houses"
 end
 
 --------------------------------------------------------------------------------
--- Map state (filled in by Build)
+-- Map state
 --------------------------------------------------------------------------------
 local map
-local lamps = {} -- { Head = part, Light = light }
-local windows = {} -- window parts that light up at night
-local newsLabel
 
 local function blockCenter(i, j)
 	return Vector3.new(i * SPACING, LOT_Y, j * SPACING)
 end
 
--- a direction's right-hand side on the ground
 local function rightOf(face)
 	return Vector3.new(-face.Z, 0, face.X)
+end
+
+-- buildings face the road toward the city center
+local function faceFor(i, j)
+	if math.abs(j) >= math.abs(i) and j ~= 0 then
+		return Vector3.new(0, 0, if j > 0 then -1 else 1)
+	elseif i ~= 0 then
+		return Vector3.new(if i > 0 then -1 else 1, 0, 0)
+	end
+	return Vector3.new(0, 0, 1)
+end
+
+-- where a building's center goes so its front sits behind the sidewalk
+local function frontLot(c, face, depth, lateral)
+	return c + face * (HALF - SIDEWALK - 5 - depth / 2) + rightOf(face) * (lateral or 0)
+end
+
+local function labelFor(id)
+	local info = Config.PlaceById and Config.PlaceById[id]
+	if info then
+		return info.emoji .. " " .. info.label
+	end
+	return id
 end
 
 --------------------------------------------------------------------------------
 -- Walking network: sidewalk corners of every block, joined around each block
 -- and across the road at every corner. Doors hook onto the sidewalk in front.
 --------------------------------------------------------------------------------
-local nodes = {} -- [id] = Vector3
-local edges = {} -- [id] = { [otherId] = distance }
+local nodes, edges = {}, {}
+local cornerIds = {}
 
 local function addNode(pos)
 	table.insert(nodes, pos)
@@ -174,7 +146,9 @@ local function link(a, b)
 	edges[b][a] = d
 end
 
-local cornerIds = {} -- ["i,j,sx,sz"] = node id
+local function corner(i, j, sx, sz)
+	return cornerIds[i .. "," .. j .. "," .. sx .. "," .. sz]
+end
 
 local function buildNetwork()
 	for i = -N, N do
@@ -187,17 +161,12 @@ local function buildNetwork()
 			end
 		end
 	end
-	local function corner(i, j, sx, sz)
-		return cornerIds[i .. "," .. j .. "," .. sx .. "," .. sz]
-	end
 	for i = -N, N do
 		for j = -N, N do
-			-- around the block
 			link(corner(i, j, -1, -1), corner(i, j, 1, -1))
 			link(corner(i, j, -1, 1), corner(i, j, 1, 1))
 			link(corner(i, j, -1, -1), corner(i, j, -1, 1))
 			link(corner(i, j, 1, -1), corner(i, j, 1, 1))
-			-- across the road (crosswalks)
 			if i < N then
 				link(corner(i, j, 1, -1), corner(i + 1, j, -1, -1))
 				link(corner(i, j, 1, 1), corner(i + 1, j, -1, 1))
@@ -213,29 +182,32 @@ end
 -- Hooks a door onto the sidewalk of block (i, j) on the side it faces.
 local function hookDoor(i, j, door, face)
 	local c = blockCenter(i, j)
-	local onWalk
-	local a, b
+	local onWalk, a, b
 	if math.abs(face.X) > 0.5 then
 		local sx = if face.X > 0 then 1 else -1
 		onWalk = Vector3.new(c.X + sx * RING, LOT_Y, math.clamp(door.Z, c.Z - RING, c.Z + RING))
-		a, b = cornerIds[i .. "," .. j .. "," .. sx .. ",-1"], cornerIds[i .. "," .. j .. "," .. sx .. ",1"]
+		a, b = corner(i, j, sx, -1), corner(i, j, sx, 1)
 	else
 		local sz = if face.Z > 0 then 1 else -1
 		onWalk = Vector3.new(math.clamp(door.X, c.X - RING, c.X + RING), LOT_Y, c.Z + sz * RING)
-		a, b = cornerIds[i .. "," .. j .. ",-1," .. sz], cornerIds[i .. "," .. j .. ",1," .. sz]
+		a, b = corner(i, j, -1, sz), corner(i, j, 1, sz)
 	end
 	local walk = addNode(onWalk)
 	link(walk, a)
 	link(walk, b)
-	local doorNode = addNode(door)
+	local doorNode = addNode(Vector3.new(door.X, LOT_Y, door.Z))
 	link(doorNode, walk)
 	return doorNode
+end
+
+local function flatDist(a, b)
+	return math.sqrt((a.X - b.X) ^ 2 + (a.Z - b.Z) ^ 2)
 end
 
 local function nearestNode(pos)
 	local best, bestD = nil, math.huge
 	for id, p in ipairs(nodes) do
-		local d = (Vector3.new(p.X - pos.X, 0, p.Z - pos.Z)).Magnitude
+		local d = flatDist(p, pos)
 		if d < bestD then
 			best, bestD = id, d
 		end
@@ -243,1132 +215,235 @@ local function nearestNode(pos)
 	return best
 end
 
--- Shortest sidewalk route between two ground positions (Dijkstra).
--- Returns a list of Vector3 waypoints ending at toPos.
+-- Shortest sidewalk route (A*, cached). Returns waypoints ending at toPos.
+local routeCache = {}
 local function route(fromPos, toPos)
 	local start, goal = nearestNode(fromPos), nearestNode(toPos)
-	local dist, prev, done = { [start] = 0 }, {}, {}
-	while true do
-		local current, best = nil, math.huge
-		for id, d in pairs(dist) do
-			if not done[id] and d < best then
-				current, best = id, d
+	local key = start .. ">" .. goal
+	local cached = routeCache[key]
+	local path
+	if cached then
+		path = table.clone(cached)
+	else
+		local g, f, prev, open, closed = { [start] = 0 }, { [start] = flatDist(nodes[start], nodes[goal]) }, {}, { [start] = true }, {}
+		while true do
+			local current, best = nil, math.huge
+			for id in pairs(open) do
+				if f[id] < best then
+					current, best = id, f[id]
+				end
+			end
+			if not current or current == goal then
+				break
+			end
+			open[current] = nil
+			closed[current] = true
+			for other, d in pairs(edges[current]) do
+				if not closed[other] then
+					local ng = g[current] + d
+					if not g[other] or ng < g[other] then
+						g[other] = ng
+						f[other] = ng + flatDist(nodes[other], nodes[goal])
+						prev[other] = current
+						open[other] = true
+					end
+				end
 			end
 		end
-		if not current or current == goal then
-			break
+		path = {}
+		local id = goal
+		while id do
+			table.insert(path, 1, nodes[id])
+			id = prev[id]
 		end
-		done[current] = true
-		for other, d in pairs(edges[current]) do
-			local nd = best + d
-			if not dist[other] or nd < dist[other] then
-				dist[other] = nd
-				prev[other] = current
-			end
+		if path[1] ~= nodes[start] then
+			path = { nodes[start] }
 		end
-	end
-	local path = {}
-	local id = goal
-	while id do
-		table.insert(path, 1, nodes[id])
-		id = prev[id]
-	end
-	if path[1] ~= nodes[start] then
-		path = { nodes[start] } -- unreachable (shouldn't happen): go straight
+		routeCache[key] = table.clone(path)
 	end
 	table.insert(path, toPos)
 	return path
 end
 
 --------------------------------------------------------------------------------
--- Buildings
+-- The ctx object the place builders use to register things
 --------------------------------------------------------------------------------
-
--- Work spots spread over a building's ground floor
-local function interiorSpots(at, w, d, count)
-	local spots = {}
-	local cols = math.max(1, math.ceil(math.sqrt(count)))
-	local rows = math.ceil(count / cols)
-	for n = 0, count - 1 do
-		local cx, cz = n % cols, n // cols
-		local x = (cx + 0.5) / cols * (w - 8) - (w - 8) / 2
-		local z = (cz + 0.5) / rows * (d - 10) - (d - 10) / 2 + 2
-		table.insert(spots, at(x, 0.4, z).Position)
-	end
-	return spots
+local spotCount = 0
+local function registerSpot(spot, placeId, building)
+	spotCount += 1
+	spot.Id = spotCount
+	spot.Place = spot.Place or placeId
+	spot.Building = spot.Building or building
+	spot.Floor = spot.Floor or 1
+	table.insert(map.Spots, spot)
+	return spot
 end
 
--- A building with walls, an open doorway, windows, a sign and a roof.
--- spec: Name, Label, Center (ground, front edge faces `Face`), Face, W, D,
--- Floors, Wall, Trim, Roof ("flat"/"gable"), RoofColor, Awning, DoorW,
--- Material, WindowColor, NoSign
-local function building(parent, spec)
-	local model = Instance.new("Model")
-	model.Name = spec.Name
-	model.Parent = parent
-	local W, D = spec.W, spec.D
-	local floors = spec.Floors or 1
-	local H = floors * FLOOR_H
-	local cf = CFrame.lookAt(spec.Center, spec.Center + spec.Face) -- local -Z = front
-	local function at(x, y, z)
-		return cf * CFrame.new(x, y, z)
+local function newPlace(id, model, i, j)
+	local place = map.Places[id]
+	if not place then
+		place = {
+			Id = id,
+			Label = labelFor(id),
+			Kind = (Config.PlaceById and Config.PlaceById[id] and Config.PlaceById[id].kind) or "fun",
+			Model = model,
+			Spots = {},
+			WorkSpots = {},
+			Buildings = {},
+			Block = Vector2.new(i, j),
+		}
+		map.Places[id] = place
+		table.insert(map.PlaceList, place)
 	end
-	local wall = spec.Wall
-	local trim = spec.Trim or wall:Lerp(BLACK, 0.3)
-	local mat = spec.Material or Enum.Material.SmoothPlastic
-
-	part(model, "Floor", Vector3.new(W, 0.4, D), at(0, 0.2, 0), spec.FloorColor or Color3.fromRGB(205, 195, 180), Enum.Material.WoodPlanks)
-	-- back and side walls
-	part(model, "Wall", Vector3.new(W, H, 1), at(0, H / 2, D / 2 - 0.5), wall, mat)
-	part(model, "Wall", Vector3.new(1, H, D), at(-W / 2 + 0.5, H / 2, 0), wall, mat)
-	part(model, "Wall", Vector3.new(1, H, D), at(W / 2 - 0.5, H / 2, 0), wall, mat)
-	-- front wall with an open doorway people can walk through
-	local DW, DH = spec.DoorW or 8, math.min(10, H - 2)
-	local side = (W - DW) / 2
-	part(model, "Wall", Vector3.new(side, H, 1), at(-(DW / 2 + side / 2), H / 2, -D / 2 + 0.5), wall, mat)
-	part(model, "Wall", Vector3.new(side, H, 1), at(DW / 2 + side / 2, H / 2, -D / 2 + 0.5), wall, mat)
-	part(model, "Wall", Vector3.new(DW, H - DH, 1), at(0, DH + (H - DH) / 2, -D / 2 + 0.5), wall, mat)
-	deco(model, "DoorFrame", Vector3.new(0.7, DH, 1.5), at(-DW / 2 - 0.2, DH / 2, -D / 2 + 0.5), trim)
-	deco(model, "DoorFrame", Vector3.new(0.7, DH, 1.5), at(DW / 2 + 0.2, DH / 2, -D / 2 + 0.5), trim)
-	deco(model, "DoorFrame", Vector3.new(DW + 1.4, 0.7, 1.5), at(0, DH, -D / 2 + 0.5), trim)
-	-- a band between floors and a cornice on top
-	for f = 1, floors do
-		deco(model, "Band", Vector3.new(W + 0.6, 0.7, D + 0.6), at(0, f * FLOOR_H - 0.35, 0), trim)
-	end
-	-- windows on the front and sides of every floor
-	local windowColor = spec.WindowColor or GLASS
-	for f = 0, floors - 1 do
-		local y = f * FLOOR_H + 6.5
-		local x = -W / 2 + 5
-		while x <= W / 2 - 5 do
-			if f > 0 or math.abs(x) > DW / 2 + 3 then
-				local w = deco(model, "Window", Vector3.new(4, 5, 0.3), at(x, y, -D / 2 - 0.1), windowColor, Enum.Material.Glass, { Transparency = 0.15, Reflectance = 0.15 })
-				table.insert(windows, w)
-				deco(model, "Sill", Vector3.new(4.8, 0.4, 0.8), at(x, y - 2.7, -D / 2 - 0.3), trim)
-			end
-			x += 8
-		end
-		for _, sx in ipairs({ -1, 1 }) do
-			local z = -D / 2 + 6
-			while z <= D / 2 - 5 do
-				local w = deco(model, "Window", Vector3.new(0.3, 5, 4), at(sx * (W / 2 + 0.1), y, z), windowColor, Enum.Material.Glass, { Transparency = 0.15, Reflectance = 0.15 })
-				table.insert(windows, w)
-				z += 8
-			end
-		end
-	end
-	-- roof
-	local roofColor = spec.RoofColor or wall:Lerp(BLACK, 0.45)
-	if spec.Roof == "gable" then
-		local rise = math.min(8, D * 0.45)
-		wedge(model, "Roof", Vector3.new(W + 2, rise, D / 2 + 1), at(0, H + rise / 2, -D / 4 - 0.5), roofColor, Enum.Material.Slate)
-		wedge(model, "Roof", Vector3.new(W + 2, rise, D / 2 + 1), at(0, H + rise / 2, D / 4 + 0.5) * CFrame.Angles(0, math.pi, 0), roofColor, Enum.Material.Slate)
-	else
-		part(model, "Roof", Vector3.new(W + 1, 1, D + 1), at(0, H + 0.5, 0), roofColor, Enum.Material.Concrete)
-		deco(model, "Parapet", Vector3.new(W + 1.4, 1.4, 0.8), at(0, H + 1.4, -D / 2), trim)
-		deco(model, "Parapet", Vector3.new(W + 1.4, 1.4, 0.8), at(0, H + 1.4, D / 2), trim)
-		if W >= 20 then
-			deco(model, "AirCon", Vector3.new(4, 2.5, 4), at(W / 4, H + 2.2, D / 5), Color3.fromRGB(180, 185, 190), Enum.Material.Metal)
-		end
-	end
-	-- awning over the door
-	if spec.Awning then
-		wedge(model, "Awning", Vector3.new(math.min(W - 2, DW + 8), 1.6, 4), at(0, DH + 1.2, -D / 2 - 2), spec.Awning, Enum.Material.Fabric)
-	end
-	-- sign with the place's emoji and name
-	local sign
-	if spec.Label and not spec.NoSign then
-		local signW = math.min(W - 3, math.max(16, #spec.Label * 1.6))
-		local signY = math.min(DH + 3.2, H - 1.5)
-		sign = deco(model, "Sign", Vector3.new(signW, 3.6, 0.6), at(0, signY, -D / 2 - 0.4), spec.SignColor or Color3.fromRGB(40, 36, 50))
-		signText(sign, Enum.NormalId.Front, spec.Label, spec.SignText or WHITE)
-	end
-
-	return {
-		Model = model,
-		CFrame = cf,
-		At = at,
-		W = W,
-		D = D,
-		H = H,
-		Door = at(0, 0, -D / 2 - 3).Position,
-		Inside = at(0, 0.4, 0).Position,
-		Sign = sign,
-	}
+	return place
 end
 
--- Where a building's center goes so its front sits behind the sidewalk.
--- lateral moves it sideways along the street (to fit two buildings on a block).
-local function frontLot(c, face, depth, lateral)
-	return c + face * (HALF - SIDEWALK - 5 - depth / 2) + rightOf(face) * (lateral or 0)
+local ctx = {}
+ctx.blockCenter = blockCenter
+ctx.faceFor = faceFor
+ctx.frontLot = frontLot
+ctx.label = labelFor
+ctx.hookDoor = hookDoor
+
+function ctx.lot(parent, c, color, material)
+	return MapKit.part(parent, "Lot", Vector3.new(MapKit.BLOCK - SIDEWALK * 2, 0.1, MapKit.BLOCK - SIDEWALK * 2), CFrame.new(c + Vector3.new(0, 0.05, 0)), color, material)
 end
 
-local function labelFor(id)
-	local info = Config.PlaceById and Config.PlaceById[id]
-	if info then
-		return info.emoji .. " " .. info.label
+-- a building that's (part of) a place
+function ctx.place(id, b, i, j, face, spots, extra)
+	local place = newPlace(id, b.Model, i, j)
+	b.Node = hookDoor(i, j, b.Door, face)
+	b.PlaceId = id
+	b.Model:SetAttribute("PlaceId", id)
+	table.insert(place.Buildings, b)
+	if not place.Door then
+		place.Door, place.Inside, place.Node, place.Building = b.Door, b.Inside, b.Node, b
 	end
-	return id
-end
-
--- Registers a building as a place: door hooked onto the sidewalk, work spots
-local function addPlace(id, b, i, j, face, extra)
-	local slots = 0
-	for _, job in ipairs(Config.Jobs) do
-		if job.place == id then
-			slots += job.slots
+	for _, s in ipairs(spots or {}) do
+		registerSpot(s, id, b)
+		table.insert(place.Spots, s)
+		if s.Role == "work" then
+			table.insert(place.WorkSpots, s.CFrame.Position)
 		end
 	end
-	local place = {
-		Id = id,
-		Label = labelFor(id),
-		Kind = (Config.PlaceById and Config.PlaceById[id] and Config.PlaceById[id].kind) or "work",
-		Model = b.Model,
-		Door = b.Door,
-		Inside = b.Inside,
-		WorkSpots = interiorSpots(b.At, b.W, b.D, math.max(slots, 2)),
-		Block = Vector2.new(i, j),
-	}
-	place.Node = hookDoor(i, j, b.Door, face)
+	if b.Elevator then
+		table.insert(map.Elevators, b)
+	end
 	if extra then
 		for k, v in pairs(extra) do
 			place[k] = v
 		end
 	end
-	b.Model:SetAttribute("PlaceId", id)
-	map.Places[id] = place
-	table.insert(map.PlaceList, place)
 	return place
 end
 
--- Facing: buildings face the road toward the city center
-local function faceFor(i, j)
-	if math.abs(j) >= math.abs(i) and j ~= 0 then
-		return Vector3.new(0, 0, if j > 0 then -1 else 1)
-	elseif i ~= 0 then
-		return Vector3.new(if i > 0 then -1 else 1, 0, 0)
-	end
-	return Vector3.new(0, 0, 1)
-end
-
---------------------------------------------------------------------------------
--- Props
---------------------------------------------------------------------------------
-local function tree(parent, pos, scale, rng)
-	scale = scale or 1
-	local trunkH = 7 * scale
-	deco(parent, "Trunk", Vector3.new(1.4, trunkH, 1.4) * Vector3.new(scale, 1, scale), CFrame.new(pos + Vector3.new(0, trunkH / 2, 0)), WOOD, Enum.Material.Wood)
-	local leaf = LEAVES[rng and rng:NextInteger(1, #LEAVES) or 1]
-	ball(parent, "Leaves", 8 * scale, CFrame.new(pos + Vector3.new(0, trunkH + 2 * scale, 0)), leaf, Enum.Material.Grass)
-	ball(parent, "Leaves", 5.5 * scale, CFrame.new(pos + Vector3.new(1.5 * scale, trunkH + 5 * scale, 0.8 * scale)), leaf:Lerp(WHITE, 0.08), Enum.Material.Grass)
-end
-
-local function bench(parent, cf)
-	deco(parent, "BenchSeat", Vector3.new(6, 0.5, 2), cf * CFrame.new(0, 1.8, 0), WOOD, Enum.Material.Wood)
-	deco(parent, "BenchBack", Vector3.new(6, 2, 0.4), cf * CFrame.new(0, 3, 0.9), WOOD, Enum.Material.Wood)
-	for _, sx in ipairs({ -1, 1 }) do
-		deco(parent, "BenchLeg", Vector3.new(0.4, 1.6, 1.8), cf * CFrame.new(sx * 2.6, 0.8, 0), Color3.fromRGB(50, 50, 55), Enum.Material.Metal)
-	end
-	table.insert(map.BenchSpots, (cf * CFrame.new(0, 0, -1.6)).Position)
-end
-
-local function lamp(parent, pos)
-	deco(parent, "LampPost", Vector3.new(0.6, 12, 0.6), CFrame.new(pos + Vector3.new(0, 6, 0)), Color3.fromRGB(45, 48, 55), Enum.Material.Metal)
-	local head = deco(parent, "LampHead", Vector3.new(1.8, 1, 1.8), CFrame.new(pos + Vector3.new(0, 12.3, 0)), Color3.fromRGB(120, 120, 110), Enum.Material.SmoothPlastic)
-	local l = light(head, LAMP_LIGHT, 22, 1.4)
-	l.Enabled = false
-	table.insert(lamps, { Head = head, Light = l })
-end
-
-local CAR_COLORS = { Color3.fromRGB(220, 60, 60), Color3.fromRGB(60, 120, 220), Color3.fromRGB(240, 240, 240), Color3.fromRGB(40, 40, 45), Color3.fromRGB(250, 200, 60), Color3.fromRGB(80, 180, 110) }
-local function car(parent, cf, color)
-	local m = Instance.new("Model")
-	m.Name = "Car"
-	m.Parent = parent
-	deco(m, "Body", Vector3.new(6, 2.2, 11), cf * CFrame.new(0, 2.1, 0), color, Enum.Material.SmoothPlastic, { Reflectance = 0.1 })
-	deco(m, "Cabin", Vector3.new(5.4, 2, 5.5), cf * CFrame.new(0, 4.1, 0.5), color:Lerp(BLACK, 0.1))
-	deco(m, "Windshield", Vector3.new(5, 1.7, 0.2), cf * CFrame.new(0, 4.1, -2.3), GLASS, Enum.Material.Glass, { Transparency = 0.2 })
-	for _, sx in ipairs({ -1, 1 }) do
-		for _, sz in ipairs({ -1, 1 }) do
-			local w = deco(m, "Wheel", Vector3.new(1, 2.2, 2.2), cf * CFrame.new(sx * 2.8, 1.1, sz * 3.4), Color3.fromRGB(25, 25, 28), Enum.Material.Rubber)
-			w.Shape = Enum.PartType.Cylinder
-		end
-		deco(m, "Headlight", Vector3.new(1, 0.6, 0.2), cf * CFrame.new(sx * 2, 2.4, -5.55), Color3.fromRGB(255, 250, 220), Enum.Material.Neon)
-	end
-	return m
-end
-
-local function flag(parent, pos, color, height)
-	height = height or 18
-	deco(parent, "FlagPole", Vector3.new(0.4, height, 0.4), CFrame.new(pos + Vector3.new(0, height / 2, 0)), Color3.fromRGB(220, 220, 225), Enum.Material.Metal)
-	deco(parent, "Flag", Vector3.new(0.1, 3, 5), CFrame.new(pos + Vector3.new(0, height - 1.8, 2.6)), color, Enum.Material.Fabric)
-end
-
---------------------------------------------------------------------------------
--- Special blocks
---------------------------------------------------------------------------------
-local function lot(parent, c, color, material)
-	return part(parent, "Lot", Vector3.new(BLOCK - SIDEWALK * 2, 0.1, BLOCK - SIDEWALK * 2), CFrame.new(c + Vector3.new(0, 0.05, 0)), color, material)
-end
-
-local function buildPlaza(parent, i, j)
-	local c = blockCenter(i, j)
-	local model = Instance.new("Model")
-	model.Name = "Plaza"
-	model.Parent = parent
-	lot(model, c, Color3.fromRGB(225, 215, 195), Enum.Material.Cobblestone)
-	-- diagonal pattern of lighter tiles
-	for k = -3, 3 do
-		deco(model, "Tile", Vector3.new(70, 0.12, 2), CFrame.new(c + Vector3.new(0, 0.12, k * 10)), Color3.fromRGB(240, 232, 214), Enum.Material.Slate)
-	end
-	-- fountain in the middle
-	local f = Instance.new("Model")
-	f.Name = "Fountain"
-	f.Parent = model
-	column(f, "FountainBase", 2, 26, c + Vector3.new(0, 1, 0), STONE, Enum.Material.Marble)
-	local water = column(f, "Water", 0.4, 23, c + Vector3.new(0, 2.05, 0), Color3.fromRGB(80, 170, 240), Enum.Material.Glass)
-	water.Transparency = 0.25
-	water.CanCollide = false
-	column(f, "FountainPillar", 6, 3, c + Vector3.new(0, 4, 0), STONE, Enum.Material.Marble)
-	column(f, "FountainBowl", 1, 11, c + Vector3.new(0, 6.5, 0), STONE, Enum.Material.Marble)
-	local top = column(f, "FountainTop", 3, 1.6, c + Vector3.new(0, 8.5, 0), STONE, Enum.Material.Marble)
-	local spray = Instance.new("ParticleEmitter")
-	spray.Color = ColorSequence.new(Color3.fromRGB(190, 230, 255))
-	spray.LightEmission = 0.4
-	spray.Size = NumberSequence.new(0.6, 0.2)
-	spray.Transparency = NumberSequence.new(0.2, 1)
-	spray.Lifetime = NumberRange.new(1, 1.4)
-	spray.Rate = 40
-	spray.Speed = NumberRange.new(10, 12)
-	spray.SpreadAngle = Vector2.new(18, 18)
-	spray.Acceleration = Vector3.new(0, -30, 0)
-	spray.EmissionDirection = Enum.NormalId.Right -- up, for an upright cylinder
-	spray.Parent = top
-	-- the speech stage on the north side, facing the fountain
-	local stageCf = CFrame.lookAt(c + Vector3.new(0, 0, -28), c)
-	part(model, "Stage", Vector3.new(30, 2, 12), stageCf * CFrame.new(0, 1, 0), WOOD, Enum.Material.WoodPlanks)
-	part(model, "StageStep", Vector3.new(8, 1, 3), stageCf * CFrame.new(0, 0.5, -7.5), WOOD:Lerp(BLACK, 0.1), Enum.Material.WoodPlanks)
-	local backdrop = part(model, "Backdrop", Vector3.new(30, 12, 1), stageCf * CFrame.new(0, 8, 5.5), Color3.fromRGB(150, 40, 60), Enum.Material.Fabric)
-	signText(backdrop, Enum.NormalId.Front, "🗳️ SPEAK TO THE CITY", GOLD)
-	for _, sx in ipairs({ -1, 1 }) do
-		column(model, "StagePillar", 12, 1.6, (stageCf * CFrame.new(sx * 15, 8, 5.2)).Position, GOLD, Enum.Material.Metal)
-		flag(model, (stageCf * CFrame.new(sx * 12, 2, 4)).Position, Color3.fromRGB(60, 110, 220), 14)
-	end
-	local podium = deco(model, "Podium", Vector3.new(3.4, 4, 2.4), stageCf * CFrame.new(0, 4, -3), Color3.fromRGB(90, 60, 40), Enum.Material.Wood)
-	deco(model, "PodiumTop", Vector3.new(4, 0.4, 3), stageCf * CFrame.new(0, 6.1, -3) * CFrame.Angles(math.rad(-15), 0, 0), Color3.fromRGB(70, 45, 30), Enum.Material.Wood)
-	deco(model, "Microphone", Vector3.new(0.3, 1.4, 0.3), stageCf * CFrame.new(0, 7, -3.2), Color3.fromRGB(40, 40, 45), Enum.Material.Metal)
-	podium:SetAttribute("SpeechSpot", true)
-	map.SpeechSpot = (stageCf * CFrame.new(0, 2, -1)).Position
-	map.StageCFrame = stageCf * CFrame.new(0, 2, -1)
-	-- ballot box and the city news board
-	local ballot = part(model, "BallotBox", Vector3.new(4, 4, 4), CFrame.lookAt(c + Vector3.new(22, 2, -16), c + Vector3.new(0, 2, 0)), Color3.fromRGB(60, 90, 200))
-	deco(model, "BallotSlot", Vector3.new(2.4, 0.2, 0.5), ballot.CFrame * CFrame.new(0, 2.05, 0), BLACK)
-	signText(ballot, Enum.NormalId.Front, "VOTE", WHITE)
-	map.BallotBox = ballot
-	local board = part(model, "NewsBoard", Vector3.new(14, 8, 0.8), CFrame.lookAt(c + Vector3.new(-22, 6, -16), c + Vector3.new(0, 6, 0)), Color3.fromRGB(40, 36, 50))
-	for _, sx in ipairs({ -1, 1 }) do
-		deco(model, "BoardPost", Vector3.new(0.6, 10, 0.6), board.CFrame * CFrame.new(sx * 6.5, -1, 0.6), WOOD, Enum.Material.Wood)
-	end
-	newsLabel = signText(board, Enum.NormalId.Front, "📰 CITY NEWS\nWelcome to AI City!", WHITE, Enum.Font.GothamBold)
-	map.NewsBoard = newsLabel
-	-- benches around the fountain, facing it
-	for k = 0, 7 do
-		local a = k / 8 * math.pi * 2 + math.pi / 8
-		local pos = c + Vector3.new(math.cos(a) * 20, 0, math.sin(a) * 20)
-		if pos.Z > c.Z - 18 then
-			bench(model, CFrame.lookAt(pos, Vector3.new(c.X, pos.Y, c.Z)) * CFrame.Angles(0, math.pi, 0))
+-- an outdoor place (plaza, park, sports field, woods)
+function ctx.outdoor(id, model, i, j, door, face, spots)
+	local place = newPlace(id, model, i, j)
+	place.Door = door
+	place.Inside = door
+	place.Outdoor = true
+	place.Node = hookDoor(i, j, door, face)
+	model:SetAttribute("PlaceId", id)
+	for _, s in ipairs(spots or {}) do
+		registerSpot(s, id, nil)
+		table.insert(place.Spots, s)
+		if s.Role == "work" then
+			table.insert(place.WorkSpots, s.CFrame.Position)
 		end
 	end
-	-- chess tables and a dance floor for hobbies
-	local chess = {}
-	for _, sx in ipairs({ -1, 1 }) do
-		local p = c + Vector3.new(sx * 26, 0, 22)
-		column(model, "ChessTable", 3, 4, p + Vector3.new(0, 1.5, 0), STONE, Enum.Material.Marble)
-		deco(model, "ChessBoard", Vector3.new(2.6, 0.1, 2.6), CFrame.new(p + Vector3.new(0, 3.05, 0)), Color3.fromRGB(240, 240, 240), Enum.Material.SmoothPlastic)
-		table.insert(chess, p + Vector3.new(0, 0, 3))
-		table.insert(chess, p + Vector3.new(0, 0, -3))
-	end
-	local danceAt = c + Vector3.new(0, 0, 27)
-	deco(model, "DanceFloor", Vector3.new(16, 0.15, 12), CFrame.new(danceAt + Vector3.new(0, 0.2, 0)), Color3.fromRGB(80, 60, 140), Enum.Material.Neon, { Transparency = 0.5 })
-	local dance = {}
-	for k = 0, 5 do
-		table.insert(dance, danceAt + Vector3.new((k % 3 - 1) * 5, 0, (k // 3 - 0.5) * 5))
-	end
-	-- planters with trees in the corners
-	for _, sx in ipairs({ -1, 1 }) do
-		for _, sz in ipairs({ -1, 1 }) do
-			local p = c + Vector3.new(sx * 32, 0, sz * 32)
-			part(model, "Planter", Vector3.new(7, 1.6, 7), CFrame.new(p + Vector3.new(0, 0.8, 0)), STONE, Enum.Material.Brick)
-			tree(model, p + Vector3.new(0, 1.6, 0), 0.9)
-		end
-	end
-	local plaza = {
-		Id = "Plaza",
-		Label = labelFor("Plaza"),
-		Kind = "civic",
-		Model = model,
-		Door = c + Vector3.new(0, 0, 35),
-		Inside = c + Vector3.new(0, 0, 14),
-		WorkSpots = { c + Vector3.new(-12, 0, 14), c + Vector3.new(12, 0, 14), c + Vector3.new(0, 0, 18) },
-		Block = Vector2.new(i, j),
-	}
-	plaza.Node = hookDoor(i, j, plaza.Door, Vector3.new(0, 0, 1))
-	map.Places.Plaza = plaza
-	table.insert(map.PlaceList, plaza)
-	map.HobbySpots["playing chess"] = chess
-	map.HobbySpots["dancing"] = dance
-	map.HobbySpots["playing guitar"] = { c + Vector3.new(-14, 0, 16), c + Vector3.new(14, 0, 16) }
+	return place
 end
 
-local function buildPark(parent, i, j)
-	local c = blockCenter(i, j)
-	local model = Instance.new("Model")
-	model.Name = "Park"
-	model.Parent = parent
-	local rng = Random.new(42)
-	lot(model, c, DARK_GRASS, Enum.Material.Grass)
-	-- paths
-	deco(model, "Path", Vector3.new(74, 0.14, 5), CFrame.new(c + Vector3.new(0, 0.12, 0)), Color3.fromRGB(215, 195, 150), Enum.Material.Sand)
-	deco(model, "Path", Vector3.new(5, 0.14, 74), CFrame.new(c + Vector3.new(0, 0.12, 0)), Color3.fromRGB(215, 195, 150), Enum.Material.Sand)
-	-- pond
-	local pondC = c + Vector3.new(-18, 0, 18)
-	column(model, "PondEdge", 0.6, 26, pondC + Vector3.new(0, 0.3, 0), STONE, Enum.Material.Pebble)
-	local pond = column(model, "Pond", 0.5, 23, pondC + Vector3.new(0, 0.4, 0), Color3.fromRGB(60, 140, 200), Enum.Material.Glass)
-	pond.Transparency = 0.15
-	pond.CanCollide = false
-	for k = 0, 2 do
-		deco(model, "LilyPad", Vector3.new(0.1, 2, 2), CFrame.new(pondC + Vector3.new(k * 3 - 3, 0.7, k * 2 - 2)) * CFrame.Angles(0, 0, math.rad(90)), Color3.fromRGB(80, 170, 70), Enum.Material.Grass).Shape = Enum.PartType.Cylinder
-	end
-	local fishing = {}
-	for k = 0, 3 do
-		local a = k / 4 * math.pi * 2 + 0.4
-		table.insert(fishing, pondC + Vector3.new(math.cos(a) * 15, 0, math.sin(a) * 15))
-	end
-	-- gazebo in the middle
-	local g = c + Vector3.new(18, 0, -18)
-	column(model, "GazeboFloor", 1, 16, g + Vector3.new(0, 0.5, 0), Color3.fromRGB(235, 230, 220), Enum.Material.WoodPlanks)
-	for k = 0, 5 do
-		local a = k / 6 * math.pi * 2
-		deco(model, "GazeboPost", Vector3.new(0.8, 9, 0.8), CFrame.new(g + Vector3.new(math.cos(a) * 7, 5, math.sin(a) * 7)), WHITE, Enum.Material.Wood)
-	end
-	column(model, "GazeboRoof", 1.2, 18, g + Vector3.new(0, 10, 0), Color3.fromRGB(180, 70, 60), Enum.Material.Slate)
-	column(model, "GazeboRoofTop", 2, 10, g + Vector3.new(0, 11.4, 0), Color3.fromRGB(160, 60, 55), Enum.Material.Slate)
-	-- garden plots (the gardeners work here)
-	local gardens = {}
-	for k = 0, 3 do
-		local p = c + Vector3.new(10 + (k % 2) * 12, 0, 12 + (k // 2) * 10)
-		part(model, "GardenBed", Vector3.new(9, 1, 6), CFrame.new(p + Vector3.new(0, 0.5, 0)), Color3.fromRGB(110, 75, 50), Enum.Material.Ground)
-		for n = 0, 3 do
-			local flowerColor = ({ Color3.fromRGB(255, 90, 120), Color3.fromRGB(255, 210, 60), Color3.fromRGB(170, 110, 255), Color3.fromRGB(255, 150, 60) })[(k + n) % 4 + 1]
-			ball(model, "Flower", 1.3, CFrame.new(p + Vector3.new(n * 2 - 3, 1.5, 0)), flowerColor)
-		end
-		table.insert(gardens, p + Vector3.new(0, 0, -4))
-	end
-	-- trees and benches
-	for k = 1, 10 do
-		local a = k / 10 * math.pi * 2
-		local p = c + Vector3.new(math.cos(a) * 32, 0, math.sin(a) * 32)
-		tree(model, p, rng:NextNumber(0.9, 1.3), rng)
-	end
-	for _, spot in ipairs({ { -8, -10, 0 }, { 8, 8, 180 }, { -30, -4, 90 }, { 4, -30, 0 } }) do
-		bench(model, CFrame.new(c + Vector3.new(spot[1], 0, spot[2])) * CFrame.Angles(0, math.rad(spot[3]), 0))
-	end
-	-- easels for painters
-	local painting = {}
-	for k = 0, 1 do
-		local p = c + Vector3.new(-26 + k * 8, 0, -22)
-		deco(model, "Easel", Vector3.new(3, 4, 0.3), CFrame.new(p + Vector3.new(0, 3.5, 0)) * CFrame.Angles(math.rad(-10), 0, 0), Color3.fromRGB(245, 240, 230))
-		table.insert(painting, p + Vector3.new(0, 0, 2.5))
-	end
-	-- a jogging loop around the inside of the park
-	local loop = {}
-	for k = 0, 11 do
-		local a = k / 12 * math.pi * 2
-		table.insert(loop, c + Vector3.new(math.cos(a) * 28, 0, math.sin(a) * 28))
-	end
-	local park = {
-		Id = "Park",
-		Label = labelFor("Park"),
-		Kind = "fun",
-		Model = model,
-		Door = c + Vector3.new(-35, 0, 0),
-		Inside = c,
-		WorkSpots = gardens,
-		Block = Vector2.new(i, j),
-	}
-	park.Node = hookDoor(i, j, park.Door, Vector3.new(-1, 0, 0))
-	map.Places.Park = park
-	table.insert(map.PlaceList, park)
-	map.HobbySpots.fishing = fishing
-	map.HobbySpots.gardening = gardens
-	map.HobbySpots.painting = painting
-	local jogging = map.HobbySpots.jogging or {}
-	for _, spot in ipairs(loop) do
-		table.insert(jogging, spot)
-	end
-	map.HobbySpots.jogging = jogging
-	map.HobbySpots.birdwatching = { g, c + Vector3.new(28, 0, 28), c + Vector3.new(-28, 0, -28) }
-	map.JoggingLoop = loop
-end
-
-local function buildSportsField(parent, i, j)
-	local c = blockCenter(i, j)
-	local model = Instance.new("Model")
-	model.Name = "SportsField"
-	model.Parent = parent
-	lot(model, c, Color3.fromRGB(70, 160, 70), Enum.Material.Grass)
-	part(model, "Field", Vector3.new(56, 0.14, 38), CFrame.new(c + Vector3.new(0, 0.12, 4)), Color3.fromRGB(60, 150, 60), Enum.Material.Grass)
-	deco(model, "Line", Vector3.new(0.5, 0.16, 38), CFrame.new(c + Vector3.new(0, 0.13, 4)), WHITE)
-	for _, sx in ipairs({ -1, 1 }) do
-		deco(model, "Line", Vector3.new(56, 0.16, 0.5), CFrame.new(c + Vector3.new(0, 0.13, 4 + sx * 19)), WHITE)
-		deco(model, "Line", Vector3.new(0.5, 0.16, 38), CFrame.new(c + Vector3.new(sx * 28, 0.13, 4)), WHITE)
-		-- goals
-		deco(model, "GoalPost", Vector3.new(0.5, 5, 0.5), CFrame.new(c + Vector3.new(sx * 28, 2.5, 0)), WHITE, Enum.Material.Metal)
-		deco(model, "GoalPost", Vector3.new(0.5, 5, 0.5), CFrame.new(c + Vector3.new(sx * 28, 2.5, 8)), WHITE, Enum.Material.Metal)
-		deco(model, "GoalBar", Vector3.new(0.5, 0.5, 8.5), CFrame.new(c + Vector3.new(sx * 28, 5, 4)), WHITE, Enum.Material.Metal)
-	end
-	-- bleachers along the north side
-	for row = 0, 2 do
-		part(model, "Bleacher", Vector3.new(40, 1, 3), CFrame.new(c + Vector3.new(0, 0.5 + row * 1.5, -22 - row * 3)), Color3.fromRGB(70, 110, 200), Enum.Material.Metal)
-	end
-	local field = {
-		Id = "SportsField",
-		Label = labelFor("SportsField"),
-		Kind = "fun",
-		Model = model,
-		Door = c + Vector3.new(0, 0, -35),
-		Inside = c + Vector3.new(0, 0, 4),
-		WorkSpots = { c + Vector3.new(-10, 0, 4), c + Vector3.new(10, 0, 4) },
-		Block = Vector2.new(i, j),
-	}
-	field.Node = hookDoor(i, j, field.Door, Vector3.new(0, 0, -1))
-	map.Places.SportsField = field
-	table.insert(map.PlaceList, field)
-	local loop = map.HobbySpots.jogging or {}
-	for k = 0, 7 do
-		local a = k / 8 * math.pi * 2
-		table.insert(loop, c + Vector3.new(math.cos(a) * 32, 0, 4 + math.sin(a) * 22))
-	end
-	map.HobbySpots.jogging = loop
-end
-
---------------------------------------------------------------------------------
--- Buildings with character
---------------------------------------------------------------------------------
-local function buildTownHall(parent, i, j)
-	local c = blockCenter(i, j)
-	local face = faceFor(i, j)
-	local b = building(parent, { Name = "TownHall", Label = labelFor("TownHall"), Center = frontLot(c, face, 44) - face * 5, Face = face, W = 60, D = 44, Floors = 2, Wall = Color3.fromRGB(235, 228, 212), Trim = Color3.fromRGB(190, 175, 150), Material = Enum.Material.Marble, DoorW = 10, SignColor = Color3.fromRGB(60, 50, 40), SignText = GOLD })
-	local at = b.At
-	-- grand steps and columns across the front
-	for s = 0, 2 do
-		part(b.Model, "Steps", Vector3.new(40 - s * 4, 0.6, 3), at(0, 0.3 + s * 0.6, -b.D / 2 - 7 + s * 1.6), Color3.fromRGB(220, 215, 205), Enum.Material.Marble)
-	end
-	for k = -3, 3 do
-		if k ~= 0 then
-			column(b.Model, "Column", 20, 2.4, at(k * 6, 11, -b.D / 2 - 3).Position, WHITE, Enum.Material.Marble)
-		end
-	end
-	wedge(b.Model, "Pediment", Vector3.new(46, 5, 6), at(0, b.H + 2.5, -b.D / 2 - 3), Color3.fromRGB(235, 228, 212), Enum.Material.Marble)
-	part(b.Model, "Portico", Vector3.new(46, 1, 7), at(0, 21.5, -b.D / 2 - 3), Color3.fromRGB(225, 218, 200), Enum.Material.Marble)
-	-- clock tower with a dome
-	part(b.Model, "Tower", Vector3.new(12, 16, 12), at(0, b.H + 8, 2), Color3.fromRGB(235, 228, 212), Enum.Material.Marble)
-	local clock = deco(b.Model, "Clock", Vector3.new(7, 7, 0.4), at(0, b.H + 9, -4.2), WHITE)
-	map.ClockFace = signText(clock, Enum.NormalId.Front, "🕒", BLACK)
-	local dome = ball(b.Model, "Dome", 13, at(0, b.H + 16, 2), Color3.fromRGB(120, 170, 150), Enum.Material.Metal)
-	dome.CanCollide = true
-	flag(b.Model, at(0, b.H + 21, 2).Position, Color3.fromRGB(60, 110, 220), 10)
-	for _, sx in ipairs({ -1, 1 }) do
-		flag(b.Model, at(sx * 24, 0, -b.D / 2 - 9).Position, Color3.fromRGB(220, 60, 60), 20)
-	end
-	addPlace("TownHall", b, i, j, face, { MayorOffice = at(0, 0.4, 12).Position })
-end
-
-local function buildBank(parent, i, j)
-	local c = blockCenter(i, j)
-	local face = faceFor(i, j)
-	local b = building(parent, { Name = "Bank", Label = labelFor("Bank"), Center = frontLot(c, face, 36, -10), Face = face, W = 44, D = 36, Floors = 3, Wall = Color3.fromRGB(210, 205, 195), Trim = Color3.fromRGB(150, 140, 120), Material = Enum.Material.Granite, DoorW = 9, SignColor = Color3.fromRGB(30, 60, 50), SignText = GOLD })
-	local at = b.At
-	for k = -2, 2 do
-		if k ~= 0 then
-			column(b.Model, "Column", 11, 1.8, at(k * 6.5, 5.5, -b.D / 2 - 2).Position, Color3.fromRGB(240, 238, 230), Enum.Material.Marble)
-		end
-	end
-	part(b.Model, "Portico", Vector3.new(30, 1, 5), at(0, 11.5, -b.D / 2 - 2), Color3.fromRGB(225, 220, 210), Enum.Material.Marble)
-	-- the vault door inside and an ATM outside
-	local vault = column(b.Model, "VaultDoor", 1, 9, at(0, 5, b.D / 2 - 1.2).Position, Color3.fromRGB(150, 155, 165), Enum.Material.DiamondPlate)
-	vault.CFrame = at(0, 5, b.D / 2 - 1.2) * CFrame.Angles(0, math.rad(90), 0)
-	deco(b.Model, "VaultWheel", Vector3.new(0.6, 4, 4), at(0, 5, b.D / 2 - 1.9) * CFrame.Angles(0, math.rad(90), 0), GOLD, Enum.Material.Metal).Shape = Enum.PartType.Cylinder
-	deco(b.Model, "Counter", Vector3.new(b.W - 10, 4, 2), at(0, 2, 4), Color3.fromRGB(120, 80, 50), Enum.Material.Wood)
-	local atm = part(b.Model, "ATM", Vector3.new(3, 6, 2), at(b.W / 2 - 5, 3, -b.D / 2 - 1.2), Color3.fromRGB(60, 70, 80), Enum.Material.Metal)
-	deco(b.Model, "ATMScreen", Vector3.new(2, 1.4, 0.2), atm.CFrame * CFrame.new(0, 1.2, -1.05), Color3.fromRGB(100, 220, 160), Enum.Material.Neon)
-	addPlace("Bank", b, i, j, face, { Vault = at(0, 0.4, b.D / 2 - 5).Position })
-	-- a smaller office next door
-	local o = building(parent, { Name = "Office", Label = labelFor("Office"), Center = frontLot(c, face, 30, 25), Face = face, W = 22, D = 30, Floors = 6, Wall = Color3.fromRGB(90, 120, 150), Trim = Color3.fromRGB(60, 80, 100), WindowColor = Color3.fromRGB(170, 220, 250), Material = Enum.Material.Glass, DoorW = 6 })
-	addPlace("Office", o, i, j, face)
-end
-
-local function buildPolice(parent, i, j)
-	local c = blockCenter(i, j)
-	local face = faceFor(i, j)
-	local b = building(parent, { Name = "PoliceStation", Label = labelFor("PoliceStation"), Center = frontLot(c, face, 36) - face * 6, Face = face, W = 50, D = 36, Floors = 2, Wall = Color3.fromRGB(70, 95, 160), Trim = Color3.fromRGB(230, 230, 235), Material = Enum.Material.Brick, SignColor = Color3.fromRGB(25, 40, 90) })
-	local at = b.At
-	deco(b.Model, "Stripe", Vector3.new(b.W + 0.2, 1.2, b.D + 0.2), at(0, 4, 0), WHITE)
-	local siren = deco(b.Model, "Siren", Vector3.new(3, 1.2, 1.5), at(0, b.H + 1.8, -b.D / 2 + 2), Color3.fromRGB(255, 60, 60), Enum.Material.Neon)
-	light(siren, Color3.fromRGB(255, 60, 60), 14, 1)
-	flag(b.Model, at(-b.W / 2 + 3, 0, -b.D / 2 - 5).Position, Color3.fromRGB(60, 110, 220))
-	-- police cars out front
-	for k = 0, 1 do
-		local m = car(b.Model, at(b.W / 2 - 6 - k * 9, 0, -b.D / 2 - 8) * CFrame.Angles(0, math.rad(90), 0), WHITE)
-		deco(m, "Stripe", Vector3.new(6.1, 0.8, 11.1), at(b.W / 2 - 6 - k * 9, 2.3, -b.D / 2 - 8) * CFrame.Angles(0, math.rad(90), 0), Color3.fromRGB(40, 60, 140))
-		local bar = deco(m, "LightBar", Vector3.new(3.6, 0.6, 1), at(b.W / 2 - 6 - k * 9, 5.4, -b.D / 2 - 8), Color3.fromRGB(80, 120, 255), Enum.Material.Neon)
-		bar.Name = "LightBar"
-	end
-	addPlace("PoliceStation", b, i, j, face, { Jail = at(-b.W / 2 + 8, 0.4, b.D / 2 - 6).Position })
-end
-
-local function buildFireStation(parent, i, j)
-	local c = blockCenter(i, j)
-	local face = faceFor(i, j)
-	local b = building(parent, { Name = "FireStation", Label = labelFor("FireStation"), Center = frontLot(c, face, 40) - face * 6, Face = face, W = 50, D = 40, Floors = 2, Wall = Color3.fromRGB(190, 55, 45), Trim = Color3.fromRGB(240, 235, 225), Material = Enum.Material.Brick, DoorW = 8, SignColor = Color3.fromRGB(70, 20, 20) })
-	local at = b.At
-	-- big garage doors
-	for _, sx in ipairs({ -1, 1 }) do
-		deco(b.Model, "GarageDoor", Vector3.new(12, 10, 0.4), at(sx * 16, 5, -b.D / 2 - 0.2), Color3.fromRGB(230, 230, 235), Enum.Material.DiamondPlate)
-	end
-	-- a hose tower
-	part(b.Model, "HoseTower", Vector3.new(8, 36, 8), at(b.W / 2 - 4, 18, b.D / 2 - 4), Color3.fromRGB(175, 50, 40), Enum.Material.Brick)
-	-- a fire truck on the apron
-	local truck = Instance.new("Model")
-	truck.Name = "FireTruck"
-	truck.Parent = b.Model
-	local tcf = at(-12, 0, -b.D / 2 - 8) * CFrame.Angles(0, math.rad(90), 0)
-	deco(truck, "Body", Vector3.new(7, 5, 18), tcf * CFrame.new(0, 3.5, 0), Color3.fromRGB(215, 40, 35))
-	deco(truck, "Ladder", Vector3.new(1.6, 0.6, 16), tcf * CFrame.new(0, 6.4, 1), Color3.fromRGB(220, 220, 225), Enum.Material.Metal)
-	local beacon = deco(truck, "Beacon", Vector3.new(4, 0.7, 1), tcf * CFrame.new(0, 6.3, -7.5), Color3.fromRGB(255, 60, 60), Enum.Material.Neon)
-	beacon.Name = "Beacon"
-	for _, sx in ipairs({ -1, 1 }) do
-		for _, sz in ipairs({ -1, 1 }) do
-			deco(truck, "Wheel", Vector3.new(1, 3, 3), tcf * CFrame.new(sx * 3.3, 1.5, sz * 6), Color3.fromRGB(25, 25, 28), Enum.Material.Rubber).Shape = Enum.PartType.Cylinder
-		end
-	end
-	addPlace("FireStation", b, i, j, face)
-end
-
-local function buildHospital(parent, i, j)
-	local c = blockCenter(i, j)
-	local face = faceFor(i, j)
-	local b = building(parent, { Name = "Hospital", Label = labelFor("Hospital"), Center = frontLot(c, face, 44) - face * 3, Face = face, W = 62, D = 44, Floors = 4, Wall = Color3.fromRGB(242, 244, 248), Trim = Color3.fromRGB(120, 180, 220), Material = Enum.Material.SmoothPlastic, DoorW = 10, SignColor = Color3.fromRGB(200, 40, 50) })
-	local at = b.At
-	-- a big red cross on the front
-	deco(b.Model, "Cross", Vector3.new(8, 2.4, 0.4), at(b.W / 2 - 8, b.H - 6, -b.D / 2 - 0.4), Color3.fromRGB(220, 40, 50), Enum.Material.Neon)
-	deco(b.Model, "Cross", Vector3.new(2.4, 8, 0.4), at(b.W / 2 - 8, b.H - 6, -b.D / 2 - 0.4), Color3.fromRGB(220, 40, 50), Enum.Material.Neon)
-	-- helipad on the roof
-	column(b.Model, "Helipad", 0.4, 20, at(0, b.H + 1.2, 4).Position, Color3.fromRGB(70, 75, 80), Enum.Material.Concrete)
-	local hLetter = deco(b.Model, "HelipadH", Vector3.new(6, 0.1, 8), at(0, b.H + 1.45, 4), Color3.fromRGB(70, 75, 80))
-	signText(hLetter, Enum.NormalId.Top, "H", WHITE)
-	-- ambulance bay canopy and an ambulance
-	part(b.Model, "Canopy", Vector3.new(20, 1, 10), at(-b.W / 2 + 12, 11, -b.D / 2 - 5), Color3.fromRGB(120, 180, 220), Enum.Material.Metal)
-	local amb = car(b.Model, at(-b.W / 2 + 12, 0, -b.D / 2 - 6) * CFrame.Angles(0, math.rad(90), 0), WHITE)
-	amb.Name = "Ambulance"
-	deco(amb, "Stripe", Vector3.new(6.1, 0.8, 11.1), at(-b.W / 2 + 12, 2.3, -b.D / 2 - 6) * CFrame.Angles(0, math.rad(90), 0), Color3.fromRGB(220, 40, 50))
-	local beds = {}
-	for k = 0, 5 do
-		local p = at(-b.W / 2 + 8 + k * 9, 0, b.D / 2 - 7)
-		deco(b.Model, "Bed", Vector3.new(4, 2, 7), p * CFrame.new(0, 1.4, 0), WHITE)
-		table.insert(beds, (p * CFrame.new(0, 0.4, -5)).Position)
-	end
-	addPlace("Hospital", b, i, j, face, { Beds = beds })
-end
-
-local function buildSchool(parent, i, j)
-	local c = blockCenter(i, j)
-	local face = faceFor(i, j)
-	local b = building(parent, { Name = "School", Label = labelFor("School"), Center = frontLot(c, face, 34, -12), Face = face, W = 46, D = 34, Floors = 2, Wall = Color3.fromRGB(205, 110, 80), Trim = Color3.fromRGB(245, 235, 210), Material = Enum.Material.Brick, SignColor = Color3.fromRGB(40, 70, 130) })
-	local at = b.At
-	local bell = deco(b.Model, "BellTower", Vector3.new(6, 6, 6), at(0, b.H + 3, 0), Color3.fromRGB(245, 235, 210))
-	bell.Name = "BellTower"
-	wedge(b.Model, "BellRoof", Vector3.new(7, 3, 3.5), at(0, b.H + 7.5, -1.75), Color3.fromRGB(150, 50, 40))
-	wedge(b.Model, "BellRoof", Vector3.new(7, 3, 3.5), at(0, b.H + 7.5, 1.75) * CFrame.Angles(0, math.pi, 0), Color3.fromRGB(150, 50, 40))
-	flag(b.Model, at(-b.W / 2 + 3, 0, -b.D / 2 - 4).Position, Color3.fromRGB(60, 110, 220))
-	-- playground to the side
-	local p = frontLot(c, face, 30, 25)
-	part(parent, "Playground", Vector3.new(22, 0.2, 30), CFrame.new(p + Vector3.new(0, 0.1, 0)), Color3.fromRGB(230, 170, 90), Enum.Material.Sand)
-	deco(parent, "SlideTower", Vector3.new(4, 6, 4), CFrame.new(p + Vector3.new(-6, 3, -6)), Color3.fromRGB(80, 170, 240))
-	wedge(parent, "Slide", Vector3.new(3, 6, 8), CFrame.new(p + Vector3.new(-6, 3, 0)) * CFrame.Angles(0, math.pi, 0), Color3.fromRGB(250, 200, 60))
-	deco(parent, "SwingBar", Vector3.new(12, 0.6, 0.6), CFrame.new(p + Vector3.new(4, 8, 6)), Color3.fromRGB(220, 60, 60), Enum.Material.Metal)
-	for _, sx in ipairs({ -1, 1 }) do
-		deco(parent, "SwingPost", Vector3.new(0.6, 8, 0.6), CFrame.new(p + Vector3.new(4 + sx * 6, 4, 6)), Color3.fromRGB(220, 60, 60), Enum.Material.Metal)
-		deco(parent, "Swing", Vector3.new(2, 0.3, 1), CFrame.new(p + Vector3.new(4 + sx * 2.5, 2.4, 6)), Color3.fromRGB(60, 60, 70))
-	end
-	addPlace("School", b, i, j, face, { Playground = p })
-end
-
-local function buildFactory(parent, i, j)
-	local c = blockCenter(i, j)
-	local face = faceFor(i, j)
-	local b = building(parent, { Name = "Factory", Label = labelFor("Factory"), Center = frontLot(c, face, 50), Face = face, W = 66, D = 50, Floors = 2, Wall = Color3.fromRGB(150, 150, 155), Trim = Color3.fromRGB(90, 95, 100), Material = Enum.Material.CorrodedMetal, DoorW = 12, SignColor = Color3.fromRGB(50, 50, 55), WindowColor = Color3.fromRGB(190, 200, 170) })
-	local at = b.At
-	for k = 0, 2 do
-		local stackAt = at(-18 + k * 12, b.H + 12, b.D / 2 - 8).Position
-		local stack = column(b.Model, "Smokestack", 24, 4, stackAt, Color3.fromRGB(120, 70, 60), Enum.Material.Brick)
-		deco(b.Model, "StackBand", Vector3.new(1, 4.4, 4.4), CFrame.new(stackAt + Vector3.new(0, 10, 0)) * CFrame.Angles(0, 0, math.rad(90)), WHITE).Shape = Enum.PartType.Cylinder
-		local smoke = Instance.new("ParticleEmitter")
-		smoke.Color = ColorSequence.new(Color3.fromRGB(150, 150, 150), Color3.fromRGB(210, 210, 210))
-		smoke.Size = NumberSequence.new(3, 9)
-		smoke.Transparency = NumberSequence.new(0.3, 1)
-		smoke.Lifetime = NumberRange.new(4, 6)
-		smoke.Rate = 4
-		smoke.Speed = NumberRange.new(4, 6)
-		smoke.SpreadAngle = Vector2.new(12, 12)
-		smoke.EmissionDirection = Enum.NormalId.Right
-		smoke.Parent = stack
-	end
-	-- crates and a loading dock
-	for k = 0, 5 do
-		deco(b.Model, "Crate", Vector3.new(4, 4, 4), at(-b.W / 2 + 4 + (k % 3) * 4.5, 2 + (k // 3) * 4, -b.D / 2 - 3), Color3.fromRGB(170, 125, 75), Enum.Material.WoodPlanks)
-	end
-	for k = 0, 2 do
-		deco(b.Model, "Machine", Vector3.new(8, 6, 6), at(-20 + k * 20, 3, 6), Color3.fromRGB(230, 170, 40), Enum.Material.Metal)
-	end
-	addPlace("Factory", b, i, j, face)
-end
-
-local function buildWarehouse(parent, i, j)
-	local c = blockCenter(i, j)
-	local face = faceFor(i, j)
-	local b = building(parent, { Name = "Warehouse", Label = labelFor("Warehouse"), Center = frontLot(c, face, 44), Face = face, W = 60, D = 44, Floors = 2, Wall = Color3.fromRGB(170, 140, 100), Trim = Color3.fromRGB(110, 90, 65), Material = Enum.Material.CorrodedMetal, DoorW = 14, Roof = "gable", RoofColor = Color3.fromRGB(110, 115, 120) })
-	for k = 0, 8 do
-		deco(b.Model, "Crate", Vector3.new(4, 4, 4), b.At(-20 + (k % 3) * 5, 2 + (k // 3) * 4, 10), Color3.fromRGB(170, 125, 75), Enum.Material.WoodPlanks)
-	end
-	local truck = car(b.Model, b.At(18, 0, -b.D / 2 - 5) * CFrame.Angles(0, math.rad(90), 0), Color3.fromRGB(240, 240, 240))
-	truck.Name = "DeliveryTruck"
-	addPlace("Warehouse", b, i, j, face)
-end
-
-local function buildGasStation(parent, i, j)
-	local c = blockCenter(i, j)
-	local face = faceFor(i, j)
-	local b = building(parent, { Name = "GasStation", Label = labelFor("GasStation"), Center = frontLot(c, face, 24, 0) + face * -8, Face = face, W = 34, D = 24, Floors = 1, Wall = WHITE, Trim = Color3.fromRGB(230, 60, 50), Awning = Color3.fromRGB(230, 60, 50) })
-	local at = b.At
-	-- canopy over the pumps
-	local cpos = at(0, 0, -b.D / 2 - 9)
-	part(b.Model, "PumpCanopy", Vector3.new(34, 1.4, 14), cpos * CFrame.new(0, 12, 0), Color3.fromRGB(230, 60, 50), Enum.Material.Metal)
-	for _, sx in ipairs({ -1, 1 }) do
-		deco(b.Model, "CanopyPost", Vector3.new(1, 12, 1), cpos * CFrame.new(sx * 12, 6, 0), WHITE, Enum.Material.Metal)
-		part(b.Model, "Pump", Vector3.new(2, 5, 2), cpos * CFrame.new(sx * 6, 2.5, 0), Color3.fromRGB(240, 240, 240), Enum.Material.Metal)
-		deco(b.Model, "PumpScreen", Vector3.new(1.4, 1, 0.2), cpos * CFrame.new(sx * 6, 3.6, -1.05), Color3.fromRGB(90, 220, 130), Enum.Material.Neon)
-	end
-	car(b.Model, cpos * CFrame.new(-6, 0, -5) * CFrame.Angles(0, math.rad(90), 0), CAR_COLORS[2])
-	addPlace("GasStation", b, i, j, face)
-end
-
-local function buildCinema(parent, i, j)
-	local c = blockCenter(i, j)
-	local face = faceFor(i, j)
-	local b = building(parent, { Name = "Cinema", Label = labelFor("Cinema"), Center = frontLot(c, face, 44), Face = face, W = 54, D = 44, Floors = 2, Wall = Color3.fromRGB(60, 40, 80), Trim = GOLD, Material = Enum.Material.Brick, NoSign = true })
-	local at = b.At
-	-- marquee with lights
-	local marquee = part(b.Model, "Marquee", Vector3.new(34, 6, 3), at(0, 13, -b.D / 2 - 1.8), Color3.fromRGB(30, 25, 40))
-	signText(marquee, Enum.NormalId.Front, "🎬 CINEMA  •  NOW SHOWING", Color3.fromRGB(255, 225, 120))
-	for k = -8, 8 do
-		local bulb = deco(b.Model, "Bulb", Vector3.new(0.7, 0.7, 0.7), at(k * 2, 16.3, -b.D / 2 - 3.2), Color3.fromRGB(255, 230, 150), Enum.Material.Neon)
-		bulb.Shape = Enum.PartType.Ball
-	end
-	light(marquee, Color3.fromRGB(255, 220, 150), 18, 1)
-	-- rows of seats and a screen inside
-	deco(b.Model, "Screen", Vector3.new(34, 12, 0.4), at(0, 10, b.D / 2 - 1.4), WHITE, Enum.Material.Neon, { Transparency = 0.2 })
-	local seats = {}
-	for row = 0, 2 do
-		deco(b.Model, "SeatRow", Vector3.new(30, 2, 2), at(0, 1.2, -4 - row * 5), Color3.fromRGB(170, 30, 50), Enum.Material.Fabric)
-		for k = -2, 2 do
-			table.insert(seats, at(k * 5, 0.4, -6 - row * 5).Position)
-		end
-	end
-	addPlace("Cinema", b, i, j, face, { Seats = seats })
-end
-
-local function buildGym(parent, i, j)
-	local c = blockCenter(i, j)
-	local face = faceFor(i, j)
-	local b = building(parent, { Name = "Gym", Label = labelFor("Gym"), Center = frontLot(c, face, 34, -14), Face = face, W = 40, D = 34, Floors = 2, Wall = Color3.fromRGB(40, 45, 55), Trim = Color3.fromRGB(250, 120, 40), WindowColor = Color3.fromRGB(180, 230, 255), Material = Enum.Material.Metal })
-	for k = 0, 3 do
-		deco(b.Model, "Treadmill", Vector3.new(3, 2, 6), b.At(-12 + k * 8, 1, 6), Color3.fromRGB(30, 30, 35), Enum.Material.Metal)
-	end
-	-- basketball court next door
-	local p = frontLot(c, face, 34, 22)
-	part(parent, "Court", Vector3.new(26, 0.15, 34), CFrame.new(p + Vector3.new(0, 0.1, 0)), Color3.fromRGB(200, 110, 60), Enum.Material.Concrete)
-	for _, sz in ipairs({ -1, 1 }) do
-		deco(parent, "HoopPost", Vector3.new(0.6, 10, 0.6), CFrame.new(p + Vector3.new(0, 5, sz * 16)), Color3.fromRGB(50, 50, 55), Enum.Material.Metal)
-		deco(parent, "Backboard", Vector3.new(6, 4, 0.3), CFrame.new(p + Vector3.new(0, 10, sz * 15.6)), WHITE)
-		deco(parent, "Hoop", Vector3.new(0.3, 2.4, 2.4), CFrame.new(p + Vector3.new(0, 9, sz * 14.4)) * CFrame.Angles(0, 0, math.rad(90)), Color3.fromRGB(240, 90, 30), Enum.Material.Metal).Shape = Enum.PartType.Cylinder
-	end
-	addPlace("Gym", b, i, j, face, { Court = p })
-end
-
-local function buildHotel(parent, i, j)
-	local c = blockCenter(i, j)
-	local face = faceFor(i, j)
-	local b = building(parent, { Name = "Hotel", Label = labelFor("Hotel"), Center = frontLot(c, face, 36), Face = face, W = 50, D = 36, Floors = 7, Wall = Color3.fromRGB(235, 215, 185), Trim = Color3.fromRGB(150, 110, 70), Material = Enum.Material.Sandstone, DoorW = 10, SignColor = Color3.fromRGB(120, 30, 40), SignText = GOLD })
-	part(b.Model, "Canopy", Vector3.new(16, 0.8, 9), b.At(0, 10.4, -b.D / 2 - 4.5), Color3.fromRGB(120, 30, 40), Enum.Material.Fabric)
-	for _, sx in ipairs({ -1, 1 }) do
-		deco(b.Model, "CanopyPost", Vector3.new(0.5, 10, 0.5), b.At(sx * 7.5, 5, -b.D / 2 - 8.6), GOLD, Enum.Material.Metal)
-	end
-	deco(b.Model, "RedCarpet", Vector3.new(6, 0.12, 9), b.At(0, 0.1, -b.D / 2 - 4.5), Color3.fromRGB(170, 30, 40), Enum.Material.Fabric)
-	addPlace("Hotel", b, i, j, face)
-end
-
-local function buildOffices(parent, i, j)
-	local c = blockCenter(i, j)
-	local face = faceFor(i, j)
-	local colors = { Color3.fromRGB(80, 120, 160), Color3.fromRGB(70, 90, 110), Color3.fromRGB(120, 150, 170) }
-	for k, lateral in ipairs({ -18, 18 }) do
-		local b = building(parent, { Name = "OfficeTower", Label = "🏢 Tower " .. (if i < 0 then "West" else "East") .. " " .. k, Center = frontLot(c, face, 30, lateral), Face = face, W = 30, D = 30, Floors = 8 + k * 2, Wall = colors[(k + math.abs(i)) % #colors + 1], Trim = Color3.fromRGB(50, 60, 75), WindowColor = Color3.fromRGB(180, 225, 250), Material = Enum.Material.Glass, DoorW = 7 })
-		deco(b.Model, "Antenna", Vector3.new(0.5, 12, 0.5), b.At(0, b.H + 7, 0), Color3.fromRGB(200, 200, 205), Enum.Material.Metal)
-		local tip = deco(b.Model, "AntennaLight", Vector3.new(1, 1, 1), b.At(0, b.H + 13.3, 0), Color3.fromRGB(255, 50, 50), Enum.Material.Neon)
-		tip.Shape = Enum.PartType.Ball
+function ctx.hobby(name, spot)
+	map.HobbySpots[name] = map.HobbySpots[name] or {}
+	table.insert(map.HobbySpots[name], spot)
+	if not spot.Id then
+		registerSpot(spot, spot.Place, nil)
 	end
 end
 
-local function buildApartments(parent, i, j, name)
-	local c = blockCenter(i, j)
-	local face = faceFor(i, j)
-	local colors = { Color3.fromRGB(215, 180, 150), Color3.fromRGB(170, 190, 210), Color3.fromRGB(205, 205, 170) }
-	local b = building(parent, { Name = name, Label = "🏢 " .. name, Center = frontLot(c, face, 34), Face = face, W = 64, D = 34, Floors = 5, Wall = colors[(math.abs(j) % #colors) + 1], Trim = Color3.fromRGB(110, 90, 80), Material = Enum.Material.Brick, Awning = Color3.fromRGB(60, 110, 90) })
-	-- balconies
-	for f = 1, 4 do
-		for k = -2, 2 do
-			if k ~= 0 then
-				deco(b.Model, "Balcony", Vector3.new(6, 0.5, 2.4), b.At(k * 12, f * FLOOR_H + 0.3, -b.D / 2 - 1.2), Color3.fromRGB(200, 200, 205), Enum.Material.Concrete)
-			end
-		end
+function ctx.addHome(home)
+	home.Index = #map.Homes + 1
+	for _, s in ipairs(home.Spots or {}) do
+		registerSpot(s, nil, home.Building)
+		s.Home = home.Index
 	end
-	local node = hookDoor(i, j, b.Door, face)
-	local units = {}
-	for n = 1, 16 do
-		local floor = (n - 1) // 4 + 1
-		local slot = (n - 1) % 4
-		local home = {
-			Index = #map.Homes + 1,
-			Model = b.Model,
-			Door = b.Door,
-			Inside = b.At(-18 + slot * 12, 0.4, 6).Position,
-			Address = "Apt " .. floor .. (string.char(64 + slot + 1)) .. ", " .. b.Model.Name,
-			Capacity = 3,
-			Node = node,
-			Kind = "apartment",
-		}
-		table.insert(map.Homes, home)
-		table.insert(units, home)
-	end
-	b.Model:SetAttribute("Homes", #units)
+	table.insert(map.Homes, home)
+	return home
 end
 
-local HOUSE_COLORS = { Color3.fromRGB(240, 220, 180), Color3.fromRGB(190, 215, 235), Color3.fromRGB(235, 190, 180), Color3.fromRGB(200, 225, 190), Color3.fromRGB(245, 245, 235), Color3.fromRGB(225, 200, 230) }
-local ROOF_COLORS = { Color3.fromRGB(150, 60, 50), Color3.fromRGB(70, 80, 100), Color3.fromRGB(110, 75, 55), Color3.fromRGB(60, 110, 80) }
-
-local function streetName(face, c)
-	-- the road a house faces: north/south faces are streets, east/west are avenues
-	-- road k runs along (k + 0.5) * SPACING, the same numbering buildStreets uses
-	if math.abs(face.Z) > 0.5 then
-		local k = math.floor((c.Z + face.Z * SPACING / 2) / SPACING - 0.5 + 0.5)
-		return STREETS[math.clamp(k + N + 2, 1, #STREETS)]
-	end
-	local k = math.floor((c.X + face.X * SPACING / 2) / SPACING - 0.5 + 0.5)
-	return AVENUES[math.clamp(k + N + 2, 1, #AVENUES)]
-end
-
+-- Houses along a block. slots: list of { sx, sz } (sx = -1/1 left/right half,
+-- 0 = middle; sz = -1/1 which street the house faces). big = suburb lots.
 local houseNumbers = {}
-local function buildHouses(parent, i, j, rng)
+function ctx.houseRow(parent, i, j, rng, slots, big)
 	local c = blockCenter(i, j)
 	local model = Instance.new("Model")
 	model.Name = "Houses"
 	model.Parent = parent
-	lot(model, c, GRASS, Enum.Material.Grass)
-	for _, sx in ipairs({ -1, 1 }) do
-		for _, sz in ipairs({ -1, 1 }) do
-			local face = Vector3.new(0, 0, sz)
-			local center = c + Vector3.new(sx * 18, 0, sz * (HALF - SIDEWALK - 12 - 8))
-			local b = building(model, { Name = "House", Center = center, Face = face, W = 20, D = 16, Floors = 1, Wall = HOUSE_COLORS[rng:NextInteger(1, #HOUSE_COLORS)], Trim = WHITE, Roof = "gable", RoofColor = ROOF_COLORS[rng:NextInteger(1, #ROOF_COLORS)], DoorW = 5, Material = Enum.Material.WoodPlanks })
-			-- chimney, path, mailbox and a tree in the yard
-			deco(b.Model, "Chimney", Vector3.new(2, 6, 2), b.At(6, b.H + 4, 3), Color3.fromRGB(150, 80, 60), Enum.Material.Brick)
-			deco(b.Model, "Path", Vector3.new(3, 0.12, 10), b.At(0, 0.1, -b.D / 2 - 5), Color3.fromRGB(200, 195, 185), Enum.Material.Slate)
-			local street = streetName(face, c)
-			houseNumbers[street] = (houseNumbers[street] or 0) + 2
-			local number = houseNumbers[street] - (if sx < 0 then 1 else 0)
-			local mailbox = deco(b.Model, "Mailbox", Vector3.new(1.4, 1.4, 2), b.At(4, 3.2, -b.D / 2 - 9), Color3.fromRGB(60, 90, 160))
-			deco(b.Model, "MailboxPost", Vector3.new(0.4, 2.6, 0.4), b.At(4, 1.3, -b.D / 2 - 9), WOOD, Enum.Material.Wood)
-			signText(mailbox, Enum.NormalId.Left, tostring(number), WHITE)
-			if rng:NextNumber() < 0.7 then
-				tree(model, (b.At(-8, 0, -b.D / 2 - 6)).Position, rng:NextNumber(0.7, 1), rng)
+	ctx.lot(model, c, MapKit.GRASS, Enum.Material.Grass)
+	for _, slot in ipairs(slots) do
+		local sx, sz = slot[1], slot[2]
+		local face = Vector3.new(0, 0, sz)
+		local styles = if big then { "twostory", "bungalow", "modern" } else { "cottage", "twostory", "modern", "bungalow", "cottage" }
+		local style = styles[rng:NextInteger(1, #styles)]
+		local depthZ = HALF - SIDEWALK - 12 - 8
+		-- two-story houses sit further out so their garage fits on the inner side
+		local center = c + Vector3.new(sx * (if style == "twostory" then 22 else 18), 0, sz * depthZ)
+		local garageSide = if sx ~= 0 then sx * sz else 1
+		local b = Buildings.house(model, center, face, style, rng, garageSide)
+		local at = b.At
+		-- front path, mailbox with the house number, and a hedge or picket fence
+		MapKit.deco(b.Model, "Path", Vector3.new(3, 0.12, 10), at(0, 0.12, -b.D / 2 - 5), MapKit.rgb(200, 195, 185), Enum.Material.Slate)
+		local lineZ = c.Z + sz * SPACING / 2
+		local k = math.floor(lineZ / SPACING)
+		local street = Streets.streetName(k)
+		houseNumbers[street] = (houseNumbers[street] or 0) + 2
+		local number = houseNumbers[street] - (if sx < 0 then 1 else 0)
+		local mailbox = MapKit.deco(b.Model, "Mailbox", Vector3.new(1.4, 1.4, 2), at(4, 3.2, -b.D / 2 - 9), MapKit.rgb(60, 90, 160))
+		MapKit.deco(b.Model, "MailboxPost", Vector3.new(0.4, 2.6, 0.4), at(4, 1.3, -b.D / 2 - 9), MapKit.WOOD, Enum.Material.Wood)
+		MapKit.signText(mailbox, Enum.NormalId.Left, tostring(number), MapKit.WHITE)
+		MapKit.signText(mailbox, Enum.NormalId.Right, tostring(number), MapKit.WHITE)
+		if rng:NextNumber() < 0.5 then
+			for _, px in ipairs({ -1, 1 }) do
+				MapKit.deco(b.Model, "Hedge", Vector3.new(7, 2.6, 1.6), at(px * 6.5, 1.3, -b.D / 2 - 9.5), MapKit.LEAVES[3], Enum.Material.Grass)
 			end
-			local home = {
-				Index = #map.Homes + 1,
-				Model = b.Model,
-				Door = b.Door,
-				Inside = b.Inside,
-				Address = number .. " " .. street,
-				Capacity = 5,
-				Kind = "house",
-			}
-			home.Node = hookDoor(i, j, b.Door, face)
-			b.Model.Name = "House " .. home.Address
-			table.insert(map.Homes, home)
-		end
-	end
-end
-
--- a block of small shops: two facing each road the block touches
-local function buildShopBlock(parent, i, j, shops)
-	local c = blockCenter(i, j)
-	local face = faceFor(i, j)
-	local palette = { Color3.fromRGB(240, 200, 120), Color3.fromRGB(140, 200, 230), Color3.fromRGB(235, 150, 150), Color3.fromRGB(170, 215, 150), Color3.fromRGB(210, 180, 235), Color3.fromRGB(245, 235, 210) }
-	local awnings = { Color3.fromRGB(220, 60, 70), Color3.fromRGB(40, 120, 200), Color3.fromRGB(60, 160, 90), Color3.fromRGB(240, 150, 40), Color3.fromRGB(150, 70, 190), Color3.fromRGB(230, 90, 150) }
-	local faces = { face, -face }
-	for k, id in ipairs(shops) do
-		local f = faces[(k - 1) // 2 + 1] or face
-		local lateral = if k % 2 == 1 then -18 else 18
-		local b = building(parent, { Name = id, Label = labelFor(id), Center = frontLot(c, f, 28, lateral), Face = f, W = 32, D = 28, Floors = if k % 3 == 0 then 2 else 1, Wall = palette[(k + i + 6) % #palette + 1], Trim = WHITE, Awning = awnings[(k + j + 6) % #awnings + 1], Material = Enum.Material.Brick, DoorW = 7 })
-		-- a shop window display
-		deco(b.Model, "Display", Vector3.new(8, 1, 3), b.At(-9, 1.5, -b.D / 2 + 2.5), Color3.fromRGB(250, 245, 235))
-		deco(b.Model, "Counter", Vector3.new(12, 3.6, 2), b.At(4, 1.8, 4), Color3.fromRGB(120, 85, 55), Enum.Material.Wood)
-		addPlace(id, b, i, j, f)
-	end
-end
-
--- two shops side by side on one block
-local function buildPair(parent, i, j, left, right)
-	local c = blockCenter(i, j)
-	local face = faceFor(i, j)
-	for k, spec in ipairs({ left, right }) do
-		local lateral = if k == 1 then -19 else 19
-		spec.Name = spec.Id
-		spec.Label = labelFor(spec.Id)
-		spec.Center = frontLot(c, face, spec.D, lateral)
-		spec.Face = face
-		local b = building(parent, spec)
-		if spec.Extra then
-			spec.Extra(b)
-		end
-		addPlace(spec.Id, b, i, j, face)
-	end
-end
-
---------------------------------------------------------------------------------
--- Streets
---------------------------------------------------------------------------------
-local function buildStreets(parent)
-	local roads = Instance.new("Folder")
-	roads.Name = "Streets"
-	roads.Parent = parent
-	local length = EXTENT * 2 + ROAD
-	for k = -N - 1, N do
-		local line = (k + 0.5) * SPACING
-		-- east-west street and north-south avenue
-		local st = part(roads, "Street", Vector3.new(length, 0.2, ROAD), CFrame.new(0, 0, line), ASPHALT, Enum.Material.Asphalt)
-		st:SetAttribute("StreetName", STREETS[k + N + 2])
-		local av = part(roads, "Avenue", Vector3.new(ROAD, 0.2, length), CFrame.new(line, 0, 0), ASPHALT, Enum.Material.Asphalt)
-		av:SetAttribute("StreetName", AVENUES[k + N + 2])
-		-- dashed center lines between intersections
-		for s = -N, N do
-			deco(roads, "LaneLine", Vector3.new(SPACING - ROAD - 8, 0.22, 0.4), CFrame.new(s * SPACING, 0.01, line), Color3.fromRGB(245, 205, 70))
-			deco(roads, "LaneLine", Vector3.new(0.4, 0.22, SPACING - ROAD - 8), CFrame.new(line, 0.01, s * SPACING), Color3.fromRGB(245, 205, 70))
-		end
-	end
-	-- crosswalks at the downtown intersections
-	for a = -2, 1 do
-		for b = -2, 1 do
-			local x, z = (a + 0.5) * SPACING, (b + 0.5) * SPACING
-			for s = -3, 3 do
-				for _, side in ipairs({ -1, 1 }) do
-					deco(roads, "Crosswalk", Vector3.new(1.2, 0.24, 6), CFrame.new(x + s * 2, 0.02, z + side * (ROAD / 2 + 3.2)), WHITE)
-					deco(roads, "Crosswalk", Vector3.new(6, 0.24, 1.2), CFrame.new(x + side * (ROAD / 2 + 3.2), 0.02, z + s * 2), WHITE)
-				end
-			end
-		end
-	end
-	-- sidewalks (the raised edge of every block) and lamps on the corners
-	local blocks = Instance.new("Folder")
-	blocks.Name = "Sidewalks"
-	blocks.Parent = parent
-	for i = -N, N do
-		for j = -N, N do
-			local c = blockCenter(i, j)
-			part(blocks, "Sidewalk", Vector3.new(BLOCK, LOT_Y, BLOCK), CFrame.new(c.X, LOT_Y / 2, c.Z), CONCRETE, Enum.Material.Concrete)
-			for _, sx in ipairs({ -1, 1 }) do
-				for _, sz in ipairs({ -1, 1 }) do
-					lamp(blocks, c + Vector3.new(sx * (HALF - 1), 0, sz * (HALF - 1)))
-				end
-			end
-		end
-	end
-	-- a welcome sign where 4th Avenue enters the city from the south
-	local sign = part(parent, "WelcomeSign", Vector3.new(30, 8, 1), CFrame.lookAt(Vector3.new(-50, 10, EXTENT + 20), Vector3.new(-50, 10, 0)), Color3.fromRGB(40, 90, 70), Enum.Material.Wood)
-	signText(sign, Enum.NormalId.Front, "🏙️ WELCOME TO AI CITY", WHITE)
-	for _, sx in ipairs({ -1, 1 }) do
-		deco(parent, "SignPost", Vector3.new(1, 8, 1), sign.CFrame * CFrame.new(sx * 13, -8, 0.5), WOOD, Enum.Material.Wood)
-	end
-end
-
--- parked cars along the curbs, and trees along residential sidewalks
-local function buildStreetLife(parent, rng)
-	local folder = Instance.new("Folder")
-	folder.Name = "StreetLife"
-	folder.Parent = parent
-	for n = 1, 36 do
-		local horizontal = rng:NextNumber() < 0.5
-		local k = rng:NextInteger(-N - 1, N)
-		local line = (k + 0.5) * SPACING
-		local along = rng:NextInteger(-N, N) * SPACING + rng:NextNumber(-25, 25)
-		local side = if rng:NextNumber() < 0.5 then -1 else 1
-		local offset = side * (ROAD / 2 - 3.5)
-		local cf
-		if horizontal then
-			cf = CFrame.new(along, 0.1, line + offset) * CFrame.Angles(0, math.rad(if side > 0 then 90 else -90), 0)
 		else
-			cf = CFrame.new(line + offset, 0.1, along) * CFrame.Angles(0, if side > 0 then 0 else math.pi, 0)
+			for n = -5, 5 do
+				if math.abs(n) > 1 then
+					MapKit.deco(b.Model, "Picket", Vector3.new(0.4, 2.4, 0.3), at(n * 1.1, 1.2, -b.D / 2 - 9.5), MapKit.WHITE, Enum.Material.Wood)
+				end
+			end
+			MapKit.deco(b.Model, "FenceRail", Vector3.new(12, 0.3, 0.25), at(0, 1.8, -b.D / 2 - 9.5), MapKit.WHITE, Enum.Material.Wood)
 		end
-		car(folder, cf, CAR_COLORS[rng:NextInteger(1, #CAR_COLORS)])
-	end
-	-- a ring of trees around the city
-	for n = 0, 59 do
-		local a = n / 60 * math.pi * 2
-		local r = EXTENT + 30 + rng:NextNumber(0, 25)
-		tree(folder, Vector3.new(math.cos(a) * r, 0, math.sin(a) * r), rng:NextNumber(1, 1.6), rng)
-	end
-end
-
---------------------------------------------------------------------------------
--- The city plan: what goes on each block. i = west(-) to east(+),
--- j = north(-) to south(+). The plaza is the center block.
---------------------------------------------------------------------------------
-local PLAN = {
-	["0,0"] = "Plaza",
-	["0,-1"] = "TownHall",
-	["1,-1"] = "Bank",
-	["-1,-1"] = "Police",
-	["-1,0"] = "BakeryCafe",
-	["1,0"] = "MarketPharmacy",
-	["-1,1"] = "LibraryRestaurant",
-	["0,1"] = "School",
-	["1,1"] = "Park",
-	["0,-2"] = "Hotel",
-	["-1,-2"] = "Offices",
-	["1,-2"] = "Offices",
-	["-2,-2"] = "FireStation",
-	["2,-2"] = "Hospital",
-	["-2,-1"] = "Apartments:Sunset Towers",
-	["2,-1"] = "Cinema",
-	["-2,0"] = "ShopsWest",
-	["2,0"] = "ShopsEast",
-	["-2,1"] = "Apartments:Maple Court",
-	["2,1"] = "Gym",
-	["0,2"] = "SportsField",
-	["3,-1"] = "GasStation",
-	["3,0"] = "Factory",
-	["3,1"] = "Warehouse",
-}
-
-local function buildBlock(parent, i, j, rng)
-	local kind = PLAN[i .. "," .. j] or "Houses"
-	local name
-	kind, name = string.match(kind, "^([^:]+):?(.*)$")
-	local c = blockCenter(i, j)
-	if kind ~= "Houses" and kind ~= "Park" and kind ~= "Plaza" and kind ~= "SportsField" then
-		lot(parent, c, Color3.fromRGB(210, 205, 195), Enum.Material.Concrete)
-	end
-	if kind == "Plaza" then
-		buildPlaza(parent, i, j)
-	elseif kind == "TownHall" then
-		buildTownHall(parent, i, j)
-	elseif kind == "Bank" then
-		buildBank(parent, i, j)
-	elseif kind == "Police" then
-		buildPolice(parent, i, j)
-	elseif kind == "FireStation" then
-		buildFireStation(parent, i, j)
-	elseif kind == "Hospital" then
-		buildHospital(parent, i, j)
-	elseif kind == "School" then
-		buildSchool(parent, i, j)
-	elseif kind == "Park" then
-		buildPark(parent, i, j)
-	elseif kind == "SportsField" then
-		buildSportsField(parent, i, j)
-	elseif kind == "Hotel" then
-		buildHotel(parent, i, j)
-	elseif kind == "Offices" then
-		buildOffices(parent, i, j)
-	elseif kind == "Apartments" then
-		buildApartments(parent, i, j, name)
-	elseif kind == "Cinema" then
-		buildCinema(parent, i, j)
-	elseif kind == "Gym" then
-		buildGym(parent, i, j)
-	elseif kind == "Factory" then
-		buildFactory(parent, i, j)
-	elseif kind == "Warehouse" then
-		buildWarehouse(parent, i, j)
-	elseif kind == "GasStation" then
-		buildGasStation(parent, i, j)
-	elseif kind == "ShopsWest" then
-		buildShopBlock(parent, i, j, { "Mall", "ToyStore", "Electronics", "Florist" })
-	elseif kind == "ShopsEast" then
-		buildShopBlock(parent, i, j, { "PetShop", "Bookstore", "IceCream", "Hardware" })
-	elseif kind == "BakeryCafe" then
-		buildPair(parent, i, j,
-			{ Id = "Bakery", W = 34, D = 30, Floors = 2, Wall = Color3.fromRGB(245, 225, 190), Trim = Color3.fromRGB(150, 90, 50), Awning = Color3.fromRGB(220, 90, 80), Material = Enum.Material.Brick, Extra = function(b)
-				for k = 0, 2 do
-					deco(b.Model, "Bread", Vector3.new(2.4, 1, 1.2), b.At(-10 + k * 3, 2.5, -b.D / 2 + 2.5), Color3.fromRGB(210, 150, 80), Enum.Material.SmoothPlastic)
-				end
-				deco(b.Model, "Oven", Vector3.new(8, 6, 4), b.At(8, 3, b.D / 2 - 3), Color3.fromRGB(140, 60, 45), Enum.Material.Brick)
-			end },
-			{ Id = "Cafe", W = 34, D = 30, Floors = 1, Wall = Color3.fromRGB(110, 80, 60), Trim = Color3.fromRGB(240, 225, 200), Awning = Color3.fromRGB(40, 120, 90), Material = Enum.Material.Wood, Extra = function(b)
-				-- outdoor tables with umbrellas
-				for k = -1, 1, 2 do
-					local p = b.At(k * 9, 0, -b.D / 2 - 5)
-					column(b.Model, "Table", 3, 3.4, (p * CFrame.new(0, 1.5, 0)).Position, WHITE, Enum.Material.Metal)
-					deco(b.Model, "UmbrellaPole", Vector3.new(0.3, 7, 0.3), p * CFrame.new(0, 3.5, 0), WHITE)
-					local u = deco(b.Model, "Umbrella", Vector3.new(0.6, 8, 8), p * CFrame.new(0, 7, 0) * CFrame.Angles(0, 0, math.rad(90)), Color3.fromRGB(40, 120, 90), Enum.Material.Fabric)
-					u.Shape = Enum.PartType.Cylinder
-				end
-			end })
-	elseif kind == "MarketPharmacy" then
-		buildPair(parent, i, j,
-			{ Id = "Shop", W = 36, D = 34, Floors = 1, Wall = Color3.fromRGB(235, 235, 225), Trim = Color3.fromRGB(60, 140, 80), Awning = Color3.fromRGB(60, 140, 80), Material = Enum.Material.Brick, DoorW = 10, Extra = function(b)
-				for k = 0, 2 do
-					deco(b.Model, "Shelf", Vector3.new(2, 6, 18), b.At(-10 + k * 10, 3, 4), Color3.fromRGB(200, 190, 170), Enum.Material.Wood)
-				end
-				-- fruit stalls outside
-				for k = -1, 1, 2 do
-					local p = b.At(k * 11, 0, -b.D / 2 - 4)
-					deco(b.Model, "FruitStall", Vector3.new(6, 3, 3), p * CFrame.new(0, 1.5, 0), Color3.fromRGB(150, 105, 65), Enum.Material.Wood)
-					for n = 0, 3 do
-						ball(b.Model, "Fruit", 1, p * CFrame.new(n * 1.3 - 2, 3.4, 0), ({ Color3.fromRGB(230, 50, 50), Color3.fromRGB(255, 170, 40), Color3.fromRGB(120, 200, 60), Color3.fromRGB(250, 220, 60) })[n + 1])
-					end
-				end
-			end },
-			{ Id = "Pharmacy", W = 32, D = 30, Floors = 2, Wall = WHITE, Trim = Color3.fromRGB(60, 170, 110), Awning = Color3.fromRGB(60, 170, 110), Material = Enum.Material.SmoothPlastic, Extra = function(b)
-				local cross = deco(b.Model, "GreenCross", Vector3.new(4, 1.2, 0.3), b.At(b.W / 2 - 4, 18, -b.D / 2 - 0.4), Color3.fromRGB(60, 220, 120), Enum.Material.Neon)
-				deco(b.Model, "GreenCross", Vector3.new(1.2, 4, 0.3), cross.CFrame, Color3.fromRGB(60, 220, 120), Enum.Material.Neon)
-			end })
-	elseif kind == "LibraryRestaurant" then
-		buildPair(parent, i, j,
-			{ Id = "Library", W = 36, D = 34, Floors = 2, Wall = Color3.fromRGB(180, 150, 120), Trim = Color3.fromRGB(240, 230, 210), Material = Enum.Material.Sandstone, DoorW = 8, Extra = function(b)
-				for k = 0, 3 do
-					deco(b.Model, "Bookshelf", Vector3.new(10, 8, 2), b.At(-12 + (k % 2) * 16, 4, 2 + (k // 2) * 8), Color3.fromRGB(110, 70, 45), Enum.Material.Wood)
-				end
-				for k = -1, 1, 2 do
-					column(b.Model, "Column", 10, 1.4, b.At(k * 7, 5, -b.D / 2 - 1.5).Position, WHITE, Enum.Material.Marble)
-				end
-			end },
-			{ Id = "Restaurant", W = 34, D = 30, Floors = 1, Wall = Color3.fromRGB(150, 50, 45), Trim = Color3.fromRGB(245, 230, 200), Awning = Color3.fromRGB(245, 230, 200), Material = Enum.Material.Brick, Extra = function(b)
-				for k = 0, 3 do
-					column(b.Model, "Table", 3, 4, b.At(-9 + (k % 2) * 12, 1.5, -4 + (k // 2) * 8).Position, WHITE, Enum.Material.Fabric)
-				end
-			end })
-	else
-		buildHouses(parent, i, j, rng)
+		if rng:NextNumber() < 0.6 then
+			Streets.tree(model, at(-9, 0, -b.D / 2 - 6).Position, rng:NextNumber(0.7, 1), rng)
+		end
+		if big then
+			-- a backyard vegetable garden
+			MapKit.deco(b.Model, "BackyardGarden", Vector3.new(8, 0.6, 4), at(-6, 0.3, b.D / 2 + 6), MapKit.rgb(110, 76, 50), Enum.Material.Ground)
+			for n = 0, 5 do
+				MapKit.ball(b.Model, "Veg", 1, at(-9 + n * 1.2, 0.9, b.D / 2 + 6), MapKit.LEAVES[n % 4 + 1])
+			end
+		end
+		if style == "twostory" and rng:NextNumber() < 0.7 then
+			Streets.car(b.Model, at(b.W / 2 + 5.5, 0.1, -12), Streets.CAR_COLORS[rng:NextInteger(1, #Streets.CAR_COLORS)])
+		end
+		local home = ctx.addHome({
+			Model = b.Model,
+			Building = b,
+			Door = b.Door,
+			Inside = b.Inside,
+			Address = number .. " " .. street,
+			Capacity = if b.Floors > 1 then 6 else 4,
+			Kind = "house",
+			Floor = 1,
+			Spots = {},
+			Furnished = false,
+		})
+		home.Node = hookDoor(i, j, b.Door, face)
+		b.Model.Name = "House " .. home.Address
+		b.Model:SetAttribute("Address", home.Address)
 	end
 end
 
@@ -1383,30 +458,60 @@ function MapBuilder.Build()
 		Places = {},
 		PlaceList = {},
 		Homes = {},
-		BenchSpots = {},
+		Spots = {},
 		HobbySpots = {},
+		BenchSpots = {},
+		SoccerFields = {},
+		JoggingLoops = {},
+		Elevators = {},
 		Nodes = nodes,
 	}
+	ctx.map = map
 	local rng = Random.new(Config.SEED or 1776)
 
 	local root = Instance.new("Folder")
 	root.Name = "City"
 	root.Parent = workspace
+	map.Root = root
 
-	-- the ground under and around the city
-	part(root, "Ground", Vector3.new(EXTENT * 2 + 400, 2, EXTENT * 2 + 400), CFrame.new(0, -1.05, 0), GRASS, Enum.Material.Grass)
-
+	local land = Landscape.build(root, rng)
 	buildNetwork()
-	buildStreets(root)
+	local streets = Streets.build(root, rng, kindAt)
 	local buildings = Instance.new("Folder")
 	buildings.Name = "Buildings"
 	buildings.Parent = root
 	for i = -N, N do
 		for j = -N, N do
-			buildBlock(buildings, i, j, rng)
+			local entry = PLAN[i .. "," .. j]
+			local kind = kindAt(i, j)
+			local name = entry and string.match(entry, ":(.+)$")
+			local builder = Places.Builders[kind]
+			if builder then
+				builder(ctx, buildings, i, j, rng, name)
+			end
 		end
 	end
-	buildStreetLife(root, rng)
+
+	-- the lake: an outdoor place with fishing spots on the pier
+	local lake = newPlace("Lake", root:FindFirstChild("Landscape"), -N, N)
+	lake.Door = blockCenter(-N, N) + Vector3.new(-HALF + 2, 0, HALF - 2)
+	lake.Inside = lake.Door
+	lake.Outdoor = true
+	lake.Node = corner(-N, N, -1, 1)
+	for _, cf in ipairs(land.FishingSpots) do
+		local s = { CFrame = cf, Action = "fish", Role = "visit", Floor = 1, Place = "Lake" }
+		registerSpot(s, "Lake", nil)
+		table.insert(lake.Spots, s)
+		map.HobbySpots.fishing = map.HobbySpots.fishing or {}
+		table.insert(map.HobbySpots.fishing, s)
+	end
+
+	-- outdoor benches are somewhere to rest
+	for _, entry in ipairs(Registry.Seats) do
+		if entry.Place == "Plaza" or entry.Place == "Park" or entry.Place == "WillowPark" then
+			table.insert(map.BenchSpots, entry.Seat.CFrame.Position)
+		end
+	end
 
 	-- people spawn in the plaza, just south of the fountain
 	local spawn = Instance.new("SpawnLocation")
@@ -1414,59 +519,64 @@ function MapBuilder.Build()
 	spawn.Anchored = true
 	spawn.Size = Vector3.new(10, 0.4, 10)
 	spawn.CFrame = CFrame.new(blockCenter(0, 0) + Vector3.new(0, 0.3, 24))
-	spawn.Color = Color3.fromRGB(225, 215, 195)
+	spawn.Color = MapKit.rgb(226, 214, 192)
 	spawn.Material = Enum.Material.Cobblestone
-	spawn.Transparency = 0.2
+	spawn.Transparency = 1
 	spawn.Neutral = true
+	spawn.Duration = 0
 	spawn.Parent = root
 	map.Spawn = spawn
 
-	-- places a job points at must exist on the map
+	-- places a job or school points at must exist on the map
 	for _, job in ipairs(Config.Jobs) do
 		if not map.Places[job.place] then
 			warn("[MapBuilder] Job '" .. job.title .. "' works at '" .. job.place .. "', which isn't on the map")
 		end
 	end
-	-- hobbies with nowhere to go use the park
-	for hobby in pairs(Config.OutdoorHobbies or {}) do
-		if not map.HobbySpots[hobby] or #map.HobbySpots[hobby] == 0 then
-			map.HobbySpots[hobby] = map.BenchSpots
+	for _, school in ipairs(Config.Schools or {}) do
+		if not map.Places[school.place] then
+			warn("[MapBuilder] School '" .. school.place .. "' isn't on the map")
 		end
 	end
-	map.HobbySpots.reading = map.HobbySpots.reading or map.BenchSpots
-	if map.HobbySpots.reading == map.BenchSpots and map.Places.Library then
-		local list = table.clone(map.BenchSpots)
-		for _, p in ipairs(map.Places.Library.WorkSpots) do
-			table.insert(list, p)
+	-- outdoor hobbies with nowhere special to go use benches
+	for _, hobby in ipairs(Config.Hobbies) do
+		if (Config.OutdoorHobbies or {})[hobby] and not map.HobbySpots[hobby] then
+			map.HobbySpots[hobby] = {}
+			for _, p in ipairs(map.BenchSpots) do
+				table.insert(map.HobbySpots[hobby], { CFrame = CFrame.new(p), Action = "sit", Role = "visit", Floor = 1 })
+			end
 		end
-		map.HobbySpots.reading = list
 	end
 
 	map.Route = route
-	map.RouteBetween = function(a, b)
-		-- a and b can be places/homes (tables with Door and Inside) or positions
-		local fromPos = if typeof(a) == "Vector3" then a else a.Door
-		local toPos = if typeof(b) == "Vector3" then b else b.Door
-		local path = {}
-		if typeof(a) ~= "Vector3" then
-			table.insert(path, a.Door)
-		end
-		for _, p in ipairs(route(fromPos, toPos)) do
-			table.insert(path, p)
-		end
-		if typeof(b) ~= "Vector3" then
-			table.insert(path, b.Inside)
-		end
-		return path
-	end
+	map.BusSeats = streets.BusSeats
 	map.Bounds = { Min = Vector3.new(-EXTENT, 0, -EXTENT), Max = Vector3.new(EXTENT, 0, EXTENT) }
-	map.Root = root
+	map.Spacing = SPACING
+	map.Extent = EXTENT
+	map.Lake = Landscape.LAKE
+	map.StreetName = Streets.streetName
+	map.AvenueName = Streets.avenueName
+	map.Registry = Registry
 
-	-- a sunny start
-	Lighting.ClockTime = 9
-	Lighting.Brightness = 2
-	Lighting.OutdoorAmbient = Color3.fromRGB(150, 150, 160)
-	Lighting.GlobalShadows = true
+	-- info for clients (the map screen and the directory)
+	local info = Instance.new("Folder")
+	info.Name = "CityInfo"
+	for _, place in ipairs(map.PlaceList) do
+		local v = Instance.new("Vector3Value")
+		v.Name = place.Id
+		v.Value = place.Door
+		v:SetAttribute("Label", place.Label)
+		v:SetAttribute("Kind", place.Kind)
+		v:SetAttribute("Outdoor", place.Outdoor == true)
+		v.Parent = info
+	end
+	info:SetAttribute("Extent", EXTENT)
+	info:SetAttribute("Spacing", SPACING)
+	info:SetAttribute("Blocks", N)
+	info:SetAttribute("LakeX", Landscape.LAKE.X)
+	info:SetAttribute("LakeZ", Landscape.LAKE.Z)
+	info:SetAttribute("LakeRadius", Landscape.LAKE_RADIUS)
+	info.Parent = ReplicatedStorage
 	return map
 end
 
@@ -1474,32 +584,57 @@ function MapBuilder.Get()
 	return map
 end
 
--- Street lamps on, windows glowing warm at night; the other way round by day.
+-- Furnish a house the first time a family moves in (saves parts on empty homes)
+function MapBuilder.FurnishHome(home)
+	if not home or home.Furnished ~= false or not home.Building then
+		return home and home.Spots or {}
+	end
+	home.Furnished = true
+	local rng = Random.new(home.Index * 31 + 7)
+	local spots = Interiors.furnish(home.Building, function()
+		return "home"
+	end, rng, nil)
+	for _, s in ipairs(spots) do
+		registerSpot(s, nil, home.Building)
+		s.Home = home.Index
+		table.insert(home.Spots, s)
+	end
+	return home.Spots
+end
+
+-- Street lamps, windows, porch lights and neon at night
 local isNight = nil
 function MapBuilder.SetNight(night)
 	if night == isNight then
 		return
 	end
 	isNight = night
-	for _, l in ipairs(lamps) do
+	for _, l in ipairs(Registry.Lamps) do
 		l.Light.Enabled = night
 		l.Head.Material = if night then Enum.Material.Neon else Enum.Material.SmoothPlastic
-		l.Head.Color = if night then LAMP_LIGHT else Color3.fromRGB(120, 120, 110)
+		l.Head.Color = if night then MapKit.LAMP_LIGHT else MapKit.rgb(120, 120, 112)
 	end
-	for n, w in ipairs(windows) do
-		-- about half the windows light up, so it looks like people are home
-		local lit = night and (n * 7) % 10 < 5
+	for _, l in ipairs(Registry.NightLights) do
+		l.Enabled = night
+	end
+	for _, n in ipairs(Registry.NightNeon) do
+		n.Part.Material = if night then Enum.Material.Neon else n.Day
+	end
+	for k, w in ipairs(Registry.Windows) do
+		-- about half the windows glow warm, like people are home
+		local lit = night and (k * 7) % 10 < 5
 		w.Material = if lit then Enum.Material.Neon else Enum.Material.Glass
-		w.Color = if lit then WINDOW_LIT else GLASS
-		w.Transparency = if lit then 0.1 else 0.15
+		w.Color = if lit then MapKit.WINDOW_LIT else (w:GetAttribute("DayColor") or MapKit.GLASS)
+		w.Transparency = if lit then 0.1 else 0.2
 	end
 end
 
--- Text on the plaza's news board (policies, election results...)
 function MapBuilder.SetNews(text)
-	if newsLabel then
-		newsLabel.Text = "📰 CITY NEWS\n" .. text
+	if map and map.NewsBoard then
+		map.NewsBoard.Text = "📰 CITY NEWS\n" .. text
 	end
 end
 
+MapBuilder.Route = route
+MapBuilder.Kit = MapKit
 return MapBuilder

@@ -1,18 +1,18 @@
--- Population (ModuleScript) — ServerScriptService.Modules.Population
+-- Life (ModuleScript) — ServerScriptService.Modules.Life
 -- Who lives in AI City: families with children, jobs, ages, couples expecting
 -- babies and births, plus where each person should be at any hour.
 -- Pure logic (no parts, no Humanoids), so it can be saved and tested on its own.
 -- CitizenService uses it to spawn and move the actual NPCs.
 --
---   local pop = Population.new(Config, homes)   -- homes = map.Homes
+--   local pop = Life.new(Config, homes)   -- homes = map.Homes
 --   pop:Generate()                              -- the starting families (same every server)
 --   local events = pop:NewDay(day)              -- ages, retirements, new jobs, pregnancies
 --   pop:Birth(household, day)                   -- a baby is born (returns the baby)
 --   pop:Plan(citizen, hour, day)                -- where they should be right now
 --   pop:Serialize() / pop:Load(data)            -- for saving
 
-local Population = {}
-Population.__index = Population
+local Life = {}
+Life.__index = Life
 
 -- Small deterministic random numbers (same results everywhere)
 local function newRng(seed)
@@ -42,8 +42,8 @@ local function hash(...)
 	return h
 end
 
-function Population.new(config, homes)
-	local self = setmetatable({}, Population)
+function Life.new(config, homes)
+	local self = setmetatable({}, Life)
 	self.Config = config
 	self.Homes = homes or {}
 	self.Citizens = {} -- [id] = citizen
@@ -60,12 +60,12 @@ end
 --------------------------------------------------------------------------------
 -- People
 --------------------------------------------------------------------------------
-function Population:Age(c, day)
+function Life:Age(c, day)
 	return math.max(0, math.floor(((day or self.Day) - c.BirthDay) / (self.Config.DAYS_PER_YEAR or 2)))
 end
 
 -- "Baby", "Toddler", "Child", "Teen", "Adult" or "Retired"
-function Population:Stage(c, day)
+function Life:Stage(c, day)
 	local age = self:Age(c, day)
 	if age < 3 then
 		return "Baby"
@@ -91,7 +91,7 @@ local function jobByTitle(config, title)
 end
 
 -- Gives an adult a job with a free slot (or leaves them unemployed).
-function Population:AssignJob(c, rng)
+function Life:AssignJob(c, rng)
 	rng = rng or self.rng
 	c.Job = nil
 	if rng:Next() < (self.Config.UNEMPLOYED_CHANCE or 0) then
@@ -128,7 +128,7 @@ function Population:AssignJob(c, rng)
 	return nil
 end
 
-function Population:LeaveJob(c)
+function Life:LeaveJob(c)
 	if c.Job then
 		self.JobsTaken[c.Job] = math.max(0, (self.JobsTaken[c.Job] or 1) - 1)
 		c.Job = nil
@@ -136,7 +136,7 @@ function Population:LeaveJob(c)
 	end
 end
 
-function Population:AddCitizen(household, first, age, day, rng)
+function Life:AddCitizen(household, first, age, day, rng)
 	rng = rng or self.rng
 	local config = self.Config
 	local c = {
@@ -147,7 +147,7 @@ function Population:AddCitizen(household, first, age, day, rng)
 		BirthDay = (day or self.Day) - age * (config.DAYS_PER_YEAR or 2) - rng:Int(0, (config.DAYS_PER_YEAR or 2) - 1),
 		Household = household.Id,
 		Hobby = rng:Pick(config.Hobbies),
-		Punctual = rng:Next() * 0.6, -- hours: how early they leave for work
+		Punctual = rng:Next() * 0.15, -- a few extra in-game minutes some people leave early
 	}
 	self.NextId += 1
 	self.Citizens[c.Id] = c
@@ -167,7 +167,7 @@ local function capacityOf(home)
 	return home and (home.Capacity or 3) or 3
 end
 
-function Population:FindHome(size, rng)
+function Life:FindHome(size, rng)
 	local best
 	for index, home in ipairs(self.Homes) do
 		if not self.HomeUse[index] and capacityOf(home) >= size then
@@ -189,14 +189,14 @@ function Population:FindHome(size, rng)
 	return best
 end
 
-function Population:NewHousehold(last, rng)
+function Life:NewHousehold(last, rng)
 	local h = { Id = #self.Households + 1, Last = last, Members = {}, Partners = {} }
 	self.Households[h.Id] = h
 	return h
 end
 
 -- The starting city: singles, couples, families with kids and retirees.
-function Population:Generate()
+function Life:Generate()
 	local config = self.Config
 	local rng = newRng((config.SEED or 1776) * 7 + 3)
 	local target = config.POPULATION or 42
@@ -271,7 +271,7 @@ end
 
 -- Call once when a new in-game day starts. Returns a list of events:
 -- { Kind = "Expecting"/"GrewUp"/"Retired"/"Birthday", Citizen/Household, Text }
-function Population:NewDay(day)
+function Life:NewDay(day)
 	local config = self.Config
 	self.Day = day
 	local events = {}
@@ -318,7 +318,7 @@ function Population:NewDay(day)
 end
 
 -- Days until the baby arrives (nil if the household isn't expecting)
-function Population:DaysToGo(household, day)
+function Life:DaysToGo(household, day)
 	if not household or not household.Expecting then
 		return nil
 	end
@@ -326,12 +326,12 @@ function Population:DaysToGo(household, day)
 end
 
 -- Is it time? (the due day has come)
-function Population:IsDue(household, day)
+function Life:IsDue(household, day)
 	return household.Expecting ~= nil and (day or self.Day) >= household.Expecting.DueDay
 end
 
 -- A baby is born into a household. Returns the baby.
-function Population:Birth(household, day)
+function Life:Birth(household, day)
 	day = day or self.Day
 	local rng = newRng(hash(self.Config.SEED, "baby", household.Id, day, #household.Members))
 	local taken = {}
@@ -368,7 +368,7 @@ local function inShift(hour, start, stop)
 	return hour >= start or hour < stop -- shifts past midnight
 end
 
-function Population:Plan(c, hour, day)
+function Life:Plan(c, hour, day)
 	local config = self.Config
 	day = day or self.Day
 	local stage = self:Stage(c, day)
@@ -387,11 +387,18 @@ function Population:Plan(c, hour, day)
 		return { Kind = "Home", Activity = if stage == "Baby" then "🍼 Napping" else "🧸 Playing at home" }
 	end
 
-	local bedtime = if stage == "Child" or stage == "Teen" then (config.KIDS_BEDTIME or 20) else (config.ADULT_BEDTIME or 22)
+	-- under-13s go to bed early; teens stay up until the adult bedtime
+	local bedtime = if stage == "Child" then (config.KIDS_BEDTIME or 20) else (config.ADULT_BEDTIME or 22)
 	local wake = config.WAKE_UP or 6.5
+	-- how long before a start time to leave home: the walk plus spare time
+	local leave = (c.CommuteHours or 0.5) + (config.COMMUTE_BUFFER or 0.25) + (c.Punctual or 0)
 	if stage == "Child" or stage == "Teen" then
 		local s, e = config.SCHOOL_START or 8, config.SCHOOL_END or 15
-		if hour >= s - 0.6 and hour < e then
+		if hour >= s - leave and hour < e then
+			-- morning recess and lunch on the playground
+			if (hour >= s + 2 and hour < s + 2.5) or (hour >= s + 4 and hour < s + 4.75) then
+				return { Kind = "School", Place = "School", Recess = true, Activity = "🛝 Recess" }
+			end
 			return { Kind = "School", Place = "School", Activity = "📚 At school" }
 		elseif hour >= e and hour < e + 3 and rng:Next() < 0.7 then
 			local where = if stage == "Child" then "Park" else outing
@@ -403,7 +410,6 @@ function Population:Plan(c, hour, day)
 	-- work comes first: early bakers and night officers keep their hours
 	local job = stage == "Adult" and c.Job and jobByTitle(config, c.Job)
 	if job then
-		local leave = (config.COMMUTE_BUFFER or 0.75) + (c.Punctual or 0)
 		if inShift(hour, (job.start - leave) % 24, math.min(job.stop, 24) % 24) then
 			return { Kind = "Work", Place = job.place, Activity = "💼 Working (" .. c.Job .. ")" }
 		end
@@ -454,7 +460,7 @@ end
 --------------------------------------------------------------------------------
 -- Saving
 --------------------------------------------------------------------------------
-function Population:Serialize()
+function Life:Serialize()
 	local data = { Day = self.Day, NextId = self.NextId, Citizens = {}, Households = {} }
 	for _, c in ipairs(self.List) do
 		table.insert(data.Citizens, { c.Id, c.First, c.Last, c.BirthDay, c.Household, c.Job or false, c.Hobby, c.WorkSpot or 0, c.Punctual })
@@ -465,7 +471,7 @@ function Population:Serialize()
 	return data
 end
 
-function Population:Load(data)
+function Life:Load(data)
 	if type(data) ~= "table" or type(data.Citizens) ~= "table" then
 		return false
 	end
@@ -495,5 +501,5 @@ function Population:Load(data)
 	return true
 end
 
-Population.Jobs = jobByTitle
-return Population
+Life.Jobs = jobByTitle
+return Life

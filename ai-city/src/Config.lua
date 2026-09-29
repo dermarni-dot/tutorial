@@ -5,10 +5,13 @@
 -- rest of the game keeps working. Changed values say what they were and why.
 local Config = {}
 
-Config.POPULATION = 60 -- was 42: the city now has 30+ buildings, so more people keep the streets lively (lower it if the server struggles)
+Config.POPULATION = 90 -- was 60: the city is now 9x9 blocks with 40+ workplaces, so more people keep it lively (lower it if the server struggles)
 Config.SEED = 1776 -- same seed = same citizens every server (lets memories persist)
 Config.DAY_LENGTH = 480 -- real seconds per in-game day (1 in-game hour = 20 seconds)
-Config.WALK_SPEED = 14 -- was 10: the city is about 700 studs across now, so a trip home took up to 5 in-game hours
+Config.WALK_SPEED = 7.5 -- a real walking pace, used whenever a player is close enough to see them
+Config.TRAVEL_SPEED = 16 -- pace far away from every player, so trips across the ~700-stud city still fit the day
+Config.HURRY_SPEED = 12 -- a jog, for citizens running late for work or curfew
+Config.WATCH_RADIUS = 140 -- citizens within this many studs of any player walk at the real pace
 Config.TALK_RADIUS = 16 -- how close a player must stay while talking
 Config.GOSSIP_RADIUS = 9
 Config.GOSSIP_COOLDOWN = 22
@@ -104,33 +107,45 @@ Config.Jobs = {
 	{ title = "Store Clerk", place = "Mall", slots = 4, start = 10, stop = 19, pay = 11 },
 	{ title = "Mechanic", place = "GasStation", slots = 2, start = 7, stop = 16, pay = 14 },
 	{ title = "Warehouse Worker", place = "Warehouse", slots = 3, start = 6, stop = 15, pay = 12 },
+	-- new: the three schools, the daycare and the new buildings
+	{ title = "Middle School Teacher", place = "MiddleSchool", slots = 3, start = 7, stop = 15, pay = 14 },
+	{ title = "High School Teacher", place = "HighSchool", slots = 3, start = 7, stop = 15, pay = 15 },
+	{ title = "Coach", place = "HighSchool", slots = 1, start = 10, stop = 18, pay = 13 },
+	{ title = "Daycare Worker", place = "Daycare", slots = 2, start = 7, stop = 18, pay = 11 },
+	{ title = "Museum Guide", place = "Museum", slots = 2, start = 10, stop = 18, pay = 12 },
+	{ title = "Mail Carrier", place = "PostOffice", slots = 2, start = 8, stop = 16, pay = 13 },
+	{ title = "Arcade Attendant", place = "Arcade", slots = 1, start = 12, stop = 22, pay = 9 },
+	{ title = "Cook", place = "Diner", slots = 2, start = 6, stop = 15, pay = 12 },
+	{ title = "Programmer", place = "Office", slots = 4, start = 9, stop = 17, pay = 22 },
+	{ title = "Accountant", place = "Office", slots = 3, start = 9, stop = 17, pay = 19 },
+	{ title = "Night Janitor", place = "Office", slots = 1, start = 18, stop = 24, pay = 11 },
+	{ title = "Community Organizer", place = "CommunityCenter", slots = 1, start = 10, stop = 18, pay = 12 },
 }
 Config.UNEMPLOYED_CHANCE = 0.12
 Config.RETIRE_AGE = 67
 
---------------------------------------------------------------------------------
--- Families, children and daily routines (Population + CitizenService)
---------------------------------------------------------------------------------
-Config.RUN_CITIZENS = true -- false = don't spawn the built-in citizens (use this if your own citizen scripts do it)
-Config.MAX_POPULATION = 100 -- no new babies once the city has this many people
-Config.ADULT_AGE = 18 -- kids get a job (or go unemployed) at this age
+-- Families, kids and growing up (see the Life module)
+Config.MAX_POPULATION = 140 -- no new babies once the city has this many people
+Config.ADULT_AGE = 18 -- kids finish school and start work (or look for it) at this age
 Config.DAYS_PER_YEAR = 4 -- in-game days per year of age (4 days = 32 real minutes; a newborn grows up in ~10 real hours)
 Config.PREGNANCY_DAYS = 2 -- in-game days from "expecting" to the baby being born
 Config.BABY_CHANCE = 0.2 -- chance per in-game day that an eligible couple starts expecting
 Config.PARENT_AGE_MIN = 21 -- couples between these ages can have babies
 Config.PARENT_AGE_MAX = 45
 Config.MAX_KIDS = 4 -- per family
-Config.SAVE_POPULATION = true -- keep ages, families and new babies between servers (DataStore)
-
--- Daily routine. Everyone stays at work for their whole shift (the start/stop
--- hours in Config.Jobs), so the streets are quiet during the day and you can
--- always find people at their jobs. Hours are in-game hours (0-24).
-Config.COMMUTE_BUFFER = 0.75 -- leave home this many hours before a shift starts
-Config.SCHOOL_START = 8 -- kids 6-17 are at school during these hours
+Config.COMMUTE_BUFFER = 0.25 -- spare time (in-game hours) on top of the walk to work, so people arrive a little early
+Config.SCHOOL_START = 8 -- kids 6-17 are at school during these hours (with recess on the playground)
 Config.SCHOOL_END = 15
-Config.KIDS_BEDTIME = 20
+Config.KIDS_BEDTIME = 20 -- under-13s; teens stay up until ADULT_BEDTIME
 Config.ADULT_BEDTIME = 22
 Config.WAKE_UP = 6.5
+-- new: three schools by age (each has its own building and teachers), and a daycare for toddlers
+Config.Schools = {
+	{ place = "School", label = "Elementary School", minAge = 6, maxAge = 10 },
+	{ place = "MiddleSchool", label = "Middle School", minAge = 11, maxAge = 13 },
+	{ place = "HighSchool", label = "High School", minAge = 14, maxAge = 17 },
+}
+Config.DAYCARE_AGE = 3 -- toddlers from this age until school go to the daycare while their parents work
 
 -- Every building on the map. MapBuilder looks places up here for their sign
 -- (emoji + label). kind: "civic", "work", "store", "fun" or "home".
@@ -141,7 +156,10 @@ Config.Places = {
 	{ id = "PoliceStation", label = "Police", emoji = "🚓", kind = "civic" },
 	{ id = "FireStation", label = "Fire Station", emoji = "🚒", kind = "civic" },
 	{ id = "Hospital", label = "Hospital", emoji = "🏥", kind = "civic" },
-	{ id = "School", label = "School", emoji = "🏫", kind = "civic" },
+	{ id = "School", label = "Elementary School", emoji = "🏫", kind = "civic" },
+	{ id = "MiddleSchool", label = "Middle School", emoji = "🏫", kind = "civic" },
+	{ id = "HighSchool", label = "High School", emoji = "🎓", kind = "civic" },
+	{ id = "Daycare", label = "Daycare", emoji = "🧸", kind = "civic" },
 	{ id = "Library", label = "Library", emoji = "📚", kind = "fun" },
 	{ id = "Park", label = "Central Park", emoji = "🌳", kind = "fun" },
 	{ id = "SportsField", label = "Sports Field", emoji = "⚽", kind = "fun" },
@@ -165,6 +183,14 @@ Config.Places = {
 	{ id = "Factory", label = "Factory", emoji = "🏭", kind = "work" },
 	{ id = "Warehouse", label = "Warehouse", emoji = "📦", kind = "work" },
 	{ id = "GasStation", label = "Gas & Garage", emoji = "⛽", kind = "work" },
+	-- new
+	{ id = "Museum", label = "City Museum", emoji = "🏺", kind = "fun" },
+	{ id = "PostOffice", label = "Post Office", emoji = "📮", kind = "civic" },
+	{ id = "Arcade", label = "Arcade", emoji = "🕹️", kind = "fun" },
+	{ id = "Diner", label = "Diner", emoji = "🍔", kind = "store" },
+	{ id = "CommunityCenter", label = "Community Center", emoji = "🤝", kind = "civic" },
+	{ id = "WillowPark", label = "Willow Park", emoji = "🌿", kind = "fun" },
+	{ id = "Lake", label = "Mirror Lake", emoji = "🎣", kind = "fun" },
 }
 Config.PlaceById = {}
 for _, place in ipairs(Config.Places) do
@@ -181,7 +207,13 @@ Config.FirstNames = { "Maria", "James", "Aisha", "Kenji", "Sofia", "Malik", "Ele
 	"Grace", "Liam", "Zara", "Mateo", "Hana", "Isaac", "Nia", "Lucas", "Amara", "Theo", "Ivy", "Rafael",
 	"Leila", "Noah", "Chloe", "Tariq", "Mei", "Andre", "Rosa", "Felix", "Yara", "Samuel", "Nora", "Kofi",
 	"Lena", "Victor", "Imani", "Oscar", "Freya", "Jamal", "Ruby", "Hugo", "Asha", "Marcus", "Luna", "Emeka",
-	"Clara", "Tomas", "Sadie", "Ravi" }
+	"Clara", "Tomas", "Sadie", "Ravi",
+	-- more names for the babies born in the city (still alternating female / male)
+	"Ava", "Ethan", "Mila", "Julian", "Zoe", "Adrian", "Layla", "Kai", "Iris", "Mason", "Alma", "Elijah",
+	"Naomi", "Leo", "Stella", "Arjun", "Hazel", "Caleb", "Aria", "Dominic", "Maya", "Finn", "Olivia", "Jonah",
+	"Camila", "Ezra", "Talia", "Silas", "Bea", "Arlo", "Wren", "Ibrahim", "Esme", "Jasper", "Keiko", "Rowan",
+	"Paloma", "Soren", "Ines", "Tobias", "Farah", "Milo", "Gemma", "Reza", "Lucia", "Declan", "Amina", "Hiro",
+	"Elsa", "Nico" }
 Config.LastNames = { "Lopez", "Carter", "Okafor", "Tanaka", "Rossi", "Johnson", "Novak", "Silva", "Patel",
 	"Haddad", "Kim", "Walsh", "Mensah", "Garcia", "Nguyen", "Fischer", "Brooks", "Moreau", "Singh", "Reyes",
 	"Larsen", "Adeyemi", "Chen", "Duarte", "Bennett" }

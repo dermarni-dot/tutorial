@@ -18,7 +18,7 @@ local ServerScriptService = game:GetService("ServerScriptService")
 
 local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
 local Modules = ServerScriptService:WaitForChild("Modules")
-local Population = require(Modules:WaitForChild("Population"))
+local Life = require(Modules:WaitForChild("Life"))
 local CitizenLook = require(Modules:WaitForChild("CitizenLook"))
 local MapBuilder = require(Modules:WaitForChild("MapBuilder"))
 
