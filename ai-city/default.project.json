@@ -1,0 +1,19 @@
+{
+  "name": "AICity",
+  "tree": {
+    "$className": "DataModel",
+    "ReplicatedStorage": {
+      "Shared": {
+        "$className": "Folder",
+        "Config": { "$path": "src/Config.lua" }
+      }
+    },
+    "ServerScriptService": {
+      "Main": { "$path": "src/Main.server.lua" },
+      "Modules": {
+        "$className": "Folder",
+        "MapBuilder": { "$path": "src/MapBuilder.lua" }
+      }
+    }
+  }
+}
