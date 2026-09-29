@@ -852,9 +852,10 @@ local function buildHelp()
 		{ "💬 Talk to people", "Walk up to anyone and press <b>E</b>. Ask about their day, their job, the mayor, the gossip. Tell jokes, give compliments or gifts, ask for directions, ask them to walk with you... They remember everything you do, and they'll tell their friends." },
 		{ "🎤 Become mayor", "Go to the stage on the city plaza and press <b>B</b> to give a speech. Pick ideas that match what people care about. Then press <b>V</b> to vote. The mayor gets a salary and can pass one policy a day (<b>N</b>)." },
 		{ "🗺️ Find your way", "<b>M</b> opens the city map (tap a place to set a waypoint). <b>P</b> opens the People directory: tap anyone to see their card, or 📍 to find them. Press <b>E</b> at elevator doors to ride up the office towers." },
-		{ "🚨 Crime", "<b>F</b> punches, <b>G</b> (hold) picks a pocket, <b>R</b> (hold) robs a register or the bank vault. If anyone sees you, you get wanted stars and the police come after you. Get caught and you're BUSTED: a fine and time in jail. Kids can't be hurt." },
+		{ "⚔️ Fighting", "<b>F</b> (or click with a weapon) attacks, <b>hold X</b> blocks (you take a third of the damage). Buy a 🏏 bat, 🔨 hammer or 🔪 knife at the Hardware store: they hit harder, but using them is a much more serious crime. Tough citizens and the police fight back, so watch your ❤️ health. If you get knocked out, you wake up at the hospital (wanted stars cleared, but there's a bill)." },
+		{ "🚨 Crime", "<b>F</b> attacks, <b>G</b> (hold) picks a pocket, <b>R</b> (hold) robs a register or the bank vault. If anyone sees you, you get wanted stars and the police come after you. Get caught and you're BUSTED: a fine and time in jail. Kids can't be hurt." },
 		{ "🫥 Losing the police", "The police only know where they <b>last saw</b> you. Break their line of sight (around a corner, into a building) and they'll run there and search around. Hide in a <b>trash can, hedge or park bush</b> (hold <b>Q</b>): they can't see you, unless they search right next to your spot (or saw you climb in!). Stay out of sight and the stars fade one by one, faster while you're hiding. <b>Space</b> gets you out." },
-		{ "⌨️ Keys", "E talk / use · M map · P people · V vote · B speech · N mayor · F punch · G pickpocket · R rob · Q hide · H help · 1-9 answer in conversations · Esc close windows" },
+		{ "⌨️ Keys", "E talk / use · M map · P people · V vote · B speech · N mayor · F attack · X block · 1-3 weapons · G pickpocket · R rob · Q hide · H help · 1-9 answer in conversations · Esc close windows" },
 	}
 	for _, s in ipairs(sections) do
 		local card = UI.panel(list, { Size = UDim2.new(1, -10, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundColor3 = C.Panel2, Radius = 12 })
@@ -980,6 +981,75 @@ local function buildBusted()
 	end
 end
 
+--------------------------------------------------------------------------------
+-- The weapons shop (Hardware store)
+--------------------------------------------------------------------------------
+local function buildShop()
+	local win = UI.window(screen, "Hardware Store", "🔨", UDim2.fromOffset(760, 460), C.Red)
+	Panels.Shop = win
+	local body = win.Body
+	local top = UI.text(body, "", 15, UI.Bold, C.Sub, { Size = UDim2.new(1, 0, 0, 22) })
+	local grid = UI.new("Frame", { BackgroundTransparency = 1, Position = UDim2.fromOffset(0, 30), Size = UDim2.new(1, 0, 1, -64), Parent = body })
+	UI.new("UIGridLayout", { CellSize = UDim2.new(0.333, -8, 1, 0), CellPadding = UDim2.fromOffset(10, 0), SortOrder = Enum.SortOrder.LayoutOrder, Parent = grid })
+	UI.text(body, "⚠️ Hurting people is a crime. Anyone who sees it calls the police, and they take your weapons when they arrest you.", 12, UI.Font, C.Dim, { AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.new(1, 0, 0, 30), TextWrapped = true })
+	local function stat(card, label, value, maxValue, color, y)
+		UI.text(card, label, 12, UI.Bold, C.Sub, { Position = UDim2.fromOffset(0, y), Size = UDim2.fromOffset(70, 16) })
+		local _, set = UI.bar(card, color, 8, { Position = UDim2.new(0, 72, 0, y + 4), Size = UDim2.new(1, -72, 0, 8) })
+		set(value / maxValue)
+	end
+	function Panels.OpenShop(data)
+		clear(grid)
+		top.Text = "🪙 You have " .. UI.commas(data.Coins or 0) .. " coins. Weapons go in your hotbar (1, 2, 3...)."
+		for k, item in ipairs(data.Items or {}) do
+			local card = UI.panel(grid, { BackgroundColor3 = C.Panel2, Radius = 14, LayoutOrder = k })
+			UI.pad(card, 12)
+			UI.text(card, item.Emoji, 46, UI.Font, C.White, { Size = UDim2.new(1, 0, 0, 56), TextXAlignment = Enum.TextXAlignment.Center })
+			UI.text(card, item.Name, 18, UI.Title, C.Text, { Position = UDim2.fromOffset(0, 58), Size = UDim2.new(1, 0, 0, 24), TextXAlignment = Enum.TextXAlignment.Center })
+			UI.text(card, item.Desc, 12, UI.Font, C.Sub, { Position = UDim2.fromOffset(0, 84), Size = UDim2.new(1, 0, 0, 48), TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Center, TextYAlignment = Enum.TextYAlignment.Top })
+			stat(card, "Damage", item.Damage, 60, C.Red, 138)
+			stat(card, "Speed", 1 / item.Cooldown, 2.6, C.Gold, 158)
+			stat(card, "Reach", item.Range, 8, C.Blue, 178)
+			UI.button(card, if item.Owned then "✅ Owned" else "🪙 " .. item.Price .. "  Buy", { AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.new(1, 0, 0, 40), Color = if item.Owned then C.Panel3 else C.Gold, TextColor = if item.Owned then C.Sub else C.Bg }, function()
+				if item.Owned then
+					return
+				end
+				local r = request({ Action = "BuyWeapon", Id = item.Id })
+				if r.Ok then
+					ctx.Hud.Toast(item.Emoji, "Bought a " .. item.Name .. "!", "It's in your hotbar. Click or F to attack, hold X to block.", C.Gold)
+					data.Items = r.Items
+					data.Coins = (data.Coins or 0) - item.Price
+					Panels.OpenShop(data)
+				else
+					fail(r)
+				end
+			end)
+		end
+		win.Open()
+	end
+end
+
+-- knocked out: the screen fades, you wake up at the hospital
+local function buildDown()
+	local cover = UI.new("Frame", { BackgroundColor3 = Color3.new(0, 0, 0), BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 45, Visible = false, Parent = screen })
+	local big = UI.text(cover, "💫 KNOCKED OUT", 72, UI.Title, C.White, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.42), Size = UDim2.fromOffset(800, 90), TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 46 })
+	UI.new("UIStroke", { Thickness = 4, Color = C.Red, Parent = big })
+	local small = UI.text(cover, "", 20, UI.Bold, C.Sub, { AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.fromScale(0.5, 0.52), Size = UDim2.fromOffset(800, 60), TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = true, ZIndex = 46 })
+	local scale = UI.new("UIScale", { Parent = big })
+	function Panels.Down(data)
+		cover.Visible = true
+		cover.BackgroundTransparency = 1
+		UI.tween(cover, 1.2, { BackgroundTransparency = 0.15 })
+		small.Text = "You'll wake up at the hospital." .. (if (data.Bill or 0) > 0 then "  Hospital bill: 🪙 " .. data.Bill else "")
+		scale.Scale = 0.6
+		UI.tween(scale, 0.6, { Scale = 1 }, Enum.EasingStyle.Back)
+		task.delay(4.5, function()
+			UI.tween(cover, 0.8, { BackgroundTransparency = 1 })
+			task.wait(0.8)
+			cover.Visible = false
+		end)
+	end
+end
+
 function Panels.Start(context)
 	ctx = context
 	screen = UI.new("ScreenGui", { Name = "CityPanels", ResetOnSpawn = false, ZIndexBehavior = Enum.ZIndexBehavior.Sibling, DisplayOrder = 10, Parent = player:WaitForChild("PlayerGui") })
@@ -1004,6 +1074,8 @@ function Panels.Start(context)
 	buildWelcome()
 	buildResults()
 	buildBusted()
+	buildShop()
+	buildDown()
 end
 
 return Panels

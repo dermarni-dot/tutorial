@@ -8,7 +8,8 @@
 --                   speeches, coins, memories, gossip, news, saving
 --   CitizenService  the NPCs: walking, working, sitting, soccer, chatting...
 --   DialogueService talking to citizens (and them talking to each other)
---   CrimeService    punching, pickpocketing, robberies, witnesses, police, jail
+--   CrimeService    fighting, stabbing, pickpocketing, robberies, witnesses, police, jail
+--   CombatService   weapons (the Hardware store shop), blocking, waking up at the hospital
 --   PlayerService   elevators, citizen profiles, the directory
 --
 -- Other scripts can get the map with:
@@ -54,8 +55,10 @@ if Config.RUN_CITIZENS ~= false then
 	services.Dialogue = require(Modules:WaitForChild("DialogueService"))
 	services.Crime = require(Modules:WaitForChild("CrimeService"))
 	services.Players = require(Modules:WaitForChild("PlayerService"))
+	services.Combat = require(Modules:WaitForChild("CombatService"))
 	services.Dialogue.Start(services)
 	services.Crime.Start(services)
 	services.Players.Start(services)
+	services.Combat.Start(services)
 	task.spawn(services.Citizens.Start, services)
 end

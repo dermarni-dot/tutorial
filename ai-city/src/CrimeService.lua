@@ -22,13 +22,11 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local CollectionService = game:GetService("CollectionService")
 
 local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
+local Weapons = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Weapons"))
 
 local CrimeService = {}
 local S
 
-local PUNCH_DAMAGE = 34
-local PUNCH_RANGE = 6
-local PUNCH_COOLDOWN = 0.5
 local SIGHT = 70 -- how far witnesses can see
 local HEAR = 14 -- anyone this close notices, line of sight or not
 local MAX_STARS = 5
@@ -224,71 +222,206 @@ end
 --------------------------------------------------------------------------------
 -- Punching
 --------------------------------------------------------------------------------
-local function punch(player, data)
+local function hpFor(brain)
+	if brain.C.Job == "SWAT Officer" then
+		return Weapons.SWAT_HP
+	elseif brain.C.Temp or isPolice(brain) then
+		return Weapons.POLICE_HP
+	end
+	return Weapons.CITIZEN_HP
+end
+
+-- Damage to a player (from a citizen fighting back, or another player)
+local function hurtPlayer(fromPos, victim, damage, knock)
+	local root, character = rootOf(victim)
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if not root or not humanoid or humanoid.Health <= 0 or jailed[victim] then
+		return false
+	end
+	if S.Combat and S.Combat.IsBlocking(victim) then
+		damage *= Weapons.BLOCK
+		knock = (knock or 10) * 0.3
+	end
+	humanoid:TakeDamage(damage)
+	local dir = Vector3.new(root.Position.X - fromPos.X, 0, root.Position.Z - fromPos.Z)
+	if dir.Magnitude > 0.1 then
+		root.AssemblyLinearVelocity = dir.Unit * (knock or 10) + Vector3.new(0, 6, 0)
+	end
+	S.City.SendNear(root.Position, 120, { Type = "Hit", Position = root.Position + Vector3.new(0, 2, 0), Damage = math.floor(damage + 0.5), Player = true, Blocked = S.Combat and S.Combat.IsBlocking(victim) })
+	return humanoid.Health <= 0
+end
+
+--------------------------------------------------------------------------------
+-- Citizens who fight back
+--------------------------------------------------------------------------------
+local fighters = {} -- [brain] = { Player, Until, Next }
+local FIGHT_HITS = { "Take that!", "Had enough?!", "You asked for it!", "Come on then!", "Hyah!" }
+
+local function stopFight(brain)
+	fighters[brain] = nil
+	if brain.Model.Parent then
+		brain.Model:SetAttribute("Fighting", nil)
+		if brain.State == "police" and not brain.Model:GetAttribute("Chasing") then
+			S.Citizens.Control(brain, false)
+		end
+	end
+end
+
+local function startFight(brain, player)
+	if brain.State == "ko" or brain.State == "hospital" or brain.Model:GetAttribute("Chasing") then
+		return
+	end
+	local f = fighters[brain]
+	if f then
+		f.Until = os.clock() + 14
+		return
+	end
+	S.Citizens.Control(brain, true)
+	brain.Model:SetAttribute("Fighting", player.UserId)
+	fighters[brain] = { Player = player, Until = os.clock() + 14, Next = os.clock() + 0.7 }
+	S.Citizens.Say(brain, FIGHT_LINES[math.random(1, #FIGHT_LINES)], "angry", 2)
+end
+
+local function fightTick()
+	local now = os.clock()
+	for brain, f in pairs(fighters) do
+		local player = f.Player
+		local root, character = rootOf(player)
+		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+		local d = root and (root.Position - brain.Root.Position).Magnitude or math.huge
+		if not brain.Model.Parent or brain.State == "ko" or brain.State == "hospital" or not player.Parent or not humanoid or humanoid.Health <= 0 or jailed[player] or hiding[player] or now > f.Until or d > 60 then
+			if brain.Model.Parent and humanoid and humanoid.Health <= 0 then
+				S.Citizens.Say(brain, "And STAY down!", "angry", 2)
+			end
+			stopFight(brain)
+		elseif brain.HP and brain.HP < 30 and not brain.C.Temp then
+			-- losing: run for it
+			stopFight(brain)
+			S.Citizens.Flee(brain, root.Position, 10, "Okay, okay! I give up!")
+		else
+			S.Citizens.SetGait(brain, if d > 5 then 16 else 8, "run")
+			brain.Humanoid:MoveTo(root.Position)
+			if d < 4.8 and now >= f.Next then
+				f.Next = now + math.random(9, 13) / 10
+				brain.Model:SetAttribute("Swing", now)
+				local strong = brain.C.Personality == "sporty" or brain.C.Job == "Fitness Coach" or brain.C.Job == "Coach"
+				hurtPlayer(brain.Root.Position, player, math.random(7, 11) + (if strong then 4 else 0), 18)
+				if math.random() < 0.25 then
+					S.Citizens.Say(brain, FIGHT_HITS[math.random(1, #FIGHT_HITS)], "angry", 1.4)
+				end
+			end
+		end
+	end
+end
+
+--------------------------------------------------------------------------------
+-- Attacking: fists or a weapon, at a citizen or another player
+--------------------------------------------------------------------------------
+local lastHitOn = {} -- ["attacker:victim"] = time the last hit was reported
+
+local function attack(player, data)
 	local root, character = rootOf(player)
-	if not root or jailed[player] or hiding[player] then
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if not root or not humanoid or humanoid.Health <= 0 or jailed[player] or hiding[player] then
 		return { Ok = false }
 	end
+	local id = if S.Combat then S.Combat.Equipped(player) else "Fists"
+	local w = Weapons.Get(id)
 	local now = os.clock()
-	if (lastPunch[player] or 0) + PUNCH_COOLDOWN > now then
+	if (lastPunch[player] or 0) + w.Cooldown > now then
 		return { Ok = false }
 	end
 	lastPunch[player] = now
-	-- who's in front of us?
-	local best, bestScore = nil, math.huge
+	-- who's in front of us? (citizens and other players)
+	local best, bestScore, bestPlayer = nil, math.huge, nil
 	local look = root.CFrame.LookVector
-	for _, brain in ipairs(S.Citizens.Nearby(root.Position, PUNCH_RANGE + 2)) do
-		local d = brain.Root.Position - root.Position
+	local function consider(pos, target, isPlayer)
+		local d = pos - root.Position
 		local flatD = Vector3.new(d.X, 0, d.Z)
-		if flatD.Magnitude <= PUNCH_RANGE and (flatD.Magnitude < 2 or look:Dot(flatD.Unit) > 0.2) then
+		if flatD.Magnitude <= w.Range and math.abs(d.Y) < 6 and (flatD.Magnitude < 2 or look:Dot(flatD.Unit) > 0.2) then
 			local score = flatD.Magnitude - look:Dot(flatD.Unit) * 2
-			if data.Target == brain.Model then
-				score -= 5
-			end
 			if score < bestScore then
-				best, bestScore = brain, score
+				best, bestScore, bestPlayer = target, score, isPlayer
 			end
+		end
+	end
+	for _, brain in ipairs(S.Citizens.Nearby(root.Position, w.Range + 3)) do
+		if brain.State ~= "ko" and brain.State ~= "hospital" then
+			consider(brain.Root.Position, brain, false)
+		end
+	end
+	for _, other in ipairs(Players:GetPlayers()) do
+		local oroot, och = rootOf(other)
+		local ohum = och and och:FindFirstChildOfClass("Humanoid")
+		if other ~= player and oroot and ohum and ohum.Health > 0 and not jailed[other] and not hiding[other] then
+			consider(oroot.Position, other, true)
 		end
 	end
 	if not best then
-		return { Ok = true, Hit = false }
+		return { Ok = true, Hit = false, Weapon = id }
 	end
+
+	-- another player
+	if bestPlayer then
+		local victim = best
+		local vroot = rootOf(victim)
+		local down = hurtPlayer(root.Position, victim, w.Damage * 0.6, w.Knock)
+		S.City.Toast(victim, "⚠️", player.DisplayName .. " " .. w.Verb .. " you!", "Fight back (F), block (hold X) or run!", Color3.fromRGB(230, 60, 60))
+		local key = player.UserId .. ":" .. victim.UserId
+		if down then
+			S.City.News("💀 " .. victim.DisplayName .. " was " .. w.Down .. " by " .. player.DisplayName .. " on " .. streetNear(vroot.Position) .. "!", "Crime")
+			report(player, vroot.Position, nil, w.Severity + 2, w.Down:gsub(" with a %w+$", "") .. " " .. victim.DisplayName, w.Down .. " " .. victim.DisplayName, w.Severity + 1)
+		elseif now - (lastHitOn[key] or 0) > 6 then
+			lastHitOn[key] = now
+			report(player, vroot.Position, nil, w.Severity, "attack " .. victim.DisplayName, "attacked " .. victim.DisplayName, 1)
+		end
+		return { Ok = true, Hit = true, KO = down, Name = victim.DisplayName, Weapon = id }
+	end
+
+	-- a citizen
 	local brain = best
 	if not canBeHurt(brain) then
-		if brain.State ~= "ko" and brain.State ~= "hospital" then
-			S.City.Toast(player, "🚫", "Not a chance", "You can't hurt kids.", Color3.fromRGB(200, 90, 90))
-		end
-		return { Ok = true, Hit = false }
+		S.City.Toast(player, "🚫", "Not a chance", "You can't hurt kids.", Color3.fromRGB(200, 90, 90))
+		return { Ok = true, Hit = false, Weapon = id }
 	end
-	brain.HP = (brain.HP or (if brain.C.Temp or isPolice(brain) then 150 else 100)) - PUNCH_DAMAGE
+	brain.HP = (brain.HP or hpFor(brain)) - w.Damage
 	brain.LastHit = now
 	local c = brain.C
-	S.City.SendNear(brain.Root.Position, 120, { Type = "Hit", Position = brain.Root.Position + Vector3.new(0, 2, 0), Damage = PUNCH_DAMAGE, KO = brain.HP <= 0 })
+	S.City.SendNear(brain.Root.Position, 120, { Type = "Hit", Position = brain.Root.Position + Vector3.new(0, 2, 0), Damage = w.Damage, KO = brain.HP <= 0, Weapon = id })
 	if brain.HP <= 0 then
 		brain.HP = nil
+		stopFight(brain)
 		local name = c.Name
 		S.Citizens.KnockOut(brain, player.DisplayName)
+		local downText = w.Down
 		if not c.Temp then
-			S.City.Remember(c, player, "knocked me out!", -60, "knocked out " .. c.First)
-			S.City.News("💫 " .. name .. " was knocked out on " .. streetNear(brain.Root.Position) .. "! Paramedics took them to the hospital.", "Crime")
+			S.City.Remember(c, player, (if id == "Fists" then "knocked me out!" else w.Down .. " me!"), -40 - w.Severity * 15, w.Down .. " " .. c.First)
+			S.City.News("💀 " .. name .. " was " .. downText .. " on " .. streetNear(brain.Root.Position) .. "! Paramedics rushed them to the hospital.", "Crime")
 		end
-		report(player, brain.Root.Position, brain, 3, "knock out " .. c.First, "knocked out " .. c.First .. " in the street", if isPolice(brain) then 2 else 1)
-		return { Ok = true, Hit = true, KO = true, Name = c.First }
+		local pd = S.City.Data(player)
+		if pd then
+			pd.Notoriety = (pd.Notoriety or 0) + (w.Severity - 1) * 2 -- weapons make the police remember you faster
+		end
+		report(player, brain.Root.Position, brain, w.Severity + 2, (if id == "Fists" then "knock out " else "take down ") .. c.First, w.Down .. " " .. c.First .. " in the street", (if isPolice(brain) then 2 else 1) + (if w.Severity >= 3 then 1 else 0))
+		return { Ok = true, Hit = true, KO = true, Name = c.First, Weapon = id }
 	end
 	-- a hit: flinch, then fight back or run
 	local line = VICTIM_LINES[math.random(1, #VICTIM_LINES)]
 	if not c.Temp then
-		S.City.Remember(c, player, "punched me", -22, "punched " .. c.First)
+		S.City.Remember(c, player, w.Verb .. " me", -15 - w.Severity * 8, w.Verb .. " " .. c.First)
 	end
-	S.Citizens.Hurt(brain, root.Position, line)
-	local brave = isPolice(brain) or c.Temp or c.Personality == "grumpy" or c.Personality == "sporty"
-	if brave then
-		-- shove back
-		root.AssemblyLinearVelocity = (root.Position - brain.Root.Position).Unit * 40 + Vector3.new(0, 15, 0)
-		S.Citizens.React(brain, "boo", FIGHT_LINES[math.random(1, #FIGHT_LINES)], "angry", 2, root.Position)
-		if isPolice(brain) or c.Temp then
-			CrimeService.AddStars(player, 1, "You attacked a police officer!")
+	S.Citizens.Hurt(brain, root.Position, line, w.Knock)
+	local armed = w.Severity >= 3
+	local brave = isPolice(brain) or c.Temp or ((c.Personality == "grumpy" or c.Personality == "sporty") and (not armed or math.random() < 0.3)) or (not armed and math.random() < 0.15)
+	if isPolice(brain) or c.Temp then
+		CrimeService.AddStars(player, 1, "You attacked a police officer!")
+		if not brain.Model:GetAttribute("Chasing") then
+			startFight(brain, player)
 		end
+	elseif brave then
+		task.delay(0.3, function()
+			startFight(brain, player)
+		end)
 	else
 		task.delay(0.4, function()
 			S.Citizens.Flee(brain, root.Position, 9, HELP_LINES[math.random(1, #HELP_LINES)])
@@ -296,10 +429,10 @@ local function punch(player, data)
 	end
 	if (brain.Hits or 0) == 0 or now - (brain.ReportedAt or 0) > 6 then
 		brain.ReportedAt = now
-		report(player, brain.Root.Position, brain, 1, "attack " .. c.First, "attacked " .. c.First .. " in broad daylight", 1)
+		report(player, brain.Root.Position, brain, w.Severity, (if armed then "stab " else "attack ") .. c.First, w.Verb .. " " .. c.First .. " in broad daylight", if armed then 2 else 1)
 	end
 	brain.Hits = (brain.Hits or 0) + 1
-	return { Ok = true, Hit = true, Name = c.First, HP = brain.HP }
+	return { Ok = true, Hit = true, Name = c.First, HP = brain.HP, Weapon = id }
 end
 
 --------------------------------------------------------------------------------
@@ -369,6 +502,9 @@ local function rob(player, part, isVault)
 	local placeId = part:GetAttribute("PlaceId") or "the store"
 	local label = Config.PlaceById[placeId] and Config.PlaceById[placeId].label or placeId
 	local amount = if isVault then math.random(150, 320) else math.random(35, 90)
+	if S.Combat and Weapons.Get(S.Combat.Equipped(player)).FastRob then
+		amount = math.floor(amount * 1.5) -- smashed open with the hammer
+	end
 	S.City.AddCoins(player, amount, "💰 Robbed the " .. label)
 	S.City.News("🚨 The " .. label .. " was robbed" .. (if isVault then "! The vault is empty!" else "!"), "Crime")
 	local seen = report(player, part.Position, nil, if isVault then 5 else 3, "rob the " .. label, "robbed the " .. label, if isVault then 3 else 2)
@@ -573,6 +709,9 @@ local function arrest(player)
 	if root then
 		root.CFrame = CFrame.new(cell + Vector3.new(0, 3.5, 0))
 		root.AssemblyLinearVelocity = Vector3.zero
+	end
+	if S.Combat then
+		S.Combat.Confiscate(player)
 	end
 	S.City.Send(player, { Type = "Busted", Seconds = seconds, Fine = fine, Stars = stars })
 	S.City.News("🚔 " .. player.DisplayName .. " was arrested and thrown in jail!", "Crime")
@@ -933,7 +1072,8 @@ end
 
 function CrimeService.Start(services)
 	S = services
-	S.City.Handle("Punch", punch)
+	S.City.Handle("Punch", attack)
+	S.City.Handle("Attack", attack)
 	S.City.Handle("Unhide", function(player)
 		CrimeService.Unhide(player)
 		return { Ok = true }
@@ -988,6 +1128,9 @@ function CrimeService.Start(services)
 		while true do
 			local dt = task.wait(0.2)
 			local ok, err = pcall(chaseTick, dt)
+			if ok then
+				ok, err = pcall(fightTick)
+			end
 			if not ok then
 				warn("[CrimeService] " .. tostring(err))
 			end
@@ -1019,6 +1162,25 @@ function CrimeService.Start(services)
 			end
 		end
 	end)
+end
+
+-- Knocked out while wanted: the chase is over
+function CrimeService.ClearWanted(player)
+	CrimeService.Unhide(player)
+	local w = wanted[player]
+	if w and w.Stars > 0 then
+		freeChasers(w)
+		setStars(player, 0)
+		w.LastKnown, w.Mode, w.SawHide = nil, nil, nil
+	end
+	for brain, f in pairs(fighters) do
+		if f.Player == player then
+			stopFight(brain)
+		end
+	end
+	for _, attr in ipairs({ "PoliceState", "PoliceNear", "PoliceLevel", "PoliceCount", "Helicopter", "WantedSeen" }) do
+		player:SetAttribute(attr, nil)
+	end
 end
 
 function CrimeService.IsJailed(player)

@@ -1149,7 +1149,7 @@ function CitizenService.Flee(brain, from, seconds, line)
 end
 
 -- A quick flinch when hit
-function CitizenService.Hurt(brain, from, line)
+function CitizenService.Hurt(brain, from, line, knock)
 	if brain.State == "ko" or brain.State == "hospital" then
 		return
 	end
@@ -1161,7 +1161,7 @@ function CitizenService.Hurt(brain, from, line)
 	if not brain.Root.Anchored then
 		local dir = flat(brain.Root.Position - from)
 		if dir.Magnitude > 0.1 then
-			brain.Root.AssemblyLinearVelocity = dir.Unit * 22 + Vector3.new(0, 12, 0)
+			brain.Root.AssemblyLinearVelocity = dir.Unit * (knock or 22) + Vector3.new(0, 8 + (knock or 22) * 0.2, 0)
 		end
 	end
 end

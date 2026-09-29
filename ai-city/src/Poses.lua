@@ -271,6 +271,11 @@ end
 L.kick = function(t, ph, k)
 	return { RH = A(-30 + k * 110), RK = A(-50 + k * 50), LS = A(-20), RS = A(30, 0, 20), Waist = A(-8) }, false
 end
+-- a punch thrown while fighting (right jab out and back)
+L.strike = function(t, ph, k)
+	local out = math.sin(k * math.pi)
+	return { RS = A(60 + out * 35, 0, -10), RE = A(100 - out * 95), LS = A(55, 0, 16), LE = A(110), Waist = A(-6, -out * 25, 0) }, false
+end
 L.flinch = function(t, ph, k)
 	return { Waist = A(18 * (1 - k)), Neck = A(20 * (1 - k)), LS = A(40 * (1 - k), 0, -20), RS = A(40 * (1 - k), 0, 20) }, false
 end
@@ -439,6 +444,10 @@ local function stateOf(model)
 	}
 	st.Kick = 0
 	st.Hit = 0
+	st.Swing = 0
+	model:GetAttributeChangedSignal("Swing"):Connect(function()
+		st.Swing = os.clock()
+	end)
 	model:GetAttributeChangedSignal("Kick"):Connect(function()
 		st.Kick = os.clock()
 	end)
@@ -614,7 +623,9 @@ local function update(model, st, t, dt, camPos, myRoot)
 	local now = os.clock()
 	local target, full
 	-- short overlays: a soccer kick, a flinch
-	if now - st.Kick < 0.35 then
+	if now - st.Swing < 0.35 then
+		target, full = L.strike(t, st.Phase, (now - st.Swing) / 0.35)
+	elseif now - st.Kick < 0.35 then
 		target, full = L.kick(t, st.Phase, (now - st.Kick) / 0.35)
 	elseif now - st.Hit < 0.35 then
 		target, full = L.flinch(t, st.Phase, (now - st.Hit) / 0.35)

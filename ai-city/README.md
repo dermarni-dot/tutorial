@@ -27,7 +27,7 @@ Players can talk to anyone, give speeches, run for mayor and pass laws. They can
 | ⚽ **After-school life** | Real soccer games (two teams, a ball, goals, cheering), shooting hoops, swings, the arcade, homework at the library, and weekend family outings. |
 | 💬 **Dialogue** | Talk to anyone. Answers depend on their personality, mood, job, the city and what they remember about you. |
 | 🗳️ **Politics** | Speeches, elections with citizen candidates, votes, a mayor's salary and daily policies. |
-| 🚨 **Crime** | Punches, knockouts, pickpocketing and robberies. Witnesses need line of sight. Wanted stars bring police chases with backup, and getting caught means jail and a fine. |
+| ⚔️ **Fighting and crime** | Fists, a bat, a hammer and a knife, with attack animations, blocking, and citizens who fight back. Also pickpocketing and robberies. Witnesses need line of sight. Wanted stars bring police chases with backup, and getting caught means jail and a fine. |
 | 🖥️ **A full interface** | <ul><li>HUD: clock, city mood, rotating minimap, coins, wanted stars and a news ticker.</li><li>Windows: a city map, a people directory, profile cards with a 3D portrait, voting, speeches, the mayor's desk, conversations, elevators, help and settings.</li></ul> |
 
 ## The city
@@ -105,7 +105,22 @@ Street lamps, windows, porch lights, neon signs and stadium floodlights switch o
 
 ## Crime and punishment
 
-- 👊 **Punch** with **F**. Three or four hits knock someone out. They fall down and see stars, then wake up later in a hospital bed.
+- ⚔️ **Fighting:** attack with **F** (or click while holding a weapon), and **hold X** to block, which cuts the damage you take to a third.
+  - Your attack animation matches what you're holding: quick jabs with fists, heavy swings with a bat or hammer, a lunge with a knife.
+  - People you hit flinch and get knocked back. Most run away screaming, but tough citizens (grumpy and sporty people) and the police **fight back** and can hurt you. Your ❤️ health bar is at the bottom left.
+  - When someone's health runs out they go 💀 **down**: they collapse, see stars, and the paramedics take them to a hospital bed. There's no blood (Roblox rules), and the city's families stay intact.
+  - If **you** get knocked out, you wake up at the hospital. Your wanted stars are cleared, but there's a hospital bill.
+  - You can also fight other players.
+- 🔪 **Weapons:** buy them at the 🔨 **Hardware store** (press E at the counter). They go in your hotbar, and you keep them between visits.
+
+  | Weapon | Price | Damage | Notes |
+  |---|---|---|---|
+  | 👊 Fists | free | 25 | Four punches to put someone down. |
+  | 🏏 Baseball Bat | 40 | 40 | Slow, and sends people flying. |
+  | 🔨 Hammer | 75 | 45 | Fast and hard, and smashes registers and the vault for 50% more cash. |
+  | 🔪 Knife | 120 | 55 | Two stabs and they're down. The most serious crime: extra stars and notoriety. |
+
+  Citizens have 100 health, police 150 and SWAT 250. **The police confiscate your weapons when they arrest you.**
 - 🫳 **Pickpocket:** hold **G** next to someone. Facing them makes it more likely they'll notice.
 - 💰 **Rob a register or the bank vault:** hold **R**. The bank has a silent alarm.
 - **Witnesses** need to see it happen (walls block their view), or be very close. They scream, run and remember it, tell everyone, and call the police.
@@ -136,6 +151,7 @@ Street lamps, windows, porch lights, neon signs and stadium floodlights switch o
 | ![Profile](ui_profile_preview.png) | ![Map](ui_map_preview.png) |
 
 ![Speech](ui_speech_preview.png)
+![Weapons shop](ui_shop_preview.png)
 
 *(These previews were drawn from the game's real UI in a test harness. In Roblox, the portraits show the 3D citizen.)*
 
@@ -147,7 +163,9 @@ Street lamps, windows, porch lights, neon signs and stadium floodlights switch o
 | V | vote |
 | B | speech |
 | N | mayor's desk |
-| F | punch |
+| F | attack (or click with a weapon) |
+| X | block (hold) |
+| 1–3 | weapons in your hotbar |
 | G | pickpocket |
 | R | rob |
 | Q | hide (at trash cans, hedges and bushes) · Space gets out |
@@ -167,10 +185,11 @@ Every action is also a button on the action bar for mobile players.
 | `CityService` | Modules | Clock and calendar, city stats and mood, mayor, elections, speeches, policies, coins, memories, gossip, news, saving, and the remotes. |
 | `CitizenService` | Modules | The NPC bodies: walking, elevators, spots, soccer, chatting, greetings, reactions, knockouts, births, growing up. |
 | `DialogueService` | Modules | Conversations with players, and citizens' small talk. |
-| `CrimeService` | Modules | Crimes, witnesses, wanted stars, police chases, jail. |
+| `CrimeService` | Modules | Fighting (attacks, citizens fighting back), crimes, witnesses, wanted stars, police chases, SWAT, the helicopter, hiding, jail. |
+| `CombatService` | Modules | Weapons as tools, the Hardware store shop, blocking, waking up at the hospital, confiscation. |
 | `PlayerService` | Modules | Elevators, profiles, the directory, finding people. |
 | `CitizenLook` | Modules | Outfits, hair, items, faces and sizes. |
-| `Config`, `Actions`, `Atmosphere`, `Faces`, `Poses` | ReplicatedStorage.Shared | Settings; the list of actions; the sky; drawn faces; the pose and prop library. |
+| `Config`, `Actions`, `Atmosphere`, `Faces`, `Poses`, `Weapons` | ReplicatedStorage.Shared | Settings; the list of actions; the sky; drawn faces; the pose and prop library; weapon stats. |
 | `CityClient` (+ `UI`, `Hud`, `Panels`, `World`) | StarterPlayerScripts | Everything on screen, and the citizens' body language, faces, nameplates and speech bubbles. |
 
 It's built to stay light on the server:
@@ -233,9 +252,10 @@ The game was run in a Luau test harness (a small Roblox simulation), and these c
   - a speech;
   - a conversation covering every topic, plus a gift and directions;
   - a profile card, the directory and the places list;
-  - three punches, a knockout, a witness and 3 wanted stars;
+  - four punches, a knockout, a witness and wanted stars;
   - a police chase, an arrest, jail and release;
   - running out of sight (the police search where they last saw you), hiding in a trash can until the stars fade, and getting found after being seen climbing in;
+  - buying weapons, stabbing someone down in two hits, a grumpy citizen fighting back (blocking takes a third of the damage), getting knocked out and waking up at the hospital, hitting another player with a bat, and the police confiscating the weapons at the arrest;
   - six crimes in a row: 2 stars and 3 officers, then 4 stars with SWAT, then 5 stars with 10 police, SWAT and the helicopter;
   - an elevator ride to floor 9;
   - a vote and an election (and winning it).

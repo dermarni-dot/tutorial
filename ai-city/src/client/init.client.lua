@@ -85,7 +85,13 @@ handlers.Waypoint = function(d)
 	World.Waypoint(d.Position, d.Label, d.Emoji, d.Model)
 end
 handlers.Hit = function(d)
-	World.Hit(d.Position, d.Damage, d.KO)
+	World.Hit(d.Position, d.Damage, d.KO, d.Player, d.Blocked, d.Weapon)
+end
+handlers.Shop = function(d)
+	Panels.OpenShop(d)
+end
+handlers.Down = function(d)
+	Panels.Down(d)
 end
 handlers.Alarm = function(d)
 	World.Alarm(d.Position, d.Seconds)
@@ -129,6 +135,11 @@ ctx.Remotes.Event.OnClientEvent:Connect(function(data)
 	end
 end)
 
+-- our own health bar replaces Roblox's
+pcall(function()
+	game:GetService("StarterGui"):SetCoreGuiEnabled(Enum.CoreGuiType.Health, false)
+end)
+
 --------------------------------------------------------------------------------
 -- Keys
 --------------------------------------------------------------------------------
@@ -162,12 +173,19 @@ UserInputService.InputBegan:Connect(function(input, processed)
 	elseif key == Enum.KeyCode.H then
 		Panels.Help.Toggle()
 	elseif key == Enum.KeyCode.F then
-		World.Punch()
+		World.Attack()
+	elseif key == Enum.KeyCode.X then
+		World.SetBlock(true)
 	elseif key == Enum.KeyCode.Escape or key == Enum.KeyCode.Backspace then
 		if Panels.InDialogue() then
 			Panels.EndDialogue(true)
 		else
 			UI.closeAll()
 		end
+	end
+end)
+UserInputService.InputEnded:Connect(function(input)
+	if input.KeyCode == Enum.KeyCode.X then
+		World.SetBlock(false)
 	end
 end)

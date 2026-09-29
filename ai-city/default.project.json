@@ -33,6 +33,9 @@
         },
         "Poses": {
           "$path": "src/Poses.lua"
+        },
+        "Weapons": {
+          "$path": "src/Weapons.lua"
         }
       }
     },
@@ -83,6 +86,9 @@
         },
         "PlayerService": {
           "$path": "src/PlayerService.lua"
+        },
+        "CombatService": {
+          "$path": "src/CombatService.lua"
         }
       }
     },

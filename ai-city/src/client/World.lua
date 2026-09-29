@@ -84,6 +84,10 @@ local function makePlate(model, isPlayer)
 			badge.Visible = true
 			badge.Text = if team == 1 then "⚽ Blue" else "⚽ Red"
 			badge.BackgroundColor3 = if team == 1 then C.Blue else C.Red
+		elseif model:GetAttribute("Fighting") then
+			badge.Visible = true
+			badge.Text = "👊 FIGHTING"
+			badge.BackgroundColor3 = C.Red
 		elseif model:GetAttribute("Chasing") then
 			badge.Visible = true
 			local searching = model:GetAttribute("ChaseState") == "searching"
@@ -94,7 +98,7 @@ local function makePlate(model, isPlayer)
 		end
 		gui.StudsOffset = plateOffset(model)
 	end
-	for _, attr in ipairs({ "Activity", "Mood", "Expecting", "Team", "DisplayName", "Scale", "Chasing", "ChaseState" }) do
+	for _, attr in ipairs({ "Activity", "Mood", "Expecting", "Team", "DisplayName", "Scale", "Chasing", "ChaseState", "Fighting" }) do
 		model:GetAttributeChangedSignal(attr):Connect(refresh)
 	end
 	if isPlayer then
@@ -210,7 +214,7 @@ end
 --------------------------------------------------------------------------------
 -- Interaction prompts (our own look for Talk / Elevator / crime prompts)
 --------------------------------------------------------------------------------
-local PROMPT_COLORS = { Talk = C.Blue, Elevator = C.Teal, Crime = C.Red, Hide = C.Purple }
+local PROMPT_COLORS = { Talk = C.Blue, Elevator = C.Teal, Crime = C.Red, Hide = C.Purple, Shop = C.Gold }
 local promptGuis = {}
 
 local function keyName(prompt, inputType)
@@ -333,10 +337,13 @@ end
 --------------------------------------------------------------------------------
 -- Effects
 --------------------------------------------------------------------------------
-function World.Hit(position, damage, ko)
+function World.Hit(position, damage, ko, isPlayer, blocked, weapon)
 	local anchor = UI.new("Part", { Anchored = true, CanCollide = false, CanQuery = false, CanTouch = false, Transparency = 1, Size = Vector3.one, CFrame = CFrame.new(position), Parent = workspace })
 	local gui = UI.new("BillboardGui", { Size = UDim2.fromOffset(220, 60), AlwaysOnTop = true, LightInfluence = 0, Adornee = anchor, Parent = anchor })
-	local label = UI.text(gui, if ko then "💫 KNOCKED OUT!" else "💥 -" .. tostring(damage), if ko then 24 else 22, UI.Black, if ko then C.Gold else C.Red, { Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center })
+	local icon = if weapon == "Knife" then "🔪" elseif weapon == "Bat" or weapon == "Hammer" then "💢" else "💥"
+	local text = if ko then "💀 DOWN!" elseif blocked then "🛡️ -" .. tostring(damage) else icon .. " -" .. tostring(damage)
+	local color = if ko then C.Gold elseif blocked then C.Blue elseif isPlayer then C.Pink else C.Red
+	local label = UI.text(gui, text, if ko then 26 else 22, UI.Black, color, { Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center })
 	UI.new("UIStroke", { Thickness = 2, Transparency = 0.2, Parent = label })
 	local scale = UI.new("UIScale", { Scale = 0.4, Parent = label })
 	UI.tween(scale, 0.2, { Scale = 1 }, Enum.EasingStyle.Back)
@@ -420,37 +427,90 @@ end
 --------------------------------------------------------------------------------
 -- Punching
 --------------------------------------------------------------------------------
-local punchTrack
-local lastPunch = 0
-function World.Punch()
-	if os.clock() - lastPunch < 0.5 then
+local Weapons = require(Shared:WaitForChild("Weapons"))
+local tracks = {} -- [humanoid] = { [animation id] = track }
+local lastAttack = 0
+local fistSide = false
+
+-- which weapon you're holding ("Fists" if none)
+function World.Equipped()
+	local character = player.Character
+	local tool = character and character:FindFirstChildOfClass("Tool")
+	return tool and tool:GetAttribute("Weapon") or "Fists"
+end
+
+local function playAttack(humanoid, weapon)
+	local w = Weapons.Get(weapon)
+	local id = Weapons.Animations[w.Anim] or Weapons.Animations.punch
+	local animator = humanoid:FindFirstChildOfClass("Animator")
+	if not animator then
 		return
 	end
-	lastPunch = os.clock()
+	tracks[humanoid] = tracks[humanoid] or {}
+	local track = tracks[humanoid][id]
+	if not track then
+		local anim = Instance.new("Animation")
+		anim.AnimationId = id
+		local ok, t = pcall(animator.LoadAnimation, animator, anim)
+		if not ok then
+			return
+		end
+		track = t
+		track.Priority = Enum.AnimationPriority.Action
+		tracks[humanoid][id] = track
+	end
+	-- jabs alternate speed so a flurry doesn't look robotic; stabs are quick
+	local speed = if w.Anim == "punch" then (if fistSide then 1.9 else 1.6) elseif w.Anim == "stab" then 1.5 else 1.05
+	fistSide = not fistSide
+	track:Play(0.05, 1, speed)
+end
+
+-- Attack with whatever you're holding (F, click with a weapon, or the button)
+function World.Attack()
+	local weapon = World.Equipped()
+	local w = Weapons.Get(weapon)
+	if os.clock() - lastAttack < w.Cooldown then
+		return
+	end
+	lastAttack = os.clock()
 	local character = player.Character
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-	if not humanoid or humanoid.Health <= 0 then
+	if not humanoid or humanoid.Health <= 0 or player:GetAttribute("Hiding") then
 		return
 	end
-	if not punchTrack or punchTrack.Parent == nil then
-		local animator = humanoid:FindFirstChildOfClass("Animator")
-		if animator then
-			local anim = Instance.new("Animation")
-			anim.AnimationId = "rbxassetid://522635514"
-			local ok, track = pcall(animator.LoadAnimation, animator, anim)
-			punchTrack = ok and track or nil
-		end
-	end
-	if punchTrack then
-		punchTrack:Play(0.05, 1, 1.6)
-	end
-	UI.sound("punch", 0.4, 1.3)
+	playAttack(humanoid, weapon)
+	UI.sound("punch", 0.4, if weapon == "Knife" then 1.6 elseif weapon == "Fists" then 1.3 else 0.9)
 	task.spawn(function()
 		local ok, result = pcall(function()
-			return ctx.Remotes.Request:InvokeServer({ Action = "Punch" })
+			return ctx.Remotes.Request:InvokeServer({ Action = "Attack" })
 		end)
 		if ok and result and result.Hit then
-			World.Shake(if result.KO then 0.9 else 0.4, 0.25)
+			World.Shake(if result.KO then 0.9 elseif weapon == "Fists" then 0.35 else 0.55, 0.25)
+		end
+	end)
+end
+World.Punch = World.Attack
+
+local blockingNow = false
+function World.SetBlock(on)
+	if on == blockingNow then
+		return
+	end
+	blockingNow = on
+	task.spawn(function()
+		pcall(function()
+			ctx.Remotes.Request:InvokeServer({ Action = "Block", On = on })
+		end)
+	end)
+end
+
+-- clicking with a weapon in hand attacks
+local function watchTools(character)
+	character.ChildAdded:Connect(function(child)
+		if child:IsA("Tool") and child:GetAttribute("Weapon") then
+			child.Activated:Connect(World.Attack)
+			local w = Weapons.Get(child:GetAttribute("Weapon"))
+			ctx.Hud.Toast(w.Emoji, w.Name .. " equipped", "Click (or F) to attack. Hold X to block.", C.Red)
 		end
 	end)
 end
@@ -509,6 +569,10 @@ function World.Start(context)
 	end
 	Players.PlayerAdded:Connect(watchPlayer)
 
+	player.CharacterAdded:Connect(watchTools)
+	if player.Character then
+		watchTools(player.Character)
+	end
 	ProximityPromptService.PromptShown:Connect(showPrompt)
 	ProximityPromptService.PromptHidden:Connect(hidePrompt)
 	ProximityPromptService.PromptButtonHoldBegan:Connect(function(prompt)

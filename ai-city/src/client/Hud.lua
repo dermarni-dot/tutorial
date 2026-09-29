@@ -281,15 +281,37 @@ local function build()
 		ctx.Panels.Mayor.Toggle()
 	end, UI.rgb(120, 90, 30))
 	refs.MayorButton.Visible = false
-	actionButton(bar, "👊", "Punch", "F", 6, function()
-		ctx.World.Punch()
+	refs.AttackButton = actionButton(bar, "👊", "Attack", "F", 6, function()
+		ctx.World.Attack()
 	end, UI.rgb(110, 40, 48))
+	refs.AttackEmoji = refs.AttackButton:FindFirstChildOfClass("TextLabel")
+	-- block: hold the button (or X)
+	local blockButton = actionButton(bar, "🛡️", "Block", "X", 6, nil, UI.rgb(40, 60, 110))
+	blockButton.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			ctx.World.SetBlock(true)
+		end
+	end)
+	blockButton.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			ctx.World.SetBlock(false)
+		end
+	end)
 	actionButton(bar, "⚙️", "Settings", nil, 7, function()
 		ctx.Panels.Settings.Toggle()
 	end)
 	actionButton(bar, "❓", "Help", "H", 8, function()
 		ctx.Panels.Help.Toggle()
 	end)
+
+	-- health (bottom left)
+	local health = UI.panel(screen, { Name = "Health", AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 16, 1, -16), Size = UDim2.fromOffset(250, 44), Radius = 14 })
+	UI.text(health, "❤️", 22, UI.Font, C.White, { Position = UDim2.fromOffset(10, 4), Size = UDim2.fromOffset(30, 36), TextXAlignment = Enum.TextXAlignment.Center })
+	local hb, hset, hfill = UI.bar(health, C.Green, 12, { Position = UDim2.fromOffset(46, 16), Size = UDim2.new(1, -100, 0, 12) })
+	refs.HealthSet, refs.HealthFill = hset, hfill
+	refs.HealthText = UI.text(health, "100", 16, UI.Title, C.White, { Position = UDim2.new(1, -50, 0, 4), Size = UDim2.fromOffset(42, 36), TextXAlignment = Enum.TextXAlignment.Right })
+	refs.HealthPanel = health
+	refs.BlockIcon = UI.chip(screen, "🛡️ BLOCKING", C.Blue, { AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 16, 1, -66), Visible = false })
 
 	-- the news ticker (just above the action bar)
 	ticker = UI.panel(screen, { Name = "News", AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -96), Size = UDim2.fromOffset(0, 32), AutomaticSize = Enum.AutomaticSize.X, Radius = 16, Visible = false })
@@ -478,6 +500,29 @@ local function frame(dt)
 	local notoriety = player:GetAttribute("Notoriety") or 0
 	refs.Notoriety.Visible = notoriety >= 4
 	refs.Notoriety.Text = if notoriety >= 12 then "🔥🔥🔥 Most wanted in the city" elseif notoriety >= 8 then "🔥🔥 The police know your face" else "🔥 Known to the police"
+	-- health, and the weapon in your hand
+	local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+	if humanoid then
+		local hp = math.max(0, humanoid.Health)
+		local frac = hp / math.max(1, humanoid.MaxHealth)
+		if refs.LastHP ~= math.floor(hp) then
+			if refs.LastHP and hp < refs.LastHP then
+				-- hurt: flash red
+				refs.HealthPanel.BackgroundColor3 = C.Red
+				UI.tween(refs.HealthPanel, 0.5, { BackgroundColor3 = C.Panel })
+			end
+			refs.LastHP = math.floor(hp)
+			refs.HealthSet(frac, if frac > 0.6 then C.Green elseif frac > 0.3 then C.Gold else C.Red)
+			refs.HealthText.Text = tostring(math.ceil(hp))
+		end
+	end
+	refs.BlockIcon.Visible = player:GetAttribute("Blocking") == true
+	local weapon = ctx.World.Equipped and ctx.World.Equipped() or "Fists"
+	if refs.AttackEmoji and refs.ShownWeapon ~= weapon then
+		refs.ShownWeapon = weapon
+		local emojis = { Fists = "👊", Bat = "🏏", Hammer = "🔨", Knife = "🔪" }
+		refs.AttackEmoji.Text = emojis[weapon] or "👊"
+	end
 	-- jail
 	local jailUntil = player:GetAttribute("JailUntil")
 	if jailUntil then

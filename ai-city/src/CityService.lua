@@ -431,6 +431,7 @@ local function loadPlayer(player)
 		LastPolicyDay = -1,
 		Crimes = tonumber(saved.Crimes) or 0,
 		Notoriety = tonumber(saved.Notoriety) or 0,
+		Weapons = type(saved.Weapons) == "table" and saved.Weapons or {},
 		Talks = tonumber(saved.Talks) or 0,
 		Arrests = tonumber(saved.Arrests) or 0,
 		Terms = tonumber(saved.Terms) or 0,
@@ -447,7 +448,7 @@ local function savePlayer(player)
 	local data = playerData[player]
 	if data and playerStore then
 		pcall(function()
-			playerStore:SetAsync("p_" .. player.UserId, { Coins = data.Coins, Crimes = data.Crimes, Notoriety = data.Notoriety, Talks = data.Talks, Arrests = data.Arrests, Terms = data.Terms })
+			playerStore:SetAsync("p_" .. player.UserId, { Coins = data.Coins, Crimes = data.Crimes, Notoriety = data.Notoriety, Weapons = data.Weapons, Talks = data.Talks, Arrests = data.Arrests, Terms = data.Terms })
 		end)
 	end
 end

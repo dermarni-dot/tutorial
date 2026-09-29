@@ -1,4 +1,4 @@
-<roblox version="4"><Item class="Workspace" referent="RBX1"><Properties><string name="Name">Workspace</string><bool name="StreamingEnabled">true</bool><float name="StreamingMinRadius">96</float><float name="StreamingTargetRadius">640</float></Properties></Item><Item class="Lighting" referent="RBX2"><Properties><string name="Name">Lighting</string><token name="Technology">4</token><float name="ClockTime">7.5</float><float name="Brightness">2</float><bool name="GlobalShadows">true</bool></Properties></Item><Item class="ReplicatedStorage" referent="RBX3"><Properties><string name="Name">ReplicatedStorage</string></Properties><Item class="Folder" referent="RBX9"><Properties><string name="Name">Shared</string></Properties><Item class="ModuleScript" referent="RBX4"><Properties><string name="Name">Config</string><ProtectedString name="Source"><![CDATA[-- AI City :: shared settings (tweak these to tune the game)
+<roblox version="4"><Item class="Workspace" referent="RBX1"><Properties><string name="Name">Workspace</string><bool name="StreamingEnabled">true</bool><float name="StreamingMinRadius">96</float><float name="StreamingTargetRadius">640</float></Properties></Item><Item class="Lighting" referent="RBX2"><Properties><string name="Name">Lighting</string><token name="Technology">4</token><float name="ClockTime">7.5</float><float name="Brightness">2</float><bool name="GlobalShadows">true</bool></Properties></Item><Item class="ReplicatedStorage" referent="RBX3"><Properties><string name="Name">ReplicatedStorage</string></Properties><Item class="Folder" referent="RBX10"><Properties><string name="Name">Shared</string></Properties><Item class="ModuleScript" referent="RBX4"><Properties><string name="Name">Config</string><ProtectedString name="Source"><![CDATA[-- AI City :: shared settings (tweak these to tune the game)
 -- ReplicatedStorage.Shared.Config
 --
 -- Every key from the original file is still here with the same shape, so the
@@ -1008,6 +1008,11 @@ end
 L.kick = function(t, ph, k)
 	return { RH = A(-30 + k * 110), RK = A(-50 + k * 50), LS = A(-20), RS = A(30, 0, 20), Waist = A(-8) }, false
 end
+-- a punch thrown while fighting (right jab out and back)
+L.strike = function(t, ph, k)
+	local out = math.sin(k * math.pi)
+	return { RS = A(60 + out * 35, 0, -10), RE = A(100 - out * 95), LS = A(55, 0, 16), LE = A(110), Waist = A(-6, -out * 25, 0) }, false
+end
 L.flinch = function(t, ph, k)
 	return { Waist = A(18 * (1 - k)), Neck = A(20 * (1 - k)), LS = A(40 * (1 - k), 0, -20), RS = A(40 * (1 - k), 0, 20) }, false
 end
@@ -1176,6 +1181,10 @@ local function stateOf(model)
 	}
 	st.Kick = 0
 	st.Hit = 0
+	st.Swing = 0
+	model:GetAttributeChangedSignal("Swing"):Connect(function()
+		st.Swing = os.clock()
+	end)
 	model:GetAttributeChangedSignal("Kick"):Connect(function()
 		st.Kick = os.clock()
 	end)
@@ -1351,7 +1360,9 @@ local function update(model, st, t, dt, camPos, myRoot)
 	local now = os.clock()
 	local target, full
 	-- short overlays: a soccer kick, a flinch
-	if now - st.Kick < 0.35 then
+	if now - st.Swing < 0.35 then
+		target, full = L.strike(t, st.Phase, (now - st.Swing) / 0.35)
+	elseif now - st.Kick < 0.35 then
 		target, full = L.kick(t, st.Phase, (now - st.Kick) / 0.35)
 	elseif now - st.Hit < 0.35 then
 		target, full = L.flinch(t, st.Phase, (now - st.Hit) / 0.35)
@@ -1465,7 +1476,64 @@ function Poses.Step(dt)
 end
 
 return Poses
-]]></ProtectedString></Properties></Item></Item></Item><Item class="ServerScriptService" referent="RBX10"><Properties><string name="Name">ServerScriptService</string></Properties><Item class="Script" referent="RBX11"><Properties><string name="Name">Main</string><ProtectedString name="Source"><![CDATA[-- Main (Script) — ServerScriptService.Main
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX9"><Properties><string name="Name">Weapons</string><ProtectedString name="Source"><![CDATA[-- Weapons (ModuleScript) — ReplicatedStorage.Shared.Weapons
+-- Everything you can fight with. Buy weapons at the Hardware store; they
+-- show up in your hotbar (1, 2, 3...). Click (or F) to attack, hold X (or
+-- right mouse) to block.
+--
+--   Damage    how much health one hit takes (citizens have 100, police 150, SWAT 250)
+--   Range     how close you need to be (studs)
+--   Cooldown  seconds between attacks
+--   Knock     how hard a hit pushes people back
+--   Anim      the attack animation: "punch", "swing" or "stab"
+--   Severity  how serious the crime is (more stars, more notoriety)
+
+local Weapons = {}
+
+Weapons.List = {
+	Fists = {
+		Name = "Fists", Emoji = "👊", Damage = 25, Range = 6, Cooldown = 0.45, Knock = 14, Anim = "punch", Severity = 1, Price = 0,
+		Verb = "punched", Down = "knocked out",
+		Desc = "Always with you. Four good punches put someone down.",
+	},
+	Bat = {
+		Name = "Baseball Bat", Emoji = "🏏", Damage = 40, Range = 7.5, Cooldown = 0.8, Knock = 42, Anim = "swing", Severity = 2, Price = 40,
+		Verb = "hit with a bat", Down = "beaten down with a bat",
+		Desc = "Slow, heavy swings that send people flying.",
+	},
+	Hammer = {
+		Name = "Hammer", Emoji = "🔨", Damage = 45, Range = 6.5, Cooldown = 0.65, Knock = 26, Anim = "swing", Severity = 2, Price = 75,
+		Verb = "hit with a hammer", Down = "taken down with a hammer",
+		Desc = "Hits hard and fast. Smash open a register or the bank vault with it for 50% more cash.",
+		FastRob = true,
+	},
+	Knife = {
+		Name = "Knife", Emoji = "🔪", Damage = 55, Range = 5, Cooldown = 0.4, Knock = 6, Anim = "stab", Severity = 3, Price = 120,
+		Verb = "stabbed", Down = "stabbed",
+		Desc = "Quick stabs up close. Two hits and they're down. The most serious crime in the city.",
+	},
+}
+Weapons.Order = { "Bat", "Hammer", "Knife" }
+
+-- Health by who you're fighting
+Weapons.CITIZEN_HP = 100
+Weapons.POLICE_HP = 150
+Weapons.SWAT_HP = 250
+Weapons.BLOCK = 0.3 -- blocking takes this much of the damage
+
+-- Built-in Roblox R15 tool animations (they work in any game)
+Weapons.Animations = {
+	punch = "rbxassetid://522635514", -- tool slash, sped up: a jab
+	swing = "rbxassetid://522635514", -- tool slash: an overhead swing
+	stab = "rbxassetid://522638767", -- tool lunge: a stab
+}
+
+function Weapons.Get(id)
+	return Weapons.List[id] or Weapons.List.Fists
+end
+
+return Weapons
+]]></ProtectedString></Properties></Item></Item></Item><Item class="ServerScriptService" referent="RBX11"><Properties><string name="Name">ServerScriptService</string></Properties><Item class="Script" referent="RBX12"><Properties><string name="Name">Main</string><ProtectedString name="Source"><![CDATA[-- Main (Script) — ServerScriptService.Main
 -- Starts AI City: builds the map, loads the saved city (or makes new
 -- families), starts the clock and brings everyone to life.
 --
@@ -1475,7 +1543,8 @@ return Poses
 --                   speeches, coins, memories, gossip, news, saving
 --   CitizenService  the NPCs: walking, working, sitting, soccer, chatting...
 --   DialogueService talking to citizens (and them talking to each other)
---   CrimeService    punching, pickpocketing, robberies, witnesses, police, jail
+--   CrimeService    fighting, stabbing, pickpocketing, robberies, witnesses, police, jail
+--   CombatService   weapons (the Hardware store shop), blocking, waking up at the hospital
 --   PlayerService   elevators, citizen profiles, the directory
 --
 -- Other scripts can get the map with:
@@ -1521,12 +1590,14 @@ if Config.RUN_CITIZENS ~= false then
 	services.Dialogue = require(Modules:WaitForChild("DialogueService"))
 	services.Crime = require(Modules:WaitForChild("CrimeService"))
 	services.Players = require(Modules:WaitForChild("PlayerService"))
+	services.Combat = require(Modules:WaitForChild("CombatService"))
 	services.Dialogue.Start(services)
 	services.Crime.Start(services)
 	services.Players.Start(services)
+	services.Combat.Start(services)
 	task.spawn(services.Citizens.Start, services)
 end
-]]></ProtectedString></Properties></Item><Item class="Folder" referent="RBX26"><Properties><string name="Name">Modules</string></Properties><Item class="ModuleScript" referent="RBX12"><Properties><string name="Name">MapKit</string><ProtectedString name="Source"><![CDATA[-- MapKit (ModuleScript) — ServerScriptService.Modules.MapKit
+]]></ProtectedString></Properties></Item><Item class="Folder" referent="RBX28"><Properties><string name="Name">Modules</string></Properties><Item class="ModuleScript" referent="RBX13"><Properties><string name="Name">MapKit</string><ProtectedString name="Source"><![CDATA[-- MapKit (ModuleScript) — ServerScriptService.Modules.MapKit
 -- Small building blocks shared by the map modules: part helpers, colors, signs,
 -- lights, seats, and a registry of things that change between day and night.
 
@@ -1754,7 +1825,7 @@ function MapKit.awning(parent, width, depth, cf, colorA, colorB)
 end
 
 return MapKit
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX13"><Properties><string name="Name">Buildings</string><ProtectedString name="Source"><![CDATA[-- Buildings (ModuleScript) — ServerScriptService.Modules.Buildings
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX14"><Properties><string name="Name">Buildings</string><ProtectedString name="Source"><![CDATA[-- Buildings (ModuleScript) — ServerScriptService.Modules.Buildings
 -- Building shells: walls with a walk-in doorway and glass doors, framed
 -- windows (or glass curtain walls for towers), storefront windows, striped
 -- awnings, real floors on every storey with ceiling lights, an elevator for
@@ -2143,7 +2214,7 @@ function Buildings.house(parent, center, face, style, rng, garageSide)
 end
 
 return Buildings
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX14"><Properties><string name="Name">Interiors</string><ProtectedString name="Source"><![CDATA[-- Interiors (ModuleScript) — ServerScriptService.Modules.Interiors
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX15"><Properties><string name="Name">Interiors</string><ProtectedString name="Source"><![CDATA[-- Interiors (ModuleScript) — ServerScriptService.Modules.Interiors
 -- Furnishes buildings and marks the spots where people do things there:
 -- desks to type at, treadmills to run on, stoves to cook at, tables to eat
 -- at, beds to sleep in... Each spot is
@@ -2860,7 +2931,7 @@ function Interiors.furnish(b, rooms, rng, place)
 end
 
 return Interiors
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX15"><Properties><string name="Name">Streets</string><ProtectedString name="Source"><![CDATA[-- Streets (ModuleScript) — ServerScriptService.Modules.Streets
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX16"><Properties><string name="Name">Streets</string><ProtectedString name="Source"><![CDATA[-- Streets (ModuleScript) — ServerScriptService.Modules.Streets
 -- Roads with lane markings and crosswalks, raised sidewalks with curbs, street
 -- lamps that light the ground at night, traffic lights downtown, street name
 -- signs, fire hydrants, trash cans, bus stops with shelters, sidewalk trees
@@ -3159,7 +3230,7 @@ function Streets.build(parent, rng, blockKind)
 end
 
 return Streets
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX16"><Properties><string name="Name">Landscape</string><ProtectedString name="Source"><![CDATA[-- Landscape (ModuleScript) — ServerScriptService.Modules.Landscape
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX17"><Properties><string name="Name">Landscape</string><ProtectedString name="Source"><![CDATA[-- Landscape (ModuleScript) — ServerScriptService.Modules.Landscape
 -- The land around the city: terrain grass (with swaying grass blades),
 -- rolling hills with pine forests, a lake with a sandy beach and a wooden
 -- pier for fishing, and snowy mountains on the horizon.
@@ -3278,7 +3349,7 @@ function Landscape.build(parent, rng)
 end
 
 return Landscape
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX17"><Properties><string name="Name">Places</string><ProtectedString name="Source"><![CDATA[-- Places (ModuleScript) — ServerScriptService.Modules.Places
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX18"><Properties><string name="Name">Places</string><ProtectedString name="Source"><![CDATA[-- Places (ModuleScript) — ServerScriptService.Modules.Places
 -- What stands on each city block: the plaza, town hall, bank, towers, shops,
 -- three schools, parks with playgrounds and ponds, the sports field, homes...
 -- Every builder registers its places and the spots where people do things
@@ -4272,7 +4343,7 @@ Places.Builders = B
 Places.playground = playground
 
 return Places
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX18"><Properties><string name="Name">MapBuilder</string><ProtectedString name="Source"><![CDATA[-- MapBuilder (ModuleScript) — ServerScriptService.Modules.MapBuilder
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX19"><Properties><string name="Name">MapBuilder</string><ProtectedString name="Source"><![CDATA[-- MapBuilder (ModuleScript) — ServerScriptService.Modules.MapBuilder
 -- Builds AI City: a 9x9 grid of city blocks around a central plaza, with
 -- streets, a landscape of hills, a lake and mountains, and every building
 -- furnished with spots where people work, shop, eat, play and sleep.
@@ -4932,7 +5003,7 @@ function MapBuilder.RouteBetween(a, b)
 end
 MapBuilder.Kit = MapKit
 return MapBuilder
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX19"><Properties><string name="Name">Life</string><ProtectedString name="Source"><![CDATA[-- Life (ModuleScript) — ServerScriptService.Modules.Life
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX20"><Properties><string name="Name">Life</string><ProtectedString name="Source"><![CDATA[-- Life (ModuleScript) — ServerScriptService.Modules.Life
 -- Who lives in AI City: families with children, jobs, ages, couples expecting
 -- babies and births, plus where each person should be at any hour.
 -- Pure logic (no parts, no Humanoids), so it can be saved and tested on its own.
@@ -5695,7 +5766,7 @@ end
 
 Life.Jobs = jobByTitle
 return Life
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX20"><Properties><string name="Name">CitizenLook</string><ProtectedString name="Source"><![CDATA[-- CitizenLook (ModuleScript) — ServerScriptService.Modules.CitizenLook
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX21"><Properties><string name="Name">CitizenLook</string><ProtectedString name="Source"><![CDATA[-- CitizenLook (ModuleScript) — ServerScriptService.Modules.CitizenLook
 -- Gives every citizen their own look: skin tone, hairstyle and color, a
 -- uniform for their job (police cap and badge, doctor's coat, chef's hat,
 -- firefighter helmet...), something for their hobby (a beret for painters,
@@ -6786,7 +6857,7 @@ CitizenLook.Uniforms = UNIFORMS
 CitizenLook.HobbyItems = HOBBY_ITEMS
 
 return CitizenLook
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX21"><Properties><string name="Name">CityService</string><ProtectedString name="Source"><![CDATA[-- CityService (ModuleScript) — ServerScriptService.Modules.CityService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX22"><Properties><string name="Name">CityService</string><ProtectedString name="Source"><![CDATA[-- CityService (ModuleScript) — ServerScriptService.Modules.CityService
 -- The city itself: the clock and calendar, city stats (economy, safety,
 -- happiness) and the city's mood, the mayor, elections, speeches, policies,
 -- coins, what citizens remember about players (and gossip about), the news,
@@ -7219,6 +7290,7 @@ local function loadPlayer(player)
 		LastPolicyDay = -1,
 		Crimes = tonumber(saved.Crimes) or 0,
 		Notoriety = tonumber(saved.Notoriety) or 0,
+		Weapons = type(saved.Weapons) == "table" and saved.Weapons or {},
 		Talks = tonumber(saved.Talks) or 0,
 		Arrests = tonumber(saved.Arrests) or 0,
 		Terms = tonumber(saved.Terms) or 0,
@@ -7235,7 +7307,7 @@ local function savePlayer(player)
 	local data = playerData[player]
 	if data and playerStore then
 		pcall(function()
-			playerStore:SetAsync("p_" .. player.UserId, { Coins = data.Coins, Crimes = data.Crimes, Notoriety = data.Notoriety, Talks = data.Talks, Arrests = data.Arrests, Terms = data.Terms })
+			playerStore:SetAsync("p_" .. player.UserId, { Coins = data.Coins, Crimes = data.Crimes, Notoriety = data.Notoriety, Weapons = data.Weapons, Talks = data.Talks, Arrests = data.Arrests, Terms = data.Terms })
 		end)
 	end
 end
@@ -7759,7 +7831,7 @@ end
 
 CityService.Handlers = handlers
 return CityService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX22"><Properties><string name="Name">CitizenService</string><ProtectedString name="Source"><![CDATA[-- CitizenService (ModuleScript) — ServerScriptService.Modules.CitizenService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX23"><Properties><string name="Name">CitizenService</string><ProtectedString name="Source"><![CDATA[-- CitizenService (ModuleScript) — ServerScriptService.Modules.CitizenService
 -- Brings the citizens to life: spawns a dressed NPC for every person in Life,
 -- walks them along the sidewalks to where their day takes them (with their
 -- own pace, lane and little pauses), takes elevators, sits at desks, lifts
@@ -8910,7 +8982,7 @@ function CitizenService.Flee(brain, from, seconds, line)
 end
 
 -- A quick flinch when hit
-function CitizenService.Hurt(brain, from, line)
+function CitizenService.Hurt(brain, from, line, knock)
 	if brain.State == "ko" or brain.State == "hospital" then
 		return
 	end
@@ -8922,7 +8994,7 @@ function CitizenService.Hurt(brain, from, line)
 	if not brain.Root.Anchored then
 		local dir = flat(brain.Root.Position - from)
 		if dir.Magnitude > 0.1 then
-			brain.Root.AssemblyLinearVelocity = dir.Unit * 22 + Vector3.new(0, 12, 0)
+			brain.Root.AssemblyLinearVelocity = dir.Unit * (knock or 22) + Vector3.new(0, 8 + (knock or 22) * 0.2, 0)
 		end
 	end
 end
@@ -9575,7 +9647,7 @@ function CitizenService.Start(services)
 end
 
 return CitizenService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX23"><Properties><string name="Name">DialogueService</string><ProtectedString name="Source"><![CDATA[-- DialogueService (ModuleScript) — ServerScriptService.Modules.DialogueService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX24"><Properties><string name="Name">DialogueService</string><ProtectedString name="Source"><![CDATA[-- DialogueService (ModuleScript) — ServerScriptService.Modules.DialogueService
 -- Talking to citizens. Walk up to anyone and press E to talk: they stop what
 -- they're doing, turn to you and answer in their own voice. What they say
 -- depends on their personality (cheerful, shy, grumpy, chatty, bookish,
@@ -10546,7 +10618,7 @@ function DialogueService.Start(services)
 end
 
 return DialogueService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX24"><Properties><string name="Name">CrimeService</string><ProtectedString name="Source"><![CDATA[-- CrimeService (ModuleScript) — ServerScriptService.Modules.CrimeService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX25"><Properties><string name="Name">CrimeService</string><ProtectedString name="Source"><![CDATA[-- CrimeService (ModuleScript) — ServerScriptService.Modules.CrimeService
 -- Crime and punishment. Players can:
 --   👊 punch people (F / the punch button). Three or four hits knock them out:
 --      they fall down, see stars, and wake up later in a hospital bed.
@@ -10570,13 +10642,11 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local CollectionService = game:GetService("CollectionService")
 
 local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
+local Weapons = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Weapons"))
 
 local CrimeService = {}
 local S
 
-local PUNCH_DAMAGE = 34
-local PUNCH_RANGE = 6
-local PUNCH_COOLDOWN = 0.5
 local SIGHT = 70 -- how far witnesses can see
 local HEAR = 14 -- anyone this close notices, line of sight or not
 local MAX_STARS = 5
@@ -10772,71 +10842,206 @@ end
 --------------------------------------------------------------------------------
 -- Punching
 --------------------------------------------------------------------------------
-local function punch(player, data)
+local function hpFor(brain)
+	if brain.C.Job == "SWAT Officer" then
+		return Weapons.SWAT_HP
+	elseif brain.C.Temp or isPolice(brain) then
+		return Weapons.POLICE_HP
+	end
+	return Weapons.CITIZEN_HP
+end
+
+-- Damage to a player (from a citizen fighting back, or another player)
+local function hurtPlayer(fromPos, victim, damage, knock)
+	local root, character = rootOf(victim)
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if not root or not humanoid or humanoid.Health <= 0 or jailed[victim] then
+		return false
+	end
+	if S.Combat and S.Combat.IsBlocking(victim) then
+		damage *= Weapons.BLOCK
+		knock = (knock or 10) * 0.3
+	end
+	humanoid:TakeDamage(damage)
+	local dir = Vector3.new(root.Position.X - fromPos.X, 0, root.Position.Z - fromPos.Z)
+	if dir.Magnitude > 0.1 then
+		root.AssemblyLinearVelocity = dir.Unit * (knock or 10) + Vector3.new(0, 6, 0)
+	end
+	S.City.SendNear(root.Position, 120, { Type = "Hit", Position = root.Position + Vector3.new(0, 2, 0), Damage = math.floor(damage + 0.5), Player = true, Blocked = S.Combat and S.Combat.IsBlocking(victim) })
+	return humanoid.Health <= 0
+end
+
+--------------------------------------------------------------------------------
+-- Citizens who fight back
+--------------------------------------------------------------------------------
+local fighters = {} -- [brain] = { Player, Until, Next }
+local FIGHT_HITS = { "Take that!", "Had enough?!", "You asked for it!", "Come on then!", "Hyah!" }
+
+local function stopFight(brain)
+	fighters[brain] = nil
+	if brain.Model.Parent then
+		brain.Model:SetAttribute("Fighting", nil)
+		if brain.State == "police" and not brain.Model:GetAttribute("Chasing") then
+			S.Citizens.Control(brain, false)
+		end
+	end
+end
+
+local function startFight(brain, player)
+	if brain.State == "ko" or brain.State == "hospital" or brain.Model:GetAttribute("Chasing") then
+		return
+	end
+	local f = fighters[brain]
+	if f then
+		f.Until = os.clock() + 14
+		return
+	end
+	S.Citizens.Control(brain, true)
+	brain.Model:SetAttribute("Fighting", player.UserId)
+	fighters[brain] = { Player = player, Until = os.clock() + 14, Next = os.clock() + 0.7 }
+	S.Citizens.Say(brain, FIGHT_LINES[math.random(1, #FIGHT_LINES)], "angry", 2)
+end
+
+local function fightTick()
+	local now = os.clock()
+	for brain, f in pairs(fighters) do
+		local player = f.Player
+		local root, character = rootOf(player)
+		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+		local d = root and (root.Position - brain.Root.Position).Magnitude or math.huge
+		if not brain.Model.Parent or brain.State == "ko" or brain.State == "hospital" or not player.Parent or not humanoid or humanoid.Health <= 0 or jailed[player] or hiding[player] or now > f.Until or d > 60 then
+			if brain.Model.Parent and humanoid and humanoid.Health <= 0 then
+				S.Citizens.Say(brain, "And STAY down!", "angry", 2)
+			end
+			stopFight(brain)
+		elseif brain.HP and brain.HP < 30 and not brain.C.Temp then
+			-- losing: run for it
+			stopFight(brain)
+			S.Citizens.Flee(brain, root.Position, 10, "Okay, okay! I give up!")
+		else
+			S.Citizens.SetGait(brain, if d > 5 then 16 else 8, "run")
+			brain.Humanoid:MoveTo(root.Position)
+			if d < 4.8 and now >= f.Next then
+				f.Next = now + math.random(9, 13) / 10
+				brain.Model:SetAttribute("Swing", now)
+				local strong = brain.C.Personality == "sporty" or brain.C.Job == "Fitness Coach" or brain.C.Job == "Coach"
+				hurtPlayer(brain.Root.Position, player, math.random(7, 11) + (if strong then 4 else 0), 18)
+				if math.random() < 0.25 then
+					S.Citizens.Say(brain, FIGHT_HITS[math.random(1, #FIGHT_HITS)], "angry", 1.4)
+				end
+			end
+		end
+	end
+end
+
+--------------------------------------------------------------------------------
+-- Attacking: fists or a weapon, at a citizen or another player
+--------------------------------------------------------------------------------
+local lastHitOn = {} -- ["attacker:victim"] = time the last hit was reported
+
+local function attack(player, data)
 	local root, character = rootOf(player)
-	if not root or jailed[player] or hiding[player] then
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if not root or not humanoid or humanoid.Health <= 0 or jailed[player] or hiding[player] then
 		return { Ok = false }
 	end
+	local id = if S.Combat then S.Combat.Equipped(player) else "Fists"
+	local w = Weapons.Get(id)
 	local now = os.clock()
-	if (lastPunch[player] or 0) + PUNCH_COOLDOWN > now then
+	if (lastPunch[player] or 0) + w.Cooldown > now then
 		return { Ok = false }
 	end
 	lastPunch[player] = now
-	-- who's in front of us?
-	local best, bestScore = nil, math.huge
+	-- who's in front of us? (citizens and other players)
+	local best, bestScore, bestPlayer = nil, math.huge, nil
 	local look = root.CFrame.LookVector
-	for _, brain in ipairs(S.Citizens.Nearby(root.Position, PUNCH_RANGE + 2)) do
-		local d = brain.Root.Position - root.Position
+	local function consider(pos, target, isPlayer)
+		local d = pos - root.Position
 		local flatD = Vector3.new(d.X, 0, d.Z)
-		if flatD.Magnitude <= PUNCH_RANGE and (flatD.Magnitude < 2 or look:Dot(flatD.Unit) > 0.2) then
+		if flatD.Magnitude <= w.Range and math.abs(d.Y) < 6 and (flatD.Magnitude < 2 or look:Dot(flatD.Unit) > 0.2) then
 			local score = flatD.Magnitude - look:Dot(flatD.Unit) * 2
-			if data.Target == brain.Model then
-				score -= 5
-			end
 			if score < bestScore then
-				best, bestScore = brain, score
+				best, bestScore, bestPlayer = target, score, isPlayer
 			end
+		end
+	end
+	for _, brain in ipairs(S.Citizens.Nearby(root.Position, w.Range + 3)) do
+		if brain.State ~= "ko" and brain.State ~= "hospital" then
+			consider(brain.Root.Position, brain, false)
+		end
+	end
+	for _, other in ipairs(Players:GetPlayers()) do
+		local oroot, och = rootOf(other)
+		local ohum = och and och:FindFirstChildOfClass("Humanoid")
+		if other ~= player and oroot and ohum and ohum.Health > 0 and not jailed[other] and not hiding[other] then
+			consider(oroot.Position, other, true)
 		end
 	end
 	if not best then
-		return { Ok = true, Hit = false }
+		return { Ok = true, Hit = false, Weapon = id }
 	end
+
+	-- another player
+	if bestPlayer then
+		local victim = best
+		local vroot = rootOf(victim)
+		local down = hurtPlayer(root.Position, victim, w.Damage * 0.6, w.Knock)
+		S.City.Toast(victim, "⚠️", player.DisplayName .. " " .. w.Verb .. " you!", "Fight back (F), block (hold X) or run!", Color3.fromRGB(230, 60, 60))
+		local key = player.UserId .. ":" .. victim.UserId
+		if down then
+			S.City.News("💀 " .. victim.DisplayName .. " was " .. w.Down .. " by " .. player.DisplayName .. " on " .. streetNear(vroot.Position) .. "!", "Crime")
+			report(player, vroot.Position, nil, w.Severity + 2, w.Down:gsub(" with a %w+$", "") .. " " .. victim.DisplayName, w.Down .. " " .. victim.DisplayName, w.Severity + 1)
+		elseif now - (lastHitOn[key] or 0) > 6 then
+			lastHitOn[key] = now
+			report(player, vroot.Position, nil, w.Severity, "attack " .. victim.DisplayName, "attacked " .. victim.DisplayName, 1)
+		end
+		return { Ok = true, Hit = true, KO = down, Name = victim.DisplayName, Weapon = id }
+	end
+
+	-- a citizen
 	local brain = best
 	if not canBeHurt(brain) then
-		if brain.State ~= "ko" and brain.State ~= "hospital" then
-			S.City.Toast(player, "🚫", "Not a chance", "You can't hurt kids.", Color3.fromRGB(200, 90, 90))
-		end
-		return { Ok = true, Hit = false }
+		S.City.Toast(player, "🚫", "Not a chance", "You can't hurt kids.", Color3.fromRGB(200, 90, 90))
+		return { Ok = true, Hit = false, Weapon = id }
 	end
-	brain.HP = (brain.HP or (if brain.C.Temp or isPolice(brain) then 150 else 100)) - PUNCH_DAMAGE
+	brain.HP = (brain.HP or hpFor(brain)) - w.Damage
 	brain.LastHit = now
 	local c = brain.C
-	S.City.SendNear(brain.Root.Position, 120, { Type = "Hit", Position = brain.Root.Position + Vector3.new(0, 2, 0), Damage = PUNCH_DAMAGE, KO = brain.HP <= 0 })
+	S.City.SendNear(brain.Root.Position, 120, { Type = "Hit", Position = brain.Root.Position + Vector3.new(0, 2, 0), Damage = w.Damage, KO = brain.HP <= 0, Weapon = id })
 	if brain.HP <= 0 then
 		brain.HP = nil
+		stopFight(brain)
 		local name = c.Name
 		S.Citizens.KnockOut(brain, player.DisplayName)
+		local downText = w.Down
 		if not c.Temp then
-			S.City.Remember(c, player, "knocked me out!", -60, "knocked out " .. c.First)
-			S.City.News("💫 " .. name .. " was knocked out on " .. streetNear(brain.Root.Position) .. "! Paramedics took them to the hospital.", "Crime")
+			S.City.Remember(c, player, (if id == "Fists" then "knocked me out!" else w.Down .. " me!"), -40 - w.Severity * 15, w.Down .. " " .. c.First)
+			S.City.News("💀 " .. name .. " was " .. downText .. " on " .. streetNear(brain.Root.Position) .. "! Paramedics rushed them to the hospital.", "Crime")
 		end
-		report(player, brain.Root.Position, brain, 3, "knock out " .. c.First, "knocked out " .. c.First .. " in the street", if isPolice(brain) then 2 else 1)
-		return { Ok = true, Hit = true, KO = true, Name = c.First }
+		local pd = S.City.Data(player)
+		if pd then
+			pd.Notoriety = (pd.Notoriety or 0) + (w.Severity - 1) * 2 -- weapons make the police remember you faster
+		end
+		report(player, brain.Root.Position, brain, w.Severity + 2, (if id == "Fists" then "knock out " else "take down ") .. c.First, w.Down .. " " .. c.First .. " in the street", (if isPolice(brain) then 2 else 1) + (if w.Severity >= 3 then 1 else 0))
+		return { Ok = true, Hit = true, KO = true, Name = c.First, Weapon = id }
 	end
 	-- a hit: flinch, then fight back or run
 	local line = VICTIM_LINES[math.random(1, #VICTIM_LINES)]
 	if not c.Temp then
-		S.City.Remember(c, player, "punched me", -22, "punched " .. c.First)
+		S.City.Remember(c, player, w.Verb .. " me", -15 - w.Severity * 8, w.Verb .. " " .. c.First)
 	end
-	S.Citizens.Hurt(brain, root.Position, line)
-	local brave = isPolice(brain) or c.Temp or c.Personality == "grumpy" or c.Personality == "sporty"
-	if brave then
-		-- shove back
-		root.AssemblyLinearVelocity = (root.Position - brain.Root.Position).Unit * 40 + Vector3.new(0, 15, 0)
-		S.Citizens.React(brain, "boo", FIGHT_LINES[math.random(1, #FIGHT_LINES)], "angry", 2, root.Position)
-		if isPolice(brain) or c.Temp then
-			CrimeService.AddStars(player, 1, "You attacked a police officer!")
+	S.Citizens.Hurt(brain, root.Position, line, w.Knock)
+	local armed = w.Severity >= 3
+	local brave = isPolice(brain) or c.Temp or ((c.Personality == "grumpy" or c.Personality == "sporty") and (not armed or math.random() < 0.3)) or (not armed and math.random() < 0.15)
+	if isPolice(brain) or c.Temp then
+		CrimeService.AddStars(player, 1, "You attacked a police officer!")
+		if not brain.Model:GetAttribute("Chasing") then
+			startFight(brain, player)
 		end
+	elseif brave then
+		task.delay(0.3, function()
+			startFight(brain, player)
+		end)
 	else
 		task.delay(0.4, function()
 			S.Citizens.Flee(brain, root.Position, 9, HELP_LINES[math.random(1, #HELP_LINES)])
@@ -10844,10 +11049,10 @@ local function punch(player, data)
 	end
 	if (brain.Hits or 0) == 0 or now - (brain.ReportedAt or 0) > 6 then
 		brain.ReportedAt = now
-		report(player, brain.Root.Position, brain, 1, "attack " .. c.First, "attacked " .. c.First .. " in broad daylight", 1)
+		report(player, brain.Root.Position, brain, w.Severity, (if armed then "stab " else "attack ") .. c.First, w.Verb .. " " .. c.First .. " in broad daylight", if armed then 2 else 1)
 	end
 	brain.Hits = (brain.Hits or 0) + 1
-	return { Ok = true, Hit = true, Name = c.First, HP = brain.HP }
+	return { Ok = true, Hit = true, Name = c.First, HP = brain.HP, Weapon = id }
 end
 
 --------------------------------------------------------------------------------
@@ -10917,6 +11122,9 @@ local function rob(player, part, isVault)
 	local placeId = part:GetAttribute("PlaceId") or "the store"
 	local label = Config.PlaceById[placeId] and Config.PlaceById[placeId].label or placeId
 	local amount = if isVault then math.random(150, 320) else math.random(35, 90)
+	if S.Combat and Weapons.Get(S.Combat.Equipped(player)).FastRob then
+		amount = math.floor(amount * 1.5) -- smashed open with the hammer
+	end
 	S.City.AddCoins(player, amount, "💰 Robbed the " .. label)
 	S.City.News("🚨 The " .. label .. " was robbed" .. (if isVault then "! The vault is empty!" else "!"), "Crime")
 	local seen = report(player, part.Position, nil, if isVault then 5 else 3, "rob the " .. label, "robbed the " .. label, if isVault then 3 else 2)
@@ -11121,6 +11329,9 @@ local function arrest(player)
 	if root then
 		root.CFrame = CFrame.new(cell + Vector3.new(0, 3.5, 0))
 		root.AssemblyLinearVelocity = Vector3.zero
+	end
+	if S.Combat then
+		S.Combat.Confiscate(player)
 	end
 	S.City.Send(player, { Type = "Busted", Seconds = seconds, Fine = fine, Stars = stars })
 	S.City.News("🚔 " .. player.DisplayName .. " was arrested and thrown in jail!", "Crime")
@@ -11481,7 +11692,8 @@ end
 
 function CrimeService.Start(services)
 	S = services
-	S.City.Handle("Punch", punch)
+	S.City.Handle("Punch", attack)
+	S.City.Handle("Attack", attack)
 	S.City.Handle("Unhide", function(player)
 		CrimeService.Unhide(player)
 		return { Ok = true }
@@ -11536,6 +11748,9 @@ function CrimeService.Start(services)
 		while true do
 			local dt = task.wait(0.2)
 			local ok, err = pcall(chaseTick, dt)
+			if ok then
+				ok, err = pcall(fightTick)
+			end
 			if not ok then
 				warn("[CrimeService] " .. tostring(err))
 			end
@@ -11569,12 +11784,31 @@ function CrimeService.Start(services)
 	end)
 end
 
+-- Knocked out while wanted: the chase is over
+function CrimeService.ClearWanted(player)
+	CrimeService.Unhide(player)
+	local w = wanted[player]
+	if w and w.Stars > 0 then
+		freeChasers(w)
+		setStars(player, 0)
+		w.LastKnown, w.Mode, w.SawHide = nil, nil, nil
+	end
+	for brain, f in pairs(fighters) do
+		if f.Player == player then
+			stopFight(brain)
+		end
+	end
+	for _, attr in ipairs({ "PoliceState", "PoliceNear", "PoliceLevel", "PoliceCount", "Helicopter", "WantedSeen" }) do
+		player:SetAttribute(attr, nil)
+	end
+end
+
 function CrimeService.IsJailed(player)
 	return jailed[player] ~= nil
 end
 
 return CrimeService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX25"><Properties><string name="Name">PlayerService</string><ProtectedString name="Source"><![CDATA[-- PlayerService (ModuleScript) — ServerScriptService.Modules.PlayerService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX26"><Properties><string name="Name">PlayerService</string><ProtectedString name="Source"><![CDATA[-- PlayerService (ModuleScript) — ServerScriptService.Modules.PlayerService
 -- Things players do that aren't crimes or conversations:
 --   • elevators and stairs (press E at the doors, pick a floor)
 --   • citizen profile cards (click anyone), the People directory, finding someone
@@ -11825,7 +12059,285 @@ function PlayerService.Start(services)
 end
 
 return PlayerService
-]]></ProtectedString></Properties></Item></Item></Item><Item class="StarterPlayer" referent="RBX27"><Properties><string name="Name">StarterPlayer</string></Properties><Item class="StarterPlayerScripts" referent="RBX28"><Properties><string name="Name">StarterPlayerScripts</string></Properties><Item class="LocalScript" referent="RBX33"><Properties><string name="Name">CityClient</string><ProtectedString name="Source"><![CDATA[-- CityClient (LocalScript) — StarterPlayer.StarterPlayerScripts.CityClient
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX27"><Properties><string name="Name">CombatService</string><ProtectedString name="Source"><![CDATA[-- CombatService (ModuleScript) — ServerScriptService.Modules.CombatService
+-- Weapons and fighting for players:
+--   • the weapons shop at the Hardware store (a bat, a hammer, a knife)
+--   • your weapons as tools in your hotbar (saved between visits)
+--   • blocking (hold X / right mouse: you take a third of the damage)
+--   • getting knocked out: you wake up at the hospital (wanted stars cleared,
+--     a hospital bill), and the police confiscate your weapons when they arrest you
+-- The attacks themselves (who you hit, witnesses, stars) are in CrimeService.
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Weapons = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Weapons"))
+
+local CombatService = {}
+local S
+local blocking = {} -- [player] = true while blocking
+
+local function rgb(r, g, b)
+	return Color3.fromRGB(r, g, b)
+end
+
+--------------------------------------------------------------------------------
+-- The weapons as Roblox tools (held in the right hand, blade/barrel pointing out)
+--------------------------------------------------------------------------------
+local function piece(tool, handle, name, size, offset, color, material, shape)
+	local p = Instance.new("Part")
+	p.Name = name
+	p.Size = size
+	p.Color = color
+	p.Material = material or Enum.Material.SmoothPlastic
+	p.CanCollide = false
+	p.CanQuery = false
+	p.CanTouch = false
+	p.Massless = true
+	if shape then
+		p.Shape = shape
+	end
+	p.CFrame = handle.CFrame * offset
+	local weld = Instance.new("WeldConstraint")
+	weld.Part0, weld.Part1 = handle, p
+	weld.Parent = p
+	p.Parent = tool
+	return p
+end
+
+local BUILD = {}
+BUILD.Bat = function(tool, handle)
+	handle.Size = Vector3.new(0.3, 1.6, 0.3)
+	handle.Color = rgb(60, 40, 30)
+	piece(tool, handle, "Barrel", Vector3.new(0.5, 2.2, 0.5), CFrame.new(0, 1.8, 0), rgb(196, 150, 96), Enum.Material.Wood)
+	piece(tool, handle, "Tip", Vector3.new(0.55, 0.55, 0.55), CFrame.new(0, 2.9, 0), rgb(196, 150, 96), Enum.Material.Wood, Enum.PartType.Ball)
+	piece(tool, handle, "Knob", Vector3.new(0.45, 0.2, 0.45), CFrame.new(0, -0.8, 0), rgb(40, 30, 24), Enum.Material.Wood)
+	tool.Grip = CFrame.new(0, -0.3, 0)
+end
+BUILD.Hammer = function(tool, handle)
+	handle.Size = Vector3.new(0.28, 2, 0.28)
+	handle.Color = rgb(150, 105, 60)
+	handle.Material = Enum.Material.Wood
+	piece(tool, handle, "Head", Vector3.new(0.5, 0.5, 1.4), CFrame.new(0, 1.1, 0.1), rgb(90, 94, 100), Enum.Material.Metal)
+	piece(tool, handle, "Claw", Vector3.new(0.3, 0.3, 0.6), CFrame.new(0, 1.2, -0.75) * CFrame.Angles(math.rad(25), 0, 0), rgb(90, 94, 100), Enum.Material.Metal)
+	piece(tool, handle, "Grip", Vector3.new(0.34, 0.7, 0.34), CFrame.new(0, -0.6, 0), rgb(200, 40, 40), Enum.Material.Rubber)
+	tool.Grip = CFrame.new(0, -0.5, 0)
+end
+BUILD.Knife = function(tool, handle)
+	handle.Size = Vector3.new(0.22, 0.7, 0.3)
+	handle.Color = rgb(30, 30, 34)
+	handle.Material = Enum.Material.Rubber
+	piece(tool, handle, "Guard", Vector3.new(0.3, 0.08, 0.5), CFrame.new(0, 0.38, 0), rgb(150, 150, 156), Enum.Material.Metal)
+	piece(tool, handle, "Blade", Vector3.new(0.06, 1.1, 0.28), CFrame.new(0, 0.95, 0.02), rgb(215, 220, 228), Enum.Material.Metal)
+	piece(tool, handle, "BladeTip", Vector3.new(0.06, 0.25, 0.16), CFrame.new(0, 1.55, 0.07) * CFrame.Angles(math.rad(-25), 0, 0), rgb(215, 220, 228), Enum.Material.Metal)
+	tool.Grip = CFrame.new(0, -0.1, 0)
+end
+
+function CombatService.MakeTool(id)
+	local info = Weapons.List[id]
+	if not info or not BUILD[id] then
+		return nil
+	end
+	local tool = Instance.new("Tool")
+	tool.Name = info.Name
+	tool.ToolTip = info.Emoji .. " " .. info.Name
+	tool.CanBeDropped = false
+	tool.RequiresHandle = true
+	tool:SetAttribute("Weapon", id)
+	local handle = Instance.new("Part")
+	handle.Name = "Handle"
+	handle.CanCollide = false
+	handle.Massless = true
+	handle.CFrame = CFrame.new()
+	handle.Parent = tool
+	BUILD[id](tool, handle)
+	return tool
+end
+
+-- Which weapon a player is holding ("Fists" if none)
+function CombatService.Equipped(player)
+	local character = player.Character
+	local tool = character and character:FindFirstChildOfClass("Tool")
+	local id = tool and tool:GetAttribute("Weapon")
+	return if id and Weapons.List[id] then id else "Fists"
+end
+
+local function giveTools(player)
+	local pd = S.City.Data(player)
+	local backpack = player:FindFirstChildOfClass("Backpack")
+	if not pd or not backpack then
+		return
+	end
+	for _, id in ipairs(Weapons.Order) do
+		if pd.Weapons and pd.Weapons[id] then
+			local name = Weapons.List[id].Name
+			local has = backpack:FindFirstChild(name) or (player.Character and player.Character:FindFirstChild(name))
+			if not has then
+				local tool = CombatService.MakeTool(id)
+				if tool then
+					tool.Parent = backpack
+				end
+			end
+		end
+	end
+end
+
+-- The police take your weapons when you're arrested
+function CombatService.Confiscate(player)
+	local pd = S.City.Data(player)
+	if not pd or not pd.Weapons or next(pd.Weapons) == nil then
+		return
+	end
+	local names = {}
+	for id in pairs(pd.Weapons) do
+		table.insert(names, Weapons.List[id] and (Weapons.List[id].Emoji .. " " .. Weapons.List[id].Name) or id)
+	end
+	pd.Weapons = {}
+	for _, container in ipairs({ player:FindFirstChildOfClass("Backpack"), player.Character }) do
+		if container then
+			for _, tool in ipairs(container:GetChildren()) do
+				if tool:IsA("Tool") and tool:GetAttribute("Weapon") then
+					tool:Destroy()
+				end
+			end
+		end
+	end
+	S.City.Toast(player, "🚔", "Weapons confiscated", "The police took your " .. table.concat(names, ", ") .. ".", rgb(230, 60, 60))
+end
+
+function CombatService.IsBlocking(player)
+	return blocking[player] == true
+end
+
+--------------------------------------------------------------------------------
+-- The shop
+--------------------------------------------------------------------------------
+local function shopData(player)
+	local pd = S.City.Data(player)
+	local items = {}
+	for _, id in ipairs(Weapons.Order) do
+		local w = Weapons.List[id]
+		table.insert(items, { Id = id, Name = w.Name, Emoji = w.Emoji, Price = w.Price, Damage = w.Damage, Range = w.Range, Cooldown = w.Cooldown, Desc = w.Desc, Owned = pd and pd.Weapons and pd.Weapons[id] == true })
+	end
+	return items
+end
+
+local function buy(player, data)
+	local pd = S.City.Data(player)
+	local w = Weapons.List[data.Id or ""]
+	if not pd or not w or w.Price <= 0 then
+		return { Ok = false, Error = "That's not for sale." }
+	end
+	pd.Weapons = pd.Weapons or {}
+	if pd.Weapons[data.Id] then
+		return { Ok = false, Error = "You already have one." }
+	end
+	if S.Crime and S.Crime.IsJailed(player) then
+		return { Ok = false, Error = "Not from jail!" }
+	end
+	if not S.City.Spend(player, w.Price, w.Emoji .. " Bought a " .. w.Name) then
+		return { Ok = false, Error = "You need " .. w.Price .. " coins." }
+	end
+	pd.Weapons[data.Id] = true
+	giveTools(player)
+	return { Ok = true, Text = "You bought a " .. w.Name .. "! It's in your hotbar.", Items = shopData(player) }
+end
+
+local function addShop()
+	local store = S.Map.Places.Hardware
+	if not store then
+		return
+	end
+	local counter = Instance.new("Part")
+	counter.Name = "WeaponsShop"
+	counter.Anchored = true
+	counter.CanCollide = false
+	counter.CanQuery = false
+	counter.Transparency = 1
+	counter.Size = Vector3.new(2, 2, 2)
+	counter.CFrame = CFrame.new((store.Inside or store.Door) + Vector3.new(0, 3, 0))
+	counter.Parent = store.Model or workspace
+	local prompt = Instance.new("ProximityPrompt")
+	prompt.Name = "ShopPrompt"
+	prompt.ActionText = "Buy weapons"
+	prompt.ObjectText = "🔨 Hardware store"
+	prompt.KeyboardKeyCode = Enum.KeyCode.E
+	prompt.MaxActivationDistance = 12
+	prompt.RequiresLineOfSight = false
+	prompt.Style = Enum.ProximityPromptStyle.Custom
+	prompt:SetAttribute("Kind", "Shop")
+	prompt.Parent = counter
+	prompt.Triggered:Connect(function(player)
+		S.City.Send(player, { Type = "Shop", Items = shopData(player), Coins = S.City.Coins(player) })
+	end)
+end
+
+--------------------------------------------------------------------------------
+-- Health: getting knocked out and waking up at the hospital
+--------------------------------------------------------------------------------
+local function setupCharacter(player, character)
+	local humanoid = character:WaitForChild("Humanoid", 10)
+	if not humanoid then
+		return
+	end
+	blocking[player] = nil
+	player:SetAttribute("Blocking", nil)
+	-- woke up after being knocked out: in the hospital
+	if player:GetAttribute("WakeAtHospital") then
+		player:SetAttribute("WakeAtHospital", nil)
+		local hospital = S.Map.Places.Hospital
+		local root = character:WaitForChild("HumanoidRootPart", 10)
+		if hospital and root then
+			task.wait(0.2)
+			root.CFrame = CFrame.new((hospital.Inside or hospital.Door) + Vector3.new(0, 3.5, 0))
+		end
+		S.City.Toast(player, "🏥", "You woke up in the hospital", "The doctors patched you up.", rgb(90, 180, 220))
+	end
+	task.defer(giveTools, player)
+	humanoid.Died:Connect(function()
+		player:SetAttribute("WakeAtHospital", true)
+		local bill = math.min(S.City.Coins(player), 30)
+		if bill > 0 then
+			S.City.AddCoins(player, -bill, "🏥 Hospital bill")
+		end
+		if S.Crime then
+			S.Crime.ClearWanted(player)
+		end
+		S.City.Send(player, { Type = "Down", Bill = bill })
+	end)
+end
+
+function CombatService.Start(services)
+	S = services
+	S.City.Handle("BuyWeapon", buy)
+	S.City.Handle("Shop", function(player)
+		return { Ok = true, Items = shopData(player), Coins = S.City.Coins(player) }
+	end)
+	S.City.Handle("Block", function(player, data)
+		blocking[player] = data.On == true or nil
+		player:SetAttribute("Blocking", blocking[player])
+		return { Ok = true }
+	end)
+	addShop()
+	local function onPlayer(player)
+		player.CharacterAdded:Connect(function(character)
+			setupCharacter(player, character)
+		end)
+		if player.Character then
+			task.spawn(setupCharacter, player, player.Character)
+		end
+	end
+	Players.PlayerAdded:Connect(onPlayer)
+	for _, player in ipairs(Players:GetPlayers()) do
+		task.spawn(onPlayer, player)
+	end
+	Players.PlayerRemoving:Connect(function(player)
+		blocking[player] = nil
+	end)
+end
+
+return CombatService
+]]></ProtectedString></Properties></Item></Item></Item><Item class="StarterPlayer" referent="RBX29"><Properties><string name="Name">StarterPlayer</string></Properties><Item class="StarterPlayerScripts" referent="RBX30"><Properties><string name="Name">StarterPlayerScripts</string></Properties><Item class="LocalScript" referent="RBX35"><Properties><string name="Name">CityClient</string><ProtectedString name="Source"><![CDATA[-- CityClient (LocalScript) — StarterPlayer.StarterPlayerScripts.CityClient
 -- AI City on your screen. Starts the HUD, the windows, the world effects and
 -- the citizens' body language, and routes everything the server sends.
 --
@@ -11912,7 +12424,13 @@ handlers.Waypoint = function(d)
 	World.Waypoint(d.Position, d.Label, d.Emoji, d.Model)
 end
 handlers.Hit = function(d)
-	World.Hit(d.Position, d.Damage, d.KO)
+	World.Hit(d.Position, d.Damage, d.KO, d.Player, d.Blocked, d.Weapon)
+end
+handlers.Shop = function(d)
+	Panels.OpenShop(d)
+end
+handlers.Down = function(d)
+	Panels.Down(d)
 end
 handlers.Alarm = function(d)
 	World.Alarm(d.Position, d.Seconds)
@@ -11956,6 +12474,11 @@ ctx.Remotes.Event.OnClientEvent:Connect(function(data)
 	end
 end)
 
+-- our own health bar replaces Roblox's
+pcall(function()
+	game:GetService("StarterGui"):SetCoreGuiEnabled(Enum.CoreGuiType.Health, false)
+end)
+
 --------------------------------------------------------------------------------
 -- Keys
 --------------------------------------------------------------------------------
@@ -11989,7 +12512,9 @@ UserInputService.InputBegan:Connect(function(input, processed)
 	elseif key == Enum.KeyCode.H then
 		Panels.Help.Toggle()
 	elseif key == Enum.KeyCode.F then
-		World.Punch()
+		World.Attack()
+	elseif key == Enum.KeyCode.X then
+		World.SetBlock(true)
 	elseif key == Enum.KeyCode.Escape or key == Enum.KeyCode.Backspace then
 		if Panels.InDialogue() then
 			Panels.EndDialogue(true)
@@ -11998,7 +12523,12 @@ UserInputService.InputBegan:Connect(function(input, processed)
 		end
 	end
 end)
-]]></ProtectedString></Properties><Item class="ModuleScript" referent="RBX29"><Properties><string name="Name">UI</string><ProtectedString name="Source"><![CDATA[-- UI (ModuleScript) — StarterPlayerScripts.CityClient.UI
+UserInputService.InputEnded:Connect(function(input)
+	if input.KeyCode == Enum.KeyCode.X then
+		World.SetBlock(false)
+	end
+end)
+]]></ProtectedString></Properties><Item class="ModuleScript" referent="RBX31"><Properties><string name="Name">UI</string><ProtectedString name="Source"><![CDATA[-- UI (ModuleScript) — StarterPlayerScripts.CityClient.UI
 -- AI City's look: colors, fonts, and helpers for building the interface
 -- (rounded panels, buttons that bounce, windows that pop open, bars...).
 
@@ -12429,7 +12959,7 @@ function UI.commas(n)
 end
 
 return UI
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX30"><Properties><string name="Name">Hud</string><ProtectedString name="Source"><![CDATA[-- Hud (ModuleScript) — StarterPlayerScripts.CityClient.Hud
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX32"><Properties><string name="Name">Hud</string><ProtectedString name="Source"><![CDATA[-- Hud (ModuleScript) — StarterPlayerScripts.CityClient.Hud
 -- The always-on screen: the clock and calendar, the city's mood and stats,
 -- a rotating minimap, coins, wanted stars, the mayor and the next election,
 -- the action bar, notifications and the news ticker.
@@ -12712,15 +13242,37 @@ local function build()
 		ctx.Panels.Mayor.Toggle()
 	end, UI.rgb(120, 90, 30))
 	refs.MayorButton.Visible = false
-	actionButton(bar, "👊", "Punch", "F", 6, function()
-		ctx.World.Punch()
+	refs.AttackButton = actionButton(bar, "👊", "Attack", "F", 6, function()
+		ctx.World.Attack()
 	end, UI.rgb(110, 40, 48))
+	refs.AttackEmoji = refs.AttackButton:FindFirstChildOfClass("TextLabel")
+	-- block: hold the button (or X)
+	local blockButton = actionButton(bar, "🛡️", "Block", "X", 6, nil, UI.rgb(40, 60, 110))
+	blockButton.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			ctx.World.SetBlock(true)
+		end
+	end)
+	blockButton.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			ctx.World.SetBlock(false)
+		end
+	end)
 	actionButton(bar, "⚙️", "Settings", nil, 7, function()
 		ctx.Panels.Settings.Toggle()
 	end)
 	actionButton(bar, "❓", "Help", "H", 8, function()
 		ctx.Panels.Help.Toggle()
 	end)
+
+	-- health (bottom left)
+	local health = UI.panel(screen, { Name = "Health", AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 16, 1, -16), Size = UDim2.fromOffset(250, 44), Radius = 14 })
+	UI.text(health, "❤️", 22, UI.Font, C.White, { Position = UDim2.fromOffset(10, 4), Size = UDim2.fromOffset(30, 36), TextXAlignment = Enum.TextXAlignment.Center })
+	local hb, hset, hfill = UI.bar(health, C.Green, 12, { Position = UDim2.fromOffset(46, 16), Size = UDim2.new(1, -100, 0, 12) })
+	refs.HealthSet, refs.HealthFill = hset, hfill
+	refs.HealthText = UI.text(health, "100", 16, UI.Title, C.White, { Position = UDim2.new(1, -50, 0, 4), Size = UDim2.fromOffset(42, 36), TextXAlignment = Enum.TextXAlignment.Right })
+	refs.HealthPanel = health
+	refs.BlockIcon = UI.chip(screen, "🛡️ BLOCKING", C.Blue, { AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 16, 1, -66), Visible = false })
 
 	-- the news ticker (just above the action bar)
 	ticker = UI.panel(screen, { Name = "News", AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -96), Size = UDim2.fromOffset(0, 32), AutomaticSize = Enum.AutomaticSize.X, Radius = 16, Visible = false })
@@ -12909,6 +13461,29 @@ local function frame(dt)
 	local notoriety = player:GetAttribute("Notoriety") or 0
 	refs.Notoriety.Visible = notoriety >= 4
 	refs.Notoriety.Text = if notoriety >= 12 then "🔥🔥🔥 Most wanted in the city" elseif notoriety >= 8 then "🔥🔥 The police know your face" else "🔥 Known to the police"
+	-- health, and the weapon in your hand
+	local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+	if humanoid then
+		local hp = math.max(0, humanoid.Health)
+		local frac = hp / math.max(1, humanoid.MaxHealth)
+		if refs.LastHP ~= math.floor(hp) then
+			if refs.LastHP and hp < refs.LastHP then
+				-- hurt: flash red
+				refs.HealthPanel.BackgroundColor3 = C.Red
+				UI.tween(refs.HealthPanel, 0.5, { BackgroundColor3 = C.Panel })
+			end
+			refs.LastHP = math.floor(hp)
+			refs.HealthSet(frac, if frac > 0.6 then C.Green elseif frac > 0.3 then C.Gold else C.Red)
+			refs.HealthText.Text = tostring(math.ceil(hp))
+		end
+	end
+	refs.BlockIcon.Visible = player:GetAttribute("Blocking") == true
+	local weapon = ctx.World.Equipped and ctx.World.Equipped() or "Fists"
+	if refs.AttackEmoji and refs.ShownWeapon ~= weapon then
+		refs.ShownWeapon = weapon
+		local emojis = { Fists = "👊", Bat = "🏏", Hammer = "🔨", Knife = "🔪" }
+		refs.AttackEmoji.Text = emojis[weapon] or "👊"
+	end
 	-- jail
 	local jailUntil = player:GetAttribute("JailUntil")
 	if jailUntil then
@@ -12988,7 +13563,7 @@ function Hud.Start(context)
 end
 
 return Hud
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX31"><Properties><string name="Name">Panels</string><ProtectedString name="Source"><![CDATA[-- Panels (ModuleScript) — StarterPlayerScripts.CityClient.Panels
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX33"><Properties><string name="Name">Panels</string><ProtectedString name="Source"><![CDATA[-- Panels (ModuleScript) — StarterPlayerScripts.CityClient.Panels
 -- The windows you open: the city map, the People directory and profile
 -- cards, voting, speeches, the mayor's desk, conversations with citizens,
 -- elevators, help, settings, the welcome screen, election results and the
@@ -13842,9 +14417,10 @@ local function buildHelp()
 		{ "💬 Talk to people", "Walk up to anyone and press <b>E</b>. Ask about their day, their job, the mayor, the gossip. Tell jokes, give compliments or gifts, ask for directions, ask them to walk with you... They remember everything you do, and they'll tell their friends." },
 		{ "🎤 Become mayor", "Go to the stage on the city plaza and press <b>B</b> to give a speech. Pick ideas that match what people care about. Then press <b>V</b> to vote. The mayor gets a salary and can pass one policy a day (<b>N</b>)." },
 		{ "🗺️ Find your way", "<b>M</b> opens the city map (tap a place to set a waypoint). <b>P</b> opens the People directory: tap anyone to see their card, or 📍 to find them. Press <b>E</b> at elevator doors to ride up the office towers." },
-		{ "🚨 Crime", "<b>F</b> punches, <b>G</b> (hold) picks a pocket, <b>R</b> (hold) robs a register or the bank vault. If anyone sees you, you get wanted stars and the police come after you. Get caught and you're BUSTED: a fine and time in jail. Kids can't be hurt." },
+		{ "⚔️ Fighting", "<b>F</b> (or click with a weapon) attacks, <b>hold X</b> blocks (you take a third of the damage). Buy a 🏏 bat, 🔨 hammer or 🔪 knife at the Hardware store: they hit harder, but using them is a much more serious crime. Tough citizens and the police fight back, so watch your ❤️ health. If you get knocked out, you wake up at the hospital (wanted stars cleared, but there's a bill)." },
+		{ "🚨 Crime", "<b>F</b> attacks, <b>G</b> (hold) picks a pocket, <b>R</b> (hold) robs a register or the bank vault. If anyone sees you, you get wanted stars and the police come after you. Get caught and you're BUSTED: a fine and time in jail. Kids can't be hurt." },
 		{ "🫥 Losing the police", "The police only know where they <b>last saw</b> you. Break their line of sight (around a corner, into a building) and they'll run there and search around. Hide in a <b>trash can, hedge or park bush</b> (hold <b>Q</b>): they can't see you, unless they search right next to your spot (or saw you climb in!). Stay out of sight and the stars fade one by one, faster while you're hiding. <b>Space</b> gets you out." },
-		{ "⌨️ Keys", "E talk / use · M map · P people · V vote · B speech · N mayor · F punch · G pickpocket · R rob · Q hide · H help · 1-9 answer in conversations · Esc close windows" },
+		{ "⌨️ Keys", "E talk / use · M map · P people · V vote · B speech · N mayor · F attack · X block · 1-3 weapons · G pickpocket · R rob · Q hide · H help · 1-9 answer in conversations · Esc close windows" },
 	}
 	for _, s in ipairs(sections) do
 		local card = UI.panel(list, { Size = UDim2.new(1, -10, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundColor3 = C.Panel2, Radius = 12 })
@@ -13970,6 +14546,75 @@ local function buildBusted()
 	end
 end
 
+--------------------------------------------------------------------------------
+-- The weapons shop (Hardware store)
+--------------------------------------------------------------------------------
+local function buildShop()
+	local win = UI.window(screen, "Hardware Store", "🔨", UDim2.fromOffset(760, 460), C.Red)
+	Panels.Shop = win
+	local body = win.Body
+	local top = UI.text(body, "", 15, UI.Bold, C.Sub, { Size = UDim2.new(1, 0, 0, 22) })
+	local grid = UI.new("Frame", { BackgroundTransparency = 1, Position = UDim2.fromOffset(0, 30), Size = UDim2.new(1, 0, 1, -64), Parent = body })
+	UI.new("UIGridLayout", { CellSize = UDim2.new(0.333, -8, 1, 0), CellPadding = UDim2.fromOffset(10, 0), SortOrder = Enum.SortOrder.LayoutOrder, Parent = grid })
+	UI.text(body, "⚠️ Hurting people is a crime. Anyone who sees it calls the police, and they take your weapons when they arrest you.", 12, UI.Font, C.Dim, { AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.new(1, 0, 0, 30), TextWrapped = true })
+	local function stat(card, label, value, maxValue, color, y)
+		UI.text(card, label, 12, UI.Bold, C.Sub, { Position = UDim2.fromOffset(0, y), Size = UDim2.fromOffset(70, 16) })
+		local _, set = UI.bar(card, color, 8, { Position = UDim2.new(0, 72, 0, y + 4), Size = UDim2.new(1, -72, 0, 8) })
+		set(value / maxValue)
+	end
+	function Panels.OpenShop(data)
+		clear(grid)
+		top.Text = "🪙 You have " .. UI.commas(data.Coins or 0) .. " coins. Weapons go in your hotbar (1, 2, 3...)."
+		for k, item in ipairs(data.Items or {}) do
+			local card = UI.panel(grid, { BackgroundColor3 = C.Panel2, Radius = 14, LayoutOrder = k })
+			UI.pad(card, 12)
+			UI.text(card, item.Emoji, 46, UI.Font, C.White, { Size = UDim2.new(1, 0, 0, 56), TextXAlignment = Enum.TextXAlignment.Center })
+			UI.text(card, item.Name, 18, UI.Title, C.Text, { Position = UDim2.fromOffset(0, 58), Size = UDim2.new(1, 0, 0, 24), TextXAlignment = Enum.TextXAlignment.Center })
+			UI.text(card, item.Desc, 12, UI.Font, C.Sub, { Position = UDim2.fromOffset(0, 84), Size = UDim2.new(1, 0, 0, 48), TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Center, TextYAlignment = Enum.TextYAlignment.Top })
+			stat(card, "Damage", item.Damage, 60, C.Red, 138)
+			stat(card, "Speed", 1 / item.Cooldown, 2.6, C.Gold, 158)
+			stat(card, "Reach", item.Range, 8, C.Blue, 178)
+			UI.button(card, if item.Owned then "✅ Owned" else "🪙 " .. item.Price .. "  Buy", { AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.new(1, 0, 0, 40), Color = if item.Owned then C.Panel3 else C.Gold, TextColor = if item.Owned then C.Sub else C.Bg }, function()
+				if item.Owned then
+					return
+				end
+				local r = request({ Action = "BuyWeapon", Id = item.Id })
+				if r.Ok then
+					ctx.Hud.Toast(item.Emoji, "Bought a " .. item.Name .. "!", "It's in your hotbar. Click or F to attack, hold X to block.", C.Gold)
+					data.Items = r.Items
+					data.Coins = (data.Coins or 0) - item.Price
+					Panels.OpenShop(data)
+				else
+					fail(r)
+				end
+			end)
+		end
+		win.Open()
+	end
+end
+
+-- knocked out: the screen fades, you wake up at the hospital
+local function buildDown()
+	local cover = UI.new("Frame", { BackgroundColor3 = Color3.new(0, 0, 0), BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 45, Visible = false, Parent = screen })
+	local big = UI.text(cover, "💫 KNOCKED OUT", 72, UI.Title, C.White, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.42), Size = UDim2.fromOffset(800, 90), TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 46 })
+	UI.new("UIStroke", { Thickness = 4, Color = C.Red, Parent = big })
+	local small = UI.text(cover, "", 20, UI.Bold, C.Sub, { AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.fromScale(0.5, 0.52), Size = UDim2.fromOffset(800, 60), TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = true, ZIndex = 46 })
+	local scale = UI.new("UIScale", { Parent = big })
+	function Panels.Down(data)
+		cover.Visible = true
+		cover.BackgroundTransparency = 1
+		UI.tween(cover, 1.2, { BackgroundTransparency = 0.15 })
+		small.Text = "You'll wake up at the hospital." .. (if (data.Bill or 0) > 0 then "  Hospital bill: 🪙 " .. data.Bill else "")
+		scale.Scale = 0.6
+		UI.tween(scale, 0.6, { Scale = 1 }, Enum.EasingStyle.Back)
+		task.delay(4.5, function()
+			UI.tween(cover, 0.8, { BackgroundTransparency = 1 })
+			task.wait(0.8)
+			cover.Visible = false
+		end)
+	end
+end
+
 function Panels.Start(context)
 	ctx = context
 	screen = UI.new("ScreenGui", { Name = "CityPanels", ResetOnSpawn = false, ZIndexBehavior = Enum.ZIndexBehavior.Sibling, DisplayOrder = 10, Parent = player:WaitForChild("PlayerGui") })
@@ -13994,10 +14639,12 @@ function Panels.Start(context)
 	buildWelcome()
 	buildResults()
 	buildBusted()
+	buildShop()
+	buildDown()
 end
 
 return Panels
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX32"><Properties><string name="Name">World</string><ProtectedString name="Source"><![CDATA[-- World (ModuleScript) — StarterPlayerScripts.CityClient.World
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX34"><Properties><string name="Name">World</string><ProtectedString name="Source"><![CDATA[-- World (ModuleScript) — StarterPlayerScripts.CityClient.World
 -- Everything drawn in the 3D world: nameplates over citizens and players,
 -- speech bubbles, the interaction prompts (talk, elevators, crimes), the
 -- waypoint beam, hit effects, alarms, confetti, the sky and the traffic lights.
@@ -14083,6 +14730,10 @@ local function makePlate(model, isPlayer)
 			badge.Visible = true
 			badge.Text = if team == 1 then "⚽ Blue" else "⚽ Red"
 			badge.BackgroundColor3 = if team == 1 then C.Blue else C.Red
+		elseif model:GetAttribute("Fighting") then
+			badge.Visible = true
+			badge.Text = "👊 FIGHTING"
+			badge.BackgroundColor3 = C.Red
 		elseif model:GetAttribute("Chasing") then
 			badge.Visible = true
 			local searching = model:GetAttribute("ChaseState") == "searching"
@@ -14093,7 +14744,7 @@ local function makePlate(model, isPlayer)
 		end
 		gui.StudsOffset = plateOffset(model)
 	end
-	for _, attr in ipairs({ "Activity", "Mood", "Expecting", "Team", "DisplayName", "Scale", "Chasing", "ChaseState" }) do
+	for _, attr in ipairs({ "Activity", "Mood", "Expecting", "Team", "DisplayName", "Scale", "Chasing", "ChaseState", "Fighting" }) do
 		model:GetAttributeChangedSignal(attr):Connect(refresh)
 	end
 	if isPlayer then
@@ -14209,7 +14860,7 @@ end
 --------------------------------------------------------------------------------
 -- Interaction prompts (our own look for Talk / Elevator / crime prompts)
 --------------------------------------------------------------------------------
-local PROMPT_COLORS = { Talk = C.Blue, Elevator = C.Teal, Crime = C.Red, Hide = C.Purple }
+local PROMPT_COLORS = { Talk = C.Blue, Elevator = C.Teal, Crime = C.Red, Hide = C.Purple, Shop = C.Gold }
 local promptGuis = {}
 
 local function keyName(prompt, inputType)
@@ -14332,10 +14983,13 @@ end
 --------------------------------------------------------------------------------
 -- Effects
 --------------------------------------------------------------------------------
-function World.Hit(position, damage, ko)
+function World.Hit(position, damage, ko, isPlayer, blocked, weapon)
 	local anchor = UI.new("Part", { Anchored = true, CanCollide = false, CanQuery = false, CanTouch = false, Transparency = 1, Size = Vector3.one, CFrame = CFrame.new(position), Parent = workspace })
 	local gui = UI.new("BillboardGui", { Size = UDim2.fromOffset(220, 60), AlwaysOnTop = true, LightInfluence = 0, Adornee = anchor, Parent = anchor })
-	local label = UI.text(gui, if ko then "💫 KNOCKED OUT!" else "💥 -" .. tostring(damage), if ko then 24 else 22, UI.Black, if ko then C.Gold else C.Red, { Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center })
+	local icon = if weapon == "Knife" then "🔪" elseif weapon == "Bat" or weapon == "Hammer" then "💢" else "💥"
+	local text = if ko then "💀 DOWN!" elseif blocked then "🛡️ -" .. tostring(damage) else icon .. " -" .. tostring(damage)
+	local color = if ko then C.Gold elseif blocked then C.Blue elseif isPlayer then C.Pink else C.Red
+	local label = UI.text(gui, text, if ko then 26 else 22, UI.Black, color, { Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center })
 	UI.new("UIStroke", { Thickness = 2, Transparency = 0.2, Parent = label })
 	local scale = UI.new("UIScale", { Scale = 0.4, Parent = label })
 	UI.tween(scale, 0.2, { Scale = 1 }, Enum.EasingStyle.Back)
@@ -14419,37 +15073,90 @@ end
 --------------------------------------------------------------------------------
 -- Punching
 --------------------------------------------------------------------------------
-local punchTrack
-local lastPunch = 0
-function World.Punch()
-	if os.clock() - lastPunch < 0.5 then
+local Weapons = require(Shared:WaitForChild("Weapons"))
+local tracks = {} -- [humanoid] = { [animation id] = track }
+local lastAttack = 0
+local fistSide = false
+
+-- which weapon you're holding ("Fists" if none)
+function World.Equipped()
+	local character = player.Character
+	local tool = character and character:FindFirstChildOfClass("Tool")
+	return tool and tool:GetAttribute("Weapon") or "Fists"
+end
+
+local function playAttack(humanoid, weapon)
+	local w = Weapons.Get(weapon)
+	local id = Weapons.Animations[w.Anim] or Weapons.Animations.punch
+	local animator = humanoid:FindFirstChildOfClass("Animator")
+	if not animator then
 		return
 	end
-	lastPunch = os.clock()
+	tracks[humanoid] = tracks[humanoid] or {}
+	local track = tracks[humanoid][id]
+	if not track then
+		local anim = Instance.new("Animation")
+		anim.AnimationId = id
+		local ok, t = pcall(animator.LoadAnimation, animator, anim)
+		if not ok then
+			return
+		end
+		track = t
+		track.Priority = Enum.AnimationPriority.Action
+		tracks[humanoid][id] = track
+	end
+	-- jabs alternate speed so a flurry doesn't look robotic; stabs are quick
+	local speed = if w.Anim == "punch" then (if fistSide then 1.9 else 1.6) elseif w.Anim == "stab" then 1.5 else 1.05
+	fistSide = not fistSide
+	track:Play(0.05, 1, speed)
+end
+
+-- Attack with whatever you're holding (F, click with a weapon, or the button)
+function World.Attack()
+	local weapon = World.Equipped()
+	local w = Weapons.Get(weapon)
+	if os.clock() - lastAttack < w.Cooldown then
+		return
+	end
+	lastAttack = os.clock()
 	local character = player.Character
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-	if not humanoid or humanoid.Health <= 0 then
+	if not humanoid or humanoid.Health <= 0 or player:GetAttribute("Hiding") then
 		return
 	end
-	if not punchTrack or punchTrack.Parent == nil then
-		local animator = humanoid:FindFirstChildOfClass("Animator")
-		if animator then
-			local anim = Instance.new("Animation")
-			anim.AnimationId = "rbxassetid://522635514"
-			local ok, track = pcall(animator.LoadAnimation, animator, anim)
-			punchTrack = ok and track or nil
-		end
-	end
-	if punchTrack then
-		punchTrack:Play(0.05, 1, 1.6)
-	end
-	UI.sound("punch", 0.4, 1.3)
+	playAttack(humanoid, weapon)
+	UI.sound("punch", 0.4, if weapon == "Knife" then 1.6 elseif weapon == "Fists" then 1.3 else 0.9)
 	task.spawn(function()
 		local ok, result = pcall(function()
-			return ctx.Remotes.Request:InvokeServer({ Action = "Punch" })
+			return ctx.Remotes.Request:InvokeServer({ Action = "Attack" })
 		end)
 		if ok and result and result.Hit then
-			World.Shake(if result.KO then 0.9 else 0.4, 0.25)
+			World.Shake(if result.KO then 0.9 elseif weapon == "Fists" then 0.35 else 0.55, 0.25)
+		end
+	end)
+end
+World.Punch = World.Attack
+
+local blockingNow = false
+function World.SetBlock(on)
+	if on == blockingNow then
+		return
+	end
+	blockingNow = on
+	task.spawn(function()
+		pcall(function()
+			ctx.Remotes.Request:InvokeServer({ Action = "Block", On = on })
+		end)
+	end)
+end
+
+-- clicking with a weapon in hand attacks
+local function watchTools(character)
+	character.ChildAdded:Connect(function(child)
+		if child:IsA("Tool") and child:GetAttribute("Weapon") then
+			child.Activated:Connect(World.Attack)
+			local w = Weapons.Get(child:GetAttribute("Weapon"))
+			ctx.Hud.Toast(w.Emoji, w.Name .. " equipped", "Click (or F) to attack. Hold X to block.", C.Red)
 		end
 	end)
 end
@@ -14508,6 +15215,10 @@ function World.Start(context)
 	end
 	Players.PlayerAdded:Connect(watchPlayer)
 
+	player.CharacterAdded:Connect(watchTools)
+	if player.Character then
+		watchTools(player.Character)
+	end
 	ProximityPromptService.PromptShown:Connect(showPrompt)
 	ProximityPromptService.PromptHidden:Connect(hidePrompt)
 	ProximityPromptService.PromptButtonHoldBegan:Connect(function(prompt)
