@@ -576,6 +576,9 @@ function MapBuilder.Build()
 	info:SetAttribute("LakeX", Landscape.LAKE.X)
 	info:SetAttribute("LakeZ", Landscape.LAKE.Z)
 	info:SetAttribute("LakeRadius", Landscape.LAKE_RADIUS)
+	if map.SpeechSpot then
+		info:SetAttribute("SpeechSpot", map.SpeechSpot)
+	end
 	info.Parent = ReplicatedStorage
 	return map
 end

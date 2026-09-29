@@ -2,11 +2,37 @@
   "name": "AICity",
   "tree": {
     "$className": "DataModel",
+    "Workspace": {
+      "$properties": {
+        "StreamingEnabled": true,
+        "StreamingMinRadius": 96,
+        "StreamingTargetRadius": 640
+      }
+    },
+    "Lighting": {
+      "$properties": {
+        "ClockTime": 7.5,
+        "GlobalShadows": true,
+        "Technology": "Future"
+      }
+    },
     "ReplicatedStorage": {
       "Shared": {
         "$className": "Folder",
         "Config": {
           "$path": "src/Config.lua"
+        },
+        "Atmosphere": {
+          "$path": "src/Atmosphere.lua"
+        },
+        "Actions": {
+          "$path": "src/Actions.lua"
+        },
+        "Faces": {
+          "$path": "src/Faces.lua"
+        },
+        "Poses": {
+          "$path": "src/Poses.lua"
         }
       }
     },
@@ -16,17 +42,54 @@
       },
       "Modules": {
         "$className": "Folder",
+        "MapKit": {
+          "$path": "src/MapKit.lua"
+        },
+        "Buildings": {
+          "$path": "src/Buildings.lua"
+        },
+        "Interiors": {
+          "$path": "src/Interiors.lua"
+        },
+        "Streets": {
+          "$path": "src/Streets.lua"
+        },
+        "Landscape": {
+          "$path": "src/Landscape.lua"
+        },
+        "Places": {
+          "$path": "src/Places.lua"
+        },
         "MapBuilder": {
           "$path": "src/MapBuilder.lua"
         },
-        "Population": {
-          "$path": "src/Population.lua"
+        "Life": {
+          "$path": "src/Life.lua"
         },
         "CitizenLook": {
           "$path": "src/CitizenLook.lua"
         },
+        "CityService": {
+          "$path": "src/CityService.lua"
+        },
         "CitizenService": {
           "$path": "src/CitizenService.lua"
+        },
+        "DialogueService": {
+          "$path": "src/DialogueService.lua"
+        },
+        "CrimeService": {
+          "$path": "src/CrimeService.lua"
+        },
+        "PlayerService": {
+          "$path": "src/PlayerService.lua"
+        }
+      }
+    },
+    "StarterPlayer": {
+      "StarterPlayerScripts": {
+        "CityClient": {
+          "$path": "src/client"
         }
       }
     }

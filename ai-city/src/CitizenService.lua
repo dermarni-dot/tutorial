@@ -259,6 +259,10 @@ local function makeBody(c, cframe)
 		end
 	end
 	model:PivotTo(cframe)
+	pcall(function()
+		-- with StreamingEnabled, a citizen arrives on players' screens all at once
+		model.ModelStreamingMode = Enum.ModelStreamingMode.Atomic
+	end)
 	model.Parent = folder
 	pcall(function()
 		root:SetNetworkOwner(nil)
@@ -484,8 +488,9 @@ local function buildRoute(brain, t)
 	local from = brain.Building
 	local dest = t.Spot and t.Spot.CFrame.Position or t.Pos
 	local destFloor = t.Floor or 1
-	local function walk(points)
-		table.insert(steps, { Kind = "walk", Points = points })
+	-- After(brain) runs when a step is done (so we always know if they're inside)
+	local function walk(points, after)
+		table.insert(steps, { Kind = "walk", Points = points, After = after })
 	end
 	local function ride(b, floor)
 		table.insert(steps, { Kind = "ride", Building = b, Floor = floor })
@@ -511,7 +516,9 @@ local function buildRoute(brain, t)
 			end
 			ride(from, 1)
 		end
-		walk({ from.Inside, from.Door })
+		walk({ from.Inside, from.Door }, function(b)
+			b.Building, b.Floor = nil, 1
+		end)
 		pos = from.Door
 	end
 	-- along the sidewalks
@@ -519,13 +526,16 @@ local function buildRoute(brain, t)
 	local path = map.Route(pos, doorTarget)
 	walk(withLane(path, brain.Lane))
 	if t.Building then
-		walk({ t.Building.Inside })
+		local b = t.Building
+		walk({ b.Inside }, function(br)
+			br.Building, br.Floor = b, 1
+		end)
 		if destFloor > 1 then
-			local exit = elevatorExit(t.Building, 1)
+			local exit = elevatorExit(b, 1)
 			if exit then
 				walk({ exit })
 			end
-			ride(t.Building, destFloor)
+			ride(b, destFloor)
 		end
 	end
 	walk({ dest })
@@ -620,6 +630,7 @@ local function stop(brain)
 	brain.Steps = nil
 	brain.Points = nil
 	brain.Jog = nil
+	brain.Looping = nil
 	if not brain.Root.Anchored then
 		brain.Humanoid:MoveTo(brain.Root.Position)
 	end
@@ -628,6 +639,10 @@ end
 local arrive -- forward
 
 local function nextStep(brain)
+	local done = brain.Steps and brain.Steps[brain.StepIndex]
+	if done and done.After then
+		done.After(brain)
+	end
 	brain.StepIndex += 1
 	local step = brain.Steps and brain.Steps[brain.StepIndex]
 	if not step then
@@ -675,6 +690,7 @@ local function go(brain, t)
 	brain.Token = {}
 	brain.Target = t
 	brain.Jog = nil
+	brain.Looping = nil
 	local oldSpot = brain.Spot
 	reserve(brain, t.Spot)
 	if brain.Root.Anchored then
@@ -701,6 +717,8 @@ end
 local function jump(brain, t)
 	brain.Token = {}
 	brain.Target = t
+	brain.Jog = nil
+	brain.Looping = nil
 	reserve(brain, t.Spot)
 	local dest = t.Spot and t.Spot.CFrame or CFrame.new(t.Pos or brain.Root.Position)
 	standAt(brain, dest)
@@ -1478,7 +1496,21 @@ local function walkTick(brain)
 	local final = brain.Steps and brain.StepIndex == #brain.Steps and brain.PointIndex == #points
 	local d = flatDist(root.Position, target)
 	local now = os.clock()
-	if d < (if final then 1.3 else 2.2) and math.abs(root.Position.Y - rootHeight(brain) - target.Y) < 6 then
+	-- level of detail: far from every player (and the next waypoint too), people
+	-- hop from waypoint to waypoint instead of walking the whole way. Nobody can
+	-- see it, the server saves work, and cross-town trips still fit the day.
+	local hop = false
+	if brain.State == "walk" and not brain.Looping then
+		local far = WATCH_RADIUS * 2
+		if nearestPlayerDistance(root.Position) > far and nearestPlayerDistance(target) > far then
+			hop = true
+			local nxt = points[brain.PointIndex + 1]
+			local look = if nxt and flatDist(nxt, target) > 0.5 then Vector3.new(nxt.X, target.Y, nxt.Z) else target + root.CFrame.LookVector
+			root.CFrame = CFrame.lookAt(target + Vector3.new(0, rootHeight(brain) + 0.1, 0), look + Vector3.new(0, rootHeight(brain) + 0.1, 0))
+			root.AssemblyLinearVelocity = Vector3.zero
+		end
+	end
+	if hop or (d < (if final then 1.3 else 2.2) and math.abs(root.Position.Y - rootHeight(brain) - target.Y) < 6) then
 		brain.PointIndex += 1
 		brain.LastMoveAt = now
 		brain.LastPos = root.Position

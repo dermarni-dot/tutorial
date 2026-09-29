@@ -1,0 +1,167 @@
+-- CityClient (LocalScript) — StarterPlayer.StarterPlayerScripts.CityClient
+-- AI City on your screen. Starts the HUD, the windows, the world effects and
+-- the citizens' body language, and routes everything the server sends.
+--
+-- Children: UI (look and helpers), Hud (always-on screen), Panels (windows),
+-- World (nameplates, bubbles, prompts, waypoints, effects).
+-- Shared: Poses (citizens' poses, props and faces), Faces, Atmosphere.
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+
+local player = Players.LocalPlayer
+local Shared = ReplicatedStorage:WaitForChild("Shared")
+local remotes = ReplicatedStorage:WaitForChild("CityRemotes")
+local info = ReplicatedStorage:WaitForChild("CityInfo")
+ReplicatedStorage:WaitForChild("CityState")
+
+local UI = require(script:WaitForChild("UI"))
+local Hud = require(script:WaitForChild("Hud"))
+local Panels = require(script:WaitForChild("Panels"))
+local World = require(script:WaitForChild("World"))
+local Poses = require(Shared:WaitForChild("Poses"))
+local C = UI.C
+
+local ctx = {
+	Remotes = { Event = remotes:WaitForChild("Event"), Request = remotes:WaitForChild("Request") },
+	Hud = Hud,
+	Panels = Panels,
+	World = World,
+	Poses = Poses,
+	SpeechSpot = info:GetAttribute("SpeechSpot"),
+}
+
+Hud.Start(ctx)
+World.Start(ctx)
+Panels.Start(ctx)
+
+-- the citizens' poses, props and faces, every frame (after animations)
+local step = RunService.PreSimulation or RunService.Stepped
+step:Connect(function(a, b)
+	local dt = if type(b) == "number" then b else a
+	Poses.Step(dt)
+end)
+
+--------------------------------------------------------------------------------
+-- Messages from the server
+--------------------------------------------------------------------------------
+local IMPORTANT_NEWS = { Birth = "👶", Election = "🗳️", Crime = "🚨", Policy = "🏛️", Expecting = "🍼", GrewUp = "🎂", Retired = "🎉", Speech = "🎤", Day = "☀️" }
+local handlers = {}
+
+handlers.Toast = function(d)
+	Hud.Toast(d.Icon, d.Title, d.Text, d.Color)
+end
+handlers.News = function(d)
+	Hud.News(d.Text, d.Kind)
+	if IMPORTANT_NEWS[d.Kind] and d.Kind ~= "Speech" then
+		local text = string.gsub(d.Text, "^[^%w]*", "")
+		Hud.Toast(IMPORTANT_NEWS[d.Kind], if d.Kind == "Day" then "A new day" elseif d.Kind == "Crime" then "Breaking news" else "City news", text, if d.Kind == "Crime" then C.Red elseif d.Kind == "Birth" or d.Kind == "Expecting" then C.Pink else C.Gold)
+	end
+end
+handlers.Bubble = function(d)
+	World.Bubble(d.Model, d.Text, d.Seconds)
+end
+handlers.Speech = function(d)
+	if d.Character then
+		World.Bubble(d.Character, "📣 " .. d.Text, 7, "speech")
+	end
+	if d.UserId ~= player.UserId then
+		Hud.Toast("🎤", d.Name .. " is giving a speech!", "Head to the plaza to listen.", C.Gold)
+	end
+end
+handlers.Election = function(d)
+	Panels.ShowResults(d)
+	Hud.Banner(if d.WinnerUserId == player.UserId then "👑 YOU ARE THE MAYOR!" else "🗳️ " .. d.Winner .. " WINS!", C.Gold, 4)
+end
+handlers.Dialogue = function(d)
+	Panels.OpenDialogue(d)
+end
+handlers.DialogueEnd = function()
+	Panels.EndDialogue(false)
+end
+handlers.Waypoint = function(d)
+	World.Waypoint(d.Position, d.Label, d.Emoji, d.Model)
+end
+handlers.Hit = function(d)
+	World.Hit(d.Position, d.Damage, d.KO)
+end
+handlers.Alarm = function(d)
+	World.Alarm(d.Position, d.Seconds)
+end
+handlers.Wanted = function(d)
+	if d.Up then
+		Hud.Banner(string.rep("⭐", d.Stars) .. "  WANTED!", C.Red, 2.5)
+		UI.sound("notify", 0.5, 0.7)
+	elseif d.Lost then
+		Hud.Banner("😮‍💨 You lost them", C.Green, 2)
+	end
+end
+handlers.Busted = function(d)
+	Panels.Busted(d)
+end
+handlers.Elevator = function(d)
+	Panels.OpenElevator(d)
+end
+handlers.Coins = function(d)
+	if math.abs(d.Amount) >= 50 or d.Amount < 0 then
+		Hud.Toast(if d.Amount >= 0 then "🪙" else "💸", (if d.Amount >= 0 then "+" else "") .. d.Amount .. " coins", d.Reason or "", if d.Amount >= 0 then C.Gold else C.Red)
+	end
+end
+handlers.Welcome = function(d)
+	Panels.Welcome()
+	task.delay(1, function()
+		Hud.Toast("🏙️", "Welcome to AI City!", "It's " .. tostring(d.Weekday) .. ". The mayor is " .. tostring(d.Mayor or "nobody yet") .. ". Press H for help.", C.Gold)
+	end)
+end
+
+ctx.Remotes.Event.OnClientEvent:Connect(function(data)
+	if type(data) ~= "table" then
+		return
+	end
+	local handler = handlers[data.Type]
+	if handler then
+		local ok, err = pcall(handler, data)
+		if not ok then
+			warn("[CityClient] " .. tostring(data.Type) .. ": " .. tostring(err))
+		end
+	end
+end)
+
+--------------------------------------------------------------------------------
+-- Keys
+--------------------------------------------------------------------------------
+local NUMBER_KEYS = {
+	[Enum.KeyCode.One] = 1, [Enum.KeyCode.Two] = 2, [Enum.KeyCode.Three] = 3, [Enum.KeyCode.Four] = 4, [Enum.KeyCode.Five] = 5,
+	[Enum.KeyCode.Six] = 6, [Enum.KeyCode.Seven] = 7, [Enum.KeyCode.Eight] = 8, [Enum.KeyCode.Nine] = 9,
+}
+UserInputService.InputBegan:Connect(function(input, processed)
+	if processed or UserInputService:GetFocusedTextBox() then
+		return
+	end
+	local key = input.KeyCode
+	if NUMBER_KEYS[key] and Panels.InDialogue() then
+		Panels.DialogueKey(NUMBER_KEYS[key])
+	elseif key == Enum.KeyCode.M then
+		Panels.Map.Toggle()
+	elseif key == Enum.KeyCode.P then
+		Panels.Directory.Toggle()
+	elseif key == Enum.KeyCode.V then
+		Panels.Vote.Toggle()
+	elseif key == Enum.KeyCode.B then
+		Panels.Speech.Toggle()
+	elseif key == Enum.KeyCode.N then
+		Panels.Mayor.Toggle()
+	elseif key == Enum.KeyCode.H then
+		Panels.Help.Toggle()
+	elseif key == Enum.KeyCode.F then
+		World.Punch()
+	elseif key == Enum.KeyCode.Escape or key == Enum.KeyCode.Backspace then
+		if Panels.InDialogue() then
+			Panels.EndDialogue(true)
+		else
+			UI.closeAll()
+		end
+	end
+end)
