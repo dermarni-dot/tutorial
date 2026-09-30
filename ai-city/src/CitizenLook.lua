@@ -63,6 +63,10 @@ local UNIFORMS = {
 	["Barista"] = { Top = BLACK, Bottom = rgb(60, 50, 45), Items = { "Apron:40,120,80", "Cap:40,120,80", "NameTag" } },
 	["Doctor"] = { Top = rgb(170, 210, 240), Bottom = rgb(60, 70, 90), Sleeves = "long", Items = { "LabCoat", "Stethoscope", "NameTag" } },
 	["Nurse"] = { Top = rgb(70, 170, 170), Bottom = rgb(70, 170, 170), Items = { "Stethoscope", "NameTag" } },
+	-- the two street gangs, and rioters (masked)
+	["Viper"] = { Top = rgb(40, 120, 60), Bottom = rgb(30, 30, 34), Sleeves = "long", Items = { "Hoodie:40,120,60", "Beanie:30,140,70", "Sneakers:40,200,90" } },
+	["King"] = { Top = rgb(100, 45, 140), Bottom = rgb(40, 40, 46), Sleeves = "long", Items = { "Jacket:90,40,130", "CapBack:120,50,160", "Necklace", "Sneakers:170,90,230" } },
+	["Rioter"] = { Top = rgb(30, 30, 34), Bottom = rgb(45, 45, 50), Sleeves = "long", Items = { "Hoodie:30,30,34", "Beanie:25,25,28" } },
 	["Police Officer"] = { Top = rgb(40, 55, 110), Bottom = rgb(30, 40, 80), Sleeves = "long", Items = { "PoliceCap", "Badge", "Belt:25,25,30", "Radio" } },
 	["Thief"] = { Top = rgb(38, 40, 48), Bottom = rgb(30, 32, 38), Sleeves = "long", Items = { "Hoodie:38,40,50", "Beanie:28,28,32", "Gloves" } },
 	["SWAT Officer"] = { Top = rgb(32, 34, 40), Bottom = rgb(32, 34, 40), Sleeves = "long", Items = { "SWATHelmet", "Vest:22,24,28", "Badge", "Belt:20,20,22", "Gloves", "Radio" } },

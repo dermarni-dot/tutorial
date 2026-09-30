@@ -349,7 +349,7 @@ local function stopFight(brain)
 	fighters[brain] = nil
 	if brain.Model.Parent then
 		brain.Model:SetAttribute("Fighting", nil)
-		if brain.State == "police" and not brain.Model:GetAttribute("Chasing") then
+		if brain.State == "police" and not brain.Model:GetAttribute("Chasing") and not brain.Gang then
 			S.Citizens.Control(brain, false)
 		end
 	end
@@ -369,6 +369,8 @@ local function startFight(brain, player)
 	fighters[brain] = { Player = player, Until = os.clock() + 14, Next = os.clock() + 0.7 }
 	S.Citizens.Say(brain, FIGHT_LINES[math.random(1, #FIGHT_LINES)], "angry", 2)
 end
+
+CrimeService.StartFight = startFight
 
 local function fightTick()
 	local now = os.clock()
@@ -599,7 +601,13 @@ local function attack(player, data)
 	S.Citizens.Hurt(brain, root.Position, line, w.Knock)
 	local armed = w.Severity >= 3
 	local brave = isPolice(brain) or c.Temp or ((c.Personality == "grumpy" or c.Personality == "sporty" or c.Personality == "brave") and (not armed or math.random() < 0.3)) or (not armed and c.Personality ~= "shy" and c.Personality ~= "anxious" and math.random() < 0.15)
-	if isPolice(brain) or c.Temp then
+	if brain.Gang then
+		-- a gang member: no police, but the whole crew comes for you
+		if S.Gangs then
+			S.Gangs.Provoke(brain, player)
+		end
+		startFight(brain, player)
+	elseif isPolice(brain) or c.Temp then
 		CrimeService.AddStars(player, 1, "You attacked a police officer!")
 		if not brain.Model:GetAttribute("Chasing") then
 			startFight(brain, player)

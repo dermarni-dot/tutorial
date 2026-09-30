@@ -131,6 +131,9 @@
         "HomeService": {
           "$path": "src/HomeService.lua"
         },
+        "GangService": {
+          "$path": "src/GangService.lua"
+        },
         "Conversation": {
           "$path": "src/Conversation.lua"
         }

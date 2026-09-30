@@ -69,6 +69,7 @@ if Config.RUN_CITIZENS ~= false then
 	services.Food = require(Modules:WaitForChild("FoodService"))
 	services.Jobs = require(Modules:WaitForChild("JobService"))
 	services.Homes = require(Modules:WaitForChild("HomeService"))
+	services.Gangs = require(Modules:WaitForChild("GangService"))
 	services.Dialogue.Start(services)
 	services.Crime.Start(services)
 	services.Players.Start(services)
@@ -80,5 +81,6 @@ if Config.RUN_CITIZENS ~= false then
 	services.Food.Start(services)
 	services.Jobs.Start(services)
 	services.Homes.Start(services)
+	services.Gangs.Start(services)
 	task.spawn(services.Citizens.Start, services)
 end

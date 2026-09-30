@@ -93,7 +93,7 @@ local function center(b)
 end
 
 local function busy(brain)
-	return inBrawl[brain] ~= nil or brain.State == "ko" or brain.State == "hospital" or brain.State == "police" or brain.State == "talk" or brain.State == "chat" or brain.Held ~= nil or brain.Model:GetAttribute("Fighting") ~= nil or brain.Model:GetAttribute("Chasing") ~= nil
+	return inBrawl[brain] ~= nil or brain.State == "ko" or brain.State == "hospital" or (brain.State == "police" and not brain.Gang) or brain.State == "talk" or brain.State == "chat" or brain.Held ~= nil or brain.Model:GetAttribute("Fighting") ~= nil or brain.Model:GetAttribute("Chasing") ~= nil
 end
 
 -- how likely someone is to start something
@@ -181,7 +181,9 @@ local function release(b, brain)
 	if b.Saved[brain] then
 		setPrompts(b, brain, false)
 	end
-	if brain.C.Temp then
+	if brain.Gang then
+		-- (gang members go back to their turf: see GangService)
+	elseif brain.C.Temp then
 		S.Citizens.Despawn(brain)
 	elseif brain.State == "police" and not brain.Model:GetAttribute("Fighting") and not brain.Model:GetAttribute("Chasing") then
 		S.Citizens.Control(brain, false)
@@ -358,11 +360,12 @@ end
 -- Starting a fight
 --------------------------------------------------------------------------------
 -- start a fight between two citizens (a starts it)
-function BrawlService.Fight(a, c)
+function BrawlService.Fight(a, c, opts)
+	opts = opts or {}
 	if busy(a) or busy(c) then
 		return nil
 	end
-	local b = { A = a, B = c, Phase = "argue", Started = os.clock(), Crowd = {}, Saved = {}, Next = {}, Called = false, Id = os.clock() }
+	local b = { A = a, B = c, Phase = "argue", Started = os.clock(), Crowd = {}, Saved = {}, Next = {}, Called = false, Id = os.clock(), Kids = opts.Kids, Quiet = opts.Quiet, Gang = opts.Gang }
 	table.insert(brawls, b)
 	local rematch = grudges[key(a, c)]
 	grudges[key(a, c)] = true
@@ -375,7 +378,7 @@ function BrawlService.Fight(a, c)
 		f.Model:SetAttribute("Activity", "👊 In a street fight!")
 		setPrompts(b, f, true)
 	end
-	local reason = REASONS[math.random(1, #REASONS)]
+	local reason = opts.Lines or (if opts.Kids then KID_REASONS[math.random(1, #KID_REASONS)] else REASONS[math.random(1, #REASONS)])
 	S.Citizens.Say(a, if rematch then REMATCH[math.random(1, #REMATCH)] else reason[1], "angry", 2.6)
 	task.delay(1.8, function()
 		if not b.Done then
@@ -392,7 +395,7 @@ function BrawlService.Fight(a, c)
 		end
 	end)
 	-- players nearby hear about it
-	for _, player in ipairs(Players:GetPlayers()) do
+	for _, player in ipairs(if b.Quiet then {} else Players:GetPlayers()) do
 		local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
 		if root and (root.Position - center(b)).Magnitude < 130 then
 			S.City.Toast(player, "👊", "Street fight!", a.C.First .. " and " .. c.C.First .. " are fighting on " .. streetNear(center(b)) .. ". Hold E on one of them to break it up, or just watch.", rgb(255, 140, 60))
@@ -400,6 +403,63 @@ function BrawlService.Fight(a, c)
 	end
 	sendNear(b, { Type = "Brawl", Position = center(b), Names = { a.C.First, c.C.First } })
 	return b
+end
+
+local KID_REASONS = {
+	{ "Give it back! That's mine!", "Make me!" },
+	{ "Stop copying me!", "You stop copying ME!" },
+	{ "You pushed me!", "No I didn't, crybaby!" },
+	{ "Take that back!", "No! It's true!" },
+}
+
+-- a fight that pulls in the people around it: friends of the two jump in
+-- and it turns into a group brawl
+function BrawlService.Pile(b, max)
+	local pos = center(b)
+	local pool = {}
+	for _, brain in ipairs(S.Citizens.Nearby(pos, 35)) do
+		if brain ~= b.A and brain ~= b.B and canFight(brain) then
+			table.insert(pool, brain)
+		end
+	end
+	local made = 0
+	while #pool >= 2 and made < (max or 2) do
+		local x = table.remove(pool, math.random(1, #pool))
+		local y = table.remove(pool, math.random(1, #pool))
+		if BrawlService.Fight(x, y, { Quiet = true, Lines = { "You want some too?!", "Bring it!" } }) then
+			made += 1
+		end
+	end
+	if made > 0 then
+		for _, player in ipairs(Players:GetPlayers()) do
+			local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+			if root and (root.Position - pos).Magnitude < 150 then
+				S.City.Toast(player, "👊", "It's a brawl!", "The fight on " .. streetNear(pos) .. " turned into a brawl: " .. (made * 2 + 2) .. " people are fighting!", rgb(255, 120, 50))
+			end
+		end
+	end
+	return made
+end
+
+-- kids at recess: a scuffle (shoving and slapping, nobody gets hurt badly)
+-- until a teacher breaks it up
+function BrawlService.SchoolFight()
+	local pool = {}
+	for _, brain in ipairs(S.Citizens.List) do
+		local age = S.Life:Age(brain.C)
+		if brain.Model.Parent and not busy(brain) and age >= 9 and age <= 17 and brain.Plan and brain.Plan.Kind == "School" and brain.Plan.Recess and brain.State ~= "walk" then
+			table.insert(pool, brain)
+		end
+	end
+	for i = 1, #pool do
+		for j = i + 1, #pool do
+			local x, y = pool[i], pool[j]
+			if x.C.Household ~= y.C.Household and (x.Root.Position - y.Root.Position).Magnitude < 30 and math.abs(S.Life:Age(x.C) - S.Life:Age(y.C)) <= 3 then
+				return BrawlService.Fight(x, y, { Kids = true })
+			end
+		end
+	end
+	return nil
 end
 
 local function pickFight()
@@ -461,7 +521,14 @@ local function pickFight()
 	end
 	local every = Config.FIGHT_COOLDOWN or 140
 	nextFight = now + every * (0.6 + math.random() * 0.8)
-	BrawlService.Fight(starter, target)
+	local b = BrawlService.Fight(starter, target)
+	if b and math.random() < (Config.GROUP_BRAWL_CHANCE or 0.35) then
+		task.delay(5, function()
+			if not b.Done then
+				BrawlService.Pile(b, math.random(1, 2))
+			end
+		end)
+	end
 end
 
 --------------------------------------------------------------------------------
@@ -573,7 +640,7 @@ local function swing(b, f, other, now)
 	f.Model:SetAttribute("SwingSide", (f.Model:GetAttribute("SwingSide") or 0) + 1)
 	f.Model:SetAttribute("Swing", now)
 	local strong = f.C.Personality == "sporty" or f.C.Job == "Fitness Coach" or f.C.Job == "Coach"
-	local damage = math.random(8, 15) + (if strong then 4 else 0)
+	local damage = if b.Kids then math.random(3, 6) else math.random(8, 15) + (if strong then 4 else 0)
 	local blocked = math.random() < 0.22
 	if blocked then
 		damage = math.floor(damage * 0.3 + 0.5)
@@ -589,6 +656,11 @@ local function swing(b, f, other, now)
 		S.Citizens.Say(f, TAUNTS[math.random(1, #TAUNTS)], "angry", 1.4)
 	end
 	sendNear(b, { Type = "Hit", Position = other.Root.Position + Vector3.new(0, 2, 0), Damage = damage, KO = other.HP <= 0, Blocked = blocked, Weapon = "Fists" })
+	if b.Kids and other.HP < 70 then
+		-- kids: one of them gives up and runs off crying (no knockouts)
+		finish(b, "fled", { Winner = f, Loser = other })
+		return true
+	end
 	if other.HP <= 0 then
 		other.HP = nil
 		other.Model:SetAttribute("HP", nil)
@@ -649,9 +721,29 @@ local function tick(b, now)
 		end
 	end
 	gatherCrowd(b)
-	-- someone calls the police
+	-- someone calls the police (at school, a teacher comes running)
 	if not b.Called and b.Phase == "fight" and b.CallAt and now >= b.CallAt then
-		callPolice(b)
+		if b.Kids then
+			b.Called = true
+			local pos = center(b)
+			local best, bestD = nil, 200
+			for _, brain in ipairs(S.Citizens.List) do
+				if brain.C.Job and string.find(brain.C.Job, "Teacher") and not busy(brain) and brain.Plan and brain.Plan.Kind == "Work" then
+					local d = (brain.Root.Position - pos).Magnitude
+					if d < bestD then
+						best, bestD = brain, d
+					end
+				end
+			end
+			if best then
+				S.Citizens.Control(best, true)
+				inBrawl[best] = b
+				b.Officer = best
+				S.Citizens.Say(best, "HEY! Stop that right now!", "angry", 2)
+			end
+		else
+			callPolice(b)
+		end
 	end
 	local officer = b.Officer
 	if officer and officer.Model.Parent and inBrawl[officer] == b then
@@ -659,8 +751,16 @@ local function tick(b, now)
 		S.Citizens.SetGait(officer, 16, "run")
 		officer.Humanoid:MoveTo(pos)
 		if (officer.Root.Position - pos).Magnitude < 8 then
-			S.Citizens.Say(officer, OFFICER[math.random(1, #OFFICER)], "angry", 2.5)
-			finish(b, "police")
+			if b.Kids then
+				S.Citizens.Say(officer, "Break it up! Both of you, principal's office. NOW.", "angry", 3)
+				S.City.News("🏫 Two kids got into a fight at recess. A teacher broke it up and sent them to the principal.", "School")
+				finish(b, "tired")
+				release(b, officer)
+				S.Citizens.Control(officer, false)
+			else
+				S.Citizens.Say(officer, OFFICER[math.random(1, #OFFICER)], "angry", 2.5)
+				finish(b, "police")
+			end
 		end
 	end
 end
@@ -685,6 +785,10 @@ function BrawlService.Start(services)
 			if Config.STREET_FIGHTS ~= false and now - lastPick > 5 then
 				lastPick = now
 				pickFight()
+				-- the odd scuffle at recess
+				if Config.SCHOOL_FIGHTS ~= false and math.random() < (Config.SCHOOL_FIGHT_CHANCE or 0.04) then
+					pcall(BrawlService.SchoolFight)
+				end
 			end
 		end
 	end)
