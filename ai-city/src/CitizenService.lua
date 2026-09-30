@@ -558,6 +558,7 @@ local function unanchor(brain)
 		brain.Root.Anchored = false
 	end
 	brain.Model:SetAttribute("SwingPivot", nil)
+	brain.Model:SetAttribute("SwingAxis", nil)
 	brain.Model:SetAttribute("Target", nil)
 end
 
@@ -594,6 +595,7 @@ local function placeAt(brain, spot, action)
 	brain.Root.CFrame = rootCf
 	if spot.SwingPivot then
 		brain.Model:SetAttribute("SwingPivot", spot.SwingPivot)
+		brain.Model:SetAttribute("SwingAxis", spot.SwingAxis)
 	end
 	if spot.Hoop then
 		brain.Model:SetAttribute("Target", spot.Hoop)

@@ -394,11 +394,15 @@ function ctx.houseRow(parent, i, j, rng, slots, big)
 		local face = Vector3.new(0, 0, sz)
 		local styles = if big then { "twostory", "bungalow", "modern" } else { "cottage", "twostory", "modern", "bungalow", "cottage" }
 		local style = styles[rng:NextInteger(1, #styles)]
-		local depthZ = HALF - SIDEWALK - 12 - 8
-		local center = c + Vector3.new(sx * 19, 0, sz * depthZ)
-		-- only the big suburban lots have room for a garage beside the house
+		-- town lots: four houses a block, 36-42 studs wide; suburban lots: one
+		-- house per street, 56-64 wide and 38 deep, with a garage
+		local scale = if big then 2 else 1.3
+		local depth = Buildings.HouseDepth(scale)
+		local yard = if big then 8 else 9 -- front yard between the sidewalk and the house
+		local depthZ = HALF - SIDEWALK - yard - depth / 2
+		local center = c + Vector3.new(sx * 25, 0, sz * depthZ)
 		local garageSide = if big then 1 else nil
-		local b = Buildings.house(model, center, face, style, rng, garageSide, if big then 1.5 else 1)
+		local b = Buildings.house(model, center, face, style, rng, garageSide, scale)
 		local at = b.At
 		-- the front of the lot (the sidewalk edge), in the house's own space
 		local frontZ = -(HALF - SIDEWALK - depthZ)

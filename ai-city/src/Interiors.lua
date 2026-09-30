@@ -915,6 +915,48 @@ local function laundry(b, f, x, z)
 	box(b, f, "LaundryBasket", Vector3.new(1.6, 1.2, 1.2), x + 5.2, 0, z, rgb(200, 180, 140), Enum.Material.Fabric)
 end
 
+-- the biggest houses: a home gym, a pool table, a kids' playroom
+local function homeGym(b, f, x, z, list)
+	rug(b, f, x, z, 9, 7, rgb(60, 62, 70))
+	box(b, f, "TreadmillBase", Vector3.new(2.6, 0.6, 6), x - 2.5, 0, z, rgb(30, 30, 34), Enum.Material.Metal)
+	box(b, f, "TreadmillBelt", Vector3.new(2, 0.1, 5), x - 2.5, 0.6, z, rgb(20, 20, 22), Enum.Material.Rubber)
+	box(b, f, "TreadmillRail", Vector3.new(2.6, 3.6, 0.3), x - 2.5, 0.6, z - 2.6, rgb(60, 62, 70), Enum.Material.Metal)
+	local s = spot(list, b, f, x - 2.5, z + 0.6, 0, -1, "run", "home")
+	s.Raise = 0.7
+	box(b, f, "WeightBench", Vector3.new(1.4, 1.6, 4), x + 2.5, 0, z, rgb(40, 40, 44), Enum.Material.Fabric)
+	box(b, f, "DumbbellRack", Vector3.new(3, 2.4, 1.2), x + 2.5, 0, z + 3.2, rgb(40, 40, 44), Enum.Material.Metal)
+	for k = 0, 2 do
+		MapKit.cylinder(b.Model, "Dumbbell", 1.2, 0.6, at(b, f, x + 1.5 + k * 1, 2.7, z + 3.2) * CFrame.Angles(0, math.rad(90), 0), rgb(60, 60, 66), Enum.Material.Metal)
+	end
+	spot(list, b, f, x + 4.2, z + 1, -1, 0, "lift", "home")
+end
+
+local function poolTable(b, f, x, z)
+	box(b, f, "PoolTable", Vector3.new(8, 2.8, 4.4), x, 0, z, rgb(100, 60, 36), Enum.Material.Wood)
+	box(b, f, "PoolFelt", Vector3.new(7.2, 0.1, 3.6), x, 2.8, z, rgb(30, 120, 70), Enum.Material.Fabric)
+	for k = 0, 5 do
+		MapKit.ball(b.Model, "PoolBall", 0.35, at(b, f, x - 1 + (k % 3) * 0.4, 3.05, z - 0.4 + (k // 3) * 0.4), MapKit.FLOWERS[k % #MapKit.FLOWERS + 1])
+	end
+	MapKit.ball(b.Model, "CueBall", 0.35, at(b, f, x + 2.4, 3.05, z), WHITE)
+	box(b, f, "Cue", Vector3.new(5, 0.12, 0.12), x + 0.5, 2.95, z + 1.5, rgb(200, 170, 120), Enum.Material.Wood)
+	local lamp = box(b, f, "PoolLamp", Vector3.new(5, 0.5, 1), x, 8, z, rgb(40, 90, 60), Enum.Material.Glass)
+	MapKit.light(lamp, rgb(255, 230, 190), 14, 0.7)
+end
+
+local function playroom(b, f, x, z, list, place)
+	rug(b, f, x, z, 8, 7, rgb(250, 210, 120))
+	box(b, f, "ToyChest", Vector3.new(3, 1.8, 1.8), x - 2.5, 0, z + 3, rgb(90, 160, 220), Enum.Material.Wood)
+	box(b, f, "KidTable", Vector3.new(3, 0.2, 2.4), x + 1.5, 1.6, z, rgb(250, 240, 220), Enum.Material.Wood)
+	box(b, f, "KidTableLeg", Vector3.new(2.6, 1.6, 2), x + 1.5, 0, z, rgb(250, 120, 120), Enum.Material.Wood)
+	box(b, f, "Easel", Vector3.new(2.4, 4.4, 0.3), x - 2.5, 0, z - 2.4, rgb(170, 130, 90), Enum.Material.Wood)
+	box(b, f, "Canvas", Vector3.new(2, 1.8, 0.1), x - 2.5, 2.4, z - 2.25, WHITE)
+	spot(list, b, f, x - 2.5, z - 0.6, 0, -1, "paint", "home")
+	for k = 0, 3 do
+		MapKit.ball(b.Model, "ToyBall", 0.9, at(b, f, x + 3 - k * 0.9, 0.45, z + 2.6), MapKit.FLOWERS[k % #MapKit.FLOWERS + 1])
+		box(b, f, "Block", Vector3.new(0.8, 0.8, 0.8), x - 0.5 + k * 0.9, 0, z - 2.6, MapKit.FLOWERS[(k + 2) % #MapKit.FLOWERS + 1])
+	end
+end
+
 function ROOMS.home(b, f, list, rng, place)
 	-- Ground floor: living room at the front left, dining table at the front
 	-- right, a kitchen along the back right. Bedrooms at the back left (on one-
@@ -939,6 +981,11 @@ function ROOMS.home(b, f, list, rng, place)
 				homeOffice(b, f, 1, hd - 2.4, list, place)
 			else
 				homeOffice(b, f, 3, 3, list, place)
+			end
+			if W >= 54 then
+				-- the biggest houses: a home gym and a pool table
+				homeGym(b, f, 15, 2, list)
+				poolTable(b, f, -8, 8)
 			end
 		end
 		if not twoStorey then
@@ -983,6 +1030,9 @@ function ROOMS.home(b, f, list, rng, place)
 			laundry(b, f, hw - 14, hd - 1.8)
 			wardrobe(b, f, hw - 1.4, -4, false)
 			plant(b, f, hw - 9, 0)
+			if W >= 54 then
+				playroom(b, f, 16, 4, list, place)
+			end
 		end
 	end
 end

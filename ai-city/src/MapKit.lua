@@ -9,9 +9,9 @@ local MapKit = {}
 --------------------------------------------------------------------------------
 -- Layout numbers (shared by every map module)
 --------------------------------------------------------------------------------
-MapKit.SPACING = 100 -- block center to block center
+MapKit.SPACING = 124 -- block center to block center (big blocks: room for big houses and yards)
 MapKit.ROAD = 16 -- road width
-MapKit.BLOCK = MapKit.SPACING - MapKit.ROAD -- 84: a block including its sidewalk
+MapKit.BLOCK = MapKit.SPACING - MapKit.ROAD -- 108: a block including its sidewalk
 MapKit.HALF = MapKit.BLOCK / 2
 MapKit.SIDEWALK = 5
 MapKit.RING = MapKit.HALF - MapKit.SIDEWALK / 2 -- where people walk on the sidewalk

@@ -1508,6 +1508,70 @@ local function checkoutItems(model, st, k, kind, start)
 	end
 end
 
+--------------------------------------------------------------------------------
+-- Walking and running, with the whole body (replaces Roblox's stiff default
+-- walk up close): the legs swing from the hips with the knee bending as the
+-- foot comes through and the ankle rolling off the toes, the arms swing
+-- against the legs with soft elbows, the hips and chest twist against each
+-- other, the body rises and falls twice a step and sways over the standing
+-- foot, and it leans into a run. The step keeps time with the ground covered,
+-- so feet don't slide. Old people take shorter, stiffer steps; kids bounce.
+--------------------------------------------------------------------------------
+local function groundSpeed(st, root, dt)
+	local p = root.Position
+	local last = st.LastPos
+	st.LastPos = p
+	if not last or dt <= 0 then
+		return st.Speed or 0
+	end
+	local d = Vector3.new(p.X - last.X, 0, p.Z - last.Z).Magnitude
+	local v = if d > 8 then 0 else d / dt -- (a teleport is not a step)
+	st.Speed = (st.Speed or 0) + (v - (st.Speed or 0)) * math.min(1, dt * 8)
+	return st.Speed
+end
+
+local function gait(st, model, speed, dt, legsOnly)
+	local height = model:GetAttribute("Height") or 1
+	local age = model:GetAttribute("Age") or 30
+	local run = speed > 11
+	-- one full cycle (two steps) covers this much ground
+	local stride = (if run then 9 else 5.2) * height * (if age < 13 then 0.8 elseif age >= 70 then 0.8 else 1)
+	st.GaitPh = ((st.GaitPh or 0) + speed * dt / stride) % 1
+	local th = st.GaitPh * math.pi * 2
+	local s, c = sin(th), cos(th)
+	local amp = math.clamp(speed / 8, 0.45, 1.25) * (if age >= 70 then 0.65 else 1)
+	local bounce = if age < 13 then 1.6 else 1
+	local legSwing = (if run then 42 else 26) * amp
+	local kneeLift = if run then 85 else 48
+	local lean = if run then 12 else 3 + amp * 2
+	-- left leg: forward when s > 0, coming through (knee bent) when c > 0
+	local lHip, rHip = s * legSwing, -s * legSwing
+	local lKnee = -(math.max(0, c) * kneeLift * amp + 6)
+	local rKnee = -(math.max(0, -c) * kneeLift * amp + 6)
+	local lAnkle = if s < 0 then -s * 18 * amp else -math.max(0, c) * 10
+	local rAnkle = if s > 0 then s * 18 * amp else -math.max(0, -c) * 10
+	local bob = -abs(c) * 0.12 * amp * bounce + 0.04
+	local target = {
+		LH = A(lHip, 0, -2), RH = A(rHip, 0, 2),
+		LK = A(lKnee), RK = A(rKnee),
+		LA = A(lAnkle), RA = A(rAnkle),
+		Root = CFrame.new(0, bob, 0) * A(-lean * 0.3, s * 4 * amp, -s * 2.5 * amp),
+	}
+	if not legsOnly then
+		local armSwing = (if run then 50 else 24) * amp
+		local elbow = if run then 85 else 18 + amp * 10
+		-- arms swing opposite to the legs
+		target.LS = A(-s * armSwing, 0, 6 + amp * 2)
+		target.RS = A(s * armSwing, 0, -6 - amp * 2)
+		target.LE = A(elbow + math.max(0, -s) * (if run then 10 else 16))
+		target.RE = A(elbow + math.max(0, s) * (if run then 10 else 16))
+		target.Waist = A(-lean * 0.7, -s * 7 * amp, 0)
+		-- the head stays steady, looking where they're going
+		target.Neck = A(lean * 0.6 - 2, s * 3 * amp, 0)
+	end
+	return target
+end
+
 local function update(model, st, t, dt, camPos, myRoot)
 	local root = model:FindFirstChild("HumanoidRootPart")
 	if not root then
@@ -1566,6 +1630,19 @@ local function update(model, st, t, dt, camPos, myRoot)
 	if carrying then
 		target, full = L[CARRY[carry][1]](t, st.Phase)
 	end
+	-- on the move: the full-body walk (the arms keep carrying if they're busy)
+	local speed = groundSpeed(st, root, dt)
+	if not root.Anchored and speed > 0.8 and not fighting and not coK and (not target or carrying) then
+		local steps = gait(st, model, speed, dt, carrying)
+		if carrying and target then
+			for k, v in pairs(steps) do
+				target[k] = v
+			end
+			full = false
+		else
+			target, full = steps, true
+		end
+	end
 	-- look at the player when they're close (or talking to them)
 	local lookYaw, lookPitch
 	if myRoot and poseName ~= "sleep" and poseName ~= "ko" and poseName ~= "swingsit" then
@@ -1612,10 +1689,12 @@ local function update(model, st, t, dt, camPos, myRoot)
 	if pivot and root.Anchored then
 		st.SwingBase = st.SwingBase or root.CFrame
 		local angle = sin(t * 2.1 + st.Phase) * 0.55
-		local axis = st.SwingBase.RightVector
+		st.SwingAngle = angle -- (the seat and chains follow: see stepSwings)
+		local axis = model:GetAttribute("SwingAxis") or st.SwingBase.RightVector
 		root.CFrame = CFrame.new(pivot) * CFrame.fromAxisAngle(axis, angle) * CFrame.new(-pivot) * st.SwingBase
 	elseif st.SwingBase then
 		st.SwingBase = nil
+		st.SwingAngle = nil
 	end
 	if st.Props then
 		-- the fish only shows when it's been caught
@@ -1747,7 +1826,12 @@ local function playerUpdate(model, st, t, dt, player)
 	local weapon = if now - st.Swing < 0.6 then (model:GetAttribute("SwingWeapon") or held) else held
 	local blocking = model:GetAttribute("Blocking") or (player and player:GetAttribute("Blocking"))
 	local eating = model:GetAttribute("Eating")
-	if model:GetAttribute("Treadmill") then
+	local humanoid0 = model:FindFirstChildOfClass("Humanoid")
+	local seatPart = humanoid0 and humanoid0.SeatPart
+	if seatPart and seatPart.Name == "SwingSeat" then
+		-- pumping the swing: legs out on the way forward, tucked on the way back
+		target, full = L.swingsit(t, st.Phase)
+	elseif model:GetAttribute("Treadmill") then
 		target, full = L.run(t, st.Phase)
 	else
 		local root = model:FindFirstChild("HumanoidRootPart")
@@ -1776,6 +1860,25 @@ local function playerUpdate(model, st, t, dt, player)
 	elseif model:GetAttribute("Sprinting") then
 		target, full = L.sprint(t, st.Phase)
 	end
+	-- walking and running with the whole body (legs only while the arms are busy)
+	local root = model:FindFirstChild("HumanoidRootPart")
+	local speed = root and groundSpeed(st, root, dt) or 0
+	if root and speed > 0.8 and not model:GetAttribute("Treadmill") then
+		local humanoid = model:FindFirstChildOfClass("Humanoid")
+		local airborne = humanoid and humanoid.FloorMaterial == Enum.Material.Air
+		if not airborne then
+			local steps = gait(st, model, speed, dt, target ~= nil)
+			if target then
+				for k, v in pairs(steps) do
+					if not target[k] then
+						target[k] = v
+					end
+				end
+			else
+				target, full = steps, true
+			end
+		end
+	end
 	blend(st, target, full, dt)
 	-- a streak behind the weapon while it swings
 	if tool then
@@ -1795,6 +1898,57 @@ local function playerUpdate(model, st, t, dt, player)
 		end
 	end
 end
+
+--------------------------------------------------------------------------------
+-- Swings: the seat and its chains swing with whoever is on it. A citizen's
+-- swing keeps time with their body; a player on a swing pumps their legs and
+-- the swing builds up, then slows down and stops when they get off.
+--------------------------------------------------------------------------------
+local swings = setmetatable({}, { __mode = "k" })
+local function stepSwings(dt, t, camPos)
+	for _, model in ipairs(CollectionService:GetTagged("Swing")) do
+		local pivot, axis = model:GetAttribute("Pivot"), model:GetAttribute("Axis")
+		local seat = model:FindFirstChild("SwingSeat")
+		if typeof(pivot) == "Vector3" and typeof(axis) == "Vector3" and seat and (pivot - camPos).Magnitude < Poses.PoseRadius then
+			local sw = swings[model]
+			if not sw then
+				sw = { Base = {}, Amp = 0, Ph = 0 }
+				for _, p in ipairs(model:GetChildren()) do
+					if p:IsA("BasePart") then
+						sw.Base[p] = p.CFrame
+					end
+				end
+				swings[model] = sw
+			end
+			local angle
+			-- a citizen on it?
+			for m, st in pairs(states) do
+				if st.SwingAngle and m.Parent then
+					local p = m:GetAttribute("SwingPivot")
+					if typeof(p) == "Vector3" and (p - pivot).Magnitude < 0.5 then
+						angle = st.SwingAngle
+						break
+					end
+				end
+			end
+			if not angle then
+				-- a player sitting on it pumps it higher; empty, it slows to a stop
+				local occupied = seat:IsA("Seat") and seat.Occupant ~= nil
+				sw.Amp += ((if occupied then 0.6 else 0) - sw.Amp) * math.min(1, dt * (if occupied then 0.35 else 0.8))
+				sw.Ph += dt * 2.1
+				angle = sin(sw.Ph) * sw.Amp
+			end
+			if abs(angle) > 0.001 or sw.Moved then
+				sw.Moved = abs(angle) > 0.001
+				local rot = CFrame.new(pivot) * CFrame.fromAxisAngle(axis, angle) * CFrame.new(-pivot)
+				for p, base in pairs(sw.Base) do
+					p.CFrame = rot * base
+				end
+			end
+		end
+	end
+end
+Poses.StepSwings = stepSwings
 
 function Poses.StepPlayers(dt, camPos)
 	local t = os.clock()
@@ -1833,6 +1987,7 @@ function Poses.Step(dt)
 		end
 	end
 	Poses.StepPlayers(dt, camPos)
+	pcall(stepSwings, dt, t, camPos)
 end
 
 return Poses

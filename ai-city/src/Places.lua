@@ -46,12 +46,23 @@ local function playground(ctx, parent, center, rotY, spots, big)
 			deco(parent, "SwingLeg", Vector3.new(0.5, 9.4, 0.5), cf * CFrame.new(-5 + sx * 6, 4.6, 5 + lz) * CFrame.Angles(math.rad(lz * 5), 0, 0), red, Enum.Material.Metal)
 		end
 		local seatPos = cf * CFrame.new(-5 + sx * 2.6, 2.4, 5)
-		deco(parent, "SwingSeat", Vector3.new(2, 0.3, 1.2), seatPos, rgb(40, 40, 46))
+		-- a real seat (players can sit on it too) hanging from two chains; every
+		-- client swings the seat and chains with whoever is sitting on it
+		local swing = Instance.new("Model")
+		swing.Name = "Swing"
+		swing.Parent = parent
+		local seat = MapKit.seat(swing, "SwingSeat", Vector3.new(2, 0.3, 1.2), seatPos, rgb(40, 40, 46), Enum.Material.SmoothPlastic)
 		for _, cx in ipairs({ -0.9, 0.9 }) do
-			deco(parent, "SwingChain", Vector3.new(0.1, 6.4, 0.1), seatPos * CFrame.new(cx, 3.3, 0), rgb(160, 160, 166), Enum.Material.Metal)
+			deco(swing, "SwingChain", Vector3.new(0.1, 6.4, 0.1), seatPos * CFrame.new(cx, 3.3, 0), rgb(160, 160, 166), Enum.Material.Metal)
 		end
+		local pivot = (seatPos * CFrame.new(0, 6.6, 0)).Position
+		swing:SetAttribute("Pivot", pivot)
+		swing:SetAttribute("Axis", seatPos.RightVector)
+		MapKit.tag(swing, "Swing")
 		local s = outSpot(seatPos * CFrame.new(0, -2.4, 0) * CFrame.Angles(0, math.pi, 0), "swing", "kid")
-		s.SwingPivot = (seatPos * CFrame.new(0, 6.6, 0)).Position
+		s.SwingPivot = pivot
+		s.SwingAxis = seatPos.RightVector
+		s.Seat = seat
 		table.insert(spots, s)
 	end
 	-- slide tower

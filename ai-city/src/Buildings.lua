@@ -349,6 +349,12 @@ local HOUSE_ROOFS = { MapKit.rgb(150, 60, 50), MapKit.rgb(70, 80, 100), MapKit.r
 local SHUTTERS = { MapKit.rgb(60, 90, 70), MapKit.rgb(70, 90, 140), MapKit.rgb(140, 50, 50), MapKit.rgb(60, 60, 66), MapKit.rgb(230, 230, 225) }
 
 -- style: "cottage", "twostory", "modern", "bungalow"
+-- how deep a house is at a scale (every style starts 22 deep; the lot leaves
+-- room for a front and a back yard)
+function Buildings.HouseDepth(scale)
+	return math.min(38, math.floor(22 * (scale or 1) / 2 + 0.5) * 2)
+end
+
 function Buildings.house(parent, center, face, style, rng, garageSide, scale)
 	local wall = HOUSE_WALLS[rng:NextInteger(1, #HOUSE_WALLS)]
 	local roof = HOUSE_ROOFS[rng:NextInteger(1, #HOUSE_ROOFS)]
@@ -374,7 +380,7 @@ function Buildings.house(parent, center, face, style, rng, garageSide, scale)
 		-- big suburban lots get bigger houses (whole studs, even sizes)
 		spec.W = math.floor(spec.W * scale / 2 + 0.5) * 2
 		-- (the depth has to leave a front yard and a back yard on the lot)
-		spec.D = math.min(28, math.floor(spec.D * scale / 2 + 0.5) * 2)
+		spec.D = Buildings.HouseDepth(scale)
 	end
 	local b = Buildings.shell(parent, spec)
 	local at = b.At
