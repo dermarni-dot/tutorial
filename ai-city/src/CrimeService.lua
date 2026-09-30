@@ -404,6 +404,67 @@ end
 --------------------------------------------------------------------------------
 local lastHitOn = {} -- ["attacker:victim"] = time the last hit was reported
 
+-- a gun: who's in the line of fire (the aim direction from the client, or
+-- where you're facing). Walls stop bullets. Returns the target and where the
+-- shot ended.
+local function lineOfFire(player, root, w, aim)
+	local dir = if typeof(aim) == "Vector3" and aim.Magnitude > 0.1 then aim.Unit else root.CFrame.LookVector
+	local from = root.Position + Vector3.new(0, 1.5, 0)
+	local best, bestD, bestPlayer = nil, math.huge, false
+	local function consider(pos, target, isPlayer)
+		local d = pos + Vector3.new(0, 1, 0) - from
+		if d.Magnitude <= w.Range and d.Magnitude < bestD and dir:Dot(d.Unit) >= (w.Cone or 0.98) - (if d.Magnitude < 8 then 0.1 else 0) then
+			best, bestD, bestPlayer = target, d.Magnitude, isPlayer
+		end
+	end
+	for _, brain in ipairs(S.Citizens.Nearby(root.Position, w.Range + 3)) do
+		if brain.State ~= "ko" and brain.State ~= "hospital" then
+			consider(brain.Root.Position, brain, false)
+		end
+	end
+	for _, other in ipairs(Players:GetPlayers()) do
+		local oroot, och = rootOf(other)
+		local ohum = och and och:FindFirstChildOfClass("Humanoid")
+		if other ~= player and oroot and ohum and ohum.Health > 0 and not jailed[other] and not hiding[other] then
+			consider(oroot.Position, other, true)
+		end
+	end
+	-- a wall in the way stops the bullet
+	local filter = { player.Character, workspace:FindFirstChild("Citizens") }
+	for _, p in ipairs(Players:GetPlayers()) do
+		if p.Character then
+			table.insert(filter, p.Character)
+		end
+	end
+	rayParams.FilterDescendantsInstances = filter
+	local reach = if best then bestD else w.Range
+	local wall = workspace:Raycast(from, dir * reach, rayParams)
+	if wall then
+		return nil, wall.Position, false
+	end
+	local endPos = if best then (if bestPlayer then rootOf(best).Position else best.Root.Position) + Vector3.new(0, 1, 0) else from + dir * w.Range
+	return best, endPos, bestPlayer
+end
+
+-- shots fired: everyone who hears it runs, and someone calls the police
+local lastShotReport = {}
+local function shotsFired(player, pos, w)
+	for _, brain in ipairs(S.Citizens.Nearby(pos, w.Loud or 120)) do
+		if S.Citizens.CanReact(brain) and not isPolice(brain) and not brain.C.Temp and math.random() < 0.8 then
+			task.delay(math.random() * 0.4, function()
+				S.Citizens.Flee(brain, pos, 12, ({ "Gun!!", "Get down!", "Run!!", "Somebody call 911!", "Shots fired!" })[math.random(1, 5)])
+			end)
+		end
+	end
+	local now = os.clock()
+	if now - (lastShotReport[player] or -99) > 8 then
+		local _, reported = report(player, pos, nil, 2, "fire a gun", "fired a gun in the street", 1)
+		if reported then
+			lastShotReport[player] = now
+		end
+	end
+end
+
 local function attack(player, data)
 	local root, character = rootOf(player)
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
@@ -423,6 +484,18 @@ local function attack(player, data)
 	character:SetAttribute("Swing", now)
 	-- who's in front of us? (citizens and other players)
 	local best, bestScore, bestPlayer = nil, math.huge, nil
+	if w.Ranged then
+		local endPos
+		best, endPos, bestPlayer = lineOfFire(player, root, w, type(data) == "table" and data.Aim or nil)
+		S.City.SendNear(root.Position, 250, { Type = "Shot", From = root.Position + Vector3.new(0, 1.5, 0), To = endPos, Weapon = id, Shooter = player.UserId })
+		shotsFired(player, root.Position, w)
+		if best and not bestPlayer and not canBeHurt(best) then
+			best = nil
+		end
+		if not best then
+			return { Ok = true, Hit = false, Weapon = id }
+		end
+	end
 	local look = root.CFrame.LookVector
 	local function consider(pos, target, isPlayer)
 		local d = pos - root.Position
@@ -434,16 +507,18 @@ local function attack(player, data)
 			end
 		end
 	end
-	for _, brain in ipairs(S.Citizens.Nearby(root.Position, w.Range + 3)) do
-		if brain.State ~= "ko" and brain.State ~= "hospital" then
-			consider(brain.Root.Position, brain, false)
+	if not w.Ranged then
+		for _, brain in ipairs(S.Citizens.Nearby(root.Position, w.Range + 3)) do
+			if brain.State ~= "ko" and brain.State ~= "hospital" then
+				consider(brain.Root.Position, brain, false)
+			end
 		end
-	end
-	for _, other in ipairs(Players:GetPlayers()) do
-		local oroot, och = rootOf(other)
-		local ohum = och and och:FindFirstChildOfClass("Humanoid")
-		if other ~= player and oroot and ohum and ohum.Health > 0 and not jailed[other] and not hiding[other] then
-			consider(oroot.Position, other, true)
+		for _, other in ipairs(Players:GetPlayers()) do
+			local oroot, och = rootOf(other)
+			local ohum = och and och:FindFirstChildOfClass("Humanoid")
+			if other ~= player and oroot and ohum and ohum.Health > 0 and not jailed[other] and not hiding[other] then
+				consider(oroot.Position, other, true)
+			end
 		end
 	end
 	if not best then
@@ -536,7 +611,7 @@ local function attack(player, data)
 	end
 	-- (a hit nobody saw doesn't count: the next one might be seen)
 	if now - (brain.ReportedAt or -99) > 6 then
-		local _, reported = report(player, brain.Root.Position, brain, w.Severity, (if armed then "stab " else "attack ") .. c.First, w.Verb .. " " .. c.First .. " in broad daylight", if armed then 2 else 1)
+		local _, reported = report(player, brain.Root.Position, brain, w.Severity, (if w.Ranged then "shoot " elseif armed then "stab " else "attack ") .. c.First, w.Verb .. " " .. c.First .. " in broad daylight", if armed then 2 else 1)
 		if reported then
 			brain.ReportedAt = now
 		end
@@ -886,6 +961,34 @@ function CrimeService.PoliceStrike(player, w)
 	end
 end
 
+-- the suspect has a gun out: officers who can see them fire back
+function CrimeService.PoliceShoot(player, w)
+	local root = rootOf(player)
+	if not root then
+		return
+	end
+	local now = os.clock()
+	for _, brain in ipairs(w.Chasers) do
+		local d = brain.Model.Parent and (brain.Root.Position - root.Position).Magnitude
+		if d and d < 55 and now >= (brain.NextShot or 0) and canSee(brain, root.Position, player.Character, 60) then
+			brain.NextShot = now + math.random(12, 20) / 10
+			brain.Model:SetAttribute("SwingWeapon", "Pistol")
+			brain.Model:SetAttribute("Aiming", true)
+			brain.Model:SetAttribute("Swing", now)
+			local from = brain.Root.Position + Vector3.new(0, 1.5, 0)
+			local hit = math.random() < math.clamp(1.1 - d / 50, 0.25, 0.85)
+			local to = if hit then root.Position + Vector3.new(0, 1, 0) else root.Position + Vector3.new(math.random(-4, 4), math.random(0, 3), math.random(-4, 4))
+			S.City.SendNear(from, 250, { Type = "Shot", From = from, To = to, Weapon = "Pistol" })
+			if hit then
+				hurtPlayer(from, player, math.random(10, 16), 8)
+			end
+			if math.random() < 0.3 then
+				S.Citizens.Say(brain, ({ "Drop the weapon!", "Shots fired! Suspect is armed!", "Put it down, now!" })[math.random(1, 3)], "angry", 1.6)
+			end
+		end
+	end
+end
+
 local swatNames = { "Carter", "Okafor", "Tanaka", "Silva", "Haddad", "Larsen", "Brooks", "Mensah" }
 local function spawnBackup(player, root, swat)
 	-- backup arrives from a sidewalk out of sight
@@ -1212,6 +1315,8 @@ local function chaseTick(dt)
 			end
 			if close and not hiding[player] then
 				CrimeService.PoliceStrike(player, w)
+			elseif seen and not hiding[player] and S.Combat and Weapons.Get(S.Combat.Equipped(player)).Ranged then
+				CrimeService.PoliceShoot(player, w)
 			end
 		end
 		-- out of sight long enough: the stars fade one by one

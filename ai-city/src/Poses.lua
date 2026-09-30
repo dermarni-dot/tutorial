@@ -693,6 +693,43 @@ L.draw = function(t, ph, k)
 	return { RS = A(-40 + e * 80, 0, -20 + e * 10), RE = A(20 + e * 70), RW = A(-40 * (1 - e), 0, 0), Waist = A(0, -12 * (1 - e), 0), Neck = A(-10 * (1 - e), -20 * (1 - e), 0) }, false
 end
 
+-- guns: held low and ready, raised to aim (two hands), and the kick of a shot
+-- (the barrel runs along the fingers, so a straight wrist points it forward)
+L.holdPistol = function(t, ph)
+	return { RS = A(35, 0, -8), RE = A(35), RW = A(-20), LS = A(8, 0, 6), LE = A(15), Neck = A(-4) }, false
+end
+L.aimPistol = function(t, ph)
+	local sway = osc(t, 1.1, ph) * 1.2
+	return { RS = A(88 + sway, 0, -2), RE = A(0), RW = A(0), LS = A(84 + sway, 0, 32), LE = A(38), LW = A(0, 0, -20), Waist = A(0, -8, 0), Neck = A(2, 8, 0), LH = A(10), RH = A(-8), LK = A(-10), RK = A(-6) }, false
+end
+L.holdShotgun = function(t, ph)
+	return { RS = A(40, 0, -10), RE = A(50), RW = A(-10), LS = A(55, 0, 30), LE = A(55), Waist = A(0, -10, 0), Neck = A(-4, 6, 0) }, false
+end
+L.aimShotgun = function(t, ph)
+	local sway = osc(t, 1, ph)
+	return { RS = A(82 + sway, 0, -12), RE = A(22), RW = A(0), LS = A(88 + sway, 0, 28), LE = A(18), Waist = A(0, -18, 0), Neck = A(0, 16, 0), LH = A(16), RH = A(-12), LK = A(-14), RK = A(-8) }, false
+end
+L.shoot = function(t, ph, k)
+	local kick = sin(math.min(1, k * 2) * math.pi) * 14
+	local pose = L.aimPistol(t, ph)
+	pose.RS = A(88 + kick, 0, -2)
+	pose.LS = A(84 + kick, 0, 32)
+	pose.RE = A(kick * 0.6)
+	pose.Neck = A(2 + kick * 0.3, 8, 0)
+	return pose, false
+end
+L.shotgunshoot = function(t, ph, k)
+	local kick = sin(math.min(1, k * 2.5) * math.pi) * 22
+	local pump = if k > 0.5 then sin((k - 0.5) / 0.5 * math.pi) else 0
+	local pose = L.aimShotgun(t, ph)
+	pose.RS = A(82 + kick, 0, -12)
+	pose.LS = A(88 + kick * 0.6, 0, 28)
+	pose.LE = A(18 + pump * 40)
+	pose.Waist = A(kick * 0.3, -18, 0)
+	pose.Root = CFrame.new(0, 0, kick * 0.01)
+	return pose, false
+end
+
 -- won the fight: a fist pump
 L.victory = function(t, ph, k)
 	local pump = abs(osc(t, 9, ph))
@@ -705,15 +742,19 @@ end
 -- the punch combo: every swing is the next move in the list (the same on every client)
 local COMBO = { "jab", "cross", "hook", "cross", "uppercut" }
 local BRAWL_COMBO = { "jab", "cross", "hook", "uppercut", "cross", "roundhouse" }
-local MOVE_TIME = { jab = 0.3, cross = 0.38, hook = 0.42, uppercut = 0.46, roundhouse = 0.58, chop = 0.45, batswing = 0.5, stab = 0.34, slash = 0.4, slam = 0.55 }
+local MOVE_TIME = { shoot = 0.25, shotgunshoot = 0.6, jab = 0.3, cross = 0.38, hook = 0.42, uppercut = 0.46, roundhouse = 0.58, chop = 0.45, batswing = 0.5, stab = 0.34, slash = 0.4, slam = 0.55 }
 Poses.Combo = COMBO
 
 -- the move for this swing: weapon, which swing it is, and whether it's a street brawl
-local GUARDS = { Bat = L.guardBat, Hammer = L.guardHammer, Knife = L.guardKnife }
-local HOLDS = { Bat = L.holdBat, Hammer = L.holdHammer, Knife = L.holdKnife }
+local GUARDS = { Bat = L.guardBat, Hammer = L.guardHammer, Knife = L.guardKnife, Pistol = L.aimPistol, Shotgun = L.aimShotgun }
+local HOLDS = { Bat = L.holdBat, Hammer = L.holdHammer, Knife = L.holdKnife, Pistol = L.holdPistol, Shotgun = L.holdShotgun }
 
 local function fightMove(weapon, count, brawl)
-	if weapon == "Bat" then
+	if weapon == "Pistol" then
+		return "shoot"
+	elseif weapon == "Shotgun" then
+		return "shotgunshoot"
+	elseif weapon == "Bat" then
 		return if count % 2 == 0 then "batswing" else "chop"
 	elseif weapon == "Hammer" then
 		return if count % 3 == 0 then "chop" else "slam"

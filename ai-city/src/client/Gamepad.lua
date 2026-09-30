@@ -133,11 +133,11 @@ end
 -- step through the hotbar: 1 = fists, then each weapon you own
 local function cycleWeapon(dir)
 	local Hud = ctx.Hud
-	for _ = 1, 5 do
+	for _ = 1, 7 do
 		slot += dir
 		if slot < 1 then
-			slot = 5
-		elseif slot > 5 then
+			slot = 7
+		elseif slot > 7 then
 			slot = 1
 		end
 		if slot == 1 or Hud.Equip(slot) then

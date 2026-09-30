@@ -72,6 +72,35 @@ BUILD.Knife = function(tool, handle)
 	tool.Grip = CFrame.new(0, -0.1, 0)
 end
 
+BUILD.Pistol = function(tool, handle)
+	handle.Size = Vector3.new(0.3, 0.8, 0.4)
+	handle.Color = rgb(34, 34, 38)
+	handle.Material = Enum.Material.Metal
+	piece(tool, handle, "Slide", Vector3.new(0.32, 0.34, 1.3), CFrame.new(0, 0.45, -0.35), rgb(50, 52, 58), Enum.Material.Metal)
+	piece(tool, handle, "Barrel", Vector3.new(0.16, 0.16, 0.2), CFrame.new(0, 0.45, -1.05), rgb(20, 20, 22), Enum.Material.Metal)
+	piece(tool, handle, "TriggerGuard", Vector3.new(0.08, 0.2, 0.4), CFrame.new(0, 0.12, -0.3), rgb(30, 30, 34), Enum.Material.Metal)
+	local muzzle = Instance.new("Attachment")
+	muzzle.Name = "Muzzle"
+	muzzle.Position = Vector3.new(0, 0.45, -1.2)
+	muzzle.Parent = handle
+	-- held pointing forward (the grip is the handle; the barrel runs along -Z)
+	tool.Grip = CFrame.new(0, -0.1, 0.1)
+end
+BUILD.Shotgun = function(tool, handle)
+	handle.Size = Vector3.new(0.3, 0.6, 0.5)
+	handle.Color = rgb(110, 70, 40)
+	handle.Material = Enum.Material.Wood
+	piece(tool, handle, "Stock", Vector3.new(0.34, 0.5, 1.4), CFrame.new(0, 0.1, 0.9), rgb(110, 70, 40), Enum.Material.Wood)
+	piece(tool, handle, "Body", Vector3.new(0.34, 0.4, 1.1), CFrame.new(0, 0.3, -0.6), rgb(40, 40, 44), Enum.Material.Metal)
+	piece(tool, handle, "Barrel", Vector3.new(0.2, 0.2, 2.2), CFrame.new(0, 0.42, -2.1), rgb(30, 30, 34), Enum.Material.Metal)
+	piece(tool, handle, "Pump", Vector3.new(0.28, 0.24, 0.8), CFrame.new(0, 0.2, -1.9), rgb(110, 70, 40), Enum.Material.Wood)
+	local muzzle = Instance.new("Attachment")
+	muzzle.Name = "Muzzle"
+	muzzle.Position = Vector3.new(0, 0.42, -3.2)
+	muzzle.Parent = handle
+	tool.Grip = CFrame.new(0, -0.1, 0.2)
+end
+
 function CombatService.MakeTool(id)
 	local info = Weapons.List[id]
 	if not info or not BUILD[id] then

@@ -34,8 +34,20 @@ Weapons.List = {
 		Verb = "stabbed", Down = "stabbed",
 		Desc = "Quick stabs up close. Two hits and they're down. The most serious crime in the city.",
 	},
+	-- guns: aim with the camera (or the mouse) and fire. Walls stop bullets.
+	-- Gunshots are loud: everyone nearby hears them, runs and calls the police.
+	Pistol = {
+		Name = "Pistol", Emoji = "🔫", Damage = 34, Range = 90, Cooldown = 0.32, Knock = 8, Anim = "shoot", Severity = 4, Price = 350,
+		Verb = "shot", Down = "shot down", Ranged = true, Cone = 0.985, Loud = 140,
+		Desc = "Aim and fire from far away. Three hits put someone down. The loudest crime in the city: everyone hears it.",
+	},
+	Shotgun = {
+		Name = "Shotgun", Emoji = "💥", Damage = 75, Range = 38, Cooldown = 1.1, Knock = 40, Anim = "shoot", Severity = 4, Price = 600,
+		Verb = "blasted", Down = "blasted down", Ranged = true, Cone = 0.94, Loud = 170, Heavy = true,
+		Desc = "A wide, heavy blast up close. Slow to fire, one or two hits put anyone down.",
+	},
 }
-Weapons.Order = { "Bat", "Hammer", "Knife" }
+Weapons.Order = { "Bat", "Hammer", "Knife", "Pistol", "Shotgun" }
 
 -- Health by who you're fighting
 Weapons.CITIZEN_HP = 100
@@ -48,6 +60,7 @@ Weapons.Animations = {
 	punch = "rbxassetid://522635514", -- tool slash, sped up: a jab
 	swing = "rbxassetid://522635514", -- tool slash: an overhead swing
 	stab = "rbxassetid://522638767", -- tool lunge: a stab
+	shoot = "rbxassetid://522635514", -- (the recoil is posed in Poses)
 }
 
 function Weapons.Get(id)

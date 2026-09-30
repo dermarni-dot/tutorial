@@ -451,6 +451,97 @@ end
 --------------------------------------------------------------------------------
 -- Effects
 --------------------------------------------------------------------------------
+-- a gunshot: a flash at the muzzle, a streak to where the bullet went, a bang
+local bang
+function World.Shot(from, to, weapon)
+	if typeof(from) ~= "Vector3" or typeof(to) ~= "Vector3" then
+		return
+	end
+	local heavy = weapon == "Shotgun"
+	local d = to - from
+	local tracer = Instance.new("Part")
+	tracer.Name = "Tracer"
+	tracer.Anchored, tracer.CanCollide, tracer.CanQuery, tracer.CanTouch, tracer.CastShadow = true, false, false, false, false
+	tracer.Material = Enum.Material.Neon
+	tracer.Color = Color3.fromRGB(255, 226, 150)
+	tracer.Size = Vector3.new(if heavy then 0.14 else 0.08, if heavy then 0.14 else 0.08, math.max(0.1, d.Magnitude))
+	tracer.CFrame = CFrame.lookAt(from + d / 2, to)
+	tracer.Transparency = 0.2
+	tracer.Parent = workspace
+	local flash = Instance.new("Part")
+	flash.Name = "MuzzleFlash"
+	flash.Anchored, flash.CanCollide, flash.CanQuery, flash.CanTouch, flash.CastShadow = true, false, false, false, false
+	flash.Shape = Enum.PartType.Ball
+	flash.Material = Enum.Material.Neon
+	flash.Color = Color3.fromRGB(255, 200, 90)
+	flash.Size = Vector3.one * (if heavy then 1.2 else 0.7)
+	flash.CFrame = CFrame.new(from + (if d.Magnitude > 0 then d.Unit * 1.4 else Vector3.zero))
+	flash.Parent = workspace
+	local light = Instance.new("PointLight")
+	light.Color = Color3.fromRGB(255, 200, 120)
+	light.Range = 14
+	light.Brightness = 3
+	light.Parent = flash
+	task.delay(0.05, function()
+		flash:Destroy()
+	end)
+	task.delay(0.08, function()
+		tracer:Destroy()
+	end)
+	local camera = workspace.CurrentCamera
+	if camera and (camera.CFrame.Position - from).Magnitude < 260 then
+		if not bang then
+			bang = Instance.new("Sound")
+			bang.Name = "Gunshot"
+			bang.SoundId = "rbxasset://sounds/swordlunge.wav"
+			bang.Parent = workspace
+		end
+		local s = bang:Clone()
+		s.Volume = if heavy then 0.9 else 0.6
+		s.PlaybackSpeed = if heavy then 0.35 else 0.55
+		s.Parent = workspace
+		pcall(function()
+			s:Play()
+		end)
+		task.delay(1.5, function()
+			s:Destroy()
+		end)
+		if (camera.CFrame.Position - from).Magnitude < 20 then
+			World.Shake(if heavy then 0.5 else 0.25, 0.12)
+		end
+	end
+end
+
+-- where you're aiming a gun: the mouse (or the middle of the screen on a
+-- controller or phone, and in first person)
+local UIS = game:GetService("UserInputService")
+local function aimDirection(root)
+	local camera = workspace.CurrentCamera
+	if not camera then
+		return root.CFrame.LookVector
+	end
+	local ray
+	local ok = pcall(function()
+		local pad = ctx and ctx.Gamepad and ctx.Gamepad.Active()
+		local touch = UIS.TouchEnabled and not UIS.MouseEnabled
+		if pad or touch or UIS.MouseBehavior == Enum.MouseBehavior.LockCenter then
+			local vp = camera.ViewportSize
+			ray = camera:ViewportPointToRay(vp.X / 2, vp.Y / 2)
+		else
+			local m = UIS:GetMouseLocation()
+			ray = camera:ViewportPointToRay(m.X, m.Y)
+		end
+	end)
+	if not ok or not ray then
+		return camera.CFrame.LookVector
+	end
+	-- the point the ray reaches, then the direction to it from the gun
+	local target = ray.Origin + ray.Direction * 150
+	local from = root.Position + Vector3.new(0, 1.5, 0)
+	local dir = target - from
+	return if dir.Magnitude > 0.1 then dir.Unit else camera.CFrame.LookVector
+end
+
 function World.Hit(position, damage, ko, isPlayer, blocked, weapon)
 	local anchor = UI.new("Part", { Anchored = true, CanCollide = false, CanQuery = false, CanTouch = false, Transparency = 1, Size = Vector3.one, CFrame = CFrame.new(position), Parent = workspace })
 	local gui = UI.new("BillboardGui", { Size = UDim2.fromOffset(220, 60), AlwaysOnTop = true, LightInfluence = 0, Adornee = anchor, Parent = anchor })
@@ -570,10 +661,24 @@ function World.Attack()
 	character:SetAttribute("SwingSide", (character:GetAttribute("SwingSide") or 0) + 1)
 	character:SetAttribute("SwingWeapon", weapon)
 	character:SetAttribute("Swing", os.clock())
-	UI.sound("punch", 0.4, if weapon == "Knife" then 1.6 elseif weapon == "Fists" then 1.3 else 0.9)
+	if not w.Ranged then
+		UI.sound("punch", 0.4, if weapon == "Knife" then 1.6 elseif weapon == "Fists" then 1.3 else 0.9)
+	end
+	-- guns: turn to face where you're aiming, and send the aim
+	local aim
+	if w.Ranged then
+		local root = character:FindFirstChild("HumanoidRootPart")
+		if root then
+			aim = aimDirection(root)
+			local flat = Vector3.new(aim.X, 0, aim.Z)
+			if flat.Magnitude > 0.1 then
+				root.CFrame = CFrame.lookAt(root.Position, root.Position + flat)
+			end
+		end
+	end
 	task.spawn(function()
 		local ok, result = pcall(function()
-			return ctx.Remotes.Request:InvokeServer({ Action = "Attack" })
+			return ctx.Remotes.Request:InvokeServer({ Action = "Attack", Aim = aim })
 		end)
 		if ok and result and result.Hit then
 			World.Shake(if result.KO then 0.9 elseif weapon == "Fists" then 0.35 else 0.55, 0.25)

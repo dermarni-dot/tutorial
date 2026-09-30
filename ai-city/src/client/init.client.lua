@@ -96,6 +96,9 @@ handlers.Waypoint = function(d)
 	end
 	World.Waypoint(d.Position, d.Label, d.Emoji, d.Model)
 end
+handlers.Shot = function(d)
+	World.Shot(d.From, d.To, d.Weapon)
+end
 handlers.Hit = function(d)
 	World.Hit(d.Position, d.Damage, d.KO, d.Player, d.Blocked, d.Weapon)
 	local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")

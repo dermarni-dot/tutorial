@@ -396,6 +396,22 @@ D.knife = function(c)
 	end
 end
 
+-- a pistol, side on, barrel to the right
+D.pistol = function(c)
+	local dark = rgb(46, 48, 56)
+	R(c, 0.55, 0.36, 0.62, 0.16, METAL_DARK, { r = 0.2, grad = { rgb(120, 124, 140), dark, 90 } })
+	R(c, 0.86, 0.36, 0.06, 0.08, rgb(20, 20, 24))
+	R(c, 0.34, 0.58, 0.16, 0.36, dark, { rot = -14, r = 0.25 })
+	R(c, 0.48, 0.5, 0.12, 0.12, rgb(30, 30, 36), { r = 0.5, t = 0.35 })
+end
+-- a shotgun: long barrel, wooden stock and pump
+D.shotgun = function(c)
+	local wood = rgb(140, 90, 50)
+	R(c, 0.56, 0.44, 0.72, 0.09, METAL_DARK, { rot = -18, r = 0.4 })
+	R(c, 0.58, 0.5, 0.2, 0.1, wood, { rot = -18, r = 0.3 })
+	R(c, 0.22, 0.62, 0.28, 0.16, wood, { rot = -18, r = 0.3, grad = { rgb(180, 120, 70), wood, 90 } })
+end
+
 D.hoodie = function(c)
 	local body = rgb(70, 74, 92)
 	R(c, 0.5, 0.7, 0.72, 0.5, body, { r = 0.22 })
@@ -666,7 +682,7 @@ end
 local ALIAS = {
 	Phone = "phone", Map = "map", People = "people", News = "news", Vote = "vote", Goals = "goals",
 	Speech = "mic", Mayor = "mayor", Help = "help", Settings = "settings", Wardrobe = "mask",
-	Fists = "fist", Bat = "bat", Hammer = "hammer", Knife = "knife", Hoodie = "hoodie", Disguise = "disguise", SkiMask = "mask",
+	Fists = "fist", Bat = "bat", Hammer = "hammer", Knife = "knife", Pistol = "pistol", Shotgun = "shotgun", ["🔫"] = "pistol", ["💥"] = "shotgun", Hoodie = "hoodie", Disguise = "disguise", SkiMask = "mask",
 	["📱"] = "phone", ["🗺️"] = "map", ["👥"] = "people", ["📰"] = "news", ["🗳️"] = "vote", ["🎯"] = "goals",
 	["🎤"] = "mic", ["🏛️"] = "mayor", ["❓"] = "help", ["⚙️"] = "settings", ["🥷"] = "mask", ["👊"] = "fist",
 	["🏏"] = "bat", ["🔨"] = "hammer", ["🔪"] = "knife", ["🛡️"] = "shield", ["🪙"] = "coin", ["❤️"] = "heart",

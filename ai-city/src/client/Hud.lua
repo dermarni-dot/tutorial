@@ -736,7 +736,7 @@ local function tools()
 			end
 		end
 	end
-	local order = { Bat = 1, Hammer = 2, Knife = 3 }
+	local order = { Bat = 1, Hammer = 2, Knife = 3, Pistol = 4, Shotgun = 5 }
 	table.sort(list, function(a, b)
 		return (order[a:GetAttribute("Weapon")] or 9) < (order[b:GetAttribute("Weapon")] or 9)
 	end)
