@@ -23,6 +23,7 @@ local Panels = require(script:WaitForChild("Panels"))
 local World = require(script:WaitForChild("World"))
 local Moves = require(script:WaitForChild("Moves"))
 local Gamepad = require(script:WaitForChild("Gamepad"))
+local Water = require(script:WaitForChild("Water"))
 local Poses = require(Shared:WaitForChild("Poses"))
 local C = UI.C
 
@@ -44,6 +45,7 @@ World.Start(ctx)
 Panels.Start(ctx)
 Moves.Start(ctx)
 Gamepad.Start(ctx)
+Water.Start()
 
 -- the citizens' poses, props and faces, every frame (after animations)
 local step = RunService.PreSimulation or RunService.Stepped
@@ -95,6 +97,11 @@ handlers.Waypoint = function(d)
 		return
 	end
 	World.Waypoint(d.Position, d.Label, d.Emoji, d.Model)
+end
+handlers.FishBite = function(d)
+	World.FishBite(d.Position)
+	Water.Bite(d.Position)
+	Gamepad.Rumble(0.5, 0.2)
 end
 handlers.Shot = function(d)
 	World.Shot(d.From, d.To, d.Weapon)

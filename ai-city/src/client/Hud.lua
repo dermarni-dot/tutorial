@@ -730,15 +730,15 @@ local function tools()
 	for _, container in ipairs({ player.Character, backpack }) do
 		if container then
 			for _, t in ipairs(container:GetChildren()) do
-				if t:IsA("Tool") and t:GetAttribute("Weapon") then
+				if t:IsA("Tool") and (t:GetAttribute("Weapon") or t:GetAttribute("Rod")) then
 					table.insert(list, t)
 				end
 			end
 		end
 	end
-	local order = { Bat = 1, Hammer = 2, Knife = 3, Pistol = 4, Shotgun = 5 }
+	local order = { Bat = 1, Hammer = 2, Knife = 3, Pistol = 4, Shotgun = 5, Rod = 6 }
 	table.sort(list, function(a, b)
-		return (order[a:GetAttribute("Weapon")] or 9) < (order[b:GetAttribute("Weapon")] or 9)
+		return (order[a:GetAttribute("Weapon") or "Rod"] or 9) < (order[b:GetAttribute("Weapon") or "Rod"] or 9)
 	end)
 	return list
 end
@@ -777,7 +777,7 @@ local function refreshHotbar()
 	hotbar.Visible = #list > 0
 	local wanted = { "Fists" }
 	for _, t in ipairs(list) do
-		table.insert(wanted, t:GetAttribute("Weapon"))
+		table.insert(wanted, t:GetAttribute("Weapon") or "Rod")
 	end
 	local equipped = ctx.World.Equipped and ctx.World.Equipped() or "Fists"
 	for k, id in ipairs(wanted) do

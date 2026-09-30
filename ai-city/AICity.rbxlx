@@ -2753,6 +2753,71 @@ local function trail(tool, on)
 	end
 end
 
+-- fishing with a rod (see FishingService): the attributes change on the
+-- server, so each is timed from when this client first sees the change
+local function sinceChange(st, model, name)
+	local v = model:GetAttribute(name)
+	st.Seen = st.Seen or {}
+	local rec = st.Seen[name]
+	if v == nil then
+		st.Seen[name] = nil
+		return nil
+	end
+	if not rec or rec.Value ~= v then
+		rec = { Value = v, At = os.clock() }
+		st.Seen[name] = rec
+	end
+	return os.clock() - rec.At
+end
+
+local function rodPose(model, st, t)
+	local caught = sinceChange(st, model, "Caught")
+	local hand = model:FindFirstChild("LeftHand") or model:FindFirstChild("Left Arm")
+	-- the catch in your hand, held up for everyone to see
+	if caught and caught < 3.5 then
+		if not st.CatchPart and hand then
+			local size = model:GetAttribute("CaughtSize") or 1
+			local color = model:GetAttribute("CaughtColor") or Color3.fromRGB(110, 150, 170)
+			local fish = prop(hand, "HeldFish", Vector3.new(0.35, 0.8, 1.8) * size, CFrame.new(0, -0.5 * size, -0.3), color)
+			fish.Parent = model
+			local tail = prop(hand, "HeldFishTail", Vector3.new(0.12, 0.8, 0.6) * size, CFrame.new(0, -0.5 * size, 0.75 + 0.45 * size), color:Lerp(Color3.new(0, 0, 0), 0.2))
+			tail.Parent = model
+			st.CatchPart = { fish, tail }
+		end
+		local b = abs(osc(t, 6, st.Phase))
+		return { LS = A(125 + b * 10, 0, 20), LE = A(20), RS = A(40, 0, -10), RE = A(40), Neck = A(12, 22, 0), Waist = A(6), Root = CFrame.new(0, b * 0.08, 0) }, false
+	elseif st.CatchPart then
+		for _, p in ipairs(st.CatchPart) do
+			p:Destroy()
+		end
+		st.CatchPart = nil
+	end
+	-- the cast: back over the shoulder, then whip it forward
+	local cast = sinceChange(st, model, "Casting")
+	if cast and cast < 0.75 then
+		local k = cast / 0.75
+		if k < 0.45 then
+			local e = k / 0.45
+			return { RS = A(60 + e * 100, 0, -10), RE = A(40 - e * 20), LS = A(40 + e * 60, 0, 14), LE = A(60 - e * 20), Waist = A(e * 10, e * 20, 0), Neck = A(e * 6, -e * 10, 0), LH = A(8 - e * 12), RH = A(-4 + e * 14), RK = A(-8 - e * 10) }, false
+		end
+		local e = (k - 0.45) / 0.55
+		return { RS = A(160 - e * 105, 0, -10), RE = A(20 + e * 20), LS = A(100 - e * 55, 0, 14), LE = A(40 + e * 20), Waist = A(10 - e * 16, 20 - e * 26, 0), Neck = A(6 - e * 12, 0, 0), LH = A(-4 + e * 18), RH = A(10 - e * 16), LK = A(-6 - e * 10) }, false
+	end
+	-- a bite! yank
+	local bite = sinceChange(st, model, "FishBite")
+	if bite and bite < 1.4 then
+		local j = sin(math.min(1, bite / 0.3) * math.pi) * 0.5 + abs(osc(t, 18, st.Phase)) * 0.5
+		return { RS = A(55 + j * 30, 0, -8), RE = A(40 - j * 15), LS = A(46 + j * 25, 0, 14), LE = A(62 - j * 15), Waist = A(j * 8), Neck = A(-8 + j * 8), LK = A(-10), RK = A(-10) }, false
+	end
+	-- waiting with the line out: rod held forward, the tip bobbing a little
+	if model:GetAttribute("Fishing") then
+		local bob = osc(t, 1.3, st.Phase) * 3
+		return { RS = A(55 + bob, 0, -8), RE = A(40), LS = A(46 + bob, 0, 14), LE = A(62), Neck = A(-10, osc(t, 0.2, st.Phase) * 10, 0), Waist = A(-4) }, false
+	end
+	-- just carrying the rod
+	return { RS = A(25, 0, -6), RE = A(45), Neck = A(-2) }, false
+end
+
 local function playerUpdate(model, st, t, dt, player)
 	local now = os.clock()
 	local target, full
@@ -2802,6 +2867,8 @@ local function playerUpdate(model, st, t, dt, player)
 		-- fighting, working or carrying (see above)
 	elseif holding and now - (st.Draw or -99) < 0.35 then
 		target, full = L.draw(t, st.Phase, (now - st.Draw) / 0.35)
+	elseif tool and tool:GetAttribute("Rod") and not eating then
+		target, full = rodPose(model, st, t)
 	elseif HOLDS[held] and not eating then
 		target, full = HOLDS[held](t, st.Phase)
 	elseif eating then
@@ -3271,6 +3338,7 @@ if Config.RUN_CITIZENS ~= false then
 	services.Gangs = require(Modules:WaitForChild("GangService"))
 	services.Love = require(Modules:WaitForChild("RelationshipService"))
 	services.Sports = require(Modules:WaitForChild("SportsService"))
+	services.Fishing = require(Modules:WaitForChild("FishingService"))
 	services.Dialogue.Start(services)
 	services.Crime.Start(services)
 	services.Players.Start(services)
@@ -3285,9 +3353,10 @@ if Config.RUN_CITIZENS ~= false then
 	services.Gangs.Start(services)
 	services.Love.Start(services)
 	services.Sports.Start(services)
+	services.Fishing.Start(services)
 	task.spawn(services.Citizens.Start, services)
 end
-]]></ProtectedString></Properties></Item><Item class="Folder" referent="RBX45"><Properties><string name="Name">Modules</string></Properties><Item class="ModuleScript" referent="RBX17"><Properties><string name="Name">MapKit</string><ProtectedString name="Source"><![CDATA[-- MapKit (ModuleScript) — ServerScriptService.Modules.MapKit
+]]></ProtectedString></Properties></Item><Item class="Folder" referent="RBX46"><Properties><string name="Name">Modules</string></Properties><Item class="ModuleScript" referent="RBX17"><Properties><string name="Name">MapKit</string><ProtectedString name="Source"><![CDATA[-- MapKit (ModuleScript) — ServerScriptService.Modules.MapKit
 -- Small building blocks shared by the map modules: part helpers, colors, signs,
 -- lights, seats, and a registry of things that change between day and night.
 
@@ -7347,9 +7416,10 @@ function Landscape.build(parent, rng)
 		-- and clear, reflective water with gentle waves
 		pcall(function()
 			terrain.Decoration = true
-			terrain.WaterColor = rgb(40, 110, 130)
-			terrain.WaterReflectance = 0.85
-			terrain.WaterTransparency = 0.55
+			-- clear enough to see the fish, the weeds and the rocks below
+			terrain.WaterColor = rgb(40, 120, 125)
+			terrain.WaterReflectance = 0.45
+			terrain.WaterTransparency = 0.85
 			terrain.WaterWaveSize = 0.12
 			terrain.WaterWaveSpeed = 8
 		end)
@@ -7396,6 +7466,42 @@ function Landscape.build(parent, rng)
 		local a = rng:NextNumber(0, math.pi * 2)
 		local p = L + Vector3.new(math.cos(a), 0, math.sin(a)) * (Landscape.LAKE_RADIUS + rng:NextNumber(-2, 6))
 		deco(folder, "Reed", Vector3.new(0.3, rng:NextNumber(2.5, 4.5), 0.3), CFrame.new(p + Vector3.new(0, 1.5, 0)) * CFrame.Angles(rng:NextNumber(-0.2, 0.2), 0, rng:NextNumber(-0.2, 0.2)), rgb(90, 130, 60), Enum.Material.Grass)
+	end
+
+	-- under the water: sand ripples, rocks, swaying weeds; lily pads on top.
+	-- A "Water" part marks the lake for fishing and for the fish that swim in
+	-- it (see FishingService and the client's Water module)
+	local surface = if useTerrain then -1 else 0.35
+	local bed = if useTerrain then -9.6 else -0.5
+	local lakeInfo = deco(folder, "LakeWater", Vector3.new(2, 0.2, 2), CFrame.new(L.X, surface, L.Z), rgb(60, 140, 200))
+	lakeInfo.Transparency = 1
+	lakeInfo:SetAttribute("Radius", Landscape.LAKE_RADIUS)
+	lakeInfo:SetAttribute("Surface", surface)
+	lakeInfo:SetAttribute("Depth", surface - bed)
+	lakeInfo:SetAttribute("Kind", "lake")
+	lakeInfo:SetAttribute("Fish", 36)
+	lakeInfo:SetAttribute("RodStand", (pierCf * CFrame.new(-5.5, -0.2, 3)).Position)
+	MapKit.tag(lakeInfo, "Water")
+	for n = 1, 70 do
+		local a = rng:NextNumber(0, math.pi * 2)
+		local r = math.sqrt(rng:NextNumber()) * (Landscape.LAKE_RADIUS - 6)
+		local p = L + Vector3.new(math.cos(a) * r, 0, math.sin(a) * r)
+		if n % 3 == 0 then
+			MapKit.ball(folder, "LakeRock", rng:NextNumber(1.5, 4), CFrame.new(p.X, bed + 0.5, p.Z), rgb(110, 110, 104):Lerp(rgb(80, 90, 70), rng:NextNumber()), Enum.Material.Rock)
+		else
+			local h = rng:NextNumber(2, math.max(2.2, math.min(6, surface - bed - 1)))
+			for k = 0, 2 do
+				deco(folder, "Seaweed", Vector3.new(0.35, h * (1 - k * 0.2), 0.12), CFrame.new(p.X + k * 0.4 - 0.4, bed + h * (1 - k * 0.2) / 2, p.Z) * CFrame.Angles(rng:NextNumber(-0.2, 0.2), rng:NextNumber(0, 3), rng:NextNumber(-0.25, 0.25)), rgb(50, 120, 60):Lerp(rgb(90, 150, 60), rng:NextNumber()), Enum.Material.Grass)
+			end
+		end
+	end
+	for n = 1, 26 do
+		local a = rng:NextNumber(0, math.pi * 2)
+		local p = L + Vector3.new(math.cos(a), 0, math.sin(a)) * (Landscape.LAKE_RADIUS - rng:NextNumber(4, 22))
+		MapKit.disc(folder, "LilyPad", 0.08, rng:NextNumber(1.6, 2.8), Vector3.new(p.X, surface + 0.05, p.Z), rgb(70, 150, 60), Enum.Material.Grass)
+		if n % 4 == 0 then
+			MapKit.ball(folder, "LilyFlower", 0.6, CFrame.new(p.X, surface + 0.3, p.Z), rgb(250, 190, 220))
+		end
 	end
 
 	-- a forest ring of pines and leafy trees between the city and the hills
@@ -7712,7 +7818,16 @@ local function park(ctx, parent, i, j, rng, id, withPlayground)
 	local pondC = c + Vector3.new(-18, 0, 18)
 	column(model, "PondEdge", 0.6, 26, pondC + Vector3.new(0, 0.3, 0), STONE, Enum.Material.Pebble)
 	local pond = column(model, "Pond", 0.5, 23, pondC + Vector3.new(0, 0.4, 0), rgb(60, 140, 200), Enum.Material.Glass, false)
-	pond.Transparency = 0.15
+	pond.Transparency = 0.45
+	-- fishable, with koi you can see (see FishingService and the client's Water module)
+	pond:SetAttribute("Radius", 11.5)
+	pond:SetAttribute("Surface", 0.66)
+	pond:SetAttribute("Depth", 0.5)
+	pond:SetAttribute("Kind", "pond")
+	pond:SetAttribute("Fish", 6)
+	pond:SetAttribute("RodStand", pondC + Vector3.new(0, 0.2, -15.5))
+	MapKit.tag(pond, "Water")
+	MapKit.disc(model, "PondBed", 0.1, 23, pondC + Vector3.new(0, 0.12, 0), rgb(70, 90, 70), Enum.Material.Pebble)
 	for k = 0, 3 do
 		MapKit.disc(model, "LilyPad", 0.1, 2, pondC + Vector3.new(k * 3 - 4.5, 0.7, (k % 2) * 4 - 2), rgb(80, 170, 70), Enum.Material.Grass)
 	end
@@ -12485,6 +12600,10 @@ local function loadPlayer(player)
 		Arrests = tonumber(saved.Arrests) or 0,
 		Terms = tonumber(saved.Terms) or 0,
 		Home = type(saved.Home) == "string" and saved.Home or nil,
+		HasRod = saved.HasRod == true,
+		FishCaught = tonumber(saved.FishCaught) or 0,
+		BiggestFish = tonumber(saved.BiggestFish) or 0,
+		BiggestFishName = type(saved.BiggestFishName) == "string" and saved.BiggestFishName or nil,
 	}
 	playerData[player] = data
 	player:SetAttribute("Coins", data.Coins)
@@ -12499,7 +12618,7 @@ local function savePlayer(player)
 	local data = playerData[player]
 	if data and playerStore then
 		pcall(function()
-			playerStore:SetAsync("p_" .. player.UserId, { Coins = data.Coins, Crimes = data.Crimes, Notoriety = data.Notoriety, Weapons = data.Weapons, Outfits = data.Outfits, Wearing = data.Wearing, Fitness = data.Fitness, Talks = data.Talks, Arrests = data.Arrests, Terms = data.Terms, Home = data.Home })
+			playerStore:SetAsync("p_" .. player.UserId, { Coins = data.Coins, Crimes = data.Crimes, Notoriety = data.Notoriety, Weapons = data.Weapons, Outfits = data.Outfits, Wearing = data.Wearing, Fitness = data.Fitness, Talks = data.Talks, Arrests = data.Arrests, Terms = data.Terms, Home = data.Home, HasRod = data.HasRod, FishCaught = data.FishCaught, BiggestFish = data.BiggestFish, BiggestFishName = data.BiggestFishName })
 		end)
 	end
 end
@@ -22965,7 +23084,435 @@ SportsService.Courts = courts
 SportsService.Games = games
 
 return SportsService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX44"><Properties><string name="Name">Conversation</string><ProtectedString name="Source"><![CDATA[-- Conversation (ModuleScript) — ServerScriptService.Modules.Conversation
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX44"><Properties><string name="Name">FishingService</string><ProtectedString name="Source"><![CDATA[-- FishingService (ModuleScript) — ServerScriptService.Modules.FishingService
+-- Real fishing for players.
+--   • Grab a free fishing rod at the start of the pier on Mirror Lake (or by
+--     the pond in the park). It goes in your hotbar.
+--   • Face the water and click (or F) to cast: the line flies out and the
+--     bobber lands on the water.
+--   • Wait... when the bobber dips (a fish is biting!) click again, fast.
+--     Too slow and it gets away; too early and you reel in an empty hook.
+--   • What you catch: 12 kinds of fish from common to legendary, each with its
+--     own size (in pounds) and value in coins. You hold it up for everyone to
+--     see, and rare catches make the news. Your biggest catch is remembered.
+-- Water areas are parts tagged "Water" with attributes Radius, Surface, Depth.
+
+local Players = game:GetService("Players")
+local CollectionService = game:GetService("CollectionService")
+local TweenService = game:GetService("TweenService")
+
+local FishingService = {}
+local S
+
+FishingService.FISH = {
+	-- { id, name, rarity, weight range (lbs), coins per lb, color }
+	{ "Bluegill", "Bluegill", "Common", 0.3, 1.2, 6, Color3.fromRGB(90, 130, 170) },
+	{ "Perch", "Yellow Perch", "Common", 0.4, 1.6, 6, Color3.fromRGB(200, 180, 80) },
+	{ "Carp", "Carp", "Common", 2, 9, 2, Color3.fromRGB(150, 120, 70) },
+	{ "Sunfish", "Sunfish", "Common", 0.3, 1, 7, Color3.fromRGB(230, 150, 60) },
+	{ "Bass", "Largemouth Bass", "Uncommon", 1.5, 7, 5, Color3.fromRGB(80, 120, 70) },
+	{ "Trout", "Rainbow Trout", "Uncommon", 1, 6, 6, Color3.fromRGB(200, 140, 160) },
+	{ "Catfish", "Catfish", "Uncommon", 3, 14, 3, Color3.fromRGB(110, 100, 90) },
+	{ "Pike", "Northern Pike", "Rare", 4, 18, 5, Color3.fromRGB(100, 140, 90) },
+	{ "Salmon", "Salmon", "Rare", 4, 15, 6, Color3.fromRGB(230, 120, 100) },
+	{ "Sturgeon", "Sturgeon", "Epic", 15, 60, 3, Color3.fromRGB(90, 100, 110) },
+	{ "Koi", "Golden Koi", "Legendary", 3, 12, 25, Color3.fromRGB(255, 190, 40) },
+	{ "Boot", "Old Boot", "Junk", 1, 2, 0, Color3.fromRGB(60, 45, 35) },
+}
+local RARITY = { Junk = 8, Common = 52, Uncommon = 26, Rare = 10, Epic = 3, Legendary = 1 }
+local RARITY_EMOJI = { Junk = "🥾", Common = "🐟", Uncommon = "🐠", Rare = "🐡", Epic = "🦈", Legendary = "✨" }
+
+local sessions = {} -- [player] = { State = "wait"|"bite", Bobber, Token, Water }
+
+local function rgb(r, g, b)
+	return Color3.fromRGB(r, g, b)
+end
+
+local function rootOf(player)
+	local character = player.Character
+	return character and character:FindFirstChild("HumanoidRootPart"), character
+end
+
+local function waters()
+	return CollectionService:GetTagged("Water")
+end
+
+-- a spot on the water in front of the player (up to 18 studs out)
+local function castPoint(root)
+	local look = Vector3.new(root.CFrame.LookVector.X, 0, root.CFrame.LookVector.Z)
+	if look.Magnitude < 0.1 then
+		return nil
+	end
+	look = look.Unit
+	for dist = 18, 5, -1 do
+		local p = root.Position + look * dist
+		for _, w in ipairs(waters()) do
+			local c = w.Position
+			local r = w:GetAttribute("Radius") or 10
+			if Vector3.new(p.X - c.X, 0, p.Z - c.Z).Magnitude < r - 1.5 then
+				return Vector3.new(p.X, w:GetAttribute("Surface") or c.Y, p.Z), w
+			end
+		end
+	end
+	return nil
+end
+
+local function rod(character)
+	local tool = character and character:FindFirstChildOfClass("Tool")
+	return if tool and tool:GetAttribute("Rod") then tool else nil
+end
+
+local function clear(player)
+	local s = sessions[player]
+	sessions[player] = nil
+	if s and s.Bobber then
+		s.Bobber:Destroy()
+	end
+	local character = player.Character
+	if character then
+		character:SetAttribute("Fishing", nil)
+		character:SetAttribute("FishBite", nil)
+	end
+end
+
+local function pickFish(water)
+	local total = 0
+	for _, f in ipairs(FishingService.FISH) do
+		total += RARITY[f[3]] or 1
+	end
+	-- the pond in the park: mostly small fish (and the koi)
+	local pond = water and water:GetAttribute("Kind") == "pond"
+	local roll = math.random() * total
+	for _, f in ipairs(FishingService.FISH) do
+		roll -= RARITY[f[3]] or 1
+		if roll <= 0 then
+			if pond and (f[1] == "Sturgeon" or f[1] == "Catfish" or f[1] == "Pike") then
+				return FishingService.FISH[1]
+			end
+			return f
+		end
+	end
+	return FishingService.FISH[1]
+end
+
+local function catch(player, s)
+	local root, character = rootOf(player)
+	local f = pickFish(s.Water)
+	local lbs = math.floor((f[4] + (f[5] - f[4]) * math.random() ^ 1.6) * 10 + 0.5) / 10
+	local coins = math.max(if f[3] == "Junk" then 0 else 1, math.floor(lbs * f[6] + 0.5))
+	clear(player)
+	if coins > 0 then
+		S.City.AddCoins(player, coins, "🎣 " .. f[2])
+	end
+	local pd = S.City.Data(player)
+	local record = false
+	if pd then
+		pd.FishCaught = (pd.FishCaught or 0) + 1
+		if f[3] ~= "Junk" and lbs > (pd.BiggestFish or 0) then
+			pd.BiggestFish = lbs
+			pd.BiggestFishName = f[2]
+			record = pd.FishCaught > 1
+		end
+		player:SetAttribute("FishCaught", pd.FishCaught)
+	end
+	-- hold it up (see Poses)
+	if character then
+		character:SetAttribute("Caught", f[1])
+		character:SetAttribute("CaughtColor", f[7])
+		character:SetAttribute("CaughtSize", math.clamp(0.6 + lbs / 12, 0.6, 2.4))
+		character:SetAttribute("CaughtAt", os.clock())
+		task.delay(3.5, function()
+			if character.Parent and character:GetAttribute("Caught") == f[1] then
+				character:SetAttribute("Caught", nil)
+			end
+		end)
+	end
+	local text = if f[3] == "Junk" then "Just an old boot... it happens." else lbs .. " lb " .. f[2] .. "  ·  " .. f[3] .. "  ·  +" .. coins .. " coins" .. (if record then "  ·  🏆 your biggest yet!" else "")
+	S.City.Toast(player, RARITY_EMOJI[f[3]] or "🐟", if f[3] == "Junk" then "Blub." else "You caught a " .. f[2] .. "!", text, if f[3] == "Legendary" then rgb(255, 200, 40) elseif f[3] == "Epic" then rgb(170, 90, 240) elseif f[3] == "Rare" then rgb(60, 150, 240) else rgb(90, 180, 120))
+	S.City.SendNear(root and root.Position or Vector3.zero, 80, { Type = "FishCaught", Name = f[2], Rarity = f[3], Player = player.UserId })
+	if f[3] == "Legendary" or f[3] == "Epic" then
+		S.City.News("🎣 " .. player.DisplayName .. " reeled in a " .. lbs .. " lb " .. f[2] .. " at Mirror Lake!", "City")
+	end
+	pcall(S.City.Progress, player, "fish", 1)
+	return { Ok = true, Caught = f[2], Rarity = f[3], Lbs = lbs, Coins = coins }
+end
+
+local function bite(player, token)
+	local s = sessions[player]
+	if not s or s.Token ~= token or s.State ~= "wait" then
+		return
+	end
+	s.State = "bite"
+	s.Bites = (s.Bites or 0) + 1
+	local character = player.Character
+	if character then
+		character:SetAttribute("FishBite", os.clock())
+	end
+	-- the bobber dips
+	local base = s.BobberCf
+	pcall(function()
+		TweenService:Create(s.Bobber, TweenInfo.new(0.12), { CFrame = base * CFrame.new(0, -0.6, 0) }):Play()
+	end)
+	S.City.Send(player, { Type = "FishBite", Position = base.Position })
+	local window = 1.4
+	task.delay(window, function()
+		local now = sessions[player]
+		if now and now.Token == token and now.State == "bite" then
+			-- too slow: it got away (maybe another nibble later)
+			now.State = "wait"
+			if character then
+				character:SetAttribute("FishBite", nil)
+			end
+			if now.Bobber.Parent then
+				now.Bobber.CFrame = base
+			end
+			if now.Bites >= 3 then
+				S.City.Toast(player, "🐟", "It got away!", "Too slow. Cast again!", rgb(200, 120, 80))
+				clear(player)
+				return
+			end
+			S.City.Toast(player, "🐟", "It got away...", "Keep watching the bobber. Click the moment it dips!", rgb(200, 120, 80))
+			task.delay(math.random(30, 70) / 10, function()
+				bite(player, token)
+			end)
+		end
+	end)
+end
+
+local function cast(player)
+	local root, character = rootOf(player)
+	local tool = rod(character)
+	if not root or not tool then
+		return { Ok = false }
+	end
+	local point, water = castPoint(root)
+	if not point then
+		S.City.Toast(player, "🎣", "Face the water", "Stand at the edge (or on the pier) facing the water, then cast.", rgb(80, 160, 220))
+		return { Ok = false, Error = "No water in front of you" }
+	end
+	local token = {}
+	-- the cast (everyone sees the swing, then the bobber lands)
+	character:SetAttribute("Casting", os.clock())
+	local bobber = Instance.new("Part")
+	bobber.Name = "Bobber"
+	bobber.Shape = Enum.PartType.Ball
+	bobber.Size = Vector3.one * 0.6
+	bobber.Color = rgb(230, 50, 50)
+	bobber.Material = Enum.Material.SmoothPlastic
+	bobber.Anchored, bobber.CanCollide, bobber.CanQuery, bobber.CanTouch = true, false, false, false
+	local cf = CFrame.new(point + Vector3.new(0, 0.15, 0))
+	bobber.CFrame = CFrame.new(root.Position + Vector3.new(0, 4, 0))
+	local top = Instance.new("Part")
+	top.Name = "BobberTop"
+	top.Shape = Enum.PartType.Ball
+	top.Size = Vector3.one * 0.35
+	top.Color = rgb(250, 250, 250)
+	top.Anchored, top.CanCollide, top.CanQuery, top.CanTouch = false, false, false, false
+	top.Massless = true
+	top.CFrame = bobber.CFrame * CFrame.new(0, 0.3, 0)
+	local w = Instance.new("WeldConstraint")
+	w.Part0, w.Part1 = bobber, top
+	w.Parent = top
+	top.Parent = bobber
+	bobber.Parent = workspace
+	-- the fishing line from the rod tip
+	local tip = tool:FindFirstChild("Tip", true)
+	if tip and tip:IsA("Attachment") then
+		local a1 = Instance.new("Attachment")
+		a1.Parent = bobber
+		local line = Instance.new("Beam")
+		line.Name = "FishingLine"
+		line.Attachment0, line.Attachment1 = tip, a1
+		line.Width0, line.Width1 = 0.04, 0.04
+		line.Color = ColorSequence.new(rgb(240, 240, 240))
+		line.Transparency = NumberSequence.new(0.2)
+		line.FaceCamera = true
+		line.CurveSize0 = -2
+		line.Parent = bobber
+	end
+	pcall(function()
+		TweenService:Create(bobber, TweenInfo.new(0.55, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { CFrame = cf }):Play()
+	end)
+	task.delay(0.6, function()
+		if bobber.Parent then
+			bobber.CFrame = cf
+		end
+	end)
+	sessions[player] = { State = "wait", Bobber = bobber, BobberCf = cf, Token = token, Water = water, Started = os.clock() }
+	character:SetAttribute("Fishing", "wait")
+	task.delay(math.random(35, 90) / 10, function()
+		bite(player, token)
+	end)
+	return { Ok = true, Cast = true }
+end
+
+-- one button: cast, then reel in (a catch if a fish is biting)
+local function fishAction(player)
+	local _, character = rootOf(player)
+	if not rod(character) then
+		return { Ok = false, Error = "Hold your fishing rod first." }
+	end
+	if S.Crime and S.Crime.IsJailed(player) then
+		return { Ok = false }
+	end
+	local s = sessions[player]
+	if not s then
+		return cast(player)
+	end
+	if s.State == "bite" then
+		return catch(player, s)
+	end
+	-- nothing biting yet: reel in empty
+	if os.clock() - (s.Started or 0) > 0.8 then
+		clear(player)
+		character:SetAttribute("Casting", nil)
+		return { Ok = true, Reeled = true }
+	end
+	return { Ok = true }
+end
+FishingService.Action = fishAction
+
+--------------------------------------------------------------------------------
+-- The rod
+--------------------------------------------------------------------------------
+function FishingService.MakeRod()
+	local tool = Instance.new("Tool")
+	tool.Name = "Fishing Rod"
+	tool.ToolTip = "🎣 Fishing Rod"
+	tool.CanBeDropped = false
+	tool.RequiresHandle = true
+	tool:SetAttribute("Rod", true)
+	local handle = Instance.new("Part")
+	handle.Name = "Handle"
+	handle.Size = Vector3.new(0.3, 1.4, 0.3)
+	handle.Color = rgb(40, 40, 44)
+	handle.Material = Enum.Material.Rubber
+	handle.CanCollide = false
+	handle.Massless = true
+	handle.CFrame = CFrame.new()
+	handle.Parent = tool
+	local function piece(name, size, offset, color, material)
+		local p = Instance.new("Part")
+		p.Name = name
+		p.Size = size
+		p.Color = color
+		p.Material = material or Enum.Material.SmoothPlastic
+		p.CanCollide, p.Massless = false, true
+		p.CFrame = handle.CFrame * offset
+		local w = Instance.new("WeldConstraint")
+		w.Part0, w.Part1 = handle, p
+		w.Parent = p
+		p.Parent = tool
+		return p
+	end
+	local pole = piece("Pole", Vector3.new(0.14, 6.5, 0.14), CFrame.new(0, 3.9, 0), rgb(140, 100, 60), Enum.Material.Wood)
+	piece("Reel", Vector3.new(0.5, 0.5, 0.5), CFrame.new(0.3, 0.3, 0), rgb(180, 180, 190), Enum.Material.Metal)
+	local tip = Instance.new("Attachment")
+	tip.Name = "Tip"
+	tip.Position = Vector3.new(0, 3.2, 0)
+	tip.Parent = pole
+	tool.Grip = CFrame.new(0, -0.3, 0)
+	return tool
+end
+
+local function giveRod(player)
+	local backpack = player:FindFirstChildOfClass("Backpack")
+	if not backpack then
+		return
+	end
+	for _, container in ipairs({ backpack, player.Character }) do
+		if container then
+			for _, t in ipairs(container:GetChildren()) do
+				if t:IsA("Tool") and t:GetAttribute("Rod") then
+					S.City.Toast(player, "🎣", "You already have a rod", "Pick it from your hotbar, face the water and click (or F) to cast.", rgb(80, 160, 220))
+					return
+				end
+			end
+		end
+	end
+	FishingService.MakeRod().Parent = backpack
+	local pd = S.City.Data(player)
+	if pd then
+		pd.HasRod = true
+	end
+	S.City.Toast(player, "🎣", "Got a fishing rod!", "Pick it from your hotbar, face the water and click (or F) to cast. When the bobber dips, click fast!", rgb(80, 160, 220))
+end
+
+local function rodStand(pos, label)
+	local stand = Instance.new("Part")
+	stand.Name = "RodStand"
+	stand.Anchored = true
+	stand.Size = Vector3.new(2, 3, 1)
+	stand.Color = rgb(120, 80, 50)
+	stand.Material = Enum.Material.WoodPlanks
+	stand.CFrame = CFrame.new(pos + Vector3.new(0, 1.5, 0))
+	stand.Parent = workspace:FindFirstChild("City") or workspace
+	for k = -1, 1 do
+		local r = Instance.new("Part")
+		r.Name = "StandRod"
+		r.Anchored, r.CanCollide = true, false
+		r.Size = Vector3.new(0.12, 5, 0.12)
+		r.Color = rgb(140, 100, 60)
+		r.CFrame = stand.CFrame * CFrame.new(k * 0.6, 2.5, 0) * CFrame.Angles(0, 0, math.rad(k * 6))
+		r.Parent = stand
+	end
+	local prompt = Instance.new("ProximityPrompt")
+	prompt.Name = "RodPrompt"
+	prompt.ActionText = "Grab a fishing rod"
+	prompt.ObjectText = label
+	prompt.KeyboardKeyCode = Enum.KeyCode.E
+	prompt.MaxActivationDistance = 9
+	prompt.RequiresLineOfSight = false
+	prompt.Parent = stand
+	prompt.Triggered:Connect(giveRod)
+end
+
+function FishingService.Start(services)
+	S = services
+	-- rod stands by the water
+	for _, w in ipairs(waters()) do
+		local c, r = w.Position, w:GetAttribute("Radius") or 10
+		local at = w:GetAttribute("RodStand")
+		local pos = at or Vector3.new(c.X + r + 3, 0.2, c.Z)
+		rodStand(pos, if w:GetAttribute("Kind") == "pond" then "Park pond" else "Mirror Lake")
+	end
+	S.City.Handle("Fish", fishAction)
+	-- your rod comes back when you respawn (if you had one)
+	local function hook(player)
+		player.CharacterAdded:Connect(function()
+			clear(player)
+			task.wait(1)
+			local pd = S.City.Data(player)
+			local backpack = player:FindFirstChildOfClass("Backpack")
+			if pd and pd.HasRod and backpack and not backpack:FindFirstChild("Fishing Rod") then
+				FishingService.MakeRod().Parent = backpack
+			end
+		end)
+	end
+	Players.PlayerAdded:Connect(hook)
+	for _, p in ipairs(Players:GetPlayers()) do
+		hook(p)
+	end
+	Players.PlayerRemoving:Connect(clear)
+	-- walking away or putting the rod down pulls the line in
+	task.spawn(function()
+		while true do
+			task.wait(0.5)
+			for player, s in pairs(sessions) do
+				local root, character = rootOf(player)
+				if not root or not rod(character) or (s.BobberCf and (root.Position - s.BobberCf.Position).Magnitude > 30) then
+					clear(player)
+				end
+			end
+		end
+	end)
+end
+
+FishingService.Sessions = sessions
+FishingService.GiveRod = giveRod
+
+return FishingService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX45"><Properties><string name="Name">Conversation</string><ProtectedString name="Source"><![CDATA[-- Conversation (ModuleScript) — ServerScriptService.Modules.Conversation
 -- The deeper side of talking to citizens (used by DialogueService):
 --   • every personality has its own voice: how they say hello, little verbal
 --     habits, their dreams and fears, their advice, favorite food and places
@@ -23393,7 +23940,7 @@ function Conversation.Answer(key, c, player, brain)
 end
 
 return Conversation
-]]></ProtectedString></Properties></Item></Item></Item><Item class="StarterPlayer" referent="RBX46"><Properties><string name="Name">StarterPlayer</string></Properties><Item class="StarterPlayerScripts" referent="RBX47"><Properties><string name="Name">StarterPlayerScripts</string></Properties><Item class="LocalScript" referent="RBX55"><Properties><string name="Name">CityClient</string><ProtectedString name="Source"><![CDATA[-- CityClient (LocalScript) — StarterPlayer.StarterPlayerScripts.CityClient
+]]></ProtectedString></Properties></Item></Item></Item><Item class="StarterPlayer" referent="RBX47"><Properties><string name="Name">StarterPlayer</string></Properties><Item class="StarterPlayerScripts" referent="RBX48"><Properties><string name="Name">StarterPlayerScripts</string></Properties><Item class="LocalScript" referent="RBX57"><Properties><string name="Name">CityClient</string><ProtectedString name="Source"><![CDATA[-- CityClient (LocalScript) — StarterPlayer.StarterPlayerScripts.CityClient
 -- AI City on your screen. Starts the HUD, the windows, the world effects and
 -- the citizens' body language, and routes everything the server sends.
 --
@@ -23418,6 +23965,7 @@ local Panels = require(script:WaitForChild("Panels"))
 local World = require(script:WaitForChild("World"))
 local Moves = require(script:WaitForChild("Moves"))
 local Gamepad = require(script:WaitForChild("Gamepad"))
+local Water = require(script:WaitForChild("Water"))
 local Poses = require(Shared:WaitForChild("Poses"))
 local C = UI.C
 
@@ -23439,6 +23987,7 @@ World.Start(ctx)
 Panels.Start(ctx)
 Moves.Start(ctx)
 Gamepad.Start(ctx)
+Water.Start()
 
 -- the citizens' poses, props and faces, every frame (after animations)
 local step = RunService.PreSimulation or RunService.Stepped
@@ -23490,6 +24039,11 @@ handlers.Waypoint = function(d)
 		return
 	end
 	World.Waypoint(d.Position, d.Label, d.Emoji, d.Model)
+end
+handlers.FishBite = function(d)
+	World.FishBite(d.Position)
+	Water.Bite(d.Position)
+	Gamepad.Rumble(0.5, 0.2)
 end
 handlers.Shot = function(d)
 	World.Shot(d.From, d.To, d.Weapon)
@@ -23650,7 +24204,7 @@ UserInputService.InputEnded:Connect(function(input)
 		Moves.SetSprint(false)
 	end
 end)
-]]></ProtectedString></Properties><Item class="ModuleScript" referent="RBX48"><Properties><string name="Name">UI</string><ProtectedString name="Source"><![CDATA[-- UI (ModuleScript) — StarterPlayerScripts.CityClient.UI
+]]></ProtectedString></Properties><Item class="ModuleScript" referent="RBX49"><Properties><string name="Name">UI</string><ProtectedString name="Source"><![CDATA[-- UI (ModuleScript) — StarterPlayerScripts.CityClient.UI
 -- AI City's look: colors, fonts, and helpers for building the interface
 -- (rounded panels, buttons that bounce, windows that pop open, bars...).
 
@@ -23805,6 +24359,8 @@ local SOUNDS = {
 	pop = "rbxasset://sounds/button.wav",
 	punch = "rbxasset://sounds/swordslash.wav",
 	notify = "rbxasset://sounds/electronicpingshort.wav",
+	coin = "rbxasset://sounds/electronicpingshort.wav",
+	splash = "rbxasset://sounds/impact_water.mp3",
 }
 UI.Muted = false
 function UI.sound(name, volume, speed)
@@ -24150,7 +24706,7 @@ function UI.commas(n)
 end
 
 return UI
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX49"><Properties><string name="Name">Icons</string><ProtectedString name="Source"><![CDATA[-- Icons (ModuleScript) — StarterPlayerScripts.CityClient.Icons
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX50"><Properties><string name="Name">Icons</string><ProtectedString name="Source"><![CDATA[-- Icons (ModuleScript) — StarterPlayerScripts.CityClient.Icons
 -- AI City's own icon set, drawn from rounded shapes (no image uploads needed,
 -- and they stay sharp at any size).
 --
@@ -24564,6 +25120,14 @@ D.shotgun = function(c)
 	R(c, 0.22, 0.62, 0.28, 0.16, wood, { rot = -18, r = 0.3, grad = { rgb(180, 120, 70), wood, 90 } })
 end
 
+-- a fishing rod with a line and a fish
+D.rod = function(c)
+	R(c, 0.46, 0.46, 0.06, 0.86, rgb(150, 105, 60), { rot = 35, r = 0.5 })
+	R(c, 0.2, 0.8, 0.16, 0.16, METAL_DARK, { r = 0.5 })
+	R(c, 0.74, 0.62, 0.02, 0.42, rgb(230, 230, 230))
+	R(c, 0.74, 0.86, 0.3, 0.14, rgb(90, 150, 200), { r = 0.5 })
+end
+
 D.hoodie = function(c)
 	local body = rgb(70, 74, 92)
 	R(c, 0.5, 0.7, 0.72, 0.5, body, { r = 0.22 })
@@ -24834,7 +25398,7 @@ end
 local ALIAS = {
 	Phone = "phone", Map = "map", People = "people", News = "news", Vote = "vote", Goals = "goals",
 	Speech = "mic", Mayor = "mayor", Help = "help", Settings = "settings", Wardrobe = "mask",
-	Fists = "fist", Bat = "bat", Hammer = "hammer", Knife = "knife", Pistol = "pistol", Shotgun = "shotgun", ["🔫"] = "pistol", ["💥"] = "shotgun", Hoodie = "hoodie", Disguise = "disguise", SkiMask = "mask",
+	Fists = "fist", Bat = "bat", Hammer = "hammer", Knife = "knife", Pistol = "pistol", Shotgun = "shotgun", Rod = "rod", ["🎣"] = "rod", ["🔫"] = "pistol", ["💥"] = "shotgun", Hoodie = "hoodie", Disguise = "disguise", SkiMask = "mask",
 	["📱"] = "phone", ["🗺️"] = "map", ["👥"] = "people", ["📰"] = "news", ["🗳️"] = "vote", ["🎯"] = "goals",
 	["🎤"] = "mic", ["🏛️"] = "mayor", ["❓"] = "help", ["⚙️"] = "settings", ["🥷"] = "mask", ["👊"] = "fist",
 	["🏏"] = "bat", ["🔨"] = "hammer", ["🔪"] = "knife", ["🛡️"] = "shield", ["🪙"] = "coin", ["❤️"] = "heart",
@@ -24959,7 +25523,7 @@ end
 table.sort(Icons.Names)
 
 return Icons
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX50"><Properties><string name="Name">Hud</string><ProtectedString name="Source"><![CDATA[-- Hud (ModuleScript) — StarterPlayerScripts.CityClient.Hud
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX51"><Properties><string name="Name">Hud</string><ProtectedString name="Source"><![CDATA[-- Hud (ModuleScript) — StarterPlayerScripts.CityClient.Hud
 -- The always-on screen: the clock and calendar, the city's mood and stats,
 -- a rotating minimap, coins, wanted stars, the mayor and the next election,
 -- the action bar, notifications and the news ticker.
@@ -25691,15 +26255,15 @@ local function tools()
 	for _, container in ipairs({ player.Character, backpack }) do
 		if container then
 			for _, t in ipairs(container:GetChildren()) do
-				if t:IsA("Tool") and t:GetAttribute("Weapon") then
+				if t:IsA("Tool") and (t:GetAttribute("Weapon") or t:GetAttribute("Rod")) then
 					table.insert(list, t)
 				end
 			end
 		end
 	end
-	local order = { Bat = 1, Hammer = 2, Knife = 3, Pistol = 4, Shotgun = 5 }
+	local order = { Bat = 1, Hammer = 2, Knife = 3, Pistol = 4, Shotgun = 5, Rod = 6 }
 	table.sort(list, function(a, b)
-		return (order[a:GetAttribute("Weapon")] or 9) < (order[b:GetAttribute("Weapon")] or 9)
+		return (order[a:GetAttribute("Weapon") or "Rod"] or 9) < (order[b:GetAttribute("Weapon") or "Rod"] or 9)
 	end)
 	return list
 end
@@ -25738,7 +26302,7 @@ local function refreshHotbar()
 	hotbar.Visible = #list > 0
 	local wanted = { "Fists" }
 	for _, t in ipairs(list) do
-		table.insert(wanted, t:GetAttribute("Weapon"))
+		table.insert(wanted, t:GetAttribute("Weapon") or "Rod")
 	end
 	local equipped = ctx.World.Equipped and ctx.World.Equipped() or "Fists"
 	for k, id in ipairs(wanted) do
@@ -26014,7 +26578,7 @@ function Hud.Start(context)
 end
 
 return Hud
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX51"><Properties><string name="Name">Panels</string><ProtectedString name="Source"><![CDATA[-- Panels (ModuleScript) — StarterPlayerScripts.CityClient.Panels
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX52"><Properties><string name="Name">Panels</string><ProtectedString name="Source"><![CDATA[-- Panels (ModuleScript) — StarterPlayerScripts.CityClient.Panels
 -- The windows you open: the city map, the People directory and profile
 -- cards, voting, speeches, the mayor's desk, conversations with citizens,
 -- elevators, help, settings, the welcome screen, election results and the
@@ -27474,7 +28038,7 @@ function Panels.Start(context)
 end
 
 return Panels
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX52"><Properties><string name="Name">World</string><ProtectedString name="Source"><![CDATA[-- World (ModuleScript) — StarterPlayerScripts.CityClient.World
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX53"><Properties><string name="Name">World</string><ProtectedString name="Source"><![CDATA[-- World (ModuleScript) — StarterPlayerScripts.CityClient.World
 -- Everything drawn in the 3D world: nameplates over citizens and players,
 -- speech bubbles, the interaction prompts (talk, elevators, crimes), the
 -- waypoint beam, hit effects, alarms, confetti, the sky and the traffic lights.
@@ -28113,6 +28677,75 @@ local lastAttack = 0
 local fistSide = false
 
 -- which weapon you're holding ("Fists" if none)
+-- fishing (see FishingService): cast, then click again when the bobber dips
+local function holdingRod()
+	local character = player.Character
+	local tool = character and character:FindFirstChildOfClass("Tool")
+	return tool ~= nil and tool:GetAttribute("Rod") == true
+end
+local lastFish = 0
+function World.Fish()
+	if os.clock() - lastFish < 0.35 then
+		return
+	end
+	lastFish = os.clock()
+	local character = player.Character
+	if character and not character:GetAttribute("Fishing") then
+		character:SetAttribute("Casting", os.clock()) -- (the swing starts right away on our screen)
+	end
+	task.spawn(function()
+		local ok, result = pcall(function()
+			return ctx.Remotes.Request:InvokeServer({ Action = "Fish" })
+		end)
+		if ok and result and result.Caught then
+			World.Shake(0.3, 0.2)
+			UI.sound("splash", 0.5, 1.3)
+			UI.sound("coin", 0.5, 1)
+		elseif ok and result and result.Cast then
+			task.delay(0.55, function()
+				UI.sound("splash", 0.4, 1.1)
+			end)
+		end
+	end)
+end
+
+-- "BITE!" in big letters for a moment: click now!
+local biteLabel
+function World.FishBite(position)
+	local gui = player:FindFirstChildOfClass("PlayerGui")
+	if not gui then
+		return
+	end
+	if not biteLabel then
+		local screen = Instance.new("ScreenGui")
+		screen.Name = "FishBite"
+		screen.ResetOnSpawn = false
+		screen.Parent = gui
+		biteLabel = Instance.new("TextLabel")
+		biteLabel.BackgroundTransparency = 1
+		biteLabel.AnchorPoint = Vector2.new(0.5, 0.5)
+		biteLabel.Position = UDim2.fromScale(0.5, 0.35)
+		biteLabel.Size = UDim2.fromOffset(420, 90)
+		biteLabel.Font = Enum.Font.FredokaOne
+		biteLabel.TextScaled = true
+		biteLabel.TextColor3 = Color3.fromRGB(255, 230, 80)
+		biteLabel.TextStrokeTransparency = 0
+		biteLabel.TextStrokeColor3 = Color3.fromRGB(120, 40, 20)
+		biteLabel.Parent = screen
+	end
+	local pad = ctx.Gamepad and ctx.Gamepad.Active()
+	biteLabel.Text = "❗ BITE! " .. (if pad then "Press R2!" elseif UIS.TouchEnabled and not UIS.MouseEnabled then "Tap!" else "Click!")
+	biteLabel.Visible = true
+	UI.sound("click", 0.6, 1.6)
+	local token = os.clock()
+	biteLabel:SetAttribute("Token", token)
+	task.delay(1.3, function()
+		if biteLabel and biteLabel:GetAttribute("Token") == token then
+			biteLabel.Visible = false
+		end
+	end)
+end
+
 function World.Equipped()
 	local character = player.Character
 	local tool = character and character:FindFirstChildOfClass("Tool")
@@ -28121,6 +28754,10 @@ end
 
 -- Attack with whatever you're holding (F, click with a weapon, or the button)
 function World.Attack()
+	if holdingRod() then
+		World.Fish()
+		return
+	end
 	local weapon = World.Equipped()
 	local w = Weapons.Get(weapon)
 	if os.clock() - lastAttack < w.Cooldown then
@@ -28192,7 +28829,10 @@ end
 -- clicking with a weapon in hand attacks
 local function watchTools(character)
 	character.ChildAdded:Connect(function(child)
-		if child:IsA("Tool") and child:GetAttribute("Weapon") then
+		if child:IsA("Tool") and child:GetAttribute("Rod") then
+			child.Activated:Connect(World.Fish)
+			ctx.Hud.Toast("🎣", "Fishing rod", "Face the water and click (or F) to cast. When the bobber dips, click fast!", C.Blue or C.Gold)
+		elseif child:IsA("Tool") and child:GetAttribute("Weapon") then
 			child.Activated:Connect(World.Attack)
 			local w = Weapons.Get(child:GetAttribute("Weapon"))
 			ctx.Hud.Toast(w.Emoji, w.Name .. " equipped", "Click (or F) to attack. Hold X to block.", C.Red)
@@ -28302,7 +28942,7 @@ function World.Start(context)
 end
 
 return World
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX53"><Properties><string name="Name">Moves</string><ProtectedString name="Source"><![CDATA[-- Moves (ModuleScript) — StarterPlayerScripts.CityClient.Moves
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX54"><Properties><string name="Name">Moves</string><ProtectedString name="Source"><![CDATA[-- Moves (ModuleScript) — StarterPlayerScripts.CityClient.Moves
 -- Sprinting and stamina. Hold Shift (or the Sprint button) to run: it uses
 -- stamina, which refills when you stop. Your fitness level (from the server,
 -- see Shared.Fitness) sets how much stamina you have, how fast it refills and
@@ -28422,7 +29062,7 @@ function Moves.Start(context)
 end
 
 return Moves
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX54"><Properties><string name="Name">Gamepad</string><ProtectedString name="Source"><![CDATA[-- Gamepad (ModuleScript) — StarterPlayerScripts.CityClient.Gamepad
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX55"><Properties><string name="Name">Gamepad</string><ProtectedString name="Source"><![CDATA[-- Gamepad (ModuleScript) — StarterPlayerScripts.CityClient.Gamepad
 -- Console / controller support (Xbox, PlayStation, any gamepad):
 --   R2 attack · hold L2 block · L3 sprint (click to toggle) · R1 / L1 next /
 --   previous weapon · D-pad ▲ phone · ▼ map · ◀ help · ▶ wardrobe ·
@@ -28689,4 +29329,171 @@ function Gamepad.Start(context)
 end
 
 return Gamepad
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX56"><Properties><string name="Name">Water</string><ProtectedString name="Source"><![CDATA[-- Water (ModuleScript) — StarterPlayerScripts.CityClient.Water
+-- Fish you can see: schools of fish swim around under the surface of Mirror
+-- Lake (and koi in the park ponds). Every "Water" part (see Landscape and
+-- Places) gets its own fish: bodies with a tail that sways as they swim, a fin
+-- and eyes. They cruise, turn, dart away now and then, and when a fish bites
+-- your line one swims right up to the bobber. They only swim near the camera
+-- (made on each player's screen, so they cost the server nothing).
+
+local CollectionService = game:GetService("CollectionService")
+local RunService = game:GetService("RunService")
+
+local Water = {}
+local schools = {} -- [water part] = { Fish = { fish }, Folder }
+local RANGE = 320
+
+local KINDS = {
+	lake = {
+		{ Color3.fromRGB(90, 130, 170), 1.3 }, { Color3.fromRGB(200, 180, 80), 1 }, { Color3.fromRGB(150, 120, 70), 2 },
+		{ Color3.fromRGB(80, 120, 70), 1.6 }, { Color3.fromRGB(200, 140, 160), 1.4 }, { Color3.fromRGB(110, 100, 90), 2.2 },
+		{ Color3.fromRGB(230, 150, 60), 0.9 },
+	},
+	pond = { { Color3.fromRGB(255, 140, 40), 1 }, { Color3.fromRGB(250, 250, 245), 1 }, { Color3.fromRGB(255, 190, 40), 1.1 }, { Color3.fromRGB(230, 70, 60), 0.9 } },
+}
+
+local function part(parent, name, size, color, shape)
+	local p = Instance.new("Part")
+	p.Name = name
+	p.Size = size
+	p.Color = color
+	p.Material = Enum.Material.SmoothPlastic
+	p.Anchored, p.CanCollide, p.CanQuery, p.CanTouch, p.CastShadow = true, false, false, false, false
+	if shape then
+		p.Shape = shape
+	end
+	p.Parent = parent
+	return p
+end
+
+local function makeFish(folder, color, scale)
+	local body = part(folder, "Fish", Vector3.new(0.5, 0.6, 1.5) * scale, color)
+	local belly = part(folder, "FishBelly", Vector3.new(0.42, 0.25, 1.2) * scale, color:Lerp(Color3.new(1, 1, 1), 0.45))
+	local tail = part(folder, "FishTail", Vector3.new(0.08, 0.7, 0.5) * scale, color:Lerp(Color3.new(0, 0, 0), 0.15))
+	local fin = part(folder, "FishFin", Vector3.new(0.06, 0.3, 0.6) * scale, color:Lerp(Color3.new(0, 0, 0), 0.15))
+	local eyes = {}
+	for k = 1, 2 do
+		eyes[k] = part(folder, "FishEye", Vector3.one * 0.14 * scale, Color3.fromRGB(20, 20, 20), Enum.PartType.Ball)
+	end
+	return { Body = body, Belly = belly, Tail = tail, Fin = fin, Eyes = eyes, Scale = scale }
+end
+
+local function randomPoint(w, rng)
+	local c = w.Position
+	local r = (w:GetAttribute("Radius") or 10) * 0.85
+	local a = rng:NextNumber(0, math.pi * 2)
+	local d = math.sqrt(rng:NextNumber()) * r
+	local surface = w:GetAttribute("Surface") or c.Y
+	local depth = w:GetAttribute("Depth") or 4
+	local y = if depth < 1.5 then surface - depth * 0.5 else surface - rng:NextNumber(1.2, math.max(1.5, depth - 1))
+	return Vector3.new(c.X + math.cos(a) * d, y, c.Z + math.sin(a) * d)
+end
+
+local function build(w)
+	local folder = Instance.new("Folder")
+	folder.Name = "LocalFish"
+	folder.Parent = workspace
+	local rng = Random.new(math.floor(w.Position.X * 7 + w.Position.Z))
+	local kinds = KINDS[w:GetAttribute("Kind") or "lake"] or KINDS.lake
+	local list = {}
+	for k = 1, (w:GetAttribute("Fish") or 20) do
+		local kind = kinds[rng:NextInteger(1, #kinds)]
+		local scale = kind[2] * rng:NextNumber(0.7, 1.3) * (if w:GetAttribute("Kind") == "pond" then 0.8 else 1)
+		local f = makeFish(folder, kind[1], scale)
+		f.Pos = randomPoint(w, rng)
+		f.Goal = randomPoint(w, rng)
+		f.Dir = (f.Goal - f.Pos).Unit
+		f.Speed = rng:NextNumber(2, 4.5) / math.sqrt(scale)
+		f.Phase = rng:NextNumber(0, 6)
+		f.Rng = rng
+		table.insert(list, f)
+	end
+	schools[w] = { Fish = list, Folder = folder, Water = w }
+end
+
+local function place(f, t)
+	local cf = CFrame.lookAt(f.Pos, f.Pos + f.Dir)
+	local s = f.Scale
+	local wag = math.sin(t * (6 + f.Speed * 2) + f.Phase)
+	f.Body.CFrame = cf
+	f.Belly.CFrame = cf * CFrame.new(0, -0.18 * s, 0)
+	f.Tail.CFrame = cf * CFrame.new(0, 0, 0.75 * s) * CFrame.Angles(0, wag * 0.6, 0) * CFrame.new(0, 0, 0.25 * s)
+	f.Fin.CFrame = cf * CFrame.new(0, 0.38 * s, 0.05 * s)
+	f.Eyes[1].CFrame = cf * CFrame.new(0.22 * s, 0.1 * s, -0.55 * s)
+	f.Eyes[2].CFrame = cf * CFrame.new(-0.22 * s, 0.1 * s, -0.55 * s)
+end
+
+local function step(dt)
+	local camera = workspace.CurrentCamera
+	if not camera then
+		return
+	end
+	local camPos = camera.CFrame.Position
+	local t = os.clock()
+	for _, w in ipairs(CollectionService:GetTagged("Water")) do
+		local near = (w.Position - camPos).Magnitude < RANGE + (w:GetAttribute("Radius") or 10)
+		local school = schools[w]
+		if near and not school then
+			build(w)
+			school = schools[w]
+		end
+		if school then
+			school.Folder.Parent = if near then workspace else nil
+			if near then
+				for _, f in ipairs(school.Fish) do
+					local toGoal = f.Goal - f.Pos
+					if toGoal.Magnitude < 1.5 or (f.Chase and t > f.Chase) then
+						f.Chase = nil
+						f.Goal = randomPoint(w, f.Rng)
+						toGoal = f.Goal - f.Pos
+						-- now and then a quick dart
+						f.Burst = if f.Rng:NextNumber() < 0.15 then t + 0.8 else nil
+					end
+					local want = toGoal.Unit
+					-- turn smoothly toward where it's going
+					f.Dir = f.Dir:Lerp(want, math.min(1, dt * 1.6))
+					if f.Dir.Magnitude < 0.01 then
+						f.Dir = want
+					end
+					f.Dir = f.Dir.Unit
+					local speed = f.Speed * (if f.Burst and t < f.Burst then 3 else 1) * (if f.Chase then 1.6 else 1)
+					f.Pos += f.Dir * speed * dt
+					place(f, t)
+				end
+			end
+		end
+	end
+end
+
+-- a fish bites your line: the nearest one swims up to the bobber
+function Water.Bite(position)
+	if typeof(position) ~= "Vector3" then
+		return
+	end
+	local best, bestD
+	for _, school in pairs(schools) do
+		for _, f in ipairs(school.Fish) do
+			local d = (f.Pos - position).Magnitude
+			if d < 40 and (not bestD or d < bestD) then
+				best, bestD = f, d
+			end
+		end
+	end
+	if best then
+		best.Goal = position - Vector3.new(0, 0.6, 0)
+		best.Chase = os.clock() + 3
+	end
+end
+
+function Water.Start()
+	RunService.Heartbeat:Connect(function(dt)
+		local ok, err = pcall(step, math.min(dt, 0.1))
+		if not ok then
+			warn("[Water] " .. tostring(err))
+		end
+	end)
+end
+
+return Water
 ]]></ProtectedString></Properties></Item></Item></Item></Item></roblox>

@@ -63,9 +63,10 @@ function Landscape.build(parent, rng)
 		-- and clear, reflective water with gentle waves
 		pcall(function()
 			terrain.Decoration = true
-			terrain.WaterColor = rgb(40, 110, 130)
-			terrain.WaterReflectance = 0.85
-			terrain.WaterTransparency = 0.55
+			-- clear enough to see the fish, the weeds and the rocks below
+			terrain.WaterColor = rgb(40, 120, 125)
+			terrain.WaterReflectance = 0.45
+			terrain.WaterTransparency = 0.85
 			terrain.WaterWaveSize = 0.12
 			terrain.WaterWaveSpeed = 8
 		end)
@@ -112,6 +113,42 @@ function Landscape.build(parent, rng)
 		local a = rng:NextNumber(0, math.pi * 2)
 		local p = L + Vector3.new(math.cos(a), 0, math.sin(a)) * (Landscape.LAKE_RADIUS + rng:NextNumber(-2, 6))
 		deco(folder, "Reed", Vector3.new(0.3, rng:NextNumber(2.5, 4.5), 0.3), CFrame.new(p + Vector3.new(0, 1.5, 0)) * CFrame.Angles(rng:NextNumber(-0.2, 0.2), 0, rng:NextNumber(-0.2, 0.2)), rgb(90, 130, 60), Enum.Material.Grass)
+	end
+
+	-- under the water: sand ripples, rocks, swaying weeds; lily pads on top.
+	-- A "Water" part marks the lake for fishing and for the fish that swim in
+	-- it (see FishingService and the client's Water module)
+	local surface = if useTerrain then -1 else 0.35
+	local bed = if useTerrain then -9.6 else -0.5
+	local lakeInfo = deco(folder, "LakeWater", Vector3.new(2, 0.2, 2), CFrame.new(L.X, surface, L.Z), rgb(60, 140, 200))
+	lakeInfo.Transparency = 1
+	lakeInfo:SetAttribute("Radius", Landscape.LAKE_RADIUS)
+	lakeInfo:SetAttribute("Surface", surface)
+	lakeInfo:SetAttribute("Depth", surface - bed)
+	lakeInfo:SetAttribute("Kind", "lake")
+	lakeInfo:SetAttribute("Fish", 36)
+	lakeInfo:SetAttribute("RodStand", (pierCf * CFrame.new(-5.5, -0.2, 3)).Position)
+	MapKit.tag(lakeInfo, "Water")
+	for n = 1, 70 do
+		local a = rng:NextNumber(0, math.pi * 2)
+		local r = math.sqrt(rng:NextNumber()) * (Landscape.LAKE_RADIUS - 6)
+		local p = L + Vector3.new(math.cos(a) * r, 0, math.sin(a) * r)
+		if n % 3 == 0 then
+			MapKit.ball(folder, "LakeRock", rng:NextNumber(1.5, 4), CFrame.new(p.X, bed + 0.5, p.Z), rgb(110, 110, 104):Lerp(rgb(80, 90, 70), rng:NextNumber()), Enum.Material.Rock)
+		else
+			local h = rng:NextNumber(2, math.max(2.2, math.min(6, surface - bed - 1)))
+			for k = 0, 2 do
+				deco(folder, "Seaweed", Vector3.new(0.35, h * (1 - k * 0.2), 0.12), CFrame.new(p.X + k * 0.4 - 0.4, bed + h * (1 - k * 0.2) / 2, p.Z) * CFrame.Angles(rng:NextNumber(-0.2, 0.2), rng:NextNumber(0, 3), rng:NextNumber(-0.25, 0.25)), rgb(50, 120, 60):Lerp(rgb(90, 150, 60), rng:NextNumber()), Enum.Material.Grass)
+			end
+		end
+	end
+	for n = 1, 26 do
+		local a = rng:NextNumber(0, math.pi * 2)
+		local p = L + Vector3.new(math.cos(a), 0, math.sin(a)) * (Landscape.LAKE_RADIUS - rng:NextNumber(4, 22))
+		MapKit.disc(folder, "LilyPad", 0.08, rng:NextNumber(1.6, 2.8), Vector3.new(p.X, surface + 0.05, p.Z), rgb(70, 150, 60), Enum.Material.Grass)
+		if n % 4 == 0 then
+			MapKit.ball(folder, "LilyFlower", 0.6, CFrame.new(p.X, surface + 0.3, p.Z), rgb(250, 190, 220))
+		end
 	end
 
 	-- a forest ring of pines and leafy trees between the city and the hills

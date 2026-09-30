@@ -153,6 +153,8 @@ local SOUNDS = {
 	pop = "rbxasset://sounds/button.wav",
 	punch = "rbxasset://sounds/swordslash.wav",
 	notify = "rbxasset://sounds/electronicpingshort.wav",
+	coin = "rbxasset://sounds/electronicpingshort.wav",
+	splash = "rbxasset://sounds/impact_water.mp3",
 }
 UI.Muted = false
 function UI.sound(name, volume, speed)

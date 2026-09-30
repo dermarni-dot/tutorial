@@ -1915,6 +1915,71 @@ local function trail(tool, on)
 	end
 end
 
+-- fishing with a rod (see FishingService): the attributes change on the
+-- server, so each is timed from when this client first sees the change
+local function sinceChange(st, model, name)
+	local v = model:GetAttribute(name)
+	st.Seen = st.Seen or {}
+	local rec = st.Seen[name]
+	if v == nil then
+		st.Seen[name] = nil
+		return nil
+	end
+	if not rec or rec.Value ~= v then
+		rec = { Value = v, At = os.clock() }
+		st.Seen[name] = rec
+	end
+	return os.clock() - rec.At
+end
+
+local function rodPose(model, st, t)
+	local caught = sinceChange(st, model, "Caught")
+	local hand = model:FindFirstChild("LeftHand") or model:FindFirstChild("Left Arm")
+	-- the catch in your hand, held up for everyone to see
+	if caught and caught < 3.5 then
+		if not st.CatchPart and hand then
+			local size = model:GetAttribute("CaughtSize") or 1
+			local color = model:GetAttribute("CaughtColor") or Color3.fromRGB(110, 150, 170)
+			local fish = prop(hand, "HeldFish", Vector3.new(0.35, 0.8, 1.8) * size, CFrame.new(0, -0.5 * size, -0.3), color)
+			fish.Parent = model
+			local tail = prop(hand, "HeldFishTail", Vector3.new(0.12, 0.8, 0.6) * size, CFrame.new(0, -0.5 * size, 0.75 + 0.45 * size), color:Lerp(Color3.new(0, 0, 0), 0.2))
+			tail.Parent = model
+			st.CatchPart = { fish, tail }
+		end
+		local b = abs(osc(t, 6, st.Phase))
+		return { LS = A(125 + b * 10, 0, 20), LE = A(20), RS = A(40, 0, -10), RE = A(40), Neck = A(12, 22, 0), Waist = A(6), Root = CFrame.new(0, b * 0.08, 0) }, false
+	elseif st.CatchPart then
+		for _, p in ipairs(st.CatchPart) do
+			p:Destroy()
+		end
+		st.CatchPart = nil
+	end
+	-- the cast: back over the shoulder, then whip it forward
+	local cast = sinceChange(st, model, "Casting")
+	if cast and cast < 0.75 then
+		local k = cast / 0.75
+		if k < 0.45 then
+			local e = k / 0.45
+			return { RS = A(60 + e * 100, 0, -10), RE = A(40 - e * 20), LS = A(40 + e * 60, 0, 14), LE = A(60 - e * 20), Waist = A(e * 10, e * 20, 0), Neck = A(e * 6, -e * 10, 0), LH = A(8 - e * 12), RH = A(-4 + e * 14), RK = A(-8 - e * 10) }, false
+		end
+		local e = (k - 0.45) / 0.55
+		return { RS = A(160 - e * 105, 0, -10), RE = A(20 + e * 20), LS = A(100 - e * 55, 0, 14), LE = A(40 + e * 20), Waist = A(10 - e * 16, 20 - e * 26, 0), Neck = A(6 - e * 12, 0, 0), LH = A(-4 + e * 18), RH = A(10 - e * 16), LK = A(-6 - e * 10) }, false
+	end
+	-- a bite! yank
+	local bite = sinceChange(st, model, "FishBite")
+	if bite and bite < 1.4 then
+		local j = sin(math.min(1, bite / 0.3) * math.pi) * 0.5 + abs(osc(t, 18, st.Phase)) * 0.5
+		return { RS = A(55 + j * 30, 0, -8), RE = A(40 - j * 15), LS = A(46 + j * 25, 0, 14), LE = A(62 - j * 15), Waist = A(j * 8), Neck = A(-8 + j * 8), LK = A(-10), RK = A(-10) }, false
+	end
+	-- waiting with the line out: rod held forward, the tip bobbing a little
+	if model:GetAttribute("Fishing") then
+		local bob = osc(t, 1.3, st.Phase) * 3
+		return { RS = A(55 + bob, 0, -8), RE = A(40), LS = A(46 + bob, 0, 14), LE = A(62), Neck = A(-10, osc(t, 0.2, st.Phase) * 10, 0), Waist = A(-4) }, false
+	end
+	-- just carrying the rod
+	return { RS = A(25, 0, -6), RE = A(45), Neck = A(-2) }, false
+end
+
 local function playerUpdate(model, st, t, dt, player)
 	local now = os.clock()
 	local target, full
@@ -1964,6 +2029,8 @@ local function playerUpdate(model, st, t, dt, player)
 		-- fighting, working or carrying (see above)
 	elseif holding and now - (st.Draw or -99) < 0.35 then
 		target, full = L.draw(t, st.Phase, (now - st.Draw) / 0.35)
+	elseif tool and tool:GetAttribute("Rod") and not eating then
+		target, full = rodPose(model, st, t)
 	elseif HOLDS[held] and not eating then
 		target, full = HOLDS[held](t, st.Phase)
 	elseif eating then

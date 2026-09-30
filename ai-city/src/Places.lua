@@ -283,7 +283,16 @@ local function park(ctx, parent, i, j, rng, id, withPlayground)
 	local pondC = c + Vector3.new(-18, 0, 18)
 	column(model, "PondEdge", 0.6, 26, pondC + Vector3.new(0, 0.3, 0), STONE, Enum.Material.Pebble)
 	local pond = column(model, "Pond", 0.5, 23, pondC + Vector3.new(0, 0.4, 0), rgb(60, 140, 200), Enum.Material.Glass, false)
-	pond.Transparency = 0.15
+	pond.Transparency = 0.45
+	-- fishable, with koi you can see (see FishingService and the client's Water module)
+	pond:SetAttribute("Radius", 11.5)
+	pond:SetAttribute("Surface", 0.66)
+	pond:SetAttribute("Depth", 0.5)
+	pond:SetAttribute("Kind", "pond")
+	pond:SetAttribute("Fish", 6)
+	pond:SetAttribute("RodStand", pondC + Vector3.new(0, 0.2, -15.5))
+	MapKit.tag(pond, "Water")
+	MapKit.disc(model, "PondBed", 0.1, 23, pondC + Vector3.new(0, 0.12, 0), rgb(70, 90, 70), Enum.Material.Pebble)
 	for k = 0, 3 do
 		MapKit.disc(model, "LilyPad", 0.1, 2, pondC + Vector3.new(k * 3 - 4.5, 0.7, (k % 2) * 4 - 2), rgb(80, 170, 70), Enum.Material.Grass)
 	end

@@ -72,6 +72,7 @@ if Config.RUN_CITIZENS ~= false then
 	services.Gangs = require(Modules:WaitForChild("GangService"))
 	services.Love = require(Modules:WaitForChild("RelationshipService"))
 	services.Sports = require(Modules:WaitForChild("SportsService"))
+	services.Fishing = require(Modules:WaitForChild("FishingService"))
 	services.Dialogue.Start(services)
 	services.Crime.Start(services)
 	services.Players.Start(services)
@@ -86,5 +87,6 @@ if Config.RUN_CITIZENS ~= false then
 	services.Gangs.Start(services)
 	services.Love.Start(services)
 	services.Sports.Start(services)
+	services.Fishing.Start(services)
 	task.spawn(services.Citizens.Start, services)
 end

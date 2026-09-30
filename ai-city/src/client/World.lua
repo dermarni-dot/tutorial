@@ -637,6 +637,75 @@ local lastAttack = 0
 local fistSide = false
 
 -- which weapon you're holding ("Fists" if none)
+-- fishing (see FishingService): cast, then click again when the bobber dips
+local function holdingRod()
+	local character = player.Character
+	local tool = character and character:FindFirstChildOfClass("Tool")
+	return tool ~= nil and tool:GetAttribute("Rod") == true
+end
+local lastFish = 0
+function World.Fish()
+	if os.clock() - lastFish < 0.35 then
+		return
+	end
+	lastFish = os.clock()
+	local character = player.Character
+	if character and not character:GetAttribute("Fishing") then
+		character:SetAttribute("Casting", os.clock()) -- (the swing starts right away on our screen)
+	end
+	task.spawn(function()
+		local ok, result = pcall(function()
+			return ctx.Remotes.Request:InvokeServer({ Action = "Fish" })
+		end)
+		if ok and result and result.Caught then
+			World.Shake(0.3, 0.2)
+			UI.sound("splash", 0.5, 1.3)
+			UI.sound("coin", 0.5, 1)
+		elseif ok and result and result.Cast then
+			task.delay(0.55, function()
+				UI.sound("splash", 0.4, 1.1)
+			end)
+		end
+	end)
+end
+
+-- "BITE!" in big letters for a moment: click now!
+local biteLabel
+function World.FishBite(position)
+	local gui = player:FindFirstChildOfClass("PlayerGui")
+	if not gui then
+		return
+	end
+	if not biteLabel then
+		local screen = Instance.new("ScreenGui")
+		screen.Name = "FishBite"
+		screen.ResetOnSpawn = false
+		screen.Parent = gui
+		biteLabel = Instance.new("TextLabel")
+		biteLabel.BackgroundTransparency = 1
+		biteLabel.AnchorPoint = Vector2.new(0.5, 0.5)
+		biteLabel.Position = UDim2.fromScale(0.5, 0.35)
+		biteLabel.Size = UDim2.fromOffset(420, 90)
+		biteLabel.Font = Enum.Font.FredokaOne
+		biteLabel.TextScaled = true
+		biteLabel.TextColor3 = Color3.fromRGB(255, 230, 80)
+		biteLabel.TextStrokeTransparency = 0
+		biteLabel.TextStrokeColor3 = Color3.fromRGB(120, 40, 20)
+		biteLabel.Parent = screen
+	end
+	local pad = ctx.Gamepad and ctx.Gamepad.Active()
+	biteLabel.Text = "❗ BITE! " .. (if pad then "Press R2!" elseif UIS.TouchEnabled and not UIS.MouseEnabled then "Tap!" else "Click!")
+	biteLabel.Visible = true
+	UI.sound("click", 0.6, 1.6)
+	local token = os.clock()
+	biteLabel:SetAttribute("Token", token)
+	task.delay(1.3, function()
+		if biteLabel and biteLabel:GetAttribute("Token") == token then
+			biteLabel.Visible = false
+		end
+	end)
+end
+
 function World.Equipped()
 	local character = player.Character
 	local tool = character and character:FindFirstChildOfClass("Tool")
@@ -645,6 +714,10 @@ end
 
 -- Attack with whatever you're holding (F, click with a weapon, or the button)
 function World.Attack()
+	if holdingRod() then
+		World.Fish()
+		return
+	end
 	local weapon = World.Equipped()
 	local w = Weapons.Get(weapon)
 	if os.clock() - lastAttack < w.Cooldown then
@@ -716,7 +789,10 @@ end
 -- clicking with a weapon in hand attacks
 local function watchTools(character)
 	character.ChildAdded:Connect(function(child)
-		if child:IsA("Tool") and child:GetAttribute("Weapon") then
+		if child:IsA("Tool") and child:GetAttribute("Rod") then
+			child.Activated:Connect(World.Fish)
+			ctx.Hud.Toast("🎣", "Fishing rod", "Face the water and click (or F) to cast. When the bobber dips, click fast!", C.Blue or C.Gold)
+		elseif child:IsA("Tool") and child:GetAttribute("Weapon") then
 			child.Activated:Connect(World.Attack)
 			local w = Weapons.Get(child:GetAttribute("Weapon"))
 			ctx.Hud.Toast(w.Emoji, w.Name .. " equipped", "Click (or F) to attack. Hold X to block.", C.Red)

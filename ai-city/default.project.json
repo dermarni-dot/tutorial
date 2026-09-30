@@ -140,6 +140,9 @@
         "SportsService": {
           "$path": "src/SportsService.lua"
         },
+        "FishingService": {
+          "$path": "src/FishingService.lua"
+        },
         "Conversation": {
           "$path": "src/Conversation.lua"
         }
