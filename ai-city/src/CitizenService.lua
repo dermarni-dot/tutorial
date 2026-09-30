@@ -1142,6 +1142,16 @@ function CitizenService.TryCheckout(brain, t)
 	return "started"
 end
 
+-- the brain of a citizen (by their citizen id)
+function CitizenService.ByCitizenId(id)
+	for _, b in ipairs(CitizenService.List) do
+		if b.C.Id == id then
+			return b
+		end
+	end
+	return nil
+end
+
 -- A player ordering from a worker: the clerk at the nearest staffed till
 -- serves them, with the same checkout as citizens (the player's character is
 -- the customer). Returns the seconds until it's handed over, or nil if nobody

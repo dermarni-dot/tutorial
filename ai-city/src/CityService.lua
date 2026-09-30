@@ -457,6 +457,7 @@ local function loadPlayer(player)
 		Talks = tonumber(saved.Talks) or 0,
 		Arrests = tonumber(saved.Arrests) or 0,
 		Terms = tonumber(saved.Terms) or 0,
+		Home = type(saved.Home) == "string" and saved.Home or nil,
 	}
 	playerData[player] = data
 	player:SetAttribute("Coins", data.Coins)
@@ -471,7 +472,7 @@ local function savePlayer(player)
 	local data = playerData[player]
 	if data and playerStore then
 		pcall(function()
-			playerStore:SetAsync("p_" .. player.UserId, { Coins = data.Coins, Crimes = data.Crimes, Notoriety = data.Notoriety, Weapons = data.Weapons, Outfits = data.Outfits, Wearing = data.Wearing, Fitness = data.Fitness, Talks = data.Talks, Arrests = data.Arrests, Terms = data.Terms })
+			playerStore:SetAsync("p_" .. player.UserId, { Coins = data.Coins, Crimes = data.Crimes, Notoriety = data.Notoriety, Weapons = data.Weapons, Outfits = data.Outfits, Wearing = data.Wearing, Fitness = data.Fitness, Talks = data.Talks, Arrests = data.Arrests, Terms = data.Terms, Home = data.Home })
 		end)
 	end
 end

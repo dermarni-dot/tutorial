@@ -128,6 +128,9 @@
         "JobService": {
           "$path": "src/JobService.lua"
         },
+        "HomeService": {
+          "$path": "src/HomeService.lua"
+        },
         "Conversation": {
           "$path": "src/Conversation.lua"
         }

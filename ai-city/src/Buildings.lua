@@ -385,6 +385,31 @@ function Buildings.house(parent, center, face, style, rng, garageSide, scale)
 	local b = Buildings.shell(parent, spec)
 	local at = b.At
 	local W, D, H = b.W, b.D, b.H
+	-- a real front door (a wooden one on a hinge) instead of sliding glass;
+	-- HomeService opens it for whoever walks up, and locks it
+	for _, d in ipairs(b.Model:GetChildren()) do
+		if d.Name == "GlassDoor" or d.Name == "DoorHandle" then
+			d:Destroy()
+		end
+	end
+	local DW = spec.DoorW
+	local DH = math.min(10, FLOOR_H - 1.5) - 0.6
+	local doorColor = ({ MapKit.rgb(110, 60, 40), MapKit.rgb(40, 60, 90), MapKit.rgb(140, 30, 40), MapKit.rgb(40, 80, 60), MapKit.rgb(240, 236, 226) })[rng:NextInteger(1, 5)]
+	local door = part(b.Model, "FrontDoor", Vector3.new(DW, DH, 0.35), at(0, DH / 2 + 0.3, -D / 2 + 1.2), doorColor, Enum.Material.Wood)
+	deco(b.Model, "DoorPanel", Vector3.new(DW * 0.7, DH * 0.35, 0.05), door.CFrame * CFrame.new(0, DH * 0.2, -0.2), doorColor:Lerp(BLACK, 0.15), Enum.Material.Wood)
+	deco(b.Model, "DoorPanel", Vector3.new(DW * 0.7, DH * 0.35, 0.05), door.CFrame * CFrame.new(0, -DH * 0.22, -0.2), doorColor:Lerp(BLACK, 0.15), Enum.Material.Wood)
+	deco(b.Model, "DoorKnob", Vector3.new(0.3, 0.3, 0.35), door.CFrame * CFrame.new(DW / 2 - 0.6, -0.2, -0.3), MapKit.GOLD, Enum.Material.Metal)
+	-- the panels and knob swing with the door (welded to it)
+	for _, d in ipairs(b.Model:GetChildren()) do
+		if (d.Name == "DoorPanel" or d.Name == "DoorKnob") and (d.Position - door.Position).Magnitude < DH then
+			d.Anchored = false
+			local w = Instance.new("WeldConstraint")
+			w.Part0, w.Part1 = door, d
+			w.Parent = d
+		end
+	end
+	-- hinged on the left edge
+	b.HouseDoor = { Part = door, Hinge = door.CFrame * CFrame.new(-DW / 2, 0, 0), Width = DW }
 	-- shutters beside the front windows (not on modern houses)
 	if style ~= "modern" then
 		for f = 0, spec.Floors - 1 do

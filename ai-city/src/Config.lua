@@ -5,7 +5,7 @@
 -- rest of the game keeps working. Changed values say what they were and why.
 local Config = {}
 
-Config.POPULATION = 90 -- was 60: the city is now 9x9 blocks with 40+ workplaces, so more people keep it lively (lower it if the server struggles)
+Config.POPULATION = 150 -- a big city: more people on the streets and in the houses (lower it if the server struggles)
 Config.SEED = 1776 -- same seed = same citizens every server (lets memories persist)
 Config.DAY_LENGTH = 480 -- real seconds per in-game day (1 in-game hour = 20 seconds)
 Config.WALK_SPEED = 7.5 -- a real walking pace, used whenever a player is close enough to see them
@@ -149,7 +149,7 @@ Config.UNEMPLOYED_CHANCE = 0.12
 Config.RETIRE_AGE = 67
 
 -- Families, kids and growing up (see the Life module)
-Config.MAX_POPULATION = 140 -- no new babies once the city has this many people
+Config.MAX_POPULATION = 220 -- no new babies once the city has this many people
 Config.ADULT_AGE = 18 -- kids finish school and start work (or look for it) at this age
 Config.DAYS_PER_YEAR = 4 -- in-game days per year of age (4 days = 32 real minutes; a newborn grows up in ~10 real hours)
 Config.PREGNANCY_DAYS = 2 -- in-game days from "expecting" to the baby being born

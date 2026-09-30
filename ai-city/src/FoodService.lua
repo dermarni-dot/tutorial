@@ -51,30 +51,34 @@ local function buy(player, info)
 	if not S.City.Spend(player, item.Price, "🍽️ " .. item.Name) then
 		return { Ok = false, Error = "You need " .. item.Price .. " coins." }
 	end
-	-- a worker at the counter serves you (you get it when it's handed over)
+	-- eat it: heal, stamina, a boost
+	local function eat()
+		if not character.Parent or humanoid.Health <= 0 then
+			return
+		end
+		humanoid.Health = math.min(humanoid.MaxHealth, humanoid.Health + item.Heal)
+		if item.Boost then
+			player:SetAttribute("Boost", item.Boost)
+			player:SetAttribute("BoostUntil", workspace:GetServerTimeNow() + (item.BoostTime or 60))
+		end
+		S.City.Send(player, { Type = "Food", Energy = item.Energy, Name = item.Name })
+		character:SetAttribute("Eating", info.Id)
+		task.delay(2.6, function()
+			if character.Parent and character:GetAttribute("Eating") == info.Id then
+				character:SetAttribute("Eating", nil)
+			end
+		end)
+	end
+	-- a worker at the counter serves you: you eat it once it's handed over
 	local wait = S.Citizens and S.Citizens.ServePlayer and S.Citizens.ServePlayer(player, S.Map.Places[placeId], "food", 1)
 	if wait then
-		task.wait(wait * 0.9)
-		if not character.Parent then
-			return { Ok = false }
-		end
+		task.delay(wait * 0.9, eat)
+	else
+		eat()
 	end
-	-- eat it: heal, stamina, a boost
-	humanoid.Health = math.min(humanoid.MaxHealth, humanoid.Health + item.Heal)
-	if item.Boost then
-		player:SetAttribute("Boost", item.Boost)
-		player:SetAttribute("BoostUntil", workspace:GetServerTimeNow() + (item.BoostTime or 60))
-	end
-	S.City.Send(player, { Type = "Food", Energy = item.Energy, Name = item.Name })
-	character:SetAttribute("Eating", info.Id)
-	task.delay(2.6, function()
-		if character.Parent and character:GetAttribute("Eating") == info.Id then
-			character:SetAttribute("Eating", nil)
-		end
-	end)
 	S.City.Progress(player, "food", 1)
 	local r = menu(player, placeId)
-	r.Text = "Yum! " .. item.Name .. (if item.Heal > 0 then "  +" .. item.Heal .. " ❤️" else "") .. (if item.Energy > 0 then "  +" .. item.Energy .. " ⚡" else "")
+	r.Text = (if wait then "Ordered! " else "Yum! ") .. item.Name .. (if item.Heal > 0 then "  +" .. item.Heal .. " ❤️" else "") .. (if item.Energy > 0 then "  +" .. item.Energy .. " ⚡" else "")
 	return r
 end
 

@@ -299,6 +299,10 @@ local function report(player, position, victim, severity, what, gossip, stars)
 	return #seen, reported
 end
 
+CrimeService.Report = function(...)
+	return report(...)
+end
+
 --------------------------------------------------------------------------------
 -- Punching
 --------------------------------------------------------------------------------
