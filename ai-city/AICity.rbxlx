@@ -220,6 +220,10 @@ Config.Places = {
 	{ id = "CommunityCenter", label = "Community Center", emoji = "🤝", kind = "civic" },
 	{ id = "WillowPark", label = "Willow Park", emoji = "🌿", kind = "fun" },
 	{ id = "Lake", label = "Mirror Lake", emoji = "🎣", kind = "fun" },
+	-- the North Shore, up Shore Drive past the north edge of town
+	{ id = "Funland", label = "Funland", emoji = "🎡", kind = "fun" },
+	{ id = "Beach", label = "Sunset Beach", emoji = "🏖️", kind = "fun" },
+	{ id = "AutoLand", label = "AutoLand", emoji = "🚗", kind = "store" },
 }
 Config.PlaceById = {}
 for _, place in ipairs(Config.Places) do
@@ -531,6 +535,9 @@ Actions.List = {
 	jailed = { Pose = "jailed", Label = "🔒 In jail" },
 	getaway = { Pose = "none", Props = { "Loot" }, Label = "💰 Running away" },
 	ko = { Pose = "ko", Lying = true, Label = "💫 Knocked out" },
+	-- the North Shore
+	ride = { Pose = "sit", Seated = true, Label = "🎡 On a ride" },
+	sunbathe = { Pose = "sleep", Lying = true, Label = "🏖️ Sunbathing" },
 	carry = { Pose = "carry", Label = "👶 Carrying the baby" },
 }
 
@@ -3378,6 +3385,9 @@ if Config.RUN_CITIZENS ~= false then
 	services.Sports = require(Modules:WaitForChild("SportsService"))
 	services.Fishing = require(Modules:WaitForChild("FishingService"))
 	services.Prison = require(Modules:WaitForChild("PrisonService"))
+	services.Cars = require(Modules:WaitForChild("CarService"))
+	services.Fun = require(Modules:WaitForChild("FunService"))
+	services.Pets = require(Modules:WaitForChild("PetService"))
 	services.Dialogue.Start(services)
 	services.Crime.Start(services)
 	services.Players.Start(services)
@@ -3394,9 +3404,12 @@ if Config.RUN_CITIZENS ~= false then
 	services.Sports.Start(services)
 	services.Fishing.Start(services)
 	services.Prison.Start(services)
+	services.Cars.Start(services)
+	services.Fun.Start(services)
+	services.Pets.Start(services)
 	task.spawn(services.Citizens.Start, services)
 end
-]]></ProtectedString></Properties></Item><Item class="Folder" referent="RBX48"><Properties><string name="Name">Modules</string></Properties><Item class="ModuleScript" referent="RBX17"><Properties><string name="Name">MapKit</string><ProtectedString name="Source"><![CDATA[-- MapKit (ModuleScript) — ServerScriptService.Modules.MapKit
+]]></ProtectedString></Properties></Item><Item class="Folder" referent="RBX52"><Properties><string name="Name">Modules</string></Properties><Item class="ModuleScript" referent="RBX17"><Properties><string name="Name">MapKit</string><ProtectedString name="Source"><![CDATA[-- MapKit (ModuleScript) — ServerScriptService.Modules.MapKit
 -- Small building blocks shared by the map modules: part helpers, colors, signs,
 -- lights, seats, and a registry of things that change between day and night.
 
@@ -3407,8 +3420,8 @@ local MapKit = {}
 --------------------------------------------------------------------------------
 -- Layout numbers (shared by every map module)
 --------------------------------------------------------------------------------
-MapKit.SPACING = 124 -- block center to block center (big blocks: room for big houses and yards)
-MapKit.ROAD = 16 -- road width
+MapKit.SPACING = 134 -- block center to block center (big blocks: room for big houses and yards)
+MapKit.ROAD = 26 -- road width: a driving lane each way plus a parking lane on both sides
 MapKit.BLOCK = MapKit.SPACING - MapKit.ROAD -- 108: a block including its sidewalk
 MapKit.HALF = MapKit.BLOCK / 2
 MapKit.SIDEWALK = 5
@@ -3416,6 +3429,8 @@ MapKit.RING = MapKit.HALF - MapKit.SIDEWALK / 2 -- where people walk on the side
 MapKit.N = 5 -- blocks from the center to the edge (11x11 blocks)
 MapKit.EXTENT = MapKit.N * MapKit.SPACING + MapKit.SPACING / 2 -- the city is 2 * EXTENT across
 MapKit.LOT_Y = 0.5 -- ground level inside blocks (top of the curb)
+MapKit.LANE = 3.4 -- driving lanes run this far to the right of a road's center line
+MapKit.PARK = MapKit.ROAD / 2 - 3.6 -- parked cars, along the curb
 MapKit.FLOOR_H = 12
 
 --------------------------------------------------------------------------------
@@ -7284,7 +7299,7 @@ function Streets.build(parent, rng, blockKind)
 	furniture.Name = "StreetFurniture"
 	furniture.Parent = parent
 	local length = EXTENT * 2 + ROAD
-	local busSeats = {}
+	local busSeats, busStops = {}, {}
 
 	for k = -N - 1, N do
 		local line = (k + 0.5) * SPACING
@@ -7300,8 +7315,8 @@ function Streets.build(parent, rng, blockKind)
 				deco(roads, "LaneDash", Vector3.new(0.35, 0.22, 6), CFrame.new(line, 0.01, s * SPACING + off), rgb(245, 205, 70))
 			end
 			for _, e in ipairs({ -1, 1 }) do
-				deco(roads, "EdgeLine", Vector3.new(SPACING - ROAD - 2, 0.21, 0.25), CFrame.new(s * SPACING, 0.01, line + e * (ROAD / 2 - 0.8)), rgb(235, 235, 235))
-				deco(roads, "EdgeLine", Vector3.new(0.25, 0.21, SPACING - ROAD - 2), CFrame.new(line + e * (ROAD / 2 - 0.8), 0.01, s * SPACING), rgb(235, 235, 235))
+				deco(roads, "EdgeLine", Vector3.new(SPACING - ROAD - 2, 0.21, 0.25), CFrame.new(s * SPACING, 0.01, line + e * (ROAD / 2 - 6.9)), rgb(235, 235, 235))
+				deco(roads, "EdgeLine", Vector3.new(0.25, 0.21, SPACING - ROAD - 2), CFrame.new(line + e * (ROAD / 2 - 6.9), 0.01, s * SPACING), rgb(235, 235, 235))
 			end
 			-- a manhole in each road segment
 			MapKit.disc(roads, "Manhole", 0.24, 3, Vector3.new(s * SPACING + 20, 0.01, line + 3), rgb(70, 70, 74), Enum.Material.DiamondPlate)
@@ -7313,7 +7328,8 @@ function Streets.build(parent, rng, blockKind)
 		for b = -N - 1, N do
 			local x, z = (a + 0.5) * SPACING, (b + 0.5) * SPACING
 			local downtown = math.abs(a + 0.5) <= 2 and math.abs(b + 0.5) <= 2
-			for s = -3, 3 do
+			local stripes = math.floor((ROAD / 2 - 1) / 2.1)
+			for s = -stripes, stripes do
 				for _, side in ipairs({ -1, 1 }) do
 					deco(roads, "Crosswalk", Vector3.new(1.2, 0.24, 5), CFrame.new(x + s * 2.1, 0.02, z + side * (ROAD / 2 + 2.8)), WHITE)
 					deco(roads, "Crosswalk", Vector3.new(5, 0.24, 1.2), CFrame.new(x + side * (ROAD / 2 + 2.8), 0.02, z + s * 2.1), WHITE)
@@ -7395,6 +7411,8 @@ function Streets.build(parent, rng, blockKind)
 		local cf = CFrame.lookAt(c + Vector3.new(12, 0, -HALF + 2.8), c + Vector3.new(12, 0, -HALF - 5))
 		local seat = busStop(furniture, cf, Streets.streetName(j - 1))
 		table.insert(busSeats, seat)
+		-- where the bus pulls up: in the lane beside the shelter
+		table.insert(busStops, Vector3.new(c.X + 12, 0, j * SPACING - SPACING / 2 + MapKit.LANE))
 	end
 
 	-- parked cars along the curbs
@@ -7416,7 +7434,7 @@ function Streets.build(parent, rng, blockKind)
 		end
 		Streets.car(cars, cf, CAR_COLORS[rng:NextInteger(1, #CAR_COLORS)], if rng:NextNumber() < 0.15 then "van" else nil)
 	end
-	return { BusSeats = busSeats }
+	return { BusSeats = busSeats, BusStops = busStops }
 end
 
 return Streets
@@ -7983,7 +8001,712 @@ function Prison.build(parent, rng)
 end
 
 return Prison
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX24"><Properties><string name="Name">Landscape</string><ProtectedString name="Source"><![CDATA[-- Landscape (ModuleScript) — ServerScriptService.Modules.Landscape
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX24"><Properties><string name="Name">NorthShore</string><ProtectedString name="Source"><![CDATA[-- NorthShore (ModuleScript) — ServerScriptService.Modules.NorthShore
+-- A whole new district past the north edge of town, up Shore Drive:
+--
+--   🚗 AutoLand       a car dealership: cars on the lot you can buy (CarService)
+--   🎡 Funland        an amusement park: a Ferris wheel, a carousel and a drop
+--                     tower you can ride (they turn on everyone's screen, see
+--                     the client's Rides module), Balloon Pop and the prize
+--                     booth (FunService), a pet adoption stand (PetService),
+--                     food carts, benches and string lights
+--   🧗 Sky Obby       a parkour course: jumps, moving platforms, spinning bars,
+--                     lava, checkpoints and a timer (FunService)
+--   🏖️ Sunset Beach   a boardwalk, sand, umbrellas and towels, a volleyball
+--                     net, a lifeguard tower, palm trees, and a long pier
+--                     into the ocean for fishing
+--
+-- NorthShore.build(parent, rng) returns the spots for citizens (Funland, Beach,
+-- AutoLand) and everything the services need.
+
+local MapKit = require(script.Parent:WaitForChild("MapKit"))
+local Streets = require(script.Parent:WaitForChild("Streets"))
+
+local NorthShore = {}
+
+local rgb, WHITE, BLACK = MapKit.rgb, MapKit.WHITE, MapKit.BLACK
+local EXT, S, ROAD = MapKit.EXTENT, MapKit.SPACING, MapKit.ROAD
+local Z0 = -EXT -- the city's north edge (the outer road runs along it)
+
+NorthShore.DRIVE_X = 0.5 * S -- Shore Drive continues this avenue north
+NorthShore.Z0 = Z0
+NorthShore.BOARDWALK_Z = Z0 - 328
+NorthShore.WATER_Z = Z0 - 430 -- where the ocean begins
+NorthShore.WEST, NorthShore.EAST = -460, 330
+-- paved areas (Landscape clears the terrain grass under these)
+NorthShore.PAVED = {
+	{ Center = Vector3.new(NorthShore.DRIVE_X, 0, Z0 - 165), Size = Vector3.new(ROAD + 6, 0, 330) },
+	{ Center = Vector3.new(150, 0, Z0 - 75), Size = Vector3.new(104, 0, 74) },
+	{ Center = Vector3.new(-105, 0, Z0 - 170), Size = Vector3.new(294, 0, 264) },
+	{ Center = Vector3.new(-355, 0, Z0 - 175), Size = Vector3.new(180, 0, 250) },
+	{ Center = Vector3.new(-65, 0, NorthShore.BOARDWALK_Z), Size = Vector3.new(790, 0, 24) },
+}
+
+local model
+local function cf(x, y, z)
+	return CFrame.new(x, y, z)
+end
+local function solid(parent, name, size, x, y, z, color, material)
+	return MapKit.part(parent, name, size, cf(x, y + size.Y / 2, z), color, material)
+end
+local function deco(parent, name, size, x, y, z, color, material)
+	return MapKit.deco(parent, name, size, cf(x, y + size.Y / 2, z), color, material)
+end
+local function spot(x, y, z, fx, fz, extra)
+	local p = Vector3.new(x, y, z)
+	local look = Vector3.new(fx, y, fz)
+	if (look - p).Magnitude < 0.1 then
+		look = p + Vector3.new(0, 0, -1)
+	end
+	local s = { CFrame = CFrame.lookAt(p, look), Floor = 1, Role = "visit" }
+	for k, v in pairs(extra or {}) do
+		s[k] = v
+	end
+	return s
+end
+
+local function lamp(parent, x, z, y)
+	y = y or 0
+	deco(parent, "LampPost", Vector3.new(0.5, 11, 0.5), x, y, z, rgb(40, 44, 50), Enum.Material.Metal)
+	local head = MapKit.ball(parent, "LampGlobe", 1.6, cf(x, y + 11.6, z), rgb(255, 244, 214), Enum.Material.Neon)
+	local l = MapKit.light(head, rgb(255, 225, 170), 26, 0.9)
+	l.Enabled = false
+	table.insert(MapKit.Registry.Lamps, { Head = head, Light = l })
+end
+
+local function palm(parent, x, z, rng, y)
+	y = y or 0
+	local h = rng:NextNumber(12, 17)
+	local lean = rng:NextNumber(-0.12, 0.12)
+	for k = 0, 5 do
+		local u = k / 6
+		MapKit.column(parent, "PalmTrunk", h / 6 + 0.4, 1.3 - u * 0.4, Vector3.new(x + lean * h * u * 3, y + h * u + h / 12, z), rgb(140, 110, 76):Lerp(rgb(110, 86, 60), k % 2), Enum.Material.Wood, false)
+	end
+	local top = Vector3.new(x + lean * h * 3, y + h + 0.4, z)
+	for k = 1, 7 do
+		local a = k / 7 * math.pi * 2
+		local frond = MapKit.deco(parent, "PalmFrond", Vector3.new(1.6, 0.3, 7), CFrame.new(top) * CFrame.Angles(0, a, 0) * CFrame.Angles(math.rad(-22), 0, 0) * CFrame.new(0, 0, -3.2), rgb(60, 140, 60):Lerp(rgb(90, 160, 70), (k % 3) / 3), Enum.Material.SmoothPlastic)
+		frond.CastShadow = true
+	end
+	MapKit.ball(parent, "Coconuts", 1.4, CFrame.new(top - Vector3.new(0, 0.6, 0)), rgb(110, 80, 50))
+end
+
+--------------------------------------------------------------------------------
+-- Shore Drive
+--------------------------------------------------------------------------------
+local function drive(data)
+	local x = NorthShore.DRIVE_X
+	local z1, z2 = Z0 - ROAD / 2, NorthShore.BOARDWALK_Z + 12
+	local len = z1 - z2
+	MapKit.part(model, "ShoreDrive", Vector3.new(ROAD, 0.2, len), cf(x, 0, (z1 + z2) / 2), MapKit.ASPHALT, Enum.Material.Asphalt)
+	for z = z1 - 6, z2 + 6, -11 do
+		MapKit.deco(model, "LaneDash", Vector3.new(0.35, 0.22, 6), cf(x, 0.01, z), rgb(245, 205, 70))
+	end
+	for _, sx in ipairs({ -1, 1 }) do
+		MapKit.part(model, "DriveSidewalk", Vector3.new(4, 0.5, len), cf(x + sx * (ROAD / 2 + 2), 0.25, (z1 + z2) / 2), MapKit.CONCRETE, Enum.Material.Pavement)
+		for z = z1 - 20, z2 + 10, -44 do
+			lamp(model, x + sx * (ROAD / 2 + 3.2), z, 0.5)
+		end
+	end
+	local post = deco(model, "DriveSignPost", Vector3.new(0.4, 9, 0.4), x + ROAD / 2 + 5, 0, z1 - 8, rgb(60, 64, 70), Enum.Material.Metal)
+	local sign = MapKit.deco(model, "DriveSign", Vector3.new(10, 3.4, 0.2), post.CFrame * CFrame.new(0, 3.5, 0), rgb(30, 110, 60))
+	MapKit.signText(sign, Enum.NormalId.Back, "SHORE DRIVE ➜ Funland · Sunset Beach · AutoLand", WHITE, Enum.Font.GothamBold)
+	MapKit.signText(sign, Enum.NormalId.Front, "⬅ AI CITY", WHITE, Enum.Font.GothamBold)
+end
+
+--------------------------------------------------------------------------------
+-- 🚗 AutoLand
+--------------------------------------------------------------------------------
+local function autoland(data, rng)
+	local m = Instance.new("Model")
+	m.Name = "AutoLand"
+	m.Parent = model
+	local c = Vector3.new(150, 0, Z0 - 75)
+	MapKit.part(m, "Lot", Vector3.new(104, 0.3, 74), cf(c.X, 0.15, c.Z), rgb(64, 66, 72), Enum.Material.Asphalt)
+	for k = -4, 4 do
+		deco(m, "LotLine", Vector3.new(0.3, 0.02, 10), c.X + k * 10, 0.3, c.Z + 8, WHITE)
+	end
+	-- the showroom: a glass box with a sign on the roof
+	local sx, sz = c.X + 28, c.Z - 22
+	solid(m, "ShowroomFloor", Vector3.new(40, 0.4, 24), sx, 0.3, sz, rgb(230, 230, 232), Enum.Material.Marble)
+	for _, e in ipairs({ { 0, -12 }, { 0, 12 }, { -20, 0 }, { 20, 0 } }) do
+		local size = if e[1] == 0 then Vector3.new(40, 12, 0.4) else Vector3.new(0.4, 12, 24)
+		local g = solid(m, "ShowroomGlass", size, sx + e[1], 0.7, sz + e[2], rgb(170, 210, 235), Enum.Material.Glass)
+		g.Transparency = 0.55
+		if e[2] == 12 then
+			g.CanCollide = false -- (the way in, facing the lot)
+		end
+	end
+	solid(m, "ShowroomRoof", Vector3.new(42, 1, 26), sx, 12.7, sz, rgb(40, 44, 52), Enum.Material.Metal)
+	local sign = deco(m, "AutoLandSign", Vector3.new(26, 5, 0.6), sx, 13.7, sz + 10, rgb(210, 40, 40))
+	MapKit.signText(sign, Enum.NormalId.Back, "🚗 AUTOLAND", WHITE, Enum.Font.GothamBlack)
+	MapKit.signText(sign, Enum.NormalId.Front, "🚗 AUTOLAND", WHITE, Enum.Font.GothamBlack)
+	local desk = solid(m, "SalesDesk", Vector3.new(6, 3, 2.4), sx - 6, 0.7, sz, rgb(250, 250, 250), Enum.Material.SmoothPlastic)
+	data.SalesDesk = desk
+	data.SalesSpot = spot(sx - 6, 0.7, sz - 2.4, sx - 6, sz + 4)
+	-- bunting and balloons on the lot
+	for k = 0, 6 do
+		local b = MapKit.ball(m, "LotBalloon", 2.4, cf(c.X - 48 + k * 3, 9 + (k % 2), c.Z + 36), MapKit.FLOWERS[k % #MapKit.FLOWERS + 1])
+		deco(m, "BalloonString", Vector3.new(0.08, 8, 0.08), c.X - 48 + k * 3, 0.3, c.Z + 36, WHITE)
+		b.Reflectance = 0.2
+	end
+	-- the cars for sale stand in a row facing the drive (CarService fills them)
+	data.Display = {}
+	for k = 0, 4 do
+		local p = Vector3.new(c.X - 40 + k * 17, 0.3, c.Z + 14)
+		MapKit.disc(m, "Turntable", 0.2, 13, p, rgb(200, 200, 205), Enum.Material.Metal)
+		table.insert(data.Display, CFrame.lookAt(p, p + Vector3.new(-1, 0, 0.35)))
+	end
+	-- where your new car is waiting when you drive off the lot
+	data.Pickup = CFrame.lookAt(Vector3.new(NorthShore.DRIVE_X + 3.4, 0.1, c.Z + 10), Vector3.new(NorthShore.DRIVE_X + 3.4, 0.1, Z0))
+	data.AutoLandSpots = {}
+	for k = 0, 4 do
+		local p = data.Display[k + 1].Position
+		table.insert(data.AutoLandSpots, spot(p.X + 4, 0.3, p.Z + 7, p.X, p.Z, { Action = "browse" }))
+	end
+	data.AutoLandDoor = Vector3.new(NorthShore.DRIVE_X + ROAD / 2 + 4, 0.5, c.Z)
+end
+
+--------------------------------------------------------------------------------
+-- 🎡 Funland
+--------------------------------------------------------------------------------
+local rideSeatN = 0
+local function rideSeat(parent, cframe, color, spots, extra)
+	rideSeatN += 1
+	local seat = MapKit.seat(parent, "RideSeat_" .. rideSeatN, Vector3.new(2, 0.4, 2), cframe, color or rgb(220, 60, 60), Enum.Material.SmoothPlastic, nil)
+	seat.CanCollide = false
+	local s = { CFrame = cframe - Vector3.new(0, 1.7, 0), Seat = seat, Action = "ride", Role = "visit", Floor = 1, RideSeat = seat.Name }
+	for k, v in pairs(extra or {}) do
+		s[k] = v
+	end
+	table.insert(spots, s)
+	return seat
+end
+
+-- The Ferris wheel. The rim and spokes turn as one piece; the gondolas hang
+-- straight down as they go round (the client's Rides module moves them).
+local function ferrisWheel(parent, hub, spots)
+	local ride = Instance.new("Model")
+	ride.Name = "FerrisWheel"
+	ride.Parent = parent
+	ride:SetAttribute("Kind", "wheel")
+	ride:SetAttribute("Hub", hub)
+	ride:SetAttribute("Axis", Vector3.new(1, 0, 0))
+	ride:SetAttribute("Speed", 0.11)
+	local R = 30
+	-- the A-frame legs (they don't move)
+	for _, sx in ipairs({ -1, 1 }) do
+		for _, sz in ipairs({ -1, 1 }) do
+			local foot = hub + Vector3.new(sx * 6, -hub.Y, sz * 18)
+			local top = hub + Vector3.new(sx * 3, 0, 0)
+			local mid, len = (foot + top) / 2, (top - foot).Magnitude
+			MapKit.deco(parent, "WheelLeg", Vector3.new(1.2, len, 1.2), CFrame.lookAt(mid, top) * CFrame.Angles(math.rad(90), 0, 0), rgb(240, 240, 245), Enum.Material.Metal)
+		end
+	end
+	MapKit.cylinder(parent, "WheelAxle", 8, 2.4, CFrame.new(hub), rgb(90, 90, 96), Enum.Material.Metal)
+	local function spin(p)
+		p:SetAttribute("Spin", true)
+		p.Parent = ride
+	end
+	-- the rim: two rings of segments with lights, and the spokes
+	local n = 24
+	for _, off in ipairs({ -1.6, 1.6 }) do
+		for k = 0, n - 1 do
+			local a0, a1 = k / n * math.pi * 2, (k + 1) / n * math.pi * 2
+			local p0 = hub + Vector3.new(off, math.cos(a0) * R, math.sin(a0) * R)
+			local p1 = hub + Vector3.new(off, math.cos(a1) * R, math.sin(a1) * R)
+			local seg = MapKit.deco(ride, "Rim", Vector3.new(0.8, 0.8, (p1 - p0).Magnitude + 0.3), CFrame.lookAt((p0 + p1) / 2, p1), rgb(240, 240, 245), Enum.Material.Metal)
+			spin(seg)
+			if k % 2 == 0 then
+				local bulb = MapKit.ball(ride, "RimLight", 0.7, CFrame.new(p0 + Vector3.new(off * 0.3, 0, 0)), MapKit.FLOWERS[k % #MapKit.FLOWERS + 1], Enum.Material.Neon)
+				spin(bulb)
+			end
+		end
+	end
+	local g = 12
+	for k = 0, g - 1 do
+		local a = k / g * math.pi * 2
+		local tip = hub + Vector3.new(0, math.cos(a) * R, math.sin(a) * R)
+		for _, off in ipairs({ -1.6, 1.6 }) do
+			local base = hub + Vector3.new(off, 0, 0)
+			local t2 = tip + Vector3.new(off, 0, 0)
+			spin(MapKit.deco(ride, "Spoke", Vector3.new(0.4, 0.4, R), CFrame.lookAt((base + t2) / 2, t2), rgb(220, 220, 228), Enum.Material.Metal))
+		end
+		-- a gondola hanging from the rim
+		local color = MapKit.FLOWERS[k % #MapKit.FLOWERS + 1]
+		local pivot = tip
+		local parts = {}
+		table.insert(parts, MapKit.deco(ride, "GondolaFloor", Vector3.new(4.6, 0.4, 4.6), CFrame.new(pivot - Vector3.new(0, 5.2, 0)), color, Enum.Material.SmoothPlastic))
+		table.insert(parts, MapKit.deco(ride, "GondolaRoof", Vector3.new(5, 0.5, 5), CFrame.new(pivot - Vector3.new(0, 0.6, 0)), color:Lerp(WHITE, 0.2), Enum.Material.SmoothPlastic))
+		table.insert(parts, MapKit.deco(ride, "GondolaHanger", Vector3.new(0.3, 1, 0.3), CFrame.new(pivot - Vector3.new(0, 0.2, 0)), rgb(90, 90, 96), Enum.Material.Metal))
+		for _, sz in ipairs({ -1, 1 }) do
+			table.insert(parts, MapKit.deco(ride, "GondolaSide", Vector3.new(4.6, 1.6, 0.3), CFrame.new(pivot + Vector3.new(0, -4.2, sz * 2.2)), color, Enum.Material.SmoothPlastic))
+			for _, sx in ipairs({ -1, 1 }) do
+				table.insert(parts, MapKit.deco(ride, "GondolaPost", Vector3.new(0.25, 4.2, 0.25), CFrame.new(pivot + Vector3.new(sx * 2.1, -2.8, sz * 2.1)), rgb(230, 230, 236), Enum.Material.Metal))
+			end
+		end
+		for _, sz in ipairs({ -1, 1 }) do
+			local seatCf = CFrame.lookAt(pivot + Vector3.new(0, -4.8, sz * 1.2), pivot + Vector3.new(0, -4.8, -sz * 3))
+			table.insert(parts, rideSeat(ride, seatCf, color:Lerp(BLACK, 0.2), spots, { Approach = hub + Vector3.new(9, -hub.Y + 0.3, -8 + k % 4 * 4) }))
+		end
+		for _, p in ipairs(parts) do
+			p:SetAttribute("Gondola", k)
+			p:SetAttribute("Pivot", pivot)
+			p.Parent = ride
+		end
+	end
+	-- a ticket sign and a line to wait in
+	local sign = deco(parent, "RideSign", Vector3.new(10, 3, 0.3), hub.X + 10, 6, hub.Z - 22, rgb(40, 60, 140))
+	MapKit.signText(sign, Enum.NormalId.Front, "🎡 SKY WHEEL", WHITE, Enum.Font.GothamBlack)
+	MapKit.signText(sign, Enum.NormalId.Back, "🎡 SKY WHEEL", WHITE, Enum.Font.GothamBlack)
+	MapKit.tag(ride, "Ride")
+	return ride
+end
+
+-- The carousel: the floor, the poles and the horses go round; the horses bob
+local function carousel(parent, c, spots)
+	local ride = Instance.new("Model")
+	ride.Name = "Carousel"
+	ride.Parent = parent
+	ride:SetAttribute("Kind", "spin")
+	ride:SetAttribute("Hub", c)
+	ride:SetAttribute("Axis", Vector3.new(0, 1, 0))
+	ride:SetAttribute("Speed", 0.45)
+	-- the base and the roof (still)
+	MapKit.disc(parent, "CarouselBase", 1.2, 34, c + Vector3.new(0, 0.6, 0), rgb(200, 60, 80), Enum.Material.SmoothPlastic).CanCollide = false
+	MapKit.column(parent, "CarouselCenter", 16, 5, c + Vector3.new(0, 8, 0), rgb(250, 220, 120), Enum.Material.SmoothPlastic, false)
+	MapKit.disc(parent, "CarouselRoof", 1.2, 36, c + Vector3.new(0, 15.6, 0), rgb(250, 240, 230), Enum.Material.SmoothPlastic)
+	for k = 0, 15 do
+		local a = k / 16 * math.pi * 2
+		local p = c + Vector3.new(math.cos(a) * 17.5, 15, math.sin(a) * 17.5)
+		MapKit.wedge(parent, "RoofScallop", Vector3.new(0.3, 1.6, 6.8), CFrame.lookAt(p, c + Vector3.new(0, 15, 0)) * CFrame.Angles(0, math.rad(90), math.rad(180)), if k % 2 == 0 then rgb(220, 60, 80) else WHITE, Enum.Material.SmoothPlastic)
+		MapKit.ball(parent, "RoofBulb", 0.6, CFrame.new(c + Vector3.new(math.cos(a) * 18, 14.6, math.sin(a) * 18)), rgb(255, 240, 180), Enum.Material.Neon)
+	end
+	local floor = MapKit.deco(ride, "CarouselFloor", Vector3.new(0.4, 32, 32), CFrame.new(c + Vector3.new(0, 1.4, 0)) * CFrame.Angles(0, 0, math.rad(90)), rgb(240, 230, 200), Enum.Material.Wood)
+	floor.Shape = Enum.PartType.Cylinder
+	floor:SetAttribute("Spin", true)
+	for k = 0, 11 do
+		local a = k / 12 * math.pi * 2
+		local r = if k % 2 == 0 then 12 else 8
+		local p = c + Vector3.new(math.cos(a) * r, 1.6, math.sin(a) * r)
+		local pole = MapKit.deco(ride, "CarouselPole", Vector3.new(0.3, 13, 0.3), CFrame.new(p + Vector3.new(0, 6.5, 0)), MapKit.GOLD, Enum.Material.Metal)
+		pole:SetAttribute("Spin", true)
+		-- a horse facing along the direction of travel
+		local tangent = Vector3.new(-math.sin(a), 0, math.cos(a))
+		local base = CFrame.lookAt(p + Vector3.new(0, 3.2, 0), p + Vector3.new(0, 3.2, 0) + tangent)
+		local color = ({ WHITE, rgb(120, 80, 50), rgb(40, 40, 44), rgb(210, 170, 120) })[k % 4 + 1]
+		local parts = {
+			MapKit.deco(ride, "HorseBody", Vector3.new(1.6, 1.8, 4), base, color, Enum.Material.SmoothPlastic),
+			MapKit.deco(ride, "HorseNeck", Vector3.new(1, 2.2, 1.2), base * CFrame.new(0, 1.3, -1.9) * CFrame.Angles(math.rad(-25), 0, 0), color, Enum.Material.SmoothPlastic),
+			MapKit.deco(ride, "HorseHead", Vector3.new(1, 1, 2), base * CFrame.new(0, 2.4, -2.8), color, Enum.Material.SmoothPlastic),
+			MapKit.deco(ride, "HorseMane", Vector3.new(0.4, 1.8, 1.4), base * CFrame.new(0, 1.8, -1.5), MapKit.FLOWERS[k % #MapKit.FLOWERS + 1], Enum.Material.SmoothPlastic),
+		}
+		for _, sx in ipairs({ -0.5, 0.5 }) do
+			for _, sz in ipairs({ -1.4, 1.4 }) do
+				table.insert(parts, MapKit.deco(ride, "HorseLeg", Vector3.new(0.4, 1.8, 0.4), base * CFrame.new(sx, -1.5, sz) * CFrame.Angles(math.rad(sz * 12), 0, 0), color, Enum.Material.SmoothPlastic))
+			end
+		end
+		table.insert(parts, rideSeat(ride, base * CFrame.new(0, 1.1, 0.2), MapKit.FLOWERS[(k + 2) % #MapKit.FLOWERS + 1], spots, { Approach = c + Vector3.new(math.cos(a) * 19, 0, math.sin(a) * 19) }))
+		for _, part in ipairs(parts) do
+			part:SetAttribute("Spin", true)
+			part:SetAttribute("Bob", 0.9)
+			part:SetAttribute("BobPhase", k * 1.1)
+		end
+	end
+	local sign = deco(parent, "RideSign", Vector3.new(12, 2.6, 0.3), c.X, 16.4, c.Z + 18.3, rgb(200, 60, 80))
+	MapKit.signText(sign, Enum.NormalId.Back, "🎠 CAROUSEL", WHITE, Enum.Font.GothamBlack)
+	MapKit.signText(sign, Enum.NormalId.Front, "🎠 CAROUSEL", WHITE, Enum.Font.GothamBlack)
+	MapKit.tag(ride, "Ride")
+	return ride
+end
+
+-- The drop tower: the ring of seats climbs slowly... and falls
+local function dropTower(parent, c, spots)
+	local ride = Instance.new("Model")
+	ride.Name = "DropTower"
+	ride.Parent = parent
+	ride:SetAttribute("Kind", "drop")
+	ride:SetAttribute("Hub", c)
+	ride:SetAttribute("Height", 62)
+	local H = 78
+	MapKit.column(parent, "TowerColumn", H, 5, c + Vector3.new(0, H / 2, 0), rgb(60, 70, 110), Enum.Material.Metal, false)
+	MapKit.disc(parent, "TowerBase", 1, 20, c + Vector3.new(0, 0.5, 0), rgb(90, 90, 96), Enum.Material.Concrete).CanCollide = false
+	MapKit.ball(parent, "TowerTop", 6, CFrame.new(c + Vector3.new(0, H + 1, 0)), rgb(250, 200, 40), Enum.Material.SmoothPlastic)
+	for k = 1, 8 do
+		MapKit.ball(parent, "TowerLight", 0.8, CFrame.new(c + Vector3.new(2.6, k * 9, 0)), rgb(255, 120, 60), Enum.Material.Neon)
+	end
+	local ring = MapKit.deco(ride, "DropRing", Vector3.new(1.6, 14, 14), CFrame.new(c + Vector3.new(0, 3, 0)) * CFrame.Angles(0, 0, math.rad(90)), rgb(250, 200, 40), Enum.Material.SmoothPlastic)
+	ring.Shape = Enum.PartType.Cylinder
+	ring:SetAttribute("Lift", true)
+	for k = 0, 7 do
+		local a = k / 8 * math.pi * 2
+		local out = Vector3.new(math.cos(a), 0, math.sin(a))
+		local p = c + out * 5.4 + Vector3.new(0, 3.9, 0)
+		local seat = rideSeat(ride, CFrame.lookAt(p, p + out), rgb(220, 40, 60), spots, { Approach = c + out * 12 })
+		seat:SetAttribute("Lift", true)
+		local back = MapKit.deco(ride, "DropSeatBack", Vector3.new(2, 2.4, 0.4), CFrame.lookAt(p, p + out) * CFrame.new(0, 1.3, 1), rgb(40, 40, 50), Enum.Material.SmoothPlastic)
+		back:SetAttribute("Lift", true)
+	end
+	local sign = deco(parent, "RideSign", Vector3.new(12, 2.6, 0.3), c.X, 4, c.Z + 11, rgb(60, 70, 110))
+	MapKit.signText(sign, Enum.NormalId.Back, "🎢 FREEFALL", WHITE, Enum.Font.GothamBlack)
+	MapKit.signText(sign, Enum.NormalId.Front, "🎢 FREEFALL", WHITE, Enum.Font.GothamBlack)
+	MapKit.tag(ride, "Ride")
+	return ride
+end
+
+local function booth(parent, x, z, title, color)
+	solid(parent, "BoothCounter", Vector3.new(12, 3.4, 2), x, 0.3, z, color, Enum.Material.Wood)
+	solid(parent, "BoothBack", Vector3.new(12, 10, 0.6), x, 0.3, z - 6, color:Lerp(WHITE, 0.4), Enum.Material.Wood)
+	for _, sx in ipairs({ -1, 1 }) do
+		deco(parent, "BoothPost", Vector3.new(0.6, 11, 0.6), x + sx * 5.7, 0.3, z, color:Lerp(BLACK, 0.2), Enum.Material.Wood)
+		deco(parent, "BoothSide", Vector3.new(0.4, 10, 6), x + sx * 6, 0.3, z - 3, color:Lerp(WHITE, 0.2), Enum.Material.Wood)
+	end
+	for k = 0, 5 do
+		MapKit.wedge(parent, "Awning", Vector3.new(2, 1.2, 7), cf(x - 5 + k * 2, 11.9, z - 2.5) * CFrame.Angles(0, math.pi, 0), if k % 2 == 0 then color else WHITE, Enum.Material.Fabric)
+	end
+	local sign = deco(parent, "BoothSign", Vector3.new(12, 2.4, 0.3), x, 12.6, z + 0.9, rgb(30, 30, 40))
+	MapKit.signText(sign, Enum.NormalId.Back, title, rgb(255, 220, 90), Enum.Font.GothamBlack)
+	MapKit.signText(sign, Enum.NormalId.Front, title, rgb(255, 220, 90), Enum.Font.GothamBlack)
+end
+
+local function funland(data, rng)
+	local m = Instance.new("Model")
+	m.Name = "Funland"
+	m.Parent = model
+	local spots = {}
+	data.FunlandSpots = spots
+	local c = Vector3.new(-105, 0, Z0 - 170)
+	MapKit.part(m, "FunlandGround", Vector3.new(294, 0.3, 264), cf(c.X, 0.15, c.Z), rgb(214, 196, 164), Enum.Material.Concrete)
+	-- colored paths
+	deco(m, "FunPath", Vector3.new(290, 0.04, 8), c.X, 0.3, c.Z, rgb(220, 120, 110), Enum.Material.Concrete)
+	deco(m, "FunPath", Vector3.new(8, 0.04, 260), c.X + 60, 0.3, c.Z, rgb(220, 120, 110), Enum.Material.Concrete)
+	-- the entrance arch facing Shore Drive
+	local ax = 40
+	for _, sz in ipairs({ -1, 1 }) do
+		MapKit.column(m, "ArchPillar", 20, 3, Vector3.new(ax, 10.3, c.Z + sz * 10), rgb(250, 200, 60), Enum.Material.SmoothPlastic)
+		MapKit.ball(m, "ArchBall", 4, cf(ax, 21.5, c.Z + sz * 10), rgb(220, 60, 80), Enum.Material.SmoothPlastic)
+	end
+	local arch = solid(m, "ArchSign", Vector3.new(1.2, 5, 22), ax, 15, c.Z, rgb(220, 60, 80), Enum.Material.SmoothPlastic)
+	MapKit.signText(arch, Enum.NormalId.Right, "🎡 FUNLAND", WHITE, Enum.Font.GothamBlack)
+	MapKit.signText(arch, Enum.NormalId.Left, "🎡 FUNLAND", WHITE, Enum.Font.GothamBlack)
+	data.FunlandDoor = Vector3.new(ax + 6, 0.3, c.Z)
+	-- the rides
+	data.Rides = {
+		ferrisWheel(m, Vector3.new(-190, 36, Z0 - 240), spots),
+		carousel(m, Vector3.new(-60, 0.3, Z0 - 100), spots),
+		dropTower(m, Vector3.new(-200, 0.3, Z0 - 90), spots),
+	}
+	-- people waiting in line and watching
+	for _, p in ipairs({ { -170, Z0 - 210, -190, Z0 - 240 }, { -60, Z0 - 124, -60, Z0 - 100 }, { -186, Z0 - 104, -200, Z0 - 90 }, { -40, Z0 - 128, -60, Z0 - 100 } }) do
+		for k = 0, 2 do
+			table.insert(spots, spot(p[1] + k * 2.2, 0.3, p[2], p[3], p[4], { Action = if k == 2 then "phone" else "wait" }))
+		end
+	end
+	-- 🎈 Balloon Pop: 8 balloons pinned to the back wall (FunService blows them up)
+	local bx, bz = -10, Z0 - 220
+	booth(m, bx, bz, "🎈 BALLOON POP", rgb(40, 150, 220))
+	data.BalloonGame = { Counter = Vector3.new(bx, 0.3, bz + 2.5), Slots = {} }
+	for row = 0, 1 do
+		for k = 0, 3 do
+			table.insert(data.BalloonGame.Slots, Vector3.new(bx - 3.6 + k * 2.4, 4.6 + row * 3.2, bz - 5.3))
+		end
+	end
+	data.BalloonGame.Prompt = solid(m, "BalloonGamePrompt", Vector3.new(2, 0.6, 1), bx + 4, 3.7, bz, rgb(250, 250, 250))
+	-- 🎟️ the prize booth: plushies on the shelves
+	local px, pz = -10, Z0 - 256
+	booth(m, px, pz, "🎟️ PRIZES", rgb(200, 70, 150))
+	for row = 0, 2 do
+		deco(m, "PrizeShelf", Vector3.new(11, 0.3, 1.2), px, 3.4 + row * 2.6, pz - 5.2, rgb(240, 230, 210), Enum.Material.Wood)
+		for k = 0, 4 do
+			MapKit.ball(m, "Plushie", 1.6, cf(px - 4 + k * 2, 4.4 + row * 2.6, pz - 5.2), MapKit.FLOWERS[(k + row) % #MapKit.FLOWERS + 1], Enum.Material.Fabric)
+		end
+	end
+	data.PrizeDesk = solid(m, "PrizeDesk", Vector3.new(2, 0.6, 1), px + 4, 3.7, pz, rgb(250, 250, 250))
+	-- 🐾 the pet adoption stand (PetService)
+	local ax2, az2 = 10, Z0 - 60
+	booth(m, ax2, az2, "🐾 PAWS & CLAWS", rgb(90, 170, 90))
+	for k = 0, 2 do
+		deco(m, "PetPen", Vector3.new(4, 1.6, 4), ax2 - 16 + k * 5, 0.3, az2 - 2, rgb(200, 170, 120), Enum.Material.Wood)
+	end
+	data.PetDesk = solid(m, "AdoptDesk", Vector3.new(2, 0.6, 1), ax2 + 4, 3.7, az2, rgb(250, 250, 250))
+	data.PetPens = { Vector3.new(ax2 - 16, 0.3, az2 - 2), Vector3.new(ax2 - 11, 0.3, az2 - 2), Vector3.new(ax2 - 6, 0.3, az2 - 2) }
+	-- food carts (cotton candy, ice cream, hot dogs) and picnic tables
+	for k, cart in ipairs({ { -40, Z0 - 160, "🍭", rgb(250, 150, 200) }, { -120, Z0 - 160, "🍦", rgb(120, 200, 240) }, { -150, Z0 - 290, "🌭", rgb(240, 180, 60) } }) do
+		solid(m, "FoodCart", Vector3.new(6, 3.6, 3), cart[1], 0.3, cart[2], cart[4], Enum.Material.SmoothPlastic)
+		for _, sx in ipairs({ -1, 1 }) do
+			MapKit.cylinder(m, "CartWheel", 0.4, 2, cf(cart[1] + sx * 2, 1.2, cart[2] + 1.6) * CFrame.Angles(0, math.rad(90), 0), rgb(40, 40, 44), Enum.Material.Rubber)
+		end
+		deco(m, "CartUmbrellaPole", Vector3.new(0.3, 5, 0.3), cart[1], 3.9, cart[2], rgb(220, 220, 220), Enum.Material.Metal)
+		MapKit.disc(m, "CartUmbrella", 0.3, 8, Vector3.new(cart[1], 9, cart[2]), cart[4]:Lerp(WHITE, 0.3), Enum.Material.Fabric)
+		local sign = deco(m, "CartSign", Vector3.new(4, 1.6, 0.2), cart[1], 4, cart[2] + 1.6, WHITE)
+		MapKit.signText(sign, Enum.NormalId.Back, cart[3], BLACK)
+		table.insert(spots, spot(cart[1], 0.3, cart[2] + 4, cart[1], cart[2], { Action = "wait" }))
+		table.insert(spots, spot(cart[1] + 2.2, 0.3, cart[2] + 5.5, cart[1], cart[2], { Action = "phone" }))
+	end
+	for k = 0, 5 do
+		local tx, tz = -150 + (k % 3) * 22, Z0 - 150 - math.floor(k / 3) * 14
+		deco(m, "PicnicTable", Vector3.new(6, 0.4, 3), tx, 2.7, tz, rgb(150, 110, 70), Enum.Material.Wood)
+		deco(m, "PicnicLeg", Vector3.new(4, 2.4, 1), tx, 0.3, tz, rgb(120, 90, 60), Enum.Material.Wood)
+		for _, sz in ipairs({ -1, 1 }) do
+			local seat = MapKit.seat(m, "PicnicBench", Vector3.new(6, 0.4, 1.2), cf(tx, 1.9, tz + sz * 2.2), rgb(150, 110, 70), Enum.Material.Wood, nil)
+			seat.CanCollide = false
+			for _, dx in ipairs({ -1.5, 1.5 }) do
+				table.insert(spots, spot(tx + dx, 0.3, tz + sz * 2.2, tx + dx, tz, { Action = "eat", Seat = seat }))
+			end
+		end
+	end
+	-- string lights over the main path, lamps and flower beds
+	for k = 0, 17 do
+		local x = c.X - 136 + k * 16
+		MapKit.ball(m, "StringLight", 0.7, cf(x, 9 + math.sin(k) * 0.4, c.Z), MapKit.FLOWERS[k % #MapKit.FLOWERS + 1], Enum.Material.Neon)
+	end
+	for k = 0, 8 do
+		lamp(m, c.X - 128 + k * 32, c.Z + 6, 0.3)
+		lamp(m, c.X - 128 + k * 32, c.Z - 6, 0.3)
+	end
+	for k = 0, 5 do
+		local tx = c.X - 130 + k * 50
+		for _, sz in ipairs({ -1, 1 }) do
+			Streets.tree(m, Vector3.new(tx, 0.3, c.Z + sz * 126), rng:NextNumber(0.8, 1.1), rng)
+		end
+	end
+end
+
+--------------------------------------------------------------------------------
+-- 🧗 The Sky Obby
+--------------------------------------------------------------------------------
+local function obby(data, rng)
+	local m = Instance.new("Model")
+	m.Name = "SkyObby"
+	m.Parent = model
+	local o = { Checkpoints = {}, Kill = {}, Region = { Min = Vector3.new(-450, -5, Z0 - 300), Max = Vector3.new(-260, 90, Z0 - 50) } }
+	data.Obby = o
+	local c = Vector3.new(-355, 0, Z0 - 175)
+	MapKit.part(m, "ObbyGround", Vector3.new(180, 0.3, 250), cf(c.X, 0.15, c.Z), rgb(90, 160, 90), Enum.Material.Grass)
+	local start = solid(m, "ObbyStart", Vector3.new(14, 1, 14), -280, 0.3, Z0 - 70, rgb(60, 200, 90), Enum.Material.SmoothPlastic)
+	o.Start = start
+	local sign = deco(m, "ObbySign", Vector3.new(16, 4, 0.4), -280, 8, Z0 - 62, rgb(30, 34, 60))
+	MapKit.signText(sign, Enum.NormalId.Front, "🧗 SKY OBBY\nStep on the green pad to start", WHITE, Enum.Font.GothamBlack)
+	MapKit.signText(sign, Enum.NormalId.Back, "🧗 SKY OBBY", WHITE, Enum.Font.GothamBlack)
+	o.Board = deco(m, "ObbyBoard", Vector3.new(14, 9, 0.4), -266, 1, Z0 - 62, rgb(20, 24, 40))
+	-- a path of jumps that climbs as it goes (west, then back east higher up)
+	local y, x, z = 1.3, -280, Z0 - 78
+	local colors = { rgb(255, 90, 110), rgb(255, 200, 60), rgb(90, 170, 255), rgb(170, 110, 255), rgb(90, 220, 140) }
+	local step = 0
+	local function platform(size, px, py, pz, kind)
+		step += 1
+		local p = solid(m, "ObbyPlatform", size, px, py, pz, colors[step % #colors + 1], Enum.Material.SmoothPlastic)
+		if kind == "lava" then
+			local lava = solid(m, "ObbyLava", Vector3.new(size.X - 1, 0.3, 2), px, py + size.Y, pz, rgb(255, 70, 30), Enum.Material.Neon)
+			table.insert(o.Kill, lava)
+			MapKit.tag(lava, "ObbyKill")
+		elseif kind == "move" then
+			p:SetAttribute("MoveAxis", Vector3.new(1, 0, 0))
+			p:SetAttribute("MoveDist", 7)
+			p:SetAttribute("MoveSpeed", 0.8)
+			MapKit.tag(p, "ObbyMover")
+		elseif kind == "spin" then
+			local bar = solid(m, "ObbySpinner", Vector3.new(size.X - 1, 0.8, 0.8), px, py + size.Y + 1.2, pz, rgb(255, 70, 30), Enum.Material.Neon)
+			bar.CanCollide = false
+			bar:SetAttribute("SpinSpeed", 1.6)
+			MapKit.tag(bar, "ObbySpinner")
+			table.insert(o.Kill, bar)
+			MapKit.tag(bar, "ObbyKill")
+		end
+		return p
+	end
+	local course = {
+		{ 0, 0, -9, 6, "" }, { 0, 1, -8, 5, "" }, { 0, 1.2, -8, 4, "" }, { -8, 1, 0, 4, "" }, { -8, 0.8, 0, 6, "lava" },
+		{ -9, 1, 0, 4, "" }, { "cp" }, { -10, 0, 0, 5, "move" }, { -10, 0, 0, 5, "move" }, { -8, 1.2, 0, 4, "" },
+		{ 0, 1.2, -8, 3, "" }, { 0, 1.2, -8, 3, "" }, { 0, 0.5, -10, 8, "spin" }, { "cp" }, { 9, 1.4, 0, 3.4, "" },
+		{ 9, 1.4, 0, 3.4, "" }, { 9, 1, 0, 6, "lava" }, { 9, 0, 0, 5, "move" }, { 8, 1.4, 0, 3, "" }, { "cp" },
+		{ 0, 1.6, -9, 3, "" }, { 0, 1.6, -9, 3, "" }, { 0, 0, -11, 8, "spin" }, { -9, 1.6, 0, 2.6, "" }, { -9, 1.6, 0, 2.6, "" },
+		{ -10, 0, 0, 5, "move" }, { -9, 1.8, 0, 3, "" }, { "finish" },
+	}
+	for _, c2 in ipairs(course) do
+		if c2[1] == "cp" then
+			z -= 9
+			y += 0.4
+			local cp = solid(m, "ObbyCheckpoint", Vector3.new(8, 1, 8), x, y, z, rgb(250, 220, 60), Enum.Material.Neon)
+			cp:SetAttribute("Checkpoint", #o.Checkpoints + 1)
+			table.insert(o.Checkpoints, cp)
+			local flag = deco(m, "CheckpointFlag", Vector3.new(0.3, 6, 0.3), x + 3, y + 1, z, WHITE, Enum.Material.Metal)
+			deco(m, "CheckpointBanner", Vector3.new(0.1, 1.6, 2.4), x + 3, y + 5.2, z + 1.2, rgb(250, 220, 60))
+		elseif c2[1] == "finish" then
+			z -= 10
+			y += 0.4
+			local fin = solid(m, "ObbyFinish", Vector3.new(12, 1, 12), x, y, z - 2, rgb(80, 220, 255), Enum.Material.Neon)
+			o.Finish = fin
+			local arch = deco(m, "FinishArch", Vector3.new(12, 2, 0.6), x, y + 8, z - 8, rgb(30, 34, 60))
+			MapKit.signText(arch, Enum.NormalId.Back, "🏁 FINISH", WHITE, Enum.Font.GothamBlack)
+			for _, sx in ipairs({ -1, 1 }) do
+				deco(m, "FinishPost", Vector3.new(0.6, 9, 0.6), x + sx * 6, y + 1, z - 8, WHITE, Enum.Material.Metal)
+			end
+		else
+			x += c2[1]
+			y += c2[2]
+			z += c2[3]
+			local w = c2[4]
+			platform(Vector3.new(w, 1, w), x, y, z, c2[5])
+		end
+	end
+	-- supports down to the ground so it doesn't hang in the air
+	for _, p in ipairs(m:GetChildren()) do
+		if (p.Name == "ObbyPlatform" or p.Name == "ObbyCheckpoint" or p.Name == "ObbyFinish") and not p:GetAttribute("MoveAxis") and p.Position.Y > 3 then
+			local h = p.Position.Y - p.Size.Y / 2
+			local post = MapKit.deco(m, "ObbyPost", Vector3.new(0.6, h, 0.6), CFrame.new(p.Position.X, h / 2, p.Position.Z), rgb(210, 210, 216), Enum.Material.Metal)
+			post.Transparency = 0.2
+		end
+	end
+end
+
+--------------------------------------------------------------------------------
+-- 🏖️ Sunset Beach, the boardwalk and the pier
+--------------------------------------------------------------------------------
+local function beach(data, rng, useTerrain)
+	local m = Instance.new("Model")
+	m.Name = "SunsetBeach"
+	m.Parent = model
+	local spots = {}
+	data.BeachSpots = spots
+	local bz = NorthShore.BOARDWALK_Z
+	local W0, W1 = NorthShore.WEST + 60, NorthShore.EAST - 30
+	local cx = (W0 + W1) / 2
+	-- the boardwalk: raised planks with a railing on the beach side
+	MapKit.part(model, "Boardwalk", Vector3.new(W1 - W0, 1, 20), cf(cx, 0.5, bz), rgb(170, 130, 90), Enum.Material.WoodPlanks)
+	for x = W0 + 2, W1 - 2, 6 do
+		deco(m, "RailPost", Vector3.new(0.4, 3.4, 0.4), x, 1, bz - 9.6, rgb(240, 236, 226), Enum.Material.Wood)
+	end
+	deco(m, "Rail", Vector3.new(W1 - W0, 0.4, 0.4), cx, 4, bz - 9.6, rgb(240, 236, 226), Enum.Material.Wood)
+	for x = W0 + 20, W1 - 20, 60 do
+		lamp(m, x, bz + 8, 1)
+		local seat = MapKit.seat(m, "BoardwalkBench", Vector3.new(6, 0.5, 2), cf(x + 12, 2.8, bz - 7), MapKit.WOOD, Enum.Material.Wood, nil)
+		deco(m, "BenchBack", Vector3.new(6, 2, 0.4), x + 12, 2.6, bz - 6, MapKit.WOOD, Enum.Material.Wood)
+		deco(m, "BenchLeg", Vector3.new(5, 1.5, 1.6), x + 12, 1, bz - 7, rgb(50, 50, 55), Enum.Material.Metal)
+		table.insert(spots, spot(x + 12, 1, bz - 7, x + 12, bz - 30, { Action = "sit", Seat = seat }))
+	end
+	-- shops along the boardwalk: a surf shop, a snack shack, an ice cream stand
+	for k, shop in ipairs({ { W0 + 60, "🏄 SURF SHOP", rgb(40, 150, 200) }, { cx - 40, "🍟 SNACK SHACK", rgb(240, 170, 40) }, { cx + 90, "🍦 SCOOPS", rgb(240, 120, 170) } }) do
+		local sx = shop[1]
+		solid(m, "Shack", Vector3.new(18, 10, 12), sx, 1, bz + 16, shop[3]:Lerp(WHITE, 0.5), Enum.Material.WoodPlanks)
+		deco(m, "ShackRoof", Vector3.new(20, 1, 14), sx, 11, bz + 16, shop[3], Enum.Material.SmoothPlastic)
+		local sign = deco(m, "ShackSign", Vector3.new(14, 2.6, 0.3), sx, 7.6, bz + 9.8, rgb(30, 30, 40))
+		MapKit.signText(sign, Enum.NormalId.Front, shop[2], rgb(255, 220, 90), Enum.Font.GothamBlack)
+		local window = deco(m, "ShackWindow", Vector3.new(8, 3, 0.2), sx, 3.6, bz + 9.9, rgb(160, 210, 230), Enum.Material.Glass)
+		window.Transparency = 0.3
+		for n = 0, 1 do
+			table.insert(spots, spot(sx - 1.5 + n * 3, 1, bz + 7, sx, bz + 12, { Action = if n == 0 then "wait" else "phone" }))
+		end
+	end
+	-- the sand (terrain in the game; a part in tests)
+	local sandZ0, sandZ1 = bz - 10, NorthShore.WATER_Z
+	if not useTerrain then
+		MapKit.part(m, "Sand", Vector3.new(W1 - W0 + 80, 1, sandZ0 - sandZ1), cf(cx, -0.5, (sandZ0 + sandZ1) / 2), rgb(236, 214, 160), Enum.Material.Sand)
+		local sea = MapKit.part(m, "Ocean", Vector3.new(1600, 1, 700), cf(cx, -1.5, sandZ1 - 350), rgb(40, 110, 170), Enum.Material.Glass)
+		sea.Transparency = 0.3
+		sea.CanCollide = false
+	end
+	-- umbrellas and towels for sunbathing
+	for k = 0, 13 do
+		local x = W0 + 30 + k * ((W1 - W0 - 60) / 13) + rng:NextNumber(-4, 4)
+		local z = sandZ0 - rng:NextNumber(22, 55)
+		local color = MapKit.FLOWERS[k % #MapKit.FLOWERS + 1]
+		deco(m, "UmbrellaPole", Vector3.new(0.3, 8, 0.3), x, 0, z, WHITE, Enum.Material.Metal)
+		for n = 0, 7 do
+			local a = n / 8 * math.pi * 2
+			MapKit.wedge(m, "UmbrellaTop", Vector3.new(0.2, 1.6, 4.6), CFrame.new(x, 8, z) * CFrame.Angles(0, a, 0) * CFrame.new(0, 0, -2.3) * CFrame.Angles(0, math.pi, 0), if n % 2 == 0 then color else WHITE, Enum.Material.Fabric)
+		end
+		for n = 0, 1 do
+			local tx = x - 2.5 + n * 5
+			deco(m, "Towel", Vector3.new(2.6, 0.05, 6), tx, 0, z + 3, MapKit.FLOWERS[(k + n + 2) % #MapKit.FLOWERS + 1], Enum.Material.Fabric)
+			table.insert(spots, spot(tx, 0, z + 3, tx, z + 10, { Action = "sunbathe", BedTop = 0.15 }))
+		end
+		if k % 3 == 0 then
+			MapKit.ball(m, "BeachBall", 1.6, cf(x + 4, 0.8, z + 8), rgb(255, 255, 255))
+		end
+	end
+	-- volleyball
+	local vx, vz = cx - 150, sandZ0 - 45
+	for _, sx in ipairs({ -1, 1 }) do
+		deco(m, "NetPost", Vector3.new(0.4, 8, 0.4), vx + sx * 10, 0, vz, WHITE, Enum.Material.Metal)
+	end
+	local net = deco(m, "VolleyNet", Vector3.new(20, 3, 0.1), vx, 5, vz, rgb(30, 30, 34), Enum.Material.Fabric)
+	net.Transparency = 0.4
+	MapKit.ball(m, "Volleyball", 1.2, cf(vx + 2, 9, vz + 5), rgb(250, 240, 180))
+	for _, sz in ipairs({ -1, 1 }) do
+		for k = -1, 1 do
+			table.insert(spots, spot(vx + k * 6, 0, vz + sz * 8, vx + k * 6, vz, { Action = "cheer" }))
+		end
+	end
+	-- the lifeguard tower
+	local lx, lz = cx + 30, sandZ0 - 70
+	for _, sx in ipairs({ -1, 1 }) do
+		for _, sz in ipairs({ -1, 1 }) do
+			deco(m, "LifeguardLeg", Vector3.new(0.5, 8, 0.5), lx + sx * 2.5, 0, lz + sz * 2.5, WHITE, Enum.Material.Wood)
+		end
+	end
+	solid(m, "LifeguardDeck", Vector3.new(7, 0.6, 7), lx, 8, lz, WHITE, Enum.Material.Wood)
+	solid(m, "LifeguardHut", Vector3.new(6, 5, 6), lx, 8.6, lz, rgb(230, 60, 60), Enum.Material.WoodPlanks)
+	local sign = deco(m, "LifeguardSign", Vector3.new(5, 1.2, 0.2), lx, 12, lz - 3.2, WHITE)
+	MapKit.signText(sign, Enum.NormalId.Back, "LIFEGUARD", rgb(220, 40, 40), Enum.Font.GothamBlack)
+	-- palms along the back of the beach
+	for k = 0, 12 do
+		palm(m, W0 + 20 + k * ((W1 - W0 - 40) / 12), sandZ0 - 6 - (k % 2) * 4, rng, 0)
+	end
+	-- the pier: a long walk out over the waves, with fishing spots at the end
+	local px = 220
+	local pz0, pz1 = sandZ0, NorthShore.WATER_Z - 150
+	MapKit.part(m, "Pier", Vector3.new(10, 1, pz0 - pz1), cf(px, 1, (pz0 + pz1) / 2), rgb(150, 110, 76), Enum.Material.WoodPlanks)
+	for z = pz0 - 5, pz1 + 5, -12 do
+		for _, sx in ipairs({ -1, 1 }) do
+			deco(m, "PierPile", Vector3.new(0.8, 16, 0.8), px + sx * 4.6, -14, z, MapKit.DARK_WOOD, Enum.Material.Wood)
+			deco(m, "PierRail", Vector3.new(0.3, 3, 0.3), px + sx * 4.8, 1.5, z, rgb(240, 236, 226), Enum.Material.Wood)
+		end
+	end
+	for _, sx in ipairs({ -1, 1 }) do
+		deco(m, "PierRailTop", Vector3.new(0.3, 0.3, pz0 - pz1), px + sx * 4.8, 4.5, (pz0 + pz1) / 2, rgb(240, 236, 226), Enum.Material.Wood)
+	end
+	data.PierFishing = {}
+	for k = 0, 3 do
+		local sx = if k % 2 == 0 then 1 else -1
+		local s = spot(px + sx * 3.2, 1.5, pz1 + 8 + k * 7, px + sx * 12, pz1 + 8 + k * 7, { Action = "fish" })
+		table.insert(spots, s)
+		table.insert(data.PierFishing, s)
+	end
+	-- a Water marker for fishing and the fish you can see (see FishingService, Water)
+	local w = deco(m, "OceanWater", Vector3.new(2, 0.2, 2), px, -1.1, pz1 + 20, rgb(40, 110, 170))
+	w.Transparency = 1
+	w:SetAttribute("Radius", 70)
+	w:SetAttribute("Surface", if useTerrain then -1 else -1)
+	w:SetAttribute("Depth", 12)
+	w:SetAttribute("Kind", "ocean")
+	w:SetAttribute("Fish", 30)
+	w:SetAttribute("RodStand", Vector3.new(px + 7, 0, pz0 + 4))
+	MapKit.tag(w, "Water")
+	data.BeachDoor = Vector3.new(NorthShore.DRIVE_X - ROAD / 2 - 3, 1, bz)
+end
+
+function NorthShore.build(parent, rng, useTerrain)
+	model = Instance.new("Model")
+	model.Name = "NorthShore"
+	model.Parent = parent
+	local data = { Model = model }
+	drive(data)
+	autoland(data, rng)
+	funland(data, rng)
+	obby(data, rng)
+	beach(data, rng, useTerrain)
+	-- each ride streams in whole, so every screen can turn all of it
+	for _, ride in ipairs(data.Rides or {}) do
+		pcall(function()
+			ride.ModelStreamingMode = Enum.ModelStreamingMode.Atomic
+		end)
+	end
+	return data
+end
+
+return NorthShore
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX25"><Properties><string name="Name">Landscape</string><ProtectedString name="Source"><![CDATA[-- Landscape (ModuleScript) — ServerScriptService.Modules.Landscape
 -- The land around the city: terrain grass (with swaying grass blades),
 -- rolling hills with pine forests, a lake with a sandy beach and a wooden
 -- pier for fishing, and snowy mountains on the horizon.
@@ -7991,6 +8714,7 @@ return Prison
 local MapKit = require(script.Parent:WaitForChild("MapKit"))
 local Streets = require(script.Parent:WaitForChild("Streets"))
 local Prison = require(script.Parent:WaitForChild("Prison"))
+local NorthShore = require(script.Parent:WaitForChild("NorthShore"))
 
 local Landscape = {}
 
@@ -7999,6 +8723,10 @@ local EXTENT = MapKit.EXTENT
 
 -- keep the hills and the woods off the prison and Prison Road
 local function nearPrison(p, margin)
+	-- (and off the North Shore: Funland, the beach and the ocean)
+	if p.X > NorthShore.WEST - margin and p.X < NorthShore.EAST + margin and p.Z < -EXTENT + margin * 0.3 then
+		return true
+	end
 	local c = Prison.CENTER
 	if (Vector3.new(p.X, 0, p.Z) - c).Magnitude < Prison.RADIUS + margin then
 		return true
@@ -8039,6 +8767,9 @@ function Landscape.build(parent, rng)
 			local r = EXTENT + rng:NextNumber(700, 820)
 			local height = rng:NextNumber(150, 230)
 			local p = Vector3.new(math.cos(a) * r, -height * 0.35, math.sin(a) * r)
+			if p.Z < -EXTENT and math.abs(p.X) < 1100 then
+				continue -- (the ocean is up north)
+			end
 			terrain:FillBall(p, height, Enum.Material.Rock)
 			terrain:FillBall(p + Vector3.new(0, height * 0.72, 0), height * 0.38, Enum.Material.Snow)
 		end
@@ -8053,6 +8784,19 @@ function Landscape.build(parent, rng)
 		local cityW = EXTENT * 2 + 40
 		terrain:FillBlock(CFrame.new(0, -4, 0), Vector3.new(cityW, 16, cityW), Enum.Material.Air)
 		terrain:FillBlock(CFrame.new(0, -12, 0), Vector3.new(cityW, 8, cityW), Enum.Material.Asphalt)
+		-- the North Shore: a sandy beach, then the ocean; no grass under the
+		-- paved parts (see NorthShore)
+		local wz = NorthShore.WATER_Z
+		local beachZ = NorthShore.BOARDWALK_Z - 10
+		local oceanW, oceanD = 2400, 900
+		terrain:FillBlock(CFrame.new(-65, -3, (beachZ + wz) / 2), Vector3.new(oceanW, 6, beachZ - wz), Enum.Material.Sand)
+		terrain:FillBlock(CFrame.new(-65, -6, wz - oceanD / 2), Vector3.new(oceanW, 14, oceanD), Enum.Material.Air)
+		terrain:FillBlock(CFrame.new(-65, -9, wz - oceanD / 2), Vector3.new(oceanW, 16, oceanD), Enum.Material.Water)
+		terrain:FillBlock(CFrame.new(-65, -19, wz - oceanD / 2), Vector3.new(oceanW, 4, oceanD), Enum.Material.Sand)
+		for _, area in ipairs(NorthShore.PAVED) do
+			terrain:FillBlock(CFrame.new(area.Center + Vector3.new(0, -4, 0)), Vector3.new(area.Size.X, 8, area.Size.Z), Enum.Material.Air)
+			terrain:FillBlock(CFrame.new(area.Center + Vector3.new(0, -10, 0)), Vector3.new(area.Size.X, 4, area.Size.Z), Enum.Material.Ground)
+		end
 		-- the same under the prison and Prison Road (see Prison)
 		local pc = Prison.F * CFrame.new(0, 0, -12)
 		local pSize = Vector3.new(Prison.W + 24, 16, Prison.D + 48)
@@ -8185,7 +8929,7 @@ function Landscape.build(parent, rng)
 end
 
 return Landscape
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX25"><Properties><string name="Name">Places</string><ProtectedString name="Source"><![CDATA[-- Places (ModuleScript) — ServerScriptService.Modules.Places
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX26"><Properties><string name="Name">Places</string><ProtectedString name="Source"><![CDATA[-- Places (ModuleScript) — ServerScriptService.Modules.Places
 -- What stands on each city block: the plaza, town hall, bank, towers, shops,
 -- three schools, parks with playgrounds and ponds, the sports field, homes...
 -- Every builder registers its places and the spots where people do things
@@ -9198,7 +9942,7 @@ Places.Builders = B
 Places.playground = playground
 
 return Places
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX26"><Properties><string name="Name">MapBuilder</string><ProtectedString name="Source"><![CDATA[-- MapBuilder (ModuleScript) — ServerScriptService.Modules.MapBuilder
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX27"><Properties><string name="Name">MapBuilder</string><ProtectedString name="Source"><![CDATA[-- MapBuilder (ModuleScript) — ServerScriptService.Modules.MapBuilder
 -- Builds AI City: a 9x9 grid of city blocks around a central plaza, with
 -- streets, a landscape of hills, a lake and mountains, and every building
 -- furnished with spots where people work, shop, eat, play and sleep.
@@ -9224,6 +9968,7 @@ local Interiors = require(Modules:WaitForChild("Interiors"))
 local Streets = require(Modules:WaitForChild("Streets"))
 local Landscape = require(Modules:WaitForChild("Landscape"))
 local Prison = require(Modules:WaitForChild("Prison"))
+local NorthShore = require(Modules:WaitForChild("NorthShore"))
 local Places = require(Modules:WaitForChild("Places"))
 
 local MapBuilder = {}
@@ -9775,6 +10520,26 @@ function MapBuilder.Build()
 		table.insert(map.HobbySpots.fishing, s)
 	end
 
+	-- the North Shore: Funland, Sunset Beach and AutoLand (see NorthShore)
+	local shore = NorthShore.build(root, Random.new((Config.SEED or 1776) + 11), land.Terrain)
+	map.NorthShore = shore
+	local topDoor = blockCenter(0, -N) + Vector3.new(HALF - 2, 0, -HALF + 2)
+	for _, def in ipairs({ { "Funland", shore.FunlandSpots, shore.FunlandDoor }, { "Beach", shore.BeachSpots, shore.BeachDoor }, { "AutoLand", shore.AutoLandSpots, shore.AutoLandDoor } }) do
+		local place = newPlace(def[1], shore.Model, 0, -N)
+		place.Door = topDoor
+		place.Inside = def[3]
+		place.Outdoor = true
+		place.Node = corner(0, -N, 1, -1)
+		for _, s in ipairs(def[2]) do
+			registerSpot(s, def[1], nil)
+			table.insert(place.Spots, s)
+		end
+	end
+	for _, s in ipairs(shore.PierFishing) do
+		map.HobbySpots.fishing = map.HobbySpots.fishing or {}
+		table.insert(map.HobbySpots.fishing, s)
+	end
+
 	-- outdoor benches are somewhere to rest
 	for _, entry in ipairs(Registry.Seats) do
 		if entry.Place == "Plaza" or entry.Place == "Park" or entry.Place == "WillowPark" then
@@ -9828,9 +10593,12 @@ function MapBuilder.Build()
 		return points
 	end
 	map.BusSeats = streets.BusSeats
+	map.BusStops = streets.BusStops
 	map.Bounds = { Min = Vector3.new(-EXTENT, 0, -EXTENT), Max = Vector3.new(EXTENT, 0, EXTENT) }
 	map.Spacing = SPACING
 	map.Extent = EXTENT
+	map.Road = MapKit.ROAD
+	map.Lane = MapKit.LANE
 	map.Lake = Landscape.LAKE
 	-- life in the parks: fireflies over the ponds and flowerbeds at night,
 	-- leaves drifting down from some of the trees
@@ -9874,6 +10642,18 @@ function MapBuilder.Build()
 	info:SetAttribute("Extent", EXTENT)
 	info:SetAttribute("Spacing", SPACING)
 	info:SetAttribute("Blocks", N)
+	-- for the traffic on every client (see the client's Traffic module)
+	info:SetAttribute("Road", MapKit.ROAD)
+	info:SetAttribute("Lane", MapKit.LANE)
+	local stops = Instance.new("Folder")
+	stops.Name = "BusStops"
+	for k, p in ipairs(map.BusStops or {}) do
+		local v = Instance.new("Vector3Value")
+		v.Name = "Stop" .. k
+		v.Value = p
+		v.Parent = stops
+	end
+	stops.Parent = info
 	info:SetAttribute("LakeX", Landscape.LAKE.X)
 	info:SetAttribute("LakeZ", Landscape.LAKE.Z)
 	info:SetAttribute("LakeRadius", Landscape.LAKE_RADIUS)
@@ -9965,7 +10745,7 @@ function MapBuilder.RouteBetween(a, b)
 end
 MapBuilder.Kit = MapKit
 return MapBuilder
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX27"><Properties><string name="Name">Life</string><ProtectedString name="Source"><![CDATA[-- Life (ModuleScript) — ServerScriptService.Modules.Life
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX28"><Properties><string name="Name">Life</string><ProtectedString name="Source"><![CDATA[-- Life (ModuleScript) — ServerScriptService.Modules.Life
 -- Who lives in AI City: families with children, jobs, ages, couples expecting
 -- babies and births, plus where each person should be at any hour.
 -- Pure logic (no parts, no Humanoids), so it can be saved and tested on its own.
@@ -10462,6 +11242,8 @@ local FAMILY_OUTINGS = {
 	{ "Park", "🌳 Family day at the park", "play" },
 	{ "WillowPark", "🌿 Picnic at Willow Park", "sit" },
 	{ "Lake", "🎣 Fishing trip at the lake", "fish" },
+	{ "Funland", "🎡 A family day at Funland", "ride" },
+	{ "Beach", "🏖️ A day at the beach", "sunbathe" },
 	{ "Museum", "🏺 Family museum visit", "browse" },
 	{ "Cinema", "🎬 Family movie", "watch" },
 	{ "IceCream", "🍦 Ice cream with the family", "eat" },
@@ -10644,8 +11426,8 @@ function Life:Plan(c, hour, day)
 				return { Kind = "Place", Place = outing[1], Activity = outing[2], Family = true, Want = outing[3] }
 			end
 			if teen and hour >= 12 and hour < 18 then
-				local where = ({ "Arcade", "Mall", "Cinema", "Plaza", "Lake", "Gym" })[rng:Int(1, 6)]
-				return { Kind = "Place", Place = where, Activity = "😎 Out with friends", Want = if where == "Arcade" then "game" elseif where == "Gym" then "lift" else nil }
+				local where = ({ "Arcade", "Mall", "Cinema", "Plaza", "Lake", "Gym", "Funland", "Beach", "Funland" })[rng:Int(1, 9)]
+				return { Kind = "Place", Place = where, Activity = if where == "Funland" then "🎡 Riding rides at Funland" elseif where == "Beach" then "🏖️ Hanging out at the beach" else "😎 Out with friends", Want = if where == "Arcade" then "game" elseif where == "Gym" then "lift" else nil }
 			end
 			if hour >= 12 and hour < 17 then
 				return { Kind = "Place", Place = if rng:Next() < 0.5 then "Park" else "WillowPark", Activity = "🛝 Playing outside", Want = "play" }
@@ -10697,9 +11479,13 @@ function Life:Plan(c, hour, day)
 			if sporty then
 				return { Kind = "Place", Place = if rng:Next() < 0.5 then "Gym" else "SportsField", Activity = "💪 Weekend workout", Want = if rng:Next() < 0.5 then "lift" else "run" }
 			end
+			if rng:Next() < 0.4 then
+				local fun = rng:Next() < 0.5
+				return { Kind = "Place", Place = if fun then "Funland" else "Beach", Activity = if fun then "🎡 A day at Funland" else "🏖️ A day at the beach", Want = if fun then "ride" else rng:Pick({ "sunbathe", "sit", "cheer" }) }
+			end
 			return { Kind = "Place", Place = rng:Pick(ERRANDS), Activity = "🛍️ Shopping" }
 		elseif hour < 21 then
-			local where = rng:Pick({ "Restaurant", "Cinema", "Plaza", "Diner" })
+			local where = rng:Pick({ "Restaurant", "Cinema", "Plaza", "Diner", "Funland" })
 			return { Kind = "Place", Place = where, Activity = if where == "Plaza" then "💃 Evening at the plaza" else "🌆 Night out", Want = if where == "Plaza" then "dance" else nil }
 		end
 		return home("📺 Relaxing at home", "tv")
@@ -10761,7 +11547,7 @@ function Life:Plan(c, hour, day)
 				local dr = newRng(hash(c.Household, day, "date", math.floor(hour / 1.5)))
 				local romantic = personality == "romantic" or partner.Personality == "romantic"
 				if dr:Next() < (self.Config.DATE_CHANCE or 0.2) * (if romantic then 1.8 else 1) then
-					local pick = dr:Pick({ { "Restaurant", "eat" }, { "Lake", nil }, { "Park", "sit" }, { "Cinema", "watch" }, { "Cafe", "coffee" } })
+					local pick = dr:Pick({ { "Restaurant", "eat" }, { "Lake", nil }, { "Park", "sit" }, { "Cinema", "watch" }, { "Cafe", "coffee" }, { "Funland", "ride" }, { "Beach", "sit" } })
 					return { Kind = "Place", Place = pick[1], Activity = "💕 Date night with " .. partner.First, Want = pick[2], Date = partner.Id }
 				end
 			end
@@ -10774,7 +11560,7 @@ function Life:Plan(c, hour, day)
 		elseif personality == "romantic" and roll < 0.35 then
 			return { Kind = "Place", Place = rng:Pick({ "Restaurant", "Lake", "Park" }), Activity = "💘 A romantic evening", Want = if rng:Next() < 0.5 then "sit" else nil }
 		elseif personality == "adventurous" and roll < 0.4 then
-			return { Kind = "Place", Place = rng:Pick({ "Lake", "WillowPark", "Park", "Museum" }), Activity = "🧭 Exploring", Want = nil }
+			return { Kind = "Place", Place = rng:Pick({ "Lake", "WillowPark", "Park", "Museum", "Beach", "Funland" }), Activity = "🧭 Exploring", Want = nil }
 		elseif personality == "ambitious" and roll < 0.35 and job then
 			return { Kind = "Place", Place = "Library", Activity = "📈 Studying for a promotion", Want = "study" }
 		elseif personality == "nosy" and roll < 0.4 then
@@ -10789,7 +11575,13 @@ function Life:Plan(c, hour, day)
 			return { Kind = "Place", Place = "Gym", Activity = "🏋️ At the gym", Want = rng:Pick({ "run", "lift", "squat", "punch", "yoga" }) }
 		elseif hobbyOut and roll < 0.7 then
 			return { Kind = "Hobby", Hobby = c.Hobby, Activity = "🎨 " .. c.Hobby }
-		elseif #c.Friends > 0 and roll < 0.85 then
+		elseif roll < 0.78 and hour < 20 then
+			-- up Shore Drive: the rides, or the sunset at the beach
+			if rng:Next() < 0.5 then
+				return { Kind = "Place", Place = "Funland", Activity = "🎡 An evening at Funland", Want = if rng:Next() < 0.7 then "ride" else nil }
+			end
+			return { Kind = "Place", Place = "Beach", Activity = "🌅 Sunset at the beach", Want = rng:Pick({ "sit", "sunbathe", "cheer" }) }
+		elseif #c.Friends > 0 and roll < 0.87 then
 			return { Kind = "Place", Place = rng:Pick(HANGOUTS), Activity = "☕ Meeting a friend", Want = "chat" }
 		elseif roll < 0.95 then
 			return { Kind = "Place", Place = rng:Pick(ERRANDS), Activity = "🛍️ After work" }
@@ -10852,7 +11644,7 @@ end
 
 Life.Jobs = jobByTitle
 return Life
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX28"><Properties><string name="Name">CitizenLook</string><ProtectedString name="Source"><![CDATA[-- CitizenLook (ModuleScript) — ServerScriptService.Modules.CitizenLook
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX29"><Properties><string name="Name">CitizenLook</string><ProtectedString name="Source"><![CDATA[-- CitizenLook (ModuleScript) — ServerScriptService.Modules.CitizenLook
 -- Gives every citizen their own look: skin tone, hairstyle and color, a
 -- uniform for their job (police cap and badge, doctor's coat, chef's hat,
 -- firefighter helmet...), something for their hobby (a beret for painters,
@@ -12800,7 +13592,7 @@ CitizenLook.Uniforms = UNIFORMS
 CitizenLook.HobbyItems = HOBBY_ITEMS
 
 return CitizenLook
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX29"><Properties><string name="Name">CityService</string><ProtectedString name="Source"><![CDATA[-- CityService (ModuleScript) — ServerScriptService.Modules.CityService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX30"><Properties><string name="Name">CityService</string><ProtectedString name="Source"><![CDATA[-- CityService (ModuleScript) — ServerScriptService.Modules.CityService
 -- The city itself: the clock and calendar, city stats (economy, safety,
 -- happiness) and the city's mood, the mayor, elections, speeches, policies,
 -- coins, what citizens remember about players (and gossip about), the news,
@@ -13265,6 +14057,13 @@ local function loadPlayer(player)
 		FishCaught = tonumber(saved.FishCaught) or 0,
 		BiggestFish = tonumber(saved.BiggestFish) or 0,
 		BiggestFishName = type(saved.BiggestFishName) == "string" and saved.BiggestFishName or nil,
+		-- the North Shore: carnival tickets, the obby, your cars and your pet
+		Tickets = tonumber(saved.Tickets) or 0,
+		ObbyBest = tonumber(saved.ObbyBest),
+		Cars = type(saved.Cars) == "table" and saved.Cars or {},
+		Car = type(saved.Car) == "string" and saved.Car or nil,
+		Pets = type(saved.Pets) == "table" and saved.Pets or {},
+		Pet = type(saved.Pet) == "table" and saved.Pet or nil,
 	}
 	playerData[player] = data
 	player:SetAttribute("Coins", data.Coins)
@@ -13279,7 +14078,7 @@ local function savePlayer(player)
 	local data = playerData[player]
 	if data and playerStore then
 		pcall(function()
-			playerStore:SetAsync("p_" .. player.UserId, { Coins = data.Coins, Crimes = data.Crimes, Notoriety = data.Notoriety, Weapons = data.Weapons, Outfits = data.Outfits, Wearing = data.Wearing, Fitness = data.Fitness, Talks = data.Talks, Arrests = data.Arrests, Terms = data.Terms, Home = data.Home, HasRod = data.HasRod, JobXP = data.JobXP, FishCaught = data.FishCaught, BiggestFish = data.BiggestFish, BiggestFishName = data.BiggestFishName })
+			playerStore:SetAsync("p_" .. player.UserId, { Coins = data.Coins, Crimes = data.Crimes, Notoriety = data.Notoriety, Weapons = data.Weapons, Outfits = data.Outfits, Wearing = data.Wearing, Fitness = data.Fitness, Talks = data.Talks, Arrests = data.Arrests, Terms = data.Terms, Home = data.Home, HasRod = data.HasRod, JobXP = data.JobXP, FishCaught = data.FishCaught, BiggestFish = data.BiggestFish, BiggestFishName = data.BiggestFishName, Tickets = data.Tickets, ObbyBest = data.ObbyBest, Cars = data.Cars, Car = data.Car, Pets = data.Pets, Pet = data.Pet })
 		end)
 	end
 end
@@ -13898,7 +14697,7 @@ end
 
 CityService.Handlers = handlers
 return CityService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX30"><Properties><string name="Name">CitizenService</string><ProtectedString name="Source"><![CDATA[-- CitizenService (ModuleScript) — ServerScriptService.Modules.CitizenService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX31"><Properties><string name="Name">CitizenService</string><ProtectedString name="Source"><![CDATA[-- CitizenService (ModuleScript) — ServerScriptService.Modules.CitizenService
 -- Brings the citizens to life: spawns a dressed NPC for every person in Life,
 -- walks them along the sidewalks to where their day takes them (with their
 -- own pace, lane and little pauses), takes elevators, sits at desks, lifts
@@ -14124,6 +14923,13 @@ local function refreshInfo(brain)
 	m:SetAttribute("Job", if stage == "Adult" then (c.Job or "") else "")
 	m:SetAttribute("Personality", c.Personality or "")
 	m:SetAttribute("Hobby", c.Hobby or "")
+	-- about one grown-up in ten has a dog (it walks with them: see the client's Pets)
+	if not c.Temp and stage == "Adult" and (c.Id * 7919) % 10 == 3 then
+		m:SetAttribute("Pet", "Dog")
+		m:SetAttribute("PetName", ({ "Rex", "Bailey", "Cooper", "Lucy", "Sadie", "Duke", "Pepper", "Scout" })[c.Id % 8 + 1])
+	elseif stage ~= "Adult" then
+		m:SetAttribute("Pet", nil)
+	end
 	if not c.Temp then
 		local h = pop.Households[c.Household]
 		local due = h and pop:DaysToGo(h)
@@ -14394,7 +15200,8 @@ local function buildRoute(brain, t)
 	local steps = {}
 	local pos = brain.Root.Position
 	local from = brain.Building
-	local dest = t.Spot and t.Spot.CFrame.Position or t.Pos
+	-- (a ride seat can be high in the air: walk to where you get on)
+	local dest = t.Spot and (t.Spot.Approach or t.Spot.CFrame.Position) or t.Pos
 	local destFloor = t.Floor or 1
 	-- After(brain) runs when a step is done (so we always know if they're inside)
 	local function walk(points, after)
@@ -14460,6 +15267,7 @@ local function unanchor(brain)
 	brain.Model:SetAttribute("SwingPivot", nil)
 	brain.Model:SetAttribute("SwingAxis", nil)
 	brain.Model:SetAttribute("Target", nil)
+	brain.Model:SetAttribute("RideSeat", nil)
 end
 
 -- stand up at a spot (used when leaving a seat or bed, so nobody gets stuck in furniture)
@@ -14499,6 +15307,10 @@ local function placeAt(brain, spot, action)
 	end
 	if spot.Hoop then
 		brain.Model:SetAttribute("Target", spot.Hoop)
+	end
+	-- a seat on a ride: the rider goes round with it (see the client's Rides)
+	if spot.RideSeat then
+		brain.Model:SetAttribute("RideSeat", spot.RideSeat)
 	end
 end
 
@@ -16288,7 +17100,7 @@ function CitizenService.Start(services)
 end
 
 return CitizenService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX31"><Properties><string name="Name">DialogueService</string><ProtectedString name="Source"><![CDATA[-- DialogueService (ModuleScript) — ServerScriptService.Modules.DialogueService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX32"><Properties><string name="Name">DialogueService</string><ProtectedString name="Source"><![CDATA[-- DialogueService (ModuleScript) — ServerScriptService.Modules.DialogueService
 -- Talking to citizens. Walk up to anyone and press E to talk: they stop what
 -- they're doing, turn to you and answer in their own voice. What they say
 -- depends on their personality (twenty of them, see Life.Personalities), their mood, their job or school, what
@@ -17335,7 +18147,7 @@ function DialogueService.Start(services)
 end
 
 return DialogueService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX32"><Properties><string name="Name">CrimeService</string><ProtectedString name="Source"><![CDATA[-- CrimeService (ModuleScript) — ServerScriptService.Modules.CrimeService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX33"><Properties><string name="Name">CrimeService</string><ProtectedString name="Source"><![CDATA[-- CrimeService (ModuleScript) — ServerScriptService.Modules.CrimeService
 -- Crime and punishment. Players can:
 --   👊 punch people (F / the punch button). Three or four hits knock them out:
 --      they fall down, see stars, and wake up later in a hospital bed.
@@ -18885,7 +19697,7 @@ function CrimeService.IsJailed(player)
 end
 
 return CrimeService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX33"><Properties><string name="Name">PlayerService</string><ProtectedString name="Source"><![CDATA[-- PlayerService (ModuleScript) — ServerScriptService.Modules.PlayerService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX34"><Properties><string name="Name">PlayerService</string><ProtectedString name="Source"><![CDATA[-- PlayerService (ModuleScript) — ServerScriptService.Modules.PlayerService
 -- Things players do that aren't crimes or conversations:
 --   • elevators and stairs (press E at the doors, pick a floor)
 --   • citizen profile cards (click anyone), the People directory, finding someone
@@ -19143,7 +19955,7 @@ function PlayerService.Start(services)
 end
 
 return PlayerService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX34"><Properties><string name="Name">CombatService</string><ProtectedString name="Source"><![CDATA[-- CombatService (ModuleScript) — ServerScriptService.Modules.CombatService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX35"><Properties><string name="Name">CombatService</string><ProtectedString name="Source"><![CDATA[-- CombatService (ModuleScript) — ServerScriptService.Modules.CombatService
 -- Weapons and fighting for players:
 --   • the weapons shop at the Hardware store (a bat, a hammer, a knife)
 --   • your weapons as tools in your hotbar (saved between visits)
@@ -19457,7 +20269,7 @@ function CombatService.Start(services)
 end
 
 return CombatService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX35"><Properties><string name="Name">DisguiseService</string><ProtectedString name="Source"><![CDATA[-- DisguiseService (ModuleScript) — ServerScriptService.Modules.DisguiseService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX36"><Properties><string name="Name">DisguiseService</string><ProtectedString name="Source"><![CDATA[-- DisguiseService (ModuleScript) — ServerScriptService.Modules.DisguiseService
 -- Hoodies, ski masks and disguise kits:
 --   • buy them at the Clothing store (press E at the counter)
 --   • wear them anytime: C (or 📱 Wardrobe). One top and one face item at a time.
@@ -19900,7 +20712,7 @@ function DisguiseService.Start(services)
 end
 
 return DisguiseService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX36"><Properties><string name="Name">BrawlService</string><ProtectedString name="Source"><![CDATA[-- BrawlService (ModuleScript) — ServerScriptService.Modules.BrawlService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX37"><Properties><string name="Name">BrawlService</string><ProtectedString name="Source"><![CDATA[-- BrawlService (ModuleScript) — ServerScriptService.Modules.BrawlService
 -- Street fights between citizens. Every now and then two strangers on the
 -- street get into it:
 --   1. an argument ("Hey! You bumped into me!" / "Wanna go?!")
@@ -20711,7 +21523,7 @@ function BrawlService.Start(services)
 end
 
 return BrawlService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX37"><Properties><string name="Name">StreetCrimeService</string><ProtectedString name="Source"><![CDATA[-- StreetCrimeService (ModuleScript) — ServerScriptService.Modules.StreetCrimeService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX38"><Properties><string name="Name">StreetCrimeService</string><ProtectedString name="Source"><![CDATA[-- StreetCrimeService (ModuleScript) — ServerScriptService.Modules.StreetCrimeService
 -- Other people commit crimes too, and the police arrest them.
 --
 -- Now and then (more at night, and when Safety or the Economy is low) someone
@@ -21689,7 +22501,7 @@ function StreetCrime.Commit(kind)
 end
 
 return StreetCrime
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX38"><Properties><string name="Name">FitnessService</string><ProtectedString name="Source"><![CDATA[-- FitnessService (ModuleScript) — ServerScriptService.Modules.FitnessService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX39"><Properties><string name="Name">FitnessService</string><ProtectedString name="Source"><![CDATA[-- FitnessService (ModuleScript) — ServerScriptService.Modules.FitnessService
 -- Your fitness level (saved): sprinting earns XP (reported by your client, with
 -- a limit), and the gym's treadmills give a proper workout (press E: you run
 -- for a few seconds). Each level: more stamina, faster recovery, faster sprint
@@ -21853,7 +22665,7 @@ function FitnessService.Start(services)
 end
 
 return FitnessService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX39"><Properties><string name="Name">FoodService</string><ProtectedString name="Source"><![CDATA[-- FoodService (ModuleScript) — ServerScriptService.Modules.FoodService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX40"><Properties><string name="Name">FoodService</string><ProtectedString name="Source"><![CDATA[-- FoodService (ModuleScript) — ServerScriptService.Modules.FoodService
 -- Buy food at the city's food places: the Bakery, the Cafe, the Diner, the
 -- Restaurant, the Ice Cream shop and the Market (press E at the counter).
 -- You eat it right away: it heals you and refills stamina (see Shared.Food),
@@ -21983,7 +22795,7 @@ function FoodService.Start(services)
 end
 
 return FoodService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX40"><Properties><string name="Name">JobService</string><ProtectedString name="Source"><![CDATA[-- JobService (ModuleScript) — ServerScriptService.Modules.JobService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX41"><Properties><string name="Name">JobService</string><ProtectedString name="Source"><![CDATA[-- JobService (ModuleScript) — ServerScriptService.Modules.JobService
 -- Real jobs for players: clock in, work a shift, get paid by the hour.
 --
 --   • Clock in at the workplace (J, or the phone's Jobs app) during its
@@ -22939,7 +23751,7 @@ function JobService.Start(services)
 end
 
 return JobService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX41"><Properties><string name="Name">HomeService</string><ProtectedString name="Source"><![CDATA[-- HomeService (ModuleScript) — ServerScriptService.Modules.HomeService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX42"><Properties><string name="Name">HomeService</string><ProtectedString name="Source"><![CDATA[-- HomeService (ModuleScript) — ServerScriptService.Modules.HomeService
 -- Houses with real front doors, a house of your own, and break-ins.
 --   • Doors: every house has a wooden front door on a hinge. It swings open
 --     when someone walks up (citizens always get in) and closes behind them.
@@ -23368,7 +24180,7 @@ HomeService.BreakIn = breakIn
 HomeService.Buy = buy
 
 return HomeService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX42"><Properties><string name="Name">GangService</string><ProtectedString name="Source"><![CDATA[-- GangService (ModuleScript) — ServerScriptService.Modules.GangService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX43"><Properties><string name="Name">GangService</string><ProtectedString name="Source"><![CDATA[-- GangService (ModuleScript) — ServerScriptService.Modules.GangService
 -- The rough side of town, and nights when the city loses it.
 --   • Gang turf: the blocks past the factory and the warehouse ("the East
 --     End") are run by two street crews, the Vipers (green) and the Kings
@@ -23839,7 +24651,7 @@ GangService.Crews = crews
 GangService.EndRiot = endRiot
 
 return GangService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX43"><Properties><string name="Name">RelationshipService</string><ProtectedString name="Source"><![CDATA[-- RelationshipService (ModuleScript) — ServerScriptService.Modules.RelationshipService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX44"><Properties><string name="Name">RelationshipService</string><ProtectedString name="Source"><![CDATA[-- RelationshipService (ModuleScript) — ServerScriptService.Modules.RelationshipService
 -- Couples and the drama that comes with them (the plans are in Life:Plan):
 --   • Date nights: partners go out together (dinner, the lake, the park, the
 --     cinema, a coffee). On the way they walk hand in hand; once there they sit
@@ -24014,7 +24826,7 @@ end
 RelationshipService.Caught = caught
 
 return RelationshipService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX44"><Properties><string name="Name">SportsService</string><ProtectedString name="Source"><![CDATA[-- SportsService (ModuleScript) — ServerScriptService.Modules.SportsService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX45"><Properties><string name="Name">SportsService</string><ProtectedString name="Source"><![CDATA[-- SportsService (ModuleScript) — ServerScriptService.Modules.SportsService
 -- Pickup basketball: when people are shooting hoops on a court, they split
 -- into two teams and play a real match. The ball carrier dribbles up the court
 -- (the ball bounces at their side), passes to open teammates, and pulls up for
@@ -24386,7 +25198,7 @@ SportsService.Courts = courts
 SportsService.Games = games
 
 return SportsService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX45"><Properties><string name="Name">FishingService</string><ProtectedString name="Source"><![CDATA[-- FishingService (ModuleScript) — ServerScriptService.Modules.FishingService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX46"><Properties><string name="Name">FishingService</string><ProtectedString name="Source"><![CDATA[-- FishingService (ModuleScript) — ServerScriptService.Modules.FishingService
 -- Real fishing for players.
 --   • Grab a free fishing rod at the start of the pier on Mirror Lake (or by
 --     the pond in the park). It goes in your hotbar.
@@ -24814,7 +25626,7 @@ FishingService.Sessions = sessions
 FishingService.GiveRod = giveRod
 
 return FishingService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX46"><Properties><string name="Name">PrisonService</string><ProtectedString name="Source"><![CDATA[-- PrisonService (ModuleScript) — ServerScriptService.Modules.PrisonService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX47"><Properties><string name="Name">PrisonService</string><ProtectedString name="Source"><![CDATA[-- PrisonService (ModuleScript) — ServerScriptService.Modules.PrisonService
 -- Life inside AI City State Prison (the building is made by Prison.lua).
 --
 -- About twenty inmates in orange jumpsuits live there, two to a cell, each with
@@ -25831,7 +26643,935 @@ PrisonService.Guards = guards
 PrisonService.Players = jailedPlayers
 
 return PrisonService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX47"><Properties><string name="Name">Conversation</string><ProtectedString name="Source"><![CDATA[-- Conversation (ModuleScript) — ServerScriptService.Modules.Conversation
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX48"><Properties><string name="Name">CarService</string><ProtectedString name="Source"><![CDATA[-- CarService (ModuleScript) — ServerScriptService.Modules.CarService
+-- Cars of your own.
+--
+--   🚗 AutoLand, up Shore Drive: walk up to a car on the lot and press E to buy
+--      it (or to switch to one you own). It's waiting for you on the drive.
+--   K (or the Car app on your phone) calls your car: it pulls up on the nearest road next to you.
+--   Sit in the driver's seat to drive: W / S (or the triggers / left stick) to
+--      go and brake, A / D to steer, Space to get out. Friends can ride along
+--      in the other seats. Only you can drive your own car.
+--   Careful: running people over hurts them, and if anyone sees it, it's a
+--      crime (see CrimeService).
+--
+-- Your car is physical: the server builds it and hands it to your computer to
+-- drive (the client's Drive module), so it handles smoothly.
+
+local Players = game:GetService("Players")
+
+local CarService = {}
+local S
+
+CarService.CARS = {
+	{ Id = "Compact", Name = "City Compact", Emoji = "🚗", Price = 250, MaxSpeed = 50, Accel = 16, Turn = 1.7, Color = Color3.fromRGB(80, 170, 220), Desc = "Small, nimble and cheap. Parks anywhere." },
+	{ Id = "Sedan", Name = "Family Sedan", Emoji = "🚙", Price = 600, MaxSpeed = 60, Accel = 18, Turn = 1.5, Color = Color3.fromRGB(150, 150, 160), Desc = "Four doors, room for friends, a smooth ride." },
+	{ Id = "Pickup", Name = "Pickup Truck", Emoji = "🛻", Price = 800, MaxSpeed = 58, Accel = 17, Turn = 1.35, Color = Color3.fromRGB(190, 60, 50), Desc = "Tough, tall and loud. A bed in the back." },
+	{ Id = "Van", Name = "Delivery Van", Emoji = "🚐", Price = 700, MaxSpeed = 52, Accel = 14, Turn = 1.3, Color = Color3.fromRGB(240, 240, 236), Desc = "Big and boxy. Carries the whole crew." },
+	{ Id = "Sports", Name = "Sports Car", Emoji = "🏎️", Price = 2000, MaxSpeed = 90, Accel = 28, Turn = 1.8, Color = Color3.fromRGB(245, 200, 40), Desc = "Low, loud and FAST. Hold on tight." },
+}
+local byId = {}
+for _, c in ipairs(CarService.CARS) do
+	byId[c.Id] = c
+end
+
+local cars = {} -- [player] = the car model they called
+CarService.Spawned = cars
+
+local function rgb(r, g, b)
+	return Color3.fromRGB(r, g, b)
+end
+
+local function rootOf(player)
+	return player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+end
+
+--------------------------------------------------------------------------------
+-- Building a car (for the lot, or to drive)
+--------------------------------------------------------------------------------
+-- the body parts, laid out around the car's ground point (facing -Z)
+local function shape(spec)
+	local style = spec.Id
+	local long = if style == "Van" then 13 elseif style == "Pickup" then 13 elseif style == "Compact" then 10 else 11.5
+	local tall = if style == "Van" then 3.6 elseif style == "Sports" then 1.6 elseif style == "Pickup" then 2.6 else 2.2
+	local cabinZ, cabinL, cabinH = 0.6, 5.6, 2
+	if style == "Van" then
+		cabinZ, cabinL, cabinH = 0.4, 11, 2.4
+	elseif style == "Pickup" then
+		cabinZ, cabinL = -1.6, 4.6
+	elseif style == "Sports" then
+		cabinZ, cabinL, cabinH = 0.8, 4.4, 1.5
+	end
+	return long, tall, cabinZ, cabinL, cabinH
+end
+
+function CarService.Build(spec, cf, drivable, parent)
+	local m = Instance.new("Model")
+	m.Name = if drivable then "PlayerCar" else "LotCar"
+	local long, tall, cabinZ, cabinL, cabinH = shape(spec)
+	local color = spec.Color
+	local glass = rgb(40, 50, 62)
+	local chassis
+	local function add(name, size, offset, c, material, shapeType)
+		local p = Instance.new("Part")
+		p.Name = name
+		p.Size = size
+		p.CFrame = cf * offset
+		p.Color = c
+		p.Material = material or Enum.Material.SmoothPlastic
+		p.TopSurface, p.BottomSurface = Enum.SurfaceType.Smooth, Enum.SurfaceType.Smooth
+		if shapeType then
+			p.Shape = shapeType
+		end
+		p.CanCollide = false
+		p.Anchored = not drivable
+		if drivable then
+			p.Massless = true
+		end
+		p.Parent = m
+		if chassis and drivable then
+			local w = Instance.new("WeldConstraint")
+			w.Part0, w.Part1 = chassis, p
+			w.Parent = p
+		end
+		return p
+	end
+	-- the chassis: the solid part that touches the road (invisible)
+	chassis = Instance.new("Part")
+	chassis.Name = "Chassis"
+	chassis.Size = Vector3.new(6.2, 1.8, long)
+	chassis.CFrame = cf * CFrame.new(0, 1.1, 0)
+	chassis.Transparency = 1
+	chassis.Anchored = not drivable
+	chassis.CanCollide = drivable
+	pcall(function()
+		chassis.CustomPhysicalProperties = PhysicalProperties.new(0.8, 0.02, 0, 100, 1)
+	end)
+	chassis.Parent = m
+	m.PrimaryPart = chassis
+	add("Body", Vector3.new(6, tall, long), CFrame.new(0, 1.2 + tall / 2, 0), color, nil).Reflectance = 0.12
+	add("Cabin", Vector3.new(5.4, cabinH, cabinL), CFrame.new(0, 1.2 + tall + cabinH / 2, cabinZ), color:Lerp(Color3.new(0, 0, 0), 0.08))
+	add("Windshield", Vector3.new(5, cabinH * 0.8, 0.2), CFrame.new(0, 1.2 + tall + cabinH / 2, cabinZ - cabinL / 2 - 0.05), glass, Enum.Material.Glass)
+	for _, sx in ipairs({ -1, 1 }) do
+		add("SideWindow", Vector3.new(0.2, cabinH * 0.75, cabinL - 1), CFrame.new(sx * 2.72, 1.2 + tall + cabinH / 2, cabinZ), glass, Enum.Material.Glass)
+		for _, sz in ipairs({ -1, 1 }) do
+			add("Wheel", Vector3.new(1, 2.4, 2.4), CFrame.new(sx * 2.8, 1.2, sz * (long / 2 - 2.1)) * CFrame.Angles(0, 0, math.rad(90)), rgb(22, 22, 25), Enum.Material.Rubber, Enum.PartType.Cylinder)
+			add("Hubcap", Vector3.new(1.05, 1.2, 1.2), CFrame.new(sx * 2.8, 1.2, sz * (long / 2 - 2.1)) * CFrame.Angles(0, 0, math.rad(90)), rgb(200, 200, 206), Enum.Material.Metal, Enum.PartType.Cylinder)
+		end
+		add("Headlight", Vector3.new(1.2, 0.6, 0.2), CFrame.new(sx * 2, 1.8 + tall / 2, -long / 2 - 0.05), rgb(255, 250, 220), Enum.Material.Neon)
+		add("Taillight", Vector3.new(1.2, 0.5, 0.2), CFrame.new(sx * 2, 1.8 + tall / 2, long / 2 + 0.05), rgb(200, 30, 30), Enum.Material.Neon)
+	end
+	if spec.Id == "Sports" then
+		add("Spoiler", Vector3.new(5.6, 0.3, 1.2), CFrame.new(0, 1.2 + tall + 1, long / 2 - 0.6), rgb(30, 30, 34))
+		add("Stripe", Vector3.new(1.2, 0.05, long), CFrame.new(0, 1.2 + tall + 0.03, 0), rgb(30, 30, 34))
+	elseif spec.Id == "Pickup" then
+		add("BedWall", Vector3.new(6, 1.2, 0.3), CFrame.new(0, 1.2 + tall + 0.6, long / 2 - 0.15), color:Lerp(Color3.new(0, 0, 0), 0.1))
+	end
+	if drivable then
+		-- the seats: you drive from the front left, friends ride along
+		local seat = Instance.new("VehicleSeat")
+		seat.Name = "DriverSeat"
+		seat.Size = Vector3.new(2, 0.6, 2)
+		seat.CFrame = cf * CFrame.new(-1.3, 1.2 + tall - 0.1, cabinZ + 0.4)
+		seat.Transparency = 1
+		seat.CanCollide = false
+		seat.Massless = true
+		seat.MaxSpeed = 0
+		seat.Torque = 0
+		seat.HeadsUpDisplay = false
+		seat.Parent = m
+		local w = Instance.new("WeldConstraint")
+		w.Part0, w.Part1 = chassis, seat
+		w.Parent = seat
+		for n, off in ipairs({ { 1.3, cabinZ + 0.4 }, { -1.3, cabinZ + 2.6 }, { 1.3, cabinZ + 2.6 } }) do
+			if n == 1 or spec.Id ~= "Sports" then
+				local ps = Instance.new("Seat")
+				ps.Name = "PassengerSeat"
+				ps.Size = Vector3.new(2, 0.6, 2)
+				ps.CFrame = cf * CFrame.new(off[1], 1.2 + tall - 0.1, off[2])
+				ps.Transparency = 1
+				ps.CanCollide = false
+				ps.Massless = true
+				ps.Parent = m
+				local pw = Instance.new("WeldConstraint")
+				pw.Part0, pw.Part1 = chassis, ps
+				pw.Parent = ps
+			end
+		end
+		-- keep it upright (it can still turn and go over bumps)
+		pcall(function()
+			local a = Instance.new("Attachment")
+			a.Name = "Upright"
+			a.Axis = Vector3.new(0, 1, 0)
+			a.SecondaryAxis = Vector3.new(1, 0, 0)
+			a.Parent = chassis
+			local align = Instance.new("AlignOrientation")
+			align.Mode = Enum.OrientationAlignmentMode.OneAttachment
+			align.AlignType = Enum.AlignType.PrimaryAxisParallel
+			align.PrimaryAxis = Vector3.new(0, 1, 0)
+			align.Attachment0 = a
+			align.MaxTorque = 4e5
+			align.Responsiveness = 40
+			align.Parent = chassis
+		end)
+		m:SetAttribute("CityCar", true)
+		m:SetAttribute("CarId", spec.Id)
+		m:SetAttribute("MaxSpeed", spec.MaxSpeed)
+		m:SetAttribute("Accel", spec.Accel)
+		m:SetAttribute("Turn", spec.Turn)
+	end
+	m.Parent = parent or workspace
+	return m
+end
+
+--------------------------------------------------------------------------------
+-- Calling your car
+--------------------------------------------------------------------------------
+-- a spot in the right-hand lane of the road nearest to a position (or just in
+-- front of you, away from the city's roads)
+function CarService.RoadSpot(pos, look)
+	local sp = S.Map.Spacing or 134
+	local road = S.Map.Road or 26
+	local lane = S.Map.Lane or 3.4
+	local extent = S.Map.Extent or 737
+	local function nearestLine(v)
+		return (math.floor(v / sp) + 0.5) * sp
+	end
+	local lx, lz = nearestLine(pos.X), nearestLine(pos.Z)
+	local dx, dz = math.abs(pos.X - lx), math.abs(pos.Z - lz)
+	local inCity = math.abs(pos.X) < extent + 10 and math.abs(pos.Z) < extent + 10
+	if inCity and math.min(dx, dz) < 70 then
+		if dx < dz then
+			-- an avenue (runs along Z): head the way you're facing
+			local dir = if look.Z >= 0 then Vector3.new(0, 0, 1) else Vector3.new(0, 0, -1)
+			local p = Vector3.new(lx, 0.1, pos.Z) + Vector3.new(-dir.Z, 0, dir.X) * (road / 2 - 3.6)
+			return CFrame.lookAt(p, p + dir)
+		else
+			local dir = if look.X >= 0 then Vector3.new(1, 0, 0) else Vector3.new(-1, 0, 0)
+			local p = Vector3.new(pos.X, 0.1, lz) + Vector3.new(-dir.Z, 0, dir.X) * (road / 2 - 3.6)
+			return CFrame.lookAt(p, p + dir)
+		end
+	end
+	local flat = Vector3.new(look.X, 0, look.Z)
+	flat = if flat.Magnitude > 0.1 then flat.Unit else Vector3.new(0, 0, -1)
+	local p = pos + flat * 9 - Vector3.new(0, 2.9, 0)
+	return CFrame.lookAt(p, p + Vector3.new(-flat.Z, 0, flat.X))
+end
+
+local function despawn(player)
+	local old = cars[player]
+	if old then
+		cars[player] = nil
+		if old.Parent then
+			old:Destroy()
+		end
+	end
+end
+
+function CarService.Spawn(player, id, cf)
+	local pd = S.City.Data(player)
+	local spec = byId[id or (pd and pd.Car) or ""]
+	if not spec then
+		return nil
+	end
+	despawn(player)
+	local color = spec.Color
+	local car = CarService.Build({ Id = spec.Id, Color = color, MaxSpeed = spec.MaxSpeed, Accel = spec.Accel, Turn = spec.Turn }, cf, true, workspace)
+	car:SetAttribute("Owner", player.UserId)
+	car.Name = player.Name .. "'s " .. spec.Name
+	cars[player] = car
+	local seat = car:FindFirstChild("DriverSeat")
+	seat:GetPropertyChangedSignal("Occupant"):Connect(function()
+		local hum = seat.Occupant
+		local who = hum and Players:GetPlayerFromCharacter(hum.Parent)
+		if hum and who ~= player then
+			-- not your car
+			hum.Sit = false
+			if who then
+				S.City.Toast(who, "🔒", "Not your car", "Buy your own at 🚗 AutoLand (up Shore Drive), then press K to call it.", rgb(220, 90, 80))
+			end
+			return
+		end
+		if who then
+			pcall(function()
+				car.PrimaryPart:SetNetworkOwner(who)
+			end)
+			S.City.Toast(who, spec.Emoji, "Driving your " .. spec.Name, "W / S to drive and brake, A / D to steer, Space to get out.", rgb(80, 170, 240))
+		end
+	end)
+	return car
+end
+
+-- K (or the phone's Car app): your car pulls up next to you
+function CarService.Call(player)
+	local pd = S.City.Data(player)
+	local root = rootOf(player)
+	if not pd or not root then
+		return { Ok = false, Error = "Try again in a moment." }
+	end
+	if not pd.Car or not byId[pd.Car] then
+		return { Ok = false, Error = "You don't have a car yet. Buy one at 🚗 AutoLand, up Shore Drive past the north edge of town." }
+	end
+	if S.Crime and S.Crime.IsJailed(player) then
+		return { Ok = false, Error = "Not from prison!" }
+	end
+	local car = CarService.Spawn(player, pd.Car, CarService.RoadSpot(root.Position, root.CFrame.LookVector))
+	return { Ok = car ~= nil, Car = car }
+end
+
+--------------------------------------------------------------------------------
+-- 🚗 AutoLand
+--------------------------------------------------------------------------------
+function CarService.Buy(player, id)
+	local pd = S.City.Data(player)
+	local spec = byId[id or ""]
+	if not pd or not spec then
+		return { Ok = false, Error = "That car isn't for sale." }
+	end
+	pd.Cars = pd.Cars or {}
+	if not pd.Cars[id] then
+		if not S.City.Spend(player, spec.Price, spec.Emoji .. " Bought a " .. spec.Name) then
+			return { Ok = false, Error = "The " .. spec.Name .. " costs " .. spec.Price .. " coins." }
+		end
+		pd.Cars[id] = true
+		S.City.News("🚗 " .. player.DisplayName .. " drove a brand new " .. spec.Name .. " off the lot at AutoLand!", "City", true)
+	end
+	pd.Car = id
+	local NS = S.Map.NorthShore
+	local car = CarService.Spawn(player, id, NS and NS.Pickup or CarService.RoadSpot(rootOf(player).Position, Vector3.new(0, 0, -1)))
+	S.City.Toast(player, spec.Emoji, "Your " .. spec.Name .. " is ready!", "It's waiting on Shore Drive. Press K (your car keys) or use the 🚗 Car app on your phone anytime to call it to wherever you are.", rgb(80, 200, 120))
+	return { Ok = true, Car = car }
+end
+
+local function carStore(player)
+	local pd = S.City.Data(player)
+	local items = {}
+	for _, c in ipairs(CarService.CARS) do
+		local owned = pd and pd.Cars and pd.Cars[c.Id] == true
+		table.insert(items, {
+			Id = c.Id, Name = c.Name, Emoji = c.Emoji, Price = c.Price, Desc = c.Desc, Owned = owned, UseText = "🔑 Drive this one", Using = owned and pd.Car == c.Id and cars[player] ~= nil,
+			Stats = { { "Speed", c.MaxSpeed, 90 }, { "Pickup", c.Accel, 28 }, { "Turning", c.Turn, 1.8 } },
+		})
+	end
+	return { Title = "AutoLand", Emoji = "🚗", Currency = "coins", Balance = S.City.Coins(player), Action = "Car", Items = items, Note = "Press K anywhere to call your car to the nearest road. W / S to drive, A / D to steer, Space to get out." }
+end
+
+function CarService.Request(player, data)
+	if data.Op == "call" then
+		return CarService.Call(player)
+	end
+	local r = CarService.Buy(player, data.Id)
+	if r.Ok then
+		return { Ok = true, Store = carStore(player) }
+	end
+	return r
+end
+
+function CarService.Start(services)
+	S = services
+	S.City.Handle("Car", CarService.Request)
+	S.City.Handle("CarStore", function(player)
+		return { Ok = true, Store = carStore(player) }
+	end)
+	local NS = S.Map and S.Map.NorthShore
+	if NS then
+		-- the cars on the lot, each with a prompt
+		local lot = Instance.new("Folder")
+		lot.Name = "AutoLandLot"
+		lot.Parent = NS.Model
+		for k, cf in ipairs(NS.Display) do
+			local spec = CarService.CARS[k]
+			if spec then
+				local car = CarService.Build(spec, cf, false, lot)
+				local body = car:FindFirstChild("Body")
+				local p = Instance.new("ProximityPrompt")
+				p.ActionText = "Look at the " .. spec.Name
+				p.ObjectText = spec.Emoji .. " " .. spec.Price .. " coins"
+				p.KeyboardKeyCode = Enum.KeyCode.E
+				p.MaxActivationDistance = 12
+				p.RequiresLineOfSight = false
+				p.Parent = body
+				p.Triggered:Connect(function(player)
+					local d = carStore(player)
+					d.Type = "Store"
+					S.City.Send(player, d)
+				end)
+			end
+		end
+		-- a salesperson behind the desk
+		task.spawn(function()
+			while not workspace:FindFirstChild("Citizens") do
+				task.wait(0.5)
+			end
+			pcall(function()
+				local rep = S.Citizens.SpawnExtra({ Name = "Sal Motors", First = "Sal", Job = "Car Salesperson", Age = 44, Activity = "🚗 Selling cars" }, CFrame.new(NS.SalesSpot.CFrame.Position + Vector3.new(0, 3, 0)))
+				S.Citizens.Control(rep, true)
+				S.Citizens.PlaceAt(rep, NS.SalesSpot, "counter")
+				rep.Model:SetAttribute("Activity", "🚗 Selling cars at AutoLand")
+				CarService.Salesperson = rep
+			end)
+		end)
+	end
+	-- running people over
+	task.spawn(function()
+		while true do
+			task.wait(0.2)
+			for player, car in pairs(cars) do
+				if not player.Parent then
+					despawn(player)
+				elseif car.Parent and car.PrimaryPart then
+					local v = car.PrimaryPart.AssemblyLinearVelocity
+					local speed = Vector3.new(v.X, 0, v.Z).Magnitude
+					if speed > 16 then
+						local front = car.PrimaryPart.Position + v.Unit * 5
+						for _, brain in ipairs(S.Citizens.Nearby(front, 5)) do
+							if brain.State ~= "ko" and brain.State ~= "hospital" and os.clock() - (brain.HitByCar or 0) > 3 then
+								brain.HitByCar = os.clock()
+								if speed > 38 and S.Citizens.KnockOut(brain, player.DisplayName) then
+									S.City.News("🚑 " .. brain.C.Name .. " was hit by a car.", "Crime", true)
+								else
+									S.Citizens.Hurt(brain, car.PrimaryPart.Position, "WHOA! Watch where you're going!", 30)
+								end
+								if S.Crime and S.Crime.Report then
+									pcall(S.Crime.Report, player, brain.Root.Position, brain, if speed > 38 then 3 else 1, "hit " .. brain.C.First .. " with your car", "ran someone over", if speed > 38 then 2 else 1)
+								end
+							end
+						end
+					end
+				end
+			end
+		end
+	end)
+	Players.PlayerRemoving:Connect(despawn)
+end
+
+return CarService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX49"><Properties><string name="Name">FunService</string><ProtectedString name="Source"><![CDATA[-- FunService (ModuleScript) — ServerScriptService.Modules.FunService
+-- Things to do at Funland (the park itself is built by NorthShore; the rides
+-- turn on everyone's screen, see the client's Rides module):
+--
+--   🎈 Balloon Pop   5 coins a go: eight balloons blow up on the back wall and
+--                    you have 15 seconds to click (or tap) them. One 🎟️ ticket
+--                    per pop, +5 more if you get them all.
+--   🎟️ Prizes        trade tickets at the prize booth: a rubber duck, a bunny,
+--                    a parrot and a golden pup follow you around (PetService),
+--                    or a bag of coins.
+--   🧗 Sky Obby      step on the green pad and the clock starts. Checkpoints
+--                    save your progress (lava, the spinning bars and falling
+--                    send you back to the last one). Reach the finish for coins,
+--                    beat your best time for a bonus, and get your name on the
+--                    board: the server's five fastest runs.
+
+local Players = game:GetService("Players")
+
+local FunService = {}
+local S, NS
+
+local BALLOON_COST = 5
+local BALLOON_TIME = 15
+local game_ -- the balloon game in progress
+local board = {} -- the obby's fastest runs: { Name, Time }
+
+FunService.PRIZES = {
+	{ Id = "coins", Name = "Bag of coins", Emoji = "💰", Price = 20, Desc = "50 coins, just like that." },
+	{ Id = "Duck", Name = "Rubber Duck", Emoji = "🦆", Price = 15, Desc = "A little duck that waddles after you everywhere.", Pet = true },
+	{ Id = "Bunny", Name = "Bunny", Emoji = "🐰", Price = 30, Desc = "A fluffy bunny that hops along behind you.", Pet = true },
+	{ Id = "Parrot", Name = "Parrot", Emoji = "🦜", Price = 60, Desc = "A bright parrot that flies at your shoulder.", Pet = true },
+	{ Id = "GoldenPup", Name = "Golden Pup", Emoji = "🐶", Price = 150, Desc = "The grand prize: a shining golden puppy.", Pet = true },
+}
+
+local function rgb(r, g, b)
+	return Color3.fromRGB(r, g, b)
+end
+
+local function rootOf(player)
+	return player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+end
+
+local function addTickets(player, n)
+	local pd = S.City.Data(player)
+	if not pd then
+		return 0
+	end
+	pd.Tickets = (pd.Tickets or 0) + n
+	player:SetAttribute("Tickets", pd.Tickets)
+	return pd.Tickets
+end
+FunService.AddTickets = addTickets
+
+--------------------------------------------------------------------------------
+-- 🎈 Balloon Pop
+--------------------------------------------------------------------------------
+local function endBalloons()
+	local g = game_
+	if not g then
+		return
+	end
+	game_ = nil
+	for _, b in ipairs(g.Balloons) do
+		if b.Parent then
+			b:Destroy()
+		end
+	end
+	local player = g.Player
+	if not player.Parent then
+		return
+	end
+	local bonus = if g.Popped == #g.Balloons then 5 else 0
+	if bonus > 0 then
+		addTickets(player, bonus)
+	end
+	local total = (player:GetAttribute("Tickets") or 0)
+	S.City.Toast(player, "🎈", "Popped " .. g.Popped .. " of " .. #g.Balloons .. "!", "+" .. (g.Popped + bonus) .. " 🎟️ tickets" .. (if bonus > 0 then " (all of them: +5 bonus!)" else "") .. ". You have " .. total .. ". Trade them at the 🎟️ prize booth next door.", rgb(80, 170, 240))
+end
+
+function FunService.Pop(player, balloon)
+	local g = game_
+	if not g or g.Player ~= player or not balloon.Parent or not table.find(g.Balloons, balloon) then
+		return false
+	end
+	local pos = balloon.Position
+	balloon:Destroy()
+	g.Popped += 1
+	addTickets(player, 1)
+	S.City.SendNear(pos, 90, { Type = "Pop", Position = pos, Color = balloon.Color })
+	if g.Popped >= #g.Balloons then
+		endBalloons()
+	end
+	return true
+end
+
+function FunService.PlayBalloons(player)
+	if game_ and game_.Player.Parent and os.clock() < game_.Until then
+		S.City.Toast(player, "⏳", "Someone's playing", (if game_.Player == player then "That's you! Pop them!" else game_.Player.DisplayName .. " is up. Wait a few seconds."), rgb(200, 160, 60))
+		return false
+	end
+	if not S.City.Spend(player, BALLOON_COST, "🎈 Balloon Pop") then
+		S.City.Toast(player, "🪙", "Not enough coins", "Balloon Pop costs " .. BALLOON_COST .. " coins.", rgb(220, 90, 80))
+		return false
+	end
+	local g = { Player = player, Until = os.clock() + BALLOON_TIME, Balloons = {}, Popped = 0 }
+	game_ = g
+	local colors = { rgb(255, 70, 90), rgb(255, 200, 40), rgb(80, 170, 255), rgb(120, 220, 110), rgb(200, 110, 255), rgb(255, 140, 50) }
+	for k, pos in ipairs(NS.BalloonGame.Slots) do
+		local b = Instance.new("Part")
+		b.Name = "Balloon"
+		b.Shape = Enum.PartType.Ball
+		b.Size = Vector3.one * 1.9
+		b.Color = colors[(k - 1) % #colors + 1]
+		b.Material = Enum.Material.SmoothPlastic
+		b.Reflectance = 0.25
+		b.Anchored, b.CanCollide = true, false
+		b.CFrame = CFrame.new(pos)
+		b.Parent = NS.Model
+		local click = Instance.new("ClickDetector")
+		click.MaxActivationDistance = 60
+		click.Parent = b
+		pcall(function()
+			click.MouseClick:Connect(function(who)
+				FunService.Pop(who, b)
+			end)
+		end)
+		table.insert(g.Balloons, b)
+	end
+	S.City.Toast(player, "🎈", "Pop the balloons!", "Click or tap them: " .. BALLOON_TIME .. " seconds, go!", rgb(80, 170, 240))
+	task.delay(BALLOON_TIME, function()
+		if game_ == g then
+			endBalloons()
+		end
+	end)
+	return true
+end
+
+--------------------------------------------------------------------------------
+-- 🎟️ The prize booth
+--------------------------------------------------------------------------------
+local function prizeStore(player)
+	local pd = S.City.Data(player)
+	local items = {}
+	for _, p in ipairs(FunService.PRIZES) do
+		local owned = p.Pet and pd and pd.Pets and pd.Pets[p.Id] == true
+		table.insert(items, { Id = p.Id, Name = p.Name, Emoji = p.Emoji, Price = p.Price, Desc = p.Desc, Owned = owned, UseText = "🐾 Walk with me", Using = owned and pd.Pet and pd.Pet.Id == p.Id })
+	end
+	return { Title = "Prize Booth", Emoji = "🎟️", Currency = "tickets", Balance = pd and pd.Tickets or 0, Action = "Prize", BuyText = "Get", Items = items, Note = "Win tickets at 🎈 Balloon Pop (and the Sky Obby gives tickets too). Prize pets follow you around: pick which one in the 🐾 pet stand or here." }
+end
+
+function FunService.Prize(player, data)
+	local pd = S.City.Data(player)
+	local prize
+	for _, p in ipairs(FunService.PRIZES) do
+		if p.Id == data.Id then
+			prize = p
+		end
+	end
+	if not pd or not prize then
+		return { Ok = false, Error = "That's not a prize." }
+	end
+	if data.Op == "use" and prize.Pet and pd.Pets[prize.Id] then
+		if S.Pets then
+			S.Pets.Equip(player, prize.Id)
+		end
+		return { Ok = true, Store = prizeStore(player), Toast = { prize.Emoji, prize.Name .. " is with you", "" } }
+	end
+	if prize.Pet and pd.Pets[prize.Id] then
+		return { Ok = false, Error = "You already won that one." }
+	end
+	if (pd.Tickets or 0) < prize.Price then
+		return { Ok = false, Error = "You need " .. prize.Price .. " tickets (you have " .. (pd.Tickets or 0) .. ")." }
+	end
+	addTickets(player, -prize.Price)
+	if prize.Id == "coins" then
+		S.City.AddCoins(player, 50, "🎟️ Prize: a bag of coins")
+	elseif S.Pets then
+		S.Pets.Give(player, prize.Id)
+	end
+	return { Ok = true, Store = prizeStore(player), Toast = { prize.Emoji, "You won: " .. prize.Name .. "!", if prize.Pet then "It's following you around now." else "" } }
+end
+
+--------------------------------------------------------------------------------
+-- 🧗 The Sky Obby
+--------------------------------------------------------------------------------
+local function top(part)
+	return part.Position + Vector3.new(0, part.Size.Y / 2, 0)
+end
+
+local function drawBoard()
+	local o = NS.Obby
+	local gui = o.Board:FindFirstChild("ObbyBoardGui")
+	if not gui then
+		gui = Instance.new("SurfaceGui")
+		gui.Name = "ObbyBoardGui"
+		gui.Face = Enum.NormalId.Front
+		gui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+		gui.PixelsPerStud = 30
+		gui.LightInfluence = 0
+		local label = Instance.new("TextLabel")
+		label.Name = "Text"
+		label.BackgroundTransparency = 1
+		label.Size = UDim2.fromScale(1, 1)
+		label.TextColor3 = Color3.new(1, 1, 1)
+		label.Font = Enum.Font.GothamBold
+		label.TextScaled = true
+		label.Parent = gui
+		gui.Parent = o.Board
+	end
+	local lines = { "🏆 FASTEST RUNS" }
+	for k = 1, 5 do
+		local e = board[k]
+		table.insert(lines, if e then string.format("%d. %s  %.1fs", k, e.Name, e.Time) else k .. ". ---")
+	end
+	gui.Text.Text = table.concat(lines, "\n")
+end
+
+-- someone stepped on the start pad, a checkpoint or the finish
+function FunService.ObbyTouch(player, what)
+	local o = NS.Obby
+	local now = workspace:GetServerTimeNow()
+	if what == "start" then
+		if player:GetAttribute("ObbyStart") and now - player:GetAttribute("ObbyStart") < 3 then
+			return
+		end
+		player:SetAttribute("ObbyStart", now)
+		player:SetAttribute("ObbyCP", 0)
+		player:SetAttribute("ObbyCheckpoint", top(o.Start))
+		S.City.Toast(player, "🧗", "Sky Obby: GO!", "Jump to the finish. Checkpoints save your spot; lava and the red bars send you back.", rgb(90, 200, 120))
+		return "started"
+	end
+	local started = player:GetAttribute("ObbyStart")
+	if not started then
+		return nil
+	end
+	if type(what) == "number" then
+		if what > (player:GetAttribute("ObbyCP") or 0) then
+			player:SetAttribute("ObbyCP", what)
+			player:SetAttribute("ObbyCheckpoint", top(o.Checkpoints[what]))
+			S.City.Toast(player, "🚩", "Checkpoint " .. what .. "!", string.format("%.1f seconds so far.", now - started), rgb(250, 210, 60))
+			return "checkpoint"
+		end
+		return nil
+	end
+	if what == "finish" then
+		local t = now - started
+		player:SetAttribute("ObbyStart", nil)
+		player:SetAttribute("ObbyCP", nil)
+		player:SetAttribute("ObbyCheckpoint", nil)
+		local pd = S.City.Data(player)
+		local best = pd and pd.ObbyBest
+		local record = not best or t < best
+		if pd and record then
+			pd.ObbyBest = t
+		end
+		local coins = 40 + (if record then 30 else 0)
+		S.City.AddCoins(player, coins, "🧗 Sky Obby")
+		addTickets(player, 5)
+		table.insert(board, { Name = player.DisplayName, Time = t })
+		table.sort(board, function(a, b)
+			return a.Time < b.Time
+		end)
+		while #board > 5 do
+			table.remove(board)
+		end
+		drawBoard()
+		S.City.Toast(player, "🏁", string.format("Finished in %.1fs!", t), "+" .. coins .. " coins and 5 🎟️ tickets" .. (if record then " · a new personal best!" else string.format(" · your best is %.1fs", best)), rgb(80, 220, 255))
+		S.City.News(string.format("🧗 %s ran the Sky Obby in %.1f seconds!", player.DisplayName, t), "City", true)
+		-- down the slide: back to the start
+		task.delay(2.5, function()
+			local root = rootOf(player)
+			if root then
+				root.CFrame = CFrame.new(top(o.Start) + Vector3.new(6, 3, 0))
+			end
+		end)
+		return t
+	end
+end
+
+local function hookTouch(part, what)
+	part.Touched:Connect(function(hit)
+		local player = Players:GetPlayerFromCharacter(hit.Parent)
+		if player then
+			FunService.ObbyTouch(player, what)
+		end
+	end)
+end
+
+--------------------------------------------------------------------------------
+-- Start
+--------------------------------------------------------------------------------
+local function prompt(part, action, object, fn)
+	local p = Instance.new("ProximityPrompt")
+	p.ActionText = action
+	p.ObjectText = object
+	p.KeyboardKeyCode = Enum.KeyCode.E
+	p.MaxActivationDistance = 10
+	p.RequiresLineOfSight = false
+	p.Parent = part
+	p.Triggered:Connect(fn)
+	return p
+end
+
+function FunService.Start(services)
+	S = services
+	NS = S.Map and S.Map.NorthShore
+	if not NS then
+		return
+	end
+	prompt(NS.BalloonGame.Prompt, "Play Balloon Pop", "🎈 " .. BALLOON_COST .. " coins", FunService.PlayBalloons)
+	prompt(NS.PrizeDesk, "Trade tickets", "🎟️ Prize Booth", function(player)
+		local d = prizeStore(player)
+		d.Type = "Store"
+		S.City.Send(player, d)
+	end)
+	S.City.Handle("Prize", FunService.Prize)
+	S.City.Handle("PrizeStore", function(player)
+		return { Ok = true, Store = prizeStore(player) }
+	end)
+	hookTouch(NS.Obby.Start, "start")
+	for k, cp in ipairs(NS.Obby.Checkpoints) do
+		hookTouch(cp, k)
+	end
+	hookTouch(NS.Obby.Finish, "finish")
+	drawBoard()
+	local function show(player)
+		local pd = S.City.Data(player)
+		if pd then
+			player:SetAttribute("Tickets", pd.Tickets or 0)
+		end
+	end
+	Players.PlayerAdded:Connect(function(player)
+		task.delay(2, show, player)
+	end)
+	for _, p in ipairs(Players:GetPlayers()) do
+		show(p)
+	end
+end
+
+FunService.Board = board
+function FunService.Balloons()
+	return game_
+end
+
+return FunService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX50"><Properties><string name="Name">PetService</string><ProtectedString name="Source"><![CDATA[-- PetService (ModuleScript) — ServerScriptService.Modules.PetService
+-- Pets that follow you around.
+--
+--   🐾 Paws & Claws, the adoption stand at Funland: adopt a dog, a cat, a
+--      hamster or a fox for coins.
+--   🎟️ The prize booth: a rubber duck, a bunny, a parrot and a golden pup for
+--      carnival tickets (see FunService).
+--
+-- The pet you pick walks at your heels, sits when you stop, wags its tail
+-- (the parrot flies at your shoulder), and wears a name tag. You keep every
+-- pet you've got and can switch between them at the stand. Some citizens walk
+-- their dogs too.
+--
+-- The server only stores which pet is out (the player's "Pet" and "PetName"
+-- attributes); every screen draws the pets itself (the client's Pets module).
+
+local Players = game:GetService("Players")
+
+local PetService = {}
+local S
+
+PetService.ADOPT = {
+	{ Id = "Dog", Name = "Dog", Emoji = "🐕", Price = 150, Desc = "A loyal pup. Follows you everywhere and sits when you stop." },
+	{ Id = "Cat", Name = "Cat", Emoji = "🐈", Price = 120, Desc = "Independent, but it'll come along. Swishes its tail." },
+	{ Id = "Hamster", Name = "Hamster", Emoji = "🐹", Price = 60, Desc = "Tiny and speedy. Scurries to keep up." },
+	{ Id = "Fox", Name = "Fox", Emoji = "🦊", Price = 300, Desc = "A clever red fox with a big bushy tail." },
+}
+PetService.NAMES = {
+	Dog = { "Buddy", "Max", "Bella", "Rocky", "Daisy", "Biscuit" }, Cat = { "Luna", "Milo", "Whiskers", "Cleo", "Tiger" },
+	Hamster = { "Nibbles", "Peanut", "Squeak" }, Fox = { "Rusty", "Ember", "Foxy" }, Duck = { "Quackers", "Sunny" },
+	Bunny = { "Clover", "Thumper", "Snowball" }, Parrot = { "Kiwi", "Captain", "Mango" }, GoldenPup = { "Goldie", "Champ" },
+}
+
+local function rgb(r, g, b)
+	return Color3.fromRGB(r, g, b)
+end
+
+local function show(player)
+	local pd = S.City.Data(player)
+	local pet = pd and pd.Pet
+	player:SetAttribute("Pet", pet and pet.Id or nil)
+	player:SetAttribute("PetName", pet and pet.Name or nil)
+end
+
+function PetService.Equip(player, id)
+	local pd = S.City.Data(player)
+	if not pd then
+		return false
+	end
+	if id == "none" then
+		pd.Pet = nil
+	elseif pd.Pets[id] then
+		local names = PetService.NAMES[id] or { "Buddy" }
+		local keep = pd.Pet and pd.Pet.Id == id and pd.Pet.Name
+		pd.Pet = { Id = id, Name = keep or pd.PetNames and pd.PetNames[id] or names[math.random(1, #names)] }
+		pd.PetNames = pd.PetNames or {}
+		pd.PetNames[id] = pd.Pet.Name
+	else
+		return false
+	end
+	show(player)
+	return true
+end
+
+-- a new pet (bought or won): it's yours, and it comes out right away
+function PetService.Give(player, id)
+	local pd = S.City.Data(player)
+	if not pd then
+		return false
+	end
+	pd.Pets = pd.Pets or {}
+	pd.Pets[id] = true
+	return PetService.Equip(player, id)
+end
+
+local function store(player)
+	local pd = S.City.Data(player)
+	local items = {}
+	for _, p in ipairs(PetService.ADOPT) do
+		local owned = pd and pd.Pets[p.Id] == true
+		table.insert(items, { Id = p.Id, Name = p.Name, Emoji = p.Emoji, Price = p.Price, Desc = p.Desc, Owned = owned, UseText = "🐾 Walk with me", Using = owned and pd.Pet and pd.Pet.Id == p.Id })
+	end
+	-- prize pets you've won can be picked here too
+	if S.Fun then
+		for _, p in ipairs(S.Fun.PRIZES) do
+			if p.Pet and pd and pd.Pets[p.Id] then
+				table.insert(items, { Id = p.Id, Name = p.Name, Emoji = p.Emoji, Price = 0, Desc = "A prize from the booth.", Owned = true, UseText = "🐾 Walk with me", Using = pd.Pet and pd.Pet.Id == p.Id })
+			end
+		end
+	end
+	table.insert(items, { Id = "none", Name = "Walk alone", Emoji = "🚶", Price = 0, Desc = "Your pets wait at home.", Owned = true, UseText = "Leave them home", Using = pd and pd.Pet == nil })
+	return { Title = "Paws & Claws Adoption", Emoji = "🐾", Currency = "coins", Balance = S.City.Coins(player), Action = "Pet", BuyText = "Adopt", Items = items, Note = "Your pet follows you, sits when you stop and wears a name tag. Win more pets with tickets at the 🎟️ prize booth." }
+end
+
+function PetService.Request(player, data)
+	local pd = S.City.Data(player)
+	if not pd then
+		return { Ok = false, Error = "Try again in a moment." }
+	end
+	local id = data.Id
+	if data.Op == "use" or id == "none" then
+		if id ~= "none" and not pd.Pets[id] then
+			return { Ok = false, Error = "That's not your pet." }
+		end
+		PetService.Equip(player, id)
+		return { Ok = true, Store = store(player), Toast = if id == "none" then { "🏠", "Your pets are at home", "" } else { "🐾", pd.Pet.Name .. " is with you", "" } }
+	end
+	local pet
+	for _, p in ipairs(PetService.ADOPT) do
+		if p.Id == id then
+			pet = p
+		end
+	end
+	if not pet then
+		return { Ok = false, Error = "That pet isn't up for adoption." }
+	end
+	if pd.Pets[id] then
+		return { Ok = false, Error = "You already have one." }
+	end
+	if not S.City.Spend(player, pet.Price, pet.Emoji .. " Adopted a " .. pet.Name) then
+		return { Ok = false, Error = "You need " .. pet.Price .. " coins." }
+	end
+	PetService.Give(player, id)
+	return { Ok = true, Store = store(player), Toast = { pet.Emoji, "Meet " .. pd.Pet.Name .. "!", "Your new " .. string.lower(pet.Name) .. " follows you everywhere." } }
+end
+
+function PetService.Store(player)
+	return store(player)
+end
+
+function PetService.Start(services)
+	S = services
+	S.City.Handle("Pet", PetService.Request)
+	local NS = S.Map and S.Map.NorthShore
+	if NS and NS.PetDesk then
+		local p = Instance.new("ProximityPrompt")
+		p.ActionText = "Adopt a pet"
+		p.ObjectText = "🐾 Paws & Claws"
+		p.KeyboardKeyCode = Enum.KeyCode.E
+		p.MaxActivationDistance = 10
+		p.RequiresLineOfSight = false
+		p.Parent = NS.PetDesk
+		p.Triggered:Connect(function(player)
+			local d = store(player)
+			d.Type = "Store"
+			S.City.Send(player, d)
+		end)
+		-- pets waiting for a home in the pens
+		for k, pos in ipairs(NS.PetPens or {}) do
+			local stand = Instance.new("Part")
+			stand.Name = "PenPet"
+			stand.Transparency = 1
+			stand.Anchored, stand.CanCollide, stand.CanQuery = true, false, false
+			stand.Size = Vector3.one
+			stand.CFrame = CFrame.new(pos + Vector3.new(0, 1, 0))
+			stand:SetAttribute("Pet", ({ "Dog", "Cat", "Hamster" })[k] or "Dog")
+			stand.Parent = NS.Model
+			game:GetService("CollectionService"):AddTag(stand, "PetDisplay")
+		end
+	end
+	local function hook(player)
+		task.spawn(function()
+			for _ = 1, 20 do
+				if S.City.Data(player) then
+					break
+				end
+				task.wait(0.5)
+			end
+			if S.City.Data(player) then
+				show(player)
+			end
+		end)
+	end
+	Players.PlayerAdded:Connect(hook)
+	for _, p in ipairs(Players:GetPlayers()) do
+		hook(p)
+	end
+end
+
+return PetService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX51"><Properties><string name="Name">Conversation</string><ProtectedString name="Source"><![CDATA[-- Conversation (ModuleScript) — ServerScriptService.Modules.Conversation
 -- The deeper side of talking to citizens (used by DialogueService):
 --   • every personality has its own voice: how they say hello, little verbal
 --     habits, their dreams and fears, their advice, favorite food and places
@@ -26259,7 +27999,7 @@ function Conversation.Answer(key, c, player, brain)
 end
 
 return Conversation
-]]></ProtectedString></Properties></Item></Item></Item><Item class="StarterPlayer" referent="RBX49"><Properties><string name="Name">StarterPlayer</string></Properties><Item class="StarterPlayerScripts" referent="RBX50"><Properties><string name="Name">StarterPlayerScripts</string></Properties><Item class="LocalScript" referent="RBX59"><Properties><string name="Name">CityClient</string><ProtectedString name="Source"><![CDATA[-- CityClient (LocalScript) — StarterPlayer.StarterPlayerScripts.CityClient
+]]></ProtectedString></Properties></Item></Item></Item><Item class="StarterPlayer" referent="RBX53"><Properties><string name="Name">StarterPlayer</string></Properties><Item class="StarterPlayerScripts" referent="RBX54"><Properties><string name="Name">StarterPlayerScripts</string></Properties><Item class="LocalScript" referent="RBX67"><Properties><string name="Name">CityClient</string><ProtectedString name="Source"><![CDATA[-- CityClient (LocalScript) — StarterPlayer.StarterPlayerScripts.CityClient
 -- AI City on your screen. Starts the HUD, the windows, the world effects and
 -- the citizens' body language, and routes everything the server sends.
 --
@@ -26285,6 +28025,10 @@ local World = require(script:WaitForChild("World"))
 local Moves = require(script:WaitForChild("Moves"))
 local Gamepad = require(script:WaitForChild("Gamepad"))
 local Water = require(script:WaitForChild("Water"))
+local Traffic = require(script:WaitForChild("Traffic"))
+local Rides = require(script:WaitForChild("Rides"))
+local Pets = require(script:WaitForChild("Pets"))
+local Drive = require(script:WaitForChild("Drive"))
 local Poses = require(Shared:WaitForChild("Poses"))
 local C = UI.C
 
@@ -26299,6 +28043,7 @@ local ctx = {
 	UI = UI,
 	Player = player,
 	SpeechSpot = info:GetAttribute("SpeechSpot"),
+	Drive = Drive,
 }
 
 Hud.Start(ctx)
@@ -26307,6 +28052,10 @@ Panels.Start(ctx)
 Moves.Start(ctx)
 Gamepad.Start(ctx)
 Water.Start()
+Traffic.Start()
+Rides.Start(ctx)
+Pets.Start()
+Drive.Start(ctx)
 
 -- the citizens' poses, props and faces, every frame (after animations)
 local step = RunService.PreSimulation or RunService.Stepped
@@ -26381,6 +28130,12 @@ handlers.Goals = function(d)
 end
 handlers.Shop = function(d)
 	Panels.OpenShop(d)
+end
+handlers.Store = function(d)
+	Panels.OpenStore(d)
+end
+handlers.Pop = function(d)
+	World.Pop(d.Position, d.Color)
 end
 handlers.FoodMenu = function(d)
 	Panels.OpenFood(d)
@@ -26523,7 +28278,7 @@ UserInputService.InputEnded:Connect(function(input)
 		Moves.SetSprint(false)
 	end
 end)
-]]></ProtectedString></Properties><Item class="ModuleScript" referent="RBX51"><Properties><string name="Name">UI</string><ProtectedString name="Source"><![CDATA[-- UI (ModuleScript) — StarterPlayerScripts.CityClient.UI
+]]></ProtectedString></Properties><Item class="ModuleScript" referent="RBX55"><Properties><string name="Name">UI</string><ProtectedString name="Source"><![CDATA[-- UI (ModuleScript) — StarterPlayerScripts.CityClient.UI
 -- AI City's look: colors, fonts, and helpers for building the interface
 -- (rounded panels, buttons that bounce, windows that pop open, bars...).
 
@@ -27025,7 +28780,7 @@ function UI.commas(n)
 end
 
 return UI
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX52"><Properties><string name="Name">Icons</string><ProtectedString name="Source"><![CDATA[-- Icons (ModuleScript) — StarterPlayerScripts.CityClient.Icons
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX56"><Properties><string name="Name">Icons</string><ProtectedString name="Source"><![CDATA[-- Icons (ModuleScript) — StarterPlayerScripts.CityClient.Icons
 -- AI City's own icon set, drawn from rounded shapes (no image uploads needed,
 -- and they stay sharp at any size).
 --
@@ -27526,6 +29281,20 @@ D.police = function(c)
 	T(c, 0.5, 0.47, 0.38, "★", GOLD)
 end
 
+-- a little car, side on: body, cabin with windows, two wheels
+D.car = function(c)
+	local body = rgb(80, 170, 240)
+	R(c, 0.5, 0.58, 0.84, 0.22, body, { r = 0.4, grad = { WHITE, rgb(150, 180, 220), 90 } })
+	R(c, 0.47, 0.42, 0.46, 0.2, body, { r = 0.35 })
+	R(c, 0.38, 0.43, 0.16, 0.12, rgb(40, 60, 100), { r = 0.2 })
+	R(c, 0.57, 0.43, 0.16, 0.12, rgb(40, 60, 100), { r = 0.2 })
+	R(c, 0.9, 0.56, 0.05, 0.06, rgb(255, 230, 140))
+	for _, x in ipairs({ 0.27, 0.73 }) do
+		C(c, x, 0.7, 0.2, rgb(30, 30, 36))
+		C(c, x, 0.7, 0.09, rgb(200, 200, 210))
+	end
+end
+
 D.city = function(c)
 	local lit = rgb(255, 214, 110)
 	local towers = {
@@ -27723,6 +29492,7 @@ local ALIAS = {
 	["🏏"] = "bat", ["🔨"] = "hammer", ["🔪"] = "knife", ["🛡️"] = "shield", ["🪙"] = "coin", ["❤️"] = "heart",
 	["💬"] = "chat", ["🚨"] = "siren", ["🪪"] = "idcard", ["🛗"] = "elevator", ["🏆"] = "trophy", ["🏙️"] = "city",
 	["🧥"] = "hoodie", ["🥸"] = "disguise", ["☀️"] = "sun", ["🌙"] = "moon", ["🌅"] = "sunset", ["🌇"] = "sunset",
+	["🚗"] = "car", Car = "car",
 	["💰"] = "coin", ["💼"] = "briefcase", Jobs = "briefcase", ["😊"] = "smile", ["🏥"] = "hospital", ["🚓"] = "police",
 }
 Icons.Alias = ALIAS
@@ -27842,7 +29612,7 @@ end
 table.sort(Icons.Names)
 
 return Icons
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX53"><Properties><string name="Name">Hud</string><ProtectedString name="Source"><![CDATA[-- Hud (ModuleScript) — StarterPlayerScripts.CityClient.Hud
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX57"><Properties><string name="Name">Hud</string><ProtectedString name="Source"><![CDATA[-- Hud (ModuleScript) — StarterPlayerScripts.CityClient.Hud
 -- The always-on screen: the clock and calendar, the city's mood and stats,
 -- a rotating minimap, coins, wanted stars, the mayor and the next election,
 -- the action bar, notifications and the news ticker.
@@ -28908,7 +30678,7 @@ function Hud.Start(context)
 end
 
 return Hud
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX54"><Properties><string name="Name">Panels</string><ProtectedString name="Source"><![CDATA[-- Panels (ModuleScript) — StarterPlayerScripts.CityClient.Panels
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX58"><Properties><string name="Name">Panels</string><ProtectedString name="Source"><![CDATA[-- Panels (ModuleScript) — StarterPlayerScripts.CityClient.Panels
 -- The windows you open: the city map, the People directory and profile
 -- cards, voting, speeches, the mayor's desk, conversations with citizens,
 -- elevators, help, settings, the welcome screen, election results and the
@@ -29792,7 +31562,9 @@ local function buildHelp()
 		{ "🏃 Sprinting and stamina", "Hold <b>Shift</b> (or the Sprint button) to run. It uses stamina (the ⚡ bar above your health), which refills when you stop. Sprinting and running on the <b>gym treadmills</b> (press E) earn fitness XP: every level gives you more stamina, faster recovery and a faster sprint. Food refills stamina too." },
 		{ "🍔 Food", "Press <b>E</b> at the counter of the Bakery, Cafe, Diner, Restaurant, Ice Cream shop or Market to order. Food heals you ❤️ and refills stamina ⚡. Coffee and energy drinks make stamina refill faster for a while." },
 		{ "🥷 Disguises", "Buy a 🧥 <b>hoodie</b>, a 🥷 <b>ski mask</b> or a 🥸 <b>disguise kit</b> at the 👕 Clothing store, and wear them with <b>C</b>. Witnesses may not recognize you (fewer stars, no notoriety, nobody remembers it was you), the police have to get closer to spot you, and it all works much better <b>at night</b>. After a crime, change or take off your outfit where nobody can see: the police keep looking for the old one. But a ski mask in daylight makes people nervous..." },
-		{ "⌨️ Keys", "Tab phone · E talk / use · M map · P people · V vote · B speech · N mayor · F attack · X block · 1-4 hotbar · G pickpocket · R rob · Q hide · J clock in at a job · Shift sprint · C wardrobe · H help · 1-9 answer in conversations · Esc close windows" },
+		{ "⌨️ Keys", "Tab phone · E talk / use · M map · P people · V vote · B speech · N mayor · F attack · X block · 1-4 hotbar · G pickpocket · R rob · Q hide · J clock in at a job · K call your car · Shift sprint · C wardrobe · H help · 1-9 answer in conversations · Esc close windows" },
+		{ "🚗 Cars and traffic", "Real traffic drives the streets: cars keep to their lane, stop at red lights and wait for people crossing. Buy your own car at <b>🚗 AutoLand</b> (up Shore Drive, past the north edge of town): walk up to one on the lot and press <b>E</b>. Press <b>K</b> (or the 🚗 <b>Car</b> app on your phone) and it pulls up on the nearest road. <b>W / S</b> drive and brake, <b>A / D</b> steer, <b>Space</b> to get out. Friends can ride along. Don't run anyone over: it's a crime." },
+		{ "🎡 Funland and the beach", "Up Shore Drive: ride the <b>Ferris wheel</b>, the <b>carousel</b> and the <b>Freefall</b> drop tower (just sit in a seat). Play <b>🎈 Balloon Pop</b> (5 coins, click the balloons) to win 🎟️ tickets, and trade them at the <b>prize booth</b> for pets and coins. Adopt a dog, cat, hamster or fox at <b>🐾 Paws & Claws</b>: your pet follows you everywhere. Race the <b>🧗 Sky Obby</b> against the clock. Then hit <b>Sunset Beach</b>: swim, sunbathe, fish off the pier." },
 		{ "💼 Jobs", "12 jobs, paid <b>by the hour</b>: open the <b>Jobs</b> app on your phone, or press <b>J</b> at a workplace during its hours. Follow the glowing marker and hold <b>E</b> at each task. You get a paycheck every in-game hour you work, plus tips and a rating bonus; finish tasks on time for a good rating, and work your way up from Trainee to Manager for raises." },
 		{ "🎮 Controller", "R2 attack · hold L2 block · click L3 sprint · R1 / L1 switch weapons · D-pad ▲ phone · ▼ map · ◀ help · ▶ wardrobe · X talk / use · Y pickpocket / rob / hide · B close / back / get out · A jump. In menus, move with the D-pad or stick and press A." },
 	}
@@ -30042,6 +31814,13 @@ local function buildPhone()
 		P.Close()
 		task.spawn(Panels.OpenJobs)
 	end)
+	app(12, "🚗", "Car", UI.rgb(60, 150, 220), function()
+		-- your car pulls up on the nearest road (see CarService)
+		P.Close()
+		if ctx.Drive then
+			task.spawn(ctx.Drive.Call)
+		end
+	end)
 	app(9, "❓", "Help", UI.rgb(80, 90, 120), function()
 		P.Close()
 		Panels.Help.Open()
@@ -30135,6 +31914,61 @@ local function buildShop()
 					data.Items = r.Items
 					data.Coins = (data.Coins or 0) - item.Price
 					Panels.OpenShop(data)
+				else
+					fail(r)
+				end
+			end)
+		end
+		win.Open()
+	end
+end
+
+-- A general store window: the car lot, the prize booth, the pet stand...
+-- data = { Title, Emoji, Currency ("coins" or "tickets"), Balance, Note,
+--          Action (the request to send), Items = { { Id, Name, Emoji, Price,
+--          Desc, Owned, Using, Stats = { { Label, Value, Max } } } } }
+local function buildStore()
+	local win = UI.window(screen, "Store", "🛍️", UDim2.fromOffset(820, 470), C.Gold)
+	Panels.Store = win
+	local body = win.Body
+	local top = UI.text(body, "", 15, UI.Bold, C.Sub, { Size = UDim2.new(1, 0, 0, 22) })
+	local scroll = UI.new("ScrollingFrame", { BackgroundTransparency = 1, BorderSizePixel = 0, Position = UDim2.fromOffset(0, 30), Size = UDim2.new(1, 0, 1, -62), CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y, ScrollBarThickness = 6, Parent = body })
+	UI.new("UIGridLayout", { CellSize = UDim2.fromOffset(186, 250), CellPadding = UDim2.fromOffset(10, 10), SortOrder = Enum.SortOrder.LayoutOrder, Parent = scroll })
+	local note = UI.text(body, "", 12, UI.Font, C.Dim, { AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.new(1, 0, 0, 28), TextWrapped = true })
+	function Panels.OpenStore(data)
+		clear(scroll)
+		win.Title.Text = data.Title or "Store"
+		win.SetIcon(data.Emoji or "🛍️")
+		local money = if data.Currency == "tickets" then "🎟️" else "🪙"
+		top.Text = money .. " You have " .. UI.commas(data.Balance or 0) .. " " .. (data.Currency or "coins") .. "."
+		note.Text = data.Note or ""
+		for k, item in ipairs(data.Items or {}) do
+			local card = UI.panel(scroll, { BackgroundColor3 = C.Panel2, Radius = 14, LayoutOrder = k })
+			UI.pad(card, 10)
+			UI.text(card, item.Emoji or "⭐", 40, UI.Font, C.White, { Size = UDim2.new(1, 0, 0, 46), TextXAlignment = Enum.TextXAlignment.Center })
+			UI.text(card, item.Name, 17, UI.Title, C.Text, { Position = UDim2.fromOffset(0, 48), Size = UDim2.new(1, 0, 0, 22), TextXAlignment = Enum.TextXAlignment.Center })
+			UI.text(card, item.Desc or "", 12, UI.Font, C.Sub, { Position = UDim2.fromOffset(0, 72), Size = UDim2.new(1, 0, 0, 58), TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Center, TextYAlignment = Enum.TextYAlignment.Top })
+			for n, st in ipairs(item.Stats or {}) do
+				local y = 132 + (n - 1) * 18
+				UI.text(card, st[1], 12, UI.Bold, C.Sub, { Position = UDim2.fromOffset(0, y), Size = UDim2.fromOffset(62, 16) })
+				local _, set = UI.bar(card, ({ C.Red, C.Gold, C.Blue, C.Green })[(n - 1) % 4 + 1], 8, { Position = UDim2.new(0, 64, 0, y + 4), Size = UDim2.new(1, -64, 0, 8) })
+				set(math.clamp(st[2] / math.max(1, st[3]), 0, 1))
+			end
+			local label = if item.Using then "✅ Using" elseif item.Owned then (item.UseText or "Use") else money .. " " .. UI.commas(item.Price or 0) .. "  " .. (data.BuyText or "Buy")
+			UI.button(card, label, { AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.new(1, 0, 0, 38), Color = if item.Using then C.Panel3 elseif item.Owned then C.Green else C.Gold, TextColor = if item.Using then C.Sub else C.Bg, TextSize = 14 }, function()
+				if item.Using then
+					return
+				end
+				local r = request({ Action = data.Action, Id = item.Id, Op = if item.Owned then "use" else "buy" })
+				if r.Ok then
+					if r.Toast then
+						ctx.Hud.Toast(r.Toast[1], r.Toast[2], r.Toast[3] or "", C.Gold)
+					end
+					if r.Store then
+						Panels.OpenStore(r.Store)
+					else
+						win.Close()
+					end
 				else
 					fail(r)
 				end
@@ -30368,6 +32202,7 @@ function Panels.Start(context)
 	buildResults()
 	buildBusted()
 	buildShop()
+	buildStore()
 	buildWardrobe()
 	buildFood()
 	buildJobs()
@@ -30376,7 +32211,7 @@ function Panels.Start(context)
 end
 
 return Panels
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX55"><Properties><string name="Name">World</string><ProtectedString name="Source"><![CDATA[-- World (ModuleScript) — StarterPlayerScripts.CityClient.World
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX59"><Properties><string name="Name">World</string><ProtectedString name="Source"><![CDATA[-- World (ModuleScript) — StarterPlayerScripts.CityClient.World
 -- Everything drawn in the 3D world: nameplates over citizens and players,
 -- speech bubbles, the interaction prompts (talk, elevators, crimes), the
 -- waypoint beam, hit effects, alarms, confetti, the sky and the traffic lights.
@@ -30860,6 +32695,34 @@ end
 --------------------------------------------------------------------------------
 -- a gunshot: a flash at the muzzle, a streak to where the bullet went, a bang
 local bang
+-- a balloon popping: bits of rubber fly out
+function World.Pop(pos, color)
+	if typeof(pos) ~= "Vector3" then
+		return
+	end
+	for k = 1, 6 do
+		local bit = Instance.new("Part")
+		bit.Name = "PopBit"
+		bit.Size = Vector3.new(0.3, 0.3, 0.08)
+		bit.Color = if typeof(color) == "Color3" then color else Color3.fromRGB(255, 80, 100)
+		bit.Anchored, bit.CanCollide, bit.CanQuery, bit.CanTouch = true, false, false, false
+		local dir = Vector3.new(math.cos(k), math.sin(k * 2.3) * 0.6, math.sin(k))
+		bit.CFrame = CFrame.new(pos)
+		bit.Parent = workspace
+		task.spawn(function()
+			for i = 1, 8 do
+				task.wait(0.03)
+				if not bit.Parent then
+					return
+				end
+				bit.CFrame = CFrame.new(pos + dir * i * 0.3 - Vector3.new(0, i * i * 0.01, 0)) * CFrame.Angles(i, i * 0.7, 0)
+				bit.Transparency = i / 8
+			end
+			bit:Destroy()
+		end)
+	end
+end
+
 function World.Shot(from, to, weapon)
 	if typeof(from) ~= "Vector3" or typeof(to) ~= "Vector3" then
 		return
@@ -31309,7 +33172,7 @@ function World.Start(context)
 end
 
 return World
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX56"><Properties><string name="Name">Moves</string><ProtectedString name="Source"><![CDATA[-- Moves (ModuleScript) — StarterPlayerScripts.CityClient.Moves
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX60"><Properties><string name="Name">Moves</string><ProtectedString name="Source"><![CDATA[-- Moves (ModuleScript) — StarterPlayerScripts.CityClient.Moves
 -- Sprinting and stamina. Hold Shift (or the Sprint button) to run: it uses
 -- stamina, which refills when you stop. Your fitness level (from the server,
 -- see Shared.Fitness) sets how much stamina you have, how fast it refills and
@@ -31429,7 +33292,7 @@ function Moves.Start(context)
 end
 
 return Moves
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX57"><Properties><string name="Name">Gamepad</string><ProtectedString name="Source"><![CDATA[-- Gamepad (ModuleScript) — StarterPlayerScripts.CityClient.Gamepad
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX61"><Properties><string name="Name">Gamepad</string><ProtectedString name="Source"><![CDATA[-- Gamepad (ModuleScript) — StarterPlayerScripts.CityClient.Gamepad
 -- Console / controller support (Xbox, PlayStation, any gamepad):
 --   R2 attack · hold L2 block · L3 sprint (click to toggle) · R1 / L1 next /
 --   previous weapon · D-pad ▲ phone · ▼ map · ◀ help · ▶ wardrobe ·
@@ -31696,7 +33559,7 @@ function Gamepad.Start(context)
 end
 
 return Gamepad
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX58"><Properties><string name="Name">Water</string><ProtectedString name="Source"><![CDATA[-- Water (ModuleScript) — StarterPlayerScripts.CityClient.Water
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX62"><Properties><string name="Name">Water</string><ProtectedString name="Source"><![CDATA[-- Water (ModuleScript) — StarterPlayerScripts.CityClient.Water
 -- Fish you can see: schools of fish swim around under the surface of Mirror
 -- Lake (and koi in the park ponds). Every "Water" part (see Landscape and
 -- Places) gets its own fish: bodies with a tail that sways as they swim, a fin
@@ -31863,4 +33726,1130 @@ function Water.Start()
 end
 
 return Water
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX63"><Properties><string name="Name">Traffic</string><ProtectedString name="Source"><![CDATA[-- Traffic (ModuleScript) — StarterPlayerScripts.CityClient.Traffic
+-- Cars and city buses driving the streets around you: they keep to the right
+-- lane, follow the car in front at a safe distance, stop at red lights
+-- downtown (the same cycle the traffic lights show), ease through the other
+-- intersections one at a time, turn corners in smooth arcs, and brake for
+-- people crossing (honking at you if you stand in the road). Buses pull up
+-- at every bus stop they pass. Headlights come on at night.
+--
+-- Each player's own screen runs the traffic near their camera, so it costs the
+-- server nothing. The cars are solid for you (and for your own car).
+
+local CollectionService = game:GetService("CollectionService")
+local Lighting = game:GetService("Lighting")
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+
+local Traffic = {}
+Traffic.Cars = {}
+Traffic.Walkers = {}
+Traffic.MaxCars = 26
+Traffic.Radius = 380
+
+local player = Players.LocalPlayer
+local folder
+local S, N, ROAD, LANE = 134, 5, 26, 3.4
+local lo, hi -- road indices
+local stops = {}
+local rng = Random.new()
+
+local COLORS = {
+	Color3.fromRGB(214, 60, 60), Color3.fromRGB(60, 116, 214), Color3.fromRGB(236, 236, 236), Color3.fromRGB(36, 36, 40),
+	Color3.fromRGB(246, 196, 60), Color3.fromRGB(80, 176, 110), Color3.fromRGB(150, 150, 156), Color3.fromRGB(120, 60, 150),
+	Color3.fromRGB(190, 190, 196), Color3.fromRGB(30, 50, 90),
+}
+
+local function part(parent, name, size, cf, color, material, shape)
+	local p = Instance.new("Part")
+	p.Name = name
+	p.Size = size
+	p.CFrame = cf
+	p.Color = color
+	p.Material = material or Enum.Material.SmoothPlastic
+	p.Anchored = true
+	p.CanCollide = false
+	p.CanQuery = false
+	p.CanTouch = false
+	p.TopSurface = Enum.SurfaceType.Smooth
+	p.BottomSurface = Enum.SurfaceType.Smooth
+	if shape then
+		p.Shape = shape
+	end
+	p.Parent = parent
+	return p
+end
+
+-- a car (or a bus) as parts laid out around its own origin; the parts are moved
+-- together every frame (offsets kept in `Parts`)
+local function build(kind)
+	local m = Instance.new("Model")
+	m.Name = if kind == "bus" then "TrafficBus" else "TrafficCar"
+	local parts = {}
+	local function add(name, size, offset, color, material, shape, solid)
+		local p = part(m, name, size, offset, color, material, shape)
+		if solid then
+			p.CanCollide = true
+		end
+		table.insert(parts, { Part = p, Offset = offset })
+		return p
+	end
+	local glass = Color3.fromRGB(40, 50, 60)
+	local lights = {}
+	if kind == "bus" then
+		local body = Color3.fromRGB(240, 190, 40)
+		add("Body", Vector3.new(7, 7, 26), CFrame.new(0, 4.6, 0), body, nil, nil, true)
+		add("Stripe", Vector3.new(7.05, 1, 26.05), CFrame.new(0, 3.2, 0), Color3.fromRGB(40, 60, 110))
+		for _, sx in ipairs({ -1, 1 }) do
+			add("Windows", Vector3.new(0.1, 2.2, 22), CFrame.new(sx * 3.52, 6, 1), glass, Enum.Material.Glass)
+			for _, sz in ipairs({ -1, 1 }) do
+				add("Wheel", Vector3.new(1, 3, 3), CFrame.new(sx * 3.2, 1.5, sz * 9) * CFrame.Angles(0, 0, math.rad(90)), Color3.fromRGB(22, 22, 25), Enum.Material.Rubber, Enum.PartType.Cylinder)
+			end
+			table.insert(lights, add("Headlight", Vector3.new(1.4, 0.7, 0.2), CFrame.new(sx * 2.4, 2.6, -13.05), Color3.fromRGB(255, 250, 220), Enum.Material.Neon))
+		end
+		add("Windshield", Vector3.new(6.4, 3, 0.2), CFrame.new(0, 5.8, -13.05), glass, Enum.Material.Glass)
+		local sign = add("RouteSign", Vector3.new(4, 1, 0.1), CFrame.new(0, 7.6, -13.1), Color3.fromRGB(20, 20, 20), Enum.Material.Neon)
+		sign.Color = Color3.fromRGB(255, 170, 40)
+	else
+		local color = COLORS[rng:NextInteger(1, #COLORS)]
+		local van = rng:NextNumber() < 0.15
+		local long = if van then 13 else 11
+		local tall = if van then 3.4 else 2.2
+		add("Body", Vector3.new(6, tall, long), CFrame.new(0, 1.2 + tall / 2, 0), color, nil, nil, true)
+		local cz = if van then 1.5 else 0.6
+		add("Cabin", Vector3.new(5.4, 2, 5.6), CFrame.new(0, 2.3 + tall, cz), color:Lerp(Color3.new(0, 0, 0), 0.08))
+		add("Windshield", Vector3.new(5, 1.7, 0.2), CFrame.new(0, 2.3 + tall, cz - 2.85), glass, Enum.Material.Glass)
+		add("RearWindow", Vector3.new(5, 1.5, 0.2), CFrame.new(0, 2.3 + tall, cz + 2.85), glass, Enum.Material.Glass)
+		for _, sx in ipairs({ -1, 1 }) do
+			add("SideWindow", Vector3.new(0.2, 1.5, 4.6), CFrame.new(sx * 2.72, 2.3 + tall, cz), glass, Enum.Material.Glass)
+			for _, sz in ipairs({ -1, 1 }) do
+				add("Wheel", Vector3.new(1, 2.4, 2.4), CFrame.new(sx * 2.8, 1.2, sz * (long / 2 - 2.2)) * CFrame.Angles(0, 0, math.rad(90)), Color3.fromRGB(22, 22, 25), Enum.Material.Rubber, Enum.PartType.Cylinder)
+			end
+			table.insert(lights, add("Headlight", Vector3.new(1.2, 0.6, 0.2), CFrame.new(sx * 2, 1.9 + tall / 2, -long / 2 - 0.05), Color3.fromRGB(255, 250, 220), Enum.Material.Neon))
+			add("Taillight", Vector3.new(1.2, 0.5, 0.2), CFrame.new(sx * 2, 1.9 + tall / 2, long / 2 + 0.05), Color3.fromRGB(200, 30, 30), Enum.Material.Neon)
+		end
+	end
+	local beam = Instance.new("SpotLight")
+	beam.Face = Enum.NormalId.Front
+	beam.Range = 40
+	beam.Angle = 60
+	beam.Brightness = 2
+	beam.Color = Color3.fromRGB(255, 244, 220)
+	beam.Enabled = false
+	beam.Parent = lights[1]
+	m.Parent = folder
+	return m, parts, beam, (if kind == "bus" then 26 else 11)
+end
+
+--------------------------------------------------------------------------------
+-- The road grid: intersections at ((a + 0.5) * S, (b + 0.5) * S)
+--------------------------------------------------------------------------------
+local function node(a, b)
+	return Vector3.new((a + 0.5) * S, 0.1, (b + 0.5) * S) -- (the top of the road)
+end
+local function right(dir)
+	return Vector3.new(-dir.Z, 0, dir.X)
+end
+local function inGrid(a, b)
+	return a >= lo and a <= hi and b >= lo and b <= hi
+end
+-- downtown intersections have traffic lights (see Streets)
+local function hasLights(a, b)
+	return math.abs(a + 0.5) <= 2 and math.abs(b + 0.5) <= 2
+end
+-- the same cycle as the lights on screen (see World): 16 seconds, X then Z
+local function green(dir)
+	local t = workspace:GetServerTimeNow() % 16
+	local phase = if math.abs(dir.X) > 0.5 then t else (t + 8) % 16
+	return phase < 6.5
+end
+
+local DIRS = { Vector3.new(1, 0, 0), Vector3.new(-1, 0, 0), Vector3.new(0, 0, 1), Vector3.new(0, 0, -1) }
+
+-- where a car enters / leaves an intersection, in its lane
+local function entry(a, b, dir)
+	return node(a, b) - dir * (ROAD / 2 + 1) + right(dir) * LANE
+end
+local function exit(a, b, dir)
+	return node(a, b) + dir * (ROAD / 2 + 1) + right(dir) * LANE
+end
+
+-- pick where to go at the next intersection (no U-turns, stay on the grid)
+local function nextDir(car)
+	local a, b = car.A, car.B
+	local options = {}
+	for _, d in ipairs(DIRS) do
+		if d:Dot(car.Dir) > -0.5 then
+			local na, nb = a + math.floor(d.X + 0.5), b + math.floor(d.Z + 0.5)
+			if inGrid(na, nb) then
+				local w = if d:Dot(car.Dir) > 0.5 then 3 else 1
+				for _ = 1, w do
+					table.insert(options, d)
+				end
+			end
+		end
+	end
+	if #options == 0 then
+		return -car.Dir -- the edge of town: turn around
+	end
+	return options[rng:NextInteger(1, #options)]
+end
+
+local function place(car, cf)
+	car.CF = cf
+	for _, p in ipairs(car.Parts) do
+		p.Part.CFrame = cf * p.Offset
+	end
+end
+
+-- a car on the segment toward intersection (A, B), heading Dir
+local function spawnCar(kind, a, b, dir, s)
+	local m, parts, beam, length = build(kind)
+	local car = {
+		Model = m, Parts = parts, Beam = beam, Kind = kind, Length = length,
+		A = a, B = b, Dir = dir, Phase = "road", S = s or 0,
+		Speed = 0, Max = if kind == "bus" then 15 else rng:NextNumber(17, 24),
+	}
+	local from = exit(a - math.floor(dir.X + 0.5), b - math.floor(dir.Z + 0.5), dir)
+	car.From = from
+	car.To = entry(a, b, dir)
+	car.Len = (car.To - car.From).Magnitude
+	place(car, CFrame.lookAt(from + dir * car.S, from + dir * (car.S + 1)))
+	table.insert(Traffic.Cars, car)
+	return car
+end
+
+local function despawn(car)
+	car.Model:Destroy()
+	local i = table.find(Traffic.Cars, car)
+	if i then
+		table.remove(Traffic.Cars, i)
+	end
+end
+
+-- somebody (you, or a citizen) standing in the road just ahead?
+local function blocked(car, camPos)
+	local pos, dir = car.CF.Position, car.CF.LookVector
+	local function inFront(p)
+		local rel = p - pos
+		local ahead = rel:Dot(dir)
+		local side = math.abs(rel:Dot(right(dir)))
+		return ahead > 0 and ahead < car.Length / 2 + 9 and side < 4 and math.abs(rel.Y) < 8
+	end
+	local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+	if root and inFront(root.Position) then
+		return "you"
+	end
+	if (pos - camPos).Magnitude < 160 then
+		for _, p in ipairs(Traffic.Walkers) do
+			if (p - pos).Magnitude < 20 and inFront(p) then
+				return "someone"
+			end
+		end
+	end
+	return nil
+end
+
+local function gapAhead(car)
+	local best = math.huge
+	local pos, dir = car.CF.Position, car.CF.LookVector
+	for _, other in ipairs(Traffic.Cars) do
+		if other ~= car then
+			local rel = other.CF.Position - pos
+			local ahead = rel:Dot(dir)
+			if ahead > 0 and ahead < 40 and math.abs(rel:Dot(right(dir))) < 2.6 then
+				best = math.min(best, ahead - (car.Length + other.Length) / 2)
+			end
+		end
+	end
+	return best
+end
+
+local function intersectionBusy(car)
+	for _, other in ipairs(Traffic.Cars) do
+		if other ~= car and other.Phase == "turn" and other.A == car.A and other.B == car.B then
+			return true
+		end
+	end
+	return false
+end
+
+-- a driver waiting on you: the headlights flash
+local function honk(car)
+	if os.clock() < (car.NextHonk or 0) then
+		return
+	end
+	car.NextHonk = os.clock() + 3
+	car.Honked = os.clock()
+	if Traffic.OnHonk then
+		Traffic.OnHonk(car)
+	end
+end
+
+local function drive(car, dt, camPos, night)
+	-- how fast do we want to go?
+	local want = car.Max
+	local gap = gapAhead(car)
+	if gap < 18 then
+		want = math.min(want, math.max(0, (gap - 3) * 1.4))
+	end
+	local who = blocked(car, camPos)
+	if who then
+		want = 0
+		if who == "you" then
+			honk(car)
+		end
+	end
+	if car.Phase == "road" then
+		local left = car.Len - car.S
+		-- red light (or someone already turning in an unlit intersection)
+		if left < 22 then
+			local stop = false
+			if hasLights(car.A, car.B) then
+				stop = not green(car.Dir) and left > 1.5
+			else
+				stop = intersectionBusy(car) and left > 0.5
+			end
+			if stop then
+				want = math.min(want, math.max(0, (left - 1.5) * 1.3))
+			elseif not hasLights(car.A, car.B) then
+				want = math.min(want, 10) -- slow down for the crossing
+			end
+		end
+		-- buses pull up at their stops
+		if car.Kind == "bus" then
+			for k, p in ipairs(stops) do
+				local rel = p - car.CF.Position
+				local ahead = rel:Dot(car.Dir)
+				if math.abs(rel:Dot(right(car.Dir))) < 2 and ahead > -1 and ahead < 18 and car.LastStop ~= k then
+					want = math.min(want, math.max(0, ahead * 1.2))
+					if ahead < 1.5 and car.Speed < 0.5 then
+						car.LastStop = k
+						car.HoldUntil = os.clock() + 4
+					end
+				end
+			end
+			if car.HoldUntil and os.clock() < car.HoldUntil then
+				want = 0
+			end
+		end
+	end
+	-- smooth acceleration and braking
+	local accel = if want > car.Speed then 7 else 16
+	car.Speed += math.clamp(want - car.Speed, -accel * dt, accel * dt)
+	local step = car.Speed * dt
+	if car.Phase == "road" then
+		car.S += step
+		if car.S >= car.Len then
+			-- into the intersection: an arc to the next road
+			local nd = nextDir(car)
+			car.Next = nd
+			car.Phase = "turn"
+			car.U = 0
+			car.P0 = entry(car.A, car.B, car.Dir)
+			car.P2 = exit(car.A, car.B, nd)
+			if nd:Dot(car.Dir) < -0.5 then
+				car.P1 = node(car.A, car.B) + car.Dir * 4
+			elseif nd:Dot(car.Dir) > 0.5 then
+				car.P1 = (car.P0 + car.P2) / 2
+			else
+				-- where the two lanes cross
+				local c = node(car.A, car.B)
+				local laneIn = c + right(car.Dir) * LANE
+				local laneOut = c + right(nd) * LANE
+				car.P1 = Vector3.new(if math.abs(car.Dir.X) > 0.5 then laneOut.X else laneIn.X, 0, if math.abs(car.Dir.Z) > 0.5 then laneOut.Z else laneIn.Z)
+			end
+			car.TurnLen = (car.P1 - car.P0).Magnitude + (car.P2 - car.P1).Magnitude
+		else
+			local p = car.From + car.Dir * car.S
+			place(car, CFrame.lookAt(p, p + car.Dir))
+		end
+	end
+	if car.Phase == "turn" then
+		car.U += step / math.max(1, car.TurnLen)
+		if car.U >= 1 then
+			-- out on the next road
+			local nd = car.Next
+			local na, nb = car.A + math.floor(nd.X + 0.5), car.B + math.floor(nd.Z + 0.5)
+			car.From = exit(car.A, car.B, nd)
+			car.A, car.B, car.Dir = na, nb, nd
+			car.To = entry(na, nb, nd)
+			car.Len = (car.To - car.From).Magnitude
+			car.S = 0
+			car.Phase = "road"
+			place(car, CFrame.lookAt(car.From, car.From + nd))
+		else
+			local u = car.U
+			local p = car.P0 * (1 - u) ^ 2 + car.P1 * 2 * u * (1 - u) + car.P2 * u * u
+			local d = (car.P1 - car.P0) * 2 * (1 - u) + (car.P2 - car.P1) * 2 * u
+			if d.Magnitude < 0.01 then
+				d = car.Dir
+			end
+			place(car, CFrame.lookAt(p, p + d.Unit))
+		end
+	end
+	-- the wheels turn, the headlights come on at night
+	if car.Beam.Enabled ~= night then
+		car.Beam.Enabled = night
+	end
+end
+
+-- keep the right number of cars around the camera
+local function populate(camPos)
+	for k = #Traffic.Cars, 1, -1 do
+		local car = Traffic.Cars[k]
+		if (car.CF.Position - camPos).Magnitude > Traffic.Radius + 60 then
+			despawn(car)
+		end
+	end
+	local buses = 0
+	for _, car in ipairs(Traffic.Cars) do
+		if car.Kind == "bus" then
+			buses += 1
+		end
+	end
+	local tries = 0
+	while #Traffic.Cars < Traffic.MaxCars and tries < 6 do
+		tries += 1
+		local a, b = rng:NextInteger(lo, hi), rng:NextInteger(lo, hi)
+		local dir = DIRS[rng:NextInteger(1, 4)]
+		local pa, pb = a - math.floor(dir.X + 0.5), b - math.floor(dir.Z + 0.5)
+		if inGrid(pa, pb) then
+			local s = rng:NextNumber(5, S - ROAD - 20)
+			local from = exit(pa, pb, dir)
+			local pos = from + dir * s
+			local d = (pos - camPos).Magnitude
+			local free = true
+			for _, other in ipairs(Traffic.Cars) do
+				if (other.CF.Position - pos).Magnitude < 16 then
+					free = false
+					break
+				end
+			end
+			if free and d < Traffic.Radius and d > 70 then
+				local bus = buses < 2 and rng:NextNumber() < 0.3
+				spawnCar(if bus then "bus" else "car", a, b, dir, s)
+				if bus then
+					buses += 1
+				end
+			end
+		end
+	end
+end
+
+function Traffic.Step(dt)
+	local camera = workspace.CurrentCamera
+	if not camera or not folder then
+		return
+	end
+	local camPos = camera.CFrame.Position
+	local h = Lighting.ClockTime
+	local night = h >= 18.5 or h < 6.3
+	-- where everyone on foot is (once a frame)
+	local walkers = {}
+	for _, m in ipairs(CollectionService:GetTagged("Citizen")) do
+		local r = m:FindFirstChild("HumanoidRootPart")
+		if r and (r.Position - camPos).Magnitude < 200 then
+			table.insert(walkers, r.Position)
+		end
+	end
+	Traffic.Walkers = walkers
+	for _, car in ipairs(table.clone(Traffic.Cars)) do
+		drive(car, dt, camPos, night)
+	end
+	populate(camPos)
+end
+
+function Traffic.Start()
+	local info = ReplicatedStorage:FindFirstChild("CityInfo")
+	if info then
+		S = info:GetAttribute("Spacing") or S
+		N = info:GetAttribute("Blocks") or N
+		ROAD = info:GetAttribute("Road") or ROAD
+		LANE = info:GetAttribute("Lane") or LANE
+		local f = info:FindFirstChild("BusStops")
+		if f then
+			for _, v in ipairs(f:GetChildren()) do
+				table.insert(stops, v.Value)
+			end
+		end
+	end
+	lo, hi = -N - 1, N
+	folder = Instance.new("Folder")
+	folder.Name = "LocalTraffic"
+	folder.Parent = workspace
+	RunService.Heartbeat:Connect(function(dt)
+		local ok, err = pcall(Traffic.Step, math.min(dt, 0.1))
+		if not ok then
+			warn("[Traffic] " .. tostring(err))
+		end
+	end)
+end
+
+return Traffic
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX64"><Properties><string name="Name">Rides</string><ProtectedString name="Source"><![CDATA[-- Rides (ModuleScript) — StarterPlayerScripts.CityClient.Rides
+-- Makes Funland go round on your screen: the Ferris wheel turns (its gondolas
+-- hang straight down), the carousel spins while the horses bob up and down,
+-- and the drop tower climbs... and falls. Everyone's screen uses the server's
+-- clock, so all players see the rides in the same place, and whoever sits in a
+-- ride seat goes round with it (citizens riding are moved along too).
+--
+-- It also runs the Sky Obby's moving platforms and spinning bars, and sends
+-- you back to your last checkpoint if you touch lava or a bar, or fall off.
+
+local CollectionService = game:GetService("CollectionService")
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+
+local Rides = {}
+local player = Players.LocalPlayer
+local RANGE = 520
+
+local rides = {} -- [model] = { Parts = { { Part, Orig, Pivot, Bob, Phase } } }
+local movers = {} -- [part] = original CFrame
+local seats -- [name] = seat
+
+local function capture(model)
+	local info = { Parts = {} }
+	for _, p in ipairs(model:GetDescendants()) do
+		if p:IsA("BasePart") then
+			table.insert(info.Parts, {
+				Part = p, Orig = p.CFrame, Pivot = p:GetAttribute("Pivot"), Spin = p:GetAttribute("Spin"),
+				Bob = p:GetAttribute("Bob"), Phase = p:GetAttribute("BobPhase") or 0, Lift = p:GetAttribute("Lift"),
+			})
+		end
+	end
+	rides[model] = info
+	return info
+end
+
+local function rotation(axis, angle)
+	if math.abs(axis.X) > 0.5 then
+		return CFrame.Angles(angle, 0, 0)
+	elseif math.abs(axis.Z) > 0.5 then
+		return CFrame.Angles(0, 0, angle)
+	end
+	return CFrame.Angles(0, angle, 0)
+end
+
+-- the drop tower's height over its 24-second cycle
+function Rides.DropHeight(t, top)
+	local c = t % 24
+	if c < 4 then
+		return 0 -- boarding
+	elseif c < 14 then
+		local u = (c - 4) / 10
+		return top * (1 - math.cos(u * math.pi)) / 2 -- the slow climb
+	elseif c < 17 then
+		return top -- the wait at the top...
+	elseif c < 18.3 then
+		local u = (c - 17) / 1.3
+		return top * (1 - u * u) -- FREEFALL
+	elseif c < 20 then
+		local u = (c - 18.3) / 1.7
+		return math.abs(math.sin(u * math.pi)) * 3 * (1 - u) -- a little bounce
+	end
+	return 0
+end
+
+local function animate(model, info, t)
+	local kind = model:GetAttribute("Kind")
+	local hub = model:GetAttribute("Hub")
+	if kind == "wheel" or kind == "spin" then
+		local axis = model:GetAttribute("Axis") or Vector3.new(0, 1, 0)
+		local angle = t * (model:GetAttribute("Speed") or 0.2)
+		local rot = rotation(axis, angle)
+		local around = CFrame.new(hub) * rot * CFrame.new(-hub)
+		for _, e in ipairs(info.Parts) do
+			if e.Pivot then
+				-- a gondola: its hanging point goes round, it stays upright
+				local pivot = around * e.Pivot
+				e.Part.CFrame = e.Orig + (pivot - e.Pivot)
+			elseif e.Spin then
+				local cf = around * e.Orig
+				if e.Bob then
+					cf = cf + Vector3.new(0, math.sin(t * 2.2 + e.Phase) * e.Bob, 0)
+				end
+				e.Part.CFrame = cf
+			end
+		end
+	elseif kind == "drop" then
+		local h = Rides.DropHeight(t, model:GetAttribute("Height") or 60)
+		for _, e in ipairs(info.Parts) do
+			if e.Lift then
+				e.Part.CFrame = e.Orig + Vector3.new(0, h, 0)
+			end
+		end
+	end
+end
+
+local function seatByName(name)
+	if not seats then
+		seats = {}
+		for _, s in ipairs(CollectionService:GetTagged("CitySeat")) do
+			seats[s.Name] = s
+		end
+	end
+	local s = seats[name]
+	if s and not s.Parent then
+		seats = nil
+		return nil
+	end
+	return s
+end
+
+-- citizens on a ride go round in their seats
+local function riders()
+	for _, m in ipairs(CollectionService:GetTagged("Citizen")) do
+		local name = m:GetAttribute("RideSeat")
+		if name then
+			local seat = seatByName(name)
+			local root = m:FindFirstChild("HumanoidRootPart")
+			if seat and root then
+				local scale = m:GetAttribute("Scale") or 1
+				root.CFrame = CFrame.new(seat.Position + Vector3.new(0, seat.Size.Y / 2 + 0.55 * scale, 0)) * (seat.CFrame - seat.Position)
+			end
+		end
+	end
+end
+
+--------------------------------------------------------------------------------
+-- The Sky Obby
+--------------------------------------------------------------------------------
+local function inside(part, pos, pad)
+	local rel = part.CFrame:PointToObjectSpace(pos)
+	local half = part.Size / 2 + pad
+	return math.abs(rel.X) < half.X and math.abs(rel.Y) < half.Y and math.abs(rel.Z) < half.Z
+end
+
+function Rides.ObbyStep(t)
+	for p in pairs(movers) do
+		if not p.Parent then
+			movers[p] = nil
+		end
+	end
+	for _, p in ipairs(CollectionService:GetTagged("ObbyMover")) do
+		movers[p] = movers[p] or p.CFrame
+		local axis = p:GetAttribute("MoveAxis") or Vector3.new(1, 0, 0)
+		local speed, dist = p:GetAttribute("MoveSpeed") or 1, p:GetAttribute("MoveDist") or 6
+		p.CFrame = movers[p] + axis * math.sin(t * speed) * dist
+		-- (a velocity on the platform carries whoever stands on it along)
+		p.AssemblyLinearVelocity = axis * math.cos(t * speed) * speed * dist
+	end
+	for _, p in ipairs(CollectionService:GetTagged("ObbySpinner")) do
+		movers[p] = movers[p] or p.CFrame
+		p.CFrame = movers[p] * CFrame.Angles(0, t * (p:GetAttribute("SpinSpeed") or 1.5), 0)
+	end
+	-- in a run: lava, the bars and falling send you back to your checkpoint
+	local cp = player:GetAttribute("ObbyCheckpoint")
+	local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+	if not cp or not root then
+		return nil
+	end
+	local fail
+	if root.Position.Y < cp.Y - 6 then
+		fail = "fell"
+	else
+		for _, p in ipairs(CollectionService:GetTagged("ObbyKill")) do
+			if inside(p, root.Position, Vector3.new(0.8, 2.6, 0.8)) then
+				fail = if p.Name == "ObbySpinner" then "bar" else "lava"
+				break
+			end
+		end
+	end
+	if fail and os.clock() - (Rides.LastFail or 0) > 0.6 then
+		Rides.LastFail = os.clock()
+		Rides.Fails = (Rides.Fails or 0) + 1
+		root.CFrame = CFrame.new(cp + Vector3.new(0, 3.5, 0))
+		root.AssemblyLinearVelocity = Vector3.zero
+		if Rides.OnFail then
+			Rides.OnFail(fail)
+		end
+		return fail
+	end
+	return nil
+end
+
+function Rides.Step()
+	local camera = workspace.CurrentCamera
+	if not camera then
+		return
+	end
+	local camPos = camera.CFrame.Position
+	local t = workspace:GetServerTimeNow()
+	for _, model in ipairs(CollectionService:GetTagged("Ride")) do
+		local hub = model:GetAttribute("Hub")
+		if hub and (hub - camPos).Magnitude < RANGE then
+			local info = rides[model]
+			-- (streamed out and back in: the parts are new, start over)
+			if info and (#info.Parts == 0 or not info.Parts[1].Part.Parent) then
+				info = nil
+			end
+			animate(model, info or capture(model), t)
+		end
+	end
+	riders()
+	Rides.ObbyStep(t)
+end
+
+function Rides.Start(ctx)
+	Rides.OnFail = function(why)
+		if ctx and ctx.Hud then
+			ctx.Hud.Toast(if why == "fell" then "🪂" else "🔥", if why == "fell" then "You fell!" else "Ouch!", "Back to your last checkpoint.", Color3.fromRGB(255, 140, 60))
+		end
+	end
+	local step = RunService.PreSimulation or RunService.Stepped
+	step:Connect(function()
+		local ok, err = pcall(Rides.Step)
+		if not ok then
+			warn("[Rides] " .. tostring(err))
+		end
+	end)
+end
+
+return Rides
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX65"><Properties><string name="Name">Pets</string><ProtectedString name="Source"><![CDATA[-- Pets (ModuleScript) — StarterPlayerScripts.CityClient.Pets
+-- Draws everyone's pets on your screen (see PetService): the pet walks at its
+-- owner's heels with its legs going, sits down and wags its tail when they
+-- stop, and wears a name tag. The parrot flies at its owner's shoulder, and
+-- the golden pup sparkles. Citizens walking their dogs get one too, and the
+-- pens at the adoption stand have pets waiting for a home.
+
+local CollectionService = game:GetService("CollectionService")
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+
+local Pets = {}
+local pets = {} -- [owner (player or model or display part)] = pet
+Pets.All = pets
+local folder
+local RANGE = 170
+
+local function rgb(r, g, b)
+	return Color3.fromRGB(r, g, b)
+end
+
+-- what each kind looks like: colors, size, ears, tail, legs
+local KINDS = {
+	Dog = { Body = rgb(150, 100, 60), Accent = rgb(240, 225, 200), Scale = 1, Ears = "flop", Tail = "up" },
+	Cat = { Body = rgb(130, 130, 136), Accent = rgb(240, 240, 240), Scale = 0.8, Ears = "point", Tail = "long" },
+	Hamster = { Body = rgb(220, 170, 110), Accent = rgb(250, 240, 225), Scale = 0.45, Ears = "round", Tail = "none", Round = true },
+	Fox = { Body = rgb(225, 110, 40), Accent = rgb(250, 250, 245), Scale = 0.85, Ears = "point", Tail = "bushy" },
+	Duck = { Body = rgb(250, 220, 60), Accent = rgb(250, 150, 40), Scale = 0.6, Ears = "none", Tail = "none", Round = true, Beak = true },
+	Bunny = { Body = rgb(245, 245, 245), Accent = rgb(250, 190, 200), Scale = 0.6, Ears = "long", Tail = "puff", Round = true },
+	Parrot = { Body = rgb(40, 190, 90), Accent = rgb(230, 50, 50), Scale = 0.55, Ears = "none", Tail = "feather", Flying = true, Beak = true },
+	GoldenPup = { Body = rgb(245, 200, 60), Accent = rgb(255, 245, 200), Scale = 1, Ears = "flop", Tail = "up", Shiny = true },
+}
+Pets.KINDS = KINDS
+
+local function part(m, parts, name, size, offset, color, shape, material)
+	local p = Instance.new("Part")
+	p.Name = name
+	p.Size = size
+	p.Color = color
+	p.Material = material or Enum.Material.SmoothPlastic
+	p.Anchored, p.CanCollide, p.CanQuery, p.CanTouch = true, false, false, false
+	if shape then
+		p.Shape = shape
+	end
+	p.Parent = m
+	table.insert(parts, { Part = p, Offset = offset, Role = name })
+	return p
+end
+
+local function build(kind, name)
+	local k = KINDS[kind] or KINDS.Dog
+	local s = k.Scale
+	local m = Instance.new("Model")
+	m.Name = "Pet_" .. kind
+	local parts = {}
+	local legH = if k.Round then 0.35 * s else 1 * s
+	local body = if k.Round then Vector3.new(1.3, 1.2, 1.5) * s else Vector3.new(1.2, 1, 2.2) * s
+	local by = legH + body.Y / 2
+	local material = if k.Shiny then Enum.Material.Metal else Enum.Material.SmoothPlastic
+	part(m, parts, "Body", body, CFrame.new(0, by, 0), k.Body, if k.Round then Enum.PartType.Ball else nil, material)
+	local headY, headZ = by + body.Y * 0.55, -body.Z * 0.5
+	if k.Round then
+		headY, headZ = by + body.Y * 0.45, -body.Z * 0.35
+	end
+	local hs = (if k.Round then 0.9 else 1) * s
+	part(m, parts, "Head", Vector3.one * hs, CFrame.new(0, headY, headZ), k.Body, if k.Round then Enum.PartType.Ball else nil, material)
+	if k.Beak then
+		part(m, parts, "Beak", Vector3.new(0.35, 0.25, 0.5) * s, CFrame.new(0, headY - 0.05 * s, headZ - hs * 0.55), rgb(250, 150, 40))
+	elseif not k.Round then
+		part(m, parts, "Snout", Vector3.new(0.55, 0.45, 0.5) * s, CFrame.new(0, headY - 0.15 * s, headZ - 0.65 * s), k.Accent)
+		part(m, parts, "Nose", Vector3.new(0.2, 0.15, 0.1) * s, CFrame.new(0, headY - 0.02 * s, headZ - 0.92 * s), rgb(30, 30, 30))
+	end
+	for _, sx in ipairs({ -1, 1 }) do
+		part(m, parts, "Eye", Vector3.one * 0.16 * s, CFrame.new(sx * 0.24 * s, headY + 0.15 * s, headZ - hs * 0.48), rgb(20, 20, 20), Enum.PartType.Ball)
+		if k.Ears == "flop" then
+			part(m, parts, "Ear", Vector3.new(0.18, 0.6, 0.4) * s, CFrame.new(sx * 0.55 * s, headY + 0.05 * s, headZ + 0.05 * s) * CFrame.Angles(0, 0, sx * 0.25), k.Body:Lerp(rgb(0, 0, 0), 0.25))
+		elseif k.Ears == "point" then
+			part(m, parts, "Ear", Vector3.new(0.3, 0.45, 0.15) * s, CFrame.new(sx * 0.3 * s, headY + 0.6 * s, headZ + 0.1 * s) * CFrame.Angles(0, 0, sx * -0.2), k.Body)
+		elseif k.Ears == "long" then
+			part(m, parts, "Ear", Vector3.new(0.25, 1.2, 0.15) * s, CFrame.new(sx * 0.2 * s, headY + 0.95 * s, headZ + 0.1 * s) * CFrame.Angles(0, 0, sx * -0.12), k.Body)
+		elseif k.Ears == "round" then
+			part(m, parts, "Ear", Vector3.one * 0.35 * s, CFrame.new(sx * 0.32 * s, headY + 0.4 * s, headZ), k.Accent, Enum.PartType.Ball)
+		end
+	end
+	if not k.Flying then
+		for _, sx in ipairs({ -1, 1 }) do
+			for _, sz in ipairs({ -1, 1 }) do
+				local leg = part(m, parts, "Leg", Vector3.new(0.3 * s, legH, 0.3 * s), CFrame.new(sx * body.X * 0.32, legH / 2, sz * body.Z * 0.32), if k.Beak then rgb(250, 150, 40) else k.Body:Lerp(rgb(0, 0, 0), 0.1))
+				leg:SetAttribute("Side", sx * sz)
+			end
+		end
+	else
+		for _, sx in ipairs({ -1, 1 }) do
+			local wing = part(m, parts, "Wing", Vector3.new(0.2, 0.7, 1.1) * s, CFrame.new(sx * 0.7 * s, by, 0.1 * s), k.Accent)
+			wing:SetAttribute("Side", sx)
+		end
+	end
+	local tailBase = CFrame.new(0, by + body.Y * 0.2, body.Z * 0.5)
+	if k.Tail == "up" then
+		part(m, parts, "Tail", Vector3.new(0.22, 0.22, 1) * s, tailBase * CFrame.Angles(math.rad(40), 0, 0) * CFrame.new(0, 0, 0.45 * s), k.Body)
+	elseif k.Tail == "long" then
+		part(m, parts, "Tail", Vector3.new(0.18, 0.18, 1.5) * s, tailBase * CFrame.Angles(math.rad(55), 0, 0) * CFrame.new(0, 0, 0.7 * s), k.Body)
+	elseif k.Tail == "bushy" then
+		part(m, parts, "Tail", Vector3.new(0.6, 0.6, 1.6) * s, tailBase * CFrame.Angles(math.rad(25), 0, 0) * CFrame.new(0, 0, 0.75 * s), k.Body)
+		part(m, parts, "TailTip", Vector3.new(0.62, 0.62, 0.5) * s, tailBase * CFrame.Angles(math.rad(25), 0, 0) * CFrame.new(0, 0, 1.45 * s), k.Accent)
+	elseif k.Tail == "puff" then
+		part(m, parts, "Tail", Vector3.one * 0.5 * s, tailBase * CFrame.new(0, 0, 0.1), rgb(255, 255, 255), Enum.PartType.Ball)
+	elseif k.Tail == "feather" then
+		part(m, parts, "Tail", Vector3.new(0.4, 0.1, 1.2) * s, tailBase * CFrame.Angles(math.rad(-20), 0, 0) * CFrame.new(0, 0, 0.5 * s), rgb(40, 110, 220))
+	end
+	if k.Shiny then
+		local sparkle = Instance.new("Sparkles")
+		sparkle.SparkleColor = rgb(255, 230, 120)
+		sparkle.Parent = parts[1].Part
+	end
+	if name then
+		local gui = Instance.new("BillboardGui")
+		gui.Size = UDim2.fromOffset(120, 24)
+		gui.StudsOffset = Vector3.new(0, 1.6 * s + 0.8, 0)
+		gui.AlwaysOnTop = false
+		gui.MaxDistance = 60
+		gui.LightInfluence = 0
+		local label = Instance.new("TextLabel")
+		label.BackgroundTransparency = 1
+		label.Size = UDim2.fromScale(1, 1)
+		label.Text = "🐾 " .. name
+		label.TextColor3 = Color3.new(1, 1, 1)
+		label.TextStrokeTransparency = 0.5
+		label.Font = Enum.Font.GothamBold
+		label.TextScaled = true
+		label.Parent = gui
+		gui.Adornee = parts[2].Part
+		gui.Parent = m
+	end
+	m.Parent = folder
+	return { Model = m, Parts = parts, Kind = kind, Spec = k, Name = name, Walk = 0 }
+end
+
+local function place(pet, cf, t, moving, sitting)
+	local k = pet.Spec
+	local s = k.Scale
+	local wag = math.sin(t * (if sitting then 9 else 6)) * (if sitting then 0.5 else 0.25)
+	pet.Walk += if moving then 0.2 else 0
+	local swing = if moving then math.sin(t * 12) * 0.6 else 0
+	local sit = if sitting and not k.Flying then CFrame.new(0, 0, 0.3 * s) * CFrame.Angles(math.rad(-18), 0, 0) else CFrame.new()
+	for _, e in ipairs(pet.Parts) do
+		local off = e.Offset
+		if e.Role == "Leg" then
+			off = off * CFrame.Angles(swing * (e.Part:GetAttribute("Side") or 1), 0, 0)
+		elseif e.Role == "Tail" or e.Role == "TailTip" then
+			off = CFrame.Angles(0, wag, 0) * off
+		elseif e.Role == "Wing" then
+			off = off * CFrame.Angles(0, 0, math.sin(t * 16) * 0.7 * (e.Part:GetAttribute("Side") or 1))
+		end
+		if e.Role ~= "Leg" then
+			off = sit * off
+		end
+		e.Part.CFrame = cf * off
+	end
+end
+
+local rayParams = RaycastParams.new()
+rayParams.FilterType = Enum.RaycastFilterType.Exclude
+local function groundBelow(pos, fallback)
+	local ok, hit = pcall(function()
+		return workspace:Raycast(pos + Vector3.new(0, 3, 0), Vector3.new(0, -12, 0), rayParams)
+	end)
+	if ok and hit then
+		return hit.Position.Y
+	end
+	return fallback
+end
+
+local function follow(pet, root, dt, t, ownerScale)
+	local k = pet.Spec
+	local rootCf = root.CFrame
+	local groundY = root.Position.Y - 3 * (ownerScale or 1)
+	local want
+	if k.Flying then
+		want = (rootCf * CFrame.new(1.8, 1.8, 0.4)).Position + Vector3.new(0, math.sin(t * 3) * 0.3, 0)
+	else
+		want = (rootCf * CFrame.new(2.4, 0, 2.8)).Position
+		want = Vector3.new(want.X, groundBelow(want, groundY), want.Z)
+	end
+	pet.Pos = pet.Pos or want
+	local d = (want - pet.Pos).Magnitude
+	if d > 45 then
+		pet.Pos = want -- (fell too far behind: catch up)
+	else
+		pet.Pos = pet.Pos:Lerp(want, 1 - math.exp(-dt * 5))
+	end
+	local moving = d > 0.9
+	local look = if moving then Vector3.new(want.X - pet.Pos.X, 0, want.Z - pet.Pos.Z) else Vector3.new(rootCf.LookVector.X, 0, rootCf.LookVector.Z)
+	if look.Magnitude > 0.01 then
+		pet.Look = (pet.Look or look.Unit):Lerp(look.Unit, math.min(1, dt * 8))
+	end
+	local dir = pet.Look or Vector3.new(0, 0, -1)
+	if dir.Magnitude < 0.01 then
+		dir = Vector3.new(0, 0, -1)
+	end
+	local base = if k.Flying then CFrame.lookAt(pet.Pos, pet.Pos + dir) else CFrame.lookAt(pet.Pos, pet.Pos + dir)
+	place(pet, base, t, moving, not moving)
+	pet.Moving = moving
+end
+
+local function drop(owner)
+	local pet = pets[owner]
+	if pet then
+		pet.Model:Destroy()
+		pets[owner] = nil
+	end
+end
+
+function Pets.Step(dt)
+	local camera = workspace.CurrentCamera
+	if not camera or not folder then
+		return
+	end
+	local camPos = camera.CFrame.Position
+	local t = os.clock()
+	local seen = {}
+	local function want(owner, kind, name, root, scale)
+		if not kind or not root or (root.Position - camPos).Magnitude > RANGE then
+			return
+		end
+		seen[owner] = true
+		local pet = pets[owner]
+		if pet and (pet.Kind ~= kind or pet.Name ~= name) then
+			drop(owner)
+			pet = nil
+		end
+		if not pet then
+			pet = build(kind, name)
+			pets[owner] = pet
+		end
+		follow(pet, root, dt, t, scale)
+	end
+	for _, p in ipairs(Players:GetPlayers()) do
+		local root = p.Character and p.Character:FindFirstChild("HumanoidRootPart")
+		want(p, p:GetAttribute("Pet"), p:GetAttribute("PetName"), root, 1)
+	end
+	for _, m in ipairs(CollectionService:GetTagged("Citizen")) do
+		local kind = m:GetAttribute("Pet")
+		if kind then
+			local root = m:FindFirstChild("HumanoidRootPart")
+			-- (dogs stay home while their owner sleeps or works indoors)
+			local action = m:GetAttribute("Action") or ""
+			if root and (action == "" or action == "wait" or action == "phone" or action == "sit" or action == "birdwatch" or action == "chat") then
+				want(m, kind, nil, root, m:GetAttribute("Scale") or 1)
+			end
+		end
+	end
+	-- the pets waiting at the adoption stand sit and wag
+	for _, d in ipairs(CollectionService:GetTagged("PetDisplay")) do
+		if (d.Position - camPos).Magnitude < RANGE then
+			seen[d] = true
+			local pet = pets[d]
+			if not pet then
+				pet = build(d:GetAttribute("Pet") or "Dog", nil)
+				pets[d] = pet
+			end
+			place(pet, CFrame.new(d.Position - Vector3.new(0, 1, 0)) * CFrame.Angles(0, math.sin(t * 0.3 + d.Position.X) * 0.8, 0), t, false, true)
+		end
+	end
+	for owner in pairs(pets) do
+		if not seen[owner] then
+			drop(owner)
+		end
+	end
+end
+
+function Pets.Start()
+	folder = Instance.new("Folder")
+	folder.Name = "LocalPets"
+	folder.Parent = workspace
+	rayParams.FilterDescendantsInstances = { folder }
+	RunService.Heartbeat:Connect(function(dt)
+		local skip = { folder, workspace:FindFirstChild("Citizens") }
+		for _, p in ipairs(Players:GetPlayers()) do
+			if p.Character then
+				table.insert(skip, p.Character)
+			end
+		end
+		rayParams.FilterDescendantsInstances = skip
+		local ok, err = pcall(Pets.Step, math.min(dt, 0.1))
+		if not ok then
+			warn("[Pets] " .. tostring(err))
+		end
+	end)
+end
+
+return Pets
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX66"><Properties><string name="Name">Drive</string><ProtectedString name="Source"><![CDATA[-- Drive (ModuleScript) — StarterPlayerScripts.CityClient.Drive
+-- Driving your own car (see CarService). Your computer drives it, so it's
+-- smooth: W / S (or the triggers and left stick) speed up, brake and reverse,
+-- A / D steer (tighter at low speed), and the car grips the road instead of
+-- sliding. A speedometer shows while you drive. K (or the Car app on your phone) calls your car to you.
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+
+local Drive = {}
+local player = Players.LocalPlayer
+local ctx
+local seat -- the driver's seat you're in (if it's your car)
+local speedo
+
+-- one frame of driving (also used by the tests)
+function Drive.Step(dt, driverSeat, chassis, car)
+	local throttle = driverSeat.ThrottleFloat or driverSeat.Throttle or 0
+	local steer = driverSeat.SteerFloat or driverSeat.Steer or 0
+	local max = car:GetAttribute("MaxSpeed") or 50
+	local accel = car:GetAttribute("Accel") or 16
+	local turn = car:GetAttribute("Turn") or 1.5
+	local look = chassis.CFrame.LookVector
+	local forward = Vector3.new(look.X, 0, look.Z)
+	forward = if forward.Magnitude > 0.01 then forward.Unit else Vector3.new(0, 0, -1)
+	local v = chassis.AssemblyLinearVelocity or Vector3.zero
+	local speed = v:Dot(forward)
+	if throttle > 0.05 then
+		if speed < -1 then
+			speed = math.min(0, speed + accel * 2.5 * dt) -- braking from reverse
+		else
+			speed = math.min(max * throttle, speed + accel * throttle * dt)
+		end
+	elseif throttle < -0.05 then
+		if speed > 1 then
+			speed = math.max(0, speed - accel * 2.5 * dt) -- the brakes
+		else
+			speed = math.max(-max * 0.35, speed - accel * 0.7 * dt) -- reverse
+		end
+	else
+		-- coasting to a stop
+		local drag = accel * 0.5 * dt
+		speed = if speed > 0 then math.max(0, speed - drag) else math.min(0, speed + drag)
+	end
+	-- steering: sharper when slow, the right way round in reverse
+	local grip = math.clamp(math.abs(speed) / 14, 0, 1) * (if speed < 0 then -1 else 1)
+	local yaw = -steer * turn * grip * (1 - math.clamp(math.abs(speed) / (max * 2.2), 0, 0.35))
+	chassis.AssemblyLinearVelocity = forward * speed + Vector3.new(0, math.min(v.Y, 30), 0)
+	chassis.AssemblyAngularVelocity = Vector3.new(0, yaw, 0)
+	return speed
+end
+
+local function mine(s)
+	local car = s and s.Parent
+	return s and s:IsA("VehicleSeat") and car and car:GetAttribute("CityCar") and car:GetAttribute("Owner") == player.UserId
+end
+
+local function makeSpeedo()
+	local gui = Instance.new("ScreenGui")
+	gui.Name = "Speedometer"
+	gui.ResetOnSpawn = false
+	gui.Enabled = false
+	local frame = Instance.new("Frame")
+	frame.AnchorPoint = Vector2.new(0.5, 1)
+	frame.Position = UDim2.new(0.5, 0, 1, -120)
+	frame.Size = UDim2.fromOffset(180, 56)
+	frame.BackgroundColor3 = Color3.fromRGB(20, 22, 32)
+	frame.BackgroundTransparency = 0.2
+	frame.Parent = gui
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 14)
+	corner.Parent = frame
+	local label = Instance.new("TextLabel")
+	label.Name = "Speed"
+	label.BackgroundTransparency = 1
+	label.Size = UDim2.fromScale(1, 1)
+	label.Font = Enum.Font.GothamBlack
+	label.TextColor3 = Color3.new(1, 1, 1)
+	label.TextSize = 26
+	label.Text = "0 mph"
+	label.Parent = frame
+	gui.Parent = player:WaitForChild("PlayerGui")
+	return gui
+end
+
+function Drive.Call()
+	if not ctx then
+		return
+	end
+	local ok, r = pcall(function()
+		return ctx.Remotes.Request:InvokeServer({ Action = "Car", Op = "call" })
+	end)
+	if ok and r and r.Ok then
+		ctx.Hud.Toast("🚗", "Your car is here", "It pulled up on the nearest road. Hop in the driver's seat.", Color3.fromRGB(80, 170, 240))
+	elseif ok and r then
+		ctx.Hud.Toast("🚗", "No car", r.Error or "", Color3.fromRGB(220, 90, 80))
+	end
+end
+
+local function hook(character)
+	local humanoid = character:WaitForChild("Humanoid", 10)
+	if not humanoid then
+		return
+	end
+	local ok = pcall(function()
+		humanoid.Seated:Connect(function(active, s)
+			seat = if active and mine(s) then s else nil
+			if speedo then
+				speedo.Enabled = seat ~= nil
+			end
+		end)
+	end)
+	if not ok then
+		warn("[Drive] no Seated event")
+	end
+end
+
+function Drive.Start(context)
+	ctx = context
+	speedo = makeSpeedo()
+	if player.Character then
+		task.spawn(hook, player.Character)
+	end
+	player.CharacterAdded:Connect(hook)
+	UserInputService.InputBegan:Connect(function(input, processed)
+		if processed then
+			return
+		end
+		if input.KeyCode == Enum.KeyCode.K then
+			Drive.Call()
+		end
+	end)
+	RunService.Heartbeat:Connect(function(dt)
+		if not seat or not seat.Parent then
+			return
+		end
+		local car = seat.Parent
+		local chassis = car.PrimaryPart or car:FindFirstChild("Chassis")
+		if not chassis then
+			return
+		end
+		local ok, speed = pcall(Drive.Step, math.min(dt, 0.1), seat, chassis, car)
+		if ok and speedo then
+			speedo.Frame.Speed.Text = math.floor(math.abs(speed) * 0.68 + 0.5) .. " mph"
+		end
+	end)
+end
+
+return Drive
 ]]></ProtectedString></Properties></Item></Item></Item></Item></roblox>
