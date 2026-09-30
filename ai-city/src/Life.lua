@@ -815,7 +815,10 @@ function Life:Plan(c, hour, day)
 		elseif personality == "anxious" and roll < 0.5 then
 			return home("😰 Staying in where it's safe", "read")
 		end
-		if sporty and roll < 0.6 then
+		if sporty and roll < 0.3 and age < 50 then
+			-- pickup basketball at the community center (see SportsService)
+			return { Kind = "Place", Place = "CommunityCenter", Activity = "🏀 Pickup basketball", Want = "hoops" }
+		elseif sporty and roll < 0.6 then
 			return { Kind = "Place", Place = "Gym", Activity = "🏋️ At the gym", Want = rng:Pick({ "run", "lift", "squat", "punch", "yoga" }) }
 		elseif hobbyOut and roll < 0.7 then
 			return { Kind = "Hobby", Hobby = c.Hobby, Activity = "🎨 " .. c.Hobby }

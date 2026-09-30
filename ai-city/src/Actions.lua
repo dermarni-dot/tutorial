@@ -77,6 +77,10 @@ Actions.List = {
 	-- kids
 	swing = { Pose = "swingsit", Seated = true, Swing = true, Label = "🛝 On the swings" },
 	play = { Pose = "cheer", Label = "🛝 Playing" },
+	-- pickup basketball (SportsService): the arms play, the legs keep running
+	dribble = { Pose = "dribble", Moving = true, Label = "🏀 Playing ball" },
+	defend = { Pose = "defend", Moving = true, Label = "🏀 Playing ball" },
+	jumpshot = { Pose = "jumpshot", Label = "🏀 Playing ball" },
 	hoops = { Pose = "shoot", Props = { "Basketball" }, Label = "🏀 Shooting hoops" },
 	soccer = { Pose = "none", Label = "⚽ Playing soccer" },
 	crawl = { Pose = "crawl", Label = "🧸 Playing" },

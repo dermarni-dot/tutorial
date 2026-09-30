@@ -137,6 +137,9 @@
         "RelationshipService": {
           "$path": "src/RelationshipService.lua"
         },
+        "SportsService": {
+          "$path": "src/SportsService.lua"
+        },
         "Conversation": {
           "$path": "src/Conversation.lua"
         }

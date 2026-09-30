@@ -693,6 +693,22 @@ L.draw = function(t, ph, k)
 	return { RS = A(-40 + e * 80, 0, -20 + e * 10), RE = A(20 + e * 70), RW = A(-40 * (1 - e), 0, 0), Waist = A(0, -12 * (1 - e), 0), Neck = A(-10 * (1 - e), -20 * (1 - e), 0) }, false
 end
 
+-- pickup basketball: dribbling at the side, a low defensive stance with the
+-- arms out, and a jump shot (the ball leaves the fingertips at the top)
+L.dribble = function(t, ph)
+	local d = abs(osc(t, 7, ph))
+	return { RS = A(30 + d * 18, 0, -18), RE = A(30 + d * 40), RW = A(-20), LS = A(30, 0, 22), LE = A(40), Waist = A(-14, 10, 0), Neck = A(10, -8, 0) }, false
+end
+L.defend = function(t, ph)
+	local sway = osc(t, 3, ph)
+	return { LS = A(40, 0, 60 + sway * 8), RS = A(40, 0, -60 + sway * 8), LE = A(25), RE = A(25), Waist = A(-18), Neck = A(12), LH = A(35, 0, -10), RH = A(35, 0, 10), LK = A(-45), RK = A(-45), Root = CFrame.new(0, -0.6, 0) }, true
+end
+L.jumpshot = function(t, ph)
+	local c = (t * 1.2 + ph) % 1
+	local up = sin(math.min(1, c * 1.6) * math.pi)
+	return { RS = A(160, 0, -6), RE = A(30 - up * 25), RW = A(-40 + up * 50), LS = A(140, 0, 20), LE = A(50), Neck = A(20), LK = A(-20 + up * 18), RK = A(-20 + up * 18), Root = CFrame.new(0, up * 1.4, 0) }, true
+end
+
 -- guns: held low and ready, raised to aim (two hands), and the kick of a shot
 -- (the barrel runs along the fingers, so a straight wrist points it forward)
 L.holdPistol = function(t, ph)
@@ -709,7 +725,7 @@ L.aimShotgun = function(t, ph)
 	local sway = osc(t, 1, ph)
 	return { RS = A(82 + sway, 0, -12), RE = A(22), RW = A(0), LS = A(88 + sway, 0, 28), LE = A(18), Waist = A(0, -18, 0), Neck = A(0, 16, 0), LH = A(16), RH = A(-12), LK = A(-14), RK = A(-8) }, false
 end
-L.shoot = function(t, ph, k)
+L.gunshot = function(t, ph, k)
 	local kick = sin(math.min(1, k * 2) * math.pi) * 14
 	local pose = L.aimPistol(t, ph)
 	pose.RS = A(88 + kick, 0, -2)
@@ -742,7 +758,7 @@ end
 -- the punch combo: every swing is the next move in the list (the same on every client)
 local COMBO = { "jab", "cross", "hook", "cross", "uppercut" }
 local BRAWL_COMBO = { "jab", "cross", "hook", "uppercut", "cross", "roundhouse" }
-local MOVE_TIME = { shoot = 0.25, shotgunshoot = 0.6, jab = 0.3, cross = 0.38, hook = 0.42, uppercut = 0.46, roundhouse = 0.58, chop = 0.45, batswing = 0.5, stab = 0.34, slash = 0.4, slam = 0.55 }
+local MOVE_TIME = { gunshot = 0.25, shotgunshoot = 0.6, jab = 0.3, cross = 0.38, hook = 0.42, uppercut = 0.46, roundhouse = 0.58, chop = 0.45, batswing = 0.5, stab = 0.34, slash = 0.4, slam = 0.55 }
 Poses.Combo = COMBO
 
 -- the move for this swing: weapon, which swing it is, and whether it's a street brawl
@@ -751,7 +767,7 @@ local HOLDS = { Bat = L.holdBat, Hammer = L.holdHammer, Knife = L.holdKnife, Pis
 
 local function fightMove(weapon, count, brawl)
 	if weapon == "Pistol" then
-		return "shoot"
+		return "gunshot"
 	elseif weapon == "Shotgun" then
 		return "shotgunshoot"
 	elseif weapon == "Bat" then
@@ -1673,9 +1689,10 @@ local function update(model, st, t, dt, camPos, myRoot)
 	end
 	-- on the move: the full-body walk (the arms keep carrying if they're busy)
 	local speed = groundSpeed(st, root, dt)
-	if not root.Anchored and speed > 0.8 and not fighting and not coK and (not target or carrying) then
-		local steps = gait(st, model, speed, dt, carrying)
-		if carrying and target then
+	local moving = info and info.Moving and target ~= nil
+	if not root.Anchored and speed > 0.8 and not fighting and not coK and (not target or carrying or moving) then
+		local steps = gait(st, model, speed, dt, carrying or moving)
+		if (carrying or moving) and target then
 			for k, v in pairs(steps) do
 				target[k] = v
 			end
