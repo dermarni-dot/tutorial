@@ -244,7 +244,7 @@ local function report(player, position, victim, severity, what, gossip, stars)
 				S.City.Remember(brain.C, player, "saw them " .. what, -10 - severity * 8, gossip)
 			end
 			S.City.Boost(brain.C, -12)
-			if S.Life:Age(brain.C) < 13 or brain.C.Personality == "shy" or brain.C.Personality == "calm" or math.random() < 0.6 then
+			if S.Life:Age(brain.C) < 13 or brain.C.Personality == "shy" or brain.C.Personality == "calm" or brain.C.Personality == "anxious" or math.random() < 0.6 then
 				S.Citizens.Flee(brain, position, math.random(7, 11), if math.random() < 0.6 then HELP_LINES[math.random(1, #HELP_LINES)] else nil)
 			else
 				S.Citizens.React(brain, "boo", ({ "Hey! I saw that!", "I'm calling the police!", "What is WRONG with you?!", "Somebody stop them!" })[math.random(1, 4)], "angry", 3, position)
@@ -519,7 +519,7 @@ local function attack(player, data)
 	end
 	S.Citizens.Hurt(brain, root.Position, line, w.Knock)
 	local armed = w.Severity >= 3
-	local brave = isPolice(brain) or c.Temp or ((c.Personality == "grumpy" or c.Personality == "sporty") and (not armed or math.random() < 0.3)) or (not armed and math.random() < 0.15)
+	local brave = isPolice(brain) or c.Temp or ((c.Personality == "grumpy" or c.Personality == "sporty" or c.Personality == "brave") and (not armed or math.random() < 0.3)) or (not armed and c.Personality ~= "shy" and c.Personality ~= "anxious" and math.random() < 0.15)
 	if isPolice(brain) or c.Temp then
 		CrimeService.AddStars(player, 1, "You attacked a police officer!")
 		if not brain.Model:GetAttribute("Chasing") then

@@ -47,7 +47,7 @@ local function hash(...)
 end
 
 -- Personalities change how people talk, walk and spend free time
-Life.Personalities = { "cheerful", "shy", "grumpy", "chatty", "bookish", "sporty", "artsy", "curious", "calm", "funny" }
+Life.Personalities = { "cheerful", "shy", "grumpy", "chatty", "bookish", "sporty", "artsy", "curious", "calm", "funny", "brave", "anxious", "romantic", "ambitious", "lazy", "sarcastic", "kind", "nosy", "adventurous", "proud" }
 Life.PersonalityInfo = {
 	cheerful = { Emoji = "😊", Walk = 1.05, Chat = 0.7, Expression = "happy" },
 	shy = { Emoji = "😳", Walk = 0.95, Chat = 0.2, Expression = "neutral" },
@@ -59,6 +59,16 @@ Life.PersonalityInfo = {
 	curious = { Emoji = "🧐", Walk = 1.0, Chat = 0.65, Expression = "neutral" },
 	calm = { Emoji = "😌", Walk = 0.92, Chat = 0.45, Expression = "neutral" },
 	funny = { Emoji = "😄", Walk = 1.03, Chat = 0.8, Expression = "grin" },
+	brave = { Emoji = "🦁", Walk = 1.06, Chat = 0.5, Expression = "focused" },
+	anxious = { Emoji = "😰", Walk = 1.08, Chat = 0.25, Expression = "neutral" },
+	romantic = { Emoji = "💘", Walk = 0.95, Chat = 0.7, Expression = "happy" },
+	ambitious = { Emoji = "📈", Walk = 1.12, Chat = 0.45, Expression = "focused" },
+	lazy = { Emoji = "🥱", Walk = 0.85, Chat = 0.4, Expression = "neutral" },
+	sarcastic = { Emoji = "🙄", Walk = 1.0, Chat = 0.55, Expression = "neutral" },
+	kind = { Emoji = "🤗", Walk = 0.98, Chat = 0.7, Expression = "happy" },
+	nosy = { Emoji = "👀", Walk = 1.0, Chat = 0.9, Expression = "neutral" },
+	adventurous = { Emoji = "🧭", Walk = 1.1, Chat = 0.6, Expression = "happy" },
+	proud = { Emoji = "👑", Walk = 1.0, Chat = 0.5, Expression = "neutral" },
 }
 Life.Weekdays = { "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday" }
 
@@ -143,12 +153,21 @@ function Life:AssignJob(c, rng)
 	if rng:Next() < (self.Config.UNEMPLOYED_CHANCE or 0) then
 		return nil
 	end
+	-- places with nobody working there yet come first (so every shop has
+	-- someone behind the till, every school a teacher...)
+	local staffed = {}
+	for _, job in ipairs(self.Config.Jobs) do
+		if (self.JobsTaken[job.title] or 0) > 0 then
+			staffed[job.place] = true
+		end
+	end
 	local open, total = {}, 0
 	for _, job in ipairs(self.Config.Jobs) do
 		local free = job.slots - (self.JobsTaken[job.title] or 0)
 		if free > 0 then
-			table.insert(open, { job, free })
-			total += free
+			local weight = if staffed[job.place] then free else free * 4
+			table.insert(open, { job, weight })
+			total += weight
 		end
 	end
 	if total == 0 then
@@ -709,6 +728,22 @@ function Life:Plan(c, hour, day)
 		local evening = newRng(hash(c.Id, day, "evening", math.floor(hour / 1.5)))
 		local roll = evening:Next()
 		rng = evening
+		-- personalities have their own habits
+		if personality == "lazy" and roll < 0.7 then
+			return home("🛋️ Lazing on the sofa", "tv")
+		elseif personality == "kind" and roll < 0.35 then
+			return { Kind = "Place", Place = "CommunityCenter", Activity = "🤗 Volunteering", Want = "chat" }
+		elseif personality == "romantic" and roll < 0.35 then
+			return { Kind = "Place", Place = rng:Pick({ "Restaurant", "Lake", "Park" }), Activity = "💘 A romantic evening", Want = if rng:Next() < 0.5 then "sit" else nil }
+		elseif personality == "adventurous" and roll < 0.4 then
+			return { Kind = "Place", Place = rng:Pick({ "Lake", "WillowPark", "Park", "Museum" }), Activity = "🧭 Exploring", Want = nil }
+		elseif personality == "ambitious" and roll < 0.35 and job then
+			return { Kind = "Place", Place = "Library", Activity = "📈 Studying for a promotion", Want = "study" }
+		elseif personality == "nosy" and roll < 0.4 then
+			return { Kind = "Place", Place = "Plaza", Activity = "👀 Keeping an eye on things", Want = "sit" }
+		elseif personality == "anxious" and roll < 0.5 then
+			return home("😰 Staying in where it's safe", "read")
+		end
 		if sporty and roll < 0.6 then
 			return { Kind = "Place", Place = "Gym", Activity = "🏋️ At the gym", Want = rng:Pick({ "run", "lift", "squat", "punch", "yoga" }) }
 		elseif hobbyOut and roll < 0.7 then

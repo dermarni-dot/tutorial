@@ -58,9 +58,16 @@ function Landscape.build(parent, rng)
 		local cityW = EXTENT * 2 + 40
 		terrain:FillBlock(CFrame.new(0, -4, 0), Vector3.new(cityW, 16, cityW), Enum.Material.Air)
 		terrain:FillBlock(CFrame.new(0, -12, 0), Vector3.new(cityW, 8, cityW), Enum.Material.Asphalt)
-		-- short, tidy grass everywhere else (no tall swaying grass blades)
+		-- swaying grass on the hills around the city (the city itself has no
+		-- terrain under it, so no blades come up through floors or roads),
+		-- and clear, reflective water with gentle waves
 		pcall(function()
-			terrain.Decoration = false
+			terrain.Decoration = true
+			terrain.WaterColor = rgb(40, 110, 130)
+			terrain.WaterReflectance = 0.85
+			terrain.WaterTransparency = 0.55
+			terrain.WaterWaveSize = 0.12
+			terrain.WaterWaveSpeed = 8
 		end)
 	else
 		-- no terrain (tests): a simple ground plate and a water disc

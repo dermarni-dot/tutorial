@@ -1,8 +1,7 @@
 -- DialogueService (ModuleScript) — ServerScriptService.Modules.DialogueService
 -- Talking to citizens. Walk up to anyone and press E to talk: they stop what
 -- they're doing, turn to you and answer in their own voice. What they say
--- depends on their personality (cheerful, shy, grumpy, chatty, bookish,
--- sporty, artsy, curious, calm, funny), their mood, their job or school, what
+-- depends on their personality (twenty of them, see Life.Personalities), their mood, their job or school, what
 -- they're doing right now, the city's mood, the mayor, and what they remember
 -- about you (gifts, speeches, jokes... and crimes).
 --
@@ -14,6 +13,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local CollectionService = game:GetService("CollectionService")
 
 local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
+local Conversation = require(script.Parent:WaitForChild("Conversation"))
 
 local DialogueService = {}
 DialogueService.Talked = {} -- who talked to whom today (for the daily goals)
@@ -72,6 +72,16 @@ local GREET = {
 	artsy = { "Oh, hello! I'm {first}. You have a very interesting... aura.", "Hi! I'm {first}. The light is gorgeous today, isn't it?", "Hello, stranger. I'm {first}. Have you ever really LOOKED at a sunset?" },
 	curious = { "Oh, hello! I'm {first}. Who are you? Where are you from? What do you do?", "Hi! I'm {first}. You're new around here, aren't you?", "Hello! I'm {first}. What brings you my way?" },
 	calm = { "Hello, friend. I'm {first}. Peaceful day, isn't it?", "Hi there. I'm {first}. Take a breath, enjoy the moment.", "Good to meet you. I'm {first}." },
+	brave = { "Hey. I'm {first}. Need help with anything? I'm your person.", "{first}. Nice to meet you. Anyone giving you trouble?", "Hi! I'm {first}. Don't worry, you're safe around me." },
+	anxious = { "Oh! Hi. Sorry. I'm {first}. Did I do something wrong?", "H-hi, I'm {first}... is everything okay?", "Hi, I'm {first}. Sorry, you startled me a little." },
+	romantic = { "Well, hello there... I'm {first}. What a lovely day to meet someone new.", "Hi! I'm {first}. Isn't the city beautiful today? *sighs*", "Oh, hello! I'm {first}. Do you believe in fate?" },
+	ambitious = { "{first}. Pleasure. What do you do? Let's network.", "Hi, I'm {first}. Remember the name, it's going places.", "I'm {first}. I've got five minutes. Make them count!" },
+	lazy = { "*yawn* Oh, hey. I'm {first}.", "Hey... I'm {first}. Can we talk sitting down?", "Mm? Oh, hi. {first}. I was resting my eyes." },
+	sarcastic = { "Oh great, a visitor. I'm {first}. Thrilled.", "I'm {first}. And you are... about to tell me, I'm sure.", "Well, if it isn't someone. I'm {first}." },
+	kind = { "Hi there! I'm {first}. Have you eaten today?", "Hello, dear! I'm {first}. How are you, really?", "Oh, hi! I'm {first}. Is there anything you need?" },
+	nosy = { "Oh, hello! I'm {first}. I've seen you around. Where do you live? Who are your friends?", "Hi! I'm {first}! Tell me everything about yourself.", "Well, well! I'm {first}. I was JUST wondering who you were." },
+	adventurous = { "Hey! I'm {first}! Want to go explore something?", "Yo! {first} here. Seen the woods at the edge of town? Amazing!", "Hi! I'm {first}. Every day's an adventure, right?" },
+	proud = { "Ah, hello. I'm {first}. You've probably heard of me.", "Greetings. {first}. The best at what I do, if I say so myself.", "I'm {first}. Yes, THAT {first}." },
 	funny = { "Well hello! I'm {first}. You look like someone who needs a good laugh.", "Hey! I'm {first}. I'd tell you a joke about construction, but I'm still working on it.", "Hi! {first} here. Warning: I'm hilarious." },
 }
 local GREET_FRIEND = {
@@ -456,10 +466,23 @@ local function options(c, player, brain, submenu)
 	if stage == "Baby" or stage == "Toddler" then
 		return { { Key = "peekaboo", Text = "🙈 Peekaboo!" }, { Key = "bye", Text = "👋 Bye bye!" } }
 	end
+	-- deeper questions and follow-ups (see Conversation)
+	if submenu == "deep" then
+		local list = Conversation.DeepMenu(c)
+		table.insert(list, { Key = "back", Text = "↩️ Something else" })
+		return list
+	elseif submenu and string.sub(submenu, 1, 6) == "after:" then
+		local list = Conversation.FollowUps(string.sub(submenu, 7), c)
+		if list then
+			table.insert(list, { Key = "back", Text = "↩️ Something else" })
+			return list
+		end
+	end
 	local list = {
 		{ Key = "howday", Text = "👋 How's your day going?" },
 		{ Key = "job", Text = if stage == "Child" or stage == "Teen" then "🎒 How's school?" else "💼 What do you do?" },
 		{ Key = "family", Text = "👨‍👩‍👧 Tell me about yourself" },
+		{ Key = "deep", Text = "💭 Let's really talk..." },
 		{ Key = "gossip", Text = "👂 Heard any gossip?" },
 	}
 	if stage ~= "Child" then
@@ -528,6 +551,25 @@ local function respond(player, session, key)
 		if repeated and key ~= "gossip" then
 			text = pick({ "Like I said... ", "Didn't you just ask me that? ", "Again? Okay: " }) .. text
 		end
+		text ..= Conversation.Tic(c)
+		-- follow-up questions on this topic
+		if Conversation.FollowUps(key, c) then
+			submenu = "after:" .. key
+		end
+	elseif key == "deep" then
+		local p = c.Personality
+		text = if p == "shy" or p == "anxious" then "Oh... um, okay. What do you want to know?" elseif p == "grumpy" or p == "sarcastic" then "Deep talk? With me? ...Fine. Make it quick." elseif p == "chatty" or p == "nosy" then "Ooh, finally, a REAL conversation! Ask me anything!" else pick({ "Sure! What's on your mind?", "I'd like that. Go ahead.", "A real chat? I'm all ears." })
+		expr, submenu = "happy", "deep"
+	elseif Conversation.Has(key) then
+		local feeling
+		text, expr, feeling = Conversation.Answer(key, c, player, brain)
+		if feeling then
+			remember(c, player, "really listened to me", feeling, "had a heart-to-heart with " .. c.First)
+		elseif not repeated then
+			remember(c, player, "had a real conversation with me", 2)
+		end
+		-- keep the conversation going on the same thread
+		submenu = if key == "why" or key == "helpout" then "after:howday" elseif key == "likejob" or key == "hardest" or key == "dreamjob" then "after:job" elseif key == "hobby" then "after:family" else "deep"
 	elseif key == "peekaboo" then
 		text, expr = pick({ "*giggles* 👶", "Hehehe! Again! Again!", "*claps happily*", "Boo! 😄" }), "laugh"
 		remember(c, player, "played peekaboo with me", 4, "played peekaboo with little " .. c.First)
@@ -826,6 +868,24 @@ function DialogueService.Greeting(a, b)
 		return pick({ "Hiii " .. name .. "!!", "Hey " .. name .. "! Love the outfit!", name .. "! Hi hi!" })
 	elseif p == "funny" then
 		return pick({ "Well if it isn't " .. name .. "!", "Hey " .. name .. ", nice face! Wait..." })
+	elseif p == "sarcastic" then
+		return pick({ "Oh look, it's " .. name .. ". What a treat.", "Ah, " .. name .. ". Still alive, I see." })
+	elseif p == "kind" then
+		return pick({ "Hello " .. name .. "! Have you eaten?", "Hi " .. name .. ", you look well!" })
+	elseif p == "nosy" then
+		return pick({ name .. "! Where are you off to? Who with?", "Oh, " .. name .. "! I heard something about you..." })
+	elseif p == "proud" then
+		return pick({ "Ah, " .. name .. ". Good to see you. Admire my new shoes.", name .. ". Charmed, as always." })
+	elseif p == "lazy" then
+		return pick({ "*yawn* hey " .. name .. ".", "Mm, hi " .. name .. "." })
+	elseif p == "anxious" then
+		return pick({ "Oh! " .. name .. "! You scared me!", "H-hi " .. name .. ". Is everything okay?" })
+	elseif p == "romantic" then
+		return pick({ "Hello, " .. name .. "! Isn't the sky gorgeous today?", name .. "! You look radiant!" })
+	elseif p == "brave" or p == "adventurous" then
+		return pick({ "Hey " .. name .. "! Up for an adventure?", name .. "! Good to see you!" })
+	elseif p == "ambitious" then
+		return pick({ name .. ". Busy day. Let's catch up later.", "Morning, " .. name .. ". Big plans today!" })
 	end
 	return pick({ "Hi " .. name .. "!", "Hey " .. name .. "!", "Morning, " .. name .. "!", "Oh hey, " .. name .. "!" })
 end
@@ -953,6 +1013,7 @@ local function attach(model)
 end
 
 function DialogueService.Start(services)
+	Conversation.Init(services)
 	S = services
 	S.City.Handle("Dialogue", onChoose)
 	S.City.Handle("DialogueEnd", function(player)

@@ -42,7 +42,7 @@ local function clear(frame, keep)
 end
 
 local STAGE_EMOJI = { Baby = "👶", Toddler = "🧒", Child = "🧒", Teen = "🧑", Adult = "🧑", Retired = "🧓" }
-local PERSONALITY_EMOJI = { cheerful = "😊", shy = "😳", grumpy = "😒", chatty = "🗣️", bookish = "🤓", sporty = "💪", artsy = "🎨", curious = "🧐", calm = "😌", funny = "😄" }
+local PERSONALITY_EMOJI = { cheerful = "😊", shy = "😳", grumpy = "😒", chatty = "🗣️", bookish = "🤓", sporty = "💪", artsy = "🎨", curious = "🧐", calm = "😌", funny = "😄", brave = "🦁", anxious = "😰", romantic = "💘", ambitious = "📈", lazy = "🥱", sarcastic = "🙄", kind = "🤗", nosy = "👀", adventurous = "🧭", proud = "👑" }
 
 -- a 3D portrait of a citizen (a local copy of their model, turning slowly)
 local function portrait(parent, model, closeUp, props)

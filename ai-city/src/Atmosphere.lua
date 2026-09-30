@@ -94,7 +94,7 @@ function Atmosphere.Setup(lighting)
 	lighting.EnvironmentDiffuseScale = 1
 	lighting.EnvironmentSpecularScale = 1
 	lighting.GlobalShadows = true
-	lighting.ShadowSoftness = 0.25
+	lighting.ShadowSoftness = 0.12 -- crisp, realistic sun shadows
 	lighting.GeographicLatitude = 32
 	-- real moving clouds in the sky
 	local terrain = workspace:FindFirstChildOfClass("Terrain")

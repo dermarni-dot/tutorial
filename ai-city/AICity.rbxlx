@@ -1,4 +1,4 @@
-<roblox version="4"><Item class="Workspace" referent="RBX1"><Properties><string name="Name">Workspace</string><bool name="StreamingEnabled">true</bool><float name="StreamingMinRadius">96</float><float name="StreamingTargetRadius">640</float></Properties></Item><Item class="Lighting" referent="RBX2"><Properties><string name="Name">Lighting</string><token name="Technology">4</token><float name="ClockTime">7.5</float><float name="Brightness">2</float><bool name="GlobalShadows">true</bool></Properties></Item><Item class="ReplicatedStorage" referent="RBX3"><Properties><string name="Name">ReplicatedStorage</string></Properties><Item class="Folder" referent="RBX13"><Properties><string name="Name">Shared</string></Properties><Item class="ModuleScript" referent="RBX4"><Properties><string name="Name">Config</string><ProtectedString name="Source"><![CDATA[-- AI City :: shared settings (tweak these to tune the game)
+<roblox version="4"><Item class="Workspace" referent="RBX1"><Properties><string name="Name">Workspace</string><bool name="StreamingEnabled">true</bool><float name="StreamingMinRadius">96</float><float name="StreamingTargetRadius">640</float></Properties></Item><Item class="Lighting" referent="RBX2"><Properties><string name="Name">Lighting</string><token name="Technology">4</token><float name="ClockTime">7.5</float><float name="Brightness">2</float><bool name="GlobalShadows">true</bool></Properties></Item><Item class="MaterialService" referent="RBX3"><Properties><string name="Name">MaterialService</string><bool name="Use2022Materials">true</bool></Properties></Item><Item class="ReplicatedStorage" referent="RBX4"><Properties><string name="Name">ReplicatedStorage</string></Properties><Item class="Folder" referent="RBX14"><Properties><string name="Name">Shared</string></Properties><Item class="ModuleScript" referent="RBX5"><Properties><string name="Name">Config</string><ProtectedString name="Source"><![CDATA[-- AI City :: shared settings (tweak these to tune the game)
 -- ReplicatedStorage.Shared.Config
 --
 -- Every key from the original file is still here with the same shape, so the
@@ -120,6 +120,14 @@ Config.Jobs = {
 	{ title = "Accountant", place = "Office", slots = 3, start = 9, stop = 17, pay = 19 },
 	{ title = "Night Janitor", place = "Office", slots = 1, start = 18, stop = 24, pay = 11 },
 	{ title = "Community Organizer", place = "CommunityCenter", slots = 1, start = 10, stop = 18, pay = 12 },
+	-- someone behind the till in every shop (see CitizenService.TryCheckout)
+	{ title = "Toy Store Clerk", place = "ToyStore", slots = 1, start = 10, stop = 19, pay = 10 },
+	{ title = "Electronics Clerk", place = "Electronics", slots = 1, start = 10, stop = 19, pay = 12 },
+	{ title = "Bookseller", place = "Bookstore", slots = 1, start = 9, stop = 18, pay = 10 },
+	{ title = "Florist", place = "Florist", slots = 1, start = 8, stop = 17, pay = 10 },
+	{ title = "Pet Shop Clerk", place = "PetShop", slots = 1, start = 9, stop = 18, pay = 10 },
+	{ title = "Ice Cream Server", place = "IceCream", slots = 1, start = 11, stop = 21, pay = 9 },
+	{ title = "Hardware Clerk", place = "Hardware", slots = 1, start = 8, stop = 17, pay = 11 },
 }
 Config.UNEMPLOYED_CHANCE = 0.12
 Config.RETIRE_AGE = 67
@@ -219,7 +227,7 @@ Config.LastNames = { "Lopez", "Carter", "Okafor", "Tanaka", "Rossi", "Johnson", 
 	"Larsen", "Adeyemi", "Chen", "Duarte", "Bennett" }
 
 return Config
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX5"><Properties><string name="Name">Atmosphere</string><ProtectedString name="Source"><![CDATA[-- Atmosphere (ModuleScript) — ReplicatedStorage.Shared.Atmosphere
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX6"><Properties><string name="Name">Atmosphere</string><ProtectedString name="Source"><![CDATA[-- Atmosphere (ModuleScript) — ReplicatedStorage.Shared.Atmosphere
 -- The look of the sky and light through the day: soft pink dawns, bright
 -- clear noons, golden evenings, purple dusks and deep blue nights.
 -- The server calls Setup once; the client calls Apply every frame with the
@@ -315,7 +323,7 @@ function Atmosphere.Setup(lighting)
 	lighting.EnvironmentDiffuseScale = 1
 	lighting.EnvironmentSpecularScale = 1
 	lighting.GlobalShadows = true
-	lighting.ShadowSoftness = 0.25
+	lighting.ShadowSoftness = 0.12 -- crisp, realistic sun shadows
 	lighting.GeographicLatitude = 32
 	-- real moving clouds in the sky
 	local terrain = workspace:FindFirstChildOfClass("Terrain")
@@ -369,7 +377,7 @@ function Atmosphere.IsNight(hour)
 end
 
 return Atmosphere
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX6"><Properties><string name="Name">Actions</string><ProtectedString name="Source"><![CDATA[-- Actions (ModuleScript) — ReplicatedStorage.Shared.Actions
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX7"><Properties><string name="Name">Actions</string><ProtectedString name="Source"><![CDATA[-- Actions (ModuleScript) — ReplicatedStorage.Shared.Actions
 -- Everything citizens can be seen doing: typing at a desk, lifting weights,
 -- cooking, reading, fishing, swinging... The server sets a citizen's "Action"
 -- attribute; every player's client plays the pose and adds the props, so it
@@ -400,13 +408,14 @@ Actions.List = {
 	garden = { Pose = "kneelwork", Props = { "Trowel" }, Label = "🌱 Gardening" },
 	shelve = { Pose = "shelve", Props = { "Box" }, Label = "📚 Stocking shelves" },
 	music = { Pose = "guitar", Props = { "Guitar" }, Label = "🎸 Playing music" },
-	coach = { Pose = "cheer", Props = { "Clipboard" }, Label = "📣 Coaching" },
+	coach = { Pose = "cheer", Props = { "Clipboard", "Whistle" }, Label = "📣 Coaching" },
 	present = { Pose = "present", Label = "🏛️ Leading a meeting" },
 	sort = { Pose = "shelve", Props = { "Letter" }, Label = "✉️ Sorting mail" },
 	babysit = { Pose = "counter", Label = "🧸 Looking after little ones" },
 	guide = { Pose = "present", Label = "🖼️ Giving a tour" },
 	-- errands and rounds (see Errands)
 	pay = { Pose = "pay", Props = { "Card" }, Label = "💳 Paying" },
+	checkout = { Pose = "pay", Props = { "Card" }, Label = "🛒 At the checkout" },
 	deliver = { Pose = "deliver", Props = { "MailBag", "Letter" }, Label = "📬 Delivering the mail" },
 	water = { Pose = "water", Props = { "WateringCan" }, Label = "🚿 Watering the plants" },
 	rake = { Pose = "rake", Props = { "Rake" }, Label = "🍂 Raking leaves" },
@@ -425,16 +434,16 @@ Actions.List = {
 	coffee = { Pose = "drink", Seated = true, Props = { "Cup" }, Label = "☕ Having a coffee" },
 	read = { Pose = "read", Seated = true, Props = { "Book" }, Label = "📖 Reading" },
 	study = { Pose = "write", Seated = true, Props = { "Pencil" }, Label = "✏️ Studying" },
-	watch = { Pose = "sit", Seated = true, Label = "🎬 Watching" },
+	watch = { Pose = "sit", Seated = true, Props = { "Popcorn" }, Label = "🎬 Watching" },
 	tv = { Pose = "sit", Seated = true, Props = { "Remote" }, Label = "📺 Watching TV" },
 	sleep = { Pose = "sleep", Lying = true, Label = "💤 Sleeping" },
 	patient = { Pose = "sleep", Lying = true, Label = "🤒 Resting" },
 	browse = { Pose = "browse", Label = "🛍️ Shopping" },
 	phone = { Pose = "phone", Props = { "Phone" }, Label = "📱 On the phone" },
-	chess = { Pose = "chess", Seated = true, Label = "♟️ Playing chess" },
+	chess = { Pose = "chess", Seated = true, Props = { "ChessPiece" }, Label = "♟️ Playing chess" },
 	paint = { Pose = "paint", Props = { "Brush" }, Label = "🎨 Painting" },
 	fish = { Pose = "fish", Props = { "Rod" }, Label = "🎣 Fishing" },
-	birdwatch = { Pose = "binoculars", Label = "🐦 Birdwatching" },
+	birdwatch = { Pose = "binoculars", Props = { "Binoculars" }, Label = "🐦 Birdwatching" },
 	knit = { Pose = "knit", Seated = true, Props = { "Knitting" }, Label = "🧶 Knitting" },
 	guitar = { Pose = "guitar", Props = { "Guitar" }, Label = "🎸 Playing guitar" },
 	dance = { Pose = "dance", Label = "💃 Dancing" },
@@ -466,6 +475,10 @@ Actions.List = {
 	carry = { Pose = "carry", Label = "👶 Carrying the baby" },
 }
 
+-- Checkouts (a customer and a clerk doing a sale together): how long each kind
+-- takes, in seconds. The server starts them, every client animates them.
+Actions.CheckoutTime = { shop = 9, food = 8 }
+
 function Actions.Get(name)
 	return Actions.List[name]
 end
@@ -475,7 +488,7 @@ Actions.SEAT_DROP = 1.1
 Actions.LIE_DROP = 1.6
 
 return Actions
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX7"><Properties><string name="Name">Faces</string><ProtectedString name="Source"><![CDATA[-- Faces (ModuleScript) — ReplicatedStorage.Shared.Faces
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX8"><Properties><string name="Name">Faces</string><ProtectedString name="Source"><![CDATA[-- Faces (ModuleScript) — ReplicatedStorage.Shared.Faces
 -- Drawn cartoon faces for citizens: eyes with irises, pupils and a shine,
 -- eyebrows, a mouth that changes shape, blush and freckles.
 --
@@ -761,7 +774,7 @@ function Faces.Set(gui, expression, blink, talk, glance)
 end
 
 return Faces
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX8"><Properties><string name="Name">Poses</string><ProtectedString name="Source"><![CDATA[-- Poses (ModuleScript) — ReplicatedStorage.Shared.Poses
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX9"><Properties><string name="Name">Poses</string><ProtectedString name="Source"><![CDATA[-- Poses (ModuleScript) — ReplicatedStorage.Shared.Poses
 -- The client side of citizens' body language. For every citizen near the
 -- camera it:
 --   • plays the pose for their "Action" attribute (typing, lifting, sitting,
@@ -843,10 +856,27 @@ L.drink = function(t, ph)
 	local up = if c < 0.3 then sin(c / 0.3 * math.pi) else 0
 	return sit({ LS = A(15, 0, 4), LE = A(40), RS = A(28 + up * 45, 0, -10), RE = A(80 + up * 55), Neck = A(-4 + up * 12, osc(t, 0.3, ph) * 8, 0) }), true
 end
+-- chess: think (chin on hand), reach out, pick up a piece, move it across the
+-- board, put it down, then sit back with arms folded while the other player thinks
+local function chessPhase(t, ph)
+	return (t * 0.14 + ph) % 1
+end
+Poses.ChessPhase = chessPhase
 L.chess = function(t, ph)
-	local c = (t * 0.2 + ph) % 1
-	local move = if c < 0.12 then sin(c / 0.12 * math.pi) else 0
-	return sit({ LS = A(30, 0, 8), LE = A(70), RS = A(30 + move * 30, 0, -6), RE = A(60 - move * 30), Neck = A(-25), Waist = A(-16) }), true
+	local c = chessPhase(t, ph)
+	if c < 0.5 then
+		-- thinking: elbow on the table, chin on the hand, eyes on the board
+		local tap = if (c * 20) % 1 < 0.5 then 4 else 0
+		return sit({ LS = A(58, 0, 14), LE = A(128), LW = A(-10), RS = A(26, 0, -8), RE = A(56 + tap), Neck = A(-22, osc(t, 0.6, ph) * 8, 6), Waist = A(-18) }), true
+	elseif c < 0.8 then
+		-- the move: reach, lift, carry the piece sideways, set it down
+		local k = (c - 0.5) / 0.3
+		local reach = sin(math.min(1, k * 1.4) * math.pi * 0.5) * (1 - math.max(0, (k - 0.8) / 0.2))
+		local slide = math.clamp((k - 0.35) / 0.35, 0, 1)
+		return sit({ LS = A(26, 0, 10), LE = A(60), RS = A(28 + reach * 48, slide * 18, -6), RE = A(64 - reach * 44), RW = A(-reach * 20), Neck = A(-28, slide * 10, 0), Waist = A(-18 - reach * 6) }), true
+	end
+	-- sitting back, arms folded, watching the other player
+	return sit({ LS = A(44, 0, 26), RS = A(44, 0, -26), LE = A(112), RE = A(116), Neck = A(-14, osc(t, 0.4, ph) * 6, 0), Waist = A(-4) }), true
 end
 L.knit = function(t, ph)
 	local k = osc(t, 9, ph) * 4
@@ -861,7 +891,9 @@ L.sleep = function(t, ph)
 	return { Waist = A(b * 0.5), LS = A(5, 0, -8), RS = A(5, 0, 8), LE = A(15), RE = A(15), Neck = A(b * 0.3, 20, 0), LH = A(2, 0, -3), RH = A(2, 0, 3) }, true
 end
 L.ko = function(t, ph)
-	return { LS = A(10, 0, -75), RS = A(10, 0, 70), LE = A(20), RE = A(35), LH = A(4, 0, -14), RH = A(12, 0, 12), RK = A(-25), Neck = A(0, 35, 10) }, true
+	-- out cold, still breathing
+	local b = osc(t, 1.6, ph) * 2
+	return { LS = A(10, 0, -75), RS = A(10, 0, 70), LE = A(20), RE = A(35), LH = A(4, 0, -14), RH = A(12, 0, 12), RK = A(-25), Neck = A(b * 0.5, 35, 10), Waist = A(b) }, true
 end
 L.counter = function(t, ph)
 	local look = osc(t, 0.25, ph) * 18
@@ -1105,7 +1137,16 @@ L.wave = function(t, ph)
 	return { RS = A(20, 0, 150), RE = A(10 + w * 25), RW = A(0, 0, w * 10), Neck = A(4, 0, -4) }, false
 end
 L.point = function(t, ph)
-	return { RS = A(95, 0, -12), RE = A(4), Neck = A(0, -10, 0) }, false
+	-- pointing the way, with a little "over there" wag
+	local w = osc(t, 3, ph) * 5
+	return { RS = A(95 + w * 0.4, w, -12), RE = A(4), LS = A(10, 0, 8), LE = A(20), Neck = A(0, -10 + w, 0) }, false
+end
+-- waiting: shifting weight, checking the time now and then
+L.wait = function(t, ph)
+	local c = (t * 0.08 + ph) % 1
+	local look = if c < 0.12 then sin(c / 0.12 * math.pi) else 0
+	local sway = osc(t, 0.7, ph)
+	return { LS = A(look * 60, 0, 6), LE = A(look * 100), LW = A(0, look * 50, 0), Neck = A(-look * 25, osc(t, 0.25, ph) * 14, 0), Waist = A(0, 0, sway * 2) }, false
 end
 L.scared = function(t, ph)
 	local tr = osc(t, 30, ph) * 2
@@ -1427,7 +1468,8 @@ end
 -- The fight overlay shared by citizens and players. Returns a pose or nil.
 --   swingAge: seconds since the last swing; weapon; brawl: a street fight
 local function fightPose(model, st, t, now, root, weapon, brawl, fighting, blocking)
-	local still = root and Vector3.new(root.AssemblyLinearVelocity.X, 0, root.AssemblyLinearVelocity.Z).Magnitude < 3
+	local vel = root and root.AssemblyLinearVelocity
+	local still = not vel or Vector3.new(vel.X, 0, vel.Z).Magnitude < 3
 	local count = model:GetAttribute("SwingSide") or 0
 	local move = fightMove(weapon, count, brawl)
 	local dur = MOVE_TIME[move] or 0.4
@@ -1453,7 +1495,6 @@ end
 Poses.FightPose = fightPose
 
 L.idle = nil
-L.wait = nil
 L.none = nil
 
 --------------------------------------------------------------------------------
@@ -1524,6 +1565,24 @@ end
 PROPS.Letter = function(f, b, s)
 	prop(b.RightHand, "Letter", Vector3.new(0.6, 0.05, 0.4) * s, CFrame.new(0, -0.3 * s, -0.2 * s), rgb(250, 245, 230)).Parent = f
 end
+PROPS.ChessPiece = function(f, b, s)
+	local piece = prop(b.RightHand, "ChessPiece", Vector3.new(0.28, 0.4, 0.28) * s, CFrame.new(0, -0.45 * s, -0.1 * s), rgb(245, 240, 228))
+	piece.Parent = f
+end
+PROPS.Binoculars = function(f, b, s)
+	for _, x in ipairs({ -0.22, 0.22 }) do
+		local lens = prop(b.RightHand, "Binoculars", Vector3.new(0.7, 0.34, 0.34) * s, CFrame.new(x * s - 0.3 * s, -0.25 * s, -0.3 * s) * A(0, 90, 0), rgb(40, 44, 40), Cyl, Enum.Material.Metal)
+		lens.Parent = f
+	end
+end
+PROPS.Popcorn = function(f, b, s)
+	prop(b.LeftHand, "PopcornTub", Vector3.new(0.8, 1, 0.8) * s, CFrame.new(0, -0.6 * s, -0.3 * s), rgb(220, 40, 50)).Parent = f
+	prop(b.LeftHand, "Popcorn", Vector3.new(0.75, 0.3, 0.75) * s, CFrame.new(0, -0.05 * s, -0.3 * s), rgb(255, 240, 190), Ball).Parent = f
+end
+PROPS.Whistle = function(f, b, s)
+	prop(b.Torso, "Whistle", Vector3.new(0.25, 0.3, 0.12) * s, CFrame.new(0, 0.2 * s, -0.55 * s), rgb(200, 204, 210), nil, Enum.Material.Metal).Parent = f
+end
+
 PROPS.Card = function(f, b, s)
 	prop(b.RightHand, "Card", Vector3.new(0.5, 0.04, 0.32) * s, CFrame.new(0, -0.3 * s, -0.25 * s), rgb(60, 110, 200)).Parent = f
 end
@@ -1873,6 +1932,238 @@ local function faceUpdate(model, st, t, dt, near, lookYaw)
 	end
 end
 
+--------------------------------------------------------------------------------
+-- Checkouts (see CitizenService.TryCheckout): the customer and the clerk go
+-- through the sale together, timed off the server clock, and the things being
+-- bought move across the counter on every player's screen
+--------------------------------------------------------------------------------
+local function checkoutK(model)
+	local start = model:GetAttribute("CheckoutStart")
+	if not start then
+		return nil
+	end
+	local kind = model:GetAttribute("CheckoutKind") or "shop"
+	local dur = Actions.CheckoutTime[kind] or 8
+	local k = (workspace:GetServerTimeNow() - start) / dur
+	if k < 0 or k > 1 then
+		return nil
+	end
+	return k, kind, start
+end
+
+-- the customer: unpack the basket, watch, pay by card, take the bag
+local function customerPose(t, ph, k, kind)
+	if kind == "food" then
+		if k < 0.3 then
+			return L.talk(t, ph)
+		elseif k < 0.5 then
+			return L.pay(t, ph)
+		elseif k < 0.86 then
+			return { LS = A(12, 0, 6), RS = A(12, 0, -6), LE = A(20), RE = A(20), Neck = A(-12, osc(t, 0.5, ph) * 10, 0) }, false
+		end
+		local r = sin((k - 0.86) / 0.14 * math.pi)
+		return { RS = A(30 + r * 45, 0, -6), RE = A(40 - r * 30), Neck = A(-16) }, false
+	end
+	if k < 0.2 then
+		-- putting things on the counter, one hand then the other
+		local c = (k / 0.2 * 4) % 1
+		local r = sin(c * math.pi)
+		local left = math.floor(k / 0.2 * 4) % 2 == 0
+		return {
+			RS = A(if left then 18 else 18 + r * 58, 0, -8), RE = A(if left then 30 else 72 - r * 44),
+			LS = A(if left then 18 + r * 58 else 18, 0, 8), LE = A(if left then 72 - r * 44 else 30),
+			Waist = A(-6 - r * 8), Neck = A(-20),
+		}, false
+	elseif k < 0.6 then
+		-- watching the scanner
+		return { LS = A(10, 0, 6), RS = A(10, 0, -6), LE = A(24), RE = A(24), Neck = A(-18, osc(t, 1.4, ph) * 12, 0), Waist = A(-3) }, false
+	elseif k < 0.8 then
+		-- holding the card out to the reader
+		local tap = if (k - 0.6) / 0.2 > 0.4 and (k - 0.6) / 0.2 < 0.6 then 1 else 0
+		return { RS = A(62 + tap * 10, 0, -6), RE = A(26 - tap * 10), RW = A(-20), LS = A(10, 0, 6), LE = A(20), Neck = A(-14) }, false
+	elseif k < 0.9 then
+		return { LS = A(10, 0, 6), RS = A(20, 0, -6), LE = A(24), RE = A(60), Neck = A(-8) }, false
+	end
+	-- taking the bag
+	local r = sin((k - 0.9) / 0.1 * math.pi)
+	return { RS = A(30 + r * 45, 0, -6), RE = A(40 - r * 30), Neck = A(-14) }, false
+end
+
+-- the clerk: say hello, scan every item and bag it, the card reader, hand it over
+local function clerkPose(t, ph, k, kind, n)
+	if kind == "food" then
+		if k < 0.3 then
+			return L.listen(t, ph)
+		elseif k < 0.5 then
+			return { LS = A(58, 0, 12), LE = A(86), LW = A(-30), RS = A(18, 0, -8), RE = A(40), Neck = A(-10) }, false
+		elseif k < 0.86 then
+			return (L.brew or L.cook)(t, ph)
+		end
+		local r = sin((k - 0.86) / 0.14 * math.pi)
+		return { RS = A(30 + r * 50, 0, -6), RE = A(50 - r * 40), Neck = A(-10) }, false
+	end
+	if k < 0.2 then
+		return L.talk(t, ph)
+	elseif k < 0.6 then
+		-- each item: reach for it, sweep it over the scanner, drop it in the bag
+		local c = ((k - 0.2) / 0.4 * n) % 1
+		local reach, sweep, drop
+		if c < 0.3 then
+			reach, sweep, drop = sin(c / 0.3 * math.pi * 0.5), 0, 0
+		elseif c < 0.7 then
+			reach, sweep, drop = 1 - (c - 0.3) / 0.4 * 0.5, (c - 0.3) / 0.4, 0
+		else
+			reach, sweep, drop = 0.5 * (1 - (c - 0.7) / 0.3), 1, sin((c - 0.7) / 0.3 * math.pi)
+		end
+		return {
+			RS = A(40 + reach * 34, -sweep * 30 + (1 - sweep) * 25, -8 - sweep * 20), RE = A(60 - reach * 44), RW = A(-reach * 15),
+			LS = A(30, 0, 12), LE = A(60), Waist = A(-8, -sweep * 12 + (1 - sweep) * 8, 0), Neck = A(-20, -sweep * 18 + (1 - sweep) * 12, 0),
+			Root = CFrame.new(0, -drop * 0.05, 0),
+		}, false
+	elseif k < 0.8 then
+		-- holding the card reader out
+		return { LS = A(62, 0, 12), LE = A(70), LW = A(-30), RS = A(20, 0, -8), RE = A(40), Neck = A(-12) }, false
+	elseif k < 0.9 then
+		-- tearing off the receipt
+		local tug = osc(t, 16, ph)
+		return { RS = A(46, 0, -8), RE = A(70 + tug * 8), LS = A(40, 0, 10), LE = A(70), Neck = A(-16) }, false
+	end
+	-- handing the bag across
+	local r = sin((k - 0.9) / 0.1 * math.pi)
+	return { RS = A(30 + r * 50, 0, -6), RE = A(50 - r * 40), LS = A(30 + r * 40, 0, 6), LE = A(50 - r * 30), Neck = A(-10) }, false
+end
+
+local ITEM_COLORS = { rgb(220, 60, 60), rgb(60, 140, 220), rgb(250, 200, 60), rgb(90, 180, 90), rgb(240, 140, 60), rgb(170, 110, 220), rgb(240, 240, 235) }
+local beep = nil
+local function playBeep(pos)
+	local camera = workspace.CurrentCamera
+	if not camera or (camera.CFrame.Position - pos).Magnitude > 45 then
+		return
+	end
+	if not beep then
+		beep = Instance.new("Sound")
+		beep.Name = "ScannerBeep"
+		beep.SoundId = "rbxasset://sounds/electronicpingshort.wav"
+		beep.Volume = 0.25
+		beep.PlaybackSpeed = 1.6
+		beep.Parent = workspace
+	end
+	pcall(function()
+		beep:Play()
+	end)
+end
+
+local function localPart(parent, name, size, color, shape)
+	local p = Instance.new("Part")
+	p.Name = name
+	p.Size = size
+	p.Color = color
+	p.Anchored = true
+	p.CanCollide = false
+	p.CanQuery = false
+	p.CanTouch = false
+	p.CastShadow = false
+	p.Material = Enum.Material.SmoothPlastic
+	if shape then
+		p.Shape = shape
+	end
+	p.Parent = parent
+	return p
+end
+
+-- the things on the counter (made and moved by each client; the customer's model owns them)
+local function checkoutItems(model, st, k, kind, start)
+	local co = st.Checkout
+	if not k then
+		if co then
+			co.Folder:Destroy()
+			st.Checkout = nil
+		end
+		return
+	end
+	local base, look = model:GetAttribute("CheckoutTill"), model:GetAttribute("CheckoutLook")
+	if typeof(base) ~= "Vector3" or typeof(look) ~= "Vector3" then
+		return
+	end
+	if not co or co.Start ~= start then
+		if co then
+			co.Folder:Destroy()
+		end
+		local folder = Instance.new("Folder")
+		folder.Name = "LocalCheckout"
+		folder.Parent = workspace
+		co = { Start = start, Folder = folder, Items = {}, Beeped = {} }
+		local n = if kind == "food" then 1 else (model:GetAttribute("CheckoutItems") or 3)
+		for i = 1, n do
+			local item
+			if kind == "food" then
+				item = localPart(folder, "Order", Vector3.new(0.9, 0.5, 0.5), rgb(245, 245, 240), Enum.PartType.Cylinder)
+			else
+				local sizes = { Vector3.new(0.6, 0.8, 0.4), Vector3.new(0.5, 0.5, 0.5), Vector3.new(0.9, 0.4, 0.6), Vector3.new(0.4, 1, 0.4) }
+				item = localPart(folder, "Groceries", sizes[(i - 1) % #sizes + 1], ITEM_COLORS[(i * 3 + math.floor(start)) % #ITEM_COLORS + 1])
+			end
+			co.Items[i] = item
+		end
+		if kind ~= "food" then
+			co.Bag = localPart(folder, "PaperBag", Vector3.new(1, 1.2, 0.7), rgb(214, 180, 130))
+		end
+		st.Checkout = co
+	end
+	local up = Vector3.new(0, 1, 0)
+	local right = look:Cross(up) -- the clerk's right
+	local C = base + look * 2.4 + Vector3.new(0, 3.85, 0)
+	local bagPos = C + right * 1.3 + up * 0.6
+	local n = #co.Items
+	local hidden = CFrame.new(0, -500, 0)
+	if kind == "food" then
+		local item = co.Items[1]
+		local from, to = C - look * 0.6 + up * 0.25, C + look * 0.9 + up * 0.25
+		if k < 0.5 or k > 0.97 then
+			item.CFrame = hidden
+		elseif k < 0.85 then
+			item.CFrame = CFrame.new(from) * CFrame.Angles(0, 0, math.rad(90))
+		else
+			item.CFrame = CFrame.new(from:Lerp(to, (k - 0.85) / 0.12)) * CFrame.Angles(0, 0, math.rad(90))
+		end
+		return
+	end
+	for i, item in ipairs(co.Items) do
+		local placed = C + look * 0.55 - right * (0.55 + 0.36 * (i - 1)) + up * (item.Size.Y / 2)
+		local appear = 0.2 * (i - 1) / n + 0.02
+		local s0, s1 = 0.2 + 0.4 * (i - 1) / n, 0.2 + 0.4 * i / n
+		local pos
+		if k < appear or k >= s1 then
+			pos = nil
+		elseif k < s0 then
+			pos = placed
+		else
+			local u = (k - s0) / (s1 - s0)
+			local scanner = C + up * (item.Size.Y / 2 + 0.2)
+			if u < 0.3 then
+				pos = placed:Lerp(scanner, u / 0.3)
+			elseif u < 0.7 then
+				pos = scanner + right * ((u - 0.3) / 0.4 - 0.5) * 0.4
+				if u >= 0.5 and not co.Beeped[i] then
+					co.Beeped[i] = true
+					playBeep(scanner)
+				end
+			else
+				pos = scanner:Lerp(bagPos + up * 0.4, (u - 0.7) / 0.3)
+			end
+		end
+		item.CFrame = if pos then CFrame.lookAt(pos, pos + look) else hidden
+	end
+	-- the bag waits by the till, then goes across to the customer
+	if k < 0.2 or k > 0.97 then
+		co.Bag.CFrame = hidden
+	elseif k < 0.9 then
+		co.Bag.CFrame = CFrame.lookAt(bagPos, bagPos + look)
+	else
+		local p = bagPos:Lerp(C + look * 1.8 + up * 0.2, (k - 0.9) / 0.07)
+		co.Bag.CFrame = CFrame.lookAt(p, p + look)
+	end
+end
+
 local function update(model, st, t, dt, camPos, myRoot)
 	local root = model:FindFirstChild("HumanoidRootPart")
 	if not root then
@@ -1902,6 +2193,17 @@ local function update(model, st, t, dt, camPos, myRoot)
 			target, full = fn(t, st.Phase)
 		end
 	end
+	-- a checkout in progress: the customer and the clerk play their parts
+	local coK, coKind, coStart = checkoutK(model)
+	local coRole = coK and model:GetAttribute("CheckoutRole")
+	if coK and not fighting then
+		if coRole == "customer" then
+			target, full = customerPose(t, st.Phase, coK, coKind)
+		elseif coRole == "clerk" then
+			target, full = clerkPose(t, st.Phase, coK, coKind, model:GetAttribute("CheckoutItems") or 3)
+		end
+	end
+	checkoutItems(model, st, if coRole == "customer" then coK else nil, coKind, coStart)
 	-- carrying something on the way (a shopping bag, a briefcase, a backpack...)
 	local carry = model:GetAttribute("Carry")
 	local carrying = carry and CARRY[carry] and (action == "" or action == "wait") and not target
@@ -1958,6 +2260,20 @@ local function update(model, st, t, dt, camPos, myRoot)
 		root.CFrame = CFrame.new(pivot) * CFrame.fromAxisAngle(axis, angle) * CFrame.new(-pivot) * st.SwingBase
 	elseif st.SwingBase then
 		st.SwingBase = nil
+	end
+	if st.Props then
+		local piece = st.Props:FindFirstChild("ChessPiece")
+		if piece then
+			local c = chessPhase(t, st.Phase)
+			piece.Transparency = if c > 0.56 and c < 0.76 then 0 else 1
+		end
+		local card = st.Props:FindFirstChild("Card")
+		if card and coK then
+			local showing = if coKind == "food" then coK > 0.3 and coK < 0.5 else coK > 0.6 and coK < 0.8
+			card.Transparency = if showing then 0 else 1
+		elseif card then
+			card.Transparency = 0
+		end
 	end
 	if poseName == "shoot" then
 		local c = (t / 3.2 + st.Phase) % 1
@@ -2154,7 +2470,7 @@ function Poses.Step(dt)
 end
 
 return Poses
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX9"><Properties><string name="Name">Weapons</string><ProtectedString name="Source"><![CDATA[-- Weapons (ModuleScript) — ReplicatedStorage.Shared.Weapons
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX10"><Properties><string name="Name">Weapons</string><ProtectedString name="Source"><![CDATA[-- Weapons (ModuleScript) — ReplicatedStorage.Shared.Weapons
 -- Everything you can fight with. Buy weapons at the Hardware store; they
 -- show up in your hotbar (1, 2, 3...). Click (or F) to attack, hold X (or
 -- right mouse) to block.
@@ -2211,7 +2527,7 @@ function Weapons.Get(id)
 end
 
 return Weapons
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX10"><Properties><string name="Name">Disguises</string><ProtectedString name="Source"><![CDATA[-- Disguises (ModuleScript) — ReplicatedStorage.Shared.Disguises
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX11"><Properties><string name="Name">Disguises</string><ProtectedString name="Source"><![CDATA[-- Disguises (ModuleScript) — ReplicatedStorage.Shared.Disguises
 -- Things you can wear so people don't recognize you. Buy them at the Clothing
 -- store; put them on or take them off anytime with C (or the phone's Wardrobe).
 --
@@ -2326,7 +2642,7 @@ function Disguises.Signature(worn)
 end
 
 return Disguises
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX11"><Properties><string name="Name">Fitness</string><ProtectedString name="Source"><![CDATA[-- Fitness (ModuleScript) — ReplicatedStorage.Shared.Fitness
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX12"><Properties><string name="Name">Fitness</string><ProtectedString name="Source"><![CDATA[-- Fitness (ModuleScript) — ReplicatedStorage.Shared.Fitness
 -- Sprinting and stamina. Hold Shift (or the Sprint button) to run; it uses
 -- stamina, which refills when you stop. Sprinting and working out on the gym's
 -- treadmills earn fitness XP; every level gives more stamina, faster recovery
@@ -2360,7 +2676,7 @@ Fitness.TREADMILL_XP = 55 -- XP for one treadmill workout
 Fitness.TREADMILL_SECONDS = 7
 
 return Fitness
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX12"><Properties><string name="Name">Food</string><ProtectedString name="Source"><![CDATA[-- Food (ModuleScript) — ReplicatedStorage.Shared.Food
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX13"><Properties><string name="Name">Food</string><ProtectedString name="Source"><![CDATA[-- Food (ModuleScript) — ReplicatedStorage.Shared.Food
 -- What you can buy to eat at the city's food places (press E at the counter).
 -- Eating heals you (Heal) and refills stamina (Energy). Coffee and energy
 -- drinks also speed up stamina recovery for a while (Boost × for BoostTime s).
@@ -2398,7 +2714,7 @@ Food.Menus = {
 }
 
 return Food
-]]></ProtectedString></Properties></Item></Item></Item><Item class="ServerScriptService" referent="RBX14"><Properties><string name="Name">ServerScriptService</string></Properties><Item class="Script" referent="RBX15"><Properties><string name="Name">Main</string><ProtectedString name="Source"><![CDATA[-- Main (Script) — ServerScriptService.Main
+]]></ProtectedString></Properties></Item></Item></Item><Item class="ServerScriptService" referent="RBX15"><Properties><string name="Name">ServerScriptService</string></Properties><Item class="Script" referent="RBX16"><Properties><string name="Name">Main</string><ProtectedString name="Source"><![CDATA[-- Main (Script) — ServerScriptService.Main
 -- Starts AI City: builds the map, loads the saved city (or makes new
 -- families), starts the clock and brings everyone to life.
 --
@@ -2480,7 +2796,7 @@ if Config.RUN_CITIZENS ~= false then
 	services.Jobs.Start(services)
 	task.spawn(services.Citizens.Start, services)
 end
-]]></ProtectedString></Properties></Item><Item class="Folder" referent="RBX39"><Properties><string name="Name">Modules</string></Properties><Item class="ModuleScript" referent="RBX16"><Properties><string name="Name">MapKit</string><ProtectedString name="Source"><![CDATA[-- MapKit (ModuleScript) — ServerScriptService.Modules.MapKit
+]]></ProtectedString></Properties></Item><Item class="Folder" referent="RBX41"><Properties><string name="Name">Modules</string></Properties><Item class="ModuleScript" referent="RBX17"><Properties><string name="Name">MapKit</string><ProtectedString name="Source"><![CDATA[-- MapKit (ModuleScript) — ServerScriptService.Modules.MapKit
 -- Small building blocks shared by the map modules: part helpers, colors, signs,
 -- lights, seats, and a registry of things that change between day and night.
 
@@ -2721,6 +3037,35 @@ function MapKit.nightNeon(p)
 	return p
 end
 
+-- A chess board lying flat at cf (its top surface), size studs across: an
+-- 8x8 board with a frame and a game in progress (pawns and back-row pieces)
+function MapKit.chessBoard(parent, cf, size)
+	size = size or 2.6
+	local sq = size / 8
+	MapKit.deco(parent, "ChessFrame", Vector3.new(size + 0.3, 0.1, size + 0.3), cf * CFrame.new(0, -0.05, 0), MapKit.rgb(110, 76, 50), Enum.Material.Wood)
+	MapKit.deco(parent, "ChessBoard", Vector3.new(size, 0.1, size), cf * CFrame.new(0, 0.01, 0), MapKit.rgb(240, 232, 214), Enum.Material.Marble)
+	for i = 0, 7 do
+		for j = 0, 7 do
+			if (i + j) % 2 == 1 then
+				MapKit.deco(parent, "ChessSquare", Vector3.new(sq, 0.11, sq), cf * CFrame.new(-size / 2 + sq / 2 + i * sq, 0.012, -size / 2 + sq / 2 + j * sq), MapKit.rgb(90, 64, 46), Enum.Material.Marble)
+			end
+		end
+	end
+	-- a few pieces for each side (some pawns have already moved)
+	local layout = { { 0, 1 }, { 2, 1 }, { 3, 3 }, { 5, 1 }, { 6, 2 }, { 1, 0 }, { 4, 0 }, { 7, 0 } }
+	for side = 0, 1 do
+		local color = if side == 0 then MapKit.rgb(245, 240, 228) else MapKit.rgb(40, 36, 36)
+		for k, pos in ipairs(layout) do
+			local i, j = pos[1], if side == 0 then pos[2] else 7 - pos[2]
+			local x, z = -size / 2 + sq / 2 + i * sq, -size / 2 + sq / 2 + j * sq
+			local tall = k > 5
+			local body = MapKit.deco(parent, "ChessPiece", Vector3.new(if tall then 0.32 else 0.22, sq * 0.55, sq * 0.55), cf * CFrame.new(x, (if tall then 0.16 else 0.11) + 0.06, z) * CFrame.Angles(0, 0, math.rad(90)), color, Enum.Material.SmoothPlastic)
+			body.Shape = Enum.PartType.Cylinder
+			MapKit.ball(parent, "ChessPieceTop", sq * (if tall then 0.45 else 0.38), cf * CFrame.new(x, (if tall then 0.38 else 0.27) + 0.06, z), color, Enum.Material.SmoothPlastic)
+		end
+	end
+end
+
 -- Particle effects that bring the city to life
 --   "smoke"      soft grey puffs rising from a chimney
 --   "fireflies"  little glowing specks that drift at night (parks, ponds)
@@ -2780,7 +3125,7 @@ function MapKit.awning(parent, width, depth, cf, colorA, colorB)
 end
 
 return MapKit
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX17"><Properties><string name="Name">Buildings</string><ProtectedString name="Source"><![CDATA[-- Buildings (ModuleScript) — ServerScriptService.Modules.Buildings
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX18"><Properties><string name="Name">Buildings</string><ProtectedString name="Source"><![CDATA[-- Buildings (ModuleScript) — ServerScriptService.Modules.Buildings
 -- Building shells: walls with a walk-in doorway and glass doors, framed
 -- windows (or glass curtain walls for towers), storefront windows, striped
 -- awnings, real floors on every storey with ceiling lights, an elevator for
@@ -2961,7 +3306,20 @@ function Buildings.shell(parent, spec)
 		local y = f * FLOOR_H
 		b.FloorY[f + 1] = y
 		if f > 0 then
-			part(model, "FloorSlab", Vector3.new(W - 1.6, 0.6, D - 1.6), at(0, y + 0.1, 0), spec.FloorColor or MapKit.rgb(200, 192, 178), spec.FloorMaterial or Enum.Material.WoodPlanks)
+			local floorColor, floorMat = spec.FloorColor or MapKit.rgb(200, 192, 178), spec.FloorMaterial or Enum.Material.WoodPlanks
+			if spec.Stairs and floors >= 2 then
+				-- leave a stairwell over the staircase (left wall, back), so you can
+				-- walk up; a railing stops you falling down it
+				local x0, x1 = -W / 2 + 0.8, -W / 2 + 4.4
+				local zOpen = D / 2 - 14.3
+				local zBack = D / 2 - 0.8
+				part(model, "FloorSlab", Vector3.new((W / 2 - 0.8) - x1, 0.6, D - 1.6), at((x1 + W / 2 - 0.8) / 2, y + 0.1, 0), floorColor, floorMat)
+				part(model, "FloorSlab", Vector3.new(x1 - x0, 0.6, zOpen - (-D / 2 + 0.8)), at((x0 + x1) / 2, y + 0.1, (zOpen + (-D / 2 + 0.8)) / 2), floorColor, floorMat)
+				part(model, "StairRailing", Vector3.new(0.25, 3, zBack - zOpen), at(x1 + 0.12, y + 1.9, (zOpen + zBack) / 2), MapKit.rgb(110, 80, 55), Enum.Material.Wood)
+				deco(model, "RailingTop", Vector3.new(0.45, 0.25, zBack - zOpen), at(x1 + 0.12, y + 3.45, (zOpen + zBack) / 2), MapKit.rgb(90, 64, 44), Enum.Material.Wood)
+			else
+				part(model, "FloorSlab", Vector3.new(W - 1.6, 0.6, D - 1.6), at(0, y + 0.1, 0), floorColor, floorMat)
+			end
 		end
 		-- ceiling lights in a grid, each shining down (so the whole room is evenly
 		-- lit, corners too); soft warm light, no shadows (cheap)
@@ -3076,12 +3434,15 @@ function Buildings.shell(parent, spec)
 			deco(model, "Banister", Vector3.new(0.3, 0.3, 13), at(-W / 2 + 4.2, y + 7.4, D / 2 - 8) * CFrame.Angles(math.rad(-43), 0, 0), MapKit.rgb(110, 80, 55), Enum.Material.Wood)
 		end
 		for f = 0, floors - 1 do
-			local marker = deco(model, "StairLanding", Vector3.new(3, 0.1, 2), at(-W / 2 + 2.6, f * FLOOR_H + 0.45, D / 2 - 1.6), MapKit.rgb(150, 110, 75))
+			-- the ground floor landing is at the foot of the stairs (the back); on the
+			-- floors above it's at the top, in front of the stairwell
+			local landZ = if f == 0 then D / 2 - 1.6 else D / 2 - 15.4
+			local marker = deco(model, "StairLanding", Vector3.new(3, 0.1, 2), at(-W / 2 + 2.6, f * FLOOR_H + 0.45, landZ), MapKit.rgb(150, 110, 75))
 			MapKit.tag(marker, "ElevatorDoor")
 			marker:SetAttribute("Floor", f + 1)
 			marker:SetAttribute("Floors", floors)
 			marker:SetAttribute("Stairs", true)
-			b.Elevator.Floors[f + 1] = { Door = marker, Exit = at(-W / 2 + 2.6, f * FLOOR_H + 0.6, D / 2 - 4).Position }
+			b.Elevator.Floors[f + 1] = { Door = marker, Exit = at(-W / 2 + 2.6, f * FLOOR_H + 0.6, if f == 0 then D / 2 - 4 else D / 2 - 17).Position }
 		end
 	-- an elevator in the back corner for buildings with 3+ floors
 	elseif (spec.Elevator == nil and floors >= 3) or spec.Elevator == true then
@@ -3115,18 +3476,18 @@ local HOUSE_ROOFS = { MapKit.rgb(150, 60, 50), MapKit.rgb(70, 80, 100), MapKit.r
 local SHUTTERS = { MapKit.rgb(60, 90, 70), MapKit.rgb(70, 90, 140), MapKit.rgb(140, 50, 50), MapKit.rgb(60, 60, 66), MapKit.rgb(230, 230, 225) }
 
 -- style: "cottage", "twostory", "modern", "bungalow"
-function Buildings.house(parent, center, face, style, rng, garageSide)
+function Buildings.house(parent, center, face, style, rng, garageSide, scale)
 	local wall = HOUSE_WALLS[rng:NextInteger(1, #HOUSE_WALLS)]
 	local roof = HOUSE_ROOFS[rng:NextInteger(1, #HOUSE_ROOFS)]
 	local shutter = SHUTTERS[rng:NextInteger(1, #SHUTTERS)]
-	local spec = { Name = "House", Center = center, Face = face, W = 24, D = 20, Floors = 1, Wall = wall, Trim = WHITE, Roof = "gable", RoofColor = roof, DoorW = 5, Material = Enum.Material.WoodPlanks, Elevator = false, Plinth = true }
+	local spec = { Name = "House", Center = center, Face = face, W = 28, D = 22, Floors = 1, Wall = wall, Trim = WHITE, Roof = "gable", RoofColor = roof, DoorW = 5, Material = Enum.Material.WoodPlanks, Elevator = false, Plinth = true }
 	if style == "twostory" then
-		spec.Floors, spec.W, spec.D = 2, 24, 20
+		spec.Floors, spec.W, spec.D = 2, 28, 22
 		spec.Stairs = true
 		spec.Material = Enum.Material.Brick
 		spec.Wall = wall:Lerp(MapKit.rgb(170, 90, 70), 0.35)
 	elseif style == "modern" then
-		spec.Roof, spec.W, spec.D, spec.Floors = "flat", 28, 20, 2
+		spec.Roof, spec.W, spec.D, spec.Floors = "flat", 30, 22, 2
 		spec.Stairs = true
 		spec.Material = Enum.Material.SmoothPlastic
 		spec.Wall = ({ MapKit.rgb(244, 244, 240), MapKit.rgb(60, 62, 70), MapKit.rgb(214, 208, 196) })[rng:NextInteger(1, 3)]
@@ -3134,7 +3495,12 @@ function Buildings.house(parent, center, face, style, rng, garageSide)
 		spec.RoofKit = { "solar" }
 		spec.WindowColor = MapKit.rgb(170, 210, 235)
 	elseif style == "bungalow" then
-		spec.W, spec.D = 30, 20
+		spec.W, spec.D = 32, 22
+	end
+	if scale and scale ~= 1 then
+		-- big suburban lots get bigger houses (whole studs, even sizes)
+		spec.W = math.floor(spec.W * scale / 2 + 0.5) * 2
+		spec.D = math.floor(spec.D * scale / 2 + 0.5) * 2
 	end
 	local b = Buildings.shell(parent, spec)
 	local at = b.At
@@ -3181,7 +3547,7 @@ function Buildings.house(parent, center, face, style, rng, garageSide)
 		end
 	end
 	-- a garage with a driveway on two-story houses
-	if style == "twostory" then
+	if style == "twostory" and garageSide then
 		-- garageSide keeps the garage on the side away from the nearest road
 		local gx = (garageSide or 1) * (W / 2 + 5.5)
 		b.GarageX = gx
@@ -3196,7 +3562,7 @@ function Buildings.house(parent, center, face, style, rng, garageSide)
 end
 
 return Buildings
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX18"><Properties><string name="Name">Interiors</string><ProtectedString name="Source"><![CDATA[-- Interiors (ModuleScript) — ServerScriptService.Modules.Interiors
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX19"><Properties><string name="Name">Interiors</string><ProtectedString name="Source"><![CDATA[-- Interiors (ModuleScript) — ServerScriptService.Modules.Interiors
 -- Furnishes buildings and marks the spots where people do things there:
 -- desks to type at, treadmills to run on, stoves to cook at, tables to eat
 -- at, beds to sleep in... Each spot is
@@ -3362,8 +3728,12 @@ end
 local function tableSet(b, f, x, z, list, action, place, color)
 	MapKit.disc(b.Model, "TableTop", 0.25, 4, at(b, f, x, 3, z).Position, color or WHITE, Enum.Material.Wood)
 	box(b, f, "TableLeg", Vector3.new(0.4, 2.9, 0.4), x, 0, z, rgb(60, 60, 64), Enum.Material.Metal)
-	box(b, f, "Plate", Vector3.new(1, 0.08, 1), x, 3.12, z - 0.8, WHITE)
-	box(b, f, "Plate", Vector3.new(1, 0.08, 1), x, 3.12, z + 0.8, WHITE)
+	if action == "chess" then
+		MapKit.chessBoard(b.Model, at(b, f, x, 3.18, z), 2.6)
+	else
+		box(b, f, "Plate", Vector3.new(1, 0.08, 1), x, 3.12, z - 0.8, WHITE)
+		box(b, f, "Plate", Vector3.new(1, 0.08, 1), x, 3.12, z + 0.8, WHITE)
+	end
 	local s1 = chair(b, f, x, z - 2.4, 0, 1, nil, place)
 	local s2 = chair(b, f, x, z + 2.4, 0, -1, nil, place)
 	spot(list, b, f, x, z - 2.4, 0, 1, action, "visit", s1)
@@ -3809,51 +4179,255 @@ function ROOMS.hotel(b, f, list, rng, place)
 	end
 end
 
-function ROOMS.home(b, f, list, rng, place)
-	-- a living room at the front, a kitchen in one back corner and bedrooms in the other
-	local W, D = b.W, b.D
-	rug(b, f, -W / 4, -1, 7, 5, ({ rgb(170, 70, 60), rgb(70, 110, 150), rgb(200, 170, 110), rgb(90, 130, 90) })[rng:NextInteger(1, 4)])
-	if f == 1 then
-		-- sofa facing a TV
-		local sx, sz = -W / 4, 1.5
-		box(b, f, "Sofa", Vector3.new(6, 1.6, 2.6), sx, 0, sz + 0.5, ({ rgb(90, 110, 150), rgb(150, 90, 70), rgb(110, 130, 90), rgb(160, 150, 140) })[rng:NextInteger(1, 4)], Enum.Material.Fabric)
-		box(b, f, "SofaBack", Vector3.new(6, 2, 0.8), sx, 1.6, sz + 1.6, rgb(80, 90, 110), Enum.Material.Fabric)
-		local seat = MapKit.seat(b.Model, "SofaSeat", Vector3.new(5, 0.3, 2), at(b, f, sx, 1.8, sz + 0.2), rgb(90, 110, 150), Enum.Material.Fabric, place)
-		spot(list, b, f, sx - 1.3, sz, 0, -1, "tv", "home", seat)
-		spot(list, b, f, sx + 1.3, sz, 0, -1, "read", "home")
-		box(b, f, "TVStand", Vector3.new(4, 1.6, 1.2), sx, 0, -D / 2 + 2.2, rgb(60, 50, 44), Enum.Material.Wood)
-		local tv = box(b, f, "TV", Vector3.new(4, 2.4, 0.2), sx, 1.7, -D / 2 + 2.2, rgb(20, 20, 24))
-		local screen = deco(b.Model, "TVScreen", Vector3.new(3.6, 2, 0.05), tv.CFrame * CFrame.new(0, 0, 0.13), rgb(120, 170, 255), Enum.Material.Neon)
-		screen.Transparency = 0.1
-		-- kitchen
-		local kx, kz = W / 2 - 4, D / 2 - 2.2
-		box(b, f, "KitchenCounter", Vector3.new(6, 3.4, 2), kx - 1, 0, kz, rgb(236, 232, 224), Enum.Material.Marble)
-		box(b, f, "Stove", Vector3.new(2.4, 0.2, 1.8), kx - 2.4, 3.4, kz, rgb(40, 40, 44), Enum.Material.Metal)
-		box(b, f, "Fridge", Vector3.new(2.4, 6, 2.2), W / 2 - 2, 0, kz - 3.8, rgb(230, 234, 238), Enum.Material.Metal)
-		spot(list, b, f, kx - 2.4, kz - 2.2, 0, 1, "cook", "home")
-		-- a little dining table
-		MapKit.disc(b.Model, "DiningTable", 0.25, 3.4, at(b, f, W / 4 - 1, 2.8, -1).Position, rgb(150, 110, 70), Enum.Material.Wood)
-		box(b, f, "TableLeg", Vector3.new(0.4, 2.7, 0.4), W / 4 - 1, 0, -1, rgb(100, 70, 50), Enum.Material.Wood)
-		local c1 = chair(b, f, W / 4 - 1, -3.2, 0, 1, nil, place)
-		spot(list, b, f, W / 4 - 1, -3.2, 0, 1, "eat", "home", c1)
+-- A double bed (head toward +Z): room for two
+local function doubleBed(b, f, x, z, list, color)
+	box(b, f, "BedFrame", Vector3.new(6.4, 1.4, 7.6), x, 0, z, rgb(120, 86, 60), Enum.Material.Wood)
+	box(b, f, "Mattress", Vector3.new(6, 0.8, 7.2), x, 1.4, z, WHITE, Enum.Material.Fabric)
+	box(b, f, "Blanket", Vector3.new(6.1, 0.3, 4.8), x, 2.1, z - 1.1, color, Enum.Material.Fabric)
+	box(b, f, "BlanketFold", Vector3.new(6.1, 0.35, 0.8), x, 2.15, z + 1.5, color:Lerp(WHITE, 0.35), Enum.Material.Fabric)
+	for _, px in ipairs({ -1.5, 1.5 }) do
+		box(b, f, "Pillow", Vector3.new(2.4, 0.6, 1.2), x + px, 2.2, z + 2.9, WHITE, Enum.Material.Fabric)
+		local s = spot(list, b, f, x + px, z - 1.4, 0, 1, "sleep", "home")
+		s.BedTop = top(b, f) + 2.2
 	end
-	if f == b.Floors or b.Floors == 1 then
-		-- beds along the back wall (a crib for the little ones)
-		local nBeds = if b.Floors == 1 then 2 else 3
-		for k = 0, nBeds - 1 do
-			local x = -W / 2 + 3.5 + k * 5
-			if b.Floors > 1 or k < 2 then
-				bed(b, f, x, D / 2 - 4.2 + (if b.Floors == 1 then 0 else 0), list, ({ rgb(90, 130, 200), rgb(200, 110, 140), rgb(120, 180, 120), rgb(230, 190, 90) })[(k + rng:NextInteger(0, 3)) % 4 + 1], "sleep", "home")
+	box(b, f, "Headboard", Vector3.new(6.6, 4, 0.5), x, 0, z + 3.85, rgb(100, 70, 50), Enum.Material.Wood)
+end
+
+local function wardrobe(b, f, x, z, alongX, color)
+	color = color or rgb(150, 110, 75)
+	local size = if alongX then Vector3.new(4.4, 7, 2) else Vector3.new(2, 7, 4.4)
+	box(b, f, "Wardrobe", size, x, 0, z, color, Enum.Material.Wood)
+	for _, s in ipairs({ -1, 1 }) do
+		local hx, hz = if alongX then x + s * 0.3 else x, if alongX then z else z + s * 0.3
+		local off = if alongX then Vector3.new(0, 0, 0) else Vector3.new(0, 0, 0)
+		local _ = off
+		box(b, f, "WardrobeHandle", Vector3.new(0.15, 0.9, 0.15), hx + (if alongX then 0 else (if x < 0 then 1.05 else -1.05)), 3.2, hz + (if alongX then (if z > 0 then -1.05 else 1.05) else 0), rgb(210, 190, 120), Enum.Material.Metal)
+	end
+end
+
+local function dresser(b, f, x, z, alongX)
+	local size = if alongX then Vector3.new(4, 3, 1.8) else Vector3.new(1.8, 3, 4)
+	box(b, f, "Dresser", size, x, 0, z, rgb(170, 130, 95), Enum.Material.Wood)
+	box(b, f, "Mirror", if alongX then Vector3.new(2.6, 2.4, 0.1) else Vector3.new(0.1, 2.4, 2.6), x, 3.4, z, rgb(210, 230, 240), Enum.Material.Glass).Reflectance = 0.4
+	box(b, f, "PhotoFrame", Vector3.new(0.6, 0.8, 0.15), x + (if alongX then 1.3 else 0), 3, z + (if alongX then 0 else 1.3), rgb(60, 50, 44))
+end
+
+-- a bathroom: walls with an open doorway, toilet, sink and mirror, and a bathtub.
+-- (x0, z0)-(x1, z1) is the room; the doorway is on the side facing doorSide ("x" or "z")
+local function bathroom(b, f, x0, z0, x1, z1, doorAt)
+	local wallC = rgb(236, 240, 242)
+	local h = FLOOR_H - 1.2
+	local y = top(b, f) + h / 2
+	local function wallPiece(cx, cz, sx, sz)
+		if sx > 0.2 and sz > 0.2 then
+			MapKit.part(b.Model, "BathroomWall", Vector3.new(sx, h, sz), b.At(cx, y, cz), wallC, Enum.Material.SmoothPlastic)
+		end
+	end
+	-- the walls on the open sides (the others are the building's walls), with a 3.2-stud doorway
+	for _, side in ipairs(doorAt.Walls) do
+		if side == "x0" or side == "x1" then
+			local x = if side == "x0" then x0 else x1
+			if doorAt.Door == side then
+				local mid = (z0 + z1) / 2
+				wallPiece(x, (z0 + mid - 1.6) / 2, 0.3, (mid - 1.6) - z0)
+				wallPiece(x, (mid + 1.6 + z1) / 2, 0.3, z1 - (mid + 1.6))
+			else
+				wallPiece(x, (z0 + z1) / 2, 0.3, z1 - z0)
+			end
+		else
+			local z = if side == "z0" then z0 else z1
+			if doorAt.Door == side then
+				local mid = (x0 + x1) / 2
+				wallPiece((x0 + mid - 1.6) / 2, z, (mid - 1.6) - x0, 0.3)
+				wallPiece((mid + 1.6 + x1) / 2, z, x1 - (mid + 1.6), 0.3)
+			else
+				wallPiece((x0 + x1) / 2, z, x1 - x0, 0.3)
 			end
 		end
-		if b.Floors == 1 then
-			-- crib
-			box(b, f, "Crib", Vector3.new(3, 2.6, 4), -W / 2 + 13, 0, D / 2 - 3.4, rgb(240, 236, 230), Enum.Material.Wood)
-			local s = spot(list, b, f, -W / 2 + 13, D / 2 - 4.4, 0, 1, "nap", "home")
-			s.BedTop = top(b, f) + 1.8
-			s.Crib = true
+	end
+	-- a tiled floor
+	box(b, f, "BathroomTiles", Vector3.new(x1 - x0 - 0.3, 0.05, z1 - z0 - 0.3), (x0 + x1) / 2, 0, (z0 + z1) / 2, rgb(200, 220, 228), Enum.Material.Marble)
+	local w, d = x1 - x0, z1 - z0
+	local cx = (x0 + x1) / 2
+	local long = d >= w
+	-- bathtub along the far side
+	local tubX = if long then cx else x0 + 1.4
+	local tubZ = if long then z1 - 1.5 else (z0 + z1) / 2
+	local tubSize = if long then Vector3.new(math.min(5, w - 0.8), 2, 2.6) else Vector3.new(2.6, 2, math.min(5, d - 0.8))
+	box(b, f, "Bathtub", tubSize, tubX, 0, tubZ, WHITE, Enum.Material.Marble)
+	box(b, f, "BathWater", tubSize - Vector3.new(0.5, 0, 0.5) + Vector3.new(0, -1.6, 0), tubX, 1.5, tubZ, rgb(150, 210, 240), Enum.Material.Glass).Transparency = 0.4
+	box(b, f, "Faucet", Vector3.new(0.3, 0.8, 0.3), tubX + (if long then tubSize.X / 2 - 0.4 else 0), 2, tubZ + (if long then 0 else tubSize.Z / 2 - 0.4), rgb(200, 204, 210), Enum.Material.Metal)
+	-- toilet and sink along the near side
+	local nearZ = if long then z0 + 1.4 else z0 + 1.4
+	box(b, f, "Toilet", Vector3.new(1.4, 1.5, 2), x0 + 1.2, 0, nearZ + 0.4, WHITE, Enum.Material.Marble)
+	box(b, f, "ToiletTank", Vector3.new(1.4, 1.6, 0.6), x0 + 1.2, 1.5, nearZ - 0.4, WHITE, Enum.Material.Marble)
+	box(b, f, "Sink", Vector3.new(2, 0.5, 1.4), x1 - 1.3, 2.8, nearZ, WHITE, Enum.Material.Marble)
+	box(b, f, "SinkStand", Vector3.new(1.6, 2.8, 1.2), x1 - 1.3, 0, nearZ, rgb(150, 150, 156), Enum.Material.Wood)
+	local mirror = box(b, f, "BathMirror", Vector3.new(0.1, 2, 1.8), x1 - 0.2, 4.2, nearZ, rgb(210, 230, 240), Enum.Material.Glass)
+	mirror.Reflectance = 0.5
+	box(b, f, "Towel", Vector3.new(0.15, 1.6, 1.2), x0 + 0.2, 3.4, (z0 + z1) / 2, ({ rgb(90, 160, 220), rgb(240, 150, 170), rgb(120, 200, 150) })[math.floor(math.abs(x0 + z0)) % 3 + 1], Enum.Material.Fabric)
+end
+
+local function kitchen(b, f, x0, x1, z, list)
+	-- counters along the back wall: sink, stove and oven, microwave; cupboards above
+	local w = x1 - x0
+	local cx = (x0 + x1) / 2
+	box(b, f, "KitchenCounter", Vector3.new(w, 3.4, 2.2), cx, 0, z, rgb(240, 236, 228), Enum.Material.Wood)
+	box(b, f, "Worktop", Vector3.new(w + 0.2, 0.25, 2.4), cx, 3.4, z, rgb(70, 70, 76), Enum.Material.Granite)
+	box(b, f, "UpperCabinets", Vector3.new(w, 2.4, 1.3), cx, 6.4, z + 0.45, rgb(240, 236, 228), Enum.Material.Wood)
+	for k = 0, math.floor(w / 2.4) - 1 do
+		box(b, f, "CabinetHandle", Vector3.new(0.8, 0.12, 0.12), x0 + 1.2 + k * 2.4, 2.8, z - 1.15, rgb(180, 184, 190), Enum.Material.Metal)
+	end
+	-- sink with a tap
+	box(b, f, "KitchenSink", Vector3.new(2.4, 0.2, 1.6), x0 + 2, 3.5, z, rgb(200, 204, 210), Enum.Material.Metal)
+	box(b, f, "Tap", Vector3.new(0.2, 1, 0.2), x0 + 2, 3.6, z + 0.8, rgb(200, 204, 210), Enum.Material.Metal)
+	-- stove, oven door and knobs
+	local sx = x0 + w * 0.55
+	box(b, f, "Stove", Vector3.new(2.6, 0.12, 2), sx, 3.66, z, rgb(30, 30, 34), Enum.Material.Metal)
+	for _, o in ipairs({ { -0.6, -0.5 }, { 0.6, -0.5 }, { -0.6, 0.5 }, { 0.6, 0.5 } }) do
+		local burner = box(b, f, "Burner", Vector3.new(0.7, 0.05, 0.7), sx + o[1], 3.78, z + o[2], rgb(70, 70, 76), Enum.Material.Metal)
+		local _ = burner
+	end
+	box(b, f, "OvenDoor", Vector3.new(2.4, 2, 0.1), sx, 0.8, z - 1.15, rgb(40, 40, 44), Enum.Material.Glass)
+	box(b, f, "Pot", Vector3.new(1.1, 0.8, 1.1), sx - 0.6, 3.78, z - 0.5, rgb(170, 170, 176), Enum.Material.Metal)
+	spot(list, b, f, sx, z - 2.3, 0, 1, "cook", "home")
+	-- microwave and a kettle
+	if w > 8 then
+		box(b, f, "Microwave", Vector3.new(1.8, 1.1, 1.3), x1 - 1.4, 3.65, z + 0.3, rgb(230, 232, 236), Enum.Material.Metal)
+		box(b, f, "MicrowaveDoor", Vector3.new(1.1, 0.8, 0.05), x1 - 1.6, 3.8, z - 0.38, rgb(30, 30, 34), Enum.Material.Glass)
+	end
+	box(b, f, "Kettle", Vector3.new(0.6, 0.8, 0.6), x0 + 3.8, 3.65, z + 0.3, rgb(200, 60, 60), Enum.Material.Metal)
+	box(b, f, "FruitBowl", Vector3.new(1.2, 0.3, 1.2), x0 + 5.2, 3.65, z, rgb(200, 180, 140), Enum.Material.Wood)
+	for k = 0, 2 do
+		MapKit.ball(b.Model, "Fruit", 0.45, at(b, f, x0 + 4.9 + k * 0.3, 4.1, z + (k % 2) * 0.3), ({ rgb(220, 50, 50), rgb(250, 190, 40), rgb(110, 190, 60) })[k + 1])
+	end
+end
+
+local function fridge(b, f, x, z, faceX)
+	-- a tall fridge, doors facing along -x (faceX = -1) or +x
+	box(b, f, "Fridge", Vector3.new(2.4, 6.4, 2.4), x, 0, z, rgb(228, 232, 236), Enum.Material.Metal)
+	box(b, f, "FridgeHandle", Vector3.new(0.15, 1.8, 0.15), x + faceX * 1.25, 3.8, z - 0.8, rgb(170, 174, 180), Enum.Material.Metal)
+	box(b, f, "FridgeHandle", Vector3.new(0.15, 1.2, 0.15), x + faceX * 1.25, 1.6, z - 0.8, rgb(170, 174, 180), Enum.Material.Metal)
+	box(b, f, "FridgeMagnet", Vector3.new(0.05, 0.4, 0.4), x + faceX * 1.23, 4.8, z + 0.3, rgb(250, 190, 40))
+end
+
+local function livingRoom(b, f, x, z, list, rng, place)
+	-- a sofa facing a TV on the left wall, an armchair, a rug
+	local W = b.W
+	local fabric = ({ rgb(90, 110, 150), rgb(150, 90, 70), rgb(110, 130, 90), rgb(160, 150, 140), rgb(70, 70, 80) })[rng:NextInteger(1, 5)]
+	rug(b, f, x - 1, z, 8, 7, ({ rgb(170, 70, 60), rgb(70, 110, 150), rgb(200, 170, 110), rgb(90, 130, 90) })[rng:NextInteger(1, 4)])
+	-- TV on a low unit against the left wall, facing +x
+	local tvX = -W / 2 + 1.6
+	box(b, f, "TVStand", Vector3.new(1.6, 1.6, 5), tvX, 0, z, rgb(60, 50, 44), Enum.Material.Wood)
+	local tv = box(b, f, "TV", Vector3.new(0.2, 2.8, 4.6), tvX, 1.7, z, rgb(20, 20, 24))
+	local screen = deco(b.Model, "TVScreen", Vector3.new(0.05, 2.4, 4.2), tv.CFrame * CFrame.new(0.13, 0, 0), rgb(120, 170, 255), Enum.Material.Neon)
+	screen.Transparency = 0.1
+	box(b, f, "Speaker", Vector3.new(0.8, 2.2, 0.8), tvX, 0, z - 3.2, rgb(40, 40, 44))
+	box(b, f, "Speaker", Vector3.new(0.8, 2.2, 0.8), tvX, 0, z + 3.2, rgb(40, 40, 44))
+	-- the sofa across the room, back to +x, facing the TV (-x)
+	local sx = x + 3.5
+	box(b, f, "Sofa", Vector3.new(2.6, 1.6, 6.4), sx, 0, z, fabric, Enum.Material.Fabric)
+	box(b, f, "SofaBack", Vector3.new(0.8, 2.1, 6.4), sx + 1.1, 1.6, z, fabric:Lerp(BLACK, 0.12), Enum.Material.Fabric)
+	for _, e in ipairs({ -1, 1 }) do
+		box(b, f, "SofaArm", Vector3.new(2.6, 2.3, 0.7), sx, 0, z + e * 3.2, fabric:Lerp(BLACK, 0.12), Enum.Material.Fabric)
+	end
+	box(b, f, "Cushion", Vector3.new(0.5, 1.1, 1.2), sx + 0.5, 1.6, z - 1.8, fabric:Lerp(WHITE, 0.45), Enum.Material.Fabric)
+	local seat = MapKit.seat(b.Model, "SofaSeat", Vector3.new(2, 0.3, 5.2), at(b, f, sx - 0.2, 1.8, z), fabric, Enum.Material.Fabric, place)
+	spot(list, b, f, sx - 0.3, z - 1.4, -1, 0, "tv", "home", seat)
+	spot(list, b, f, sx - 0.3, z + 1.4, -1, 0, "read", "home")
+	-- an armchair at the side, angled toward the TV
+	local ax, az = x, z - 4.6
+	box(b, f, "Armchair", Vector3.new(2.6, 1.6, 2.6), ax, 0, az, fabric:Lerp(WHITE, 0.2), Enum.Material.Fabric)
+	box(b, f, "ArmchairBack", Vector3.new(2.6, 2, 0.6), ax, 1.6, az - 1, fabric:Lerp(WHITE, 0.1), Enum.Material.Fabric)
+	-- a side table with a lamp
+	box(b, f, "SideTable", Vector3.new(1.4, 2, 1.4), sx, 0, z - 4.4, rgb(130, 90, 60), Enum.Material.Wood)
+	local lamp = box(b, f, "TableLamp", Vector3.new(0.9, 1.1, 0.9), sx, 2, z - 4.4, rgb(255, 236, 190), Enum.Material.Fabric)
+	MapKit.light(lamp, rgb(255, 220, 170), 12, 0.6)
+end
+
+local function diningTable(b, f, x, z, list, place)
+	-- a table for four with plates and a vase
+	box(b, f, "DiningTable", Vector3.new(5, 0.3, 3.2), x, 2.8, z, rgb(150, 110, 70), Enum.Material.Wood)
+	for _, lx in ipairs({ -2.2, 2.2 }) do
+		for _, lz in ipairs({ -1.3, 1.3 }) do
+			box(b, f, "TableLeg", Vector3.new(0.3, 2.8, 0.3), x + lx, 0, z + lz, rgb(110, 80, 50), Enum.Material.Wood)
 		end
-		box(b, f, "Lamp", Vector3.new(0.8, 4.6, 0.8), -W / 2 + 1.5, 0, 1, rgb(230, 220, 190))
+	end
+	box(b, f, "Vase", Vector3.new(0.6, 1, 0.6), x, 3.1, z, rgb(80, 140, 200), Enum.Material.Glass)
+	MapKit.ball(b.Model, "Flowers", 0.9, at(b, f, x, 4.4, z), MapKit.FLOWERS[math.floor(math.abs(x * 7 + z)) % #MapKit.FLOWERS + 1])
+	local first = true
+	for _, lx in ipairs({ -1.3, 1.3 }) do
+		for _, side in ipairs({ -1, 1 }) do
+			box(b, f, "Plate", Vector3.new(1, 0.08, 1), x + lx, 3.12, z + side * 0.9, WHITE)
+			local seat = chair(b, f, x + lx, z + side * 2.4, 0, -side, nil, place)
+			if first or side == 1 then
+				spot(list, b, f, x + lx, z + side * 2.4, 0, -side, "eat", "home", seat)
+			end
+			first = false
+		end
+	end
+end
+
+local function kidsDesk(b, f, x, z, list, place)
+	box(b, f, "KidsDesk", Vector3.new(4, 0.25, 2.2), x, 2.6, z, rgb(250, 240, 220), Enum.Material.Wood)
+	box(b, f, "DeskDrawers", Vector3.new(1.4, 2.6, 2), x + 1.3, 0, z, rgb(250, 240, 220), Enum.Material.Wood)
+	box(b, f, "DeskLamp", Vector3.new(0.5, 1.2, 0.5), x - 1.4, 2.85, z + 0.5, rgb(90, 160, 220), Enum.Material.Metal)
+	box(b, f, "Notebook", Vector3.new(1.2, 0.08, 0.9), x, 2.88, z, rgb(250, 250, 245))
+	local seat = chair(b, f, x, z - 2, 0, 1, rgb(90, 160, 220), place)
+	spot(list, b, f, x, z - 2, 0, 1, "study", "home", seat)
+end
+
+function ROOMS.home(b, f, list, rng, place)
+	-- Ground floor: living room at the front left, dining table at the front
+	-- right, a kitchen along the back right. Bedrooms at the back left (on one-
+	-- storey houses) or upstairs, with a bathroom. The left back corner is
+	-- kept clear on two-storey houses for the stairs.
+	local W, D = b.W, b.D
+	local hw, hd = W / 2, D / 2
+	local twoStorey = b.Floors > 1
+	local bedColors = { rgb(90, 130, 200), rgb(200, 110, 140), rgb(120, 180, 120), rgb(230, 190, 90), rgb(150, 110, 200) }
+	if f == 1 then
+		livingRoom(b, f, -hw + 6.5, -hd + 5.5, list, rng, place)
+		diningTable(b, f, hw - 7, -hd + 6, list, place)
+		kitchen(b, f, hw - math.min(12, W / 2 - 1), hw - 3, hd - 1.8, list)
+		fridge(b, f, hw - 1.6, hd - 1.8, -1)
+		plant(b, f, -2.5, -hd + 2)
+		if not twoStorey then
+			-- bathroom on the right, between the dining table and the kitchen
+			local z0, z1 = -hd + 9.8, hd - 4.6
+			if z1 - z0 >= 4.5 then
+				bathroom(b, f, hw - 6, z0, hw - 0.5, z1, { Walls = { "x0", "z0", "z1" }, Door = "x0" })
+			end
+			-- bedrooms at the back left: a double bed, a kid's bed, a crib
+			doubleBed(b, f, -hw + 4.5, hd - 4.4, list, bedColors[rng:NextInteger(1, #bedColors)])
+			bed(b, f, -hw + 10.5, hd - 4.2, list, bedColors[rng:NextInteger(1, #bedColors)], "sleep", "home")
+			if W >= 28 then
+				box(b, f, "Crib", Vector3.new(3, 2.6, 4), -hw + 15, 0, hd - 3.4, rgb(240, 236, 230), Enum.Material.Wood)
+				local s = spot(list, b, f, -hw + 15, hd - 4.4, 0, 1, "nap", "home")
+				s.BedTop = top(b, f) + 1.8
+				s.Crib = true
+			end
+			wardrobe(b, f, -hw + 1.4, 1, false)
+			dresser(b, f, -hw + 1.3, hd - 10.5, false)
+		end
+		return
+	end
+	if f == b.Floors then
+		-- upstairs: bedrooms along the back (right of the stairs), a bathroom in
+		-- the front right corner, a kid's desk, wardrobe and dresser
+		doubleBed(b, f, -hw + 9.5, hd - 4.4, list, bedColors[rng:NextInteger(1, #bedColors)])
+		local x = -hw + 15.5
+		local n = 0
+		while x + 2.2 < hw - 1 and n < 2 do
+			bed(b, f, x, hd - 4.2, list, bedColors[rng:NextInteger(1, #bedColors)], "sleep", "home")
+			x += 5.5
+			n += 1
+		end
+		bathroom(b, f, hw - 7, -hd + 0.5, hw - 0.5, -hd + 7, { Walls = { "x0", "z1" }, Door = "x0" })
+		kidsDesk(b, f, -hw + 8, -hd + 3.5, list, place)
+		wardrobe(b, f, hw - 1.4, 1.5, false)
+		dresser(b, f, -1, -hd + 1.3, true)
+		rug(b, f, -1, 1, 8, 5, bedColors[rng:NextInteger(1, #bedColors)]:Lerp(WHITE, 0.4))
 	end
 end
 
@@ -4004,7 +4578,7 @@ function Interiors.furnish(b, rooms, rng, place)
 end
 
 return Interiors
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX19"><Properties><string name="Name">Decor</string><ProtectedString name="Source"><![CDATA[-- Decor (ModuleScript) — ServerScriptService.Modules.Decor
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX20"><Properties><string name="Name">Decor</string><ProtectedString name="Source"><![CDATA[-- Decor (ModuleScript) — ServerScriptService.Modules.Decor
 -- The finishing touches inside every building, after Interiors has put in the
 -- big furniture. Every room gets:
 --   • baseboards and a chair rail along the walls
@@ -5038,7 +5612,7 @@ function Decor.dress(b, f, kind, rng, place, spots)
 end
 
 return Decor
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX20"><Properties><string name="Name">Errands</string><ProtectedString name="Source"><![CDATA[-- Errands (ModuleScript) — ServerScriptService.Modules.Errands
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX21"><Properties><string name="Name">Errands</string><ProtectedString name="Source"><![CDATA[-- Errands (ModuleScript) — ServerScriptService.Modules.Errands
 -- Gives what citizens do a real purpose. A plan ("go shopping", "work at the
 -- post office") becomes a chain of tasks, each a place to walk to and
 -- something to do there, with a prop in hand:
@@ -5081,6 +5655,19 @@ local function spotsWith(place, actions)
 		end
 	end
 	return out
+end
+
+-- the till to go to: one with someone behind it if there is one
+local function staffedTill(tills, rng)
+	local staffed = {}
+	for _, s in ipairs(tills) do
+		local who = api.Occupant and api.Occupant(s)
+		if who and who.State == "act" then
+			table.insert(staffed, s)
+		end
+	end
+	local pool = if #staffed > 0 then staffed else tills
+	return pool[rng:NextInteger(1, #pool)]
 end
 
 -- standing across the counter from someone who works there (a cashier spot):
@@ -5127,9 +5714,9 @@ local function shopping(brain, plan, t, rng)
 	-- 2. pay at the register
 	local tills = spotsWith(place, { cashier = true, counter = true })
 	if #tills > 0 then
-		local till = tills[rng:NextInteger(1, #tills)]
+		local till = staffedTill(tills, rng)
 		local pos, look = counterFront(till)
-		table.insert(list, task(t, { Pos = pos, Look = look, Building = till.Building or t.Building, Floor = till.Floor or 1, Action = "pay", Duration = 5, Say = if rng:NextNumber() < 0.5 then PAY_LINES[rng:NextInteger(1, #PAY_LINES)] else nil }))
+		table.insert(list, task(t, { Pos = pos, Look = look, Building = till.Building or t.Building, Floor = till.Floor or 1, Action = "pay", Duration = 5, Till = till, CheckoutKind = "shop", Say = if rng:NextNumber() < 0.5 then PAY_LINES[rng:NextInteger(1, #PAY_LINES)] else nil }))
 	end
 	-- 3. a last look around with the bag in hand (until it's time to go)
 	local last = api.PickSpot(browse, brain, "browse", nil, rng)
@@ -5146,9 +5733,9 @@ local function eatingOut(brain, plan, t, rng)
 	local list = {}
 	local tills = spotsWith(place, { cashier = true, counter = true, brew = true })
 	if #tills > 0 and place.Id ~= "Restaurant" then
-		local till = tills[rng:NextInteger(1, #tills)]
+		local till = staffedTill(tills, rng)
 		local pos, look = counterFront(till)
-		table.insert(list, task(t, { Pos = pos, Look = look, Building = till.Building or t.Building, Floor = till.Floor or 1, Action = "pay", Duration = 6, Say = if rng:NextNumber() < 0.6 then ORDER_LINES[rng:NextInteger(1, #ORDER_LINES)] else nil }))
+		table.insert(list, task(t, { Pos = pos, Look = look, Building = till.Building or t.Building, Floor = till.Floor or 1, Action = "pay", Duration = 6, Till = till, CheckoutKind = "food", Say = if rng:NextNumber() < 0.6 then ORDER_LINES[rng:NextInteger(1, #ORDER_LINES)] else nil }))
 	end
 	-- then the seat the plan picked (eating, having a coffee...)
 	local final = task(t, { Spot = t.Spot, Pos = t.Pos, Action = t.Action, Duration = 999, Carry = false })
@@ -5199,8 +5786,10 @@ ROUNDS["Mail Carrier"] = function(brain, plan, t, rng)
 		end
 		local home = table.remove(houses, best)
 		local b = home.Building
-		local pos = b.At(4, 0, -b.D / 2 - 10.6).Position
-		local box = b.At(4, 0, -b.D / 2 - 9).Position
+		-- stand on the sidewalk side of the mailbox, facing it
+		local mailbox = b.Model:FindFirstChild("Mailbox")
+		local box = Vector3.new(mailbox.Position.X, b.CFrame.Position.Y, mailbox.Position.Z)
+		local pos = box + b.CFrame.LookVector * 1.6
 		table.insert(list, { Plan = plan, Pos = pos, Door = pos, Look = box, Floor = 1, Action = "deliver", Carry = "MailBag", Duration = 4, IsTask = true, Say = if k == 1 and rng:NextNumber() < 0.3 then "Mail's here!" else nil })
 		at = home.Door
 	end
@@ -5362,7 +5951,7 @@ function Errands.CommuteProp(brain, plan, t)
 end
 
 return Errands
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX21"><Properties><string name="Name">Streets</string><ProtectedString name="Source"><![CDATA[-- Streets (ModuleScript) — ServerScriptService.Modules.Streets
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX22"><Properties><string name="Name">Streets</string><ProtectedString name="Source"><![CDATA[-- Streets (ModuleScript) — ServerScriptService.Modules.Streets
 -- Roads with lane markings and crosswalks, raised sidewalks with curbs, street
 -- lamps that light the ground at night, traffic lights downtown, street name
 -- signs, fire hydrants, trash cans, bus stops with shelters, sidewalk trees
@@ -5661,7 +6250,7 @@ function Streets.build(parent, rng, blockKind)
 end
 
 return Streets
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX22"><Properties><string name="Name">Landscape</string><ProtectedString name="Source"><![CDATA[-- Landscape (ModuleScript) — ServerScriptService.Modules.Landscape
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX23"><Properties><string name="Name">Landscape</string><ProtectedString name="Source"><![CDATA[-- Landscape (ModuleScript) — ServerScriptService.Modules.Landscape
 -- The land around the city: terrain grass (with swaying grass blades),
 -- rolling hills with pine forests, a lake with a sandy beach and a wooden
 -- pier for fishing, and snowy mountains on the horizon.
@@ -5721,9 +6310,16 @@ function Landscape.build(parent, rng)
 		local cityW = EXTENT * 2 + 40
 		terrain:FillBlock(CFrame.new(0, -4, 0), Vector3.new(cityW, 16, cityW), Enum.Material.Air)
 		terrain:FillBlock(CFrame.new(0, -12, 0), Vector3.new(cityW, 8, cityW), Enum.Material.Asphalt)
-		-- short, tidy grass everywhere else (no tall swaying grass blades)
+		-- swaying grass on the hills around the city (the city itself has no
+		-- terrain under it, so no blades come up through floors or roads),
+		-- and clear, reflective water with gentle waves
 		pcall(function()
-			terrain.Decoration = false
+			terrain.Decoration = true
+			terrain.WaterColor = rgb(40, 110, 130)
+			terrain.WaterReflectance = 0.85
+			terrain.WaterTransparency = 0.55
+			terrain.WaterWaveSize = 0.12
+			terrain.WaterWaveSpeed = 8
 		end)
 	else
 		-- no terrain (tests): a simple ground plate and a water disc
@@ -5799,7 +6395,7 @@ function Landscape.build(parent, rng)
 end
 
 return Landscape
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX23"><Properties><string name="Name">Places</string><ProtectedString name="Source"><![CDATA[-- Places (ModuleScript) — ServerScriptService.Modules.Places
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX24"><Properties><string name="Name">Places</string><ProtectedString name="Source"><![CDATA[-- Places (ModuleScript) — ServerScriptService.Modules.Places
 -- What stands on each city block: the plaza, town hall, bank, towers, shops,
 -- three schools, parks with playgrounds and ponds, the sports field, homes...
 -- Every builder registers its places and the spots where people do things
@@ -6010,10 +6606,7 @@ function B.Plaza(ctx, parent, i, j, rng)
 	for _, sx in ipairs({ -1, 1 }) do
 		local p = c + Vector3.new(sx * 26, 0, 22)
 		column(model, "ChessTable", 3, 4, p + Vector3.new(0, 1.5, 0), STONE, Enum.Material.Marble)
-		local boardTop = deco(model, "ChessBoard", Vector3.new(2.6, 0.1, 2.6), CFrame.new(p + Vector3.new(0, 3.05, 0)), WHITE)
-		for n = 0, 3 do
-			deco(model, "ChessSquare", Vector3.new(0.65, 0.12, 0.65), boardTop.CFrame * CFrame.new(-0.975 + (n % 2) * 1.3 + (n // 2) * 0.65, 0.01, -0.975 + (n // 2) * 1.3), BLACK)
-		end
+		MapKit.chessBoard(model, CFrame.new(p + Vector3.new(0, 3.05, 0)), 3)
 		for _, sz in ipairs({ -1, 1 }) do
 			local stool = MapKit.seat(model, "Stool", Vector3.new(1.6, 0.4, 1.6), CFrame.new(p + Vector3.new(0, 1.9, sz * 2.8)), STONE, Enum.Material.Marble, "Plaza")
 			column(model, "StoolLeg", 1.7, 1, p + Vector3.new(0, 0.85, sz * 2.8), STONE, Enum.Material.Marble)
@@ -6794,7 +7387,7 @@ Places.Builders = B
 Places.playground = playground
 
 return Places
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX24"><Properties><string name="Name">MapBuilder</string><ProtectedString name="Source"><![CDATA[-- MapBuilder (ModuleScript) — ServerScriptService.Modules.MapBuilder
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX25"><Properties><string name="Name">MapBuilder</string><ProtectedString name="Source"><![CDATA[-- MapBuilder (ModuleScript) — ServerScriptService.Modules.MapBuilder
 -- Builds AI City: a 9x9 grid of city blocks around a central plaza, with
 -- streets, a landscape of hills, a lake and mountains, and every building
 -- furnished with spots where people work, shop, eat, play and sleep.
@@ -7191,47 +7784,49 @@ function ctx.houseRow(parent, i, j, rng, slots, big)
 		local styles = if big then { "twostory", "bungalow", "modern" } else { "cottage", "twostory", "modern", "bungalow", "cottage" }
 		local style = styles[rng:NextInteger(1, #styles)]
 		local depthZ = HALF - SIDEWALK - 12 - 8
-		-- two-story houses sit further out so their garage fits on the inner side
-		local center = c + Vector3.new(sx * (if style == "twostory" then 23 else 18), 0, sz * depthZ)
-		local garageSide = if sx ~= 0 then sx * sz else 1
-		local b = Buildings.house(model, center, face, style, rng, garageSide)
+		local center = c + Vector3.new(sx * 19, 0, sz * depthZ)
+		-- only the big suburban lots have room for a garage beside the house
+		local garageSide = if big then 1 else nil
+		local b = Buildings.house(model, center, face, style, rng, garageSide, if big then 1.2 else 1)
 		local at = b.At
+		-- the front of the lot (the sidewalk edge), in the house's own space
+		local frontZ = -(HALF - SIDEWALK - depthZ)
 		-- front path, mailbox with the house number, and a hedge or picket fence
-		MapKit.deco(b.Model, "Path", Vector3.new(3, 0.12, 10), at(0, 0.12, -b.D / 2 - 5), MapKit.rgb(200, 195, 185), Enum.Material.Slate)
+		MapKit.deco(b.Model, "Path", Vector3.new(3, 0.12, -frontZ - b.D / 2), at(0, 0.12, (frontZ - b.D / 2) / 2), MapKit.rgb(200, 195, 185), Enum.Material.Slate)
 		local lineZ = c.Z + sz * SPACING / 2
 		local k = math.floor(lineZ / SPACING)
 		local street = Streets.streetName(k)
 		houseNumbers[street] = (houseNumbers[street] or 0) + 2
 		local number = houseNumbers[street] - (if sx < 0 then 1 else 0)
-		local mailbox = MapKit.deco(b.Model, "Mailbox", Vector3.new(1.4, 1.4, 2), at(4, 3.2, -b.D / 2 - 9), MapKit.rgb(60, 90, 160))
-		MapKit.deco(b.Model, "MailboxPost", Vector3.new(0.4, 2.6, 0.4), at(4, 1.3, -b.D / 2 - 9), MapKit.WOOD, Enum.Material.Wood)
+		local mailbox = MapKit.deco(b.Model, "Mailbox", Vector3.new(1.4, 1.4, 2), at(4, 3.2, frontZ + 1.4), MapKit.rgb(60, 90, 160))
+		MapKit.deco(b.Model, "MailboxPost", Vector3.new(0.4, 2.6, 0.4), at(4, 1.3, frontZ + 1.4), MapKit.WOOD, Enum.Material.Wood)
 		MapKit.signText(mailbox, Enum.NormalId.Left, tostring(number), MapKit.WHITE)
 		MapKit.signText(mailbox, Enum.NormalId.Right, tostring(number), MapKit.WHITE)
 		if rng:NextNumber() < 0.5 then
 			for _, px in ipairs({ -1, 1 }) do
-				local hedge = MapKit.deco(b.Model, "Hedge", Vector3.new(7, 2.6, 1.6), at(px * 6.5, 1.3, -b.D / 2 - 9.5), MapKit.LEAVES[3], Enum.Material.Grass)
+				local hedge = MapKit.deco(b.Model, "Hedge", Vector3.new(7, 2.6, 1.6), at(px * 6.5, 1.3, frontZ + 0.9), MapKit.LEAVES[3], Enum.Material.Grass)
 				hedge:SetAttribute("HideName", "a hedge")
 				MapKit.tag(hedge, "HideSpot")
 			end
 		else
 			for n = -5, 5 do
 				if math.abs(n) > 1 then
-					MapKit.deco(b.Model, "Picket", Vector3.new(0.4, 2.4, 0.3), at(n * 1.1, 1.2, -b.D / 2 - 9.5), MapKit.WHITE, Enum.Material.Wood)
+					MapKit.deco(b.Model, "Picket", Vector3.new(0.4, 2.4, 0.3), at(n * 1.1, 1.2, frontZ + 0.9), MapKit.WHITE, Enum.Material.Wood)
 				end
 			end
-			MapKit.deco(b.Model, "FenceRail", Vector3.new(12, 0.3, 0.25), at(0, 1.8, -b.D / 2 - 9.5), MapKit.WHITE, Enum.Material.Wood)
+			MapKit.deco(b.Model, "FenceRail", Vector3.new(12, 0.3, 0.25), at(0, 1.8, frontZ + 0.9), MapKit.WHITE, Enum.Material.Wood)
 		end
 		if rng:NextNumber() < 0.6 then
-			Streets.tree(model, at(-9, 0, -b.D / 2 - 6).Position, rng:NextNumber(0.7, 1), rng)
+			Streets.tree(model, at(-9, 0, (frontZ - b.D / 2) / 2).Position, rng:NextNumber(0.7, 1), rng)
 		end
 		if big then
 			-- a backyard vegetable garden
-			MapKit.deco(b.Model, "BackyardGarden", Vector3.new(8, 0.6, 4), at(-6, 0.3, b.D / 2 + 3), MapKit.rgb(110, 76, 50), Enum.Material.Ground)
+			MapKit.deco(b.Model, "BackyardGarden", Vector3.new(8, 0.6, 2), at(-6, 0.3, b.D / 2 + 1.5), MapKit.rgb(110, 76, 50), Enum.Material.Ground)
 			for n = 0, 5 do
-				MapKit.ball(b.Model, "Veg", 1, at(-9 + n * 1.2, 0.9, b.D / 2 + 3), MapKit.LEAVES[n % 4 + 1])
+				MapKit.ball(b.Model, "Veg", 1, at(-9 + n * 1.2, 0.9, b.D / 2 + 1.5), MapKit.LEAVES[n % 4 + 1])
 			end
 		end
-		if style == "twostory" and rng:NextNumber() < 0.7 then
+		if style == "twostory" and b.GarageX and rng:NextNumber() < 0.7 then
 			-- parked on the driveway in front of the garage
 			Streets.car(b.Model, at(b.GarageX or (b.W / 2 + 5.5), 0.1, -12), Streets.CAR_COLORS[rng:NextInteger(1, #Streets.CAR_COLORS)])
 		end
@@ -7426,6 +8021,23 @@ function MapBuilder.Get()
 end
 
 -- Furnish a house the first time a family moves in (saves parts on empty homes)
+-- furnish every house within `radius` studs of a position (a few per call)
+function MapBuilder.FurnishNear(position, radius)
+	if not map then
+		return
+	end
+	local done = 0
+	for _, home in ipairs(map.Homes) do
+		if home.Furnished == false and home.Door and (home.Door - position).Magnitude < radius then
+			MapBuilder.FurnishHome(home)
+			done += 1
+			if done >= 3 then
+				return
+			end
+		end
+	end
+end
+
 function MapBuilder.FurnishHome(home)
 	if not home or home.Furnished ~= false or not home.Building then
 		return home and home.Spots or {}
@@ -7485,7 +8097,7 @@ function MapBuilder.RouteBetween(a, b)
 end
 MapBuilder.Kit = MapKit
 return MapBuilder
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX25"><Properties><string name="Name">Life</string><ProtectedString name="Source"><![CDATA[-- Life (ModuleScript) — ServerScriptService.Modules.Life
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX26"><Properties><string name="Name">Life</string><ProtectedString name="Source"><![CDATA[-- Life (ModuleScript) — ServerScriptService.Modules.Life
 -- Who lives in AI City: families with children, jobs, ages, couples expecting
 -- babies and births, plus where each person should be at any hour.
 -- Pure logic (no parts, no Humanoids), so it can be saved and tested on its own.
@@ -7534,7 +8146,7 @@ local function hash(...)
 end
 
 -- Personalities change how people talk, walk and spend free time
-Life.Personalities = { "cheerful", "shy", "grumpy", "chatty", "bookish", "sporty", "artsy", "curious", "calm", "funny" }
+Life.Personalities = { "cheerful", "shy", "grumpy", "chatty", "bookish", "sporty", "artsy", "curious", "calm", "funny", "brave", "anxious", "romantic", "ambitious", "lazy", "sarcastic", "kind", "nosy", "adventurous", "proud" }
 Life.PersonalityInfo = {
 	cheerful = { Emoji = "😊", Walk = 1.05, Chat = 0.7, Expression = "happy" },
 	shy = { Emoji = "😳", Walk = 0.95, Chat = 0.2, Expression = "neutral" },
@@ -7546,6 +8158,16 @@ Life.PersonalityInfo = {
 	curious = { Emoji = "🧐", Walk = 1.0, Chat = 0.65, Expression = "neutral" },
 	calm = { Emoji = "😌", Walk = 0.92, Chat = 0.45, Expression = "neutral" },
 	funny = { Emoji = "😄", Walk = 1.03, Chat = 0.8, Expression = "grin" },
+	brave = { Emoji = "🦁", Walk = 1.06, Chat = 0.5, Expression = "focused" },
+	anxious = { Emoji = "😰", Walk = 1.08, Chat = 0.25, Expression = "neutral" },
+	romantic = { Emoji = "💘", Walk = 0.95, Chat = 0.7, Expression = "happy" },
+	ambitious = { Emoji = "📈", Walk = 1.12, Chat = 0.45, Expression = "focused" },
+	lazy = { Emoji = "🥱", Walk = 0.85, Chat = 0.4, Expression = "neutral" },
+	sarcastic = { Emoji = "🙄", Walk = 1.0, Chat = 0.55, Expression = "neutral" },
+	kind = { Emoji = "🤗", Walk = 0.98, Chat = 0.7, Expression = "happy" },
+	nosy = { Emoji = "👀", Walk = 1.0, Chat = 0.9, Expression = "neutral" },
+	adventurous = { Emoji = "🧭", Walk = 1.1, Chat = 0.6, Expression = "happy" },
+	proud = { Emoji = "👑", Walk = 1.0, Chat = 0.5, Expression = "neutral" },
 }
 Life.Weekdays = { "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday" }
 
@@ -7630,12 +8252,21 @@ function Life:AssignJob(c, rng)
 	if rng:Next() < (self.Config.UNEMPLOYED_CHANCE or 0) then
 		return nil
 	end
+	-- places with nobody working there yet come first (so every shop has
+	-- someone behind the till, every school a teacher...)
+	local staffed = {}
+	for _, job in ipairs(self.Config.Jobs) do
+		if (self.JobsTaken[job.title] or 0) > 0 then
+			staffed[job.place] = true
+		end
+	end
 	local open, total = {}, 0
 	for _, job in ipairs(self.Config.Jobs) do
 		local free = job.slots - (self.JobsTaken[job.title] or 0)
 		if free > 0 then
-			table.insert(open, { job, free })
-			total += free
+			local weight = if staffed[job.place] then free else free * 4
+			table.insert(open, { job, weight })
+			total += weight
 		end
 	end
 	if total == 0 then
@@ -8196,6 +8827,22 @@ function Life:Plan(c, hour, day)
 		local evening = newRng(hash(c.Id, day, "evening", math.floor(hour / 1.5)))
 		local roll = evening:Next()
 		rng = evening
+		-- personalities have their own habits
+		if personality == "lazy" and roll < 0.7 then
+			return home("🛋️ Lazing on the sofa", "tv")
+		elseif personality == "kind" and roll < 0.35 then
+			return { Kind = "Place", Place = "CommunityCenter", Activity = "🤗 Volunteering", Want = "chat" }
+		elseif personality == "romantic" and roll < 0.35 then
+			return { Kind = "Place", Place = rng:Pick({ "Restaurant", "Lake", "Park" }), Activity = "💘 A romantic evening", Want = if rng:Next() < 0.5 then "sit" else nil }
+		elseif personality == "adventurous" and roll < 0.4 then
+			return { Kind = "Place", Place = rng:Pick({ "Lake", "WillowPark", "Park", "Museum" }), Activity = "🧭 Exploring", Want = nil }
+		elseif personality == "ambitious" and roll < 0.35 and job then
+			return { Kind = "Place", Place = "Library", Activity = "📈 Studying for a promotion", Want = "study" }
+		elseif personality == "nosy" and roll < 0.4 then
+			return { Kind = "Place", Place = "Plaza", Activity = "👀 Keeping an eye on things", Want = "sit" }
+		elseif personality == "anxious" and roll < 0.5 then
+			return home("😰 Staying in where it's safe", "read")
+		end
 		if sporty and roll < 0.6 then
 			return { Kind = "Place", Place = "Gym", Activity = "🏋️ At the gym", Want = rng:Pick({ "run", "lift", "squat", "punch", "yoga" }) }
 		elseif hobbyOut and roll < 0.7 then
@@ -8263,7 +8910,7 @@ end
 
 Life.Jobs = jobByTitle
 return Life
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX26"><Properties><string name="Name">CitizenLook</string><ProtectedString name="Source"><![CDATA[-- CitizenLook (ModuleScript) — ServerScriptService.Modules.CitizenLook
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX27"><Properties><string name="Name">CitizenLook</string><ProtectedString name="Source"><![CDATA[-- CitizenLook (ModuleScript) — ServerScriptService.Modules.CitizenLook
 -- Gives every citizen their own look: skin tone, hairstyle and color, a
 -- uniform for their job (police cap and badge, doctor's coat, chef's hat,
 -- firefighter helmet...), something for their hobby (a beret for painters,
@@ -9308,6 +9955,30 @@ function CitizenLook.Apply(model, citizen, options)
 	return look
 end
 
+-- Smoother, more human body shapes: Roblox's free classic "Man" and "Woman"
+-- body packages (rounded shoulders and limbs instead of blocks). The default
+-- head stays, so the drawn faces fit. Override with Config.CITIZEN_BODIES, or
+-- set Config.SMOOTH_BODIES = false for the classic blocky bodies.
+CitizenLook.BODIES = Config.CITIZEN_BODIES or {
+	Man = { Torso = 86500008, LeftArm = 86500036, RightArm = 86500054, LeftLeg = 86500064, RightLeg = 86500078 },
+	Woman = { Torso = 86499666, LeftArm = 86499698, RightArm = 86499716, LeftLeg = 86499753, RightLeg = 86499793 },
+}
+local R15_PARTS = { "Head", "UpperTorso", "LowerTorso", "LeftUpperArm", "LeftLowerArm", "LeftHand", "RightUpperArm", "RightLowerArm", "RightHand", "LeftUpperLeg", "LeftLowerLeg", "LeftFoot", "RightUpperLeg", "RightLowerLeg", "RightFoot" }
+local bodyWorks = {} -- [package] = false once it failed to load (then everyone uses the default body)
+
+local function complete(model)
+	if not model then
+		return false
+	end
+	for _, name in ipairs(R15_PARTS) do
+		local part = model:FindFirstChild(name)
+		if not part or not part:IsA("BasePart") then
+			return false
+		end
+	end
+	return model:FindFirstChildOfClass("Humanoid") ~= nil
+end
+
 -- A brand new dressed R15 NPC (server only). Parent it and set its position yourself.
 function CitizenLook.Build(citizen)
 	local Players = game:GetService("Players")
@@ -9321,7 +9992,32 @@ function CitizenLook.Build(citizen)
 	description.RightLegColor = look.Bottom
 	description.WidthScale = math.clamp(look.Width, 0.75, 1)
 	description.DepthScale = math.clamp(look.Width, 0.75, 1)
-	local model = Players:CreateHumanoidModelFromDescription(description, Enum.HumanoidRigType.R15)
+	local model
+	local package = if look.Feminine then "Woman" else "Man"
+	local ids = Config.SMOOTH_BODIES ~= false and CitizenLook.BODIES[package]
+	if ids and bodyWorks[package] ~= false then
+		-- try the smooth body; if it can't load, fall back to the default one
+		local smooth = description:Clone()
+		for slot, id in pairs(ids) do
+			smooth[slot] = id
+		end
+		local ok, result = pcall(function()
+			return Players:CreateHumanoidModelFromDescription(smooth, Enum.HumanoidRigType.R15)
+		end)
+		if ok and complete(result) then
+			model = result
+			bodyWorks[package] = true
+		else
+			if ok and result then
+				result:Destroy()
+			end
+			if bodyWorks[package] == nil then
+				warn("[CitizenLook] the " .. package .. " body package didn't load; using the default body (" .. tostring(if ok then "missing parts" else result) .. ")")
+			end
+			bodyWorks[package] = false
+		end
+	end
+	model = model or Players:CreateHumanoidModelFromDescription(description, Enum.HumanoidRigType.R15)
 	model.Name = tostring(field(citizen or {}, "Name", "name") or "Citizen")
 	-- kids have bigger heads for their size (so they read as kids, not tiny adults)
 	local headScale = if look.Age < 3 then 1.35 elseif look.Age < 9 then 1.25 elseif look.Age < 14 then 1.12 else 1
@@ -9355,7 +10051,7 @@ CitizenLook.Uniforms = UNIFORMS
 CitizenLook.HobbyItems = HOBBY_ITEMS
 
 return CitizenLook
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX27"><Properties><string name="Name">CityService</string><ProtectedString name="Source"><![CDATA[-- CityService (ModuleScript) — ServerScriptService.Modules.CityService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX28"><Properties><string name="Name">CityService</string><ProtectedString name="Source"><![CDATA[-- CityService (ModuleScript) — ServerScriptService.Modules.CityService
 -- The city itself: the clock and calendar, city stats (economy, safety,
 -- happiness) and the city's mood, the mayor, elections, speeches, policies,
 -- coins, what citizens remember about players (and gossip about), the news,
@@ -9560,6 +10256,16 @@ function CityService.StartClock(startHour, runCycle)
 			lastSlow = now
 			Atmosphere.Apply(Lighting, h)
 			S.MapBuilder.SetNight(Atmosphere.IsNight(h))
+			-- empty houses get their furniture when a player comes near (so every
+			-- house you walk into is furnished, without building them all at once)
+			if S.MapBuilder.FurnishNear then
+				for _, player in ipairs(Players:GetPlayers()) do
+					local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+					if root then
+						pcall(S.MapBuilder.FurnishNear, root.Position, 80)
+					end
+				end
+			end
 			if S.Map.ClockFace then
 				S.Map.ClockFace.Text = string.format("%02d:%02d", math.floor(h), math.floor((h % 1) * 60))
 			end
@@ -9609,7 +10315,7 @@ function CityService.CityState()
 end
 
 -- How a citizen feels right now (0-100)
-local PERSONALITY_MOOD = { cheerful = 14, funny = 10, chatty = 6, calm = 5, sporty = 5, artsy = 2, curious = 3, bookish = 0, shy = -2, grumpy = -14 }
+local PERSONALITY_MOOD = { cheerful = 14, funny = 10, chatty = 6, calm = 5, sporty = 5, artsy = 2, curious = 3, bookish = 0, shy = -2, grumpy = -14, brave = 4, anxious = -8, romantic = 6, ambitious = 0, lazy = 2, sarcastic = -6, kind = 10, nosy = 3, adventurous = 8, proud = 2 }
 function CityService.MoodOf(c)
 	local mood = 58 + (state.Happiness - 50) * 0.35 + (state.Safety - 50) * 0.15 + (PERSONALITY_MOOD[c.Personality] or 0)
 	local stage = S.Life:Stage(c)
@@ -9898,7 +10604,7 @@ handlers.Speech = function(player, data)
 				score += CityService.Appeal(c, id)
 			end
 			score /= #picked
-			local mult = if c.Personality == "curious" or c.Personality == "chatty" then 1.25 elseif c.Personality == "grumpy" then 0.8 else 1
+			local mult = if c.Personality == "curious" or c.Personality == "chatty" or c.Personality == "nosy" then 1.25 elseif c.Personality == "grumpy" then 0.8 else 1
 			local delta = math.clamp(score * 22 * mult + rng:NextNumber(-3, 3), -18, 18)
 			local label = string.lower(stanceById[picked[1]].label)
 			CityService.Remember(c, player, if delta >= 0 then "promised to " .. label .. " (I liked it)" else "wants to " .. label .. " (bad idea)", delta, "gave a speech about how we should " .. label)
@@ -10431,7 +11137,7 @@ end
 
 CityService.Handlers = handlers
 return CityService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX28"><Properties><string name="Name">CitizenService</string><ProtectedString name="Source"><![CDATA[-- CitizenService (ModuleScript) — ServerScriptService.Modules.CitizenService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX29"><Properties><string name="Name">CitizenService</string><ProtectedString name="Source"><![CDATA[-- CitizenService (ModuleScript) — ServerScriptService.Modules.CitizenService
 -- Brings the citizens to life: spawns a dressed NPC for every person in Life,
 -- walks them along the sidewalks to where their day takes them (with their
 -- own pace, lane and little pauses), takes elevators, sits at desks, lifts
@@ -10776,6 +11482,12 @@ local function workSpotFor(brain, place, rng)
 	end
 	if #work == 0 then
 		return nil
+	end
+	-- a free till first: customers need someone to check them out
+	for _, s in ipairs(work) do
+		if (s.Action == "cashier" or s.Action == "counter") and free(s, brain) and not brain.C.Temp then
+			return s
+		end
 	end
 	-- their own desk first (same one every day), then any free one
 	local mine = work[((c.WorkSpot or c.Id) - 1) % #work + 1]
@@ -11404,9 +12116,21 @@ arrive = function(brain)
 	setAction(brain, action)
 	brain.ActUntil = os.clock() + math.random(35, 90)
 	-- errands and rounds (see Errands): how long this step takes, what's in hand
+	local checkout = nil
 	if t.IsTask then
 		brain.TaskUntil = os.clock() + (t.Duration or 10)
-		if t.Say then
+		brain.CheckoutWait, brain.RetryCheckout = 0, nil
+		if t.Till then
+			-- at a till: check out with the clerk behind it (or wait in line)
+			checkout = CitizenService.TryCheckout(brain, t)
+			if checkout == "busy" then
+				setAction(brain, "wait")
+				brain.RetryCheckout = t
+				brain.TaskUntil = os.clock() + 2
+				CitizenService.JoinQueue(brain, t)
+			end
+		end
+		if t.Say and checkout ~= "started" and checkout ~= "busy" then
 			CitizenService.Say(brain, t.Say, "happy", 2.2)
 		end
 	end
@@ -11419,6 +12143,120 @@ arrive = function(brain)
 		brain.CommuteProp = nil
 	end
 	refreshExpression(brain)
+end
+
+--------------------------------------------------------------------------------
+-- Checkouts: a customer at a till and the clerk behind it do the sale together.
+-- The customer puts their things on the counter, the clerk scans each one and
+-- bags it, the customer pays by card and takes the bag (at a cafe: order, pay,
+-- the order is made and handed over). Every client animates it from the
+-- attributes set here, in step, from the server clock.
+--------------------------------------------------------------------------------
+local CLERK_HELLO = { "Hi there! Find everything okay?", "Next, please! Hi!", "Hello! Did you find what you were looking for?", "Hi! Good to see you again!" }
+local CUSTOMER_REPLY = { "Yes, thanks!", "I did, thank you.", "Just these, please.", "Mm-hm! Busy day?" }
+local FOOD_HELLO = { "Hi! What can I get you?", "Morning! The usual?", "Welcome! What'll it be?", "Hey there! What are you having?" }
+local FOOD_ORDER = { "A latte, please!", "One of those, please.", "Something sweet, please!", "The usual!", "A coffee to go, please." }
+local THANKS = { "Thanks! Have a great day!", "Thank you! See you soon!", "Enjoy! Bye now!", "Have a nice one!" }
+
+local function clearCheckout(model, start)
+	if model.Parent and model:GetAttribute("CheckoutStart") == start then
+		for _, a in ipairs({ "CheckoutStart", "CheckoutKind", "CheckoutItems", "CheckoutTill", "CheckoutLook", "CheckoutRole" }) do
+			model:SetAttribute(a, nil)
+		end
+	end
+end
+
+-- a line at the till: people wait one behind the other (not on top of each other)
+local queues = {} -- [till spot] = { brain, ... }
+function CitizenService.JoinQueue(brain, t)
+	local q = queues[t.Till] or {}
+	queues[t.Till] = q
+	for k = #q, 1, -1 do
+		if q[k] ~= brain and (not q[k].Model.Parent or q[k].QueueTill ~= t.Till) then
+			table.remove(q, k)
+		end
+	end
+	if not table.find(q, brain) then
+		table.insert(q, brain)
+	end
+	brain.QueueTill = t.Till
+	local place = table.find(q, brain)
+	local back = flat(t.Pos - t.Till.CFrame.Position)
+	back = if back.Magnitude > 0.1 then back.Unit else Vector3.new(0, 0, -1)
+	local p = t.Pos + back * (2.4 * place)
+	brain.Root.CFrame = CFrame.lookAt(Vector3.new(p.X, brain.Root.Position.Y, p.Z), Vector3.new(t.Till.CFrame.Position.X, brain.Root.Position.Y, t.Till.CFrame.Position.Z))
+end
+function CitizenService.LeaveQueue(brain)
+	local q = brain.QueueTill and queues[brain.QueueTill]
+	if q then
+		local k = table.find(q, brain)
+		if k then
+			table.remove(q, k)
+		end
+	end
+	brain.QueueTill = nil
+	-- step up to the counter
+	local t = brain.RetryCheckout
+	if t and t.Pos then
+		local look = t.Look or t.Till.CFrame.Position
+		brain.Root.CFrame = CFrame.lookAt(Vector3.new(t.Pos.X, brain.Root.Position.Y, t.Pos.Z), Vector3.new(look.X, brain.Root.Position.Y, look.Z))
+	end
+end
+
+-- "started", "busy" (the clerk is serving someone else) or "none" (nobody at the till)
+function CitizenService.TryCheckout(brain, t)
+	local till = t.Till
+	local clerk = till and taken[till]
+	if not clerk or clerk == brain or clerk.State ~= "act" or clerk.Spot ~= till or not clerk.Model.Parent then
+		return "none"
+	end
+	local now = workspace:GetServerTimeNow()
+	if (clerk.ServingUntil or 0) > now then
+		return "busy"
+	end
+	local kind = t.CheckoutKind or "shop"
+	local dur = Actions.CheckoutTime[kind] or 8
+	clerk.ServingUntil = now + dur + 0.5
+	local look = flat(brain.Root.Position - till.CFrame.Position)
+	look = if look.Magnitude > 0.1 then look.Unit else till.CFrame.LookVector
+	local items = if kind == "food" then 1 else math.random(3, 6)
+	for _, m in ipairs({ brain.Model, clerk.Model }) do
+		m:SetAttribute("CheckoutStart", now)
+		m:SetAttribute("CheckoutKind", kind)
+		m:SetAttribute("CheckoutItems", items)
+		m:SetAttribute("CheckoutTill", till.CFrame.Position)
+		m:SetAttribute("CheckoutLook", look)
+		m:SetAttribute("CheckoutRole", if m == brain.Model then "customer" else "clerk")
+	end
+	setAction(brain, "checkout")
+	brain.TaskUntil = os.clock() + dur + 0.3
+	-- the little conversation, in step with the animation
+	local token, clerkToken = brain.Token, clerk.Token
+	local function say(at, who, line, expr)
+		task.delay(at, function()
+			if brain.Token == token and clerk.Token == clerkToken and who.Model.Parent then
+				CitizenService.Say(who, line, expr, 2)
+			end
+		end)
+	end
+	local price = if kind == "food" then math.random(3, 7) else items * math.random(2, 4)
+	if kind == "food" then
+		say(0.1, clerk, FOOD_HELLO[math.random(1, #FOOD_HELLO)], "happy")
+		say(1.3, brain, FOOD_ORDER[math.random(1, #FOOD_ORDER)], "happy")
+		say(dur * 0.32, clerk, "That's " .. price .. " coins. Tap your card here.", "neutral")
+		say(dur * 0.88, clerk, "Here you go! Enjoy!", "happy")
+	else
+		say(0.1, clerk, CLERK_HELLO[math.random(1, #CLERK_HELLO)], "happy")
+		say(1.4, brain, CUSTOMER_REPLY[math.random(1, #CUSTOMER_REPLY)], "happy")
+		say(dur * 0.6, clerk, "That comes to " .. price .. " coins.", "neutral")
+		say(dur * 0.7, brain, "Card's fine. Here you go.", "happy")
+		say(dur * 0.9, clerk, THANKS[math.random(1, #THANKS)], "happy")
+	end
+	task.delay(dur + 0.4, function()
+		clearCheckout(brain.Model, now)
+		clearCheckout(clerk.Model, now)
+	end)
+	return "started"
 end
 
 --------------------------------------------------------------------------------
@@ -11913,7 +12751,29 @@ local function think(brain)
 	local key = planKey(plan)
 	setActivity(brain, if brain.Soccer then brain.Model:GetAttribute("Activity") else plan.Activity)
 	if key == brain.PlanKey and st ~= "idle" and brain.Tasks then
+		-- a clerk finishes serving the customer before moving on
+		if (brain.ServingUntil or 0) > workspace:GetServerTimeNow() then
+			return
+		end
 		-- the next step of an errand or a round (see Errands)
+		if st == "act" and os.clock() > (brain.TaskUntil or 0) and brain.RetryCheckout then
+			-- waiting in line at the till: try again (or pay at the self-checkout after a while)
+			brain.CheckoutWait = (brain.CheckoutWait or 0) + 1
+			local r = if brain.CheckoutWait < 6 then CitizenService.TryCheckout(brain, brain.RetryCheckout) else "none"
+			if r == "busy" then
+				brain.TaskUntil = os.clock() + 2
+				-- shuffle forward as the line moves
+				CitizenService.JoinQueue(brain, brain.RetryCheckout)
+			else
+				CitizenService.LeaveQueue(brain)
+				brain.RetryCheckout = nil
+				if r ~= "started" then
+					setAction(brain, "pay")
+					brain.TaskUntil = os.clock() + 5
+				end
+			end
+			return
+		end
 		if st == "act" and os.clock() > (brain.TaskUntil or 0) then
 			brain.TaskIndex += 1
 			local nt = brain.Tasks[brain.TaskIndex]
@@ -12315,7 +13175,9 @@ function CitizenService.Start(services)
 	S = services
 	CitizenService.Event = S.City.Event -- same events as CityService.Event (kept for older scripts)
 	map, pop = S.Map, S.Life
-	Errands.Init({ Map = map, PickSpot = pickSpot, StandNear = standNear, Age = ageOf })
+	Errands.Init({ Map = map, PickSpot = pickSpot, StandNear = standNear, Age = ageOf, Occupant = function(spot)
+		return taken[spot]
+	end })
 	setupPhysics()
 	folder = workspace:FindFirstChild("Citizens") or Instance.new("Folder")
 	folder.Name = "Citizens"
@@ -12404,11 +13266,10 @@ function CitizenService.Start(services)
 end
 
 return CitizenService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX29"><Properties><string name="Name">DialogueService</string><ProtectedString name="Source"><![CDATA[-- DialogueService (ModuleScript) — ServerScriptService.Modules.DialogueService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX30"><Properties><string name="Name">DialogueService</string><ProtectedString name="Source"><![CDATA[-- DialogueService (ModuleScript) — ServerScriptService.Modules.DialogueService
 -- Talking to citizens. Walk up to anyone and press E to talk: they stop what
 -- they're doing, turn to you and answer in their own voice. What they say
--- depends on their personality (cheerful, shy, grumpy, chatty, bookish,
--- sporty, artsy, curious, calm, funny), their mood, their job or school, what
+-- depends on their personality (twenty of them, see Life.Personalities), their mood, their job or school, what
 -- they're doing right now, the city's mood, the mayor, and what they remember
 -- about you (gifts, speeches, jokes... and crimes).
 --
@@ -12420,6 +13281,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local CollectionService = game:GetService("CollectionService")
 
 local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
+local Conversation = require(script.Parent:WaitForChild("Conversation"))
 
 local DialogueService = {}
 DialogueService.Talked = {} -- who talked to whom today (for the daily goals)
@@ -12478,6 +13340,16 @@ local GREET = {
 	artsy = { "Oh, hello! I'm {first}. You have a very interesting... aura.", "Hi! I'm {first}. The light is gorgeous today, isn't it?", "Hello, stranger. I'm {first}. Have you ever really LOOKED at a sunset?" },
 	curious = { "Oh, hello! I'm {first}. Who are you? Where are you from? What do you do?", "Hi! I'm {first}. You're new around here, aren't you?", "Hello! I'm {first}. What brings you my way?" },
 	calm = { "Hello, friend. I'm {first}. Peaceful day, isn't it?", "Hi there. I'm {first}. Take a breath, enjoy the moment.", "Good to meet you. I'm {first}." },
+	brave = { "Hey. I'm {first}. Need help with anything? I'm your person.", "{first}. Nice to meet you. Anyone giving you trouble?", "Hi! I'm {first}. Don't worry, you're safe around me." },
+	anxious = { "Oh! Hi. Sorry. I'm {first}. Did I do something wrong?", "H-hi, I'm {first}... is everything okay?", "Hi, I'm {first}. Sorry, you startled me a little." },
+	romantic = { "Well, hello there... I'm {first}. What a lovely day to meet someone new.", "Hi! I'm {first}. Isn't the city beautiful today? *sighs*", "Oh, hello! I'm {first}. Do you believe in fate?" },
+	ambitious = { "{first}. Pleasure. What do you do? Let's network.", "Hi, I'm {first}. Remember the name, it's going places.", "I'm {first}. I've got five minutes. Make them count!" },
+	lazy = { "*yawn* Oh, hey. I'm {first}.", "Hey... I'm {first}. Can we talk sitting down?", "Mm? Oh, hi. {first}. I was resting my eyes." },
+	sarcastic = { "Oh great, a visitor. I'm {first}. Thrilled.", "I'm {first}. And you are... about to tell me, I'm sure.", "Well, if it isn't someone. I'm {first}." },
+	kind = { "Hi there! I'm {first}. Have you eaten today?", "Hello, dear! I'm {first}. How are you, really?", "Oh, hi! I'm {first}. Is there anything you need?" },
+	nosy = { "Oh, hello! I'm {first}. I've seen you around. Where do you live? Who are your friends?", "Hi! I'm {first}! Tell me everything about yourself.", "Well, well! I'm {first}. I was JUST wondering who you were." },
+	adventurous = { "Hey! I'm {first}! Want to go explore something?", "Yo! {first} here. Seen the woods at the edge of town? Amazing!", "Hi! I'm {first}. Every day's an adventure, right?" },
+	proud = { "Ah, hello. I'm {first}. You've probably heard of me.", "Greetings. {first}. The best at what I do, if I say so myself.", "I'm {first}. Yes, THAT {first}." },
 	funny = { "Well hello! I'm {first}. You look like someone who needs a good laugh.", "Hey! I'm {first}. I'd tell you a joke about construction, but I'm still working on it.", "Hi! {first} here. Warning: I'm hilarious." },
 }
 local GREET_FRIEND = {
@@ -12862,10 +13734,23 @@ local function options(c, player, brain, submenu)
 	if stage == "Baby" or stage == "Toddler" then
 		return { { Key = "peekaboo", Text = "🙈 Peekaboo!" }, { Key = "bye", Text = "👋 Bye bye!" } }
 	end
+	-- deeper questions and follow-ups (see Conversation)
+	if submenu == "deep" then
+		local list = Conversation.DeepMenu(c)
+		table.insert(list, { Key = "back", Text = "↩️ Something else" })
+		return list
+	elseif submenu and string.sub(submenu, 1, 6) == "after:" then
+		local list = Conversation.FollowUps(string.sub(submenu, 7), c)
+		if list then
+			table.insert(list, { Key = "back", Text = "↩️ Something else" })
+			return list
+		end
+	end
 	local list = {
 		{ Key = "howday", Text = "👋 How's your day going?" },
 		{ Key = "job", Text = if stage == "Child" or stage == "Teen" then "🎒 How's school?" else "💼 What do you do?" },
 		{ Key = "family", Text = "👨‍👩‍👧 Tell me about yourself" },
+		{ Key = "deep", Text = "💭 Let's really talk..." },
 		{ Key = "gossip", Text = "👂 Heard any gossip?" },
 	}
 	if stage ~= "Child" then
@@ -12934,6 +13819,25 @@ local function respond(player, session, key)
 		if repeated and key ~= "gossip" then
 			text = pick({ "Like I said... ", "Didn't you just ask me that? ", "Again? Okay: " }) .. text
 		end
+		text ..= Conversation.Tic(c)
+		-- follow-up questions on this topic
+		if Conversation.FollowUps(key, c) then
+			submenu = "after:" .. key
+		end
+	elseif key == "deep" then
+		local p = c.Personality
+		text = if p == "shy" or p == "anxious" then "Oh... um, okay. What do you want to know?" elseif p == "grumpy" or p == "sarcastic" then "Deep talk? With me? ...Fine. Make it quick." elseif p == "chatty" or p == "nosy" then "Ooh, finally, a REAL conversation! Ask me anything!" else pick({ "Sure! What's on your mind?", "I'd like that. Go ahead.", "A real chat? I'm all ears." })
+		expr, submenu = "happy", "deep"
+	elseif Conversation.Has(key) then
+		local feeling
+		text, expr, feeling = Conversation.Answer(key, c, player, brain)
+		if feeling then
+			remember(c, player, "really listened to me", feeling, "had a heart-to-heart with " .. c.First)
+		elseif not repeated then
+			remember(c, player, "had a real conversation with me", 2)
+		end
+		-- keep the conversation going on the same thread
+		submenu = if key == "why" or key == "helpout" then "after:howday" elseif key == "likejob" or key == "hardest" or key == "dreamjob" then "after:job" elseif key == "hobby" then "after:family" else "deep"
 	elseif key == "peekaboo" then
 		text, expr = pick({ "*giggles* 👶", "Hehehe! Again! Again!", "*claps happily*", "Boo! 😄" }), "laugh"
 		remember(c, player, "played peekaboo with me", 4, "played peekaboo with little " .. c.First)
@@ -13232,6 +14136,24 @@ function DialogueService.Greeting(a, b)
 		return pick({ "Hiii " .. name .. "!!", "Hey " .. name .. "! Love the outfit!", name .. "! Hi hi!" })
 	elseif p == "funny" then
 		return pick({ "Well if it isn't " .. name .. "!", "Hey " .. name .. ", nice face! Wait..." })
+	elseif p == "sarcastic" then
+		return pick({ "Oh look, it's " .. name .. ". What a treat.", "Ah, " .. name .. ". Still alive, I see." })
+	elseif p == "kind" then
+		return pick({ "Hello " .. name .. "! Have you eaten?", "Hi " .. name .. ", you look well!" })
+	elseif p == "nosy" then
+		return pick({ name .. "! Where are you off to? Who with?", "Oh, " .. name .. "! I heard something about you..." })
+	elseif p == "proud" then
+		return pick({ "Ah, " .. name .. ". Good to see you. Admire my new shoes.", name .. ". Charmed, as always." })
+	elseif p == "lazy" then
+		return pick({ "*yawn* hey " .. name .. ".", "Mm, hi " .. name .. "." })
+	elseif p == "anxious" then
+		return pick({ "Oh! " .. name .. "! You scared me!", "H-hi " .. name .. ". Is everything okay?" })
+	elseif p == "romantic" then
+		return pick({ "Hello, " .. name .. "! Isn't the sky gorgeous today?", name .. "! You look radiant!" })
+	elseif p == "brave" or p == "adventurous" then
+		return pick({ "Hey " .. name .. "! Up for an adventure?", name .. "! Good to see you!" })
+	elseif p == "ambitious" then
+		return pick({ name .. ". Busy day. Let's catch up later.", "Morning, " .. name .. ". Big plans today!" })
 	end
 	return pick({ "Hi " .. name .. "!", "Hey " .. name .. "!", "Morning, " .. name .. "!", "Oh hey, " .. name .. "!" })
 end
@@ -13359,6 +14281,7 @@ local function attach(model)
 end
 
 function DialogueService.Start(services)
+	Conversation.Init(services)
 	S = services
 	S.City.Handle("Dialogue", onChoose)
 	S.City.Handle("DialogueEnd", function(player)
@@ -13390,7 +14313,7 @@ function DialogueService.Start(services)
 end
 
 return DialogueService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX30"><Properties><string name="Name">CrimeService</string><ProtectedString name="Source"><![CDATA[-- CrimeService (ModuleScript) — ServerScriptService.Modules.CrimeService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX31"><Properties><string name="Name">CrimeService</string><ProtectedString name="Source"><![CDATA[-- CrimeService (ModuleScript) — ServerScriptService.Modules.CrimeService
 -- Crime and punishment. Players can:
 --   👊 punch people (F / the punch button). Three or four hits knock them out:
 --      they fall down, see stars, and wake up later in a hospital bed.
@@ -13636,7 +14559,7 @@ local function report(player, position, victim, severity, what, gossip, stars)
 				S.City.Remember(brain.C, player, "saw them " .. what, -10 - severity * 8, gossip)
 			end
 			S.City.Boost(brain.C, -12)
-			if S.Life:Age(brain.C) < 13 or brain.C.Personality == "shy" or brain.C.Personality == "calm" or math.random() < 0.6 then
+			if S.Life:Age(brain.C) < 13 or brain.C.Personality == "shy" or brain.C.Personality == "calm" or brain.C.Personality == "anxious" or math.random() < 0.6 then
 				S.Citizens.Flee(brain, position, math.random(7, 11), if math.random() < 0.6 then HELP_LINES[math.random(1, #HELP_LINES)] else nil)
 			else
 				S.Citizens.React(brain, "boo", ({ "Hey! I saw that!", "I'm calling the police!", "What is WRONG with you?!", "Somebody stop them!" })[math.random(1, 4)], "angry", 3, position)
@@ -13911,7 +14834,7 @@ local function attack(player, data)
 	end
 	S.Citizens.Hurt(brain, root.Position, line, w.Knock)
 	local armed = w.Severity >= 3
-	local brave = isPolice(brain) or c.Temp or ((c.Personality == "grumpy" or c.Personality == "sporty") and (not armed or math.random() < 0.3)) or (not armed and math.random() < 0.15)
+	local brave = isPolice(brain) or c.Temp or ((c.Personality == "grumpy" or c.Personality == "sporty" or c.Personality == "brave") and (not armed or math.random() < 0.3)) or (not armed and c.Personality ~= "shy" and c.Personality ~= "anxious" and math.random() < 0.15)
 	if isPolice(brain) or c.Temp then
 		CrimeService.AddStars(player, 1, "You attacked a police officer!")
 		if not brain.Model:GetAttribute("Chasing") then
@@ -14716,7 +15639,7 @@ function CrimeService.IsJailed(player)
 end
 
 return CrimeService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX31"><Properties><string name="Name">PlayerService</string><ProtectedString name="Source"><![CDATA[-- PlayerService (ModuleScript) — ServerScriptService.Modules.PlayerService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX32"><Properties><string name="Name">PlayerService</string><ProtectedString name="Source"><![CDATA[-- PlayerService (ModuleScript) — ServerScriptService.Modules.PlayerService
 -- Things players do that aren't crimes or conversations:
 --   • elevators and stairs (press E at the doors, pick a floor)
 --   • citizen profile cards (click anyone), the People directory, finding someone
@@ -14970,7 +15893,7 @@ function PlayerService.Start(services)
 end
 
 return PlayerService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX32"><Properties><string name="Name">CombatService</string><ProtectedString name="Source"><![CDATA[-- CombatService (ModuleScript) — ServerScriptService.Modules.CombatService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX33"><Properties><string name="Name">CombatService</string><ProtectedString name="Source"><![CDATA[-- CombatService (ModuleScript) — ServerScriptService.Modules.CombatService
 -- Weapons and fighting for players:
 --   • the weapons shop at the Hardware store (a bat, a hammer, a knife)
 --   • your weapons as tools in your hotbar (saved between visits)
@@ -15251,7 +16174,7 @@ function CombatService.Start(services)
 end
 
 return CombatService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX33"><Properties><string name="Name">DisguiseService</string><ProtectedString name="Source"><![CDATA[-- DisguiseService (ModuleScript) — ServerScriptService.Modules.DisguiseService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX34"><Properties><string name="Name">DisguiseService</string><ProtectedString name="Source"><![CDATA[-- DisguiseService (ModuleScript) — ServerScriptService.Modules.DisguiseService
 -- Hoodies, ski masks and disguise kits:
 --   • buy them at the Clothing store (press E at the counter)
 --   • wear them anytime: C (or 📱 Wardrobe). One top and one face item at a time.
@@ -15694,7 +16617,7 @@ function DisguiseService.Start(services)
 end
 
 return DisguiseService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX34"><Properties><string name="Name">BrawlService</string><ProtectedString name="Source"><![CDATA[-- BrawlService (ModuleScript) — ServerScriptService.Modules.BrawlService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX35"><Properties><string name="Name">BrawlService</string><ProtectedString name="Source"><![CDATA[-- BrawlService (ModuleScript) — ServerScriptService.Modules.BrawlService
 -- Street fights between citizens. Every now and then two strangers on the
 -- street get into it:
 --   1. an argument ("Hey! You bumped into me!" / "Wanna go?!")
@@ -16226,7 +17149,7 @@ local function gatherCrowd(b)
 				local a = math.random() * math.pi * 2
 				w.RingSpot = pos + Vector3.new(math.cos(a), 0, math.sin(a)) * math.random(8, 11)
 				w.NextLine = now + math.random(10, 40) / 10
-				w.Mood = if age < 13 or w.C.Personality == "shy" or w.C.Personality == "calm" then "worried" elseif age >= 13 and math.random() < 0.35 then "film" else "cheer"
+				w.Mood = if age < 13 or w.C.Personality == "shy" or w.C.Personality == "calm" or w.C.Personality == "anxious" or w.C.Personality == "kind" then "worried" elseif age >= 13 and math.random() < 0.35 then "film" else "cheer"
 				S.Citizens.SetGait(w, 12, "run")
 				w.Humanoid:MoveTo(w.RingSpot)
 			elseif dist < CROWD and S.Citizens.CanReact(w) and (w.WatchedUntil or 0) < now then
@@ -16387,7 +17310,7 @@ function BrawlService.Start(services)
 end
 
 return BrawlService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX35"><Properties><string name="Name">StreetCrimeService</string><ProtectedString name="Source"><![CDATA[-- StreetCrimeService (ModuleScript) — ServerScriptService.Modules.StreetCrimeService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX36"><Properties><string name="Name">StreetCrimeService</string><ProtectedString name="Source"><![CDATA[-- StreetCrimeService (ModuleScript) — ServerScriptService.Modules.StreetCrimeService
 -- Other people commit crimes too, and the police arrest them.
 --
 -- Now and then (more at night, and when Safety or the Economy is low) someone
@@ -17336,7 +18259,7 @@ function StreetCrime.Commit(kind)
 end
 
 return StreetCrime
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX36"><Properties><string name="Name">FitnessService</string><ProtectedString name="Source"><![CDATA[-- FitnessService (ModuleScript) — ServerScriptService.Modules.FitnessService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX37"><Properties><string name="Name">FitnessService</string><ProtectedString name="Source"><![CDATA[-- FitnessService (ModuleScript) — ServerScriptService.Modules.FitnessService
 -- Your fitness level (saved): sprinting earns XP (reported by your client, with
 -- a limit), and the gym's treadmills give a proper workout (press E: you run
 -- for a few seconds). Each level: more stamina, faster recovery, faster sprint
@@ -17500,7 +18423,7 @@ function FitnessService.Start(services)
 end
 
 return FitnessService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX37"><Properties><string name="Name">FoodService</string><ProtectedString name="Source"><![CDATA[-- FoodService (ModuleScript) — ServerScriptService.Modules.FoodService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX38"><Properties><string name="Name">FoodService</string><ProtectedString name="Source"><![CDATA[-- FoodService (ModuleScript) — ServerScriptService.Modules.FoodService
 -- Buy food at the city's food places: the Bakery, the Cafe, the Diner, the
 -- Restaurant, the Ice Cream shop and the Market (press E at the counter).
 -- You eat it right away: it heals you and refills stamina (see Shared.Food),
@@ -17618,7 +18541,7 @@ function FoodService.Start(services)
 end
 
 return FoodService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX38"><Properties><string name="Name">JobService</string><ProtectedString name="Source"><![CDATA[-- JobService (ModuleScript) — ServerScriptService.Modules.JobService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX39"><Properties><string name="Name">JobService</string><ProtectedString name="Source"><![CDATA[-- JobService (ModuleScript) — ServerScriptService.Modules.JobService
 -- Jobs for players. Walk into a workplace and clock in (or pick a job in the
 -- phone's Jobs app, which shows you the way), then work a shift: a list of
 -- tasks, each a glowing marker to walk to and hold E (or X on a controller)
@@ -18029,7 +18952,435 @@ function JobService.Start(services)
 end
 
 return JobService
-]]></ProtectedString></Properties></Item></Item></Item><Item class="StarterPlayer" referent="RBX40"><Properties><string name="Name">StarterPlayer</string></Properties><Item class="StarterPlayerScripts" referent="RBX41"><Properties><string name="Name">StarterPlayerScripts</string></Properties><Item class="LocalScript" referent="RBX49"><Properties><string name="Name">CityClient</string><ProtectedString name="Source"><![CDATA[-- CityClient (LocalScript) — StarterPlayer.StarterPlayerScripts.CityClient
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX40"><Properties><string name="Name">Conversation</string><ProtectedString name="Source"><![CDATA[-- Conversation (ModuleScript) — ServerScriptService.Modules.Conversation
+-- The deeper side of talking to citizens (used by DialogueService):
+--   • every personality has its own voice: how they say hello, little verbal
+--     habits, their dreams and fears, their advice, favorite food and places
+--   • follow-up questions: ask *why* someone is having a good or bad day, if
+--     they like their job, what their dream job is, about their family and
+--     their hobby
+--   • "Let's really talk": dreams, fears, advice, favorite food and spot in
+--     the city, a favorite memory, and what they honestly think of you (they
+--     bring up things you actually did)
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
+
+local Conversation = {}
+local S
+
+function Conversation.Init(services)
+	S = services
+end
+
+local function pick(list)
+	return list[math.random(1, #list)]
+end
+
+--------------------------------------------------------------------------------
+-- Personalities (see Life.Personalities)
+--------------------------------------------------------------------------------
+local P = {}
+Conversation.Personas = P
+
+P.cheerful = {
+	Tics = { "", " :)", " Isn't that great?" },
+	Dream = { "I want to open a little flower shop and give everyone a free daisy on Mondays!", "Honestly? I'd love to throw the biggest street party this city has ever seen." },
+	Fear = { "Rainy days that last a whole week. I need my sunshine!", "People being sad and me not noticing. That would break my heart." },
+	Advice = { "Smile at a stranger today. It's free and it works!", "Bad days end. Good days start. Keep going!" },
+	Food = { "Pancakes with way too much syrup!", "Anything from the Bakery. Their croissants are pure happiness." },
+	Place = { "The fountain at the plaza! Everyone's always so happy there.", "Central Park at sunset. Gorgeous." },
+}
+P.shy = {
+	Tics = { "", " ...um.", " *looks away*" },
+	Dream = { "I... I'd like to write a book someday. Don't tell anyone.", "Maybe sing in front of people. Just once. Without fainting." },
+	Fear = { "Crowds. And being asked to speak at the plaza.", "Phone calls. Why can't everyone just text?" },
+	Advice = { "It's okay to go slow. You don't have to be loud to matter.", "Find one good friend. That's enough." },
+	Food = { "Tea and a quiet muffin in the corner of the Cafe.", "Soup. Soup is safe." },
+	Place = { "The Library. Nobody expects you to talk there.", "The far side of Mirror Lake. It's so peaceful." },
+}
+P.grumpy = {
+	Tics = { "", " Hmph.", " Happy now?" },
+	Dream = { "A day where nobody asks me anything. Present company included.", "Fixing every pothole in this city myself. Nobody else will." },
+	Fear = { "Fear? I don't do fear. ...Okay, dentists.", "Running out of coffee. Now THAT'S scary." },
+	Advice = { "Don't trust anyone who's cheerful before 9 AM.", "Mind your own business. Works every time." },
+	Food = { "Black coffee. Food is for people with time.", "A plain burger. No fancy sauces." },
+	Place = { "My own couch. Door locked.", "The Diner. They leave you alone there." },
+}
+P.chatty = {
+	Tics = { "", " Anyway, where was I?", " Oh, and— never mind, later!" },
+	Dream = { "Hosting my own talk show! I'd interview EVERYONE in town.", "Knowing every single person in this city by name. I'm about halfway!" },
+	Fear = { "Silence. Awkward, awful silence.", "Losing my voice. Can you imagine?!" },
+	Advice = { "Talk to people! Everyone's got a story, you just have to ask!", "Always say yes to lunch invites. ALWAYS." },
+	Food = { "Whatever's being served at a party!", "Pizza, because you share it, and sharing means talking!" },
+	Place = { "The plaza! You meet someone new every five minutes.", "The Cafe. Best gossip in town." },
+}
+P.bookish = {
+	Tics = { "", " Fascinating, really.", " I read about that once." },
+	Dream = { "Reading every book in the city library. I'm on shelf twelve.", "Discovering something nobody knew before. Even something small." },
+	Fear = { "Libraries closing. Or spilling coffee on a first edition.", "Forgetting everything I've ever read." },
+	Advice = { "Read a little every day. It adds up to a whole other life.", "Ask 'why' more often. Then look it up." },
+	Food = { "Anything I can eat with one hand while reading.", "Tea and biscuits. Very literary." },
+	Place = { "The Library, obviously. Third floor, by the window.", "The Museum. The dinosaur and I are old friends." },
+}
+P.sporty = {
+	Tics = { "", " Let's go!", " No pain, no gain!" },
+	Dream = { "Running a marathon in every city in the world.", "Coaching a team that wins the city championship." },
+	Fear = { "Pulling a hamstring before a big game.", "Stairs being replaced by elevators everywhere." },
+	Advice = { "Move every day. Your future self will thank you.", "Drink water. More than that. MORE." },
+	Food = { "Grilled chicken and a big salad. And one donut. Cheat day.", "Protein shakes. So many protein shakes." },
+	Place = { "The Gym, first thing in the morning.", "The running track at the Sports Field." },
+}
+P.artsy = {
+	Tics = { "", " It's all about the colors.", " Very inspiring." },
+	Dream = { "Painting a mural on the side of the Town Hall.", "My own gallery at the Museum. One day!" },
+	Fear = { "Beige. A whole city painted beige.", "Running out of ideas." },
+	Advice = { "Make something every day, even if it's bad. Especially if it's bad.", "Look up. The city is beautiful from different angles." },
+	Food = { "Colorful food! Rainbow salad, berry smoothies.", "Ice cream. It looks like art and tastes like joy." },
+	Place = { "Willow Park, by the easels.", "The rooftops at golden hour." },
+}
+P.curious = {
+	Tics = { "", " Why do you think that is?", " Interesting!" },
+	Dream = { "Figuring out how the whole city works. The pipes, the power, everything.", "Traveling somewhere nobody's ever mapped." },
+	Fear = { "Never finding out the answer to something.", "Being bored. Truly bored." },
+	Advice = { "Ask questions. The dumber they sound, the better the answers.", "Take a different street home every day." },
+	Food = { "Whatever I haven't tried yet!", "The strangest thing on the Diner menu." },
+	Place = { "The Factory. Have you seen those machines?", "The Museum. There's always something new." },
+}
+P.calm = {
+	Tics = { "", " No rush.", " Breathe." },
+	Dream = { "A little garden, a hammock, and nowhere to be.", "Teaching yoga by the lake at sunrise." },
+	Fear = { "Losing my patience. It takes a lot, but it's happened.", "Loud alarms. They rattle me." },
+	Advice = { "Breathe in for four, out for six. Works every time.", "Most things matter less than they seem right now." },
+	Food = { "Green tea and a bowl of rice.", "A slow breakfast. The meal matters less than the pace." },
+	Place = { "Mirror Lake, early morning. Mist on the water.", "The gazebo in Central Park." },
+}
+P.funny = {
+	Tics = { "", " Get it?", " I'm here all week!" },
+	Dream = { "Stand-up comedy at the Cinema. Sold out. Standing ovation. Mayor laughing so hard they cry.", "Making the grumpiest person in town laugh. I'm working on it." },
+	Fear = { "Telling a joke and hearing crickets.", "Clowns. Ironic, I know." },
+	Advice = { "If you can laugh at it, you can survive it.", "Never trust stairs. They're always up to something." },
+	Food = { "Anything shaped like a face.", "Pie. Especially in someone else's face. Kidding! Mostly." },
+	Place = { "The Arcade. The claw machine and I have a rivalry.", "The plaza, where the audience is!" },
+}
+-- the ten new personalities
+P.brave = {
+	Tics = { "", " Bring it on.", " I'm not scared." },
+	Dream = { "Joining the fire department and running INTO the burning building.", "Standing up to every bully in this city." },
+	Fear = { "Standing by while someone gets hurt.", "Honestly? Heights. Don't tell anyone." },
+	Advice = { "Do the scary thing first. Everything after is easy.", "If someone needs help, help. Don't wait for someone else." },
+	Food = { "The spiciest thing on any menu.", "Steak. Big one." },
+	Place = { "The Fire Station. Those people are heroes.", "Anywhere there's trouble, honestly." },
+}
+P.anxious = {
+	Tics = { "", " ...is that okay?", " Sorry, I'm rambling." },
+	Dream = { "One whole week without worrying about anything.", "Being the kind of person who just... relaxes." },
+	Fear = { "Everything? Crime, being late, forgetting the stove on...", "That I said something weird three days ago and everyone remembers." },
+	Advice = { "Check the stove twice. Then once more.", "It's okay to leave early if you're overwhelmed." },
+	Food = { "Chamomile tea. Very calming. Supposedly.", "Comfort food. Mac and cheese." },
+	Place = { "Home, with the door locked.", "The Library. Quiet, safe, no surprises." },
+}
+P.romantic = {
+	Tics = { "", " How lovely.", " *sighs dreamily*" },
+	Dream = { "Finding my true love under the stars at Mirror Lake.", "A wedding at the plaza fountain with the whole city invited." },
+	Fear = { "Growing old without someone to hold hands with.", "Missing my soulmate because I was looking at my phone." },
+	Advice = { "Tell people you love them. Today. You never know.", "Write letters. Real ones, with ink." },
+	Food = { "Candlelit dinner at the Restaurant. Pasta for two.", "Chocolate-dipped strawberries." },
+	Place = { "The pier at Mirror Lake at sunset.", "The gazebo in the park. So romantic!" },
+}
+P.ambitious = {
+	Tics = { "", " Time is money.", " Big plans." },
+	Dream = { "Being mayor. Then maybe more.", "Owning half the shops on the shopping street." },
+	Fear = { "Being ordinary.", "Someone else getting the promotion I deserve." },
+	Advice = { "Work while they sleep. Win while they wonder.", "Network. Every conversation is an opportunity. Like this one!" },
+	Food = { "Whatever's fastest. Lunch is for closing deals.", "Fancy dinners at the Restaurant. Business, of course." },
+	Place = { "The top floor of the office towers. Great view of my future.", "The Bank. I like being near money." },
+}
+P.lazy = {
+	Tics = { "", " *yawns*", " ...eventually." },
+	Dream = { "A nap that lasts a whole weekend.", "Being paid to test sofas." },
+	Fear = { "Alarm clocks.", "Being asked to help someone move house." },
+	Advice = { "Why do today what you can do tomorrow?", "Sit down whenever you can. Standing is overrated." },
+	Food = { "Whatever gets delivered.", "Cold pizza. No cooking required." },
+	Place = { "Any bench. Seriously, any bench.", "My bed." },
+}
+P.sarcastic = {
+	Tics = { "", " Obviously.", " Wow. Shocking." },
+	Dream = { "Oh, you know. World peace. And a sandwich.", "One day without anyone asking me my dream. Oh wait." },
+	Fear = { "Being sincere in public.", "Running out of witty comebacks. Never happened. Yet." },
+	Advice = { "Expect nothing. Then everything is a pleasant surprise.", "Nod and smile. It confuses people." },
+	Food = { "Anything that doesn't talk back.", "Burnt toast. It's a lifestyle." },
+	Place = { "Wherever you're not. Kidding. Mostly. The Arcade's alright.", "The Diner. The coffee's as bitter as I am." },
+}
+P.kind = {
+	Tics = { "", " Take care of yourself, okay?", " You're doing great." },
+	Dream = { "Making sure nobody in this city ever goes hungry.", "Volunteering at the Community Center every day." },
+	Fear = { "Someone needing help and me not being there.", "People being unkind to each other for no reason." },
+	Advice = { "Be gentle with people. Everyone's carrying something.", "Share what you have. It comes back around." },
+	Food = { "Home cooking, shared with friends.", "Soup I made for a sick neighbor. The best kind." },
+	Place = { "The Community Center. Everyone's welcome there.", "The hospital garden. I visit patients sometimes." },
+}
+P.nosy = {
+	Tics = { "", " Don't tell anyone I told you.", " Ooh, interesting..." },
+	Dream = { "Knowing every secret in this city. For safekeeping, of course.", "Running the city news board." },
+	Fear = { "Missing the big news because I was asleep.", "Someone keeping a secret from ME." },
+	Advice = { "Watch people. You learn everything by watching.", "Always look out the window when you hear a noise." },
+	Food = { "Whatever my neighbors are cooking. I peek.", "The Cafe's pastries. And the Cafe's gossip." },
+	Place = { "My front window. Best view on the street.", "The plaza bench by the news board." },
+}
+P.adventurous = {
+	Tics = { "", " Let's go explore!", " What an adventure!" },
+	Dream = { "Climbing the mountains past the city limits.", "Sailing across Mirror Lake on a raft I built myself." },
+	Fear = { "A boring life. Same street, same day, forever.", "Being stuck indoors." },
+	Advice = { "Say yes to things. Especially the weird ones.", "Get lost on purpose sometimes." },
+	Food = { "Campfire food! Burnt marshmallows included.", "Whatever the locals eat." },
+	Place = { "The woods at the edge of town.", "The top of the tallest office tower. The view!" },
+}
+P.proud = {
+	Tics = { "", " Naturally.", " I'm rather good at it, you know." },
+	Dream = { "A statue of me at the plaza. Tasteful. Bronze.", "Being remembered as the best in this city at what I do." },
+	Fear = { "Being laughed at.", "Losing. At anything." },
+	Advice = { "Carry yourself like you already won.", "Never let them see you sweat." },
+	Food = { "Only the finest from the Restaurant.", "I make an excellent lasagna. Everyone says so." },
+	Place = { "The Town Hall steps. Very distinguished.", "The Grand Hotel lobby. Classy." },
+}
+
+-- the personality's verbal habit, now and then
+function Conversation.Tic(c)
+	local persona = P[c.Personality or ""]
+	if persona and math.random() < 0.45 then
+		return pick(persona.Tics)
+	end
+	return ""
+end
+
+--------------------------------------------------------------------------------
+-- Follow-up questions
+--------------------------------------------------------------------------------
+local HARD = {
+	Hospital = "the long shifts, and the patients you can't help.", Bakery = "waking up at 4 AM. Every. Single. Day.", Cafe = "the morning rush. Forty lattes before 8!",
+	PoliceStation = "the paperwork. And people running from me.", School = "thirty kids and one of me.", Factory = "the noise. My ears ring all night.",
+	Shop = "customers who can't find the milk that's right in front of them.", TownHall = "forms. So many forms.", Park = "the geese. They're vicious.",
+	Bank = "counting other people's money all day.", FireStation = "the waiting. Then the running.", Library = "people who talk loudly on the phone.",
+	Restaurant = "the dinner rush. Total chaos.", Office = "meetings that could have been emails.", Gym = "people who don't wipe down the machines.",
+	Warehouse = "heavy boxes and sore backs.", GasStation = "grease. Everywhere. Forever.", PostOffice = "dogs. Every dog in town hates the mail carrier.",
+}
+local DREAM_JOBS = { "astronaut", "rock star", "chef with my own restaurant", "detective", "zookeeper", "pilot", "game designer", "marine biologist", "movie star", "inventor", "mayor", "professional napper" }
+
+local FOLLOW = {}
+FOLLOW.howday = function(c)
+	local mood = S.City.MoodOf(c)
+	return {
+		{ Key = "why", Text = if mood >= 55 then "😊 What's got you in a good mood?" else "😟 Why's it a rough day?" },
+		{ Key = "helpout", Text = "🤝 Anything I can do?" },
+	}
+end
+FOLLOW.job = function(c)
+	local stage = S.Life:Stage(c)
+	if stage ~= "Adult" then
+		return { { Key = "dreamjob", Text = "🌠 What do you want to be when you grow up?" } }
+	end
+	return {
+		{ Key = "likejob", Text = "❤️ Do you like it?" },
+		{ Key = "hardest", Text = "😓 What's the hardest part?" },
+		{ Key = "dreamjob", Text = "🌠 Dream job?" },
+	}
+end
+FOLLOW.family = function(c)
+	return {
+		{ Key = "hobby", Text = "🎨 What do you do for fun?" },
+		{ Key = "deep", Text = "💭 Let's really talk..." },
+	}
+end
+FOLLOW.gossip = function()
+	return { { Key = "gossip", Text = "👂 Anyone else?" } }
+end
+
+function Conversation.FollowUps(topic, c)
+	local fn = FOLLOW[topic]
+	return fn and fn(c) or nil
+end
+
+-- the "let's really talk" menu
+function Conversation.DeepMenu(c)
+	return {
+		{ Key = "dream", Text = "🌠 What's your dream?" },
+		{ Key = "fear", Text = "😨 What scares you?" },
+		{ Key = "advice", Text = "🦉 Any advice for me?" },
+		{ Key = "food", Text = "🍕 Favorite food?" },
+		{ Key = "place", Text = "📍 Favorite spot in the city?" },
+		{ Key = "memory", Text = "📸 Best memory?" },
+		{ Key = "aboutme", Text = "🪞 What do you think of me?" },
+	}
+end
+
+--------------------------------------------------------------------------------
+-- Answers: returns text, expression, then an optional opinion change
+--------------------------------------------------------------------------------
+local A = {}
+
+A.why = function(c, player, brain)
+	local mood = S.City.MoodOf(c)
+	local reasons = {}
+	local mems = S.City.MemoriesOf(c, player)
+	if mems[1] and mems[1].d == S.City.Day() then
+		table.insert(reasons, (if mems[1].f > 0 then "Well, you " .. mems[1].t .. " today! That helped." else "You " .. mems[1].t .. ". Remember?"))
+	end
+	if (c.MoodBoost or 0) < -20 then
+		table.insert(reasons, "Someone attacked me earlier. I keep looking over my shoulder.")
+	end
+	local stateId = S.City.CityState()
+	if stateId == "Celebrating" or stateId == "Prosperous" then
+		table.insert(reasons, "The whole city's doing great! You can feel it.")
+	elseif stateId == "Chaos" or stateId == "Unrest" or stateId == "Tense" then
+		table.insert(reasons, "The city's on edge. Crime, fights... it gets to you.")
+	end
+	if S.Life:Stage(c) == "Adult" and not c.Job then
+		table.insert(reasons, "I still haven't found a job. The bills don't care.")
+	end
+	local h = S.Life.Households[c.Household]
+	if h and h.Expecting then
+		table.insert(reasons, "We're having a baby! I can't stop smiling.")
+	end
+	if #reasons == 0 then
+		table.insert(reasons, if mood >= 55 then pick({ "Just one of those days where everything goes right.", "Good weather, good coffee. Simple.", "I finally finished something I'd been putting off!" }) else pick({ "Didn't sleep well. That's all.", "Just tired, I think.", "Nothing in particular. Just gray inside." }))
+	end
+	return reasons[1], if mood >= 55 then "happy" else "sad"
+end
+
+A.helpout = function(c, player)
+	local mood = S.City.MoodOf(c)
+	if mood < 50 then
+		S.City.Boost(c, 6)
+		return pick({ "...You know what? Just asking helps. Thank you.", "That's really kind. I feel a little better already.", "Nobody's asked me that in a while. Thanks." }), "love", 5
+	end
+	return pick({ "Ha, I'm fine! But thanks for asking.", "You're sweet. I'm good, really!", "Just keep being you!" }), "happy", 2
+end
+
+A.likejob = function(c)
+	local mood = S.City.MoodOf(c)
+	local p = c.Personality
+	if p == "lazy" then
+		return "Like it? I like the lunch breaks.", "neutral"
+	elseif p == "ambitious" then
+		return "It's a stepping stone. I'll be running the place in two years.", "grin"
+	elseif mood >= 60 or p == "cheerful" or p == "kind" then
+		return pick({ "I really do! I get to help people every day.", "Love it. Wouldn't trade it.", "Most days, yes! The people make it." }), "happy"
+	end
+	return pick({ "It pays the bills.", "It's... a job.", "Some days. Not today." }), "neutral"
+end
+
+A.hardest = function(c)
+	local job = S.Life.Jobs(Config, c.Job or "")
+	local hard = job and HARD[job.place]
+	return "The hardest part? " .. (if hard then string.upper(string.sub(hard, 1, 1)) .. string.sub(hard, 2) else "Honestly, getting up in the morning."), "focused"
+end
+
+A.dreamjob = function(c)
+	local stage = S.Life:Stage(c)
+	local dream = DREAM_JOBS[(c.Id * 7) % #DREAM_JOBS + 1]
+	if stage == "Child" then
+		return "A " .. dream .. "! Or a dinosaur. Can you be a dinosaur?", "grin"
+	elseif stage == "Teen" then
+		return "Probably a " .. dream .. ". Or something with computers. I don't know, don't ask my parents.", "neutral"
+	end
+	return "If I could do anything? " .. string.upper(string.sub(dream, 1, 1)) .. string.sub(dream, 2) .. ". Don't laugh!", "happy"
+end
+
+A.hobby = function(c)
+	local hobby = c.Hobby or "reading"
+	local lines = {
+		"I'm really into " .. hobby .. ". It's how I unwind.",
+		"Oh, " .. hobby .. "! I try to do it at least twice a week. You should come sometime!",
+		"You'll usually find me " .. hobby .. " when I'm not busy.",
+	}
+	return pick(lines), "happy"
+end
+
+local function persona(c)
+	return P[c.Personality or ""] or P.cheerful
+end
+A.dream = function(c)
+	return pick(persona(c).Dream), "love"
+end
+A.fear = function(c)
+	return pick(persona(c).Fear), "scared"
+end
+A.advice = function(c)
+	return pick(persona(c).Advice), "happy"
+end
+A.food = function(c)
+	return pick(persona(c).Food), "grin"
+end
+A.place = function(c)
+	return pick(persona(c).Place), "happy"
+end
+
+A.memory = function(c, player)
+	-- a good memory with you, if there is one
+	for _, m in ipairs(S.City.MemoriesOf(c, player)) do
+		if m.f >= 5 then
+			return "Honestly? The time you " .. m.t .. ". That meant a lot.", "love"
+		end
+	end
+	local h = S.Life.Households[c.Household]
+	local lines = {
+		"The day I moved to this city. Everything felt new.",
+		"Watching fireworks from the pier at Mirror Lake.",
+		"My first day at work. I was so nervous I wore my shirt inside out!",
+		"A snowball fight in Central Park that got completely out of hand.",
+	}
+	if h and #h.Members > 1 then
+		table.insert(lines, "Family dinners. Nothing fancy, just all of us laughing.")
+	end
+	return pick(lines), "happy"
+end
+
+A.aboutme = function(c, player)
+	local op = S.City.Opinion(c, player)
+	local mems = S.City.MemoriesOf(c, player)
+	local good, bad
+	for _, m in ipairs(mems) do
+		if not good and m.f >= 4 then
+			good = m
+		elseif not bad and m.f <= -4 then
+			bad = m
+		end
+	end
+	local p = c.Personality
+	if op >= 50 then
+		return "You're one of my favorite people in this city." .. (if good then " You " .. good.t .. ", remember? I won't forget that." else ""), "love"
+	elseif op >= 15 then
+		return "I like you! " .. (if good then "You " .. good.t .. ". That was nice." else "You seem like a good person."), "happy"
+	elseif op <= -30 then
+		return (if bad then "You " .. bad.t .. ". So... not great, honestly." else "I don't trust you. Sorry."), "angry"
+	elseif op < 0 then
+		return (if bad then "Well... you " .. bad.t .. ". I'm trying to get past it." else "I'm still making up my mind about you."), "focused"
+	end
+	if p == "sarcastic" then
+		return "You? You're... a person. Congratulations.", "neutral"
+	elseif p == "nosy" then
+		return "I don't know much about you yet. Which is a problem. Tell me EVERYTHING.", "grin"
+	end
+	return "We don't really know each other yet. But I'd like to!", "neutral"
+end
+
+function Conversation.Has(key)
+	return A[key] ~= nil
+end
+
+-- text, expression, opinion change
+function Conversation.Answer(key, c, player, brain)
+	local fn = A[key]
+	if not fn then
+		return nil
+	end
+	local text, expr, feeling = fn(c, player, brain)
+	return text .. Conversation.Tic(c), expr, feeling
+end
+
+return Conversation
+]]></ProtectedString></Properties></Item></Item></Item><Item class="StarterPlayer" referent="RBX42"><Properties><string name="Name">StarterPlayer</string></Properties><Item class="StarterPlayerScripts" referent="RBX43"><Properties><string name="Name">StarterPlayerScripts</string></Properties><Item class="LocalScript" referent="RBX51"><Properties><string name="Name">CityClient</string><ProtectedString name="Source"><![CDATA[-- CityClient (LocalScript) — StarterPlayer.StarterPlayerScripts.CityClient
 -- AI City on your screen. Starts the HUD, the windows, the world effects and
 -- the citizens' body language, and routes everything the server sends.
 --
@@ -18278,7 +19629,7 @@ UserInputService.InputEnded:Connect(function(input)
 		Moves.SetSprint(false)
 	end
 end)
-]]></ProtectedString></Properties><Item class="ModuleScript" referent="RBX42"><Properties><string name="Name">UI</string><ProtectedString name="Source"><![CDATA[-- UI (ModuleScript) — StarterPlayerScripts.CityClient.UI
+]]></ProtectedString></Properties><Item class="ModuleScript" referent="RBX44"><Properties><string name="Name">UI</string><ProtectedString name="Source"><![CDATA[-- UI (ModuleScript) — StarterPlayerScripts.CityClient.UI
 -- AI City's look: colors, fonts, and helpers for building the interface
 -- (rounded panels, buttons that bounce, windows that pop open, bars...).
 
@@ -18778,7 +20129,7 @@ function UI.commas(n)
 end
 
 return UI
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX43"><Properties><string name="Name">Icons</string><ProtectedString name="Source"><![CDATA[-- Icons (ModuleScript) — StarterPlayerScripts.CityClient.Icons
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX45"><Properties><string name="Name">Icons</string><ProtectedString name="Source"><![CDATA[-- Icons (ModuleScript) — StarterPlayerScripts.CityClient.Icons
 -- AI City's own icon set, drawn from rounded shapes (no image uploads needed,
 -- and they stay sharp at any size).
 --
@@ -19571,7 +20922,7 @@ end
 table.sort(Icons.Names)
 
 return Icons
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX44"><Properties><string name="Name">Hud</string><ProtectedString name="Source"><![CDATA[-- Hud (ModuleScript) — StarterPlayerScripts.CityClient.Hud
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX46"><Properties><string name="Name">Hud</string><ProtectedString name="Source"><![CDATA[-- Hud (ModuleScript) — StarterPlayerScripts.CityClient.Hud
 -- The always-on screen: the clock and calendar, the city's mood and stats,
 -- a rotating minimap, coins, wanted stars, the mayor and the next election,
 -- the action bar, notifications and the news ticker.
@@ -20621,7 +21972,7 @@ function Hud.Start(context)
 end
 
 return Hud
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX45"><Properties><string name="Name">Panels</string><ProtectedString name="Source"><![CDATA[-- Panels (ModuleScript) — StarterPlayerScripts.CityClient.Panels
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX47"><Properties><string name="Name">Panels</string><ProtectedString name="Source"><![CDATA[-- Panels (ModuleScript) — StarterPlayerScripts.CityClient.Panels
 -- The windows you open: the city map, the People directory and profile
 -- cards, voting, speeches, the mayor's desk, conversations with citizens,
 -- elevators, help, settings, the welcome screen, election results and the
@@ -20665,7 +22016,7 @@ local function clear(frame, keep)
 end
 
 local STAGE_EMOJI = { Baby = "👶", Toddler = "🧒", Child = "🧒", Teen = "🧑", Adult = "🧑", Retired = "🧓" }
-local PERSONALITY_EMOJI = { cheerful = "😊", shy = "😳", grumpy = "😒", chatty = "🗣️", bookish = "🤓", sporty = "💪", artsy = "🎨", curious = "🧐", calm = "😌", funny = "😄" }
+local PERSONALITY_EMOJI = { cheerful = "😊", shy = "😳", grumpy = "😒", chatty = "🗣️", bookish = "🤓", sporty = "💪", artsy = "🎨", curious = "🧐", calm = "😌", funny = "😄", brave = "🦁", anxious = "😰", romantic = "💘", ambitious = "📈", lazy = "🥱", sarcastic = "🙄", kind = "🤗", nosy = "👀", adventurous = "🧭", proud = "👑" }
 
 -- a 3D portrait of a citizen (a local copy of their model, turning slowly)
 local function portrait(parent, model, closeUp, props)
@@ -22081,7 +23432,7 @@ function Panels.Start(context)
 end
 
 return Panels
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX46"><Properties><string name="Name">World</string><ProtectedString name="Source"><![CDATA[-- World (ModuleScript) — StarterPlayerScripts.CityClient.World
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX48"><Properties><string name="Name">World</string><ProtectedString name="Source"><![CDATA[-- World (ModuleScript) — StarterPlayerScripts.CityClient.World
 -- Everything drawn in the 3D world: nameplates over citizens and players,
 -- speech bubbles, the interaction prompts (talk, elevators, crimes), the
 -- waypoint beam, hit effects, alarms, confetti, the sky and the traffic lights.
@@ -22804,7 +24155,7 @@ function World.Start(context)
 end
 
 return World
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX47"><Properties><string name="Name">Moves</string><ProtectedString name="Source"><![CDATA[-- Moves (ModuleScript) — StarterPlayerScripts.CityClient.Moves
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX49"><Properties><string name="Name">Moves</string><ProtectedString name="Source"><![CDATA[-- Moves (ModuleScript) — StarterPlayerScripts.CityClient.Moves
 -- Sprinting and stamina. Hold Shift (or the Sprint button) to run: it uses
 -- stamina, which refills when you stop. Your fitness level (from the server,
 -- see Shared.Fitness) sets how much stamina you have, how fast it refills and
@@ -22922,7 +24273,7 @@ function Moves.Start(context)
 end
 
 return Moves
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX48"><Properties><string name="Name">Gamepad</string><ProtectedString name="Source"><![CDATA[-- Gamepad (ModuleScript) — StarterPlayerScripts.CityClient.Gamepad
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX50"><Properties><string name="Name">Gamepad</string><ProtectedString name="Source"><![CDATA[-- Gamepad (ModuleScript) — StarterPlayerScripts.CityClient.Gamepad
 -- Console / controller support (Xbox, PlayStation, any gamepad):
 --   R2 attack · hold L2 block · L3 sprint (click to toggle) · R1 / L1 next /
 --   previous weapon · D-pad ▲ phone · ▼ map · ◀ help · ▶ wardrobe ·

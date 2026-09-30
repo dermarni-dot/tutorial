@@ -395,47 +395,49 @@ function ctx.houseRow(parent, i, j, rng, slots, big)
 		local styles = if big then { "twostory", "bungalow", "modern" } else { "cottage", "twostory", "modern", "bungalow", "cottage" }
 		local style = styles[rng:NextInteger(1, #styles)]
 		local depthZ = HALF - SIDEWALK - 12 - 8
-		-- two-story houses sit further out so their garage fits on the inner side
-		local center = c + Vector3.new(sx * (if style == "twostory" then 23 else 18), 0, sz * depthZ)
-		local garageSide = if sx ~= 0 then sx * sz else 1
-		local b = Buildings.house(model, center, face, style, rng, garageSide)
+		local center = c + Vector3.new(sx * 19, 0, sz * depthZ)
+		-- only the big suburban lots have room for a garage beside the house
+		local garageSide = if big then 1 else nil
+		local b = Buildings.house(model, center, face, style, rng, garageSide, if big then 1.2 else 1)
 		local at = b.At
+		-- the front of the lot (the sidewalk edge), in the house's own space
+		local frontZ = -(HALF - SIDEWALK - depthZ)
 		-- front path, mailbox with the house number, and a hedge or picket fence
-		MapKit.deco(b.Model, "Path", Vector3.new(3, 0.12, 10), at(0, 0.12, -b.D / 2 - 5), MapKit.rgb(200, 195, 185), Enum.Material.Slate)
+		MapKit.deco(b.Model, "Path", Vector3.new(3, 0.12, -frontZ - b.D / 2), at(0, 0.12, (frontZ - b.D / 2) / 2), MapKit.rgb(200, 195, 185), Enum.Material.Slate)
 		local lineZ = c.Z + sz * SPACING / 2
 		local k = math.floor(lineZ / SPACING)
 		local street = Streets.streetName(k)
 		houseNumbers[street] = (houseNumbers[street] or 0) + 2
 		local number = houseNumbers[street] - (if sx < 0 then 1 else 0)
-		local mailbox = MapKit.deco(b.Model, "Mailbox", Vector3.new(1.4, 1.4, 2), at(4, 3.2, -b.D / 2 - 9), MapKit.rgb(60, 90, 160))
-		MapKit.deco(b.Model, "MailboxPost", Vector3.new(0.4, 2.6, 0.4), at(4, 1.3, -b.D / 2 - 9), MapKit.WOOD, Enum.Material.Wood)
+		local mailbox = MapKit.deco(b.Model, "Mailbox", Vector3.new(1.4, 1.4, 2), at(4, 3.2, frontZ + 1.4), MapKit.rgb(60, 90, 160))
+		MapKit.deco(b.Model, "MailboxPost", Vector3.new(0.4, 2.6, 0.4), at(4, 1.3, frontZ + 1.4), MapKit.WOOD, Enum.Material.Wood)
 		MapKit.signText(mailbox, Enum.NormalId.Left, tostring(number), MapKit.WHITE)
 		MapKit.signText(mailbox, Enum.NormalId.Right, tostring(number), MapKit.WHITE)
 		if rng:NextNumber() < 0.5 then
 			for _, px in ipairs({ -1, 1 }) do
-				local hedge = MapKit.deco(b.Model, "Hedge", Vector3.new(7, 2.6, 1.6), at(px * 6.5, 1.3, -b.D / 2 - 9.5), MapKit.LEAVES[3], Enum.Material.Grass)
+				local hedge = MapKit.deco(b.Model, "Hedge", Vector3.new(7, 2.6, 1.6), at(px * 6.5, 1.3, frontZ + 0.9), MapKit.LEAVES[3], Enum.Material.Grass)
 				hedge:SetAttribute("HideName", "a hedge")
 				MapKit.tag(hedge, "HideSpot")
 			end
 		else
 			for n = -5, 5 do
 				if math.abs(n) > 1 then
-					MapKit.deco(b.Model, "Picket", Vector3.new(0.4, 2.4, 0.3), at(n * 1.1, 1.2, -b.D / 2 - 9.5), MapKit.WHITE, Enum.Material.Wood)
+					MapKit.deco(b.Model, "Picket", Vector3.new(0.4, 2.4, 0.3), at(n * 1.1, 1.2, frontZ + 0.9), MapKit.WHITE, Enum.Material.Wood)
 				end
 			end
-			MapKit.deco(b.Model, "FenceRail", Vector3.new(12, 0.3, 0.25), at(0, 1.8, -b.D / 2 - 9.5), MapKit.WHITE, Enum.Material.Wood)
+			MapKit.deco(b.Model, "FenceRail", Vector3.new(12, 0.3, 0.25), at(0, 1.8, frontZ + 0.9), MapKit.WHITE, Enum.Material.Wood)
 		end
 		if rng:NextNumber() < 0.6 then
-			Streets.tree(model, at(-9, 0, -b.D / 2 - 6).Position, rng:NextNumber(0.7, 1), rng)
+			Streets.tree(model, at(-9, 0, (frontZ - b.D / 2) / 2).Position, rng:NextNumber(0.7, 1), rng)
 		end
 		if big then
 			-- a backyard vegetable garden
-			MapKit.deco(b.Model, "BackyardGarden", Vector3.new(8, 0.6, 4), at(-6, 0.3, b.D / 2 + 3), MapKit.rgb(110, 76, 50), Enum.Material.Ground)
+			MapKit.deco(b.Model, "BackyardGarden", Vector3.new(8, 0.6, 2), at(-6, 0.3, b.D / 2 + 1.5), MapKit.rgb(110, 76, 50), Enum.Material.Ground)
 			for n = 0, 5 do
-				MapKit.ball(b.Model, "Veg", 1, at(-9 + n * 1.2, 0.9, b.D / 2 + 3), MapKit.LEAVES[n % 4 + 1])
+				MapKit.ball(b.Model, "Veg", 1, at(-9 + n * 1.2, 0.9, b.D / 2 + 1.5), MapKit.LEAVES[n % 4 + 1])
 			end
 		end
-		if style == "twostory" and rng:NextNumber() < 0.7 then
+		if style == "twostory" and b.GarageX and rng:NextNumber() < 0.7 then
 			-- parked on the driveway in front of the garage
 			Streets.car(b.Model, at(b.GarageX or (b.W / 2 + 5.5), 0.1, -12), Streets.CAR_COLORS[rng:NextInteger(1, #Streets.CAR_COLORS)])
 		end
@@ -630,6 +632,23 @@ function MapBuilder.Get()
 end
 
 -- Furnish a house the first time a family moves in (saves parts on empty homes)
+-- furnish every house within `radius` studs of a position (a few per call)
+function MapBuilder.FurnishNear(position, radius)
+	if not map then
+		return
+	end
+	local done = 0
+	for _, home in ipairs(map.Homes) do
+		if home.Furnished == false and home.Door and (home.Door - position).Magnitude < radius then
+			MapBuilder.FurnishHome(home)
+			done += 1
+			if done >= 3 then
+				return
+			end
+		end
+	end
+end
+
 function MapBuilder.FurnishHome(home)
 	if not home or home.Furnished ~= false or not home.Building then
 		return home and home.Spots or {}

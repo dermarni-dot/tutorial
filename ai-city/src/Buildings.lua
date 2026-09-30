@@ -179,7 +179,20 @@ function Buildings.shell(parent, spec)
 		local y = f * FLOOR_H
 		b.FloorY[f + 1] = y
 		if f > 0 then
-			part(model, "FloorSlab", Vector3.new(W - 1.6, 0.6, D - 1.6), at(0, y + 0.1, 0), spec.FloorColor or MapKit.rgb(200, 192, 178), spec.FloorMaterial or Enum.Material.WoodPlanks)
+			local floorColor, floorMat = spec.FloorColor or MapKit.rgb(200, 192, 178), spec.FloorMaterial or Enum.Material.WoodPlanks
+			if spec.Stairs and floors >= 2 then
+				-- leave a stairwell over the staircase (left wall, back), so you can
+				-- walk up; a railing stops you falling down it
+				local x0, x1 = -W / 2 + 0.8, -W / 2 + 4.4
+				local zOpen = D / 2 - 14.3
+				local zBack = D / 2 - 0.8
+				part(model, "FloorSlab", Vector3.new((W / 2 - 0.8) - x1, 0.6, D - 1.6), at((x1 + W / 2 - 0.8) / 2, y + 0.1, 0), floorColor, floorMat)
+				part(model, "FloorSlab", Vector3.new(x1 - x0, 0.6, zOpen - (-D / 2 + 0.8)), at((x0 + x1) / 2, y + 0.1, (zOpen + (-D / 2 + 0.8)) / 2), floorColor, floorMat)
+				part(model, "StairRailing", Vector3.new(0.25, 3, zBack - zOpen), at(x1 + 0.12, y + 1.9, (zOpen + zBack) / 2), MapKit.rgb(110, 80, 55), Enum.Material.Wood)
+				deco(model, "RailingTop", Vector3.new(0.45, 0.25, zBack - zOpen), at(x1 + 0.12, y + 3.45, (zOpen + zBack) / 2), MapKit.rgb(90, 64, 44), Enum.Material.Wood)
+			else
+				part(model, "FloorSlab", Vector3.new(W - 1.6, 0.6, D - 1.6), at(0, y + 0.1, 0), floorColor, floorMat)
+			end
 		end
 		-- ceiling lights in a grid, each shining down (so the whole room is evenly
 		-- lit, corners too); soft warm light, no shadows (cheap)
@@ -294,12 +307,15 @@ function Buildings.shell(parent, spec)
 			deco(model, "Banister", Vector3.new(0.3, 0.3, 13), at(-W / 2 + 4.2, y + 7.4, D / 2 - 8) * CFrame.Angles(math.rad(-43), 0, 0), MapKit.rgb(110, 80, 55), Enum.Material.Wood)
 		end
 		for f = 0, floors - 1 do
-			local marker = deco(model, "StairLanding", Vector3.new(3, 0.1, 2), at(-W / 2 + 2.6, f * FLOOR_H + 0.45, D / 2 - 1.6), MapKit.rgb(150, 110, 75))
+			-- the ground floor landing is at the foot of the stairs (the back); on the
+			-- floors above it's at the top, in front of the stairwell
+			local landZ = if f == 0 then D / 2 - 1.6 else D / 2 - 15.4
+			local marker = deco(model, "StairLanding", Vector3.new(3, 0.1, 2), at(-W / 2 + 2.6, f * FLOOR_H + 0.45, landZ), MapKit.rgb(150, 110, 75))
 			MapKit.tag(marker, "ElevatorDoor")
 			marker:SetAttribute("Floor", f + 1)
 			marker:SetAttribute("Floors", floors)
 			marker:SetAttribute("Stairs", true)
-			b.Elevator.Floors[f + 1] = { Door = marker, Exit = at(-W / 2 + 2.6, f * FLOOR_H + 0.6, D / 2 - 4).Position }
+			b.Elevator.Floors[f + 1] = { Door = marker, Exit = at(-W / 2 + 2.6, f * FLOOR_H + 0.6, if f == 0 then D / 2 - 4 else D / 2 - 17).Position }
 		end
 	-- an elevator in the back corner for buildings with 3+ floors
 	elseif (spec.Elevator == nil and floors >= 3) or spec.Elevator == true then
@@ -333,18 +349,18 @@ local HOUSE_ROOFS = { MapKit.rgb(150, 60, 50), MapKit.rgb(70, 80, 100), MapKit.r
 local SHUTTERS = { MapKit.rgb(60, 90, 70), MapKit.rgb(70, 90, 140), MapKit.rgb(140, 50, 50), MapKit.rgb(60, 60, 66), MapKit.rgb(230, 230, 225) }
 
 -- style: "cottage", "twostory", "modern", "bungalow"
-function Buildings.house(parent, center, face, style, rng, garageSide)
+function Buildings.house(parent, center, face, style, rng, garageSide, scale)
 	local wall = HOUSE_WALLS[rng:NextInteger(1, #HOUSE_WALLS)]
 	local roof = HOUSE_ROOFS[rng:NextInteger(1, #HOUSE_ROOFS)]
 	local shutter = SHUTTERS[rng:NextInteger(1, #SHUTTERS)]
-	local spec = { Name = "House", Center = center, Face = face, W = 24, D = 20, Floors = 1, Wall = wall, Trim = WHITE, Roof = "gable", RoofColor = roof, DoorW = 5, Material = Enum.Material.WoodPlanks, Elevator = false, Plinth = true }
+	local spec = { Name = "House", Center = center, Face = face, W = 28, D = 22, Floors = 1, Wall = wall, Trim = WHITE, Roof = "gable", RoofColor = roof, DoorW = 5, Material = Enum.Material.WoodPlanks, Elevator = false, Plinth = true }
 	if style == "twostory" then
-		spec.Floors, spec.W, spec.D = 2, 24, 20
+		spec.Floors, spec.W, spec.D = 2, 28, 22
 		spec.Stairs = true
 		spec.Material = Enum.Material.Brick
 		spec.Wall = wall:Lerp(MapKit.rgb(170, 90, 70), 0.35)
 	elseif style == "modern" then
-		spec.Roof, spec.W, spec.D, spec.Floors = "flat", 28, 20, 2
+		spec.Roof, spec.W, spec.D, spec.Floors = "flat", 30, 22, 2
 		spec.Stairs = true
 		spec.Material = Enum.Material.SmoothPlastic
 		spec.Wall = ({ MapKit.rgb(244, 244, 240), MapKit.rgb(60, 62, 70), MapKit.rgb(214, 208, 196) })[rng:NextInteger(1, 3)]
@@ -352,7 +368,12 @@ function Buildings.house(parent, center, face, style, rng, garageSide)
 		spec.RoofKit = { "solar" }
 		spec.WindowColor = MapKit.rgb(170, 210, 235)
 	elseif style == "bungalow" then
-		spec.W, spec.D = 30, 20
+		spec.W, spec.D = 32, 22
+	end
+	if scale and scale ~= 1 then
+		-- big suburban lots get bigger houses (whole studs, even sizes)
+		spec.W = math.floor(spec.W * scale / 2 + 0.5) * 2
+		spec.D = math.floor(spec.D * scale / 2 + 0.5) * 2
 	end
 	local b = Buildings.shell(parent, spec)
 	local at = b.At
@@ -399,7 +420,7 @@ function Buildings.house(parent, center, face, style, rng, garageSide)
 		end
 	end
 	-- a garage with a driveway on two-story houses
-	if style == "twostory" then
+	if style == "twostory" and garageSide then
 		-- garageSide keeps the garage on the side away from the nearest road
 		local gx = (garageSide or 1) * (W / 2 + 5.5)
 		b.GarageX = gx

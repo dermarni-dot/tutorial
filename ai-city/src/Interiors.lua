@@ -164,8 +164,12 @@ end
 local function tableSet(b, f, x, z, list, action, place, color)
 	MapKit.disc(b.Model, "TableTop", 0.25, 4, at(b, f, x, 3, z).Position, color or WHITE, Enum.Material.Wood)
 	box(b, f, "TableLeg", Vector3.new(0.4, 2.9, 0.4), x, 0, z, rgb(60, 60, 64), Enum.Material.Metal)
-	box(b, f, "Plate", Vector3.new(1, 0.08, 1), x, 3.12, z - 0.8, WHITE)
-	box(b, f, "Plate", Vector3.new(1, 0.08, 1), x, 3.12, z + 0.8, WHITE)
+	if action == "chess" then
+		MapKit.chessBoard(b.Model, at(b, f, x, 3.18, z), 2.6)
+	else
+		box(b, f, "Plate", Vector3.new(1, 0.08, 1), x, 3.12, z - 0.8, WHITE)
+		box(b, f, "Plate", Vector3.new(1, 0.08, 1), x, 3.12, z + 0.8, WHITE)
+	end
 	local s1 = chair(b, f, x, z - 2.4, 0, 1, nil, place)
 	local s2 = chair(b, f, x, z + 2.4, 0, -1, nil, place)
 	spot(list, b, f, x, z - 2.4, 0, 1, action, "visit", s1)
@@ -611,51 +615,255 @@ function ROOMS.hotel(b, f, list, rng, place)
 	end
 end
 
-function ROOMS.home(b, f, list, rng, place)
-	-- a living room at the front, a kitchen in one back corner and bedrooms in the other
-	local W, D = b.W, b.D
-	rug(b, f, -W / 4, -1, 7, 5, ({ rgb(170, 70, 60), rgb(70, 110, 150), rgb(200, 170, 110), rgb(90, 130, 90) })[rng:NextInteger(1, 4)])
-	if f == 1 then
-		-- sofa facing a TV
-		local sx, sz = -W / 4, 1.5
-		box(b, f, "Sofa", Vector3.new(6, 1.6, 2.6), sx, 0, sz + 0.5, ({ rgb(90, 110, 150), rgb(150, 90, 70), rgb(110, 130, 90), rgb(160, 150, 140) })[rng:NextInteger(1, 4)], Enum.Material.Fabric)
-		box(b, f, "SofaBack", Vector3.new(6, 2, 0.8), sx, 1.6, sz + 1.6, rgb(80, 90, 110), Enum.Material.Fabric)
-		local seat = MapKit.seat(b.Model, "SofaSeat", Vector3.new(5, 0.3, 2), at(b, f, sx, 1.8, sz + 0.2), rgb(90, 110, 150), Enum.Material.Fabric, place)
-		spot(list, b, f, sx - 1.3, sz, 0, -1, "tv", "home", seat)
-		spot(list, b, f, sx + 1.3, sz, 0, -1, "read", "home")
-		box(b, f, "TVStand", Vector3.new(4, 1.6, 1.2), sx, 0, -D / 2 + 2.2, rgb(60, 50, 44), Enum.Material.Wood)
-		local tv = box(b, f, "TV", Vector3.new(4, 2.4, 0.2), sx, 1.7, -D / 2 + 2.2, rgb(20, 20, 24))
-		local screen = deco(b.Model, "TVScreen", Vector3.new(3.6, 2, 0.05), tv.CFrame * CFrame.new(0, 0, 0.13), rgb(120, 170, 255), Enum.Material.Neon)
-		screen.Transparency = 0.1
-		-- kitchen
-		local kx, kz = W / 2 - 4, D / 2 - 2.2
-		box(b, f, "KitchenCounter", Vector3.new(6, 3.4, 2), kx - 1, 0, kz, rgb(236, 232, 224), Enum.Material.Marble)
-		box(b, f, "Stove", Vector3.new(2.4, 0.2, 1.8), kx - 2.4, 3.4, kz, rgb(40, 40, 44), Enum.Material.Metal)
-		box(b, f, "Fridge", Vector3.new(2.4, 6, 2.2), W / 2 - 2, 0, kz - 3.8, rgb(230, 234, 238), Enum.Material.Metal)
-		spot(list, b, f, kx - 2.4, kz - 2.2, 0, 1, "cook", "home")
-		-- a little dining table
-		MapKit.disc(b.Model, "DiningTable", 0.25, 3.4, at(b, f, W / 4 - 1, 2.8, -1).Position, rgb(150, 110, 70), Enum.Material.Wood)
-		box(b, f, "TableLeg", Vector3.new(0.4, 2.7, 0.4), W / 4 - 1, 0, -1, rgb(100, 70, 50), Enum.Material.Wood)
-		local c1 = chair(b, f, W / 4 - 1, -3.2, 0, 1, nil, place)
-		spot(list, b, f, W / 4 - 1, -3.2, 0, 1, "eat", "home", c1)
+-- A double bed (head toward +Z): room for two
+local function doubleBed(b, f, x, z, list, color)
+	box(b, f, "BedFrame", Vector3.new(6.4, 1.4, 7.6), x, 0, z, rgb(120, 86, 60), Enum.Material.Wood)
+	box(b, f, "Mattress", Vector3.new(6, 0.8, 7.2), x, 1.4, z, WHITE, Enum.Material.Fabric)
+	box(b, f, "Blanket", Vector3.new(6.1, 0.3, 4.8), x, 2.1, z - 1.1, color, Enum.Material.Fabric)
+	box(b, f, "BlanketFold", Vector3.new(6.1, 0.35, 0.8), x, 2.15, z + 1.5, color:Lerp(WHITE, 0.35), Enum.Material.Fabric)
+	for _, px in ipairs({ -1.5, 1.5 }) do
+		box(b, f, "Pillow", Vector3.new(2.4, 0.6, 1.2), x + px, 2.2, z + 2.9, WHITE, Enum.Material.Fabric)
+		local s = spot(list, b, f, x + px, z - 1.4, 0, 1, "sleep", "home")
+		s.BedTop = top(b, f) + 2.2
 	end
-	if f == b.Floors or b.Floors == 1 then
-		-- beds along the back wall (a crib for the little ones)
-		local nBeds = if b.Floors == 1 then 2 else 3
-		for k = 0, nBeds - 1 do
-			local x = -W / 2 + 3.5 + k * 5
-			if b.Floors > 1 or k < 2 then
-				bed(b, f, x, D / 2 - 4.2 + (if b.Floors == 1 then 0 else 0), list, ({ rgb(90, 130, 200), rgb(200, 110, 140), rgb(120, 180, 120), rgb(230, 190, 90) })[(k + rng:NextInteger(0, 3)) % 4 + 1], "sleep", "home")
+	box(b, f, "Headboard", Vector3.new(6.6, 4, 0.5), x, 0, z + 3.85, rgb(100, 70, 50), Enum.Material.Wood)
+end
+
+local function wardrobe(b, f, x, z, alongX, color)
+	color = color or rgb(150, 110, 75)
+	local size = if alongX then Vector3.new(4.4, 7, 2) else Vector3.new(2, 7, 4.4)
+	box(b, f, "Wardrobe", size, x, 0, z, color, Enum.Material.Wood)
+	for _, s in ipairs({ -1, 1 }) do
+		local hx, hz = if alongX then x + s * 0.3 else x, if alongX then z else z + s * 0.3
+		local off = if alongX then Vector3.new(0, 0, 0) else Vector3.new(0, 0, 0)
+		local _ = off
+		box(b, f, "WardrobeHandle", Vector3.new(0.15, 0.9, 0.15), hx + (if alongX then 0 else (if x < 0 then 1.05 else -1.05)), 3.2, hz + (if alongX then (if z > 0 then -1.05 else 1.05) else 0), rgb(210, 190, 120), Enum.Material.Metal)
+	end
+end
+
+local function dresser(b, f, x, z, alongX)
+	local size = if alongX then Vector3.new(4, 3, 1.8) else Vector3.new(1.8, 3, 4)
+	box(b, f, "Dresser", size, x, 0, z, rgb(170, 130, 95), Enum.Material.Wood)
+	box(b, f, "Mirror", if alongX then Vector3.new(2.6, 2.4, 0.1) else Vector3.new(0.1, 2.4, 2.6), x, 3.4, z, rgb(210, 230, 240), Enum.Material.Glass).Reflectance = 0.4
+	box(b, f, "PhotoFrame", Vector3.new(0.6, 0.8, 0.15), x + (if alongX then 1.3 else 0), 3, z + (if alongX then 0 else 1.3), rgb(60, 50, 44))
+end
+
+-- a bathroom: walls with an open doorway, toilet, sink and mirror, and a bathtub.
+-- (x0, z0)-(x1, z1) is the room; the doorway is on the side facing doorSide ("x" or "z")
+local function bathroom(b, f, x0, z0, x1, z1, doorAt)
+	local wallC = rgb(236, 240, 242)
+	local h = FLOOR_H - 1.2
+	local y = top(b, f) + h / 2
+	local function wallPiece(cx, cz, sx, sz)
+		if sx > 0.2 and sz > 0.2 then
+			MapKit.part(b.Model, "BathroomWall", Vector3.new(sx, h, sz), b.At(cx, y, cz), wallC, Enum.Material.SmoothPlastic)
+		end
+	end
+	-- the walls on the open sides (the others are the building's walls), with a 3.2-stud doorway
+	for _, side in ipairs(doorAt.Walls) do
+		if side == "x0" or side == "x1" then
+			local x = if side == "x0" then x0 else x1
+			if doorAt.Door == side then
+				local mid = (z0 + z1) / 2
+				wallPiece(x, (z0 + mid - 1.6) / 2, 0.3, (mid - 1.6) - z0)
+				wallPiece(x, (mid + 1.6 + z1) / 2, 0.3, z1 - (mid + 1.6))
+			else
+				wallPiece(x, (z0 + z1) / 2, 0.3, z1 - z0)
+			end
+		else
+			local z = if side == "z0" then z0 else z1
+			if doorAt.Door == side then
+				local mid = (x0 + x1) / 2
+				wallPiece((x0 + mid - 1.6) / 2, z, (mid - 1.6) - x0, 0.3)
+				wallPiece((mid + 1.6 + x1) / 2, z, x1 - (mid + 1.6), 0.3)
+			else
+				wallPiece((x0 + x1) / 2, z, x1 - x0, 0.3)
 			end
 		end
-		if b.Floors == 1 then
-			-- crib
-			box(b, f, "Crib", Vector3.new(3, 2.6, 4), -W / 2 + 13, 0, D / 2 - 3.4, rgb(240, 236, 230), Enum.Material.Wood)
-			local s = spot(list, b, f, -W / 2 + 13, D / 2 - 4.4, 0, 1, "nap", "home")
-			s.BedTop = top(b, f) + 1.8
-			s.Crib = true
+	end
+	-- a tiled floor
+	box(b, f, "BathroomTiles", Vector3.new(x1 - x0 - 0.3, 0.05, z1 - z0 - 0.3), (x0 + x1) / 2, 0, (z0 + z1) / 2, rgb(200, 220, 228), Enum.Material.Marble)
+	local w, d = x1 - x0, z1 - z0
+	local cx = (x0 + x1) / 2
+	local long = d >= w
+	-- bathtub along the far side
+	local tubX = if long then cx else x0 + 1.4
+	local tubZ = if long then z1 - 1.5 else (z0 + z1) / 2
+	local tubSize = if long then Vector3.new(math.min(5, w - 0.8), 2, 2.6) else Vector3.new(2.6, 2, math.min(5, d - 0.8))
+	box(b, f, "Bathtub", tubSize, tubX, 0, tubZ, WHITE, Enum.Material.Marble)
+	box(b, f, "BathWater", tubSize - Vector3.new(0.5, 0, 0.5) + Vector3.new(0, -1.6, 0), tubX, 1.5, tubZ, rgb(150, 210, 240), Enum.Material.Glass).Transparency = 0.4
+	box(b, f, "Faucet", Vector3.new(0.3, 0.8, 0.3), tubX + (if long then tubSize.X / 2 - 0.4 else 0), 2, tubZ + (if long then 0 else tubSize.Z / 2 - 0.4), rgb(200, 204, 210), Enum.Material.Metal)
+	-- toilet and sink along the near side
+	local nearZ = if long then z0 + 1.4 else z0 + 1.4
+	box(b, f, "Toilet", Vector3.new(1.4, 1.5, 2), x0 + 1.2, 0, nearZ + 0.4, WHITE, Enum.Material.Marble)
+	box(b, f, "ToiletTank", Vector3.new(1.4, 1.6, 0.6), x0 + 1.2, 1.5, nearZ - 0.4, WHITE, Enum.Material.Marble)
+	box(b, f, "Sink", Vector3.new(2, 0.5, 1.4), x1 - 1.3, 2.8, nearZ, WHITE, Enum.Material.Marble)
+	box(b, f, "SinkStand", Vector3.new(1.6, 2.8, 1.2), x1 - 1.3, 0, nearZ, rgb(150, 150, 156), Enum.Material.Wood)
+	local mirror = box(b, f, "BathMirror", Vector3.new(0.1, 2, 1.8), x1 - 0.2, 4.2, nearZ, rgb(210, 230, 240), Enum.Material.Glass)
+	mirror.Reflectance = 0.5
+	box(b, f, "Towel", Vector3.new(0.15, 1.6, 1.2), x0 + 0.2, 3.4, (z0 + z1) / 2, ({ rgb(90, 160, 220), rgb(240, 150, 170), rgb(120, 200, 150) })[math.floor(math.abs(x0 + z0)) % 3 + 1], Enum.Material.Fabric)
+end
+
+local function kitchen(b, f, x0, x1, z, list)
+	-- counters along the back wall: sink, stove and oven, microwave; cupboards above
+	local w = x1 - x0
+	local cx = (x0 + x1) / 2
+	box(b, f, "KitchenCounter", Vector3.new(w, 3.4, 2.2), cx, 0, z, rgb(240, 236, 228), Enum.Material.Wood)
+	box(b, f, "Worktop", Vector3.new(w + 0.2, 0.25, 2.4), cx, 3.4, z, rgb(70, 70, 76), Enum.Material.Granite)
+	box(b, f, "UpperCabinets", Vector3.new(w, 2.4, 1.3), cx, 6.4, z + 0.45, rgb(240, 236, 228), Enum.Material.Wood)
+	for k = 0, math.floor(w / 2.4) - 1 do
+		box(b, f, "CabinetHandle", Vector3.new(0.8, 0.12, 0.12), x0 + 1.2 + k * 2.4, 2.8, z - 1.15, rgb(180, 184, 190), Enum.Material.Metal)
+	end
+	-- sink with a tap
+	box(b, f, "KitchenSink", Vector3.new(2.4, 0.2, 1.6), x0 + 2, 3.5, z, rgb(200, 204, 210), Enum.Material.Metal)
+	box(b, f, "Tap", Vector3.new(0.2, 1, 0.2), x0 + 2, 3.6, z + 0.8, rgb(200, 204, 210), Enum.Material.Metal)
+	-- stove, oven door and knobs
+	local sx = x0 + w * 0.55
+	box(b, f, "Stove", Vector3.new(2.6, 0.12, 2), sx, 3.66, z, rgb(30, 30, 34), Enum.Material.Metal)
+	for _, o in ipairs({ { -0.6, -0.5 }, { 0.6, -0.5 }, { -0.6, 0.5 }, { 0.6, 0.5 } }) do
+		local burner = box(b, f, "Burner", Vector3.new(0.7, 0.05, 0.7), sx + o[1], 3.78, z + o[2], rgb(70, 70, 76), Enum.Material.Metal)
+		local _ = burner
+	end
+	box(b, f, "OvenDoor", Vector3.new(2.4, 2, 0.1), sx, 0.8, z - 1.15, rgb(40, 40, 44), Enum.Material.Glass)
+	box(b, f, "Pot", Vector3.new(1.1, 0.8, 1.1), sx - 0.6, 3.78, z - 0.5, rgb(170, 170, 176), Enum.Material.Metal)
+	spot(list, b, f, sx, z - 2.3, 0, 1, "cook", "home")
+	-- microwave and a kettle
+	if w > 8 then
+		box(b, f, "Microwave", Vector3.new(1.8, 1.1, 1.3), x1 - 1.4, 3.65, z + 0.3, rgb(230, 232, 236), Enum.Material.Metal)
+		box(b, f, "MicrowaveDoor", Vector3.new(1.1, 0.8, 0.05), x1 - 1.6, 3.8, z - 0.38, rgb(30, 30, 34), Enum.Material.Glass)
+	end
+	box(b, f, "Kettle", Vector3.new(0.6, 0.8, 0.6), x0 + 3.8, 3.65, z + 0.3, rgb(200, 60, 60), Enum.Material.Metal)
+	box(b, f, "FruitBowl", Vector3.new(1.2, 0.3, 1.2), x0 + 5.2, 3.65, z, rgb(200, 180, 140), Enum.Material.Wood)
+	for k = 0, 2 do
+		MapKit.ball(b.Model, "Fruit", 0.45, at(b, f, x0 + 4.9 + k * 0.3, 4.1, z + (k % 2) * 0.3), ({ rgb(220, 50, 50), rgb(250, 190, 40), rgb(110, 190, 60) })[k + 1])
+	end
+end
+
+local function fridge(b, f, x, z, faceX)
+	-- a tall fridge, doors facing along -x (faceX = -1) or +x
+	box(b, f, "Fridge", Vector3.new(2.4, 6.4, 2.4), x, 0, z, rgb(228, 232, 236), Enum.Material.Metal)
+	box(b, f, "FridgeHandle", Vector3.new(0.15, 1.8, 0.15), x + faceX * 1.25, 3.8, z - 0.8, rgb(170, 174, 180), Enum.Material.Metal)
+	box(b, f, "FridgeHandle", Vector3.new(0.15, 1.2, 0.15), x + faceX * 1.25, 1.6, z - 0.8, rgb(170, 174, 180), Enum.Material.Metal)
+	box(b, f, "FridgeMagnet", Vector3.new(0.05, 0.4, 0.4), x + faceX * 1.23, 4.8, z + 0.3, rgb(250, 190, 40))
+end
+
+local function livingRoom(b, f, x, z, list, rng, place)
+	-- a sofa facing a TV on the left wall, an armchair, a rug
+	local W = b.W
+	local fabric = ({ rgb(90, 110, 150), rgb(150, 90, 70), rgb(110, 130, 90), rgb(160, 150, 140), rgb(70, 70, 80) })[rng:NextInteger(1, 5)]
+	rug(b, f, x - 1, z, 8, 7, ({ rgb(170, 70, 60), rgb(70, 110, 150), rgb(200, 170, 110), rgb(90, 130, 90) })[rng:NextInteger(1, 4)])
+	-- TV on a low unit against the left wall, facing +x
+	local tvX = -W / 2 + 1.6
+	box(b, f, "TVStand", Vector3.new(1.6, 1.6, 5), tvX, 0, z, rgb(60, 50, 44), Enum.Material.Wood)
+	local tv = box(b, f, "TV", Vector3.new(0.2, 2.8, 4.6), tvX, 1.7, z, rgb(20, 20, 24))
+	local screen = deco(b.Model, "TVScreen", Vector3.new(0.05, 2.4, 4.2), tv.CFrame * CFrame.new(0.13, 0, 0), rgb(120, 170, 255), Enum.Material.Neon)
+	screen.Transparency = 0.1
+	box(b, f, "Speaker", Vector3.new(0.8, 2.2, 0.8), tvX, 0, z - 3.2, rgb(40, 40, 44))
+	box(b, f, "Speaker", Vector3.new(0.8, 2.2, 0.8), tvX, 0, z + 3.2, rgb(40, 40, 44))
+	-- the sofa across the room, back to +x, facing the TV (-x)
+	local sx = x + 3.5
+	box(b, f, "Sofa", Vector3.new(2.6, 1.6, 6.4), sx, 0, z, fabric, Enum.Material.Fabric)
+	box(b, f, "SofaBack", Vector3.new(0.8, 2.1, 6.4), sx + 1.1, 1.6, z, fabric:Lerp(BLACK, 0.12), Enum.Material.Fabric)
+	for _, e in ipairs({ -1, 1 }) do
+		box(b, f, "SofaArm", Vector3.new(2.6, 2.3, 0.7), sx, 0, z + e * 3.2, fabric:Lerp(BLACK, 0.12), Enum.Material.Fabric)
+	end
+	box(b, f, "Cushion", Vector3.new(0.5, 1.1, 1.2), sx + 0.5, 1.6, z - 1.8, fabric:Lerp(WHITE, 0.45), Enum.Material.Fabric)
+	local seat = MapKit.seat(b.Model, "SofaSeat", Vector3.new(2, 0.3, 5.2), at(b, f, sx - 0.2, 1.8, z), fabric, Enum.Material.Fabric, place)
+	spot(list, b, f, sx - 0.3, z - 1.4, -1, 0, "tv", "home", seat)
+	spot(list, b, f, sx - 0.3, z + 1.4, -1, 0, "read", "home")
+	-- an armchair at the side, angled toward the TV
+	local ax, az = x, z - 4.6
+	box(b, f, "Armchair", Vector3.new(2.6, 1.6, 2.6), ax, 0, az, fabric:Lerp(WHITE, 0.2), Enum.Material.Fabric)
+	box(b, f, "ArmchairBack", Vector3.new(2.6, 2, 0.6), ax, 1.6, az - 1, fabric:Lerp(WHITE, 0.1), Enum.Material.Fabric)
+	-- a side table with a lamp
+	box(b, f, "SideTable", Vector3.new(1.4, 2, 1.4), sx, 0, z - 4.4, rgb(130, 90, 60), Enum.Material.Wood)
+	local lamp = box(b, f, "TableLamp", Vector3.new(0.9, 1.1, 0.9), sx, 2, z - 4.4, rgb(255, 236, 190), Enum.Material.Fabric)
+	MapKit.light(lamp, rgb(255, 220, 170), 12, 0.6)
+end
+
+local function diningTable(b, f, x, z, list, place)
+	-- a table for four with plates and a vase
+	box(b, f, "DiningTable", Vector3.new(5, 0.3, 3.2), x, 2.8, z, rgb(150, 110, 70), Enum.Material.Wood)
+	for _, lx in ipairs({ -2.2, 2.2 }) do
+		for _, lz in ipairs({ -1.3, 1.3 }) do
+			box(b, f, "TableLeg", Vector3.new(0.3, 2.8, 0.3), x + lx, 0, z + lz, rgb(110, 80, 50), Enum.Material.Wood)
 		end
-		box(b, f, "Lamp", Vector3.new(0.8, 4.6, 0.8), -W / 2 + 1.5, 0, 1, rgb(230, 220, 190))
+	end
+	box(b, f, "Vase", Vector3.new(0.6, 1, 0.6), x, 3.1, z, rgb(80, 140, 200), Enum.Material.Glass)
+	MapKit.ball(b.Model, "Flowers", 0.9, at(b, f, x, 4.4, z), MapKit.FLOWERS[math.floor(math.abs(x * 7 + z)) % #MapKit.FLOWERS + 1])
+	local first = true
+	for _, lx in ipairs({ -1.3, 1.3 }) do
+		for _, side in ipairs({ -1, 1 }) do
+			box(b, f, "Plate", Vector3.new(1, 0.08, 1), x + lx, 3.12, z + side * 0.9, WHITE)
+			local seat = chair(b, f, x + lx, z + side * 2.4, 0, -side, nil, place)
+			if first or side == 1 then
+				spot(list, b, f, x + lx, z + side * 2.4, 0, -side, "eat", "home", seat)
+			end
+			first = false
+		end
+	end
+end
+
+local function kidsDesk(b, f, x, z, list, place)
+	box(b, f, "KidsDesk", Vector3.new(4, 0.25, 2.2), x, 2.6, z, rgb(250, 240, 220), Enum.Material.Wood)
+	box(b, f, "DeskDrawers", Vector3.new(1.4, 2.6, 2), x + 1.3, 0, z, rgb(250, 240, 220), Enum.Material.Wood)
+	box(b, f, "DeskLamp", Vector3.new(0.5, 1.2, 0.5), x - 1.4, 2.85, z + 0.5, rgb(90, 160, 220), Enum.Material.Metal)
+	box(b, f, "Notebook", Vector3.new(1.2, 0.08, 0.9), x, 2.88, z, rgb(250, 250, 245))
+	local seat = chair(b, f, x, z - 2, 0, 1, rgb(90, 160, 220), place)
+	spot(list, b, f, x, z - 2, 0, 1, "study", "home", seat)
+end
+
+function ROOMS.home(b, f, list, rng, place)
+	-- Ground floor: living room at the front left, dining table at the front
+	-- right, a kitchen along the back right. Bedrooms at the back left (on one-
+	-- storey houses) or upstairs, with a bathroom. The left back corner is
+	-- kept clear on two-storey houses for the stairs.
+	local W, D = b.W, b.D
+	local hw, hd = W / 2, D / 2
+	local twoStorey = b.Floors > 1
+	local bedColors = { rgb(90, 130, 200), rgb(200, 110, 140), rgb(120, 180, 120), rgb(230, 190, 90), rgb(150, 110, 200) }
+	if f == 1 then
+		livingRoom(b, f, -hw + 6.5, -hd + 5.5, list, rng, place)
+		diningTable(b, f, hw - 7, -hd + 6, list, place)
+		kitchen(b, f, hw - math.min(12, W / 2 - 1), hw - 3, hd - 1.8, list)
+		fridge(b, f, hw - 1.6, hd - 1.8, -1)
+		plant(b, f, -2.5, -hd + 2)
+		if not twoStorey then
+			-- bathroom on the right, between the dining table and the kitchen
+			local z0, z1 = -hd + 9.8, hd - 4.6
+			if z1 - z0 >= 4.5 then
+				bathroom(b, f, hw - 6, z0, hw - 0.5, z1, { Walls = { "x0", "z0", "z1" }, Door = "x0" })
+			end
+			-- bedrooms at the back left: a double bed, a kid's bed, a crib
+			doubleBed(b, f, -hw + 4.5, hd - 4.4, list, bedColors[rng:NextInteger(1, #bedColors)])
+			bed(b, f, -hw + 10.5, hd - 4.2, list, bedColors[rng:NextInteger(1, #bedColors)], "sleep", "home")
+			if W >= 28 then
+				box(b, f, "Crib", Vector3.new(3, 2.6, 4), -hw + 15, 0, hd - 3.4, rgb(240, 236, 230), Enum.Material.Wood)
+				local s = spot(list, b, f, -hw + 15, hd - 4.4, 0, 1, "nap", "home")
+				s.BedTop = top(b, f) + 1.8
+				s.Crib = true
+			end
+			wardrobe(b, f, -hw + 1.4, 1, false)
+			dresser(b, f, -hw + 1.3, hd - 10.5, false)
+		end
+		return
+	end
+	if f == b.Floors then
+		-- upstairs: bedrooms along the back (right of the stairs), a bathroom in
+		-- the front right corner, a kid's desk, wardrobe and dresser
+		doubleBed(b, f, -hw + 9.5, hd - 4.4, list, bedColors[rng:NextInteger(1, #bedColors)])
+		local x = -hw + 15.5
+		local n = 0
+		while x + 2.2 < hw - 1 and n < 2 do
+			bed(b, f, x, hd - 4.2, list, bedColors[rng:NextInteger(1, #bedColors)], "sleep", "home")
+			x += 5.5
+			n += 1
+		end
+		bathroom(b, f, hw - 7, -hd + 0.5, hw - 0.5, -hd + 7, { Walls = { "x0", "z1" }, Door = "x0" })
+		kidsDesk(b, f, -hw + 8, -hd + 3.5, list, place)
+		wardrobe(b, f, hw - 1.4, 1.5, false)
+		dresser(b, f, -1, -hd + 1.3, true)
+		rug(b, f, -1, 1, 8, 5, bedColors[rng:NextInteger(1, #bedColors)]:Lerp(WHITE, 0.4))
 	end
 end
 

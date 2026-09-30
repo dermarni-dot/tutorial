@@ -239,6 +239,35 @@ function MapKit.nightNeon(p)
 	return p
 end
 
+-- A chess board lying flat at cf (its top surface), size studs across: an
+-- 8x8 board with a frame and a game in progress (pawns and back-row pieces)
+function MapKit.chessBoard(parent, cf, size)
+	size = size or 2.6
+	local sq = size / 8
+	MapKit.deco(parent, "ChessFrame", Vector3.new(size + 0.3, 0.1, size + 0.3), cf * CFrame.new(0, -0.05, 0), MapKit.rgb(110, 76, 50), Enum.Material.Wood)
+	MapKit.deco(parent, "ChessBoard", Vector3.new(size, 0.1, size), cf * CFrame.new(0, 0.01, 0), MapKit.rgb(240, 232, 214), Enum.Material.Marble)
+	for i = 0, 7 do
+		for j = 0, 7 do
+			if (i + j) % 2 == 1 then
+				MapKit.deco(parent, "ChessSquare", Vector3.new(sq, 0.11, sq), cf * CFrame.new(-size / 2 + sq / 2 + i * sq, 0.012, -size / 2 + sq / 2 + j * sq), MapKit.rgb(90, 64, 46), Enum.Material.Marble)
+			end
+		end
+	end
+	-- a few pieces for each side (some pawns have already moved)
+	local layout = { { 0, 1 }, { 2, 1 }, { 3, 3 }, { 5, 1 }, { 6, 2 }, { 1, 0 }, { 4, 0 }, { 7, 0 } }
+	for side = 0, 1 do
+		local color = if side == 0 then MapKit.rgb(245, 240, 228) else MapKit.rgb(40, 36, 36)
+		for k, pos in ipairs(layout) do
+			local i, j = pos[1], if side == 0 then pos[2] else 7 - pos[2]
+			local x, z = -size / 2 + sq / 2 + i * sq, -size / 2 + sq / 2 + j * sq
+			local tall = k > 5
+			local body = MapKit.deco(parent, "ChessPiece", Vector3.new(if tall then 0.32 else 0.22, sq * 0.55, sq * 0.55), cf * CFrame.new(x, (if tall then 0.16 else 0.11) + 0.06, z) * CFrame.Angles(0, 0, math.rad(90)), color, Enum.Material.SmoothPlastic)
+			body.Shape = Enum.PartType.Cylinder
+			MapKit.ball(parent, "ChessPieceTop", sq * (if tall then 0.45 else 0.38), cf * CFrame.new(x, (if tall then 0.38 else 0.27) + 0.06, z), color, Enum.Material.SmoothPlastic)
+		end
+	end
+end
+
 -- Particle effects that bring the city to life
 --   "smoke"      soft grey puffs rising from a chimney
 --   "fireflies"  little glowing specks that drift at night (parks, ponds)

@@ -344,6 +344,12 @@ local function workSpotFor(brain, place, rng)
 	if #work == 0 then
 		return nil
 	end
+	-- a free till first: customers need someone to check them out
+	for _, s in ipairs(work) do
+		if (s.Action == "cashier" or s.Action == "counter") and free(s, brain) and not brain.C.Temp then
+			return s
+		end
+	end
 	-- their own desk first (same one every day), then any free one
 	local mine = work[((c.WorkSpot or c.Id) - 1) % #work + 1]
 	if free(mine, brain) then
@@ -971,9 +977,21 @@ arrive = function(brain)
 	setAction(brain, action)
 	brain.ActUntil = os.clock() + math.random(35, 90)
 	-- errands and rounds (see Errands): how long this step takes, what's in hand
+	local checkout = nil
 	if t.IsTask then
 		brain.TaskUntil = os.clock() + (t.Duration or 10)
-		if t.Say then
+		brain.CheckoutWait, brain.RetryCheckout = 0, nil
+		if t.Till then
+			-- at a till: check out with the clerk behind it (or wait in line)
+			checkout = CitizenService.TryCheckout(brain, t)
+			if checkout == "busy" then
+				setAction(brain, "wait")
+				brain.RetryCheckout = t
+				brain.TaskUntil = os.clock() + 2
+				CitizenService.JoinQueue(brain, t)
+			end
+		end
+		if t.Say and checkout ~= "started" and checkout ~= "busy" then
 			CitizenService.Say(brain, t.Say, "happy", 2.2)
 		end
 	end
@@ -986,6 +1004,120 @@ arrive = function(brain)
 		brain.CommuteProp = nil
 	end
 	refreshExpression(brain)
+end
+
+--------------------------------------------------------------------------------
+-- Checkouts: a customer at a till and the clerk behind it do the sale together.
+-- The customer puts their things on the counter, the clerk scans each one and
+-- bags it, the customer pays by card and takes the bag (at a cafe: order, pay,
+-- the order is made and handed over). Every client animates it from the
+-- attributes set here, in step, from the server clock.
+--------------------------------------------------------------------------------
+local CLERK_HELLO = { "Hi there! Find everything okay?", "Next, please! Hi!", "Hello! Did you find what you were looking for?", "Hi! Good to see you again!" }
+local CUSTOMER_REPLY = { "Yes, thanks!", "I did, thank you.", "Just these, please.", "Mm-hm! Busy day?" }
+local FOOD_HELLO = { "Hi! What can I get you?", "Morning! The usual?", "Welcome! What'll it be?", "Hey there! What are you having?" }
+local FOOD_ORDER = { "A latte, please!", "One of those, please.", "Something sweet, please!", "The usual!", "A coffee to go, please." }
+local THANKS = { "Thanks! Have a great day!", "Thank you! See you soon!", "Enjoy! Bye now!", "Have a nice one!" }
+
+local function clearCheckout(model, start)
+	if model.Parent and model:GetAttribute("CheckoutStart") == start then
+		for _, a in ipairs({ "CheckoutStart", "CheckoutKind", "CheckoutItems", "CheckoutTill", "CheckoutLook", "CheckoutRole" }) do
+			model:SetAttribute(a, nil)
+		end
+	end
+end
+
+-- a line at the till: people wait one behind the other (not on top of each other)
+local queues = {} -- [till spot] = { brain, ... }
+function CitizenService.JoinQueue(brain, t)
+	local q = queues[t.Till] or {}
+	queues[t.Till] = q
+	for k = #q, 1, -1 do
+		if q[k] ~= brain and (not q[k].Model.Parent or q[k].QueueTill ~= t.Till) then
+			table.remove(q, k)
+		end
+	end
+	if not table.find(q, brain) then
+		table.insert(q, brain)
+	end
+	brain.QueueTill = t.Till
+	local place = table.find(q, brain)
+	local back = flat(t.Pos - t.Till.CFrame.Position)
+	back = if back.Magnitude > 0.1 then back.Unit else Vector3.new(0, 0, -1)
+	local p = t.Pos + back * (2.4 * place)
+	brain.Root.CFrame = CFrame.lookAt(Vector3.new(p.X, brain.Root.Position.Y, p.Z), Vector3.new(t.Till.CFrame.Position.X, brain.Root.Position.Y, t.Till.CFrame.Position.Z))
+end
+function CitizenService.LeaveQueue(brain)
+	local q = brain.QueueTill and queues[brain.QueueTill]
+	if q then
+		local k = table.find(q, brain)
+		if k then
+			table.remove(q, k)
+		end
+	end
+	brain.QueueTill = nil
+	-- step up to the counter
+	local t = brain.RetryCheckout
+	if t and t.Pos then
+		local look = t.Look or t.Till.CFrame.Position
+		brain.Root.CFrame = CFrame.lookAt(Vector3.new(t.Pos.X, brain.Root.Position.Y, t.Pos.Z), Vector3.new(look.X, brain.Root.Position.Y, look.Z))
+	end
+end
+
+-- "started", "busy" (the clerk is serving someone else) or "none" (nobody at the till)
+function CitizenService.TryCheckout(brain, t)
+	local till = t.Till
+	local clerk = till and taken[till]
+	if not clerk or clerk == brain or clerk.State ~= "act" or clerk.Spot ~= till or not clerk.Model.Parent then
+		return "none"
+	end
+	local now = workspace:GetServerTimeNow()
+	if (clerk.ServingUntil or 0) > now then
+		return "busy"
+	end
+	local kind = t.CheckoutKind or "shop"
+	local dur = Actions.CheckoutTime[kind] or 8
+	clerk.ServingUntil = now + dur + 0.5
+	local look = flat(brain.Root.Position - till.CFrame.Position)
+	look = if look.Magnitude > 0.1 then look.Unit else till.CFrame.LookVector
+	local items = if kind == "food" then 1 else math.random(3, 6)
+	for _, m in ipairs({ brain.Model, clerk.Model }) do
+		m:SetAttribute("CheckoutStart", now)
+		m:SetAttribute("CheckoutKind", kind)
+		m:SetAttribute("CheckoutItems", items)
+		m:SetAttribute("CheckoutTill", till.CFrame.Position)
+		m:SetAttribute("CheckoutLook", look)
+		m:SetAttribute("CheckoutRole", if m == brain.Model then "customer" else "clerk")
+	end
+	setAction(brain, "checkout")
+	brain.TaskUntil = os.clock() + dur + 0.3
+	-- the little conversation, in step with the animation
+	local token, clerkToken = brain.Token, clerk.Token
+	local function say(at, who, line, expr)
+		task.delay(at, function()
+			if brain.Token == token and clerk.Token == clerkToken and who.Model.Parent then
+				CitizenService.Say(who, line, expr, 2)
+			end
+		end)
+	end
+	local price = if kind == "food" then math.random(3, 7) else items * math.random(2, 4)
+	if kind == "food" then
+		say(0.1, clerk, FOOD_HELLO[math.random(1, #FOOD_HELLO)], "happy")
+		say(1.3, brain, FOOD_ORDER[math.random(1, #FOOD_ORDER)], "happy")
+		say(dur * 0.32, clerk, "That's " .. price .. " coins. Tap your card here.", "neutral")
+		say(dur * 0.88, clerk, "Here you go! Enjoy!", "happy")
+	else
+		say(0.1, clerk, CLERK_HELLO[math.random(1, #CLERK_HELLO)], "happy")
+		say(1.4, brain, CUSTOMER_REPLY[math.random(1, #CUSTOMER_REPLY)], "happy")
+		say(dur * 0.6, clerk, "That comes to " .. price .. " coins.", "neutral")
+		say(dur * 0.7, brain, "Card's fine. Here you go.", "happy")
+		say(dur * 0.9, clerk, THANKS[math.random(1, #THANKS)], "happy")
+	end
+	task.delay(dur + 0.4, function()
+		clearCheckout(brain.Model, now)
+		clearCheckout(clerk.Model, now)
+	end)
+	return "started"
 end
 
 --------------------------------------------------------------------------------
@@ -1480,7 +1612,29 @@ local function think(brain)
 	local key = planKey(plan)
 	setActivity(brain, if brain.Soccer then brain.Model:GetAttribute("Activity") else plan.Activity)
 	if key == brain.PlanKey and st ~= "idle" and brain.Tasks then
+		-- a clerk finishes serving the customer before moving on
+		if (brain.ServingUntil or 0) > workspace:GetServerTimeNow() then
+			return
+		end
 		-- the next step of an errand or a round (see Errands)
+		if st == "act" and os.clock() > (brain.TaskUntil or 0) and brain.RetryCheckout then
+			-- waiting in line at the till: try again (or pay at the self-checkout after a while)
+			brain.CheckoutWait = (brain.CheckoutWait or 0) + 1
+			local r = if brain.CheckoutWait < 6 then CitizenService.TryCheckout(brain, brain.RetryCheckout) else "none"
+			if r == "busy" then
+				brain.TaskUntil = os.clock() + 2
+				-- shuffle forward as the line moves
+				CitizenService.JoinQueue(brain, brain.RetryCheckout)
+			else
+				CitizenService.LeaveQueue(brain)
+				brain.RetryCheckout = nil
+				if r ~= "started" then
+					setAction(brain, "pay")
+					brain.TaskUntil = os.clock() + 5
+				end
+			end
+			return
+		end
 		if st == "act" and os.clock() > (brain.TaskUntil or 0) then
 			brain.TaskIndex += 1
 			local nt = brain.Tasks[brain.TaskIndex]
@@ -1882,7 +2036,9 @@ function CitizenService.Start(services)
 	S = services
 	CitizenService.Event = S.City.Event -- same events as CityService.Event (kept for older scripts)
 	map, pop = S.Map, S.Life
-	Errands.Init({ Map = map, PickSpot = pickSpot, StandNear = standNear, Age = ageOf })
+	Errands.Init({ Map = map, PickSpot = pickSpot, StandNear = standNear, Age = ageOf, Occupant = function(spot)
+		return taken[spot]
+	end })
 	setupPhysics()
 	folder = workspace:FindFirstChild("Citizens") or Instance.new("Folder")
 	folder.Name = "Citizens"

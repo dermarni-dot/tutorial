@@ -80,10 +80,27 @@ L.drink = function(t, ph)
 	local up = if c < 0.3 then sin(c / 0.3 * math.pi) else 0
 	return sit({ LS = A(15, 0, 4), LE = A(40), RS = A(28 + up * 45, 0, -10), RE = A(80 + up * 55), Neck = A(-4 + up * 12, osc(t, 0.3, ph) * 8, 0) }), true
 end
+-- chess: think (chin on hand), reach out, pick up a piece, move it across the
+-- board, put it down, then sit back with arms folded while the other player thinks
+local function chessPhase(t, ph)
+	return (t * 0.14 + ph) % 1
+end
+Poses.ChessPhase = chessPhase
 L.chess = function(t, ph)
-	local c = (t * 0.2 + ph) % 1
-	local move = if c < 0.12 then sin(c / 0.12 * math.pi) else 0
-	return sit({ LS = A(30, 0, 8), LE = A(70), RS = A(30 + move * 30, 0, -6), RE = A(60 - move * 30), Neck = A(-25), Waist = A(-16) }), true
+	local c = chessPhase(t, ph)
+	if c < 0.5 then
+		-- thinking: elbow on the table, chin on the hand, eyes on the board
+		local tap = if (c * 20) % 1 < 0.5 then 4 else 0
+		return sit({ LS = A(58, 0, 14), LE = A(128), LW = A(-10), RS = A(26, 0, -8), RE = A(56 + tap), Neck = A(-22, osc(t, 0.6, ph) * 8, 6), Waist = A(-18) }), true
+	elseif c < 0.8 then
+		-- the move: reach, lift, carry the piece sideways, set it down
+		local k = (c - 0.5) / 0.3
+		local reach = sin(math.min(1, k * 1.4) * math.pi * 0.5) * (1 - math.max(0, (k - 0.8) / 0.2))
+		local slide = math.clamp((k - 0.35) / 0.35, 0, 1)
+		return sit({ LS = A(26, 0, 10), LE = A(60), RS = A(28 + reach * 48, slide * 18, -6), RE = A(64 - reach * 44), RW = A(-reach * 20), Neck = A(-28, slide * 10, 0), Waist = A(-18 - reach * 6) }), true
+	end
+	-- sitting back, arms folded, watching the other player
+	return sit({ LS = A(44, 0, 26), RS = A(44, 0, -26), LE = A(112), RE = A(116), Neck = A(-14, osc(t, 0.4, ph) * 6, 0), Waist = A(-4) }), true
 end
 L.knit = function(t, ph)
 	local k = osc(t, 9, ph) * 4
@@ -98,7 +115,9 @@ L.sleep = function(t, ph)
 	return { Waist = A(b * 0.5), LS = A(5, 0, -8), RS = A(5, 0, 8), LE = A(15), RE = A(15), Neck = A(b * 0.3, 20, 0), LH = A(2, 0, -3), RH = A(2, 0, 3) }, true
 end
 L.ko = function(t, ph)
-	return { LS = A(10, 0, -75), RS = A(10, 0, 70), LE = A(20), RE = A(35), LH = A(4, 0, -14), RH = A(12, 0, 12), RK = A(-25), Neck = A(0, 35, 10) }, true
+	-- out cold, still breathing
+	local b = osc(t, 1.6, ph) * 2
+	return { LS = A(10, 0, -75), RS = A(10, 0, 70), LE = A(20), RE = A(35), LH = A(4, 0, -14), RH = A(12, 0, 12), RK = A(-25), Neck = A(b * 0.5, 35, 10), Waist = A(b) }, true
 end
 L.counter = function(t, ph)
 	local look = osc(t, 0.25, ph) * 18
@@ -342,7 +361,16 @@ L.wave = function(t, ph)
 	return { RS = A(20, 0, 150), RE = A(10 + w * 25), RW = A(0, 0, w * 10), Neck = A(4, 0, -4) }, false
 end
 L.point = function(t, ph)
-	return { RS = A(95, 0, -12), RE = A(4), Neck = A(0, -10, 0) }, false
+	-- pointing the way, with a little "over there" wag
+	local w = osc(t, 3, ph) * 5
+	return { RS = A(95 + w * 0.4, w, -12), RE = A(4), LS = A(10, 0, 8), LE = A(20), Neck = A(0, -10 + w, 0) }, false
+end
+-- waiting: shifting weight, checking the time now and then
+L.wait = function(t, ph)
+	local c = (t * 0.08 + ph) % 1
+	local look = if c < 0.12 then sin(c / 0.12 * math.pi) else 0
+	local sway = osc(t, 0.7, ph)
+	return { LS = A(look * 60, 0, 6), LE = A(look * 100), LW = A(0, look * 50, 0), Neck = A(-look * 25, osc(t, 0.25, ph) * 14, 0), Waist = A(0, 0, sway * 2) }, false
 end
 L.scared = function(t, ph)
 	local tr = osc(t, 30, ph) * 2
@@ -664,7 +692,8 @@ end
 -- The fight overlay shared by citizens and players. Returns a pose or nil.
 --   swingAge: seconds since the last swing; weapon; brawl: a street fight
 local function fightPose(model, st, t, now, root, weapon, brawl, fighting, blocking)
-	local still = root and Vector3.new(root.AssemblyLinearVelocity.X, 0, root.AssemblyLinearVelocity.Z).Magnitude < 3
+	local vel = root and root.AssemblyLinearVelocity
+	local still = not vel or Vector3.new(vel.X, 0, vel.Z).Magnitude < 3
 	local count = model:GetAttribute("SwingSide") or 0
 	local move = fightMove(weapon, count, brawl)
 	local dur = MOVE_TIME[move] or 0.4
@@ -690,7 +719,6 @@ end
 Poses.FightPose = fightPose
 
 L.idle = nil
-L.wait = nil
 L.none = nil
 
 --------------------------------------------------------------------------------
@@ -761,6 +789,24 @@ end
 PROPS.Letter = function(f, b, s)
 	prop(b.RightHand, "Letter", Vector3.new(0.6, 0.05, 0.4) * s, CFrame.new(0, -0.3 * s, -0.2 * s), rgb(250, 245, 230)).Parent = f
 end
+PROPS.ChessPiece = function(f, b, s)
+	local piece = prop(b.RightHand, "ChessPiece", Vector3.new(0.28, 0.4, 0.28) * s, CFrame.new(0, -0.45 * s, -0.1 * s), rgb(245, 240, 228))
+	piece.Parent = f
+end
+PROPS.Binoculars = function(f, b, s)
+	for _, x in ipairs({ -0.22, 0.22 }) do
+		local lens = prop(b.RightHand, "Binoculars", Vector3.new(0.7, 0.34, 0.34) * s, CFrame.new(x * s - 0.3 * s, -0.25 * s, -0.3 * s) * A(0, 90, 0), rgb(40, 44, 40), Cyl, Enum.Material.Metal)
+		lens.Parent = f
+	end
+end
+PROPS.Popcorn = function(f, b, s)
+	prop(b.LeftHand, "PopcornTub", Vector3.new(0.8, 1, 0.8) * s, CFrame.new(0, -0.6 * s, -0.3 * s), rgb(220, 40, 50)).Parent = f
+	prop(b.LeftHand, "Popcorn", Vector3.new(0.75, 0.3, 0.75) * s, CFrame.new(0, -0.05 * s, -0.3 * s), rgb(255, 240, 190), Ball).Parent = f
+end
+PROPS.Whistle = function(f, b, s)
+	prop(b.Torso, "Whistle", Vector3.new(0.25, 0.3, 0.12) * s, CFrame.new(0, 0.2 * s, -0.55 * s), rgb(200, 204, 210), nil, Enum.Material.Metal).Parent = f
+end
+
 PROPS.Card = function(f, b, s)
 	prop(b.RightHand, "Card", Vector3.new(0.5, 0.04, 0.32) * s, CFrame.new(0, -0.3 * s, -0.25 * s), rgb(60, 110, 200)).Parent = f
 end
@@ -1110,6 +1156,238 @@ local function faceUpdate(model, st, t, dt, near, lookYaw)
 	end
 end
 
+--------------------------------------------------------------------------------
+-- Checkouts (see CitizenService.TryCheckout): the customer and the clerk go
+-- through the sale together, timed off the server clock, and the things being
+-- bought move across the counter on every player's screen
+--------------------------------------------------------------------------------
+local function checkoutK(model)
+	local start = model:GetAttribute("CheckoutStart")
+	if not start then
+		return nil
+	end
+	local kind = model:GetAttribute("CheckoutKind") or "shop"
+	local dur = Actions.CheckoutTime[kind] or 8
+	local k = (workspace:GetServerTimeNow() - start) / dur
+	if k < 0 or k > 1 then
+		return nil
+	end
+	return k, kind, start
+end
+
+-- the customer: unpack the basket, watch, pay by card, take the bag
+local function customerPose(t, ph, k, kind)
+	if kind == "food" then
+		if k < 0.3 then
+			return L.talk(t, ph)
+		elseif k < 0.5 then
+			return L.pay(t, ph)
+		elseif k < 0.86 then
+			return { LS = A(12, 0, 6), RS = A(12, 0, -6), LE = A(20), RE = A(20), Neck = A(-12, osc(t, 0.5, ph) * 10, 0) }, false
+		end
+		local r = sin((k - 0.86) / 0.14 * math.pi)
+		return { RS = A(30 + r * 45, 0, -6), RE = A(40 - r * 30), Neck = A(-16) }, false
+	end
+	if k < 0.2 then
+		-- putting things on the counter, one hand then the other
+		local c = (k / 0.2 * 4) % 1
+		local r = sin(c * math.pi)
+		local left = math.floor(k / 0.2 * 4) % 2 == 0
+		return {
+			RS = A(if left then 18 else 18 + r * 58, 0, -8), RE = A(if left then 30 else 72 - r * 44),
+			LS = A(if left then 18 + r * 58 else 18, 0, 8), LE = A(if left then 72 - r * 44 else 30),
+			Waist = A(-6 - r * 8), Neck = A(-20),
+		}, false
+	elseif k < 0.6 then
+		-- watching the scanner
+		return { LS = A(10, 0, 6), RS = A(10, 0, -6), LE = A(24), RE = A(24), Neck = A(-18, osc(t, 1.4, ph) * 12, 0), Waist = A(-3) }, false
+	elseif k < 0.8 then
+		-- holding the card out to the reader
+		local tap = if (k - 0.6) / 0.2 > 0.4 and (k - 0.6) / 0.2 < 0.6 then 1 else 0
+		return { RS = A(62 + tap * 10, 0, -6), RE = A(26 - tap * 10), RW = A(-20), LS = A(10, 0, 6), LE = A(20), Neck = A(-14) }, false
+	elseif k < 0.9 then
+		return { LS = A(10, 0, 6), RS = A(20, 0, -6), LE = A(24), RE = A(60), Neck = A(-8) }, false
+	end
+	-- taking the bag
+	local r = sin((k - 0.9) / 0.1 * math.pi)
+	return { RS = A(30 + r * 45, 0, -6), RE = A(40 - r * 30), Neck = A(-14) }, false
+end
+
+-- the clerk: say hello, scan every item and bag it, the card reader, hand it over
+local function clerkPose(t, ph, k, kind, n)
+	if kind == "food" then
+		if k < 0.3 then
+			return L.listen(t, ph)
+		elseif k < 0.5 then
+			return { LS = A(58, 0, 12), LE = A(86), LW = A(-30), RS = A(18, 0, -8), RE = A(40), Neck = A(-10) }, false
+		elseif k < 0.86 then
+			return (L.brew or L.cook)(t, ph)
+		end
+		local r = sin((k - 0.86) / 0.14 * math.pi)
+		return { RS = A(30 + r * 50, 0, -6), RE = A(50 - r * 40), Neck = A(-10) }, false
+	end
+	if k < 0.2 then
+		return L.talk(t, ph)
+	elseif k < 0.6 then
+		-- each item: reach for it, sweep it over the scanner, drop it in the bag
+		local c = ((k - 0.2) / 0.4 * n) % 1
+		local reach, sweep, drop
+		if c < 0.3 then
+			reach, sweep, drop = sin(c / 0.3 * math.pi * 0.5), 0, 0
+		elseif c < 0.7 then
+			reach, sweep, drop = 1 - (c - 0.3) / 0.4 * 0.5, (c - 0.3) / 0.4, 0
+		else
+			reach, sweep, drop = 0.5 * (1 - (c - 0.7) / 0.3), 1, sin((c - 0.7) / 0.3 * math.pi)
+		end
+		return {
+			RS = A(40 + reach * 34, -sweep * 30 + (1 - sweep) * 25, -8 - sweep * 20), RE = A(60 - reach * 44), RW = A(-reach * 15),
+			LS = A(30, 0, 12), LE = A(60), Waist = A(-8, -sweep * 12 + (1 - sweep) * 8, 0), Neck = A(-20, -sweep * 18 + (1 - sweep) * 12, 0),
+			Root = CFrame.new(0, -drop * 0.05, 0),
+		}, false
+	elseif k < 0.8 then
+		-- holding the card reader out
+		return { LS = A(62, 0, 12), LE = A(70), LW = A(-30), RS = A(20, 0, -8), RE = A(40), Neck = A(-12) }, false
+	elseif k < 0.9 then
+		-- tearing off the receipt
+		local tug = osc(t, 16, ph)
+		return { RS = A(46, 0, -8), RE = A(70 + tug * 8), LS = A(40, 0, 10), LE = A(70), Neck = A(-16) }, false
+	end
+	-- handing the bag across
+	local r = sin((k - 0.9) / 0.1 * math.pi)
+	return { RS = A(30 + r * 50, 0, -6), RE = A(50 - r * 40), LS = A(30 + r * 40, 0, 6), LE = A(50 - r * 30), Neck = A(-10) }, false
+end
+
+local ITEM_COLORS = { rgb(220, 60, 60), rgb(60, 140, 220), rgb(250, 200, 60), rgb(90, 180, 90), rgb(240, 140, 60), rgb(170, 110, 220), rgb(240, 240, 235) }
+local beep = nil
+local function playBeep(pos)
+	local camera = workspace.CurrentCamera
+	if not camera or (camera.CFrame.Position - pos).Magnitude > 45 then
+		return
+	end
+	if not beep then
+		beep = Instance.new("Sound")
+		beep.Name = "ScannerBeep"
+		beep.SoundId = "rbxasset://sounds/electronicpingshort.wav"
+		beep.Volume = 0.25
+		beep.PlaybackSpeed = 1.6
+		beep.Parent = workspace
+	end
+	pcall(function()
+		beep:Play()
+	end)
+end
+
+local function localPart(parent, name, size, color, shape)
+	local p = Instance.new("Part")
+	p.Name = name
+	p.Size = size
+	p.Color = color
+	p.Anchored = true
+	p.CanCollide = false
+	p.CanQuery = false
+	p.CanTouch = false
+	p.CastShadow = false
+	p.Material = Enum.Material.SmoothPlastic
+	if shape then
+		p.Shape = shape
+	end
+	p.Parent = parent
+	return p
+end
+
+-- the things on the counter (made and moved by each client; the customer's model owns them)
+local function checkoutItems(model, st, k, kind, start)
+	local co = st.Checkout
+	if not k then
+		if co then
+			co.Folder:Destroy()
+			st.Checkout = nil
+		end
+		return
+	end
+	local base, look = model:GetAttribute("CheckoutTill"), model:GetAttribute("CheckoutLook")
+	if typeof(base) ~= "Vector3" or typeof(look) ~= "Vector3" then
+		return
+	end
+	if not co or co.Start ~= start then
+		if co then
+			co.Folder:Destroy()
+		end
+		local folder = Instance.new("Folder")
+		folder.Name = "LocalCheckout"
+		folder.Parent = workspace
+		co = { Start = start, Folder = folder, Items = {}, Beeped = {} }
+		local n = if kind == "food" then 1 else (model:GetAttribute("CheckoutItems") or 3)
+		for i = 1, n do
+			local item
+			if kind == "food" then
+				item = localPart(folder, "Order", Vector3.new(0.9, 0.5, 0.5), rgb(245, 245, 240), Enum.PartType.Cylinder)
+			else
+				local sizes = { Vector3.new(0.6, 0.8, 0.4), Vector3.new(0.5, 0.5, 0.5), Vector3.new(0.9, 0.4, 0.6), Vector3.new(0.4, 1, 0.4) }
+				item = localPart(folder, "Groceries", sizes[(i - 1) % #sizes + 1], ITEM_COLORS[(i * 3 + math.floor(start)) % #ITEM_COLORS + 1])
+			end
+			co.Items[i] = item
+		end
+		if kind ~= "food" then
+			co.Bag = localPart(folder, "PaperBag", Vector3.new(1, 1.2, 0.7), rgb(214, 180, 130))
+		end
+		st.Checkout = co
+	end
+	local up = Vector3.new(0, 1, 0)
+	local right = look:Cross(up) -- the clerk's right
+	local C = base + look * 2.4 + Vector3.new(0, 3.85, 0)
+	local bagPos = C + right * 1.3 + up * 0.6
+	local n = #co.Items
+	local hidden = CFrame.new(0, -500, 0)
+	if kind == "food" then
+		local item = co.Items[1]
+		local from, to = C - look * 0.6 + up * 0.25, C + look * 0.9 + up * 0.25
+		if k < 0.5 or k > 0.97 then
+			item.CFrame = hidden
+		elseif k < 0.85 then
+			item.CFrame = CFrame.new(from) * CFrame.Angles(0, 0, math.rad(90))
+		else
+			item.CFrame = CFrame.new(from:Lerp(to, (k - 0.85) / 0.12)) * CFrame.Angles(0, 0, math.rad(90))
+		end
+		return
+	end
+	for i, item in ipairs(co.Items) do
+		local placed = C + look * 0.55 - right * (0.55 + 0.36 * (i - 1)) + up * (item.Size.Y / 2)
+		local appear = 0.2 * (i - 1) / n + 0.02
+		local s0, s1 = 0.2 + 0.4 * (i - 1) / n, 0.2 + 0.4 * i / n
+		local pos
+		if k < appear or k >= s1 then
+			pos = nil
+		elseif k < s0 then
+			pos = placed
+		else
+			local u = (k - s0) / (s1 - s0)
+			local scanner = C + up * (item.Size.Y / 2 + 0.2)
+			if u < 0.3 then
+				pos = placed:Lerp(scanner, u / 0.3)
+			elseif u < 0.7 then
+				pos = scanner + right * ((u - 0.3) / 0.4 - 0.5) * 0.4
+				if u >= 0.5 and not co.Beeped[i] then
+					co.Beeped[i] = true
+					playBeep(scanner)
+				end
+			else
+				pos = scanner:Lerp(bagPos + up * 0.4, (u - 0.7) / 0.3)
+			end
+		end
+		item.CFrame = if pos then CFrame.lookAt(pos, pos + look) else hidden
+	end
+	-- the bag waits by the till, then goes across to the customer
+	if k < 0.2 or k > 0.97 then
+		co.Bag.CFrame = hidden
+	elseif k < 0.9 then
+		co.Bag.CFrame = CFrame.lookAt(bagPos, bagPos + look)
+	else
+		local p = bagPos:Lerp(C + look * 1.8 + up * 0.2, (k - 0.9) / 0.07)
+		co.Bag.CFrame = CFrame.lookAt(p, p + look)
+	end
+end
+
 local function update(model, st, t, dt, camPos, myRoot)
 	local root = model:FindFirstChild("HumanoidRootPart")
 	if not root then
@@ -1139,6 +1417,17 @@ local function update(model, st, t, dt, camPos, myRoot)
 			target, full = fn(t, st.Phase)
 		end
 	end
+	-- a checkout in progress: the customer and the clerk play their parts
+	local coK, coKind, coStart = checkoutK(model)
+	local coRole = coK and model:GetAttribute("CheckoutRole")
+	if coK and not fighting then
+		if coRole == "customer" then
+			target, full = customerPose(t, st.Phase, coK, coKind)
+		elseif coRole == "clerk" then
+			target, full = clerkPose(t, st.Phase, coK, coKind, model:GetAttribute("CheckoutItems") or 3)
+		end
+	end
+	checkoutItems(model, st, if coRole == "customer" then coK else nil, coKind, coStart)
 	-- carrying something on the way (a shopping bag, a briefcase, a backpack...)
 	local carry = model:GetAttribute("Carry")
 	local carrying = carry and CARRY[carry] and (action == "" or action == "wait") and not target
@@ -1195,6 +1484,20 @@ local function update(model, st, t, dt, camPos, myRoot)
 		root.CFrame = CFrame.new(pivot) * CFrame.fromAxisAngle(axis, angle) * CFrame.new(-pivot) * st.SwingBase
 	elseif st.SwingBase then
 		st.SwingBase = nil
+	end
+	if st.Props then
+		local piece = st.Props:FindFirstChild("ChessPiece")
+		if piece then
+			local c = chessPhase(t, st.Phase)
+			piece.Transparency = if c > 0.56 and c < 0.76 then 0 else 1
+		end
+		local card = st.Props:FindFirstChild("Card")
+		if card and coK then
+			local showing = if coKind == "food" then coK > 0.3 and coK < 0.5 else coK > 0.6 and coK < 0.8
+			card.Transparency = if showing then 0 else 1
+		elseif card then
+			card.Transparency = 0
+		end
 	end
 	if poseName == "shoot" then
 		local c = (t / 3.2 + st.Phase) % 1

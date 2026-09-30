@@ -29,13 +29,14 @@ Actions.List = {
 	garden = { Pose = "kneelwork", Props = { "Trowel" }, Label = "🌱 Gardening" },
 	shelve = { Pose = "shelve", Props = { "Box" }, Label = "📚 Stocking shelves" },
 	music = { Pose = "guitar", Props = { "Guitar" }, Label = "🎸 Playing music" },
-	coach = { Pose = "cheer", Props = { "Clipboard" }, Label = "📣 Coaching" },
+	coach = { Pose = "cheer", Props = { "Clipboard", "Whistle" }, Label = "📣 Coaching" },
 	present = { Pose = "present", Label = "🏛️ Leading a meeting" },
 	sort = { Pose = "shelve", Props = { "Letter" }, Label = "✉️ Sorting mail" },
 	babysit = { Pose = "counter", Label = "🧸 Looking after little ones" },
 	guide = { Pose = "present", Label = "🖼️ Giving a tour" },
 	-- errands and rounds (see Errands)
 	pay = { Pose = "pay", Props = { "Card" }, Label = "💳 Paying" },
+	checkout = { Pose = "pay", Props = { "Card" }, Label = "🛒 At the checkout" },
 	deliver = { Pose = "deliver", Props = { "MailBag", "Letter" }, Label = "📬 Delivering the mail" },
 	water = { Pose = "water", Props = { "WateringCan" }, Label = "🚿 Watering the plants" },
 	rake = { Pose = "rake", Props = { "Rake" }, Label = "🍂 Raking leaves" },
@@ -54,16 +55,16 @@ Actions.List = {
 	coffee = { Pose = "drink", Seated = true, Props = { "Cup" }, Label = "☕ Having a coffee" },
 	read = { Pose = "read", Seated = true, Props = { "Book" }, Label = "📖 Reading" },
 	study = { Pose = "write", Seated = true, Props = { "Pencil" }, Label = "✏️ Studying" },
-	watch = { Pose = "sit", Seated = true, Label = "🎬 Watching" },
+	watch = { Pose = "sit", Seated = true, Props = { "Popcorn" }, Label = "🎬 Watching" },
 	tv = { Pose = "sit", Seated = true, Props = { "Remote" }, Label = "📺 Watching TV" },
 	sleep = { Pose = "sleep", Lying = true, Label = "💤 Sleeping" },
 	patient = { Pose = "sleep", Lying = true, Label = "🤒 Resting" },
 	browse = { Pose = "browse", Label = "🛍️ Shopping" },
 	phone = { Pose = "phone", Props = { "Phone" }, Label = "📱 On the phone" },
-	chess = { Pose = "chess", Seated = true, Label = "♟️ Playing chess" },
+	chess = { Pose = "chess", Seated = true, Props = { "ChessPiece" }, Label = "♟️ Playing chess" },
 	paint = { Pose = "paint", Props = { "Brush" }, Label = "🎨 Painting" },
 	fish = { Pose = "fish", Props = { "Rod" }, Label = "🎣 Fishing" },
-	birdwatch = { Pose = "binoculars", Label = "🐦 Birdwatching" },
+	birdwatch = { Pose = "binoculars", Props = { "Binoculars" }, Label = "🐦 Birdwatching" },
 	knit = { Pose = "knit", Seated = true, Props = { "Knitting" }, Label = "🧶 Knitting" },
 	guitar = { Pose = "guitar", Props = { "Guitar" }, Label = "🎸 Playing guitar" },
 	dance = { Pose = "dance", Label = "💃 Dancing" },
@@ -94,6 +95,10 @@ Actions.List = {
 	ko = { Pose = "ko", Lying = true, Label = "💫 Knocked out" },
 	carry = { Pose = "carry", Label = "👶 Carrying the baby" },
 }
+
+-- Checkouts (a customer and a clerk doing a sale together): how long each kind
+-- takes, in seconds. The server starts them, every client animates them.
+Actions.CheckoutTime = { shop = 9, food = 8 }
 
 function Actions.Get(name)
 	return Actions.List[name]

@@ -16,6 +16,11 @@
         "Technology": "Future"
       }
     },
+    "MaterialService": {
+      "$properties": {
+        "Use2022Materials": true
+      }
+    },
     "ReplicatedStorage": {
       "Shared": {
         "$className": "Folder",
@@ -122,6 +127,9 @@
         },
         "JobService": {
           "$path": "src/JobService.lua"
+        },
+        "Conversation": {
+          "$path": "src/Conversation.lua"
         }
       }
     },

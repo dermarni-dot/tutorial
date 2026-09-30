@@ -209,10 +209,7 @@ function B.Plaza(ctx, parent, i, j, rng)
 	for _, sx in ipairs({ -1, 1 }) do
 		local p = c + Vector3.new(sx * 26, 0, 22)
 		column(model, "ChessTable", 3, 4, p + Vector3.new(0, 1.5, 0), STONE, Enum.Material.Marble)
-		local boardTop = deco(model, "ChessBoard", Vector3.new(2.6, 0.1, 2.6), CFrame.new(p + Vector3.new(0, 3.05, 0)), WHITE)
-		for n = 0, 3 do
-			deco(model, "ChessSquare", Vector3.new(0.65, 0.12, 0.65), boardTop.CFrame * CFrame.new(-0.975 + (n % 2) * 1.3 + (n // 2) * 0.65, 0.01, -0.975 + (n // 2) * 1.3), BLACK)
-		end
+		MapKit.chessBoard(model, CFrame.new(p + Vector3.new(0, 3.05, 0)), 3)
 		for _, sz in ipairs({ -1, 1 }) do
 			local stool = MapKit.seat(model, "Stool", Vector3.new(1.6, 0.4, 1.6), CFrame.new(p + Vector3.new(0, 1.9, sz * 2.8)), STONE, Enum.Material.Marble, "Plaza")
 			column(model, "StoolLeg", 1.7, 1, p + Vector3.new(0, 0.85, sz * 2.8), STONE, Enum.Material.Marble)

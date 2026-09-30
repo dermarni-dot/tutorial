@@ -43,6 +43,19 @@ local function spotsWith(place, actions)
 	return out
 end
 
+-- the till to go to: one with someone behind it if there is one
+local function staffedTill(tills, rng)
+	local staffed = {}
+	for _, s in ipairs(tills) do
+		local who = api.Occupant and api.Occupant(s)
+		if who and who.State == "act" then
+			table.insert(staffed, s)
+		end
+	end
+	local pool = if #staffed > 0 then staffed else tills
+	return pool[rng:NextInteger(1, #pool)]
+end
+
 -- standing across the counter from someone who works there (a cashier spot):
 -- the customer's side is in front of them
 local function counterFront(spot, dist)
@@ -87,9 +100,9 @@ local function shopping(brain, plan, t, rng)
 	-- 2. pay at the register
 	local tills = spotsWith(place, { cashier = true, counter = true })
 	if #tills > 0 then
-		local till = tills[rng:NextInteger(1, #tills)]
+		local till = staffedTill(tills, rng)
 		local pos, look = counterFront(till)
-		table.insert(list, task(t, { Pos = pos, Look = look, Building = till.Building or t.Building, Floor = till.Floor or 1, Action = "pay", Duration = 5, Say = if rng:NextNumber() < 0.5 then PAY_LINES[rng:NextInteger(1, #PAY_LINES)] else nil }))
+		table.insert(list, task(t, { Pos = pos, Look = look, Building = till.Building or t.Building, Floor = till.Floor or 1, Action = "pay", Duration = 5, Till = till, CheckoutKind = "shop", Say = if rng:NextNumber() < 0.5 then PAY_LINES[rng:NextInteger(1, #PAY_LINES)] else nil }))
 	end
 	-- 3. a last look around with the bag in hand (until it's time to go)
 	local last = api.PickSpot(browse, brain, "browse", nil, rng)
@@ -106,9 +119,9 @@ local function eatingOut(brain, plan, t, rng)
 	local list = {}
 	local tills = spotsWith(place, { cashier = true, counter = true, brew = true })
 	if #tills > 0 and place.Id ~= "Restaurant" then
-		local till = tills[rng:NextInteger(1, #tills)]
+		local till = staffedTill(tills, rng)
 		local pos, look = counterFront(till)
-		table.insert(list, task(t, { Pos = pos, Look = look, Building = till.Building or t.Building, Floor = till.Floor or 1, Action = "pay", Duration = 6, Say = if rng:NextNumber() < 0.6 then ORDER_LINES[rng:NextInteger(1, #ORDER_LINES)] else nil }))
+		table.insert(list, task(t, { Pos = pos, Look = look, Building = till.Building or t.Building, Floor = till.Floor or 1, Action = "pay", Duration = 6, Till = till, CheckoutKind = "food", Say = if rng:NextNumber() < 0.6 then ORDER_LINES[rng:NextInteger(1, #ORDER_LINES)] else nil }))
 	end
 	-- then the seat the plan picked (eating, having a coffee...)
 	local final = task(t, { Spot = t.Spot, Pos = t.Pos, Action = t.Action, Duration = 999, Carry = false })
@@ -159,8 +172,10 @@ ROUNDS["Mail Carrier"] = function(brain, plan, t, rng)
 		end
 		local home = table.remove(houses, best)
 		local b = home.Building
-		local pos = b.At(4, 0, -b.D / 2 - 10.6).Position
-		local box = b.At(4, 0, -b.D / 2 - 9).Position
+		-- stand on the sidewalk side of the mailbox, facing it
+		local mailbox = b.Model:FindFirstChild("Mailbox")
+		local box = Vector3.new(mailbox.Position.X, b.CFrame.Position.Y, mailbox.Position.Z)
+		local pos = box + b.CFrame.LookVector * 1.6
 		table.insert(list, { Plan = plan, Pos = pos, Door = pos, Look = box, Floor = 1, Action = "deliver", Carry = "MailBag", Duration = 4, IsTask = true, Say = if k == 1 and rng:NextNumber() < 0.3 then "Mail's here!" else nil })
 		at = home.Door
 	end

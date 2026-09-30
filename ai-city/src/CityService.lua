@@ -203,6 +203,16 @@ function CityService.StartClock(startHour, runCycle)
 			lastSlow = now
 			Atmosphere.Apply(Lighting, h)
 			S.MapBuilder.SetNight(Atmosphere.IsNight(h))
+			-- empty houses get their furniture when a player comes near (so every
+			-- house you walk into is furnished, without building them all at once)
+			if S.MapBuilder.FurnishNear then
+				for _, player in ipairs(Players:GetPlayers()) do
+					local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+					if root then
+						pcall(S.MapBuilder.FurnishNear, root.Position, 80)
+					end
+				end
+			end
 			if S.Map.ClockFace then
 				S.Map.ClockFace.Text = string.format("%02d:%02d", math.floor(h), math.floor((h % 1) * 60))
 			end
@@ -252,7 +262,7 @@ function CityService.CityState()
 end
 
 -- How a citizen feels right now (0-100)
-local PERSONALITY_MOOD = { cheerful = 14, funny = 10, chatty = 6, calm = 5, sporty = 5, artsy = 2, curious = 3, bookish = 0, shy = -2, grumpy = -14 }
+local PERSONALITY_MOOD = { cheerful = 14, funny = 10, chatty = 6, calm = 5, sporty = 5, artsy = 2, curious = 3, bookish = 0, shy = -2, grumpy = -14, brave = 4, anxious = -8, romantic = 6, ambitious = 0, lazy = 2, sarcastic = -6, kind = 10, nosy = 3, adventurous = 8, proud = 2 }
 function CityService.MoodOf(c)
 	local mood = 58 + (state.Happiness - 50) * 0.35 + (state.Safety - 50) * 0.15 + (PERSONALITY_MOOD[c.Personality] or 0)
 	local stage = S.Life:Stage(c)
@@ -541,7 +551,7 @@ handlers.Speech = function(player, data)
 				score += CityService.Appeal(c, id)
 			end
 			score /= #picked
-			local mult = if c.Personality == "curious" or c.Personality == "chatty" then 1.25 elseif c.Personality == "grumpy" then 0.8 else 1
+			local mult = if c.Personality == "curious" or c.Personality == "chatty" or c.Personality == "nosy" then 1.25 elseif c.Personality == "grumpy" then 0.8 else 1
 			local delta = math.clamp(score * 22 * mult + rng:NextNumber(-3, 3), -18, 18)
 			local label = string.lower(stanceById[picked[1]].label)
 			CityService.Remember(c, player, if delta >= 0 then "promised to " .. label .. " (I liked it)" else "wants to " .. label .. " (bad idea)", delta, "gave a speech about how we should " .. label)

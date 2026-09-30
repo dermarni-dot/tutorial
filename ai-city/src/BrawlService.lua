@@ -530,7 +530,7 @@ local function gatherCrowd(b)
 				local a = math.random() * math.pi * 2
 				w.RingSpot = pos + Vector3.new(math.cos(a), 0, math.sin(a)) * math.random(8, 11)
 				w.NextLine = now + math.random(10, 40) / 10
-				w.Mood = if age < 13 or w.C.Personality == "shy" or w.C.Personality == "calm" then "worried" elseif age >= 13 and math.random() < 0.35 then "film" else "cheer"
+				w.Mood = if age < 13 or w.C.Personality == "shy" or w.C.Personality == "calm" or w.C.Personality == "anxious" or w.C.Personality == "kind" then "worried" elseif age >= 13 and math.random() < 0.35 then "film" else "cheer"
 				S.Citizens.SetGait(w, 12, "run")
 				w.Humanoid:MoveTo(w.RingSpot)
 			elseif dist < CROWD and S.Citizens.CanReact(w) and (w.WatchedUntil or 0) < now then

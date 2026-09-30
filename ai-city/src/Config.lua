@@ -120,6 +120,14 @@ Config.Jobs = {
 	{ title = "Accountant", place = "Office", slots = 3, start = 9, stop = 17, pay = 19 },
 	{ title = "Night Janitor", place = "Office", slots = 1, start = 18, stop = 24, pay = 11 },
 	{ title = "Community Organizer", place = "CommunityCenter", slots = 1, start = 10, stop = 18, pay = 12 },
+	-- someone behind the till in every shop (see CitizenService.TryCheckout)
+	{ title = "Toy Store Clerk", place = "ToyStore", slots = 1, start = 10, stop = 19, pay = 10 },
+	{ title = "Electronics Clerk", place = "Electronics", slots = 1, start = 10, stop = 19, pay = 12 },
+	{ title = "Bookseller", place = "Bookstore", slots = 1, start = 9, stop = 18, pay = 10 },
+	{ title = "Florist", place = "Florist", slots = 1, start = 8, stop = 17, pay = 10 },
+	{ title = "Pet Shop Clerk", place = "PetShop", slots = 1, start = 9, stop = 18, pay = 10 },
+	{ title = "Ice Cream Server", place = "IceCream", slots = 1, start = 11, stop = 21, pay = 9 },
+	{ title = "Hardware Clerk", place = "Hardware", slots = 1, start = 8, stop = 17, pay = 11 },
 }
 Config.UNEMPLOYED_CHANCE = 0.12
 Config.RETIRE_AGE = 67

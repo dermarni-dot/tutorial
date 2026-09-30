@@ -1043,6 +1043,30 @@ function CitizenLook.Apply(model, citizen, options)
 	return look
 end
 
+-- Smoother, more human body shapes: Roblox's free classic "Man" and "Woman"
+-- body packages (rounded shoulders and limbs instead of blocks). The default
+-- head stays, so the drawn faces fit. Override with Config.CITIZEN_BODIES, or
+-- set Config.SMOOTH_BODIES = false for the classic blocky bodies.
+CitizenLook.BODIES = Config.CITIZEN_BODIES or {
+	Man = { Torso = 86500008, LeftArm = 86500036, RightArm = 86500054, LeftLeg = 86500064, RightLeg = 86500078 },
+	Woman = { Torso = 86499666, LeftArm = 86499698, RightArm = 86499716, LeftLeg = 86499753, RightLeg = 86499793 },
+}
+local R15_PARTS = { "Head", "UpperTorso", "LowerTorso", "LeftUpperArm", "LeftLowerArm", "LeftHand", "RightUpperArm", "RightLowerArm", "RightHand", "LeftUpperLeg", "LeftLowerLeg", "LeftFoot", "RightUpperLeg", "RightLowerLeg", "RightFoot" }
+local bodyWorks = {} -- [package] = false once it failed to load (then everyone uses the default body)
+
+local function complete(model)
+	if not model then
+		return false
+	end
+	for _, name in ipairs(R15_PARTS) do
+		local part = model:FindFirstChild(name)
+		if not part or not part:IsA("BasePart") then
+			return false
+		end
+	end
+	return model:FindFirstChildOfClass("Humanoid") ~= nil
+end
+
 -- A brand new dressed R15 NPC (server only). Parent it and set its position yourself.
 function CitizenLook.Build(citizen)
 	local Players = game:GetService("Players")
@@ -1056,7 +1080,32 @@ function CitizenLook.Build(citizen)
 	description.RightLegColor = look.Bottom
 	description.WidthScale = math.clamp(look.Width, 0.75, 1)
 	description.DepthScale = math.clamp(look.Width, 0.75, 1)
-	local model = Players:CreateHumanoidModelFromDescription(description, Enum.HumanoidRigType.R15)
+	local model
+	local package = if look.Feminine then "Woman" else "Man"
+	local ids = Config.SMOOTH_BODIES ~= false and CitizenLook.BODIES[package]
+	if ids and bodyWorks[package] ~= false then
+		-- try the smooth body; if it can't load, fall back to the default one
+		local smooth = description:Clone()
+		for slot, id in pairs(ids) do
+			smooth[slot] = id
+		end
+		local ok, result = pcall(function()
+			return Players:CreateHumanoidModelFromDescription(smooth, Enum.HumanoidRigType.R15)
+		end)
+		if ok and complete(result) then
+			model = result
+			bodyWorks[package] = true
+		else
+			if ok and result then
+				result:Destroy()
+			end
+			if bodyWorks[package] == nil then
+				warn("[CitizenLook] the " .. package .. " body package didn't load; using the default body (" .. tostring(if ok then "missing parts" else result) .. ")")
+			end
+			bodyWorks[package] = false
+		end
+	end
+	model = model or Players:CreateHumanoidModelFromDescription(description, Enum.HumanoidRigType.R15)
 	model.Name = tostring(field(citizen or {}, "Name", "name") or "Citizen")
 	-- kids have bigger heads for their size (so they read as kids, not tiny adults)
 	local headScale = if look.Age < 3 then 1.35 elseif look.Age < 9 then 1.25 elseif look.Age < 14 then 1.12 else 1
