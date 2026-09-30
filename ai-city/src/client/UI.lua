@@ -42,6 +42,37 @@ UI.Black = Enum.Font.GothamBlack
 UI.Title = Enum.Font.FredokaOne
 
 -- Instance.new with properties and children
+-- Phones (touch only) and small screens get the compact layout
+function UI.Compact()
+	local UIS = game:GetService("UserInputService")
+	local camera = workspace.CurrentCamera
+	local vp = camera and camera.ViewportSize
+	local small = vp ~= nil and vp.Y ~= nil and vp.Y > 0 and vp.Y < 520
+	return (UIS.TouchEnabled and not UIS.KeyboardEnabled) or small
+end
+
+-- How much a frame (sized in pixels) must shrink to fit on the screen,
+-- counting its ScreenGui's own UIScale (1 = it already fits)
+function UI.FitScale(frame, margin)
+	local camera = workspace.CurrentCamera
+	local vp = camera and camera.ViewportSize
+	if not vp or not vp.X or vp.X <= 0 then
+		return 1
+	end
+	local gui = frame:FindFirstAncestorOfClass("ScreenGui")
+	local s = gui and gui:FindFirstChildOfClass("UIScale")
+	local k = s and s.Scale or 1
+	local w = frame.AbsoluteSize.X
+	local h = frame.AbsoluteSize.Y
+	local size = frame.Size
+	if size and size.X and size.X.Offset > 0 then
+		w, h = size.X.Offset * k, size.Y.Offset * k
+	end
+	margin = margin or 16
+	-- (Roblox's top bar takes about 36 pixels)
+	return math.min(1, (vp.X - margin) / math.max(1, w), (vp.Y - margin - 40) / math.max(1, h))
+end
+
 function UI.new(class, props, children)
 	local inst = Instance.new(class)
 	for k, v in pairs(props or {}) do
@@ -354,8 +385,10 @@ function UI.window(screen, title, icon, size, accent)
 		end
 		open = true
 		frame.Visible = true
-		scale.Scale = 0.85
-		UI.tween(scale, 0.28, { Scale = 1 }, Enum.EasingStyle.Back)
+		-- always fits on the screen (phones too)
+		local fit = UI.FitScale(frame)
+		scale.Scale = 0.85 * fit
+		UI.tween(scale, 0.28, { Scale = fit }, Enum.EasingStyle.Back)
 		setBlur(true)
 		UI.sound("click", 0.3, 1.2)
 		if win.OnOpen then

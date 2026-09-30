@@ -740,6 +740,7 @@ local function buildDialogue()
 		local h = rows * 38
 		options.Size = UDim2.new(1, -196, 0, h)
 		sheet.Size = UDim2.fromOffset(940, math.max(250, 132 + h + 14))
+		scale.Scale = UI.FitScale(sheet)
 		for k, opt in ipairs(list or {}) do
 			optionKeys[k] = opt.Key
 			local b = UI.button(options, (if k <= 9 and not UserInputService.TouchEnabled then "<font color='#ffc448'>" .. k .. "</font>  " else "") .. opt.Text, { TextSize = 13, Color = if opt.Key == "bye" then C.Panel3 elseif opt.Key == "insult" then UI.rgb(90, 36, 44) elseif opt.Key == "gift" then UI.rgb(40, 90, 60) else C.Panel2, LayoutOrder = k, XAlign = Enum.TextXAlignment.Left }, function()
@@ -755,8 +756,8 @@ local function buildDialogue()
 	function Panels.OpenDialogue(data)
 		current = data
 		sheet.Visible = true
-		scale.Scale = 0.85
-		UI.tween(scale, 0.25, { Scale = 1 }, Enum.EasingStyle.Back)
+		scale.Scale = 0.85 * UI.FitScale(sheet)
+		UI.tween(scale, 0.25, { Scale = UI.FitScale(sheet) }, Enum.EasingStyle.Back)
 		clear(face)
 		local _, faceCopy = portrait(face, data.Model, true)
 		overlay = faceCopy
@@ -968,8 +969,8 @@ local function buildWelcome()
 			camera.CFrame = CFrame.lookAt(pos, Vector3.new(0, 15, 0))
 		end)
 		cover.Visible = true
-		scale.Scale = 0.8
-		UI.tween(scale, 0.4, { Scale = 1 }, Enum.EasingStyle.Back)
+		scale.Scale = 0.8 * UI.FitScale(card)
+		UI.tween(scale, 0.4, { Scale = UI.FitScale(card) }, Enum.EasingStyle.Back)
 	end
 end
 
@@ -1027,6 +1028,7 @@ end
 --------------------------------------------------------------------------------
 local function buildPhone()
 	local phone = UI.new("Frame", { Name = "Phone", AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -24, 1, 600), Size = UDim2.fromOffset(300, 560), BackgroundColor3 = UI.rgb(12, 12, 16), Visible = false, ZIndex = 30, Parent = screen })
+	local phoneFit = UI.new("UIScale", { Name = "Fit", Parent = phone })
 	UI.corner(phone, 38)
 	UI.stroke(phone, UI.rgb(80, 80, 96), 3, 0)
 	local screenArea = UI.new("Frame", { Name = "Screen", Position = UDim2.fromOffset(10, 10), Size = UDim2.new(1, -20, 1, -20), ClipsDescendants = true, BackgroundColor3 = UI.rgb(40, 30, 90), ZIndex = 31, Parent = phone })
@@ -1141,6 +1143,7 @@ local function buildPhone()
 		open = true
 		showHome()
 		phone.Visible = true
+		phoneFit.Scale = UI.FitScale(phone, 24)
 		local name = player.DisplayName
 		local h = game:GetService("Lighting").ClockTime
 		hello.Text = (if h < 12 then "Good morning" elseif h < 18 then "Good afternoon" else "Good evening") .. "!"
@@ -1371,7 +1374,7 @@ function Panels.Start(context)
 	local uiScale = UI.new("UIScale", { Parent = screen })
 	local function rescale()
 		local vp = workspace.CurrentCamera.ViewportSize
-		uiScale.Scale = math.clamp(math.min(vp.X / 1100, vp.Y / 720), 0.55, 1.15)
+		uiScale.Scale = if UI.Compact() then math.clamp(math.min(vp.X / 1000, vp.Y / 600), 0.45, 1) else math.clamp(math.min(vp.X / 1100, vp.Y / 720), 0.55, 1.15)
 	end
 	rescale()
 	workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(rescale)

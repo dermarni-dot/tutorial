@@ -1484,6 +1484,72 @@ end
 
 -- a few little things people do on the way
 local PAUSES = { "phone", "wait", "wave" }
+-- Personal space: people step around whoever is in their way (other citizens
+-- and players) instead of walking through them. Two people walking toward
+-- each other both keep to the right, so they pass cleanly; someone boxed in
+-- on both sides waits a moment.
+CitizenService.Avoid = true
+local function steerAround(brain, target)
+	local root = brain.Root
+	local pos = root.Position
+	local to = flat(target - pos)
+	local dist = to.Magnitude
+	if dist < 1.5 then
+		return nil
+	end
+	local dir = to.Unit
+	local right = Vector3.new(-dir.Z, 0, dir.X)
+	local blocker, blockAhead, blockSide = nil, math.huge, 0
+	local leftBusy, rightBusy = false, false
+	local function consider(otherPos)
+		local rel = flat(otherPos - pos)
+		if math.abs(otherPos.Y - pos.Y) > 5 then
+			return
+		end
+		local ahead = rel:Dot(dir)
+		local side = rel:Dot(right)
+		if ahead > 0.2 and ahead < math.min(6, dist + 1) then
+			if math.abs(side) < 2 and ahead < blockAhead then
+				blocker, blockAhead, blockSide = otherPos, ahead, side
+			elseif ahead < 3.5 and math.abs(side) < 4.2 then
+				if side > 0 then
+					rightBusy = true
+				else
+					leftBusy = true
+				end
+			end
+		end
+	end
+	for _, other in ipairs(list) do
+		if other ~= brain and other.Model.Parent and other.State ~= "hospital" then
+			local op = other.Root.Position
+			if math.abs(op.X - pos.X) < 7 and math.abs(op.Z - pos.Z) < 7 then
+				consider(op)
+			end
+		end
+	end
+	for _, p in ipairs(playerSpots) do
+		if math.abs(p.X - pos.X) < 7 and math.abs(p.Z - pos.Z) < 7 then
+			consider(p)
+		end
+	end
+	if not blocker then
+		return nil
+	end
+	-- pass on the right, unless they're already on our right (or it's crowded there)
+	local s = if blockSide > 0.3 then -1 else 1
+	if (s == 1 and rightBusy) and not leftBusy then
+		s = -1
+	elseif (s == -1 and leftBusy) and not rightBusy then
+		s = 1
+	elseif rightBusy and leftBusy and blockAhead < 1.8 then
+		return "wait"
+	end
+	local clear = 2.3 - math.abs(blockSide) * 0.4
+	return pos + dir * math.min(3.5, blockAhead + 1.2) + right * s * clear
+end
+CitizenService.SteerAround = steerAround
+
 local function walkTick(brain)
 	local points = brain.Points
 	if not points or brain.Root.Anchored then
@@ -1550,6 +1616,37 @@ local function walkTick(brain)
 		brain.Humanoid:MoveTo(points[brain.PointIndex])
 		brain.MoveIssued = now
 		return
+	end
+	-- someone in the way? step around them (or wait a moment if boxed in)
+	if CitizenService.Avoid and not hop and (brain.State == "walk" or brain.State == "flee") and nearestPlayerDistance(root.Position) < WATCH_RADIUS then
+		local steer = steerAround(brain, target)
+		if steer == "wait" then
+			brain.WaitSince = brain.WaitSince or now
+			if now - brain.WaitSince > 1.5 then
+				-- waited long enough: squeeze past on the right
+				local dir = flat(target - root.Position)
+				dir = if dir.Magnitude > 0.1 then dir.Unit else Vector3.new(0, 0, -1)
+				steer = root.Position + dir * 2 + Vector3.new(-dir.Z, 0, dir.X) * 2.4
+			end
+		else
+			brain.WaitSince = nil
+		end
+		if steer == "wait" then
+			brain.Humanoid:MoveTo(root.Position)
+			brain.Steering = now
+			brain.LastMoveAt = now
+			return
+		elseif steer then
+			brain.Humanoid:MoveTo(steer)
+			brain.Steering = now
+			brain.MoveIssued = now
+			brain.LastMoveAt = now
+			return
+		elseif brain.Steering then
+			brain.Steering = nil
+			brain.Humanoid:MoveTo(target)
+			brain.MoveIssued = now
+		end
 	end
 	-- keep MoveTo alive (it times out after 8 seconds)
 	if now - (brain.MoveIssued or 0) > 3 then

@@ -41,7 +41,9 @@ local function makePlate(model, isPlayer)
 		StudsOffset = plateOffset(model),
 		MaxDistance = if isPlayer then 120 else 55,
 		LightInfluence = 0,
-		AlwaysOnTop = false,
+		-- drawn on top so counters, shelves and ceilings never slice through it;
+		-- a line-of-sight check (below) hides it when a wall is in the way
+		AlwaysOnTop = true,
 		ResetOnSpawn = false,
 		Adornee = head,
 	})
@@ -166,7 +168,24 @@ end
 
 -- Name tags never pile up: when two tags would cover each other on screen
 -- (coworkers side by side at a counter, a crowd), only the nearer one shows.
+-- And a tag only shows when you can actually see the person (not through walls).
 local PLATE_W, PLATE_H = 150, 40
+local sightParams = RaycastParams.new()
+sightParams.FilterType = Enum.RaycastFilterType.Exclude
+sightParams.IgnoreWater = true
+local function visible(camPos, target)
+	local filter = { workspace:FindFirstChild("Citizens"), workspace:FindFirstChild("CityWaypoint") }
+	for _, p in ipairs(Players:GetPlayers()) do
+		if p.Character then
+			table.insert(filter, p.Character)
+		end
+	end
+	sightParams.FilterDescendantsInstances = filter
+	local d = target - camPos
+	local hit = workspace:Raycast(camPos, d, sightParams)
+	-- see-through things (windows) don't count
+	return hit == nil or (hit.Position - camPos).Magnitude > d.Magnitude - 1.5 or (hit.Instance and hit.Instance.Transparency > 0.3)
+end
 local function declutter()
 	if not World.ShowPlates then
 		return
@@ -186,7 +205,11 @@ local function declutter()
 			if dist <= gui.MaxDistance then
 				local p, onScreen = camera:WorldToViewportPoint(world)
 				if onScreen and p.Z > 0 then
-					table.insert(list, { Entry = entry, X = p.X, Y = p.Y, D = dist })
+					if visible(camPos, world) then
+						table.insert(list, { Entry = entry, X = p.X, Y = p.Y, D = dist })
+					else
+						gui.Enabled = false
+					end
 				else
 					gui.Enabled = true
 				end

@@ -7,6 +7,7 @@
 -- Furniture doesn't block movement (citizens walk straight to their spot).
 
 local MapKit = require(script.Parent:WaitForChild("MapKit"))
+local Decor = require(script.Parent:WaitForChild("Decor"))
 
 local Interiors = {}
 
@@ -84,16 +85,69 @@ local function register(b, f, x, z)
 	box(b, f, "RegisterScreen", Vector3.new(1, 0.6, 0.1), x, 4.75, z, rgb(90, 220, 140), Enum.Material.Neon)
 end
 
-local function shelf(b, f, x, z, len, rng, sideways)
-	local size = if sideways then Vector3.new(1.6, 7, len) else Vector3.new(len, 7, 1.6)
-	box(b, f, "Shelf", size, x, 0, z, rgb(210, 200, 184), Enum.Material.Wood)
+-- What's on the shelves, by shop: { size, colors, material, neon label? }
+local STOCK = {
+	Bookstore = { Vector3.new(0.35, 1.25, 1), { rgb(170, 50, 50), rgb(50, 90, 160), rgb(60, 130, 80), rgb(220, 180, 70), rgb(120, 70, 140), rgb(230, 230, 220) }, Enum.Material.SmoothPlastic, Gap = 0.42 },
+	Electronics = { Vector3.new(1.1, 0.8, 0.9), { rgb(30, 30, 34), rgb(60, 62, 70), rgb(230, 230, 235) }, Enum.Material.SmoothPlastic, Screen = true },
+	Pharmacy = { Vector3.new(0.6, 0.8, 0.6), { WHITE, rgb(220, 240, 230), rgb(250, 220, 220), rgb(60, 170, 110) }, Enum.Material.SmoothPlastic, Gap = 0.8 },
+	Hardware = { Vector3.new(1, 1, 0.9), { rgb(230, 120, 40), rgb(120, 124, 132), rgb(240, 200, 60), rgb(60, 110, 170) }, Enum.Material.Metal },
+	Mall = { Vector3.new(1.1, 0.5, 0.9), { rgb(255, 92, 122), rgb(90, 160, 255), rgb(250, 250, 250), rgb(60, 60, 66), rgb(168, 110, 255) }, Enum.Material.Fabric, Stack = 3 },
+	PetShop = { Vector3.new(0.9, 1.3, 0.6), { rgb(200, 150, 90), rgb(90, 150, 200), rgb(220, 90, 70) }, Enum.Material.Fabric },
+	ToyStore = { Vector3.new(0.9, 0.9, 0.9), { rgb(255, 92, 122), rgb(255, 208, 60), rgb(90, 160, 255), rgb(120, 220, 120) }, Enum.Material.SmoothPlastic, Balls = true },
+}
+
+-- A store shelf: an open unit (base, back panel, three shelf boards and end
+-- posts) with goods sitting on the boards, on both sides when it stands in
+-- the room (sideways) or facing the room when it stands against the back wall.
+local function shelf(b, f, x, z, len, rng, sideways, place)
+	local stock = STOCK[place] or {}
+	local wood = rgb(210, 200, 184)
+	local function sz(along, h, across)
+		return if sideways then Vector3.new(across, h, along) else Vector3.new(along, h, across)
+	end
+	local function pos(along, across)
+		return if sideways then x + across else x + along, if sideways then z + along else z + across
+	end
+	box(b, f, "ShelfBase", sz(len, 0.6, 1.8), x, 0, z, wood:Lerp(BLACK, 0.25), Enum.Material.Wood)
+	box(b, f, "Shelf", sz(len, 7, 0.25), x, 0, z, wood, Enum.Material.Wood)
+	for _, e in ipairs({ -1, 1 }) do
+		local ex, ez = pos(e * (len / 2 - 0.1), 0)
+		box(b, f, "ShelfEnd", sz(0.2, 7, 1.8), ex, 0, ez, wood:Lerp(BLACK, 0.15), Enum.Material.Wood)
+	end
+	local sides = if sideways then { -1, 1 } else { -1 }
 	for row = 0, 2 do
-		local n = math.floor(len / 1.3)
-		for k = 0, n - 1 do
-			local off = -len / 2 + 0.65 + k * 1.3
-			local c = MapKit.FLOWERS[rng:NextInteger(1, #MapKit.FLOWERS)]:Lerp(rgb(200, 200, 200), 0.2)
-			local px, pz = if sideways then x else x + off, if sideways then z + off else z
-			box(b, f, "Product", Vector3.new(0.9, 1 + (k % 2) * 0.4, 0.9), px, 1 + row * 2.2, pz, c)
+		local y = 0.6 + row * 2.2
+		if row > 0 then
+			box(b, f, "ShelfBoard", sz(len - 0.2, 0.15, 1.8), x, y - 0.15, z, wood, Enum.Material.Wood)
+		end
+		local size = stock[1] or Vector3.new(0.9, 1, 0.8)
+		local gap = stock.Gap or 1.3
+		local n = math.floor((len - 0.6) / gap)
+		for _, side in ipairs(sides) do
+			for k = 0, n - 1 do
+				if rng:NextNumber() < 0.9 then
+					local off = -len / 2 + 0.3 + gap / 2 + k * gap
+					local px, pz = pos(off, side * 0.55)
+					local colors = stock[2] or MapKit.FLOWERS
+					local c = colors[rng:NextInteger(1, #colors)]
+					if not stock[2] then
+						c = c:Lerp(rgb(200, 200, 200), 0.2)
+					end
+					local h = size.Y * (if stock[2] then 1 else 1 + (k % 2) * 0.4)
+					if stock.Balls and k % 2 == 1 then
+						MapKit.ball(b.Model, "Product", 0.9, at(b, f, px, y + 0.45, pz), c, Enum.Material.SmoothPlastic)
+					else
+						for s = 0, (stock.Stack or 1) - 1 do
+							local item = box(b, f, "Product", sz(size.X, h, size.Z), px, y + s * h, pz, c, stock[3])
+							if stock.Screen then
+								local sx, sz2 = pos(off, side * 1.02)
+								box(b, f, "ProductScreen", sz(size.X - 0.2, h - 0.25, 0.05), sx, y + 0.12, sz2, rgb(90, 160, 255), Enum.Material.Neon)
+							end
+							local _ = item
+						end
+					end
+				end
+			end
 		end
 	end
 end
@@ -268,6 +322,8 @@ function ROOMS.restaurant(b, f, list, rng, place)
 	spot(list, b, f, 6, -2, 0, -1, "serve", "work")
 end
 
+local DISPLAY_SHOPS = { Florist = true, PetShop = true, ToyStore = true, IceCream = true, Electronics = true }
+
 function ROOMS.store(b, f, list, rng, place)
 	local W, D = b.W, b.D
 	rug(b, f, 0, 0, W - 4, D - 4, rgb(230, 226, 214))
@@ -281,12 +337,16 @@ function ROOMS.store(b, f, list, rng, place)
 		spot(list, b, f, W / 2 - 15, -D / 2 + 8.4, 0, -1, "cashier", "work")
 	end
 	local rows = math.max(1, math.floor((W - 10) / 7))
+	if DISPLAY_SHOPS[place] then
+		-- specialty shops keep floor space for their displays (see Decor)
+		rows = math.max(1, rows - 1)
+	end
 	for k = 0, rows - 1 do
 		local x = -W / 2 + 5 + k * 7
-		shelf(b, f, x, 2, math.min(10, D - 12), rng, true)
+		shelf(b, f, x, 2, math.min(10, D - 12), rng, true, place)
 		spot(list, b, f, x + 2, 1, -1, 0, "browse", "visit")
 	end
-	shelf(b, f, 0, D / 2 - 2, W - 8, rng, false)
+	shelf(b, f, 0, D / 2 - 2, W - 8, rng, false, place)
 	spot(list, b, f, -3, D / 2 - 4.4, 0, 1, "shelve", "work")
 	spot(list, b, f, 4, D / 2 - 4.4, 0, 1, "browse", "visit")
 	-- stock arriving at the back door
@@ -739,6 +799,7 @@ function Interiors.furnish(b, rooms, rng, place)
 		local fn = kind and ROOMS[kind]
 		if fn then
 			fn(b, f, list, rng, place)
+			Decor.dress(b, f, kind, rng, place, list)
 		end
 	end
 	return list

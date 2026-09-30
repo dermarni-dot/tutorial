@@ -17,18 +17,18 @@ Players can talk to anyone, give speeches, run for mayor and pass laws. They can
 | | |
 |---|---|
 | 🗺️ **A bigger, more detailed city** | 9×9 blocks (about 900 studs across) and 46 places, including office towers 12–16 floors tall. It also has a lake with a pier, hills, mountains, forests, traffic lights, crosswalks, bus stops and 70 parked cars. |
-| 🏢 **Real insides** | Every building is furnished: <ul><li>the gym has treadmills, dumbbells, a squat rack, punching bags and yoga mats;</li><li>the offices have desk rows with elevators to every floor;</li><li>there are classrooms, hospital beds, a cinema with rows of seats, a bank vault, a police holding cell, and a kitchen in the restaurant.</li></ul> |
+| 🏢 **Real insides** | Every building is furnished: <ul><li>the gym has treadmills, dumbbells, a squat rack, punching bags and yoga mats;</li><li>the offices have desk rows with elevators to every floor;</li><li>there are classrooms, hospital beds, a cinema with rows of seats, a bank vault, a police holding cell with bars, a bench and a toilet, and a kitchen in the restaurant;</li><li>every room is dressed: baseboards and chair rails, framed paintings, wall clocks, plants, trash bins and lighting to match (pendant lamps in the cafe and restaurant, chandeliers in the bank, hotel and town hall);</li><li>every shop looks like what it sells: open shelves stocked with its own goods, clothes racks and mannequins, toy piles and a giant teddy, TVs on the wall, flower buckets, fish tanks and pet cages, a tool wall, an ice-cream freezer and drink fridges.</li></ul> |
 | 🏫 **Three schools and a daycare** | Kids go to the right school for their age: elementary 6–10, middle 11–13, high 14–17. Toddlers go to daycare while their parents work. |
 | 🙂 **Faces** | Drawn faces with 14 expressions. People blink, look at you when you come close, and move their mouths when they talk. |
 | 👕 **Looks and sizes** | Casual outfits (hoodies, jackets, stripes, dresses, overalls), beards, earrings, hair bows and sneakers. Everyone has their own height, and kids have bigger heads for their size. |
 | 💃 **Body language** | 50+ poses: typing, cooking, kneading dough, teaching at the board, curling dumbbells, squatting, running on the treadmill, yoga, reading, eating, sleeping, fishing, dancing, swinging, shooting hoops... Each comes with props: cups, books, dumbbells, fishing rods, phones and more. |
 | 🧠 **Personalities and a social life** | Ten personalities change how people walk, talk, spend free time and react. Friends wave on the street, stop to chat and pass on gossip about players. |
-| 🚶 **Natural movement** | Everyone has their own pace and keeps to their own side of the sidewalk. They stop to check their phone, kids run ahead, and people hurry when they're late. |
+| 🚶 **Natural movement** | Everyone has their own pace and keeps to their own side of the sidewalk. They stop to check their phone, kids run ahead, and people hurry when they're late. People look ahead and step around each other (and around you) instead of walking into you, and wait a moment when the sidewalk is blocked. |
 | ⚽ **After-school life** | Real soccer games (two teams, a ball, goals, cheering), shooting hoops, swings, the arcade, homework at the library, and weekend family outings. |
 | 💬 **Dialogue** | Talk to anyone. Answers depend on their personality, mood, job, the city and what they remember about you. |
 | 🗳️ **Politics** | Speeches, elections with citizen candidates, votes, a mayor's salary and daily policies. |
 | ⚔️ **Fighting and crime** | Fists, a bat, a hammer and a knife, with attack animations, blocking, and citizens who fight back. Strangers get into street fights too, with crowds, phones out and police breaking them up. Pickpockets, bag snatchers, robbers and taggers get chased, handcuffed and locked up, unless you catch them first. Also pickpocketing and robberies. Hoodies, ski masks and disguises make you harder to recognize, especially at night. Witnesses need line of sight. Wanted stars bring police chases with backup, and getting caught means jail and a fine. |
-| 🖥️ **A full interface** | <ul><li>HUD: clock, city mood, rotating minimap, coins, wanted stars, a news ticker and a health bar that glows red when you're hurt.</li><li>📱 **A phone** (**Tab**) with every app: map, people, news, vote, goals, speech, mayor, help and settings.</li><li>🎯 **Daily goals**: four new ones every day, such as "chat with 3 citizens" or "visit Mirror Lake". Each pays coins.</li><li>A weapon hotbar with a cooldown sweep, a **target card** for whoever you're facing (name, job, health), and health bars over people who are hurt.</li><li>A camera flyover behind the welcome screen.</li><li>Windows: a city map, a people directory, profile cards with a 3D portrait, voting, speeches, the mayor's desk, conversations, elevators, the weapons shop, help and settings.</li></ul> |
+| 🖥️ **A full interface** | <ul><li>HUD: clock, city mood, rotating minimap, coins, wanted stars, a news ticker and a health bar that glows red when you're hurt.</li><li>📱 **A phone** (**Tab**) with every app: map, people, news, vote, goals, speech, mayor, help and settings.</li><li>🎯 **Daily goals**: four new ones every day, such as "chat with 3 citizens" or "visit Mirror Lake". Each pays coins.</li><li>A weapon hotbar with a cooldown sweep, a **target card** for whoever you're facing (name, job, health), and health bars over people who are hurt.</li><li>A camera flyover behind the welcome screen.</li><li>📱 **Plays on phones**: on a touch screen (or a small window) the HUD switches to a compact layout that keeps the joystick and jump button clear, and every window shrinks to fit.</li><li>Name tags stay readable: they're drawn over buildings, hidden when the person is behind a wall, and only the nearest one shows when tags overlap.</li><li>Windows: a city map, a people directory, profile cards with a 3D portrait, voting, speeches, the mayor's desk, conversations, elevators, the weapons shop, help and settings.</li></ul> |
 
 ## The city
 
@@ -48,6 +48,10 @@ Inside the buildings:
 | Gym | Offices (a floor of a tower) | Elementary school |
 |---|---|---|
 | ![Gym](gym_preview.png) | ![Office floor](office_preview.png) | ![School](school_preview.png) |
+| **Toy store** | **Clothing store** | **Restaurant** |
+| ![Toy store](toystore_preview.png) | ![Clothing store](clothing_preview.png) | ![Restaurant](restaurant_preview.png) |
+| **Cafe** | | |
+| ![Cafe](cafe_preview.png) | | |
 
 Street lamps, windows, porch lights, neon signs and stadium floodlights switch on at dusk. The sky runs through dawn, morning, noon, golden hour, sunset and night (see `Atmosphere`).
 
@@ -213,8 +217,8 @@ Street lamps, windows, porch lights, neon signs and stadium floodlights switch o
 | **Citizen card** | **City map** |
 | ![Profile](ui_profile_preview.png) | ![Map](ui_map_preview.png) |
 
-| **Ordering food (E at the counter)** | |
-| ![Food](ui_food_preview.png) | |
+| **Ordering food (E at the counter)** | **On a phone (844×390)** |
+| ![Food](ui_food_preview.png) | ![Phone layout](ui_phone_layout_preview.png) |
 | **Wardrobe (C) at the Clothing store** | **Giving a speech** |
 | ![Wardrobe](ui_wardrobe_preview.png) | ![Speech](ui_speech_preview.png) |
 
@@ -256,7 +260,7 @@ Every action is also a button on the action bar for mobile players.
 | Script | Where | What it does |
 |---|---|---|
 | `Main` | ServerScriptService | Builds the map, loads or creates the citizens, starts everything. |
-| `MapBuilder` + `MapKit`, `Buildings`, `Interiors`, `Streets`, `Landscape`, `Places` | Modules | The city, its interiors and the "spots" where people stand, sit, work and sleep. |
+| `MapBuilder` + `MapKit`, `Buildings`, `Interiors`, `Decor`, `Streets`, `Landscape`, `Places` | Modules | The city, its interiors (`Decor` adds the finishing touches to every room) and the "spots" where people stand, sit, work and sleep. |
 | `Life` | Modules | Who lives here: families, ages, jobs, schools, personalities, friends, and where each person should be at any hour. Pure logic, no parts. |
 | `CityService` | Modules | Clock and calendar, city stats and mood, mayor, elections, speeches, policies, coins, memories, gossip, news, saving, and the remotes. |
 | `CitizenService` | Modules | The NPC bodies: walking, elevators, spots, soccer, chatting, greetings, reactions, knockouts, births, growing up. |
@@ -363,3 +367,6 @@ The game was run in a Luau test harness (a small Roblox simulation), and these c
   - an elevator ride to floor 9;
   - a vote and an election (and winning it).
 - **The client:** every window and every server message, and poses on 20 citizens at once.
+- **Phones:** the client starts on a touch screen at 844×390 with no errors, and every window fits on screen.
+- **Crowds:** with the same people over the same hour, people overlap each other a third as often with steering on, and nobody walks into the player.
+- **Interiors:** no part covers a floor except rugs and tiles, and every shop gets its own props without blocking where people stand to work, browse or sit.

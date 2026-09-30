@@ -162,7 +162,7 @@ end
 local refs = {}
 
 local function statRow(parent, icon, name, color, order)
-	local row = UI.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 18), LayoutOrder = order, Parent = parent })
+	local row = UI.new("Frame", { Name = "StatRow", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 18), LayoutOrder = order, Parent = parent })
 	UI.Icons.Glyph(row, icon, 17, { Color = color, Hole = C.Panel })
 	UI.text(row, name, 12, UI.Bold, C.Sub, { Position = UDim2.fromOffset(22, 0), Size = UDim2.fromOffset(74, 18) })
 	local bar, set = UI.bar(row, color, 8, { Position = UDim2.new(0, 98, 0.5, -4), Size = UDim2.new(1, -134, 0, 8) })
@@ -188,7 +188,8 @@ local function build()
 	local uiScale = UI.new("UIScale", { Parent = screen })
 	local function rescale()
 		local vp = workspace.CurrentCamera.ViewportSize
-		uiScale.Scale = math.clamp(math.min(vp.X / 1280, vp.Y / 760), 0.62, 1.15)
+		-- phones: scale by height so everything fits between the top bar and the thumbs
+		uiScale.Scale = if UI.Compact() then math.clamp(math.min(vp.X / 1000, vp.Y / 560), 0.5, 0.95) else math.clamp(math.min(vp.X / 1280, vp.Y / 760), 0.62, 1.15)
 	end
 	rescale()
 	workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(rescale)
@@ -239,7 +240,8 @@ local function build()
 	UI.corner(refs.North, UDim.new(0.5, 0))
 
 	-- coins, wanted, mayor, election (under the minimap)
-	local right = UI.new("Frame", { BackgroundTransparency = 1, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -16, 0, 208), Size = UDim2.fromOffset(250, 0), AutomaticSize = Enum.AutomaticSize.Y, Parent = screen })
+	local right = UI.new("Frame", { Name = "RightColumn", BackgroundTransparency = 1, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -16, 0, 208), Size = UDim2.fromOffset(250, 0), AutomaticSize = Enum.AutomaticSize.Y, Parent = screen })
+	refs.Right, refs.MiniRing = right, ring
 	UI.list(right, Enum.FillDirection.Vertical, 6, Enum.HorizontalAlignment.Right)
 	local coins = UI.panel(right, { Size = UDim2.fromOffset(0, 40), AutomaticSize = Enum.AutomaticSize.X, LayoutOrder = 1, Radius = 20 })
 	UI.pad(coins, 0, 0, 16, 0, 12)
@@ -342,7 +344,7 @@ local function build()
 	-- the speech hint (near the podium)
 	refs.Hint = UI.panel(screen, { AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -136), Size = UDim2.fromOffset(0, 36), AutomaticSize = Enum.AutomaticSize.X, Radius = 18, Visible = false, BackgroundColor3 = UI.rgb(90, 70, 20) })
 	UI.pad(refs.Hint, 0, 0, 16, 0, 16)
-	UI.text(refs.Hint, "🎤 You're at the podium! Press <b>B</b> (or 🎤) to give a speech", 15, UI.Bold, C.Gold, { AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.fromOffset(0, 36) })
+	UI.text(refs.Hint, if UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled then "🎤 You're at the podium! Tap <b>Speech</b> to give a speech" else "🎤 You're at the podium! Press <b>B</b> (or 🎤) to give a speech", 15, UI.Bold, C.Gold, { AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.fromOffset(0, 36) })
 
 	-- wanted: a red glow around the screen
 	refs.Edge = UI.new("Frame", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 0, Parent = screen })
@@ -801,7 +803,8 @@ local function updateTarget(root)
 	end
 	local kid = stage == "Baby" or stage == "Toddler" or stage == "Child" or stage == "Teen"
 	local ko = best:GetAttribute("KnockedOut")
-	refs.TargetKeys.Text = if ko then "💫 Knocked out" elseif kid then "[E] Talk" else "[E] Talk   [G] Pickpocket   [F] Attack"
+	local touch = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
+	refs.TargetKeys.Text = if ko then "💫 Knocked out" elseif touch then (if kid then "Tap Talk to chat" else "Tap Talk · Attack to fight") elseif kid then "[E] Talk" else "[E] Talk   [G] Pickpocket   [F] Attack"
 	card.Position = UDim2.new(0.5, 0, 0, if refs.Jail.Visible then 90 else 16)
 end
 
@@ -858,6 +861,75 @@ function Hud.SetStamina(frac, level, xpFrac, sprinting, exhausted, boosted)
 	refs.StaminaPanel.BackgroundTransparency = if pulse then 0.35 else 0.08
 end
 
+-- Phones: rearrange around the touch controls (thumbstick bottom-left, jump
+-- button bottom-right): health and stamina go up under the clock, the action
+-- buttons become a small grid above the jump button, the hotbar goes to the
+-- bottom middle, the minimap shrinks, and the goals start folded.
+local function compactLayout()
+	local column = screen:FindFirstChild("LeftColumn")
+	if column then
+		column.Size = UDim2.fromOffset(236, 0)
+		local card = column:FindFirstChild("Clock")
+		if card then
+			card.Size = UDim2.fromOffset(236, 0)
+			for _, d in ipairs(card:GetChildren()) do
+				if d.Name == "StatRow" then
+					d.Visible = false
+				end
+			end
+		end
+		refs.StateDesc.Visible = false
+		refs.AvgMood.Visible = false
+		for k, p in ipairs({ refs.HealthPanel, refs.StaminaPanel }) do
+			p.Parent = column
+			p.AnchorPoint = Vector2.zero
+			p.Position = UDim2.new()
+			p.Size = UDim2.fromOffset(236, p.Size.Y.Offset)
+			p.LayoutOrder = 1 + k
+		end
+		if goalsPanel then
+			goalsPanel.Frame.LayoutOrder = 4
+			goalsPanel.Frame.Size = UDim2.fromOffset(236, 0)
+			goalsOpen = false
+			goalsList.Visible = false
+			Hud.SetGoals(Hud.GoalData)
+		end
+	end
+	refs.BlockIcon.AnchorPoint = Vector2.new(0.5, 0)
+	refs.BlockIcon.Position = UDim2.new(0.5, 0, 0, 132)
+	-- the action buttons: a 3-wide grid above the jump button
+	local bar = refs.Bar
+	local list = bar:FindFirstChildOfClass("UIListLayout")
+	if list then
+		list:Destroy()
+	end
+	UI.new("UIGridLayout", { CellSize = UDim2.fromOffset(64, 60), CellPadding = UDim2.fromOffset(6, 6), FillDirectionMaxCells = 3, SortOrder = Enum.SortOrder.LayoutOrder, HorizontalAlignment = Enum.HorizontalAlignment.Right, Parent = bar })
+	bar.AnchorPoint = Vector2.new(1, 1)
+	bar.Position = UDim2.new(1, -12, 1, -170)
+	bar.Size = UDim2.fromOffset(0, 0)
+	bar.AutomaticSize = Enum.AutomaticSize.XY
+	-- the hotbar: bottom middle
+	if hotbar then
+		hotbar.AnchorPoint = Vector2.new(0.5, 1)
+		hotbar.Position = UDim2.new(0.5, 0, 1, -10)
+		local l = hotbar:FindFirstChildOfClass("UIListLayout")
+		if l then
+			l.HorizontalAlignment = Enum.HorizontalAlignment.Center
+		end
+	end
+	if ticker then
+		ticker.Position = UDim2.new(0.5, 0, 1, -84)
+	end
+	-- a smaller minimap, and the column under it moves up
+	local mini = screen:FindFirstChild("Minimap")
+	if mini then
+		mini.Size = UDim2.fromOffset(132, 132)
+		refs.MiniRing.Size = UDim2.fromOffset(132, 132)
+	end
+	refs.Right.Position = UDim2.new(1, -12, 0, 154)
+	refs.Right.Size = UDim2.fromOffset(220, 0)
+end
+
 function Hud.Start(context)
 	ctx = context
 	cityState = ReplicatedStorage:WaitForChild("CityState")
@@ -865,6 +937,21 @@ function Hud.Start(context)
 	buildGoals(screen:FindFirstChild("LeftColumn"))
 	buildHotbar()
 	buildTargetCard()
+	-- hiding: a big button to climb out (phones have no Space key)
+	local unhide = UI.button(screen, "🫥  Get out" .. (if UserInputService.TouchEnabled then "" else "  (Space)"), { AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -150), Size = UDim2.fromOffset(200, 46), Color = C.Purple, TextSize = 17 }, function()
+		task.spawn(function()
+			pcall(function()
+				ctx.Remotes.Request:InvokeServer({ Action = "Unhide" })
+			end)
+		end)
+	end)
+	unhide.Visible = false
+	player:GetAttributeChangedSignal("Hiding"):Connect(function()
+		unhide.Visible = player:GetAttribute("Hiding") ~= nil
+	end)
+	if UI.Compact() then
+		compactLayout()
+	end
 	Hud.SetCoins(player:GetAttribute("Coins") or 0)
 	player:GetAttributeChangedSignal("Coins"):Connect(function()
 		Hud.SetCoins(player:GetAttribute("Coins") or 0, true)
