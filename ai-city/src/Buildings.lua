@@ -208,7 +208,7 @@ function Buildings.shell(parent, spec)
 				glow.Face = Enum.NormalId.Bottom
 				glow.Angle = 120
 				glow.Range = math.min(20, FLOOR_H + 6)
-				glow.Brightness = 0.8
+				glow.Brightness = 0.55 -- (softer: rooms were glaring)
 				glow.Color = MapKit.rgb(255, 232, 200)
 				glow.Shadows = false
 				glow.Parent = panel
