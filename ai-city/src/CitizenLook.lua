@@ -244,6 +244,13 @@ local function hair(folder, body, style, color)
 	end
 	local top = H / 2
 	local function add(name, size, offset, shape)
+		if name == "Hair" and not shape and Config.ROUND_HAIR ~= false then
+			-- the cap of hair is round (a ball over the top and back of the
+			-- head), not a box; thin haircuts sit lower and closer
+			local thin = size.Y < 0.3
+			local d = (if thin then 1.08 else 1.14) * H
+			return attach(folder, head, name, Vector3.new(d, d, d), CFrame.new(0, (if thin then 0.1 else 0.15) * H, 0.1 * H), color, "Ball", Enum.Material.SmoothPlastic)
+		end
 		return attach(folder, head, name, size * H, offset, color, shape, Enum.Material.SmoothPlastic)
 	end
 	if style == "buzz" then
@@ -1326,6 +1333,9 @@ function CitizenLook.Sculpt(model, folder, look)
 	end
 end
 
+-- the outfit pieces that a real 3D (layered) garment replaces
+local CLOTHING_ITEMS = { Tee = true, Polo = true, Hoodie = true, Jacket = true, Stripes = true, Sweater = true, Dress = true, Blazer = true, Flannel = true, Puffer = true, Varsity = true, Tank = true, Skirt = true, Overalls = true, Cardigan = true, Vest = true }
+
 function CitizenLook.Apply(model, citizen, options)
 	options = options or {}
 	local look = CitizenLook.Describe(citizen or {})
@@ -1388,10 +1398,15 @@ function CitizenLook.Apply(model, citizen, options)
 		end
 	end
 	if body.Head and body.Torso then
-		hair(folder, body, look.Hair, look.HairColor)
+		if not options.RealHair then
+			hair(folder, body, look.Hair, look.HairColor)
+		end
 		for _, item in ipairs(look.Items) do
 			local name, color = parseItem(item)
 			local build = ITEMS[name]
+			if options.RealClothes and CLOTHING_ITEMS[name] then
+				build = nil
+			end
 			if build then
 				local ok, err = pcall(build, folder, body, color)
 				if not ok then
@@ -1430,6 +1445,43 @@ CitizenLook.BODIES = Config.CITIZEN_BODIES or {
 local R15_PARTS = { "Head", "UpperTorso", "LowerTorso", "LeftUpperArm", "LeftLowerArm", "LeftHand", "RightUpperArm", "RightLowerArm", "RightHand", "LeftUpperLeg", "LeftLowerLeg", "LeftFoot", "RightUpperLeg", "RightLowerLeg", "RightFoot" }
 local bodyWorks = {} -- [package] = false once it failed to load (then everyone uses the default body)
 
+--------------------------------------------------------------------------------
+-- Realistic bodies from the Roblox catalog. Put body bundle ids (the number in
+-- a roblox.com/bundles/<id>/... link) in Config.CITIZEN_BUNDLES = { Man = {...},
+-- Woman = {...} }. Each citizen always gets the same one of the list (so the
+-- town has a mix of bodies). Bundles with a 3D head (a "DynamicHead") give the
+-- citizen that head and its own animated face instead of the drawn one
+-- (Config.BUNDLE_HEADS = false keeps the drawn faces).
+--------------------------------------------------------------------------------
+local AssetService = game:GetService("AssetService")
+local BODY_SLOTS = { Torso = "Torso", LeftArm = "LeftArm", RightArm = "RightArm", LeftLeg = "LeftLeg", RightLeg = "RightLeg", DynamicHead = "Head", Head = "Head" }
+local bundleCache = {} -- [id] = { slot = assetId } or false
+local function bundleParts(id)
+	if bundleCache[id] ~= nil then
+		return bundleCache[id]
+	end
+	local ok, info = pcall(AssetService.GetBundleDetailsAsync, AssetService, id)
+	local parts = false
+	if ok and type(info) == "table" and type(info.Items) == "table" then
+		parts = {}
+		for _, item in ipairs(info.Items) do
+			local slot = BODY_SLOTS[tostring(item.AssetType or "")]
+			if slot and item.Type == "Asset" then
+				parts[slot] = item.Id
+			end
+		end
+		if not parts.Torso then
+			parts = false
+		end
+	end
+	if not parts then
+		warn("[CitizenLook] body bundle " .. tostring(id) .. " couldn't be used" .. (if ok then " (no body parts in it)" else ": " .. tostring(info)))
+	end
+	bundleCache[id] = parts
+	return parts
+end
+CitizenLook.BundleParts = bundleParts
+
 local function complete(model)
 	if not model then
 		return false
@@ -1459,10 +1511,54 @@ function CitizenLook.Build(citizen)
 	description.HeightScale = 1
 	description.BodyTypeScale = if look.Build == "athletic" or look.Build == "stocky" or look.Build == "muscular" then 0.3 else 0.1
 	description.ProportionScale = if look.Feminine then 0.4 else 0.2
+	-- realistic proportions: taller, longer-limbed and narrower than the stubby
+	-- default body (slim builds are the most slender, heavy builds the widest)
+	if look.Age >= 13 then
+		description.BodyTypeScale = if look.Feminine then 0.75 else 0.65
+		description.ProportionScale = ({ slim = 1, average = 0.6, athletic = 0.35, curvy = 0.2, heavy = 0, stocky = 0, muscular = 0.1 })[look.Build or "average"] or 0.5
+	end
 	local model
 	local package = if look.Feminine then "Woman" else "Man"
-	local ids = Config.SMOOTH_BODIES ~= false and CitizenLook.BODIES[package]
-	if ids and bodyWorks[package] ~= false then
+	-- catalog hair and 3D (layered) clothes, if the city has some
+	local seed = hash(tostring(field(citizen or {}, "Name", "name") or ""))
+	local hairList = Config.CITIZEN_HAIR and Config.CITIZEN_HAIR[package]
+	if hairList and #hairList > 0 and look.Hair ~= "bald" and look.Age >= 3 then
+		description.HairAccessory = tostring(hairList[seed % #hairList + 1])
+		look.RealHair = true
+	end
+	local clothes = Config.CITIZEN_CLOTHES
+	if clothes and #clothes > 0 and look.Age >= 13 and not look.Job then
+		local c = clothes[seed // 7 % #clothes + 1]
+		pcall(function()
+			description:SetAccessories({ { Order = 1, AssetId = c.AssetId or c[1], AccessoryType = c.AccessoryType or Enum.AccessoryType[c[2] or "Shirt"], IsLayered = true } }, true)
+		end)
+		look.RealClothes = true
+	end
+	-- a catalog body bundle, if the city has some
+	local bundles = Config.CITIZEN_BUNDLES and Config.CITIZEN_BUNDLES[package]
+	if bundles and #bundles > 0 and look.Age >= 13 then
+		local pick = bundles[hash(tostring(field(citizen or {}, "Name", "name") or "")) % #bundles + 1]
+		local parts = bundleParts(pick)
+		if parts then
+			local real = description:Clone()
+			for slot, id in pairs(parts) do
+				if slot ~= "Head" or Config.BUNDLE_HEADS ~= false then
+					real[slot] = id
+				end
+			end
+			local ok, result = pcall(function()
+				return Players:CreateHumanoidModelFromDescription(real, Enum.HumanoidRigType.R15)
+			end)
+			if ok and complete(result) then
+				model = result
+				look.BundleHead = parts.Head ~= nil and Config.BUNDLE_HEADS ~= false
+			elseif ok and result then
+				result:Destroy()
+			end
+		end
+	end
+	local ids = not model and Config.SMOOTH_BODIES ~= false and CitizenLook.BODIES[package]
+	if ids and not model and bodyWorks[package] ~= false then
 		-- try the smooth body; if it can't load, fall back to the default one
 		local smooth = description:Clone()
 		for slot, id in pairs(ids) do
@@ -1488,10 +1584,12 @@ function CitizenLook.Build(citizen)
 	model.Name = tostring(field(citizen or {}, "Name", "name") or "Citizen")
 	-- kids have bigger heads for their size (so they read as kids, not tiny adults)
 	local headScale = if look.Age < 3 then 1.35 elseif look.Age < 9 then 1.25 elseif look.Age < 14 then 1.12 else 1
-	if headScale ~= 1 then
+	if headScale ~= 1 and not look.BundleHead then
 		CitizenLook.ScaleHead(model, headScale)
 	end
-	CitizenLook.Apply(model, citizen)
+	-- (a real 3D head keeps its own face)
+	CitizenLook.Apply(model, citizen, { KeepFace = look.BundleHead, RealHair = look.RealHair, RealClothes = look.RealClothes })
+	model:SetAttribute("RealHead", look.BundleHead or nil)
 	return model, look
 end
 

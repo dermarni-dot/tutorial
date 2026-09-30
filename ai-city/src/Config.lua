@@ -129,6 +129,22 @@ Config.Jobs = {
 	{ title = "Ice Cream Server", place = "IceCream", slots = 1, start = 11, stop = 21, pay = 9 },
 	{ title = "Hardware Clerk", place = "Hardware", slots = 1, start = 8, stop = 17, pay = 11 },
 }
+-- Realistic citizens from the Roblox catalog (all optional; empty lists keep
+-- the built-in look). Paste the number from a catalog link:
+--   body bundles  roblox.com/bundles/<id>/...   (the body, and a 3D head with
+--                 its own face if the bundle has one)
+--   hair          roblox.com/catalog/<id>/...   (hair accessories)
+--   clothes       3D layered clothing: { AssetId = <id>, AccessoryType = Enum.AccessoryType.Sweater }
+-- Each citizen always gets the same pick from each list, so the town is mixed.
+Config.CITIZEN_BUNDLES = { Man = {}, Woman = {} }
+Config.CITIZEN_HAIR = { Man = {}, Woman = {} }
+Config.CITIZEN_CLOTHES = {
+	-- examples from Roblox's own documentation:
+	-- { AssetId = 6984769289, AccessoryType = Enum.AccessoryType.Sweater },
+	-- { AssetId = 6984767443, AccessoryType = Enum.AccessoryType.Jacket },
+}
+Config.BUNDLE_HEADS = true -- use a bundle's 3D head and face (false: keep the drawn faces)
+Config.ROUND_HAIR = true -- built-in hair has a round cap instead of a box
 Config.UNEMPLOYED_CHANCE = 0.12
 Config.RETIRE_AGE = 67
 

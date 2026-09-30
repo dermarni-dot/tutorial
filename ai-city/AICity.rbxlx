@@ -129,6 +129,22 @@ Config.Jobs = {
 	{ title = "Ice Cream Server", place = "IceCream", slots = 1, start = 11, stop = 21, pay = 9 },
 	{ title = "Hardware Clerk", place = "Hardware", slots = 1, start = 8, stop = 17, pay = 11 },
 }
+-- Realistic citizens from the Roblox catalog (all optional; empty lists keep
+-- the built-in look). Paste the number from a catalog link:
+--   body bundles  roblox.com/bundles/<id>/...   (the body, and a 3D head with
+--                 its own face if the bundle has one)
+--   hair          roblox.com/catalog/<id>/...   (hair accessories)
+--   clothes       3D layered clothing: { AssetId = <id>, AccessoryType = Enum.AccessoryType.Sweater }
+-- Each citizen always gets the same pick from each list, so the town is mixed.
+Config.CITIZEN_BUNDLES = { Man = {}, Woman = {} }
+Config.CITIZEN_HAIR = { Man = {}, Woman = {} }
+Config.CITIZEN_CLOTHES = {
+	-- examples from Roblox's own documentation:
+	-- { AssetId = 6984769289, AccessoryType = Enum.AccessoryType.Sweater },
+	-- { AssetId = 6984767443, AccessoryType = Enum.AccessoryType.Jacket },
+}
+Config.BUNDLE_HEADS = true -- use a bundle's 3D head and face (false: keep the drawn faces)
+Config.ROUND_HAIR = true -- built-in hair has a round cap instead of a box
 Config.UNEMPLOYED_CHANCE = 0.12
 Config.RETIRE_AGE = 67
 
@@ -2326,6 +2342,70 @@ local function checkoutItems(model, st, k, kind, start)
 	end
 end
 
+--------------------------------------------------------------------------------
+-- Walking and running, with the whole body (replaces Roblox's stiff default
+-- walk up close): the legs swing from the hips with the knee bending as the
+-- foot comes through and the ankle rolling off the toes, the arms swing
+-- against the legs with soft elbows, the hips and chest twist against each
+-- other, the body rises and falls twice a step and sways over the standing
+-- foot, and it leans into a run. The step keeps time with the ground covered,
+-- so feet don't slide. Old people take shorter, stiffer steps; kids bounce.
+--------------------------------------------------------------------------------
+local function groundSpeed(st, root, dt)
+	local p = root.Position
+	local last = st.LastPos
+	st.LastPos = p
+	if not last or dt <= 0 then
+		return st.Speed or 0
+	end
+	local d = Vector3.new(p.X - last.X, 0, p.Z - last.Z).Magnitude
+	local v = if d > 8 then 0 else d / dt -- (a teleport is not a step)
+	st.Speed = (st.Speed or 0) + (v - (st.Speed or 0)) * math.min(1, dt * 8)
+	return st.Speed
+end
+
+local function gait(st, model, speed, dt, legsOnly)
+	local height = model:GetAttribute("Height") or 1
+	local age = model:GetAttribute("Age") or 30
+	local run = speed > 11
+	-- one full cycle (two steps) covers this much ground
+	local stride = (if run then 9 else 5.2) * height * (if age < 13 then 0.8 elseif age >= 70 then 0.8 else 1)
+	st.GaitPh = ((st.GaitPh or 0) + speed * dt / stride) % 1
+	local th = st.GaitPh * math.pi * 2
+	local s, c = sin(th), cos(th)
+	local amp = math.clamp(speed / 8, 0.45, 1.25) * (if age >= 70 then 0.65 else 1)
+	local bounce = if age < 13 then 1.6 else 1
+	local legSwing = (if run then 42 else 26) * amp
+	local kneeLift = if run then 85 else 48
+	local lean = if run then 12 else 3 + amp * 2
+	-- left leg: forward when s > 0, coming through (knee bent) when c > 0
+	local lHip, rHip = s * legSwing, -s * legSwing
+	local lKnee = -(math.max(0, c) * kneeLift * amp + 6)
+	local rKnee = -(math.max(0, -c) * kneeLift * amp + 6)
+	local lAnkle = if s < 0 then -s * 18 * amp else -math.max(0, c) * 10
+	local rAnkle = if s > 0 then s * 18 * amp else -math.max(0, -c) * 10
+	local bob = -abs(c) * 0.12 * amp * bounce + 0.04
+	local target = {
+		LH = A(lHip, 0, -2), RH = A(rHip, 0, 2),
+		LK = A(lKnee), RK = A(rKnee),
+		LA = A(lAnkle), RA = A(rAnkle),
+		Root = CFrame.new(0, bob, 0) * A(-lean * 0.3, s * 4 * amp, -s * 2.5 * amp),
+	}
+	if not legsOnly then
+		local armSwing = (if run then 50 else 24) * amp
+		local elbow = if run then 85 else 18 + amp * 10
+		-- arms swing opposite to the legs
+		target.LS = A(-s * armSwing, 0, 6 + amp * 2)
+		target.RS = A(s * armSwing, 0, -6 - amp * 2)
+		target.LE = A(elbow + math.max(0, -s) * (if run then 10 else 16))
+		target.RE = A(elbow + math.max(0, s) * (if run then 10 else 16))
+		target.Waist = A(-lean * 0.7, -s * 7 * amp, 0)
+		-- the head stays steady, looking where they're going
+		target.Neck = A(lean * 0.6 - 2, s * 3 * amp, 0)
+	end
+	return target
+end
+
 local function update(model, st, t, dt, camPos, myRoot)
 	local root = model:FindFirstChild("HumanoidRootPart")
 	if not root then
@@ -2384,6 +2464,19 @@ local function update(model, st, t, dt, camPos, myRoot)
 	if carrying then
 		target, full = L[CARRY[carry][1]](t, st.Phase)
 	end
+	-- on the move: the full-body walk (the arms keep carrying if they're busy)
+	local speed = groundSpeed(st, root, dt)
+	if not root.Anchored and speed > 0.8 and not fighting and not coK and (not target or carrying) then
+		local steps = gait(st, model, speed, dt, carrying)
+		if carrying and target then
+			for k, v in pairs(steps) do
+				target[k] = v
+			end
+			full = false
+		else
+			target, full = steps, true
+		end
+	end
 	-- look at the player when they're close (or talking to them)
 	local lookYaw, lookPitch
 	if myRoot and poseName ~= "sleep" and poseName ~= "ko" and poseName ~= "swingsit" then
@@ -2430,10 +2523,12 @@ local function update(model, st, t, dt, camPos, myRoot)
 	if pivot and root.Anchored then
 		st.SwingBase = st.SwingBase or root.CFrame
 		local angle = sin(t * 2.1 + st.Phase) * 0.55
-		local axis = st.SwingBase.RightVector
+		st.SwingAngle = angle -- (the seat and chains follow: see stepSwings)
+		local axis = model:GetAttribute("SwingAxis") or st.SwingBase.RightVector
 		root.CFrame = CFrame.new(pivot) * CFrame.fromAxisAngle(axis, angle) * CFrame.new(-pivot) * st.SwingBase
 	elseif st.SwingBase then
 		st.SwingBase = nil
+		st.SwingAngle = nil
 	end
 	if st.Props then
 		-- the fish only shows when it's been caught
@@ -2565,7 +2660,12 @@ local function playerUpdate(model, st, t, dt, player)
 	local weapon = if now - st.Swing < 0.6 then (model:GetAttribute("SwingWeapon") or held) else held
 	local blocking = model:GetAttribute("Blocking") or (player and player:GetAttribute("Blocking"))
 	local eating = model:GetAttribute("Eating")
-	if model:GetAttribute("Treadmill") then
+	local humanoid0 = model:FindFirstChildOfClass("Humanoid")
+	local seatPart = humanoid0 and humanoid0.SeatPart
+	if seatPart and seatPart.Name == "SwingSeat" then
+		-- pumping the swing: legs out on the way forward, tucked on the way back
+		target, full = L.swingsit(t, st.Phase)
+	elseif model:GetAttribute("Treadmill") then
 		target, full = L.run(t, st.Phase)
 	else
 		local root = model:FindFirstChild("HumanoidRootPart")
@@ -2594,6 +2694,25 @@ local function playerUpdate(model, st, t, dt, player)
 	elseif model:GetAttribute("Sprinting") then
 		target, full = L.sprint(t, st.Phase)
 	end
+	-- walking and running with the whole body (legs only while the arms are busy)
+	local root = model:FindFirstChild("HumanoidRootPart")
+	local speed = root and groundSpeed(st, root, dt) or 0
+	if root and speed > 0.8 and not model:GetAttribute("Treadmill") then
+		local humanoid = model:FindFirstChildOfClass("Humanoid")
+		local airborne = humanoid and humanoid.FloorMaterial == Enum.Material.Air
+		if not airborne then
+			local steps = gait(st, model, speed, dt, target ~= nil)
+			if target then
+				for k, v in pairs(steps) do
+					if not target[k] then
+						target[k] = v
+					end
+				end
+			else
+				target, full = steps, true
+			end
+		end
+	end
 	blend(st, target, full, dt)
 	-- a streak behind the weapon while it swings
 	if tool then
@@ -2613,6 +2732,57 @@ local function playerUpdate(model, st, t, dt, player)
 		end
 	end
 end
+
+--------------------------------------------------------------------------------
+-- Swings: the seat and its chains swing with whoever is on it. A citizen's
+-- swing keeps time with their body; a player on a swing pumps their legs and
+-- the swing builds up, then slows down and stops when they get off.
+--------------------------------------------------------------------------------
+local swings = setmetatable({}, { __mode = "k" })
+local function stepSwings(dt, t, camPos)
+	for _, model in ipairs(CollectionService:GetTagged("Swing")) do
+		local pivot, axis = model:GetAttribute("Pivot"), model:GetAttribute("Axis")
+		local seat = model:FindFirstChild("SwingSeat")
+		if typeof(pivot) == "Vector3" and typeof(axis) == "Vector3" and seat and (pivot - camPos).Magnitude < Poses.PoseRadius then
+			local sw = swings[model]
+			if not sw then
+				sw = { Base = {}, Amp = 0, Ph = 0 }
+				for _, p in ipairs(model:GetChildren()) do
+					if p:IsA("BasePart") then
+						sw.Base[p] = p.CFrame
+					end
+				end
+				swings[model] = sw
+			end
+			local angle
+			-- a citizen on it?
+			for m, st in pairs(states) do
+				if st.SwingAngle and m.Parent then
+					local p = m:GetAttribute("SwingPivot")
+					if typeof(p) == "Vector3" and (p - pivot).Magnitude < 0.5 then
+						angle = st.SwingAngle
+						break
+					end
+				end
+			end
+			if not angle then
+				-- a player sitting on it pumps it higher; empty, it slows to a stop
+				local occupied = seat:IsA("Seat") and seat.Occupant ~= nil
+				sw.Amp += ((if occupied then 0.6 else 0) - sw.Amp) * math.min(1, dt * (if occupied then 0.35 else 0.8))
+				sw.Ph += dt * 2.1
+				angle = sin(sw.Ph) * sw.Amp
+			end
+			if abs(angle) > 0.001 or sw.Moved then
+				sw.Moved = abs(angle) > 0.001
+				local rot = CFrame.new(pivot) * CFrame.fromAxisAngle(axis, angle) * CFrame.new(-pivot)
+				for p, base in pairs(sw.Base) do
+					p.CFrame = rot * base
+				end
+			end
+		end
+	end
+end
+Poses.StepSwings = stepSwings
 
 function Poses.StepPlayers(dt, camPos)
 	local t = os.clock()
@@ -2651,6 +2821,7 @@ function Poses.Step(dt)
 		end
 	end
 	Poses.StepPlayers(dt, camPos)
+	pcall(stepSwings, dt, t, camPos)
 end
 
 return Poses
@@ -2991,9 +3162,9 @@ local MapKit = {}
 --------------------------------------------------------------------------------
 -- Layout numbers (shared by every map module)
 --------------------------------------------------------------------------------
-MapKit.SPACING = 100 -- block center to block center
+MapKit.SPACING = 124 -- block center to block center (big blocks: room for big houses and yards)
 MapKit.ROAD = 16 -- road width
-MapKit.BLOCK = MapKit.SPACING - MapKit.ROAD -- 84: a block including its sidewalk
+MapKit.BLOCK = MapKit.SPACING - MapKit.ROAD -- 108: a block including its sidewalk
 MapKit.HALF = MapKit.BLOCK / 2
 MapKit.SIDEWALK = 5
 MapKit.RING = MapKit.HALF - MapKit.SIDEWALK / 2 -- where people walk on the sidewalk
@@ -3762,6 +3933,12 @@ local HOUSE_ROOFS = { MapKit.rgb(150, 60, 50), MapKit.rgb(70, 80, 100), MapKit.r
 local SHUTTERS = { MapKit.rgb(60, 90, 70), MapKit.rgb(70, 90, 140), MapKit.rgb(140, 50, 50), MapKit.rgb(60, 60, 66), MapKit.rgb(230, 230, 225) }
 
 -- style: "cottage", "twostory", "modern", "bungalow"
+-- how deep a house is at a scale (every style starts 22 deep; the lot leaves
+-- room for a front and a back yard)
+function Buildings.HouseDepth(scale)
+	return math.min(38, math.floor(22 * (scale or 1) / 2 + 0.5) * 2)
+end
+
 function Buildings.house(parent, center, face, style, rng, garageSide, scale)
 	local wall = HOUSE_WALLS[rng:NextInteger(1, #HOUSE_WALLS)]
 	local roof = HOUSE_ROOFS[rng:NextInteger(1, #HOUSE_ROOFS)]
@@ -3787,7 +3964,7 @@ function Buildings.house(parent, center, face, style, rng, garageSide, scale)
 		-- big suburban lots get bigger houses (whole studs, even sizes)
 		spec.W = math.floor(spec.W * scale / 2 + 0.5) * 2
 		-- (the depth has to leave a front yard and a back yard on the lot)
-		spec.D = math.min(28, math.floor(spec.D * scale / 2 + 0.5) * 2)
+		spec.D = Buildings.HouseDepth(scale)
 	end
 	local b = Buildings.shell(parent, spec)
 	local at = b.At
@@ -4766,6 +4943,48 @@ local function laundry(b, f, x, z)
 	box(b, f, "LaundryBasket", Vector3.new(1.6, 1.2, 1.2), x + 5.2, 0, z, rgb(200, 180, 140), Enum.Material.Fabric)
 end
 
+-- the biggest houses: a home gym, a pool table, a kids' playroom
+local function homeGym(b, f, x, z, list)
+	rug(b, f, x, z, 9, 7, rgb(60, 62, 70))
+	box(b, f, "TreadmillBase", Vector3.new(2.6, 0.6, 6), x - 2.5, 0, z, rgb(30, 30, 34), Enum.Material.Metal)
+	box(b, f, "TreadmillBelt", Vector3.new(2, 0.1, 5), x - 2.5, 0.6, z, rgb(20, 20, 22), Enum.Material.Rubber)
+	box(b, f, "TreadmillRail", Vector3.new(2.6, 3.6, 0.3), x - 2.5, 0.6, z - 2.6, rgb(60, 62, 70), Enum.Material.Metal)
+	local s = spot(list, b, f, x - 2.5, z + 0.6, 0, -1, "run", "home")
+	s.Raise = 0.7
+	box(b, f, "WeightBench", Vector3.new(1.4, 1.6, 4), x + 2.5, 0, z, rgb(40, 40, 44), Enum.Material.Fabric)
+	box(b, f, "DumbbellRack", Vector3.new(3, 2.4, 1.2), x + 2.5, 0, z + 3.2, rgb(40, 40, 44), Enum.Material.Metal)
+	for k = 0, 2 do
+		MapKit.cylinder(b.Model, "Dumbbell", 1.2, 0.6, at(b, f, x + 1.5 + k * 1, 2.7, z + 3.2) * CFrame.Angles(0, math.rad(90), 0), rgb(60, 60, 66), Enum.Material.Metal)
+	end
+	spot(list, b, f, x + 4.2, z + 1, -1, 0, "lift", "home")
+end
+
+local function poolTable(b, f, x, z)
+	box(b, f, "PoolTable", Vector3.new(8, 2.8, 4.4), x, 0, z, rgb(100, 60, 36), Enum.Material.Wood)
+	box(b, f, "PoolFelt", Vector3.new(7.2, 0.1, 3.6), x, 2.8, z, rgb(30, 120, 70), Enum.Material.Fabric)
+	for k = 0, 5 do
+		MapKit.ball(b.Model, "PoolBall", 0.35, at(b, f, x - 1 + (k % 3) * 0.4, 3.05, z - 0.4 + (k // 3) * 0.4), MapKit.FLOWERS[k % #MapKit.FLOWERS + 1])
+	end
+	MapKit.ball(b.Model, "CueBall", 0.35, at(b, f, x + 2.4, 3.05, z), WHITE)
+	box(b, f, "Cue", Vector3.new(5, 0.12, 0.12), x + 0.5, 2.95, z + 1.5, rgb(200, 170, 120), Enum.Material.Wood)
+	local lamp = box(b, f, "PoolLamp", Vector3.new(5, 0.5, 1), x, 8, z, rgb(40, 90, 60), Enum.Material.Glass)
+	MapKit.light(lamp, rgb(255, 230, 190), 14, 0.7)
+end
+
+local function playroom(b, f, x, z, list, place)
+	rug(b, f, x, z, 8, 7, rgb(250, 210, 120))
+	box(b, f, "ToyChest", Vector3.new(3, 1.8, 1.8), x - 2.5, 0, z + 3, rgb(90, 160, 220), Enum.Material.Wood)
+	box(b, f, "KidTable", Vector3.new(3, 0.2, 2.4), x + 1.5, 1.6, z, rgb(250, 240, 220), Enum.Material.Wood)
+	box(b, f, "KidTableLeg", Vector3.new(2.6, 1.6, 2), x + 1.5, 0, z, rgb(250, 120, 120), Enum.Material.Wood)
+	box(b, f, "Easel", Vector3.new(2.4, 4.4, 0.3), x - 2.5, 0, z - 2.4, rgb(170, 130, 90), Enum.Material.Wood)
+	box(b, f, "Canvas", Vector3.new(2, 1.8, 0.1), x - 2.5, 2.4, z - 2.25, WHITE)
+	spot(list, b, f, x - 2.5, z - 0.6, 0, -1, "paint", "home")
+	for k = 0, 3 do
+		MapKit.ball(b.Model, "ToyBall", 0.9, at(b, f, x + 3 - k * 0.9, 0.45, z + 2.6), MapKit.FLOWERS[k % #MapKit.FLOWERS + 1])
+		box(b, f, "Block", Vector3.new(0.8, 0.8, 0.8), x - 0.5 + k * 0.9, 0, z - 2.6, MapKit.FLOWERS[(k + 2) % #MapKit.FLOWERS + 1])
+	end
+end
+
 function ROOMS.home(b, f, list, rng, place)
 	-- Ground floor: living room at the front left, dining table at the front
 	-- right, a kitchen along the back right. Bedrooms at the back left (on one-
@@ -4790,6 +5009,11 @@ function ROOMS.home(b, f, list, rng, place)
 				homeOffice(b, f, 1, hd - 2.4, list, place)
 			else
 				homeOffice(b, f, 3, 3, list, place)
+			end
+			if W >= 54 then
+				-- the biggest houses: a home gym and a pool table
+				homeGym(b, f, 15, 2, list)
+				poolTable(b, f, -8, 8)
 			end
 		end
 		if not twoStorey then
@@ -4834,6 +5058,9 @@ function ROOMS.home(b, f, list, rng, place)
 			laundry(b, f, hw - 14, hd - 1.8)
 			wardrobe(b, f, hw - 1.4, -4, false)
 			plant(b, f, hw - 9, 0)
+			if W >= 54 then
+				playroom(b, f, 16, 4, list, place)
+			end
 		end
 	end
 end
@@ -7027,12 +7254,23 @@ local function playground(ctx, parent, center, rotY, spots, big)
 			deco(parent, "SwingLeg", Vector3.new(0.5, 9.4, 0.5), cf * CFrame.new(-5 + sx * 6, 4.6, 5 + lz) * CFrame.Angles(math.rad(lz * 5), 0, 0), red, Enum.Material.Metal)
 		end
 		local seatPos = cf * CFrame.new(-5 + sx * 2.6, 2.4, 5)
-		deco(parent, "SwingSeat", Vector3.new(2, 0.3, 1.2), seatPos, rgb(40, 40, 46))
+		-- a real seat (players can sit on it too) hanging from two chains; every
+		-- client swings the seat and chains with whoever is sitting on it
+		local swing = Instance.new("Model")
+		swing.Name = "Swing"
+		swing.Parent = parent
+		local seat = MapKit.seat(swing, "SwingSeat", Vector3.new(2, 0.3, 1.2), seatPos, rgb(40, 40, 46), Enum.Material.SmoothPlastic)
 		for _, cx in ipairs({ -0.9, 0.9 }) do
-			deco(parent, "SwingChain", Vector3.new(0.1, 6.4, 0.1), seatPos * CFrame.new(cx, 3.3, 0), rgb(160, 160, 166), Enum.Material.Metal)
+			deco(swing, "SwingChain", Vector3.new(0.1, 6.4, 0.1), seatPos * CFrame.new(cx, 3.3, 0), rgb(160, 160, 166), Enum.Material.Metal)
 		end
+		local pivot = (seatPos * CFrame.new(0, 6.6, 0)).Position
+		swing:SetAttribute("Pivot", pivot)
+		swing:SetAttribute("Axis", seatPos.RightVector)
+		MapKit.tag(swing, "Swing")
 		local s = outSpot(seatPos * CFrame.new(0, -2.4, 0) * CFrame.Angles(0, math.pi, 0), "swing", "kid")
-		s.SwingPivot = (seatPos * CFrame.new(0, 6.6, 0)).Position
+		s.SwingPivot = pivot
+		s.SwingAxis = seatPos.RightVector
+		s.Seat = seat
 		table.insert(spots, s)
 	end
 	-- slide tower
@@ -8367,11 +8605,15 @@ function ctx.houseRow(parent, i, j, rng, slots, big)
 		local face = Vector3.new(0, 0, sz)
 		local styles = if big then { "twostory", "bungalow", "modern" } else { "cottage", "twostory", "modern", "bungalow", "cottage" }
 		local style = styles[rng:NextInteger(1, #styles)]
-		local depthZ = HALF - SIDEWALK - 12 - 8
-		local center = c + Vector3.new(sx * 19, 0, sz * depthZ)
-		-- only the big suburban lots have room for a garage beside the house
+		-- town lots: four houses a block, 36-42 studs wide; suburban lots: one
+		-- house per street, 56-64 wide and 38 deep, with a garage
+		local scale = if big then 2 else 1.3
+		local depth = Buildings.HouseDepth(scale)
+		local yard = if big then 8 else 9 -- front yard between the sidewalk and the house
+		local depthZ = HALF - SIDEWALK - yard - depth / 2
+		local center = c + Vector3.new(sx * 25, 0, sz * depthZ)
 		local garageSide = if big then 1 else nil
-		local b = Buildings.house(model, center, face, style, rng, garageSide, if big then 1.5 else 1)
+		local b = Buildings.house(model, center, face, style, rng, garageSide, scale)
 		local at = b.At
 		-- the front of the lot (the sidewalk edge), in the house's own space
 		local frontZ = -(HALF - SIDEWALK - depthZ)
@@ -9702,6 +9944,20 @@ local function attach(folder, bodyPart, name, size, offset, color, shape, materi
 	p.CastShadow = false
 	p.TopSurface = Enum.SurfaceType.Smooth
 	p.BottomSurface = Enum.SurfaceType.Smooth
+	-- on a sculpted (rounded) limb, anything wrapped around it — sleeves, cuffs,
+	-- bands — becomes a round tube instead of a box
+	if not shape and bodyPart:GetAttribute("Sculpted") then
+		local ps = bodyPart.Size
+		if size.X >= ps.X * 0.9 and size.Z >= ps.Z * 0.9 and size.X <= ps.X + 0.4 and size.Z <= ps.Z + 0.4 then
+			-- fitted to the rounded limb (a little looser than it)
+			local grow = math.max(size.X - ps.X, size.Z - ps.Z, 0)
+			local d = (bodyPart:GetAttribute("SculptD") or math.max(size.X, size.Z)) + 0.06 + grow * 0.6
+			size = Vector3.new(size.Y, d, d)
+			offset = offset * CFrame.Angles(0, 0, math.rad(90))
+			shape = "Cylinder"
+		end
+	end
+	p.Size = size
 	if shape == "Ball" then
 		p.Shape = Enum.PartType.Ball
 	elseif shape == "Cylinder" then
@@ -9726,6 +9982,13 @@ local function hair(folder, body, style, color)
 	end
 	local top = H / 2
 	local function add(name, size, offset, shape)
+		if name == "Hair" and not shape and Config.ROUND_HAIR ~= false then
+			-- the cap of hair is round (a ball over the top and back of the
+			-- head), not a box; thin haircuts sit lower and closer
+			local thin = size.Y < 0.3
+			local d = (if thin then 1.08 else 1.14) * H
+			return attach(folder, head, name, Vector3.new(d, d, d), CFrame.new(0, (if thin then 0.1 else 0.15) * H, 0.1 * H), color, "Ball", Enum.Material.SmoothPlastic)
+		end
 		return attach(folder, head, name, size * H, offset, color, shape, Enum.Material.SmoothPlastic)
 	end
 	if style == "buzz" then
@@ -10470,10 +10733,18 @@ function CitizenLook.Describe(citizen)
 		Age = age,
 		Job = job,
 		Feminine = feminine,
-		-- everyone has their own height: grown-ups 0.92-1.08, kids a bit more spread
-		Height = if kid then rng:NextNumber(0.9, 1.1) else rng:NextNumber(0.92, 1.08),
+		-- everyone has their own height: grown-ups from short to tall (women a
+		-- little shorter on average), kids a bit more spread
+		Height = if kid then rng:NextNumber(0.88, 1.12) elseif feminine then rng:NextNumber(0.84, 1.08) else rng:NextNumber(0.9, 1.18),
 		Width = rng:NextNumber(0.85, 1.1),
 	}
+	-- a build: how wide and deep the body is, and its shape
+	local builds = if kid then { "slim", "average", "average", "heavy" }
+		elseif feminine then { "slim", "average", "average", "curvy", "curvy", "athletic", "athletic", "heavy", "muscular" }
+		else { "slim", "average", "average", "athletic", "athletic", "heavy", "stocky", "muscular", "muscular" }
+	look.Build = builds[rng:NextInteger(1, #builds)]
+	look.Width = ({ slim = 0.78, average = 0.9, curvy = 0.92, athletic = 1, heavy = 1, stocky = 1, muscular = 1 })[look.Build] * rng:NextNumber(0.96, 1.04)
+	look.Depth = ({ slim = 0.8, average = 0.9, curvy = 1, athletic = 0.92, heavy = 1, stocky = 0.96, muscular = 1 })[look.Build]
 	look.Face = Faces.Describe(rng, age, feminine)
 	look.Scale = CitizenLook.ScaleFor(age, look.Height)
 	if age < 3 then
@@ -10645,6 +10916,164 @@ local function paint(part, color)
 	end
 end
 
+--------------------------------------------------------------------------------
+-- Sculpted bodies: no blocks. Every limb is rebuilt from round pieces welded
+-- over the (then hidden) R15 parts, so the animations move them as usual:
+-- capsule arms and legs with ball joints at the shoulders, elbows, hips and
+-- knees, a chest with rounded sides and shoulders, round hips, round hands
+-- and shoes with a rounded toe. The build adds a waist, curves, broad
+-- shoulders or a belly. Colors come from the painted parts (clothes, skin).
+--------------------------------------------------------------------------------
+local LIMBS = { "LeftUpperArm", "LeftLowerArm", "RightUpperArm", "RightLowerArm", "LeftUpperLeg", "LeftLowerLeg", "RightUpperLeg", "RightLowerLeg" }
+
+local function piece(folder, part, name, size, offset, color, shape, material)
+	local p = Instance.new("Part")
+	p.Name = name
+	p.Size = size
+	p.Color = color
+	p.Material = material or Enum.Material.SmoothPlastic
+	p.CanCollide, p.CanQuery, p.CanTouch, p.Massless = false, false, false, true
+	p.CastShadow = true
+	p.TopSurface, p.BottomSurface = Enum.SurfaceType.Smooth, Enum.SurfaceType.Smooth
+	if shape then
+		p.Shape = shape
+	end
+	p.CFrame = part.CFrame * offset
+	local weld = Instance.new("WeldConstraint")
+	weld.Part0 = part
+	weld.Part1 = p
+	weld.Parent = p
+	p.Parent = folder
+	return p
+end
+
+local BALL, CYL = Enum.PartType.Ball, Enum.PartType.Cylinder
+
+-- how thick the rounded arms and legs are for a build (R15 limbs are a full
+-- stud thick: real arms and legs are much slimmer)
+local function tapers(look)
+	local build = look.Build or "average"
+	local arm = (if build == "muscular" then 0.86 elseif build == "athletic" or build == "stocky" or build == "heavy" then 0.74 elseif build == "slim" then 0.58 else 0.66) * (if look.Feminine then 0.92 else 1)
+	local leg = if build == "heavy" or build == "curvy" or build == "muscular" then 0.9 elseif build == "slim" then 0.72 else 0.8
+	return arm, leg
+end
+CitizenLook.Tapers = tapers
+local UPRIGHT = CFrame.Angles(0, 0, math.rad(90)) -- a cylinder standing up (they run along X)
+
+-- a capsule along the part's length: a tube and a ball at the top joint
+local function capsule(folder, part, name, color, material, taper, jointAtTop)
+	local s = part.Size
+	local d = math.min(s.X, s.Z) * (taper or 1)
+	piece(folder, part, name, Vector3.new(s.Y - d * 0.3, d, d), UPRIGHT, color, CYL, material)
+	if jointAtTop then
+		piece(folder, part, name .. "Joint", Vector3.new(d, d, d) * 1.02, CFrame.new(0, s.Y / 2 - d * 0.15, 0), color, BALL, material)
+	end
+	return d
+end
+
+function CitizenLook.Sculpt(model, folder, look)
+	local build = look.Build or "average"
+	local fabric = Enum.Material.Fabric
+	local function hide(p)
+		p.Transparency = 1
+		for _, d in ipairs(p:GetChildren()) do
+			if d:IsA("Decal") or d:IsA("Texture") then
+				d.Transparency = 1
+			end
+		end
+	end
+	-- arms and legs
+	for _, side in ipairs({ "Left", "Right" }) do
+		local ua, la, hand = model:FindFirstChild(side .. "UpperArm"), model:FindFirstChild(side .. "LowerArm"), model:FindFirstChild(side .. "Hand")
+		local ul, ll, foot = model:FindFirstChild(side .. "UpperLeg"), model:FindFirstChild(side .. "LowerLeg"), model:FindFirstChild(side .. "Foot")
+		local armTaper, legTaper = tapers(look)
+		if ua then
+			local d = capsule(folder, ua, "Arm", ua.Color, nil, armTaper, true)
+			if build == "muscular" or build == "athletic" then
+				-- a bicep
+				piece(folder, ua, "Bicep", Vector3.new(1, 1, 1) * d * 1.08, CFrame.new(0, -ua.Size.Y * 0.05, -d * 0.12), ua.Color, BALL)
+			end
+			hide(ua)
+		end
+		if la then
+			capsule(folder, la, "Forearm", la.Color, nil, armTaper * 0.88, true)
+			hide(la)
+		end
+		if hand then
+			local s = hand.Size
+			local d = math.min(s.X, s.Z) * armTaper * 0.85
+			piece(folder, hand, "Palm", Vector3.new(d, d, d), CFrame.new(0, s.Y * 0.1, 0), hand.Color, BALL)
+			piece(folder, hand, "Fingers", Vector3.new(s.Y * 0.7, d * 0.75, d * 0.75), CFrame.new(0, -s.Y * 0.25, 0) * UPRIGHT, hand.Color, CYL)
+			hide(hand)
+		end
+		if ul then
+			capsule(folder, ul, "Thigh", ul.Color, fabric, legTaper, true)
+			hide(ul)
+		end
+		if ll then
+			capsule(folder, ll, "Shin", ll.Color, fabric, legTaper * 0.88, true)
+			hide(ll)
+		end
+		if foot then
+			local s = foot.Size
+			local h = s.Y * 1.1
+			piece(folder, foot, "Shoe", Vector3.new(s.Z * 0.75, h, s.X * 0.95), CFrame.new(0, 0, s.Z * 0.1) * CFrame.Angles(0, math.rad(90), 0), foot.Color, CYL, Enum.Material.SmoothPlastic)
+			piece(folder, foot, "ShoeToe", Vector3.new(1, 1, 1) * math.min(s.X * 0.95, h * 1.3), CFrame.new(0, 0, -s.Z * 0.28), foot.Color, BALL, Enum.Material.SmoothPlastic)
+			piece(folder, foot, "Sole", Vector3.new(s.X * 0.95, 0.08, s.Z * 1.05), CFrame.new(0, -h / 2 + 0.03, -s.Z * 0.05), look.Shoes:Lerp(Color3.new(1, 1, 1), 0.6))
+			hide(foot)
+		end
+	end
+	-- the chest: a core with rounded sides and shoulders, narrower at the waist
+	local ut = model:FindFirstChild("UpperTorso")
+	if ut then
+		local s = ut.Size
+		local depth = s.Z * (if build == "curvy" or build == "heavy" then 1.05 else 0.95)
+		local shoulders = if build == "muscular" then 1.16 elseif build == "athletic" or build == "stocky" then 1.06 elseif build == "slim" then 0.94 else 1
+		local core = piece(folder, ut, "Chest", Vector3.new(s.X * shoulders - depth, s.Y * 0.98, depth), CFrame.new(), ut.Color, nil, fabric)
+		for _, sx in ipairs({ -1, 1 }) do
+			piece(folder, ut, "ChestSide", Vector3.new(s.Y * 0.62, depth, depth), CFrame.new(sx * (s.X * shoulders - depth) / 2, s.Y * 0.14, 0) * UPRIGHT, ut.Color, CYL, fabric)
+			piece(folder, ut, "Shoulder", Vector3.new(depth, depth, depth) * 1.02, CFrame.new(sx * (s.X * shoulders - depth) / 2, s.Y * 0.3, 0), ut.Color, BALL, fabric)
+		end
+		-- the waist, tucked in (wider on heavy builds)
+		local waist = if build == "heavy" then 0.98 elseif build == "athletic" or build == "curvy" or build == "muscular" then 0.72 else 0.82
+		local wd = depth * 0.96
+		piece(folder, ut, "Waist", Vector3.new(math.max(0.1, s.X * waist - wd), s.Y * 0.4, wd), CFrame.new(0, -s.Y * 0.28, 0), ut.Color, nil, fabric)
+		for _, sx in ipairs({ -1, 1 }) do
+			piece(folder, ut, "WaistSide", Vector3.new(s.Y * 0.4, wd, wd), CFrame.new(sx * (s.X * waist - wd) / 2, -s.Y * 0.28, 0) * UPRIGHT, ut.Color, CYL, fabric)
+		end
+		if build == "heavy" then
+			piece(folder, ut, "Belly", Vector3.new(1, 1, 1) * s.X * 0.62, CFrame.new(0, -s.Y * 0.18, -depth * 0.2), ut.Color, BALL, fabric)
+		elseif build == "muscular" then
+			-- a big chest
+			for _, sx in ipairs({ -1, 1 }) do
+				piece(folder, ut, "Pec", Vector3.new(1, 1, 1) * depth * 0.62, CFrame.new(sx * s.X * 0.2, s.Y * 0.14, -depth * 0.26), ut.Color, BALL, fabric)
+			end
+		elseif build == "curvy" or (look.Feminine and look.Age >= 13) then
+			for _, sx in ipairs({ -1, 1 }) do
+				piece(folder, ut, "Bust", Vector3.new(1, 1, 1) * depth * 0.5, CFrame.new(sx * s.X * 0.17, s.Y * 0.1, -depth * 0.26), ut.Color, BALL, fabric)
+			end
+		end
+		-- a neck
+		piece(folder, ut, "NeckSkin", Vector3.new(s.Y * 0.3, s.Z * 0.5, s.Z * 0.5), CFrame.new(0, s.Y / 2 + s.Y * 0.05, 0) * UPRIGHT, look.Skin, CYL)
+		hide(ut)
+		core.Name = "Chest"
+	end
+	-- the hips: rounded, wider on curvy builds
+	local lt = model:FindFirstChild("LowerTorso")
+	if lt then
+		local s = lt.Size
+		local wide = if build == "curvy" then 1.08 elseif build == "slim" then 0.92 else 1
+		piece(folder, lt, "Hips", Vector3.new(s.X * wide, s.Y * 1.1, s.Z * 0.95), CFrame.new(), lt.Color, CYL, fabric)
+		for _, sx in ipairs({ -1, 1 }) do
+			piece(folder, lt, "HipJoint", Vector3.new(1, 1, 1) * math.min(s.Y * 1.25, s.Z), CFrame.new(sx * s.X * wide * 0.3, -s.Y * 0.2, 0), lt.Color, BALL, fabric)
+		end
+		hide(lt)
+	end
+end
+
+-- the outfit pieces that a real 3D (layered) garment replaces
+local CLOTHING_ITEMS = { Tee = true, Polo = true, Hoodie = true, Jacket = true, Stripes = true, Sweater = true, Dress = true, Blazer = true, Flannel = true, Puffer = true, Varsity = true, Tank = true, Skirt = true, Overalls = true, Cardigan = true, Vest = true }
+
 function CitizenLook.Apply(model, citizen, options)
 	options = options or {}
 	local look = CitizenLook.Describe(citizen or {})
@@ -10691,11 +11120,31 @@ function CitizenLook.Apply(model, citizen, options)
 	end
 	-- everything else is welded on
 	local body = readBody(model)
+	local sculpt = r15 and Config.SCULPTED_BODIES == true -- (off: opt in with Config.SCULPTED_BODIES = true)
+	if sculpt then
+		local armT, legT = tapers(look)
+		for _, name in ipairs(LIMBS) do
+			local p = model:FindFirstChild(name)
+			if p then
+				local t = if string.find(name, "Arm") then armT else legT
+				if string.find(name, "Lower") then
+					t *= if string.find(name, "Arm") then 0.88 else 0.88
+				end
+				p:SetAttribute("Sculpted", true)
+				p:SetAttribute("SculptD", math.min(p.Size.X, p.Size.Z) * t)
+			end
+		end
+	end
 	if body.Head and body.Torso then
-		hair(folder, body, look.Hair, look.HairColor)
+		if not options.RealHair then
+			hair(folder, body, look.Hair, look.HairColor)
+		end
 		for _, item in ipairs(look.Items) do
 			local name, color = parseItem(item)
 			local build = ITEMS[name]
+			if options.RealClothes and CLOTHING_ITEMS[name] then
+				build = nil
+			end
 			if build then
 				local ok, err = pcall(build, folder, body, color)
 				if not ok then
@@ -10709,6 +11158,9 @@ function CitizenLook.Apply(model, citizen, options)
 				attach(folder, leg, "Shoe", leg and Vector3.new(leg.Size.X + 0.04, 0.35, leg.Size.Z + 0.12) or Vector3.one, CFrame.new(0, leg and (-leg.Size.Y / 2 + 0.17) or 0, -0.05), look.Shoes)
 			end
 		end
+	end
+	if sculpt and body.Head and body.Torso then
+		CitizenLook.Sculpt(model, folder, look)
 	end
 	-- the drawn face (R15 heads; every client animates it)
 	if r15 and body.Head and not options.KeepFace then
@@ -10730,6 +11182,43 @@ CitizenLook.BODIES = Config.CITIZEN_BODIES or {
 }
 local R15_PARTS = { "Head", "UpperTorso", "LowerTorso", "LeftUpperArm", "LeftLowerArm", "LeftHand", "RightUpperArm", "RightLowerArm", "RightHand", "LeftUpperLeg", "LeftLowerLeg", "LeftFoot", "RightUpperLeg", "RightLowerLeg", "RightFoot" }
 local bodyWorks = {} -- [package] = false once it failed to load (then everyone uses the default body)
+
+--------------------------------------------------------------------------------
+-- Realistic bodies from the Roblox catalog. Put body bundle ids (the number in
+-- a roblox.com/bundles/<id>/... link) in Config.CITIZEN_BUNDLES = { Man = {...},
+-- Woman = {...} }. Each citizen always gets the same one of the list (so the
+-- town has a mix of bodies). Bundles with a 3D head (a "DynamicHead") give the
+-- citizen that head and its own animated face instead of the drawn one
+-- (Config.BUNDLE_HEADS = false keeps the drawn faces).
+--------------------------------------------------------------------------------
+local AssetService = game:GetService("AssetService")
+local BODY_SLOTS = { Torso = "Torso", LeftArm = "LeftArm", RightArm = "RightArm", LeftLeg = "LeftLeg", RightLeg = "RightLeg", DynamicHead = "Head", Head = "Head" }
+local bundleCache = {} -- [id] = { slot = assetId } or false
+local function bundleParts(id)
+	if bundleCache[id] ~= nil then
+		return bundleCache[id]
+	end
+	local ok, info = pcall(AssetService.GetBundleDetailsAsync, AssetService, id)
+	local parts = false
+	if ok and type(info) == "table" and type(info.Items) == "table" then
+		parts = {}
+		for _, item in ipairs(info.Items) do
+			local slot = BODY_SLOTS[tostring(item.AssetType or "")]
+			if slot and item.Type == "Asset" then
+				parts[slot] = item.Id
+			end
+		end
+		if not parts.Torso then
+			parts = false
+		end
+	end
+	if not parts then
+		warn("[CitizenLook] body bundle " .. tostring(id) .. " couldn't be used" .. (if ok then " (no body parts in it)" else ": " .. tostring(info)))
+	end
+	bundleCache[id] = parts
+	return parts
+end
+CitizenLook.BundleParts = bundleParts
 
 local function complete(model)
 	if not model then
@@ -10755,12 +11244,59 @@ function CitizenLook.Build(citizen)
 	description.TorsoColor = look.Top
 	description.LeftLegColor = look.Bottom
 	description.RightLegColor = look.Bottom
-	description.WidthScale = math.clamp(look.Width, 0.75, 1)
-	description.DepthScale = math.clamp(look.Width, 0.75, 1)
+	description.WidthScale = math.clamp(look.Width, 0.7, 1)
+	description.DepthScale = math.clamp(look.Depth or look.Width, 0.7, 1)
+	description.HeightScale = 1
+	description.BodyTypeScale = if look.Build == "athletic" or look.Build == "stocky" or look.Build == "muscular" then 0.3 else 0.1
+	description.ProportionScale = if look.Feminine then 0.4 else 0.2
+	-- realistic proportions: taller, longer-limbed and narrower than the stubby
+	-- default body (slim builds are the most slender, heavy builds the widest)
+	if look.Age >= 13 then
+		description.BodyTypeScale = if look.Feminine then 0.75 else 0.65
+		description.ProportionScale = ({ slim = 1, average = 0.6, athletic = 0.35, curvy = 0.2, heavy = 0, stocky = 0, muscular = 0.1 })[look.Build or "average"] or 0.5
+	end
 	local model
 	local package = if look.Feminine then "Woman" else "Man"
-	local ids = Config.SMOOTH_BODIES ~= false and CitizenLook.BODIES[package]
-	if ids and bodyWorks[package] ~= false then
+	-- catalog hair and 3D (layered) clothes, if the city has some
+	local seed = hash(tostring(field(citizen or {}, "Name", "name") or ""))
+	local hairList = Config.CITIZEN_HAIR and Config.CITIZEN_HAIR[package]
+	if hairList and #hairList > 0 and look.Hair ~= "bald" and look.Age >= 3 then
+		description.HairAccessory = tostring(hairList[seed % #hairList + 1])
+		look.RealHair = true
+	end
+	local clothes = Config.CITIZEN_CLOTHES
+	if clothes and #clothes > 0 and look.Age >= 13 and not look.Job then
+		local c = clothes[seed // 7 % #clothes + 1]
+		pcall(function()
+			description:SetAccessories({ { Order = 1, AssetId = c.AssetId or c[1], AccessoryType = c.AccessoryType or Enum.AccessoryType[c[2] or "Shirt"], IsLayered = true } }, true)
+		end)
+		look.RealClothes = true
+	end
+	-- a catalog body bundle, if the city has some
+	local bundles = Config.CITIZEN_BUNDLES and Config.CITIZEN_BUNDLES[package]
+	if bundles and #bundles > 0 and look.Age >= 13 then
+		local pick = bundles[hash(tostring(field(citizen or {}, "Name", "name") or "")) % #bundles + 1]
+		local parts = bundleParts(pick)
+		if parts then
+			local real = description:Clone()
+			for slot, id in pairs(parts) do
+				if slot ~= "Head" or Config.BUNDLE_HEADS ~= false then
+					real[slot] = id
+				end
+			end
+			local ok, result = pcall(function()
+				return Players:CreateHumanoidModelFromDescription(real, Enum.HumanoidRigType.R15)
+			end)
+			if ok and complete(result) then
+				model = result
+				look.BundleHead = parts.Head ~= nil and Config.BUNDLE_HEADS ~= false
+			elseif ok and result then
+				result:Destroy()
+			end
+		end
+	end
+	local ids = not model and Config.SMOOTH_BODIES ~= false and CitizenLook.BODIES[package]
+	if ids and not model and bodyWorks[package] ~= false then
 		-- try the smooth body; if it can't load, fall back to the default one
 		local smooth = description:Clone()
 		for slot, id in pairs(ids) do
@@ -10786,10 +11322,12 @@ function CitizenLook.Build(citizen)
 	model.Name = tostring(field(citizen or {}, "Name", "name") or "Citizen")
 	-- kids have bigger heads for their size (so they read as kids, not tiny adults)
 	local headScale = if look.Age < 3 then 1.35 elseif look.Age < 9 then 1.25 elseif look.Age < 14 then 1.12 else 1
-	if headScale ~= 1 then
+	if headScale ~= 1 and not look.BundleHead then
 		CitizenLook.ScaleHead(model, headScale)
 	end
-	CitizenLook.Apply(model, citizen)
+	-- (a real 3D head keeps its own face)
+	CitizenLook.Apply(model, citizen, { KeepFace = look.BundleHead, RealHair = look.RealHair, RealClothes = look.RealClothes })
+	model:SetAttribute("RealHead", look.BundleHead or nil)
 	return model, look
 end
 
@@ -12468,6 +13006,7 @@ local function unanchor(brain)
 		brain.Root.Anchored = false
 	end
 	brain.Model:SetAttribute("SwingPivot", nil)
+	brain.Model:SetAttribute("SwingAxis", nil)
 	brain.Model:SetAttribute("Target", nil)
 end
 
@@ -12504,6 +13043,7 @@ local function placeAt(brain, spot, action)
 	brain.Root.CFrame = rootCf
 	if spot.SwingPivot then
 		brain.Model:SetAttribute("SwingPivot", spot.SwingPivot)
+		brain.Model:SetAttribute("SwingAxis", spot.SwingAxis)
 	end
 	if spot.Hoop then
 		brain.Model:SetAttribute("Target", spot.Hoop)
