@@ -648,25 +648,35 @@ function Hud.SetJob(d)
 		return
 	end
 	if not jobCard then
-		jobCard = UI.panel(column, { Name = "JobCard", BackgroundColor3 = C.Panel, Size = UDim2.new(1, 0, 0, 92), LayoutOrder = 3, Radius = 14 })
+		jobCard = UI.panel(column, { Name = "JobCard", BackgroundColor3 = C.Panel, Size = UDim2.new(1, 0, 0, 112), LayoutOrder = 3, Radius = 14 })
 		UI.pad(jobCard, 10, 12, 10, 12)
 		UI.new("UIStroke", { Color = C.Gold, Thickness = 1.5, Transparency = 0.3, Parent = jobCard })
 		UI.text(jobCard, "", 15, UI.Title, C.Gold, { Name = "Title", Size = UDim2.new(1, -60, 0, 20) })
 		UI.text(jobCard, "", 12, UI.Bold, C.Text, { Name = "Task", Position = UDim2.fromOffset(0, 22), Size = UDim2.new(1, 0, 0, 30), TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top })
 		local _, setBar = UI.bar(jobCard, C.Gold, 6, { Name = "Progress", Position = UDim2.fromOffset(0, 56), Size = UDim2.new(1, 0, 0, 6) })
 		refs.JobBar = setBar
-		UI.text(jobCard, "", 12, UI.Bold, C.Sub, { Name = "Earned", Position = UDim2.fromOffset(0, 64), Size = UDim2.new(1, 0, 0, 16) })
+		UI.text(jobCard, "", 12, UI.Bold, C.Sub, { Name = "Earned", Position = UDim2.fromOffset(0, 64), Size = UDim2.new(1, 0, 0, 16), RichText = true })
+		UI.text(jobCard, "", 12, UI.Bold, C.Sub, { Name = "Stats", Position = UDim2.fromOffset(0, 82), Size = UDim2.new(1, 0, 0, 16), RichText = true })
 		UI.button(jobCard, "Quit", { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, -2), Size = UDim2.fromOffset(54, 24), Color = C.Panel3, TextSize = 11 }, function()
 			task.spawn(function()
 				ctx.Remotes.Request:InvokeServer({ Action = "QuitJob" })
 			end)
 		end)
 	end
-	jobCard.Title.Text = (d.Emoji or "💼") .. "  " .. (d.Job or "Work")
-	jobCard.Task.Text = "➜ " .. (d.Task or "") .. "   (" .. (d.Step or 1) .. " / " .. (d.Steps or 1) .. ")"
-	jobCard.Earned.Text = "🪙 " .. (d.Earned or 0) .. " earned this shift"
+	jobCard.Title.Text = (d.Emoji or "💼") .. "  " .. (if d.Rank then d.Rank .. " " else "") .. (d.Job or "Work") .. (if d.Overtime then "  ⏰ OT" else "")
+	local due = d.Due
+	jobCard.Task.Text = "➜ " .. (d.Task or "") .. (if due then "   ⏱ " .. due .. "s" else "")
+	jobCard.Earned.Text = "🪙 <b>" .. (d.Earned or 0) .. "</b> earned" .. (if (d.Tips or 0) > 0 then " (tips " .. d.Tips .. ")" else "") .. (if d.Wage then "  ·  " .. d.Wage .. "/hr" .. (if d.Overtime then " ×1.5" else "") else "")
+	if d.Rating then
+		local stars = math.floor(d.Rating + 0.5)
+		jobCard.Stats.Text = "<font color='#f5c842'>" .. string.rep("★", stars) .. "</font>" .. string.rep("☆", 5 - stars) .. string.format("  ·  %d h worked  ·  %d done  ·  closes %s", d.Hours or 0, d.Done or 0, d.Closes or "?")
+	else
+		jobCard.Stats.Text = ""
+	end
 	if refs.JobBar then
-		refs.JobBar(((d.Step or 1) - 1) / math.max(1, d.Steps or 1), C.Gold)
+		-- the time left on this task
+		local frac = if due and d.Limit and d.Limit > 0 then due / d.Limit else 1
+		refs.JobBar(frac, if frac > 0.5 then C.Gold elseif frac > 0.2 then C.Orange or C.Gold else C.Red)
 	end
 	if (d.Paid or 0) > 0 then
 		UI.sound("notify", 0.35, 1.3)

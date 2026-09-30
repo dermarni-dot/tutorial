@@ -2020,11 +2020,17 @@ local function playerUpdate(model, st, t, dt, player)
 	end
 	-- ordering from a worker (see CitizenService.ServePlayer)
 	local coK, coKind, coStart = checkoutK(model)
+	local coRole = coK and model:GetAttribute("CheckoutRole")
 	if coK and not target then
-		target, full = customerPose(t, st.Phase, coK, coKind)
+		if coRole == "clerk" then
+			-- working the till (the Cashier job): scanning a customer's things
+			target, full = clerkPose(t, st.Phase, coK, coKind, model:GetAttribute("CheckoutItems") or 3)
+		else
+			target, full = customerPose(t, st.Phase, coK, coKind)
+		end
 	end
-	checkoutItems(model, st, coK, coKind, coStart)
-	setProps(st, model, if coK then "checkout" elseif workInfo then workAction else "", if not workInfo and not coK and carry and CARRY[carry] and not holding then carry else nil)
+	checkoutItems(model, st, if coRole == "customer" then coK else nil, coKind, coStart)
+	setProps(st, model, if coK then (if coRole == "clerk" then "cashier" else "checkout") elseif workInfo then workAction else "", if not workInfo and not coK and carry and CARRY[carry] and not holding then carry else nil)
 	if target then
 		-- fighting, working or carrying (see above)
 	elseif holding and now - (st.Draw or -99) < 0.35 then

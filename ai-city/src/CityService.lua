@@ -459,6 +459,7 @@ local function loadPlayer(player)
 		Terms = tonumber(saved.Terms) or 0,
 		Home = type(saved.Home) == "string" and saved.Home or nil,
 		HasRod = saved.HasRod == true,
+		JobXP = type(saved.JobXP) == "table" and saved.JobXP or {},
 		FishCaught = tonumber(saved.FishCaught) or 0,
 		BiggestFish = tonumber(saved.BiggestFish) or 0,
 		BiggestFishName = type(saved.BiggestFishName) == "string" and saved.BiggestFishName or nil,
@@ -476,7 +477,7 @@ local function savePlayer(player)
 	local data = playerData[player]
 	if data and playerStore then
 		pcall(function()
-			playerStore:SetAsync("p_" .. player.UserId, { Coins = data.Coins, Crimes = data.Crimes, Notoriety = data.Notoriety, Weapons = data.Weapons, Outfits = data.Outfits, Wearing = data.Wearing, Fitness = data.Fitness, Talks = data.Talks, Arrests = data.Arrests, Terms = data.Terms, Home = data.Home, HasRod = data.HasRod, FishCaught = data.FishCaught, BiggestFish = data.BiggestFish, BiggestFishName = data.BiggestFishName })
+			playerStore:SetAsync("p_" .. player.UserId, { Coins = data.Coins, Crimes = data.Crimes, Notoriety = data.Notoriety, Weapons = data.Weapons, Outfits = data.Outfits, Wearing = data.Wearing, Fitness = data.Fitness, Talks = data.Talks, Arrests = data.Arrests, Terms = data.Terms, Home = data.Home, HasRod = data.HasRod, JobXP = data.JobXP, FishCaught = data.FishCaught, BiggestFish = data.BiggestFish, BiggestFishName = data.BiggestFishName })
 		end)
 	end
 end

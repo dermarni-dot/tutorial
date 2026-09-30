@@ -883,7 +883,7 @@ local function buildHelp()
 		{ "🍔 Food", "Press <b>E</b> at the counter of the Bakery, Cafe, Diner, Restaurant, Ice Cream shop or Market to order. Food heals you ❤️ and refills stamina ⚡. Coffee and energy drinks make stamina refill faster for a while." },
 		{ "🥷 Disguises", "Buy a 🧥 <b>hoodie</b>, a 🥷 <b>ski mask</b> or a 🥸 <b>disguise kit</b> at the 👕 Clothing store, and wear them with <b>C</b>. Witnesses may not recognize you (fewer stars, no notoriety, nobody remembers it was you), the police have to get closer to spot you, and it all works much better <b>at night</b>. After a crime, change or take off your outfit where nobody can see: the police keep looking for the old one. But a ski mask in daylight makes people nervous..." },
 		{ "⌨️ Keys", "Tab phone · E talk / use · M map · P people · V vote · B speech · N mayor · F attack · X block · 1-4 hotbar · G pickpocket · R rob · Q hide · J clock in at a job · Shift sprint · C wardrobe · H help · 1-9 answer in conversations · Esc close windows" },
-		{ "💼 Jobs", "Earn coins with a job: open the <b>Jobs</b> app on your phone, or press <b>J</b> at a workplace (Post Office, Central Park, Cafe, Offices, Warehouse, Market). Follow the glowing marker and hold <b>E</b> at each task. Every task pays, and a finished shift pays a bonus." },
+		{ "💼 Jobs", "12 jobs, paid <b>by the hour</b>: open the <b>Jobs</b> app on your phone, or press <b>J</b> at a workplace during its hours. Follow the glowing marker and hold <b>E</b> at each task. You get a paycheck every in-game hour you work, plus tips and a rating bonus; finish tasks on time for a good rating, and work your way up from Trainee to Manager for raises." },
 		{ "🎮 Controller", "R2 attack · hold L2 block · click L3 sprint · R1 / L1 switch weapons · D-pad ▲ phone · ▼ map · ◀ help · ▶ wardrobe · X talk / use · Y pickpocket / rob / hide · B close / back / get out · A jump. In menus, move with the D-pad or stick and press A." },
 	}
 	for _, s in ipairs(sections) do
@@ -1356,27 +1356,35 @@ local function buildFood()
 	end
 end
 
--- the Jobs app: every job you can take, what it pays, and a way there
+-- the Jobs app: every job, its hourly wage and hours, your rank, and a way there
 local function buildJobs()
-	local win = UI.window(screen, "Jobs", "briefcase", UDim2.fromOffset(820, 470), C.Gold)
+	local win = UI.window(screen, "Jobs", "briefcase", UDim2.fromOffset(880, 520), C.Gold)
 	Panels.Jobs = win
 	local body = win.Body
-	local top = UI.text(body, "", 14, UI.Bold, C.Sub, { Size = UDim2.new(1, 0, 0, 22), RichText = true, TextWrapped = true })
-	local grid = UI.new("Frame", { BackgroundTransparency = 1, Position = UDim2.fromOffset(0, 30), Size = UDim2.new(1, 0, 1, -30), Parent = body })
-	UI.new("UIGridLayout", { CellSize = UDim2.new(0.333, -8, 0.5, -6), CellPadding = UDim2.fromOffset(10, 10), SortOrder = Enum.SortOrder.LayoutOrder, Parent = grid })
+	local top = UI.text(body, "", 14, UI.Bold, C.Sub, { Size = UDim2.new(1, 0, 0, 36), RichText = true, TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top })
+	local grid = UI.scroll(body, { Position = UDim2.fromOffset(0, 40), Size = UDim2.new(1, 0, 1, -40) })
+	UI.new("UIGridLayout", { CellSize = UDim2.new(0.333, -8, 0, 200), CellPadding = UDim2.fromOffset(10, 10), SortOrder = Enum.SortOrder.LayoutOrder, Parent = grid })
 	local function fill(data)
-		clear(grid)
-		top.Text = if data.Current then "You're working as a <b>" .. data.Current .. "</b>. Follow the marker, or quit the shift below." else "Pick a job: walk to the marker and hold <b>E</b> at each task. Every task pays, and a finished shift pays a bonus."
+		for _, child in ipairs(grid:GetChildren()) do
+			if child:IsA("GuiObject") then
+				child:Destroy()
+			end
+		end
+		top.Text = if data.Current then "You're on shift as a <b>" .. data.Current .. "</b>. You're paid every in-game hour you work, plus tips and a bonus for a good rating." else "Paid <b>by the hour</b> (plus tips and a rating bonus). Clock in during opening hours, follow the marker, hold <b>E</b> at each task. Every task counts toward a <b>promotion</b>: Trainee → Junior → Senior → Manager."
 		for k, job in ipairs(data.Jobs or {}) do
 			local card = UI.panel(grid, { BackgroundColor3 = C.Panel2, Radius = 14, LayoutOrder = k })
-			UI.pad(card, 12)
-			UI.text(card, job.Emoji, 30, UI.Font, C.Text, { Size = UDim2.fromOffset(40, 36) })
-			UI.text(card, job.Name, 17, UI.Title, C.Text, { Position = UDim2.fromOffset(44, 0), Size = UDim2.new(1, -44, 0, 20) })
-			UI.text(card, "📍 " .. job.Place, 12, UI.Bold, C.Sub, { Position = UDim2.fromOffset(44, 20), Size = UDim2.new(1, -44, 0, 16) })
-			UI.text(card, job.Desc, 12, UI.Font, C.Sub, { Position = UDim2.fromOffset(0, 42), Size = UDim2.new(1, 0, 0, 34), TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top })
-			UI.text(card, "🪙 " .. job.Pay .. " a task  ·  +" .. job.Bonus .. " bonus", 12, UI.Bold, C.Gold, { Position = UDim2.fromOffset(0, 78), Size = UDim2.new(1, 0, 0, 16) })
+			UI.pad(card, 10)
+			UI.text(card, job.Emoji, 28, UI.Font, C.Text, { Size = UDim2.fromOffset(38, 34) })
+			UI.text(card, job.Name, 16, UI.Title, C.Text, { Position = UDim2.fromOffset(42, 0), Size = UDim2.new(1, -42, 0, 18) })
+			UI.text(card, "📍 " .. job.Place .. "  ·  " .. (if job.Open then "<font color='#5fd38a'>Open</font>" else "<font color='#f0505a'>Closed</font>") .. " " .. job.Hours, 11, UI.Bold, C.Sub, { Position = UDim2.fromOffset(42, 18), Size = UDim2.new(1, -42, 0, 16), RichText = true })
+			UI.text(card, "🪙 <b>" .. job.Wage .. "</b> an hour" .. (if job.Tips then " + tips" else ""), 13, UI.Bold, C.Gold, { Position = UDim2.fromOffset(0, 38), Size = UDim2.new(1, 0, 0, 16), RichText = true })
+			UI.text(card, "• " .. table.concat(job.Duties or {}, "\n• "), 11, UI.Font, C.Sub, { Position = UDim2.fromOffset(0, 58), Size = UDim2.new(1, 0, 0, 52), TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top })
+			-- rank and progress to the next promotion
+			UI.text(card, "⭐ " .. job.Rank .. (if job.NextRank then "  →  " .. job.NextRank .. " at " .. job.NextXP .. " XP" else "  (top rank)"), 11, UI.Bold, C.Text, { Position = UDim2.fromOffset(0, 112), Size = UDim2.new(1, 0, 0, 14) })
+			local _, setXP = UI.bar(card, C.Gold, 5, { Position = UDim2.fromOffset(0, 130) })
+			setXP(if job.NextXP then job.XP / job.NextXP else 1)
 			local working = data.Current == job.Name
-			UI.button(card, if working then "🕒 Quit shift" else "💼 Start shift", { AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.new(0.62, -4, 0, 34), Color = if working then C.Panel3 else C.Gold, TextColor = if working then C.Text else C.Bg, TextSize = 13 }, function()
+			UI.button(card, if working then "🕒 Clock out" else "💼 Clock in", { AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.new(0.62, -4, 0, 32), Color = if working then C.Panel3 elseif job.Open then C.Gold else C.Panel3, TextColor = if working or not job.Open then C.Text else C.Bg, TextSize = 13 }, function()
 				local r = request({ Action = if working then "QuitJob" else "StartJob", Job = job.Name })
 				if r.Ok then
 					win.Close()
@@ -1384,7 +1392,7 @@ local function buildJobs()
 					fail(r)
 				end
 			end)
-			UI.button(card, "🧭 Go", { AnchorPoint = Vector2.new(1, 1), Position = UDim2.fromScale(1, 1), Size = UDim2.new(0.38, -4, 0, 34), Color = C.Panel3, TextSize = 13 }, function()
+			UI.button(card, "🧭 Go", { AnchorPoint = Vector2.new(1, 1), Position = UDim2.fromScale(1, 1), Size = UDim2.new(0.38, -4, 0, 32), Color = C.Panel3, TextSize = 13 }, function()
 				if job.Position then
 					ctx.World.Waypoint(job.Position, job.Place, job.Emoji)
 				end
