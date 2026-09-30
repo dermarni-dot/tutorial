@@ -134,6 +134,9 @@
         "GangService": {
           "$path": "src/GangService.lua"
         },
+        "RelationshipService": {
+          "$path": "src/RelationshipService.lua"
+        },
         "Conversation": {
           "$path": "src/Conversation.lua"
         }

@@ -1684,6 +1684,47 @@ local function update(model, st, t, dt, camPos, myRoot)
 			target, full = steps, true
 		end
 	end
+	-- walking hand in hand with a partner (a date): the near arm reaches out
+	-- to them instead of swinging
+	local hand = model:GetAttribute("HoldHand")
+	if hand and target and not fighting then
+		if hand == "R" then
+			target.RS, target.RE = A(6, 0, -20), A(12)
+		else
+			target.LS, target.LE = A(6, 0, 20), A(12)
+		end
+	end
+	-- little hearts floating up (dates, flirting)
+	local heartsAt = model:GetAttribute("Hearts")
+	if heartsAt and heartsAt ~= st.HeartsAt then
+		st.HeartsAt = heartsAt
+		local head = model:FindFirstChild("Head")
+		if head then
+			for k = 1, 3 do
+				local heart = Instance.new("Part")
+				heart.Name = "Heart"
+				heart.Shape = Enum.PartType.Ball
+				heart.Anchored, heart.CanCollide, heart.CanQuery, heart.CanTouch, heart.CastShadow = true, false, false, false, false
+				heart.Material = Enum.Material.Neon
+				heart.Color = Color3.fromRGB(255, 90, 140)
+				heart.Size = Vector3.one * 0.35
+				local start = head.Position + Vector3.new((k - 2) * 0.5, 1.2, 0)
+				heart.CFrame = CFrame.new(start)
+				heart.Parent = workspace
+				task.spawn(function()
+					for i = 1, 20 do
+						task.wait(0.05)
+						if not heart.Parent then
+							return
+						end
+						heart.CFrame = CFrame.new(start + Vector3.new(math.sin(i * 0.5 + k) * 0.2, i * 0.08, 0))
+						heart.Transparency = i / 20
+					end
+					heart:Destroy()
+				end)
+			end
+		end
+	end
 	-- look at the player when they're close (or talking to them)
 	local lookYaw, lookPitch
 	if myRoot and poseName ~= "sleep" and poseName ~= "ko" and poseName ~= "swingsit" then

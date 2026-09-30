@@ -513,6 +513,51 @@ local function home(activity, want)
 	return { Kind = "Home", Activity = activity, Want = want }
 end
 
+-- a citizen's partner (the other half of their household's couple), unless they broke up
+function Life:PartnerOf(c)
+	local h = self.Households[c.Household]
+	if not h or not h.Partners or #h.Partners ~= 2 then
+		return nil
+	end
+	local other = if h.Partners[1] == c.Id then h.Partners[2] elseif h.Partners[2] == c.Id then h.Partners[1] else nil
+	return other and self.Citizens[other] or nil
+end
+
+-- free in the evening? (not at work at that hour)
+local function freeAt(self, c, hour, day)
+	local stage = self:Stage(c, day)
+	if stage ~= "Adult" and stage ~= "Retired" then
+		return false
+	end
+	local job = stage == "Adult" and c.Job and jobByTitle(self.Config, c.Job)
+	return not job or hour >= job.stop or hour < job.start - 1
+end
+
+local CHEATERS = { romantic = 1.4, adventurous = 1.3, sarcastic = 1.1, lazy = 1, proud = 1.1, funny = 0.8, chatty = 0.8 }
+-- someone sneaking off with a friend behind their partner's back tonight?
+-- (both of them work it out the same way, so they meet at the same place)
+function Life:AffairTonight(c, hour, day)
+	if (self.Config.CHEATING_CHANCE or 0.05) <= 0 then
+		return nil
+	end
+	local slot = math.floor(hour / 1.5)
+	for _, id in ipairs(c.Friends or {}) do
+		local f = self.Citizens[id]
+		if f and f.Household ~= c.Household and freeAt(self, c, hour, day) and freeAt(self, f, hour, day) then
+			local pc, pf = self:PartnerOf(c), self:PartnerOf(f)
+			local temper = math.max(CHEATERS[c.Personality or ""] or 0.3, CHEATERS[f.Personality or ""] or 0.3)
+			if (pc or pf) and pc ~= f then
+				local lo, hi = math.min(c.Id, id), math.max(c.Id, id)
+				local r = newRng(hash(lo, hi, day, "affair", slot))
+				if r:Next() < (self.Config.CHEATING_CHANCE or 0.05) * temper then
+					return f, r:Pick({ "Park", "Lake", "Cafe", "WillowPark", "Plaza" })
+				end
+			end
+		end
+	end
+	return nil
+end
+
 function Life:Plan(c, hour, day)
 	local config = self.Config
 	day = day or self.Day
@@ -728,6 +773,32 @@ function Life:Plan(c, hour, day)
 		local evening = newRng(hash(c.Id, day, "evening", math.floor(hour / 1.5)))
 		local roll = evening:Next()
 		rng = evening
+		-- just broke up: staying in
+		if c.Heartbroken and day - c.Heartbroken <= 1 then
+			return home("💔 Heartbroken", "sit")
+		end
+		-- an affair: sneaking off to meet someone
+		local lover, loverPlace = self:AffairTonight(c, hour, day)
+		if lover then
+			return { Kind = "Place", Place = loverPlace, Activity = "🤫 Meeting " .. lover.First, Want = "chat", Affair = lover.Id }
+		end
+		local partner = self:PartnerOf(c)
+		if partner and freeAt(self, partner, hour, day) then
+			-- a hunch: following a partner who's been acting strange
+			local theirLover, theirPlace = self:AffairTonight(partner, hour, day)
+			if theirLover and (personality == "nosy" or personality == "anxious" or personality == "proud" or evening:Next() < 0.35) then
+				return { Kind = "Place", Place = theirPlace, Activity = "🕵️ Following a hunch", Want = "sit", Suspect = partner.Id }
+			end
+			-- date night (the couple pick it together)
+			if not theirLover then
+				local dr = newRng(hash(c.Household, day, "date", math.floor(hour / 1.5)))
+				local romantic = personality == "romantic" or partner.Personality == "romantic"
+				if dr:Next() < (self.Config.DATE_CHANCE or 0.2) * (if romantic then 1.8 else 1) then
+					local pick = dr:Pick({ { "Restaurant", "eat" }, { "Lake", nil }, { "Park", "sit" }, { "Cinema", "watch" }, { "Cafe", "coffee" } })
+					return { Kind = "Place", Place = pick[1], Activity = "💕 Date night with " .. partner.First, Want = pick[2], Date = partner.Id }
+				end
+			end
+		end
 		-- personalities have their own habits
 		if personality == "lazy" and roll < 0.7 then
 			return home("🛋️ Lazing on the sofa", "tv")
