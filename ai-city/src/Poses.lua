@@ -6,7 +6,10 @@
 --     (smoothly blended, with each person's own rhythm)
 --   • puts the right props in their hands (a cup, a book, dumbbells, a rod...)
 --   • swings kids on the swings, shoots basketballs at the hoop, kicks the
---     soccer ball, flinches when hit, shows stars when knocked out
+--     soccer ball, shows stars when knocked out
+--   • fights: a stance, a punch combo (jab, cross, hook, uppercut, and a
+--     roundhouse kick in street fights), bat and knife swings, blocks, hit
+--     reactions that snap away from the punch, staggers, a victory fist pump
 --   • turns their head to look at you when you're close
 --   • blinks their eyes, moves their mouth while they talk, and shows their
 --     expression (see Shared.Faces)
@@ -22,6 +25,7 @@ local Actions = require(Shared:WaitForChild("Actions"))
 local Faces = require(Shared:WaitForChild("Faces"))
 
 local Poses = {}
+local localPlayer = Players.LocalPlayer
 Poses.PoseRadius = 130 -- poses play within this distance of the camera
 Poses.FaceRadius = 70 -- faces blink and talk within this distance
 
@@ -199,6 +203,63 @@ L.stretch = function(t, ph)
 	local s = osc(t, 0.8, ph)
 	return { Waist = A(0, 0, s * 22), LS = A(165, 0, -10), RS = A(if s > 0 then 20 else 165, 0, 10), LE = A(10), RE = A(10), LH = A(0, 0, -10), RH = A(0, 0, 10), Neck = A(0, 0, s * 10) }, true
 end
+-- paying at the till: holding out a card, a little nod
+L.pay = function(t, ph)
+	local c = (t * 0.5 + ph) % 1
+	local out = if c < 0.4 then sin(c / 0.4 * math.pi) else 0
+	return { RS = A(40 + out * 35, 0, -6), RE = A(60 - out * 40), LS = A(10, 0, 6), LE = A(20), Neck = A(-10 + out * 6, 0, 0) }, false
+end
+-- posting a letter: lean in and push it into the mailbox
+L.deliver = function(t, ph)
+	local c = (t * 0.6 + ph) % 1
+	local push = if c < 0.5 then sin(c / 0.5 * math.pi) else 0
+	return { RS = A(50 + push * 35, 0, -6), RE = A(50 - push * 40), LS = A(20, 0, 16), LE = A(40), Waist = A(-10 - push * 10), Neck = A(-10) }, false
+end
+-- watering: the can tipped forward, swaying over the flowerbed
+L.water = function(t, ph)
+	local s = osc(t, 1.2, ph)
+	return { RS = A(55, s * 20, -10), RE = A(20), RW = A(-40, 0, 0), LS = A(10, 0, 8), LE = A(20), Waist = A(-6, s * 10, 0), Neck = A(-22, s * 8, 0) }, true
+end
+-- raking: both hands on the handle, pulling toward the feet
+L.rake = function(t, ph)
+	local p = osc(t, 2.4, ph)
+	return { RS = A(40 + p * 20, 0, -12), RE = A(40 - p * 10), LS = A(55 + p * 20, 0, 18), LE = A(50 - p * 10), Waist = A(-14 - p * 6, 10, 0), Neck = A(-20) }, true
+end
+-- mopping: side to side, bent over a little
+L.mop = function(t, ph)
+	local s = osc(t, 2, ph)
+	return { LS = A(40, s * 14, 20), RS = A(50, s * 14, -20), LE = A(50), RE = A(35), Waist = A(-12, s * 22, 0), Neck = A(-18, s * 10, 0) }, true
+end
+-- on patrol: standing tall, looking around, talking on the radio now and then
+L.patrol = function(t, ph)
+	local c = (t * 0.12 + ph) % 1
+	local radio = c < 0.25
+	return { RS = A(if radio then 70 else 10, 0, if radio then -30 else -6), RE = A(if radio then 115 else 15), LS = A(10, 0, 8), LE = A(15), Neck = A(0, osc(t, 0.35, ph) * 45, 0) }, false
+end
+-- unpacking shopping: reach into the bag, then up to the cupboard
+L.unpack = function(t, ph)
+	local c = (t * 0.45 + ph) % 1
+	local up = if c < 0.5 then sin(c / 0.5 * math.pi) else 0
+	return { LS = A(24, 0, 10), LE = A(40), RS = A(30 + up * 90, 0, -8), RE = A(50 - up * 30), Waist = A(-8 + up * 6), Neck = A(-14 + up * 30) }, false
+end
+-- carrying things while walking (arms only, the legs keep walking)
+L.carryBag = function(t, ph)
+	return { RS = A(4, 0, -12), RE = A(8), Neck = nil }, false
+end
+L.carryCase = function(t, ph)
+	return { RS = A(2, 0, -8), RE = A(4) }, false
+end
+L.carryStraps = function(t, ph)
+	-- both thumbs under the backpack straps
+	return { LS = A(18, 0, 8), LE = A(95), RS = A(18, 0, -8), RE = A(95) }, false
+end
+L.carryCup = function(t, ph)
+	return { RS = A(30, 0, -8), RE = A(80) }, false
+end
+L.carryTray = function(t, ph)
+	return { RS = A(40, 0, -10), RE = A(80), RW = A(0, 0, 0) }, false
+end
+
 L.browse = function(t, ph)
 	local look = osc(t, 0.35, ph)
 	local c = (t * 0.15 + ph) % 1
@@ -290,21 +351,6 @@ end
 L.kick = function(t, ph, k)
 	return { RH = A(-30 + k * 110), RK = A(-50 + k * 50), LS = A(-20), RS = A(30, 0, 20), Waist = A(-8) }, false
 end
--- a punch thrown while fighting (right jab out and back)
-L.strike = function(t, ph, k)
-	local out = math.sin(k * math.pi)
-	return { RS = A(60 + out * 35, 0, -10), RE = A(100 - out * 95), LS = A(55, 0, 16), LE = A(110), Waist = A(-6, -out * 25, 0) }, false
-end
--- a left jab (the mirror of the strike)
-L.strikeL = function(t, ph, k)
-	local out = math.sin(k * math.pi)
-	return { LS = A(60 + out * 35, 0, 10), LE = A(100 - out * 95), RS = A(55, 0, -16), RE = A(110), Waist = A(-6, out * 25, 0) }, false
-end
--- fists up, bouncing on the feet: ready to fight (arms only, legs keep walking)
-L.guardup = function(t, ph)
-	local b = osc(t, 7, ph)
-	return { LS = A(62 + b * 3, 0, 16), LE = A(118), LW = A(0, 0, 10), RS = A(52 - b * 3, 0, -14), RE = A(122), RW = A(0, 0, -10), Waist = A(-7, 10, 0), Neck = A(8, -8, 0) }, false
-end
 -- blocking: both forearms up in front of the face, hunched, braced
 L.block = function(t, ph, shake)
 	local s = (shake or 0) * osc(t, 40, ph) * 6
@@ -314,12 +360,12 @@ end
 L.chop = function(t, ph, k)
 	local up = if k < 0.35 then k / 0.35 else 1 - (k - 0.35) / 0.65
 	local down = if k < 0.35 then 0 else (k - 0.35) / 0.65
-	return { RS = A(60 + up * 110 - down * 40, 0, -20 - down * 10), RE = A(40 - up * 20), LS = A(60 + up * 90 - down * 30, 0, 30), LE = A(60), Waist = A(-4 - down * 16, 20 - down * 45, 0), Neck = A(0, -down * 10, 0) }, false
+	return { RS = A(60 + up * 110 - down * 40, 0, -20 - down * 10), RE = A(40 - up * 20), RW = A(-95 * down, 0, 0), LS = A(60 + up * 90 - down * 30, 0, 30), LE = A(60), Waist = A(-4 - down * 16, 20 - down * 45, 0), Neck = A(0, -down * 10, 0) }, false
 end
 -- a knife: a quick lunge forward
 L.stab = function(t, ph, k)
 	local out = math.sin(k * math.pi)
-	return { RS = A(70 + out * 25, 0, -6), RE = A(90 - out * 88), LS = A(40, 0, 20), LE = A(90), Waist = A(-8 - out * 10, -out * 22, 0), RH = A(-out * 20), LK = A(-out * 20) }, false
+	return { RS = A(70 + out * 25, 0, -6), RE = A(90 - out * 88), RW = A(-85 * out, 0, 0), LS = A(40, 0, 20), LE = A(90), Waist = A(-8 - out * 10, -out * 22, 0), RH = A(-out * 20), LK = A(-out * 20) }, false
 end
 -- eating: hand to mouth, again and again
 L.eat = function(t, ph)
@@ -330,9 +376,319 @@ end
 L.sprint = function(t, ph)
 	return { Waist = A(-12), Neck = A(8) }, false
 end
-L.flinch = function(t, ph, k)
-	return { Waist = A(18 * (1 - k)), Neck = A(20 * (1 - k)), LS = A(40 * (1 - k), 0, -20), RS = A(40 * (1 - k), 0, 20) }, false
+--------------------------------------------------------------------------------
+-- Fighting. Every move has a wind-up, the strike and a recovery (k runs 0 -> 1
+-- over the move), and uses the whole body: the hips turn, the back foot
+-- pivots and the weight shifts forward into the hit.
+--------------------------------------------------------------------------------
+-- 0 -> 1 -> 0 over the move, peaking at `at`
+local function snap(k, at)
+	at = at or 0.35
+	if k < at then
+		local u = k / at
+		return u * u * (3 - 2 * u)
+	end
+	local u = (k - at) / (1 - at)
+	return (1 - u) * (1 - u)
 end
+-- the wind-up before the strike (pulling back), 0 -> 1 -> 0 over the first part
+local function windup(k, at)
+	at = at or 0.35
+	if k >= at then
+		return 0
+	end
+	return math.sin(k / at * math.pi)
+end
+
+-- the legs of a fighting stance: left foot forward, knees bent, hips turned
+local function stance(p, t, ph, still)
+	if still then
+		local b = abs(osc(t, 7, ph))
+		p.LH = p.LH or A(22, 0, -8)
+		p.LK = p.LK or A(-26 - b * 6)
+		p.RH = p.RH or A(-14, 0, 8)
+		p.RK = p.RK or A(-22 - b * 6)
+		p.LA = p.LA or A(4)
+		p.RA = p.RA or A(10)
+		p.Root = p.Root or (CFrame.new(0, -0.3 - b * 0.08, 0) * A(0, -18, 0))
+	end
+	return p
+end
+
+-- fists up, bobbing and weaving
+L.fightguard = function(t, ph, still)
+	local b = osc(t, 7, ph)
+	local weave = osc(t, 2.3, ph)
+	return stance({
+		LS = A(64 + b * 3, 0, 16), LE = A(120), LW = A(0, 0, 10),
+		RS = A(54 - b * 3, 0, -14), RE = A(124), RW = A(0, 0, -10),
+		Waist = A(-8, 18 + weave * 6, weave * 5), Neck = A(10, -14, -weave * 4),
+	}, t, ph, still), false
+end
+
+-- a quick straight left from the lead hand
+L.jab = function(t, ph, k, still)
+	local out = snap(k, 0.3)
+	return stance({
+		LS = A(64 + out * 30, 0, 16 - out * 10), LE = A(120 - out * 112), LW = A(0, 0, 10),
+		RS = A(54, 0, -14), RE = A(124), RW = A(0, 0, -10),
+		Waist = A(-8 - out * 6, 18 + out * 14, 0), Neck = A(10, -14 - out * 8, 0),
+	}, t, ph, still), false
+end
+
+-- the right cross: the back hand, with the hips and back foot turning into it
+local function cross(t, ph, k, still)
+	local out, back = snap(k, 0.38), windup(k, 0.3)
+	local p = stance({
+		LS = A(70, 0, 22), LE = A(128), LW = A(0, 0, 10),
+		RS = A(54 - back * 10 + out * 42, 0, -14 + out * 8), RE = A(124 + back * 6 - out * 116), RW = A(0, 0, -10),
+		Waist = A(-8 - out * 12, 18 + back * 12 - out * 48, 0), Neck = A(10, -14 + out * 26, 0),
+	}, t, ph, still)
+	if still then
+		p.RH = A(-14 + out * 10, 0, 8)
+		p.RA = A(10 + out * 25)
+		p.Root = CFrame.new(0, -0.3, -out * 0.35) * A(0, -18 - out * 24, 0)
+	end
+	return p, false
+end
+L.cross = cross
+
+-- a left hook: elbow up, the arm swings round with the whole torso
+L.hook = function(t, ph, k, still)
+	local out, back = snap(k, 0.42), windup(k, 0.35)
+	local p = stance({
+		LS = A(78 + out * 8, 0, -30 - back * 20 + out * 45), LE = A(95 - out * 10), LW = A(0, 0, 10),
+		RS = A(58, 0, -16), RE = A(126), RW = A(0, 0, -10),
+		Waist = A(-6, 18 + back * 20 + out * 38 - out * out * 70, -out * 8), Neck = A(8, -12 - out * 20, 0),
+	}, t, ph, still)
+	if still then
+		p.Root = CFrame.new(0, -0.35, 0) * A(0, -18 + back * 10 + out * 30, 0)
+		p.LA = A(4 + out * 20)
+	end
+	return p, false
+end
+
+-- an uppercut: dip at the knees, then drive up from the legs
+L.uppercut = function(t, ph, k, still)
+	local out, dip = snap(k, 0.45), windup(k, 0.4)
+	local p = stance({
+		LS = A(66, 0, 18), LE = A(124), LW = A(0, 0, 10),
+		RS = A(30 - dip * 15 + out * 110, 0, -12), RE = A(110 + dip * 10 - out * 60), RW = A(0, 0, -10),
+		Waist = A(-14 * dip + out * 14, 18 - out * 30, 0), Neck = A(10 + out * 10, -10, 0),
+	}, t, ph, still)
+	if still then
+		p.LK = A(-26 - dip * 30 + out * 16)
+		p.RK = A(-22 - dip * 30 + out * 16)
+		p.LH = A(22 + dip * 14, 0, -8)
+		p.RH = A(-14 + dip * 14, 0, 8)
+		p.Root = CFrame.new(0, -0.3 - dip * 0.45 + out * 0.2, 0) * A(0, -18 - out * 20, 0)
+	end
+	return p, false
+end
+
+-- a roundhouse kick with the right leg (lean back, arms up to balance)
+L.roundhouse = function(t, ph, k)
+	local out, chamber = snap(k, 0.45), windup(k, 0.35)
+	return {
+		RH = A(20 + chamber * 60 + out * 50, 0, out * 45), RK = A(-100 * chamber - 20 * (1 - out) + out * 10 - 10),
+		LH = A(8, 0, -6), LK = A(-18), LA = A(10),
+		LS = A(70, 0, 30), LE = A(120), RS = A(40, 0, -40 - out * 20), RE = A(80),
+		Waist = A(10 * out, -20 * out, -14 * out), Neck = A(4, 22 * out, 10 * out),
+		Root = CFrame.new(0, -0.1 + out * 0.15, 0) * A(0, out * 50, 8 * out),
+	}, true
+end
+
+-- a bat (or hammer) swung flat, like hitting a baseball: wind up behind, follow through
+L.batswing = function(t, ph, k, still)
+	local wind, out = windup(k, 0.35), snap(k, 0.5)
+	local follow = if k > 0.35 then math.min(1, (k - 0.35) / 0.15) * (1 - math.max(0, (k - 0.75) / 0.25)) else 0
+	local p = stance({
+		RS = A(70 + wind * 20, 0, -30 - wind * 40 + follow * 90), RE = A(60 - follow * 40), RW = A(-85 * follow, 0, 0),
+		LS = A(70 + wind * 10, 0, 40 - wind * 20 + follow * 30), LE = A(70 - follow * 30),
+		Waist = A(-6 - follow * 8, 40 * wind - 75 * follow, 0), Neck = A(4, -20 * wind + 30 * follow, 0),
+	}, t, ph, still)
+	if still then
+		p.Root = CFrame.new(0, -0.35, -out * 0.25) * A(0, -18 + 25 * wind - 30 * follow, 0)
+		p.RA = A(10 + follow * 30)
+	end
+	return p, false
+end
+
+-- a knife slash across the body
+L.slash = function(t, ph, k, still)
+	local wind, out = windup(k, 0.3), snap(k, 0.4)
+	local across = if k > 0.3 then math.min(1, (k - 0.3) / 0.25) * (1 - math.max(0, (k - 0.7) / 0.3)) else 0
+	return stance({
+		RS = A(80 + wind * 20, 0, -60 * wind + 60 * across), RE = A(40 + wind * 40 - across * 20), RW = A(-70 * across, 0, -20 + across * 40),
+		LS = A(50, 0, 24), LE = A(100),
+		Waist = A(-8 - out * 8, 30 * wind - 45 * across, 0), Neck = A(6, -10 + across * 18, 0),
+	}, t, ph, still), false
+end
+
+-- getting hit: the head snaps away from the punch and the body rocks back.
+-- side: -1 / 1 which side the hit came from; front: 1 from the front, -1 from behind
+L.hitreact = function(t, ph, k, side, front, heavy)
+	local e = (1 - k) * (1 - k) * (if heavy then 1.6 else 1)
+	local p = {
+		Neck = A(24 * e * front, -side * 22 * e, side * 16 * e),
+		Waist = A(14 * e * front, -side * 14 * e, side * 10 * e),
+		LS = A(30 * e, 0, -24 * e), LE = A(40 * e), RS = A(30 * e, 0, 24 * e), RE = A(40 * e),
+	}
+	if heavy then
+		-- stagger a step back, arms out for balance
+		p.LS = A(40 * e, 0, -55 * e)
+		p.RS = A(40 * e, 0, 55 * e)
+		p.LH = A(-18 * e * front)
+		p.RH = A(16 * e * front)
+		p.LK = A(-22 * e)
+		p.RK = A(-30 * e)
+		p.Root = CFrame.new(0, -0.25 * e, 0.4 * e * front) * A(10 * e * front, 0, side * 6 * e)
+	end
+	return p, false
+end
+
+--------------------------------------------------------------------------------
+-- Weapons. A tool points the way the hand's palm faces forward, so the
+-- forearm's angle aims it: elbow bent 90° = the weapon points up.
+--------------------------------------------------------------------------------
+-- carrying a weapon around (arms only; the legs keep walking)
+L.holdBat = function(t, ph)
+	-- resting on the right shoulder
+	local sway = osc(t, 1.6, ph) * 3
+	return { RS = A(28 + sway, 0, -8), RE = A(128), RW = A(-30, 0, 0), Neck = A(0, 0, 0) }, false
+end
+L.holdHammer = function(t, ph)
+	-- down by the side, head forward, tapping gently
+	local tap = osc(t, 2.2, ph) * 4
+	return { RS = A(12 + tap, 0, -6), RE = A(30), RW = A(-20 + tap, 0, 0) }, false
+end
+L.holdKnife = function(t, ph)
+	-- low and close, blade forward
+	return { RS = A(26, 0, -6), RE = A(60), RW = A(-30, 0, 0), LS = A(10, 0, 6), LE = A(20) }, false
+end
+-- in a fight with a weapon
+L.guardBat = function(t, ph, still)
+	-- both hands on the bat, cocked over the back shoulder like a batter
+	local b = osc(t, 5, ph) * 3
+	return stance({
+		RS = A(62 + b, 0, -12), RE = A(118), RW = A(-40, 0, 0),
+		LS = A(68 + b, 0, -44), LE = A(112),
+		Waist = A(-6, 26, 0), Neck = A(6, -24, 0),
+	}, t, ph, still), false
+end
+L.guardHammer = function(t, ph, still)
+	local b = osc(t, 5, ph) * 3
+	return stance({
+		RS = A(55 + b, 0, -10), RE = A(104), RW = A(-10, 0, 0),
+		LS = A(58, 0, -30), LE = A(100),
+		Waist = A(-10, 12, 0), Neck = A(10, -10, 0),
+	}, t, ph, still), false
+end
+L.guardKnife = function(t, ph, still)
+	-- knife hand forward and low, the other hand up to fend off
+	local b = osc(t, 6, ph) * 4
+	return stance({
+		RS = A(60 + b, 0, -8), RE = A(40), RW = A(-40, 0, 0),
+		LS = A(70, 0, 22), LE = A(110), LW = A(0, 0, 10),
+		Waist = A(-14, -8, 0), Neck = A(12, 6, 0),
+	}, t, ph, still), false
+end
+-- the hammer: a two-handed overhead slam, the knees dropping into it
+L.slam = function(t, ph, k, still)
+	local up, down = windup(k, 0.4), snap(k, 0.5)
+	local hit = if k > 0.4 then math.min(1, (k - 0.4) / 0.15) else 0
+	local recover = math.max(0, (k - 0.7) / 0.3)
+	local d = hit * (1 - recover)
+	local p = stance({
+		RS = A(70 + up * 100 - d * 20, 0, -10), RE = A(80 + up * 20 - d * 70), RW = A(-up * 30 + d * 20, 0, 0),
+		LS = A(70 + up * 95 - d * 20, 0, -30 + up * 10), LE = A(80 + up * 20 - d * 60),
+		Waist = A(10 * up - 30 * d, 10, 0), Neck = A(-10 * up + 16 * d, -6, 0),
+	}, t, ph, still)
+	if still then
+		p.LK = A(-26 - d * 30)
+		p.RK = A(-22 - d * 30)
+		p.Root = CFrame.new(0, -0.3 - d * 0.45, -d * 0.2) * A(0, -18, 0)
+	end
+	return p, false
+end
+-- pulling a weapon out: from behind the hip, up and round to the front
+L.draw = function(t, ph, k)
+	local e = 1 - (1 - k) * (1 - k)
+	return { RS = A(-40 + e * 80, 0, -20 + e * 10), RE = A(20 + e * 70), RW = A(-40 * (1 - e), 0, 0), Waist = A(0, -12 * (1 - e), 0), Neck = A(-10 * (1 - e), -20 * (1 - e), 0) }, false
+end
+
+-- won the fight: a fist pump
+L.victory = function(t, ph, k)
+	local pump = abs(osc(t, 9, ph))
+	return {
+		RS = A(155 + pump * 15, 0, -18), RE = A(10 + pump * 30), LS = A(40, 0, 20), LE = A(90), LW = A(0, 0, 10),
+		Waist = A(8), Neck = A(14), Root = CFrame.new(0, pump * 0.15, 0),
+	}, false
+end
+
+-- the punch combo: every swing is the next move in the list (the same on every client)
+local COMBO = { "jab", "cross", "hook", "cross", "uppercut" }
+local BRAWL_COMBO = { "jab", "cross", "hook", "uppercut", "cross", "roundhouse" }
+local MOVE_TIME = { jab = 0.3, cross = 0.38, hook = 0.42, uppercut = 0.46, roundhouse = 0.58, chop = 0.45, batswing = 0.5, stab = 0.34, slash = 0.4, slam = 0.55 }
+Poses.Combo = COMBO
+
+-- the move for this swing: weapon, which swing it is, and whether it's a street brawl
+local GUARDS = { Bat = L.guardBat, Hammer = L.guardHammer, Knife = L.guardKnife }
+local HOLDS = { Bat = L.holdBat, Hammer = L.holdHammer, Knife = L.holdKnife }
+
+local function fightMove(weapon, count, brawl)
+	if weapon == "Bat" then
+		return if count % 2 == 0 then "batswing" else "chop"
+	elseif weapon == "Hammer" then
+		return if count % 3 == 0 then "chop" else "slam"
+	elseif weapon == "Knife" then
+		return if count % 2 == 0 then "stab" else "slash"
+	end
+	local list = if brawl then BRAWL_COMBO else COMBO
+	return list[(count - 1) % #list + 1]
+end
+Poses.FightMove = fightMove
+
+-- where a hit came from, relative to the one who got hit
+local function hitSide(model, root)
+	local from = model:GetAttribute("HitFrom")
+	if typeof(from) ~= "Vector3" or not root then
+		return 1, 1
+	end
+	local rel = root.CFrame:PointToObjectSpace(from)
+	local side = if rel.X >= 0 then 1 else -1
+	local front = if rel.Z <= 0 then 1 else -1
+	return side, front
+end
+
+-- The fight overlay shared by citizens and players. Returns a pose or nil.
+--   swingAge: seconds since the last swing; weapon; brawl: a street fight
+local function fightPose(model, st, t, now, root, weapon, brawl, fighting, blocking)
+	local still = root and Vector3.new(root.AssemblyLinearVelocity.X, 0, root.AssemblyLinearVelocity.Z).Magnitude < 3
+	local count = model:GetAttribute("SwingSide") or 0
+	local move = fightMove(weapon, count, brawl)
+	local dur = MOVE_TIME[move] or 0.4
+	local hitAge = now - st.Hit
+	local heavy = (model:GetAttribute("HitPower") or 0) >= 20
+	if now - st.Swing < dur then
+		return L[move](t, st.Phase, (now - st.Swing) / dur, still)
+	elseif blocking then
+		return L.block(t, st.Phase, math.max(0, 1 - hitAge / 0.4))
+	elseif now - st.Block < 0.5 then
+		return L.block(t, st.Phase, 1 - (now - st.Block) / 0.5)
+	elseif hitAge < (if heavy then 0.6 else 0.4) and not model:GetAttribute("KnockedOut") then
+		local side, front = hitSide(model, root)
+		return L.hitreact(t, st.Phase, hitAge / (if heavy then 0.6 else 0.4), side, front, heavy)
+	elseif now - (st.Won or -99) < 2.2 then
+		return L.victory(t, st.Phase, (now - st.Won) / 2.2)
+	elseif fighting and not model:GetAttribute("KnockedOut") then
+		local guard = GUARDS[weapon] or L.fightguard
+		return guard(t, st.Phase, still)
+	end
+	return nil
+end
+Poses.FightPose = fightPose
+
 L.idle = nil
 L.wait = nil
 L.none = nil
@@ -405,6 +761,55 @@ end
 PROPS.Letter = function(f, b, s)
 	prop(b.RightHand, "Letter", Vector3.new(0.6, 0.05, 0.4) * s, CFrame.new(0, -0.3 * s, -0.2 * s), rgb(250, 245, 230)).Parent = f
 end
+PROPS.Card = function(f, b, s)
+	prop(b.RightHand, "Card", Vector3.new(0.5, 0.04, 0.32) * s, CFrame.new(0, -0.3 * s, -0.25 * s), rgb(60, 110, 200)).Parent = f
+end
+PROPS.MailBag = function(f, b, s)
+	prop(b.Torso, "MailBag", Vector3.new(0.5, 1.1, 1.3) * s, CFrame.new(-1.25 * s, -1.1 * s, 0), rgb(60, 80, 150), nil, Enum.Material.Fabric).Parent = f
+	prop(b.Torso, "MailStrap", Vector3.new(0.12, 2.6, 0.12) * s, CFrame.new(-0.2 * s, 0, -0.52 * s) * A(0, 0, -40), rgb(50, 60, 110), nil, Enum.Material.Fabric).Parent = f
+end
+PROPS.WateringCan = function(f, b, s)
+	prop(b.RightHand, "WateringCan", Vector3.new(0.7, 0.8, 1) * s, CFrame.new(0, -0.6 * s, -0.3 * s), rgb(60, 160, 90), nil, Enum.Material.Metal).Parent = f
+	prop(b.RightHand, "Spout", Vector3.new(0.15, 0.15, 0.9) * s, CFrame.new(0, -0.5 * s, -1.1 * s) * A(-20, 0, 0), rgb(50, 140, 80), nil, Enum.Material.Metal).Parent = f
+end
+PROPS.Rake = function(f, b, s)
+	prop(b.RightHand, "RakeHandle", Vector3.new(0.14, 4.6, 0.14) * s, CFrame.new(0, -0.8 * s, -0.4 * s) * A(-35, 0, 0), rgb(150, 110, 70), nil, Enum.Material.Wood).Parent = f
+	prop(b.RightHand, "RakeHead", Vector3.new(1.4, 0.15, 0.4) * s, CFrame.new(0, -2.7 * s, -1.8 * s) * A(-35, 0, 0), rgb(120, 124, 130), nil, Enum.Material.Metal).Parent = f
+end
+PROPS.Mop = function(f, b, s)
+	prop(b.RightHand, "MopHandle", Vector3.new(0.14, 4.4, 0.14) * s, CFrame.new(0, -0.7 * s, -0.4 * s) * A(-30, 0, 15), rgb(90, 140, 200), nil, Enum.Material.Metal).Parent = f
+	prop(b.RightHand, "MopHead", Vector3.new(1, 0.4, 0.7) * s, CFrame.new(0.5 * s, -2.6 * s, -1.5 * s) * A(-30, 0, 15), rgb(230, 230, 220), nil, Enum.Material.Fabric).Parent = f
+end
+PROPS.Radio = function(f, b, s)
+	prop(b.RightHand, "Radio", Vector3.new(0.3, 0.6, 0.2) * s, CFrame.new(0, -0.35 * s, -0.15 * s), rgb(30, 30, 34)).Parent = f
+	prop(b.RightHand, "Antenna", Vector3.new(0.05, 0.35, 0.05) * s, CFrame.new(0.08 * s, -0.8 * s, -0.15 * s), rgb(20, 20, 20)).Parent = f
+end
+PROPS.Bag = function(f, b, s)
+	prop(b.RightHand, "ShoppingBag", Vector3.new(0.5, 1.1, 0.9) * s, CFrame.new(0, -0.85 * s, 0), rgb(240, 225, 190), nil, Enum.Material.Fabric).Parent = f
+	prop(b.RightHand, "Groceries", Vector3.new(0.3, 0.3, 0.3) * s, CFrame.new(0, -0.25 * s, 0.15 * s), rgb(90, 180, 70), Enum.PartType.Ball).Parent = f
+	prop(b.RightHand, "Baguette", Vector3.new(0.18, 0.9, 0.18) * s, CFrame.new(0, -0.25 * s, -0.2 * s) * A(12, 0, 0), rgb(210, 160, 90)).Parent = f
+end
+PROPS.Briefcase = function(f, b, s)
+	prop(b.RightHand, "Briefcase", Vector3.new(0.35, 1, 1.4) * s, CFrame.new(0, -0.8 * s, 0), rgb(70, 45, 30), nil, Enum.Material.Leather).Parent = f
+end
+PROPS.Backpack = function(f, b, s)
+	local colors = { rgb(220, 60, 60), rgb(60, 120, 220), rgb(250, 190, 40), rgb(80, 180, 110), rgb(160, 90, 220) }
+	local c = colors[(math.floor((b.Torso.Size.X * 1000) + (f:GetFullName():len())) % #colors) + 1]
+	prop(b.Torso, "Backpack", Vector3.new(1.4, 1.5, 0.7) * s, CFrame.new(0, -0.1 * s, 0.85 * s), c, nil, Enum.Material.Fabric).Parent = f
+	prop(b.Torso, "BackpackPocket", Vector3.new(1, 0.6, 0.25) * s, CFrame.new(0, -0.4 * s, 1.3 * s), c:Lerp(Color3.new(0, 0, 0), 0.2), nil, Enum.Material.Fabric).Parent = f
+end
+PROPS.GymBag = function(f, b, s)
+	prop(b.Torso, "GymBag", Vector3.new(0.8, 0.8, 1.8) * s, CFrame.new(1.3 * s, -1.2 * s, 0) * A(90, 0, 0), rgb(40, 40, 46), Enum.PartType.Cylinder, Enum.Material.Fabric).Parent = f
+	prop(b.Torso, "GymStrap", Vector3.new(0.12, 2.6, 0.12) * s, CFrame.new(0.3 * s, -0.1 * s, -0.52 * s) * A(0, 0, 40), rgb(200, 60, 60), nil, Enum.Material.Fabric).Parent = f
+end
+PROPS.Pastry = function(f, b, s)
+	prop(b.RightHand, "PastryBag", Vector3.new(0.5, 0.7, 0.35) * s, CFrame.new(0, -0.5 * s, -0.15 * s), rgb(230, 210, 170)).Parent = f
+end
+PROPS.Cone = function(f, b, s)
+	prop(b.RightHand, "Cone", Vector3.new(0.35, 0.7, 0.35) * s, CFrame.new(0, -0.3 * s, -0.25 * s), rgb(220, 170, 100)).Parent = f
+	prop(b.RightHand, "Scoop", Vector3.new(0.5, 0.5, 0.5) * s, CFrame.new(0, 0.15 * s, -0.25 * s), rgb(250, 180, 210), Enum.PartType.Ball).Parent = f
+end
+
 PROPS.Dumbbells = function(f, b, s)
 	for _, hand in ipairs({ b.LeftHand, b.RightHand }) do
 		prop(hand, "Dumbbell", Vector3.new(1.1, 0.2, 0.2) * s, CFrame.new(0, -0.3 * s, 0), rgb(60, 60, 66), nil, Enum.Material.Metal).Parent = f
@@ -516,6 +921,11 @@ local function stateOf(model)
 	st.Swing = 0
 	st.Block = 0
 	model:GetAttributeChangedSignal("Swing"):Connect(function()
+		-- our own swing starts right away on our screen; don't restart it when
+		-- the server's copy of the same swing arrives a moment later
+		if model == localPlayer.Character and os.clock() - st.Swing < 0.25 then
+			return
+		end
 		st.Swing = os.clock()
 	end)
 	model:GetAttributeChangedSignal("Block"):Connect(function()
@@ -526,6 +936,16 @@ local function stateOf(model)
 	end)
 	model:GetAttributeChangedSignal("Hit"):Connect(function()
 		st.Hit = os.clock()
+	end)
+	st.Won = -99
+	model:GetAttributeChangedSignal("Won"):Connect(function()
+		st.Won = os.clock()
+	end)
+	-- pulling out a weapon
+	model.ChildAdded:Connect(function(child)
+		if child:IsA("Tool") then
+			st.Draw = os.clock()
+		end
 	end)
 	model.AncestryChanged:Connect(function(_, parent)
 		if not parent then
@@ -542,16 +962,27 @@ local function stateOf(model)
 	return st
 end
 
-local function setProps(st, model, action)
-	if st.PropAction == action then
+-- what someone carries while walking (the "Carry" attribute, see Errands):
+-- the arm pose and the props
+local CARRY = {
+	Bag = { "carryBag", { "Bag" } }, Briefcase = { "carryCase", { "Briefcase" } }, Backpack = { "carryStraps", { "Backpack" } },
+	GymBag = { "carryCase", { "GymBag" } }, MailBag = { "carryCase", { "MailBag", "Letter" } }, Cup = { "carryCup", { "Cup" } },
+	Pastry = { "carryCup", { "Pastry" } }, Cone = { "carryCup", { "Cone" } }, WateringCan = { "carryCase", { "WateringCan" } },
+	Tray = { "carryTray", { "Tray" } }, Box = { "carry", { "Box" } },
+}
+Poses.Carry = CARRY
+
+local function setProps(st, model, action, carry)
+	local key = if carry then "carry:" .. carry else action
+	if st.PropAction == key then
 		return
 	end
-	st.PropAction = action
+	st.PropAction = key
 	if st.Props then
 		st.Props:Destroy()
 		st.Props = nil
 	end
-	local info = Actions.Get(action or "")
+	local info = if carry then { Props = CARRY[carry] and CARRY[carry][2] } else Actions.Get(action or "")
 	if not info or not info.Props or not st.Body.RightHand then
 		return
 	end
@@ -640,7 +1071,6 @@ end
 --------------------------------------------------------------------------------
 -- The per-frame update
 --------------------------------------------------------------------------------
-local localPlayer = Players.LocalPlayer
 
 local function faceUpdate(model, st, t, dt, near, lookYaw)
 	local head = model:FindFirstChild("Head")
@@ -695,24 +1125,25 @@ local function update(model, st, t, dt, camPos, myRoot)
 	end
 	local now = os.clock()
 	local target, full
-	-- short overlays: a soccer kick, a flinch
-	local fighting = model:GetAttribute("Fighting") ~= nil or model:GetAttribute("Brawling") ~= nil
-	if now - st.Swing < 0.35 then
-		local left = (model:GetAttribute("SwingSide") or 0) % 2 == 1
-		target, full = (if left then L.strikeL else L.strike)(t, st.Phase, (now - st.Swing) / 0.35)
-	elseif now - st.Block < 0.5 then
-		target, full = L.block(t, st.Phase, 1 - (now - st.Block) / 0.5)
-	elseif fighting and not model:GetAttribute("KnockedOut") and now - st.Hit >= 0.35 then
-		target, full = L.guardup(t, st.Phase)
+	-- short overlays: fighting (moves, blocks, hit reactions), a soccer kick
+	local brawl = model:GetAttribute("Brawling") ~= nil
+	local fighting = model:GetAttribute("Fighting") ~= nil or brawl
+	target, full = fightPose(model, st, t, now, root, model:GetAttribute("SwingWeapon") or "Fists", brawl, fighting, false)
+	if target then
+		-- fighting (see above)
 	elseif now - st.Kick < 0.35 then
 		target, full = L.kick(t, st.Phase, (now - st.Kick) / 0.35)
-	elseif now - st.Hit < 0.35 then
-		target, full = L.flinch(t, st.Phase, (now - st.Hit) / 0.35)
 	else
 		local fn = L[poseName]
 		if fn then
 			target, full = fn(t, st.Phase)
 		end
+	end
+	-- carrying something on the way (a shopping bag, a briefcase, a backpack...)
+	local carry = model:GetAttribute("Carry")
+	local carrying = carry and CARRY[carry] and (action == "" or action == "wait") and not target
+	if carrying then
+		target, full = L[CARRY[carry][1]](t, st.Phase)
 	end
 	-- look at the player when they're close (or talking to them)
 	local lookYaw, lookPitch
@@ -755,7 +1186,7 @@ local function update(model, st, t, dt, camPos, myRoot)
 		table.clear(st.Cur)
 	end
 	-- props, swings, hoops, stars
-	setProps(st, model, action)
+	setProps(st, model, action, if carrying then carry else nil)
 	local pivot = model:GetAttribute("SwingPivot")
 	if pivot and root.Anchored then
 		st.SwingBase = st.SwingBase or root.CFrame
@@ -819,39 +1250,82 @@ local function blend(st, target, full, dt)
 	end
 end
 
+-- the swing trail on a weapon: from the grip to the far end of the tool
+local function trail(tool, on)
+	local handle = tool:FindFirstChild("Handle")
+	if not handle then
+		return
+	end
+	local tr = handle:FindFirstChild("SwingTrail")
+	if not tr then
+		if not on then
+			return
+		end
+		local reach = 0
+		for _, part in ipairs(tool:GetChildren()) do
+			if part:IsA("BasePart") then
+				local y = handle.CFrame:PointToObjectSpace(part.Position).Y + part.Size.Y / 2
+				reach = math.max(reach, y)
+			end
+		end
+		local a0 = Instance.new("Attachment")
+		a0.Name = "TrailBase"
+		a0.Position = Vector3.new(0, reach * 0.35, 0)
+		a0.Parent = handle
+		local a1 = Instance.new("Attachment")
+		a1.Name = "TrailTip"
+		a1.Position = Vector3.new(0, reach, 0)
+		a1.Parent = handle
+		tr = Instance.new("Trail")
+		tr.Name = "SwingTrail"
+		tr.Attachment0, tr.Attachment1 = a0, a1
+		tr.Lifetime = 0.18
+		tr.FaceCamera = true
+		tr.LightEmission = 0.4
+		tr.Color = ColorSequence.new(Color3.fromRGB(255, 255, 255))
+		tr.Transparency = NumberSequence.new(0.35, 1)
+		tr.Enabled = false
+		tr.Parent = handle
+	end
+	if tr.Enabled ~= on then
+		tr.Enabled = on
+	end
+end
+
 local function playerUpdate(model, st, t, dt, player)
 	local now = os.clock()
 	local target, full
-	local weapon = model:GetAttribute("SwingWeapon") or "Fists"
-	local holding = model:FindFirstChildOfClass("Tool") ~= nil
+	local tool = model:FindFirstChildOfClass("Tool")
+	local holding = tool ~= nil
+	local held = tool and tool:GetAttribute("Weapon") or "Fists"
+	-- the swing in progress uses the weapon it started with; otherwise what's in hand
+	local weapon = if now - st.Swing < 0.6 then (model:GetAttribute("SwingWeapon") or held) else held
 	local blocking = model:GetAttribute("Blocking") or (player and player:GetAttribute("Blocking"))
 	local eating = model:GetAttribute("Eating")
 	if model:GetAttribute("Treadmill") then
 		target, full = L.run(t, st.Phase)
-	elseif now - st.Swing < 0.42 then
-		local k = (now - st.Swing) / 0.42
-		if weapon == "Bat" or weapon == "Hammer" then
-			target, full = L.chop(t, st.Phase, k)
-		elseif weapon == "Knife" then
-			target, full = L.stab(t, st.Phase, math.min(1, k * 1.3))
-		else
-			local left = (model:GetAttribute("SwingSide") or 0) % 2 == 1
-			target, full = (if left then L.strikeL else L.strike)(t, st.Phase, math.min(1, k * 1.2))
-		end
-	elseif blocking then
-		target, full = L.block(t, st.Phase, math.max(0, 1 - (now - st.Hit) / 0.4))
+	else
+		local root = model:FindFirstChild("HumanoidRootPart")
+		-- in a fight for 2.5 s after the last swing or hit
+		local fighting = now - st.Swing < 2.5 or now - st.Hit < 2.5
+		target, full = fightPose(model, st, t, now, root, weapon, false, fighting and not eating, blocking)
+	end
+	if target then
+		-- fighting (see above)
+	elseif holding and now - (st.Draw or -99) < 0.35 then
+		target, full = L.draw(t, st.Phase, (now - st.Draw) / 0.35)
+	elseif HOLDS[held] and not eating then
+		target, full = HOLDS[held](t, st.Phase)
 	elseif eating then
 		target, full = L.eat(t, st.Phase)
-	elseif now - st.Swing < 2.5 then
-		-- still in the fight: fists up (with a weapon, just the free hand)
-		target, full = L.guardup(t, st.Phase)
-		if holding then
-			target.RS, target.RE, target.RW = nil, nil, nil
-		end
 	elseif model:GetAttribute("Sprinting") then
 		target, full = L.sprint(t, st.Phase)
 	end
 	blend(st, target, full, dt)
+	-- a streak behind the weapon while it swings
+	if tool then
+		trail(tool, now - st.Swing < (if weapon == "Hammer" then 0.5 else 0.4))
+	end
 	-- the food in their hand
 	if eating ~= st.EatingProp then
 		st.EatingProp = eating

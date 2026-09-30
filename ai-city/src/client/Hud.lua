@@ -170,14 +170,27 @@ local function statRow(parent, icon, name, color, order)
 	return set, value
 end
 
+-- the little key label on each action button (a controller button while one is in use)
+local keycaps = {}
+local function setKeycap(keycap)
+	local key = keycap:GetAttribute("Key")
+	local text = if ctx and ctx.Gamepad then ctx.Gamepad.Key(key) else key
+	keycap.Text = text
+	local w = math.max(16, #text * 6 + 4)
+	keycap.Size = UDim2.fromOffset(w, 16)
+	keycap.Position = UDim2.new(1, -w - 2, 0, 2)
+end
+
 local function actionButton(parent, emoji, label, key, order, onClick, color)
 	local button = UI.button(parent, "", { Size = UDim2.fromOffset(66, 62), Color = color or C.Panel2, LayoutOrder = order }, onClick)
 	UI.Icons.Glyph(button, emoji, 30, { Name = "ActionIcon", AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 6), Hole = color or C.Panel2 })
 	UI.text(button, label, 11, UI.Bold, C.Sub, { Size = UDim2.new(1, 0, 0, 14), Position = UDim2.fromOffset(0, 36), TextXAlignment = Enum.TextXAlignment.Center })
-	if key and not UserInputService.TouchEnabled then
-		local w = math.max(16, #key * 6 + 4)
-		local keycap = UI.new("TextLabel", { BackgroundColor3 = C.Bg, Text = key, TextColor3 = C.Gold, Font = UI.Black, TextSize = 10, Size = UDim2.fromOffset(w, 16), Position = UDim2.new(1, -w - 2, 0, 2), Parent = button })
+	if key and (not UserInputService.TouchEnabled or UserInputService.GamepadEnabled) then
+		local keycap = UI.new("TextLabel", { Name = "Keycap", BackgroundColor3 = C.Bg, Text = key, TextColor3 = C.Gold, Font = UI.Black, TextSize = 10, Size = UDim2.fromOffset(16, 16), Parent = button })
+		keycap:SetAttribute("Key", key)
 		UI.corner(keycap, 5)
+		table.insert(keycaps, keycap)
+		setKeycap(keycap)
 	end
 	return button
 end
@@ -804,7 +817,8 @@ local function updateTarget(root)
 	local kid = stage == "Baby" or stage == "Toddler" or stage == "Child" or stage == "Teen"
 	local ko = best:GetAttribute("KnockedOut")
 	local touch = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
-	refs.TargetKeys.Text = if ko then "💫 Knocked out" elseif touch then (if kid then "Tap Talk to chat" else "Tap Talk · Attack to fight") elseif kid then "[E] Talk" else "[E] Talk   [G] Pickpocket   [F] Attack"
+	local pad = ctx.Gamepad and ctx.Gamepad.Active()
+	refs.TargetKeys.Text = if ko then "💫 Knocked out" elseif pad then (if kid then "Ⓧ Talk" else "Ⓧ Talk   Ⓨ Pickpocket   R2 Attack") elseif touch then (if kid then "Tap Talk to chat" else "Tap Talk · Attack to fight") elseif kid then "[E] Talk" else "[E] Talk   [G] Pickpocket   [F] Attack"
 	card.Position = UDim2.new(0.5, 0, 0, if refs.Jail.Visible then 90 else 16)
 end
 
@@ -932,6 +946,13 @@ end
 
 function Hud.Start(context)
 	ctx = context
+	if ctx.Gamepad then
+		ctx.Gamepad.OnChanged(function()
+			for _, keycap in ipairs(keycaps) do
+				setKeycap(keycap)
+			end
+		end)
+	end
 	cityState = ReplicatedStorage:WaitForChild("CityState")
 	build()
 	buildGoals(screen:FindFirstChild("LeftColumn"))

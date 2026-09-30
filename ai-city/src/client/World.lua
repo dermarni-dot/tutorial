@@ -577,6 +577,9 @@ function World.Attack()
 		end)
 		if ok and result and result.Hit then
 			World.Shake(if result.KO then 0.9 elseif weapon == "Fists" then 0.35 else 0.55, 0.25)
+			if ctx.Gamepad then
+				ctx.Gamepad.Rumble(if result.KO then 0.9 else 0.4, if result.KO then 0.3 else 0.12)
+			end
 		end
 	end)
 end

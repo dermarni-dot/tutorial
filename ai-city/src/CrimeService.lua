@@ -97,15 +97,13 @@ local function canSee(brain, target, ignore, range)
 	end
 	local from = head.Position
 	local d = target - from
-	if d.Magnitude <= HEAR then
-		return true
-	end
 	if d.Magnitude > (range or SIGHT) then
 		return false
 	end
-	-- people see what's roughly in front of them (not behind)
+	-- people see what's roughly in front of them (not behind); anyone very
+	-- close notices whichever way they face, but walls still block the view
 	local look = brain.Root.CFrame.LookVector
-	if look:Dot(d.Unit) < -0.35 and brain.State ~= "walk" then
+	if d.Magnitude > HEAR and look:Dot(d.Unit) < -0.35 and brain.State ~= "walk" then
 		return false
 	end
 	local filter = { workspace:FindFirstChild("Citizens") }
@@ -201,8 +199,27 @@ end
 CrimeService.Recognized = recognized
 
 -- a crime happened: witnesses react, remember and report it
+-- did the victim get a look at who did it? (a hit from behind, or while they
+-- were asleep or knocked out, and they have no idea who it was)
+local function victimSaw(victim, player)
+	if not victim or victim.C.Temp or victim.State == "ko" or victim.Model:GetAttribute("Action") == "sleep" then
+		return false
+	end
+	local root = rootOf(player)
+	if not root then
+		return false
+	end
+	local d = root.Position - victim.Root.Position
+	local flatD = Vector3.new(d.X, 0, d.Z)
+	if flatD.Magnitude > 0.1 and victim.Root.CFrame.LookVector:Dot(flatD.Unit) < 0.1 then
+		return false -- you were behind them
+	end
+	return canSee(victim, root.Position + Vector3.new(0, 1.5, 0))
+end
+
 local function report(player, position, victim, severity, what, gossip, stars)
 	local seen = witnesses(position, victim)
+	local victimKnows = victimSaw(victim, player)
 	local reported = false
 	-- did anyone recognize who did it?
 	local hidden = hiddenOf(player)
@@ -212,7 +229,7 @@ local function report(player, position, victim, severity, what, gossip, stars)
 			table.insert(people, brain)
 		end
 	end
-	if victim and victim.State ~= "ko" and not victim.C.Temp then
+	if victimKnows then
 		table.insert(people, victim)
 	end
 	local known = recognized(people, position, hidden)
@@ -234,7 +251,8 @@ local function report(player, position, victim, severity, what, gossip, stars)
 			end
 		end
 	end
-	if victim and victim.State ~= "ko" and not victim.C.Temp then
+	-- the victim calls the police only if they saw who it was
+	if victimKnows then
 		reported = true
 	end
 	S.City.Crime(severity)
@@ -260,7 +278,8 @@ local function report(player, position, victim, severity, what, gossip, stars)
 		if w then
 			w.Crimes = (w.Crimes or 0) + 1
 		end
-		local count = #seen .. (if #seen == 1 then " person saw" else " people saw")
+		local nSeen = #seen + (if victimKnows then 1 else 0)
+		local count = nSeen .. (if nSeen == 1 then " person saw" else " people saw")
 		if known then
 			CrimeService.AddStars(player, stars + extra, (why or "") .. count .. " you " .. what .. "!")
 		else
@@ -275,9 +294,9 @@ local function report(player, position, victim, severity, what, gossip, stars)
 			w.LookText = looks
 		end
 	else
-		S.City.Toast(player, "🤫", "Nobody saw that...", "But the city feels a little less safe.", Color3.fromRGB(120, 120, 140))
+		S.City.Toast(player, "🤫", "Nobody saw that...", if victim and victim.State ~= "ko" then victim.C.First .. " didn't see who did it. No police this time." else "No witnesses, no police. But the city feels a little less safe.", Color3.fromRGB(120, 120, 140))
 	end
-	return #seen
+	return #seen, reported
 end
 
 --------------------------------------------------------------------------------
@@ -304,6 +323,10 @@ local function hurtPlayer(fromPos, victim, damage, knock)
 		knock = (knock or 10) * 0.3
 	end
 	humanoid:TakeDamage(damage)
+	-- everyone sees the hit land (see Poses: the head snaps, they stagger back)
+	character:SetAttribute("HitFrom", fromPos)
+	character:SetAttribute("HitPower", knock or 10)
+	character:SetAttribute("Hit", os.clock())
 	local dir = Vector3.new(root.Position.X - fromPos.X, 0, root.Position.Z - fromPos.Z)
 	if dir.Magnitude > 0.1 then
 		root.AssemblyLinearVelocity = dir.Unit * (knock or 10) + Vector3.new(0, 6, 0)
@@ -364,6 +387,7 @@ local function fightTick()
 			brain.Humanoid:MoveTo(root.Position)
 			if d < 4.8 and now >= f.Next then
 				f.Next = now + math.random(9, 13) / 10
+				brain.Model:SetAttribute("SwingSide", (brain.Model:GetAttribute("SwingSide") or 0) + 1)
 				brain.Model:SetAttribute("Swing", now)
 				local strong = brain.C.Personality == "sporty" or brain.C.Job == "Fitness Coach" or brain.C.Job == "Coach"
 				hurtPlayer(brain.Root.Position, player, math.random(7, 11) + (if strong then 4 else 0), 18)
@@ -434,6 +458,7 @@ local function attack(player, data)
 		S.City.Toast(victim, "⚠️", player.DisplayName .. " " .. w.Verb .. " you!", "Fight back (F), block (hold X) or run!", Color3.fromRGB(230, 60, 60))
 		local key = player.UserId .. ":" .. victim.UserId
 		if down then
+			character:SetAttribute("Won", os.clock())
 			S.City.News("💀 " .. victim.DisplayName .. " was " .. w.Down .. " by " .. player.DisplayName .. " on " .. streetNear(vroot.Position) .. "!", "Crime")
 			report(player, vroot.Position, nil, w.Severity + 2, w.Down:gsub(" with a %w+$", "") .. " " .. victim.DisplayName, w.Down .. " " .. victim.DisplayName, w.Severity + 1)
 		elseif now - (lastHitOn[key] or 0) > 6 then
@@ -469,6 +494,12 @@ local function attack(player, data)
 		stopFight(brain)
 		local name = c.Name
 		S.Citizens.KnockOut(brain, player.DisplayName)
+		task.delay(0.35, function()
+			-- a fist pump once the punch lands (see Poses)
+			if character.Parent then
+				character:SetAttribute("Won", os.clock())
+			end
+		end)
 		local downText = w.Down
 		if not c.Temp then
 			S.City.Remember(c, player, (if id == "Fists" then "knocked me out!" else w.Down .. " me!"), -40 - w.Severity * 15, w.Down .. " " .. c.First)
@@ -503,9 +534,12 @@ local function attack(player, data)
 			S.Citizens.Flee(brain, root.Position, 9, HELP_LINES[math.random(1, #HELP_LINES)])
 		end)
 	end
-	if (brain.Hits or 0) == 0 or now - (brain.ReportedAt or 0) > 6 then
-		brain.ReportedAt = now
-		report(player, brain.Root.Position, brain, w.Severity, (if armed then "stab " else "attack ") .. c.First, w.Verb .. " " .. c.First .. " in broad daylight", if armed then 2 else 1)
+	-- (a hit nobody saw doesn't count: the next one might be seen)
+	if now - (brain.ReportedAt or -99) > 6 then
+		local _, reported = report(player, brain.Root.Position, brain, w.Severity, (if armed then "stab " else "attack ") .. c.First, w.Verb .. " " .. c.First .. " in broad daylight", if armed then 2 else 1)
+		if reported then
+			brain.ReportedAt = now
+		end
 	end
 	brain.Hits = (brain.Hits or 0) + 1
 	return { Ok = true, Hit = true, Name = c.First, HP = brain.HP, Weapon = id }
@@ -605,6 +639,7 @@ local function addRobPrompt(part, isVault)
 	prompt.ActionText = if isVault then "Crack the vault" else "Rob the register"
 	prompt.ObjectText = if isVault then "💰 Bank vault" else "🧾 Register"
 	prompt.KeyboardKeyCode = Enum.KeyCode.R
+	prompt.GamepadKeyCode = Enum.KeyCode.ButtonY
 	prompt.HoldDuration = if isVault then 6 else 3
 	prompt.MaxActivationDistance = 7
 	prompt.RequiresLineOfSight = false
@@ -1158,6 +1193,7 @@ local function attach(model)
 	prompt.ActionText = "Pickpocket"
 	prompt.ObjectText = "🫳"
 	prompt.KeyboardKeyCode = Enum.KeyCode.G
+	prompt.GamepadKeyCode = Enum.KeyCode.ButtonY
 	prompt.HoldDuration = 1.2
 	prompt.MaxActivationDistance = 6
 	prompt.RequiresLineOfSight = false

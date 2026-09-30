@@ -22,6 +22,7 @@ local Hud = require(script:WaitForChild("Hud"))
 local Panels = require(script:WaitForChild("Panels"))
 local World = require(script:WaitForChild("World"))
 local Moves = require(script:WaitForChild("Moves"))
+local Gamepad = require(script:WaitForChild("Gamepad"))
 local Poses = require(Shared:WaitForChild("Poses"))
 local C = UI.C
 
@@ -32,6 +33,9 @@ local ctx = {
 	World = World,
 	Moves = Moves,
 	Poses = Poses,
+	Gamepad = Gamepad,
+	UI = UI,
+	Player = player,
 	SpeechSpot = info:GetAttribute("SpeechSpot"),
 }
 
@@ -39,6 +43,7 @@ Hud.Start(ctx)
 World.Start(ctx)
 Panels.Start(ctx)
 Moves.Start(ctx)
+Gamepad.Start(ctx)
 
 -- the citizens' poses, props and faces, every frame (after animations)
 local step = RunService.PreSimulation or RunService.Stepped
@@ -97,6 +102,7 @@ handlers.Hit = function(d)
 	if d.Player and root and (root.Position - d.Position).Magnitude < 5 then
 		Hud.Hurt()
 		World.Shake(0.5, 0.2)
+		Gamepad.Rumble(if d.Blocked then 0.25 else 0.6, 0.18)
 	end
 end
 handlers.Goals = function(d)

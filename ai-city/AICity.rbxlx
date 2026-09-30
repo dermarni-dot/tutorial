@@ -393,6 +393,14 @@ Actions.List = {
 	sort = { Pose = "shelve", Props = { "Letter" }, Label = "✉️ Sorting mail" },
 	babysit = { Pose = "counter", Label = "🧸 Looking after little ones" },
 	guide = { Pose = "present", Label = "🖼️ Giving a tour" },
+	-- errands and rounds (see Errands)
+	pay = { Pose = "pay", Props = { "Card" }, Label = "💳 Paying" },
+	deliver = { Pose = "deliver", Props = { "MailBag", "Letter" }, Label = "📬 Delivering the mail" },
+	water = { Pose = "water", Props = { "WateringCan" }, Label = "🚿 Watering the plants" },
+	rake = { Pose = "rake", Props = { "Rake" }, Label = "🍂 Raking leaves" },
+	mop = { Pose = "mop", Props = { "Mop" }, Label = "🧽 Mopping the floor" },
+	patrol = { Pose = "patrol", Props = { "Radio" }, Label = "👮 On patrol" },
+	unpack = { Pose = "unpack", Props = { "Bag" }, Label = "🛍️ Putting the shopping away" },
 	-- gym
 	run = { Pose = "run", Label = "🏃 Running on the treadmill" },
 	lift = { Pose = "curl", Props = { "Dumbbells" }, Label = "💪 Lifting weights" },
@@ -749,7 +757,10 @@ return Faces
 --     (smoothly blended, with each person's own rhythm)
 --   • puts the right props in their hands (a cup, a book, dumbbells, a rod...)
 --   • swings kids on the swings, shoots basketballs at the hoop, kicks the
---     soccer ball, flinches when hit, shows stars when knocked out
+--     soccer ball, shows stars when knocked out
+--   • fights: a stance, a punch combo (jab, cross, hook, uppercut, and a
+--     roundhouse kick in street fights), bat and knife swings, blocks, hit
+--     reactions that snap away from the punch, staggers, a victory fist pump
 --   • turns their head to look at you when you're close
 --   • blinks their eyes, moves their mouth while they talk, and shows their
 --     expression (see Shared.Faces)
@@ -765,6 +776,7 @@ local Actions = require(Shared:WaitForChild("Actions"))
 local Faces = require(Shared:WaitForChild("Faces"))
 
 local Poses = {}
+local localPlayer = Players.LocalPlayer
 Poses.PoseRadius = 130 -- poses play within this distance of the camera
 Poses.FaceRadius = 70 -- faces blink and talk within this distance
 
@@ -942,6 +954,63 @@ L.stretch = function(t, ph)
 	local s = osc(t, 0.8, ph)
 	return { Waist = A(0, 0, s * 22), LS = A(165, 0, -10), RS = A(if s > 0 then 20 else 165, 0, 10), LE = A(10), RE = A(10), LH = A(0, 0, -10), RH = A(0, 0, 10), Neck = A(0, 0, s * 10) }, true
 end
+-- paying at the till: holding out a card, a little nod
+L.pay = function(t, ph)
+	local c = (t * 0.5 + ph) % 1
+	local out = if c < 0.4 then sin(c / 0.4 * math.pi) else 0
+	return { RS = A(40 + out * 35, 0, -6), RE = A(60 - out * 40), LS = A(10, 0, 6), LE = A(20), Neck = A(-10 + out * 6, 0, 0) }, false
+end
+-- posting a letter: lean in and push it into the mailbox
+L.deliver = function(t, ph)
+	local c = (t * 0.6 + ph) % 1
+	local push = if c < 0.5 then sin(c / 0.5 * math.pi) else 0
+	return { RS = A(50 + push * 35, 0, -6), RE = A(50 - push * 40), LS = A(20, 0, 16), LE = A(40), Waist = A(-10 - push * 10), Neck = A(-10) }, false
+end
+-- watering: the can tipped forward, swaying over the flowerbed
+L.water = function(t, ph)
+	local s = osc(t, 1.2, ph)
+	return { RS = A(55, s * 20, -10), RE = A(20), RW = A(-40, 0, 0), LS = A(10, 0, 8), LE = A(20), Waist = A(-6, s * 10, 0), Neck = A(-22, s * 8, 0) }, true
+end
+-- raking: both hands on the handle, pulling toward the feet
+L.rake = function(t, ph)
+	local p = osc(t, 2.4, ph)
+	return { RS = A(40 + p * 20, 0, -12), RE = A(40 - p * 10), LS = A(55 + p * 20, 0, 18), LE = A(50 - p * 10), Waist = A(-14 - p * 6, 10, 0), Neck = A(-20) }, true
+end
+-- mopping: side to side, bent over a little
+L.mop = function(t, ph)
+	local s = osc(t, 2, ph)
+	return { LS = A(40, s * 14, 20), RS = A(50, s * 14, -20), LE = A(50), RE = A(35), Waist = A(-12, s * 22, 0), Neck = A(-18, s * 10, 0) }, true
+end
+-- on patrol: standing tall, looking around, talking on the radio now and then
+L.patrol = function(t, ph)
+	local c = (t * 0.12 + ph) % 1
+	local radio = c < 0.25
+	return { RS = A(if radio then 70 else 10, 0, if radio then -30 else -6), RE = A(if radio then 115 else 15), LS = A(10, 0, 8), LE = A(15), Neck = A(0, osc(t, 0.35, ph) * 45, 0) }, false
+end
+-- unpacking shopping: reach into the bag, then up to the cupboard
+L.unpack = function(t, ph)
+	local c = (t * 0.45 + ph) % 1
+	local up = if c < 0.5 then sin(c / 0.5 * math.pi) else 0
+	return { LS = A(24, 0, 10), LE = A(40), RS = A(30 + up * 90, 0, -8), RE = A(50 - up * 30), Waist = A(-8 + up * 6), Neck = A(-14 + up * 30) }, false
+end
+-- carrying things while walking (arms only, the legs keep walking)
+L.carryBag = function(t, ph)
+	return { RS = A(4, 0, -12), RE = A(8), Neck = nil }, false
+end
+L.carryCase = function(t, ph)
+	return { RS = A(2, 0, -8), RE = A(4) }, false
+end
+L.carryStraps = function(t, ph)
+	-- both thumbs under the backpack straps
+	return { LS = A(18, 0, 8), LE = A(95), RS = A(18, 0, -8), RE = A(95) }, false
+end
+L.carryCup = function(t, ph)
+	return { RS = A(30, 0, -8), RE = A(80) }, false
+end
+L.carryTray = function(t, ph)
+	return { RS = A(40, 0, -10), RE = A(80), RW = A(0, 0, 0) }, false
+end
+
 L.browse = function(t, ph)
 	local look = osc(t, 0.35, ph)
 	local c = (t * 0.15 + ph) % 1
@@ -1033,21 +1102,6 @@ end
 L.kick = function(t, ph, k)
 	return { RH = A(-30 + k * 110), RK = A(-50 + k * 50), LS = A(-20), RS = A(30, 0, 20), Waist = A(-8) }, false
 end
--- a punch thrown while fighting (right jab out and back)
-L.strike = function(t, ph, k)
-	local out = math.sin(k * math.pi)
-	return { RS = A(60 + out * 35, 0, -10), RE = A(100 - out * 95), LS = A(55, 0, 16), LE = A(110), Waist = A(-6, -out * 25, 0) }, false
-end
--- a left jab (the mirror of the strike)
-L.strikeL = function(t, ph, k)
-	local out = math.sin(k * math.pi)
-	return { LS = A(60 + out * 35, 0, 10), LE = A(100 - out * 95), RS = A(55, 0, -16), RE = A(110), Waist = A(-6, out * 25, 0) }, false
-end
--- fists up, bouncing on the feet: ready to fight (arms only, legs keep walking)
-L.guardup = function(t, ph)
-	local b = osc(t, 7, ph)
-	return { LS = A(62 + b * 3, 0, 16), LE = A(118), LW = A(0, 0, 10), RS = A(52 - b * 3, 0, -14), RE = A(122), RW = A(0, 0, -10), Waist = A(-7, 10, 0), Neck = A(8, -8, 0) }, false
-end
 -- blocking: both forearms up in front of the face, hunched, braced
 L.block = function(t, ph, shake)
 	local s = (shake or 0) * osc(t, 40, ph) * 6
@@ -1057,12 +1111,12 @@ end
 L.chop = function(t, ph, k)
 	local up = if k < 0.35 then k / 0.35 else 1 - (k - 0.35) / 0.65
 	local down = if k < 0.35 then 0 else (k - 0.35) / 0.65
-	return { RS = A(60 + up * 110 - down * 40, 0, -20 - down * 10), RE = A(40 - up * 20), LS = A(60 + up * 90 - down * 30, 0, 30), LE = A(60), Waist = A(-4 - down * 16, 20 - down * 45, 0), Neck = A(0, -down * 10, 0) }, false
+	return { RS = A(60 + up * 110 - down * 40, 0, -20 - down * 10), RE = A(40 - up * 20), RW = A(-95 * down, 0, 0), LS = A(60 + up * 90 - down * 30, 0, 30), LE = A(60), Waist = A(-4 - down * 16, 20 - down * 45, 0), Neck = A(0, -down * 10, 0) }, false
 end
 -- a knife: a quick lunge forward
 L.stab = function(t, ph, k)
 	local out = math.sin(k * math.pi)
-	return { RS = A(70 + out * 25, 0, -6), RE = A(90 - out * 88), LS = A(40, 0, 20), LE = A(90), Waist = A(-8 - out * 10, -out * 22, 0), RH = A(-out * 20), LK = A(-out * 20) }, false
+	return { RS = A(70 + out * 25, 0, -6), RE = A(90 - out * 88), RW = A(-85 * out, 0, 0), LS = A(40, 0, 20), LE = A(90), Waist = A(-8 - out * 10, -out * 22, 0), RH = A(-out * 20), LK = A(-out * 20) }, false
 end
 -- eating: hand to mouth, again and again
 L.eat = function(t, ph)
@@ -1073,9 +1127,319 @@ end
 L.sprint = function(t, ph)
 	return { Waist = A(-12), Neck = A(8) }, false
 end
-L.flinch = function(t, ph, k)
-	return { Waist = A(18 * (1 - k)), Neck = A(20 * (1 - k)), LS = A(40 * (1 - k), 0, -20), RS = A(40 * (1 - k), 0, 20) }, false
+--------------------------------------------------------------------------------
+-- Fighting. Every move has a wind-up, the strike and a recovery (k runs 0 -> 1
+-- over the move), and uses the whole body: the hips turn, the back foot
+-- pivots and the weight shifts forward into the hit.
+--------------------------------------------------------------------------------
+-- 0 -> 1 -> 0 over the move, peaking at `at`
+local function snap(k, at)
+	at = at or 0.35
+	if k < at then
+		local u = k / at
+		return u * u * (3 - 2 * u)
+	end
+	local u = (k - at) / (1 - at)
+	return (1 - u) * (1 - u)
 end
+-- the wind-up before the strike (pulling back), 0 -> 1 -> 0 over the first part
+local function windup(k, at)
+	at = at or 0.35
+	if k >= at then
+		return 0
+	end
+	return math.sin(k / at * math.pi)
+end
+
+-- the legs of a fighting stance: left foot forward, knees bent, hips turned
+local function stance(p, t, ph, still)
+	if still then
+		local b = abs(osc(t, 7, ph))
+		p.LH = p.LH or A(22, 0, -8)
+		p.LK = p.LK or A(-26 - b * 6)
+		p.RH = p.RH or A(-14, 0, 8)
+		p.RK = p.RK or A(-22 - b * 6)
+		p.LA = p.LA or A(4)
+		p.RA = p.RA or A(10)
+		p.Root = p.Root or (CFrame.new(0, -0.3 - b * 0.08, 0) * A(0, -18, 0))
+	end
+	return p
+end
+
+-- fists up, bobbing and weaving
+L.fightguard = function(t, ph, still)
+	local b = osc(t, 7, ph)
+	local weave = osc(t, 2.3, ph)
+	return stance({
+		LS = A(64 + b * 3, 0, 16), LE = A(120), LW = A(0, 0, 10),
+		RS = A(54 - b * 3, 0, -14), RE = A(124), RW = A(0, 0, -10),
+		Waist = A(-8, 18 + weave * 6, weave * 5), Neck = A(10, -14, -weave * 4),
+	}, t, ph, still), false
+end
+
+-- a quick straight left from the lead hand
+L.jab = function(t, ph, k, still)
+	local out = snap(k, 0.3)
+	return stance({
+		LS = A(64 + out * 30, 0, 16 - out * 10), LE = A(120 - out * 112), LW = A(0, 0, 10),
+		RS = A(54, 0, -14), RE = A(124), RW = A(0, 0, -10),
+		Waist = A(-8 - out * 6, 18 + out * 14, 0), Neck = A(10, -14 - out * 8, 0),
+	}, t, ph, still), false
+end
+
+-- the right cross: the back hand, with the hips and back foot turning into it
+local function cross(t, ph, k, still)
+	local out, back = snap(k, 0.38), windup(k, 0.3)
+	local p = stance({
+		LS = A(70, 0, 22), LE = A(128), LW = A(0, 0, 10),
+		RS = A(54 - back * 10 + out * 42, 0, -14 + out * 8), RE = A(124 + back * 6 - out * 116), RW = A(0, 0, -10),
+		Waist = A(-8 - out * 12, 18 + back * 12 - out * 48, 0), Neck = A(10, -14 + out * 26, 0),
+	}, t, ph, still)
+	if still then
+		p.RH = A(-14 + out * 10, 0, 8)
+		p.RA = A(10 + out * 25)
+		p.Root = CFrame.new(0, -0.3, -out * 0.35) * A(0, -18 - out * 24, 0)
+	end
+	return p, false
+end
+L.cross = cross
+
+-- a left hook: elbow up, the arm swings round with the whole torso
+L.hook = function(t, ph, k, still)
+	local out, back = snap(k, 0.42), windup(k, 0.35)
+	local p = stance({
+		LS = A(78 + out * 8, 0, -30 - back * 20 + out * 45), LE = A(95 - out * 10), LW = A(0, 0, 10),
+		RS = A(58, 0, -16), RE = A(126), RW = A(0, 0, -10),
+		Waist = A(-6, 18 + back * 20 + out * 38 - out * out * 70, -out * 8), Neck = A(8, -12 - out * 20, 0),
+	}, t, ph, still)
+	if still then
+		p.Root = CFrame.new(0, -0.35, 0) * A(0, -18 + back * 10 + out * 30, 0)
+		p.LA = A(4 + out * 20)
+	end
+	return p, false
+end
+
+-- an uppercut: dip at the knees, then drive up from the legs
+L.uppercut = function(t, ph, k, still)
+	local out, dip = snap(k, 0.45), windup(k, 0.4)
+	local p = stance({
+		LS = A(66, 0, 18), LE = A(124), LW = A(0, 0, 10),
+		RS = A(30 - dip * 15 + out * 110, 0, -12), RE = A(110 + dip * 10 - out * 60), RW = A(0, 0, -10),
+		Waist = A(-14 * dip + out * 14, 18 - out * 30, 0), Neck = A(10 + out * 10, -10, 0),
+	}, t, ph, still)
+	if still then
+		p.LK = A(-26 - dip * 30 + out * 16)
+		p.RK = A(-22 - dip * 30 + out * 16)
+		p.LH = A(22 + dip * 14, 0, -8)
+		p.RH = A(-14 + dip * 14, 0, 8)
+		p.Root = CFrame.new(0, -0.3 - dip * 0.45 + out * 0.2, 0) * A(0, -18 - out * 20, 0)
+	end
+	return p, false
+end
+
+-- a roundhouse kick with the right leg (lean back, arms up to balance)
+L.roundhouse = function(t, ph, k)
+	local out, chamber = snap(k, 0.45), windup(k, 0.35)
+	return {
+		RH = A(20 + chamber * 60 + out * 50, 0, out * 45), RK = A(-100 * chamber - 20 * (1 - out) + out * 10 - 10),
+		LH = A(8, 0, -6), LK = A(-18), LA = A(10),
+		LS = A(70, 0, 30), LE = A(120), RS = A(40, 0, -40 - out * 20), RE = A(80),
+		Waist = A(10 * out, -20 * out, -14 * out), Neck = A(4, 22 * out, 10 * out),
+		Root = CFrame.new(0, -0.1 + out * 0.15, 0) * A(0, out * 50, 8 * out),
+	}, true
+end
+
+-- a bat (or hammer) swung flat, like hitting a baseball: wind up behind, follow through
+L.batswing = function(t, ph, k, still)
+	local wind, out = windup(k, 0.35), snap(k, 0.5)
+	local follow = if k > 0.35 then math.min(1, (k - 0.35) / 0.15) * (1 - math.max(0, (k - 0.75) / 0.25)) else 0
+	local p = stance({
+		RS = A(70 + wind * 20, 0, -30 - wind * 40 + follow * 90), RE = A(60 - follow * 40), RW = A(-85 * follow, 0, 0),
+		LS = A(70 + wind * 10, 0, 40 - wind * 20 + follow * 30), LE = A(70 - follow * 30),
+		Waist = A(-6 - follow * 8, 40 * wind - 75 * follow, 0), Neck = A(4, -20 * wind + 30 * follow, 0),
+	}, t, ph, still)
+	if still then
+		p.Root = CFrame.new(0, -0.35, -out * 0.25) * A(0, -18 + 25 * wind - 30 * follow, 0)
+		p.RA = A(10 + follow * 30)
+	end
+	return p, false
+end
+
+-- a knife slash across the body
+L.slash = function(t, ph, k, still)
+	local wind, out = windup(k, 0.3), snap(k, 0.4)
+	local across = if k > 0.3 then math.min(1, (k - 0.3) / 0.25) * (1 - math.max(0, (k - 0.7) / 0.3)) else 0
+	return stance({
+		RS = A(80 + wind * 20, 0, -60 * wind + 60 * across), RE = A(40 + wind * 40 - across * 20), RW = A(-70 * across, 0, -20 + across * 40),
+		LS = A(50, 0, 24), LE = A(100),
+		Waist = A(-8 - out * 8, 30 * wind - 45 * across, 0), Neck = A(6, -10 + across * 18, 0),
+	}, t, ph, still), false
+end
+
+-- getting hit: the head snaps away from the punch and the body rocks back.
+-- side: -1 / 1 which side the hit came from; front: 1 from the front, -1 from behind
+L.hitreact = function(t, ph, k, side, front, heavy)
+	local e = (1 - k) * (1 - k) * (if heavy then 1.6 else 1)
+	local p = {
+		Neck = A(24 * e * front, -side * 22 * e, side * 16 * e),
+		Waist = A(14 * e * front, -side * 14 * e, side * 10 * e),
+		LS = A(30 * e, 0, -24 * e), LE = A(40 * e), RS = A(30 * e, 0, 24 * e), RE = A(40 * e),
+	}
+	if heavy then
+		-- stagger a step back, arms out for balance
+		p.LS = A(40 * e, 0, -55 * e)
+		p.RS = A(40 * e, 0, 55 * e)
+		p.LH = A(-18 * e * front)
+		p.RH = A(16 * e * front)
+		p.LK = A(-22 * e)
+		p.RK = A(-30 * e)
+		p.Root = CFrame.new(0, -0.25 * e, 0.4 * e * front) * A(10 * e * front, 0, side * 6 * e)
+	end
+	return p, false
+end
+
+--------------------------------------------------------------------------------
+-- Weapons. A tool points the way the hand's palm faces forward, so the
+-- forearm's angle aims it: elbow bent 90° = the weapon points up.
+--------------------------------------------------------------------------------
+-- carrying a weapon around (arms only; the legs keep walking)
+L.holdBat = function(t, ph)
+	-- resting on the right shoulder
+	local sway = osc(t, 1.6, ph) * 3
+	return { RS = A(28 + sway, 0, -8), RE = A(128), RW = A(-30, 0, 0), Neck = A(0, 0, 0) }, false
+end
+L.holdHammer = function(t, ph)
+	-- down by the side, head forward, tapping gently
+	local tap = osc(t, 2.2, ph) * 4
+	return { RS = A(12 + tap, 0, -6), RE = A(30), RW = A(-20 + tap, 0, 0) }, false
+end
+L.holdKnife = function(t, ph)
+	-- low and close, blade forward
+	return { RS = A(26, 0, -6), RE = A(60), RW = A(-30, 0, 0), LS = A(10, 0, 6), LE = A(20) }, false
+end
+-- in a fight with a weapon
+L.guardBat = function(t, ph, still)
+	-- both hands on the bat, cocked over the back shoulder like a batter
+	local b = osc(t, 5, ph) * 3
+	return stance({
+		RS = A(62 + b, 0, -12), RE = A(118), RW = A(-40, 0, 0),
+		LS = A(68 + b, 0, -44), LE = A(112),
+		Waist = A(-6, 26, 0), Neck = A(6, -24, 0),
+	}, t, ph, still), false
+end
+L.guardHammer = function(t, ph, still)
+	local b = osc(t, 5, ph) * 3
+	return stance({
+		RS = A(55 + b, 0, -10), RE = A(104), RW = A(-10, 0, 0),
+		LS = A(58, 0, -30), LE = A(100),
+		Waist = A(-10, 12, 0), Neck = A(10, -10, 0),
+	}, t, ph, still), false
+end
+L.guardKnife = function(t, ph, still)
+	-- knife hand forward and low, the other hand up to fend off
+	local b = osc(t, 6, ph) * 4
+	return stance({
+		RS = A(60 + b, 0, -8), RE = A(40), RW = A(-40, 0, 0),
+		LS = A(70, 0, 22), LE = A(110), LW = A(0, 0, 10),
+		Waist = A(-14, -8, 0), Neck = A(12, 6, 0),
+	}, t, ph, still), false
+end
+-- the hammer: a two-handed overhead slam, the knees dropping into it
+L.slam = function(t, ph, k, still)
+	local up, down = windup(k, 0.4), snap(k, 0.5)
+	local hit = if k > 0.4 then math.min(1, (k - 0.4) / 0.15) else 0
+	local recover = math.max(0, (k - 0.7) / 0.3)
+	local d = hit * (1 - recover)
+	local p = stance({
+		RS = A(70 + up * 100 - d * 20, 0, -10), RE = A(80 + up * 20 - d * 70), RW = A(-up * 30 + d * 20, 0, 0),
+		LS = A(70 + up * 95 - d * 20, 0, -30 + up * 10), LE = A(80 + up * 20 - d * 60),
+		Waist = A(10 * up - 30 * d, 10, 0), Neck = A(-10 * up + 16 * d, -6, 0),
+	}, t, ph, still)
+	if still then
+		p.LK = A(-26 - d * 30)
+		p.RK = A(-22 - d * 30)
+		p.Root = CFrame.new(0, -0.3 - d * 0.45, -d * 0.2) * A(0, -18, 0)
+	end
+	return p, false
+end
+-- pulling a weapon out: from behind the hip, up and round to the front
+L.draw = function(t, ph, k)
+	local e = 1 - (1 - k) * (1 - k)
+	return { RS = A(-40 + e * 80, 0, -20 + e * 10), RE = A(20 + e * 70), RW = A(-40 * (1 - e), 0, 0), Waist = A(0, -12 * (1 - e), 0), Neck = A(-10 * (1 - e), -20 * (1 - e), 0) }, false
+end
+
+-- won the fight: a fist pump
+L.victory = function(t, ph, k)
+	local pump = abs(osc(t, 9, ph))
+	return {
+		RS = A(155 + pump * 15, 0, -18), RE = A(10 + pump * 30), LS = A(40, 0, 20), LE = A(90), LW = A(0, 0, 10),
+		Waist = A(8), Neck = A(14), Root = CFrame.new(0, pump * 0.15, 0),
+	}, false
+end
+
+-- the punch combo: every swing is the next move in the list (the same on every client)
+local COMBO = { "jab", "cross", "hook", "cross", "uppercut" }
+local BRAWL_COMBO = { "jab", "cross", "hook", "uppercut", "cross", "roundhouse" }
+local MOVE_TIME = { jab = 0.3, cross = 0.38, hook = 0.42, uppercut = 0.46, roundhouse = 0.58, chop = 0.45, batswing = 0.5, stab = 0.34, slash = 0.4, slam = 0.55 }
+Poses.Combo = COMBO
+
+-- the move for this swing: weapon, which swing it is, and whether it's a street brawl
+local GUARDS = { Bat = L.guardBat, Hammer = L.guardHammer, Knife = L.guardKnife }
+local HOLDS = { Bat = L.holdBat, Hammer = L.holdHammer, Knife = L.holdKnife }
+
+local function fightMove(weapon, count, brawl)
+	if weapon == "Bat" then
+		return if count % 2 == 0 then "batswing" else "chop"
+	elseif weapon == "Hammer" then
+		return if count % 3 == 0 then "chop" else "slam"
+	elseif weapon == "Knife" then
+		return if count % 2 == 0 then "stab" else "slash"
+	end
+	local list = if brawl then BRAWL_COMBO else COMBO
+	return list[(count - 1) % #list + 1]
+end
+Poses.FightMove = fightMove
+
+-- where a hit came from, relative to the one who got hit
+local function hitSide(model, root)
+	local from = model:GetAttribute("HitFrom")
+	if typeof(from) ~= "Vector3" or not root then
+		return 1, 1
+	end
+	local rel = root.CFrame:PointToObjectSpace(from)
+	local side = if rel.X >= 0 then 1 else -1
+	local front = if rel.Z <= 0 then 1 else -1
+	return side, front
+end
+
+-- The fight overlay shared by citizens and players. Returns a pose or nil.
+--   swingAge: seconds since the last swing; weapon; brawl: a street fight
+local function fightPose(model, st, t, now, root, weapon, brawl, fighting, blocking)
+	local still = root and Vector3.new(root.AssemblyLinearVelocity.X, 0, root.AssemblyLinearVelocity.Z).Magnitude < 3
+	local count = model:GetAttribute("SwingSide") or 0
+	local move = fightMove(weapon, count, brawl)
+	local dur = MOVE_TIME[move] or 0.4
+	local hitAge = now - st.Hit
+	local heavy = (model:GetAttribute("HitPower") or 0) >= 20
+	if now - st.Swing < dur then
+		return L[move](t, st.Phase, (now - st.Swing) / dur, still)
+	elseif blocking then
+		return L.block(t, st.Phase, math.max(0, 1 - hitAge / 0.4))
+	elseif now - st.Block < 0.5 then
+		return L.block(t, st.Phase, 1 - (now - st.Block) / 0.5)
+	elseif hitAge < (if heavy then 0.6 else 0.4) and not model:GetAttribute("KnockedOut") then
+		local side, front = hitSide(model, root)
+		return L.hitreact(t, st.Phase, hitAge / (if heavy then 0.6 else 0.4), side, front, heavy)
+	elseif now - (st.Won or -99) < 2.2 then
+		return L.victory(t, st.Phase, (now - st.Won) / 2.2)
+	elseif fighting and not model:GetAttribute("KnockedOut") then
+		local guard = GUARDS[weapon] or L.fightguard
+		return guard(t, st.Phase, still)
+	end
+	return nil
+end
+Poses.FightPose = fightPose
+
 L.idle = nil
 L.wait = nil
 L.none = nil
@@ -1148,6 +1512,55 @@ end
 PROPS.Letter = function(f, b, s)
 	prop(b.RightHand, "Letter", Vector3.new(0.6, 0.05, 0.4) * s, CFrame.new(0, -0.3 * s, -0.2 * s), rgb(250, 245, 230)).Parent = f
 end
+PROPS.Card = function(f, b, s)
+	prop(b.RightHand, "Card", Vector3.new(0.5, 0.04, 0.32) * s, CFrame.new(0, -0.3 * s, -0.25 * s), rgb(60, 110, 200)).Parent = f
+end
+PROPS.MailBag = function(f, b, s)
+	prop(b.Torso, "MailBag", Vector3.new(0.5, 1.1, 1.3) * s, CFrame.new(-1.25 * s, -1.1 * s, 0), rgb(60, 80, 150), nil, Enum.Material.Fabric).Parent = f
+	prop(b.Torso, "MailStrap", Vector3.new(0.12, 2.6, 0.12) * s, CFrame.new(-0.2 * s, 0, -0.52 * s) * A(0, 0, -40), rgb(50, 60, 110), nil, Enum.Material.Fabric).Parent = f
+end
+PROPS.WateringCan = function(f, b, s)
+	prop(b.RightHand, "WateringCan", Vector3.new(0.7, 0.8, 1) * s, CFrame.new(0, -0.6 * s, -0.3 * s), rgb(60, 160, 90), nil, Enum.Material.Metal).Parent = f
+	prop(b.RightHand, "Spout", Vector3.new(0.15, 0.15, 0.9) * s, CFrame.new(0, -0.5 * s, -1.1 * s) * A(-20, 0, 0), rgb(50, 140, 80), nil, Enum.Material.Metal).Parent = f
+end
+PROPS.Rake = function(f, b, s)
+	prop(b.RightHand, "RakeHandle", Vector3.new(0.14, 4.6, 0.14) * s, CFrame.new(0, -0.8 * s, -0.4 * s) * A(-35, 0, 0), rgb(150, 110, 70), nil, Enum.Material.Wood).Parent = f
+	prop(b.RightHand, "RakeHead", Vector3.new(1.4, 0.15, 0.4) * s, CFrame.new(0, -2.7 * s, -1.8 * s) * A(-35, 0, 0), rgb(120, 124, 130), nil, Enum.Material.Metal).Parent = f
+end
+PROPS.Mop = function(f, b, s)
+	prop(b.RightHand, "MopHandle", Vector3.new(0.14, 4.4, 0.14) * s, CFrame.new(0, -0.7 * s, -0.4 * s) * A(-30, 0, 15), rgb(90, 140, 200), nil, Enum.Material.Metal).Parent = f
+	prop(b.RightHand, "MopHead", Vector3.new(1, 0.4, 0.7) * s, CFrame.new(0.5 * s, -2.6 * s, -1.5 * s) * A(-30, 0, 15), rgb(230, 230, 220), nil, Enum.Material.Fabric).Parent = f
+end
+PROPS.Radio = function(f, b, s)
+	prop(b.RightHand, "Radio", Vector3.new(0.3, 0.6, 0.2) * s, CFrame.new(0, -0.35 * s, -0.15 * s), rgb(30, 30, 34)).Parent = f
+	prop(b.RightHand, "Antenna", Vector3.new(0.05, 0.35, 0.05) * s, CFrame.new(0.08 * s, -0.8 * s, -0.15 * s), rgb(20, 20, 20)).Parent = f
+end
+PROPS.Bag = function(f, b, s)
+	prop(b.RightHand, "ShoppingBag", Vector3.new(0.5, 1.1, 0.9) * s, CFrame.new(0, -0.85 * s, 0), rgb(240, 225, 190), nil, Enum.Material.Fabric).Parent = f
+	prop(b.RightHand, "Groceries", Vector3.new(0.3, 0.3, 0.3) * s, CFrame.new(0, -0.25 * s, 0.15 * s), rgb(90, 180, 70), Enum.PartType.Ball).Parent = f
+	prop(b.RightHand, "Baguette", Vector3.new(0.18, 0.9, 0.18) * s, CFrame.new(0, -0.25 * s, -0.2 * s) * A(12, 0, 0), rgb(210, 160, 90)).Parent = f
+end
+PROPS.Briefcase = function(f, b, s)
+	prop(b.RightHand, "Briefcase", Vector3.new(0.35, 1, 1.4) * s, CFrame.new(0, -0.8 * s, 0), rgb(70, 45, 30), nil, Enum.Material.Leather).Parent = f
+end
+PROPS.Backpack = function(f, b, s)
+	local colors = { rgb(220, 60, 60), rgb(60, 120, 220), rgb(250, 190, 40), rgb(80, 180, 110), rgb(160, 90, 220) }
+	local c = colors[(math.floor((b.Torso.Size.X * 1000) + (f:GetFullName():len())) % #colors) + 1]
+	prop(b.Torso, "Backpack", Vector3.new(1.4, 1.5, 0.7) * s, CFrame.new(0, -0.1 * s, 0.85 * s), c, nil, Enum.Material.Fabric).Parent = f
+	prop(b.Torso, "BackpackPocket", Vector3.new(1, 0.6, 0.25) * s, CFrame.new(0, -0.4 * s, 1.3 * s), c:Lerp(Color3.new(0, 0, 0), 0.2), nil, Enum.Material.Fabric).Parent = f
+end
+PROPS.GymBag = function(f, b, s)
+	prop(b.Torso, "GymBag", Vector3.new(0.8, 0.8, 1.8) * s, CFrame.new(1.3 * s, -1.2 * s, 0) * A(90, 0, 0), rgb(40, 40, 46), Enum.PartType.Cylinder, Enum.Material.Fabric).Parent = f
+	prop(b.Torso, "GymStrap", Vector3.new(0.12, 2.6, 0.12) * s, CFrame.new(0.3 * s, -0.1 * s, -0.52 * s) * A(0, 0, 40), rgb(200, 60, 60), nil, Enum.Material.Fabric).Parent = f
+end
+PROPS.Pastry = function(f, b, s)
+	prop(b.RightHand, "PastryBag", Vector3.new(0.5, 0.7, 0.35) * s, CFrame.new(0, -0.5 * s, -0.15 * s), rgb(230, 210, 170)).Parent = f
+end
+PROPS.Cone = function(f, b, s)
+	prop(b.RightHand, "Cone", Vector3.new(0.35, 0.7, 0.35) * s, CFrame.new(0, -0.3 * s, -0.25 * s), rgb(220, 170, 100)).Parent = f
+	prop(b.RightHand, "Scoop", Vector3.new(0.5, 0.5, 0.5) * s, CFrame.new(0, 0.15 * s, -0.25 * s), rgb(250, 180, 210), Enum.PartType.Ball).Parent = f
+end
+
 PROPS.Dumbbells = function(f, b, s)
 	for _, hand in ipairs({ b.LeftHand, b.RightHand }) do
 		prop(hand, "Dumbbell", Vector3.new(1.1, 0.2, 0.2) * s, CFrame.new(0, -0.3 * s, 0), rgb(60, 60, 66), nil, Enum.Material.Metal).Parent = f
@@ -1259,6 +1672,11 @@ local function stateOf(model)
 	st.Swing = 0
 	st.Block = 0
 	model:GetAttributeChangedSignal("Swing"):Connect(function()
+		-- our own swing starts right away on our screen; don't restart it when
+		-- the server's copy of the same swing arrives a moment later
+		if model == localPlayer.Character and os.clock() - st.Swing < 0.25 then
+			return
+		end
 		st.Swing = os.clock()
 	end)
 	model:GetAttributeChangedSignal("Block"):Connect(function()
@@ -1269,6 +1687,16 @@ local function stateOf(model)
 	end)
 	model:GetAttributeChangedSignal("Hit"):Connect(function()
 		st.Hit = os.clock()
+	end)
+	st.Won = -99
+	model:GetAttributeChangedSignal("Won"):Connect(function()
+		st.Won = os.clock()
+	end)
+	-- pulling out a weapon
+	model.ChildAdded:Connect(function(child)
+		if child:IsA("Tool") then
+			st.Draw = os.clock()
+		end
 	end)
 	model.AncestryChanged:Connect(function(_, parent)
 		if not parent then
@@ -1285,16 +1713,27 @@ local function stateOf(model)
 	return st
 end
 
-local function setProps(st, model, action)
-	if st.PropAction == action then
+-- what someone carries while walking (the "Carry" attribute, see Errands):
+-- the arm pose and the props
+local CARRY = {
+	Bag = { "carryBag", { "Bag" } }, Briefcase = { "carryCase", { "Briefcase" } }, Backpack = { "carryStraps", { "Backpack" } },
+	GymBag = { "carryCase", { "GymBag" } }, MailBag = { "carryCase", { "MailBag", "Letter" } }, Cup = { "carryCup", { "Cup" } },
+	Pastry = { "carryCup", { "Pastry" } }, Cone = { "carryCup", { "Cone" } }, WateringCan = { "carryCase", { "WateringCan" } },
+	Tray = { "carryTray", { "Tray" } }, Box = { "carry", { "Box" } },
+}
+Poses.Carry = CARRY
+
+local function setProps(st, model, action, carry)
+	local key = if carry then "carry:" .. carry else action
+	if st.PropAction == key then
 		return
 	end
-	st.PropAction = action
+	st.PropAction = key
 	if st.Props then
 		st.Props:Destroy()
 		st.Props = nil
 	end
-	local info = Actions.Get(action or "")
+	local info = if carry then { Props = CARRY[carry] and CARRY[carry][2] } else Actions.Get(action or "")
 	if not info or not info.Props or not st.Body.RightHand then
 		return
 	end
@@ -1383,7 +1822,6 @@ end
 --------------------------------------------------------------------------------
 -- The per-frame update
 --------------------------------------------------------------------------------
-local localPlayer = Players.LocalPlayer
 
 local function faceUpdate(model, st, t, dt, near, lookYaw)
 	local head = model:FindFirstChild("Head")
@@ -1438,24 +1876,25 @@ local function update(model, st, t, dt, camPos, myRoot)
 	end
 	local now = os.clock()
 	local target, full
-	-- short overlays: a soccer kick, a flinch
-	local fighting = model:GetAttribute("Fighting") ~= nil or model:GetAttribute("Brawling") ~= nil
-	if now - st.Swing < 0.35 then
-		local left = (model:GetAttribute("SwingSide") or 0) % 2 == 1
-		target, full = (if left then L.strikeL else L.strike)(t, st.Phase, (now - st.Swing) / 0.35)
-	elseif now - st.Block < 0.5 then
-		target, full = L.block(t, st.Phase, 1 - (now - st.Block) / 0.5)
-	elseif fighting and not model:GetAttribute("KnockedOut") and now - st.Hit >= 0.35 then
-		target, full = L.guardup(t, st.Phase)
+	-- short overlays: fighting (moves, blocks, hit reactions), a soccer kick
+	local brawl = model:GetAttribute("Brawling") ~= nil
+	local fighting = model:GetAttribute("Fighting") ~= nil or brawl
+	target, full = fightPose(model, st, t, now, root, model:GetAttribute("SwingWeapon") or "Fists", brawl, fighting, false)
+	if target then
+		-- fighting (see above)
 	elseif now - st.Kick < 0.35 then
 		target, full = L.kick(t, st.Phase, (now - st.Kick) / 0.35)
-	elseif now - st.Hit < 0.35 then
-		target, full = L.flinch(t, st.Phase, (now - st.Hit) / 0.35)
 	else
 		local fn = L[poseName]
 		if fn then
 			target, full = fn(t, st.Phase)
 		end
+	end
+	-- carrying something on the way (a shopping bag, a briefcase, a backpack...)
+	local carry = model:GetAttribute("Carry")
+	local carrying = carry and CARRY[carry] and (action == "" or action == "wait") and not target
+	if carrying then
+		target, full = L[CARRY[carry][1]](t, st.Phase)
 	end
 	-- look at the player when they're close (or talking to them)
 	local lookYaw, lookPitch
@@ -1498,7 +1937,7 @@ local function update(model, st, t, dt, camPos, myRoot)
 		table.clear(st.Cur)
 	end
 	-- props, swings, hoops, stars
-	setProps(st, model, action)
+	setProps(st, model, action, if carrying then carry else nil)
 	local pivot = model:GetAttribute("SwingPivot")
 	if pivot and root.Anchored then
 		st.SwingBase = st.SwingBase or root.CFrame
@@ -1562,39 +2001,82 @@ local function blend(st, target, full, dt)
 	end
 end
 
+-- the swing trail on a weapon: from the grip to the far end of the tool
+local function trail(tool, on)
+	local handle = tool:FindFirstChild("Handle")
+	if not handle then
+		return
+	end
+	local tr = handle:FindFirstChild("SwingTrail")
+	if not tr then
+		if not on then
+			return
+		end
+		local reach = 0
+		for _, part in ipairs(tool:GetChildren()) do
+			if part:IsA("BasePart") then
+				local y = handle.CFrame:PointToObjectSpace(part.Position).Y + part.Size.Y / 2
+				reach = math.max(reach, y)
+			end
+		end
+		local a0 = Instance.new("Attachment")
+		a0.Name = "TrailBase"
+		a0.Position = Vector3.new(0, reach * 0.35, 0)
+		a0.Parent = handle
+		local a1 = Instance.new("Attachment")
+		a1.Name = "TrailTip"
+		a1.Position = Vector3.new(0, reach, 0)
+		a1.Parent = handle
+		tr = Instance.new("Trail")
+		tr.Name = "SwingTrail"
+		tr.Attachment0, tr.Attachment1 = a0, a1
+		tr.Lifetime = 0.18
+		tr.FaceCamera = true
+		tr.LightEmission = 0.4
+		tr.Color = ColorSequence.new(Color3.fromRGB(255, 255, 255))
+		tr.Transparency = NumberSequence.new(0.35, 1)
+		tr.Enabled = false
+		tr.Parent = handle
+	end
+	if tr.Enabled ~= on then
+		tr.Enabled = on
+	end
+end
+
 local function playerUpdate(model, st, t, dt, player)
 	local now = os.clock()
 	local target, full
-	local weapon = model:GetAttribute("SwingWeapon") or "Fists"
-	local holding = model:FindFirstChildOfClass("Tool") ~= nil
+	local tool = model:FindFirstChildOfClass("Tool")
+	local holding = tool ~= nil
+	local held = tool and tool:GetAttribute("Weapon") or "Fists"
+	-- the swing in progress uses the weapon it started with; otherwise what's in hand
+	local weapon = if now - st.Swing < 0.6 then (model:GetAttribute("SwingWeapon") or held) else held
 	local blocking = model:GetAttribute("Blocking") or (player and player:GetAttribute("Blocking"))
 	local eating = model:GetAttribute("Eating")
 	if model:GetAttribute("Treadmill") then
 		target, full = L.run(t, st.Phase)
-	elseif now - st.Swing < 0.42 then
-		local k = (now - st.Swing) / 0.42
-		if weapon == "Bat" or weapon == "Hammer" then
-			target, full = L.chop(t, st.Phase, k)
-		elseif weapon == "Knife" then
-			target, full = L.stab(t, st.Phase, math.min(1, k * 1.3))
-		else
-			local left = (model:GetAttribute("SwingSide") or 0) % 2 == 1
-			target, full = (if left then L.strikeL else L.strike)(t, st.Phase, math.min(1, k * 1.2))
-		end
-	elseif blocking then
-		target, full = L.block(t, st.Phase, math.max(0, 1 - (now - st.Hit) / 0.4))
+	else
+		local root = model:FindFirstChild("HumanoidRootPart")
+		-- in a fight for 2.5 s after the last swing or hit
+		local fighting = now - st.Swing < 2.5 or now - st.Hit < 2.5
+		target, full = fightPose(model, st, t, now, root, weapon, false, fighting and not eating, blocking)
+	end
+	if target then
+		-- fighting (see above)
+	elseif holding and now - (st.Draw or -99) < 0.35 then
+		target, full = L.draw(t, st.Phase, (now - st.Draw) / 0.35)
+	elseif HOLDS[held] and not eating then
+		target, full = HOLDS[held](t, st.Phase)
 	elseif eating then
 		target, full = L.eat(t, st.Phase)
-	elseif now - st.Swing < 2.5 then
-		-- still in the fight: fists up (with a weapon, just the free hand)
-		target, full = L.guardup(t, st.Phase)
-		if holding then
-			target.RS, target.RE, target.RW = nil, nil, nil
-		end
 	elseif model:GetAttribute("Sprinting") then
 		target, full = L.sprint(t, st.Phase)
 	end
 	blend(st, target, full, dt)
+	-- a streak behind the weapon while it swings
+	if tool then
+		trail(tool, now - st.Swing < (if weapon == "Hammer" then 0.5 else 0.4))
+	end
 	-- the food in their hand
 	if eating ~= st.EatingProp then
 		st.EatingProp = eating
@@ -1973,7 +2455,7 @@ if Config.RUN_CITIZENS ~= false then
 	services.Food.Start(services)
 	task.spawn(services.Citizens.Start, services)
 end
-]]></ProtectedString></Properties></Item><Item class="Folder" referent="RBX37"><Properties><string name="Name">Modules</string></Properties><Item class="ModuleScript" referent="RBX16"><Properties><string name="Name">MapKit</string><ProtectedString name="Source"><![CDATA[-- MapKit (ModuleScript) — ServerScriptService.Modules.MapKit
+]]></ProtectedString></Properties></Item><Item class="Folder" referent="RBX38"><Properties><string name="Name">Modules</string></Properties><Item class="ModuleScript" referent="RBX16"><Properties><string name="Name">MapKit</string><ProtectedString name="Source"><![CDATA[-- MapKit (ModuleScript) — ServerScriptService.Modules.MapKit
 -- Small building blocks shared by the map modules: part helpers, colors, signs,
 -- lights, seats, and a registry of things that change between day and night.
 
@@ -4460,7 +4942,331 @@ function Decor.dress(b, f, kind, rng, place, spots)
 end
 
 return Decor
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX20"><Properties><string name="Name">Streets</string><ProtectedString name="Source"><![CDATA[-- Streets (ModuleScript) — ServerScriptService.Modules.Streets
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX20"><Properties><string name="Name">Errands</string><ProtectedString name="Source"><![CDATA[-- Errands (ModuleScript) — ServerScriptService.Modules.Errands
+-- Gives what citizens do a real purpose. A plan ("go shopping", "work at the
+-- post office") becomes a chain of tasks, each a place to walk to and
+-- something to do there, with a prop in hand:
+--   • shopping: browse the shelves, pay at the register, walk out with a
+--     shopping bag, and unpack it in the kitchen at home
+--   • cafes, bakeries, diners, ice cream: order and pay at the counter, then
+--     sit down to eat (or take it to go)
+--   • mail carriers sort the mail, then walk house to house putting letters
+--     in mailboxes
+--   • gardeners water and rake the park, police officers patrol the streets
+--     and check in at the station, waiters carry plates from the kitchen to
+--     the tables, store clerks restock shelves from the stockroom, the night
+--     janitor mops the office floors
+--   • on the way to work people carry a briefcase, kids a backpack, gym-goers
+--     a gym bag
+-- Each task is an ordinary CitizenService target ({ Spot or Pos, Place,
+-- Building, Floor, Action... }) plus Duration (seconds), Carry (a prop to
+-- hold, false to put it down), Look (what to face) and Say (a line).
+
+local Errands = {}
+local api -- set by CitizenService: { Map, Free, PickSpot, StandNear, HomeOf, Rng }
+
+function Errands.Init(helpers)
+	api = helpers
+end
+
+local SHOPS = { Shop = true, Mall = true, Pharmacy = true, Hardware = true, Bookstore = true, ToyStore = true, Electronics = true, Florist = true, PetShop = true }
+local FOOD = { Cafe = "Cup", Bakery = "Pastry", Diner = "Cup", IceCream = "Cone", Restaurant = false }
+local OFFICE_WORK = { Office = true, Bank = true, TownHall = true }
+
+local PAY_LINES = { "Just these, please.", "Card is fine.", "Thanks!", "Keep the change.", "Have a nice day!" }
+local ORDER_LINES = { "A coffee, please!", "One of those, please.", "What's good today?", "I'll have the usual.", "To go, please." }
+
+-- spots at a place with one of these actions
+local function spotsWith(place, actions)
+	local out = {}
+	for _, s in ipairs(place.Spots or {}) do
+		if actions[s.Action] then
+			table.insert(out, s)
+		end
+	end
+	return out
+end
+
+-- standing across the counter from someone who works there (a cashier spot):
+-- the customer's side is in front of them
+local function counterFront(spot, dist)
+	local cf = spot.CFrame
+	local pos = cf.Position + cf.LookVector * (dist or 4.6)
+	return pos, cf.Position
+end
+
+local function task(base, fields)
+	local t = { Plan = base.Plan, Place = base.Place, Door = base.Door, Building = base.Building, Floor = base.Floor or 1, IsTask = true }
+	for k, v in pairs(fields) do
+		t[k] = v
+	end
+	return t
+end
+
+-- a spot's building and floor (spots inside buildings know where they are)
+local function atSpot(base, spot, fields)
+	fields.Spot = spot
+	fields.Building = spot.Building or base.Building
+	fields.Floor = spot.Floor or 1
+	return task(base, fields)
+end
+
+local function nearbyPos(spot, side)
+	local cf = spot.CFrame
+	return cf.Position + cf.RightVector * (side or 2.4) + cf.LookVector * 1.2
+end
+
+--------------------------------------------------------------------------------
+-- Errands at a place (shopping, ordering food)
+--------------------------------------------------------------------------------
+local function shopping(brain, plan, t, rng)
+	local place = t.Place
+	local list = {}
+	-- 1. look around the shelves (the spot the plan picked, if it's a browse spot)
+	local browse = spotsWith(place, { browse = true })
+	local first = if t.Spot and t.Spot.Action == "browse" then t.Spot else api.PickSpot(browse, brain, "browse", nil, rng)
+	if first then
+		table.insert(list, atSpot(t, first, { Action = "browse", Duration = rng:NextInteger(10, 16) }))
+	end
+	-- 2. pay at the register
+	local tills = spotsWith(place, { cashier = true, counter = true })
+	if #tills > 0 then
+		local till = tills[rng:NextInteger(1, #tills)]
+		local pos, look = counterFront(till)
+		table.insert(list, task(t, { Pos = pos, Look = look, Building = till.Building or t.Building, Floor = till.Floor or 1, Action = "pay", Duration = 5, Say = if rng:NextNumber() < 0.5 then PAY_LINES[rng:NextInteger(1, #PAY_LINES)] else nil }))
+	end
+	-- 3. a last look around with the bag in hand (until it's time to go)
+	local last = api.PickSpot(browse, brain, "browse", nil, rng)
+	if last then
+		table.insert(list, atSpot(t, last, { Action = "browse", Carry = "Bag", Duration = 999 }))
+	else
+		table.insert(list, task(t, { Pos = api.StandNear(place, rng), Action = "wait", Carry = "Bag", Duration = 999 }))
+	end
+	return list
+end
+
+local function eatingOut(brain, plan, t, rng)
+	local place = t.Place
+	local list = {}
+	local tills = spotsWith(place, { cashier = true, counter = true, brew = true })
+	if #tills > 0 and place.Id ~= "Restaurant" then
+		local till = tills[rng:NextInteger(1, #tills)]
+		local pos, look = counterFront(till)
+		table.insert(list, task(t, { Pos = pos, Look = look, Building = till.Building or t.Building, Floor = till.Floor or 1, Action = "pay", Duration = 6, Say = if rng:NextNumber() < 0.6 then ORDER_LINES[rng:NextInteger(1, #ORDER_LINES)] else nil }))
+	end
+	-- then the seat the plan picked (eating, having a coffee...)
+	local final = task(t, { Spot = t.Spot, Pos = t.Pos, Action = t.Action, Duration = 999, Carry = false })
+	if t.Spot then
+		final.Building, final.Floor = t.Spot.Building or t.Building, t.Spot.Floor or 1
+	end
+	-- nowhere to sit: take it to go
+	if not t.Spot and FOOD[place.Id] then
+		final.Carry = FOOD[place.Id]
+		final.Action = "wait"
+	end
+	table.insert(list, final)
+	return list
+end
+
+--------------------------------------------------------------------------------
+-- Rounds: jobs that move around (loops for as long as the shift lasts)
+--------------------------------------------------------------------------------
+local ROUNDS = {}
+
+-- the mail carrier: sort the mail, then four houses, then back
+ROUNDS["Mail Carrier"] = function(brain, plan, t, rng)
+	local list = {}
+	if t.Spot then
+		table.insert(list, atSpot(t, t.Spot, { Action = "sort", Duration = 14, Carry = false }))
+	end
+	local origin = t.Place.Door
+	local houses = {}
+	for _, home in ipairs(api.Map.Homes) do
+		local b = home.Building
+		if b and b.Model and b.Model:FindFirstChild("Mailbox") and b.At and (home.Door - origin).Magnitude < 260 then
+			table.insert(houses, home)
+		end
+	end
+	-- four houses, each the nearest to the last (a sensible route)
+	local at = origin
+	for k = 1, 4 do
+		if #houses == 0 then
+			break
+		end
+		-- a little randomness so every round is different
+		local best, bestD = nil, math.huge
+		for i, home in ipairs(houses) do
+			local d = (home.Door - at).Magnitude + rng:NextNumber(0, 60)
+			if d < bestD then
+				best, bestD = i, d
+			end
+		end
+		local home = table.remove(houses, best)
+		local b = home.Building
+		local pos = b.At(4, 0, -b.D / 2 - 10.6).Position
+		local box = b.At(4, 0, -b.D / 2 - 9).Position
+		table.insert(list, { Plan = plan, Pos = pos, Door = pos, Look = box, Floor = 1, Action = "deliver", Carry = "MailBag", Duration = 4, IsTask = true, Say = if k == 1 and rng:NextNumber() < 0.3 then "Mail's here!" else nil })
+		at = home.Door
+	end
+	return list
+end
+
+-- the gardener: watering, raking and weeding around the park
+ROUNDS["Gardener"] = function(brain, plan, t, rng)
+	local list = {}
+	local place = t.Place
+	local jobs = { { "water", "WateringCan" }, { "rake", false }, { "garden", false } }
+	for k = 1, 4 do
+		local s = place.Spots and place.Spots[rng:NextInteger(1, math.max(1, #place.Spots))]
+		local pos = if s then nearbyPos(s, if rng:NextNumber() < 0.5 then 3 else -3) else api.StandNear(place, rng)
+		local job = jobs[(k - 1) % #jobs + 1]
+		table.insert(list, task(t, { Pos = pos, Building = nil, Action = job[1], Carry = job[2], Duration = rng:NextInteger(10, 16) }))
+	end
+	return list
+end
+
+-- police: out on patrol around the station's streets, then check in at the desk
+local function patrol(brain, plan, t, rng)
+	local list = {}
+	local origin = t.Place.Door
+	local near = {}
+	for _, n in ipairs(api.Map.Nodes or {}) do
+		local d = (n - origin).Magnitude
+		if d > 30 and d < 220 then
+			table.insert(near, n)
+		end
+	end
+	for _ = 1, 3 do
+		if #near == 0 then
+			break
+		end
+		local n = table.remove(near, rng:NextInteger(1, #near))
+		table.insert(list, { Plan = plan, Pos = n, Door = n, Floor = 1, Action = "patrol", Carry = false, Duration = rng:NextInteger(6, 10), IsTask = true })
+	end
+	if t.Spot then
+		table.insert(list, atSpot(t, t.Spot, { Action = t.Spot.Action, Duration = rng:NextInteger(25, 40) }))
+	end
+	return list
+end
+ROUNDS["Police Officer"] = patrol
+ROUNDS["Night Officer"] = patrol
+
+-- waiters: pick up plates at the kitchen, serve them at a table
+ROUNDS["Waiter"] = function(brain, plan, t, rng)
+	local list = {}
+	local place = t.Place
+	local kitchen = spotsWith(place, { cook = true })
+	local tables = spotsWith(place, { eat = true })
+	for _ = 1, 3 do
+		if #kitchen > 0 then
+			local k = kitchen[rng:NextInteger(1, #kitchen)]
+			local pos, look = counterFront(k, 3)
+			table.insert(list, task(t, { Pos = pos, Look = look, Building = k.Building or t.Building, Floor = k.Floor or 1, Action = "wait", Carry = false, Duration = 3 }))
+		end
+		if #tables > 0 then
+			local s = tables[rng:NextInteger(1, #tables)]
+			table.insert(list, task(t, { Pos = nearbyPos(s, 2.2), Look = s.CFrame.Position, Building = s.Building or t.Building, Floor = s.Floor or 1, Action = "serve", Carry = false, Duration = 5 }))
+		end
+	end
+	return list
+end
+
+-- store clerks and shopkeepers: carry stock from the back to the shelves, then the till
+local function restock(brain, plan, t, rng)
+	local list = {}
+	local place = t.Place
+	local stock = spotsWith(place, { carrybox = true })
+	local shelves = spotsWith(place, { browse = true, shelve = true })
+	if #stock > 0 and #shelves > 0 then
+		local s = stock[rng:NextInteger(1, #stock)]
+		table.insert(list, task(t, { Pos = s.CFrame.Position, Look = s.CFrame.Position + s.CFrame.LookVector, Building = s.Building or t.Building, Floor = s.Floor or 1, Action = "carrybox", Carry = false, Duration = 4 }))
+		local shelf = shelves[rng:NextInteger(1, #shelves)]
+		table.insert(list, task(t, { Pos = shelf.CFrame.Position, Look = shelf.CFrame.Position + shelf.CFrame.LookVector * 2, Building = shelf.Building or t.Building, Floor = shelf.Floor or 1, Action = "shelve", Carry = false, Duration = rng:NextInteger(9, 14) }))
+	end
+	if t.Spot then
+		table.insert(list, atSpot(t, t.Spot, { Action = t.Spot.Action, Duration = rng:NextInteger(30, 50) }))
+	end
+	return list
+end
+ROUNDS["Shopkeeper"] = restock
+ROUNDS["Store Clerk"] = restock
+
+-- the night janitor: mopping around the office floors
+ROUNDS["Night Janitor"] = function(brain, plan, t, rng)
+	local list = {}
+	local place = t.Place
+	local desks = spotsWith(place, { type = true })
+	for _ = 1, 4 do
+		if #desks == 0 then
+			break
+		end
+		local s = desks[rng:NextInteger(1, #desks)]
+		table.insert(list, task(t, { Pos = s.CFrame.Position - s.CFrame.LookVector * 3, Building = s.Building or t.Building, Floor = s.Floor or 1, Action = "mop", Carry = false, Duration = rng:NextInteger(10, 15) }))
+	end
+	return list
+end
+
+--------------------------------------------------------------------------------
+-- The task list for a plan (nil: just go to the target and stay)
+--------------------------------------------------------------------------------
+function Errands.Tasks(brain, plan, t, rng)
+	if not plan or not t then
+		return nil
+	end
+	local list
+	if plan.Kind == "Work" and t.Place then
+		local fn = ROUNDS[brain.C.Job or ""]
+		list = fn and fn(brain, plan, t, rng)
+	elseif plan.Kind == "Home" then
+		-- back from the shops: unpack the bag in the kitchen first
+		if brain.Model:GetAttribute("Carry") == "Bag" and t.Home then
+			local kitchen = api.PickSpot(t.Home.Spots, brain, "cook", nil, rng)
+			if kitchen then
+				local pos = kitchen.CFrame.Position
+				list = {
+					task(t, { Pos = pos, Look = pos + kitchen.CFrame.LookVector * 2, Building = kitchen.Building or t.Building, Floor = kitchen.Floor or 1, Action = "unpack", Duration = 6, Carry = "Bag", Say = nil }),
+					task(t, { Spot = t.Spot, Pos = t.Pos, Action = t.Action, Building = t.Building, Floor = t.Floor, Home = t.Home, Duration = 999, Carry = false }),
+				}
+			end
+		end
+	elseif plan.Kind == "Place" and t.Place and not plan.Family then
+		local id = t.Place.Id
+		local age = api.Age(brain.C)
+		if SHOPS[id] and age >= 13 and (plan.Want == nil or plan.Want == "browse") then
+			list = shopping(brain, plan, t, rng)
+		elseif FOOD[id] ~= nil and age >= 10 and (plan.Want == "eat" or plan.Want == "coffee" or plan.Want == nil or plan.Want == "chat") then
+			list = eatingOut(brain, plan, t, rng)
+		end
+	end
+	if list and #list > 0 then
+		return list
+	end
+	return nil
+end
+
+-- rounds start over when they're done (for as long as the plan lasts)
+function Errands.Loops(brain, plan)
+	return plan and plan.Kind == "Work" and ROUNDS[brain.C.Job or ""] ~= nil
+end
+
+-- what someone carries on the way somewhere
+function Errands.CommuteProp(brain, plan, t)
+	if not plan then
+		return nil
+	end
+	local age = api.Age(brain.C)
+	if plan.Kind == "School" and not plan.Recess and age >= 6 then
+		return "Backpack"
+	elseif plan.Kind == "Work" and t and t.Place and OFFICE_WORK[t.Place.Id] then
+		return "Briefcase"
+	elseif t and t.Place and t.Place.Id == "Gym" and age >= 13 then
+		return "GymBag"
+	end
+	return nil
+end
+
+return Errands
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX21"><Properties><string name="Name">Streets</string><ProtectedString name="Source"><![CDATA[-- Streets (ModuleScript) — ServerScriptService.Modules.Streets
 -- Roads with lane markings and crosswalks, raised sidewalks with curbs, street
 -- lamps that light the ground at night, traffic lights downtown, street name
 -- signs, fire hydrants, trash cans, bus stops with shelters, sidewalk trees
@@ -4759,7 +5565,7 @@ function Streets.build(parent, rng, blockKind)
 end
 
 return Streets
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX21"><Properties><string name="Name">Landscape</string><ProtectedString name="Source"><![CDATA[-- Landscape (ModuleScript) — ServerScriptService.Modules.Landscape
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX22"><Properties><string name="Name">Landscape</string><ProtectedString name="Source"><![CDATA[-- Landscape (ModuleScript) — ServerScriptService.Modules.Landscape
 -- The land around the city: terrain grass (with swaying grass blades),
 -- rolling hills with pine forests, a lake with a sandy beach and a wooden
 -- pier for fishing, and snowy mountains on the horizon.
@@ -4897,7 +5703,7 @@ function Landscape.build(parent, rng)
 end
 
 return Landscape
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX22"><Properties><string name="Name">Places</string><ProtectedString name="Source"><![CDATA[-- Places (ModuleScript) — ServerScriptService.Modules.Places
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX23"><Properties><string name="Name">Places</string><ProtectedString name="Source"><![CDATA[-- Places (ModuleScript) — ServerScriptService.Modules.Places
 -- What stands on each city block: the plaza, town hall, bank, towers, shops,
 -- three schools, parks with playgrounds and ponds, the sports field, homes...
 -- Every builder registers its places and the spots where people do things
@@ -5892,7 +6698,7 @@ Places.Builders = B
 Places.playground = playground
 
 return Places
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX23"><Properties><string name="Name">MapBuilder</string><ProtectedString name="Source"><![CDATA[-- MapBuilder (ModuleScript) — ServerScriptService.Modules.MapBuilder
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX24"><Properties><string name="Name">MapBuilder</string><ProtectedString name="Source"><![CDATA[-- MapBuilder (ModuleScript) — ServerScriptService.Modules.MapBuilder
 -- Builds AI City: a 9x9 grid of city blocks around a central plaza, with
 -- streets, a landscape of hills, a lake and mountains, and every building
 -- furnished with spots where people work, shop, eat, play and sleep.
@@ -6552,7 +7358,7 @@ function MapBuilder.RouteBetween(a, b)
 end
 MapBuilder.Kit = MapKit
 return MapBuilder
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX24"><Properties><string name="Name">Life</string><ProtectedString name="Source"><![CDATA[-- Life (ModuleScript) — ServerScriptService.Modules.Life
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX25"><Properties><string name="Name">Life</string><ProtectedString name="Source"><![CDATA[-- Life (ModuleScript) — ServerScriptService.Modules.Life
 -- Who lives in AI City: families with children, jobs, ages, couples expecting
 -- babies and births, plus where each person should be at any hour.
 -- Pure logic (no parts, no Humanoids), so it can be saved and tested on its own.
@@ -7315,7 +8121,7 @@ end
 
 Life.Jobs = jobByTitle
 return Life
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX25"><Properties><string name="Name">CitizenLook</string><ProtectedString name="Source"><![CDATA[-- CitizenLook (ModuleScript) — ServerScriptService.Modules.CitizenLook
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX26"><Properties><string name="Name">CitizenLook</string><ProtectedString name="Source"><![CDATA[-- CitizenLook (ModuleScript) — ServerScriptService.Modules.CitizenLook
 -- Gives every citizen their own look: skin tone, hairstyle and color, a
 -- uniform for their job (police cap and badge, doctor's coat, chef's hat,
 -- firefighter helmet...), something for their hobby (a beret for painters,
@@ -8407,7 +9213,7 @@ CitizenLook.Uniforms = UNIFORMS
 CitizenLook.HobbyItems = HOBBY_ITEMS
 
 return CitizenLook
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX26"><Properties><string name="Name">CityService</string><ProtectedString name="Source"><![CDATA[-- CityService (ModuleScript) — ServerScriptService.Modules.CityService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX27"><Properties><string name="Name">CityService</string><ProtectedString name="Source"><![CDATA[-- CityService (ModuleScript) — ServerScriptService.Modules.CityService
 -- The city itself: the clock and calendar, city stats (economy, safety,
 -- happiness) and the city's mood, the mayor, elections, speeches, policies,
 -- coins, what citizens remember about players (and gossip about), the news,
@@ -9483,7 +10289,7 @@ end
 
 CityService.Handlers = handlers
 return CityService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX27"><Properties><string name="Name">CitizenService</string><ProtectedString name="Source"><![CDATA[-- CitizenService (ModuleScript) — ServerScriptService.Modules.CitizenService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX28"><Properties><string name="Name">CitizenService</string><ProtectedString name="Source"><![CDATA[-- CitizenService (ModuleScript) — ServerScriptService.Modules.CitizenService
 -- Brings the citizens to life: spawns a dressed NPC for every person in Life,
 -- walks them along the sidewalks to where their day takes them (with their
 -- own pace, lane and little pauses), takes elevators, sits at desks, lifts
@@ -9505,6 +10311,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
 local Actions = require(Shared:WaitForChild("Actions"))
 local CitizenLook = require(script.Parent:WaitForChild("CitizenLook"))
+local Errands = require(script.Parent:WaitForChild("Errands"))
 
 local CitizenService = {}
 local S -- services (see Main)
@@ -10173,6 +10980,9 @@ end
 -- Sends a brain on its way to a target
 local function go(brain, t)
 	brain.Token = {}
+	if not t.IsTask then
+		brain.Tasks = nil
+	end
 	brain.Target = t
 	brain.Jog = nil
 	brain.Looping = nil
@@ -10201,6 +11011,9 @@ end
 -- teleport straight to a target (spawning, or nobody around to see)
 local function jump(brain, t)
 	brain.Token = {}
+	if not t.IsTask then
+		brain.Tasks = nil
+	end
 	brain.Target = t
 	brain.Jog = nil
 	brain.Looping = nil
@@ -10435,7 +11248,7 @@ arrive = function(brain)
 		action = t.Action or "wait"
 		brain.Root.Anchored = true
 		local p = t.Pos or brain.Root.Position
-		local look = if t.Place and t.Place.Door then t.Place.Door else p + Vector3.new(0, 0, -1)
+		local look = if t.Look then t.Look elseif t.Place and t.Place.Door then t.Place.Door else p + Vector3.new(0, 0, -1)
 		if flatDist(look, p) < 0.5 then
 			look = p + Vector3.new(0, 0, -1)
 		end
@@ -10448,6 +11261,21 @@ arrive = function(brain)
 	playTrack(brain, if info.Seated or info.Lying or action == "run" or action == "soccer" then nil else "idle")
 	setAction(brain, action)
 	brain.ActUntil = os.clock() + math.random(35, 90)
+	-- errands and rounds (see Errands): how long this step takes, what's in hand
+	if t.IsTask then
+		brain.TaskUntil = os.clock() + (t.Duration or 10)
+		if t.Say then
+			CitizenService.Say(brain, t.Say, "happy", 2.2)
+		end
+	end
+	if t.Carry ~= nil then
+		brain.Model:SetAttribute("Carry", t.Carry or nil)
+		brain.CommuteProp = nil
+	elseif brain.CommuteProp or (t.Home and not t.IsTask) then
+		-- put the briefcase / backpack / shopping bag down on arrival
+		brain.Model:SetAttribute("Carry", nil)
+		brain.CommuteProp = nil
+	end
 	refreshExpression(brain)
 end
 
@@ -10639,6 +11467,9 @@ function CitizenService.Hurt(brain, from, line, knock)
 		return
 	end
 	brain.Model:SetAttribute("Expression", "hurt")
+	-- which way the hit came from and how hard (for the hit reaction, see Poses)
+	brain.Model:SetAttribute("HitFrom", from)
+	brain.Model:SetAttribute("HitPower", knock or 22)
 	brain.Model:SetAttribute("Hit", os.clock())
 	if line then
 		CitizenService.Say(brain, line, "hurt", 1.8)
@@ -10939,6 +11770,25 @@ local function think(brain)
 	end
 	local key = planKey(plan)
 	setActivity(brain, if brain.Soccer then brain.Model:GetAttribute("Activity") else plan.Activity)
+	if key == brain.PlanKey and st ~= "idle" and brain.Tasks then
+		-- the next step of an errand or a round (see Errands)
+		if st == "act" and os.clock() > (brain.TaskUntil or 0) then
+			brain.TaskIndex += 1
+			local nt = brain.Tasks[brain.TaskIndex]
+			if not nt and Errands.Loops(brain, plan) then
+				-- rounds start over for as long as the shift lasts
+				brain.Tasks = Errands.Tasks(brain, plan, targetFor(brain, plan), Random.new())
+				brain.TaskIndex = 1
+				nt = brain.Tasks and brain.Tasks[1]
+			end
+			if nt then
+				go(brain, nt)
+			else
+				brain.Tasks = nil
+			end
+		end
+		return
+	end
 	if key == brain.PlanKey and st ~= "idle" then
 		-- same plan: now and then move to another spot at the same place (browsing
 		-- different aisles, a new machine at the gym...)
@@ -10957,7 +11807,22 @@ local function think(brain)
 	brain.Plan = plan
 	brain.PlanKey = key
 	local t = targetFor(brain, plan)
+	-- errands and rounds: a chain of steps with a purpose (see Errands)
+	local tasks = Errands.Tasks(brain, plan, t, Random.new())
+	if tasks then
+		t = tasks[1]
+	end
+	-- a briefcase on the way to the office, a backpack to school...
+	if t.Carry == nil and not brain.Model:GetAttribute("Carry") then
+		local carry = Errands.CommuteProp(brain, plan, t)
+		if carry then
+			brain.Model:SetAttribute("Carry", carry)
+			brain.CommuteProp = true
+		end
+	end
 	-- nobody around to see: skip the walk (babies never walk across town)
+	brain.Tasks = tasks
+	brain.TaskIndex = 1
 	local dest = t.Spot and t.Spot.CFrame.Position or t.Pos or (t.Door or brain.Root.Position)
 	local unseen = nearestPlayerDistance(brain.Root.Position) > WATCH_RADIUS * 2.2 and nearestPlayerDistance(dest) > WATCH_RADIUS * 2.2
 	if ageOf(brain.C) < 3 or (unseen and math.random() < 0.5) then
@@ -11308,6 +12173,7 @@ function CitizenService.Start(services)
 	S = services
 	CitizenService.Event = S.City.Event -- same events as CityService.Event (kept for older scripts)
 	map, pop = S.Map, S.Life
+	Errands.Init({ Map = map, PickSpot = pickSpot, StandNear = standNear, Age = ageOf })
 	setupPhysics()
 	folder = workspace:FindFirstChild("Citizens") or Instance.new("Folder")
 	folder.Name = "Citizens"
@@ -11396,7 +12262,7 @@ function CitizenService.Start(services)
 end
 
 return CitizenService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX28"><Properties><string name="Name">DialogueService</string><ProtectedString name="Source"><![CDATA[-- DialogueService (ModuleScript) — ServerScriptService.Modules.DialogueService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX29"><Properties><string name="Name">DialogueService</string><ProtectedString name="Source"><![CDATA[-- DialogueService (ModuleScript) — ServerScriptService.Modules.DialogueService
 -- Talking to citizens. Walk up to anyone and press E to talk: they stop what
 -- they're doing, turn to you and answer in their own voice. What they say
 -- depends on their personality (cheerful, shy, grumpy, chatty, bookish,
@@ -12382,7 +13248,7 @@ function DialogueService.Start(services)
 end
 
 return DialogueService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX29"><Properties><string name="Name">CrimeService</string><ProtectedString name="Source"><![CDATA[-- CrimeService (ModuleScript) — ServerScriptService.Modules.CrimeService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX30"><Properties><string name="Name">CrimeService</string><ProtectedString name="Source"><![CDATA[-- CrimeService (ModuleScript) — ServerScriptService.Modules.CrimeService
 -- Crime and punishment. Players can:
 --   👊 punch people (F / the punch button). Three or four hits knock them out:
 --      they fall down, see stars, and wake up later in a hospital bed.
@@ -12481,15 +13347,13 @@ local function canSee(brain, target, ignore, range)
 	end
 	local from = head.Position
 	local d = target - from
-	if d.Magnitude <= HEAR then
-		return true
-	end
 	if d.Magnitude > (range or SIGHT) then
 		return false
 	end
-	-- people see what's roughly in front of them (not behind)
+	-- people see what's roughly in front of them (not behind); anyone very
+	-- close notices whichever way they face, but walls still block the view
 	local look = brain.Root.CFrame.LookVector
-	if look:Dot(d.Unit) < -0.35 and brain.State ~= "walk" then
+	if d.Magnitude > HEAR and look:Dot(d.Unit) < -0.35 and brain.State ~= "walk" then
 		return false
 	end
 	local filter = { workspace:FindFirstChild("Citizens") }
@@ -12585,8 +13449,27 @@ end
 CrimeService.Recognized = recognized
 
 -- a crime happened: witnesses react, remember and report it
+-- did the victim get a look at who did it? (a hit from behind, or while they
+-- were asleep or knocked out, and they have no idea who it was)
+local function victimSaw(victim, player)
+	if not victim or victim.C.Temp or victim.State == "ko" or victim.Model:GetAttribute("Action") == "sleep" then
+		return false
+	end
+	local root = rootOf(player)
+	if not root then
+		return false
+	end
+	local d = root.Position - victim.Root.Position
+	local flatD = Vector3.new(d.X, 0, d.Z)
+	if flatD.Magnitude > 0.1 and victim.Root.CFrame.LookVector:Dot(flatD.Unit) < 0.1 then
+		return false -- you were behind them
+	end
+	return canSee(victim, root.Position + Vector3.new(0, 1.5, 0))
+end
+
 local function report(player, position, victim, severity, what, gossip, stars)
 	local seen = witnesses(position, victim)
+	local victimKnows = victimSaw(victim, player)
 	local reported = false
 	-- did anyone recognize who did it?
 	local hidden = hiddenOf(player)
@@ -12596,7 +13479,7 @@ local function report(player, position, victim, severity, what, gossip, stars)
 			table.insert(people, brain)
 		end
 	end
-	if victim and victim.State ~= "ko" and not victim.C.Temp then
+	if victimKnows then
 		table.insert(people, victim)
 	end
 	local known = recognized(people, position, hidden)
@@ -12618,7 +13501,8 @@ local function report(player, position, victim, severity, what, gossip, stars)
 			end
 		end
 	end
-	if victim and victim.State ~= "ko" and not victim.C.Temp then
+	-- the victim calls the police only if they saw who it was
+	if victimKnows then
 		reported = true
 	end
 	S.City.Crime(severity)
@@ -12644,7 +13528,8 @@ local function report(player, position, victim, severity, what, gossip, stars)
 		if w then
 			w.Crimes = (w.Crimes or 0) + 1
 		end
-		local count = #seen .. (if #seen == 1 then " person saw" else " people saw")
+		local nSeen = #seen + (if victimKnows then 1 else 0)
+		local count = nSeen .. (if nSeen == 1 then " person saw" else " people saw")
 		if known then
 			CrimeService.AddStars(player, stars + extra, (why or "") .. count .. " you " .. what .. "!")
 		else
@@ -12659,9 +13544,9 @@ local function report(player, position, victim, severity, what, gossip, stars)
 			w.LookText = looks
 		end
 	else
-		S.City.Toast(player, "🤫", "Nobody saw that...", "But the city feels a little less safe.", Color3.fromRGB(120, 120, 140))
+		S.City.Toast(player, "🤫", "Nobody saw that...", if victim and victim.State ~= "ko" then victim.C.First .. " didn't see who did it. No police this time." else "No witnesses, no police. But the city feels a little less safe.", Color3.fromRGB(120, 120, 140))
 	end
-	return #seen
+	return #seen, reported
 end
 
 --------------------------------------------------------------------------------
@@ -12688,6 +13573,10 @@ local function hurtPlayer(fromPos, victim, damage, knock)
 		knock = (knock or 10) * 0.3
 	end
 	humanoid:TakeDamage(damage)
+	-- everyone sees the hit land (see Poses: the head snaps, they stagger back)
+	character:SetAttribute("HitFrom", fromPos)
+	character:SetAttribute("HitPower", knock or 10)
+	character:SetAttribute("Hit", os.clock())
 	local dir = Vector3.new(root.Position.X - fromPos.X, 0, root.Position.Z - fromPos.Z)
 	if dir.Magnitude > 0.1 then
 		root.AssemblyLinearVelocity = dir.Unit * (knock or 10) + Vector3.new(0, 6, 0)
@@ -12748,6 +13637,7 @@ local function fightTick()
 			brain.Humanoid:MoveTo(root.Position)
 			if d < 4.8 and now >= f.Next then
 				f.Next = now + math.random(9, 13) / 10
+				brain.Model:SetAttribute("SwingSide", (brain.Model:GetAttribute("SwingSide") or 0) + 1)
 				brain.Model:SetAttribute("Swing", now)
 				local strong = brain.C.Personality == "sporty" or brain.C.Job == "Fitness Coach" or brain.C.Job == "Coach"
 				hurtPlayer(brain.Root.Position, player, math.random(7, 11) + (if strong then 4 else 0), 18)
@@ -12818,6 +13708,7 @@ local function attack(player, data)
 		S.City.Toast(victim, "⚠️", player.DisplayName .. " " .. w.Verb .. " you!", "Fight back (F), block (hold X) or run!", Color3.fromRGB(230, 60, 60))
 		local key = player.UserId .. ":" .. victim.UserId
 		if down then
+			character:SetAttribute("Won", os.clock())
 			S.City.News("💀 " .. victim.DisplayName .. " was " .. w.Down .. " by " .. player.DisplayName .. " on " .. streetNear(vroot.Position) .. "!", "Crime")
 			report(player, vroot.Position, nil, w.Severity + 2, w.Down:gsub(" with a %w+$", "") .. " " .. victim.DisplayName, w.Down .. " " .. victim.DisplayName, w.Severity + 1)
 		elseif now - (lastHitOn[key] or 0) > 6 then
@@ -12853,6 +13744,12 @@ local function attack(player, data)
 		stopFight(brain)
 		local name = c.Name
 		S.Citizens.KnockOut(brain, player.DisplayName)
+		task.delay(0.35, function()
+			-- a fist pump once the punch lands (see Poses)
+			if character.Parent then
+				character:SetAttribute("Won", os.clock())
+			end
+		end)
 		local downText = w.Down
 		if not c.Temp then
 			S.City.Remember(c, player, (if id == "Fists" then "knocked me out!" else w.Down .. " me!"), -40 - w.Severity * 15, w.Down .. " " .. c.First)
@@ -12887,9 +13784,12 @@ local function attack(player, data)
 			S.Citizens.Flee(brain, root.Position, 9, HELP_LINES[math.random(1, #HELP_LINES)])
 		end)
 	end
-	if (brain.Hits or 0) == 0 or now - (brain.ReportedAt or 0) > 6 then
-		brain.ReportedAt = now
-		report(player, brain.Root.Position, brain, w.Severity, (if armed then "stab " else "attack ") .. c.First, w.Verb .. " " .. c.First .. " in broad daylight", if armed then 2 else 1)
+	-- (a hit nobody saw doesn't count: the next one might be seen)
+	if now - (brain.ReportedAt or -99) > 6 then
+		local _, reported = report(player, brain.Root.Position, brain, w.Severity, (if armed then "stab " else "attack ") .. c.First, w.Verb .. " " .. c.First .. " in broad daylight", if armed then 2 else 1)
+		if reported then
+			brain.ReportedAt = now
+		end
 	end
 	brain.Hits = (brain.Hits or 0) + 1
 	return { Ok = true, Hit = true, Name = c.First, HP = brain.HP, Weapon = id }
@@ -12989,6 +13889,7 @@ local function addRobPrompt(part, isVault)
 	prompt.ActionText = if isVault then "Crack the vault" else "Rob the register"
 	prompt.ObjectText = if isVault then "💰 Bank vault" else "🧾 Register"
 	prompt.KeyboardKeyCode = Enum.KeyCode.R
+	prompt.GamepadKeyCode = Enum.KeyCode.ButtonY
 	prompt.HoldDuration = if isVault then 6 else 3
 	prompt.MaxActivationDistance = 7
 	prompt.RequiresLineOfSight = false
@@ -13542,6 +14443,7 @@ local function attach(model)
 	prompt.ActionText = "Pickpocket"
 	prompt.ObjectText = "🫳"
 	prompt.KeyboardKeyCode = Enum.KeyCode.G
+	prompt.GamepadKeyCode = Enum.KeyCode.ButtonY
 	prompt.HoldDuration = 1.2
 	prompt.MaxActivationDistance = 6
 	prompt.RequiresLineOfSight = false
@@ -13672,7 +14574,7 @@ function CrimeService.IsJailed(player)
 end
 
 return CrimeService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX30"><Properties><string name="Name">PlayerService</string><ProtectedString name="Source"><![CDATA[-- PlayerService (ModuleScript) — ServerScriptService.Modules.PlayerService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX31"><Properties><string name="Name">PlayerService</string><ProtectedString name="Source"><![CDATA[-- PlayerService (ModuleScript) — ServerScriptService.Modules.PlayerService
 -- Things players do that aren't crimes or conversations:
 --   • elevators and stairs (press E at the doors, pick a floor)
 --   • citizen profile cards (click anyone), the People directory, finding someone
@@ -13926,7 +14828,7 @@ function PlayerService.Start(services)
 end
 
 return PlayerService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX31"><Properties><string name="Name">CombatService</string><ProtectedString name="Source"><![CDATA[-- CombatService (ModuleScript) — ServerScriptService.Modules.CombatService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX32"><Properties><string name="Name">CombatService</string><ProtectedString name="Source"><![CDATA[-- CombatService (ModuleScript) — ServerScriptService.Modules.CombatService
 -- Weapons and fighting for players:
 --   • the weapons shop at the Hardware store (a bat, a hammer, a knife)
 --   • your weapons as tools in your hotbar (saved between visits)
@@ -14207,7 +15109,7 @@ function CombatService.Start(services)
 end
 
 return CombatService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX32"><Properties><string name="Name">DisguiseService</string><ProtectedString name="Source"><![CDATA[-- DisguiseService (ModuleScript) — ServerScriptService.Modules.DisguiseService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX33"><Properties><string name="Name">DisguiseService</string><ProtectedString name="Source"><![CDATA[-- DisguiseService (ModuleScript) — ServerScriptService.Modules.DisguiseService
 -- Hoodies, ski masks and disguise kits:
 --   • buy them at the Clothing store (press E at the counter)
 --   • wear them anytime: C (or 📱 Wardrobe). One top and one face item at a time.
@@ -14650,7 +15552,7 @@ function DisguiseService.Start(services)
 end
 
 return DisguiseService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX33"><Properties><string name="Name">BrawlService</string><ProtectedString name="Source"><![CDATA[-- BrawlService (ModuleScript) — ServerScriptService.Modules.BrawlService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX34"><Properties><string name="Name">BrawlService</string><ProtectedString name="Source"><![CDATA[-- BrawlService (ModuleScript) — ServerScriptService.Modules.BrawlService
 -- Street fights between citizens. Every now and then two strangers on the
 -- street get into it:
 --   1. an argument ("Hey! You bumped into me!" / "Wanna go?!")
@@ -14868,6 +15770,7 @@ local function finish(b, outcome, info)
 		local winner, loser = info.Winner, info.Loser
 		S.City.News("👊 Street fight on " .. street .. ": " .. winner.C.Name .. " knocked out " .. loser.C.Name .. ".", "Crime")
 		S.Citizens.Say(winner, ({ "And STAY down!", "Had enough?!", "Don't mess with me!" })[math.random(1, 3)], "angry", 2.5)
+		winner.Model:SetAttribute("Won", os.clock()) -- a fist pump (see Poses)
 		release(b, loser)
 		task.delay(1.5, function()
 			release(b, winner)
@@ -14875,6 +15778,7 @@ local function finish(b, outcome, info)
 	elseif outcome == "fled" then
 		local winner, loser = info.Winner, info.Loser
 		S.City.News("👊 Street fight on " .. street .. ": " .. loser.C.Name .. " ran away from " .. winner.C.Name .. ".", "Crime")
+		winner.Model:SetAttribute("Won", os.clock()) -- a fist pump (see Poses)
 		release(b, loser)
 		if loser.Model.Parent and loser.State ~= "ko" then
 			S.Citizens.Flee(loser, winner.Root.Position, 10, "Okay, okay! I'm done!")
@@ -15341,7 +16245,7 @@ function BrawlService.Start(services)
 end
 
 return BrawlService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX34"><Properties><string name="Name">StreetCrimeService</string><ProtectedString name="Source"><![CDATA[-- StreetCrimeService (ModuleScript) — ServerScriptService.Modules.StreetCrimeService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX35"><Properties><string name="Name">StreetCrimeService</string><ProtectedString name="Source"><![CDATA[-- StreetCrimeService (ModuleScript) — ServerScriptService.Modules.StreetCrimeService
 -- Other people commit crimes too, and the police arrest them.
 --
 -- Now and then (more at night, and when Safety or the Economy is low) someone
@@ -16290,7 +17194,7 @@ function StreetCrime.Commit(kind)
 end
 
 return StreetCrime
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX35"><Properties><string name="Name">FitnessService</string><ProtectedString name="Source"><![CDATA[-- FitnessService (ModuleScript) — ServerScriptService.Modules.FitnessService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX36"><Properties><string name="Name">FitnessService</string><ProtectedString name="Source"><![CDATA[-- FitnessService (ModuleScript) — ServerScriptService.Modules.FitnessService
 -- Your fitness level (saved): sprinting earns XP (reported by your client, with
 -- a limit), and the gym's treadmills give a proper workout (press E: you run
 -- for a few seconds). Each level: more stamina, faster recovery, faster sprint
@@ -16454,7 +17358,7 @@ function FitnessService.Start(services)
 end
 
 return FitnessService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX36"><Properties><string name="Name">FoodService</string><ProtectedString name="Source"><![CDATA[-- FoodService (ModuleScript) — ServerScriptService.Modules.FoodService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX37"><Properties><string name="Name">FoodService</string><ProtectedString name="Source"><![CDATA[-- FoodService (ModuleScript) — ServerScriptService.Modules.FoodService
 -- Buy food at the city's food places: the Bakery, the Cafe, the Diner, the
 -- Restaurant, the Ice Cream shop and the Market (press E at the counter).
 -- You eat it right away: it heals you and refills stamina (see Shared.Food),
@@ -16572,7 +17476,7 @@ function FoodService.Start(services)
 end
 
 return FoodService
-]]></ProtectedString></Properties></Item></Item></Item><Item class="StarterPlayer" referent="RBX38"><Properties><string name="Name">StarterPlayer</string></Properties><Item class="StarterPlayerScripts" referent="RBX39"><Properties><string name="Name">StarterPlayerScripts</string></Properties><Item class="LocalScript" referent="RBX46"><Properties><string name="Name">CityClient</string><ProtectedString name="Source"><![CDATA[-- CityClient (LocalScript) — StarterPlayer.StarterPlayerScripts.CityClient
+]]></ProtectedString></Properties></Item></Item></Item><Item class="StarterPlayer" referent="RBX39"><Properties><string name="Name">StarterPlayer</string></Properties><Item class="StarterPlayerScripts" referent="RBX40"><Properties><string name="Name">StarterPlayerScripts</string></Properties><Item class="LocalScript" referent="RBX48"><Properties><string name="Name">CityClient</string><ProtectedString name="Source"><![CDATA[-- CityClient (LocalScript) — StarterPlayer.StarterPlayerScripts.CityClient
 -- AI City on your screen. Starts the HUD, the windows, the world effects and
 -- the citizens' body language, and routes everything the server sends.
 --
@@ -16596,6 +17500,7 @@ local Hud = require(script:WaitForChild("Hud"))
 local Panels = require(script:WaitForChild("Panels"))
 local World = require(script:WaitForChild("World"))
 local Moves = require(script:WaitForChild("Moves"))
+local Gamepad = require(script:WaitForChild("Gamepad"))
 local Poses = require(Shared:WaitForChild("Poses"))
 local C = UI.C
 
@@ -16606,6 +17511,9 @@ local ctx = {
 	World = World,
 	Moves = Moves,
 	Poses = Poses,
+	Gamepad = Gamepad,
+	UI = UI,
+	Player = player,
 	SpeechSpot = info:GetAttribute("SpeechSpot"),
 }
 
@@ -16613,6 +17521,7 @@ Hud.Start(ctx)
 World.Start(ctx)
 Panels.Start(ctx)
 Moves.Start(ctx)
+Gamepad.Start(ctx)
 
 -- the citizens' poses, props and faces, every frame (after animations)
 local step = RunService.PreSimulation or RunService.Stepped
@@ -16671,6 +17580,7 @@ handlers.Hit = function(d)
 	if d.Player and root and (root.Position - d.Position).Magnitude < 5 then
 		Hud.Hurt()
 		World.Shake(0.5, 0.2)
+		Gamepad.Rumble(if d.Blocked then 0.25 else 0.6, 0.18)
 	end
 end
 handlers.Goals = function(d)
@@ -16812,7 +17722,7 @@ UserInputService.InputEnded:Connect(function(input)
 		Moves.SetSprint(false)
 	end
 end)
-]]></ProtectedString></Properties><Item class="ModuleScript" referent="RBX40"><Properties><string name="Name">UI</string><ProtectedString name="Source"><![CDATA[-- UI (ModuleScript) — StarterPlayerScripts.CityClient.UI
+]]></ProtectedString></Properties><Item class="ModuleScript" referent="RBX41"><Properties><string name="Name">UI</string><ProtectedString name="Source"><![CDATA[-- UI (ModuleScript) — StarterPlayerScripts.CityClient.UI
 -- AI City's look: colors, fonts, and helpers for building the interface
 -- (rounded panels, buttons that bounce, windows that pop open, bars...).
 
@@ -17208,6 +18118,10 @@ function UI.window(screen, title, icon, size, accent)
 		if win.OnOpen then
 			task.spawn(win.OnOpen)
 		end
+		-- controllers: select the first button (see Gamepad)
+		if UI.OnOpen then
+			UI.OnOpen(frame)
+		end
 	end
 	function win.Close()
 		if not open then
@@ -17234,6 +18148,15 @@ function UI.window(screen, title, icon, size, accent)
 	end
 	table.insert(windows, win)
 	return win
+end
+
+function UI.AnyOpen()
+	for _, w in ipairs(windows) do
+		if w.IsOpen() then
+			return true
+		end
+	end
+	return false
 end
 
 function UI.closeAll()
@@ -17299,7 +18222,7 @@ function UI.commas(n)
 end
 
 return UI
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX41"><Properties><string name="Name">Icons</string><ProtectedString name="Source"><![CDATA[-- Icons (ModuleScript) — StarterPlayerScripts.CityClient.Icons
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX42"><Properties><string name="Name">Icons</string><ProtectedString name="Source"><![CDATA[-- Icons (ModuleScript) — StarterPlayerScripts.CityClient.Icons
 -- AI City's own icon set, drawn from rounded shapes (no image uploads needed,
 -- and they stay sharp at any size).
 --
@@ -18083,7 +19006,7 @@ end
 table.sort(Icons.Names)
 
 return Icons
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX42"><Properties><string name="Name">Hud</string><ProtectedString name="Source"><![CDATA[-- Hud (ModuleScript) — StarterPlayerScripts.CityClient.Hud
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX43"><Properties><string name="Name">Hud</string><ProtectedString name="Source"><![CDATA[-- Hud (ModuleScript) — StarterPlayerScripts.CityClient.Hud
 -- The always-on screen: the clock and calendar, the city's mood and stats,
 -- a rotating minimap, coins, wanted stars, the mayor and the next election,
 -- the action bar, notifications and the news ticker.
@@ -18255,14 +19178,27 @@ local function statRow(parent, icon, name, color, order)
 	return set, value
 end
 
+-- the little key label on each action button (a controller button while one is in use)
+local keycaps = {}
+local function setKeycap(keycap)
+	local key = keycap:GetAttribute("Key")
+	local text = if ctx and ctx.Gamepad then ctx.Gamepad.Key(key) else key
+	keycap.Text = text
+	local w = math.max(16, #text * 6 + 4)
+	keycap.Size = UDim2.fromOffset(w, 16)
+	keycap.Position = UDim2.new(1, -w - 2, 0, 2)
+end
+
 local function actionButton(parent, emoji, label, key, order, onClick, color)
 	local button = UI.button(parent, "", { Size = UDim2.fromOffset(66, 62), Color = color or C.Panel2, LayoutOrder = order }, onClick)
 	UI.Icons.Glyph(button, emoji, 30, { Name = "ActionIcon", AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 6), Hole = color or C.Panel2 })
 	UI.text(button, label, 11, UI.Bold, C.Sub, { Size = UDim2.new(1, 0, 0, 14), Position = UDim2.fromOffset(0, 36), TextXAlignment = Enum.TextXAlignment.Center })
-	if key and not UserInputService.TouchEnabled then
-		local w = math.max(16, #key * 6 + 4)
-		local keycap = UI.new("TextLabel", { BackgroundColor3 = C.Bg, Text = key, TextColor3 = C.Gold, Font = UI.Black, TextSize = 10, Size = UDim2.fromOffset(w, 16), Position = UDim2.new(1, -w - 2, 0, 2), Parent = button })
+	if key and (not UserInputService.TouchEnabled or UserInputService.GamepadEnabled) then
+		local keycap = UI.new("TextLabel", { Name = "Keycap", BackgroundColor3 = C.Bg, Text = key, TextColor3 = C.Gold, Font = UI.Black, TextSize = 10, Size = UDim2.fromOffset(16, 16), Parent = button })
+		keycap:SetAttribute("Key", key)
 		UI.corner(keycap, 5)
+		table.insert(keycaps, keycap)
+		setKeycap(keycap)
 	end
 	return button
 end
@@ -18889,7 +19825,8 @@ local function updateTarget(root)
 	local kid = stage == "Baby" or stage == "Toddler" or stage == "Child" or stage == "Teen"
 	local ko = best:GetAttribute("KnockedOut")
 	local touch = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
-	refs.TargetKeys.Text = if ko then "💫 Knocked out" elseif touch then (if kid then "Tap Talk to chat" else "Tap Talk · Attack to fight") elseif kid then "[E] Talk" else "[E] Talk   [G] Pickpocket   [F] Attack"
+	local pad = ctx.Gamepad and ctx.Gamepad.Active()
+	refs.TargetKeys.Text = if ko then "💫 Knocked out" elseif pad then (if kid then "Ⓧ Talk" else "Ⓧ Talk   Ⓨ Pickpocket   R2 Attack") elseif touch then (if kid then "Tap Talk to chat" else "Tap Talk · Attack to fight") elseif kid then "[E] Talk" else "[E] Talk   [G] Pickpocket   [F] Attack"
 	card.Position = UDim2.new(0.5, 0, 0, if refs.Jail.Visible then 90 else 16)
 end
 
@@ -19017,6 +19954,13 @@ end
 
 function Hud.Start(context)
 	ctx = context
+	if ctx.Gamepad then
+		ctx.Gamepad.OnChanged(function()
+			for _, keycap in ipairs(keycaps) do
+				setKeycap(keycap)
+			end
+		end)
+	end
 	cityState = ReplicatedStorage:WaitForChild("CityState")
 	build()
 	buildGoals(screen:FindFirstChild("LeftColumn"))
@@ -19065,7 +20009,7 @@ function Hud.Start(context)
 end
 
 return Hud
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX43"><Properties><string name="Name">Panels</string><ProtectedString name="Source"><![CDATA[-- Panels (ModuleScript) — StarterPlayerScripts.CityClient.Panels
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX44"><Properties><string name="Name">Panels</string><ProtectedString name="Source"><![CDATA[-- Panels (ModuleScript) — StarterPlayerScripts.CityClient.Panels
 -- The windows you open: the city map, the People directory and profile
 -- cards, voting, speeches, the mayor's desk, conversations with citizens,
 -- elevators, help, settings, the welcome screen, election results and the
@@ -19816,6 +20760,10 @@ local function buildDialogue()
 			UI.pad(b, 0, 0, 6, 0, 8)
 			b.TextTruncate = Enum.TextTruncate.AtEnd
 		end
+		-- controllers: pick an answer with the D-pad and A
+		if #(list or {}) > 0 and ctx.Gamepad then
+			ctx.Gamepad.Focus(options)
+		end
 	end
 	local function setMeta(data)
 		meta.Text = string.format("%s %s\nMood %s %d\n%s", data.PersonalityEmoji or PERSONALITY_EMOJI[data.Personality] or "🙂", data.Personality or "", UI.moodEmoji(data.Mood or 60), data.Mood or 60, UI.hearts(data.Opinion or 0))
@@ -19946,6 +20894,7 @@ local function buildHelp()
 		{ "🍔 Food", "Press <b>E</b> at the counter of the Bakery, Cafe, Diner, Restaurant, Ice Cream shop or Market to order. Food heals you ❤️ and refills stamina ⚡. Coffee and energy drinks make stamina refill faster for a while." },
 		{ "🥷 Disguises", "Buy a 🧥 <b>hoodie</b>, a 🥷 <b>ski mask</b> or a 🥸 <b>disguise kit</b> at the 👕 Clothing store, and wear them with <b>C</b>. Witnesses may not recognize you (fewer stars, no notoriety, nobody remembers it was you), the police have to get closer to spot you, and it all works much better <b>at night</b>. After a crime, change or take off your outfit where nobody can see: the police keep looking for the old one. But a ski mask in daylight makes people nervous..." },
 		{ "⌨️ Keys", "Tab phone · E talk / use · M map · P people · V vote · B speech · N mayor · F attack · X block · 1-4 hotbar · G pickpocket · R rob · Q hide · Shift sprint · C wardrobe · H help · 1-9 answer in conversations · Esc close windows" },
+		{ "🎮 Controller", "R2 attack · hold L2 block · click L3 sprint · R1 / L1 switch weapons · D-pad ▲ phone · ▼ map · ◀ help · ▶ wardrobe · X talk / use · Y pickpocket / rob / hide · B close / back / get out · A jump. In menus, move with the D-pad or stick and press A." },
 	}
 	for _, s in ipairs(sections) do
 		local card = UI.panel(list, { Size = UDim2.new(1, -10, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundColor3 = C.Panel2, Radius = 12 })
@@ -20122,6 +21071,7 @@ local function buildPhone()
 	local open = false
 	local P = {}
 	Panels.Phone = P
+	P.Frame = phone
 	local function showHome()
 		home.Visible, page.Visible = true, false
 	end
@@ -20466,7 +21416,7 @@ function Panels.Start(context)
 end
 
 return Panels
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX44"><Properties><string name="Name">World</string><ProtectedString name="Source"><![CDATA[-- World (ModuleScript) — StarterPlayerScripts.CityClient.World
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX45"><Properties><string name="Name">World</string><ProtectedString name="Source"><![CDATA[-- World (ModuleScript) — StarterPlayerScripts.CityClient.World
 -- Everything drawn in the 3D world: nameplates over citizens and players,
 -- speech bubbles, the interaction prompts (talk, elevators, crimes), the
 -- waypoint beam, hit effects, alarms, confetti, the sky and the traffic lights.
@@ -21045,6 +21995,9 @@ function World.Attack()
 		end)
 		if ok and result and result.Hit then
 			World.Shake(if result.KO then 0.9 elseif weapon == "Fists" then 0.35 else 0.55, 0.25)
+			if ctx.Gamepad then
+				ctx.Gamepad.Rumble(if result.KO then 0.9 else 0.4, if result.KO then 0.3 else 0.12)
+			end
 		end
 	end)
 end
@@ -21172,7 +22125,7 @@ function World.Start(context)
 end
 
 return World
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX45"><Properties><string name="Name">Moves</string><ProtectedString name="Source"><![CDATA[-- Moves (ModuleScript) — StarterPlayerScripts.CityClient.Moves
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX46"><Properties><string name="Name">Moves</string><ProtectedString name="Source"><![CDATA[-- Moves (ModuleScript) — StarterPlayerScripts.CityClient.Moves
 -- Sprinting and stamina. Hold Shift (or the Sprint button) to run: it uses
 -- stamina, which refills when you stop. Your fitness level (from the server,
 -- see Shared.Fitness) sets how much stamina you have, how fast it refills and
@@ -21290,4 +22243,271 @@ function Moves.Start(context)
 end
 
 return Moves
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX47"><Properties><string name="Name">Gamepad</string><ProtectedString name="Source"><![CDATA[-- Gamepad (ModuleScript) — StarterPlayerScripts.CityClient.Gamepad
+-- Console / controller support (Xbox, PlayStation, any gamepad):
+--   R2 attack · hold L2 block · L3 sprint (click to toggle) · R1 / L1 next /
+--   previous weapon · D-pad ▲ phone · ▼ map · ◀ help · ▶ wardrobe ·
+--   B close / back / get out of a hiding spot · X / Y use prompts (talk, buy,
+--   pickpocket, hide...) · A jump
+-- Menus: when a window, the phone or a conversation opens, the first button is
+-- selected so you can move with the D-pad / left stick and press A.
+-- Hints on screen (the action bar keycaps, the target card) switch to
+-- controller buttons while you're using one, and the controller rumbles when
+-- you land or take a hit.
+
+local UserInputService = game:GetService("UserInputService")
+local GuiService = game:GetService("GuiService")
+local HapticService = game:GetService("HapticService")
+
+local Gamepad = {}
+local ctx
+
+-- keyboard key -> controller button label (for on-screen hints)
+Gamepad.LABELS = {
+	F = "R2", X = "L2", Shift = "L3", Tab = "▲", M = "▼", H = "◀", C = "▶",
+	E = "X", G = "Y", R = "Y", Q = "Y", Space = "B", Esc = "B",
+}
+
+local active = false -- the last input came from a controller
+local sprintToggle = false
+local slot = 1
+
+local PAD_TYPES = {
+	[Enum.UserInputType.Gamepad1] = true, [Enum.UserInputType.Gamepad2] = true,
+	[Enum.UserInputType.Gamepad3] = true, [Enum.UserInputType.Gamepad4] = true,
+}
+
+function Gamepad.Active()
+	return active
+end
+
+-- the label for a keyboard key (the controller button while one is in use)
+function Gamepad.Key(key)
+	if active then
+		return Gamepad.LABELS[key] or key
+	end
+	return key
+end
+
+local listeners = {}
+function Gamepad.OnChanged(fn)
+	table.insert(listeners, fn)
+end
+
+local function setActive(on)
+	if on == active then
+		return
+	end
+	active = on
+	if not on and sprintToggle then
+		sprintToggle = false
+		ctx.Moves.SetSprint(false)
+	end
+	for _, fn in ipairs(listeners) do
+		task.spawn(fn, on)
+	end
+end
+
+-- a short buzz (power 0..1)
+function Gamepad.Rumble(power, seconds)
+	if not active then
+		return
+	end
+	local pad = Enum.UserInputType.Gamepad1
+	local ok = pcall(function()
+		if HapticService:IsVibrationSupported(pad) and HapticService:IsMotorSupported(pad, Enum.VibrationMotor.Large) then
+			HapticService:SetMotor(pad, Enum.VibrationMotor.Large, math.clamp(power, 0, 1))
+			HapticService:SetMotor(pad, Enum.VibrationMotor.Small, math.clamp(power * 0.6, 0, 1))
+		end
+	end)
+	if ok then
+		task.delay(seconds or 0.15, function()
+			pcall(function()
+				HapticService:SetMotor(pad, Enum.VibrationMotor.Large, 0)
+				HapticService:SetMotor(pad, Enum.VibrationMotor.Small, 0)
+			end)
+		end)
+	end
+end
+
+-- select the first button in a menu so the D-pad / stick can move around it
+function Gamepad.Focus(container)
+	if not active or not container then
+		return
+	end
+	task.delay(0.12, function()
+		if not container.Parent or not container.Visible then
+			return
+		end
+		local best, bestY, bestX
+		for _, d in ipairs(container:GetDescendants()) do
+			if d:IsA("GuiButton") and d.Visible and d.Selectable ~= false then
+				-- skip anything hidden by a hidden parent
+				local shown, p = true, d.Parent
+				while p and p ~= container do
+					if p:IsA("GuiObject") and not p.Visible then
+						shown = false
+						break
+					end
+					p = p.Parent
+				end
+				if shown then
+					local y, x = d.AbsolutePosition.Y, d.AbsolutePosition.X
+					-- the header's close button is last, not first
+					if d.AbsoluteSize.X > 0 and d.AbsoluteSize.X <= 40 and d.AbsoluteSize.Y <= 40 then
+						y += 10000
+					end
+					if not best or y < bestY - 2 or (math.abs(y - bestY) <= 2 and x < bestX) then
+						best, bestY, bestX = d, y, x
+					end
+				end
+			end
+		end
+		if best then
+			GuiService.SelectedObject = best
+		end
+	end)
+end
+
+function Gamepad.Unfocus()
+	if GuiService.SelectedObject then
+		GuiService.SelectedObject = nil
+	end
+end
+
+-- step through the hotbar: 1 = fists, then each weapon you own
+local function cycleWeapon(dir)
+	local Hud = ctx.Hud
+	for _ = 1, 5 do
+		slot += dir
+		if slot < 1 then
+			slot = 5
+		elseif slot > 5 then
+			slot = 1
+		end
+		if slot == 1 or Hud.Equip(slot) then
+			if slot == 1 then
+				Hud.Equip(1)
+			end
+			return
+		end
+	end
+end
+
+local function anyMenuOpen()
+	return ctx.Panels.InDialogue() or ctx.Panels.Phone.IsOpen() or ctx.UI.AnyOpen()
+end
+
+local function back()
+	local Panels = ctx.Panels
+	if ctx.Player:GetAttribute("Hiding") then
+		task.spawn(function()
+			ctx.Remotes.Request:InvokeServer({ Action = "Unhide" })
+		end)
+	elseif Panels.InDialogue() then
+		Panels.EndDialogue(true)
+	elseif Panels.Phone.IsOpen() then
+		Panels.Phone.Close()
+	else
+		ctx.UI.closeAll()
+	end
+	Gamepad.Unfocus()
+end
+
+-- handle a controller button (returns true if it was used)
+function Gamepad.Button(key, down)
+	local Moves, World, Panels = ctx.Moves, ctx.World, ctx.Panels
+	if key == Enum.KeyCode.ButtonL2 then
+		World.SetBlock(down)
+		return true
+	elseif key == Enum.KeyCode.ButtonL3 then
+		if down then
+			sprintToggle = not sprintToggle
+			Moves.SetSprint(sprintToggle)
+		end
+		return true
+	end
+	if not down then
+		return false
+	end
+	if key == Enum.KeyCode.ButtonB then
+		if anyMenuOpen() or ctx.Player:GetAttribute("Hiding") then
+			back()
+			return true
+		end
+		return false
+	end
+	-- in a menu the D-pad moves the selection (Roblox handles that)
+	if GuiService.SelectedObject and anyMenuOpen() then
+		return false
+	end
+	if key == Enum.KeyCode.ButtonR2 then
+		World.Attack()
+	elseif key == Enum.KeyCode.ButtonR1 then
+		cycleWeapon(1)
+	elseif key == Enum.KeyCode.ButtonL1 then
+		cycleWeapon(-1)
+	elseif key == Enum.KeyCode.DPadUp then
+		Panels.Phone.Toggle()
+		if Panels.Phone.IsOpen() then
+			Gamepad.Focus(Panels.Phone.Frame)
+		end
+	elseif key == Enum.KeyCode.DPadDown then
+		Panels.Map.Toggle()
+	elseif key == Enum.KeyCode.DPadLeft then
+		Panels.Help.Toggle()
+	elseif key == Enum.KeyCode.DPadRight then
+		task.spawn(Panels.ToggleWardrobe)
+	else
+		return false
+	end
+	return true
+end
+
+function Gamepad.Start(context)
+	ctx = context
+	local ok, last = pcall(function()
+		return UserInputService:GetLastInputType()
+	end)
+	setActive(ok and PAD_TYPES[last] == true)
+	UserInputService.LastInputTypeChanged:Connect(function(t)
+		if PAD_TYPES[t] then
+			setActive(true)
+		elseif t == Enum.UserInputType.Keyboard or t == Enum.UserInputType.MouseButton1 or t == Enum.UserInputType.Touch then
+			setActive(false)
+		end
+	end)
+	UserInputService.InputBegan:Connect(function(input, processed)
+		if not PAD_TYPES[input.UserInputType] then
+			return
+		end
+		-- B and L2/L3 work even when a menu has the selection
+		if processed and input.KeyCode ~= Enum.KeyCode.ButtonB and input.KeyCode ~= Enum.KeyCode.ButtonL2 and input.KeyCode ~= Enum.KeyCode.ButtonL3 then
+			return
+		end
+		Gamepad.Button(input.KeyCode, true)
+	end)
+	UserInputService.InputEnded:Connect(function(input)
+		if PAD_TYPES[input.UserInputType] then
+			Gamepad.Button(input.KeyCode, false)
+		end
+	end)
+	-- stop the sprint toggle when you stop moving
+	game:GetService("RunService").Heartbeat:Connect(function()
+		if sprintToggle then
+			local character = ctx.Player.Character
+			local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+			if humanoid and humanoid.MoveDirection.Magnitude < 0.1 then
+				sprintToggle = false
+				ctx.Moves.SetSprint(false)
+			end
+		end
+	end)
+	-- windows get a selected button when they open
+	ctx.UI.OnOpen = function(frame)
+		Gamepad.Focus(frame)
+	end
+end
+
+return Gamepad
 ]]></ProtectedString></Properties></Item></Item></Item></Item></roblox>

@@ -20,6 +20,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
 local Actions = require(Shared:WaitForChild("Actions"))
 local CitizenLook = require(script.Parent:WaitForChild("CitizenLook"))
+local Errands = require(script.Parent:WaitForChild("Errands"))
 
 local CitizenService = {}
 local S -- services (see Main)
@@ -688,6 +689,9 @@ end
 -- Sends a brain on its way to a target
 local function go(brain, t)
 	brain.Token = {}
+	if not t.IsTask then
+		brain.Tasks = nil
+	end
 	brain.Target = t
 	brain.Jog = nil
 	brain.Looping = nil
@@ -716,6 +720,9 @@ end
 -- teleport straight to a target (spawning, or nobody around to see)
 local function jump(brain, t)
 	brain.Token = {}
+	if not t.IsTask then
+		brain.Tasks = nil
+	end
 	brain.Target = t
 	brain.Jog = nil
 	brain.Looping = nil
@@ -950,7 +957,7 @@ arrive = function(brain)
 		action = t.Action or "wait"
 		brain.Root.Anchored = true
 		local p = t.Pos or brain.Root.Position
-		local look = if t.Place and t.Place.Door then t.Place.Door else p + Vector3.new(0, 0, -1)
+		local look = if t.Look then t.Look elseif t.Place and t.Place.Door then t.Place.Door else p + Vector3.new(0, 0, -1)
 		if flatDist(look, p) < 0.5 then
 			look = p + Vector3.new(0, 0, -1)
 		end
@@ -963,6 +970,21 @@ arrive = function(brain)
 	playTrack(brain, if info.Seated or info.Lying or action == "run" or action == "soccer" then nil else "idle")
 	setAction(brain, action)
 	brain.ActUntil = os.clock() + math.random(35, 90)
+	-- errands and rounds (see Errands): how long this step takes, what's in hand
+	if t.IsTask then
+		brain.TaskUntil = os.clock() + (t.Duration or 10)
+		if t.Say then
+			CitizenService.Say(brain, t.Say, "happy", 2.2)
+		end
+	end
+	if t.Carry ~= nil then
+		brain.Model:SetAttribute("Carry", t.Carry or nil)
+		brain.CommuteProp = nil
+	elseif brain.CommuteProp or (t.Home and not t.IsTask) then
+		-- put the briefcase / backpack / shopping bag down on arrival
+		brain.Model:SetAttribute("Carry", nil)
+		brain.CommuteProp = nil
+	end
 	refreshExpression(brain)
 end
 
@@ -1154,6 +1176,9 @@ function CitizenService.Hurt(brain, from, line, knock)
 		return
 	end
 	brain.Model:SetAttribute("Expression", "hurt")
+	-- which way the hit came from and how hard (for the hit reaction, see Poses)
+	brain.Model:SetAttribute("HitFrom", from)
+	brain.Model:SetAttribute("HitPower", knock or 22)
 	brain.Model:SetAttribute("Hit", os.clock())
 	if line then
 		CitizenService.Say(brain, line, "hurt", 1.8)
@@ -1454,6 +1479,25 @@ local function think(brain)
 	end
 	local key = planKey(plan)
 	setActivity(brain, if brain.Soccer then brain.Model:GetAttribute("Activity") else plan.Activity)
+	if key == brain.PlanKey and st ~= "idle" and brain.Tasks then
+		-- the next step of an errand or a round (see Errands)
+		if st == "act" and os.clock() > (brain.TaskUntil or 0) then
+			brain.TaskIndex += 1
+			local nt = brain.Tasks[brain.TaskIndex]
+			if not nt and Errands.Loops(brain, plan) then
+				-- rounds start over for as long as the shift lasts
+				brain.Tasks = Errands.Tasks(brain, plan, targetFor(brain, plan), Random.new())
+				brain.TaskIndex = 1
+				nt = brain.Tasks and brain.Tasks[1]
+			end
+			if nt then
+				go(brain, nt)
+			else
+				brain.Tasks = nil
+			end
+		end
+		return
+	end
 	if key == brain.PlanKey and st ~= "idle" then
 		-- same plan: now and then move to another spot at the same place (browsing
 		-- different aisles, a new machine at the gym...)
@@ -1472,7 +1516,22 @@ local function think(brain)
 	brain.Plan = plan
 	brain.PlanKey = key
 	local t = targetFor(brain, plan)
+	-- errands and rounds: a chain of steps with a purpose (see Errands)
+	local tasks = Errands.Tasks(brain, plan, t, Random.new())
+	if tasks then
+		t = tasks[1]
+	end
+	-- a briefcase on the way to the office, a backpack to school...
+	if t.Carry == nil and not brain.Model:GetAttribute("Carry") then
+		local carry = Errands.CommuteProp(brain, plan, t)
+		if carry then
+			brain.Model:SetAttribute("Carry", carry)
+			brain.CommuteProp = true
+		end
+	end
 	-- nobody around to see: skip the walk (babies never walk across town)
+	brain.Tasks = tasks
+	brain.TaskIndex = 1
 	local dest = t.Spot and t.Spot.CFrame.Position or t.Pos or (t.Door or brain.Root.Position)
 	local unseen = nearestPlayerDistance(brain.Root.Position) > WATCH_RADIUS * 2.2 and nearestPlayerDistance(dest) > WATCH_RADIUS * 2.2
 	if ageOf(brain.C) < 3 or (unseen and math.random() < 0.5) then
@@ -1823,6 +1882,7 @@ function CitizenService.Start(services)
 	S = services
 	CitizenService.Event = S.City.Event -- same events as CityService.Event (kept for older scripts)
 	map, pop = S.Map, S.Life
+	Errands.Init({ Map = map, PickSpot = pickSpot, StandNear = standNear, Age = ageOf })
 	setupPhysics()
 	folder = workspace:FindFirstChild("Citizens") or Instance.new("Folder")
 	folder.Name = "Citizens"

@@ -394,6 +394,10 @@ function UI.window(screen, title, icon, size, accent)
 		if win.OnOpen then
 			task.spawn(win.OnOpen)
 		end
+		-- controllers: select the first button (see Gamepad)
+		if UI.OnOpen then
+			UI.OnOpen(frame)
+		end
 	end
 	function win.Close()
 		if not open then
@@ -420,6 +424,15 @@ function UI.window(screen, title, icon, size, accent)
 	end
 	table.insert(windows, win)
 	return win
+end
+
+function UI.AnyOpen()
+	for _, w in ipairs(windows) do
+		if w.IsOpen() then
+			return true
+		end
+	end
+	return false
 end
 
 function UI.closeAll()

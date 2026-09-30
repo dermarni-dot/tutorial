@@ -34,6 +34,14 @@ Actions.List = {
 	sort = { Pose = "shelve", Props = { "Letter" }, Label = "✉️ Sorting mail" },
 	babysit = { Pose = "counter", Label = "🧸 Looking after little ones" },
 	guide = { Pose = "present", Label = "🖼️ Giving a tour" },
+	-- errands and rounds (see Errands)
+	pay = { Pose = "pay", Props = { "Card" }, Label = "💳 Paying" },
+	deliver = { Pose = "deliver", Props = { "MailBag", "Letter" }, Label = "📬 Delivering the mail" },
+	water = { Pose = "water", Props = { "WateringCan" }, Label = "🚿 Watering the plants" },
+	rake = { Pose = "rake", Props = { "Rake" }, Label = "🍂 Raking leaves" },
+	mop = { Pose = "mop", Props = { "Mop" }, Label = "🧽 Mopping the floor" },
+	patrol = { Pose = "patrol", Props = { "Radio" }, Label = "👮 On patrol" },
+	unpack = { Pose = "unpack", Props = { "Bag" }, Label = "🛍️ Putting the shopping away" },
 	-- gym
 	run = { Pose = "run", Label = "🏃 Running on the treadmill" },
 	lift = { Pose = "curl", Props = { "Dumbbells" }, Label = "💪 Lifting weights" },

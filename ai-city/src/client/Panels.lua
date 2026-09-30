@@ -749,6 +749,10 @@ local function buildDialogue()
 			UI.pad(b, 0, 0, 6, 0, 8)
 			b.TextTruncate = Enum.TextTruncate.AtEnd
 		end
+		-- controllers: pick an answer with the D-pad and A
+		if #(list or {}) > 0 and ctx.Gamepad then
+			ctx.Gamepad.Focus(options)
+		end
 	end
 	local function setMeta(data)
 		meta.Text = string.format("%s %s\nMood %s %d\n%s", data.PersonalityEmoji or PERSONALITY_EMOJI[data.Personality] or "🙂", data.Personality or "", UI.moodEmoji(data.Mood or 60), data.Mood or 60, UI.hearts(data.Opinion or 0))
@@ -879,6 +883,7 @@ local function buildHelp()
 		{ "🍔 Food", "Press <b>E</b> at the counter of the Bakery, Cafe, Diner, Restaurant, Ice Cream shop or Market to order. Food heals you ❤️ and refills stamina ⚡. Coffee and energy drinks make stamina refill faster for a while." },
 		{ "🥷 Disguises", "Buy a 🧥 <b>hoodie</b>, a 🥷 <b>ski mask</b> or a 🥸 <b>disguise kit</b> at the 👕 Clothing store, and wear them with <b>C</b>. Witnesses may not recognize you (fewer stars, no notoriety, nobody remembers it was you), the police have to get closer to spot you, and it all works much better <b>at night</b>. After a crime, change or take off your outfit where nobody can see: the police keep looking for the old one. But a ski mask in daylight makes people nervous..." },
 		{ "⌨️ Keys", "Tab phone · E talk / use · M map · P people · V vote · B speech · N mayor · F attack · X block · 1-4 hotbar · G pickpocket · R rob · Q hide · Shift sprint · C wardrobe · H help · 1-9 answer in conversations · Esc close windows" },
+		{ "🎮 Controller", "R2 attack · hold L2 block · click L3 sprint · R1 / L1 switch weapons · D-pad ▲ phone · ▼ map · ◀ help · ▶ wardrobe · X talk / use · Y pickpocket / rob / hide · B close / back / get out · A jump. In menus, move with the D-pad or stick and press A." },
 	}
 	for _, s in ipairs(sections) do
 		local card = UI.panel(list, { Size = UDim2.new(1, -10, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundColor3 = C.Panel2, Radius = 12 })
@@ -1055,6 +1060,7 @@ local function buildPhone()
 	local open = false
 	local P = {}
 	Panels.Phone = P
+	P.Frame = phone
 	local function showHome()
 		home.Visible, page.Visible = true, false
 	end

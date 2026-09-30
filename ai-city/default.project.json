@@ -66,6 +66,9 @@
         "Decor": {
           "$path": "src/Decor.lua"
         },
+        "Errands": {
+          "$path": "src/Errands.lua"
+        },
         "Streets": {
           "$path": "src/Streets.lua"
         },

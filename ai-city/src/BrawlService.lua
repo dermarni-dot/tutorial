@@ -216,6 +216,7 @@ local function finish(b, outcome, info)
 		local winner, loser = info.Winner, info.Loser
 		S.City.News("👊 Street fight on " .. street .. ": " .. winner.C.Name .. " knocked out " .. loser.C.Name .. ".", "Crime")
 		S.Citizens.Say(winner, ({ "And STAY down!", "Had enough?!", "Don't mess with me!" })[math.random(1, 3)], "angry", 2.5)
+		winner.Model:SetAttribute("Won", os.clock()) -- a fist pump (see Poses)
 		release(b, loser)
 		task.delay(1.5, function()
 			release(b, winner)
@@ -223,6 +224,7 @@ local function finish(b, outcome, info)
 	elseif outcome == "fled" then
 		local winner, loser = info.Winner, info.Loser
 		S.City.News("👊 Street fight on " .. street .. ": " .. loser.C.Name .. " ran away from " .. winner.C.Name .. ".", "Crime")
+		winner.Model:SetAttribute("Won", os.clock()) -- a fist pump (see Poses)
 		release(b, loser)
 		if loser.Model.Parent and loser.State ~= "ko" then
 			S.Citizens.Flee(loser, winner.Root.Position, 10, "Okay, okay! I'm done!")
