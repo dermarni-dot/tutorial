@@ -255,6 +255,9 @@ function CombatService.Start(services)
 	S.City.Handle("Block", function(player, data)
 		blocking[player] = data.On == true or nil
 		player:SetAttribute("Blocking", blocking[player])
+		if player.Character then
+			player.Character:SetAttribute("Blocking", blocking[player])
+		end
 		return { Ok = true }
 	end)
 	addShop()

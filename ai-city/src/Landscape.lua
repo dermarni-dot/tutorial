@@ -99,8 +99,8 @@ function Landscape.build(parent, rng)
 	deco(folder, "Boat", Vector3.new(4, 1.4, 9), boat, rgb(170, 90, 60), Enum.Material.WoodPlanks)
 	deco(folder, "BoatSeat", Vector3.new(4, 0.3, 1.2), boat * CFrame.new(0, 0.6, 0), rgb(200, 150, 100), Enum.Material.Wood)
 	local sign = deco(folder, "LakeSign", Vector3.new(10, 3.4, 0.4), pierCf * CFrame.new(-8, 4, 6), rgb(40, 90, 70), Enum.Material.Wood)
-	MapKit.signText(sign, Enum.NormalId.Back, "🎣 MIRROR LAKE", MapKit.WHITE)
-	MapKit.signText(sign, Enum.NormalId.Front, "🎣 MIRROR LAKE", MapKit.WHITE)
+	MapKit.signText(sign, Enum.NormalId.Back, "MIRROR LAKE", MapKit.WHITE)
+	MapKit.signText(sign, Enum.NormalId.Front, "MIRROR LAKE", MapKit.WHITE)
 	for n = 1, 30 do
 		local a = rng:NextNumber(0, math.pi * 2)
 		local p = L + Vector3.new(math.cos(a), 0, math.sin(a)) * (Landscape.LAKE_RADIUS + rng:NextNumber(-2, 6))
@@ -124,8 +124,8 @@ function Landscape.build(parent, rng)
 	-- a welcome sign where 5th Avenue leaves the city to the south
 	local signCf = CFrame.lookAt(Vector3.new(50, 10, EXTENT + 24), Vector3.new(50, 10, 0))
 	local welcome = part(folder, "WelcomeSign", Vector3.new(34, 9, 1.2), signCf, rgb(36, 84, 66), Enum.Material.Wood)
-	MapKit.signText(welcome, Enum.NormalId.Front, "🏙️ WELCOME TO AI CITY", MapKit.WHITE)
-	MapKit.signText(welcome, Enum.NormalId.Back, "🏙️ AI CITY · COME BACK SOON", MapKit.WHITE)
+	MapKit.signText(welcome, Enum.NormalId.Front, "WELCOME TO AI CITY", MapKit.WHITE)
+	MapKit.signText(welcome, Enum.NormalId.Back, "AI CITY - COME BACK SOON", MapKit.WHITE)
 	for _, sx in ipairs({ -1, 1 }) do
 		deco(folder, "SignPost", Vector3.new(1.2, 10, 1.2), signCf * CFrame.new(sx * 15, -8, 0.6), MapKit.DARK_WOOD, Enum.Material.Wood)
 		for k = 0, 2 do

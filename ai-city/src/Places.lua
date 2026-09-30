@@ -170,7 +170,7 @@ function B.Plaza(ctx, parent, i, j, rng)
 	part(model, "Stage", Vector3.new(30, 2, 12), stageCf * CFrame.new(0, 1, 0), WOOD, Enum.Material.WoodPlanks)
 	part(model, "StageStep", Vector3.new(8, 1, 3), stageCf * CFrame.new(0, 0.5, -7.5), WOOD:Lerp(BLACK, 0.1), Enum.Material.WoodPlanks)
 	local backdrop = part(model, "Backdrop", Vector3.new(30, 12, 1), stageCf * CFrame.new(0, 8, 5.5), rgb(150, 40, 60), Enum.Material.Fabric)
-	MapKit.signText(backdrop, Enum.NormalId.Front, "🗳️ SPEAK TO THE CITY", GOLD)
+	MapKit.signText(backdrop, Enum.NormalId.Front, "SPEAK TO THE CITY", GOLD)
 	for _, sx in ipairs({ -1, 1 }) do
 		column(model, "StagePillar", 12, 1.6, (stageCf * CFrame.new(sx * 15, 8, 5.2)).Position, GOLD, Enum.Material.Metal)
 		flag(model, (stageCf * CFrame.new(sx * 12, 2, 4)).Position, rgb(60, 110, 220), 14)
@@ -180,20 +180,20 @@ function B.Plaza(ctx, parent, i, j, rng)
 	local podium = part(model, "Podium", Vector3.new(3.4, 4, 2.4), stageCf * CFrame.new(0, 4, -3), rgb(90, 60, 40), Enum.Material.Wood)
 	deco(model, "PodiumTop", Vector3.new(4, 0.4, 3), stageCf * CFrame.new(0, 6.1, -3) * CFrame.Angles(math.rad(-15), 0, 0), rgb(70, 45, 30), Enum.Material.Wood)
 	deco(model, "Microphone", Vector3.new(0.3, 1.4, 0.3), stageCf * CFrame.new(0, 7, -3.2), rgb(40, 40, 45), Enum.Material.Metal)
-	MapKit.signText(podium, Enum.NormalId.Front, "🎤", WHITE)
+	MapKit.signText(podium, Enum.NormalId.Front, "SPEAK", WHITE)
 	ctx.map.Podium = podium
 	ctx.map.SpeechSpot = (stageCf * CFrame.new(0, 2, -1)).Position
 	ctx.map.StageCFrame = stageCf * CFrame.new(0, 2, -1)
 	-- ballot box and the city news board
 	local ballot = part(model, "BallotBox", Vector3.new(4, 4, 4), facing(c + Vector3.new(22, 2, -16), c + Vector3.new(0, 2, 0)), rgb(60, 90, 200))
 	deco(model, "BallotSlot", Vector3.new(2.4, 0.2, 0.5), ballot.CFrame * CFrame.new(0, 2.05, 0), BLACK)
-	MapKit.signText(ballot, Enum.NormalId.Front, "🗳️ VOTE", WHITE)
+	MapKit.signText(ballot, Enum.NormalId.Front, "VOTE", WHITE)
 	ctx.map.BallotBox = ballot
 	local board = part(model, "NewsBoard", Vector3.new(14, 8, 0.8), facing(c + Vector3.new(-22, 6, -16), c + Vector3.new(0, 6, 0)), rgb(40, 36, 50))
 	for _, sx in ipairs({ -1, 1 }) do
 		deco(model, "BoardPost", Vector3.new(0.6, 10, 0.6), board.CFrame * CFrame.new(sx * 6.5, -1, 0.6), WOOD, Enum.Material.Wood)
 	end
-	ctx.map.NewsBoard = MapKit.signText(board, Enum.NormalId.Front, "📰 CITY NEWS\nWelcome to AI City!", WHITE, Enum.Font.GothamBold)
+	ctx.map.NewsBoard = MapKit.signText(board, Enum.NormalId.Front, "CITY NEWS\nWelcome to AI City!", WHITE, Enum.Font.GothamBold)
 	-- benches around the fountain, facing it
 	for k = 0, 7 do
 		local a = k / 8 * math.pi * 2 + math.pi / 8
@@ -736,7 +736,7 @@ end
 function B.Cinema(ctx, parent, i, j, rng)
 	local place, b = simple(ctx, parent, i, j, rng, "Cinema", { W = 56, D = 46, Floors = 2, Wall = rgb(60, 40, 80), Trim = GOLD, Material = Enum.Material.Brick, NoSign = true }, "cinema")
 	local marquee = part(b.Model, "Marquee", Vector3.new(34, 6, 3), b.At(0, 13, -b.D / 2 - 1.8), rgb(30, 25, 40))
-	MapKit.signText(marquee, Enum.NormalId.Front, "🎬 CINEMA · NOW SHOWING", rgb(255, 225, 120))
+	MapKit.signText(marquee, Enum.NormalId.Front, "CINEMA - NOW SHOWING", rgb(255, 225, 120))
 	for k = -8, 8 do
 		local bulb = MapKit.ball(b.Model, "Bulb", 0.7, b.At(k * 2, 16.3, -b.D / 2 - 3.2), rgb(255, 230, 150), Enum.Material.Neon)
 		MapKit.tag(bulb, "MarqueeBulb")
@@ -744,7 +744,7 @@ function B.Cinema(ctx, parent, i, j, rng)
 	MapKit.light(marquee, rgb(255, 220, 150), 18, 1)
 	for _, sx in ipairs({ -1, 1 }) do
 		local poster = deco(b.Model, "Poster", Vector3.new(6, 9, 0.3), b.At(sx * 20, 6, -b.D / 2 - 0.3), rgb(30, 30, 40))
-		MapKit.signText(poster, Enum.NormalId.Front, if sx < 0 then "🚀\nSPACE\nPUPS" else "🦖\nDINO\nDAYS", MapKit.FLOWERS[if sx < 0 then 6 else 2])
+		MapKit.signText(poster, Enum.NormalId.Front, if sx < 0 then "SPACE\nPUPS" else "DINO\nDAYS", MapKit.FLOWERS[if sx < 0 then 6 else 2])
 	end
 end
 
@@ -803,7 +803,7 @@ function B.GasStation(ctx, parent, i, j, rng)
 	local spots = Interiors.furnish(b, "garage", rng, "GasStation")
 	table.insert(spots, { CFrame = facing((cpos * CFrame.new(-6, 0, -1.5)).Position, (cpos * CFrame.new(-6, 0, -5)).Position), Action = "fixcar", Role = "work", Floor = 1, Outside = true })
 	local price = deco(b.Model, "PriceSign", Vector3.new(6, 8, 0.6), at(b.W / 2 - 2, 8, -b.D / 2 - 16), rgb(30, 30, 36))
-	MapKit.signText(price, Enum.NormalId.Front, "⛽\n$3.99", rgb(255, 210, 80))
+	MapKit.signText(price, Enum.NormalId.Front, "GAS\n$3.99", rgb(255, 210, 80))
 	ctx.place("GasStation", b, i, j, face, spots)
 end
 
@@ -820,13 +820,13 @@ function B.Museum(ctx, parent, i, j, rng)
 		part(b.Model, "Steps", Vector3.new(44 - s * 4, 0.6, 3), b.At(0, 0.3 + s * 0.6, -b.D / 2 - 7 + s * 1.6), rgb(222, 216, 206), Enum.Material.Marble)
 	end
 	local banner = deco(b.Model, "Banner", Vector3.new(4, 10, 0.2), b.At(-b.W / 2 + 5, 12, -b.D / 2 - 0.4), rgb(140, 40, 60), Enum.Material.Fabric)
-	MapKit.signText(banner, Enum.NormalId.Front, "🦖\nDINOS", GOLD)
+	MapKit.signText(banner, Enum.NormalId.Front, "DINOS", GOLD)
 end
 
 function B.PostOffice(ctx, parent, i, j, rng)
 	local place, b = simple(ctx, parent, i, j, rng, "PostOffice", { W = 40, D = 30, Floors = 1, Wall = rgb(220, 210, 190), Trim = rgb(40, 70, 140), Material = Enum.Material.Brick, Awning = { rgb(40, 70, 140), WHITE }, SignColor = rgb(40, 70, 140) }, "postoffice", -10)
 	local box = part(b.Model, "Mailbox", Vector3.new(2, 4, 2), b.At(b.W / 2 - 3, 2, -b.D / 2 - 3), rgb(40, 70, 160), Enum.Material.Metal)
-	MapKit.signText(box, Enum.NormalId.Front, "📮", WHITE)
+	MapKit.signText(box, Enum.NormalId.Front, "MAIL", WHITE)
 	local van = Streets.car(b.Model, b.At(-b.W / 2 + 6, 0, -b.D / 2 - 6) * CFrame.Angles(0, math.rad(90), 0), rgb(240, 240, 240), "van")
 	van.Name = "MailVan"
 end

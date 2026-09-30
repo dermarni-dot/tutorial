@@ -437,6 +437,7 @@ local function loadPlayer(player)
 		Weapons = type(saved.Weapons) == "table" and saved.Weapons or {},
 		Outfits = type(saved.Outfits) == "table" and saved.Outfits or {},
 		Wearing = type(saved.Wearing) == "table" and saved.Wearing or {},
+		Fitness = type(saved.Fitness) == "table" and { Level = tonumber(saved.Fitness.Level) or 1, XP = tonumber(saved.Fitness.XP) or 0 } or { Level = 1, XP = 0 },
 		Talks = tonumber(saved.Talks) or 0,
 		Arrests = tonumber(saved.Arrests) or 0,
 		Terms = tonumber(saved.Terms) or 0,
@@ -454,7 +455,7 @@ local function savePlayer(player)
 	local data = playerData[player]
 	if data and playerStore then
 		pcall(function()
-			playerStore:SetAsync("p_" .. player.UserId, { Coins = data.Coins, Crimes = data.Crimes, Notoriety = data.Notoriety, Weapons = data.Weapons, Outfits = data.Outfits, Wearing = data.Wearing, Talks = data.Talks, Arrests = data.Arrests, Terms = data.Terms })
+			playerStore:SetAsync("p_" .. player.UserId, { Coins = data.Coins, Crimes = data.Crimes, Notoriety = data.Notoriety, Weapons = data.Weapons, Outfits = data.Outfits, Wearing = data.Wearing, Fitness = data.Fitness, Talks = data.Talks, Arrests = data.Arrests, Terms = data.Terms })
 		end)
 	end
 end
@@ -819,6 +820,8 @@ local GOALS = {
 	{ Id = "places", Text = "Visit 4 different places", Emoji = "🗺️", Need = 4, Reward = 30 },
 	{ Id = "peace", Text = "Break up a street fight", Emoji = "🤝", Need = 1, Reward = 30 },
 	{ Id = "thief", Text = "Catch a thief", Emoji = "🦸", Need = 1, Reward = 40 },
+	{ Id = "train", Text = "Work out on a gym treadmill", Emoji = "💪", Need = 1, Reward = 25 },
+	{ Id = "food", Text = "Buy something to eat", Emoji = "🍔", Need = 2, Reward = 15 },
 }
 local goalById = {}
 for _, g in ipairs(GOALS) do

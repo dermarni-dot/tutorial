@@ -39,6 +39,12 @@
         },
         "Disguises": {
           "$path": "src/Disguises.lua"
+        },
+        "Fitness": {
+          "$path": "src/Fitness.lua"
+        },
+        "Food": {
+          "$path": "src/Food.lua"
         }
       }
     },
@@ -101,6 +107,12 @@
         },
         "StreetCrimeService": {
           "$path": "src/StreetCrimeService.lua"
+        },
+        "FitnessService": {
+          "$path": "src/FitnessService.lua"
+        },
+        "FoodService": {
+          "$path": "src/FoodService.lua"
         }
       }
     },

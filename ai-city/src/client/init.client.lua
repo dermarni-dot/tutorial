@@ -21,6 +21,7 @@ local UI = require(script:WaitForChild("UI"))
 local Hud = require(script:WaitForChild("Hud"))
 local Panels = require(script:WaitForChild("Panels"))
 local World = require(script:WaitForChild("World"))
+local Moves = require(script:WaitForChild("Moves"))
 local Poses = require(Shared:WaitForChild("Poses"))
 local C = UI.C
 
@@ -29,6 +30,7 @@ local ctx = {
 	Hud = Hud,
 	Panels = Panels,
 	World = World,
+	Moves = Moves,
 	Poses = Poses,
 	SpeechSpot = info:GetAttribute("SpeechSpot"),
 }
@@ -36,6 +38,7 @@ local ctx = {
 Hud.Start(ctx)
 World.Start(ctx)
 Panels.Start(ctx)
+Moves.Start(ctx)
 
 -- the citizens' poses, props and faces, every frame (after animations)
 local step = RunService.PreSimulation or RunService.Stepped
@@ -101,6 +104,12 @@ handlers.Goals = function(d)
 end
 handlers.Shop = function(d)
 	Panels.OpenShop(d)
+end
+handlers.FoodMenu = function(d)
+	Panels.OpenFood(d)
+end
+handlers.Food = function(d)
+	Moves.AddStamina(d.Energy)
 end
 handlers.Wardrobe = function(d)
 	Panels.OpenWardrobe(d)
@@ -174,6 +183,10 @@ local NUMBER_KEYS = {
 	[Enum.KeyCode.Six] = 6, [Enum.KeyCode.Seven] = 7, [Enum.KeyCode.Eight] = 8, [Enum.KeyCode.Nine] = 9,
 }
 UserInputService.InputBegan:Connect(function(input, processed)
+	if (input.KeyCode == Enum.KeyCode.LeftShift or input.KeyCode == Enum.KeyCode.RightShift or input.KeyCode == Enum.KeyCode.ButtonL3) and not UserInputService:GetFocusedTextBox() then
+		Moves.SetSprint(true)
+		return
+	end
 	if processed or UserInputService:GetFocusedTextBox() then
 		return
 	end
@@ -221,5 +234,7 @@ end)
 UserInputService.InputEnded:Connect(function(input)
 	if input.KeyCode == Enum.KeyCode.X then
 		World.SetBlock(false)
+	elseif input.KeyCode == Enum.KeyCode.LeftShift or input.KeyCode == Enum.KeyCode.RightShift or input.KeyCode == Enum.KeyCode.ButtonL3 then
+		Moves.SetSprint(false)
 	end
 end)

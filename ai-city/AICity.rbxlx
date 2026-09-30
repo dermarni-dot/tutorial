@@ -1,4 +1,4 @@
-<roblox version="4"><Item class="Workspace" referent="RBX1"><Properties><string name="Name">Workspace</string><bool name="StreamingEnabled">true</bool><float name="StreamingMinRadius">96</float><float name="StreamingTargetRadius">640</float></Properties></Item><Item class="Lighting" referent="RBX2"><Properties><string name="Name">Lighting</string><token name="Technology">4</token><float name="ClockTime">7.5</float><float name="Brightness">2</float><bool name="GlobalShadows">true</bool></Properties></Item><Item class="ReplicatedStorage" referent="RBX3"><Properties><string name="Name">ReplicatedStorage</string></Properties><Item class="Folder" referent="RBX11"><Properties><string name="Name">Shared</string></Properties><Item class="ModuleScript" referent="RBX4"><Properties><string name="Name">Config</string><ProtectedString name="Source"><![CDATA[-- AI City :: shared settings (tweak these to tune the game)
+<roblox version="4"><Item class="Workspace" referent="RBX1"><Properties><string name="Name">Workspace</string><bool name="StreamingEnabled">true</bool><float name="StreamingMinRadius">96</float><float name="StreamingTargetRadius">640</float></Properties></Item><Item class="Lighting" referent="RBX2"><Properties><string name="Name">Lighting</string><token name="Technology">4</token><float name="ClockTime">7.5</float><float name="Brightness">2</float><bool name="GlobalShadows">true</bool></Properties></Item><Item class="ReplicatedStorage" referent="RBX3"><Properties><string name="Name">ReplicatedStorage</string></Properties><Item class="Folder" referent="RBX13"><Properties><string name="Name">Shared</string></Properties><Item class="ModuleScript" referent="RBX4"><Properties><string name="Name">Config</string><ProtectedString name="Source"><![CDATA[-- AI City :: shared settings (tweak these to tune the game)
 -- ReplicatedStorage.Shared.Config
 --
 -- Every key from the original file is still here with the same shape, so the
@@ -1038,6 +1038,41 @@ L.strike = function(t, ph, k)
 	local out = math.sin(k * math.pi)
 	return { RS = A(60 + out * 35, 0, -10), RE = A(100 - out * 95), LS = A(55, 0, 16), LE = A(110), Waist = A(-6, -out * 25, 0) }, false
 end
+-- a left jab (the mirror of the strike)
+L.strikeL = function(t, ph, k)
+	local out = math.sin(k * math.pi)
+	return { LS = A(60 + out * 35, 0, 10), LE = A(100 - out * 95), RS = A(55, 0, -16), RE = A(110), Waist = A(-6, out * 25, 0) }, false
+end
+-- fists up, bouncing on the feet: ready to fight (arms only, legs keep walking)
+L.guardup = function(t, ph)
+	local b = osc(t, 7, ph)
+	return { LS = A(62 + b * 3, 0, 16), LE = A(118), LW = A(0, 0, 10), RS = A(52 - b * 3, 0, -14), RE = A(122), RW = A(0, 0, -10), Waist = A(-7, 10, 0), Neck = A(8, -8, 0) }, false
+end
+-- blocking: both forearms up in front of the face, hunched, braced
+L.block = function(t, ph, shake)
+	local s = (shake or 0) * osc(t, 40, ph) * 6
+	return { LS = A(96 + s, 0, 30), LE = A(128), LW = A(0, 20, 0), RS = A(100 - s, 0, -28), RE = A(130), RW = A(0, -20, 0), Waist = A(-14), Neck = A(-10), Root = CFrame.new(0, -0.15, 0) }, false
+end
+-- swinging a bat or hammer: wind up over the shoulder, then chop down across
+L.chop = function(t, ph, k)
+	local up = if k < 0.35 then k / 0.35 else 1 - (k - 0.35) / 0.65
+	local down = if k < 0.35 then 0 else (k - 0.35) / 0.65
+	return { RS = A(60 + up * 110 - down * 40, 0, -20 - down * 10), RE = A(40 - up * 20), LS = A(60 + up * 90 - down * 30, 0, 30), LE = A(60), Waist = A(-4 - down * 16, 20 - down * 45, 0), Neck = A(0, -down * 10, 0) }, false
+end
+-- a knife: a quick lunge forward
+L.stab = function(t, ph, k)
+	local out = math.sin(k * math.pi)
+	return { RS = A(70 + out * 25, 0, -6), RE = A(90 - out * 88), LS = A(40, 0, 20), LE = A(90), Waist = A(-8 - out * 10, -out * 22, 0), RH = A(-out * 20), LK = A(-out * 20) }, false
+end
+-- eating: hand to mouth, again and again
+L.eat = function(t, ph)
+	local bite = (math.sin(t * 4 + ph) + 1) / 2
+	return { RS = A(40 + bite * 50, 0, -24), RE = A(80 + bite * 55), RW = A(0, 30, 0), LS = A(20, 0, 10), LE = A(40), Neck = A(-4 + bite * 6) }, false
+end
+-- sprinting: lean into it
+L.sprint = function(t, ph)
+	return { Waist = A(-12), Neck = A(8) }, false
+end
 L.flinch = function(t, ph, k)
 	return { Waist = A(18 * (1 - k)), Neck = A(20 * (1 - k)), LS = A(40 * (1 - k), 0, -20), RS = A(40 * (1 - k), 0, 20) }, false
 end
@@ -1222,8 +1257,12 @@ local function stateOf(model)
 	st.Kick = 0
 	st.Hit = 0
 	st.Swing = 0
+	st.Block = 0
 	model:GetAttributeChangedSignal("Swing"):Connect(function()
 		st.Swing = os.clock()
+	end)
+	model:GetAttributeChangedSignal("Block"):Connect(function()
+		st.Block = os.clock()
 	end)
 	model:GetAttributeChangedSignal("Kick"):Connect(function()
 		st.Kick = os.clock()
@@ -1400,8 +1439,14 @@ local function update(model, st, t, dt, camPos, myRoot)
 	local now = os.clock()
 	local target, full
 	-- short overlays: a soccer kick, a flinch
+	local fighting = model:GetAttribute("Fighting") ~= nil or model:GetAttribute("Brawling") ~= nil
 	if now - st.Swing < 0.35 then
-		target, full = L.strike(t, st.Phase, (now - st.Swing) / 0.35)
+		local left = (model:GetAttribute("SwingSide") or 0) % 2 == 1
+		target, full = (if left then L.strikeL else L.strike)(t, st.Phase, (now - st.Swing) / 0.35)
+	elseif now - st.Block < 0.5 then
+		target, full = L.block(t, st.Phase, 1 - (now - st.Block) / 0.5)
+	elseif fighting and not model:GetAttribute("KnockedOut") and now - st.Hit >= 0.35 then
+		target, full = L.guardup(t, st.Phase)
 	elseif now - st.Kick < 0.35 then
 		target, full = L.kick(t, st.Phase, (now - st.Kick) / 0.35)
 	elseif now - st.Hit < 0.35 then
@@ -1489,6 +1534,94 @@ local function update(model, st, t, dt, camPos, myRoot)
 end
 
 -- Call every frame (RunService.PreSimulation)
+--------------------------------------------------------------------------------
+-- Players: fighting stance, jabs and swings, blocking, eating, the treadmill
+--------------------------------------------------------------------------------
+local FOOD_COLORS = {
+	Croissant = Color3.fromRGB(222, 160, 80), Donut = Color3.fromRGB(240, 130, 180), Coffee = Color3.fromRGB(240, 240, 235), Muffin = Color3.fromRGB(150, 110, 200),
+	Burger = Color3.fromRGB(200, 120, 60), Fries = Color3.fromRGB(250, 200, 60), Milkshake = Color3.fromRGB(250, 170, 190), Pasta = Color3.fromRGB(230, 190, 90),
+	Pizza = Color3.fromRGB(230, 120, 60), IceCream = Color3.fromRGB(250, 210, 230), Apple = Color3.fromRGB(220, 50, 60), Sandwich = Color3.fromRGB(230, 190, 120), Energy = Color3.fromRGB(60, 220, 120),
+}
+
+local function blend(st, target, full, dt)
+	local a = 1 - math.exp(-dt * 16)
+	if target then
+		for key, motor in pairs(st.Motors) do
+			local goal = target[key] or (if full then IDENTITY else nil)
+			if goal then
+				local cur = st.Cur[key] or motor.Transform
+				cur = cur:Lerp(goal, a)
+				st.Cur[key] = cur
+				motor.Transform = cur
+			else
+				st.Cur[key] = nil
+			end
+		end
+	elseif next(st.Cur) then
+		table.clear(st.Cur)
+	end
+end
+
+local function playerUpdate(model, st, t, dt, player)
+	local now = os.clock()
+	local target, full
+	local weapon = model:GetAttribute("SwingWeapon") or "Fists"
+	local holding = model:FindFirstChildOfClass("Tool") ~= nil
+	local blocking = model:GetAttribute("Blocking") or (player and player:GetAttribute("Blocking"))
+	local eating = model:GetAttribute("Eating")
+	if model:GetAttribute("Treadmill") then
+		target, full = L.run(t, st.Phase)
+	elseif now - st.Swing < 0.42 then
+		local k = (now - st.Swing) / 0.42
+		if weapon == "Bat" or weapon == "Hammer" then
+			target, full = L.chop(t, st.Phase, k)
+		elseif weapon == "Knife" then
+			target, full = L.stab(t, st.Phase, math.min(1, k * 1.3))
+		else
+			local left = (model:GetAttribute("SwingSide") or 0) % 2 == 1
+			target, full = (if left then L.strikeL else L.strike)(t, st.Phase, math.min(1, k * 1.2))
+		end
+	elseif blocking then
+		target, full = L.block(t, st.Phase, math.max(0, 1 - (now - st.Hit) / 0.4))
+	elseif eating then
+		target, full = L.eat(t, st.Phase)
+	elseif now - st.Swing < 2.5 then
+		-- still in the fight: fists up (with a weapon, just the free hand)
+		target, full = L.guardup(t, st.Phase)
+		if holding then
+			target.RS, target.RE, target.RW = nil, nil, nil
+		end
+	elseif model:GetAttribute("Sprinting") then
+		target, full = L.sprint(t, st.Phase)
+	end
+	blend(st, target, full, dt)
+	-- the food in their hand
+	if eating ~= st.EatingProp then
+		st.EatingProp = eating
+		if st.EatPart then
+			st.EatPart:Destroy()
+			st.EatPart = nil
+		end
+		local hand = model:FindFirstChild("RightHand")
+		if eating and hand then
+			st.EatPart = prop(hand, "Food", Vector3.new(0.55, 0.45, 0.55), CFrame.new(0, -0.4, -0.2), FOOD_COLORS[eating] or Color3.fromRGB(220, 170, 100), if eating == "Apple" or eating == "Donut" then Ball else nil)
+			st.EatPart.Parent = model
+		end
+	end
+end
+
+function Poses.StepPlayers(dt, camPos)
+	local t = os.clock()
+	for _, player in ipairs(Players:GetPlayers()) do
+		local model = player.Character
+		local root = model and model:FindFirstChild("HumanoidRootPart")
+		if root and (root.Position - camPos).Magnitude < Poses.PoseRadius then
+			local st = stateOf(model)
+			pcall(playerUpdate, model, st, t, dt, player)
+		end
+	end
+end
+
 function Poses.Step(dt)
 	local camera = workspace.CurrentCamera
 	if not camera then
@@ -1513,6 +1646,7 @@ function Poses.Step(dt)
 			end
 		end
 	end
+	Poses.StepPlayers(dt, camPos)
 end
 
 return Poses
@@ -1688,7 +1822,79 @@ function Disguises.Signature(worn)
 end
 
 return Disguises
-]]></ProtectedString></Properties></Item></Item></Item><Item class="ServerScriptService" referent="RBX12"><Properties><string name="Name">ServerScriptService</string></Properties><Item class="Script" referent="RBX13"><Properties><string name="Name">Main</string><ProtectedString name="Source"><![CDATA[-- Main (Script) — ServerScriptService.Main
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX11"><Properties><string name="Name">Fitness</string><ProtectedString name="Source"><![CDATA[-- Fitness (ModuleScript) — ReplicatedStorage.Shared.Fitness
+-- Sprinting and stamina. Hold Shift (or the Sprint button) to run; it uses
+-- stamina, which refills when you stop. Sprinting and working out on the gym's
+-- treadmills earn fitness XP; every level gives more stamina, faster recovery
+-- and a faster sprint. Food refills stamina too (and coffee or an energy drink
+-- speeds up recovery for a while).
+
+local Fitness = {}
+
+Fitness.WALK = 16 -- normal walking speed
+Fitness.MAX_LEVEL = 20
+
+-- what a fitness level gets you
+function Fitness.Stats(level)
+	level = math.clamp(level or 1, 1, Fitness.MAX_LEVEL)
+	return {
+		MaxStamina = 100 + (level - 1) * 12, -- how much stamina you have
+		Sprint = 24 + (level - 1) * 0.6, -- sprint speed (walking is 16)
+		Drain = 20, -- stamina per second while sprinting
+		Regen = 11 + level * 1.5, -- stamina per second while not sprinting
+		Delay = 0.9, -- seconds before it starts refilling
+	}
+end
+
+-- XP needed to reach the next level
+function Fitness.XPFor(level)
+	return 60 + level * 45
+end
+
+Fitness.SPRINT_XP = 4 -- XP per second of sprinting
+Fitness.TREADMILL_XP = 55 -- XP for one treadmill workout
+Fitness.TREADMILL_SECONDS = 7
+
+return Fitness
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX12"><Properties><string name="Name">Food</string><ProtectedString name="Source"><![CDATA[-- Food (ModuleScript) — ReplicatedStorage.Shared.Food
+-- What you can buy to eat at the city's food places (press E at the counter).
+-- Eating heals you (Heal) and refills stamina (Energy). Coffee and energy
+-- drinks also speed up stamina recovery for a while (Boost × for BoostTime s).
+
+local Food = {}
+
+local function rgb(r, g, b)
+	return Color3.fromRGB(r, g, b)
+end
+
+Food.Items = {
+	Croissant = { Name = "Croissant", Icon = "croissant", Price = 4, Heal = 12, Energy = 25, Color = rgb(222, 160, 80), Desc = "Flaky, buttery, fresh out of the oven." },
+	Donut = { Name = "Donut", Icon = "donut", Price = 3, Heal = 8, Energy = 30, Color = rgb(240, 130, 180), Desc = "Pink icing and sprinkles. A quick sugar rush." },
+	Coffee = { Name = "Coffee", Icon = "coffee", Price = 5, Heal = 0, Energy = 50, Boost = 1.6, BoostTime = 90, Color = rgb(120, 80, 50), Desc = "Stamina refills 60% faster for 90 seconds." },
+	Muffin = { Name = "Blueberry Muffin", Icon = "muffin", Price = 4, Heal = 14, Energy = 15, Color = rgb(150, 110, 200), Desc = "Soft and warm, with real blueberries." },
+	Burger = { Name = "Cheeseburger", Icon = "burger", Price = 10, Heal = 45, Energy = 30, Color = rgb(200, 120, 60), Desc = "A big, juicy burger. Heals a lot." },
+	Fries = { Name = "Fries", Icon = "fries", Price = 5, Heal = 15, Energy = 20, Color = rgb(250, 200, 60), Desc = "Crispy and salty." },
+	Milkshake = { Name = "Milkshake", Icon = "milkshake", Price = 6, Heal = 10, Energy = 45, Color = rgb(250, 170, 190), Desc = "Strawberry, with whipped cream on top." },
+	Pasta = { Name = "Spaghetti", Icon = "pasta", Price = 15, Heal = 70, Energy = 60, Color = rgb(230, 190, 90), Desc = "The chef's special. Heals almost everything." },
+	Pizza = { Name = "Pizza Slice", Icon = "pizza", Price = 8, Heal = 35, Energy = 30, Color = rgb(230, 120, 60), Desc = "Pepperoni, extra cheese." },
+	IceCream = { Name = "Ice Cream", Icon = "icecream", Price = 5, Heal = 10, Energy = 35, Color = rgb(250, 210, 230), Desc = "Two scoops in a crunchy cone." },
+	Apple = { Name = "Apple", Icon = "apple", Price = 2, Heal = 10, Energy = 12, Color = rgb(220, 50, 60), Desc = "Cheap and healthy." },
+	Sandwich = { Name = "Sandwich", Icon = "sandwich", Price = 6, Heal = 25, Energy = 20, Color = rgb(230, 190, 120), Desc = "Ham, cheese and lettuce." },
+	Energy = { Name = "Energy Drink", Icon = "energy", Price = 8, Heal = 0, Energy = 100, Boost = 2, BoostTime = 60, Color = rgb(60, 220, 120), Desc = "Full stamina, and it refills twice as fast for a minute." },
+}
+
+-- which place sells what
+Food.Menus = {
+	Bakery = { "Croissant", "Donut", "Muffin" },
+	Cafe = { "Coffee", "Muffin", "Croissant" },
+	Diner = { "Burger", "Fries", "Milkshake" },
+	Restaurant = { "Pasta", "Pizza" },
+	IceCream = { "IceCream", "Milkshake" },
+	Shop = { "Apple", "Sandwich", "Energy" },
+}
+
+return Food
+]]></ProtectedString></Properties></Item></Item></Item><Item class="ServerScriptService" referent="RBX14"><Properties><string name="Name">ServerScriptService</string></Properties><Item class="Script" referent="RBX15"><Properties><string name="Name">Main</string><ProtectedString name="Source"><![CDATA[-- Main (Script) — ServerScriptService.Main
 -- Starts AI City: builds the map, loads the saved city (or makes new
 -- families), starts the clock and brings everyone to life.
 --
@@ -1701,6 +1907,8 @@ return Disguises
 --   CrimeService    fighting, stabbing, pickpocketing, robberies, witnesses, police, jail
 --   CombatService   weapons (the Hardware store shop), blocking, waking up at the hospital
 --   StreetCrimeService other people's crimes (pickpockets, bag snatchers, robbers, graffiti), arrests, the jail
+--   FitnessService  sprinting XP, fitness levels, gym treadmills
+--   FoodService     buying food at the Bakery, Cafe, Diner, Restaurant, Ice Cream shop and Market
 --   BrawlService    street fights between citizens (crowds, police, breaking them up)
 --   DisguiseService hoodies, ski masks and disguises (the Clothing store), wearing them
 --   PlayerService   elevators, citizen profiles, the directory
@@ -1752,6 +1960,8 @@ if Config.RUN_CITIZENS ~= false then
 	services.Disguise = require(Modules:WaitForChild("DisguiseService"))
 	services.Brawl = require(Modules:WaitForChild("BrawlService"))
 	services.StreetCrime = require(Modules:WaitForChild("StreetCrimeService"))
+	services.Fitness = require(Modules:WaitForChild("FitnessService"))
+	services.Food = require(Modules:WaitForChild("FoodService"))
 	services.Dialogue.Start(services)
 	services.Crime.Start(services)
 	services.Players.Start(services)
@@ -1759,9 +1969,11 @@ if Config.RUN_CITIZENS ~= false then
 	services.Disguise.Start(services)
 	services.Brawl.Start(services)
 	services.StreetCrime.Start(services)
+	services.Fitness.Start(services)
+	services.Food.Start(services)
 	task.spawn(services.Citizens.Start, services)
 end
-]]></ProtectedString></Properties></Item><Item class="Folder" referent="RBX32"><Properties><string name="Name">Modules</string></Properties><Item class="ModuleScript" referent="RBX14"><Properties><string name="Name">MapKit</string><ProtectedString name="Source"><![CDATA[-- MapKit (ModuleScript) — ServerScriptService.Modules.MapKit
+]]></ProtectedString></Properties></Item><Item class="Folder" referent="RBX36"><Properties><string name="Name">Modules</string></Properties><Item class="ModuleScript" referent="RBX16"><Properties><string name="Name">MapKit</string><ProtectedString name="Source"><![CDATA[-- MapKit (ModuleScript) — ServerScriptService.Modules.MapKit
 -- Small building blocks shared by the map modules: part helpers, colors, signs,
 -- lights, seats, and a registry of things that change between day and night.
 
@@ -1989,7 +2201,7 @@ function MapKit.awning(parent, width, depth, cf, colorA, colorB)
 end
 
 return MapKit
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX15"><Properties><string name="Name">Buildings</string><ProtectedString name="Source"><![CDATA[-- Buildings (ModuleScript) — ServerScriptService.Modules.Buildings
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX17"><Properties><string name="Name">Buildings</string><ProtectedString name="Source"><![CDATA[-- Buildings (ModuleScript) — ServerScriptService.Modules.Buildings
 -- Building shells: walls with a walk-in doorway and glass doors, framed
 -- windows (or glass curtain walls for towers), storefront windows, striped
 -- awnings, real floors on every storey with ceiling lights, an elevator for
@@ -2243,12 +2455,14 @@ function Buildings.shell(parent, spec)
 		MapKit.awning(model, width, 4, at(0, DH + 1.3, -D / 2 - 2), spec.Awning[1], spec.Awning[2] or WHITE)
 	end
 	if spec.Label and not spec.NoSign then
-		local signW = math.min(W - 3, math.max(16, #spec.Label * 1.6))
+		-- clean lettering (emoji look like smudges when blown up on a sign)
+		local text = string.upper((spec.Label:gsub("^[^%w]+%s*", "")))
+		local signW = math.min(W - 3, math.max(16, #text * 1.9))
 		local signY = if spec.Awning then math.min(DH + 4.4, H - 1.5) else math.min(DH + 3.2, H - 1.5)
 		local board = deco(model, "SignBoard", Vector3.new(signW + 0.8, 4.4, 0.4), at(0, signY, -D / 2 - 0.3), spec.SignTrim or MapKit.GOLD, Enum.Material.Metal)
 		MapKit.nightNeon(board)
 		local sign = deco(model, "Sign", Vector3.new(signW, 3.6, 0.6), at(0, signY, -D / 2 - 0.5), spec.SignColor or MapKit.rgb(40, 36, 50))
-		MapKit.signText(sign, Enum.NormalId.Front, spec.Label, spec.SignText or WHITE)
+		MapKit.signText(sign, Enum.NormalId.Front, text, spec.SignText or WHITE)
 		b.Sign = sign
 	end
 
@@ -2378,7 +2592,7 @@ function Buildings.house(parent, center, face, style, rng, garageSide)
 end
 
 return Buildings
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX16"><Properties><string name="Name">Interiors</string><ProtectedString name="Source"><![CDATA[-- Interiors (ModuleScript) — ServerScriptService.Modules.Interiors
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX18"><Properties><string name="Name">Interiors</string><ProtectedString name="Source"><![CDATA[-- Interiors (ModuleScript) — ServerScriptService.Modules.Interiors
 -- Furnishes buildings and marks the spots where people do things there:
 -- desks to type at, treadmills to run on, stoves to cook at, tables to eat
 -- at, beds to sleep in... Each spot is
@@ -3095,7 +3309,7 @@ function Interiors.furnish(b, rooms, rng, place)
 end
 
 return Interiors
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX17"><Properties><string name="Name">Streets</string><ProtectedString name="Source"><![CDATA[-- Streets (ModuleScript) — ServerScriptService.Modules.Streets
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX19"><Properties><string name="Name">Streets</string><ProtectedString name="Source"><![CDATA[-- Streets (ModuleScript) — ServerScriptService.Modules.Streets
 -- Roads with lane markings and crosswalks, raised sidewalks with curbs, street
 -- lamps that light the ground at night, traffic lights downtown, street name
 -- signs, fire hydrants, trash cans, bus stops with shelters, sidewalk trees
@@ -3394,7 +3608,7 @@ function Streets.build(parent, rng, blockKind)
 end
 
 return Streets
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX18"><Properties><string name="Name">Landscape</string><ProtectedString name="Source"><![CDATA[-- Landscape (ModuleScript) — ServerScriptService.Modules.Landscape
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX20"><Properties><string name="Name">Landscape</string><ProtectedString name="Source"><![CDATA[-- Landscape (ModuleScript) — ServerScriptService.Modules.Landscape
 -- The land around the city: terrain grass (with swaying grass blades),
 -- rolling hills with pine forests, a lake with a sandy beach and a wooden
 -- pier for fishing, and snowy mountains on the horizon.
@@ -3495,8 +3709,8 @@ function Landscape.build(parent, rng)
 	deco(folder, "Boat", Vector3.new(4, 1.4, 9), boat, rgb(170, 90, 60), Enum.Material.WoodPlanks)
 	deco(folder, "BoatSeat", Vector3.new(4, 0.3, 1.2), boat * CFrame.new(0, 0.6, 0), rgb(200, 150, 100), Enum.Material.Wood)
 	local sign = deco(folder, "LakeSign", Vector3.new(10, 3.4, 0.4), pierCf * CFrame.new(-8, 4, 6), rgb(40, 90, 70), Enum.Material.Wood)
-	MapKit.signText(sign, Enum.NormalId.Back, "🎣 MIRROR LAKE", MapKit.WHITE)
-	MapKit.signText(sign, Enum.NormalId.Front, "🎣 MIRROR LAKE", MapKit.WHITE)
+	MapKit.signText(sign, Enum.NormalId.Back, "MIRROR LAKE", MapKit.WHITE)
+	MapKit.signText(sign, Enum.NormalId.Front, "MIRROR LAKE", MapKit.WHITE)
 	for n = 1, 30 do
 		local a = rng:NextNumber(0, math.pi * 2)
 		local p = L + Vector3.new(math.cos(a), 0, math.sin(a)) * (Landscape.LAKE_RADIUS + rng:NextNumber(-2, 6))
@@ -3520,8 +3734,8 @@ function Landscape.build(parent, rng)
 	-- a welcome sign where 5th Avenue leaves the city to the south
 	local signCf = CFrame.lookAt(Vector3.new(50, 10, EXTENT + 24), Vector3.new(50, 10, 0))
 	local welcome = part(folder, "WelcomeSign", Vector3.new(34, 9, 1.2), signCf, rgb(36, 84, 66), Enum.Material.Wood)
-	MapKit.signText(welcome, Enum.NormalId.Front, "🏙️ WELCOME TO AI CITY", MapKit.WHITE)
-	MapKit.signText(welcome, Enum.NormalId.Back, "🏙️ AI CITY · COME BACK SOON", MapKit.WHITE)
+	MapKit.signText(welcome, Enum.NormalId.Front, "WELCOME TO AI CITY", MapKit.WHITE)
+	MapKit.signText(welcome, Enum.NormalId.Back, "AI CITY - COME BACK SOON", MapKit.WHITE)
 	for _, sx in ipairs({ -1, 1 }) do
 		deco(folder, "SignPost", Vector3.new(1.2, 10, 1.2), signCf * CFrame.new(sx * 15, -8, 0.6), MapKit.DARK_WOOD, Enum.Material.Wood)
 		for k = 0, 2 do
@@ -3532,7 +3746,7 @@ function Landscape.build(parent, rng)
 end
 
 return Landscape
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX19"><Properties><string name="Name">Places</string><ProtectedString name="Source"><![CDATA[-- Places (ModuleScript) — ServerScriptService.Modules.Places
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX21"><Properties><string name="Name">Places</string><ProtectedString name="Source"><![CDATA[-- Places (ModuleScript) — ServerScriptService.Modules.Places
 -- What stands on each city block: the plaza, town hall, bank, towers, shops,
 -- three schools, parks with playgrounds and ponds, the sports field, homes...
 -- Every builder registers its places and the spots where people do things
@@ -3704,7 +3918,7 @@ function B.Plaza(ctx, parent, i, j, rng)
 	part(model, "Stage", Vector3.new(30, 2, 12), stageCf * CFrame.new(0, 1, 0), WOOD, Enum.Material.WoodPlanks)
 	part(model, "StageStep", Vector3.new(8, 1, 3), stageCf * CFrame.new(0, 0.5, -7.5), WOOD:Lerp(BLACK, 0.1), Enum.Material.WoodPlanks)
 	local backdrop = part(model, "Backdrop", Vector3.new(30, 12, 1), stageCf * CFrame.new(0, 8, 5.5), rgb(150, 40, 60), Enum.Material.Fabric)
-	MapKit.signText(backdrop, Enum.NormalId.Front, "🗳️ SPEAK TO THE CITY", GOLD)
+	MapKit.signText(backdrop, Enum.NormalId.Front, "SPEAK TO THE CITY", GOLD)
 	for _, sx in ipairs({ -1, 1 }) do
 		column(model, "StagePillar", 12, 1.6, (stageCf * CFrame.new(sx * 15, 8, 5.2)).Position, GOLD, Enum.Material.Metal)
 		flag(model, (stageCf * CFrame.new(sx * 12, 2, 4)).Position, rgb(60, 110, 220), 14)
@@ -3714,20 +3928,20 @@ function B.Plaza(ctx, parent, i, j, rng)
 	local podium = part(model, "Podium", Vector3.new(3.4, 4, 2.4), stageCf * CFrame.new(0, 4, -3), rgb(90, 60, 40), Enum.Material.Wood)
 	deco(model, "PodiumTop", Vector3.new(4, 0.4, 3), stageCf * CFrame.new(0, 6.1, -3) * CFrame.Angles(math.rad(-15), 0, 0), rgb(70, 45, 30), Enum.Material.Wood)
 	deco(model, "Microphone", Vector3.new(0.3, 1.4, 0.3), stageCf * CFrame.new(0, 7, -3.2), rgb(40, 40, 45), Enum.Material.Metal)
-	MapKit.signText(podium, Enum.NormalId.Front, "🎤", WHITE)
+	MapKit.signText(podium, Enum.NormalId.Front, "SPEAK", WHITE)
 	ctx.map.Podium = podium
 	ctx.map.SpeechSpot = (stageCf * CFrame.new(0, 2, -1)).Position
 	ctx.map.StageCFrame = stageCf * CFrame.new(0, 2, -1)
 	-- ballot box and the city news board
 	local ballot = part(model, "BallotBox", Vector3.new(4, 4, 4), facing(c + Vector3.new(22, 2, -16), c + Vector3.new(0, 2, 0)), rgb(60, 90, 200))
 	deco(model, "BallotSlot", Vector3.new(2.4, 0.2, 0.5), ballot.CFrame * CFrame.new(0, 2.05, 0), BLACK)
-	MapKit.signText(ballot, Enum.NormalId.Front, "🗳️ VOTE", WHITE)
+	MapKit.signText(ballot, Enum.NormalId.Front, "VOTE", WHITE)
 	ctx.map.BallotBox = ballot
 	local board = part(model, "NewsBoard", Vector3.new(14, 8, 0.8), facing(c + Vector3.new(-22, 6, -16), c + Vector3.new(0, 6, 0)), rgb(40, 36, 50))
 	for _, sx in ipairs({ -1, 1 }) do
 		deco(model, "BoardPost", Vector3.new(0.6, 10, 0.6), board.CFrame * CFrame.new(sx * 6.5, -1, 0.6), WOOD, Enum.Material.Wood)
 	end
-	ctx.map.NewsBoard = MapKit.signText(board, Enum.NormalId.Front, "📰 CITY NEWS\nWelcome to AI City!", WHITE, Enum.Font.GothamBold)
+	ctx.map.NewsBoard = MapKit.signText(board, Enum.NormalId.Front, "CITY NEWS\nWelcome to AI City!", WHITE, Enum.Font.GothamBold)
 	-- benches around the fountain, facing it
 	for k = 0, 7 do
 		local a = k / 8 * math.pi * 2 + math.pi / 8
@@ -4270,7 +4484,7 @@ end
 function B.Cinema(ctx, parent, i, j, rng)
 	local place, b = simple(ctx, parent, i, j, rng, "Cinema", { W = 56, D = 46, Floors = 2, Wall = rgb(60, 40, 80), Trim = GOLD, Material = Enum.Material.Brick, NoSign = true }, "cinema")
 	local marquee = part(b.Model, "Marquee", Vector3.new(34, 6, 3), b.At(0, 13, -b.D / 2 - 1.8), rgb(30, 25, 40))
-	MapKit.signText(marquee, Enum.NormalId.Front, "🎬 CINEMA · NOW SHOWING", rgb(255, 225, 120))
+	MapKit.signText(marquee, Enum.NormalId.Front, "CINEMA - NOW SHOWING", rgb(255, 225, 120))
 	for k = -8, 8 do
 		local bulb = MapKit.ball(b.Model, "Bulb", 0.7, b.At(k * 2, 16.3, -b.D / 2 - 3.2), rgb(255, 230, 150), Enum.Material.Neon)
 		MapKit.tag(bulb, "MarqueeBulb")
@@ -4278,7 +4492,7 @@ function B.Cinema(ctx, parent, i, j, rng)
 	MapKit.light(marquee, rgb(255, 220, 150), 18, 1)
 	for _, sx in ipairs({ -1, 1 }) do
 		local poster = deco(b.Model, "Poster", Vector3.new(6, 9, 0.3), b.At(sx * 20, 6, -b.D / 2 - 0.3), rgb(30, 30, 40))
-		MapKit.signText(poster, Enum.NormalId.Front, if sx < 0 then "🚀\nSPACE\nPUPS" else "🦖\nDINO\nDAYS", MapKit.FLOWERS[if sx < 0 then 6 else 2])
+		MapKit.signText(poster, Enum.NormalId.Front, if sx < 0 then "SPACE\nPUPS" else "DINO\nDAYS", MapKit.FLOWERS[if sx < 0 then 6 else 2])
 	end
 end
 
@@ -4337,7 +4551,7 @@ function B.GasStation(ctx, parent, i, j, rng)
 	local spots = Interiors.furnish(b, "garage", rng, "GasStation")
 	table.insert(spots, { CFrame = facing((cpos * CFrame.new(-6, 0, -1.5)).Position, (cpos * CFrame.new(-6, 0, -5)).Position), Action = "fixcar", Role = "work", Floor = 1, Outside = true })
 	local price = deco(b.Model, "PriceSign", Vector3.new(6, 8, 0.6), at(b.W / 2 - 2, 8, -b.D / 2 - 16), rgb(30, 30, 36))
-	MapKit.signText(price, Enum.NormalId.Front, "⛽\n$3.99", rgb(255, 210, 80))
+	MapKit.signText(price, Enum.NormalId.Front, "GAS\n$3.99", rgb(255, 210, 80))
 	ctx.place("GasStation", b, i, j, face, spots)
 end
 
@@ -4354,13 +4568,13 @@ function B.Museum(ctx, parent, i, j, rng)
 		part(b.Model, "Steps", Vector3.new(44 - s * 4, 0.6, 3), b.At(0, 0.3 + s * 0.6, -b.D / 2 - 7 + s * 1.6), rgb(222, 216, 206), Enum.Material.Marble)
 	end
 	local banner = deco(b.Model, "Banner", Vector3.new(4, 10, 0.2), b.At(-b.W / 2 + 5, 12, -b.D / 2 - 0.4), rgb(140, 40, 60), Enum.Material.Fabric)
-	MapKit.signText(banner, Enum.NormalId.Front, "🦖\nDINOS", GOLD)
+	MapKit.signText(banner, Enum.NormalId.Front, "DINOS", GOLD)
 end
 
 function B.PostOffice(ctx, parent, i, j, rng)
 	local place, b = simple(ctx, parent, i, j, rng, "PostOffice", { W = 40, D = 30, Floors = 1, Wall = rgb(220, 210, 190), Trim = rgb(40, 70, 140), Material = Enum.Material.Brick, Awning = { rgb(40, 70, 140), WHITE }, SignColor = rgb(40, 70, 140) }, "postoffice", -10)
 	local box = part(b.Model, "Mailbox", Vector3.new(2, 4, 2), b.At(b.W / 2 - 3, 2, -b.D / 2 - 3), rgb(40, 70, 160), Enum.Material.Metal)
-	MapKit.signText(box, Enum.NormalId.Front, "📮", WHITE)
+	MapKit.signText(box, Enum.NormalId.Front, "MAIL", WHITE)
 	local van = Streets.car(b.Model, b.At(-b.W / 2 + 6, 0, -b.D / 2 - 6) * CFrame.Angles(0, math.rad(90), 0), rgb(240, 240, 240), "van")
 	van.Name = "MailVan"
 end
@@ -4526,7 +4740,7 @@ Places.Builders = B
 Places.playground = playground
 
 return Places
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX20"><Properties><string name="Name">MapBuilder</string><ProtectedString name="Source"><![CDATA[-- MapBuilder (ModuleScript) — ServerScriptService.Modules.MapBuilder
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX22"><Properties><string name="Name">MapBuilder</string><ProtectedString name="Source"><![CDATA[-- MapBuilder (ModuleScript) — ServerScriptService.Modules.MapBuilder
 -- Builds AI City: a 9x9 grid of city blocks around a central plaza, with
 -- streets, a landscape of hills, a lake and mountains, and every building
 -- furnished with spots where people work, shop, eat, play and sleep.
@@ -5176,7 +5390,7 @@ end
 
 function MapBuilder.SetNews(text)
 	if map and map.NewsBoard then
-		map.NewsBoard.Text = "📰 CITY NEWS\n" .. text
+		map.NewsBoard.Text = "CITY NEWS\n" .. text
 	end
 end
 
@@ -5186,7 +5400,7 @@ function MapBuilder.RouteBetween(a, b)
 end
 MapBuilder.Kit = MapKit
 return MapBuilder
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX21"><Properties><string name="Name">Life</string><ProtectedString name="Source"><![CDATA[-- Life (ModuleScript) — ServerScriptService.Modules.Life
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX23"><Properties><string name="Name">Life</string><ProtectedString name="Source"><![CDATA[-- Life (ModuleScript) — ServerScriptService.Modules.Life
 -- Who lives in AI City: families with children, jobs, ages, couples expecting
 -- babies and births, plus where each person should be at any hour.
 -- Pure logic (no parts, no Humanoids), so it can be saved and tested on its own.
@@ -5949,7 +6163,7 @@ end
 
 Life.Jobs = jobByTitle
 return Life
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX22"><Properties><string name="Name">CitizenLook</string><ProtectedString name="Source"><![CDATA[-- CitizenLook (ModuleScript) — ServerScriptService.Modules.CitizenLook
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX24"><Properties><string name="Name">CitizenLook</string><ProtectedString name="Source"><![CDATA[-- CitizenLook (ModuleScript) — ServerScriptService.Modules.CitizenLook
 -- Gives every citizen their own look: skin tone, hairstyle and color, a
 -- uniform for their job (police cap and badge, doctor's coat, chef's hat,
 -- firefighter helmet...), something for their hobby (a beret for painters,
@@ -7041,7 +7255,7 @@ CitizenLook.Uniforms = UNIFORMS
 CitizenLook.HobbyItems = HOBBY_ITEMS
 
 return CitizenLook
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX23"><Properties><string name="Name">CityService</string><ProtectedString name="Source"><![CDATA[-- CityService (ModuleScript) — ServerScriptService.Modules.CityService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX25"><Properties><string name="Name">CityService</string><ProtectedString name="Source"><![CDATA[-- CityService (ModuleScript) — ServerScriptService.Modules.CityService
 -- The city itself: the clock and calendar, city stats (economy, safety,
 -- happiness) and the city's mood, the mayor, elections, speeches, policies,
 -- coins, what citizens remember about players (and gossip about), the news,
@@ -7480,6 +7694,7 @@ local function loadPlayer(player)
 		Weapons = type(saved.Weapons) == "table" and saved.Weapons or {},
 		Outfits = type(saved.Outfits) == "table" and saved.Outfits or {},
 		Wearing = type(saved.Wearing) == "table" and saved.Wearing or {},
+		Fitness = type(saved.Fitness) == "table" and { Level = tonumber(saved.Fitness.Level) or 1, XP = tonumber(saved.Fitness.XP) or 0 } or { Level = 1, XP = 0 },
 		Talks = tonumber(saved.Talks) or 0,
 		Arrests = tonumber(saved.Arrests) or 0,
 		Terms = tonumber(saved.Terms) or 0,
@@ -7497,7 +7712,7 @@ local function savePlayer(player)
 	local data = playerData[player]
 	if data and playerStore then
 		pcall(function()
-			playerStore:SetAsync("p_" .. player.UserId, { Coins = data.Coins, Crimes = data.Crimes, Notoriety = data.Notoriety, Weapons = data.Weapons, Outfits = data.Outfits, Wearing = data.Wearing, Talks = data.Talks, Arrests = data.Arrests, Terms = data.Terms })
+			playerStore:SetAsync("p_" .. player.UserId, { Coins = data.Coins, Crimes = data.Crimes, Notoriety = data.Notoriety, Weapons = data.Weapons, Outfits = data.Outfits, Wearing = data.Wearing, Fitness = data.Fitness, Talks = data.Talks, Arrests = data.Arrests, Terms = data.Terms })
 		end)
 	end
 end
@@ -7862,6 +8077,8 @@ local GOALS = {
 	{ Id = "places", Text = "Visit 4 different places", Emoji = "🗺️", Need = 4, Reward = 30 },
 	{ Id = "peace", Text = "Break up a street fight", Emoji = "🤝", Need = 1, Reward = 30 },
 	{ Id = "thief", Text = "Catch a thief", Emoji = "🦸", Need = 1, Reward = 40 },
+	{ Id = "train", Text = "Work out on a gym treadmill", Emoji = "💪", Need = 1, Reward = 25 },
+	{ Id = "food", Text = "Buy something to eat", Emoji = "🍔", Need = 2, Reward = 15 },
 }
 local goalById = {}
 for _, g in ipairs(GOALS) do
@@ -8114,7 +8331,7 @@ end
 
 CityService.Handlers = handlers
 return CityService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX24"><Properties><string name="Name">CitizenService</string><ProtectedString name="Source"><![CDATA[-- CitizenService (ModuleScript) — ServerScriptService.Modules.CitizenService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX26"><Properties><string name="Name">CitizenService</string><ProtectedString name="Source"><![CDATA[-- CitizenService (ModuleScript) — ServerScriptService.Modules.CitizenService
 -- Brings the citizens to life: spawns a dressed NPC for every person in Life,
 -- walks them along the sidewalks to where their day takes them (with their
 -- own pace, lane and little pauses), takes elevators, sits at desks, lifts
@@ -9930,7 +10147,7 @@ function CitizenService.Start(services)
 end
 
 return CitizenService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX25"><Properties><string name="Name">DialogueService</string><ProtectedString name="Source"><![CDATA[-- DialogueService (ModuleScript) — ServerScriptService.Modules.DialogueService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX27"><Properties><string name="Name">DialogueService</string><ProtectedString name="Source"><![CDATA[-- DialogueService (ModuleScript) — ServerScriptService.Modules.DialogueService
 -- Talking to citizens. Walk up to anyone and press E to talk: they stop what
 -- they're doing, turn to you and answer in their own voice. What they say
 -- depends on their personality (cheerful, shy, grumpy, chatty, bookish,
@@ -10916,7 +11133,7 @@ function DialogueService.Start(services)
 end
 
 return DialogueService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX26"><Properties><string name="Name">CrimeService</string><ProtectedString name="Source"><![CDATA[-- CrimeService (ModuleScript) — ServerScriptService.Modules.CrimeService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX28"><Properties><string name="Name">CrimeService</string><ProtectedString name="Source"><![CDATA[-- CrimeService (ModuleScript) — ServerScriptService.Modules.CrimeService
 -- Crime and punishment. Players can:
 --   👊 punch people (F / the punch button). Three or four hits knock them out:
 --      they fall down, see stars, and wake up later in a hospital bed.
@@ -11311,6 +11528,10 @@ local function attack(player, data)
 		return { Ok = false }
 	end
 	lastPunch[player] = now
+	-- everyone sees the swing (left and right jabs take turns)
+	character:SetAttribute("SwingSide", (character:GetAttribute("SwingSide") or 0) + 1)
+	character:SetAttribute("SwingWeapon", id)
+	character:SetAttribute("Swing", now)
 	-- who's in front of us? (citizens and other players)
 	local best, bestScore, bestPlayer = nil, math.huge, nil
 	local look = root.CFrame.LookVector
@@ -12202,7 +12423,7 @@ function CrimeService.IsJailed(player)
 end
 
 return CrimeService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX27"><Properties><string name="Name">PlayerService</string><ProtectedString name="Source"><![CDATA[-- PlayerService (ModuleScript) — ServerScriptService.Modules.PlayerService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX29"><Properties><string name="Name">PlayerService</string><ProtectedString name="Source"><![CDATA[-- PlayerService (ModuleScript) — ServerScriptService.Modules.PlayerService
 -- Things players do that aren't crimes or conversations:
 --   • elevators and stairs (press E at the doors, pick a floor)
 --   • citizen profile cards (click anyone), the People directory, finding someone
@@ -12456,7 +12677,7 @@ function PlayerService.Start(services)
 end
 
 return PlayerService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX28"><Properties><string name="Name">CombatService</string><ProtectedString name="Source"><![CDATA[-- CombatService (ModuleScript) — ServerScriptService.Modules.CombatService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX30"><Properties><string name="Name">CombatService</string><ProtectedString name="Source"><![CDATA[-- CombatService (ModuleScript) — ServerScriptService.Modules.CombatService
 -- Weapons and fighting for players:
 --   • the weapons shop at the Hardware store (a bat, a hammer, a knife)
 --   • your weapons as tools in your hotbar (saved between visits)
@@ -12713,6 +12934,9 @@ function CombatService.Start(services)
 	S.City.Handle("Block", function(player, data)
 		blocking[player] = data.On == true or nil
 		player:SetAttribute("Blocking", blocking[player])
+		if player.Character then
+			player.Character:SetAttribute("Blocking", blocking[player])
+		end
 		return { Ok = true }
 	end)
 	addShop()
@@ -12734,7 +12958,7 @@ function CombatService.Start(services)
 end
 
 return CombatService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX29"><Properties><string name="Name">DisguiseService</string><ProtectedString name="Source"><![CDATA[-- DisguiseService (ModuleScript) — ServerScriptService.Modules.DisguiseService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX31"><Properties><string name="Name">DisguiseService</string><ProtectedString name="Source"><![CDATA[-- DisguiseService (ModuleScript) — ServerScriptService.Modules.DisguiseService
 -- Hoodies, ski masks and disguise kits:
 --   • buy them at the Clothing store (press E at the counter)
 --   • wear them anytime: C (or 📱 Wardrobe). One top and one face item at a time.
@@ -13177,7 +13401,7 @@ function DisguiseService.Start(services)
 end
 
 return DisguiseService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX30"><Properties><string name="Name">BrawlService</string><ProtectedString name="Source"><![CDATA[-- BrawlService (ModuleScript) — ServerScriptService.Modules.BrawlService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX32"><Properties><string name="Name">BrawlService</string><ProtectedString name="Source"><![CDATA[-- BrawlService (ModuleScript) — ServerScriptService.Modules.BrawlService
 -- Street fights between citizens. Every now and then two strangers on the
 -- street get into it:
 --   1. an argument ("Hey! You bumped into me!" / "Wanna go?!")
@@ -13205,7 +13429,7 @@ local Weapons = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("W
 local BrawlService = {}
 local S
 
-local WATCH = 170 -- fights only start this close to a player (so someone sees them)
+local WATCH = 120 -- fights only start this close to a player (so someone sees them)
 local CROWD = 34 -- people this close stop to watch
 local MAX_TIME = 45 -- seconds before they get tired of it
 
@@ -13747,12 +13971,14 @@ local function gatherCrowd(b)
 end
 
 local function swing(b, f, other, now)
+	f.Model:SetAttribute("SwingSide", (f.Model:GetAttribute("SwingSide") or 0) + 1)
 	f.Model:SetAttribute("Swing", now)
 	local strong = f.C.Personality == "sporty" or f.C.Job == "Fitness Coach" or f.C.Job == "Coach"
 	local damage = math.random(8, 15) + (if strong then 4 else 0)
 	local blocked = math.random() < 0.22
 	if blocked then
 		damage = math.floor(damage * 0.3 + 0.5)
+		other.Model:SetAttribute("Block", now)
 	end
 	other.HP = (other.HP or Weapons.CITIZEN_HP) - damage
 	other.LastHit = now
@@ -13866,7 +14092,7 @@ function BrawlService.Start(services)
 end
 
 return BrawlService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX31"><Properties><string name="Name">StreetCrimeService</string><ProtectedString name="Source"><![CDATA[-- StreetCrimeService (ModuleScript) — ServerScriptService.Modules.StreetCrimeService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX33"><Properties><string name="Name">StreetCrimeService</string><ProtectedString name="Source"><![CDATA[-- StreetCrimeService (ModuleScript) — ServerScriptService.Modules.StreetCrimeService
 -- Other people commit crimes too, and the police arrest them.
 --
 -- Now and then (more at night, and when Safety or the Economy is low) someone
@@ -14815,7 +15041,289 @@ function StreetCrime.Commit(kind)
 end
 
 return StreetCrime
-]]></ProtectedString></Properties></Item></Item></Item><Item class="StarterPlayer" referent="RBX33"><Properties><string name="Name">StarterPlayer</string></Properties><Item class="StarterPlayerScripts" referent="RBX34"><Properties><string name="Name">StarterPlayerScripts</string></Properties><Item class="LocalScript" referent="RBX40"><Properties><string name="Name">CityClient</string><ProtectedString name="Source"><![CDATA[-- CityClient (LocalScript) — StarterPlayer.StarterPlayerScripts.CityClient
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX34"><Properties><string name="Name">FitnessService</string><ProtectedString name="Source"><![CDATA[-- FitnessService (ModuleScript) — ServerScriptService.Modules.FitnessService
+-- Your fitness level (saved): sprinting earns XP (reported by your client, with
+-- a limit), and the gym's treadmills give a proper workout (press E: you run
+-- for a few seconds). Each level: more stamina, faster recovery, faster sprint
+-- (see Shared.Fitness). Stamina itself lives on the client so running feels instant.
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Fitness = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Fitness"))
+
+local FitnessService = {}
+local S
+local lastReport = {} -- [player] = os.clock() of their last sprint report
+local onTreadmill = {} -- [player] = belt
+
+local function rgb(r, g, b)
+	return Color3.fromRGB(r, g, b)
+end
+
+local function data(player)
+	local pd = S.City.Data(player)
+	if not pd then
+		return nil
+	end
+	pd.Fitness = pd.Fitness or { Level = 1, XP = 0 }
+	return pd.Fitness
+end
+
+local function publish(player)
+	local f = data(player)
+	if f then
+		player:SetAttribute("FitLevel", f.Level)
+		player:SetAttribute("FitXP", math.floor(f.XP))
+		player:SetAttribute("FitNext", Fitness.XPFor(f.Level))
+	end
+end
+
+function FitnessService.AddXP(player, amount)
+	local f = data(player)
+	if not f or amount <= 0 then
+		return
+	end
+	f.XP += amount
+	while f.Level < Fitness.MAX_LEVEL and f.XP >= Fitness.XPFor(f.Level) do
+		f.XP -= Fitness.XPFor(f.Level)
+		f.Level += 1
+		local st = Fitness.Stats(f.Level)
+		S.City.Toast(player, "💪", "Fitness level " .. f.Level .. "!", string.format("Stamina %d · sprint speed %.1f. Keep training!", st.MaxStamina, st.Sprint), rgb(80, 200, 140))
+	end
+	if f.Level >= Fitness.MAX_LEVEL then
+		f.XP = math.min(f.XP, Fitness.XPFor(f.Level))
+	end
+	publish(player)
+end
+
+-- the client says "I sprinted for N seconds" (never more than the time since the last report)
+local function trained(player, info)
+	local now = os.clock()
+	local since = now - (lastReport[player] or (now - 5))
+	lastReport[player] = now
+	local seconds = math.clamp(tonumber(info.Seconds) or 0, 0, math.min(12, since * 1.1))
+	FitnessService.AddXP(player, seconds * Fitness.SPRINT_XP)
+	return { Ok = true }
+end
+
+-- the gym's treadmills
+local function workout(player, belt)
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	if not root or onTreadmill[player] or (S.Crime and (S.Crime.IsJailed(player) or S.Crime.IsHiding(player))) then
+		return
+	end
+	if (player:GetAttribute("Wanted") or 0) > 0 then
+		S.City.Toast(player, "🚨", "No time for that!", "You're wanted by the police.", rgb(230, 60, 60))
+		return
+	end
+	onTreadmill[player] = belt
+	local back = root.CFrame
+	-- stand on the belt, facing the screen (the rail is at the belt's -Z end)
+	local facing = belt.CFrame.LookVector
+	local rail = belt.Parent and belt.Parent:FindFirstChild("TreadmillRail")
+	if rail then
+		local d = rail.Position - belt.Position
+		d = Vector3.new(d.X, 0, d.Z)
+		if d.Magnitude > 0.1 then
+			facing = d.Unit
+		end
+	end
+	local pos = belt.Position + Vector3.new(0, 3.1, 0)
+	root.CFrame = CFrame.lookAt(pos, pos + facing)
+	root.Anchored = true
+	character:SetAttribute("Treadmill", true)
+	S.City.Toast(player, "🏃", "Running on the treadmill...", "Training your stamina.", rgb(80, 200, 140))
+	task.delay(Fitness.TREADMILL_SECONDS, function()
+		onTreadmill[player] = nil
+		if character.Parent then
+			character:SetAttribute("Treadmill", nil)
+			if root.Parent then
+				root.Anchored = false
+				root.CFrame = CFrame.lookAt(pos - facing * 4, pos) + Vector3.new(0, 0.2, 0)
+			end
+		end
+		if player.Parent then
+			FitnessService.AddXP(player, Fitness.TREADMILL_XP)
+			S.City.Send(player, { Type = "Food", Energy = 1000 }) -- a workout leaves you ready to go
+			S.City.Toast(player, "💪", "Good workout! +" .. Fitness.TREADMILL_XP .. " XP", "Your stamina is full again.", rgb(80, 200, 140))
+			S.City.Progress(player, "train", 1)
+		end
+	end)
+	return back
+end
+
+local function addTreadmills()
+	local gym = S.Map.Places.Gym
+	if not gym or not gym.Model then
+		return
+	end
+	for _, belt in ipairs(gym.Model:GetDescendants()) do
+		if belt:IsA("BasePart") and belt.Name == "TreadmillBelt" then
+			local prompt = Instance.new("ProximityPrompt")
+			prompt.Name = "TrainPrompt"
+			prompt.ActionText = "Run on the treadmill"
+			prompt.ObjectText = "💪 Train stamina"
+			prompt.KeyboardKeyCode = Enum.KeyCode.E
+			prompt.HoldDuration = 0.3
+			prompt.MaxActivationDistance = 7
+			prompt.RequiresLineOfSight = false
+			prompt.Style = Enum.ProximityPromptStyle.Custom
+			prompt:SetAttribute("Kind", "Train")
+			prompt.Parent = belt
+			prompt.Triggered:Connect(function(player)
+				workout(player, belt)
+			end)
+		end
+	end
+end
+
+function FitnessService.Start(services)
+	S = services
+	S.City.Handle("Trained", trained)
+	addTreadmills()
+	local function onPlayer(player)
+		task.spawn(function()
+			for _ = 1, 50 do
+				if S.City.Data(player) then
+					break
+				end
+				task.wait(0.2)
+			end
+			publish(player)
+		end)
+	end
+	Players.PlayerAdded:Connect(onPlayer)
+	for _, player in ipairs(Players:GetPlayers()) do
+		onPlayer(player)
+	end
+	Players.PlayerRemoving:Connect(function(player)
+		lastReport[player] = nil
+		onTreadmill[player] = nil
+	end)
+end
+
+return FitnessService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX35"><Properties><string name="Name">FoodService</string><ProtectedString name="Source"><![CDATA[-- FoodService (ModuleScript) — ServerScriptService.Modules.FoodService
+-- Buy food at the city's food places: the Bakery, the Cafe, the Diner, the
+-- Restaurant, the Ice Cream shop and the Market (press E at the counter).
+-- You eat it right away: it heals you and refills stamina (see Shared.Food),
+-- with a little eating animation everyone can see.
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
+local Food = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Food"))
+
+local FoodService = {}
+local S
+local counters = {} -- [place id] = counter part
+
+local function rgb(r, g, b)
+	return Color3.fromRGB(r, g, b)
+end
+
+local function placeLabel(id)
+	local info = Config.PlaceById and Config.PlaceById[id]
+	return info and info.label or id
+end
+
+local function menu(player, placeId)
+	local out = {}
+	for _, id in ipairs(Food.Menus[placeId] or {}) do
+		local f = Food.Items[id]
+		table.insert(out, { Id = id, Name = f.Name, Icon = f.Icon, Price = f.Price, Heal = f.Heal, Energy = f.Energy, Boost = f.Boost, BoostTime = f.BoostTime, Desc = f.Desc, Color = f.Color })
+	end
+	return { Ok = true, Place = placeId, Label = placeLabel(placeId), Items = out, Coins = S.City.Coins(player) }
+end
+
+local function buy(player, info)
+	local placeId = info.Place
+	local item = Food.Items[info.Id or ""]
+	local counter = counters[placeId or ""]
+	if not item or not counter or not table.find(Food.Menus[placeId] or {}, info.Id) then
+		return { Ok = false, Error = "They don't sell that here." }
+	end
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if not root or not humanoid or humanoid.Health <= 0 or (root.Position - counter.Position).Magnitude > 30 then
+		return { Ok = false, Error = "Walk up to the counter first." }
+	end
+	if S.Crime and S.Crime.IsJailed(player) then
+		return { Ok = false, Error = "No snacks in jail!" }
+	end
+	if not S.City.Spend(player, item.Price, "🍽️ " .. item.Name) then
+		return { Ok = false, Error = "You need " .. item.Price .. " coins." }
+	end
+	-- eat it: heal, stamina, a boost
+	humanoid.Health = math.min(humanoid.MaxHealth, humanoid.Health + item.Heal)
+	if item.Boost then
+		player:SetAttribute("Boost", item.Boost)
+		player:SetAttribute("BoostUntil", workspace:GetServerTimeNow() + (item.BoostTime or 60))
+	end
+	S.City.Send(player, { Type = "Food", Energy = item.Energy, Name = item.Name })
+	character:SetAttribute("Eating", info.Id)
+	task.delay(2.6, function()
+		if character.Parent and character:GetAttribute("Eating") == info.Id then
+			character:SetAttribute("Eating", nil)
+		end
+	end)
+	S.City.Progress(player, "food", 1)
+	local r = menu(player, placeId)
+	r.Text = "Yum! " .. item.Name .. (if item.Heal > 0 then "  +" .. item.Heal .. " ❤️" else "") .. (if item.Energy > 0 then "  +" .. item.Energy .. " ⚡" else "")
+	return r
+end
+
+local function addCounter(place)
+	local counter = Instance.new("Part")
+	counter.Name = "FoodCounter"
+	counter.Anchored = true
+	counter.CanCollide = false
+	counter.CanQuery = false
+	counter.Transparency = 1
+	counter.Size = Vector3.new(2, 2, 2)
+	counter.CFrame = CFrame.new((place.Inside or place.Door) + Vector3.new(0, 3, 0))
+	counter.Parent = place.Model or workspace
+	counters[place.Id] = counter
+	local prompt = Instance.new("ProximityPrompt")
+	prompt.Name = "FoodPrompt"
+	prompt.ActionText = "Order food"
+	prompt.ObjectText = placeLabel(place.Id)
+	prompt.KeyboardKeyCode = Enum.KeyCode.E
+	prompt.MaxActivationDistance = 12
+	prompt.RequiresLineOfSight = false
+	prompt.Style = Enum.ProximityPromptStyle.Custom
+	prompt:SetAttribute("Kind", "Shop")
+	prompt.Parent = counter
+	prompt.Triggered:Connect(function(player)
+		local data = menu(player, place.Id)
+		data.Type = "FoodMenu"
+		S.City.Send(player, data)
+	end)
+end
+
+function FoodService.Start(services)
+	S = services
+	for placeId in pairs(Food.Menus) do
+		local place = S.Map.Places[placeId]
+		if place then
+			addCounter(place)
+		end
+	end
+	S.City.Handle("FoodMenu", function(player, info)
+		if not counters[info.Place or ""] then
+			return { Ok = false }
+		end
+		return menu(player, info.Place)
+	end)
+	S.City.Handle("BuyFood", buy)
+end
+
+return FoodService
+]]></ProtectedString></Properties></Item></Item></Item><Item class="StarterPlayer" referent="RBX37"><Properties><string name="Name">StarterPlayer</string></Properties><Item class="StarterPlayerScripts" referent="RBX38"><Properties><string name="Name">StarterPlayerScripts</string></Properties><Item class="LocalScript" referent="RBX45"><Properties><string name="Name">CityClient</string><ProtectedString name="Source"><![CDATA[-- CityClient (LocalScript) — StarterPlayer.StarterPlayerScripts.CityClient
 -- AI City on your screen. Starts the HUD, the windows, the world effects and
 -- the citizens' body language, and routes everything the server sends.
 --
@@ -14838,6 +15346,7 @@ local UI = require(script:WaitForChild("UI"))
 local Hud = require(script:WaitForChild("Hud"))
 local Panels = require(script:WaitForChild("Panels"))
 local World = require(script:WaitForChild("World"))
+local Moves = require(script:WaitForChild("Moves"))
 local Poses = require(Shared:WaitForChild("Poses"))
 local C = UI.C
 
@@ -14846,6 +15355,7 @@ local ctx = {
 	Hud = Hud,
 	Panels = Panels,
 	World = World,
+	Moves = Moves,
 	Poses = Poses,
 	SpeechSpot = info:GetAttribute("SpeechSpot"),
 }
@@ -14853,6 +15363,7 @@ local ctx = {
 Hud.Start(ctx)
 World.Start(ctx)
 Panels.Start(ctx)
+Moves.Start(ctx)
 
 -- the citizens' poses, props and faces, every frame (after animations)
 local step = RunService.PreSimulation or RunService.Stepped
@@ -14918,6 +15429,12 @@ handlers.Goals = function(d)
 end
 handlers.Shop = function(d)
 	Panels.OpenShop(d)
+end
+handlers.FoodMenu = function(d)
+	Panels.OpenFood(d)
+end
+handlers.Food = function(d)
+	Moves.AddStamina(d.Energy)
 end
 handlers.Wardrobe = function(d)
 	Panels.OpenWardrobe(d)
@@ -14991,6 +15508,10 @@ local NUMBER_KEYS = {
 	[Enum.KeyCode.Six] = 6, [Enum.KeyCode.Seven] = 7, [Enum.KeyCode.Eight] = 8, [Enum.KeyCode.Nine] = 9,
 }
 UserInputService.InputBegan:Connect(function(input, processed)
+	if (input.KeyCode == Enum.KeyCode.LeftShift or input.KeyCode == Enum.KeyCode.RightShift or input.KeyCode == Enum.KeyCode.ButtonL3) and not UserInputService:GetFocusedTextBox() then
+		Moves.SetSprint(true)
+		return
+	end
 	if processed or UserInputService:GetFocusedTextBox() then
 		return
 	end
@@ -15038,9 +15559,11 @@ end)
 UserInputService.InputEnded:Connect(function(input)
 	if input.KeyCode == Enum.KeyCode.X then
 		World.SetBlock(false)
+	elseif input.KeyCode == Enum.KeyCode.LeftShift or input.KeyCode == Enum.KeyCode.RightShift or input.KeyCode == Enum.KeyCode.ButtonL3 then
+		Moves.SetSprint(false)
 	end
 end)
-]]></ProtectedString></Properties><Item class="ModuleScript" referent="RBX35"><Properties><string name="Name">UI</string><ProtectedString name="Source"><![CDATA[-- UI (ModuleScript) — StarterPlayerScripts.CityClient.UI
+]]></ProtectedString></Properties><Item class="ModuleScript" referent="RBX39"><Properties><string name="Name">UI</string><ProtectedString name="Source"><![CDATA[-- UI (ModuleScript) — StarterPlayerScripts.CityClient.UI
 -- AI City's look: colors, fonts, and helpers for building the interface
 -- (rounded panels, buttons that bounce, windows that pop open, bars...).
 
@@ -15372,9 +15895,10 @@ function UI.window(screen, title, icon, size, accent)
 	end
 	win.SetIcon(icon)
 	local titleLabel = UI.text(header, title, 22, UI.Title, UI.C.Text, { Size = UDim2.new(1, -140, 0, 30), Position = UDim2.fromOffset(60, 12), ZIndex = 22 })
-	local close = UI.button(header, "✕", { Size = UDim2.fromOffset(36, 36), Position = UDim2.new(1, -46, 0, 9), Color = UI.C.Panel3, TextSize = 16 }, function()
+	local close = UI.button(header, "", { Size = UDim2.fromOffset(36, 36), Position = UDim2.new(1, -46, 0, 9), Color = UI.C.Panel3, TextSize = 16 }, function()
 		win.Close()
 	end)
+	Icons.Glyph(close, "close", 16, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Hole = UI.C.Panel3 })
 	close.ZIndex = 23
 	local body = UI.new("Frame", { BackgroundTransparency = 1, Position = UDim2.fromOffset(0, 58), Size = UDim2.new(1, 0, 1, -58), ZIndex = 21, Parent = frame })
 	UI.pad(body, 14)
@@ -15493,7 +16017,7 @@ function UI.commas(n)
 end
 
 return UI
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX36"><Properties><string name="Name">Icons</string><ProtectedString name="Source"><![CDATA[-- Icons (ModuleScript) — StarterPlayerScripts.CityClient.Icons
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX40"><Properties><string name="Name">Icons</string><ProtectedString name="Source"><![CDATA[-- Icons (ModuleScript) — StarterPlayerScripts.CityClient.Icons
 -- AI City's own icon set, drawn from rounded shapes (no image uploads needed,
 -- and they stay sharp at any size).
 --
@@ -15998,6 +16522,156 @@ D.hospital = function(c)
 	R(c, 0.5, 0.5, 0.72, 0.24, c.Fg, { r = 0.2 })
 end
 
+D.bolt = function(c)
+	local y = rgb(255, 214, 60)
+	R(c, 0.56, 0.3, 0.2, 0.48, y, { rot = 22 })
+	R(c, 0.44, 0.7, 0.2, 0.48, y, { rot = 22 })
+	R(c, 0.5, 0.5, 0.46, 0.14, y, { rot = -12 })
+	R(c, 0.52, 0.34, 0.07, 0.3, WHITE, { rot = 22, t = 0.5 })
+end
+
+D.run = function(c)
+	local fg = c.Fg
+	C(c, 0.6, 0.17, 0.18, fg)
+	R(c, 0.52, 0.42, 0.14, 0.34, fg, { rot = 20, r = 0.4 })
+	-- arms
+	R(c, 0.38, 0.38, 0.08, 0.26, fg, { rot = 70, r = 0.5 })
+	R(c, 0.66, 0.44, 0.08, 0.24, fg, { rot = -50, r = 0.5 })
+	-- legs, mid-stride
+	R(c, 0.38, 0.7, 0.09, 0.32, fg, { rot = 40, r = 0.5 })
+	R(c, 0.58, 0.72, 0.09, 0.3, fg, { rot = -25, r = 0.5 })
+	R(c, 0.24, 0.84, 0.16, 0.08, fg, { r = 0.5 })
+	R(c, 0.68, 0.88, 0.16, 0.08, fg, { r = 0.5 })
+	-- speed lines
+	for k, y in ipairs({ 0.34, 0.5, 0.66 }) do
+		R(c, 0.14, y, 0.16 - k * 0.02, 0.04, fg, { r = 0.5, t = 0.4 })
+	end
+end
+
+-- food
+D.croissant = function(c)
+	local g, d = rgb(236, 170, 80), rgb(196, 124, 50)
+	R(c, 0.22, 0.6, 0.26, 0.2, d, { rot = -35, r = 0.5 })
+	R(c, 0.78, 0.6, 0.26, 0.2, d, { rot = 35, r = 0.5 })
+	R(c, 0.34, 0.5, 0.3, 0.3, g, { rot = -20, r = 0.5 })
+	R(c, 0.66, 0.5, 0.3, 0.3, g, { rot = 20, r = 0.5 })
+	R(c, 0.5, 0.46, 0.34, 0.36, g, { r = 0.5, grad = { rgb(250, 205, 120), g, 90 } })
+	R(c, 0.5, 0.46, 0.04, 0.3, d, { t = 0.3 })
+	R(c, 0.36, 0.48, 0.03, 0.22, d, { rot = -20, t = 0.4 })
+	R(c, 0.64, 0.48, 0.03, 0.22, d, { rot = 20, t = 0.4 })
+end
+D.donut = function(c)
+	C(c, 0.5, 0.52, 0.8, rgb(214, 150, 80))
+	C(c, 0.5, 0.49, 0.72, rgb(250, 140, 190))
+	C(c, 0.5, 0.5, 0.24, c.Hole)
+	for k, p in ipairs({ { 0.3, 0.34 }, { 0.62, 0.26 }, { 0.72, 0.52 }, { 0.36, 0.7 }, { 0.6, 0.72 }, { 0.24, 0.52 } }) do
+		R(c, p[1], p[2], 0.1, 0.035, ({ rgb(255, 255, 255), rgb(90, 200, 255), rgb(255, 220, 60) })[k % 3 + 1], { rot = k * 50, r = 0.5 })
+	end
+end
+D.coffee = function(c)
+	for _, x in ipairs({ 0.38, 0.5, 0.62 }) do
+		R(c, x, 0.16, 0.05, 0.16, c.Fg, { r = 0.5, t = 0.45 })
+	end
+	O(c, 0.76, 0.56, 0.26, 0.06, rgb(240, 240, 235))
+	R(c, 0.46, 0.6, 0.5, 0.5, rgb(245, 245, 240), { r = 0.2 })
+	R(c, 0.46, 0.4, 0.44, 0.08, rgb(110, 70, 40), { r = 0.5 })
+	R(c, 0.46, 0.62, 0.5, 0.1, rgb(120, 80, 50))
+	R(c, 0.46, 0.88, 0.64, 0.06, rgb(210, 210, 205), { r = 0.5 })
+end
+D.muffin = function(c)
+	R(c, 0.5, 0.7, 0.52, 0.36, rgb(240, 240, 250), { r = 0.12 })
+	for k = -2, 2 do
+		R(c, 0.5 + k * 0.1, 0.7, 0.02, 0.34, rgb(200, 200, 215))
+	end
+	C(c, 0.5, 0.42, 0.66, rgb(200, 150, 90), { grad = { rgb(230, 180, 110), rgb(190, 130, 70), 90 } })
+	for _, p in ipairs({ { 0.38, 0.34 }, { 0.58, 0.3 }, { 0.46, 0.46 }, { 0.66, 0.44 }, { 0.32, 0.5 } }) do
+		C(c, p[1], p[2], 0.09, rgb(90, 70, 170))
+	end
+end
+D.burger = function(c)
+	clip(c, 0, 0.1, 1, 0.42, function(k)
+		C(k, 0.5, 0.42, 0.78, rgb(222, 150, 70), { grad = { rgb(240, 180, 100), rgb(210, 130, 60), 90 } })
+	end)
+	for _, p in ipairs({ { 0.34, 0.28 }, { 0.5, 0.22 }, { 0.64, 0.3 } }) do
+		R(c, p[1], p[2], 0.05, 0.025, rgb(255, 245, 220), { r = 0.5 })
+	end
+	R(c, 0.5, 0.46, 0.84, 0.08, rgb(90, 190, 70), { r = 0.5 })
+	R(c, 0.5, 0.51, 0.76, 0.06, rgb(255, 205, 60), { r = 0.3 })
+	R(c, 0.5, 0.6, 0.8, 0.13, rgb(110, 60, 40), { r = 0.5 })
+	R(c, 0.5, 0.74, 0.76, 0.14, rgb(222, 150, 70), { r = 0.45 })
+end
+D.fries = function(c)
+	for k = -2, 2 do
+		R(c, 0.5 + k * 0.09, 0.34 - (k % 2) * 0.05, 0.08, 0.42, rgb(255, 210, 70), { rot = k * 5, r = 0.2 })
+	end
+	R(c, 0.5, 0.68, 0.56, 0.44, rgb(230, 50, 60), { r = 0.12 })
+	R(c, 0.5, 0.5, 0.56, 0.06, rgb(200, 30, 40), { r = 0.3 })
+	C(c, 0.5, 0.68, 0.16, rgb(255, 210, 70))
+end
+D.milkshake = function(c)
+	R(c, 0.6, 0.18, 0.05, 0.3, rgb(240, 70, 90), { rot = 15, r = 0.5 })
+	C(c, 0.5, 0.3, 0.3, WHITE)
+	C(c, 0.36, 0.34, 0.24, WHITE)
+	C(c, 0.64, 0.34, 0.24, WHITE)
+	C(c, 0.5, 0.18, 0.1, rgb(220, 40, 60))
+	R(c, 0.5, 0.64, 0.46, 0.5, rgb(250, 170, 190), { r = 0.15 })
+	R(c, 0.5, 0.64, 0.46, 0.08, WHITE, { t = 0.5 })
+end
+D.pasta = function(c)
+	clip(c, 0, 0.5, 1, 1, function(k)
+		C(k, 0.5, 0.5, 0.84, rgb(240, 240, 245))
+	end)
+	R(c, 0.5, 0.5, 0.84, 0.05, rgb(210, 210, 220), { r = 0.5 })
+	C(c, 0.5, 0.44, 0.6, rgb(240, 200, 100))
+	for k = 0, 3 do
+		O(c, 0.42 + k * 0.05, 0.42 + (k % 2) * 0.04, 0.2, 0.03, rgb(220, 170, 70))
+	end
+	C(c, 0.4, 0.36, 0.12, rgb(200, 60, 40))
+	C(c, 0.58, 0.38, 0.12, rgb(200, 60, 40))
+	R(c, 0.5, 0.3, 0.12, 0.06, rgb(80, 170, 60), { rot = 30, r = 0.5 })
+end
+D.pizza = function(c)
+	clip(c, 0.1, 0.12, 0.9, 0.92, function(k)
+		R(k, 0.5, 0.2, 0.56, 0.56, rgb(250, 200, 90), { rot = 45 })
+	end)
+	R(c, 0.5, 0.18, 0.8, 0.12, rgb(210, 140, 60), { r = 0.5 })
+	for _, p in ipairs({ { 0.4, 0.34 }, { 0.58, 0.32 }, { 0.5, 0.52 } }) do
+		C(c, p[1], p[2], 0.12, rgb(200, 50, 40))
+	end
+end
+D.icecream = function(c)
+	clip(c, 0.2, 0.5, 0.8, 0.96, function(k)
+		R(k, 0.5, 0.5, 0.42, 0.42, rgb(220, 160, 90), { rot = 45 })
+	end)
+	R(c, 0.5, 0.56, 0.44, 0.03, rgb(180, 120, 60), { t = 0.3 })
+	C(c, 0.5, 0.44, 0.4, rgb(250, 190, 210))
+	C(c, 0.5, 0.24, 0.34, rgb(255, 245, 220))
+	C(c, 0.5, 0.1, 0.1, rgb(220, 40, 60))
+end
+D.apple = function(c)
+	C(c, 0.38, 0.56, 0.5, rgb(220, 50, 60))
+	C(c, 0.62, 0.56, 0.5, rgb(220, 50, 60))
+	C(c, 0.5, 0.64, 0.5, rgb(200, 40, 50))
+	R(c, 0.5, 0.24, 0.05, 0.16, rgb(110, 70, 40), { rot = 10 })
+	R(c, 0.62, 0.22, 0.18, 0.09, rgb(80, 180, 70), { rot = -25, r = 0.5 })
+	C(c, 0.36, 0.48, 0.1, WHITE, { t = 0.5 })
+end
+D.sandwich = function(c)
+	R(c, 0.5, 0.36, 0.8, 0.14, rgb(236, 190, 120), { r = 0.4 })
+	R(c, 0.5, 0.47, 0.84, 0.07, rgb(90, 190, 70), { r = 0.5 })
+	R(c, 0.5, 0.54, 0.78, 0.07, rgb(240, 150, 150), { r = 0.3 })
+	R(c, 0.5, 0.6, 0.74, 0.06, rgb(255, 210, 70))
+	R(c, 0.5, 0.71, 0.8, 0.14, rgb(236, 190, 120), { r = 0.4 })
+end
+D.energy = function(c)
+	R(c, 0.5, 0.52, 0.44, 0.74, rgb(40, 200, 110), { r = 0.12, grad = { rgb(90, 240, 150), rgb(30, 160, 90), 0 } })
+	R(c, 0.5, 0.16, 0.38, 0.06, rgb(200, 205, 215), { r = 0.4 })
+	R(c, 0.5, 0.88, 0.38, 0.06, rgb(200, 205, 215), { r = 0.4 })
+	R(c, 0.54, 0.44, 0.1, 0.24, WHITE, { rot = 22 })
+	R(c, 0.46, 0.62, 0.1, 0.24, WHITE, { rot = 22 })
+	R(c, 0.5, 0.53, 0.22, 0.06, WHITE, { rot = -12 })
+end
+
 -- names that mean the same icon
 local ALIAS = {
 	Phone = "phone", Map = "map", People = "people", News = "news", Vote = "vote", Goals = "goals",
@@ -16127,7 +16801,7 @@ end
 table.sort(Icons.Names)
 
 return Icons
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX37"><Properties><string name="Name">Hud</string><ProtectedString name="Source"><![CDATA[-- Hud (ModuleScript) — StarterPlayerScripts.CityClient.Hud
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX41"><Properties><string name="Name">Hud</string><ProtectedString name="Source"><![CDATA[-- Hud (ModuleScript) — StarterPlayerScripts.CityClient.Hud
 -- The always-on screen: the clock and calendar, the city's mood and stats,
 -- a rotating minimap, coins, wanted stars, the mayor and the next election,
 -- the action bar, notifications and the news ticker.
@@ -16304,7 +16978,8 @@ local function actionButton(parent, emoji, label, key, order, onClick, color)
 	UI.Icons.Glyph(button, emoji, 30, { Name = "ActionIcon", AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 6), Hole = color or C.Panel2 })
 	UI.text(button, label, 11, UI.Bold, C.Sub, { Size = UDim2.new(1, 0, 0, 14), Position = UDim2.fromOffset(0, 36), TextXAlignment = Enum.TextXAlignment.Center })
 	if key and not UserInputService.TouchEnabled then
-		local keycap = UI.new("TextLabel", { BackgroundColor3 = C.Bg, Text = key, TextColor3 = C.Gold, Font = UI.Black, TextSize = 10, Size = UDim2.fromOffset(16, 16), Position = UDim2.new(1, -18, 0, 2), Parent = button })
+		local w = math.max(16, #key * 6 + 4)
+		local keycap = UI.new("TextLabel", { BackgroundColor3 = C.Bg, Text = key, TextColor3 = C.Gold, Font = UI.Black, TextSize = 10, Size = UDim2.fromOffset(w, 16), Position = UDim2.new(1, -w - 2, 0, 2), Parent = button })
 		UI.corner(keycap, 5)
 	end
 	return button
@@ -16416,6 +17091,18 @@ local function build()
 		ctx.World.Attack()
 	end, UI.rgb(110, 40, 48))
 	refs.AttackEmoji = refs.AttackButton:FindFirstChild("ActionIcon")
+	-- sprint: hold the button (or Shift)
+	local sprintButton = actionButton(bar, "run", "Sprint", "Shift", 7, nil, UI.rgb(30, 90, 80))
+	sprintButton.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			ctx.Moves.SetSprint(true)
+		end
+	end)
+	sprintButton.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			ctx.Moves.SetSprint(false)
+		end
+	end)
 	-- block: hold the button (or X)
 	local blockButton = actionButton(bar, "🛡️", "Block", "X", 6, nil, UI.rgb(40, 60, 110))
 	blockButton.InputBegan:Connect(function(input)
@@ -16436,7 +17123,17 @@ local function build()
 	refs.HealthSet, refs.HealthFill = hset, hfill
 	refs.HealthText = UI.text(health, "100", 16, UI.Title, C.White, { Position = UDim2.new(1, -50, 0, 4), Size = UDim2.fromOffset(42, 36), TextXAlignment = Enum.TextXAlignment.Right })
 	refs.HealthPanel = health
-	refs.BlockIcon = UI.chip(screen, "🛡️ BLOCKING", C.Blue, { AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 16, 1, -66), Visible = false })
+	-- stamina (above the health bar): the bar, your fitness level and XP to the next one
+	local stam = UI.panel(screen, { Name = "Stamina", AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 16, 1, -66), Size = UDim2.fromOffset(250, 40), Radius = 14 })
+	refs.StaminaIcon = UI.Icons.Glyph(stam, "bolt", 24, { Position = UDim2.fromOffset(13, 8) })
+	local sb, sset, sfill = UI.bar(stam, C.Teal, 10, { Position = UDim2.fromOffset(46, 11), Size = UDim2.new(1, -112, 0, 10) })
+	refs.StaminaSet, refs.StaminaFill, refs.StaminaPanel = sset, sfill, stam
+	local xpBack = UI.new("Frame", { BackgroundColor3 = C.Bg, BorderSizePixel = 0, Position = UDim2.fromOffset(46, 26), Size = UDim2.new(1, -112, 0, 4), Parent = stam })
+	UI.corner(xpBack, 2)
+	refs.FitXP = UI.new("Frame", { BackgroundColor3 = C.Gold, BorderSizePixel = 0, Size = UDim2.fromScale(0, 1), Parent = xpBack })
+	UI.corner(refs.FitXP, 2)
+	refs.FitLevel = UI.text(stam, "Lv 1", 14, UI.Title, C.Gold, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -10, 0, 2), Size = UDim2.fromOffset(56, 36), TextXAlignment = Enum.TextXAlignment.Right })
+	refs.BlockIcon = UI.chip(screen, "🛡️ BLOCKING", C.Blue, { AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 16, 1, -112), Visible = false })
 
 	-- the news ticker (just above the action bar)
 	ticker = UI.panel(screen, { Name = "News", AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -96), Size = UDim2.fromOffset(0, 32), AutomaticSize = Enum.AutomaticSize.X, Radius = 16, Visible = false })
@@ -16946,6 +17643,24 @@ function Hud.UpdateExtras(dt, root)
 	end
 end
 
+-- the stamina bar (called by Moves every frame)
+local lastStam = -1
+function Hud.SetStamina(frac, level, xpFrac, sprinting, exhausted, boosted)
+	if not refs.StaminaFill then
+		return
+	end
+	frac = math.clamp(frac, 0, 1)
+	if math.abs(frac - lastStam) > 0.004 then
+		lastStam = frac
+		refs.StaminaFill.Size = UDim2.fromScale(frac, 1)
+	end
+	refs.StaminaFill.BackgroundColor3 = if exhausted then C.Red elseif boosted then C.Gold elseif sprinting then UI.rgb(90, 230, 210) else C.Teal
+	refs.FitLevel.Text = "Lv " .. level
+	refs.FitXP.Size = UDim2.fromScale(math.clamp(xpFrac, 0, 1), 1)
+	local pulse = exhausted and (os.clock() * 4) % 1 < 0.5
+	refs.StaminaPanel.BackgroundTransparency = if pulse then 0.35 else 0.08
+end
+
 function Hud.Start(context)
 	ctx = context
 	cityState = ReplicatedStorage:WaitForChild("CityState")
@@ -16981,7 +17696,7 @@ function Hud.Start(context)
 end
 
 return Hud
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX38"><Properties><string name="Name">Panels</string><ProtectedString name="Source"><![CDATA[-- Panels (ModuleScript) — StarterPlayerScripts.CityClient.Panels
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX42"><Properties><string name="Name">Panels</string><ProtectedString name="Source"><![CDATA[-- Panels (ModuleScript) — StarterPlayerScripts.CityClient.Panels
 -- The windows you open: the city map, the People directory and profile
 -- cards, voting, speeches, the mayor's desk, conversations with citizens,
 -- elevators, help, settings, the welcome screen, election results and the
@@ -17059,15 +17774,19 @@ local function portrait(parent, model, closeUp, props)
 	local root = copy:FindFirstChild("HumanoidRootPart")
 	local head = copy:FindFirstChild("Head")
 	local base = root and root.CFrame or copy:GetPivot()
-	copy:PivotTo(CFrame.new(0, 0, 0) * (base - base.Position))
+	-- stand them up straight at the middle of the little world (whatever the model's pivot is)
+	copy:PivotTo((base - base.Position) * base:Inverse() * copy:GetPivot())
+	base = root and root.CFrame or copy:GetPivot()
 	local camera = Instance.new("Camera")
 	camera.FieldOfView = 30
 	camera.Parent = vp
 	vp.CurrentCamera = camera
 	local s = model:GetAttribute("Scale") or 1
-	local focus = if closeUp and head then head.Position - base.Position else Vector3.new(0, 0.3 * s, 0)
+	-- look at the face from the front (where they're facing), or at the whole body
+	local fwd = if head then Vector3.new(head.CFrame.LookVector.X, 0, head.CFrame.LookVector.Z) else base.LookVector
+	fwd = if fwd.Magnitude > 0.1 then fwd.Unit else Vector3.new(0, 0, -1)
+	local focus = if closeUp and head then head.Position else base.Position + Vector3.new(0, 0.3 * s, 0)
 	local dist = (if closeUp then 5.2 else 14) * s
-	local fwd = (base - base.Position).LookVector
 	local overlay
 	if closeUp and head then
 		-- viewports don't draw SurfaceGuis, so the drawn face goes on top as a copy
@@ -17658,7 +18377,7 @@ end
 -- Conversations
 --------------------------------------------------------------------------------
 local function buildDialogue()
-	local sheet = UI.panel(screen, { Name = "Dialogue", AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -100), Size = UDim2.fromOffset(820, 250), Visible = false, Radius = 18, ZIndex = 15 })
+	local sheet = UI.panel(screen, { Name = "Dialogue", AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -96), Size = UDim2.fromOffset(940, 250), Visible = false, Radius = 18, ZIndex = 15 })
 	local scale = UI.new("UIScale", { Parent = sheet })
 	local face = UI.new("Frame", { BackgroundTransparency = 1, Position = UDim2.fromOffset(14, 14), Size = UDim2.fromOffset(150, 150), Parent = sheet })
 	local name = UI.text(sheet, "", 22, UI.Title, C.White, { Position = UDim2.fromOffset(180, 12), Size = UDim2.new(1, -240, 0, 28) })
@@ -17666,11 +18385,12 @@ local function buildDialogue()
 	local line = UI.text(sheet, "", 17, UI.Font, C.Text, { Position = UDim2.fromOffset(180, 64), Size = UDim2.new(1, -196, 0, 72), TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top })
 	local you = UI.text(sheet, "", 14, UI.Font, C.Gold, { Position = UDim2.fromOffset(180, 60), Size = UDim2.new(1, -196, 0, 18), TextWrapped = true, Visible = false })
 	local meta = UI.text(sheet, "", 13, UI.Font, C.Sub, { Position = UDim2.fromOffset(14, 170), Size = UDim2.fromOffset(150, 70), TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top, TextXAlignment = Enum.TextXAlignment.Center })
-	local options = UI.new("Frame", { BackgroundTransparency = 1, Position = UDim2.fromOffset(180, 140), Size = UDim2.new(1, -196, 0, 100), Parent = sheet })
-	UI.new("UIGridLayout", { CellSize = UDim2.new(0.333, -6, 0, 30), CellPadding = UDim2.fromOffset(6, 5), SortOrder = Enum.SortOrder.LayoutOrder, Parent = options })
-	local close = UI.button(sheet, "✕", { Size = UDim2.fromOffset(34, 34), Position = UDim2.new(1, -44, 0, 10), TextSize = 15 }, function()
+	local options = UI.new("Frame", { BackgroundTransparency = 1, Position = UDim2.fromOffset(180, 132), Size = UDim2.new(1, -196, 0, 100), Parent = sheet })
+	UI.new("UIGridLayout", { CellSize = UDim2.new(0.333, -6, 0, 32), CellPadding = UDim2.fromOffset(7, 6), SortOrder = Enum.SortOrder.LayoutOrder, Parent = options })
+	local close = UI.button(sheet, "", { Size = UDim2.fromOffset(34, 34), Position = UDim2.new(1, -44, 0, 10), TextSize = 15 }, function()
 		Panels.EndDialogue(true)
 	end)
+	UI.Icons.Glyph(close, "close", 16, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Hole = C.Panel3 })
 	local current
 	local typing = {}
 	local optionKeys = {}
@@ -17713,6 +18433,11 @@ local function buildDialogue()
 	local function setOptions(list)
 		clear(options)
 		optionKeys = {}
+		-- make room for every answer: the panel grows upward, row by row
+		local rows = math.max(1, math.ceil(#(list or {}) / 3))
+		local h = rows * 38
+		options.Size = UDim2.new(1, -196, 0, h)
+		sheet.Size = UDim2.fromOffset(940, math.max(250, 132 + h + 14))
 		for k, opt in ipairs(list or {}) do
 			optionKeys[k] = opt.Key
 			local b = UI.button(options, (if k <= 9 and not UserInputService.TouchEnabled then "<font color='#ffc448'>" .. k .. "</font>  " else "") .. opt.Text, { TextSize = 13, Color = if opt.Key == "bye" then C.Panel3 elseif opt.Key == "insult" then UI.rgb(90, 36, 44) elseif opt.Key == "gift" then UI.rgb(40, 90, 60) else C.Panel2, LayoutOrder = k, XAlign = Enum.TextXAlignment.Left }, function()
@@ -17847,8 +18572,10 @@ local function buildHelp()
 		{ "🚨 Crime", "<b>F</b> attacks, <b>G</b> (hold) picks a pocket, <b>R</b> (hold) robs a register or the bank vault. If anyone sees you, you get wanted stars and the police come after you. Get caught and you're BUSTED: a fine and time in jail. Kids can't be hurt." },
 		{ "🫥 Losing the police", "The police only know where they <b>last saw</b> you. Break their line of sight (around a corner, into a building) and they'll run there and search around. Hide in a <b>trash can, hedge or park bush</b> (hold <b>Q</b>): they can't see you, unless they search right next to your spot (or saw you climb in!). Stay out of sight and the stars fade one by one, faster while you're hiding. <b>Space</b> gets you out." },
 		{ "🦹 Other people's crimes", "You're not the only criminal in town. Pickpockets, bag snatchers, store robbers and graffiti taggers show up now and then (more at night). If someone shouts <b>STOP, THIEF!</b>, chase them down and hit them (<b>F</b>): they give up, the owner gets their things back, you get a reward, and the police take them to jail. Watch your own pockets too: stand still too long and someone might pick them. Visit the police station to see who's locked up in the cell." },
+		{ "🏃 Sprinting and stamina", "Hold <b>Shift</b> (or the Sprint button) to run. It uses stamina (the ⚡ bar above your health), which refills when you stop. Sprinting and running on the <b>gym treadmills</b> (press E) earn fitness XP: every level gives you more stamina, faster recovery and a faster sprint. Food refills stamina too." },
+		{ "🍔 Food", "Press <b>E</b> at the counter of the Bakery, Cafe, Diner, Restaurant, Ice Cream shop or Market to order. Food heals you ❤️ and refills stamina ⚡. Coffee and energy drinks make stamina refill faster for a while." },
 		{ "🥷 Disguises", "Buy a 🧥 <b>hoodie</b>, a 🥷 <b>ski mask</b> or a 🥸 <b>disguise kit</b> at the 👕 Clothing store, and wear them with <b>C</b>. Witnesses may not recognize you (fewer stars, no notoriety, nobody remembers it was you), the police have to get closer to spot you, and it all works much better <b>at night</b>. After a crime, change or take off your outfit where nobody can see: the police keep looking for the old one. But a ski mask in daylight makes people nervous..." },
-		{ "⌨️ Keys", "Tab phone · E talk / use · M map · P people · V vote · B speech · N mayor · F attack · X block · 1-4 hotbar · G pickpocket · R rob · Q hide · C wardrobe · H help · 1-9 answer in conversations · Esc close windows" },
+		{ "⌨️ Keys", "Tab phone · E talk / use · M map · P people · V vote · B speech · N mayor · F attack · X block · 1-4 hotbar · G pickpocket · R rob · Q hide · Shift sprint · C wardrobe · H help · 1-9 answer in conversations · Esc close windows" },
 	}
 	for _, s in ipairs(sections) do
 		local card = UI.panel(list, { Size = UDim2.new(1, -10, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundColor3 = C.Panel2, Radius = 12 })
@@ -18267,6 +18994,52 @@ local function buildWardrobe()
 	end
 end
 
+-- Food: order at the counter of a bakery, cafe, diner, restaurant, ice cream shop or the market
+local function buildFood()
+	local win = UI.window(screen, "Menu", "burger", UDim2.fromOffset(760, 380), C.Orange)
+	Panels.Food = win
+	local body = win.Body
+	local top = UI.text(body, "", 15, UI.Bold, C.Sub, { Size = UDim2.new(1, 0, 0, 22), RichText = true })
+	local grid = UI.new("Frame", { BackgroundTransparency = 1, Position = UDim2.fromOffset(0, 30), Size = UDim2.new(1, 0, 1, -62), Parent = body })
+	UI.new("UIGridLayout", { CellSize = UDim2.new(0.333, -8, 1, 0), CellPadding = UDim2.fromOffset(10, 0), SortOrder = Enum.SortOrder.LayoutOrder, Parent = grid })
+	UI.text(body, "❤️ heals you · ⚡ refills stamina (for sprinting). Coffee and energy drinks make stamina refill faster for a while.", 12, UI.Font, C.Dim, { AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.new(1, 0, 0, 26), TextWrapped = true })
+	function Panels.OpenFood(data)
+		win.Title.Text = data.Label or "Menu"
+		clear(grid)
+		top.Text = "🪙 You have " .. UI.commas(data.Coins or 0) .. " coins. Everything is served right away."
+		for k, item in ipairs(data.Items or {}) do
+			local card = UI.panel(grid, { BackgroundColor3 = C.Panel2, Radius = 14, LayoutOrder = k })
+			UI.pad(card, 12)
+			UI.Icons.Badge(card, item.Icon, 60, (item.Color or C.Orange):Lerp(C.Panel, 0.55), { AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 0), Fill = 0.8 })
+			UI.text(card, item.Name, 18, UI.Title, C.Text, { Position = UDim2.fromOffset(0, 66), Size = UDim2.new(1, 0, 0, 24), TextXAlignment = Enum.TextXAlignment.Center })
+			local stats = {}
+			if (item.Heal or 0) > 0 then
+				table.insert(stats, "<font color='#ff7080'>❤️ +" .. item.Heal .. "</font>")
+			end
+			if (item.Energy or 0) > 0 then
+				table.insert(stats, "<font color='#3cc8c8'>⚡ +" .. item.Energy .. "</font>")
+			end
+			if item.Boost then
+				table.insert(stats, "<font color='#ffc448'>×" .. item.Boost .. " for " .. item.BoostTime .. "s</font>")
+			end
+			UI.text(card, table.concat(stats, "   "), 14, UI.Bold, C.Text, { Position = UDim2.fromOffset(0, 92), Size = UDim2.new(1, 0, 0, 20), TextXAlignment = Enum.TextXAlignment.Center })
+			UI.text(card, item.Desc, 12, UI.Font, C.Sub, { Position = UDim2.fromOffset(0, 116), Size = UDim2.new(1, 0, 0, 48), TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Center, TextYAlignment = Enum.TextYAlignment.Top })
+			UI.button(card, "🪙 " .. item.Price .. "  Buy & eat", { AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.new(1, 0, 0, 40), Color = C.Gold, TextColor = C.Bg }, function()
+				local r = request({ Action = "BuyFood", Place = data.Place, Id = item.Id })
+				if r.Ok then
+					UI.sound("pop", 0.4, 1.3)
+					ctx.Hud.Toast("😋", r.Text or "Yum!", "", C.Orange)
+					r.Place = data.Place
+					Panels.OpenFood(r)
+				else
+					fail(r)
+				end
+			end)
+		end
+		win.Open()
+	end
+end
+
 -- knocked out: the screen fades, you wake up at the hospital
 local function buildDown()
 	local cover = UI.new("Frame", { BackgroundColor3 = Color3.new(0, 0, 0), BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 45, Visible = false, Parent = screen })
@@ -18315,12 +19088,13 @@ function Panels.Start(context)
 	buildBusted()
 	buildShop()
 	buildWardrobe()
+	buildFood()
 	buildDown()
 	buildPhone()
 end
 
 return Panels
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX39"><Properties><string name="Name">World</string><ProtectedString name="Source"><![CDATA[-- World (ModuleScript) — StarterPlayerScripts.CityClient.World
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX43"><Properties><string name="Name">World</string><ProtectedString name="Source"><![CDATA[-- World (ModuleScript) — StarterPlayerScripts.CityClient.World
 -- Everything drawn in the 3D world: nameplates over citizens and players,
 -- speech bubbles, the interaction prompts (talk, elevators, crimes), the
 -- waypoint beam, hit effects, alarms, confetti, the sky and the traffic lights.
@@ -18486,6 +19260,57 @@ function World.SetPlates(on)
 	end
 end
 
+-- Name tags never pile up: when two tags would cover each other on screen
+-- (coworkers side by side at a counter, a crowd), only the nearer one shows.
+local PLATE_W, PLATE_H = 150, 40
+local function declutter()
+	if not World.ShowPlates then
+		return
+	end
+	local camera = workspace.CurrentCamera
+	if not camera then
+		return
+	end
+	local camPos = camera.CFrame.Position
+	local list = {}
+	for model, entry in pairs(plates) do
+		local gui = entry.Gui
+		local head = gui.Adornee
+		if head and head.Parent then
+			local world = head.Position + gui.StudsOffset
+			local dist = (world - camPos).Magnitude
+			if dist <= gui.MaxDistance then
+				local p, onScreen = camera:WorldToViewportPoint(world)
+				if onScreen and p.Z > 0 then
+					table.insert(list, { Entry = entry, X = p.X, Y = p.Y, D = dist })
+				else
+					gui.Enabled = true
+				end
+			else
+				gui.Enabled = true
+			end
+		end
+	end
+	table.sort(list, function(a, b)
+		return a.D < b.D
+	end)
+	local shown = {}
+	for _, item in ipairs(list) do
+		local free = true
+		for _, other in ipairs(shown) do
+			if math.abs(item.X - other.X) < PLATE_W * 0.8 and math.abs(item.Y - other.Y) < PLATE_H * 0.85 then
+				free = false
+				break
+			end
+		end
+		-- players' own tags always show
+		if free or item.Entry.IsPlayer then
+			table.insert(shown, item)
+		end
+		item.Entry.Gui.Enabled = free or item.Entry.IsPlayer
+	end
+end
+
 --------------------------------------------------------------------------------
 -- Speech bubbles
 --------------------------------------------------------------------------------
@@ -18576,7 +19401,7 @@ end
 --------------------------------------------------------------------------------
 -- Interaction prompts (our own look for Talk / Elevator / crime prompts)
 --------------------------------------------------------------------------------
-local PROMPT_COLORS = { Talk = C.Blue, Elevator = C.Teal, Crime = C.Red, Hide = C.Purple, Shop = C.Gold, Stop = C.Orange }
+local PROMPT_COLORS = { Talk = C.Blue, Elevator = C.Teal, Crime = C.Red, Hide = C.Purple, Shop = C.Gold, Stop = C.Orange, Train = C.Green }
 local promptGuis = {}
 
 local function keyName(prompt, inputType)
@@ -18790,7 +19615,6 @@ end
 -- Punching
 --------------------------------------------------------------------------------
 local Weapons = require(Shared:WaitForChild("Weapons"))
-local tracks = {} -- [humanoid] = { [animation id] = track }
 local lastAttack = 0
 local fistSide = false
 
@@ -18799,32 +19623,6 @@ function World.Equipped()
 	local character = player.Character
 	local tool = character and character:FindFirstChildOfClass("Tool")
 	return tool and tool:GetAttribute("Weapon") or "Fists"
-end
-
-local function playAttack(humanoid, weapon)
-	local w = Weapons.Get(weapon)
-	local id = Weapons.Animations[w.Anim] or Weapons.Animations.punch
-	local animator = humanoid:FindFirstChildOfClass("Animator")
-	if not animator then
-		return
-	end
-	tracks[humanoid] = tracks[humanoid] or {}
-	local track = tracks[humanoid][id]
-	if not track then
-		local anim = Instance.new("Animation")
-		anim.AnimationId = id
-		local ok, t = pcall(animator.LoadAnimation, animator, anim)
-		if not ok then
-			return
-		end
-		track = t
-		track.Priority = Enum.AnimationPriority.Action
-		tracks[humanoid][id] = track
-	end
-	-- jabs alternate speed so a flurry doesn't look robotic; stabs are quick
-	local speed = if w.Anim == "punch" then (if fistSide then 1.9 else 1.6) elseif w.Anim == "stab" then 1.5 else 1.05
-	fistSide = not fistSide
-	track:Play(0.05, 1, speed)
 end
 
 -- Attack with whatever you're holding (F, click with a weapon, or the button)
@@ -18840,7 +19638,11 @@ function World.Attack()
 	if not humanoid or humanoid.Health <= 0 or player:GetAttribute("Hiding") then
 		return
 	end
-	playAttack(humanoid, weapon)
+	-- the swing plays right away on our screen (jabs alternate left and right;
+	-- the server sets the same attributes so everyone else sees it too)
+	character:SetAttribute("SwingSide", (character:GetAttribute("SwingSide") or 0) + 1)
+	character:SetAttribute("SwingWeapon", weapon)
+	character:SetAttribute("Swing", os.clock())
 	UI.sound("punch", 0.4, if weapon == "Knife" then 1.6 elseif weapon == "Fists" then 1.3 else 0.9)
 	task.spawn(function()
 		local ok, result = pcall(function()
@@ -18866,6 +19668,9 @@ function World.SetBlock(on)
 		return
 	end
 	blockingNow = on
+	if player.Character then
+		player.Character:SetAttribute("Blocking", if on then true else nil)
+	end
 	task.spawn(function()
 		pcall(function()
 			ctx.Remotes.Request:InvokeServer({ Action = "Block", On = on })
@@ -18966,9 +19771,128 @@ function World.Start(context)
 		if slow >= 0.25 then
 			slow = 0
 			pcall(trafficTick)
+			pcall(declutter)
 		end
 	end)
 end
 
 return World
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX44"><Properties><string name="Name">Moves</string><ProtectedString name="Source"><![CDATA[-- Moves (ModuleScript) — StarterPlayerScripts.CityClient.Moves
+-- Sprinting and stamina. Hold Shift (or the Sprint button) to run: it uses
+-- stamina, which refills when you stop. Your fitness level (from the server,
+-- see Shared.Fitness) sets how much stamina you have, how fast it refills and
+-- how fast you sprint. Sprinting earns fitness XP; food refills stamina.
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+
+local Fitness = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Fitness"))
+
+local Moves = {}
+local player = Players.LocalPlayer
+local ctx
+
+local want = false -- holding Shift / the button
+local stamina = Fitness.Stats(1).MaxStamina
+local exhausted = false
+local lastSprint = 0
+local sprintSeconds = 0 -- not reported yet
+local ourSpeed -- the WalkSpeed we set (so we only undo our own change)
+
+function Moves.SetSprint(on)
+	want = on == true
+end
+
+-- food and workouts refill stamina
+function Moves.AddStamina(amount)
+	local st = Fitness.Stats(player:GetAttribute("FitLevel") or 1)
+	stamina = math.clamp(stamina + (amount or 0), 0, st.MaxStamina)
+	if stamina > st.MaxStamina * 0.25 then
+		exhausted = false
+	end
+end
+
+function Moves.Stamina()
+	return stamina
+end
+
+local function report()
+	if sprintSeconds < 0.5 then
+		return
+	end
+	local seconds = sprintSeconds
+	sprintSeconds = 0
+	task.spawn(function()
+		pcall(function()
+			ctx.Remotes.Request:InvokeServer({ Action = "Trained", Seconds = seconds })
+		end)
+	end)
+end
+
+local function step(dt)
+	local character = player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	local level = player:GetAttribute("FitLevel") or 1
+	local st = Fitness.Stats(level)
+	local boost = 1
+	if (player:GetAttribute("BoostUntil") or 0) > workspace:GetServerTimeNow() then
+		boost = player:GetAttribute("Boost") or 1
+	end
+	stamina = math.min(stamina, st.MaxStamina)
+	local sprinting = false
+	if humanoid and root and humanoid.Health > 0 then
+		local moving = humanoid.MoveDirection.Magnitude > 0.1
+		local busy = root.Anchored or player:GetAttribute("Hiding") or player:GetAttribute("Blocking") or character:GetAttribute("Treadmill")
+		sprinting = want and moving and not busy and not exhausted and stamina > 0
+		if sprinting then
+			stamina = math.max(0, stamina - st.Drain * dt)
+			lastSprint = os.clock()
+			sprintSeconds += dt
+			if stamina <= 0 then
+				exhausted = true
+				ctx.Hud.Toast("😮‍💨", "Out of breath!", "Stop running for a moment to get your stamina back. Train at the gym for more.", Color3.fromRGB(240, 170, 60))
+			end
+			if humanoid.WalkSpeed ~= st.Sprint then
+				humanoid.WalkSpeed = st.Sprint
+				ourSpeed = st.Sprint
+			end
+		else
+			if ourSpeed and humanoid.WalkSpeed == ourSpeed then
+				humanoid.WalkSpeed = Fitness.WALK
+			end
+			ourSpeed = nil
+			if os.clock() - lastSprint > st.Delay then
+				-- standing still gets your breath back faster
+				stamina = math.min(st.MaxStamina, stamina + st.Regen * boost * (if moving then 1 else 1.5) * dt)
+			end
+			if exhausted and stamina >= st.MaxStamina * 0.25 then
+				exhausted = false
+			end
+		end
+		if (character:GetAttribute("Sprinting") == true) ~= sprinting then
+			character:SetAttribute("Sprinting", if sprinting then true else nil)
+		end
+	end
+	if sprintSeconds >= 4 then
+		report()
+	end
+	local xp, nextXp = player:GetAttribute("FitXP") or 0, player:GetAttribute("FitNext") or Fitness.XPFor(level)
+	ctx.Hud.SetStamina(stamina / st.MaxStamina, level, xp / math.max(1, nextXp), sprinting, exhausted, boost > 1)
+end
+
+function Moves.Start(context)
+	ctx = context
+	RunService.RenderStepped:Connect(function(dt)
+		pcall(step, dt)
+	end)
+	player.CharacterAdded:Connect(function()
+		stamina = Fitness.Stats(player:GetAttribute("FitLevel") or 1).MaxStamina
+		exhausted = false
+		ourSpeed = nil
+	end)
+end
+
+return Moves
 ]]></ProtectedString></Properties></Item></Item></Item></Item></roblox>

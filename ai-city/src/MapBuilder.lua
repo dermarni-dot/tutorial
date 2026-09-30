@@ -648,7 +648,7 @@ end
 
 function MapBuilder.SetNews(text)
 	if map and map.NewsBoard then
-		map.NewsBoard.Text = "📰 CITY NEWS\n" .. text
+		map.NewsBoard.Text = "CITY NEWS\n" .. text
 	end
 end
 

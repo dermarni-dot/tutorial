@@ -106,6 +106,31 @@ Street lamps, windows, porch lights, neon signs and stadium floodlights switch o
 | 🎯 **Daily goals** | Four goals every day, shown under the clock (click the title to fold them). Examples: talk to people, give a gift, make a friend, visit places, go up a tower, give a speech, vote. Each one pays coins when you finish it. |
 | 🗺️ **Explore** | **M** opens the city map: search places, see what's open and who's inside, and set a waypoint. **P** opens the People directory: find anyone, see their card, or follow a waypoint to them. Press **E** at elevator doors to ride the towers. |
 
+## Getting around, getting fit, eating
+
+- 🏃 **Sprinting and stamina:** hold **Shift** (or the Sprint button) to run. Sprinting uses stamina, the ⚡ bar above your health, which refills when you stop (faster if you stand still). Run it empty and you're out of breath for a moment.
+- 💪 **Train it:** sprinting earns fitness XP, and so does a proper workout on the **gym treadmills** (press E: you run for a few seconds, +55 XP, full stamina). Every fitness level (up to 20) gives more stamina, faster recovery and a faster sprint. Your level and XP show next to the bar and are saved between visits.
+
+  | Level | Stamina | Sprint speed | Recovery |
+  |---|---|---|---|
+  | 1 | 100 | 24 | 12.5 / s |
+  | 5 | 148 | 26.4 | 18.5 / s |
+  | 10 | 208 | 29.4 | 26 / s |
+  | 20 | 328 | 35.4 | 41 / s |
+
+- 🍔 **Food:** press **E** at the counter of the Bakery, Cafe, Diner, Restaurant, Ice Cream shop or Market to see the menu. You eat it on the spot (with an eating animation): it heals you ❤️ and refills stamina ⚡. Coffee and energy drinks also make stamina refill faster for a while.
+
+  | Where | Menu |
+  |---|---|
+  | 🥐 Bakery | Croissant 4, Donut 3, Blueberry Muffin 4 |
+  | ☕ Cafe | Coffee 5 (stamina ×1.6 for 90 s), Muffin 4, Croissant 4 |
+  | 🍔 Diner | Cheeseburger 10 (+45 ❤️), Fries 5, Milkshake 6 |
+  | 🍝 Restaurant | Spaghetti 15 (+70 ❤️), Pizza Slice 8 |
+  | 🍦 Ice Cream | Ice Cream 5, Milkshake 6 |
+  | 🛒 Market | Apple 2, Sandwich 6, Energy Drink 8 (full stamina, ×2 for 60 s) |
+
+- 🥊 **Fighting moves:** your character puts their fists up and bounces on their feet during a fight, and throws left and right jabs with a body twist. With a weapon, they wind up and chop down with a bat or hammer, or lunge with a knife. Hold X to **block**: both forearms up in front of your face, braced. Citizens in a fight raise their fists and block too.
+
 ## Crime and punishment
 
 - ⚔️ **Fighting:** attack with **F** (or click while holding a weapon), and **hold X** to block, which cuts the damage you take to a third.
@@ -188,6 +213,8 @@ Street lamps, windows, porch lights, neon signs and stadium floodlights switch o
 | **Citizen card** | **City map** |
 | ![Profile](ui_profile_preview.png) | ![Map](ui_map_preview.png) |
 
+| **Ordering food (E at the counter)** | |
+| ![Food](ui_food_preview.png) | |
 | **Wardrobe (C) at the Clothing store** | **Giving a speech** |
 | ![Wardrobe](ui_wardrobe_preview.png) | ![Speech](ui_speech_preview.png) |
 
@@ -204,7 +231,8 @@ Street lamps, windows, porch lights, neon signs and stadium floodlights switch o
 | Key | |
 |---|---|
 | Tab | phone (all the apps) |
-| E | talk / use elevator |
+| Shift | sprint (hold) |
+| E | talk / use elevator / order food / treadmill |
 | M | map |
 | P | people |
 | V | vote |
@@ -236,12 +264,13 @@ Every action is also a button on the action bar for mobile players.
 | `CrimeService` | Modules | Fighting (attacks, citizens fighting back), crimes, witnesses, wanted stars, police chases, SWAT, the helicopter, hiding, jail. |
 | `CombatService` | Modules | Weapons as tools, the Hardware store shop, blocking, waking up at the hospital, confiscation. |
 | `StreetCrimeService` | Modules | Other people's crimes (pickpockets, bag snatchers, robbers, graffiti), police chases, arrests with handcuffs, the jail cell, players catching thieves. |
+| `FitnessService`, `FoodService` | Modules | Fitness levels (sprinting XP, gym treadmills) and the food places' menus. |
 | `BrawlService` | Modules | Street fights between citizens: arguments, punches, the crowd, the police, breaking them up. |
 | `DisguiseService` | Modules | Hoodies, ski masks and disguise kits: the Clothing store, the wardrobe, how they look on your character, nervous citizens. |
 | `PlayerService` | Modules | Elevators, profiles, the directory, finding people. |
 | `CitizenLook` | Modules | Outfits, hair, items, faces and sizes. |
-| `Config`, `Actions`, `Atmosphere`, `Faces`, `Poses`, `Weapons`, `Disguises` | ReplicatedStorage.Shared | Settings; the list of actions; the sky; drawn faces; the pose and prop library; weapon stats; disguise stats. |
-| `CityClient` (+ `UI`, `Icons`, `Hud`, `Panels`, `World`) | StarterPlayerScripts | Everything on screen, and the citizens' body language, faces, nameplates and speech bubbles. |
+| `Config`, `Actions`, `Atmosphere`, `Faces`, `Poses`, `Weapons`, `Disguises`, `Fitness`, `Food` | ReplicatedStorage.Shared | Settings; the list of actions; the sky; drawn faces; the pose and prop library; weapon stats; disguise stats. |
+| `CityClient` (+ `UI`, `Icons`, `Hud`, `Panels`, `World`, `Moves`) | StarterPlayerScripts | Everything on screen, and the citizens' body language, faces, nameplates and speech bubbles. |
 
 It's built to stay light on the server:
 - **The server only decides where people are and what they're doing.** Each citizen carries this in their `Action`, `Expression` and `Activity` attributes.
@@ -327,6 +356,10 @@ The game was run in a Luau test harness (a small Roblox simulation), and these c
     - the player catching a bag snatcher (no stars, +30 coins, taken away by the police);
     - the player's own pocket being picked, then getting the coins back;
     - a street fighter arrested and jailed, and inmates released after their time;
+  - food, fitness and moves:
+    - ordering at all six food counters, healing and refilling stamina, and energy-drink boosts;
+    - leveling up by sprinting (without being able to cheat the XP) and by working out on a treadmill;
+    - jabs alternating left and right, and blocking, showing on the character;
   - an elevator ride to floor 9;
   - a vote and an election (and winning it).
 - **The client:** every window and every server message, and poses on 20 citizens at once.

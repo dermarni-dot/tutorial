@@ -76,15 +76,19 @@ local function portrait(parent, model, closeUp, props)
 	local root = copy:FindFirstChild("HumanoidRootPart")
 	local head = copy:FindFirstChild("Head")
 	local base = root and root.CFrame or copy:GetPivot()
-	copy:PivotTo(CFrame.new(0, 0, 0) * (base - base.Position))
+	-- stand them up straight at the middle of the little world (whatever the model's pivot is)
+	copy:PivotTo((base - base.Position) * base:Inverse() * copy:GetPivot())
+	base = root and root.CFrame or copy:GetPivot()
 	local camera = Instance.new("Camera")
 	camera.FieldOfView = 30
 	camera.Parent = vp
 	vp.CurrentCamera = camera
 	local s = model:GetAttribute("Scale") or 1
-	local focus = if closeUp and head then head.Position - base.Position else Vector3.new(0, 0.3 * s, 0)
+	-- look at the face from the front (where they're facing), or at the whole body
+	local fwd = if head then Vector3.new(head.CFrame.LookVector.X, 0, head.CFrame.LookVector.Z) else base.LookVector
+	fwd = if fwd.Magnitude > 0.1 then fwd.Unit else Vector3.new(0, 0, -1)
+	local focus = if closeUp and head then head.Position else base.Position + Vector3.new(0, 0.3 * s, 0)
 	local dist = (if closeUp then 5.2 else 14) * s
-	local fwd = (base - base.Position).LookVector
 	local overlay
 	if closeUp and head then
 		-- viewports don't draw SurfaceGuis, so the drawn face goes on top as a copy
@@ -675,7 +679,7 @@ end
 -- Conversations
 --------------------------------------------------------------------------------
 local function buildDialogue()
-	local sheet = UI.panel(screen, { Name = "Dialogue", AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -100), Size = UDim2.fromOffset(820, 250), Visible = false, Radius = 18, ZIndex = 15 })
+	local sheet = UI.panel(screen, { Name = "Dialogue", AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -96), Size = UDim2.fromOffset(940, 250), Visible = false, Radius = 18, ZIndex = 15 })
 	local scale = UI.new("UIScale", { Parent = sheet })
 	local face = UI.new("Frame", { BackgroundTransparency = 1, Position = UDim2.fromOffset(14, 14), Size = UDim2.fromOffset(150, 150), Parent = sheet })
 	local name = UI.text(sheet, "", 22, UI.Title, C.White, { Position = UDim2.fromOffset(180, 12), Size = UDim2.new(1, -240, 0, 28) })
@@ -683,11 +687,12 @@ local function buildDialogue()
 	local line = UI.text(sheet, "", 17, UI.Font, C.Text, { Position = UDim2.fromOffset(180, 64), Size = UDim2.new(1, -196, 0, 72), TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top })
 	local you = UI.text(sheet, "", 14, UI.Font, C.Gold, { Position = UDim2.fromOffset(180, 60), Size = UDim2.new(1, -196, 0, 18), TextWrapped = true, Visible = false })
 	local meta = UI.text(sheet, "", 13, UI.Font, C.Sub, { Position = UDim2.fromOffset(14, 170), Size = UDim2.fromOffset(150, 70), TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top, TextXAlignment = Enum.TextXAlignment.Center })
-	local options = UI.new("Frame", { BackgroundTransparency = 1, Position = UDim2.fromOffset(180, 140), Size = UDim2.new(1, -196, 0, 100), Parent = sheet })
-	UI.new("UIGridLayout", { CellSize = UDim2.new(0.333, -6, 0, 30), CellPadding = UDim2.fromOffset(6, 5), SortOrder = Enum.SortOrder.LayoutOrder, Parent = options })
-	local close = UI.button(sheet, "✕", { Size = UDim2.fromOffset(34, 34), Position = UDim2.new(1, -44, 0, 10), TextSize = 15 }, function()
+	local options = UI.new("Frame", { BackgroundTransparency = 1, Position = UDim2.fromOffset(180, 132), Size = UDim2.new(1, -196, 0, 100), Parent = sheet })
+	UI.new("UIGridLayout", { CellSize = UDim2.new(0.333, -6, 0, 32), CellPadding = UDim2.fromOffset(7, 6), SortOrder = Enum.SortOrder.LayoutOrder, Parent = options })
+	local close = UI.button(sheet, "", { Size = UDim2.fromOffset(34, 34), Position = UDim2.new(1, -44, 0, 10), TextSize = 15 }, function()
 		Panels.EndDialogue(true)
 	end)
+	UI.Icons.Glyph(close, "close", 16, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Hole = C.Panel3 })
 	local current
 	local typing = {}
 	local optionKeys = {}
@@ -730,6 +735,11 @@ local function buildDialogue()
 	local function setOptions(list)
 		clear(options)
 		optionKeys = {}
+		-- make room for every answer: the panel grows upward, row by row
+		local rows = math.max(1, math.ceil(#(list or {}) / 3))
+		local h = rows * 38
+		options.Size = UDim2.new(1, -196, 0, h)
+		sheet.Size = UDim2.fromOffset(940, math.max(250, 132 + h + 14))
 		for k, opt in ipairs(list or {}) do
 			optionKeys[k] = opt.Key
 			local b = UI.button(options, (if k <= 9 and not UserInputService.TouchEnabled then "<font color='#ffc448'>" .. k .. "</font>  " else "") .. opt.Text, { TextSize = 13, Color = if opt.Key == "bye" then C.Panel3 elseif opt.Key == "insult" then UI.rgb(90, 36, 44) elseif opt.Key == "gift" then UI.rgb(40, 90, 60) else C.Panel2, LayoutOrder = k, XAlign = Enum.TextXAlignment.Left }, function()
@@ -864,8 +874,10 @@ local function buildHelp()
 		{ "🚨 Crime", "<b>F</b> attacks, <b>G</b> (hold) picks a pocket, <b>R</b> (hold) robs a register or the bank vault. If anyone sees you, you get wanted stars and the police come after you. Get caught and you're BUSTED: a fine and time in jail. Kids can't be hurt." },
 		{ "🫥 Losing the police", "The police only know where they <b>last saw</b> you. Break their line of sight (around a corner, into a building) and they'll run there and search around. Hide in a <b>trash can, hedge or park bush</b> (hold <b>Q</b>): they can't see you, unless they search right next to your spot (or saw you climb in!). Stay out of sight and the stars fade one by one, faster while you're hiding. <b>Space</b> gets you out." },
 		{ "🦹 Other people's crimes", "You're not the only criminal in town. Pickpockets, bag snatchers, store robbers and graffiti taggers show up now and then (more at night). If someone shouts <b>STOP, THIEF!</b>, chase them down and hit them (<b>F</b>): they give up, the owner gets their things back, you get a reward, and the police take them to jail. Watch your own pockets too: stand still too long and someone might pick them. Visit the police station to see who's locked up in the cell." },
+		{ "🏃 Sprinting and stamina", "Hold <b>Shift</b> (or the Sprint button) to run. It uses stamina (the ⚡ bar above your health), which refills when you stop. Sprinting and running on the <b>gym treadmills</b> (press E) earn fitness XP: every level gives you more stamina, faster recovery and a faster sprint. Food refills stamina too." },
+		{ "🍔 Food", "Press <b>E</b> at the counter of the Bakery, Cafe, Diner, Restaurant, Ice Cream shop or Market to order. Food heals you ❤️ and refills stamina ⚡. Coffee and energy drinks make stamina refill faster for a while." },
 		{ "🥷 Disguises", "Buy a 🧥 <b>hoodie</b>, a 🥷 <b>ski mask</b> or a 🥸 <b>disguise kit</b> at the 👕 Clothing store, and wear them with <b>C</b>. Witnesses may not recognize you (fewer stars, no notoriety, nobody remembers it was you), the police have to get closer to spot you, and it all works much better <b>at night</b>. After a crime, change or take off your outfit where nobody can see: the police keep looking for the old one. But a ski mask in daylight makes people nervous..." },
-		{ "⌨️ Keys", "Tab phone · E talk / use · M map · P people · V vote · B speech · N mayor · F attack · X block · 1-4 hotbar · G pickpocket · R rob · Q hide · C wardrobe · H help · 1-9 answer in conversations · Esc close windows" },
+		{ "⌨️ Keys", "Tab phone · E talk / use · M map · P people · V vote · B speech · N mayor · F attack · X block · 1-4 hotbar · G pickpocket · R rob · Q hide · Shift sprint · C wardrobe · H help · 1-9 answer in conversations · Esc close windows" },
 	}
 	for _, s in ipairs(sections) do
 		local card = UI.panel(list, { Size = UDim2.new(1, -10, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundColor3 = C.Panel2, Radius = 12 })
@@ -1284,6 +1296,52 @@ local function buildWardrobe()
 	end
 end
 
+-- Food: order at the counter of a bakery, cafe, diner, restaurant, ice cream shop or the market
+local function buildFood()
+	local win = UI.window(screen, "Menu", "burger", UDim2.fromOffset(760, 380), C.Orange)
+	Panels.Food = win
+	local body = win.Body
+	local top = UI.text(body, "", 15, UI.Bold, C.Sub, { Size = UDim2.new(1, 0, 0, 22), RichText = true })
+	local grid = UI.new("Frame", { BackgroundTransparency = 1, Position = UDim2.fromOffset(0, 30), Size = UDim2.new(1, 0, 1, -62), Parent = body })
+	UI.new("UIGridLayout", { CellSize = UDim2.new(0.333, -8, 1, 0), CellPadding = UDim2.fromOffset(10, 0), SortOrder = Enum.SortOrder.LayoutOrder, Parent = grid })
+	UI.text(body, "❤️ heals you · ⚡ refills stamina (for sprinting). Coffee and energy drinks make stamina refill faster for a while.", 12, UI.Font, C.Dim, { AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.new(1, 0, 0, 26), TextWrapped = true })
+	function Panels.OpenFood(data)
+		win.Title.Text = data.Label or "Menu"
+		clear(grid)
+		top.Text = "🪙 You have " .. UI.commas(data.Coins or 0) .. " coins. Everything is served right away."
+		for k, item in ipairs(data.Items or {}) do
+			local card = UI.panel(grid, { BackgroundColor3 = C.Panel2, Radius = 14, LayoutOrder = k })
+			UI.pad(card, 12)
+			UI.Icons.Badge(card, item.Icon, 60, (item.Color or C.Orange):Lerp(C.Panel, 0.55), { AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 0), Fill = 0.8 })
+			UI.text(card, item.Name, 18, UI.Title, C.Text, { Position = UDim2.fromOffset(0, 66), Size = UDim2.new(1, 0, 0, 24), TextXAlignment = Enum.TextXAlignment.Center })
+			local stats = {}
+			if (item.Heal or 0) > 0 then
+				table.insert(stats, "<font color='#ff7080'>❤️ +" .. item.Heal .. "</font>")
+			end
+			if (item.Energy or 0) > 0 then
+				table.insert(stats, "<font color='#3cc8c8'>⚡ +" .. item.Energy .. "</font>")
+			end
+			if item.Boost then
+				table.insert(stats, "<font color='#ffc448'>×" .. item.Boost .. " for " .. item.BoostTime .. "s</font>")
+			end
+			UI.text(card, table.concat(stats, "   "), 14, UI.Bold, C.Text, { Position = UDim2.fromOffset(0, 92), Size = UDim2.new(1, 0, 0, 20), TextXAlignment = Enum.TextXAlignment.Center })
+			UI.text(card, item.Desc, 12, UI.Font, C.Sub, { Position = UDim2.fromOffset(0, 116), Size = UDim2.new(1, 0, 0, 48), TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Center, TextYAlignment = Enum.TextYAlignment.Top })
+			UI.button(card, "🪙 " .. item.Price .. "  Buy & eat", { AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.new(1, 0, 0, 40), Color = C.Gold, TextColor = C.Bg }, function()
+				local r = request({ Action = "BuyFood", Place = data.Place, Id = item.Id })
+				if r.Ok then
+					UI.sound("pop", 0.4, 1.3)
+					ctx.Hud.Toast("😋", r.Text or "Yum!", "", C.Orange)
+					r.Place = data.Place
+					Panels.OpenFood(r)
+				else
+					fail(r)
+				end
+			end)
+		end
+		win.Open()
+	end
+end
+
 -- knocked out: the screen fades, you wake up at the hospital
 local function buildDown()
 	local cover = UI.new("Frame", { BackgroundColor3 = Color3.new(0, 0, 0), BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 45, Visible = false, Parent = screen })
@@ -1332,6 +1390,7 @@ function Panels.Start(context)
 	buildBusted()
 	buildShop()
 	buildWardrobe()
+	buildFood()
 	buildDown()
 	buildPhone()
 end

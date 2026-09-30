@@ -164,6 +164,57 @@ function World.SetPlates(on)
 	end
 end
 
+-- Name tags never pile up: when two tags would cover each other on screen
+-- (coworkers side by side at a counter, a crowd), only the nearer one shows.
+local PLATE_W, PLATE_H = 150, 40
+local function declutter()
+	if not World.ShowPlates then
+		return
+	end
+	local camera = workspace.CurrentCamera
+	if not camera then
+		return
+	end
+	local camPos = camera.CFrame.Position
+	local list = {}
+	for model, entry in pairs(plates) do
+		local gui = entry.Gui
+		local head = gui.Adornee
+		if head and head.Parent then
+			local world = head.Position + gui.StudsOffset
+			local dist = (world - camPos).Magnitude
+			if dist <= gui.MaxDistance then
+				local p, onScreen = camera:WorldToViewportPoint(world)
+				if onScreen and p.Z > 0 then
+					table.insert(list, { Entry = entry, X = p.X, Y = p.Y, D = dist })
+				else
+					gui.Enabled = true
+				end
+			else
+				gui.Enabled = true
+			end
+		end
+	end
+	table.sort(list, function(a, b)
+		return a.D < b.D
+	end)
+	local shown = {}
+	for _, item in ipairs(list) do
+		local free = true
+		for _, other in ipairs(shown) do
+			if math.abs(item.X - other.X) < PLATE_W * 0.8 and math.abs(item.Y - other.Y) < PLATE_H * 0.85 then
+				free = false
+				break
+			end
+		end
+		-- players' own tags always show
+		if free or item.Entry.IsPlayer then
+			table.insert(shown, item)
+		end
+		item.Entry.Gui.Enabled = free or item.Entry.IsPlayer
+	end
+end
+
 --------------------------------------------------------------------------------
 -- Speech bubbles
 --------------------------------------------------------------------------------
@@ -254,7 +305,7 @@ end
 --------------------------------------------------------------------------------
 -- Interaction prompts (our own look for Talk / Elevator / crime prompts)
 --------------------------------------------------------------------------------
-local PROMPT_COLORS = { Talk = C.Blue, Elevator = C.Teal, Crime = C.Red, Hide = C.Purple, Shop = C.Gold, Stop = C.Orange }
+local PROMPT_COLORS = { Talk = C.Blue, Elevator = C.Teal, Crime = C.Red, Hide = C.Purple, Shop = C.Gold, Stop = C.Orange, Train = C.Green }
 local promptGuis = {}
 
 local function keyName(prompt, inputType)
@@ -468,7 +519,6 @@ end
 -- Punching
 --------------------------------------------------------------------------------
 local Weapons = require(Shared:WaitForChild("Weapons"))
-local tracks = {} -- [humanoid] = { [animation id] = track }
 local lastAttack = 0
 local fistSide = false
 
@@ -477,32 +527,6 @@ function World.Equipped()
 	local character = player.Character
 	local tool = character and character:FindFirstChildOfClass("Tool")
 	return tool and tool:GetAttribute("Weapon") or "Fists"
-end
-
-local function playAttack(humanoid, weapon)
-	local w = Weapons.Get(weapon)
-	local id = Weapons.Animations[w.Anim] or Weapons.Animations.punch
-	local animator = humanoid:FindFirstChildOfClass("Animator")
-	if not animator then
-		return
-	end
-	tracks[humanoid] = tracks[humanoid] or {}
-	local track = tracks[humanoid][id]
-	if not track then
-		local anim = Instance.new("Animation")
-		anim.AnimationId = id
-		local ok, t = pcall(animator.LoadAnimation, animator, anim)
-		if not ok then
-			return
-		end
-		track = t
-		track.Priority = Enum.AnimationPriority.Action
-		tracks[humanoid][id] = track
-	end
-	-- jabs alternate speed so a flurry doesn't look robotic; stabs are quick
-	local speed = if w.Anim == "punch" then (if fistSide then 1.9 else 1.6) elseif w.Anim == "stab" then 1.5 else 1.05
-	fistSide = not fistSide
-	track:Play(0.05, 1, speed)
 end
 
 -- Attack with whatever you're holding (F, click with a weapon, or the button)
@@ -518,7 +542,11 @@ function World.Attack()
 	if not humanoid or humanoid.Health <= 0 or player:GetAttribute("Hiding") then
 		return
 	end
-	playAttack(humanoid, weapon)
+	-- the swing plays right away on our screen (jabs alternate left and right;
+	-- the server sets the same attributes so everyone else sees it too)
+	character:SetAttribute("SwingSide", (character:GetAttribute("SwingSide") or 0) + 1)
+	character:SetAttribute("SwingWeapon", weapon)
+	character:SetAttribute("Swing", os.clock())
 	UI.sound("punch", 0.4, if weapon == "Knife" then 1.6 elseif weapon == "Fists" then 1.3 else 0.9)
 	task.spawn(function()
 		local ok, result = pcall(function()
@@ -544,6 +572,9 @@ function World.SetBlock(on)
 		return
 	end
 	blockingNow = on
+	if player.Character then
+		player.Character:SetAttribute("Blocking", if on then true else nil)
+	end
 	task.spawn(function()
 		pcall(function()
 			ctx.Remotes.Request:InvokeServer({ Action = "Block", On = on })
@@ -644,6 +675,7 @@ function World.Start(context)
 		if slow >= 0.25 then
 			slow = 0
 			pcall(trafficTick)
+			pcall(declutter)
 		end
 	end)
 end

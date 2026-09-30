@@ -252,12 +252,14 @@ function Buildings.shell(parent, spec)
 		MapKit.awning(model, width, 4, at(0, DH + 1.3, -D / 2 - 2), spec.Awning[1], spec.Awning[2] or WHITE)
 	end
 	if spec.Label and not spec.NoSign then
-		local signW = math.min(W - 3, math.max(16, #spec.Label * 1.6))
+		-- clean lettering (emoji look like smudges when blown up on a sign)
+		local text = string.upper((spec.Label:gsub("^[^%w]+%s*", "")))
+		local signW = math.min(W - 3, math.max(16, #text * 1.9))
 		local signY = if spec.Awning then math.min(DH + 4.4, H - 1.5) else math.min(DH + 3.2, H - 1.5)
 		local board = deco(model, "SignBoard", Vector3.new(signW + 0.8, 4.4, 0.4), at(0, signY, -D / 2 - 0.3), spec.SignTrim or MapKit.GOLD, Enum.Material.Metal)
 		MapKit.nightNeon(board)
 		local sign = deco(model, "Sign", Vector3.new(signW, 3.6, 0.6), at(0, signY, -D / 2 - 0.5), spec.SignColor or MapKit.rgb(40, 36, 50))
-		MapKit.signText(sign, Enum.NormalId.Front, spec.Label, spec.SignText or WHITE)
+		MapKit.signText(sign, Enum.NormalId.Front, text, spec.SignText or WHITE)
 		b.Sign = sign
 	end
 

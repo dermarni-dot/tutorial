@@ -26,7 +26,7 @@ local Weapons = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("W
 local BrawlService = {}
 local S
 
-local WATCH = 170 -- fights only start this close to a player (so someone sees them)
+local WATCH = 120 -- fights only start this close to a player (so someone sees them)
 local CROWD = 34 -- people this close stop to watch
 local MAX_TIME = 45 -- seconds before they get tired of it
 
@@ -568,12 +568,14 @@ local function gatherCrowd(b)
 end
 
 local function swing(b, f, other, now)
+	f.Model:SetAttribute("SwingSide", (f.Model:GetAttribute("SwingSide") or 0) + 1)
 	f.Model:SetAttribute("Swing", now)
 	local strong = f.C.Personality == "sporty" or f.C.Job == "Fitness Coach" or f.C.Job == "Coach"
 	local damage = math.random(8, 15) + (if strong then 4 else 0)
 	local blocked = math.random() < 0.22
 	if blocked then
 		damage = math.floor(damage * 0.3 + 0.5)
+		other.Model:SetAttribute("Block", now)
 	end
 	other.HP = (other.HP or Weapons.CITIZEN_HP) - damage
 	other.LastHit = now

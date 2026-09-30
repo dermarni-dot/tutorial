@@ -175,7 +175,8 @@ local function actionButton(parent, emoji, label, key, order, onClick, color)
 	UI.Icons.Glyph(button, emoji, 30, { Name = "ActionIcon", AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 6), Hole = color or C.Panel2 })
 	UI.text(button, label, 11, UI.Bold, C.Sub, { Size = UDim2.new(1, 0, 0, 14), Position = UDim2.fromOffset(0, 36), TextXAlignment = Enum.TextXAlignment.Center })
 	if key and not UserInputService.TouchEnabled then
-		local keycap = UI.new("TextLabel", { BackgroundColor3 = C.Bg, Text = key, TextColor3 = C.Gold, Font = UI.Black, TextSize = 10, Size = UDim2.fromOffset(16, 16), Position = UDim2.new(1, -18, 0, 2), Parent = button })
+		local w = math.max(16, #key * 6 + 4)
+		local keycap = UI.new("TextLabel", { BackgroundColor3 = C.Bg, Text = key, TextColor3 = C.Gold, Font = UI.Black, TextSize = 10, Size = UDim2.fromOffset(w, 16), Position = UDim2.new(1, -w - 2, 0, 2), Parent = button })
 		UI.corner(keycap, 5)
 	end
 	return button
@@ -287,6 +288,18 @@ local function build()
 		ctx.World.Attack()
 	end, UI.rgb(110, 40, 48))
 	refs.AttackEmoji = refs.AttackButton:FindFirstChild("ActionIcon")
+	-- sprint: hold the button (or Shift)
+	local sprintButton = actionButton(bar, "run", "Sprint", "Shift", 7, nil, UI.rgb(30, 90, 80))
+	sprintButton.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			ctx.Moves.SetSprint(true)
+		end
+	end)
+	sprintButton.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			ctx.Moves.SetSprint(false)
+		end
+	end)
 	-- block: hold the button (or X)
 	local blockButton = actionButton(bar, "🛡️", "Block", "X", 6, nil, UI.rgb(40, 60, 110))
 	blockButton.InputBegan:Connect(function(input)
@@ -307,7 +320,17 @@ local function build()
 	refs.HealthSet, refs.HealthFill = hset, hfill
 	refs.HealthText = UI.text(health, "100", 16, UI.Title, C.White, { Position = UDim2.new(1, -50, 0, 4), Size = UDim2.fromOffset(42, 36), TextXAlignment = Enum.TextXAlignment.Right })
 	refs.HealthPanel = health
-	refs.BlockIcon = UI.chip(screen, "🛡️ BLOCKING", C.Blue, { AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 16, 1, -66), Visible = false })
+	-- stamina (above the health bar): the bar, your fitness level and XP to the next one
+	local stam = UI.panel(screen, { Name = "Stamina", AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 16, 1, -66), Size = UDim2.fromOffset(250, 40), Radius = 14 })
+	refs.StaminaIcon = UI.Icons.Glyph(stam, "bolt", 24, { Position = UDim2.fromOffset(13, 8) })
+	local sb, sset, sfill = UI.bar(stam, C.Teal, 10, { Position = UDim2.fromOffset(46, 11), Size = UDim2.new(1, -112, 0, 10) })
+	refs.StaminaSet, refs.StaminaFill, refs.StaminaPanel = sset, sfill, stam
+	local xpBack = UI.new("Frame", { BackgroundColor3 = C.Bg, BorderSizePixel = 0, Position = UDim2.fromOffset(46, 26), Size = UDim2.new(1, -112, 0, 4), Parent = stam })
+	UI.corner(xpBack, 2)
+	refs.FitXP = UI.new("Frame", { BackgroundColor3 = C.Gold, BorderSizePixel = 0, Size = UDim2.fromScale(0, 1), Parent = xpBack })
+	UI.corner(refs.FitXP, 2)
+	refs.FitLevel = UI.text(stam, "Lv 1", 14, UI.Title, C.Gold, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -10, 0, 2), Size = UDim2.fromOffset(56, 36), TextXAlignment = Enum.TextXAlignment.Right })
+	refs.BlockIcon = UI.chip(screen, "🛡️ BLOCKING", C.Blue, { AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 16, 1, -112), Visible = false })
 
 	-- the news ticker (just above the action bar)
 	ticker = UI.panel(screen, { Name = "News", AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -96), Size = UDim2.fromOffset(0, 32), AutomaticSize = Enum.AutomaticSize.X, Radius = 16, Visible = false })
@@ -815,6 +838,24 @@ function Hud.UpdateExtras(dt, root)
 		refreshHotbar()
 		updateTarget(root)
 	end
+end
+
+-- the stamina bar (called by Moves every frame)
+local lastStam = -1
+function Hud.SetStamina(frac, level, xpFrac, sprinting, exhausted, boosted)
+	if not refs.StaminaFill then
+		return
+	end
+	frac = math.clamp(frac, 0, 1)
+	if math.abs(frac - lastStam) > 0.004 then
+		lastStam = frac
+		refs.StaminaFill.Size = UDim2.fromScale(frac, 1)
+	end
+	refs.StaminaFill.BackgroundColor3 = if exhausted then C.Red elseif boosted then C.Gold elseif sprinting then UI.rgb(90, 230, 210) else C.Teal
+	refs.FitLevel.Text = "Lv " .. level
+	refs.FitXP.Size = UDim2.fromScale(math.clamp(xpFrac, 0, 1), 1)
+	local pulse = exhausted and (os.clock() * 4) % 1 < 0.5
+	refs.StaminaPanel.BackgroundTransparency = if pulse then 0.35 else 0.08
 end
 
 function Hud.Start(context)

@@ -330,9 +330,10 @@ function UI.window(screen, title, icon, size, accent)
 	end
 	win.SetIcon(icon)
 	local titleLabel = UI.text(header, title, 22, UI.Title, UI.C.Text, { Size = UDim2.new(1, -140, 0, 30), Position = UDim2.fromOffset(60, 12), ZIndex = 22 })
-	local close = UI.button(header, "✕", { Size = UDim2.fromOffset(36, 36), Position = UDim2.new(1, -46, 0, 9), Color = UI.C.Panel3, TextSize = 16 }, function()
+	local close = UI.button(header, "", { Size = UDim2.fromOffset(36, 36), Position = UDim2.new(1, -46, 0, 9), Color = UI.C.Panel3, TextSize = 16 }, function()
 		win.Close()
 	end)
+	Icons.Glyph(close, "close", 16, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Hole = UI.C.Panel3 })
 	close.ZIndex = 23
 	local body = UI.new("Frame", { BackgroundTransparency = 1, Position = UDim2.fromOffset(0, 58), Size = UDim2.new(1, 0, 1, -58), ZIndex = 21, Parent = frame })
 	UI.pad(body, 14)

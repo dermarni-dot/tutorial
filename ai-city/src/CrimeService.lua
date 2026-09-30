@@ -393,6 +393,10 @@ local function attack(player, data)
 		return { Ok = false }
 	end
 	lastPunch[player] = now
+	-- everyone sees the swing (left and right jabs take turns)
+	character:SetAttribute("SwingSide", (character:GetAttribute("SwingSide") or 0) + 1)
+	character:SetAttribute("SwingWeapon", id)
+	character:SetAttribute("Swing", now)
 	-- who's in front of us? (citizens and other players)
 	local best, bestScore, bestPlayer = nil, math.huge, nil
 	local look = root.CFrame.LookVector

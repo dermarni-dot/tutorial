@@ -295,6 +295,41 @@ L.strike = function(t, ph, k)
 	local out = math.sin(k * math.pi)
 	return { RS = A(60 + out * 35, 0, -10), RE = A(100 - out * 95), LS = A(55, 0, 16), LE = A(110), Waist = A(-6, -out * 25, 0) }, false
 end
+-- a left jab (the mirror of the strike)
+L.strikeL = function(t, ph, k)
+	local out = math.sin(k * math.pi)
+	return { LS = A(60 + out * 35, 0, 10), LE = A(100 - out * 95), RS = A(55, 0, -16), RE = A(110), Waist = A(-6, out * 25, 0) }, false
+end
+-- fists up, bouncing on the feet: ready to fight (arms only, legs keep walking)
+L.guardup = function(t, ph)
+	local b = osc(t, 7, ph)
+	return { LS = A(62 + b * 3, 0, 16), LE = A(118), LW = A(0, 0, 10), RS = A(52 - b * 3, 0, -14), RE = A(122), RW = A(0, 0, -10), Waist = A(-7, 10, 0), Neck = A(8, -8, 0) }, false
+end
+-- blocking: both forearms up in front of the face, hunched, braced
+L.block = function(t, ph, shake)
+	local s = (shake or 0) * osc(t, 40, ph) * 6
+	return { LS = A(96 + s, 0, 30), LE = A(128), LW = A(0, 20, 0), RS = A(100 - s, 0, -28), RE = A(130), RW = A(0, -20, 0), Waist = A(-14), Neck = A(-10), Root = CFrame.new(0, -0.15, 0) }, false
+end
+-- swinging a bat or hammer: wind up over the shoulder, then chop down across
+L.chop = function(t, ph, k)
+	local up = if k < 0.35 then k / 0.35 else 1 - (k - 0.35) / 0.65
+	local down = if k < 0.35 then 0 else (k - 0.35) / 0.65
+	return { RS = A(60 + up * 110 - down * 40, 0, -20 - down * 10), RE = A(40 - up * 20), LS = A(60 + up * 90 - down * 30, 0, 30), LE = A(60), Waist = A(-4 - down * 16, 20 - down * 45, 0), Neck = A(0, -down * 10, 0) }, false
+end
+-- a knife: a quick lunge forward
+L.stab = function(t, ph, k)
+	local out = math.sin(k * math.pi)
+	return { RS = A(70 + out * 25, 0, -6), RE = A(90 - out * 88), LS = A(40, 0, 20), LE = A(90), Waist = A(-8 - out * 10, -out * 22, 0), RH = A(-out * 20), LK = A(-out * 20) }, false
+end
+-- eating: hand to mouth, again and again
+L.eat = function(t, ph)
+	local bite = (math.sin(t * 4 + ph) + 1) / 2
+	return { RS = A(40 + bite * 50, 0, -24), RE = A(80 + bite * 55), RW = A(0, 30, 0), LS = A(20, 0, 10), LE = A(40), Neck = A(-4 + bite * 6) }, false
+end
+-- sprinting: lean into it
+L.sprint = function(t, ph)
+	return { Waist = A(-12), Neck = A(8) }, false
+end
 L.flinch = function(t, ph, k)
 	return { Waist = A(18 * (1 - k)), Neck = A(20 * (1 - k)), LS = A(40 * (1 - k), 0, -20), RS = A(40 * (1 - k), 0, 20) }, false
 end
@@ -479,8 +514,12 @@ local function stateOf(model)
 	st.Kick = 0
 	st.Hit = 0
 	st.Swing = 0
+	st.Block = 0
 	model:GetAttributeChangedSignal("Swing"):Connect(function()
 		st.Swing = os.clock()
+	end)
+	model:GetAttributeChangedSignal("Block"):Connect(function()
+		st.Block = os.clock()
 	end)
 	model:GetAttributeChangedSignal("Kick"):Connect(function()
 		st.Kick = os.clock()
@@ -657,8 +696,14 @@ local function update(model, st, t, dt, camPos, myRoot)
 	local now = os.clock()
 	local target, full
 	-- short overlays: a soccer kick, a flinch
+	local fighting = model:GetAttribute("Fighting") ~= nil or model:GetAttribute("Brawling") ~= nil
 	if now - st.Swing < 0.35 then
-		target, full = L.strike(t, st.Phase, (now - st.Swing) / 0.35)
+		local left = (model:GetAttribute("SwingSide") or 0) % 2 == 1
+		target, full = (if left then L.strikeL else L.strike)(t, st.Phase, (now - st.Swing) / 0.35)
+	elseif now - st.Block < 0.5 then
+		target, full = L.block(t, st.Phase, 1 - (now - st.Block) / 0.5)
+	elseif fighting and not model:GetAttribute("KnockedOut") and now - st.Hit >= 0.35 then
+		target, full = L.guardup(t, st.Phase)
 	elseif now - st.Kick < 0.35 then
 		target, full = L.kick(t, st.Phase, (now - st.Kick) / 0.35)
 	elseif now - st.Hit < 0.35 then
@@ -746,6 +791,94 @@ local function update(model, st, t, dt, camPos, myRoot)
 end
 
 -- Call every frame (RunService.PreSimulation)
+--------------------------------------------------------------------------------
+-- Players: fighting stance, jabs and swings, blocking, eating, the treadmill
+--------------------------------------------------------------------------------
+local FOOD_COLORS = {
+	Croissant = Color3.fromRGB(222, 160, 80), Donut = Color3.fromRGB(240, 130, 180), Coffee = Color3.fromRGB(240, 240, 235), Muffin = Color3.fromRGB(150, 110, 200),
+	Burger = Color3.fromRGB(200, 120, 60), Fries = Color3.fromRGB(250, 200, 60), Milkshake = Color3.fromRGB(250, 170, 190), Pasta = Color3.fromRGB(230, 190, 90),
+	Pizza = Color3.fromRGB(230, 120, 60), IceCream = Color3.fromRGB(250, 210, 230), Apple = Color3.fromRGB(220, 50, 60), Sandwich = Color3.fromRGB(230, 190, 120), Energy = Color3.fromRGB(60, 220, 120),
+}
+
+local function blend(st, target, full, dt)
+	local a = 1 - math.exp(-dt * 16)
+	if target then
+		for key, motor in pairs(st.Motors) do
+			local goal = target[key] or (if full then IDENTITY else nil)
+			if goal then
+				local cur = st.Cur[key] or motor.Transform
+				cur = cur:Lerp(goal, a)
+				st.Cur[key] = cur
+				motor.Transform = cur
+			else
+				st.Cur[key] = nil
+			end
+		end
+	elseif next(st.Cur) then
+		table.clear(st.Cur)
+	end
+end
+
+local function playerUpdate(model, st, t, dt, player)
+	local now = os.clock()
+	local target, full
+	local weapon = model:GetAttribute("SwingWeapon") or "Fists"
+	local holding = model:FindFirstChildOfClass("Tool") ~= nil
+	local blocking = model:GetAttribute("Blocking") or (player and player:GetAttribute("Blocking"))
+	local eating = model:GetAttribute("Eating")
+	if model:GetAttribute("Treadmill") then
+		target, full = L.run(t, st.Phase)
+	elseif now - st.Swing < 0.42 then
+		local k = (now - st.Swing) / 0.42
+		if weapon == "Bat" or weapon == "Hammer" then
+			target, full = L.chop(t, st.Phase, k)
+		elseif weapon == "Knife" then
+			target, full = L.stab(t, st.Phase, math.min(1, k * 1.3))
+		else
+			local left = (model:GetAttribute("SwingSide") or 0) % 2 == 1
+			target, full = (if left then L.strikeL else L.strike)(t, st.Phase, math.min(1, k * 1.2))
+		end
+	elseif blocking then
+		target, full = L.block(t, st.Phase, math.max(0, 1 - (now - st.Hit) / 0.4))
+	elseif eating then
+		target, full = L.eat(t, st.Phase)
+	elseif now - st.Swing < 2.5 then
+		-- still in the fight: fists up (with a weapon, just the free hand)
+		target, full = L.guardup(t, st.Phase)
+		if holding then
+			target.RS, target.RE, target.RW = nil, nil, nil
+		end
+	elseif model:GetAttribute("Sprinting") then
+		target, full = L.sprint(t, st.Phase)
+	end
+	blend(st, target, full, dt)
+	-- the food in their hand
+	if eating ~= st.EatingProp then
+		st.EatingProp = eating
+		if st.EatPart then
+			st.EatPart:Destroy()
+			st.EatPart = nil
+		end
+		local hand = model:FindFirstChild("RightHand")
+		if eating and hand then
+			st.EatPart = prop(hand, "Food", Vector3.new(0.55, 0.45, 0.55), CFrame.new(0, -0.4, -0.2), FOOD_COLORS[eating] or Color3.fromRGB(220, 170, 100), if eating == "Apple" or eating == "Donut" then Ball else nil)
+			st.EatPart.Parent = model
+		end
+	end
+end
+
+function Poses.StepPlayers(dt, camPos)
+	local t = os.clock()
+	for _, player in ipairs(Players:GetPlayers()) do
+		local model = player.Character
+		local root = model and model:FindFirstChild("HumanoidRootPart")
+		if root and (root.Position - camPos).Magnitude < Poses.PoseRadius then
+			local st = stateOf(model)
+			pcall(playerUpdate, model, st, t, dt, player)
+		end
+	end
+end
+
 function Poses.Step(dt)
 	local camera = workspace.CurrentCamera
 	if not camera then
@@ -770,6 +903,7 @@ function Poses.Step(dt)
 			end
 		end
 	end
+	Poses.StepPlayers(dt, camPos)
 end
 
 return Poses
