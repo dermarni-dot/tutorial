@@ -51,6 +51,14 @@ local function buy(player, info)
 	if not S.City.Spend(player, item.Price, "🍽️ " .. item.Name) then
 		return { Ok = false, Error = "You need " .. item.Price .. " coins." }
 	end
+	-- a worker at the counter serves you (you get it when it's handed over)
+	local wait = S.Citizens and S.Citizens.ServePlayer and S.Citizens.ServePlayer(player, S.Map.Places[placeId], "food", 1)
+	if wait then
+		task.wait(wait * 0.9)
+		if not character.Parent then
+			return { Ok = false }
+		end
+	end
 	-- eat it: heal, stamina, a boost
 	humanoid.Health = math.min(humanoid.MaxHealth, humanoid.Health + item.Heal)
 	if item.Boost then

@@ -1142,6 +1142,77 @@ function CitizenService.TryCheckout(brain, t)
 	return "started"
 end
 
+-- A player ordering from a worker: the clerk at the nearest staffed till
+-- serves them, with the same checkout as citizens (the player's character is
+-- the customer). Returns the seconds until it's handed over, or nil if nobody
+-- is working the till (the order just goes through).
+local PLAYER_TIME = { food = 5.5, shop = 6 }
+function CitizenService.ServePlayer(player, place, kind, items)
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	if not root or not place then
+		return nil
+	end
+	local now = workspace:GetServerTimeNow()
+	local best, bestD
+	for _, spot in ipairs(place.Spots or {}) do
+		if spot.Action == "cashier" or spot.Action == "counter" or spot.Action == "brew" or spot.Action == "bake" then
+			local clerk = taken[spot]
+			local d = (spot.CFrame.Position - root.Position).Magnitude
+			if clerk and clerk.State == "act" and clerk.Spot == spot and clerk.Model.Parent and (clerk.ServingUntil or 0) < now and d < 30 and (not bestD or d < bestD) then
+				best, bestD = spot, d
+			end
+		end
+	end
+	if not best then
+		return nil
+	end
+	local clerk = taken[best]
+	local dur = PLAYER_TIME[kind] or 6
+	clerk.ServingUntil = now + dur + 0.5
+	-- the player steps up to the counter, facing the clerk
+	local front = best.CFrame.Position + best.CFrame.LookVector * 4.6
+	local look = flat(front - best.CFrame.Position)
+	look = if look.Magnitude > 0.1 then look.Unit else best.CFrame.LookVector
+	root.CFrame = CFrame.lookAt(Vector3.new(front.X, root.Position.Y, front.Z), Vector3.new(best.CFrame.Position.X, root.Position.Y, best.CFrame.Position.Z))
+	for _, m in ipairs({ character, clerk.Model }) do
+		m:SetAttribute("CheckoutStart", now)
+		m:SetAttribute("CheckoutKind", kind)
+		m:SetAttribute("CheckoutDur", dur)
+		m:SetAttribute("CheckoutItems", items or 1)
+		m:SetAttribute("CheckoutTill", best.CFrame.Position)
+		m:SetAttribute("CheckoutLook", look)
+		m:SetAttribute("CheckoutRole", if m == character then "customer" else "clerk")
+	end
+	local token = clerk.Token
+	local function say(at, line, expr)
+		task.delay(at, function()
+			if clerk.Token == token and clerk.Model.Parent then
+				CitizenService.Say(clerk, line, expr, 2)
+			end
+		end)
+	end
+	if kind == "food" then
+		say(0.1, FOOD_HELLO[math.random(1, #FOOD_HELLO)], "happy")
+		say(dur * 0.5, "Coming right up!", "happy")
+		say(dur * 0.88, "Here you go, " .. player.DisplayName .. "! Enjoy!", "happy")
+	else
+		say(0.1, CLERK_HELLO[math.random(1, #CLERK_HELLO)], "happy")
+		say(dur * 0.6, "Tap your card when you're ready.", "neutral")
+		say(dur * 0.9, THANKS[math.random(1, #THANKS)], "happy")
+	end
+	task.delay(dur + 0.4, function()
+		for _, m in ipairs({ character, clerk.Model }) do
+			if m.Parent and m:GetAttribute("CheckoutStart") == now then
+				for _, a in ipairs({ "CheckoutStart", "CheckoutKind", "CheckoutDur", "CheckoutItems", "CheckoutTill", "CheckoutLook", "CheckoutRole" }) do
+					m:SetAttribute(a, nil)
+				end
+			end
+		end
+	end)
+	return dur
+end
+
 --------------------------------------------------------------------------------
 -- Reactions (used by speeches, crimes, soccer, greetings)
 --------------------------------------------------------------------------------

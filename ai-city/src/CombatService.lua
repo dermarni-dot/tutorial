@@ -206,6 +206,10 @@ local function buy(player, data)
 	if not S.City.Spend(player, w.Price, w.Emoji .. " Bought a " .. w.Name) then
 		return { Ok = false, Error = "You need " .. w.Price .. " coins." }
 	end
+	-- the clerk rings it up (if someone is working the till)
+	if S.Citizens and S.Citizens.ServePlayer then
+		pcall(S.Citizens.ServePlayer, player, S.Map.Places.Hardware, "shop", 1)
+	end
 	pd.Weapons[data.Id] = true
 	giveTools(player)
 	return { Ok = true, Text = "You bought a " .. w.Name .. "! It's in your hotbar.", Items = shopData(player) }

@@ -1268,7 +1268,7 @@ local function checkoutK(model)
 		return nil
 	end
 	local kind = model:GetAttribute("CheckoutKind") or "shop"
-	local dur = Actions.CheckoutTime[kind] or 8
+	local dur = model:GetAttribute("CheckoutDur") or Actions.CheckoutTime[kind] or 8
 	local k = (workspace:GetServerTimeNow() - start) / dur
 	if k < 0 or k > 1 then
 		return nil
@@ -1895,7 +1895,13 @@ local function playerUpdate(model, st, t, dt, player)
 	elseif not target and carry and CARRY[carry] and not holding then
 		target, full = L[CARRY[carry][1]](t, st.Phase)
 	end
-	setProps(st, model, if workInfo then workAction else "", if not workInfo and carry and CARRY[carry] and not holding then carry else nil)
+	-- ordering from a worker (see CitizenService.ServePlayer)
+	local coK, coKind, coStart = checkoutK(model)
+	if coK and not target then
+		target, full = customerPose(t, st.Phase, coK, coKind)
+	end
+	checkoutItems(model, st, coK, coKind, coStart)
+	setProps(st, model, if coK then "checkout" elseif workInfo then workAction else "", if not workInfo and not coK and carry and CARRY[carry] and not holding then carry else nil)
 	if target then
 		-- fighting, working or carrying (see above)
 	elseif holding and now - (st.Draw or -99) < 0.35 then
