@@ -621,6 +621,53 @@ end
 -- Daily goals (under the clock)
 --------------------------------------------------------------------------------
 local goalsPanel, goalsList, goalsOpen = nil, nil, true
+-- the shift tracker (see JobService): the job, the task, progress and pay
+local jobCard
+function Hud.SetJob(d)
+	local column = screen and screen:FindFirstChild("LeftColumn")
+	if not column then
+		return
+	end
+	if d.Finished or d.Quit then
+		if jobCard then
+			local card = jobCard
+			jobCard = nil
+			if d.Finished then
+				UI.sound("notify", 0.5, 1.1)
+			end
+			UI.tween(card, 0.3, { BackgroundTransparency = 1 })
+			task.delay(0.3, function()
+				card:Destroy()
+			end)
+		end
+		return
+	end
+	if not jobCard then
+		jobCard = UI.panel(column, { Name = "JobCard", BackgroundColor3 = C.Panel, Size = UDim2.new(1, 0, 0, 92), LayoutOrder = 3, Radius = 14 })
+		UI.pad(jobCard, 10, 12, 10, 12)
+		UI.new("UIStroke", { Color = C.Gold, Thickness = 1.5, Transparency = 0.3, Parent = jobCard })
+		UI.text(jobCard, "", 15, UI.Title, C.Gold, { Name = "Title", Size = UDim2.new(1, -60, 0, 20) })
+		UI.text(jobCard, "", 12, UI.Bold, C.Text, { Name = "Task", Position = UDim2.fromOffset(0, 22), Size = UDim2.new(1, 0, 0, 30), TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top })
+		local _, setBar = UI.bar(jobCard, C.Gold, 6, { Name = "Progress", Position = UDim2.fromOffset(0, 56), Size = UDim2.new(1, 0, 0, 6) })
+		refs.JobBar = setBar
+		UI.text(jobCard, "", 12, UI.Bold, C.Sub, { Name = "Earned", Position = UDim2.fromOffset(0, 64), Size = UDim2.new(1, 0, 0, 16) })
+		UI.button(jobCard, "Quit", { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, -2), Size = UDim2.fromOffset(54, 24), Color = C.Panel3, TextSize = 11 }, function()
+			task.spawn(function()
+				ctx.Remotes.Request:InvokeServer({ Action = "QuitJob" })
+			end)
+		end)
+	end
+	jobCard.Title.Text = (d.Emoji or "💼") .. "  " .. (d.Job or "Work")
+	jobCard.Task.Text = "➜ " .. (d.Task or "") .. "   (" .. (d.Step or 1) .. " / " .. (d.Steps or 1) .. ")"
+	jobCard.Earned.Text = "🪙 " .. (d.Earned or 0) .. " earned this shift"
+	if refs.JobBar then
+		refs.JobBar(((d.Step or 1) - 1) / math.max(1, d.Steps or 1), C.Gold)
+	end
+	if (d.Paid or 0) > 0 then
+		UI.sound("notify", 0.35, 1.3)
+	end
+end
+
 function Hud.SetGoals(goals, done)
 	if not goalsPanel then
 		return

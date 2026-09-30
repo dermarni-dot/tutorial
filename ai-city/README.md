@@ -16,8 +16,11 @@ Players can talk to anyone, give speeches, run for mayor and pass laws. They can
 
 | | |
 |---|---|
-| 🗺️ **A bigger, more detailed city** | 9×9 blocks (about 900 studs across) and 46 places, including office towers 12–16 floors tall. It also has a lake with a pier, hills, mountains, forests, traffic lights, crosswalks, bus stops and 70 parked cars. |
+| 🗺️ **A bigger, more detailed city** | 11×11 blocks (about 1,100 studs across) and 52 places, including office towers 12–16 floors tall. It also has a lake with a pier, hills, mountains, forests, traffic lights, crosswalks, bus stops and 70 parked cars. |
 | 🏢 **Real insides** | Every building is furnished: <ul><li>the gym has treadmills, dumbbells, a squat rack, punching bags and yoga mats;</li><li>the offices have desk rows with elevators to every floor;</li><li>there are classrooms, hospital beds, a cinema with rows of seats, a bank vault, a police holding cell with bars, a bench and a toilet, and a kitchen in the restaurant;</li><li>every room is dressed: baseboards and chair rails, framed paintings, wall clocks, plants, trash bins and lighting to match (pendant lamps in the cafe and restaurant, chandeliers in the bank, hotel and town hall);</li><li>every shop looks like what it sells: open shelves stocked with its own goods, clothes racks and mannequins, toy piles and a giant teddy, TVs on the wall, flower buckets, fish tanks and pet cages, a tool wall, an ice-cream freezer and drink fridges.</li></ul> |
+| 💼 **Jobs for you** | Clock in as a mail carrier, gardener, barista, janitor, warehouse worker or shelf stocker (the **Jobs** app on your phone, or **J** at the workplace). Follow the glowing marker, hold **E** at each task, and get paid per task plus a bonus for the whole shift. Your character does the work: posting letters, watering, mopping, carrying boxes, making coffee. |
+| 🎯 **Citizens with a purpose** | People don't just wander. A shopping trip means browsing the shelves, paying at the till, walking home with a bag and unpacking it in the kitchen. Mail carriers go house to house, gardeners water and rake the park, the police patrol, waiters carry plates to tables, clerks restock shelves from the stockroom, and the night janitor mops the offices. On the way to work people carry briefcases, kids wear backpacks, and gym-goers carry gym bags. |
+| 🎮 **Controllers** | Full gamepad support (Xbox, PlayStation): R2 attack, L2 block, L3 sprint, R1 / L1 weapons, the D-pad for the phone, map, help and wardrobe, B to go back. Menus can be driven with the D-pad and A, the on-screen hints switch to controller buttons, and the controller rumbles when hits land. |
 | 🏫 **Three schools and a daycare** | Kids go to the right school for their age: elementary 6–10, middle 11–13, high 14–17. Toddlers go to daycare while their parents work. |
 | 🙂 **Faces** | Drawn faces with 14 expressions. People blink, look at you when you come close, and move their mouths when they talk. |
 | 👕 **Looks and sizes** | Casual outfits (hoodies, jackets, stripes, dresses, overalls), beards, earrings, hair bows and sneakers. Everyone has their own height, and kids have bigger heads for their size. |
@@ -27,12 +30,14 @@ Players can talk to anyone, give speeches, run for mayor and pass laws. They can
 | ⚽ **After-school life** | Real soccer games (two teams, a ball, goals, cheering), shooting hoops, swings, the arcade, homework at the library, and weekend family outings. |
 | 💬 **Dialogue** | Talk to anyone. Answers depend on their personality, mood, job, the city and what they remember about you. |
 | 🗳️ **Politics** | Speeches, elections with citizen candidates, votes, a mayor's salary and daily policies. |
-| ⚔️ **Fighting and crime** | Fists, a bat, a hammer and a knife, with attack animations, blocking, and citizens who fight back. Strangers get into street fights too, with crowds, phones out and police breaking them up. Pickpockets, bag snatchers, robbers and taggers get chased, handcuffed and locked up, unless you catch them first. Also pickpocketing and robberies. Hoodies, ski masks and disguises make you harder to recognize, especially at night. Witnesses need line of sight. Wanted stars bring police chases with backup, and getting caught means jail and a fine. |
-| 🖥️ **A full interface** | <ul><li>HUD: clock, city mood, rotating minimap, coins, wanted stars, a news ticker and a health bar that glows red when you're hurt.</li><li>📱 **A phone** (**Tab**) with every app: map, people, news, vote, goals, speech, mayor, help and settings.</li><li>🎯 **Daily goals**: four new ones every day, such as "chat with 3 citizens" or "visit Mirror Lake". Each pays coins.</li><li>A weapon hotbar with a cooldown sweep, a **target card** for whoever you're facing (name, job, health), and health bars over people who are hurt.</li><li>A camera flyover behind the welcome screen.</li><li>📱 **Plays on phones**: on a touch screen (or a small window) the HUD switches to a compact layout that keeps the joystick and jump button clear, and every window shrinks to fit.</li><li>Name tags stay readable: they're drawn over buildings, hidden when the person is behind a wall, and only the nearest one shows when tags overlap.</li><li>Windows: a city map, a people directory, profile cards with a 3D portrait, voting, speeches, the mayor's desk, conversations, elevators, the weapons shop, help and settings.</li></ul> |
+| ⚔️ **Fighting and crime** | Fists, a bat, a hammer and a knife, with full-body fight animations (a jab-cross-hook-uppercut combo, kicks, hit reactions, staggers, a victory fist pump), weapon moves (bat swings, a two-handed hammer slam, knife stabs and slashes with swing trails), blocking, and citizens who fight back. **No witnesses, no police:** hit someone from behind with nobody watching and they won't know it was you. Strangers get into street fights too, with crowds, phones out and police breaking them up. Pickpockets, bag snatchers, robbers and taggers get chased, handcuffed and locked up, unless you catch them first. Also pickpocketing and robberies. Hoodies, ski masks and disguises make you harder to recognize, especially at night. Witnesses need line of sight. Wanted stars bring police chases with backup, and getting caught means jail and a fine. |
+| 🖥️ **A full interface** | <ul><li>HUD: clock, city mood, rotating minimap, coins, wanted stars, a news ticker and a health bar that glows red when you're hurt.</li><li>📱 **A phone** (**Tab**) with every app: map, people, news, vote, goals, speech, mayor, help and settings.</li><li>🎯 **Daily goals**: four new ones every day, such as "chat with 3 citizens" or "visit Mirror Lake". Each pays coins.</li><li>A weapon hotbar with a cooldown sweep, a **target card** for whoever you're facing (name, job, health), and health bars over people who are hurt.</li><li>A camera flyover behind the welcome screen.</li><li>🌆 **Better graphics:** every room is lit by a grid of soft ceiling lights, nights are brighter with glowing neon, and there are moving clouds, chimney smoke, fireflies over the ponds and falling leaves. Buildings have rounded corners.</li><li>📱 **Plays on phones**: on a touch screen (or a small window) the HUD switches to a compact layout that keeps the joystick and jump button clear, and every window shrinks to fit.</li><li>Name tags stay readable: they're drawn over buildings, hidden when the person is behind a wall, and only the nearest one shows when tags overlap.</li><li>Windows: a city map, a people directory, profile cards with a 3D portrait, voting, speeches, the mayor's desk, conversations, elevators, the weapons shop, help and settings.</li></ul> |
 
 ## The city
 
 ![Downtown](downtown_preview.png)
+
+The city is 11×11 blocks: an outer ring of big suburban lots wraps the old edge, with woods at the corners. Houses are roomier (every style is 4 studs wider and deeper), and families prefer homes closer to downtown so commutes stay short.
 
 The whole city stands on a solid paved base. Every block has raised pavement sidewalks with curbs, the roads have lane lines and crosswalks, and there are lawns only in yards and parks. The terrain grass stays outside the city, and the tall grass blades are switched off, so grass never grows up through the streets or floors.
 
@@ -44,6 +49,14 @@ The whole city stands on a solid paved base. Every block has raised pavement sid
 | **Edges** | <ul><li>Houses and suburbs, each with a street address like "12 Oak Street". Styles are cottages, two-story houses with garages, modern houses and bungalows, all with porches and mailboxes.</li><li>🏭 Factory, 📦 Warehouse, ⛽ Gas & Garage.</li><li>🌲 Woods, and 🎣 Mirror Lake with a fishing pier.</li></ul> |
 
 Inside the buildings:
+
+**Fight moves** (drawn from the real pose code in a test harness):
+
+![Fighting](fighting_preview.png)
+
+**Weapon moves:**
+
+![Weapons](weapons_preview.png)
 
 | Gym | Offices (a floor of a tower) | Elementary school |
 |---|---|---|
@@ -108,6 +121,7 @@ Street lamps, windows, porch lights, neon signs and stadium floodlights switch o
 | 🗳️ **Vote** | Press **V**. Elections happen every `ELECTION_INTERVAL`. Citizens vote for whoever shares their values and whoever they like. |
 | 🏛️ **Be the mayor** | The winner gets a salary and passes one policy a day (**N**), which changes the economy, safety and happiness. |
 | 🎯 **Daily goals** | Four goals every day, shown under the clock (click the title to fold them). Examples: talk to people, give a gift, make a friend, visit places, go up a tower, give a speech, vote. Each one pays coins when you finish it. |
+| 💼 **Work a shift** | Open **Jobs** on the phone (or press **J** at a workplace). Six jobs: 📬 Mail Carrier, 🌱 Gardener, ☕ Barista, 🧽 Janitor, 📦 Warehouse Worker, 🛒 Shelf Stocker. Follow the marker and hold **E** at each task; a tracker under the clock shows your progress and pay, and you can quit any time. No one hires you while the police are after you. |
 | 🗺️ **Explore** | **M** opens the city map: search places, see what's open and who's inside, and set a waypoint. **P** opens the People directory: find anyone, see their card, or follow a waypoint to them. Press **E** at elevator doors to ride the towers. |
 
 ## Getting around, getting fit, eating
@@ -138,9 +152,12 @@ Street lamps, windows, porch lights, neon signs and stadium floodlights switch o
 ## Crime and punishment
 
 - ⚔️ **Fighting:** attack with **F** (or click while holding a weapon), and **hold X** to block, which cuts the damage you take to a third.
-  - Your attack animation matches what you're holding: quick jabs with fists, heavy swings with a bat or hammer, a lunge with a knife.
+  - Fists throw a combo: jab, cross, hook, cross, uppercut, with the hips and back foot turning into each punch. Street fighters throw roundhouse kicks too.
+  - Weapons have their own moves: the bat alternates a level swing and an overhead chop, the hammer is a two-handed slam, and the knife alternates a stab and a slash. Each swing leaves a trail. You carry each weapon its own way (the bat on your shoulder), pull it out when you equip it, and hold a guard with it in a fight.
+  - Getting hit snaps the head away from the punch; heavy hits make you stagger back. Winners do a fist pump.
   - People you hit flinch and get knocked back. Most run away screaming, but tough citizens (grumpy and sporty people) and the police **fight back** and can hurt you. Your ❤️ health bar is at the bottom left.
   - When someone's health runs out they go 💀 **down**: they collapse, see stars, and the paramedics take them to a hospital bed. There's no blood (Roblox rules), and the city's families stay intact.
+  - **Witnesses:** the police only come if someone saw it. Bystanders need a clear view (walls block it). The victim only reports you if they saw your face: hit them from behind with nobody around and there are no stars. If they turn round and see you on the next hit, they do call the police.
   - If **you** get knocked out, you wake up at the hospital. Your wanted stars are cleared, but there's a hospital bill.
   - You can also fight other players.
 - 🔪 **Weapons:** buy them at the 🔨 **Hardware store** (press E at the counter). They go in your hotbar, and you keep them between visits.
@@ -222,7 +239,7 @@ Street lamps, windows, porch lights, neon signs and stadium floodlights switch o
 | **Wardrobe (C) at the Clothing store** | **Giving a speech** |
 | ![Wardrobe](ui_wardrobe_preview.png) | ![Speech](ui_speech_preview.png) |
 
-**Its own icon set.** The HUD, action bar, hotbar, phone apps, window headers, shops and welcome screen use AI City's own icons instead of emojis: 34 vector icons drawn from rounded shapes in `Icons.lua`, so there are no images to upload and they stay sharp at any size. Each icon comes as a plain glyph or as a glossy app badge.
+**Its own icon set.** The HUD, action bar, hotbar, phone apps, window headers, shops and welcome screen use AI City's own icons instead of emojis: 35 vector icons drawn from rounded shapes in `Icons.lua`, so there are no images to upload and they stay sharp at any size. Each icon comes as a plain glyph or as a glossy app badge.
 
 ![The icon set](ui_icons_preview.png)
 
@@ -249,11 +266,14 @@ Street lamps, windows, porch lights, neon signs and stadium floodlights switch o
 | R | rob |
 | Q | hide (at trash cans, hedges and bushes) · Space gets out |
 | C | wardrobe: put on or take off your hoodie, ski mask or disguise |
+| J | clock in at a workplace |
 | H | help |
 | 1–9 | answer in conversations |
 | Esc | close |
 
 Every action is also a button on the action bar for mobile players.
+
+**On a controller:** R2 attack · hold L2 block · click L3 sprint · R1 / L1 switch weapons · D-pad ▲ phone, ▼ map, ◀ help, ▶ wardrobe · X talk / use · Y pickpocket / rob / hide / clock in · B close / back / get out of hiding · A jump. Menus open with a button selected, so you can move with the D-pad and press A.
 
 ## How it works
 
@@ -269,6 +289,9 @@ Every action is also a button on the action bar for mobile players.
 | `CombatService` | Modules | Weapons as tools, the Hardware store shop, blocking, waking up at the hospital, confiscation. |
 | `StreetCrimeService` | Modules | Other people's crimes (pickpockets, bag snatchers, robbers, graffiti), police chases, arrests with handcuffs, the jail cell, players catching thieves. |
 | `FitnessService`, `FoodService` | Modules | Fitness levels (sprinting XP, gym treadmills) and the food places' menus. |
+| `JobService` | Module | Jobs for players: clock-in prompts, shifts, task markers and pay. |
+| `Errands` | Module | Turns citizens' plans into chains of tasks with a purpose (shopping trips, mail rounds, patrols...). |
+| `Gamepad` | CityClient module | Controller buttons, menu selection, controller hints and rumble. |
 | `BrawlService` | Modules | Street fights between citizens: arguments, punches, the crowd, the police, breaking them up. |
 | `DisguiseService` | Modules | Hoodies, ski masks and disguise kits: the Clothing store, the wardrobe, how they look on your character, nervous citizens. |
 | `PlayerService` | Modules | Elevators, profiles, the directory, finding people. |
@@ -367,6 +390,11 @@ The game was run in a Luau test harness (a small Roblox simulation), and these c
   - an elevator ride to floor 9;
   - a vote and an election (and winning it).
 - **The client:** every window and every server message, and poses on 20 citizens at once.
+- **A controller:** R2 attacks, L2 blocks, the D-pad opens the phone and map with a button selected, B closes them and ends conversations, the first answer is selected in a conversation, and hints switch between keys and controller buttons.
+- **Jobs:** a full shift of all six jobs through the real prompts (every task pays, the bonus arrives, the right animations and props play), quitting halfway, and no hiring while wanted.
+- **Witnesses:** a hit from behind with nobody around brings no stars; the same victim seeing you face to face does; a bystander across the street seeing a hit from behind does too.
+- **Errands:** over a simulated day, citizens pay at tills, deliver mail, patrol, water and rake, restock, serve tables, mop and unpack shopping, and carry briefcases, backpacks, gym bags and shopping bags, with no warnings.
+- **The bigger map:** 275 buildings with no overlaps and nothing in the roads, and every place reachable (the longest walk is about 2,000 studs).
 - **Phones:** the client starts on a touch screen at 844×390 with no errors, and every window fits on screen.
 - **Crowds:** with the same people over the same hour, people overlap each other a third as often with steering on, and nobody walks into the player.
 - **Interiors:** no part covers a floor except rugs and tiles, and every shop gets its own props without blocking where people stand to work, browse or sit.

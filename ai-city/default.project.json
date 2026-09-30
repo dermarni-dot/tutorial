@@ -119,6 +119,9 @@
         },
         "FoodService": {
           "$path": "src/FoodService.lua"
+        },
+        "JobService": {
+          "$path": "src/JobService.lua"
         }
       }
     },

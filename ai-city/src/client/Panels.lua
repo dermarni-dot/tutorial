@@ -882,7 +882,8 @@ local function buildHelp()
 		{ "🏃 Sprinting and stamina", "Hold <b>Shift</b> (or the Sprint button) to run. It uses stamina (the ⚡ bar above your health), which refills when you stop. Sprinting and running on the <b>gym treadmills</b> (press E) earn fitness XP: every level gives you more stamina, faster recovery and a faster sprint. Food refills stamina too." },
 		{ "🍔 Food", "Press <b>E</b> at the counter of the Bakery, Cafe, Diner, Restaurant, Ice Cream shop or Market to order. Food heals you ❤️ and refills stamina ⚡. Coffee and energy drinks make stamina refill faster for a while." },
 		{ "🥷 Disguises", "Buy a 🧥 <b>hoodie</b>, a 🥷 <b>ski mask</b> or a 🥸 <b>disguise kit</b> at the 👕 Clothing store, and wear them with <b>C</b>. Witnesses may not recognize you (fewer stars, no notoriety, nobody remembers it was you), the police have to get closer to spot you, and it all works much better <b>at night</b>. After a crime, change or take off your outfit where nobody can see: the police keep looking for the old one. But a ski mask in daylight makes people nervous..." },
-		{ "⌨️ Keys", "Tab phone · E talk / use · M map · P people · V vote · B speech · N mayor · F attack · X block · 1-4 hotbar · G pickpocket · R rob · Q hide · Shift sprint · C wardrobe · H help · 1-9 answer in conversations · Esc close windows" },
+		{ "⌨️ Keys", "Tab phone · E talk / use · M map · P people · V vote · B speech · N mayor · F attack · X block · 1-4 hotbar · G pickpocket · R rob · Q hide · J clock in at a job · Shift sprint · C wardrobe · H help · 1-9 answer in conversations · Esc close windows" },
+		{ "💼 Jobs", "Earn coins with a job: open the <b>Jobs</b> app on your phone, or press <b>J</b> at a workplace (Post Office, Central Park, Cafe, Offices, Warehouse, Market). Follow the glowing marker and hold <b>E</b> at each task. Every task pays, and a finished shift pays a bonus." },
 		{ "🎮 Controller", "R2 attack · hold L2 block · click L3 sprint · R1 / L1 switch weapons · D-pad ▲ phone · ▼ map · ◀ help · ▶ wardrobe · X talk / use · Y pickpocket / rob / hide · B close / back / get out · A jump. In menus, move with the D-pad or stick and press A." },
 	}
 	for _, s in ipairs(sections) do
@@ -1127,6 +1128,10 @@ local function buildPhone()
 		P.Close()
 		Panels.ToggleWardrobe()
 	end)
+	app(11, "💼", "Jobs", UI.rgb(200, 140, 60), function()
+		P.Close()
+		task.spawn(Panels.OpenJobs)
+	end)
 	app(9, "❓", "Help", UI.rgb(80, 90, 120), function()
 		P.Close()
 		Panels.Help.Open()
@@ -1351,6 +1356,53 @@ local function buildFood()
 	end
 end
 
+-- the Jobs app: every job you can take, what it pays, and a way there
+local function buildJobs()
+	local win = UI.window(screen, "Jobs", "briefcase", UDim2.fromOffset(820, 470), C.Gold)
+	Panels.Jobs = win
+	local body = win.Body
+	local top = UI.text(body, "", 14, UI.Bold, C.Sub, { Size = UDim2.new(1, 0, 0, 22), RichText = true, TextWrapped = true })
+	local grid = UI.new("Frame", { BackgroundTransparency = 1, Position = UDim2.fromOffset(0, 30), Size = UDim2.new(1, 0, 1, -30), Parent = body })
+	UI.new("UIGridLayout", { CellSize = UDim2.new(0.333, -8, 0.5, -6), CellPadding = UDim2.fromOffset(10, 10), SortOrder = Enum.SortOrder.LayoutOrder, Parent = grid })
+	local function fill(data)
+		clear(grid)
+		top.Text = if data.Current then "You're working as a <b>" .. data.Current .. "</b>. Follow the marker, or quit the shift below." else "Pick a job: walk to the marker and hold <b>E</b> at each task. Every task pays, and a finished shift pays a bonus."
+		for k, job in ipairs(data.Jobs or {}) do
+			local card = UI.panel(grid, { BackgroundColor3 = C.Panel2, Radius = 14, LayoutOrder = k })
+			UI.pad(card, 12)
+			UI.text(card, job.Emoji, 30, UI.Font, C.Text, { Size = UDim2.fromOffset(40, 36) })
+			UI.text(card, job.Name, 17, UI.Title, C.Text, { Position = UDim2.fromOffset(44, 0), Size = UDim2.new(1, -44, 0, 20) })
+			UI.text(card, "📍 " .. job.Place, 12, UI.Bold, C.Sub, { Position = UDim2.fromOffset(44, 20), Size = UDim2.new(1, -44, 0, 16) })
+			UI.text(card, job.Desc, 12, UI.Font, C.Sub, { Position = UDim2.fromOffset(0, 42), Size = UDim2.new(1, 0, 0, 34), TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top })
+			UI.text(card, "🪙 " .. job.Pay .. " a task  ·  +" .. job.Bonus .. " bonus", 12, UI.Bold, C.Gold, { Position = UDim2.fromOffset(0, 78), Size = UDim2.new(1, 0, 0, 16) })
+			local working = data.Current == job.Name
+			UI.button(card, if working then "🕒 Quit shift" else "💼 Start shift", { AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.new(0.62, -4, 0, 34), Color = if working then C.Panel3 else C.Gold, TextColor = if working then C.Text else C.Bg, TextSize = 13 }, function()
+				local r = request({ Action = if working then "QuitJob" else "StartJob", Job = job.Name })
+				if r.Ok then
+					win.Close()
+				else
+					fail(r)
+				end
+			end)
+			UI.button(card, "🧭 Go", { AnchorPoint = Vector2.new(1, 1), Position = UDim2.fromScale(1, 1), Size = UDim2.new(0.38, -4, 0, 34), Color = C.Panel3, TextSize = 13 }, function()
+				if job.Position then
+					ctx.World.Waypoint(job.Position, job.Place, job.Emoji)
+				end
+				win.Close()
+			end)
+		end
+	end
+	function Panels.OpenJobs()
+		local r = request({ Action = "Jobs" })
+		if r.Ok then
+			fill(r)
+			win.Open()
+		else
+			fail(r)
+		end
+	end
+end
+
 -- knocked out: the screen fades, you wake up at the hospital
 local function buildDown()
 	local cover = UI.new("Frame", { BackgroundColor3 = Color3.new(0, 0, 0), BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 45, Visible = false, Parent = screen })
@@ -1400,6 +1452,7 @@ function Panels.Start(context)
 	buildShop()
 	buildWardrobe()
 	buildFood()
+	buildJobs()
 	buildDown()
 	buildPhone()
 end

@@ -220,15 +220,30 @@ local function capacityOf(home)
 	return home and (home.Capacity or 3) or 3
 end
 
+-- how far a home is from downtown (families prefer living closer in, so
+-- nobody has an hour-long walk to work on a big map)
+local function distanceOut(home)
+	local d = home and home.Door
+	if not d then
+		return 0
+	end
+	return math.sqrt(d.X * d.X + d.Z * d.Z)
+end
+
 function Life:FindHome(size, rng)
 	local best
+	local fits = {}
 	for index, home in ipairs(self.Homes) do
 		if not self.HomeUse[index] and capacityOf(home) >= size then
-			best = index
-			if rng:Next() < 0.35 then
-				break
-			end
+			table.insert(fits, index)
 		end
+	end
+	if #fits > 0 then
+		table.sort(fits, function(a, b)
+			return distanceOut(self.Homes[a]) < distanceOut(self.Homes[b])
+		end)
+		-- one of the closest few (not always the very closest)
+		best = fits[math.min(#fits, 1 + math.floor(rng:Next() * math.min(6, #fits)))]
 	end
 	if not best then
 		-- city full: squeeze into any free home

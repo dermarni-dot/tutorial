@@ -233,15 +233,15 @@ end
 
 -- Keyframes by hour. Everything between two keyframes is blended.
 local KEYS = {
-	{ Hour = 0, Ambient = rgb(40, 46, 78), Outdoor = rgb(46, 56, 96), Brightness = 0.9, Exposure = -0.1, AtmoColor = rgb(40, 52, 96), AtmoDecay = rgb(22, 26, 60), Density = 0.36, Haze = 1.2, Glare = 0, Tint = rgb(185, 200, 255), Saturation = -0.05, Contrast = 0.12, Bloom = 1.1, Rays = 0 },
-	{ Hour = 4.8, Ambient = rgb(46, 50, 84), Outdoor = rgb(56, 62, 104), Brightness = 1, Exposure = -0.05, AtmoColor = rgb(60, 66, 116), AtmoDecay = rgb(40, 36, 80), Density = 0.37, Haze = 1.4, Glare = 0, Tint = rgb(195, 205, 255), Saturation = -0.02, Contrast = 0.1, Bloom = 1, Rays = 0 },
+	{ Hour = 0, Ambient = rgb(58, 64, 100), Outdoor = rgb(66, 78, 122), Brightness = 1.1, Exposure = 0, AtmoColor = rgb(40, 52, 96), AtmoDecay = rgb(22, 26, 60), Density = 0.36, Haze = 1.2, Glare = 0, Tint = rgb(185, 200, 255), Saturation = -0.05, Contrast = 0.12, Bloom = 1.1, Rays = 0 },
+	{ Hour = 4.8, Ambient = rgb(62, 66, 104), Outdoor = rgb(74, 80, 126), Brightness = 1.15, Exposure = 0, AtmoColor = rgb(60, 66, 116), AtmoDecay = rgb(40, 36, 80), Density = 0.37, Haze = 1.4, Glare = 0, Tint = rgb(195, 205, 255), Saturation = -0.02, Contrast = 0.1, Bloom = 1, Rays = 0 },
 	{ Hour = 6.2, Ambient = rgb(110, 90, 104), Outdoor = rgb(150, 120, 128), Brightness = 1.6, Exposure = 0, AtmoColor = rgb(236, 170, 160), AtmoDecay = rgb(170, 110, 140), Density = 0.34, Haze = 2.2, Glare = 0.6, Tint = rgb(255, 222, 214), Saturation = 0.12, Contrast = 0.08, Bloom = 0.8, Rays = 0.14 },
-	{ Hour = 8, Ambient = rgb(128, 124, 124), Outdoor = rgb(150, 150, 150), Brightness = 2.4, Exposure = 0.05, AtmoColor = rgb(200, 214, 236), AtmoDecay = rgb(120, 150, 196), Density = 0.3, Haze = 1.6, Glare = 0.25, Tint = rgb(255, 246, 236), Saturation = 0.12, Contrast = 0.06, Bloom = 0.55, Rays = 0.08 },
-	{ Hour = 12.5, Ambient = rgb(136, 136, 140), Outdoor = rgb(158, 158, 162), Brightness = 3, Exposure = 0.08, AtmoColor = rgb(196, 220, 250), AtmoDecay = rgb(106, 146, 206), Density = 0.26, Haze = 1.2, Glare = 0.12, Tint = rgb(255, 252, 246), Saturation = 0.15, Contrast = 0.06, Bloom = 0.45, Rays = 0.05 },
-	{ Hour = 16.5, Ambient = rgb(138, 128, 118), Outdoor = rgb(160, 148, 136), Brightness = 2.6, Exposure = 0.05, AtmoColor = rgb(236, 208, 176), AtmoDecay = rgb(160, 140, 150), Density = 0.3, Haze = 1.8, Glare = 0.4, Tint = rgb(255, 238, 214), Saturation = 0.16, Contrast = 0.08, Bloom = 0.55, Rays = 0.1 },
+	{ Hour = 8, Ambient = rgb(128, 124, 124), Outdoor = rgb(150, 150, 150), Brightness = 2.4, Exposure = 0.05, AtmoColor = rgb(200, 214, 236), AtmoDecay = rgb(120, 150, 196), Density = 0.3, Haze = 1.6, Glare = 0.25, Tint = rgb(255, 246, 236), Saturation = 0.18, Contrast = 0.1, Bloom = 0.55, Rays = 0.08 },
+	{ Hour = 12.5, Ambient = rgb(136, 136, 140), Outdoor = rgb(158, 158, 162), Brightness = 3, Exposure = 0.08, AtmoColor = rgb(196, 220, 250), AtmoDecay = rgb(106, 146, 206), Density = 0.26, Haze = 1.2, Glare = 0.12, Tint = rgb(255, 252, 246), Saturation = 0.2, Contrast = 0.1, Bloom = 0.45, Rays = 0.05 },
+	{ Hour = 16.5, Ambient = rgb(138, 128, 118), Outdoor = rgb(160, 148, 136), Brightness = 2.6, Exposure = 0.05, AtmoColor = rgb(236, 208, 176), AtmoDecay = rgb(160, 140, 150), Density = 0.3, Haze = 1.8, Glare = 0.4, Tint = rgb(255, 238, 214), Saturation = 0.22, Contrast = 0.1, Bloom = 0.55, Rays = 0.1 },
 	{ Hour = 18.2, Ambient = rgb(128, 92, 88), Outdoor = rgb(170, 110, 96), Brightness = 1.9, Exposure = 0.02, AtmoColor = rgb(255, 150, 110), AtmoDecay = rgb(170, 90, 120), Density = 0.34, Haze = 2.6, Glare = 0.9, Tint = rgb(255, 210, 180), Saturation = 0.2, Contrast = 0.1, Bloom = 0.8, Rays = 0.18 },
 	{ Hour = 19.4, Ambient = rgb(84, 66, 104), Outdoor = rgb(100, 78, 130), Brightness = 1.2, Exposure = -0.02, AtmoColor = rgb(150, 100, 160), AtmoDecay = rgb(70, 50, 110), Density = 0.36, Haze = 2, Glare = 0.2, Tint = rgb(226, 200, 255), Saturation = 0.08, Contrast = 0.12, Bloom = 1, Rays = 0.04 },
-	{ Hour = 21, Ambient = rgb(44, 50, 84), Outdoor = rgb(50, 60, 102), Brightness = 0.9, Exposure = -0.08, AtmoColor = rgb(44, 56, 100), AtmoDecay = rgb(24, 28, 64), Density = 0.36, Haze = 1.2, Glare = 0, Tint = rgb(190, 204, 255), Saturation = -0.04, Contrast = 0.12, Bloom = 1.1, Rays = 0 },
+	{ Hour = 21, Ambient = rgb(60, 66, 102), Outdoor = rgb(68, 80, 124), Brightness = 1.1, Exposure = 0, AtmoColor = rgb(44, 56, 100), AtmoDecay = rgb(24, 28, 64), Density = 0.36, Haze = 1.2, Glare = 0, Tint = rgb(190, 204, 255), Saturation = -0.04, Contrast = 0.12, Bloom = 1.1, Rays = 0 },
 }
 Atmosphere.Keys = KEYS
 
@@ -302,8 +302,8 @@ function Atmosphere.Setup(lighting)
 	local atmo = ensure("Atmosphere", "CityAtmosphere")
 	atmo.Offset = 0.18
 	local bloom = ensure("BloomEffect", "CityBloom")
-	bloom.Size = 26
-	bloom.Threshold = 1.6
+	bloom.Size = 24
+	bloom.Threshold = 1.25 -- neon signs, lit windows and lamps glow
 	ensure("ColorCorrectionEffect", "CityColor")
 	local rays = ensure("SunRaysEffect", "CitySunRays")
 	rays.Spread = 0.75
@@ -317,6 +317,18 @@ function Atmosphere.Setup(lighting)
 	lighting.GlobalShadows = true
 	lighting.ShadowSoftness = 0.25
 	lighting.GeographicLatitude = 32
+	-- real moving clouds in the sky
+	local terrain = workspace:FindFirstChildOfClass("Terrain")
+	if terrain and not terrain:FindFirstChild("CityClouds") then
+		pcall(function()
+			local clouds = Instance.new("Clouds")
+			clouds.Name = "CityClouds"
+			clouds.Cover = 0.52
+			clouds.Density = 0.62
+			clouds.Color = Color3.fromRGB(255, 255, 255)
+			clouds.Parent = terrain
+		end)
+	end
 	Atmosphere.Apply(lighting, lighting.ClockTime or 12)
 end
 
@@ -2061,8 +2073,18 @@ local function playerUpdate(model, st, t, dt, player)
 		local fighting = now - st.Swing < 2.5 or now - st.Hit < 2.5
 		target, full = fightPose(model, st, t, now, root, weapon, false, fighting and not eating, blocking)
 	end
+	-- working a job (see JobService): the task's animation, then carrying things
+	local workAction = model:GetAttribute("WorkAction")
+	local carry = model:GetAttribute("Carry")
+	local workInfo = workAction and Actions.Get(workAction)
+	if not target and workInfo and L[workInfo.Pose] then
+		target, full = L[workInfo.Pose](t, st.Phase)
+	elseif not target and carry and CARRY[carry] and not holding then
+		target, full = L[CARRY[carry][1]](t, st.Phase)
+	end
+	setProps(st, model, if workInfo then workAction else "", if not workInfo and carry and CARRY[carry] and not holding then carry else nil)
 	if target then
-		-- fighting (see above)
+		-- fighting, working or carrying (see above)
 	elseif holding and now - (st.Draw or -99) < 0.35 then
 		target, full = L.draw(t, st.Phase, (now - st.Draw) / 0.35)
 	elseif HOLDS[held] and not eating then
@@ -2391,6 +2413,7 @@ return Food
 --   StreetCrimeService other people's crimes (pickpockets, bag snatchers, robbers, graffiti), arrests, the jail
 --   FitnessService  sprinting XP, fitness levels, gym treadmills
 --   FoodService     buying food at the Bakery, Cafe, Diner, Restaurant, Ice Cream shop and Market
+--   JobService      jobs for players: clock in at a workplace and work a shift for coins
 --   BrawlService    street fights between citizens (crowds, police, breaking them up)
 --   DisguiseService hoodies, ski masks and disguises (the Clothing store), wearing them
 --   PlayerService   elevators, citizen profiles, the directory
@@ -2444,6 +2467,7 @@ if Config.RUN_CITIZENS ~= false then
 	services.StreetCrime = require(Modules:WaitForChild("StreetCrimeService"))
 	services.Fitness = require(Modules:WaitForChild("FitnessService"))
 	services.Food = require(Modules:WaitForChild("FoodService"))
+	services.Jobs = require(Modules:WaitForChild("JobService"))
 	services.Dialogue.Start(services)
 	services.Crime.Start(services)
 	services.Players.Start(services)
@@ -2453,9 +2477,10 @@ if Config.RUN_CITIZENS ~= false then
 	services.StreetCrime.Start(services)
 	services.Fitness.Start(services)
 	services.Food.Start(services)
+	services.Jobs.Start(services)
 	task.spawn(services.Citizens.Start, services)
 end
-]]></ProtectedString></Properties></Item><Item class="Folder" referent="RBX38"><Properties><string name="Name">Modules</string></Properties><Item class="ModuleScript" referent="RBX16"><Properties><string name="Name">MapKit</string><ProtectedString name="Source"><![CDATA[-- MapKit (ModuleScript) — ServerScriptService.Modules.MapKit
+]]></ProtectedString></Properties></Item><Item class="Folder" referent="RBX39"><Properties><string name="Name">Modules</string></Properties><Item class="ModuleScript" referent="RBX16"><Properties><string name="Name">MapKit</string><ProtectedString name="Source"><![CDATA[-- MapKit (ModuleScript) — ServerScriptService.Modules.MapKit
 -- Small building blocks shared by the map modules: part helpers, colors, signs,
 -- lights, seats, and a registry of things that change between day and night.
 
@@ -2472,7 +2497,7 @@ MapKit.BLOCK = MapKit.SPACING - MapKit.ROAD -- 84: a block including its sidewal
 MapKit.HALF = MapKit.BLOCK / 2
 MapKit.SIDEWALK = 5
 MapKit.RING = MapKit.HALF - MapKit.SIDEWALK / 2 -- where people walk on the sidewalk
-MapKit.N = 4 -- blocks from the center to the edge (9x9 blocks)
+MapKit.N = 5 -- blocks from the center to the edge (11x11 blocks)
 MapKit.EXTENT = MapKit.N * MapKit.SPACING + MapKit.SPACING / 2 -- the city is 2 * EXTENT across
 MapKit.LOT_Y = 0.5 -- ground level inside blocks (top of the curb)
 MapKit.FLOOR_H = 12
@@ -2510,6 +2535,7 @@ MapKit.Registry = {
 	Lamps = {}, -- { Head = part, Light = light }
 	NightLights = {}, -- lights that only turn on at night (porch lights, signs)
 	NightNeon = {}, -- parts that switch to neon at night { Part, DayMaterial }
+	NightParticles = {}, -- particle emitters only on at night (fireflies)
 	Seats = {}, -- { Seat = seat, Place = id or nil }
 }
 
@@ -2695,6 +2721,52 @@ function MapKit.nightNeon(p)
 	return p
 end
 
+-- Particle effects that bring the city to life
+--   "smoke"      soft grey puffs rising from a chimney
+--   "fireflies"  little glowing specks that drift at night (parks, ponds)
+--   "leaves"     leaves drifting down from a tree
+function MapKit.particles(p, kind)
+	local e = Instance.new("ParticleEmitter")
+	e.Name = "City" .. kind
+	e.LockedToPart = false
+	if kind == "smoke" then
+		e.Color = ColorSequence.new(MapKit.rgb(210, 210, 214), MapKit.rgb(160, 160, 168))
+		e.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(1, 4.5) })
+		e.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.55), NumberSequenceKeypoint.new(1, 1) })
+		e.Lifetime = NumberRange.new(4, 6)
+		e.Rate = 3
+		e.Speed = NumberRange.new(2, 3.5)
+		e.SpreadAngle = Vector2.new(12, 12)
+		e.Acceleration = Vector3.new(1.2, 0.4, 0.6) -- a light breeze
+		e.RotSpeed = NumberRange.new(-20, 20)
+		e.EmissionDirection = Enum.NormalId.Top
+	elseif kind == "fireflies" then
+		e.Color = ColorSequence.new(MapKit.rgb(230, 255, 140))
+		e.LightEmission = 1
+		e.LightInfluence = 0
+		e.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(0.2, 0.28), NumberSequenceKeypoint.new(0.8, 0.28), NumberSequenceKeypoint.new(1, 0) })
+		e.Lifetime = NumberRange.new(4, 7)
+		e.Rate = 5
+		e.Speed = NumberRange.new(0.4, 1.2)
+		e.SpreadAngle = Vector2.new(180, 180)
+		e.Acceleration = Vector3.new(0, 0.15, 0)
+		e.Enabled = false
+		table.insert(MapKit.Registry.NightParticles, e)
+	elseif kind == "leaves" then
+		e.Color = ColorSequence.new(MapKit.rgb(120, 170, 60), MapKit.rgb(220, 160, 60))
+		e.Size = NumberSequence.new(0.35)
+		e.Lifetime = NumberRange.new(5, 8)
+		e.Rate = 0.8
+		e.Speed = NumberRange.new(0.5, 1)
+		e.SpreadAngle = Vector2.new(180, 180)
+		e.Acceleration = Vector3.new(0.4, -1.1, 0.2)
+		e.RotSpeed = NumberRange.new(-90, 90)
+		e.Rotation = NumberRange.new(0, 360)
+	end
+	e.Parent = p
+	return e
+end
+
 -- Striped awning made of wedges; cf is the awning's center, sloping down toward -Z
 function MapKit.awning(parent, width, depth, cf, colorA, colorB)
 	local stripes = math.max(3, math.floor(width / 2.2))
@@ -2800,7 +2872,8 @@ function Buildings.shell(parent, spec)
 		end
 		for _, sx in ipairs({ -1, 1 }) do
 			for _, sz in ipairs({ -1, 1 }) do
-				part(model, "Corner", Vector3.new(1.2, H, 1.2), at(sx * W / 2, H / 2, sz * D / 2), frame, Enum.Material.Metal)
+				-- round corner posts (softer than square edges)
+				MapKit.column(model, "Corner", H, 1.6, at(sx * W / 2, H / 2, sz * D / 2).Position, frame, Enum.Material.Metal, true)
 			end
 		end
 		-- vertical mullions on the front and back
@@ -2827,7 +2900,8 @@ function Buildings.shell(parent, spec)
 		-- corner pilasters and a band between floors
 		for _, sx in ipairs({ -1, 1 }) do
 			for _, sz in ipairs({ -1, 1 }) do
-				deco(model, "Pilaster", Vector3.new(1.4, H, 1.4), at(sx * (W / 2 - 0.3), H / 2, sz * (D / 2 - 0.3)), trim)
+				-- rounded corners: a column wraps each corner of the building
+				MapKit.column(model, "Pilaster", H + 0.2, 2, at(sx * (W / 2 - 0.3), H / 2, sz * (D / 2 - 0.3)).Position, trim, Enum.Material.SmoothPlastic, false)
 			end
 		end
 		for f = 1, floors do
@@ -2889,9 +2963,26 @@ function Buildings.shell(parent, spec)
 		if f > 0 then
 			part(model, "FloorSlab", Vector3.new(W - 1.6, 0.6, D - 1.6), at(0, y + 0.1, 0), spec.FloorColor or MapKit.rgb(200, 192, 178), spec.FloorMaterial or Enum.Material.WoodPlanks)
 		end
+		-- ceiling lights in a grid, each shining down (so the whole room is evenly
+		-- lit, corners too); soft warm light, no shadows (cheap)
 		local lampY = y + FLOOR_H - 0.9
-		local panel = deco(model, "CeilingLight", Vector3.new(math.min(8, W / 3), 0.2, math.min(3, D / 5)), at(0, lampY, 0), MapKit.rgb(255, 250, 235), Enum.Material.Neon)
-		MapKit.light(panel, MapKit.rgb(255, 238, 210), math.min(26, math.max(W, D) * 0.6), 0.75)
+		local nx = math.clamp(math.floor(W / 18 + 0.5), 1, 4)
+		local nz = math.clamp(math.floor(D / 18 + 0.5), 1, 3)
+		for i = 1, nx do
+			for j = 1, nz do
+				local lx = -W / 2 + W * (i - 0.5) / nx
+				local lz = -D / 2 + D * (j - 0.5) / nz
+				local panel = deco(model, "CeilingLight", Vector3.new(math.min(6, W / nx - 3), 0.2, math.min(2.6, D / nz - 3)), at(lx, lampY, lz), MapKit.rgb(255, 248, 232), Enum.Material.Neon)
+				local glow = Instance.new("SurfaceLight")
+				glow.Face = Enum.NormalId.Bottom
+				glow.Angle = 120
+				glow.Range = math.min(20, FLOOR_H + 6)
+				glow.Brightness = 1.15
+				glow.Color = MapKit.rgb(255, 232, 200)
+				glow.Shadows = false
+				glow.Parent = panel
+			end
+		end
 	end
 	-- ceiling above the top floor (so the room has a lid under the roof)
 	part(model, "Ceiling", Vector3.new(W - 1.6, 0.4, D - 1.6), at(0, H - 0.2, 0), MapKit.rgb(236, 232, 224), Enum.Material.SmoothPlastic)
@@ -3028,14 +3119,14 @@ function Buildings.house(parent, center, face, style, rng, garageSide)
 	local wall = HOUSE_WALLS[rng:NextInteger(1, #HOUSE_WALLS)]
 	local roof = HOUSE_ROOFS[rng:NextInteger(1, #HOUSE_ROOFS)]
 	local shutter = SHUTTERS[rng:NextInteger(1, #SHUTTERS)]
-	local spec = { Name = "House", Center = center, Face = face, W = 20, D = 16, Floors = 1, Wall = wall, Trim = WHITE, Roof = "gable", RoofColor = roof, DoorW = 5, Material = Enum.Material.WoodPlanks, Elevator = false, Plinth = true }
+	local spec = { Name = "House", Center = center, Face = face, W = 24, D = 20, Floors = 1, Wall = wall, Trim = WHITE, Roof = "gable", RoofColor = roof, DoorW = 5, Material = Enum.Material.WoodPlanks, Elevator = false, Plinth = true }
 	if style == "twostory" then
-		spec.Floors, spec.W, spec.D = 2, 22, 16
+		spec.Floors, spec.W, spec.D = 2, 24, 20
 		spec.Stairs = true
 		spec.Material = Enum.Material.Brick
 		spec.Wall = wall:Lerp(MapKit.rgb(170, 90, 70), 0.35)
 	elseif style == "modern" then
-		spec.Roof, spec.W, spec.D, spec.Floors = "flat", 24, 16, 2
+		spec.Roof, spec.W, spec.D, spec.Floors = "flat", 28, 20, 2
 		spec.Stairs = true
 		spec.Material = Enum.Material.SmoothPlastic
 		spec.Wall = ({ MapKit.rgb(244, 244, 240), MapKit.rgb(60, 62, 70), MapKit.rgb(214, 208, 196) })[rng:NextInteger(1, 3)]
@@ -3043,7 +3134,7 @@ function Buildings.house(parent, center, face, style, rng, garageSide)
 		spec.RoofKit = { "solar" }
 		spec.WindowColor = MapKit.rgb(170, 210, 235)
 	elseif style == "bungalow" then
-		spec.W, spec.D = 26, 16
+		spec.W, spec.D = 30, 20
 	end
 	local b = Buildings.shell(parent, spec)
 	local at = b.At
@@ -3083,12 +3174,17 @@ function Buildings.house(parent, center, face, style, rng, garageSide)
 	-- chimney
 	if spec.Roof == "gable" then
 		deco(b.Model, "Chimney", Vector3.new(2, 7, 2), at(W / 2 - 4, H + 4.5, 3), MapKit.rgb(150, 80, 60), Enum.Material.Brick)
-		deco(b.Model, "ChimneyCap", Vector3.new(2.6, 0.5, 2.6), at(W / 2 - 4, H + 8.2, 3), MapKit.rgb(90, 60, 50), Enum.Material.Brick)
+		local cap = deco(b.Model, "ChimneyCap", Vector3.new(2.6, 0.5, 2.6), at(W / 2 - 4, H + 8.2, 3), MapKit.rgb(90, 60, 50), Enum.Material.Brick)
+		-- a wisp of smoke from about half the chimneys
+		if (math.floor(math.abs(b.CFrame.Position.X) + math.abs(b.CFrame.Position.Z))) % 2 == 0 then
+			MapKit.particles(cap, "smoke")
+		end
 	end
 	-- a garage with a driveway on two-story houses
 	if style == "twostory" then
 		-- garageSide keeps the garage on the side away from the nearest road
 		local gx = (garageSide or 1) * (W / 2 + 5.5)
+		b.GarageX = gx
 		part(b.Model, "Garage", Vector3.new(10, 9, 14), at(gx, 4.5, 1), wall:Lerp(WHITE, 0.2), Enum.Material.Brick)
 		deco(b.Model, "GarageDoor", Vector3.new(8, 7, 0.3), at(gx, 3.5, -6.1), MapKit.rgb(236, 236, 236), Enum.Material.DiamondPlate)
 		wedge(b.Model, "GarageRoof", Vector3.new(11, 2, 7.5), at(gx, 10, -2.7), spec.RoofColor, Enum.Material.Slate)
@@ -5280,8 +5376,8 @@ local part, deco, rgb = MapKit.part, MapKit.deco, MapKit.rgb
 local SPACING, ROAD, BLOCK, HALF, SIDEWALK, N, EXTENT, LOT_Y = MapKit.SPACING, MapKit.ROAD, MapKit.BLOCK, MapKit.HALF, MapKit.SIDEWALK, MapKit.N, MapKit.EXTENT, MapKit.LOT_Y
 local WHITE, BLACK = MapKit.WHITE, MapKit.BLACK
 
-Streets.STREETS = { "Pine Street", "Oak Street", "Maple Street", "Elm Street", "Cedar Street", "Birch Street", "Willow Street", "Ash Street", "Spruce Street", "Aspen Street" }
-Streets.AVENUES = { "1st Avenue", "2nd Avenue", "3rd Avenue", "4th Avenue", "5th Avenue", "6th Avenue", "7th Avenue", "8th Avenue", "9th Avenue", "10th Avenue" }
+Streets.STREETS = { "Chestnut Street", "Pine Street", "Oak Street", "Maple Street", "Elm Street", "Cedar Street", "Birch Street", "Willow Street", "Ash Street", "Spruce Street", "Aspen Street", "Hazel Street" }
+Streets.AVENUES = { "1st Avenue", "2nd Avenue", "3rd Avenue", "4th Avenue", "5th Avenue", "6th Avenue", "7th Avenue", "8th Avenue", "9th Avenue", "10th Avenue", "11th Avenue", "12th Avenue" }
 
 -- road k runs along (k + 0.5) * SPACING, for k = -N-1 .. N
 function Streets.streetName(k)
@@ -6780,6 +6876,13 @@ local PLAN = {
 	["-4,-4"] = "Woods",
 	["-4,1"] = "Woods",
 	["4,-2"] = "Woods",
+	-- the outer ring: big suburban lots, with woods at the corners
+	["5,5"] = "Woods",
+	["-5,5"] = "Woods",
+	["5,-5"] = "Woods",
+	["-5,-5"] = "Woods",
+	["0,5"] = "Woods",
+	["5,0"] = "Woods",
 }
 MapBuilder.PLAN = PLAN
 
@@ -7089,7 +7192,7 @@ function ctx.houseRow(parent, i, j, rng, slots, big)
 		local style = styles[rng:NextInteger(1, #styles)]
 		local depthZ = HALF - SIDEWALK - 12 - 8
 		-- two-story houses sit further out so their garage fits on the inner side
-		local center = c + Vector3.new(sx * (if style == "twostory" then 22 else 18), 0, sz * depthZ)
+		local center = c + Vector3.new(sx * (if style == "twostory" then 23 else 18), 0, sz * depthZ)
 		local garageSide = if sx ~= 0 then sx * sz else 1
 		local b = Buildings.house(model, center, face, style, rng, garageSide)
 		local at = b.At
@@ -7123,13 +7226,14 @@ function ctx.houseRow(parent, i, j, rng, slots, big)
 		end
 		if big then
 			-- a backyard vegetable garden
-			MapKit.deco(b.Model, "BackyardGarden", Vector3.new(8, 0.6, 4), at(-6, 0.3, b.D / 2 + 6), MapKit.rgb(110, 76, 50), Enum.Material.Ground)
+			MapKit.deco(b.Model, "BackyardGarden", Vector3.new(8, 0.6, 4), at(-6, 0.3, b.D / 2 + 3), MapKit.rgb(110, 76, 50), Enum.Material.Ground)
 			for n = 0, 5 do
-				MapKit.ball(b.Model, "Veg", 1, at(-9 + n * 1.2, 0.9, b.D / 2 + 6), MapKit.LEAVES[n % 4 + 1])
+				MapKit.ball(b.Model, "Veg", 1, at(-9 + n * 1.2, 0.9, b.D / 2 + 3), MapKit.LEAVES[n % 4 + 1])
 			end
 		end
 		if style == "twostory" and rng:NextNumber() < 0.7 then
-			Streets.car(b.Model, at(b.W / 2 + 5.5, 0.1, -12), Streets.CAR_COLORS[rng:NextInteger(1, #Streets.CAR_COLORS)])
+			-- parked on the driveway in front of the garage
+			Streets.car(b.Model, at(b.GarageX or (b.W / 2 + 5.5), 0.1, -12), Streets.CAR_COLORS[rng:NextInteger(1, #Streets.CAR_COLORS)])
 		end
 		local home = ctx.addHome({
 			Model = b.Model,
@@ -7265,6 +7369,26 @@ function MapBuilder.Build()
 	map.Spacing = SPACING
 	map.Extent = EXTENT
 	map.Lake = Landscape.LAKE
+	-- life in the parks: fireflies over the ponds and flowerbeds at night,
+	-- leaves drifting down from some of the trees
+	for _, id in ipairs({ "Park", "WillowPark" }) do
+		local park = map.Places[id]
+		if park and park.Model then
+			local k = 0
+			for _, d in ipairs(park.Model:GetDescendants()) do
+				if d:IsA("BasePart") then
+					if d.Name == "Pond" or d.Name == "FlowerBed" then
+						MapKit.particles(d, "fireflies")
+					elseif d.Name == "Leaves" then
+						k += 1
+						if k % 3 == 0 then
+							MapKit.particles(d, "leaves")
+						end
+					end
+				end
+			end
+		end
+	end
 	map.StreetName = Streets.streetName
 	map.AvenueName = Streets.avenueName
 	map.Registry = Registry
@@ -7336,6 +7460,9 @@ function MapBuilder.SetNight(night)
 	end
 	for _, n in ipairs(Registry.NightNeon) do
 		n.Part.Material = if night then Enum.Material.Neon else n.Day
+	end
+	for _, e in ipairs(Registry.NightParticles) do
+		e.Enabled = night
 	end
 	for k, w in ipairs(Registry.Windows) do
 		-- about half the windows glow warm, like people are home
@@ -7580,15 +7707,30 @@ local function capacityOf(home)
 	return home and (home.Capacity or 3) or 3
 end
 
+-- how far a home is from downtown (families prefer living closer in, so
+-- nobody has an hour-long walk to work on a big map)
+local function distanceOut(home)
+	local d = home and home.Door
+	if not d then
+		return 0
+	end
+	return math.sqrt(d.X * d.X + d.Z * d.Z)
+end
+
 function Life:FindHome(size, rng)
 	local best
+	local fits = {}
 	for index, home in ipairs(self.Homes) do
 		if not self.HomeUse[index] and capacityOf(home) >= size then
-			best = index
-			if rng:Next() < 0.35 then
-				break
-			end
+			table.insert(fits, index)
 		end
+	end
+	if #fits > 0 then
+		table.sort(fits, function(a, b)
+			return distanceOut(self.Homes[a]) < distanceOut(self.Homes[b])
+		end)
+		-- one of the closest few (not always the very closest)
+		best = fits[math.min(#fits, 1 + math.floor(rng:Next() * math.min(6, #fits)))]
 	end
 	if not best then
 		-- city full: squeeze into any free home
@@ -17476,7 +17618,418 @@ function FoodService.Start(services)
 end
 
 return FoodService
-]]></ProtectedString></Properties></Item></Item></Item><Item class="StarterPlayer" referent="RBX39"><Properties><string name="Name">StarterPlayer</string></Properties><Item class="StarterPlayerScripts" referent="RBX40"><Properties><string name="Name">StarterPlayerScripts</string></Properties><Item class="LocalScript" referent="RBX48"><Properties><string name="Name">CityClient</string><ProtectedString name="Source"><![CDATA[-- CityClient (LocalScript) — StarterPlayer.StarterPlayerScripts.CityClient
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX38"><Properties><string name="Name">JobService</string><ProtectedString name="Source"><![CDATA[-- JobService (ModuleScript) — ServerScriptService.Modules.JobService
+-- Jobs for players. Walk into a workplace and clock in (or pick a job in the
+-- phone's Jobs app, which shows you the way), then work a shift: a list of
+-- tasks, each a glowing marker to walk to and hold E (or X on a controller)
+-- to do. Every task pays; finishing the shift pays a bonus. Your character
+-- does the work (delivering letters, watering, mopping, carrying boxes...)
+-- with the same animations the citizens use.
+--
+--   📬 Mail Carrier (Post Office)  pick up the mail, deliver to 5 houses
+--   🌱 Gardener (Central Park)      water the flowerbeds and trees
+--   ☕ Barista (Cafe)               make coffees and serve them at the till
+--   🧽 Janitor (Offices)            mop up spills around the office
+--   📦 Warehouse Worker             carry crates to the racking
+--   🛒 Shelf Stocker (Market)       carry stock boxes to the shelves
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
+
+local JobService = {}
+local S
+local shifts = {} -- [player] = { Job, Tasks, Index, Earned, Folder, Marker }
+
+local function rgb(r, g, b)
+	return Color3.fromRGB(r, g, b)
+end
+
+-- find parts by name inside a place's model
+local function partsNamed(place, names)
+	local out = {}
+	if place and place.Model then
+		for _, d in ipairs(place.Model:GetDescendants()) do
+			if d:IsA("BasePart") and names[d.Name] then
+				table.insert(out, d)
+			end
+		end
+	end
+	return out
+end
+
+local function pick(list, n, rng)
+	local copy = table.clone(list)
+	local out = {}
+	for _ = 1, math.min(n, #copy) do
+		table.insert(out, table.remove(copy, rng:NextInteger(1, #copy)))
+	end
+	return out
+end
+
+-- a task: { Pos, Text, Action (animation), Carry (prop after), Hold (seconds), Label }
+local JOBS = {}
+JobService.Jobs = JOBS
+JobService.Order = { "Mail Carrier", "Gardener", "Barista", "Janitor", "Warehouse Worker", "Shelf Stocker" }
+
+JOBS["Mail Carrier"] = { Emoji = "📬", Place = "PostOffice", Pay = 8, Bonus = 20, Desc = "Pick up the mail and deliver it to five houses.",
+	Tasks = function(place, rng)
+		local list = {}
+		local shelf = partsNamed(place, { SortingShelf = true, POBoxes = true })[1]
+		table.insert(list, { Pos = if shelf then shelf.Position else place.Inside, Text = "Pick up the mail", Action = "sort", Carry = "MailBag", Hold = 1 })
+		local houses = {}
+		for _, home in ipairs(S.Map.Homes) do
+			local b = home.Building
+			local box = b and b.Model and b.Model:FindFirstChild("Mailbox")
+			if box and (home.Door - place.Door).Magnitude < 300 then
+				table.insert(houses, { Box = box, Home = home, D = (home.Door - place.Door).Magnitude })
+			end
+		end
+		table.sort(houses, function(a, b) return a.D < b.D end)
+		for _, h in ipairs(pick({ table.unpack(houses, 1, math.min(12, #houses)) }, 5, rng)) do
+			table.insert(list, { Pos = h.Box.Position, Text = "Deliver to " .. (h.Home.Address or "this house"), Action = "deliver", Carry = "MailBag", Hold = 1 })
+		end
+		return list
+	end,
+}
+JOBS["Gardener"] = { Emoji = "🌱", Place = "Park", Pay = 6, Bonus = 15, Desc = "Water the flowerbeds, bushes and trees in Central Park.",
+	Tasks = function(place, rng)
+		local list = {}
+		local plants = partsNamed(place, { FlowerBed = true, Bush = true, Trunk = true })
+		for _, p in ipairs(pick(plants, 5, rng)) do
+			table.insert(list, { Pos = p.Position, Text = "Water the " .. (if p.Name == "Trunk" then "tree" elseif p.Name == "Bush" then "bush" else "flowers"), Action = "water", Carry = "WateringCan", Hold = 1.5 })
+		end
+		return list
+	end,
+}
+JOBS["Barista"] = { Emoji = "☕", Place = "Cafe", Pay = 7, Bonus = 15, Desc = "Make coffees at the espresso machine and serve them at the till.",
+	Tasks = function(place, rng)
+		local list = {}
+		local machine = partsNamed(place, { EspressoMachine = true })[1]
+		local till = partsNamed(place, { Register = true })[1]
+		local drinks = { "a latte", "an espresso", "a cappuccino", "a hot chocolate", "an iced coffee" }
+		for k = 1, 4 do
+			table.insert(list, { Pos = if machine then machine.Position else place.Inside, Text = "Make " .. drinks[rng:NextInteger(1, #drinks)], Action = "brew", Carry = "Cup", Hold = 1.5 })
+			table.insert(list, { Pos = if till then till.Position else place.Inside, Text = "Serve order #" .. k, Action = "pay", Carry = false, Hold = 0.6, Paid = true })
+		end
+		return list
+	end,
+}
+JOBS["Janitor"] = { Emoji = "🧽", Place = "Office", Pay = 6, Bonus = 15, Desc = "Mop up the spills around the office floors.",
+	Tasks = function(place, rng)
+		local list = {}
+		local desks = partsNamed(place, { Desk = true })
+		local low = {}
+		local base = place.Inside and place.Inside.Y or 0
+		for _, d in ipairs(desks) do
+			if d.Position.Y - base < 30 then -- the first few floors
+				table.insert(low, d)
+			end
+		end
+		for _, d in ipairs(pick(if #low > 0 then low else desks, 5, rng)) do
+			local pos = d.Position - d.CFrame.LookVector * 3
+			table.insert(list, { Pos = Vector3.new(pos.X, d.Position.Y - d.Size.Y / 2 - 2.5, pos.Z), Text = "Mop the spill", Action = "mop", Carry = false, Hold = 2, Spill = true })
+		end
+		return list
+	end,
+}
+JOBS["Warehouse Worker"] = { Emoji = "📦", Place = "Warehouse", Pay = 7, Bonus = 15, Desc = "Carry crates from the loading area to the racking.",
+	Tasks = function(place, rng)
+		local list = {}
+		local crates = partsNamed(place, { Crate = true, Pallet = true })
+		local racks = partsNamed(place, { Racking = true })
+		for _ = 1, 4 do
+			local c = crates[rng:NextInteger(1, math.max(1, #crates))]
+			local r = racks[rng:NextInteger(1, math.max(1, #racks))]
+			table.insert(list, { Pos = if c then c.Position else place.Inside, Text = "Pick up a crate", Action = "carrybox", Carry = "Box", Hold = 1 })
+			table.insert(list, { Pos = if r then r.Position else place.Inside, Text = "Stack it on the racking", Action = "shelve", Carry = false, Hold = 1.2, Paid = true })
+		end
+		return list
+	end,
+}
+JOBS["Shelf Stocker"] = { Emoji = "🛒", Place = "Shop", Pay = 6, Bonus = 15, Desc = "Carry stock boxes from the back to the Market's shelves.",
+	Tasks = function(place, rng)
+		local list = {}
+		local boxes = partsNamed(place, { StockBox = true })
+		local shelves = partsNamed(place, { Shelf = true })
+		for _ = 1, 4 do
+			local b = boxes[rng:NextInteger(1, math.max(1, #boxes))]
+			local sh = shelves[rng:NextInteger(1, math.max(1, #shelves))]
+			table.insert(list, { Pos = if b then b.Position else place.Inside, Text = "Grab a stock box", Action = "carrybox", Carry = "Box", Hold = 1 })
+			table.insert(list, { Pos = if sh then sh.Position else place.Inside, Text = "Stock the shelf", Action = "shelve", Carry = false, Hold = 1.5, Paid = true })
+		end
+		return list
+	end,
+}
+-- pay on every task unless the job pays per finished order (Paid = true on those)
+local function pays(shift, step)
+	local any = false
+	for _, t in ipairs(shift.Tasks) do
+		if t.Paid then
+			any = true
+		end
+	end
+	return if any then step.Paid == true else true
+end
+
+--------------------------------------------------------------------------------
+-- The marker for the current task
+--------------------------------------------------------------------------------
+local function clearMarker(shift)
+	if shift.Marker then
+		shift.Marker:Destroy()
+		shift.Marker = nil
+	end
+end
+
+local function status(player, shift, extra)
+	local job = JOBS[shift.Job]
+	local step = shift.Tasks[shift.Index]
+	S.City.Send(player, { Type = "Job", Job = shift.Job, Emoji = job.Emoji, Step = shift.Index, Steps = #shift.Tasks, Task = step and step.Text, Earned = shift.Earned, Done = extra and extra.Done, Paid = extra and extra.Paid })
+	player:SetAttribute("JobTask", step and step.Text or nil)
+end
+
+local showTask -- forward
+
+local function finish(player, shift)
+	local job = JOBS[shift.Job]
+	clearMarker(shift)
+	if shift.Folder then
+		shift.Folder:Destroy()
+	end
+	shifts[player] = nil
+	S.City.AddCoins(player, job.Bonus, job.Emoji .. " Shift bonus")
+	shift.Earned += job.Bonus
+	S.City.Toast(player, job.Emoji, "Shift complete!", "You earned " .. shift.Earned .. " coins as a " .. shift.Job .. ". Clock in again any time.", rgb(90, 200, 120))
+	S.City.Send(player, { Type = "Job", Job = shift.Job, Emoji = job.Emoji, Finished = true, Earned = shift.Earned })
+	S.City.Send(player, { Type = "Waypoint", Clear = true })
+	player:SetAttribute("Job", nil)
+	player:SetAttribute("JobTask", nil)
+	if player.Character then
+		player.Character:SetAttribute("Carry", nil)
+	end
+	if S.City.Progress then
+		pcall(S.City.Progress, player, "work", 1)
+	end
+end
+
+local function complete(player, shift)
+	local job = JOBS[shift.Job]
+	local step = shift.Tasks[shift.Index]
+	local character = player.Character
+	if character then
+		-- everyone sees you do it (see Poses: WorkAction)
+		character:SetAttribute("WorkAction", step.Action)
+		task.delay(1.2, function()
+			if character.Parent and character:GetAttribute("WorkAction") == step.Action then
+				character:SetAttribute("WorkAction", nil)
+			end
+		end)
+		if step.Carry ~= nil then
+			character:SetAttribute("Carry", step.Carry or nil)
+		end
+	end
+	local paid = 0
+	if pays(shift, step) then
+		paid = job.Pay
+		S.City.AddCoins(player, paid, job.Emoji .. " " .. shift.Job)
+		shift.Earned += paid
+	end
+	shift.Index += 1
+	if shift.Index > #shift.Tasks then
+		finish(player, shift)
+	else
+		showTask(player, shift)
+		status(player, shift, { Paid = paid })
+	end
+end
+
+showTask = function(player, shift)
+	clearMarker(shift)
+	local step = shift.Tasks[shift.Index]
+	local ground = step.Pos
+	local marker = Instance.new("Part")
+	marker.Name = "JobMarker"
+	marker.Anchored = true
+	marker.CanCollide = false
+	marker.CanQuery = false
+	marker.CanTouch = false
+	marker.Shape = Enum.PartType.Cylinder
+	marker.Material = Enum.Material.Neon
+	marker.Color = rgb(255, 200, 60)
+	marker.Transparency = 0.35
+	if step.Spill then
+		-- a puddle on the floor
+		marker.Size = Vector3.new(0.1, 3.2, 3.2)
+		marker.Color = rgb(120, 180, 230)
+		marker.Material = Enum.Material.Glass
+		marker.Transparency = 0.2
+		marker.CFrame = CFrame.new(ground) * CFrame.Angles(0, 0, math.rad(90))
+	else
+		marker.Size = Vector3.new(0.3, 2.2, 2.2)
+		marker.CFrame = CFrame.new(ground + Vector3.new(0, 3.5, 0)) * CFrame.Angles(0, 0, math.rad(90))
+	end
+	marker:SetAttribute("Owner", player.UserId)
+	local light = Instance.new("PointLight")
+	light.Color = marker.Color
+	light.Range = 10
+	light.Brightness = 1.5
+	light.Parent = marker
+	local prompt = Instance.new("ProximityPrompt")
+	prompt.Name = "JobPrompt"
+	prompt.ActionText = step.Text
+	prompt.ObjectText = JOBS[shift.Job].Emoji .. " " .. shift.Job
+	prompt.KeyboardKeyCode = Enum.KeyCode.E
+	prompt.HoldDuration = step.Hold or 1
+	prompt.MaxActivationDistance = 11
+	prompt.RequiresLineOfSight = false
+	prompt.Style = Enum.ProximityPromptStyle.Custom
+	prompt:SetAttribute("Kind", "Job")
+	prompt.Parent = marker
+	prompt.Triggered:Connect(function(who)
+		if who == player and shifts[player] == shift and shift.Tasks[shift.Index] == step then
+			complete(player, shift)
+		end
+	end)
+	-- only your own markers show up for you (see World: job prompts)
+	marker.Parent = shift.Folder
+	shift.Marker = marker
+	S.City.Send(player, { Type = "Waypoint", Position = ground, Label = step.Text, Emoji = JOBS[shift.Job].Emoji })
+end
+
+--------------------------------------------------------------------------------
+-- Clocking in and out
+--------------------------------------------------------------------------------
+function JobService.Begin(player, jobName)
+	local job = JOBS[jobName or ""]
+	local place = job and S.Map.Places[job.Place]
+	if not place then
+		return { Ok = false, Error = "No such job." }
+	end
+	if S.Crime and S.Crime.IsJailed(player) then
+		return { Ok = false, Error = "You can't work from jail." }
+	end
+	if (player:GetAttribute("Wanted") or 0) > 0 then
+		return { Ok = false, Error = "Nobody hires someone the police are after!" }
+	end
+	JobService.Quit(player, true)
+	local rng = Random.new()
+	local tasks = job.Tasks(place, rng)
+	if #tasks == 0 then
+		return { Ok = false, Error = "There's no work here right now." }
+	end
+	local folder = Instance.new("Folder")
+	folder.Name = "JobMarkers_" .. player.UserId
+	folder.Parent = workspace
+	local shift = { Job = jobName, Tasks = tasks, Index = 1, Earned = 0, Folder = folder }
+	shifts[player] = shift
+	player:SetAttribute("Job", jobName)
+	showTask(player, shift)
+	status(player, shift)
+	S.City.Toast(player, job.Emoji, "Clocked in: " .. jobName, job.Desc .. " Follow the marker.", rgb(240, 190, 60))
+	return { Ok = true }
+end
+
+function JobService.Quit(player, quiet)
+	local shift = shifts[player]
+	if not shift then
+		return { Ok = true }
+	end
+	clearMarker(shift)
+	if shift.Folder then
+		shift.Folder:Destroy()
+	end
+	shifts[player] = nil
+	player:SetAttribute("Job", nil)
+	player:SetAttribute("JobTask", nil)
+	if player.Character then
+		player.Character:SetAttribute("Carry", nil)
+	end
+	if not quiet then
+		S.City.Send(player, { Type = "Job", Quit = true, Earned = shift.Earned, Job = shift.Job })
+		S.City.Send(player, { Type = "Waypoint", Clear = true })
+		S.City.Toast(player, "🕒", "Clocked out", "You earned " .. shift.Earned .. " coins this shift.", rgb(150, 150, 170))
+	end
+	return { Ok = true }
+end
+
+function JobService.Current(player)
+	local shift = shifts[player]
+	return shift and shift.Job
+end
+
+-- the Jobs app
+local function listJobs(player)
+	local out = {}
+	for _, name in ipairs(JobService.Order) do
+		local job = JOBS[name]
+		local place = S.Map.Places[job.Place]
+		local info = Config.PlaceById and Config.PlaceById[job.Place]
+		table.insert(out, { Name = name, Emoji = job.Emoji, Pay = job.Pay, Bonus = job.Bonus, Desc = job.Desc, Place = (info and info.label) or job.Place, Position = place and place.Door })
+	end
+	return { Ok = true, Jobs = out, Current = JobService.Current(player) }
+end
+
+-- a "Clock in" prompt at every workplace
+local function clockIn(jobName)
+	local job = JOBS[jobName]
+	local place = S.Map.Places[job.Place]
+	if not place then
+		return
+	end
+	local post = Instance.new("Part")
+	post.Name = "TimeClock"
+	post.Anchored = true
+	post.CanCollide = false
+	post.Size = Vector3.new(1.2, 1.6, 0.4)
+	post.Color = rgb(60, 64, 74)
+	post.Material = Enum.Material.Metal
+	local at = place.Inside or place.Door
+	post.CFrame = CFrame.new(at + Vector3.new(0, 4, 0))
+	post.Transparency = 1
+	post.Parent = place.Model or workspace
+	local prompt = Instance.new("ProximityPrompt")
+	prompt.Name = "ClockInPrompt"
+	prompt.ActionText = "Work here"
+	prompt.ObjectText = job.Emoji .. " " .. jobName .. " · " .. job.Pay .. " coins a task"
+	prompt.KeyboardKeyCode = Enum.KeyCode.J
+	prompt.GamepadKeyCode = Enum.KeyCode.ButtonY
+	prompt.MaxActivationDistance = 12
+	prompt.RequiresLineOfSight = false
+	prompt.Style = Enum.ProximityPromptStyle.Custom
+	prompt:SetAttribute("Kind", "Job")
+	prompt.Parent = post
+	prompt.Triggered:Connect(function(player)
+		if JobService.Current(player) == jobName then
+			S.City.Toast(player, job.Emoji, "Already on shift", "Follow the marker to your next task.", rgb(240, 190, 60))
+			return
+		end
+		local r = JobService.Begin(player, jobName)
+		if not r.Ok then
+			S.City.Toast(player, "🚫", "Can't clock in", r.Error, rgb(200, 90, 90))
+		end
+	end)
+end
+
+function JobService.Start(services)
+	S = services
+	for _, name in ipairs(JobService.Order) do
+		clockIn(name)
+	end
+	S.City.Handle("Jobs", listJobs)
+	S.City.Handle("StartJob", function(player, data)
+		return JobService.Begin(player, data.Job)
+	end)
+	S.City.Handle("QuitJob", function(player)
+		return JobService.Quit(player)
+	end)
+	Players.PlayerRemoving:Connect(function(player)
+		JobService.Quit(player, true)
+	end)
+end
+
+return JobService
+]]></ProtectedString></Properties></Item></Item></Item><Item class="StarterPlayer" referent="RBX40"><Properties><string name="Name">StarterPlayer</string></Properties><Item class="StarterPlayerScripts" referent="RBX41"><Properties><string name="Name">StarterPlayerScripts</string></Properties><Item class="LocalScript" referent="RBX49"><Properties><string name="Name">CityClient</string><ProtectedString name="Source"><![CDATA[-- CityClient (LocalScript) — StarterPlayer.StarterPlayerScripts.CityClient
 -- AI City on your screen. Starts the HUD, the windows, the world effects and
 -- the citizens' body language, and routes everything the server sends.
 --
@@ -17591,6 +18144,9 @@ handlers.Shop = function(d)
 end
 handlers.FoodMenu = function(d)
 	Panels.OpenFood(d)
+end
+handlers.Job = function(d)
+	Hud.SetJob(d)
 end
 handlers.Food = function(d)
 	Moves.AddStamina(d.Energy)
@@ -17722,7 +18278,7 @@ UserInputService.InputEnded:Connect(function(input)
 		Moves.SetSprint(false)
 	end
 end)
-]]></ProtectedString></Properties><Item class="ModuleScript" referent="RBX41"><Properties><string name="Name">UI</string><ProtectedString name="Source"><![CDATA[-- UI (ModuleScript) — StarterPlayerScripts.CityClient.UI
+]]></ProtectedString></Properties><Item class="ModuleScript" referent="RBX42"><Properties><string name="Name">UI</string><ProtectedString name="Source"><![CDATA[-- UI (ModuleScript) — StarterPlayerScripts.CityClient.UI
 -- AI City's look: colors, fonts, and helpers for building the interface
 -- (rounded panels, buttons that bounce, windows that pop open, bars...).
 
@@ -18222,7 +18778,7 @@ function UI.commas(n)
 end
 
 return UI
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX42"><Properties><string name="Name">Icons</string><ProtectedString name="Source"><![CDATA[-- Icons (ModuleScript) — StarterPlayerScripts.CityClient.Icons
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX43"><Properties><string name="Name">Icons</string><ProtectedString name="Source"><![CDATA[-- Icons (ModuleScript) — StarterPlayerScripts.CityClient.Icons
 -- AI City's own icon set, drawn from rounded shapes (no image uploads needed,
 -- and they stay sharp at any size).
 --
@@ -18877,6 +19433,15 @@ D.energy = function(c)
 	R(c, 0.5, 0.53, 0.22, 0.06, WHITE, { rot = -12 })
 end
 
+D.briefcase = function(c)
+	-- the handle, the case, a clasp and a seam
+	R(c, 0.5, 0.26, 0.3, 0.14, c.Fg, { r = 0.3 })
+	R(c, 0.5, 0.28, 0.18, 0.07, c.Hole, { r = 0.3 })
+	R(c, 0.5, 0.58, 0.8, 0.52, rgb(170, 110, 60), { r = 0.14, grad = { rgb(200, 140, 80), rgb(140, 88, 46), 90 } })
+	R(c, 0.5, 0.52, 0.8, 0.05, rgb(110, 70, 36))
+	R(c, 0.5, 0.53, 0.14, 0.12, rgb(250, 210, 90), { r = 0.2 })
+end
+
 -- names that mean the same icon
 local ALIAS = {
 	Phone = "phone", Map = "map", People = "people", News = "news", Vote = "vote", Goals = "goals",
@@ -18887,7 +19452,7 @@ local ALIAS = {
 	["🏏"] = "bat", ["🔨"] = "hammer", ["🔪"] = "knife", ["🛡️"] = "shield", ["🪙"] = "coin", ["❤️"] = "heart",
 	["💬"] = "chat", ["🚨"] = "siren", ["🪪"] = "idcard", ["🛗"] = "elevator", ["🏆"] = "trophy", ["🏙️"] = "city",
 	["🧥"] = "hoodie", ["🥸"] = "disguise", ["☀️"] = "sun", ["🌙"] = "moon", ["🌅"] = "sunset", ["🌇"] = "sunset",
-	["💰"] = "coin", ["😊"] = "smile", ["🏥"] = "hospital", ["🚓"] = "police",
+	["💰"] = "coin", ["💼"] = "briefcase", Jobs = "briefcase", ["😊"] = "smile", ["🏥"] = "hospital", ["🚓"] = "police",
 }
 Icons.Alias = ALIAS
 
@@ -19006,7 +19571,7 @@ end
 table.sort(Icons.Names)
 
 return Icons
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX43"><Properties><string name="Name">Hud</string><ProtectedString name="Source"><![CDATA[-- Hud (ModuleScript) — StarterPlayerScripts.CityClient.Hud
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX44"><Properties><string name="Name">Hud</string><ProtectedString name="Source"><![CDATA[-- Hud (ModuleScript) — StarterPlayerScripts.CityClient.Hud
 -- The always-on screen: the clock and calendar, the city's mood and stats,
 -- a rotating minimap, coins, wanted stars, the mayor and the next election,
 -- the action bar, notifications and the news ticker.
@@ -19629,6 +20194,53 @@ end
 -- Daily goals (under the clock)
 --------------------------------------------------------------------------------
 local goalsPanel, goalsList, goalsOpen = nil, nil, true
+-- the shift tracker (see JobService): the job, the task, progress and pay
+local jobCard
+function Hud.SetJob(d)
+	local column = screen and screen:FindFirstChild("LeftColumn")
+	if not column then
+		return
+	end
+	if d.Finished or d.Quit then
+		if jobCard then
+			local card = jobCard
+			jobCard = nil
+			if d.Finished then
+				UI.sound("notify", 0.5, 1.1)
+			end
+			UI.tween(card, 0.3, { BackgroundTransparency = 1 })
+			task.delay(0.3, function()
+				card:Destroy()
+			end)
+		end
+		return
+	end
+	if not jobCard then
+		jobCard = UI.panel(column, { Name = "JobCard", BackgroundColor3 = C.Panel, Size = UDim2.new(1, 0, 0, 92), LayoutOrder = 3, Radius = 14 })
+		UI.pad(jobCard, 10, 12, 10, 12)
+		UI.new("UIStroke", { Color = C.Gold, Thickness = 1.5, Transparency = 0.3, Parent = jobCard })
+		UI.text(jobCard, "", 15, UI.Title, C.Gold, { Name = "Title", Size = UDim2.new(1, -60, 0, 20) })
+		UI.text(jobCard, "", 12, UI.Bold, C.Text, { Name = "Task", Position = UDim2.fromOffset(0, 22), Size = UDim2.new(1, 0, 0, 30), TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top })
+		local _, setBar = UI.bar(jobCard, C.Gold, 6, { Name = "Progress", Position = UDim2.fromOffset(0, 56), Size = UDim2.new(1, 0, 0, 6) })
+		refs.JobBar = setBar
+		UI.text(jobCard, "", 12, UI.Bold, C.Sub, { Name = "Earned", Position = UDim2.fromOffset(0, 64), Size = UDim2.new(1, 0, 0, 16) })
+		UI.button(jobCard, "Quit", { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, -2), Size = UDim2.fromOffset(54, 24), Color = C.Panel3, TextSize = 11 }, function()
+			task.spawn(function()
+				ctx.Remotes.Request:InvokeServer({ Action = "QuitJob" })
+			end)
+		end)
+	end
+	jobCard.Title.Text = (d.Emoji or "💼") .. "  " .. (d.Job or "Work")
+	jobCard.Task.Text = "➜ " .. (d.Task or "") .. "   (" .. (d.Step or 1) .. " / " .. (d.Steps or 1) .. ")"
+	jobCard.Earned.Text = "🪙 " .. (d.Earned or 0) .. " earned this shift"
+	if refs.JobBar then
+		refs.JobBar(((d.Step or 1) - 1) / math.max(1, d.Steps or 1), C.Gold)
+	end
+	if (d.Paid or 0) > 0 then
+		UI.sound("notify", 0.35, 1.3)
+	end
+end
+
 function Hud.SetGoals(goals, done)
 	if not goalsPanel then
 		return
@@ -20009,7 +20621,7 @@ function Hud.Start(context)
 end
 
 return Hud
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX44"><Properties><string name="Name">Panels</string><ProtectedString name="Source"><![CDATA[-- Panels (ModuleScript) — StarterPlayerScripts.CityClient.Panels
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX45"><Properties><string name="Name">Panels</string><ProtectedString name="Source"><![CDATA[-- Panels (ModuleScript) — StarterPlayerScripts.CityClient.Panels
 -- The windows you open: the city map, the People directory and profile
 -- cards, voting, speeches, the mayor's desk, conversations with citizens,
 -- elevators, help, settings, the welcome screen, election results and the
@@ -20893,7 +21505,8 @@ local function buildHelp()
 		{ "🏃 Sprinting and stamina", "Hold <b>Shift</b> (or the Sprint button) to run. It uses stamina (the ⚡ bar above your health), which refills when you stop. Sprinting and running on the <b>gym treadmills</b> (press E) earn fitness XP: every level gives you more stamina, faster recovery and a faster sprint. Food refills stamina too." },
 		{ "🍔 Food", "Press <b>E</b> at the counter of the Bakery, Cafe, Diner, Restaurant, Ice Cream shop or Market to order. Food heals you ❤️ and refills stamina ⚡. Coffee and energy drinks make stamina refill faster for a while." },
 		{ "🥷 Disguises", "Buy a 🧥 <b>hoodie</b>, a 🥷 <b>ski mask</b> or a 🥸 <b>disguise kit</b> at the 👕 Clothing store, and wear them with <b>C</b>. Witnesses may not recognize you (fewer stars, no notoriety, nobody remembers it was you), the police have to get closer to spot you, and it all works much better <b>at night</b>. After a crime, change or take off your outfit where nobody can see: the police keep looking for the old one. But a ski mask in daylight makes people nervous..." },
-		{ "⌨️ Keys", "Tab phone · E talk / use · M map · P people · V vote · B speech · N mayor · F attack · X block · 1-4 hotbar · G pickpocket · R rob · Q hide · Shift sprint · C wardrobe · H help · 1-9 answer in conversations · Esc close windows" },
+		{ "⌨️ Keys", "Tab phone · E talk / use · M map · P people · V vote · B speech · N mayor · F attack · X block · 1-4 hotbar · G pickpocket · R rob · Q hide · J clock in at a job · Shift sprint · C wardrobe · H help · 1-9 answer in conversations · Esc close windows" },
+		{ "💼 Jobs", "Earn coins with a job: open the <b>Jobs</b> app on your phone, or press <b>J</b> at a workplace (Post Office, Central Park, Cafe, Offices, Warehouse, Market). Follow the glowing marker and hold <b>E</b> at each task. Every task pays, and a finished shift pays a bonus." },
 		{ "🎮 Controller", "R2 attack · hold L2 block · click L3 sprint · R1 / L1 switch weapons · D-pad ▲ phone · ▼ map · ◀ help · ▶ wardrobe · X talk / use · Y pickpocket / rob / hide · B close / back / get out · A jump. In menus, move with the D-pad or stick and press A." },
 	}
 	for _, s in ipairs(sections) do
@@ -21138,6 +21751,10 @@ local function buildPhone()
 		P.Close()
 		Panels.ToggleWardrobe()
 	end)
+	app(11, "💼", "Jobs", UI.rgb(200, 140, 60), function()
+		P.Close()
+		task.spawn(Panels.OpenJobs)
+	end)
 	app(9, "❓", "Help", UI.rgb(80, 90, 120), function()
 		P.Close()
 		Panels.Help.Open()
@@ -21362,6 +21979,53 @@ local function buildFood()
 	end
 end
 
+-- the Jobs app: every job you can take, what it pays, and a way there
+local function buildJobs()
+	local win = UI.window(screen, "Jobs", "briefcase", UDim2.fromOffset(820, 470), C.Gold)
+	Panels.Jobs = win
+	local body = win.Body
+	local top = UI.text(body, "", 14, UI.Bold, C.Sub, { Size = UDim2.new(1, 0, 0, 22), RichText = true, TextWrapped = true })
+	local grid = UI.new("Frame", { BackgroundTransparency = 1, Position = UDim2.fromOffset(0, 30), Size = UDim2.new(1, 0, 1, -30), Parent = body })
+	UI.new("UIGridLayout", { CellSize = UDim2.new(0.333, -8, 0.5, -6), CellPadding = UDim2.fromOffset(10, 10), SortOrder = Enum.SortOrder.LayoutOrder, Parent = grid })
+	local function fill(data)
+		clear(grid)
+		top.Text = if data.Current then "You're working as a <b>" .. data.Current .. "</b>. Follow the marker, or quit the shift below." else "Pick a job: walk to the marker and hold <b>E</b> at each task. Every task pays, and a finished shift pays a bonus."
+		for k, job in ipairs(data.Jobs or {}) do
+			local card = UI.panel(grid, { BackgroundColor3 = C.Panel2, Radius = 14, LayoutOrder = k })
+			UI.pad(card, 12)
+			UI.text(card, job.Emoji, 30, UI.Font, C.Text, { Size = UDim2.fromOffset(40, 36) })
+			UI.text(card, job.Name, 17, UI.Title, C.Text, { Position = UDim2.fromOffset(44, 0), Size = UDim2.new(1, -44, 0, 20) })
+			UI.text(card, "📍 " .. job.Place, 12, UI.Bold, C.Sub, { Position = UDim2.fromOffset(44, 20), Size = UDim2.new(1, -44, 0, 16) })
+			UI.text(card, job.Desc, 12, UI.Font, C.Sub, { Position = UDim2.fromOffset(0, 42), Size = UDim2.new(1, 0, 0, 34), TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top })
+			UI.text(card, "🪙 " .. job.Pay .. " a task  ·  +" .. job.Bonus .. " bonus", 12, UI.Bold, C.Gold, { Position = UDim2.fromOffset(0, 78), Size = UDim2.new(1, 0, 0, 16) })
+			local working = data.Current == job.Name
+			UI.button(card, if working then "🕒 Quit shift" else "💼 Start shift", { AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.new(0.62, -4, 0, 34), Color = if working then C.Panel3 else C.Gold, TextColor = if working then C.Text else C.Bg, TextSize = 13 }, function()
+				local r = request({ Action = if working then "QuitJob" else "StartJob", Job = job.Name })
+				if r.Ok then
+					win.Close()
+				else
+					fail(r)
+				end
+			end)
+			UI.button(card, "🧭 Go", { AnchorPoint = Vector2.new(1, 1), Position = UDim2.fromScale(1, 1), Size = UDim2.new(0.38, -4, 0, 34), Color = C.Panel3, TextSize = 13 }, function()
+				if job.Position then
+					ctx.World.Waypoint(job.Position, job.Place, job.Emoji)
+				end
+				win.Close()
+			end)
+		end
+	end
+	function Panels.OpenJobs()
+		local r = request({ Action = "Jobs" })
+		if r.Ok then
+			fill(r)
+			win.Open()
+		else
+			fail(r)
+		end
+	end
+end
+
 -- knocked out: the screen fades, you wake up at the hospital
 local function buildDown()
 	local cover = UI.new("Frame", { BackgroundColor3 = Color3.new(0, 0, 0), BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 45, Visible = false, Parent = screen })
@@ -21411,12 +22075,13 @@ function Panels.Start(context)
 	buildShop()
 	buildWardrobe()
 	buildFood()
+	buildJobs()
 	buildDown()
 	buildPhone()
 end
 
 return Panels
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX45"><Properties><string name="Name">World</string><ProtectedString name="Source"><![CDATA[-- World (ModuleScript) — StarterPlayerScripts.CityClient.World
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX46"><Properties><string name="Name">World</string><ProtectedString name="Source"><![CDATA[-- World (ModuleScript) — StarterPlayerScripts.CityClient.World
 -- Everything drawn in the 3D world: nameplates over citizens and players,
 -- speech bubbles, the interaction prompts (talk, elevators, crimes), the
 -- waypoint beam, hit effects, alarms, confetti, the sky and the traffic lights.
@@ -22068,6 +22733,20 @@ end
 -- Start
 --------------------------------------------------------------------------------
 function World.Start(context)
+	-- job markers are only for whoever is on that shift (see JobService)
+	local function jobMarker(d)
+		if d.Name == "JobMarker" and d:IsA("BasePart") and d:GetAttribute("Owner") ~= player.UserId then
+			d.LocalTransparencyModifier = 1
+			for _, c in ipairs(d:GetChildren()) do
+				if c:IsA("ProximityPrompt") or c:IsA("Light") then
+					c.Enabled = false
+				end
+			end
+		end
+	end
+	workspace.DescendantAdded:Connect(function(d)
+		task.defer(jobMarker, d)
+	end)
 	ctx = context
 	for _, model in ipairs(CollectionService:GetTagged("Citizen")) do
 		task.spawn(makePlate, model, false)
@@ -22125,7 +22804,7 @@ function World.Start(context)
 end
 
 return World
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX46"><Properties><string name="Name">Moves</string><ProtectedString name="Source"><![CDATA[-- Moves (ModuleScript) — StarterPlayerScripts.CityClient.Moves
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX47"><Properties><string name="Name">Moves</string><ProtectedString name="Source"><![CDATA[-- Moves (ModuleScript) — StarterPlayerScripts.CityClient.Moves
 -- Sprinting and stamina. Hold Shift (or the Sprint button) to run: it uses
 -- stamina, which refills when you stop. Your fitness level (from the server,
 -- see Shared.Fitness) sets how much stamina you have, how fast it refills and
@@ -22243,7 +22922,7 @@ function Moves.Start(context)
 end
 
 return Moves
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX47"><Properties><string name="Name">Gamepad</string><ProtectedString name="Source"><![CDATA[-- Gamepad (ModuleScript) — StarterPlayerScripts.CityClient.Gamepad
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX48"><Properties><string name="Name">Gamepad</string><ProtectedString name="Source"><![CDATA[-- Gamepad (ModuleScript) — StarterPlayerScripts.CityClient.Gamepad
 -- Console / controller support (Xbox, PlayStation, any gamepad):
 --   R2 attack · hold L2 block · L3 sprint (click to toggle) · R1 / L1 next /
 --   previous weapon · D-pad ▲ phone · ▼ map · ◀ help · ▶ wardrobe ·
@@ -22265,7 +22944,7 @@ local ctx
 -- keyboard key -> controller button label (for on-screen hints)
 Gamepad.LABELS = {
 	F = "R2", X = "L2", Shift = "L3", Tab = "▲", M = "▼", H = "◀", C = "▶",
-	E = "X", G = "Y", R = "Y", Q = "Y", Space = "B", Esc = "B",
+	E = "X", G = "Y", R = "Y", Q = "Y", J = "Y", Space = "B", Esc = "B",
 }
 
 local active = false -- the last input came from a controller

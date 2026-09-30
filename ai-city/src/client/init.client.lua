@@ -114,6 +114,9 @@ end
 handlers.FoodMenu = function(d)
 	Panels.OpenFood(d)
 end
+handlers.Job = function(d)
+	Hud.SetJob(d)
+end
 handlers.Food = function(d)
 	Moves.AddStamina(d.Energy)
 end

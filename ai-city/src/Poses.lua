@@ -1310,8 +1310,18 @@ local function playerUpdate(model, st, t, dt, player)
 		local fighting = now - st.Swing < 2.5 or now - st.Hit < 2.5
 		target, full = fightPose(model, st, t, now, root, weapon, false, fighting and not eating, blocking)
 	end
+	-- working a job (see JobService): the task's animation, then carrying things
+	local workAction = model:GetAttribute("WorkAction")
+	local carry = model:GetAttribute("Carry")
+	local workInfo = workAction and Actions.Get(workAction)
+	if not target and workInfo and L[workInfo.Pose] then
+		target, full = L[workInfo.Pose](t, st.Phase)
+	elseif not target and carry and CARRY[carry] and not holding then
+		target, full = L[CARRY[carry][1]](t, st.Phase)
+	end
+	setProps(st, model, if workInfo then workAction else "", if not workInfo and carry and CARRY[carry] and not holding then carry else nil)
 	if target then
-		-- fighting (see above)
+		-- fighting, working or carrying (see above)
 	elseif holding and now - (st.Draw or -99) < 0.35 then
 		target, full = L.draw(t, st.Phase, (now - st.Draw) / 0.35)
 	elseif HOLDS[held] and not eating then

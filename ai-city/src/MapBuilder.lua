@@ -80,6 +80,13 @@ local PLAN = {
 	["-4,-4"] = "Woods",
 	["-4,1"] = "Woods",
 	["4,-2"] = "Woods",
+	-- the outer ring: big suburban lots, with woods at the corners
+	["5,5"] = "Woods",
+	["-5,5"] = "Woods",
+	["5,-5"] = "Woods",
+	["-5,-5"] = "Woods",
+	["0,5"] = "Woods",
+	["5,0"] = "Woods",
 }
 MapBuilder.PLAN = PLAN
 
@@ -389,7 +396,7 @@ function ctx.houseRow(parent, i, j, rng, slots, big)
 		local style = styles[rng:NextInteger(1, #styles)]
 		local depthZ = HALF - SIDEWALK - 12 - 8
 		-- two-story houses sit further out so their garage fits on the inner side
-		local center = c + Vector3.new(sx * (if style == "twostory" then 22 else 18), 0, sz * depthZ)
+		local center = c + Vector3.new(sx * (if style == "twostory" then 23 else 18), 0, sz * depthZ)
 		local garageSide = if sx ~= 0 then sx * sz else 1
 		local b = Buildings.house(model, center, face, style, rng, garageSide)
 		local at = b.At
@@ -423,13 +430,14 @@ function ctx.houseRow(parent, i, j, rng, slots, big)
 		end
 		if big then
 			-- a backyard vegetable garden
-			MapKit.deco(b.Model, "BackyardGarden", Vector3.new(8, 0.6, 4), at(-6, 0.3, b.D / 2 + 6), MapKit.rgb(110, 76, 50), Enum.Material.Ground)
+			MapKit.deco(b.Model, "BackyardGarden", Vector3.new(8, 0.6, 4), at(-6, 0.3, b.D / 2 + 3), MapKit.rgb(110, 76, 50), Enum.Material.Ground)
 			for n = 0, 5 do
-				MapKit.ball(b.Model, "Veg", 1, at(-9 + n * 1.2, 0.9, b.D / 2 + 6), MapKit.LEAVES[n % 4 + 1])
+				MapKit.ball(b.Model, "Veg", 1, at(-9 + n * 1.2, 0.9, b.D / 2 + 3), MapKit.LEAVES[n % 4 + 1])
 			end
 		end
 		if style == "twostory" and rng:NextNumber() < 0.7 then
-			Streets.car(b.Model, at(b.W / 2 + 5.5, 0.1, -12), Streets.CAR_COLORS[rng:NextInteger(1, #Streets.CAR_COLORS)])
+			-- parked on the driveway in front of the garage
+			Streets.car(b.Model, at(b.GarageX or (b.W / 2 + 5.5), 0.1, -12), Streets.CAR_COLORS[rng:NextInteger(1, #Streets.CAR_COLORS)])
 		end
 		local home = ctx.addHome({
 			Model = b.Model,
@@ -565,6 +573,26 @@ function MapBuilder.Build()
 	map.Spacing = SPACING
 	map.Extent = EXTENT
 	map.Lake = Landscape.LAKE
+	-- life in the parks: fireflies over the ponds and flowerbeds at night,
+	-- leaves drifting down from some of the trees
+	for _, id in ipairs({ "Park", "WillowPark" }) do
+		local park = map.Places[id]
+		if park and park.Model then
+			local k = 0
+			for _, d in ipairs(park.Model:GetDescendants()) do
+				if d:IsA("BasePart") then
+					if d.Name == "Pond" or d.Name == "FlowerBed" then
+						MapKit.particles(d, "fireflies")
+					elseif d.Name == "Leaves" then
+						k += 1
+						if k % 3 == 0 then
+							MapKit.particles(d, "leaves")
+						end
+					end
+				end
+			end
+		end
+	end
 	map.StreetName = Streets.streetName
 	map.AvenueName = Streets.avenueName
 	map.Registry = Registry
@@ -636,6 +664,9 @@ function MapBuilder.SetNight(night)
 	end
 	for _, n in ipairs(Registry.NightNeon) do
 		n.Part.Material = if night then Enum.Material.Neon else n.Day
+	end
+	for _, e in ipairs(Registry.NightParticles) do
+		e.Enabled = night
 	end
 	for k, w in ipairs(Registry.Windows) do
 		-- about half the windows glow warm, like people are home

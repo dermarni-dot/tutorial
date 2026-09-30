@@ -90,7 +90,8 @@ function Buildings.shell(parent, spec)
 		end
 		for _, sx in ipairs({ -1, 1 }) do
 			for _, sz in ipairs({ -1, 1 }) do
-				part(model, "Corner", Vector3.new(1.2, H, 1.2), at(sx * W / 2, H / 2, sz * D / 2), frame, Enum.Material.Metal)
+				-- round corner posts (softer than square edges)
+				MapKit.column(model, "Corner", H, 1.6, at(sx * W / 2, H / 2, sz * D / 2).Position, frame, Enum.Material.Metal, true)
 			end
 		end
 		-- vertical mullions on the front and back
@@ -117,7 +118,8 @@ function Buildings.shell(parent, spec)
 		-- corner pilasters and a band between floors
 		for _, sx in ipairs({ -1, 1 }) do
 			for _, sz in ipairs({ -1, 1 }) do
-				deco(model, "Pilaster", Vector3.new(1.4, H, 1.4), at(sx * (W / 2 - 0.3), H / 2, sz * (D / 2 - 0.3)), trim)
+				-- rounded corners: a column wraps each corner of the building
+				MapKit.column(model, "Pilaster", H + 0.2, 2, at(sx * (W / 2 - 0.3), H / 2, sz * (D / 2 - 0.3)).Position, trim, Enum.Material.SmoothPlastic, false)
 			end
 		end
 		for f = 1, floors do
@@ -179,9 +181,26 @@ function Buildings.shell(parent, spec)
 		if f > 0 then
 			part(model, "FloorSlab", Vector3.new(W - 1.6, 0.6, D - 1.6), at(0, y + 0.1, 0), spec.FloorColor or MapKit.rgb(200, 192, 178), spec.FloorMaterial or Enum.Material.WoodPlanks)
 		end
+		-- ceiling lights in a grid, each shining down (so the whole room is evenly
+		-- lit, corners too); soft warm light, no shadows (cheap)
 		local lampY = y + FLOOR_H - 0.9
-		local panel = deco(model, "CeilingLight", Vector3.new(math.min(8, W / 3), 0.2, math.min(3, D / 5)), at(0, lampY, 0), MapKit.rgb(255, 250, 235), Enum.Material.Neon)
-		MapKit.light(panel, MapKit.rgb(255, 238, 210), math.min(26, math.max(W, D) * 0.6), 0.75)
+		local nx = math.clamp(math.floor(W / 18 + 0.5), 1, 4)
+		local nz = math.clamp(math.floor(D / 18 + 0.5), 1, 3)
+		for i = 1, nx do
+			for j = 1, nz do
+				local lx = -W / 2 + W * (i - 0.5) / nx
+				local lz = -D / 2 + D * (j - 0.5) / nz
+				local panel = deco(model, "CeilingLight", Vector3.new(math.min(6, W / nx - 3), 0.2, math.min(2.6, D / nz - 3)), at(lx, lampY, lz), MapKit.rgb(255, 248, 232), Enum.Material.Neon)
+				local glow = Instance.new("SurfaceLight")
+				glow.Face = Enum.NormalId.Bottom
+				glow.Angle = 120
+				glow.Range = math.min(20, FLOOR_H + 6)
+				glow.Brightness = 1.15
+				glow.Color = MapKit.rgb(255, 232, 200)
+				glow.Shadows = false
+				glow.Parent = panel
+			end
+		end
 	end
 	-- ceiling above the top floor (so the room has a lid under the roof)
 	part(model, "Ceiling", Vector3.new(W - 1.6, 0.4, D - 1.6), at(0, H - 0.2, 0), MapKit.rgb(236, 232, 224), Enum.Material.SmoothPlastic)
@@ -318,14 +337,14 @@ function Buildings.house(parent, center, face, style, rng, garageSide)
 	local wall = HOUSE_WALLS[rng:NextInteger(1, #HOUSE_WALLS)]
 	local roof = HOUSE_ROOFS[rng:NextInteger(1, #HOUSE_ROOFS)]
 	local shutter = SHUTTERS[rng:NextInteger(1, #SHUTTERS)]
-	local spec = { Name = "House", Center = center, Face = face, W = 20, D = 16, Floors = 1, Wall = wall, Trim = WHITE, Roof = "gable", RoofColor = roof, DoorW = 5, Material = Enum.Material.WoodPlanks, Elevator = false, Plinth = true }
+	local spec = { Name = "House", Center = center, Face = face, W = 24, D = 20, Floors = 1, Wall = wall, Trim = WHITE, Roof = "gable", RoofColor = roof, DoorW = 5, Material = Enum.Material.WoodPlanks, Elevator = false, Plinth = true }
 	if style == "twostory" then
-		spec.Floors, spec.W, spec.D = 2, 22, 16
+		spec.Floors, spec.W, spec.D = 2, 24, 20
 		spec.Stairs = true
 		spec.Material = Enum.Material.Brick
 		spec.Wall = wall:Lerp(MapKit.rgb(170, 90, 70), 0.35)
 	elseif style == "modern" then
-		spec.Roof, spec.W, spec.D, spec.Floors = "flat", 24, 16, 2
+		spec.Roof, spec.W, spec.D, spec.Floors = "flat", 28, 20, 2
 		spec.Stairs = true
 		spec.Material = Enum.Material.SmoothPlastic
 		spec.Wall = ({ MapKit.rgb(244, 244, 240), MapKit.rgb(60, 62, 70), MapKit.rgb(214, 208, 196) })[rng:NextInteger(1, 3)]
@@ -333,7 +352,7 @@ function Buildings.house(parent, center, face, style, rng, garageSide)
 		spec.RoofKit = { "solar" }
 		spec.WindowColor = MapKit.rgb(170, 210, 235)
 	elseif style == "bungalow" then
-		spec.W, spec.D = 26, 16
+		spec.W, spec.D = 30, 20
 	end
 	local b = Buildings.shell(parent, spec)
 	local at = b.At
@@ -373,12 +392,17 @@ function Buildings.house(parent, center, face, style, rng, garageSide)
 	-- chimney
 	if spec.Roof == "gable" then
 		deco(b.Model, "Chimney", Vector3.new(2, 7, 2), at(W / 2 - 4, H + 4.5, 3), MapKit.rgb(150, 80, 60), Enum.Material.Brick)
-		deco(b.Model, "ChimneyCap", Vector3.new(2.6, 0.5, 2.6), at(W / 2 - 4, H + 8.2, 3), MapKit.rgb(90, 60, 50), Enum.Material.Brick)
+		local cap = deco(b.Model, "ChimneyCap", Vector3.new(2.6, 0.5, 2.6), at(W / 2 - 4, H + 8.2, 3), MapKit.rgb(90, 60, 50), Enum.Material.Brick)
+		-- a wisp of smoke from about half the chimneys
+		if (math.floor(math.abs(b.CFrame.Position.X) + math.abs(b.CFrame.Position.Z))) % 2 == 0 then
+			MapKit.particles(cap, "smoke")
+		end
 	end
 	-- a garage with a driveway on two-story houses
 	if style == "twostory" then
 		-- garageSide keeps the garage on the side away from the nearest road
 		local gx = (garageSide or 1) * (W / 2 + 5.5)
+		b.GarageX = gx
 		part(b.Model, "Garage", Vector3.new(10, 9, 14), at(gx, 4.5, 1), wall:Lerp(WHITE, 0.2), Enum.Material.Brick)
 		deco(b.Model, "GarageDoor", Vector3.new(8, 7, 0.3), at(gx, 3.5, -6.1), MapKit.rgb(236, 236, 236), Enum.Material.DiamondPlate)
 		wedge(b.Model, "GarageRoof", Vector3.new(11, 2, 7.5), at(gx, 10, -2.7), spec.RoofColor, Enum.Material.Slate)

@@ -15,7 +15,7 @@ MapKit.BLOCK = MapKit.SPACING - MapKit.ROAD -- 84: a block including its sidewal
 MapKit.HALF = MapKit.BLOCK / 2
 MapKit.SIDEWALK = 5
 MapKit.RING = MapKit.HALF - MapKit.SIDEWALK / 2 -- where people walk on the sidewalk
-MapKit.N = 4 -- blocks from the center to the edge (9x9 blocks)
+MapKit.N = 5 -- blocks from the center to the edge (11x11 blocks)
 MapKit.EXTENT = MapKit.N * MapKit.SPACING + MapKit.SPACING / 2 -- the city is 2 * EXTENT across
 MapKit.LOT_Y = 0.5 -- ground level inside blocks (top of the curb)
 MapKit.FLOOR_H = 12
@@ -53,6 +53,7 @@ MapKit.Registry = {
 	Lamps = {}, -- { Head = part, Light = light }
 	NightLights = {}, -- lights that only turn on at night (porch lights, signs)
 	NightNeon = {}, -- parts that switch to neon at night { Part, DayMaterial }
+	NightParticles = {}, -- particle emitters only on at night (fireflies)
 	Seats = {}, -- { Seat = seat, Place = id or nil }
 }
 
@@ -236,6 +237,52 @@ end
 function MapKit.nightNeon(p)
 	table.insert(MapKit.Registry.NightNeon, { Part = p, Day = p.Material, DayColor = p.Color })
 	return p
+end
+
+-- Particle effects that bring the city to life
+--   "smoke"      soft grey puffs rising from a chimney
+--   "fireflies"  little glowing specks that drift at night (parks, ponds)
+--   "leaves"     leaves drifting down from a tree
+function MapKit.particles(p, kind)
+	local e = Instance.new("ParticleEmitter")
+	e.Name = "City" .. kind
+	e.LockedToPart = false
+	if kind == "smoke" then
+		e.Color = ColorSequence.new(MapKit.rgb(210, 210, 214), MapKit.rgb(160, 160, 168))
+		e.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(1, 4.5) })
+		e.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.55), NumberSequenceKeypoint.new(1, 1) })
+		e.Lifetime = NumberRange.new(4, 6)
+		e.Rate = 3
+		e.Speed = NumberRange.new(2, 3.5)
+		e.SpreadAngle = Vector2.new(12, 12)
+		e.Acceleration = Vector3.new(1.2, 0.4, 0.6) -- a light breeze
+		e.RotSpeed = NumberRange.new(-20, 20)
+		e.EmissionDirection = Enum.NormalId.Top
+	elseif kind == "fireflies" then
+		e.Color = ColorSequence.new(MapKit.rgb(230, 255, 140))
+		e.LightEmission = 1
+		e.LightInfluence = 0
+		e.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(0.2, 0.28), NumberSequenceKeypoint.new(0.8, 0.28), NumberSequenceKeypoint.new(1, 0) })
+		e.Lifetime = NumberRange.new(4, 7)
+		e.Rate = 5
+		e.Speed = NumberRange.new(0.4, 1.2)
+		e.SpreadAngle = Vector2.new(180, 180)
+		e.Acceleration = Vector3.new(0, 0.15, 0)
+		e.Enabled = false
+		table.insert(MapKit.Registry.NightParticles, e)
+	elseif kind == "leaves" then
+		e.Color = ColorSequence.new(MapKit.rgb(120, 170, 60), MapKit.rgb(220, 160, 60))
+		e.Size = NumberSequence.new(0.35)
+		e.Lifetime = NumberRange.new(5, 8)
+		e.Rate = 0.8
+		e.Speed = NumberRange.new(0.5, 1)
+		e.SpreadAngle = Vector2.new(180, 180)
+		e.Acceleration = Vector3.new(0.4, -1.1, 0.2)
+		e.RotSpeed = NumberRange.new(-90, 90)
+		e.Rotation = NumberRange.new(0, 360)
+	end
+	e.Parent = p
+	return e
 end
 
 -- Striped awning made of wedges; cf is the awning's center, sloping down toward -Z

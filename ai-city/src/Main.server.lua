@@ -13,6 +13,7 @@
 --   StreetCrimeService other people's crimes (pickpockets, bag snatchers, robbers, graffiti), arrests, the jail
 --   FitnessService  sprinting XP, fitness levels, gym treadmills
 --   FoodService     buying food at the Bakery, Cafe, Diner, Restaurant, Ice Cream shop and Market
+--   JobService      jobs for players: clock in at a workplace and work a shift for coins
 --   BrawlService    street fights between citizens (crowds, police, breaking them up)
 --   DisguiseService hoodies, ski masks and disguises (the Clothing store), wearing them
 --   PlayerService   elevators, citizen profiles, the directory
@@ -66,6 +67,7 @@ if Config.RUN_CITIZENS ~= false then
 	services.StreetCrime = require(Modules:WaitForChild("StreetCrimeService"))
 	services.Fitness = require(Modules:WaitForChild("FitnessService"))
 	services.Food = require(Modules:WaitForChild("FoodService"))
+	services.Jobs = require(Modules:WaitForChild("JobService"))
 	services.Dialogue.Start(services)
 	services.Crime.Start(services)
 	services.Players.Start(services)
@@ -75,5 +77,6 @@ if Config.RUN_CITIZENS ~= false then
 	services.StreetCrime.Start(services)
 	services.Fitness.Start(services)
 	services.Food.Start(services)
+	services.Jobs.Start(services)
 	task.spawn(services.Citizens.Start, services)
 end

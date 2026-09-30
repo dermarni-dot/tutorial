@@ -12,8 +12,8 @@ local part, deco, rgb = MapKit.part, MapKit.deco, MapKit.rgb
 local SPACING, ROAD, BLOCK, HALF, SIDEWALK, N, EXTENT, LOT_Y = MapKit.SPACING, MapKit.ROAD, MapKit.BLOCK, MapKit.HALF, MapKit.SIDEWALK, MapKit.N, MapKit.EXTENT, MapKit.LOT_Y
 local WHITE, BLACK = MapKit.WHITE, MapKit.BLACK
 
-Streets.STREETS = { "Pine Street", "Oak Street", "Maple Street", "Elm Street", "Cedar Street", "Birch Street", "Willow Street", "Ash Street", "Spruce Street", "Aspen Street" }
-Streets.AVENUES = { "1st Avenue", "2nd Avenue", "3rd Avenue", "4th Avenue", "5th Avenue", "6th Avenue", "7th Avenue", "8th Avenue", "9th Avenue", "10th Avenue" }
+Streets.STREETS = { "Chestnut Street", "Pine Street", "Oak Street", "Maple Street", "Elm Street", "Cedar Street", "Birch Street", "Willow Street", "Ash Street", "Spruce Street", "Aspen Street", "Hazel Street" }
+Streets.AVENUES = { "1st Avenue", "2nd Avenue", "3rd Avenue", "4th Avenue", "5th Avenue", "6th Avenue", "7th Avenue", "8th Avenue", "9th Avenue", "10th Avenue", "11th Avenue", "12th Avenue" }
 
 -- road k runs along (k + 0.5) * SPACING, for k = -N-1 .. N
 function Streets.streetName(k)

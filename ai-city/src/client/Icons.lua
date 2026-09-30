@@ -653,6 +653,15 @@ D.energy = function(c)
 	R(c, 0.5, 0.53, 0.22, 0.06, WHITE, { rot = -12 })
 end
 
+D.briefcase = function(c)
+	-- the handle, the case, a clasp and a seam
+	R(c, 0.5, 0.26, 0.3, 0.14, c.Fg, { r = 0.3 })
+	R(c, 0.5, 0.28, 0.18, 0.07, c.Hole, { r = 0.3 })
+	R(c, 0.5, 0.58, 0.8, 0.52, rgb(170, 110, 60), { r = 0.14, grad = { rgb(200, 140, 80), rgb(140, 88, 46), 90 } })
+	R(c, 0.5, 0.52, 0.8, 0.05, rgb(110, 70, 36))
+	R(c, 0.5, 0.53, 0.14, 0.12, rgb(250, 210, 90), { r = 0.2 })
+end
+
 -- names that mean the same icon
 local ALIAS = {
 	Phone = "phone", Map = "map", People = "people", News = "news", Vote = "vote", Goals = "goals",
@@ -663,7 +672,7 @@ local ALIAS = {
 	["🏏"] = "bat", ["🔨"] = "hammer", ["🔪"] = "knife", ["🛡️"] = "shield", ["🪙"] = "coin", ["❤️"] = "heart",
 	["💬"] = "chat", ["🚨"] = "siren", ["🪪"] = "idcard", ["🛗"] = "elevator", ["🏆"] = "trophy", ["🏙️"] = "city",
 	["🧥"] = "hoodie", ["🥸"] = "disguise", ["☀️"] = "sun", ["🌙"] = "moon", ["🌅"] = "sunset", ["🌇"] = "sunset",
-	["💰"] = "coin", ["😊"] = "smile", ["🏥"] = "hospital", ["🚓"] = "police",
+	["💰"] = "coin", ["💼"] = "briefcase", Jobs = "briefcase", ["😊"] = "smile", ["🏥"] = "hospital", ["🚓"] = "police",
 }
 Icons.Alias = ALIAS
 

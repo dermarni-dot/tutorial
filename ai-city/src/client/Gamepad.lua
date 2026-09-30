@@ -20,7 +20,7 @@ local ctx
 -- keyboard key -> controller button label (for on-screen hints)
 Gamepad.LABELS = {
 	F = "R2", X = "L2", Shift = "L3", Tab = "▲", M = "▼", H = "◀", C = "▶",
-	E = "X", G = "Y", R = "Y", Q = "Y", Space = "B", Esc = "B",
+	E = "X", G = "Y", R = "Y", Q = "Y", J = "Y", Space = "B", Esc = "B",
 }
 
 local active = false -- the last input came from a controller

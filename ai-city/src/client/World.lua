@@ -650,6 +650,20 @@ end
 -- Start
 --------------------------------------------------------------------------------
 function World.Start(context)
+	-- job markers are only for whoever is on that shift (see JobService)
+	local function jobMarker(d)
+		if d.Name == "JobMarker" and d:IsA("BasePart") and d:GetAttribute("Owner") ~= player.UserId then
+			d.LocalTransparencyModifier = 1
+			for _, c in ipairs(d:GetChildren()) do
+				if c:IsA("ProximityPrompt") or c:IsA("Light") then
+					c.Enabled = false
+				end
+			end
+		end
+	end
+	workspace.DescendantAdded:Connect(function(d)
+		task.defer(jobMarker, d)
+	end)
 	ctx = context
 	for _, model in ipairs(CollectionService:GetTagged("Citizen")) do
 		task.spawn(makePlate, model, false)
