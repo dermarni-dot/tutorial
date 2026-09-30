@@ -82,7 +82,9 @@ end
 
 local function nearbyPos(spot, side)
 	local cf = spot.CFrame
-	return cf.Position + cf.RightVector * (side or 2.4) + cf.LookVector * 1.2
+	local p = cf.Position + cf.RightVector * (side or 2.4) + cf.LookVector * 1.2
+	-- not inside a tree, a bench or a wall
+	return if api.Clear then api.Clear(p) else p
 end
 
 --------------------------------------------------------------------------------
@@ -272,7 +274,8 @@ ROUNDS["Night Janitor"] = function(brain, plan, t, rng)
 			break
 		end
 		local s = desks[rng:NextInteger(1, #desks)]
-		table.insert(list, task(t, { Pos = s.CFrame.Position - s.CFrame.LookVector * 3, Building = s.Building or t.Building, Floor = s.Floor or 1, Action = "mop", Carry = false, Duration = rng:NextInteger(10, 15) }))
+		local mopAt = s.CFrame.Position - s.CFrame.LookVector * 3
+		table.insert(list, task(t, { Pos = if api.Clear then api.Clear(mopAt) else mopAt, Building = s.Building or t.Building, Floor = s.Floor or 1, Action = "mop", Carry = false, Duration = rng:NextInteger(10, 15) }))
 	end
 	return list
 end

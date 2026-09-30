@@ -167,8 +167,17 @@ local function tableSet(b, f, x, z, list, action, place, color)
 	if action == "chess" then
 		MapKit.chessBoard(b.Model, at(b, f, x, 3.18, z), 2.6)
 	else
-		box(b, f, "Plate", Vector3.new(1, 0.08, 1), x, 3.12, z - 0.8, WHITE)
-		box(b, f, "Plate", Vector3.new(1, 0.08, 1), x, 3.12, z + 0.8, WHITE)
+		-- a meal on each plate (burgers and fries at the diner)
+		local diner = place == "Diner"
+		for _, side in ipairs({ -1, 1 }) do
+			box(b, f, "Plate", Vector3.new(1.2, 0.08, 1.2), x, 3.12, z + side * 0.8, WHITE)
+			if action == "eat" then
+				local dish = if diner then (if side < 0 then "burger" else "fries") else (if (math.floor(x + z) + side) % 2 == 0 then "pasta" else "pizza")
+				MapKit.food(b.Model, dish, at(b, f, x, 3.2, z + side * 0.8), 0.8)
+			elseif action == "coffee" then
+				MapKit.food(b.Model, if side < 0 then "croissant" else "cookie", at(b, f, x, 3.2, z + side * 0.8), 0.7)
+			end
+		end
 	end
 	local s1 = chair(b, f, x, z - 2.4, 0, 1, nil, place)
 	local s2 = chair(b, f, x, z + 2.4, 0, -1, nil, place)
@@ -271,9 +280,9 @@ function ROOMS.cafe(b, f, list, rng, place)
 	rug(b, f, 0, 0, W - 4, D - 4, rgb(160, 120, 90))
 	counter(b, f, 0, D / 2 - 5, W - 10, rgb(90, 60, 40))
 	box(b, f, "EspressoMachine", Vector3.new(2.4, 2, 1.6), -3, 3.85, D / 2 - 5, rgb(180, 184, 190))
-	box(b, f, "PastryCase", Vector3.new(4, 1.6, 2), 4, 3.85, D / 2 - 5, rgb(200, 230, 240)).Transparency = 0.3
-	for k = 0, 3 do
-		MapKit.ball(b.Model, "Pastry", 0.7, at(b, f, 2.6 + k * 0.9, 4.4, D / 2 - 5), rgb(210, 150, 80))
+	box(b, f, "PastryCase", Vector3.new(4, 1.6, 2), 4, 3.85, D / 2 - 5, rgb(200, 230, 240)).Transparency = 0.6
+	for k, kind in ipairs({ "croissant", "muffin", "cookie", "donut" }) do
+		MapKit.food(b.Model, kind, at(b, f, 2.4 + (k - 1) * 1.05, 3.9, D / 2 - 5), 0.9)
 	end
 	register(b, f, 7, D / 2 - 5)
 	box(b, f, "MenuBoard", Vector3.new(8, 3.6, 0.2), 0, 6, D / 2 - 1.2, rgb(30, 34, 30))
@@ -288,8 +297,37 @@ end
 function ROOMS.bakery(b, f, list, rng, place)
 	local W, D = b.W, b.D
 	counter(b, f, 0, -2, W - 10, rgb(200, 160, 120))
-	for k = 0, 5 do
-		box(b, f, "Bread", Vector3.new(1.6, 0.7, 0.8), -6 + k * 2.4, 3.85, -2, rgb(200, 140, 70))
+	-- fresh bread and pastries on the counter, in baskets and on trays
+	local goods = { "loaf", "croissant", "baguette", "donut", "muffin", "pretzel", "cupcake", "loaf" }
+	for k = 0, math.floor((W - 18) / 2.4) do
+		local x = -W / 2 + 7 + k * 2.4
+		box(b, f, "Tray", Vector3.new(2.1, 0.1, 1.8), x, 3.85, -2.2, rgb(170, 120, 80), Enum.Material.Wood)
+		MapKit.food(b.Model, goods[k % #goods + 1], at(b, f, x, 3.95, -2.2), 1)
+	end
+	-- a glass display case of cakes and sweets at the front of the counter
+	local caseW = math.min(10, W - 16)
+	box(b, f, "DisplayCase", Vector3.new(caseW, 3.4, 1.6), -W / 2 + 5 + caseW / 2, 0, -4.1, rgb(240, 236, 228), Enum.Material.Wood)
+	local glass = box(b, f, "CaseGlass", Vector3.new(caseW, 1.8, 1.6), -W / 2 + 5 + caseW / 2, 3.4, -4.1, rgb(220, 240, 250), Enum.Material.Glass)
+	glass.Transparency = 0.65
+	local sweets = { "cake", "cupcake", "pie", "donut", "cookie", "cupcake" }
+	for k = 0, math.floor(caseW / 1.8) - 1 do
+		MapKit.food(b.Model, sweets[k % #sweets + 1], at(b, f, -W / 2 + 6 + k * 1.8, 3.45, -4.1), if sweets[k % #sweets + 1] == "cake" or sweets[k % #sweets + 1] == "pie" then 0.8 else 1)
+	end
+	-- bread racks on the side wall: three shelves of loaves and baguettes
+	local rx = W / 2 - 1.6
+	box(b, f, "BreadRack", Vector3.new(1.6, 7, 7), rx, 0, -D / 2 + 7, rgb(150, 110, 70), Enum.Material.Wood)
+	for shelf = 0, 2 do
+		local y = 1.2 + shelf * 2.2
+		box(b, f, "RackShelf", Vector3.new(1.8, 0.15, 7), rx - 0.2, y, -D / 2 + 7, rgb(120, 86, 58), Enum.Material.Wood)
+		for k = 0, 3 do
+			MapKit.food(b.Model, if (shelf + k) % 3 == 0 then "baguette" else "loaf", at(b, f, rx - 0.3, y + 0.15, -D / 2 + 4.5 + k * 1.7, CFrame.Angles(0, math.rad(90), 0)), 0.8)
+		end
+	end
+	-- a basket of baguettes by the door
+	box(b, f, "Basket", Vector3.new(1.4, 1.4, 1.4), -W / 2 + 3, 0, -D / 2 + 3, rgb(180, 130, 70), Enum.Material.Wood)
+	for k = 0, 3 do
+		local p = MapKit.deco(b.Model, "Baguette", Vector3.new(2.2, 0.3, 0.3), at(b, f, -W / 2 + 3 + (k % 2) * 0.3 - 0.15, 2.2, -D / 2 + 3 + (k // 2) * 0.3 - 0.15, CFrame.Angles(0, 0, math.rad(80))), rgb(196, 128, 60))
+		p.Shape = Enum.PartType.Cylinder
 	end
 	register(b, f, W / 2 - 7, -2)
 	for k = 0, 1 do

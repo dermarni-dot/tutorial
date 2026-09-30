@@ -312,10 +312,44 @@ L.paint = function(t, ph)
 	local s = osc(t, 2.2, ph)
 	return { RS = A(72 + s * 16, 0, -14 + s * 8), RE = A(28 + s * 10), LS = A(34, 0, 18), LE = A(84), Neck = A(0, s * 6, 0), Waist = A(-3) }, true
 end
+-- fishing, with the whole body: wind up, cast (stepping into it), wait with
+-- the line in the water, a bite, reel it in, and hold up the catch
+local function fishPhase(t, ph)
+	return (t / 14 + ph) % 1
+end
+Poses.FishPhase = fishPhase
 L.fish = function(t, ph)
-	local c = (t * 0.1 + ph) % 1
-	local jerk = if c < 0.06 then sin(c / 0.06 * math.pi) else 0
-	return { LS = A(46 + jerk * 30, 0, 12), RS = A(50 + jerk * 30, 0, -8), LE = A(34), RE = A(28), Neck = A(-6), Waist = A(-3 + jerk * 6) }, true
+	local c = fishPhase(t, ph)
+	if c < 0.1 then
+		-- wind up: rod back over the shoulder, weight on the back foot
+		local k = c / 0.1
+		return { RS = A(60 + k * 95, 0, -10), RE = A(40 - k * 20), LS = A(45 + k * 80, 0, 14), LE = A(60 - k * 30), Waist = A(k * 12, k * 22, 0), Neck = A(k * 6, -k * 10, 0),
+			LH = A(8 - k * 14), RH = A(-4 + k * 16), LK = A(-6), RK = A(-8 - k * 12), Root = CFrame.new(0, -k * 0.1, k * 0.2) }, true
+	elseif c < 0.17 then
+		-- the cast: arms whip forward, step into it
+		local k = (c - 0.1) / 0.07
+		return { RS = A(155 - k * 100, 0, -10), RE = A(20 + k * 20), LS = A(125 - k * 80, 0, 14), LE = A(30 + k * 30), Waist = A(12 - k * 24, 22 - k * 30, 0), Neck = A(6 - k * 12, 0, 0),
+			LH = A(-6 + k * 22), RH = A(12 - k * 20), LK = A(-6 - k * 10), RK = A(-20 + k * 10), Root = CFrame.new(0, -0.1, 0.2 - k * 0.4) }, true
+	elseif c < 0.76 then
+		-- waiting: rod held out, the tip bobbing, weight shifting now and then
+		local bob = osc(t, 1.3, ph) * 3
+		local shift = osc(t, 0.35, ph)
+		return { RS = A(55 + bob, 0, -8), RE = A(40), LS = A(46 + bob, 0, 14), LE = A(62), Neck = A(-10, osc(t, 0.2, ph) * 12, 0), Waist = A(-4, 0, shift * 2),
+			LH = A(6 + shift * 3), RH = A(-2 - shift * 3), LK = A(-6 - math.max(0, shift) * 6), RK = A(-6 - math.max(0, -shift) * 6), Root = CFrame.new(0, 0, 0) * A(0, 0, shift * 2) }, true
+	elseif c < 0.8 then
+		-- a bite! yank the rod up
+		local k = sin((c - 0.76) / 0.04 * math.pi)
+		return { RS = A(55 + k * 45, 0, -8), RE = A(40 - k * 20), LS = A(46 + k * 40, 0, 14), LE = A(62 - k * 20), Waist = A(k * 14), Neck = A(k * 10),
+			LH = A(-k * 8), RH = A(k * 8), LK = A(-10), RK = A(-10) }, true
+	elseif c < 0.94 then
+		-- reeling in: the right hand winds, leaning back
+		local wind = osc(t, 14, ph)
+		return { RS = A(62 + wind * 8, wind * 10, -14), RE = A(70 + wind * 20), LS = A(70, 0, 14), LE = A(40), Waist = A(10), Neck = A(-4),
+			LH = A(-6), RH = A(10), LK = A(-12), RK = A(-16), Root = CFrame.new(0, -0.1, 0.15) }, true
+	end
+	-- holding up the catch, proud
+	local b = abs(osc(t, 6, ph))
+	return { LS = A(120 + b * 10, 0, 20), LE = A(20), RS = A(50, 0, -10), RE = A(40), Neck = A(10, 20, 0), Waist = A(6), Root = CFrame.new(0, b * 0.1, 0) }, true
 end
 L.binoculars = function(t, ph)
 	local pan = osc(t, 0.3, ph)
@@ -788,6 +822,12 @@ PROPS.Guitar = function(f, b, s)
 end
 PROPS.Letter = function(f, b, s)
 	prop(b.RightHand, "Letter", Vector3.new(0.6, 0.05, 0.4) * s, CFrame.new(0, -0.3 * s, -0.2 * s), rgb(250, 245, 230)).Parent = f
+end
+PROPS.CaughtFish = function(f, b, s)
+	local fish = prop(b.LeftHand, "CaughtFish", Vector3.new(0.3, 0.7, 1.6) * s, CFrame.new(0, -0.9 * s, -0.2 * s), rgb(110, 150, 170), nil, Enum.Material.SmoothPlastic)
+	fish.Parent = f
+	local tail = prop(b.LeftHand, "CaughtFishTail", Vector3.new(0.2, 0.6, 0.5) * s, CFrame.new(0, -0.9 * s, 0.75 * s), rgb(90, 130, 150))
+	tail.Parent = f
 end
 PROPS.ChessPiece = function(f, b, s)
 	local piece = prop(b.RightHand, "ChessPiece", Vector3.new(0.28, 0.4, 0.28) * s, CFrame.new(0, -0.45 * s, -0.1 * s), rgb(245, 240, 228))
@@ -1417,6 +1457,18 @@ local function update(model, st, t, dt, camPos, myRoot)
 			target, full = fn(t, st.Phase)
 		end
 	end
+	-- a living body: when someone stands at a spot doing something with their
+	-- arms, their legs and hips shift weight and their chest breathes too
+	if target and not full and root.Anchored and not (info and (info.Seated or info.Lying)) then
+		local sway = osc(t, 0.9, st.Phase)
+		local breath = osc(t, 1.7, st.Phase + 1)
+		target.LH = target.LH or A(3 + sway * 3, 0, -3)
+		target.RH = target.RH or A(3 - sway * 3, 0, 3)
+		target.LK = target.LK or A(-4 - math.max(0, sway) * 7)
+		target.RK = target.RK or A(-4 - math.max(0, -sway) * 7)
+		target.Root = target.Root or (CFrame.new(0, -abs(sway) * 0.04, 0) * A(0, 0, sway * 2.5))
+		target.Waist = target.Waist or A(breath * 1.5, 0, -sway * 1.5)
+	end
 	-- a checkout in progress: the customer and the clerk play their parts
 	local coK, coKind, coStart = checkoutK(model)
 	local coRole = coK and model:GetAttribute("CheckoutRole")
@@ -1486,6 +1538,16 @@ local function update(model, st, t, dt, camPos, myRoot)
 		st.SwingBase = nil
 	end
 	if st.Props then
+		-- the fish only shows when it's been caught
+		local fish = st.Props:FindFirstChild("CaughtFish")
+		if fish then
+			local showing = fishPhase(t, st.Phase) > 0.94
+			fish.Transparency = if showing then 0 else 1
+			local tail = st.Props:FindFirstChild("CaughtFishTail")
+			if tail then
+				tail.Transparency = fish.Transparency
+			end
+		end
 		local piece = st.Props:FindFirstChild("ChessPiece")
 		if piece then
 			local c = chessPhase(t, st.Phase)

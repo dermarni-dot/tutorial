@@ -171,7 +171,13 @@ local function onNewDay()
 		end
 		CityService.Fire(e.Kind, e.Text, e.Citizen or e.Household)
 	end
-	CityService.News("☀️ Good morning, AI City! It's " .. weekday(state.Day) .. ", day " .. state.Day .. ".", "Day", true)
+	-- today's weather (everyone sees the same sky)
+	local weather = Atmosphere.PickWeather(Random.new(state.Day * 977 + 13))
+	if stateFolder then
+		stateFolder:SetAttribute("Weather", weather)
+	end
+	local w = Atmosphere.WEATHER[weather]
+	CityService.News("☀️ Good morning, AI City! It's " .. weekday(state.Day) .. ", day " .. state.Day .. ". " .. (w and w.Label or "") .. " today.", "Day", true)
 	for player in pairs(playerData) do
 		CityService.Send(player, { Type = "Goals", Goals = CityService.Goals(player), NewDay = true })
 	end

@@ -15,6 +15,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local PhysicsService = game:GetService("PhysicsService")
 local CollectionService = game:GetService("CollectionService")
+local PathfindingService = game:GetService("PathfindingService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
@@ -660,6 +661,7 @@ local function nextStep(brain)
 	if step.Kind == "walk" then
 		brain.Points = step.Points
 		brain.PointIndex = 1
+		brain.DetourFor = nil
 		brain.LastMoveAt = os.clock()
 		brain.LastPos = brain.Root.Position
 		brain.MoveIssued = 0
@@ -1759,9 +1761,129 @@ local function steerAround(brain, target)
 		return "wait"
 	end
 	local clear = 2.3 - math.abs(blockSide) * 0.4
-	return pos + dir * math.min(3.5, blockAhead + 1.2) + right * s * clear
+	local step = pos + dir * math.min(3.5, blockAhead + 1.2) + right * s * clear
+	-- never step aside into a wall: try the other side, or just wait
+	if CitizenService.Blocked(pos, step) then
+		local other = pos + dir * math.min(3.5, blockAhead + 1.2) - right * s * clear
+		if CitizenService.Blocked(pos, other) then
+			return "wait"
+		end
+		return other
+	end
+	return step
 end
 CitizenService.SteerAround = steerAround
+
+--------------------------------------------------------------------------------
+-- Walls: people check the way is clear, and walk around what's in the way
+--------------------------------------------------------------------------------
+local wallParams = RaycastParams.new()
+pcall(function()
+	wallParams.FilterType = Enum.RaycastFilterType.Exclude
+	wallParams.RespectCanCollide = true
+end)
+local wallFilterAt = 0
+local function refreshWallFilter()
+	if os.clock() - wallFilterAt < 2 then
+		return
+	end
+	wallFilterAt = os.clock()
+	local list = { folder }
+	for _, p in ipairs(Players:GetPlayers()) do
+		if p.Character then
+			table.insert(list, p.Character)
+		end
+	end
+	pcall(function()
+		wallParams.FilterDescendantsInstances = list
+	end)
+end
+
+-- is something solid between two points (at waist height)?
+function CitizenService.Blocked(from, to)
+	refreshWallFilter()
+	local a = Vector3.new(from.X, from.Y, from.Z)
+	local b = Vector3.new(to.X, from.Y, to.Z)
+	local dir = b - a
+	if dir.Magnitude < 0.5 then
+		return false
+	end
+	local ok, hit = pcall(function()
+		return workspace:Raycast(a, dir, wallParams)
+	end)
+	return ok and hit ~= nil
+end
+
+-- find a way around whatever is in the way, and splice it into the route
+local function detour(brain, target)
+	if brain.Pathing or not brain.Points then
+		return
+	end
+	brain.Pathing = true
+	brain.DetourFor = brain.PointIndex
+	local token = brain.Token
+	local from = brain.Root.Position
+	task.spawn(function()
+		local ok, path = pcall(function()
+			local p = PathfindingService:CreatePath({ AgentRadius = 1.4, AgentHeight = 5, AgentCanJump = false, WaypointSpacing = 4 })
+			p:ComputeAsync(from, target)
+			return p
+		end)
+		brain.Pathing = nil
+		if not ok or not path or path.Status ~= Enum.PathStatus.Success or brain.Token ~= token or not brain.Points then
+			return
+		end
+		local waypoints = path:GetWaypoints()
+		if #waypoints < 3 then
+			return
+		end
+		local index = brain.PointIndex
+		local points = {}
+		for i = 1, index - 1 do
+			table.insert(points, brain.Points[i])
+		end
+		for i = 2, #waypoints - 1 do
+			table.insert(points, waypoints[i].Position)
+		end
+		for i = index, #brain.Points do
+			table.insert(points, brain.Points[i])
+		end
+		brain.Points = points
+		brain.DetourFor = index + #waypoints - 2
+		brain.Humanoid:MoveTo(points[index])
+		brain.MoveIssued = os.clock()
+		brain.LastMoveAt = os.clock()
+	end)
+end
+CitizenService.Detour = detour
+
+-- a standing spot that isn't inside anything solid (a tree, a bench, a wall):
+-- the nearest clear point around `pos`
+function CitizenService.ClearSpot(pos)
+	local function clear(p)
+		local ok, parts = pcall(function()
+			local params = OverlapParams.new()
+			params.RespectCanCollide = true
+			params.FilterType = Enum.RaycastFilterType.Exclude
+			params.FilterDescendantsInstances = { folder }
+			return workspace:GetPartBoundsInBox(CFrame.new(p + Vector3.new(0, 3, 0)), Vector3.new(2, 4.5, 2), params)
+		end)
+		return not ok or parts == nil or #parts == 0
+	end
+	if clear(pos) then
+		return pos
+	end
+	for r = 2, 8, 2 do
+		for k = 0, 7 do
+			local a = k / 8 * math.pi * 2
+			local p = pos + Vector3.new(math.cos(a) * r, 0, math.sin(a) * r)
+			if clear(p) then
+				return p
+			end
+		end
+	end
+	return pos
+end
 
 local function walkTick(brain)
 	local points = brain.Points
@@ -1828,6 +1950,10 @@ local function walkTick(brain)
 		applySpeed(brain)
 		brain.Humanoid:MoveTo(points[brain.PointIndex])
 		brain.MoveIssued = now
+		-- a wall between here and there? find the way around it
+		if nearestPlayerDistance(root.Position) < WATCH_RADIUS and CitizenService.Blocked(root.Position, points[brain.PointIndex]) then
+			detour(brain, points[brain.PointIndex])
+		end
 		return
 	end
 	-- someone in the way? step around them (or wait a moment if boxed in)
@@ -1870,9 +1996,12 @@ local function walkTick(brain)
 	if brain.LastPos and (root.Position - brain.LastPos).Magnitude > 1.5 then
 		brain.LastPos = root.Position
 		brain.LastMoveAt = now
+	elseif now - (brain.LastMoveAt or now) > 1.2 and brain.DetourFor ~= brain.PointIndex then
+		-- not getting anywhere: something's in the way, find a way around it
+		detour(brain, target)
 	elseif now - (brain.LastMoveAt or now) > 2.5 then
 		brain.Humanoid.Jump = true
-		if now - brain.LastMoveAt > 5 and (nearestPlayerDistance(root.Position) > 45 or now - brain.LastMoveAt > 12) then
+		if now - brain.LastMoveAt > 5 and (nearestPlayerDistance(root.Position) > 45 or now - brain.LastMoveAt > 8) then
 			root.CFrame = CFrame.new(target + Vector3.new(0, rootHeight(brain) + 0.3, 0))
 			root.AssemblyLinearVelocity = Vector3.zero
 			brain.LastMoveAt = now
@@ -2036,7 +2165,7 @@ function CitizenService.Start(services)
 	S = services
 	CitizenService.Event = S.City.Event -- same events as CityService.Event (kept for older scripts)
 	map, pop = S.Map, S.Life
-	Errands.Init({ Map = map, PickSpot = pickSpot, StandNear = standNear, Age = ageOf, Occupant = function(spot)
+	Errands.Init({ Map = map, PickSpot = pickSpot, StandNear = standNear, Age = ageOf, Clear = CitizenService.ClearSpot, Occupant = function(spot)
 		return taken[spot]
 	end })
 	setupPhysics()

@@ -63,7 +63,7 @@ Actions.List = {
 	phone = { Pose = "phone", Props = { "Phone" }, Label = "📱 On the phone" },
 	chess = { Pose = "chess", Seated = true, Props = { "ChessPiece" }, Label = "♟️ Playing chess" },
 	paint = { Pose = "paint", Props = { "Brush" }, Label = "🎨 Painting" },
-	fish = { Pose = "fish", Props = { "Rod" }, Label = "🎣 Fishing" },
+	fish = { Pose = "fish", Props = { "Rod", "CaughtFish" }, Label = "🎣 Fishing" },
 	birdwatch = { Pose = "binoculars", Props = { "Binoculars" }, Label = "🐦 Birdwatching" },
 	knit = { Pose = "knit", Seated = true, Props = { "Knitting" }, Label = "🧶 Knitting" },
 	guitar = { Pose = "guitar", Props = { "Guitar" }, Label = "🎸 Playing guitar" },

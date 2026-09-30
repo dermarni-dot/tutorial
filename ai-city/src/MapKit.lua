@@ -239,6 +239,108 @@ function MapKit.nightNeon(p)
 	return p
 end
 
+-- Food you can see: MapKit.food(parent, kind, cf, scale) puts one item with
+-- its bottom at cf. Kinds: loaf, baguette, croissant, donut, cupcake, cake,
+-- pie, muffin, pretzel, cookie, pasta, burger, pizza, fries
+local CRUST, CRUMB = MapKit.rgb(196, 128, 60), MapKit.rgb(236, 206, 150)
+local FROSTING = { MapKit.rgb(250, 180, 200), MapKit.rgb(120, 70, 40), MapKit.rgb(250, 250, 245), MapKit.rgb(170, 220, 250), MapKit.rgb(250, 220, 120) }
+function MapKit.food(parent, kind, cf, scale)
+	local s = scale or 1
+	local deco, ball = MapKit.deco, MapKit.ball
+	local function up(y)
+		return cf * CFrame.new(0, y * s, 0)
+	end
+	local n = math.floor(math.abs(cf.Position.X * 7 + cf.Position.Z * 3)) % 5 + 1
+	if kind == "loaf" then
+		-- a capsule: a cylinder with rounded ends
+		local body = deco(parent, "Loaf", Vector3.new(1, 0.8, 0.8) * s, up(0.4), CRUST)
+		body.Shape = Enum.PartType.Cylinder
+		for _, e in ipairs({ -0.5, 0.5 }) do
+			ball(parent, "Loaf", 0.8 * s, up(0.4) * CFrame.new(e * s, 0, 0), CRUST)
+		end
+		deco(parent, "LoafScore", Vector3.new(0.9, 0.05, 0.1) * s, up(0.8) * CFrame.Angles(0, math.rad(25), 0), CRUMB)
+	elseif kind == "baguette" then
+		local p = deco(parent, "Baguette", Vector3.new(2.4, 0.35, 0.35) * s, up(0.18), CRUST)
+		p.Shape = Enum.PartType.Cylinder
+		for _, e in ipairs({ -1.2, 1.2 }) do
+			ball(parent, "Baguette", 0.35 * s, up(0.18) * CFrame.new(e * s, 0, 0), CRUST)
+		end
+	elseif kind == "croissant" then
+		for k = -1, 1 do
+			ball(parent, "Croissant", (0.45 - math.abs(k) * 0.1) * s, up(0.2) * CFrame.new(k * 0.3 * s, 0, math.abs(k) * 0.12 * s), MapKit.rgb(220, 150, 70))
+		end
+	elseif kind == "donut" then
+		local d = deco(parent, "Donut", Vector3.new(0.3, 0.8, 0.8) * s, up(0.15) * CFrame.Angles(0, 0, math.rad(90)), MapKit.rgb(210, 150, 80))
+		d.Shape = Enum.PartType.Cylinder
+		local icing = deco(parent, "DonutIcing", Vector3.new(0.08, 0.76, 0.76) * s, up(0.31) * CFrame.Angles(0, 0, math.rad(90)), FROSTING[n])
+		icing.Shape = Enum.PartType.Cylinder
+		local hole = deco(parent, "DonutHole", Vector3.new(0.1, 0.24, 0.24) * s, up(0.34) * CFrame.Angles(0, 0, math.rad(90)), MapKit.rgb(90, 60, 40))
+		hole.Shape = Enum.PartType.Cylinder
+	elseif kind == "cupcake" or kind == "muffin" then
+		local c = deco(parent, "CupcakeCase", Vector3.new(0.4, 0.5, 0.5) * s, up(0.2) * CFrame.Angles(0, 0, math.rad(90)), if kind == "muffin" then MapKit.rgb(160, 110, 70) else MapKit.rgb(240, 240, 240))
+		c.Shape = Enum.PartType.Cylinder
+		ball(parent, "CupcakeTop", 0.58 * s, up(0.48), if kind == "muffin" then MapKit.rgb(150, 90, 60) else FROSTING[n])
+		if kind == "cupcake" then
+			ball(parent, "Cherry", 0.16 * s, up(0.8), MapKit.rgb(220, 30, 50))
+		end
+	elseif kind == "cake" then
+		local c = deco(parent, "Cake", Vector3.new(0.9, 1.6, 1.6) * s, up(0.45) * CFrame.Angles(0, 0, math.rad(90)), FROSTING[n])
+		c.Shape = Enum.PartType.Cylinder
+		local top = deco(parent, "CakeTop", Vector3.new(0.1, 1.5, 1.5) * s, up(0.92) * CFrame.Angles(0, 0, math.rad(90)), MapKit.WHITE)
+		top.Shape = Enum.PartType.Cylinder
+		for k = 0, 5 do
+			local a = k / 6 * math.pi * 2
+			ball(parent, "Berry", 0.18 * s, up(1) * CFrame.new(math.cos(a) * 0.55 * s, 0, math.sin(a) * 0.55 * s), MapKit.rgb(200, 30, 60))
+		end
+	elseif kind == "pie" then
+		local p = deco(parent, "Pie", Vector3.new(0.35, 1.5, 1.5) * s, up(0.17) * CFrame.Angles(0, 0, math.rad(90)), MapKit.rgb(214, 160, 90))
+		p.Shape = Enum.PartType.Cylinder
+		for k = -1, 1 do
+			deco(parent, "PieLattice", Vector3.new(1.3, 0.05, 0.12) * s, up(0.36) * CFrame.new(0, 0, k * 0.35 * s), MapKit.rgb(236, 190, 120))
+			deco(parent, "PieLattice", Vector3.new(0.12, 0.05, 1.3) * s, up(0.36) * CFrame.new(k * 0.35 * s, 0, 0), MapKit.rgb(236, 190, 120))
+		end
+	elseif kind == "pretzel" then
+		for k = -1, 1, 2 do
+			local p = deco(parent, "Pretzel", Vector3.new(0.18, 0.5, 0.5) * s, up(0.09) * CFrame.new(k * 0.22 * s, 0, 0) * CFrame.Angles(0, 0, math.rad(90)), MapKit.rgb(150, 80, 30))
+			p.Shape = Enum.PartType.Cylinder
+		end
+	elseif kind == "cookie" then
+		local c = deco(parent, "Cookie", Vector3.new(0.12, 0.6, 0.6) * s, up(0.06) * CFrame.Angles(0, 0, math.rad(90)), MapKit.rgb(200, 150, 90))
+		c.Shape = Enum.PartType.Cylinder
+		for k = 0, 2 do
+			deco(parent, "ChocChip", Vector3.new(0.08, 0.05, 0.08) * s, up(0.13) * CFrame.new((k - 1) * 0.15 * s, 0, (k % 2) * 0.12 * s), MapKit.rgb(70, 40, 20))
+		end
+	elseif kind == "pasta" then
+		local pasta = deco(parent, "Pasta", Vector3.new(0.3, 0.8, 0.8) * s, up(0.15) * CFrame.Angles(0, 0, math.rad(90)), MapKit.rgb(240, 210, 120))
+		pasta.Shape = Enum.PartType.Cylinder
+		ball(parent, "Sauce", 0.45 * s, up(0.3), MapKit.rgb(200, 40, 30))
+		ball(parent, "Basil", 0.14 * s, up(0.42), MapKit.rgb(60, 150, 60))
+	elseif kind == "burger" then
+		local bottom = deco(parent, "Bun", Vector3.new(0.22, 0.8, 0.8) * s, up(0.11) * CFrame.Angles(0, 0, math.rad(90)), MapKit.rgb(210, 150, 80))
+		bottom.Shape = Enum.PartType.Cylinder
+		deco(parent, "Patty", Vector3.new(0.78, 0.14, 0.78) * s, up(0.25), MapKit.rgb(100, 60, 40))
+		deco(parent, "Lettuce", Vector3.new(0.84, 0.05, 0.84) * s, up(0.34), MapKit.rgb(100, 190, 70))
+		deco(parent, "Cheese", Vector3.new(0.7, 0.04, 0.7) * s, up(0.37) * CFrame.Angles(0, math.rad(45), 0), MapKit.rgb(250, 200, 60))
+		local top = deco(parent, "Bun", Vector3.new(0.3, 0.8, 0.8) * s, up(0.52) * CFrame.Angles(0, 0, math.rad(90)), MapKit.rgb(210, 150, 80))
+		top.Shape = Enum.PartType.Cylinder
+	elseif kind == "pizza" then
+		local p = deco(parent, "Pizza", Vector3.new(0.1, 1.4, 1.4) * s, up(0.05) * CFrame.Angles(0, 0, math.rad(90)), MapKit.rgb(240, 190, 90))
+		p.Shape = Enum.PartType.Cylinder
+		local c = deco(parent, "PizzaCheese", Vector3.new(0.05, 1.2, 1.2) * s, up(0.11) * CFrame.Angles(0, 0, math.rad(90)), MapKit.rgb(250, 220, 130))
+		c.Shape = Enum.PartType.Cylinder
+		for k = 0, 4 do
+			local a = k / 5 * math.pi * 2
+			local pep = deco(parent, "Pepperoni", Vector3.new(0.05, 0.26, 0.26) * s, up(0.14) * CFrame.new(math.cos(a) * 0.35 * s, 0, math.sin(a) * 0.35 * s) * CFrame.Angles(0, 0, math.rad(90)), MapKit.rgb(190, 50, 40))
+			pep.Shape = Enum.PartType.Cylinder
+		end
+	elseif kind == "fries" then
+		deco(parent, "FriesBox", Vector3.new(0.5, 0.5, 0.3) * s, up(0.25), MapKit.rgb(220, 40, 40))
+		for k = 0, 4 do
+			deco(parent, "Fry", Vector3.new(0.07, 0.4, 0.07) * s, up(0.6) * CFrame.new((k - 2) * 0.08 * s, 0, (k % 2) * 0.06 * s) * CFrame.Angles(0, 0, math.rad((k - 2) * 6)), MapKit.rgb(250, 210, 80))
+		end
+	end
+end
+
 -- A chess board lying flat at cf (its top surface), size studs across: an
 -- 8x8 board with a frame and a game in progress (pawns and back-row pieces)
 function MapKit.chessBoard(parent, cf, size)

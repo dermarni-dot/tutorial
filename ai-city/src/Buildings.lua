@@ -203,12 +203,12 @@ function Buildings.shell(parent, spec)
 			for j = 1, nz do
 				local lx = -W / 2 + W * (i - 0.5) / nx
 				local lz = -D / 2 + D * (j - 0.5) / nz
-				local panel = deco(model, "CeilingLight", Vector3.new(math.min(6, W / nx - 3), 0.2, math.min(2.6, D / nz - 3)), at(lx, lampY, lz), MapKit.rgb(255, 248, 232), Enum.Material.Neon)
+				local panel = deco(model, "CeilingLight", Vector3.new(math.min(6, W / nx - 3), 0.2, math.min(2.6, D / nz - 3)), at(lx, lampY, lz), MapKit.rgb(244, 232, 210), Enum.Material.Neon)
 				local glow = Instance.new("SurfaceLight")
 				glow.Face = Enum.NormalId.Bottom
 				glow.Angle = 120
 				glow.Range = math.min(20, FLOOR_H + 6)
-				glow.Brightness = 1.15
+				glow.Brightness = 0.8
 				glow.Color = MapKit.rgb(255, 232, 200)
 				glow.Shadows = false
 				glow.Parent = panel
