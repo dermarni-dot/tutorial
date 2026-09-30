@@ -4,6 +4,10 @@
 -- stop, and wears a name tag. The parrot flies at its owner's shoulder, and
 -- the golden pup sparkles. Citizens walking their dogs get one too, and the
 -- pens at the adoption stand have pets waiting for a home.
+--
+-- Pets grow up (see PetService): a baby is small with a big head and short
+-- legs, and fills out as it grows toward its own adult size. A treat sends
+-- little hearts up.
 
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
@@ -47,13 +51,16 @@ local function part(m, parts, name, size, offset, color, shape, material)
 	return p
 end
 
-local function build(kind, name)
+-- size: how big it is right now (its adult size times how grown up it is);
+-- baby: 1 for a newborn, 0 when grown (big head, short legs)
+local function build(kind, name, size, baby, stage)
 	local k = KINDS[kind] or KINDS.Dog
-	local s = k.Scale
+	size, baby = size or 1, baby or 0
+	local s = k.Scale * size
 	local m = Instance.new("Model")
 	m.Name = "Pet_" .. kind
 	local parts = {}
-	local legH = if k.Round then 0.35 * s else 1 * s
+	local legH = (if k.Round then 0.35 * s else 1 * s) * (1 - 0.3 * baby)
 	local body = if k.Round then Vector3.new(1.3, 1.2, 1.5) * s else Vector3.new(1.2, 1, 2.2) * s
 	local by = legH + body.Y / 2
 	local material = if k.Shiny then Enum.Material.Metal else Enum.Material.SmoothPlastic
@@ -62,7 +69,7 @@ local function build(kind, name)
 	if k.Round then
 		headY, headZ = by + body.Y * 0.45, -body.Z * 0.35
 	end
-	local hs = (if k.Round then 0.9 else 1) * s
+	local hs = (if k.Round then 0.9 else 1) * s * (1 + 0.45 * baby)
 	part(m, parts, "Head", Vector3.one * hs, CFrame.new(0, headY, headZ), k.Body, if k.Round then Enum.PartType.Ball else nil, material)
 	if k.Beak then
 		part(m, parts, "Beak", Vector3.new(0.35, 0.25, 0.5) * s, CFrame.new(0, headY - 0.05 * s, headZ - hs * 0.55), rgb(250, 150, 40))
@@ -123,7 +130,7 @@ local function build(kind, name)
 		local label = Instance.new("TextLabel")
 		label.BackgroundTransparency = 1
 		label.Size = UDim2.fromScale(1, 1)
-		label.Text = "🐾 " .. name
+		label.Text = "🐾 " .. name .. (if stage == "Baby" then " 🍼" elseif stage == "Young" then " 🌱" else "")
 		label.TextColor3 = Color3.new(1, 1, 1)
 		label.TextStrokeTransparency = 0.5
 		label.Font = Enum.Font.GothamBold
@@ -133,12 +140,12 @@ local function build(kind, name)
 		gui.Parent = m
 	end
 	m.Parent = folder
-	return { Model = m, Parts = parts, Kind = kind, Spec = k, Name = name, Walk = 0 }
+	return { Model = m, Parts = parts, Kind = kind, Spec = k, Name = name, Walk = 0, Size = size, Stage = stage, S = s }
 end
 
 local function place(pet, cf, t, moving, sitting)
 	local k = pet.Spec
-	local s = k.Scale
+	local s = pet.S or k.Scale
 	local wag = math.sin(t * (if sitting then 9 else 6)) * (if sitting then 0.5 else 0.25)
 	pet.Walk += if moving then 0.2 else 0
 	local swing = if moving then math.sin(t * 12) * 0.6 else 0
@@ -203,6 +210,31 @@ local function follow(pet, root, dt, t, ownerScale)
 	pet.Moving = moving
 end
 
+function Pets.Hearts(pos)
+	for k = 1, 4 do
+		local heart = Instance.new("Part")
+		heart.Name = "PetHeart"
+		heart.Shape = Enum.PartType.Ball
+		heart.Size = Vector3.one * 0.35
+		heart.Color = rgb(255, 90, 140)
+		heart.Material = Enum.Material.Neon
+		heart.Anchored, heart.CanCollide, heart.CanQuery, heart.CanTouch = true, false, false, false
+		heart.CFrame = CFrame.new(pos)
+		heart.Parent = folder
+		task.spawn(function()
+			for i = 1, 20 do
+				task.wait(0.05)
+				if not heart.Parent then
+					return
+				end
+				heart.CFrame = CFrame.new(pos + Vector3.new(math.sin(i * 0.4 + k * 1.7) * 0.5, i * 0.12, math.cos(k * 2.1) * 0.4))
+				heart.Transparency = i / 20
+			end
+			heart:Destroy()
+		end)
+	end
+end
+
 local function drop(owner)
 	local pet = pets[owner]
 	if pet then
@@ -219,25 +251,37 @@ function Pets.Step(dt)
 	local camPos = camera.CFrame.Position
 	local t = os.clock()
 	local seen = {}
-	local function want(owner, kind, name, root, scale)
+	local function want(owner, kind, name, root, scale, growth, adult, stage, treat)
 		if not kind or not root or (root.Position - camPos).Magnitude > RANGE then
 			return
 		end
 		seen[owner] = true
+		-- how big right now: a newborn is 45% of its adult size
+		local g = growth or 1
+		local size = math.floor((adult or 1) * (0.45 + 0.55 * g) * 20 + 0.5) / 20
+		local baby = math.floor((1 - g) * 4 + 0.5) / 4
 		local pet = pets[owner]
-		if pet and (pet.Kind ~= kind or pet.Name ~= name) then
+		if pet and (pet.Kind ~= kind or pet.Name ~= name or pet.Size ~= size or pet.Stage ~= stage) then
+			local pos, look = pet.Pos, pet.Look
 			drop(owner)
-			pet = nil
+			pet = build(kind, name, size, baby, stage)
+			pet.Pos, pet.Look = pos, look
+			pets[owner] = pet
 		end
 		if not pet then
-			pet = build(kind, name)
+			pet = build(kind, name, size, baby, stage)
 			pets[owner] = pet
 		end
 		follow(pet, root, dt, t, scale)
+		-- a treat: little hearts float up
+		if treat and treat ~= pet.Treat then
+			pet.Treat = treat
+			Pets.Hearts(pet.Parts[2].Part.Position)
+		end
 	end
 	for _, p in ipairs(Players:GetPlayers()) do
 		local root = p.Character and p.Character:FindFirstChild("HumanoidRootPart")
-		want(p, p:GetAttribute("Pet"), p:GetAttribute("PetName"), root, 1)
+		want(p, p:GetAttribute("Pet"), p:GetAttribute("PetName"), root, 1, p:GetAttribute("PetGrowth"), p:GetAttribute("PetSize"), p:GetAttribute("PetStage"), p:GetAttribute("PetTreat"))
 	end
 	for _, m in ipairs(CollectionService:GetTagged("Citizen")) do
 		local kind = m:GetAttribute("Pet")

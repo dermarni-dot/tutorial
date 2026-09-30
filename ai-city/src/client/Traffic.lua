@@ -65,7 +65,7 @@ local function build(kind)
 		if solid then
 			p.CanCollide = true
 		end
-		table.insert(parts, { Part = p, Offset = offset })
+		table.insert(parts, { Part = p, Offset = offset, Role = name, Front = offset.Position.Z < 0, Side = if offset.Position.X < 0 then -1 else 1 })
 		return p
 	end
 	local glass = Color3.fromRGB(40, 50, 60)
@@ -77,8 +77,12 @@ local function build(kind)
 		for _, sx in ipairs({ -1, 1 }) do
 			add("Windows", Vector3.new(0.1, 2.2, 22), CFrame.new(sx * 3.52, 6, 1), glass, Enum.Material.Glass)
 			for _, sz in ipairs({ -1, 1 }) do
-				add("Wheel", Vector3.new(1, 3, 3), CFrame.new(sx * 3.2, 1.5, sz * 9) * CFrame.Angles(0, 0, math.rad(90)), Color3.fromRGB(22, 22, 25), Enum.Material.Rubber, Enum.PartType.Cylinder)
+				add("Wheel", Vector3.new(1, 3, 3), CFrame.new(sx * 3.2, 1.5, sz * 9), Color3.fromRGB(22, 22, 25), Enum.Material.Rubber, Enum.PartType.Cylinder)
+				add("Hubcap", Vector3.new(1.05, 1.4, 1.4), CFrame.new(sx * 3.2, 1.5, sz * 9), Color3.fromRGB(200, 200, 206), Enum.Material.Metal, Enum.PartType.Cylinder)
 			end
+			add("Taillight", Vector3.new(1.2, 0.8, 0.2), CFrame.new(sx * 2.6, 2.6, 13.05), Color3.fromRGB(120, 20, 20), Enum.Material.Neon)
+			add("Blinker", Vector3.new(0.5, 0.5, 0.2), CFrame.new(sx * 3.3, 2.6, -13.06), Color3.fromRGB(120, 80, 20), Enum.Material.Neon)
+			add("Blinker", Vector3.new(0.5, 0.5, 0.2), CFrame.new(sx * 3.3, 3.6, 13.06), Color3.fromRGB(120, 80, 20), Enum.Material.Neon)
 			table.insert(lights, add("Headlight", Vector3.new(1.4, 0.7, 0.2), CFrame.new(sx * 2.4, 2.6, -13.05), Color3.fromRGB(255, 250, 220), Enum.Material.Neon))
 		end
 		add("Windshield", Vector3.new(6.4, 3, 0.2), CFrame.new(0, 5.8, -13.05), glass, Enum.Material.Glass)
@@ -97,10 +101,15 @@ local function build(kind)
 		for _, sx in ipairs({ -1, 1 }) do
 			add("SideWindow", Vector3.new(0.2, 1.5, 4.6), CFrame.new(sx * 2.72, 2.3 + tall, cz), glass, Enum.Material.Glass)
 			for _, sz in ipairs({ -1, 1 }) do
-				add("Wheel", Vector3.new(1, 2.4, 2.4), CFrame.new(sx * 2.8, 1.2, sz * (long / 2 - 2.2)) * CFrame.Angles(0, 0, math.rad(90)), Color3.fromRGB(22, 22, 25), Enum.Material.Rubber, Enum.PartType.Cylinder)
+				add("Wheel", Vector3.new(1, 2.4, 2.4), CFrame.new(sx * 2.8, 1.2, sz * (long / 2 - 2.2)), Color3.fromRGB(22, 22, 25), Enum.Material.Rubber, Enum.PartType.Cylinder)
+				-- a hubcap with a spoke on it, so you can see the wheels turn
+				add("Hubcap", Vector3.new(1.05, 1.2, 1.2), CFrame.new(sx * 2.8, 1.2, sz * (long / 2 - 2.2)), Color3.fromRGB(200, 200, 206), Enum.Material.Metal, Enum.PartType.Cylinder)
+				add("Spoke", Vector3.new(1.1, 1.1, 0.25), CFrame.new(sx * 2.8, 1.2, sz * (long / 2 - 2.2)), Color3.fromRGB(90, 90, 96), Enum.Material.Metal)
 			end
 			table.insert(lights, add("Headlight", Vector3.new(1.2, 0.6, 0.2), CFrame.new(sx * 2, 1.9 + tall / 2, -long / 2 - 0.05), Color3.fromRGB(255, 250, 220), Enum.Material.Neon))
-			add("Taillight", Vector3.new(1.2, 0.5, 0.2), CFrame.new(sx * 2, 1.9 + tall / 2, long / 2 + 0.05), Color3.fromRGB(200, 30, 30), Enum.Material.Neon)
+			add("Taillight", Vector3.new(1.2, 0.5, 0.2), CFrame.new(sx * 2, 1.9 + tall / 2, long / 2 + 0.05), Color3.fromRGB(120, 20, 20), Enum.Material.Neon)
+			add("Blinker", Vector3.new(0.45, 0.45, 0.2), CFrame.new(sx * 2.8, 1.9 + tall / 2, -long / 2 - 0.06), Color3.fromRGB(120, 80, 20), Enum.Material.Neon)
+			add("Blinker", Vector3.new(0.45, 0.45, 0.2), CFrame.new(sx * 2.8, 1.9 + tall / 2, long / 2 + 0.06), Color3.fromRGB(120, 80, 20), Enum.Material.Neon)
 		end
 	end
 	local beam = Instance.new("SpotLight")
@@ -169,12 +178,46 @@ local function nextDir(car)
 	return options[rng:NextInteger(1, #options)]
 end
 
+local WHEEL = { Wheel = true, Hubcap = true, Spoke = true }
 local function place(car, cf)
 	car.CF = cf
+	local spin = car.Spin or 0
+	local steer = car.Steer or 0
 	for _, p in ipairs(car.Parts) do
-		p.Part.CFrame = cf * p.Offset
+		if WHEEL[p.Role] then
+			-- wheels turn about the axle; the front ones steer into turns
+			local off = p.Offset
+			if p.Front then
+				off = off * CFrame.Angles(0, steer, 0)
+			end
+			p.Part.CFrame = cf * off * CFrame.Angles(spin, 0, 0)
+		else
+			p.Part.CFrame = cf * p.Offset
+		end
 	end
 end
+
+-- brake lights brighten when slowing; blinkers flash before a turn
+local TAIL_ON, TAIL_OFF = Color3.fromRGB(255, 40, 40), Color3.fromRGB(120, 20, 20)
+local BLINK_ON, BLINK_OFF = Color3.fromRGB(255, 180, 40), Color3.fromRGB(120, 80, 20)
+local function lights(car, braking, blink)
+	local t = os.clock()
+	local blinkOn = blink ~= 0 and (t * 2.2) % 1 < 0.5
+	for _, p in ipairs(car.Parts) do
+		if p.Role == "Taillight" then
+			local c = if braking then TAIL_ON else TAIL_OFF
+			if p.Part.Color ~= c then
+				p.Part.Color = c
+			end
+		elseif p.Role == "Blinker" then
+			local c = if blinkOn and p.Side == blink then BLINK_ON else BLINK_OFF
+			if p.Part.Color ~= c then
+				p.Part.Color = c
+			end
+		end
+	end
+end
+Traffic.Lights = lights
 
 -- a car on the segment toward intersection (A, B), heading Dir
 local function spawnCar(kind, a, b, dir, s)
@@ -308,15 +351,31 @@ local function drive(car, dt, camPos, night)
 			end
 		end
 	end
+	-- decide the next turn early, so the blinker can go on
+	if car.Phase == "road" and not car.Planned and car.Len - car.S < 40 then
+		car.Planned = nextDir(car)
+	end
 	-- smooth acceleration and braking
 	local accel = if want > car.Speed then 7 else 16
+	local before = car.Speed
 	car.Speed += math.clamp(want - car.Speed, -accel * dt, accel * dt)
 	local step = car.Speed * dt
+	car.Braking = car.Speed < before - 0.01 or (car.Speed < 0.3 and want < 0.3)
+	car.Spin = ((car.Spin or 0) - step / (if car.Kind == "bus" then 1.5 else 1.2)) % (math.pi * 2)
+	local turning = car.Planned or car.Next
+	local blink = 0
+	if turning then
+		local r = right(car.Dir)
+		local dot = turning:Dot(r)
+		blink = if dot > 0.5 then 1 elseif dot < -0.5 then -1 else 0
+	end
+	car.Steer = if car.Phase == "turn" then -blink * 0.45 else 0
 	if car.Phase == "road" then
 		car.S += step
 		if car.S >= car.Len then
 			-- into the intersection: an arc to the next road
-			local nd = nextDir(car)
+			local nd = car.Planned or nextDir(car)
+			car.Planned = nil
 			car.Next = nd
 			car.Phase = "turn"
 			car.U = 0
@@ -350,6 +409,7 @@ local function drive(car, dt, camPos, night)
 			car.To = entry(na, nb, nd)
 			car.Len = (car.To - car.From).Magnitude
 			car.S = 0
+			car.Next = nil
 			car.Phase = "road"
 			place(car, CFrame.lookAt(car.From, car.From + nd))
 		else
@@ -362,10 +422,12 @@ local function drive(car, dt, camPos, night)
 			place(car, CFrame.lookAt(p, p + d.Unit))
 		end
 	end
-	-- the wheels turn, the headlights come on at night
+	-- the headlights come on at night; brake lights and blinkers
 	if car.Beam.Enabled ~= night then
 		car.Beam.Enabled = night
 	end
+	lights(car, car.Braking, blink)
+	car.Blink = blink
 end
 
 -- keep the right number of cars around the camera

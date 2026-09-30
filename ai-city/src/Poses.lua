@@ -194,6 +194,53 @@ L.cheer = function(t, ph)
 	local b = abs(osc(t, 6, ph))
 	return { LS = A(160 + b * 10, 0, -22), RS = A(160 + b * 10, 0, 22), LE = A(20 - b * 15), RE = A(20 - b * 15), Root = CFrame.new(0, b * 0.5, 0), Neck = A(12) }, true
 end
+-- beach volleyball: a bump (arms together, low), a set (hands up over the
+-- head) and now and then a jump for a spike
+L.volley = function(t, ph)
+	local c = (t / 2.6 + ph) % 1
+	if c < 0.35 then
+		local k = math.sin(c / 0.35 * math.pi)
+		return { LS = A(40 + k * 20, 0, -18), RS = A(40 + k * 20, 0, 18), LE = A(4), RE = A(4), LH = A(20 * k), RH = A(20 * k), LK = A(-40 * k), RK = A(-40 * k), Root = CFrame.new(0, -0.5 * k, 0), Waist = A(14 * k), Neck = A(10) }, true
+	elseif c < 0.7 then
+		local k = math.sin((c - 0.35) / 0.35 * math.pi)
+		return { LS = A(150 + k * 15, 0, -18), RS = A(150 + k * 15, 0, 18), LE = A(40 - k * 30), RE = A(40 - k * 30), Neck = A(25), LK = A(-15 * (1 - k)), RK = A(-15 * (1 - k)) }, true
+	end
+	local k = math.sin((c - 0.7) / 0.3 * math.pi)
+	return { RS = A(160 - k * 110, 0, 8), RE = A(10), LS = A(90, 0, -10), LE = A(30), Root = CFrame.new(0, k * 1.6, 0), LK = A(-30 * k), RK = A(-30 * k), Neck = A(20 - k * 20) }, true
+end
+
+-- little things people do while they wait (see update)
+local GESTURES = {
+	watch = { Len = 2.4, Pose = { LS = A(58, 0, -24), LE = A(98), LW = A(0, 60, 0), Neck = A(-22, 12, 0) } },
+	stretch = { Len = 2.2, Pose = { LS = A(172, 0, -8), RS = A(172, 0, 8), LE = A(8), RE = A(8), Waist = A(10), Neck = A(16) } },
+	crossarms = { Len = 5, Pose = { LS = A(38, 0, -30), RS = A(38, 0, 30), LE = A(112), RE = A(112), Neck = A(-4) } },
+	hips = { Len = 4.5, Pose = { LS = A(8, 0, 38), RS = A(8, 0, -38), LE = A(84), RE = A(84), Waist = A(0, 0, 3) } },
+	scratch = { Len = 2, Pose = { RS = A(148, 0, 26), RE = A(118), Neck = A(-6, 0, 10) } },
+	look = { Len = 2.6, Pose = { Neck = A(4, 55, 0), Waist = A(0, 14, 0) } },
+	lookback = { Len = 2.6, Pose = { Neck = A(4, -55, 0), Waist = A(0, -14, 0) } },
+	yawn = { Len = 2.4, Pose = { RS = A(120, 0, 30), RE = A(120), Neck = A(22), Waist = A(-4) } },
+	shrug = { Len = 1.4, Pose = { LS = A(20, 0, 22), RS = A(20, 0, -22), LE = A(70), RE = A(70), Neck = A(-4, 0, 8) } },
+}
+local GESTURE_NAMES = { "watch", "stretch", "crossarms", "hips", "scratch", "look", "lookback", "yawn", "shrug", "crossarms", "look" }
+Poses.GESTURES = GESTURES
+
+-- the drop tower's height (the same cycle as the client's Rides module)
+local function dropHeight(t, top)
+	local c = t % 24
+	if c < 4 then
+		return 0
+	elseif c < 14 then
+		return top * (1 - math.cos((c - 4) / 10 * math.pi)) / 2
+	elseif c < 17 then
+		return top
+	elseif c < 18.3 then
+		local u = (c - 17) / 1.3
+		return top * (1 - u * u)
+	end
+	return 0
+end
+Poses.DropHeight = dropHeight
+
 L.boo = function(t, ph)
 	local s = osc(t, 14, ph) * 4
 	return { LS = A(48 + s, 0, 10), RS = A(48 - s, 0, -10), LE = A(22), RE = A(22), LW = A(0, 90, 0), RW = A(0, -90, 0), Waist = A(-6), Neck = A(-8, 0, s) }, false
@@ -1686,6 +1733,63 @@ local function update(model, st, t, dt, camPos, myRoot)
 			target, full = fn(t, st.Phase)
 		end
 	end
+	-- waiting around: now and then a little gesture (checking the time,
+	-- stretching, crossing arms, hands on hips, a yawn, a look round)
+	local gestureAction = action == "wait" or (action == "" and root.Anchored)
+	if gestureAction and not fighting and not model:GetAttribute("Talking") then
+		if not st.NextGesture then
+			st.NextGesture = t + 1 + (st.Phase * 3.3) % 6
+		end
+		if not st.Gesture and t >= st.NextGesture then
+			st.Gesture = GESTURE_NAMES[math.floor((t * 7.3 + st.Phase * 11) % #GESTURE_NAMES) + 1]
+			st.GestureStart = t
+		end
+		local g = st.Gesture and GESTURES[st.Gesture]
+		if g then
+			local u = (t - st.GestureStart) / g.Len
+			if u >= 1 then
+				st.Gesture = nil
+				st.NextGesture = t + 4 + (t * 1.7 + st.Phase * 5) % 7
+			else
+				-- ease in and out
+				local w = math.clamp(math.min(u, 1 - u) / 0.2, 0, 1)
+				w = w * w * (3 - 2 * w)
+				target = target or {}
+				for key, pose in pairs(g.Pose) do
+					target[key] = (target[key] or IDENTITY):Lerp(pose, w)
+				end
+			end
+		end
+	elseif st.Gesture then
+		st.Gesture = nil
+	end
+	-- on a ride: hands in the air at the top of the drop, holding the pole on
+	-- the carousel, looking out from the Ferris wheel
+	local rideKind = action == "ride" and model:GetAttribute("RideKind")
+	if rideKind and target then
+		local now2 = workspace:GetServerTimeNow()
+		if rideKind == "drop" then
+			local h = dropHeight(now2, 62)
+			local c = now2 % 24
+			local up = if c >= 16.2 and c < 19 then 1 elseif h > 45 then 0.6 else 0
+			if up > 0 then
+				local wave = osc(t, 9, st.Phase) * 6
+				target.LS = A(165 * up + wave, 0, -20)
+				target.RS = A(165 * up - wave, 0, 20)
+				target.LE, target.RE = A(15), A(15)
+				target.Neck = A(18 * up)
+			end
+		elseif rideKind == "spin" then
+			target.RS = A(120, 0, 10)
+			target.RE = A(40)
+			target.Neck = A(4, osc(t, 0.8, st.Phase) * 30, 0)
+		elseif rideKind == "wheel" then
+			target.Neck = A(-10 + osc(t, 0.5, st.Phase) * 8, osc(t, 0.3, st.Phase) * 45, 0)
+			if (t + st.Phase * 4) % 14 < 2.5 then
+				target.RS, target.RE = A(95, 0, -12), A(5) -- "look, you can see our house!"
+			end
+		end
+	end
 	-- a living body: when someone stands at a spot doing something with their
 	-- arms, their legs and hips shift weight and their chest breathes too
 	if target and not full and root.Anchored and not (info and (info.Seated or info.Lying)) then
@@ -1884,6 +1988,11 @@ local function update(model, st, t, dt, camPos, myRoot)
 		end
 	end
 	return lookYaw
+end
+
+-- (for tests: what a citizen's body is doing right now)
+function Poses.StateOf(model)
+	return states[model]
 end
 
 -- Call every frame (RunService.PreSimulation)

@@ -561,8 +561,9 @@ local function callPolice(b)
 	if caller then
 		S.Citizens.Say(caller, "Hello, police? There's a fight on " .. streetNear(pos) .. "!", "scared", 3)
 	end
-	-- an officer on duty, or a patrol car from nearby
-	local officer, bestD = nil, 450
+	-- an officer on duty close by, or a patrol car from nearby (anyone further
+	-- away than a patrol car would take too long to get there)
+	local officer, bestD = nil, 200
 	for _, brain in ipairs(S.Citizens.List) do
 		if isPolice(brain) and not brain.Temp and not busy(brain) and brain.Plan and brain.Plan.Kind == "Work" then
 			local d = (brain.Root.Position - pos).Magnitude
@@ -700,7 +701,9 @@ local function tick(b, now)
 		end
 	end
 	local _, playerD = nearestPlayer(center(b))
-	if now - b.Started > MAX_TIME or playerD > 400 then
+	-- (they keep at it while the police are on the way)
+	local limit = MAX_TIME + (if b.Officer and b.Officer.Model.Parent then 30 else 0)
+	if now - b.Started > limit or playerD > 400 then
 		finish(b, "tired")
 		return
 	end

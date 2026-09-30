@@ -244,7 +244,7 @@ local function ferrisWheel(parent, hub, spots)
 		end
 		for _, sz in ipairs({ -1, 1 }) do
 			local seatCf = CFrame.lookAt(pivot + Vector3.new(0, -4.8, sz * 1.2), pivot + Vector3.new(0, -4.8, -sz * 3))
-			table.insert(parts, rideSeat(ride, seatCf, color:Lerp(BLACK, 0.2), spots, { Approach = hub + Vector3.new(9, -hub.Y + 0.3, -8 + k % 4 * 4) }))
+			table.insert(parts, rideSeat(ride, seatCf, color:Lerp(BLACK, 0.2), spots, { Approach = hub + Vector3.new(9, -hub.Y + 0.3, -8 + k % 4 * 4), RideKind = "wheel" }))
 		end
 		for _, p in ipairs(parts) do
 			p:SetAttribute("Gondola", k)
@@ -303,7 +303,7 @@ local function carousel(parent, c, spots)
 				table.insert(parts, MapKit.deco(ride, "HorseLeg", Vector3.new(0.4, 1.8, 0.4), base * CFrame.new(sx, -1.5, sz) * CFrame.Angles(math.rad(sz * 12), 0, 0), color, Enum.Material.SmoothPlastic))
 			end
 		end
-		table.insert(parts, rideSeat(ride, base * CFrame.new(0, 1.1, 0.2), MapKit.FLOWERS[(k + 2) % #MapKit.FLOWERS + 1], spots, { Approach = c + Vector3.new(math.cos(a) * 19, 0, math.sin(a) * 19) }))
+		table.insert(parts, rideSeat(ride, base * CFrame.new(0, 1.1, 0.2), MapKit.FLOWERS[(k + 2) % #MapKit.FLOWERS + 1], spots, { Approach = c + Vector3.new(math.cos(a) * 19, 0, math.sin(a) * 19), RideKind = "spin" }))
 		for _, part in ipairs(parts) do
 			part:SetAttribute("Spin", true)
 			part:SetAttribute("Bob", 0.9)
@@ -339,7 +339,7 @@ local function dropTower(parent, c, spots)
 		local a = k / 8 * math.pi * 2
 		local out = Vector3.new(math.cos(a), 0, math.sin(a))
 		local p = c + out * 5.4 + Vector3.new(0, 3.9, 0)
-		local seat = rideSeat(ride, CFrame.lookAt(p, p + out), rgb(220, 40, 60), spots, { Approach = c + out * 12 })
+		local seat = rideSeat(ride, CFrame.lookAt(p, p + out), rgb(220, 40, 60), spots, { Approach = c + out * 12, RideKind = "drop" })
 		seat:SetAttribute("Lift", true)
 		local back = MapKit.deco(ride, "DropSeatBack", Vector3.new(2, 2.4, 0.4), CFrame.lookAt(p, p + out) * CFrame.new(0, 1.3, 1), rgb(40, 40, 50), Enum.Material.SmoothPlastic)
 		back:SetAttribute("Lift", true)
@@ -629,11 +629,19 @@ local function beach(data, rng, useTerrain)
 	end
 	local net = deco(m, "VolleyNet", Vector3.new(20, 3, 0.1), vx, 5, vz, rgb(30, 30, 34), Enum.Material.Fabric)
 	net.Transparency = 0.4
-	MapKit.ball(m, "Volleyball", 1.2, cf(vx + 2, 9, vz + 5), rgb(250, 240, 180))
+	-- the ball flies back and forth over the net (on every screen: see Ambient)
+	local ball = MapKit.ball(m, "Volleyball", 1.2, cf(vx + 2, 9, vz + 5), rgb(250, 240, 180))
+	ball:SetAttribute("SideA", Vector3.new(vx - 4, 3.5, vz + 8))
+	ball:SetAttribute("SideB", Vector3.new(vx + 4, 3.5, vz - 8))
+	MapKit.tag(ball, "Volleyball")
+	deco(m, "CourtLine", Vector3.new(24, 0.05, 0.3), vx, 0, vz + 11, WHITE)
+	deco(m, "CourtLine", Vector3.new(24, 0.05, 0.3), vx, 0, vz - 11, WHITE)
 	for _, sz in ipairs({ -1, 1 }) do
-		for k = -1, 1 do
-			table.insert(spots, spot(vx + k * 6, 0, vz + sz * 8, vx + k * 6, vz, { Action = "cheer" }))
+		for k = -1, 1, 2 do
+			table.insert(spots, spot(vx + k * 5, 0, vz + sz * 7, vx + k * 5, vz, { Action = "volley" }))
 		end
+		-- and people watching from the side
+		table.insert(spots, spot(vx + 16, 0, vz + sz * 4, vx, vz, { Action = "cheer" }))
 	end
 	-- the lifeguard tower
 	local lx, lz = cx + 30, sandZ0 - 70
@@ -683,6 +691,144 @@ local function beach(data, rng, useTerrain)
 	data.BeachDoor = Vector3.new(NorthShore.DRIVE_X - ROAD / 2 - 3, 1, bz)
 end
 
+--------------------------------------------------------------------------------
+-- The finishing touches: staff, props, things that move
+--------------------------------------------------------------------------------
+local function trashCan(parent, x, z, y)
+	MapKit.column(parent, "TrashCan", 3, 1.8, Vector3.new(x, (y or 0.3) + 1.5, z), rgb(60, 110, 80), Enum.Material.Metal)
+	MapKit.disc(parent, "TrashLid", 0.3, 2, Vector3.new(x, (y or 0.3) + 3.1, z), rgb(50, 90, 66), Enum.Material.Metal)
+end
+
+local function planter(parent, x, z, rng, y)
+	y = y or 0.3
+	MapKit.column(parent, "Planter", 1.6, 4, Vector3.new(x, y + 0.8, z), rgb(200, 190, 175), Enum.Material.Concrete)
+	for k = 0, 4 do
+		local a = k / 5 * math.pi * 2
+		MapKit.ball(parent, "PlanterFlowers", 1.3, CFrame.new(x + math.cos(a) * 0.9, y + 1.9, z + math.sin(a) * 0.9), MapKit.FLOWERS[rng:NextInteger(1, #MapKit.FLOWERS)], Enum.Material.SmoothPlastic)
+	end
+	MapKit.ball(parent, "PlanterLeaves", 1.6, CFrame.new(x, y + 2.1, z), MapKit.LEAVES[2], Enum.Material.SmoothPlastic)
+end
+
+-- a string of little flags between two points (they flutter: see Ambient)
+local function bunting(parent, a, b, n)
+	local len = (b - a).Magnitude
+	for k = 1, n do
+		local u = k / (n + 1)
+		local p = a:Lerp(b, u) - Vector3.new(0, math.sin(u * math.pi) * len * 0.06, 0)
+		local f = MapKit.wedge(parent, "Bunting", Vector3.new(0.1, 1.2, 0.9), CFrame.lookAt(p, p + (b - a).Unit) * CFrame.Angles(0, math.rad(90), math.rad(180)), MapKit.FLOWERS[k % #MapKit.FLOWERS + 1], Enum.Material.Fabric)
+		MapKit.tag(f, "WavingFlag")
+	end
+end
+
+local function flagPole(parent, x, z, color, h)
+	h = h or 14
+	MapKit.deco(parent, "FlagPole", Vector3.new(0.35, h, 0.35), CFrame.new(x, h / 2, z), rgb(225, 225, 230), Enum.Material.Metal)
+	local f = MapKit.deco(parent, "Flag", Vector3.new(0.1, 2.4, 4), CFrame.new(x, h - 1.5, z + 2.1), color, Enum.Material.Fabric)
+	MapKit.tag(f, "WavingFlag")
+end
+
+local function details(data, rng)
+	local staff = {}
+	data.Staff = staff
+	local function worker(name, job, x, y, z, fx, fz, action, activity)
+		table.insert(staff, { Name = name, Job = job, Spot = spot(x, y, z, fx, fz), Action = action, Activity = activity })
+	end
+	-- 🎡 Funland: someone running every ride, the carts, the booths
+	local fun = data.Model:FindFirstChild("Funland")
+	worker("Rita", "Ride Operator", -178, 0.3, Z0 - 262, -190, Z0 - 240, "present", "🎡 Running the Sky Wheel")
+	worker("Gus", "Ride Operator", -60, 0.3, Z0 - 121, -60, Z0 - 100, "guard", "🎠 Running the carousel")
+	worker("Bo", "Ride Operator", -190, 0.3, Z0 - 78, -200, Z0 - 90, "present", "🎢 Running the Freefall")
+	worker("Candy", "Vendor", -40, 0.3, Z0 - 162.5, -40, Z0 - 150, "counter", "🍭 Spinning cotton candy")
+	worker("Luigi", "Vendor", -120, 0.3, Z0 - 162.5, -120, Z0 - 150, "counter", "🍦 Scooping ice cream")
+	worker("Frank", "Vendor", -150, 0.3, Z0 - 292.5, -150, Z0 - 280, "counter", "🌭 Grilling hot dogs")
+	worker("Pop", "Game Attendant", -13, 0.3, Z0 - 223.5, -13, Z0 - 210, "present", "🎈 Running Balloon Pop")
+	worker("Tess", "Prize Clerk", -13, 0.3, Z0 - 259.5, -13, Z0 - 245, "counter", "🎟️ At the prize booth")
+	worker("Dr. Paws", "Pet Adoption", 7, 0.3, Z0 - 63.5, 7, Z0 - 50, "counter", "🐾 Finding pets homes")
+	worker("Ace", "Obby Attendant", -266, 0.3, Z0 - 66, -280, Z0 - 70, "present", "🧗 Timing the Sky Obby")
+	-- trash cans, planters, benches along the paths
+	local c = Vector3.new(-105, 0, Z0 - 170)
+	for k = 0, 7 do
+		local x = c.X - 130 + k * 36
+		trashCan(fun, x + 6, c.Z + 7.5)
+		planter(fun, x + 14, c.Z - 8, rng)
+		if k % 2 == 0 then
+			local seat = Streets.bench(fun, CFrame.lookAt(Vector3.new(x + 22, 0.3, c.Z + 9), Vector3.new(x + 22, 0.3, c.Z)), nil)
+			table.insert(data.FunlandSpots, { CFrame = CFrame.lookAt(Vector3.new(x + 22, 0.3, c.Z + 9), Vector3.new(x + 22, 0.3, c.Z)), Seat = seat, Action = "sit", Role = "visit", Floor = 1 })
+		end
+	end
+	bunting(fun, Vector3.new(c.X - 140, 10, c.Z + 4), Vector3.new(c.X + 140, 10, c.Z + 4), 30)
+	bunting(fun, Vector3.new(c.X + 56, 10, c.Z - 125), Vector3.new(c.X + 56, 10, c.Z + 125), 26)
+	-- the ticket booth at the gate, and a balloon seller with a bunch of balloons
+	solid(fun, "TicketBooth", Vector3.new(6, 8, 6), 46, 0.3, c.Z - 18, rgb(240, 200, 60), Enum.Material.WoodPlanks)
+	deco(fun, "TicketBoothRoof", Vector3.new(7.4, 1, 7.4), 46, 8.3, c.Z - 18, rgb(220, 60, 80), Enum.Material.SmoothPlastic)
+	local tsign = deco(fun, "TicketSign", Vector3.new(0.2, 1.6, 5), 49.1, 5, c.Z - 18, rgb(30, 30, 40))
+	MapKit.signText(tsign, Enum.NormalId.Right, "🎟️ TICKETS", rgb(255, 220, 90), Enum.Font.GothamBlack)
+	worker("Mo", "Ticket Seller", 50.5, 0.3, c.Z - 18, 60, c.Z - 18, "counter", "🎟️ Selling tickets")
+	local bx, bz = 50, c.Z + 20
+	for k = 0, 8 do
+		local a = k / 9 * math.pi * 2
+		local top = Vector3.new(bx + math.cos(a) * 1.2, 10 + (k % 3) * 0.8, bz + math.sin(a) * 1.2)
+		local b = MapKit.ball(fun, "SellerBalloon", 1.6, CFrame.new(top), MapKit.FLOWERS[k % #MapKit.FLOWERS + 1], Enum.Material.SmoothPlastic)
+		b.Reflectance = 0.2
+		MapKit.tag(b, "Bob")
+		local mid = (top + Vector3.new(bx, 4, bz)) / 2
+		MapKit.deco(fun, "BalloonString", Vector3.new(0.06, 0.06, (top - Vector3.new(bx, 4, bz)).Magnitude), CFrame.lookAt(mid, top), WHITE)
+	end
+	worker("Zippy", "Balloon Seller", bx, 0.3, bz, bx + 10, bz, "wait", "🎈 Selling balloons")
+	-- 🏖️ the beach: sandcastles, surfboards, coolers, buoys, a lifeguard
+	local beach = data.Model:FindFirstChild("SunsetBeach")
+	local bw = NorthShore.BOARDWALK_Z
+	local sandZ0 = bw - 10
+	for k = 0, 4 do
+		local x, z = -300 + k * 130 + rng:NextNumber(-10, 10), sandZ0 - rng:NextNumber(60, 80)
+		deco(beach, "Sandcastle", Vector3.new(4, 1.6, 4), x, 0, z, rgb(222, 196, 140), Enum.Material.Sand)
+		for _, e in ipairs({ { -1.4, -1.4 }, { 1.4, -1.4 }, { -1.4, 1.4 }, { 1.4, 1.4 } }) do
+			MapKit.column(beach, "CastleTower", 2.6, 1.2, Vector3.new(x + e[1], 1.3, z + e[2]), rgb(214, 188, 132), Enum.Material.Sand, false)
+		end
+		deco(beach, "CastleKeep", Vector3.new(1.8, 1.4, 1.8), x, 1.6, z, rgb(214, 188, 132), Enum.Material.Sand)
+		deco(beach, "CastleFlagPole", Vector3.new(0.1, 1.6, 0.1), x, 3, z, WHITE)
+		MapKit.tag(deco(beach, "CastleFlag", Vector3.new(0.05, 0.5, 0.8), x, 4.1, z + 0.4, MapKit.FLOWERS[k + 1]), "WavingFlag")
+		MapKit.deco(beach, "Bucket", Vector3.new(1, 1, 1), CFrame.new(x + 3, 0.5, z + 1), MapKit.FLOWERS[(k + 2) % #MapKit.FLOWERS + 1], Enum.Material.SmoothPlastic)
+	end
+	for k = 0, 5 do
+		local x = -340 - 8 + k * 3.2
+		MapKit.deco(beach, "Surfboard", Vector3.new(1.8, 0.3, 7), CFrame.new(x, 3.4, bw + 5) * CFrame.Angles(math.rad(80), 0, math.rad(-8 + k * 3)), MapKit.FLOWERS[k % #MapKit.FLOWERS + 1], Enum.Material.SmoothPlastic)
+	end
+	for k = 0, 6 do
+		local x, z = -280 + k * 85 + rng:NextNumber(-6, 6), sandZ0 - rng:NextNumber(28, 50)
+		deco(beach, "Cooler", Vector3.new(2, 1.4, 1.3), x, 0, z, if k % 2 == 0 then rgb(40, 120, 200) else rgb(220, 60, 60), Enum.Material.SmoothPlastic)
+		deco(beach, "CoolerLid", Vector3.new(2.1, 0.3, 1.4), x, 1.4, z, WHITE, Enum.Material.SmoothPlastic)
+	end
+	-- a line of buoys marking the swimming area (they bob on the waves)
+	for k = 0, 24 do
+		local b = MapKit.ball(beach, "Buoy", 1.4, CFrame.new(-360 + k * 26, -0.9, NorthShore.WATER_Z - 38), if k % 2 == 0 then rgb(240, 60, 50) else WHITE, Enum.Material.SmoothPlastic)
+		MapKit.tag(b, "Bob")
+	end
+	local swim = deco(beach, "SwimSign", Vector3.new(8, 3, 0.3), 120, 5, sandZ0 - 20, rgb(40, 120, 200))
+	deco(beach, "SwimSignPost", Vector3.new(0.3, 5, 0.3), 120, 0, sandZ0 - 20, WHITE)
+	MapKit.signText(swim, Enum.NormalId.Front, "🏊 SWIM AREA · LIFEGUARD ON DUTY", WHITE, Enum.Font.GothamBold)
+	MapKit.signText(swim, Enum.NormalId.Back, "🏊 SWIM AREA", WHITE, Enum.Font.GothamBold)
+	worker("Kai", "Lifeguard", -20, 0, sandZ0 - 64, -20, sandZ0 - 200, "birdwatch", "🛟 Watching the swimmers")
+	worker("Nalu", "Surf Shop", -340, 1, bw + 12.5, -340, bw, "counter", "🏄 Renting surfboards")
+	worker("Shelly", "Snack Shack", -90, 1, bw + 12.5, -90, bw, "counter", "🍟 Frying up snacks")
+	worker("Scoop", "Ice Cream", 40, 1, bw + 12.5, 40, bw, "counter", "🍦 Scooping cones")
+	-- 🚗 AutoLand: flags, pennants and two inflatable tube men
+	local lot = data.Model:FindFirstChild("AutoLand")
+	local lc = Vector3.new(150, 0, Z0 - 75)
+	for k = 0, 4 do
+		flagPole(lot, lc.X - 48 + k * 24, lc.Z + 36.5, ({ rgb(220, 50, 50), rgb(250, 250, 250), rgb(40, 90, 200) })[k % 3 + 1])
+	end
+	for _, e in ipairs({ { -50, 36 }, { 50, 36 }, { 50, -36 }, { -50, -36 } }) do
+		MapKit.deco(lot, "PennantPole", Vector3.new(0.3, 9, 0.3), CFrame.new(lc.X + e[1], 4.5, lc.Z + e[2]), rgb(200, 200, 205), Enum.Material.Metal)
+	end
+	bunting(lot, lc + Vector3.new(-50, 9, 36), lc + Vector3.new(50, 9, 36), 24)
+	bunting(lot, lc + Vector3.new(50, 9, 36), lc + Vector3.new(50, 9, -36), 18)
+	for k, e in ipairs({ { -44, 30, rgb(230, 40, 40) }, { 44, 30, rgb(40, 140, 240) } }) do
+		local base = MapKit.part(lot, "TubeManFan", Vector3.new(2.4, 1.6, 2.4), CFrame.new(lc.X + e[1], 1.1, lc.Z + e[2]), e[3], Enum.Material.SmoothPlastic)
+		MapKit.tag(base, "TubeMan")
+	end
+end
+
 function NorthShore.build(parent, rng, useTerrain)
 	model = Instance.new("Model")
 	model.Name = "NorthShore"
@@ -693,6 +839,7 @@ function NorthShore.build(parent, rng, useTerrain)
 	funland(data, rng)
 	obby(data, rng)
 	beach(data, rng, useTerrain)
+	details(data, rng)
 	-- each ride streams in whole, so every screen can turn all of it
 	for _, ride in ipairs(data.Rides or {}) do
 		pcall(function()

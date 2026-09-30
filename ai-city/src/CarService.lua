@@ -67,7 +67,7 @@ function CarService.Build(spec, cf, drivable, parent)
 	local color = spec.Color
 	local glass = rgb(40, 50, 62)
 	local chassis
-	local function add(name, size, offset, c, material, shapeType)
+	local function add(name, size, offset, c, material, shapeType, jointed)
 		local p = Instance.new("Part")
 		p.Name = name
 		p.Size = size
@@ -85,9 +85,20 @@ function CarService.Build(spec, cf, drivable, parent)
 		end
 		p.Parent = m
 		if chassis and drivable then
-			local w = Instance.new("WeldConstraint")
-			w.Part0, w.Part1 = chassis, p
-			w.Parent = p
+			if jointed then
+				-- a joint the driver's screen can turn (the wheels spin and steer)
+				local motor = Instance.new("Motor6D")
+				motor.Name = "WheelMotor"
+				motor.Part0, motor.Part1 = chassis, p
+				motor.C0 = chassis.CFrame:ToObjectSpace(p.CFrame)
+				motor.C1 = CFrame.new()
+				motor:SetAttribute("Front", offset.Position.Z < 0)
+				motor.Parent = p
+			else
+				local w = Instance.new("WeldConstraint")
+				w.Part0, w.Part1 = chassis, p
+				w.Parent = p
+			end
 		end
 		return p
 	end
@@ -110,8 +121,21 @@ function CarService.Build(spec, cf, drivable, parent)
 	for _, sx in ipairs({ -1, 1 }) do
 		add("SideWindow", Vector3.new(0.2, cabinH * 0.75, cabinL - 1), CFrame.new(sx * 2.72, 1.2 + tall + cabinH / 2, cabinZ), glass, Enum.Material.Glass)
 		for _, sz in ipairs({ -1, 1 }) do
-			add("Wheel", Vector3.new(1, 2.4, 2.4), CFrame.new(sx * 2.8, 1.2, sz * (long / 2 - 2.1)) * CFrame.Angles(0, 0, math.rad(90)), rgb(22, 22, 25), Enum.Material.Rubber, Enum.PartType.Cylinder)
-			add("Hubcap", Vector3.new(1.05, 1.2, 1.2), CFrame.new(sx * 2.8, 1.2, sz * (long / 2 - 2.1)) * CFrame.Angles(0, 0, math.rad(90)), rgb(200, 200, 206), Enum.Material.Metal, Enum.PartType.Cylinder)
+			-- (a cylinder's round faces point along X: the axle)
+			local wheel = add("Wheel", Vector3.new(1, 2.4, 2.4), CFrame.new(sx * 2.8, 1.2, sz * (long / 2 - 2.1)), rgb(22, 22, 25), Enum.Material.Rubber, Enum.PartType.Cylinder, true)
+			for _, part in ipairs({
+				add("Hubcap", Vector3.new(1.05, 1.2, 1.2), CFrame.new(sx * 2.8, 1.2, sz * (long / 2 - 2.1)), rgb(200, 200, 206), Enum.Material.Metal, Enum.PartType.Cylinder),
+				add("Spoke", Vector3.new(1.1, 1.1, 0.25), CFrame.new(sx * 2.8, 1.2, sz * (long / 2 - 2.1)), rgb(90, 90, 96), Enum.Material.Metal),
+			}) do
+				-- the hubcap and spoke ride on the wheel
+				if drivable then
+					for _, j in ipairs(part:GetChildren()) do
+						if j:IsA("WeldConstraint") then
+							j.Part0 = wheel
+						end
+					end
+				end
+			end
 		end
 		add("Headlight", Vector3.new(1.2, 0.6, 0.2), CFrame.new(sx * 2, 1.8 + tall / 2, -long / 2 - 0.05), rgb(255, 250, 220), Enum.Material.Neon)
 		add("Taillight", Vector3.new(1.2, 0.5, 0.2), CFrame.new(sx * 2, 1.8 + tall / 2, long / 2 + 0.05), rgb(200, 30, 30), Enum.Material.Neon)

@@ -51,6 +51,47 @@ function Drive.Step(dt, driverSeat, chassis, car)
 	return speed
 end
 
+-- every car in view: the wheels roll with the car, the front ones steer, and
+-- the brake lights come on when it slows (players' cars, on every screen)
+local wheelState = {}
+function Drive.Animate(dt, camPos)
+	for _, car in ipairs(workspace:GetChildren()) do
+		if car:GetAttribute("CityCar") then
+			local chassis = car.PrimaryPart or car:FindFirstChild("Chassis")
+			if chassis and (chassis.Position - camPos).Magnitude < 260 then
+				local st = wheelState[car]
+				if not st then
+					st = { Spin = 0, Speed = 0, Steer = 0 }
+					wheelState[car] = st
+				end
+				local v = chassis.AssemblyLinearVelocity or Vector3.zero
+				local look = chassis.CFrame.LookVector
+				local speed = v:Dot(look)
+				local w = chassis.AssemblyAngularVelocity or Vector3.zero
+				st.Spin = (st.Spin - speed * dt / 1.2) % (math.pi * 2)
+				st.Steer += (math.clamp(-w.Y * 0.35, -0.5, 0.5) - st.Steer) * math.min(1, dt * 8)
+				local braking = math.abs(speed) < math.abs(st.Speed) - 0.05 or (math.abs(speed) < 0.5)
+				st.Speed = speed
+				for _, d in ipairs(car:GetDescendants()) do
+					if d:IsA("Motor6D") and d.Name == "WheelMotor" then
+						d.Transform = (if d:GetAttribute("Front") then CFrame.Angles(0, st.Steer, 0) else CFrame.new()) * CFrame.Angles(st.Spin, 0, 0)
+					elseif d.Name == "Taillight" and d:IsA("BasePart") then
+						local c = if braking then Color3.fromRGB(255, 40, 40) else Color3.fromRGB(130, 20, 20)
+						if d.Color ~= c then
+							d.Color = c
+						end
+					end
+				end
+			end
+		end
+	end
+	for car in pairs(wheelState) do
+		if not car.Parent then
+			wheelState[car] = nil
+		end
+	end
+end
+
 local function mine(s)
 	local car = s and s.Parent
 	return s and s:IsA("VehicleSeat") and car and car:GetAttribute("CityCar") and car:GetAttribute("Owner") == player.UserId
@@ -129,6 +170,14 @@ function Drive.Start(context)
 		end
 		if input.KeyCode == Enum.KeyCode.K then
 			Drive.Call()
+		end
+	end)
+	local step = RunService.PreSimulation or RunService.Stepped
+	step:Connect(function(a, b)
+		local dt = if type(b) == "number" then b else a
+		local camera = workspace.CurrentCamera
+		if camera then
+			pcall(Drive.Animate, math.min(dt or 0, 0.1), camera.CFrame.Position)
 		end
 	end)
 	RunService.Heartbeat:Connect(function(dt)

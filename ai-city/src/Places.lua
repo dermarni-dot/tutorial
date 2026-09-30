@@ -19,7 +19,8 @@ local function flag(parent, pos, color, height)
 	height = height or 18
 	deco(parent, "FlagPole", Vector3.new(0.4, height, 0.4), CFrame.new(pos + Vector3.new(0, height / 2, 0)), rgb(220, 220, 225), Enum.Material.Metal)
 	MapKit.ball(parent, "FlagTop", 0.8, CFrame.new(pos + Vector3.new(0, height + 0.3, 0)), GOLD, Enum.Material.Metal)
-	deco(parent, "Flag", Vector3.new(0.1, 3, 5), CFrame.new(pos + Vector3.new(0, height - 1.8, 2.6)), color, Enum.Material.Fabric)
+	local f = deco(parent, "Flag", Vector3.new(0.1, 3, 5), CFrame.new(pos + Vector3.new(0, height - 1.8, 2.6)), color, Enum.Material.Fabric)
+	MapKit.tag(f, "WavingFlag") -- (it ripples on every screen: see the client's Ambient)
 end
 Places.flag = flag
 

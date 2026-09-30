@@ -508,6 +508,10 @@ local function attack(player, data)
 		local flatD = Vector3.new(d.X, 0, d.Z)
 		if flatD.Magnitude <= w.Range and math.abs(d.Y) < 6 and (flatD.Magnitude < 2 or look:Dot(flatD.Unit) > 0.2) then
 			local score = flatD.Magnitude - look:Dot(flatD.Unit) * 2
+			-- a thief on the run is who you're swinging at, not the victim beside them
+			if not isPlayer and S.StreetCrime and S.StreetCrime.IsCriminal(target) then
+				score -= 4
+			end
 			if score < bestScore then
 				best, bestScore, bestPlayer = target, score, isPlayer
 			end

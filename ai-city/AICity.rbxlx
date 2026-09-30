@@ -538,6 +538,7 @@ Actions.List = {
 	-- the North Shore
 	ride = { Pose = "sit", Seated = true, Label = "🎡 On a ride" },
 	sunbathe = { Pose = "sleep", Lying = true, Label = "🏖️ Sunbathing" },
+	volley = { Pose = "volley", Label = "🏐 Playing beach volleyball" },
 	carry = { Pose = "carry", Label = "👶 Carrying the baby" },
 }
 
@@ -1044,6 +1045,53 @@ L.cheer = function(t, ph)
 	local b = abs(osc(t, 6, ph))
 	return { LS = A(160 + b * 10, 0, -22), RS = A(160 + b * 10, 0, 22), LE = A(20 - b * 15), RE = A(20 - b * 15), Root = CFrame.new(0, b * 0.5, 0), Neck = A(12) }, true
 end
+-- beach volleyball: a bump (arms together, low), a set (hands up over the
+-- head) and now and then a jump for a spike
+L.volley = function(t, ph)
+	local c = (t / 2.6 + ph) % 1
+	if c < 0.35 then
+		local k = math.sin(c / 0.35 * math.pi)
+		return { LS = A(40 + k * 20, 0, -18), RS = A(40 + k * 20, 0, 18), LE = A(4), RE = A(4), LH = A(20 * k), RH = A(20 * k), LK = A(-40 * k), RK = A(-40 * k), Root = CFrame.new(0, -0.5 * k, 0), Waist = A(14 * k), Neck = A(10) }, true
+	elseif c < 0.7 then
+		local k = math.sin((c - 0.35) / 0.35 * math.pi)
+		return { LS = A(150 + k * 15, 0, -18), RS = A(150 + k * 15, 0, 18), LE = A(40 - k * 30), RE = A(40 - k * 30), Neck = A(25), LK = A(-15 * (1 - k)), RK = A(-15 * (1 - k)) }, true
+	end
+	local k = math.sin((c - 0.7) / 0.3 * math.pi)
+	return { RS = A(160 - k * 110, 0, 8), RE = A(10), LS = A(90, 0, -10), LE = A(30), Root = CFrame.new(0, k * 1.6, 0), LK = A(-30 * k), RK = A(-30 * k), Neck = A(20 - k * 20) }, true
+end
+
+-- little things people do while they wait (see update)
+local GESTURES = {
+	watch = { Len = 2.4, Pose = { LS = A(58, 0, -24), LE = A(98), LW = A(0, 60, 0), Neck = A(-22, 12, 0) } },
+	stretch = { Len = 2.2, Pose = { LS = A(172, 0, -8), RS = A(172, 0, 8), LE = A(8), RE = A(8), Waist = A(10), Neck = A(16) } },
+	crossarms = { Len = 5, Pose = { LS = A(38, 0, -30), RS = A(38, 0, 30), LE = A(112), RE = A(112), Neck = A(-4) } },
+	hips = { Len = 4.5, Pose = { LS = A(8, 0, 38), RS = A(8, 0, -38), LE = A(84), RE = A(84), Waist = A(0, 0, 3) } },
+	scratch = { Len = 2, Pose = { RS = A(148, 0, 26), RE = A(118), Neck = A(-6, 0, 10) } },
+	look = { Len = 2.6, Pose = { Neck = A(4, 55, 0), Waist = A(0, 14, 0) } },
+	lookback = { Len = 2.6, Pose = { Neck = A(4, -55, 0), Waist = A(0, -14, 0) } },
+	yawn = { Len = 2.4, Pose = { RS = A(120, 0, 30), RE = A(120), Neck = A(22), Waist = A(-4) } },
+	shrug = { Len = 1.4, Pose = { LS = A(20, 0, 22), RS = A(20, 0, -22), LE = A(70), RE = A(70), Neck = A(-4, 0, 8) } },
+}
+local GESTURE_NAMES = { "watch", "stretch", "crossarms", "hips", "scratch", "look", "lookback", "yawn", "shrug", "crossarms", "look" }
+Poses.GESTURES = GESTURES
+
+-- the drop tower's height (the same cycle as the client's Rides module)
+local function dropHeight(t, top)
+	local c = t % 24
+	if c < 4 then
+		return 0
+	elseif c < 14 then
+		return top * (1 - math.cos((c - 4) / 10 * math.pi)) / 2
+	elseif c < 17 then
+		return top
+	elseif c < 18.3 then
+		local u = (c - 17) / 1.3
+		return top * (1 - u * u)
+	end
+	return 0
+end
+Poses.DropHeight = dropHeight
+
 L.boo = function(t, ph)
 	local s = osc(t, 14, ph) * 4
 	return { LS = A(48 + s, 0, 10), RS = A(48 - s, 0, -10), LE = A(22), RE = A(22), LW = A(0, 90, 0), RW = A(0, -90, 0), Waist = A(-6), Neck = A(-8, 0, s) }, false
@@ -2536,6 +2584,63 @@ local function update(model, st, t, dt, camPos, myRoot)
 			target, full = fn(t, st.Phase)
 		end
 	end
+	-- waiting around: now and then a little gesture (checking the time,
+	-- stretching, crossing arms, hands on hips, a yawn, a look round)
+	local gestureAction = action == "wait" or (action == "" and root.Anchored)
+	if gestureAction and not fighting and not model:GetAttribute("Talking") then
+		if not st.NextGesture then
+			st.NextGesture = t + 1 + (st.Phase * 3.3) % 6
+		end
+		if not st.Gesture and t >= st.NextGesture then
+			st.Gesture = GESTURE_NAMES[math.floor((t * 7.3 + st.Phase * 11) % #GESTURE_NAMES) + 1]
+			st.GestureStart = t
+		end
+		local g = st.Gesture and GESTURES[st.Gesture]
+		if g then
+			local u = (t - st.GestureStart) / g.Len
+			if u >= 1 then
+				st.Gesture = nil
+				st.NextGesture = t + 4 + (t * 1.7 + st.Phase * 5) % 7
+			else
+				-- ease in and out
+				local w = math.clamp(math.min(u, 1 - u) / 0.2, 0, 1)
+				w = w * w * (3 - 2 * w)
+				target = target or {}
+				for key, pose in pairs(g.Pose) do
+					target[key] = (target[key] or IDENTITY):Lerp(pose, w)
+				end
+			end
+		end
+	elseif st.Gesture then
+		st.Gesture = nil
+	end
+	-- on a ride: hands in the air at the top of the drop, holding the pole on
+	-- the carousel, looking out from the Ferris wheel
+	local rideKind = action == "ride" and model:GetAttribute("RideKind")
+	if rideKind and target then
+		local now2 = workspace:GetServerTimeNow()
+		if rideKind == "drop" then
+			local h = dropHeight(now2, 62)
+			local c = now2 % 24
+			local up = if c >= 16.2 and c < 19 then 1 elseif h > 45 then 0.6 else 0
+			if up > 0 then
+				local wave = osc(t, 9, st.Phase) * 6
+				target.LS = A(165 * up + wave, 0, -20)
+				target.RS = A(165 * up - wave, 0, 20)
+				target.LE, target.RE = A(15), A(15)
+				target.Neck = A(18 * up)
+			end
+		elseif rideKind == "spin" then
+			target.RS = A(120, 0, 10)
+			target.RE = A(40)
+			target.Neck = A(4, osc(t, 0.8, st.Phase) * 30, 0)
+		elseif rideKind == "wheel" then
+			target.Neck = A(-10 + osc(t, 0.5, st.Phase) * 8, osc(t, 0.3, st.Phase) * 45, 0)
+			if (t + st.Phase * 4) % 14 < 2.5 then
+				target.RS, target.RE = A(95, 0, -12), A(5) -- "look, you can see our house!"
+			end
+		end
+	end
 	-- a living body: when someone stands at a spot doing something with their
 	-- arms, their legs and hips shift weight and their chest breathes too
 	if target and not full and root.Anchored and not (info and (info.Seated or info.Lying)) then
@@ -2734,6 +2839,11 @@ local function update(model, st, t, dt, camPos, myRoot)
 		end
 	end
 	return lookYaw
+end
+
+-- (for tests: what a citizen's body is doing right now)
+function Poses.StateOf(model)
+	return states[model]
 end
 
 -- Call every frame (RunService.PreSimulation)
@@ -8247,7 +8357,7 @@ local function ferrisWheel(parent, hub, spots)
 		end
 		for _, sz in ipairs({ -1, 1 }) do
 			local seatCf = CFrame.lookAt(pivot + Vector3.new(0, -4.8, sz * 1.2), pivot + Vector3.new(0, -4.8, -sz * 3))
-			table.insert(parts, rideSeat(ride, seatCf, color:Lerp(BLACK, 0.2), spots, { Approach = hub + Vector3.new(9, -hub.Y + 0.3, -8 + k % 4 * 4) }))
+			table.insert(parts, rideSeat(ride, seatCf, color:Lerp(BLACK, 0.2), spots, { Approach = hub + Vector3.new(9, -hub.Y + 0.3, -8 + k % 4 * 4), RideKind = "wheel" }))
 		end
 		for _, p in ipairs(parts) do
 			p:SetAttribute("Gondola", k)
@@ -8306,7 +8416,7 @@ local function carousel(parent, c, spots)
 				table.insert(parts, MapKit.deco(ride, "HorseLeg", Vector3.new(0.4, 1.8, 0.4), base * CFrame.new(sx, -1.5, sz) * CFrame.Angles(math.rad(sz * 12), 0, 0), color, Enum.Material.SmoothPlastic))
 			end
 		end
-		table.insert(parts, rideSeat(ride, base * CFrame.new(0, 1.1, 0.2), MapKit.FLOWERS[(k + 2) % #MapKit.FLOWERS + 1], spots, { Approach = c + Vector3.new(math.cos(a) * 19, 0, math.sin(a) * 19) }))
+		table.insert(parts, rideSeat(ride, base * CFrame.new(0, 1.1, 0.2), MapKit.FLOWERS[(k + 2) % #MapKit.FLOWERS + 1], spots, { Approach = c + Vector3.new(math.cos(a) * 19, 0, math.sin(a) * 19), RideKind = "spin" }))
 		for _, part in ipairs(parts) do
 			part:SetAttribute("Spin", true)
 			part:SetAttribute("Bob", 0.9)
@@ -8342,7 +8452,7 @@ local function dropTower(parent, c, spots)
 		local a = k / 8 * math.pi * 2
 		local out = Vector3.new(math.cos(a), 0, math.sin(a))
 		local p = c + out * 5.4 + Vector3.new(0, 3.9, 0)
-		local seat = rideSeat(ride, CFrame.lookAt(p, p + out), rgb(220, 40, 60), spots, { Approach = c + out * 12 })
+		local seat = rideSeat(ride, CFrame.lookAt(p, p + out), rgb(220, 40, 60), spots, { Approach = c + out * 12, RideKind = "drop" })
 		seat:SetAttribute("Lift", true)
 		local back = MapKit.deco(ride, "DropSeatBack", Vector3.new(2, 2.4, 0.4), CFrame.lookAt(p, p + out) * CFrame.new(0, 1.3, 1), rgb(40, 40, 50), Enum.Material.SmoothPlastic)
 		back:SetAttribute("Lift", true)
@@ -8632,11 +8742,19 @@ local function beach(data, rng, useTerrain)
 	end
 	local net = deco(m, "VolleyNet", Vector3.new(20, 3, 0.1), vx, 5, vz, rgb(30, 30, 34), Enum.Material.Fabric)
 	net.Transparency = 0.4
-	MapKit.ball(m, "Volleyball", 1.2, cf(vx + 2, 9, vz + 5), rgb(250, 240, 180))
+	-- the ball flies back and forth over the net (on every screen: see Ambient)
+	local ball = MapKit.ball(m, "Volleyball", 1.2, cf(vx + 2, 9, vz + 5), rgb(250, 240, 180))
+	ball:SetAttribute("SideA", Vector3.new(vx - 4, 3.5, vz + 8))
+	ball:SetAttribute("SideB", Vector3.new(vx + 4, 3.5, vz - 8))
+	MapKit.tag(ball, "Volleyball")
+	deco(m, "CourtLine", Vector3.new(24, 0.05, 0.3), vx, 0, vz + 11, WHITE)
+	deco(m, "CourtLine", Vector3.new(24, 0.05, 0.3), vx, 0, vz - 11, WHITE)
 	for _, sz in ipairs({ -1, 1 }) do
-		for k = -1, 1 do
-			table.insert(spots, spot(vx + k * 6, 0, vz + sz * 8, vx + k * 6, vz, { Action = "cheer" }))
+		for k = -1, 1, 2 do
+			table.insert(spots, spot(vx + k * 5, 0, vz + sz * 7, vx + k * 5, vz, { Action = "volley" }))
 		end
+		-- and people watching from the side
+		table.insert(spots, spot(vx + 16, 0, vz + sz * 4, vx, vz, { Action = "cheer" }))
 	end
 	-- the lifeguard tower
 	local lx, lz = cx + 30, sandZ0 - 70
@@ -8686,6 +8804,144 @@ local function beach(data, rng, useTerrain)
 	data.BeachDoor = Vector3.new(NorthShore.DRIVE_X - ROAD / 2 - 3, 1, bz)
 end
 
+--------------------------------------------------------------------------------
+-- The finishing touches: staff, props, things that move
+--------------------------------------------------------------------------------
+local function trashCan(parent, x, z, y)
+	MapKit.column(parent, "TrashCan", 3, 1.8, Vector3.new(x, (y or 0.3) + 1.5, z), rgb(60, 110, 80), Enum.Material.Metal)
+	MapKit.disc(parent, "TrashLid", 0.3, 2, Vector3.new(x, (y or 0.3) + 3.1, z), rgb(50, 90, 66), Enum.Material.Metal)
+end
+
+local function planter(parent, x, z, rng, y)
+	y = y or 0.3
+	MapKit.column(parent, "Planter", 1.6, 4, Vector3.new(x, y + 0.8, z), rgb(200, 190, 175), Enum.Material.Concrete)
+	for k = 0, 4 do
+		local a = k / 5 * math.pi * 2
+		MapKit.ball(parent, "PlanterFlowers", 1.3, CFrame.new(x + math.cos(a) * 0.9, y + 1.9, z + math.sin(a) * 0.9), MapKit.FLOWERS[rng:NextInteger(1, #MapKit.FLOWERS)], Enum.Material.SmoothPlastic)
+	end
+	MapKit.ball(parent, "PlanterLeaves", 1.6, CFrame.new(x, y + 2.1, z), MapKit.LEAVES[2], Enum.Material.SmoothPlastic)
+end
+
+-- a string of little flags between two points (they flutter: see Ambient)
+local function bunting(parent, a, b, n)
+	local len = (b - a).Magnitude
+	for k = 1, n do
+		local u = k / (n + 1)
+		local p = a:Lerp(b, u) - Vector3.new(0, math.sin(u * math.pi) * len * 0.06, 0)
+		local f = MapKit.wedge(parent, "Bunting", Vector3.new(0.1, 1.2, 0.9), CFrame.lookAt(p, p + (b - a).Unit) * CFrame.Angles(0, math.rad(90), math.rad(180)), MapKit.FLOWERS[k % #MapKit.FLOWERS + 1], Enum.Material.Fabric)
+		MapKit.tag(f, "WavingFlag")
+	end
+end
+
+local function flagPole(parent, x, z, color, h)
+	h = h or 14
+	MapKit.deco(parent, "FlagPole", Vector3.new(0.35, h, 0.35), CFrame.new(x, h / 2, z), rgb(225, 225, 230), Enum.Material.Metal)
+	local f = MapKit.deco(parent, "Flag", Vector3.new(0.1, 2.4, 4), CFrame.new(x, h - 1.5, z + 2.1), color, Enum.Material.Fabric)
+	MapKit.tag(f, "WavingFlag")
+end
+
+local function details(data, rng)
+	local staff = {}
+	data.Staff = staff
+	local function worker(name, job, x, y, z, fx, fz, action, activity)
+		table.insert(staff, { Name = name, Job = job, Spot = spot(x, y, z, fx, fz), Action = action, Activity = activity })
+	end
+	-- 🎡 Funland: someone running every ride, the carts, the booths
+	local fun = data.Model:FindFirstChild("Funland")
+	worker("Rita", "Ride Operator", -178, 0.3, Z0 - 262, -190, Z0 - 240, "present", "🎡 Running the Sky Wheel")
+	worker("Gus", "Ride Operator", -60, 0.3, Z0 - 121, -60, Z0 - 100, "guard", "🎠 Running the carousel")
+	worker("Bo", "Ride Operator", -190, 0.3, Z0 - 78, -200, Z0 - 90, "present", "🎢 Running the Freefall")
+	worker("Candy", "Vendor", -40, 0.3, Z0 - 162.5, -40, Z0 - 150, "counter", "🍭 Spinning cotton candy")
+	worker("Luigi", "Vendor", -120, 0.3, Z0 - 162.5, -120, Z0 - 150, "counter", "🍦 Scooping ice cream")
+	worker("Frank", "Vendor", -150, 0.3, Z0 - 292.5, -150, Z0 - 280, "counter", "🌭 Grilling hot dogs")
+	worker("Pop", "Game Attendant", -13, 0.3, Z0 - 223.5, -13, Z0 - 210, "present", "🎈 Running Balloon Pop")
+	worker("Tess", "Prize Clerk", -13, 0.3, Z0 - 259.5, -13, Z0 - 245, "counter", "🎟️ At the prize booth")
+	worker("Dr. Paws", "Pet Adoption", 7, 0.3, Z0 - 63.5, 7, Z0 - 50, "counter", "🐾 Finding pets homes")
+	worker("Ace", "Obby Attendant", -266, 0.3, Z0 - 66, -280, Z0 - 70, "present", "🧗 Timing the Sky Obby")
+	-- trash cans, planters, benches along the paths
+	local c = Vector3.new(-105, 0, Z0 - 170)
+	for k = 0, 7 do
+		local x = c.X - 130 + k * 36
+		trashCan(fun, x + 6, c.Z + 7.5)
+		planter(fun, x + 14, c.Z - 8, rng)
+		if k % 2 == 0 then
+			local seat = Streets.bench(fun, CFrame.lookAt(Vector3.new(x + 22, 0.3, c.Z + 9), Vector3.new(x + 22, 0.3, c.Z)), nil)
+			table.insert(data.FunlandSpots, { CFrame = CFrame.lookAt(Vector3.new(x + 22, 0.3, c.Z + 9), Vector3.new(x + 22, 0.3, c.Z)), Seat = seat, Action = "sit", Role = "visit", Floor = 1 })
+		end
+	end
+	bunting(fun, Vector3.new(c.X - 140, 10, c.Z + 4), Vector3.new(c.X + 140, 10, c.Z + 4), 30)
+	bunting(fun, Vector3.new(c.X + 56, 10, c.Z - 125), Vector3.new(c.X + 56, 10, c.Z + 125), 26)
+	-- the ticket booth at the gate, and a balloon seller with a bunch of balloons
+	solid(fun, "TicketBooth", Vector3.new(6, 8, 6), 46, 0.3, c.Z - 18, rgb(240, 200, 60), Enum.Material.WoodPlanks)
+	deco(fun, "TicketBoothRoof", Vector3.new(7.4, 1, 7.4), 46, 8.3, c.Z - 18, rgb(220, 60, 80), Enum.Material.SmoothPlastic)
+	local tsign = deco(fun, "TicketSign", Vector3.new(0.2, 1.6, 5), 49.1, 5, c.Z - 18, rgb(30, 30, 40))
+	MapKit.signText(tsign, Enum.NormalId.Right, "🎟️ TICKETS", rgb(255, 220, 90), Enum.Font.GothamBlack)
+	worker("Mo", "Ticket Seller", 50.5, 0.3, c.Z - 18, 60, c.Z - 18, "counter", "🎟️ Selling tickets")
+	local bx, bz = 50, c.Z + 20
+	for k = 0, 8 do
+		local a = k / 9 * math.pi * 2
+		local top = Vector3.new(bx + math.cos(a) * 1.2, 10 + (k % 3) * 0.8, bz + math.sin(a) * 1.2)
+		local b = MapKit.ball(fun, "SellerBalloon", 1.6, CFrame.new(top), MapKit.FLOWERS[k % #MapKit.FLOWERS + 1], Enum.Material.SmoothPlastic)
+		b.Reflectance = 0.2
+		MapKit.tag(b, "Bob")
+		local mid = (top + Vector3.new(bx, 4, bz)) / 2
+		MapKit.deco(fun, "BalloonString", Vector3.new(0.06, 0.06, (top - Vector3.new(bx, 4, bz)).Magnitude), CFrame.lookAt(mid, top), WHITE)
+	end
+	worker("Zippy", "Balloon Seller", bx, 0.3, bz, bx + 10, bz, "wait", "🎈 Selling balloons")
+	-- 🏖️ the beach: sandcastles, surfboards, coolers, buoys, a lifeguard
+	local beach = data.Model:FindFirstChild("SunsetBeach")
+	local bw = NorthShore.BOARDWALK_Z
+	local sandZ0 = bw - 10
+	for k = 0, 4 do
+		local x, z = -300 + k * 130 + rng:NextNumber(-10, 10), sandZ0 - rng:NextNumber(60, 80)
+		deco(beach, "Sandcastle", Vector3.new(4, 1.6, 4), x, 0, z, rgb(222, 196, 140), Enum.Material.Sand)
+		for _, e in ipairs({ { -1.4, -1.4 }, { 1.4, -1.4 }, { -1.4, 1.4 }, { 1.4, 1.4 } }) do
+			MapKit.column(beach, "CastleTower", 2.6, 1.2, Vector3.new(x + e[1], 1.3, z + e[2]), rgb(214, 188, 132), Enum.Material.Sand, false)
+		end
+		deco(beach, "CastleKeep", Vector3.new(1.8, 1.4, 1.8), x, 1.6, z, rgb(214, 188, 132), Enum.Material.Sand)
+		deco(beach, "CastleFlagPole", Vector3.new(0.1, 1.6, 0.1), x, 3, z, WHITE)
+		MapKit.tag(deco(beach, "CastleFlag", Vector3.new(0.05, 0.5, 0.8), x, 4.1, z + 0.4, MapKit.FLOWERS[k + 1]), "WavingFlag")
+		MapKit.deco(beach, "Bucket", Vector3.new(1, 1, 1), CFrame.new(x + 3, 0.5, z + 1), MapKit.FLOWERS[(k + 2) % #MapKit.FLOWERS + 1], Enum.Material.SmoothPlastic)
+	end
+	for k = 0, 5 do
+		local x = -340 - 8 + k * 3.2
+		MapKit.deco(beach, "Surfboard", Vector3.new(1.8, 0.3, 7), CFrame.new(x, 3.4, bw + 5) * CFrame.Angles(math.rad(80), 0, math.rad(-8 + k * 3)), MapKit.FLOWERS[k % #MapKit.FLOWERS + 1], Enum.Material.SmoothPlastic)
+	end
+	for k = 0, 6 do
+		local x, z = -280 + k * 85 + rng:NextNumber(-6, 6), sandZ0 - rng:NextNumber(28, 50)
+		deco(beach, "Cooler", Vector3.new(2, 1.4, 1.3), x, 0, z, if k % 2 == 0 then rgb(40, 120, 200) else rgb(220, 60, 60), Enum.Material.SmoothPlastic)
+		deco(beach, "CoolerLid", Vector3.new(2.1, 0.3, 1.4), x, 1.4, z, WHITE, Enum.Material.SmoothPlastic)
+	end
+	-- a line of buoys marking the swimming area (they bob on the waves)
+	for k = 0, 24 do
+		local b = MapKit.ball(beach, "Buoy", 1.4, CFrame.new(-360 + k * 26, -0.9, NorthShore.WATER_Z - 38), if k % 2 == 0 then rgb(240, 60, 50) else WHITE, Enum.Material.SmoothPlastic)
+		MapKit.tag(b, "Bob")
+	end
+	local swim = deco(beach, "SwimSign", Vector3.new(8, 3, 0.3), 120, 5, sandZ0 - 20, rgb(40, 120, 200))
+	deco(beach, "SwimSignPost", Vector3.new(0.3, 5, 0.3), 120, 0, sandZ0 - 20, WHITE)
+	MapKit.signText(swim, Enum.NormalId.Front, "🏊 SWIM AREA · LIFEGUARD ON DUTY", WHITE, Enum.Font.GothamBold)
+	MapKit.signText(swim, Enum.NormalId.Back, "🏊 SWIM AREA", WHITE, Enum.Font.GothamBold)
+	worker("Kai", "Lifeguard", -20, 0, sandZ0 - 64, -20, sandZ0 - 200, "birdwatch", "🛟 Watching the swimmers")
+	worker("Nalu", "Surf Shop", -340, 1, bw + 12.5, -340, bw, "counter", "🏄 Renting surfboards")
+	worker("Shelly", "Snack Shack", -90, 1, bw + 12.5, -90, bw, "counter", "🍟 Frying up snacks")
+	worker("Scoop", "Ice Cream", 40, 1, bw + 12.5, 40, bw, "counter", "🍦 Scooping cones")
+	-- 🚗 AutoLand: flags, pennants and two inflatable tube men
+	local lot = data.Model:FindFirstChild("AutoLand")
+	local lc = Vector3.new(150, 0, Z0 - 75)
+	for k = 0, 4 do
+		flagPole(lot, lc.X - 48 + k * 24, lc.Z + 36.5, ({ rgb(220, 50, 50), rgb(250, 250, 250), rgb(40, 90, 200) })[k % 3 + 1])
+	end
+	for _, e in ipairs({ { -50, 36 }, { 50, 36 }, { 50, -36 }, { -50, -36 } }) do
+		MapKit.deco(lot, "PennantPole", Vector3.new(0.3, 9, 0.3), CFrame.new(lc.X + e[1], 4.5, lc.Z + e[2]), rgb(200, 200, 205), Enum.Material.Metal)
+	end
+	bunting(lot, lc + Vector3.new(-50, 9, 36), lc + Vector3.new(50, 9, 36), 24)
+	bunting(lot, lc + Vector3.new(50, 9, 36), lc + Vector3.new(50, 9, -36), 18)
+	for k, e in ipairs({ { -44, 30, rgb(230, 40, 40) }, { 44, 30, rgb(40, 140, 240) } }) do
+		local base = MapKit.part(lot, "TubeManFan", Vector3.new(2.4, 1.6, 2.4), CFrame.new(lc.X + e[1], 1.1, lc.Z + e[2]), e[3], Enum.Material.SmoothPlastic)
+		MapKit.tag(base, "TubeMan")
+	end
+end
+
 function NorthShore.build(parent, rng, useTerrain)
 	model = Instance.new("Model")
 	model.Name = "NorthShore"
@@ -8696,6 +8952,7 @@ function NorthShore.build(parent, rng, useTerrain)
 	funland(data, rng)
 	obby(data, rng)
 	beach(data, rng, useTerrain)
+	details(data, rng)
 	-- each ride streams in whole, so every screen can turn all of it
 	for _, ride in ipairs(data.Rides or {}) do
 		pcall(function()
@@ -8950,7 +9207,8 @@ local function flag(parent, pos, color, height)
 	height = height or 18
 	deco(parent, "FlagPole", Vector3.new(0.4, height, 0.4), CFrame.new(pos + Vector3.new(0, height / 2, 0)), rgb(220, 220, 225), Enum.Material.Metal)
 	MapKit.ball(parent, "FlagTop", 0.8, CFrame.new(pos + Vector3.new(0, height + 0.3, 0)), GOLD, Enum.Material.Metal)
-	deco(parent, "Flag", Vector3.new(0.1, 3, 5), CFrame.new(pos + Vector3.new(0, height - 1.8, 2.6)), color, Enum.Material.Fabric)
+	local f = deco(parent, "Flag", Vector3.new(0.1, 3, 5), CFrame.new(pos + Vector3.new(0, height - 1.8, 2.6)), color, Enum.Material.Fabric)
+	MapKit.tag(f, "WavingFlag") -- (it ripples on every screen: see the client's Ambient)
 end
 Places.flag = flag
 
@@ -10645,6 +10903,9 @@ function MapBuilder.Build()
 	-- for the traffic on every client (see the client's Traffic module)
 	info:SetAttribute("Road", MapKit.ROAD)
 	info:SetAttribute("Lane", MapKit.LANE)
+	-- where the ocean starts (seagulls and sailboats: see the client's Ambient)
+	info:SetAttribute("WaterZ", NorthShore.WATER_Z)
+	info:SetAttribute("BeachX", -65)
 	local stops = Instance.new("Folder")
 	stops.Name = "BusStops"
 	for k, p in ipairs(map.BusStops or {}) do
@@ -11714,6 +11975,20 @@ local UNIFORMS = {
 	["King"] = { Top = rgb(100, 45, 140), Bottom = rgb(40, 40, 46), Sleeves = "long", Items = { "Jacket:90,40,130", "CapBack:120,50,160", "Necklace", "Sneakers:170,90,230" } },
 	["Rioter"] = { Top = rgb(30, 30, 34), Bottom = rgb(45, 45, 50), Sleeves = "long", Items = { "Hoodie:30,30,34", "Beanie:25,25,28" } },
 	["Police Officer"] = { Top = rgb(40, 55, 110), Bottom = rgb(30, 40, 80), Sleeves = "long", Items = { "PoliceCap", "Badge", "Belt:25,25,30", "Radio" } },
+	-- the North Shore: Funland staff, the beach, AutoLand
+	["Ride Operator"] = { Top = rgb(220, 60, 80), Bottom = rgb(40, 40, 50), Items = { "Cap:250,200,60", "NameTag", "Lanyard" } },
+	["Game Attendant"] = { Top = rgb(40, 150, 220), Bottom = rgb(40, 40, 50), Items = { "Cap:40,150,220", "Apron:250,220,90", "NameTag" } },
+	["Prize Clerk"] = { Top = rgb(200, 70, 150), Bottom = rgb(40, 40, 50), Items = { "NameTag", "Apron:250,240,250" } },
+	["Ticket Seller"] = { Top = rgb(240, 200, 60), Bottom = rgb(60, 60, 70), Items = { "Cap:220,60,80", "NameTag" } },
+	["Balloon Seller"] = { Top = rgb(250, 150, 200), Bottom = rgb(90, 160, 220), Items = { "StrawHat" } },
+	["Vendor"] = { Top = WHITE, Bottom = rgb(60, 60, 70), Items = { "Apron:240,120,160", "Cap:240,120,160" } },
+	["Obby Attendant"] = { Top = rgb(90, 200, 120), Bottom = rgb(40, 40, 50), Items = { "Cap:90,200,120", "Lanyard" } },
+	["Pet Adoption"] = { Top = rgb(90, 170, 90), Bottom = rgb(90, 80, 70), Items = { "Apron:120,90,60", "NameTag" } },
+	["Lifeguard"] = { Top = rgb(230, 40, 40), Bottom = rgb(230, 40, 40), Items = { "Cap:250,250,250", "Glasses" } },
+	["Surf Shop"] = { Top = rgb(40, 150, 200), Bottom = rgb(250, 200, 80), Items = { "Cap:250,250,250" } },
+	["Snack Shack"] = { Top = rgb(240, 170, 40), Bottom = rgb(60, 60, 70), Items = { "Apron:250,250,250", "Cap:240,170,40" } },
+	["Ice Cream"] = { Top = rgb(250, 190, 210), Bottom = rgb(60, 60, 70), Items = { "Apron:250,250,250", "NameTag" } },
+	["Car Salesperson"] = { Top = rgb(250, 250, 250), Bottom = rgb(40, 44, 60), Sleeves = "long", Items = { "Tie:200,40,40", "NameTag" } },
 	["Inmate"] = { Top = rgb(236, 110, 36), Bottom = rgb(230, 104, 32), Sleeves = "short" },
 	["Prison Guard"] = { Top = rgb(70, 78, 70), Bottom = rgb(40, 44, 40), Sleeves = "long", Items = { "PoliceCap", "Badge", "Belt:25,25,30", "Radio" } },
 	["Thief"] = { Top = rgb(38, 40, 48), Bottom = rgb(30, 32, 38), Sleeves = "long", Items = { "Hoodie:38,40,50", "Beanie:28,28,32", "Gloves" } },
@@ -14064,6 +14339,7 @@ local function loadPlayer(player)
 		Car = type(saved.Car) == "string" and saved.Car or nil,
 		Pets = type(saved.Pets) == "table" and saved.Pets or {},
 		Pet = type(saved.Pet) == "table" and saved.Pet or nil,
+		PetInfo = type(saved.PetInfo) == "table" and saved.PetInfo or {},
 	}
 	playerData[player] = data
 	player:SetAttribute("Coins", data.Coins)
@@ -14078,7 +14354,7 @@ local function savePlayer(player)
 	local data = playerData[player]
 	if data and playerStore then
 		pcall(function()
-			playerStore:SetAsync("p_" .. player.UserId, { Coins = data.Coins, Crimes = data.Crimes, Notoriety = data.Notoriety, Weapons = data.Weapons, Outfits = data.Outfits, Wearing = data.Wearing, Fitness = data.Fitness, Talks = data.Talks, Arrests = data.Arrests, Terms = data.Terms, Home = data.Home, HasRod = data.HasRod, JobXP = data.JobXP, FishCaught = data.FishCaught, BiggestFish = data.BiggestFish, BiggestFishName = data.BiggestFishName, Tickets = data.Tickets, ObbyBest = data.ObbyBest, Cars = data.Cars, Car = data.Car, Pets = data.Pets, Pet = data.Pet })
+			playerStore:SetAsync("p_" .. player.UserId, { Coins = data.Coins, Crimes = data.Crimes, Notoriety = data.Notoriety, Weapons = data.Weapons, Outfits = data.Outfits, Wearing = data.Wearing, Fitness = data.Fitness, Talks = data.Talks, Arrests = data.Arrests, Terms = data.Terms, Home = data.Home, HasRod = data.HasRod, JobXP = data.JobXP, FishCaught = data.FishCaught, BiggestFish = data.BiggestFish, BiggestFishName = data.BiggestFishName, Tickets = data.Tickets, ObbyBest = data.ObbyBest, Cars = data.Cars, Car = data.Car, Pets = data.Pets, Pet = data.Pet, PetInfo = data.PetInfo })
 		end)
 	end
 end
@@ -15268,6 +15544,7 @@ local function unanchor(brain)
 	brain.Model:SetAttribute("SwingAxis", nil)
 	brain.Model:SetAttribute("Target", nil)
 	brain.Model:SetAttribute("RideSeat", nil)
+	brain.Model:SetAttribute("RideKind", nil)
 end
 
 -- stand up at a spot (used when leaving a seat or bed, so nobody gets stuck in furniture)
@@ -15311,6 +15588,7 @@ local function placeAt(brain, spot, action)
 	-- a seat on a ride: the rider goes round with it (see the client's Rides)
 	if spot.RideSeat then
 		brain.Model:SetAttribute("RideSeat", spot.RideSeat)
+		brain.Model:SetAttribute("RideKind", spot.RideKind)
 	end
 end
 
@@ -18657,6 +18935,10 @@ local function attack(player, data)
 		local flatD = Vector3.new(d.X, 0, d.Z)
 		if flatD.Magnitude <= w.Range and math.abs(d.Y) < 6 and (flatD.Magnitude < 2 or look:Dot(flatD.Unit) > 0.2) then
 			local score = flatD.Magnitude - look:Dot(flatD.Unit) * 2
+			-- a thief on the run is who you're swinging at, not the victim beside them
+			if not isPlayer and S.StreetCrime and S.StreetCrime.IsCriminal(target) then
+				score -= 4
+			end
 			if score < bestScore then
 				best, bestScore, bestPlayer = target, score, isPlayer
 			end
@@ -21275,8 +21557,9 @@ local function callPolice(b)
 	if caller then
 		S.Citizens.Say(caller, "Hello, police? There's a fight on " .. streetNear(pos) .. "!", "scared", 3)
 	end
-	-- an officer on duty, or a patrol car from nearby
-	local officer, bestD = nil, 450
+	-- an officer on duty close by, or a patrol car from nearby (anyone further
+	-- away than a patrol car would take too long to get there)
+	local officer, bestD = nil, 200
 	for _, brain in ipairs(S.Citizens.List) do
 		if isPolice(brain) and not brain.Temp and not busy(brain) and brain.Plan and brain.Plan.Kind == "Work" then
 			local d = (brain.Root.Position - pos).Magnitude
@@ -21414,7 +21697,9 @@ local function tick(b, now)
 		end
 	end
 	local _, playerD = nearestPlayer(center(b))
-	if now - b.Started > MAX_TIME or playerD > 400 then
+	-- (they keep at it while the police are on the way)
+	local limit = MAX_TIME + (if b.Officer and b.Officer.Model.Parent then 30 else 0)
+	if now - b.Started > limit or playerD > 400 then
 		finish(b, "tired")
 		return
 	end
@@ -26712,7 +26997,7 @@ function CarService.Build(spec, cf, drivable, parent)
 	local color = spec.Color
 	local glass = rgb(40, 50, 62)
 	local chassis
-	local function add(name, size, offset, c, material, shapeType)
+	local function add(name, size, offset, c, material, shapeType, jointed)
 		local p = Instance.new("Part")
 		p.Name = name
 		p.Size = size
@@ -26730,9 +27015,20 @@ function CarService.Build(spec, cf, drivable, parent)
 		end
 		p.Parent = m
 		if chassis and drivable then
-			local w = Instance.new("WeldConstraint")
-			w.Part0, w.Part1 = chassis, p
-			w.Parent = p
+			if jointed then
+				-- a joint the driver's screen can turn (the wheels spin and steer)
+				local motor = Instance.new("Motor6D")
+				motor.Name = "WheelMotor"
+				motor.Part0, motor.Part1 = chassis, p
+				motor.C0 = chassis.CFrame:ToObjectSpace(p.CFrame)
+				motor.C1 = CFrame.new()
+				motor:SetAttribute("Front", offset.Position.Z < 0)
+				motor.Parent = p
+			else
+				local w = Instance.new("WeldConstraint")
+				w.Part0, w.Part1 = chassis, p
+				w.Parent = p
+			end
 		end
 		return p
 	end
@@ -26755,8 +27051,21 @@ function CarService.Build(spec, cf, drivable, parent)
 	for _, sx in ipairs({ -1, 1 }) do
 		add("SideWindow", Vector3.new(0.2, cabinH * 0.75, cabinL - 1), CFrame.new(sx * 2.72, 1.2 + tall + cabinH / 2, cabinZ), glass, Enum.Material.Glass)
 		for _, sz in ipairs({ -1, 1 }) do
-			add("Wheel", Vector3.new(1, 2.4, 2.4), CFrame.new(sx * 2.8, 1.2, sz * (long / 2 - 2.1)) * CFrame.Angles(0, 0, math.rad(90)), rgb(22, 22, 25), Enum.Material.Rubber, Enum.PartType.Cylinder)
-			add("Hubcap", Vector3.new(1.05, 1.2, 1.2), CFrame.new(sx * 2.8, 1.2, sz * (long / 2 - 2.1)) * CFrame.Angles(0, 0, math.rad(90)), rgb(200, 200, 206), Enum.Material.Metal, Enum.PartType.Cylinder)
+			-- (a cylinder's round faces point along X: the axle)
+			local wheel = add("Wheel", Vector3.new(1, 2.4, 2.4), CFrame.new(sx * 2.8, 1.2, sz * (long / 2 - 2.1)), rgb(22, 22, 25), Enum.Material.Rubber, Enum.PartType.Cylinder, true)
+			for _, part in ipairs({
+				add("Hubcap", Vector3.new(1.05, 1.2, 1.2), CFrame.new(sx * 2.8, 1.2, sz * (long / 2 - 2.1)), rgb(200, 200, 206), Enum.Material.Metal, Enum.PartType.Cylinder),
+				add("Spoke", Vector3.new(1.1, 1.1, 0.25), CFrame.new(sx * 2.8, 1.2, sz * (long / 2 - 2.1)), rgb(90, 90, 96), Enum.Material.Metal),
+			}) do
+				-- the hubcap and spoke ride on the wheel
+				if drivable then
+					for _, j in ipairs(part:GetChildren()) do
+						if j:IsA("WeldConstraint") then
+							j.Part0 = wheel
+						end
+					end
+				end
+			end
 		end
 		add("Headlight", Vector3.new(1.2, 0.6, 0.2), CFrame.new(sx * 2, 1.8 + tall / 2, -long / 2 - 0.05), rgb(255, 250, 220), Enum.Material.Neon)
 		add("Taillight", Vector3.new(1.2, 0.5, 0.2), CFrame.new(sx * 2, 1.8 + tall / 2, long / 2 + 0.05), rgb(200, 30, 30), Enum.Material.Neon)
@@ -27371,6 +27680,24 @@ function FunService.Start(services)
 	end
 	hookTouch(NS.Obby.Finish, "finish")
 	drawBoard()
+	-- the people who work here: ride operators, vendors, the lifeguard...
+	task.spawn(function()
+		local t0 = os.clock()
+		while not workspace:FindFirstChild("Citizens") and os.clock() - t0 < 30 do
+			task.wait(0.5)
+		end
+		FunService.Staff = {}
+		for _, w in ipairs(NS.Staff or {}) do
+			local ok, brain = pcall(S.Citizens.SpawnExtra, { Name = w.Name, First = w.Name, Job = w.Job, Age = math.random(19, 58), Activity = w.Activity }, CFrame.new(w.Spot.CFrame.Position + Vector3.new(0, 3, 0)))
+			if ok and brain then
+				S.Citizens.Control(brain, true)
+				S.Citizens.PlaceAt(brain, w.Spot, w.Action)
+				brain.Model:SetAttribute("Activity", w.Activity)
+				brain.Model:SetAttribute("Expression", "happy")
+				table.insert(FunService.Staff, brain)
+			end
+		end
+	end)
 	local function show(player)
 		local pd = S.City.Data(player)
 		if pd then
@@ -27404,6 +27731,13 @@ return FunService
 -- pet you've got and can switch between them at the stand. Some citizens walk
 -- their dogs too.
 --
+-- 🍼 Pets start out as babies (big heads, short legs, tiny) and grow up:
+--    Baby → Young → Adult. They grow while they're out with you (faster when
+--    you're on the move together) and when you feed them a 🦴 treat from the
+--    stand. Every pet grows to its own size: most end up somewhere between a
+--    little smaller and a lot bigger than usual, and now and then one turns out
+--    tiny or a GIANT. You only find out when it's all grown up.
+--
 -- The server only stores which pet is out (the player's "Pet" and "PetName"
 -- attributes); every screen draws the pets itself (the client's Pets module).
 
@@ -27428,11 +27762,117 @@ local function rgb(r, g, b)
 	return Color3.fromRGB(r, g, b)
 end
 
+-- growing up
+PetService.GROWN = 180 -- growth points to become an adult (half of that: young)
+PetService.TREAT = { Price = 10, Growth = 25 }
+-- how big each kind can end up (times its usual size)
+PetService.SIZES = {
+	Dog = { 0.85, 1.35 }, Cat = { 0.8, 1.2 }, Hamster = { 0.8, 1.45 }, Fox = { 0.85, 1.3 },
+	Duck = { 0.8, 1.3 }, Bunny = { 0.8, 1.45 }, Parrot = { 0.85, 1.25 }, GoldenPup = { 0.9, 1.5 },
+}
+
+PetService.KindName = { GoldenPup = "golden pup" }
+
+local function stageOf(xp)
+	if xp >= PetService.GROWN then
+		return "Adult"
+	elseif xp >= PetService.GROWN / 2 then
+		return "Young"
+	end
+	return "Baby"
+end
+PetService.StageOf = stageOf
+
+-- a new pet's details: its name, its (secret) adult size, no growth yet
+local function newInfo(pd, id)
+	pd.PetInfo = pd.PetInfo or {}
+	local info = pd.PetInfo[id]
+	if info then
+		return info
+	end
+	local names = PetService.NAMES[id] or { "Buddy" }
+	local range = PetService.SIZES[id] or { 0.85, 1.3 }
+	local size = range[1] + math.random() * (range[2] - range[1])
+	local roll = math.random()
+	local kind = "normal"
+	if roll < 0.05 then
+		size, kind = size * 1.6, "giant"
+	elseif roll < 0.1 then
+		size, kind = size * 0.62, "tiny"
+	end
+	info = { Name = names[math.random(1, #names)], XP = 0, Size = math.floor(size * 100 + 0.5) / 100, Kind = kind }
+	pd.PetInfo[id] = info
+	return info
+end
+PetService.NewInfo = newInfo
+
+local function sizeWord(info)
+	if info.Kind == "giant" then
+		return "a GIANT"
+	elseif info.Kind == "tiny" then
+		return "a teeny tiny"
+	elseif info.Size >= 1.2 then
+		return "a big"
+	elseif info.Size <= 0.92 then
+		return "a small"
+	end
+	return "a"
+end
+
 local function show(player)
 	local pd = S.City.Data(player)
 	local pet = pd and pd.Pet
+	local info = pet and pd.PetInfo and pd.PetInfo[pet.Id]
 	player:SetAttribute("Pet", pet and pet.Id or nil)
 	player:SetAttribute("PetName", pet and pet.Name or nil)
+	-- how grown up it is (0 = a baby, 1 = all grown up) and its adult size
+	player:SetAttribute("PetGrowth", if info then math.clamp(info.XP / PetService.GROWN, 0, 1) else nil)
+	player:SetAttribute("PetSize", if info then info.Size else nil)
+	player:SetAttribute("PetStage", if info then stageOf(info.XP) else nil)
+end
+PetService.Show = show
+
+-- growth points for the pet that's out: stage changes get a toast
+function PetService.Grow(player, amount)
+	local pd = S.City.Data(player)
+	local pet = pd and pd.Pet
+	if not pet then
+		return nil
+	end
+	local info = newInfo(pd, pet.Id)
+	local before = stageOf(info.XP)
+	info.XP = math.min(PetService.GROWN, info.XP + amount)
+	local after = stageOf(info.XP)
+	show(player)
+	if after ~= before then
+		local kind = string.lower((PetService.KindName and PetService.KindName[pet.Id]) or pet.Id)
+		if after == "Young" then
+			S.City.Toast(player, "🌱", info.Name .. " is growing up!", "Not a baby anymore: " .. info.Name .. " is a young " .. kind .. " now.", rgb(120, 200, 120))
+		else
+			local word = sizeWord(info)
+			S.City.Toast(player, "🎉", info.Name .. " is all grown up!", info.Name .. " turned out to be " .. word .. " " .. kind .. " (" .. info.Size .. "× the usual size)" .. (if info.Kind == "giant" then " — one in twenty!" elseif info.Kind == "tiny" then " — one in twenty, and adorable." else "."), rgb(250, 200, 60))
+			S.City.News("🐾 " .. player.DisplayName .. "'s " .. kind .. " " .. info.Name .. " is all grown up" .. (if info.Kind == "giant" then " — and it's a GIANT!" else "!"), "City", true)
+		end
+	end
+	return after
+end
+
+-- a treat from the stand: a big growth boost (and a happy pet)
+function PetService.Treat(player)
+	local pd = S.City.Data(player)
+	if not pd or not pd.Pet then
+		return { Ok = false, Error = "Take a pet out first (pick one at the stand)." }
+	end
+	local info = newInfo(pd, pd.Pet.Id)
+	if info.XP >= PetService.GROWN then
+		return { Ok = false, Error = info.Name .. " is all grown up already. Good pet!" }
+	end
+	if not S.City.Spend(player, PetService.TREAT.Price, "🦴 A treat for " .. info.Name) then
+		return { Ok = false, Error = "A treat costs " .. PetService.TREAT.Price .. " coins." }
+	end
+	PetService.Grow(player, PetService.TREAT.Growth)
+	player:SetAttribute("PetTreat", os.clock()) -- (hearts on everyone's screen)
+	return { Ok = true }
 end
 
 function PetService.Equip(player, id)
@@ -27443,11 +27883,8 @@ function PetService.Equip(player, id)
 	if id == "none" then
 		pd.Pet = nil
 	elseif pd.Pets[id] then
-		local names = PetService.NAMES[id] or { "Buddy" }
-		local keep = pd.Pet and pd.Pet.Id == id and pd.Pet.Name
-		pd.Pet = { Id = id, Name = keep or pd.PetNames and pd.PetNames[id] or names[math.random(1, #names)] }
-		pd.PetNames = pd.PetNames or {}
-		pd.PetNames[id] = pd.Pet.Name
+		local info = newInfo(pd, id)
+		pd.Pet = { Id = id, Name = info.Name }
 	else
 		return false
 	end
@@ -27469,15 +27906,29 @@ end
 local function store(player)
 	local pd = S.City.Data(player)
 	local items = {}
+	local function grown(id)
+		local info = pd and pd.PetInfo and pd.PetInfo[id]
+		if not info then
+			return nil
+		end
+		local stage = stageOf(info.XP)
+		local pct = math.floor(math.clamp(info.XP / PetService.GROWN, 0, 1) * 100)
+		return info.Name .. " · " .. (if stage == "Adult" then "all grown up (" .. info.Size .. "× size)" else string.lower(stage) .. ", " .. pct .. "% grown")
+	end
 	for _, p in ipairs(PetService.ADOPT) do
 		local owned = pd and pd.Pets[p.Id] == true
-		table.insert(items, { Id = p.Id, Name = p.Name, Emoji = p.Emoji, Price = p.Price, Desc = p.Desc, Owned = owned, UseText = "🐾 Walk with me", Using = owned and pd.Pet and pd.Pet.Id == p.Id })
+		table.insert(items, { Id = p.Id, Name = p.Name, Emoji = p.Emoji, Price = p.Price, Desc = if owned then grown(p.Id) or p.Desc else p.Desc .. " Comes as a baby and grows up.", Owned = owned, UseText = "🐾 Walk with me", Using = owned and pd.Pet and pd.Pet.Id == p.Id })
+	end
+	-- a treat for the pet that's out (it helps them grow)
+	if pd and pd.Pet then
+		local info = pd.PetInfo and pd.PetInfo[pd.Pet.Id]
+		table.insert(items, 1, { Id = "treat", Name = "Pet treat", Emoji = "🦴", Price = PetService.TREAT.Price, Desc = "A treat for " .. pd.Pet.Name .. ": +" .. PetService.TREAT.Growth .. " growth." .. (if info then " (" .. math.floor(math.clamp(info.XP / PetService.GROWN, 0, 1) * 100) .. "% grown)" else ""), Owned = false })
 	end
 	-- prize pets you've won can be picked here too
 	if S.Fun then
 		for _, p in ipairs(S.Fun.PRIZES) do
 			if p.Pet and pd and pd.Pets[p.Id] then
-				table.insert(items, { Id = p.Id, Name = p.Name, Emoji = p.Emoji, Price = 0, Desc = "A prize from the booth.", Owned = true, UseText = "🐾 Walk with me", Using = pd.Pet and pd.Pet.Id == p.Id })
+				table.insert(items, { Id = p.Id, Name = p.Name, Emoji = p.Emoji, Price = 0, Desc = grown(p.Id) or "A prize from the booth.", Owned = true, UseText = "🐾 Walk with me", Using = pd.Pet and pd.Pet.Id == p.Id })
 			end
 		end
 	end
@@ -27491,6 +27942,13 @@ function PetService.Request(player, data)
 		return { Ok = false, Error = "Try again in a moment." }
 	end
 	local id = data.Id
+	if id == "treat" then
+		local r = PetService.Treat(player)
+		if not r.Ok then
+			return r
+		end
+		return { Ok = true, Store = store(player), Toast = { "🦴", pd.Pet.Name .. " loved that!", "" } }
+	end
 	if data.Op == "use" or id == "none" then
 		if id ~= "none" and not pd.Pets[id] then
 			return { Ok = false, Error = "That's not your pet." }
@@ -27514,7 +27972,7 @@ function PetService.Request(player, data)
 		return { Ok = false, Error = "You need " .. pet.Price .. " coins." }
 	end
 	PetService.Give(player, id)
-	return { Ok = true, Store = store(player), Toast = { pet.Emoji, "Meet " .. pd.Pet.Name .. "!", "Your new " .. string.lower(pet.Name) .. " follows you everywhere." } }
+	return { Ok = true, Store = store(player), Toast = { pet.Emoji, "Meet " .. pd.Pet.Name .. "!", "Your new baby " .. string.lower(pet.Name) .. " follows you everywhere. Spend time together (and give treats) and watch it grow up." } }
 end
 
 function PetService.Store(player)
@@ -27568,6 +28026,23 @@ function PetService.Start(services)
 	for _, p in ipairs(Players:GetPlayers()) do
 		hook(p)
 	end
+	-- growing up: every 10 seconds out together (more on the move): about
+	-- 15 minutes to grow up hanging out, 10 walking around, less with treats
+	task.spawn(function()
+		local last = {}
+		while true do
+			task.wait(10)
+			for _, player in ipairs(Players:GetPlayers()) do
+				local pd = S.City.Data(player)
+				local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+				if pd and pd.Pet and root then
+					local moved = last[player] and (root.Position - last[player]).Magnitude > 20
+					last[player] = root.Position
+					pcall(PetService.Grow, player, if moved then 3 else 2)
+				end
+			end
+		end
+	end)
 end
 
 return PetService
@@ -27999,7 +28474,7 @@ function Conversation.Answer(key, c, player, brain)
 end
 
 return Conversation
-]]></ProtectedString></Properties></Item></Item></Item><Item class="StarterPlayer" referent="RBX53"><Properties><string name="Name">StarterPlayer</string></Properties><Item class="StarterPlayerScripts" referent="RBX54"><Properties><string name="Name">StarterPlayerScripts</string></Properties><Item class="LocalScript" referent="RBX67"><Properties><string name="Name">CityClient</string><ProtectedString name="Source"><![CDATA[-- CityClient (LocalScript) — StarterPlayer.StarterPlayerScripts.CityClient
+]]></ProtectedString></Properties></Item></Item></Item><Item class="StarterPlayer" referent="RBX53"><Properties><string name="Name">StarterPlayer</string></Properties><Item class="StarterPlayerScripts" referent="RBX54"><Properties><string name="Name">StarterPlayerScripts</string></Properties><Item class="LocalScript" referent="RBX68"><Properties><string name="Name">CityClient</string><ProtectedString name="Source"><![CDATA[-- CityClient (LocalScript) — StarterPlayer.StarterPlayerScripts.CityClient
 -- AI City on your screen. Starts the HUD, the windows, the world effects and
 -- the citizens' body language, and routes everything the server sends.
 --
@@ -28029,6 +28504,7 @@ local Traffic = require(script:WaitForChild("Traffic"))
 local Rides = require(script:WaitForChild("Rides"))
 local Pets = require(script:WaitForChild("Pets"))
 local Drive = require(script:WaitForChild("Drive"))
+local Ambient = require(script:WaitForChild("Ambient"))
 local Poses = require(Shared:WaitForChild("Poses"))
 local C = UI.C
 
@@ -28056,6 +28532,7 @@ Traffic.Start()
 Rides.Start(ctx)
 Pets.Start()
 Drive.Start(ctx)
+Ambient.Start()
 
 -- the citizens' poses, props and faces, every frame (after animations)
 local step = RunService.PreSimulation or RunService.Stepped
@@ -33793,7 +34270,7 @@ local function build(kind)
 		if solid then
 			p.CanCollide = true
 		end
-		table.insert(parts, { Part = p, Offset = offset })
+		table.insert(parts, { Part = p, Offset = offset, Role = name, Front = offset.Position.Z < 0, Side = if offset.Position.X < 0 then -1 else 1 })
 		return p
 	end
 	local glass = Color3.fromRGB(40, 50, 60)
@@ -33805,8 +34282,12 @@ local function build(kind)
 		for _, sx in ipairs({ -1, 1 }) do
 			add("Windows", Vector3.new(0.1, 2.2, 22), CFrame.new(sx * 3.52, 6, 1), glass, Enum.Material.Glass)
 			for _, sz in ipairs({ -1, 1 }) do
-				add("Wheel", Vector3.new(1, 3, 3), CFrame.new(sx * 3.2, 1.5, sz * 9) * CFrame.Angles(0, 0, math.rad(90)), Color3.fromRGB(22, 22, 25), Enum.Material.Rubber, Enum.PartType.Cylinder)
+				add("Wheel", Vector3.new(1, 3, 3), CFrame.new(sx * 3.2, 1.5, sz * 9), Color3.fromRGB(22, 22, 25), Enum.Material.Rubber, Enum.PartType.Cylinder)
+				add("Hubcap", Vector3.new(1.05, 1.4, 1.4), CFrame.new(sx * 3.2, 1.5, sz * 9), Color3.fromRGB(200, 200, 206), Enum.Material.Metal, Enum.PartType.Cylinder)
 			end
+			add("Taillight", Vector3.new(1.2, 0.8, 0.2), CFrame.new(sx * 2.6, 2.6, 13.05), Color3.fromRGB(120, 20, 20), Enum.Material.Neon)
+			add("Blinker", Vector3.new(0.5, 0.5, 0.2), CFrame.new(sx * 3.3, 2.6, -13.06), Color3.fromRGB(120, 80, 20), Enum.Material.Neon)
+			add("Blinker", Vector3.new(0.5, 0.5, 0.2), CFrame.new(sx * 3.3, 3.6, 13.06), Color3.fromRGB(120, 80, 20), Enum.Material.Neon)
 			table.insert(lights, add("Headlight", Vector3.new(1.4, 0.7, 0.2), CFrame.new(sx * 2.4, 2.6, -13.05), Color3.fromRGB(255, 250, 220), Enum.Material.Neon))
 		end
 		add("Windshield", Vector3.new(6.4, 3, 0.2), CFrame.new(0, 5.8, -13.05), glass, Enum.Material.Glass)
@@ -33825,10 +34306,15 @@ local function build(kind)
 		for _, sx in ipairs({ -1, 1 }) do
 			add("SideWindow", Vector3.new(0.2, 1.5, 4.6), CFrame.new(sx * 2.72, 2.3 + tall, cz), glass, Enum.Material.Glass)
 			for _, sz in ipairs({ -1, 1 }) do
-				add("Wheel", Vector3.new(1, 2.4, 2.4), CFrame.new(sx * 2.8, 1.2, sz * (long / 2 - 2.2)) * CFrame.Angles(0, 0, math.rad(90)), Color3.fromRGB(22, 22, 25), Enum.Material.Rubber, Enum.PartType.Cylinder)
+				add("Wheel", Vector3.new(1, 2.4, 2.4), CFrame.new(sx * 2.8, 1.2, sz * (long / 2 - 2.2)), Color3.fromRGB(22, 22, 25), Enum.Material.Rubber, Enum.PartType.Cylinder)
+				-- a hubcap with a spoke on it, so you can see the wheels turn
+				add("Hubcap", Vector3.new(1.05, 1.2, 1.2), CFrame.new(sx * 2.8, 1.2, sz * (long / 2 - 2.2)), Color3.fromRGB(200, 200, 206), Enum.Material.Metal, Enum.PartType.Cylinder)
+				add("Spoke", Vector3.new(1.1, 1.1, 0.25), CFrame.new(sx * 2.8, 1.2, sz * (long / 2 - 2.2)), Color3.fromRGB(90, 90, 96), Enum.Material.Metal)
 			end
 			table.insert(lights, add("Headlight", Vector3.new(1.2, 0.6, 0.2), CFrame.new(sx * 2, 1.9 + tall / 2, -long / 2 - 0.05), Color3.fromRGB(255, 250, 220), Enum.Material.Neon))
-			add("Taillight", Vector3.new(1.2, 0.5, 0.2), CFrame.new(sx * 2, 1.9 + tall / 2, long / 2 + 0.05), Color3.fromRGB(200, 30, 30), Enum.Material.Neon)
+			add("Taillight", Vector3.new(1.2, 0.5, 0.2), CFrame.new(sx * 2, 1.9 + tall / 2, long / 2 + 0.05), Color3.fromRGB(120, 20, 20), Enum.Material.Neon)
+			add("Blinker", Vector3.new(0.45, 0.45, 0.2), CFrame.new(sx * 2.8, 1.9 + tall / 2, -long / 2 - 0.06), Color3.fromRGB(120, 80, 20), Enum.Material.Neon)
+			add("Blinker", Vector3.new(0.45, 0.45, 0.2), CFrame.new(sx * 2.8, 1.9 + tall / 2, long / 2 + 0.06), Color3.fromRGB(120, 80, 20), Enum.Material.Neon)
 		end
 	end
 	local beam = Instance.new("SpotLight")
@@ -33897,12 +34383,46 @@ local function nextDir(car)
 	return options[rng:NextInteger(1, #options)]
 end
 
+local WHEEL = { Wheel = true, Hubcap = true, Spoke = true }
 local function place(car, cf)
 	car.CF = cf
+	local spin = car.Spin or 0
+	local steer = car.Steer or 0
 	for _, p in ipairs(car.Parts) do
-		p.Part.CFrame = cf * p.Offset
+		if WHEEL[p.Role] then
+			-- wheels turn about the axle; the front ones steer into turns
+			local off = p.Offset
+			if p.Front then
+				off = off * CFrame.Angles(0, steer, 0)
+			end
+			p.Part.CFrame = cf * off * CFrame.Angles(spin, 0, 0)
+		else
+			p.Part.CFrame = cf * p.Offset
+		end
 	end
 end
+
+-- brake lights brighten when slowing; blinkers flash before a turn
+local TAIL_ON, TAIL_OFF = Color3.fromRGB(255, 40, 40), Color3.fromRGB(120, 20, 20)
+local BLINK_ON, BLINK_OFF = Color3.fromRGB(255, 180, 40), Color3.fromRGB(120, 80, 20)
+local function lights(car, braking, blink)
+	local t = os.clock()
+	local blinkOn = blink ~= 0 and (t * 2.2) % 1 < 0.5
+	for _, p in ipairs(car.Parts) do
+		if p.Role == "Taillight" then
+			local c = if braking then TAIL_ON else TAIL_OFF
+			if p.Part.Color ~= c then
+				p.Part.Color = c
+			end
+		elseif p.Role == "Blinker" then
+			local c = if blinkOn and p.Side == blink then BLINK_ON else BLINK_OFF
+			if p.Part.Color ~= c then
+				p.Part.Color = c
+			end
+		end
+	end
+end
+Traffic.Lights = lights
 
 -- a car on the segment toward intersection (A, B), heading Dir
 local function spawnCar(kind, a, b, dir, s)
@@ -34036,15 +34556,31 @@ local function drive(car, dt, camPos, night)
 			end
 		end
 	end
+	-- decide the next turn early, so the blinker can go on
+	if car.Phase == "road" and not car.Planned and car.Len - car.S < 40 then
+		car.Planned = nextDir(car)
+	end
 	-- smooth acceleration and braking
 	local accel = if want > car.Speed then 7 else 16
+	local before = car.Speed
 	car.Speed += math.clamp(want - car.Speed, -accel * dt, accel * dt)
 	local step = car.Speed * dt
+	car.Braking = car.Speed < before - 0.01 or (car.Speed < 0.3 and want < 0.3)
+	car.Spin = ((car.Spin or 0) - step / (if car.Kind == "bus" then 1.5 else 1.2)) % (math.pi * 2)
+	local turning = car.Planned or car.Next
+	local blink = 0
+	if turning then
+		local r = right(car.Dir)
+		local dot = turning:Dot(r)
+		blink = if dot > 0.5 then 1 elseif dot < -0.5 then -1 else 0
+	end
+	car.Steer = if car.Phase == "turn" then -blink * 0.45 else 0
 	if car.Phase == "road" then
 		car.S += step
 		if car.S >= car.Len then
 			-- into the intersection: an arc to the next road
-			local nd = nextDir(car)
+			local nd = car.Planned or nextDir(car)
+			car.Planned = nil
 			car.Next = nd
 			car.Phase = "turn"
 			car.U = 0
@@ -34078,6 +34614,7 @@ local function drive(car, dt, camPos, night)
 			car.To = entry(na, nb, nd)
 			car.Len = (car.To - car.From).Magnitude
 			car.S = 0
+			car.Next = nil
 			car.Phase = "road"
 			place(car, CFrame.lookAt(car.From, car.From + nd))
 		else
@@ -34090,10 +34627,12 @@ local function drive(car, dt, camPos, night)
 			place(car, CFrame.lookAt(p, p + d.Unit))
 		end
 	end
-	-- the wheels turn, the headlights come on at night
+	-- the headlights come on at night; brake lights and blinkers
 	if car.Beam.Enabled ~= night then
 		car.Beam.Enabled = night
 	end
+	lights(car, car.Braking, blink)
+	car.Blink = blink
 end
 
 -- keep the right number of cars around the camera
@@ -34416,6 +34955,10 @@ return Rides
 -- stop, and wears a name tag. The parrot flies at its owner's shoulder, and
 -- the golden pup sparkles. Citizens walking their dogs get one too, and the
 -- pens at the adoption stand have pets waiting for a home.
+--
+-- Pets grow up (see PetService): a baby is small with a big head and short
+-- legs, and fills out as it grows toward its own adult size. A treat sends
+-- little hearts up.
 
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
@@ -34459,13 +35002,16 @@ local function part(m, parts, name, size, offset, color, shape, material)
 	return p
 end
 
-local function build(kind, name)
+-- size: how big it is right now (its adult size times how grown up it is);
+-- baby: 1 for a newborn, 0 when grown (big head, short legs)
+local function build(kind, name, size, baby, stage)
 	local k = KINDS[kind] or KINDS.Dog
-	local s = k.Scale
+	size, baby = size or 1, baby or 0
+	local s = k.Scale * size
 	local m = Instance.new("Model")
 	m.Name = "Pet_" .. kind
 	local parts = {}
-	local legH = if k.Round then 0.35 * s else 1 * s
+	local legH = (if k.Round then 0.35 * s else 1 * s) * (1 - 0.3 * baby)
 	local body = if k.Round then Vector3.new(1.3, 1.2, 1.5) * s else Vector3.new(1.2, 1, 2.2) * s
 	local by = legH + body.Y / 2
 	local material = if k.Shiny then Enum.Material.Metal else Enum.Material.SmoothPlastic
@@ -34474,7 +35020,7 @@ local function build(kind, name)
 	if k.Round then
 		headY, headZ = by + body.Y * 0.45, -body.Z * 0.35
 	end
-	local hs = (if k.Round then 0.9 else 1) * s
+	local hs = (if k.Round then 0.9 else 1) * s * (1 + 0.45 * baby)
 	part(m, parts, "Head", Vector3.one * hs, CFrame.new(0, headY, headZ), k.Body, if k.Round then Enum.PartType.Ball else nil, material)
 	if k.Beak then
 		part(m, parts, "Beak", Vector3.new(0.35, 0.25, 0.5) * s, CFrame.new(0, headY - 0.05 * s, headZ - hs * 0.55), rgb(250, 150, 40))
@@ -34535,7 +35081,7 @@ local function build(kind, name)
 		local label = Instance.new("TextLabel")
 		label.BackgroundTransparency = 1
 		label.Size = UDim2.fromScale(1, 1)
-		label.Text = "🐾 " .. name
+		label.Text = "🐾 " .. name .. (if stage == "Baby" then " 🍼" elseif stage == "Young" then " 🌱" else "")
 		label.TextColor3 = Color3.new(1, 1, 1)
 		label.TextStrokeTransparency = 0.5
 		label.Font = Enum.Font.GothamBold
@@ -34545,12 +35091,12 @@ local function build(kind, name)
 		gui.Parent = m
 	end
 	m.Parent = folder
-	return { Model = m, Parts = parts, Kind = kind, Spec = k, Name = name, Walk = 0 }
+	return { Model = m, Parts = parts, Kind = kind, Spec = k, Name = name, Walk = 0, Size = size, Stage = stage, S = s }
 end
 
 local function place(pet, cf, t, moving, sitting)
 	local k = pet.Spec
-	local s = k.Scale
+	local s = pet.S or k.Scale
 	local wag = math.sin(t * (if sitting then 9 else 6)) * (if sitting then 0.5 else 0.25)
 	pet.Walk += if moving then 0.2 else 0
 	local swing = if moving then math.sin(t * 12) * 0.6 else 0
@@ -34615,6 +35161,31 @@ local function follow(pet, root, dt, t, ownerScale)
 	pet.Moving = moving
 end
 
+function Pets.Hearts(pos)
+	for k = 1, 4 do
+		local heart = Instance.new("Part")
+		heart.Name = "PetHeart"
+		heart.Shape = Enum.PartType.Ball
+		heart.Size = Vector3.one * 0.35
+		heart.Color = rgb(255, 90, 140)
+		heart.Material = Enum.Material.Neon
+		heart.Anchored, heart.CanCollide, heart.CanQuery, heart.CanTouch = true, false, false, false
+		heart.CFrame = CFrame.new(pos)
+		heart.Parent = folder
+		task.spawn(function()
+			for i = 1, 20 do
+				task.wait(0.05)
+				if not heart.Parent then
+					return
+				end
+				heart.CFrame = CFrame.new(pos + Vector3.new(math.sin(i * 0.4 + k * 1.7) * 0.5, i * 0.12, math.cos(k * 2.1) * 0.4))
+				heart.Transparency = i / 20
+			end
+			heart:Destroy()
+		end)
+	end
+end
+
 local function drop(owner)
 	local pet = pets[owner]
 	if pet then
@@ -34631,25 +35202,37 @@ function Pets.Step(dt)
 	local camPos = camera.CFrame.Position
 	local t = os.clock()
 	local seen = {}
-	local function want(owner, kind, name, root, scale)
+	local function want(owner, kind, name, root, scale, growth, adult, stage, treat)
 		if not kind or not root or (root.Position - camPos).Magnitude > RANGE then
 			return
 		end
 		seen[owner] = true
+		-- how big right now: a newborn is 45% of its adult size
+		local g = growth or 1
+		local size = math.floor((adult or 1) * (0.45 + 0.55 * g) * 20 + 0.5) / 20
+		local baby = math.floor((1 - g) * 4 + 0.5) / 4
 		local pet = pets[owner]
-		if pet and (pet.Kind ~= kind or pet.Name ~= name) then
+		if pet and (pet.Kind ~= kind or pet.Name ~= name or pet.Size ~= size or pet.Stage ~= stage) then
+			local pos, look = pet.Pos, pet.Look
 			drop(owner)
-			pet = nil
+			pet = build(kind, name, size, baby, stage)
+			pet.Pos, pet.Look = pos, look
+			pets[owner] = pet
 		end
 		if not pet then
-			pet = build(kind, name)
+			pet = build(kind, name, size, baby, stage)
 			pets[owner] = pet
 		end
 		follow(pet, root, dt, t, scale)
+		-- a treat: little hearts float up
+		if treat and treat ~= pet.Treat then
+			pet.Treat = treat
+			Pets.Hearts(pet.Parts[2].Part.Position)
+		end
 	end
 	for _, p in ipairs(Players:GetPlayers()) do
 		local root = p.Character and p.Character:FindFirstChild("HumanoidRootPart")
-		want(p, p:GetAttribute("Pet"), p:GetAttribute("PetName"), root, 1)
+		want(p, p:GetAttribute("Pet"), p:GetAttribute("PetName"), root, 1, p:GetAttribute("PetGrowth"), p:GetAttribute("PetSize"), p:GetAttribute("PetStage"), p:GetAttribute("PetTreat"))
 	end
 	for _, m in ipairs(CollectionService:GetTagged("Citizen")) do
 		local kind = m:GetAttribute("Pet")
@@ -34755,6 +35338,47 @@ function Drive.Step(dt, driverSeat, chassis, car)
 	return speed
 end
 
+-- every car in view: the wheels roll with the car, the front ones steer, and
+-- the brake lights come on when it slows (players' cars, on every screen)
+local wheelState = {}
+function Drive.Animate(dt, camPos)
+	for _, car in ipairs(workspace:GetChildren()) do
+		if car:GetAttribute("CityCar") then
+			local chassis = car.PrimaryPart or car:FindFirstChild("Chassis")
+			if chassis and (chassis.Position - camPos).Magnitude < 260 then
+				local st = wheelState[car]
+				if not st then
+					st = { Spin = 0, Speed = 0, Steer = 0 }
+					wheelState[car] = st
+				end
+				local v = chassis.AssemblyLinearVelocity or Vector3.zero
+				local look = chassis.CFrame.LookVector
+				local speed = v:Dot(look)
+				local w = chassis.AssemblyAngularVelocity or Vector3.zero
+				st.Spin = (st.Spin - speed * dt / 1.2) % (math.pi * 2)
+				st.Steer += (math.clamp(-w.Y * 0.35, -0.5, 0.5) - st.Steer) * math.min(1, dt * 8)
+				local braking = math.abs(speed) < math.abs(st.Speed) - 0.05 or (math.abs(speed) < 0.5)
+				st.Speed = speed
+				for _, d in ipairs(car:GetDescendants()) do
+					if d:IsA("Motor6D") and d.Name == "WheelMotor" then
+						d.Transform = (if d:GetAttribute("Front") then CFrame.Angles(0, st.Steer, 0) else CFrame.new()) * CFrame.Angles(st.Spin, 0, 0)
+					elseif d.Name == "Taillight" and d:IsA("BasePart") then
+						local c = if braking then Color3.fromRGB(255, 40, 40) else Color3.fromRGB(130, 20, 20)
+						if d.Color ~= c then
+							d.Color = c
+						end
+					end
+				end
+			end
+		end
+	end
+	for car in pairs(wheelState) do
+		if not car.Parent then
+			wheelState[car] = nil
+		end
+	end
+end
+
 local function mine(s)
 	local car = s and s.Parent
 	return s and s:IsA("VehicleSeat") and car and car:GetAttribute("CityCar") and car:GetAttribute("Owner") == player.UserId
@@ -34835,6 +35459,14 @@ function Drive.Start(context)
 			Drive.Call()
 		end
 	end)
+	local step = RunService.PreSimulation or RunService.Stepped
+	step:Connect(function(a, b)
+		local dt = if type(b) == "number" then b else a
+		local camera = workspace.CurrentCamera
+		if camera then
+			pcall(Drive.Animate, math.min(dt or 0, 0.1), camera.CFrame.Position)
+		end
+	end)
 	RunService.Heartbeat:Connect(function(dt)
 		if not seat or not seat.Parent then
 			return
@@ -34852,4 +35484,390 @@ function Drive.Start(context)
 end
 
 return Drive
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX67"><Properties><string name="Name">Ambient</string><ProtectedString name="Source"><![CDATA[-- Ambient (ModuleScript) — StarterPlayerScripts.CityClient.Ambient
+-- Little moving things that make the city feel alive, all drawn on your own
+-- screen (they cost the server nothing):
+--
+--   🐦 Pigeons on the plaza strut and peck, and burst into the air when
+--      someone walks up, circling before they land again.
+--   🕊️ Seagulls wheel over Sunset Beach, flapping and gliding.
+--   ⛵ Sailboats drift along the horizon, rocking on the swell.
+--   🎈 The inflatable tube man at AutoLand flails in the wind.
+--   🚩 Flags ripple on their poles; buoys and anything tagged "Bob" bob on the
+--      water.
+
+local CollectionService = game:GetService("CollectionService")
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+
+local Ambient = {}
+local folder
+local rng = Random.new()
+local pigeons = {} -- [server pigeon part] = { Parts, Pos, Home, State, ... }
+local gulls, boats, tubes, flags, bobbers = {}, {}, {}, {}, {}
+Ambient.Pigeons = pigeons
+Ambient.Gulls = gulls
+Ambient.Boats = boats
+
+local function rgb(r, g, b)
+	return Color3.fromRGB(r, g, b)
+end
+
+local function part(parent, list, name, size, offset, color, shape, material)
+	local p = Instance.new("Part")
+	p.Name = name
+	p.Size = size
+	p.Color = color
+	p.Material = material or Enum.Material.SmoothPlastic
+	p.Anchored, p.CanCollide, p.CanQuery, p.CanTouch, p.CastShadow = true, false, false, false, false
+	if shape then
+		p.Shape = shape
+	end
+	p.Parent = parent
+	table.insert(list, { Part = p, Offset = offset, Name = name })
+	return p
+end
+
+local function place(list, cf, flap)
+	for _, e in ipairs(list) do
+		local off = e.Offset
+		if e.Name == "WingL" then
+			off = off * CFrame.Angles(0, 0, flap)
+		elseif e.Name == "WingR" then
+			off = off * CFrame.Angles(0, 0, -flap)
+		end
+		e.Part.CFrame = cf * off
+	end
+end
+
+-- a bird: a body, a head, a beak, a tail and two wings (they flap)
+local function bird(color, size, wingColor)
+	local m = Instance.new("Model")
+	m.Name = "Bird"
+	local list = {}
+	part(m, list, "Body", Vector3.new(0.5, 0.45, 0.9) * size, CFrame.new(0, 0.35 * size, 0), color, Enum.PartType.Ball)
+	part(m, list, "Head", Vector3.one * 0.34 * size, CFrame.new(0, 0.62 * size, -0.4 * size), color, Enum.PartType.Ball)
+	part(m, list, "Beak", Vector3.new(0.08, 0.08, 0.2) * size, CFrame.new(0, 0.6 * size, -0.62 * size), rgb(230, 170, 60))
+	part(m, list, "Tail", Vector3.new(0.3, 0.06, 0.35) * size, CFrame.new(0, 0.38 * size, 0.5 * size), wingColor)
+	part(m, list, "WingL", Vector3.new(0.7, 0.05, 0.4) * size, CFrame.new(-0.25 * size, 0.45 * size, 0) * CFrame.new(-0.35 * size, 0, 0), wingColor)
+	part(m, list, "WingR", Vector3.new(0.7, 0.05, 0.4) * size, CFrame.new(0.25 * size, 0.45 * size, 0) * CFrame.new(0.35 * size, 0, 0), wingColor)
+	-- the wings hinge at the shoulder: move the offset so the flap turns around it
+	for _, e in ipairs(list) do
+		if e.Name == "WingL" then
+			e.Offset = CFrame.new(-0.25 * size, 0.45 * size, 0)
+			e.Hinge = CFrame.new(-0.35 * size, 0, 0)
+		elseif e.Name == "WingR" then
+			e.Offset = CFrame.new(0.25 * size, 0.45 * size, 0)
+			e.Hinge = CFrame.new(0.35 * size, 0, 0)
+		end
+	end
+	m.Parent = folder
+	return m, list
+end
+
+local function placeBird(list, cf, flap)
+	for _, e in ipairs(list) do
+		if e.Hinge then
+			local sign = if e.Name == "WingL" then 1 else -1
+			e.Part.CFrame = cf * e.Offset * CFrame.Angles(0, 0, sign * flap) * e.Hinge
+		else
+			e.Part.CFrame = cf * e.Offset
+		end
+	end
+end
+
+--------------------------------------------------------------------------------
+-- 🐦 Pigeons
+--------------------------------------------------------------------------------
+local function people()
+	local out = {}
+	for _, p in ipairs(Players:GetPlayers()) do
+		local r = p.Character and p.Character:FindFirstChild("HumanoidRootPart")
+		if r then
+			table.insert(out, r.Position)
+		end
+	end
+	return out
+end
+
+local function stepPigeons(dt, t, camPos, near)
+	for _, src in ipairs(CollectionService:GetTagged("Pigeon")) do
+		local d = (src.Position - camPos).Magnitude
+		local p = pigeons[src]
+		if d < 220 then
+			if not p then
+				src.Transparency = 1 -- (this screen draws a real bird instead)
+				local m, list = bird(if rng:NextNumber() < 0.3 then rgb(170, 170, 176) else rgb(120, 124, 136), 1, rgb(90, 94, 104))
+				p = { Model = m, Parts = list, Home = src.Position - Vector3.new(0, 0.35, 0), State = "walk", Yaw = rng:NextNumber(0, 6.28), Phase = rng:NextNumber(0, 6) }
+				p.Pos = p.Home
+				pigeons[src] = p
+			end
+			-- anyone close? up they go
+			if p.State ~= "fly" then
+				for _, q in ipairs(near) do
+					if (q - p.Pos).Magnitude < 7 then
+						p.State = "fly"
+						p.T0 = t
+						p.Away = Vector3.new(p.Pos.X - q.X, 0, p.Pos.Z - q.Z)
+						p.Away = if p.Away.Magnitude > 0.1 then p.Away.Unit else Vector3.new(1, 0, 0)
+						break
+					end
+				end
+			end
+			local flap = 0
+			if p.State == "fly" then
+				-- up and away in a big loop, then back down home
+				local u = (t - p.T0) / 9
+				if u >= 1 then
+					p.State = "walk"
+					p.Pos = p.Home
+				else
+					local a = u * math.pi * 2
+					local out = p.Away * math.sin(a * 0.5) * 22
+					local side = Vector3.new(-p.Away.Z, 0, p.Away.X) * math.sin(a) * 8
+					local h = math.sin(u * math.pi) * 14
+					local newPos = p.Home + out + side + Vector3.new(0, h, 0)
+					local dir = newPos - p.Pos
+					p.Pos = newPos
+					if dir.Magnitude > 0.01 then
+						p.Yaw = math.atan2(-dir.X, -dir.Z)
+					end
+					flap = math.sin(t * 28) * 0.9
+				end
+			else
+				-- strut about and peck
+				p.Next = p.Next or 0
+				if t > p.Next then
+					p.Next = t + rng:NextNumber(0.8, 2.5)
+					p.Yaw += rng:NextNumber(-1.4, 1.4)
+					p.Walking = rng:NextNumber() < 0.6
+				end
+				if p.Walking then
+					local step = Vector3.new(-math.sin(p.Yaw), 0, -math.cos(p.Yaw)) * dt * 1.2
+					local nextPos = p.Pos + step
+					if (nextPos - p.Home).Magnitude > 4 then
+						p.Yaw += math.pi * 0.6
+					else
+						p.Pos = nextPos
+					end
+				end
+			end
+			local bob = if p.State == "walk" and p.Walking then math.abs(math.sin(t * 9 + p.Phase)) * 0.06 else 0
+			local peck = if p.State == "walk" and not p.Walking and math.sin(t * 3 + p.Phase) > 0.6 then math.rad(40) else 0
+			local cf = CFrame.new(p.Pos + Vector3.new(0, bob, 0)) * CFrame.Angles(0, p.Yaw, 0) * CFrame.Angles(-peck, 0, 0)
+			placeBird(p.Parts, cf, flap)
+		elseif p then
+			p.Model:Destroy()
+			pigeons[src] = nil
+			src.Transparency = 0
+		end
+	end
+end
+
+--------------------------------------------------------------------------------
+-- 🕊️ Seagulls and ⛵ sailboats at the beach
+--------------------------------------------------------------------------------
+local function beachSpot()
+	local info = game:GetService("ReplicatedStorage"):FindFirstChild("CityInfo")
+	local z = info and info:GetAttribute("WaterZ")
+	if not z then
+		return nil
+	end
+	return Vector3.new(info:GetAttribute("BeachX") or -65, 0, z)
+end
+
+local function boat(i)
+	local m = Instance.new("Model")
+	m.Name = "Sailboat"
+	local list = {}
+	local color = ({ rgb(250, 250, 250), rgb(200, 60, 60), rgb(40, 90, 170) })[i % 3 + 1]
+	part(m, list, "Hull", Vector3.new(4, 1.6, 12), CFrame.new(0, 0.3, 0), color)
+	part(m, list, "Deck", Vector3.new(3.4, 0.2, 10), CFrame.new(0, 1.15, 0), rgb(170, 130, 90), nil, Enum.Material.WoodPlanks)
+	part(m, list, "Mast", Vector3.new(0.35, 14, 0.35), CFrame.new(0, 8, -0.5), rgb(230, 230, 230), nil, Enum.Material.Metal)
+	part(m, list, "Sail", Vector3.new(0.1, 11, 6), CFrame.new(0.15, 8.2, 2.4), rgb(250, 248, 240), nil, Enum.Material.Fabric)
+	part(m, list, "Jib", Vector3.new(0.1, 8, 3.4), CFrame.new(0.15, 6.4, -3.4), ({ rgb(255, 120, 80), rgb(80, 170, 250), rgb(250, 210, 60) })[i % 3 + 1], nil, Enum.Material.Fabric)
+	m.Parent = folder
+	return list
+end
+
+local function stepBeach(dt, t, camPos)
+	local spot = beachSpot()
+	if not spot then
+		return
+	end
+	local near = (Vector3.new(camPos.X, 0, camPos.Z) - spot).Magnitude < 700
+	if near and #gulls == 0 then
+		for k = 1, 9 do
+			local m, list = bird(rgb(245, 245, 245), 1.8, rgb(170, 176, 186))
+			table.insert(gulls, { Model = m, Parts = list, R = rng:NextNumber(25, 70), H = rng:NextNumber(18, 34), Speed = rng:NextNumber(0.15, 0.3) * (if k % 2 == 0 then 1 else -1), Phase = rng:NextNumber(0, 6.28), Center = spot + Vector3.new(rng:NextNumber(-250, 250), 0, rng:NextNumber(-60, 60)) })
+		end
+		for k = 1, 4 do
+			table.insert(boats, { Parts = boat(k), X = rng:NextNumber(-500, 400), Z = spot.Z - rng:NextNumber(120, 380), Speed = rng:NextNumber(2, 5) * (if k % 2 == 0 then 1 else -1), Phase = rng:NextNumber(0, 6) })
+		end
+	elseif not near and #gulls > 0 then
+		for _, g in ipairs(gulls) do
+			g.Model:Destroy()
+		end
+		for _, b in ipairs(boats) do
+			b.Parts[1].Part.Parent:Destroy()
+		end
+		table.clear(gulls)
+		table.clear(boats)
+	end
+	for _, g in ipairs(gulls) do
+		local a = t * g.Speed + g.Phase
+		local pos = g.Center + Vector3.new(math.cos(a) * g.R, g.H + math.sin(t * 0.7 + g.Phase) * 2, math.sin(a) * g.R)
+		local dir = Vector3.new(-math.sin(a), 0, math.cos(a)) * (if g.Speed > 0 then 1 else -1)
+		-- flap now and then, glide in between, banked into the turn
+		local flapping = math.sin(t * 0.8 + g.Phase) > 0.3
+		local flap = if flapping then math.sin(t * 14 + g.Phase) * 0.7 else 0.12
+		local cf = CFrame.lookAt(pos, pos + dir) * CFrame.Angles(0, 0, (if g.Speed > 0 then -1 else 1) * 0.35)
+		placeBird(g.Parts, cf, flap)
+	end
+	for _, b in ipairs(boats) do
+		b.X += b.Speed * dt
+		if b.X > 700 then
+			b.X = -700
+		elseif b.X < -700 then
+			b.X = 700
+		end
+		local pos = Vector3.new(b.X, -1 + math.sin(t * 1.1 + b.Phase) * 0.35, b.Z)
+		local cf = CFrame.new(pos) * CFrame.Angles(0, if b.Speed > 0 then -math.pi / 2 else math.pi / 2, 0) * CFrame.Angles(math.sin(t * 0.9 + b.Phase) * 0.05, 0, math.sin(t * 1.3 + b.Phase) * 0.08)
+		place(b.Parts, cf, 0)
+	end
+end
+
+--------------------------------------------------------------------------------
+-- 🎈 The tube man, 🚩 flags and bobbing things
+--------------------------------------------------------------------------------
+local function stepTubes(t, camPos)
+	for _, base in ipairs(CollectionService:GetTagged("TubeMan")) do
+		local near = (base.Position - camPos).Magnitude < 300
+		local tube = tubes[base]
+		if near and not tube then
+			local m = Instance.new("Model")
+			m.Name = "TubeMan"
+			local list = {}
+			local color = base.Color
+			for k = 1, 7 do
+				part(m, list, "Tube", Vector3.new(1.6 - k * 0.05, 2.2, 1.6 - k * 0.05), CFrame.new(), color, Enum.PartType.Cylinder)
+			end
+			part(m, list, "Face", Vector3.new(1.3, 1.3, 1.3), CFrame.new(), rgb(255, 230, 90), Enum.PartType.Ball)
+			part(m, list, "ArmL", Vector3.new(4, 0.6, 0.6), CFrame.new(), color:Lerp(rgb(255, 255, 255), 0.3))
+			part(m, list, "ArmR", Vector3.new(4, 0.6, 0.6), CFrame.new(), color:Lerp(rgb(255, 255, 255), 0.3))
+			m.Parent = folder
+			tube = { Model = m, Parts = list }
+			tubes[base] = tube
+		elseif not near and tube then
+			tube.Model:Destroy()
+			tubes[base] = nil
+			tube = nil
+		end
+		if tube then
+			-- each segment leans a bit more than the one below: the whole thing waves
+			local cf = CFrame.new(base.Position + Vector3.new(0, base.Size.Y / 2, 0))
+			local k = 0
+			for _, e in ipairs(tube.Parts) do
+				if e.Name == "Tube" then
+					k += 1
+					local lean = math.sin(t * 3.1 - k * 0.7) * 0.18 + math.sin(t * 5.3 - k * 1.1) * 0.08
+					local twist = math.sin(t * 2.3 - k * 0.5) * 0.1
+					cf = cf * CFrame.Angles(twist, 0, lean) * CFrame.new(0, 1.05, 0)
+					e.Part.CFrame = cf * CFrame.new(0, 0, 0) * CFrame.Angles(0, 0, math.rad(90))
+					cf = cf * CFrame.new(0, 1.05, 0)
+					if k == 5 then
+						tube.Shoulders = cf
+					end
+				elseif e.Name == "Face" then
+					e.Part.CFrame = cf * CFrame.new(0, 0.6, 0)
+				elseif e.Name == "ArmL" or e.Name == "ArmR" then
+					local side = if e.Name == "ArmL" then -1 else 1
+					local flail = math.sin(t * 6 + side) * 0.9 + side * 0.3
+					e.Part.CFrame = (tube.Shoulders or cf) * CFrame.Angles(0, 0, flail * side) * CFrame.new(side * 2, 0, 0)
+				end
+			end
+		end
+	end
+end
+
+local function stepFlags(t, camPos)
+	for _, f in ipairs(CollectionService:GetTagged("WavingFlag")) do
+		if (f.Position - camPos).Magnitude < 260 then
+			flags[f] = flags[f] or f.CFrame
+			local base = flags[f]
+			-- a ripple: the flag swings from its pole edge
+			local swing = math.sin(t * 2.4 + base.Position.X * 0.1) * 0.25 + math.sin(t * 4.1) * 0.08
+			local hinge = base * CFrame.new(0, 0, -f.Size.Z / 2)
+			f.CFrame = hinge * CFrame.Angles(0, swing, 0) * CFrame.new(0, 0, f.Size.Z / 2)
+		end
+	end
+	for _, b in ipairs(CollectionService:GetTagged("Bob")) do
+		if (b.Position - camPos).Magnitude < 400 then
+			bobbers[b] = bobbers[b] or b.CFrame
+			local base = bobbers[b]
+			local ph = base.Position.X * 0.37 + base.Position.Z * 0.11
+			b.CFrame = base * CFrame.new(0, math.sin(t * 1.6 + ph) * 0.25, 0) * CFrame.Angles(math.sin(t * 1.2 + ph) * 0.08, 0, math.cos(t * 1.4 + ph) * 0.08)
+		end
+	end
+	for p in pairs(flags) do
+		if not p.Parent then
+			flags[p] = nil
+		end
+	end
+	for p in pairs(bobbers) do
+		if not p.Parent then
+			bobbers[p] = nil
+		end
+	end
+end
+
+-- 🏐 the beach volleyball goes back and forth over the net
+local function stepVolleyball(t, camPos)
+	for _, ball in ipairs(CollectionService:GetTagged("Volleyball")) do
+		local a, b = ball:GetAttribute("SideA"), ball:GetAttribute("SideB")
+		if a and b and (ball.Position - camPos).Magnitude < 250 then
+			local c = (t / 1.3) % 2
+			local from, to = if c < 1 then a else b, if c < 1 then b else a
+			local u = c % 1
+			local p = from:Lerp(to, u) + Vector3.new(0, math.sin(u * math.pi) * 9, 0)
+			ball.CFrame = CFrame.new(p) * CFrame.Angles(t * 5, t * 3, 0)
+		end
+	end
+end
+
+function Ambient.Step(dt)
+	local camera = workspace.CurrentCamera
+	if not camera or not folder then
+		return
+	end
+	local camPos = camera.CFrame.Position
+	local t = os.clock()
+	local near = people()
+	-- (people walking by startle the pigeons; people standing still don't)
+	for _, m in ipairs(CollectionService:GetTagged("Citizen")) do
+		local r = m:FindFirstChild("HumanoidRootPart")
+		if r and not r.Anchored and (r.Position - camPos).Magnitude < 220 and (r.AssemblyLinearVelocity or Vector3.zero).Magnitude > 2 then
+			table.insert(near, r.Position)
+		end
+	end
+	stepPigeons(dt, t, camPos, near)
+	stepBeach(dt, t, camPos)
+	stepTubes(t, camPos)
+	stepFlags(t, camPos)
+	stepVolleyball(t, camPos)
+end
+
+function Ambient.Start()
+	folder = Instance.new("Folder")
+	folder.Name = "LocalAmbient"
+	folder.Parent = workspace
+	RunService.Heartbeat:Connect(function(dt)
+		local ok, err = pcall(Ambient.Step, math.min(dt, 0.1))
+		if not ok then
+			warn("[Ambient] " .. tostring(err))
+		end
+	end)
+end
+
+return Ambient
 ]]></ProtectedString></Properties></Item></Item></Item></Item></roblox>

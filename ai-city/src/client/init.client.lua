@@ -28,6 +28,7 @@ local Traffic = require(script:WaitForChild("Traffic"))
 local Rides = require(script:WaitForChild("Rides"))
 local Pets = require(script:WaitForChild("Pets"))
 local Drive = require(script:WaitForChild("Drive"))
+local Ambient = require(script:WaitForChild("Ambient"))
 local Poses = require(Shared:WaitForChild("Poses"))
 local C = UI.C
 
@@ -55,6 +56,7 @@ Traffic.Start()
 Rides.Start(ctx)
 Pets.Start()
 Drive.Start(ctx)
+Ambient.Start()
 
 -- the citizens' poses, props and faces, every frame (after animations)
 local step = RunService.PreSimulation or RunService.Stepped

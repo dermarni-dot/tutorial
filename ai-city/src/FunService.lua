@@ -323,6 +323,24 @@ function FunService.Start(services)
 	end
 	hookTouch(NS.Obby.Finish, "finish")
 	drawBoard()
+	-- the people who work here: ride operators, vendors, the lifeguard...
+	task.spawn(function()
+		local t0 = os.clock()
+		while not workspace:FindFirstChild("Citizens") and os.clock() - t0 < 30 do
+			task.wait(0.5)
+		end
+		FunService.Staff = {}
+		for _, w in ipairs(NS.Staff or {}) do
+			local ok, brain = pcall(S.Citizens.SpawnExtra, { Name = w.Name, First = w.Name, Job = w.Job, Age = math.random(19, 58), Activity = w.Activity }, CFrame.new(w.Spot.CFrame.Position + Vector3.new(0, 3, 0)))
+			if ok and brain then
+				S.Citizens.Control(brain, true)
+				S.Citizens.PlaceAt(brain, w.Spot, w.Action)
+				brain.Model:SetAttribute("Activity", w.Activity)
+				brain.Model:SetAttribute("Expression", "happy")
+				table.insert(FunService.Staff, brain)
+			end
+		end
+	end)
 	local function show(player)
 		local pd = S.City.Data(player)
 		if pd then

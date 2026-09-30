@@ -102,6 +102,7 @@ Actions.List = {
 	-- the North Shore
 	ride = { Pose = "sit", Seated = true, Label = "🎡 On a ride" },
 	sunbathe = { Pose = "sleep", Lying = true, Label = "🏖️ Sunbathing" },
+	volley = { Pose = "volley", Label = "🏐 Playing beach volleyball" },
 	carry = { Pose = "carry", Label = "👶 Carrying the baby" },
 }
 

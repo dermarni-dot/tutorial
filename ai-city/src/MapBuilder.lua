@@ -701,6 +701,9 @@ function MapBuilder.Build()
 	-- for the traffic on every client (see the client's Traffic module)
 	info:SetAttribute("Road", MapKit.ROAD)
 	info:SetAttribute("Lane", MapKit.LANE)
+	-- where the ocean starts (seagulls and sailboats: see the client's Ambient)
+	info:SetAttribute("WaterZ", NorthShore.WATER_Z)
+	info:SetAttribute("BeachX", -65)
 	local stops = Instance.new("Folder")
 	stops.Name = "BusStops"
 	for k, p in ipairs(map.BusStops or {}) do

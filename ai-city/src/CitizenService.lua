@@ -569,6 +569,7 @@ local function unanchor(brain)
 	brain.Model:SetAttribute("SwingAxis", nil)
 	brain.Model:SetAttribute("Target", nil)
 	brain.Model:SetAttribute("RideSeat", nil)
+	brain.Model:SetAttribute("RideKind", nil)
 end
 
 -- stand up at a spot (used when leaving a seat or bed, so nobody gets stuck in furniture)
@@ -612,6 +613,7 @@ local function placeAt(brain, spot, action)
 	-- a seat on a ride: the rider goes round with it (see the client's Rides)
 	if spot.RideSeat then
 		brain.Model:SetAttribute("RideSeat", spot.RideSeat)
+		brain.Model:SetAttribute("RideKind", spot.RideKind)
 	end
 end
 
