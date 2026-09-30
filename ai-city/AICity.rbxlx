@@ -5,7 +5,7 @@
 -- rest of the game keeps working. Changed values say what they were and why.
 local Config = {}
 
-Config.POPULATION = 90 -- was 60: the city is now 9x9 blocks with 40+ workplaces, so more people keep it lively (lower it if the server struggles)
+Config.POPULATION = 150 -- a big city: more people on the streets and in the houses (lower it if the server struggles)
 Config.SEED = 1776 -- same seed = same citizens every server (lets memories persist)
 Config.DAY_LENGTH = 480 -- real seconds per in-game day (1 in-game hour = 20 seconds)
 Config.WALK_SPEED = 7.5 -- a real walking pace, used whenever a player is close enough to see them
@@ -149,7 +149,7 @@ Config.UNEMPLOYED_CHANCE = 0.12
 Config.RETIRE_AGE = 67
 
 -- Families, kids and growing up (see the Life module)
-Config.MAX_POPULATION = 140 -- no new babies once the city has this many people
+Config.MAX_POPULATION = 220 -- no new babies once the city has this many people
 Config.ADULT_AGE = 18 -- kids finish school and start work (or look for it) at this age
 Config.DAYS_PER_YEAR = 4 -- in-game days per year of age (4 days = 32 real minutes; a newborn grows up in ~10 real hours)
 Config.PREGNANCY_DAYS = 2 -- in-game days from "expecting" to the baby being born
@@ -257,15 +257,15 @@ end
 
 -- Keyframes by hour. Everything between two keyframes is blended.
 local KEYS = {
-	{ Hour = 0, Ambient = rgb(44, 50, 80), Outdoor = rgb(52, 62, 100), Brightness = 0.9, Exposure = -0.05, AtmoColor = rgb(40, 52, 96), AtmoDecay = rgb(22, 26, 60), Density = 0.34, Haze = 1.1, Glare = 0, Tint = rgb(190, 204, 255), Saturation = -0.05, Contrast = 0.14, Bloom = 0.9, Rays = 0, Cloud = rgb(70, 76, 100) },
-	{ Hour = 4.8, Ambient = rgb(48, 52, 84), Outdoor = rgb(58, 64, 104), Brightness = 0.95, Exposure = -0.05, AtmoColor = rgb(60, 66, 116), AtmoDecay = rgb(40, 36, 80), Density = 0.35, Haze = 1.3, Glare = 0, Tint = rgb(198, 206, 255), Saturation = -0.02, Contrast = 0.12, Bloom = 0.8, Rays = 0, Cloud = rgb(90, 90, 120) },
-	{ Hour = 6.2, Ambient = rgb(92, 78, 90), Outdoor = rgb(124, 100, 108), Brightness = 1.3, Exposure = -0.08, AtmoColor = rgb(236, 170, 160), AtmoDecay = rgb(170, 110, 140), Density = 0.32, Haze = 2, Glare = 0.6, Tint = rgb(255, 226, 214), Saturation = 0.12, Contrast = 0.1, Bloom = 0.5, Rays = 0.14, Cloud = rgb(255, 196, 180) },
-	{ Hour = 8, Ambient = rgb(100, 100, 106), Outdoor = rgb(118, 120, 128), Brightness = 1.9, Exposure = -0.18, AtmoColor = rgb(190, 212, 240), AtmoDecay = rgb(96, 136, 200), Density = 0.26, Haze = 1.1, Glare = 0.2, Tint = rgb(255, 248, 240), Saturation = 0.12, Contrast = 0.14, Bloom = 0.25, Rays = 0.06, Cloud = rgb(250, 250, 255) },
-	{ Hour = 12.5, Ambient = rgb(104, 106, 112), Outdoor = rgb(122, 126, 136), Brightness = 2.2, Exposure = -0.25, AtmoColor = rgb(180, 210, 245), AtmoDecay = rgb(84, 128, 200), Density = 0.24, Haze = 0.8, Glare = 0.1, Tint = rgb(255, 252, 248), Saturation = 0.12, Contrast = 0.15, Bloom = 0.2, Rays = 0.04, Cloud = rgb(255, 255, 255) },
-	{ Hour = 16.5, Ambient = rgb(108, 100, 94), Outdoor = rgb(126, 118, 110), Brightness = 2, Exposure = -0.2, AtmoColor = rgb(230, 204, 176), AtmoDecay = rgb(150, 132, 150), Density = 0.28, Haze = 1.5, Glare = 0.4, Tint = rgb(255, 240, 220), Saturation = 0.16, Contrast = 0.14, Bloom = 0.3, Rays = 0.1, Cloud = rgb(255, 238, 214) },
-	{ Hour = 18.2, Ambient = rgb(110, 80, 78), Outdoor = rgb(146, 96, 86), Brightness = 1.5, Exposure = -0.12, AtmoColor = rgb(255, 150, 110), AtmoDecay = rgb(170, 90, 120), Density = 0.32, Haze = 2.4, Glare = 0.9, Tint = rgb(255, 214, 186), Saturation = 0.2, Contrast = 0.12, Bloom = 0.55, Rays = 0.18, Cloud = rgb(255, 160, 120) },
-	{ Hour = 19.4, Ambient = rgb(72, 58, 90), Outdoor = rgb(86, 68, 112), Brightness = 1.05, Exposure = -0.08, AtmoColor = rgb(150, 100, 160), AtmoDecay = rgb(70, 50, 110), Density = 0.34, Haze = 1.8, Glare = 0.2, Tint = rgb(228, 204, 255), Saturation = 0.08, Contrast = 0.14, Bloom = 0.8, Rays = 0.04, Cloud = rgb(170, 120, 170) },
-	{ Hour = 21, Ambient = rgb(46, 52, 84), Outdoor = rgb(54, 64, 104), Brightness = 0.9, Exposure = -0.05, AtmoColor = rgb(44, 56, 100), AtmoDecay = rgb(24, 28, 64), Density = 0.34, Haze = 1.1, Glare = 0, Tint = rgb(194, 206, 255), Saturation = -0.04, Contrast = 0.14, Bloom = 0.9, Rays = 0, Cloud = rgb(80, 84, 110) },
+	{ Hour = 0, Ambient = rgb(44, 50, 80), Outdoor = rgb(52, 62, 100), Brightness = 0.9, Exposure = -0.05, AtmoColor = rgb(40, 52, 96), AtmoDecay = rgb(22, 26, 60), Density = 0.34, Haze = 1.1, Glare = 0, Tint = rgb(190, 204, 255), Saturation = -0.01, Contrast = 0.2, Bloom = 0.9, Rays = 0, Cloud = rgb(70, 76, 100) },
+	{ Hour = 4.8, Ambient = rgb(48, 52, 84), Outdoor = rgb(58, 64, 104), Brightness = 0.95, Exposure = -0.05, AtmoColor = rgb(60, 66, 116), AtmoDecay = rgb(40, 36, 80), Density = 0.35, Haze = 1.3, Glare = 0, Tint = rgb(198, 206, 255), Saturation = 0.02, Contrast = 0.18, Bloom = 0.8, Rays = 0, Cloud = rgb(90, 90, 120) },
+	{ Hour = 6.2, Ambient = rgb(64, 54, 62), Outdoor = rgb(89, 72, 77), Brightness = 1.04, Exposure = -0.2, AtmoColor = rgb(236, 170, 160), AtmoDecay = rgb(170, 110, 140), Density = 0.27, Haze = 1.1, Glare = 0.36, Tint = rgb(255, 226, 214), Saturation = 0.16, Contrast = 0.16, Bloom = 0.5, Rays = 0.14, Cloud = rgb(255, 196, 180) },
+	{ Hour = 8, Ambient = rgb(70, 70, 74), Outdoor = rgb(84, 86, 92), Brightness = 1.52, Exposure = -0.3, AtmoColor = rgb(190, 212, 240), AtmoDecay = rgb(96, 136, 200), Density = 0.22, Haze = 0.61, Glare = 0.12, Tint = rgb(255, 248, 240), Saturation = 0.16, Contrast = 0.2, Bloom = 0.25, Rays = 0.06, Cloud = rgb(250, 250, 255) },
+	{ Hour = 12.5, Ambient = rgb(72, 74, 78), Outdoor = rgb(87, 90, 97), Brightness = 1.76, Exposure = -0.37, AtmoColor = rgb(180, 210, 245), AtmoDecay = rgb(84, 128, 200), Density = 0.2, Haze = 0.44, Glare = 0.06, Tint = rgb(255, 252, 248), Saturation = 0.16, Contrast = 0.21, Bloom = 0.2, Rays = 0.04, Cloud = rgb(255, 255, 255) },
+	{ Hour = 16.5, Ambient = rgb(75, 70, 65), Outdoor = rgb(90, 84, 79), Brightness = 1.6, Exposure = -0.32, AtmoColor = rgb(230, 204, 176), AtmoDecay = rgb(150, 132, 150), Density = 0.24, Haze = 0.83, Glare = 0.24, Tint = rgb(255, 240, 220), Saturation = 0.2, Contrast = 0.2, Bloom = 0.3, Rays = 0.1, Cloud = rgb(255, 238, 214) },
+	{ Hour = 18.2, Ambient = rgb(77, 56, 54), Outdoor = rgb(105, 69, 61), Brightness = 1.2, Exposure = -0.24, AtmoColor = rgb(255, 150, 110), AtmoDecay = rgb(170, 90, 120), Density = 0.27, Haze = 1.32, Glare = 0.54, Tint = rgb(255, 214, 186), Saturation = 0.24, Contrast = 0.18, Bloom = 0.55, Rays = 0.18, Cloud = rgb(255, 160, 120) },
+	{ Hour = 19.4, Ambient = rgb(72, 58, 90), Outdoor = rgb(86, 68, 112), Brightness = 1.05, Exposure = -0.08, AtmoColor = rgb(150, 100, 160), AtmoDecay = rgb(70, 50, 110), Density = 0.34, Haze = 1.8, Glare = 0.2, Tint = rgb(228, 204, 255), Saturation = 0.12, Contrast = 0.2, Bloom = 0.8, Rays = 0.04, Cloud = rgb(170, 120, 170) },
+	{ Hour = 21, Ambient = rgb(46, 52, 84), Outdoor = rgb(54, 64, 104), Brightness = 0.9, Exposure = -0.05, AtmoColor = rgb(44, 56, 100), AtmoDecay = rgb(24, 28, 64), Density = 0.34, Haze = 1.1, Glare = 0, Tint = rgb(194, 206, 255), Saturation = 0, Contrast = 0.2, Bloom = 0.9, Rays = 0, Cloud = rgb(80, 84, 110) },
 }
 Atmosphere.Keys = KEYS
 
@@ -336,8 +336,8 @@ function Atmosphere.Setup(lighting)
 	depth.FocusDistance = 80
 	depth.InFocusRadius = 140
 	depth.NearIntensity = 0
-	lighting.EnvironmentDiffuseScale = 1
-	lighting.EnvironmentSpecularScale = 1
+	lighting.EnvironmentDiffuseScale = 0.45 -- (full sky light flattens and washes everything out)
+	lighting.EnvironmentSpecularScale = 0.6
 	lighting.GlobalShadows = true
 	lighting.ShadowSoftness = 0.12 -- crisp, realistic sun shadows
 	lighting.GeographicLatitude = 32
@@ -504,6 +504,10 @@ Actions.List = {
 	-- kids
 	swing = { Pose = "swingsit", Seated = true, Swing = true, Label = "🛝 On the swings" },
 	play = { Pose = "cheer", Label = "🛝 Playing" },
+	-- pickup basketball (SportsService): the arms play, the legs keep running
+	dribble = { Pose = "dribble", Moving = true, Label = "🏀 Playing ball" },
+	defend = { Pose = "defend", Moving = true, Label = "🏀 Playing ball" },
+	jumpshot = { Pose = "jumpshot", Label = "🏀 Playing ball" },
 	hoops = { Pose = "shoot", Props = { "Basketball" }, Label = "🏀 Shooting hoops" },
 	soccer = { Pose = "none", Label = "⚽ Playing soccer" },
 	crawl = { Pose = "crawl", Label = "🧸 Playing" },
@@ -1527,6 +1531,59 @@ L.draw = function(t, ph, k)
 	return { RS = A(-40 + e * 80, 0, -20 + e * 10), RE = A(20 + e * 70), RW = A(-40 * (1 - e), 0, 0), Waist = A(0, -12 * (1 - e), 0), Neck = A(-10 * (1 - e), -20 * (1 - e), 0) }, false
 end
 
+-- pickup basketball: dribbling at the side, a low defensive stance with the
+-- arms out, and a jump shot (the ball leaves the fingertips at the top)
+L.dribble = function(t, ph)
+	local d = abs(osc(t, 7, ph))
+	return { RS = A(30 + d * 18, 0, -18), RE = A(30 + d * 40), RW = A(-20), LS = A(30, 0, 22), LE = A(40), Waist = A(-14, 10, 0), Neck = A(10, -8, 0) }, false
+end
+L.defend = function(t, ph)
+	local sway = osc(t, 3, ph)
+	return { LS = A(40, 0, 60 + sway * 8), RS = A(40, 0, -60 + sway * 8), LE = A(25), RE = A(25), Waist = A(-18), Neck = A(12), LH = A(35, 0, -10), RH = A(35, 0, 10), LK = A(-45), RK = A(-45), Root = CFrame.new(0, -0.6, 0) }, true
+end
+L.jumpshot = function(t, ph)
+	local c = (t * 1.2 + ph) % 1
+	local up = sin(math.min(1, c * 1.6) * math.pi)
+	return { RS = A(160, 0, -6), RE = A(30 - up * 25), RW = A(-40 + up * 50), LS = A(140, 0, 20), LE = A(50), Neck = A(20), LK = A(-20 + up * 18), RK = A(-20 + up * 18), Root = CFrame.new(0, up * 1.4, 0) }, true
+end
+
+-- guns: held low and ready, raised to aim (two hands), and the kick of a shot
+-- (the barrel runs along the fingers, so a straight wrist points it forward)
+L.holdPistol = function(t, ph)
+	return { RS = A(35, 0, -8), RE = A(35), RW = A(-20), LS = A(8, 0, 6), LE = A(15), Neck = A(-4) }, false
+end
+L.aimPistol = function(t, ph)
+	local sway = osc(t, 1.1, ph) * 1.2
+	return { RS = A(88 + sway, 0, -2), RE = A(0), RW = A(0), LS = A(84 + sway, 0, 32), LE = A(38), LW = A(0, 0, -20), Waist = A(0, -8, 0), Neck = A(2, 8, 0), LH = A(10), RH = A(-8), LK = A(-10), RK = A(-6) }, false
+end
+L.holdShotgun = function(t, ph)
+	return { RS = A(40, 0, -10), RE = A(50), RW = A(-10), LS = A(55, 0, 30), LE = A(55), Waist = A(0, -10, 0), Neck = A(-4, 6, 0) }, false
+end
+L.aimShotgun = function(t, ph)
+	local sway = osc(t, 1, ph)
+	return { RS = A(82 + sway, 0, -12), RE = A(22), RW = A(0), LS = A(88 + sway, 0, 28), LE = A(18), Waist = A(0, -18, 0), Neck = A(0, 16, 0), LH = A(16), RH = A(-12), LK = A(-14), RK = A(-8) }, false
+end
+L.gunshot = function(t, ph, k)
+	local kick = sin(math.min(1, k * 2) * math.pi) * 14
+	local pose = L.aimPistol(t, ph)
+	pose.RS = A(88 + kick, 0, -2)
+	pose.LS = A(84 + kick, 0, 32)
+	pose.RE = A(kick * 0.6)
+	pose.Neck = A(2 + kick * 0.3, 8, 0)
+	return pose, false
+end
+L.shotgunshoot = function(t, ph, k)
+	local kick = sin(math.min(1, k * 2.5) * math.pi) * 22
+	local pump = if k > 0.5 then sin((k - 0.5) / 0.5 * math.pi) else 0
+	local pose = L.aimShotgun(t, ph)
+	pose.RS = A(82 + kick, 0, -12)
+	pose.LS = A(88 + kick * 0.6, 0, 28)
+	pose.LE = A(18 + pump * 40)
+	pose.Waist = A(kick * 0.3, -18, 0)
+	pose.Root = CFrame.new(0, 0, kick * 0.01)
+	return pose, false
+end
+
 -- won the fight: a fist pump
 L.victory = function(t, ph, k)
 	local pump = abs(osc(t, 9, ph))
@@ -1539,15 +1596,19 @@ end
 -- the punch combo: every swing is the next move in the list (the same on every client)
 local COMBO = { "jab", "cross", "hook", "cross", "uppercut" }
 local BRAWL_COMBO = { "jab", "cross", "hook", "uppercut", "cross", "roundhouse" }
-local MOVE_TIME = { jab = 0.3, cross = 0.38, hook = 0.42, uppercut = 0.46, roundhouse = 0.58, chop = 0.45, batswing = 0.5, stab = 0.34, slash = 0.4, slam = 0.55 }
+local MOVE_TIME = { gunshot = 0.25, shotgunshoot = 0.6, jab = 0.3, cross = 0.38, hook = 0.42, uppercut = 0.46, roundhouse = 0.58, chop = 0.45, batswing = 0.5, stab = 0.34, slash = 0.4, slam = 0.55 }
 Poses.Combo = COMBO
 
 -- the move for this swing: weapon, which swing it is, and whether it's a street brawl
-local GUARDS = { Bat = L.guardBat, Hammer = L.guardHammer, Knife = L.guardKnife }
-local HOLDS = { Bat = L.holdBat, Hammer = L.holdHammer, Knife = L.holdKnife }
+local GUARDS = { Bat = L.guardBat, Hammer = L.guardHammer, Knife = L.guardKnife, Pistol = L.aimPistol, Shotgun = L.aimShotgun }
+local HOLDS = { Bat = L.holdBat, Hammer = L.holdHammer, Knife = L.holdKnife, Pistol = L.holdPistol, Shotgun = L.holdShotgun }
 
 local function fightMove(weapon, count, brawl)
-	if weapon == "Bat" then
+	if weapon == "Pistol" then
+		return "gunshot"
+	elseif weapon == "Shotgun" then
+		return "shotgunshoot"
+	elseif weapon == "Bat" then
 		return if count % 2 == 0 then "batswing" else "chop"
 	elseif weapon == "Hammer" then
 		return if count % 3 == 0 then "chop" else "slam"
@@ -2061,7 +2122,7 @@ local function checkoutK(model)
 		return nil
 	end
 	local kind = model:GetAttribute("CheckoutKind") or "shop"
-	local dur = Actions.CheckoutTime[kind] or 8
+	local dur = model:GetAttribute("CheckoutDur") or Actions.CheckoutTime[kind] or 8
 	local k = (workspace:GetServerTimeNow() - start) / dur
 	if k < 0 or k > 1 then
 		return nil
@@ -2466,15 +2527,57 @@ local function update(model, st, t, dt, camPos, myRoot)
 	end
 	-- on the move: the full-body walk (the arms keep carrying if they're busy)
 	local speed = groundSpeed(st, root, dt)
-	if not root.Anchored and speed > 0.8 and not fighting and not coK and (not target or carrying) then
-		local steps = gait(st, model, speed, dt, carrying)
-		if carrying and target then
+	local moving = info and info.Moving and target ~= nil
+	if not root.Anchored and speed > 0.8 and not fighting and not coK and (not target or carrying or moving) then
+		local steps = gait(st, model, speed, dt, carrying or moving)
+		if (carrying or moving) and target then
 			for k, v in pairs(steps) do
 				target[k] = v
 			end
 			full = false
 		else
 			target, full = steps, true
+		end
+	end
+	-- walking hand in hand with a partner (a date): the near arm reaches out
+	-- to them instead of swinging
+	local hand = model:GetAttribute("HoldHand")
+	if hand and target and not fighting then
+		if hand == "R" then
+			target.RS, target.RE = A(6, 0, -20), A(12)
+		else
+			target.LS, target.LE = A(6, 0, 20), A(12)
+		end
+	end
+	-- little hearts floating up (dates, flirting)
+	local heartsAt = model:GetAttribute("Hearts")
+	if heartsAt and heartsAt ~= st.HeartsAt then
+		st.HeartsAt = heartsAt
+		local head = model:FindFirstChild("Head")
+		if head then
+			for k = 1, 3 do
+				local heart = Instance.new("Part")
+				heart.Name = "Heart"
+				heart.Shape = Enum.PartType.Ball
+				heart.Anchored, heart.CanCollide, heart.CanQuery, heart.CanTouch, heart.CastShadow = true, false, false, false, false
+				heart.Material = Enum.Material.Neon
+				heart.Color = Color3.fromRGB(255, 90, 140)
+				heart.Size = Vector3.one * 0.35
+				local start = head.Position + Vector3.new((k - 2) * 0.5, 1.2, 0)
+				heart.CFrame = CFrame.new(start)
+				heart.Parent = workspace
+				task.spawn(function()
+					for i = 1, 20 do
+						task.wait(0.05)
+						if not heart.Parent then
+							return
+						end
+						heart.CFrame = CFrame.new(start + Vector3.new(math.sin(i * 0.5 + k) * 0.2, i * 0.08, 0))
+						heart.Transparency = i / 20
+					end
+					heart:Destroy()
+				end)
+			end
 		end
 	end
 	-- look at the player when they're close (or talking to them)
@@ -2662,7 +2765,13 @@ local function playerUpdate(model, st, t, dt, player)
 	local eating = model:GetAttribute("Eating")
 	local humanoid0 = model:FindFirstChildOfClass("Humanoid")
 	local seatPart = humanoid0 and humanoid0.SeatPart
-	if seatPart and seatPart.Name == "SwingSeat" then
+	if model:GetAttribute("Stunned") then
+		-- tased: stiff and shaking
+		local j = osc(t, 38, st.Phase) * 4
+		target, full = { LS = A(20 + j, 0, 30), RS = A(20 - j, 0, -30), LE = A(60), RE = A(60), Waist = A(-8 + j * 0.5), Neck = A(-10, j * 2, 0), LK = A(-20), RK = A(-20), Root = CFrame.new(0, -0.3, 0) }, true
+	elseif model:GetAttribute("Surrender") then
+		target, full = L.handsup(t, st.Phase)
+	elseif seatPart and seatPart.Name == "SwingSeat" then
 		-- pumping the swing: legs out on the way forward, tucked on the way back
 		target, full = L.swingsit(t, st.Phase)
 	elseif model:GetAttribute("Treadmill") then
@@ -2682,7 +2791,13 @@ local function playerUpdate(model, st, t, dt, player)
 	elseif not target and carry and CARRY[carry] and not holding then
 		target, full = L[CARRY[carry][1]](t, st.Phase)
 	end
-	setProps(st, model, if workInfo then workAction else "", if not workInfo and carry and CARRY[carry] and not holding then carry else nil)
+	-- ordering from a worker (see CitizenService.ServePlayer)
+	local coK, coKind, coStart = checkoutK(model)
+	if coK and not target then
+		target, full = customerPose(t, st.Phase, coK, coKind)
+	end
+	checkoutItems(model, st, coK, coKind, coStart)
+	setProps(st, model, if coK then "checkout" elseif workInfo then workAction else "", if not workInfo and not coK and carry and CARRY[carry] and not holding then carry else nil)
 	if target then
 		-- fighting, working or carrying (see above)
 	elseif holding and now - (st.Draw or -99) < 0.35 then
@@ -2861,8 +2976,20 @@ Weapons.List = {
 		Verb = "stabbed", Down = "stabbed",
 		Desc = "Quick stabs up close. Two hits and they're down. The most serious crime in the city.",
 	},
+	-- guns: aim with the camera (or the mouse) and fire. Walls stop bullets.
+	-- Gunshots are loud: everyone nearby hears them, runs and calls the police.
+	Pistol = {
+		Name = "Pistol", Emoji = "🔫", Damage = 34, Range = 90, Cooldown = 0.32, Knock = 8, Anim = "shoot", Severity = 4, Price = 350,
+		Verb = "shot", Down = "shot down", Ranged = true, Cone = 0.985, Loud = 140,
+		Desc = "Aim and fire from far away. Three hits put someone down. The loudest crime in the city: everyone hears it.",
+	},
+	Shotgun = {
+		Name = "Shotgun", Emoji = "💥", Damage = 75, Range = 38, Cooldown = 1.1, Knock = 40, Anim = "shoot", Severity = 4, Price = 600,
+		Verb = "blasted", Down = "blasted down", Ranged = true, Cone = 0.94, Loud = 170, Heavy = true,
+		Desc = "A wide, heavy blast up close. Slow to fire, one or two hits put anyone down.",
+	},
 }
-Weapons.Order = { "Bat", "Hammer", "Knife" }
+Weapons.Order = { "Bat", "Hammer", "Knife", "Pistol", "Shotgun" }
 
 -- Health by who you're fighting
 Weapons.CITIZEN_HP = 100
@@ -2875,6 +3002,7 @@ Weapons.Animations = {
 	punch = "rbxassetid://522635514", -- tool slash, sped up: a jab
 	swing = "rbxassetid://522635514", -- tool slash: an overhead swing
 	stab = "rbxassetid://522638767", -- tool lunge: a stab
+	shoot = "rbxassetid://522635514", -- (the recoil is posed in Poses)
 }
 
 function Weapons.Get(id)
@@ -3139,6 +3267,10 @@ if Config.RUN_CITIZENS ~= false then
 	services.Fitness = require(Modules:WaitForChild("FitnessService"))
 	services.Food = require(Modules:WaitForChild("FoodService"))
 	services.Jobs = require(Modules:WaitForChild("JobService"))
+	services.Homes = require(Modules:WaitForChild("HomeService"))
+	services.Gangs = require(Modules:WaitForChild("GangService"))
+	services.Love = require(Modules:WaitForChild("RelationshipService"))
+	services.Sports = require(Modules:WaitForChild("SportsService"))
 	services.Dialogue.Start(services)
 	services.Crime.Start(services)
 	services.Players.Start(services)
@@ -3149,9 +3281,13 @@ if Config.RUN_CITIZENS ~= false then
 	services.Fitness.Start(services)
 	services.Food.Start(services)
 	services.Jobs.Start(services)
+	services.Homes.Start(services)
+	services.Gangs.Start(services)
+	services.Love.Start(services)
+	services.Sports.Start(services)
 	task.spawn(services.Citizens.Start, services)
 end
-]]></ProtectedString></Properties></Item><Item class="Folder" referent="RBX41"><Properties><string name="Name">Modules</string></Properties><Item class="ModuleScript" referent="RBX17"><Properties><string name="Name">MapKit</string><ProtectedString name="Source"><![CDATA[-- MapKit (ModuleScript) — ServerScriptService.Modules.MapKit
+]]></ProtectedString></Properties></Item><Item class="Folder" referent="RBX45"><Properties><string name="Name">Modules</string></Properties><Item class="ModuleScript" referent="RBX17"><Properties><string name="Name">MapKit</string><ProtectedString name="Source"><![CDATA[-- MapKit (ModuleScript) — ServerScriptService.Modules.MapKit
 -- Small building blocks shared by the map modules: part helpers, colors, signs,
 -- lights, seats, and a registry of things that change between day and night.
 
@@ -3792,7 +3928,7 @@ function Buildings.shell(parent, spec)
 				glow.Face = Enum.NormalId.Bottom
 				glow.Angle = 120
 				glow.Range = math.min(20, FLOOR_H + 6)
-				glow.Brightness = 0.8
+				glow.Brightness = 0.55 -- (softer: rooms were glaring)
 				glow.Color = MapKit.rgb(255, 232, 200)
 				glow.Shadows = false
 				glow.Parent = panel
@@ -3969,6 +4105,31 @@ function Buildings.house(parent, center, face, style, rng, garageSide, scale)
 	local b = Buildings.shell(parent, spec)
 	local at = b.At
 	local W, D, H = b.W, b.D, b.H
+	-- a real front door (a wooden one on a hinge) instead of sliding glass;
+	-- HomeService opens it for whoever walks up, and locks it
+	for _, d in ipairs(b.Model:GetChildren()) do
+		if d.Name == "GlassDoor" or d.Name == "DoorHandle" then
+			d:Destroy()
+		end
+	end
+	local DW = spec.DoorW
+	local DH = math.min(10, FLOOR_H - 1.5) - 0.6
+	local doorColor = ({ MapKit.rgb(110, 60, 40), MapKit.rgb(40, 60, 90), MapKit.rgb(140, 30, 40), MapKit.rgb(40, 80, 60), MapKit.rgb(240, 236, 226) })[rng:NextInteger(1, 5)]
+	local door = part(b.Model, "FrontDoor", Vector3.new(DW, DH, 0.35), at(0, DH / 2 + 0.3, -D / 2 + 1.2), doorColor, Enum.Material.Wood)
+	deco(b.Model, "DoorPanel", Vector3.new(DW * 0.7, DH * 0.35, 0.05), door.CFrame * CFrame.new(0, DH * 0.2, -0.2), doorColor:Lerp(BLACK, 0.15), Enum.Material.Wood)
+	deco(b.Model, "DoorPanel", Vector3.new(DW * 0.7, DH * 0.35, 0.05), door.CFrame * CFrame.new(0, -DH * 0.22, -0.2), doorColor:Lerp(BLACK, 0.15), Enum.Material.Wood)
+	deco(b.Model, "DoorKnob", Vector3.new(0.3, 0.3, 0.35), door.CFrame * CFrame.new(DW / 2 - 0.6, -0.2, -0.3), MapKit.GOLD, Enum.Material.Metal)
+	-- the panels and knob swing with the door (welded to it)
+	for _, d in ipairs(b.Model:GetChildren()) do
+		if (d.Name == "DoorPanel" or d.Name == "DoorKnob") and (d.Position - door.Position).Magnitude < DH then
+			d.Anchored = false
+			local w = Instance.new("WeldConstraint")
+			w.Part0, w.Part1 = door, d
+			w.Parent = d
+		end
+	end
+	-- hinged on the left edge
+	b.HouseDoor = { Part = door, Hinge = door.CFrame * CFrame.new(-DW / 2, 0, 0), Width = DW }
 	-- shutters beside the front windows (not on modern houses)
 	if style ~= "modern" then
 		for f = 0, spec.Floors - 1 do
@@ -6872,6 +7033,52 @@ local function busStop(parent, cf, streetName)
 	return seat
 end
 
+-- more street detail: bike racks, newspaper boxes, planters, bollards, meters
+local function bikeRack(parent, pos, along, rng)
+	local cf = CFrame.lookAt(pos, pos + along)
+	for k = -2, 2 do
+		-- an upside-down U of steel tube
+		for _, dz in ipairs({ -0.55, 0.55 }) do
+			deco(parent, "BikeRackPost", Vector3.new(0.16, 1.8, 0.16), cf * CFrame.new(k * 0.9, LOT_Y + 0.9, dz), rgb(120, 124, 132), Enum.Material.Metal)
+		end
+		MapKit.cylinder(parent, "BikeRackTop", 1.26, 0.16, cf * CFrame.new(k * 0.9, LOT_Y + 1.8, 0) * CFrame.Angles(0, math.rad(90), 0), rgb(120, 124, 132), Enum.Material.Metal)
+	end
+	deco(parent, "BikeRackBar", Vector3.new(4, 0.18, 0.18), cf * CFrame.new(0, LOT_Y + 0.2, 0), rgb(120, 124, 132), Enum.Material.Metal)
+	-- a bike or two
+	for n = 1, rng:NextInteger(0, 2) do
+		local bx = cf * CFrame.new(-1.8 + n * 1.8, LOT_Y + 1, 0.2)
+		local color = ({ rgb(200, 50, 50), rgb(40, 120, 200), rgb(250, 200, 50), rgb(40, 160, 90) })[rng:NextInteger(1, 4)]
+		for _, dz in ipairs({ -0.9, 0.9 }) do
+			MapKit.cylinder(parent, "BikeWheel", 0.12, 1.5, bx * CFrame.new(0, 0, dz), rgb(30, 30, 32), Enum.Material.Rubber)
+		end
+		deco(parent, "BikeFrame", Vector3.new(0.15, 0.15, 1.9), bx * CFrame.new(0, 0.4, 0), color, Enum.Material.Metal)
+		deco(parent, "BikeSeat", Vector3.new(0.3, 0.12, 0.6), bx * CFrame.new(0, 0.9, 0.4), rgb(30, 30, 32))
+	end
+end
+local function newspaperBoxes(parent, pos, facing)
+	local cf = CFrame.lookAt(pos, pos + facing)
+	for k, color in ipairs({ rgb(200, 40, 40), rgb(40, 90, 170), rgb(240, 200, 40) }) do
+		local box = deco(parent, "NewspaperBox", Vector3.new(1.4, 2.6, 1.3), cf * CFrame.new((k - 2) * 1.6, LOT_Y + 1.3, 0), color, Enum.Material.Metal)
+		deco(parent, "NewspaperWindow", Vector3.new(1, 0.8, 0.05), box.CFrame * CFrame.new(0, 0.5, -0.66), rgb(230, 230, 220), Enum.Material.Glass)
+	end
+end
+local function planter(parent, pos, rng)
+	deco(parent, "Planter", Vector3.new(3.2, 1.6, 3.2), CFrame.new(pos + Vector3.new(0, LOT_Y + 0.8, 0)), rgb(150, 140, 128), Enum.Material.Concrete)
+	for k = 0, 3 do
+		MapKit.ball(parent, "PlanterFlowers", 1.2, CFrame.new(pos + Vector3.new((k % 2 - 0.5) * 1.2, LOT_Y + 1.9, (math.floor(k / 2) - 0.5) * 1.2)), MapKit.FLOWERS[rng:NextInteger(1, #MapKit.FLOWERS)], Enum.Material.Grass)
+	end
+end
+local function bollards(parent, corner, dir)
+	for k = 1, 3 do
+		MapKit.cylinder(parent, "Bollard", 2.4, 0.7, CFrame.new(corner + dir * (k * 1.6) + Vector3.new(0, LOT_Y + 1.2, 0)) * CFrame.Angles(0, 0, math.rad(90)), rgb(60, 62, 70), Enum.Material.Metal)
+	end
+end
+local function parkingMeter(parent, pos)
+	deco(parent, "MeterPost", Vector3.new(0.25, 3.4, 0.25), CFrame.new(pos + Vector3.new(0, LOT_Y + 1.7, 0)), rgb(80, 84, 92), Enum.Material.Metal)
+	deco(parent, "Meter", Vector3.new(0.7, 1, 0.5), CFrame.new(pos + Vector3.new(0, LOT_Y + 3.8, 0)), rgb(110, 120, 130), Enum.Material.Metal)
+	deco(parent, "MeterDisplay", Vector3.new(0.4, 0.3, 0.05), CFrame.new(pos + Vector3.new(0, LOT_Y + 3.95, -0.27)), rgb(160, 220, 170), Enum.Material.Neon)
+end
+
 local function streetSign(parent, pos, streetName, avenueName)
 	deco(parent, "SignPole", Vector3.new(0.35, 10, 0.35), CFrame.new(pos + Vector3.new(0, 5, 0)), rgb(60, 64, 70), Enum.Material.Metal)
 	local s1 = deco(parent, "StreetBlade", Vector3.new(6, 1, 0.15), CFrame.new(pos + Vector3.new(0, 9.4, 0)), rgb(30, 110, 60))
@@ -7011,6 +7218,19 @@ function Streets.build(parent, rng, blockKind)
 			if downtown then
 				trashCan(furniture, c + Vector3.new(-HALF + 2, 0, HALF - 14))
 				trashCan(furniture, c + Vector3.new(HALF - 14, 0, HALF - 2))
+				-- the busy sidewalks: bike racks, newspaper boxes, planters,
+				-- bollards at the corners and parking meters along the curb
+				bikeRack(furniture, c + Vector3.new(-HALF + 3, 0, -8), Vector3.new(0, 0, 1), rng)
+				newspaperBoxes(furniture, c + Vector3.new(8, 0, HALF - 2.2), Vector3.new(0, 0, 1))
+				planter(furniture, c + Vector3.new(HALF - 3, 0, 10), rng)
+				planter(furniture, c + Vector3.new(-10, 0, -HALF + 3), rng)
+				bollards(furniture, c + Vector3.new(HALF - 1, 0, HALF - 1), Vector3.new(-1, 0, 0))
+				bollards(furniture, c + Vector3.new(-HALF + 1, 0, -HALF + 1), Vector3.new(1, 0, 0))
+				for n = -2, 2 do
+					if n ~= 0 then
+						parkingMeter(furniture, c + Vector3.new(n * 9, 0, -HALF + 0.9))
+					end
+				end
 				-- sidewalk trees in grates along two sides
 				for n = -1, 1 do
 					if n ~= 0 then
@@ -7025,6 +7245,7 @@ function Streets.build(parent, rng, blockKind)
 				for n = -1, 1, 2 do
 					Streets.tree(furniture, c + Vector3.new(n * 30, 0, HALF - 2.4), rng:NextNumber(0.7, 0.9), rng)
 				end
+				planter(furniture, c + Vector3.new(-HALF + 3, 0, HALF - 3), rng)
 			end
 		end
 	end
@@ -8677,6 +8898,50 @@ end
 --------------------------------------------------------------------------------
 -- Public API
 --------------------------------------------------------------------------------
+-- The bigger blocks leave open pavement around buildings: the empty corners
+-- become little pocket parks (grass, a tree, a bench, flowers).
+local function pocketParks(parent, i, j, before, rng)
+	local c = blockCenter(i, j)
+	local kids = parent:GetChildren()
+	local boxes = {}
+	for k = before + 1, #kids do
+		for _, p in ipairs(kids[k]:GetDescendants()) do
+			if p:IsA("BasePart") and p.Size.X < 80 and p.Size.Z < 80 and p.Name ~= "Lot" then
+				local pos, half = p.Position, p.Size / 2
+				local r = math.max(half.X, half.Z)
+				table.insert(boxes, { pos.X - r, pos.X + r, pos.Z - r, pos.Z + r })
+			end
+		end
+	end
+	local size = 16
+	local inset = HALF - SIDEWALK - size / 2 - 1
+	for _, sx in ipairs({ -1, 1 }) do
+		for _, sz in ipairs({ -1, 1 }) do
+			local x, z = c.X + sx * inset, c.Z + sz * inset
+			local clear = true
+			for _, bx in ipairs(boxes) do
+				if bx[2] > x - size / 2 - 1 and bx[1] < x + size / 2 + 1 and bx[4] > z - size / 2 - 1 and bx[3] < z + size / 2 + 1 then
+					clear = false
+					break
+				end
+			end
+			if clear then
+				local model = Instance.new("Model")
+				model.Name = "PocketPark"
+				model.Parent = parent
+				local base = Vector3.new(x, LOT_Y, z)
+				MapKit.part(model, "Grass", Vector3.new(size, 0.3, size), CFrame.new(base + Vector3.new(0, 0.15, 0)), MapKit.GRASS, Enum.Material.Grass)
+				MapKit.deco(model, "Edging", Vector3.new(size + 0.6, 0.4, size + 0.6), CFrame.new(base + Vector3.new(0, 0, 0)), MapKit.rgb(170, 165, 155), Enum.Material.Concrete)
+				Streets.tree(model, base + Vector3.new(sx * 3, 0.3, sz * 3), rng:NextNumber(0.8, 1.1), rng)
+				Streets.bench(model, CFrame.lookAt(base + Vector3.new(-sx * 3, 0.3, -sz * 4), base + Vector3.new(-sx * 3, 0.3, -sz * 10)), nil)
+				for n = 0, 4 do
+					MapKit.ball(model, "Flowers", 1, CFrame.new(base + Vector3.new(-sx * (size / 2 - 1.2), 0.8, (n - 2) * 1.6)), MapKit.FLOWERS[rng:NextInteger(1, #MapKit.FLOWERS)], Enum.Material.Grass)
+				end
+			end
+		end
+	end
+end
+
 function MapBuilder.Build()
 	if map then
 		return map
@@ -8714,7 +8979,11 @@ function MapBuilder.Build()
 			local name = entry and string.match(entry, ":(.+)$")
 			local builder = Places.Builders[kind]
 			if builder then
+				local before = #buildings:GetChildren()
 				builder(ctx, buildings, i, j, rng, name)
+				if kind ~= "Houses" and kind ~= "Suburb" and kind ~= "Woods" and not string.find(kind, "Park") then
+					pocketParks(buildings, i, j, before, rng)
+				end
 			end
 		end
 	end
@@ -9438,6 +9707,51 @@ local function home(activity, want)
 	return { Kind = "Home", Activity = activity, Want = want }
 end
 
+-- a citizen's partner (the other half of their household's couple), unless they broke up
+function Life:PartnerOf(c)
+	local h = self.Households[c.Household]
+	if not h or not h.Partners or #h.Partners ~= 2 then
+		return nil
+	end
+	local other = if h.Partners[1] == c.Id then h.Partners[2] elseif h.Partners[2] == c.Id then h.Partners[1] else nil
+	return other and self.Citizens[other] or nil
+end
+
+-- free in the evening? (not at work at that hour)
+local function freeAt(self, c, hour, day)
+	local stage = self:Stage(c, day)
+	if stage ~= "Adult" and stage ~= "Retired" then
+		return false
+	end
+	local job = stage == "Adult" and c.Job and jobByTitle(self.Config, c.Job)
+	return not job or hour >= job.stop or hour < job.start - 1
+end
+
+local CHEATERS = { romantic = 1.4, adventurous = 1.3, sarcastic = 1.1, lazy = 1, proud = 1.1, funny = 0.8, chatty = 0.8 }
+-- someone sneaking off with a friend behind their partner's back tonight?
+-- (both of them work it out the same way, so they meet at the same place)
+function Life:AffairTonight(c, hour, day)
+	if (self.Config.CHEATING_CHANCE or 0.05) <= 0 then
+		return nil
+	end
+	local slot = math.floor(hour / 1.5)
+	for _, id in ipairs(c.Friends or {}) do
+		local f = self.Citizens[id]
+		if f and f.Household ~= c.Household and freeAt(self, c, hour, day) and freeAt(self, f, hour, day) then
+			local pc, pf = self:PartnerOf(c), self:PartnerOf(f)
+			local temper = math.max(CHEATERS[c.Personality or ""] or 0.3, CHEATERS[f.Personality or ""] or 0.3)
+			if (pc or pf) and pc ~= f then
+				local lo, hi = math.min(c.Id, id), math.max(c.Id, id)
+				local r = newRng(hash(lo, hi, day, "affair", slot))
+				if r:Next() < (self.Config.CHEATING_CHANCE or 0.05) * temper then
+					return f, r:Pick({ "Park", "Lake", "Cafe", "WillowPark", "Plaza" })
+				end
+			end
+		end
+	end
+	return nil
+end
+
 function Life:Plan(c, hour, day)
 	local config = self.Config
 	day = day or self.Day
@@ -9653,6 +9967,32 @@ function Life:Plan(c, hour, day)
 		local evening = newRng(hash(c.Id, day, "evening", math.floor(hour / 1.5)))
 		local roll = evening:Next()
 		rng = evening
+		-- just broke up: staying in
+		if c.Heartbroken and day - c.Heartbroken <= 1 then
+			return home("💔 Heartbroken", "sit")
+		end
+		-- an affair: sneaking off to meet someone
+		local lover, loverPlace = self:AffairTonight(c, hour, day)
+		if lover then
+			return { Kind = "Place", Place = loverPlace, Activity = "🤫 Meeting " .. lover.First, Want = "chat", Affair = lover.Id }
+		end
+		local partner = self:PartnerOf(c)
+		if partner and freeAt(self, partner, hour, day) then
+			-- a hunch: following a partner who's been acting strange
+			local theirLover, theirPlace = self:AffairTonight(partner, hour, day)
+			if theirLover and (personality == "nosy" or personality == "anxious" or personality == "proud" or evening:Next() < 0.35) then
+				return { Kind = "Place", Place = theirPlace, Activity = "🕵️ Following a hunch", Want = "sit", Suspect = partner.Id }
+			end
+			-- date night (the couple pick it together)
+			if not theirLover then
+				local dr = newRng(hash(c.Household, day, "date", math.floor(hour / 1.5)))
+				local romantic = personality == "romantic" or partner.Personality == "romantic"
+				if dr:Next() < (self.Config.DATE_CHANCE or 0.2) * (if romantic then 1.8 else 1) then
+					local pick = dr:Pick({ { "Restaurant", "eat" }, { "Lake", nil }, { "Park", "sit" }, { "Cinema", "watch" }, { "Cafe", "coffee" } })
+					return { Kind = "Place", Place = pick[1], Activity = "💕 Date night with " .. partner.First, Want = pick[2], Date = partner.Id }
+				end
+			end
+		end
 		-- personalities have their own habits
 		if personality == "lazy" and roll < 0.7 then
 			return home("🛋️ Lazing on the sofa", "tv")
@@ -9669,7 +10009,10 @@ function Life:Plan(c, hour, day)
 		elseif personality == "anxious" and roll < 0.5 then
 			return home("😰 Staying in where it's safe", "read")
 		end
-		if sporty and roll < 0.6 then
+		if sporty and roll < 0.3 and age < 50 then
+			-- pickup basketball at the community center (see SportsService)
+			return { Kind = "Place", Place = "CommunityCenter", Activity = "🏀 Pickup basketball", Want = "hoops" }
+		elseif sporty and roll < 0.6 then
 			return { Kind = "Place", Place = "Gym", Activity = "🏋️ At the gym", Want = rng:Pick({ "run", "lift", "squat", "punch", "yoga" }) }
 		elseif hobbyOut and roll < 0.7 then
 			return { Kind = "Hobby", Hobby = c.Hobby, Activity = "🎨 " .. c.Hobby }
@@ -9801,6 +10144,10 @@ local UNIFORMS = {
 	["Barista"] = { Top = BLACK, Bottom = rgb(60, 50, 45), Items = { "Apron:40,120,80", "Cap:40,120,80", "NameTag" } },
 	["Doctor"] = { Top = rgb(170, 210, 240), Bottom = rgb(60, 70, 90), Sleeves = "long", Items = { "LabCoat", "Stethoscope", "NameTag" } },
 	["Nurse"] = { Top = rgb(70, 170, 170), Bottom = rgb(70, 170, 170), Items = { "Stethoscope", "NameTag" } },
+	-- the two street gangs, and rioters (masked)
+	["Viper"] = { Top = rgb(40, 120, 60), Bottom = rgb(30, 30, 34), Sleeves = "long", Items = { "Hoodie:40,120,60", "Beanie:30,140,70", "Sneakers:40,200,90" } },
+	["King"] = { Top = rgb(100, 45, 140), Bottom = rgb(40, 40, 46), Sleeves = "long", Items = { "Jacket:90,40,130", "CapBack:120,50,160", "Necklace", "Sneakers:170,90,230" } },
+	["Rioter"] = { Top = rgb(30, 30, 34), Bottom = rgb(45, 45, 50), Sleeves = "long", Items = { "Hoodie:30,30,34", "Beanie:25,25,28" } },
 	["Police Officer"] = { Top = rgb(40, 55, 110), Bottom = rgb(30, 40, 80), Sleeves = "long", Items = { "PoliceCap", "Badge", "Belt:25,25,30", "Radio" } },
 	["Thief"] = { Top = rgb(38, 40, 48), Bottom = rgb(30, 32, 38), Sleeves = "long", Items = { "Hoodie:38,40,50", "Beanie:28,28,32", "Gloves" } },
 	["SWAT Officer"] = { Top = rgb(32, 34, 40), Bottom = rgb(32, 34, 40), Sleeves = "long", Items = { "SWATHelmet", "Vest:22,24,28", "Badge", "Belt:20,20,22", "Gloves", "Radio" } },
@@ -10809,6 +11156,8 @@ function CitizenLook.Describe(citizen)
 				table.insert(look.Items, "Puffer:" .. colorText(({ rgb(40, 60, 110), rgb(30, 30, 34), rgb(200, 70, 60), rgb(90, 130, 90), rgb(240, 200, 70) })[rng:NextInteger(1, 5)]))
 			elseif item == "Varsity" then
 				table.insert(look.Items, "Varsity:" .. colorText(({ rgb(150, 30, 40), rgb(30, 50, 110), rgb(30, 90, 50), rgb(40, 40, 44) })[rng:NextInteger(1, 4)]))
+			elseif item == "Jersey" then
+				table.insert(look.Items, "Jersey:" .. colorText(({ rgb(40, 90, 200), rgb(200, 40, 50), rgb(250, 190, 40), rgb(30, 30, 36), rgb(90, 40, 140), rgb(30, 130, 80), rgb(240, 240, 240), rgb(0, 120, 190) })[rng:NextInteger(1, 8)]))
 			elseif item == "Tank" then
 				table.insert(look.Items, "Tank")
 				look.Sleeves = "short"
@@ -11071,8 +11420,325 @@ function CitizenLook.Sculpt(model, folder, look)
 	end
 end
 
+
+--------------------------------------------------------------------------------
+-- Painted clothes: the outfit is drawn flat on the body (like a Roblox shirt
+-- and pants), not built from extra blocks. Sleeves are the arm color; collars,
+-- pockets, zips, plaid, stripes, jersey numbers and open jackets are painted on
+-- the chest's faces. (Config.PAINTED_CLOTHES = false: the old 3D pieces.)
+--------------------------------------------------------------------------------
+local FACES = { Front = Enum.NormalId.Front, Back = Enum.NormalId.Back, Left = Enum.NormalId.Left, Right = Enum.NormalId.Right }
+
+local function canvas(f, part, face)
+	if not part then
+		return nil
+	end
+	local gui = Instance.new("SurfaceGui")
+	gui.Name = "Painted" .. face
+	gui.Face = FACES[face]
+	gui.Adornee = part
+	gui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+	gui.PixelsPerStud = 60
+	gui.LightInfluence = 1
+	gui.ResetOnSpawn = false
+	gui.Parent = f
+	return gui
+end
+
+-- a rectangle on a canvas (x, y, w, h as fractions of the face)
+local function rect(gui, x, y, w, h, color, rot, round)
+	if not gui then
+		return nil
+	end
+	local r = Instance.new("Frame")
+	r.BorderSizePixel = 0
+	r.AnchorPoint = Vector2.new(0.5, 0.5)
+	r.Position = UDim2.fromScale(x, y)
+	r.Size = UDim2.fromScale(w, h)
+	r.BackgroundColor3 = color
+	r.Rotation = rot or 0
+	if round then
+		local c = Instance.new("UICorner")
+		c.CornerRadius = UDim.new(round, 0)
+		c.Parent = r
+	end
+	r.Parent = gui
+	return r
+end
+
+local function label(gui, text, x, y, w, h, color, outline)
+	if not gui then
+		return nil
+	end
+	local t = Instance.new("TextLabel")
+	t.BackgroundTransparency = 1
+	t.AnchorPoint = Vector2.new(0.5, 0.5)
+	t.Position = UDim2.fromScale(x, y)
+	t.Size = UDim2.fromScale(w, h)
+	t.Text = text
+	t.TextScaled = true
+	t.Font = Enum.Font.GothamBlack
+	t.TextColor3 = color
+	if outline then
+		t.TextStrokeColor3 = outline
+		t.TextStrokeTransparency = 0
+	end
+	t.Parent = gui
+	return t
+end
+
+local function armParts(b)
+	local model = b.Torso and b.Torso.Parent
+	local out = {}
+	if model then
+		for _, n in ipairs({ "LeftUpperArm", "RightUpperArm", "LeftLowerArm", "RightLowerArm" }) do
+			local p = model:FindFirstChild(n)
+			if p then
+				table.insert(out, p)
+			end
+		end
+	end
+	return out
+end
+
+local function sleeves(b, color, long)
+	for _, p in ipairs(armParts(b)) do
+		if long or string.find(p.Name, "Upper") then
+			p.Color = color
+		end
+	end
+end
+
+-- the same thing on all four sides of the chest
+local function around(f, b, fn)
+	for _, face in ipairs({ "Front", "Back", "Left", "Right" }) do
+		fn(canvas(f, b.Torso, face), face)
+	end
+end
+
+local PAINTED = {}
+function PAINTED.Tee(f, b, c)
+	local t = b.Torso
+	local front = canvas(f, t, "Front")
+	rect(front, 0.5, 0.02, 0.34, 0.1, t.Color:Lerp(BLACK, 0.3), 0, 0.5)
+	if c then
+		rect(front, 0.5, 0.42, 0.34, 0.26, c, 0, 0.15)
+	end
+end
+function PAINTED.Polo(f, b, c)
+	local t = b.Torso
+	c = c or WHITE
+	local front = canvas(f, t, "Front")
+	rect(front, 0.4, 0.06, 0.2, 0.08, c, -18)
+	rect(front, 0.6, 0.06, 0.2, 0.08, c, 18)
+	rect(front, 0.5, 0.18, 0.05, 0.22, t.Color:Lerp(BLACK, 0.15))
+	for k = 0, 1 do
+		rect(front, 0.5, 0.14 + k * 0.1, 0.04, 0.04, c, 0, 1)
+	end
+end
+function PAINTED.Hoodie(f, b, c)
+	local base = c or b.Torso.Color
+	local dark = base:Lerp(BLACK, 0.15)
+	local front = canvas(f, b.Torso, "Front")
+	rect(front, 0.5, 0.78, 0.6, 0.26, dark, 0, 0.2)
+	for _, x in ipairs({ 0.43, 0.57 }) do
+		rect(front, x, 0.22, 0.025, 0.28, WHITE)
+	end
+	rect(front, 0.5, 0.03, 0.46, 0.08, dark, 0, 0.5)
+	-- the hood lying on the back
+	rect(canvas(f, b.Torso, "Back"), 0.5, 0.14, 0.62, 0.3, dark, 0, 0.4)
+	sleeves(b, base, true)
+end
+local function openJacket(f, b, c, inner)
+	around(f, b, function(gui, face)
+		if face == "Front" then
+			rect(gui, 0.16, 0.5, 0.34, 1, c)
+			rect(gui, 0.84, 0.5, 0.34, 1, c)
+			rect(gui, 0.34, 0.2, 0.06, 0.4, c:Lerp(BLACK, 0.2), 14)
+			rect(gui, 0.66, 0.2, 0.06, 0.4, c:Lerp(BLACK, 0.2), -14)
+			if inner then
+				rect(gui, 0.5, 0.5, 0.3, 1, inner)
+			end
+		else
+			rect(gui, 0.5, 0.5, 1, 1, c)
+		end
+	end)
+	sleeves(b, c, true)
+end
+function PAINTED.Jacket(f, b, c)
+	openJacket(f, b, c or rgb(60, 60, 70))
+end
+function PAINTED.Blazer(f, b, c)
+	c = c or rgb(40, 50, 80)
+	openJacket(f, b, c, WHITE)
+	local front = f:FindFirstChild("PaintedFront")
+	rect(front, 0.5, 0.35, 0.08, 0.5, rgb(60, 70, 110))
+	for k = 0, 1 do
+		rect(front, 0.68, 0.55 + k * 0.18, 0.05, 0.05, BLACK, 0, 1)
+	end
+end
+function PAINTED.Cardigan(f, b, c)
+	openJacket(f, b, c or rgb(150, 120, 100))
+end
+function PAINTED.Vest(f, b, c)
+	c = c or rgb(60, 60, 70)
+	around(f, b, function(gui, face)
+		if face == "Front" then
+			rect(gui, 0.2, 0.55, 0.38, 0.9, c)
+			rect(gui, 0.8, 0.55, 0.38, 0.9, c)
+		elseif face == "Back" then
+			rect(gui, 0.5, 0.55, 1, 0.9, c)
+		end
+	end)
+end
+function PAINTED.Stripes(f, b, c)
+	c = c or WHITE
+	around(f, b, function(gui)
+		for k = 0, 2 do
+			rect(gui, 0.5, 0.25 + k * 0.25, 1, 0.1, c)
+		end
+	end)
+end
+function PAINTED.Sweater(f, b, c)
+	c = c or b.Torso.Color
+	around(f, b, function(gui)
+		rect(gui, 0.5, 0.95, 1, 0.1, c:Lerp(BLACK, 0.15))
+		rect(gui, 0.5, 0.35, 1, 0.1, c:Lerp(WHITE, 0.4))
+		for k = 0, 5 do
+			rect(gui, 0.08 + k * 0.17, 0.35, 0.06, 0.06, c:Lerp(BLACK, 0.2), 45)
+		end
+	end)
+	b.Torso.Color = c
+	sleeves(b, c, true)
+end
+function PAINTED.Flannel(f, b, c)
+	c = c or rgb(170, 50, 50)
+	local line = c:Lerp(BLACK, 0.45)
+	b.Torso.Color = c
+	around(f, b, function(gui, face)
+		for k = 0, 4 do
+			rect(gui, 0.5, 0.1 + k * 0.2, 1, 0.05, line)
+			rect(gui, 0.1 + k * 0.2, 0.5, 0.05, 1, line)
+			rect(gui, 0.5, 0.2 + k * 0.2, 1, 0.015, WHITE:Lerp(c, 0.5))
+		end
+		if face == "Front" then
+			rect(gui, 0.5, 0.5, 0.03, 1, line)
+			for k = 0, 3 do
+				rect(gui, 0.53, 0.15 + k * 0.22, 0.04, 0.04, WHITE, 0, 1)
+			end
+		end
+	end)
+	sleeves(b, c, true)
+end
+function PAINTED.Puffer(f, b, c)
+	c = c or rgb(40, 60, 110)
+	b.Torso.Color = c
+	around(f, b, function(gui, face)
+		for k = 1, 4 do
+			rect(gui, 0.5, k * 0.2, 1, 0.025, c:Lerp(BLACK, 0.25))
+		end
+		if face == "Front" then
+			rect(gui, 0.5, 0.5, 0.03, 1, SILVER)
+			rect(gui, 0.5, 0.03, 0.6, 0.08, c:Lerp(BLACK, 0.1), 0, 0.5)
+		end
+	end)
+	sleeves(b, c, true)
+end
+function PAINTED.Varsity(f, b, c)
+	c = c or rgb(150, 30, 40)
+	b.Torso.Color = c
+	local cream = rgb(240, 236, 226)
+	around(f, b, function(gui, face)
+		rect(gui, 0.5, 0.96, 1, 0.08, cream)
+		if face == "Front" then
+			rect(gui, 0.5, 0.5, 0.04, 1, cream)
+			label(gui, string.char(65 + math.floor(c.R * 20) % 26), 0.25, 0.35, 0.3, 0.35, GOLD, cream)
+		elseif face == "Back" then
+			label(gui, "CITY", 0.5, 0.3, 0.8, 0.28, GOLD, cream)
+		end
+	end)
+	sleeves(b, cream, true)
+end
+function PAINTED.Tank(f, b, c)
+	-- bare arms and shoulders
+	for _, p in ipairs(armParts(b)) do
+		p.Color = b.Head.Color
+	end
+	local skin = b.Head.Color
+	for _, face in ipairs({ "Front", "Back" }) do
+		local gui = canvas(f, b.Torso, face)
+		rect(gui, 0.08, 0.12, 0.18, 0.26, skin)
+		rect(gui, 0.92, 0.12, 0.18, 0.26, skin)
+		rect(gui, 0.5, 0.02, 0.36, 0.12, skin, 0, 0.5)
+	end
+	for _, face in ipairs({ "Left", "Right" }) do
+		rect(canvas(f, b.Torso, face), 0.5, 0.12, 1, 0.26, skin)
+	end
+end
+-- a basketball jersey with a big number, like the hoops games
+function PAINTED.Jersey(f, b, c)
+	c = c or rgb(40, 90, 200)
+	local trim = if (c.R + c.G + c.B) > 1.8 then rgb(30, 30, 40) else WHITE
+	b.Torso.Color = c
+	for _, p in ipairs(armParts(b)) do
+		p.Color = b.Head.Color
+	end
+	local number = tostring((math.floor(c.R * 97 + c.G * 53 + c.B * 31) % 34) + 1)
+	for _, face in ipairs({ "Front", "Back" }) do
+		local gui = canvas(f, b.Torso, face)
+		rect(gui, 0.07, 0.14, 0.16, 0.3, b.Head.Color)
+		rect(gui, 0.93, 0.14, 0.16, 0.3, b.Head.Color)
+		rect(gui, 0.5, 0.03, 0.4, 0.14, b.Head.Color, 0, 0.5)
+		rect(gui, 0.5, 0.1, 0.44, 0.03, trim)
+		label(gui, number, 0.5, if face == "Front" then 0.55 else 0.5, 0.55, 0.5, trim, c:Lerp(BLACK, 0.4))
+		if face == "Back" then
+			label(gui, "CITY", 0.5, 0.2, 0.6, 0.14, trim)
+		end
+	end
+	for _, face in ipairs({ "Left", "Right" }) do
+		rect(canvas(f, b.Torso, face), 0.5, 0.14, 1, 0.3, b.Head.Color)
+		rect(canvas(f, b.Torso, face), 0.5, 0.5, 0.12, 1, trim)
+	end
+	-- matching shorts
+	if b.Lower then
+		b.Lower.Color = c
+		local model = b.Torso.Parent
+		for _, n in ipairs({ "LeftUpperLeg", "RightUpperLeg" }) do
+			local leg = model:FindFirstChild(n)
+			if leg then
+				leg.Color = c
+				rect(canvas(f, leg, "Left"), 0.5, 0.5, 0.15, 1, trim)
+				rect(canvas(f, leg, "Right"), 0.5, 0.5, 0.15, 1, trim)
+			end
+		end
+		for _, n in ipairs({ "LeftLowerLeg", "RightLowerLeg" }) do
+			local leg = model:FindFirstChild(n)
+			if leg then
+				leg.Color = b.Head.Color
+			end
+		end
+	end
+end
+function PAINTED.Overalls(f, b, c)
+	c = c or rgb(60, 90, 140)
+	local front = canvas(f, b.Torso, "Front")
+	rect(front, 0.5, 0.72, 0.6, 0.56, c)
+	rect(front, 0.5, 0.62, 0.24, 0.14, c:Lerp(BLACK, 0.2))
+	for _, x in ipairs({ 0.25, 0.75 }) do
+		rect(front, x, 0.25, 0.12, 0.5, c)
+		rect(front, x, 0.45, 0.07, 0.07, SILVER, 0, 1)
+	end
+	local back = canvas(f, b.Torso, "Back")
+	rect(back, 0.35, 0.3, 0.12, 0.7, c, 20)
+	rect(back, 0.65, 0.3, 0.12, 0.7, c, -20)
+	if b.Lower then
+		b.Lower.Color = c
+	end
+end
+CitizenLook.PAINTED = PAINTED
+
 -- the outfit pieces that a real 3D (layered) garment replaces
-local CLOTHING_ITEMS = { Tee = true, Polo = true, Hoodie = true, Jacket = true, Stripes = true, Sweater = true, Dress = true, Blazer = true, Flannel = true, Puffer = true, Varsity = true, Tank = true, Skirt = true, Overalls = true, Cardigan = true, Vest = true }
+local CLOTHING_ITEMS = { Jersey = true, Tee = true, Polo = true, Hoodie = true, Jacket = true, Stripes = true, Sweater = true, Dress = true, Blazer = true, Flannel = true, Puffer = true, Varsity = true, Tank = true, Skirt = true, Overalls = true, Cardigan = true, Vest = true }
 
 function CitizenLook.Apply(model, citizen, options)
 	options = options or {}
@@ -11144,6 +11810,8 @@ function CitizenLook.Apply(model, citizen, options)
 			local build = ITEMS[name]
 			if options.RealClothes and CLOTHING_ITEMS[name] then
 				build = nil
+			elseif PAINTED[name] and Config.PAINTED_CLOTHES ~= false then
+				build = PAINTED[name]
 			end
 			if build then
 				local ok, err = pcall(build, folder, body, color)
@@ -11247,11 +11915,14 @@ function CitizenLook.Build(citizen)
 	description.WidthScale = math.clamp(look.Width, 0.7, 1)
 	description.DepthScale = math.clamp(look.Depth or look.Width, 0.7, 1)
 	description.HeightScale = 1
-	description.BodyTypeScale = if look.Build == "athletic" or look.Build == "stocky" or look.Build == "muscular" then 0.3 else 0.1
-	description.ProportionScale = if look.Feminine then 0.4 else 0.2
 	-- realistic proportions: taller, longer-limbed and narrower than the stubby
 	-- default body (slim builds are the most slender, heavy builds the widest)
-	if look.Age >= 13 then
+	-- the classic Roblox body (like the hoops games): standard proportions, with
+	-- builds made from height and width (Config.REALISTIC_PROPORTIONS = true
+	-- gives taller, slimmer Rthro-like proportions instead)
+	description.BodyTypeScale = 0
+	description.ProportionScale = 0
+	if Config.REALISTIC_PROPORTIONS == true and look.Age >= 13 then
 		description.BodyTypeScale = if look.Feminine then 0.75 else 0.65
 		description.ProportionScale = ({ slim = 1, average = 0.6, athletic = 0.35, curvy = 0.2, heavy = 0, stocky = 0, muscular = 0.1 })[look.Build or "average"] or 0.5
 	end
@@ -11295,7 +11966,7 @@ function CitizenLook.Build(citizen)
 			end
 		end
 	end
-	local ids = not model and Config.SMOOTH_BODIES ~= false and CitizenLook.BODIES[package]
+	local ids = not model and Config.SMOOTH_BODIES == true and CitizenLook.BODIES[package]
 	if ids and not model and bodyWorks[package] ~= false then
 		-- try the smooth body; if it can't load, fall back to the default one
 		local smooth = description:Clone()
@@ -11813,6 +12484,7 @@ local function loadPlayer(player)
 		Talks = tonumber(saved.Talks) or 0,
 		Arrests = tonumber(saved.Arrests) or 0,
 		Terms = tonumber(saved.Terms) or 0,
+		Home = type(saved.Home) == "string" and saved.Home or nil,
 	}
 	playerData[player] = data
 	player:SetAttribute("Coins", data.Coins)
@@ -11827,7 +12499,7 @@ local function savePlayer(player)
 	local data = playerData[player]
 	if data and playerStore then
 		pcall(function()
-			playerStore:SetAsync("p_" .. player.UserId, { Coins = data.Coins, Crimes = data.Crimes, Notoriety = data.Notoriety, Weapons = data.Weapons, Outfits = data.Outfits, Wearing = data.Wearing, Fitness = data.Fitness, Talks = data.Talks, Arrests = data.Arrests, Terms = data.Terms })
+			playerStore:SetAsync("p_" .. player.UserId, { Coins = data.Coins, Crimes = data.Crimes, Notoriety = data.Notoriety, Weapons = data.Weapons, Outfits = data.Outfits, Wearing = data.Wearing, Fitness = data.Fitness, Talks = data.Talks, Arrests = data.Arrests, Terms = data.Terms, Home = data.Home })
 		end)
 	end
 end
@@ -13588,6 +14260,87 @@ function CitizenService.TryCheckout(brain, t)
 		clearCheckout(clerk.Model, now)
 	end)
 	return "started"
+end
+
+-- the brain of a citizen (by their citizen id)
+function CitizenService.ByCitizenId(id)
+	for _, b in ipairs(CitizenService.List) do
+		if b.C.Id == id then
+			return b
+		end
+	end
+	return nil
+end
+
+-- A player ordering from a worker: the clerk at the nearest staffed till
+-- serves them, with the same checkout as citizens (the player's character is
+-- the customer). Returns the seconds until it's handed over, or nil if nobody
+-- is working the till (the order just goes through).
+local PLAYER_TIME = { food = 5.5, shop = 6 }
+function CitizenService.ServePlayer(player, place, kind, items)
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	if not root or not place then
+		return nil
+	end
+	local now = workspace:GetServerTimeNow()
+	local best, bestD
+	for _, spot in ipairs(place.Spots or {}) do
+		if spot.Action == "cashier" or spot.Action == "counter" or spot.Action == "brew" or spot.Action == "bake" then
+			local clerk = taken[spot]
+			local d = (spot.CFrame.Position - root.Position).Magnitude
+			if clerk and clerk.State == "act" and clerk.Spot == spot and clerk.Model.Parent and (clerk.ServingUntil or 0) < now and d < 30 and (not bestD or d < bestD) then
+				best, bestD = spot, d
+			end
+		end
+	end
+	if not best then
+		return nil
+	end
+	local clerk = taken[best]
+	local dur = PLAYER_TIME[kind] or 6
+	clerk.ServingUntil = now + dur + 0.5
+	-- the player steps up to the counter, facing the clerk
+	local front = best.CFrame.Position + best.CFrame.LookVector * 4.6
+	local look = flat(front - best.CFrame.Position)
+	look = if look.Magnitude > 0.1 then look.Unit else best.CFrame.LookVector
+	root.CFrame = CFrame.lookAt(Vector3.new(front.X, root.Position.Y, front.Z), Vector3.new(best.CFrame.Position.X, root.Position.Y, best.CFrame.Position.Z))
+	for _, m in ipairs({ character, clerk.Model }) do
+		m:SetAttribute("CheckoutStart", now)
+		m:SetAttribute("CheckoutKind", kind)
+		m:SetAttribute("CheckoutDur", dur)
+		m:SetAttribute("CheckoutItems", items or 1)
+		m:SetAttribute("CheckoutTill", best.CFrame.Position)
+		m:SetAttribute("CheckoutLook", look)
+		m:SetAttribute("CheckoutRole", if m == character then "customer" else "clerk")
+	end
+	local token = clerk.Token
+	local function say(at, line, expr)
+		task.delay(at, function()
+			if clerk.Token == token and clerk.Model.Parent then
+				CitizenService.Say(clerk, line, expr, 2)
+			end
+		end)
+	end
+	if kind == "food" then
+		say(0.1, FOOD_HELLO[math.random(1, #FOOD_HELLO)], "happy")
+		say(dur * 0.5, "Coming right up!", "happy")
+		say(dur * 0.88, "Here you go, " .. player.DisplayName .. "! Enjoy!", "happy")
+	else
+		say(0.1, CLERK_HELLO[math.random(1, #CLERK_HELLO)], "happy")
+		say(dur * 0.6, "Tap your card when you're ready.", "neutral")
+		say(dur * 0.9, THANKS[math.random(1, #THANKS)], "happy")
+	end
+	task.delay(dur + 0.4, function()
+		for _, m in ipairs({ character, clerk.Model }) do
+			if m.Parent and m:GetAttribute("CheckoutStart") == now then
+				for _, a in ipairs({ "CheckoutStart", "CheckoutKind", "CheckoutDur", "CheckoutItems", "CheckoutTill", "CheckoutLook", "CheckoutRole" }) do
+					m:SetAttribute(a, nil)
+				end
+			end
+		end
+	end)
+	return dur
 end
 
 --------------------------------------------------------------------------------
@@ -16072,6 +16825,10 @@ local function report(player, position, victim, severity, what, gossip, stars)
 	return #seen, reported
 end
 
+CrimeService.Report = function(...)
+	return report(...)
+end
+
 --------------------------------------------------------------------------------
 -- Punching
 --------------------------------------------------------------------------------
@@ -16118,7 +16875,7 @@ local function stopFight(brain)
 	fighters[brain] = nil
 	if brain.Model.Parent then
 		brain.Model:SetAttribute("Fighting", nil)
-		if brain.State == "police" and not brain.Model:GetAttribute("Chasing") then
+		if brain.State == "police" and not brain.Model:GetAttribute("Chasing") and not brain.Gang then
 			S.Citizens.Control(brain, false)
 		end
 	end
@@ -16138,6 +16895,8 @@ local function startFight(brain, player)
 	fighters[brain] = { Player = player, Until = os.clock() + 14, Next = os.clock() + 0.7 }
 	S.Citizens.Say(brain, FIGHT_LINES[math.random(1, #FIGHT_LINES)], "angry", 2)
 end
+
+CrimeService.StartFight = startFight
 
 local function fightTick()
 	local now = os.clock()
@@ -16177,6 +16936,67 @@ end
 --------------------------------------------------------------------------------
 local lastHitOn = {} -- ["attacker:victim"] = time the last hit was reported
 
+-- a gun: who's in the line of fire (the aim direction from the client, or
+-- where you're facing). Walls stop bullets. Returns the target and where the
+-- shot ended.
+local function lineOfFire(player, root, w, aim)
+	local dir = if typeof(aim) == "Vector3" and aim.Magnitude > 0.1 then aim.Unit else root.CFrame.LookVector
+	local from = root.Position + Vector3.new(0, 1.5, 0)
+	local best, bestD, bestPlayer = nil, math.huge, false
+	local function consider(pos, target, isPlayer)
+		local d = pos + Vector3.new(0, 1, 0) - from
+		if d.Magnitude <= w.Range and d.Magnitude < bestD and dir:Dot(d.Unit) >= (w.Cone or 0.98) - (if d.Magnitude < 8 then 0.1 else 0) then
+			best, bestD, bestPlayer = target, d.Magnitude, isPlayer
+		end
+	end
+	for _, brain in ipairs(S.Citizens.Nearby(root.Position, w.Range + 3)) do
+		if brain.State ~= "ko" and brain.State ~= "hospital" then
+			consider(brain.Root.Position, brain, false)
+		end
+	end
+	for _, other in ipairs(Players:GetPlayers()) do
+		local oroot, och = rootOf(other)
+		local ohum = och and och:FindFirstChildOfClass("Humanoid")
+		if other ~= player and oroot and ohum and ohum.Health > 0 and not jailed[other] and not hiding[other] then
+			consider(oroot.Position, other, true)
+		end
+	end
+	-- a wall in the way stops the bullet
+	local filter = { player.Character, workspace:FindFirstChild("Citizens") }
+	for _, p in ipairs(Players:GetPlayers()) do
+		if p.Character then
+			table.insert(filter, p.Character)
+		end
+	end
+	rayParams.FilterDescendantsInstances = filter
+	local reach = if best then bestD else w.Range
+	local wall = workspace:Raycast(from, dir * reach, rayParams)
+	if wall then
+		return nil, wall.Position, false
+	end
+	local endPos = if best then (if bestPlayer then rootOf(best).Position else best.Root.Position) + Vector3.new(0, 1, 0) else from + dir * w.Range
+	return best, endPos, bestPlayer
+end
+
+-- shots fired: everyone who hears it runs, and someone calls the police
+local lastShotReport = {}
+local function shotsFired(player, pos, w)
+	for _, brain in ipairs(S.Citizens.Nearby(pos, w.Loud or 120)) do
+		if S.Citizens.CanReact(brain) and not isPolice(brain) and not brain.C.Temp and math.random() < 0.8 then
+			task.delay(math.random() * 0.4, function()
+				S.Citizens.Flee(brain, pos, 12, ({ "Gun!!", "Get down!", "Run!!", "Somebody call 911!", "Shots fired!" })[math.random(1, 5)])
+			end)
+		end
+	end
+	local now = os.clock()
+	if now - (lastShotReport[player] or -99) > 8 then
+		local _, reported = report(player, pos, nil, 2, "fire a gun", "fired a gun in the street", 1)
+		if reported then
+			lastShotReport[player] = now
+		end
+	end
+end
+
 local function attack(player, data)
 	local root, character = rootOf(player)
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
@@ -16196,6 +17016,18 @@ local function attack(player, data)
 	character:SetAttribute("Swing", now)
 	-- who's in front of us? (citizens and other players)
 	local best, bestScore, bestPlayer = nil, math.huge, nil
+	if w.Ranged then
+		local endPos
+		best, endPos, bestPlayer = lineOfFire(player, root, w, type(data) == "table" and data.Aim or nil)
+		S.City.SendNear(root.Position, 250, { Type = "Shot", From = root.Position + Vector3.new(0, 1.5, 0), To = endPos, Weapon = id, Shooter = player.UserId })
+		shotsFired(player, root.Position, w)
+		if best and not bestPlayer and not canBeHurt(best) then
+			best = nil
+		end
+		if not best then
+			return { Ok = true, Hit = false, Weapon = id }
+		end
+	end
 	local look = root.CFrame.LookVector
 	local function consider(pos, target, isPlayer)
 		local d = pos - root.Position
@@ -16207,16 +17039,18 @@ local function attack(player, data)
 			end
 		end
 	end
-	for _, brain in ipairs(S.Citizens.Nearby(root.Position, w.Range + 3)) do
-		if brain.State ~= "ko" and brain.State ~= "hospital" then
-			consider(brain.Root.Position, brain, false)
+	if not w.Ranged then
+		for _, brain in ipairs(S.Citizens.Nearby(root.Position, w.Range + 3)) do
+			if brain.State ~= "ko" and brain.State ~= "hospital" then
+				consider(brain.Root.Position, brain, false)
+			end
 		end
-	end
-	for _, other in ipairs(Players:GetPlayers()) do
-		local oroot, och = rootOf(other)
-		local ohum = och and och:FindFirstChildOfClass("Humanoid")
-		if other ~= player and oroot and ohum and ohum.Health > 0 and not jailed[other] and not hiding[other] then
-			consider(oroot.Position, other, true)
+		for _, other in ipairs(Players:GetPlayers()) do
+			local oroot, och = rootOf(other)
+			local ohum = och and och:FindFirstChildOfClass("Humanoid")
+			if other ~= player and oroot and ohum and ohum.Health > 0 and not jailed[other] and not hiding[other] then
+				consider(oroot.Position, other, true)
+			end
 		end
 	end
 	if not best then
@@ -16293,7 +17127,13 @@ local function attack(player, data)
 	S.Citizens.Hurt(brain, root.Position, line, w.Knock)
 	local armed = w.Severity >= 3
 	local brave = isPolice(brain) or c.Temp or ((c.Personality == "grumpy" or c.Personality == "sporty" or c.Personality == "brave") and (not armed or math.random() < 0.3)) or (not armed and c.Personality ~= "shy" and c.Personality ~= "anxious" and math.random() < 0.15)
-	if isPolice(brain) or c.Temp then
+	if brain.Gang then
+		-- a gang member: no police, but the whole crew comes for you
+		if S.Gangs then
+			S.Gangs.Provoke(brain, player)
+		end
+		startFight(brain, player)
+	elseif isPolice(brain) or c.Temp then
 		CrimeService.AddStars(player, 1, "You attacked a police officer!")
 		if not brain.Model:GetAttribute("Chasing") then
 			startFight(brain, player)
@@ -16309,7 +17149,7 @@ local function attack(player, data)
 	end
 	-- (a hit nobody saw doesn't count: the next one might be seen)
 	if now - (brain.ReportedAt or -99) > 6 then
-		local _, reported = report(player, brain.Root.Position, brain, w.Severity, (if armed then "stab " else "attack ") .. c.First, w.Verb .. " " .. c.First .. " in broad daylight", if armed then 2 else 1)
+		local _, reported = report(player, brain.Root.Position, brain, w.Severity, (if w.Ranged then "shoot " elseif armed then "stab " else "attack ") .. c.First, w.Verb .. " " .. c.First .. " in broad daylight", if armed then 2 else 1)
 		if reported then
 			brain.ReportedAt = now
 		end
@@ -16603,6 +17443,88 @@ local function arrest(player)
 	S.City.Send(player, { Type = "Busted", Seconds = seconds, Fine = fine, Stars = stars })
 	S.City.News("🚔 " .. player.DisplayName .. " was arrested and thrown in jail!", "Crime")
 	S.City.Adjust("Safety", 2 + stars)
+end
+
+-- an officer next to a suspect who isn't down yet: a baton hit, or the taser
+local STRIKE_LINES = { "Stop resisting!", "Get on the ground!", "Hands behind your back!", "Don't move!" }
+function CrimeService.Stun(player, seconds)
+	local character = player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if not humanoid or character:GetAttribute("Stunned") then
+		return
+	end
+	character:SetAttribute("Stunned", true)
+	local speed, jump = humanoid.WalkSpeed, humanoid.JumpPower
+	humanoid.WalkSpeed, humanoid.JumpPower = 0, 0
+	S.City.Toast(player, "⚡", "Tased!", "You can't move for a moment. The police can cuff you now.", Color3.fromRGB(250, 220, 60))
+	task.delay(seconds, function()
+		if character.Parent then
+			character:SetAttribute("Stunned", nil)
+			if humanoid.WalkSpeed == 0 then
+				humanoid.WalkSpeed = if speed > 0 then speed else 16
+			end
+			if humanoid.JumpPower == 0 then
+				humanoid.JumpPower = if jump > 0 then jump else 50
+			end
+		end
+	end)
+end
+
+function CrimeService.PoliceStrike(player, w)
+	local root = rootOf(player)
+	if not root then
+		return
+	end
+	local now = os.clock()
+	for _, brain in ipairs(w.Chasers) do
+		if brain.Model.Parent and (brain.Root.Position - root.Position).Magnitude < 5.5 and now >= (brain.NextStrike or 0) then
+			brain.NextStrike = now + math.max(0.8, 1.4 - w.Stars * 0.1)
+			if w.Stars >= 2 and math.random() < 0.2 then
+				-- the taser
+				brain.Model:SetAttribute("Swing", now)
+				S.Citizens.Say(brain, "Taser! Taser!", "angry", 1.4)
+				CrimeService.Stun(player, 2.4)
+				S.City.SendNear(root.Position, 120, { Type = "Hit", Position = root.Position + Vector3.new(0, 2, 0), Damage = 4, Player = true })
+			else
+				brain.Model:SetAttribute("SwingSide", (brain.Model:GetAttribute("SwingSide") or 0) + 1)
+				brain.Model:SetAttribute("SwingWeapon", "Bat")
+				brain.Model:SetAttribute("Swing", now)
+				hurtPlayer(brain.Root.Position, player, math.random(6, 9) + w.Stars * 2, 12)
+				if math.random() < 0.3 then
+					S.Citizens.Say(brain, STRIKE_LINES[math.random(1, #STRIKE_LINES)], "angry", 1.4)
+				end
+			end
+			return
+		end
+	end
+end
+
+-- the suspect has a gun out: officers who can see them fire back
+function CrimeService.PoliceShoot(player, w)
+	local root = rootOf(player)
+	if not root then
+		return
+	end
+	local now = os.clock()
+	for _, brain in ipairs(w.Chasers) do
+		local d = brain.Model.Parent and (brain.Root.Position - root.Position).Magnitude
+		if d and d < 55 and now >= (brain.NextShot or 0) and canSee(brain, root.Position, player.Character, 60) then
+			brain.NextShot = now + math.random(12, 20) / 10
+			brain.Model:SetAttribute("SwingWeapon", "Pistol")
+			brain.Model:SetAttribute("Aiming", true)
+			brain.Model:SetAttribute("Swing", now)
+			local from = brain.Root.Position + Vector3.new(0, 1.5, 0)
+			local hit = math.random() < math.clamp(1.1 - d / 50, 0.25, 0.85)
+			local to = if hit then root.Position + Vector3.new(0, 1, 0) else root.Position + Vector3.new(math.random(-4, 4), math.random(0, 3), math.random(-4, 4))
+			S.City.SendNear(from, 250, { Type = "Shot", From = from, To = to, Weapon = "Pistol" })
+			if hit then
+				hurtPlayer(from, player, math.random(10, 16), 8)
+			end
+			if math.random() < 0.3 then
+				S.Citizens.Say(brain, ({ "Drop the weapon!", "Shots fired! Suspect is armed!", "Put it down, now!" })[math.random(1, 3)], "angry", 1.6)
+			end
+		end
+	end
 end
 
 local swatNames = { "Carter", "Okafor", "Tanaka", "Silva", "Haddad", "Larsen", "Brooks", "Mensah" }
@@ -16902,15 +17824,38 @@ local function chaseTick(dt)
 		player:SetAttribute("PoliceCount", #w.Chasers)
 		player:SetAttribute("Helicopter", w.Heli ~= nil)
 		player:SetAttribute("PoliceNear", if nearest < math.huge then math.floor(nearest) else nil)
-		if close and not hiding[player] then
+		-- the police can only cuff you once you're down: hurt (low health),
+		-- tased, or you've put your hands up (Z). Until then they fight you:
+		-- baton hits, and a taser from 2 stars.
+		local character = player.Character
+		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+		local hpFrac = if humanoid and humanoid.MaxHealth > 0 then humanoid.Health / humanoid.MaxHealth else 1
+		local subdued = hpFrac <= (Config.ARREST_HP or 0.35) or (character and (character:GetAttribute("Stunned") or character:GetAttribute("Surrender")))
+		if close and not hiding[player] and subdued then
 			w.Progress += dt
-			if w.Progress >= 1.1 then
+			player:SetAttribute("Cuffing", math.min(1, w.Progress / 1.4))
+			if w.Progress >= 1.4 then
 				w.Progress = 0
+				player:SetAttribute("Cuffing", nil)
+				if character then
+					character:SetAttribute("Surrender", nil)
+				end
 				arrest(player)
+				if humanoid then
+					humanoid.Health = math.max(humanoid.Health, humanoid.MaxHealth * 0.6) -- patched up at the station
+				end
 				continue
 			end
 		else
-			w.Progress = math.max(0, w.Progress - dt * 0.5)
+			w.Progress = math.max(0, w.Progress - dt * 0.8)
+			if w.Progress <= 0 then
+				player:SetAttribute("Cuffing", nil)
+			end
+			if close and not hiding[player] then
+				CrimeService.PoliceStrike(player, w)
+			elseif seen and not hiding[player] and S.Combat and Weapons.Get(S.Combat.Equipped(player)).Ranged then
+				CrimeService.PoliceShoot(player, w)
+			end
 		end
 		-- out of sight long enough: the stars fade one by one
 		-- (hiding makes them give up faster)
@@ -16982,6 +17927,20 @@ function CrimeService.Start(services)
 	S = services
 	S.City.Handle("Punch", attack)
 	S.City.Handle("Attack", attack)
+	-- hands up: the police can cuff you without a fight (Z again to stop)
+	S.City.Handle("Surrender", function(player)
+		local character = player.Character
+		if not character then
+			return nil
+		end
+		local on = not character:GetAttribute("Surrender")
+		character:SetAttribute("Surrender", on or nil)
+		local humanoid = character:FindFirstChildOfClass("Humanoid")
+		if humanoid and not character:GetAttribute("Stunned") then
+			humanoid.WalkSpeed = if on then 0 else 16
+		end
+		return { Surrender = on }
+	end)
 	S.City.Handle("Unhide", function(player)
 		CrimeService.Unhide(player)
 		return { Ok = true }
@@ -17425,6 +18384,35 @@ BUILD.Knife = function(tool, handle)
 	tool.Grip = CFrame.new(0, -0.1, 0)
 end
 
+BUILD.Pistol = function(tool, handle)
+	handle.Size = Vector3.new(0.3, 0.8, 0.4)
+	handle.Color = rgb(34, 34, 38)
+	handle.Material = Enum.Material.Metal
+	piece(tool, handle, "Slide", Vector3.new(0.32, 0.34, 1.3), CFrame.new(0, 0.45, -0.35), rgb(50, 52, 58), Enum.Material.Metal)
+	piece(tool, handle, "Barrel", Vector3.new(0.16, 0.16, 0.2), CFrame.new(0, 0.45, -1.05), rgb(20, 20, 22), Enum.Material.Metal)
+	piece(tool, handle, "TriggerGuard", Vector3.new(0.08, 0.2, 0.4), CFrame.new(0, 0.12, -0.3), rgb(30, 30, 34), Enum.Material.Metal)
+	local muzzle = Instance.new("Attachment")
+	muzzle.Name = "Muzzle"
+	muzzle.Position = Vector3.new(0, 0.45, -1.2)
+	muzzle.Parent = handle
+	-- held pointing forward (the grip is the handle; the barrel runs along -Z)
+	tool.Grip = CFrame.new(0, -0.1, 0.1)
+end
+BUILD.Shotgun = function(tool, handle)
+	handle.Size = Vector3.new(0.3, 0.6, 0.5)
+	handle.Color = rgb(110, 70, 40)
+	handle.Material = Enum.Material.Wood
+	piece(tool, handle, "Stock", Vector3.new(0.34, 0.5, 1.4), CFrame.new(0, 0.1, 0.9), rgb(110, 70, 40), Enum.Material.Wood)
+	piece(tool, handle, "Body", Vector3.new(0.34, 0.4, 1.1), CFrame.new(0, 0.3, -0.6), rgb(40, 40, 44), Enum.Material.Metal)
+	piece(tool, handle, "Barrel", Vector3.new(0.2, 0.2, 2.2), CFrame.new(0, 0.42, -2.1), rgb(30, 30, 34), Enum.Material.Metal)
+	piece(tool, handle, "Pump", Vector3.new(0.28, 0.24, 0.8), CFrame.new(0, 0.2, -1.9), rgb(110, 70, 40), Enum.Material.Wood)
+	local muzzle = Instance.new("Attachment")
+	muzzle.Name = "Muzzle"
+	muzzle.Position = Vector3.new(0, 0.42, -3.2)
+	muzzle.Parent = handle
+	tool.Grip = CFrame.new(0, -0.1, 0.2)
+end
+
 function CombatService.MakeTool(id)
 	local info = Weapons.List[id]
 	if not info or not BUILD[id] then
@@ -17529,6 +18517,10 @@ local function buy(player, data)
 	end
 	if not S.City.Spend(player, w.Price, w.Emoji .. " Bought a " .. w.Name) then
 		return { Ok = false, Error = "You need " .. w.Price .. " coins." }
+	end
+	-- the clerk rings it up (if someone is working the till)
+	if S.Citizens and S.Citizens.ServePlayer then
+		pcall(S.Citizens.ServePlayer, player, S.Map.Places.Hardware, "shop", 1)
 	end
 	pd.Weapons[data.Id] = true
 	giveTools(player)
@@ -18170,7 +19162,7 @@ local function center(b)
 end
 
 local function busy(brain)
-	return inBrawl[brain] ~= nil or brain.State == "ko" or brain.State == "hospital" or brain.State == "police" or brain.State == "talk" or brain.State == "chat" or brain.Held ~= nil or brain.Model:GetAttribute("Fighting") ~= nil or brain.Model:GetAttribute("Chasing") ~= nil
+	return inBrawl[brain] ~= nil or brain.State == "ko" or brain.State == "hospital" or (brain.State == "police" and not brain.Gang) or brain.State == "talk" or brain.State == "chat" or brain.Held ~= nil or brain.Model:GetAttribute("Fighting") ~= nil or brain.Model:GetAttribute("Chasing") ~= nil
 end
 
 -- how likely someone is to start something
@@ -18258,7 +19250,9 @@ local function release(b, brain)
 	if b.Saved[brain] then
 		setPrompts(b, brain, false)
 	end
-	if brain.C.Temp then
+	if brain.Gang then
+		-- (gang members go back to their turf: see GangService)
+	elseif brain.C.Temp then
 		S.Citizens.Despawn(brain)
 	elseif brain.State == "police" and not brain.Model:GetAttribute("Fighting") and not brain.Model:GetAttribute("Chasing") then
 		S.Citizens.Control(brain, false)
@@ -18435,11 +19429,12 @@ end
 -- Starting a fight
 --------------------------------------------------------------------------------
 -- start a fight between two citizens (a starts it)
-function BrawlService.Fight(a, c)
+function BrawlService.Fight(a, c, opts)
+	opts = opts or {}
 	if busy(a) or busy(c) then
 		return nil
 	end
-	local b = { A = a, B = c, Phase = "argue", Started = os.clock(), Crowd = {}, Saved = {}, Next = {}, Called = false, Id = os.clock() }
+	local b = { A = a, B = c, Phase = "argue", Started = os.clock(), Crowd = {}, Saved = {}, Next = {}, Called = false, Id = os.clock(), Kids = opts.Kids, Quiet = opts.Quiet, Gang = opts.Gang }
 	table.insert(brawls, b)
 	local rematch = grudges[key(a, c)]
 	grudges[key(a, c)] = true
@@ -18452,7 +19447,7 @@ function BrawlService.Fight(a, c)
 		f.Model:SetAttribute("Activity", "👊 In a street fight!")
 		setPrompts(b, f, true)
 	end
-	local reason = REASONS[math.random(1, #REASONS)]
+	local reason = opts.Lines or (if opts.Kids then KID_REASONS[math.random(1, #KID_REASONS)] else REASONS[math.random(1, #REASONS)])
 	S.Citizens.Say(a, if rematch then REMATCH[math.random(1, #REMATCH)] else reason[1], "angry", 2.6)
 	task.delay(1.8, function()
 		if not b.Done then
@@ -18469,7 +19464,7 @@ function BrawlService.Fight(a, c)
 		end
 	end)
 	-- players nearby hear about it
-	for _, player in ipairs(Players:GetPlayers()) do
+	for _, player in ipairs(if b.Quiet then {} else Players:GetPlayers()) do
 		local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
 		if root and (root.Position - center(b)).Magnitude < 130 then
 			S.City.Toast(player, "👊", "Street fight!", a.C.First .. " and " .. c.C.First .. " are fighting on " .. streetNear(center(b)) .. ". Hold E on one of them to break it up, or just watch.", rgb(255, 140, 60))
@@ -18477,6 +19472,63 @@ function BrawlService.Fight(a, c)
 	end
 	sendNear(b, { Type = "Brawl", Position = center(b), Names = { a.C.First, c.C.First } })
 	return b
+end
+
+local KID_REASONS = {
+	{ "Give it back! That's mine!", "Make me!" },
+	{ "Stop copying me!", "You stop copying ME!" },
+	{ "You pushed me!", "No I didn't, crybaby!" },
+	{ "Take that back!", "No! It's true!" },
+}
+
+-- a fight that pulls in the people around it: friends of the two jump in
+-- and it turns into a group brawl
+function BrawlService.Pile(b, max)
+	local pos = center(b)
+	local pool = {}
+	for _, brain in ipairs(S.Citizens.Nearby(pos, 35)) do
+		if brain ~= b.A and brain ~= b.B and canFight(brain) then
+			table.insert(pool, brain)
+		end
+	end
+	local made = 0
+	while #pool >= 2 and made < (max or 2) do
+		local x = table.remove(pool, math.random(1, #pool))
+		local y = table.remove(pool, math.random(1, #pool))
+		if BrawlService.Fight(x, y, { Quiet = true, Lines = { "You want some too?!", "Bring it!" } }) then
+			made += 1
+		end
+	end
+	if made > 0 then
+		for _, player in ipairs(Players:GetPlayers()) do
+			local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+			if root and (root.Position - pos).Magnitude < 150 then
+				S.City.Toast(player, "👊", "It's a brawl!", "The fight on " .. streetNear(pos) .. " turned into a brawl: " .. (made * 2 + 2) .. " people are fighting!", rgb(255, 120, 50))
+			end
+		end
+	end
+	return made
+end
+
+-- kids at recess: a scuffle (shoving and slapping, nobody gets hurt badly)
+-- until a teacher breaks it up
+function BrawlService.SchoolFight()
+	local pool = {}
+	for _, brain in ipairs(S.Citizens.List) do
+		local age = S.Life:Age(brain.C)
+		if brain.Model.Parent and not busy(brain) and age >= 9 and age <= 17 and brain.Plan and brain.Plan.Kind == "School" and brain.Plan.Recess and brain.State ~= "walk" then
+			table.insert(pool, brain)
+		end
+	end
+	for i = 1, #pool do
+		for j = i + 1, #pool do
+			local x, y = pool[i], pool[j]
+			if x.C.Household ~= y.C.Household and (x.Root.Position - y.Root.Position).Magnitude < 30 and math.abs(S.Life:Age(x.C) - S.Life:Age(y.C)) <= 3 then
+				return BrawlService.Fight(x, y, { Kids = true })
+			end
+		end
+	end
+	return nil
 end
 
 local function pickFight()
@@ -18538,7 +19590,14 @@ local function pickFight()
 	end
 	local every = Config.FIGHT_COOLDOWN or 140
 	nextFight = now + every * (0.6 + math.random() * 0.8)
-	BrawlService.Fight(starter, target)
+	local b = BrawlService.Fight(starter, target)
+	if b and math.random() < (Config.GROUP_BRAWL_CHANCE or 0.35) then
+		task.delay(5, function()
+			if not b.Done then
+				BrawlService.Pile(b, math.random(1, 2))
+			end
+		end)
+	end
 end
 
 --------------------------------------------------------------------------------
@@ -18650,7 +19709,7 @@ local function swing(b, f, other, now)
 	f.Model:SetAttribute("SwingSide", (f.Model:GetAttribute("SwingSide") or 0) + 1)
 	f.Model:SetAttribute("Swing", now)
 	local strong = f.C.Personality == "sporty" or f.C.Job == "Fitness Coach" or f.C.Job == "Coach"
-	local damage = math.random(8, 15) + (if strong then 4 else 0)
+	local damage = if b.Kids then math.random(3, 6) else math.random(8, 15) + (if strong then 4 else 0)
 	local blocked = math.random() < 0.22
 	if blocked then
 		damage = math.floor(damage * 0.3 + 0.5)
@@ -18666,6 +19725,11 @@ local function swing(b, f, other, now)
 		S.Citizens.Say(f, TAUNTS[math.random(1, #TAUNTS)], "angry", 1.4)
 	end
 	sendNear(b, { Type = "Hit", Position = other.Root.Position + Vector3.new(0, 2, 0), Damage = damage, KO = other.HP <= 0, Blocked = blocked, Weapon = "Fists" })
+	if b.Kids and other.HP < 70 then
+		-- kids: one of them gives up and runs off crying (no knockouts)
+		finish(b, "fled", { Winner = f, Loser = other })
+		return true
+	end
 	if other.HP <= 0 then
 		other.HP = nil
 		other.Model:SetAttribute("HP", nil)
@@ -18726,9 +19790,29 @@ local function tick(b, now)
 		end
 	end
 	gatherCrowd(b)
-	-- someone calls the police
+	-- someone calls the police (at school, a teacher comes running)
 	if not b.Called and b.Phase == "fight" and b.CallAt and now >= b.CallAt then
-		callPolice(b)
+		if b.Kids then
+			b.Called = true
+			local pos = center(b)
+			local best, bestD = nil, 200
+			for _, brain in ipairs(S.Citizens.List) do
+				if brain.C.Job and string.find(brain.C.Job, "Teacher") and not busy(brain) and brain.Plan and brain.Plan.Kind == "Work" then
+					local d = (brain.Root.Position - pos).Magnitude
+					if d < bestD then
+						best, bestD = brain, d
+					end
+				end
+			end
+			if best then
+				S.Citizens.Control(best, true)
+				inBrawl[best] = b
+				b.Officer = best
+				S.Citizens.Say(best, "HEY! Stop that right now!", "angry", 2)
+			end
+		else
+			callPolice(b)
+		end
 	end
 	local officer = b.Officer
 	if officer and officer.Model.Parent and inBrawl[officer] == b then
@@ -18736,8 +19820,16 @@ local function tick(b, now)
 		S.Citizens.SetGait(officer, 16, "run")
 		officer.Humanoid:MoveTo(pos)
 		if (officer.Root.Position - pos).Magnitude < 8 then
-			S.Citizens.Say(officer, OFFICER[math.random(1, #OFFICER)], "angry", 2.5)
-			finish(b, "police")
+			if b.Kids then
+				S.Citizens.Say(officer, "Break it up! Both of you, principal's office. NOW.", "angry", 3)
+				S.City.News("🏫 Two kids got into a fight at recess. A teacher broke it up and sent them to the principal.", "School")
+				finish(b, "tired")
+				release(b, officer)
+				S.Citizens.Control(officer, false)
+			else
+				S.Citizens.Say(officer, OFFICER[math.random(1, #OFFICER)], "angry", 2.5)
+				finish(b, "police")
+			end
 		end
 	end
 end
@@ -18762,6 +19854,10 @@ function BrawlService.Start(services)
 			if Config.STREET_FIGHTS ~= false and now - lastPick > 5 then
 				lastPick = now
 				pickFight()
+				-- the odd scuffle at recess
+				if Config.SCHOOL_FIGHTS ~= false and math.random() < (Config.SCHOOL_FIGHT_CHANCE or 0.04) then
+					pcall(BrawlService.SchoolFight)
+				end
 			end
 		end
 	end)
@@ -19935,21 +21031,33 @@ local function buy(player, info)
 		return { Ok = false, Error = "You need " .. item.Price .. " coins." }
 	end
 	-- eat it: heal, stamina, a boost
-	humanoid.Health = math.min(humanoid.MaxHealth, humanoid.Health + item.Heal)
-	if item.Boost then
-		player:SetAttribute("Boost", item.Boost)
-		player:SetAttribute("BoostUntil", workspace:GetServerTimeNow() + (item.BoostTime or 60))
-	end
-	S.City.Send(player, { Type = "Food", Energy = item.Energy, Name = item.Name })
-	character:SetAttribute("Eating", info.Id)
-	task.delay(2.6, function()
-		if character.Parent and character:GetAttribute("Eating") == info.Id then
-			character:SetAttribute("Eating", nil)
+	local function eat()
+		if not character.Parent or humanoid.Health <= 0 then
+			return
 		end
-	end)
+		humanoid.Health = math.min(humanoid.MaxHealth, humanoid.Health + item.Heal)
+		if item.Boost then
+			player:SetAttribute("Boost", item.Boost)
+			player:SetAttribute("BoostUntil", workspace:GetServerTimeNow() + (item.BoostTime or 60))
+		end
+		S.City.Send(player, { Type = "Food", Energy = item.Energy, Name = item.Name })
+		character:SetAttribute("Eating", info.Id)
+		task.delay(2.6, function()
+			if character.Parent and character:GetAttribute("Eating") == info.Id then
+				character:SetAttribute("Eating", nil)
+			end
+		end)
+	end
+	-- a worker at the counter serves you: you eat it once it's handed over
+	local wait = S.Citizens and S.Citizens.ServePlayer and S.Citizens.ServePlayer(player, S.Map.Places[placeId], "food", 1)
+	if wait then
+		task.delay(wait * 0.9, eat)
+	else
+		eat()
+	end
 	S.City.Progress(player, "food", 1)
 	local r = menu(player, placeId)
-	r.Text = "Yum! " .. item.Name .. (if item.Heal > 0 then "  +" .. item.Heal .. " ❤️" else "") .. (if item.Energy > 0 then "  +" .. item.Energy .. " ⚡" else "")
+	r.Text = (if wait then "Ordered! " else "Yum! ") .. item.Name .. (if item.Heal > 0 then "  +" .. item.Heal .. " ❤️" else "") .. (if item.Energy > 0 then "  +" .. item.Energy .. " ⚡" else "")
 	return r
 end
 
@@ -20410,7 +21518,1454 @@ function JobService.Start(services)
 end
 
 return JobService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX40"><Properties><string name="Name">Conversation</string><ProtectedString name="Source"><![CDATA[-- Conversation (ModuleScript) — ServerScriptService.Modules.Conversation
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX40"><Properties><string name="Name">HomeService</string><ProtectedString name="Source"><![CDATA[-- HomeService (ModuleScript) — ServerScriptService.Modules.HomeService
+-- Houses with real front doors, a house of your own, and break-ins.
+--   • Doors: every house has a wooden front door on a hinge. It swings open
+--     when someone walks up (citizens always get in) and closes behind them.
+--   • Locks: homes people live in are locked to players. Empty houses are open
+--     to look around.
+--   • Your own house: "Buy house" at an empty house's door. It's yours (saved),
+--     the door opens only for you, and you wake up there when you join.
+--   • Break-ins: hold E on a locked door to force it open. Inside there are
+--     valuables to steal. If the family is home or a neighbor sees, they call
+--     the police, and some houses have an alarm.
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
+
+local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
+
+local HomeService = {}
+local S
+local doors = {} -- list of door records
+local byAddress = {} -- [address] = door record
+local buckets = {} -- [key] = { door records } (for finding doors near people)
+local BUCKET = 60
+local OPEN_RANGE = 6.5
+local REPAIR_TIME = 240 -- seconds until a forced door is fixed
+
+local function rgb(r, g, b)
+	return Color3.fromRGB(r, g, b)
+end
+
+local function key(x, z)
+	return math.floor(x / BUCKET) .. ":" .. math.floor(z / BUCKET)
+end
+
+local function priceOf(home)
+	local b = home.Building
+	return if b and b.W >= 54 then 900 elseif b and b.Floors > 1 then 600 else 450
+end
+
+-- is anyone living here? (a citizen household)
+local function occupied(home)
+	for _, h in pairs(S.Life.Households or {}) do
+		if h.Home == home.Index and #(h.Members or {}) > 0 then
+			return true, h
+		end
+	end
+	return false
+end
+
+local function setOpen(d, open)
+	if d.Open == open then
+		return
+	end
+	d.Open = open
+	local goal = if open then d.Hinge * CFrame.Angles(0, math.rad(-100), 0) * CFrame.new(d.Width / 2, 0, 0) else d.Closed
+	d.Part.CanCollide = not open
+	local ok = pcall(function()
+		TweenService:Create(d.Part, TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { CFrame = goal }):Play()
+	end)
+	if not ok then
+		d.Part.CFrame = goal
+	end
+end
+
+-- who may open this door
+local function lockedFor(d, player)
+	if d.Broken then
+		return false
+	end
+	if d.Owner then
+		return d.Owner ~= player.UserId
+	end
+	return d.Lived
+end
+
+local function refreshPrompts(d)
+	local vacant = not d.Lived and not d.Owner
+	d.BuyPrompt.Enabled = vacant
+	d.BuyPrompt.ObjectText = d.Home.Address .. "  ·  🪙 " .. priceOf(d.Home)
+	d.BreakPrompt.Enabled = not vacant and not d.Broken
+	d.Part:SetAttribute("Owner", d.Owner)
+	d.Part:SetAttribute("Broken", d.Broken or nil)
+end
+
+--------------------------------------------------------------------------------
+-- Owning a house
+--------------------------------------------------------------------------------
+local function releaseHome(player)
+	for _, d in ipairs(doors) do
+		if d.Owner == player.UserId then
+			d.Owner = nil
+			refreshPrompts(d)
+		end
+	end
+end
+
+local function claim(player, d, announce)
+	releaseHome(player)
+	d.Owner = player.UserId
+	refreshPrompts(d)
+	player:SetAttribute("HomeAddress", d.Home.Address)
+	if announce then
+		S.City.Toast(player, "🏠", "Welcome home!", d.Home.Address .. " is yours. The door opens only for you, and you'll wake up here.", rgb(90, 180, 120))
+		S.City.News("🏠 " .. player.DisplayName .. " moved into " .. d.Home.Address .. ".", "City")
+	end
+end
+
+local function buy(player, d)
+	if d.Owner or d.Lived then
+		return
+	end
+	local pd = S.City.Data(player)
+	local price = priceOf(d.Home)
+	if not pd or not S.City.Spend(player, price, "🏠 Bought " .. d.Home.Address) then
+		S.City.Toast(player, "🪙", "Not enough coins", "This house costs " .. price .. " coins.", rgb(230, 170, 60))
+		return
+	end
+	pd.Home = d.Home.Address
+	claim(player, d, true)
+	if S.MapBuilder and S.MapBuilder.FurnishHome then
+		pcall(S.MapBuilder.FurnishHome, d.Home)
+	end
+end
+
+function HomeService.HomeOf(player)
+	for _, d in ipairs(doors) do
+		if d.Owner == player.UserId then
+			return d.Home
+		end
+	end
+	return nil
+end
+
+--------------------------------------------------------------------------------
+-- Break-ins
+--------------------------------------------------------------------------------
+local LOOT = {
+	{ "JewelryBox", "💍 Jewelry box", Vector3.new(1, 0.6, 0.8), rgb(160, 60, 110), 40, 90 },
+	{ "CashStash", "💵 Cash under the mattress", Vector3.new(1.2, 0.3, 0.8), rgb(110, 170, 100), 25, 70 },
+	{ "Laptop", "💻 Laptop", Vector3.new(1.4, 0.12, 1), rgb(60, 62, 70), 30, 60 },
+	{ "GameConsole", "🎮 Game console", Vector3.new(1.2, 0.4, 0.9), rgb(240, 240, 245), 20, 50 },
+}
+
+local function clearLoot(d)
+	for _, p in ipairs(d.Loot or {}) do
+		if p.Parent then
+			p:Destroy()
+		end
+	end
+	d.Loot = {}
+end
+
+local function placeLoot(d)
+	clearLoot(d)
+	local spots = d.Home.Spots or {}
+	if #spots == 0 then
+		return
+	end
+	local n = math.random(2, 3)
+	for k = 1, n do
+		local spot = spots[math.random(1, #spots)]
+		local item = LOOT[math.random(1, #LOOT)]
+		local p = Instance.new("Part")
+		p.Name = item[1]
+		p.Anchored, p.CanCollide = true, false
+		p.Size = item[3]
+		p.Color = item[4]
+		p.Material = Enum.Material.SmoothPlastic
+		p.CFrame = spot.CFrame * CFrame.new(math.random(-10, 10) / 10, 0.6 + item[3].Y / 2, math.random(-10, 10) / 10)
+		p.Parent = d.Home.Model or workspace
+		local prompt = Instance.new("ProximityPrompt")
+		prompt.Name = "StealPrompt"
+		prompt.ActionText = "Steal"
+		prompt.ObjectText = item[2]
+		prompt.HoldDuration = 1
+		prompt.MaxActivationDistance = 7
+		prompt.RequiresLineOfSight = false
+		prompt.Parent = p
+		prompt.Triggered:Connect(function(player)
+			if not p.Parent or d.Owner == player.UserId then
+				return
+			end
+			local coins = math.random(item[5], item[6])
+			p:Destroy()
+			S.City.AddCoins(player, coins, "🏠 Stole a " .. item[2]:gsub("^%S+ ", ""))
+			S.City.Toast(player, "🏠", "+" .. coins .. " coins", "You grabbed the " .. item[2]:gsub("^%S+ ", "") .. ".", rgb(230, 170, 60))
+			-- is anyone home to see it?
+			local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+			if root and S.Crime and S.Crime.Report then
+				S.Crime.Report(player, root.Position, nil, 2, "rob a house", "robbed " .. d.Home.Address, 1)
+			end
+		end)
+		table.insert(d.Loot, p)
+	end
+end
+
+local function breakIn(player, d)
+	if d.Broken or not lockedFor(d, player) then
+		return
+	end
+	local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+	if not root or (S.Crime and S.Crime.IsJailed(player)) then
+		return
+	end
+	d.Broken = true
+	d.BrokenUntil = os.clock() + REPAIR_TIME
+	refreshPrompts(d)
+	setOpen(d, true)
+	if S.MapBuilder and S.MapBuilder.FurnishHome then
+		pcall(S.MapBuilder.FurnishHome, d.Home)
+	end
+	placeLoot(d)
+	S.City.Toast(player, "🚪", "You're in", "Grab the valuables and get out before anyone notices.", rgb(150, 110, 255))
+	-- the family inside, a neighbor who saw, or the alarm
+	local _, household = occupied(d.Home)
+	local home = false
+	if household and S.Citizens then
+		for _, id in ipairs(household.Members or {}) do
+			local brain = S.Citizens.ByCitizenId and S.Citizens.ByCitizenId(id)
+			if brain and brain.Root and (brain.Root.Position - d.Home.Door).Magnitude < 35 and S.Citizens.CanReact(brain) then
+				home = true
+				task.delay(0.5, function()
+					S.Citizens.Flee(brain, root.Position, 12, ({ "Someone's breaking in!!", "Get out of my house!", "Help! Burglar!" })[math.random(1, 3)])
+				end)
+			end
+		end
+	end
+	local alarm = math.random() < (Config.HOUSE_ALARM_CHANCE or 0.35)
+	if alarm then
+		local s = Instance.new("Sound")
+		s.Name = "HouseAlarm"
+		s.SoundId = "rbxasset://sounds/electronicpingshort.wav"
+		s.Looped = true
+		s.Volume = 0.8
+		s.PlaybackSpeed = 2
+		s.Parent = d.Part
+		pcall(function()
+			s:Play()
+		end)
+		task.delay(25, function()
+			s:Destroy()
+		end)
+		S.City.Toast(player, "🚨", "ALARM!", "The house alarm went off. The police are on the way.", rgb(230, 60, 60))
+		if S.Crime then
+			S.Crime.AddStars(player, 1, "A house alarm went off at " .. d.Home.Address .. "!")
+		end
+	end
+	if S.Crime and S.Crime.Report then
+		S.Crime.Report(player, root.Position, nil, if home then 3 else 2, "break into " .. d.Home.Address, "broke into " .. d.Home.Address, if home then 2 else 1)
+	end
+	S.City.Crime(2)
+end
+
+--------------------------------------------------------------------------------
+-- Doors
+--------------------------------------------------------------------------------
+local function addDoor(home)
+	local hd = home.Building and home.Building.HouseDoor
+	if not hd or not hd.Part.Parent then
+		return
+	end
+	local d = { Home = home, Part = hd.Part, Hinge = hd.Hinge, Closed = hd.Part.CFrame, Width = hd.Width, Open = false, Loot = {} }
+	d.Lived = occupied(home)
+	-- a still spot in front of the door for the prompts (the door itself moves)
+	local anchor = Instance.new("Part")
+	anchor.Name = "DoorPrompts"
+	anchor.Anchored, anchor.CanCollide, anchor.CanQuery, anchor.CanTouch = true, false, false, false
+	anchor.Transparency = 1
+	anchor.Size = Vector3.new(1, 1, 1)
+	anchor.CFrame = d.Closed * CFrame.new(0, -1, -1.4)
+	anchor.Parent = hd.Part.Parent
+	local buyPrompt = Instance.new("ProximityPrompt")
+	buyPrompt.Name = "BuyHouse"
+	buyPrompt.ActionText = "Buy house"
+	buyPrompt.KeyboardKeyCode = Enum.KeyCode.G
+	buyPrompt.HoldDuration = 0.6
+	buyPrompt.MaxActivationDistance = 9
+	buyPrompt.RequiresLineOfSight = false
+	buyPrompt.Parent = anchor
+	buyPrompt.Triggered:Connect(function(player)
+		buy(player, d)
+	end)
+	local breakPrompt = Instance.new("ProximityPrompt")
+	breakPrompt.Name = "BreakIn"
+	breakPrompt.ActionText = "Break in"
+	breakPrompt.ObjectText = home.Address
+	breakPrompt.KeyboardKeyCode = Enum.KeyCode.E
+	breakPrompt.HoldDuration = 2.5
+	breakPrompt.MaxActivationDistance = 7
+	breakPrompt.RequiresLineOfSight = false
+	breakPrompt.UIOffset = Vector2.new(0, 60)
+	breakPrompt.Parent = anchor
+	breakPrompt.Triggered:Connect(function(player)
+		breakIn(player, d)
+	end)
+	d.BuyPrompt, d.BreakPrompt = buyPrompt, breakPrompt
+	refreshPrompts(d)
+	table.insert(doors, d)
+	byAddress[home.Address] = d
+	local k = key(home.Door.X, home.Door.Z)
+	buckets[k] = buckets[k] or {}
+	table.insert(buckets[k], d)
+	hd.Part:SetAttribute("Address", home.Address)
+end
+
+local function nearbyDoors(pos, out)
+	local bx, bz = math.floor(pos.X / BUCKET), math.floor(pos.Z / BUCKET)
+	for dx = -1, 1 do
+		for dz = -1, 1 do
+			for _, d in ipairs(buckets[(bx + dx) .. ":" .. (bz + dz)] or {}) do
+				local c = d.Closed.Position
+				local flat = Vector3.new(pos.X - c.X, 0, pos.Z - c.Z).Magnitude
+				if flat < OPEN_RANGE and math.abs(pos.Y - c.Y) < 8 then
+					out[d] = out[d] or {}
+					table.insert(out[d], pos)
+				end
+			end
+		end
+	end
+end
+
+local function step()
+	-- who is near which door
+	local want = {} -- [door] = true: open it
+	local near = {}
+	if S.Citizens and S.Citizens.List then
+		for _, brain in ipairs(S.Citizens.List) do
+			if brain.Root and brain.Model.Parent and brain.State ~= "ko" and brain.State ~= "hospital" then
+				local marks = {}
+				nearbyDoors(brain.Root.Position, marks)
+				for d in pairs(marks) do
+					want[d] = true
+				end
+			end
+		end
+	end
+	for _, player in ipairs(Players:GetPlayers()) do
+		local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+		if root then
+			local marks = {}
+			nearbyDoors(root.Position, marks)
+			for d in pairs(marks) do
+				near[d] = true
+				if not lockedFor(d, player) then
+					want[d] = true
+				end
+			end
+		end
+	end
+	local now = os.clock()
+	for _, d in ipairs(doors) do
+		if d.Broken and now > (d.BrokenUntil or 0) and not near[d] then
+			-- fixed: a new lock, and the valuables put away
+			d.Broken = nil
+			clearLoot(d)
+			refreshPrompts(d)
+		end
+		setOpen(d, want[d] == true or d.Broken == true)
+	end
+end
+
+function HomeService.Start(services)
+	S = services
+	for _, home in ipairs(S.Map.Homes or {}) do
+		if home.Kind == "house" then
+			addDoor(home)
+		end
+	end
+	-- your saved house
+	local function join(player)
+		task.spawn(function()
+			for _ = 1, 40 do
+				if S.City.Data(player) then
+					break
+				end
+				task.wait(0.25)
+			end
+			local pd = S.City.Data(player)
+			local d = pd and pd.Home and byAddress[pd.Home]
+			if d and not d.Owner and not d.Lived then
+				claim(player, d, false)
+			elseif pd and pd.Home and not d then
+				pd.Home = nil
+			end
+			-- wake up at home
+			local function spawnHome(character)
+				local mine = HomeService.HomeOf(player)
+				local root = character:WaitForChild("HumanoidRootPart", 5)
+				if mine and root and mine.Inside then
+					task.wait(0.2)
+					root.CFrame = CFrame.new(mine.Inside + Vector3.new(0, 3, 0))
+				end
+			end
+			player.CharacterAdded:Connect(spawnHome)
+			if player.Character and d and d.Owner == player.UserId then
+				task.spawn(spawnHome, player.Character)
+			end
+		end)
+	end
+	Players.PlayerAdded:Connect(join)
+	for _, p in ipairs(Players:GetPlayers()) do
+		join(p)
+	end
+	Players.PlayerRemoving:Connect(function(player)
+		for _, d in ipairs(doors) do
+			if d.Owner == player.UserId then
+				d.Owner = nil
+				refreshPrompts(d)
+			end
+		end
+	end)
+	task.spawn(function()
+		while true do
+			task.wait(0.2)
+			local ok, err = pcall(step)
+			if not ok then
+				warn("[HomeService] " .. tostring(err))
+				task.wait(2)
+			end
+		end
+	end)
+end
+
+HomeService.Doors = doors
+HomeService.BreakIn = breakIn
+HomeService.Buy = buy
+
+return HomeService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX41"><Properties><string name="Name">GangService</string><ProtectedString name="Source"><![CDATA[-- GangService (ModuleScript) — ServerScriptService.Modules.GangService
+-- The rough side of town, and nights when the city loses it.
+--   • Gang turf: the blocks past the factory and the warehouse ("the East
+--     End") are run by two street crews, the Vipers (green) and the Kings
+--     (purple). The streets there are covered in graffiti and trash, with a
+--     burned-out car and a fire barrel where the crews hang out.
+--   • Walk onto their corner and they'll size you up and tell you to leave.
+--     Stick around, or hit one of them, and the whole crew jumps you.
+--   • Gang wars: every so often the two crews meet in the street and it turns
+--     into a big brawl. Somebody calls the police.
+--   • Riots: when the city's safety falls very low (or, rarely, on a bad
+--     night), downtown erupts: crowds brawling in the streets, masked rioters
+--     running around, stores looted and fires burning, until the police get
+--     it under control. Knocked-out people go to the hospital.
+-- Turn them off with Config.GANGS = false / Config.RIOTS = false.
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
+local MapKit = require(script.Parent:WaitForChild("MapKit"))
+
+local GangService = {}
+local S
+
+local CREWS = {
+	{ Name = "Vipers", Job = "Viper", Color = Color3.fromRGB(60, 200, 100), Emoji = "🐍", Names = { "Snake", "Dice", "Tank", "Lil T", "Ghost", "Rico" } },
+	{ Name = "Kings", Job = "King", Color = Color3.fromRGB(170, 90, 240), Emoji = "👑", Names = { "Crown", "Duke", "Jay", "Smoke", "Ace", "Nico" } },
+}
+local TAUNTS = { "You lost or something?", "This ain't your block.", "Keep walking.", "You lookin' at something?", "Wrong neighborhood, buddy." }
+local WARN = { "Last warning. Beat it.", "I said get lost!", "You deaf? Leave!" }
+local JUMP = { "Get 'em!", "Told you to leave!", "Now you're gonna learn!" }
+
+local crews = {} -- crew records: { Info, Spot, Members = { brain }, Angry = { [player] = true }, Seen = { [player] = time } }
+local turf = {} -- block centers
+local warAt = 0
+
+local function rgb(r, g, b)
+	return Color3.fromRGB(r, g, b)
+end
+
+local function nearestPlayer(pos)
+	local best, bestD = nil, math.huge
+	for _, p in ipairs(Players:GetPlayers()) do
+		local root = p.Character and p.Character:FindFirstChild("HumanoidRootPart")
+		if root then
+			local d = (root.Position - pos).Magnitude
+			if d < bestD then
+				best, bestD = p, d
+			end
+		end
+	end
+	return best, bestD
+end
+
+local function toastNear(pos, radius, emoji, title, text, color)
+	for _, p in ipairs(Players:GetPlayers()) do
+		local root = p.Character and p.Character:FindFirstChild("HumanoidRootPart")
+		if root and (root.Position - pos).Magnitude < radius then
+			S.City.Toast(p, emoji, title, text, color)
+		end
+	end
+end
+
+--------------------------------------------------------------------------------
+-- The look of the turf: graffiti, trash, a burned-out car, a fire barrel
+--------------------------------------------------------------------------------
+local TAGS = { "VIPERS", "KINGS", "EAST END", "V13", "KING$", "NO COPS" }
+local function dressTurf(folder, c, rng)
+	local HALF, SIDEWALK = MapKit.HALF, MapKit.SIDEWALK
+	for k = 1, 6 do
+		local a = rng:NextNumber() * math.pi * 2
+		local p = c + Vector3.new(math.cos(a) * (HALF - 8), 0, math.sin(a) * (HALF - 8))
+		MapKit.deco(folder, "TrashBag", Vector3.new(1.6, 1.4, 1.4), CFrame.new(p + Vector3.new(0, MapKit.LOT_Y + 0.7, 0)), rgb(30, 30, 34), Enum.Material.Plastic)
+		if k % 2 == 0 then
+			MapKit.deco(folder, "Litter", Vector3.new(0.8, 0.1, 0.6), CFrame.new(p + Vector3.new(1.4, MapKit.LOT_Y + 0.05, 0.6)) * CFrame.Angles(0, a, 0), rgb(220, 210, 180))
+		end
+	end
+	-- graffiti on a wall panel at the block's corners
+	for k, sx in ipairs({ -1, 1 }) do
+		local wall = MapKit.deco(folder, "GraffitiWall", Vector3.new(12, 6, 0.6), CFrame.new(c + Vector3.new(sx * (HALF - SIDEWALK - 8), MapKit.LOT_Y + 3, -(HALF - SIDEWALK - 1))), rgb(150, 140, 130), Enum.Material.Brick)
+		MapKit.signText(wall, Enum.NormalId.Front, TAGS[rng:NextInteger(1, #TAGS)], ({ rgb(60, 220, 110), rgb(180, 90, 250), rgb(250, 90, 60) })[k], Enum.Font.Bangers)
+		MapKit.signText(wall, Enum.NormalId.Back, TAGS[rng:NextInteger(1, #TAGS)], ({ rgb(250, 200, 40), rgb(60, 180, 250) })[k], Enum.Font.Bangers)
+	end
+	-- a burned-out car
+	local car = MapKit.deco(folder, "BurnedCar", Vector3.new(5, 2.4, 9), CFrame.new(c + Vector3.new(HALF - SIDEWALK - 6, MapKit.LOT_Y + 1.4, 6)), rgb(40, 36, 34), Enum.Material.CorrodedMetal)
+	MapKit.deco(folder, "BurnedCarTop", Vector3.new(4.4, 1.6, 4.6), car.CFrame * CFrame.new(0, 2, 0.5), rgb(30, 28, 26), Enum.Material.CorrodedMetal)
+	for _, sx in ipairs({ -1, 1 }) do
+		for _, sz in ipairs({ -1, 1 }) do
+			MapKit.deco(folder, "Rim", Vector3.new(0.6, 1.4, 1.4), car.CFrame * CFrame.new(sx * 2.4, -1, sz * 3.2), rgb(70, 60, 50), Enum.Material.CorrodedMetal)
+		end
+	end
+end
+
+-- a fire in a barrel (or a burning barricade in a riot)
+local function fire(folder, pos, big)
+	local barrel = MapKit.deco(folder, if big then "BurningBarricade" else "FireBarrel", if big then Vector3.new(4, 1.6, 2) else Vector3.new(1.8, 2.6, 1.8), CFrame.new(pos + Vector3.new(0, MapKit.LOT_Y + (if big then 0.8 else 1.3), 0)), rgb(60, 50, 40), Enum.Material.CorrodedMetal)
+	local f = Instance.new("Fire")
+	f.Size = if big then 9 else 4
+	f.Heat = if big then 14 else 8
+	f.Parent = barrel
+	local smoke = Instance.new("Smoke")
+	smoke.Color = rgb(60, 60, 60)
+	smoke.Opacity = if big then 0.25 else 0.1
+	smoke.RiseVelocity = 6
+	smoke.Parent = barrel
+	local light = Instance.new("PointLight")
+	light.Color = rgb(255, 150, 60)
+	light.Range = if big then 26 else 16
+	light.Brightness = 2
+	light.Parent = barrel
+	return barrel
+end
+
+--------------------------------------------------------------------------------
+-- Crews
+--------------------------------------------------------------------------------
+local function spawnMember(crew)
+	local info = crew.Info
+	local n = #crew.Members + 1
+	local name = info.Names[(n - 1) % #info.Names + 1]
+	local a = n / 6 * math.pi * 2
+	local pos = crew.Spot + Vector3.new(math.cos(a) * 3.5, 3, math.sin(a) * 3.5)
+	local brain = S.Citizens.SpawnExtra({ Name = name, First = name, Job = info.Job, Age = math.random(19, 30), Activity = info.Emoji .. " " .. info.Name .. " crew" }, CFrame.lookAt(pos, crew.Spot + Vector3.new(0, 3, 0)))
+	brain.Gang = info.Name
+	brain.Crew = crew
+	brain.C.Personality = "grumpy"
+	brain.HP = 120
+	S.Citizens.Control(brain, true)
+	brain.Model:SetAttribute("Gang", info.Name)
+	brain.Model:SetAttribute("Action", ({ "chat", "wait", "phone", "chat" })[n % 4 + 1])
+	brain.Post = pos
+	table.insert(crew.Members, brain)
+	return brain
+end
+
+local function alive(brain)
+	return brain.Model.Parent and brain.State ~= "ko" and brain.State ~= "hospital"
+end
+
+-- a player hit one of them: they all come for that player
+function GangService.Provoke(brain, player)
+	local crew = brain.Crew
+	if not crew or crew.Angry[player] then
+		return
+	end
+	crew.Angry[player] = os.clock() + 30
+	for _, m in ipairs(crew.Members) do
+		if m ~= brain and alive(m) and S.Crime and S.Crime.StartFight then
+			task.delay(math.random() * 0.8, function()
+				S.Crime.StartFight(m, player)
+			end)
+		end
+	end
+	if S.Citizens then
+		S.Citizens.Say(brain, JUMP[math.random(1, #JUMP)], "angry", 2)
+	end
+end
+
+local function crewTick(crew, now)
+	if not workspace:FindFirstChild("Citizens") then
+		return
+	end
+	-- clear out the knocked-out, and a new member joins now and then
+	for k = #crew.Members, 1, -1 do
+		local m = crew.Members[k]
+		if not m.Model.Parent then
+			table.remove(crew.Members, k)
+		elseif m.State == "ko" or m.State == "hospital" then
+			m.GoneAt = m.GoneAt or now
+			if now - m.GoneAt > 25 then
+				table.remove(crew.Members, k)
+				S.Citizens.Despawn(m)
+			end
+		end
+	end
+	if #crew.Members < (Config.GANG_SIZE or 5) and now >= (crew.NextRecruit or 0) then
+		crew.NextRecruit = now + 60
+		task.spawn(pcall, spawnMember, crew)
+	end
+	-- members who aren't fighting drift back to their corner
+	for _, m in ipairs(crew.Members) do
+		if alive(m) and m.State ~= "police" then
+			S.Citizens.Control(m, true)
+		end
+		if alive(m) and not m.Model:GetAttribute("Fighting") and not m.Model:GetAttribute("Brawling") and m.Post and not (S.Brawl and S.Brawl.IsBrawling(m)) then
+			if (m.Root.Position - m.Post).Magnitude > 3 then
+				S.Citizens.SetGait(m, 9, "walk")
+				m.Humanoid:MoveTo(m.Post)
+			elseif not m.Model:GetAttribute("Action") or m.Model:GetAttribute("Action") == "" then
+				m.Model:SetAttribute("Action", ({ "chat", "wait", "phone" })[math.random(1, 3)])
+			end
+		end
+	end
+	-- players on the corner
+	for _, player in ipairs(Players:GetPlayers()) do
+		local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+		if root then
+			local d = (root.Position - crew.Spot).Magnitude
+			if d < 26 and not (crew.Angry[player] and crew.Angry[player] > now) then
+				crew.Seen[player] = crew.Seen[player] or now
+				local stay = now - crew.Seen[player]
+				local talker
+				for _, m in ipairs(crew.Members) do
+					if alive(m) then
+						talker = m
+						break
+					end
+				end
+				if talker then
+					if stay < 1 then
+						S.Citizens.Say(talker, TAUNTS[math.random(1, #TAUNTS)], "angry", 2.5)
+						S.City.Toast(player, crew.Info.Emoji, crew.Info.Name .. " turf", "You're on the " .. crew.Info.Name .. "' corner. Don't hang around.", crew.Info.Color)
+					elseif stay > 9 and not crew.Warned[player] then
+						crew.Warned[player] = true
+						S.Citizens.Say(talker, WARN[math.random(1, #WARN)], "angry", 2.5)
+					elseif stay > 16 then
+						GangService.Provoke(talker, player)
+						if S.Crime and S.Crime.StartFight then
+							S.Crime.StartFight(talker, player)
+						end
+					end
+				end
+			elseif d > 40 then
+				crew.Seen[player] = nil
+				crew.Warned[player] = nil
+			end
+		end
+	end
+end
+
+-- the two crews clash in the street between their corners
+local function gangWar()
+	local a, b = crews[1], crews[2]
+	if not a or not b or not S.Brawl then
+		return
+	end
+	local fighters = {}
+	local pairs_ = math.min(#a.Members, #b.Members)
+	local made = 0
+	for k = 1, pairs_ do
+		local x, y = a.Members[k], b.Members[k]
+		if alive(x) and alive(y) and not S.Brawl.IsBrawling(x) and not S.Brawl.IsBrawling(y) then
+			-- meet in the middle first
+			local mid = (a.Spot + b.Spot) / 2 + Vector3.new(math.random(-6, 6), 0, math.random(-6, 6))
+			x.Root.CFrame = CFrame.new(mid + Vector3.new(2, 3, 0))
+			y.Root.CFrame = CFrame.new(mid + Vector3.new(-2, 3, 0))
+			if S.Brawl.Fight(x, y, { Gang = true, Quiet = made > 0, Lines = { a.Info.Name .. "! Let's go!", b.Info.Name .. " run this!" } }) then
+				made += 1
+				table.insert(fighters, x)
+			end
+		end
+	end
+	if made > 0 then
+		local pos = (a.Spot + b.Spot) / 2
+		toastNear(pos, 220, "⚔️", "Gang war!", "The " .. a.Info.Name .. " and the " .. b.Info.Name .. " are fighting in the street, " .. made * 2 .. " of them. Stay back!", rgb(230, 70, 70))
+		S.City.News("⚔️ A gang fight broke out in the East End between the " .. a.Info.Name .. " and the " .. b.Info.Name .. ".", "Crime")
+		S.City.Adjust("Safety", -3)
+	end
+end
+
+--------------------------------------------------------------------------------
+-- Riots
+--------------------------------------------------------------------------------
+local riot = nil -- { Until, Center, Fires = folder, Rioters = { brain }, NextFight, NextLoot }
+local RIOT_LINES = { "Burn it down!", "Nobody's safe tonight!", "Wooo!!", "Let's go, let's go!", "Grab everything!", "They can't stop all of us!" }
+
+function GangService.RiotActive()
+	return riot ~= nil
+end
+
+function GangService.StartRiot(reason)
+	if riot or Config.RIOTS == false then
+		return false
+	end
+	local center = (S.Map.Places.Plaza and S.Map.Places.Plaza.Door) or S.Map.SpeechSpot or Vector3.new(0, 0, 0)
+	local folder = Instance.new("Folder")
+	folder.Name = "Riot"
+	folder.Parent = workspace
+	riot = { Until = os.clock() + (Config.RIOT_TIME or 240), Center = center, Folder = folder, Rioters = {}, NextFight = 0, NextLoot = os.clock() + 15, NextLine = 0 }
+	-- burning barricades on the streets around the plaza
+	local nodes = {}
+	for _, n in ipairs(S.Map.Nodes or {}) do
+		local d = (n - center).Magnitude
+		if d > 20 and d < 160 then
+			table.insert(nodes, n)
+		end
+	end
+	for _ = 1, math.min(6, #nodes) do
+		local n = table.remove(nodes, math.random(1, #nodes))
+		fire(folder, Vector3.new(n.X, 0, n.Z), true)
+	end
+	-- masked rioters pour in
+	for k = 1, (Config.RIOTERS or 8) do
+		local n = S.Map.Nodes[math.random(1, #S.Map.Nodes)]
+		local a = math.random() * math.pi * 2
+		local pos = center + Vector3.new(math.cos(a) * math.random(20, 60), 3, math.sin(a) * math.random(20, 60))
+		local brain = S.Citizens.SpawnExtra({ Name = "Rioter", First = "Rioter", Job = "Rioter", Age = math.random(18, 35), Activity = "🔥 Rioting" }, CFrame.new(pos))
+		brain.Rioter = true
+		brain.Gang = "Rioters" -- (they don't go home after a fight)
+		brain.HP = 100
+		brain.C.Personality = "grumpy"
+		S.Citizens.Control(brain, true)
+		table.insert(riot.Rioters, brain)
+	end
+	S.City.News("🔥 RIOT! " .. (reason or "Chaos broke out downtown") .. ". Fires are burning around the plaza and the police are overwhelmed.", "Crime")
+	S.City.Adjust("Safety", -10)
+	S.City.Adjust("Happiness", -6)
+	for _, p in ipairs(Players:GetPlayers()) do
+		S.City.Toast(p, "🔥", "RIOT DOWNTOWN!", "Fights everywhere, stores looted, fires in the streets. Get involved, get out of the way, or help the police.", rgb(240, 90, 40))
+	end
+	workspace:SetAttribute("Riot", true)
+	return true
+end
+
+local function endRiot()
+	if not riot then
+		return
+	end
+	for _, r in ipairs(riot.Rioters) do
+		if r.Model.Parent then
+			S.Citizens.Despawn(r)
+		end
+	end
+	riot.Folder:Destroy()
+	riot = nil
+	workspace:SetAttribute("Riot", nil)
+	S.City.News("🚓 The riot is over. Police cleared the streets downtown and the fires are out.", "Crime")
+	for _, p in ipairs(Players:GetPlayers()) do
+		S.City.Toast(p, "🚓", "The riot is over", "The police got the city back under control.", rgb(90, 140, 230))
+	end
+end
+
+local function riotTick(now)
+	if now > riot.Until then
+		endRiot()
+		return
+	end
+	-- rioters run from street to street, shouting and picking fights
+	for _, r in ipairs(riot.Rioters) do
+		if alive(r) and not (S.Brawl and S.Brawl.IsBrawling(r)) and not r.Model:GetAttribute("Fighting") then
+			if not r.Goal or (r.Root.Position - r.Goal).Magnitude < 4 or now > (r.GoalUntil or 0) then
+				local a = math.random() * math.pi * 2
+				r.Goal = riot.Center + Vector3.new(math.cos(a) * math.random(10, 90), 0, math.sin(a) * math.random(10, 90))
+				r.GoalUntil = now + 8
+			end
+			S.Citizens.SetGait(r, 15, "run")
+			r.Humanoid:MoveTo(r.Goal)
+			if now >= riot.NextLine and math.random() < 0.2 then
+				riot.NextLine = now + 2
+				S.Citizens.Say(r, RIOT_LINES[math.random(1, #RIOT_LINES)], "angry", 2)
+			end
+		end
+	end
+	-- fights break out everywhere
+	if S.Brawl and now >= riot.NextFight and #S.Brawl.Active() < (Config.RIOT_BRAWLS or 6) then
+		riot.NextFight = now + 3
+		local pool = {}
+		for _, brain in ipairs(S.Citizens.Nearby(riot.Center, 130)) do
+			if alive(brain) and not S.Brawl.IsBrawling(brain) and not brain.Model:GetAttribute("Fighting") and not brain.Model:GetAttribute("Chasing") and (brain.Rioter or (brain.State == "walk" and not brain.C.Temp and S.Life:Age(brain.C) >= 18)) then
+				table.insert(pool, brain)
+			end
+		end
+		if #pool >= 2 then
+			local x = table.remove(pool, math.random(1, #pool))
+			local best, bestD = nil, math.huge
+			for _, y in ipairs(pool) do
+				local d = (y.Root.Position - x.Root.Position).Magnitude
+				if d < bestD then
+					best, bestD = y, d
+				end
+			end
+			if best and bestD < 50 then
+				S.Brawl.Fight(x, best, { Quiet = true, Lines = { RIOT_LINES[math.random(1, #RIOT_LINES)], "Get off me!" } })
+			end
+		end
+	end
+	-- stores get looted
+	if S.StreetCrime and now >= riot.NextLoot then
+		riot.NextLoot = now + math.random(15, 30)
+		pcall(S.StreetCrime.Commit, "robbery")
+	end
+end
+
+--------------------------------------------------------------------------------
+-- Start
+--------------------------------------------------------------------------------
+function GangService.Start(services)
+	S = services
+	if Config.GANGS ~= false then
+		local rng = Random.new((Config.SEED or 1) + 99)
+		local folder = Instance.new("Folder")
+		folder.Name = "EastEnd"
+		folder.Parent = workspace:FindFirstChild("City") or workspace
+		local blocks = Config.GANG_TURF or { { 4, 0 }, { 4, 1 } }
+		for k, ij in ipairs(blocks) do
+			local c = Vector3.new(ij[1] * MapKit.SPACING, 0, ij[2] * MapKit.SPACING)
+			table.insert(turf, c)
+			dressTurf(folder, c, rng)
+			local info = CREWS[(k - 1) % #CREWS + 1]
+			-- their corner: the sidewalk at the block's west corner, by a fire barrel
+			local spot = c + Vector3.new(-(MapKit.HALF - 3), MapKit.LOT_Y, (if k == 1 then 1 else -1) * (MapKit.HALF - 3))
+			fire(folder, spot + Vector3.new(0, -MapKit.LOT_Y, 0), false)
+			local crew = { Info = info, Spot = spot, Members = {}, Angry = {}, Seen = {}, Warned = {} }
+			table.insert(crews, crew)
+			-- (once the citizens are in the world; each member on its own thread,
+			-- a body can take a moment to load)
+			task.spawn(function()
+				for _ = 1, 60 do
+					if workspace:FindFirstChild("Citizens") then
+						break
+					end
+					task.wait(0.5)
+				end
+				for _ = 1, (Config.GANG_SIZE or 5) do
+					task.spawn(function()
+						local ok, err = pcall(spawnMember, crew)
+						if not ok then
+							warn("[GangService] couldn't spawn a member: " .. tostring(err))
+						end
+					end)
+				end
+				crew.NextRecruit = os.clock() + 60
+			end)
+			crew.NextRecruit = math.huge
+		end
+		warAt = os.clock() + (Config.GANG_WAR_EVERY or 240) * 0.6
+	end
+	task.spawn(function()
+		local lastRiotCheck = os.clock()
+		while true do
+			task.wait(0.5)
+			local now = os.clock()
+			for _, crew in ipairs(crews) do
+				local ok, err = pcall(crewTick, crew, now)
+				if not ok then
+					warn("[GangService] " .. tostring(err))
+				end
+			end
+			-- a gang war when someone is around to see it
+			if #crews >= 2 and now >= warAt then
+				local _, d = nearestPlayer((crews[1].Spot + crews[2].Spot) / 2)
+				if d < 200 then
+					warAt = now + (Config.GANG_WAR_EVERY or 240) * (0.7 + math.random() * 0.6)
+					pcall(gangWar)
+				end
+			end
+			if riot then
+				local ok, err = pcall(riotTick, now)
+				if not ok then
+					warn("[GangService] riot: " .. tostring(err))
+				end
+			elseif Config.RIOTS ~= false and now - lastRiotCheck > 30 then
+				lastRiotCheck = now
+				local safety = S.City.State.Safety or 60
+				local hour = S.City.Hour()
+				local night = hour >= 20 or hour < 4
+				if safety < (Config.RIOT_SAFETY or 20) and math.random() < 0.5 then
+					GangService.StartRiot("The city is fed up: safety hit rock bottom")
+				elseif night and math.random() < (Config.RIOT_CHANCE or 0.01) then
+					GangService.StartRiot("A night of chaos broke out downtown")
+				end
+			end
+		end
+	end)
+end
+
+GangService.Crews = crews
+GangService.EndRiot = endRiot
+
+return GangService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX42"><Properties><string name="Name">RelationshipService</string><ProtectedString name="Source"><![CDATA[-- RelationshipService (ModuleScript) — ServerScriptService.Modules.RelationshipService
+-- Couples and the drama that comes with them (the plans are in Life:Plan):
+--   • Date nights: partners go out together (dinner, the lake, the park, the
+--     cinema, a coffee). On the way they walk hand in hand; once there they sit
+--     together, lean in and chat, and little hearts float up.
+--   • Cheating: now and then someone sneaks off to meet a friend behind their
+--     partner's back. They flirt, laugh and whisper...
+--   • Caught: if their partner shows up (some follow a hunch), there's a
+--     scene: "WHAT is going on here?!", "It's not what it looks like!", a slap,
+--     and "We're DONE!". The couple breaks up, the whole city hears about it,
+--     and players nearby get a heads-up to come and watch.
+
+local Players = game:GetService("Players")
+
+local RelationshipService = {}
+local S
+
+local DATE_LINES = { "I love this place.", "You look amazing tonight.", "We should do this more often.", "Remember our first date?", "I'm so lucky.", "Happy? 😊" }
+local FLIRT_LINES = { "Nobody knows we're here, right?", "You're so funny.", "Shh, not so loud...", "I've missed you.", "We have to be careful." }
+local caughtToday = {} -- [pair key] = day
+
+local function rgb(r, g, b)
+	return Color3.fromRGB(r, g, b)
+end
+
+local function free(brain)
+	return brain and brain.Model.Parent and brain.State ~= "ko" and brain.State ~= "hospital" and brain.State ~= "police" and brain.State ~= "talk" and not brain.Model:GetAttribute("Fighting") and not brain.Model:GetAttribute("Brawling")
+end
+
+local function setHand(brain, side)
+	if brain.Model:GetAttribute("HoldHand") ~= side then
+		brain.Model:SetAttribute("HoldHand", side)
+	end
+end
+
+local function hearts(brain)
+	brain.Model:SetAttribute("Hearts", os.clock())
+end
+
+local function toastNear(pos, radius, emoji, title, text, color)
+	for _, p in ipairs(Players:GetPlayers()) do
+		local root = p.Character and p.Character:FindFirstChild("HumanoidRootPart")
+		if root and (root.Position - pos).Magnitude < radius then
+			S.City.Toast(p, emoji, title, text, color)
+		end
+	end
+end
+
+function RelationshipService.BreakUp(a, b)
+	local life = S.Life
+	local h = life.Households[a.Household]
+	if h and h.Partners and table.find(h.Partners, a.Id) and table.find(h.Partners, b.Id) then
+		h.Partners = {}
+	end
+	a.Ex, b.Ex = b.Id, a.Id
+	a.Heartbroken, b.Heartbroken = life.Day, life.Day
+end
+
+-- the partner walks up to the two of them: a scene, a slap, a breakup
+local function caught(cheater, lover, partner)
+	local key = math.min(cheater.C.Id, lover.C.Id) .. ":" .. math.max(cheater.C.Id, lover.C.Id)
+	if caughtToday[key] == S.Life.Day then
+		return
+	end
+	caughtToday[key] = S.Life.Day
+	S.Citizens.Control(partner, true)
+	S.Citizens.SetGait(partner, 14, "run")
+	partner.Humanoid:MoveTo(cheater.Root.Position)
+	partner.Model:SetAttribute("Expression", "angry")
+	S.Citizens.Say(partner, "WHAT is going on here?!", "angry", 3)
+	local pos = cheater.Root.Position
+	toastNear(pos, 180, "💔", "Busted!", partner.C.First .. " just caught " .. cheater.C.First .. " with " .. lover.C.First .. " at the " .. (cheater.Target and cheater.Target.Place and (cheater.Target.Place.Label or cheater.Target.Place.Id) or "park") .. "!", rgb(230, 80, 120))
+	local token = partner.Token
+	task.delay(2.2, function()
+		if not partner.Model.Parent then
+			return
+		end
+		S.Citizens.Say(cheater, ({ "It's not what it looks like!", "I can explain!", "Wait, babe, listen!" })[math.random(1, 3)], "scared", 2.6)
+		cheater.Model:SetAttribute("Expression", "scared")
+		lover.Model:SetAttribute("Expression", "surprised")
+	end)
+	task.delay(4.4, function()
+		if not partner.Model.Parent or not cheater.Model.Parent then
+			return
+		end
+		-- the slap
+		local now = os.clock()
+		partner.Model:SetAttribute("SwingSide", (partner.Model:GetAttribute("SwingSide") or 0) + 1)
+		partner.Model:SetAttribute("Swing", now)
+		cheater.Model:SetAttribute("HitFrom", partner.Root.Position)
+		cheater.Model:SetAttribute("HitPower", 8)
+		cheater.Model:SetAttribute("Hit", now)
+		S.City.SendNear(cheater.Root.Position, 120, { Type = "Hit", Position = cheater.Root.Position + Vector3.new(0, 2, 0), Damage = 0, Weapon = "Fists" })
+		S.Citizens.Say(partner, ({ "How COULD you?!", "With " .. lover.C.First .. "?! Really?!", "After everything?!" })[math.random(1, 3)], "angry", 2.6)
+	end)
+	task.delay(7, function()
+		if not partner.Model.Parent then
+			return
+		end
+		S.Citizens.Say(partner, "We're DONE!", "angry", 2.6)
+		RelationshipService.BreakUp(cheater.C, partner.C)
+		S.City.News("💔 " .. partner.C.Name .. " caught " .. cheater.C.Name .. " cheating with " .. lover.C.Name .. ". They broke up on the spot!", "Gossip")
+		S.City.Boost(partner.C, -40)
+		S.City.Boost(cheater.C, -25)
+		if partner.Token == token then
+			S.Citizens.Control(partner, false)
+		end
+		S.Citizens.Flee(partner, cheater.Root.Position, 10, "😭")
+		partner.Model:SetAttribute("Expression", "sad")
+		cheater.Model:SetAttribute("Expression", "sad")
+	end)
+end
+
+local function step()
+	local now = os.clock()
+	for _, brain in ipairs(S.Citizens.List) do
+		local plan = brain.Plan
+		local partnerId = plan and (plan.Date or plan.Affair)
+		local other = partnerId and S.Citizens.GetBrain(partnerId)
+		if other and free(brain) and free(other) and other.Plan and (other.Plan.Date == brain.C.Id or other.Plan.Affair == brain.C.Id) then
+			local d = (other.Root.Position - brain.Root.Position).Magnitude
+			-- walking together: hand in hand (a date only; an affair keeps it hidden)
+			if plan.Date and brain.State == "walk" and other.State == "walk" and d < 5 then
+				setHand(brain, if brain.C.Id < other.C.Id then "R" else "L")
+			else
+				setHand(brain, nil)
+			end
+			if brain.State == "act" and other.State == "act" and d < 14 and brain.C.Id < other.C.Id then
+				-- together at the spot
+				local lines = if plan.Date then DATE_LINES else FLIRT_LINES
+				if now >= (brain.NextLove or 0) then
+					brain.NextLove = now + math.random(8, 16)
+					local who = if math.random() < 0.5 then brain else other
+					S.Citizens.Say(who, lines[math.random(1, #lines)], "happy", 2.6)
+					hearts(who)
+				end
+				brain.Model:SetAttribute("Expression", "happy")
+				other.Model:SetAttribute("Expression", "happy")
+				-- an affair: is anyone's partner here?
+				if plan.Affair then
+					for _, cheater in ipairs({ brain, other }) do
+						local partner = S.Life:PartnerOf(cheater.C)
+						local pb = partner and S.Citizens.GetBrain(partner.Id)
+						if pb and pb ~= brain and pb ~= other and free(pb) and (pb.Root.Position - cheater.Root.Position).Magnitude < 40 then
+							caught(cheater, if cheater == brain then other else brain, pb)
+							break
+						end
+					end
+				end
+			end
+		elseif brain.Model:GetAttribute("HoldHand") then
+			setHand(brain, nil)
+		end
+	end
+end
+
+function RelationshipService.Start(services)
+	S = services
+	task.spawn(function()
+		while true do
+			task.wait(0.5)
+			if S.Citizens and S.Citizens.List then
+				local ok, err = pcall(step)
+				if not ok then
+					warn("[RelationshipService] " .. tostring(err))
+					task.wait(3)
+				end
+			end
+		end
+	end)
+end
+
+RelationshipService.Caught = caught
+
+return RelationshipService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX43"><Properties><string name="Name">SportsService</string><ProtectedString name="Source"><![CDATA[-- SportsService (ModuleScript) — ServerScriptService.Modules.SportsService
+-- Pickup basketball: when people are shooting hoops on a court, they split
+-- into two teams and play a real match. The ball carrier dribbles up the court
+-- (the ball bounces at their side), passes to open teammates, and pulls up for
+-- a jump shot; defenders slide over to guard, shots arc to the rim, misses
+-- turn into rebounds, and a quick hand can steal it. First to 11 wins, and
+-- players nearby see the score. (Soccer lives in CitizenService.)
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
+
+local SportsService = {}
+local S
+
+local courts = {} -- { A = hoop pos, B = hoop pos, Center, Place, Key }
+local games = {} -- [court] = match
+local TICK = 0.1
+
+local SHOUT = { "I'm open!", "Ball!", "Pass it!", "Get back on D!", "And one!", "Money!", "Nice pass!", "Box out!" }
+
+local function flat(v)
+	return Vector3.new(v.X, 0, v.Z)
+end
+
+local function playersNear(pos, radius)
+	for _, p in ipairs(Players:GetPlayers()) do
+		local root = p.Character and p.Character:FindFirstChild("HumanoidRootPart")
+		if root and (root.Position - pos).Magnitude < radius then
+			return true
+		end
+	end
+	return false
+end
+
+local function findCourts()
+	for _, place in ipairs(S.Map.PlaceList or {}) do
+		local hoops = {}
+		for _, s in ipairs(place.Spots or {}) do
+			if s.Hoop then
+				local known = false
+				for _, h in ipairs(hoops) do
+					if (h - s.Hoop).Magnitude < 1 then
+						known = true
+					end
+				end
+				if not known then
+					table.insert(hoops, s.Hoop)
+				end
+			end
+		end
+		-- two hoops facing each other 20-40 studs apart make a court
+		local used = {}
+		for i = 1, #hoops do
+			for j = i + 1, #hoops do
+				local d = flat(hoops[i] - hoops[j]).Magnitude
+				if not used[i] and not used[j] and d > 18 and d < 42 then
+					used[i], used[j] = true, true
+					local court = { A = hoops[i], B = hoops[j], Place = place, Spots = {} }
+					court.Center = (hoops[i] + hoops[j]) / 2
+					court.Ground = court.Center.Y - 9
+					for _, s in ipairs(place.Spots) do
+						if s.Hoop and ((s.Hoop - hoops[i]).Magnitude < 1 or (s.Hoop - hoops[j]).Magnitude < 1) then
+							court.Spots[s] = true
+						end
+					end
+					table.insert(courts, court)
+				end
+			end
+		end
+	end
+end
+
+local function newBall(court)
+	local ball = Instance.new("Part")
+	ball.Name = "GameBall"
+	ball.Shape = Enum.PartType.Ball
+	ball.Size = Vector3.one * 1.2
+	ball.Color = Color3.fromRGB(230, 110, 40)
+	ball.Material = Enum.Material.SmoothPlastic
+	ball.Anchored, ball.CanCollide, ball.CanQuery, ball.CanTouch = true, false, false, false
+	ball.CFrame = CFrame.new(court.Center)
+	ball.Parent = workspace
+	return ball
+end
+
+local function setAction(brain, action)
+	if brain.Model:GetAttribute("Action") ~= action then
+		brain.Model:SetAttribute("Action", action)
+	end
+end
+
+-- hand the ball to someone (a make: the other team takes it out)
+local function giveTo(match, brain)
+	match.Carrier = brain
+	match.Flight = nil
+	match.NextMove = os.clock() + math.random(8, 14) / 10
+end
+
+local function endGame(match, why)
+	games[match.Court] = nil
+	if match.Ball then
+		match.Ball:Destroy()
+	end
+	for brain in pairs(match.Players) do
+		if brain.Model.Parent then
+			brain.Model:SetAttribute("Team", nil)
+			brain.Model:SetAttribute("Action", "")
+			if brain.State == "police" then
+				S.Citizens.Control(brain, false)
+			end
+		end
+	end
+	if why and match.Score[1] + match.Score[2] > 0 then
+		local winner = if match.Score[1] > match.Score[2] then 1 else 2
+		S.City.SendNear(match.Court.Center, 160, { Type = "Toast", Icon = "🏀", Title = "Game over", Text = string.format("%s team wins %d – %d!", if winner == 1 then "Blue" else "Red", match.Score[winner], match.Score[3 - winner]), Color = if winner == 1 then Color3.fromRGB(70, 130, 240) else Color3.fromRGB(230, 70, 70) })
+	end
+end
+
+local function startGame(court, brains)
+	local match = { Court = court, Players = {}, Score = { 0, 0 }, Started = os.clock(), Ball = newBall(court) }
+	for k, brain in ipairs(brains) do
+		local team = (k - 1) % 2 + 1
+		match.Players[brain] = team
+		S.Citizens.Control(brain, true)
+		brain.Model:SetAttribute("Team", team)
+		brain.Model:SetAttribute("Activity", "🏀 Pickup match (" .. (if team == 1 then "Blue" else "Red") .. " team)")
+	end
+	giveTo(match, brains[1])
+	games[court] = match
+	S.Citizens.Say(brains[1], "Let's run a match! First to 11!", "grin", 2.5)
+	return match
+end
+
+local function attackHoop(match, team)
+	return if team == 1 then match.Court.B else match.Court.A
+end
+
+local function arc(from, to, k, height)
+	return from:Lerp(to, k) + Vector3.new(0, math.sin(k * math.pi) * height, 0)
+end
+
+local function tick(match, now)
+	local court = match.Court
+	-- anyone gone (knocked out, taken away, a fight...)? end it
+	local list = {}
+	for brain in pairs(match.Players) do
+		if not brain.Model.Parent or brain.State ~= "police" or brain.Model:GetAttribute("Fighting") then
+			endGame(match, false)
+			return
+		end
+		table.insert(list, brain)
+	end
+	if now - match.Started > 240 or not playersNear(court.Center, 350) then
+		endGame(match, true)
+		return
+	end
+	local ball = match.Ball
+	local ground = court.Ground
+	-- the ball in the air (a pass or a shot)
+	local flight = match.Flight
+	if flight then
+		local k = math.min(1, (now - flight.Start) / flight.Time)
+		ball.CFrame = CFrame.new(arc(flight.From, flight.To, k, flight.Height))
+		if k >= 1 then
+			if flight.Shot then
+				if flight.Make then
+					local team = match.Players[flight.By] or 1
+					match.Score[team] += if flight.Three then 3 else 2
+					S.Citizens.React(flight.By, "cheer", if math.random() < 0.5 then "Buckets!" else nil, "grin", 1.5)
+					S.City.SendNear(court.Center, 140, { Type = "Toast", Icon = "🏀", Title = (if flight.Three then "THREE! " else "") .. flight.By.C.First .. " scores!", Text = string.format("Blue %d – %d Red", match.Score[1], match.Score[2]), Color = if team == 1 then Color3.fromRGB(70, 130, 240) else Color3.fromRGB(230, 70, 70) })
+					if match.Score[team] >= 11 then
+						endGame(match, true)
+						return
+					end
+					-- the other team takes it out
+					for _, b in ipairs(list) do
+						if match.Players[b] ~= team then
+							giveTo(match, b)
+							break
+						end
+					end
+				else
+					-- a miss: it bounces off the rim, the nearest player grabs the rebound
+					local off = flight.To + Vector3.new(math.random(-6, 6), 0, math.random(-6, 6))
+					off = Vector3.new(off.X, ground + 1, off.Z)
+					match.Flight = { From = flight.To, To = off, Start = now, Time = 0.5, Height = 2 }
+					match.Rebound = true
+					return
+				end
+			else
+				local wasRebound = match.Rebound
+				match.Rebound = nil
+				local best, bestD = nil, math.huge
+				for _, b in ipairs(list) do
+					local d = flat(b.Root.Position - ball.Position).Magnitude
+					if d < bestD then
+						best, bestD = b, d
+					end
+				end
+				giveTo(match, flight.Target or best)
+				if wasRebound and best then
+					if math.random() < 0.3 then
+						S.Citizens.Say(best, "Rebound!", "grin", 1.2)
+					end
+				end
+			end
+		end
+	end
+	local carrier = match.Carrier
+	-- everyone's movement
+	for _, b in ipairs(list) do
+		local team = match.Players[b]
+		local hoop = attackHoop(match, team)
+		local hoopFlat = Vector3.new(hoop.X, ground, hoop.Z)
+		local target
+		if match.Flight and not match.Flight.Shot and not match.Flight.Target then
+			-- a loose ball: go get it
+			target = match.Flight.To
+			setAction(b, "defend")
+		elseif b == carrier then
+			local toHoop = hoopFlat - flat(b.Root.Position) - Vector3.new(0, ground, 0)
+			b.ShotRange = b.ShotRange or math.random(8, 18)
+			if toHoop.Magnitude > b.ShotRange then
+				target = b.Root.Position + toHoop.Unit * 4
+			else
+				target = b.Root.Position
+			end
+			setAction(b, "dribble")
+		elseif carrier and match.Players[carrier] == team then
+			-- get open near the hoop
+			local side = if (b.C.Id % 2) == 0 then 1 else -1
+			local across = (court.B - court.A).Unit:Cross(Vector3.new(0, 1, 0))
+			target = hoopFlat + (flat(court.Center) - hoopFlat).Unit * 10 + across * side * 9
+			setAction(b, "")
+		else
+			-- defense: between the nearest opponent and our hoop
+			local ourHoop = attackHoop(match, 3 - team)
+			local mark, md = carrier, math.huge
+			for _, o in ipairs(list) do
+				if match.Players[o] ~= team then
+					local d = (o.Root.Position - b.Root.Position).Magnitude
+					if d < md then
+						mark, md = o, d
+					end
+				end
+			end
+			if mark then
+				local toOur = flat(ourHoop - mark.Root.Position)
+				target = mark.Root.Position + (if toOur.Magnitude > 0.1 then toOur.Unit * 3 else Vector3.zero)
+			end
+			setAction(b, "defend")
+		end
+		if target then
+			S.Citizens.SetGait(b, if b == carrier then 12 else 14, "run")
+			b.Humanoid:MoveTo(Vector3.new(target.X, b.Root.Position.Y, target.Z))
+		end
+	end
+	if match.Flight or not carrier then
+		return
+	end
+	-- the ball bounces at the carrier's side
+	local root = carrier.Root
+	local bounce = math.abs(math.sin(now * 7))
+	ball.CFrame = CFrame.new(root.Position + root.CFrame.RightVector * 1.2 + root.CFrame.LookVector * 0.6 + Vector3.new(0, -2.4 + bounce * 2.2, 0))
+	-- a steal?
+	for _, o in ipairs(list) do
+		if match.Players[o] ~= match.Players[carrier] and (o.Root.Position - root.Position).Magnitude < 3 and math.random() < 0.012 then
+			giveTo(match, o)
+			S.Citizens.Say(o, "Steal!", "grin", 1.2)
+			return
+		end
+	end
+	if now < (match.NextMove or 0) then
+		return
+	end
+	match.NextMove = now + math.random(6, 12) / 10
+	local team = match.Players[carrier]
+	local hoop = attackHoop(match, team)
+	local dist = flat(hoop - root.Position).Magnitude
+	local hand = root.Position + Vector3.new(0, 2.2, 0)
+	if dist <= (carrier.ShotRange or 12) + 1 then
+		-- pull up for the shot
+		local guarded = false
+		for _, o in ipairs(list) do
+			if match.Players[o] ~= team and (o.Root.Position - root.Position).Magnitude < 4 then
+				guarded = true
+			end
+		end
+		local three = dist > 15
+		local chance = (if three then 0.3 else 0.48) - (if guarded then 0.15 else 0) + (if carrier.C.Personality == "sporty" then 0.12 else 0)
+		setAction(carrier, "jumpshot")
+		carrier.Model:SetAttribute("Swing", now)
+		match.Flight = { From = hand, To = hoop + Vector3.new(0, 0.4, 0), Start = now, Time = 0.9 + dist / 60, Height = 5 + dist * 0.2, Shot = true, Make = math.random() < chance, By = carrier, Three = three }
+		match.Carrier = nil
+		carrier.ShotRange = nil
+		if math.random() < 0.2 then
+			S.Citizens.Say(carrier, "Cash!", "grin", 1.2)
+		end
+	else
+		-- pass to an open teammate?
+		local mates = {}
+		for _, b in ipairs(list) do
+			if b ~= carrier and match.Players[b] == team then
+				table.insert(mates, b)
+			end
+		end
+		if #mates > 0 and math.random() < 0.35 then
+			local to = mates[math.random(1, #mates)]
+			match.Flight = { From = hand, To = to.Root.Position + Vector3.new(0, 1.5, 0), Start = now, Time = 0.45, Height = 1.2, Target = to }
+			match.Carrier = nil
+			carrier.Model:SetAttribute("Swing", now)
+			if math.random() < 0.25 then
+				S.Citizens.Say(to, SHOUT[math.random(1, #SHOUT)], "grin", 1.2)
+			end
+		end
+	end
+end
+
+-- people shooting hoops on a court start a match
+local function lookForGames()
+	for _, court in ipairs(courts) do
+		if not games[court] then
+			local here = {}
+			for _, brain in ipairs(S.Citizens.List) do
+				if brain.State == "act" and brain.Spot and court.Spots[brain.Spot] and brain.Model.Parent then
+					table.insert(here, brain)
+				end
+			end
+			if #here >= 2 and playersNear(court.Center, 250) then
+				-- even teams (up to 3 on 3)
+				local n = math.min(6, #here - (#here % 2))
+				local chosen = {}
+				for k = 1, n do
+					chosen[k] = here[k]
+				end
+				startGame(court, chosen)
+			end
+		end
+	end
+end
+
+function SportsService.Start(services)
+	S = services
+	findCourts()
+	task.spawn(function()
+		local lastLook = 0
+		while true do
+			task.wait(TICK)
+			local now = os.clock()
+			for _, match in pairs(games) do
+				local ok, err = pcall(tick, match, now)
+				if not ok then
+					warn("[SportsService] " .. tostring(err))
+					endGame(match, false)
+				end
+			end
+			if Config and Config.PICKUP_GAMES == false then
+				continue
+			end
+			if now - lastLook > 3 and S.Citizens and S.Citizens.List then
+				lastLook = now
+				pcall(lookForGames)
+			end
+		end
+	end)
+end
+
+SportsService.Courts = courts
+SportsService.Games = games
+
+return SportsService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX44"><Properties><string name="Name">Conversation</string><ProtectedString name="Source"><![CDATA[-- Conversation (ModuleScript) — ServerScriptService.Modules.Conversation
 -- The deeper side of talking to citizens (used by DialogueService):
 --   • every personality has its own voice: how they say hello, little verbal
 --     habits, their dreams and fears, their advice, favorite food and places
@@ -20838,7 +23393,7 @@ function Conversation.Answer(key, c, player, brain)
 end
 
 return Conversation
-]]></ProtectedString></Properties></Item></Item></Item><Item class="StarterPlayer" referent="RBX42"><Properties><string name="Name">StarterPlayer</string></Properties><Item class="StarterPlayerScripts" referent="RBX43"><Properties><string name="Name">StarterPlayerScripts</string></Properties><Item class="LocalScript" referent="RBX51"><Properties><string name="Name">CityClient</string><ProtectedString name="Source"><![CDATA[-- CityClient (LocalScript) — StarterPlayer.StarterPlayerScripts.CityClient
+]]></ProtectedString></Properties></Item></Item></Item><Item class="StarterPlayer" referent="RBX46"><Properties><string name="Name">StarterPlayer</string></Properties><Item class="StarterPlayerScripts" referent="RBX47"><Properties><string name="Name">StarterPlayerScripts</string></Properties><Item class="LocalScript" referent="RBX55"><Properties><string name="Name">CityClient</string><ProtectedString name="Source"><![CDATA[-- CityClient (LocalScript) — StarterPlayer.StarterPlayerScripts.CityClient
 -- AI City on your screen. Starts the HUD, the windows, the world effects and
 -- the citizens' body language, and routes everything the server sends.
 --
@@ -20935,6 +23490,9 @@ handlers.Waypoint = function(d)
 		return
 	end
 	World.Waypoint(d.Position, d.Label, d.Emoji, d.Model)
+end
+handlers.Shot = function(d)
+	World.Shot(d.From, d.To, d.Weapon)
 end
 handlers.Hit = function(d)
 	World.Hit(d.Position, d.Damage, d.KO, d.Player, d.Blocked, d.Weapon)
@@ -21070,6 +23628,11 @@ UserInputService.InputBegan:Connect(function(input, processed)
 		World.Attack()
 	elseif key == Enum.KeyCode.X then
 		World.SetBlock(true)
+	elseif key == Enum.KeyCode.Z then
+		-- hands up (the police cuff you without a fight)
+		task.spawn(function()
+			ctx.Remotes.Request:InvokeServer({ Action = "Surrender" })
+		end)
 	elseif key == Enum.KeyCode.Escape or key == Enum.KeyCode.Backspace then
 		if Panels.InDialogue() then
 			Panels.EndDialogue(true)
@@ -21087,7 +23650,7 @@ UserInputService.InputEnded:Connect(function(input)
 		Moves.SetSprint(false)
 	end
 end)
-]]></ProtectedString></Properties><Item class="ModuleScript" referent="RBX44"><Properties><string name="Name">UI</string><ProtectedString name="Source"><![CDATA[-- UI (ModuleScript) — StarterPlayerScripts.CityClient.UI
+]]></ProtectedString></Properties><Item class="ModuleScript" referent="RBX48"><Properties><string name="Name">UI</string><ProtectedString name="Source"><![CDATA[-- UI (ModuleScript) — StarterPlayerScripts.CityClient.UI
 -- AI City's look: colors, fonts, and helpers for building the interface
 -- (rounded panels, buttons that bounce, windows that pop open, bars...).
 
@@ -21587,7 +24150,7 @@ function UI.commas(n)
 end
 
 return UI
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX45"><Properties><string name="Name">Icons</string><ProtectedString name="Source"><![CDATA[-- Icons (ModuleScript) — StarterPlayerScripts.CityClient.Icons
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX49"><Properties><string name="Name">Icons</string><ProtectedString name="Source"><![CDATA[-- Icons (ModuleScript) — StarterPlayerScripts.CityClient.Icons
 -- AI City's own icon set, drawn from rounded shapes (no image uploads needed,
 -- and they stay sharp at any size).
 --
@@ -21985,6 +24548,22 @@ D.knife = function(c)
 	end
 end
 
+-- a pistol, side on, barrel to the right
+D.pistol = function(c)
+	local dark = rgb(46, 48, 56)
+	R(c, 0.55, 0.36, 0.62, 0.16, METAL_DARK, { r = 0.2, grad = { rgb(120, 124, 140), dark, 90 } })
+	R(c, 0.86, 0.36, 0.06, 0.08, rgb(20, 20, 24))
+	R(c, 0.34, 0.58, 0.16, 0.36, dark, { rot = -14, r = 0.25 })
+	R(c, 0.48, 0.5, 0.12, 0.12, rgb(30, 30, 36), { r = 0.5, t = 0.35 })
+end
+-- a shotgun: long barrel, wooden stock and pump
+D.shotgun = function(c)
+	local wood = rgb(140, 90, 50)
+	R(c, 0.56, 0.44, 0.72, 0.09, METAL_DARK, { rot = -18, r = 0.4 })
+	R(c, 0.58, 0.5, 0.2, 0.1, wood, { rot = -18, r = 0.3 })
+	R(c, 0.22, 0.62, 0.28, 0.16, wood, { rot = -18, r = 0.3, grad = { rgb(180, 120, 70), wood, 90 } })
+end
+
 D.hoodie = function(c)
 	local body = rgb(70, 74, 92)
 	R(c, 0.5, 0.7, 0.72, 0.5, body, { r = 0.22 })
@@ -22255,7 +24834,7 @@ end
 local ALIAS = {
 	Phone = "phone", Map = "map", People = "people", News = "news", Vote = "vote", Goals = "goals",
 	Speech = "mic", Mayor = "mayor", Help = "help", Settings = "settings", Wardrobe = "mask",
-	Fists = "fist", Bat = "bat", Hammer = "hammer", Knife = "knife", Hoodie = "hoodie", Disguise = "disguise", SkiMask = "mask",
+	Fists = "fist", Bat = "bat", Hammer = "hammer", Knife = "knife", Pistol = "pistol", Shotgun = "shotgun", ["🔫"] = "pistol", ["💥"] = "shotgun", Hoodie = "hoodie", Disguise = "disguise", SkiMask = "mask",
 	["📱"] = "phone", ["🗺️"] = "map", ["👥"] = "people", ["📰"] = "news", ["🗳️"] = "vote", ["🎯"] = "goals",
 	["🎤"] = "mic", ["🏛️"] = "mayor", ["❓"] = "help", ["⚙️"] = "settings", ["🥷"] = "mask", ["👊"] = "fist",
 	["🏏"] = "bat", ["🔨"] = "hammer", ["🔪"] = "knife", ["🛡️"] = "shield", ["🪙"] = "coin", ["❤️"] = "heart",
@@ -22380,7 +24959,7 @@ end
 table.sort(Icons.Names)
 
 return Icons
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX46"><Properties><string name="Name">Hud</string><ProtectedString name="Source"><![CDATA[-- Hud (ModuleScript) — StarterPlayerScripts.CityClient.Hud
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX50"><Properties><string name="Name">Hud</string><ProtectedString name="Source"><![CDATA[-- Hud (ModuleScript) — StarterPlayerScripts.CityClient.Hud
 -- The always-on screen: the clock and calendar, the city's mood and stats,
 -- a rotating minimap, coins, wanted stars, the mayor and the next election,
 -- the action bar, notifications and the news ticker.
@@ -22892,10 +25471,15 @@ local function frame(dt)
 		end
 		refs.Police.Visible = true
 		refs.PoliceTip.Visible = true
-		if seen then
+		local cuffing = player:GetAttribute("Cuffing")
+		if cuffing then
+			refs.Police.Text = "🔗 BEING CUFFED  " .. string.rep("■", math.floor(cuffing * 10)) .. string.rep("□", 10 - math.floor(cuffing * 10))
+			refs.Police.BackgroundColor3 = C.Red
+			refs.PoliceTip.Text = "You're down! Get away before the cuffs go on."
+		elseif seen then
 			refs.Police.Text = "🚨 CHASING YOU" .. force .. (if near then "  ·  " .. near .. " studs" else "")
 			refs.Police.BackgroundColor3 = C.Red
-			refs.PoliceTip.Text = (if level then "<b>" .. level .. "</b>. " else "") .. "Break their line of sight: duck around a corner or into a building."
+			refs.PoliceTip.Text = (if level then "<b>" .. level .. "</b>. " else "") .. "Break their line of sight: duck around a corner or into a building. They can only cuff you when you're hurt, tased or give up (Z)."
 		elseif hidden then
 			refs.Police.Text = "🫥 HIDDEN in " .. tostring(hidden) .. force .. (if near then "  ·  " .. near .. " studs" else "")
 			refs.Police.BackgroundColor3 = C.Purple
@@ -23113,7 +25697,7 @@ local function tools()
 			end
 		end
 	end
-	local order = { Bat = 1, Hammer = 2, Knife = 3 }
+	local order = { Bat = 1, Hammer = 2, Knife = 3, Pistol = 4, Shotgun = 5 }
 	table.sort(list, function(a, b)
 		return (order[a:GetAttribute("Weapon")] or 9) < (order[b:GetAttribute("Weapon")] or 9)
 	end)
@@ -23430,7 +26014,7 @@ function Hud.Start(context)
 end
 
 return Hud
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX47"><Properties><string name="Name">Panels</string><ProtectedString name="Source"><![CDATA[-- Panels (ModuleScript) — StarterPlayerScripts.CityClient.Panels
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX51"><Properties><string name="Name">Panels</string><ProtectedString name="Source"><![CDATA[-- Panels (ModuleScript) — StarterPlayerScripts.CityClient.Panels
 -- The windows you open: the city map, the People directory and profile
 -- cards, voting, speeches, the mayor's desk, conversations with citizens,
 -- elevators, help, settings, the welcome screen, election results and the
@@ -24890,7 +27474,7 @@ function Panels.Start(context)
 end
 
 return Panels
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX48"><Properties><string name="Name">World</string><ProtectedString name="Source"><![CDATA[-- World (ModuleScript) — StarterPlayerScripts.CityClient.World
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX52"><Properties><string name="Name">World</string><ProtectedString name="Source"><![CDATA[-- World (ModuleScript) — StarterPlayerScripts.CityClient.World
 -- Everything drawn in the 3D world: nameplates over citizens and players,
 -- speech bubbles, the interaction prompts (talk, elevators, crimes), the
 -- waypoint beam, hit effects, alarms, confetti, the sky and the traffic lights.
@@ -25343,6 +27927,97 @@ end
 --------------------------------------------------------------------------------
 -- Effects
 --------------------------------------------------------------------------------
+-- a gunshot: a flash at the muzzle, a streak to where the bullet went, a bang
+local bang
+function World.Shot(from, to, weapon)
+	if typeof(from) ~= "Vector3" or typeof(to) ~= "Vector3" then
+		return
+	end
+	local heavy = weapon == "Shotgun"
+	local d = to - from
+	local tracer = Instance.new("Part")
+	tracer.Name = "Tracer"
+	tracer.Anchored, tracer.CanCollide, tracer.CanQuery, tracer.CanTouch, tracer.CastShadow = true, false, false, false, false
+	tracer.Material = Enum.Material.Neon
+	tracer.Color = Color3.fromRGB(255, 226, 150)
+	tracer.Size = Vector3.new(if heavy then 0.14 else 0.08, if heavy then 0.14 else 0.08, math.max(0.1, d.Magnitude))
+	tracer.CFrame = CFrame.lookAt(from + d / 2, to)
+	tracer.Transparency = 0.2
+	tracer.Parent = workspace
+	local flash = Instance.new("Part")
+	flash.Name = "MuzzleFlash"
+	flash.Anchored, flash.CanCollide, flash.CanQuery, flash.CanTouch, flash.CastShadow = true, false, false, false, false
+	flash.Shape = Enum.PartType.Ball
+	flash.Material = Enum.Material.Neon
+	flash.Color = Color3.fromRGB(255, 200, 90)
+	flash.Size = Vector3.one * (if heavy then 1.2 else 0.7)
+	flash.CFrame = CFrame.new(from + (if d.Magnitude > 0 then d.Unit * 1.4 else Vector3.zero))
+	flash.Parent = workspace
+	local light = Instance.new("PointLight")
+	light.Color = Color3.fromRGB(255, 200, 120)
+	light.Range = 14
+	light.Brightness = 3
+	light.Parent = flash
+	task.delay(0.05, function()
+		flash:Destroy()
+	end)
+	task.delay(0.08, function()
+		tracer:Destroy()
+	end)
+	local camera = workspace.CurrentCamera
+	if camera and (camera.CFrame.Position - from).Magnitude < 260 then
+		if not bang then
+			bang = Instance.new("Sound")
+			bang.Name = "Gunshot"
+			bang.SoundId = "rbxasset://sounds/swordlunge.wav"
+			bang.Parent = workspace
+		end
+		local s = bang:Clone()
+		s.Volume = if heavy then 0.9 else 0.6
+		s.PlaybackSpeed = if heavy then 0.35 else 0.55
+		s.Parent = workspace
+		pcall(function()
+			s:Play()
+		end)
+		task.delay(1.5, function()
+			s:Destroy()
+		end)
+		if (camera.CFrame.Position - from).Magnitude < 20 then
+			World.Shake(if heavy then 0.5 else 0.25, 0.12)
+		end
+	end
+end
+
+-- where you're aiming a gun: the mouse (or the middle of the screen on a
+-- controller or phone, and in first person)
+local UIS = game:GetService("UserInputService")
+local function aimDirection(root)
+	local camera = workspace.CurrentCamera
+	if not camera then
+		return root.CFrame.LookVector
+	end
+	local ray
+	local ok = pcall(function()
+		local pad = ctx and ctx.Gamepad and ctx.Gamepad.Active()
+		local touch = UIS.TouchEnabled and not UIS.MouseEnabled
+		if pad or touch or UIS.MouseBehavior == Enum.MouseBehavior.LockCenter then
+			local vp = camera.ViewportSize
+			ray = camera:ViewportPointToRay(vp.X / 2, vp.Y / 2)
+		else
+			local m = UIS:GetMouseLocation()
+			ray = camera:ViewportPointToRay(m.X, m.Y)
+		end
+	end)
+	if not ok or not ray then
+		return camera.CFrame.LookVector
+	end
+	-- the point the ray reaches, then the direction to it from the gun
+	local target = ray.Origin + ray.Direction * 150
+	local from = root.Position + Vector3.new(0, 1.5, 0)
+	local dir = target - from
+	return if dir.Magnitude > 0.1 then dir.Unit else camera.CFrame.LookVector
+end
+
 function World.Hit(position, damage, ko, isPlayer, blocked, weapon)
 	local anchor = UI.new("Part", { Anchored = true, CanCollide = false, CanQuery = false, CanTouch = false, Transparency = 1, Size = Vector3.one, CFrame = CFrame.new(position), Parent = workspace })
 	local gui = UI.new("BillboardGui", { Size = UDim2.fromOffset(220, 60), AlwaysOnTop = true, LightInfluence = 0, Adornee = anchor, Parent = anchor })
@@ -25462,10 +28137,24 @@ function World.Attack()
 	character:SetAttribute("SwingSide", (character:GetAttribute("SwingSide") or 0) + 1)
 	character:SetAttribute("SwingWeapon", weapon)
 	character:SetAttribute("Swing", os.clock())
-	UI.sound("punch", 0.4, if weapon == "Knife" then 1.6 elseif weapon == "Fists" then 1.3 else 0.9)
+	if not w.Ranged then
+		UI.sound("punch", 0.4, if weapon == "Knife" then 1.6 elseif weapon == "Fists" then 1.3 else 0.9)
+	end
+	-- guns: turn to face where you're aiming, and send the aim
+	local aim
+	if w.Ranged then
+		local root = character:FindFirstChild("HumanoidRootPart")
+		if root then
+			aim = aimDirection(root)
+			local flat = Vector3.new(aim.X, 0, aim.Z)
+			if flat.Magnitude > 0.1 then
+				root.CFrame = CFrame.lookAt(root.Position, root.Position + flat)
+			end
+		end
+	end
 	task.spawn(function()
 		local ok, result = pcall(function()
-			return ctx.Remotes.Request:InvokeServer({ Action = "Attack" })
+			return ctx.Remotes.Request:InvokeServer({ Action = "Attack", Aim = aim })
 		end)
 		if ok and result and result.Hit then
 			World.Shake(if result.KO then 0.9 elseif weapon == "Fists" then 0.35 else 0.55, 0.25)
@@ -25613,7 +28302,7 @@ function World.Start(context)
 end
 
 return World
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX49"><Properties><string name="Name">Moves</string><ProtectedString name="Source"><![CDATA[-- Moves (ModuleScript) — StarterPlayerScripts.CityClient.Moves
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX53"><Properties><string name="Name">Moves</string><ProtectedString name="Source"><![CDATA[-- Moves (ModuleScript) — StarterPlayerScripts.CityClient.Moves
 -- Sprinting and stamina. Hold Shift (or the Sprint button) to run: it uses
 -- stamina, which refills when you stop. Your fitness level (from the server,
 -- see Shared.Fitness) sets how much stamina you have, how fast it refills and
@@ -25690,7 +28379,9 @@ local function step(dt)
 				exhausted = true
 				ctx.Hud.Toast("😮‍💨", "Out of breath!", "Stop running for a moment to get your stamina back. Train at the gym for more.", Color3.fromRGB(240, 170, 60))
 			end
-			if humanoid.WalkSpeed ~= st.Sprint then
+			if humanoid.Parent and (humanoid.Parent:GetAttribute("Stunned") or humanoid.Parent:GetAttribute("Surrender")) then
+				-- (tased or hands up: no running)
+			elseif humanoid.WalkSpeed ~= st.Sprint then
 				humanoid.WalkSpeed = st.Sprint
 				ourSpeed = st.Sprint
 			end
@@ -25731,7 +28422,7 @@ function Moves.Start(context)
 end
 
 return Moves
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX50"><Properties><string name="Name">Gamepad</string><ProtectedString name="Source"><![CDATA[-- Gamepad (ModuleScript) — StarterPlayerScripts.CityClient.Gamepad
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX54"><Properties><string name="Name">Gamepad</string><ProtectedString name="Source"><![CDATA[-- Gamepad (ModuleScript) — StarterPlayerScripts.CityClient.Gamepad
 -- Console / controller support (Xbox, PlayStation, any gamepad):
 --   R2 attack · hold L2 block · L3 sprint (click to toggle) · R1 / L1 next /
 --   previous weapon · D-pad ▲ phone · ▼ map · ◀ help · ▶ wardrobe ·
@@ -25866,11 +28557,11 @@ end
 -- step through the hotbar: 1 = fists, then each weapon you own
 local function cycleWeapon(dir)
 	local Hud = ctx.Hud
-	for _ = 1, 5 do
+	for _ = 1, 7 do
 		slot += dir
 		if slot < 1 then
-			slot = 5
-		elseif slot > 5 then
+			slot = 7
+		elseif slot > 7 then
 			slot = 1
 		end
 		if slot == 1 or Hud.Equip(slot) then
