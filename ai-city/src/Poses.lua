@@ -62,6 +62,13 @@ L.type = function(t, ph)
 	local tap = osc(t, 16, ph) * 3
 	return sit({ LS = A(38, 0, 6), RS = A(38, 0, -6), LE = A(52 + tap), RE = A(52 - tap), LW = A(-10 + tap), RW = A(-10 - tap), Neck = A(-10, osc(t, 0.3, ph) * 6, 0), Waist = A(-6) }), true
 end
+-- the piano: hands travelling along the keys, swaying with the music
+L.piano = function(t, ph)
+	local phrase = osc(t, 0.8, ph)
+	local lt, rt = abs(osc(t, 9, ph)), abs(osc(t, 11, ph + 1))
+	return sit({ LS = A(40 + lt * 4, phrase * 10, 10), RS = A(40 + rt * 4, phrase * 10, -10), LE = A(50 - lt * 6), RE = A(50 - rt * 6), LW = A(-14 + lt * 10), RW = A(-14 + rt * 10),
+		Waist = A(-4 + abs(phrase) * 3, phrase * 6, 0), Neck = A(-8 + osc(t, 1.6, ph) * 4, phrase * 8, 0) }), true
+end
 L.write = function(t, ph)
 	local w = osc(t, 7, ph)
 	return sit({ LS = A(30, 0, 8), LE = A(55), RS = A(34 + w * 3, 0, -6), RE = A(62 + w * 4), RW = A(w * 8), Neck = A(-22, 0, 0), Waist = A(-12) }), true
@@ -238,6 +245,13 @@ end
 L.water = function(t, ph)
 	local s = osc(t, 1.2, ph)
 	return { RS = A(55, s * 20, -10), RE = A(20), RW = A(-40, 0, 0), LS = A(10, 0, 8), LE = A(20), Waist = A(-6, s * 10, 0), Neck = A(-22, s * 8, 0) }, true
+end
+-- a fire hose drill: braced legs, both hands on the nozzle, sweeping the spray
+L.hose = function(t, ph)
+	local s = osc(t, 0.9, ph)
+	local kick = abs(osc(t, 7, ph)) * 2
+	return { RS = A(78 + kick, s * 8, -12), RE = A(8), RW = A(0), LS = A(70 + kick, 0, 26), LE = A(30), Waist = A(-4, s * 16, 0), Neck = A(-4, s * 10, 0),
+		LH = A(24), RH = A(-18), LK = A(-18), RK = A(-6), Root = CFrame.new(0, -0.25, 0) * A(0, s * 4, 0) }, true
 end
 -- raking: both hands on the handle, pulling toward the feet
 L.rake = function(t, ph)
@@ -934,6 +948,12 @@ PROPS.Cuffs = function(f, b, s)
 	end
 	prop(b.RightHand, "Chain", Vector3.new(0.08, 0.08, 0.7) * s, CFrame.new(0, 0.2 * s, 0.25 * s), rgb(160, 164, 170), nil, Enum.Material.Metal).Parent = f
 end
+PROPS.Hose = function(f, b, s)
+	prop(b.RightHand, "Nozzle", Vector3.new(1.4, 0.28, 0.28) * s, CFrame.new(0, -0.8 * s, 0) * A(0, 0, 90), rgb(200, 40, 40), Cyl, Enum.Material.Metal).Parent = f
+	local water = prop(b.RightHand, "HoseWater", Vector3.new(9, 0.35, 0.35) * s, CFrame.new(0, -6 * s, 0) * A(0, 0, 90), rgb(170, 215, 255), Cyl, Enum.Material.Glass)
+	water.Transparency = 0.45
+	water.Parent = f
+end
 PROPS.SprayCan = function(f, b, s)
 	local can = prop(b.RightHand, "SprayCan", Vector3.new(0.7, 0.32, 0.32) * s, CFrame.new(0, -0.35 * s, -0.1 * s) * A(0, 0, 90), rgb(230, 60, 110), Cyl, Enum.Material.Metal)
 	can.Parent = f
@@ -1215,8 +1235,47 @@ local function checkoutK(model)
 	return k, kind, start
 end
 
+-- a service desk (a bank, the library, a hotel, a ticket booth, the post
+-- office): explain what you need, hand it over, wait while they sort it out,
+-- then take what they give you
+local function serviceCustomer(t, ph, k)
+	if k < 0.3 then
+		return L.talk(t, ph)
+	elseif k < 0.45 then
+		local r = sin((k - 0.3) / 0.15 * math.pi)
+		return { RS = A(20 + r * 55, 0, -6), RE = A(50 - r * 40), LS = A(10, 0, 6), LE = A(20), Neck = A(-14), Waist = A(-r * 6) }, false
+	elseif k < 0.8 then
+		local lean = abs(osc(t, 0.4, ph))
+		return { LS = A(40, 0, 20), RS = A(40, 0, -20), LE = A(80), RE = A(80), Neck = A(-10, osc(t, 0.6, ph) * 10, 0), Waist = A(-4 - lean * 4) }, false
+	end
+	local r = sin(math.min(1, (k - 0.8) / 0.12) * math.pi * 0.5)
+	return { RS = A(30 + r * 40, 0, -6), RE = A(40 - r * 20), LS = A(10, 0, 6), LE = A(20), Neck = A(-12 + r * 8) }, false
+end
+local function serviceClerk(t, ph, k)
+	if k < 0.3 then
+		return L.listen(t, ph)
+	elseif k < 0.45 then
+		local r = sin((k - 0.3) / 0.15 * math.pi)
+		return { RS = A(20 + r * 50, 0, -6), RE = A(50 - r * 30), Neck = A(-12) }, false
+	elseif k < 0.8 then
+		-- typing it in, then a stamp or two
+		local c = (k - 0.45) / 0.35
+		if c < 0.65 then
+			local tl, tr = osc(t, 14, ph), osc(t, 14, ph + 2)
+			return { LS = A(42 + tl * 3, 0, 10), RS = A(42 + tr * 3, 0, -10), LE = A(58), RE = A(58), LW = A(-20), RW = A(-20), Neck = A(-22), Waist = A(-6) }, false
+		end
+		local stamp = abs(sin((c - 0.65) / 0.35 * math.pi * 3))
+		return { RS = A(40 + stamp * 30, 0, -8), RE = A(70 - stamp * 30), LS = A(34, 0, 10), LE = A(60), Neck = A(-24), Waist = A(-8) }, false
+	end
+	local r = sin(math.min(1, (k - 0.8) / 0.12) * math.pi * 0.5)
+	return { RS = A(30 + r * 45, 0, -6), RE = A(50 - r * 35), Neck = A(-8), Waist = A(-r * 4) }, false
+end
+
 -- the customer: unpack the basket, watch, pay by card, take the bag
 local function customerPose(t, ph, k, kind)
+	if Actions.ServiceItem[kind] then
+		return serviceCustomer(t, ph, k)
+	end
 	if kind == "food" then
 		if k < 0.3 then
 			return L.talk(t, ph)
@@ -1255,6 +1314,9 @@ end
 
 -- the clerk: say hello, scan every item and bag it, the card reader, hand it over
 local function clerkPose(t, ph, k, kind, n)
+	if Actions.ServiceItem[kind] then
+		return serviceClerk(t, ph, k)
+	end
 	if kind == "food" then
 		if k < 0.3 then
 			return L.listen(t, ph)
@@ -1357,10 +1419,13 @@ local function checkoutItems(model, st, k, kind, start)
 		folder.Name = "LocalCheckout"
 		folder.Parent = workspace
 		co = { Start = start, Folder = folder, Items = {}, Beeped = {} }
-		local n = if kind == "food" then 1 else (model:GetAttribute("CheckoutItems") or 3)
+		local service = Actions.ServiceItem[kind]
+		local n = if kind == "food" or service then 1 else (model:GetAttribute("CheckoutItems") or 3)
 		for i = 1, n do
 			local item
-			if kind == "food" then
+			if service then
+				item = localPart(folder, "Handed", service[1], service[2])
+			elseif kind == "food" then
 				item = localPart(folder, "Order", Vector3.new(0.9, 0.5, 0.5), rgb(245, 245, 240), Enum.PartType.Cylinder)
 			else
 				local sizes = { Vector3.new(0.6, 0.8, 0.4), Vector3.new(0.5, 0.5, 0.5), Vector3.new(0.9, 0.4, 0.6), Vector3.new(0.4, 1, 0.4) }
@@ -1368,7 +1433,7 @@ local function checkoutItems(model, st, k, kind, start)
 			end
 			co.Items[i] = item
 		end
-		if kind ~= "food" then
+		if kind == "shop" then
 			co.Bag = localPart(folder, "PaperBag", Vector3.new(1, 1.2, 0.7), rgb(214, 180, 130))
 		end
 		st.Checkout = co
@@ -1379,6 +1444,21 @@ local function checkoutItems(model, st, k, kind, start)
 	local bagPos = C + right * 1.3 + up * 0.6
 	local n = #co.Items
 	local hidden = CFrame.new(0, -500, 0)
+	if Actions.ServiceItem[kind] then
+		-- it appears on the desk once it's ready, and goes across to the customer
+		local item = co.Items[1]
+		local from, to = C - look * 0.6 + up * (item.Size.Y / 2), C + look * 1.2 + up * (item.Size.Y / 2 + 0.3)
+		if k < 0.72 or k > 0.95 then
+			item.CFrame = hidden
+		elseif k < 0.82 then
+			item.CFrame = CFrame.lookAt(from, from + look)
+		else
+			local u = math.min(1, (k - 0.82) / 0.1)
+			local p = from:Lerp(to, u) + up * sin(u * math.pi) * 0.3
+			item.CFrame = CFrame.lookAt(p, p + look)
+		end
+		return
+	end
 	if kind == "food" then
 		local item = co.Items[1]
 		local from, to = C - look * 0.6 + up * 0.25, C + look * 0.9 + up * 0.25

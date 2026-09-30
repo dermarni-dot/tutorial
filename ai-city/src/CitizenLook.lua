@@ -32,6 +32,7 @@ local SILVER = rgb(200, 205, 215)
 local SKIN_TONES = {
 	rgb(255, 224, 196), rgb(245, 205, 170), rgb(234, 184, 146), rgb(214, 160, 120), rgb(196, 138, 98),
 	rgb(168, 112, 78), rgb(141, 90, 62), rgb(112, 70, 48), rgb(88, 56, 40), rgb(250, 214, 180),
+	rgb(226, 190, 150), rgb(186, 128, 90), rgb(128, 82, 58), rgb(72, 46, 34), rgb(240, 200, 164),
 }
 local HAIR_COLORS = {
 	rgb(30, 24, 22), rgb(58, 38, 28), rgb(92, 60, 38), rgb(128, 84, 52), rgb(160, 96, 48), -- black to light brown
@@ -39,7 +40,7 @@ local HAIR_COLORS = {
 }
 local FUN_HAIR = { rgb(240, 110, 170), rgb(90, 150, 240), rgb(140, 90, 220), rgb(90, 200, 160) }
 local GRAY_HAIR = { rgb(200, 200, 200), rgb(170, 170, 172), rgb(235, 235, 235) }
-local HAIRSTYLES = { "short", "buzz", "long", "ponytail", "bun", "afro", "curly", "mohawk", "bob", "spiky", "sidepart", "bald" }
+local HAIRSTYLES = { "short", "buzz", "long", "ponytail", "bun", "afro", "curly", "mohawk", "bob", "spiky", "sidepart", "bald", "braids", "pigtails", "wavy", "undercut", "topknot", "locs" }
 local CASUAL_TOPS = { rgb(220, 70, 70), rgb(70, 130, 220), rgb(90, 180, 110), rgb(240, 190, 60), rgb(160, 100, 200), rgb(240, 140, 60), rgb(80, 190, 200), rgb(235, 235, 230), rgb(60, 60, 70), rgb(230, 120, 160) }
 local CASUAL_BOTTOMS = { rgb(50, 70, 120), rgb(70, 60, 50), rgb(40, 40, 45), rgb(120, 110, 90), rgb(90, 100, 110), rgb(60, 90, 70) }
 local JEANS = { rgb(60, 90, 140), rgb(45, 65, 105), rgb(90, 120, 165), rgb(35, 40, 55) }
@@ -47,9 +48,10 @@ local KID_TOPS = { rgb(255, 90, 90), rgb(80, 170, 255), rgb(120, 220, 110), rgb(
 local SHOES = { rgb(40, 35, 32), rgb(240, 240, 240), rgb(110, 70, 45), rgb(200, 60, 60), rgb(60, 90, 160), rgb(30, 30, 30) }
 -- everyday outfits for people off duty (a few items each)
 local CASUAL_STYLES = {
-	adult = { { "Tee" }, { "Tee" }, { "Polo" }, { "Hoodie" }, { "Jacket" }, { "Stripes" }, { "Sweater" }, { "Dress" } },
-	teen = { { "Hoodie" }, { "Hoodie" }, { "Tee" }, { "Jacket" }, { "Stripes" }, { "Tee", "CapBack" }, { "Dress" } },
-	kid = { { "Tee" }, { "Stripes" }, { "Hoodie" }, { "Overalls" }, { "Dress" } },
+	adult = { { "Tee" }, { "Tee" }, { "Polo" }, { "Hoodie" }, { "Jacket" }, { "Stripes" }, { "Sweater" }, { "Dress" },
+		{ "Blazer" }, { "Flannel" }, { "Puffer" }, { "Tank" }, { "Skirt", "Tee" }, { "Flannel", "Tee" }, { "Blazer", "Skirt" } },
+	teen = { { "Hoodie" }, { "Hoodie" }, { "Tee" }, { "Jacket" }, { "Stripes" }, { "Tee", "CapBack" }, { "Dress" }, { "Varsity" }, { "Puffer" }, { "Flannel" }, { "Skirt", "Tee" }, { "Tank" } },
+	kid = { { "Tee" }, { "Stripes" }, { "Hoodie" }, { "Overalls" }, { "Dress" }, { "Varsity" }, { "Puffer" } },
 }
 
 --------------------------------------------------------------------------------
@@ -259,6 +261,48 @@ local function hair(folder, body, style, color)
 		end
 	elseif style == "afro" then
 		add("Hair", Vector3.new(1.55, 1.3, 1.5), CFrame.new(0, top - 0.02 * H, 0.1 * H), "Ball")
+	elseif style == "braids" or style == "locs" then
+		-- a cap of hair and rows of braids / locs hanging down the back and sides
+		add("Hair", Vector3.new(1.06, 0.32, 1.06), CFrame.new(0, top - 0.06 * H, 0.03 * H))
+		local n = if style == "locs" then 9 else 7
+		local len = if style == "locs" then 1.0 else 1.25
+		for k = 0, n - 1 do
+			local a = math.rad(-110 + k * (220 / (n - 1)))
+			local x, z = math.sin(a) * 0.5, math.cos(a) * 0.5
+			-- (cylinders run along X: turned upright)
+			add("Braid", Vector3.new(len, 0.16, 0.16), CFrame.new(x * H, top - (0.2 + len / 2) * H, (z + 0.02) * H) * CFrame.Angles(0, 0, math.rad(90)), "Cylinder")
+		end
+		if style == "braids" then
+			local tie = add("BraidTie", Vector3.new(0.2, 0.2, 0.2), CFrame.new(0, top - (0.2 + len) * H, 0.52 * H), "Ball")
+		if tie then
+			tie.Color = GOLD
+		end
+		end
+	elseif style == "pigtails" then
+		add("Hair", Vector3.new(1.06, 0.34, 1.06), CFrame.new(0, top - 0.06 * H, 0.03 * H))
+		add("Fringe", Vector3.new(0.9, 0.16, 0.14), CFrame.new(0, top - 0.14 * H, -0.47 * H))
+		for _, sx in ipairs({ -1, 1 }) do
+			add("Pigtail", Vector3.new(0.34, 0.34, 0.34), CFrame.new(sx * 0.6 * H, top - 0.2 * H, 0.15 * H), "Ball")
+			add("Pigtail", Vector3.new(0.26, 0.6, 0.26), CFrame.new(sx * 0.7 * H, top - 0.55 * H, 0.18 * H) * CFrame.Angles(0, 0, sx * math.rad(-12)))
+		end
+	elseif style == "wavy" then
+		add("Hair", Vector3.new(1.1, 0.36, 1.1), CFrame.new(0, top - 0.04 * H, 0.02 * H))
+		for k = 0, 4 do
+			add("Wave", Vector3.new(0.34, 0.34, 0.34), CFrame.new((-0.42 + k * 0.21) * H, top - (0.5 + (k % 2) * 0.15) * H, 0.48 * H), "Ball")
+			add("Wave", Vector3.new(0.3, 0.3, 0.3), CFrame.new((-0.42 + k * 0.21) * H, top - (0.8 + ((k + 1) % 2) * 0.12) * H, 0.46 * H), "Ball")
+		end
+		for _, sx in ipairs({ -1, 1 }) do
+			add("HairSide", Vector3.new(0.2, 0.75, 0.7), CFrame.new(sx * 0.53 * H, top - 0.45 * H, 0.08 * H))
+		end
+		add("Fringe", Vector3.new(0.6, 0.2, 0.16), CFrame.new(0.16 * H, top - 0.14 * H, -0.47 * H) * CFrame.Angles(0, 0, math.rad(10)))
+	elseif style == "undercut" then
+		add("Hair", Vector3.new(1.0, 0.12, 1.0), CFrame.new(0, top - 0.14 * H, 0.02 * H))
+		add("HairTop", Vector3.new(0.78, 0.36, 0.95), CFrame.new(0, top + 0.06 * H, -0.02 * H))
+		add("Quiff", Vector3.new(0.7, 0.24, 0.3), CFrame.new(0, top + 0.16 * H, -0.4 * H) * CFrame.Angles(math.rad(-20), 0, 0))
+	elseif style == "topknot" then
+		add("Hair", Vector3.new(1.05, 0.3, 1.05), CFrame.new(0, top - 0.07 * H, 0.03 * H))
+		add("HairBack", Vector3.new(1.02, 0.4, 0.2), CFrame.new(0, 0.16 * H, 0.46 * H))
+		add("Knot", Vector3.new(0.4, 0.4, 0.4), CFrame.new(0, top + 0.2 * H, 0), "Ball")
 	elseif style == "curly" then
 		for k = 0, 7 do
 			local a = k / 8 * math.pi * 2
@@ -282,7 +326,7 @@ end
 --------------------------------------------------------------------------------
 -- Items. Each one decorates the head, torso, arms or legs.
 --------------------------------------------------------------------------------
-local HATS = { Toque = true, TallToque = true, Cap = true, PoliceCap = true, HardHat = true, StrawHat = true, Beanie = true, FireHelmet = true, Beret = true, BucketHat = true }
+local HATS = { Fedora = true, Toque = true, TallToque = true, Cap = true, PoliceCap = true, HardHat = true, StrawHat = true, Beanie = true, FireHelmet = true, Beret = true, BucketHat = true }
 
 local ITEMS = {}
 
@@ -684,6 +728,112 @@ function ITEMS.Dress(f, b, c)
 	attach(f, L, "SkirtHem", Vector3.new(L.Size.X + 0.6, 0.6, L.Size.Z + 0.5), CFrame.new(0, -0.85, 0), c, nil, Enum.Material.Fabric)
 	attach(f, L, "SkirtTrim", Vector3.new(L.Size.X + 0.64, 0.1, L.Size.Z + 0.54), CFrame.new(0, -1.1, 0), c:Lerp(WHITE, 0.45), nil, Enum.Material.Fabric)
 end
+function ITEMS.Blazer(f, b, c)
+	ITEMS.Jacket(f, b, c or rgb(40, 50, 80))
+	local t = b.Torso
+	-- a shirt showing between the lapels, with buttons
+	torsoFront(b, "Shirt", Vector3.new(t.Size.X * 0.34, t.Size.Y * 0.9, 0.05), 0, WHITE, Enum.Material.Fabric, f)
+	for k = 0, 1 do
+		torsoFront(b, "BlazerButton", Vector3.new(0.1, 0.1, 0.12), -t.Size.Y * (0.08 + k * 0.2), rgb(30, 30, 30), nil, f).CFrame = t.CFrame * CFrame.new(t.Size.X * 0.2, -t.Size.Y * (0.08 + k * 0.2), -t.Size.Z / 2 - 0.1)
+	end
+end
+function ITEMS.Flannel(f, b, c)
+	local t = b.Torso
+	c = c or rgb(170, 50, 50)
+	-- a plaid shirt: dark bands across and down, and on the sleeves
+	for k = -2, 2 do
+		band(f, t, "Plaid", k * t.Size.Y * 0.2, 0.08, c:Lerp(BLACK, 0.45), 0.04)
+		attach(f, t, "PlaidV", Vector3.new(0.08, t.Size.Y + 0.03, t.Size.Z + 0.03), CFrame.new(k * t.Size.X * 0.2, 0, 0), c:Lerp(BLACK, 0.45), nil, Enum.Material.Fabric)
+	end
+	for _, arm in ipairs({ b.LeftArm, b.RightArm }) do
+		if arm then
+			attach(f, arm, "FlannelSleeve", arm.Size + Vector3.new(0.06, 0, 0.06), CFrame.new(), c, nil, Enum.Material.Fabric)
+			band(f, arm, "Plaid", 0, 0.08, c:Lerp(BLACK, 0.45), 0.1)
+		end
+	end
+	for k = 0, 2 do
+		torsoFront(b, "Button", Vector3.new(0.07, 0.07, 0.04), t.Size.Y * (0.3 - k * 0.25), WHITE, nil, f)
+	end
+end
+function ITEMS.Puffer(f, b, c)
+	local t = b.Torso
+	c = c or rgb(40, 60, 110)
+	-- a padded jacket: puffy quilted rings around the body and the arms
+	for k = -2, 2 do
+		attach(f, t, "Puff", Vector3.new(t.Size.X + 0.3, t.Size.Y * 0.2, t.Size.Z + 0.3), CFrame.new(0, k * t.Size.Y * 0.2, 0), if k % 2 == 0 then c else c:Lerp(BLACK, 0.12), nil, Enum.Material.Fabric)
+	end
+	attach(f, t, "PufferCollar", Vector3.new(t.Size.X * 0.7, 0.35, t.Size.Z + 0.35), CFrame.new(0, t.Size.Y / 2 + 0.1, 0), c:Lerp(BLACK, 0.1), nil, Enum.Material.Fabric)
+	torsoFront(b, "Zip", Vector3.new(0.05, t.Size.Y, 0.2), 0, SILVER, Enum.Material.Metal, f)
+	for _, arm in ipairs({ b.LeftArm, b.RightArm }) do
+		if arm then
+			attach(f, arm, "PufferSleeve", arm.Size + Vector3.new(0.22, 0, 0.22), CFrame.new(), c, nil, Enum.Material.Fabric)
+		end
+	end
+end
+function ITEMS.Varsity(f, b, c)
+	c = c or rgb(150, 30, 40)
+	local t = b.Torso
+	ITEMS.Jacket(f, b, c)
+	for _, arm in ipairs({ b.LeftArm, b.RightArm }) do
+		if arm then
+			attach(f, arm, "VarsitySleeve", arm.Size + Vector3.new(0.12, 0, 0.12), CFrame.new(), rgb(240, 236, 226), nil, Enum.Material.Fabric)
+		end
+	end
+	band(f, t, "VarsityHem", -t.Size.Y / 2 + 0.08, 0.16, rgb(240, 236, 226), 0.14)
+	attach(f, t, "Letter", Vector3.new(0.4, 0.5, 0.06), CFrame.new(-t.Size.X * 0.3, t.Size.Y * 0.12, -t.Size.Z / 2 - 0.12), GOLD, nil, Enum.Material.Fabric)
+end
+function ITEMS.Tank(f, b, c)
+	local t = b.Torso
+	c = c or t.Color
+	-- bare shoulders and arms under the straps
+	for _, arm in ipairs({ b.LeftArm, b.RightArm }) do
+		if arm then
+			arm.Color = b.Head.Color
+		end
+	end
+	for _, sx in ipairs({ -1, 1 }) do
+		attach(f, t, "Strap", Vector3.new(0.3, 0.1, t.Size.Z + 0.04), CFrame.new(sx * t.Size.X * 0.28, t.Size.Y / 2, 0), c, nil, Enum.Material.Fabric)
+	end
+end
+function ITEMS.Skirt(f, b, c)
+	local L = b.Lower
+	if not L or L == b.Torso then
+		return
+	end
+	c = c or rgb(40, 40, 60)
+	attach(f, L, "Skirt", Vector3.new(L.Size.X + 0.3, 1.0, L.Size.Z + 0.3), CFrame.new(0, -0.45, 0), c, nil, Enum.Material.Fabric)
+	for k = -2, 2 do
+		attach(f, L, "Pleat", Vector3.new(0.05, 0.9, 0.05), CFrame.new(k * L.Size.X * 0.18, -0.5, -L.Size.Z / 2 - 0.17), c:Lerp(BLACK, 0.25), nil, Enum.Material.Fabric)
+	end
+end
+function ITEMS.Sunglasses(f, b)
+	local H = b.H
+	for _, sx in ipairs({ -1, 1 }) do
+		attach(f, b.Head, "Shades", Vector3.new(0.34, 0.2, 0.05) * H, CFrame.new(sx * 0.2 * H, H * 0.1, -0.53 * H), rgb(20, 20, 26), nil, Enum.Material.Glass)
+	end
+	attach(f, b.Head, "ShadesBridge", Vector3.new(0.9, 0.05, 0.04) * H, CFrame.new(0, H * 0.18, -0.53 * H), rgb(20, 20, 26), nil, Enum.Material.Metal)
+end
+function ITEMS.Fedora(f, b, c)
+	local H = b.H
+	c = c or rgb(70, 60, 50)
+	attach(f, b.Head, "HatBrim", Vector3.new(0.08, 1.5, 1.5) * H, CFrame.new(0, H * 0.46, 0) * CFrame.Angles(0, 0, math.rad(90)), c, "Cylinder", Enum.Material.Fabric)
+	attach(f, b.Head, "HatCrown", Vector3.new(0.9, 0.45, 0.9) * H, CFrame.new(0, H * 0.7, 0), c, nil, Enum.Material.Fabric)
+	attach(f, b.Head, "HatBand", Vector3.new(0.92, 0.1, 0.92) * H, CFrame.new(0, H * 0.54, 0), rgb(30, 30, 30), nil, Enum.Material.Fabric)
+end
+function ITEMS.CrossBag(f, b, c)
+	local t = b.Torso
+	c = c or rgb(120, 70, 45)
+	attach(f, t, "BagStrap", Vector3.new(0.1, t.Size.Y * 1.35, 0.06), CFrame.new(0, 0, -t.Size.Z / 2 - 0.05) * CFrame.Angles(0, 0, math.rad(-38)), c:Lerp(BLACK, 0.3), nil, Enum.Material.Fabric)
+	attach(f, t, "Bag", Vector3.new(0.7, 0.6, 0.3), CFrame.new(t.Size.X / 2 + 0.1, -t.Size.Y / 2, -0.1), c, nil, Enum.Material.Fabric)
+end
+function ITEMS.Bracelets(f, b, c)
+	local arm = b.LeftHand
+	if arm then
+		for k = 0, 1 do
+			attach(f, arm, "Bracelet", Vector3.new(arm.Size.X + 0.08, 0.07, arm.Size.Z + 0.08), CFrame.new(0, arm.Size.Y / 2 - 0.05 - k * 0.1, 0), c or GOLD, nil, Enum.Material.Metal)
+		end
+	end
+end
 function ITEMS.CapBack(f, b, c)
 	local H = b.H
 	c = c or rgb(40, 40, 50)
@@ -777,8 +927,8 @@ local function colorText(c)
 	return string.format("%d,%d,%d", math.floor(c.R * 255 + 0.5), math.floor(c.G * 255 + 0.5), math.floor(c.B * 255 + 0.5))
 end
 
-local FEMININE_HAIR = { "long", "ponytail", "bun", "bob", "curly", "afro", "long", "sidepart" }
-local MASCULINE_HAIR = { "short", "buzz", "sidepart", "spiky", "afro", "curly", "short", "mohawk", "bald" }
+local FEMININE_HAIR = { "long", "ponytail", "bun", "bob", "curly", "afro", "long", "sidepart", "braids", "wavy", "pigtails", "topknot", "locs" }
+local MASCULINE_HAIR = { "short", "buzz", "sidepart", "spiky", "afro", "curly", "short", "mohawk", "bald", "undercut", "locs", "topknot", "braids" }
 
 -- How tall someone is for their age (1 = a grown adult). height is their own
 -- factor (so two 8-year-olds aren't the same size).
@@ -884,6 +1034,22 @@ function CitizenLook.Describe(citizen)
 				look.Bottom = look.Skin -- bare legs under the skirt
 			elseif item == "Overalls" then
 				table.insert(look.Items, "Overalls:" .. colorText(JEANS[rng:NextInteger(1, #JEANS)]))
+			elseif item == "Blazer" then
+				table.insert(look.Items, "Blazer:" .. colorText(({ rgb(40, 50, 80), rgb(60, 60, 66), rgb(150, 120, 90), rgb(110, 40, 50) })[rng:NextInteger(1, 4)]))
+			elseif item == "Flannel" then
+				table.insert(look.Items, "Flannel:" .. colorText(({ rgb(170, 50, 50), rgb(50, 100, 70), rgb(50, 80, 140), rgb(200, 150, 60) })[rng:NextInteger(1, 4)]))
+			elseif item == "Puffer" then
+				table.insert(look.Items, "Puffer:" .. colorText(({ rgb(40, 60, 110), rgb(30, 30, 34), rgb(200, 70, 60), rgb(90, 130, 90), rgb(240, 200, 70) })[rng:NextInteger(1, 5)]))
+			elseif item == "Varsity" then
+				table.insert(look.Items, "Varsity:" .. colorText(({ rgb(150, 30, 40), rgb(30, 50, 110), rgb(30, 90, 50), rgb(40, 40, 44) })[rng:NextInteger(1, 4)]))
+			elseif item == "Tank" then
+				table.insert(look.Items, "Tank")
+				look.Sleeves = "short"
+			elseif item == "Skirt" then
+				if feminine then
+					table.insert(look.Items, "Skirt:" .. colorText(({ rgb(40, 40, 60), rgb(150, 40, 60), rgb(200, 180, 150), rgb(60, 90, 140) })[rng:NextInteger(1, 4)]))
+					look.Bottom = look.Skin
+				end
 			elseif item == "CapBack" then
 				table.insert(look.Items, "CapBack:" .. colorText(accent))
 			else
@@ -919,6 +1085,21 @@ function CitizenLook.Describe(citizen)
 	if not kid and rng:NextNumber() < 0.3 then
 		table.insert(look.Items, "Watch:" .. ({ "30,30,35", "245,200,70", "200,205,215" })[rng:NextInteger(1, 3)])
 	end
+	-- a few more accessories so people don't all look alike
+	if not kid and not uniform then
+		if rng:NextNumber() < 0.15 then
+			table.insert(look.Items, "Sunglasses")
+		end
+		if rng:NextNumber() < 0.2 then
+			table.insert(look.Items, "CrossBag:" .. ({ "120,70,45", "30,30,34", "190,60,70", "200,170,130" })[rng:NextInteger(1, 4)])
+		end
+		if age >= 35 and rng:NextNumber() < 0.08 then
+			table.insert(look.Items, "Fedora:" .. ({ "70,60,50", "40,40,44", "150,130,100" })[rng:NextInteger(1, 3)])
+		end
+	end
+	if not kid and feminine and rng:NextNumber() < 0.25 then
+		table.insert(look.Items, "Bracelets")
+	end
 	if age < 11 and feminine and rng:NextNumber() < 0.45 then
 		table.insert(look.Items, "HairBow:" .. ({ "250,110,160", "255,200,60", "120,180,255", "170,110,240" })[rng:NextInteger(1, 4)])
 	end
@@ -949,7 +1130,7 @@ function CitizenLook.Describe(citizen)
 		end
 	end
 	-- hats sit better on shorter hair; bows don't go with hats
-	if hasHat and (look.Hair == "afro" or look.Hair == "mohawk" or look.Hair == "spiky" or look.Hair == "bun") then
+	if hasHat and (look.Hair == "afro" or look.Hair == "mohawk" or look.Hair == "spiky" or look.Hair == "bun" or look.Hair == "topknot" or look.Hair == "undercut" or look.Hair == "pigtails") then
 		look.Hair = "short"
 	end
 	if hasHat then

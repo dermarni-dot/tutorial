@@ -28,6 +28,9 @@ end
 local SHOPS = { Shop = true, Mall = true, Pharmacy = true, Hardware = true, Bookstore = true, ToyStore = true, Electronics = true, Florist = true, PetShop = true }
 local FOOD = { Cafe = "Cup", Bakery = "Pastry", Diner = "Cup", IceCream = "Cone", Restaurant = false }
 local OFFICE_WORK = { Office = true, Bank = true, TownHall = true }
+-- places with a service desk: visitors are served at the counter first
+-- (the kind picks the conversation and what's handed over)
+local SERVICE = { Bank = "bank", Library = "library", Hotel = "hotel", Cinema = "ticket", PostOffice = "post", Museum = "ticket" }
 
 local PAY_LINES = { "Just these, please.", "Card is fine.", "Thanks!", "Keep the change.", "Have a nice day!" }
 local ORDER_LINES = { "A coffee, please!", "One of those, please.", "What's good today?", "I'll have the usual.", "To go, please." }
@@ -139,6 +142,27 @@ local function eatingOut(brain, plan, t, rng)
 	return list
 end
 
+-- a service desk: the teller, the librarian, the receptionist, the ticket booth
+local function atTheDesk(brain, plan, t, rng)
+	local place = t.Place
+	local list = {}
+	local tills = spotsWith(place, { cashier = true, counter = true })
+	if #tills > 0 and not (t.Spot and tills[1] and (t.Spot.Action == "counter" or t.Spot.Action == "cashier")) then
+		local till = staffedTill(tills, rng)
+		local pos, look = counterFront(till)
+		table.insert(list, task(t, { Pos = pos, Look = look, Building = till.Building or t.Building, Floor = till.Floor or 1, Action = "pay", Duration = 5, Till = till, CheckoutKind = SERVICE[place.Id] }))
+	end
+	local final = task(t, { Spot = t.Spot, Pos = t.Pos, Action = t.Action, Duration = 999, Carry = false })
+	if t.Spot then
+		final.Building, final.Floor = t.Spot.Building or t.Building, t.Spot.Floor or 1
+	end
+	if place.Id == "Cinema" and t.Action == "watch" then
+		final.Carry = nil
+	end
+	table.insert(list, final)
+	return list
+end
+
 --------------------------------------------------------------------------------
 -- Rounds: jobs that move around (loops for as long as the shift lasts)
 --------------------------------------------------------------------------------
@@ -229,7 +253,17 @@ ROUNDS["Waiter"] = function(brain, plan, t, rng)
 	local list = {}
 	local place = t.Place
 	local kitchen = spotsWith(place, { cook = true })
-	local tables = spotsWith(place, { eat = true })
+	-- tables with people sitting at them first
+	local tables = api.Occupant and {} or spotsWith(place, { eat = true })
+	for _, s in ipairs(spotsWith(place, { eat = true })) do
+		local who = api.Occupant and api.Occupant(s)
+		if who and who.State == "act" then
+			table.insert(tables, s)
+		end
+	end
+	if #tables == 0 then
+		tables = spotsWith(place, { eat = true })
+	end
 	for _ = 1, 3 do
 		if #kitchen > 0 then
 			local k = kitchen[rng:NextInteger(1, #kitchen)]
@@ -238,7 +272,7 @@ ROUNDS["Waiter"] = function(brain, plan, t, rng)
 		end
 		if #tables > 0 then
 			local s = tables[rng:NextInteger(1, #tables)]
-			table.insert(list, task(t, { Pos = nearbyPos(s, 2.2), Look = s.CFrame.Position, Building = s.Building or t.Building, Floor = s.Floor or 1, Action = "serve", Carry = false, Duration = 5 }))
+			table.insert(list, task(t, { Pos = nearbyPos(s, 2.2), Look = s.CFrame.Position, Building = s.Building or t.Building, Floor = s.Floor or 1, Action = "serve", Carry = false, Duration = 5, Say = if rng:NextNumber() < 0.4 then ({ "Here you go! Enjoy!", "Careful, the plate's hot.", "Can I get you anything else?", "One pasta for table four!" })[rng:NextInteger(1, 4)] else nil }))
 		end
 	end
 	return list
@@ -280,6 +314,144 @@ ROUNDS["Night Janitor"] = function(brain, plan, t, rng)
 	return list
 end
 
+-- spots at a place that someone is using right now
+local function occupied(place, actions)
+	local out = {}
+	for _, s in ipairs(spotsWith(place, actions)) do
+		local who = api.Occupant and api.Occupant(s)
+		if who and who.State == "act" then
+			table.insert(out, s)
+		end
+	end
+	return out
+end
+
+-- stand beside someone's spot, facing them
+local function visit(t, s, fields, rng)
+	local pos = nearbyPos(s, if rng:NextNumber() < 0.5 then 2.6 else -2.6)
+	fields.Pos = pos
+	fields.Look = s.CFrame.Position
+	fields.Building = s.Building or t.Building
+	fields.Floor = s.Floor or 1
+	return task(t, fields)
+end
+
+-- a round of visits to people using some spots, then back to the post
+local function rounds(opts)
+	return function(brain, plan, t, rng)
+		local list = {}
+		local people = occupied(t.Place, opts.Visit)
+		for _ = 1, opts.Count or 3 do
+			if #people == 0 then
+				break
+			end
+			local s = table.remove(people, rng:NextInteger(1, #people))
+			local lines = opts.Lines
+			table.insert(list, visit(t, s, { Action = opts.Action, Carry = false, Duration = rng:NextInteger(opts.Min or 8, opts.Max or 12), Say = if lines and rng:NextNumber() < 0.6 then lines[rng:NextInteger(1, #lines)] else nil }, rng))
+		end
+		if t.Spot then
+			table.insert(list, atSpot(t, t.Spot, { Action = t.Spot.Action, Duration = rng:NextInteger(opts.Stay and opts.Stay[1] or 20, opts.Stay and opts.Stay[2] or 35) }))
+		end
+		return list
+	end
+end
+
+-- doctors and nurses: bedside visits with the clipboard
+ROUNDS["Doctor"] = rounds({ Visit = { patient = true }, Action = "doctor", Count = 3, Min = 10, Max = 15,
+	Lines = { "How are we feeling today?", "Let's take a look.", "You're healing nicely.", "Any pain today?", "Keep resting, okay?" } })
+ROUNDS["Nurse"] = rounds({ Visit = { patient = true }, Action = "nurse", Count = 4, Min = 8, Max = 12,
+	Lines = { "Time for your medicine.", "Let me check your temperature.", "Need another pillow?", "Doctor will be by soon." } })
+-- teachers walk between the desks helping students
+local TEACHER = rounds({ Visit = { study = true }, Action = "point", Count = 3, Min = 6, Max = 9, Stay = { 25, 40 },
+	Lines = { "Good work! Show your steps.", "Almost - check that one again.", "Nice handwriting!", "Eyes on your own paper!", "Who can tell me the answer?" } })
+ROUNDS["Teacher"] = TEACHER
+ROUNDS["Middle School Teacher"] = TEACHER
+ROUNDS["High School Teacher"] = TEACHER
+-- coaches cheer on whoever is training
+local COACH = rounds({ Visit = { lift = true, squat = true, run = true, punch = true, yoga = true, stretch = true, hoops = true }, Action = "coach", Count = 3, Min = 8, Max = 12,
+	Lines = { "Keep it up!", "Two more! Push!", "Great form!", "Breathe! Don't forget to breathe!", "That's it! Feel the burn!" } })
+ROUNDS["Fitness Coach"] = COACH
+ROUNDS["Coach"] = COACH
+-- daycare: playing with the little ones
+ROUNDS["Daycare Worker"] = rounds({ Visit = { play = true, crawl = true, swing = true, sit = true }, Action = "play", Count = 3, Min = 10, Max = 14,
+	Lines = { "Wheee! Good job!", "Gentle, gentle!", "Who wants a snack?", "Let's share, okay?", "Peekaboo!" } })
+
+-- museum guides lead a little tour past the exhibits
+ROUNDS["Museum Guide"] = function(brain, plan, t, rng)
+	local list = {}
+	local exhibits = spotsWith(t.Place, { browse = true })
+	local lines = { "This piece is over 300 years old!", "Follow me, everyone!", "Notice the brushwork here.", "This was found right here in town.", "Any questions so far?" }
+	for k = 1, 3 do
+		if #exhibits == 0 then
+			break
+		end
+		local s = table.remove(exhibits, rng:NextInteger(1, #exhibits))
+		local pos = nearbyPos(s, 3)
+		table.insert(list, task(t, { Pos = pos, Look = s.CFrame.Position + s.CFrame.LookVector * 3, Building = s.Building or t.Building, Floor = s.Floor or 1, Action = "guide", Carry = false, Duration = rng:NextInteger(10, 14), Say = lines[(k + rng:NextInteger(0, 4)) % #lines + 1] }))
+	end
+	if t.Spot then
+		table.insert(list, atSpot(t, t.Spot, { Action = t.Spot.Action, Duration = rng:NextInteger(20, 30) }))
+	end
+	return list
+end
+
+-- firefighters: truck maintenance, then a hose drill out front
+ROUNDS["Firefighter"] = function(brain, plan, t, rng)
+	local list = {}
+	local place = t.Place
+	local truck = spotsWith(place, { fixcar = true })
+	if #truck > 0 then
+		table.insert(list, atSpot(t, truck[rng:NextInteger(1, #truck)], { Action = "fixcar", Carry = false, Duration = rng:NextInteger(12, 18) }))
+	end
+	local door = place.Door
+	if door then
+		local a = rng:NextNumber() * math.pi * 2
+		local pos = door + Vector3.new(math.cos(a) * 6, 0, math.sin(a) * 6)
+		pos = if api.Clear then api.Clear(pos) else pos
+		table.insert(list, { Plan = plan, Pos = pos, Door = pos, Look = pos + Vector3.new(math.cos(a), 0, math.sin(a)) * 10, Floor = 1, Action = "hose", Carry = false, Duration = rng:NextInteger(10, 14), IsTask = true, Say = if rng:NextNumber() < 0.5 then "Drill! Hose ready!" else nil })
+	end
+	if t.Spot then
+		table.insert(list, atSpot(t, t.Spot, { Action = t.Spot.Action, Duration = rng:NextInteger(15, 25) }))
+	end
+	return list
+end
+
+-- the librarian: shelving returned books, then back at the desk
+ROUNDS["Librarian"] = function(brain, plan, t, rng)
+	local list = {}
+	local shelves = spotsWith(t.Place, { shelve = true, read = true })
+	for _ = 1, 2 do
+		if #shelves == 0 then
+			break
+		end
+		local s = shelves[rng:NextInteger(1, #shelves)]
+		table.insert(list, task(t, { Pos = nearbyPos(s, 2.4), Look = s.CFrame.Position - s.CFrame.LookVector * 3, Building = s.Building or t.Building, Floor = s.Floor or 1, Action = "shelve", Carry = false, Duration = rng:NextInteger(9, 13) }))
+	end
+	if t.Spot then
+		table.insert(list, atSpot(t, t.Spot, { Action = t.Spot.Action, Duration = rng:NextInteger(30, 45) }))
+	end
+	return list
+end
+
+-- warehouse and factory: carrying boxes from the loading area to the line
+local function haul(brain, plan, t, rng)
+	local list = {}
+	local boxes = spotsWith(t.Place, { carrybox = true })
+	local drop = spotsWith(t.Place, { sort = true, machine = true })
+	if #boxes > 0 and #drop > 0 and rng:NextNumber() < 0.6 then
+		local s = boxes[rng:NextInteger(1, #boxes)]
+		table.insert(list, task(t, { Pos = s.CFrame.Position, Look = s.CFrame.Position + s.CFrame.LookVector, Building = s.Building or t.Building, Floor = s.Floor or 1, Action = "carrybox", Carry = false, Duration = 4 }))
+		local d = drop[rng:NextInteger(1, #drop)]
+		table.insert(list, task(t, { Pos = nearbyPos(d, 2.6), Look = d.CFrame.Position, Building = d.Building or t.Building, Floor = d.Floor or 1, Action = "unpack", Carry = false, Duration = 5 }))
+	end
+	if t.Spot then
+		table.insert(list, atSpot(t, t.Spot, { Action = t.Spot.Action, Duration = rng:NextInteger(30, 50) }))
+	end
+	return list
+end
+ROUNDS["Warehouse Worker"] = haul
+ROUNDS["Factory Worker"] = haul
+
 --------------------------------------------------------------------------------
 -- The task list for a plan (nil: just go to the target and stay)
 --------------------------------------------------------------------------------
@@ -310,6 +482,8 @@ function Errands.Tasks(brain, plan, t, rng)
 			list = shopping(brain, plan, t, rng)
 		elseif FOOD[id] ~= nil and age >= 10 and (plan.Want == "eat" or plan.Want == "coffee" or plan.Want == nil or plan.Want == "chat") then
 			list = eatingOut(brain, plan, t, rng)
+		elseif SERVICE[id] and age >= 13 then
+			list = atTheDesk(brain, plan, t, rng)
 		end
 	end
 	if list and #list > 0 then

@@ -1019,6 +1019,17 @@ local CLERK_HELLO = { "Hi there! Find everything okay?", "Next, please! Hi!", "H
 local CUSTOMER_REPLY = { "Yes, thanks!", "I did, thank you.", "Just these, please.", "Mm-hm! Busy day?" }
 local FOOD_HELLO = { "Hi! What can I get you?", "Morning! The usual?", "Welcome! What'll it be?", "Hey there! What are you having?" }
 local FOOD_ORDER = { "A latte, please!", "One of those, please.", "Something sweet, please!", "The usual!", "A coffee to go, please." }
+-- what gets said at each kind of service desk: { clerk hello, customer asks, clerk while working, clerk handing over }
+local SERVICE_TALK = {
+	bank = { { "Next! How can I help?", "Good morning! Deposit or withdrawal?" }, { "I'd like to take out some cash.", "Just a deposit today.", "Can I check my balance?" }, { "One moment, let me just stamp this.", "Can you sign here for me?" }, { "Here you are. Have a good day!", "All done! Anything else?" } },
+	library = { { "Hi! Checking out?", "Welcome to the library!" }, { "Just this one, please.", "I'd like to borrow this.", "Can I return this too?" }, { "Let me scan your card...", "This one's due in two weeks." }, { "Enjoy the book!", "Happy reading!" } },
+	hotel = { { "Welcome! Checking in?", "Good evening! Do you have a reservation?" }, { "Yes, it's under my name.", "One room, please.", "Is breakfast included?" }, { "Let me find your room...", "Room 204, lovely view." }, { "Here's your key. Enjoy your stay!", "Elevator's on the left. Enjoy!" } },
+	ticket = { { "Hi! How many?", "Next! Tickets?" }, { "One ticket, please.", "Just one, thanks.", "One for the next show!" }, { "Printing it now...", "Great choice!" }, { "Here's your ticket. Enjoy!", "Enjoy the show!" } },
+	post = { { "Next please! Sending something?", "Hi! Picking up?" }, { "I'm here for a package.", "I got a slip in the mail.", "Sending this across town." }, { "Let me check the back...", "Sign here, please." }, { "Here you go!", "There you are. Have a nice day!" } },
+}
+local function pick(list)
+	return list[math.random(1, #list)]
+end
 local THANKS = { "Thanks! Have a great day!", "Thank you! See you soon!", "Enjoy! Bye now!", "Have a nice one!" }
 
 local function clearCheckout(model, start)
@@ -1082,7 +1093,7 @@ function CitizenService.TryCheckout(brain, t)
 	clerk.ServingUntil = now + dur + 0.5
 	local look = flat(brain.Root.Position - till.CFrame.Position)
 	look = if look.Magnitude > 0.1 then look.Unit else till.CFrame.LookVector
-	local items = if kind == "food" then 1 else math.random(3, 6)
+	local items = if kind == "shop" then math.random(3, 6) else 1
 	for _, m in ipairs({ brain.Model, clerk.Model }) do
 		m:SetAttribute("CheckoutStart", now)
 		m:SetAttribute("CheckoutKind", kind)
@@ -1103,7 +1114,14 @@ function CitizenService.TryCheckout(brain, t)
 		end)
 	end
 	local price = if kind == "food" then math.random(3, 7) else items * math.random(2, 4)
-	if kind == "food" then
+	local talk = SERVICE_TALK[kind]
+	if talk then
+		say(0.1, clerk, pick(talk[1]), "happy")
+		say(1.4, brain, pick(talk[2]), "neutral")
+		say(dur * 0.5, clerk, pick(talk[3]), "neutral")
+		say(dur * 0.82, clerk, pick(talk[4]), "happy")
+		say(dur * 0.95, brain, "Thank you!", "happy")
+	elseif kind == "food" then
 		say(0.1, clerk, FOOD_HELLO[math.random(1, #FOOD_HELLO)], "happy")
 		say(1.3, brain, FOOD_ORDER[math.random(1, #FOOD_ORDER)], "happy")
 		say(dur * 0.32, clerk, "That's " .. price .. " coins. Tap your card here.", "neutral")

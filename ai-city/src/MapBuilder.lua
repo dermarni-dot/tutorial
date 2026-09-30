@@ -398,7 +398,7 @@ function ctx.houseRow(parent, i, j, rng, slots, big)
 		local center = c + Vector3.new(sx * 19, 0, sz * depthZ)
 		-- only the big suburban lots have room for a garage beside the house
 		local garageSide = if big then 1 else nil
-		local b = Buildings.house(model, center, face, style, rng, garageSide, if big then 1.2 else 1)
+		local b = Buildings.house(model, center, face, style, rng, garageSide, if big then 1.5 else 1)
 		local at = b.At
 		-- the front of the lot (the sidewalk edge), in the house's own space
 		local frontZ = -(HALF - SIDEWALK - depthZ)

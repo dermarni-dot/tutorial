@@ -373,7 +373,8 @@ function Buildings.house(parent, center, face, style, rng, garageSide, scale)
 	if scale and scale ~= 1 then
 		-- big suburban lots get bigger houses (whole studs, even sizes)
 		spec.W = math.floor(spec.W * scale / 2 + 0.5) * 2
-		spec.D = math.floor(spec.D * scale / 2 + 0.5) * 2
+		-- (the depth has to leave a front yard and a back yard on the lot)
+		spec.D = math.min(28, math.floor(spec.D * scale / 2 + 0.5) * 2)
 	end
 	local b = Buildings.shell(parent, spec)
 	local at = b.At

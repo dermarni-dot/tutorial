@@ -61,6 +61,7 @@ Actions.List = {
 	patient = { Pose = "sleep", Lying = true, Label = "🤒 Resting" },
 	browse = { Pose = "browse", Label = "🛍️ Shopping" },
 	phone = { Pose = "phone", Props = { "Phone" }, Label = "📱 On the phone" },
+	piano = { Pose = "piano", Seated = true, Label = "🎹 Playing the piano" },
 	chess = { Pose = "chess", Seated = true, Props = { "ChessPiece" }, Label = "♟️ Playing chess" },
 	paint = { Pose = "paint", Props = { "Brush" }, Label = "🎨 Painting" },
 	fish = { Pose = "fish", Props = { "Rod", "CaughtFish" }, Label = "🎣 Fishing" },
@@ -89,6 +90,7 @@ Actions.List = {
 	-- street crime
 	cuffed = { Pose = "cuffed", Props = { "Cuffs" }, Label = "🚓 Under arrest" },
 	handsup = { Pose = "handsup", Label = "🙌 Giving up" },
+	hose = { Pose = "hose", Props = { "Hose" }, Label = "🚒 Fire drill" },
 	spray = { Pose = "spray", Props = { "SprayCan" }, Label = "🎨 Spraying graffiti" },
 	jailed = { Pose = "jailed", Label = "🔒 In jail" },
 	getaway = { Pose = "none", Props = { "Loot" }, Label = "💰 Running away" },
@@ -98,7 +100,15 @@ Actions.List = {
 
 -- Checkouts (a customer and a clerk doing a sale together): how long each kind
 -- takes, in seconds. The server starts them, every client animates them.
-Actions.CheckoutTime = { shop = 9, food = 8 }
+Actions.CheckoutTime = { shop = 9, food = 8, bank = 9, library = 7, hotel = 9, ticket = 6, post = 8 }
+-- what's handed across a service desk: { size, color }
+Actions.ServiceItem = {
+	bank = { Vector3.new(0.7, 0.08, 0.35), Color3.fromRGB(120, 190, 120) }, -- a stack of bills
+	library = { Vector3.new(0.7, 0.9, 0.2), Color3.fromRGB(170, 60, 60) }, -- a book
+	hotel = { Vector3.new(0.5, 0.05, 0.3), Color3.fromRGB(240, 240, 240) }, -- a key card
+	ticket = { Vector3.new(0.6, 0.03, 0.3), Color3.fromRGB(240, 200, 80) }, -- a ticket
+	post = { Vector3.new(0.9, 0.5, 0.7), Color3.fromRGB(200, 160, 110) }, -- a parcel
+}
 
 function Actions.Get(name)
 	return Actions.List[name]

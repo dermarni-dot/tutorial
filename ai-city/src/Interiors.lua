@@ -851,6 +851,70 @@ local function kidsDesk(b, f, x, z, list, place)
 	spot(list, b, f, x, z - 2, 0, 1, "study", "home", seat)
 end
 
+-- extra rooms for the big suburban houses
+local function homeOffice(b, f, x, z, list, place)
+	-- a desk against the back wall with a computer, a bookcase beside it
+	desk(b, f, x, z, list, "type", "home", -1, place, rgb(120, 86, 60))
+	box(b, f, "Bookcase", Vector3.new(4, 7, 1.4), x + 4.8, 0, z + 0.4, rgb(110, 80, 56), Enum.Material.Wood)
+	for row = 0, 2 do
+		for k = 0, 4 do
+			box(b, f, "Book", Vector3.new(0.5, 1.4 - (k % 2) * 0.3, 1), x + 3.4 + k * 0.62, 0.6 + row * 2.2, z + 0.2, MapKit.FLOWERS[(row * 5 + k) % #MapKit.FLOWERS + 1]:Lerp(rgb(60, 50, 40), 0.35))
+		end
+	end
+	box(b, f, "OfficePlant", Vector3.new(1, 1, 1), x - 3.4, 0, z + 0.4, rgb(180, 110, 80), Enum.Material.Slate)
+	MapKit.ball(b.Model, "PlantLeaves", 2, at(b, f, x - 3.4, 2, z + 0.4), MapKit.LEAVES[2], Enum.Material.Grass)
+end
+
+local function piano(b, f, x, z, list, place)
+	-- an upright piano against the front wall, a bench in front
+	local black = rgb(26, 24, 28)
+	box(b, f, "Piano", Vector3.new(5, 4.2, 1.8), x, 0, z, black, Enum.Material.SmoothPlastic)
+	box(b, f, "PianoKeys", Vector3.new(4.6, 0.15, 0.8), x, 2.6, z + 1.2, WHITE)
+	for k = 0, 8 do
+		box(b, f, "BlackKey", Vector3.new(0.18, 0.12, 0.45), x - 2 + k * 0.5, 2.75, z + 1, black)
+	end
+	box(b, f, "SheetMusic", Vector3.new(1.6, 1.1, 0.05), x, 3.4, z + 0.85, rgb(250, 248, 238))
+	local seat = MapKit.seat(b.Model, "PianoBench", Vector3.new(3, 0.4, 1.4), at(b, f, x, 1.7, z + 2.8), black, Enum.Material.SmoothPlastic, place)
+	box(b, f, "BenchLegs", Vector3.new(2.6, 1.5, 1), x, 0, z + 2.8, black)
+	spot(list, b, f, x, z + 2.8, 0, -1, "piano", "home", seat)
+end
+
+local function readingNook(b, f, x, z, list, rng, place)
+	local c = ({ rgb(180, 120, 80), rgb(90, 120, 110), rgb(150, 70, 80) })[rng:NextInteger(1, 3)]
+	rug(b, f, x, z, 5, 5, rgb(220, 200, 170))
+	local seat = MapKit.seat(b.Model, "ArmchairSeat", Vector3.new(2.2, 0.4, 2.2), at(b, f, x, 1.8, z), c, Enum.Material.Fabric, place)
+	box(b, f, "Armchair", Vector3.new(2.8, 1.6, 2.8), x, 0, z, c, Enum.Material.Fabric)
+	box(b, f, "ArmchairBack", Vector3.new(2.8, 2.4, 0.6), x, 1.6, z + 1.1, c:Lerp(BLACK, 0.1), Enum.Material.Fabric)
+	spot(list, b, f, x, z, 0, -1, "read", "home", seat)
+	box(b, f, "FloorLamp", Vector3.new(0.3, 5, 0.3), x + 2.2, 0, z + 1, rgb(60, 60, 60), Enum.Material.Metal)
+	local shade = box(b, f, "LampShade", Vector3.new(1.3, 1, 1.3), x + 2.2, 5, z + 1, rgb(255, 236, 200), Enum.Material.Fabric)
+	MapKit.light(shade, rgb(255, 220, 170), 12, 0.5)
+	box(b, f, "SideTable", Vector3.new(1.2, 1.8, 1.2), x - 2.1, 0, z, rgb(130, 90, 60), Enum.Material.Wood)
+	box(b, f, "BookStack", Vector3.new(0.8, 0.5, 1), x - 2.1, 1.8, z, rgb(80, 110, 160))
+end
+
+local function gameCorner(b, f, x, z, list, place)
+	-- a TV with a games console and two beanbags
+	box(b, f, "TVStand", Vector3.new(5, 1.6, 1.4), x, 0, z, rgb(50, 50, 56), Enum.Material.Wood)
+	local tv = box(b, f, "TV", Vector3.new(4.4, 2.6, 0.2), x, 1.6, z, rgb(20, 20, 24))
+	local screen = deco(b.Model, "TVScreen", Vector3.new(4, 2.2, 0.05), tv.CFrame * CFrame.new(0, 0, 0.13), rgb(120, 200, 140), Enum.Material.Neon)
+	screen.Transparency = 0.1
+	box(b, f, "Console", Vector3.new(1.4, 0.4, 1), x + 1.6, 1.6, z + 0.1, rgb(240, 240, 245))
+	for k, c in ipairs({ rgb(220, 70, 70), rgb(70, 130, 220) }) do
+		local bx = x + (k == 1 and -1.4 or 1.4)
+		local seat = MapKit.seat(b.Model, "Beanbag", Vector3.new(2.4, 1.2, 2.4), at(b, f, bx, 0.6, z + 4), c, Enum.Material.Fabric, place)
+		spot(list, b, f, bx, z + 4, 0, -1, "tv", "home", seat)
+	end
+end
+
+local function laundry(b, f, x, z)
+	for k = 0, 1 do
+		local m = box(b, f, if k == 0 then "Washer" else "Dryer", Vector3.new(2.4, 3, 2.4), x + k * 2.6, 0, z, rgb(242, 242, 245), Enum.Material.SmoothPlastic)
+		deco(b.Model, "Door", Vector3.new(1.5, 1.5, 0.1), m.CFrame * CFrame.new(0, 0, -1.22), rgb(150, 190, 220), Enum.Material.Glass)
+	end
+	box(b, f, "LaundryBasket", Vector3.new(1.6, 1.2, 1.2), x + 5.2, 0, z, rgb(200, 180, 140), Enum.Material.Fabric)
+end
+
 function ROOMS.home(b, f, list, rng, place)
 	-- Ground floor: living room at the front left, dining table at the front
 	-- right, a kitchen along the back right. Bedrooms at the back left (on one-
@@ -866,6 +930,17 @@ function ROOMS.home(b, f, list, rng, place)
 		kitchen(b, f, hw - math.min(12, W / 2 - 1), hw - 3, hd - 1.8, list)
 		fridge(b, f, hw - 1.6, hd - 1.8, -1)
 		plant(b, f, -2.5, -hd + 2)
+		if W >= 40 then
+			-- the big houses: a piano by the front windows, a reading nook
+			-- and a home office in the middle of the house
+			piano(b, f, 7.5, -hd + 1.3, list, place)
+			readingNook(b, f, -5, -1.5, list, rng, place)
+			if twoStorey then
+				homeOffice(b, f, 1, hd - 2.4, list, place)
+			else
+				homeOffice(b, f, 3, 3, list, place)
+			end
+		end
 		if not twoStorey then
 			-- bathroom on the right, between the dining table and the kitchen
 			local z0, z1 = -hd + 9.8, hd - 4.6
@@ -902,6 +977,13 @@ function ROOMS.home(b, f, list, rng, place)
 		wardrobe(b, f, hw - 1.4, 1.5, false)
 		dresser(b, f, -1, -hd + 1.3, true)
 		rug(b, f, -1, 1, 8, 5, bedColors[rng:NextInteger(1, #bedColors)]:Lerp(WHITE, 0.4))
+		if W >= 40 then
+			-- more room upstairs: a game corner, a laundry nook and another wardrobe
+			gameCorner(b, f, 7, -hd + 1.2, list, place)
+			laundry(b, f, hw - 14, hd - 1.8)
+			wardrobe(b, f, hw - 1.4, -4, false)
+			plant(b, f, hw - 9, 0)
+		end
 	end
 end
 

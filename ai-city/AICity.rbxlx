@@ -241,15 +241,15 @@ end
 
 -- Keyframes by hour. Everything between two keyframes is blended.
 local KEYS = {
-	{ Hour = 0, Ambient = rgb(58, 64, 100), Outdoor = rgb(66, 78, 122), Brightness = 1.1, Exposure = 0, AtmoColor = rgb(40, 52, 96), AtmoDecay = rgb(22, 26, 60), Density = 0.36, Haze = 1.2, Glare = 0, Tint = rgb(185, 200, 255), Saturation = -0.05, Contrast = 0.12, Bloom = 1.1, Rays = 0 },
-	{ Hour = 4.8, Ambient = rgb(62, 66, 104), Outdoor = rgb(74, 80, 126), Brightness = 1.15, Exposure = 0, AtmoColor = rgb(60, 66, 116), AtmoDecay = rgb(40, 36, 80), Density = 0.37, Haze = 1.4, Glare = 0, Tint = rgb(195, 205, 255), Saturation = -0.02, Contrast = 0.1, Bloom = 1, Rays = 0 },
-	{ Hour = 6.2, Ambient = rgb(110, 90, 104), Outdoor = rgb(150, 120, 128), Brightness = 1.6, Exposure = 0, AtmoColor = rgb(236, 170, 160), AtmoDecay = rgb(170, 110, 140), Density = 0.34, Haze = 2.2, Glare = 0.6, Tint = rgb(255, 222, 214), Saturation = 0.12, Contrast = 0.08, Bloom = 0.8, Rays = 0.14 },
-	{ Hour = 8, Ambient = rgb(128, 124, 124), Outdoor = rgb(150, 150, 150), Brightness = 2.4, Exposure = 0.05, AtmoColor = rgb(200, 214, 236), AtmoDecay = rgb(120, 150, 196), Density = 0.3, Haze = 1.6, Glare = 0.25, Tint = rgb(255, 246, 236), Saturation = 0.18, Contrast = 0.1, Bloom = 0.55, Rays = 0.08 },
-	{ Hour = 12.5, Ambient = rgb(136, 136, 140), Outdoor = rgb(158, 158, 162), Brightness = 3, Exposure = 0.08, AtmoColor = rgb(196, 220, 250), AtmoDecay = rgb(106, 146, 206), Density = 0.26, Haze = 1.2, Glare = 0.12, Tint = rgb(255, 252, 246), Saturation = 0.2, Contrast = 0.1, Bloom = 0.45, Rays = 0.05 },
-	{ Hour = 16.5, Ambient = rgb(138, 128, 118), Outdoor = rgb(160, 148, 136), Brightness = 2.6, Exposure = 0.05, AtmoColor = rgb(236, 208, 176), AtmoDecay = rgb(160, 140, 150), Density = 0.3, Haze = 1.8, Glare = 0.4, Tint = rgb(255, 238, 214), Saturation = 0.22, Contrast = 0.1, Bloom = 0.55, Rays = 0.1 },
-	{ Hour = 18.2, Ambient = rgb(128, 92, 88), Outdoor = rgb(170, 110, 96), Brightness = 1.9, Exposure = 0.02, AtmoColor = rgb(255, 150, 110), AtmoDecay = rgb(170, 90, 120), Density = 0.34, Haze = 2.6, Glare = 0.9, Tint = rgb(255, 210, 180), Saturation = 0.2, Contrast = 0.1, Bloom = 0.8, Rays = 0.18 },
-	{ Hour = 19.4, Ambient = rgb(84, 66, 104), Outdoor = rgb(100, 78, 130), Brightness = 1.2, Exposure = -0.02, AtmoColor = rgb(150, 100, 160), AtmoDecay = rgb(70, 50, 110), Density = 0.36, Haze = 2, Glare = 0.2, Tint = rgb(226, 200, 255), Saturation = 0.08, Contrast = 0.12, Bloom = 1, Rays = 0.04 },
-	{ Hour = 21, Ambient = rgb(60, 66, 102), Outdoor = rgb(68, 80, 124), Brightness = 1.1, Exposure = 0, AtmoColor = rgb(44, 56, 100), AtmoDecay = rgb(24, 28, 64), Density = 0.36, Haze = 1.2, Glare = 0, Tint = rgb(190, 204, 255), Saturation = -0.04, Contrast = 0.12, Bloom = 1.1, Rays = 0 },
+	{ Hour = 0, Ambient = rgb(44, 50, 80), Outdoor = rgb(52, 62, 100), Brightness = 0.9, Exposure = -0.05, AtmoColor = rgb(40, 52, 96), AtmoDecay = rgb(22, 26, 60), Density = 0.34, Haze = 1.1, Glare = 0, Tint = rgb(190, 204, 255), Saturation = -0.05, Contrast = 0.14, Bloom = 0.9, Rays = 0, Cloud = rgb(70, 76, 100) },
+	{ Hour = 4.8, Ambient = rgb(48, 52, 84), Outdoor = rgb(58, 64, 104), Brightness = 0.95, Exposure = -0.05, AtmoColor = rgb(60, 66, 116), AtmoDecay = rgb(40, 36, 80), Density = 0.35, Haze = 1.3, Glare = 0, Tint = rgb(198, 206, 255), Saturation = -0.02, Contrast = 0.12, Bloom = 0.8, Rays = 0, Cloud = rgb(90, 90, 120) },
+	{ Hour = 6.2, Ambient = rgb(92, 78, 90), Outdoor = rgb(124, 100, 108), Brightness = 1.3, Exposure = -0.08, AtmoColor = rgb(236, 170, 160), AtmoDecay = rgb(170, 110, 140), Density = 0.32, Haze = 2, Glare = 0.6, Tint = rgb(255, 226, 214), Saturation = 0.12, Contrast = 0.1, Bloom = 0.5, Rays = 0.14, Cloud = rgb(255, 196, 180) },
+	{ Hour = 8, Ambient = rgb(100, 100, 106), Outdoor = rgb(118, 120, 128), Brightness = 1.9, Exposure = -0.18, AtmoColor = rgb(190, 212, 240), AtmoDecay = rgb(96, 136, 200), Density = 0.26, Haze = 1.1, Glare = 0.2, Tint = rgb(255, 248, 240), Saturation = 0.12, Contrast = 0.14, Bloom = 0.25, Rays = 0.06, Cloud = rgb(250, 250, 255) },
+	{ Hour = 12.5, Ambient = rgb(104, 106, 112), Outdoor = rgb(122, 126, 136), Brightness = 2.2, Exposure = -0.25, AtmoColor = rgb(180, 210, 245), AtmoDecay = rgb(84, 128, 200), Density = 0.24, Haze = 0.8, Glare = 0.1, Tint = rgb(255, 252, 248), Saturation = 0.12, Contrast = 0.15, Bloom = 0.2, Rays = 0.04, Cloud = rgb(255, 255, 255) },
+	{ Hour = 16.5, Ambient = rgb(108, 100, 94), Outdoor = rgb(126, 118, 110), Brightness = 2, Exposure = -0.2, AtmoColor = rgb(230, 204, 176), AtmoDecay = rgb(150, 132, 150), Density = 0.28, Haze = 1.5, Glare = 0.4, Tint = rgb(255, 240, 220), Saturation = 0.16, Contrast = 0.14, Bloom = 0.3, Rays = 0.1, Cloud = rgb(255, 238, 214) },
+	{ Hour = 18.2, Ambient = rgb(110, 80, 78), Outdoor = rgb(146, 96, 86), Brightness = 1.5, Exposure = -0.12, AtmoColor = rgb(255, 150, 110), AtmoDecay = rgb(170, 90, 120), Density = 0.32, Haze = 2.4, Glare = 0.9, Tint = rgb(255, 214, 186), Saturation = 0.2, Contrast = 0.12, Bloom = 0.55, Rays = 0.18, Cloud = rgb(255, 160, 120) },
+	{ Hour = 19.4, Ambient = rgb(72, 58, 90), Outdoor = rgb(86, 68, 112), Brightness = 1.05, Exposure = -0.08, AtmoColor = rgb(150, 100, 160), AtmoDecay = rgb(70, 50, 110), Density = 0.34, Haze = 1.8, Glare = 0.2, Tint = rgb(228, 204, 255), Saturation = 0.08, Contrast = 0.14, Bloom = 0.8, Rays = 0.04, Cloud = rgb(170, 120, 170) },
+	{ Hour = 21, Ambient = rgb(46, 52, 84), Outdoor = rgb(54, 64, 104), Brightness = 0.9, Exposure = -0.05, AtmoColor = rgb(44, 56, 100), AtmoDecay = rgb(24, 28, 64), Density = 0.34, Haze = 1.1, Glare = 0, Tint = rgb(194, 206, 255), Saturation = -0.04, Contrast = 0.14, Bloom = 0.9, Rays = 0, Cloud = rgb(80, 84, 110) },
 }
 Atmosphere.Keys = KEYS
 
@@ -305,18 +305,18 @@ function Atmosphere.Setup(lighting)
 	local sky = ensure("Sky", "CitySky")
 	sky.StarCount = 4000
 	sky.CelestialBodiesShown = true
-	sky.SunAngularSize = 14
+	sky.SunAngularSize = 11
 	sky.MoonAngularSize = 9
 	local atmo = ensure("Atmosphere", "CityAtmosphere")
 	atmo.Offset = 0.18
 	local bloom = ensure("BloomEffect", "CityBloom")
 	bloom.Size = 24
-	bloom.Threshold = 1.25 -- neon signs, lit windows and lamps glow
+	bloom.Threshold = 1.4 -- neon signs, lit windows and lamps glow (not the whole sky)
 	ensure("ColorCorrectionEffect", "CityColor")
 	local rays = ensure("SunRaysEffect", "CitySunRays")
 	rays.Spread = 0.75
 	local depth = ensure("DepthOfFieldEffect", "CityDepth")
-	depth.FarIntensity = 0.12
+	depth.FarIntensity = 0.08
 	depth.FocusDistance = 80
 	depth.InFocusRadius = 140
 	depth.NearIntensity = 0
@@ -369,6 +369,38 @@ function Atmosphere.Apply(lighting, hour)
 	if rays then
 		rays.Intensity = s.Rays
 	end
+	-- the clouds take the color of the sky (golden at sunrise, pink at sunset,
+	-- dark at night) and the day's weather sets how many there are
+	local terrain = workspace:FindFirstChildOfClass("Terrain")
+	local clouds = terrain and terrain:FindFirstChild("CityClouds")
+	if clouds then
+		local shared = game:GetService("ReplicatedStorage"):FindFirstChild("CityState")
+		local w = Atmosphere.WEATHER[(shared and shared:GetAttribute("Weather")) or Atmosphere.Weather] or Atmosphere.WEATHER.Fair
+		clouds.Color = s.Cloud:Lerp(Color3.fromRGB(150, 154, 164), w.Gray)
+		clouds.Cover = w.Cover
+		clouds.Density = w.Density
+		if w.Dim > 0 then
+			lighting.Brightness = s.Brightness * (1 - w.Dim)
+			local color = lighting:FindFirstChild("CityColor")
+			if color then
+				color.Saturation = s.Saturation - w.Dim * 0.3
+			end
+		end
+	end
+end
+
+-- The day's weather (CityService picks one each morning)
+Atmosphere.WEATHER = {
+	Clear = { Cover = 0.3, Density = 0.4, Gray = 0, Dim = 0, Label = "☀️ Clear skies" },
+	Fair = { Cover = 0.5, Density = 0.55, Gray = 0, Dim = 0, Label = "🌤️ Fair weather" },
+	Cloudy = { Cover = 0.72, Density = 0.7, Gray = 0.25, Dim = 0.12, Label = "⛅ Cloudy" },
+	Overcast = { Cover = 0.88, Density = 0.85, Gray = 0.45, Dim = 0.25, Label = "☁️ Overcast" },
+}
+Atmosphere.Weather = "Fair"
+function Atmosphere.PickWeather(rng)
+	local roll = rng:NextNumber()
+	Atmosphere.Weather = if roll < 0.3 then "Clear" elseif roll < 0.7 then "Fair" elseif roll < 0.9 then "Cloudy" else "Overcast"
+	return Atmosphere.Weather
 end
 
 -- Night is when street lamps and windows light up
@@ -440,9 +472,10 @@ Actions.List = {
 	patient = { Pose = "sleep", Lying = true, Label = "🤒 Resting" },
 	browse = { Pose = "browse", Label = "🛍️ Shopping" },
 	phone = { Pose = "phone", Props = { "Phone" }, Label = "📱 On the phone" },
+	piano = { Pose = "piano", Seated = true, Label = "🎹 Playing the piano" },
 	chess = { Pose = "chess", Seated = true, Props = { "ChessPiece" }, Label = "♟️ Playing chess" },
 	paint = { Pose = "paint", Props = { "Brush" }, Label = "🎨 Painting" },
-	fish = { Pose = "fish", Props = { "Rod" }, Label = "🎣 Fishing" },
+	fish = { Pose = "fish", Props = { "Rod", "CaughtFish" }, Label = "🎣 Fishing" },
 	birdwatch = { Pose = "binoculars", Props = { "Binoculars" }, Label = "🐦 Birdwatching" },
 	knit = { Pose = "knit", Seated = true, Props = { "Knitting" }, Label = "🧶 Knitting" },
 	guitar = { Pose = "guitar", Props = { "Guitar" }, Label = "🎸 Playing guitar" },
@@ -468,6 +501,7 @@ Actions.List = {
 	-- street crime
 	cuffed = { Pose = "cuffed", Props = { "Cuffs" }, Label = "🚓 Under arrest" },
 	handsup = { Pose = "handsup", Label = "🙌 Giving up" },
+	hose = { Pose = "hose", Props = { "Hose" }, Label = "🚒 Fire drill" },
 	spray = { Pose = "spray", Props = { "SprayCan" }, Label = "🎨 Spraying graffiti" },
 	jailed = { Pose = "jailed", Label = "🔒 In jail" },
 	getaway = { Pose = "none", Props = { "Loot" }, Label = "💰 Running away" },
@@ -477,7 +511,15 @@ Actions.List = {
 
 -- Checkouts (a customer and a clerk doing a sale together): how long each kind
 -- takes, in seconds. The server starts them, every client animates them.
-Actions.CheckoutTime = { shop = 9, food = 8 }
+Actions.CheckoutTime = { shop = 9, food = 8, bank = 9, library = 7, hotel = 9, ticket = 6, post = 8 }
+-- what's handed across a service desk: { size, color }
+Actions.ServiceItem = {
+	bank = { Vector3.new(0.7, 0.08, 0.35), Color3.fromRGB(120, 190, 120) }, -- a stack of bills
+	library = { Vector3.new(0.7, 0.9, 0.2), Color3.fromRGB(170, 60, 60) }, -- a book
+	hotel = { Vector3.new(0.5, 0.05, 0.3), Color3.fromRGB(240, 240, 240) }, -- a key card
+	ticket = { Vector3.new(0.6, 0.03, 0.3), Color3.fromRGB(240, 200, 80) }, -- a ticket
+	post = { Vector3.new(0.9, 0.5, 0.7), Color3.fromRGB(200, 160, 110) }, -- a parcel
+}
 
 function Actions.Get(name)
 	return Actions.List[name]
@@ -838,6 +880,13 @@ L.type = function(t, ph)
 	local tap = osc(t, 16, ph) * 3
 	return sit({ LS = A(38, 0, 6), RS = A(38, 0, -6), LE = A(52 + tap), RE = A(52 - tap), LW = A(-10 + tap), RW = A(-10 - tap), Neck = A(-10, osc(t, 0.3, ph) * 6, 0), Waist = A(-6) }), true
 end
+-- the piano: hands travelling along the keys, swaying with the music
+L.piano = function(t, ph)
+	local phrase = osc(t, 0.8, ph)
+	local lt, rt = abs(osc(t, 9, ph)), abs(osc(t, 11, ph + 1))
+	return sit({ LS = A(40 + lt * 4, phrase * 10, 10), RS = A(40 + rt * 4, phrase * 10, -10), LE = A(50 - lt * 6), RE = A(50 - rt * 6), LW = A(-14 + lt * 10), RW = A(-14 + rt * 10),
+		Waist = A(-4 + abs(phrase) * 3, phrase * 6, 0), Neck = A(-8 + osc(t, 1.6, ph) * 4, phrase * 8, 0) }), true
+end
 L.write = function(t, ph)
 	local w = osc(t, 7, ph)
 	return sit({ LS = A(30, 0, 8), LE = A(55), RS = A(34 + w * 3, 0, -6), RE = A(62 + w * 4), RW = A(w * 8), Neck = A(-22, 0, 0), Waist = A(-12) }), true
@@ -1015,6 +1064,13 @@ L.water = function(t, ph)
 	local s = osc(t, 1.2, ph)
 	return { RS = A(55, s * 20, -10), RE = A(20), RW = A(-40, 0, 0), LS = A(10, 0, 8), LE = A(20), Waist = A(-6, s * 10, 0), Neck = A(-22, s * 8, 0) }, true
 end
+-- a fire hose drill: braced legs, both hands on the nozzle, sweeping the spray
+L.hose = function(t, ph)
+	local s = osc(t, 0.9, ph)
+	local kick = abs(osc(t, 7, ph)) * 2
+	return { RS = A(78 + kick, s * 8, -12), RE = A(8), RW = A(0), LS = A(70 + kick, 0, 26), LE = A(30), Waist = A(-4, s * 16, 0), Neck = A(-4, s * 10, 0),
+		LH = A(24), RH = A(-18), LK = A(-18), RK = A(-6), Root = CFrame.new(0, -0.25, 0) * A(0, s * 4, 0) }, true
+end
 -- raking: both hands on the handle, pulling toward the feet
 L.rake = function(t, ph)
 	local p = osc(t, 2.4, ph)
@@ -1088,10 +1144,44 @@ L.paint = function(t, ph)
 	local s = osc(t, 2.2, ph)
 	return { RS = A(72 + s * 16, 0, -14 + s * 8), RE = A(28 + s * 10), LS = A(34, 0, 18), LE = A(84), Neck = A(0, s * 6, 0), Waist = A(-3) }, true
 end
+-- fishing, with the whole body: wind up, cast (stepping into it), wait with
+-- the line in the water, a bite, reel it in, and hold up the catch
+local function fishPhase(t, ph)
+	return (t / 14 + ph) % 1
+end
+Poses.FishPhase = fishPhase
 L.fish = function(t, ph)
-	local c = (t * 0.1 + ph) % 1
-	local jerk = if c < 0.06 then sin(c / 0.06 * math.pi) else 0
-	return { LS = A(46 + jerk * 30, 0, 12), RS = A(50 + jerk * 30, 0, -8), LE = A(34), RE = A(28), Neck = A(-6), Waist = A(-3 + jerk * 6) }, true
+	local c = fishPhase(t, ph)
+	if c < 0.1 then
+		-- wind up: rod back over the shoulder, weight on the back foot
+		local k = c / 0.1
+		return { RS = A(60 + k * 95, 0, -10), RE = A(40 - k * 20), LS = A(45 + k * 80, 0, 14), LE = A(60 - k * 30), Waist = A(k * 12, k * 22, 0), Neck = A(k * 6, -k * 10, 0),
+			LH = A(8 - k * 14), RH = A(-4 + k * 16), LK = A(-6), RK = A(-8 - k * 12), Root = CFrame.new(0, -k * 0.1, k * 0.2) }, true
+	elseif c < 0.17 then
+		-- the cast: arms whip forward, step into it
+		local k = (c - 0.1) / 0.07
+		return { RS = A(155 - k * 100, 0, -10), RE = A(20 + k * 20), LS = A(125 - k * 80, 0, 14), LE = A(30 + k * 30), Waist = A(12 - k * 24, 22 - k * 30, 0), Neck = A(6 - k * 12, 0, 0),
+			LH = A(-6 + k * 22), RH = A(12 - k * 20), LK = A(-6 - k * 10), RK = A(-20 + k * 10), Root = CFrame.new(0, -0.1, 0.2 - k * 0.4) }, true
+	elseif c < 0.76 then
+		-- waiting: rod held out, the tip bobbing, weight shifting now and then
+		local bob = osc(t, 1.3, ph) * 3
+		local shift = osc(t, 0.35, ph)
+		return { RS = A(55 + bob, 0, -8), RE = A(40), LS = A(46 + bob, 0, 14), LE = A(62), Neck = A(-10, osc(t, 0.2, ph) * 12, 0), Waist = A(-4, 0, shift * 2),
+			LH = A(6 + shift * 3), RH = A(-2 - shift * 3), LK = A(-6 - math.max(0, shift) * 6), RK = A(-6 - math.max(0, -shift) * 6), Root = CFrame.new(0, 0, 0) * A(0, 0, shift * 2) }, true
+	elseif c < 0.8 then
+		-- a bite! yank the rod up
+		local k = sin((c - 0.76) / 0.04 * math.pi)
+		return { RS = A(55 + k * 45, 0, -8), RE = A(40 - k * 20), LS = A(46 + k * 40, 0, 14), LE = A(62 - k * 20), Waist = A(k * 14), Neck = A(k * 10),
+			LH = A(-k * 8), RH = A(k * 8), LK = A(-10), RK = A(-10) }, true
+	elseif c < 0.94 then
+		-- reeling in: the right hand winds, leaning back
+		local wind = osc(t, 14, ph)
+		return { RS = A(62 + wind * 8, wind * 10, -14), RE = A(70 + wind * 20), LS = A(70, 0, 14), LE = A(40), Waist = A(10), Neck = A(-4),
+			LH = A(-6), RH = A(10), LK = A(-12), RK = A(-16), Root = CFrame.new(0, -0.1, 0.15) }, true
+	end
+	-- holding up the catch, proud
+	local b = abs(osc(t, 6, ph))
+	return { LS = A(120 + b * 10, 0, 20), LE = A(20), RS = A(50, 0, -10), RE = A(40), Neck = A(10, 20, 0), Waist = A(6), Root = CFrame.new(0, b * 0.1, 0) }, true
 end
 L.binoculars = function(t, ph)
 	local pan = osc(t, 0.3, ph)
@@ -1565,6 +1655,12 @@ end
 PROPS.Letter = function(f, b, s)
 	prop(b.RightHand, "Letter", Vector3.new(0.6, 0.05, 0.4) * s, CFrame.new(0, -0.3 * s, -0.2 * s), rgb(250, 245, 230)).Parent = f
 end
+PROPS.CaughtFish = function(f, b, s)
+	local fish = prop(b.LeftHand, "CaughtFish", Vector3.new(0.3, 0.7, 1.6) * s, CFrame.new(0, -0.9 * s, -0.2 * s), rgb(110, 150, 170), nil, Enum.Material.SmoothPlastic)
+	fish.Parent = f
+	local tail = prop(b.LeftHand, "CaughtFishTail", Vector3.new(0.2, 0.6, 0.5) * s, CFrame.new(0, -0.9 * s, 0.75 * s), rgb(90, 130, 150))
+	tail.Parent = f
+end
 PROPS.ChessPiece = function(f, b, s)
 	local piece = prop(b.RightHand, "ChessPiece", Vector3.new(0.28, 0.4, 0.28) * s, CFrame.new(0, -0.45 * s, -0.1 * s), rgb(245, 240, 228))
 	piece.Parent = f
@@ -1669,6 +1765,12 @@ PROPS.Cuffs = function(f, b, s)
 		prop(hand, "Cuff", Vector3.new(0.14, 0.5, 0.5) * s, CFrame.new(0, 0.2 * s, 0) * A(0, 0, 90), rgb(190, 194, 200), Cyl, Enum.Material.Metal).Parent = f
 	end
 	prop(b.RightHand, "Chain", Vector3.new(0.08, 0.08, 0.7) * s, CFrame.new(0, 0.2 * s, 0.25 * s), rgb(160, 164, 170), nil, Enum.Material.Metal).Parent = f
+end
+PROPS.Hose = function(f, b, s)
+	prop(b.RightHand, "Nozzle", Vector3.new(1.4, 0.28, 0.28) * s, CFrame.new(0, -0.8 * s, 0) * A(0, 0, 90), rgb(200, 40, 40), Cyl, Enum.Material.Metal).Parent = f
+	local water = prop(b.RightHand, "HoseWater", Vector3.new(9, 0.35, 0.35) * s, CFrame.new(0, -6 * s, 0) * A(0, 0, 90), rgb(170, 215, 255), Cyl, Enum.Material.Glass)
+	water.Transparency = 0.45
+	water.Parent = f
 end
 PROPS.SprayCan = function(f, b, s)
 	local can = prop(b.RightHand, "SprayCan", Vector3.new(0.7, 0.32, 0.32) * s, CFrame.new(0, -0.35 * s, -0.1 * s) * A(0, 0, 90), rgb(230, 60, 110), Cyl, Enum.Material.Metal)
@@ -1951,8 +2053,47 @@ local function checkoutK(model)
 	return k, kind, start
 end
 
+-- a service desk (a bank, the library, a hotel, a ticket booth, the post
+-- office): explain what you need, hand it over, wait while they sort it out,
+-- then take what they give you
+local function serviceCustomer(t, ph, k)
+	if k < 0.3 then
+		return L.talk(t, ph)
+	elseif k < 0.45 then
+		local r = sin((k - 0.3) / 0.15 * math.pi)
+		return { RS = A(20 + r * 55, 0, -6), RE = A(50 - r * 40), LS = A(10, 0, 6), LE = A(20), Neck = A(-14), Waist = A(-r * 6) }, false
+	elseif k < 0.8 then
+		local lean = abs(osc(t, 0.4, ph))
+		return { LS = A(40, 0, 20), RS = A(40, 0, -20), LE = A(80), RE = A(80), Neck = A(-10, osc(t, 0.6, ph) * 10, 0), Waist = A(-4 - lean * 4) }, false
+	end
+	local r = sin(math.min(1, (k - 0.8) / 0.12) * math.pi * 0.5)
+	return { RS = A(30 + r * 40, 0, -6), RE = A(40 - r * 20), LS = A(10, 0, 6), LE = A(20), Neck = A(-12 + r * 8) }, false
+end
+local function serviceClerk(t, ph, k)
+	if k < 0.3 then
+		return L.listen(t, ph)
+	elseif k < 0.45 then
+		local r = sin((k - 0.3) / 0.15 * math.pi)
+		return { RS = A(20 + r * 50, 0, -6), RE = A(50 - r * 30), Neck = A(-12) }, false
+	elseif k < 0.8 then
+		-- typing it in, then a stamp or two
+		local c = (k - 0.45) / 0.35
+		if c < 0.65 then
+			local tl, tr = osc(t, 14, ph), osc(t, 14, ph + 2)
+			return { LS = A(42 + tl * 3, 0, 10), RS = A(42 + tr * 3, 0, -10), LE = A(58), RE = A(58), LW = A(-20), RW = A(-20), Neck = A(-22), Waist = A(-6) }, false
+		end
+		local stamp = abs(sin((c - 0.65) / 0.35 * math.pi * 3))
+		return { RS = A(40 + stamp * 30, 0, -8), RE = A(70 - stamp * 30), LS = A(34, 0, 10), LE = A(60), Neck = A(-24), Waist = A(-8) }, false
+	end
+	local r = sin(math.min(1, (k - 0.8) / 0.12) * math.pi * 0.5)
+	return { RS = A(30 + r * 45, 0, -6), RE = A(50 - r * 35), Neck = A(-8), Waist = A(-r * 4) }, false
+end
+
 -- the customer: unpack the basket, watch, pay by card, take the bag
 local function customerPose(t, ph, k, kind)
+	if Actions.ServiceItem[kind] then
+		return serviceCustomer(t, ph, k)
+	end
 	if kind == "food" then
 		if k < 0.3 then
 			return L.talk(t, ph)
@@ -1991,6 +2132,9 @@ end
 
 -- the clerk: say hello, scan every item and bag it, the card reader, hand it over
 local function clerkPose(t, ph, k, kind, n)
+	if Actions.ServiceItem[kind] then
+		return serviceClerk(t, ph, k)
+	end
 	if kind == "food" then
 		if k < 0.3 then
 			return L.listen(t, ph)
@@ -2093,10 +2237,13 @@ local function checkoutItems(model, st, k, kind, start)
 		folder.Name = "LocalCheckout"
 		folder.Parent = workspace
 		co = { Start = start, Folder = folder, Items = {}, Beeped = {} }
-		local n = if kind == "food" then 1 else (model:GetAttribute("CheckoutItems") or 3)
+		local service = Actions.ServiceItem[kind]
+		local n = if kind == "food" or service then 1 else (model:GetAttribute("CheckoutItems") or 3)
 		for i = 1, n do
 			local item
-			if kind == "food" then
+			if service then
+				item = localPart(folder, "Handed", service[1], service[2])
+			elseif kind == "food" then
 				item = localPart(folder, "Order", Vector3.new(0.9, 0.5, 0.5), rgb(245, 245, 240), Enum.PartType.Cylinder)
 			else
 				local sizes = { Vector3.new(0.6, 0.8, 0.4), Vector3.new(0.5, 0.5, 0.5), Vector3.new(0.9, 0.4, 0.6), Vector3.new(0.4, 1, 0.4) }
@@ -2104,7 +2251,7 @@ local function checkoutItems(model, st, k, kind, start)
 			end
 			co.Items[i] = item
 		end
-		if kind ~= "food" then
+		if kind == "shop" then
 			co.Bag = localPart(folder, "PaperBag", Vector3.new(1, 1.2, 0.7), rgb(214, 180, 130))
 		end
 		st.Checkout = co
@@ -2115,6 +2262,21 @@ local function checkoutItems(model, st, k, kind, start)
 	local bagPos = C + right * 1.3 + up * 0.6
 	local n = #co.Items
 	local hidden = CFrame.new(0, -500, 0)
+	if Actions.ServiceItem[kind] then
+		-- it appears on the desk once it's ready, and goes across to the customer
+		local item = co.Items[1]
+		local from, to = C - look * 0.6 + up * (item.Size.Y / 2), C + look * 1.2 + up * (item.Size.Y / 2 + 0.3)
+		if k < 0.72 or k > 0.95 then
+			item.CFrame = hidden
+		elseif k < 0.82 then
+			item.CFrame = CFrame.lookAt(from, from + look)
+		else
+			local u = math.min(1, (k - 0.82) / 0.1)
+			local p = from:Lerp(to, u) + up * sin(u * math.pi) * 0.3
+			item.CFrame = CFrame.lookAt(p, p + look)
+		end
+		return
+	end
 	if kind == "food" then
 		local item = co.Items[1]
 		local from, to = C - look * 0.6 + up * 0.25, C + look * 0.9 + up * 0.25
@@ -2193,6 +2355,18 @@ local function update(model, st, t, dt, camPos, myRoot)
 			target, full = fn(t, st.Phase)
 		end
 	end
+	-- a living body: when someone stands at a spot doing something with their
+	-- arms, their legs and hips shift weight and their chest breathes too
+	if target and not full and root.Anchored and not (info and (info.Seated or info.Lying)) then
+		local sway = osc(t, 0.9, st.Phase)
+		local breath = osc(t, 1.7, st.Phase + 1)
+		target.LH = target.LH or A(3 + sway * 3, 0, -3)
+		target.RH = target.RH or A(3 - sway * 3, 0, 3)
+		target.LK = target.LK or A(-4 - math.max(0, sway) * 7)
+		target.RK = target.RK or A(-4 - math.max(0, -sway) * 7)
+		target.Root = target.Root or (CFrame.new(0, -abs(sway) * 0.04, 0) * A(0, 0, sway * 2.5))
+		target.Waist = target.Waist or A(breath * 1.5, 0, -sway * 1.5)
+	end
 	-- a checkout in progress: the customer and the clerk play their parts
 	local coK, coKind, coStart = checkoutK(model)
 	local coRole = coK and model:GetAttribute("CheckoutRole")
@@ -2262,6 +2436,16 @@ local function update(model, st, t, dt, camPos, myRoot)
 		st.SwingBase = nil
 	end
 	if st.Props then
+		-- the fish only shows when it's been caught
+		local fish = st.Props:FindFirstChild("CaughtFish")
+		if fish then
+			local showing = fishPhase(t, st.Phase) > 0.94
+			fish.Transparency = if showing then 0 else 1
+			local tail = st.Props:FindFirstChild("CaughtFishTail")
+			if tail then
+				tail.Transparency = fish.Transparency
+			end
+		end
 		local piece = st.Props:FindFirstChild("ChessPiece")
 		if piece then
 			local c = chessPhase(t, st.Phase)
@@ -3037,6 +3221,108 @@ function MapKit.nightNeon(p)
 	return p
 end
 
+-- Food you can see: MapKit.food(parent, kind, cf, scale) puts one item with
+-- its bottom at cf. Kinds: loaf, baguette, croissant, donut, cupcake, cake,
+-- pie, muffin, pretzel, cookie, pasta, burger, pizza, fries
+local CRUST, CRUMB = MapKit.rgb(196, 128, 60), MapKit.rgb(236, 206, 150)
+local FROSTING = { MapKit.rgb(250, 180, 200), MapKit.rgb(120, 70, 40), MapKit.rgb(250, 250, 245), MapKit.rgb(170, 220, 250), MapKit.rgb(250, 220, 120) }
+function MapKit.food(parent, kind, cf, scale)
+	local s = scale or 1
+	local deco, ball = MapKit.deco, MapKit.ball
+	local function up(y)
+		return cf * CFrame.new(0, y * s, 0)
+	end
+	local n = math.floor(math.abs(cf.Position.X * 7 + cf.Position.Z * 3)) % 5 + 1
+	if kind == "loaf" then
+		-- a capsule: a cylinder with rounded ends
+		local body = deco(parent, "Loaf", Vector3.new(1, 0.8, 0.8) * s, up(0.4), CRUST)
+		body.Shape = Enum.PartType.Cylinder
+		for _, e in ipairs({ -0.5, 0.5 }) do
+			ball(parent, "Loaf", 0.8 * s, up(0.4) * CFrame.new(e * s, 0, 0), CRUST)
+		end
+		deco(parent, "LoafScore", Vector3.new(0.9, 0.05, 0.1) * s, up(0.8) * CFrame.Angles(0, math.rad(25), 0), CRUMB)
+	elseif kind == "baguette" then
+		local p = deco(parent, "Baguette", Vector3.new(2.4, 0.35, 0.35) * s, up(0.18), CRUST)
+		p.Shape = Enum.PartType.Cylinder
+		for _, e in ipairs({ -1.2, 1.2 }) do
+			ball(parent, "Baguette", 0.35 * s, up(0.18) * CFrame.new(e * s, 0, 0), CRUST)
+		end
+	elseif kind == "croissant" then
+		for k = -1, 1 do
+			ball(parent, "Croissant", (0.45 - math.abs(k) * 0.1) * s, up(0.2) * CFrame.new(k * 0.3 * s, 0, math.abs(k) * 0.12 * s), MapKit.rgb(220, 150, 70))
+		end
+	elseif kind == "donut" then
+		local d = deco(parent, "Donut", Vector3.new(0.3, 0.8, 0.8) * s, up(0.15) * CFrame.Angles(0, 0, math.rad(90)), MapKit.rgb(210, 150, 80))
+		d.Shape = Enum.PartType.Cylinder
+		local icing = deco(parent, "DonutIcing", Vector3.new(0.08, 0.76, 0.76) * s, up(0.31) * CFrame.Angles(0, 0, math.rad(90)), FROSTING[n])
+		icing.Shape = Enum.PartType.Cylinder
+		local hole = deco(parent, "DonutHole", Vector3.new(0.1, 0.24, 0.24) * s, up(0.34) * CFrame.Angles(0, 0, math.rad(90)), MapKit.rgb(90, 60, 40))
+		hole.Shape = Enum.PartType.Cylinder
+	elseif kind == "cupcake" or kind == "muffin" then
+		local c = deco(parent, "CupcakeCase", Vector3.new(0.4, 0.5, 0.5) * s, up(0.2) * CFrame.Angles(0, 0, math.rad(90)), if kind == "muffin" then MapKit.rgb(160, 110, 70) else MapKit.rgb(240, 240, 240))
+		c.Shape = Enum.PartType.Cylinder
+		ball(parent, "CupcakeTop", 0.58 * s, up(0.48), if kind == "muffin" then MapKit.rgb(150, 90, 60) else FROSTING[n])
+		if kind == "cupcake" then
+			ball(parent, "Cherry", 0.16 * s, up(0.8), MapKit.rgb(220, 30, 50))
+		end
+	elseif kind == "cake" then
+		local c = deco(parent, "Cake", Vector3.new(0.9, 1.6, 1.6) * s, up(0.45) * CFrame.Angles(0, 0, math.rad(90)), FROSTING[n])
+		c.Shape = Enum.PartType.Cylinder
+		local top = deco(parent, "CakeTop", Vector3.new(0.1, 1.5, 1.5) * s, up(0.92) * CFrame.Angles(0, 0, math.rad(90)), MapKit.WHITE)
+		top.Shape = Enum.PartType.Cylinder
+		for k = 0, 5 do
+			local a = k / 6 * math.pi * 2
+			ball(parent, "Berry", 0.18 * s, up(1) * CFrame.new(math.cos(a) * 0.55 * s, 0, math.sin(a) * 0.55 * s), MapKit.rgb(200, 30, 60))
+		end
+	elseif kind == "pie" then
+		local p = deco(parent, "Pie", Vector3.new(0.35, 1.5, 1.5) * s, up(0.17) * CFrame.Angles(0, 0, math.rad(90)), MapKit.rgb(214, 160, 90))
+		p.Shape = Enum.PartType.Cylinder
+		for k = -1, 1 do
+			deco(parent, "PieLattice", Vector3.new(1.3, 0.05, 0.12) * s, up(0.36) * CFrame.new(0, 0, k * 0.35 * s), MapKit.rgb(236, 190, 120))
+			deco(parent, "PieLattice", Vector3.new(0.12, 0.05, 1.3) * s, up(0.36) * CFrame.new(k * 0.35 * s, 0, 0), MapKit.rgb(236, 190, 120))
+		end
+	elseif kind == "pretzel" then
+		for k = -1, 1, 2 do
+			local p = deco(parent, "Pretzel", Vector3.new(0.18, 0.5, 0.5) * s, up(0.09) * CFrame.new(k * 0.22 * s, 0, 0) * CFrame.Angles(0, 0, math.rad(90)), MapKit.rgb(150, 80, 30))
+			p.Shape = Enum.PartType.Cylinder
+		end
+	elseif kind == "cookie" then
+		local c = deco(parent, "Cookie", Vector3.new(0.12, 0.6, 0.6) * s, up(0.06) * CFrame.Angles(0, 0, math.rad(90)), MapKit.rgb(200, 150, 90))
+		c.Shape = Enum.PartType.Cylinder
+		for k = 0, 2 do
+			deco(parent, "ChocChip", Vector3.new(0.08, 0.05, 0.08) * s, up(0.13) * CFrame.new((k - 1) * 0.15 * s, 0, (k % 2) * 0.12 * s), MapKit.rgb(70, 40, 20))
+		end
+	elseif kind == "pasta" then
+		local pasta = deco(parent, "Pasta", Vector3.new(0.3, 0.8, 0.8) * s, up(0.15) * CFrame.Angles(0, 0, math.rad(90)), MapKit.rgb(240, 210, 120))
+		pasta.Shape = Enum.PartType.Cylinder
+		ball(parent, "Sauce", 0.45 * s, up(0.3), MapKit.rgb(200, 40, 30))
+		ball(parent, "Basil", 0.14 * s, up(0.42), MapKit.rgb(60, 150, 60))
+	elseif kind == "burger" then
+		local bottom = deco(parent, "Bun", Vector3.new(0.22, 0.8, 0.8) * s, up(0.11) * CFrame.Angles(0, 0, math.rad(90)), MapKit.rgb(210, 150, 80))
+		bottom.Shape = Enum.PartType.Cylinder
+		deco(parent, "Patty", Vector3.new(0.78, 0.14, 0.78) * s, up(0.25), MapKit.rgb(100, 60, 40))
+		deco(parent, "Lettuce", Vector3.new(0.84, 0.05, 0.84) * s, up(0.34), MapKit.rgb(100, 190, 70))
+		deco(parent, "Cheese", Vector3.new(0.7, 0.04, 0.7) * s, up(0.37) * CFrame.Angles(0, math.rad(45), 0), MapKit.rgb(250, 200, 60))
+		local top = deco(parent, "Bun", Vector3.new(0.3, 0.8, 0.8) * s, up(0.52) * CFrame.Angles(0, 0, math.rad(90)), MapKit.rgb(210, 150, 80))
+		top.Shape = Enum.PartType.Cylinder
+	elseif kind == "pizza" then
+		local p = deco(parent, "Pizza", Vector3.new(0.1, 1.4, 1.4) * s, up(0.05) * CFrame.Angles(0, 0, math.rad(90)), MapKit.rgb(240, 190, 90))
+		p.Shape = Enum.PartType.Cylinder
+		local c = deco(parent, "PizzaCheese", Vector3.new(0.05, 1.2, 1.2) * s, up(0.11) * CFrame.Angles(0, 0, math.rad(90)), MapKit.rgb(250, 220, 130))
+		c.Shape = Enum.PartType.Cylinder
+		for k = 0, 4 do
+			local a = k / 5 * math.pi * 2
+			local pep = deco(parent, "Pepperoni", Vector3.new(0.05, 0.26, 0.26) * s, up(0.14) * CFrame.new(math.cos(a) * 0.35 * s, 0, math.sin(a) * 0.35 * s) * CFrame.Angles(0, 0, math.rad(90)), MapKit.rgb(190, 50, 40))
+			pep.Shape = Enum.PartType.Cylinder
+		end
+	elseif kind == "fries" then
+		deco(parent, "FriesBox", Vector3.new(0.5, 0.5, 0.3) * s, up(0.25), MapKit.rgb(220, 40, 40))
+		for k = 0, 4 do
+			deco(parent, "Fry", Vector3.new(0.07, 0.4, 0.07) * s, up(0.6) * CFrame.new((k - 2) * 0.08 * s, 0, (k % 2) * 0.06 * s) * CFrame.Angles(0, 0, math.rad((k - 2) * 6)), MapKit.rgb(250, 210, 80))
+		end
+	end
+end
+
 -- A chess board lying flat at cf (its top surface), size studs across: an
 -- 8x8 board with a frame and a game in progress (pawns and back-row pieces)
 function MapKit.chessBoard(parent, cf, size)
@@ -3330,12 +3616,12 @@ function Buildings.shell(parent, spec)
 			for j = 1, nz do
 				local lx = -W / 2 + W * (i - 0.5) / nx
 				local lz = -D / 2 + D * (j - 0.5) / nz
-				local panel = deco(model, "CeilingLight", Vector3.new(math.min(6, W / nx - 3), 0.2, math.min(2.6, D / nz - 3)), at(lx, lampY, lz), MapKit.rgb(255, 248, 232), Enum.Material.Neon)
+				local panel = deco(model, "CeilingLight", Vector3.new(math.min(6, W / nx - 3), 0.2, math.min(2.6, D / nz - 3)), at(lx, lampY, lz), MapKit.rgb(244, 232, 210), Enum.Material.Neon)
 				local glow = Instance.new("SurfaceLight")
 				glow.Face = Enum.NormalId.Bottom
 				glow.Angle = 120
 				glow.Range = math.min(20, FLOOR_H + 6)
-				glow.Brightness = 1.15
+				glow.Brightness = 0.8
 				glow.Color = MapKit.rgb(255, 232, 200)
 				glow.Shadows = false
 				glow.Parent = panel
@@ -3500,7 +3786,8 @@ function Buildings.house(parent, center, face, style, rng, garageSide, scale)
 	if scale and scale ~= 1 then
 		-- big suburban lots get bigger houses (whole studs, even sizes)
 		spec.W = math.floor(spec.W * scale / 2 + 0.5) * 2
-		spec.D = math.floor(spec.D * scale / 2 + 0.5) * 2
+		-- (the depth has to leave a front yard and a back yard on the lot)
+		spec.D = math.min(28, math.floor(spec.D * scale / 2 + 0.5) * 2)
 	end
 	local b = Buildings.shell(parent, spec)
 	local at = b.At
@@ -3731,8 +4018,17 @@ local function tableSet(b, f, x, z, list, action, place, color)
 	if action == "chess" then
 		MapKit.chessBoard(b.Model, at(b, f, x, 3.18, z), 2.6)
 	else
-		box(b, f, "Plate", Vector3.new(1, 0.08, 1), x, 3.12, z - 0.8, WHITE)
-		box(b, f, "Plate", Vector3.new(1, 0.08, 1), x, 3.12, z + 0.8, WHITE)
+		-- a meal on each plate (burgers and fries at the diner)
+		local diner = place == "Diner"
+		for _, side in ipairs({ -1, 1 }) do
+			box(b, f, "Plate", Vector3.new(1.2, 0.08, 1.2), x, 3.12, z + side * 0.8, WHITE)
+			if action == "eat" then
+				local dish = if diner then (if side < 0 then "burger" else "fries") else (if (math.floor(x + z) + side) % 2 == 0 then "pasta" else "pizza")
+				MapKit.food(b.Model, dish, at(b, f, x, 3.2, z + side * 0.8), 0.8)
+			elseif action == "coffee" then
+				MapKit.food(b.Model, if side < 0 then "croissant" else "cookie", at(b, f, x, 3.2, z + side * 0.8), 0.7)
+			end
+		end
 	end
 	local s1 = chair(b, f, x, z - 2.4, 0, 1, nil, place)
 	local s2 = chair(b, f, x, z + 2.4, 0, -1, nil, place)
@@ -3835,9 +4131,9 @@ function ROOMS.cafe(b, f, list, rng, place)
 	rug(b, f, 0, 0, W - 4, D - 4, rgb(160, 120, 90))
 	counter(b, f, 0, D / 2 - 5, W - 10, rgb(90, 60, 40))
 	box(b, f, "EspressoMachine", Vector3.new(2.4, 2, 1.6), -3, 3.85, D / 2 - 5, rgb(180, 184, 190))
-	box(b, f, "PastryCase", Vector3.new(4, 1.6, 2), 4, 3.85, D / 2 - 5, rgb(200, 230, 240)).Transparency = 0.3
-	for k = 0, 3 do
-		MapKit.ball(b.Model, "Pastry", 0.7, at(b, f, 2.6 + k * 0.9, 4.4, D / 2 - 5), rgb(210, 150, 80))
+	box(b, f, "PastryCase", Vector3.new(4, 1.6, 2), 4, 3.85, D / 2 - 5, rgb(200, 230, 240)).Transparency = 0.6
+	for k, kind in ipairs({ "croissant", "muffin", "cookie", "donut" }) do
+		MapKit.food(b.Model, kind, at(b, f, 2.4 + (k - 1) * 1.05, 3.9, D / 2 - 5), 0.9)
 	end
 	register(b, f, 7, D / 2 - 5)
 	box(b, f, "MenuBoard", Vector3.new(8, 3.6, 0.2), 0, 6, D / 2 - 1.2, rgb(30, 34, 30))
@@ -3852,8 +4148,37 @@ end
 function ROOMS.bakery(b, f, list, rng, place)
 	local W, D = b.W, b.D
 	counter(b, f, 0, -2, W - 10, rgb(200, 160, 120))
-	for k = 0, 5 do
-		box(b, f, "Bread", Vector3.new(1.6, 0.7, 0.8), -6 + k * 2.4, 3.85, -2, rgb(200, 140, 70))
+	-- fresh bread and pastries on the counter, in baskets and on trays
+	local goods = { "loaf", "croissant", "baguette", "donut", "muffin", "pretzel", "cupcake", "loaf" }
+	for k = 0, math.floor((W - 18) / 2.4) do
+		local x = -W / 2 + 7 + k * 2.4
+		box(b, f, "Tray", Vector3.new(2.1, 0.1, 1.8), x, 3.85, -2.2, rgb(170, 120, 80), Enum.Material.Wood)
+		MapKit.food(b.Model, goods[k % #goods + 1], at(b, f, x, 3.95, -2.2), 1)
+	end
+	-- a glass display case of cakes and sweets at the front of the counter
+	local caseW = math.min(10, W - 16)
+	box(b, f, "DisplayCase", Vector3.new(caseW, 3.4, 1.6), -W / 2 + 5 + caseW / 2, 0, -4.1, rgb(240, 236, 228), Enum.Material.Wood)
+	local glass = box(b, f, "CaseGlass", Vector3.new(caseW, 1.8, 1.6), -W / 2 + 5 + caseW / 2, 3.4, -4.1, rgb(220, 240, 250), Enum.Material.Glass)
+	glass.Transparency = 0.65
+	local sweets = { "cake", "cupcake", "pie", "donut", "cookie", "cupcake" }
+	for k = 0, math.floor(caseW / 1.8) - 1 do
+		MapKit.food(b.Model, sweets[k % #sweets + 1], at(b, f, -W / 2 + 6 + k * 1.8, 3.45, -4.1), if sweets[k % #sweets + 1] == "cake" or sweets[k % #sweets + 1] == "pie" then 0.8 else 1)
+	end
+	-- bread racks on the side wall: three shelves of loaves and baguettes
+	local rx = W / 2 - 1.6
+	box(b, f, "BreadRack", Vector3.new(1.6, 7, 7), rx, 0, -D / 2 + 7, rgb(150, 110, 70), Enum.Material.Wood)
+	for shelf = 0, 2 do
+		local y = 1.2 + shelf * 2.2
+		box(b, f, "RackShelf", Vector3.new(1.8, 0.15, 7), rx - 0.2, y, -D / 2 + 7, rgb(120, 86, 58), Enum.Material.Wood)
+		for k = 0, 3 do
+			MapKit.food(b.Model, if (shelf + k) % 3 == 0 then "baguette" else "loaf", at(b, f, rx - 0.3, y + 0.15, -D / 2 + 4.5 + k * 1.7, CFrame.Angles(0, math.rad(90), 0)), 0.8)
+		end
+	end
+	-- a basket of baguettes by the door
+	box(b, f, "Basket", Vector3.new(1.4, 1.4, 1.4), -W / 2 + 3, 0, -D / 2 + 3, rgb(180, 130, 70), Enum.Material.Wood)
+	for k = 0, 3 do
+		local p = MapKit.deco(b.Model, "Baguette", Vector3.new(2.2, 0.3, 0.3), at(b, f, -W / 2 + 3 + (k % 2) * 0.3 - 0.15, 2.2, -D / 2 + 3 + (k // 2) * 0.3 - 0.15, CFrame.Angles(0, 0, math.rad(80))), rgb(196, 128, 60))
+		p.Shape = Enum.PartType.Cylinder
 	end
 	register(b, f, W / 2 - 7, -2)
 	for k = 0, 1 do
@@ -4377,6 +4702,70 @@ local function kidsDesk(b, f, x, z, list, place)
 	spot(list, b, f, x, z - 2, 0, 1, "study", "home", seat)
 end
 
+-- extra rooms for the big suburban houses
+local function homeOffice(b, f, x, z, list, place)
+	-- a desk against the back wall with a computer, a bookcase beside it
+	desk(b, f, x, z, list, "type", "home", -1, place, rgb(120, 86, 60))
+	box(b, f, "Bookcase", Vector3.new(4, 7, 1.4), x + 4.8, 0, z + 0.4, rgb(110, 80, 56), Enum.Material.Wood)
+	for row = 0, 2 do
+		for k = 0, 4 do
+			box(b, f, "Book", Vector3.new(0.5, 1.4 - (k % 2) * 0.3, 1), x + 3.4 + k * 0.62, 0.6 + row * 2.2, z + 0.2, MapKit.FLOWERS[(row * 5 + k) % #MapKit.FLOWERS + 1]:Lerp(rgb(60, 50, 40), 0.35))
+		end
+	end
+	box(b, f, "OfficePlant", Vector3.new(1, 1, 1), x - 3.4, 0, z + 0.4, rgb(180, 110, 80), Enum.Material.Slate)
+	MapKit.ball(b.Model, "PlantLeaves", 2, at(b, f, x - 3.4, 2, z + 0.4), MapKit.LEAVES[2], Enum.Material.Grass)
+end
+
+local function piano(b, f, x, z, list, place)
+	-- an upright piano against the front wall, a bench in front
+	local black = rgb(26, 24, 28)
+	box(b, f, "Piano", Vector3.new(5, 4.2, 1.8), x, 0, z, black, Enum.Material.SmoothPlastic)
+	box(b, f, "PianoKeys", Vector3.new(4.6, 0.15, 0.8), x, 2.6, z + 1.2, WHITE)
+	for k = 0, 8 do
+		box(b, f, "BlackKey", Vector3.new(0.18, 0.12, 0.45), x - 2 + k * 0.5, 2.75, z + 1, black)
+	end
+	box(b, f, "SheetMusic", Vector3.new(1.6, 1.1, 0.05), x, 3.4, z + 0.85, rgb(250, 248, 238))
+	local seat = MapKit.seat(b.Model, "PianoBench", Vector3.new(3, 0.4, 1.4), at(b, f, x, 1.7, z + 2.8), black, Enum.Material.SmoothPlastic, place)
+	box(b, f, "BenchLegs", Vector3.new(2.6, 1.5, 1), x, 0, z + 2.8, black)
+	spot(list, b, f, x, z + 2.8, 0, -1, "piano", "home", seat)
+end
+
+local function readingNook(b, f, x, z, list, rng, place)
+	local c = ({ rgb(180, 120, 80), rgb(90, 120, 110), rgb(150, 70, 80) })[rng:NextInteger(1, 3)]
+	rug(b, f, x, z, 5, 5, rgb(220, 200, 170))
+	local seat = MapKit.seat(b.Model, "ArmchairSeat", Vector3.new(2.2, 0.4, 2.2), at(b, f, x, 1.8, z), c, Enum.Material.Fabric, place)
+	box(b, f, "Armchair", Vector3.new(2.8, 1.6, 2.8), x, 0, z, c, Enum.Material.Fabric)
+	box(b, f, "ArmchairBack", Vector3.new(2.8, 2.4, 0.6), x, 1.6, z + 1.1, c:Lerp(BLACK, 0.1), Enum.Material.Fabric)
+	spot(list, b, f, x, z, 0, -1, "read", "home", seat)
+	box(b, f, "FloorLamp", Vector3.new(0.3, 5, 0.3), x + 2.2, 0, z + 1, rgb(60, 60, 60), Enum.Material.Metal)
+	local shade = box(b, f, "LampShade", Vector3.new(1.3, 1, 1.3), x + 2.2, 5, z + 1, rgb(255, 236, 200), Enum.Material.Fabric)
+	MapKit.light(shade, rgb(255, 220, 170), 12, 0.5)
+	box(b, f, "SideTable", Vector3.new(1.2, 1.8, 1.2), x - 2.1, 0, z, rgb(130, 90, 60), Enum.Material.Wood)
+	box(b, f, "BookStack", Vector3.new(0.8, 0.5, 1), x - 2.1, 1.8, z, rgb(80, 110, 160))
+end
+
+local function gameCorner(b, f, x, z, list, place)
+	-- a TV with a games console and two beanbags
+	box(b, f, "TVStand", Vector3.new(5, 1.6, 1.4), x, 0, z, rgb(50, 50, 56), Enum.Material.Wood)
+	local tv = box(b, f, "TV", Vector3.new(4.4, 2.6, 0.2), x, 1.6, z, rgb(20, 20, 24))
+	local screen = deco(b.Model, "TVScreen", Vector3.new(4, 2.2, 0.05), tv.CFrame * CFrame.new(0, 0, 0.13), rgb(120, 200, 140), Enum.Material.Neon)
+	screen.Transparency = 0.1
+	box(b, f, "Console", Vector3.new(1.4, 0.4, 1), x + 1.6, 1.6, z + 0.1, rgb(240, 240, 245))
+	for k, c in ipairs({ rgb(220, 70, 70), rgb(70, 130, 220) }) do
+		local bx = x + (k == 1 and -1.4 or 1.4)
+		local seat = MapKit.seat(b.Model, "Beanbag", Vector3.new(2.4, 1.2, 2.4), at(b, f, bx, 0.6, z + 4), c, Enum.Material.Fabric, place)
+		spot(list, b, f, bx, z + 4, 0, -1, "tv", "home", seat)
+	end
+end
+
+local function laundry(b, f, x, z)
+	for k = 0, 1 do
+		local m = box(b, f, if k == 0 then "Washer" else "Dryer", Vector3.new(2.4, 3, 2.4), x + k * 2.6, 0, z, rgb(242, 242, 245), Enum.Material.SmoothPlastic)
+		deco(b.Model, "Door", Vector3.new(1.5, 1.5, 0.1), m.CFrame * CFrame.new(0, 0, -1.22), rgb(150, 190, 220), Enum.Material.Glass)
+	end
+	box(b, f, "LaundryBasket", Vector3.new(1.6, 1.2, 1.2), x + 5.2, 0, z, rgb(200, 180, 140), Enum.Material.Fabric)
+end
+
 function ROOMS.home(b, f, list, rng, place)
 	-- Ground floor: living room at the front left, dining table at the front
 	-- right, a kitchen along the back right. Bedrooms at the back left (on one-
@@ -4392,6 +4781,17 @@ function ROOMS.home(b, f, list, rng, place)
 		kitchen(b, f, hw - math.min(12, W / 2 - 1), hw - 3, hd - 1.8, list)
 		fridge(b, f, hw - 1.6, hd - 1.8, -1)
 		plant(b, f, -2.5, -hd + 2)
+		if W >= 40 then
+			-- the big houses: a piano by the front windows, a reading nook
+			-- and a home office in the middle of the house
+			piano(b, f, 7.5, -hd + 1.3, list, place)
+			readingNook(b, f, -5, -1.5, list, rng, place)
+			if twoStorey then
+				homeOffice(b, f, 1, hd - 2.4, list, place)
+			else
+				homeOffice(b, f, 3, 3, list, place)
+			end
+		end
 		if not twoStorey then
 			-- bathroom on the right, between the dining table and the kitchen
 			local z0, z1 = -hd + 9.8, hd - 4.6
@@ -4428,6 +4828,13 @@ function ROOMS.home(b, f, list, rng, place)
 		wardrobe(b, f, hw - 1.4, 1.5, false)
 		dresser(b, f, -1, -hd + 1.3, true)
 		rug(b, f, -1, 1, 8, 5, bedColors[rng:NextInteger(1, #bedColors)]:Lerp(WHITE, 0.4))
+		if W >= 40 then
+			-- more room upstairs: a game corner, a laundry nook and another wardrobe
+			gameCorner(b, f, 7, -hd + 1.2, list, place)
+			laundry(b, f, hw - 14, hd - 1.8)
+			wardrobe(b, f, hw - 1.4, -4, false)
+			plant(b, f, hw - 9, 0)
+		end
 	end
 end
 
@@ -5642,6 +6049,9 @@ end
 local SHOPS = { Shop = true, Mall = true, Pharmacy = true, Hardware = true, Bookstore = true, ToyStore = true, Electronics = true, Florist = true, PetShop = true }
 local FOOD = { Cafe = "Cup", Bakery = "Pastry", Diner = "Cup", IceCream = "Cone", Restaurant = false }
 local OFFICE_WORK = { Office = true, Bank = true, TownHall = true }
+-- places with a service desk: visitors are served at the counter first
+-- (the kind picks the conversation and what's handed over)
+local SERVICE = { Bank = "bank", Library = "library", Hotel = "hotel", Cinema = "ticket", PostOffice = "post", Museum = "ticket" }
 
 local PAY_LINES = { "Just these, please.", "Card is fine.", "Thanks!", "Keep the change.", "Have a nice day!" }
 local ORDER_LINES = { "A coffee, please!", "One of those, please.", "What's good today?", "I'll have the usual.", "To go, please." }
@@ -5696,7 +6106,9 @@ end
 
 local function nearbyPos(spot, side)
 	local cf = spot.CFrame
-	return cf.Position + cf.RightVector * (side or 2.4) + cf.LookVector * 1.2
+	local p = cf.Position + cf.RightVector * (side or 2.4) + cf.LookVector * 1.2
+	-- not inside a tree, a bench or a wall
+	return if api.Clear then api.Clear(p) else p
 end
 
 --------------------------------------------------------------------------------
@@ -5746,6 +6158,27 @@ local function eatingOut(brain, plan, t, rng)
 	if not t.Spot and FOOD[place.Id] then
 		final.Carry = FOOD[place.Id]
 		final.Action = "wait"
+	end
+	table.insert(list, final)
+	return list
+end
+
+-- a service desk: the teller, the librarian, the receptionist, the ticket booth
+local function atTheDesk(brain, plan, t, rng)
+	local place = t.Place
+	local list = {}
+	local tills = spotsWith(place, { cashier = true, counter = true })
+	if #tills > 0 and not (t.Spot and tills[1] and (t.Spot.Action == "counter" or t.Spot.Action == "cashier")) then
+		local till = staffedTill(tills, rng)
+		local pos, look = counterFront(till)
+		table.insert(list, task(t, { Pos = pos, Look = look, Building = till.Building or t.Building, Floor = till.Floor or 1, Action = "pay", Duration = 5, Till = till, CheckoutKind = SERVICE[place.Id] }))
+	end
+	local final = task(t, { Spot = t.Spot, Pos = t.Pos, Action = t.Action, Duration = 999, Carry = false })
+	if t.Spot then
+		final.Building, final.Floor = t.Spot.Building or t.Building, t.Spot.Floor or 1
+	end
+	if place.Id == "Cinema" and t.Action == "watch" then
+		final.Carry = nil
 	end
 	table.insert(list, final)
 	return list
@@ -5841,7 +6274,17 @@ ROUNDS["Waiter"] = function(brain, plan, t, rng)
 	local list = {}
 	local place = t.Place
 	local kitchen = spotsWith(place, { cook = true })
-	local tables = spotsWith(place, { eat = true })
+	-- tables with people sitting at them first
+	local tables = api.Occupant and {} or spotsWith(place, { eat = true })
+	for _, s in ipairs(spotsWith(place, { eat = true })) do
+		local who = api.Occupant and api.Occupant(s)
+		if who and who.State == "act" then
+			table.insert(tables, s)
+		end
+	end
+	if #tables == 0 then
+		tables = spotsWith(place, { eat = true })
+	end
 	for _ = 1, 3 do
 		if #kitchen > 0 then
 			local k = kitchen[rng:NextInteger(1, #kitchen)]
@@ -5850,7 +6293,7 @@ ROUNDS["Waiter"] = function(brain, plan, t, rng)
 		end
 		if #tables > 0 then
 			local s = tables[rng:NextInteger(1, #tables)]
-			table.insert(list, task(t, { Pos = nearbyPos(s, 2.2), Look = s.CFrame.Position, Building = s.Building or t.Building, Floor = s.Floor or 1, Action = "serve", Carry = false, Duration = 5 }))
+			table.insert(list, task(t, { Pos = nearbyPos(s, 2.2), Look = s.CFrame.Position, Building = s.Building or t.Building, Floor = s.Floor or 1, Action = "serve", Carry = false, Duration = 5, Say = if rng:NextNumber() < 0.4 then ({ "Here you go! Enjoy!", "Careful, the plate's hot.", "Can I get you anything else?", "One pasta for table four!" })[rng:NextInteger(1, 4)] else nil }))
 		end
 	end
 	return list
@@ -5886,10 +6329,149 @@ ROUNDS["Night Janitor"] = function(brain, plan, t, rng)
 			break
 		end
 		local s = desks[rng:NextInteger(1, #desks)]
-		table.insert(list, task(t, { Pos = s.CFrame.Position - s.CFrame.LookVector * 3, Building = s.Building or t.Building, Floor = s.Floor or 1, Action = "mop", Carry = false, Duration = rng:NextInteger(10, 15) }))
+		local mopAt = s.CFrame.Position - s.CFrame.LookVector * 3
+		table.insert(list, task(t, { Pos = if api.Clear then api.Clear(mopAt) else mopAt, Building = s.Building or t.Building, Floor = s.Floor or 1, Action = "mop", Carry = false, Duration = rng:NextInteger(10, 15) }))
 	end
 	return list
 end
+
+-- spots at a place that someone is using right now
+local function occupied(place, actions)
+	local out = {}
+	for _, s in ipairs(spotsWith(place, actions)) do
+		local who = api.Occupant and api.Occupant(s)
+		if who and who.State == "act" then
+			table.insert(out, s)
+		end
+	end
+	return out
+end
+
+-- stand beside someone's spot, facing them
+local function visit(t, s, fields, rng)
+	local pos = nearbyPos(s, if rng:NextNumber() < 0.5 then 2.6 else -2.6)
+	fields.Pos = pos
+	fields.Look = s.CFrame.Position
+	fields.Building = s.Building or t.Building
+	fields.Floor = s.Floor or 1
+	return task(t, fields)
+end
+
+-- a round of visits to people using some spots, then back to the post
+local function rounds(opts)
+	return function(brain, plan, t, rng)
+		local list = {}
+		local people = occupied(t.Place, opts.Visit)
+		for _ = 1, opts.Count or 3 do
+			if #people == 0 then
+				break
+			end
+			local s = table.remove(people, rng:NextInteger(1, #people))
+			local lines = opts.Lines
+			table.insert(list, visit(t, s, { Action = opts.Action, Carry = false, Duration = rng:NextInteger(opts.Min or 8, opts.Max or 12), Say = if lines and rng:NextNumber() < 0.6 then lines[rng:NextInteger(1, #lines)] else nil }, rng))
+		end
+		if t.Spot then
+			table.insert(list, atSpot(t, t.Spot, { Action = t.Spot.Action, Duration = rng:NextInteger(opts.Stay and opts.Stay[1] or 20, opts.Stay and opts.Stay[2] or 35) }))
+		end
+		return list
+	end
+end
+
+-- doctors and nurses: bedside visits with the clipboard
+ROUNDS["Doctor"] = rounds({ Visit = { patient = true }, Action = "doctor", Count = 3, Min = 10, Max = 15,
+	Lines = { "How are we feeling today?", "Let's take a look.", "You're healing nicely.", "Any pain today?", "Keep resting, okay?" } })
+ROUNDS["Nurse"] = rounds({ Visit = { patient = true }, Action = "nurse", Count = 4, Min = 8, Max = 12,
+	Lines = { "Time for your medicine.", "Let me check your temperature.", "Need another pillow?", "Doctor will be by soon." } })
+-- teachers walk between the desks helping students
+local TEACHER = rounds({ Visit = { study = true }, Action = "point", Count = 3, Min = 6, Max = 9, Stay = { 25, 40 },
+	Lines = { "Good work! Show your steps.", "Almost - check that one again.", "Nice handwriting!", "Eyes on your own paper!", "Who can tell me the answer?" } })
+ROUNDS["Teacher"] = TEACHER
+ROUNDS["Middle School Teacher"] = TEACHER
+ROUNDS["High School Teacher"] = TEACHER
+-- coaches cheer on whoever is training
+local COACH = rounds({ Visit = { lift = true, squat = true, run = true, punch = true, yoga = true, stretch = true, hoops = true }, Action = "coach", Count = 3, Min = 8, Max = 12,
+	Lines = { "Keep it up!", "Two more! Push!", "Great form!", "Breathe! Don't forget to breathe!", "That's it! Feel the burn!" } })
+ROUNDS["Fitness Coach"] = COACH
+ROUNDS["Coach"] = COACH
+-- daycare: playing with the little ones
+ROUNDS["Daycare Worker"] = rounds({ Visit = { play = true, crawl = true, swing = true, sit = true }, Action = "play", Count = 3, Min = 10, Max = 14,
+	Lines = { "Wheee! Good job!", "Gentle, gentle!", "Who wants a snack?", "Let's share, okay?", "Peekaboo!" } })
+
+-- museum guides lead a little tour past the exhibits
+ROUNDS["Museum Guide"] = function(brain, plan, t, rng)
+	local list = {}
+	local exhibits = spotsWith(t.Place, { browse = true })
+	local lines = { "This piece is over 300 years old!", "Follow me, everyone!", "Notice the brushwork here.", "This was found right here in town.", "Any questions so far?" }
+	for k = 1, 3 do
+		if #exhibits == 0 then
+			break
+		end
+		local s = table.remove(exhibits, rng:NextInteger(1, #exhibits))
+		local pos = nearbyPos(s, 3)
+		table.insert(list, task(t, { Pos = pos, Look = s.CFrame.Position + s.CFrame.LookVector * 3, Building = s.Building or t.Building, Floor = s.Floor or 1, Action = "guide", Carry = false, Duration = rng:NextInteger(10, 14), Say = lines[(k + rng:NextInteger(0, 4)) % #lines + 1] }))
+	end
+	if t.Spot then
+		table.insert(list, atSpot(t, t.Spot, { Action = t.Spot.Action, Duration = rng:NextInteger(20, 30) }))
+	end
+	return list
+end
+
+-- firefighters: truck maintenance, then a hose drill out front
+ROUNDS["Firefighter"] = function(brain, plan, t, rng)
+	local list = {}
+	local place = t.Place
+	local truck = spotsWith(place, { fixcar = true })
+	if #truck > 0 then
+		table.insert(list, atSpot(t, truck[rng:NextInteger(1, #truck)], { Action = "fixcar", Carry = false, Duration = rng:NextInteger(12, 18) }))
+	end
+	local door = place.Door
+	if door then
+		local a = rng:NextNumber() * math.pi * 2
+		local pos = door + Vector3.new(math.cos(a) * 6, 0, math.sin(a) * 6)
+		pos = if api.Clear then api.Clear(pos) else pos
+		table.insert(list, { Plan = plan, Pos = pos, Door = pos, Look = pos + Vector3.new(math.cos(a), 0, math.sin(a)) * 10, Floor = 1, Action = "hose", Carry = false, Duration = rng:NextInteger(10, 14), IsTask = true, Say = if rng:NextNumber() < 0.5 then "Drill! Hose ready!" else nil })
+	end
+	if t.Spot then
+		table.insert(list, atSpot(t, t.Spot, { Action = t.Spot.Action, Duration = rng:NextInteger(15, 25) }))
+	end
+	return list
+end
+
+-- the librarian: shelving returned books, then back at the desk
+ROUNDS["Librarian"] = function(brain, plan, t, rng)
+	local list = {}
+	local shelves = spotsWith(t.Place, { shelve = true, read = true })
+	for _ = 1, 2 do
+		if #shelves == 0 then
+			break
+		end
+		local s = shelves[rng:NextInteger(1, #shelves)]
+		table.insert(list, task(t, { Pos = nearbyPos(s, 2.4), Look = s.CFrame.Position - s.CFrame.LookVector * 3, Building = s.Building or t.Building, Floor = s.Floor or 1, Action = "shelve", Carry = false, Duration = rng:NextInteger(9, 13) }))
+	end
+	if t.Spot then
+		table.insert(list, atSpot(t, t.Spot, { Action = t.Spot.Action, Duration = rng:NextInteger(30, 45) }))
+	end
+	return list
+end
+
+-- warehouse and factory: carrying boxes from the loading area to the line
+local function haul(brain, plan, t, rng)
+	local list = {}
+	local boxes = spotsWith(t.Place, { carrybox = true })
+	local drop = spotsWith(t.Place, { sort = true, machine = true })
+	if #boxes > 0 and #drop > 0 and rng:NextNumber() < 0.6 then
+		local s = boxes[rng:NextInteger(1, #boxes)]
+		table.insert(list, task(t, { Pos = s.CFrame.Position, Look = s.CFrame.Position + s.CFrame.LookVector, Building = s.Building or t.Building, Floor = s.Floor or 1, Action = "carrybox", Carry = false, Duration = 4 }))
+		local d = drop[rng:NextInteger(1, #drop)]
+		table.insert(list, task(t, { Pos = nearbyPos(d, 2.6), Look = d.CFrame.Position, Building = d.Building or t.Building, Floor = d.Floor or 1, Action = "unpack", Carry = false, Duration = 5 }))
+	end
+	if t.Spot then
+		table.insert(list, atSpot(t, t.Spot, { Action = t.Spot.Action, Duration = rng:NextInteger(30, 50) }))
+	end
+	return list
+end
+ROUNDS["Warehouse Worker"] = haul
+ROUNDS["Factory Worker"] = haul
 
 --------------------------------------------------------------------------------
 -- The task list for a plan (nil: just go to the target and stay)
@@ -5921,6 +6503,8 @@ function Errands.Tasks(brain, plan, t, rng)
 			list = shopping(brain, plan, t, rng)
 		elseif FOOD[id] ~= nil and age >= 10 and (plan.Want == "eat" or plan.Want == "coffee" or plan.Want == nil or plan.Want == "chat") then
 			list = eatingOut(brain, plan, t, rng)
+		elseif SERVICE[id] and age >= 13 then
+			list = atTheDesk(brain, plan, t, rng)
 		end
 	end
 	if list and #list > 0 then
@@ -7787,7 +8371,7 @@ function ctx.houseRow(parent, i, j, rng, slots, big)
 		local center = c + Vector3.new(sx * 19, 0, sz * depthZ)
 		-- only the big suburban lots have room for a garage beside the house
 		local garageSide = if big then 1 else nil
-		local b = Buildings.house(model, center, face, style, rng, garageSide, if big then 1.2 else 1)
+		local b = Buildings.house(model, center, face, style, rng, garageSide, if big then 1.5 else 1)
 		local at = b.At
 		-- the front of the lot (the sidewalk edge), in the house's own space
 		local frontZ = -(HALF - SIDEWALK - depthZ)
@@ -8944,6 +9528,7 @@ local SILVER = rgb(200, 205, 215)
 local SKIN_TONES = {
 	rgb(255, 224, 196), rgb(245, 205, 170), rgb(234, 184, 146), rgb(214, 160, 120), rgb(196, 138, 98),
 	rgb(168, 112, 78), rgb(141, 90, 62), rgb(112, 70, 48), rgb(88, 56, 40), rgb(250, 214, 180),
+	rgb(226, 190, 150), rgb(186, 128, 90), rgb(128, 82, 58), rgb(72, 46, 34), rgb(240, 200, 164),
 }
 local HAIR_COLORS = {
 	rgb(30, 24, 22), rgb(58, 38, 28), rgb(92, 60, 38), rgb(128, 84, 52), rgb(160, 96, 48), -- black to light brown
@@ -8951,7 +9536,7 @@ local HAIR_COLORS = {
 }
 local FUN_HAIR = { rgb(240, 110, 170), rgb(90, 150, 240), rgb(140, 90, 220), rgb(90, 200, 160) }
 local GRAY_HAIR = { rgb(200, 200, 200), rgb(170, 170, 172), rgb(235, 235, 235) }
-local HAIRSTYLES = { "short", "buzz", "long", "ponytail", "bun", "afro", "curly", "mohawk", "bob", "spiky", "sidepart", "bald" }
+local HAIRSTYLES = { "short", "buzz", "long", "ponytail", "bun", "afro", "curly", "mohawk", "bob", "spiky", "sidepart", "bald", "braids", "pigtails", "wavy", "undercut", "topknot", "locs" }
 local CASUAL_TOPS = { rgb(220, 70, 70), rgb(70, 130, 220), rgb(90, 180, 110), rgb(240, 190, 60), rgb(160, 100, 200), rgb(240, 140, 60), rgb(80, 190, 200), rgb(235, 235, 230), rgb(60, 60, 70), rgb(230, 120, 160) }
 local CASUAL_BOTTOMS = { rgb(50, 70, 120), rgb(70, 60, 50), rgb(40, 40, 45), rgb(120, 110, 90), rgb(90, 100, 110), rgb(60, 90, 70) }
 local JEANS = { rgb(60, 90, 140), rgb(45, 65, 105), rgb(90, 120, 165), rgb(35, 40, 55) }
@@ -8959,9 +9544,10 @@ local KID_TOPS = { rgb(255, 90, 90), rgb(80, 170, 255), rgb(120, 220, 110), rgb(
 local SHOES = { rgb(40, 35, 32), rgb(240, 240, 240), rgb(110, 70, 45), rgb(200, 60, 60), rgb(60, 90, 160), rgb(30, 30, 30) }
 -- everyday outfits for people off duty (a few items each)
 local CASUAL_STYLES = {
-	adult = { { "Tee" }, { "Tee" }, { "Polo" }, { "Hoodie" }, { "Jacket" }, { "Stripes" }, { "Sweater" }, { "Dress" } },
-	teen = { { "Hoodie" }, { "Hoodie" }, { "Tee" }, { "Jacket" }, { "Stripes" }, { "Tee", "CapBack" }, { "Dress" } },
-	kid = { { "Tee" }, { "Stripes" }, { "Hoodie" }, { "Overalls" }, { "Dress" } },
+	adult = { { "Tee" }, { "Tee" }, { "Polo" }, { "Hoodie" }, { "Jacket" }, { "Stripes" }, { "Sweater" }, { "Dress" },
+		{ "Blazer" }, { "Flannel" }, { "Puffer" }, { "Tank" }, { "Skirt", "Tee" }, { "Flannel", "Tee" }, { "Blazer", "Skirt" } },
+	teen = { { "Hoodie" }, { "Hoodie" }, { "Tee" }, { "Jacket" }, { "Stripes" }, { "Tee", "CapBack" }, { "Dress" }, { "Varsity" }, { "Puffer" }, { "Flannel" }, { "Skirt", "Tee" }, { "Tank" } },
+	kid = { { "Tee" }, { "Stripes" }, { "Hoodie" }, { "Overalls" }, { "Dress" }, { "Varsity" }, { "Puffer" } },
 }
 
 --------------------------------------------------------------------------------
@@ -9171,6 +9757,48 @@ local function hair(folder, body, style, color)
 		end
 	elseif style == "afro" then
 		add("Hair", Vector3.new(1.55, 1.3, 1.5), CFrame.new(0, top - 0.02 * H, 0.1 * H), "Ball")
+	elseif style == "braids" or style == "locs" then
+		-- a cap of hair and rows of braids / locs hanging down the back and sides
+		add("Hair", Vector3.new(1.06, 0.32, 1.06), CFrame.new(0, top - 0.06 * H, 0.03 * H))
+		local n = if style == "locs" then 9 else 7
+		local len = if style == "locs" then 1.0 else 1.25
+		for k = 0, n - 1 do
+			local a = math.rad(-110 + k * (220 / (n - 1)))
+			local x, z = math.sin(a) * 0.5, math.cos(a) * 0.5
+			-- (cylinders run along X: turned upright)
+			add("Braid", Vector3.new(len, 0.16, 0.16), CFrame.new(x * H, top - (0.2 + len / 2) * H, (z + 0.02) * H) * CFrame.Angles(0, 0, math.rad(90)), "Cylinder")
+		end
+		if style == "braids" then
+			local tie = add("BraidTie", Vector3.new(0.2, 0.2, 0.2), CFrame.new(0, top - (0.2 + len) * H, 0.52 * H), "Ball")
+		if tie then
+			tie.Color = GOLD
+		end
+		end
+	elseif style == "pigtails" then
+		add("Hair", Vector3.new(1.06, 0.34, 1.06), CFrame.new(0, top - 0.06 * H, 0.03 * H))
+		add("Fringe", Vector3.new(0.9, 0.16, 0.14), CFrame.new(0, top - 0.14 * H, -0.47 * H))
+		for _, sx in ipairs({ -1, 1 }) do
+			add("Pigtail", Vector3.new(0.34, 0.34, 0.34), CFrame.new(sx * 0.6 * H, top - 0.2 * H, 0.15 * H), "Ball")
+			add("Pigtail", Vector3.new(0.26, 0.6, 0.26), CFrame.new(sx * 0.7 * H, top - 0.55 * H, 0.18 * H) * CFrame.Angles(0, 0, sx * math.rad(-12)))
+		end
+	elseif style == "wavy" then
+		add("Hair", Vector3.new(1.1, 0.36, 1.1), CFrame.new(0, top - 0.04 * H, 0.02 * H))
+		for k = 0, 4 do
+			add("Wave", Vector3.new(0.34, 0.34, 0.34), CFrame.new((-0.42 + k * 0.21) * H, top - (0.5 + (k % 2) * 0.15) * H, 0.48 * H), "Ball")
+			add("Wave", Vector3.new(0.3, 0.3, 0.3), CFrame.new((-0.42 + k * 0.21) * H, top - (0.8 + ((k + 1) % 2) * 0.12) * H, 0.46 * H), "Ball")
+		end
+		for _, sx in ipairs({ -1, 1 }) do
+			add("HairSide", Vector3.new(0.2, 0.75, 0.7), CFrame.new(sx * 0.53 * H, top - 0.45 * H, 0.08 * H))
+		end
+		add("Fringe", Vector3.new(0.6, 0.2, 0.16), CFrame.new(0.16 * H, top - 0.14 * H, -0.47 * H) * CFrame.Angles(0, 0, math.rad(10)))
+	elseif style == "undercut" then
+		add("Hair", Vector3.new(1.0, 0.12, 1.0), CFrame.new(0, top - 0.14 * H, 0.02 * H))
+		add("HairTop", Vector3.new(0.78, 0.36, 0.95), CFrame.new(0, top + 0.06 * H, -0.02 * H))
+		add("Quiff", Vector3.new(0.7, 0.24, 0.3), CFrame.new(0, top + 0.16 * H, -0.4 * H) * CFrame.Angles(math.rad(-20), 0, 0))
+	elseif style == "topknot" then
+		add("Hair", Vector3.new(1.05, 0.3, 1.05), CFrame.new(0, top - 0.07 * H, 0.03 * H))
+		add("HairBack", Vector3.new(1.02, 0.4, 0.2), CFrame.new(0, 0.16 * H, 0.46 * H))
+		add("Knot", Vector3.new(0.4, 0.4, 0.4), CFrame.new(0, top + 0.2 * H, 0), "Ball")
 	elseif style == "curly" then
 		for k = 0, 7 do
 			local a = k / 8 * math.pi * 2
@@ -9194,7 +9822,7 @@ end
 --------------------------------------------------------------------------------
 -- Items. Each one decorates the head, torso, arms or legs.
 --------------------------------------------------------------------------------
-local HATS = { Toque = true, TallToque = true, Cap = true, PoliceCap = true, HardHat = true, StrawHat = true, Beanie = true, FireHelmet = true, Beret = true, BucketHat = true }
+local HATS = { Fedora = true, Toque = true, TallToque = true, Cap = true, PoliceCap = true, HardHat = true, StrawHat = true, Beanie = true, FireHelmet = true, Beret = true, BucketHat = true }
 
 local ITEMS = {}
 
@@ -9596,6 +10224,112 @@ function ITEMS.Dress(f, b, c)
 	attach(f, L, "SkirtHem", Vector3.new(L.Size.X + 0.6, 0.6, L.Size.Z + 0.5), CFrame.new(0, -0.85, 0), c, nil, Enum.Material.Fabric)
 	attach(f, L, "SkirtTrim", Vector3.new(L.Size.X + 0.64, 0.1, L.Size.Z + 0.54), CFrame.new(0, -1.1, 0), c:Lerp(WHITE, 0.45), nil, Enum.Material.Fabric)
 end
+function ITEMS.Blazer(f, b, c)
+	ITEMS.Jacket(f, b, c or rgb(40, 50, 80))
+	local t = b.Torso
+	-- a shirt showing between the lapels, with buttons
+	torsoFront(b, "Shirt", Vector3.new(t.Size.X * 0.34, t.Size.Y * 0.9, 0.05), 0, WHITE, Enum.Material.Fabric, f)
+	for k = 0, 1 do
+		torsoFront(b, "BlazerButton", Vector3.new(0.1, 0.1, 0.12), -t.Size.Y * (0.08 + k * 0.2), rgb(30, 30, 30), nil, f).CFrame = t.CFrame * CFrame.new(t.Size.X * 0.2, -t.Size.Y * (0.08 + k * 0.2), -t.Size.Z / 2 - 0.1)
+	end
+end
+function ITEMS.Flannel(f, b, c)
+	local t = b.Torso
+	c = c or rgb(170, 50, 50)
+	-- a plaid shirt: dark bands across and down, and on the sleeves
+	for k = -2, 2 do
+		band(f, t, "Plaid", k * t.Size.Y * 0.2, 0.08, c:Lerp(BLACK, 0.45), 0.04)
+		attach(f, t, "PlaidV", Vector3.new(0.08, t.Size.Y + 0.03, t.Size.Z + 0.03), CFrame.new(k * t.Size.X * 0.2, 0, 0), c:Lerp(BLACK, 0.45), nil, Enum.Material.Fabric)
+	end
+	for _, arm in ipairs({ b.LeftArm, b.RightArm }) do
+		if arm then
+			attach(f, arm, "FlannelSleeve", arm.Size + Vector3.new(0.06, 0, 0.06), CFrame.new(), c, nil, Enum.Material.Fabric)
+			band(f, arm, "Plaid", 0, 0.08, c:Lerp(BLACK, 0.45), 0.1)
+		end
+	end
+	for k = 0, 2 do
+		torsoFront(b, "Button", Vector3.new(0.07, 0.07, 0.04), t.Size.Y * (0.3 - k * 0.25), WHITE, nil, f)
+	end
+end
+function ITEMS.Puffer(f, b, c)
+	local t = b.Torso
+	c = c or rgb(40, 60, 110)
+	-- a padded jacket: puffy quilted rings around the body and the arms
+	for k = -2, 2 do
+		attach(f, t, "Puff", Vector3.new(t.Size.X + 0.3, t.Size.Y * 0.2, t.Size.Z + 0.3), CFrame.new(0, k * t.Size.Y * 0.2, 0), if k % 2 == 0 then c else c:Lerp(BLACK, 0.12), nil, Enum.Material.Fabric)
+	end
+	attach(f, t, "PufferCollar", Vector3.new(t.Size.X * 0.7, 0.35, t.Size.Z + 0.35), CFrame.new(0, t.Size.Y / 2 + 0.1, 0), c:Lerp(BLACK, 0.1), nil, Enum.Material.Fabric)
+	torsoFront(b, "Zip", Vector3.new(0.05, t.Size.Y, 0.2), 0, SILVER, Enum.Material.Metal, f)
+	for _, arm in ipairs({ b.LeftArm, b.RightArm }) do
+		if arm then
+			attach(f, arm, "PufferSleeve", arm.Size + Vector3.new(0.22, 0, 0.22), CFrame.new(), c, nil, Enum.Material.Fabric)
+		end
+	end
+end
+function ITEMS.Varsity(f, b, c)
+	c = c or rgb(150, 30, 40)
+	local t = b.Torso
+	ITEMS.Jacket(f, b, c)
+	for _, arm in ipairs({ b.LeftArm, b.RightArm }) do
+		if arm then
+			attach(f, arm, "VarsitySleeve", arm.Size + Vector3.new(0.12, 0, 0.12), CFrame.new(), rgb(240, 236, 226), nil, Enum.Material.Fabric)
+		end
+	end
+	band(f, t, "VarsityHem", -t.Size.Y / 2 + 0.08, 0.16, rgb(240, 236, 226), 0.14)
+	attach(f, t, "Letter", Vector3.new(0.4, 0.5, 0.06), CFrame.new(-t.Size.X * 0.3, t.Size.Y * 0.12, -t.Size.Z / 2 - 0.12), GOLD, nil, Enum.Material.Fabric)
+end
+function ITEMS.Tank(f, b, c)
+	local t = b.Torso
+	c = c or t.Color
+	-- bare shoulders and arms under the straps
+	for _, arm in ipairs({ b.LeftArm, b.RightArm }) do
+		if arm then
+			arm.Color = b.Head.Color
+		end
+	end
+	for _, sx in ipairs({ -1, 1 }) do
+		attach(f, t, "Strap", Vector3.new(0.3, 0.1, t.Size.Z + 0.04), CFrame.new(sx * t.Size.X * 0.28, t.Size.Y / 2, 0), c, nil, Enum.Material.Fabric)
+	end
+end
+function ITEMS.Skirt(f, b, c)
+	local L = b.Lower
+	if not L or L == b.Torso then
+		return
+	end
+	c = c or rgb(40, 40, 60)
+	attach(f, L, "Skirt", Vector3.new(L.Size.X + 0.3, 1.0, L.Size.Z + 0.3), CFrame.new(0, -0.45, 0), c, nil, Enum.Material.Fabric)
+	for k = -2, 2 do
+		attach(f, L, "Pleat", Vector3.new(0.05, 0.9, 0.05), CFrame.new(k * L.Size.X * 0.18, -0.5, -L.Size.Z / 2 - 0.17), c:Lerp(BLACK, 0.25), nil, Enum.Material.Fabric)
+	end
+end
+function ITEMS.Sunglasses(f, b)
+	local H = b.H
+	for _, sx in ipairs({ -1, 1 }) do
+		attach(f, b.Head, "Shades", Vector3.new(0.34, 0.2, 0.05) * H, CFrame.new(sx * 0.2 * H, H * 0.1, -0.53 * H), rgb(20, 20, 26), nil, Enum.Material.Glass)
+	end
+	attach(f, b.Head, "ShadesBridge", Vector3.new(0.9, 0.05, 0.04) * H, CFrame.new(0, H * 0.18, -0.53 * H), rgb(20, 20, 26), nil, Enum.Material.Metal)
+end
+function ITEMS.Fedora(f, b, c)
+	local H = b.H
+	c = c or rgb(70, 60, 50)
+	attach(f, b.Head, "HatBrim", Vector3.new(0.08, 1.5, 1.5) * H, CFrame.new(0, H * 0.46, 0) * CFrame.Angles(0, 0, math.rad(90)), c, "Cylinder", Enum.Material.Fabric)
+	attach(f, b.Head, "HatCrown", Vector3.new(0.9, 0.45, 0.9) * H, CFrame.new(0, H * 0.7, 0), c, nil, Enum.Material.Fabric)
+	attach(f, b.Head, "HatBand", Vector3.new(0.92, 0.1, 0.92) * H, CFrame.new(0, H * 0.54, 0), rgb(30, 30, 30), nil, Enum.Material.Fabric)
+end
+function ITEMS.CrossBag(f, b, c)
+	local t = b.Torso
+	c = c or rgb(120, 70, 45)
+	attach(f, t, "BagStrap", Vector3.new(0.1, t.Size.Y * 1.35, 0.06), CFrame.new(0, 0, -t.Size.Z / 2 - 0.05) * CFrame.Angles(0, 0, math.rad(-38)), c:Lerp(BLACK, 0.3), nil, Enum.Material.Fabric)
+	attach(f, t, "Bag", Vector3.new(0.7, 0.6, 0.3), CFrame.new(t.Size.X / 2 + 0.1, -t.Size.Y / 2, -0.1), c, nil, Enum.Material.Fabric)
+end
+function ITEMS.Bracelets(f, b, c)
+	local arm = b.LeftHand
+	if arm then
+		for k = 0, 1 do
+			attach(f, arm, "Bracelet", Vector3.new(arm.Size.X + 0.08, 0.07, arm.Size.Z + 0.08), CFrame.new(0, arm.Size.Y / 2 - 0.05 - k * 0.1, 0), c or GOLD, nil, Enum.Material.Metal)
+		end
+	end
+end
 function ITEMS.CapBack(f, b, c)
 	local H = b.H
 	c = c or rgb(40, 40, 50)
@@ -9689,8 +10423,8 @@ local function colorText(c)
 	return string.format("%d,%d,%d", math.floor(c.R * 255 + 0.5), math.floor(c.G * 255 + 0.5), math.floor(c.B * 255 + 0.5))
 end
 
-local FEMININE_HAIR = { "long", "ponytail", "bun", "bob", "curly", "afro", "long", "sidepart" }
-local MASCULINE_HAIR = { "short", "buzz", "sidepart", "spiky", "afro", "curly", "short", "mohawk", "bald" }
+local FEMININE_HAIR = { "long", "ponytail", "bun", "bob", "curly", "afro", "long", "sidepart", "braids", "wavy", "pigtails", "topknot", "locs" }
+local MASCULINE_HAIR = { "short", "buzz", "sidepart", "spiky", "afro", "curly", "short", "mohawk", "bald", "undercut", "locs", "topknot", "braids" }
 
 -- How tall someone is for their age (1 = a grown adult). height is their own
 -- factor (so two 8-year-olds aren't the same size).
@@ -9796,6 +10530,22 @@ function CitizenLook.Describe(citizen)
 				look.Bottom = look.Skin -- bare legs under the skirt
 			elseif item == "Overalls" then
 				table.insert(look.Items, "Overalls:" .. colorText(JEANS[rng:NextInteger(1, #JEANS)]))
+			elseif item == "Blazer" then
+				table.insert(look.Items, "Blazer:" .. colorText(({ rgb(40, 50, 80), rgb(60, 60, 66), rgb(150, 120, 90), rgb(110, 40, 50) })[rng:NextInteger(1, 4)]))
+			elseif item == "Flannel" then
+				table.insert(look.Items, "Flannel:" .. colorText(({ rgb(170, 50, 50), rgb(50, 100, 70), rgb(50, 80, 140), rgb(200, 150, 60) })[rng:NextInteger(1, 4)]))
+			elseif item == "Puffer" then
+				table.insert(look.Items, "Puffer:" .. colorText(({ rgb(40, 60, 110), rgb(30, 30, 34), rgb(200, 70, 60), rgb(90, 130, 90), rgb(240, 200, 70) })[rng:NextInteger(1, 5)]))
+			elseif item == "Varsity" then
+				table.insert(look.Items, "Varsity:" .. colorText(({ rgb(150, 30, 40), rgb(30, 50, 110), rgb(30, 90, 50), rgb(40, 40, 44) })[rng:NextInteger(1, 4)]))
+			elseif item == "Tank" then
+				table.insert(look.Items, "Tank")
+				look.Sleeves = "short"
+			elseif item == "Skirt" then
+				if feminine then
+					table.insert(look.Items, "Skirt:" .. colorText(({ rgb(40, 40, 60), rgb(150, 40, 60), rgb(200, 180, 150), rgb(60, 90, 140) })[rng:NextInteger(1, 4)]))
+					look.Bottom = look.Skin
+				end
 			elseif item == "CapBack" then
 				table.insert(look.Items, "CapBack:" .. colorText(accent))
 			else
@@ -9831,6 +10581,21 @@ function CitizenLook.Describe(citizen)
 	if not kid and rng:NextNumber() < 0.3 then
 		table.insert(look.Items, "Watch:" .. ({ "30,30,35", "245,200,70", "200,205,215" })[rng:NextInteger(1, 3)])
 	end
+	-- a few more accessories so people don't all look alike
+	if not kid and not uniform then
+		if rng:NextNumber() < 0.15 then
+			table.insert(look.Items, "Sunglasses")
+		end
+		if rng:NextNumber() < 0.2 then
+			table.insert(look.Items, "CrossBag:" .. ({ "120,70,45", "30,30,34", "190,60,70", "200,170,130" })[rng:NextInteger(1, 4)])
+		end
+		if age >= 35 and rng:NextNumber() < 0.08 then
+			table.insert(look.Items, "Fedora:" .. ({ "70,60,50", "40,40,44", "150,130,100" })[rng:NextInteger(1, 3)])
+		end
+	end
+	if not kid and feminine and rng:NextNumber() < 0.25 then
+		table.insert(look.Items, "Bracelets")
+	end
 	if age < 11 and feminine and rng:NextNumber() < 0.45 then
 		table.insert(look.Items, "HairBow:" .. ({ "250,110,160", "255,200,60", "120,180,255", "170,110,240" })[rng:NextInteger(1, 4)])
 	end
@@ -9861,7 +10626,7 @@ function CitizenLook.Describe(citizen)
 		end
 	end
 	-- hats sit better on shorter hair; bows don't go with hats
-	if hasHat and (look.Hair == "afro" or look.Hair == "mohawk" or look.Hair == "spiky" or look.Hair == "bun") then
+	if hasHat and (look.Hair == "afro" or look.Hair == "mohawk" or look.Hair == "spiky" or look.Hair == "bun" or look.Hair == "topknot" or look.Hair == "undercut" or look.Hair == "pigtails") then
 		look.Hair = "short"
 	end
 	if hasHat then
@@ -10224,7 +10989,13 @@ local function onNewDay()
 		end
 		CityService.Fire(e.Kind, e.Text, e.Citizen or e.Household)
 	end
-	CityService.News("☀️ Good morning, AI City! It's " .. weekday(state.Day) .. ", day " .. state.Day .. ".", "Day", true)
+	-- today's weather (everyone sees the same sky)
+	local weather = Atmosphere.PickWeather(Random.new(state.Day * 977 + 13))
+	if stateFolder then
+		stateFolder:SetAttribute("Weather", weather)
+	end
+	local w = Atmosphere.WEATHER[weather]
+	CityService.News("☀️ Good morning, AI City! It's " .. weekday(state.Day) .. ", day " .. state.Day .. ". " .. (w and w.Label or "") .. " today.", "Day", true)
 	for player in pairs(playerData) do
 		CityService.Send(player, { Type = "Goals", Goals = CityService.Goals(player), NewDay = true })
 	end
@@ -11154,6 +11925,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local PhysicsService = game:GetService("PhysicsService")
 local CollectionService = game:GetService("CollectionService")
+local PathfindingService = game:GetService("PathfindingService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
@@ -11799,6 +12571,7 @@ local function nextStep(brain)
 	if step.Kind == "walk" then
 		brain.Points = step.Points
 		brain.PointIndex = 1
+		brain.DetourFor = nil
 		brain.LastMoveAt = os.clock()
 		brain.LastPos = brain.Root.Position
 		brain.MoveIssued = 0
@@ -12156,6 +12929,17 @@ local CLERK_HELLO = { "Hi there! Find everything okay?", "Next, please! Hi!", "H
 local CUSTOMER_REPLY = { "Yes, thanks!", "I did, thank you.", "Just these, please.", "Mm-hm! Busy day?" }
 local FOOD_HELLO = { "Hi! What can I get you?", "Morning! The usual?", "Welcome! What'll it be?", "Hey there! What are you having?" }
 local FOOD_ORDER = { "A latte, please!", "One of those, please.", "Something sweet, please!", "The usual!", "A coffee to go, please." }
+-- what gets said at each kind of service desk: { clerk hello, customer asks, clerk while working, clerk handing over }
+local SERVICE_TALK = {
+	bank = { { "Next! How can I help?", "Good morning! Deposit or withdrawal?" }, { "I'd like to take out some cash.", "Just a deposit today.", "Can I check my balance?" }, { "One moment, let me just stamp this.", "Can you sign here for me?" }, { "Here you are. Have a good day!", "All done! Anything else?" } },
+	library = { { "Hi! Checking out?", "Welcome to the library!" }, { "Just this one, please.", "I'd like to borrow this.", "Can I return this too?" }, { "Let me scan your card...", "This one's due in two weeks." }, { "Enjoy the book!", "Happy reading!" } },
+	hotel = { { "Welcome! Checking in?", "Good evening! Do you have a reservation?" }, { "Yes, it's under my name.", "One room, please.", "Is breakfast included?" }, { "Let me find your room...", "Room 204, lovely view." }, { "Here's your key. Enjoy your stay!", "Elevator's on the left. Enjoy!" } },
+	ticket = { { "Hi! How many?", "Next! Tickets?" }, { "One ticket, please.", "Just one, thanks.", "One for the next show!" }, { "Printing it now...", "Great choice!" }, { "Here's your ticket. Enjoy!", "Enjoy the show!" } },
+	post = { { "Next please! Sending something?", "Hi! Picking up?" }, { "I'm here for a package.", "I got a slip in the mail.", "Sending this across town." }, { "Let me check the back...", "Sign here, please." }, { "Here you go!", "There you are. Have a nice day!" } },
+}
+local function pick(list)
+	return list[math.random(1, #list)]
+end
 local THANKS = { "Thanks! Have a great day!", "Thank you! See you soon!", "Enjoy! Bye now!", "Have a nice one!" }
 
 local function clearCheckout(model, start)
@@ -12219,7 +13003,7 @@ function CitizenService.TryCheckout(brain, t)
 	clerk.ServingUntil = now + dur + 0.5
 	local look = flat(brain.Root.Position - till.CFrame.Position)
 	look = if look.Magnitude > 0.1 then look.Unit else till.CFrame.LookVector
-	local items = if kind == "food" then 1 else math.random(3, 6)
+	local items = if kind == "shop" then math.random(3, 6) else 1
 	for _, m in ipairs({ brain.Model, clerk.Model }) do
 		m:SetAttribute("CheckoutStart", now)
 		m:SetAttribute("CheckoutKind", kind)
@@ -12240,7 +13024,14 @@ function CitizenService.TryCheckout(brain, t)
 		end)
 	end
 	local price = if kind == "food" then math.random(3, 7) else items * math.random(2, 4)
-	if kind == "food" then
+	local talk = SERVICE_TALK[kind]
+	if talk then
+		say(0.1, clerk, pick(talk[1]), "happy")
+		say(1.4, brain, pick(talk[2]), "neutral")
+		say(dur * 0.5, clerk, pick(talk[3]), "neutral")
+		say(dur * 0.82, clerk, pick(talk[4]), "happy")
+		say(dur * 0.95, brain, "Thank you!", "happy")
+	elseif kind == "food" then
 		say(0.1, clerk, FOOD_HELLO[math.random(1, #FOOD_HELLO)], "happy")
 		say(1.3, brain, FOOD_ORDER[math.random(1, #FOOD_ORDER)], "happy")
 		say(dur * 0.32, clerk, "That's " .. price .. " coins. Tap your card here.", "neutral")
@@ -12898,9 +13689,129 @@ local function steerAround(brain, target)
 		return "wait"
 	end
 	local clear = 2.3 - math.abs(blockSide) * 0.4
-	return pos + dir * math.min(3.5, blockAhead + 1.2) + right * s * clear
+	local step = pos + dir * math.min(3.5, blockAhead + 1.2) + right * s * clear
+	-- never step aside into a wall: try the other side, or just wait
+	if CitizenService.Blocked(pos, step) then
+		local other = pos + dir * math.min(3.5, blockAhead + 1.2) - right * s * clear
+		if CitizenService.Blocked(pos, other) then
+			return "wait"
+		end
+		return other
+	end
+	return step
 end
 CitizenService.SteerAround = steerAround
+
+--------------------------------------------------------------------------------
+-- Walls: people check the way is clear, and walk around what's in the way
+--------------------------------------------------------------------------------
+local wallParams = RaycastParams.new()
+pcall(function()
+	wallParams.FilterType = Enum.RaycastFilterType.Exclude
+	wallParams.RespectCanCollide = true
+end)
+local wallFilterAt = 0
+local function refreshWallFilter()
+	if os.clock() - wallFilterAt < 2 then
+		return
+	end
+	wallFilterAt = os.clock()
+	local list = { folder }
+	for _, p in ipairs(Players:GetPlayers()) do
+		if p.Character then
+			table.insert(list, p.Character)
+		end
+	end
+	pcall(function()
+		wallParams.FilterDescendantsInstances = list
+	end)
+end
+
+-- is something solid between two points (at waist height)?
+function CitizenService.Blocked(from, to)
+	refreshWallFilter()
+	local a = Vector3.new(from.X, from.Y, from.Z)
+	local b = Vector3.new(to.X, from.Y, to.Z)
+	local dir = b - a
+	if dir.Magnitude < 0.5 then
+		return false
+	end
+	local ok, hit = pcall(function()
+		return workspace:Raycast(a, dir, wallParams)
+	end)
+	return ok and hit ~= nil
+end
+
+-- find a way around whatever is in the way, and splice it into the route
+local function detour(brain, target)
+	if brain.Pathing or not brain.Points then
+		return
+	end
+	brain.Pathing = true
+	brain.DetourFor = brain.PointIndex
+	local token = brain.Token
+	local from = brain.Root.Position
+	task.spawn(function()
+		local ok, path = pcall(function()
+			local p = PathfindingService:CreatePath({ AgentRadius = 1.4, AgentHeight = 5, AgentCanJump = false, WaypointSpacing = 4 })
+			p:ComputeAsync(from, target)
+			return p
+		end)
+		brain.Pathing = nil
+		if not ok or not path or path.Status ~= Enum.PathStatus.Success or brain.Token ~= token or not brain.Points then
+			return
+		end
+		local waypoints = path:GetWaypoints()
+		if #waypoints < 3 then
+			return
+		end
+		local index = brain.PointIndex
+		local points = {}
+		for i = 1, index - 1 do
+			table.insert(points, brain.Points[i])
+		end
+		for i = 2, #waypoints - 1 do
+			table.insert(points, waypoints[i].Position)
+		end
+		for i = index, #brain.Points do
+			table.insert(points, brain.Points[i])
+		end
+		brain.Points = points
+		brain.DetourFor = index + #waypoints - 2
+		brain.Humanoid:MoveTo(points[index])
+		brain.MoveIssued = os.clock()
+		brain.LastMoveAt = os.clock()
+	end)
+end
+CitizenService.Detour = detour
+
+-- a standing spot that isn't inside anything solid (a tree, a bench, a wall):
+-- the nearest clear point around `pos`
+function CitizenService.ClearSpot(pos)
+	local function clear(p)
+		local ok, parts = pcall(function()
+			local params = OverlapParams.new()
+			params.RespectCanCollide = true
+			params.FilterType = Enum.RaycastFilterType.Exclude
+			params.FilterDescendantsInstances = { folder }
+			return workspace:GetPartBoundsInBox(CFrame.new(p + Vector3.new(0, 3, 0)), Vector3.new(2, 4.5, 2), params)
+		end)
+		return not ok or parts == nil or #parts == 0
+	end
+	if clear(pos) then
+		return pos
+	end
+	for r = 2, 8, 2 do
+		for k = 0, 7 do
+			local a = k / 8 * math.pi * 2
+			local p = pos + Vector3.new(math.cos(a) * r, 0, math.sin(a) * r)
+			if clear(p) then
+				return p
+			end
+		end
+	end
+	return pos
+end
 
 local function walkTick(brain)
 	local points = brain.Points
@@ -12967,6 +13878,10 @@ local function walkTick(brain)
 		applySpeed(brain)
 		brain.Humanoid:MoveTo(points[brain.PointIndex])
 		brain.MoveIssued = now
+		-- a wall between here and there? find the way around it
+		if nearestPlayerDistance(root.Position) < WATCH_RADIUS and CitizenService.Blocked(root.Position, points[brain.PointIndex]) then
+			detour(brain, points[brain.PointIndex])
+		end
 		return
 	end
 	-- someone in the way? step around them (or wait a moment if boxed in)
@@ -13009,9 +13924,12 @@ local function walkTick(brain)
 	if brain.LastPos and (root.Position - brain.LastPos).Magnitude > 1.5 then
 		brain.LastPos = root.Position
 		brain.LastMoveAt = now
+	elseif now - (brain.LastMoveAt or now) > 1.2 and brain.DetourFor ~= brain.PointIndex then
+		-- not getting anywhere: something's in the way, find a way around it
+		detour(brain, target)
 	elseif now - (brain.LastMoveAt or now) > 2.5 then
 		brain.Humanoid.Jump = true
-		if now - brain.LastMoveAt > 5 and (nearestPlayerDistance(root.Position) > 45 or now - brain.LastMoveAt > 12) then
+		if now - brain.LastMoveAt > 5 and (nearestPlayerDistance(root.Position) > 45 or now - brain.LastMoveAt > 8) then
 			root.CFrame = CFrame.new(target + Vector3.new(0, rootHeight(brain) + 0.3, 0))
 			root.AssemblyLinearVelocity = Vector3.zero
 			brain.LastMoveAt = now
@@ -13175,7 +14093,7 @@ function CitizenService.Start(services)
 	S = services
 	CitizenService.Event = S.City.Event -- same events as CityService.Event (kept for older scripts)
 	map, pop = S.Map, S.Life
-	Errands.Init({ Map = map, PickSpot = pickSpot, StandNear = standNear, Age = ageOf, Occupant = function(spot)
+	Errands.Init({ Map = map, PickSpot = pickSpot, StandNear = standNear, Age = ageOf, Clear = CitizenService.ClearSpot, Occupant = function(spot)
 		return taken[spot]
 	end })
 	setupPhysics()
