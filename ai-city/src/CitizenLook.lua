@@ -1071,6 +1071,8 @@ function CitizenLook.Describe(citizen)
 				table.insert(look.Items, "Puffer:" .. colorText(({ rgb(40, 60, 110), rgb(30, 30, 34), rgb(200, 70, 60), rgb(90, 130, 90), rgb(240, 200, 70) })[rng:NextInteger(1, 5)]))
 			elseif item == "Varsity" then
 				table.insert(look.Items, "Varsity:" .. colorText(({ rgb(150, 30, 40), rgb(30, 50, 110), rgb(30, 90, 50), rgb(40, 40, 44) })[rng:NextInteger(1, 4)]))
+			elseif item == "Jersey" then
+				table.insert(look.Items, "Jersey:" .. colorText(({ rgb(40, 90, 200), rgb(200, 40, 50), rgb(250, 190, 40), rgb(30, 30, 36), rgb(90, 40, 140), rgb(30, 130, 80), rgb(240, 240, 240), rgb(0, 120, 190) })[rng:NextInteger(1, 8)]))
 			elseif item == "Tank" then
 				table.insert(look.Items, "Tank")
 				look.Sleeves = "short"
@@ -1333,8 +1335,325 @@ function CitizenLook.Sculpt(model, folder, look)
 	end
 end
 
+
+--------------------------------------------------------------------------------
+-- Painted clothes: the outfit is drawn flat on the body (like a Roblox shirt
+-- and pants), not built from extra blocks. Sleeves are the arm color; collars,
+-- pockets, zips, plaid, stripes, jersey numbers and open jackets are painted on
+-- the chest's faces. (Config.PAINTED_CLOTHES = false: the old 3D pieces.)
+--------------------------------------------------------------------------------
+local FACES = { Front = Enum.NormalId.Front, Back = Enum.NormalId.Back, Left = Enum.NormalId.Left, Right = Enum.NormalId.Right }
+
+local function canvas(f, part, face)
+	if not part then
+		return nil
+	end
+	local gui = Instance.new("SurfaceGui")
+	gui.Name = "Painted" .. face
+	gui.Face = FACES[face]
+	gui.Adornee = part
+	gui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+	gui.PixelsPerStud = 60
+	gui.LightInfluence = 1
+	gui.ResetOnSpawn = false
+	gui.Parent = f
+	return gui
+end
+
+-- a rectangle on a canvas (x, y, w, h as fractions of the face)
+local function rect(gui, x, y, w, h, color, rot, round)
+	if not gui then
+		return nil
+	end
+	local r = Instance.new("Frame")
+	r.BorderSizePixel = 0
+	r.AnchorPoint = Vector2.new(0.5, 0.5)
+	r.Position = UDim2.fromScale(x, y)
+	r.Size = UDim2.fromScale(w, h)
+	r.BackgroundColor3 = color
+	r.Rotation = rot or 0
+	if round then
+		local c = Instance.new("UICorner")
+		c.CornerRadius = UDim.new(round, 0)
+		c.Parent = r
+	end
+	r.Parent = gui
+	return r
+end
+
+local function label(gui, text, x, y, w, h, color, outline)
+	if not gui then
+		return nil
+	end
+	local t = Instance.new("TextLabel")
+	t.BackgroundTransparency = 1
+	t.AnchorPoint = Vector2.new(0.5, 0.5)
+	t.Position = UDim2.fromScale(x, y)
+	t.Size = UDim2.fromScale(w, h)
+	t.Text = text
+	t.TextScaled = true
+	t.Font = Enum.Font.GothamBlack
+	t.TextColor3 = color
+	if outline then
+		t.TextStrokeColor3 = outline
+		t.TextStrokeTransparency = 0
+	end
+	t.Parent = gui
+	return t
+end
+
+local function armParts(b)
+	local model = b.Torso and b.Torso.Parent
+	local out = {}
+	if model then
+		for _, n in ipairs({ "LeftUpperArm", "RightUpperArm", "LeftLowerArm", "RightLowerArm" }) do
+			local p = model:FindFirstChild(n)
+			if p then
+				table.insert(out, p)
+			end
+		end
+	end
+	return out
+end
+
+local function sleeves(b, color, long)
+	for _, p in ipairs(armParts(b)) do
+		if long or string.find(p.Name, "Upper") then
+			p.Color = color
+		end
+	end
+end
+
+-- the same thing on all four sides of the chest
+local function around(f, b, fn)
+	for _, face in ipairs({ "Front", "Back", "Left", "Right" }) do
+		fn(canvas(f, b.Torso, face), face)
+	end
+end
+
+local PAINTED = {}
+function PAINTED.Tee(f, b, c)
+	local t = b.Torso
+	local front = canvas(f, t, "Front")
+	rect(front, 0.5, 0.02, 0.34, 0.1, t.Color:Lerp(BLACK, 0.3), 0, 0.5)
+	if c then
+		rect(front, 0.5, 0.42, 0.34, 0.26, c, 0, 0.15)
+	end
+end
+function PAINTED.Polo(f, b, c)
+	local t = b.Torso
+	c = c or WHITE
+	local front = canvas(f, t, "Front")
+	rect(front, 0.4, 0.06, 0.2, 0.08, c, -18)
+	rect(front, 0.6, 0.06, 0.2, 0.08, c, 18)
+	rect(front, 0.5, 0.18, 0.05, 0.22, t.Color:Lerp(BLACK, 0.15))
+	for k = 0, 1 do
+		rect(front, 0.5, 0.14 + k * 0.1, 0.04, 0.04, c, 0, 1)
+	end
+end
+function PAINTED.Hoodie(f, b, c)
+	local base = c or b.Torso.Color
+	local dark = base:Lerp(BLACK, 0.15)
+	local front = canvas(f, b.Torso, "Front")
+	rect(front, 0.5, 0.78, 0.6, 0.26, dark, 0, 0.2)
+	for _, x in ipairs({ 0.43, 0.57 }) do
+		rect(front, x, 0.22, 0.025, 0.28, WHITE)
+	end
+	rect(front, 0.5, 0.03, 0.46, 0.08, dark, 0, 0.5)
+	-- the hood lying on the back
+	rect(canvas(f, b.Torso, "Back"), 0.5, 0.14, 0.62, 0.3, dark, 0, 0.4)
+	sleeves(b, base, true)
+end
+local function openJacket(f, b, c, inner)
+	around(f, b, function(gui, face)
+		if face == "Front" then
+			rect(gui, 0.16, 0.5, 0.34, 1, c)
+			rect(gui, 0.84, 0.5, 0.34, 1, c)
+			rect(gui, 0.34, 0.2, 0.06, 0.4, c:Lerp(BLACK, 0.2), 14)
+			rect(gui, 0.66, 0.2, 0.06, 0.4, c:Lerp(BLACK, 0.2), -14)
+			if inner then
+				rect(gui, 0.5, 0.5, 0.3, 1, inner)
+			end
+		else
+			rect(gui, 0.5, 0.5, 1, 1, c)
+		end
+	end)
+	sleeves(b, c, true)
+end
+function PAINTED.Jacket(f, b, c)
+	openJacket(f, b, c or rgb(60, 60, 70))
+end
+function PAINTED.Blazer(f, b, c)
+	c = c or rgb(40, 50, 80)
+	openJacket(f, b, c, WHITE)
+	local front = f:FindFirstChild("PaintedFront")
+	rect(front, 0.5, 0.35, 0.08, 0.5, rgb(60, 70, 110))
+	for k = 0, 1 do
+		rect(front, 0.68, 0.55 + k * 0.18, 0.05, 0.05, BLACK, 0, 1)
+	end
+end
+function PAINTED.Cardigan(f, b, c)
+	openJacket(f, b, c or rgb(150, 120, 100))
+end
+function PAINTED.Vest(f, b, c)
+	c = c or rgb(60, 60, 70)
+	around(f, b, function(gui, face)
+		if face == "Front" then
+			rect(gui, 0.2, 0.55, 0.38, 0.9, c)
+			rect(gui, 0.8, 0.55, 0.38, 0.9, c)
+		elseif face == "Back" then
+			rect(gui, 0.5, 0.55, 1, 0.9, c)
+		end
+	end)
+end
+function PAINTED.Stripes(f, b, c)
+	c = c or WHITE
+	around(f, b, function(gui)
+		for k = 0, 2 do
+			rect(gui, 0.5, 0.25 + k * 0.25, 1, 0.1, c)
+		end
+	end)
+end
+function PAINTED.Sweater(f, b, c)
+	c = c or b.Torso.Color
+	around(f, b, function(gui)
+		rect(gui, 0.5, 0.95, 1, 0.1, c:Lerp(BLACK, 0.15))
+		rect(gui, 0.5, 0.35, 1, 0.1, c:Lerp(WHITE, 0.4))
+		for k = 0, 5 do
+			rect(gui, 0.08 + k * 0.17, 0.35, 0.06, 0.06, c:Lerp(BLACK, 0.2), 45)
+		end
+	end)
+	b.Torso.Color = c
+	sleeves(b, c, true)
+end
+function PAINTED.Flannel(f, b, c)
+	c = c or rgb(170, 50, 50)
+	local line = c:Lerp(BLACK, 0.45)
+	b.Torso.Color = c
+	around(f, b, function(gui, face)
+		for k = 0, 4 do
+			rect(gui, 0.5, 0.1 + k * 0.2, 1, 0.05, line)
+			rect(gui, 0.1 + k * 0.2, 0.5, 0.05, 1, line)
+			rect(gui, 0.5, 0.2 + k * 0.2, 1, 0.015, WHITE:Lerp(c, 0.5))
+		end
+		if face == "Front" then
+			rect(gui, 0.5, 0.5, 0.03, 1, line)
+			for k = 0, 3 do
+				rect(gui, 0.53, 0.15 + k * 0.22, 0.04, 0.04, WHITE, 0, 1)
+			end
+		end
+	end)
+	sleeves(b, c, true)
+end
+function PAINTED.Puffer(f, b, c)
+	c = c or rgb(40, 60, 110)
+	b.Torso.Color = c
+	around(f, b, function(gui, face)
+		for k = 1, 4 do
+			rect(gui, 0.5, k * 0.2, 1, 0.025, c:Lerp(BLACK, 0.25))
+		end
+		if face == "Front" then
+			rect(gui, 0.5, 0.5, 0.03, 1, SILVER)
+			rect(gui, 0.5, 0.03, 0.6, 0.08, c:Lerp(BLACK, 0.1), 0, 0.5)
+		end
+	end)
+	sleeves(b, c, true)
+end
+function PAINTED.Varsity(f, b, c)
+	c = c or rgb(150, 30, 40)
+	b.Torso.Color = c
+	local cream = rgb(240, 236, 226)
+	around(f, b, function(gui, face)
+		rect(gui, 0.5, 0.96, 1, 0.08, cream)
+		if face == "Front" then
+			rect(gui, 0.5, 0.5, 0.04, 1, cream)
+			label(gui, string.char(65 + math.floor(c.R * 20) % 26), 0.25, 0.35, 0.3, 0.35, GOLD, cream)
+		elseif face == "Back" then
+			label(gui, "CITY", 0.5, 0.3, 0.8, 0.28, GOLD, cream)
+		end
+	end)
+	sleeves(b, cream, true)
+end
+function PAINTED.Tank(f, b, c)
+	-- bare arms and shoulders
+	for _, p in ipairs(armParts(b)) do
+		p.Color = b.Head.Color
+	end
+	local skin = b.Head.Color
+	for _, face in ipairs({ "Front", "Back" }) do
+		local gui = canvas(f, b.Torso, face)
+		rect(gui, 0.08, 0.12, 0.18, 0.26, skin)
+		rect(gui, 0.92, 0.12, 0.18, 0.26, skin)
+		rect(gui, 0.5, 0.02, 0.36, 0.12, skin, 0, 0.5)
+	end
+	for _, face in ipairs({ "Left", "Right" }) do
+		rect(canvas(f, b.Torso, face), 0.5, 0.12, 1, 0.26, skin)
+	end
+end
+-- a basketball jersey with a big number, like the hoops games
+function PAINTED.Jersey(f, b, c)
+	c = c or rgb(40, 90, 200)
+	local trim = if (c.R + c.G + c.B) > 1.8 then rgb(30, 30, 40) else WHITE
+	b.Torso.Color = c
+	for _, p in ipairs(armParts(b)) do
+		p.Color = b.Head.Color
+	end
+	local number = tostring((math.floor(c.R * 97 + c.G * 53 + c.B * 31) % 34) + 1)
+	for _, face in ipairs({ "Front", "Back" }) do
+		local gui = canvas(f, b.Torso, face)
+		rect(gui, 0.07, 0.14, 0.16, 0.3, b.Head.Color)
+		rect(gui, 0.93, 0.14, 0.16, 0.3, b.Head.Color)
+		rect(gui, 0.5, 0.03, 0.4, 0.14, b.Head.Color, 0, 0.5)
+		rect(gui, 0.5, 0.1, 0.44, 0.03, trim)
+		label(gui, number, 0.5, if face == "Front" then 0.55 else 0.5, 0.55, 0.5, trim, c:Lerp(BLACK, 0.4))
+		if face == "Back" then
+			label(gui, "CITY", 0.5, 0.2, 0.6, 0.14, trim)
+		end
+	end
+	for _, face in ipairs({ "Left", "Right" }) do
+		rect(canvas(f, b.Torso, face), 0.5, 0.14, 1, 0.3, b.Head.Color)
+		rect(canvas(f, b.Torso, face), 0.5, 0.5, 0.12, 1, trim)
+	end
+	-- matching shorts
+	if b.Lower then
+		b.Lower.Color = c
+		local model = b.Torso.Parent
+		for _, n in ipairs({ "LeftUpperLeg", "RightUpperLeg" }) do
+			local leg = model:FindFirstChild(n)
+			if leg then
+				leg.Color = c
+				rect(canvas(f, leg, "Left"), 0.5, 0.5, 0.15, 1, trim)
+				rect(canvas(f, leg, "Right"), 0.5, 0.5, 0.15, 1, trim)
+			end
+		end
+		for _, n in ipairs({ "LeftLowerLeg", "RightLowerLeg" }) do
+			local leg = model:FindFirstChild(n)
+			if leg then
+				leg.Color = b.Head.Color
+			end
+		end
+	end
+end
+function PAINTED.Overalls(f, b, c)
+	c = c or rgb(60, 90, 140)
+	local front = canvas(f, b.Torso, "Front")
+	rect(front, 0.5, 0.72, 0.6, 0.56, c)
+	rect(front, 0.5, 0.62, 0.24, 0.14, c:Lerp(BLACK, 0.2))
+	for _, x in ipairs({ 0.25, 0.75 }) do
+		rect(front, x, 0.25, 0.12, 0.5, c)
+		rect(front, x, 0.45, 0.07, 0.07, SILVER, 0, 1)
+	end
+	local back = canvas(f, b.Torso, "Back")
+	rect(back, 0.35, 0.3, 0.12, 0.7, c, 20)
+	rect(back, 0.65, 0.3, 0.12, 0.7, c, -20)
+	if b.Lower then
+		b.Lower.Color = c
+	end
+end
+CitizenLook.PAINTED = PAINTED
+
 -- the outfit pieces that a real 3D (layered) garment replaces
-local CLOTHING_ITEMS = { Tee = true, Polo = true, Hoodie = true, Jacket = true, Stripes = true, Sweater = true, Dress = true, Blazer = true, Flannel = true, Puffer = true, Varsity = true, Tank = true, Skirt = true, Overalls = true, Cardigan = true, Vest = true }
+local CLOTHING_ITEMS = { Jersey = true, Tee = true, Polo = true, Hoodie = true, Jacket = true, Stripes = true, Sweater = true, Dress = true, Blazer = true, Flannel = true, Puffer = true, Varsity = true, Tank = true, Skirt = true, Overalls = true, Cardigan = true, Vest = true }
 
 function CitizenLook.Apply(model, citizen, options)
 	options = options or {}
@@ -1406,6 +1725,8 @@ function CitizenLook.Apply(model, citizen, options)
 			local build = ITEMS[name]
 			if options.RealClothes and CLOTHING_ITEMS[name] then
 				build = nil
+			elseif PAINTED[name] and Config.PAINTED_CLOTHES ~= false then
+				build = PAINTED[name]
 			end
 			if build then
 				local ok, err = pcall(build, folder, body, color)
@@ -1509,11 +1830,14 @@ function CitizenLook.Build(citizen)
 	description.WidthScale = math.clamp(look.Width, 0.7, 1)
 	description.DepthScale = math.clamp(look.Depth or look.Width, 0.7, 1)
 	description.HeightScale = 1
-	description.BodyTypeScale = if look.Build == "athletic" or look.Build == "stocky" or look.Build == "muscular" then 0.3 else 0.1
-	description.ProportionScale = if look.Feminine then 0.4 else 0.2
 	-- realistic proportions: taller, longer-limbed and narrower than the stubby
 	-- default body (slim builds are the most slender, heavy builds the widest)
-	if look.Age >= 13 then
+	-- the classic Roblox body (like the hoops games): standard proportions, with
+	-- builds made from height and width (Config.REALISTIC_PROPORTIONS = true
+	-- gives taller, slimmer Rthro-like proportions instead)
+	description.BodyTypeScale = 0
+	description.ProportionScale = 0
+	if Config.REALISTIC_PROPORTIONS == true and look.Age >= 13 then
 		description.BodyTypeScale = if look.Feminine then 0.75 else 0.65
 		description.ProportionScale = ({ slim = 1, average = 0.6, athletic = 0.35, curvy = 0.2, heavy = 0, stocky = 0, muscular = 0.1 })[look.Build or "average"] or 0.5
 	end
@@ -1557,7 +1881,7 @@ function CitizenLook.Build(citizen)
 			end
 		end
 	end
-	local ids = not model and Config.SMOOTH_BODIES ~= false and CitizenLook.BODIES[package]
+	local ids = not model and Config.SMOOTH_BODIES == true and CitizenLook.BODIES[package]
 	if ids and not model and bodyWorks[package] ~= false then
 		-- try the smooth body; if it can't load, fall back to the default one
 		local smooth = description:Clone()
