@@ -206,6 +206,20 @@ local function attach(folder, bodyPart, name, size, offset, color, shape, materi
 	p.CastShadow = false
 	p.TopSurface = Enum.SurfaceType.Smooth
 	p.BottomSurface = Enum.SurfaceType.Smooth
+	-- on a sculpted (rounded) limb, anything wrapped around it — sleeves, cuffs,
+	-- bands — becomes a round tube instead of a box
+	if not shape and bodyPart:GetAttribute("Sculpted") then
+		local ps = bodyPart.Size
+		if size.X >= ps.X * 0.9 and size.Z >= ps.Z * 0.9 and size.X <= ps.X + 0.4 and size.Z <= ps.Z + 0.4 then
+			-- fitted to the rounded limb (a little looser than it)
+			local grow = math.max(size.X - ps.X, size.Z - ps.Z, 0)
+			local d = (bodyPart:GetAttribute("SculptD") or math.max(size.X, size.Z)) + 0.06 + grow * 0.6
+			size = Vector3.new(size.Y, d, d)
+			offset = offset * CFrame.Angles(0, 0, math.rad(90))
+			shape = "Cylinder"
+		end
+	end
+	p.Size = size
 	if shape == "Ball" then
 		p.Shape = Enum.PartType.Ball
 	elseif shape == "Cylinder" then
@@ -974,10 +988,18 @@ function CitizenLook.Describe(citizen)
 		Age = age,
 		Job = job,
 		Feminine = feminine,
-		-- everyone has their own height: grown-ups 0.92-1.08, kids a bit more spread
-		Height = if kid then rng:NextNumber(0.9, 1.1) else rng:NextNumber(0.92, 1.08),
+		-- everyone has their own height: grown-ups from short to tall (women a
+		-- little shorter on average), kids a bit more spread
+		Height = if kid then rng:NextNumber(0.88, 1.12) elseif feminine then rng:NextNumber(0.84, 1.08) else rng:NextNumber(0.9, 1.18),
 		Width = rng:NextNumber(0.85, 1.1),
 	}
+	-- a build: how wide and deep the body is, and its shape
+	local builds = if kid then { "slim", "average", "average", "heavy" }
+		elseif feminine then { "slim", "average", "average", "curvy", "curvy", "athletic", "athletic", "heavy", "muscular" }
+		else { "slim", "average", "average", "athletic", "athletic", "heavy", "stocky", "muscular", "muscular" }
+	look.Build = builds[rng:NextInteger(1, #builds)]
+	look.Width = ({ slim = 0.78, average = 0.9, curvy = 0.92, athletic = 1, heavy = 1, stocky = 1, muscular = 1 })[look.Build] * rng:NextNumber(0.96, 1.04)
+	look.Depth = ({ slim = 0.8, average = 0.9, curvy = 1, athletic = 0.92, heavy = 1, stocky = 0.96, muscular = 1 })[look.Build]
 	look.Face = Faces.Describe(rng, age, feminine)
 	look.Scale = CitizenLook.ScaleFor(age, look.Height)
 	if age < 3 then
@@ -1149,6 +1171,161 @@ local function paint(part, color)
 	end
 end
 
+--------------------------------------------------------------------------------
+-- Sculpted bodies: no blocks. Every limb is rebuilt from round pieces welded
+-- over the (then hidden) R15 parts, so the animations move them as usual:
+-- capsule arms and legs with ball joints at the shoulders, elbows, hips and
+-- knees, a chest with rounded sides and shoulders, round hips, round hands
+-- and shoes with a rounded toe. The build adds a waist, curves, broad
+-- shoulders or a belly. Colors come from the painted parts (clothes, skin).
+--------------------------------------------------------------------------------
+local LIMBS = { "LeftUpperArm", "LeftLowerArm", "RightUpperArm", "RightLowerArm", "LeftUpperLeg", "LeftLowerLeg", "RightUpperLeg", "RightLowerLeg" }
+
+local function piece(folder, part, name, size, offset, color, shape, material)
+	local p = Instance.new("Part")
+	p.Name = name
+	p.Size = size
+	p.Color = color
+	p.Material = material or Enum.Material.SmoothPlastic
+	p.CanCollide, p.CanQuery, p.CanTouch, p.Massless = false, false, false, true
+	p.CastShadow = true
+	p.TopSurface, p.BottomSurface = Enum.SurfaceType.Smooth, Enum.SurfaceType.Smooth
+	if shape then
+		p.Shape = shape
+	end
+	p.CFrame = part.CFrame * offset
+	local weld = Instance.new("WeldConstraint")
+	weld.Part0 = part
+	weld.Part1 = p
+	weld.Parent = p
+	p.Parent = folder
+	return p
+end
+
+local BALL, CYL = Enum.PartType.Ball, Enum.PartType.Cylinder
+
+-- how thick the rounded arms and legs are for a build (R15 limbs are a full
+-- stud thick: real arms and legs are much slimmer)
+local function tapers(look)
+	local build = look.Build or "average"
+	local arm = (if build == "muscular" then 0.86 elseif build == "athletic" or build == "stocky" or build == "heavy" then 0.74 elseif build == "slim" then 0.58 else 0.66) * (if look.Feminine then 0.92 else 1)
+	local leg = if build == "heavy" or build == "curvy" or build == "muscular" then 0.9 elseif build == "slim" then 0.72 else 0.8
+	return arm, leg
+end
+CitizenLook.Tapers = tapers
+local UPRIGHT = CFrame.Angles(0, 0, math.rad(90)) -- a cylinder standing up (they run along X)
+
+-- a capsule along the part's length: a tube and a ball at the top joint
+local function capsule(folder, part, name, color, material, taper, jointAtTop)
+	local s = part.Size
+	local d = math.min(s.X, s.Z) * (taper or 1)
+	piece(folder, part, name, Vector3.new(s.Y - d * 0.3, d, d), UPRIGHT, color, CYL, material)
+	if jointAtTop then
+		piece(folder, part, name .. "Joint", Vector3.new(d, d, d) * 1.02, CFrame.new(0, s.Y / 2 - d * 0.15, 0), color, BALL, material)
+	end
+	return d
+end
+
+function CitizenLook.Sculpt(model, folder, look)
+	local build = look.Build or "average"
+	local fabric = Enum.Material.Fabric
+	local function hide(p)
+		p.Transparency = 1
+		for _, d in ipairs(p:GetChildren()) do
+			if d:IsA("Decal") or d:IsA("Texture") then
+				d.Transparency = 1
+			end
+		end
+	end
+	-- arms and legs
+	for _, side in ipairs({ "Left", "Right" }) do
+		local ua, la, hand = model:FindFirstChild(side .. "UpperArm"), model:FindFirstChild(side .. "LowerArm"), model:FindFirstChild(side .. "Hand")
+		local ul, ll, foot = model:FindFirstChild(side .. "UpperLeg"), model:FindFirstChild(side .. "LowerLeg"), model:FindFirstChild(side .. "Foot")
+		local armTaper, legTaper = tapers(look)
+		if ua then
+			local d = capsule(folder, ua, "Arm", ua.Color, nil, armTaper, true)
+			if build == "muscular" or build == "athletic" then
+				-- a bicep
+				piece(folder, ua, "Bicep", Vector3.new(1, 1, 1) * d * 1.08, CFrame.new(0, -ua.Size.Y * 0.05, -d * 0.12), ua.Color, BALL)
+			end
+			hide(ua)
+		end
+		if la then
+			capsule(folder, la, "Forearm", la.Color, nil, armTaper * 0.88, true)
+			hide(la)
+		end
+		if hand then
+			local s = hand.Size
+			local d = math.min(s.X, s.Z) * armTaper * 0.85
+			piece(folder, hand, "Palm", Vector3.new(d, d, d), CFrame.new(0, s.Y * 0.1, 0), hand.Color, BALL)
+			piece(folder, hand, "Fingers", Vector3.new(s.Y * 0.7, d * 0.75, d * 0.75), CFrame.new(0, -s.Y * 0.25, 0) * UPRIGHT, hand.Color, CYL)
+			hide(hand)
+		end
+		if ul then
+			capsule(folder, ul, "Thigh", ul.Color, fabric, legTaper, true)
+			hide(ul)
+		end
+		if ll then
+			capsule(folder, ll, "Shin", ll.Color, fabric, legTaper * 0.88, true)
+			hide(ll)
+		end
+		if foot then
+			local s = foot.Size
+			local h = s.Y * 1.1
+			piece(folder, foot, "Shoe", Vector3.new(s.Z * 0.75, h, s.X * 0.95), CFrame.new(0, 0, s.Z * 0.1) * CFrame.Angles(0, math.rad(90), 0), foot.Color, CYL, Enum.Material.SmoothPlastic)
+			piece(folder, foot, "ShoeToe", Vector3.new(1, 1, 1) * math.min(s.X * 0.95, h * 1.3), CFrame.new(0, 0, -s.Z * 0.28), foot.Color, BALL, Enum.Material.SmoothPlastic)
+			piece(folder, foot, "Sole", Vector3.new(s.X * 0.95, 0.08, s.Z * 1.05), CFrame.new(0, -h / 2 + 0.03, -s.Z * 0.05), look.Shoes:Lerp(Color3.new(1, 1, 1), 0.6))
+			hide(foot)
+		end
+	end
+	-- the chest: a core with rounded sides and shoulders, narrower at the waist
+	local ut = model:FindFirstChild("UpperTorso")
+	if ut then
+		local s = ut.Size
+		local depth = s.Z * (if build == "curvy" or build == "heavy" then 1.05 else 0.95)
+		local shoulders = if build == "muscular" then 1.16 elseif build == "athletic" or build == "stocky" then 1.06 elseif build == "slim" then 0.94 else 1
+		local core = piece(folder, ut, "Chest", Vector3.new(s.X * shoulders - depth, s.Y * 0.98, depth), CFrame.new(), ut.Color, nil, fabric)
+		for _, sx in ipairs({ -1, 1 }) do
+			piece(folder, ut, "ChestSide", Vector3.new(s.Y * 0.62, depth, depth), CFrame.new(sx * (s.X * shoulders - depth) / 2, s.Y * 0.14, 0) * UPRIGHT, ut.Color, CYL, fabric)
+			piece(folder, ut, "Shoulder", Vector3.new(depth, depth, depth) * 1.02, CFrame.new(sx * (s.X * shoulders - depth) / 2, s.Y * 0.3, 0), ut.Color, BALL, fabric)
+		end
+		-- the waist, tucked in (wider on heavy builds)
+		local waist = if build == "heavy" then 0.98 elseif build == "athletic" or build == "curvy" or build == "muscular" then 0.72 else 0.82
+		local wd = depth * 0.96
+		piece(folder, ut, "Waist", Vector3.new(math.max(0.1, s.X * waist - wd), s.Y * 0.4, wd), CFrame.new(0, -s.Y * 0.28, 0), ut.Color, nil, fabric)
+		for _, sx in ipairs({ -1, 1 }) do
+			piece(folder, ut, "WaistSide", Vector3.new(s.Y * 0.4, wd, wd), CFrame.new(sx * (s.X * waist - wd) / 2, -s.Y * 0.28, 0) * UPRIGHT, ut.Color, CYL, fabric)
+		end
+		if build == "heavy" then
+			piece(folder, ut, "Belly", Vector3.new(1, 1, 1) * s.X * 0.62, CFrame.new(0, -s.Y * 0.18, -depth * 0.2), ut.Color, BALL, fabric)
+		elseif build == "muscular" then
+			-- a big chest
+			for _, sx in ipairs({ -1, 1 }) do
+				piece(folder, ut, "Pec", Vector3.new(1, 1, 1) * depth * 0.62, CFrame.new(sx * s.X * 0.2, s.Y * 0.14, -depth * 0.26), ut.Color, BALL, fabric)
+			end
+		elseif build == "curvy" or (look.Feminine and look.Age >= 13) then
+			for _, sx in ipairs({ -1, 1 }) do
+				piece(folder, ut, "Bust", Vector3.new(1, 1, 1) * depth * 0.5, CFrame.new(sx * s.X * 0.17, s.Y * 0.1, -depth * 0.26), ut.Color, BALL, fabric)
+			end
+		end
+		-- a neck
+		piece(folder, ut, "NeckSkin", Vector3.new(s.Y * 0.3, s.Z * 0.5, s.Z * 0.5), CFrame.new(0, s.Y / 2 + s.Y * 0.05, 0) * UPRIGHT, look.Skin, CYL)
+		hide(ut)
+		core.Name = "Chest"
+	end
+	-- the hips: rounded, wider on curvy builds
+	local lt = model:FindFirstChild("LowerTorso")
+	if lt then
+		local s = lt.Size
+		local wide = if build == "curvy" then 1.08 elseif build == "slim" then 0.92 else 1
+		piece(folder, lt, "Hips", Vector3.new(s.X * wide, s.Y * 1.1, s.Z * 0.95), CFrame.new(), lt.Color, CYL, fabric)
+		for _, sx in ipairs({ -1, 1 }) do
+			piece(folder, lt, "HipJoint", Vector3.new(1, 1, 1) * math.min(s.Y * 1.25, s.Z), CFrame.new(sx * s.X * wide * 0.3, -s.Y * 0.2, 0), lt.Color, BALL, fabric)
+		end
+		hide(lt)
+	end
+end
+
 function CitizenLook.Apply(model, citizen, options)
 	options = options or {}
 	local look = CitizenLook.Describe(citizen or {})
@@ -1195,6 +1372,21 @@ function CitizenLook.Apply(model, citizen, options)
 	end
 	-- everything else is welded on
 	local body = readBody(model)
+	local sculpt = r15 and Config.SCULPTED_BODIES == true -- (off: opt in with Config.SCULPTED_BODIES = true)
+	if sculpt then
+		local armT, legT = tapers(look)
+		for _, name in ipairs(LIMBS) do
+			local p = model:FindFirstChild(name)
+			if p then
+				local t = if string.find(name, "Arm") then armT else legT
+				if string.find(name, "Lower") then
+					t *= if string.find(name, "Arm") then 0.88 else 0.88
+				end
+				p:SetAttribute("Sculpted", true)
+				p:SetAttribute("SculptD", math.min(p.Size.X, p.Size.Z) * t)
+			end
+		end
+	end
 	if body.Head and body.Torso then
 		hair(folder, body, look.Hair, look.HairColor)
 		for _, item in ipairs(look.Items) do
@@ -1213,6 +1405,9 @@ function CitizenLook.Apply(model, citizen, options)
 				attach(folder, leg, "Shoe", leg and Vector3.new(leg.Size.X + 0.04, 0.35, leg.Size.Z + 0.12) or Vector3.one, CFrame.new(0, leg and (-leg.Size.Y / 2 + 0.17) or 0, -0.05), look.Shoes)
 			end
 		end
+	end
+	if sculpt and body.Head and body.Torso then
+		CitizenLook.Sculpt(model, folder, look)
 	end
 	-- the drawn face (R15 heads; every client animates it)
 	if r15 and body.Head and not options.KeepFace then
@@ -1259,8 +1454,11 @@ function CitizenLook.Build(citizen)
 	description.TorsoColor = look.Top
 	description.LeftLegColor = look.Bottom
 	description.RightLegColor = look.Bottom
-	description.WidthScale = math.clamp(look.Width, 0.75, 1)
-	description.DepthScale = math.clamp(look.Width, 0.75, 1)
+	description.WidthScale = math.clamp(look.Width, 0.7, 1)
+	description.DepthScale = math.clamp(look.Depth or look.Width, 0.7, 1)
+	description.HeightScale = 1
+	description.BodyTypeScale = if look.Build == "athletic" or look.Build == "stocky" or look.Build == "muscular" then 0.3 else 0.1
+	description.ProportionScale = if look.Feminine then 0.4 else 0.2
 	local model
 	local package = if look.Feminine then "Woman" else "Man"
 	local ids = Config.SMOOTH_BODIES ~= false and CitizenLook.BODIES[package]
