@@ -34,6 +34,8 @@ Players can talk to anyone, give speeches, run for mayor and pass laws. They can
 
 ![Downtown](downtown_preview.png)
 
+The whole city stands on a solid paved base. Every block has raised pavement sidewalks with curbs, the roads have lane lines and crosswalks, and there are lawns only in yards and parks. The terrain grass stays outside the city, and the tall grass blades are switched off, so grass never grows up through the streets or floors.
+
 | Area | What's there |
 |---|---|
 | **Downtown** | <ul><li>⛲ City Plaza: fountain, speech stage and podium, ballot box, news board, chess tables, dance floor, musicians.</li><li>🏛️ Town Hall and 🏦 City Bank (vault and ATM).</li><li>🚓 Police (holding cell), 🥐 Bakery, ☕ Cafe, 🛒 Market, 💊 Pharmacy, 📚 Library, 🍝 Restaurant.</li></ul> |

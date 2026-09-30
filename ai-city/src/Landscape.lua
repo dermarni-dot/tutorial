@@ -53,11 +53,30 @@ function Landscape.build(parent, rng)
 		terrain:FillCylinder(CFrame.new(L + Vector3.new(0, -5, 0)), 10, Landscape.LAKE_RADIUS, Enum.Material.Air)
 		terrain:FillCylinder(CFrame.new(L + Vector3.new(0, -6, 0)), 10, Landscape.LAKE_RADIUS, Enum.Material.Water)
 		terrain:FillCylinder(CFrame.new(L + Vector3.new(0, -12, 0)), 4, Landscape.LAKE_RADIUS, Enum.Material.Sand)
+		-- no terrain grass under the city: it would grow up through the roads,
+		-- sidewalks and floors. The city stands on its own paved base (below).
+		local cityW = EXTENT * 2 + 40
+		terrain:FillBlock(CFrame.new(0, -4, 0), Vector3.new(cityW, 16, cityW), Enum.Material.Air)
+		terrain:FillBlock(CFrame.new(0, -12, 0), Vector3.new(cityW, 8, cityW), Enum.Material.Asphalt)
+		-- short, tidy grass everywhere else (no tall swaying grass blades)
+		pcall(function()
+			terrain.Decoration = false
+		end)
 	else
 		-- no terrain (tests): a simple ground plate and a water disc
 		part(folder, "Ground", Vector3.new(size, 2, size), CFrame.new(0, -1.05, 0), MapKit.GRASS, Enum.Material.Grass)
 		local water = MapKit.disc(folder, "Lake", 0.5, Landscape.LAKE_RADIUS * 2, Landscape.LAKE + Vector3.new(0, 0.1, 0), rgb(60, 140, 200), Enum.Material.Glass)
 		water.Transparency = 0.2
+	end
+
+	-- the city's paved base: street level everywhere between the roads,
+	-- sidewalks and buildings (a thick slab so nothing shows through)
+	local cityW = EXTENT * 2 + 40
+	part(folder, "CityGround", Vector3.new(cityW, 4, cityW), CFrame.new(0, -2, 0), rgb(88, 90, 96), Enum.Material.Asphalt)
+	-- a curb-height grass verge around the edge of the city
+	for _, e in ipairs({ { 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 } }) do
+		local size = if e[1] ~= 0 then Vector3.new(3, 0.6, cityW) else Vector3.new(cityW, 0.6, 3)
+		deco(folder, "CityEdge", size, CFrame.new(e[1] * (cityW / 2 - 1.5), 0.3, e[2] * (cityW / 2 - 1.5)), MapKit.CURB, Enum.Material.Concrete)
 	end
 
 	-- a wooden pier into the lake, with spots for fishing

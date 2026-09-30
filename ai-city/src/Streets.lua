@@ -230,7 +230,7 @@ function Streets.build(parent, rng, blockKind)
 	for i = -N, N do
 		for j = -N, N do
 			local c = Vector3.new(i * SPACING, LOT_Y, j * SPACING)
-			part(walks, "Sidewalk", Vector3.new(BLOCK, LOT_Y, BLOCK), CFrame.new(c.X, LOT_Y / 2, c.Z), MapKit.CONCRETE, Enum.Material.Concrete)
+			part(walks, "Sidewalk", Vector3.new(BLOCK, LOT_Y, BLOCK), CFrame.new(c.X, LOT_Y / 2, c.Z), MapKit.CONCRETE, Enum.Material.Pavement)
 			for _, e in ipairs({ { 0, -1 }, { 0, 1 }, { -1, 0 }, { 1, 0 } }) do
 				local sizeCurb = if e[1] == 0 then Vector3.new(BLOCK, LOT_Y + 0.05, 0.6) else Vector3.new(0.6, LOT_Y + 0.05, BLOCK)
 				deco(walks, "Curb", sizeCurb, CFrame.new(c.X + e[1] * (HALF - 0.3), (LOT_Y + 0.05) / 2, c.Z + e[2] * (HALF - 0.3)), MapKit.CURB, Enum.Material.Concrete)
