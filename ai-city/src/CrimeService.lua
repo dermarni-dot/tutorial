@@ -832,6 +832,60 @@ local function arrest(player)
 	S.City.Adjust("Safety", 2 + stars)
 end
 
+-- an officer next to a suspect who isn't down yet: a baton hit, or the taser
+local STRIKE_LINES = { "Stop resisting!", "Get on the ground!", "Hands behind your back!", "Don't move!" }
+function CrimeService.Stun(player, seconds)
+	local character = player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if not humanoid or character:GetAttribute("Stunned") then
+		return
+	end
+	character:SetAttribute("Stunned", true)
+	local speed, jump = humanoid.WalkSpeed, humanoid.JumpPower
+	humanoid.WalkSpeed, humanoid.JumpPower = 0, 0
+	S.City.Toast(player, "⚡", "Tased!", "You can't move for a moment. The police can cuff you now.", Color3.fromRGB(250, 220, 60))
+	task.delay(seconds, function()
+		if character.Parent then
+			character:SetAttribute("Stunned", nil)
+			if humanoid.WalkSpeed == 0 then
+				humanoid.WalkSpeed = if speed > 0 then speed else 16
+			end
+			if humanoid.JumpPower == 0 then
+				humanoid.JumpPower = if jump > 0 then jump else 50
+			end
+		end
+	end)
+end
+
+function CrimeService.PoliceStrike(player, w)
+	local root = rootOf(player)
+	if not root then
+		return
+	end
+	local now = os.clock()
+	for _, brain in ipairs(w.Chasers) do
+		if brain.Model.Parent and (brain.Root.Position - root.Position).Magnitude < 5.5 and now >= (brain.NextStrike or 0) then
+			brain.NextStrike = now + math.max(0.8, 1.4 - w.Stars * 0.1)
+			if w.Stars >= 2 and math.random() < 0.2 then
+				-- the taser
+				brain.Model:SetAttribute("Swing", now)
+				S.Citizens.Say(brain, "Taser! Taser!", "angry", 1.4)
+				CrimeService.Stun(player, 2.4)
+				S.City.SendNear(root.Position, 120, { Type = "Hit", Position = root.Position + Vector3.new(0, 2, 0), Damage = 4, Player = true })
+			else
+				brain.Model:SetAttribute("SwingSide", (brain.Model:GetAttribute("SwingSide") or 0) + 1)
+				brain.Model:SetAttribute("SwingWeapon", "Bat")
+				brain.Model:SetAttribute("Swing", now)
+				hurtPlayer(brain.Root.Position, player, math.random(6, 9) + w.Stars * 2, 12)
+				if math.random() < 0.3 then
+					S.Citizens.Say(brain, STRIKE_LINES[math.random(1, #STRIKE_LINES)], "angry", 1.4)
+				end
+			end
+			return
+		end
+	end
+end
+
 local swatNames = { "Carter", "Okafor", "Tanaka", "Silva", "Haddad", "Larsen", "Brooks", "Mensah" }
 local function spawnBackup(player, root, swat)
 	-- backup arrives from a sidewalk out of sight
@@ -1129,15 +1183,36 @@ local function chaseTick(dt)
 		player:SetAttribute("PoliceCount", #w.Chasers)
 		player:SetAttribute("Helicopter", w.Heli ~= nil)
 		player:SetAttribute("PoliceNear", if nearest < math.huge then math.floor(nearest) else nil)
-		if close and not hiding[player] then
+		-- the police can only cuff you once you're down: hurt (low health),
+		-- tased, or you've put your hands up (Z). Until then they fight you:
+		-- baton hits, and a taser from 2 stars.
+		local character = player.Character
+		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+		local hpFrac = if humanoid and humanoid.MaxHealth > 0 then humanoid.Health / humanoid.MaxHealth else 1
+		local subdued = hpFrac <= (Config.ARREST_HP or 0.35) or (character and (character:GetAttribute("Stunned") or character:GetAttribute("Surrender")))
+		if close and not hiding[player] and subdued then
 			w.Progress += dt
-			if w.Progress >= 1.1 then
+			player:SetAttribute("Cuffing", math.min(1, w.Progress / 1.4))
+			if w.Progress >= 1.4 then
 				w.Progress = 0
+				player:SetAttribute("Cuffing", nil)
+				if character then
+					character:SetAttribute("Surrender", nil)
+				end
 				arrest(player)
+				if humanoid then
+					humanoid.Health = math.max(humanoid.Health, humanoid.MaxHealth * 0.6) -- patched up at the station
+				end
 				continue
 			end
 		else
-			w.Progress = math.max(0, w.Progress - dt * 0.5)
+			w.Progress = math.max(0, w.Progress - dt * 0.8)
+			if w.Progress <= 0 then
+				player:SetAttribute("Cuffing", nil)
+			end
+			if close and not hiding[player] then
+				CrimeService.PoliceStrike(player, w)
+			end
 		end
 		-- out of sight long enough: the stars fade one by one
 		-- (hiding makes them give up faster)
@@ -1209,6 +1284,20 @@ function CrimeService.Start(services)
 	S = services
 	S.City.Handle("Punch", attack)
 	S.City.Handle("Attack", attack)
+	-- hands up: the police can cuff you without a fight (Z again to stop)
+	S.City.Handle("Surrender", function(player)
+		local character = player.Character
+		if not character then
+			return nil
+		end
+		local on = not character:GetAttribute("Surrender")
+		character:SetAttribute("Surrender", on or nil)
+		local humanoid = character:FindFirstChildOfClass("Humanoid")
+		if humanoid and not character:GetAttribute("Stunned") then
+			humanoid.WalkSpeed = if on then 0 else 16
+		end
+		return { Surrender = on }
+	end)
 	S.City.Handle("Unhide", function(player)
 		CrimeService.Unhide(player)
 		return { Ok = true }

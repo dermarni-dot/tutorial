@@ -230,6 +230,11 @@ UserInputService.InputBegan:Connect(function(input, processed)
 		World.Attack()
 	elseif key == Enum.KeyCode.X then
 		World.SetBlock(true)
+	elseif key == Enum.KeyCode.Z then
+		-- hands up (the police cuff you without a fight)
+		task.spawn(function()
+			ctx.Remotes.Request:InvokeServer({ Action = "Surrender" })
+		end)
 	elseif key == Enum.KeyCode.Escape or key == Enum.KeyCode.Backspace then
 		if Panels.InDialogue() then
 			Panels.EndDialogue(true)

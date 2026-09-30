@@ -1828,7 +1828,13 @@ local function playerUpdate(model, st, t, dt, player)
 	local eating = model:GetAttribute("Eating")
 	local humanoid0 = model:FindFirstChildOfClass("Humanoid")
 	local seatPart = humanoid0 and humanoid0.SeatPart
-	if seatPart and seatPart.Name == "SwingSeat" then
+	if model:GetAttribute("Stunned") then
+		-- tased: stiff and shaking
+		local j = osc(t, 38, st.Phase) * 4
+		target, full = { LS = A(20 + j, 0, 30), RS = A(20 - j, 0, -30), LE = A(60), RE = A(60), Waist = A(-8 + j * 0.5), Neck = A(-10, j * 2, 0), LK = A(-20), RK = A(-20), Root = CFrame.new(0, -0.3, 0) }, true
+	elseif model:GetAttribute("Surrender") then
+		target, full = L.handsup(t, st.Phase)
+	elseif seatPart and seatPart.Name == "SwingSeat" then
 		-- pumping the swing: legs out on the way forward, tucked on the way back
 		target, full = L.swingsit(t, st.Phase)
 	elseif model:GetAttribute("Treadmill") then

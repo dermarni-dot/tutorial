@@ -75,7 +75,9 @@ local function step(dt)
 				exhausted = true
 				ctx.Hud.Toast("😮‍💨", "Out of breath!", "Stop running for a moment to get your stamina back. Train at the gym for more.", Color3.fromRGB(240, 170, 60))
 			end
-			if humanoid.WalkSpeed ~= st.Sprint then
+			if humanoid.Parent and (humanoid.Parent:GetAttribute("Stunned") or humanoid.Parent:GetAttribute("Surrender")) then
+				-- (tased or hands up: no running)
+			elseif humanoid.WalkSpeed ~= st.Sprint then
 				humanoid.WalkSpeed = st.Sprint
 				ourSpeed = st.Sprint
 			end

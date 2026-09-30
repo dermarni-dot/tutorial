@@ -510,10 +510,15 @@ local function frame(dt)
 		end
 		refs.Police.Visible = true
 		refs.PoliceTip.Visible = true
-		if seen then
+		local cuffing = player:GetAttribute("Cuffing")
+		if cuffing then
+			refs.Police.Text = "🔗 BEING CUFFED  " .. string.rep("■", math.floor(cuffing * 10)) .. string.rep("□", 10 - math.floor(cuffing * 10))
+			refs.Police.BackgroundColor3 = C.Red
+			refs.PoliceTip.Text = "You're down! Get away before the cuffs go on."
+		elseif seen then
 			refs.Police.Text = "🚨 CHASING YOU" .. force .. (if near then "  ·  " .. near .. " studs" else "")
 			refs.Police.BackgroundColor3 = C.Red
-			refs.PoliceTip.Text = (if level then "<b>" .. level .. "</b>. " else "") .. "Break their line of sight: duck around a corner or into a building."
+			refs.PoliceTip.Text = (if level then "<b>" .. level .. "</b>. " else "") .. "Break their line of sight: duck around a corner or into a building. They can only cuff you when you're hurt, tased or give up (Z)."
 		elseif hidden then
 			refs.Police.Text = "🫥 HIDDEN in " .. tostring(hidden) .. force .. (if near then "  ·  " .. near .. " studs" else "")
 			refs.Police.BackgroundColor3 = C.Purple
