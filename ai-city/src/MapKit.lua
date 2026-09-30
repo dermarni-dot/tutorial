@@ -87,6 +87,31 @@ function MapKit.deco(parent, name, size, cf, color, material, props)
 	return p
 end
 
+-- Trim that runs around the OUTSIDE of a W × D building (h tall, t thick,
+-- centered at cf), leaving the inside empty. gap: an opening in the front
+-- (-Z) side for the door.
+function MapKit.ring(parent, name, cf, W, D, h, t, color, material, gap)
+	local parts = {}
+	local function add(size, offset)
+		if size.X > 0.05 and size.Z > 0.05 then
+			table.insert(parts, MapKit.deco(parent, name, size, cf * offset, color, material))
+		end
+	end
+	local full = W + 2 * t
+	add(Vector3.new(full, h, t), CFrame.new(0, 0, D / 2 + t / 2))
+	if gap and gap > 0 then
+		local side = (full - gap) / 2
+		add(Vector3.new(side, h, t), CFrame.new(-full / 2 + side / 2, 0, -D / 2 - t / 2))
+		add(Vector3.new(side, h, t), CFrame.new(full / 2 - side / 2, 0, -D / 2 - t / 2))
+	else
+		add(Vector3.new(full, h, t), CFrame.new(0, 0, -D / 2 - t / 2))
+	end
+	for _, s in ipairs({ -1, 1 }) do
+		add(Vector3.new(t, h, D), CFrame.new(s * (W / 2 + t / 2), 0, 0))
+	end
+	return parts
+end
+
 function MapKit.wedge(parent, name, size, cf, color, material, collide)
 	local p = Instance.new("WedgePart")
 	p.Name = name

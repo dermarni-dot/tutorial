@@ -54,7 +54,8 @@ function Buildings.shell(parent, spec)
 	-- ground floor slab and a plinth around the base
 	part(model, "Floor", Vector3.new(W, 0.4, D), at(0, 0.2, 0), spec.FloorColor or MapKit.rgb(206, 196, 180), spec.FloorMaterial or Enum.Material.WoodPlanks)
 	if spec.Plinth ~= false then
-		deco(model, "Plinth", Vector3.new(W + 0.4, 1.2, D + 0.4), at(0, 0.6, 0), trim:Lerp(BLACK, 0.2), Enum.Material.Concrete)
+		-- a low base around the outside of the walls (not over the floor), open at the door
+		MapKit.ring(model, "Plinth", at(0, 0.45, 0), W, D, 0.9, 0.35, trim:Lerp(BLACK, 0.2), Enum.Material.Concrete, DW + 1)
 	end
 
 	if spec.CurtainWall then
@@ -120,7 +121,7 @@ function Buildings.shell(parent, spec)
 			end
 		end
 		for f = 1, floors do
-			deco(model, "Band", Vector3.new(W + 0.6, 0.7, D + 0.6), at(0, f * FLOOR_H - 0.35, 0), trim)
+			MapKit.ring(model, "Band", at(0, f * FLOOR_H - 0.35, 0), W, D, 0.7, 0.3, trim)
 		end
 		-- windows: storefront glass on the ground floor front, framed windows elsewhere
 		for f = 0, floors - 1 do

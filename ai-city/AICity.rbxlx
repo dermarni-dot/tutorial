@@ -2062,6 +2062,31 @@ function MapKit.deco(parent, name, size, cf, color, material, props)
 	return p
 end
 
+-- Trim that runs around the OUTSIDE of a W × D building (h tall, t thick,
+-- centered at cf), leaving the inside empty. gap: an opening in the front
+-- (-Z) side for the door.
+function MapKit.ring(parent, name, cf, W, D, h, t, color, material, gap)
+	local parts = {}
+	local function add(size, offset)
+		if size.X > 0.05 and size.Z > 0.05 then
+			table.insert(parts, MapKit.deco(parent, name, size, cf * offset, color, material))
+		end
+	end
+	local full = W + 2 * t
+	add(Vector3.new(full, h, t), CFrame.new(0, 0, D / 2 + t / 2))
+	if gap and gap > 0 then
+		local side = (full - gap) / 2
+		add(Vector3.new(side, h, t), CFrame.new(-full / 2 + side / 2, 0, -D / 2 - t / 2))
+		add(Vector3.new(side, h, t), CFrame.new(full / 2 - side / 2, 0, -D / 2 - t / 2))
+	else
+		add(Vector3.new(full, h, t), CFrame.new(0, 0, -D / 2 - t / 2))
+	end
+	for _, s in ipairs({ -1, 1 }) do
+		add(Vector3.new(t, h, D), CFrame.new(s * (W / 2 + t / 2), 0, 0))
+	end
+	return parts
+end
+
 function MapKit.wedge(parent, name, size, cf, color, material, collide)
 	local p = Instance.new("WedgePart")
 	p.Name = name
@@ -2257,7 +2282,8 @@ function Buildings.shell(parent, spec)
 	-- ground floor slab and a plinth around the base
 	part(model, "Floor", Vector3.new(W, 0.4, D), at(0, 0.2, 0), spec.FloorColor or MapKit.rgb(206, 196, 180), spec.FloorMaterial or Enum.Material.WoodPlanks)
 	if spec.Plinth ~= false then
-		deco(model, "Plinth", Vector3.new(W + 0.4, 1.2, D + 0.4), at(0, 0.6, 0), trim:Lerp(BLACK, 0.2), Enum.Material.Concrete)
+		-- a low base around the outside of the walls (not over the floor), open at the door
+		MapKit.ring(model, "Plinth", at(0, 0.45, 0), W, D, 0.9, 0.35, trim:Lerp(BLACK, 0.2), Enum.Material.Concrete, DW + 1)
 	end
 
 	if spec.CurtainWall then
@@ -2323,7 +2349,7 @@ function Buildings.shell(parent, spec)
 			end
 		end
 		for f = 1, floors do
-			deco(model, "Band", Vector3.new(W + 0.6, 0.7, D + 0.6), at(0, f * FLOOR_H - 0.35, 0), trim)
+			MapKit.ring(model, "Band", at(0, f * FLOOR_H - 0.35, 0), W, D, 0.7, 0.3, trim)
 		end
 		-- windows: storefront glass on the ground floor front, framed windows elsewhere
 		for f = 0, floors - 1 do
@@ -2916,12 +2942,42 @@ function ROOMS.police(b, f, list, rng, place)
 	for k = 0, 2 do
 		desk(b, f, -W / 2 + 7 + k * 8, 3, list, "type", "work", 1, place, rgb(120, 110, 100))
 	end
-	-- holding cell with bars
+	-- the holding cell: a real cell in the back corner. The building's back and
+	-- side walls, a concrete wall, and a front of solid bars (with a locked door)
+	-- that nobody can walk through.
 	local cx, cz = W / 2 - 7, D / 2 - 6
-	for k = 0, 7 do
-		box(b, f, "CellBar", Vector3.new(0.25, 9, 0.25), cx - 4.5 + k * 1.3, 0, cz - 4, rgb(60, 60, 66), Enum.Material.Metal)
+	local x0, x1 = cx - 6, W / 2 - 0.4 -- left and right inside edges
+	local zf, zb = cz - 4.5, D / 2 - 0.4 -- front (bars) and back
+	local h = FLOOR_H - 0.8
+	local steel = rgb(52, 54, 60)
+	local function solid(name, size, x, y, z, color, material)
+		return MapKit.part(b.Model, name, size, at(b, f, x, y + size.Y / 2, z), color, material)
 	end
-	box(b, f, "CellBench", Vector3.new(6, 1.6, 2), cx, 0, cz + 2, rgb(120, 120, 126), Enum.Material.Concrete)
+	-- floor and the side wall
+	box(b, f, "CellFloor", Vector3.new(x1 - x0, 0.06, zb - zf), (x0 + x1) / 2, 0, (zf + zb) / 2, rgb(120, 122, 128), Enum.Material.Concrete)
+	solid("CellWall", Vector3.new(0.6, h, zb - zf + 0.6), x0 - 0.3, 0, (zf + zb) / 2, rgb(170, 172, 178), Enum.Material.Concrete)
+	-- the bars, with rails top, bottom and across the middle
+	local n = math.floor((x1 - x0) / 0.8)
+	for k = 0, n do
+		solid("CellBar", Vector3.new(0.3, h, 0.3), x0 + 0.2 + k * (x1 - x0 - 0.4) / n, 0, zf, steel, Enum.Material.Metal)
+	end
+	for _, y in ipairs({ 0.1, h / 2, h - 0.3 }) do
+		solid("CellRail", Vector3.new(x1 - x0, 0.3, 0.45), (x0 + x1) / 2, y, zf, steel, Enum.Material.Metal)
+	end
+	-- the door: a frame, hinges and a big lock
+	local dx = cx + 1.5
+	box(b, f, "CellDoorFrame", Vector3.new(0.35, h, 0.6), dx - 2, 0, zf, rgb(40, 42, 48), Enum.Material.Metal)
+	box(b, f, "CellDoorFrame", Vector3.new(0.35, h, 0.6), dx + 2, 0, zf, rgb(40, 42, 48), Enum.Material.Metal)
+	box(b, f, "CellLock", Vector3.new(0.9, 1.1, 0.7), dx + 1.5, 3.4, zf, rgb(200, 170, 60), Enum.Material.Metal)
+	-- inside: a bench, a toilet and a sink, a caged light
+	box(b, f, "CellBench", Vector3.new(7, 1.6, 2), cx, 0, zb - 1.2, rgb(120, 120, 126), Enum.Material.Concrete)
+	box(b, f, "CellToilet", Vector3.new(1.6, 1.6, 2), x1 - 1.2, 0, zf + 2.2, rgb(220, 222, 226), Enum.Material.Metal)
+	box(b, f, "CellSink", Vector3.new(1.4, 0.6, 1), x1 - 0.8, 3, zf + 4.4, rgb(220, 222, 226), Enum.Material.Metal)
+	local lamp = box(b, f, "CellLamp", Vector3.new(1.6, 0.4, 1.6), cx, h - 0.6, (zf + zb) / 2, rgb(255, 240, 200), Enum.Material.Neon)
+	MapKit.light(lamp, rgb(255, 235, 200), 16, 0.9)
+	-- a sign over the bars
+	local sign = box(b, f, "CellSign", Vector3.new(6, 1.2, 0.2), cx, h - 1.6, zf - 0.4, rgb(40, 36, 50))
+	MapKit.signText(sign, Enum.NormalId.Front, "HOLDING CELL", rgb(255, 210, 80))
 	box(b, f, "WantedBoard", Vector3.new(6, 4, 0.2), -W / 2 + 6, 4, D / 2 - 1.2, rgb(200, 180, 140))
 	spot(list, b, f, -W / 2 + 6, D / 2 - 4, 0, 1, "guard", "work")
 	b.Jail = at(b, f, cx, 0, cz).Position
@@ -4248,7 +4304,8 @@ function B.Police(ctx, parent, i, j, rng)
 	local face = ctx.faceFor(i, j)
 	local b = Buildings.shell(parent, { Name = "PoliceStation", Label = ctx.label("PoliceStation"), Center = ctx.frontLot(c, face, 38) - face * 6, Face = face, W = 54, D = 38, Floors = 2, Wall = rgb(70, 95, 160), Trim = rgb(230, 230, 235), Material = Enum.Material.Brick, SignColor = rgb(25, 40, 90), Stairs = true })
 	local at = b.At
-	deco(b.Model, "Stripe", Vector3.new(b.W + 0.2, 1.2, b.D + 0.2), at(0, 4, 0), WHITE)
+	-- a white stripe around the outside of the station (with a gap for the doors)
+	MapKit.ring(b.Model, "Stripe", at(0, 4, 0), b.W, b.D, 1.2, 0.12, WHITE, nil, (b.Spec.DoorW or 8) + 1)
 	local siren = deco(b.Model, "Siren", Vector3.new(3, 1.2, 1.5), at(0, b.H + 1.8, -b.D / 2 + 2), rgb(255, 60, 60), Enum.Material.Neon)
 	MapKit.tag(siren, "Siren")
 	MapKit.light(siren, rgb(255, 60, 60), 14, 1)

@@ -322,12 +322,42 @@ function ROOMS.police(b, f, list, rng, place)
 	for k = 0, 2 do
 		desk(b, f, -W / 2 + 7 + k * 8, 3, list, "type", "work", 1, place, rgb(120, 110, 100))
 	end
-	-- holding cell with bars
+	-- the holding cell: a real cell in the back corner. The building's back and
+	-- side walls, a concrete wall, and a front of solid bars (with a locked door)
+	-- that nobody can walk through.
 	local cx, cz = W / 2 - 7, D / 2 - 6
-	for k = 0, 7 do
-		box(b, f, "CellBar", Vector3.new(0.25, 9, 0.25), cx - 4.5 + k * 1.3, 0, cz - 4, rgb(60, 60, 66), Enum.Material.Metal)
+	local x0, x1 = cx - 6, W / 2 - 0.4 -- left and right inside edges
+	local zf, zb = cz - 4.5, D / 2 - 0.4 -- front (bars) and back
+	local h = FLOOR_H - 0.8
+	local steel = rgb(52, 54, 60)
+	local function solid(name, size, x, y, z, color, material)
+		return MapKit.part(b.Model, name, size, at(b, f, x, y + size.Y / 2, z), color, material)
 	end
-	box(b, f, "CellBench", Vector3.new(6, 1.6, 2), cx, 0, cz + 2, rgb(120, 120, 126), Enum.Material.Concrete)
+	-- floor and the side wall
+	box(b, f, "CellFloor", Vector3.new(x1 - x0, 0.06, zb - zf), (x0 + x1) / 2, 0, (zf + zb) / 2, rgb(120, 122, 128), Enum.Material.Concrete)
+	solid("CellWall", Vector3.new(0.6, h, zb - zf + 0.6), x0 - 0.3, 0, (zf + zb) / 2, rgb(170, 172, 178), Enum.Material.Concrete)
+	-- the bars, with rails top, bottom and across the middle
+	local n = math.floor((x1 - x0) / 0.8)
+	for k = 0, n do
+		solid("CellBar", Vector3.new(0.3, h, 0.3), x0 + 0.2 + k * (x1 - x0 - 0.4) / n, 0, zf, steel, Enum.Material.Metal)
+	end
+	for _, y in ipairs({ 0.1, h / 2, h - 0.3 }) do
+		solid("CellRail", Vector3.new(x1 - x0, 0.3, 0.45), (x0 + x1) / 2, y, zf, steel, Enum.Material.Metal)
+	end
+	-- the door: a frame, hinges and a big lock
+	local dx = cx + 1.5
+	box(b, f, "CellDoorFrame", Vector3.new(0.35, h, 0.6), dx - 2, 0, zf, rgb(40, 42, 48), Enum.Material.Metal)
+	box(b, f, "CellDoorFrame", Vector3.new(0.35, h, 0.6), dx + 2, 0, zf, rgb(40, 42, 48), Enum.Material.Metal)
+	box(b, f, "CellLock", Vector3.new(0.9, 1.1, 0.7), dx + 1.5, 3.4, zf, rgb(200, 170, 60), Enum.Material.Metal)
+	-- inside: a bench, a toilet and a sink, a caged light
+	box(b, f, "CellBench", Vector3.new(7, 1.6, 2), cx, 0, zb - 1.2, rgb(120, 120, 126), Enum.Material.Concrete)
+	box(b, f, "CellToilet", Vector3.new(1.6, 1.6, 2), x1 - 1.2, 0, zf + 2.2, rgb(220, 222, 226), Enum.Material.Metal)
+	box(b, f, "CellSink", Vector3.new(1.4, 0.6, 1), x1 - 0.8, 3, zf + 4.4, rgb(220, 222, 226), Enum.Material.Metal)
+	local lamp = box(b, f, "CellLamp", Vector3.new(1.6, 0.4, 1.6), cx, h - 0.6, (zf + zb) / 2, rgb(255, 240, 200), Enum.Material.Neon)
+	MapKit.light(lamp, rgb(255, 235, 200), 16, 0.9)
+	-- a sign over the bars
+	local sign = box(b, f, "CellSign", Vector3.new(6, 1.2, 0.2), cx, h - 1.6, zf - 0.4, rgb(40, 36, 50))
+	MapKit.signText(sign, Enum.NormalId.Front, "HOLDING CELL", rgb(255, 210, 80))
 	box(b, f, "WantedBoard", Vector3.new(6, 4, 0.2), -W / 2 + 6, 4, D / 2 - 1.2, rgb(200, 180, 140))
 	spot(list, b, f, -W / 2 + 6, D / 2 - 4, 0, 1, "guard", "work")
 	b.Jail = at(b, f, cx, 0, cz).Position
