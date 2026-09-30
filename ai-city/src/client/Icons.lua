@@ -499,6 +499,20 @@ D.police = function(c)
 	T(c, 0.5, 0.47, 0.38, "★", GOLD)
 end
 
+-- a little car, side on: body, cabin with windows, two wheels
+D.car = function(c)
+	local body = rgb(80, 170, 240)
+	R(c, 0.5, 0.58, 0.84, 0.22, body, { r = 0.4, grad = { WHITE, rgb(150, 180, 220), 90 } })
+	R(c, 0.47, 0.42, 0.46, 0.2, body, { r = 0.35 })
+	R(c, 0.38, 0.43, 0.16, 0.12, rgb(40, 60, 100), { r = 0.2 })
+	R(c, 0.57, 0.43, 0.16, 0.12, rgb(40, 60, 100), { r = 0.2 })
+	R(c, 0.9, 0.56, 0.05, 0.06, rgb(255, 230, 140))
+	for _, x in ipairs({ 0.27, 0.73 }) do
+		C(c, x, 0.7, 0.2, rgb(30, 30, 36))
+		C(c, x, 0.7, 0.09, rgb(200, 200, 210))
+	end
+end
+
 D.city = function(c)
 	local lit = rgb(255, 214, 110)
 	local towers = {
@@ -696,6 +710,7 @@ local ALIAS = {
 	["🏏"] = "bat", ["🔨"] = "hammer", ["🔪"] = "knife", ["🛡️"] = "shield", ["🪙"] = "coin", ["❤️"] = "heart",
 	["💬"] = "chat", ["🚨"] = "siren", ["🪪"] = "idcard", ["🛗"] = "elevator", ["🏆"] = "trophy", ["🏙️"] = "city",
 	["🧥"] = "hoodie", ["🥸"] = "disguise", ["☀️"] = "sun", ["🌙"] = "moon", ["🌅"] = "sunset", ["🌇"] = "sunset",
+	["🚗"] = "car", Car = "car",
 	["💰"] = "coin", ["💼"] = "briefcase", Jobs = "briefcase", ["😊"] = "smile", ["🏥"] = "hospital", ["🚓"] = "police",
 }
 Icons.Alias = ALIAS

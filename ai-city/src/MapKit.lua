@@ -9,8 +9,8 @@ local MapKit = {}
 --------------------------------------------------------------------------------
 -- Layout numbers (shared by every map module)
 --------------------------------------------------------------------------------
-MapKit.SPACING = 124 -- block center to block center (big blocks: room for big houses and yards)
-MapKit.ROAD = 16 -- road width
+MapKit.SPACING = 134 -- block center to block center (big blocks: room for big houses and yards)
+MapKit.ROAD = 26 -- road width: a driving lane each way plus a parking lane on both sides
 MapKit.BLOCK = MapKit.SPACING - MapKit.ROAD -- 108: a block including its sidewalk
 MapKit.HALF = MapKit.BLOCK / 2
 MapKit.SIDEWALK = 5
@@ -18,6 +18,8 @@ MapKit.RING = MapKit.HALF - MapKit.SIDEWALK / 2 -- where people walk on the side
 MapKit.N = 5 -- blocks from the center to the edge (11x11 blocks)
 MapKit.EXTENT = MapKit.N * MapKit.SPACING + MapKit.SPACING / 2 -- the city is 2 * EXTENT across
 MapKit.LOT_Y = 0.5 -- ground level inside blocks (top of the curb)
+MapKit.LANE = 3.4 -- driving lanes run this far to the right of a road's center line
+MapKit.PARK = MapKit.ROAD / 2 - 3.6 -- parked cars, along the curb
 MapKit.FLOOR_H = 12
 
 --------------------------------------------------------------------------------

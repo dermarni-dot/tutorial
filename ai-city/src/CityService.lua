@@ -463,6 +463,13 @@ local function loadPlayer(player)
 		FishCaught = tonumber(saved.FishCaught) or 0,
 		BiggestFish = tonumber(saved.BiggestFish) or 0,
 		BiggestFishName = type(saved.BiggestFishName) == "string" and saved.BiggestFishName or nil,
+		-- the North Shore: carnival tickets, the obby, your cars and your pet
+		Tickets = tonumber(saved.Tickets) or 0,
+		ObbyBest = tonumber(saved.ObbyBest),
+		Cars = type(saved.Cars) == "table" and saved.Cars or {},
+		Car = type(saved.Car) == "string" and saved.Car or nil,
+		Pets = type(saved.Pets) == "table" and saved.Pets or {},
+		Pet = type(saved.Pet) == "table" and saved.Pet or nil,
 	}
 	playerData[player] = data
 	player:SetAttribute("Coins", data.Coins)
@@ -477,7 +484,7 @@ local function savePlayer(player)
 	local data = playerData[player]
 	if data and playerStore then
 		pcall(function()
-			playerStore:SetAsync("p_" .. player.UserId, { Coins = data.Coins, Crimes = data.Crimes, Notoriety = data.Notoriety, Weapons = data.Weapons, Outfits = data.Outfits, Wearing = data.Wearing, Fitness = data.Fitness, Talks = data.Talks, Arrests = data.Arrests, Terms = data.Terms, Home = data.Home, HasRod = data.HasRod, JobXP = data.JobXP, FishCaught = data.FishCaught, BiggestFish = data.BiggestFish, BiggestFishName = data.BiggestFishName })
+			playerStore:SetAsync("p_" .. player.UserId, { Coins = data.Coins, Crimes = data.Crimes, Notoriety = data.Notoriety, Weapons = data.Weapons, Outfits = data.Outfits, Wearing = data.Wearing, Fitness = data.Fitness, Talks = data.Talks, Arrests = data.Arrests, Terms = data.Terms, Home = data.Home, HasRod = data.HasRod, JobXP = data.JobXP, FishCaught = data.FishCaught, BiggestFish = data.BiggestFish, BiggestFishName = data.BiggestFishName, Tickets = data.Tickets, ObbyBest = data.ObbyBest, Cars = data.Cars, Car = data.Car, Pets = data.Pets, Pet = data.Pet })
 		end)
 	end
 end

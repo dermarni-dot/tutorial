@@ -482,6 +482,34 @@ end
 --------------------------------------------------------------------------------
 -- a gunshot: a flash at the muzzle, a streak to where the bullet went, a bang
 local bang
+-- a balloon popping: bits of rubber fly out
+function World.Pop(pos, color)
+	if typeof(pos) ~= "Vector3" then
+		return
+	end
+	for k = 1, 6 do
+		local bit = Instance.new("Part")
+		bit.Name = "PopBit"
+		bit.Size = Vector3.new(0.3, 0.3, 0.08)
+		bit.Color = if typeof(color) == "Color3" then color else Color3.fromRGB(255, 80, 100)
+		bit.Anchored, bit.CanCollide, bit.CanQuery, bit.CanTouch = true, false, false, false
+		local dir = Vector3.new(math.cos(k), math.sin(k * 2.3) * 0.6, math.sin(k))
+		bit.CFrame = CFrame.new(pos)
+		bit.Parent = workspace
+		task.spawn(function()
+			for i = 1, 8 do
+				task.wait(0.03)
+				if not bit.Parent then
+					return
+				end
+				bit.CFrame = CFrame.new(pos + dir * i * 0.3 - Vector3.new(0, i * i * 0.01, 0)) * CFrame.Angles(i, i * 0.7, 0)
+				bit.Transparency = i / 8
+			end
+			bit:Destroy()
+		end)
+	end
+end
+
 function World.Shot(from, to, weapon)
 	if typeof(from) ~= "Vector3" or typeof(to) ~= "Vector3" then
 		return

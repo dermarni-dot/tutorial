@@ -24,6 +24,10 @@ local World = require(script:WaitForChild("World"))
 local Moves = require(script:WaitForChild("Moves"))
 local Gamepad = require(script:WaitForChild("Gamepad"))
 local Water = require(script:WaitForChild("Water"))
+local Traffic = require(script:WaitForChild("Traffic"))
+local Rides = require(script:WaitForChild("Rides"))
+local Pets = require(script:WaitForChild("Pets"))
+local Drive = require(script:WaitForChild("Drive"))
 local Poses = require(Shared:WaitForChild("Poses"))
 local C = UI.C
 
@@ -38,6 +42,7 @@ local ctx = {
 	UI = UI,
 	Player = player,
 	SpeechSpot = info:GetAttribute("SpeechSpot"),
+	Drive = Drive,
 }
 
 Hud.Start(ctx)
@@ -46,6 +51,10 @@ Panels.Start(ctx)
 Moves.Start(ctx)
 Gamepad.Start(ctx)
 Water.Start()
+Traffic.Start()
+Rides.Start(ctx)
+Pets.Start()
+Drive.Start(ctx)
 
 -- the citizens' poses, props and faces, every frame (after animations)
 local step = RunService.PreSimulation or RunService.Stepped
@@ -120,6 +129,12 @@ handlers.Goals = function(d)
 end
 handlers.Shop = function(d)
 	Panels.OpenShop(d)
+end
+handlers.Store = function(d)
+	Panels.OpenStore(d)
+end
+handlers.Pop = function(d)
+	World.Pop(d.Position, d.Color)
 end
 handlers.FoodMenu = function(d)
 	Panels.OpenFood(d)

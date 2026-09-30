@@ -74,6 +74,9 @@ if Config.RUN_CITIZENS ~= false then
 	services.Sports = require(Modules:WaitForChild("SportsService"))
 	services.Fishing = require(Modules:WaitForChild("FishingService"))
 	services.Prison = require(Modules:WaitForChild("PrisonService"))
+	services.Cars = require(Modules:WaitForChild("CarService"))
+	services.Fun = require(Modules:WaitForChild("FunService"))
+	services.Pets = require(Modules:WaitForChild("PetService"))
 	services.Dialogue.Start(services)
 	services.Crime.Start(services)
 	services.Players.Start(services)
@@ -90,5 +93,8 @@ if Config.RUN_CITIZENS ~= false then
 	services.Sports.Start(services)
 	services.Fishing.Start(services)
 	services.Prison.Start(services)
+	services.Cars.Start(services)
+	services.Fun.Start(services)
+	services.Pets.Start(services)
 	task.spawn(services.Citizens.Start, services)
 end

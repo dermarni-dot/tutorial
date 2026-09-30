@@ -495,6 +495,8 @@ local FAMILY_OUTINGS = {
 	{ "Park", "🌳 Family day at the park", "play" },
 	{ "WillowPark", "🌿 Picnic at Willow Park", "sit" },
 	{ "Lake", "🎣 Fishing trip at the lake", "fish" },
+	{ "Funland", "🎡 A family day at Funland", "ride" },
+	{ "Beach", "🏖️ A day at the beach", "sunbathe" },
 	{ "Museum", "🏺 Family museum visit", "browse" },
 	{ "Cinema", "🎬 Family movie", "watch" },
 	{ "IceCream", "🍦 Ice cream with the family", "eat" },
@@ -677,8 +679,8 @@ function Life:Plan(c, hour, day)
 				return { Kind = "Place", Place = outing[1], Activity = outing[2], Family = true, Want = outing[3] }
 			end
 			if teen and hour >= 12 and hour < 18 then
-				local where = ({ "Arcade", "Mall", "Cinema", "Plaza", "Lake", "Gym" })[rng:Int(1, 6)]
-				return { Kind = "Place", Place = where, Activity = "😎 Out with friends", Want = if where == "Arcade" then "game" elseif where == "Gym" then "lift" else nil }
+				local where = ({ "Arcade", "Mall", "Cinema", "Plaza", "Lake", "Gym", "Funland", "Beach", "Funland" })[rng:Int(1, 9)]
+				return { Kind = "Place", Place = where, Activity = if where == "Funland" then "🎡 Riding rides at Funland" elseif where == "Beach" then "🏖️ Hanging out at the beach" else "😎 Out with friends", Want = if where == "Arcade" then "game" elseif where == "Gym" then "lift" else nil }
 			end
 			if hour >= 12 and hour < 17 then
 				return { Kind = "Place", Place = if rng:Next() < 0.5 then "Park" else "WillowPark", Activity = "🛝 Playing outside", Want = "play" }
@@ -730,9 +732,13 @@ function Life:Plan(c, hour, day)
 			if sporty then
 				return { Kind = "Place", Place = if rng:Next() < 0.5 then "Gym" else "SportsField", Activity = "💪 Weekend workout", Want = if rng:Next() < 0.5 then "lift" else "run" }
 			end
+			if rng:Next() < 0.4 then
+				local fun = rng:Next() < 0.5
+				return { Kind = "Place", Place = if fun then "Funland" else "Beach", Activity = if fun then "🎡 A day at Funland" else "🏖️ A day at the beach", Want = if fun then "ride" else rng:Pick({ "sunbathe", "sit", "cheer" }) }
+			end
 			return { Kind = "Place", Place = rng:Pick(ERRANDS), Activity = "🛍️ Shopping" }
 		elseif hour < 21 then
-			local where = rng:Pick({ "Restaurant", "Cinema", "Plaza", "Diner" })
+			local where = rng:Pick({ "Restaurant", "Cinema", "Plaza", "Diner", "Funland" })
 			return { Kind = "Place", Place = where, Activity = if where == "Plaza" then "💃 Evening at the plaza" else "🌆 Night out", Want = if where == "Plaza" then "dance" else nil }
 		end
 		return home("📺 Relaxing at home", "tv")
@@ -794,7 +800,7 @@ function Life:Plan(c, hour, day)
 				local dr = newRng(hash(c.Household, day, "date", math.floor(hour / 1.5)))
 				local romantic = personality == "romantic" or partner.Personality == "romantic"
 				if dr:Next() < (self.Config.DATE_CHANCE or 0.2) * (if romantic then 1.8 else 1) then
-					local pick = dr:Pick({ { "Restaurant", "eat" }, { "Lake", nil }, { "Park", "sit" }, { "Cinema", "watch" }, { "Cafe", "coffee" } })
+					local pick = dr:Pick({ { "Restaurant", "eat" }, { "Lake", nil }, { "Park", "sit" }, { "Cinema", "watch" }, { "Cafe", "coffee" }, { "Funland", "ride" }, { "Beach", "sit" } })
 					return { Kind = "Place", Place = pick[1], Activity = "💕 Date night with " .. partner.First, Want = pick[2], Date = partner.Id }
 				end
 			end
@@ -807,7 +813,7 @@ function Life:Plan(c, hour, day)
 		elseif personality == "romantic" and roll < 0.35 then
 			return { Kind = "Place", Place = rng:Pick({ "Restaurant", "Lake", "Park" }), Activity = "💘 A romantic evening", Want = if rng:Next() < 0.5 then "sit" else nil }
 		elseif personality == "adventurous" and roll < 0.4 then
-			return { Kind = "Place", Place = rng:Pick({ "Lake", "WillowPark", "Park", "Museum" }), Activity = "🧭 Exploring", Want = nil }
+			return { Kind = "Place", Place = rng:Pick({ "Lake", "WillowPark", "Park", "Museum", "Beach", "Funland" }), Activity = "🧭 Exploring", Want = nil }
 		elseif personality == "ambitious" and roll < 0.35 and job then
 			return { Kind = "Place", Place = "Library", Activity = "📈 Studying for a promotion", Want = "study" }
 		elseif personality == "nosy" and roll < 0.4 then
@@ -822,7 +828,13 @@ function Life:Plan(c, hour, day)
 			return { Kind = "Place", Place = "Gym", Activity = "🏋️ At the gym", Want = rng:Pick({ "run", "lift", "squat", "punch", "yoga" }) }
 		elseif hobbyOut and roll < 0.7 then
 			return { Kind = "Hobby", Hobby = c.Hobby, Activity = "🎨 " .. c.Hobby }
-		elseif #c.Friends > 0 and roll < 0.85 then
+		elseif roll < 0.78 and hour < 20 then
+			-- up Shore Drive: the rides, or the sunset at the beach
+			if rng:Next() < 0.5 then
+				return { Kind = "Place", Place = "Funland", Activity = "🎡 An evening at Funland", Want = if rng:Next() < 0.7 then "ride" else nil }
+			end
+			return { Kind = "Place", Place = "Beach", Activity = "🌅 Sunset at the beach", Want = rng:Pick({ "sit", "sunbathe", "cheer" }) }
+		elseif #c.Friends > 0 and roll < 0.87 then
 			return { Kind = "Place", Place = rng:Pick(HANGOUTS), Activity = "☕ Meeting a friend", Want = "chat" }
 		elseif roll < 0.95 then
 			return { Kind = "Place", Place = rng:Pick(ERRANDS), Activity = "🛍️ After work" }

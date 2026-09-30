@@ -24,6 +24,7 @@ local Interiors = require(Modules:WaitForChild("Interiors"))
 local Streets = require(Modules:WaitForChild("Streets"))
 local Landscape = require(Modules:WaitForChild("Landscape"))
 local Prison = require(Modules:WaitForChild("Prison"))
+local NorthShore = require(Modules:WaitForChild("NorthShore"))
 local Places = require(Modules:WaitForChild("Places"))
 
 local MapBuilder = {}
@@ -575,6 +576,26 @@ function MapBuilder.Build()
 		table.insert(map.HobbySpots.fishing, s)
 	end
 
+	-- the North Shore: Funland, Sunset Beach and AutoLand (see NorthShore)
+	local shore = NorthShore.build(root, Random.new((Config.SEED or 1776) + 11), land.Terrain)
+	map.NorthShore = shore
+	local topDoor = blockCenter(0, -N) + Vector3.new(HALF - 2, 0, -HALF + 2)
+	for _, def in ipairs({ { "Funland", shore.FunlandSpots, shore.FunlandDoor }, { "Beach", shore.BeachSpots, shore.BeachDoor }, { "AutoLand", shore.AutoLandSpots, shore.AutoLandDoor } }) do
+		local place = newPlace(def[1], shore.Model, 0, -N)
+		place.Door = topDoor
+		place.Inside = def[3]
+		place.Outdoor = true
+		place.Node = corner(0, -N, 1, -1)
+		for _, s in ipairs(def[2]) do
+			registerSpot(s, def[1], nil)
+			table.insert(place.Spots, s)
+		end
+	end
+	for _, s in ipairs(shore.PierFishing) do
+		map.HobbySpots.fishing = map.HobbySpots.fishing or {}
+		table.insert(map.HobbySpots.fishing, s)
+	end
+
 	-- outdoor benches are somewhere to rest
 	for _, entry in ipairs(Registry.Seats) do
 		if entry.Place == "Plaza" or entry.Place == "Park" or entry.Place == "WillowPark" then
@@ -628,9 +649,12 @@ function MapBuilder.Build()
 		return points
 	end
 	map.BusSeats = streets.BusSeats
+	map.BusStops = streets.BusStops
 	map.Bounds = { Min = Vector3.new(-EXTENT, 0, -EXTENT), Max = Vector3.new(EXTENT, 0, EXTENT) }
 	map.Spacing = SPACING
 	map.Extent = EXTENT
+	map.Road = MapKit.ROAD
+	map.Lane = MapKit.LANE
 	map.Lake = Landscape.LAKE
 	-- life in the parks: fireflies over the ponds and flowerbeds at night,
 	-- leaves drifting down from some of the trees
@@ -674,6 +698,18 @@ function MapBuilder.Build()
 	info:SetAttribute("Extent", EXTENT)
 	info:SetAttribute("Spacing", SPACING)
 	info:SetAttribute("Blocks", N)
+	-- for the traffic on every client (see the client's Traffic module)
+	info:SetAttribute("Road", MapKit.ROAD)
+	info:SetAttribute("Lane", MapKit.LANE)
+	local stops = Instance.new("Folder")
+	stops.Name = "BusStops"
+	for k, p in ipairs(map.BusStops or {}) do
+		local v = Instance.new("Vector3Value")
+		v.Name = "Stop" .. k
+		v.Value = p
+		v.Parent = stops
+	end
+	stops.Parent = info
 	info:SetAttribute("LakeX", Landscape.LAKE.X)
 	info:SetAttribute("LakeZ", Landscape.LAKE.Z)
 	info:SetAttribute("LakeRadius", Landscape.LAKE_RADIUS)

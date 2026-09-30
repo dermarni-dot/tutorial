@@ -224,6 +224,13 @@ local function refreshInfo(brain)
 	m:SetAttribute("Job", if stage == "Adult" then (c.Job or "") else "")
 	m:SetAttribute("Personality", c.Personality or "")
 	m:SetAttribute("Hobby", c.Hobby or "")
+	-- about one grown-up in ten has a dog (it walks with them: see the client's Pets)
+	if not c.Temp and stage == "Adult" and (c.Id * 7919) % 10 == 3 then
+		m:SetAttribute("Pet", "Dog")
+		m:SetAttribute("PetName", ({ "Rex", "Bailey", "Cooper", "Lucy", "Sadie", "Duke", "Pepper", "Scout" })[c.Id % 8 + 1])
+	elseif stage ~= "Adult" then
+		m:SetAttribute("Pet", nil)
+	end
 	if not c.Temp then
 		local h = pop.Households[c.Household]
 		local due = h and pop:DaysToGo(h)
@@ -494,7 +501,8 @@ local function buildRoute(brain, t)
 	local steps = {}
 	local pos = brain.Root.Position
 	local from = brain.Building
-	local dest = t.Spot and t.Spot.CFrame.Position or t.Pos
+	-- (a ride seat can be high in the air: walk to where you get on)
+	local dest = t.Spot and (t.Spot.Approach or t.Spot.CFrame.Position) or t.Pos
 	local destFloor = t.Floor or 1
 	-- After(brain) runs when a step is done (so we always know if they're inside)
 	local function walk(points, after)
@@ -560,6 +568,7 @@ local function unanchor(brain)
 	brain.Model:SetAttribute("SwingPivot", nil)
 	brain.Model:SetAttribute("SwingAxis", nil)
 	brain.Model:SetAttribute("Target", nil)
+	brain.Model:SetAttribute("RideSeat", nil)
 end
 
 -- stand up at a spot (used when leaving a seat or bed, so nobody gets stuck in furniture)
@@ -599,6 +608,10 @@ local function placeAt(brain, spot, action)
 	end
 	if spot.Hoop then
 		brain.Model:SetAttribute("Target", spot.Hoop)
+	end
+	-- a seat on a ride: the rider goes round with it (see the client's Rides)
+	if spot.RideSeat then
+		brain.Model:SetAttribute("RideSeat", spot.RideSeat)
 	end
 end
 

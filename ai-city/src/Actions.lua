@@ -99,6 +99,9 @@ Actions.List = {
 	jailed = { Pose = "jailed", Label = "🔒 In jail" },
 	getaway = { Pose = "none", Props = { "Loot" }, Label = "💰 Running away" },
 	ko = { Pose = "ko", Lying = true, Label = "💫 Knocked out" },
+	-- the North Shore
+	ride = { Pose = "sit", Seated = true, Label = "🎡 On a ride" },
+	sunbathe = { Pose = "sleep", Lying = true, Label = "🏖️ Sunbathing" },
 	carry = { Pose = "carry", Label = "👶 Carrying the baby" },
 }
 

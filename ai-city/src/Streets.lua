@@ -246,7 +246,7 @@ function Streets.build(parent, rng, blockKind)
 	furniture.Name = "StreetFurniture"
 	furniture.Parent = parent
 	local length = EXTENT * 2 + ROAD
-	local busSeats = {}
+	local busSeats, busStops = {}, {}
 
 	for k = -N - 1, N do
 		local line = (k + 0.5) * SPACING
@@ -262,8 +262,8 @@ function Streets.build(parent, rng, blockKind)
 				deco(roads, "LaneDash", Vector3.new(0.35, 0.22, 6), CFrame.new(line, 0.01, s * SPACING + off), rgb(245, 205, 70))
 			end
 			for _, e in ipairs({ -1, 1 }) do
-				deco(roads, "EdgeLine", Vector3.new(SPACING - ROAD - 2, 0.21, 0.25), CFrame.new(s * SPACING, 0.01, line + e * (ROAD / 2 - 0.8)), rgb(235, 235, 235))
-				deco(roads, "EdgeLine", Vector3.new(0.25, 0.21, SPACING - ROAD - 2), CFrame.new(line + e * (ROAD / 2 - 0.8), 0.01, s * SPACING), rgb(235, 235, 235))
+				deco(roads, "EdgeLine", Vector3.new(SPACING - ROAD - 2, 0.21, 0.25), CFrame.new(s * SPACING, 0.01, line + e * (ROAD / 2 - 6.9)), rgb(235, 235, 235))
+				deco(roads, "EdgeLine", Vector3.new(0.25, 0.21, SPACING - ROAD - 2), CFrame.new(line + e * (ROAD / 2 - 6.9), 0.01, s * SPACING), rgb(235, 235, 235))
 			end
 			-- a manhole in each road segment
 			MapKit.disc(roads, "Manhole", 0.24, 3, Vector3.new(s * SPACING + 20, 0.01, line + 3), rgb(70, 70, 74), Enum.Material.DiamondPlate)
@@ -275,7 +275,8 @@ function Streets.build(parent, rng, blockKind)
 		for b = -N - 1, N do
 			local x, z = (a + 0.5) * SPACING, (b + 0.5) * SPACING
 			local downtown = math.abs(a + 0.5) <= 2 and math.abs(b + 0.5) <= 2
-			for s = -3, 3 do
+			local stripes = math.floor((ROAD / 2 - 1) / 2.1)
+			for s = -stripes, stripes do
 				for _, side in ipairs({ -1, 1 }) do
 					deco(roads, "Crosswalk", Vector3.new(1.2, 0.24, 5), CFrame.new(x + s * 2.1, 0.02, z + side * (ROAD / 2 + 2.8)), WHITE)
 					deco(roads, "Crosswalk", Vector3.new(5, 0.24, 1.2), CFrame.new(x + side * (ROAD / 2 + 2.8), 0.02, z + s * 2.1), WHITE)
@@ -357,6 +358,8 @@ function Streets.build(parent, rng, blockKind)
 		local cf = CFrame.lookAt(c + Vector3.new(12, 0, -HALF + 2.8), c + Vector3.new(12, 0, -HALF - 5))
 		local seat = busStop(furniture, cf, Streets.streetName(j - 1))
 		table.insert(busSeats, seat)
+		-- where the bus pulls up: in the lane beside the shelter
+		table.insert(busStops, Vector3.new(c.X + 12, 0, j * SPACING - SPACING / 2 + MapKit.LANE))
 	end
 
 	-- parked cars along the curbs
@@ -378,7 +381,7 @@ function Streets.build(parent, rng, blockKind)
 		end
 		Streets.car(cars, cf, CAR_COLORS[rng:NextInteger(1, #CAR_COLORS)], if rng:NextNumber() < 0.15 then "van" else nil)
 	end
-	return { BusSeats = busSeats }
+	return { BusSeats = busSeats, BusStops = busStops }
 end
 
 return Streets

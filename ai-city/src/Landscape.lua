@@ -6,6 +6,7 @@
 local MapKit = require(script.Parent:WaitForChild("MapKit"))
 local Streets = require(script.Parent:WaitForChild("Streets"))
 local Prison = require(script.Parent:WaitForChild("Prison"))
+local NorthShore = require(script.Parent:WaitForChild("NorthShore"))
 
 local Landscape = {}
 
@@ -14,6 +15,10 @@ local EXTENT = MapKit.EXTENT
 
 -- keep the hills and the woods off the prison and Prison Road
 local function nearPrison(p, margin)
+	-- (and off the North Shore: Funland, the beach and the ocean)
+	if p.X > NorthShore.WEST - margin and p.X < NorthShore.EAST + margin and p.Z < -EXTENT + margin * 0.3 then
+		return true
+	end
 	local c = Prison.CENTER
 	if (Vector3.new(p.X, 0, p.Z) - c).Magnitude < Prison.RADIUS + margin then
 		return true
@@ -54,6 +59,9 @@ function Landscape.build(parent, rng)
 			local r = EXTENT + rng:NextNumber(700, 820)
 			local height = rng:NextNumber(150, 230)
 			local p = Vector3.new(math.cos(a) * r, -height * 0.35, math.sin(a) * r)
+			if p.Z < -EXTENT and math.abs(p.X) < 1100 then
+				continue -- (the ocean is up north)
+			end
 			terrain:FillBall(p, height, Enum.Material.Rock)
 			terrain:FillBall(p + Vector3.new(0, height * 0.72, 0), height * 0.38, Enum.Material.Snow)
 		end
@@ -68,6 +76,19 @@ function Landscape.build(parent, rng)
 		local cityW = EXTENT * 2 + 40
 		terrain:FillBlock(CFrame.new(0, -4, 0), Vector3.new(cityW, 16, cityW), Enum.Material.Air)
 		terrain:FillBlock(CFrame.new(0, -12, 0), Vector3.new(cityW, 8, cityW), Enum.Material.Asphalt)
+		-- the North Shore: a sandy beach, then the ocean; no grass under the
+		-- paved parts (see NorthShore)
+		local wz = NorthShore.WATER_Z
+		local beachZ = NorthShore.BOARDWALK_Z - 10
+		local oceanW, oceanD = 2400, 900
+		terrain:FillBlock(CFrame.new(-65, -3, (beachZ + wz) / 2), Vector3.new(oceanW, 6, beachZ - wz), Enum.Material.Sand)
+		terrain:FillBlock(CFrame.new(-65, -6, wz - oceanD / 2), Vector3.new(oceanW, 14, oceanD), Enum.Material.Air)
+		terrain:FillBlock(CFrame.new(-65, -9, wz - oceanD / 2), Vector3.new(oceanW, 16, oceanD), Enum.Material.Water)
+		terrain:FillBlock(CFrame.new(-65, -19, wz - oceanD / 2), Vector3.new(oceanW, 4, oceanD), Enum.Material.Sand)
+		for _, area in ipairs(NorthShore.PAVED) do
+			terrain:FillBlock(CFrame.new(area.Center + Vector3.new(0, -4, 0)), Vector3.new(area.Size.X, 8, area.Size.Z), Enum.Material.Air)
+			terrain:FillBlock(CFrame.new(area.Center + Vector3.new(0, -10, 0)), Vector3.new(area.Size.X, 4, area.Size.Z), Enum.Material.Ground)
+		end
 		-- the same under the prison and Prison Road (see Prison)
 		local pc = Prison.F * CFrame.new(0, 0, -12)
 		local pSize = Vector3.new(Prison.W + 24, 16, Prison.D + 48)

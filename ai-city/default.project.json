@@ -149,6 +149,18 @@
         "Prison": {
           "$path": "src/Prison.lua"
         },
+        "NorthShore": {
+          "$path": "src/NorthShore.lua"
+        },
+        "CarService": {
+          "$path": "src/CarService.lua"
+        },
+        "FunService": {
+          "$path": "src/FunService.lua"
+        },
+        "PetService": {
+          "$path": "src/PetService.lua"
+        },
         "Conversation": {
           "$path": "src/Conversation.lua"
         }

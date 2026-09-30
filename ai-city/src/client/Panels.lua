@@ -882,7 +882,9 @@ local function buildHelp()
 		{ "🏃 Sprinting and stamina", "Hold <b>Shift</b> (or the Sprint button) to run. It uses stamina (the ⚡ bar above your health), which refills when you stop. Sprinting and running on the <b>gym treadmills</b> (press E) earn fitness XP: every level gives you more stamina, faster recovery and a faster sprint. Food refills stamina too." },
 		{ "🍔 Food", "Press <b>E</b> at the counter of the Bakery, Cafe, Diner, Restaurant, Ice Cream shop or Market to order. Food heals you ❤️ and refills stamina ⚡. Coffee and energy drinks make stamina refill faster for a while." },
 		{ "🥷 Disguises", "Buy a 🧥 <b>hoodie</b>, a 🥷 <b>ski mask</b> or a 🥸 <b>disguise kit</b> at the 👕 Clothing store, and wear them with <b>C</b>. Witnesses may not recognize you (fewer stars, no notoriety, nobody remembers it was you), the police have to get closer to spot you, and it all works much better <b>at night</b>. After a crime, change or take off your outfit where nobody can see: the police keep looking for the old one. But a ski mask in daylight makes people nervous..." },
-		{ "⌨️ Keys", "Tab phone · E talk / use · M map · P people · V vote · B speech · N mayor · F attack · X block · 1-4 hotbar · G pickpocket · R rob · Q hide · J clock in at a job · Shift sprint · C wardrobe · H help · 1-9 answer in conversations · Esc close windows" },
+		{ "⌨️ Keys", "Tab phone · E talk / use · M map · P people · V vote · B speech · N mayor · F attack · X block · 1-4 hotbar · G pickpocket · R rob · Q hide · J clock in at a job · K call your car · Shift sprint · C wardrobe · H help · 1-9 answer in conversations · Esc close windows" },
+		{ "🚗 Cars and traffic", "Real traffic drives the streets: cars keep to their lane, stop at red lights and wait for people crossing. Buy your own car at <b>🚗 AutoLand</b> (up Shore Drive, past the north edge of town): walk up to one on the lot and press <b>E</b>. Press <b>K</b> (or the 🚗 <b>Car</b> app on your phone) and it pulls up on the nearest road. <b>W / S</b> drive and brake, <b>A / D</b> steer, <b>Space</b> to get out. Friends can ride along. Don't run anyone over: it's a crime." },
+		{ "🎡 Funland and the beach", "Up Shore Drive: ride the <b>Ferris wheel</b>, the <b>carousel</b> and the <b>Freefall</b> drop tower (just sit in a seat). Play <b>🎈 Balloon Pop</b> (5 coins, click the balloons) to win 🎟️ tickets, and trade them at the <b>prize booth</b> for pets and coins. Adopt a dog, cat, hamster or fox at <b>🐾 Paws & Claws</b>: your pet follows you everywhere. Race the <b>🧗 Sky Obby</b> against the clock. Then hit <b>Sunset Beach</b>: swim, sunbathe, fish off the pier." },
 		{ "💼 Jobs", "12 jobs, paid <b>by the hour</b>: open the <b>Jobs</b> app on your phone, or press <b>J</b> at a workplace during its hours. Follow the glowing marker and hold <b>E</b> at each task. You get a paycheck every in-game hour you work, plus tips and a rating bonus; finish tasks on time for a good rating, and work your way up from Trainee to Manager for raises." },
 		{ "🎮 Controller", "R2 attack · hold L2 block · click L3 sprint · R1 / L1 switch weapons · D-pad ▲ phone · ▼ map · ◀ help · ▶ wardrobe · X talk / use · Y pickpocket / rob / hide · B close / back / get out · A jump. In menus, move with the D-pad or stick and press A." },
 	}
@@ -1132,6 +1134,13 @@ local function buildPhone()
 		P.Close()
 		task.spawn(Panels.OpenJobs)
 	end)
+	app(12, "🚗", "Car", UI.rgb(60, 150, 220), function()
+		-- your car pulls up on the nearest road (see CarService)
+		P.Close()
+		if ctx.Drive then
+			task.spawn(ctx.Drive.Call)
+		end
+	end)
 	app(9, "❓", "Help", UI.rgb(80, 90, 120), function()
 		P.Close()
 		Panels.Help.Open()
@@ -1225,6 +1234,61 @@ local function buildShop()
 					data.Items = r.Items
 					data.Coins = (data.Coins or 0) - item.Price
 					Panels.OpenShop(data)
+				else
+					fail(r)
+				end
+			end)
+		end
+		win.Open()
+	end
+end
+
+-- A general store window: the car lot, the prize booth, the pet stand...
+-- data = { Title, Emoji, Currency ("coins" or "tickets"), Balance, Note,
+--          Action (the request to send), Items = { { Id, Name, Emoji, Price,
+--          Desc, Owned, Using, Stats = { { Label, Value, Max } } } } }
+local function buildStore()
+	local win = UI.window(screen, "Store", "🛍️", UDim2.fromOffset(820, 470), C.Gold)
+	Panels.Store = win
+	local body = win.Body
+	local top = UI.text(body, "", 15, UI.Bold, C.Sub, { Size = UDim2.new(1, 0, 0, 22) })
+	local scroll = UI.new("ScrollingFrame", { BackgroundTransparency = 1, BorderSizePixel = 0, Position = UDim2.fromOffset(0, 30), Size = UDim2.new(1, 0, 1, -62), CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y, ScrollBarThickness = 6, Parent = body })
+	UI.new("UIGridLayout", { CellSize = UDim2.fromOffset(186, 250), CellPadding = UDim2.fromOffset(10, 10), SortOrder = Enum.SortOrder.LayoutOrder, Parent = scroll })
+	local note = UI.text(body, "", 12, UI.Font, C.Dim, { AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.new(1, 0, 0, 28), TextWrapped = true })
+	function Panels.OpenStore(data)
+		clear(scroll)
+		win.Title.Text = data.Title or "Store"
+		win.SetIcon(data.Emoji or "🛍️")
+		local money = if data.Currency == "tickets" then "🎟️" else "🪙"
+		top.Text = money .. " You have " .. UI.commas(data.Balance or 0) .. " " .. (data.Currency or "coins") .. "."
+		note.Text = data.Note or ""
+		for k, item in ipairs(data.Items or {}) do
+			local card = UI.panel(scroll, { BackgroundColor3 = C.Panel2, Radius = 14, LayoutOrder = k })
+			UI.pad(card, 10)
+			UI.text(card, item.Emoji or "⭐", 40, UI.Font, C.White, { Size = UDim2.new(1, 0, 0, 46), TextXAlignment = Enum.TextXAlignment.Center })
+			UI.text(card, item.Name, 17, UI.Title, C.Text, { Position = UDim2.fromOffset(0, 48), Size = UDim2.new(1, 0, 0, 22), TextXAlignment = Enum.TextXAlignment.Center })
+			UI.text(card, item.Desc or "", 12, UI.Font, C.Sub, { Position = UDim2.fromOffset(0, 72), Size = UDim2.new(1, 0, 0, 58), TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Center, TextYAlignment = Enum.TextYAlignment.Top })
+			for n, st in ipairs(item.Stats or {}) do
+				local y = 132 + (n - 1) * 18
+				UI.text(card, st[1], 12, UI.Bold, C.Sub, { Position = UDim2.fromOffset(0, y), Size = UDim2.fromOffset(62, 16) })
+				local _, set = UI.bar(card, ({ C.Red, C.Gold, C.Blue, C.Green })[(n - 1) % 4 + 1], 8, { Position = UDim2.new(0, 64, 0, y + 4), Size = UDim2.new(1, -64, 0, 8) })
+				set(math.clamp(st[2] / math.max(1, st[3]), 0, 1))
+			end
+			local label = if item.Using then "✅ Using" elseif item.Owned then (item.UseText or "Use") else money .. " " .. UI.commas(item.Price or 0) .. "  " .. (data.BuyText or "Buy")
+			UI.button(card, label, { AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.new(1, 0, 0, 38), Color = if item.Using then C.Panel3 elseif item.Owned then C.Green else C.Gold, TextColor = if item.Using then C.Sub else C.Bg, TextSize = 14 }, function()
+				if item.Using then
+					return
+				end
+				local r = request({ Action = data.Action, Id = item.Id, Op = if item.Owned then "use" else "buy" })
+				if r.Ok then
+					if r.Toast then
+						ctx.Hud.Toast(r.Toast[1], r.Toast[2], r.Toast[3] or "", C.Gold)
+					end
+					if r.Store then
+						Panels.OpenStore(r.Store)
+					else
+						win.Close()
+					end
 				else
 					fail(r)
 				end
@@ -1458,6 +1522,7 @@ function Panels.Start(context)
 	buildResults()
 	buildBusted()
 	buildShop()
+	buildStore()
 	buildWardrobe()
 	buildFood()
 	buildJobs()

@@ -220,6 +220,10 @@ Config.Places = {
 	{ id = "CommunityCenter", label = "Community Center", emoji = "🤝", kind = "civic" },
 	{ id = "WillowPark", label = "Willow Park", emoji = "🌿", kind = "fun" },
 	{ id = "Lake", label = "Mirror Lake", emoji = "🎣", kind = "fun" },
+	-- the North Shore, up Shore Drive past the north edge of town
+	{ id = "Funland", label = "Funland", emoji = "🎡", kind = "fun" },
+	{ id = "Beach", label = "Sunset Beach", emoji = "🏖️", kind = "fun" },
+	{ id = "AutoLand", label = "AutoLand", emoji = "🚗", kind = "store" },
 }
 Config.PlaceById = {}
 for _, place in ipairs(Config.Places) do
