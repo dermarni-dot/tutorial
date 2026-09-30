@@ -219,6 +219,10 @@ local function placesInfo()
 		end
 		table.insert(out, { Id = place.Id, Label = place.Label, Kind = place.Kind, Outdoor = place.Outdoor == true, Position = place.Door, Open = if open == nil then true else open, Workers = workers, Visitors = visitors, Weekend = weekend })
 	end
+	-- the State Prison, out east at the end of Prison Road
+	if S.Prison and S.Prison.Active and S.Prison.Active() and S.Map.Prison then
+		table.insert(out, { Id = "Prison", Label = "🔒 State Prison", Kind = "civic", Outdoor = true, Position = S.Map.Prison.Gate, Open = true, Workers = #S.Prison.Guards, Visitors = #S.Prison.Inmates, Weekend = weekend })
+	end
 	return { Ok = true, Places = out }
 end
 

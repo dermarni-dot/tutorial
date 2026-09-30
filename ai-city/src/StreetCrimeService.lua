@@ -161,6 +161,19 @@ local function freeSlot()
 end
 
 local function jail(brain, reason)
+	-- the state prison: they're bussed out there and do their time with the
+	-- other inmates (see PrisonService)
+	if S.Prison and S.Prison.Admit then
+		local seconds = if brain.C.Temp then math.random(150, 260) else math.random(180, 300)
+		if S.Prison.Admit(brain, reason) then
+			inmates[brain] = { Until = os.clock() + seconds, Slot = 0, Reason = reason, Prison = true }
+			brain.Model:SetAttribute("Action", "")
+			brain.Model:SetAttribute("Arrested", nil)
+			brain.Model:SetAttribute("Expression", "sad")
+			S.City.News("🚌 " .. brain.C.Name .. " was sent to the State Prison for " .. reason .. ".", "Crime", true)
+			return
+		end
+	end
 	local station = S.Map.Places.PoliceStation
 	local cell = S.Map.Jail or (station and (station.Inside or station.Door))
 	if not cell then
@@ -184,6 +197,9 @@ end
 local function releaseInmate(brain)
 	local j = inmates[brain]
 	inmates[brain] = nil
+	if j and j.Prison and S.Prison then
+		S.Prison.Release(brain)
+	end
 	if not brain.Model.Parent then
 		return
 	end
@@ -310,6 +326,13 @@ local function finishCase(case)
 		table.remove(cases, i)
 	end
 	byBrain[case.Thief] = nil
+	-- take the "Thief" marker off everyone's screen who was told to chase them
+	for player in pairs(case.Alerted or {}) do
+		if player.Parent then
+			S.City.Send(player, { Type = "Waypoint", Clear = true, CitizenId = case.Thief.C.Id })
+		end
+	end
+	case.Alerted = nil
 	for _, officer in ipairs(case.Officers) do
 		if officer.Model.Parent and not escorts[officer] then
 			officer.Model:SetAttribute("Chasing", nil)
@@ -412,7 +435,11 @@ local function bolt(case, caller)
 		local root = rootOf(player)
 		if root and (root.Position - thief.Root.Position).Magnitude < 130 then
 			S.City.Toast(player, "🦹", "Stop, thief!", what .. " on " .. streetNear(thief.Root.Position) .. ". Chase them down and hit them (F) before they get away!", rgb(255, 120, 60))
-			S.City.Send(player, { Type = "Waypoint", Position = thief.Root.Position, Label = "Thief", Emoji = "🦹", Model = thief.Model })
+			-- the marker follows the thief by id: a model that has only just
+			-- spawned may not have streamed in to this player yet
+			S.City.Send(player, { Type = "Waypoint", Position = thief.Root.Position, Label = "Thief", Emoji = "🦹", Model = thief.Model, CitizenId = thief.C.Id })
+			case.Alerted = case.Alerted or {}
+			case.Alerted[player] = true
 		end
 	end
 end
@@ -727,7 +754,8 @@ local function pickCrime(force)
 		case.PathIndex = 1
 	end
 	-- snatchers run up; pickpockets hurry to catch up with someone walking, then slow down
-	S.Citizens.SetGait(thief, if kind == "snatch" then 17 elseif kind == "pickpocket" or kind == "player" then 13 else 10, if kind == "snatch" or kind == "pickpocket" then "run" else "walk")
+	local walk = Config.WALK_SPEED or 9.5
+	S.Citizens.SetGait(thief, if kind == "snatch" then math.max(17, walk * 1.8) elseif kind == "pickpocket" or kind == "player" then math.max(13, walk * 1.6) else math.max(10, walk * 1.1), if kind == "snatch" or kind == "pickpocket" then "run" else "walk")
 	local every = Config.NPC_CRIME_COOLDOWN or 110
 	nextCrime = now + every * (0.6 + math.random() * 0.8)
 	return case
@@ -786,7 +814,9 @@ local function tick(case, now)
 		local d = flat(thief.Root.Position - target).Magnitude
 		if case.Kind == "pickpocket" or case.Kind == "player" then
 			-- sneak the last few steps
-			S.Citizens.SetGait(thief, if d > 12 then 13 else 9, if d > 12 then "run" else "walk")
+			-- (always a little quicker than people walk, or they'd never catch up)
+			local walk = Config.WALK_SPEED or 9.5
+			S.Citizens.SetGait(thief, if d > 12 then math.max(13, walk * 1.6) else math.max(9, walk * 1.25), if d > 12 then "run" else "walk")
 		end
 		if d < 3.4 then
 			commit(case)
@@ -816,10 +846,9 @@ local function tick(case, now)
 		-- a thief who got far enough away (and isn't being tailed) escapes
 		if (done and closest > 25) or now - case.FleeStart > 70 then
 			S.City.News("🏃 The thief got away on " .. streetNear(thief.Root.Position) .. ".", "Crime", true)
-			for _, player in ipairs(Players:GetPlayers()) do
-				local r = rootOf(player)
-				if r and (r.Position - thief.Root.Position).Magnitude < 200 then
-					S.City.Send(player, { Type = "Waypoint", Clear = true })
+			for player in pairs(case.Alerted or {}) do
+				if player.Parent then
+					S.City.Toast(player, "🏃", "The thief got away", "They slipped off on " .. streetNear(thief.Root.Position) .. ".", rgb(160, 160, 170))
 				end
 			end
 			slipAway(case)
@@ -890,7 +919,7 @@ function StreetCrime.PlayerHit(player, brain, weapon, weaponId, fromPos)
 		S.City.Toast(player, "🦸", "You caught the thief! +" .. reward .. " coins", "Hold on, the police are coming to take them away.", rgb(90, 180, 120))
 		S.City.News("🦸 " .. player.DisplayName .. " caught a thief on " .. streetNear(brain.Root.Position) .. "!", "City")
 		S.City.Progress(player, "thief", 1)
-		S.City.Send(player, { Type = "Waypoint", Clear = true })
+		S.City.Send(player, { Type = "Waypoint", Clear = true, CitizenId = brain.C.Id })
 	end
 	return { Ok = true, Hit = true, Name = brain.C.First, HP = brain.HP, Weapon = weaponId }
 end
@@ -917,7 +946,7 @@ function StreetCrime.Start(services)
 					inmates[brain] = nil
 				elseif now >= j.Until then
 					releaseInmate(brain)
-				elseif S.Map.Jail and (brain.Root.Position - S.Map.Jail).Magnitude > 10 then
+				elseif not j.Prison and S.Map.Jail and (brain.Root.Position - S.Map.Jail).Magnitude > 10 then
 					-- no escaping
 					brain.Root.CFrame = CFrame.new(S.Map.Jail + SLOTS[j.Slot] + Vector3.new(0, 3.2, 0))
 				end

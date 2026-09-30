@@ -349,7 +349,7 @@ local function stopFight(brain)
 	fighters[brain] = nil
 	if brain.Model.Parent then
 		brain.Model:SetAttribute("Fighting", nil)
-		if brain.State == "police" and not brain.Model:GetAttribute("Chasing") and not brain.Gang then
+		if brain.State == "police" and not brain.Model:GetAttribute("Chasing") and not brain.Gang and not brain.Inmate then
 			S.Citizens.Control(brain, false)
 		end
 	end
@@ -606,6 +606,9 @@ local function attack(player, data)
 		if S.Gangs then
 			S.Gangs.Provoke(brain, player)
 		end
+		startFight(brain, player)
+	elseif brain.Inmate then
+		-- an inmate: no police coming (you're in prison), they just fight back
 		startFight(brain, player)
 	elseif isPolice(brain) or c.Temp then
 		CrimeService.AddStars(player, 1, "You attacked a police officer!")
@@ -899,12 +902,18 @@ local function arrest(player)
 	if pd then
 		pd.Arrests += 1
 	end
-	local seconds = 18 + stars * 10
+	-- a real sentence at the State Prison (see PrisonService), or a short
+	-- stay in the holding cell at the station if there's no prison
+	local prison = S.Prison and S.Prison.Active and S.Prison.Active()
+	local seconds = if prison then (Config.PRISON_SECONDS or 45) + stars * 25 else 18 + stars * 10
 	local cell = S.Map.Jail or (S.Map.Places.PoliceStation and S.Map.Places.PoliceStation.Inside) or Vector3.new(0, 5, 0)
 	jailed[player] = { Until = os.clock() + seconds, Cell = cell }
 	player:SetAttribute("JailUntil", workspace:GetServerTimeNow() + seconds)
 	local root = rootOf(player)
-	if root then
+	if prison then
+		jailed[player].Cell = S.Prison.AdmitPlayer(player, seconds) or cell
+		jailed[player].Prison = true
+	elseif root then
 		root.CFrame = CFrame.new(cell + Vector3.new(0, 3.5, 0))
 		root.AssemblyLinearVelocity = Vector3.zero
 	end
@@ -918,6 +927,9 @@ local function arrest(player)
 	S.City.News("🚔 " .. player.DisplayName .. " was arrested and thrown in jail!", "Crime")
 	S.City.Adjust("Safety", 2 + stars)
 end
+
+-- (for tests and your own scripts: send a player straight to jail)
+CrimeService.ArrestPlayer = arrest
 
 -- an officer next to a suspect who isn't down yet: a baton hit, or the taser
 local STRIKE_LINES = { "Stop resisting!", "Get on the ground!", "Hands behind your back!", "Don't move!" }
@@ -1362,10 +1374,16 @@ local function chaseTick(dt)
 			jailed[player] = nil
 			player:SetAttribute("JailUntil", nil)
 			local station = S.Map.Places.PoliceStation
-			if root and station then
-				root.CFrame = CFrame.new(station.Door + Vector3.new(0, 3.5, 0))
+			if j.Prison and S.Prison.ReleasePlayer(player) then
+				S.City.Toast(player, "🔓", "You're free!", "Released from the State Prison. Prison Road takes you back into town. Behave yourself out there.", Color3.fromRGB(90, 180, 120))
+			else
+				if root and station then
+					root.CFrame = CFrame.new(station.Door + Vector3.new(0, 3.5, 0))
+				end
+				S.City.Toast(player, "🔓", "You're free!", "Behave yourself out there.", Color3.fromRGB(90, 180, 120))
 			end
-			S.City.Toast(player, "🔓", "You're free!", "Behave yourself out there.", Color3.fromRGB(90, 180, 120))
+		elseif j.Prison then
+			S.Prison.Confine(player, root)
 		elseif root and (root.Position - j.Cell).Magnitude > 9 then
 			root.CFrame = CFrame.new(j.Cell + Vector3.new(0, 3.5, 0))
 		end

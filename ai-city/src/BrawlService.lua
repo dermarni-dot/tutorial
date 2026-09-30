@@ -93,7 +93,7 @@ local function center(b)
 end
 
 local function busy(brain)
-	return inBrawl[brain] ~= nil or brain.State == "ko" or brain.State == "hospital" or (brain.State == "police" and not brain.Gang) or brain.State == "talk" or brain.State == "chat" or brain.Held ~= nil or brain.Model:GetAttribute("Fighting") ~= nil or brain.Model:GetAttribute("Chasing") ~= nil
+	return inBrawl[brain] ~= nil or brain.State == "ko" or brain.State == "hospital" or (brain.State == "police" and not brain.Gang and not brain.Inmate) or brain.State == "talk" or brain.State == "chat" or brain.Held ~= nil or brain.Model:GetAttribute("Fighting") ~= nil or brain.Model:GetAttribute("Chasing") ~= nil
 end
 
 -- how likely someone is to start something
@@ -181,8 +181,9 @@ local function release(b, brain)
 	if b.Saved[brain] then
 		setPrompts(b, brain, false)
 	end
-	if brain.Gang then
-		-- (gang members go back to their turf: see GangService)
+	if brain.Gang or brain.Inmate then
+		-- (gang members go back to their turf: see GangService; inmates
+		-- back to their routine: see PrisonService)
 	elseif brain.C.Temp then
 		S.Citizens.Despawn(brain)
 	elseif brain.State == "police" and not brain.Model:GetAttribute("Fighting") and not brain.Model:GetAttribute("Chasing") then
@@ -312,6 +313,19 @@ local function finish(b, outcome, info)
 	end
 end
 
+-- someone in charge (a prison guard) steps in: both fighters back off
+function BrawlService.Stop(b)
+	if b and not b.Done then
+		finish(b, "tired")
+	end
+end
+
+-- the fight someone is in (if any)
+function BrawlService.FightOf(brain)
+	local b = inBrawl[brain]
+	return if b and (b.A == brain or b.B == brain) then b else nil
+end
+
 function BrawlService.BreakUp(b, player)
 	if b.Done or b.Phase == "argue" and os.clock() - b.Started < 1 then
 		return
@@ -365,7 +379,7 @@ function BrawlService.Fight(a, c, opts)
 	if busy(a) or busy(c) then
 		return nil
 	end
-	local b = { A = a, B = c, Phase = "argue", Started = os.clock(), Crowd = {}, Saved = {}, Next = {}, Called = false, Id = os.clock(), Kids = opts.Kids, Quiet = opts.Quiet, Gang = opts.Gang }
+	local b = { A = a, B = c, Phase = "argue", Started = os.clock(), Crowd = {}, Saved = {}, Next = {}, Called = false, Id = os.clock(), Kids = opts.Kids, Quiet = opts.Quiet, Gang = opts.Gang, NoPolice = opts.NoPolice }
 	table.insert(brawls, b)
 	local rematch = grudges[key(a, c)]
 	grudges[key(a, c)] = true
@@ -390,7 +404,7 @@ function BrawlService.Fight(a, c, opts)
 			b.Phase = "fight"
 			b.FightStart = os.clock()
 			-- somebody calls the police after a few seconds (sometimes everyone's too busy filming)
-			b.CallAt = if math.random() < 0.75 then os.clock() + math.random(50, 90) / 10 else nil
+			b.CallAt = if b.NoPolice then nil elseif math.random() < 0.75 then os.clock() + math.random(50, 90) / 10 else nil
 			S.Citizens.Say(a, "That's it!", "angry", 1.6)
 		end
 	end)

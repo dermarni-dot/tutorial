@@ -143,6 +143,12 @@
         "FishingService": {
           "$path": "src/FishingService.lua"
         },
+        "PrisonService": {
+          "$path": "src/PrisonService.lua"
+        },
+        "Prison": {
+          "$path": "src/Prison.lua"
+        },
         "Conversation": {
           "$path": "src/Conversation.lua"
         }

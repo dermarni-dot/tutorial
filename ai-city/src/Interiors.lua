@@ -154,7 +154,7 @@ end
 
 local function plant(b, f, x, z)
 	box(b, f, "Pot", Vector3.new(1.4, 1.4, 1.4), x, 0, z, rgb(180, 110, 80), Enum.Material.Slate)
-	MapKit.ball(b.Model, "PlantLeaves", 2.6, at(b, f, x, 2.8, z), MapKit.LEAVES[(math.floor(x * 3 + z) % #MapKit.LEAVES) + 1], Enum.Material.Grass)
+	MapKit.ball(b.Model, "PlantLeaves", 2.6, at(b, f, x, 2.8, z), MapKit.LEAVES[(math.floor(x * 3 + z) % #MapKit.LEAVES) + 1], Enum.Material.SmoothPlastic)
 end
 
 local function rug(b, f, x, z, w, d, color)
@@ -862,7 +862,7 @@ local function homeOffice(b, f, x, z, list, place)
 		end
 	end
 	box(b, f, "OfficePlant", Vector3.new(1, 1, 1), x - 3.4, 0, z + 0.4, rgb(180, 110, 80), Enum.Material.Slate)
-	MapKit.ball(b.Model, "PlantLeaves", 2, at(b, f, x - 3.4, 2, z + 0.4), MapKit.LEAVES[2], Enum.Material.Grass)
+	MapKit.ball(b.Model, "PlantLeaves", 2, at(b, f, x - 3.4, 2, z + 0.4), MapKit.LEAVES[2], Enum.Material.SmoothPlastic)
 end
 
 local function piano(b, f, x, z, list, place)
@@ -939,7 +939,11 @@ local function poolTable(b, f, x, z)
 	end
 	MapKit.ball(b.Model, "CueBall", 0.35, at(b, f, x + 2.4, 3.05, z), WHITE)
 	box(b, f, "Cue", Vector3.new(5, 0.12, 0.12), x + 0.5, 2.95, z + 1.5, rgb(200, 170, 120), Enum.Material.Wood)
-	local lamp = box(b, f, "PoolLamp", Vector3.new(5, 0.5, 1), x, 8, z, rgb(40, 90, 60), Enum.Material.Glass)
+	-- hung from the ceiling on two cords
+	local lamp = box(b, f, "PoolLamp", Vector3.new(5, 0.5, 1), x, FLOOR_H - 3, z, rgb(40, 90, 60), Enum.Material.Glass)
+	for _, dx in ipairs({ -1.8, 1.8 }) do
+		box(b, f, "LampCord", Vector3.new(0.08, 2.6, 0.08), x + dx, FLOOR_H - 2.5, z, rgb(30, 30, 30), Enum.Material.Metal)
+	end
 	MapKit.light(lamp, rgb(255, 230, 190), 14, 0.7)
 end
 

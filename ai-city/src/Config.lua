@@ -8,9 +8,9 @@ local Config = {}
 Config.POPULATION = 150 -- a big city: more people on the streets and in the houses (lower it if the server struggles)
 Config.SEED = 1776 -- same seed = same citizens every server (lets memories persist)
 Config.DAY_LENGTH = 480 -- real seconds per in-game day (1 in-game hour = 20 seconds)
-Config.WALK_SPEED = 7.5 -- a real walking pace, used whenever a player is close enough to see them
+Config.WALK_SPEED = 9.5 -- a brisk city walking pace, used whenever a player is close enough to see them
 Config.TRAVEL_SPEED = 16 -- pace far away from every player, so trips across the ~700-stud city still fit the day
-Config.HURRY_SPEED = 12 -- a jog, for citizens running late for work or curfew
+Config.HURRY_SPEED = 14 -- a jog, for citizens running late for work or curfew
 Config.WATCH_RADIUS = 140 -- citizens within this many studs of any player walk at the real pace
 Config.TALK_RADIUS = 16 -- how close a player must stay while talking
 Config.GOSSIP_RADIUS = 9
@@ -23,6 +23,11 @@ Config.STARTING_COINS = 100
 Config.COIN_TICK = 10 -- coins each player gets every real minute
 Config.GIFT_AMOUNT = 10
 Config.DATASTORE_NAME = "AICity_v1"
+
+-- the State Prison east of town (PrisonService)
+Config.PRISON = true -- false: arrests use the little holding cell at the police station
+Config.PRISON_INMATES = 20 -- inmates who live there (two to a cell)
+Config.PRISON_SECONDS = 45 -- a player's base sentence; +25 seconds per wanted star
 
 Config.ValueNames = { "wealth", "community", "safety", "freedom", "nature", "tradition" }
 

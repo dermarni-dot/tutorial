@@ -8,9 +8,9 @@ local Config = {}
 Config.POPULATION = 150 -- a big city: more people on the streets and in the houses (lower it if the server struggles)
 Config.SEED = 1776 -- same seed = same citizens every server (lets memories persist)
 Config.DAY_LENGTH = 480 -- real seconds per in-game day (1 in-game hour = 20 seconds)
-Config.WALK_SPEED = 7.5 -- a real walking pace, used whenever a player is close enough to see them
+Config.WALK_SPEED = 9.5 -- a brisk city walking pace, used whenever a player is close enough to see them
 Config.TRAVEL_SPEED = 16 -- pace far away from every player, so trips across the ~700-stud city still fit the day
-Config.HURRY_SPEED = 12 -- a jog, for citizens running late for work or curfew
+Config.HURRY_SPEED = 14 -- a jog, for citizens running late for work or curfew
 Config.WATCH_RADIUS = 140 -- citizens within this many studs of any player walk at the real pace
 Config.TALK_RADIUS = 16 -- how close a player must stay while talking
 Config.GOSSIP_RADIUS = 9
@@ -23,6 +23,11 @@ Config.STARTING_COINS = 100
 Config.COIN_TICK = 10 -- coins each player gets every real minute
 Config.GIFT_AMOUNT = 10
 Config.DATASTORE_NAME = "AICity_v1"
+
+-- the State Prison east of town (PrisonService)
+Config.PRISON = true -- false: arrests use the little holding cell at the police station
+Config.PRISON_INMATES = 20 -- inmates who live there (two to a cell)
+Config.PRISON_SECONDS = 45 -- a player's base sentence; +25 seconds per wanted star
 
 Config.ValueNames = { "wealth", "community", "safety", "freedom", "nature", "tradition" }
 
@@ -1898,6 +1903,7 @@ local function stateOf(model)
 	st = {
 		Motors = {},
 		Cur = {},
+		Rel = {}, -- joints easing back to the default animation
 		Phase = (model:GetAttribute("CitizenId") or math.random(1, 1000)) * 1.618 % (math.pi * 2),
 		Face = nil,
 		NextBlink = os.clock() + math.random() * 4,
@@ -2412,6 +2418,33 @@ end
 -- foot, and it leans into a run. The step keeps time with the ground covered,
 -- so feet don't slide. Old people take shorter, stiffer steps; kids bounce.
 --------------------------------------------------------------------------------
+-- Ease every joint toward the pose. Joints the pose lets go of don't snap back
+-- to the default animation: they ease back into it over a few frames (the
+-- Animator has already written this frame's pose into motor.Transform).
+local function blendMotors(st, target, full, dt, rate)
+	local a = 1 - math.exp(-dt * rate)
+	local back = 1 - math.exp(-dt * 9)
+	for key, motor in pairs(st.Motors) do
+		local goal = target and (target[key] or (if full then IDENTITY else nil))
+		local cur = st.Cur[key]
+		if goal then
+			cur = (cur or motor.Transform):Lerp(goal, a)
+			st.Cur[key] = cur
+			st.Rel[key] = nil
+			motor.Transform = cur
+		elseif cur then
+			local left = (st.Rel[key] or 0.5) - dt
+			if left <= 0 then
+				st.Cur[key], st.Rel[key] = nil, nil
+			else
+				cur = cur:Lerp(motor.Transform, back)
+				st.Cur[key], st.Rel[key] = cur, left
+				motor.Transform = cur
+			end
+		end
+	end
+end
+
 local function groundSpeed(st, root, dt)
 	local p = root.Position
 	local last = st.LastPos
@@ -2528,8 +2561,24 @@ local function update(model, st, t, dt, camPos, myRoot)
 	-- on the move: the full-body walk (the arms keep carrying if they're busy)
 	local speed = groundSpeed(st, root, dt)
 	local moving = info and info.Moving and target ~= nil
-	if not root.Anchored and speed > 0.8 and not fighting and not coK and (not target or carrying or moving) then
+	-- (a little hysteresis so the legs don't flicker between walking and
+	-- standing as someone slows down or starts off)
+	st.Walking = speed > (if st.Walking then 0.45 else 0.9)
+	if not root.Anchored and st.Walking and not fighting and not coK and (not target or carrying or moving) then
 		local steps = gait(st, model, speed, dt, carrying or moving)
+		-- lean into the turns a little, like a real walker
+		local look = root.CFrame.LookVector
+		local yaw = math.atan2(-look.X, -look.Z)
+		local turn = 0
+		if st.LastYaw and dt > 0 then
+			local dy = (yaw - st.LastYaw + math.pi) % (math.pi * 2) - math.pi
+			turn = math.clamp(dy / dt, -3, 3)
+		end
+		st.LastYaw = yaw
+		st.Turn = (st.Turn or 0) + (turn - (st.Turn or 0)) * math.min(1, dt * 6)
+		if steps.Root then
+			steps.Root = steps.Root * A(0, 0, -st.Turn * math.min(speed, 16) * 0.35)
+		end
 		if (carrying or moving) and target then
 			for k, v in pairs(steps) do
 				target[k] = v
@@ -2598,28 +2647,26 @@ local function update(model, st, t, dt, camPos, myRoot)
 			end
 		end
 	end
+	-- nobody to look at: now and then glance around (a shop window, someone
+	-- walking past), easing the head there and back
+	if not lookYaw and not coK and poseName ~= "sleep" and poseName ~= "ko" and not fighting and not (info and info.Lying) then
+		if t > (st.NextGlance or 0) then
+			st.NextGlance = t + 1.5 + ((st.Phase * 7 + t) % 3.5)
+			st.GlanceGoal = if (t + st.Phase) % 1 < 0.45 then 0 else ((t * 13 + st.Phase * 5) % 70) - 35
+		end
+		st.HeadGlance = (st.HeadGlance or 0) + ((st.GlanceGoal or 0) - (st.HeadGlance or 0)) * math.min(1, dt * 3)
+		if abs(st.HeadGlance) > 1 then
+			target = target or {}
+			target.Neck = (target.Neck or IDENTITY) * A(0, st.HeadGlance, 0)
+		end
+	end
 	if lookYaw then
 		target = target or {}
 		local base = target.Neck or IDENTITY
 		target.Neck = base * A(lookPitch * 0.6, lookYaw, 0)
 	end
 	-- blend toward the pose
-	local a = 1 - math.exp(-dt * 10)
-	if target then
-		for key, motor in pairs(st.Motors) do
-			local goal = target[key] or (if full then IDENTITY else nil)
-			if goal then
-				local cur = st.Cur[key] or motor.Transform
-				cur = cur:Lerp(goal, a)
-				st.Cur[key] = cur
-				motor.Transform = cur
-			else
-				st.Cur[key] = nil
-			end
-		end
-	elseif next(st.Cur) then
-		table.clear(st.Cur)
-	end
+	blendMotors(st, target, full, dt, 10)
 	-- props, swings, hoops, stars
 	setProps(st, model, action, if carrying then carry else nil)
 	local pivot = model:GetAttribute("SwingPivot")
@@ -2693,22 +2740,7 @@ local FOOD_COLORS = {
 }
 
 local function blend(st, target, full, dt)
-	local a = 1 - math.exp(-dt * 16)
-	if target then
-		for key, motor in pairs(st.Motors) do
-			local goal = target[key] or (if full then IDENTITY else nil)
-			if goal then
-				local cur = st.Cur[key] or motor.Transform
-				cur = cur:Lerp(goal, a)
-				st.Cur[key] = cur
-				motor.Transform = cur
-			else
-				st.Cur[key] = nil
-			end
-		end
-	elseif next(st.Cur) then
-		table.clear(st.Cur)
-	end
+	blendMotors(st, target, full, dt, 16)
 end
 
 -- the swing trail on a weapon: from the grip to the far end of the tool
@@ -3345,6 +3377,7 @@ if Config.RUN_CITIZENS ~= false then
 	services.Love = require(Modules:WaitForChild("RelationshipService"))
 	services.Sports = require(Modules:WaitForChild("SportsService"))
 	services.Fishing = require(Modules:WaitForChild("FishingService"))
+	services.Prison = require(Modules:WaitForChild("PrisonService"))
 	services.Dialogue.Start(services)
 	services.Crime.Start(services)
 	services.Players.Start(services)
@@ -3360,9 +3393,10 @@ if Config.RUN_CITIZENS ~= false then
 	services.Love.Start(services)
 	services.Sports.Start(services)
 	services.Fishing.Start(services)
+	services.Prison.Start(services)
 	task.spawn(services.Citizens.Start, services)
 end
-]]></ProtectedString></Properties></Item><Item class="Folder" referent="RBX46"><Properties><string name="Name">Modules</string></Properties><Item class="ModuleScript" referent="RBX17"><Properties><string name="Name">MapKit</string><ProtectedString name="Source"><![CDATA[-- MapKit (ModuleScript) — ServerScriptService.Modules.MapKit
+]]></ProtectedString></Properties></Item><Item class="Folder" referent="RBX48"><Properties><string name="Name">Modules</string></Properties><Item class="ModuleScript" referent="RBX17"><Properties><string name="Name">MapKit</string><ProtectedString name="Source"><![CDATA[-- MapKit (ModuleScript) — ServerScriptService.Modules.MapKit
 -- Small building blocks shared by the map modules: part helpers, colors, signs,
 -- lights, seats, and a registry of things that change between day and night.
 
@@ -4052,7 +4086,7 @@ function Buildings.shell(parent, spec)
 				for k = 0, 3 do
 					local p = at(-W / 3 + (k % 2) * (W / 3), H + 1.4, -D / 4 + (k // 2) * (D / 3))
 					deco(model, "Planter", Vector3.new(6, 1, 3), p, MapKit.rgb(120, 86, 60), Enum.Material.Wood)
-					deco(model, "Plants", Vector3.new(5.6, 0.8, 2.6), p * CFrame.new(0, 0.8, 0), MapKit.LEAVES[k % #MapKit.LEAVES + 1], Enum.Material.Grass)
+					deco(model, "Plants", Vector3.new(5.6, 0.8, 2.6), p * CFrame.new(0, 0.8, 0), MapKit.LEAVES[k % #MapKit.LEAVES + 1], Enum.Material.SmoothPlastic)
 				end
 			elseif item == "solar" then
 				for k = 0, 3 do
@@ -4418,7 +4452,7 @@ end
 
 local function plant(b, f, x, z)
 	box(b, f, "Pot", Vector3.new(1.4, 1.4, 1.4), x, 0, z, rgb(180, 110, 80), Enum.Material.Slate)
-	MapKit.ball(b.Model, "PlantLeaves", 2.6, at(b, f, x, 2.8, z), MapKit.LEAVES[(math.floor(x * 3 + z) % #MapKit.LEAVES) + 1], Enum.Material.Grass)
+	MapKit.ball(b.Model, "PlantLeaves", 2.6, at(b, f, x, 2.8, z), MapKit.LEAVES[(math.floor(x * 3 + z) % #MapKit.LEAVES) + 1], Enum.Material.SmoothPlastic)
 end
 
 local function rug(b, f, x, z, w, d, color)
@@ -5126,7 +5160,7 @@ local function homeOffice(b, f, x, z, list, place)
 		end
 	end
 	box(b, f, "OfficePlant", Vector3.new(1, 1, 1), x - 3.4, 0, z + 0.4, rgb(180, 110, 80), Enum.Material.Slate)
-	MapKit.ball(b.Model, "PlantLeaves", 2, at(b, f, x - 3.4, 2, z + 0.4), MapKit.LEAVES[2], Enum.Material.Grass)
+	MapKit.ball(b.Model, "PlantLeaves", 2, at(b, f, x - 3.4, 2, z + 0.4), MapKit.LEAVES[2], Enum.Material.SmoothPlastic)
 end
 
 local function piano(b, f, x, z, list, place)
@@ -5203,7 +5237,11 @@ local function poolTable(b, f, x, z)
 	end
 	MapKit.ball(b.Model, "CueBall", 0.35, at(b, f, x + 2.4, 3.05, z), WHITE)
 	box(b, f, "Cue", Vector3.new(5, 0.12, 0.12), x + 0.5, 2.95, z + 1.5, rgb(200, 170, 120), Enum.Material.Wood)
-	local lamp = box(b, f, "PoolLamp", Vector3.new(5, 0.5, 1), x, 8, z, rgb(40, 90, 60), Enum.Material.Glass)
+	-- hung from the ceiling on two cords
+	local lamp = box(b, f, "PoolLamp", Vector3.new(5, 0.5, 1), x, FLOOR_H - 3, z, rgb(40, 90, 60), Enum.Material.Glass)
+	for _, dx in ipairs({ -1.8, 1.8 }) do
+		box(b, f, "LampCord", Vector3.new(0.08, 2.6, 0.08), x + dx, FLOOR_H - 2.5, z, rgb(30, 30, 30), Enum.Material.Metal)
+	end
 	MapKit.light(lamp, rgb(255, 230, 190), 14, 0.7)
 end
 
@@ -5608,8 +5646,8 @@ end
 local function plant(r, x, z, big)
 	local s = if big then 1.35 else 1
 	r.Box("Pot", Vector3.new(1.3, 1.3, 1.3) * s, x, 0, z, ({ rgb(180, 110, 80), rgb(240, 240, 236), rgb(60, 60, 66) })[r.Rng:NextInteger(1, 3)], Enum.Material.Slate)
-	MapKit.ball(r.B.Model, "PlantLeaves", 2.4 * s, r.At(x, 2.4 * s, z), MapKit.LEAVES[r.Rng:NextInteger(1, #MapKit.LEAVES)], Enum.Material.Grass)
-	MapKit.ball(r.B.Model, "PlantLeaves", 1.7 * s, r.At(x + 0.4, 3.4 * s, z - 0.3), MapKit.LEAVES[r.Rng:NextInteger(1, #MapKit.LEAVES)], Enum.Material.Grass)
+	MapKit.ball(r.B.Model, "PlantLeaves", 2.4 * s, r.At(x, 2.4 * s, z), MapKit.LEAVES[r.Rng:NextInteger(1, #MapKit.LEAVES)], Enum.Material.SmoothPlastic)
+	MapKit.ball(r.B.Model, "PlantLeaves", 1.7 * s, r.At(x + 0.4, 3.4 * s, z - 0.3), MapKit.LEAVES[r.Rng:NextInteger(1, #MapKit.LEAVES)], Enum.Material.SmoothPlastic)
 end
 
 local function bin(r, x, z)
@@ -5730,7 +5768,7 @@ local function bucket(r, x, z)
 		local a = k / 5 * math.pi * 2
 		MapKit.ball(r.B.Model, "Flower", 0.6, r.At(x + math.cos(a) * 0.35, 1.9 + (k % 2) * 0.3, z + math.sin(a) * 0.35), MapKit.FLOWERS[r.Rng:NextInteger(1, #MapKit.FLOWERS)], Enum.Material.SmoothPlastic)
 	end
-	r.Box("Stems", Vector3.new(0.8, 0.8, 0.8), x, 1.2, z, rgb(70, 140, 60), Enum.Material.Grass)
+	r.Box("Stems", Vector3.new(0.8, 0.8, 0.8), x, 1.2, z, rgb(70, 140, 60), Enum.Material.SmoothPlastic)
 end
 
 local function aquarium(r, x, z)
@@ -7023,29 +7061,54 @@ function Streets.avenueName(k)
 	return Streets.AVENUES[math.clamp(k + N + 2, 1, #Streets.AVENUES)]
 end
 
+-- Leaves and needles are smooth, softly shaded shapes (no noisy grass texture)
+local FOLIAGE = Enum.Material.SmoothPlastic
+
+-- a leafy tree: a round, tapering trunk that forks into two branches, and a
+-- full canopy of overlapping rounded clumps in a few shades of green
 function Streets.tree(parent, pos, scale, rng)
 	scale = scale or 1
+	local r = function(a, b)
+		return if rng then rng:NextNumber(a, b) else (a + b) / 2
+	end
 	local trunkH = 7 * scale
-	deco(parent, "Trunk", Vector3.new(1.3 * scale, trunkH, 1.3 * scale), CFrame.new(pos + Vector3.new(0, trunkH / 2, 0)), MapKit.WOOD, Enum.Material.Wood)
+	local bark = MapKit.WOOD:Lerp(BLACK, 0.12)
+	MapKit.column(parent, "Trunk", trunkH * 0.55, 1.5 * scale, pos + Vector3.new(0, trunkH * 0.275, 0), bark, Enum.Material.Wood, false).CanQuery = false
+	MapKit.column(parent, "Trunk", trunkH * 0.55, 1.1 * scale, pos + Vector3.new(0, trunkH * 0.72, 0), bark, Enum.Material.Wood, false).CanQuery = false
+	MapKit.disc(parent, "TrunkFlare", 0.5 * scale, 2.2 * scale, pos + Vector3.new(0, 0.25 * scale, 0), bark:Lerp(BLACK, 0.1), Enum.Material.Wood)
+	local yaw = r(0, math.pi * 2)
+	for k = -1, 1, 2 do
+		local base = pos + Vector3.new(0, trunkH * 0.85, 0)
+		local cf = CFrame.new(base) * CFrame.Angles(0, yaw, 0) * CFrame.Angles(0, 0, math.rad(90 + k * 35)) * CFrame.new(1.4 * scale, 0, 0)
+		MapKit.cylinder(parent, "Branch", 3 * scale, 0.6 * scale, cf, bark, Enum.Material.Wood)
+	end
 	local leaf = MapKit.LEAVES[rng and rng:NextInteger(1, #MapKit.LEAVES) or 1]
-	MapKit.ball(parent, "Leaves", 8 * scale, CFrame.new(pos + Vector3.new(0, trunkH + 2 * scale, 0)), leaf, Enum.Material.Grass)
-	MapKit.ball(parent, "Leaves", 5.5 * scale, CFrame.new(pos + Vector3.new(1.6 * scale, trunkH + 4.8 * scale, 0.8 * scale)), leaf:Lerp(WHITE, 0.07), Enum.Material.Grass)
-	MapKit.ball(parent, "Leaves", 5 * scale, CFrame.new(pos + Vector3.new(-1.4 * scale, trunkH + 4 * scale, -1 * scale)), leaf:Lerp(BLACK, 0.06), Enum.Material.Grass)
+	local top = pos + Vector3.new(0, trunkH + 2.4 * scale, 0)
+	MapKit.ball(parent, "Leaves", 8.4 * scale, CFrame.new(top), leaf, FOLIAGE)
+	for k = 1, 6 do
+		local a = yaw + k / 6 * math.pi * 2 + r(-0.3, 0.3)
+		local out = r(2.4, 3.4) * scale
+		local up = r(-1.2, 2.2) * scale
+		local shade = if k % 3 == 0 then leaf:Lerp(WHITE, 0.08) elseif k % 3 == 1 then leaf:Lerp(BLACK, 0.08) else leaf
+		MapKit.ball(parent, "Leaves", r(4.4, 5.8) * scale, CFrame.new(top + Vector3.new(math.cos(a) * out, up, math.sin(a) * out)), shade, FOLIAGE)
+	end
+	MapKit.ball(parent, "Leaves", 5.4 * scale, CFrame.new(top + Vector3.new(r(-0.8, 0.8), 3.4 * scale, r(-0.8, 0.8))), leaf:Lerp(WHITE, 0.12), FOLIAGE)
 end
 
--- a pine for the woods and the hills
+-- a pine for the woods and the hills: a tall rounded cone of overlapping
+-- clumps, widest at the bottom
 function Streets.pine(parent, pos, scale)
 	scale = scale or 1
-	deco(parent, "Trunk", Vector3.new(1.2 * scale, 6 * scale, 1.2 * scale), CFrame.new(pos + Vector3.new(0, 3 * scale, 0)), MapKit.DARK_WOOD, Enum.Material.Wood)
-	for k = 0, 2 do
-		local w = (7 - k * 2) * scale
-		local h = 5 * scale
-		local y = (5 + k * 3.6) * scale
-		for r = 0, 1 do
-			MapKit.wedge(parent, "Needles", Vector3.new(w, h, w / 2), CFrame.new(pos + Vector3.new(0, y + h / 2, 0)) * CFrame.Angles(0, r * math.pi, 0) * CFrame.new(0, 0, -w / 4), rgb(46, 110, 60), Enum.Material.Grass)
-			MapKit.wedge(parent, "Needles", Vector3.new(w, h, w / 2), CFrame.new(pos + Vector3.new(0, y + h / 2, 0)) * CFrame.Angles(0, r * math.pi + math.pi / 2, 0) * CFrame.new(0, 0, -w / 4), rgb(40, 100, 54), Enum.Material.Grass)
-		end
+	MapKit.column(parent, "Trunk", 6 * scale, 1.2 * scale, pos + Vector3.new(0, 3 * scale, 0), MapKit.DARK_WOOD, Enum.Material.Wood, false).CanQuery = false
+	local green = rgb(44, 106, 58)
+	local n = 6
+	for k = 0, n - 1 do
+		local u = k / (n - 1)
+		local d = (7.4 - u * 5.6) * scale
+		local y = (5.2 + u * 11) * scale
+		MapKit.ball(parent, "Needles", d, CFrame.new(pos + Vector3.new(0, y, 0)), green:Lerp(rgb(62, 128, 70), u * 0.6), FOLIAGE)
 	end
+	MapKit.ball(parent, "Needles", 1.4 * scale, CFrame.new(pos + Vector3.new(0, 17.4 * scale, 0)), rgb(62, 128, 70), FOLIAGE)
 end
 
 function Streets.bench(parent, cf, place)
@@ -7114,14 +7177,14 @@ local function bikeRack(parent, pos, along, rng)
 	for k = -2, 2 do
 		-- an upside-down U of steel tube
 		for _, dz in ipairs({ -0.55, 0.55 }) do
-			deco(parent, "BikeRackPost", Vector3.new(0.16, 1.8, 0.16), cf * CFrame.new(k * 0.9, LOT_Y + 0.9, dz), rgb(120, 124, 132), Enum.Material.Metal)
+			deco(parent, "BikeRackPost", Vector3.new(0.16, 1.8, 0.16), cf * CFrame.new(k * 0.9, 0.9, dz), rgb(120, 124, 132), Enum.Material.Metal)
 		end
-		MapKit.cylinder(parent, "BikeRackTop", 1.26, 0.16, cf * CFrame.new(k * 0.9, LOT_Y + 1.8, 0) * CFrame.Angles(0, math.rad(90), 0), rgb(120, 124, 132), Enum.Material.Metal)
+		MapKit.cylinder(parent, "BikeRackTop", 1.26, 0.16, cf * CFrame.new(k * 0.9, 1.8, 0) * CFrame.Angles(0, math.rad(90), 0), rgb(120, 124, 132), Enum.Material.Metal)
 	end
-	deco(parent, "BikeRackBar", Vector3.new(4, 0.18, 0.18), cf * CFrame.new(0, LOT_Y + 0.2, 0), rgb(120, 124, 132), Enum.Material.Metal)
+	deco(parent, "BikeRackBar", Vector3.new(4, 0.18, 0.18), cf * CFrame.new(0, 0.2, 0), rgb(120, 124, 132), Enum.Material.Metal)
 	-- a bike or two
 	for n = 1, rng:NextInteger(0, 2) do
-		local bx = cf * CFrame.new(-1.8 + n * 1.8, LOT_Y + 1, 0.2)
+		local bx = cf * CFrame.new(-1.8 + n * 1.8, 1, 0.2)
 		local color = ({ rgb(200, 50, 50), rgb(40, 120, 200), rgb(250, 200, 50), rgb(40, 160, 90) })[rng:NextInteger(1, 4)]
 		for _, dz in ipairs({ -0.9, 0.9 }) do
 			MapKit.cylinder(parent, "BikeWheel", 0.12, 1.5, bx * CFrame.new(0, 0, dz), rgb(30, 30, 32), Enum.Material.Rubber)
@@ -7133,25 +7196,25 @@ end
 local function newspaperBoxes(parent, pos, facing)
 	local cf = CFrame.lookAt(pos, pos + facing)
 	for k, color in ipairs({ rgb(200, 40, 40), rgb(40, 90, 170), rgb(240, 200, 40) }) do
-		local box = deco(parent, "NewspaperBox", Vector3.new(1.4, 2.6, 1.3), cf * CFrame.new((k - 2) * 1.6, LOT_Y + 1.3, 0), color, Enum.Material.Metal)
+		local box = deco(parent, "NewspaperBox", Vector3.new(1.4, 2.6, 1.3), cf * CFrame.new((k - 2) * 1.6, 1.3, 0), color, Enum.Material.Metal)
 		deco(parent, "NewspaperWindow", Vector3.new(1, 0.8, 0.05), box.CFrame * CFrame.new(0, 0.5, -0.66), rgb(230, 230, 220), Enum.Material.Glass)
 	end
 end
 local function planter(parent, pos, rng)
-	deco(parent, "Planter", Vector3.new(3.2, 1.6, 3.2), CFrame.new(pos + Vector3.new(0, LOT_Y + 0.8, 0)), rgb(150, 140, 128), Enum.Material.Concrete)
+	deco(parent, "Planter", Vector3.new(3.2, 1.6, 3.2), CFrame.new(pos + Vector3.new(0, 0.8, 0)), rgb(150, 140, 128), Enum.Material.Concrete)
 	for k = 0, 3 do
-		MapKit.ball(parent, "PlanterFlowers", 1.2, CFrame.new(pos + Vector3.new((k % 2 - 0.5) * 1.2, LOT_Y + 1.9, (math.floor(k / 2) - 0.5) * 1.2)), MapKit.FLOWERS[rng:NextInteger(1, #MapKit.FLOWERS)], Enum.Material.Grass)
+		MapKit.ball(parent, "PlanterFlowers", 1.2, CFrame.new(pos + Vector3.new((k % 2 - 0.5) * 1.2, 1.9, (math.floor(k / 2) - 0.5) * 1.2)), MapKit.FLOWERS[rng:NextInteger(1, #MapKit.FLOWERS)], Enum.Material.SmoothPlastic)
 	end
 end
 local function bollards(parent, corner, dir)
 	for k = 1, 3 do
-		MapKit.cylinder(parent, "Bollard", 2.4, 0.7, CFrame.new(corner + dir * (k * 1.6) + Vector3.new(0, LOT_Y + 1.2, 0)) * CFrame.Angles(0, 0, math.rad(90)), rgb(60, 62, 70), Enum.Material.Metal)
+		MapKit.cylinder(parent, "Bollard", 2.4, 0.7, CFrame.new(corner + dir * (k * 1.6) + Vector3.new(0, 1.2, 0)) * CFrame.Angles(0, 0, math.rad(90)), rgb(60, 62, 70), Enum.Material.Metal)
 	end
 end
 local function parkingMeter(parent, pos)
-	deco(parent, "MeterPost", Vector3.new(0.25, 3.4, 0.25), CFrame.new(pos + Vector3.new(0, LOT_Y + 1.7, 0)), rgb(80, 84, 92), Enum.Material.Metal)
-	deco(parent, "Meter", Vector3.new(0.7, 1, 0.5), CFrame.new(pos + Vector3.new(0, LOT_Y + 3.8, 0)), rgb(110, 120, 130), Enum.Material.Metal)
-	deco(parent, "MeterDisplay", Vector3.new(0.4, 0.3, 0.05), CFrame.new(pos + Vector3.new(0, LOT_Y + 3.95, -0.27)), rgb(160, 220, 170), Enum.Material.Neon)
+	deco(parent, "MeterPost", Vector3.new(0.25, 3.4, 0.25), CFrame.new(pos + Vector3.new(0, 1.7, 0)), rgb(80, 84, 92), Enum.Material.Metal)
+	deco(parent, "Meter", Vector3.new(0.7, 1, 0.5), CFrame.new(pos + Vector3.new(0, 3.8, 0)), rgb(110, 120, 130), Enum.Material.Metal)
+	deco(parent, "MeterDisplay", Vector3.new(0.4, 0.3, 0.05), CFrame.new(pos + Vector3.new(0, 3.95, -0.27)), rgb(160, 220, 170), Enum.Material.Neon)
 end
 
 local function streetSign(parent, pos, streetName, avenueName)
@@ -7357,18 +7420,591 @@ function Streets.build(parent, rng, blockKind)
 end
 
 return Streets
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX23"><Properties><string name="Name">Landscape</string><ProtectedString name="Source"><![CDATA[-- Landscape (ModuleScript) — ServerScriptService.Modules.Landscape
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX23"><Properties><string name="Name">Prison</string><ProtectedString name="Source"><![CDATA[-- Prison (ModuleScript) — ServerScriptService.Modules.Prison
+-- AI City State Prison: a walled compound on the east side of town, at the
+-- end of Prison Road. Built by MapBuilder; PrisonService runs the people.
+--
+--   • A perimeter wall with razor wire, a gate with a guard booth, and a
+--     guard tower with a sweeping searchlight on every corner
+--   • Cell Block A: two tiers of barred cells along a long hall. The 16 cells
+--     on the ground floor have bunk beds, a toilet, a sink and a sliding door
+--     that opens in the morning and slams shut at lights out. The hall in the
+--     middle is the mess hall (steel tables, a serving counter) and the TV
+--     lounge, with a guard desk by the yard door.
+--   • The yard: a basketball court, a weight pit, picnic tables, and a
+--     walking track around it all
+--   • The administration building, a parking lot and the prison bus
+--
+-- Prison.build(parent, rng) returns everything PrisonService needs (cells,
+-- spots, doors, walking lanes) in map.Prison. Positions inside are in the
+-- prison's own frame: local -Z faces the city, and Prison.F turns them into
+-- world positions.
+
+local MapKit = require(script.Parent:WaitForChild("MapKit"))
+local Streets = require(script.Parent:WaitForChild("Streets"))
+
+local Prison = {}
+
+local rgb, WHITE, BLACK = MapKit.rgb, MapKit.WHITE, MapKit.BLACK
+
+-- where it is: east of the city, facing west down Prison Road
+Prison.CENTER = Vector3.new(MapKit.EXTENT + 230, 0, -MapKit.EXTENT * 0.35)
+Prison.W, Prison.D = 170, 150 -- inside the walls (local x, local z)
+Prison.RADIUS = 125 -- keep trees and hills this far away
+Prison.F = CFrame.lookAt(Prison.CENTER, Prison.CENTER + Vector3.new(-1, 0, 0))
+
+local G = 0.3 -- the top of the compound's concrete slab
+Prison.G = G
+local SPINE = 20 -- the hall's walkway (local z)
+local CELL_W, CELL_D, TIER = 12, 10, 11
+local BLOCK_X0, BLOCK_X1, BLOCK_Z0, BLOCK_Z1, BLOCK_H = -80, 16, -6, 46, 24
+
+local CONCRETE = rgb(176, 174, 168)
+local DARK_CONCRETE = rgb(128, 126, 122)
+local STEEL = rgb(62, 66, 72)
+local FLOOR = rgb(150, 150, 146)
+
+local F = Prison.F
+local model
+
+local function cf(x, y, z)
+	return F * CFrame.new(x, G + y, z)
+end
+local function pos(x, y, z)
+	return (F * CFrame.new(x, G + y, z)).Position
+end
+Prison.Pos = pos
+
+-- a box standing on the slab: (x, z) is its center, y its bottom
+local function solid(name, size, x, y, z, color, material)
+	return MapKit.part(model, name, size, cf(x, y + size.Y / 2, z), color, material)
+end
+local function deco(name, size, x, y, z, color, material)
+	return MapKit.deco(model, name, size, cf(x, y + size.Y / 2, z), color, material)
+end
+-- a spot for someone to be (standing at x, z, facing toward fx, fz)
+local function spotAt(x, z, fx, fz, extra)
+	local p = pos(x, 0, z)
+	local look = pos(fx, 0, fz)
+	if (look - p).Magnitude < 0.1 then
+		look = p + F.LookVector
+	end
+	local s = { CFrame = CFrame.lookAt(p, Vector3.new(look.X, p.Y, look.Z)), Local = Vector3.new(x, 0, z) }
+	for k, v in pairs(extra or {}) do
+		s[k] = v
+	end
+	return s
+end
+
+--------------------------------------------------------------------------------
+-- The walls, the gate, the towers
+--------------------------------------------------------------------------------
+local function perimeter(data)
+	local hw, hd, h = Prison.W / 2, Prison.D / 2, 18
+	local wall = rgb(160, 158, 150)
+	-- the back and the two sides; the front has the gate in the middle
+	solid("PerimeterWall", Vector3.new(Prison.W + 4, h, 2), 0, 0, hd + 1, wall, Enum.Material.Concrete)
+	solid("PerimeterWall", Vector3.new(2, h, Prison.D + 4), -hw - 1, 0, 0, wall, Enum.Material.Concrete)
+	solid("PerimeterWall", Vector3.new(2, h, Prison.D + 4), hw + 1, 0, 0, wall, Enum.Material.Concrete)
+	local gateHalf = 9
+	local seg = hw - gateHalf + 1
+	for _, sx in ipairs({ -1, 1 }) do
+		solid("PerimeterWall", Vector3.new(seg + 1, h, 2), sx * (gateHalf + seg / 2), 0, -hd - 1, wall, Enum.Material.Concrete)
+	end
+	-- razor wire along the top: two coils on little posts
+	local function wire(x0, z0, x1, z1)
+		local a, b = pos(x0, h + 1.1, z0), pos(x1, h + 1.1, z1)
+		local mid, len = (a + b) / 2, (b - a).Magnitude
+		MapKit.cylinder(model, "RazorWire", len, 1.1, CFrame.lookAt(mid, b) * CFrame.Angles(0, math.rad(90), 0), rgb(150, 154, 160), Enum.Material.DiamondPlate).Transparency = 0.25
+	end
+	wire(-hw - 2, hd + 1, hw + 2, hd + 1)
+	wire(-hw - 1, -hd - 2, -hw - 1, hd + 2)
+	wire(hw + 1, -hd - 2, hw + 1, hd + 2)
+	wire(-hw - 2, -hd - 1, -gateHalf, -hd - 1)
+	wire(gateHalf, -hd - 1, hw + 2, -hd - 1)
+	-- the gate: a steel frame, two sliding gates (open in the daytime for
+	-- visitors), a barrier arm and a guard booth
+	solid("GateBeam", Vector3.new(gateHalf * 2 + 4, 3, 3), 0, h - 1, -hd - 1, STEEL, Enum.Material.Metal)
+	local sign = deco("PrisonSign", Vector3.new(gateHalf * 2 + 2, 2.6, 0.3), 0, h - 0.8, -hd - 2.7, rgb(30, 34, 40))
+	MapKit.signText(sign, Enum.NormalId.Back, "AI CITY STATE PRISON", rgb(250, 210, 80), Enum.Font.GothamBlack)
+	MapKit.signText(sign, Enum.NormalId.Front, "AI CITY STATE PRISON", rgb(250, 210, 80), Enum.Font.GothamBlack)
+	for _, sx in ipairs({ -1, 1 }) do
+		local panel = deco("GatePanel", Vector3.new(gateHalf, h - 3, 0.5), sx * (gateHalf + gateHalf / 2 - 0.5), 0, -hd - 3, STEEL, Enum.Material.DiamondPlate)
+		panel.Transparency = 0.35
+	end
+	local arm = deco("BarrierArm", Vector3.new(gateHalf * 2 - 2, 0.5, 0.5), 0, 3.6, -hd - 6, rgb(230, 60, 50))
+	arm.CFrame = arm.CFrame * CFrame.Angles(0, 0, math.rad(70)) * CFrame.new(gateHalf - 1, 0, 0)
+	deco("BarrierPost", Vector3.new(1, 3.6, 1), -gateHalf + 1, 0, -hd - 6, rgb(240, 200, 60), Enum.Material.Metal)
+	solid("GuardBooth", Vector3.new(7, 8, 7), gateHalf + 6, 0, -hd - 7, rgb(200, 198, 190), Enum.Material.Concrete)
+	local window = deco("BoothWindow", Vector3.new(5, 3, 0.2), gateHalf + 6, 3.6, -hd - 10.6, rgb(170, 210, 230), Enum.Material.Glass)
+	window.Transparency = 0.3
+	solid("BoothRoof", Vector3.new(8.4, 0.6, 8.4), gateHalf + 6, 8, -hd - 7, STEEL, Enum.Material.Metal)
+	data.Gate = pos(0, 0, -hd - 10)
+	data.GateInside = pos(0, 0, -hd + 6)
+	data.Booth = spotAt(gateHalf + 1.5, -hd - 10.5, gateHalf + 1.5, -hd - 20)
+	-- the four towers, a guard up in each, and a searchlight that sweeps the yard
+	data.Towers = {}
+	for _, c in ipairs({ { -1, -1 }, { 1, -1 }, { -1, 1 }, { 1, 1 } }) do
+		local x, z = c[1] * (hw - 4), c[2] * (hd - 4)
+		solid("TowerLeg", Vector3.new(6, 26, 6), x, 0, z, DARK_CONCRETE, Enum.Material.Concrete)
+		solid("TowerFloor", Vector3.new(11, 1, 11), x, 26, z, STEEL, Enum.Material.Metal)
+		for _, e in ipairs({ { 0, 1 }, { 0, -1 }, { 1, 0 }, { -1, 0 } }) do
+			local size = if e[1] == 0 then Vector3.new(11, 1.4, 0.4) else Vector3.new(0.4, 1.4, 11)
+			deco("TowerRail", size, x + e[1] * 5.3, 27, z + e[2] * 5.3, STEEL, Enum.Material.Metal)
+			local glass = deco("TowerGlass", if e[1] == 0 then Vector3.new(10, 3.6, 0.2) else Vector3.new(0.2, 3.6, 10), x + e[1] * 5.3, 28.4, z + e[2] * 5.3, rgb(160, 200, 220), Enum.Material.Glass)
+			glass.Transparency = 0.55
+		end
+		for _, px in ipairs({ -1, 1 }) do
+			for _, pz in ipairs({ -1, 1 }) do
+				deco("TowerPost", Vector3.new(0.5, 5.2, 0.5), x + px * 5.2, 27, z + pz * 5.2, STEEL, Enum.Material.Metal)
+			end
+		end
+		deco("TowerRoof", Vector3.new(12.4, 0.8, 12.4), x, 32.2, z, rgb(60, 64, 72), Enum.Material.Metal)
+		-- the searchlight: its head turns (see PrisonService)
+		local head = deco("Searchlight", Vector3.new(1.4, 1.4, 2.2), x, 32.8, z, rgb(230, 230, 220), Enum.Material.Metal)
+		local lens = deco("SearchlightLens", Vector3.new(1.1, 1.1, 0.2), x, 33.1, z, rgb(255, 250, 220), Enum.Material.Neon)
+		lens.CFrame = head.CFrame * CFrame.new(0, 0, -1.15)
+		local beam = MapKit.spot(head, Enum.NormalId.Front, rgb(255, 250, 225), 120, 22, 4)
+		beam.Enabled = false
+		table.insert(data.Towers, {
+			Head = head, Lens = lens, Light = beam, Base = pos(x, 32.8 + 0.7, z),
+			Aim = pos(-x * 0.2, 0, -z * 0.2), Guard = spotAt(x - c[1] * 2, z - c[2] * 2, 0, 0, { Raise = 27 }),
+		})
+	end
+end
+
+--------------------------------------------------------------------------------
+-- Cell Block A
+--------------------------------------------------------------------------------
+-- the bars across a cell front (local x0..x1 at z), leaving a door gap
+local function bars(x0, x1, z, y0, h, gap0, gap1)
+	local x = x0 + 0.3
+	while x < x1 - 0.2 do
+		if not gap0 or x < gap0 - 0.1 or x > gap1 + 0.1 then
+			solid("CellBar", Vector3.new(0.28, h, 0.28), x, y0, z, STEEL, Enum.Material.Metal)
+		end
+		x += 1.15
+	end
+	for _, y in ipairs({ 0.05, h * 0.45, h - 0.35 }) do
+		if gap0 then
+			if y > h * 0.9 then
+				deco("CellRail", Vector3.new(x1 - x0, 0.3, 0.4), (x0 + x1) / 2, y0 + y, z, STEEL, Enum.Material.Metal)
+			else
+				deco("CellRail", Vector3.new(gap0 - x0, 0.3, 0.4), (x0 + gap0) / 2, y0 + y, z, STEEL, Enum.Material.Metal)
+				deco("CellRail", Vector3.new(x1 - gap1, 0.3, 0.4), (gap1 + x1) / 2, y0 + y, z, STEEL, Enum.Material.Metal)
+			end
+		else
+			deco("CellRail", Vector3.new(x1 - x0, 0.3, 0.4), (x0 + x1) / 2, y0 + y, z, STEEL, Enum.Material.Metal)
+		end
+	end
+end
+
+-- a sliding barred door: a see-through blocker and the bars that ride on it
+local function slidingDoor(x0, x1, z, h, openShift)
+	local parts = {}
+	local w = x1 - x0
+	local blocker = solid("CellDoor", Vector3.new(w, h - 0.5, 0.3), (x0 + x1) / 2, 0, z, STEEL, Enum.Material.Metal)
+	blocker.Transparency = 1
+	table.insert(parts, blocker)
+	for k = 0, 2 do
+		table.insert(parts, deco("CellDoorBar", Vector3.new(0.26, h - 0.6, 0.26), x0 + 0.5 + k * (w - 1) / 2, 0.1, z - 0.3, rgb(80, 84, 92), Enum.Material.Metal))
+	end
+	for _, y in ipairs({ 0.3, h * 0.45, h - 1 }) do
+		table.insert(parts, deco("CellDoorRail", Vector3.new(w, 0.28, 0.3), (x0 + x1) / 2, y, z - 0.3, rgb(80, 84, 92), Enum.Material.Metal))
+	end
+	local door = { Parts = {}, Open = false }
+	local shift = (F * CFrame.new(openShift, 0, 0)).Position - F.Position
+	for _, p in ipairs(parts) do
+		table.insert(door.Parts, { Part = p, Closed = p.CFrame, Opened = p.CFrame + shift })
+	end
+	return door
+end
+
+local function cellBlock(data, rng)
+	local x0, x1, z0, z1, H = BLOCK_X0, BLOCK_X1, BLOCK_Z0, BLOCK_Z1, BLOCK_H
+	local wallC = rgb(196, 192, 182)
+	-- the shell: back, front and west walls, the east wall with the yard door
+	solid("BlockWall", Vector3.new(x1 - x0 + 2, H, 1.4), (x0 + x1) / 2, 0, z0 - 0.7, wallC, Enum.Material.Concrete)
+	solid("BlockWall", Vector3.new(x1 - x0 + 2, H, 1.4), (x0 + x1) / 2, 0, z1 + 0.7, wallC, Enum.Material.Concrete)
+	solid("BlockWall", Vector3.new(1.4, H, z1 - z0 + 2.8), x0 - 0.7, 0, (z0 + z1) / 2, wallC, Enum.Material.Concrete)
+	local doorZ0, doorZ1, doorH = SPINE - 6, SPINE + 6, 11
+	solid("BlockWall", Vector3.new(1.4, H, doorZ0 - z0 + 1.4), x1 + 0.7, 0, (z0 - 1.4 + doorZ0) / 2, wallC, Enum.Material.Concrete)
+	solid("BlockWall", Vector3.new(1.4, H, z1 + 1.4 - doorZ1), x1 + 0.7, 0, (doorZ1 + z1 + 1.4) / 2, wallC, Enum.Material.Concrete)
+	solid("BlockWall", Vector3.new(1.4, H - doorH, doorZ1 - doorZ0), x1 + 0.7, doorH, SPINE, wallC, Enum.Material.Concrete)
+	local label = deco("BlockSign", Vector3.new(14, 2.4, 0.3), x1 + 1.6, doorH + 1.2, SPINE, rgb(30, 34, 40))
+	label.CFrame = label.CFrame * CFrame.Angles(0, math.rad(90), 0)
+	MapKit.signText(label, Enum.NormalId.Front, "CELL BLOCK A", rgb(250, 210, 80), Enum.Font.GothamBlack)
+	MapKit.signText(label, Enum.NormalId.Back, "CELL BLOCK A", rgb(250, 210, 80), Enum.Font.GothamBlack)
+	-- a stripe and slit windows high up on the long walls
+	for _, z in ipairs({ z0 - 1.45, z1 + 1.45 }) do
+		deco("BlockStripe", Vector3.new(x1 - x0 + 2, 1.2, 0.1), (x0 + x1) / 2, 3, z, rgb(60, 80, 120))
+		for x = x0 + 6, x1 - 4, 12 do
+			local w = deco("SlitWindow", Vector3.new(1.2, 5, 0.2), x, 15, z, rgb(160, 190, 210), Enum.Material.Glass)
+			w.Transparency = 0.2
+		end
+	end
+	-- the roof, with a skylight down the middle
+	solid("BlockRoof", Vector3.new(x1 - x0 + 3, 1, SPINE - 4 - z0 + 1.5), (x0 + x1) / 2, H, (z0 - 1.5 + SPINE - 4) / 2, DARK_CONCRETE, Enum.Material.Concrete)
+	solid("BlockRoof", Vector3.new(x1 - x0 + 3, 1, z1 + 1.5 - SPINE - 4), (x0 + x1) / 2, H, (SPINE + 4 + z1 + 1.5) / 2, DARK_CONCRETE, Enum.Material.Concrete)
+	local sky = solid("Skylight", Vector3.new(x1 - x0 + 3, 0.6, 8), (x0 + x1) / 2, H + 0.2, SPINE, rgb(190, 215, 230), Enum.Material.Glass)
+	sky.Transparency = 0.45
+	-- a polished floor and a yellow walking line down the hall
+	deco("BlockFloor", Vector3.new(x1 - x0, 0.06, z1 - z0), (x0 + x1) / 2, 0, (z0 + z1) / 2, FLOOR, Enum.Material.SmoothPlastic).Reflectance = 0.08
+	deco("HallLine", Vector3.new(x1 - x0 - 4, 0.07, 0.4), (x0 + x1) / 2 + 2, 0, SPINE, rgb(240, 200, 60))
+	-- hanging lights
+	for x = x0 + 10, x1 - 6, 16 do
+		local lamp = deco("HallLamp", Vector3.new(3, 0.5, 1.4), x, H - 3, SPINE, rgb(255, 245, 225), Enum.Material.Neon)
+		deco("LampCord", Vector3.new(0.1, 2.5, 0.1), x, H - 2.5, SPINE, BLACK)
+		MapKit.light(lamp, rgb(255, 240, 215), 30, 0.9)
+	end
+
+	data.Cells = {}
+	local doors = {}
+	-- two rows of cells: along the front wall (bars facing +z) and the back
+	-- wall (bars facing -z). Ground floor cells are real; the upper tier is
+	-- a row of barred cells above them, along a catwalk.
+	for row, spec in ipairs({ { Back = z0, Bars = z0 + CELL_D, Out = 1 }, { Back = z1, Bars = z1 - CELL_D, Out = -1 } }) do
+		local zBars, out = spec.Bars, spec.Out
+		local zMid = (spec.Back + zBars) / 2
+		for k = 0, 7 do
+			local cx0, cx1 = x0 + k * CELL_W, x0 + (k + 1) * CELL_W
+			local cx = (cx0 + cx1) / 2
+			-- the wall between this cell and the next (both tiers)
+			if k < 7 then
+				solid("CellWall", Vector3.new(0.8, TIER * 2 - 1, CELL_D), cx1, 0, zMid, CONCRETE, Enum.Material.Concrete)
+			end
+			local d0, d1 = cx0 + 1.2, cx0 + 4.2 -- the door gap
+			bars(cx0, cx1, zBars, 0, TIER - 1, d0, d1)
+			local door = slidingDoor(d0, d1, zBars + out * 0.35, TIER - 1, 3.2)
+			table.insert(doors, door)
+			-- inside: a bunk bed along the side wall, a toilet and a sink, a
+			-- shelf and a little desk
+			local bx = cx1 - 2.2
+			local bz = zMid - out * 0.2
+			local lowTop, highTop = 2.2, 6.4
+			deco("BunkFrame", Vector3.new(3.4, 0.4, 7.4), bx, lowTop - 0.6, bz, STEEL, Enum.Material.Metal)
+			deco("BunkFrame", Vector3.new(3.4, 0.4, 7.4), bx, highTop - 0.6, bz, STEEL, Enum.Material.Metal)
+			for _, px in ipairs({ -1.6, 1.6 }) do
+				for _, pz in ipairs({ -3.6, 3.6 }) do
+					deco("BunkPost", Vector3.new(0.25, highTop + 0.8, 0.25), bx + px, 0, bz + pz, STEEL, Enum.Material.Metal)
+				end
+			end
+			local sheet = ({ rgb(220, 222, 214), rgb(180, 190, 200), rgb(200, 190, 170) })[rng:NextInteger(1, 3)]
+			deco("Mattress", Vector3.new(3, 0.4, 7), bx, lowTop - 0.2, bz, sheet, Enum.Material.Fabric)
+			deco("Mattress", Vector3.new(3, 0.4, 7), bx, highTop - 0.2, bz, sheet, Enum.Material.Fabric)
+			for _, top in ipairs({ lowTop, highTop }) do
+				deco("Pillow", Vector3.new(2.2, 0.4, 1.2), bx, top + 0.2, bz + out * -2.9, WHITE, Enum.Material.Fabric)
+			end
+			deco("BunkLadder", Vector3.new(0.2, highTop, 1.4), bx - 1.8, 0, bz + out * 2.4, STEEL, Enum.Material.Metal)
+			local tx = cx0 + 1.4
+			local tz = spec.Back + out * 1.4
+			deco("CellToilet", Vector3.new(1.6, 1.6, 1.8), tx + 0.4, 0, tz, rgb(200, 204, 210), Enum.Material.Metal)
+			deco("CellSink", Vector3.new(1.4, 0.7, 1.1), tx + 2.6, 2.6, spec.Back + out * 0.9, rgb(200, 204, 210), Enum.Material.Metal)
+			deco("CellShelf", Vector3.new(3, 0.25, 1), cx - 0.8, 5, spec.Back + out * 0.6, rgb(120, 100, 80), Enum.Material.Wood)
+			for n = 0, 2 do
+				deco("ShelfBook", Vector3.new(0.4, 1.1, 0.8), cx - 1.8 + n * 0.5, 5.25, spec.Back + out * 0.6, MapKit.FLOWERS[(k + n + row) % #MapKit.FLOWERS + 1]:Lerp(BLACK, 0.3))
+			end
+			deco("CellDesk", Vector3.new(2.4, 0.2, 1.4), cx - 1, 2.6, spec.Back + out * 3.4, rgb(120, 100, 80), Enum.Material.Wood)
+			deco("DeskLeg", Vector3.new(0.2, 2.6, 1.2), cx - 2.1, 0, spec.Back + out * 3.4, STEEL, Enum.Material.Metal)
+			local stool = MapKit.seat(model, "CellStool", Vector3.new(1.2, 0.35, 1.2), cf(cx - 1, 1.75, spec.Back + out * 5), STEEL, Enum.Material.Metal, nil)
+			stool.CanCollide = false
+			deco("StoolLeg", Vector3.new(0.3, 1.6, 0.3), cx - 1, 0, spec.Back + out * 5, STEEL, Enum.Material.Metal)
+			local lamp = deco("CellLamp", Vector3.new(1.4, 0.3, 1.4), cx, TIER - 1.6, zMid, rgb(255, 240, 210), Enum.Material.Neon)
+			MapKit.light(lamp, rgb(255, 235, 205), 12, 0.5)
+			-- where people sleep, sit and stand in here (the bunks lie along z)
+			local head = bz + out * -2.9
+			local foot = bz + out * 2.9
+			local number = (row - 1) * 8 + k + 1
+			local cell = {
+				Id = number,
+				Row = row,
+				Center = pos(cx - 1.5, 0, zMid),
+				LocalCenter = Vector3.new(cx - 1.5, 0, zMid),
+				Bounds = { cx0 + 0.4, cx1 - 0.4, math.min(spec.Back, zBars) + 0.3, math.max(spec.Back, zBars) - 0.3 },
+				DoorIn = Vector3.new((d0 + d1) / 2, 0, zBars - out * 1.6),
+				DoorOut = Vector3.new((d0 + d1) / 2, 0, zBars + out * 2.4),
+				Door = door,
+				Bunks = {
+					spotAt(bx, (head + foot) / 2, bx, foot, { BedTop = G + lowTop }),
+					spotAt(bx, (head + foot) / 2, bx, foot, { BedTop = G + highTop }),
+				},
+				-- sitting on the edge of the bottom bunk (hips a little above the mattress)
+				Seat = spotAt(bx - 1.2, bz, bx - 6, bz, { Raise = lowTop + 0.55 - 1.9 }),
+				Stand = spotAt(cx - 2.5, zMid + out * 1.5, cx - 2.5, zBars),
+				Desk = spotAt(cx - 1, spec.Back + out * 5, cx - 1, spec.Back, { Seat = stool }),
+			}
+			local plate = deco("CellNumber", Vector3.new(1.6, 0.9, 0.1), cx1 - 1.6, TIER - 2.3, zBars + out * 0.3, rgb(30, 34, 40))
+			MapKit.signText(plate, if out > 0 then Enum.NormalId.Back else Enum.NormalId.Front, "A-" .. string.format("%02d", number), WHITE, Enum.Font.GothamBold)
+			table.insert(data.Cells, cell)
+			-- the upper tier: a cell floor (the ceiling below), bars along the catwalk
+			bars(cx0, cx1, zBars, TIER, TIER - 1)
+		end
+		-- the upper tier's floor and the catwalk in front of it, with a railing
+		solid("TierFloor", Vector3.new(x1 - x0, 1, CELL_D + 3.4), (x0 + x1) / 2, TIER - 1, zMid + out * 1.7, DARK_CONCRETE, Enum.Material.Concrete)
+		local edge = zBars + out * 3.2
+		deco("CatwalkRail", Vector3.new(x1 - x0, 0.3, 0.3), (x0 + x1) / 2, TIER + 3.2, edge, STEEL, Enum.Material.Metal)
+		local mesh = deco("CatwalkMesh", Vector3.new(x1 - x0, 3.2, 0.1), (x0 + x1) / 2, TIER, edge, STEEL, Enum.Material.DiamondPlate)
+		mesh.Transparency = 0.55
+		for x = x0 + 4, x1 - 2, 8 do
+			deco("CatwalkPost", Vector3.new(0.3, 3.4, 0.3), x, TIER, edge, STEEL, Enum.Material.Metal)
+		end
+	end
+	data.Doors = doors
+
+	-- the mess hall in the middle: steel tables and stools, a serving counter
+	data.MessSeats = {}
+	for _, tx in ipairs({ -59.5, -35.5, -11.5 }) do
+		for _, tz in ipairs({ SPINE - 9, SPINE + 9 }) do
+			deco("MessTable", Vector3.new(3, 0.3, 6.4), tx, 2.6, tz, rgb(170, 174, 180), Enum.Material.Metal)
+			deco("MessTableLeg", Vector3.new(0.6, 2.6, 0.6), tx, 0, tz, STEEL, Enum.Material.Metal)
+			for _, sx in ipairs({ -1, 1 }) do
+				for _, dz in ipairs({ -2, 0, 2 }) do
+					local seat = MapKit.seat(model, "MessStool", Vector3.new(1.3, 0.35, 1.3), cf(tx + sx * 2.3, 1.75, tz + dz), rgb(90, 96, 104), Enum.Material.Metal, nil)
+					seat.CanCollide = false
+					deco("StoolLeg", Vector3.new(0.3, 1.6, 0.3), tx + sx * 2.3, 0, tz + dz, STEEL, Enum.Material.Metal)
+					local s = spotAt(tx + sx * 2.3, tz + dz, tx, tz + dz, { Seat = seat })
+					s.Tray = pos(tx + sx * 0.9, 2.9, tz + dz)
+					table.insert(data.MessSeats, s)
+				end
+			end
+		end
+	end
+	-- the serving line along the west wall
+	solid("ServingCounter", Vector3.new(3, 3.2, 16), x0 + 2.5, 0, SPINE, rgb(170, 174, 180), Enum.Material.Metal)
+	deco("SneezeGuard", Vector3.new(0.2, 1.6, 15), x0 + 3.8, 3.2, SPINE, rgb(200, 220, 230), Enum.Material.Glass).Transparency = 0.5
+	for n = -3, 3 do
+		deco("FoodTray", Vector3.new(2, 0.3, 1.8), x0 + 2.5, 3.2, SPINE + n * 2.1, ({ rgb(210, 180, 110), rgb(160, 110, 70), rgb(120, 170, 90), rgb(230, 220, 190) })[(n + 3) % 4 + 1], Enum.Material.SmoothPlastic)
+	end
+	data.Cook = spotAt(x0 + 1, SPINE, x0 + 5, SPINE)
+	-- the TV lounge by the serving line: a TV on the wall, plastic chairs
+	local tv = deco("PrisonTV", Vector3.new(0.3, 3.4, 5.6), x0 + 0.3, 6.5, SPINE + 11, rgb(20, 20, 24))
+	local screen = MapKit.deco(model, "PrisonTVScreen", Vector3.new(0.05, 3, 5.1), tv.CFrame * CFrame.new(0.2, 0, 0), rgb(110, 170, 210), Enum.Material.Neon)
+	screen.Transparency = 0.15
+	data.TVSeats = {}
+	for n = 0, 3 do
+		local x, z = x0 + 9, SPINE + 8.5 + n * 1.8
+		local seat = MapKit.seat(model, "LoungeChair", Vector3.new(1.6, 0.35, 1.6), cf(x, 1.75, z), rgb(60, 110, 170), Enum.Material.SmoothPlastic, nil)
+		seat.CanCollide = false
+		deco("ChairBack", Vector3.new(0.3, 1.6, 1.6), x + 0.7, 1.9, z, rgb(60, 110, 170))
+		table.insert(data.TVSeats, spotAt(x, z, x0, z, { Seat = seat }))
+	end
+	-- the guard desk by the yard door
+	deco("GuardDesk", Vector3.new(3, 3, 6), x1 - 5, 0, SPINE - 11, rgb(90, 80, 70), Enum.Material.Wood)
+	deco("DeskMonitor", Vector3.new(0.3, 1.2, 1.8), x1 - 5, 3, SPINE - 11, rgb(30, 30, 34))
+	data.DeskGuard = spotAt(x1 - 2.2, SPINE - 11, x1 - 10, SPINE - 11)
+	-- places to mop the floor
+	data.MopSpots = {}
+	for x = x0 + 14, x1 - 10, 14 do
+		table.insert(data.MopSpots, spotAt(x, SPINE + rng:NextNumber(-3, 3), x + 3, SPINE))
+	end
+	-- where guards walk the hall
+	data.HallPatrol = { Vector3.new(x0 + 8, 0, SPINE), Vector3.new(x1 - 8, 0, SPINE) }
+end
+
+--------------------------------------------------------------------------------
+-- The yard
+--------------------------------------------------------------------------------
+local function hoop(hcf)
+	MapKit.deco(model, "HoopPost", Vector3.new(0.6, 10, 0.6), hcf * CFrame.new(0, 5, 0), rgb(50, 50, 55), Enum.Material.Metal)
+	MapKit.deco(model, "Backboard", Vector3.new(6, 4, 0.3), hcf * CFrame.new(0, 10, -0.5), WHITE)
+	MapKit.cylinder(model, "Hoop", 0.3, 2.4, hcf * CFrame.new(0, 9, -1.8) * CFrame.Angles(0, 0, math.rad(90)), rgb(240, 90, 30), Enum.Material.Metal)
+	return (hcf * CFrame.new(0, 9, -1.8)).Position
+end
+
+local function yard(data, rng)
+	-- dirt and worn grass under everything, a track around the edge
+	deco("YardGround", Vector3.new(58, 0.08, Prison.D - 6), 53, 0, 0, rgb(150, 134, 108), Enum.Material.Ground)
+	data.Yard = { Min = Vector3.new(26, 0, -Prison.D / 2 + 4), Max = Vector3.new(Prison.W / 2 - 4, 0, Prison.D / 2 - 4) }
+	data.Laps = { Vector3.new(30, 0, -28), Vector3.new(78, 0, -28), Vector3.new(78, 0, 66), Vector3.new(30, 0, 66) }
+	for k = 1, 4 do
+		local a, b = data.Laps[k], data.Laps[k % 4 + 1]
+		local mid, len = (a + b) / 2, (b - a).Magnitude
+		local size = if math.abs(a.X - b.X) > 1 then Vector3.new(len + 3, 0.1, 3) else Vector3.new(3, 0.1, len + 3)
+		deco("Track", size, mid.X, 0.02, mid.Z, rgb(170, 90, 70), Enum.Material.Concrete)
+	end
+	-- the basketball court
+	local court = cf(48, 0, -50)
+	MapKit.part(model, "YardCourt", Vector3.new(24, 0.15, 30), court * CFrame.new(0, 0.1, 0), rgb(96, 100, 108), Enum.Material.Concrete)
+	MapKit.deco(model, "CourtLine", Vector3.new(24, 0.16, 0.3), court * CFrame.new(0, 0.12, 0), WHITE)
+	data.Hoops = {}
+	for _, sz in ipairs({ -1, 1 }) do
+		local hcf = court * CFrame.new(0, 0, sz * 14) * CFrame.Angles(0, if sz > 0 then 0 else math.pi, 0)
+		local rim = hoop(hcf)
+		for k = -1, 1 do
+			local s = spotAt(48 + k * 4, -50 + sz * 7, 48, -50 + sz * 14, { Hoop = rim })
+			table.insert(data.Hoops, s)
+		end
+	end
+	-- the weight pit: rubber mats, benches, a dumbbell rack, a squat rack, a pull-up bar
+	deco("WeightMat", Vector3.new(14, 0.2, 30), 73, 0, -48, rgb(40, 40, 44), Enum.Material.Rubber)
+	data.Weights = {}
+	for n = 0, 2 do
+		local z = -58 + n * 8
+		deco("WeightBench", Vector3.new(1.4, 1.6, 4), 70, 0.2, z, rgb(30, 30, 34), Enum.Material.Fabric)
+		deco("BenchRack", Vector3.new(3, 3.2, 0.3), 70, 0.2, z - 2, STEEL, Enum.Material.Metal)
+		MapKit.cylinder(model, "Barbell", 6, 0.25, cf(70, 3.2, z - 1.8), rgb(180, 180, 186), Enum.Material.Metal)
+		for _, sx in ipairs({ -1, 1 }) do
+			MapKit.cylinder(model, "Plate", 0.4, 2.2, cf(70 + sx * 2.6, 3.2, z - 1.8), BLACK, Enum.Material.Rubber)
+		end
+		table.insert(data.Weights, spotAt(72.5, z, 68, z, { Action = "lift" }))
+	end
+	deco("DumbbellRack", Vector3.new(1.4, 2.4, 8), 78, 0.2, -40, STEEL, Enum.Material.Metal)
+	for n = 0, 4 do
+		MapKit.cylinder(model, "Dumbbell", 1.3, 0.6, cf(78, 2.9, -43.5 + n * 1.8) * CFrame.Angles(0, math.rad(90), 0), rgb(60, 60, 66), Enum.Material.Metal)
+	end
+	table.insert(data.Weights, spotAt(75.5, -40, 79, -40, { Action = "lift" }))
+	table.insert(data.Weights, spotAt(75.5, -36, 79, -36, { Action = "lift" }))
+	deco("SquatRack", Vector3.new(4, 7, 0.4), 74, 0.2, -30, STEEL, Enum.Material.Metal)
+	table.insert(data.Weights, spotAt(74, -32, 74, -40, { Action = "squat" }))
+	for _, sx in ipairs({ -1, 1 }) do
+		deco("PullupPost", Vector3.new(0.4, 8, 0.4), 64 + sx * 3, 0, -33, STEEL, Enum.Material.Metal)
+	end
+	MapKit.cylinder(model, "PullupBar", 6, 0.3, cf(64, 8, -33), STEEL, Enum.Material.Metal)
+	table.insert(data.Weights, spotAt(64, -34.5, 64, -30, { Action = "stretch" }))
+	-- picnic tables (for cards, chess and talking)
+	data.Tables = {}
+	for _, tx in ipairs({ 36, 52, 68 }) do
+		for _, tz in ipairs({ 36, 54 }) do
+			deco("PicnicTable", Vector3.new(4, 0.4, 8), tx, 2.6, tz, rgb(120, 110, 96), Enum.Material.Concrete)
+			deco("PicnicLeg", Vector3.new(1, 2.6, 5), tx, 0, tz, rgb(110, 100, 90), Enum.Material.Concrete)
+			for _, sx in ipairs({ -1, 1 }) do
+				local seat = MapKit.seat(model, "PicnicBench", Vector3.new(1.4, 0.4, 7.4), cf(tx + sx * 2.8, 1.6, tz), rgb(110, 100, 90), Enum.Material.Concrete, nil)
+				seat.CanCollide = false
+				for _, dz in ipairs({ -2, 1.5 }) do
+					table.insert(data.Tables, spotAt(tx + sx * 2.8, tz + dz, tx, tz + dz, { Seat = seat }))
+				end
+			end
+		end
+	end
+	-- the open middle: somewhere to hang out, lean on the wall, stretch, do pushups
+	data.Hangout = {}
+	for n = 1, 10 do
+		local x, z = rng:NextNumber(32, 76), rng:NextNumber(-22, 22)
+		table.insert(data.Hangout, spotAt(x, z, x + rng:NextNumber(-5, 5), z + rng:NextNumber(-5, 5)))
+	end
+	for n = 0, 5 do
+		local z = -24 + n * 9
+		table.insert(data.Hangout, spotAt(Prison.W / 2 - 1.6, z, 40, z, { Lean = true }))
+	end
+	data.Sweep = {}
+	for n = 1, 5 do
+		table.insert(data.Sweep, spotAt(rng:NextNumber(32, 76), rng:NextNumber(-28, 28), 50, 0))
+	end
+	data.YardPatrol = { Vector3.new(34, 0, -26), Vector3.new(76, 0, -26), Vector3.new(76, 0, 26), Vector3.new(34, 0, 26) }
+	-- a few lights for the yard at night
+	for _, p in ipairs({ { 30, -30 }, { 30, 30 }, { 80, 0 } }) do
+		deco("YardLightPole", Vector3.new(0.6, 16, 0.6), p[1], 0, p[2], STEEL, Enum.Material.Metal)
+		local head = deco("YardLight", Vector3.new(2.6, 0.8, 1.6), p[1], 16, p[2], rgb(255, 245, 220), Enum.Material.Neon)
+		local l = MapKit.spot(head, Enum.NormalId.Bottom, rgb(255, 240, 215), 60, 120, 1.6)
+		l.Enabled = false
+		table.insert(MapKit.Registry.Lamps, { Head = head, Light = l })
+	end
+end
+
+--------------------------------------------------------------------------------
+-- Out front: administration, parking, the prison bus, and Prison Road
+--------------------------------------------------------------------------------
+local function frontOffice(data)
+	local hd = Prison.D / 2
+	solid("AdminBuilding", Vector3.new(44, 16, 22), -52, 0, -hd + 16, rgb(206, 200, 188), Enum.Material.Brick)
+	deco("AdminRoof", Vector3.new(46, 1, 24), -52, 16, -hd + 16, DARK_CONCRETE, Enum.Material.Concrete)
+	for x = -70, -34, 6 do
+		for _, y in ipairs({ 3, 10 }) do
+			deco("AdminWindow", Vector3.new(3.6, 3.4, 0.2), x, y, -hd + 4.9, rgb(150, 190, 210), Enum.Material.Glass).Transparency = 0.2
+		end
+	end
+	local sign = deco("AdminSign", Vector3.new(20, 2.4, 0.3), -52, 13.4, -hd + 4.8, rgb(30, 34, 40))
+	MapKit.signText(sign, Enum.NormalId.Front, "ADMINISTRATION · VISITORS", WHITE, Enum.Font.GothamBold)
+	-- a flag
+	deco("FlagPole", Vector3.new(0.4, 22, 0.4), -24, 0, -hd + 8, rgb(200, 200, 205), Enum.Material.Metal)
+	deco("Flag", Vector3.new(0.1, 3, 5), -24, 18.4, -hd + 10.6, rgb(60, 110, 200))
+	-- visitor parking and the prison bus, outside the wall by the gate
+	deco("Parking", Vector3.new(44, 0.08, 22), 44, 0, -hd - 18, rgb(70, 72, 78), Enum.Material.Asphalt)
+	for n = 0, 4 do
+		deco("ParkingLine", Vector3.new(0.3, 0.09, 8), 26 + n * 8, 0, -hd - 11, WHITE)
+	end
+	Streets.car(model, cf(30, 0, -hd - 11) * CFrame.Angles(0, math.pi, 0), rgb(40, 60, 140))
+	Streets.car(model, cf(46, 0, -hd - 11) * CFrame.Angles(0, math.pi, 0), rgb(150, 150, 156))
+	local bus = cf(44, 0, -hd - 24) * CFrame.Angles(0, math.rad(90), 0)
+	MapKit.part(model, "PrisonBus", Vector3.new(7, 7, 30), bus * CFrame.new(0, 4.6, 0), rgb(236, 236, 230), Enum.Material.SmoothPlastic)
+	local stripe = MapKit.deco(model, "BusStripe", Vector3.new(7.1, 1.2, 30.1), bus * CFrame.new(0, 3.4, 0), rgb(40, 60, 110))
+	MapKit.signText(stripe, Enum.NormalId.Left, "DEPARTMENT OF CORRECTIONS", WHITE, Enum.Font.GothamBold)
+	MapKit.signText(stripe, Enum.NormalId.Right, "DEPARTMENT OF CORRECTIONS", WHITE, Enum.Font.GothamBold)
+	for _, sx in ipairs({ -1, 1 }) do
+		MapKit.deco(model, "BusWindows", Vector3.new(0.1, 2, 26), bus * CFrame.new(sx * 3.52, 6, 0), rgb(40, 50, 60), Enum.Material.Glass)
+		for _, sz in ipairs({ -1, 1 }) do
+			MapKit.cylinder(model, "Wheel", 1, 3, bus * CFrame.new(sx * 3.3, 1.5, sz * 10), rgb(22, 22, 25), Enum.Material.Rubber)
+		end
+	end
+	-- Prison Road: from the city's east edge to the gate
+	local gate = pos(0, 0, -hd - 10)
+	local edge = Vector3.new(MapKit.EXTENT + 18, 0, gate.Z)
+	local len = (gate - edge).Magnitude + 6
+	local mid = (gate + edge) / 2
+	MapKit.part(model, "PrisonRoad", Vector3.new(len, 0.3, 16), CFrame.new(mid.X, 0.05, mid.Z), MapKit.ASPHALT, Enum.Material.Asphalt)
+	for d = 6, len - 6, 11 do
+		MapKit.deco(model, "LaneDash", Vector3.new(6, 0.32, 0.35), CFrame.new(edge.X + d, 0.06, mid.Z), rgb(245, 205, 70))
+	end
+	local post = MapKit.deco(model, "RoadSignPost", Vector3.new(0.4, 8, 0.4), CFrame.new(edge.X + 6, 4, mid.Z - 10), rgb(60, 64, 70), Enum.Material.Metal)
+	local rs = MapKit.deco(model, "RoadSign", Vector3.new(0.2, 2.2, 9), post.CFrame * CFrame.new(0, 3, 0), rgb(30, 110, 60))
+	MapKit.signText(rs, Enum.NormalId.Left, "STATE PRISON ➜", WHITE, Enum.Font.GothamBold)
+	MapKit.signText(rs, Enum.NormalId.Right, "⬅ AI CITY", WHITE, Enum.Font.GothamBold)
+	data.Road = { From = edge, To = gate }
+	data.Release = gate + Vector3.new(-4, 0, 4)
+end
+
+function Prison.build(parent, rng)
+	model = Instance.new("Model")
+	model.Name = "StatePrison"
+	model.Parent = parent
+	local data = { Model = model, F = F, G = G, Spine = SPINE, BlockX = { BLOCK_X0, BLOCK_X1 } }
+	-- the compound sits on a concrete slab
+	MapKit.part(model, "PrisonGround", Vector3.new(Prison.W + 16, 1, Prison.D + 40), F * CFrame.new(0, G - 0.5, -12), rgb(140, 140, 136), Enum.Material.Concrete)
+	perimeter(data)
+	cellBlock(data, rng)
+	yard(data, rng)
+	frontOffice(data)
+	-- walking lanes between the areas (local coordinates; see PrisonService)
+	data.Lanes = {
+		HallEast = Vector3.new(BLOCK_X1 - 6, 0, SPINE),
+		DoorOut = Vector3.new(BLOCK_X1 + 6, 0, SPINE),
+		YardHub = Vector3.new(34, 0, SPINE - 20),
+	}
+	data.Center = Prison.CENTER
+	data.Radius = 110
+	data.Local = function(p)
+		return F:PointToObjectSpace(p) - Vector3.new(0, G, 0)
+	end
+	data.World = function(v)
+		return pos(v.X, v.Y, v.Z)
+	end
+	MapKit.tag(model, "Prison")
+	return data
+end
+
+return Prison
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX24"><Properties><string name="Name">Landscape</string><ProtectedString name="Source"><![CDATA[-- Landscape (ModuleScript) — ServerScriptService.Modules.Landscape
 -- The land around the city: terrain grass (with swaying grass blades),
 -- rolling hills with pine forests, a lake with a sandy beach and a wooden
 -- pier for fishing, and snowy mountains on the horizon.
 
 local MapKit = require(script.Parent:WaitForChild("MapKit"))
 local Streets = require(script.Parent:WaitForChild("Streets"))
+local Prison = require(script.Parent:WaitForChild("Prison"))
 
 local Landscape = {}
 
 local deco, part, rgb = MapKit.deco, MapKit.part, MapKit.rgb
 local EXTENT = MapKit.EXTENT
+
+-- keep the hills and the woods off the prison and Prison Road
+local function nearPrison(p, margin)
+	local c = Prison.CENTER
+	if (Vector3.new(p.X, 0, p.Z) - c).Magnitude < Prison.RADIUS + margin then
+		return true
+	end
+	return p.X < c.X and p.X > EXTENT - 40 and math.abs(p.Z - c.Z) < 20 + margin * 0.2
+end
 
 -- The lake sits outside the city to the south-west
 Landscape.LAKE = Vector3.new(-EXTENT - 190, 0, EXTENT + 150)
@@ -7393,7 +8029,7 @@ function Landscape.build(parent, rng)
 			local a = n / 28 * math.pi * 2 + rng:NextNumber(-0.1, 0.1)
 			local r = EXTENT + rng:NextNumber(140, 420)
 			local p = Vector3.new(math.cos(a) * r, -rng:NextNumber(20, 34), math.sin(a) * r)
-			if (p - Landscape.LAKE).Magnitude > Landscape.LAKE_RADIUS + 90 then
+			if (p - Landscape.LAKE).Magnitude > Landscape.LAKE_RADIUS + 90 and not nearPrison(p, 90) then
 				terrain:FillBall(p, rng:NextNumber(45, 80), Enum.Material.Grass)
 			end
 		end
@@ -7417,6 +8053,15 @@ function Landscape.build(parent, rng)
 		local cityW = EXTENT * 2 + 40
 		terrain:FillBlock(CFrame.new(0, -4, 0), Vector3.new(cityW, 16, cityW), Enum.Material.Air)
 		terrain:FillBlock(CFrame.new(0, -12, 0), Vector3.new(cityW, 8, cityW), Enum.Material.Asphalt)
+		-- the same under the prison and Prison Road (see Prison)
+		local pc = Prison.F * CFrame.new(0, 0, -12)
+		local pSize = Vector3.new(Prison.W + 24, 16, Prison.D + 48)
+		terrain:FillBlock(pc * CFrame.new(0, -4, 0), pSize, Enum.Material.Air)
+		terrain:FillBlock(pc * CFrame.new(0, -12, 0), Vector3.new(pSize.X, 8, pSize.Z), Enum.Material.Asphalt)
+		local roadFrom, roadTo = EXTENT, Prison.CENTER.X - Prison.D / 2
+		local roadMid = Vector3.new((roadFrom + roadTo) / 2, 0, Prison.CENTER.Z)
+		terrain:FillBlock(CFrame.new(roadMid + Vector3.new(0, -4, 0)), Vector3.new(roadTo - roadFrom + 8, 16, 20), Enum.Material.Air)
+		terrain:FillBlock(CFrame.new(roadMid + Vector3.new(0, -12, 0)), Vector3.new(roadTo - roadFrom + 8, 8, 20), Enum.Material.Asphalt)
 		-- swaying grass on the hills around the city (the city itself has no
 		-- terrain under it, so no blades come up through floors or roads),
 		-- and clear, reflective water with gentle waves
@@ -7462,7 +8107,8 @@ function Landscape.build(parent, rng)
 		table.insert(fishingSpots, cf)
 	end
 	-- a rowing boat, a sign and some reeds
-	local boat = pierCf * CFrame.new(10, 0.2, -22)
+	-- sitting in the water (the surface is at y = -1), not hovering over it
+	local boat = pierCf * CFrame.new(10, if useTerrain then -0.75 else 0.2, -22)
 	deco(folder, "Boat", Vector3.new(4, 1.4, 9), boat, rgb(170, 90, 60), Enum.Material.WoodPlanks)
 	deco(folder, "BoatSeat", Vector3.new(4, 0.3, 1.2), boat * CFrame.new(0, 0.6, 0), rgb(200, 150, 100), Enum.Material.Wood)
 	local sign = deco(folder, "LakeSign", Vector3.new(10, 3.4, 0.4), pierCf * CFrame.new(-8, 4, 6), rgb(40, 90, 70), Enum.Material.Wood)
@@ -7471,14 +8117,14 @@ function Landscape.build(parent, rng)
 	for n = 1, 30 do
 		local a = rng:NextNumber(0, math.pi * 2)
 		local p = L + Vector3.new(math.cos(a), 0, math.sin(a)) * (Landscape.LAKE_RADIUS + rng:NextNumber(-2, 6))
-		deco(folder, "Reed", Vector3.new(0.3, rng:NextNumber(2.5, 4.5), 0.3), CFrame.new(p + Vector3.new(0, 1.5, 0)) * CFrame.Angles(rng:NextNumber(-0.2, 0.2), 0, rng:NextNumber(-0.2, 0.2)), rgb(90, 130, 60), Enum.Material.Grass)
+		deco(folder, "Reed", Vector3.new(0.3, rng:NextNumber(2.5, 4.5), 0.3), CFrame.new(p + Vector3.new(0, 1.5, 0)) * CFrame.Angles(rng:NextNumber(-0.2, 0.2), 0, rng:NextNumber(-0.2, 0.2)), rgb(90, 130, 60), Enum.Material.SmoothPlastic)
 	end
 
 	-- under the water: sand ripples, rocks, swaying weeds; lily pads on top.
 	-- A "Water" part marks the lake for fishing and for the fish that swim in
 	-- it (see FishingService and the client's Water module)
 	local surface = if useTerrain then -1 else 0.35
-	local bed = if useTerrain then -9.6 else -0.5
+	local bed = if useTerrain then -10 else -0.5
 	local lakeInfo = deco(folder, "LakeWater", Vector3.new(2, 0.2, 2), CFrame.new(L.X, surface, L.Z), rgb(60, 140, 200))
 	lakeInfo.Transparency = 1
 	lakeInfo:SetAttribute("Radius", Landscape.LAKE_RADIUS)
@@ -7497,14 +8143,14 @@ function Landscape.build(parent, rng)
 		else
 			local h = rng:NextNumber(2, math.max(2.2, math.min(6, surface - bed - 1)))
 			for k = 0, 2 do
-				deco(folder, "Seaweed", Vector3.new(0.35, h * (1 - k * 0.2), 0.12), CFrame.new(p.X + k * 0.4 - 0.4, bed + h * (1 - k * 0.2) / 2, p.Z) * CFrame.Angles(rng:NextNumber(-0.2, 0.2), rng:NextNumber(0, 3), rng:NextNumber(-0.25, 0.25)), rgb(50, 120, 60):Lerp(rgb(90, 150, 60), rng:NextNumber()), Enum.Material.Grass)
+				deco(folder, "Seaweed", Vector3.new(0.35, h * (1 - k * 0.2), 0.12), CFrame.new(p.X + k * 0.4 - 0.4, bed + h * (1 - k * 0.2) / 2, p.Z) * CFrame.Angles(rng:NextNumber(-0.2, 0.2), rng:NextNumber(0, 3), rng:NextNumber(-0.25, 0.25)), rgb(50, 120, 60):Lerp(rgb(90, 150, 60), rng:NextNumber()), Enum.Material.SmoothPlastic)
 			end
 		end
 	end
 	for n = 1, 26 do
 		local a = rng:NextNumber(0, math.pi * 2)
 		local p = L + Vector3.new(math.cos(a), 0, math.sin(a)) * (Landscape.LAKE_RADIUS - rng:NextNumber(4, 22))
-		MapKit.disc(folder, "LilyPad", 0.08, rng:NextNumber(1.6, 2.8), Vector3.new(p.X, surface + 0.05, p.Z), rgb(70, 150, 60), Enum.Material.Grass)
+		MapKit.disc(folder, "LilyPad", 0.08, rng:NextNumber(1.6, 2.8), Vector3.new(p.X, surface + 0.05, p.Z), rgb(70, 150, 60), Enum.Material.SmoothPlastic)
 		if n % 4 == 0 then
 			MapKit.ball(folder, "LilyFlower", 0.6, CFrame.new(p.X, surface + 0.3, p.Z), rgb(250, 190, 220))
 		end
@@ -7515,7 +8161,7 @@ function Landscape.build(parent, rng)
 		local a = rng:NextNumber(0, math.pi * 2)
 		local r = EXTENT + rng:NextNumber(40, 360)
 		local p = Vector3.new(math.cos(a) * r, 0, math.sin(a) * r)
-		if (p - L).Magnitude > Landscape.LAKE_RADIUS + 26 and math.abs(p.X - 50) > 20 then
+		if (p - L).Magnitude > Landscape.LAKE_RADIUS + 26 and math.abs(p.X - 50) > 20 and not nearPrison(p, 12) then
 			if rng:NextNumber() < 0.6 then
 				Streets.pine(folder, p, rng:NextNumber(1, 1.9))
 			else
@@ -7539,7 +8185,7 @@ function Landscape.build(parent, rng)
 end
 
 return Landscape
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX24"><Properties><string name="Name">Places</string><ProtectedString name="Source"><![CDATA[-- Places (ModuleScript) — ServerScriptService.Modules.Places
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX25"><Properties><string name="Name">Places</string><ProtectedString name="Source"><![CDATA[-- Places (ModuleScript) — ServerScriptService.Modules.Places
 -- What stands on each city block: the plaza, town hall, bank, towers, shops,
 -- three schools, parks with playgrounds and ponds, the sports field, homes...
 -- Every builder registers its places and the spots where people do things
@@ -7815,7 +8461,7 @@ local function park(ctx, parent, i, j, rng, id, withPlayground)
 	deco(model, "Path", Vector3.new(5, 0.14, 74), CFrame.new(c + Vector3.new(0, 0.12, 0)), path, Enum.Material.Sand)
 	-- thick bushes by the entrances (somewhere to hide)
 	for _, e in ipairs({ { 33, 6 }, { -33, -6 }, { 6, -33 }, { -6, 33 } }) do
-		local bush = MapKit.ball(model, "Bush", 5.5, CFrame.new(c + Vector3.new(e[1], 2.2, e[2])), MapKit.LEAVES[2], Enum.Material.Grass)
+		local bush = MapKit.ball(model, "Bush", 5.5, CFrame.new(c + Vector3.new(e[1], 2.2, e[2])), MapKit.LEAVES[2], Enum.Material.SmoothPlastic)
 		bush.CanCollide = false
 		bush:SetAttribute("HideName", "a bush")
 		MapKit.tag(bush, "HideSpot")
@@ -7827,15 +8473,16 @@ local function park(ctx, parent, i, j, rng, id, withPlayground)
 	pond.Transparency = 0.45
 	-- fishable, with koi you can see (see FishingService and the client's Water module)
 	pond:SetAttribute("Radius", 11.5)
-	pond:SetAttribute("Surface", 0.66)
-	pond:SetAttribute("Depth", 0.5)
+	-- the water's top face (koi swim just under it, backs near the surface)
+	pond:SetAttribute("Surface", pondC.Y + 0.65)
+	pond:SetAttribute("Depth", 0.55)
 	pond:SetAttribute("Kind", "pond")
 	pond:SetAttribute("Fish", 6)
-	pond:SetAttribute("RodStand", pondC + Vector3.new(0, 0.2, -15.5))
+	pond:SetAttribute("RodStand", pondC + Vector3.new(0, 0, -15.5))
 	MapKit.tag(pond, "Water")
 	MapKit.disc(model, "PondBed", 0.1, 23, pondC + Vector3.new(0, 0.12, 0), rgb(70, 90, 70), Enum.Material.Pebble)
 	for k = 0, 3 do
-		MapKit.disc(model, "LilyPad", 0.1, 2, pondC + Vector3.new(k * 3 - 4.5, 0.7, (k % 2) * 4 - 2), rgb(80, 170, 70), Enum.Material.Grass)
+		MapKit.disc(model, "LilyPad", 0.1, 2, pondC + Vector3.new(k * 3 - 4.5, 0.7, (k % 2) * 4 - 2), rgb(80, 170, 70), Enum.Material.SmoothPlastic)
 	end
 	for k = 0, 2 do
 		local duck = MapKit.ball(model, "Duck", 1.2, CFrame.new(pondC + Vector3.new(k * 4 - 4, 0.9, -3 + k)), WHITE)
@@ -8217,7 +8864,7 @@ function B.Hotel(ctx, parent, i, j, rng)
 	part(b.Model, "Canopy", Vector3.new(16, 0.8, 9), b.At(0, 10.4, -b.D / 2 - 4.5), rgb(120, 30, 40), Enum.Material.Fabric)
 	for _, sx in ipairs({ -1, 1 }) do
 		deco(b.Model, "CanopyPost", Vector3.new(0.5, 10, 0.5), b.At(sx * 7.5, 5, -b.D / 2 - 8.6), GOLD, Enum.Material.Metal)
-		deco(b.Model, "Topiary", Vector3.new(2, 4, 2), b.At(sx * 11, 2, -b.D / 2 - 2), MapKit.LEAVES[1], Enum.Material.Grass)
+		deco(b.Model, "Topiary", Vector3.new(2, 4, 2), b.At(sx * 11, 2, -b.D / 2 - 2), MapKit.LEAVES[1], Enum.Material.SmoothPlastic)
 	end
 	deco(b.Model, "RedCarpet", Vector3.new(6, 0.12, 9), b.At(0, 0.1, -b.D / 2 - 4.5), rgb(170, 30, 40), Enum.Material.Fabric)
 end
@@ -8254,7 +8901,7 @@ function B.Apartments(ctx, parent, i, j, rng, name)
 				deco(b.Model, "Balcony", Vector3.new(6, 0.5, 2.6), b.At(k * 12, f * FLOOR_H + 0.3, -b.D / 2 - 1.3), rgb(200, 200, 205), Enum.Material.Concrete)
 				deco(b.Model, "BalconyRail", Vector3.new(6, 2, 0.2), b.At(k * 12, f * FLOOR_H + 1.5, -b.D / 2 - 2.5), rgb(60, 60, 66), Enum.Material.Metal)
 				if (k + f) % 3 == 0 then
-					deco(b.Model, "BalconyPlant", Vector3.new(1.2, 1.4, 1.2), b.At(k * 12 + 2, f * FLOOR_H + 1.3, -b.D / 2 - 1.5), MapKit.LEAVES[2], Enum.Material.Grass)
+					deco(b.Model, "BalconyPlant", Vector3.new(1.2, 1.4, 1.2), b.At(k * 12 + 2, f * FLOOR_H + 1.3, -b.D / 2 - 1.5), MapKit.LEAVES[2], Enum.Material.SmoothPlastic)
 				end
 			end
 		end
@@ -8551,7 +9198,7 @@ Places.Builders = B
 Places.playground = playground
 
 return Places
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX25"><Properties><string name="Name">MapBuilder</string><ProtectedString name="Source"><![CDATA[-- MapBuilder (ModuleScript) — ServerScriptService.Modules.MapBuilder
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX26"><Properties><string name="Name">MapBuilder</string><ProtectedString name="Source"><![CDATA[-- MapBuilder (ModuleScript) — ServerScriptService.Modules.MapBuilder
 -- Builds AI City: a 9x9 grid of city blocks around a central plaza, with
 -- streets, a landscape of hills, a lake and mountains, and every building
 -- furnished with spots where people work, shop, eat, play and sleep.
@@ -8576,6 +9223,7 @@ local Buildings = require(Modules:WaitForChild("Buildings"))
 local Interiors = require(Modules:WaitForChild("Interiors"))
 local Streets = require(Modules:WaitForChild("Streets"))
 local Landscape = require(Modules:WaitForChild("Landscape"))
+local Prison = require(Modules:WaitForChild("Prison"))
 local Places = require(Modules:WaitForChild("Places"))
 
 local MapBuilder = {}
@@ -8972,7 +9620,9 @@ function ctx.houseRow(parent, i, j, rng, slots, big)
 		MapKit.signText(mailbox, Enum.NormalId.Right, tostring(number), MapKit.WHITE)
 		if rng:NextNumber() < 0.5 then
 			for _, px in ipairs({ -1, 1 }) do
-				local hedge = MapKit.deco(b.Model, "Hedge", Vector3.new(7, 2.6, 1.6), at(px * 6.5, 1.3, frontZ + 0.9), MapKit.LEAVES[3], Enum.Material.Grass)
+				local hedge = MapKit.deco(b.Model, "Hedge", Vector3.new(7, 2.2, 1.6), at(px * 6.5, 1.1, frontZ + 0.9), MapKit.LEAVES[3], Enum.Material.SmoothPlastic)
+				-- a rounded, trimmed top
+				MapKit.cylinder(b.Model, "HedgeTop", 7, 1.6, at(px * 6.5, 2.2, frontZ + 0.9), MapKit.LEAVES[3]:Lerp(MapKit.WHITE, 0.05), Enum.Material.SmoothPlastic)
 				hedge:SetAttribute("HideName", "a hedge")
 				MapKit.tag(hedge, "HideSpot")
 			end
@@ -9056,7 +9706,7 @@ local function pocketParks(parent, i, j, before, rng)
 				Streets.tree(model, base + Vector3.new(sx * 3, 0.3, sz * 3), rng:NextNumber(0.8, 1.1), rng)
 				Streets.bench(model, CFrame.lookAt(base + Vector3.new(-sx * 3, 0.3, -sz * 4), base + Vector3.new(-sx * 3, 0.3, -sz * 10)), nil)
 				for n = 0, 4 do
-					MapKit.ball(model, "Flowers", 1, CFrame.new(base + Vector3.new(-sx * (size / 2 - 1.2), 0.8, (n - 2) * 1.6)), MapKit.FLOWERS[rng:NextInteger(1, #MapKit.FLOWERS)], Enum.Material.Grass)
+					MapKit.ball(model, "Flowers", 1, CFrame.new(base + Vector3.new(-sx * (size / 2 - 1.2), 0.8, (n - 2) * 1.6)), MapKit.FLOWERS[rng:NextInteger(1, #MapKit.FLOWERS)], Enum.Material.SmoothPlastic)
 				end
 			end
 		end
@@ -9088,6 +9738,8 @@ function MapBuilder.Build()
 	map.Root = root
 
 	local land = Landscape.build(root, rng)
+	-- the state prison east of town (PrisonService runs the inmates)
+	map.Prison = Prison.build(root, Random.new((Config.SEED or 1776) + 7))
 	buildNetwork()
 	local streets = Streets.build(root, rng, kindAt)
 	local buildings = Instance.new("Folder")
@@ -9313,7 +9965,7 @@ function MapBuilder.RouteBetween(a, b)
 end
 MapBuilder.Kit = MapKit
 return MapBuilder
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX26"><Properties><string name="Name">Life</string><ProtectedString name="Source"><![CDATA[-- Life (ModuleScript) — ServerScriptService.Modules.Life
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX27"><Properties><string name="Name">Life</string><ProtectedString name="Source"><![CDATA[-- Life (ModuleScript) — ServerScriptService.Modules.Life
 -- Who lives in AI City: families with children, jobs, ages, couples expecting
 -- babies and births, plus where each person should be at any hour.
 -- Pure logic (no parts, no Humanoids), so it can be saved and tested on its own.
@@ -10200,7 +10852,7 @@ end
 
 Life.Jobs = jobByTitle
 return Life
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX27"><Properties><string name="Name">CitizenLook</string><ProtectedString name="Source"><![CDATA[-- CitizenLook (ModuleScript) — ServerScriptService.Modules.CitizenLook
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX28"><Properties><string name="Name">CitizenLook</string><ProtectedString name="Source"><![CDATA[-- CitizenLook (ModuleScript) — ServerScriptService.Modules.CitizenLook
 -- Gives every citizen their own look: skin tone, hairstyle and color, a
 -- uniform for their job (police cap and badge, doctor's coat, chef's hat,
 -- firefighter helmet...), something for their hobby (a beret for painters,
@@ -10270,6 +10922,8 @@ local UNIFORMS = {
 	["King"] = { Top = rgb(100, 45, 140), Bottom = rgb(40, 40, 46), Sleeves = "long", Items = { "Jacket:90,40,130", "CapBack:120,50,160", "Necklace", "Sneakers:170,90,230" } },
 	["Rioter"] = { Top = rgb(30, 30, 34), Bottom = rgb(45, 45, 50), Sleeves = "long", Items = { "Hoodie:30,30,34", "Beanie:25,25,28" } },
 	["Police Officer"] = { Top = rgb(40, 55, 110), Bottom = rgb(30, 40, 80), Sleeves = "long", Items = { "PoliceCap", "Badge", "Belt:25,25,30", "Radio" } },
+	["Inmate"] = { Top = rgb(236, 110, 36), Bottom = rgb(230, 104, 32), Sleeves = "short" },
+	["Prison Guard"] = { Top = rgb(70, 78, 70), Bottom = rgb(40, 44, 40), Sleeves = "long", Items = { "PoliceCap", "Badge", "Belt:25,25,30", "Radio" } },
 	["Thief"] = { Top = rgb(38, 40, 48), Bottom = rgb(30, 32, 38), Sleeves = "long", Items = { "Hoodie:38,40,50", "Beanie:28,28,32", "Gloves" } },
 	["SWAT Officer"] = { Top = rgb(32, 34, 40), Bottom = rgb(32, 34, 40), Sleeves = "long", Items = { "SWATHelmet", "Vest:22,24,28", "Badge", "Belt:20,20,22", "Gloves", "Radio" } },
 	["Night Officer"] = { Top = rgb(28, 36, 70), Bottom = rgb(22, 28, 55), Sleeves = "long", Items = { "PoliceCap", "Badge", "Belt:25,25,30", "HiVisVest", "Radio" } },
@@ -12146,7 +12800,7 @@ CitizenLook.Uniforms = UNIFORMS
 CitizenLook.HobbyItems = HOBBY_ITEMS
 
 return CitizenLook
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX28"><Properties><string name="Name">CityService</string><ProtectedString name="Source"><![CDATA[-- CityService (ModuleScript) — ServerScriptService.Modules.CityService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX29"><Properties><string name="Name">CityService</string><ProtectedString name="Source"><![CDATA[-- CityService (ModuleScript) — ServerScriptService.Modules.CityService
 -- The city itself: the clock and calendar, city stats (economy, safety,
 -- happiness) and the city's mood, the mayor, elections, speeches, policies,
 -- coins, what citizens remember about players (and gossip about), the news,
@@ -13244,7 +13898,7 @@ end
 
 CityService.Handlers = handlers
 return CityService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX29"><Properties><string name="Name">CitizenService</string><ProtectedString name="Source"><![CDATA[-- CitizenService (ModuleScript) — ServerScriptService.Modules.CitizenService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX30"><Properties><string name="Name">CitizenService</string><ProtectedString name="Source"><![CDATA[-- CitizenService (ModuleScript) — ServerScriptService.Modules.CitizenService
 -- Brings the citizens to life: spawns a dressed NPC for every person in Life,
 -- walks them along the sidewalks to where their day takes them (with their
 -- own pace, lane and little pauses), takes elevators, sits at desks, lifts
@@ -14794,6 +15448,26 @@ function CitizenService.Control(brain, on)
 	end
 end
 
+-- for services that run their own people (the prison): put someone at a spot
+-- ({ CFrame, Seat?, BedTop?, Hoop? }) doing an action, or stand them up again
+function CitizenService.PlaceAt(brain, spot, action)
+	placeAt(brain, spot, action)
+	local info = Actions.Get(action) or {}
+	playTrack(brain, if info.Seated or info.Lying then nil else "idle")
+	setAction(brain, action)
+end
+
+function CitizenService.StandUp(brain)
+	if brain.Root.Anchored then
+		local p = brain.Root.Position
+		local look = brain.Root.CFrame.LookVector
+		look = Vector3.new(look.X, 0, look.Z)
+		look = if look.Magnitude > 0.1 then look.Unit else Vector3.new(0, 0, -1)
+		standAt(brain, CFrame.lookAt(Vector3.new(p.X, p.Y - rootHeight(brain), p.Z), Vector3.new(p.X, p.Y - rootHeight(brain), p.Z) + look))
+	end
+	setAction(brain, "")
+end
+
 function CitizenService.SetGait(brain, speed, gait)
 	brain.Humanoid.WalkSpeed = speed
 	playTrack(brain, gait or "run", math.clamp(speed / 16, 0.6, 1.6))
@@ -14950,6 +15624,7 @@ local function think(brain)
 	if brain.Temp then
 		return
 	end
+	brain.LastThink = os.clock()
 	local st = brain.State
 	if st == "ko" or st == "talk" or st == "police" or st == "ride" or st == "chat" or st == "flee" or st == "hospital" and gameTime() < (brain.HospitalUntil or 0) then
 		return
@@ -15560,6 +16235,16 @@ function CitizenService.Start(services)
 				brain.PlanKey = nil
 				setAction(brain, "")
 			end
+			-- no dead time: someone who has just finished a step (or is standing
+			-- around with nothing to do) decides what's next right away instead
+			-- of waiting up to a second for their turn to think
+			local now = os.clock()
+			if not brain.Temp and brain.Model.Parent and now - (brain.LastThink or 0) > 0.35 and (brain.State == "idle" or (brain.State == "act" and brain.Tasks and not brain.RetryCheckout and now > (brain.TaskUntil or math.huge))) then
+				local ok, err = pcall(think, brain)
+				if not ok then
+					warn("[CitizenService] think: " .. tostring(err))
+				end
+			end
 		end
 		soccerTick(step)
 		-- think about a slice of the city every tick (everyone about once a second)
@@ -15603,7 +16288,7 @@ function CitizenService.Start(services)
 end
 
 return CitizenService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX30"><Properties><string name="Name">DialogueService</string><ProtectedString name="Source"><![CDATA[-- DialogueService (ModuleScript) — ServerScriptService.Modules.DialogueService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX31"><Properties><string name="Name">DialogueService</string><ProtectedString name="Source"><![CDATA[-- DialogueService (ModuleScript) — ServerScriptService.Modules.DialogueService
 -- Talking to citizens. Walk up to anyone and press E to talk: they stop what
 -- they're doing, turn to you and answer in their own voice. What they say
 -- depends on their personality (twenty of them, see Life.Personalities), their mood, their job or school, what
@@ -16650,7 +17335,7 @@ function DialogueService.Start(services)
 end
 
 return DialogueService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX31"><Properties><string name="Name">CrimeService</string><ProtectedString name="Source"><![CDATA[-- CrimeService (ModuleScript) — ServerScriptService.Modules.CrimeService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX32"><Properties><string name="Name">CrimeService</string><ProtectedString name="Source"><![CDATA[-- CrimeService (ModuleScript) — ServerScriptService.Modules.CrimeService
 -- Crime and punishment. Players can:
 --   👊 punch people (F / the punch button). Three or four hits knock them out:
 --      they fall down, see stars, and wake up later in a hospital bed.
@@ -17001,7 +17686,7 @@ local function stopFight(brain)
 	fighters[brain] = nil
 	if brain.Model.Parent then
 		brain.Model:SetAttribute("Fighting", nil)
-		if brain.State == "police" and not brain.Model:GetAttribute("Chasing") and not brain.Gang then
+		if brain.State == "police" and not brain.Model:GetAttribute("Chasing") and not brain.Gang and not brain.Inmate then
 			S.Citizens.Control(brain, false)
 		end
 	end
@@ -17258,6 +17943,9 @@ local function attack(player, data)
 		if S.Gangs then
 			S.Gangs.Provoke(brain, player)
 		end
+		startFight(brain, player)
+	elseif brain.Inmate then
+		-- an inmate: no police coming (you're in prison), they just fight back
 		startFight(brain, player)
 	elseif isPolice(brain) or c.Temp then
 		CrimeService.AddStars(player, 1, "You attacked a police officer!")
@@ -17551,12 +18239,18 @@ local function arrest(player)
 	if pd then
 		pd.Arrests += 1
 	end
-	local seconds = 18 + stars * 10
+	-- a real sentence at the State Prison (see PrisonService), or a short
+	-- stay in the holding cell at the station if there's no prison
+	local prison = S.Prison and S.Prison.Active and S.Prison.Active()
+	local seconds = if prison then (Config.PRISON_SECONDS or 45) + stars * 25 else 18 + stars * 10
 	local cell = S.Map.Jail or (S.Map.Places.PoliceStation and S.Map.Places.PoliceStation.Inside) or Vector3.new(0, 5, 0)
 	jailed[player] = { Until = os.clock() + seconds, Cell = cell }
 	player:SetAttribute("JailUntil", workspace:GetServerTimeNow() + seconds)
 	local root = rootOf(player)
-	if root then
+	if prison then
+		jailed[player].Cell = S.Prison.AdmitPlayer(player, seconds) or cell
+		jailed[player].Prison = true
+	elseif root then
 		root.CFrame = CFrame.new(cell + Vector3.new(0, 3.5, 0))
 		root.AssemblyLinearVelocity = Vector3.zero
 	end
@@ -17570,6 +18264,9 @@ local function arrest(player)
 	S.City.News("🚔 " .. player.DisplayName .. " was arrested and thrown in jail!", "Crime")
 	S.City.Adjust("Safety", 2 + stars)
 end
+
+-- (for tests and your own scripts: send a player straight to jail)
+CrimeService.ArrestPlayer = arrest
 
 -- an officer next to a suspect who isn't down yet: a baton hit, or the taser
 local STRIKE_LINES = { "Stop resisting!", "Get on the ground!", "Hands behind your back!", "Don't move!" }
@@ -18014,10 +18711,16 @@ local function chaseTick(dt)
 			jailed[player] = nil
 			player:SetAttribute("JailUntil", nil)
 			local station = S.Map.Places.PoliceStation
-			if root and station then
-				root.CFrame = CFrame.new(station.Door + Vector3.new(0, 3.5, 0))
+			if j.Prison and S.Prison.ReleasePlayer(player) then
+				S.City.Toast(player, "🔓", "You're free!", "Released from the State Prison. Prison Road takes you back into town. Behave yourself out there.", Color3.fromRGB(90, 180, 120))
+			else
+				if root and station then
+					root.CFrame = CFrame.new(station.Door + Vector3.new(0, 3.5, 0))
+				end
+				S.City.Toast(player, "🔓", "You're free!", "Behave yourself out there.", Color3.fromRGB(90, 180, 120))
 			end
-			S.City.Toast(player, "🔓", "You're free!", "Behave yourself out there.", Color3.fromRGB(90, 180, 120))
+		elseif j.Prison then
+			S.Prison.Confine(player, root)
 		elseif root and (root.Position - j.Cell).Magnitude > 9 then
 			root.CFrame = CFrame.new(j.Cell + Vector3.new(0, 3.5, 0))
 		end
@@ -18182,7 +18885,7 @@ function CrimeService.IsJailed(player)
 end
 
 return CrimeService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX32"><Properties><string name="Name">PlayerService</string><ProtectedString name="Source"><![CDATA[-- PlayerService (ModuleScript) — ServerScriptService.Modules.PlayerService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX33"><Properties><string name="Name">PlayerService</string><ProtectedString name="Source"><![CDATA[-- PlayerService (ModuleScript) — ServerScriptService.Modules.PlayerService
 -- Things players do that aren't crimes or conversations:
 --   • elevators and stairs (press E at the doors, pick a floor)
 --   • citizen profile cards (click anyone), the People directory, finding someone
@@ -18403,6 +19106,10 @@ local function placesInfo()
 		end
 		table.insert(out, { Id = place.Id, Label = place.Label, Kind = place.Kind, Outdoor = place.Outdoor == true, Position = place.Door, Open = if open == nil then true else open, Workers = workers, Visitors = visitors, Weekend = weekend })
 	end
+	-- the State Prison, out east at the end of Prison Road
+	if S.Prison and S.Prison.Active and S.Prison.Active() and S.Map.Prison then
+		table.insert(out, { Id = "Prison", Label = "🔒 State Prison", Kind = "civic", Outdoor = true, Position = S.Map.Prison.Gate, Open = true, Workers = #S.Prison.Guards, Visitors = #S.Prison.Inmates, Weekend = weekend })
+	end
 	return { Ok = true, Places = out }
 end
 
@@ -18436,7 +19143,7 @@ function PlayerService.Start(services)
 end
 
 return PlayerService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX33"><Properties><string name="Name">CombatService</string><ProtectedString name="Source"><![CDATA[-- CombatService (ModuleScript) — ServerScriptService.Modules.CombatService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX34"><Properties><string name="Name">CombatService</string><ProtectedString name="Source"><![CDATA[-- CombatService (ModuleScript) — ServerScriptService.Modules.CombatService
 -- Weapons and fighting for players:
 --   • the weapons shop at the Hardware store (a bat, a hammer, a knife)
 --   • your weapons as tools in your hotbar (saved between visits)
@@ -18750,7 +19457,7 @@ function CombatService.Start(services)
 end
 
 return CombatService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX34"><Properties><string name="Name">DisguiseService</string><ProtectedString name="Source"><![CDATA[-- DisguiseService (ModuleScript) — ServerScriptService.Modules.DisguiseService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX35"><Properties><string name="Name">DisguiseService</string><ProtectedString name="Source"><![CDATA[-- DisguiseService (ModuleScript) — ServerScriptService.Modules.DisguiseService
 -- Hoodies, ski masks and disguise kits:
 --   • buy them at the Clothing store (press E at the counter)
 --   • wear them anytime: C (or 📱 Wardrobe). One top and one face item at a time.
@@ -19193,7 +19900,7 @@ function DisguiseService.Start(services)
 end
 
 return DisguiseService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX35"><Properties><string name="Name">BrawlService</string><ProtectedString name="Source"><![CDATA[-- BrawlService (ModuleScript) — ServerScriptService.Modules.BrawlService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX36"><Properties><string name="Name">BrawlService</string><ProtectedString name="Source"><![CDATA[-- BrawlService (ModuleScript) — ServerScriptService.Modules.BrawlService
 -- Street fights between citizens. Every now and then two strangers on the
 -- street get into it:
 --   1. an argument ("Hey! You bumped into me!" / "Wanna go?!")
@@ -19288,7 +19995,7 @@ local function center(b)
 end
 
 local function busy(brain)
-	return inBrawl[brain] ~= nil or brain.State == "ko" or brain.State == "hospital" or (brain.State == "police" and not brain.Gang) or brain.State == "talk" or brain.State == "chat" or brain.Held ~= nil or brain.Model:GetAttribute("Fighting") ~= nil or brain.Model:GetAttribute("Chasing") ~= nil
+	return inBrawl[brain] ~= nil or brain.State == "ko" or brain.State == "hospital" or (brain.State == "police" and not brain.Gang and not brain.Inmate) or brain.State == "talk" or brain.State == "chat" or brain.Held ~= nil or brain.Model:GetAttribute("Fighting") ~= nil or brain.Model:GetAttribute("Chasing") ~= nil
 end
 
 -- how likely someone is to start something
@@ -19376,8 +20083,9 @@ local function release(b, brain)
 	if b.Saved[brain] then
 		setPrompts(b, brain, false)
 	end
-	if brain.Gang then
-		-- (gang members go back to their turf: see GangService)
+	if brain.Gang or brain.Inmate then
+		-- (gang members go back to their turf: see GangService; inmates
+		-- back to their routine: see PrisonService)
 	elseif brain.C.Temp then
 		S.Citizens.Despawn(brain)
 	elseif brain.State == "police" and not brain.Model:GetAttribute("Fighting") and not brain.Model:GetAttribute("Chasing") then
@@ -19507,6 +20215,19 @@ local function finish(b, outcome, info)
 	end
 end
 
+-- someone in charge (a prison guard) steps in: both fighters back off
+function BrawlService.Stop(b)
+	if b and not b.Done then
+		finish(b, "tired")
+	end
+end
+
+-- the fight someone is in (if any)
+function BrawlService.FightOf(brain)
+	local b = inBrawl[brain]
+	return if b and (b.A == brain or b.B == brain) then b else nil
+end
+
 function BrawlService.BreakUp(b, player)
 	if b.Done or b.Phase == "argue" and os.clock() - b.Started < 1 then
 		return
@@ -19560,7 +20281,7 @@ function BrawlService.Fight(a, c, opts)
 	if busy(a) or busy(c) then
 		return nil
 	end
-	local b = { A = a, B = c, Phase = "argue", Started = os.clock(), Crowd = {}, Saved = {}, Next = {}, Called = false, Id = os.clock(), Kids = opts.Kids, Quiet = opts.Quiet, Gang = opts.Gang }
+	local b = { A = a, B = c, Phase = "argue", Started = os.clock(), Crowd = {}, Saved = {}, Next = {}, Called = false, Id = os.clock(), Kids = opts.Kids, Quiet = opts.Quiet, Gang = opts.Gang, NoPolice = opts.NoPolice }
 	table.insert(brawls, b)
 	local rematch = grudges[key(a, c)]
 	grudges[key(a, c)] = true
@@ -19585,7 +20306,7 @@ function BrawlService.Fight(a, c, opts)
 			b.Phase = "fight"
 			b.FightStart = os.clock()
 			-- somebody calls the police after a few seconds (sometimes everyone's too busy filming)
-			b.CallAt = if math.random() < 0.75 then os.clock() + math.random(50, 90) / 10 else nil
+			b.CallAt = if b.NoPolice then nil elseif math.random() < 0.75 then os.clock() + math.random(50, 90) / 10 else nil
 			S.Citizens.Say(a, "That's it!", "angry", 1.6)
 		end
 	end)
@@ -19990,7 +20711,7 @@ function BrawlService.Start(services)
 end
 
 return BrawlService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX36"><Properties><string name="Name">StreetCrimeService</string><ProtectedString name="Source"><![CDATA[-- StreetCrimeService (ModuleScript) — ServerScriptService.Modules.StreetCrimeService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX37"><Properties><string name="Name">StreetCrimeService</string><ProtectedString name="Source"><![CDATA[-- StreetCrimeService (ModuleScript) — ServerScriptService.Modules.StreetCrimeService
 -- Other people commit crimes too, and the police arrest them.
 --
 -- Now and then (more at night, and when Safety or the Economy is low) someone
@@ -20153,6 +20874,19 @@ local function freeSlot()
 end
 
 local function jail(brain, reason)
+	-- the state prison: they're bussed out there and do their time with the
+	-- other inmates (see PrisonService)
+	if S.Prison and S.Prison.Admit then
+		local seconds = if brain.C.Temp then math.random(150, 260) else math.random(180, 300)
+		if S.Prison.Admit(brain, reason) then
+			inmates[brain] = { Until = os.clock() + seconds, Slot = 0, Reason = reason, Prison = true }
+			brain.Model:SetAttribute("Action", "")
+			brain.Model:SetAttribute("Arrested", nil)
+			brain.Model:SetAttribute("Expression", "sad")
+			S.City.News("🚌 " .. brain.C.Name .. " was sent to the State Prison for " .. reason .. ".", "Crime", true)
+			return
+		end
+	end
 	local station = S.Map.Places.PoliceStation
 	local cell = S.Map.Jail or (station and (station.Inside or station.Door))
 	if not cell then
@@ -20176,6 +20910,9 @@ end
 local function releaseInmate(brain)
 	local j = inmates[brain]
 	inmates[brain] = nil
+	if j and j.Prison and S.Prison then
+		S.Prison.Release(brain)
+	end
 	if not brain.Model.Parent then
 		return
 	end
@@ -20302,6 +21039,13 @@ local function finishCase(case)
 		table.remove(cases, i)
 	end
 	byBrain[case.Thief] = nil
+	-- take the "Thief" marker off everyone's screen who was told to chase them
+	for player in pairs(case.Alerted or {}) do
+		if player.Parent then
+			S.City.Send(player, { Type = "Waypoint", Clear = true, CitizenId = case.Thief.C.Id })
+		end
+	end
+	case.Alerted = nil
 	for _, officer in ipairs(case.Officers) do
 		if officer.Model.Parent and not escorts[officer] then
 			officer.Model:SetAttribute("Chasing", nil)
@@ -20404,7 +21148,11 @@ local function bolt(case, caller)
 		local root = rootOf(player)
 		if root and (root.Position - thief.Root.Position).Magnitude < 130 then
 			S.City.Toast(player, "🦹", "Stop, thief!", what .. " on " .. streetNear(thief.Root.Position) .. ". Chase them down and hit them (F) before they get away!", rgb(255, 120, 60))
-			S.City.Send(player, { Type = "Waypoint", Position = thief.Root.Position, Label = "Thief", Emoji = "🦹", Model = thief.Model })
+			-- the marker follows the thief by id: a model that has only just
+			-- spawned may not have streamed in to this player yet
+			S.City.Send(player, { Type = "Waypoint", Position = thief.Root.Position, Label = "Thief", Emoji = "🦹", Model = thief.Model, CitizenId = thief.C.Id })
+			case.Alerted = case.Alerted or {}
+			case.Alerted[player] = true
 		end
 	end
 end
@@ -20719,7 +21467,8 @@ local function pickCrime(force)
 		case.PathIndex = 1
 	end
 	-- snatchers run up; pickpockets hurry to catch up with someone walking, then slow down
-	S.Citizens.SetGait(thief, if kind == "snatch" then 17 elseif kind == "pickpocket" or kind == "player" then 13 else 10, if kind == "snatch" or kind == "pickpocket" then "run" else "walk")
+	local walk = Config.WALK_SPEED or 9.5
+	S.Citizens.SetGait(thief, if kind == "snatch" then math.max(17, walk * 1.8) elseif kind == "pickpocket" or kind == "player" then math.max(13, walk * 1.6) else math.max(10, walk * 1.1), if kind == "snatch" or kind == "pickpocket" then "run" else "walk")
 	local every = Config.NPC_CRIME_COOLDOWN or 110
 	nextCrime = now + every * (0.6 + math.random() * 0.8)
 	return case
@@ -20778,7 +21527,9 @@ local function tick(case, now)
 		local d = flat(thief.Root.Position - target).Magnitude
 		if case.Kind == "pickpocket" or case.Kind == "player" then
 			-- sneak the last few steps
-			S.Citizens.SetGait(thief, if d > 12 then 13 else 9, if d > 12 then "run" else "walk")
+			-- (always a little quicker than people walk, or they'd never catch up)
+			local walk = Config.WALK_SPEED or 9.5
+			S.Citizens.SetGait(thief, if d > 12 then math.max(13, walk * 1.6) else math.max(9, walk * 1.25), if d > 12 then "run" else "walk")
 		end
 		if d < 3.4 then
 			commit(case)
@@ -20808,10 +21559,9 @@ local function tick(case, now)
 		-- a thief who got far enough away (and isn't being tailed) escapes
 		if (done and closest > 25) or now - case.FleeStart > 70 then
 			S.City.News("🏃 The thief got away on " .. streetNear(thief.Root.Position) .. ".", "Crime", true)
-			for _, player in ipairs(Players:GetPlayers()) do
-				local r = rootOf(player)
-				if r and (r.Position - thief.Root.Position).Magnitude < 200 then
-					S.City.Send(player, { Type = "Waypoint", Clear = true })
+			for player in pairs(case.Alerted or {}) do
+				if player.Parent then
+					S.City.Toast(player, "🏃", "The thief got away", "They slipped off on " .. streetNear(thief.Root.Position) .. ".", rgb(160, 160, 170))
 				end
 			end
 			slipAway(case)
@@ -20882,7 +21632,7 @@ function StreetCrime.PlayerHit(player, brain, weapon, weaponId, fromPos)
 		S.City.Toast(player, "🦸", "You caught the thief! +" .. reward .. " coins", "Hold on, the police are coming to take them away.", rgb(90, 180, 120))
 		S.City.News("🦸 " .. player.DisplayName .. " caught a thief on " .. streetNear(brain.Root.Position) .. "!", "City")
 		S.City.Progress(player, "thief", 1)
-		S.City.Send(player, { Type = "Waypoint", Clear = true })
+		S.City.Send(player, { Type = "Waypoint", Clear = true, CitizenId = brain.C.Id })
 	end
 	return { Ok = true, Hit = true, Name = brain.C.First, HP = brain.HP, Weapon = weaponId }
 end
@@ -20909,7 +21659,7 @@ function StreetCrime.Start(services)
 					inmates[brain] = nil
 				elseif now >= j.Until then
 					releaseInmate(brain)
-				elseif S.Map.Jail and (brain.Root.Position - S.Map.Jail).Magnitude > 10 then
+				elseif not j.Prison and S.Map.Jail and (brain.Root.Position - S.Map.Jail).Magnitude > 10 then
 					-- no escaping
 					brain.Root.CFrame = CFrame.new(S.Map.Jail + SLOTS[j.Slot] + Vector3.new(0, 3.2, 0))
 				end
@@ -20939,7 +21689,7 @@ function StreetCrime.Commit(kind)
 end
 
 return StreetCrime
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX37"><Properties><string name="Name">FitnessService</string><ProtectedString name="Source"><![CDATA[-- FitnessService (ModuleScript) — ServerScriptService.Modules.FitnessService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX38"><Properties><string name="Name">FitnessService</string><ProtectedString name="Source"><![CDATA[-- FitnessService (ModuleScript) — ServerScriptService.Modules.FitnessService
 -- Your fitness level (saved): sprinting earns XP (reported by your client, with
 -- a limit), and the gym's treadmills give a proper workout (press E: you run
 -- for a few seconds). Each level: more stamina, faster recovery, faster sprint
@@ -21103,7 +21853,7 @@ function FitnessService.Start(services)
 end
 
 return FitnessService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX38"><Properties><string name="Name">FoodService</string><ProtectedString name="Source"><![CDATA[-- FoodService (ModuleScript) — ServerScriptService.Modules.FoodService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX39"><Properties><string name="Name">FoodService</string><ProtectedString name="Source"><![CDATA[-- FoodService (ModuleScript) — ServerScriptService.Modules.FoodService
 -- Buy food at the city's food places: the Bakery, the Cafe, the Diner, the
 -- Restaurant, the Ice Cream shop and the Market (press E at the counter).
 -- You eat it right away: it heals you and refills stamina (see Shared.Food),
@@ -21233,7 +21983,7 @@ function FoodService.Start(services)
 end
 
 return FoodService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX39"><Properties><string name="Name">JobService</string><ProtectedString name="Source"><![CDATA[-- JobService (ModuleScript) — ServerScriptService.Modules.JobService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX40"><Properties><string name="Name">JobService</string><ProtectedString name="Source"><![CDATA[-- JobService (ModuleScript) — ServerScriptService.Modules.JobService
 -- Real jobs for players: clock in, work a shift, get paid by the hour.
 --
 --   • Clock in at the workplace (J, or the phone's Jobs app) during its
@@ -22189,7 +22939,7 @@ function JobService.Start(services)
 end
 
 return JobService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX40"><Properties><string name="Name">HomeService</string><ProtectedString name="Source"><![CDATA[-- HomeService (ModuleScript) — ServerScriptService.Modules.HomeService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX41"><Properties><string name="Name">HomeService</string><ProtectedString name="Source"><![CDATA[-- HomeService (ModuleScript) — ServerScriptService.Modules.HomeService
 -- Houses with real front doors, a house of your own, and break-ins.
 --   • Doors: every house has a wooden front door on a hinge. It swings open
 --     when someone walks up (citizens always get in) and closes behind them.
@@ -22618,7 +23368,7 @@ HomeService.BreakIn = breakIn
 HomeService.Buy = buy
 
 return HomeService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX41"><Properties><string name="Name">GangService</string><ProtectedString name="Source"><![CDATA[-- GangService (ModuleScript) — ServerScriptService.Modules.GangService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX42"><Properties><string name="Name">GangService</string><ProtectedString name="Source"><![CDATA[-- GangService (ModuleScript) — ServerScriptService.Modules.GangService
 -- The rough side of town, and nights when the city loses it.
 --   • Gang turf: the blocks past the factory and the warehouse ("the East
 --     End") are run by two street crews, the Vipers (green) and the Kings
@@ -23089,7 +23839,7 @@ GangService.Crews = crews
 GangService.EndRiot = endRiot
 
 return GangService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX42"><Properties><string name="Name">RelationshipService</string><ProtectedString name="Source"><![CDATA[-- RelationshipService (ModuleScript) — ServerScriptService.Modules.RelationshipService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX43"><Properties><string name="Name">RelationshipService</string><ProtectedString name="Source"><![CDATA[-- RelationshipService (ModuleScript) — ServerScriptService.Modules.RelationshipService
 -- Couples and the drama that comes with them (the plans are in Life:Plan):
 --   • Date nights: partners go out together (dinner, the lake, the park, the
 --     cinema, a coffee). On the way they walk hand in hand; once there they sit
@@ -23264,7 +24014,7 @@ end
 RelationshipService.Caught = caught
 
 return RelationshipService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX43"><Properties><string name="Name">SportsService</string><ProtectedString name="Source"><![CDATA[-- SportsService (ModuleScript) — ServerScriptService.Modules.SportsService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX44"><Properties><string name="Name">SportsService</string><ProtectedString name="Source"><![CDATA[-- SportsService (ModuleScript) — ServerScriptService.Modules.SportsService
 -- Pickup basketball: when people are shooting hoops on a court, they split
 -- into two teams and play a real match. The ball carrier dribbles up the court
 -- (the ball bounces at their side), passes to open teammates, and pulls up for
@@ -23636,7 +24386,7 @@ SportsService.Courts = courts
 SportsService.Games = games
 
 return SportsService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX44"><Properties><string name="Name">FishingService</string><ProtectedString name="Source"><![CDATA[-- FishingService (ModuleScript) — ServerScriptService.Modules.FishingService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX45"><Properties><string name="Name">FishingService</string><ProtectedString name="Source"><![CDATA[-- FishingService (ModuleScript) — ServerScriptService.Modules.FishingService
 -- Real fishing for players.
 --   • Grab a free fishing rod at the start of the pier on Mirror Lake (or by
 --     the pond in the park). It goes in your hotbar.
@@ -24064,7 +24814,1024 @@ FishingService.Sessions = sessions
 FishingService.GiveRod = giveRod
 
 return FishingService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX45"><Properties><string name="Name">Conversation</string><ProtectedString name="Source"><![CDATA[-- Conversation (ModuleScript) — ServerScriptService.Modules.Conversation
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX46"><Properties><string name="Name">PrisonService</string><ProtectedString name="Source"><![CDATA[-- PrisonService (ModuleScript) — ServerScriptService.Modules.PrisonService
+-- Life inside AI City State Prison (the building is made by Prison.lua).
+--
+-- About twenty inmates in orange jumpsuits live there, two to a cell, each with
+-- a name, a crime and a sentence. They keep the prison's daily schedule:
+--   22:00-6:00  lights out: asleep in their bunks, the cell doors locked
+--   6:00        the doors slide open; wake up, stretch, wash
+--   7, 12, 17   chow (an hour and a half): a line at the serving counter,
+--               then the mess tables
+--   8:30-12, 16 yard time: hoops, the weight pit, laps around the track,
+--               cards and chess at the picnic tables, hanging out by the wall
+--   13:30-16    work detail: mopping the hall, sweeping the yard, the kitchen
+--   18:30-21    rec time: TV, chess in the hall, reading in their cells
+--   21:00       count time: "Back to your cells!"; the doors slam at 21:30
+-- They talk to each other, size up anyone new ("Fresh fish!"), and now and
+-- then a fight breaks out in the yard until the guards break it up and send
+-- both of them to their cells. Guards walk the hall and the yard, one sits at
+-- the desk by the yard door, one mans the gate, and there's a guard in every
+-- tower; at night the searchlights sweep the yard.
+--
+-- When YOU are arrested (CrimeService) you're booked in here: your own cell,
+-- your sentence on the clock, and the same schedule as everyone else. When the
+-- doors are locked you stay in your cell; when they're open you can go to the
+-- mess hall and the yard, but not past the walls. Street criminals the police
+-- catch (StreetCrimeService) serve their time here too.
+--
+-- Config.PRISON = false turns it off; Config.PRISON_INMATES (default 20).
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
+
+local PrisonService = {}
+local S, P
+
+local inmates = {} -- every inmate: { Brain, Name, Crime, Years, Cell, Bunk, ... }
+local byBrain = {}
+local guards = {}
+local jailedPlayers = {} -- [player] = { Cell }
+local doorsOpen = nil
+local lastPeriod
+local nextFight = 0
+local nextChat = 0
+
+local FIRST = { "Marcus", "Tony", "Dre", "Big Lou", "Sal", "Ray", "Tyrell", "Vic", "Manny", "Duke", "Eddie", "Tre", "Jimmy", "Hector", "Ozzie", "Frank", "Deshawn", "Carlos", "Mikey", "Ronnie", "Bishop", "Shorty", "Luis", "Terrence", "Gus" }
+local LAST = { "Brooks", "Rivera", "Kowalski", "Jenkins", "Moreno", "O'Neil", "Price", "Vance", "Castillo", "Doyle", "Hayes", "Romano", "Grant", "Pierce", "Ortiz" }
+local CRIMES = { "armed robbery", "car theft", "burglary", "running a card game", "assault", "breaking and entering", "tax fraud", "smuggling", "a bank job", "arson", "pickpocketing", "vandalism", "forgery", "a bar fight", "shoplifting (a lot)" }
+local GUARD_NAMES = { "Officer Hale", "Officer Diaz", "Officer Brandt", "Officer Kim", "Officer Moss", "Officer Pruitt", "Sgt. Walker", "Officer Tate", "Officer Ruiz" }
+
+local CHAT = {
+	{ "How long you got left?", "Two years, three months, eleven days. Not that I'm counting." },
+	{ "Chow's garbage today.", "Chow's garbage every day." },
+	{ "I didn't even do it, man.", "Yeah. Nobody in here did." },
+	{ "You hear about the new guy?", "Heard he's in for tax fraud. Tax fraud!" },
+	{ "When I get out I'm opening a bakery.", "You? A bakery?" },
+	{ "My lawyer says I got a shot at parole.", "Your lawyer said that last year." },
+	{ "Spot me on the bench?", "Yeah, go." },
+	{ "You got any stamps?", "What you gonna trade?" },
+	{ "My kid's got a birthday next week.", "Call 'em. It'll mean a lot." },
+	{ "Guard's in a mood today.", "Keep your head down." },
+	{ "Bet you two soups I make this shot.", "You're on." },
+	{ "Check. Your move.", "Hmm..." },
+}
+local FRESH = { "Fresh fish!", "Look what the bus dragged in.", "What you in for?", "Keep your head down, new guy.", "Don't sit at my table.", "Welcome to the neighborhood." }
+local VISITOR = { "You visiting somebody?", "Got a smoke?", "Tell my mom I said hi.", "Nice shoes. Real nice." }
+local FIGHT_LINES = {
+	{ "You took my spot, man!", "Your spot? Says who?" },
+	{ "You owe me two soups!", "I don't owe you nothing!" },
+	{ "Stop looking at me!", "Or what?!" },
+	{ "You cheated at cards!", "Prove it!" },
+}
+
+local function rgb(r, g, b)
+	return Color3.fromRGB(r, g, b)
+end
+
+local function W(v)
+	return P.World(v)
+end
+
+local function flat(v)
+	return Vector3.new(v.X, 0, v.Z)
+end
+
+local function hour()
+	return S.City.Hour()
+end
+
+--------------------------------------------------------------------------------
+-- The schedule
+--------------------------------------------------------------------------------
+local function periodAt(h)
+	if h >= 22 or h < 6 then
+		return "night"
+	elseif h < 7 then
+		return "wake"
+	elseif h < 8.5 or (h >= 12 and h < 13.5) or (h >= 17 and h < 18.5) then
+		return "meal"
+	elseif h < 12 or (h >= 16 and h < 17) then
+		return "yard"
+	elseif h < 16 then
+		return "work"
+	elseif h < 21 then
+		return "rec"
+	end
+	return "lockup"
+end
+PrisonService.PeriodAt = periodAt
+
+local function doorsShouldBeOpen(h)
+	return h >= 6 and h < 21.5
+end
+
+local PERIOD_LABEL = {
+	night = "💤 Lights out", wake = "⏰ Wake-up", meal = "🍲 Chow time", yard = "🏀 Yard time",
+	work = "🧽 Work detail", rec = "📺 Rec time", lockup = "🔔 Count time",
+}
+
+--------------------------------------------------------------------------------
+-- Cells and spots
+--------------------------------------------------------------------------------
+local function setDoors(open)
+	if doorsOpen == open then
+		return
+	end
+	doorsOpen = open
+	for _, door in ipairs(P.Doors) do
+		door.Open = open
+		for _, d in ipairs(door.Parts) do
+			d.Part.CFrame = if open then d.Opened else d.Closed
+			if d.Part.Name == "CellDoor" then
+				d.Part.CanCollide = not open
+			end
+		end
+	end
+end
+
+local function taken(spot)
+	return spot.TakenBy ~= nil and spot.TakenBy.Brain and spot.TakenBy.Brain.Model.Parent ~= nil
+end
+
+local function freeSpot(list, rng)
+	local free = {}
+	for _, s in ipairs(list) do
+		if not taken(s) then
+			table.insert(free, s)
+		end
+	end
+	return if #free > 0 then free[math.random(1, #free)] else nil
+end
+
+local function cellOccupants(cell)
+	local n = 0
+	for _, i in ipairs(inmates) do
+		if i.Cell == cell then
+			n += 1
+		end
+	end
+	for _, j in pairs(jailedPlayers) do
+		if j.Cell == cell then
+			n += 2
+		end
+	end
+	return n
+end
+
+local function freeBunk()
+	for _, cell in ipairs(P.Cells) do
+		local n = cellOccupants(cell)
+		if n < 2 then
+			local used = {}
+			for _, i in ipairs(inmates) do
+				if i.Cell == cell then
+					used[i.Bunk] = true
+				end
+			end
+			return cell, if used[1] then 2 else 1
+		end
+	end
+	return nil
+end
+
+local function emptyCell()
+	-- players get a cell to themselves (from the far end, away from the crowd)
+	for k = #P.Cells, 1, -1 do
+		local cell = P.Cells[k]
+		if cellOccupants(cell) == 0 then
+			return cell
+		end
+	end
+	return P.Cells[#P.Cells]
+end
+
+local function inCell(cell, lp)
+	local b = cell.Bounds
+	return lp.X >= b[1] - 0.6 and lp.X <= b[2] + 0.6 and lp.Z >= b[3] - 0.6 and lp.Z <= b[4] + 0.6
+end
+
+local function inCompound(lp)
+	return math.abs(lp.X) < 84 and math.abs(lp.Z) < 74 and lp.Y > -5 and lp.Y < 30
+end
+
+--------------------------------------------------------------------------------
+-- Moving around inside
+--------------------------------------------------------------------------------
+-- a path (in the prison's own coordinates) from where someone is to a spot
+local function route(i, to, toZone, toCell)
+	local pts = {}
+	local from, fromZone, fromCell = i.Local, i.Zone, i.AtCell
+	local spine = P.Spine
+	local lanes = P.Lanes
+	if fromZone == "cell" and fromCell then
+		if toZone == "cell" and toCell == fromCell then
+			return { to }
+		end
+		table.insert(pts, fromCell.DoorIn)
+		table.insert(pts, fromCell.DoorOut)
+		table.insert(pts, Vector3.new(fromCell.DoorOut.X, 0, spine))
+	elseif fromZone == "hall" then
+		if toZone == "hall" then
+			return { Vector3.new(from.X, 0, spine), Vector3.new(to.X, 0, spine), to }
+		end
+		table.insert(pts, Vector3.new(from.X, 0, spine))
+	elseif fromZone == "yard" then
+		if toZone == "yard" then
+			return { to }
+		end
+		table.insert(pts, lanes.YardHub)
+		table.insert(pts, lanes.DoorOut)
+		table.insert(pts, lanes.HallEast)
+	end
+	if toZone == "yard" then
+		if fromZone ~= "yard" then
+			table.insert(pts, lanes.HallEast)
+			table.insert(pts, lanes.DoorOut)
+			table.insert(pts, lanes.YardHub)
+		end
+		table.insert(pts, to)
+	elseif toZone == "hall" then
+		table.insert(pts, Vector3.new(to.X, 0, spine))
+		table.insert(pts, to)
+	elseif toZone == "cell" and toCell then
+		table.insert(pts, Vector3.new(toCell.DoorOut.X, 0, spine))
+		table.insert(pts, toCell.DoorOut)
+		table.insert(pts, toCell.DoorIn)
+		table.insert(pts, to)
+	else
+		table.insert(pts, to)
+	end
+	return pts
+end
+
+local function release(i)
+	if i.Spot and i.Spot.TakenBy == i then
+		i.Spot.TakenBy = nil
+	end
+	i.Spot = nil
+end
+
+-- send someone to a spot to do something there (for `seconds`)
+local function goDo(i, spot, zone, cell, action, seconds, activity)
+	release(i)
+	if spot then
+		spot.TakenBy = i
+	end
+	i.Spot = spot
+	i.Next = { Spot = spot, Zone = zone, Cell = cell, Action = action, Activity = activity }
+	i.Until = os.clock() + (seconds or 30)
+	local to = if spot then spot.Local else i.Local
+	i.Path = route(i, to, zone, cell)
+	i.PathI = 1
+	i.Walking = true
+	i.MoveAt = 0
+	i.Progress = os.clock()
+	i.LastPos = i.Brain.Root.Position
+	S.Citizens.StandUp(i.Brain)
+	-- (a brisk walk to chow and to count; an amble otherwise)
+	local brisk = i.Hurry or action == "eat" or (zone == "hall" and action == "wait") or lastPeriod == "lockup"
+	S.Citizens.SetGait(i.Brain, if brisk then 11 else 9, "walk")
+	i.Brain.Model:SetAttribute("Action", "")
+end
+
+local function arrive(i)
+	i.Walking = false
+	local n = i.Next
+	if not n then
+		i.Until = 0
+		return
+	end
+	i.Zone, i.AtCell = n.Zone, n.Cell
+	if n.Spot then
+		i.Local = n.Spot.Local
+		S.Citizens.PlaceAt(i.Brain, n.Spot, n.Action or "wait")
+	else
+		S.Citizens.PlaceAt(i.Brain, { CFrame = i.Brain.Root.CFrame - Vector3.new(0, 3, 0) }, n.Action or "wait")
+	end
+	if n.Activity then
+		i.Brain.Model:SetAttribute("Activity", n.Activity)
+	end
+end
+
+-- walking laps: the track is a loop, around and around
+local function goLaps(i, seconds)
+	release(i)
+	i.Next = nil
+	i.Laps = true
+	i.Until = os.clock() + seconds
+	local path = route(i, P.Laps[1], "yard")
+	for k = 2, #P.Laps do
+		table.insert(path, P.Laps[k])
+	end
+	i.Path, i.PathI, i.Walking = path, 1, true
+	i.MoveAt, i.Progress, i.LastPos = 0, os.clock(), i.Brain.Root.Position
+	S.Citizens.StandUp(i.Brain)
+	S.Citizens.SetGait(i.Brain, 9, "walk")
+	i.Brain.Model:SetAttribute("Activity", "🚶 Walking laps in the yard")
+end
+
+local function walkStep(i, now)
+	local brain = i.Brain
+	local target = i.Path[i.PathI]
+	if not target then
+		if i.Laps then
+			i.PathI = 1
+			local loop = {}
+			for k = 1, #P.Laps do
+				loop[k] = P.Laps[k]
+			end
+			i.Path = loop
+			return
+		end
+		arrive(i)
+		return
+	end
+	local world = W(target)
+	local d = flat(brain.Root.Position - world).Magnitude
+	if d < 1.6 then
+		i.Local = target
+		i.PathI += 1
+		i.MoveAt = 0
+		return
+	end
+	if now - i.MoveAt > 2 then
+		i.MoveAt = now
+		brain.Humanoid:MoveTo(world)
+	end
+	-- stuck on something? step through to the next point
+	if (brain.Root.Position - i.LastPos).Magnitude > 1 then
+		i.LastPos = brain.Root.Position
+		i.Progress = now
+	elseif now - i.Progress > 4 then
+		brain.Root.CFrame = CFrame.new(world + Vector3.new(0, 3, 0))
+		i.Progress = now
+	end
+end
+
+--------------------------------------------------------------------------------
+-- What an inmate does next
+--------------------------------------------------------------------------------
+local function cellActivity(i, seconds)
+	local cell = i.Cell
+	local r = math.random()
+	if i.Bunk == 2 and r < 0.35 then
+		goDo(i, cell.Bunks[2], "cell", cell, "sleep", seconds, "🛏️ Lying on their bunk")
+	elseif r < 0.55 then
+		if taken(cell.Seat) then
+			goDo(i, cell.Desk, "cell", cell, "study", seconds, "✏️ Writing a letter home")
+		else
+			goDo(i, cell.Seat, "cell", cell, "read", seconds, "📖 Reading in their cell")
+		end
+	elseif r < 0.75 then
+		goDo(i, if taken(cell.Stand) then cell.Seat else cell.Stand, "cell", cell, if taken(cell.Stand) then "read" else "stretch", seconds, "🤸 Passing the time")
+	else
+		if taken(cell.Stand) then
+			goDo(i, cell.Desk, "cell", cell, "study", seconds, "✏️ Writing a letter home")
+		else
+			goDo(i, cell.Stand, "cell", cell, "wait", seconds, "🔒 In their cell")
+		end
+	end
+end
+
+local function yardActivity(i, seconds)
+	local r = math.random()
+	local spot
+	if r < 0.22 then
+		spot = freeSpot(P.Hoops)
+		if spot then
+			return goDo(i, spot, "yard", nil, "hoops", seconds, "🏀 Shooting hoops in the yard")
+		end
+	elseif r < 0.44 then
+		spot = freeSpot(P.Weights)
+		if spot then
+			return goDo(i, spot, "yard", nil, spot.Action or "lift", seconds, "💪 Pumping iron in the yard")
+		end
+	elseif r < 0.62 then
+		spot = freeSpot(P.Tables)
+		if spot then
+			return goDo(i, spot, "yard", nil, if math.random() < 0.5 then "chess" else "sit", seconds, "🃏 Playing cards in the yard")
+		end
+	elseif r < 0.76 then
+		return goLaps(i, seconds)
+	end
+	spot = freeSpot(P.Hangout)
+	if spot then
+		return goDo(i, spot, "yard", nil, if spot.Lean then "wait" elseif math.random() < 0.4 then "stretch" else "wait", seconds, "😎 Hanging out in the yard")
+	end
+	return goLaps(i, seconds)
+end
+
+local function choose(i, period)
+	local left = 20 * (math.ceil(hour() + 0.001) - hour()) -- until the hour's up
+	local seconds = math.random(18, 40)
+	if period == "night" then
+		return goDo(i, i.Cell.Bunks[i.Bunk], "cell", i.Cell, "sleep", 60, "💤 Asleep in their bunk")
+	end
+	if i.CellUntil and os.clock() < i.CellUntil then
+		return cellActivity(i, math.min(seconds, i.CellUntil - os.clock() + 1))
+	end
+	if period == "wake" or period == "lockup" then
+		return cellActivity(i, seconds)
+	elseif period == "meal" then
+		-- through the line first, then find a seat
+		if not i.GotTray then
+			i.GotTray = true
+			local at = P.Cook.Local + Vector3.new(4.5, 0, math.random(-6, 6))
+			local line = { CFrame = CFrame.lookAt(W(at), W(at - Vector3.new(4, 0, 0))), Local = at }
+			return goDo(i, line, "hall", nil, "wait", 3, "🍲 In the chow line")
+		end
+		local seat = freeSpot(P.MessSeats)
+		if seat then
+			return goDo(i, seat, "hall", nil, "eat", math.max(left, 20), "🍲 Eating in the mess hall")
+		end
+		return cellActivity(i, seconds)
+	elseif period == "yard" then
+		return yardActivity(i, seconds)
+	elseif period == "work" then
+		local r = math.random()
+		if r < 0.25 then
+			local spot = freeSpot(P.MopSpots)
+			if spot then
+				return goDo(i, spot, "hall", nil, "mop", seconds, "🧽 Mopping the cell block")
+			end
+		elseif r < 0.4 then
+			local spot = freeSpot(P.Sweep)
+			if spot then
+				return goDo(i, spot, "yard", nil, "sweep", seconds, "🧹 Sweeping the yard")
+			end
+		elseif r < 0.48 and not taken(P.Cook) then
+			return goDo(i, P.Cook, "hall", nil, "cook", seconds, "🍳 Kitchen duty")
+		end
+		return yardActivity(i, seconds)
+	elseif period == "rec" then
+		local r = math.random()
+		if r < 0.3 then
+			local seat = freeSpot(P.TVSeats)
+			if seat then
+				return goDo(i, seat, "hall", nil, "tv", seconds, "📺 Watching TV")
+			end
+		elseif r < 0.6 then
+			local seat = freeSpot(P.MessSeats)
+			if seat then
+				return goDo(i, seat, "hall", nil, if math.random() < 0.6 then "chess" else "sit", seconds, "♟️ Playing chess in the hall")
+			end
+		end
+		return cellActivity(i, seconds)
+	end
+end
+
+--------------------------------------------------------------------------------
+-- People
+--------------------------------------------------------------------------------
+local function spawnInmate(cell, bunk, info)
+	local name = info and info.Name or (FIRST[math.random(1, #FIRST)] .. " " .. LAST[math.random(1, #LAST)])
+	local first = string.match(name, "^(%S+)") or name
+	local spot = cell.Bunks[bunk]
+	local brain = S.Citizens.SpawnExtra({ Name = name, First = first, Job = "Inmate", Age = math.random(20, 58), Activity = "🔒 Serving time" }, CFrame.new(W(cell.Stand.Local) + Vector3.new(0, 3, 0)))
+	local i = {
+		Brain = brain, Name = name, Cell = cell, Bunk = bunk, Zone = "cell", AtCell = cell, Local = cell.Stand.Local,
+		Crime = info and info.Crime or CRIMES[math.random(1, #CRIMES)], Years = info and info.Years or math.random(1, 15),
+		Until = 0,
+	}
+	brain.Inmate = true
+	brain.Model:SetAttribute("Inmate", true)
+	brain.Model:SetAttribute("Crime", i.Crime)
+	brain.Model:SetAttribute("Bio", "Inmate #" .. (4000 + math.random(100, 999)) .. " · in for " .. i.Crime .. " · " .. i.Years .. (if i.Years == 1 then " year" else " years"))
+	byBrain[brain] = i
+	table.insert(inmates, i)
+	return i, spot
+end
+
+local function spawnGuard(role, spot, patrol)
+	local name = GUARD_NAMES[#guards % #GUARD_NAMES + 1]
+	local brain = S.Citizens.SpawnExtra({ Name = name, First = name, Job = "Prison Guard", Age = math.random(28, 55), Activity = "👮 On duty" }, CFrame.new((if spot then spot.CFrame.Position else W(patrol[1])) + Vector3.new(0, 3, 0)))
+	brain.Model:SetAttribute("Activity", if role == "tower" then "🔭 Watching from the tower" elseif role == "gate" then "🚧 Manning the gate" elseif role == "desk" then "👮 At the guard desk" else "👮 Walking the " .. role)
+	local g = { Brain = brain, Role = role, Spot = spot, Patrol = patrol, PatrolI = 1, Until = 0 }
+	if spot then
+		S.Citizens.PlaceAt(brain, spot, "guard")
+	end
+	table.insert(guards, g)
+	return g
+end
+
+-- a new inmate walks in from the gate (a street criminal, say)
+local function admit(cell, bunk, info, fromGate)
+	local i = spawnInmate(cell, bunk, info)
+	if fromGate then
+		i.Brain.Root.CFrame = CFrame.new(P.GateInside + Vector3.new(0, 3, 0))
+		i.Zone, i.Local = "yard", P.Lanes.YardHub
+		i.New = true
+	end
+	return i
+end
+
+local function respawnMissing(now)
+	for k = #inmates, 1, -1 do
+		local i = inmates[k]
+		if not i.Brain.Model.Parent and not i.Street then
+			-- knocked out and taken to the infirmary: back in a little while
+			i.GoneAt = i.GoneAt or now
+			if now - i.GoneAt > 45 then
+				table.remove(inmates, k)
+				byBrain[i.Brain] = nil
+				release(i)
+				admit(i.Cell, i.Bunk, { Name = i.Name, Crime = i.Crime, Years = i.Years }, false)
+			end
+		elseif not i.Brain.Model.Parent then
+			table.remove(inmates, k)
+			byBrain[i.Brain] = nil
+			release(i)
+		end
+	end
+end
+
+--------------------------------------------------------------------------------
+-- Guards
+--------------------------------------------------------------------------------
+local function guardTick(g, now)
+	local brain = g.Brain
+	if not brain.Model.Parent or g.Busy then
+		return
+	end
+	if g.Patrol then
+		if g.Walking then
+			local target = W(g.Patrol[g.PatrolI])
+			if flat(brain.Root.Position - target).Magnitude < 2 then
+				g.Walking = false
+				g.Until = now + math.random(4, 9)
+				local dir = flat(target - brain.Root.Position)
+				dir = if dir.Magnitude > 0.1 then dir.Unit else Vector3.new(1, 0, 0)
+				S.Citizens.PlaceAt(brain, { CFrame = CFrame.lookAt(target, target + dir) }, "guard")
+			elseif now - (g.MoveAt or 0) > 2 then
+				g.MoveAt = now
+				brain.Humanoid:MoveTo(target)
+			end
+		elseif now > g.Until then
+			g.PatrolI = g.PatrolI % #g.Patrol + 1
+			g.Walking = true
+			S.Citizens.StandUp(brain)
+			S.Citizens.SetGait(brain, 7.5, "walk")
+			brain.Model:SetAttribute("Action", "patrol")
+			brain.Humanoid:MoveTo(W(g.Patrol[g.PatrolI]))
+			g.MoveAt = now
+		end
+	end
+end
+
+local function guardSay(text, near)
+	local best, bestD
+	for _, g in ipairs(guards) do
+		if g.Patrol and g.Brain.Model.Parent then
+			local d = if near then (g.Brain.Root.Position - near).Magnitude else 0
+			if not bestD or d < bestD then
+				best, bestD = g, d
+			end
+		end
+	end
+	if best then
+		S.Citizens.Say(best.Brain, text, "angry", 3)
+	end
+	return best
+end
+
+--------------------------------------------------------------------------------
+-- Fights in the yard
+--------------------------------------------------------------------------------
+local function playersNear(radius)
+	local out = {}
+	for _, player in ipairs(Players:GetPlayers()) do
+		local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+		if root and (root.Position - P.Center).Magnitude < radius then
+			table.insert(out, player)
+		end
+	end
+	return out
+end
+
+local function startFight(now)
+	if not S.Brawl or not S.Brawl.Fight then
+		return
+	end
+	local pool = {}
+	for _, i in ipairs(inmates) do
+		if i.Brain.Model.Parent and not i.Walking and not i.Fighting and (i.Zone == "yard" or i.Zone == "hall") and i.Brain.State ~= "ko" then
+			table.insert(pool, i)
+		end
+	end
+	for a = 1, #pool do
+		for b = a + 1, #pool do
+			local x, y = pool[a], pool[b]
+			if (x.Brain.Root.Position - y.Brain.Root.Position).Magnitude < 30 then
+				release(x)
+				release(y)
+				x.Laps, y.Laps = nil, nil
+				S.Citizens.StandUp(x.Brain)
+				S.Citizens.StandUp(y.Brain)
+				-- (let go of them so the brawl can take over)
+				S.Citizens.Control(x.Brain, false)
+				S.Citizens.Control(y.Brain, false)
+				local fight = S.Brawl.Fight(x.Brain, y.Brain, { Quiet = true, NoPolice = true, Gang = true, Lines = FIGHT_LINES[math.random(1, #FIGHT_LINES)] })
+				if fight then
+					x.Fighting, y.Fighting = fight, fight
+					for _, player in ipairs(playersNear(200)) do
+						S.City.Toast(player, "🥊", "Fight in the " .. x.Zone .. "!", x.Name .. " and " .. y.Name .. " are going at it. The guards are on their way.", rgb(255, 120, 60))
+					end
+					-- the nearest guard runs over and breaks it up
+					local spot = x.Brain.Root.Position
+					local g = guardSay("HEY! BREAK IT UP!", spot)
+					if g then
+						g.Busy = true
+						S.Citizens.StandUp(g.Brain)
+						S.Citizens.SetGait(g.Brain, 17, "run")
+						task.spawn(function()
+							local t0 = os.clock()
+							while os.clock() - t0 < 25 and fight and not fight.Done and g.Brain.Model.Parent and x.Brain.Model.Parent do
+								g.Brain.Humanoid:MoveTo(x.Brain.Root.Position)
+								if (g.Brain.Root.Position - x.Brain.Root.Position).Magnitude < 7 and os.clock() - t0 > 6 then
+									S.Citizens.Say(g.Brain, "That's ENOUGH! Both of you, back to your cells!", "angry", 3)
+									S.Brawl.Stop(fight)
+									break
+								end
+								task.wait(0.3)
+							end
+							g.Busy = false
+							g.Walking = true
+							if g.Brain.Model.Parent then
+								S.Citizens.SetGait(g.Brain, 7.5, "walk")
+							end
+						end)
+					end
+					return true
+				end
+			end
+		end
+	end
+	return false
+end
+
+local function afterFight(i, now)
+	if i.Fighting and (i.Fighting.Done or not (S.Brawl.FightOf and S.Brawl.FightOf(i.Brain))) then
+		i.Fighting = nil
+		i.CellUntil = now + 50
+		i.Hurry = false
+		-- the brawl let go of them; take them back
+		S.Citizens.Control(i.Brain, true)
+		i.Zone = if flat(P.Local(i.Brain.Root.Position)).X > P.BlockX[2] then "yard" else "hall"
+		i.Local = P.Local(i.Brain.Root.Position)
+		i.Until = 0
+		return true
+	end
+	return i.Fighting ~= nil
+end
+
+--------------------------------------------------------------------------------
+-- Talking
+--------------------------------------------------------------------------------
+local function chatter(now)
+	if now < nextChat then
+		return
+	end
+	nextChat = now + math.random(5, 9)
+	local idle = {}
+	for _, i in ipairs(inmates) do
+		if i.Brain.Model.Parent and not i.Walking and not i.Fighting and i.Brain.Model:GetAttribute("Action") ~= "sleep" then
+			table.insert(idle, i)
+		end
+	end
+	for _ = 1, 6 do
+		local a = idle[math.random(1, math.max(1, #idle))]
+		if not a then
+			return
+		end
+		for _, b in ipairs(idle) do
+			if b ~= a and (b.Brain.Root.Position - a.Brain.Root.Position).Magnitude < 9 then
+				local pair = CHAT[math.random(1, #CHAT)]
+				S.Citizens.Say(a.Brain, pair[1], "neutral", 3)
+				task.delay(2.4, function()
+					if b.Brain.Model.Parent then
+						S.Citizens.Say(b.Brain, pair[2], "neutral", 3)
+					end
+				end)
+				return
+			end
+		end
+	end
+end
+
+local function greetPlayers(now)
+	for _, player in ipairs(Players:GetPlayers()) do
+		local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+		if root and (root.Position - P.Center).Magnitude < 130 then
+			for _, i in ipairs(inmates) do
+				if i.Brain.Model.Parent and not i.Fighting and now > (i.NextGreet or 0) and i.Brain.Model:GetAttribute("Action") ~= "sleep" and (i.Brain.Root.Position - root.Position).Magnitude < 9 then
+					i.NextGreet = now + math.random(40, 80)
+					local lines = if jailedPlayers[player] then FRESH else VISITOR
+					S.Citizens.Say(i.Brain, lines[math.random(1, #lines)], "neutral", 3)
+					break
+				end
+			end
+		end
+	end
+end
+
+--------------------------------------------------------------------------------
+-- Players doing time
+--------------------------------------------------------------------------------
+local function rootOf(player)
+	return player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+end
+
+-- CrimeService books an arrested player in: returns where they're held
+function PrisonService.AdmitPlayer(player, seconds)
+	if not P then
+		return nil
+	end
+	local cell = emptyCell()
+	jailedPlayers[player] = { Cell = cell }
+	local root = rootOf(player)
+	if root then
+		root.CFrame = CFrame.new(W(cell.Stand.Local) + Vector3.new(0, 3.5, 0))
+		root.AssemblyLinearVelocity = Vector3.zero
+	end
+	local period = periodAt(hour())
+	S.City.Toast(player, "🔒", "Welcome to AI City State Prison", "Cell A-" .. string.format("%02d", cell.Id) .. ". You'll be out in " .. math.floor(seconds) .. "s. " .. (if doorsOpen then "The doors are open: the mess hall and the yard are yours. Don't try the walls." else "Lights out, so you stay in your cell until the doors open."), rgb(240, 140, 60))
+	player:SetAttribute("PrisonCell", "A-" .. string.format("%02d", cell.Id))
+	player:SetAttribute("PrisonPeriod", PERIOD_LABEL[period])
+	guardSay("Got a new one! Cell A-" .. string.format("%02d", cell.Id) .. ".", root and root.Position)
+	return W(cell.Stand.Local)
+end
+
+-- every tick while they're inside: keep them where they're allowed to be
+function PrisonService.Confine(player, root)
+	local j = jailedPlayers[player]
+	if not j or not root then
+		return
+	end
+	local lp = P.Local(root.Position)
+	local ok = if doorsOpen then inCompound(lp) else inCell(j.Cell, lp)
+	if not ok then
+		root.CFrame = CFrame.new(W(j.Cell.Stand.Local) + Vector3.new(0, 3.5, 0))
+		root.AssemblyLinearVelocity = Vector3.zero
+		S.City.Toast(player, "🚨", if doorsOpen then "Nice try" else "Lights out", if doorsOpen then "The guards caught you at the wall and walked you back to your cell." else "You're locked in your cell until 6:00.", rgb(220, 90, 80))
+	end
+end
+
+-- time's up: out through the gate, onto Prison Road
+function PrisonService.ReleasePlayer(player)
+	jailedPlayers[player] = nil
+	player:SetAttribute("PrisonCell", nil)
+	player:SetAttribute("PrisonPeriod", nil)
+	local root = rootOf(player)
+	if root and P then
+		root.CFrame = CFrame.new(P.Release + Vector3.new(0, 3.5, 0))
+		root.AssemblyLinearVelocity = Vector3.zero
+		return true
+	end
+	return false
+end
+
+function PrisonService.IsInmate(brain)
+	return byBrain[brain] ~= nil
+end
+
+-- StreetCrimeService: a street criminal serves their time here. The police
+-- "bus them over": they turn up at the gate and are walked to a bunk.
+function PrisonService.Admit(brain, reason)
+	if not P then
+		return false
+	end
+	local cell, bunk = freeBunk()
+	if not cell then
+		return false
+	end
+	local i = {
+		Brain = brain, Name = brain.C.Name, Cell = cell, Bunk = bunk, Zone = "yard", Local = P.Lanes.YardHub,
+		Crime = reason, Years = 0, Until = 0, Street = true, New = true,
+	}
+	S.Citizens.Control(brain, true)
+	brain.Inmate = true
+	brain.Root.Anchored = false
+	brain.Root.CFrame = CFrame.new(P.GateInside + Vector3.new(0, 3.2, 0))
+	brain.Model:SetAttribute("Jailed", true)
+	brain.Model:SetAttribute("Activity", "🔒 In prison: " .. reason)
+	byBrain[brain] = i
+	table.insert(inmates, i)
+	return true
+end
+
+function PrisonService.Release(brain)
+	local i = byBrain[brain]
+	if not i then
+		return
+	end
+	byBrain[brain] = nil
+	brain.Inmate = nil
+	release(i)
+	local k = table.find(inmates, i)
+	if k then
+		table.remove(inmates, k)
+	end
+	if brain.Model.Parent then
+		S.Citizens.StandUp(brain)
+	end
+end
+
+--------------------------------------------------------------------------------
+-- Every tick
+--------------------------------------------------------------------------------
+local function searchlights(t, night, anyone)
+	for k, tower in ipairs(P.Towers) do
+		tower.Light.Enabled = night
+		if night and anyone then
+			local a = t * 0.4 + k * 1.7
+			local aim = W(Vector3.new(30 + math.cos(a) * 45, 0, math.sin(a * 0.8) * 60))
+			local cf = CFrame.lookAt(tower.Base, aim)
+			tower.Head.CFrame = cf
+			tower.Lens.CFrame = cf * CFrame.new(0, 0, -1.15)
+		end
+	end
+end
+
+local function tick(now)
+	local h = hour()
+	local period = periodAt(h)
+	-- the doors
+	local open = doorsShouldBeOpen(h)
+	if open ~= doorsOpen then
+		if not open then
+			-- lights out: anyone not in their cell is put there
+			for _, i in ipairs(inmates) do
+				if i.Brain.Model.Parent and not i.Fighting and not inCell(i.Cell, P.Local(i.Brain.Root.Position)) then
+					S.Citizens.StandUp(i.Brain)
+					i.Brain.Root.CFrame = CFrame.new(W(i.Cell.Stand.Local) + Vector3.new(0, 3, 0))
+					i.Zone, i.AtCell, i.Local, i.Walking, i.Laps = "cell", i.Cell, i.Cell.Stand.Local, false, nil
+					i.Until = 0
+				end
+			end
+			for player, j in pairs(jailedPlayers) do
+				local root = rootOf(player)
+				if root and not inCell(j.Cell, P.Local(root.Position)) then
+					root.CFrame = CFrame.new(W(j.Cell.Stand.Local) + Vector3.new(0, 3.5, 0))
+				end
+				S.City.Toast(player, "🔒", "Lights out", "The cell doors are locked until 6:00.", rgb(120, 130, 170))
+			end
+		else
+			for player in pairs(jailedPlayers) do
+				S.City.Toast(player, "🔓", "Doors open", "Breakfast is at 7:00, then yard time.", rgb(90, 180, 120))
+			end
+		end
+		setDoors(open)
+	end
+	-- the schedule changes: everyone moves on
+	if period ~= lastPeriod then
+		local was = lastPeriod
+		lastPeriod = period
+		for _, i in ipairs(inmates) do
+			i.Until = 0
+			i.GotTray = false
+			if i.Laps and i.Brain.Model.Parent then
+				-- off the track: carry on from wherever they are
+				i.Laps, i.Walking = nil, false
+				i.Zone, i.Local = "yard", P.Local(i.Brain.Root.Position)
+			end
+		end
+		if was then
+			local line = ({ meal = "Chow time! Line up!", yard = "Yard time! Let's go, let's go!", work = "Work detail! Grab a mop!", rec = "Rec time.", lockup = "COUNT TIME! Everybody back to your cells!", wake = "Rise and shine! Doors are opening!" })[period]
+			if line then
+				guardSay(line)
+			end
+		end
+		for player in pairs(jailedPlayers) do
+			player:SetAttribute("PrisonPeriod", PERIOD_LABEL[period])
+		end
+	end
+	for _, i in ipairs(inmates) do
+		local brain = i.Brain
+		if brain.Model.Parent and brain.State ~= "ko" and brain.State ~= "hospital" and not afterFight(i, now) and not brain.Model:GetAttribute("Fighting") then
+			if brain.State ~= "police" then
+				-- something else had them for a moment (a fight with a player):
+				-- pick up from wherever they are now
+				S.Citizens.Control(brain, true)
+				i.Walking, i.Laps, i.Until = false, nil, 0
+				i.Local = P.Local(brain.Root.Position)
+				i.Zone = if inCell(i.Cell, i.Local) then "cell" elseif i.Local.X > P.BlockX[2] then "yard" else "hall"
+				i.AtCell = if i.Zone == "cell" then i.Cell else nil
+			end
+			if i.Walking then
+				walkStep(i, now)
+				if i.Laps and now > i.Until then
+					i.Walking, i.Laps = false, nil
+					i.Zone, i.Local = "yard", P.Local(brain.Root.Position)
+				end
+			elseif now > i.Until then
+				if i.New then
+					i.New = nil
+					S.Citizens.Say(brain, ({ "So this is it, huh...", "I want my lawyer!", "This place is huge." })[math.random(1, 3)], "sad", 3)
+				end
+				-- locked doors: whoever's out of their cell stays put
+				if not doorsOpen and i.Zone ~= "cell" then
+					brain.Root.CFrame = CFrame.new(W(i.Cell.Stand.Local) + Vector3.new(0, 3, 0))
+					i.Zone, i.AtCell, i.Local = "cell", i.Cell, i.Cell.Stand.Local
+				end
+				choose(i, period)
+			end
+		end
+	end
+	for _, g in ipairs(guards) do
+		guardTick(g, now)
+	end
+	-- yard fights (only with somebody around to see them)
+	if (period == "yard" or period == "work" or period == "meal") and now > nextFight then
+		nextFight = now + math.random(100, 200)
+		if #playersNear(220) > 0 then
+			startFight(now)
+		end
+	end
+	if #playersNear(260) > 0 then
+		chatter(now)
+		greetPlayers(now)
+	end
+end
+
+function PrisonService.Start(services)
+	S = services
+	P = S.Map and S.Map.Prison
+	if not P or Config.PRISON == false then
+		P = nil
+		return
+	end
+	Players.PlayerRemoving:Connect(function(player)
+		jailedPlayers[player] = nil
+	end)
+	task.spawn(function()
+		-- (the citizens folder has to exist before anyone is spawned)
+		local t0 = os.clock()
+		while not workspace:FindFirstChild("Citizens") and os.clock() - t0 < 30 do
+			task.wait(0.5)
+		end
+		local count = Config.PRISON_INMATES or 20
+		for k = 1, count do
+			local cell = P.Cells[math.floor((k - 1) / 2) + 1]
+			if not cell then
+				break
+			end
+			local ok, err = pcall(spawnInmate, cell, (k - 1) % 2 + 1)
+			if not ok then
+				warn("[PrisonService] " .. tostring(err))
+			end
+			if k % 4 == 0 then
+				task.wait()
+			end
+		end
+		-- the guards
+		pcall(function()
+			spawnGuard("hall", nil, P.HallPatrol)
+			spawnGuard("yard", nil, P.YardPatrol)
+			spawnGuard("yard", nil, { P.YardPatrol[3], P.YardPatrol[4], P.YardPatrol[1], P.YardPatrol[2] })
+			spawnGuard("desk", P.DeskGuard)
+			spawnGuard("gate", P.Booth)
+			for _, tower in ipairs(P.Towers) do
+				spawnGuard("tower", tower.Guard)
+			end
+		end)
+		nextFight = os.clock() + 90
+		local t = 0
+		while true do
+			local dt = task.wait(0.25)
+			t += dt
+			local now = os.clock()
+			local ok, err = pcall(tick, now)
+			if not ok then
+				warn("[PrisonService] " .. tostring(err))
+				task.wait(2)
+			end
+			local h = hour()
+			pcall(searchlights, t, h >= 19 or h < 6, #playersNear(500) > 0)
+			if math.floor(t) % 5 == 0 then
+				respawnMissing(now)
+			end
+		end
+	end)
+end
+
+function PrisonService.Active()
+	return P ~= nil
+end
+
+-- for tests and your own scripts: start a fight in the yard right now
+function PrisonService.StartFight()
+	return startFight(os.clock())
+end
+
+PrisonService.Inmates = inmates
+PrisonService.Guards = guards
+PrisonService.Players = jailedPlayers
+
+return PrisonService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX47"><Properties><string name="Name">Conversation</string><ProtectedString name="Source"><![CDATA[-- Conversation (ModuleScript) — ServerScriptService.Modules.Conversation
 -- The deeper side of talking to citizens (used by DialogueService):
 --   • every personality has its own voice: how they say hello, little verbal
 --     habits, their dreams and fears, their advice, favorite food and places
@@ -24492,7 +26259,7 @@ function Conversation.Answer(key, c, player, brain)
 end
 
 return Conversation
-]]></ProtectedString></Properties></Item></Item></Item><Item class="StarterPlayer" referent="RBX47"><Properties><string name="Name">StarterPlayer</string></Properties><Item class="StarterPlayerScripts" referent="RBX48"><Properties><string name="Name">StarterPlayerScripts</string></Properties><Item class="LocalScript" referent="RBX57"><Properties><string name="Name">CityClient</string><ProtectedString name="Source"><![CDATA[-- CityClient (LocalScript) — StarterPlayer.StarterPlayerScripts.CityClient
+]]></ProtectedString></Properties></Item></Item></Item><Item class="StarterPlayer" referent="RBX49"><Properties><string name="Name">StarterPlayer</string></Properties><Item class="StarterPlayerScripts" referent="RBX50"><Properties><string name="Name">StarterPlayerScripts</string></Properties><Item class="LocalScript" referent="RBX59"><Properties><string name="Name">CityClient</string><ProtectedString name="Source"><![CDATA[-- CityClient (LocalScript) — StarterPlayer.StarterPlayerScripts.CityClient
 -- AI City on your screen. Starts the HUD, the windows, the world effects and
 -- the citizens' body language, and routes everything the server sends.
 --
@@ -24587,10 +26354,10 @@ handlers.DialogueEnd = function()
 end
 handlers.Waypoint = function(d)
 	if d.Clear then
-		World.ClearWaypoint()
+		World.ClearWaypoint(d.CitizenId)
 		return
 	end
-	World.Waypoint(d.Position, d.Label, d.Emoji, d.Model)
+	World.Waypoint(d.Position, d.Label, d.Emoji, d.Model, d.CitizenId)
 end
 handlers.FishBite = function(d)
 	World.FishBite(d.Position)
@@ -24756,7 +26523,7 @@ UserInputService.InputEnded:Connect(function(input)
 		Moves.SetSprint(false)
 	end
 end)
-]]></ProtectedString></Properties><Item class="ModuleScript" referent="RBX49"><Properties><string name="Name">UI</string><ProtectedString name="Source"><![CDATA[-- UI (ModuleScript) — StarterPlayerScripts.CityClient.UI
+]]></ProtectedString></Properties><Item class="ModuleScript" referent="RBX51"><Properties><string name="Name">UI</string><ProtectedString name="Source"><![CDATA[-- UI (ModuleScript) — StarterPlayerScripts.CityClient.UI
 -- AI City's look: colors, fonts, and helpers for building the interface
 -- (rounded panels, buttons that bounce, windows that pop open, bars...).
 
@@ -25258,7 +27025,7 @@ function UI.commas(n)
 end
 
 return UI
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX50"><Properties><string name="Name">Icons</string><ProtectedString name="Source"><![CDATA[-- Icons (ModuleScript) — StarterPlayerScripts.CityClient.Icons
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX52"><Properties><string name="Name">Icons</string><ProtectedString name="Source"><![CDATA[-- Icons (ModuleScript) — StarterPlayerScripts.CityClient.Icons
 -- AI City's own icon set, drawn from rounded shapes (no image uploads needed,
 -- and they stay sharp at any size).
 --
@@ -26075,7 +27842,7 @@ end
 table.sort(Icons.Names)
 
 return Icons
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX51"><Properties><string name="Name">Hud</string><ProtectedString name="Source"><![CDATA[-- Hud (ModuleScript) — StarterPlayerScripts.CityClient.Hud
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX53"><Properties><string name="Name">Hud</string><ProtectedString name="Source"><![CDATA[-- Hud (ModuleScript) — StarterPlayerScripts.CityClient.Hud
 -- The always-on screen: the clock and calendar, the city's mood and stats,
 -- a rotating minimap, coins, wanted stars, the mayor and the next election,
 -- the action bar, notifications and the news ticker.
@@ -26443,9 +28210,9 @@ local function build()
 	refs.BannerStroke = UI.new("UIStroke", { Thickness = 3, Transparency = 1, Parent = refs.Banner })
 
 	-- jail: a bar with the time left
-	refs.Jail = UI.panel(screen, { AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 16), Size = UDim2.fromOffset(360, 64), Visible = false, BackgroundColor3 = UI.rgb(60, 20, 26), Radius = 16 })
+	refs.Jail = UI.panel(screen, { AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 16), Size = UDim2.fromOffset(470, 64), Visible = false, BackgroundColor3 = UI.rgb(60, 20, 26), Radius = 16 })
 	UI.pad(refs.Jail, 10, 8, 16, 8, 16)
-	refs.JailText = UI.text(refs.Jail, "🔒 In jail", 18, UI.Title, C.White, { Size = UDim2.new(1, 0, 0, 24) })
+	refs.JailText = UI.text(refs.Jail, "🔒 In jail", 16, UI.Title, C.White, { Size = UDim2.new(1, 0, 0, 24) })
 	local jb
 	jb, refs.JailSet = UI.bar(refs.Jail, C.Red, 10, { Position = UDim2.fromOffset(0, 32) })
 end
@@ -26654,7 +28421,8 @@ local function frame(dt)
 	if jailUntil then
 		local left = math.max(0, jailUntil - workspace:GetServerTimeNow())
 		refs.Jail.Visible = true
-		refs.JailText.Text = string.format("🔒 In jail — %d seconds left", math.ceil(left))
+		local cell = player:GetAttribute("PrisonCell")
+		refs.JailText.Text = if cell then string.format("🔒 State Prison · %s · %s — %ds left", cell, player:GetAttribute("PrisonPeriod") or "", math.ceil(left)) else string.format("🔒 In jail — %d seconds left", math.ceil(left))
 		refs.JailSet(left / math.max(1, refs.JailTotal or left))
 	else
 		refs.Jail.Visible = false
@@ -27140,7 +28908,7 @@ function Hud.Start(context)
 end
 
 return Hud
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX52"><Properties><string name="Name">Panels</string><ProtectedString name="Source"><![CDATA[-- Panels (ModuleScript) — StarterPlayerScripts.CityClient.Panels
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX54"><Properties><string name="Name">Panels</string><ProtectedString name="Source"><![CDATA[-- Panels (ModuleScript) — StarterPlayerScripts.CityClient.Panels
 -- The windows you open: the city map, the People directory and profile
 -- cards, voting, speeches, the mayor's desk, conversations with citizens,
 -- elevators, help, settings, the welcome screen, election results and the
@@ -28608,7 +30376,7 @@ function Panels.Start(context)
 end
 
 return Panels
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX53"><Properties><string name="Name">World</string><ProtectedString name="Source"><![CDATA[-- World (ModuleScript) — StarterPlayerScripts.CityClient.World
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX55"><Properties><string name="Name">World</string><ProtectedString name="Source"><![CDATA[-- World (ModuleScript) — StarterPlayerScripts.CityClient.World
 -- Everything drawn in the 3D world: nameplates over citizens and players,
 -- speech bubbles, the interaction prompts (talk, elevators, crimes), the
 -- waypoint beam, hit effects, alarms, confetti, the sky and the traffic lights.
@@ -29002,14 +30770,29 @@ end
 -- Waypoints
 --------------------------------------------------------------------------------
 local waypoint
-function World.ClearWaypoint()
-	if waypoint then
+-- citizenId: only clear the marker if it's following that citizen
+function World.ClearWaypoint(citizenId)
+	if waypoint and (citizenId == nil or waypoint.CitizenId == citizenId) then
 		waypoint.Folder:Destroy()
 		waypoint = nil
 	end
 end
 
-function World.Waypoint(position, label, emoji, model)
+-- a citizen's model, found by id (it may stream in after the message arrives)
+local function citizenModel(id)
+	local folder = workspace:FindFirstChild("Citizens")
+	if not folder or id == nil then
+		return nil
+	end
+	for _, m in ipairs(folder:GetChildren()) do
+		if m:GetAttribute("CitizenId") == id then
+			return m
+		end
+	end
+	return nil
+end
+
+function World.Waypoint(position, label, emoji, model, citizenId)
 	World.ClearWaypoint()
 	local folder = Instance.new("Folder")
 	folder.Name = "CityWaypoint"
@@ -29024,7 +30807,7 @@ function World.Waypoint(position, label, emoji, model)
 	local dist = UI.text(gui, "", 12, UI.Font, C.Gold, { Position = UDim2.fromOffset(0, 51), Size = UDim2.new(1, 0, 0, 16), TextXAlignment = Enum.TextXAlignment.Center })
 	UI.new("UIStroke", { Thickness = 1.2, Transparency = 0.4, Parent = dist })
 	local beam = UI.new("Beam", { Attachment1 = a1, Color = ColorSequence.new(C.Gold), Width0 = 0.35, Width1 = 0.35, FaceCamera = true, LightEmission = 1, Transparency = NumberSequence.new(0.35, 0.1), Segments = 1, Parent = folder })
-	waypoint = { Folder = folder, Anchor = anchor, Beam = beam, Dist = dist, Model = model, Label = label, Pin = pin }
+	waypoint = { Folder = folder, Anchor = anchor, Beam = beam, Dist = dist, Model = model, Label = label, Pin = pin, CitizenId = citizenId, Since = os.clock() }
 	ctx.Hud.Toast("🧭", "Waypoint set", (label or "") .. " — follow the golden line!", C.Gold)
 end
 
@@ -29043,6 +30826,20 @@ local function updateWaypoint()
 		a0.Parent = root
 	end
 	waypoint.Beam.Attachment0 = a0
+	if waypoint.CitizenId ~= nil then
+		-- following someone: find their model if it wasn't streamed in yet
+		if not (waypoint.Model and waypoint.Model.Parent) then
+			waypoint.Model = citizenModel(waypoint.CitizenId)
+		end
+		if waypoint.Model then
+			waypoint.Seen = os.clock()
+		elseif os.clock() - (waypoint.Seen or waypoint.Since) > 8 then
+			-- they're gone: don't leave a marker pointing at nothing
+			ctx.Hud.Toast("❔", "Lost them", (waypoint.Label or "They") .. " is nowhere to be seen.", C.Gold)
+			World.ClearWaypoint()
+			return
+		end
+	end
 	if waypoint.Model then
 		local r = waypoint.Model:FindFirstChild("HumanoidRootPart")
 		if r then
@@ -29052,7 +30849,7 @@ local function updateWaypoint()
 	local d = (waypoint.Anchor.Position - root.Position).Magnitude
 	waypoint.Dist.Text = math.floor(d) .. " studs"
 	waypoint.Pin.Position = UDim2.fromOffset(0, math.sin(os.clock() * 4) * 3)
-	if d < 12 then
+	if d < 12 and waypoint.CitizenId == nil then
 		ctx.Hud.Toast("✅", "You made it!", waypoint.Label or "", C.Green)
 		World.ClearWaypoint()
 	end
@@ -29512,7 +31309,7 @@ function World.Start(context)
 end
 
 return World
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX54"><Properties><string name="Name">Moves</string><ProtectedString name="Source"><![CDATA[-- Moves (ModuleScript) — StarterPlayerScripts.CityClient.Moves
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX56"><Properties><string name="Name">Moves</string><ProtectedString name="Source"><![CDATA[-- Moves (ModuleScript) — StarterPlayerScripts.CityClient.Moves
 -- Sprinting and stamina. Hold Shift (or the Sprint button) to run: it uses
 -- stamina, which refills when you stop. Your fitness level (from the server,
 -- see Shared.Fitness) sets how much stamina you have, how fast it refills and
@@ -29632,7 +31429,7 @@ function Moves.Start(context)
 end
 
 return Moves
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX55"><Properties><string name="Name">Gamepad</string><ProtectedString name="Source"><![CDATA[-- Gamepad (ModuleScript) — StarterPlayerScripts.CityClient.Gamepad
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX57"><Properties><string name="Name">Gamepad</string><ProtectedString name="Source"><![CDATA[-- Gamepad (ModuleScript) — StarterPlayerScripts.CityClient.Gamepad
 -- Console / controller support (Xbox, PlayStation, any gamepad):
 --   R2 attack · hold L2 block · L3 sprint (click to toggle) · R1 / L1 next /
 --   previous weapon · D-pad ▲ phone · ▼ map · ◀ help · ▶ wardrobe ·
@@ -29899,7 +31696,7 @@ function Gamepad.Start(context)
 end
 
 return Gamepad
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX56"><Properties><string name="Name">Water</string><ProtectedString name="Source"><![CDATA[-- Water (ModuleScript) — StarterPlayerScripts.CityClient.Water
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX58"><Properties><string name="Name">Water</string><ProtectedString name="Source"><![CDATA[-- Water (ModuleScript) — StarterPlayerScripts.CityClient.Water
 -- Fish you can see: schools of fish swim around under the surface of Mirror
 -- Lake (and koi in the park ponds). Every "Water" part (see Landscape and
 -- Places) gets its own fish: bodies with a tail that sways as they swim, a fin
@@ -29956,7 +31753,7 @@ local function randomPoint(w, rng)
 	local d = math.sqrt(rng:NextNumber()) * r
 	local surface = w:GetAttribute("Surface") or c.Y
 	local depth = w:GetAttribute("Depth") or 4
-	local y = if depth < 1.5 then surface - depth * 0.5 else surface - rng:NextNumber(1.2, math.max(1.5, depth - 1))
+	local y = if depth < 1.5 then surface - depth * 0.45 else surface - rng:NextNumber(1.2, math.max(1.5, depth - 1))
 	return Vector3.new(c.X + math.cos(a) * d, y, c.Z + math.sin(a) * d)
 end
 

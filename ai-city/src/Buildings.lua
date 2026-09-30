@@ -257,7 +257,7 @@ function Buildings.shell(parent, spec)
 				for k = 0, 3 do
 					local p = at(-W / 3 + (k % 2) * (W / 3), H + 1.4, -D / 4 + (k // 2) * (D / 3))
 					deco(model, "Planter", Vector3.new(6, 1, 3), p, MapKit.rgb(120, 86, 60), Enum.Material.Wood)
-					deco(model, "Plants", Vector3.new(5.6, 0.8, 2.6), p * CFrame.new(0, 0.8, 0), MapKit.LEAVES[k % #MapKit.LEAVES + 1], Enum.Material.Grass)
+					deco(model, "Plants", Vector3.new(5.6, 0.8, 2.6), p * CFrame.new(0, 0.8, 0), MapKit.LEAVES[k % #MapKit.LEAVES + 1], Enum.Material.SmoothPlastic)
 				end
 			elseif item == "solar" then
 				for k = 0, 3 do

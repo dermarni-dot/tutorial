@@ -5,11 +5,21 @@
 
 local MapKit = require(script.Parent:WaitForChild("MapKit"))
 local Streets = require(script.Parent:WaitForChild("Streets"))
+local Prison = require(script.Parent:WaitForChild("Prison"))
 
 local Landscape = {}
 
 local deco, part, rgb = MapKit.deco, MapKit.part, MapKit.rgb
 local EXTENT = MapKit.EXTENT
+
+-- keep the hills and the woods off the prison and Prison Road
+local function nearPrison(p, margin)
+	local c = Prison.CENTER
+	if (Vector3.new(p.X, 0, p.Z) - c).Magnitude < Prison.RADIUS + margin then
+		return true
+	end
+	return p.X < c.X and p.X > EXTENT - 40 and math.abs(p.Z - c.Z) < 20 + margin * 0.2
+end
 
 -- The lake sits outside the city to the south-west
 Landscape.LAKE = Vector3.new(-EXTENT - 190, 0, EXTENT + 150)
@@ -34,7 +44,7 @@ function Landscape.build(parent, rng)
 			local a = n / 28 * math.pi * 2 + rng:NextNumber(-0.1, 0.1)
 			local r = EXTENT + rng:NextNumber(140, 420)
 			local p = Vector3.new(math.cos(a) * r, -rng:NextNumber(20, 34), math.sin(a) * r)
-			if (p - Landscape.LAKE).Magnitude > Landscape.LAKE_RADIUS + 90 then
+			if (p - Landscape.LAKE).Magnitude > Landscape.LAKE_RADIUS + 90 and not nearPrison(p, 90) then
 				terrain:FillBall(p, rng:NextNumber(45, 80), Enum.Material.Grass)
 			end
 		end
@@ -58,6 +68,15 @@ function Landscape.build(parent, rng)
 		local cityW = EXTENT * 2 + 40
 		terrain:FillBlock(CFrame.new(0, -4, 0), Vector3.new(cityW, 16, cityW), Enum.Material.Air)
 		terrain:FillBlock(CFrame.new(0, -12, 0), Vector3.new(cityW, 8, cityW), Enum.Material.Asphalt)
+		-- the same under the prison and Prison Road (see Prison)
+		local pc = Prison.F * CFrame.new(0, 0, -12)
+		local pSize = Vector3.new(Prison.W + 24, 16, Prison.D + 48)
+		terrain:FillBlock(pc * CFrame.new(0, -4, 0), pSize, Enum.Material.Air)
+		terrain:FillBlock(pc * CFrame.new(0, -12, 0), Vector3.new(pSize.X, 8, pSize.Z), Enum.Material.Asphalt)
+		local roadFrom, roadTo = EXTENT, Prison.CENTER.X - Prison.D / 2
+		local roadMid = Vector3.new((roadFrom + roadTo) / 2, 0, Prison.CENTER.Z)
+		terrain:FillBlock(CFrame.new(roadMid + Vector3.new(0, -4, 0)), Vector3.new(roadTo - roadFrom + 8, 16, 20), Enum.Material.Air)
+		terrain:FillBlock(CFrame.new(roadMid + Vector3.new(0, -12, 0)), Vector3.new(roadTo - roadFrom + 8, 8, 20), Enum.Material.Asphalt)
 		-- swaying grass on the hills around the city (the city itself has no
 		-- terrain under it, so no blades come up through floors or roads),
 		-- and clear, reflective water with gentle waves
@@ -103,7 +122,8 @@ function Landscape.build(parent, rng)
 		table.insert(fishingSpots, cf)
 	end
 	-- a rowing boat, a sign and some reeds
-	local boat = pierCf * CFrame.new(10, 0.2, -22)
+	-- sitting in the water (the surface is at y = -1), not hovering over it
+	local boat = pierCf * CFrame.new(10, if useTerrain then -0.75 else 0.2, -22)
 	deco(folder, "Boat", Vector3.new(4, 1.4, 9), boat, rgb(170, 90, 60), Enum.Material.WoodPlanks)
 	deco(folder, "BoatSeat", Vector3.new(4, 0.3, 1.2), boat * CFrame.new(0, 0.6, 0), rgb(200, 150, 100), Enum.Material.Wood)
 	local sign = deco(folder, "LakeSign", Vector3.new(10, 3.4, 0.4), pierCf * CFrame.new(-8, 4, 6), rgb(40, 90, 70), Enum.Material.Wood)
@@ -112,14 +132,14 @@ function Landscape.build(parent, rng)
 	for n = 1, 30 do
 		local a = rng:NextNumber(0, math.pi * 2)
 		local p = L + Vector3.new(math.cos(a), 0, math.sin(a)) * (Landscape.LAKE_RADIUS + rng:NextNumber(-2, 6))
-		deco(folder, "Reed", Vector3.new(0.3, rng:NextNumber(2.5, 4.5), 0.3), CFrame.new(p + Vector3.new(0, 1.5, 0)) * CFrame.Angles(rng:NextNumber(-0.2, 0.2), 0, rng:NextNumber(-0.2, 0.2)), rgb(90, 130, 60), Enum.Material.Grass)
+		deco(folder, "Reed", Vector3.new(0.3, rng:NextNumber(2.5, 4.5), 0.3), CFrame.new(p + Vector3.new(0, 1.5, 0)) * CFrame.Angles(rng:NextNumber(-0.2, 0.2), 0, rng:NextNumber(-0.2, 0.2)), rgb(90, 130, 60), Enum.Material.SmoothPlastic)
 	end
 
 	-- under the water: sand ripples, rocks, swaying weeds; lily pads on top.
 	-- A "Water" part marks the lake for fishing and for the fish that swim in
 	-- it (see FishingService and the client's Water module)
 	local surface = if useTerrain then -1 else 0.35
-	local bed = if useTerrain then -9.6 else -0.5
+	local bed = if useTerrain then -10 else -0.5
 	local lakeInfo = deco(folder, "LakeWater", Vector3.new(2, 0.2, 2), CFrame.new(L.X, surface, L.Z), rgb(60, 140, 200))
 	lakeInfo.Transparency = 1
 	lakeInfo:SetAttribute("Radius", Landscape.LAKE_RADIUS)
@@ -138,14 +158,14 @@ function Landscape.build(parent, rng)
 		else
 			local h = rng:NextNumber(2, math.max(2.2, math.min(6, surface - bed - 1)))
 			for k = 0, 2 do
-				deco(folder, "Seaweed", Vector3.new(0.35, h * (1 - k * 0.2), 0.12), CFrame.new(p.X + k * 0.4 - 0.4, bed + h * (1 - k * 0.2) / 2, p.Z) * CFrame.Angles(rng:NextNumber(-0.2, 0.2), rng:NextNumber(0, 3), rng:NextNumber(-0.25, 0.25)), rgb(50, 120, 60):Lerp(rgb(90, 150, 60), rng:NextNumber()), Enum.Material.Grass)
+				deco(folder, "Seaweed", Vector3.new(0.35, h * (1 - k * 0.2), 0.12), CFrame.new(p.X + k * 0.4 - 0.4, bed + h * (1 - k * 0.2) / 2, p.Z) * CFrame.Angles(rng:NextNumber(-0.2, 0.2), rng:NextNumber(0, 3), rng:NextNumber(-0.25, 0.25)), rgb(50, 120, 60):Lerp(rgb(90, 150, 60), rng:NextNumber()), Enum.Material.SmoothPlastic)
 			end
 		end
 	end
 	for n = 1, 26 do
 		local a = rng:NextNumber(0, math.pi * 2)
 		local p = L + Vector3.new(math.cos(a), 0, math.sin(a)) * (Landscape.LAKE_RADIUS - rng:NextNumber(4, 22))
-		MapKit.disc(folder, "LilyPad", 0.08, rng:NextNumber(1.6, 2.8), Vector3.new(p.X, surface + 0.05, p.Z), rgb(70, 150, 60), Enum.Material.Grass)
+		MapKit.disc(folder, "LilyPad", 0.08, rng:NextNumber(1.6, 2.8), Vector3.new(p.X, surface + 0.05, p.Z), rgb(70, 150, 60), Enum.Material.SmoothPlastic)
 		if n % 4 == 0 then
 			MapKit.ball(folder, "LilyFlower", 0.6, CFrame.new(p.X, surface + 0.3, p.Z), rgb(250, 190, 220))
 		end
@@ -156,7 +176,7 @@ function Landscape.build(parent, rng)
 		local a = rng:NextNumber(0, math.pi * 2)
 		local r = EXTENT + rng:NextNumber(40, 360)
 		local p = Vector3.new(math.cos(a) * r, 0, math.sin(a) * r)
-		if (p - L).Magnitude > Landscape.LAKE_RADIUS + 26 and math.abs(p.X - 50) > 20 then
+		if (p - L).Magnitude > Landscape.LAKE_RADIUS + 26 and math.abs(p.X - 50) > 20 and not nearPrison(p, 12) then
 			if rng:NextNumber() < 0.6 then
 				Streets.pine(folder, p, rng:NextNumber(1, 1.9))
 			else

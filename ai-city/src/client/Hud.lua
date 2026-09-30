@@ -366,9 +366,9 @@ local function build()
 	refs.BannerStroke = UI.new("UIStroke", { Thickness = 3, Transparency = 1, Parent = refs.Banner })
 
 	-- jail: a bar with the time left
-	refs.Jail = UI.panel(screen, { AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 16), Size = UDim2.fromOffset(360, 64), Visible = false, BackgroundColor3 = UI.rgb(60, 20, 26), Radius = 16 })
+	refs.Jail = UI.panel(screen, { AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 16), Size = UDim2.fromOffset(470, 64), Visible = false, BackgroundColor3 = UI.rgb(60, 20, 26), Radius = 16 })
 	UI.pad(refs.Jail, 10, 8, 16, 8, 16)
-	refs.JailText = UI.text(refs.Jail, "🔒 In jail", 18, UI.Title, C.White, { Size = UDim2.new(1, 0, 0, 24) })
+	refs.JailText = UI.text(refs.Jail, "🔒 In jail", 16, UI.Title, C.White, { Size = UDim2.new(1, 0, 0, 24) })
 	local jb
 	jb, refs.JailSet = UI.bar(refs.Jail, C.Red, 10, { Position = UDim2.fromOffset(0, 32) })
 end
@@ -577,7 +577,8 @@ local function frame(dt)
 	if jailUntil then
 		local left = math.max(0, jailUntil - workspace:GetServerTimeNow())
 		refs.Jail.Visible = true
-		refs.JailText.Text = string.format("🔒 In jail — %d seconds left", math.ceil(left))
+		local cell = player:GetAttribute("PrisonCell")
+		refs.JailText.Text = if cell then string.format("🔒 State Prison · %s · %s — %ds left", cell, player:GetAttribute("PrisonPeriod") or "", math.ceil(left)) else string.format("🔒 In jail — %d seconds left", math.ceil(left))
 		refs.JailSet(left / math.max(1, refs.JailTotal or left))
 	else
 		refs.Jail.Visible = false

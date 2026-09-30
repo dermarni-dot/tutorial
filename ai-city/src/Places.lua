@@ -274,7 +274,7 @@ local function park(ctx, parent, i, j, rng, id, withPlayground)
 	deco(model, "Path", Vector3.new(5, 0.14, 74), CFrame.new(c + Vector3.new(0, 0.12, 0)), path, Enum.Material.Sand)
 	-- thick bushes by the entrances (somewhere to hide)
 	for _, e in ipairs({ { 33, 6 }, { -33, -6 }, { 6, -33 }, { -6, 33 } }) do
-		local bush = MapKit.ball(model, "Bush", 5.5, CFrame.new(c + Vector3.new(e[1], 2.2, e[2])), MapKit.LEAVES[2], Enum.Material.Grass)
+		local bush = MapKit.ball(model, "Bush", 5.5, CFrame.new(c + Vector3.new(e[1], 2.2, e[2])), MapKit.LEAVES[2], Enum.Material.SmoothPlastic)
 		bush.CanCollide = false
 		bush:SetAttribute("HideName", "a bush")
 		MapKit.tag(bush, "HideSpot")
@@ -286,15 +286,16 @@ local function park(ctx, parent, i, j, rng, id, withPlayground)
 	pond.Transparency = 0.45
 	-- fishable, with koi you can see (see FishingService and the client's Water module)
 	pond:SetAttribute("Radius", 11.5)
-	pond:SetAttribute("Surface", 0.66)
-	pond:SetAttribute("Depth", 0.5)
+	-- the water's top face (koi swim just under it, backs near the surface)
+	pond:SetAttribute("Surface", pondC.Y + 0.65)
+	pond:SetAttribute("Depth", 0.55)
 	pond:SetAttribute("Kind", "pond")
 	pond:SetAttribute("Fish", 6)
-	pond:SetAttribute("RodStand", pondC + Vector3.new(0, 0.2, -15.5))
+	pond:SetAttribute("RodStand", pondC + Vector3.new(0, 0, -15.5))
 	MapKit.tag(pond, "Water")
 	MapKit.disc(model, "PondBed", 0.1, 23, pondC + Vector3.new(0, 0.12, 0), rgb(70, 90, 70), Enum.Material.Pebble)
 	for k = 0, 3 do
-		MapKit.disc(model, "LilyPad", 0.1, 2, pondC + Vector3.new(k * 3 - 4.5, 0.7, (k % 2) * 4 - 2), rgb(80, 170, 70), Enum.Material.Grass)
+		MapKit.disc(model, "LilyPad", 0.1, 2, pondC + Vector3.new(k * 3 - 4.5, 0.7, (k % 2) * 4 - 2), rgb(80, 170, 70), Enum.Material.SmoothPlastic)
 	end
 	for k = 0, 2 do
 		local duck = MapKit.ball(model, "Duck", 1.2, CFrame.new(pondC + Vector3.new(k * 4 - 4, 0.9, -3 + k)), WHITE)
@@ -676,7 +677,7 @@ function B.Hotel(ctx, parent, i, j, rng)
 	part(b.Model, "Canopy", Vector3.new(16, 0.8, 9), b.At(0, 10.4, -b.D / 2 - 4.5), rgb(120, 30, 40), Enum.Material.Fabric)
 	for _, sx in ipairs({ -1, 1 }) do
 		deco(b.Model, "CanopyPost", Vector3.new(0.5, 10, 0.5), b.At(sx * 7.5, 5, -b.D / 2 - 8.6), GOLD, Enum.Material.Metal)
-		deco(b.Model, "Topiary", Vector3.new(2, 4, 2), b.At(sx * 11, 2, -b.D / 2 - 2), MapKit.LEAVES[1], Enum.Material.Grass)
+		deco(b.Model, "Topiary", Vector3.new(2, 4, 2), b.At(sx * 11, 2, -b.D / 2 - 2), MapKit.LEAVES[1], Enum.Material.SmoothPlastic)
 	end
 	deco(b.Model, "RedCarpet", Vector3.new(6, 0.12, 9), b.At(0, 0.1, -b.D / 2 - 4.5), rgb(170, 30, 40), Enum.Material.Fabric)
 end
@@ -713,7 +714,7 @@ function B.Apartments(ctx, parent, i, j, rng, name)
 				deco(b.Model, "Balcony", Vector3.new(6, 0.5, 2.6), b.At(k * 12, f * FLOOR_H + 0.3, -b.D / 2 - 1.3), rgb(200, 200, 205), Enum.Material.Concrete)
 				deco(b.Model, "BalconyRail", Vector3.new(6, 2, 0.2), b.At(k * 12, f * FLOOR_H + 1.5, -b.D / 2 - 2.5), rgb(60, 60, 66), Enum.Material.Metal)
 				if (k + f) % 3 == 0 then
-					deco(b.Model, "BalconyPlant", Vector3.new(1.2, 1.4, 1.2), b.At(k * 12 + 2, f * FLOOR_H + 1.3, -b.D / 2 - 1.5), MapKit.LEAVES[2], Enum.Material.Grass)
+					deco(b.Model, "BalconyPlant", Vector3.new(1.2, 1.4, 1.2), b.At(k * 12 + 2, f * FLOOR_H + 1.3, -b.D / 2 - 1.5), MapKit.LEAVES[2], Enum.Material.SmoothPlastic)
 				end
 			end
 		end

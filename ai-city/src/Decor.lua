@@ -158,8 +158,8 @@ end
 local function plant(r, x, z, big)
 	local s = if big then 1.35 else 1
 	r.Box("Pot", Vector3.new(1.3, 1.3, 1.3) * s, x, 0, z, ({ rgb(180, 110, 80), rgb(240, 240, 236), rgb(60, 60, 66) })[r.Rng:NextInteger(1, 3)], Enum.Material.Slate)
-	MapKit.ball(r.B.Model, "PlantLeaves", 2.4 * s, r.At(x, 2.4 * s, z), MapKit.LEAVES[r.Rng:NextInteger(1, #MapKit.LEAVES)], Enum.Material.Grass)
-	MapKit.ball(r.B.Model, "PlantLeaves", 1.7 * s, r.At(x + 0.4, 3.4 * s, z - 0.3), MapKit.LEAVES[r.Rng:NextInteger(1, #MapKit.LEAVES)], Enum.Material.Grass)
+	MapKit.ball(r.B.Model, "PlantLeaves", 2.4 * s, r.At(x, 2.4 * s, z), MapKit.LEAVES[r.Rng:NextInteger(1, #MapKit.LEAVES)], Enum.Material.SmoothPlastic)
+	MapKit.ball(r.B.Model, "PlantLeaves", 1.7 * s, r.At(x + 0.4, 3.4 * s, z - 0.3), MapKit.LEAVES[r.Rng:NextInteger(1, #MapKit.LEAVES)], Enum.Material.SmoothPlastic)
 end
 
 local function bin(r, x, z)
@@ -280,7 +280,7 @@ local function bucket(r, x, z)
 		local a = k / 5 * math.pi * 2
 		MapKit.ball(r.B.Model, "Flower", 0.6, r.At(x + math.cos(a) * 0.35, 1.9 + (k % 2) * 0.3, z + math.sin(a) * 0.35), MapKit.FLOWERS[r.Rng:NextInteger(1, #MapKit.FLOWERS)], Enum.Material.SmoothPlastic)
 	end
-	r.Box("Stems", Vector3.new(0.8, 0.8, 0.8), x, 1.2, z, rgb(70, 140, 60), Enum.Material.Grass)
+	r.Box("Stems", Vector3.new(0.8, 0.8, 0.8), x, 1.2, z, rgb(70, 140, 60), Enum.Material.SmoothPlastic)
 end
 
 local function aquarium(r, x, z)

@@ -23,29 +23,54 @@ function Streets.avenueName(k)
 	return Streets.AVENUES[math.clamp(k + N + 2, 1, #Streets.AVENUES)]
 end
 
+-- Leaves and needles are smooth, softly shaded shapes (no noisy grass texture)
+local FOLIAGE = Enum.Material.SmoothPlastic
+
+-- a leafy tree: a round, tapering trunk that forks into two branches, and a
+-- full canopy of overlapping rounded clumps in a few shades of green
 function Streets.tree(parent, pos, scale, rng)
 	scale = scale or 1
+	local r = function(a, b)
+		return if rng then rng:NextNumber(a, b) else (a + b) / 2
+	end
 	local trunkH = 7 * scale
-	deco(parent, "Trunk", Vector3.new(1.3 * scale, trunkH, 1.3 * scale), CFrame.new(pos + Vector3.new(0, trunkH / 2, 0)), MapKit.WOOD, Enum.Material.Wood)
+	local bark = MapKit.WOOD:Lerp(BLACK, 0.12)
+	MapKit.column(parent, "Trunk", trunkH * 0.55, 1.5 * scale, pos + Vector3.new(0, trunkH * 0.275, 0), bark, Enum.Material.Wood, false).CanQuery = false
+	MapKit.column(parent, "Trunk", trunkH * 0.55, 1.1 * scale, pos + Vector3.new(0, trunkH * 0.72, 0), bark, Enum.Material.Wood, false).CanQuery = false
+	MapKit.disc(parent, "TrunkFlare", 0.5 * scale, 2.2 * scale, pos + Vector3.new(0, 0.25 * scale, 0), bark:Lerp(BLACK, 0.1), Enum.Material.Wood)
+	local yaw = r(0, math.pi * 2)
+	for k = -1, 1, 2 do
+		local base = pos + Vector3.new(0, trunkH * 0.85, 0)
+		local cf = CFrame.new(base) * CFrame.Angles(0, yaw, 0) * CFrame.Angles(0, 0, math.rad(90 + k * 35)) * CFrame.new(1.4 * scale, 0, 0)
+		MapKit.cylinder(parent, "Branch", 3 * scale, 0.6 * scale, cf, bark, Enum.Material.Wood)
+	end
 	local leaf = MapKit.LEAVES[rng and rng:NextInteger(1, #MapKit.LEAVES) or 1]
-	MapKit.ball(parent, "Leaves", 8 * scale, CFrame.new(pos + Vector3.new(0, trunkH + 2 * scale, 0)), leaf, Enum.Material.Grass)
-	MapKit.ball(parent, "Leaves", 5.5 * scale, CFrame.new(pos + Vector3.new(1.6 * scale, trunkH + 4.8 * scale, 0.8 * scale)), leaf:Lerp(WHITE, 0.07), Enum.Material.Grass)
-	MapKit.ball(parent, "Leaves", 5 * scale, CFrame.new(pos + Vector3.new(-1.4 * scale, trunkH + 4 * scale, -1 * scale)), leaf:Lerp(BLACK, 0.06), Enum.Material.Grass)
+	local top = pos + Vector3.new(0, trunkH + 2.4 * scale, 0)
+	MapKit.ball(parent, "Leaves", 8.4 * scale, CFrame.new(top), leaf, FOLIAGE)
+	for k = 1, 6 do
+		local a = yaw + k / 6 * math.pi * 2 + r(-0.3, 0.3)
+		local out = r(2.4, 3.4) * scale
+		local up = r(-1.2, 2.2) * scale
+		local shade = if k % 3 == 0 then leaf:Lerp(WHITE, 0.08) elseif k % 3 == 1 then leaf:Lerp(BLACK, 0.08) else leaf
+		MapKit.ball(parent, "Leaves", r(4.4, 5.8) * scale, CFrame.new(top + Vector3.new(math.cos(a) * out, up, math.sin(a) * out)), shade, FOLIAGE)
+	end
+	MapKit.ball(parent, "Leaves", 5.4 * scale, CFrame.new(top + Vector3.new(r(-0.8, 0.8), 3.4 * scale, r(-0.8, 0.8))), leaf:Lerp(WHITE, 0.12), FOLIAGE)
 end
 
--- a pine for the woods and the hills
+-- a pine for the woods and the hills: a tall rounded cone of overlapping
+-- clumps, widest at the bottom
 function Streets.pine(parent, pos, scale)
 	scale = scale or 1
-	deco(parent, "Trunk", Vector3.new(1.2 * scale, 6 * scale, 1.2 * scale), CFrame.new(pos + Vector3.new(0, 3 * scale, 0)), MapKit.DARK_WOOD, Enum.Material.Wood)
-	for k = 0, 2 do
-		local w = (7 - k * 2) * scale
-		local h = 5 * scale
-		local y = (5 + k * 3.6) * scale
-		for r = 0, 1 do
-			MapKit.wedge(parent, "Needles", Vector3.new(w, h, w / 2), CFrame.new(pos + Vector3.new(0, y + h / 2, 0)) * CFrame.Angles(0, r * math.pi, 0) * CFrame.new(0, 0, -w / 4), rgb(46, 110, 60), Enum.Material.Grass)
-			MapKit.wedge(parent, "Needles", Vector3.new(w, h, w / 2), CFrame.new(pos + Vector3.new(0, y + h / 2, 0)) * CFrame.Angles(0, r * math.pi + math.pi / 2, 0) * CFrame.new(0, 0, -w / 4), rgb(40, 100, 54), Enum.Material.Grass)
-		end
+	MapKit.column(parent, "Trunk", 6 * scale, 1.2 * scale, pos + Vector3.new(0, 3 * scale, 0), MapKit.DARK_WOOD, Enum.Material.Wood, false).CanQuery = false
+	local green = rgb(44, 106, 58)
+	local n = 6
+	for k = 0, n - 1 do
+		local u = k / (n - 1)
+		local d = (7.4 - u * 5.6) * scale
+		local y = (5.2 + u * 11) * scale
+		MapKit.ball(parent, "Needles", d, CFrame.new(pos + Vector3.new(0, y, 0)), green:Lerp(rgb(62, 128, 70), u * 0.6), FOLIAGE)
 	end
+	MapKit.ball(parent, "Needles", 1.4 * scale, CFrame.new(pos + Vector3.new(0, 17.4 * scale, 0)), rgb(62, 128, 70), FOLIAGE)
 end
 
 function Streets.bench(parent, cf, place)
@@ -114,14 +139,14 @@ local function bikeRack(parent, pos, along, rng)
 	for k = -2, 2 do
 		-- an upside-down U of steel tube
 		for _, dz in ipairs({ -0.55, 0.55 }) do
-			deco(parent, "BikeRackPost", Vector3.new(0.16, 1.8, 0.16), cf * CFrame.new(k * 0.9, LOT_Y + 0.9, dz), rgb(120, 124, 132), Enum.Material.Metal)
+			deco(parent, "BikeRackPost", Vector3.new(0.16, 1.8, 0.16), cf * CFrame.new(k * 0.9, 0.9, dz), rgb(120, 124, 132), Enum.Material.Metal)
 		end
-		MapKit.cylinder(parent, "BikeRackTop", 1.26, 0.16, cf * CFrame.new(k * 0.9, LOT_Y + 1.8, 0) * CFrame.Angles(0, math.rad(90), 0), rgb(120, 124, 132), Enum.Material.Metal)
+		MapKit.cylinder(parent, "BikeRackTop", 1.26, 0.16, cf * CFrame.new(k * 0.9, 1.8, 0) * CFrame.Angles(0, math.rad(90), 0), rgb(120, 124, 132), Enum.Material.Metal)
 	end
-	deco(parent, "BikeRackBar", Vector3.new(4, 0.18, 0.18), cf * CFrame.new(0, LOT_Y + 0.2, 0), rgb(120, 124, 132), Enum.Material.Metal)
+	deco(parent, "BikeRackBar", Vector3.new(4, 0.18, 0.18), cf * CFrame.new(0, 0.2, 0), rgb(120, 124, 132), Enum.Material.Metal)
 	-- a bike or two
 	for n = 1, rng:NextInteger(0, 2) do
-		local bx = cf * CFrame.new(-1.8 + n * 1.8, LOT_Y + 1, 0.2)
+		local bx = cf * CFrame.new(-1.8 + n * 1.8, 1, 0.2)
 		local color = ({ rgb(200, 50, 50), rgb(40, 120, 200), rgb(250, 200, 50), rgb(40, 160, 90) })[rng:NextInteger(1, 4)]
 		for _, dz in ipairs({ -0.9, 0.9 }) do
 			MapKit.cylinder(parent, "BikeWheel", 0.12, 1.5, bx * CFrame.new(0, 0, dz), rgb(30, 30, 32), Enum.Material.Rubber)
@@ -133,25 +158,25 @@ end
 local function newspaperBoxes(parent, pos, facing)
 	local cf = CFrame.lookAt(pos, pos + facing)
 	for k, color in ipairs({ rgb(200, 40, 40), rgb(40, 90, 170), rgb(240, 200, 40) }) do
-		local box = deco(parent, "NewspaperBox", Vector3.new(1.4, 2.6, 1.3), cf * CFrame.new((k - 2) * 1.6, LOT_Y + 1.3, 0), color, Enum.Material.Metal)
+		local box = deco(parent, "NewspaperBox", Vector3.new(1.4, 2.6, 1.3), cf * CFrame.new((k - 2) * 1.6, 1.3, 0), color, Enum.Material.Metal)
 		deco(parent, "NewspaperWindow", Vector3.new(1, 0.8, 0.05), box.CFrame * CFrame.new(0, 0.5, -0.66), rgb(230, 230, 220), Enum.Material.Glass)
 	end
 end
 local function planter(parent, pos, rng)
-	deco(parent, "Planter", Vector3.new(3.2, 1.6, 3.2), CFrame.new(pos + Vector3.new(0, LOT_Y + 0.8, 0)), rgb(150, 140, 128), Enum.Material.Concrete)
+	deco(parent, "Planter", Vector3.new(3.2, 1.6, 3.2), CFrame.new(pos + Vector3.new(0, 0.8, 0)), rgb(150, 140, 128), Enum.Material.Concrete)
 	for k = 0, 3 do
-		MapKit.ball(parent, "PlanterFlowers", 1.2, CFrame.new(pos + Vector3.new((k % 2 - 0.5) * 1.2, LOT_Y + 1.9, (math.floor(k / 2) - 0.5) * 1.2)), MapKit.FLOWERS[rng:NextInteger(1, #MapKit.FLOWERS)], Enum.Material.Grass)
+		MapKit.ball(parent, "PlanterFlowers", 1.2, CFrame.new(pos + Vector3.new((k % 2 - 0.5) * 1.2, 1.9, (math.floor(k / 2) - 0.5) * 1.2)), MapKit.FLOWERS[rng:NextInteger(1, #MapKit.FLOWERS)], Enum.Material.SmoothPlastic)
 	end
 end
 local function bollards(parent, corner, dir)
 	for k = 1, 3 do
-		MapKit.cylinder(parent, "Bollard", 2.4, 0.7, CFrame.new(corner + dir * (k * 1.6) + Vector3.new(0, LOT_Y + 1.2, 0)) * CFrame.Angles(0, 0, math.rad(90)), rgb(60, 62, 70), Enum.Material.Metal)
+		MapKit.cylinder(parent, "Bollard", 2.4, 0.7, CFrame.new(corner + dir * (k * 1.6) + Vector3.new(0, 1.2, 0)) * CFrame.Angles(0, 0, math.rad(90)), rgb(60, 62, 70), Enum.Material.Metal)
 	end
 end
 local function parkingMeter(parent, pos)
-	deco(parent, "MeterPost", Vector3.new(0.25, 3.4, 0.25), CFrame.new(pos + Vector3.new(0, LOT_Y + 1.7, 0)), rgb(80, 84, 92), Enum.Material.Metal)
-	deco(parent, "Meter", Vector3.new(0.7, 1, 0.5), CFrame.new(pos + Vector3.new(0, LOT_Y + 3.8, 0)), rgb(110, 120, 130), Enum.Material.Metal)
-	deco(parent, "MeterDisplay", Vector3.new(0.4, 0.3, 0.05), CFrame.new(pos + Vector3.new(0, LOT_Y + 3.95, -0.27)), rgb(160, 220, 170), Enum.Material.Neon)
+	deco(parent, "MeterPost", Vector3.new(0.25, 3.4, 0.25), CFrame.new(pos + Vector3.new(0, 1.7, 0)), rgb(80, 84, 92), Enum.Material.Metal)
+	deco(parent, "Meter", Vector3.new(0.7, 1, 0.5), CFrame.new(pos + Vector3.new(0, 3.8, 0)), rgb(110, 120, 130), Enum.Material.Metal)
+	deco(parent, "MeterDisplay", Vector3.new(0.4, 0.3, 0.05), CFrame.new(pos + Vector3.new(0, 3.95, -0.27)), rgb(160, 220, 170), Enum.Material.Neon)
 end
 
 local function streetSign(parent, pos, streetName, avenueName)

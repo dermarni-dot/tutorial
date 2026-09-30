@@ -23,6 +23,7 @@ local Buildings = require(Modules:WaitForChild("Buildings"))
 local Interiors = require(Modules:WaitForChild("Interiors"))
 local Streets = require(Modules:WaitForChild("Streets"))
 local Landscape = require(Modules:WaitForChild("Landscape"))
+local Prison = require(Modules:WaitForChild("Prison"))
 local Places = require(Modules:WaitForChild("Places"))
 
 local MapBuilder = {}
@@ -419,7 +420,9 @@ function ctx.houseRow(parent, i, j, rng, slots, big)
 		MapKit.signText(mailbox, Enum.NormalId.Right, tostring(number), MapKit.WHITE)
 		if rng:NextNumber() < 0.5 then
 			for _, px in ipairs({ -1, 1 }) do
-				local hedge = MapKit.deco(b.Model, "Hedge", Vector3.new(7, 2.6, 1.6), at(px * 6.5, 1.3, frontZ + 0.9), MapKit.LEAVES[3], Enum.Material.Grass)
+				local hedge = MapKit.deco(b.Model, "Hedge", Vector3.new(7, 2.2, 1.6), at(px * 6.5, 1.1, frontZ + 0.9), MapKit.LEAVES[3], Enum.Material.SmoothPlastic)
+				-- a rounded, trimmed top
+				MapKit.cylinder(b.Model, "HedgeTop", 7, 1.6, at(px * 6.5, 2.2, frontZ + 0.9), MapKit.LEAVES[3]:Lerp(MapKit.WHITE, 0.05), Enum.Material.SmoothPlastic)
 				hedge:SetAttribute("HideName", "a hedge")
 				MapKit.tag(hedge, "HideSpot")
 			end
@@ -503,7 +506,7 @@ local function pocketParks(parent, i, j, before, rng)
 				Streets.tree(model, base + Vector3.new(sx * 3, 0.3, sz * 3), rng:NextNumber(0.8, 1.1), rng)
 				Streets.bench(model, CFrame.lookAt(base + Vector3.new(-sx * 3, 0.3, -sz * 4), base + Vector3.new(-sx * 3, 0.3, -sz * 10)), nil)
 				for n = 0, 4 do
-					MapKit.ball(model, "Flowers", 1, CFrame.new(base + Vector3.new(-sx * (size / 2 - 1.2), 0.8, (n - 2) * 1.6)), MapKit.FLOWERS[rng:NextInteger(1, #MapKit.FLOWERS)], Enum.Material.Grass)
+					MapKit.ball(model, "Flowers", 1, CFrame.new(base + Vector3.new(-sx * (size / 2 - 1.2), 0.8, (n - 2) * 1.6)), MapKit.FLOWERS[rng:NextInteger(1, #MapKit.FLOWERS)], Enum.Material.SmoothPlastic)
 				end
 			end
 		end
@@ -535,6 +538,8 @@ function MapBuilder.Build()
 	map.Root = root
 
 	local land = Landscape.build(root, rng)
+	-- the state prison east of town (PrisonService runs the inmates)
+	map.Prison = Prison.build(root, Random.new((Config.SEED or 1776) + 7))
 	buildNetwork()
 	local streets = Streets.build(root, rng, kindAt)
 	local buildings = Instance.new("Folder")

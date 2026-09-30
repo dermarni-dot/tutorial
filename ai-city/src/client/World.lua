@@ -392,14 +392,29 @@ end
 -- Waypoints
 --------------------------------------------------------------------------------
 local waypoint
-function World.ClearWaypoint()
-	if waypoint then
+-- citizenId: only clear the marker if it's following that citizen
+function World.ClearWaypoint(citizenId)
+	if waypoint and (citizenId == nil or waypoint.CitizenId == citizenId) then
 		waypoint.Folder:Destroy()
 		waypoint = nil
 	end
 end
 
-function World.Waypoint(position, label, emoji, model)
+-- a citizen's model, found by id (it may stream in after the message arrives)
+local function citizenModel(id)
+	local folder = workspace:FindFirstChild("Citizens")
+	if not folder or id == nil then
+		return nil
+	end
+	for _, m in ipairs(folder:GetChildren()) do
+		if m:GetAttribute("CitizenId") == id then
+			return m
+		end
+	end
+	return nil
+end
+
+function World.Waypoint(position, label, emoji, model, citizenId)
 	World.ClearWaypoint()
 	local folder = Instance.new("Folder")
 	folder.Name = "CityWaypoint"
@@ -414,7 +429,7 @@ function World.Waypoint(position, label, emoji, model)
 	local dist = UI.text(gui, "", 12, UI.Font, C.Gold, { Position = UDim2.fromOffset(0, 51), Size = UDim2.new(1, 0, 0, 16), TextXAlignment = Enum.TextXAlignment.Center })
 	UI.new("UIStroke", { Thickness = 1.2, Transparency = 0.4, Parent = dist })
 	local beam = UI.new("Beam", { Attachment1 = a1, Color = ColorSequence.new(C.Gold), Width0 = 0.35, Width1 = 0.35, FaceCamera = true, LightEmission = 1, Transparency = NumberSequence.new(0.35, 0.1), Segments = 1, Parent = folder })
-	waypoint = { Folder = folder, Anchor = anchor, Beam = beam, Dist = dist, Model = model, Label = label, Pin = pin }
+	waypoint = { Folder = folder, Anchor = anchor, Beam = beam, Dist = dist, Model = model, Label = label, Pin = pin, CitizenId = citizenId, Since = os.clock() }
 	ctx.Hud.Toast("🧭", "Waypoint set", (label or "") .. " — follow the golden line!", C.Gold)
 end
 
@@ -433,6 +448,20 @@ local function updateWaypoint()
 		a0.Parent = root
 	end
 	waypoint.Beam.Attachment0 = a0
+	if waypoint.CitizenId ~= nil then
+		-- following someone: find their model if it wasn't streamed in yet
+		if not (waypoint.Model and waypoint.Model.Parent) then
+			waypoint.Model = citizenModel(waypoint.CitizenId)
+		end
+		if waypoint.Model then
+			waypoint.Seen = os.clock()
+		elseif os.clock() - (waypoint.Seen or waypoint.Since) > 8 then
+			-- they're gone: don't leave a marker pointing at nothing
+			ctx.Hud.Toast("❔", "Lost them", (waypoint.Label or "They") .. " is nowhere to be seen.", C.Gold)
+			World.ClearWaypoint()
+			return
+		end
+	end
 	if waypoint.Model then
 		local r = waypoint.Model:FindFirstChild("HumanoidRootPart")
 		if r then
@@ -442,7 +471,7 @@ local function updateWaypoint()
 	local d = (waypoint.Anchor.Position - root.Position).Magnitude
 	waypoint.Dist.Text = math.floor(d) .. " studs"
 	waypoint.Pin.Position = UDim2.fromOffset(0, math.sin(os.clock() * 4) * 3)
-	if d < 12 then
+	if d < 12 and waypoint.CitizenId == nil then
 		ctx.Hud.Toast("✅", "You made it!", waypoint.Label or "", C.Green)
 		World.ClearWaypoint()
 	end

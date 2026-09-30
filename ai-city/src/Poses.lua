@@ -1060,6 +1060,7 @@ local function stateOf(model)
 	st = {
 		Motors = {},
 		Cur = {},
+		Rel = {}, -- joints easing back to the default animation
 		Phase = (model:GetAttribute("CitizenId") or math.random(1, 1000)) * 1.618 % (math.pi * 2),
 		Face = nil,
 		NextBlink = os.clock() + math.random() * 4,
@@ -1574,6 +1575,33 @@ end
 -- foot, and it leans into a run. The step keeps time with the ground covered,
 -- so feet don't slide. Old people take shorter, stiffer steps; kids bounce.
 --------------------------------------------------------------------------------
+-- Ease every joint toward the pose. Joints the pose lets go of don't snap back
+-- to the default animation: they ease back into it over a few frames (the
+-- Animator has already written this frame's pose into motor.Transform).
+local function blendMotors(st, target, full, dt, rate)
+	local a = 1 - math.exp(-dt * rate)
+	local back = 1 - math.exp(-dt * 9)
+	for key, motor in pairs(st.Motors) do
+		local goal = target and (target[key] or (if full then IDENTITY else nil))
+		local cur = st.Cur[key]
+		if goal then
+			cur = (cur or motor.Transform):Lerp(goal, a)
+			st.Cur[key] = cur
+			st.Rel[key] = nil
+			motor.Transform = cur
+		elseif cur then
+			local left = (st.Rel[key] or 0.5) - dt
+			if left <= 0 then
+				st.Cur[key], st.Rel[key] = nil, nil
+			else
+				cur = cur:Lerp(motor.Transform, back)
+				st.Cur[key], st.Rel[key] = cur, left
+				motor.Transform = cur
+			end
+		end
+	end
+end
+
 local function groundSpeed(st, root, dt)
 	local p = root.Position
 	local last = st.LastPos
@@ -1690,8 +1718,24 @@ local function update(model, st, t, dt, camPos, myRoot)
 	-- on the move: the full-body walk (the arms keep carrying if they're busy)
 	local speed = groundSpeed(st, root, dt)
 	local moving = info and info.Moving and target ~= nil
-	if not root.Anchored and speed > 0.8 and not fighting and not coK and (not target or carrying or moving) then
+	-- (a little hysteresis so the legs don't flicker between walking and
+	-- standing as someone slows down or starts off)
+	st.Walking = speed > (if st.Walking then 0.45 else 0.9)
+	if not root.Anchored and st.Walking and not fighting and not coK and (not target or carrying or moving) then
 		local steps = gait(st, model, speed, dt, carrying or moving)
+		-- lean into the turns a little, like a real walker
+		local look = root.CFrame.LookVector
+		local yaw = math.atan2(-look.X, -look.Z)
+		local turn = 0
+		if st.LastYaw and dt > 0 then
+			local dy = (yaw - st.LastYaw + math.pi) % (math.pi * 2) - math.pi
+			turn = math.clamp(dy / dt, -3, 3)
+		end
+		st.LastYaw = yaw
+		st.Turn = (st.Turn or 0) + (turn - (st.Turn or 0)) * math.min(1, dt * 6)
+		if steps.Root then
+			steps.Root = steps.Root * A(0, 0, -st.Turn * math.min(speed, 16) * 0.35)
+		end
 		if (carrying or moving) and target then
 			for k, v in pairs(steps) do
 				target[k] = v
@@ -1760,28 +1804,26 @@ local function update(model, st, t, dt, camPos, myRoot)
 			end
 		end
 	end
+	-- nobody to look at: now and then glance around (a shop window, someone
+	-- walking past), easing the head there and back
+	if not lookYaw and not coK and poseName ~= "sleep" and poseName ~= "ko" and not fighting and not (info and info.Lying) then
+		if t > (st.NextGlance or 0) then
+			st.NextGlance = t + 1.5 + ((st.Phase * 7 + t) % 3.5)
+			st.GlanceGoal = if (t + st.Phase) % 1 < 0.45 then 0 else ((t * 13 + st.Phase * 5) % 70) - 35
+		end
+		st.HeadGlance = (st.HeadGlance or 0) + ((st.GlanceGoal or 0) - (st.HeadGlance or 0)) * math.min(1, dt * 3)
+		if abs(st.HeadGlance) > 1 then
+			target = target or {}
+			target.Neck = (target.Neck or IDENTITY) * A(0, st.HeadGlance, 0)
+		end
+	end
 	if lookYaw then
 		target = target or {}
 		local base = target.Neck or IDENTITY
 		target.Neck = base * A(lookPitch * 0.6, lookYaw, 0)
 	end
 	-- blend toward the pose
-	local a = 1 - math.exp(-dt * 10)
-	if target then
-		for key, motor in pairs(st.Motors) do
-			local goal = target[key] or (if full then IDENTITY else nil)
-			if goal then
-				local cur = st.Cur[key] or motor.Transform
-				cur = cur:Lerp(goal, a)
-				st.Cur[key] = cur
-				motor.Transform = cur
-			else
-				st.Cur[key] = nil
-			end
-		end
-	elseif next(st.Cur) then
-		table.clear(st.Cur)
-	end
+	blendMotors(st, target, full, dt, 10)
 	-- props, swings, hoops, stars
 	setProps(st, model, action, if carrying then carry else nil)
 	local pivot = model:GetAttribute("SwingPivot")
@@ -1855,22 +1897,7 @@ local FOOD_COLORS = {
 }
 
 local function blend(st, target, full, dt)
-	local a = 1 - math.exp(-dt * 16)
-	if target then
-		for key, motor in pairs(st.Motors) do
-			local goal = target[key] or (if full then IDENTITY else nil)
-			if goal then
-				local cur = st.Cur[key] or motor.Transform
-				cur = cur:Lerp(goal, a)
-				st.Cur[key] = cur
-				motor.Transform = cur
-			else
-				st.Cur[key] = nil
-			end
-		end
-	elseif next(st.Cur) then
-		table.clear(st.Cur)
-	end
+	blendMotors(st, target, full, dt, 16)
 end
 
 -- the swing trail on a weapon: from the grip to the far end of the tool

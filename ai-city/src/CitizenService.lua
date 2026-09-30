@@ -1548,6 +1548,26 @@ function CitizenService.Control(brain, on)
 	end
 end
 
+-- for services that run their own people (the prison): put someone at a spot
+-- ({ CFrame, Seat?, BedTop?, Hoop? }) doing an action, or stand them up again
+function CitizenService.PlaceAt(brain, spot, action)
+	placeAt(brain, spot, action)
+	local info = Actions.Get(action) or {}
+	playTrack(brain, if info.Seated or info.Lying then nil else "idle")
+	setAction(brain, action)
+end
+
+function CitizenService.StandUp(brain)
+	if brain.Root.Anchored then
+		local p = brain.Root.Position
+		local look = brain.Root.CFrame.LookVector
+		look = Vector3.new(look.X, 0, look.Z)
+		look = if look.Magnitude > 0.1 then look.Unit else Vector3.new(0, 0, -1)
+		standAt(brain, CFrame.lookAt(Vector3.new(p.X, p.Y - rootHeight(brain), p.Z), Vector3.new(p.X, p.Y - rootHeight(brain), p.Z) + look))
+	end
+	setAction(brain, "")
+end
+
 function CitizenService.SetGait(brain, speed, gait)
 	brain.Humanoid.WalkSpeed = speed
 	playTrack(brain, gait or "run", math.clamp(speed / 16, 0.6, 1.6))
@@ -1704,6 +1724,7 @@ local function think(brain)
 	if brain.Temp then
 		return
 	end
+	brain.LastThink = os.clock()
 	local st = brain.State
 	if st == "ko" or st == "talk" or st == "police" or st == "ride" or st == "chat" or st == "flee" or st == "hospital" and gameTime() < (brain.HospitalUntil or 0) then
 		return
@@ -2313,6 +2334,16 @@ function CitizenService.Start(services)
 				brain.State = "idle"
 				brain.PlanKey = nil
 				setAction(brain, "")
+			end
+			-- no dead time: someone who has just finished a step (or is standing
+			-- around with nothing to do) decides what's next right away instead
+			-- of waiting up to a second for their turn to think
+			local now = os.clock()
+			if not brain.Temp and brain.Model.Parent and now - (brain.LastThink or 0) > 0.35 and (brain.State == "idle" or (brain.State == "act" and brain.Tasks and not brain.RetryCheckout and now > (brain.TaskUntil or math.huge))) then
+				local ok, err = pcall(think, brain)
+				if not ok then
+					warn("[CitizenService] think: " .. tostring(err))
+				end
 			end
 		end
 		soccerTick(step)

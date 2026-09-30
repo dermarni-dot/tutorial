@@ -55,7 +55,7 @@ local function randomPoint(w, rng)
 	local d = math.sqrt(rng:NextNumber()) * r
 	local surface = w:GetAttribute("Surface") or c.Y
 	local depth = w:GetAttribute("Depth") or 4
-	local y = if depth < 1.5 then surface - depth * 0.5 else surface - rng:NextNumber(1.2, math.max(1.5, depth - 1))
+	local y = if depth < 1.5 then surface - depth * 0.45 else surface - rng:NextNumber(1.2, math.max(1.5, depth - 1))
 	return Vector3.new(c.X + math.cos(a) * d, y, c.Z + math.sin(a) * d)
 end
 

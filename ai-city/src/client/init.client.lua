@@ -93,10 +93,10 @@ handlers.DialogueEnd = function()
 end
 handlers.Waypoint = function(d)
 	if d.Clear then
-		World.ClearWaypoint()
+		World.ClearWaypoint(d.CitizenId)
 		return
 	end
-	World.Waypoint(d.Position, d.Label, d.Emoji, d.Model)
+	World.Waypoint(d.Position, d.Label, d.Emoji, d.Model, d.CitizenId)
 end
 handlers.FishBite = function(d)
 	World.FishBite(d.Position)
