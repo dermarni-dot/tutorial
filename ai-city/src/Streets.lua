@@ -108,6 +108,52 @@ local function busStop(parent, cf, streetName)
 	return seat
 end
 
+-- more street detail: bike racks, newspaper boxes, planters, bollards, meters
+local function bikeRack(parent, pos, along, rng)
+	local cf = CFrame.lookAt(pos, pos + along)
+	for k = -2, 2 do
+		-- an upside-down U of steel tube
+		for _, dz in ipairs({ -0.55, 0.55 }) do
+			deco(parent, "BikeRackPost", Vector3.new(0.16, 1.8, 0.16), cf * CFrame.new(k * 0.9, LOT_Y + 0.9, dz), rgb(120, 124, 132), Enum.Material.Metal)
+		end
+		MapKit.cylinder(parent, "BikeRackTop", 1.26, 0.16, cf * CFrame.new(k * 0.9, LOT_Y + 1.8, 0) * CFrame.Angles(0, math.rad(90), 0), rgb(120, 124, 132), Enum.Material.Metal)
+	end
+	deco(parent, "BikeRackBar", Vector3.new(4, 0.18, 0.18), cf * CFrame.new(0, LOT_Y + 0.2, 0), rgb(120, 124, 132), Enum.Material.Metal)
+	-- a bike or two
+	for n = 1, rng:NextInteger(0, 2) do
+		local bx = cf * CFrame.new(-1.8 + n * 1.8, LOT_Y + 1, 0.2)
+		local color = ({ rgb(200, 50, 50), rgb(40, 120, 200), rgb(250, 200, 50), rgb(40, 160, 90) })[rng:NextInteger(1, 4)]
+		for _, dz in ipairs({ -0.9, 0.9 }) do
+			MapKit.cylinder(parent, "BikeWheel", 0.12, 1.5, bx * CFrame.new(0, 0, dz), rgb(30, 30, 32), Enum.Material.Rubber)
+		end
+		deco(parent, "BikeFrame", Vector3.new(0.15, 0.15, 1.9), bx * CFrame.new(0, 0.4, 0), color, Enum.Material.Metal)
+		deco(parent, "BikeSeat", Vector3.new(0.3, 0.12, 0.6), bx * CFrame.new(0, 0.9, 0.4), rgb(30, 30, 32))
+	end
+end
+local function newspaperBoxes(parent, pos, facing)
+	local cf = CFrame.lookAt(pos, pos + facing)
+	for k, color in ipairs({ rgb(200, 40, 40), rgb(40, 90, 170), rgb(240, 200, 40) }) do
+		local box = deco(parent, "NewspaperBox", Vector3.new(1.4, 2.6, 1.3), cf * CFrame.new((k - 2) * 1.6, LOT_Y + 1.3, 0), color, Enum.Material.Metal)
+		deco(parent, "NewspaperWindow", Vector3.new(1, 0.8, 0.05), box.CFrame * CFrame.new(0, 0.5, -0.66), rgb(230, 230, 220), Enum.Material.Glass)
+	end
+end
+local function planter(parent, pos, rng)
+	deco(parent, "Planter", Vector3.new(3.2, 1.6, 3.2), CFrame.new(pos + Vector3.new(0, LOT_Y + 0.8, 0)), rgb(150, 140, 128), Enum.Material.Concrete)
+	for k = 0, 3 do
+		MapKit.ball(parent, "PlanterFlowers", 1.2, CFrame.new(pos + Vector3.new((k % 2 - 0.5) * 1.2, LOT_Y + 1.9, (math.floor(k / 2) - 0.5) * 1.2)), MapKit.FLOWERS[rng:NextInteger(1, #MapKit.FLOWERS)], Enum.Material.Grass)
+	end
+end
+local function bollards(parent, corner, dir)
+	for k = 1, 3 do
+		MapKit.cylinder(parent, "Bollard", 2.4, 0.7, CFrame.new(corner + dir * (k * 1.6) + Vector3.new(0, LOT_Y + 1.2, 0)) * CFrame.Angles(0, 0, math.rad(90)), rgb(60, 62, 70), Enum.Material.Metal)
+	end
+end
+local function parkingMeter(parent, pos)
+	deco(parent, "MeterPost", Vector3.new(0.25, 3.4, 0.25), CFrame.new(pos + Vector3.new(0, LOT_Y + 1.7, 0)), rgb(80, 84, 92), Enum.Material.Metal)
+	deco(parent, "Meter", Vector3.new(0.7, 1, 0.5), CFrame.new(pos + Vector3.new(0, LOT_Y + 3.8, 0)), rgb(110, 120, 130), Enum.Material.Metal)
+	deco(parent, "MeterDisplay", Vector3.new(0.4, 0.3, 0.05), CFrame.new(pos + Vector3.new(0, LOT_Y + 3.95, -0.27)), rgb(160, 220, 170), Enum.Material.Neon)
+end
+
 local function streetSign(parent, pos, streetName, avenueName)
 	deco(parent, "SignPole", Vector3.new(0.35, 10, 0.35), CFrame.new(pos + Vector3.new(0, 5, 0)), rgb(60, 64, 70), Enum.Material.Metal)
 	local s1 = deco(parent, "StreetBlade", Vector3.new(6, 1, 0.15), CFrame.new(pos + Vector3.new(0, 9.4, 0)), rgb(30, 110, 60))
@@ -247,6 +293,19 @@ function Streets.build(parent, rng, blockKind)
 			if downtown then
 				trashCan(furniture, c + Vector3.new(-HALF + 2, 0, HALF - 14))
 				trashCan(furniture, c + Vector3.new(HALF - 14, 0, HALF - 2))
+				-- the busy sidewalks: bike racks, newspaper boxes, planters,
+				-- bollards at the corners and parking meters along the curb
+				bikeRack(furniture, c + Vector3.new(-HALF + 3, 0, -8), Vector3.new(0, 0, 1), rng)
+				newspaperBoxes(furniture, c + Vector3.new(8, 0, HALF - 2.2), Vector3.new(0, 0, 1))
+				planter(furniture, c + Vector3.new(HALF - 3, 0, 10), rng)
+				planter(furniture, c + Vector3.new(-10, 0, -HALF + 3), rng)
+				bollards(furniture, c + Vector3.new(HALF - 1, 0, HALF - 1), Vector3.new(-1, 0, 0))
+				bollards(furniture, c + Vector3.new(-HALF + 1, 0, -HALF + 1), Vector3.new(1, 0, 0))
+				for n = -2, 2 do
+					if n ~= 0 then
+						parkingMeter(furniture, c + Vector3.new(n * 9, 0, -HALF + 0.9))
+					end
+				end
 				-- sidewalk trees in grates along two sides
 				for n = -1, 1 do
 					if n ~= 0 then
@@ -261,6 +320,7 @@ function Streets.build(parent, rng, blockKind)
 				for n = -1, 1, 2 do
 					Streets.tree(furniture, c + Vector3.new(n * 30, 0, HALF - 2.4), rng:NextNumber(0.7, 0.9), rng)
 				end
+				planter(furniture, c + Vector3.new(-HALF + 3, 0, HALF - 3), rng)
 			end
 		end
 	end

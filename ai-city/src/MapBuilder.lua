@@ -466,6 +466,50 @@ end
 --------------------------------------------------------------------------------
 -- Public API
 --------------------------------------------------------------------------------
+-- The bigger blocks leave open pavement around buildings: the empty corners
+-- become little pocket parks (grass, a tree, a bench, flowers).
+local function pocketParks(parent, i, j, before, rng)
+	local c = blockCenter(i, j)
+	local kids = parent:GetChildren()
+	local boxes = {}
+	for k = before + 1, #kids do
+		for _, p in ipairs(kids[k]:GetDescendants()) do
+			if p:IsA("BasePart") and p.Size.X < 80 and p.Size.Z < 80 and p.Name ~= "Lot" then
+				local pos, half = p.Position, p.Size / 2
+				local r = math.max(half.X, half.Z)
+				table.insert(boxes, { pos.X - r, pos.X + r, pos.Z - r, pos.Z + r })
+			end
+		end
+	end
+	local size = 16
+	local inset = HALF - SIDEWALK - size / 2 - 1
+	for _, sx in ipairs({ -1, 1 }) do
+		for _, sz in ipairs({ -1, 1 }) do
+			local x, z = c.X + sx * inset, c.Z + sz * inset
+			local clear = true
+			for _, bx in ipairs(boxes) do
+				if bx[2] > x - size / 2 - 1 and bx[1] < x + size / 2 + 1 and bx[4] > z - size / 2 - 1 and bx[3] < z + size / 2 + 1 then
+					clear = false
+					break
+				end
+			end
+			if clear then
+				local model = Instance.new("Model")
+				model.Name = "PocketPark"
+				model.Parent = parent
+				local base = Vector3.new(x, LOT_Y, z)
+				MapKit.part(model, "Grass", Vector3.new(size, 0.3, size), CFrame.new(base + Vector3.new(0, 0.15, 0)), MapKit.GRASS, Enum.Material.Grass)
+				MapKit.deco(model, "Edging", Vector3.new(size + 0.6, 0.4, size + 0.6), CFrame.new(base + Vector3.new(0, 0, 0)), MapKit.rgb(170, 165, 155), Enum.Material.Concrete)
+				Streets.tree(model, base + Vector3.new(sx * 3, 0.3, sz * 3), rng:NextNumber(0.8, 1.1), rng)
+				Streets.bench(model, CFrame.lookAt(base + Vector3.new(-sx * 3, 0.3, -sz * 4), base + Vector3.new(-sx * 3, 0.3, -sz * 10)), nil)
+				for n = 0, 4 do
+					MapKit.ball(model, "Flowers", 1, CFrame.new(base + Vector3.new(-sx * (size / 2 - 1.2), 0.8, (n - 2) * 1.6)), MapKit.FLOWERS[rng:NextInteger(1, #MapKit.FLOWERS)], Enum.Material.Grass)
+				end
+			end
+		end
+	end
+end
+
 function MapBuilder.Build()
 	if map then
 		return map
@@ -503,7 +547,11 @@ function MapBuilder.Build()
 			local name = entry and string.match(entry, ":(.+)$")
 			local builder = Places.Builders[kind]
 			if builder then
+				local before = #buildings:GetChildren()
 				builder(ctx, buildings, i, j, rng, name)
+				if kind ~= "Houses" and kind ~= "Suburb" and kind ~= "Woods" and not string.find(kind, "Park") then
+					pocketParks(buildings, i, j, before, rng)
+				end
 			end
 		end
 	end
