@@ -121,7 +121,7 @@ end
 local function findHail(player, d, car)
 	local pos = car.PrimaryPart.Position
 	local best, bestD
-	for _, brain in ipairs(S.Citizens.Nearby(pos, 230)) do
+	for _, brain in ipairs(S.Citizens.Nearby(pos, 300)) do
 		local dist = (brain.Root.Position - pos).Magnitude
 		if dist > 35 and not brain.Temp and brain.State == "walk" and not (d.Recent and d.Recent[brain] and os.clock() < d.Recent[brain]) and (brain.Floor or 1) == 1 and not brain.Building and S.Life:Age(brain.C) >= 16 and not brain.Model:GetAttribute("Hailing") and not brain.Model:GetAttribute("Passenger") then
 			if not bestD or math.abs(dist - 80) < math.abs(bestD - 80) then

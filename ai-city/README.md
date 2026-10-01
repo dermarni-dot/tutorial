@@ -432,7 +432,9 @@ Your Config is the base. Every key you had is still there, and these were added:
 
 The game was run in a Luau test harness (a small Roblox simulation), and these checks pass:
 
-All 33 test suites pass: **436 checks, 0 failures**.
+All 34 test suites pass: **457 checks, 0 failures**.
+
+- **Newest round (the back lots):** all 19 new places and 6 apartment blocks built with doors, spots and staff; a strike when the arrow's in the middle (all ten pins down, then set up again); karaoke with 4 people cheering and tips; a full round of mini golf; hair dye; a painting hung on the visitors' wall (which keeps the latest 5); the car wash charging once and making the car sparkle; citizens planning trips to all 19 places; no building overlapping another or sticking into a road, every upstairs room reachable, nothing new floating. The client test checks that the loading screen clears and the traffic and pigeons run on frame time.
 
 - **This round:**
   - the sloping beach (with real terrain): the sand goes from 0 at the back to -1.2 at the waterline, -7.8 sixty studs out and -16 far out; 41 kelp, 19 rocks, 3 dolphins, a wreck and a jet ski, all sitting on the sloping sand, and every jetty rock reaching the sea floor;
