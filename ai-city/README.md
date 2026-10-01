@@ -401,7 +401,9 @@ Your Config is the base. Every key you had is still there, and these were added:
 
 The game was run in a Luau test harness (a small Roblox simulation), and these checks pass:
 
-- **This update** (40 checks):
+All 29 test suites pass: **391 checks, 0 failures**.
+
+- **This update** (40 checks, plus 6 on the client: race rings, the detailed map, the surf and crabs, walking vs running, and cars stopping behind the crosswalk at red lights):
   - the walk signals take turns (never both directions at once), 15 people waited at the curb, and nobody got stuck at a crossing;
   - rain on rainy mornings and evenings, people heading indoors to wait it out, and the rain stopping;
   - a dance that 5 out of 5 people nearby joined, walking off stopping it, and all 10 emotes;
