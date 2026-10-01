@@ -32,6 +32,7 @@ Players can talk to anyone, give speeches, run for mayor and pass laws. They can
 | 🖥️ **More room on screen** | Wider margins and more space between every part of the HUD. Name tags sit higher over heads, shrink with distance, show what someone's doing only up close, and never overlap. |
 | 🏃 **Walk or run** | You walk at a normal pace now (12) and run with **Shift** (24 and up). The Sprint button toggles: tap to run, tap again to walk, and it lights up while you're running. |
 | 🌙 **See at night** | Nights are a clear moonlit blue, bright enough to see where you're going, with lamps and windows still glowing. |
+| ⛰️ **Detailed terrain** | The countryside isn't one flat green any more: lush grass, worn dirt, mud and gravel patches across the plain, dirt trails winding out of town into the hills, lumpy natural hills with rock showing through on the slopes, and layered mountains (rock, slate and dark basalt, foothills and scree at the base, glacier ice under the snow caps). A creek runs down a muddy channel into the lake, which now has a muddy waterline with reeds and cattails. Boulders and wildflower meadows dot the land, every terrain material has its own natural colour, and trees and rocks sit on the real slope of the ground instead of being buried in the hills. |
 | ⛰️ **Hills and mountains stay off the roads** | No hill or mountain reaches the city, the North Shore, the ocean, the prison or Prison Road. |
 
 ## What's new in v3
@@ -401,7 +402,7 @@ Your Config is the base. Every key you had is still there, and these were added:
 
 The game was run in a Luau test harness (a small Roblox simulation), and these checks pass:
 
-All 30 test suites pass: **404 checks, 0 failures**.
+All 31 test suites pass: **409 checks, 0 failures**.
 
 - **This update** (40 checks, plus 6 on the client: race rings, the detailed map, the surf and crabs, walking vs running, and cars stopping behind the crosswalk at red lights):
   - the walk signals take turns (never both directions at once), 15 people waited at the curb, and nobody got stuck at a crossing;
@@ -412,6 +413,7 @@ All 30 test suites pass: **404 checks, 0 failures**.
   - a school fight: not out on the street, no weapons at school, a punch, the kid fighting back, detention without police, and detention ending;
   - building details: 1,300 flower boxes, 540 drainpipes, fire escapes, 275 address plaques, satellite dishes, spinning fan blades and gondolas.
 - **A bug hunt** (13 checks): three players at once doing everything (rideshare with a ride abandoned halfway, 30 emotes in a row in a crowd, a school fight, a race) while the rain switches on and off, and leaving the game mid-race, mid-dance and mid-detention; then an hour of city life: no errors or warnings, nobody at a broken position, under the world or stuck under script control, no leftover passengers. It found and fixed: kids' recess fights never starting (a crash), ages of temporary people (officers, staff), and an abandoned passenger hailing the same driver straight away.
+- **The terrain** (5 checks, with a stand-in terrain that records every fill): 830 fills with valid arguments, no terrain sticking up into the city, the North Shore, the prison or Prison Road (941 spots checked), water all along the creek into the lake, a muddy lake edge, and 14 terrain materials in use. It found and fixed: new hills piled on top of the creek (it ran through a tunnel) and the lake's beach cutting the creek off just before the lake.
 - **Nothing floating:** of 92,000 parts, the only groups not resting on anything are the obby platforms, the volleyball and the balloons on strings (it was 3,818 groups before).
 
 - **The map:**
