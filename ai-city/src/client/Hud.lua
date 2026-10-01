@@ -34,26 +34,81 @@ function Hud.DrawCity(frame, scale, opts)
 	local function px(x)
 		return x * scale
 	end
-	-- grass and roads under everything
-	local ground = UI.new("Frame", { BackgroundColor3 = UI.rgb(70, 120, 70), BorderSizePixel = 0, AnchorPoint = Vector2.new(0.5, 0.5), Size = UDim2.fromOffset(px(extent * 2 + 500), px(extent * 2 + 500)), ZIndex = 1, Parent = frame })
-	local roads = UI.new("Frame", { BackgroundColor3 = UI.rgb(58, 60, 68), BorderSizePixel = 0, AnchorPoint = Vector2.new(0.5, 0.5), Size = UDim2.fromOffset(px(extent * 2 + 16), px(extent * 2 + 16)), ZIndex = 2, Parent = frame })
-	UI.corner(roads, 4)
-	-- which block holds which place
-	local kinds = {}
-	for _, v in ipairs(info:GetChildren()) do
-		if v:IsA("Vector3Value") then
-			local i, j = math.floor(v.Value.X / spacing + 0.5), math.floor(v.Value.Z / spacing + 0.5)
-			if math.abs(i) <= n and math.abs(j) <= n then
-				kinds[i .. "," .. j] = kinds[i .. "," .. j] or v:GetAttribute("Kind")
+	-- grass under everything
+	local ground = UI.new("Frame", { BackgroundColor3 = UI.rgb(70, 120, 70), BorderSizePixel = 0, AnchorPoint = Vector2.new(0.5, 0.5), Size = UDim2.fromOffset(px(extent * 2 + 900), px(extent * 2 + 1400)), ZIndex = 1, Parent = frame })
+	-- the detailed map from the server (see MapBuilder.Shapes): the real ground
+	-- (roads, sidewalks, lots, parks, sand, the ocean...), every roof in its own
+	-- colour, trees and street names
+	local packed = info:FindFirstChild("MapShapes")
+	if packed and packed.Value ~= "" then
+		local grounds, roofs, trees, labels = {}, {}, {}, {}
+		for entry in string.gmatch(packed.Value, "[^;]+") do
+			local f = string.split(entry, ",")
+			local e = { Kind = f[1], X = tonumber(f[2]), Z = tonumber(f[3]), W = tonumber(f[4]), D = tonumber(f[5]), Yaw = tonumber(f[6]) or 0, Color = Color3.fromRGB(tonumber(string.sub(f[7] or "808080", 1, 2), 16) or 128, tonumber(string.sub(f[7] or "808080", 3, 4), 16) or 128, tonumber(string.sub(f[7] or "808080", 5, 6), 16) or 128), Text = f[8] }
+			if e.X then
+				if e.Kind == "g" then
+					table.insert(grounds, e)
+				elseif e.Kind == "b" then
+					table.insert(roofs, e)
+				elseif e.Kind == "t" then
+					table.insert(trees, e)
+				elseif e.Kind == "l" then
+					table.insert(labels, e)
+				end
 			end
 		end
-	end
-	for i = -n, n do
-		for j = -n, n do
-			local kind = kinds[i .. "," .. j]
-			local color = if kind then (UI.KIND_COLORS[kind] or C.Sub):Lerp(UI.rgb(210, 210, 200), 0.55) else UI.rgb(196, 214, 176)
-			local b = UI.new("Frame", { BackgroundColor3 = color, BorderSizePixel = 0, AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromOffset(px(i * spacing), px(j * spacing)), Size = UDim2.fromOffset(px(block), px(block)), ZIndex = 3, Parent = frame })
-			UI.corner(b, math.max(2, px(6)))
+		-- big things first, so the sidewalks and paths sit on top of the lots
+		table.sort(grounds, function(a, b)
+			return a.W * a.D > b.W * b.D
+		end)
+		local function shape(e, z, color, round)
+			local f = UI.new("Frame", { BackgroundColor3 = color, BorderSizePixel = 0, AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromOffset(px(e.X), px(e.Z)), Size = UDim2.fromOffset(math.max(1, px(e.W)), math.max(1, px(e.D))), Rotation = -e.Yaw, ZIndex = z, Parent = frame })
+			if round then
+				UI.corner(f, UDim.new(0.5, 0))
+			end
+			return f
+		end
+		for _, e in ipairs(grounds) do
+			-- (a touch brighter than in the 3D world, so it reads at a glance)
+			shape(e, 2, e.Color:Lerp(Color3.new(1, 1, 1), 0.08))
+		end
+		if not opts.NoTrees then
+			for _, e in ipairs(trees) do
+				shape(e, 4, e.Color:Lerp(Color3.new(0, 0, 0), 0.15), true)
+			end
+		end
+		for _, e in ipairs(roofs) do
+			local f = shape(e, 5, e.Color:Lerp(Color3.new(1, 1, 1), 0.12))
+			if scale >= 0.4 then
+				UI.new("UIStroke", { Thickness = 1, Color = e.Color:Lerp(Color3.new(0, 0, 0), 0.45), Transparency = 0.2, Parent = f })
+			end
+		end
+		if opts.Labels then
+			for _, e in ipairs(labels) do
+				local t = UI.text(frame, e.Text or "", 11, UI.Bold, C.White, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromOffset(px(e.X), px(e.Z)), Size = UDim2.fromOffset(140, 14), Rotation = e.Yaw, TextXAlignment = Enum.TextXAlignment.Center, TextTransparency = 0.15, ZIndex = 7 })
+				UI.new("UIStroke", { Thickness = 1.5, Transparency = 0.3, Parent = t })
+			end
+		end
+	else
+		local roads = UI.new("Frame", { BackgroundColor3 = UI.rgb(58, 60, 68), BorderSizePixel = 0, AnchorPoint = Vector2.new(0.5, 0.5), Size = UDim2.fromOffset(px(extent * 2 + 16), px(extent * 2 + 16)), ZIndex = 2, Parent = frame })
+		UI.corner(roads, 4)
+		-- which block holds which place
+		local kinds = {}
+		for _, v in ipairs(info:GetChildren()) do
+			if v:IsA("Vector3Value") then
+				local i, j = math.floor(v.Value.X / spacing + 0.5), math.floor(v.Value.Z / spacing + 0.5)
+				if math.abs(i) <= n and math.abs(j) <= n then
+					kinds[i .. "," .. j] = kinds[i .. "," .. j] or v:GetAttribute("Kind")
+				end
+			end
+		end
+		for i = -n, n do
+			for j = -n, n do
+				local kind = kinds[i .. "," .. j]
+				local color = if kind then (UI.KIND_COLORS[kind] or C.Sub):Lerp(UI.rgb(210, 210, 200), 0.55) else UI.rgb(196, 214, 176)
+				local b = UI.new("Frame", { BackgroundColor3 = color, BorderSizePixel = 0, AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromOffset(px(i * spacing), px(j * spacing)), Size = UDim2.fromOffset(px(block), px(block)), ZIndex = 3, Parent = frame })
+				UI.corner(b, math.max(2, px(6)))
+			end
 		end
 	end
 	local lx, lz, lr = info:GetAttribute("LakeX"), info:GetAttribute("LakeZ"), info:GetAttribute("LakeRadius")
@@ -75,13 +130,13 @@ function Hud.DrawCity(frame, scale, opts)
 				Text = placeInfo and placeInfo.emoji or v:GetAttribute("Emoji") or "📍",
 				TextSize = (opts.PinSize or 18) - 5,
 				Font = UI.Font,
-				ZIndex = 6,
+				ZIndex = 8,
 				Parent = frame,
 			})
 			UI.corner(pin, UDim.new(0.5, 0))
 			UI.stroke(pin, C.White, 1.5, 0.1)
 			if opts.Labels then
-				local label = UI.text(pin, v:GetAttribute("Label") or v.Name, 12, UI.Bold, C.White, { AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 1, 1), Size = UDim2.fromOffset(120, 14), TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 7 })
+				local label = UI.text(pin, v:GetAttribute("Label") or v.Name, 12, UI.Bold, C.White, { AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 1, 1), Size = UDim2.fromOffset(120, 14), TextXAlignment = Enum.TextXAlignment.Center, ZIndex = 9 })
 				UI.new("UIStroke", { Thickness = 1.5, Transparency = 0.2, Parent = label })
 			end
 			pins[v.Name] = pin
@@ -209,8 +264,8 @@ local function build()
 
 	-- the clock card
 	-- the left column: the clock card, then today's goals under it
-	local column = UI.new("Frame", { Name = "LeftColumn", BackgroundTransparency = 1, Position = UDim2.fromOffset(16, 14), Size = UDim2.fromOffset(290, 0), AutomaticSize = Enum.AutomaticSize.Y, Parent = screen })
-	UI.list(column, Enum.FillDirection.Vertical, 10)
+	local column = UI.new("Frame", { Name = "LeftColumn", BackgroundTransparency = 1, Position = UDim2.fromOffset(22, 22), Size = UDim2.fromOffset(290, 0), AutomaticSize = Enum.AutomaticSize.Y, Parent = screen })
+	UI.list(column, Enum.FillDirection.Vertical, 14)
 	local card = UI.panel(column, { Name = "Clock", Size = UDim2.fromOffset(290, 0), AutomaticSize = Enum.AutomaticSize.Y, Radius = 16, LayoutOrder = 1 })
 	UI.pad(card, 12, 10, 14, 12, 14)
 	UI.list(card, Enum.FillDirection.Vertical, 6)
@@ -230,15 +285,15 @@ local function build()
 	refs.Happiness, refs.HappinessValue = statRow(card, "😊", "Happiness", C.Pink, 7)
 
 	-- the minimap
-	local mini = UI.new("CanvasGroup", { Name = "Minimap", AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -16, 0, 14), Size = UDim2.fromOffset(186, 186), BackgroundColor3 = UI.rgb(70, 120, 70), Parent = screen })
+	local mini = UI.new("CanvasGroup", { Name = "Minimap", AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -22, 0, 22), Size = UDim2.fromOffset(186, 186), BackgroundColor3 = UI.rgb(70, 120, 70), Parent = screen })
 	UI.corner(mini, UDim.new(0.5, 0))
-	local ring = UI.new("Frame", { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -16, 0, 14), Size = UDim2.fromOffset(186, 186), BackgroundTransparency = 1, Parent = screen })
+	local ring = UI.new("Frame", { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -22, 0, 22), Size = UDim2.fromOffset(186, 186), BackgroundTransparency = 1, Parent = screen })
 	UI.corner(ring, UDim.new(0.5, 0))
 	UI.stroke(ring, C.White, 3, 0.15)
 	local pivot = UI.new("Frame", { BackgroundTransparency = 1, Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(0, 0), Parent = mini })
 	local world = UI.new("Frame", { BackgroundTransparency = 1, Size = UDim2.fromOffset(0, 0), Parent = pivot })
 	local MINI_SCALE = 0.42
-	refs.MiniPins = Hud.DrawCity(world, MINI_SCALE, { PinSize = 16 })
+	refs.MiniPins = Hud.DrawCity(world, MINI_SCALE, { PinSize = 16, NoTrees = true })
 	refs.MiniWorld, refs.MiniPivot = world, pivot
 	refs.MiniDots = {}
 	for k = 1, 40 do
@@ -253,9 +308,9 @@ local function build()
 	UI.corner(refs.North, UDim.new(0.5, 0))
 
 	-- coins, wanted, mayor, election (under the minimap)
-	local right = UI.new("Frame", { Name = "RightColumn", BackgroundTransparency = 1, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -16, 0, 208), Size = UDim2.fromOffset(250, 0), AutomaticSize = Enum.AutomaticSize.Y, Parent = screen })
+	local right = UI.new("Frame", { Name = "RightColumn", BackgroundTransparency = 1, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -22, 0, 226), Size = UDim2.fromOffset(250, 0), AutomaticSize = Enum.AutomaticSize.Y, Parent = screen })
 	refs.Right, refs.MiniRing = right, ring
-	UI.list(right, Enum.FillDirection.Vertical, 6, Enum.HorizontalAlignment.Right)
+	UI.list(right, Enum.FillDirection.Vertical, 10, Enum.HorizontalAlignment.Right)
 	local coins = UI.panel(right, { Size = UDim2.fromOffset(0, 40), AutomaticSize = Enum.AutomaticSize.X, LayoutOrder = 1, Radius = 20 })
 	UI.pad(coins, 0, 0, 16, 0, 12)
 	UI.list(coins, Enum.FillDirection.Horizontal, 6, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center)
@@ -278,13 +333,13 @@ local function build()
 	refs.Mayor = UI.chip(right, "🏛️ Mayor: —", C.Panel2, { LayoutOrder = 3, TextSize = 13, Size = UDim2.fromOffset(0, 28) })
 	refs.Election = UI.chip(right, "🗳️ Election in 8:00", C.Panel2, { LayoutOrder = 4, TextSize = 13, Size = UDim2.fromOffset(0, 28) })
 	toastHolder = UI.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 5, Parent = right })
-	UI.list(toastHolder, Enum.FillDirection.Vertical, 6, Enum.HorizontalAlignment.Right)
+	UI.list(toastHolder, Enum.FillDirection.Vertical, 10, Enum.HorizontalAlignment.Right)
 	UI.pad(toastHolder, 0, 6, 0, 0, 0)
 
 	-- the action bar
-	local bar = UI.panel(screen, { Name = "ActionBar", AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -12), Size = UDim2.fromOffset(0, 76), AutomaticSize = Enum.AutomaticSize.X, Radius = 18 })
-	UI.pad(bar, 7)
-	UI.list(bar, Enum.FillDirection.Horizontal, 7, Enum.HorizontalAlignment.Center, Enum.VerticalAlignment.Center)
+	local bar = UI.panel(screen, { Name = "ActionBar", AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -20), Size = UDim2.fromOffset(0, 76), AutomaticSize = Enum.AutomaticSize.X, Radius = 18 })
+	UI.pad(bar, 8)
+	UI.list(bar, Enum.FillDirection.Horizontal, 9, Enum.HorizontalAlignment.Center, Enum.VerticalAlignment.Center)
 	refs.Bar = bar
 	refs.PhoneButton = actionButton(bar, "📱", "Phone", "Tab", 0, function()
 		ctx.Panels.Phone.Toggle()
@@ -303,18 +358,18 @@ local function build()
 		ctx.World.Attack()
 	end, UI.rgb(110, 40, 48))
 	refs.AttackEmoji = refs.AttackButton:FindFirstChild("ActionIcon")
-	-- sprint: hold the button (or Shift)
+	-- sprint: tap the button to run, tap again to walk (or hold Shift). It
+	-- lights up while you're running.
 	local sprintButton = actionButton(bar, "run", "Sprint", "Shift", 7, nil, UI.rgb(30, 90, 80))
+	local sprintColor = sprintButton.BackgroundColor3
 	sprintButton.InputBegan:Connect(function(input)
 		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-			ctx.Moves.SetSprint(true)
+			ctx.Moves.SetSprint(not ctx.Moves.Sprinting())
 		end
 	end)
-	sprintButton.InputEnded:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-			ctx.Moves.SetSprint(false)
-		end
-	end)
+	ctx.Moves.OnChanged = function(on)
+		sprintButton.BackgroundColor3 = if on then UI.rgb(40, 190, 120) else sprintColor
+	end
 	-- block: hold the button (or X)
 	local blockButton = actionButton(bar, "🛡️", "Block", "X", 6, nil, UI.rgb(40, 60, 110))
 	blockButton.InputBegan:Connect(function(input)
@@ -329,14 +384,14 @@ local function build()
 	end)
 
 	-- health (bottom left)
-	local health = UI.panel(screen, { Name = "Health", AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 16, 1, -16), Size = UDim2.fromOffset(250, 44), Radius = 14 })
+	local health = UI.panel(screen, { Name = "Health", AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 22, 1, -22), Size = UDim2.fromOffset(250, 44), Radius = 14 })
 	UI.Icons.Glyph(health, "heart", 28, { Position = UDim2.fromOffset(11, 8) })
 	local hb, hset, hfill = UI.bar(health, C.Green, 12, { Position = UDim2.fromOffset(46, 16), Size = UDim2.new(1, -100, 0, 12) })
 	refs.HealthSet, refs.HealthFill = hset, hfill
 	refs.HealthText = UI.text(health, "100", 16, UI.Title, C.White, { Position = UDim2.new(1, -50, 0, 4), Size = UDim2.fromOffset(42, 36), TextXAlignment = Enum.TextXAlignment.Right })
 	refs.HealthPanel = health
 	-- stamina (above the health bar): the bar, your fitness level and XP to the next one
-	local stam = UI.panel(screen, { Name = "Stamina", AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 16, 1, -66), Size = UDim2.fromOffset(250, 40), Radius = 14 })
+	local stam = UI.panel(screen, { Name = "Stamina", AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 22, 1, -78), Size = UDim2.fromOffset(250, 40), Radius = 14 })
 	refs.StaminaIcon = UI.Icons.Glyph(stam, "bolt", 24, { Position = UDim2.fromOffset(13, 8) })
 	local sb, sset, sfill = UI.bar(stam, C.Teal, 10, { Position = UDim2.fromOffset(46, 11), Size = UDim2.new(1, -112, 0, 10) })
 	refs.StaminaSet, refs.StaminaFill, refs.StaminaPanel = sset, sfill, stam
@@ -345,28 +400,28 @@ local function build()
 	refs.FitXP = UI.new("Frame", { BackgroundColor3 = C.Gold, BorderSizePixel = 0, Size = UDim2.fromScale(0, 1), Parent = xpBack })
 	UI.corner(refs.FitXP, 2)
 	refs.FitLevel = UI.text(stam, "Lv 1", 14, UI.Title, C.Gold, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -10, 0, 2), Size = UDim2.fromOffset(56, 36), TextXAlignment = Enum.TextXAlignment.Right })
-	refs.BlockIcon = UI.chip(screen, "🛡️ BLOCKING", C.Blue, { AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 16, 1, -112), Visible = false })
+	refs.BlockIcon = UI.chip(screen, "🛡️ BLOCKING", C.Blue, { AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 22, 1, -132), Visible = false })
 
 	-- the news ticker (just above the action bar)
-	ticker = UI.panel(screen, { Name = "News", AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -96), Size = UDim2.fromOffset(0, 32), AutomaticSize = Enum.AutomaticSize.X, Radius = 16, Visible = false })
+	ticker = UI.panel(screen, { Name = "News", AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -112), Size = UDim2.fromOffset(0, 32), AutomaticSize = Enum.AutomaticSize.X, Radius = 16, Visible = false })
 	UI.pad(ticker, 0, 0, 16, 0, 16)
 	UI.new("UIScale", { Parent = ticker })
 	UI.new("UISizeConstraint", { MaxSize = Vector2.new(760, 32), Parent = ticker })
 	tickerText = UI.text(ticker, "", 14, UI.Font, C.Text, { AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.fromOffset(0, 32), TextTruncate = Enum.TextTruncate.AtEnd })
 
 	-- the speech hint (near the podium)
-	refs.Hint = UI.panel(screen, { AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -136), Size = UDim2.fromOffset(0, 36), AutomaticSize = Enum.AutomaticSize.X, Radius = 18, Visible = false, BackgroundColor3 = UI.rgb(90, 70, 20) })
+	refs.Hint = UI.panel(screen, { AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -158), Size = UDim2.fromOffset(0, 36), AutomaticSize = Enum.AutomaticSize.X, Radius = 18, Visible = false, BackgroundColor3 = UI.rgb(90, 70, 20) })
 	UI.pad(refs.Hint, 0, 0, 16, 0, 16)
 	UI.text(refs.Hint, if UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled then "🎤 You're at the podium! Tap <b>Speech</b> to give a speech" else "🎤 You're at the podium! Press <b>B</b> (or 🎤) to give a speech", 15, UI.Bold, C.Gold, { AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.fromOffset(0, 36) })
 
 	-- wanted: a red glow around the screen
 	refs.Edge = UI.new("Frame", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 0, Parent = screen })
 	refs.EdgeStroke = UI.stroke(refs.Edge, C.Red, 14, 1)
-	refs.Banner = UI.text(screen, "", 40, UI.Title, C.Red, { AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 90), Size = UDim2.fromOffset(600, 50), TextXAlignment = Enum.TextXAlignment.Center, TextTransparency = 1, ZIndex = 30 })
+	refs.Banner = UI.text(screen, "", 40, UI.Title, C.Red, { AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 108), Size = UDim2.fromOffset(600, 50), TextXAlignment = Enum.TextXAlignment.Center, TextTransparency = 1, ZIndex = 30 })
 	refs.BannerStroke = UI.new("UIStroke", { Thickness = 3, Transparency = 1, Parent = refs.Banner })
 
 	-- jail: a bar with the time left
-	refs.Jail = UI.panel(screen, { AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 16), Size = UDim2.fromOffset(470, 64), Visible = false, BackgroundColor3 = UI.rgb(60, 20, 26), Radius = 16 })
+	refs.Jail = UI.panel(screen, { AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 22), Size = UDim2.fromOffset(470, 64), Visible = false, BackgroundColor3 = UI.rgb(60, 20, 26), Radius = 16 })
 	UI.pad(refs.Jail, 10, 8, 16, 8, 16)
 	refs.JailText = UI.text(refs.Jail, "🔒 In jail", 16, UI.Title, C.White, { Size = UDim2.new(1, 0, 0, 24) })
 	local jb
@@ -779,8 +834,8 @@ function Hud.Equip(n)
 end
 
 local function buildHotbar()
-	hotbar = UI.new("Frame", { Name = "Hotbar", BackgroundTransparency = 1, AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -16, 1, -16), Size = UDim2.fromOffset(0, 64), AutomaticSize = Enum.AutomaticSize.X, Visible = false, Parent = screen })
-	UI.list(hotbar, Enum.FillDirection.Horizontal, 8, Enum.HorizontalAlignment.Right, Enum.VerticalAlignment.Bottom)
+	hotbar = UI.new("Frame", { Name = "Hotbar", BackgroundTransparency = 1, AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -22, 1, -22), Size = UDim2.fromOffset(0, 64), AutomaticSize = Enum.AutomaticSize.X, Visible = false, Parent = screen })
+	UI.list(hotbar, Enum.FillDirection.Horizontal, 10, Enum.HorizontalAlignment.Right, Enum.VerticalAlignment.Bottom)
 end
 
 local function refreshHotbar()
@@ -822,7 +877,7 @@ end
 --------------------------------------------------------------------------------
 local card
 local function buildTargetCard()
-	card = UI.panel(screen, { Name = "Target", AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 16), Size = UDim2.fromOffset(320, 0), AutomaticSize = Enum.AutomaticSize.Y, Visible = false, Radius = 16 })
+	card = UI.panel(screen, { Name = "Target", AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 22), Size = UDim2.fromOffset(320, 0), AutomaticSize = Enum.AutomaticSize.Y, Visible = false, Radius = 16 })
 	UI.new("UIScale", { Parent = card })
 	UI.pad(card, 10, 8, 14, 10, 14)
 	UI.list(card, Enum.FillDirection.Vertical, 4, Enum.HorizontalAlignment.Center)

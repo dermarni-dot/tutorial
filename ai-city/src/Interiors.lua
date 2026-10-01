@@ -62,10 +62,10 @@ local function desk(b, f, x, z, list, action, role, facing, place, color)
 		box(b, f, "DeskLeg", Vector3.new(0.3, 2.9, 2.4), x + lx, 0, z, color:Lerp(BLACK, 0.3), Enum.Material.Wood)
 	end
 	if action == "type" then
-		local screen = box(b, f, "Monitor", Vector3.new(2.6, 1.6, 0.2), x, 3.5, z - s * 0.8, rgb(30, 32, 38), Enum.Material.SmoothPlastic)
+		local screen = box(b, f, "Monitor", Vector3.new(2.6, 1.6, 0.2), x, 3.2, z - s * 0.8, rgb(30, 32, 38), Enum.Material.SmoothPlastic)
 		deco(b.Model, "Screen", Vector3.new(2.3, 1.3, 0.05), screen.CFrame * CFrame.new(0, 0, s * 0.12), rgb(120, 190, 255), Enum.Material.Neon)
-		box(b, f, "Keyboard", Vector3.new(2, 0.12, 0.7), x, 3.05, z + s * 0.3, rgb(40, 42, 48))
-		box(b, f, "Mug", Vector3.new(0.4, 0.5, 0.4), x + 1.8, 3.05, z, ({ rgb(220, 60, 60), WHITE, rgb(60, 120, 220) })[(math.floor(x + z) % 3) + 1])
+		box(b, f, "Keyboard", Vector3.new(2, 0.12, 0.7), x, 3.2, z + s * 0.3, rgb(40, 42, 48))
+		box(b, f, "Mug", Vector3.new(0.4, 0.5, 0.4), x + 1.8, 3.2, z, ({ rgb(220, 60, 60), WHITE, rgb(60, 120, 220) })[(math.floor(x + z) % 3) + 1])
 	else
 		box(b, f, "Paper", Vector3.new(1.2, 0.05, 1.6), x - 0.8, 3.05, z, WHITE)
 		box(b, f, "Books", Vector3.new(0.8, 0.6, 1.2), x + 1.5, 3.05, z, rgb(140, 50, 60))
@@ -219,7 +219,7 @@ function ROOMS.office(b, f, list, rng, place)
 	end
 	plant(b, f, -W / 2 + 2.5, D / 2 - 2.5)
 	box(b, f, "WaterCooler", Vector3.new(1.4, 4, 1.4), -W / 2 + 2.5, 0, -D / 2 + 3, rgb(200, 220, 240))
-	box(b, f, "Whiteboard", Vector3.new(6, 3.4, 0.2), 0, 3.5, D / 2 - 1.2, WHITE)
+	box(b, f, "Whiteboard", Vector3.new(6, 3.4, 0.2), 0, 3.5, D / 2 - 1.2 + (if b.CurtainWall then 0.85 else 0), WHITE)
 	spot(list, b, f, 0, D / 2 - 4, 0, 1, "present", "work")
 end
 
@@ -258,7 +258,7 @@ function ROOMS.gym(b, f, list, rng, place)
 	-- punching bags
 	for k = 0, 1 do
 		local bx = -2 + k * 6
-		box(b, f, "BagChain", Vector3.new(0.2, 2.5, 0.2), bx, 8.5, 3, rgb(120, 120, 126), Enum.Material.Metal)
+		box(b, f, "BagChain", Vector3.new(0.2, 3.1, 0.2), bx, 8.5, 3, rgb(120, 120, 126), Enum.Material.Metal)
 		MapKit.cylinder(b.Model, "PunchingBag", 4.4, 2, at(b, f, bx, 6.2, 3) * CFrame.Angles(0, 0, math.rad(90)), rgb(170, 30, 36), Enum.Material.Fabric)
 		spot(list, b, f, bx, 1, 0, 1, "punch", "visit")
 	end
@@ -415,6 +415,7 @@ function ROOMS.bank(b, f, list, rng, place)
 	end
 	plant(b, f, -W / 2 + 2.5, D / 2 - 6)
 	box(b, f, "Chandelier", Vector3.new(3, 0.6, 3), 0, FLOOR_H - 2, -2, MapKit.GOLD, Enum.Material.Metal)
+	box(b, f, "ChandelierChain", Vector3.new(0.15, 1.9, 0.15), 0, FLOOR_H - 1.45, -2, MapKit.GOLD, Enum.Material.Metal)
 end
 
 function ROOMS.police(b, f, list, rng, place)
@@ -455,7 +456,7 @@ function ROOMS.police(b, f, list, rng, place)
 	box(b, f, "CellBench", Vector3.new(7, 1.6, 2), cx, 0, zb - 1.2, rgb(120, 120, 126), Enum.Material.Concrete)
 	box(b, f, "CellToilet", Vector3.new(1.6, 1.6, 2), x1 - 1.2, 0, zf + 2.2, rgb(220, 222, 226), Enum.Material.Metal)
 	box(b, f, "CellSink", Vector3.new(1.4, 0.6, 1), x1 - 0.8, 3, zf + 4.4, rgb(220, 222, 226), Enum.Material.Metal)
-	local lamp = box(b, f, "CellLamp", Vector3.new(1.6, 0.4, 1.6), cx, h - 0.6, (zf + zb) / 2, rgb(255, 240, 200), Enum.Material.Neon)
+	local lamp = box(b, f, "CellLamp", Vector3.new(1.6, 0.4, 1.6), cx, h - 0.2, (zf + zb) / 2, rgb(255, 240, 200), Enum.Material.Neon)
 	MapKit.light(lamp, rgb(255, 235, 200), 16, 0.9)
 	-- a sign over the bars
 	local sign = box(b, f, "CellSign", Vector3.new(6, 1.2, 0.2), cx, h - 1.6, zf - 0.4, rgb(40, 36, 50))
@@ -481,6 +482,8 @@ function ROOMS.hospital(b, f, list, rng, place)
 		s.HospitalBed = true
 		box(b, f, "Curtain", Vector3.new(0.1, 7, 7), x + 3.2, 0, D / 2 - 6, rgb(200, 230, 220), Enum.Material.Fabric)
 		box(b, f, "Monitor", Vector3.new(1.4, 1.2, 0.4), x - 2.8, 4, D / 2 - 3, rgb(40, 44, 50))
+		box(b, f, "MonitorStand", Vector3.new(0.2, 4, 0.2), x - 2.8, 0, D / 2 - 3, rgb(190, 194, 200), Enum.Material.Metal)
+		box(b, f, "MonitorBase", Vector3.new(1.2, 0.15, 1.2), x - 2.8, 0, D / 2 - 3, rgb(190, 194, 200), Enum.Material.Metal)
 		spot(list, b, f, x - 3, D / 2 - 9, 1, 1, if k % 2 == 0 then "doctor" else "nurse", "work")
 	end
 end
@@ -534,6 +537,8 @@ function ROOMS.library(b, f, list, rng, place)
 	spot(list, b, f, W / 2 - 7, -D / 2 + 8.4, 0, -1, "counter", "work")
 	spot(list, b, f, -W / 2 + 5, D / 2 - 4.5, 0, 1, "shelve", "work")
 	MapKit.ball(b.Model, "Globe", 2, at(b, f, -W / 2 + 3, 4.2, -D / 2 + 4), rgb(80, 150, 220), Enum.Material.SmoothPlastic)
+	box(b, f, "GlobeStand", Vector3.new(0.25, 3.3, 0.25), -W / 2 + 3, 0, -D / 2 + 4, rgb(150, 110, 70), Enum.Material.Wood)
+	box(b, f, "GlobeBase", Vector3.new(1.4, 0.2, 1.4), -W / 2 + 3, 0, -D / 2 + 4, rgb(150, 110, 70), Enum.Material.Wood)
 end
 
 function ROOMS.cinema(b, f, list, rng, place)
@@ -557,6 +562,7 @@ function ROOMS.cinema(b, f, list, rng, place)
 	-- the usher checking tickets and the projection booth at the back
 	spot(list, b, f, W / 2 - 6, -D / 2 + 5, -1, 0, "guard", "work")
 	box(b, f, "Projector", Vector3.new(2.4, 2, 3), 0, 6, -D / 2 + 2.4, rgb(40, 40, 46), Enum.Material.Metal)
+	box(b, f, "ProjectorStand", Vector3.new(2.8, 6, 3.2), 0, 0, -D / 2 + 2.4, rgb(70, 50, 40), Enum.Material.Wood)
 	spot(list, b, f, 3, -D / 2 + 3, -1, 0, "machine", "work")
 end
 
@@ -585,6 +591,11 @@ function ROOMS.warehouse(b, f, list, rng, place)
 		local x = -W / 2 + 8 + k * ((W - 16) / 2)
 		box(b, f, "Racking", Vector3.new(10, 0.4, 4), x, 4, D / 2 - 4, rgb(240, 150, 40), Enum.Material.Metal)
 		box(b, f, "Racking", Vector3.new(10, 0.4, 4), x, 8, D / 2 - 4, rgb(240, 150, 40), Enum.Material.Metal)
+		for _, ux in ipairs({ -4.85, 4.85 }) do
+			for _, uz in ipairs({ -1.85, 1.85 }) do
+				box(b, f, "RackUpright", Vector3.new(0.3, 8.4, 0.3), x + ux, 0, D / 2 - 4 + uz, rgb(40, 90, 170), Enum.Material.Metal)
+			end
+		end
 		for n = 0, 3 do
 			box(b, f, "Crate", Vector3.new(2.2, 2.2, 2.2), x - 3.6 + n * 2.4, 0 + (n % 2) * 4.4, D / 2 - 4, rgb(170, 125, 75), Enum.Material.WoodPlanks)
 		end
@@ -593,6 +604,11 @@ function ROOMS.warehouse(b, f, list, rng, place)
 	-- forklift
 	box(b, f, "Forklift", Vector3.new(3.4, 3, 5), 0, 0.8, -2, rgb(250, 190, 40), Enum.Material.Metal)
 	box(b, f, "ForkMast", Vector3.new(3, 7, 0.4), 0, 0.8, -4.7, rgb(60, 60, 66), Enum.Material.Metal)
+	for _, wx in ipairs({ -1.9, 1.9 }) do
+		for _, wz in ipairs({ -3.6, -0.4 }) do
+			MapKit.cylinder(b.Model, "ForkWheel", 0.6, 1.6, at(b, f, wx, 0.8, wz), rgb(25, 25, 28), Enum.Material.Rubber)
+		end
+	end
 	spot(list, b, f, W / 4, -D / 2 + 6, 0, 1, "sort", "work")
 end
 
@@ -740,6 +756,10 @@ local function bathroom(b, f, x0, z0, x1, z1, doorAt)
 	local mirror = box(b, f, "BathMirror", Vector3.new(0.1, 2, 1.8), x1 - 0.2, 4.2, nearZ, rgb(210, 230, 240), Enum.Material.Glass)
 	mirror.Reflectance = 0.5
 	box(b, f, "Towel", Vector3.new(0.15, 1.6, 1.2), x0 + 0.2, 3.4, (z0 + z1) / 2, ({ rgb(90, 160, 220), rgb(240, 150, 170), rgb(120, 200, 150) })[math.floor(math.abs(x0 + z0)) % 3 + 1], Enum.Material.Fabric)
+	-- (on a little stand, so it never hangs in the air)
+	for _, tz in ipairs({ -0.65, 0.65 }) do
+		box(b, f, "TowelRack", Vector3.new(0.12, 5.1, 0.12), x0 + 0.2, 0, (z0 + z1) / 2 + tz, rgb(200, 200, 206), Enum.Material.Metal)
+	end
 end
 
 local function kitchen(b, f, x0, x1, z, list)
@@ -1045,7 +1065,7 @@ function ROOMS.lobby(b, f, list, rng, place)
 	local W, D = b.W, b.D
 	rug(b, f, 0, -2, W / 2, D / 2, rgb(90, 80, 70))
 	for k = 0, 5 do
-		box(b, f, "Mailbox", Vector3.new(1.4, 1.4, 0.6), -W / 2 + 3 + (k % 3) * 1.5, 3 + (k // 3) * 1.5, D / 2 - 1.4, rgb(180, 150, 90), Enum.Material.Metal)
+		box(b, f, "Mailbox", Vector3.new(1.4, 1.4, 0.6), -W / 2 + 3 + (k % 3) * 1.5, 3 + (k // 3) * 1.5, D / 2 - 1.4 + (if b.CurtainWall then 0.8 else 0), rgb(180, 150, 90), Enum.Material.Metal)
 	end
 	local seat = MapKit.seat(b.Model, "SofaSeat", Vector3.new(6, 0.4, 2.4), at(b, f, W / 4, 1.8, -D / 2 + 5), rgb(110, 90, 80), Enum.Material.Fabric, place)
 	box(b, f, "Sofa", Vector3.new(7, 1.6, 3), W / 4, 0, -D / 2 + 5, rgb(110, 90, 80), Enum.Material.Fabric)
@@ -1104,9 +1124,17 @@ function ROOMS.museum(b, f, list, rng, place)
 		spot(list, b, f, x + 1, D / 2 - 5, 0, 1, "browse", "visit")
 	end
 	-- a dinosaur skeleton in the middle
+	-- (on a spine held up by two steel posts, ribs hanging down, a skull)
+	local bone = rgb(236, 226, 200)
+	box(b, f, "Spine", Vector3.new(8.4, 0.5, 0.5), 0.25, 6.2, -4, bone)
 	for k = 0, 5 do
-		box(b, f, "Bone", Vector3.new(0.6, 0.6, 2), -3 + k * 1.3, 5 + math.sin(k) * 0.8, -4, rgb(236, 226, 200))
+		local h = 1.6 + math.abs(math.sin(k)) * 0.8
+		box(b, f, "Bone", Vector3.new(0.35, h, 2), -3 + k * 1.3, 6.25 - h, -4, bone)
 	end
+	for _, px in ipairs({ -3.4, 3.8 }) do
+		box(b, f, "SkeletonPost", Vector3.new(0.3, 6.2, 0.3), px, 0, -4, rgb(60, 60, 66), Enum.Material.Metal)
+	end
+	MapKit.ball(b.Model, "Skull", 1.4, at(b, f, 4.9, 6.45, -4), bone)
 	spot(list, b, f, 0, -D / 2 + 6, 0, 1, "guide", "work")
 	spot(list, b, f, W / 2 - 5, -D / 2 + 5, -1, 0, "counter", "work")
 end
@@ -1148,6 +1176,11 @@ function ROOMS.community(b, f, list, rng, place)
 		tableSet(b, f, -W / 4 + k * (W / 2), -2, list, "chess", place, rgb(220, 210, 190))
 	end
 	box(b, f, "PingPong", Vector3.new(5, 0.3, 9), 0, 2.6, -D / 2 + 7, rgb(40, 110, 70))
+	for _, lx in ipairs({ -2.2, 2.2 }) do
+		for _, lz in ipairs({ -3.8, 3.8 }) do
+			box(b, f, "TableLeg", Vector3.new(0.3, 2.6, 0.3), lx, 0, -D / 2 + 7 + lz, rgb(40, 40, 44), Enum.Material.Metal)
+		end
+	end
 	box(b, f, "PingPongNet", Vector3.new(5.4, 0.6, 0.1), 0, 2.9, -D / 2 + 7, WHITE)
 	spot(list, b, f, 0, -D / 2 + 1.6, 0, 1, "hoops", "visit")
 	spot(list, b, f, 0, -D / 2 + 12.4, 0, -1, "hoops", "visit")
@@ -1161,8 +1194,13 @@ function ROOMS.officeLight(b, f, list, rng, place)
 			local x = -8 + cx * 8
 			local z = -D / 2 + 7 + rz * 9
 			box(b, f, "Desk", Vector3.new(5, 0.3, 2.6), x, 2.9, z, rgb(200, 200, 204), Enum.Material.SmoothPlastic)
-			box(b, f, "Screen", Vector3.new(2.4, 1.4, 0.15), x, 3.1, z - 0.8, rgb(120, 190, 255), Enum.Material.Neon)
+			for _, lx in ipairs({ -2.2, 2.2 }) do
+				box(b, f, "DeskLeg", Vector3.new(0.3, 2.9, 2.4), x + lx, 0, z, rgb(150, 150, 156), Enum.Material.Metal)
+			end
+			box(b, f, "Screen", Vector3.new(2.4, 1.4, 0.15), x, 3.2, z - 0.8, rgb(120, 190, 255), Enum.Material.Neon)
 			local seat = MapKit.seat(b.Model, "OfficeChair", Vector3.new(2, 0.4, 2), at(b, f, x, 1.7, z + 2), rgb(40, 40, 46), Enum.Material.Fabric, place)
+			box(b, f, "ChairPost", Vector3.new(0.3, 1.5, 0.3), x, 0.2, z + 2, rgb(60, 60, 66), Enum.Material.Metal)
+			box(b, f, "ChairBase", Vector3.new(1.8, 0.2, 1.8), x, 0, z + 2, rgb(60, 60, 66), Enum.Material.Metal)
 			spot(list, b, f, x, z + 2, 0, -1, "type", "work", seat)
 		end
 	end

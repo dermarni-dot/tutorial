@@ -216,6 +216,16 @@ function CarService.RoadSpot(pos, look)
 	local function nearestLine(v)
 		return (math.floor(v / sp) + 0.5) * sp
 	end
+	-- along the curb, but clear of the intersections and their crosswalks
+	-- (so nobody has to walk through your car to cross the street)
+	local function clear(v)
+		local l = nearestLine(v)
+		local off = v - l
+		if math.abs(off) < road / 2 + 12 then
+			return l + (if off >= 0 then 1 else -1) * (road / 2 + 12)
+		end
+		return v
+	end
 	local lx, lz = nearestLine(pos.X), nearestLine(pos.Z)
 	local dx, dz = math.abs(pos.X - lx), math.abs(pos.Z - lz)
 	local inCity = math.abs(pos.X) < extent + 10 and math.abs(pos.Z) < extent + 10
@@ -223,11 +233,11 @@ function CarService.RoadSpot(pos, look)
 		if dx < dz then
 			-- an avenue (runs along Z): head the way you're facing
 			local dir = if look.Z >= 0 then Vector3.new(0, 0, 1) else Vector3.new(0, 0, -1)
-			local p = Vector3.new(lx, 0.1, pos.Z) + Vector3.new(-dir.Z, 0, dir.X) * (road / 2 - 3.6)
+			local p = Vector3.new(lx, 0.1, clear(pos.Z)) + Vector3.new(-dir.Z, 0, dir.X) * (road / 2 - 3.6)
 			return CFrame.lookAt(p, p + dir)
 		else
 			local dir = if look.X >= 0 then Vector3.new(1, 0, 0) else Vector3.new(-1, 0, 0)
-			local p = Vector3.new(pos.X, 0.1, lz) + Vector3.new(-dir.Z, 0, dir.X) * (road / 2 - 3.6)
+			local p = Vector3.new(clear(pos.X), 0.1, lz) + Vector3.new(-dir.Z, 0, dir.X) * (road / 2 - 3.6)
 			return CFrame.lookAt(p, p + dir)
 		end
 	end
@@ -410,6 +420,9 @@ function CarService.Start(services)
 									S.City.News("🚑 " .. brain.C.Name .. " was hit by a car.", "Crime", true)
 								else
 									S.Citizens.Hurt(brain, car.PrimaryPart.Position, "WHOA! Watch where you're going!", 30)
+								end
+								if S.Rideshare and S.Rideshare.OnHit then
+									pcall(S.Rideshare.OnHit, player)
 								end
 								if S.Crime and S.Crime.Report then
 									pcall(S.Crime.Report, player, brain.Root.Position, brain, if speed > 38 then 3 else 1, "hit " .. brain.C.First .. " with your car", "ran someone over", if speed > 38 then 2 else 1)

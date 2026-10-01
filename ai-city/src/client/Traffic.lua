@@ -2,8 +2,10 @@
 -- Cars and city buses driving the streets around you: they keep to the right
 -- lane, follow the car in front at a safe distance, stop at red lights
 -- downtown (the same cycle the traffic lights show), ease through the other
--- intersections one at a time, turn corners in smooth arcs, and brake for
--- people crossing (honking at you if you stand in the road). Buses pull up
+-- intersections one at a time, turn corners in smooth arcs, stop behind the
+-- crosswalk (never on it), give way to anyone in the crosswalk or stepping
+-- off the curb (turning cars wait for the people crossing the road they're
+-- turning into), and brake for anyone in the road (honking at you). Buses pull up
 -- at every bus stop they pass. Headlights come on at night.
 --
 -- Each player's own screen runs the traffic near their camera, so it costs the
@@ -27,6 +29,7 @@ local S, N, ROAD, LANE = 134, 5, 26, 3.4
 local lo, hi -- road indices
 local stops = {}
 local rng = Random.new()
+local walkerPrev = {} -- [model] = { Pos, T, Vel }: how fast people on foot are moving
 
 local COLORS = {
 	Color3.fromRGB(214, 60, 60), Color3.fromRGB(60, 116, 214), Color3.fromRGB(236, 236, 236), Color3.fromRGB(36, 36, 40),
@@ -291,6 +294,32 @@ local function intersectionBusy(car)
 	return false
 end
 
+-- where a car stops: its front bumper behind the crosswalk (the stripes run
+-- from 13.3 to 18.3 studs out from the middle of the intersection), never on it
+local CROSS_NEAR, CROSS_FAR = ROAD / 2 - 0.5, ROAD / 2 + 6
+local function stopGap(car)
+	return (CROSS_FAR + 1) - (ROAD / 2 + 1) + car.Length / 2
+end
+
+-- anyone in a crosswalk of intersection (a, b): the one a car going `dir`
+-- drives over on the way in (side -1) or on the way out (side 1). People
+-- waiting on the curb don't count; people stepping off it do (Walkers has
+-- where everyone will be in a moment, too).
+local function crosswalkBusy(a, b, dir, side)
+	local c = node(a, b)
+	local r = right(dir)
+	for _, p in ipairs(Traffic.Walkers) do
+		local rel = p - c
+		local along = rel:Dot(dir) * side
+		if along > CROSS_NEAR and along < CROSS_FAR + 1 and math.abs(rel:Dot(r)) < ROAD / 2 - 0.2 and math.abs(rel.Y) < 8 then
+			return true
+		end
+	end
+	return false
+end
+Traffic.CrosswalkBusy = crosswalkBusy
+Traffic.StopGap = stopGap
+
 -- a driver waiting on you: the headlights flash
 local function honk(car)
 	if os.clock() < (car.NextHonk or 0) then
@@ -317,20 +346,34 @@ local function drive(car, dt, camPos, night)
 			honk(car)
 		end
 	end
+	if car.Phase == "turn" and car.Next and car.U < 0.75 and crosswalkBusy(car.A, car.B, car.Next, 1) then
+		want = 0 -- waiting in the intersection for the people crossing
+	end
 	if car.Phase == "road" then
 		local left = car.Len - car.S
-		-- red light (or someone already turning in an unlit intersection)
-		if left < 22 then
+		local gap = stopGap(car)
+		-- red light (or someone already turning in an unlit intersection), or
+		-- people in the crosswalk: stop at the line, behind the stripes
+		if left < gap + 24 then
 			local stop = false
-			if hasLights(car.A, car.B) then
-				stop = not green(car.Dir) and left > 1.5
-			else
-				stop = intersectionBusy(car) and left > 0.5
+			if left > gap - 1 then
+				if hasLights(car.A, car.B) then
+					stop = not green(car.Dir)
+				else
+					stop = intersectionBusy(car)
+				end
+				if not stop and (crosswalkBusy(car.A, car.B, car.Dir, -1) or (car.Planned and crosswalkBusy(car.A, car.B, car.Planned, 1))) then
+					stop = true
+					car.Yielding = true
+				end
 			end
 			if stop then
-				want = math.min(want, math.max(0, (left - 1.5) * 1.3))
-			elseif not hasLights(car.A, car.B) then
-				want = math.min(want, 10) -- slow down for the crossing
+				want = math.min(want, math.max(0, (left - gap) * 1.3))
+			else
+				car.Yielding = nil
+				if not hasLights(car.A, car.B) then
+					want = math.min(want, 10) -- slow down for the crossing
+				end
 			end
 		end
 		-- buses pull up at their stops
@@ -483,10 +526,42 @@ function Traffic.Step(dt)
 	local night = h >= 18.5 or h < 6.3
 	-- where everyone on foot is (once a frame)
 	local walkers = {}
+	local now = os.clock()
+	local seen = {}
+	local function add(m, r)
+		local pos = r.Position
+		table.insert(walkers, pos)
+		-- and where they'll be in a moment (so cars brake before someone
+		-- steps off the curb, not after)
+		local prev = walkerPrev[m]
+		local vel = Vector3.zero
+		if prev and now > prev.T then
+			vel = prev.Vel:Lerp((pos - prev.Pos) / math.max(now - prev.T, 1 / 120), 0.3)
+		end
+		walkerPrev[m] = { Pos = pos, T = now, Vel = vel }
+		seen[m] = true
+		local flat = Vector3.new(vel.X, 0, vel.Z)
+		if flat.Magnitude > 1.5 and flat.Magnitude < 40 then
+			table.insert(walkers, pos + flat * 0.6)
+			table.insert(walkers, pos + flat * 1.2)
+		end
+	end
 	for _, m in ipairs(CollectionService:GetTagged("Citizen")) do
 		local r = m:FindFirstChild("HumanoidRootPart")
 		if r and (r.Position - camPos).Magnitude < 200 then
-			table.insert(walkers, r.Position)
+			add(m, r)
+		end
+	end
+	for _, pl in ipairs(Players:GetPlayers()) do
+		local r = pl.Character and pl.Character:FindFirstChild("HumanoidRootPart")
+		local hum = pl.Character and pl.Character:FindFirstChildOfClass("Humanoid")
+		if r and not (hum and hum.SeatPart) and (r.Position - camPos).Magnitude < 200 then
+			add(pl.Character, r)
+		end
+	end
+	for m in pairs(walkerPrev) do
+		if not seen[m] then
+			walkerPrev[m] = nil
 		end
 	end
 	Traffic.Walkers = walkers

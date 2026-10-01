@@ -680,6 +680,9 @@ function MapBuilder.Build()
 	map.AvenueName = Streets.avenueName
 	map.Registry = Registry
 
+	-- the modern finish on every surface (see MapKit.Modernize)
+	MapKit.Modernize(root)
+
 	-- info for clients (the map screen and the directory)
 	local info = Instance.new("Folder")
 	info.Name = "CityInfo"
@@ -719,8 +722,57 @@ function MapBuilder.Build()
 	if map.SpeechSpot then
 		info:SetAttribute("SpeechSpot", map.SpeechSpot)
 	end
+	-- the detailed map (roads, buildings, trees, street names)
+	local labels = {}
+	for k = -N - 1, N do
+		local line = (k + 0.5) * SPACING
+		for _, along in ipairs({ -2.5 * SPACING, 2.5 * SPACING }) do
+			table.insert(labels, { along, line, 0, Streets.streetName(k) })
+			table.insert(labels, { line, along, 90, Streets.avenueName(k) })
+		end
+	end
+	local shapes = Instance.new("StringValue")
+	shapes.Name = "MapShapes"
+	shapes.Value = MapBuilder.Shapes(root, labels)
+	shapes.Parent = info
 	info.Parent = ReplicatedStorage
 	return map
+end
+
+-- What the map screens draw (see the client's Hud.DrawCity): the ground as it
+-- really is (roads, sidewalks, lots, parks, sand, the prison yard...), every
+-- building's roof, trees, and the street names, packed into one string:
+--   kind,x,z,w,d,yaw,rrggbb[,text];...   kinds: g ground, b building, t tree, l label
+local GROUND_SKIP = { Floor = true, Rug = true, FloorTiles = true, WeightMat = true, BlockFloor = true, ShowroomFloor = true, Stage = true, Ground = true }
+function MapBuilder.Shapes(root, roadLabels)
+	local out = {}
+	local function hex(c)
+		return string.format("%02x%02x%02x", math.floor(c.R * 255 + 0.5), math.floor(c.G * 255 + 0.5), math.floor(c.B * 255 + 0.5))
+	end
+	local function add(kind, p, w, d, color, text)
+		local look = p.CFrame.LookVector
+		local yaw = math.floor(math.deg(math.atan2(-look.X, -look.Z)) + 0.5)
+		local pos = p.Position
+		table.insert(out, string.format("%s,%d,%d,%d,%d,%d,%s%s", kind, math.floor(pos.X + 0.5), math.floor(pos.Z + 0.5), math.max(1, math.floor(w + 0.5)), math.max(1, math.floor(d + 0.5)), yaw, hex(color), if text then "," .. text else ""))
+	end
+	local trees = 0
+	for _, p in ipairs(root:GetDescendants()) do
+		if p:IsA("BasePart") then
+			local sz = p.Size
+			if p.Name == "Roof" or p.Name == "BlockRoof" or p.Name == "PrisonRoof" or p.Name == "ShowroomRoof" or p.Name == "Garage" then
+				add("b", p, sz.X, sz.Z, p.Color)
+			elseif p.Name == "Leaves" and sz.X >= 7 and trees < 700 then
+				trees += 1
+				add("t", p, sz.X, sz.X, p.Color)
+			elseif not GROUND_SKIP[p.Name] and sz.Y < 2.5 and p.Position.Y < 2.5 and sz.X * sz.Z >= 300 then
+				add("g", p, sz.X, sz.Z, p.Color)
+			end
+		end
+	end
+	for _, l in ipairs(roadLabels or {}) do
+		table.insert(out, string.format("l,%d,%d,1,1,%d,ffffff,%s", l[1], l[2], l[3], l[4]))
+	end
+	return table.concat(out, ";")
 end
 
 function MapBuilder.Get()
@@ -754,6 +806,7 @@ function MapBuilder.FurnishHome(home)
 	local spots = Interiors.furnish(home.Building, function()
 		return "home"
 	end, rng, nil)
+	MapKit.Modernize(home.Building.Model)
 	for _, s in ipairs(spots) do
 		registerSpot(s, nil, home.Building)
 		s.Home = home.Index

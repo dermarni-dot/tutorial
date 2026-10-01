@@ -103,6 +103,12 @@ Actions.List = {
 	ride = { Pose = "sit", Seated = true, Label = "🎡 On a ride" },
 	sunbathe = { Pose = "sleep", Lying = true, Label = "🏖️ Sunbathing" },
 	volley = { Pose = "volley", Label = "🏐 Playing beach volleyball" },
+	-- reactions to players' emotes (see SocialService)
+	clap = { Pose = "clap", Label = "👏 Clapping" },
+	hail = { Pose = "hail", Label = "🙋 Waving down a ride" },
+	laugh = { Pose = "laugh", Label = "😂 Laughing" },
+	salute = { Pose = "salute", Label = "🫡 Saluting" },
+	flex = { Pose = "flex", Label = "💪 Flexing" },
 	carry = { Pose = "carry", Label = "👶 Carrying the baby" },
 }
 

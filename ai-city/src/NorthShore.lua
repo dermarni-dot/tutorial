@@ -9,7 +9,9 @@
 --                     food carts, benches and string lights
 --   🧗 Sky Obby       a parkour course: jumps, moving platforms, spinning bars,
 --                     lava, checkpoints and a timer (FunService)
---   🏖️ Sunset Beach   a boardwalk, sand, umbrellas and towels, a volleyball
+--   🏖️ Sunset Beach   a boardwalk, sand, umbrellas and towels, lounge chairs,
+--                     picnic blankets, a fire pit, dunes, a jetty, kites, crabs,
+--                     rolling surf, a volleyball
 --                     net, a lifeguard tower, palm trees, and a long pier
 --                     into the ocean for fishing
 --
@@ -144,7 +146,7 @@ local function autoland(data, rng)
 	-- bunting and balloons on the lot
 	for k = 0, 6 do
 		local b = MapKit.ball(m, "LotBalloon", 2.4, cf(c.X - 48 + k * 3, 9 + (k % 2), c.Z + 36), MapKit.FLOWERS[k % #MapKit.FLOWERS + 1])
-		deco(m, "BalloonString", Vector3.new(0.08, 8, 0.08), c.X - 48 + k * 3, 0.3, c.Z + 36, WHITE)
+		deco(m, "BalloonString", Vector3.new(0.08, 9 + (k % 2) - 1.2 - 0.3 + 0.1, 0.08), c.X - 48 + k * 3, 0.3, c.Z + 36, WHITE)
 		b.Reflectance = 0.2
 	end
 	-- the cars for sale stand in a row facing the drive (CarService fills them)
@@ -254,6 +256,9 @@ local function ferrisWheel(parent, hub, spots)
 	end
 	-- a ticket sign and a line to wait in
 	local sign = deco(parent, "RideSign", Vector3.new(10, 3, 0.3), hub.X + 10, 6, hub.Z - 22, rgb(40, 60, 140))
+	for _, px in ipairs({ -4.2, 4.2 }) do
+		deco(parent, "SignPost", Vector3.new(0.4, 7.5, 0.4), hub.X + 10 + px, 0, hub.Z - 22.35, rgb(60, 64, 70))
+	end
 	MapKit.signText(sign, Enum.NormalId.Front, "🎡 SKY WHEEL", WHITE, Enum.Font.GothamBlack)
 	MapKit.signText(sign, Enum.NormalId.Back, "🎡 SKY WHEEL", WHITE, Enum.Font.GothamBlack)
 	MapKit.tag(ride, "Ride")
@@ -310,7 +315,7 @@ local function carousel(parent, c, spots)
 			part:SetAttribute("BobPhase", k * 1.1)
 		end
 	end
-	local sign = deco(parent, "RideSign", Vector3.new(12, 2.6, 0.3), c.X, 16.4, c.Z + 18.3, rgb(200, 60, 80))
+	local sign = deco(parent, "RideSign", Vector3.new(12, 2.6, 0.3), c.X, 16.2, c.Z + 17.8, rgb(200, 60, 80))
 	MapKit.signText(sign, Enum.NormalId.Back, "🎠 CAROUSEL", WHITE, Enum.Font.GothamBlack)
 	MapKit.signText(sign, Enum.NormalId.Front, "🎠 CAROUSEL", WHITE, Enum.Font.GothamBlack)
 	MapKit.tag(ride, "Ride")
@@ -345,6 +350,9 @@ local function dropTower(parent, c, spots)
 		back:SetAttribute("Lift", true)
 	end
 	local sign = deco(parent, "RideSign", Vector3.new(12, 2.6, 0.3), c.X, 4, c.Z + 11, rgb(60, 70, 110))
+	for _, px in ipairs({ -5.2, 5.2 }) do
+		deco(parent, "SignPost", Vector3.new(0.4, 5.2, 0.4), c.X + px, 0, c.Z + 11.35, rgb(60, 64, 70))
+	end
 	MapKit.signText(sign, Enum.NormalId.Back, "🎢 FREEFALL", WHITE, Enum.Font.GothamBlack)
 	MapKit.signText(sign, Enum.NormalId.Front, "🎢 FREEFALL", WHITE, Enum.Font.GothamBlack)
 	MapKit.tag(ride, "Ride")
@@ -446,6 +454,9 @@ local function funland(data, rng)
 		deco(m, "PicnicLeg", Vector3.new(4, 2.4, 1), tx, 0.3, tz, rgb(120, 90, 60), Enum.Material.Wood)
 		for _, sz in ipairs({ -1, 1 }) do
 			local seat = MapKit.seat(m, "PicnicBench", Vector3.new(6, 0.4, 1.2), cf(tx, 1.9, tz + sz * 2.2), rgb(150, 110, 70), Enum.Material.Wood, nil)
+			for _, lx in ipairs({ -2.5, 2.5 }) do
+				deco(m, "BenchLeg", Vector3.new(0.4, 1.5, 1), tx + lx, 0.25, tz + sz * 2.2, rgb(120, 86, 56), Enum.Material.Wood)
+			end
 			seat.CanCollide = false
 			for _, dx in ipairs({ -1.5, 1.5 }) do
 				table.insert(spots, spot(tx + dx, 0.3, tz + sz * 2.2, tx + dx, tz, { Action = "eat", Seat = seat }))
@@ -453,9 +464,16 @@ local function funland(data, rng)
 		end
 	end
 	-- string lights over the main path, lamps and flower beds
+	-- (on a wire between two poles; each bulb hangs on a short drop)
 	for k = 0, 17 do
 		local x = c.X - 136 + k * 16
-		MapKit.ball(m, "StringLight", 0.7, cf(x, 9 + math.sin(k) * 0.4, c.Z), MapKit.FLOWERS[k % #MapKit.FLOWERS + 1], Enum.Material.Neon)
+		local y = 9 + math.sin(k) * 0.4
+		MapKit.ball(m, "StringLight", 0.7, cf(x, y, c.Z), MapKit.FLOWERS[k % #MapKit.FLOWERS + 1], Enum.Material.Neon)
+		MapKit.deco(m, "LightDrop", Vector3.new(0.06, 10.2 - y, 0.06), cf(x, (y + 10.2) / 2, c.Z), rgb(40, 40, 44))
+	end
+	MapKit.deco(m, "LightWire", Vector3.new(284, 0.08, 0.08), cf(c.X - 0.5, 10.2, c.Z), rgb(40, 40, 44))
+	for _, ex in ipairs({ -142, 141 }) do
+		deco(m, "LightPole", Vector3.new(0.5, 10.6, 0.5), c.X + ex, 0, c.Z, rgb(60, 64, 70), Enum.Material.Metal)
 	end
 	for k = 0, 8 do
 		lamp(m, c.X - 128 + k * 32, c.Z + 6, 0.3)
@@ -485,7 +503,7 @@ local function obby(data, rng)
 	local sign = deco(m, "ObbySign", Vector3.new(16, 4, 0.4), -280, 8, Z0 - 62, rgb(30, 34, 60))
 	MapKit.signText(sign, Enum.NormalId.Front, "🧗 SKY OBBY\nStep on the green pad to start", WHITE, Enum.Font.GothamBlack)
 	MapKit.signText(sign, Enum.NormalId.Back, "🧗 SKY OBBY", WHITE, Enum.Font.GothamBlack)
-	o.Board = deco(m, "ObbyBoard", Vector3.new(14, 9, 0.4), -266, 1, Z0 - 62, rgb(20, 24, 40))
+	o.Board = deco(m, "ObbyBoard", Vector3.new(14, 9, 0.4), -266, 0.3, Z0 - 62, rgb(20, 24, 40))
 	-- a path of jumps that climbs as it goes (west, then back east higher up)
 	local y, x, z = 1.3, -280, Z0 - 78
 	local colors = { rgb(255, 90, 110), rgb(255, 200, 60), rgb(90, 170, 255), rgb(170, 110, 255), rgb(90, 220, 140) }
@@ -711,10 +729,15 @@ end
 
 -- a string of little flags between two points (they flutter: see Ambient)
 local function bunting(parent, a, b, n)
-	local len = (b - a).Magnitude
+	-- the cord, tied to a pole at each end; the flags hang right off it
+	local mid = (a + b) / 2
+	MapKit.deco(parent, "BuntingCord", Vector3.new(0.08, 0.08, (b - a).Magnitude), CFrame.lookAt(mid, b), rgb(240, 240, 240))
+	for _, e in ipairs({ a, b }) do
+		MapKit.deco(parent, "BuntingPole", Vector3.new(0.35, e.Y + 0.6, 0.35), CFrame.new(e.X, (e.Y + 0.6) / 2, e.Z), rgb(230, 230, 236), Enum.Material.Metal)
+	end
 	for k = 1, n do
 		local u = k / (n + 1)
-		local p = a:Lerp(b, u) - Vector3.new(0, math.sin(u * math.pi) * len * 0.06, 0)
+		local p = a:Lerp(b, u) - Vector3.new(0, 0.6, 0)
 		local f = MapKit.wedge(parent, "Bunting", Vector3.new(0.1, 1.2, 0.9), CFrame.lookAt(p, p + (b - a).Unit) * CFrame.Angles(0, math.rad(90), math.rad(180)), MapKit.FLOWERS[k % #MapKit.FLOWERS + 1], Enum.Material.Fabric)
 		MapKit.tag(f, "WavingFlag")
 	end
@@ -725,6 +748,214 @@ local function flagPole(parent, x, z, color, h)
 	MapKit.deco(parent, "FlagPole", Vector3.new(0.35, h, 0.35), CFrame.new(x, h / 2, z), rgb(225, 225, 230), Enum.Material.Metal)
 	local f = MapKit.deco(parent, "Flag", Vector3.new(0.1, 2.4, 4), CFrame.new(x, h - 1.5, z + 2.1), color, Enum.Material.Fabric)
 	MapKit.tag(f, "WavingFlag")
+end
+
+--------------------------------------------------------------------------------
+-- 🏖️ More beach: the water's edge, places to sit, things washed up, crabs
+--------------------------------------------------------------------------------
+local function beachMore(data, rng)
+	local beach = data.Model:FindFirstChild("SunsetBeach")
+	local spots = data.BeachSpots
+	local bz = NorthShore.BOARDWALK_Z
+	local sandZ0, wz = bz - 10, NorthShore.WATER_Z
+	local W0, W1 = NorthShore.WEST + 60, NorthShore.EAST - 30
+	local cx = (W0 + W1) / 2
+	local SAND, WET = rgb(236, 214, 160), rgb(196, 170, 120)
+	-- wet sand along the water, and the surf: lines of foam that roll in and
+	-- slide back (see Ambient)
+	deco(beach, "WetSand", Vector3.new(W1 - W0 + 60, 0.06, 14), cx, 0, wz + 7, WET, Enum.Material.Sand)
+	for k = 0, 2 do
+		local foam = MapKit.deco(beach, "Surf", Vector3.new(W1 - W0 + 40 - k * 30, 0.12, 1.4 + k * 0.6), CFrame.new(cx + k * 7, 0.05, wz + 2 - k * 7), WHITE, Enum.Material.SmoothPlastic)
+		foam.Transparency = 0.25 + k * 0.2
+		foam:SetAttribute("Phase", k * 2.1)
+		MapKit.tag(foam, "Surf")
+	end
+	-- dunes with beach grass along the back of the beach
+	for k = 0, 9 do
+		local x = W0 + 25 + k * ((W1 - W0 - 50) / 9) + rng:NextNumber(-8, 8)
+		local z = sandZ0 - 14 - rng:NextNumber(0, 6)
+		if math.abs(x - 220) > 14 then -- (not across the pier)
+			local dune = MapKit.ball(beach, "Dune", 1, CFrame.new(x, -0.6, z), SAND:Lerp(WET, 0.15), Enum.Material.Sand)
+			dune.Size = Vector3.new(rng:NextNumber(14, 22), 3.2, rng:NextNumber(7, 10))
+			dune.CanCollide = false
+			for n = 0, 6 do
+				local gx, gz = x + rng:NextNumber(-6, 6), z + rng:NextNumber(-2.5, 2.5)
+				for b = -1, 1 do
+					MapKit.deco(beach, "DuneGrass", Vector3.new(0.12, rng:NextNumber(1.4, 2.4), 0.12), CFrame.new(gx + b * 0.25, 1.1, gz) * CFrame.Angles(0, 0, math.rad(b * 18 + rng:NextNumber(-6, 6))), rgb(150, 170, 80), Enum.Material.Grass)
+				end
+			end
+		end
+	end
+	-- a wooden ramp from the boardwalk down onto the sand
+	for _, rx in ipairs({ cx - 150, cx + 60 }) do
+		MapKit.part(beach, "BeachRamp", Vector3.new(6, 0.4, 12), CFrame.new(rx, 0.55, bz - 15.5) * CFrame.Angles(math.rad(-5), 0, 0), rgb(170, 130, 90), Enum.Material.WoodPlanks)
+		for n = 0, 6 do
+			deco(beach, "SandMat", Vector3.new(5, 0.08, 1.6), rx, 0, bz - 24 - n * 2.2, rgb(190, 160, 110), Enum.Material.WoodPlanks)
+		end
+	end
+	-- an outdoor shower to rinse the sand off
+	local shx = cx - 120
+	deco(beach, "ShowerPost", Vector3.new(0.5, 8, 0.5), shx, 0, sandZ0 - 4, rgb(220, 220, 225), Enum.Material.Metal)
+	deco(beach, "ShowerArm", Vector3.new(0.3, 0.3, 1.6), shx, 7.7, sandZ0 - 4.8, rgb(220, 220, 225), Enum.Material.Metal)
+	MapKit.disc(beach, "ShowerHead", 0.3, 1, Vector3.new(shx, 7.6, sandZ0 - 5.5), rgb(200, 200, 206), Enum.Material.Metal)
+	deco(beach, "ShowerTray", Vector3.new(3, 0.2, 3), shx, 0, sandZ0 - 5.5, rgb(170, 130, 90), Enum.Material.WoodPlanks)
+	-- lounge chairs in pairs with a little table (people sit on them)
+	for k = 0, 5 do
+		local x = W0 + 50 + k * 88 + rng:NextNumber(-6, 6)
+		local z = sandZ0 - rng:NextNumber(58, 66)
+		for n = 0, 1 do
+			local lxp = x + n * 3.4
+			local seat = MapKit.seat(beach, "LoungeChair", Vector3.new(2.2, 0.3, 5), cf(lxp, 1.2, z), if k % 2 == 0 then rgb(40, 130, 200) else rgb(240, 240, 236), Enum.Material.Fabric, nil)
+			MapKit.part(beach, "LoungeBack", Vector3.new(2.2, 0.3, 2.4), CFrame.new(lxp, 1.95, z + 3.1) * CFrame.Angles(math.rad(50), 0, 0), seat.Color, Enum.Material.Fabric).CanCollide = false
+			for _, lz in ipairs({ -2.2, 2.2 }) do
+				deco(beach, "LoungeLeg", Vector3.new(2.2, 1.05, 0.2), lxp, 0, z + lz, WHITE, Enum.Material.Metal)
+			end
+			table.insert(spots, spot(lxp, 0, z, lxp, z - 10, { Action = "sit", Seat = seat }))
+		end
+		deco(beach, "SideTable", Vector3.new(1.2, 1.4, 1.2), x + 1.7, 0, z + 2.6, WHITE, Enum.Material.SmoothPlastic)
+		deco(beach, "Drink", Vector3.new(0.35, 0.6, 0.35), x + 1.5, 1.4, z + 2.6, MapKit.FLOWERS[k % #MapKit.FLOWERS + 1], Enum.Material.Glass)
+	end
+	-- picnic blankets with a basket
+	for k = 0, 3 do
+		local x, z = W0 + 120 + k * 150 + rng:NextNumber(-10, 10), sandZ0 - rng:NextNumber(30, 40)
+		deco(beach, "PicnicBlanket", Vector3.new(6, 0.06, 5), x, 0, z, if k % 2 == 0 then rgb(220, 60, 60) else rgb(60, 140, 220), Enum.Material.Fabric)
+		for n = -1, 1 do
+			deco(beach, "BlanketCheck", Vector3.new(0.6, 0.07, 5), x + n * 2, 0, z, WHITE, Enum.Material.Fabric)
+		end
+		deco(beach, "Basket", Vector3.new(1.6, 1, 1.1), x + 2, 0.06, z - 1.5, rgb(170, 120, 70), Enum.Material.Wood)
+		deco(beach, "BasketHandle", Vector3.new(0.15, 0.7, 1), x + 2, 1.06, z - 1.5, rgb(150, 100, 60), Enum.Material.Wood)
+		for n = 0, 1 do
+			table.insert(spots, spot(x - 1.5 + n * 3, 0, z + 1, x, z - 6, { Action = "sit" }))
+		end
+	end
+	-- a fire pit ringed with stones and log benches (the evening hangout)
+	local fx, fz = cx + 120, sandZ0 - 40
+	for n = 0, 9 do
+		local a = n / 10 * math.pi * 2
+		MapKit.ball(beach, "PitStone", 1.1, CFrame.new(fx + math.cos(a) * 2, 0.35, fz + math.sin(a) * 2), rgb(120, 116, 110), Enum.Material.Slate)
+	end
+	for n = 0, 2 do
+		MapKit.cylinder(beach, "Firewood", 3, 0.5, CFrame.new(fx, 0.35, fz) * CFrame.Angles(0, n * 1.05, 0), rgb(110, 76, 50), Enum.Material.Wood)
+	end
+	local ember = deco(beach, "Embers", Vector3.new(1.6, 0.2, 1.6), fx, 0.3, fz, rgb(255, 120, 40), Enum.Material.Neon)
+	MapKit.particles(ember, "smoke")
+	for n = 0, 2 do
+		local a = n / 3 * math.pi * 2 + 0.5
+		local lp = Vector3.new(fx + math.cos(a) * 6, 0.7, fz + math.sin(a) * 6)
+		MapKit.cylinder(beach, "LogBench", 5, 1.4, CFrame.lookAt(lp, Vector3.new(fx, 0.7, fz)) * CFrame.Angles(0, math.pi / 2, 0), rgb(130, 92, 60), Enum.Material.Wood)
+		table.insert(spots, spot(lp.X, 0, lp.Z, fx, fz, { Action = "sit" }))
+	end
+	-- driftwood, shells and starfish scattered about
+	for k = 0, 7 do
+		local x, z = W0 + rng:NextNumber(10, W1 - W0 - 10), wz + rng:NextNumber(12, 40)
+		MapKit.cylinder(beach, "Driftwood", rng:NextNumber(3, 6), 0.5, CFrame.new(x, 0.25, z) * CFrame.Angles(0, rng:NextNumber(0, 3.1), 0), rgb(180, 160, 130), Enum.Material.Wood)
+	end
+	for k = 0, 39 do
+		local x, z = W0 + rng:NextNumber(5, W1 - W0 - 5), wz + rng:NextNumber(4, 60)
+		if k % 4 == 0 then
+			-- a starfish: five little arms
+			for a = 0, 4 do
+				MapKit.deco(beach, "Starfish", Vector3.new(0.25, 0.1, 0.7), CFrame.new(x, 0.05, z) * CFrame.Angles(0, a * 1.2566, 0) * CFrame.new(0, 0, -0.3), rgb(240, 120, 70), Enum.Material.SmoothPlastic)
+			end
+		else
+			local shell = MapKit.ball(beach, "Seashell", 0.5, CFrame.new(x, 0.1, z), ({ rgb(250, 230, 220), rgb(240, 200, 190), rgb(230, 220, 200) })[k % 3 + 1], Enum.Material.SmoothPlastic)
+			shell.Size = Vector3.new(0.5, 0.25, 0.4)
+			shell.CanCollide = false
+		end
+	end
+	-- a rocky jetty at the west end, out into the water
+	for k = 0, 16 do
+		local r = rng:NextNumber(3, 5.5)
+		local rock = MapKit.ball(beach, "JettyRock", r, CFrame.new(W0 - 10 + rng:NextNumber(-2, 2), -0.4 + r * 0.25, wz + 18 - k * 4.5) * CFrame.Angles(rng:NextNumber(0, 1), rng:NextNumber(0, 3), 0), rgb(110, 108, 104):Lerp(rgb(80, 78, 76), rng:NextNumber()), Enum.Material.Slate)
+		rock.Size = Vector3.new(r, r * 0.7, r * 1.1)
+	end
+	table.insert(spots, spot(W0 - 10, 1.6, wz + 10, W0 - 10, wz - 60, { Action = "birdwatch" }))
+	-- kayaks on a rack by the surf shop
+	for k = 0, 2 do
+		MapKit.deco(beach, "Kayak", Vector3.new(1.6, 0.8, 9), CFrame.new(W0 + 60, 1 + k * 1.1, bz - 14), MapKit.FLOWERS[(k + 3) % #MapKit.FLOWERS + 1], Enum.Material.SmoothPlastic)
+	end
+	for _, rz in ipairs({ -3.5, 3.5 }) do
+		deco(beach, "KayakRack", Vector3.new(2.4, 3.6, 0.3), W0 + 60, 0, bz - 14 + rz, rgb(150, 110, 70), Enum.Material.Wood)
+	end
+	-- surf flags at the lifeguard tower: green means good swimming
+	local lx, lz = cx + 30, sandZ0 - 70
+	for n, c in ipairs({ rgb(60, 200, 90), rgb(250, 210, 40) }) do
+		local px = lx - 6 - n * 2
+		deco(beach, "SurfFlagPole", Vector3.new(0.25, 9, 0.25), px, 0, lz, WHITE, Enum.Material.Metal)
+		MapKit.tag(deco(beach, "SurfFlag", Vector3.new(0.05, 1.6, 2.2), px, 7.2, lz + 1.15, c), "WavingFlag")
+	end
+	-- kites up in the breeze, on strings down to the sand
+	for k = 0, 2 do
+		local ax, az = W0 + 160 + k * 170, sandZ0 - 50
+		local top = Vector3.new(ax + 8, 34 + k * 5, az - 30)
+		local kite = MapKit.deco(beach, "Kite", Vector3.new(3, 3, 0.15), CFrame.lookAt(top, top + Vector3.new(0, 0, 1)) * CFrame.Angles(0, 0, math.rad(45)), MapKit.FLOWERS[(k * 2) % #MapKit.FLOWERS + 1], Enum.Material.Fabric)
+		MapKit.tag(kite, "Bob")
+		local base = Vector3.new(ax, 0.3, az)
+		local mid = (top + base) / 2
+		MapKit.deco(beach, "KiteString", Vector3.new(0.05, 0.05, (top - base).Magnitude), CFrame.lookAt(mid, top), WHITE)
+		deco(beach, "KiteStake", Vector3.new(0.3, 0.8, 0.3), ax, 0, az, rgb(150, 110, 70), Enum.Material.Wood)
+	end
+	-- in the water: a swimming raft with a ladder, floaties, a paddleboard
+	-- (they all ride the waves)
+	local rx, rz = cx - 40, wz - 26
+	local raft = MapKit.part(beach, "SwimRaft", Vector3.new(10, 0.8, 10), CFrame.new(rx, -0.7, rz), rgb(236, 230, 214), Enum.Material.WoodPlanks)
+	MapKit.tag(raft, "Bob")
+	for _, sx in ipairs({ -0.5, 0.5 }) do
+		MapKit.tag(MapKit.deco(beach, "RaftLadder", Vector3.new(0.2, 2.4, 0.2), CFrame.new(rx + sx, -0.9, rz + 5.1), rgb(200, 200, 206), Enum.Material.Metal), "Bob")
+	end
+	for k = 0, 5 do
+		local fx2, fz2 = W0 + 80 + k * 90 + rng:NextNumber(-10, 10), wz - rng:NextNumber(8, 30)
+		local ring = MapKit.cylinder(beach, "Floatie", 0.6, 2.4, CFrame.new(fx2, -0.85, fz2) * CFrame.Angles(0, 0, math.rad(90)), MapKit.FLOWERS[k % #MapKit.FLOWERS + 1], Enum.Material.SmoothPlastic)
+		ring.CanCollide = false
+		MapKit.tag(ring, "Bob")
+	end
+	local board = MapKit.deco(beach, "Paddleboard", Vector3.new(2.2, 0.3, 10), CFrame.new(cx + 160, -0.9, wz - 18) * CFrame.Angles(0, 0.4, 0), rgb(250, 200, 60), Enum.Material.SmoothPlastic)
+	MapKit.tag(board, "Bob")
+	-- seaweed washed up along the tide line, and ripples in the sand
+	for k = 0, 23 do
+		local x = W0 + rng:NextNumber(5, W1 - W0 - 5)
+		local weed = MapKit.ball(beach, "Seaweed", 1, CFrame.new(x, 0.05, wz + 13 + rng:NextNumber(-1.5, 1.5)) * CFrame.Angles(0, rng:NextNumber(0, 3), 0), rgb(60, 90, 50):Lerp(rgb(110, 100, 50), rng:NextNumber()), Enum.Material.SmoothPlastic)
+		weed.Size = Vector3.new(rng:NextNumber(1.5, 3.5), 0.15, rng:NextNumber(0.4, 0.9))
+		weed.CanCollide = false
+	end
+	for k = 0, 59 do
+		local x, z = W0 + rng:NextNumber(10, W1 - W0 - 10), wz + rng:NextNumber(16, sandZ0 - wz - 20)
+		MapKit.deco(beach, "SandRipple", Vector3.new(rng:NextNumber(4, 9), 0.05, 0.35), CFrame.new(x, 0.02, z) * CFrame.Angles(0, rng:NextNumber(-0.15, 0.15), 0), SAND:Lerp(WET, 0.35), Enum.Material.Sand)
+	end
+	-- tide pools by the jetty, with a starfish and a little rock in each
+	for k = 0, 2 do
+		local tx, tz = W0 + 8 + k * 9, wz + 6 + (k % 2) * 4
+		local pool = MapKit.disc(beach, "TidePool", 0.08, 5 + k, Vector3.new(tx, 0.04, tz), rgb(70, 150, 170), Enum.Material.Glass)
+		pool.Transparency = 0.3
+		MapKit.ball(beach, "PoolRock", 1.2, CFrame.new(tx + 1, 0.3, tz - 0.6), rgb(110, 108, 104), Enum.Material.Slate)
+	end
+	-- footprints wandering from the boardwalk down to the water
+	local fpx, fpz = cx - 150, sandZ0 - 20
+	for n = 0, 29 do
+		local side = if n % 2 == 0 then -0.45 else 0.45
+		local x = fpx + math.sin(n * 0.25) * 6 + side
+		local z = fpz - n * 2.1
+		if z > wz + 10 then
+			MapKit.deco(beach, "Footprint", Vector3.new(0.5, 0.03, 0.9), CFrame.new(x, 0.02, z) * CFrame.Angles(0, math.sin(n * 0.25) * 0.3, 0), SAND:Lerp(WET, 0.55), Enum.Material.Sand)
+		end
+	end
+	-- little crabs scuttling sideways near the water (see Ambient)
+	for k = 0, 7 do
+		local x, z = W0 + 30 + k * ((W1 - W0 - 60) / 7) + rng:NextNumber(-10, 10), wz + rng:NextNumber(6, 16)
+		local crab = Instance.new("Model")
+		crab.Name = "Crab"
+		crab.Parent = beach
+		local body = MapKit.ball(crab, "CrabBody", 1, CFrame.new(x, 0.3, z), rgb(220, 70, 50), Enum.Material.SmoothPlastic)
+		body.Size = Vector3.new(1, 0.45, 0.8)
+		body.CanCollide = false
+		for _, sx in ipairs({ -1, 1 }) do
+			MapKit.ball(crab, "CrabClaw", 0.4, CFrame.new(x + sx * 0.55, 0.45, z - 0.45), rgb(230, 80, 60), Enum.Material.SmoothPlastic).CanCollide = false
+			for n = -1, 1 do
+				MapKit.deco(crab, "CrabLeg", Vector3.new(0.5, 0.08, 0.08), CFrame.new(x + sx * 0.6, 0.15, z + n * 0.22), rgb(200, 60, 40))
+			end
+		end
+		MapKit.tag(body, "Crab")
+	end
 end
 
 local function details(data, rng)
@@ -840,6 +1071,7 @@ function NorthShore.build(parent, rng, useTerrain)
 	obby(data, rng)
 	beach(data, rng, useTerrain)
 	details(data, rng)
+	beachMore(data, rng)
 	-- each ride streams in whole, so every screen can turn all of it
 	for _, ride in ipairs(data.Rides or {}) do
 		pcall(function()

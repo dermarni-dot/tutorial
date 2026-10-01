@@ -23,6 +23,13 @@ local ourSpeed -- the WalkSpeed we set (so we only undo our own change)
 
 function Moves.SetSprint(on)
 	want = on == true
+	if Moves.OnChanged then
+		Moves.OnChanged(want)
+	end
+end
+
+function Moves.Sprinting()
+	return want
 end
 
 -- food and workouts refill stamina
@@ -65,7 +72,7 @@ local function step(dt)
 	local sprinting = false
 	if humanoid and root and humanoid.Health > 0 then
 		local moving = humanoid.MoveDirection.Magnitude > 0.1
-		local busy = root.Anchored or player:GetAttribute("Hiding") or player:GetAttribute("Blocking") or character:GetAttribute("Treadmill")
+		local busy = root.Anchored or player:GetAttribute("Hiding") or player:GetAttribute("Detention") or player:GetAttribute("Blocking") or character:GetAttribute("Treadmill")
 		sprinting = want and moving and not busy and not exhausted and stamina > 0
 		if sprinting then
 			stamina = math.max(0, stamina - st.Drain * dt)
@@ -82,7 +89,8 @@ local function step(dt)
 				ourSpeed = st.Sprint
 			end
 		else
-			if ourSpeed and humanoid.WalkSpeed == ourSpeed then
+			-- back to a walk (also from Roblox's default 16, which looks like a run)
+			if (ourSpeed and humanoid.WalkSpeed == ourSpeed) or humanoid.WalkSpeed == 16 then
 				humanoid.WalkSpeed = Fitness.WALK
 			end
 			ourSpeed = nil

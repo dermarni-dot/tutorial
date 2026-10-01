@@ -209,6 +209,40 @@ L.volley = function(t, ph)
 	return { RS = A(160 - k * 110, 0, 8), RE = A(10), LS = A(90, 0, -10), LE = A(30), Root = CFrame.new(0, k * 1.6, 0), LK = A(-30 * k), RK = A(-30 * k), Neck = A(20 - k * 20) }, true
 end
 
+-- emotes (players pick them: T; citizens use some too)
+L.clap = function(t, ph)
+	local c = math.abs(osc(t, 9, ph))
+	return { LS = A(70, 0, -22 - c * 22), RS = A(70, 0, 22 + c * 22), LE = A(40), RE = A(40), LW = A(0, 70, 0), RW = A(0, -70, 0), Neck = A(6) }, false
+end
+L.laugh = function(t, ph)
+	local s = osc(t, 14, ph)
+	return { LS = A(28, 0, -14), RS = A(28, 0, 14), LE = A(96), RE = A(96), Waist = A(-14 + s * 4), Neck = A(20 + s * 6), Root = CFrame.new(0, s * 0.05, 0) }, false
+end
+-- waving down a ride: an arm up high, waving, leaning toward the road
+L.hail = function(t, ph)
+	local w = osc(t, 7, ph)
+	return { RS = A(165, 0, 18 + w * 14), RE = A(14), LS = A(10, 0, 8), LE = A(16), Neck = A(6, 18, 0), Waist = A(0, 10, 4) }, false
+end
+L.salute = function(t, ph)
+	return { RS = A(128, 0, 40), RE = A(128), RW = A(0, 0, -20), LS = A(4, 0, 6), LE = A(4), Neck = A(4) }, false
+end
+L.flex = function(t, ph)
+	local p = math.abs(osc(t, 2.4, ph))
+	return { LS = A(90, 0, -82), RS = A(90, 0, 82), LE = A(110 + p * 20), RE = A(110 + p * 20), Waist = A(-4), Neck = A(10), Root = CFrame.new(0, -0.1 * p, 0) }, false
+end
+L.shrugEmote = function(t, ph)
+	local p = math.abs(osc(t, 3, ph))
+	return { LS = A(20, 0, 24 + p * 8), RS = A(20, 0, -24 - p * 8), LE = A(78), RE = A(78), Neck = A(-6, 0, 10), Root = CFrame.new(0, p * 0.08, 0) }, false
+end
+L.sitdown = function(t, ph)
+	return { Root = CFrame.new(0, -2.1, 0) * A(-10, 0, 0), LH = A(84, 0, -6), RH = A(84, 0, 6), LK = A(-6), RK = A(-6), LS = A(-30, 0, 10), RS = A(-30, 0, -10), LE = A(4), RE = A(4), Waist = A(8), Neck = A(-4 + osc(t, 0.4, ph) * 4) }, true
+end
+local EMOTES = {
+	wave = "wave", dance = "dance", cheer = "cheer", point = "point", clap = "clap",
+	laugh = "laugh", salute = "salute", flex = "flex", shrug = "shrugEmote", sit = "sitdown",
+}
+Poses.EMOTES = EMOTES
+
 -- little things people do while they wait (see update)
 local GESTURES = {
 	watch = { Len = 2.4, Pose = { LS = A(58, 0, -24), LE = A(98), LW = A(0, 60, 0), Neck = A(-22, 12, 0) } },
@@ -902,6 +936,19 @@ local rgb = Color3.fromRGB
 local Ball, Cyl = Enum.PartType.Ball, Enum.PartType.Cylinder
 local PROPS = {}
 Poses.Props = PROPS
+
+-- a long-handled tool (mop, broom, rake): held out in front, its head on the
+-- floor. It hangs off the torso, not the hand, so however the arms move the
+-- head stays down on the ground (the torso is about 3.7 studs up; bending
+-- over tips the far end down, so it's aimed a little higher)
+local function pole(f, b, s, name, top, bottom, thick, color, material)
+	local torso = b.Torso
+	top, bottom = top * s, bottom * s
+	local mid = (top + bottom) / 2
+	local cf = CFrame.lookAt(mid, mid + (bottom - top).Unit)
+	prop(torso, name, Vector3.new(thick * s, thick * s, (bottom - top).Magnitude), cf, color, nil, material).Parent = f
+	return CFrame.lookAt(bottom, bottom + Vector3.new(bottom.X - top.X, 0, bottom.Z - top.Z))
+end
 -- each builder: (folder, body parts, scale) -> nothing (parents parts to folder)
 PROPS.Cup = function(f, b, s)
 	prop(b.RightHand, "Cup", Vector3.new(0.45, 0.55, 0.45) * s, CFrame.new(0, -0.3 * s, -0.25 * s), rgb(245, 245, 240)).Parent = f
@@ -928,8 +975,8 @@ PROPS.Box = function(f, b, s)
 	prop(b.Torso, "Box", Vector3.new(1.6, 1.3, 1.3) * s, CFrame.new(0, -0.1 * s, -1.3 * s), rgb(190, 150, 100), nil, Enum.Material.WoodPlanks).Parent = f
 end
 PROPS.Broom = function(f, b, s)
-	prop(b.RightHand, "Broom", Vector3.new(0.15, 4.2, 0.15) * s, CFrame.new(0, -0.6 * s, -0.3 * s) * A(-30, 0, 20), rgb(150, 110, 70), nil, Enum.Material.Wood).Parent = f
-	prop(b.RightHand, "Bristles", Vector3.new(1.2, 0.5, 0.4) * s, CFrame.new(0.7 * s, -2.4 * s, -1.2 * s) * A(-30, 0, 20), rgb(210, 180, 100)).Parent = f
+	local foot = pole(f, b, s, "Broom", Vector3.new(0.5, 0.2, -1.3), Vector3.new(0.8, -3.2, -2.9), 0.15, rgb(150, 110, 70), Enum.Material.Wood)
+	prop(b.Torso, "Bristles", Vector3.new(1.2, 0.5, 0.4) * s, foot * CFrame.new(0, -0.1 * s, 0), rgb(210, 180, 100)).Parent = f
 end
 PROPS.Trowel = function(f, b, s)
 	prop(b.RightHand, "Trowel", Vector3.new(0.3, 0.7, 0.1) * s, CFrame.new(0, -0.5 * s, 0), rgb(160, 165, 170), nil, Enum.Material.Metal).Parent = f
@@ -977,12 +1024,12 @@ PROPS.WateringCan = function(f, b, s)
 	prop(b.RightHand, "Spout", Vector3.new(0.15, 0.15, 0.9) * s, CFrame.new(0, -0.5 * s, -1.1 * s) * A(-20, 0, 0), rgb(50, 140, 80), nil, Enum.Material.Metal).Parent = f
 end
 PROPS.Rake = function(f, b, s)
-	prop(b.RightHand, "RakeHandle", Vector3.new(0.14, 4.6, 0.14) * s, CFrame.new(0, -0.8 * s, -0.4 * s) * A(-35, 0, 0), rgb(150, 110, 70), nil, Enum.Material.Wood).Parent = f
-	prop(b.RightHand, "RakeHead", Vector3.new(1.4, 0.15, 0.4) * s, CFrame.new(0, -2.7 * s, -1.8 * s) * A(-35, 0, 0), rgb(120, 124, 130), nil, Enum.Material.Metal).Parent = f
+	local foot = pole(f, b, s, "RakeHandle", Vector3.new(0.4, 0, -1.2), Vector3.new(0.3, -3.2, -3.4), 0.14, rgb(150, 110, 70), Enum.Material.Wood)
+	prop(b.Torso, "RakeHead", Vector3.new(1.4, 0.15, 0.4) * s, foot * CFrame.new(0, 0.05 * s, 0), rgb(120, 124, 130), nil, Enum.Material.Metal).Parent = f
 end
 PROPS.Mop = function(f, b, s)
-	prop(b.RightHand, "MopHandle", Vector3.new(0.14, 4.4, 0.14) * s, CFrame.new(0, -0.7 * s, -0.4 * s) * A(-30, 0, 15), rgb(90, 140, 200), nil, Enum.Material.Metal).Parent = f
-	prop(b.RightHand, "MopHead", Vector3.new(1, 0.4, 0.7) * s, CFrame.new(0.5 * s, -2.6 * s, -1.5 * s) * A(-30, 0, 15), rgb(230, 230, 220), nil, Enum.Material.Fabric).Parent = f
+	local foot = pole(f, b, s, "MopHandle", Vector3.new(0.5, 0.2, -1.3), Vector3.new(0.9, -3.2, -3.0), 0.14, rgb(90, 140, 200), Enum.Material.Metal)
+	prop(b.Torso, "MopHead", Vector3.new(1, 0.4, 0.7) * s, foot * CFrame.new(0, 0.05 * s, 0), rgb(230, 230, 220), nil, Enum.Material.Fabric).Parent = f
 end
 PROPS.Radio = function(f, b, s)
 	prop(b.RightHand, "Radio", Vector3.new(0.3, 0.6, 0.2) * s, CFrame.new(0, -0.35 * s, -0.15 * s), rgb(30, 30, 34)).Parent = f
@@ -1790,17 +1837,69 @@ local function update(model, st, t, dt, camPos, myRoot)
 			end
 		end
 	end
+	-- (a copy: some poses hand back the same table every time, and the layers
+	-- below adjust it)
+	if target then
+		local copy = {}
+		for k, v in pairs(target) do
+			copy[k] = v
+		end
+		target = copy
+	end
 	-- a living body: when someone stands at a spot doing something with their
 	-- arms, their legs and hips shift weight and their chest breathes too
 	if target and not full and root.Anchored and not (info and (info.Seated or info.Lying)) then
+		-- weight shifts from foot to foot (the hips roll, the resting knee
+		-- bends, the ankles keep the feet flat), and every few seconds a foot
+		-- lifts and steps, the way people shuffle while they work
 		local sway = osc(t, 0.9, st.Phase)
-		local breath = osc(t, 1.7, st.Phase + 1)
-		target.LH = target.LH or A(3 + sway * 3, 0, -3)
-		target.RH = target.RH or A(3 - sway * 3, 0, 3)
-		target.LK = target.LK or A(-4 - math.max(0, sway) * 7)
-		target.RK = target.RK or A(-4 - math.max(0, -sway) * 7)
-		target.Root = target.Root or (CFrame.new(0, -abs(sway) * 0.04, 0) * A(0, 0, sway * 2.5))
-		target.Waist = target.Waist or A(breath * 1.5, 0, -sway * 1.5)
+		local lift = 0
+		local side = 0
+		local c = (t * 0.21 + st.Phase * 0.37) % 1
+		if c < 0.14 then
+			lift, side = sin(c / 0.14 * math.pi), 1
+		elseif c > 0.5 and c < 0.64 then
+			lift, side = sin((c - 0.5) / 0.14 * math.pi), -1
+		end
+		local ll, rl = (if side == 1 then lift else 0), (if side == -1 then lift else 0)
+		target.LH = target.LH or A(4 + sway * 4 + ll * 18, 0, -3 - sway * 1.5)
+		target.RH = target.RH or A(4 - sway * 4 + rl * 18, 0, 3 - sway * 1.5)
+		target.LK = target.LK or A(-5 - math.max(0, sway) * 10 - ll * 30)
+		target.RK = target.RK or A(-5 - math.max(0, -sway) * 10 - rl * 30)
+		target.LA = target.LA or A(1 + math.max(0, sway) * 5 + ll * 12, 0, sway * 2.5)
+		target.RA = target.RA or A(1 + math.max(0, -sway) * 5 + rl * 12, 0, sway * 2.5)
+		target.Root = target.Root or (CFrame.new(sway * 0.08, -abs(sway) * 0.05 - (ll + rl) * 0.04, 0) * A(0, sway * 2, -sway * 2.5))
+		target.Waist = target.Waist or A(0, -sway * 2, sway * 2)
+		-- idle wrists and a head that isn't locked in place
+		target.LW = target.LW or A(osc(t, 0.7, st.Phase + 2) * 5)
+		target.RW = target.RW or A(osc(t, 0.8, st.Phase + 3) * 5)
+	end
+	-- seated: the feet don't stay glued, a knee bounces now and then
+	if target and root.Anchored and info and info.Seated and target.LK and target.RK then
+		local tap = math.max(0, osc(t, 0.45, st.Phase)) ^ 3
+		target.LK = target.LK * A(osc(t, 7, st.Phase) * 4 * tap)
+		target.RK = target.RK * A(osc(t, 0.6, st.Phase + 1) * 2)
+	end
+	-- everyone breathes: the chest rises, the shoulders lift with it (asleep
+	-- too, slower and deeper)
+	if target then
+		local lying = info and info.Lying
+		local breath = osc(t, if lying then 1.1 else 1.7, st.Phase + 1)
+		local depth = if lying then 2.2 else 1.3
+		if target.Waist then
+			target.Waist = target.Waist * A(breath * depth, 0, 0)
+		elseif not full then
+			target.Waist = A(breath * depth, 0, 0)
+		end
+		if target.Neck then
+			target.Neck = target.Neck * A(-breath * depth * 0.5, 0, 0)
+		end
+		if target.LS then
+			target.LS = target.LS * A(0, 0, breath * 1.2)
+		end
+		if target.RS then
+			target.RS = target.RS * A(0, 0, -breath * 1.2)
+		end
 	end
 	-- a checkout in progress: the customer and the clerk play their parts
 	local coK, coKind, coStart = checkoutK(model)
@@ -1841,6 +1940,18 @@ local function update(model, st, t, dt, camPos, myRoot)
 			steps.Root = steps.Root * A(0, 0, -st.Turn * math.min(speed, 16) * 0.35)
 		end
 		if (carrying or moving) and target then
+			-- the arms bob with each step (a bag swings, a tray steadies)
+			local bob = sin(t * math.max(4, speed * 0.9) + st.Phase)
+			for _, k in ipairs({ "LS", "RS" }) do
+				if target[k] then
+					target[k] = target[k] * A(bob * (if carrying then 3 else 1.5), 0, 0)
+				end
+			end
+			for _, k in ipairs({ "LE", "RE" }) do
+				if target[k] then
+					target[k] = target[k] * A(abs(bob) * 2.5, 0, 0)
+				end
+			end
 			for k, v in pairs(steps) do
 				target[k] = v
 			end
@@ -1848,6 +1959,43 @@ local function update(model, st, t, dt, camPos, myRoot)
 		else
 			target, full = steps, true
 		end
+	end
+	-- out in the rain: an umbrella up over the head (left hand), unless indoors
+	local raining = workspace:GetAttribute("Raining") == true
+	local wantUmbrella = false
+	if raining and not root.Anchored and st.Walking then
+		if not st.RoofCheck or t > st.RoofCheck then
+			st.RoofCheck = t + 1.2
+			local head = model:FindFirstChild("Head")
+			local hit = head and pcall(function()
+				local params = RaycastParams.new()
+				params.FilterType = Enum.RaycastFilterType.Exclude
+				params.FilterDescendantsInstances = { model }
+				st.Indoors = workspace:Raycast(head.Position, Vector3.new(0, 40, 0), params) ~= nil
+			end)
+		end
+		wantUmbrella = not st.Indoors
+	end
+	if wantUmbrella and not st.Umbrella then
+		local head = st.Body.Head or model:FindFirstChild("Head")
+		if head then
+			local s = model:GetAttribute("Scale") or 1
+			local f = Instance.new("Folder")
+			f.Name = "LocalUmbrella"
+			local colors = { rgb(30, 30, 36), rgb(200, 40, 50), rgb(40, 90, 180), rgb(250, 200, 40), rgb(60, 150, 90), rgb(160, 90, 200) }
+			local color = colors[math.floor(st.Phase * 10) % #colors + 1]
+			prop(head, "UmbrellaCanopy", Vector3.new(0.3, 4.4, 4.4) * s, CFrame.new(-0.5 * s, 2.1 * s, 0) * A(0, 0, 90), color, Cyl, Enum.Material.Fabric).Parent = f
+			prop(head, "UmbrellaTop", Vector3.new(0.6, 0.5, 0.6) * s, CFrame.new(-0.5 * s, 2.45 * s, 0) * A(0, 0, 90), color:Lerp(rgb(0, 0, 0), 0.3), Cyl).Parent = f
+			prop(head, "UmbrellaShaft", Vector3.new(0.1, 2.6, 0.1) * s, CFrame.new(-0.6 * s, 0.85 * s, -0.3 * s), rgb(40, 40, 44), nil, Enum.Material.Metal).Parent = f
+			f.Parent = model
+			st.Umbrella = f
+		end
+	elseif not wantUmbrella and st.Umbrella then
+		st.Umbrella:Destroy()
+		st.Umbrella = nil
+	end
+	if st.Umbrella and target and not fighting then
+		target.LS, target.LE = A(118, 0, -6), A(72)
 	end
 	-- walking hand in hand with a partner (a date): the near arm reaches out
 	-- to them instead of swinging
@@ -1911,6 +2059,13 @@ local function update(model, st, t, dt, camPos, myRoot)
 	-- nobody to look at: now and then glance around (a shop window, someone
 	-- walking past), easing the head there and back
 	if not lookYaw and not coK and poseName ~= "sleep" and poseName ~= "ko" and not fighting and not (info and info.Lying) then
+		-- at the curb: look left, then right, before crossing
+		local lb = model:GetAttribute("LookBoth")
+		local since = lb and workspace:GetServerTimeNow() - lb
+		if since and since >= 0 and since < 1.4 then
+			st.NextGlance = t + 0.4
+			st.GlanceGoal = if since < 0.65 then -55 else 55
+		end
 		if t > (st.NextGlance or 0) then
 			st.NextGlance = t + 1.5 + ((st.Phase * 7 + t) % 3.5)
 			st.GlanceGoal = if (t + st.Phase) % 1 < 0.45 then 0 else ((t * 13 + st.Phase * 5) % 70) - 35
@@ -2134,6 +2289,9 @@ local function playerUpdate(model, st, t, dt, player)
 		target, full = { LS = A(20 + j, 0, 30), RS = A(20 - j, 0, -30), LE = A(60), RE = A(60), Waist = A(-8 + j * 0.5), Neck = A(-10, j * 2, 0), LK = A(-20), RK = A(-20), Root = CFrame.new(0, -0.3, 0) }, true
 	elseif model:GetAttribute("Surrender") then
 		target, full = L.handsup(t, st.Phase)
+	elseif model:GetAttribute("Emote") and EMOTES[model:GetAttribute("Emote")] and L[EMOTES[model:GetAttribute("Emote")]] and now - st.Swing > 1 then
+		-- an emote (see PlayerService: T)
+		target, full = L[EMOTES[model:GetAttribute("Emote")]](t, st.Phase)
 	elseif seatPart and seatPart.Name == "SwingSeat" then
 		-- pumping the swing: legs out on the way forward, tucked on the way back
 		target, full = L.swingsit(t, st.Phase)

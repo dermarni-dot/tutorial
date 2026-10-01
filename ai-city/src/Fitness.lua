@@ -7,7 +7,7 @@
 
 local Fitness = {}
 
-Fitness.WALK = 16 -- normal walking speed
+Fitness.WALK = 12 -- normal walking speed (a walk, not a jog: Shift to run)
 Fitness.MAX_LEVEL = 20
 
 -- what a fitness level gets you
@@ -15,7 +15,7 @@ function Fitness.Stats(level)
 	level = math.clamp(level or 1, 1, Fitness.MAX_LEVEL)
 	return {
 		MaxStamina = 100 + (level - 1) * 12, -- how much stamina you have
-		Sprint = 24 + (level - 1) * 0.6, -- sprint speed (walking is 16)
+		Sprint = 24 + (level - 1) * 0.6, -- sprint speed (walking is 12)
 		Drain = 20, -- stamina per second while sprinting
 		Regen = 11 + level * 1.5, -- stamina per second while not sprinting
 		Delay = 0.9, -- seconds before it starts refilling

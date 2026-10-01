@@ -14,6 +14,31 @@ local deco, part, rgb = MapKit.deco, MapKit.part, MapKit.rgb
 local EXTENT = MapKit.EXTENT
 
 -- keep the hills and the woods off the prison and Prison Road
+-- would a hill or mountain of this size (a terrain ball: center p, radius R)
+-- reach anything people walk or drive on? (the city, the whole North Shore and
+-- its ocean, the prison and Prison Road). Terrain carving under roads only
+-- goes a few studs up, so anything taller would hang over the road.
+local function inTheWay(p, R)
+	local reach = if math.abs(p.Y) < R then math.sqrt(R * R - p.Y * p.Y) else 0
+	reach += 40
+	local function rect(x0, z0, x1, z1)
+		local dx = math.max(x0 - p.X, 0, p.X - x1)
+		local dz = math.max(z0 - p.Z, 0, p.Z - z1)
+		return dx * dx + dz * dz < reach * reach
+	end
+	if rect(-EXTENT - 30, -EXTENT - 30, EXTENT + 30, EXTENT + 30) then
+		return true
+	end
+	if rect(NorthShore.WEST - 1300, NorthShore.WATER_Z - 950, NorthShore.EAST + 1300, -EXTENT) then
+		return true -- (the shore, and the ocean all the way along)
+	end
+	local c = Prison.CENTER
+	if (Vector3.new(p.X, 0, p.Z) - Vector3.new(c.X, 0, c.Z)).Magnitude < Prison.RADIUS + reach then
+		return true
+	end
+	return rect(EXTENT, c.Z - 12, c.X, c.Z + 12)
+end
+
 local function nearPrison(p, margin)
 	-- (and off the North Shore: Funland, the beach and the ocean)
 	if p.X > NorthShore.WEST - margin and p.X < NorthShore.EAST + margin and p.Z < -EXTENT + margin * 0.3 then
@@ -49,8 +74,9 @@ function Landscape.build(parent, rng)
 			local a = n / 28 * math.pi * 2 + rng:NextNumber(-0.1, 0.1)
 			local r = EXTENT + rng:NextNumber(140, 420)
 			local p = Vector3.new(math.cos(a) * r, -rng:NextNumber(20, 34), math.sin(a) * r)
-			if (p - Landscape.LAKE).Magnitude > Landscape.LAKE_RADIUS + 90 and not nearPrison(p, 90) then
-				terrain:FillBall(p, rng:NextNumber(45, 80), Enum.Material.Grass)
+			local R = rng:NextNumber(45, 80)
+			if (p - Landscape.LAKE).Magnitude > Landscape.LAKE_RADIUS + 90 and not nearPrison(p, 90) and not inTheWay(p, R) then
+				terrain:FillBall(p, R, Enum.Material.Grass)
 			end
 		end
 		-- mountains on the horizon
@@ -59,8 +85,8 @@ function Landscape.build(parent, rng)
 			local r = EXTENT + rng:NextNumber(700, 820)
 			local height = rng:NextNumber(150, 230)
 			local p = Vector3.new(math.cos(a) * r, -height * 0.35, math.sin(a) * r)
-			if p.Z < -EXTENT and math.abs(p.X) < 1100 then
-				continue -- (the ocean is up north)
+			if inTheWay(p, height) then
+				continue -- (never over a road, the shore or the ocean)
 			end
 			terrain:FillBall(p, height, Enum.Material.Rock)
 			terrain:FillBall(p + Vector3.new(0, height * 0.72, 0), height * 0.38, Enum.Material.Snow)
@@ -104,10 +130,10 @@ function Landscape.build(parent, rng)
 		pcall(function()
 			terrain.Decoration = true
 			-- clear enough to see the fish, the weeds and the rocks below
-			terrain.WaterColor = rgb(40, 120, 125)
-			terrain.WaterReflectance = 0.45
-			terrain.WaterTransparency = 0.85
-			terrain.WaterWaveSize = 0.12
+			terrain.WaterColor = rgb(32, 112, 140)
+			terrain.WaterReflectance = 0.6
+			terrain.WaterTransparency = 0.72
+			terrain.WaterWaveSize = 0.18
 			terrain.WaterWaveSpeed = 8
 		end)
 	else

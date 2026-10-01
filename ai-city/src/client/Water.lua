@@ -150,7 +150,7 @@ function Water.Bite(position)
 		end
 	end
 	if best then
-		best.Goal = position - Vector3.new(0, 0.6, 0)
+		best.Goal = position - Vector3.new(0, 1.1, 0) -- (just under the bobber, not poking out)
 		best.Chase = os.clock() + 3
 	end
 end

@@ -12,15 +12,15 @@ end
 
 -- Keyframes by hour. Everything between two keyframes is blended.
 local KEYS = {
-	{ Hour = 0, Ambient = rgb(44, 50, 80), Outdoor = rgb(52, 62, 100), Brightness = 0.9, Exposure = -0.05, AtmoColor = rgb(40, 52, 96), AtmoDecay = rgb(22, 26, 60), Density = 0.34, Haze = 1.1, Glare = 0, Tint = rgb(190, 204, 255), Saturation = -0.01, Contrast = 0.2, Bloom = 0.9, Rays = 0, Cloud = rgb(70, 76, 100) },
-	{ Hour = 4.8, Ambient = rgb(48, 52, 84), Outdoor = rgb(58, 64, 104), Brightness = 0.95, Exposure = -0.05, AtmoColor = rgb(60, 66, 116), AtmoDecay = rgb(40, 36, 80), Density = 0.35, Haze = 1.3, Glare = 0, Tint = rgb(198, 206, 255), Saturation = 0.02, Contrast = 0.18, Bloom = 0.8, Rays = 0, Cloud = rgb(90, 90, 120) },
+	{ Hour = 0, Ambient = rgb(92, 100, 136), Outdoor = rgb(112, 124, 168), Brightness = 1.6, Exposure = 0.3, AtmoColor = rgb(60, 74, 120), AtmoDecay = rgb(34, 40, 80), Density = 0.26, Haze = 0.8, Glare = 0, Tint = rgb(206, 216, 255), Saturation = -0.01, Contrast = 0.08, Bloom = 0.9, Rays = 0, Cloud = rgb(70, 76, 100) },
+	{ Hour = 4.8, Ambient = rgb(94, 98, 136), Outdoor = rgb(114, 120, 166), Brightness = 1.6, Exposure = 0.28, AtmoColor = rgb(76, 82, 132), AtmoDecay = rgb(50, 46, 96), Density = 0.27, Haze = 0.95, Glare = 0, Tint = rgb(198, 206, 255), Saturation = 0.02, Contrast = 0.18, Bloom = 0.8, Rays = 0, Cloud = rgb(90, 90, 120) },
 	{ Hour = 6.2, Ambient = rgb(64, 54, 62), Outdoor = rgb(89, 72, 77), Brightness = 1.04, Exposure = -0.2, AtmoColor = rgb(236, 170, 160), AtmoDecay = rgb(170, 110, 140), Density = 0.27, Haze = 1.1, Glare = 0.36, Tint = rgb(255, 226, 214), Saturation = 0.16, Contrast = 0.16, Bloom = 0.5, Rays = 0.14, Cloud = rgb(255, 196, 180) },
 	{ Hour = 8, Ambient = rgb(70, 70, 74), Outdoor = rgb(84, 86, 92), Brightness = 1.52, Exposure = -0.3, AtmoColor = rgb(190, 212, 240), AtmoDecay = rgb(96, 136, 200), Density = 0.22, Haze = 0.61, Glare = 0.12, Tint = rgb(255, 248, 240), Saturation = 0.16, Contrast = 0.2, Bloom = 0.25, Rays = 0.06, Cloud = rgb(250, 250, 255) },
 	{ Hour = 12.5, Ambient = rgb(72, 74, 78), Outdoor = rgb(87, 90, 97), Brightness = 1.76, Exposure = -0.37, AtmoColor = rgb(180, 210, 245), AtmoDecay = rgb(84, 128, 200), Density = 0.2, Haze = 0.44, Glare = 0.06, Tint = rgb(255, 252, 248), Saturation = 0.16, Contrast = 0.21, Bloom = 0.2, Rays = 0.04, Cloud = rgb(255, 255, 255) },
 	{ Hour = 16.5, Ambient = rgb(75, 70, 65), Outdoor = rgb(90, 84, 79), Brightness = 1.6, Exposure = -0.32, AtmoColor = rgb(230, 204, 176), AtmoDecay = rgb(150, 132, 150), Density = 0.24, Haze = 0.83, Glare = 0.24, Tint = rgb(255, 240, 220), Saturation = 0.2, Contrast = 0.2, Bloom = 0.3, Rays = 0.1, Cloud = rgb(255, 238, 214) },
 	{ Hour = 18.2, Ambient = rgb(77, 56, 54), Outdoor = rgb(105, 69, 61), Brightness = 1.2, Exposure = -0.24, AtmoColor = rgb(255, 150, 110), AtmoDecay = rgb(170, 90, 120), Density = 0.27, Haze = 1.32, Glare = 0.54, Tint = rgb(255, 214, 186), Saturation = 0.24, Contrast = 0.18, Bloom = 0.55, Rays = 0.18, Cloud = rgb(255, 160, 120) },
-	{ Hour = 19.4, Ambient = rgb(72, 58, 90), Outdoor = rgb(86, 68, 112), Brightness = 1.05, Exposure = -0.08, AtmoColor = rgb(150, 100, 160), AtmoDecay = rgb(70, 50, 110), Density = 0.34, Haze = 1.8, Glare = 0.2, Tint = rgb(228, 204, 255), Saturation = 0.12, Contrast = 0.2, Bloom = 0.8, Rays = 0.04, Cloud = rgb(170, 120, 170) },
-	{ Hour = 21, Ambient = rgb(46, 52, 84), Outdoor = rgb(54, 64, 104), Brightness = 0.9, Exposure = -0.05, AtmoColor = rgb(44, 56, 100), AtmoDecay = rgb(24, 28, 64), Density = 0.34, Haze = 1.1, Glare = 0, Tint = rgb(194, 206, 255), Saturation = 0, Contrast = 0.2, Bloom = 0.9, Rays = 0, Cloud = rgb(80, 84, 110) },
+	{ Hour = 19.4, Ambient = rgb(90, 76, 110), Outdoor = rgb(108, 90, 136), Brightness = 1.3, Exposure = 0.1, AtmoColor = rgb(150, 100, 160), AtmoDecay = rgb(70, 50, 110), Density = 0.34, Haze = 1.8, Glare = 0.2, Tint = rgb(228, 204, 255), Saturation = 0.12, Contrast = 0.2, Bloom = 0.8, Rays = 0.04, Cloud = rgb(170, 120, 170) },
+	{ Hour = 21, Ambient = rgb(92, 100, 136), Outdoor = rgb(112, 124, 168), Brightness = 1.6, Exposure = 0.3, AtmoColor = rgb(62, 76, 122), AtmoDecay = rgb(36, 42, 84), Density = 0.26, Haze = 0.8, Glare = 0, Tint = rgb(206, 216, 255), Saturation = 0, Contrast = 0.08, Bloom = 0.9, Rays = 0, Cloud = rgb(80, 84, 110) },
 }
 Atmosphere.Keys = KEYS
 
@@ -91,8 +91,8 @@ function Atmosphere.Setup(lighting)
 	depth.FocusDistance = 80
 	depth.InFocusRadius = 140
 	depth.NearIntensity = 0
-	lighting.EnvironmentDiffuseScale = 0.45 -- (full sky light flattens and washes everything out)
-	lighting.EnvironmentSpecularScale = 0.6
+	lighting.EnvironmentDiffuseScale = 0.55 -- (full sky light flattens and washes everything out)
+	lighting.EnvironmentSpecularScale = 1 -- (real reflections on glass, metal, paint and wet streets)
 	lighting.GlobalShadows = true
 	lighting.ShadowSoftness = 0.12 -- crisp, realistic sun shadows
 	lighting.GeographicLatitude = 32
@@ -166,11 +166,13 @@ Atmosphere.WEATHER = {
 	Fair = { Cover = 0.5, Density = 0.55, Gray = 0, Dim = 0, Label = "🌤️ Fair weather" },
 	Cloudy = { Cover = 0.72, Density = 0.7, Gray = 0.25, Dim = 0.12, Label = "⛅ Cloudy" },
 	Overcast = { Cover = 0.88, Density = 0.85, Gray = 0.45, Dim = 0.25, Label = "☁️ Overcast" },
+	-- showers in the morning and the late afternoon (see RainService)
+	Rainy = { Cover = 0.95, Density = 0.9, Gray = 0.55, Dim = 0.3, Label = "🌧️ Showers on and off" },
 }
 Atmosphere.Weather = "Fair"
 function Atmosphere.PickWeather(rng)
 	local roll = rng:NextNumber()
-	Atmosphere.Weather = if roll < 0.3 then "Clear" elseif roll < 0.7 then "Fair" elseif roll < 0.9 then "Cloudy" else "Overcast"
+	Atmosphere.Weather = if roll < 0.27 then "Clear" elseif roll < 0.6 then "Fair" elseif roll < 0.78 then "Cloudy" elseif roll < 0.88 then "Overcast" else "Rainy"
 	return Atmosphere.Weather
 end
 

@@ -12,6 +12,28 @@ Players can talk to anyone, give speeches, run for mayor and pass laws. They can
 - **Rojo:** run `rojo serve` in this folder (see `default.project.json`).
 - **Saving:** citizens, families, memories, the mayor and players' coins are saved with DataStores once the place is published (turn on *Studio Access to API Services* to test saving in Studio). Without access the game still runs; it just doesn't save.
 
+## What's new in this update
+
+| | |
+|---|---|
+| 🏙️ **A modern look** | Every surface was refinished: plaster walls and ceilings instead of flat plastic, slim dark-aluminium window frames, precast concrete trim, ceramic tile floors, carpets, shingle roofs, leafy hedges, glossy car paint and glass that reflects the sky. Full-strength reflections on glass, metal and paint. Apartment and office blocks have balconies with glass railings, and some buildings have an LED strip along the roofline that glows at night. Streets have slim modern LED street lamps, stop lines behind every crosswalk, manhole covers and storm drains. |
+| 🌳 **Realistic trees** | Three kinds of leafy tree: oaks (a leaning, tapering trunk with roots that splits into limbs, each carrying a leaf cluster that's sunlit on top and shaded underneath), maples (fuller and rounder, some turning orange) and birches (slim white trunks with dark marks). Pines are built from drooping, layered tiers with a spike on top. |
+| 🏢 **More detail on every building** | Flower boxes under upstairs windows, drainpipes and gutters, black iron fire escapes on tall brick buildings, a street number over every door, roof vents, satellite dishes and air-conditioning fans that actually spin, and window-washer gondolas hanging off some glass towers. |
+| 🏖️ **A much more detailed beach** | Surf that rolls up the sand and slides back, wet sand at the water's edge, dunes with beach grass, sand ripples, footprints, seaweed on the tide line, shells, starfish, driftwood, tide pools and a rocky jetty. Lounge chairs, picnic blankets, a fire pit with log benches, an outdoor shower, ramps down from the boardwalk, kayaks, surf-condition flags and kites. In the water: a swimming raft, floaties and a paddleboard bobbing on the waves, and little crabs scuttling sideways along the shore. The ocean is bluer and more reflective. |
+| 🏁 **Street races** | Drive onto a pad at the checkered gantry on Shore Drive: **City Loop** (24 checkpoints around the whole city) or **Shore Sprint**. A countdown, glowing rings that only you see, a timer, coins, personal bests and a board of the five fastest times. Skipping checkpoints doesn't count; getting out of your car ends the race. |
+| 🚕 **Rideshare** | Turn on the 🚕 **Rides** app and people on the sidewalk wave you down. Pick them up, drive them across town and drop them at the door for a fare, a star rating and tips (slow or reckless driving costs stars). |
+| 💃 **Emotes and people who react** | Press **T** for ten emotes (wave, dance, cheer, point, clap, laugh, salute, flex, shrug, sit). People nearby react: they join the dance, cheer, laugh along or salute back. They also notice your pet (and how big or tiny it is) and your car, and they yell if you speed past. |
+| 🏫 **School fights** | At a school you can get into a scuffle with a student (9 and up, fists only). They swing back, the other kids crowd round chanting, and a teacher (or the principal over the loudspeaker) breaks it up. No police, but you get 20 seconds of detention in the principal's office. |
+| 🌧️ **Rain** | Rainy and overcast days bring showers. Everyone outside puts up an umbrella and walks faster, people head indoors to wait it out (cafés, the mall, the library), and rain streaks and splashes fall around you. |
+| 🚦 **Smarter people, safer streets** | Downtown pedestrians wait at the curb for the walk signal (the signals show a walking figure and a flashing hand). At corners without lights they stop and look both ways. Cars now stop behind the crosswalk instead of on it, give way to anyone in the crosswalk or stepping off the curb, and wait for the people crossing the road they're turning into, so nobody walks through a car any more. Your parked car never blocks a crosswalk. |
+| 🧍 **Animations with real limb movement** | Everyone breathes (chest and shoulders, slower and deeper when asleep). People standing at work shift their weight from foot to foot, their hips roll, their knees bend and now and then they lift a foot and step. Seated people tap a foot. Carried bags and trays bob with each step. Mops, brooms and rakes now rest on the floor instead of floating in the air. |
+| 🧹 **Nothing floating** | A detector checks every part of the city for anything not resting on something, and it found and fixed thousands: ceiling lights, desks and office chairs on high floors, monitors above their desks, swing sets, ladders, bleachers, signs, racks, chandeliers, lamps, balloons and bunting, the museum skeleton, the prison barrier and more. The only things left in the air are meant to be: obby platforms, the volleyball and balloons on strings. The park pond is deeper, so the koi swim under the surface. |
+| 🗺️ **A detailed map** | The minimap and the big map now draw the real city: every road, sidewalk, lot, park, the beach and ocean, the prison, every building's roof in its own colour, trees and street names. |
+| 🖥️ **More room on screen** | Wider margins and more space between every part of the HUD. Name tags sit higher over heads, shrink with distance, show what someone's doing only up close, and never overlap. |
+| 🏃 **Walk or run** | You walk at a normal pace now (12) and run with **Shift** (24 and up). The Sprint button toggles: tap to run, tap again to walk, and it lights up while you're running. |
+| 🌙 **See at night** | Nights are a clear moonlit blue, bright enough to see where you're going, with lamps and windows still glowing. |
+| ⛰️ **Hills and mountains stay off the roads** | No hill or mountain reaches the city, the North Shore, the ocean, the prison or Prison Road. |
+
 ## What's new in v3
 
 | | |
@@ -378,6 +400,16 @@ Your Config is the base. Every key you had is still there, and these were added:
 ## Tested
 
 The game was run in a Luau test harness (a small Roblox simulation), and these checks pass:
+
+- **This update** (40 checks):
+  - the walk signals take turns (never both directions at once), 15 people waited at the curb, and nobody got stuck at a crossing;
+  - rain on rainy mornings and evenings, people heading indoors to wait it out, and the rain stopping;
+  - a dance that 5 out of 5 people nearby joined, walking off stopping it, and all 10 emotes;
+  - rideshare: no car, no rides; then a fare waving you down, picked up, driven across town and dropped off (+55 coins, 5★);
+  - street races: two routes with every checkpoint on a road, the countdown, GO, checkpoints in order, a personal best on the board, no shortcuts, and getting out ending the race;
+  - a school fight: not out on the street, no weapons at school, a punch, the kid fighting back, detention without police, and detention ending;
+  - building details: 1,300 flower boxes, 540 drainpipes, fire escapes, 275 address plaques, satellite dishes, spinning fan blades and gondolas.
+- **Nothing floating:** of 92,000 parts, the only groups not resting on anything are the obby platforms, the volleyball and the balloons on strings (it was 3,818 groups before).
 
 - **The map:**
   - every job and school has enough spots;

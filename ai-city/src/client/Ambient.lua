@@ -7,8 +7,12 @@
 --   🕊️ Seagulls wheel over Sunset Beach, flapping and gliding.
 --   ⛵ Sailboats drift along the horizon, rocking on the swell.
 --   🎈 The inflatable tube man at AutoLand flails in the wind.
+--   🌀 Fans on the rooftops turn. 🌊 The surf rolls in and out; 🦀 crabs
+--      scuttle sideways along the water's edge.
 --   🚩 Flags ripple on their poles; buoys and anything tagged "Bob" bob on the
 --      water.
+--   🌧️ When it rains (see RainService), rain streaks fall all around you and
+--      splash on the ground.
 
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
@@ -19,6 +23,8 @@ local folder
 local rng = Random.new()
 local pigeons = {} -- [server pigeon part] = { Parts, Pos, Home, State, ... }
 local gulls, boats, tubes, flags, bobbers = {}, {}, {}, {}, {}
+local spinners = {} -- rooftop fan blades and the surf: their resting CFrame
+local crabs = {} -- [crab model] = { Base, Parts = { [part] = offset } }
 Ambient.Pigeons = pigeons
 Ambient.Gulls = gulls
 Ambient.Boats = boats
@@ -323,6 +329,66 @@ local function stepFlags(t, camPos)
 			b.CFrame = base * CFrame.new(0, math.sin(t * 1.6 + ph) * 0.25, 0) * CFrame.Angles(math.sin(t * 1.2 + ph) * 0.08, 0, math.cos(t * 1.4 + ph) * 0.08)
 		end
 	end
+	-- 🌊 the surf rolls up the sand and slides back
+	for _, f in ipairs(CollectionService:GetTagged("Surf")) do
+		if (f.Position - camPos).Magnitude < 500 then
+			spinners[f] = spinners[f] or f.CFrame
+			local base = spinners[f]
+			local ph = f:GetAttribute("Phase") or 0
+			local w = math.sin(t * 0.55 + ph)
+			f.CFrame = base * CFrame.new(math.sin(t * 0.13 + ph) * 3, 0, -w * 3.2)
+			f.Transparency = 0.2 + (1 - (w + 1) / 2) * 0.55
+		end
+	end
+	-- 🦀 crabs scuttle sideways, stop, scuttle back
+	for _, b in ipairs(CollectionService:GetTagged("Crab")) do
+		local m = b.Parent
+		if m and (b.Position - camPos).Magnitude < 160 then
+			local rec = crabs[m]
+			if not rec then
+				rec = { Base = b.CFrame, Parts = {} }
+				for _, p in ipairs(m:GetChildren()) do
+					if p:IsA("BasePart") then
+						rec.Parts[p] = b.CFrame:ToObjectSpace(p.CFrame)
+					end
+				end
+				crabs[m] = rec
+			end
+			local ph = rec.Base.Position.X * 0.31
+			local c = (t * 0.25 + ph) % 2
+			local slide = if c < 0.7 then c / 0.7 elseif c < 1 then 1 elseif c < 1.7 then 1 - (c - 1) / 0.7 else 0
+			local moving = (c < 0.7 or (c >= 1 and c < 1.7))
+			local skitter = if moving then math.sin(t * 30) * 0.05 else 0
+			local cf = rec.Base * CFrame.new(slide * 4 - 2, skitter, 0)
+			for p, off in pairs(rec.Parts) do
+				local o = off
+				if p.Name == "CrabLeg" and moving then
+					o = off * CFrame.Angles(0, 0, math.sin(t * 30 + off.Position.Z * 9) * 0.35)
+				elseif p.Name == "CrabClaw" then
+					o = off * CFrame.new(0, math.max(0, math.sin(t * 3 + ph)) * 0.12, 0)
+				end
+				p.CFrame = cf * o
+			end
+		end
+	end
+	for m in pairs(crabs) do
+		if not m.Parent then
+			crabs[m] = nil
+		end
+	end
+	-- rooftop fans turning
+	for _, f in ipairs(CollectionService:GetTagged("Spin")) do
+		if (f.Position - camPos).Magnitude < 220 then
+			spinners[f] = spinners[f] or f.CFrame
+			local base = spinners[f]
+			f.CFrame = CFrame.new(base.Position) * CFrame.Angles(0, t * 5 + base.Position.X * 0.3, 0) * base.Rotation
+		end
+	end
+	for p in pairs(spinners) do
+		if not p.Parent then
+			spinners[p] = nil
+		end
+	end
 	for p in pairs(flags) do
 		if not p.Parent then
 			flags[p] = nil
@@ -349,6 +415,60 @@ local function stepVolleyball(t, camPos)
 	end
 end
 
+-- 🌧️ rain: an emitter in the sky that follows the camera, and splashes
+local rain
+function Ambient.Rain(on, camPos)
+	if on and not rain then
+		local sky = Instance.new("Part")
+		sky.Name = "RainCloud"
+		sky.Size = Vector3.new(160, 1, 160)
+		sky.Transparency = 1
+		sky.Anchored, sky.CanCollide, sky.CanQuery, sky.CanTouch = true, false, false, false
+		local drops = Instance.new("ParticleEmitter")
+		drops.Name = "Drops"
+		drops.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+		drops.Color = ColorSequence.new(Color3.fromRGB(200, 215, 235))
+		drops.LightEmission = 0.1
+		drops.Transparency = NumberSequence.new(0.35)
+		drops.Size = NumberSequence.new(0.18)
+		drops.Squash = NumberSequence.new(-4) -- long, thin streaks
+		drops.Speed = NumberRange.new(90, 110)
+		drops.EmissionDirection = Enum.NormalId.Bottom
+		drops.Lifetime = NumberRange.new(0.6, 0.8)
+		drops.Rate = 900
+		drops.Orientation = Enum.ParticleOrientation.VelocityParallel
+		drops.Parent = sky
+		local splash = Instance.new("Part")
+		splash.Name = "RainSplash"
+		splash.Size = Vector3.new(90, 0.2, 90)
+		splash.Transparency = 1
+		splash.Anchored, splash.CanCollide, splash.CanQuery, splash.CanTouch = true, false, false, false
+		local splashes = Instance.new("ParticleEmitter")
+		splashes.Name = "Splashes"
+		splashes.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+		splashes.Color = ColorSequence.new(Color3.fromRGB(220, 230, 245))
+		splashes.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.4), NumberSequenceKeypoint.new(1, 1) })
+		splashes.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.1), NumberSequenceKeypoint.new(1, 0.5) })
+		splashes.Speed = NumberRange.new(2, 4)
+		splashes.SpreadAngle = Vector2.new(60, 60)
+		splashes.Lifetime = NumberRange.new(0.15, 0.3)
+		splashes.Rate = 260
+		splashes.Parent = splash
+		sky.Parent = folder
+		splash.Parent = folder
+		rain = { Sky = sky, Splash = splash }
+	elseif not on and rain then
+		rain.Sky:Destroy()
+		rain.Splash:Destroy()
+		rain = nil
+	end
+	if rain and camPos then
+		rain.Sky.CFrame = CFrame.new(camPos + Vector3.new(0, 60, 0))
+		rain.Splash.CFrame = CFrame.new(camPos.X, 0.6, camPos.Z)
+	end
+	return rain
+end
+
 function Ambient.Step(dt)
 	local camera = workspace.CurrentCamera
 	if not camera or not folder then
@@ -369,6 +489,7 @@ function Ambient.Step(dt)
 	stepTubes(t, camPos)
 	stepFlags(t, camPos)
 	stepVolleyball(t, camPos)
+	Ambient.Rain(workspace:GetAttribute("Raining") == true, camPos)
 end
 
 function Ambient.Start()

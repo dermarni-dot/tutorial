@@ -15,7 +15,7 @@
 -- and search around it. Hide in a trash can, a hedge or a park bush (press Q)
 -- and they can't see you at all, unless they search right next to your
 -- hiding spot. Stay hidden and the stars fade one by one.
--- Kids and babies can't be hurt.
+-- Kids and babies can't be hurt (except a schoolyard scuffle: see SchoolService).
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -371,6 +371,7 @@ local function startFight(brain, player)
 end
 
 CrimeService.StartFight = startFight
+CrimeService.StopFight = stopFight
 
 local function fightTick()
 	local now = os.clock()
@@ -396,7 +397,7 @@ local function fightTick()
 				brain.Model:SetAttribute("SwingSide", (brain.Model:GetAttribute("SwingSide") or 0) + 1)
 				brain.Model:SetAttribute("Swing", now)
 				local strong = brain.C.Personality == "sporty" or brain.C.Job == "Fitness Coach" or brain.C.Job == "Coach"
-				hurtPlayer(brain.Root.Position, player, math.random(7, 11) + (if strong then 4 else 0), 18)
+				hurtPlayer(brain.Root.Position, player, (math.random(7, 11) + (if strong then 4 else 0)) * (if brain.SchoolFight then 0.6 else 1), if brain.SchoolFight then 10 else 18)
 				if math.random() < 0.25 then
 					S.Citizens.Say(brain, FIGHT_HITS[math.random(1, #FIGHT_HITS)], "angry", 1.4)
 				end
@@ -556,7 +557,11 @@ local function attack(player, data)
 	-- a citizen
 	local brain = best
 	if not canBeHurt(brain) then
-		S.City.Toast(player, "🚫", "Not a chance", "You can't hurt kids.", Color3.fromRGB(200, 90, 90))
+		-- a schoolyard scuffle (see SchoolService): fists, at school, 9 and up
+		if S.School and S.School.CanScuffle(player, brain) then
+			return S.School.Hit(player, brain, w, id, root.Position)
+		end
+		S.City.Toast(player, "🚫", "Not a chance", if S.Life:Age(brain.C) >= 9 then "Not out here. (Kids only scrap at school.)" else "You can't hurt little kids.", Color3.fromRGB(200, 90, 90))
 		return { Ok = true, Hit = false, Weapon = id }
 	end
 	-- jumping into a street fight: this one turns on you

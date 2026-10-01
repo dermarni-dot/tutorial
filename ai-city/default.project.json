@@ -161,6 +161,21 @@
         "PetService": {
           "$path": "src/PetService.lua"
         },
+        "RainService": {
+          "$path": "src/RainService.lua"
+        },
+        "SocialService": {
+          "$path": "src/SocialService.lua"
+        },
+        "RideshareService": {
+          "$path": "src/RideshareService.lua"
+        },
+        "RaceService": {
+          "$path": "src/RaceService.lua"
+        },
+        "SchoolService": {
+          "$path": "src/SchoolService.lua"
+        },
         "Conversation": {
           "$path": "src/Conversation.lua"
         }

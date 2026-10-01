@@ -879,11 +879,12 @@ local function buildHelp()
 		{ "🚨 Crime", "<b>F</b> attacks, <b>G</b> (hold) picks a pocket, <b>R</b> (hold) robs a register or the bank vault. If anyone sees you, you get wanted stars and the police come after you. Get caught and you're BUSTED: a fine and time in jail. Kids can't be hurt." },
 		{ "🫥 Losing the police", "The police only know where they <b>last saw</b> you. Break their line of sight (around a corner, into a building) and they'll run there and search around. Hide in a <b>trash can, hedge or park bush</b> (hold <b>Q</b>): they can't see you, unless they search right next to your spot (or saw you climb in!). Stay out of sight and the stars fade one by one, faster while you're hiding. <b>Space</b> gets you out." },
 		{ "🦹 Other people's crimes", "You're not the only criminal in town. Pickpockets, bag snatchers, store robbers and graffiti taggers show up now and then (more at night). If someone shouts <b>STOP, THIEF!</b>, chase them down and hit them (<b>F</b>): they give up, the owner gets their things back, you get a reward, and the police take them to jail. Watch your own pockets too: stand still too long and someone might pick them. Visit the police station to see who's locked up in the cell." },
-		{ "🏃 Sprinting and stamina", "Hold <b>Shift</b> (or the Sprint button) to run. It uses stamina (the ⚡ bar above your health), which refills when you stop. Sprinting and running on the <b>gym treadmills</b> (press E) earn fitness XP: every level gives you more stamina, faster recovery and a faster sprint. Food refills stamina too." },
+		{ "🏃 Sprinting and stamina", "You walk normally; hold <b>Shift</b> (or tap the Sprint button, and tap it again to stop) to run. It uses stamina (the ⚡ bar above your health), which refills when you stop. Sprinting and running on the <b>gym treadmills</b> (press E) earn fitness XP: every level gives you more stamina, faster recovery and a faster sprint. Food refills stamina too." },
 		{ "🍔 Food", "Press <b>E</b> at the counter of the Bakery, Cafe, Diner, Restaurant, Ice Cream shop or Market to order. Food heals you ❤️ and refills stamina ⚡. Coffee and energy drinks make stamina refill faster for a while." },
 		{ "🥷 Disguises", "Buy a 🧥 <b>hoodie</b>, a 🥷 <b>ski mask</b> or a 🥸 <b>disguise kit</b> at the 👕 Clothing store, and wear them with <b>C</b>. Witnesses may not recognize you (fewer stars, no notoriety, nobody remembers it was you), the police have to get closer to spot you, and it all works much better <b>at night</b>. After a crime, change or take off your outfit where nobody can see: the police keep looking for the old one. But a ski mask in daylight makes people nervous..." },
-		{ "⌨️ Keys", "Tab phone · E talk / use · M map · P people · V vote · B speech · N mayor · F attack · X block · 1-4 hotbar · G pickpocket · R rob · Q hide · J clock in at a job · K call your car · Shift sprint · C wardrobe · H help · 1-9 answer in conversations · Esc close windows" },
+		{ "⌨️ Keys", "Tab phone · E talk / use · M map · P people · V vote · B speech · N mayor · F attack · X block · 1-4 hotbar · G pickpocket · R rob · Q hide · J clock in at a job · K call your car · T emotes · Shift sprint · C wardrobe · H help · 1-9 answer in conversations · Esc close windows" },
 		{ "🚗 Cars and traffic", "Real traffic drives the streets: cars keep to their lane, stop at red lights and wait for people crossing. Buy your own car at <b>🚗 AutoLand</b> (up Shore Drive, past the north edge of town): walk up to one on the lot and press <b>E</b>. Press <b>K</b> (or the 🚗 <b>Car</b> app on your phone) and it pulls up on the nearest road. <b>W / S</b> drive and brake, <b>A / D</b> steer, <b>Space</b> to get out. Friends can ride along. Don't run anyone over: it's a crime." },
+		{ "🏁 Street races and 🚕 rideshare", "At the checkered gantry on <b>Shore Drive</b>, just north of town, drive onto a pad and stop: <b>🏙️ City Loop</b> (a lap of the whole city) or <b>🌊 Shore Sprint</b> (to the boardwalk and back). 3... 2... 1... GO! Drive through the glowing rings in order. Coins for finishing, a bonus for a personal best or beating par, and the five fastest go up on the board. Want to earn with your car? Open the 🚕 <b>Rides</b> app: people on the sidewalk wave you down (look for the 🙋 marker), pull up next to them, drive them where they're going and stop by the door. Quick, careful driving earns ⭐⭐⭐⭐⭐ and tips." },
 		{ "🎡 Funland and the beach", "Up Shore Drive: ride the <b>Ferris wheel</b>, the <b>carousel</b> and the <b>Freefall</b> drop tower (just sit in a seat). Play <b>🎈 Balloon Pop</b> (5 coins, click the balloons) to win 🎟️ tickets, and trade them at the <b>prize booth</b> for pets and coins. Adopt a dog, cat, hamster or fox at <b>🐾 Paws & Claws</b>: your pet follows you everywhere. Race the <b>🧗 Sky Obby</b> against the clock. Then hit <b>Sunset Beach</b>: swim, sunbathe, fish off the pier." },
 		{ "💼 Jobs", "12 jobs, paid <b>by the hour</b>: open the <b>Jobs</b> app on your phone, or press <b>J</b> at a workplace during its hours. Follow the glowing marker and hold <b>E</b> at each task. You get a paycheck every in-game hour you work, plus tips and a rating bonus; finish tasks on time for a good rating, and work your way up from Trainee to Manager for raises." },
 		{ "🎮 Controller", "R2 attack · hold L2 block · click L3 sprint · R1 / L1 switch weapons · D-pad ▲ phone · ▼ map · ◀ help · ▶ wardrobe · X talk / use · Y pickpocket / rob / hide · B close / back / get out · A jump. In menus, move with the D-pad or stick and press A." },
@@ -1133,6 +1134,22 @@ local function buildPhone()
 	app(11, "💼", "Jobs", UI.rgb(200, 140, 60), function()
 		P.Close()
 		task.spawn(Panels.OpenJobs)
+	end)
+	app(14, "🚕", "Rides", UI.rgb(240, 190, 40), function()
+		-- rideshare: on duty or off (see RideshareService)
+		P.Close()
+		task.spawn(function()
+			local r = request({ Action = "Rideshare" })
+			if not r.Ok then
+				fail(r)
+			end
+		end)
+	end)
+	app(13, "💃", "Emote", UI.rgb(230, 110, 170), function()
+		P.Close()
+		if ctx.Emotes then
+			ctx.Emotes.Toggle(true)
+		end
 	end)
 	app(12, "🚗", "Car", UI.rgb(60, 150, 220), function()
 		-- your car pulls up on the nearest road (see CarService)

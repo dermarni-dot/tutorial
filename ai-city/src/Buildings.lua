@@ -25,6 +25,130 @@ local function window(model, at, x, y, z, sideways, frameColor, glassColor, w, h
 	return glass
 end
 
+-- Facade details, so no two buildings look quite alike: flower boxes under
+-- the upstairs windows, drainpipes, a fire escape on tall brick buildings,
+-- an address plaque by the door, and vents, a satellite dish and spinning
+-- fan blades on flat roofs. Picked by a hash of where the building stands.
+local BOX_FLOWERS = MapKit.FLOWERS
+local function facade(model, at, spec, W, D, H, floors, trim, DH)
+	local c = spec.Center
+	local h = math.floor(math.abs(c.X * 7.31 + c.Z * 3.17 + W * 1.9)) % 997
+	local dark = trim:Lerp(BLACK, 0.35)
+	if not spec.CurtainWall then
+		-- flower boxes on the upper floors (about half the buildings)
+		if floors >= 2 and h % 2 == 0 then
+			for f = 1, floors - 1 do
+				local y = f * FLOOR_H + 6.5
+				local x = -W / 2 + 5
+				local k = 0
+				while x <= W / 2 - 4.5 do
+					local box = at(x, y - 3.5, -D / 2 - 0.8)
+					deco(model, "FlowerBox", Vector3.new(4.4, 0.8, 1), box, MapKit.rgb(120, 82, 56), Enum.Material.Wood)
+					deco(model, "BoxLeaves", Vector3.new(4.1, 0.5, 0.8), box * CFrame.new(0, 0.6, 0), MapKit.LEAVES[(k + h) % #MapKit.LEAVES + 1])
+					for i = -1, 1 do
+						local bloom = MapKit.ball(model, "Bloom", 0.6, box * CFrame.new(i * 1.3, 1, (i % 2) * 0.15), BOX_FLOWERS[(k + i + h) % #BOX_FLOWERS + 1])
+						bloom.CanCollide = false
+					end
+					x += 8
+					k += 1
+				end
+			end
+		end
+		-- modern balconies with glass railings on the upper floors of the
+		-- buildings without flower boxes
+		if floors >= 3 and h % 2 == 1 and not spec.Storefront then
+			for f = 1, floors - 1 do
+				local x = -W / 2 + 5 + (f % 2) * 8
+				while x <= W / 2 - 4.5 do
+					local y = f * FLOOR_H + 0.35
+					deco(model, "Balcony", Vector3.new(6, 0.35, 2.4), at(x, y, -D / 2 - 1.2), MapKit.rgb(214, 214, 210), Enum.Material.Concrete)
+					local rail = deco(model, "BalconyGlass", Vector3.new(6, 2.6, 0.12), at(x, y + 1.5, -D / 2 - 2.35), MapKit.rgb(190, 220, 235), Enum.Material.Glass, { Transparency = 0.55, Reflectance = 0.25 })
+					rail.CastShadow = false
+					deco(model, "BalconyRail", Vector3.new(6.1, 0.14, 0.16), at(x, y + 2.85, -D / 2 - 2.35), MapKit.rgb(60, 62, 68), Enum.Material.Metal)
+					for _, sx in ipairs({ -1, 1 }) do
+						deco(model, "BalconyGlass", Vector3.new(0.12, 2.6, 2.2), at(x + sx * 2.95, y + 1.5, -D / 2 - 1.25), MapKit.rgb(190, 220, 235), Enum.Material.Glass, { Transparency = 0.55, Reflectance = 0.25 }).CastShadow = false
+					end
+					x += 16
+				end
+			end
+		end
+		-- drainpipes down the back corners, with a gutter along the back
+		for _, sx in ipairs({ -1, 1 }) do
+			MapKit.cylinder(model, "Drainpipe", H, 0.45, at(sx * (W / 2 + 0.4), H / 2, D / 2 - 2.2) * CFrame.Angles(0, 0, math.rad(90)), dark, Enum.Material.Metal)
+			deco(model, "DrainShoe", Vector3.new(0.6, 0.4, 1), at(sx * (W / 2 + 0.4), 0.3, D / 2 - 2.6), dark, Enum.Material.Metal)
+		end
+		if spec.Roof ~= "gable" then
+			deco(model, "Gutter", Vector3.new(W + 0.6, 0.4, 0.5), at(0, H - 0.2, D / 2 + 0.3), dark, Enum.Material.Metal)
+		end
+		-- a black iron fire escape up one side of tall brick buildings
+		if floors >= 3 and spec.Material == Enum.Material.Brick then
+			local sx = if h % 3 == 0 then -1 else 1
+			local ox = sx * (W / 2 + 1.7)
+			local iron = MapKit.rgb(36, 36, 40)
+			for f = 1, floors - 1 do
+				local y = f * FLOOR_H
+				deco(model, "EscapeLanding", Vector3.new(3, 0.25, 9), at(ox, y + 0.2, 2), iron, Enum.Material.DiamondPlate)
+				deco(model, "EscapeRail", Vector3.new(0.15, 0.15, 9), at(ox + sx * 1.4, y + 3.4, 2), iron, Enum.Material.Metal)
+				for _, rz in ipairs({ -2.4, 6.4 }) do
+					deco(model, "EscapeRail", Vector3.new(0.15, 3.2, 0.15), at(ox + sx * 1.4, y + 1.8, rz), iron, Enum.Material.Metal)
+				end
+				-- the stair down to the landing below (a ladder from the first)
+				local drop = if f == 1 then 6 else FLOOR_H
+				local len = math.sqrt(drop * drop + 64)
+				deco(model, "EscapeStair", Vector3.new(2.2, 0.3, len), at(ox, y - drop / 2 + 0.2, 2) * CFrame.Angles(math.atan2(drop, 8) * (if f % 2 == 0 then 1 else -1), 0, 0), iron, Enum.Material.Metal)
+			end
+		end
+	end
+	-- an LED strip along the roofline on some buildings (glows at night)
+	if spec.Roof ~= "gable" and floors >= 2 and h % 3 == 0 then
+		local led = deco(model, "RoofLED", Vector3.new(W + 0.4, 0.16, 0.16), at(0, H + (if spec.CurtainWall then 1.05 else 2.15), -D / 2 - 0.12), MapKit.rgb(225, 240, 255), Enum.Material.Glass)
+		MapKit.nightNeon(led)
+	end
+	-- the street number on a plaque over the door
+	local plaque = deco(model, "AddressPlaque", Vector3.new(2.4, 0.66, 0.12), at(0, DH, -D / 2 - 0.36), MapKit.rgb(30, 40, 60), Enum.Material.Metal)
+	MapKit.signText(plaque, Enum.NormalId.Front, tostring(100 + h), MapKit.rgb(240, 236, 220), Enum.Font.GothamBold)
+	-- the roof: vent pipes, maybe a satellite dish, fans that spin
+	if spec.Roof ~= "gable" then
+		for k = 0, 1 do
+			local v = at(W / 2 - 3 - k * 2.2, H + 1.6, -D / 2 + 3)
+			MapKit.cylinder(model, "RoofVent", 2.2, 0.6, v * CFrame.Angles(0, 0, math.rad(90)), MapKit.rgb(150, 154, 160), Enum.Material.Metal)
+			MapKit.cylinder(model, "VentCap", 0.3, 1, v * CFrame.new(0, 1.2, 0) * CFrame.Angles(0, 0, math.rad(90)), MapKit.rgb(110, 114, 120), Enum.Material.Metal)
+		end
+		if h % 3 ~= 1 and W >= 16 then
+			local base = at(-W / 2 + 3.5, H + 1, -D / 2 + 4) * CFrame.Angles(0, math.rad(h % 360), 0)
+			deco(model, "DishPost", Vector3.new(0.3, 2, 0.3), base * CFrame.new(0, 1, 0), MapKit.rgb(200, 200, 205), Enum.Material.Metal)
+			local dish = MapKit.cylinder(model, "SatelliteDish", 0.25, 2.6, base * CFrame.new(0, 2.4, 0) * CFrame.Angles(0, math.rad(90), math.rad(35)), MapKit.rgb(236, 236, 238), Enum.Material.SmoothPlastic)
+			dish.CanCollide = false
+			deco(model, "DishArm", Vector3.new(0.12, 0.12, 1.6), dish.CFrame * CFrame.new(0.9, 0, 0) * CFrame.Angles(0, math.rad(90), 0), MapKit.rgb(90, 90, 96), Enum.Material.Metal)
+		end
+		for _, fan in ipairs(model:GetChildren()) do
+			if fan.Name == "Fan" then
+				for i = 0, 1 do
+					local blade = deco(model, "FanBlade", Vector3.new(2.6, 0.08, 0.5), CFrame.new(fan.Position + Vector3.new(0, 0.2, 0)) * CFrame.Angles(0, i * math.pi / 2, 0), MapKit.rgb(40, 42, 46), Enum.Material.Metal)
+					MapKit.tag(blade, "Spin")
+				end
+			end
+		end
+	end
+	if spec.CurtainWall and h % 2 == 0 then
+		-- a window washer's gondola hanging off the top of some glass towers
+		local gy = math.max(FLOOR_H * 1.5, H * ((h % 7) / 8 + 0.1))
+		local g = at(-W / 4, gy, -D / 2 - 1.6)
+		local cradle = deco(model, "Gondola", Vector3.new(8, 1.2, 1.8), g, MapKit.rgb(230, 230, 236), Enum.Material.Metal)
+		deco(model, "GondolaRail", Vector3.new(8, 0.2, 0.2), g * CFrame.new(0, 2, -0.8), MapKit.rgb(230, 230, 236), Enum.Material.Metal)
+		for _, gx in ipairs({ -3.9, 0, 3.9 }) do
+			deco(model, "GondolaPost", Vector3.new(0.2, 1.5, 0.2), g * CFrame.new(gx, 1.3, -0.8), MapKit.rgb(230, 230, 236), Enum.Material.Metal)
+		end
+		-- the cables run from the cradle up to the arm on the roof
+		local top = H + 1.3
+		for _, gx in ipairs({ -3.6, 3.6 }) do
+			deco(model, "GondolaCable", Vector3.new(0.1, top - gy, 0.1), at(-W / 4 + gx, (top + gy) / 2, -D / 2 - 1.6), MapKit.rgb(40, 40, 44))
+		end
+		deco(model, "Davit", Vector3.new(9, 0.6, 3), at(-W / 4, H + 1.3, -D / 2 - 0.6), MapKit.rgb(200, 200, 206), Enum.Material.Metal)
+		cradle:SetAttribute("Washer", true)
+	end
+end
+
 -- A building shell.
 -- spec: Name, Label, Center (ground point of the building's middle), Face
 -- (direction the front faces), W, D, Floors, Wall, Trim, Material, Roof
@@ -49,7 +173,7 @@ function Buildings.shell(parent, spec)
 	local glassColor = spec.WindowColor or MapKit.GLASS
 	local DW = spec.DoorW or 8
 	local DH = math.min(10, H - 1.5)
-	local b = { Model = model, CFrame = cf, At = at, W = W, D = D, H = H, Floors = floors, Spec = spec }
+	local b = { Model = model, CFrame = cf, At = at, W = W, D = D, H = H, Floors = floors, Spec = spec, CurtainWall = spec.CurtainWall }
 
 	-- ground floor slab and a plinth around the base
 	part(model, "Floor", Vector3.new(W, 0.4, D), at(0, 0.2, 0), spec.FloorColor or MapKit.rgb(206, 196, 180), spec.FloorMaterial or Enum.Material.WoodPlanks)
@@ -167,7 +291,7 @@ function Buildings.shell(parent, spec)
 	deco(model, "DoorMat", Vector3.new(DW - 1, 0.06, 2), at(0, 0.43, -D / 2 - 1.2), MapKit.rgb(120, 60, 50), Enum.Material.Fabric)
 	if not spec.CurtainWall then
 		for _, sx in ipairs({ -1, 1 }) do
-			local sconce = deco(model, "WallLamp", Vector3.new(0.7, 1.2, 0.7), at(sx * (DW / 2 + 1.6), DH - 1.5, -D / 2 - 0.4), MapKit.rgb(255, 230, 180), Enum.Material.Glass)
+			local sconce = deco(model, "WallLamp", Vector3.new(0.7, 1.2, 0.7), at(sx * (DW / 2 + 1.6), DH - 1.5, -D / 2 - 0.32), MapKit.rgb(255, 230, 180), Enum.Material.Glass)
 			MapKit.nightNeon(sconce)
 			MapKit.nightLight(sconce, MapKit.LAMP_LIGHT, 10, 0.8)
 		end
@@ -196,7 +320,7 @@ function Buildings.shell(parent, spec)
 		end
 		-- ceiling lights in a grid, each shining down (so the whole room is evenly
 		-- lit, corners too); soft warm light, no shadows (cheap)
-		local lampY = y + FLOOR_H - 0.9
+		local lampY = y + FLOOR_H - 0.35 -- (flush with the ceiling)
 		local nx = math.clamp(math.floor(W / 18 + 0.5), 1, 4)
 		local nz = math.clamp(math.floor(D / 18 + 0.5), 1, 3)
 		for i = 1, nx do
@@ -261,7 +385,7 @@ function Buildings.shell(parent, spec)
 				end
 			elseif item == "solar" then
 				for k = 0, 3 do
-					deco(model, "SolarPanel", Vector3.new(5, 0.2, 3), at(-W / 3 + k * 5.5, H + 2, D / 4) * CFrame.Angles(math.rad(-25), 0, 0), MapKit.rgb(30, 50, 110), Enum.Material.Glass)
+					deco(model, "SolarPanel", Vector3.new(5, 0.2, 3), at(-W / 3 + k * 5.5, H + 1.72, D / 4) * CFrame.Angles(math.rad(-25), 0, 0), MapKit.rgb(30, 50, 110), Enum.Material.Glass)
 				end
 			elseif item == "antenna" then
 				deco(model, "Antenna", Vector3.new(0.5, 14, 0.5), at(W / 4, H + 8, D / 4), MapKit.rgb(200, 200, 205), Enum.Material.Metal)
@@ -334,6 +458,8 @@ function Buildings.shell(parent, spec)
 			b.Elevator.Floors[f + 1] = { Door = doors, Exit = at(ex, y + 0.6, ez - 6).Position }
 		end
 	end
+
+	facade(model, at, spec, W, D, H, floors, trim, DH)
 
 	-- where people stand: the door outside, the middle inside (ground floor)
 	b.Door = at(0, 0, -D / 2 - 3).Position
@@ -440,7 +566,8 @@ function Buildings.house(parent, center, face, style, rng, garageSide, scale)
 		MapKit.nightNeon(porchLight)
 		MapKit.nightLight(porchLight, MapKit.LAMP_LIGHT, 14, 0.9)
 		-- a rocking chair on the porch
-		MapKit.seat(b.Model, "PorchChair", Vector3.new(2.2, 0.6, 2.2), at(-4, 1.6, -D / 2 - 2.8), MapKit.WOOD, Enum.Material.Wood)
+		MapKit.seat(b.Model, "PorchChair", Vector3.new(2.2, 0.6, 2.2), at(-4, 1.1, -D / 2 - 2.8), MapKit.WOOD, Enum.Material.Wood)
+		deco(b.Model, "PorchChairBack", Vector3.new(2.2, 2.2, 0.3), at(-4, 2.4, -D / 2 - 1.85), MapKit.WOOD, Enum.Material.Wood)
 	end
 	-- chimney
 	if spec.Roof == "gable" then

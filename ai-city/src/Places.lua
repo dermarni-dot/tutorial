@@ -44,7 +44,8 @@ local function playground(ctx, parent, center, rotY, spots, big)
 	deco(parent, "SwingBar", Vector3.new(12, 0.6, 0.6), cf * CFrame.new(-5, 9, 5), red, Enum.Material.Metal)
 	for _, sx in ipairs({ -1, 1 }) do
 		for _, lz in ipairs({ -1.5, 1.5 }) do
-			deco(parent, "SwingLeg", Vector3.new(0.5, 9.4, 0.5), cf * CFrame.new(-5 + sx * 6, 4.6, 5 + lz) * CFrame.Angles(math.rad(lz * 5), 0, 0), red, Enum.Material.Metal)
+			-- an A-frame: the two legs meet under the bar
+			deco(parent, "SwingLeg", Vector3.new(0.5, 9.6, 0.5), cf * CFrame.new(-5 + sx * 6, 4.6, 5 + lz * 0.5) * CFrame.Angles(math.rad(-lz / 1.5 * 9.2), 0, 0), red, Enum.Material.Metal)
 		end
 		local seatPos = cf * CFrame.new(-5 + sx * 2.6, 2.4, 5)
 		-- a real seat (players can sit on it too) hanging from two chains; every
@@ -79,6 +80,9 @@ local function playground(ctx, parent, center, rotY, spots, big)
 	wedge(parent, "Slide", Vector3.new(2.6, 6, 8), cf * CFrame.new(6, 3, 2.3) * CFrame.Angles(0, math.pi, 0), rgb(250, 200, 60), Enum.Material.SmoothPlastic, true)
 	for n = 0, 5 do
 		deco(parent, "Ladder", Vector3.new(2, 0.3, 0.3), cf * CFrame.new(6, 0.8 + n, -7), blue, Enum.Material.Metal)
+	end
+	for _, sx in ipairs({ -1, 1 }) do
+		deco(parent, "LadderRail", Vector3.new(0.3, 6.6, 0.35), cf * CFrame.new(6 + sx * 1.1, 3.3, -7), blue, Enum.Material.Metal)
 	end
 	table.insert(spots, outSpot(cf * CFrame.new(6, 0.2, 7.5) * CFrame.Angles(0, math.pi, 0), "play", "kid"))
 	table.insert(spots, outSpot(cf * CFrame.new(6, 0.2, -8.5), "play", "kid"))
@@ -282,26 +286,27 @@ local function park(ctx, parent, i, j, rng, id, withPlayground)
 	end
 	-- pond with lily pads and ducks
 	local pondC = c + Vector3.new(-18, 0, 18)
-	column(model, "PondEdge", 0.6, 26, pondC + Vector3.new(0, 0.3, 0), STONE, Enum.Material.Pebble)
-	local pond = column(model, "Pond", 0.5, 23, pondC + Vector3.new(0, 0.4, 0), rgb(60, 140, 200), Enum.Material.Glass, false)
+	-- (a raised stone pond, deep enough for the koi to swim right under the surface)
+	column(model, "PondEdge", 1.9, 26, pondC + Vector3.new(0, 0.95, 0), STONE, Enum.Material.Pebble)
+	local pond = column(model, "Pond", 1.6, 23, pondC + Vector3.new(0, 0.95, 0), rgb(60, 140, 200), Enum.Material.Glass, false)
 	pond.Transparency = 0.45
 	-- fishable, with koi you can see (see FishingService and the client's Water module)
 	pond:SetAttribute("Radius", 11.5)
 	-- the water's top face (koi swim just under it, backs near the surface)
-	pond:SetAttribute("Surface", pondC.Y + 0.65)
-	pond:SetAttribute("Depth", 0.55)
+	pond:SetAttribute("Surface", pondC.Y + 1.75)
+	pond:SetAttribute("Depth", 1.55)
 	pond:SetAttribute("Kind", "pond")
 	pond:SetAttribute("Fish", 6)
 	pond:SetAttribute("RodStand", pondC + Vector3.new(0, 0, -15.5))
 	MapKit.tag(pond, "Water")
 	MapKit.disc(model, "PondBed", 0.1, 23, pondC + Vector3.new(0, 0.12, 0), rgb(70, 90, 70), Enum.Material.Pebble)
 	for k = 0, 3 do
-		MapKit.disc(model, "LilyPad", 0.1, 2, pondC + Vector3.new(k * 3 - 4.5, 0.7, (k % 2) * 4 - 2), rgb(80, 170, 70), Enum.Material.SmoothPlastic)
+		MapKit.disc(model, "LilyPad", 0.1, 2, pondC + Vector3.new(k * 3 - 4.5, 1.8, (k % 2) * 4 - 2), rgb(80, 170, 70), Enum.Material.SmoothPlastic)
 	end
 	for k = 0, 2 do
-		local duck = MapKit.ball(model, "Duck", 1.2, CFrame.new(pondC + Vector3.new(k * 4 - 4, 0.9, -3 + k)), WHITE)
+		local duck = MapKit.ball(model, "Duck", 1.2, CFrame.new(pondC + Vector3.new(k * 4 - 4, 2.0, -3 + k)), WHITE)
 		MapKit.tag(duck, "Duck")
-		MapKit.ball(model, "DuckHead", 0.7, CFrame.new(pondC + Vector3.new(k * 4 - 4, 1.6, -3.5 + k)), rgb(60, 140, 70))
+		MapKit.ball(model, "DuckHead", 0.7, CFrame.new(pondC + Vector3.new(k * 4 - 4, 2.7, -3.5 + k)), rgb(60, 140, 70))
 	end
 	for k = 0, 3 do
 		local a = k / 4 * math.pi * 2 + 0.4
@@ -428,7 +433,9 @@ function B.SportsField(ctx, parent, i, j, rng)
 	end
 	-- bleachers with seats
 	for row = 0, 2 do
-		part(model, "Bleacher", Vector3.new(40, 1, 3), CFrame.new(c + Vector3.new(0, 0.5 + row * 1.5, -24 - row * 3)), rgb(70, 110, 200), Enum.Material.Metal)
+		-- (each row is a solid step down to the ground)
+		local h = 1 + row * 1.5
+		part(model, "Bleacher", Vector3.new(40, h, 3), CFrame.new(c + Vector3.new(0, h / 2, -24 - row * 3)), rgb(70, 110, 200), Enum.Material.Metal)
 		for k = -2, 2 do
 			local s = outSpot(CFrame.new(c + Vector3.new(k * 7, 1 + row * 1.5, -24 - row * 3)), "cheer", "visit")
 			s.Raise = 1 + row * 1.5
@@ -521,7 +528,7 @@ function B.Police(ctx, parent, i, j, rng)
 	local at = b.At
 	-- a white stripe around the outside of the station (with a gap for the doors)
 	MapKit.ring(b.Model, "Stripe", at(0, 4, 0), b.W, b.D, 1.2, 0.12, WHITE, nil, (b.Spec.DoorW or 8) + 1)
-	local siren = deco(b.Model, "Siren", Vector3.new(3, 1.2, 1.5), at(0, b.H + 1.8, -b.D / 2 + 2), rgb(255, 60, 60), Enum.Material.Neon)
+	local siren = deco(b.Model, "Siren", Vector3.new(3, 1.2, 1.5), at(0, b.H + 1.6, -b.D / 2 + 2), rgb(255, 60, 60), Enum.Material.Neon)
 	MapKit.tag(siren, "Siren")
 	MapKit.light(siren, rgb(255, 60, 60), 14, 1)
 	flag(b.Model, at(-b.W / 2 + 3, 0, -b.D / 2 - 5).Position, rgb(60, 110, 220))
@@ -925,7 +932,7 @@ function B.MarketPharmacy(ctx, parent, i, j, rng)
 		end },
 		{ Id = "Pharmacy", W = 32, D = 30, Floors = 2, Wall = WHITE, Trim = rgb(60, 170, 110), Awning = { rgb(60, 170, 110), WHITE }, Material = Enum.Material.SmoothPlastic, Storefront = true, Rooms = "store", Extra = function(b)
 			for _, s in ipairs({ { 4, 1.2 }, { 1.2, 4 } }) do
-				local cross = deco(b.Model, "GreenCross", Vector3.new(s[1], s[2], 0.3), b.At(b.W / 2 - 4, 18, -b.D / 2 - 0.4), rgb(60, 220, 120), Enum.Material.Neon)
+				local cross = deco(b.Model, "GreenCross", Vector3.new(s[1], s[2], 0.3), b.At(b.W / 2 - 4, 18, -b.D / 2 - 0.15), rgb(60, 220, 120), Enum.Material.Neon)
 				cross.Name = "GreenCross"
 			end
 		end }

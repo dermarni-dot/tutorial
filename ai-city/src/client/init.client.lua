@@ -29,6 +29,8 @@ local Rides = require(script:WaitForChild("Rides"))
 local Pets = require(script:WaitForChild("Pets"))
 local Drive = require(script:WaitForChild("Drive"))
 local Ambient = require(script:WaitForChild("Ambient"))
+local Emotes = require(script:WaitForChild("Emotes"))
+local Race = require(script:WaitForChild("Race"))
 local Poses = require(Shared:WaitForChild("Poses"))
 local C = UI.C
 
@@ -45,6 +47,7 @@ local ctx = {
 	SpeechSpot = info:GetAttribute("SpeechSpot"),
 	Drive = Drive,
 }
+ctx.Emotes = Emotes
 
 Hud.Start(ctx)
 World.Start(ctx)
@@ -57,6 +60,8 @@ Rides.Start(ctx)
 Pets.Start()
 Drive.Start(ctx)
 Ambient.Start()
+Emotes.Start(ctx)
+Race.Start(ctx)
 
 -- the citizens' poses, props and faces, every frame (after animations)
 local step = RunService.PreSimulation or RunService.Stepped
@@ -134,6 +139,9 @@ handlers.Shop = function(d)
 end
 handlers.Store = function(d)
 	Panels.OpenStore(d)
+end
+handlers.Race = function(d)
+	Race.Show(d)
 end
 handlers.Pop = function(d)
 	World.Pop(d.Position, d.Color)

@@ -580,6 +580,7 @@ local function standAt(brain, cf)
 end
 
 local function placeAt(brain, spot, action)
+	brain.AtCurb = nil -- (not waiting to cross any more)
 	local cf = spot.CFrame
 	local info = Actions.Get(action) or {}
 	local scale = brain.Model:GetAttribute("Scale") or 1
@@ -636,6 +637,9 @@ local function speedFor(brain)
 		return TRAVEL_SPEED, "walk"
 	elseif late then
 		return HURRY_SPEED, "run"
+	elseif workspace:GetAttribute("Raining") and not brain.Building then
+		-- out in the rain: hurrying along under an umbrella
+		return base * 1.25, "walk"
 	end
 	-- kids sometimes run ahead
 	if ageOf(c) < 12 and brain.Skip and os.clock() < brain.Skip then
@@ -1286,6 +1290,15 @@ function CitizenService.React(brain, action, line, expression, seconds, lookAt)
 	end)
 end
 
+-- stop walking for a moment (then carry on to wherever they were going)
+function CitizenService.Pause(brain, seconds)
+	if brain.State == "walk" and not brain.Root.Anchored then
+		brain.PauseUntil = os.clock() + seconds
+		brain.Humanoid:MoveTo(brain.Root.Position)
+		playTrack(brain, "idle")
+	end
+end
+
 function CitizenService.Nearby(position, radius)
 	local out = {}
 	for _, brain in ipairs(list) do
@@ -1748,6 +1761,18 @@ local function think(brain)
 	if not plan then
 		return
 	end
+	-- raining: an outdoor plan (the park, the beach, a walk) becomes ducking
+	-- in somewhere dry until it stops
+	if workspace:GetAttribute("Raining") and plan.Kind ~= "Work" and plan.Kind ~= "School" and plan.Kind ~= "Home" and not plan.Date then
+		local place = plan.Place and map.Places[plan.Place]
+		if (place and place.Outdoor) or plan.Kind == "Hobby" then
+			local dry = { "Cafe", "Mall", "Library", "Cinema", "Diner", "Bakery", "Museum" }
+			local pick = dry[(brain.C.Id % #dry) + 1]
+			if map.Places[pick] then
+				plan = { Kind = "Place", Place = pick, Activity = "☔ Waiting out the rain at the " .. (map.Places[pick].Label or pick), Want = if pick == "Cafe" then "coffee" elseif pick == "Library" then "read" else nil }
+			end
+		end
+	end
 	local key = planKey(plan)
 	setActivity(brain, if brain.Soccer then brain.Model:GetAttribute("Activity") else plan.Activity)
 	if key == brain.PlanKey and st ~= "idle" and brain.Tasks then
@@ -2022,6 +2047,44 @@ function CitizenService.ClearSpot(pos)
 	return pos
 end
 
+-- Crossing the street downtown: is this step a walk across a road at an
+-- intersection with lights? Returns the axis walked along and the road's line.
+local function crossingOf(from, to)
+	local sp, road = map.Spacing or 134, map.Road or 26
+	local dx, dz = to.X - from.X, to.Z - from.Z
+	local axis, line, other
+	if math.abs(dx) > road * 0.8 and math.abs(dz) < 6 then
+		line = (math.floor((from.X + to.X) / 2 / sp) + 0.5) * sp
+		if (from.X - line) * (to.X - line) >= 0 then
+			return nil
+		end
+		axis, other = "X", from.Z
+	elseif math.abs(dz) > road * 0.8 and math.abs(dx) < 6 then
+		line = (math.floor((from.Z + to.Z) / 2 / sp) + 0.5) * sp
+		if (from.Z - line) * (to.Z - line) >= 0 then
+			return nil
+		end
+		axis, other = "Z", from.X
+	else
+		return nil
+	end
+	-- the intersection: road `a` (the one being crossed) meets road `b`
+	local a = line / sp - 0.5
+	local b = math.floor(other / sp + 0.5) - 0.5
+	-- (true: downtown, with lights and walk signals)
+	return axis, line, math.abs(a + 0.5) <= 2 and math.abs(b + 0.5) <= 2
+end
+CitizenService.CrossingOf = crossingOf
+
+-- the walk signal: people walking along X cross while the X traffic is green
+-- (the cars on the road they're crossing have red). The same 16-second cycle
+-- as the traffic lights (see Streets and the client's World and Traffic).
+function CitizenService.WalkSignal(axis)
+	local t = workspace:GetServerTimeNow() % 16
+	local phase = if axis == "X" then t else (t + 8) % 16
+	return phase < 4.5
+end
+
 local function walkTick(brain)
 	local points = brain.Points
 	if not points or brain.Root.Anchored then
@@ -2035,6 +2098,18 @@ local function walkTick(brain)
 	local final = brain.Steps and brain.StepIndex == #brain.Steps and brain.PointIndex == #points
 	local d = flatDist(root.Position, target)
 	local now = os.clock()
+	-- stopped for a moment (to wave back, to watch someone dance...)
+	if brain.PauseUntil then
+		if now < brain.PauseUntil then
+			brain.LastMoveAt = now
+			brain.LastPos = root.Position
+			return
+		end
+		brain.PauseUntil = nil
+		applySpeed(brain)
+		brain.Humanoid:MoveTo(target)
+		brain.MoveIssued = now
+	end
 	-- level of detail: far from every player (and the next waypoint too), people
 	-- hop from waypoint to waypoint instead of walking the whole way. Nobody can
 	-- see it, the server saves work, and cross-town trips still fit the day.
@@ -2047,6 +2122,45 @@ local function walkTick(brain)
 			local look = if nxt and flatDist(nxt, target) > 0.5 then Vector3.new(nxt.X, target.Y, nxt.Z) else target + root.CFrame.LookVector
 			root.CFrame = CFrame.lookAt(target + Vector3.new(0, rootHeight(brain) + 0.1, 0), look + Vector3.new(0, rootHeight(brain) + 0.1, 0))
 			root.AssemblyLinearVelocity = Vector3.zero
+		end
+	end
+	if brain.AtCurb and (hop or brain.State ~= "walk") then
+		brain.AtCurb = nil
+	end
+	-- downtown crossings: wait at the curb for the walk signal
+	if not hop and brain.State == "walk" and nearestPlayerDistance(root.Position) < WATCH_RADIUS then
+		local axis, line, lit = crossingOf(root.Position, target)
+		local road = map.Road or 26
+		local fromLine = axis and math.abs((if axis == "X" then root.Position.X else root.Position.Z) - line)
+		-- no lights: stop at the curb and look both ways before stepping out
+		-- (the cars give way to anyone in the crosswalk; see Traffic)
+		if axis and not lit and fromLine > road / 2 - 0.5 and fromLine < road / 2 + 4 and brain.LookedAt ~= target then
+			brain.LookedAt = target
+			brain.Model:SetAttribute("LookBoth", workspace:GetServerTimeNow())
+			brain.Humanoid:MoveTo(root.Position)
+			brain.PauseUntil = now + 0.7 + math.random() * 0.6
+			brain.LastMoveAt = now
+			return
+		end
+		if axis and lit then
+			if fromLine > road / 2 - 0.5 and fromLine < road / 2 + 7 and not CitizenService.WalkSignal(axis) then
+				if not brain.AtCurb then
+					brain.AtCurb = now
+					brain.Humanoid:MoveTo(root.Position)
+					playTrack(brain, "idle")
+					setAction(brain, "wait")
+					brain.Model:SetAttribute("Activity", "🚦 Waiting to cross")
+				end
+				brain.LastMoveAt = now
+				brain.LastPos = root.Position
+				return
+			elseif brain.AtCurb then
+				brain.AtCurb = nil
+				setAction(brain, "")
+				applySpeed(brain)
+				brain.Humanoid:MoveTo(target)
+				brain.MoveIssued = now
+			end
 		end
 	end
 	if hop or (d < (if final then 1.3 else 2.2) and math.abs(root.Position.Y - rootHeight(brain) - target.Y) < 6) then
@@ -2337,6 +2451,10 @@ function CitizenService.Start(services)
 		acc = 0
 		refreshPlayers()
 		for _, brain in ipairs(list) do
+			-- (arrived, or off doing something else: not waiting to cross any more)
+			if brain.AtCurb and (brain.State ~= "walk" or not brain.Points) then
+				brain.AtCurb = nil
+			end
 			if brain.Points and brain.Model.Parent then
 				local ok, err = pcall(walkTick, brain)
 				if not ok then

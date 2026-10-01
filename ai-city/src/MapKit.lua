@@ -430,4 +430,48 @@ function MapKit.awning(parent, width, depth, cf, colorA, colorB)
 	MapKit.deco(parent, "AwningEdge", Vector3.new(width, 0.5, 0.15), cf * CFrame.new(0, -1.05, -depth / 2 + 0.05), colorA, Enum.Material.Fabric)
 end
 
+
+--------------------------------------------------------------------------------
+-- A modern finish over the whole built world (run once, after building):
+-- plaster walls and ceilings instead of flat plastic, slim aluminium window
+-- frames, precast concrete trim, ceramic tile floors, carpet, shingle roofs,
+-- leafy hedges, wooden desks, glossy car paint, and glass that reflects.
+--------------------------------------------------------------------------------
+local M = Enum.Material
+local PLASTIC = { [M.SmoothPlastic] = true, [M.Plastic] = true }
+local FINISH = {
+	Ceiling = M.Plaster, Wall = M.Plaster, PartyWall = M.Plaster, BathroomWall = M.Plaster, Gable = M.Plaster,
+	WindowFrame = M.Metal, DoorFrame = M.Metal, Mullion = M.Metal,
+	Pilaster = M.Concrete, Band = M.Concrete, Parapet = M.Concrete, Sill = M.Concrete, Baseboard = M.Concrete, ChairRail = M.Concrete,
+	FloorTiles = M.CeramicTiles, Tile = M.CeramicTiles, BathroomTiles = M.CeramicTiles,
+	Rug = M.Carpet,
+	Hedge = M.LeafyGrass, HedgeTop = M.LeafyGrass, Bush = M.LeafyGrass,
+	Desk = M.Wood, Bookshelf = M.Wood, DisplayLedge = M.Marble, Counter = M.Marble,
+}
+-- (these change whatever they were made of)
+local ALWAYS = { Roof = { [M.Slate] = M.RoofShingles }, RoofRidge = { [M.SmoothPlastic] = M.RoofShingles, [M.Slate] = M.RoofShingles }, PorchRoof = { [M.Slate] = M.RoofShingles }, GarageRoof = { [M.Slate] = M.RoofShingles }, Rug = { [M.Fabric] = M.Carpet } }
+function MapKit.Modernize(root)
+	local changed = 0
+	for _, p in ipairs(root:GetDescendants()) do
+		if p:IsA("BasePart") then
+			local name, mat = p.Name, p.Material
+			local to = (PLASTIC[mat] and FINISH[name]) or (ALWAYS[name] and ALWAYS[name][mat])
+			if to then
+				p.Material = to
+				changed += 1
+			end
+			if mat == M.Glass and (p.Reflectance or 0) < 0.25 then
+				p.Reflectance = 0.28 -- (modern glass catches the sky)
+			elseif name == "Body" and PLASTIC[mat] then
+				p.Reflectance = 0.12 -- (car paint has a shine)
+			end
+			if name == "WindowFrame" or name == "Mullion" then
+				-- slim, dark aluminium
+				p.Color = p.Color:Lerp(MapKit.rgb(46, 48, 54), 0.55)
+			end
+		end
+	end
+	return changed
+end
+
 return MapKit

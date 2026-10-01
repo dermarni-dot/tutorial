@@ -133,8 +133,12 @@ local PAINT = { rgb(120, 180, 230), rgb(250, 180, 120), rgb(170, 140, 220), rgb(
 local LAND = { rgb(90, 160, 90), rgb(60, 110, 170), rgb(200, 170, 110), rgb(140, 90, 70) }
 
 -- a framed landscape painting on the back wall (facing into the room)
+-- (glass towers: the glass is further out than a solid wall)
+local function wallZ(r)
+	return if r.B and r.B.CurtainWall then r.D / 2 - 0.33 else r.D / 2 - 1.08
+end
 local function painting(r, x, y, w, h)
-	local z = r.D / 2 - 1.08
+	local z = wallZ(r)
 	local frame = ({ rgb(60, 45, 35), rgb(200, 170, 90), rgb(30, 30, 34), WHITE })[r.Rng:NextInteger(1, 4)]
 	r.Box("PaintingFrame", Vector3.new(w, h, 0.14), x, y, z, frame, Enum.Material.Wood)
 	r.Box("Painting", Vector3.new(w - 0.4, h * 0.55 - 0.2, 0.08), x, y + h * 0.45, z - 0.06, PAINT[r.Rng:NextInteger(1, #PAINT)], Enum.Material.SmoothPlastic)
@@ -145,7 +149,7 @@ end
 
 -- a round wall clock (hands at a random time)
 local function clock(r, x, y)
-	local z = r.D / 2 - 1.08
+	local z = wallZ(r)
 	local face = r.Box("ClockFace", Vector3.new(0.18, 1.8, 1.8), x, y, z, WHITE, Enum.Material.SmoothPlastic, CFrame.Angles(0, math.rad(90), 0))
 	face.Shape = Enum.PartType.Cylinder
 	local rim = r.Box("ClockRim", Vector3.new(0.12, 2.05, 2.05), x, y - 0.125, z + 0.04, rgb(40, 40, 46), Enum.Material.Metal, CFrame.Angles(0, math.rad(90), 0))
@@ -225,7 +229,7 @@ end
 
 local function pendant(r, x, z, color)
 	local y = r.H - 0.2
-	r.Box("PendantCord", Vector3.new(0.06, 2.4, 0.06), x, y - 2.4, z, rgb(30, 30, 30))
+	r.Box("PendantCord", Vector3.new(0.06, 3.0, 0.06), x, y - 2.4, z, rgb(30, 30, 30)) -- (up into the ceiling)
 	local shade = r.Box("PendantShade", Vector3.new(1.6, 0.9, 1.6), x, y - 3.2, z, color or rgb(40, 60, 50), Enum.Material.Metal)
 	local bulb = r.Box("PendantBulb", Vector3.new(0.6, 0.35, 0.6), x, y - 3.4, z, rgb(255, 230, 170), Enum.Material.Neon)
 	return shade, bulb
@@ -233,12 +237,12 @@ end
 
 local function chandelier(r, x, z)
 	local y = r.H - 0.2
-	r.Box("ChandelierChain", Vector3.new(0.12, 1.6, 0.12), x, y - 1.6, z, MapKit.GOLD, Enum.Material.Metal)
-	local ring = r.Box("Chandelier", Vector3.new(0.3, 3.6, 3.6), x, y - 2.1, z, MapKit.GOLD, Enum.Material.Metal, CFrame.Angles(0, 0, math.rad(90)))
+	r.Box("ChandelierChain", Vector3.new(0.12, 2.6, 0.12), x, y - 1.9, z, MapKit.GOLD, Enum.Material.Metal)
+	local ring = r.Box("Chandelier", Vector3.new(0.3, 3.6, 3.6), x, y - 3.8, z, MapKit.GOLD, Enum.Material.Metal, CFrame.Angles(0, 0, math.rad(90)))
 	ring.Shape = Enum.PartType.Cylinder
 	for k = 0, 5 do
 		local a = k / 6 * math.pi * 2
-		local c = r.Box("Candle", Vector3.new(0.3, 0.6, 0.3), x + math.cos(a) * 1.5, y - 2.3, z + math.sin(a) * 1.5, rgb(255, 236, 190), Enum.Material.Neon)
+		local c = r.Box("Candle", Vector3.new(0.3, 0.6, 0.3), x + math.cos(a) * 1.5, y - 1.86, z + math.sin(a) * 1.5, rgb(255, 236, 190), Enum.Material.Neon)
 		if k == 0 then
 			MapKit.light(c, rgb(255, 220, 160), 18, 0.8)
 		end
@@ -651,7 +655,8 @@ SHOPS.Hardware = function(r)
 	r.Try(r.W / 4, -r.D / 2 + 8, 4, 4, 0, 5, function(x, z)
 		-- paint cans
 		for k = 0, 5 do
-			local can = r.Box("PaintCan", Vector3.new(1, 1.2, 1), x - 1.2 + (k % 3) * 1.2, (k // 3) * 1.2, z, MapKit.FLOWERS[k % #MapKit.FLOWERS + 1], Enum.Material.Metal)
+			-- (a cylinder stood on end: 1 stud tall once it's turned)
+			local can = r.Box("PaintCan", Vector3.new(1, 1.2, 1), x - 1.2 + (k % 3) * 1.2, (k // 3) * 1.0 - 0.1, z, MapKit.FLOWERS[k % #MapKit.FLOWERS + 1], Enum.Material.Metal)
 			can.Shape = Enum.PartType.Cylinder
 			can.CFrame = can.CFrame * CFrame.Angles(0, 0, math.rad(90))
 		end
@@ -661,6 +666,9 @@ SHOPS.Pharmacy = function(r)
 	r.Try(r.W / 4, r.D / 2 - 4, 8, 2.4, 0, 4, function(x, z)
 		r.Box("PharmacyCounter", Vector3.new(8, 3.4, 2), x, 0, z, WHITE, Enum.Material.SmoothPlastic)
 		r.Box("PharmacySign", Vector3.new(4, 1, 0.2), x, 7.6, z + 1.6, rgb(60, 170, 110), Enum.Material.Neon)
+		for _, sx in ipairs({ -1.6, 1.6 }) do
+			r.Box("SignCord", Vector3.new(0.06, r.H - 8.6 + 0.6, 0.06), x + sx, 8.6, z + 1.6, rgb(40, 40, 44))
+		end
 	end)
 	for k = 0, 2 do
 		r.Try(-r.W / 2 + 4 + k * 2.6, -r.D / 2 + 3, 1.6, 1.6, 0, 3, function(x, z)
@@ -902,6 +910,11 @@ EXTRAS.hotel = function(r)
 		r.Box("CartPole", Vector3.new(0.15, 4.4, 0.15), x + 1.4, 0.6, z, MapKit.GOLD, Enum.Material.Metal)
 		r.Box("CartTop", Vector3.new(3, 0.15, 0.15), x, 5, z, MapKit.GOLD, Enum.Material.Metal)
 		r.Box("Suitcase", Vector3.new(1.4, 1.8, 0.8), x - 0.6, 0.9, z, rgb(60, 90, 140), Enum.Material.Leather)
+		for _, wx in ipairs({ -1.2, 1.2 }) do
+			for _, wz in ipairs({ -0.7, 0.7 }) do
+				r.Box("CartWheel", Vector3.new(0.4, 0.62, 0.4), x + wx, 0, z + wz, rgb(30, 30, 34), Enum.Material.Rubber)
+			end
+		end
 		r.Box("Suitcase", Vector3.new(1.2, 1.4, 0.8), x + 0.7, 0.9, z, rgb(150, 60, 50), Enum.Material.Leather)
 	end)
 end

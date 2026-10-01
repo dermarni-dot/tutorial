@@ -28,49 +28,116 @@ local FOLIAGE = Enum.Material.SmoothPlastic
 
 -- a leafy tree: a round, tapering trunk that forks into two branches, and a
 -- full canopy of overlapping rounded clumps in a few shades of green
+-- a leafy tree. Three kinds, picked at random: an oak (a thick, slightly
+-- leaning trunk that tapers and splits into limbs, each carrying a cluster of
+-- leaves: sunlit on top, shaded underneath), a maple (fuller and rounder,
+-- sometimes turning orange) and a birch (slim, white bark with dark marks, a
+-- narrow airy crown)
+local function clump(parent, at, w, h, color, rng)
+	local leaf = MapKit.ball(parent, "Leaves", w, CFrame.new(at) * CFrame.Angles(0, if rng then rng:NextNumber(0, 3) else 0, 0), color, FOLIAGE)
+	leaf.Size = Vector3.new(w, h, w * (if rng then rng:NextNumber(0.8, 1.05) else 0.92))
+	leaf.CanQuery = false
+	return leaf
+end
+-- a limb: a cylinder from a to b
+local function limb(parent, a, b, d, bark)
+	local mid = (a + b) / 2
+	local len = (b - a).Magnitude
+	MapKit.cylinder(parent, "Branch", len, d, CFrame.lookAt(mid, b) * CFrame.Angles(0, math.rad(90), 0), bark, Enum.Material.Wood).CanQuery = false
+end
+
 function Streets.tree(parent, pos, scale, rng)
 	scale = scale or 1
 	local r = function(a, b)
 		return if rng then rng:NextNumber(a, b) else (a + b) / 2
 	end
-	local trunkH = 7 * scale
-	local bark = MapKit.WOOD:Lerp(BLACK, 0.12)
-	MapKit.column(parent, "Trunk", trunkH * 0.55, 1.5 * scale, pos + Vector3.new(0, trunkH * 0.275, 0), bark, Enum.Material.Wood, false).CanQuery = false
-	MapKit.column(parent, "Trunk", trunkH * 0.55, 1.1 * scale, pos + Vector3.new(0, trunkH * 0.72, 0), bark, Enum.Material.Wood, false).CanQuery = false
-	MapKit.disc(parent, "TrunkFlare", 0.5 * scale, 2.2 * scale, pos + Vector3.new(0, 0.25 * scale, 0), bark:Lerp(BLACK, 0.1), Enum.Material.Wood)
+	local roll = r(0, 1)
+	local kind = if roll < 0.2 then "birch" elseif roll < 0.5 then "maple" else "oak"
 	local yaw = r(0, math.pi * 2)
-	for k = -1, 1, 2 do
-		local base = pos + Vector3.new(0, trunkH * 0.85, 0)
-		local cf = CFrame.new(base) * CFrame.Angles(0, yaw, 0) * CFrame.Angles(0, 0, math.rad(90 + k * 35)) * CFrame.new(1.4 * scale, 0, 0)
-		MapKit.cylinder(parent, "Branch", 3 * scale, 0.6 * scale, cf, bark, Enum.Material.Wood)
+	local lean = Vector3.new(math.cos(yaw), 0, math.sin(yaw)) * r(0.2, 0.7) * scale
+	if kind == "birch" then
+		-- slim and white, with dark marks
+		local h = r(10, 12.5) * scale
+		local white = rgb(232, 228, 218)
+		local trunk = MapKit.column(parent, "Trunk", h, 0.9 * scale, pos + Vector3.new(0, h / 2, 0), white, Enum.Material.SmoothPlastic, false)
+		trunk.CanQuery = false
+		for k = 1, 5 do
+			local y = r(1, h - 2)
+			local a = r(0, math.pi * 2)
+			MapKit.deco(parent, "BarkMark", Vector3.new(0.5 * scale, 0.12, 0.1), CFrame.new(pos + Vector3.new(math.cos(a) * 0.43 * scale, y, math.sin(a) * 0.43 * scale)) * CFrame.Angles(0, -a + math.pi / 2, 0), rgb(40, 40, 40))
+		end
+		local leaf = rgb(118, 176, 76):Lerp(rgb(150, 190, 80), r(0, 1))
+		local top = pos + Vector3.new(0, h, 0)
+		for k = 0, 4 do
+			local a = yaw + k * 1.3
+			local out = if k == 0 then 0 else r(1.2, 2.2) * scale
+			local up = (if k == 0 then 1.6 else r(-2.6, 0.4)) * scale
+			local shade = leaf:Lerp(if up > 0 then WHITE else BLACK, 0.08)
+			clump(parent, top + Vector3.new(math.cos(a) * out, up, math.sin(a) * out), (if k == 0 then 7.2 else 5) * scale, (if k == 0 then 6.4 else 4.2) * scale, shade, rng)
+		end
+		return
 	end
+	-- oak and maple: a tapering trunk in three pieces, leaning a little
+	local trunkH = r(6, 7.5) * scale
+	local bark = MapKit.WOOD:Lerp(BLACK, r(0.08, 0.25))
+	local p0, p1, p2 = pos, pos + Vector3.new(0, trunkH * 0.45, 0) + lean * 0.4, pos + Vector3.new(0, trunkH * 0.85, 0) + lean
+	local function seg(a, b, d)
+		local mid = (a + b) / 2
+		local t = MapKit.cylinder(parent, "Trunk", (b - a).Magnitude + 0.3 * scale, d, CFrame.lookAt(mid, b) * CFrame.Angles(0, math.rad(90), 0), bark, Enum.Material.Wood)
+		t.CanQuery = false
+		return t
+	end
+	seg(p0, p1, 1.7 * scale)
+	seg(p1, p2, 1.25 * scale)
+	-- a root flare: a few roots spreading into the ground
+	for k = 0, 3 do
+		local a = yaw + k * math.pi / 2 + r(-0.3, 0.3)
+		local root = MapKit.ball(parent, "Root", 1, CFrame.new(pos + Vector3.new(math.cos(a) * 0.9 * scale, 0.15, math.sin(a) * 0.9 * scale)) * CFrame.Angles(0, -a, 0), bark:Lerp(BLACK, 0.1), Enum.Material.Wood)
+		root.Size = Vector3.new(2 * scale, 0.7 * scale, 0.8 * scale)
+		root.CanQuery = false
+	end
+	-- limbs, each with leaves at its end
 	local leaf = MapKit.LEAVES[rng and rng:NextInteger(1, #MapKit.LEAVES) or 1]
-	local top = pos + Vector3.new(0, trunkH + 2.4 * scale, 0)
-	MapKit.ball(parent, "Leaves", 8.4 * scale, CFrame.new(top), leaf, FOLIAGE)
-	for k = 1, 6 do
-		local a = yaw + k / 6 * math.pi * 2 + r(-0.3, 0.3)
-		local out = r(2.4, 3.4) * scale
-		local up = r(-1.2, 2.2) * scale
-		local shade = if k % 3 == 0 then leaf:Lerp(WHITE, 0.08) elseif k % 3 == 1 then leaf:Lerp(BLACK, 0.08) else leaf
-		MapKit.ball(parent, "Leaves", r(4.4, 5.8) * scale, CFrame.new(top + Vector3.new(math.cos(a) * out, up, math.sin(a) * out)), shade, FOLIAGE)
+	if kind == "maple" and r(0, 1) < 0.3 then
+		leaf = rgb(214, 120, 50):Lerp(rgb(200, 70, 40), r(0, 1)) -- (turning for autumn)
 	end
-	MapKit.ball(parent, "Leaves", 5.4 * scale, CFrame.new(top + Vector3.new(r(-0.8, 0.8), 3.4 * scale, r(-0.8, 0.8))), leaf:Lerp(WHITE, 0.12), FOLIAGE)
+	local limbs = if kind == "maple" then 3 else 4
+	local spread = (if kind == "maple" then 2.6 else 3.4) * scale
+	for k = 1, limbs do
+		local a = yaw + k / limbs * math.pi * 2 + r(-0.35, 0.35)
+		local tip = p2 + Vector3.new(math.cos(a) * spread, r(1.6, 3) * scale, math.sin(a) * spread)
+		limb(parent, p2, tip, (if kind == "maple" then 0.55 else 0.7) * scale, bark)
+		-- the cluster: a big clump on the tip, a smaller one above it, shade below
+		clump(parent, tip + Vector3.new(0, 0.6 * scale, 0), r(5.6, 6.8) * scale, r(4, 5) * scale, leaf:Lerp(BLACK, r(0, 0.06)), rng)
+		clump(parent, tip + Vector3.new(r(-0.8, 0.8), 2.4 * scale, r(-0.8, 0.8)), r(4, 5) * scale, r(3, 3.8) * scale, leaf:Lerp(WHITE, r(0.06, 0.12)), rng)
+	end
+	-- the middle of the crown: dense and dark inside, light on top
+	local top = p2 + Vector3.new(0, 3 * scale, 0)
+	clump(parent, top, (if kind == "maple" then 9 else 8.4) * scale, (if kind == "maple" then 7.4 else 6) * scale, leaf:Lerp(BLACK, 0.12), rng)
+	clump(parent, top + Vector3.new(r(-0.6, 0.6), 2.8 * scale, r(-0.6, 0.6)), 6 * scale, 4.4 * scale, leaf:Lerp(WHITE, 0.14), rng)
 end
 
--- a pine for the woods and the hills: a tall rounded cone of overlapping
--- clumps, widest at the bottom
+-- a pine for the woods and the hills: layered tiers of drooping boughs,
+-- widest at the bottom, with a spike on top
 function Streets.pine(parent, pos, scale)
 	scale = scale or 1
-	MapKit.column(parent, "Trunk", 6 * scale, 1.2 * scale, pos + Vector3.new(0, 3 * scale, 0), MapKit.DARK_WOOD, Enum.Material.Wood, false).CanQuery = false
-	local green = rgb(44, 106, 58)
-	local n = 6
+	local h = 18 * scale
+	MapKit.column(parent, "Trunk", h * 0.9, 1.1 * scale, pos + Vector3.new(0, h * 0.45, 0), MapKit.DARK_WOOD, Enum.Material.Wood, false).CanQuery = false
+	local dark, light = rgb(36, 92, 52), rgb(64, 128, 72)
+	local n = 7
 	for k = 0, n - 1 do
 		local u = k / (n - 1)
-		local d = (7.4 - u * 5.6) * scale
-		local y = (5.2 + u * 11) * scale
-		MapKit.ball(parent, "Needles", d, CFrame.new(pos + Vector3.new(0, y, 0)), green:Lerp(rgb(62, 128, 70), u * 0.6), FOLIAGE)
+		local d = (9 - u * 7) * scale
+		local y = (4 + u * 12.6) * scale
+		-- a tier: a wide, flat bough with a smaller darker one under it
+		local tier = MapKit.ball(parent, "Needles", d, CFrame.new(pos + Vector3.new(0, y, 0)) * CFrame.Angles(0, k * 0.7, 0), dark:Lerp(light, u * 0.7), FOLIAGE)
+		tier.Size = Vector3.new(d, d * 0.42, d)
+		tier.CanQuery = false
+		local under = MapKit.ball(parent, "Needles", d * 0.8, CFrame.new(pos + Vector3.new(0, y - d * 0.16, 0)), dark:Lerp(BLACK, 0.15), FOLIAGE)
+		under.Size = Vector3.new(d * 0.8, d * 0.3, d * 0.8)
+		under.CanQuery = false
 	end
-	MapKit.ball(parent, "Needles", 1.4 * scale, CFrame.new(pos + Vector3.new(0, 17.4 * scale, 0)), rgb(62, 128, 70), FOLIAGE)
+	MapKit.column(parent, "Needles", 2.2 * scale, 0.5 * scale, pos + Vector3.new(0, h * 0.97, 0), light, FOLIAGE, false).CanQuery = false
 end
 
 function Streets.bench(parent, cf, place)
@@ -83,13 +150,17 @@ function Streets.bench(parent, cf, place)
 	return seat, cf * CFrame.new(0, 0, -0.2)
 end
 
--- street lamp: a post with an arm, a glowing head and a light pointing down
+-- street lamp: a modern LED light: a slim round pole on a base plate, a
+-- thin arm reaching over the road and a flat head with a glowing strip under it
 function Streets.lamp(parent, pos, facing)
 	local cf = CFrame.lookAt(pos, pos + facing)
-	deco(parent, "LampBase", Vector3.new(1.2, 1, 1.2), cf * CFrame.new(0, 0.5, 0), rgb(40, 44, 50), Enum.Material.Metal)
-	deco(parent, "LampPost", Vector3.new(0.5, 13, 0.5), cf * CFrame.new(0, 6.5, 0), rgb(40, 44, 50), Enum.Material.Metal)
-	deco(parent, "LampArm", Vector3.new(0.4, 0.4, 3), cf * CFrame.new(0, 12.8, -1.4), rgb(40, 44, 50), Enum.Material.Metal)
-	local head = deco(parent, "LampHead", Vector3.new(1.8, 0.7, 2.4), cf * CFrame.new(0, 12.6, -2.8), rgb(120, 120, 112), Enum.Material.SmoothPlastic)
+	local steel = rgb(58, 62, 68)
+	MapKit.column(parent, "LampBase", 0.6, 1.3, (cf * CFrame.new(0, 0.3, 0)).Position, steel, Enum.Material.Metal, false)
+	MapKit.column(parent, "LampPost", 13.2, 0.42, (cf * CFrame.new(0, 6.6, 0)).Position, steel, Enum.Material.Metal, false)
+	deco(parent, "LampArm", Vector3.new(0.22, 0.22, 3.4), cf * CFrame.new(0, 13.05, -1.6) * CFrame.Angles(math.rad(-4), 0, 0), steel, Enum.Material.Metal)
+	local head = deco(parent, "LampHead", Vector3.new(1.3, 0.3, 2.8), cf * CFrame.new(0, 12.95, -3.4), rgb(70, 74, 80), Enum.Material.Metal)
+	local led = deco(parent, "LampLED", Vector3.new(1, 0.06, 2.4), head.CFrame * CFrame.new(0, -0.17, 0), rgb(255, 244, 222), Enum.Material.Glass)
+	MapKit.nightNeon(led)
 	local spot = MapKit.spot(head, Enum.NormalId.Bottom, MapKit.LAMP_LIGHT, 28, 120, 2.2)
 	spot.Enabled = false
 	table.insert(MapKit.Registry.Lamps, { Head = head, Light = spot })
@@ -204,6 +275,14 @@ local function trafficLight(parent, pos, dir, axis)
 		local l = deco(model, name, Vector3.new(0.9, 0.9, 0.2), cf * CFrame.new(0, 11.3 - (k - 1) * 1.3, -1.55), rgb(60, 60, 60), Enum.Material.SmoothPlastic)
 		l.Shape = Enum.PartType.Block
 	end
+	-- the walk signal for people crossing beside this traffic: a box on the
+	-- pole with a 🚶 (walk) and a ✋ (don't walk) that light up in turn
+	local box = deco(model, "WalkBox", Vector3.new(1.3, 1.3, 0.9), cf * CFrame.new(0.6, 7.2, 0.6) * CFrame.Angles(0, math.rad(90), 0), rgb(30, 32, 36), Enum.Material.Metal)
+	for k, name in ipairs({ "WalkSignal", "DontWalkSignal" }) do
+		local face = deco(model, name, Vector3.new(1, 0.5, 0.1), box.CFrame * CFrame.new(0, 0.3 - (k - 1) * 0.6, -0.48), rgb(60, 60, 60), Enum.Material.SmoothPlastic)
+		MapKit.signText(face, Enum.NormalId.Front, if k == 1 then "🚶" else "✋", Color3.new(1, 1, 1), nil, 40)
+		MapKit.signText(face, Enum.NormalId.Back, if k == 1 then "🚶" else "✋", Color3.new(1, 1, 1), nil, 40)
+	end
 	MapKit.tag(model, "TrafficLight")
 end
 
@@ -282,6 +361,14 @@ function Streets.build(parent, rng, blockKind)
 					deco(roads, "Crosswalk", Vector3.new(5, 0.24, 1.2), CFrame.new(x + side * (ROAD / 2 + 2.8), 0.02, z + s * 2.1), WHITE)
 				end
 			end
+			-- stop lines behind the crosswalks (in each approaching lane), a
+			-- manhole cover in the middle, storm drains at the corners
+			for _, side in ipairs({ -1, 1 }) do
+				deco(roads, "StopLine", Vector3.new(ROAD / 2 - 0.6, 0.24, 0.7), CFrame.new(x + side * (ROAD / 4 - 0.3), 0.02, z + side * (ROAD / 2 + 6)), WHITE)
+				deco(roads, "StopLine", Vector3.new(0.7, 0.24, ROAD / 2 - 0.6), CFrame.new(x + side * (ROAD / 2 + 6), 0.02, z - side * (ROAD / 4 - 0.3)), WHITE)
+				deco(roads, "StormDrain", Vector3.new(2.2, 0.23, 0.9), CFrame.new(x + side * (ROAD / 2 + 9), 0.02, z - side * (ROAD / 2 - 0.5)), rgb(40, 42, 46), Enum.Material.DiamondPlate)
+			end
+			MapKit.disc(roads, "Manhole", 0.24, 2.6, Vector3.new(x + 4, 0.02, z - 4), rgb(70, 70, 74), Enum.Material.DiamondPlate)
 			if downtown then
 				trafficLight(furniture, Vector3.new(x - ROAD / 2 - 1.5, LOT_Y, z - ROAD / 2 - 1.5), Vector3.new(0, 0, 1), "Z")
 				trafficLight(furniture, Vector3.new(x + ROAD / 2 + 1.5, LOT_Y, z + ROAD / 2 + 1.5), Vector3.new(0, 0, -1), "Z")

@@ -27,7 +27,7 @@ local plates = {} -- [model] = { Gui, Name, Activity, Mood, Badge }
 
 local function plateOffset(model)
 	local s = model:GetAttribute("Scale") or 1
-	return Vector3.new(0, 1.9 * s + 0.3, 0)
+	return Vector3.new(0, 2.2 * s + 0.6, 0) -- (a little clear of the head)
 end
 
 local function makePlate(model, isPlayer)
@@ -60,8 +60,10 @@ local function makePlate(model, isPlayer)
 	UI.corner(hpBack, 3)
 	local hpFill = UI.new("Frame", { BackgroundColor3 = C.Red, BorderSizePixel = 0, Size = UDim2.fromScale(1, 1), Parent = hpBack })
 	UI.corner(hpFill, 3)
+	-- tags shrink with distance (see declutter) so a crowd isn't a wall of text
+	local scale = UI.new("UIScale", { Scale = 1, Parent = gui })
 	gui.Parent = head
-	local entry = { Gui = gui, Name = name, Mood = mood, Badge = badge, Activity = activity, Model = model, IsPlayer = isPlayer }
+	local entry = { Gui = gui, Name = name, Mood = mood, Badge = badge, Activity = activity, Model = model, IsPlayer = isPlayer, Scale = scale }
 	local function refreshHP()
 		local hp, maxHp = model:GetAttribute("HP"), model:GetAttribute("MaxHP")
 		if isPlayer then
@@ -169,7 +171,6 @@ end
 -- Name tags never pile up: when two tags would cover each other on screen
 -- (coworkers side by side at a counter, a crowd), only the nearer one shows.
 -- And a tag only shows when you can actually see the person (not through walls).
-local PLATE_W, PLATE_H = 150, 40
 local sightParams = RaycastParams.new()
 sightParams.FilterType = Enum.RaycastFilterType.Exclude
 sightParams.IgnoreWater = true
@@ -203,10 +204,18 @@ local function declutter()
 			local world = head.Position + gui.StudsOffset
 			local dist = (world - camPos).Magnitude
 			if dist <= gui.MaxDistance then
+				-- smaller further away; what they're doing only shows up close
+				local sc = math.clamp(1.12 - dist / 70, 0.6, 1)
+				if entry.Scale and math.abs(entry.Scale.Scale - sc) > 0.02 then
+					entry.Scale.Scale = sc
+				end
+				entry.Activity.Visible = entry.IsPlayer or dist < 26
 				local p, onScreen = camera:WorldToViewportPoint(world)
 				if onScreen and p.Z > 0 then
 					if visible(camPos, world) then
-						table.insert(list, { Entry = entry, X = p.X, Y = p.Y, D = dist })
+						local w = ((entry.Name.TextBounds and entry.Name.TextBounds.X) or 100) + 44
+						local h = if entry.Activity.Visible and entry.Activity.Text ~= "" then 46 else 26
+						table.insert(list, { Entry = entry, X = p.X, Y = p.Y, D = dist, W = w * sc, H = h * sc })
 					else
 						gui.Enabled = false
 					end
@@ -225,7 +234,8 @@ local function declutter()
 	for _, item in ipairs(list) do
 		local free = true
 		for _, other in ipairs(shown) do
-			if math.abs(item.X - other.X) < PLATE_W * 0.8 and math.abs(item.Y - other.Y) < PLATE_H * 0.85 then
+			-- (boxes, with a little breathing room between them)
+			if math.abs(item.X - other.X) < (item.W + other.W) / 2 + 8 and math.abs(item.Y - other.Y) < (item.H + other.H) / 2 + 6 then
 				free = false
 				break
 			end
@@ -871,6 +881,20 @@ local function trafficTick()
 			local axis = model:GetAttribute("Axis") or "X"
 			local phase = if axis == "X" then t else (t + 8) % 16
 			local state = if phase < 6 then "Green" elseif phase < 8 then "Yellow" else "Red"
+			-- the walk signal: walk while this traffic is green and there's time to
+			-- cross, then a flashing hand, then a steady hand
+			local walkOn = phase < 4.5
+			local flash = phase >= 4.5 and phase < 6.5 and (t * 2) % 1 < 0.5
+			for _, lamp in ipairs(model:GetChildren()) do
+				if lamp.Name == "WalkSignal" then
+					lamp.Material = if walkOn then Enum.Material.Neon else Enum.Material.SmoothPlastic
+					lamp.Color = if walkOn then Color3.fromRGB(240, 245, 255) else Color3.fromRGB(50, 50, 55)
+				elseif lamp.Name == "DontWalkSignal" then
+					local on = not walkOn and (phase >= 6.5 or flash)
+					lamp.Material = if on then Enum.Material.Neon else Enum.Material.SmoothPlastic
+					lamp.Color = if on then Color3.fromRGB(255, 140, 40) else Color3.fromRGB(50, 50, 55)
+				end
+			end
 			for _, name in ipairs({ "Red", "Yellow", "Green" }) do
 				for _, lamp in ipairs(model:GetChildren()) do
 					if lamp.Name == name and lamp:IsA("BasePart") then

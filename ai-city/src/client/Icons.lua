@@ -710,7 +710,7 @@ local ALIAS = {
 	["🏏"] = "bat", ["🔨"] = "hammer", ["🔪"] = "knife", ["🛡️"] = "shield", ["🪙"] = "coin", ["❤️"] = "heart",
 	["💬"] = "chat", ["🚨"] = "siren", ["🪪"] = "idcard", ["🛗"] = "elevator", ["🏆"] = "trophy", ["🏙️"] = "city",
 	["🧥"] = "hoodie", ["🥸"] = "disguise", ["☀️"] = "sun", ["🌙"] = "moon", ["🌅"] = "sunset", ["🌇"] = "sunset",
-	["🚗"] = "car", Car = "car",
+	["🚗"] = "car", Car = "car", ["🚕"] = "car", Rides = "car", ["💃"] = "smile", Emote = "smile",
 	["💰"] = "coin", ["💼"] = "briefcase", Jobs = "briefcase", ["😊"] = "smile", ["🏥"] = "hospital", ["🚓"] = "police",
 }
 Icons.Alias = ALIAS

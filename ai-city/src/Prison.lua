@@ -110,7 +110,7 @@ local function perimeter(data)
 		local panel = deco("GatePanel", Vector3.new(gateHalf, h - 3, 0.5), sx * (gateHalf + gateHalf / 2 - 0.5), 0, -hd - 3, STEEL, Enum.Material.DiamondPlate)
 		panel.Transparency = 0.35
 	end
-	local arm = deco("BarrierArm", Vector3.new(gateHalf * 2 - 2, 0.5, 0.5), 0, 3.6, -hd - 6, rgb(230, 60, 50))
+	local arm = deco("BarrierArm", Vector3.new(gateHalf * 2 - 2, 0.5, 0.5), -gateHalf + 1, 3.3, -hd - 6, rgb(230, 60, 50)) -- (raised, pivoting on its post)
 	arm.CFrame = arm.CFrame * CFrame.Angles(0, 0, math.rad(70)) * CFrame.new(gateHalf - 1, 0, 0)
 	deco("BarrierPost", Vector3.new(1, 3.6, 1), -gateHalf + 1, 0, -hd - 6, rgb(240, 200, 60), Enum.Material.Metal)
 	solid("GuardBooth", Vector3.new(7, 8, 7), gateHalf + 6, 0, -hd - 7, rgb(200, 198, 190), Enum.Material.Concrete)
@@ -232,7 +232,7 @@ local function cellBlock(data, rng)
 	-- hanging lights
 	for x = x0 + 10, x1 - 6, 16 do
 		local lamp = deco("HallLamp", Vector3.new(3, 0.5, 1.4), x, H - 3, SPINE, rgb(255, 245, 225), Enum.Material.Neon)
-		deco("LampCord", Vector3.new(0.1, 2.5, 0.1), x, H - 2.5, SPINE, BLACK)
+		deco("LampCord", Vector3.new(0.1, 2.9, 0.1), x, H - 2.5, SPINE, BLACK)
 		MapKit.light(lamp, rgb(255, 240, 215), 30, 0.9)
 	end
 
@@ -277,7 +277,7 @@ local function cellBlock(data, rng)
 			local tx = cx0 + 1.4
 			local tz = spec.Back + out * 1.4
 			deco("CellToilet", Vector3.new(1.6, 1.6, 1.8), tx + 0.4, 0, tz, rgb(200, 204, 210), Enum.Material.Metal)
-			deco("CellSink", Vector3.new(1.4, 0.7, 1.1), tx + 2.6, 2.6, spec.Back + out * 0.9, rgb(200, 204, 210), Enum.Material.Metal)
+			deco("CellSink", Vector3.new(1.4, 0.7, 1.1), tx + 2.6, 2.6, spec.Back + out * 0.55, rgb(200, 204, 210), Enum.Material.Metal)
 			deco("CellShelf", Vector3.new(3, 0.25, 1), cx - 0.8, 5, spec.Back + out * 0.6, rgb(120, 100, 80), Enum.Material.Wood)
 			for n = 0, 2 do
 				deco("ShelfBook", Vector3.new(0.4, 1.1, 0.8), cx - 1.8 + n * 0.5, 5.25, spec.Back + out * 0.6, MapKit.FLOWERS[(k + n + row) % #MapKit.FLOWERS + 1]:Lerp(BLACK, 0.3))
@@ -287,7 +287,7 @@ local function cellBlock(data, rng)
 			local stool = MapKit.seat(model, "CellStool", Vector3.new(1.2, 0.35, 1.2), cf(cx - 1, 1.75, spec.Back + out * 5), STEEL, Enum.Material.Metal, nil)
 			stool.CanCollide = false
 			deco("StoolLeg", Vector3.new(0.3, 1.6, 0.3), cx - 1, 0, spec.Back + out * 5, STEEL, Enum.Material.Metal)
-			local lamp = deco("CellLamp", Vector3.new(1.4, 0.3, 1.4), cx, TIER - 1.6, zMid, rgb(255, 240, 210), Enum.Material.Neon)
+			local lamp = deco("CellLamp", Vector3.new(1.4, 0.3, 1.4), cx, TIER - 1.3, zMid, rgb(255, 240, 210), Enum.Material.Neon)
 			MapKit.light(lamp, rgb(255, 235, 205), 12, 0.5)
 			-- where people sleep, sit and stand in here (the bunks lie along z)
 			local head = bz + out * -2.9
@@ -364,6 +364,11 @@ local function cellBlock(data, rng)
 		local seat = MapKit.seat(model, "LoungeChair", Vector3.new(1.6, 0.35, 1.6), cf(x, 1.75, z), rgb(60, 110, 170), Enum.Material.SmoothPlastic, nil)
 		seat.CanCollide = false
 		deco("ChairBack", Vector3.new(0.3, 1.6, 1.6), x + 0.7, 1.9, z, rgb(60, 110, 170))
+		for _, lx in ipairs({ -0.6, 0.6 }) do
+			for _, lz in ipairs({ -0.6, 0.6 }) do
+				deco("ChairLeg", Vector3.new(0.2, 1.65, 0.2), x + lx, 0, z + lz, STEEL)
+			end
+		end
 		table.insert(data.TVSeats, spotAt(x, z, x0, z, { Seat = seat }))
 	end
 	-- the guard desk by the yard door
@@ -448,6 +453,9 @@ local function yard(data, rng)
 			for _, sx in ipairs({ -1, 1 }) do
 				local seat = MapKit.seat(model, "PicnicBench", Vector3.new(1.4, 0.4, 7.4), cf(tx + sx * 2.8, 1.6, tz), rgb(110, 100, 90), Enum.Material.Concrete, nil)
 				seat.CanCollide = false
+				for _, lz in ipairs({ -2.6, 2.6 }) do
+					deco("BenchLeg", Vector3.new(0.5, 1.5, 0.8), tx + sx * 2.8, 0, tz + lz, rgb(110, 100, 90), Enum.Material.Concrete)
+				end
 				for _, dz in ipairs({ -2, 1.5 }) do
 					table.insert(data.Tables, spotAt(tx + sx * 2.8, tz + dz, tx, tz + dz, { Seat = seat }))
 				end
