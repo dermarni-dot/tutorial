@@ -958,6 +958,11 @@ arrive = function(brain)
 	local plan = t.Plan or {}
 	brain.Building = t.Building
 	brain.Floor = t.Floor or 1
+	-- there now: what they're actually doing (not "lazing on the couch" on
+	-- the walk home)
+	if plan.Activity and not brain.Soccer then
+		setActivity(brain, plan.Activity)
+	end
 	if t.Soccer then
 		joinSoccer(brain, t.Soccer)
 		return
@@ -1560,6 +1565,58 @@ function CitizenService.Despawn(brain)
 end
 
 -- Lets another module steer a brain directly (police chases)
+-- Is something solid in the way between two points (waist height)? People,
+-- players' characters and see-through things don't count.
+local sightBlock = RaycastParams.new()
+sightBlock.FilterType = Enum.RaycastFilterType.Exclude
+sightBlock.IgnoreWater = true
+local function blockedBetween(a, b)
+	local from = Vector3.new(a.X, a.Y + 0.2, a.Z)
+	local to = Vector3.new(b.X, a.Y + 0.2, b.Z)
+	local d = to - from
+	if d.Magnitude < 0.5 then
+		return nil
+	end
+	local filter = { workspace:FindFirstChild("Citizens") }
+	for _, p in ipairs(game:GetService("Players"):GetPlayers()) do
+		if p.Character then
+			table.insert(filter, p.Character)
+		end
+	end
+	sightBlock.FilterDescendantsInstances = filter
+	local hit = workspace:Raycast(from, d, sightBlock)
+	if hit and hit.Instance and hit.Instance.CanCollide and (hit.Instance.Transparency or 0) < 0.9 then
+		return hit
+	end
+	return nil
+end
+CitizenService.BlockedBetween = blockedBetween
+
+-- Where to walk to reach `goal`: straight there if nothing's in the way,
+-- otherwise around the obstacle (the first clear detour to either side)
+function CitizenService.WayTo(brain, goal)
+	local from = brain.Root.Position
+	local hit = blockedBetween(from, goal)
+	if not hit then
+		return goal, false
+	end
+	local d = Vector3.new(goal.X - from.X, 0, goal.Z - from.Z)
+	local dir = if d.Magnitude > 0.1 then d.Unit else Vector3.new(1, 0, 0)
+	local side = Vector3.new(-dir.Z, 0, dir.X)
+	local size = hit.Instance.Size
+	-- (a short step round small things; big things - a wall, a building - they
+	-- just don't try to go through, so no long detours)
+	local reach = math.min(math.max(size.X, size.Z) / 2 + 3, 8)
+	for _, w in ipairs({ reach, -reach, reach * 2, -reach * 2 }) do
+		local p = hit.Position + side * w - dir * 1.5
+		p = Vector3.new(p.X, from.Y, p.Z)
+		if not blockedBetween(from, p) and not blockedBetween(p, goal) then
+			return p, true
+		end
+	end
+	return hit.Position + side * reach, true
+end
+
 function CitizenService.Control(brain, on)
 	if on then
 		interruptMovement(brain)
@@ -1774,7 +1831,22 @@ local function think(brain)
 		end
 	end
 	local key = planKey(plan)
-	setActivity(brain, if brain.Soccer then brain.Model:GetAttribute("Activity") else plan.Activity)
+	-- on the way there it says so; the activity itself shows once they arrive
+	-- (see arrive)
+	if not brain.Soccer then
+		if key == brain.PlanKey and st == "act" then
+			setActivity(brain, plan.Activity)
+		else
+			local dest = plan.Place and map.Places[plan.Place]
+			local label = dest and (dest.Label or plan.Place) and string.gsub(dest.Label or plan.Place, "^[^%w]+%s*", "")
+			setActivity(brain, if plan.Kind == "Home" then "🏠 Heading home"
+				elseif plan.Kind == "Work" then "💼 On the way to work" .. (if label then " at the " .. label else "")
+				elseif plan.Kind == "School" then "🎒 Off to school"
+				elseif plan.Kind == "Hospital" then "🏥 Going to the hospital"
+				elseif label then "🚶 Heading to the " .. label
+				else plan.Activity)
+		end
+	end
 	if key == brain.PlanKey and st ~= "idle" and brain.Tasks then
 		-- a clerk finishes serving the customer before moving on
 		if (brain.ServingUntil or 0) > workspace:GetServerTimeNow() then
@@ -1842,6 +1914,17 @@ local function think(brain)
 	-- a briefcase on the way to the office, a backpack to school...
 	if t.Carry == nil and not brain.Model:GetAttribute("Carry") then
 		local carry = Errands.CommuteProp(brain, plan, t)
+		-- or just something in hand: texting on the way, a morning coffee
+		if not carry and not brain.Staff then
+			local age = ageOf(brain.C)
+			local roll = math.random()
+			local hour = S.City and S.City.Hour and S.City.Hour() or 12
+			if age >= 13 and roll < (if age < 30 then 0.22 else 0.1) then
+				carry = "Phone"
+			elseif age >= 18 and hour >= 6 and hour < 11 and roll < 0.28 then
+				carry = "Cup"
+			end
+		end
 		if carry then
 			brain.Model:SetAttribute("Carry", carry)
 			brain.CommuteProp = true
@@ -1860,7 +1943,7 @@ local function think(brain)
 end
 
 -- a few little things people do on the way
-local PAUSES = { "phone", "wait", "wave" }
+local PAUSES = { "phone", "wait", "photo", "stretch", "phone", "wait" }
 -- Personal space: people step around whoever is in their way (other citizens
 -- and players) instead of walking through them. Two people walking toward
 -- each other both keep to the right, so they pass cleanly; someone boxed in
@@ -2180,7 +2263,10 @@ local function walkTick(brain)
 		end
 		-- sometimes stop to check the phone or look around (not when late)
 		if brain.State == "walk" and not brain.Late and math.random() < 0.035 and nearestPlayerDistance(root.Position) < WATCH_RADIUS then
-			local action = PAUSES[math.random(1, 2)]
+			local action = PAUSES[math.random(1, #PAUSES)]
+			if action == "stretch" and ageOf(brain.C) < 13 then
+				action = "wait"
+			end
 			brain.Humanoid:MoveTo(root.Position)
 			playTrack(brain, "idle")
 			setAction(brain, action)

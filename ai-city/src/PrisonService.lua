@@ -980,6 +980,17 @@ function PrisonService.Start(services)
 			for _, tower in ipairs(P.Towers) do
 				spawnGuard("tower", tower.Guard)
 			end
+			-- the nurse in the medical bay
+			if P.NurseSpot then
+				local ok, nurse = pcall(S.Citizens.SpawnExtra, { Name = "Nurse Okafor", First = "Nurse Okafor", Job = "Nurse", Age = 44, Activity = "🩺 On duty in the medical bay" }, CFrame.new(P.NurseSpot.CFrame.Position + Vector3.new(0, 3, 0)))
+				if ok and nurse then
+					S.Citizens.Control(nurse, true)
+					S.Citizens.PlaceAt(nurse, P.NurseSpot, "nurse")
+					nurse.Model:SetAttribute("Activity", "🩺 On duty in the medical bay")
+					nurse.Staff = true
+					PrisonService.Nurse = nurse
+				end
+			end
 		end)
 		nextFight = os.clock() + 90
 		local t = 0

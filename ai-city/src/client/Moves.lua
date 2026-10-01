@@ -58,10 +58,20 @@ local function report()
 	end)
 end
 
+local wakeAsked = 0
 local function step(dt)
 	local character = player.Character
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 	local root = character and character:FindFirstChild("HumanoidRootPart")
+	-- asleep in a bed: moving (or jumping) gets you up
+	if character and humanoid and character:GetAttribute("Sleeping") and (humanoid.MoveDirection.Magnitude > 0.1 or humanoid.Jump) and os.clock() > wakeAsked then
+		wakeAsked = os.clock() + 1
+		task.spawn(function()
+			pcall(function()
+				ctx.Remotes.Request:InvokeServer({ Action = "Wake" })
+			end)
+		end)
+	end
 	local level = player:GetAttribute("FitLevel") or 1
 	local st = Fitness.Stats(level)
 	local boost = 1

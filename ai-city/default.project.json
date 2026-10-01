@@ -176,6 +176,15 @@
         "SchoolService": {
           "$path": "src/SchoolService.lua"
         },
+        "StreetLife": {
+          "$path": "src/StreetLife.lua"
+        },
+        "StreetLifeService": {
+          "$path": "src/StreetLifeService.lua"
+        },
+        "SleepService": {
+          "$path": "src/SleepService.lua"
+        },
         "Conversation": {
           "$path": "src/Conversation.lua"
         }

@@ -11,6 +11,7 @@
 --     the police, and some houses have an alarm.
 
 local Players = game:GetService("Players")
+local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 
@@ -79,6 +80,10 @@ local function refreshPrompts(d)
 	d.BuyPrompt.Enabled = vacant
 	d.BuyPrompt.ObjectText = d.Home.Address .. "  ·  🪙 " .. priceOf(d.Home)
 	d.BreakPrompt.Enabled = not vacant and not d.Broken
+	-- (each player's screen hides "Break in" on their own house: see the
+	-- client's World module)
+	d.Anchor:SetAttribute("Owner", d.Owner)
+	d.Anchor:SetAttribute("BreakOK", d.BreakPrompt.Enabled)
 	d.Part:SetAttribute("Owner", d.Owner)
 	d.Part:SetAttribute("Broken", d.Broken or nil)
 end
@@ -270,6 +275,8 @@ local function addDoor(home)
 	anchor.Size = Vector3.new(1, 1, 1)
 	anchor.CFrame = d.Closed * CFrame.new(0, -1, -1.4)
 	anchor.Parent = hd.Part.Parent
+	d.Anchor = anchor
+	CollectionService:AddTag(anchor, "HouseDoor")
 	local buyPrompt = Instance.new("ProximityPrompt")
 	buyPrompt.Name = "BuyHouse"
 	buyPrompt.ActionText = "Buy house"

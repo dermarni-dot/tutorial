@@ -1321,9 +1321,10 @@ local function buildWardrobe()
 	Panels.Wardrobe = win
 	local body = win.Body
 	local top = UI.text(body, "", 15, UI.Bold, C.Sub, { Size = UDim2.new(1, 0, 0, 22), RichText = true })
-	local grid = UI.new("Frame", { BackgroundTransparency = 1, Position = UDim2.fromOffset(0, 30), Size = UDim2.new(1, 0, 1, -70), Parent = body })
-	UI.new("UIGridLayout", { CellSize = UDim2.new(0.333, -8, 1, 0), CellPadding = UDim2.fromOffset(10, 0), SortOrder = Enum.SortOrder.LayoutOrder, Parent = grid })
-	UI.text(body, "🌙 Everything hides you better at night. Wear a top and a face item together. After a crime, change or take them off (C) where nobody can see you: the police will be looking for the wrong person.", 12, UI.Font, C.Dim, { AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.new(1, 0, 0, 34), TextWrapped = true })
+	-- (a scrolling grid: disguises first, then all the fashion)
+	local grid = UI.new("ScrollingFrame", { BackgroundTransparency = 1, BorderSizePixel = 0, Position = UDim2.fromOffset(0, 30), Size = UDim2.new(1, 0, 1, -70), CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y, ScrollBarThickness = 6, ScrollingDirection = Enum.ScrollingDirection.Y, Parent = body })
+	UI.new("UIGridLayout", { CellSize = UDim2.new(0.333, -10, 0, 252), CellPadding = UDim2.fromOffset(10, 10), SortOrder = Enum.SortOrder.LayoutOrder, Parent = grid })
+	UI.text(body, "🌙 Disguises hide you better at night. One item per slot (top, face, hat, eyes, neck). After a crime, change clothes (C) where nobody can see you: the police will be looking for the wrong outfit.", 12, UI.Font, C.Dim, { AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.new(1, 0, 0, 34), TextWrapped = true })
 	local function stat(card, label, value, color, y, text)
 		UI.text(card, label, 12, UI.Bold, C.Sub, { Position = UDim2.fromOffset(0, y), Size = UDim2.fromOffset(78, 16) })
 		local _, set = UI.bar(card, color, 8, { Position = UDim2.new(0, 80, 0, y + 4), Size = UDim2.new(1, -118, 0, 8) })
@@ -1342,12 +1343,20 @@ local function buildWardrobe()
 				UI.stroke(card, C.Purple, 2, 0)
 			end
 			UI.pad(card, 12)
-			UI.Icons.Badge(card, item.Id, 54, UI.rgb(110, 80, 180), { AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 0), Fill = 0.78 })
+			local badge = UI.Icons.Badge(card, item.Id, 54, if item.Fashion then (item.Color or UI.rgb(220, 120, 160)):Lerp(UI.rgb(255, 255, 255), 0.15) else UI.rgb(110, 80, 180), { AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 0), Fill = 0.78 })
+			if not UI.Icons.Has(item.Id) then
+				UI.text(badge, item.Emoji or "👕", 30, UI.Bold, C.White, { Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center, ZIndex = badge.ZIndex + 3 })
+			end
 			UI.text(card, item.Name, 18, UI.Title, C.Text, { Position = UDim2.fromOffset(0, 58), Size = UDim2.new(1, 0, 0, 24), TextXAlignment = Enum.TextXAlignment.Center })
-			UI.text(card, (if item.Slot == "Top" then "TOP · " else "FACE · ") .. item.Desc, 12, UI.Font, C.Sub, { Position = UDim2.fromOffset(0, 84), Size = UDim2.new(1, 0, 0, 62), TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Center, TextYAlignment = Enum.TextYAlignment.Top })
-			stat(card, "☀️ Hidden", item.Hidden, C.Blue, 152, math.floor(item.Hidden * 100) .. "%")
-			stat(card, "🌙 At night", math.min(0.95, item.Hidden + item.Night), C.Purple, 172, math.floor(math.min(0.95, item.Hidden + item.Night) * 100) .. "%")
-			stat(card, "👀 Noticed", item.Suspicious, C.Red, 192, if item.Suspicious > 0 then "day" else "no")
+			UI.text(card, string.upper(item.Slot or "") .. " · " .. item.Desc, 12, UI.Font, C.Sub, { Position = UDim2.fromOffset(0, 84), Size = UDim2.new(1, 0, 0, 62), TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Center, TextYAlignment = Enum.TextYAlignment.Top })
+			if item.Fashion then
+				stat(card, "✨ Style", math.clamp(item.Price / 160, 0.15, 1), C.Gold, 152, if item.Price >= 150 then "wow" else "nice")
+				stat(card, "☀️ Hidden", item.Hidden, C.Blue, 172, math.floor(item.Hidden * 100) .. "%")
+			else
+				stat(card, "☀️ Hidden", item.Hidden, C.Blue, 152, math.floor(item.Hidden * 100) .. "%")
+				stat(card, "🌙 At night", math.min(0.95, item.Hidden + item.Night), C.Purple, 172, math.floor(math.min(0.95, item.Hidden + item.Night) * 100) .. "%")
+				stat(card, "👀 Noticed", item.Suspicious, C.Red, 192, if item.Suspicious > 0 then "day" else "no")
+			end
 			local label, color, textColor
 			if item.Owned then
 				label, color, textColor = if item.Wearing then "Take off" else "Put on", if item.Wearing then C.Panel3 else C.Purple, C.White

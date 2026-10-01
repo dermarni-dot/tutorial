@@ -82,6 +82,8 @@ if Config.RUN_CITIZENS ~= false then
 	services.Rideshare = require(Modules:WaitForChild("RideshareService"))
 	services.Race = require(Modules:WaitForChild("RaceService"))
 	services.School = require(Modules:WaitForChild("SchoolService"))
+	services.StreetLife = require(Modules:WaitForChild("StreetLifeService"))
+	services.Sleep = require(Modules:WaitForChild("SleepService"))
 	services.Dialogue.Start(services)
 	services.Crime.Start(services)
 	services.Players.Start(services)
@@ -106,5 +108,7 @@ if Config.RUN_CITIZENS ~= false then
 	services.Rideshare.Start(services)
 	services.Race.Start(services)
 	services.School.Start(services)
+	services.StreetLife.Start(services)
+	services.Sleep.Start(services)
 	task.spawn(services.Citizens.Start, services)
 end

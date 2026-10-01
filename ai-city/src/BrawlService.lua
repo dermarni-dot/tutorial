@@ -598,7 +598,7 @@ end
 local function gatherCrowd(b)
 	local pos = center(b)
 	local now = os.clock()
-	for _, w in ipairs(S.Citizens.Nearby(pos, 60)) do
+	for _, w in ipairs(S.Citizens.Nearby(pos, 80)) do
 		if w ~= b.A and w ~= b.B and not w.Temp and not inBrawl[w] and w.Model.Parent and w.Model:GetAttribute("Action") ~= "sleep" then
 			local age = S.Life:Age(w.C)
 			local dist = (w.Root.Position - pos).Magnitude
@@ -713,7 +713,13 @@ local function tick(b, now)
 		local d = flat(other.Root.Position - f.Root.Position)
 		local dist = d.Magnitude
 		local dir = if dist > 0.1 then d.Unit else Vector3.new(1, 0, 0)
-		if b.Phase == "argue" then
+		-- something solid between them (a planter, a bench, a car)? walk round
+		-- it first; nobody swings through it
+		local way, around = S.Citizens.WayTo(f, other.Root.Position - dir * 3.2)
+		if around then
+			S.Citizens.SetGait(f, 12, "run")
+			f.Humanoid:MoveTo(way)
+		elseif b.Phase == "argue" then
 			S.Citizens.SetGait(f, 10, "walk")
 			if dist > 4.5 then
 				f.Humanoid:MoveTo(other.Root.Position - dir * 4)
@@ -729,7 +735,7 @@ local function tick(b, now)
 			else
 				f.Humanoid:MoveTo(f.Root.Position + flat(side) * 2 - dir * 0.5)
 			end
-			if dist < 5.2 and now >= b.Next[f] then
+			if dist < 5.2 and now >= b.Next[f] and not S.Citizens.BlockedBetween(f.Root.Position, other.Root.Position) then
 				b.Next[f] = now + math.random(8, 14) / 10
 				if swing(b, f, other, now) then
 					return

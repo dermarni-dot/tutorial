@@ -41,17 +41,22 @@ local HAIR_COLORS = {
 local FUN_HAIR = { rgb(240, 110, 170), rgb(90, 150, 240), rgb(140, 90, 220), rgb(90, 200, 160) }
 local GRAY_HAIR = { rgb(200, 200, 200), rgb(170, 170, 172), rgb(235, 235, 235) }
 local HAIRSTYLES = { "short", "buzz", "long", "ponytail", "bun", "afro", "curly", "mohawk", "bob", "spiky", "sidepart", "bald", "braids", "pigtails", "wavy", "undercut", "topknot", "locs" }
-local CASUAL_TOPS = { rgb(220, 70, 70), rgb(70, 130, 220), rgb(90, 180, 110), rgb(240, 190, 60), rgb(160, 100, 200), rgb(240, 140, 60), rgb(80, 190, 200), rgb(235, 235, 230), rgb(60, 60, 70), rgb(230, 120, 160) }
-local CASUAL_BOTTOMS = { rgb(50, 70, 120), rgb(70, 60, 50), rgb(40, 40, 45), rgb(120, 110, 90), rgb(90, 100, 110), rgb(60, 90, 70) }
+local CASUAL_TOPS = { rgb(220, 70, 70), rgb(70, 130, 220), rgb(90, 180, 110), rgb(240, 190, 60), rgb(160, 100, 200), rgb(240, 140, 60), rgb(80, 190, 200), rgb(235, 235, 230), rgb(60, 60, 70), rgb(230, 120, 160),
+	-- pastels and earth tones
+	rgb(250, 200, 210), rgb(190, 220, 250), rgb(200, 235, 200), rgb(250, 235, 180), rgb(215, 200, 245), rgb(150, 110, 80), rgb(110, 120, 80), rgb(170, 60, 70), rgb(30, 70, 90), rgb(240, 230, 210), rgb(20, 20, 24), rgb(130, 140, 150) }
+local CASUAL_BOTTOMS = { rgb(50, 70, 120), rgb(70, 60, 50), rgb(40, 40, 45), rgb(120, 110, 90), rgb(90, 100, 110), rgb(60, 90, 70),
+	rgb(200, 180, 140), rgb(235, 232, 225), rgb(100, 105, 70), rgb(120, 40, 50), rgb(150, 150, 155), rgb(230, 190, 200) }
 local JEANS = { rgb(60, 90, 140), rgb(45, 65, 105), rgb(90, 120, 165), rgb(35, 40, 55) }
 local KID_TOPS = { rgb(255, 90, 90), rgb(80, 170, 255), rgb(120, 220, 110), rgb(255, 210, 60), rgb(190, 120, 250), rgb(255, 150, 60), rgb(90, 220, 220), rgb(255, 130, 190) }
-local SHOES = { rgb(40, 35, 32), rgb(240, 240, 240), rgb(110, 70, 45), rgb(200, 60, 60), rgb(60, 90, 160), rgb(30, 30, 30) }
+local SHOES = { rgb(40, 35, 32), rgb(240, 240, 240), rgb(110, 70, 45), rgb(200, 60, 60), rgb(60, 90, 160), rgb(30, 30, 30), rgb(190, 150, 100), rgb(250, 200, 60), rgb(120, 120, 126) }
 -- everyday outfits for people off duty (a few items each)
 local CASUAL_STYLES = {
 	adult = { { "Tee" }, { "Tee" }, { "Polo" }, { "Hoodie" }, { "Jacket" }, { "Stripes" }, { "Sweater" }, { "Dress" },
-		{ "Blazer" }, { "Flannel" }, { "Puffer" }, { "Tank" }, { "Skirt", "Tee" }, { "Flannel", "Tee" }, { "Blazer", "Skirt" } },
-	teen = { { "Hoodie" }, { "Hoodie" }, { "Tee" }, { "Jacket" }, { "Stripes" }, { "Tee", "CapBack" }, { "Dress" }, { "Varsity" }, { "Puffer" }, { "Flannel" }, { "Skirt", "Tee" }, { "Tank" } },
-	kid = { { "Tee" }, { "Stripes" }, { "Hoodie" }, { "Overalls" }, { "Dress" }, { "Varsity" }, { "Puffer" } },
+		{ "Blazer" }, { "Flannel" }, { "Puffer" }, { "Tank" }, { "Skirt", "Tee" }, { "Flannel", "Tee" }, { "Blazer", "Skirt" },
+		{ "Leather", "Tee" }, { "Denim", "Tee" }, { "Tracksuit" }, { "Denim", "Stripes" }, { "Leather" }, { "Tee", "Beanie" }, { "Sweater", "Scarf" } },
+	teen = { { "Hoodie" }, { "Hoodie" }, { "Tee" }, { "Jacket" }, { "Stripes" }, { "Tee", "CapBack" }, { "Dress" }, { "Varsity" }, { "Puffer" }, { "Flannel" }, { "Skirt", "Tee" }, { "Tank" },
+		{ "Tracksuit" }, { "Denim", "Tee" }, { "Hoodie", "Beanie" }, { "Leather", "Tee" }, { "Tee", "BucketHat" } },
+	kid = { { "Tee" }, { "Stripes" }, { "Hoodie" }, { "Overalls" }, { "Dress" }, { "Varsity" }, { "Puffer" }, { "Tracksuit" }, { "Denim", "Tee" } },
 }
 
 --------------------------------------------------------------------------------
@@ -728,17 +733,46 @@ function ITEMS.Hoodie(f, b, c)
 	end
 	band(f, b.Lower ~= t and b.Lower or nil, "HoodieHem", b.Lower and b.Lower.Size.Y * 0.3 or 0, 0.2, base:Lerp(BLACK, 0.12))
 end
-function ITEMS.Jacket(f, b, c)
+local function jacket(f, b, c, mat)
 	local t = b.Torso
-	c = c or rgb(60, 60, 70)
 	for _, sx in ipairs({ -1, 1 }) do
-		attach(f, t, "JacketPanel", Vector3.new(t.Size.X * 0.3, t.Size.Y + 0.04, 0.08), CFrame.new(sx * t.Size.X * 0.36, 0, -t.Size.Z / 2 - 0.04), c, nil, Enum.Material.Fabric)
-		attach(f, t, "Lapel", Vector3.new(0.14, t.Size.Y * 0.4, 0.06), CFrame.new(sx * t.Size.X * 0.22, t.Size.Y * 0.28, -t.Size.Z / 2 - 0.07) * CFrame.Angles(0, 0, sx * math.rad(20)), c:Lerp(BLACK, 0.2), nil, Enum.Material.Fabric)
-		attach(f, t, "JacketSide", Vector3.new(0.08, t.Size.Y + 0.04, t.Size.Z + 0.08), CFrame.new(sx * (t.Size.X / 2 + 0.04), 0, 0), c, nil, Enum.Material.Fabric)
+		attach(f, t, "JacketPanel", Vector3.new(t.Size.X * 0.3, t.Size.Y + 0.04, 0.08), CFrame.new(sx * t.Size.X * 0.36, 0, -t.Size.Z / 2 - 0.04), c, nil, mat)
+		attach(f, t, "Lapel", Vector3.new(0.14, t.Size.Y * 0.4, 0.06), CFrame.new(sx * t.Size.X * 0.22, t.Size.Y * 0.28, -t.Size.Z / 2 - 0.07) * CFrame.Angles(0, 0, sx * math.rad(20)), c:Lerp(BLACK, 0.2), nil, mat)
+		attach(f, t, "JacketSide", Vector3.new(0.08, t.Size.Y + 0.04, t.Size.Z + 0.08), CFrame.new(sx * (t.Size.X / 2 + 0.04), 0, 0), c, nil, mat)
 	end
-	attach(f, t, "JacketBack", Vector3.new(t.Size.X + 0.08, t.Size.Y + 0.04, 0.08), CFrame.new(0, 0, t.Size.Z / 2 + 0.04), c, nil, Enum.Material.Fabric)
+	attach(f, t, "JacketBack", Vector3.new(t.Size.X + 0.08, t.Size.Y + 0.04, 0.08), CFrame.new(0, 0, t.Size.Z / 2 + 0.04), c, nil, mat)
 	for _, arm in ipairs({ b.LeftArm, b.RightArm }) do
-		attach(f, arm, "Sleeve", arm and (arm.Size + Vector3.new(0.08, 0, 0.08)) or Vector3.one, CFrame.new(), c, nil, Enum.Material.Fabric)
+		attach(f, arm, "Sleeve", arm and (arm.Size + Vector3.new(0.08, 0, 0.08)) or Vector3.one, CFrame.new(), c, nil, mat)
+	end
+end
+function ITEMS.Jacket(f, b, c)
+	jacket(f, b, c or rgb(60, 60, 70), Enum.Material.Fabric)
+end
+-- a black (or brown) leather jacket with a silver zip
+function ITEMS.Leather(f, b, c)
+	local t = b.Torso
+	jacket(f, b, c or rgb(28, 26, 28), Enum.Material.Leather)
+	attach(f, t, "Zip", Vector3.new(0.05, t.Size.Y * 0.9, 0.04), CFrame.new(-t.Size.X * 0.06, 0, -t.Size.Z / 2 - 0.1), SILVER, nil, Enum.Material.Metal)
+end
+-- a denim jacket: jean blue, with stitched pockets
+function ITEMS.Denim(f, b, c)
+	local t = b.Torso
+	c = c or rgb(80, 110, 160)
+	jacket(f, b, c, Enum.Material.Fabric)
+	for _, sx in ipairs({ -1, 1 }) do
+		attach(f, t, "DenimPocket", Vector3.new(t.Size.X * 0.2, t.Size.Y * 0.16, 0.04), CFrame.new(sx * t.Size.X * 0.32, t.Size.Y * 0.18, -t.Size.Z / 2 - 0.1), c:Lerp(BLACK, 0.15), nil, Enum.Material.Fabric)
+	end
+end
+-- a zip-up track jacket with white stripes down the sleeves
+function ITEMS.Tracksuit(f, b, c)
+	local t = b.Torso
+	c = c or rgb(40, 60, 150)
+	jacket(f, b, c, Enum.Material.Fabric)
+	attach(f, t, "Zip", Vector3.new(0.05, t.Size.Y * 0.9, 0.04), CFrame.new(0, 0, -t.Size.Z / 2 - 0.1), WHITE, nil, Enum.Material.SmoothPlastic)
+	for _, arm in ipairs({ b.LeftArm, b.RightArm }) do
+		if arm then
+			attach(f, arm, "TrackStripe", Vector3.new(arm.Size.X + 0.1, arm.Size.Y, 0.1), CFrame.new(0, 0, -arm.Size.Z / 2 + 0.02), WHITE, nil, Enum.Material.Fabric)
+		end
 	end
 end
 function ITEMS.Stripes(f, b, c)
@@ -1021,12 +1055,18 @@ function CitizenLook.Describe(citizen)
 		Width = rng:NextNumber(0.85, 1.1),
 	}
 	-- a build: how wide and deep the body is, and its shape
-	local builds = if kid then { "slim", "average", "average", "heavy" }
-		elseif feminine then { "slim", "average", "average", "curvy", "curvy", "athletic", "athletic", "heavy", "muscular" }
-		else { "slim", "average", "average", "athletic", "athletic", "heavy", "stocky", "muscular", "muscular" }
+	local builds = if kid then { "slim", "average", "average", "heavy", "lanky" }
+		elseif feminine then { "slim", "average", "average", "curvy", "curvy", "athletic", "athletic", "heavy", "muscular", "petite", "petite", "lanky" }
+		else { "slim", "average", "average", "athletic", "athletic", "heavy", "stocky", "muscular", "muscular", "lanky", "petite" }
 	look.Build = builds[rng:NextInteger(1, #builds)]
-	look.Width = ({ slim = 0.78, average = 0.9, curvy = 0.92, athletic = 1, heavy = 1, stocky = 1, muscular = 1 })[look.Build] * rng:NextNumber(0.96, 1.04)
-	look.Depth = ({ slim = 0.8, average = 0.9, curvy = 1, athletic = 0.92, heavy = 1, stocky = 0.96, muscular = 1 })[look.Build]
+	look.Width = ({ slim = 0.78, average = 0.9, curvy = 0.92, athletic = 1, heavy = 1, stocky = 1, muscular = 1, lanky = 0.8, petite = 0.84 })[look.Build] * rng:NextNumber(0.96, 1.04)
+	look.Depth = ({ slim = 0.8, average = 0.9, curvy = 1, athletic = 0.92, heavy = 1, stocky = 0.96, muscular = 1, lanky = 0.8, petite = 0.86 })[look.Build]
+	-- tall and thin, or small and neat
+	if look.Build == "lanky" then
+		look.Height = math.max(look.Height, if kid then 1.06 else 1.1) * rng:NextNumber(1, 1.05)
+	elseif look.Build == "petite" then
+		look.Height = math.min(look.Height, if kid then 0.95 else 0.9)
+	end
 	look.Face = Faces.Describe(rng, age, feminine)
 	look.Scale = CitizenLook.ScaleFor(age, look.Height)
 	if age < 3 then
@@ -1103,6 +1143,16 @@ function CitizenLook.Describe(citizen)
 				end
 			elseif item == "CapBack" then
 				table.insert(look.Items, "CapBack:" .. colorText(accent))
+			elseif item == "Leather" then
+				table.insert(look.Items, "Leather:" .. colorText(({ rgb(28, 26, 28), rgb(28, 26, 28), rgb(90, 55, 35), rgb(120, 30, 40) })[rng:NextInteger(1, 4)]))
+			elseif item == "Denim" then
+				table.insert(look.Items, "Denim:" .. colorText(({ rgb(80, 110, 160), rgb(60, 85, 130), rgb(140, 165, 200), rgb(40, 44, 54) })[rng:NextInteger(1, 4)]))
+			elseif item == "Tracksuit" then
+				local tc = ({ rgb(40, 60, 150), rgb(30, 30, 34), rgb(180, 30, 40), rgb(30, 110, 70), rgb(120, 60, 160), rgb(230, 230, 232) })[rng:NextInteger(1, 6)]
+				table.insert(look.Items, "Tracksuit:" .. colorText(tc))
+				look.Bottom = tc
+			elseif item == "Beanie" or item == "BucketHat" or item == "Scarf" then
+				table.insert(look.Items, item .. ":" .. colorText(palette[rng:NextInteger(1, #palette)]))
 			else
 				table.insert(look.Items, item)
 			end
@@ -1237,8 +1287,8 @@ local BALL, CYL = Enum.PartType.Ball, Enum.PartType.Cylinder
 -- stud thick: real arms and legs are much slimmer)
 local function tapers(look)
 	local build = look.Build or "average"
-	local arm = (if build == "muscular" then 0.86 elseif build == "athletic" or build == "stocky" or build == "heavy" then 0.74 elseif build == "slim" then 0.58 else 0.66) * (if look.Feminine then 0.92 else 1)
-	local leg = if build == "heavy" or build == "curvy" or build == "muscular" then 0.9 elseif build == "slim" then 0.72 else 0.8
+	local arm = (if build == "muscular" then 0.86 elseif build == "athletic" or build == "stocky" or build == "heavy" then 0.74 elseif build == "slim" or build == "lanky" then 0.58 elseif build == "petite" then 0.6 else 0.66) * (if look.Feminine then 0.92 else 1)
+	local leg = if build == "heavy" or build == "curvy" or build == "muscular" then 0.9 elseif build == "slim" or build == "lanky" then 0.72 elseif build == "petite" then 0.76 else 0.8
 	return arm, leg
 end
 CitizenLook.Tapers = tapers
@@ -1847,8 +1897,10 @@ function CitizenLook.Build(citizen)
 	description.TorsoColor = look.Top
 	description.LeftLegColor = look.Bottom
 	description.RightLegColor = look.Bottom
-	description.WidthScale = math.clamp(look.Width, 0.7, 1)
-	description.DepthScale = math.clamp(look.Depth or look.Width, 0.7, 1)
+	-- the standard Roblox avatar shape (like players' own characters): full
+	-- width and depth, with just a little variety between builds
+	description.WidthScale = math.clamp(0.9 + ((look.Width or 1) - 0.78) * 0.45, 0.9, 1)
+	description.DepthScale = math.clamp(0.9 + ((look.Depth or look.Width or 1) - 0.8) * 0.5, 0.9, 1)
 	description.HeightScale = 1
 	-- realistic proportions: taller, longer-limbed and narrower than the stubby
 	-- default body (slim builds are the most slender, heavy builds the widest)
@@ -1859,7 +1911,7 @@ function CitizenLook.Build(citizen)
 	description.ProportionScale = 0
 	if Config.REALISTIC_PROPORTIONS == true and look.Age >= 13 then
 		description.BodyTypeScale = if look.Feminine then 0.75 else 0.65
-		description.ProportionScale = ({ slim = 1, average = 0.6, athletic = 0.35, curvy = 0.2, heavy = 0, stocky = 0, muscular = 0.1 })[look.Build or "average"] or 0.5
+		description.ProportionScale = ({ slim = 1, average = 0.6, athletic = 0.35, curvy = 0.2, heavy = 0, stocky = 0, muscular = 0.1, lanky = 1, petite = 0.7 })[look.Build or "average"] or 0.5
 	end
 	local model
 	local package = if look.Feminine then "Woman" else "Man"

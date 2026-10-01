@@ -105,6 +105,8 @@ Actions.List = {
 	volley = { Pose = "volley", Label = "🏐 Playing beach volleyball" },
 	-- reactions to players' emotes (see SocialService)
 	clap = { Pose = "clap", Label = "👏 Clapping" },
+	snack = { Pose = "snack", Props = { "Pastry" }, Label = "🌮 Grabbing a bite" },
+	photo = { Pose = "photo", Props = { "Phone" }, Label = "📸 Taking photos" },
 	hail = { Pose = "hail", Label = "🙋 Waving down a ride" },
 	laugh = { Pose = "laugh", Label = "😂 Laughing" },
 	salute = { Pose = "salute", Label = "🫡 Saluting" },

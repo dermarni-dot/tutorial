@@ -258,6 +258,16 @@ function B.Plaza(ctx, parent, i, j, rng)
 		end
 	end
 	statue(model, c + Vector3.new(0, 0, 36), rgb(120, 150, 130))
+	-- tourists photographing the statue
+	for k = 0, 2 do
+		local a = math.rad(200 + k * 35)
+		local p = c + Vector3.new(0, 0, 36) + Vector3.new(math.cos(a) * 11, 0, math.sin(a) * 11)
+		table.insert(spots, outSpot(facing(p, c + Vector3.new(0, 0, 36)), "photo", "visit"))
+	end
+	-- potted topiary columns either side of the statue
+	for _, sx in ipairs({ -1, 1 }) do
+		Streets.topiary(model, c + Vector3.new(sx * 7, 0, 36), "column", 0.9, true)
+	end
 	for k = 1, 8 do
 		local p = c + Vector3.new(rng:NextNumber(-20, 20), 0.4, rng:NextNumber(4, 24))
 		local pigeon = MapKit.ball(model, "Pigeon", 0.7, CFrame.new(p), rgb(140, 140, 150))
@@ -376,6 +386,25 @@ local function park(ctx, parent, i, j, rng, id, withPlayground)
 		local a = k / 12 * math.pi * 2
 		local p = c + Vector3.new(math.cos(a) * 33, 0, math.sin(a) * 33)
 		Streets.tree(model, p, rng:NextNumber(0.9, 1.3), rng)
+	end
+	-- a garden: wisteria trees by the crossing, topiaries along the paths,
+	-- flowering shrubs and hostas in the beds
+	for _, e in ipairs({ { 9, -9 }, { -9, -9 } }) do
+		Streets.wisteria(model, c + Vector3.new(e[1], 0.1, e[2]), rng:NextNumber(0.9, 1.1), rng)
+	end
+	for _, z in ipairs({ -26, -18, 18, 26 }) do
+		for _, sx in ipairs({ -1, 1 }) do
+			Streets.topiary(model, c + Vector3.new(sx * 4.6, 0.1, z), if math.abs(z) > 20 then "cone" else "ball", 0.8, false)
+		end
+	end
+	for k = 1, 10 do
+		local a = k / 10 * math.pi * 2 + 0.3
+		local p = c + Vector3.new(math.cos(a) * 27, 0.1, math.sin(a) * 27)
+		if k % 3 == 0 then
+			Streets.hosta(model, p, rng:NextNumber(0.9, 1.2), rng)
+		else
+			Streets.flowerShrub(model, p, rng:NextNumber(0.9, 1.3), rng)
+		end
 	end
 	-- a jogging loop around the park
 	local loop = {}

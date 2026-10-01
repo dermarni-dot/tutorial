@@ -31,6 +31,23 @@ NorthShore.DRIVE_X = 0.5 * S -- Shore Drive continues this avenue north
 NorthShore.Z0 = Z0
 NorthShore.BOARDWALK_Z = Z0 - 328
 NorthShore.WATER_Z = Z0 - 430 -- where the ocean begins
+-- the height of the sand: flat back by the boardwalk, sloping gently down to
+-- the water, then on down under the waves (1 stud every ~9) to 16 deep. Only
+-- with real terrain (Landscape shapes it); in tests the beach is flat.
+NorthShore.Sloped = false
+function NorthShore.BeachY(z)
+	if not NorthShore.Sloped then
+		return 0
+	end
+	local wz = NorthShore.WATER_Z
+	if z >= wz + 30 then
+		return 0
+	elseif z >= wz then
+		return -1.25 * (1 - (z - wz) / 30)
+	end
+	return math.max(-16, -1.25 - (wz - z) * 0.11)
+end
+local BY = NorthShore.BeachY
 NorthShore.WEST, NorthShore.EAST = -460, 330
 -- paved areas (Landscape clears the terrain grass under these)
 NorthShore.PAVED = {
@@ -763,9 +780,11 @@ local function beachMore(data, rng)
 	local SAND, WET = rgb(236, 214, 160), rgb(196, 170, 120)
 	-- wet sand along the water, and the surf: lines of foam that roll in and
 	-- slide back (see Ambient)
-	deco(beach, "WetSand", Vector3.new(W1 - W0 + 60, 0.06, 14), cx, 0, wz + 7, WET, Enum.Material.Sand)
+	for k = 0, 6 do
+		deco(beach, "WetSand", Vector3.new(W1 - W0 + 60, 0.06, 2.1), cx, BY(wz + 1 + k * 2), wz + 1 + k * 2, WET, Enum.Material.Sand)
+	end
 	for k = 0, 2 do
-		local foam = MapKit.deco(beach, "Surf", Vector3.new(W1 - W0 + 40 - k * 30, 0.12, 1.4 + k * 0.6), CFrame.new(cx + k * 7, 0.05, wz + 2 - k * 7), WHITE, Enum.Material.SmoothPlastic)
+		local foam = MapKit.deco(beach, "Surf", Vector3.new(W1 - W0 + 40 - k * 30, 0.12, 1.4 + k * 0.6), CFrame.new(cx + k * 7, math.max(BY(wz + 2 - k * 2.5), -1) + 0.08, wz + 2 - k * 2.5), WHITE, Enum.Material.SmoothPlastic)
 		foam.Transparency = 0.25 + k * 0.2
 		foam:SetAttribute("Phase", k * 2.1)
 		MapKit.tag(foam, "Surf")
@@ -848,17 +867,17 @@ local function beachMore(data, rng)
 	-- driftwood, shells and starfish scattered about
 	for k = 0, 7 do
 		local x, z = W0 + rng:NextNumber(10, W1 - W0 - 10), wz + rng:NextNumber(12, 40)
-		MapKit.cylinder(beach, "Driftwood", rng:NextNumber(3, 6), 0.5, CFrame.new(x, 0.25, z) * CFrame.Angles(0, rng:NextNumber(0, 3.1), 0), rgb(180, 160, 130), Enum.Material.Wood)
+		MapKit.cylinder(beach, "Driftwood", rng:NextNumber(3, 6), 0.5, CFrame.new(x, BY(z) + 0.25, z) * CFrame.Angles(0, rng:NextNumber(0, 3.1), 0), rgb(180, 160, 130), Enum.Material.Wood)
 	end
 	for k = 0, 39 do
 		local x, z = W0 + rng:NextNumber(5, W1 - W0 - 5), wz + rng:NextNumber(4, 60)
 		if k % 4 == 0 then
 			-- a starfish: five little arms
 			for a = 0, 4 do
-				MapKit.deco(beach, "Starfish", Vector3.new(0.25, 0.1, 0.7), CFrame.new(x, 0.05, z) * CFrame.Angles(0, a * 1.2566, 0) * CFrame.new(0, 0, -0.3), rgb(240, 120, 70), Enum.Material.SmoothPlastic)
+				MapKit.deco(beach, "Starfish", Vector3.new(0.25, 0.1, 0.7), CFrame.new(x, BY(z) + 0.05, z) * CFrame.Angles(0, a * 1.2566, 0) * CFrame.new(0, 0, -0.3), rgb(240, 120, 70), Enum.Material.SmoothPlastic)
 			end
 		else
-			local shell = MapKit.ball(beach, "Seashell", 0.5, CFrame.new(x, 0.1, z), ({ rgb(250, 230, 220), rgb(240, 200, 190), rgb(230, 220, 200) })[k % 3 + 1], Enum.Material.SmoothPlastic)
+			local shell = MapKit.ball(beach, "Seashell", 0.5, CFrame.new(x, BY(z) + 0.1, z), ({ rgb(250, 230, 220), rgb(240, 200, 190), rgb(230, 220, 200) })[k % 3 + 1], Enum.Material.SmoothPlastic)
 			shell.Size = Vector3.new(0.5, 0.25, 0.4)
 			shell.CanCollide = false
 		end
@@ -866,8 +885,13 @@ local function beachMore(data, rng)
 	-- a rocky jetty at the west end, out into the water
 	for k = 0, 16 do
 		local r = rng:NextNumber(3, 5.5)
-		local rock = MapKit.ball(beach, "JettyRock", r, CFrame.new(W0 - 10 + rng:NextNumber(-2, 2), -0.4 + r * 0.25, wz + 18 - k * 4.5) * CFrame.Angles(rng:NextNumber(0, 1), rng:NextNumber(0, 3), 0), rgb(110, 108, 104):Lerp(rgb(80, 78, 76), rng:NextNumber()), Enum.Material.Slate)
-		rock.Size = Vector3.new(r, r * 0.7, r * 1.1)
+		-- (piled up from the sea floor so the jetty stands out of the water)
+		local rz = wz + 18 - k * 4.5
+		local top = -0.4 + r * 0.6
+		local bottom = math.min(BY(rz) - 0.3, -0.4 - r * 0.1)
+		local h = top - bottom
+		local rock = MapKit.ball(beach, "JettyRock", r, CFrame.new(W0 - 10 + rng:NextNumber(-2, 2), (top + bottom) / 2, rz) * CFrame.Angles(0, rng:NextNumber(0, 3), 0), rgb(110, 108, 104):Lerp(rgb(80, 78, 76), rng:NextNumber()), Enum.Material.Slate)
+		rock.Size = Vector3.new(r, h, r * 1.1)
 	end
 	table.insert(spots, spot(W0 - 10, 1.6, wz + 10, W0 - 10, wz - 60, { Action = "birdwatch" }))
 	-- kayaks on a rack by the surf shop
@@ -876,6 +900,40 @@ local function beachMore(data, rng)
 	end
 	for _, rz in ipairs({ -3.5, 3.5 }) do
 		deco(beach, "KayakRack", Vector3.new(2.4, 3.6, 0.3), W0 + 60, 0, bz - 14 + rz, rgb(150, 110, 70), Enum.Material.Wood)
+	end
+	-- 👕 the Beach Boutique: a little clothing stand with racks of jackets,
+	-- a hat stand and a mirror (players shop here: see DisguiseService)
+	do
+		local bx2, bz2 = W0 + 100, bz - 16
+		local stand = Instance.new("Model")
+		stand.Name = "BeachBoutique"
+		stand.Parent = beach
+		MapKit.part(stand, "BoutiqueCounter", Vector3.new(8, 3.2, 2.4), CFrame.new(bx2, 1.6, bz2), rgb(240, 236, 226), Enum.Material.WoodPlanks)
+		for _, sx in ipairs({ -1, 1 }) do
+			deco(stand, "BoutiquePost", Vector3.new(0.4, 9, 0.4), bx2 + sx * 4.6, 0, bz2 - 2, rgb(150, 110, 70), Enum.Material.Wood)
+		end
+		MapKit.awning(stand, 10.4, 3.4, CFrame.new(bx2, 9, bz2 - 1.6), rgb(250, 120, 160), WHITE)
+		local sign = MapKit.deco(stand, "BoutiqueSign", Vector3.new(8, 1.4, 0.2), CFrame.new(bx2, 10.2, bz2 - 2.1), rgb(40, 40, 50))
+		MapKit.signText(sign, Enum.NormalId.Back, "👕 BEACH BOUTIQUE", WHITE, Enum.Font.GothamBlack)
+		-- two racks of clothes on hangers
+		for _, sx in ipairs({ -1, 1 }) do
+			local rx2 = bx2 + sx * 9
+			for _, ex in ipairs({ -2.2, 2.2 }) do
+				deco(stand, "RackPole", Vector3.new(0.2, 5, 0.2), rx2 + ex, 0, bz2, rgb(200, 200, 206), Enum.Material.Metal)
+			end
+			deco(stand, "RackBar", Vector3.new(4.6, 0.15, 0.15), rx2, 4.9, bz2, rgb(200, 200, 206), Enum.Material.Metal)
+			for k = 0, 5 do
+				deco(stand, "HangingShirt", Vector3.new(0.3, 2.6, 1.8), rx2 - 1.8 + k * 0.72, 2.2, bz2, MapKit.FLOWERS[(k + (sx > 0 and 3 or 0)) % #MapKit.FLOWERS + 1], Enum.Material.Fabric)
+			end
+		end
+		-- a hat stand and a mirror
+		deco(stand, "HatStand", Vector3.new(0.3, 5.6, 0.3), bx2 + 5.6, 0, bz2 + 3, rgb(150, 110, 70), Enum.Material.Wood)
+		for k = 0, 2 do
+			MapKit.cylinder(stand, "StandHat", 0.4, 1.4, CFrame.new(bx2 + 5.6 + (k - 1) * 0.5, 5.8 - k * 1.2, bz2 + 3) * CFrame.Angles(0, 0, math.rad(90)), ({ rgb(230, 220, 190), rgb(200, 40, 50), rgb(130, 85, 50) })[k + 1], Enum.Material.Fabric)
+		end
+		local mirror = deco(stand, "BoutiqueMirror", Vector3.new(2.4, 6, 0.2), bx2 - 5.8, 0, bz2 + 3, rgb(210, 230, 240), Enum.Material.Glass)
+		mirror.Reflectance = 0.4
+		NorthShore.BoutiqueAt = Vector3.new(bx2, 0, bz2 + 2.2)
 	end
 	-- surf flags at the lifeguard tower: green means good swimming
 	local lx, lz = cx + 30, sandZ0 - 70
@@ -911,23 +969,102 @@ local function beachMore(data, rng)
 	end
 	local board = MapKit.deco(beach, "Paddleboard", Vector3.new(2.2, 0.3, 10), CFrame.new(cx + 160, -0.9, wz - 18) * CFrame.Angles(0, 0.4, 0), rgb(250, 200, 60), Enum.Material.SmoothPlastic)
 	MapKit.tag(board, "Bob")
+	if NorthShore.Sloped then
+		-- 🐠 under the waves, down the sloping sea floor: swaying kelp, mossy
+		-- rocks, starfish, sand dollars and an old sunken rowboat to swim to
+		for k = 0, 40 do
+			local x, z = W0 + rng:NextNumber(0, W1 - W0), wz - rng:NextNumber(14, 125)
+			local floor = BY(z)
+			local h = math.min(-1.6 - floor, rng:NextNumber(3, 9))
+			if h > 1 then
+				local kelp = MapKit.deco(beach, "Kelp", Vector3.new(0.5, h, 0.15), CFrame.new(x, floor + h / 2, z) * CFrame.Angles(0, rng:NextNumber(0, 3), rng:NextNumber(-0.12, 0.12)), rgb(50, 110, 60):Lerp(rgb(110, 120, 40), rng:NextNumber()), Enum.Material.SmoothPlastic)
+				kelp.CanCollide = false
+				MapKit.tag(kelp, "Sway")
+			end
+		end
+		for k = 0, 18 do
+			local x, z = W0 + rng:NextNumber(0, W1 - W0), wz - rng:NextNumber(10, 120)
+			local r = rng:NextNumber(1.5, 4)
+			local rock = MapKit.ball(beach, "SeaRock", r, CFrame.new(x, BY(z) + r * 0.2, z) * CFrame.Angles(0, rng:NextNumber(0, 3), 0), rgb(90, 100, 92):Lerp(rgb(70, 96, 70), rng:NextNumber()), Enum.Material.Slate)
+			rock.Size = Vector3.new(r, r * 0.6, r * 1.2)
+			if k % 3 == 0 then
+				local sf = MapKit.deco(beach, "SeaStar", Vector3.new(0.9, 0.12, 0.9), CFrame.new(x + r * 0.7, BY(z) + 0.08, z) * CFrame.Angles(0, k, 0), rgb(240, 110, 70), Enum.Material.SmoothPlastic)
+				sf.CanCollide = false
+			end
+		end
+		for k = 0, 14 do
+			local x, z = W0 + rng:NextNumber(0, W1 - W0), wz - rng:NextNumber(4, 60)
+			local dollar = MapKit.cylinder(beach, "SandDollar", 0.08, 0.9, CFrame.new(x, BY(z) + 0.04, z) * CFrame.Angles(0, 0, math.rad(90)), rgb(232, 222, 200), Enum.Material.SmoothPlastic)
+			dollar.CanCollide = false
+		end
+		-- the wreck: tipped on its side, half buried
+		local wx, wz2 = cx + 70, wz - 70
+		local wf = CFrame.new(wx, BY(wz2) + 0.6, wz2) * CFrame.Angles(0, 0.7, math.rad(25))
+		local hull = rgb(110, 84, 60)
+		MapKit.part(beach, "WreckHull", Vector3.new(4, 0.3, 10), wf, hull, Enum.Material.WoodPlanks)
+		for _, sx in ipairs({ -1, 1 }) do
+			MapKit.part(beach, "WreckSide", Vector3.new(0.3, 1.6, 10), wf * CFrame.new(sx * 2, 0.8, 0), hull:Lerp(rgb(60, 80, 60), 0.3), Enum.Material.WoodPlanks)
+		end
+		MapKit.deco(beach, "WreckSeat", Vector3.new(4, 0.25, 1), wf * CFrame.new(0, 1, 1), hull, Enum.Material.Wood)
+		MapKit.deco(beach, "WreckOar", Vector3.new(0.25, 0.25, 7), CFrame.new(wx + 4, BY(wz2) + 0.15, wz2 + 3) * CFrame.Angles(0, 1.9, 0), rgb(150, 120, 80), Enum.Material.Wood)
+		-- 🐬 a pod of dolphins leaping out past the swimmers, and a jet ski
+		-- carving circles (the client animates both: see Ambient)
+		for k = 0, 2 do
+			local d = Instance.new("Model")
+			d.Name = "Dolphin"
+			d.Parent = beach
+			local base = CFrame.new(cx - 120 + k * 9, -6, wz - 190 - k * 6)
+			local grey = rgb(110, 124, 140)
+			local body = MapKit.ball(d, "DolphinBody", 1, base, grey, Enum.Material.SmoothPlastic)
+			body.Size = Vector3.new(1.4, 1.4, 5)
+			body.CanCollide = false
+			MapKit.ball(d, "DolphinSnout", 0.6, base * CFrame.new(0, -0.15, -2.8), grey, Enum.Material.SmoothPlastic).Size = Vector3.new(0.5, 0.45, 1.4)
+			MapKit.wedge(d, "DolphinFin", Vector3.new(0.15, 1, 1.1), base * CFrame.new(0, 0.95, 0.3), grey:Lerp(MapKit.BLACK, 0.2), Enum.Material.SmoothPlastic)
+			MapKit.deco(d, "DolphinTail", Vector3.new(2, 0.15, 0.8), base * CFrame.new(0, 0, 2.7), grey:Lerp(MapKit.BLACK, 0.2), Enum.Material.SmoothPlastic)
+			MapKit.deco(d, "DolphinBelly", Vector3.new(0.9, 0.2, 3.4), base * CFrame.new(0, -0.6, -0.2), rgb(220, 226, 232), Enum.Material.SmoothPlastic)
+			for _, p in ipairs(d:GetDescendants()) do
+				if p:IsA("BasePart") then
+					p.CanCollide, p.CanQuery, p.CanTouch, p.CastShadow = false, false, false, false
+				end
+			end
+			d:SetAttribute("Phase", k * 0.6)
+			MapKit.tag(body, "Dolphin")
+		end
+		local ski = Instance.new("Model")
+		ski.Name = "JetSki"
+		ski.Parent = beach
+		local jf = CFrame.new(cx + 260, -0.6, wz - 150)
+		local js = MapKit.deco(ski, "JetSkiHull", Vector3.new(2.6, 1, 7), jf, WHITE, Enum.Material.SmoothPlastic)
+		MapKit.deco(ski, "JetSkiStripe", Vector3.new(2.62, 0.3, 5), jf * CFrame.new(0, 0.2, 0.4), rgb(230, 50, 70), Enum.Material.SmoothPlastic)
+		MapKit.deco(ski, "JetSkiSeat", Vector3.new(1.4, 0.5, 3), jf * CFrame.new(0, 0.7, 1), rgb(30, 30, 34), Enum.Material.Leather)
+		MapKit.deco(ski, "JetSkiBars", Vector3.new(2, 0.2, 0.2), jf * CFrame.new(0, 1.3, -1.4), rgb(40, 40, 44), Enum.Material.Metal)
+		MapKit.deco(ski, "JetSkiRider", Vector3.new(1.4, 2.2, 0.9), jf * CFrame.new(0, 2, 0.6), rgb(240, 120, 40), Enum.Material.Fabric)
+		MapKit.ball(ski, "JetSkiHead", 1, jf * CFrame.new(0, 3.6, 0.6), rgb(200, 150, 110), Enum.Material.SmoothPlastic)
+		MapKit.deco(ski, "JetSkiWake", Vector3.new(3, 0.06, 9), jf * CFrame.new(0, -0.45, 7.5), WHITE, Enum.Material.SmoothPlastic).Transparency = 0.35
+		for _, p in ipairs(ski:GetDescendants()) do
+			if p:IsA("BasePart") then
+				p.CanCollide, p.CanQuery, p.CanTouch = false, false, false
+			end
+		end
+		MapKit.tag(js, "JetSki")
+	end
 	-- seaweed washed up along the tide line, and ripples in the sand
 	for k = 0, 23 do
 		local x = W0 + rng:NextNumber(5, W1 - W0 - 5)
-		local weed = MapKit.ball(beach, "Seaweed", 1, CFrame.new(x, 0.05, wz + 13 + rng:NextNumber(-1.5, 1.5)) * CFrame.Angles(0, rng:NextNumber(0, 3), 0), rgb(60, 90, 50):Lerp(rgb(110, 100, 50), rng:NextNumber()), Enum.Material.SmoothPlastic)
+		local weed = MapKit.ball(beach, "Seaweed", 1, CFrame.new(x, BY(wz + 13) + 0.05, wz + 13 + rng:NextNumber(-1.5, 1.5)) * CFrame.Angles(0, rng:NextNumber(0, 3), 0), rgb(60, 90, 50):Lerp(rgb(110, 100, 50), rng:NextNumber()), Enum.Material.SmoothPlastic)
 		weed.Size = Vector3.new(rng:NextNumber(1.5, 3.5), 0.15, rng:NextNumber(0.4, 0.9))
 		weed.CanCollide = false
 	end
 	for k = 0, 59 do
 		local x, z = W0 + rng:NextNumber(10, W1 - W0 - 10), wz + rng:NextNumber(16, sandZ0 - wz - 20)
-		MapKit.deco(beach, "SandRipple", Vector3.new(rng:NextNumber(4, 9), 0.05, 0.35), CFrame.new(x, 0.02, z) * CFrame.Angles(0, rng:NextNumber(-0.15, 0.15), 0), SAND:Lerp(WET, 0.35), Enum.Material.Sand)
+		MapKit.deco(beach, "SandRipple", Vector3.new(rng:NextNumber(4, 9), 0.05, 0.35), CFrame.new(x, BY(z) + 0.02, z) * CFrame.Angles(0, rng:NextNumber(-0.15, 0.15), 0), SAND:Lerp(WET, 0.35), Enum.Material.Sand)
 	end
 	-- tide pools by the jetty, with a starfish and a little rock in each
 	for k = 0, 2 do
 		local tx, tz = W0 + 8 + k * 9, wz + 6 + (k % 2) * 4
-		local pool = MapKit.disc(beach, "TidePool", 0.08, 5 + k, Vector3.new(tx, 0.04, tz), rgb(70, 150, 170), Enum.Material.Glass)
+		local pool = MapKit.disc(beach, "TidePool", 0.08, 5 + k, Vector3.new(tx, BY(tz) + 0.04, tz), rgb(70, 150, 170), Enum.Material.Glass)
 		pool.Transparency = 0.3
-		MapKit.ball(beach, "PoolRock", 1.2, CFrame.new(tx + 1, 0.3, tz - 0.6), rgb(110, 108, 104), Enum.Material.Slate)
+		MapKit.ball(beach, "PoolRock", 1.2, CFrame.new(tx + 1, BY(tz) + 0.3, tz - 0.6), rgb(110, 108, 104), Enum.Material.Slate)
 	end
 	-- footprints wandering from the boardwalk down to the water
 	local fpx, fpz = cx - 150, sandZ0 - 20
@@ -936,7 +1073,7 @@ local function beachMore(data, rng)
 		local x = fpx + math.sin(n * 0.25) * 6 + side
 		local z = fpz - n * 2.1
 		if z > wz + 10 then
-			MapKit.deco(beach, "Footprint", Vector3.new(0.5, 0.03, 0.9), CFrame.new(x, 0.02, z) * CFrame.Angles(0, math.sin(n * 0.25) * 0.3, 0), SAND:Lerp(WET, 0.55), Enum.Material.Sand)
+			MapKit.deco(beach, "Footprint", Vector3.new(0.5, 0.03, 0.9), CFrame.new(x, BY(z) + 0.02, z) * CFrame.Angles(0, math.sin(n * 0.25) * 0.3, 0), SAND:Lerp(WET, 0.55), Enum.Material.Sand)
 		end
 	end
 	-- little crabs scuttling sideways near the water (see Ambient)
@@ -945,13 +1082,14 @@ local function beachMore(data, rng)
 		local crab = Instance.new("Model")
 		crab.Name = "Crab"
 		crab.Parent = beach
-		local body = MapKit.ball(crab, "CrabBody", 1, CFrame.new(x, 0.3, z), rgb(220, 70, 50), Enum.Material.SmoothPlastic)
+		local y = BY(z)
+		local body = MapKit.ball(crab, "CrabBody", 1, CFrame.new(x, y + 0.3, z), rgb(220, 70, 50), Enum.Material.SmoothPlastic)
 		body.Size = Vector3.new(1, 0.45, 0.8)
 		body.CanCollide = false
 		for _, sx in ipairs({ -1, 1 }) do
-			MapKit.ball(crab, "CrabClaw", 0.4, CFrame.new(x + sx * 0.55, 0.45, z - 0.45), rgb(230, 80, 60), Enum.Material.SmoothPlastic).CanCollide = false
+			MapKit.ball(crab, "CrabClaw", 0.4, CFrame.new(x + sx * 0.55, y + 0.45, z - 0.45), rgb(230, 80, 60), Enum.Material.SmoothPlastic).CanCollide = false
 			for n = -1, 1 do
-				MapKit.deco(crab, "CrabLeg", Vector3.new(0.5, 0.08, 0.08), CFrame.new(x + sx * 0.6, 0.15, z + n * 0.22), rgb(200, 60, 40))
+				MapKit.deco(crab, "CrabLeg", Vector3.new(0.5, 0.08, 0.08), CFrame.new(x + sx * 0.6, y + 0.15, z + n * 0.22), rgb(200, 60, 40))
 			end
 		end
 		MapKit.tag(body, "Crab")
@@ -1064,6 +1202,7 @@ function NorthShore.build(parent, rng, useTerrain)
 	model = Instance.new("Model")
 	model.Name = "NorthShore"
 	model.Parent = parent
+	NorthShore.Sloped = useTerrain == true
 	local data = { Model = model }
 	drive(data)
 	autoland(data, rng)

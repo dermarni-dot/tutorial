@@ -41,7 +41,32 @@ Disguises.List = {
 		Desc = "Nobody sees your face. But wearing one in broad daylight makes people nervous and the police suspicious.",
 	},
 }
-Disguises.Order = { "Hoodie", "Disguise", "SkiMask" }
+-- 👕 fashion: clothes just for looking good (a little harder to recognize,
+-- since it's not what you usually wear). One per slot: TOP, HAT, EYES, NECK.
+local function fashion(name, emoji, slot, price, desc, color, hidden)
+	return { Name = name, Emoji = emoji, Slot = slot, Price = price, Hidden = hidden or 0.04, Night = 0, Suspicious = 0, Desc = desc, Color = color, Fashion = true }
+end
+local C = Color3.fromRGB
+Disguises.List.LeatherJacket = fashion("Leather Jacket", "🧥", "Top", 90, "Black leather and a silver zip. Instantly cooler.", C(28, 26, 28))
+Disguises.List.DenimJacket = fashion("Denim Jacket", "👖", "Top", 60, "Classic jean jacket with stitched pockets.", C(80, 110, 160))
+Disguises.List.VarsityJacket = fashion("Varsity Jacket", "🏈", "Top", 75, "Team colours with white sleeves.", C(160, 30, 40))
+Disguises.List.PufferJacket = fashion("Puffer Jacket", "🧣", "Top", 80, "Big, puffy and warm. Golden yellow.", C(240, 190, 50))
+Disguises.List.Tracksuit = fashion("Tracksuit", "🏃", "Top", 55, "Zip-up track jacket with stripes down the sleeves.", C(40, 60, 150))
+Disguises.List.Tuxedo = fashion("Tuxedo", "🤵", "Top", 160, "Black jacket, white shirt, bow tie. Very fancy.", C(24, 24, 28))
+Disguises.List.Cap = fashion("Baseball Cap", "🧢", "Hat", 20, "A red cap. Wear it forwards like a normal person.", C(200, 40, 50))
+Disguises.List.Beanie = fashion("Beanie", "🧶", "Hat", 25, "A warm knit beanie with a pom-pom.", C(60, 120, 90))
+Disguises.List.CowboyHat = fashion("Cowboy Hat", "🤠", "Hat", 60, "Yeehaw. Wide brim, brown leather.", C(130, 85, 50), 0.08)
+Disguises.List.BucketHat = fashion("Bucket Hat", "👒", "Hat", 35, "Soft and floppy, perfect for the beach.", C(230, 220, 190))
+Disguises.List.Crown = fashion("Gold Crown", "👑", "Hat", 400, "For the richest person in the city. Everyone will know it's you.", C(245, 200, 70), 0)
+Disguises.List.Sunglasses = fashion("Sunglasses", "🕶️", "Eyes", 40, "Dark lenses. Cool, and a bit harder to recognize.", C(20, 20, 24), 0.08)
+Disguises.List.HeartGlasses = fashion("Heart Glasses", "💖", "Eyes", 45, "Pink heart-shaped shades.", C(240, 90, 150), 0.06)
+Disguises.List.GoldChain = fashion("Gold Chain", "📿", "Neck", 150, "Heavy gold. It shines in the sun.", C(245, 200, 70), 0)
+Disguises.List.Scarf = fashion("Scarf", "🧣", "Neck", 30, "A long striped scarf.", C(200, 60, 60))
+Disguises.List.Headphones = fashion("Headphones", "🎧", "Neck", 70, "Big over-ear headphones (round your neck or on).", C(30, 30, 34))
+Disguises.Order = { "Hoodie", "Disguise", "SkiMask",
+	"LeatherJacket", "DenimJacket", "VarsityJacket", "PufferJacket", "Tracksuit", "Tuxedo",
+	"Cap", "Beanie", "CowboyHat", "BucketHat", "Crown",
+	"Sunglasses", "HeartGlasses", "GoldChain", "Scarf", "Headphones" }
 
 Disguises.MAX = 0.9 -- nobody is ever completely invisible
 Disguises.DARK = 0.1 -- after dark, everyone is a little harder to recognize
@@ -85,7 +110,7 @@ function Disguises.Describe(worn)
 	for key, value in pairs(worn or {}) do
 		local id = if type(key) == "number" then value else key
 		local d = Disguises.List[id]
-		if d and value then
+		if d and value and d.Looks then
 			if d.Slot == "Face" then
 				face = d
 			else

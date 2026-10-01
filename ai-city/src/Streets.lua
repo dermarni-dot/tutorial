@@ -5,6 +5,7 @@
 -- and parked cars.
 
 local MapKit = require(script.Parent:WaitForChild("MapKit"))
+local StreetLife = require(script.Parent:WaitForChild("StreetLife"))
 
 local Streets = {}
 
@@ -52,7 +53,10 @@ function Streets.tree(parent, pos, scale, rng)
 		return if rng then rng:NextNumber(a, b) else (a + b) / 2
 	end
 	local roll = r(0, 1)
-	local kind = if roll < 0.2 then "birch" elseif roll < 0.5 then "maple" else "oak"
+	if roll > 0.72 then
+		return Streets.fluffyTree(parent, pos, scale * 0.95, rng)
+	end
+	local kind = if roll < 0.18 then "birch" elseif roll < 0.42 then "maple" else "oak"
 	local yaw = r(0, math.pi * 2)
 	local lean = Vector3.new(math.cos(yaw), 0, math.sin(yaw)) * r(0.2, 0.7) * scale
 	if kind == "birch" then
@@ -133,11 +137,180 @@ function Streets.pine(parent, pos, scale)
 		local tier = MapKit.ball(parent, "Needles", d, CFrame.new(pos + Vector3.new(0, y, 0)) * CFrame.Angles(0, k * 0.7, 0), dark:Lerp(light, u * 0.7), FOLIAGE)
 		tier.Size = Vector3.new(d, d * 0.42, d)
 		tier.CanQuery = false
-		local under = MapKit.ball(parent, "Needles", d * 0.8, CFrame.new(pos + Vector3.new(0, y - d * 0.16, 0)), dark:Lerp(BLACK, 0.15), FOLIAGE)
-		under.Size = Vector3.new(d * 0.8, d * 0.3, d * 0.8)
-		under.CanQuery = false
 	end
 	MapKit.column(parent, "Needles", 2.2 * scale, 0.5 * scale, pos + Vector3.new(0, h * 0.97, 0), light, FOLIAGE, false).CanQuery = false
+end
+
+--------------------------------------------------------------------------------
+-- Garden plants in a soft, stylized look: a fluffy cloud-puff tree, topiaries,
+-- a wisteria with hanging purple flowers, flowering shrubs and big-leaf hostas
+--------------------------------------------------------------------------------
+local function puff(parent, name, at, d, color, squash)
+	local b = MapKit.ball(parent, name, d, CFrame.new(at), color, FOLIAGE)
+	if squash then
+		b.Size = Vector3.new(d, d * squash, d)
+	end
+	b.CanQuery = false
+	return b
+end
+local function stick(parent, name, a, b, d, color, material)
+	local mid = (a + b) / 2
+	local c = MapKit.cylinder(parent, name, (b - a).Magnitude + d * 0.4, d, CFrame.lookAt(mid, b) * CFrame.Angles(0, math.rad(90), 0), color, material or Enum.Material.Wood)
+	c.CanQuery = false
+	return c
+end
+
+-- a fluffy tree: a curvy trunk under a big cloud of round leaf puffs, lighter
+-- where the sun hits them, darker underneath
+function Streets.fluffyTree(parent, pos, scale, rng)
+	scale = scale or 1
+	local r = function(a, b)
+		return if rng then rng:NextNumber(a, b) else (a + b) / 2
+	end
+	local bark = rgb(132, 92, 64):Lerp(rgb(100, 72, 52), r(0, 1))
+	local yaw = r(0, math.pi * 2)
+	local side = Vector3.new(math.cos(yaw), 0, math.sin(yaw))
+	-- the trunk bends one way, then back
+	local p0 = pos
+	local p1 = pos + Vector3.new(0, 2.6 * scale, 0) + side * 0.7 * scale
+	local p2 = pos + Vector3.new(0, 5 * scale, 0) - side * 0.3 * scale
+	local p3 = pos + Vector3.new(0, 7 * scale, 0) + side * 0.4 * scale
+	stick(parent, "Trunk", p0, p1, 1.5 * scale, bark)
+	stick(parent, "Trunk", p1, p2, 1.25 * scale, bark)
+	stick(parent, "Trunk", p2, p3, 1.0 * scale, bark)
+	puff(parent, "Root", pos + Vector3.new(0, 0.2, 0), 2.6 * scale, bark:Lerp(BLACK, 0.1), 0.35)
+	-- a branch reaching out to one side, with its own puff
+	local tip = p2 + side:Cross(Vector3.new(0, 1, 0)) * 3 * scale + Vector3.new(0, 1.6 * scale, 0)
+	stick(parent, "Branch", p2, tip, 0.5 * scale, bark)
+	local green = ({ rgb(120, 190, 60), rgb(104, 176, 58), rgb(132, 196, 72) })[rng and rng:NextInteger(1, 3) or 1]
+	local top = p3 + Vector3.new(0, 2.6 * scale, 0)
+	puff(parent, "Leaves", top, 8.8 * scale, green:Lerp(BLACK, 0.1))
+	for k = 1, 9 do
+		local a = yaw + k / 9 * math.pi * 2 + r(-0.2, 0.2)
+		local up = r(-1.2, 2.8)
+		local out = r(3, 4.4)
+		local shade = if up > 1.2 then green:Lerp(WHITE, 0.14) elseif up < 0 then green:Lerp(BLACK, 0.12) else green
+		puff(parent, "Leaves", top + Vector3.new(math.cos(a) * out, up, math.sin(a) * out) * scale, r(4.6, 6.4) * scale, shade)
+	end
+	puff(parent, "Leaves", top + Vector3.new(0, 3.6 * scale, 0), 5.6 * scale, green:Lerp(WHITE, 0.2))
+	puff(parent, "Leaves", tip + Vector3.new(0, 0.8 * scale, 0), 4.2 * scale, green:Lerp(BLACK, 0.04))
+end
+
+-- a clipped topiary: "cone" (stacked, getting smaller), "column" (a tall
+-- rounded pillar) or "ball" (a round head on a stem), in a pot if `potted`
+function Streets.topiary(parent, pos, kind, scale, potted)
+	scale = scale or 1
+	local dark, light = rgb(46, 112, 58), rgb(70, 140, 70)
+	local base = pos
+	if potted then
+		MapKit.column(parent, "TopiaryPot", 1.8 * scale, 2.6 * scale, pos + Vector3.new(0, 0.9 * scale, 0), rgb(196, 110, 70), Enum.Material.Concrete, true)
+		MapKit.column(parent, "PotRim", 0.4 * scale, 2.9 * scale, pos + Vector3.new(0, 1.8 * scale, 0), rgb(176, 96, 60), Enum.Material.Concrete, false)
+		base = pos + Vector3.new(0, 1.8 * scale, 0)
+	end
+	if kind == "ball" then
+		stick(parent, "Trunk", base, base + Vector3.new(0, 3 * scale, 0), 0.35 * scale, MapKit.DARK_WOOD)
+		puff(parent, "Topiary", base + Vector3.new(0, 4.4 * scale, 0), 3.4 * scale, dark)
+		puff(parent, "Topiary", base + Vector3.new(0, 5.1 * scale, 0), 2.2 * scale, light)
+		return
+	end
+	local n = if kind == "column" then 6 else 5
+	local y = 0
+	for k = 0, n - 1 do
+		local u = k / (n - 1)
+		local d = (if kind == "column" then 3.4 - u * 1.1 else 4.4 - u * 3) * scale
+		y += (if k == 0 then d * 0.45 else d * 0.62)
+		puff(parent, "Topiary", base + Vector3.new(0, y, 0), d, dark:Lerp(light, u * 0.8))
+	end
+	puff(parent, "Topiary", base + Vector3.new(0, y + 0.9 * scale, 0), 0.9 * scale, light)
+end
+
+-- a wisteria: a twisted old trunk, arching branches and long clusters of
+-- purple flowers hanging down
+function Streets.wisteria(parent, pos, scale, rng)
+	scale = scale or 1
+	local r = function(a, b)
+		return if rng then rng:NextNumber(a, b) else (a + b) / 2
+	end
+	local bark = rgb(112, 92, 80)
+	local pts = { pos }
+	for k = 1, 4 do
+		local a = k * 1.9 + r(0, 0.5)
+		table.insert(pts, pos + Vector3.new(math.cos(a) * 0.9 * scale, k * 2.3 * scale, math.sin(a) * 0.9 * scale))
+	end
+	for k = 1, #pts - 1 do
+		stick(parent, "Trunk", pts[k], pts[k + 1], (1.3 - k * 0.18) * scale, bark)
+	end
+	local top = pts[#pts]
+	local lilac, deep = rgb(196, 160, 236), rgb(120, 70, 190)
+	for b = 1, 3 do
+		local a = b / 3 * math.pi * 2 + r(-0.3, 0.3)
+		local dir = Vector3.new(math.cos(a), 0, math.sin(a))
+		local mid = top + dir * 2.4 * scale + Vector3.new(0, 1.4 * scale, 0)
+		local tip = top + dir * 5 * scale + Vector3.new(0, 0.3 * scale, 0)
+		stick(parent, "Branch", top, mid, 0.5 * scale, bark)
+		stick(parent, "Branch", mid, tip, 0.35 * scale, bark)
+		puff(parent, "Leaves", mid + Vector3.new(0, 0.7 * scale, 0), 2.6 * scale, rgb(110, 160, 70), 0.6)
+		-- the hanging flower clusters: lilac at the top, deep purple at the tip
+		for k = 0, 4 do
+			-- hanging right off the branch (a point along it), each cluster a
+			-- chain of overlapping blooms that narrows to the tip
+			local v = 0.2 + k * 0.19
+			local at = if v < 0.5 then top:Lerp(mid, v * 2) else mid:Lerp(tip, (v - 0.5) * 2)
+			local n = 5
+			local y = 0
+			for m = 0, n - 1 do
+				local u = m / (n - 1)
+				local d = (0.95 - u * 0.5) * scale
+				puff(parent, "Wisteria", at - Vector3.new(0, y, 0), d, lilac:Lerp(deep, u), 1.3)
+				y += d * 0.75
+			end
+		end
+	end
+	puff(parent, "Leaves", top + Vector3.new(0, 1.8 * scale, 0), 3.4 * scale, rgb(104, 156, 66), 0.6)
+end
+
+-- a flowering shrub: a mound of broad leaves with flowers on top
+local SHRUB_FLOWERS = { rgb(244, 120, 170), rgb(190, 110, 230), rgb(250, 250, 250), rgb(255, 160, 90), rgb(250, 90, 110) }
+function Streets.flowerShrub(parent, pos, scale, rng, color)
+	scale = scale or 1
+	local r = function(a, b)
+		return if rng then rng:NextNumber(a, b) else (a + b) / 2
+	end
+	color = color or SHRUB_FLOWERS[rng and rng:NextInteger(1, #SHRUB_FLOWERS) or 1]
+	puff(parent, "Shrub", pos + Vector3.new(0, 0.7 * scale, 0), 2.6 * scale, rgb(56, 120, 60), 0.6)
+	for k = 1, 4 do
+		local a = k / 4 * math.pi * 2 + r(-0.2, 0.2)
+		local leaf = MapKit.ball(parent, "ShrubLeaf", 1, CFrame.new(pos + Vector3.new(math.cos(a) * 1.1, 0.8, math.sin(a) * 1.1) * scale) * CFrame.Angles(0, -a, 0) * CFrame.Angles(0, 0, math.rad(25)), rgb(64, 136, 64):Lerp(rgb(90, 160, 70), r(0, 1)), FOLIAGE)
+		leaf.Size = Vector3.new(2 * scale, 0.25 * scale, 1 * scale)
+		leaf.CanCollide, leaf.CanQuery = false, false
+	end
+	for k = 1, 4 do
+		local a = k / 4 * math.pi * 2 + r(-0.3, 0.3)
+		local at = pos + Vector3.new(math.cos(a) * r(0.3, 1), r(1.3, 1.7), math.sin(a) * r(0.3, 1)) * scale
+		puff(parent, "Blossom", at, 0.75 * scale, color).CanCollide = false
+	end
+end
+
+-- a hosta: big striped leaves fanning out from the middle, two flower stalks
+function Streets.hosta(parent, pos, scale, rng)
+	scale = scale or 1
+	local r = function(a, b)
+		return if rng then rng:NextNumber(a, b) else (a + b) / 2
+	end
+	for k = 1, 6 do
+		local a = k / 6 * math.pi * 2 + r(-0.15, 0.15)
+		local cf = CFrame.new(pos + Vector3.new(math.cos(a) * 1.1, 0.5, math.sin(a) * 1.1) * scale) * CFrame.Angles(0, -a, 0) * CFrame.Angles(0, 0, math.rad(r(22, 38)))
+		local leaf = MapKit.ball(parent, "HostaLeaf", 1, cf, rgb(70, 140, 80), FOLIAGE)
+		leaf.Size = Vector3.new(2.6 * scale, 0.22 * scale, 1.3 * scale)
+		leaf.CanCollide, leaf.CanQuery = false, false
+	end
+	for k = 0, 1 do
+		local base = pos + Vector3.new(k * 0.5 - 0.25, 0, 0.2) * scale
+		stick(parent, "Stem", base, base + Vector3.new(0, 2.8 * scale, 0), 0.12 * scale, rgb(80, 130, 70), Enum.Material.SmoothPlastic)
+		for n = 0, 2 do
+			puff(parent, "Blossom", base + Vector3.new(0.15 * scale, (2 + n * 0.35) * scale, 0), 0.35 * scale, rgb(200, 170, 240)).CanCollide = false
+		end
+	end
 end
 
 function Streets.bench(parent, cf, place)
@@ -354,11 +527,12 @@ function Streets.build(parent, rng, blockKind)
 		for b = -N - 1, N do
 			local x, z = (a + 0.5) * SPACING, (b + 0.5) * SPACING
 			local downtown = math.abs(a + 0.5) <= 2 and math.abs(b + 0.5) <= 2
-			local stripes = math.floor((ROAD / 2 - 1) / 2.1)
+			-- (wide zebra stripes: half the parts of narrow ones)
+			local stripes = math.floor((ROAD / 2 - 1) / 4.2)
 			for s = -stripes, stripes do
 				for _, side in ipairs({ -1, 1 }) do
-					deco(roads, "Crosswalk", Vector3.new(1.2, 0.24, 5), CFrame.new(x + s * 2.1, 0.02, z + side * (ROAD / 2 + 2.8)), WHITE)
-					deco(roads, "Crosswalk", Vector3.new(5, 0.24, 1.2), CFrame.new(x + side * (ROAD / 2 + 2.8), 0.02, z + s * 2.1), WHITE)
+					deco(roads, "Crosswalk", Vector3.new(2.2, 0.24, 5), CFrame.new(x + s * 4.2, 0.02, z + side * (ROAD / 2 + 2.8)), WHITE)
+					deco(roads, "Crosswalk", Vector3.new(5, 0.24, 2.2), CFrame.new(x + side * (ROAD / 2 + 2.8), 0.02, z + s * 4.2), WHITE)
 				end
 			end
 			-- stop lines behind the crosswalks (in each approaching lane), a
@@ -466,7 +640,9 @@ function Streets.build(parent, rng, blockKind)
 		else
 			cf = CFrame.new(line + offset, 0.1, along) * CFrame.Angles(0, if side > 0 then 0 else math.pi, 0)
 		end
-		Streets.car(cars, cf, CAR_COLORS[rng:NextInteger(1, #CAR_COLORS)], if rng:NextNumber() < 0.15 then "van" else nil)
+		if not StreetLife.Reserved(cf.Position) then -- (a food truck parks here)
+			Streets.car(cars, cf, CAR_COLORS[rng:NextInteger(1, #CAR_COLORS)], if rng:NextNumber() < 0.15 then "van" else nil)
+		end
 	end
 	return { BusSeats = busSeats, BusStops = busStops }
 end

@@ -45,10 +45,9 @@ local function chair(b, f, x, z, faceX, faceZ, color, place)
 	color = color or rgb(90, 70, 55)
 	local seat = MapKit.seat(b.Model, "Chair", Vector3.new(2, 0.4, 2), at(b, f, x, 1.7, z, rot), color, Enum.Material.Wood, place)
 	deco(b.Model, "ChairBack", Vector3.new(2, 2.2, 0.3), at(b, f, x, 1.7, z, rot) * CFrame.new(0, 1.2, 0.9), color)
+	-- (two side frames instead of four legs: half the parts, same look)
 	for _, lx in ipairs({ -0.8, 0.8 }) do
-		for _, lz in ipairs({ -0.8, 0.8 }) do
-			deco(b.Model, "ChairLeg", Vector3.new(0.2, 1.6, 0.2), at(b, f, x, 0.8, z, rot) * CFrame.new(lx, 0, lz), color:Lerp(BLACK, 0.3))
-		end
+		deco(b.Model, "ChairLeg", Vector3.new(0.2, 1.6, 1.8), at(b, f, x, 0.8, z, rot) * CFrame.new(lx, 0, 0), color:Lerp(BLACK, 0.3))
 	end
 	return seat
 end

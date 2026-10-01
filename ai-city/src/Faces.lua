@@ -39,6 +39,15 @@ function Faces.Describe(rng, age, feminine)
 		Blush = kid or rng:NextNumber() < 0.25,
 		MouthWidth = rng:NextNumber(0.24, 0.32),
 		Wrinkles = age >= 60,
+		-- more ways to look different: round or narrow eyes, a nose, lips,
+		-- eyeliner, a beauty mark, long or short brows, smile lines
+		EyeShape = rng:NextNumber(0.78, 1.12),
+		Nose = ({ "arc", "arc", "dot", "button", "long", "none" })[rng:NextInteger(1, 6)],
+		Lips = if feminine and not kid and rng:NextNumber() < 0.45 then ({ rgb(190, 60, 80), rgb(200, 100, 110), rgb(150, 50, 60), rgb(210, 120, 120) })[rng:NextInteger(1, 4)] else nil,
+		Liner = feminine and not kid and rng:NextNumber() < 0.35,
+		Mole = if rng:NextNumber() < 0.14 then { rng:NextNumber(0.25, 0.75), rng:NextNumber(0.55, 0.8) } else nil,
+		BrowLength = rng:NextNumber(0.16, 0.24),
+		SmileLines = age >= 40 and rng:NextNumber() < 0.6,
 	}
 end
 
@@ -105,16 +114,16 @@ function Faces.Build(head, face, skin)
 	for _, side in ipairs({ -1, 1 }) do
 		local name = if side < 0 then "L" else "R"
 		local x = 0.5 + side * face.EyeGap / 2
-		local eye = frame(gui, "Eye" .. name, UDim2.fromScale(x, face.EyeHeight), UDim2.fromScale(0.17 * face.EyeSize, 0.21 * face.EyeSize), nil)
+		local eye = frame(gui, "Eye" .. name, UDim2.fromScale(x, face.EyeHeight), UDim2.fromScale(0.17 * face.EyeSize, 0.21 * face.EyeSize * (face.EyeShape or 1)), nil)
 		local ball = frame(eye, "Ball", UDim2.fromScale(0.5, 0.5), UDim2.fromScale(1, 1), rgb(252, 252, 250), 1)
 		ball.ClipsDescendants = true
 		local iris = frame(ball, "Iris", UDim2.fromScale(0.5, 0.52), UDim2.fromScale(0.7, 0.66), face.EyeColor, 1)
 		frame(iris, "Pupil", UDim2.fromScale(0.5, 0.5), UDim2.fromScale(0.52, 0.52), rgb(15, 12, 14), 1)
 		frame(iris, "Shine", UDim2.fromScale(0.68, 0.3), UDim2.fromScale(0.3, 0.3), rgb(255, 255, 255), 1)
 		local outline = Instance.new("UIStroke")
-		outline.Thickness = 1.5
+		outline.Thickness = if face.Liner then 2.6 else 1.5
 		outline.Color = INK
-		outline.Transparency = 0.35
+		outline.Transparency = if face.Liner then 0 else 0.35
 		outline.Parent = ball
 		-- the upper lid (grows down for sleepy and blinking eyes)
 		local lid = frame(ball, "Lid", UDim2.fromScale(0.5, 0), UDim2.fromScale(1.1, 0), skin)
@@ -148,7 +157,7 @@ function Faces.Build(head, face, skin)
 			end
 		end
 		-- eyebrows
-		local brow = frame(gui, "Brow" .. name, UDim2.fromScale(x, face.EyeHeight - 0.16 * face.EyeSize), UDim2.fromScale(0.2, face.BrowThick), INK, 1)
+		local brow = frame(gui, "Brow" .. name, UDim2.fromScale(x, face.EyeHeight - 0.16 * face.EyeSize), UDim2.fromScale(face.BrowLength or 0.2, face.BrowThick), INK, 1)
 		brow:SetAttribute("X", x)
 		brow:SetAttribute("BaseY", face.EyeHeight - 0.16 * face.EyeSize)
 		brow:SetAttribute("Tilt", face.BrowTilt * side)
@@ -163,6 +172,15 @@ function Faces.Build(head, face, skin)
 				frame(gui, "Freckle", UDim2.fromScale(0.5 + side * (0.26 + k * 0.045), face.EyeHeight + 0.15 + (k % 2) * 0.035), UDim2.fromOffset(3, 3), rgb(160, 100, 70), 1).BackgroundTransparency = 0.3
 			end
 		end
+		if face.SmileLines then
+			local sl = arc(gui, "SmileLine" .. name, UDim2.fromScale(0.5 + side * 0.25, 0.7), UDim2.fromScale(0.06, 0.14), 1, INK, false)
+			sl.Rotation = side * -70
+			for _, d in ipairs(sl:GetDescendants()) do
+				if d:IsA("UIStroke") then
+					d.Transparency = 0.7
+				end
+			end
+		end
 		if face.Wrinkles then
 			local w = frame(gui, "Wrinkle", UDim2.fromScale(0.5 + side * 0.44, face.EyeHeight), UDim2.new(0.06, 0, 0, 1), INK, 1)
 			w.BackgroundTransparency = 0.6
@@ -170,6 +188,28 @@ function Faces.Build(head, face, skin)
 		end
 	end
 
+	-- a nose (just a hint of one)
+	local ny = face.EyeHeight + 0.17
+	if face.Nose == "arc" then
+		local n = arc(gui, "Nose", UDim2.fromScale(0.5, ny), UDim2.fromScale(0.09, 0.05), 2, INK, false)
+		for _, d in ipairs(n:GetDescendants()) do
+			if d:IsA("UIStroke") then
+				d.Transparency = 0.45
+			end
+		end
+	elseif face.Nose == "dot" then
+		frame(gui, "Nose", UDim2.fromScale(0.5, ny), UDim2.fromOffset(5, 4), INK, 1).BackgroundTransparency = 0.55
+	elseif face.Nose == "button" then
+		for _, sx in ipairs({ -1, 1 }) do
+			frame(gui, "Nose", UDim2.fromScale(0.5 + sx * 0.025, ny), UDim2.fromOffset(3, 3), INK, 1).BackgroundTransparency = 0.5
+		end
+	elseif face.Nose == "long" then
+		frame(gui, "Nose", UDim2.fromScale(0.5 + 0.012, ny - 0.04), UDim2.new(0, 2, 0.09, 0), INK, 1).BackgroundTransparency = 0.6
+		frame(gui, "Nose", UDim2.fromScale(0.5, ny + 0.005), UDim2.new(0.05, 0, 0, 2), INK, 1).BackgroundTransparency = 0.5
+	end
+	if face.Mole then
+		frame(gui, "Mole", UDim2.fromScale(face.Mole[1], face.Mole[2]), UDim2.fromOffset(5, 5), rgb(90, 55, 45), 1)
+	end
 	-- the mouth: every shape is there, and Faces.Set shows the right one
 	local w = face.MouthWidth
 	local mouth = frame(gui, "Mouth", UDim2.fromScale(0.5, 0.74), UDim2.fromScale(w, 0.16), nil)
@@ -195,6 +235,17 @@ function Faces.Build(head, face, skin)
 		arc(wobble, "W" .. k, UDim2.fromScale(0.17 + k * 0.33, if k % 2 == 0 then 0.3 else 0.7), UDim2.fromScale(0.36, 0.4), 2, INK, k % 2 == 0)
 	end
 	wobble.Visible = false
+	-- lipstick: the mouth's lines in the lip colour
+	if face.Lips then
+		for _, d in ipairs(mouth:GetDescendants()) do
+			if d:IsA("UIStroke") then
+				d.Color = face.Lips
+				d.Thickness = line + 1
+			elseif d:IsA("Frame") and d.Name == "Line" then
+				d.BackgroundColor3 = face.Lips
+			end
+		end
+	end
 	gui:SetAttribute("Expression", "neutral")
 	gui.Parent = head
 	return gui

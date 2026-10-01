@@ -494,6 +494,11 @@ end
 --------------------------------------------------------------------------------
 local ERRANDS = { "Shop", "Bakery", "Cafe", "Pharmacy", "Mall", "ToyStore", "Electronics", "Florist", "PetShop", "Bookstore", "IceCream", "Hardware", "Bank", "PostOffice", "Library" }
 local HANGOUTS = { "Cafe", "Diner", "Restaurant", "Plaza", "IceCream", "Bakery" }
+-- the food trucks around town (see StreetLife)
+local TRUCKS = { "FoodTruck1", "FoodTruck2", "FoodTruck3", "FoodTruck4", "FoodTruck5", "FoodTruck6" }
+local function truckPlan(rng, label)
+	return { Kind = "Place", Place = rng:Pick(TRUCKS), Activity = label or "🌮 Grabbing food from a truck", Want = "snack" }
+end
 local FAMILY_OUTINGS = {
 	{ "Park", "🌳 Family day at the park", "play" },
 	{ "WillowPark", "🌿 Picnic at Willow Park", "sit" },
@@ -729,6 +734,12 @@ function Life:Plan(c, hour, day)
 		if hour < 11 then
 			return if rng:Next() < 0.5 then home("☕ Slow weekend morning", "coffee") else { Kind = "Place", Place = rng:Pick({ "Bakery", "Cafe", "Shop" }), Activity = "🥐 Weekend errands" }
 		elseif hour < 17 then
+			if hour >= 11.5 and hour < 14 and rng:Next() < 0.35 then
+				return truckPlan(rng, "🌮 Lunch from a food truck")
+			end
+			if rng:Next() < 0.15 then
+				return { Kind = "Place", Place = "Plaza", Activity = "📸 Sightseeing", Want = "photo" }
+			end
 			if hobbyOut then
 				return { Kind = "Hobby", Hobby = c.Hobby, Activity = "🎨 " .. c.Hobby }
 			end
@@ -754,6 +765,9 @@ function Life:Plan(c, hour, day)
 		elseif hour < 12.5 then
 			if hobbyOut then
 				return { Kind = "Hobby", Hobby = c.Hobby, Activity = "🎨 " .. c.Hobby }
+			end
+			if rng:Next() < 0.3 then
+				return truckPlan(rng, "☕ A treat from a food truck")
 			end
 			return { Kind = "Place", Place = rng:Pick({ "Plaza", "Library", "CommunityCenter", "Museum" }), Activity = "☀️ Out and about" }
 		elseif hour < 14 then
@@ -837,7 +851,9 @@ function Life:Plan(c, hour, day)
 				return { Kind = "Place", Place = "Funland", Activity = "🎡 An evening at Funland", Want = if rng:Next() < 0.7 then "ride" else nil }
 			end
 			return { Kind = "Place", Place = "Beach", Activity = "🌅 Sunset at the beach", Want = rng:Pick({ "sit", "sunbathe", "cheer" }) }
-		elseif #c.Friends > 0 and roll < 0.87 then
+		elseif roll < 0.82 then
+			return truckPlan(rng, "🌮 Dinner from a food truck")
+		elseif #c.Friends > 0 and roll < 0.89 then
 			return { Kind = "Place", Place = rng:Pick(HANGOUTS), Activity = "☕ Meeting a friend", Want = "chat" }
 		elseif roll < 0.95 then
 			return { Kind = "Place", Place = rng:Pick(ERRANDS), Activity = "🛍️ After work" }

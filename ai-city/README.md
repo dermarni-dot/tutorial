@@ -1,6 +1,6 @@
 # AI City — v3
 
-A living city for Roblox. It holds 90 citizens, each with a name, a face, a family, a personality, a job or a school, a daily routine, friends, opinions and a memory. They wake up, walk to work along the sidewalks, sit at their desks on the 12th floor, bake bread at 5 AM, lift weights at the gym, play soccer after school, gossip on the plaza, have babies and grow up.
+A living city for Roblox. It holds 220 citizens (up to 320 as families grow), each with a name, a face, a family, a personality, a job or a school, a daily routine, friends, opinions and a memory. They wake up, walk to work along the sidewalks, sit at their desks on the 12th floor, bake bread at 5 AM, lift weights at the gym, play soccer after school, gossip on the plaza, have babies and grow up.
 
 Players can talk to anyone, give speeches, run for mayor and pass laws. They can also commit crimes, but anyone who sees it will call the police.
 
@@ -13,6 +13,22 @@ Players can talk to anyone, give speeches, run for mayor and pass laws. They can
 - **Saving:** citizens, families, memories, the mayor and players' coins are saved with DataStores once the place is published (turn on *Studio Access to API Services* to test saving in Studio). Without access the game still runs; it just doesn't save.
 
 ## What's new in this update
+
+| | |
+|---|---|
+| 🏙️ **A bigger city** | City blocks are now 200 studs apart instead of 150, every shop, office and public building is 75% bigger, and houses are two to three times their old size. There are 220 citizens instead of 90, spread across the whole map. |
+| 🚚 **Street life** | Six food trucks park around town (tacos, burgers, ice cream, gyros, noodles, coffee). Each has a cook at the window, a queue on the sidewalk and people eating nearby, and you can buy a bite that heals you. Street musicians play in the plaza, both parks, on the boardwalk and at Funland. People walking by stop to listen, clap, cheer or dance, and you can tip them. Tourists take photos at the plaza statue. |
+| 👕 **Clothes shopping** | The Clothing store and the new **Beach Boutique** on the sand now sell 16 fashion items as well as disguises: leather, denim, varsity and puffer jackets, a tracksuit, a tuxedo, a cap, a beanie, a cowboy hat, a bucket hat, a gold crown, sunglasses, heart glasses, a gold chain, a scarf and headphones. You wear one per slot (top, hat, eyes, neck). People compliment a good outfit, and a change of clothes also throws off the police. |
+| 🧑 **More faces and bodies** | Faces now have noses (four styles), round or narrow eyes, longer or shorter brows, lipstick, eyeliner, beauty marks and smile lines. There are two new builds, tall-and-lanky and petite. Everyday outfits now include leather and denim jackets, tracksuits, beanies, bucket hats and scarves, in twice as many colours. Citizens use the same body proportions as players' avatars. |
+| 🛋️ **More furniture** | Big houses get extra pieces, each placed wherever there's free floor space, so no two homes are arranged alike. Downstairs: kitchen islands with bar stools and a fruit bowl, coat racks, shoe benches, armchairs with throws, aquariums, bar carts, dog beds, console tables with photos, and more bookshelves, lamps and big plants. Upstairs: vanities with mirrors, toy boxes, bean bags, laundry hampers, rocking chairs and easels. |
+| 🏖️ **A real sloping beach** | The sand slopes gently down to the water and keeps going down under the waves, so the further out you wade the deeper it gets. Everything on the beach follows the slope. Under the water there's swaying kelp, mossy rocks, starfish, sand dollars and a sunken rowboat. Out past the swimmers, dolphins leap out of the water and a jet ski carves circles. |
+| 💤 **Sleep** | Hold **E** at any bed (at home, the hotel, the hospital or a prison bunk) to lie down. The screen dims, you heal and get your energy back, and after a good rest you wake up "well rested", a little faster for 3 minutes. Move to get up. |
+| 🏥 **Prison infirmary** | If the police knock you out, you wake up in the prison's medical bay (beds, curtains, heart monitors and a nurse), and then you're booked. |
+| 🌳 **Garden trees** | Fluffy round trees, topiary cones, columns and balls (some in pots), purple wisteria, flowering shrubs and hostas in the park garden, the plaza and the front yards. |
+| 🧠 **People with more life** | People text on their phones as they walk, carry a coffee in the morning, and stop to take photos or stretch. They now see what's in front of them: in a fight or a riot they walk around a planter or a bench instead of punching through it. The activity under a name always matches what someone is really doing (no more "lazing on the couch" out on the street). |
+| 🐛 **Fixes** | Your own house no longer offers "Break in". Names no longer show twice over a head or on the Talk prompt. Notifications no longer stack on top of each other or hide behind buttons. Less lag: the map streams in around you, and room lights only switch on near you. |
+
+## Earlier in v3: the modern look
 
 | | |
 |---|---|

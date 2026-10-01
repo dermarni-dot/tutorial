@@ -196,6 +196,182 @@ BUILD.Disguise = function(folder, character, head)
 	end
 end
 
+--------------------------------------------------------------------------------
+-- 👕 fashion
+--------------------------------------------------------------------------------
+local GOLD = rgb(245, 200, 70)
+local WHITE = rgb(248, 248, 245)
+local function torsoOf(character)
+	return character:FindFirstChild("UpperTorso") or character:FindFirstChild("Torso")
+end
+local function sleeves(folder, character, color, material)
+	for _, name in ipairs({ "LeftUpperArm", "RightUpperArm", "LeftLowerArm", "RightLowerArm", "Left Arm", "Right Arm" }) do
+		local arm = character:FindFirstChild(name)
+		if arm then
+			part(folder, arm, "Sleeve", arm.Size + Vector3.new(0.1, 0.02, 0.1), CFrame.new(), color, material)
+		end
+	end
+end
+-- an open jacket: two front panels, the back, the sleeves
+local function jacket(folder, character, color, material, inner)
+	local torso = torsoOf(character)
+	if not torso then
+		return nil
+	end
+	local t = torso.Size
+	for _, sx in ipairs({ -1, 1 }) do
+		part(folder, torso, "JacketPanel", Vector3.new(t.X * 0.34, t.Y + 0.06, 0.1), CFrame.new(sx * t.X * 0.34, 0, -t.Z / 2 - 0.05), color, material)
+		part(folder, torso, "JacketSide", Vector3.new(0.1, t.Y + 0.06, t.Z + 0.12), CFrame.new(sx * (t.X / 2 + 0.05), 0, 0), color, material)
+		part(folder, torso, "Lapel", Vector3.new(0.16, t.Y * 0.42, 0.06), CFrame.new(sx * t.X * 0.2, t.Y * 0.26, -t.Z / 2 - 0.1) * CFrame.Angles(0, 0, sx * math.rad(20)), color:Lerp(rgb(0, 0, 0), 0.25), material)
+	end
+	part(folder, torso, "JacketBack", Vector3.new(t.X + 0.1, t.Y + 0.06, 0.1), CFrame.new(0, 0, t.Z / 2 + 0.05), color, material)
+	if inner then
+		part(folder, torso, "Shirt", Vector3.new(t.X * 0.3, t.Y, 0.06), CFrame.new(0, 0, -t.Z / 2 - 0.02), inner, Enum.Material.SmoothPlastic)
+	end
+	sleeves(folder, character, color, material)
+	return torso, t
+end
+local FASHION = {}
+FASHION.LeatherJacket = function(f, ch, head, c)
+	local torso, t = jacket(f, ch, c, Enum.Material.Leather, rgb(240, 240, 236))
+	if torso then
+		part(f, torso, "Zip", Vector3.new(0.05, t.Y * 0.9, 0.04), CFrame.new(-t.X * 0.17, 0, -t.Z / 2 - 0.12), rgb(200, 205, 215), Enum.Material.Metal)
+	end
+end
+FASHION.DenimJacket = function(f, ch, head, c)
+	local torso, t = jacket(f, ch, c, Enum.Material.Fabric, rgb(250, 250, 248))
+	if torso then
+		for _, sx in ipairs({ -1, 1 }) do
+			part(f, torso, "Pocket", Vector3.new(t.X * 0.2, t.Y * 0.16, 0.04), CFrame.new(sx * t.X * 0.32, t.Y * 0.2, -t.Z / 2 - 0.12), c:Lerp(rgb(0, 0, 0), 0.18))
+		end
+	end
+end
+FASHION.VarsityJacket = function(f, ch, head, c)
+	local torso, t = jacket(f, ch, c, Enum.Material.Fabric, rgb(30, 30, 34))
+	sleeves(f, ch, WHITE, Enum.Material.Leather)
+	if torso then
+		part(f, torso, "Letter", Vector3.new(t.X * 0.2, t.X * 0.2, 0.05), CFrame.new(t.X * 0.3, t.Y * 0.18, -t.Z / 2 - 0.12), WHITE)
+	end
+end
+FASHION.PufferJacket = function(f, ch, head, c)
+	local torso = torsoOf(ch)
+	if torso then
+		local t = torso.Size
+		part(f, torso, "Puffer", t + Vector3.new(0.3, 0.1, 0.3), CFrame.new(), c, Enum.Material.SmoothPlastic)
+		for k = -1, 1 do
+			part(f, torso, "PufferRidge", Vector3.new(t.X + 0.36, 0.08, t.Z + 0.36), CFrame.new(0, k * t.Y * 0.3, 0), c:Lerp(rgb(0, 0, 0), 0.15), Enum.Material.SmoothPlastic)
+		end
+		part(f, torso, "Collar", Vector3.new(t.X * 0.8, 0.3, t.Z + 0.4), CFrame.new(0, t.Y / 2 + 0.1, 0), c, Enum.Material.SmoothPlastic)
+	end
+	sleeves(f, ch, c, Enum.Material.SmoothPlastic)
+end
+FASHION.Tracksuit = function(f, ch, head, c)
+	local torso = torsoOf(ch)
+	if torso then
+		local t = torso.Size
+		part(f, torso, "Track", t + Vector3.new(0.12, 0.06, 0.12), CFrame.new(), c)
+		part(f, torso, "Zip", Vector3.new(0.05, t.Y * 0.95, 0.04), CFrame.new(0, 0, -t.Z / 2 - 0.08), WHITE, Enum.Material.SmoothPlastic)
+	end
+	sleeves(f, ch, c)
+	for _, name in ipairs({ "LeftUpperArm", "RightUpperArm", "LeftLowerArm", "RightLowerArm", "Left Arm", "Right Arm", "LeftUpperLeg", "RightUpperLeg", "LeftLowerLeg", "RightLowerLeg", "Left Leg", "Right Leg" }) do
+		local limb = ch:FindFirstChild(name)
+		if limb then
+			if name:find("Leg") then
+				part(f, limb, "TrackLeg", limb.Size + Vector3.new(0.08, 0.01, 0.08), CFrame.new(), c)
+			end
+			local side = if name:find("Left") then -1 else 1
+			part(f, limb, "TrackStripe", Vector3.new(0.08, limb.Size.Y, 0.2), CFrame.new(side * (limb.Size.X / 2 + 0.07), 0, 0), WHITE)
+		end
+	end
+end
+FASHION.Tuxedo = function(f, ch, head, c)
+	local torso, t = jacket(f, ch, c, Enum.Material.Fabric, WHITE)
+	if torso then
+		part(f, torso, "BowTie", Vector3.new(0.5, 0.2, 0.1), CFrame.new(0, t.Y * 0.4, -t.Z / 2 - 0.1), rgb(20, 20, 22))
+		part(f, torso, "Flower", Vector3.new(0.2, 0.2, 0.08), CFrame.new(-t.X * 0.3, t.Y * 0.25, -t.Z / 2 - 0.13), rgb(220, 40, 60), Enum.Material.SmoothPlastic, Enum.PartType.Ball)
+	end
+end
+local function hatBase(head)
+	local h = headDims(head)
+	return h, h.X, h.Y / 2
+end
+FASHION.Cap = function(f, ch, head, c)
+	local h, w, top = hatBase(head)
+	part(f, head, "CapCrown", Vector3.new(w * 1.06, h.Y * 0.32, h.Z * 1.08), CFrame.new(0, top - h.Y * 0.02, 0.02), c)
+	part(f, head, "CapBrim", Vector3.new(w * 0.9, 0.08, h.Z * 0.5), CFrame.new(0, top - h.Y * 0.15, -h.Z * 0.7), c:Lerp(rgb(0, 0, 0), 0.15))
+end
+FASHION.Beanie = function(f, ch, head, c)
+	local h, w, top = hatBase(head)
+	part(f, head, "Beanie", Vector3.new(w * 1.08, h.Y * 0.42, h.Z * 1.1), CFrame.new(0, top - h.Y * 0.06, 0.02), c)
+	part(f, head, "BeanieCuff", Vector3.new(w * 1.12, h.Y * 0.12, h.Z * 1.14), CFrame.new(0, top - h.Y * 0.24, 0.02), c:Lerp(rgb(0, 0, 0), 0.15))
+	part(f, head, "PomPom", Vector3.new(0.45, 0.45, 0.45), CFrame.new(0, top + h.Y * 0.2, 0), WHITE, Enum.Material.Fabric, Enum.PartType.Ball)
+end
+FASHION.CowboyHat = function(f, ch, head, c)
+	local h, w, top = hatBase(head)
+	part(f, head, "HatBrim", Vector3.new(0.1, w * 1.9, w * 1.7), CFrame.new(0, top + 0.02, 0) * CFrame.Angles(0, 0, math.rad(90)), c, Enum.Material.Leather, Enum.PartType.Cylinder)
+	part(f, head, "HatCrown", Vector3.new(w * 0.95, 0.75, h.Z * 0.95), CFrame.new(0, top + 0.4, 0), c, Enum.Material.Leather)
+	part(f, head, "HatBand", Vector3.new(w * 0.97, 0.14, h.Z * 0.97), CFrame.new(0, top + 0.12, 0), rgb(40, 30, 24), Enum.Material.Leather)
+end
+FASHION.BucketHat = function(f, ch, head, c)
+	local h, w, top = hatBase(head)
+	part(f, head, "HatBrim", Vector3.new(0.1, w * 1.45, w * 1.45), CFrame.new(0, top - 0.04, 0) * CFrame.Angles(0, 0, math.rad(90)), c, Enum.Material.Fabric, Enum.PartType.Cylinder)
+	part(f, head, "HatCrown", Vector3.new(0.5, w * 1.04, w * 1.04), CFrame.new(0, top + 0.18, 0) * CFrame.Angles(0, 0, math.rad(90)), c, Enum.Material.Fabric, Enum.PartType.Cylinder)
+end
+FASHION.Crown = function(f, ch, head, c)
+	local h, w, top = hatBase(head)
+	part(f, head, "CrownBand", Vector3.new(0.4, w * 0.95, w * 0.95), CFrame.new(0, top + 0.15, 0) * CFrame.Angles(0, 0, math.rad(90)), c, Enum.Material.Metal, Enum.PartType.Cylinder)
+	for k = 0, 5 do
+		local a = k / 6 * math.pi * 2
+		part(f, head, "CrownPoint", Vector3.new(0.18, 0.4, 0.18), CFrame.new(math.cos(a) * w * 0.42, top + 0.5, math.sin(a) * w * 0.42), c, Enum.Material.Metal)
+		part(f, head, "CrownJewel", Vector3.new(0.15, 0.15, 0.15), CFrame.new(math.cos(a) * w * 0.48, top + 0.15, math.sin(a) * w * 0.48), ({ rgb(220, 30, 60), rgb(40, 120, 230), rgb(40, 200, 120) })[k % 3 + 1], Enum.Material.Neon, Enum.PartType.Ball)
+	end
+end
+local function glasses(f, head, lens, frameColor, heart)
+	local h = headDims(head)
+	local w = h.X
+	local front = -h.Z / 2 - 0.05
+	for _, side in ipairs({ -1, 1 }) do
+		local l = part(f, head, "Lens", Vector3.new(w * 0.3, h.Y * (if heart then 0.24 else 0.18), 0.05), CFrame.new(side * w * 0.19, h.Y * 0.1, front) * (if heart then CFrame.Angles(0, 0, math.rad(side * 12)) else CFrame.new()), lens, Enum.Material.Glass)
+		l.Transparency = 0.1
+		part(f, head, "Arm", Vector3.new(0.04, 0.04, h.Z * 0.9), CFrame.new(side * w * 0.36, h.Y * 0.12, 0), frameColor, Enum.Material.SmoothPlastic)
+	end
+	part(f, head, "Bridge", Vector3.new(w * 0.1, 0.05, 0.05), CFrame.new(0, h.Y * 0.14, front), frameColor, Enum.Material.Metal)
+end
+FASHION.Sunglasses = function(f, ch, head, c)
+	glasses(f, head, c, rgb(20, 20, 22))
+end
+FASHION.HeartGlasses = function(f, ch, head, c)
+	glasses(f, head, c, rgb(250, 120, 170), true)
+end
+FASHION.GoldChain = function(f, ch, head, c)
+	local torso = torsoOf(ch)
+	if torso then
+		local t = torso.Size
+		for k = -3, 3 do
+			local a = k / 3 * 0.9
+			part(f, torso, "Chain", Vector3.new(0.14, 0.14, 0.14), CFrame.new(math.sin(a) * t.X * 0.26, t.Y * 0.5 - (1 - math.cos(a)) * t.Y * 0.6 - 0.05, -t.Z / 2 - 0.08), c, Enum.Material.Metal, Enum.PartType.Ball)
+		end
+		part(f, torso, "Pendant", Vector3.new(0.3, 0.36, 0.08), CFrame.new(0, t.Y * 0.5 - t.Y * 0.3, -t.Z / 2 - 0.1), c, Enum.Material.Metal)
+	end
+end
+FASHION.Scarf = function(f, ch, head, c)
+	local torso = torsoOf(ch)
+	if torso then
+		local t = torso.Size
+		part(f, torso, "Scarf", Vector3.new(t.X * 0.78, 0.4, t.Z + 0.3), CFrame.new(0, t.Y / 2 - 0.05, 0), c)
+		for k = 0, 2 do
+			part(f, torso, "ScarfEnd", Vector3.new(0.5, 0.36, 0.1), CFrame.new(t.X * 0.22, t.Y * 0.28 - k * 0.38, -t.Z / 2 - 0.1), if k % 2 == 0 then c else WHITE)
+		end
+	end
+end
+FASHION.Headphones = function(f, ch, head, c)
+	local h = headDims(head)
+	part(f, head, "Band", Vector3.new(h.X * 1.1, 0.14, 0.2), CFrame.new(0, h.Y * 0.55, 0), c, Enum.Material.SmoothPlastic)
+	for _, side in ipairs({ -1, 1 }) do
+		part(f, head, "EarCup", Vector3.new(0.18, 0.55, 0.55), CFrame.new(side * (h.X / 2 + 0.08), 0, 0) * CFrame.Angles(0, 0, math.rad(90)), c, Enum.Material.SmoothPlastic, Enum.PartType.Cylinder)
+	end
+end
+
 -- hats and hair get in the way of hoods and masks: hide them while you wear one
 local function setAccessories(character, hide)
 	for _, acc in ipairs(character:GetChildren()) do
@@ -230,8 +406,16 @@ local function dress(player)
 	local folder = Instance.new("Folder")
 	folder.Name = "Disguise"
 	for id in pairs(set) do
+		local d = Disguises.List[id]
 		if BUILD[id] then
 			BUILD[id](folder, character, head)
+		elseif FASHION[id] and d then
+			-- (the disguise kit's hat and glasses win over a hat or shades; no
+			-- hat over a hood or a ski mask)
+			local covered = (d.Slot == "Hat" and (set.Disguise or set.SkiMask or set.Hoodie)) or (d.Slot == "Eyes" and (set.Disguise or set.SkiMask))
+			if not covered then
+				pcall(FASHION[id], folder, character, head, d.Color)
+			end
 		end
 	end
 	folder.Parent = character
@@ -247,7 +431,15 @@ local function dress(player)
 			face:SetAttribute("DisguiseSaved", nil)
 		end
 	end
-	setAccessories(character, next(set) ~= nil)
+	-- (your own hats and hair hide under a hood, a mask, a disguise or a hat)
+	local hideHats = set.Hoodie or set.SkiMask or set.Disguise
+	for id in pairs(set) do
+		local d = Disguises.List[id]
+		if d and d.Slot == "Hat" then
+			hideHats = true
+		end
+	end
+	setAccessories(character, hideHats == true)
 	player:SetAttribute("Disguise", Disguises.Describe(set))
 end
 
@@ -271,7 +463,7 @@ local function wardrobe(player, atStore)
 		local d = Disguises.List[id]
 		table.insert(items, {
 			Id = id, Name = d.Name, Emoji = d.Emoji, Slot = d.Slot, Price = d.Price, Desc = d.Desc,
-			Hidden = d.Hidden, Night = d.Night, Suspicious = d.Suspicious,
+			Hidden = d.Hidden, Night = d.Night, Suspicious = d.Suspicious, Fashion = d.Fashion, Color = d.Color,
 			Owned = pd ~= nil and pd.Outfits ~= nil and pd.Outfits[id] == true,
 			Wearing = set[id] == true,
 		})
@@ -339,9 +531,8 @@ function DisguiseService.Confiscate(player)
 	S.City.Toast(player, "🥷", "Mask confiscated", "The police took your ski mask.", rgb(230, 60, 60))
 end
 
-local function addStore()
-	local store = S.Map.Places.Mall
-	if not store then
+local function addStore(store, at, label)
+	if not at and not store then
 		return
 	end
 	local counter = Instance.new("Part")
@@ -351,12 +542,12 @@ local function addStore()
 	counter.CanQuery = false
 	counter.Transparency = 1
 	counter.Size = Vector3.new(2, 2, 2)
-	counter.CFrame = CFrame.new((store.Inside or store.Door) + Vector3.new(0, 3, 0))
-	counter.Parent = store.Model or workspace
+	counter.CFrame = CFrame.new((at or store.Inside or store.Door) + Vector3.new(0, 3, 0))
+	counter.Parent = store and store.Model or workspace
 	local prompt = Instance.new("ProximityPrompt")
 	prompt.Name = "ShopPrompt"
-	prompt.ActionText = "Hoodies, masks & disguises"
-	prompt.ObjectText = "👕 Clothing store"
+	prompt.ActionText = "Shop clothes, hats & disguises"
+	prompt.ObjectText = label or "👕 Clothing store"
 	prompt.KeyboardKeyCode = Enum.KeyCode.E
 	prompt.MaxActivationDistance = 12
 	prompt.RequiresLineOfSight = false
@@ -382,6 +573,27 @@ local function suspicionTick()
 			dress(player)
 		end
 		local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+		-- people notice a good outfit
+		if root and not player:GetAttribute("Suspicious") and os.clock() - (lastLine[player] or 0) > 25 and math.random() < 0.12 then
+			local best
+			for id in pairs(worn(player)) do
+				local d = Disguises.List[id]
+				if d and d.Fashion and (not best or d.Price > best.Price) then
+					best = d
+				end
+			end
+			if best then
+				for _, brain in ipairs(S.Citizens.Nearby(root.Position, 16)) do
+					if brain.State ~= "ko" and brain.State ~= "hospital" and brain.State ~= "talk" and brain.State ~= "police" and brain.Model:GetAttribute("Action") ~= "sleep" then
+						local line = if best.Price >= 150 then ({ "Whoa, is that a real " .. best.Name:lower() .. "?!", "Look at you! Fancy!", "Okay, big spender!" })[math.random(1, 3)]
+							else ({ "Love the " .. best.Name:lower() .. "!", "Nice " .. best.Name:lower() .. "!", "Ooh, where'd you get that?", "Looking sharp!" })[math.random(1, 4)]
+						S.Citizens.Say(brain, line, "happy", 2.5)
+						lastLine[player] = os.clock()
+						break
+					end
+				end
+			end
+		end
 		if root and player:GetAttribute("Suspicious") and not (S.Crime and S.Crime.IsHiding(player)) and os.clock() - (lastLine[player] or 0) > 6 then
 			for _, brain in ipairs(S.Citizens.Nearby(root.Position, 22)) do
 				if brain.State ~= "ko" and brain.State ~= "hospital" and brain.State ~= "talk" and brain.State ~= "police" and brain.Model:GetAttribute("Action") ~= "sleep" and math.random() < 0.15 then
@@ -404,7 +616,11 @@ function DisguiseService.Start(services)
 	end)
 	S.City.Handle("Wear", wear)
 	S.City.Handle("BuyOutfit", buy)
-	addStore()
+	addStore(S.Map.Places.Mall)
+	-- the Beach Boutique on the sand (see NorthShore)
+	if S.Map.Boutique then
+		addStore(S.Map.Places.Beach, S.Map.Boutique, "👕 Beach Boutique")
+	end
 	local function onPlayer(player)
 		player.CharacterAdded:Connect(function(character)
 			local head = character:WaitForChild("Head", 10)
@@ -413,7 +629,14 @@ function DisguiseService.Start(services)
 				dress(player)
 				-- hats that load later get hidden too
 				character.ChildAdded:Connect(function(child)
-					if child:IsA("Accessory") and next(worn(player)) ~= nil then
+					local w = worn(player)
+					local hat = w.Hoodie or w.SkiMask or w.Disguise
+					for id in pairs(w) do
+						if Disguises.List[id].Slot == "Hat" then
+							hat = true
+						end
+					end
+					if child:IsA("Accessory") and hat then
 						task.wait()
 						setAccessories(character, true)
 					end

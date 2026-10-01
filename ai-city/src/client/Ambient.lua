@@ -371,6 +371,67 @@ local function stepFlags(t, camPos)
 			end
 		end
 	end
+	-- 🐬 dolphins swim along under the surface and leap out in arcs; the jet
+	-- ski carves a wide loop (each moves its whole model, kept in a rig like
+	-- the crabs')
+	local function rig(b)
+		local m = b.Parent
+		local rec = crabs[m]
+		if not rec then
+			rec = { Base = b.CFrame, Parts = {} }
+			for _, p in ipairs(m:GetChildren()) do
+				if p:IsA("BasePart") then
+					rec.Parts[p] = b.CFrame:ToObjectSpace(p.CFrame)
+				end
+			end
+			crabs[m] = rec
+		end
+		return rec
+	end
+	for _, b in ipairs(CollectionService:GetTagged("Dolphin")) do
+		if b.Parent and (b.Position - camPos).Magnitude < 700 then
+			local rec = rig(b)
+			local ph = b.Parent:GetAttribute("Phase") or 0
+			-- along a long loop; every 7 seconds a leap
+			local a = t * 0.06 + ph * 0.05
+			local pos = rec.Base.Position + Vector3.new(math.sin(a) * 140, 0, math.cos(a) * 30)
+			local dir = Vector3.new(math.cos(a) * 140, 0, -math.sin(a) * 30).Unit
+			local c = ((t + ph) % 7) / 7
+			local y, pitch = -4, 0
+			if c < 0.25 then
+				local u = c / 0.25
+				y = -4 + math.sin(u * math.pi) * 9
+				pitch = math.cos(u * math.pi) * 0.9
+			end
+			local at = Vector3.new(pos.X, y, pos.Z)
+			local cf = CFrame.lookAt(at, at + dir) * CFrame.Angles(pitch, 0, 0)
+			for p, off in pairs(rec.Parts) do
+				p.CFrame = cf * off
+			end
+		end
+	end
+	for _, b in ipairs(CollectionService:GetTagged("JetSki")) do
+		if b.Parent and (b.Position - camPos).Magnitude < 700 then
+			local rec = rig(b)
+			local a = t * 0.25
+			local c = rec.Base.Position
+			local pos = Vector3.new(c.X + math.sin(a) * 70, c.Y + math.sin(t * 3) * 0.12, c.Z + math.cos(a) * 45)
+			local dir = Vector3.new(math.cos(a) * 70, 0, -math.sin(a) * 45).Unit
+			local cf = CFrame.lookAt(pos, pos + dir) * CFrame.Angles(math.sin(t * 2.2) * 0.04, 0, 0.22)
+			for p, off in pairs(rec.Parts) do
+				p.CFrame = cf * off
+			end
+		end
+	end
+	-- 🌿 kelp sways in the current
+	for _, k in ipairs(CollectionService:GetTagged("Sway")) do
+		if (k.Position - camPos).Magnitude < 120 then
+			spinners[k] = spinners[k] or k.CFrame
+			local base = spinners[k]
+			local h = k.Size.Y / 2
+			k.CFrame = base * CFrame.new(0, -h, 0) * CFrame.Angles(math.sin(t * 0.9 + base.Position.X) * 0.18, 0, math.sin(t * 0.7 + base.Position.Z) * 0.14) * CFrame.new(0, h, 0)
+		end
+	end
 	for m in pairs(crabs) do
 		if not m.Parent then
 			crabs[m] = nil

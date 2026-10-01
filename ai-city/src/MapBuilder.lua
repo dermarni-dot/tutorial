@@ -25,6 +25,7 @@ local Streets = require(Modules:WaitForChild("Streets"))
 local Landscape = require(Modules:WaitForChild("Landscape"))
 local Prison = require(Modules:WaitForChild("Prison"))
 local NorthShore = require(Modules:WaitForChild("NorthShore"))
+local StreetLife = require(Modules:WaitForChild("StreetLife"))
 local Places = require(Modules:WaitForChild("Places"))
 
 local MapBuilder = {}
@@ -125,7 +126,9 @@ end
 
 -- where a building's center goes so its front sits behind the sidewalk
 local function frontLot(c, face, depth, lateral)
-	return c + face * (HALF - SIDEWALK - 5 - depth / 2) + rightOf(face) * (lateral or 0)
+	-- (buildings are BUILD_SCALE bigger than their specs: see Buildings.shell)
+	local k = MapKit.BUILD_SCALE or 1
+	return c + face * (HALF - SIDEWALK - 5 - depth * k / 2) + rightOf(face) * (lateral or 0) * k
 end
 
 local function labelFor(id)
@@ -398,11 +401,11 @@ function ctx.houseRow(parent, i, j, rng, slots, big)
 		local style = styles[rng:NextInteger(1, #styles)]
 		-- town lots: four houses a block, 36-42 studs wide; suburban lots: one
 		-- house per street, 56-64 wide and 38 deep, with a garage
-		local scale = if big then 2 else 1.3
+		local scale = if big then 3 else 2.1
 		local depth = Buildings.HouseDepth(scale)
 		local yard = if big then 8 else 9 -- front yard between the sidewalk and the house
 		local depthZ = HALF - SIDEWALK - yard - depth / 2
-		local center = c + Vector3.new(sx * 25, 0, sz * depthZ)
+		local center = c + Vector3.new(sx * HALF * 0.46, 0, sz * depthZ)
 		local garageSide = if big then 1 else nil
 		local b = Buildings.house(model, center, face, style, rng, garageSide, scale)
 		local at = b.At
@@ -437,6 +440,24 @@ function ctx.houseRow(parent, i, j, rng, slots, big)
 		end
 		if rng:NextNumber() < 0.6 then
 			Streets.tree(model, at(-9, 0, (frontZ - b.D / 2) / 2).Position, rng:NextNumber(0.7, 1), rng)
+		end
+		-- a flower bed along the front of the house, sometimes a topiary or two
+		-- by the path
+		local bedZ = -b.D / 2 - 1.8
+		for n = 0, 2 do
+			local bx = 7.5 + n * 2.6
+			if bx < b.W / 2 - 1 then
+				if n == 1 and rng:NextNumber() < 0.4 then
+					Streets.hosta(b.Model, at(bx, 0.1, bedZ).Position, 0.7, rng)
+				else
+					Streets.flowerShrub(b.Model, at(bx, 0.1, bedZ).Position, 0.75, rng)
+				end
+			end
+		end
+		if rng:NextNumber() < 0.3 then
+			for _, px in ipairs({ -1, 1 }) do
+				Streets.topiary(b.Model, at(px * 3.4, 0.1, frontZ + 5.5).Position, if rng:NextNumber() < 0.5 then "ball" else "cone", 0.55, true)
+			end
 		end
 		if big then
 			-- a backyard vegetable garden
@@ -562,6 +583,12 @@ function MapBuilder.Build()
 		end
 	end
 
+	-- food trucks around town (see StreetLife)
+	map.StreetLife = StreetLife.build(ctx, buildings)
+	for _, place in ipairs(map.StreetLife) do
+		place.Emoji = string.match(place.Label, "^[^%w%s]+")
+	end
+
 	-- the lake: an outdoor place with fishing spots on the pier
 	local lake = newPlace("Lake", root:FindFirstChild("Landscape"), -N, N)
 	lake.Door = blockCenter(-N, N) + Vector3.new(-HALF + 2, 0, HALF - 2)
@@ -579,6 +606,7 @@ function MapBuilder.Build()
 	-- the North Shore: Funland, Sunset Beach and AutoLand (see NorthShore)
 	local shore = NorthShore.build(root, Random.new((Config.SEED or 1776) + 11), land.Terrain)
 	map.NorthShore = shore
+	map.Boutique = NorthShore.BoutiqueAt
 	local topDoor = blockCenter(0, -N) + Vector3.new(HALF - 2, 0, -HALF + 2)
 	for _, def in ipairs({ { "Funland", shore.FunlandSpots, shore.FunlandDoor }, { "Beach", shore.BeachSpots, shore.BeachDoor }, { "AutoLand", shore.AutoLandSpots, shore.AutoLandDoor } }) do
 		local place = newPlace(def[1], shore.Model, 0, -N)

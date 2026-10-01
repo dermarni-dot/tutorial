@@ -1,11 +1,11 @@
-<roblox version="4"><Item class="Workspace" referent="RBX1"><Properties><string name="Name">Workspace</string><bool name="StreamingEnabled">true</bool><float name="StreamingMinRadius">96</float><float name="StreamingTargetRadius">640</float></Properties></Item><Item class="Lighting" referent="RBX2"><Properties><string name="Name">Lighting</string><token name="Technology">4</token><float name="ClockTime">7.5</float><float name="Brightness">2</float><bool name="GlobalShadows">true</bool></Properties></Item><Item class="MaterialService" referent="RBX3"><Properties><string name="Name">MaterialService</string><bool name="Use2022Materials">true</bool></Properties></Item><Item class="ReplicatedStorage" referent="RBX4"><Properties><string name="Name">ReplicatedStorage</string></Properties><Item class="Folder" referent="RBX14"><Properties><string name="Name">Shared</string></Properties><Item class="ModuleScript" referent="RBX5"><Properties><string name="Name">Config</string><ProtectedString name="Source"><![CDATA[-- AI City :: shared settings (tweak these to tune the game)
+<roblox version="4"><Item class="Workspace" referent="RBX1"><Properties><string name="Name">Workspace</string><bool name="StreamingEnabled">true</bool><float name="StreamingMinRadius">128</float><float name="StreamingTargetRadius">460</float></Properties></Item><Item class="Lighting" referent="RBX2"><Properties><string name="Name">Lighting</string><token name="Technology">4</token><float name="ClockTime">7.5</float><float name="Brightness">2</float><bool name="GlobalShadows">true</bool></Properties></Item><Item class="MaterialService" referent="RBX3"><Properties><string name="Name">MaterialService</string><bool name="Use2022Materials">true</bool></Properties></Item><Item class="ReplicatedStorage" referent="RBX4"><Properties><string name="Name">ReplicatedStorage</string></Properties><Item class="Folder" referent="RBX14"><Properties><string name="Name">Shared</string></Properties><Item class="ModuleScript" referent="RBX5"><Properties><string name="Name">Config</string><ProtectedString name="Source"><![CDATA[-- AI City :: shared settings (tweak these to tune the game)
 -- ReplicatedStorage.Shared.Config
 --
 -- Every key from the original file is still here with the same shape, so the
 -- rest of the game keeps working. Changed values say what they were and why.
 local Config = {}
 
-Config.POPULATION = 150 -- a big city: more people on the streets and in the houses (lower it if the server struggles)
+Config.POPULATION = 220 -- a big city: more people on the streets and in the houses (lower it if the server struggles)
 Config.SEED = 1776 -- same seed = same citizens every server (lets memories persist)
 Config.DAY_LENGTH = 480 -- real seconds per in-game day (1 in-game hour = 20 seconds)
 Config.WALK_SPEED = 9.5 -- a brisk city walking pace, used whenever a player is close enough to see them
@@ -154,7 +154,7 @@ Config.UNEMPLOYED_CHANCE = 0.12
 Config.RETIRE_AGE = 67
 
 -- Families, kids and growing up (see the Life module)
-Config.MAX_POPULATION = 220 -- no new babies once the city has this many people
+Config.MAX_POPULATION = 320 -- no new babies once the city has this many people
 Config.ADULT_AGE = 18 -- kids finish school and start work (or look for it) at this age
 Config.DAYS_PER_YEAR = 4 -- in-game days per year of age (4 days = 32 real minutes; a newborn grows up in ~10 real hours)
 Config.PREGNANCY_DAYS = 2 -- in-game days from "expecting" to the baby being born
@@ -543,6 +543,8 @@ Actions.List = {
 	volley = { Pose = "volley", Label = "🏐 Playing beach volleyball" },
 	-- reactions to players' emotes (see SocialService)
 	clap = { Pose = "clap", Label = "👏 Clapping" },
+	snack = { Pose = "snack", Props = { "Pastry" }, Label = "🌮 Grabbing a bite" },
+	photo = { Pose = "photo", Props = { "Phone" }, Label = "📸 Taking photos" },
 	hail = { Pose = "hail", Label = "🙋 Waving down a ride" },
 	laugh = { Pose = "laugh", Label = "😂 Laughing" },
 	salute = { Pose = "salute", Label = "🫡 Saluting" },
@@ -612,6 +614,15 @@ function Faces.Describe(rng, age, feminine)
 		Blush = kid or rng:NextNumber() < 0.25,
 		MouthWidth = rng:NextNumber(0.24, 0.32),
 		Wrinkles = age >= 60,
+		-- more ways to look different: round or narrow eyes, a nose, lips,
+		-- eyeliner, a beauty mark, long or short brows, smile lines
+		EyeShape = rng:NextNumber(0.78, 1.12),
+		Nose = ({ "arc", "arc", "dot", "button", "long", "none" })[rng:NextInteger(1, 6)],
+		Lips = if feminine and not kid and rng:NextNumber() < 0.45 then ({ rgb(190, 60, 80), rgb(200, 100, 110), rgb(150, 50, 60), rgb(210, 120, 120) })[rng:NextInteger(1, 4)] else nil,
+		Liner = feminine and not kid and rng:NextNumber() < 0.35,
+		Mole = if rng:NextNumber() < 0.14 then { rng:NextNumber(0.25, 0.75), rng:NextNumber(0.55, 0.8) } else nil,
+		BrowLength = rng:NextNumber(0.16, 0.24),
+		SmileLines = age >= 40 and rng:NextNumber() < 0.6,
 	}
 end
 
@@ -678,16 +689,16 @@ function Faces.Build(head, face, skin)
 	for _, side in ipairs({ -1, 1 }) do
 		local name = if side < 0 then "L" else "R"
 		local x = 0.5 + side * face.EyeGap / 2
-		local eye = frame(gui, "Eye" .. name, UDim2.fromScale(x, face.EyeHeight), UDim2.fromScale(0.17 * face.EyeSize, 0.21 * face.EyeSize), nil)
+		local eye = frame(gui, "Eye" .. name, UDim2.fromScale(x, face.EyeHeight), UDim2.fromScale(0.17 * face.EyeSize, 0.21 * face.EyeSize * (face.EyeShape or 1)), nil)
 		local ball = frame(eye, "Ball", UDim2.fromScale(0.5, 0.5), UDim2.fromScale(1, 1), rgb(252, 252, 250), 1)
 		ball.ClipsDescendants = true
 		local iris = frame(ball, "Iris", UDim2.fromScale(0.5, 0.52), UDim2.fromScale(0.7, 0.66), face.EyeColor, 1)
 		frame(iris, "Pupil", UDim2.fromScale(0.5, 0.5), UDim2.fromScale(0.52, 0.52), rgb(15, 12, 14), 1)
 		frame(iris, "Shine", UDim2.fromScale(0.68, 0.3), UDim2.fromScale(0.3, 0.3), rgb(255, 255, 255), 1)
 		local outline = Instance.new("UIStroke")
-		outline.Thickness = 1.5
+		outline.Thickness = if face.Liner then 2.6 else 1.5
 		outline.Color = INK
-		outline.Transparency = 0.35
+		outline.Transparency = if face.Liner then 0 else 0.35
 		outline.Parent = ball
 		-- the upper lid (grows down for sleepy and blinking eyes)
 		local lid = frame(ball, "Lid", UDim2.fromScale(0.5, 0), UDim2.fromScale(1.1, 0), skin)
@@ -721,7 +732,7 @@ function Faces.Build(head, face, skin)
 			end
 		end
 		-- eyebrows
-		local brow = frame(gui, "Brow" .. name, UDim2.fromScale(x, face.EyeHeight - 0.16 * face.EyeSize), UDim2.fromScale(0.2, face.BrowThick), INK, 1)
+		local brow = frame(gui, "Brow" .. name, UDim2.fromScale(x, face.EyeHeight - 0.16 * face.EyeSize), UDim2.fromScale(face.BrowLength or 0.2, face.BrowThick), INK, 1)
 		brow:SetAttribute("X", x)
 		brow:SetAttribute("BaseY", face.EyeHeight - 0.16 * face.EyeSize)
 		brow:SetAttribute("Tilt", face.BrowTilt * side)
@@ -736,6 +747,15 @@ function Faces.Build(head, face, skin)
 				frame(gui, "Freckle", UDim2.fromScale(0.5 + side * (0.26 + k * 0.045), face.EyeHeight + 0.15 + (k % 2) * 0.035), UDim2.fromOffset(3, 3), rgb(160, 100, 70), 1).BackgroundTransparency = 0.3
 			end
 		end
+		if face.SmileLines then
+			local sl = arc(gui, "SmileLine" .. name, UDim2.fromScale(0.5 + side * 0.25, 0.7), UDim2.fromScale(0.06, 0.14), 1, INK, false)
+			sl.Rotation = side * -70
+			for _, d in ipairs(sl:GetDescendants()) do
+				if d:IsA("UIStroke") then
+					d.Transparency = 0.7
+				end
+			end
+		end
 		if face.Wrinkles then
 			local w = frame(gui, "Wrinkle", UDim2.fromScale(0.5 + side * 0.44, face.EyeHeight), UDim2.new(0.06, 0, 0, 1), INK, 1)
 			w.BackgroundTransparency = 0.6
@@ -743,6 +763,28 @@ function Faces.Build(head, face, skin)
 		end
 	end
 
+	-- a nose (just a hint of one)
+	local ny = face.EyeHeight + 0.17
+	if face.Nose == "arc" then
+		local n = arc(gui, "Nose", UDim2.fromScale(0.5, ny), UDim2.fromScale(0.09, 0.05), 2, INK, false)
+		for _, d in ipairs(n:GetDescendants()) do
+			if d:IsA("UIStroke") then
+				d.Transparency = 0.45
+			end
+		end
+	elseif face.Nose == "dot" then
+		frame(gui, "Nose", UDim2.fromScale(0.5, ny), UDim2.fromOffset(5, 4), INK, 1).BackgroundTransparency = 0.55
+	elseif face.Nose == "button" then
+		for _, sx in ipairs({ -1, 1 }) do
+			frame(gui, "Nose", UDim2.fromScale(0.5 + sx * 0.025, ny), UDim2.fromOffset(3, 3), INK, 1).BackgroundTransparency = 0.5
+		end
+	elseif face.Nose == "long" then
+		frame(gui, "Nose", UDim2.fromScale(0.5 + 0.012, ny - 0.04), UDim2.new(0, 2, 0.09, 0), INK, 1).BackgroundTransparency = 0.6
+		frame(gui, "Nose", UDim2.fromScale(0.5, ny + 0.005), UDim2.new(0.05, 0, 0, 2), INK, 1).BackgroundTransparency = 0.5
+	end
+	if face.Mole then
+		frame(gui, "Mole", UDim2.fromScale(face.Mole[1], face.Mole[2]), UDim2.fromOffset(5, 5), rgb(90, 55, 45), 1)
+	end
 	-- the mouth: every shape is there, and Faces.Set shows the right one
 	local w = face.MouthWidth
 	local mouth = frame(gui, "Mouth", UDim2.fromScale(0.5, 0.74), UDim2.fromScale(w, 0.16), nil)
@@ -768,6 +810,17 @@ function Faces.Build(head, face, skin)
 		arc(wobble, "W" .. k, UDim2.fromScale(0.17 + k * 0.33, if k % 2 == 0 then 0.3 else 0.7), UDim2.fromScale(0.36, 0.4), 2, INK, k % 2 == 0)
 	end
 	wobble.Visible = false
+	-- lipstick: the mouth's lines in the lip colour
+	if face.Lips then
+		for _, d in ipairs(mouth:GetDescendants()) do
+			if d:IsA("UIStroke") then
+				d.Color = face.Lips
+				d.Thickness = line + 1
+			elseif d:IsA("Frame") and d.Name == "Line" then
+				d.BackgroundColor3 = face.Lips
+			end
+		end
+	end
 	gui:SetAttribute("Expression", "neutral")
 	gui.Parent = head
 	return gui
@@ -1098,7 +1151,7 @@ L.sitdown = function(t, ph)
 end
 local EMOTES = {
 	wave = "wave", dance = "dance", cheer = "cheer", point = "point", clap = "clap",
-	laugh = "laugh", salute = "salute", flex = "flex", shrug = "shrugEmote", sit = "sitdown",
+	laugh = "laugh", salute = "salute", flex = "flex", shrug = "shrugEmote", sit = "sitdown", sleeping = "sleep",
 }
 Poses.EMOTES = EMOTES
 
@@ -1198,6 +1251,23 @@ L.rake = function(t, ph)
 	local p = osc(t, 2.4, ph)
 	return { RS = A(40 + p * 20, 0, -12), RE = A(40 - p * 10), LS = A(55 + p * 20, 0, 18), LE = A(50 - p * 10), Waist = A(-14 - p * 6, 10, 0), Neck = A(-20) }, true
 end
+-- eating standing up: a bite now and then (food up to the mouth), chewing,
+-- looking around between bites
+L.snack = function(t, ph)
+	local c = (t * 0.32 + ph) % 1
+	local bite = if c < 0.3 then sin(c / 0.3 * math.pi) else 0
+	local chew = if c >= 0.3 and c < 0.6 then osc(t, 9, ph) * 2 else 0
+	return { RS = A(30 + bite * 70, 0, -12), RE = A(60 + bite * 50), RW = A(-10), LS = A(18, 0, 10), LE = A(40), Neck = A(-6 + bite * 10 + chew, osc(t, 0.4, ph) * (1 - bite) * 25, 0), Waist = A(-2 + bite * 3) }, false
+end
+-- taking photos: the phone held up in both hands, framing the shot, a step
+-- to the side, then a look at the picture
+L.photo = function(t, ph)
+	local c = (t * 0.22 + ph) % 1
+	local check = c > 0.75
+	local frame = osc(t, 0.8, ph)
+	return { RS = A(if check then 40 else 85, 0, -14), RE = A(if check then 70 else 35), LS = A(if check then 30 else 82, 0, 16), LE = A(if check then 60 else 38),
+		Neck = A(if check then -22 else 4, frame * (if check then 2 else 8), 0), Waist = A(if check then -6 else 3, frame * 10, 0), Root = CFrame.new(0, 0, 0) * A(0, frame * 6, 0) }, false
+end
 -- mopping: side to side, bent over a little
 L.mop = function(t, ph)
 	local s = osc(t, 2, ph)
@@ -1228,6 +1298,10 @@ L.carryStraps = function(t, ph)
 end
 L.carryCup = function(t, ph)
 	return { RS = A(30, 0, -8), RE = A(80) }, false
+end
+-- texting on the way: phone up in front, head down, thumb tapping
+L.carryPhone = function(t, ph)
+	return { RS = A(48, 0, -14), RE = A(72 + math.sin(t * 9 + ph) * 3), RW = A(-10, 0, 0), LS = A(10, 0, 4), Neck = A(-20, 0, 0) }, false
 end
 L.carryTray = function(t, ph)
 	return { RS = A(40, 0, -10), RE = A(80), RW = A(0, 0, 0) }, false
@@ -2085,7 +2159,7 @@ local CARRY = {
 	Bag = { "carryBag", { "Bag" } }, Briefcase = { "carryCase", { "Briefcase" } }, Backpack = { "carryStraps", { "Backpack" } },
 	GymBag = { "carryCase", { "GymBag" } }, MailBag = { "carryCase", { "MailBag", "Letter" } }, Cup = { "carryCup", { "Cup" } },
 	Pastry = { "carryCup", { "Pastry" } }, Cone = { "carryCup", { "Cone" } }, WateringCan = { "carryCase", { "WateringCan" } },
-	Tray = { "carryTray", { "Tray" } }, Box = { "carry", { "Box" } },
+	Tray = { "carryTray", { "Tray" } }, Box = { "carry", { "Box" } }, Phone = { "carryPhone", { "Phone" } },
 }
 Poses.Carry = CARRY
 
@@ -3441,7 +3515,32 @@ Disguises.List = {
 		Desc = "Nobody sees your face. But wearing one in broad daylight makes people nervous and the police suspicious.",
 	},
 }
-Disguises.Order = { "Hoodie", "Disguise", "SkiMask" }
+-- 👕 fashion: clothes just for looking good (a little harder to recognize,
+-- since it's not what you usually wear). One per slot: TOP, HAT, EYES, NECK.
+local function fashion(name, emoji, slot, price, desc, color, hidden)
+	return { Name = name, Emoji = emoji, Slot = slot, Price = price, Hidden = hidden or 0.04, Night = 0, Suspicious = 0, Desc = desc, Color = color, Fashion = true }
+end
+local C = Color3.fromRGB
+Disguises.List.LeatherJacket = fashion("Leather Jacket", "🧥", "Top", 90, "Black leather and a silver zip. Instantly cooler.", C(28, 26, 28))
+Disguises.List.DenimJacket = fashion("Denim Jacket", "👖", "Top", 60, "Classic jean jacket with stitched pockets.", C(80, 110, 160))
+Disguises.List.VarsityJacket = fashion("Varsity Jacket", "🏈", "Top", 75, "Team colours with white sleeves.", C(160, 30, 40))
+Disguises.List.PufferJacket = fashion("Puffer Jacket", "🧣", "Top", 80, "Big, puffy and warm. Golden yellow.", C(240, 190, 50))
+Disguises.List.Tracksuit = fashion("Tracksuit", "🏃", "Top", 55, "Zip-up track jacket with stripes down the sleeves.", C(40, 60, 150))
+Disguises.List.Tuxedo = fashion("Tuxedo", "🤵", "Top", 160, "Black jacket, white shirt, bow tie. Very fancy.", C(24, 24, 28))
+Disguises.List.Cap = fashion("Baseball Cap", "🧢", "Hat", 20, "A red cap. Wear it forwards like a normal person.", C(200, 40, 50))
+Disguises.List.Beanie = fashion("Beanie", "🧶", "Hat", 25, "A warm knit beanie with a pom-pom.", C(60, 120, 90))
+Disguises.List.CowboyHat = fashion("Cowboy Hat", "🤠", "Hat", 60, "Yeehaw. Wide brim, brown leather.", C(130, 85, 50), 0.08)
+Disguises.List.BucketHat = fashion("Bucket Hat", "👒", "Hat", 35, "Soft and floppy, perfect for the beach.", C(230, 220, 190))
+Disguises.List.Crown = fashion("Gold Crown", "👑", "Hat", 400, "For the richest person in the city. Everyone will know it's you.", C(245, 200, 70), 0)
+Disguises.List.Sunglasses = fashion("Sunglasses", "🕶️", "Eyes", 40, "Dark lenses. Cool, and a bit harder to recognize.", C(20, 20, 24), 0.08)
+Disguises.List.HeartGlasses = fashion("Heart Glasses", "💖", "Eyes", 45, "Pink heart-shaped shades.", C(240, 90, 150), 0.06)
+Disguises.List.GoldChain = fashion("Gold Chain", "📿", "Neck", 150, "Heavy gold. It shines in the sun.", C(245, 200, 70), 0)
+Disguises.List.Scarf = fashion("Scarf", "🧣", "Neck", 30, "A long striped scarf.", C(200, 60, 60))
+Disguises.List.Headphones = fashion("Headphones", "🎧", "Neck", 70, "Big over-ear headphones (round your neck or on).", C(30, 30, 34))
+Disguises.Order = { "Hoodie", "Disguise", "SkiMask",
+	"LeatherJacket", "DenimJacket", "VarsityJacket", "PufferJacket", "Tracksuit", "Tuxedo",
+	"Cap", "Beanie", "CowboyHat", "BucketHat", "Crown",
+	"Sunglasses", "HeartGlasses", "GoldChain", "Scarf", "Headphones" }
 
 Disguises.MAX = 0.9 -- nobody is ever completely invisible
 Disguises.DARK = 0.1 -- after dark, everyone is a little harder to recognize
@@ -3485,7 +3584,7 @@ function Disguises.Describe(worn)
 	for key, value in pairs(worn or {}) do
 		local id = if type(key) == "number" then value else key
 		local d = Disguises.List[id]
-		if d and value then
+		if d and value and d.Looks then
 			if d.Slot == "Face" then
 				face = d
 			else
@@ -3669,6 +3768,8 @@ if Config.RUN_CITIZENS ~= false then
 	services.Rideshare = require(Modules:WaitForChild("RideshareService"))
 	services.Race = require(Modules:WaitForChild("RaceService"))
 	services.School = require(Modules:WaitForChild("SchoolService"))
+	services.StreetLife = require(Modules:WaitForChild("StreetLifeService"))
+	services.Sleep = require(Modules:WaitForChild("SleepService"))
 	services.Dialogue.Start(services)
 	services.Crime.Start(services)
 	services.Players.Start(services)
@@ -3693,9 +3794,11 @@ if Config.RUN_CITIZENS ~= false then
 	services.Rideshare.Start(services)
 	services.Race.Start(services)
 	services.School.Start(services)
+	services.StreetLife.Start(services)
+	services.Sleep.Start(services)
 	task.spawn(services.Citizens.Start, services)
 end
-]]></ProtectedString></Properties></Item><Item class="Folder" referent="RBX57"><Properties><string name="Name">Modules</string></Properties><Item class="ModuleScript" referent="RBX17"><Properties><string name="Name">MapKit</string><ProtectedString name="Source"><![CDATA[-- MapKit (ModuleScript) — ServerScriptService.Modules.MapKit
+]]></ProtectedString></Properties></Item><Item class="Folder" referent="RBX60"><Properties><string name="Name">Modules</string></Properties><Item class="ModuleScript" referent="RBX17"><Properties><string name="Name">MapKit</string><ProtectedString name="Source"><![CDATA[-- MapKit (ModuleScript) — ServerScriptService.Modules.MapKit
 -- Small building blocks shared by the map modules: part helpers, colors, signs,
 -- lights, seats, and a registry of things that change between day and night.
 
@@ -3706,7 +3809,8 @@ local MapKit = {}
 --------------------------------------------------------------------------------
 -- Layout numbers (shared by every map module)
 --------------------------------------------------------------------------------
-MapKit.SPACING = 134 -- block center to block center (big blocks: room for big houses and yards)
+MapKit.SPACING = 200 -- block center to block center (big blocks: room for big buildings, houses and yards)
+MapKit.BUILD_SCALE = 1.75 -- every building (not houses: they have their own scale) is this much bigger
 MapKit.ROAD = 26 -- road width: a driving lane each way plus a parking lane on both sides
 MapKit.BLOCK = MapKit.SPACING - MapKit.ROAD -- 108: a block including its sidewalk
 MapKit.HALF = MapKit.BLOCK / 2
@@ -4331,6 +4435,14 @@ end
 -- Storefront, CurtainWall (glass towers), NoSign, SignColor, SignText,
 -- Elevator (default: on for 3+ floors), Plinth
 function Buildings.shell(parent, spec)
+	-- everything but houses is built BUILD_SCALE bigger than its spec (the
+	-- places are laid out for this: see MapBuilder's frontLot)
+	if not spec.House and not spec.NoScale and not spec.Scaled then
+		local k = MapKit.BUILD_SCALE or 1
+		spec.W = math.floor(spec.W * k / 2 + 0.5) * 2
+		spec.D = math.floor(spec.D * k / 2 + 0.5) * 2
+		spec.Scaled = true
+	end
 	local model = Instance.new("Model")
 	model.Name = spec.Name
 	model.Parent = parent
@@ -4509,7 +4621,12 @@ function Buildings.shell(parent, spec)
 				glow.Brightness = 0.55 -- (softer: rooms were glaring)
 				glow.Color = MapKit.rgb(255, 232, 200)
 				glow.Shadows = false
+				-- (off until a player is near: each screen lights only the rooms
+				-- around it, see the client's World; thousands of lights at once
+				-- would be slow)
+				glow.Enabled = false
 				glow.Parent = panel
+				MapKit.tag(panel, "RoomLight")
 			end
 		end
 	end
@@ -4652,14 +4769,14 @@ local SHUTTERS = { MapKit.rgb(60, 90, 70), MapKit.rgb(70, 90, 140), MapKit.rgb(1
 -- how deep a house is at a scale (every style starts 22 deep; the lot leaves
 -- room for a front and a back yard)
 function Buildings.HouseDepth(scale)
-	return math.min(38, math.floor(22 * (scale or 1) / 2 + 0.5) * 2)
+	return math.min(58, math.floor(22 * (scale or 1) / 2 + 0.5) * 2)
 end
 
 function Buildings.house(parent, center, face, style, rng, garageSide, scale)
 	local wall = HOUSE_WALLS[rng:NextInteger(1, #HOUSE_WALLS)]
 	local roof = HOUSE_ROOFS[rng:NextInteger(1, #HOUSE_ROOFS)]
 	local shutter = SHUTTERS[rng:NextInteger(1, #SHUTTERS)]
-	local spec = { Name = "House", Center = center, Face = face, W = 28, D = 22, Floors = 1, Wall = wall, Trim = WHITE, Roof = "gable", RoofColor = roof, DoorW = 5, Material = Enum.Material.WoodPlanks, Elevator = false, Plinth = true }
+	local spec = { House = true, Name = "House", Center = center, Face = face, W = 28, D = 22, Floors = 1, Wall = wall, Trim = WHITE, Roof = "gable", RoofColor = roof, DoorW = 5, Material = Enum.Material.WoodPlanks, Elevator = false, Plinth = true }
 	if style == "twostory" then
 		spec.Floors, spec.W, spec.D = 2, 28, 22
 		spec.Stairs = true
@@ -4815,10 +4932,9 @@ local function chair(b, f, x, z, faceX, faceZ, color, place)
 	color = color or rgb(90, 70, 55)
 	local seat = MapKit.seat(b.Model, "Chair", Vector3.new(2, 0.4, 2), at(b, f, x, 1.7, z, rot), color, Enum.Material.Wood, place)
 	deco(b.Model, "ChairBack", Vector3.new(2, 2.2, 0.3), at(b, f, x, 1.7, z, rot) * CFrame.new(0, 1.2, 0.9), color)
+	-- (two side frames instead of four legs: half the parts, same look)
 	for _, lx in ipairs({ -0.8, 0.8 }) do
-		for _, lz in ipairs({ -0.8, 0.8 }) do
-			deco(b.Model, "ChairLeg", Vector3.new(0.2, 1.6, 0.2), at(b, f, x, 0.8, z, rot) * CFrame.new(lx, 0, lz), color:Lerp(BLACK, 0.3))
-		end
+		deco(b.Model, "ChairLeg", Vector3.new(0.2, 1.6, 1.8), at(b, f, x, 0.8, z, rot) * CFrame.new(lx, 0, 0), color:Lerp(BLACK, 0.3))
 	end
 	return seat
 end
@@ -6944,6 +7060,146 @@ EXTRAS.home = function(r)
 		end
 	end
 end
+-- 🛋️ more furniture for the (big) houses: each piece goes in the nearest free
+-- floor space to a random spot, so every home is arranged a little differently
+local HOME_EXTRAS = {
+	ground = {
+		{ "island", 7, 3.4, 4 }, { "coatrack", 1.4, 1.4, 6 }, { "shoebench", 3.4, 1.4, 2.4 }, { "armchair", 2.6, 2.6, 3.6 },
+		{ "plant", 2, 2, 5 }, { "plant", 2, 2, 5 }, { "bookshelf", 4, 1.4, 7 }, { "aquarium", 5, 2, 6 }, { "barcart", 2.4, 1.4, 3.6 },
+		{ "dogbed", 3, 2.4, 1 }, { "lamp", 1.4, 1.4, 6 }, { "console", 4.4, 1.2, 4 },
+	},
+	upper = {
+		{ "vanity", 3.6, 1.8, 6 }, { "toybox", 2.6, 1.6, 2 }, { "beanbag", 2.4, 2.4, 2 }, { "hamper", 1.4, 1.4, 2 },
+		{ "plant", 2, 2, 5 }, { "lamp", 1.4, 1.4, 6 }, { "bookshelf", 4, 1.4, 7 }, { "rocker", 2.4, 2.8, 4 }, { "easel", 2.2, 2, 6 },
+	},
+}
+local HOME_BUILD = {}
+function HOME_BUILD.island(r, x, z)
+	r.Box("KitchenIsland", Vector3.new(7, 3, 3.4), x, 0, z, rgb(236, 234, 228), Enum.Material.SmoothPlastic)
+	r.Box("IslandTop", Vector3.new(7.4, 0.25, 3.8), x, 3, z, rgb(60, 60, 64), Enum.Material.Marble)
+	r.Box("FruitBowl", Vector3.new(1.4, 0.4, 1.4), x - 1.6, 3.25, z, WHITE)
+	for k = 0, 2 do
+		MapKit.ball(r.B.Model, "Fruit", 0.5, r.At(x - 1.9 + k * 0.3, 3.85, z + (k % 2) * 0.3 - 0.15), ({ rgb(230, 60, 50), rgb(250, 200, 50), rgb(120, 200, 70) })[k + 1], Enum.Material.SmoothPlastic)
+	end
+	for k = -1, 1 do
+		-- bar stools along the front
+		r.Box("StoolLeg", Vector3.new(0.25, 2.6, 0.25), x + k * 2.2, 0, z - 2.4, rgb(50, 50, 54), Enum.Material.Metal)
+		r.Box("StoolSeat", Vector3.new(1.2, 0.25, 1.2), x + k * 2.2, 2.6, z - 2.4, rgb(150, 100, 60), Enum.Material.Wood)
+	end
+end
+function HOME_BUILD.coatrack(r, x, z)
+	r.Box("CoatRack", Vector3.new(0.25, 5.6, 0.25), x, 0, z, rgb(110, 80, 55), Enum.Material.Wood)
+	r.Box("CoatRackFoot", Vector3.new(1.2, 0.15, 1.2), x, 0, z, rgb(110, 80, 55), Enum.Material.Wood)
+	r.Box("Coat", Vector3.new(0.9, 2.6, 0.5), x + 0.45, 2.6, z, MapKit.FLOWERS[r.Rng:NextInteger(1, #MapKit.FLOWERS)]:Lerp(BLACK, 0.4), Enum.Material.Fabric)
+	r.Box("HangingHat", Vector3.new(0.9, 0.4, 0.9), x, 5.6, z, rgb(70, 60, 50), Enum.Material.Fabric)
+end
+function HOME_BUILD.shoebench(r, x, z)
+	r.Box("ShoeBench", Vector3.new(3.4, 1.8, 1.4), x, 0, z, rgb(150, 110, 75), Enum.Material.Wood)
+	r.Box("BenchCushion", Vector3.new(3.2, 0.3, 1.2), x, 1.8, z, rgb(200, 190, 170), Enum.Material.Fabric)
+	for k = 0, 2 do
+		r.Box("Shoe", Vector3.new(0.5, 0.4, 1), x - 1 + k * 1, 0.2, z, ({ rgb(30, 30, 34), rgb(240, 240, 240), rgb(160, 60, 50) })[k + 1], Enum.Material.Leather)
+	end
+end
+function HOME_BUILD.armchair(r, x, z)
+	local c = ({ rgb(160, 110, 80), rgb(90, 110, 140), rgb(130, 150, 110), rgb(180, 150, 120) })[r.Rng:NextInteger(1, 4)]
+	r.Box("Armchair", Vector3.new(2.6, 1.6, 2.4), x, 0, z, c, Enum.Material.Fabric)
+	r.Box("ArmchairBack", Vector3.new(2.6, 2, 0.6), x, 1.6, z + 0.9, c:Lerp(BLACK, 0.1), Enum.Material.Fabric)
+	r.Box("Throw", Vector3.new(1, 0.15, 2), x + 0.6, 1.6, z, WHITE:Lerp(c, 0.4), Enum.Material.Fabric)
+end
+function HOME_BUILD.plant(r, x, z)
+	plant(r, x, z, true)
+end
+function HOME_BUILD.bookshelf(r, x, z)
+	bookshelf(r, x, z, 4, true)
+end
+function HOME_BUILD.aquarium(r, x, z)
+	aquarium(r, x, z)
+end
+function HOME_BUILD.barcart(r, x, z)
+	r.Box("BarCart", Vector3.new(2.4, 0.15, 1.4), x, 1.4, z, rgb(200, 170, 90), Enum.Material.Metal)
+	r.Box("BarCart", Vector3.new(2.4, 0.15, 1.4), x, 2.8, z, rgb(200, 170, 90), Enum.Material.Metal)
+	r.Box("CartLegs", Vector3.new(2.2, 2.8, 1.2), x, 0, z, rgb(200, 170, 90), Enum.Material.Metal).Transparency = 0.6
+	for k = 0, 2 do
+		r.Box("Bottle", Vector3.new(0.35, 0.9, 0.35), x - 0.7 + k * 0.7, 2.95, z, ({ rgb(60, 120, 60), rgb(150, 60, 40), rgb(220, 220, 230) })[k + 1], Enum.Material.Glass)
+	end
+end
+function HOME_BUILD.dogbed(r, x, z)
+	r.Box("DogBed", Vector3.new(3, 0.6, 2.4), x, 0, z, rgb(140, 100, 70), Enum.Material.Fabric)
+	r.Box("DogBedPad", Vector3.new(2.4, 0.3, 1.8), x, 0.6, z, rgb(220, 200, 170), Enum.Material.Fabric)
+	MapKit.ball(r.B.Model, "ChewToy", 0.5, r.At(x + 1, 1.15, z), rgb(240, 90, 60), Enum.Material.SmoothPlastic)
+end
+function HOME_BUILD.lamp(r, x, z)
+	floorLamp(r, x, z, false)
+end
+function HOME_BUILD.console(r, x, z)
+	r.Box("ConsoleTable", Vector3.new(4.4, 2.8, 1.2), x, 0, z, rgb(90, 64, 44), Enum.Material.Wood)
+	r.Box("Vase", Vector3.new(0.6, 1.2, 0.6), x - 1.4, 2.8, z, rgb(80, 140, 190), Enum.Material.SmoothPlastic)
+	r.Box("PhotoFrame", Vector3.new(0.9, 0.7, 0.1), x + 0.2, 2.8, z, rgb(30, 30, 34))
+	r.Box("PhotoFrame", Vector3.new(0.7, 0.9, 0.1), x + 1.3, 2.8, z, rgb(200, 170, 90), Enum.Material.Metal)
+	r.Box("KeyBowl", Vector3.new(0.8, 0.2, 0.8), x + 0.8, 2.8, z, rgb(170, 120, 80), Enum.Material.Wood)
+end
+function HOME_BUILD.vanity(r, x, z)
+	r.Box("Vanity", Vector3.new(3.6, 2.8, 1.6), x, 0, z, WHITE, Enum.Material.Wood)
+	local m = r.Box("VanityMirror", Vector3.new(2.4, 2.6, 0.12), x, 2.8, z + 0.6, rgb(210, 230, 240), Enum.Material.Glass)
+	m.Reflectance = 0.4
+	for k = 0, 2 do
+		r.Box("Perfume", Vector3.new(0.3, 0.5, 0.3), x - 1.2 + k * 0.35, 2.8, z - 0.3, ({ rgb(240, 160, 190), rgb(170, 140, 230), rgb(250, 220, 120) })[k + 1], Enum.Material.Glass)
+	end
+	r.Box("VanityStool", Vector3.new(1.4, 1.6, 1.4), x, 0, z - 1.8, rgb(240, 200, 210), Enum.Material.Fabric)
+end
+function HOME_BUILD.toybox(r, x, z)
+	r.Box("ToyBox", Vector3.new(2.6, 1.6, 1.6), x, 0, z, MapKit.FLOWERS[r.Rng:NextInteger(1, #MapKit.FLOWERS)], Enum.Material.Wood)
+	MapKit.ball(r.B.Model, "ToyBall", 0.8, r.At(x - 0.6, 1.9, z), MapKit.FLOWERS[r.Rng:NextInteger(1, #MapKit.FLOWERS)], Enum.Material.SmoothPlastic)
+	MapKit.ball(r.B.Model, "Teddy", 0.9, r.At(x + 0.6, 2, z), rgb(170, 120, 70), Enum.Material.Fabric)
+end
+function HOME_BUILD.beanbag(r, x, z)
+	local bag = MapKit.ball(r.B.Model, "BeanBag", 2.4, r.At(x, 1, z), MapKit.FLOWERS[r.Rng:NextInteger(1, #MapKit.FLOWERS)], Enum.Material.Fabric)
+	bag.Size = Vector3.new(2.4, 2, 2.4)
+end
+function HOME_BUILD.hamper(r, x, z)
+	r.Box("Hamper", Vector3.new(1.4, 2, 1.4), x, 0, z, rgb(200, 180, 140), Enum.Material.Fabric)
+	r.Box("Laundry", Vector3.new(1.1, 0.4, 1.1), x, 2, z, rgb(120, 160, 220), Enum.Material.Fabric)
+end
+function HOME_BUILD.rocker(r, x, z)
+	r.Box("RockingChair", Vector3.new(2.2, 1.6, 2.2), x, 0.3, z, rgb(150, 105, 70), Enum.Material.Wood)
+	r.Box("RockerBack", Vector3.new(2.2, 2.6, 0.3), x, 1.9, z + 1, rgb(150, 105, 70), Enum.Material.Wood)
+	for _, sx in ipairs({ -1, 1 }) do
+		r.Box("Rocker", Vector3.new(0.25, 0.3, 2.8), x + sx * 0.95, 0, z, rgb(120, 85, 55), Enum.Material.Wood)
+	end
+	r.Box("KnitBlanket", Vector3.new(2, 0.15, 1.6), x, 1.9, z - 0.2, rgb(220, 120, 110), Enum.Material.Fabric)
+end
+function HOME_BUILD.easel(r, x, z)
+	r.Box("Easel", Vector3.new(0.2, 5, 0.2), x, 0, z + 0.6, rgb(150, 110, 70), Enum.Material.Wood)
+	r.Box("EaselLeg", Vector3.new(1.8, 3.4, 0.2), x, 0, z - 0.3, rgb(150, 110, 70), Enum.Material.Wood).Transparency = 0.5
+	r.Box("Canvas", Vector3.new(2, 2.4, 0.12), x, 2.6, z, WHITE:Lerp(PAINT[r.Rng:NextInteger(1, #PAINT)], 0.4), Enum.Material.Fabric)
+end
+
+local baseHome = EXTRAS.home
+EXTRAS.home = function(r)
+	baseHome(r)
+	if r.W < 30 then
+		return
+	end
+	local list = if r.F == 1 then HOME_EXTRAS.ground else HOME_EXTRAS.upper
+	-- the bigger the house, the more pieces
+	local n = math.clamp(math.floor((r.W * r.D) / 260), 3, #list)
+	local order = {}
+	for k = 1, #list do
+		order[k] = k
+	end
+	for k = #order, 2, -1 do
+		local j = r.Rng:NextInteger(1, k)
+		order[k], order[j] = order[j], order[k]
+	end
+	for k = 1, n do
+		local e = list[order[k]]
+		local px = r.Rng:NextNumber(-r.W / 2 + 3, r.W / 2 - 3)
+		local pz = r.Rng:NextNumber(-r.D / 2 + 3, r.D / 2 - 3)
+		r.Place(e[2], e[3], e[4], px, pz, function(x, z)
+			HOME_BUILD[e[1]](r, x, z)
+		end, 0.9, 14)
+	end
+end
 EXTRAS.apartment = EXTRAS.home
 
 EXTRAS.daycare = function(r)
@@ -7566,6 +7822,7 @@ return Errands
 -- and parked cars.
 
 local MapKit = require(script.Parent:WaitForChild("MapKit"))
+local StreetLife = require(script.Parent:WaitForChild("StreetLife"))
 
 local Streets = {}
 
@@ -7613,7 +7870,10 @@ function Streets.tree(parent, pos, scale, rng)
 		return if rng then rng:NextNumber(a, b) else (a + b) / 2
 	end
 	local roll = r(0, 1)
-	local kind = if roll < 0.2 then "birch" elseif roll < 0.5 then "maple" else "oak"
+	if roll > 0.72 then
+		return Streets.fluffyTree(parent, pos, scale * 0.95, rng)
+	end
+	local kind = if roll < 0.18 then "birch" elseif roll < 0.42 then "maple" else "oak"
 	local yaw = r(0, math.pi * 2)
 	local lean = Vector3.new(math.cos(yaw), 0, math.sin(yaw)) * r(0.2, 0.7) * scale
 	if kind == "birch" then
@@ -7694,11 +7954,180 @@ function Streets.pine(parent, pos, scale)
 		local tier = MapKit.ball(parent, "Needles", d, CFrame.new(pos + Vector3.new(0, y, 0)) * CFrame.Angles(0, k * 0.7, 0), dark:Lerp(light, u * 0.7), FOLIAGE)
 		tier.Size = Vector3.new(d, d * 0.42, d)
 		tier.CanQuery = false
-		local under = MapKit.ball(parent, "Needles", d * 0.8, CFrame.new(pos + Vector3.new(0, y - d * 0.16, 0)), dark:Lerp(BLACK, 0.15), FOLIAGE)
-		under.Size = Vector3.new(d * 0.8, d * 0.3, d * 0.8)
-		under.CanQuery = false
 	end
 	MapKit.column(parent, "Needles", 2.2 * scale, 0.5 * scale, pos + Vector3.new(0, h * 0.97, 0), light, FOLIAGE, false).CanQuery = false
+end
+
+--------------------------------------------------------------------------------
+-- Garden plants in a soft, stylized look: a fluffy cloud-puff tree, topiaries,
+-- a wisteria with hanging purple flowers, flowering shrubs and big-leaf hostas
+--------------------------------------------------------------------------------
+local function puff(parent, name, at, d, color, squash)
+	local b = MapKit.ball(parent, name, d, CFrame.new(at), color, FOLIAGE)
+	if squash then
+		b.Size = Vector3.new(d, d * squash, d)
+	end
+	b.CanQuery = false
+	return b
+end
+local function stick(parent, name, a, b, d, color, material)
+	local mid = (a + b) / 2
+	local c = MapKit.cylinder(parent, name, (b - a).Magnitude + d * 0.4, d, CFrame.lookAt(mid, b) * CFrame.Angles(0, math.rad(90), 0), color, material or Enum.Material.Wood)
+	c.CanQuery = false
+	return c
+end
+
+-- a fluffy tree: a curvy trunk under a big cloud of round leaf puffs, lighter
+-- where the sun hits them, darker underneath
+function Streets.fluffyTree(parent, pos, scale, rng)
+	scale = scale or 1
+	local r = function(a, b)
+		return if rng then rng:NextNumber(a, b) else (a + b) / 2
+	end
+	local bark = rgb(132, 92, 64):Lerp(rgb(100, 72, 52), r(0, 1))
+	local yaw = r(0, math.pi * 2)
+	local side = Vector3.new(math.cos(yaw), 0, math.sin(yaw))
+	-- the trunk bends one way, then back
+	local p0 = pos
+	local p1 = pos + Vector3.new(0, 2.6 * scale, 0) + side * 0.7 * scale
+	local p2 = pos + Vector3.new(0, 5 * scale, 0) - side * 0.3 * scale
+	local p3 = pos + Vector3.new(0, 7 * scale, 0) + side * 0.4 * scale
+	stick(parent, "Trunk", p0, p1, 1.5 * scale, bark)
+	stick(parent, "Trunk", p1, p2, 1.25 * scale, bark)
+	stick(parent, "Trunk", p2, p3, 1.0 * scale, bark)
+	puff(parent, "Root", pos + Vector3.new(0, 0.2, 0), 2.6 * scale, bark:Lerp(BLACK, 0.1), 0.35)
+	-- a branch reaching out to one side, with its own puff
+	local tip = p2 + side:Cross(Vector3.new(0, 1, 0)) * 3 * scale + Vector3.new(0, 1.6 * scale, 0)
+	stick(parent, "Branch", p2, tip, 0.5 * scale, bark)
+	local green = ({ rgb(120, 190, 60), rgb(104, 176, 58), rgb(132, 196, 72) })[rng and rng:NextInteger(1, 3) or 1]
+	local top = p3 + Vector3.new(0, 2.6 * scale, 0)
+	puff(parent, "Leaves", top, 8.8 * scale, green:Lerp(BLACK, 0.1))
+	for k = 1, 9 do
+		local a = yaw + k / 9 * math.pi * 2 + r(-0.2, 0.2)
+		local up = r(-1.2, 2.8)
+		local out = r(3, 4.4)
+		local shade = if up > 1.2 then green:Lerp(WHITE, 0.14) elseif up < 0 then green:Lerp(BLACK, 0.12) else green
+		puff(parent, "Leaves", top + Vector3.new(math.cos(a) * out, up, math.sin(a) * out) * scale, r(4.6, 6.4) * scale, shade)
+	end
+	puff(parent, "Leaves", top + Vector3.new(0, 3.6 * scale, 0), 5.6 * scale, green:Lerp(WHITE, 0.2))
+	puff(parent, "Leaves", tip + Vector3.new(0, 0.8 * scale, 0), 4.2 * scale, green:Lerp(BLACK, 0.04))
+end
+
+-- a clipped topiary: "cone" (stacked, getting smaller), "column" (a tall
+-- rounded pillar) or "ball" (a round head on a stem), in a pot if `potted`
+function Streets.topiary(parent, pos, kind, scale, potted)
+	scale = scale or 1
+	local dark, light = rgb(46, 112, 58), rgb(70, 140, 70)
+	local base = pos
+	if potted then
+		MapKit.column(parent, "TopiaryPot", 1.8 * scale, 2.6 * scale, pos + Vector3.new(0, 0.9 * scale, 0), rgb(196, 110, 70), Enum.Material.Concrete, true)
+		MapKit.column(parent, "PotRim", 0.4 * scale, 2.9 * scale, pos + Vector3.new(0, 1.8 * scale, 0), rgb(176, 96, 60), Enum.Material.Concrete, false)
+		base = pos + Vector3.new(0, 1.8 * scale, 0)
+	end
+	if kind == "ball" then
+		stick(parent, "Trunk", base, base + Vector3.new(0, 3 * scale, 0), 0.35 * scale, MapKit.DARK_WOOD)
+		puff(parent, "Topiary", base + Vector3.new(0, 4.4 * scale, 0), 3.4 * scale, dark)
+		puff(parent, "Topiary", base + Vector3.new(0, 5.1 * scale, 0), 2.2 * scale, light)
+		return
+	end
+	local n = if kind == "column" then 6 else 5
+	local y = 0
+	for k = 0, n - 1 do
+		local u = k / (n - 1)
+		local d = (if kind == "column" then 3.4 - u * 1.1 else 4.4 - u * 3) * scale
+		y += (if k == 0 then d * 0.45 else d * 0.62)
+		puff(parent, "Topiary", base + Vector3.new(0, y, 0), d, dark:Lerp(light, u * 0.8))
+	end
+	puff(parent, "Topiary", base + Vector3.new(0, y + 0.9 * scale, 0), 0.9 * scale, light)
+end
+
+-- a wisteria: a twisted old trunk, arching branches and long clusters of
+-- purple flowers hanging down
+function Streets.wisteria(parent, pos, scale, rng)
+	scale = scale or 1
+	local r = function(a, b)
+		return if rng then rng:NextNumber(a, b) else (a + b) / 2
+	end
+	local bark = rgb(112, 92, 80)
+	local pts = { pos }
+	for k = 1, 4 do
+		local a = k * 1.9 + r(0, 0.5)
+		table.insert(pts, pos + Vector3.new(math.cos(a) * 0.9 * scale, k * 2.3 * scale, math.sin(a) * 0.9 * scale))
+	end
+	for k = 1, #pts - 1 do
+		stick(parent, "Trunk", pts[k], pts[k + 1], (1.3 - k * 0.18) * scale, bark)
+	end
+	local top = pts[#pts]
+	local lilac, deep = rgb(196, 160, 236), rgb(120, 70, 190)
+	for b = 1, 3 do
+		local a = b / 3 * math.pi * 2 + r(-0.3, 0.3)
+		local dir = Vector3.new(math.cos(a), 0, math.sin(a))
+		local mid = top + dir * 2.4 * scale + Vector3.new(0, 1.4 * scale, 0)
+		local tip = top + dir * 5 * scale + Vector3.new(0, 0.3 * scale, 0)
+		stick(parent, "Branch", top, mid, 0.5 * scale, bark)
+		stick(parent, "Branch", mid, tip, 0.35 * scale, bark)
+		puff(parent, "Leaves", mid + Vector3.new(0, 0.7 * scale, 0), 2.6 * scale, rgb(110, 160, 70), 0.6)
+		-- the hanging flower clusters: lilac at the top, deep purple at the tip
+		for k = 0, 4 do
+			-- hanging right off the branch (a point along it), each cluster a
+			-- chain of overlapping blooms that narrows to the tip
+			local v = 0.2 + k * 0.19
+			local at = if v < 0.5 then top:Lerp(mid, v * 2) else mid:Lerp(tip, (v - 0.5) * 2)
+			local n = 5
+			local y = 0
+			for m = 0, n - 1 do
+				local u = m / (n - 1)
+				local d = (0.95 - u * 0.5) * scale
+				puff(parent, "Wisteria", at - Vector3.new(0, y, 0), d, lilac:Lerp(deep, u), 1.3)
+				y += d * 0.75
+			end
+		end
+	end
+	puff(parent, "Leaves", top + Vector3.new(0, 1.8 * scale, 0), 3.4 * scale, rgb(104, 156, 66), 0.6)
+end
+
+-- a flowering shrub: a mound of broad leaves with flowers on top
+local SHRUB_FLOWERS = { rgb(244, 120, 170), rgb(190, 110, 230), rgb(250, 250, 250), rgb(255, 160, 90), rgb(250, 90, 110) }
+function Streets.flowerShrub(parent, pos, scale, rng, color)
+	scale = scale or 1
+	local r = function(a, b)
+		return if rng then rng:NextNumber(a, b) else (a + b) / 2
+	end
+	color = color or SHRUB_FLOWERS[rng and rng:NextInteger(1, #SHRUB_FLOWERS) or 1]
+	puff(parent, "Shrub", pos + Vector3.new(0, 0.7 * scale, 0), 2.6 * scale, rgb(56, 120, 60), 0.6)
+	for k = 1, 4 do
+		local a = k / 4 * math.pi * 2 + r(-0.2, 0.2)
+		local leaf = MapKit.ball(parent, "ShrubLeaf", 1, CFrame.new(pos + Vector3.new(math.cos(a) * 1.1, 0.8, math.sin(a) * 1.1) * scale) * CFrame.Angles(0, -a, 0) * CFrame.Angles(0, 0, math.rad(25)), rgb(64, 136, 64):Lerp(rgb(90, 160, 70), r(0, 1)), FOLIAGE)
+		leaf.Size = Vector3.new(2 * scale, 0.25 * scale, 1 * scale)
+		leaf.CanCollide, leaf.CanQuery = false, false
+	end
+	for k = 1, 4 do
+		local a = k / 4 * math.pi * 2 + r(-0.3, 0.3)
+		local at = pos + Vector3.new(math.cos(a) * r(0.3, 1), r(1.3, 1.7), math.sin(a) * r(0.3, 1)) * scale
+		puff(parent, "Blossom", at, 0.75 * scale, color).CanCollide = false
+	end
+end
+
+-- a hosta: big striped leaves fanning out from the middle, two flower stalks
+function Streets.hosta(parent, pos, scale, rng)
+	scale = scale or 1
+	local r = function(a, b)
+		return if rng then rng:NextNumber(a, b) else (a + b) / 2
+	end
+	for k = 1, 6 do
+		local a = k / 6 * math.pi * 2 + r(-0.15, 0.15)
+		local cf = CFrame.new(pos + Vector3.new(math.cos(a) * 1.1, 0.5, math.sin(a) * 1.1) * scale) * CFrame.Angles(0, -a, 0) * CFrame.Angles(0, 0, math.rad(r(22, 38)))
+		local leaf = MapKit.ball(parent, "HostaLeaf", 1, cf, rgb(70, 140, 80), FOLIAGE)
+		leaf.Size = Vector3.new(2.6 * scale, 0.22 * scale, 1.3 * scale)
+		leaf.CanCollide, leaf.CanQuery = false, false
+	end
+	for k = 0, 1 do
+		local base = pos + Vector3.new(k * 0.5 - 0.25, 0, 0.2) * scale
+		stick(parent, "Stem", base, base + Vector3.new(0, 2.8 * scale, 0), 0.12 * scale, rgb(80, 130, 70), Enum.Material.SmoothPlastic)
+		for n = 0, 2 do
+			puff(parent, "Blossom", base + Vector3.new(0.15 * scale, (2 + n * 0.35) * scale, 0), 0.35 * scale, rgb(200, 170, 240)).CanCollide = false
+		end
+	end
 end
 
 function Streets.bench(parent, cf, place)
@@ -7915,11 +8344,12 @@ function Streets.build(parent, rng, blockKind)
 		for b = -N - 1, N do
 			local x, z = (a + 0.5) * SPACING, (b + 0.5) * SPACING
 			local downtown = math.abs(a + 0.5) <= 2 and math.abs(b + 0.5) <= 2
-			local stripes = math.floor((ROAD / 2 - 1) / 2.1)
+			-- (wide zebra stripes: half the parts of narrow ones)
+			local stripes = math.floor((ROAD / 2 - 1) / 4.2)
 			for s = -stripes, stripes do
 				for _, side in ipairs({ -1, 1 }) do
-					deco(roads, "Crosswalk", Vector3.new(1.2, 0.24, 5), CFrame.new(x + s * 2.1, 0.02, z + side * (ROAD / 2 + 2.8)), WHITE)
-					deco(roads, "Crosswalk", Vector3.new(5, 0.24, 1.2), CFrame.new(x + side * (ROAD / 2 + 2.8), 0.02, z + s * 2.1), WHITE)
+					deco(roads, "Crosswalk", Vector3.new(2.2, 0.24, 5), CFrame.new(x + s * 4.2, 0.02, z + side * (ROAD / 2 + 2.8)), WHITE)
+					deco(roads, "Crosswalk", Vector3.new(5, 0.24, 2.2), CFrame.new(x + side * (ROAD / 2 + 2.8), 0.02, z + s * 4.2), WHITE)
 				end
 			end
 			-- stop lines behind the crosswalks (in each approaching lane), a
@@ -8027,7 +8457,9 @@ function Streets.build(parent, rng, blockKind)
 		else
 			cf = CFrame.new(line + offset, 0.1, along) * CFrame.Angles(0, if side > 0 then 0 else math.pi, 0)
 		end
-		Streets.car(cars, cf, CAR_COLORS[rng:NextInteger(1, #CAR_COLORS)], if rng:NextNumber() < 0.15 then "van" else nil)
+		if not StreetLife.Reserved(cf.Position) then -- (a food truck parks here)
+			Streets.car(cars, cf, CAR_COLORS[rng:NextInteger(1, #CAR_COLORS)], if rng:NextNumber() < 0.15 then "van" else nil)
+		end
 	end
 	return { BusSeats = busSeats, BusStops = busStops }
 end
@@ -8525,6 +8957,54 @@ end
 --------------------------------------------------------------------------------
 -- Out front: administration, parking, the prison bus, and Prison Road
 --------------------------------------------------------------------------------
+-- the medical bay: where you wake up if the police knock you out (beds with
+-- curtains and monitors, a medicine cabinet, a sink, a nurse's desk)
+local function medBay(data)
+	local x0, x1, z0, z1 = -22, 4, -44, -22
+	local mx, mz = (x0 + x1) / 2, (z0 + z1) / 2
+	local WALL = rgb(226, 230, 232)
+	solid("MedFloor", Vector3.new(x1 - x0, 0.2, z1 - z0), mx, 0, mz, rgb(214, 226, 226), Enum.Material.CeramicTiles)
+	solid("MedWall", Vector3.new(x1 - x0, 11, 0.8), mx, 0, z0, WALL, Enum.Material.Plaster)
+	solid("MedWall", Vector3.new(0.8, 11, z1 - z0), x0, 0, mz, WALL, Enum.Material.Plaster)
+	solid("MedWall", Vector3.new(0.8, 11, z1 - z0), x1, 0, mz, WALL, Enum.Material.Plaster)
+	-- the front (facing the cell block) with a doorway in the middle
+	solid("MedWall", Vector3.new((x1 - x0) / 2 - 3, 11, 0.8), x0 + ((x1 - x0) / 2 - 3) / 2, 0, z1, WALL, Enum.Material.Plaster)
+	solid("MedWall", Vector3.new((x1 - x0) / 2 - 3, 11, 0.8), x1 - ((x1 - x0) / 2 - 3) / 2, 0, z1, WALL, Enum.Material.Plaster)
+	solid("MedWall", Vector3.new(6, 3, 0.8), mx, 8, z1, WALL, Enum.Material.Plaster)
+	solid("MedRoof", Vector3.new(x1 - x0 + 1, 0.8, z1 - z0 + 1), mx, 11, mz, DARK_CONCRETE, Enum.Material.Concrete)
+	local sign = deco("MedSign", Vector3.new(12, 2, 0.3), mx, 8.4, z1 + 0.6, rgb(200, 40, 50))
+	MapKit.signText(sign, Enum.NormalId.Back, "✚ MEDICAL", WHITE, Enum.Font.GothamBlack)
+	MapKit.signText(sign, Enum.NormalId.Front, "✚ MEDICAL", WHITE, Enum.Font.GothamBlack)
+	local lamp = deco("MedLight", Vector3.new(8, 0.3, 2), mx, 10.4, mz, rgb(255, 250, 240), Enum.Material.Neon)
+	MapKit.light(lamp, rgb(255, 250, 240), 22, 0.8)
+	-- four beds along the back wall, curtains between them, a monitor at each
+	data.MedBeds = {}
+	for k = 0, 3 do
+		local bx = x0 + 3.5 + k * 6.2
+		local bz = z0 + 4
+		solid("MedBed", Vector3.new(3.2, 1.8, 6.4), bx, 0, bz, rgb(236, 240, 244), Enum.Material.Fabric)
+		deco("MedBedFrame", Vector3.new(3.4, 0.5, 6.6), bx, 0, bz, rgb(170, 176, 184), Enum.Material.Metal)
+		deco("MedPillow", Vector3.new(2.4, 0.5, 1.2), bx, 1.8, bz - 2.4, WHITE, Enum.Material.Fabric)
+		deco("MedBlanket", Vector3.new(3.3, 0.15, 3.4), bx, 1.8, bz + 1.2, rgb(120, 170, 200), Enum.Material.Fabric)
+		deco("MedMonitorStand", Vector3.new(0.2, 4.6, 0.2), bx + 2.2, 0, bz - 2.4, rgb(180, 184, 190), Enum.Material.Metal)
+		local mon = deco("MedMonitor", Vector3.new(1.4, 1.1, 0.3), bx + 2.2, 4.6, bz - 2.4, rgb(30, 34, 40))
+		deco("MedMonitorScreen", Vector3.new(1.2, 0.9, 0.05), bx + 2.2, 4.7, bz - 2.24, rgb(80, 220, 140), Enum.Material.Neon)
+		if k < 3 then
+			local curtain = deco("MedCurtain", Vector3.new(0.12, 7, 6.6), bx + 3.1, 0.6, bz, rgb(170, 210, 200), Enum.Material.Fabric)
+			curtain.Transparency = 0.15
+		end
+		table.insert(data.MedBeds, pos(bx, 0.3, bz + 4.8))
+	end
+	-- the nurse's desk, a medicine cabinet and a sink by the door
+	solid("MedDesk", Vector3.new(5, 3, 2.2), x1 - 4, 0, z1 - 4, rgb(240, 240, 236), Enum.Material.SmoothPlastic)
+	deco("MedCabinet", Vector3.new(4, 6, 1.2), x0 + 2.5, 0, z1 - 2, WHITE, Enum.Material.Metal)
+	deco("MedCabinetCross", Vector3.new(1.2, 1.2, 0.05), x0 + 2.5, 4.4, z1 - 2.62, rgb(220, 40, 50), Enum.Material.Neon)
+	deco("MedSink", Vector3.new(2.4, 0.8, 1.6), x0 + 7, 2.6, z1 - 1.6, rgb(220, 224, 228), Enum.Material.Metal)
+	deco("MedSinkStand", Vector3.new(0.6, 2.6, 0.6), x0 + 7, 0, z1 - 1.6, rgb(200, 204, 210), Enum.Material.Metal)
+	data.NurseSpot = spotAt(x1 - 4, z1 - 6.2, x1 - 4, z0, { Action = "nurse", Role = "work" })
+	data.MedDoor = pos(mx, 0.3, z1 + 3)
+end
+
 local function frontOffice(data)
 	local hd = Prison.D / 2
 	solid("AdminBuilding", Vector3.new(44, 16, 22), -52, 0, -hd + 16, rgb(206, 200, 188), Enum.Material.Brick)
@@ -8585,6 +9065,7 @@ function Prison.build(parent, rng)
 	cellBlock(data, rng)
 	yard(data, rng)
 	frontOffice(data)
+	medBay(data)
 	-- walking lanes between the areas (local coordinates; see PrisonService)
 	data.Lanes = {
 		HallEast = Vector3.new(BLOCK_X1 - 6, 0, SPINE),
@@ -8637,6 +9118,23 @@ NorthShore.DRIVE_X = 0.5 * S -- Shore Drive continues this avenue north
 NorthShore.Z0 = Z0
 NorthShore.BOARDWALK_Z = Z0 - 328
 NorthShore.WATER_Z = Z0 - 430 -- where the ocean begins
+-- the height of the sand: flat back by the boardwalk, sloping gently down to
+-- the water, then on down under the waves (1 stud every ~9) to 16 deep. Only
+-- with real terrain (Landscape shapes it); in tests the beach is flat.
+NorthShore.Sloped = false
+function NorthShore.BeachY(z)
+	if not NorthShore.Sloped then
+		return 0
+	end
+	local wz = NorthShore.WATER_Z
+	if z >= wz + 30 then
+		return 0
+	elseif z >= wz then
+		return -1.25 * (1 - (z - wz) / 30)
+	end
+	return math.max(-16, -1.25 - (wz - z) * 0.11)
+end
+local BY = NorthShore.BeachY
 NorthShore.WEST, NorthShore.EAST = -460, 330
 -- paved areas (Landscape clears the terrain grass under these)
 NorthShore.PAVED = {
@@ -9369,9 +9867,11 @@ local function beachMore(data, rng)
 	local SAND, WET = rgb(236, 214, 160), rgb(196, 170, 120)
 	-- wet sand along the water, and the surf: lines of foam that roll in and
 	-- slide back (see Ambient)
-	deco(beach, "WetSand", Vector3.new(W1 - W0 + 60, 0.06, 14), cx, 0, wz + 7, WET, Enum.Material.Sand)
+	for k = 0, 6 do
+		deco(beach, "WetSand", Vector3.new(W1 - W0 + 60, 0.06, 2.1), cx, BY(wz + 1 + k * 2), wz + 1 + k * 2, WET, Enum.Material.Sand)
+	end
 	for k = 0, 2 do
-		local foam = MapKit.deco(beach, "Surf", Vector3.new(W1 - W0 + 40 - k * 30, 0.12, 1.4 + k * 0.6), CFrame.new(cx + k * 7, 0.05, wz + 2 - k * 7), WHITE, Enum.Material.SmoothPlastic)
+		local foam = MapKit.deco(beach, "Surf", Vector3.new(W1 - W0 + 40 - k * 30, 0.12, 1.4 + k * 0.6), CFrame.new(cx + k * 7, math.max(BY(wz + 2 - k * 2.5), -1) + 0.08, wz + 2 - k * 2.5), WHITE, Enum.Material.SmoothPlastic)
 		foam.Transparency = 0.25 + k * 0.2
 		foam:SetAttribute("Phase", k * 2.1)
 		MapKit.tag(foam, "Surf")
@@ -9454,17 +9954,17 @@ local function beachMore(data, rng)
 	-- driftwood, shells and starfish scattered about
 	for k = 0, 7 do
 		local x, z = W0 + rng:NextNumber(10, W1 - W0 - 10), wz + rng:NextNumber(12, 40)
-		MapKit.cylinder(beach, "Driftwood", rng:NextNumber(3, 6), 0.5, CFrame.new(x, 0.25, z) * CFrame.Angles(0, rng:NextNumber(0, 3.1), 0), rgb(180, 160, 130), Enum.Material.Wood)
+		MapKit.cylinder(beach, "Driftwood", rng:NextNumber(3, 6), 0.5, CFrame.new(x, BY(z) + 0.25, z) * CFrame.Angles(0, rng:NextNumber(0, 3.1), 0), rgb(180, 160, 130), Enum.Material.Wood)
 	end
 	for k = 0, 39 do
 		local x, z = W0 + rng:NextNumber(5, W1 - W0 - 5), wz + rng:NextNumber(4, 60)
 		if k % 4 == 0 then
 			-- a starfish: five little arms
 			for a = 0, 4 do
-				MapKit.deco(beach, "Starfish", Vector3.new(0.25, 0.1, 0.7), CFrame.new(x, 0.05, z) * CFrame.Angles(0, a * 1.2566, 0) * CFrame.new(0, 0, -0.3), rgb(240, 120, 70), Enum.Material.SmoothPlastic)
+				MapKit.deco(beach, "Starfish", Vector3.new(0.25, 0.1, 0.7), CFrame.new(x, BY(z) + 0.05, z) * CFrame.Angles(0, a * 1.2566, 0) * CFrame.new(0, 0, -0.3), rgb(240, 120, 70), Enum.Material.SmoothPlastic)
 			end
 		else
-			local shell = MapKit.ball(beach, "Seashell", 0.5, CFrame.new(x, 0.1, z), ({ rgb(250, 230, 220), rgb(240, 200, 190), rgb(230, 220, 200) })[k % 3 + 1], Enum.Material.SmoothPlastic)
+			local shell = MapKit.ball(beach, "Seashell", 0.5, CFrame.new(x, BY(z) + 0.1, z), ({ rgb(250, 230, 220), rgb(240, 200, 190), rgb(230, 220, 200) })[k % 3 + 1], Enum.Material.SmoothPlastic)
 			shell.Size = Vector3.new(0.5, 0.25, 0.4)
 			shell.CanCollide = false
 		end
@@ -9472,8 +9972,13 @@ local function beachMore(data, rng)
 	-- a rocky jetty at the west end, out into the water
 	for k = 0, 16 do
 		local r = rng:NextNumber(3, 5.5)
-		local rock = MapKit.ball(beach, "JettyRock", r, CFrame.new(W0 - 10 + rng:NextNumber(-2, 2), -0.4 + r * 0.25, wz + 18 - k * 4.5) * CFrame.Angles(rng:NextNumber(0, 1), rng:NextNumber(0, 3), 0), rgb(110, 108, 104):Lerp(rgb(80, 78, 76), rng:NextNumber()), Enum.Material.Slate)
-		rock.Size = Vector3.new(r, r * 0.7, r * 1.1)
+		-- (piled up from the sea floor so the jetty stands out of the water)
+		local rz = wz + 18 - k * 4.5
+		local top = -0.4 + r * 0.6
+		local bottom = math.min(BY(rz) - 0.3, -0.4 - r * 0.1)
+		local h = top - bottom
+		local rock = MapKit.ball(beach, "JettyRock", r, CFrame.new(W0 - 10 + rng:NextNumber(-2, 2), (top + bottom) / 2, rz) * CFrame.Angles(0, rng:NextNumber(0, 3), 0), rgb(110, 108, 104):Lerp(rgb(80, 78, 76), rng:NextNumber()), Enum.Material.Slate)
+		rock.Size = Vector3.new(r, h, r * 1.1)
 	end
 	table.insert(spots, spot(W0 - 10, 1.6, wz + 10, W0 - 10, wz - 60, { Action = "birdwatch" }))
 	-- kayaks on a rack by the surf shop
@@ -9482,6 +9987,40 @@ local function beachMore(data, rng)
 	end
 	for _, rz in ipairs({ -3.5, 3.5 }) do
 		deco(beach, "KayakRack", Vector3.new(2.4, 3.6, 0.3), W0 + 60, 0, bz - 14 + rz, rgb(150, 110, 70), Enum.Material.Wood)
+	end
+	-- 👕 the Beach Boutique: a little clothing stand with racks of jackets,
+	-- a hat stand and a mirror (players shop here: see DisguiseService)
+	do
+		local bx2, bz2 = W0 + 100, bz - 16
+		local stand = Instance.new("Model")
+		stand.Name = "BeachBoutique"
+		stand.Parent = beach
+		MapKit.part(stand, "BoutiqueCounter", Vector3.new(8, 3.2, 2.4), CFrame.new(bx2, 1.6, bz2), rgb(240, 236, 226), Enum.Material.WoodPlanks)
+		for _, sx in ipairs({ -1, 1 }) do
+			deco(stand, "BoutiquePost", Vector3.new(0.4, 9, 0.4), bx2 + sx * 4.6, 0, bz2 - 2, rgb(150, 110, 70), Enum.Material.Wood)
+		end
+		MapKit.awning(stand, 10.4, 3.4, CFrame.new(bx2, 9, bz2 - 1.6), rgb(250, 120, 160), WHITE)
+		local sign = MapKit.deco(stand, "BoutiqueSign", Vector3.new(8, 1.4, 0.2), CFrame.new(bx2, 10.2, bz2 - 2.1), rgb(40, 40, 50))
+		MapKit.signText(sign, Enum.NormalId.Back, "👕 BEACH BOUTIQUE", WHITE, Enum.Font.GothamBlack)
+		-- two racks of clothes on hangers
+		for _, sx in ipairs({ -1, 1 }) do
+			local rx2 = bx2 + sx * 9
+			for _, ex in ipairs({ -2.2, 2.2 }) do
+				deco(stand, "RackPole", Vector3.new(0.2, 5, 0.2), rx2 + ex, 0, bz2, rgb(200, 200, 206), Enum.Material.Metal)
+			end
+			deco(stand, "RackBar", Vector3.new(4.6, 0.15, 0.15), rx2, 4.9, bz2, rgb(200, 200, 206), Enum.Material.Metal)
+			for k = 0, 5 do
+				deco(stand, "HangingShirt", Vector3.new(0.3, 2.6, 1.8), rx2 - 1.8 + k * 0.72, 2.2, bz2, MapKit.FLOWERS[(k + (sx > 0 and 3 or 0)) % #MapKit.FLOWERS + 1], Enum.Material.Fabric)
+			end
+		end
+		-- a hat stand and a mirror
+		deco(stand, "HatStand", Vector3.new(0.3, 5.6, 0.3), bx2 + 5.6, 0, bz2 + 3, rgb(150, 110, 70), Enum.Material.Wood)
+		for k = 0, 2 do
+			MapKit.cylinder(stand, "StandHat", 0.4, 1.4, CFrame.new(bx2 + 5.6 + (k - 1) * 0.5, 5.8 - k * 1.2, bz2 + 3) * CFrame.Angles(0, 0, math.rad(90)), ({ rgb(230, 220, 190), rgb(200, 40, 50), rgb(130, 85, 50) })[k + 1], Enum.Material.Fabric)
+		end
+		local mirror = deco(stand, "BoutiqueMirror", Vector3.new(2.4, 6, 0.2), bx2 - 5.8, 0, bz2 + 3, rgb(210, 230, 240), Enum.Material.Glass)
+		mirror.Reflectance = 0.4
+		NorthShore.BoutiqueAt = Vector3.new(bx2, 0, bz2 + 2.2)
 	end
 	-- surf flags at the lifeguard tower: green means good swimming
 	local lx, lz = cx + 30, sandZ0 - 70
@@ -9517,23 +10056,102 @@ local function beachMore(data, rng)
 	end
 	local board = MapKit.deco(beach, "Paddleboard", Vector3.new(2.2, 0.3, 10), CFrame.new(cx + 160, -0.9, wz - 18) * CFrame.Angles(0, 0.4, 0), rgb(250, 200, 60), Enum.Material.SmoothPlastic)
 	MapKit.tag(board, "Bob")
+	if NorthShore.Sloped then
+		-- 🐠 under the waves, down the sloping sea floor: swaying kelp, mossy
+		-- rocks, starfish, sand dollars and an old sunken rowboat to swim to
+		for k = 0, 40 do
+			local x, z = W0 + rng:NextNumber(0, W1 - W0), wz - rng:NextNumber(14, 125)
+			local floor = BY(z)
+			local h = math.min(-1.6 - floor, rng:NextNumber(3, 9))
+			if h > 1 then
+				local kelp = MapKit.deco(beach, "Kelp", Vector3.new(0.5, h, 0.15), CFrame.new(x, floor + h / 2, z) * CFrame.Angles(0, rng:NextNumber(0, 3), rng:NextNumber(-0.12, 0.12)), rgb(50, 110, 60):Lerp(rgb(110, 120, 40), rng:NextNumber()), Enum.Material.SmoothPlastic)
+				kelp.CanCollide = false
+				MapKit.tag(kelp, "Sway")
+			end
+		end
+		for k = 0, 18 do
+			local x, z = W0 + rng:NextNumber(0, W1 - W0), wz - rng:NextNumber(10, 120)
+			local r = rng:NextNumber(1.5, 4)
+			local rock = MapKit.ball(beach, "SeaRock", r, CFrame.new(x, BY(z) + r * 0.2, z) * CFrame.Angles(0, rng:NextNumber(0, 3), 0), rgb(90, 100, 92):Lerp(rgb(70, 96, 70), rng:NextNumber()), Enum.Material.Slate)
+			rock.Size = Vector3.new(r, r * 0.6, r * 1.2)
+			if k % 3 == 0 then
+				local sf = MapKit.deco(beach, "SeaStar", Vector3.new(0.9, 0.12, 0.9), CFrame.new(x + r * 0.7, BY(z) + 0.08, z) * CFrame.Angles(0, k, 0), rgb(240, 110, 70), Enum.Material.SmoothPlastic)
+				sf.CanCollide = false
+			end
+		end
+		for k = 0, 14 do
+			local x, z = W0 + rng:NextNumber(0, W1 - W0), wz - rng:NextNumber(4, 60)
+			local dollar = MapKit.cylinder(beach, "SandDollar", 0.08, 0.9, CFrame.new(x, BY(z) + 0.04, z) * CFrame.Angles(0, 0, math.rad(90)), rgb(232, 222, 200), Enum.Material.SmoothPlastic)
+			dollar.CanCollide = false
+		end
+		-- the wreck: tipped on its side, half buried
+		local wx, wz2 = cx + 70, wz - 70
+		local wf = CFrame.new(wx, BY(wz2) + 0.6, wz2) * CFrame.Angles(0, 0.7, math.rad(25))
+		local hull = rgb(110, 84, 60)
+		MapKit.part(beach, "WreckHull", Vector3.new(4, 0.3, 10), wf, hull, Enum.Material.WoodPlanks)
+		for _, sx in ipairs({ -1, 1 }) do
+			MapKit.part(beach, "WreckSide", Vector3.new(0.3, 1.6, 10), wf * CFrame.new(sx * 2, 0.8, 0), hull:Lerp(rgb(60, 80, 60), 0.3), Enum.Material.WoodPlanks)
+		end
+		MapKit.deco(beach, "WreckSeat", Vector3.new(4, 0.25, 1), wf * CFrame.new(0, 1, 1), hull, Enum.Material.Wood)
+		MapKit.deco(beach, "WreckOar", Vector3.new(0.25, 0.25, 7), CFrame.new(wx + 4, BY(wz2) + 0.15, wz2 + 3) * CFrame.Angles(0, 1.9, 0), rgb(150, 120, 80), Enum.Material.Wood)
+		-- 🐬 a pod of dolphins leaping out past the swimmers, and a jet ski
+		-- carving circles (the client animates both: see Ambient)
+		for k = 0, 2 do
+			local d = Instance.new("Model")
+			d.Name = "Dolphin"
+			d.Parent = beach
+			local base = CFrame.new(cx - 120 + k * 9, -6, wz - 190 - k * 6)
+			local grey = rgb(110, 124, 140)
+			local body = MapKit.ball(d, "DolphinBody", 1, base, grey, Enum.Material.SmoothPlastic)
+			body.Size = Vector3.new(1.4, 1.4, 5)
+			body.CanCollide = false
+			MapKit.ball(d, "DolphinSnout", 0.6, base * CFrame.new(0, -0.15, -2.8), grey, Enum.Material.SmoothPlastic).Size = Vector3.new(0.5, 0.45, 1.4)
+			MapKit.wedge(d, "DolphinFin", Vector3.new(0.15, 1, 1.1), base * CFrame.new(0, 0.95, 0.3), grey:Lerp(MapKit.BLACK, 0.2), Enum.Material.SmoothPlastic)
+			MapKit.deco(d, "DolphinTail", Vector3.new(2, 0.15, 0.8), base * CFrame.new(0, 0, 2.7), grey:Lerp(MapKit.BLACK, 0.2), Enum.Material.SmoothPlastic)
+			MapKit.deco(d, "DolphinBelly", Vector3.new(0.9, 0.2, 3.4), base * CFrame.new(0, -0.6, -0.2), rgb(220, 226, 232), Enum.Material.SmoothPlastic)
+			for _, p in ipairs(d:GetDescendants()) do
+				if p:IsA("BasePart") then
+					p.CanCollide, p.CanQuery, p.CanTouch, p.CastShadow = false, false, false, false
+				end
+			end
+			d:SetAttribute("Phase", k * 0.6)
+			MapKit.tag(body, "Dolphin")
+		end
+		local ski = Instance.new("Model")
+		ski.Name = "JetSki"
+		ski.Parent = beach
+		local jf = CFrame.new(cx + 260, -0.6, wz - 150)
+		local js = MapKit.deco(ski, "JetSkiHull", Vector3.new(2.6, 1, 7), jf, WHITE, Enum.Material.SmoothPlastic)
+		MapKit.deco(ski, "JetSkiStripe", Vector3.new(2.62, 0.3, 5), jf * CFrame.new(0, 0.2, 0.4), rgb(230, 50, 70), Enum.Material.SmoothPlastic)
+		MapKit.deco(ski, "JetSkiSeat", Vector3.new(1.4, 0.5, 3), jf * CFrame.new(0, 0.7, 1), rgb(30, 30, 34), Enum.Material.Leather)
+		MapKit.deco(ski, "JetSkiBars", Vector3.new(2, 0.2, 0.2), jf * CFrame.new(0, 1.3, -1.4), rgb(40, 40, 44), Enum.Material.Metal)
+		MapKit.deco(ski, "JetSkiRider", Vector3.new(1.4, 2.2, 0.9), jf * CFrame.new(0, 2, 0.6), rgb(240, 120, 40), Enum.Material.Fabric)
+		MapKit.ball(ski, "JetSkiHead", 1, jf * CFrame.new(0, 3.6, 0.6), rgb(200, 150, 110), Enum.Material.SmoothPlastic)
+		MapKit.deco(ski, "JetSkiWake", Vector3.new(3, 0.06, 9), jf * CFrame.new(0, -0.45, 7.5), WHITE, Enum.Material.SmoothPlastic).Transparency = 0.35
+		for _, p in ipairs(ski:GetDescendants()) do
+			if p:IsA("BasePart") then
+				p.CanCollide, p.CanQuery, p.CanTouch = false, false, false
+			end
+		end
+		MapKit.tag(js, "JetSki")
+	end
 	-- seaweed washed up along the tide line, and ripples in the sand
 	for k = 0, 23 do
 		local x = W0 + rng:NextNumber(5, W1 - W0 - 5)
-		local weed = MapKit.ball(beach, "Seaweed", 1, CFrame.new(x, 0.05, wz + 13 + rng:NextNumber(-1.5, 1.5)) * CFrame.Angles(0, rng:NextNumber(0, 3), 0), rgb(60, 90, 50):Lerp(rgb(110, 100, 50), rng:NextNumber()), Enum.Material.SmoothPlastic)
+		local weed = MapKit.ball(beach, "Seaweed", 1, CFrame.new(x, BY(wz + 13) + 0.05, wz + 13 + rng:NextNumber(-1.5, 1.5)) * CFrame.Angles(0, rng:NextNumber(0, 3), 0), rgb(60, 90, 50):Lerp(rgb(110, 100, 50), rng:NextNumber()), Enum.Material.SmoothPlastic)
 		weed.Size = Vector3.new(rng:NextNumber(1.5, 3.5), 0.15, rng:NextNumber(0.4, 0.9))
 		weed.CanCollide = false
 	end
 	for k = 0, 59 do
 		local x, z = W0 + rng:NextNumber(10, W1 - W0 - 10), wz + rng:NextNumber(16, sandZ0 - wz - 20)
-		MapKit.deco(beach, "SandRipple", Vector3.new(rng:NextNumber(4, 9), 0.05, 0.35), CFrame.new(x, 0.02, z) * CFrame.Angles(0, rng:NextNumber(-0.15, 0.15), 0), SAND:Lerp(WET, 0.35), Enum.Material.Sand)
+		MapKit.deco(beach, "SandRipple", Vector3.new(rng:NextNumber(4, 9), 0.05, 0.35), CFrame.new(x, BY(z) + 0.02, z) * CFrame.Angles(0, rng:NextNumber(-0.15, 0.15), 0), SAND:Lerp(WET, 0.35), Enum.Material.Sand)
 	end
 	-- tide pools by the jetty, with a starfish and a little rock in each
 	for k = 0, 2 do
 		local tx, tz = W0 + 8 + k * 9, wz + 6 + (k % 2) * 4
-		local pool = MapKit.disc(beach, "TidePool", 0.08, 5 + k, Vector3.new(tx, 0.04, tz), rgb(70, 150, 170), Enum.Material.Glass)
+		local pool = MapKit.disc(beach, "TidePool", 0.08, 5 + k, Vector3.new(tx, BY(tz) + 0.04, tz), rgb(70, 150, 170), Enum.Material.Glass)
 		pool.Transparency = 0.3
-		MapKit.ball(beach, "PoolRock", 1.2, CFrame.new(tx + 1, 0.3, tz - 0.6), rgb(110, 108, 104), Enum.Material.Slate)
+		MapKit.ball(beach, "PoolRock", 1.2, CFrame.new(tx + 1, BY(tz) + 0.3, tz - 0.6), rgb(110, 108, 104), Enum.Material.Slate)
 	end
 	-- footprints wandering from the boardwalk down to the water
 	local fpx, fpz = cx - 150, sandZ0 - 20
@@ -9542,7 +10160,7 @@ local function beachMore(data, rng)
 		local x = fpx + math.sin(n * 0.25) * 6 + side
 		local z = fpz - n * 2.1
 		if z > wz + 10 then
-			MapKit.deco(beach, "Footprint", Vector3.new(0.5, 0.03, 0.9), CFrame.new(x, 0.02, z) * CFrame.Angles(0, math.sin(n * 0.25) * 0.3, 0), SAND:Lerp(WET, 0.55), Enum.Material.Sand)
+			MapKit.deco(beach, "Footprint", Vector3.new(0.5, 0.03, 0.9), CFrame.new(x, BY(z) + 0.02, z) * CFrame.Angles(0, math.sin(n * 0.25) * 0.3, 0), SAND:Lerp(WET, 0.55), Enum.Material.Sand)
 		end
 	end
 	-- little crabs scuttling sideways near the water (see Ambient)
@@ -9551,13 +10169,14 @@ local function beachMore(data, rng)
 		local crab = Instance.new("Model")
 		crab.Name = "Crab"
 		crab.Parent = beach
-		local body = MapKit.ball(crab, "CrabBody", 1, CFrame.new(x, 0.3, z), rgb(220, 70, 50), Enum.Material.SmoothPlastic)
+		local y = BY(z)
+		local body = MapKit.ball(crab, "CrabBody", 1, CFrame.new(x, y + 0.3, z), rgb(220, 70, 50), Enum.Material.SmoothPlastic)
 		body.Size = Vector3.new(1, 0.45, 0.8)
 		body.CanCollide = false
 		for _, sx in ipairs({ -1, 1 }) do
-			MapKit.ball(crab, "CrabClaw", 0.4, CFrame.new(x + sx * 0.55, 0.45, z - 0.45), rgb(230, 80, 60), Enum.Material.SmoothPlastic).CanCollide = false
+			MapKit.ball(crab, "CrabClaw", 0.4, CFrame.new(x + sx * 0.55, y + 0.45, z - 0.45), rgb(230, 80, 60), Enum.Material.SmoothPlastic).CanCollide = false
 			for n = -1, 1 do
-				MapKit.deco(crab, "CrabLeg", Vector3.new(0.5, 0.08, 0.08), CFrame.new(x + sx * 0.6, 0.15, z + n * 0.22), rgb(200, 60, 40))
+				MapKit.deco(crab, "CrabLeg", Vector3.new(0.5, 0.08, 0.08), CFrame.new(x + sx * 0.6, y + 0.15, z + n * 0.22), rgb(200, 60, 40))
 			end
 		end
 		MapKit.tag(body, "Crab")
@@ -9670,6 +10289,7 @@ function NorthShore.build(parent, rng, useTerrain)
 	model = Instance.new("Model")
 	model.Name = "NorthShore"
 	model.Parent = parent
+	NorthShore.Sloped = useTerrain == true
 	local data = { Model = model }
 	drive(data)
 	autoland(data, rng)
@@ -9923,6 +10543,19 @@ function Landscape.build(parent, rng)
 		terrain:FillBlock(CFrame.new(-65, -6, wz - oceanD / 2), Vector3.new(oceanW, 14, oceanD), Enum.Material.Air)
 		terrain:FillBlock(CFrame.new(-65, -9, wz - oceanD / 2), Vector3.new(oceanW, 16, oceanD), Enum.Material.Water)
 		terrain:FillBlock(CFrame.new(-65, -19, wz - oceanD / 2), Vector3.new(oceanW, 4, oceanD), Enum.Material.Sand)
+		-- a real beach: the sand slopes gently down to the waterline and keeps
+		-- going down under the waves, so the water gets deeper the further out
+		-- you wade (NorthShore.BeachY gives the height; the props follow it)
+		NorthShore.Sloped = true
+		for z = wz + 34, wz - 140, -4 do
+			local h = NorthShore.BeachY(z - 2)
+			local mid = CFrame.new(-65, 0, z - 2)
+			terrain:FillBlock(mid * CFrame.new(0, (h + 2) / 2, 0), Vector3.new(oceanW, 2 - h, 4), Enum.Material.Air)
+			if h < -1 then
+				terrain:FillBlock(mid * CFrame.new(0, (h - 1) / 2, 0), Vector3.new(oceanW, -1 - h, 4), Enum.Material.Water)
+			end
+			terrain:FillBlock(mid * CFrame.new(0, (h - 24) / 2, 0), Vector3.new(oceanW, h + 24, 4), Enum.Material.Sand)
+		end
 		for _, area in ipairs(NorthShore.PAVED) do
 			terrain:FillBlock(CFrame.new(area.Center + Vector3.new(0, -4, 0)), Vector3.new(area.Size.X, 8, area.Size.Z), Enum.Material.Air)
 			terrain:FillBlock(CFrame.new(area.Center + Vector3.new(0, -10, 0)), Vector3.new(area.Size.X, 4, area.Size.Z), Enum.Material.Ground)
@@ -10389,6 +11022,16 @@ function B.Plaza(ctx, parent, i, j, rng)
 		end
 	end
 	statue(model, c + Vector3.new(0, 0, 36), rgb(120, 150, 130))
+	-- tourists photographing the statue
+	for k = 0, 2 do
+		local a = math.rad(200 + k * 35)
+		local p = c + Vector3.new(0, 0, 36) + Vector3.new(math.cos(a) * 11, 0, math.sin(a) * 11)
+		table.insert(spots, outSpot(facing(p, c + Vector3.new(0, 0, 36)), "photo", "visit"))
+	end
+	-- potted topiary columns either side of the statue
+	for _, sx in ipairs({ -1, 1 }) do
+		Streets.topiary(model, c + Vector3.new(sx * 7, 0, 36), "column", 0.9, true)
+	end
 	for k = 1, 8 do
 		local p = c + Vector3.new(rng:NextNumber(-20, 20), 0.4, rng:NextNumber(4, 24))
 		local pigeon = MapKit.ball(model, "Pigeon", 0.7, CFrame.new(p), rgb(140, 140, 150))
@@ -10507,6 +11150,25 @@ local function park(ctx, parent, i, j, rng, id, withPlayground)
 		local a = k / 12 * math.pi * 2
 		local p = c + Vector3.new(math.cos(a) * 33, 0, math.sin(a) * 33)
 		Streets.tree(model, p, rng:NextNumber(0.9, 1.3), rng)
+	end
+	-- a garden: wisteria trees by the crossing, topiaries along the paths,
+	-- flowering shrubs and hostas in the beds
+	for _, e in ipairs({ { 9, -9 }, { -9, -9 } }) do
+		Streets.wisteria(model, c + Vector3.new(e[1], 0.1, e[2]), rng:NextNumber(0.9, 1.1), rng)
+	end
+	for _, z in ipairs({ -26, -18, 18, 26 }) do
+		for _, sx in ipairs({ -1, 1 }) do
+			Streets.topiary(model, c + Vector3.new(sx * 4.6, 0.1, z), if math.abs(z) > 20 then "cone" else "ball", 0.8, false)
+		end
+	end
+	for k = 1, 10 do
+		local a = k / 10 * math.pi * 2 + 0.3
+		local p = c + Vector3.new(math.cos(a) * 27, 0.1, math.sin(a) * 27)
+		if k % 3 == 0 then
+			Streets.hosta(model, p, rng:NextNumber(0.9, 1.2), rng)
+		else
+			Streets.flowerShrub(model, p, rng:NextNumber(0.9, 1.3), rng)
+		end
 	end
 	-- a jogging loop around the park
 	local loop = {}
@@ -11177,6 +11839,7 @@ local Streets = require(Modules:WaitForChild("Streets"))
 local Landscape = require(Modules:WaitForChild("Landscape"))
 local Prison = require(Modules:WaitForChild("Prison"))
 local NorthShore = require(Modules:WaitForChild("NorthShore"))
+local StreetLife = require(Modules:WaitForChild("StreetLife"))
 local Places = require(Modules:WaitForChild("Places"))
 
 local MapBuilder = {}
@@ -11277,7 +11940,9 @@ end
 
 -- where a building's center goes so its front sits behind the sidewalk
 local function frontLot(c, face, depth, lateral)
-	return c + face * (HALF - SIDEWALK - 5 - depth / 2) + rightOf(face) * (lateral or 0)
+	-- (buildings are BUILD_SCALE bigger than their specs: see Buildings.shell)
+	local k = MapKit.BUILD_SCALE or 1
+	return c + face * (HALF - SIDEWALK - 5 - depth * k / 2) + rightOf(face) * (lateral or 0) * k
 end
 
 local function labelFor(id)
@@ -11550,11 +12215,11 @@ function ctx.houseRow(parent, i, j, rng, slots, big)
 		local style = styles[rng:NextInteger(1, #styles)]
 		-- town lots: four houses a block, 36-42 studs wide; suburban lots: one
 		-- house per street, 56-64 wide and 38 deep, with a garage
-		local scale = if big then 2 else 1.3
+		local scale = if big then 3 else 2.1
 		local depth = Buildings.HouseDepth(scale)
 		local yard = if big then 8 else 9 -- front yard between the sidewalk and the house
 		local depthZ = HALF - SIDEWALK - yard - depth / 2
-		local center = c + Vector3.new(sx * 25, 0, sz * depthZ)
+		local center = c + Vector3.new(sx * HALF * 0.46, 0, sz * depthZ)
 		local garageSide = if big then 1 else nil
 		local b = Buildings.house(model, center, face, style, rng, garageSide, scale)
 		local at = b.At
@@ -11589,6 +12254,24 @@ function ctx.houseRow(parent, i, j, rng, slots, big)
 		end
 		if rng:NextNumber() < 0.6 then
 			Streets.tree(model, at(-9, 0, (frontZ - b.D / 2) / 2).Position, rng:NextNumber(0.7, 1), rng)
+		end
+		-- a flower bed along the front of the house, sometimes a topiary or two
+		-- by the path
+		local bedZ = -b.D / 2 - 1.8
+		for n = 0, 2 do
+			local bx = 7.5 + n * 2.6
+			if bx < b.W / 2 - 1 then
+				if n == 1 and rng:NextNumber() < 0.4 then
+					Streets.hosta(b.Model, at(bx, 0.1, bedZ).Position, 0.7, rng)
+				else
+					Streets.flowerShrub(b.Model, at(bx, 0.1, bedZ).Position, 0.75, rng)
+				end
+			end
+		end
+		if rng:NextNumber() < 0.3 then
+			for _, px in ipairs({ -1, 1 }) do
+				Streets.topiary(b.Model, at(px * 3.4, 0.1, frontZ + 5.5).Position, if rng:NextNumber() < 0.5 then "ball" else "cone", 0.55, true)
+			end
 		end
 		if big then
 			-- a backyard vegetable garden
@@ -11714,6 +12397,12 @@ function MapBuilder.Build()
 		end
 	end
 
+	-- food trucks around town (see StreetLife)
+	map.StreetLife = StreetLife.build(ctx, buildings)
+	for _, place in ipairs(map.StreetLife) do
+		place.Emoji = string.match(place.Label, "^[^%w%s]+")
+	end
+
 	-- the lake: an outdoor place with fishing spots on the pier
 	local lake = newPlace("Lake", root:FindFirstChild("Landscape"), -N, N)
 	lake.Door = blockCenter(-N, N) + Vector3.new(-HALF + 2, 0, HALF - 2)
@@ -11731,6 +12420,7 @@ function MapBuilder.Build()
 	-- the North Shore: Funland, Sunset Beach and AutoLand (see NorthShore)
 	local shore = NorthShore.build(root, Random.new((Config.SEED or 1776) + 11), land.Terrain)
 	map.NorthShore = shore
+	map.Boutique = NorthShore.BoutiqueAt
 	local topDoor = blockCenter(0, -N) + Vector3.new(HALF - 2, 0, -HALF + 2)
 	for _, def in ipairs({ { "Funland", shore.FunlandSpots, shore.FunlandDoor }, { "Beach", shore.BeachSpots, shore.BeachDoor }, { "AutoLand", shore.AutoLandSpots, shore.AutoLandDoor } }) do
 		local place = newPlace(def[1], shore.Model, 0, -N)
@@ -12505,6 +13195,11 @@ end
 --------------------------------------------------------------------------------
 local ERRANDS = { "Shop", "Bakery", "Cafe", "Pharmacy", "Mall", "ToyStore", "Electronics", "Florist", "PetShop", "Bookstore", "IceCream", "Hardware", "Bank", "PostOffice", "Library" }
 local HANGOUTS = { "Cafe", "Diner", "Restaurant", "Plaza", "IceCream", "Bakery" }
+-- the food trucks around town (see StreetLife)
+local TRUCKS = { "FoodTruck1", "FoodTruck2", "FoodTruck3", "FoodTruck4", "FoodTruck5", "FoodTruck6" }
+local function truckPlan(rng, label)
+	return { Kind = "Place", Place = rng:Pick(TRUCKS), Activity = label or "🌮 Grabbing food from a truck", Want = "snack" }
+end
 local FAMILY_OUTINGS = {
 	{ "Park", "🌳 Family day at the park", "play" },
 	{ "WillowPark", "🌿 Picnic at Willow Park", "sit" },
@@ -12740,6 +13435,12 @@ function Life:Plan(c, hour, day)
 		if hour < 11 then
 			return if rng:Next() < 0.5 then home("☕ Slow weekend morning", "coffee") else { Kind = "Place", Place = rng:Pick({ "Bakery", "Cafe", "Shop" }), Activity = "🥐 Weekend errands" }
 		elseif hour < 17 then
+			if hour >= 11.5 and hour < 14 and rng:Next() < 0.35 then
+				return truckPlan(rng, "🌮 Lunch from a food truck")
+			end
+			if rng:Next() < 0.15 then
+				return { Kind = "Place", Place = "Plaza", Activity = "📸 Sightseeing", Want = "photo" }
+			end
 			if hobbyOut then
 				return { Kind = "Hobby", Hobby = c.Hobby, Activity = "🎨 " .. c.Hobby }
 			end
@@ -12765,6 +13466,9 @@ function Life:Plan(c, hour, day)
 		elseif hour < 12.5 then
 			if hobbyOut then
 				return { Kind = "Hobby", Hobby = c.Hobby, Activity = "🎨 " .. c.Hobby }
+			end
+			if rng:Next() < 0.3 then
+				return truckPlan(rng, "☕ A treat from a food truck")
 			end
 			return { Kind = "Place", Place = rng:Pick({ "Plaza", "Library", "CommunityCenter", "Museum" }), Activity = "☀️ Out and about" }
 		elseif hour < 14 then
@@ -12848,7 +13552,9 @@ function Life:Plan(c, hour, day)
 				return { Kind = "Place", Place = "Funland", Activity = "🎡 An evening at Funland", Want = if rng:Next() < 0.7 then "ride" else nil }
 			end
 			return { Kind = "Place", Place = "Beach", Activity = "🌅 Sunset at the beach", Want = rng:Pick({ "sit", "sunbathe", "cheer" }) }
-		elseif #c.Friends > 0 and roll < 0.87 then
+		elseif roll < 0.82 then
+			return truckPlan(rng, "🌮 Dinner from a food truck")
+		elseif #c.Friends > 0 and roll < 0.89 then
 			return { Kind = "Place", Place = rng:Pick(HANGOUTS), Activity = "☕ Meeting a friend", Want = "chat" }
 		elseif roll < 0.95 then
 			return { Kind = "Place", Place = rng:Pick(ERRANDS), Activity = "🛍️ After work" }
@@ -12954,17 +13660,22 @@ local HAIR_COLORS = {
 local FUN_HAIR = { rgb(240, 110, 170), rgb(90, 150, 240), rgb(140, 90, 220), rgb(90, 200, 160) }
 local GRAY_HAIR = { rgb(200, 200, 200), rgb(170, 170, 172), rgb(235, 235, 235) }
 local HAIRSTYLES = { "short", "buzz", "long", "ponytail", "bun", "afro", "curly", "mohawk", "bob", "spiky", "sidepart", "bald", "braids", "pigtails", "wavy", "undercut", "topknot", "locs" }
-local CASUAL_TOPS = { rgb(220, 70, 70), rgb(70, 130, 220), rgb(90, 180, 110), rgb(240, 190, 60), rgb(160, 100, 200), rgb(240, 140, 60), rgb(80, 190, 200), rgb(235, 235, 230), rgb(60, 60, 70), rgb(230, 120, 160) }
-local CASUAL_BOTTOMS = { rgb(50, 70, 120), rgb(70, 60, 50), rgb(40, 40, 45), rgb(120, 110, 90), rgb(90, 100, 110), rgb(60, 90, 70) }
+local CASUAL_TOPS = { rgb(220, 70, 70), rgb(70, 130, 220), rgb(90, 180, 110), rgb(240, 190, 60), rgb(160, 100, 200), rgb(240, 140, 60), rgb(80, 190, 200), rgb(235, 235, 230), rgb(60, 60, 70), rgb(230, 120, 160),
+	-- pastels and earth tones
+	rgb(250, 200, 210), rgb(190, 220, 250), rgb(200, 235, 200), rgb(250, 235, 180), rgb(215, 200, 245), rgb(150, 110, 80), rgb(110, 120, 80), rgb(170, 60, 70), rgb(30, 70, 90), rgb(240, 230, 210), rgb(20, 20, 24), rgb(130, 140, 150) }
+local CASUAL_BOTTOMS = { rgb(50, 70, 120), rgb(70, 60, 50), rgb(40, 40, 45), rgb(120, 110, 90), rgb(90, 100, 110), rgb(60, 90, 70),
+	rgb(200, 180, 140), rgb(235, 232, 225), rgb(100, 105, 70), rgb(120, 40, 50), rgb(150, 150, 155), rgb(230, 190, 200) }
 local JEANS = { rgb(60, 90, 140), rgb(45, 65, 105), rgb(90, 120, 165), rgb(35, 40, 55) }
 local KID_TOPS = { rgb(255, 90, 90), rgb(80, 170, 255), rgb(120, 220, 110), rgb(255, 210, 60), rgb(190, 120, 250), rgb(255, 150, 60), rgb(90, 220, 220), rgb(255, 130, 190) }
-local SHOES = { rgb(40, 35, 32), rgb(240, 240, 240), rgb(110, 70, 45), rgb(200, 60, 60), rgb(60, 90, 160), rgb(30, 30, 30) }
+local SHOES = { rgb(40, 35, 32), rgb(240, 240, 240), rgb(110, 70, 45), rgb(200, 60, 60), rgb(60, 90, 160), rgb(30, 30, 30), rgb(190, 150, 100), rgb(250, 200, 60), rgb(120, 120, 126) }
 -- everyday outfits for people off duty (a few items each)
 local CASUAL_STYLES = {
 	adult = { { "Tee" }, { "Tee" }, { "Polo" }, { "Hoodie" }, { "Jacket" }, { "Stripes" }, { "Sweater" }, { "Dress" },
-		{ "Blazer" }, { "Flannel" }, { "Puffer" }, { "Tank" }, { "Skirt", "Tee" }, { "Flannel", "Tee" }, { "Blazer", "Skirt" } },
-	teen = { { "Hoodie" }, { "Hoodie" }, { "Tee" }, { "Jacket" }, { "Stripes" }, { "Tee", "CapBack" }, { "Dress" }, { "Varsity" }, { "Puffer" }, { "Flannel" }, { "Skirt", "Tee" }, { "Tank" } },
-	kid = { { "Tee" }, { "Stripes" }, { "Hoodie" }, { "Overalls" }, { "Dress" }, { "Varsity" }, { "Puffer" } },
+		{ "Blazer" }, { "Flannel" }, { "Puffer" }, { "Tank" }, { "Skirt", "Tee" }, { "Flannel", "Tee" }, { "Blazer", "Skirt" },
+		{ "Leather", "Tee" }, { "Denim", "Tee" }, { "Tracksuit" }, { "Denim", "Stripes" }, { "Leather" }, { "Tee", "Beanie" }, { "Sweater", "Scarf" } },
+	teen = { { "Hoodie" }, { "Hoodie" }, { "Tee" }, { "Jacket" }, { "Stripes" }, { "Tee", "CapBack" }, { "Dress" }, { "Varsity" }, { "Puffer" }, { "Flannel" }, { "Skirt", "Tee" }, { "Tank" },
+		{ "Tracksuit" }, { "Denim", "Tee" }, { "Hoodie", "Beanie" }, { "Leather", "Tee" }, { "Tee", "BucketHat" } },
+	kid = { { "Tee" }, { "Stripes" }, { "Hoodie" }, { "Overalls" }, { "Dress" }, { "Varsity" }, { "Puffer" }, { "Tracksuit" }, { "Denim", "Tee" } },
 }
 
 --------------------------------------------------------------------------------
@@ -13641,17 +14352,46 @@ function ITEMS.Hoodie(f, b, c)
 	end
 	band(f, b.Lower ~= t and b.Lower or nil, "HoodieHem", b.Lower and b.Lower.Size.Y * 0.3 or 0, 0.2, base:Lerp(BLACK, 0.12))
 end
-function ITEMS.Jacket(f, b, c)
+local function jacket(f, b, c, mat)
 	local t = b.Torso
-	c = c or rgb(60, 60, 70)
 	for _, sx in ipairs({ -1, 1 }) do
-		attach(f, t, "JacketPanel", Vector3.new(t.Size.X * 0.3, t.Size.Y + 0.04, 0.08), CFrame.new(sx * t.Size.X * 0.36, 0, -t.Size.Z / 2 - 0.04), c, nil, Enum.Material.Fabric)
-		attach(f, t, "Lapel", Vector3.new(0.14, t.Size.Y * 0.4, 0.06), CFrame.new(sx * t.Size.X * 0.22, t.Size.Y * 0.28, -t.Size.Z / 2 - 0.07) * CFrame.Angles(0, 0, sx * math.rad(20)), c:Lerp(BLACK, 0.2), nil, Enum.Material.Fabric)
-		attach(f, t, "JacketSide", Vector3.new(0.08, t.Size.Y + 0.04, t.Size.Z + 0.08), CFrame.new(sx * (t.Size.X / 2 + 0.04), 0, 0), c, nil, Enum.Material.Fabric)
+		attach(f, t, "JacketPanel", Vector3.new(t.Size.X * 0.3, t.Size.Y + 0.04, 0.08), CFrame.new(sx * t.Size.X * 0.36, 0, -t.Size.Z / 2 - 0.04), c, nil, mat)
+		attach(f, t, "Lapel", Vector3.new(0.14, t.Size.Y * 0.4, 0.06), CFrame.new(sx * t.Size.X * 0.22, t.Size.Y * 0.28, -t.Size.Z / 2 - 0.07) * CFrame.Angles(0, 0, sx * math.rad(20)), c:Lerp(BLACK, 0.2), nil, mat)
+		attach(f, t, "JacketSide", Vector3.new(0.08, t.Size.Y + 0.04, t.Size.Z + 0.08), CFrame.new(sx * (t.Size.X / 2 + 0.04), 0, 0), c, nil, mat)
 	end
-	attach(f, t, "JacketBack", Vector3.new(t.Size.X + 0.08, t.Size.Y + 0.04, 0.08), CFrame.new(0, 0, t.Size.Z / 2 + 0.04), c, nil, Enum.Material.Fabric)
+	attach(f, t, "JacketBack", Vector3.new(t.Size.X + 0.08, t.Size.Y + 0.04, 0.08), CFrame.new(0, 0, t.Size.Z / 2 + 0.04), c, nil, mat)
 	for _, arm in ipairs({ b.LeftArm, b.RightArm }) do
-		attach(f, arm, "Sleeve", arm and (arm.Size + Vector3.new(0.08, 0, 0.08)) or Vector3.one, CFrame.new(), c, nil, Enum.Material.Fabric)
+		attach(f, arm, "Sleeve", arm and (arm.Size + Vector3.new(0.08, 0, 0.08)) or Vector3.one, CFrame.new(), c, nil, mat)
+	end
+end
+function ITEMS.Jacket(f, b, c)
+	jacket(f, b, c or rgb(60, 60, 70), Enum.Material.Fabric)
+end
+-- a black (or brown) leather jacket with a silver zip
+function ITEMS.Leather(f, b, c)
+	local t = b.Torso
+	jacket(f, b, c or rgb(28, 26, 28), Enum.Material.Leather)
+	attach(f, t, "Zip", Vector3.new(0.05, t.Size.Y * 0.9, 0.04), CFrame.new(-t.Size.X * 0.06, 0, -t.Size.Z / 2 - 0.1), SILVER, nil, Enum.Material.Metal)
+end
+-- a denim jacket: jean blue, with stitched pockets
+function ITEMS.Denim(f, b, c)
+	local t = b.Torso
+	c = c or rgb(80, 110, 160)
+	jacket(f, b, c, Enum.Material.Fabric)
+	for _, sx in ipairs({ -1, 1 }) do
+		attach(f, t, "DenimPocket", Vector3.new(t.Size.X * 0.2, t.Size.Y * 0.16, 0.04), CFrame.new(sx * t.Size.X * 0.32, t.Size.Y * 0.18, -t.Size.Z / 2 - 0.1), c:Lerp(BLACK, 0.15), nil, Enum.Material.Fabric)
+	end
+end
+-- a zip-up track jacket with white stripes down the sleeves
+function ITEMS.Tracksuit(f, b, c)
+	local t = b.Torso
+	c = c or rgb(40, 60, 150)
+	jacket(f, b, c, Enum.Material.Fabric)
+	attach(f, t, "Zip", Vector3.new(0.05, t.Size.Y * 0.9, 0.04), CFrame.new(0, 0, -t.Size.Z / 2 - 0.1), WHITE, nil, Enum.Material.SmoothPlastic)
+	for _, arm in ipairs({ b.LeftArm, b.RightArm }) do
+		if arm then
+			attach(f, arm, "TrackStripe", Vector3.new(arm.Size.X + 0.1, arm.Size.Y, 0.1), CFrame.new(0, 0, -arm.Size.Z / 2 + 0.02), WHITE, nil, Enum.Material.Fabric)
+		end
 	end
 end
 function ITEMS.Stripes(f, b, c)
@@ -13934,12 +14674,18 @@ function CitizenLook.Describe(citizen)
 		Width = rng:NextNumber(0.85, 1.1),
 	}
 	-- a build: how wide and deep the body is, and its shape
-	local builds = if kid then { "slim", "average", "average", "heavy" }
-		elseif feminine then { "slim", "average", "average", "curvy", "curvy", "athletic", "athletic", "heavy", "muscular" }
-		else { "slim", "average", "average", "athletic", "athletic", "heavy", "stocky", "muscular", "muscular" }
+	local builds = if kid then { "slim", "average", "average", "heavy", "lanky" }
+		elseif feminine then { "slim", "average", "average", "curvy", "curvy", "athletic", "athletic", "heavy", "muscular", "petite", "petite", "lanky" }
+		else { "slim", "average", "average", "athletic", "athletic", "heavy", "stocky", "muscular", "muscular", "lanky", "petite" }
 	look.Build = builds[rng:NextInteger(1, #builds)]
-	look.Width = ({ slim = 0.78, average = 0.9, curvy = 0.92, athletic = 1, heavy = 1, stocky = 1, muscular = 1 })[look.Build] * rng:NextNumber(0.96, 1.04)
-	look.Depth = ({ slim = 0.8, average = 0.9, curvy = 1, athletic = 0.92, heavy = 1, stocky = 0.96, muscular = 1 })[look.Build]
+	look.Width = ({ slim = 0.78, average = 0.9, curvy = 0.92, athletic = 1, heavy = 1, stocky = 1, muscular = 1, lanky = 0.8, petite = 0.84 })[look.Build] * rng:NextNumber(0.96, 1.04)
+	look.Depth = ({ slim = 0.8, average = 0.9, curvy = 1, athletic = 0.92, heavy = 1, stocky = 0.96, muscular = 1, lanky = 0.8, petite = 0.86 })[look.Build]
+	-- tall and thin, or small and neat
+	if look.Build == "lanky" then
+		look.Height = math.max(look.Height, if kid then 1.06 else 1.1) * rng:NextNumber(1, 1.05)
+	elseif look.Build == "petite" then
+		look.Height = math.min(look.Height, if kid then 0.95 else 0.9)
+	end
 	look.Face = Faces.Describe(rng, age, feminine)
 	look.Scale = CitizenLook.ScaleFor(age, look.Height)
 	if age < 3 then
@@ -14016,6 +14762,16 @@ function CitizenLook.Describe(citizen)
 				end
 			elseif item == "CapBack" then
 				table.insert(look.Items, "CapBack:" .. colorText(accent))
+			elseif item == "Leather" then
+				table.insert(look.Items, "Leather:" .. colorText(({ rgb(28, 26, 28), rgb(28, 26, 28), rgb(90, 55, 35), rgb(120, 30, 40) })[rng:NextInteger(1, 4)]))
+			elseif item == "Denim" then
+				table.insert(look.Items, "Denim:" .. colorText(({ rgb(80, 110, 160), rgb(60, 85, 130), rgb(140, 165, 200), rgb(40, 44, 54) })[rng:NextInteger(1, 4)]))
+			elseif item == "Tracksuit" then
+				local tc = ({ rgb(40, 60, 150), rgb(30, 30, 34), rgb(180, 30, 40), rgb(30, 110, 70), rgb(120, 60, 160), rgb(230, 230, 232) })[rng:NextInteger(1, 6)]
+				table.insert(look.Items, "Tracksuit:" .. colorText(tc))
+				look.Bottom = tc
+			elseif item == "Beanie" or item == "BucketHat" or item == "Scarf" then
+				table.insert(look.Items, item .. ":" .. colorText(palette[rng:NextInteger(1, #palette)]))
 			else
 				table.insert(look.Items, item)
 			end
@@ -14150,8 +14906,8 @@ local BALL, CYL = Enum.PartType.Ball, Enum.PartType.Cylinder
 -- stud thick: real arms and legs are much slimmer)
 local function tapers(look)
 	local build = look.Build or "average"
-	local arm = (if build == "muscular" then 0.86 elseif build == "athletic" or build == "stocky" or build == "heavy" then 0.74 elseif build == "slim" then 0.58 else 0.66) * (if look.Feminine then 0.92 else 1)
-	local leg = if build == "heavy" or build == "curvy" or build == "muscular" then 0.9 elseif build == "slim" then 0.72 else 0.8
+	local arm = (if build == "muscular" then 0.86 elseif build == "athletic" or build == "stocky" or build == "heavy" then 0.74 elseif build == "slim" or build == "lanky" then 0.58 elseif build == "petite" then 0.6 else 0.66) * (if look.Feminine then 0.92 else 1)
+	local leg = if build == "heavy" or build == "curvy" or build == "muscular" then 0.9 elseif build == "slim" or build == "lanky" then 0.72 elseif build == "petite" then 0.76 else 0.8
 	return arm, leg
 end
 CitizenLook.Tapers = tapers
@@ -14760,8 +15516,10 @@ function CitizenLook.Build(citizen)
 	description.TorsoColor = look.Top
 	description.LeftLegColor = look.Bottom
 	description.RightLegColor = look.Bottom
-	description.WidthScale = math.clamp(look.Width, 0.7, 1)
-	description.DepthScale = math.clamp(look.Depth or look.Width, 0.7, 1)
+	-- the standard Roblox avatar shape (like players' own characters): full
+	-- width and depth, with just a little variety between builds
+	description.WidthScale = math.clamp(0.9 + ((look.Width or 1) - 0.78) * 0.45, 0.9, 1)
+	description.DepthScale = math.clamp(0.9 + ((look.Depth or look.Width or 1) - 0.8) * 0.5, 0.9, 1)
 	description.HeightScale = 1
 	-- realistic proportions: taller, longer-limbed and narrower than the stubby
 	-- default body (slim builds are the most slender, heavy builds the widest)
@@ -14772,7 +15530,7 @@ function CitizenLook.Build(citizen)
 	description.ProportionScale = 0
 	if Config.REALISTIC_PROPORTIONS == true and look.Age >= 13 then
 		description.BodyTypeScale = if look.Feminine then 0.75 else 0.65
-		description.ProportionScale = ({ slim = 1, average = 0.6, athletic = 0.35, curvy = 0.2, heavy = 0, stocky = 0, muscular = 0.1 })[look.Build or "average"] or 0.5
+		description.ProportionScale = ({ slim = 1, average = 0.6, athletic = 0.35, curvy = 0.2, heavy = 0, stocky = 0, muscular = 0.1, lanky = 1, petite = 0.7 })[look.Build or "average"] or 0.5
 	end
 	local model
 	local package = if look.Feminine then "Woman" else "Man"
@@ -16939,6 +17697,11 @@ arrive = function(brain)
 	local plan = t.Plan or {}
 	brain.Building = t.Building
 	brain.Floor = t.Floor or 1
+	-- there now: what they're actually doing (not "lazing on the couch" on
+	-- the walk home)
+	if plan.Activity and not brain.Soccer then
+		setActivity(brain, plan.Activity)
+	end
 	if t.Soccer then
 		joinSoccer(brain, t.Soccer)
 		return
@@ -17541,6 +18304,58 @@ function CitizenService.Despawn(brain)
 end
 
 -- Lets another module steer a brain directly (police chases)
+-- Is something solid in the way between two points (waist height)? People,
+-- players' characters and see-through things don't count.
+local sightBlock = RaycastParams.new()
+sightBlock.FilterType = Enum.RaycastFilterType.Exclude
+sightBlock.IgnoreWater = true
+local function blockedBetween(a, b)
+	local from = Vector3.new(a.X, a.Y + 0.2, a.Z)
+	local to = Vector3.new(b.X, a.Y + 0.2, b.Z)
+	local d = to - from
+	if d.Magnitude < 0.5 then
+		return nil
+	end
+	local filter = { workspace:FindFirstChild("Citizens") }
+	for _, p in ipairs(game:GetService("Players"):GetPlayers()) do
+		if p.Character then
+			table.insert(filter, p.Character)
+		end
+	end
+	sightBlock.FilterDescendantsInstances = filter
+	local hit = workspace:Raycast(from, d, sightBlock)
+	if hit and hit.Instance and hit.Instance.CanCollide and (hit.Instance.Transparency or 0) < 0.9 then
+		return hit
+	end
+	return nil
+end
+CitizenService.BlockedBetween = blockedBetween
+
+-- Where to walk to reach `goal`: straight there if nothing's in the way,
+-- otherwise around the obstacle (the first clear detour to either side)
+function CitizenService.WayTo(brain, goal)
+	local from = brain.Root.Position
+	local hit = blockedBetween(from, goal)
+	if not hit then
+		return goal, false
+	end
+	local d = Vector3.new(goal.X - from.X, 0, goal.Z - from.Z)
+	local dir = if d.Magnitude > 0.1 then d.Unit else Vector3.new(1, 0, 0)
+	local side = Vector3.new(-dir.Z, 0, dir.X)
+	local size = hit.Instance.Size
+	-- (a short step round small things; big things - a wall, a building - they
+	-- just don't try to go through, so no long detours)
+	local reach = math.min(math.max(size.X, size.Z) / 2 + 3, 8)
+	for _, w in ipairs({ reach, -reach, reach * 2, -reach * 2 }) do
+		local p = hit.Position + side * w - dir * 1.5
+		p = Vector3.new(p.X, from.Y, p.Z)
+		if not blockedBetween(from, p) and not blockedBetween(p, goal) then
+			return p, true
+		end
+	end
+	return hit.Position + side * reach, true
+end
+
 function CitizenService.Control(brain, on)
 	if on then
 		interruptMovement(brain)
@@ -17755,7 +18570,22 @@ local function think(brain)
 		end
 	end
 	local key = planKey(plan)
-	setActivity(brain, if brain.Soccer then brain.Model:GetAttribute("Activity") else plan.Activity)
+	-- on the way there it says so; the activity itself shows once they arrive
+	-- (see arrive)
+	if not brain.Soccer then
+		if key == brain.PlanKey and st == "act" then
+			setActivity(brain, plan.Activity)
+		else
+			local dest = plan.Place and map.Places[plan.Place]
+			local label = dest and (dest.Label or plan.Place) and string.gsub(dest.Label or plan.Place, "^[^%w]+%s*", "")
+			setActivity(brain, if plan.Kind == "Home" then "🏠 Heading home"
+				elseif plan.Kind == "Work" then "💼 On the way to work" .. (if label then " at the " .. label else "")
+				elseif plan.Kind == "School" then "🎒 Off to school"
+				elseif plan.Kind == "Hospital" then "🏥 Going to the hospital"
+				elseif label then "🚶 Heading to the " .. label
+				else plan.Activity)
+		end
+	end
 	if key == brain.PlanKey and st ~= "idle" and brain.Tasks then
 		-- a clerk finishes serving the customer before moving on
 		if (brain.ServingUntil or 0) > workspace:GetServerTimeNow() then
@@ -17823,6 +18653,17 @@ local function think(brain)
 	-- a briefcase on the way to the office, a backpack to school...
 	if t.Carry == nil and not brain.Model:GetAttribute("Carry") then
 		local carry = Errands.CommuteProp(brain, plan, t)
+		-- or just something in hand: texting on the way, a morning coffee
+		if not carry and not brain.Staff then
+			local age = ageOf(brain.C)
+			local roll = math.random()
+			local hour = S.City and S.City.Hour and S.City.Hour() or 12
+			if age >= 13 and roll < (if age < 30 then 0.22 else 0.1) then
+				carry = "Phone"
+			elseif age >= 18 and hour >= 6 and hour < 11 and roll < 0.28 then
+				carry = "Cup"
+			end
+		end
 		if carry then
 			brain.Model:SetAttribute("Carry", carry)
 			brain.CommuteProp = true
@@ -17841,7 +18682,7 @@ local function think(brain)
 end
 
 -- a few little things people do on the way
-local PAUSES = { "phone", "wait", "wave" }
+local PAUSES = { "phone", "wait", "photo", "stretch", "phone", "wait" }
 -- Personal space: people step around whoever is in their way (other citizens
 -- and players) instead of walking through them. Two people walking toward
 -- each other both keep to the right, so they pass cleanly; someone boxed in
@@ -18161,7 +19002,10 @@ local function walkTick(brain)
 		end
 		-- sometimes stop to check the phone or look around (not when late)
 		if brain.State == "walk" and not brain.Late and math.random() < 0.035 and nearestPlayerDistance(root.Position) < WATCH_RADIUS then
-			local action = PAUSES[math.random(1, 2)]
+			local action = PAUSES[math.random(1, #PAUSES)]
+			if action == "stretch" and ageOf(brain.C) < 13 then
+				action = "wait"
+			end
 			brain.Humanoid:MoveTo(root.Position)
 			playTrack(brain, "idle")
 			setAction(brain, action)
@@ -19500,7 +20344,7 @@ local function attach(model)
 	local prompt = Instance.new("ProximityPrompt")
 	prompt.Name = "TalkPrompt"
 	prompt.ActionText = "Talk"
-	prompt.ObjectText = model:GetAttribute("DisplayName") or model.Name
+	prompt.ObjectText = "" -- (their name is already over their head)
 	prompt.KeyboardKeyCode = Enum.KeyCode.E
 	prompt.MaxActivationDistance = 9
 	prompt.RequiresLineOfSight = false
@@ -19942,8 +20786,10 @@ local function fightTick()
 			S.Citizens.Flee(brain, root.Position, 10, "Okay, okay! I give up!")
 		else
 			S.Citizens.SetGait(brain, if d > 5 then 16 else 8, "run")
-			brain.Humanoid:MoveTo(root.Position)
-			if d < 4.8 and now >= f.Next then
+			-- around whatever's in the way, not through it
+			local way, around = S.Citizens.WayTo(brain, root.Position)
+			brain.Humanoid:MoveTo(way)
+			if d < 4.8 and now >= f.Next and not around then
 				f.Next = now + math.random(9, 13) / 10
 				brain.Model:SetAttribute("SwingSide", (brain.Model:GetAttribute("SwingSide") or 0) + 1)
 				brain.Model:SetAttribute("Swing", now)
@@ -20449,7 +21295,8 @@ end
 local function arrest(player)
 	CrimeService.Unhide(player)
 	local w = wanted[player]
-	local stars = w and w.Stars or 1
+	local stars = w and w.Stars or player:GetAttribute("PendingStars") or 1
+	player:SetAttribute("PendingStars", nil)
 	if w then
 		freeChasers(w)
 	end
@@ -20535,6 +21382,9 @@ function CrimeService.PoliceStrike(player, w)
 				brain.Model:SetAttribute("SwingSide", (brain.Model:GetAttribute("SwingSide") or 0) + 1)
 				brain.Model:SetAttribute("SwingWeapon", "Bat")
 				brain.Model:SetAttribute("Swing", now)
+				if player.Character then
+					player.Character:SetAttribute("PoliceHitAt", os.clock())
+				end
 				hurtPlayer(brain.Root.Position, player, math.random(6, 9) + w.Stars * 2, 12)
 				if math.random() < 0.3 then
 					S.Citizens.Say(brain, STRIKE_LINES[math.random(1, #STRIKE_LINES)], "angry", 1.4)
@@ -20564,6 +21414,9 @@ function CrimeService.PoliceShoot(player, w)
 			local to = if hit then root.Position + Vector3.new(0, 1, 0) else root.Position + Vector3.new(math.random(-4, 4), math.random(0, 3), math.random(-4, 4))
 			S.City.SendNear(from, 250, { Type = "Shot", From = from, To = to, Weapon = "Pistol" })
 			if hit then
+				if player.Character then
+					player.Character:SetAttribute("PoliceHitAt", os.clock())
+				end
 				hurtPlayer(from, player, math.random(10, 16), 8)
 			end
 			if math.random() < 0.3 then
@@ -21622,6 +22475,27 @@ local function setupCharacter(player, character)
 	end
 	blocking[player] = nil
 	player:SetAttribute("Blocking", nil)
+	-- knocked out by the police: you wake up in the prison's medical bay, and
+	-- once you're patched up you're booked into a cell
+	if player:GetAttribute("WakeAtPrisonMed") then
+		player:SetAttribute("WakeAtPrisonMed", nil)
+		player:SetAttribute("WakeAtHospital", nil)
+		local prison = S.Map.Prison
+		local root = character:WaitForChild("HumanoidRootPart", 10)
+		local beds = prison and prison.MedBeds
+		if root and beds and #beds > 0 then
+			task.wait(0.2)
+			root.CFrame = CFrame.new(beds[math.random(1, #beds)] + Vector3.new(0, 3.5, 0))
+			S.City.Toast(player, "🏥", "You woke up in the prison medical bay", "The police brought you in. The nurse patched you up; a guard will take you to your cell in a moment.", rgb(220, 120, 80))
+			task.delay(12, function()
+				if player.Parent and S.Crime and S.Crime.ArrestPlayer and not (S.Crime.IsJailed and S.Crime.IsJailed(player)) then
+					S.Crime.ArrestPlayer(player)
+				end
+			end)
+		else
+			player:SetAttribute("WakeAtHospital", true)
+		end
+	end
 	-- woke up after being knocked out: in the hospital
 	if player:GetAttribute("WakeAtHospital") then
 		player:SetAttribute("WakeAtHospital", nil)
@@ -21635,6 +22509,17 @@ local function setupCharacter(player, character)
 	end
 	task.defer(giveTools, player)
 	humanoid.Died:Connect(function()
+		-- the police did it: off to the prison medical bay (and then a cell)
+		local byPolice = os.clock() - (character:GetAttribute("PoliceHitAt") or -99) < 8 and (player:GetAttribute("Wanted") or 0) > 0
+		if byPolice and S.Map.Prison and S.Map.Prison.MedBeds then
+			player:SetAttribute("WakeAtPrisonMed", true)
+			player:SetAttribute("PendingStars", player:GetAttribute("Wanted"))
+			if S.Crime then
+				S.Crime.ClearWanted(player)
+			end
+			S.City.Send(player, { Type = "Down", Bill = 0 })
+			return
+		end
 		player:SetAttribute("WakeAtHospital", true)
 		local bill = math.min(S.City.Coins(player), 30)
 		if bill > 0 then
@@ -21878,6 +22763,182 @@ BUILD.Disguise = function(folder, character, head)
 	end
 end
 
+--------------------------------------------------------------------------------
+-- 👕 fashion
+--------------------------------------------------------------------------------
+local GOLD = rgb(245, 200, 70)
+local WHITE = rgb(248, 248, 245)
+local function torsoOf(character)
+	return character:FindFirstChild("UpperTorso") or character:FindFirstChild("Torso")
+end
+local function sleeves(folder, character, color, material)
+	for _, name in ipairs({ "LeftUpperArm", "RightUpperArm", "LeftLowerArm", "RightLowerArm", "Left Arm", "Right Arm" }) do
+		local arm = character:FindFirstChild(name)
+		if arm then
+			part(folder, arm, "Sleeve", arm.Size + Vector3.new(0.1, 0.02, 0.1), CFrame.new(), color, material)
+		end
+	end
+end
+-- an open jacket: two front panels, the back, the sleeves
+local function jacket(folder, character, color, material, inner)
+	local torso = torsoOf(character)
+	if not torso then
+		return nil
+	end
+	local t = torso.Size
+	for _, sx in ipairs({ -1, 1 }) do
+		part(folder, torso, "JacketPanel", Vector3.new(t.X * 0.34, t.Y + 0.06, 0.1), CFrame.new(sx * t.X * 0.34, 0, -t.Z / 2 - 0.05), color, material)
+		part(folder, torso, "JacketSide", Vector3.new(0.1, t.Y + 0.06, t.Z + 0.12), CFrame.new(sx * (t.X / 2 + 0.05), 0, 0), color, material)
+		part(folder, torso, "Lapel", Vector3.new(0.16, t.Y * 0.42, 0.06), CFrame.new(sx * t.X * 0.2, t.Y * 0.26, -t.Z / 2 - 0.1) * CFrame.Angles(0, 0, sx * math.rad(20)), color:Lerp(rgb(0, 0, 0), 0.25), material)
+	end
+	part(folder, torso, "JacketBack", Vector3.new(t.X + 0.1, t.Y + 0.06, 0.1), CFrame.new(0, 0, t.Z / 2 + 0.05), color, material)
+	if inner then
+		part(folder, torso, "Shirt", Vector3.new(t.X * 0.3, t.Y, 0.06), CFrame.new(0, 0, -t.Z / 2 - 0.02), inner, Enum.Material.SmoothPlastic)
+	end
+	sleeves(folder, character, color, material)
+	return torso, t
+end
+local FASHION = {}
+FASHION.LeatherJacket = function(f, ch, head, c)
+	local torso, t = jacket(f, ch, c, Enum.Material.Leather, rgb(240, 240, 236))
+	if torso then
+		part(f, torso, "Zip", Vector3.new(0.05, t.Y * 0.9, 0.04), CFrame.new(-t.X * 0.17, 0, -t.Z / 2 - 0.12), rgb(200, 205, 215), Enum.Material.Metal)
+	end
+end
+FASHION.DenimJacket = function(f, ch, head, c)
+	local torso, t = jacket(f, ch, c, Enum.Material.Fabric, rgb(250, 250, 248))
+	if torso then
+		for _, sx in ipairs({ -1, 1 }) do
+			part(f, torso, "Pocket", Vector3.new(t.X * 0.2, t.Y * 0.16, 0.04), CFrame.new(sx * t.X * 0.32, t.Y * 0.2, -t.Z / 2 - 0.12), c:Lerp(rgb(0, 0, 0), 0.18))
+		end
+	end
+end
+FASHION.VarsityJacket = function(f, ch, head, c)
+	local torso, t = jacket(f, ch, c, Enum.Material.Fabric, rgb(30, 30, 34))
+	sleeves(f, ch, WHITE, Enum.Material.Leather)
+	if torso then
+		part(f, torso, "Letter", Vector3.new(t.X * 0.2, t.X * 0.2, 0.05), CFrame.new(t.X * 0.3, t.Y * 0.18, -t.Z / 2 - 0.12), WHITE)
+	end
+end
+FASHION.PufferJacket = function(f, ch, head, c)
+	local torso = torsoOf(ch)
+	if torso then
+		local t = torso.Size
+		part(f, torso, "Puffer", t + Vector3.new(0.3, 0.1, 0.3), CFrame.new(), c, Enum.Material.SmoothPlastic)
+		for k = -1, 1 do
+			part(f, torso, "PufferRidge", Vector3.new(t.X + 0.36, 0.08, t.Z + 0.36), CFrame.new(0, k * t.Y * 0.3, 0), c:Lerp(rgb(0, 0, 0), 0.15), Enum.Material.SmoothPlastic)
+		end
+		part(f, torso, "Collar", Vector3.new(t.X * 0.8, 0.3, t.Z + 0.4), CFrame.new(0, t.Y / 2 + 0.1, 0), c, Enum.Material.SmoothPlastic)
+	end
+	sleeves(f, ch, c, Enum.Material.SmoothPlastic)
+end
+FASHION.Tracksuit = function(f, ch, head, c)
+	local torso = torsoOf(ch)
+	if torso then
+		local t = torso.Size
+		part(f, torso, "Track", t + Vector3.new(0.12, 0.06, 0.12), CFrame.new(), c)
+		part(f, torso, "Zip", Vector3.new(0.05, t.Y * 0.95, 0.04), CFrame.new(0, 0, -t.Z / 2 - 0.08), WHITE, Enum.Material.SmoothPlastic)
+	end
+	sleeves(f, ch, c)
+	for _, name in ipairs({ "LeftUpperArm", "RightUpperArm", "LeftLowerArm", "RightLowerArm", "Left Arm", "Right Arm", "LeftUpperLeg", "RightUpperLeg", "LeftLowerLeg", "RightLowerLeg", "Left Leg", "Right Leg" }) do
+		local limb = ch:FindFirstChild(name)
+		if limb then
+			if name:find("Leg") then
+				part(f, limb, "TrackLeg", limb.Size + Vector3.new(0.08, 0.01, 0.08), CFrame.new(), c)
+			end
+			local side = if name:find("Left") then -1 else 1
+			part(f, limb, "TrackStripe", Vector3.new(0.08, limb.Size.Y, 0.2), CFrame.new(side * (limb.Size.X / 2 + 0.07), 0, 0), WHITE)
+		end
+	end
+end
+FASHION.Tuxedo = function(f, ch, head, c)
+	local torso, t = jacket(f, ch, c, Enum.Material.Fabric, WHITE)
+	if torso then
+		part(f, torso, "BowTie", Vector3.new(0.5, 0.2, 0.1), CFrame.new(0, t.Y * 0.4, -t.Z / 2 - 0.1), rgb(20, 20, 22))
+		part(f, torso, "Flower", Vector3.new(0.2, 0.2, 0.08), CFrame.new(-t.X * 0.3, t.Y * 0.25, -t.Z / 2 - 0.13), rgb(220, 40, 60), Enum.Material.SmoothPlastic, Enum.PartType.Ball)
+	end
+end
+local function hatBase(head)
+	local h = headDims(head)
+	return h, h.X, h.Y / 2
+end
+FASHION.Cap = function(f, ch, head, c)
+	local h, w, top = hatBase(head)
+	part(f, head, "CapCrown", Vector3.new(w * 1.06, h.Y * 0.32, h.Z * 1.08), CFrame.new(0, top - h.Y * 0.02, 0.02), c)
+	part(f, head, "CapBrim", Vector3.new(w * 0.9, 0.08, h.Z * 0.5), CFrame.new(0, top - h.Y * 0.15, -h.Z * 0.7), c:Lerp(rgb(0, 0, 0), 0.15))
+end
+FASHION.Beanie = function(f, ch, head, c)
+	local h, w, top = hatBase(head)
+	part(f, head, "Beanie", Vector3.new(w * 1.08, h.Y * 0.42, h.Z * 1.1), CFrame.new(0, top - h.Y * 0.06, 0.02), c)
+	part(f, head, "BeanieCuff", Vector3.new(w * 1.12, h.Y * 0.12, h.Z * 1.14), CFrame.new(0, top - h.Y * 0.24, 0.02), c:Lerp(rgb(0, 0, 0), 0.15))
+	part(f, head, "PomPom", Vector3.new(0.45, 0.45, 0.45), CFrame.new(0, top + h.Y * 0.2, 0), WHITE, Enum.Material.Fabric, Enum.PartType.Ball)
+end
+FASHION.CowboyHat = function(f, ch, head, c)
+	local h, w, top = hatBase(head)
+	part(f, head, "HatBrim", Vector3.new(0.1, w * 1.9, w * 1.7), CFrame.new(0, top + 0.02, 0) * CFrame.Angles(0, 0, math.rad(90)), c, Enum.Material.Leather, Enum.PartType.Cylinder)
+	part(f, head, "HatCrown", Vector3.new(w * 0.95, 0.75, h.Z * 0.95), CFrame.new(0, top + 0.4, 0), c, Enum.Material.Leather)
+	part(f, head, "HatBand", Vector3.new(w * 0.97, 0.14, h.Z * 0.97), CFrame.new(0, top + 0.12, 0), rgb(40, 30, 24), Enum.Material.Leather)
+end
+FASHION.BucketHat = function(f, ch, head, c)
+	local h, w, top = hatBase(head)
+	part(f, head, "HatBrim", Vector3.new(0.1, w * 1.45, w * 1.45), CFrame.new(0, top - 0.04, 0) * CFrame.Angles(0, 0, math.rad(90)), c, Enum.Material.Fabric, Enum.PartType.Cylinder)
+	part(f, head, "HatCrown", Vector3.new(0.5, w * 1.04, w * 1.04), CFrame.new(0, top + 0.18, 0) * CFrame.Angles(0, 0, math.rad(90)), c, Enum.Material.Fabric, Enum.PartType.Cylinder)
+end
+FASHION.Crown = function(f, ch, head, c)
+	local h, w, top = hatBase(head)
+	part(f, head, "CrownBand", Vector3.new(0.4, w * 0.95, w * 0.95), CFrame.new(0, top + 0.15, 0) * CFrame.Angles(0, 0, math.rad(90)), c, Enum.Material.Metal, Enum.PartType.Cylinder)
+	for k = 0, 5 do
+		local a = k / 6 * math.pi * 2
+		part(f, head, "CrownPoint", Vector3.new(0.18, 0.4, 0.18), CFrame.new(math.cos(a) * w * 0.42, top + 0.5, math.sin(a) * w * 0.42), c, Enum.Material.Metal)
+		part(f, head, "CrownJewel", Vector3.new(0.15, 0.15, 0.15), CFrame.new(math.cos(a) * w * 0.48, top + 0.15, math.sin(a) * w * 0.48), ({ rgb(220, 30, 60), rgb(40, 120, 230), rgb(40, 200, 120) })[k % 3 + 1], Enum.Material.Neon, Enum.PartType.Ball)
+	end
+end
+local function glasses(f, head, lens, frameColor, heart)
+	local h = headDims(head)
+	local w = h.X
+	local front = -h.Z / 2 - 0.05
+	for _, side in ipairs({ -1, 1 }) do
+		local l = part(f, head, "Lens", Vector3.new(w * 0.3, h.Y * (if heart then 0.24 else 0.18), 0.05), CFrame.new(side * w * 0.19, h.Y * 0.1, front) * (if heart then CFrame.Angles(0, 0, math.rad(side * 12)) else CFrame.new()), lens, Enum.Material.Glass)
+		l.Transparency = 0.1
+		part(f, head, "Arm", Vector3.new(0.04, 0.04, h.Z * 0.9), CFrame.new(side * w * 0.36, h.Y * 0.12, 0), frameColor, Enum.Material.SmoothPlastic)
+	end
+	part(f, head, "Bridge", Vector3.new(w * 0.1, 0.05, 0.05), CFrame.new(0, h.Y * 0.14, front), frameColor, Enum.Material.Metal)
+end
+FASHION.Sunglasses = function(f, ch, head, c)
+	glasses(f, head, c, rgb(20, 20, 22))
+end
+FASHION.HeartGlasses = function(f, ch, head, c)
+	glasses(f, head, c, rgb(250, 120, 170), true)
+end
+FASHION.GoldChain = function(f, ch, head, c)
+	local torso = torsoOf(ch)
+	if torso then
+		local t = torso.Size
+		for k = -3, 3 do
+			local a = k / 3 * 0.9
+			part(f, torso, "Chain", Vector3.new(0.14, 0.14, 0.14), CFrame.new(math.sin(a) * t.X * 0.26, t.Y * 0.5 - (1 - math.cos(a)) * t.Y * 0.6 - 0.05, -t.Z / 2 - 0.08), c, Enum.Material.Metal, Enum.PartType.Ball)
+		end
+		part(f, torso, "Pendant", Vector3.new(0.3, 0.36, 0.08), CFrame.new(0, t.Y * 0.5 - t.Y * 0.3, -t.Z / 2 - 0.1), c, Enum.Material.Metal)
+	end
+end
+FASHION.Scarf = function(f, ch, head, c)
+	local torso = torsoOf(ch)
+	if torso then
+		local t = torso.Size
+		part(f, torso, "Scarf", Vector3.new(t.X * 0.78, 0.4, t.Z + 0.3), CFrame.new(0, t.Y / 2 - 0.05, 0), c)
+		for k = 0, 2 do
+			part(f, torso, "ScarfEnd", Vector3.new(0.5, 0.36, 0.1), CFrame.new(t.X * 0.22, t.Y * 0.28 - k * 0.38, -t.Z / 2 - 0.1), if k % 2 == 0 then c else WHITE)
+		end
+	end
+end
+FASHION.Headphones = function(f, ch, head, c)
+	local h = headDims(head)
+	part(f, head, "Band", Vector3.new(h.X * 1.1, 0.14, 0.2), CFrame.new(0, h.Y * 0.55, 0), c, Enum.Material.SmoothPlastic)
+	for _, side in ipairs({ -1, 1 }) do
+		part(f, head, "EarCup", Vector3.new(0.18, 0.55, 0.55), CFrame.new(side * (h.X / 2 + 0.08), 0, 0) * CFrame.Angles(0, 0, math.rad(90)), c, Enum.Material.SmoothPlastic, Enum.PartType.Cylinder)
+	end
+end
+
 -- hats and hair get in the way of hoods and masks: hide them while you wear one
 local function setAccessories(character, hide)
 	for _, acc in ipairs(character:GetChildren()) do
@@ -21912,8 +22973,16 @@ local function dress(player)
 	local folder = Instance.new("Folder")
 	folder.Name = "Disguise"
 	for id in pairs(set) do
+		local d = Disguises.List[id]
 		if BUILD[id] then
 			BUILD[id](folder, character, head)
+		elseif FASHION[id] and d then
+			-- (the disguise kit's hat and glasses win over a hat or shades; no
+			-- hat over a hood or a ski mask)
+			local covered = (d.Slot == "Hat" and (set.Disguise or set.SkiMask or set.Hoodie)) or (d.Slot == "Eyes" and (set.Disguise or set.SkiMask))
+			if not covered then
+				pcall(FASHION[id], folder, character, head, d.Color)
+			end
 		end
 	end
 	folder.Parent = character
@@ -21929,7 +22998,15 @@ local function dress(player)
 			face:SetAttribute("DisguiseSaved", nil)
 		end
 	end
-	setAccessories(character, next(set) ~= nil)
+	-- (your own hats and hair hide under a hood, a mask, a disguise or a hat)
+	local hideHats = set.Hoodie or set.SkiMask or set.Disguise
+	for id in pairs(set) do
+		local d = Disguises.List[id]
+		if d and d.Slot == "Hat" then
+			hideHats = true
+		end
+	end
+	setAccessories(character, hideHats == true)
 	player:SetAttribute("Disguise", Disguises.Describe(set))
 end
 
@@ -21953,7 +23030,7 @@ local function wardrobe(player, atStore)
 		local d = Disguises.List[id]
 		table.insert(items, {
 			Id = id, Name = d.Name, Emoji = d.Emoji, Slot = d.Slot, Price = d.Price, Desc = d.Desc,
-			Hidden = d.Hidden, Night = d.Night, Suspicious = d.Suspicious,
+			Hidden = d.Hidden, Night = d.Night, Suspicious = d.Suspicious, Fashion = d.Fashion, Color = d.Color,
 			Owned = pd ~= nil and pd.Outfits ~= nil and pd.Outfits[id] == true,
 			Wearing = set[id] == true,
 		})
@@ -22021,9 +23098,8 @@ function DisguiseService.Confiscate(player)
 	S.City.Toast(player, "🥷", "Mask confiscated", "The police took your ski mask.", rgb(230, 60, 60))
 end
 
-local function addStore()
-	local store = S.Map.Places.Mall
-	if not store then
+local function addStore(store, at, label)
+	if not at and not store then
 		return
 	end
 	local counter = Instance.new("Part")
@@ -22033,12 +23109,12 @@ local function addStore()
 	counter.CanQuery = false
 	counter.Transparency = 1
 	counter.Size = Vector3.new(2, 2, 2)
-	counter.CFrame = CFrame.new((store.Inside or store.Door) + Vector3.new(0, 3, 0))
-	counter.Parent = store.Model or workspace
+	counter.CFrame = CFrame.new((at or store.Inside or store.Door) + Vector3.new(0, 3, 0))
+	counter.Parent = store and store.Model or workspace
 	local prompt = Instance.new("ProximityPrompt")
 	prompt.Name = "ShopPrompt"
-	prompt.ActionText = "Hoodies, masks & disguises"
-	prompt.ObjectText = "👕 Clothing store"
+	prompt.ActionText = "Shop clothes, hats & disguises"
+	prompt.ObjectText = label or "👕 Clothing store"
 	prompt.KeyboardKeyCode = Enum.KeyCode.E
 	prompt.MaxActivationDistance = 12
 	prompt.RequiresLineOfSight = false
@@ -22064,6 +23140,27 @@ local function suspicionTick()
 			dress(player)
 		end
 		local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+		-- people notice a good outfit
+		if root and not player:GetAttribute("Suspicious") and os.clock() - (lastLine[player] or 0) > 25 and math.random() < 0.12 then
+			local best
+			for id in pairs(worn(player)) do
+				local d = Disguises.List[id]
+				if d and d.Fashion and (not best or d.Price > best.Price) then
+					best = d
+				end
+			end
+			if best then
+				for _, brain in ipairs(S.Citizens.Nearby(root.Position, 16)) do
+					if brain.State ~= "ko" and brain.State ~= "hospital" and brain.State ~= "talk" and brain.State ~= "police" and brain.Model:GetAttribute("Action") ~= "sleep" then
+						local line = if best.Price >= 150 then ({ "Whoa, is that a real " .. best.Name:lower() .. "?!", "Look at you! Fancy!", "Okay, big spender!" })[math.random(1, 3)]
+							else ({ "Love the " .. best.Name:lower() .. "!", "Nice " .. best.Name:lower() .. "!", "Ooh, where'd you get that?", "Looking sharp!" })[math.random(1, 4)]
+						S.Citizens.Say(brain, line, "happy", 2.5)
+						lastLine[player] = os.clock()
+						break
+					end
+				end
+			end
+		end
 		if root and player:GetAttribute("Suspicious") and not (S.Crime and S.Crime.IsHiding(player)) and os.clock() - (lastLine[player] or 0) > 6 then
 			for _, brain in ipairs(S.Citizens.Nearby(root.Position, 22)) do
 				if brain.State ~= "ko" and brain.State ~= "hospital" and brain.State ~= "talk" and brain.State ~= "police" and brain.Model:GetAttribute("Action") ~= "sleep" and math.random() < 0.15 then
@@ -22086,7 +23183,11 @@ function DisguiseService.Start(services)
 	end)
 	S.City.Handle("Wear", wear)
 	S.City.Handle("BuyOutfit", buy)
-	addStore()
+	addStore(S.Map.Places.Mall)
+	-- the Beach Boutique on the sand (see NorthShore)
+	if S.Map.Boutique then
+		addStore(S.Map.Places.Beach, S.Map.Boutique, "👕 Beach Boutique")
+	end
 	local function onPlayer(player)
 		player.CharacterAdded:Connect(function(character)
 			local head = character:WaitForChild("Head", 10)
@@ -22095,7 +23196,14 @@ function DisguiseService.Start(services)
 				dress(player)
 				-- hats that load later get hidden too
 				character.ChildAdded:Connect(function(child)
-					if child:IsA("Accessory") and next(worn(player)) ~= nil then
+					local w = worn(player)
+					local hat = w.Hoodie or w.SkiMask or w.Disguise
+					for id in pairs(w) do
+						if Disguises.List[id].Slot == "Hat" then
+							hat = true
+						end
+					end
+					if child:IsA("Accessory") and hat then
 						task.wait()
 						setAccessories(character, true)
 					end
@@ -22723,7 +23831,7 @@ end
 local function gatherCrowd(b)
 	local pos = center(b)
 	local now = os.clock()
-	for _, w in ipairs(S.Citizens.Nearby(pos, 60)) do
+	for _, w in ipairs(S.Citizens.Nearby(pos, 80)) do
 		if w ~= b.A and w ~= b.B and not w.Temp and not inBrawl[w] and w.Model.Parent and w.Model:GetAttribute("Action") ~= "sleep" then
 			local age = S.Life:Age(w.C)
 			local dist = (w.Root.Position - pos).Magnitude
@@ -22838,7 +23946,13 @@ local function tick(b, now)
 		local d = flat(other.Root.Position - f.Root.Position)
 		local dist = d.Magnitude
 		local dir = if dist > 0.1 then d.Unit else Vector3.new(1, 0, 0)
-		if b.Phase == "argue" then
+		-- something solid between them (a planter, a bench, a car)? walk round
+		-- it first; nobody swings through it
+		local way, around = S.Citizens.WayTo(f, other.Root.Position - dir * 3.2)
+		if around then
+			S.Citizens.SetGait(f, 12, "run")
+			f.Humanoid:MoveTo(way)
+		elseif b.Phase == "argue" then
 			S.Citizens.SetGait(f, 10, "walk")
 			if dist > 4.5 then
 				f.Humanoid:MoveTo(other.Root.Position - dir * 4)
@@ -22854,7 +23968,7 @@ local function tick(b, now)
 			else
 				f.Humanoid:MoveTo(f.Root.Position + flat(side) * 2 - dir * 0.5)
 			end
-			if dist < 5.2 and now >= b.Next[f] then
+			if dist < 5.2 and now >= b.Next[f] and not S.Citizens.BlockedBetween(f.Root.Position, other.Root.Position) then
 				b.Next[f] = now + math.random(8, 14) / 10
 				if swing(b, f, other, now) then
 					return
@@ -25178,6 +26292,7 @@ return JobService
 --     the police, and some houses have an alarm.
 
 local Players = game:GetService("Players")
+local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 
@@ -25246,6 +26361,10 @@ local function refreshPrompts(d)
 	d.BuyPrompt.Enabled = vacant
 	d.BuyPrompt.ObjectText = d.Home.Address .. "  ·  🪙 " .. priceOf(d.Home)
 	d.BreakPrompt.Enabled = not vacant and not d.Broken
+	-- (each player's screen hides "Break in" on their own house: see the
+	-- client's World module)
+	d.Anchor:SetAttribute("Owner", d.Owner)
+	d.Anchor:SetAttribute("BreakOK", d.BreakPrompt.Enabled)
 	d.Part:SetAttribute("Owner", d.Owner)
 	d.Part:SetAttribute("Broken", d.Broken or nil)
 end
@@ -25437,6 +26556,8 @@ local function addDoor(home)
 	anchor.Size = Vector3.new(1, 1, 1)
 	anchor.CFrame = d.Closed * CFrame.new(0, -1, -1.4)
 	anchor.Parent = hd.Part.Parent
+	d.Anchor = anchor
+	CollectionService:AddTag(anchor, "HouseDoor")
 	local buyPrompt = Instance.new("ProximityPrompt")
 	buyPrompt.Name = "BuyHouse"
 	buyPrompt.ActionText = "Buy house"
@@ -28022,6 +29143,17 @@ function PrisonService.Start(services)
 			for _, tower in ipairs(P.Towers) do
 				spawnGuard("tower", tower.Guard)
 			end
+			-- the nurse in the medical bay
+			if P.NurseSpot then
+				local ok, nurse = pcall(S.Citizens.SpawnExtra, { Name = "Nurse Okafor", First = "Nurse Okafor", Job = "Nurse", Age = 44, Activity = "🩺 On duty in the medical bay" }, CFrame.new(P.NurseSpot.CFrame.Position + Vector3.new(0, 3, 0)))
+				if ok and nurse then
+					S.Citizens.Control(nurse, true)
+					S.Citizens.PlaceAt(nurse, P.NurseSpot, "nurse")
+					nurse.Model:SetAttribute("Activity", "🩺 On duty in the medical bay")
+					nurse.Staff = true
+					PrisonService.Nurse = nurse
+				end
+			end
 		end)
 		nextFight = os.clock() + 90
 		local t = 0
@@ -30435,7 +31567,560 @@ function SchoolService.Start(services)
 end
 
 return SchoolService
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX56"><Properties><string name="Name">Conversation</string><ProtectedString name="Source"><![CDATA[-- Conversation (ModuleScript) — ServerScriptService.Modules.Conversation
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX56"><Properties><string name="Name">StreetLife</string><ProtectedString name="Source"><![CDATA[-- StreetLife (ModuleScript) — ServerScriptService.Modules.StreetLife
+-- Life on the streets all over town, not just in the plaza:
+--   🚚 food trucks parked at the curb across the city (a cook at the window,
+--      a queue on the sidewalk, people eating on their feet)
+--   🎸 street musicians in the plaza, the parks, on the boardwalk and at
+--      Funland, with people stopping to listen, clap and cheer (players can
+--      tip them: see StreetLifeService)
+-- Each truck is its own little outdoor place ("FoodTruck1"...), so people
+-- walk to it along the sidewalks.
+
+local MapKit = require(script.Parent:WaitForChild("MapKit"))
+
+local StreetLife = {}
+
+local rgb, WHITE, BLACK = MapKit.rgb, MapKit.WHITE, MapKit.BLACK
+local SPACING, HALF, ROAD = MapKit.SPACING, MapKit.HALF, MapKit.ROAD
+
+-- { block i, block j, side of the block the truck parks on, name, colour, food }
+StreetLife.TRUCKS = {
+	{ -1, 0, "S", "🌮 TACO TRUCK", rgb(240, 120, 40), "taco" },
+	{ 1, -1, "E", "🍔 BURGER BUS", rgb(220, 50, 50), "burger" },
+	{ 0, 2, "N", "🍦 SCOOP SHACK", rgb(250, 160, 200), "icecream" },
+	{ 2, 1, "W", "🥙 GYRO GO", rgb(60, 140, 220), "wrap" },
+	{ -2, -2, "S", "🍜 NOODLE NOMAD", rgb(240, 200, 60), "noodles" },
+	{ -1, 3, "E", "☕ COFFEE CART", rgb(120, 80, 60), "coffee" },
+}
+StreetLife.ALONG = 50 -- how far along the block from its middle (parked cars stay within ±32)
+
+local FACE = { N = Vector3.new(0, 0, -1), S = Vector3.new(0, 0, 1), E = Vector3.new(1, 0, 0), W = Vector3.new(-1, 0, 0) }
+
+-- where a truck parks: its middle in the curb lane, facing along the road
+function StreetLife.TruckFrame(t)
+	local c = Vector3.new(t[1] * SPACING, 0, t[2] * SPACING)
+	local f = FACE[t[3]]
+	local along = Vector3.new(-f.Z, 0, f.X)
+	local mid = c + f * (HALF + 3.6) + along * StreetLife.ALONG
+	return CFrame.lookAt(mid, mid + along), f, along, c
+end
+
+-- is this spot taken by a truck? (Streets keeps its parked cars clear)
+function StreetLife.Reserved(pos)
+	for _, t in ipairs(StreetLife.TRUCKS) do
+		local cf = StreetLife.TruckFrame(t)
+		if (Vector3.new(pos.X, 0, pos.Z) - Vector3.new(cf.Position.X, 0, cf.Position.Z)).Magnitude < 18 then
+			return true
+		end
+	end
+	return false
+end
+
+local function spotAt(pos, look, action, role)
+	return { CFrame = CFrame.lookAt(pos, Vector3.new(look.X, pos.Y, look.Z)), Action = action, Role = role or "visit", Floor = 1 }
+end
+
+-- a food truck: a boxy van with a serving window on the sidewalk side, an
+-- awning, a menu board, a counter with napkins and sauce, and a bin
+local function truck(parent, t, n)
+	local cf, f = StreetLife.TruckFrame(t)
+	local m = Instance.new("Model")
+	m.Name = "FoodTruck" .. n
+	m.Parent = parent
+	local color = t[5]
+	local function box(name, size, offset, col, mat, collide)
+		local p = (if collide then MapKit.part else MapKit.deco)(m, name, size, cf * offset, col, mat)
+		return p
+	end
+	-- (the truck's local X points away from the sidewalk: f is +X... so the
+	-- window is on its -X side, toward the block)
+	local side = cf:VectorToObjectSpace(-f)
+	local sx = if side.X > 0 then 1 else -1
+	local Y = 0.1
+	-- the body: a hollow box so you can see the cook inside
+	box("TruckFloor", Vector3.new(6, 0.4, 11), CFrame.new(0, Y + 1.6, 0), rgb(70, 70, 76), Enum.Material.DiamondPlate, true)
+	box("TruckRoof", Vector3.new(6.2, 0.4, 11.2), CFrame.new(0, Y + 8.2, 0), color:Lerp(WHITE, 0.3), Enum.Material.SmoothPlastic, true)
+	box("TruckWall", Vector3.new(0.3, 6.4, 11), CFrame.new(-sx * 2.85, Y + 4.9, 0), color, Enum.Material.SmoothPlastic, true)
+	box("TruckWall", Vector3.new(6, 6.4, 0.3), CFrame.new(0, Y + 4.9, -5.35), color, Enum.Material.SmoothPlastic, true)
+	box("TruckWall", Vector3.new(6, 6.4, 0.3), CFrame.new(0, Y + 4.9, 5.35), color, Enum.Material.SmoothPlastic, true)
+	-- the window side: solid below and above the window, open in the middle
+	box("TruckWall", Vector3.new(0.3, 2.4, 11), CFrame.new(sx * 2.85, Y + 2.9, 0), color, Enum.Material.SmoothPlastic, true)
+	box("TruckWall", Vector3.new(0.3, 1.4, 11), CFrame.new(sx * 2.85, Y + 7.3, 0), color, Enum.Material.SmoothPlastic, true)
+	for _, z in ipairs({ -4.6, 4.6 }) do
+		box("TruckWall", Vector3.new(0.3, 2.6, 1.8), CFrame.new(sx * 2.85, Y + 5.3, z), color, Enum.Material.SmoothPlastic, true)
+	end
+	box("ServingLedge", Vector3.new(1.2, 0.2, 7.4), CFrame.new(sx * 3.3, Y + 4.1, 0), rgb(200, 200, 206), Enum.Material.Metal)
+	-- a stripe and the name along the side
+	box("TruckStripe", Vector3.new(0.32, 0.5, 11.02), CFrame.new(sx * 2.86, Y + 1.9, 0), WHITE)
+	local sign = box("TruckSign", Vector3.new(0.34, 1.2, 9), CFrame.new(sx * 2.88, Y + 7.3, 0), color:Lerp(BLACK, 0.4))
+	MapKit.signText(sign, if sx > 0 then Enum.NormalId.Right else Enum.NormalId.Left, t[4], WHITE, Enum.Font.GothamBlack)
+	-- the cab at the front, with a windscreen and headlights
+	box("TruckCab", Vector3.new(6, 4.6, 3.6), CFrame.new(0, Y + 3.8, -7.3), color, Enum.Material.SmoothPlastic, true)
+	local glass = box("TruckWindscreen", Vector3.new(5.4, 1.8, 0.2), CFrame.new(0, Y + 4.9, -9.12), rgb(150, 190, 220), Enum.Material.Glass)
+	glass.Transparency = 0.2
+	for _, x in ipairs({ -2.2, 2.2 }) do
+		box("TruckHeadlight", Vector3.new(0.8, 0.5, 0.15), CFrame.new(x, Y + 2.4, -9.15), rgb(255, 250, 220), Enum.Material.Neon)
+	end
+	-- wheels
+	for _, z in ipairs({ -7, 3.6 }) do
+		for _, x in ipairs({ -2.8, 2.8 }) do
+			MapKit.cylinder(m, "TruckWheel", 0.9, 2.4, cf * CFrame.new(x, Y + 1.2, z), rgb(24, 24, 26), Enum.Material.Rubber)
+		end
+	end
+	-- the striped awning over the window
+	MapKit.awning(m, 8, 2.4, cf * CFrame.new(sx * 4, Y + 8, 0) * CFrame.Angles(0, sx * math.pi / 2, 0), color, WHITE)
+	-- inside: a grill, a fridge, a menu board
+	box("Grill", Vector3.new(1.8, 0.9, 3), CFrame.new(-sx * 1.6, Y + 2.25, 2.2), rgb(60, 60, 64), Enum.Material.Metal)
+	box("GrillTop", Vector3.new(1.6, 0.1, 2.8), CFrame.new(-sx * 1.6, Y + 2.75, 2.2), rgb(30, 30, 32), Enum.Material.DiamondPlate)
+	box("TruckFridge", Vector3.new(1.8, 4.4, 2), CFrame.new(-sx * 1.6, Y + 4, -3.4), rgb(220, 222, 226), Enum.Material.Metal)
+	local menu = box("MenuBoard", Vector3.new(0.2, 2.2, 3.4), CFrame.new(sx * 3.1, Y + 3, -6.2), rgb(30, 30, 34))
+	MapKit.signText(menu, if sx > 0 then Enum.NormalId.Right else Enum.NormalId.Left, "MENU\n" .. t[4]:gsub("^[^%w]+%s*", ""), rgb(255, 230, 120), Enum.Font.GothamBold)
+	-- on the sidewalk: napkins, a bin
+	local walk = cf * CFrame.new(sx * 5.4, 0, 0)
+	MapKit.column(m, "TruckBin", 2.2, 1.6, (walk * CFrame.new(0, 1.4, 6)).Position, rgb(60, 110, 70), Enum.Material.Metal, true)
+	-- the cook's spot (inside, at the window) and the queue on the sidewalk
+	local spots = {}
+	local inside = (cf * CFrame.new(sx * 1.4, Y + 1.8, 0)).Position
+	local outside = (cf * CFrame.new(sx * 5.2, 0.5, 0)).Position
+	table.insert(spots, spotAt(inside, outside, "cook", "work"))
+	for k = 0, 3 do
+		local p = (cf * CFrame.new(sx * 5.6, 0.5, -2.6 + k * 2.4)).Position
+		table.insert(spots, spotAt(p, if k == 0 then inside else p + (inside - outside), if k % 2 == 0 then "snack" else "wait"))
+	end
+	-- a couple of people eating standing up a little way off
+	for k = 0, 1 do
+		local p = (cf * CFrame.new(sx * 6.4, 0.5, 6.5 + k * 2.2)).Position
+		table.insert(spots, spotAt(p, (cf * CFrame.new(sx * 6.4, 0.5, 0)).Position, "snack"))
+	end
+	return m, spots, outside
+end
+
+-- builds the trucks (each a little place of its own); returns their places
+function StreetLife.build(ctx, parent)
+	local folder = Instance.new("Folder")
+	folder.Name = "StreetLife"
+	folder.Parent = parent
+	local places = {}
+	for n, t in ipairs(StreetLife.TRUCKS) do
+		local m, spots, door = truck(folder, t, n)
+		local face = FACE[t[3]]
+		local place = ctx.outdoor("FoodTruck" .. n, m, t[1], t[2], door, face, spots)
+		place.Label = t[4]
+		place.Kind = "food"
+		place.Food = t[6]
+		place.NoPin = false
+		table.insert(places, place)
+	end
+	return places
+end
+
+return StreetLife
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX57"><Properties><string name="Name">StreetLifeService</string><ProtectedString name="Source"><![CDATA[-- StreetLifeService (ModuleScript) — ServerScriptService.Modules.StreetLifeService
+-- The people who make the streets lively (see StreetLife for the trucks):
+--   🚚 a cook in every food truck, flipping and serving; players can buy a
+--      bite at the window (it heals and refills stamina)
+--   🎸 street musicians playing in the plaza, both parks, on the boardwalk and
+--      at Funland. People walking by stop to listen, clap, cheer or dance for
+--      a while before going on their way, and players can tip them (they bow,
+--      and they remember you)
+
+local Players = game:GetService("Players")
+
+local StreetLifeService = {}
+local S
+
+StreetLifeService.Cooks = {}
+StreetLifeService.Buskers = {}
+
+local COOKS = { "Rosa", "Big Mike", "Lupe", "Theo", "Mei", "Jules" }
+local BUSKERS = {
+	{ "Plaza", "Ziggy", Vector3.new(-18, 0, 30) },
+	{ "Park", "Sunny", Vector3.new(10, 0, 4) },
+	{ "WillowPark", "Hollis", Vector3.new(-10, 0, 4) },
+	{ "Beach", "Marlow", nil },
+	{ "Funland", "Pip", nil },
+}
+local FOOD = {
+	taco = { "🌮", "Tacos", 8, 30 }, burger = { "🍔", "Burger", 10, 40 }, icecream = { "🍦", "Ice cream", 6, 20 },
+	wrap = { "🥙", "Gyro", 9, 35 }, noodles = { "🍜", "Noodles", 9, 35 }, coffee = { "☕", "Coffee", 5, 15 },
+}
+local TUNES = { "♪ La la laaa ♪", "♫ Here's one you'll know ♫", "Thank you, thank you!", "♪ Hmm hmm hmm ♪", "This one's for the city!" }
+local WATCH = { "Ooh, they're good!", "I love this song!", "Encore!", "Wow!", "Play another one!" }
+
+local function rgb(r, g, b)
+	return Color3.fromRGB(r, g, b)
+end
+
+local function rootOf(player)
+	return player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+end
+
+local function spawnWorker(name, job, spot, action, activity)
+	local ok, brain = pcall(S.Citizens.SpawnExtra, { Name = name, First = name, Job = job, Age = math.random(20, 55), Activity = activity }, CFrame.new(spot.CFrame.Position + Vector3.new(0, 3, 0)))
+	if not ok or not brain then
+		return nil
+	end
+	S.Citizens.Control(brain, true)
+	S.Citizens.PlaceAt(brain, spot, action)
+	brain.Model:SetAttribute("Activity", activity)
+	brain.Model:SetAttribute("Expression", "happy")
+	brain.Staff = true
+	return brain
+end
+
+-- buy a bite at a truck window
+local function buyFood(player, place, cook)
+	local food = FOOD[place.Food or "taco"] or FOOD.taco
+	local root = rootOf(player)
+	local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+	if not root or not humanoid or humanoid.Health <= 0 then
+		return
+	end
+	if S.Crime and S.Crime.IsJailed and S.Crime.IsJailed(player) then
+		return
+	end
+	if not S.City.Spend(player, food[3], food[1] .. " " .. food[2]) then
+		S.City.Toast(player, "🪙", "Not enough coins", food[2] .. " costs " .. food[3] .. " coins.", rgb(220, 120, 80))
+		return
+	end
+	humanoid.Health = math.min(humanoid.MaxHealth, humanoid.Health + food[4])
+	S.City.Send(player, { Type = "Food", Energy = food[4], Name = food[2] })
+	player.Character:SetAttribute("Eating", "truck")
+	task.delay(2.6, function()
+		if player.Character and player.Character:GetAttribute("Eating") == "truck" then
+			player.Character:SetAttribute("Eating", nil)
+		end
+	end)
+	if cook and cook.Model.Parent then
+		S.Citizens.Say(cook, ({ "Here you go! Enjoy!", "Hot and fresh!", "Come back soon!", "Best in the city, right?" })[math.random(1, 4)], "happy", 3)
+	end
+	S.City.Toast(player, food[1], food[2] .. "!", "+" .. food[4] .. " health, and stamina. " .. food[3] .. " coins.", rgb(240, 170, 60))
+end
+
+-- tip a street musician
+local function tip(player, busker)
+	if not busker.Model.Parent then
+		return
+	end
+	if not S.City.Spend(player, 5, "🎸 Tipped " .. busker.C.First) then
+		S.City.Toast(player, "🪙", "No coins to tip", "You need 5 coins.", rgb(220, 120, 80))
+		return
+	end
+	busker.Tips = (busker.Tips or 0) + 5
+	S.Citizens.React(busker, "salute", "Thank you kindly, " .. player.DisplayName .. "!", "happy", 2.5, rootOf(player) and rootOf(player).Position)
+	task.delay(2.6, function()
+		if busker.Model.Parent then
+			S.Citizens.PlaceAt(busker, busker.Spot, "guitar")
+		end
+	end)
+	if not busker.C.Temp then
+		pcall(S.City.Remember, busker.C, player, "tipped me", 8)
+	end
+	S.City.Toast(player, "🎸", "You tipped " .. busker.C.First, "5 coins in the guitar case. They play you a little flourish.", rgb(250, 200, 80))
+end
+
+local function prompt(parent, text, object, key, fn)
+	local p = Instance.new("ProximityPrompt")
+	p.Name = "StreetPrompt"
+	p.ActionText = text
+	p.ObjectText = object
+	p.KeyboardKeyCode = key
+	p.HoldDuration = 0.3
+	p.MaxActivationDistance = 9
+	p.RequiresLineOfSight = false
+	p.Parent = parent
+	p.Triggered:Connect(fn)
+	return p
+end
+
+-- a musician's spot, at a place (an offset from its middle, or near its door)
+local function buskSpot(def)
+	local place = S.Map.Places[def[1]]
+	if not place then
+		return nil
+	end
+	local base
+	if def[3] and place.Model and place.Model:IsA("Model") then
+		local cf = place.Model:GetPivot()
+		base = Vector3.new(cf.Position.X, 0.5, cf.Position.Z) + def[3]
+	end
+	base = base or ((place.Inside or place.Door) + Vector3.new(6, 0, 6))
+	base = Vector3.new(base.X, 0.5, base.Z)
+	return { CFrame = CFrame.lookAt(base, base + Vector3.new(0, 0, 1)), Action = "guitar", Role = "work", Floor = 1, Place = def[1] }
+end
+
+-- every few seconds near each musician: someone walking by might stop and
+-- listen for a while (and someone listening might start dancing)
+local function crowdStep()
+	for _, b in ipairs(StreetLifeService.Buskers) do
+		if b.Model.Parent then
+			local pos = b.Root.Position
+			b.Next = b.Next or 0
+			if os.clock() >= b.Next then
+				b.Next = os.clock() + math.random(5, 9)
+				if math.random() < 0.35 then
+					S.Citizens.Say(b, TUNES[math.random(1, #TUNES)], "happy", 2.5)
+				end
+				local listeners = 0
+				for _, w in ipairs(S.Citizens.Nearby(pos, 26)) do
+					if w ~= b and w.Listening and os.clock() < w.Listening then
+						listeners += 1
+					end
+				end
+				if listeners < 4 then
+					for _, w in ipairs(S.Citizens.Nearby(pos, 30)) do
+						if w ~= b and not w.Staff and not w.C.Temp and w.State == "walk" and S.Citizens.CanReact(w) and math.random() < 0.4 then
+							local secs = math.random(10, 22)
+							w.Listening = os.clock() + secs
+							local roll = math.random()
+							local action = if roll < 0.35 then "listen" elseif roll < 0.6 then "clap" elseif roll < 0.8 then "cheer" else "dance"
+							S.Citizens.React(w, action, if math.random() < 0.4 then WATCH[math.random(1, #WATCH)] else nil, "happy", secs, pos)
+							break
+						end
+					end
+				end
+			end
+		end
+	end
+end
+
+function StreetLifeService.Start(services)
+	S = services
+	task.spawn(function()
+		local t0 = os.clock()
+		while not workspace:FindFirstChild("Citizens") and os.clock() - t0 < 30 do
+			task.wait(0.5)
+		end
+		task.wait(1)
+		-- the cooks
+		for n, place in ipairs(S.Map.StreetLife or {}) do
+			local spot = place.Spots[1]
+			if spot then
+				local cook = spawnWorker(COOKS[(n - 1) % #COOKS + 1], "Food Truck Cook", spot, "cook", "🍳 Cooking at the " .. (place.Label or "food truck"))
+				if cook then
+					table.insert(StreetLifeService.Cooks, cook)
+					local window = place.Spots[2] and place.Spots[2].CFrame.Position
+					local anchor = Instance.new("Part")
+					anchor.Name = "TruckWindow"
+					anchor.Anchored, anchor.CanCollide, anchor.CanQuery, anchor.CanTouch = true, false, false, false
+					anchor.Transparency = 1
+					anchor.Size = Vector3.new(1, 1, 1)
+					anchor.CFrame = CFrame.new((window or spot.CFrame.Position) + Vector3.new(0, 2, 0))
+					anchor.Parent = place.Model
+					local food = FOOD[place.Food or "taco"] or FOOD.taco
+					prompt(anchor, "Buy " .. food[2], food[1] .. " " .. food[3] .. " coins", Enum.KeyCode.E, function(player)
+						buyFood(player, place, cook)
+					end)
+				end
+			end
+		end
+		-- the musicians
+		for _, def in ipairs(BUSKERS) do
+			local spot = buskSpot(def)
+			if spot then
+				local b = spawnWorker(def[2], "Street Musician", spot, "guitar", "🎸 Busking at the " .. (S.Map.Places[def[1]].Label or def[1]))
+				if b then
+					b.Spot = spot
+					table.insert(StreetLifeService.Buskers, b)
+					-- an open guitar case for tips
+					local case = Instance.new("Part")
+					case.Name = "GuitarCase"
+					case.Anchored, case.CanCollide = true, false
+					case.Size = Vector3.new(3.2, 0.4, 1.4)
+					case.Color = rgb(40, 30, 30)
+					case.Material = Enum.Material.Leather
+					case.CFrame = spot.CFrame * CFrame.new(0, -0.3, -3)
+					case.Parent = b.Model.Parent
+					prompt(case, "Tip 5 coins", "🎸 " .. def[2], Enum.KeyCode.E, function(player)
+						tip(player, b)
+					end)
+				end
+			end
+		end
+		while true do
+			task.wait(1)
+			pcall(crowdStep)
+		end
+	end)
+end
+
+return StreetLifeService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX58"><Properties><string name="Name">SleepService</string><ProtectedString name="Source"><![CDATA[-- SleepService (ModuleScript) — ServerScriptService.Modules.SleepService
+-- 💤 Players can sleep in any bed: at home, at the hotel or the hospital, in a
+-- prison bunk. Walk up to a bed and hold E ("Sleep"): you lie down under the
+-- covers (head on the pillow), little Zs float up, the screen dims. Sleeping
+-- heals you and refills your energy, and after a proper rest you wake up
+-- "Well rested" (a little faster for a few minutes). Move to get up.
+
+local Players = game:GetService("Players")
+local CollectionService = game:GetService("CollectionService")
+
+local SleepService = {}
+local S
+
+local sleepers = {} -- [player] = { Bed, Since, Root CFrame, Rested }
+SleepService.Sleepers = sleepers
+SleepService.REST = 20 -- seconds of sleep for "Well rested"
+
+local function rgb(r, g, b)
+	return Color3.fromRGB(r, g, b)
+end
+
+local function rootOf(player)
+	return player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+end
+
+-- which way is the head end? toward the pillow if there is one, else along
+-- the long side
+local function headDir(mattress)
+	local best, bestD
+	for _, p in ipairs(mattress.Parent and mattress.Parent:GetChildren() or {}) do
+		if p.Name == "Pillow" and p:IsA("BasePart") then
+			local d = (p.Position - mattress.Position).Magnitude
+			if d < 6 and (not bestD or d < bestD) then
+				best, bestD = p, d
+			end
+		end
+	end
+	local dir
+	if best then
+		dir = best.Position - mattress.Position
+	else
+		local cf = mattress.CFrame
+		dir = if mattress.Size.Z >= mattress.Size.X then cf.LookVector else cf.RightVector
+	end
+	dir = Vector3.new(dir.X, 0, dir.Z)
+	return if dir.Magnitude > 0.05 then dir.Unit else Vector3.new(0, 0, 1)
+end
+
+function SleepService.Sleep(player, mattress)
+	local root = rootOf(player)
+	local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+	if not root or not humanoid or humanoid.Health <= 0 or sleepers[player] then
+		return false
+	end
+	if (root.Position - mattress.Position).Magnitude > 12 then
+		return false
+	end
+	if (player:GetAttribute("Wanted") or 0) > 0 then
+		S.City.Toast(player, "🚨", "Too wired to sleep", "Not with the police after you.", rgb(220, 90, 90))
+		return false
+	end
+	-- lying on the mattress, face up, head toward the pillow
+	local head = headDir(mattress)
+	local top = mattress.Position + Vector3.new(0, mattress.Size.Y / 2 + 0.6, 0)
+	local center = top + head * 0.4
+	-- (facing the feet, then tipped back 90°: face up, head on the pillow)
+	local cf = CFrame.lookAt(center, center - head) * CFrame.Angles(math.rad(90), 0, 0)
+	sleepers[player] = { Bed = mattress, Since = os.clock(), Return = root.CFrame, Rested = false }
+	root.Anchored = true
+	root.CFrame = cf
+	player.Character:SetAttribute("Emote", "sleeping")
+	player.Character:SetAttribute("Sleeping", true)
+	player:SetAttribute("Sleeping", true)
+	S.City.Toast(player, "💤", "Sleeping...", "Resting heals you and refills your energy. Move to get up.", rgb(120, 140, 220))
+	return true
+end
+
+function SleepService.Wake(player)
+	local s = sleepers[player]
+	sleepers[player] = nil
+	player:SetAttribute("Sleeping", nil)
+	local character = player.Character
+	if not s or not character then
+		return
+	end
+	character:SetAttribute("Emote", nil)
+	character:SetAttribute("Sleeping", nil)
+	local root = rootOf(player)
+	if root then
+		-- stand up beside the bed
+		local m = s.Bed
+		local side = if m and m.Parent then headDir(m):Cross(Vector3.new(0, 1, 0)) * 3.6 else Vector3.zero
+		local at = if m and m.Parent then m.Position + side + Vector3.new(0, 3, 0) else s.Return.Position
+		root.CFrame = CFrame.new(at)
+		root.Anchored = false
+	end
+	if s.Rested then
+		player:SetAttribute("Boost", 1.15)
+		player:SetAttribute("BoostUntil", workspace:GetServerTimeNow() + 180)
+		S.City.Toast(player, "🌅", "Well rested!", "You feel great: a little faster for 3 minutes.", rgb(250, 200, 90))
+	end
+end
+
+-- a "Sleep" prompt on a bed's mattress
+local function addBed(mattress)
+	if mattress:FindFirstChild("SleepPrompt") or not mattress:IsA("BasePart") then
+		return
+	end
+	local p = Instance.new("ProximityPrompt")
+	p.Name = "SleepPrompt"
+	p.ActionText = "Sleep"
+	p.ObjectText = "💤"
+	p.KeyboardKeyCode = Enum.KeyCode.E
+	p.HoldDuration = 0.6
+	p.MaxActivationDistance = 7
+	p.RequiresLineOfSight = false
+	p.Parent = mattress
+	p.Triggered:Connect(function(player)
+		SleepService.Sleep(player, mattress)
+	end)
+	CollectionService:AddTag(mattress, "Bed")
+end
+
+local function step()
+	for player, s in pairs(sleepers) do
+		local character = player.Character
+		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+		if not player.Parent or not humanoid or humanoid.Health <= 0 or not s.Bed.Parent then
+			sleepers[player] = nil
+			player:SetAttribute("Sleeping", nil)
+		else
+			humanoid.Health = math.min(humanoid.MaxHealth, humanoid.Health + 4)
+			S.City.Send(player, { Type = "Food", Energy = 6, Name = "rest", Quiet = true })
+			if not s.Rested and os.clock() - s.Since >= SleepService.REST then
+				s.Rested = true
+				S.City.Toast(player, "😌", "A good rest", "Get up whenever you like: you'll be well rested.", rgb(140, 180, 240))
+			end
+		end
+	end
+end
+SleepService.Step = step
+
+function SleepService.Start(services)
+	S = services
+	S.City.Handle("Wake", function(player)
+		SleepService.Wake(player)
+		return { Ok = true }
+	end)
+	local function scan(d)
+		if d.Name == "Mattress" and d:IsA("BasePart") then
+			addBed(d)
+		end
+	end
+	for _, d in ipairs(workspace:GetDescendants()) do
+		scan(d)
+	end
+	-- (houses get their furniture when a family moves in)
+	workspace.DescendantAdded:Connect(function(d)
+		if d.Name == "Mattress" then
+			task.defer(scan, d)
+		end
+	end)
+	Players.PlayerRemoving:Connect(function(player)
+		sleepers[player] = nil
+	end)
+	task.spawn(function()
+		while true do
+			task.wait(1)
+			pcall(step)
+		end
+	end)
+end
+
+return SleepService
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX59"><Properties><string name="Name">Conversation</string><ProtectedString name="Source"><![CDATA[-- Conversation (ModuleScript) — ServerScriptService.Modules.Conversation
 -- The deeper side of talking to citizens (used by DialogueService):
 --   • every personality has its own voice: how they say hello, little verbal
 --     habits, their dreams and fears, their advice, favorite food and places
@@ -30863,7 +32548,7 @@ function Conversation.Answer(key, c, player, brain)
 end
 
 return Conversation
-]]></ProtectedString></Properties></Item></Item></Item><Item class="StarterPlayer" referent="RBX58"><Properties><string name="Name">StarterPlayer</string></Properties><Item class="StarterPlayerScripts" referent="RBX59"><Properties><string name="Name">StarterPlayerScripts</string></Properties><Item class="LocalScript" referent="RBX75"><Properties><string name="Name">CityClient</string><ProtectedString name="Source"><![CDATA[-- CityClient (LocalScript) — StarterPlayer.StarterPlayerScripts.CityClient
+]]></ProtectedString></Properties></Item></Item></Item><Item class="StarterPlayer" referent="RBX61"><Properties><string name="Name">StarterPlayer</string></Properties><Item class="StarterPlayerScripts" referent="RBX62"><Properties><string name="Name">StarterPlayerScripts</string></Properties><Item class="LocalScript" referent="RBX78"><Properties><string name="Name">CityClient</string><ProtectedString name="Source"><![CDATA[-- CityClient (LocalScript) — StarterPlayer.StarterPlayerScripts.CityClient
 -- AI City on your screen. Starts the HUD, the windows, the world effects and
 -- the citizens' body language, and routes everything the server sends.
 --
@@ -31152,7 +32837,7 @@ UserInputService.InputEnded:Connect(function(input)
 		Moves.SetSprint(false)
 	end
 end)
-]]></ProtectedString></Properties><Item class="ModuleScript" referent="RBX60"><Properties><string name="Name">UI</string><ProtectedString name="Source"><![CDATA[-- UI (ModuleScript) — StarterPlayerScripts.CityClient.UI
+]]></ProtectedString></Properties><Item class="ModuleScript" referent="RBX63"><Properties><string name="Name">UI</string><ProtectedString name="Source"><![CDATA[-- UI (ModuleScript) — StarterPlayerScripts.CityClient.UI
 -- AI City's look: colors, fonts, and helpers for building the interface
 -- (rounded panels, buttons that bounce, windows that pop open, bars...).
 
@@ -31654,7 +33339,7 @@ function UI.commas(n)
 end
 
 return UI
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX61"><Properties><string name="Name">Icons</string><ProtectedString name="Source"><![CDATA[-- Icons (ModuleScript) — StarterPlayerScripts.CityClient.Icons
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX64"><Properties><string name="Name">Icons</string><ProtectedString name="Source"><![CDATA[-- Icons (ModuleScript) — StarterPlayerScripts.CityClient.Icons
 -- AI City's own icon set, drawn from rounded shapes (no image uploads needed,
 -- and they stay sharp at any size).
 --
@@ -32486,7 +34171,7 @@ end
 table.sort(Icons.Names)
 
 return Icons
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX62"><Properties><string name="Name">Hud</string><ProtectedString name="Source"><![CDATA[-- Hud (ModuleScript) — StarterPlayerScripts.CityClient.Hud
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX65"><Properties><string name="Name">Hud</string><ProtectedString name="Source"><![CDATA[-- Hud (ModuleScript) — StarterPlayerScripts.CityClient.Hud
 -- The always-on screen: the clock and calendar, the city's mood and stats,
 -- a rotating minimap, coins, wanted stars, the mayor and the next election,
 -- the action bar, notifications and the news ticker.
@@ -32637,11 +34322,20 @@ end
 -- Notifications
 --------------------------------------------------------------------------------
 local toastHolder
+local refs = {}
 function Hud.Toast(icon, title, text, color)
 	if not toastHolder then
 		return
 	end
 	color = color or C.Gold
+	-- the same message again (walking back and forth over a gang's corner):
+	-- refresh the one on screen instead of stacking another
+	for _, child in ipairs(toastHolder:GetChildren()) do
+		if child:IsA("Frame") and child:GetAttribute("Title") == (title or "") and child:GetAttribute("Body") == (text or "") then
+			child:SetAttribute("Until", os.clock() + 6)
+			return nil
+		end
+	end
 	local toast = UI.panel(toastHolder, { Size = UDim2.fromOffset(310, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 0.05, Radius = 12, ClipsDescendants = true })
 	local strip = UI.new("Frame", { BackgroundColor3 = color, BorderSizePixel = 0, Size = UDim2.new(0, 5, 1, 0), Parent = toast })
 	local inner = UI.new("Frame", { BackgroundTransparency = 1, Position = UDim2.fromOffset(12, 0), Size = UDim2.new(1, -12, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, Parent = toast })
@@ -32655,17 +34349,34 @@ function Hud.Toast(icon, title, text, color)
 	local scale = UI.new("UIScale", { Scale = 0.5, Parent = toast })
 	UI.tween(scale, 0.3, { Scale = 1 }, Enum.EasingStyle.Back)
 	UI.sound("notify", 0.2, 1.3)
-	-- keep at most five
+	toast:SetAttribute("Title", title or "")
+	toast:SetAttribute("Body", text or "")
+	toast:SetAttribute("Until", os.clock() + 6)
+	-- keep at most four, and never let them run down into the buttons
 	local items = {}
 	for _, child in ipairs(toastHolder:GetChildren()) do
 		if child:IsA("Frame") then
 			table.insert(items, child)
 		end
 	end
-	if #items > 5 then
+	if #items > 4 then
 		items[1]:Destroy()
+		table.remove(items, 1)
 	end
-	task.delay(6, function()
+	task.defer(function()
+		local bar = refs and refs.Bar
+		local limit = if bar and bar.Parent then bar.AbsolutePosition.Y - 10 else math.huge
+		for k = 1, #items - 1 do
+			local bottom = toastHolder.AbsolutePosition.Y + toastHolder.AbsoluteSize.Y
+			if bottom > limit and items[k].Parent then
+				items[k]:Destroy()
+			end
+		end
+	end)
+	task.spawn(function()
+		while toast.Parent and os.clock() < (toast:GetAttribute("Until") or 0) do
+			task.wait(0.5)
+		end
 		if toast.Parent then
 			UI.tween(scale, 0.2, { Scale = 0.6 })
 			UI.tween(toast, 0.2, { BackgroundTransparency = 1 })
@@ -32702,7 +34413,7 @@ end
 --------------------------------------------------------------------------------
 -- Build
 --------------------------------------------------------------------------------
-local refs = {}
+-- (refs is declared above, before the notifications)
 
 local function statRow(parent, icon, name, color, order)
 	local row = UI.new("Frame", { Name = "StatRow", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 18), LayoutOrder = order, Parent = parent })
@@ -32905,6 +34616,9 @@ local function build()
 	-- wanted: a red glow around the screen
 	refs.Edge = UI.new("Frame", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 0, Parent = screen })
 	refs.EdgeStroke = UI.stroke(refs.Edge, C.Red, 14, 1)
+	-- asleep: the screen dims, with a hint
+	refs.SleepShade = UI.new("Frame", { Name = "SleepShade", BackgroundColor3 = Color3.fromRGB(8, 10, 24), BackgroundTransparency = 0.45, Size = UDim2.fromScale(1, 1), Visible = false, ZIndex = 0, Parent = screen })
+	UI.text(refs.SleepShade, "💤  Sleeping...  move to get up", 22, UI.Bold, C.White, { AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0.3, 0), Size = UDim2.fromOffset(420, 40), TextXAlignment = Enum.TextXAlignment.Center, TextTransparency = 0.1 })
 	refs.Banner = UI.text(screen, "", 40, UI.Title, C.Red, { AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 108), Size = UDim2.fromOffset(600, 50), TextXAlignment = Enum.TextXAlignment.Center, TextTransparency = 1, ZIndex = 30 })
 	refs.BannerStroke = UI.new("UIStroke", { Thickness = 3, Transparency = 1, Parent = refs.Banner })
 
@@ -33032,6 +34746,9 @@ local function frame(dt)
 		refs.MiniPivot.Rotation = -yaw
 		local r = 80
 		refs.North.Position = UDim2.new(0.5, math.sin(math.rad(-yaw)) * r, 0.5, -math.cos(math.rad(-yaw)) * r)
+	end
+	if refs.SleepShade then
+		refs.SleepShade.Visible = player:GetAttribute("Sleeping") == true
 	end
 	-- wanted: the edge pulses (fast when the police can see you)
 	local stars = player:GetAttribute("Wanted") or 0
@@ -33607,7 +35324,7 @@ function Hud.Start(context)
 end
 
 return Hud
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX63"><Properties><string name="Name">Panels</string><ProtectedString name="Source"><![CDATA[-- Panels (ModuleScript) — StarterPlayerScripts.CityClient.Panels
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX66"><Properties><string name="Name">Panels</string><ProtectedString name="Source"><![CDATA[-- Panels (ModuleScript) — StarterPlayerScripts.CityClient.Panels
 -- The windows you open: the city map, the People directory and profile
 -- cards, voting, speeches, the mayor's desk, conversations with citizens,
 -- elevators, help, settings, the welcome screen, election results and the
@@ -34930,9 +36647,10 @@ local function buildWardrobe()
 	Panels.Wardrobe = win
 	local body = win.Body
 	local top = UI.text(body, "", 15, UI.Bold, C.Sub, { Size = UDim2.new(1, 0, 0, 22), RichText = true })
-	local grid = UI.new("Frame", { BackgroundTransparency = 1, Position = UDim2.fromOffset(0, 30), Size = UDim2.new(1, 0, 1, -70), Parent = body })
-	UI.new("UIGridLayout", { CellSize = UDim2.new(0.333, -8, 1, 0), CellPadding = UDim2.fromOffset(10, 0), SortOrder = Enum.SortOrder.LayoutOrder, Parent = grid })
-	UI.text(body, "🌙 Everything hides you better at night. Wear a top and a face item together. After a crime, change or take them off (C) where nobody can see you: the police will be looking for the wrong person.", 12, UI.Font, C.Dim, { AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.new(1, 0, 0, 34), TextWrapped = true })
+	-- (a scrolling grid: disguises first, then all the fashion)
+	local grid = UI.new("ScrollingFrame", { BackgroundTransparency = 1, BorderSizePixel = 0, Position = UDim2.fromOffset(0, 30), Size = UDim2.new(1, 0, 1, -70), CanvasSize = UDim2.new(), AutomaticCanvasSize = Enum.AutomaticSize.Y, ScrollBarThickness = 6, ScrollingDirection = Enum.ScrollingDirection.Y, Parent = body })
+	UI.new("UIGridLayout", { CellSize = UDim2.new(0.333, -10, 0, 252), CellPadding = UDim2.fromOffset(10, 10), SortOrder = Enum.SortOrder.LayoutOrder, Parent = grid })
+	UI.text(body, "🌙 Disguises hide you better at night. One item per slot (top, face, hat, eyes, neck). After a crime, change clothes (C) where nobody can see you: the police will be looking for the wrong outfit.", 12, UI.Font, C.Dim, { AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.new(1, 0, 0, 34), TextWrapped = true })
 	local function stat(card, label, value, color, y, text)
 		UI.text(card, label, 12, UI.Bold, C.Sub, { Position = UDim2.fromOffset(0, y), Size = UDim2.fromOffset(78, 16) })
 		local _, set = UI.bar(card, color, 8, { Position = UDim2.new(0, 80, 0, y + 4), Size = UDim2.new(1, -118, 0, 8) })
@@ -34951,12 +36669,20 @@ local function buildWardrobe()
 				UI.stroke(card, C.Purple, 2, 0)
 			end
 			UI.pad(card, 12)
-			UI.Icons.Badge(card, item.Id, 54, UI.rgb(110, 80, 180), { AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 0), Fill = 0.78 })
+			local badge = UI.Icons.Badge(card, item.Id, 54, if item.Fashion then (item.Color or UI.rgb(220, 120, 160)):Lerp(UI.rgb(255, 255, 255), 0.15) else UI.rgb(110, 80, 180), { AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 0), Fill = 0.78 })
+			if not UI.Icons.Has(item.Id) then
+				UI.text(badge, item.Emoji or "👕", 30, UI.Bold, C.White, { Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center, ZIndex = badge.ZIndex + 3 })
+			end
 			UI.text(card, item.Name, 18, UI.Title, C.Text, { Position = UDim2.fromOffset(0, 58), Size = UDim2.new(1, 0, 0, 24), TextXAlignment = Enum.TextXAlignment.Center })
-			UI.text(card, (if item.Slot == "Top" then "TOP · " else "FACE · ") .. item.Desc, 12, UI.Font, C.Sub, { Position = UDim2.fromOffset(0, 84), Size = UDim2.new(1, 0, 0, 62), TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Center, TextYAlignment = Enum.TextYAlignment.Top })
-			stat(card, "☀️ Hidden", item.Hidden, C.Blue, 152, math.floor(item.Hidden * 100) .. "%")
-			stat(card, "🌙 At night", math.min(0.95, item.Hidden + item.Night), C.Purple, 172, math.floor(math.min(0.95, item.Hidden + item.Night) * 100) .. "%")
-			stat(card, "👀 Noticed", item.Suspicious, C.Red, 192, if item.Suspicious > 0 then "day" else "no")
+			UI.text(card, string.upper(item.Slot or "") .. " · " .. item.Desc, 12, UI.Font, C.Sub, { Position = UDim2.fromOffset(0, 84), Size = UDim2.new(1, 0, 0, 62), TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Center, TextYAlignment = Enum.TextYAlignment.Top })
+			if item.Fashion then
+				stat(card, "✨ Style", math.clamp(item.Price / 160, 0.15, 1), C.Gold, 152, if item.Price >= 150 then "wow" else "nice")
+				stat(card, "☀️ Hidden", item.Hidden, C.Blue, 172, math.floor(item.Hidden * 100) .. "%")
+			else
+				stat(card, "☀️ Hidden", item.Hidden, C.Blue, 152, math.floor(item.Hidden * 100) .. "%")
+				stat(card, "🌙 At night", math.min(0.95, item.Hidden + item.Night), C.Purple, 172, math.floor(math.min(0.95, item.Hidden + item.Night) * 100) .. "%")
+				stat(card, "👀 Noticed", item.Suspicious, C.Red, 192, if item.Suspicious > 0 then "day" else "no")
+			end
 			local label, color, textColor
 			if item.Owned then
 				label, color, textColor = if item.Wearing then "Take off" else "Put on", if item.Wearing then C.Panel3 else C.Purple, C.White
@@ -35157,7 +36883,7 @@ function Panels.Start(context)
 end
 
 return Panels
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX64"><Properties><string name="Name">World</string><ProtectedString name="Source"><![CDATA[-- World (ModuleScript) — StarterPlayerScripts.CityClient.World
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX67"><Properties><string name="Name">World</string><ProtectedString name="Source"><![CDATA[-- World (ModuleScript) — StarterPlayerScripts.CityClient.World
 -- Everything drawn in the 3D world: nameplates over citizens and players,
 -- speech bubbles, the interaction prompts (talk, elevators, crimes), the
 -- waypoint beam, hit effects, alarms, confetti, the sky and the traffic lights.
@@ -35189,10 +36915,21 @@ local function plateOffset(model)
 	return Vector3.new(0, 2.2 * s + 0.6, 0) -- (a little clear of the head)
 end
 
+local making = {} -- (a tag being made right now: never make two for one person)
 local function makePlate(model, isPlayer)
+	if plates[model] or making[model] then
+		return
+	end
+	making[model] = true
 	local head = model:FindFirstChild("Head") or model:WaitForChild("Head", 5)
+	making[model] = nil
 	if not head or plates[model] then
 		return
+	end
+	-- (and if one is somehow already on the head, use none twice)
+	local old = head:FindFirstChild("CityPlate")
+	if old then
+		old:Destroy()
 	end
 	local gui = UI.new("BillboardGui", {
 		Name = "CityPlate",
@@ -35222,7 +36959,7 @@ local function makePlate(model, isPlayer)
 	-- tags shrink with distance (see declutter) so a crowd isn't a wall of text
 	local scale = UI.new("UIScale", { Scale = 1, Parent = gui })
 	gui.Parent = head
-	local entry = { Gui = gui, Name = name, Mood = mood, Badge = badge, Activity = activity, Model = model, IsPlayer = isPlayer, Scale = scale }
+	local entry = { Gui = gui, Name = name, Mood = mood, Badge = badge, Activity = activity, Model = model, IsPlayer = isPlayer, Scale = scale, HP = hpBack }
 	local function refreshHP()
 		local hp, maxHp = model:GetAttribute("HP"), model:GetAttribute("MaxHP")
 		if isPlayer then
@@ -35372,8 +37109,17 @@ local function declutter()
 				local p, onScreen = camera:WorldToViewportPoint(world)
 				if onScreen and p.Z > 0 then
 					if visible(camPos, world) then
+						-- the tag's real size: the name or the activity line, whichever
+						-- is wider, and the health bar under it when someone's hurt
+						local showAct = entry.Activity.Visible and entry.Activity.Text ~= ""
 						local w = ((entry.Name.TextBounds and entry.Name.TextBounds.X) or 100) + 44
-						local h = if entry.Activity.Visible and entry.Activity.Text ~= "" then 46 else 26
+						if showAct then
+							w = math.max(w, ((entry.Activity.TextBounds and entry.Activity.TextBounds.X) or 140) + 16)
+						end
+						local h = if showAct then 46 else 26
+						if entry.HP and entry.HP.Visible then
+							h = 56
+						end
 						table.insert(list, { Entry = entry, X = p.X, Y = p.Y, D = dist, W = w * sc, H = h * sc })
 					else
 						gui.Enabled = false
@@ -36070,6 +37816,33 @@ end
 --------------------------------------------------------------------------------
 -- Start
 --------------------------------------------------------------------------------
+-- your own house: no "Break in" on your own front door, a "Your home" tag
+-- instead (the server can't hide a prompt for just one player)
+local homeTags = {}
+function World.HouseDoors()
+	local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+	for _, anchor in ipairs(CollectionService:GetTagged("HouseDoor")) do
+		local prompt = anchor:FindFirstChild("BreakIn")
+		local mine = anchor:GetAttribute("Owner") == player.UserId
+		if prompt then
+			local want = anchor:GetAttribute("BreakOK") == true and not mine
+			if prompt.Enabled ~= want then
+				prompt.Enabled = want
+			end
+		end
+		local near = root and (anchor.Position - root.Position).Magnitude < 60
+		if mine and near and not homeTags[anchor] then
+			local gui = UI.new("BillboardGui", { Name = "YourHome", Size = UDim2.fromOffset(150, 30), StudsOffset = Vector3.new(0, 7, 0), MaxDistance = 60, LightInfluence = 0, AlwaysOnTop = true, Adornee = anchor, Parent = anchor })
+			local label = UI.text(gui, "🏠 Your home", 16, UI.Bold, Color3.fromRGB(150, 230, 160), { Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center })
+			UI.new("UIStroke", { Thickness = 1.5, Transparency = 0.3, Parent = label })
+			homeTags[anchor] = gui
+		elseif homeTags[anchor] and not (mine and near) then
+			homeTags[anchor]:Destroy()
+			homeTags[anchor] = nil
+		end
+	end
+end
+
 function World.Start(context)
 	-- job markers are only for whoever is on that shift (see JobService)
 	local function jobMarker(d)
@@ -36086,6 +37859,66 @@ function World.Start(context)
 		task.defer(jobMarker, d)
 	end)
 	ctx = context
+	task.spawn(function()
+		while true do
+			pcall(World.HouseDoors)
+			task.wait(0.4)
+		end
+	end)
+	-- room lights: only the ones near you are on (thousands at once is slow)
+	-- (sorted into 100-stud cells, so each check only looks at the few cells
+	-- around the camera instead of all five thousand)
+	task.spawn(function()
+		local CELL = 100
+		local cells, lit, built = {}, {}, 0
+		local function rebuild()
+			cells = {}
+			for _, panel in ipairs(CollectionService:GetTagged("RoomLight")) do
+				local light = panel:FindFirstChildOfClass("SurfaceLight")
+				if light then
+					local k = math.floor(panel.Position.X / CELL) .. "," .. math.floor(panel.Position.Z / CELL)
+					local c = cells[k]
+					if not c then
+						c = {}
+						cells[k] = c
+					end
+					table.insert(c, { panel, light })
+				end
+			end
+			built = os.clock()
+		end
+		while true do
+			local camera = workspace.CurrentCamera
+			if os.clock() - built > 10 then
+				pcall(rebuild)
+			end
+			if camera then
+				local camPos = camera.CFrame.Position
+				local cx, cz = math.floor(camPos.X / CELL), math.floor(camPos.Z / CELL)
+				local now = {}
+				for dx = -1, 1 do
+					for dz = -1, 1 do
+						for _, e in ipairs(cells[(cx + dx) .. "," .. (cz + dz)] or {}) do
+							local panel, light = e[1], e[2]
+							if panel.Parent and (panel.Position - camPos).Magnitude < 100 then
+								now[light] = true
+								if not light.Enabled then
+									light.Enabled = true
+								end
+							end
+						end
+					end
+				end
+				for light in pairs(lit) do
+					if not now[light] and light.Parent then
+						light.Enabled = false
+					end
+				end
+				lit = now
+			end
+			task.wait(0.5)
+		end
+	end)
 	for _, model in ipairs(CollectionService:GetTagged("Citizen")) do
 		task.spawn(makePlate, model, false)
 	end
@@ -36142,7 +37975,7 @@ function World.Start(context)
 end
 
 return World
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX65"><Properties><string name="Name">Moves</string><ProtectedString name="Source"><![CDATA[-- Moves (ModuleScript) — StarterPlayerScripts.CityClient.Moves
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX68"><Properties><string name="Name">Moves</string><ProtectedString name="Source"><![CDATA[-- Moves (ModuleScript) — StarterPlayerScripts.CityClient.Moves
 -- Sprinting and stamina. Hold Shift (or the Sprint button) to run: it uses
 -- stamina, which refills when you stop. Your fitness level (from the server,
 -- see Shared.Fitness) sets how much stamina you have, how fast it refills and
@@ -36202,10 +38035,20 @@ local function report()
 	end)
 end
 
+local wakeAsked = 0
 local function step(dt)
 	local character = player.Character
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 	local root = character and character:FindFirstChild("HumanoidRootPart")
+	-- asleep in a bed: moving (or jumping) gets you up
+	if character and humanoid and character:GetAttribute("Sleeping") and (humanoid.MoveDirection.Magnitude > 0.1 or humanoid.Jump) and os.clock() > wakeAsked then
+		wakeAsked = os.clock() + 1
+		task.spawn(function()
+			pcall(function()
+				ctx.Remotes.Request:InvokeServer({ Action = "Wake" })
+			end)
+		end)
+	end
 	local level = player:GetAttribute("FitLevel") or 1
 	local st = Fitness.Stats(level)
 	local boost = 1
@@ -36270,7 +38113,7 @@ function Moves.Start(context)
 end
 
 return Moves
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX66"><Properties><string name="Name">Gamepad</string><ProtectedString name="Source"><![CDATA[-- Gamepad (ModuleScript) — StarterPlayerScripts.CityClient.Gamepad
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX69"><Properties><string name="Name">Gamepad</string><ProtectedString name="Source"><![CDATA[-- Gamepad (ModuleScript) — StarterPlayerScripts.CityClient.Gamepad
 -- Console / controller support (Xbox, PlayStation, any gamepad):
 --   R2 attack · hold L2 block · L3 sprint (click to toggle) · R1 / L1 next /
 --   previous weapon · D-pad ▲ phone · ▼ map · ◀ help · ▶ wardrobe ·
@@ -36538,7 +38381,7 @@ function Gamepad.Start(context)
 end
 
 return Gamepad
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX67"><Properties><string name="Name">Water</string><ProtectedString name="Source"><![CDATA[-- Water (ModuleScript) — StarterPlayerScripts.CityClient.Water
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX70"><Properties><string name="Name">Water</string><ProtectedString name="Source"><![CDATA[-- Water (ModuleScript) — StarterPlayerScripts.CityClient.Water
 -- Fish you can see: schools of fish swim around under the surface of Mirror
 -- Lake (and koi in the park ponds). Every "Water" part (see Landscape and
 -- Places) gets its own fish: bodies with a tail that sways as they swim, a fin
@@ -36705,7 +38548,7 @@ function Water.Start()
 end
 
 return Water
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX68"><Properties><string name="Name">Traffic</string><ProtectedString name="Source"><![CDATA[-- Traffic (ModuleScript) — StarterPlayerScripts.CityClient.Traffic
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX71"><Properties><string name="Name">Traffic</string><ProtectedString name="Source"><![CDATA[-- Traffic (ModuleScript) — StarterPlayerScripts.CityClient.Traffic
 -- Cars and city buses driving the streets around you: they keep to the right
 -- lane, follow the car in front at a safe distance, stop at red lights
 -- downtown (the same cycle the traffic lights show), ease through the other
@@ -37305,7 +39148,7 @@ function Traffic.Start()
 end
 
 return Traffic
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX69"><Properties><string name="Name">Rides</string><ProtectedString name="Source"><![CDATA[-- Rides (ModuleScript) — StarterPlayerScripts.CityClient.Rides
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX72"><Properties><string name="Name">Rides</string><ProtectedString name="Source"><![CDATA[-- Rides (ModuleScript) — StarterPlayerScripts.CityClient.Rides
 -- Makes Funland go round on your screen: the Ferris wheel turns (its gondolas
 -- hang straight down), the carousel spins while the horses bob up and down,
 -- and the drop tower climbs... and falls. Everyone's screen uses the server's
@@ -37526,7 +39369,7 @@ function Rides.Start(ctx)
 end
 
 return Rides
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX70"><Properties><string name="Name">Pets</string><ProtectedString name="Source"><![CDATA[-- Pets (ModuleScript) — StarterPlayerScripts.CityClient.Pets
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX73"><Properties><string name="Name">Pets</string><ProtectedString name="Source"><![CDATA[-- Pets (ModuleScript) — StarterPlayerScripts.CityClient.Pets
 -- Draws everyone's pets on your screen (see PetService): the pet walks at its
 -- owner's heels with its legs going, sits down and wags its tail when they
 -- stop, and wears a name tag. The parrot flies at its owner's shoulder, and
@@ -37862,7 +39705,7 @@ function Pets.Start()
 end
 
 return Pets
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX71"><Properties><string name="Name">Drive</string><ProtectedString name="Source"><![CDATA[-- Drive (ModuleScript) — StarterPlayerScripts.CityClient.Drive
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX74"><Properties><string name="Name">Drive</string><ProtectedString name="Source"><![CDATA[-- Drive (ModuleScript) — StarterPlayerScripts.CityClient.Drive
 -- Driving your own car (see CarService). Your computer drives it, so it's
 -- smooth: W / S (or the triggers and left stick) speed up, brake and reverse,
 -- A / D steer (tighter at low speed), and the car grips the road instead of
@@ -38061,7 +39904,7 @@ function Drive.Start(context)
 end
 
 return Drive
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX72"><Properties><string name="Name">Ambient</string><ProtectedString name="Source"><![CDATA[-- Ambient (ModuleScript) — StarterPlayerScripts.CityClient.Ambient
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX75"><Properties><string name="Name">Ambient</string><ProtectedString name="Source"><![CDATA[-- Ambient (ModuleScript) — StarterPlayerScripts.CityClient.Ambient
 -- Little moving things that make the city feel alive, all drawn on your own
 -- screen (they cost the server nothing):
 --
@@ -38434,6 +40277,67 @@ local function stepFlags(t, camPos)
 			end
 		end
 	end
+	-- 🐬 dolphins swim along under the surface and leap out in arcs; the jet
+	-- ski carves a wide loop (each moves its whole model, kept in a rig like
+	-- the crabs')
+	local function rig(b)
+		local m = b.Parent
+		local rec = crabs[m]
+		if not rec then
+			rec = { Base = b.CFrame, Parts = {} }
+			for _, p in ipairs(m:GetChildren()) do
+				if p:IsA("BasePart") then
+					rec.Parts[p] = b.CFrame:ToObjectSpace(p.CFrame)
+				end
+			end
+			crabs[m] = rec
+		end
+		return rec
+	end
+	for _, b in ipairs(CollectionService:GetTagged("Dolphin")) do
+		if b.Parent and (b.Position - camPos).Magnitude < 700 then
+			local rec = rig(b)
+			local ph = b.Parent:GetAttribute("Phase") or 0
+			-- along a long loop; every 7 seconds a leap
+			local a = t * 0.06 + ph * 0.05
+			local pos = rec.Base.Position + Vector3.new(math.sin(a) * 140, 0, math.cos(a) * 30)
+			local dir = Vector3.new(math.cos(a) * 140, 0, -math.sin(a) * 30).Unit
+			local c = ((t + ph) % 7) / 7
+			local y, pitch = -4, 0
+			if c < 0.25 then
+				local u = c / 0.25
+				y = -4 + math.sin(u * math.pi) * 9
+				pitch = math.cos(u * math.pi) * 0.9
+			end
+			local at = Vector3.new(pos.X, y, pos.Z)
+			local cf = CFrame.lookAt(at, at + dir) * CFrame.Angles(pitch, 0, 0)
+			for p, off in pairs(rec.Parts) do
+				p.CFrame = cf * off
+			end
+		end
+	end
+	for _, b in ipairs(CollectionService:GetTagged("JetSki")) do
+		if b.Parent and (b.Position - camPos).Magnitude < 700 then
+			local rec = rig(b)
+			local a = t * 0.25
+			local c = rec.Base.Position
+			local pos = Vector3.new(c.X + math.sin(a) * 70, c.Y + math.sin(t * 3) * 0.12, c.Z + math.cos(a) * 45)
+			local dir = Vector3.new(math.cos(a) * 70, 0, -math.sin(a) * 45).Unit
+			local cf = CFrame.lookAt(pos, pos + dir) * CFrame.Angles(math.sin(t * 2.2) * 0.04, 0, 0.22)
+			for p, off in pairs(rec.Parts) do
+				p.CFrame = cf * off
+			end
+		end
+	end
+	-- 🌿 kelp sways in the current
+	for _, k in ipairs(CollectionService:GetTagged("Sway")) do
+		if (k.Position - camPos).Magnitude < 120 then
+			spinners[k] = spinners[k] or k.CFrame
+			local base = spinners[k]
+			local h = k.Size.Y / 2
+			k.CFrame = base * CFrame.new(0, -h, 0) * CFrame.Angles(math.sin(t * 0.9 + base.Position.X) * 0.18, 0, math.sin(t * 0.7 + base.Position.Z) * 0.14) * CFrame.new(0, h, 0)
+		end
+	end
 	for m in pairs(crabs) do
 		if not m.Parent then
 			crabs[m] = nil
@@ -38568,7 +40472,7 @@ function Ambient.Start()
 end
 
 return Ambient
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX73"><Properties><string name="Name">Emotes</string><ProtectedString name="Source"><![CDATA[-- Emotes (ModuleScript) — StarterPlayerScripts.CityClient.Emotes
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX76"><Properties><string name="Name">Emotes</string><ProtectedString name="Source"><![CDATA[-- Emotes (ModuleScript) — StarterPlayerScripts.CityClient.Emotes
 -- The emote bar: press T (or open the Emote app on your phone) and pick one:
 -- wave, dance, cheer, point, clap, laugh, salute, flex, shrug, sit. Everyone
 -- sees it, and the people around you react (see SocialService). Walking off
@@ -38680,7 +40584,7 @@ function Emotes.Start(context)
 end
 
 return Emotes
-]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX74"><Properties><string name="Name">Race</string><ProtectedString name="Source"><![CDATA[-- Race (ModuleScript) — StarterPlayerScripts.CityClient.Race
+]]></ProtectedString></Properties></Item><Item class="ModuleScript" referent="RBX77"><Properties><string name="Name">Race</string><ProtectedString name="Source"><![CDATA[-- Race (ModuleScript) — StarterPlayerScripts.CityClient.Race
 -- What you see during a street race (see RaceService): a big countdown, a
 -- glowing ring over the next checkpoint (and a faint one over the one after),
 -- a beam from your car toward it, and a timer with your checkpoint count.

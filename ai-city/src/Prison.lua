@@ -490,6 +490,54 @@ end
 --------------------------------------------------------------------------------
 -- Out front: administration, parking, the prison bus, and Prison Road
 --------------------------------------------------------------------------------
+-- the medical bay: where you wake up if the police knock you out (beds with
+-- curtains and monitors, a medicine cabinet, a sink, a nurse's desk)
+local function medBay(data)
+	local x0, x1, z0, z1 = -22, 4, -44, -22
+	local mx, mz = (x0 + x1) / 2, (z0 + z1) / 2
+	local WALL = rgb(226, 230, 232)
+	solid("MedFloor", Vector3.new(x1 - x0, 0.2, z1 - z0), mx, 0, mz, rgb(214, 226, 226), Enum.Material.CeramicTiles)
+	solid("MedWall", Vector3.new(x1 - x0, 11, 0.8), mx, 0, z0, WALL, Enum.Material.Plaster)
+	solid("MedWall", Vector3.new(0.8, 11, z1 - z0), x0, 0, mz, WALL, Enum.Material.Plaster)
+	solid("MedWall", Vector3.new(0.8, 11, z1 - z0), x1, 0, mz, WALL, Enum.Material.Plaster)
+	-- the front (facing the cell block) with a doorway in the middle
+	solid("MedWall", Vector3.new((x1 - x0) / 2 - 3, 11, 0.8), x0 + ((x1 - x0) / 2 - 3) / 2, 0, z1, WALL, Enum.Material.Plaster)
+	solid("MedWall", Vector3.new((x1 - x0) / 2 - 3, 11, 0.8), x1 - ((x1 - x0) / 2 - 3) / 2, 0, z1, WALL, Enum.Material.Plaster)
+	solid("MedWall", Vector3.new(6, 3, 0.8), mx, 8, z1, WALL, Enum.Material.Plaster)
+	solid("MedRoof", Vector3.new(x1 - x0 + 1, 0.8, z1 - z0 + 1), mx, 11, mz, DARK_CONCRETE, Enum.Material.Concrete)
+	local sign = deco("MedSign", Vector3.new(12, 2, 0.3), mx, 8.4, z1 + 0.6, rgb(200, 40, 50))
+	MapKit.signText(sign, Enum.NormalId.Back, "✚ MEDICAL", WHITE, Enum.Font.GothamBlack)
+	MapKit.signText(sign, Enum.NormalId.Front, "✚ MEDICAL", WHITE, Enum.Font.GothamBlack)
+	local lamp = deco("MedLight", Vector3.new(8, 0.3, 2), mx, 10.4, mz, rgb(255, 250, 240), Enum.Material.Neon)
+	MapKit.light(lamp, rgb(255, 250, 240), 22, 0.8)
+	-- four beds along the back wall, curtains between them, a monitor at each
+	data.MedBeds = {}
+	for k = 0, 3 do
+		local bx = x0 + 3.5 + k * 6.2
+		local bz = z0 + 4
+		solid("MedBed", Vector3.new(3.2, 1.8, 6.4), bx, 0, bz, rgb(236, 240, 244), Enum.Material.Fabric)
+		deco("MedBedFrame", Vector3.new(3.4, 0.5, 6.6), bx, 0, bz, rgb(170, 176, 184), Enum.Material.Metal)
+		deco("MedPillow", Vector3.new(2.4, 0.5, 1.2), bx, 1.8, bz - 2.4, WHITE, Enum.Material.Fabric)
+		deco("MedBlanket", Vector3.new(3.3, 0.15, 3.4), bx, 1.8, bz + 1.2, rgb(120, 170, 200), Enum.Material.Fabric)
+		deco("MedMonitorStand", Vector3.new(0.2, 4.6, 0.2), bx + 2.2, 0, bz - 2.4, rgb(180, 184, 190), Enum.Material.Metal)
+		local mon = deco("MedMonitor", Vector3.new(1.4, 1.1, 0.3), bx + 2.2, 4.6, bz - 2.4, rgb(30, 34, 40))
+		deco("MedMonitorScreen", Vector3.new(1.2, 0.9, 0.05), bx + 2.2, 4.7, bz - 2.24, rgb(80, 220, 140), Enum.Material.Neon)
+		if k < 3 then
+			local curtain = deco("MedCurtain", Vector3.new(0.12, 7, 6.6), bx + 3.1, 0.6, bz, rgb(170, 210, 200), Enum.Material.Fabric)
+			curtain.Transparency = 0.15
+		end
+		table.insert(data.MedBeds, pos(bx, 0.3, bz + 4.8))
+	end
+	-- the nurse's desk, a medicine cabinet and a sink by the door
+	solid("MedDesk", Vector3.new(5, 3, 2.2), x1 - 4, 0, z1 - 4, rgb(240, 240, 236), Enum.Material.SmoothPlastic)
+	deco("MedCabinet", Vector3.new(4, 6, 1.2), x0 + 2.5, 0, z1 - 2, WHITE, Enum.Material.Metal)
+	deco("MedCabinetCross", Vector3.new(1.2, 1.2, 0.05), x0 + 2.5, 4.4, z1 - 2.62, rgb(220, 40, 50), Enum.Material.Neon)
+	deco("MedSink", Vector3.new(2.4, 0.8, 1.6), x0 + 7, 2.6, z1 - 1.6, rgb(220, 224, 228), Enum.Material.Metal)
+	deco("MedSinkStand", Vector3.new(0.6, 2.6, 0.6), x0 + 7, 0, z1 - 1.6, rgb(200, 204, 210), Enum.Material.Metal)
+	data.NurseSpot = spotAt(x1 - 4, z1 - 6.2, x1 - 4, z0, { Action = "nurse", Role = "work" })
+	data.MedDoor = pos(mx, 0.3, z1 + 3)
+end
+
 local function frontOffice(data)
 	local hd = Prison.D / 2
 	solid("AdminBuilding", Vector3.new(44, 16, 22), -52, 0, -hd + 16, rgb(206, 200, 188), Enum.Material.Brick)
@@ -550,6 +598,7 @@ function Prison.build(parent, rng)
 	cellBlock(data, rng)
 	yard(data, rng)
 	frontOffice(data)
+	medBay(data)
 	-- walking lanes between the areas (local coordinates; see PrisonService)
 	data.Lanes = {
 		HallEast = Vector3.new(BLOCK_X1 - 6, 0, SPINE),

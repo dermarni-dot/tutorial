@@ -30,10 +30,21 @@ local function plateOffset(model)
 	return Vector3.new(0, 2.2 * s + 0.6, 0) -- (a little clear of the head)
 end
 
+local making = {} -- (a tag being made right now: never make two for one person)
 local function makePlate(model, isPlayer)
+	if plates[model] or making[model] then
+		return
+	end
+	making[model] = true
 	local head = model:FindFirstChild("Head") or model:WaitForChild("Head", 5)
+	making[model] = nil
 	if not head or plates[model] then
 		return
+	end
+	-- (and if one is somehow already on the head, use none twice)
+	local old = head:FindFirstChild("CityPlate")
+	if old then
+		old:Destroy()
 	end
 	local gui = UI.new("BillboardGui", {
 		Name = "CityPlate",
@@ -63,7 +74,7 @@ local function makePlate(model, isPlayer)
 	-- tags shrink with distance (see declutter) so a crowd isn't a wall of text
 	local scale = UI.new("UIScale", { Scale = 1, Parent = gui })
 	gui.Parent = head
-	local entry = { Gui = gui, Name = name, Mood = mood, Badge = badge, Activity = activity, Model = model, IsPlayer = isPlayer, Scale = scale }
+	local entry = { Gui = gui, Name = name, Mood = mood, Badge = badge, Activity = activity, Model = model, IsPlayer = isPlayer, Scale = scale, HP = hpBack }
 	local function refreshHP()
 		local hp, maxHp = model:GetAttribute("HP"), model:GetAttribute("MaxHP")
 		if isPlayer then
@@ -213,8 +224,17 @@ local function declutter()
 				local p, onScreen = camera:WorldToViewportPoint(world)
 				if onScreen and p.Z > 0 then
 					if visible(camPos, world) then
+						-- the tag's real size: the name or the activity line, whichever
+						-- is wider, and the health bar under it when someone's hurt
+						local showAct = entry.Activity.Visible and entry.Activity.Text ~= ""
 						local w = ((entry.Name.TextBounds and entry.Name.TextBounds.X) or 100) + 44
-						local h = if entry.Activity.Visible and entry.Activity.Text ~= "" then 46 else 26
+						if showAct then
+							w = math.max(w, ((entry.Activity.TextBounds and entry.Activity.TextBounds.X) or 140) + 16)
+						end
+						local h = if showAct then 46 else 26
+						if entry.HP and entry.HP.Visible then
+							h = 56
+						end
 						table.insert(list, { Entry = entry, X = p.X, Y = p.Y, D = dist, W = w * sc, H = h * sc })
 					else
 						gui.Enabled = false
@@ -911,6 +931,33 @@ end
 --------------------------------------------------------------------------------
 -- Start
 --------------------------------------------------------------------------------
+-- your own house: no "Break in" on your own front door, a "Your home" tag
+-- instead (the server can't hide a prompt for just one player)
+local homeTags = {}
+function World.HouseDoors()
+	local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+	for _, anchor in ipairs(CollectionService:GetTagged("HouseDoor")) do
+		local prompt = anchor:FindFirstChild("BreakIn")
+		local mine = anchor:GetAttribute("Owner") == player.UserId
+		if prompt then
+			local want = anchor:GetAttribute("BreakOK") == true and not mine
+			if prompt.Enabled ~= want then
+				prompt.Enabled = want
+			end
+		end
+		local near = root and (anchor.Position - root.Position).Magnitude < 60
+		if mine and near and not homeTags[anchor] then
+			local gui = UI.new("BillboardGui", { Name = "YourHome", Size = UDim2.fromOffset(150, 30), StudsOffset = Vector3.new(0, 7, 0), MaxDistance = 60, LightInfluence = 0, AlwaysOnTop = true, Adornee = anchor, Parent = anchor })
+			local label = UI.text(gui, "🏠 Your home", 16, UI.Bold, Color3.fromRGB(150, 230, 160), { Size = UDim2.fromScale(1, 1), TextXAlignment = Enum.TextXAlignment.Center })
+			UI.new("UIStroke", { Thickness = 1.5, Transparency = 0.3, Parent = label })
+			homeTags[anchor] = gui
+		elseif homeTags[anchor] and not (mine and near) then
+			homeTags[anchor]:Destroy()
+			homeTags[anchor] = nil
+		end
+	end
+end
+
 function World.Start(context)
 	-- job markers are only for whoever is on that shift (see JobService)
 	local function jobMarker(d)
@@ -927,6 +974,66 @@ function World.Start(context)
 		task.defer(jobMarker, d)
 	end)
 	ctx = context
+	task.spawn(function()
+		while true do
+			pcall(World.HouseDoors)
+			task.wait(0.4)
+		end
+	end)
+	-- room lights: only the ones near you are on (thousands at once is slow)
+	-- (sorted into 100-stud cells, so each check only looks at the few cells
+	-- around the camera instead of all five thousand)
+	task.spawn(function()
+		local CELL = 100
+		local cells, lit, built = {}, {}, 0
+		local function rebuild()
+			cells = {}
+			for _, panel in ipairs(CollectionService:GetTagged("RoomLight")) do
+				local light = panel:FindFirstChildOfClass("SurfaceLight")
+				if light then
+					local k = math.floor(panel.Position.X / CELL) .. "," .. math.floor(panel.Position.Z / CELL)
+					local c = cells[k]
+					if not c then
+						c = {}
+						cells[k] = c
+					end
+					table.insert(c, { panel, light })
+				end
+			end
+			built = os.clock()
+		end
+		while true do
+			local camera = workspace.CurrentCamera
+			if os.clock() - built > 10 then
+				pcall(rebuild)
+			end
+			if camera then
+				local camPos = camera.CFrame.Position
+				local cx, cz = math.floor(camPos.X / CELL), math.floor(camPos.Z / CELL)
+				local now = {}
+				for dx = -1, 1 do
+					for dz = -1, 1 do
+						for _, e in ipairs(cells[(cx + dx) .. "," .. (cz + dz)] or {}) do
+							local panel, light = e[1], e[2]
+							if panel.Parent and (panel.Position - camPos).Magnitude < 100 then
+								now[light] = true
+								if not light.Enabled then
+									light.Enabled = true
+								end
+							end
+						end
+					end
+				end
+				for light in pairs(lit) do
+					if not now[light] and light.Parent then
+						light.Enabled = false
+					end
+				end
+				lit = now
+			end
+			task.wait(0.5)
+		end
+	end)
 	for _, model in ipairs(CollectionService:GetTagged("Citizen")) do
 		task.spawn(makePlate, model, false)
 	end

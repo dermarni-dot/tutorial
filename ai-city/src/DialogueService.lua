@@ -996,7 +996,7 @@ local function attach(model)
 	local prompt = Instance.new("ProximityPrompt")
 	prompt.Name = "TalkPrompt"
 	prompt.ActionText = "Talk"
-	prompt.ObjectText = model:GetAttribute("DisplayName") or model.Name
+	prompt.ObjectText = "" -- (their name is already over their head)
 	prompt.KeyboardKeyCode = Enum.KeyCode.E
 	prompt.MaxActivationDistance = 9
 	prompt.RequiresLineOfSight = false

@@ -149,11 +149,20 @@ end
 -- Notifications
 --------------------------------------------------------------------------------
 local toastHolder
+local refs = {}
 function Hud.Toast(icon, title, text, color)
 	if not toastHolder then
 		return
 	end
 	color = color or C.Gold
+	-- the same message again (walking back and forth over a gang's corner):
+	-- refresh the one on screen instead of stacking another
+	for _, child in ipairs(toastHolder:GetChildren()) do
+		if child:IsA("Frame") and child:GetAttribute("Title") == (title or "") and child:GetAttribute("Body") == (text or "") then
+			child:SetAttribute("Until", os.clock() + 6)
+			return nil
+		end
+	end
 	local toast = UI.panel(toastHolder, { Size = UDim2.fromOffset(310, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 0.05, Radius = 12, ClipsDescendants = true })
 	local strip = UI.new("Frame", { BackgroundColor3 = color, BorderSizePixel = 0, Size = UDim2.new(0, 5, 1, 0), Parent = toast })
 	local inner = UI.new("Frame", { BackgroundTransparency = 1, Position = UDim2.fromOffset(12, 0), Size = UDim2.new(1, -12, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, Parent = toast })
@@ -167,17 +176,34 @@ function Hud.Toast(icon, title, text, color)
 	local scale = UI.new("UIScale", { Scale = 0.5, Parent = toast })
 	UI.tween(scale, 0.3, { Scale = 1 }, Enum.EasingStyle.Back)
 	UI.sound("notify", 0.2, 1.3)
-	-- keep at most five
+	toast:SetAttribute("Title", title or "")
+	toast:SetAttribute("Body", text or "")
+	toast:SetAttribute("Until", os.clock() + 6)
+	-- keep at most four, and never let them run down into the buttons
 	local items = {}
 	for _, child in ipairs(toastHolder:GetChildren()) do
 		if child:IsA("Frame") then
 			table.insert(items, child)
 		end
 	end
-	if #items > 5 then
+	if #items > 4 then
 		items[1]:Destroy()
+		table.remove(items, 1)
 	end
-	task.delay(6, function()
+	task.defer(function()
+		local bar = refs and refs.Bar
+		local limit = if bar and bar.Parent then bar.AbsolutePosition.Y - 10 else math.huge
+		for k = 1, #items - 1 do
+			local bottom = toastHolder.AbsolutePosition.Y + toastHolder.AbsoluteSize.Y
+			if bottom > limit and items[k].Parent then
+				items[k]:Destroy()
+			end
+		end
+	end)
+	task.spawn(function()
+		while toast.Parent and os.clock() < (toast:GetAttribute("Until") or 0) do
+			task.wait(0.5)
+		end
 		if toast.Parent then
 			UI.tween(scale, 0.2, { Scale = 0.6 })
 			UI.tween(toast, 0.2, { BackgroundTransparency = 1 })
@@ -214,7 +240,7 @@ end
 --------------------------------------------------------------------------------
 -- Build
 --------------------------------------------------------------------------------
-local refs = {}
+-- (refs is declared above, before the notifications)
 
 local function statRow(parent, icon, name, color, order)
 	local row = UI.new("Frame", { Name = "StatRow", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 18), LayoutOrder = order, Parent = parent })
@@ -417,6 +443,9 @@ local function build()
 	-- wanted: a red glow around the screen
 	refs.Edge = UI.new("Frame", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 0, Parent = screen })
 	refs.EdgeStroke = UI.stroke(refs.Edge, C.Red, 14, 1)
+	-- asleep: the screen dims, with a hint
+	refs.SleepShade = UI.new("Frame", { Name = "SleepShade", BackgroundColor3 = Color3.fromRGB(8, 10, 24), BackgroundTransparency = 0.45, Size = UDim2.fromScale(1, 1), Visible = false, ZIndex = 0, Parent = screen })
+	UI.text(refs.SleepShade, "💤  Sleeping...  move to get up", 22, UI.Bold, C.White, { AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0.3, 0), Size = UDim2.fromOffset(420, 40), TextXAlignment = Enum.TextXAlignment.Center, TextTransparency = 0.1 })
 	refs.Banner = UI.text(screen, "", 40, UI.Title, C.Red, { AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 108), Size = UDim2.fromOffset(600, 50), TextXAlignment = Enum.TextXAlignment.Center, TextTransparency = 1, ZIndex = 30 })
 	refs.BannerStroke = UI.new("UIStroke", { Thickness = 3, Transparency = 1, Parent = refs.Banner })
 
@@ -544,6 +573,9 @@ local function frame(dt)
 		refs.MiniPivot.Rotation = -yaw
 		local r = 80
 		refs.North.Position = UDim2.new(0.5, math.sin(math.rad(-yaw)) * r, 0.5, -math.cos(math.rad(-yaw)) * r)
+	end
+	if refs.SleepShade then
+		refs.SleepShade.Visible = player:GetAttribute("Sleeping") == true
 	end
 	-- wanted: the edge pulses (fast when the police can see you)
 	local stars = player:GetAttribute("Wanted") or 0

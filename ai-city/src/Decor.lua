@@ -946,6 +946,146 @@ EXTRAS.home = function(r)
 		end
 	end
 end
+-- 🛋️ more furniture for the (big) houses: each piece goes in the nearest free
+-- floor space to a random spot, so every home is arranged a little differently
+local HOME_EXTRAS = {
+	ground = {
+		{ "island", 7, 3.4, 4 }, { "coatrack", 1.4, 1.4, 6 }, { "shoebench", 3.4, 1.4, 2.4 }, { "armchair", 2.6, 2.6, 3.6 },
+		{ "plant", 2, 2, 5 }, { "plant", 2, 2, 5 }, { "bookshelf", 4, 1.4, 7 }, { "aquarium", 5, 2, 6 }, { "barcart", 2.4, 1.4, 3.6 },
+		{ "dogbed", 3, 2.4, 1 }, { "lamp", 1.4, 1.4, 6 }, { "console", 4.4, 1.2, 4 },
+	},
+	upper = {
+		{ "vanity", 3.6, 1.8, 6 }, { "toybox", 2.6, 1.6, 2 }, { "beanbag", 2.4, 2.4, 2 }, { "hamper", 1.4, 1.4, 2 },
+		{ "plant", 2, 2, 5 }, { "lamp", 1.4, 1.4, 6 }, { "bookshelf", 4, 1.4, 7 }, { "rocker", 2.4, 2.8, 4 }, { "easel", 2.2, 2, 6 },
+	},
+}
+local HOME_BUILD = {}
+function HOME_BUILD.island(r, x, z)
+	r.Box("KitchenIsland", Vector3.new(7, 3, 3.4), x, 0, z, rgb(236, 234, 228), Enum.Material.SmoothPlastic)
+	r.Box("IslandTop", Vector3.new(7.4, 0.25, 3.8), x, 3, z, rgb(60, 60, 64), Enum.Material.Marble)
+	r.Box("FruitBowl", Vector3.new(1.4, 0.4, 1.4), x - 1.6, 3.25, z, WHITE)
+	for k = 0, 2 do
+		MapKit.ball(r.B.Model, "Fruit", 0.5, r.At(x - 1.9 + k * 0.3, 3.85, z + (k % 2) * 0.3 - 0.15), ({ rgb(230, 60, 50), rgb(250, 200, 50), rgb(120, 200, 70) })[k + 1], Enum.Material.SmoothPlastic)
+	end
+	for k = -1, 1 do
+		-- bar stools along the front
+		r.Box("StoolLeg", Vector3.new(0.25, 2.6, 0.25), x + k * 2.2, 0, z - 2.4, rgb(50, 50, 54), Enum.Material.Metal)
+		r.Box("StoolSeat", Vector3.new(1.2, 0.25, 1.2), x + k * 2.2, 2.6, z - 2.4, rgb(150, 100, 60), Enum.Material.Wood)
+	end
+end
+function HOME_BUILD.coatrack(r, x, z)
+	r.Box("CoatRack", Vector3.new(0.25, 5.6, 0.25), x, 0, z, rgb(110, 80, 55), Enum.Material.Wood)
+	r.Box("CoatRackFoot", Vector3.new(1.2, 0.15, 1.2), x, 0, z, rgb(110, 80, 55), Enum.Material.Wood)
+	r.Box("Coat", Vector3.new(0.9, 2.6, 0.5), x + 0.45, 2.6, z, MapKit.FLOWERS[r.Rng:NextInteger(1, #MapKit.FLOWERS)]:Lerp(BLACK, 0.4), Enum.Material.Fabric)
+	r.Box("HangingHat", Vector3.new(0.9, 0.4, 0.9), x, 5.6, z, rgb(70, 60, 50), Enum.Material.Fabric)
+end
+function HOME_BUILD.shoebench(r, x, z)
+	r.Box("ShoeBench", Vector3.new(3.4, 1.8, 1.4), x, 0, z, rgb(150, 110, 75), Enum.Material.Wood)
+	r.Box("BenchCushion", Vector3.new(3.2, 0.3, 1.2), x, 1.8, z, rgb(200, 190, 170), Enum.Material.Fabric)
+	for k = 0, 2 do
+		r.Box("Shoe", Vector3.new(0.5, 0.4, 1), x - 1 + k * 1, 0.2, z, ({ rgb(30, 30, 34), rgb(240, 240, 240), rgb(160, 60, 50) })[k + 1], Enum.Material.Leather)
+	end
+end
+function HOME_BUILD.armchair(r, x, z)
+	local c = ({ rgb(160, 110, 80), rgb(90, 110, 140), rgb(130, 150, 110), rgb(180, 150, 120) })[r.Rng:NextInteger(1, 4)]
+	r.Box("Armchair", Vector3.new(2.6, 1.6, 2.4), x, 0, z, c, Enum.Material.Fabric)
+	r.Box("ArmchairBack", Vector3.new(2.6, 2, 0.6), x, 1.6, z + 0.9, c:Lerp(BLACK, 0.1), Enum.Material.Fabric)
+	r.Box("Throw", Vector3.new(1, 0.15, 2), x + 0.6, 1.6, z, WHITE:Lerp(c, 0.4), Enum.Material.Fabric)
+end
+function HOME_BUILD.plant(r, x, z)
+	plant(r, x, z, true)
+end
+function HOME_BUILD.bookshelf(r, x, z)
+	bookshelf(r, x, z, 4, true)
+end
+function HOME_BUILD.aquarium(r, x, z)
+	aquarium(r, x, z)
+end
+function HOME_BUILD.barcart(r, x, z)
+	r.Box("BarCart", Vector3.new(2.4, 0.15, 1.4), x, 1.4, z, rgb(200, 170, 90), Enum.Material.Metal)
+	r.Box("BarCart", Vector3.new(2.4, 0.15, 1.4), x, 2.8, z, rgb(200, 170, 90), Enum.Material.Metal)
+	r.Box("CartLegs", Vector3.new(2.2, 2.8, 1.2), x, 0, z, rgb(200, 170, 90), Enum.Material.Metal).Transparency = 0.6
+	for k = 0, 2 do
+		r.Box("Bottle", Vector3.new(0.35, 0.9, 0.35), x - 0.7 + k * 0.7, 2.95, z, ({ rgb(60, 120, 60), rgb(150, 60, 40), rgb(220, 220, 230) })[k + 1], Enum.Material.Glass)
+	end
+end
+function HOME_BUILD.dogbed(r, x, z)
+	r.Box("DogBed", Vector3.new(3, 0.6, 2.4), x, 0, z, rgb(140, 100, 70), Enum.Material.Fabric)
+	r.Box("DogBedPad", Vector3.new(2.4, 0.3, 1.8), x, 0.6, z, rgb(220, 200, 170), Enum.Material.Fabric)
+	MapKit.ball(r.B.Model, "ChewToy", 0.5, r.At(x + 1, 1.15, z), rgb(240, 90, 60), Enum.Material.SmoothPlastic)
+end
+function HOME_BUILD.lamp(r, x, z)
+	floorLamp(r, x, z, false)
+end
+function HOME_BUILD.console(r, x, z)
+	r.Box("ConsoleTable", Vector3.new(4.4, 2.8, 1.2), x, 0, z, rgb(90, 64, 44), Enum.Material.Wood)
+	r.Box("Vase", Vector3.new(0.6, 1.2, 0.6), x - 1.4, 2.8, z, rgb(80, 140, 190), Enum.Material.SmoothPlastic)
+	r.Box("PhotoFrame", Vector3.new(0.9, 0.7, 0.1), x + 0.2, 2.8, z, rgb(30, 30, 34))
+	r.Box("PhotoFrame", Vector3.new(0.7, 0.9, 0.1), x + 1.3, 2.8, z, rgb(200, 170, 90), Enum.Material.Metal)
+	r.Box("KeyBowl", Vector3.new(0.8, 0.2, 0.8), x + 0.8, 2.8, z, rgb(170, 120, 80), Enum.Material.Wood)
+end
+function HOME_BUILD.vanity(r, x, z)
+	r.Box("Vanity", Vector3.new(3.6, 2.8, 1.6), x, 0, z, WHITE, Enum.Material.Wood)
+	local m = r.Box("VanityMirror", Vector3.new(2.4, 2.6, 0.12), x, 2.8, z + 0.6, rgb(210, 230, 240), Enum.Material.Glass)
+	m.Reflectance = 0.4
+	for k = 0, 2 do
+		r.Box("Perfume", Vector3.new(0.3, 0.5, 0.3), x - 1.2 + k * 0.35, 2.8, z - 0.3, ({ rgb(240, 160, 190), rgb(170, 140, 230), rgb(250, 220, 120) })[k + 1], Enum.Material.Glass)
+	end
+	r.Box("VanityStool", Vector3.new(1.4, 1.6, 1.4), x, 0, z - 1.8, rgb(240, 200, 210), Enum.Material.Fabric)
+end
+function HOME_BUILD.toybox(r, x, z)
+	r.Box("ToyBox", Vector3.new(2.6, 1.6, 1.6), x, 0, z, MapKit.FLOWERS[r.Rng:NextInteger(1, #MapKit.FLOWERS)], Enum.Material.Wood)
+	MapKit.ball(r.B.Model, "ToyBall", 0.8, r.At(x - 0.6, 1.9, z), MapKit.FLOWERS[r.Rng:NextInteger(1, #MapKit.FLOWERS)], Enum.Material.SmoothPlastic)
+	MapKit.ball(r.B.Model, "Teddy", 0.9, r.At(x + 0.6, 2, z), rgb(170, 120, 70), Enum.Material.Fabric)
+end
+function HOME_BUILD.beanbag(r, x, z)
+	local bag = MapKit.ball(r.B.Model, "BeanBag", 2.4, r.At(x, 1, z), MapKit.FLOWERS[r.Rng:NextInteger(1, #MapKit.FLOWERS)], Enum.Material.Fabric)
+	bag.Size = Vector3.new(2.4, 2, 2.4)
+end
+function HOME_BUILD.hamper(r, x, z)
+	r.Box("Hamper", Vector3.new(1.4, 2, 1.4), x, 0, z, rgb(200, 180, 140), Enum.Material.Fabric)
+	r.Box("Laundry", Vector3.new(1.1, 0.4, 1.1), x, 2, z, rgb(120, 160, 220), Enum.Material.Fabric)
+end
+function HOME_BUILD.rocker(r, x, z)
+	r.Box("RockingChair", Vector3.new(2.2, 1.6, 2.2), x, 0.3, z, rgb(150, 105, 70), Enum.Material.Wood)
+	r.Box("RockerBack", Vector3.new(2.2, 2.6, 0.3), x, 1.9, z + 1, rgb(150, 105, 70), Enum.Material.Wood)
+	for _, sx in ipairs({ -1, 1 }) do
+		r.Box("Rocker", Vector3.new(0.25, 0.3, 2.8), x + sx * 0.95, 0, z, rgb(120, 85, 55), Enum.Material.Wood)
+	end
+	r.Box("KnitBlanket", Vector3.new(2, 0.15, 1.6), x, 1.9, z - 0.2, rgb(220, 120, 110), Enum.Material.Fabric)
+end
+function HOME_BUILD.easel(r, x, z)
+	r.Box("Easel", Vector3.new(0.2, 5, 0.2), x, 0, z + 0.6, rgb(150, 110, 70), Enum.Material.Wood)
+	r.Box("EaselLeg", Vector3.new(1.8, 3.4, 0.2), x, 0, z - 0.3, rgb(150, 110, 70), Enum.Material.Wood).Transparency = 0.5
+	r.Box("Canvas", Vector3.new(2, 2.4, 0.12), x, 2.6, z, WHITE:Lerp(PAINT[r.Rng:NextInteger(1, #PAINT)], 0.4), Enum.Material.Fabric)
+end
+
+local baseHome = EXTRAS.home
+EXTRAS.home = function(r)
+	baseHome(r)
+	if r.W < 30 then
+		return
+	end
+	local list = if r.F == 1 then HOME_EXTRAS.ground else HOME_EXTRAS.upper
+	-- the bigger the house, the more pieces
+	local n = math.clamp(math.floor((r.W * r.D) / 260), 3, #list)
+	local order = {}
+	for k = 1, #list do
+		order[k] = k
+	end
+	for k = #order, 2, -1 do
+		local j = r.Rng:NextInteger(1, k)
+		order[k], order[j] = order[j], order[k]
+	end
+	for k = 1, n do
+		local e = list[order[k]]
+		local px = r.Rng:NextNumber(-r.W / 2 + 3, r.W / 2 - 3)
+		local pz = r.Rng:NextNumber(-r.D / 2 + 3, r.D / 2 - 3)
+		r.Place(e[2], e[3], e[4], px, pz, function(x, z)
+			HOME_BUILD[e[1]](r, x, z)
+		end, 0.9, 14)
+	end
+end
 EXTRAS.apartment = EXTRAS.home
 
 EXTRAS.daycare = function(r)

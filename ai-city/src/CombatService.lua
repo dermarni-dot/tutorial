@@ -254,6 +254,27 @@ local function setupCharacter(player, character)
 	end
 	blocking[player] = nil
 	player:SetAttribute("Blocking", nil)
+	-- knocked out by the police: you wake up in the prison's medical bay, and
+	-- once you're patched up you're booked into a cell
+	if player:GetAttribute("WakeAtPrisonMed") then
+		player:SetAttribute("WakeAtPrisonMed", nil)
+		player:SetAttribute("WakeAtHospital", nil)
+		local prison = S.Map.Prison
+		local root = character:WaitForChild("HumanoidRootPart", 10)
+		local beds = prison and prison.MedBeds
+		if root and beds and #beds > 0 then
+			task.wait(0.2)
+			root.CFrame = CFrame.new(beds[math.random(1, #beds)] + Vector3.new(0, 3.5, 0))
+			S.City.Toast(player, "🏥", "You woke up in the prison medical bay", "The police brought you in. The nurse patched you up; a guard will take you to your cell in a moment.", rgb(220, 120, 80))
+			task.delay(12, function()
+				if player.Parent and S.Crime and S.Crime.ArrestPlayer and not (S.Crime.IsJailed and S.Crime.IsJailed(player)) then
+					S.Crime.ArrestPlayer(player)
+				end
+			end)
+		else
+			player:SetAttribute("WakeAtHospital", true)
+		end
+	end
 	-- woke up after being knocked out: in the hospital
 	if player:GetAttribute("WakeAtHospital") then
 		player:SetAttribute("WakeAtHospital", nil)
@@ -267,6 +288,17 @@ local function setupCharacter(player, character)
 	end
 	task.defer(giveTools, player)
 	humanoid.Died:Connect(function()
+		-- the police did it: off to the prison medical bay (and then a cell)
+		local byPolice = os.clock() - (character:GetAttribute("PoliceHitAt") or -99) < 8 and (player:GetAttribute("Wanted") or 0) > 0
+		if byPolice and S.Map.Prison and S.Map.Prison.MedBeds then
+			player:SetAttribute("WakeAtPrisonMed", true)
+			player:SetAttribute("PendingStars", player:GetAttribute("Wanted"))
+			if S.Crime then
+				S.Crime.ClearWanted(player)
+			end
+			S.City.Send(player, { Type = "Down", Bill = 0 })
+			return
+		end
 		player:SetAttribute("WakeAtHospital", true)
 		local bill = math.min(S.City.Coins(player), 30)
 		if bill > 0 then

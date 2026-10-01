@@ -391,8 +391,10 @@ local function fightTick()
 			S.Citizens.Flee(brain, root.Position, 10, "Okay, okay! I give up!")
 		else
 			S.Citizens.SetGait(brain, if d > 5 then 16 else 8, "run")
-			brain.Humanoid:MoveTo(root.Position)
-			if d < 4.8 and now >= f.Next then
+			-- around whatever's in the way, not through it
+			local way, around = S.Citizens.WayTo(brain, root.Position)
+			brain.Humanoid:MoveTo(way)
+			if d < 4.8 and now >= f.Next and not around then
 				f.Next = now + math.random(9, 13) / 10
 				brain.Model:SetAttribute("SwingSide", (brain.Model:GetAttribute("SwingSide") or 0) + 1)
 				brain.Model:SetAttribute("Swing", now)
@@ -898,7 +900,8 @@ end
 local function arrest(player)
 	CrimeService.Unhide(player)
 	local w = wanted[player]
-	local stars = w and w.Stars or 1
+	local stars = w and w.Stars or player:GetAttribute("PendingStars") or 1
+	player:SetAttribute("PendingStars", nil)
 	if w then
 		freeChasers(w)
 	end
@@ -984,6 +987,9 @@ function CrimeService.PoliceStrike(player, w)
 				brain.Model:SetAttribute("SwingSide", (brain.Model:GetAttribute("SwingSide") or 0) + 1)
 				brain.Model:SetAttribute("SwingWeapon", "Bat")
 				brain.Model:SetAttribute("Swing", now)
+				if player.Character then
+					player.Character:SetAttribute("PoliceHitAt", os.clock())
+				end
 				hurtPlayer(brain.Root.Position, player, math.random(6, 9) + w.Stars * 2, 12)
 				if math.random() < 0.3 then
 					S.Citizens.Say(brain, STRIKE_LINES[math.random(1, #STRIKE_LINES)], "angry", 1.4)
@@ -1013,6 +1019,9 @@ function CrimeService.PoliceShoot(player, w)
 			local to = if hit then root.Position + Vector3.new(0, 1, 0) else root.Position + Vector3.new(math.random(-4, 4), math.random(0, 3), math.random(-4, 4))
 			S.City.SendNear(from, 250, { Type = "Shot", From = from, To = to, Weapon = "Pistol" })
 			if hit then
+				if player.Character then
+					player.Character:SetAttribute("PoliceHitAt", os.clock())
+				end
 				hurtPlayer(from, player, math.random(10, 16), 8)
 			end
 			if math.random() < 0.3 then

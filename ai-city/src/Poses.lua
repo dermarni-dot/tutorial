@@ -239,7 +239,7 @@ L.sitdown = function(t, ph)
 end
 local EMOTES = {
 	wave = "wave", dance = "dance", cheer = "cheer", point = "point", clap = "clap",
-	laugh = "laugh", salute = "salute", flex = "flex", shrug = "shrugEmote", sit = "sitdown",
+	laugh = "laugh", salute = "salute", flex = "flex", shrug = "shrugEmote", sit = "sitdown", sleeping = "sleep",
 }
 Poses.EMOTES = EMOTES
 
@@ -339,6 +339,23 @@ L.rake = function(t, ph)
 	local p = osc(t, 2.4, ph)
 	return { RS = A(40 + p * 20, 0, -12), RE = A(40 - p * 10), LS = A(55 + p * 20, 0, 18), LE = A(50 - p * 10), Waist = A(-14 - p * 6, 10, 0), Neck = A(-20) }, true
 end
+-- eating standing up: a bite now and then (food up to the mouth), chewing,
+-- looking around between bites
+L.snack = function(t, ph)
+	local c = (t * 0.32 + ph) % 1
+	local bite = if c < 0.3 then sin(c / 0.3 * math.pi) else 0
+	local chew = if c >= 0.3 and c < 0.6 then osc(t, 9, ph) * 2 else 0
+	return { RS = A(30 + bite * 70, 0, -12), RE = A(60 + bite * 50), RW = A(-10), LS = A(18, 0, 10), LE = A(40), Neck = A(-6 + bite * 10 + chew, osc(t, 0.4, ph) * (1 - bite) * 25, 0), Waist = A(-2 + bite * 3) }, false
+end
+-- taking photos: the phone held up in both hands, framing the shot, a step
+-- to the side, then a look at the picture
+L.photo = function(t, ph)
+	local c = (t * 0.22 + ph) % 1
+	local check = c > 0.75
+	local frame = osc(t, 0.8, ph)
+	return { RS = A(if check then 40 else 85, 0, -14), RE = A(if check then 70 else 35), LS = A(if check then 30 else 82, 0, 16), LE = A(if check then 60 else 38),
+		Neck = A(if check then -22 else 4, frame * (if check then 2 else 8), 0), Waist = A(if check then -6 else 3, frame * 10, 0), Root = CFrame.new(0, 0, 0) * A(0, frame * 6, 0) }, false
+end
 -- mopping: side to side, bent over a little
 L.mop = function(t, ph)
 	local s = osc(t, 2, ph)
@@ -369,6 +386,10 @@ L.carryStraps = function(t, ph)
 end
 L.carryCup = function(t, ph)
 	return { RS = A(30, 0, -8), RE = A(80) }, false
+end
+-- texting on the way: phone up in front, head down, thumb tapping
+L.carryPhone = function(t, ph)
+	return { RS = A(48, 0, -14), RE = A(72 + math.sin(t * 9 + ph) * 3), RW = A(-10, 0, 0), LS = A(10, 0, 4), Neck = A(-20, 0, 0) }, false
 end
 L.carryTray = function(t, ph)
 	return { RS = A(40, 0, -10), RE = A(80), RW = A(0, 0, 0) }, false
@@ -1226,7 +1247,7 @@ local CARRY = {
 	Bag = { "carryBag", { "Bag" } }, Briefcase = { "carryCase", { "Briefcase" } }, Backpack = { "carryStraps", { "Backpack" } },
 	GymBag = { "carryCase", { "GymBag" } }, MailBag = { "carryCase", { "MailBag", "Letter" } }, Cup = { "carryCup", { "Cup" } },
 	Pastry = { "carryCup", { "Pastry" } }, Cone = { "carryCup", { "Cone" } }, WateringCan = { "carryCase", { "WateringCan" } },
-	Tray = { "carryTray", { "Tray" } }, Box = { "carry", { "Box" } },
+	Tray = { "carryTray", { "Tray" } }, Box = { "carry", { "Box" } }, Phone = { "carryPhone", { "Phone" } },
 }
 Poses.Carry = CARRY
 

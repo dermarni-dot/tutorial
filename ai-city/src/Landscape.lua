@@ -233,6 +233,19 @@ function Landscape.build(parent, rng)
 		terrain:FillBlock(CFrame.new(-65, -6, wz - oceanD / 2), Vector3.new(oceanW, 14, oceanD), Enum.Material.Air)
 		terrain:FillBlock(CFrame.new(-65, -9, wz - oceanD / 2), Vector3.new(oceanW, 16, oceanD), Enum.Material.Water)
 		terrain:FillBlock(CFrame.new(-65, -19, wz - oceanD / 2), Vector3.new(oceanW, 4, oceanD), Enum.Material.Sand)
+		-- a real beach: the sand slopes gently down to the waterline and keeps
+		-- going down under the waves, so the water gets deeper the further out
+		-- you wade (NorthShore.BeachY gives the height; the props follow it)
+		NorthShore.Sloped = true
+		for z = wz + 34, wz - 140, -4 do
+			local h = NorthShore.BeachY(z - 2)
+			local mid = CFrame.new(-65, 0, z - 2)
+			terrain:FillBlock(mid * CFrame.new(0, (h + 2) / 2, 0), Vector3.new(oceanW, 2 - h, 4), Enum.Material.Air)
+			if h < -1 then
+				terrain:FillBlock(mid * CFrame.new(0, (h - 1) / 2, 0), Vector3.new(oceanW, -1 - h, 4), Enum.Material.Water)
+			end
+			terrain:FillBlock(mid * CFrame.new(0, (h - 24) / 2, 0), Vector3.new(oceanW, h + 24, 4), Enum.Material.Sand)
+		end
 		for _, area in ipairs(NorthShore.PAVED) do
 			terrain:FillBlock(CFrame.new(area.Center + Vector3.new(0, -4, 0)), Vector3.new(area.Size.X, 8, area.Size.Z), Enum.Material.Air)
 			terrain:FillBlock(CFrame.new(area.Center + Vector3.new(0, -10, 0)), Vector3.new(area.Size.X, 4, area.Size.Z), Enum.Material.Ground)
