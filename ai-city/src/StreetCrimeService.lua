@@ -812,7 +812,7 @@ local function tick(case, now)
 		end
 		thief.Humanoid:MoveTo(target)
 		local d = flat(thief.Root.Position - target).Magnitude
-		if case.Kind == "pickpocket" or case.Kind == "player" then
+		if case.Kind == "pickpocket" or case.Kind == "player" or case.Kind == "snatch" then
 			-- sneak the last few steps
 			-- (always a little quicker than people walk, or they'd never catch up)
 			local walk = Config.WALK_SPEED or 9.5

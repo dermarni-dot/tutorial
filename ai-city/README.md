@@ -418,7 +418,14 @@ Your Config is the base. Every key you had is still there, and these were added:
 
 The game was run in a Luau test harness (a small Roblox simulation), and these checks pass:
 
-All 31 test suites pass: **409 checks, 0 failures**.
+All 33 test suites pass: **436 checks, 0 failures**.
+
+- **This round:**
+  - the sloping beach (with real terrain): the sand goes from 0 at the back to -1.2 at the waterline, -7.8 sixty studs out and -16 far out; 41 kelp, 19 rocks, 3 dolphins, a wreck and a jet ski, all sitting on the sloping sand, and every jetty rock reaching the sea floor;
+  - clothes: all 16 fashion items bought, worn and shown on the character, one per slot, not mistaken for a disguise, and the Beach Boutique selling them too;
+  - street life: food trucks with cooks and queues, buying food, buskers with crowds, and tips;
+  - the bigger map: no food truck or building in the roads, every place reachable;
+  - fixes found along the way: bag snatchers couldn't catch up with people walking, street fights ended early and drew no crowd on the bigger map, and fewer people hailed rides; all three now work at the new scale.
 
 - **This update** (40 checks, plus 6 on the client: race rings, the detailed map, the surf and crabs, walking vs running, and cars stopping behind the crosswalk at red lights):
   - the walk signals take turns (never both directions at once), 15 people waited at the curb, and nobody got stuck at a crossing;

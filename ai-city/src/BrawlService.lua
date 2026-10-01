@@ -417,7 +417,7 @@ function BrawlService.Fight(a, c, opts)
 	-- players nearby hear about it
 	for _, player in ipairs(if b.Quiet then {} else Players:GetPlayers()) do
 		local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
-		if root and (root.Position - center(b)).Magnitude < 130 then
+		if root and (root.Position - center(b)).Magnitude < WATCH + 50 then
 			S.City.Toast(player, "👊", "Street fight!", a.C.First .. " and " .. c.C.First .. " are fighting on " .. streetNear(center(b)) .. ". Hold E on one of them to break it up, or just watch.", rgb(255, 140, 60))
 		end
 	end
@@ -598,13 +598,14 @@ end
 local function gatherCrowd(b)
 	local pos = center(b)
 	local now = os.clock()
-	for _, w in ipairs(S.Citizens.Nearby(pos, 80)) do
+	-- (the city is spread out: people come from a fair way off to see)
+	for _, w in ipairs(S.Citizens.Nearby(pos, 110)) do
 		if w ~= b.A and w ~= b.B and not w.Temp and not inBrawl[w] and w.Model.Parent and w.Model:GetAttribute("Action") ~= "sleep" then
 			local age = S.Life:Age(w.C)
 			local dist = (w.Root.Position - pos).Magnitude
 			local free = w.State == "act" and w.Target and w.Target.Place and w.Target.Place.Outdoor and not (w.Plan and (w.Plan.Kind == "Work" or w.Plan.Kind == "School"))
 			-- people walking by (and people hanging around outside) come over and form a ring
-			if (w.State == "walk" or (free and dist < 45)) and (w.Floor or 1) == 1 and #b.Crowd < 6 and not busy(w) and age >= 6 then
+			if (w.State == "walk" or (free and dist < 60)) and (w.Floor or 1) == 1 and #b.Crowd < 6 and not busy(w) and age >= 6 then
 				inBrawl[w] = b
 				table.insert(b.Crowd, w)
 				S.Citizens.Control(w, true)
