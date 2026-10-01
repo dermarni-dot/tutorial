@@ -240,6 +240,8 @@ end
 local EMOTES = {
 	wave = "wave", dance = "dance", cheer = "cheer", point = "point", clap = "clap",
 	laugh = "laugh", salute = "salute", flex = "flex", shrug = "shrugEmote", sit = "sitdown", sleeping = "sleep",
+	-- (set by the venues: karaoke, bowling, mini golf, a yoga class)
+	sing = "sing", bowl = "bowl", putt = "putt", yoga = "yoga",
 }
 Poses.EMOTES = EMOTES
 
@@ -301,6 +303,60 @@ L.punch = function(t, ph)
 	local r = if c < 0.2 then sin(c / 0.2 * math.pi) else 0
 	local l = if c > 0.5 and c < 0.7 then sin((c - 0.5) / 0.2 * math.pi) else 0
 	return { LS = A(60 + l * 30, 0, 18), LE = A(110 - l * 100), RS = A(60 + r * 30, 0, -18), RE = A(110 - r * 100), Waist = A(-6, (r - l) * 20, 0), LH = A(-10), RH = A(18), RK = A(-18), Root = CFrame.new(0, abs(osc(t, 6, ph)) * 0.15, 0) }, true
+end
+-- 🎳 step, swing the ball back, roll it down the lane, follow through
+L.bowl = function(t, ph)
+	local c = (t * 0.32 + ph) % 1
+	if c < 0.35 then
+		-- lining up: ball held at the chest, a little sway
+		local s = osc(t, 1.2, ph) * 3
+		return { LS = A(40, 0, 12), RS = A(46, 0, -10), LE = A(80), RE = A(84), Neck = A(-8, s, 0), Waist = A(-4) }, true
+	end
+	local k = (c - 0.35) / 0.65
+	local swing = if k < 0.35 then -k / 0.35 * 60 elseif k < 0.55 then -60 + (k - 0.35) / 0.2 * 140 else 80
+	local lunge = math.clamp((k - 0.3) / 0.3, 0, 1)
+	return { RS = A(swing, 0, -6), RE = A(10), LS = A(30, 0, 50 * lunge), LE = A(20), LH = A(lunge * 50), LK = A(-lunge * 60), RH = A(-lunge * 30), RK = A(-lunge * 20), Waist = A(-lunge * 30), Root = CFrame.new(0, -lunge * 0.8, 0), Neck = A(lunge * 10) }, true
+end
+-- 🎧 one hand on the headphones, one on the decks, head nodding to the beat
+L.dj = function(t, ph)
+	local beat = abs(sin(t * 4.2 + ph))
+	local scratch = osc(t, 6, ph) * 12
+	return { LS = A(150, 0, -28), LE = A(130), RS = A(48, scratch, -12), RE = A(70), RW = A(0, scratch * 2, 0), Neck = A(-10 - beat * 14, 0, 0), Waist = A(-6), Root = CFrame.new(0, -beat * 0.15, 0) }, true
+end
+-- 🎤 mic up to the mouth, the other arm out, swaying
+L.sing = function(t, ph)
+	local sway = osc(t, 1.4, ph)
+	local belt = math.max(0, osc(t, 0.35, ph))
+	return { RS = A(118, 0, -14), RE = A(116), LS = A(40 + belt * 70, 0, 40 + belt * 30), LE = A(30 - belt * 20), Waist = A(-belt * 8, 0, sway * 6), Neck = A(10 + belt * 18, sway * 8, 0), LH = A(0, 0, -sway * 4), RH = A(0, 0, -sway * 4) }, true
+end
+-- 💈 comb in one hand, scissors snipping in the other, leaning in
+L.haircut = function(t, ph)
+	local snip = osc(t, 7, ph) * 6
+	local move = osc(t, 0.3, ph) * 14
+	return { RS = A(96, move, -24), RE = A(70 + snip), LS = A(90, -move, 20), LE = A(80), Waist = A(-14, move * 0.4, 0), Neck = A(-24) }, true
+end
+-- ⛳ bent over the putter, eyes on the ball, a slow little stroke
+L.putt = function(t, ph)
+	local c = (t * 0.25 + ph) % 1
+	local stroke = if c < 0.6 then osc(t, 0.6, ph) * 4 elseif c < 0.75 then -14 + (c - 0.6) / 0.15 * 30 else 16
+	return { LS = A(30 + stroke, 0, 18), RS = A(30 + stroke, 0, -18), LE = A(10), RE = A(10), Waist = A(-30), Neck = A(-30, if c > 0.75 then 30 else 0, 0), LH = A(12), RH = A(12), LK = A(-14), RK = A(-14) }, true
+end
+-- 🧺 lift a shirt, shake it out, fold it on the table
+L.fold = function(t, ph)
+	local c = (t * 0.45 + ph) % 1
+	local lift = if c < 0.5 then sin(c * 2 * math.pi) else 0
+	return { LS = A(50 + lift * 40, 0, 20 - lift * 10), RS = A(50 + lift * 40, 0, -20 + lift * 10), LE = A(40 - lift * 30), RE = A(40 - lift * 30), Waist = A(-14 + lift * 8), Neck = A(-22) }, true
+end
+-- 🧽 scrubbing in big circles
+L.wash = function(t, ph)
+	local a = t * 3 + ph
+	return { RS = A(84 + sin(a) * 22, 0, -20 + cos(a) * 18), RE = A(30), LS = A(30, 0, 16), LE = A(40), Waist = A(-12, sin(a) * 6, 0), Neck = A(-10) }, true
+end
+-- 🖼️ hands behind the back, head tilted, stepping in for a closer look
+L.admire = function(t, ph)
+	local c = (t * 0.12 + ph) % 1
+	local lean = if c < 0.4 then 0 elseif c < 0.7 then sin((c - 0.4) / 0.3 * math.pi) else 0
+	return { LS = A(-24, 0, 12), RS = A(-24, 0, -12), LE = A(70), RE = A(70), Waist = A(-lean * 14), Neck = A(-6 - lean * 8, 0, 12 + osc(t, 0.2, ph) * 6) }, true
 end
 L.yoga = function(t, ph)
 	local b = osc(t, 0.9, ph) * 3
@@ -971,6 +1027,23 @@ local function pole(f, b, s, name, top, bottom, thick, color, material)
 	return CFrame.lookAt(bottom, bottom + Vector3.new(bottom.X - top.X, 0, bottom.Z - top.Z))
 end
 -- each builder: (folder, body parts, scale) -> nothing (parents parts to folder)
+PROPS.BowlingBall = function(f, b, s)
+	prop(b.RightHand, "BowlingBall", Vector3.new(1, 1, 1) * s, CFrame.new(0, -0.6 * s, -0.1 * s), rgb(30, 60, 160), Ball, Enum.Material.SmoothPlastic).Parent = f
+end
+PROPS.Mic = function(f, b, s)
+	prop(b.RightHand, "MicHandle", Vector3.new(0.18, 0.7, 0.18) * s, CFrame.new(0, -0.45 * s, -0.1 * s), rgb(30, 30, 34), nil, Enum.Material.Metal).Parent = f
+	prop(b.RightHand, "MicHead", Vector3.new(0.36, 0.36, 0.36) * s, CFrame.new(0, -0.9 * s, -0.1 * s), rgb(170, 174, 180), Ball, Enum.Material.Metal).Parent = f
+end
+PROPS.Scissors = function(f, b, s)
+	prop(b.RightHand, "Scissors", Vector3.new(0.08, 0.7, 0.2) * s, CFrame.new(0, -0.45 * s, -0.1 * s), rgb(200, 205, 212), nil, Enum.Material.Metal).Parent = f
+	prop(b.LeftHand, "Comb", Vector3.new(0.06, 0.6, 0.18) * s, CFrame.new(0, -0.4 * s, -0.1 * s), rgb(30, 30, 34)).Parent = f
+end
+PROPS.Putter = function(f, b, s)
+	pole(f, b, s, "Putter", Vector3.new(0, -0.6, -1.1), Vector3.new(0.2, -3.4, -2), 0.12, rgb(190, 195, 200), Enum.Material.Metal)
+end
+PROPS.Sponge = function(f, b, s)
+	prop(b.RightHand, "Sponge", Vector3.new(0.6, 0.4, 0.8) * s, CFrame.new(0, -0.45 * s, -0.1 * s), rgb(250, 220, 60)).Parent = f
+end
 PROPS.Cup = function(f, b, s)
 	prop(b.RightHand, "Cup", Vector3.new(0.45, 0.55, 0.45) * s, CFrame.new(0, -0.3 * s, -0.25 * s), rgb(245, 245, 240)).Parent = f
 end

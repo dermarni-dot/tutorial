@@ -366,6 +366,11 @@ local function drive(car, dt, camPos, night)
 					stop = true
 					car.Yielding = true
 				end
+				-- don't block the crosswalk: if the car in front is waiting just
+				-- past it, wait at the line until there's room on the other side
+				if not stop and gapAhead(car) < (left - gap) + (CROSS_FAR - CROSS_NEAR) + 6 then
+					stop = true
+				end
 			end
 			if stop then
 				want = math.min(want, math.max(0, (left - gap) * 1.3))
@@ -499,8 +504,9 @@ local function populate(camPos)
 			local pos = from + dir * s
 			local d = (pos - camPos).Magnitude
 			local free = true
+			-- (room for a bus: they're long)
 			for _, other in ipairs(Traffic.Cars) do
-				if (other.CF.Position - pos).Magnitude < 16 then
+				if (other.CF.Position - pos).Magnitude < (other.Length or 14) / 2 + 22 then
 					free = false
 					break
 				end

@@ -112,6 +112,15 @@ Actions.List = {
 	salute = { Pose = "salute", Label = "🫡 Saluting" },
 	flex = { Pose = "flex", Label = "💪 Flexing" },
 	carry = { Pose = "carry", Label = "👶 Carrying the baby" },
+	-- the back-lot places: bowling, the nightclub, the barbershop, mini golf...
+	bowl = { Pose = "bowl", Props = { "BowlingBall" }, Label = "🎳 Bowling" },
+	dj = { Pose = "dj", Label = "🎧 DJing" },
+	sing = { Pose = "sing", Props = { "Mic" }, Label = "🎤 Singing karaoke" },
+	haircut = { Pose = "haircut", Props = { "Scissors" }, Label = "💈 Cutting hair" },
+	putt = { Pose = "putt", Props = { "Putter" }, Label = "⛳ Playing mini golf" },
+	fold = { Pose = "fold", Label = "🧺 Folding laundry" },
+	wash = { Pose = "wash", Props = { "Sponge" }, Label = "🧽 Washing cars" },
+	admire = { Pose = "admire", Label = "🖼️ Admiring the art" },
 }
 
 -- Checkouts (a customer and a clerk doing a sale together): how long each kind

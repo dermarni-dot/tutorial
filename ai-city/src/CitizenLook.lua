@@ -124,6 +124,27 @@ local UNIFORMS = {
 	["Accountant"] = { Top = rgb(235, 235, 240), Bottom = rgb(50, 55, 70), Sleeves = "long", Items = { "Tie:40,100,80", "Glasses", "Lanyard" } },
 	["Night Janitor"] = { Top = rgb(80, 110, 120), Bottom = rgb(80, 110, 120), Items = { "Cap:60,80,90", "Gloves", "NameTag" } },
 	["Community Organizer"] = { Top = rgb(90, 170, 110), Bottom = rgb(90, 80, 70), Items = { "Lanyard", "Scarf" } },
+	-- the back-lot places
+	["Pizza Chef"] = { Top = WHITE, Bottom = rgb(60, 60, 60), Items = { "Toque", "Apron:200,50,40" } },
+	["Bowling Attendant"] = { Top = rgb(30, 60, 140), Bottom = BLACK, Items = { "NameTag", "Stripes:250,200,60" } },
+	["DJ"] = { Top = rgb(30, 30, 36), Bottom = rgb(30, 30, 36), Sleeves = "long", Items = { "Headphones", "CapBack:240,60,200", "Necklace" } },
+	["Bartender"] = { Top = BLACK, Bottom = BLACK, Sleeves = "long", Items = { "Vest:120,30,140", "BowTie:240,60,200" } },
+	["Aquarium Guide"] = { Top = rgb(60, 140, 190), Bottom = rgb(40, 50, 70), Items = { "Cap:60,140,190", "Lanyard" } },
+	["Barber"] = { Top = WHITE, Bottom = rgb(40, 40, 46), Items = { "Apron:30,30,34", "NameTag" } },
+	["Car Wash Attendant"] = { Top = rgb(40, 140, 220), Bottom = rgb(40, 50, 70), Items = { "Cap:40,140,220", "Gloves" } },
+	["Gallery Curator"] = { Top = BLACK, Bottom = BLACK, Sleeves = "long", Items = { "Glasses", "Scarf" } },
+	["Laundromat Attendant"] = { Top = rgb(140, 200, 230), Bottom = rgb(60, 70, 90), Items = { "NameTag" } },
+	["Bistro Chef"] = { Top = WHITE, Bottom = rgb(40, 40, 45), Sleeves = "long", Items = { "TallToque", "Neckerchief:130,30,40" } },
+	["Yoga Instructor"] = { Top = rgb(160, 210, 160), Bottom = rgb(60, 60, 70), Items = { "Headband:250,250,250" } },
+	["Golf Attendant"] = { Top = rgb(40, 150, 70), Bottom = rgb(200, 180, 140), Items = { "Cap:40,150,70" } },
+	["Boutique Clerk"] = { Top = rgb(250, 200, 220), Bottom = BLACK, Items = { "NameTag", "Necklace" } },
+	["Clinic Doctor"] = { Top = rgb(170, 210, 240), Bottom = rgb(60, 70, 90), Sleeves = "long", Items = { "LabCoat", "Stethoscope", "NameTag" } },
+	["Clinic Nurse"] = { Top = rgb(60, 150, 200), Bottom = rgb(60, 150, 200), Items = { "Stethoscope", "NameTag" } },
+	["Donut Baker"] = { Top = WHITE, Bottom = rgb(90, 80, 70), Items = { "Toque", "Apron:240,120,170" } },
+	["Martial Arts Teacher"] = { Top = WHITE, Bottom = WHITE, Sleeves = "long", Items = { "Belt:20,20,22" } },
+	["Game Developer"] = { Top = rgb(60, 60, 70), Bottom = rgb(60, 90, 140), Sleeves = "long", Items = { "Hoodie", "Headphones", "Lanyard" } },
+	["Stage Manager"] = { Top = BLACK, Bottom = BLACK, Sleeves = "long", Items = { "Headphones", "Lanyard" } },
+	["Motel Clerk"] = { Top = rgb(40, 140, 150), Bottom = rgb(60, 60, 70), Items = { "NameTag" } },
 }
 
 -- Something for each hobby. Hats only if the job didn't already give one.

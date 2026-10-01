@@ -617,6 +617,9 @@ function DisguiseService.Start(services)
 	S.City.Handle("Wear", wear)
 	S.City.Handle("BuyOutfit", buy)
 	addStore(S.Map.Places.Mall)
+	if S.Map.Places.Boutique then
+		addStore(S.Map.Places.Boutique, nil, "👗 Trendy Threads")
+	end
 	-- the Beach Boutique on the sand (see NorthShore)
 	if S.Map.Boutique then
 		addStore(S.Map.Places.Beach, S.Map.Boutique, "👕 Beach Boutique")

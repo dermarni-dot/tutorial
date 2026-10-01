@@ -33,6 +33,9 @@ Food.Menus = {
 	Restaurant = { "Pasta", "Pizza" },
 	IceCream = { "IceCream", "Milkshake" },
 	Shop = { "Apple", "Sandwich", "Energy" },
+	Pizzeria = { "Pizza", "Fries", "Milkshake" },
+	Bistro = { "Sandwich", "Coffee", "Croissant" },
+	DonutShop = { "Donut", "Coffee", "Muffin" },
 }
 
 return Food

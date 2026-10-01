@@ -1044,6 +1044,265 @@ function B.Suburb(ctx, parent, i, j, rng)
 	ctx.houseRow(parent, i, j, rng, { { 0, -1 }, { 0, 1 } }, true)
 end
 
+--------------------------------------------------------------------------------
+-- 🏙️ The back lots. The blocks downtown are deep: the main building faces the
+-- street toward the center, and the back of the block used to be empty
+-- pavement. Now the back street gets its own row of buildings (see
+-- MapBuilder): a pizzeria, a bowling alley, a nightclub, an aquarium, a
+-- barbershop, a car wash, an art gallery, a laundromat, a bistro, a yoga
+-- studio and a mini golf course. Each item: its size (before BUILD_SCALE),
+-- the building, and what's inside.
+--------------------------------------------------------------------------------
+local SCALE = MapKit.BUILD_SCALE or 1
+Places.BACK_LOTS = {
+	{ Id = "Pizzeria", W = 32, D = 28, Floors = 1, Wall = rgb(200, 60, 50), Trim = rgb(250, 240, 220), Awning = { rgb(40, 140, 70), WHITE }, Material = Enum.Material.Brick, Storefront = true, Rooms = "pizzeria" },
+	{ Id = "Bowling", W = 44, D = 38, Floors = 1, Wall = rgb(30, 60, 140), Trim = rgb(250, 200, 60), WindowColor = rgb(160, 200, 255), Material = Enum.Material.Metal, DoorW = 10, Rooms = "bowling", Neon = rgb(255, 80, 120) },
+	{ Id = "Barbershop", W = 26, D = 24, Floors = 1, Wall = rgb(240, 236, 226), Trim = rgb(30, 60, 140), Awning = { rgb(200, 40, 50), WHITE }, Material = Enum.Material.Brick, Storefront = true, Rooms = "barber", Pole = true },
+	{ Id = "Nightclub", W = 40, D = 34, Floors = 1, Wall = rgb(26, 22, 36), Trim = rgb(240, 60, 200), WindowColor = rgb(200, 120, 255), Material = Enum.Material.SmoothPlastic, DoorW = 8, Rooms = "club", Neon = rgb(80, 220, 255) },
+	{ Id = "Aquarium", W = 44, D = 34, Floors = 2, Wall = rgb(60, 140, 190), Trim = WHITE, WindowColor = rgb(120, 200, 255), CurtainWall = true, DoorW = 10, Elevator = true, Rooms = { "aquarium", Upper = "aquarium" }, Wave = true },
+	{ Id = "Laundromat", W = 26, D = 24, Floors = 1, Wall = rgb(140, 200, 230), Trim = WHITE, Awning = { rgb(60, 140, 200), WHITE }, Material = Enum.Material.SmoothPlastic, Storefront = true, Rooms = "laundromat" },
+	{ Id = "CarWash", W = 40, D = 24, Outdoor = true, Build = "carWash" },
+	{ Id = "Gallery", W = 36, D = 30, Floors = 1, Wall = rgb(246, 246, 242), Trim = rgb(40, 40, 46), Material = Enum.Material.Concrete, DoorW = 8, Rooms = "gallery" },
+	{ Id = "Bistro", W = 30, D = 26, Floors = 1, Wall = rgb(60, 80, 70), Trim = rgb(230, 210, 170), Awning = { rgb(130, 30, 40), rgb(230, 210, 170) }, Material = Enum.Material.Wood, Storefront = true, Rooms = "cafe" },
+	{ Id = "YogaStudio", W = 32, D = 26, Floors = 1, Wall = rgb(214, 226, 200), Trim = rgb(140, 110, 80), Awning = { rgb(120, 170, 120), WHITE }, Material = Enum.Material.Wood, Storefront = true, Rooms = "yoga" },
+	{ Id = "MiniGolf", W = 50, D = 34, Outdoor = true, Build = "miniGolf" },
+	-- and a second row of shops and places
+	{ Id = "Boutique", W = 30, D = 26, Floors = 2, Wall = rgb(250, 220, 230), Trim = rgb(40, 40, 46), Awning = { rgb(230, 90, 150), WHITE }, Material = Enum.Material.Brick, Storefront = true, Rooms = "store" },
+	{ Id = "Clinic", W = 34, D = 28, Floors = 2, Wall = WHITE, Trim = rgb(60, 150, 200), WindowColor = rgb(170, 220, 240), Material = Enum.Material.SmoothPlastic, DoorW = 8, Rooms = "hospital" },
+	{ Id = "DonutShop", W = 26, D = 24, Floors = 1, Wall = rgb(250, 200, 220), Trim = rgb(120, 70, 40), Awning = { rgb(240, 120, 170), WHITE }, Material = Enum.Material.Brick, Storefront = true, Rooms = "cafe", Donut = true },
+	{ Id = "MusicStore", W = 28, D = 26, Floors = 1, Wall = rgb(40, 40, 50), Trim = rgb(250, 190, 60), Awning = { rgb(250, 190, 60), rgb(40, 40, 50) }, Material = Enum.Material.Brick, Storefront = true, Rooms = "store" },
+	{ Id = "Dojo", W = 34, D = 30, Floors = 1, Wall = rgb(236, 226, 206), Trim = rgb(160, 40, 40), Material = Enum.Material.WoodPlanks, Roof = "gable", RoofColor = rgb(60, 60, 66), DoorW = 8, Rooms = "gym" },
+	{ Id = "TechHub", W = 36, D = 30, Floors = 4, Wall = rgb(150, 180, 210), Trim = rgb(50, 56, 66), WindowColor = rgb(150, 200, 240), CurtainWall = true, DoorW = 8, Rooms = function(f)
+		return if f == 1 then "lobby" else "officeLight"
+	end },
+	{ Id = "Playhouse", W = 40, D = 34, Floors = 2, Wall = rgb(120, 40, 50), Trim = GOLD, Material = Enum.Material.Brick, DoorW = 10, Rooms = "cinema", Neon = rgb(255, 220, 120) },
+	{ Id = "Motel", W = 44, D = 26, Floors = 2, Wall = rgb(240, 220, 170), Trim = rgb(40, 140, 150), Awning = { rgb(40, 140, 150), WHITE }, Material = Enum.Material.Concrete, DoorW = 7, Elevator = true, Rooms = { "hotel", Upper = "hotel" }, Neon = rgb(255, 90, 90) },
+	-- and on any space left over: little apartment blocks (homes)
+	{ Id = "Flats", Name = "Cedar Flats", W = 34, D = 24, Build = "flats" },
+	{ Id = "Flats", Name = "Harbor Lofts", W = 34, D = 24, Build = "flats" },
+	{ Id = "Flats", Name = "Juniper House", W = 34, D = 24, Build = "flats" },
+	{ Id = "Flats", Name = "Linden Court", W = 34, D = 24, Build = "flats" },
+	{ Id = "Flats", Name = "Aspen Row", W = 34, D = 24, Build = "flats" },
+	{ Id = "Flats", Name = "Poplar Place", W = 34, D = 24, Build = "flats" },
+}
+
+local BACK = {}
+
+-- 🏢 a four-storey apartment block: a lobby, then two flats a floor
+function BACK.flats(ctx, parent, i, j, rng, item, face, center)
+	local colors = { rgb(214, 180, 150), rgb(170, 190, 210), rgb(206, 206, 172), rgb(190, 150, 140), rgb(200, 210, 190) }
+	local name = item.Name or "Flats"
+	local b = Buildings.shell(parent, { Name = name, Label = "🏢 " .. name, Center = center, Face = face, W = item.W, D = item.D, Floors = 4, Wall = colors[(#name + i * 3 + j) % #colors + 1], Trim = rgb(110, 90, 80), Material = Enum.Material.Brick, Awning = { rgb(60, 110, 90), WHITE }, RoofKit = { "garden" } })
+	for f = 1, 3 do
+		for k = -1, 1, 2 do
+			deco(b.Model, "Balcony", Vector3.new(6, 0.5, 2.6), b.At(k * 10, f * FLOOR_H + 0.3, -b.D / 2 - 1.3), rgb(200, 200, 205), Enum.Material.Concrete)
+			deco(b.Model, "BalconyRail", Vector3.new(6, 2, 0.2), b.At(k * 10, f * FLOOR_H + 1.5, -b.D / 2 - 2.5), rgb(60, 60, 66), Enum.Material.Metal)
+		end
+	end
+	local spots = Interiors.furnish(b, function(f)
+		return if f == 1 then "lobby" else "apartment"
+	end, rng, nil)
+	local node = ctx.hookDoor(i, j, b.Door, face)
+	for f = 2, b.Floors do
+		for side = 0, 1 do
+			local mine = {}
+			for _, s in ipairs(spots) do
+				if s.Floor == f then
+					local x = b.CFrame:PointToObjectSpace(s.CFrame.Position).X
+					if (x < 0) == (side == 0) then
+						s.Building = b
+						table.insert(mine, s)
+					end
+				end
+			end
+			ctx.addHome({ Model = b.Model, Building = b, Door = b.Door, Inside = b.Inside, Address = "Apt " .. f .. (if side == 0 then "A" else "B") .. ", " .. name, Capacity = 4, Kind = "apartment", Node = node, Floor = f, Spots = mine })
+		end
+	end
+	return b.Model
+end
+
+-- 🧽 a drive-through car wash: a long open tunnel with spinning brushes and
+-- sprayers; drive your car through (see VenueService)
+function BACK.carWash(ctx, parent, i, j, rng, item, face, center)
+	local m = Instance.new("Model")
+	m.Name = "CarWash"
+	m.Parent = parent
+	-- (W: across the tunnel, from the street in; D: its length, along the street)
+	local W, D = item.D * SCALE, item.W * SCALE
+	-- the tunnel runs along the street (cars drive in from one side)
+	local cf = CFrame.lookAt(center, center + Vector3.new(-face.Z, 0, face.X))
+	local function at(x, y, z)
+		return cf * CFrame.new(x, y, z)
+	end
+	local H = 15
+	deco(m, "WashFloor", Vector3.new(W, 0.2, D), at(0, 0.1, 0), rgb(90, 96, 104), Enum.Material.Concrete)
+	for _, sx in ipairs({ -1, 1 }) do
+		part(m, "WashWall", Vector3.new(1, H, D - 18), at(sx * W / 2, H / 2, 0), rgb(240, 240, 244), Enum.Material.SmoothPlastic)
+		deco(m, "WashStripe", Vector3.new(1.05, 1.2, D - 18), at(sx * W / 2, H - 3, 0), rgb(40, 140, 220), Enum.Material.SmoothPlastic)
+	end
+	part(m, "WashRoof", Vector3.new(W + 2, 1, D - 16), at(0, H + 0.5, 0), rgb(40, 140, 220), Enum.Material.Metal)
+	local sign = part(m, "WashSign", Vector3.new(W, 4, 1), at(0, H + 3, -(D - 16) / 2 + 0.5), rgb(250, 250, 250))
+	MapKit.signText(sign, Enum.NormalId.Front, "🧽 SPARKLE CAR WASH", rgb(40, 120, 210), Enum.Font.GothamBlack)
+	MapKit.signText(sign, Enum.NormalId.Back, "🧽 SPARKLE CAR WASH", rgb(40, 120, 210), Enum.Font.GothamBlack)
+	-- spinning brushes on both sides and a roller overhead
+	for k = -1, 1 do
+		for _, sx in ipairs({ -1, 1 }) do
+			local brush = MapKit.cylinder(m, "WashBrush", 9, 3.4, at(sx * (W / 2 - 3), 4.7, k * 10) * CFrame.Angles(0, 0, math.rad(90)), ({ rgb(60, 120, 230), rgb(240, 80, 140), rgb(250, 200, 60) })[k + 2], Enum.Material.Fabric)
+			brush.CanCollide = false
+			MapKit.tag(brush, "Spin")
+		end
+	end
+	local roller = MapKit.cylinder(m, "WashRoller", W - 8, 3, at(0, H - 4, 0), rgb(60, 200, 160), Enum.Material.Fabric)
+	roller.CanCollide = false
+	deco(m, "RollerAxle", Vector3.new(W, 0.5, 0.5), at(0, H - 4, 0), rgb(200, 200, 206), Enum.Material.Metal)
+	-- sprayers: the client turns the foam on while a car is inside
+	for k = -1, 1, 2 do
+		local bar = deco(m, "SprayBar", Vector3.new(W, 0.5, 0.5), at(0, H - 0.25, k * 12), rgb(200, 200, 206), Enum.Material.Metal)
+		local foam = Instance.new("ParticleEmitter")
+		foam.Name = "Foam"
+		foam.Color = ColorSequence.new(rgb(255, 255, 255), rgb(200, 230, 255))
+		foam.Size = NumberSequence.new(1.2, 2.6)
+		foam.Transparency = NumberSequence.new(0.2, 1)
+		foam.Lifetime = NumberRange.new(1, 1.6)
+		foam.Rate = 0
+		foam.Speed = NumberRange.new(6, 10)
+		foam.EmissionDirection = Enum.NormalId.Bottom
+		foam.SpreadAngle = Vector2.new(30, 30)
+		foam.Parent = bar
+		MapKit.tag(bar, "WashSpray")
+	end
+	-- where a car counts as "in the wash"
+	local zone = Instance.new("Part")
+	zone.Name = "WashZone"
+	zone.Anchored, zone.CanCollide, zone.CanQuery, zone.CanTouch = true, false, false, false
+	zone.Transparency = 1
+	zone.Size = Vector3.new(W - 2, 10, D - 18)
+	zone.CFrame = at(0, 5, 0)
+	zone.Parent = m
+	MapKit.tag(zone, "CarWashZone")
+	-- the pay booth and the attendants
+	local boothAt = center + face * (W / 2 - 3.5) + Vector3.new(-face.Z, 0, face.X) * (D / 2 - 4)
+	part(m, "PayBooth", Vector3.new(5, 8, 5), CFrame.new(boothAt + Vector3.new(0, 4, 0)), rgb(250, 250, 250), Enum.Material.SmoothPlastic)
+	deco(m, "BoothRoof", Vector3.new(6, 0.6, 6), CFrame.new(boothAt + Vector3.new(0, 8.3, 0)), rgb(40, 140, 220), Enum.Material.Metal)
+	local spots = {}
+	for k = -1, 1, 2 do
+		local p = (at(k * (W / 2 - 4), 0.5, -(D / 2) + 6)).Position
+		table.insert(spots, outSpot(facing(p, (at(0, 0.5, -(D / 2) + 6)).Position), "wash", "work"))
+	end
+	local door = center + face * (W / 2 + 2)
+	ctx.outdoor("CarWash", m, i, j, door, face, spots)
+	return m
+end
+
+-- ⛳ six little holes on green felt: rails, a ramp, a spinning bar, a cup and
+-- a flag on each; a hut for the clubs and balls (see VenueService)
+function BACK.miniGolf(ctx, parent, i, j, rng, item, face, center)
+	local m = Instance.new("Model")
+	m.Name = "MiniGolf"
+	m.Parent = parent
+	local W, D = item.W * SCALE, item.D * SCALE
+	local cf = CFrame.lookAt(center, center - face) -- local -Z toward the street
+	local function at(x, y, z)
+		return cf * CFrame.new(x, y, z)
+	end
+	deco(m, "GolfGround", Vector3.new(W, 0.2, D), at(0, 0.1, 0), rgb(110, 170, 90), Enum.Material.Grass)
+	local spots = {}
+	local holeW, holeL = 7, D - 20
+	for n = 1, 6 do
+		local x = -W / 2 + 8 + (n - 1) * ((W - 16) / 5)
+		local felt = MapKit.part(m, "GolfFelt", Vector3.new(holeW, 0.3, holeL), at(x, 0.35, 2), rgb(40, 150, 70), Enum.Material.Fabric)
+		for _, sx in ipairs({ -1, 1 }) do
+			deco(m, "GolfRail", Vector3.new(0.6, 0.9, holeL), at(x + sx * (holeW / 2 + 0.3), 0.6, 2), rgb(150, 100, 60), Enum.Material.Wood)
+		end
+		deco(m, "GolfRail", Vector3.new(holeW + 1.2, 0.9, 0.6), at(x, 0.6, 2 + holeL / 2 + 0.3), rgb(150, 100, 60), Enum.Material.Wood)
+		local teeZ = 2 - holeL / 2 + 2
+		local cupZ = 2 + holeL / 2 - 3
+		local tee = deco(m, "GolfTee", Vector3.new(2.4, 0.1, 2.4), at(x, 0.55, teeZ), rgb(30, 110, 50), Enum.Material.Fabric)
+		tee:SetAttribute("Hole", n)
+		tee:SetAttribute("Cup", at(x, 0.55, cupZ).Position)
+		MapKit.tag(tee, "GolfTee")
+		MapKit.disc(m, "GolfCup", 0.12, 1.2, at(x, 0.52, cupZ).Position, rgb(20, 20, 22), Enum.Material.SmoothPlastic)
+		deco(m, "FlagStick", Vector3.new(0.15, 5, 0.15), at(x, 3, cupZ), WHITE, Enum.Material.Metal)
+		local flag = deco(m, "GolfFlag", Vector3.new(0.05, 1.2, 1.8), at(x, 4.8, cupZ + 0.9), MapKit.FLOWERS[n % #MapKit.FLOWERS + 1], Enum.Material.Fabric)
+		MapKit.tag(flag, "WavingFlag")
+		local number = deco(m, "HoleSign", Vector3.new(2, 2, 0.2), at(x, 1.6, teeZ - 2), rgb(250, 250, 240), Enum.Material.Wood)
+		MapKit.signText(number, Enum.NormalId.Front, tostring(n), rgb(30, 110, 50), Enum.Font.GothamBlack)
+		-- an obstacle on every other hole
+		if n % 3 == 1 then
+			local bar = deco(m, "GolfSpinner", Vector3.new(holeW - 1, 0.6, 0.6), at(x, 1, 2), rgb(230, 60, 60), Enum.Material.SmoothPlastic)
+			MapKit.tag(bar, "Spin")
+			deco(m, "SpinnerPost", Vector3.new(0.4, 0.5, 0.4), at(x, 0.7, 2), rgb(60, 60, 66), Enum.Material.Metal)
+		elseif n % 3 == 2 then
+			MapKit.wedge(m, "GolfRamp", Vector3.new(holeW, 1.2, 5), at(x, 1.1, -2) * CFrame.Angles(0, math.pi, 0), rgb(60, 170, 90), Enum.Material.Fabric)
+			MapKit.wedge(m, "GolfRamp", Vector3.new(holeW, 1.2, 5), at(x, 1.1, 3), rgb(60, 170, 90), Enum.Material.Fabric)
+		else
+			-- a little windmill
+			part(m, "Windmill", Vector3.new(3, 6, 3), at(x + holeW / 2 + 2.2, 3.2, 2), rgb(230, 220, 200), Enum.Material.WoodPlanks)
+			wedge(m, "WindmillRoof", Vector3.new(3.4, 2, 3.4), at(x + holeW / 2 + 2.2, 7.2, 2), rgb(170, 60, 50), Enum.Material.WoodPlanks)
+		end
+		table.insert(spots, outSpot(facing(at(x, 0.5, teeZ - 0.8).Position, at(x, 0.5, cupZ).Position), "putt", "visit"))
+		local _ = felt
+	end
+	-- the hut where you get a putter
+	local hut = part(m, "GolfHut", Vector3.new(10, 8, 6), at(W / 2 - 6, 4, -D / 2 + 4), rgb(250, 240, 220), Enum.Material.WoodPlanks)
+	MapKit.awning(m, 10, 2.4, at(W / 2 - 6, 7.4, -D / 2 + 0.6), rgb(40, 150, 70), WHITE)
+	local sign = deco(m, "GolfSign", Vector3.new(10, 2, 0.3), at(W / 2 - 6, 9.2, -D / 2 + 1), rgb(30, 110, 50))
+	MapKit.signText(sign, Enum.NormalId.Front, "⛳ MINI GOLF", WHITE, Enum.Font.GothamBlack)
+	table.insert(spots, outSpot(facing(at(W / 2 - 6, 0.5, -D / 2 - 0.4).Position, at(W / 2 - 6, 0.5, -D / 2 - 5).Position), "cashier", "work"))
+	local _ = hut
+	local door = center + face * (D / 2 + 2)
+	local place = ctx.outdoor("MiniGolf", m, i, j, door, face, spots)
+	place.Kind = "fun"
+	return m
+end
+
+-- the building for one back-lot item, facing `face`, centered `lateral`
+-- studs along the block (before scaling)
+function Places.buildBack(ctx, parent, i, j, rng, item, face, center)
+	if item.Build then
+		return BACK[item.Build](ctx, parent, i, j, rng, item, face, center)
+	end
+	local spec = table.clone(item)
+	spec.Name = item.Id
+	spec.Label = ctx.label(item.Id)
+	spec.Center = center
+	spec.Face = face
+	spec.Rooms, spec.Id, spec.Neon, spec.Pole, spec.Wave, spec.Donut = nil, nil, nil, nil, nil, nil
+	local b = Buildings.shell(parent, spec)
+	local spots = Interiors.furnish(b, item.Rooms, rng, item.Id)
+	ctx.place(item.Id, b, i, j, face, spots)
+	-- a little something out front
+	if item.Neon then
+		for k = 0, 1 do
+			deco(b.Model, "NeonStrip", Vector3.new(b.W - 2, 0.4, 0.3), b.At(0, b.H - 1.2 - k * 1.2, -b.D / 2 - 0.4), if k == 0 then item.Neon else item.Trim, Enum.Material.Neon)
+		end
+	end
+	if item.Pole then
+		-- the striped barber pole by the door
+		local x = (spec.DoorW or 7) / 2 + 2.4
+		MapKit.cylinder(b.Model, "BarberPole", 4.4, 1, b.At(x, 6, -b.D / 2 - 0.8) * CFrame.Angles(0, 0, math.rad(90)), WHITE, Enum.Material.Glass)
+		for k = 0, 3 do
+			local stripe = deco(b.Model, "PoleStripe", Vector3.new(1.06, 0.35, 1.06), b.At(x, 4.4 + k * 1.1, -b.D / 2 - 0.8) * CFrame.Angles(0, math.rad(k * 45), math.rad(20)), if k % 2 == 0 then rgb(210, 30, 40) else rgb(40, 70, 170), Enum.Material.SmoothPlastic)
+			MapKit.tag(stripe, "Spin")
+		end
+	end
+	if item.Donut then
+		-- a giant donut on the roof
+		local ring = MapKit.cylinder(b.Model, "GiantDonut", 3, 12, b.At(0, b.H + 6.4, 0) * CFrame.Angles(0, math.rad(90), 0), rgb(220, 160, 90), Enum.Material.SmoothPlastic)
+		MapKit.cylinder(b.Model, "DonutIcing", 1, 11.4, b.At(0, b.H + 6.4, -1.2) * CFrame.Angles(0, math.rad(90), 0), rgb(250, 140, 190), Enum.Material.SmoothPlastic)
+		MapKit.cylinder(b.Model, "DonutHole", 3.4, 4, b.At(0, b.H + 6.4, 0) * CFrame.Angles(0, math.rad(90), 0), rgb(130, 190, 230), Enum.Material.SmoothPlastic)
+		deco(b.Model, "DonutPost", Vector3.new(1, 1.2, 1), b.At(0, b.H + 0.4, 0), rgb(90, 90, 96), Enum.Material.Metal)
+		local _ = ring
+	end
+	if item.Wave then
+		-- a big fish sign over the door
+		local fish = MapKit.ball(b.Model, "FishSign", 6, b.At(0, b.H - 3, -b.D / 2 - 0.4), rgb(250, 150, 50), Enum.Material.SmoothPlastic)
+		fish.Size = Vector3.new(8, 4, 1)
+		wedge(b.Model, "FishTail", Vector3.new(1, 3.4, 2.4), b.At(5, b.H - 3, -b.D / 2 - 0.4) * CFrame.Angles(0, math.rad(90), 0), rgb(250, 120, 40), Enum.Material.SmoothPlastic)
+	end
+	return b.Model
+end
+
 Places.Builders = B
 Places.playground = playground
 

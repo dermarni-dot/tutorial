@@ -493,12 +493,38 @@ end
 --------------------------------------------------------------------------------
 -- The bigger blocks leave open pavement around buildings: the empty corners
 -- become little pocket parks (grass, a tree, a bench, flowers).
-local function pocketParks(parent, i, j, before, rng)
-	local c = blockCenter(i, j)
-	local kids = parent:GetChildren()
+-- the floor boxes ({ x0, x1, z0, z1 }) taken up by these models
+local function footprints(models)
 	local boxes = {}
-	for k = before + 1, #kids do
-		for _, p in ipairs(kids[k]:GetDescendants()) do
+	for _, model in ipairs(models) do
+		for _, p in ipairs(model:GetDescendants()) do
+			if p:IsA("BasePart") and p.Size.X < 150 and p.Size.Z < 150 and p.Name ~= "Lot" and p.Size.Y > 0.5 then
+				-- (the part's real extent on the ground, turned however it is)
+				local cf, half = p.CFrame, p.Size / 2
+				local rx, ry, rz = cf.RightVector, cf.UpVector, cf.LookVector
+				local ex = math.abs(rx.X) * half.X + math.abs(ry.X) * half.Y + math.abs(rz.X) * half.Z
+				local ez = math.abs(rx.Z) * half.X + math.abs(ry.Z) * half.Y + math.abs(rz.Z) * half.Z
+				local pos = cf.Position
+				table.insert(boxes, { pos.X - ex, pos.X + ex, pos.Z - ez, pos.Z + ez })
+			end
+		end
+	end
+	return boxes
+end
+local function clearOf(boxes, x0, x1, z0, z1)
+	for _, bx in ipairs(boxes) do
+		if bx[2] > x0 and bx[1] < x1 and bx[4] > z0 and bx[3] < z1 then
+			return false
+		end
+	end
+	return true
+end
+
+local function pocketParks(parent, i, j, models, rng)
+	local c = blockCenter(i, j)
+	local boxes = {}
+	for k = 1, #models do
+		for _, p in ipairs(models[k]:GetDescendants()) do
 			if p:IsA("BasePart") and p.Size.X < 80 and p.Size.Z < 80 and p.Name ~= "Lot" then
 				local pos, half = p.Position, p.Size / 2
 				local r = math.max(half.X, half.Z)
@@ -535,6 +561,107 @@ local function pocketParks(parent, i, j, before, rng)
 	end
 end
 
+-- Fills the empty backs of the downtown blocks with the back-lot places (see
+-- Places.BACK_LOTS), nearest the center first: two side by side where they
+-- fit, otherwise one in the middle. Returns the ids it placed.
+local NO_BACK = { Houses = true, Suburb = true, Woods = true, Plaza = true, Park = true, WillowPark = true, SportsField = true }
+function MapBuilder.BackLots(parent, blockModels, rng)
+	local queue = table.clone(Places.BACK_LOTS)
+	local placed = {}
+	local k = MapKit.BUILD_SCALE or 1
+	local inner = HALF - SIDEWALK - 4 -- how far from the block's middle a building may reach
+	local blocks = {}
+	for i = -N + 1, N - 1 do
+		for j = -N + 1, N - 1 do
+			if not NO_BACK[kindAt(i, j)] and blockModels[i .. "," .. j] then
+				table.insert(blocks, { i, j })
+			end
+		end
+	end
+	table.sort(blocks, function(a, b)
+		return a[1] * a[1] + a[2] * a[2] < b[1] * b[1] + b[2] * b[2]
+	end)
+	for _, bl in ipairs(blocks) do
+		if #queue == 0 then
+			break
+		end
+		local i, j = bl[1], bl[2]
+		local c = blockCenter(i, j)
+		local front = faceFor(i, j)
+		local models = blockModels[i .. "," .. j]
+		local boxes = footprints(models)
+		-- every side of the block but the front: the back street and the two
+		-- side streets
+		for _, face in ipairs({ -front, rightOf(front), -rightOf(front) }) do
+			if #queue == 0 then
+				break
+			end
+			local right = rightOf(face)
+			-- does a w x d building (real studs) fit `lateral` studs along this side?
+			local function fits(w, d, lateral)
+				if math.abs(lateral) + w / 2 > inner then
+					return nil
+				end
+				local center = c + face * (HALF - SIDEWALK - 5 - d / 2) + right * lateral
+				local hw = math.abs(right.X) * w / 2 + math.abs(face.X) * d / 2
+				local hd = math.abs(right.Z) * w / 2 + math.abs(face.Z) * d / 2
+				if clearOf(boxes, center.X - hw - 4, center.X + hw + 4, center.Z - hd - 4, center.Z + hd + 4) then
+					return center
+				end
+				return nil
+			end
+			local function build(item, center)
+				local before = #parent:GetChildren()
+				Places.buildBack(ctx, parent, i, j, rng, item, face, center)
+				local kids = parent:GetChildren()
+				for n = before + 1, #kids do
+					table.insert(models, kids[n])
+				end
+				boxes = footprints(models)
+				table.insert(placed, item.Name or item.Id)
+			end
+			-- two side by side
+			local done = false
+			for a = 1, #queue do
+				for b = a + 1, #queue do
+					local A, B = queue[a], queue[b]
+					local wa, wb = A.W * k, B.W * k
+					local total = wa + wb + 8
+					if total / 2 <= inner then
+						local ca = fits(wa, A.D * k, -total / 2 + wa / 2)
+						local cb = ca and fits(wb, B.D * k, total / 2 - wb / 2)
+						if ca and cb then
+							build(A, ca)
+							build(B, cb)
+							table.remove(queue, b)
+							table.remove(queue, a)
+							done = true
+							break
+						end
+					end
+				end
+				if done then
+					break
+				end
+			end
+			-- or just one: in the middle, or toward either end
+			if not done then
+				for a = 1, #queue do
+					local A = queue[a]
+					local w = A.W * k
+					local ca = fits(w, A.D * k, 0) or fits(w, A.D * k, inner - w / 2) or fits(w, A.D * k, -(inner - w / 2))
+					if ca then
+						build(A, ca)
+						table.remove(queue, a)
+						break
+					end
+				end
+			end
+		end
+	end
+	return placed
+end
+
 function MapBuilder.Build()
 	if map then
 		return map
@@ -567,6 +694,7 @@ function MapBuilder.Build()
 	local buildings = Instance.new("Folder")
 	buildings.Name = "Buildings"
 	buildings.Parent = root
+	local blockModels = {}
 	for i = -N, N do
 		for j = -N, N do
 			local entry = PLAN[i .. "," .. j]
@@ -576,9 +704,22 @@ function MapBuilder.Build()
 			if builder then
 				local before = #buildings:GetChildren()
 				builder(ctx, buildings, i, j, rng, name)
-				if kind ~= "Houses" and kind ~= "Suburb" and kind ~= "Woods" and not string.find(kind, "Park") then
-					pocketParks(buildings, i, j, before, rng)
+				local kids = buildings:GetChildren()
+				local list = {}
+				for k = before + 1, #kids do
+					table.insert(list, kids[k])
 				end
+				blockModels[i .. "," .. j] = list
+			end
+		end
+	end
+	-- the backs of the downtown blocks get a second row of buildings
+	map.BackLots = MapBuilder.BackLots(buildings, blockModels, rng)
+	for i = -N, N do
+		for j = -N, N do
+			local kind = kindAt(i, j)
+			if Places.Builders[kind] and kind ~= "Houses" and kind ~= "Suburb" and kind ~= "Woods" and not string.find(kind, "Park") then
+				pocketParks(buildings, i, j, blockModels[i .. "," .. j] or {}, rng)
 			end
 		end
 	end

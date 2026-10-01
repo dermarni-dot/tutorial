@@ -423,6 +423,39 @@ local function stepFlags(t, camPos)
 			end
 		end
 	end
+	-- 🪩 the nightclub's dance floor cycles through colours
+	for _, tile in ipairs(CollectionService:GetTagged("DanceTile")) do
+		if (tile.Position - camPos).Magnitude < 90 then
+			local ph = tile:GetAttribute("Phase") or 0
+			tile.Color = Color3.fromHSV(((t * 0.25 + ph * 0.13) % 1), 0.75, if math.sin(t * 4.2 + ph) > 0 then 1 else 0.55)
+		end
+	end
+	-- 🐠 aquarium fish swim back and forth (and race to the top at feeding time)
+	for _, fish in ipairs(CollectionService:GetTagged("AquaFish")) do
+		if (fish.Position - camPos).Magnitude < 90 then
+			spinners[fish] = spinners[fish] or fish.CFrame
+			local base = spinners[fish]
+			local ph = base.Position.X * 0.7 + base.Position.Z * 0.3
+			local model = fish.Parent
+			local fed = model and (model:GetAttribute("FedUntil") or 0) > workspace:GetServerTimeNow()
+			local speed = if fed then 1.6 else 0.45
+			local circle = fish:GetAttribute("Circle")
+			if circle then
+				local a = t * speed + ph
+				local pos = base.Position + Vector3.new(math.cos(a) * circle, (if fed then 1.5 else 0) + math.sin(a * 2) * 0.3, math.sin(a) * circle)
+				fish.CFrame = CFrame.lookAt(pos, pos + Vector3.new(-math.sin(a), 0, math.cos(a)))
+			else
+				local range = fish:GetAttribute("Range") or 4
+				local u = math.sin(t * speed + ph)
+				local dir = math.cos(t * speed + ph)
+				local along = if fish:GetAttribute("Along") == "Z" then Vector3.new(0, 0, 1) else Vector3.new(1, 0, 0)
+				local pos = base.Position + along * u * range + Vector3.new(0, (if fed then 2 else 0) + math.sin(t * 1.3 + ph) * 0.3, 0)
+				local look = along * (if dir >= 0 then 1 else -1)
+				-- (the fish's long side is X: point it along the way it swims)
+				fish.CFrame = CFrame.lookAt(pos, pos + look) * CFrame.Angles(0, math.rad(90), 0)
+			end
+		end
+	end
 	-- 🌿 kelp sways in the current
 	for _, k in ipairs(CollectionService:GetTagged("Sway")) do
 		if (k.Position - camPos).Magnitude < 120 then
@@ -536,7 +569,9 @@ function Ambient.Step(dt)
 		return
 	end
 	local camPos = camera.CFrame.Position
-	local t = os.clock()
+	-- (animation time adds up frame by frame: smooth even when a frame hitches)
+	Ambient.Clock = (Ambient.Clock or 0) + math.min(dt or 0, 0.1)
+	local t = Ambient.Clock
 	local near = people()
 	-- (people walking by startle the pigeons; people standing still don't)
 	for _, m in ipairs(CollectionService:GetTagged("Citizen")) do

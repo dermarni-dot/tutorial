@@ -492,8 +492,20 @@ end
 -- Everyone's day is a little different: it depends on the day, their
 -- personality, their hobby and their age.
 --------------------------------------------------------------------------------
-local ERRANDS = { "Shop", "Bakery", "Cafe", "Pharmacy", "Mall", "ToyStore", "Electronics", "Florist", "PetShop", "Bookstore", "IceCream", "Hardware", "Bank", "PostOffice", "Library" }
-local HANGOUTS = { "Cafe", "Diner", "Restaurant", "Plaza", "IceCream", "Bakery" }
+local ERRANDS = { "Shop", "Bakery", "Cafe", "Pharmacy", "Mall", "ToyStore", "Electronics", "Florist", "PetShop", "Bookstore", "IceCream", "Hardware", "Bank", "PostOffice", "Library",
+	"Laundromat", "Barbershop", "Boutique", "MusicStore", "DonutShop", "Bistro" }
+local HANGOUTS = { "Cafe", "Diner", "Restaurant", "Plaza", "IceCream", "Bakery", "Pizzeria", "Bistro", "DonutShop" }
+-- fun things to do around town (the back-lot places: see Places.BACK_LOTS)
+local FUN = {
+	{ "Bowling", "🎳 Bowling with friends", "bowl" },
+	{ "Aquarium", "🐠 At the aquarium", "admire" },
+	{ "MiniGolf", "⛳ Mini golf", "putt" },
+	{ "Gallery", "🖼️ At the art gallery", "admire" },
+	{ "YogaStudio", "🧘 Yoga class", "yoga" },
+	{ "Playhouse", "🎭 At the theater", "watch" },
+	{ "Dojo", "🥋 Martial arts class", "punch" },
+}
+local NIGHT_OUT = { "Restaurant", "Cinema", "Plaza", "Diner", "Funland", "Bowling", "Nightclub", "Playhouse", "Pizzeria", "Bistro" }
 -- the food trucks around town (see StreetLife)
 local TRUCKS = { "FoodTruck1", "FoodTruck2", "FoodTruck3", "FoodTruck4", "FoodTruck5", "FoodTruck6" }
 local function truckPlan(rng, label)
@@ -509,6 +521,10 @@ local FAMILY_OUTINGS = {
 	{ "Cinema", "🎬 Family movie", "watch" },
 	{ "IceCream", "🍦 Ice cream with the family", "eat" },
 	{ "SportsField", "⚽ Watching the kids play", "cheer" },
+	{ "Bowling", "🎳 Family bowling", "bowl" },
+	{ "Aquarium", "🐠 Family trip to the aquarium", "admire" },
+	{ "MiniGolf", "⛳ Family mini golf", "putt" },
+	{ "Pizzeria", "🍕 Pizza night", "eat" },
 	{ "Plaza", "⛲ Family walk downtown", "chat" },
 }
 
@@ -667,8 +683,9 @@ function Life:Plan(c, hour, day)
 				elseif bookish or roll < 0.42 then
 					return { Kind = "Place", Place = "Library", Activity = "📖 Homework at the library", Want = "study" }
 				elseif teen then
-					local where = ({ "Arcade", "Diner", "IceCream", "Mall", "Plaza", "Arcade" })[rng:Int(1, 6)]
-					return { Kind = "Place", Place = where, Activity = "😎 Hanging out with friends", Want = if where == "Arcade" then "game" else "chat" }
+					local where = ({ "Arcade", "Diner", "IceCream", "Mall", "Plaza", "Arcade", "Bowling", "MiniGolf", "Pizzeria", "DonutShop" })[rng:Int(1, 10)]
+					local want = ({ Arcade = "game", Bowling = "bowl", MiniGolf = "putt", Pizzeria = "eat", DonutShop = "coffee" })[where] or "chat"
+					return { Kind = "Place", Place = where, Activity = "😎 Hanging out with friends", Want = want }
 				end
 				return { Kind = "Place", Place = if rng:Next() < 0.5 then "Park" else "WillowPark", Activity = "🛝 At the playground", Want = if rng:Next() < 0.5 then "swing" else "play" }
 			end
@@ -746,14 +763,23 @@ function Life:Plan(c, hour, day)
 			if sporty then
 				return { Kind = "Place", Place = if rng:Next() < 0.5 then "Gym" else "SportsField", Activity = "💪 Weekend workout", Want = if rng:Next() < 0.5 then "lift" else "run" }
 			end
+			if rng:Next() < 0.3 then
+				local f = rng:Pick(FUN)
+				return { Kind = "Place", Place = f[1], Activity = f[2], Want = f[3] }
+			end
 			if rng:Next() < 0.4 then
 				local fun = rng:Next() < 0.5
 				return { Kind = "Place", Place = if fun then "Funland" else "Beach", Activity = if fun then "🎡 A day at Funland" else "🏖️ A day at the beach", Want = if fun then "ride" else rng:Pick({ "sunbathe", "sit", "cheer" }) }
 			end
 			return { Kind = "Place", Place = rng:Pick(ERRANDS), Activity = "🛍️ Shopping" }
 		elseif hour < 21 then
-			local where = rng:Pick({ "Restaurant", "Cinema", "Plaza", "Diner", "Funland" })
-			return { Kind = "Place", Place = where, Activity = if where == "Plaza" then "💃 Evening at the plaza" else "🌆 Night out", Want = if where == "Plaza" then "dance" else nil }
+			local where = rng:Pick(NIGHT_OUT)
+			local want = ({ Plaza = "dance", Nightclub = "dance", Bowling = "bowl", Playhouse = "watch", Cinema = "watch" })[where]
+			return { Kind = "Place", Place = where, Activity = if where == "Plaza" then "💃 Evening at the plaza" elseif where == "Nightclub" then "🪩 Dancing at the club" else "🌆 Night out", Want = want }
+		end
+		-- (the young ones go dancing late)
+		if age < 35 and hour < 24 and rng:Next() < 0.4 then
+			return { Kind = "Place", Place = "Nightclub", Activity = "🪩 Out dancing", Want = "dance" }
 		end
 		return home("📺 Relaxing at home", "tv")
 	end
@@ -853,6 +879,9 @@ function Life:Plan(c, hour, day)
 			return { Kind = "Place", Place = "Beach", Activity = "🌅 Sunset at the beach", Want = rng:Pick({ "sit", "sunbathe", "cheer" }) }
 		elseif roll < 0.82 then
 			return truckPlan(rng, "🌮 Dinner from a food truck")
+		elseif roll < 0.86 then
+			local f = rng:Pick(FUN)
+			return { Kind = "Place", Place = f[1], Activity = f[2], Want = f[3] }
 		elseif #c.Friends > 0 and roll < 0.89 then
 			return { Kind = "Place", Place = rng:Pick(HANGOUTS), Activity = "☕ Meeting a friend", Want = "chat" }
 		elseif roll < 0.95 then

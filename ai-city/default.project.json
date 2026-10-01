@@ -185,6 +185,9 @@
         "SleepService": {
           "$path": "src/SleepService.lua"
         },
+        "VenueService": {
+          "$path": "src/VenueService.lua"
+        },
         "Conversation": {
           "$path": "src/Conversation.lua"
         }

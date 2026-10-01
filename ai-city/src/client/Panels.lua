@@ -951,6 +951,9 @@ local function buildWelcome()
 		UI.text(c, f[3], 13, UI.Font, C.Sub, { Position = UDim2.fromOffset(0, 76), Size = UDim2.new(1, 0, 0, 70), TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Center, TextYAlignment = Enum.TextYAlignment.Top, ZIndex = 44 })
 	end
 	local go = UI.button(card, "▶  Start exploring", { AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -22), Size = UDim2.fromOffset(260, 54), Color = C.Gold, TextColor = C.Bg, TextSize = 19 }, function()
+		if Panels.OnStart then
+			task.defer(Panels.OnStart)
+		end
 		UI.tween(scale, 0.2, { Scale = 0.8 })
 		UI.tween(cover, 0.3, { BackgroundTransparency = 1 })
 		task.delay(0.25, function()
@@ -972,10 +975,15 @@ local function buildWelcome()
 		local camera = workspace.CurrentCamera
 		camera.CameraType = Enum.CameraType.Scriptable
 		local start = os.clock()
-		orbiting = RunService.RenderStepped:Connect(function()
-			local a = (os.clock() - start) * 0.08
-			local pos = Vector3.new(math.cos(a) * 190, 95 + math.sin(a * 0.7) * 15, math.sin(a) * 190)
-			camera.CFrame = CFrame.lookAt(pos, Vector3.new(0, 15, 0))
+		-- (close enough to downtown that it's all streamed in, and eased so it
+		-- glides even when a frame runs long)
+		local cur
+		orbiting = RunService.RenderStepped:Connect(function(dt)
+			local a = (os.clock() - start) * 0.05
+			local pos = Vector3.new(math.cos(a) * 150, 80 + math.sin(a * 0.7) * 10, math.sin(a) * 150)
+			local goal = CFrame.lookAt(pos, Vector3.new(0, 18, 0))
+			cur = if cur then cur:Lerp(goal, math.min(1, dt * 6)) else goal
+			camera.CFrame = cur
 		end)
 		cover.Visible = true
 		scale.Scale = 0.8 * UI.FitScale(card)

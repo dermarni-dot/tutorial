@@ -451,6 +451,14 @@ local THEMES = {
 	arcade = { Trim = rgb(150, 60, 220), Art = false, Clock = false, Plants = 0, Checker = { rgb(30, 30, 40), rgb(60, 40, 90) } },
 	community = { Trim = rgb(120, 150, 90), Art = true, Clock = true, Plants = 2 },
 	gym = { Trim = rgb(60, 62, 70), Art = false, Clock = true, Plants = 1 },
+	bowling = { Trim = rgb(30, 60, 140), Art = false, Clock = true, Plants = 0 },
+	club = { Trim = rgb(150, 40, 180), Art = false, Clock = false, Plants = 0 },
+	aquarium = { Trim = rgb(30, 80, 120), Art = false, Clock = false, Plants = 0 },
+	barber = { Trim = rgb(160, 30, 40), Art = true, Clock = true, Plants = 1 },
+	gallery = { Trim = WHITE, Art = false, Clock = false, Plants = 1 },
+	laundromat = { Trim = rgb(60, 140, 200), Art = false, Clock = true, Plants = 1 },
+	yoga = { Trim = rgb(160, 120, 80), Art = true, Clock = false, Plants = 2 },
+	pizzeria = { Trim = rgb(40, 110, 60), Art = true, Clock = true, Plants = 1, Pendants = rgb(200, 60, 50) },
 }
 
 local function trim(r, theme)
@@ -553,6 +561,7 @@ SHOPS.Mall = function(r) -- clothing
 		m.Reflectance = 0.5
 	end)
 end
+SHOPS.Boutique = SHOPS.Mall
 SHOPS.ToyStore = function(r)
 	for k = 0, 2 do
 		r.Try(-r.W / 2 + 5 + k * 6, -r.D / 2 + 6, 3.8, 2.6, 0, 3, function(x, z)
@@ -1057,7 +1066,7 @@ end
 function HOME_BUILD.easel(r, x, z)
 	r.Box("Easel", Vector3.new(0.2, 5, 0.2), x, 0, z + 0.6, rgb(150, 110, 70), Enum.Material.Wood)
 	r.Box("EaselLeg", Vector3.new(1.8, 3.4, 0.2), x, 0, z - 0.3, rgb(150, 110, 70), Enum.Material.Wood).Transparency = 0.5
-	r.Box("Canvas", Vector3.new(2, 2.4, 0.12), x, 2.6, z, WHITE:Lerp(PAINT[r.Rng:NextInteger(1, #PAINT)], 0.4), Enum.Material.Fabric)
+	r.Box("Canvas", Vector3.new(2, 2.4, 0.12), x, 2.6, z + 0.44, WHITE:Lerp(PAINT[r.Rng:NextInteger(1, #PAINT)], 0.4), Enum.Material.Fabric)
 end
 
 local baseHome = EXTRAS.home

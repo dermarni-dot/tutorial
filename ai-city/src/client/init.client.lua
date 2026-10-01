@@ -12,10 +12,100 @@ local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 
 local player = Players.LocalPlayer
+
+--------------------------------------------------------------------------------
+-- 🏙️ The loading screen. The server builds the whole city when the game
+-- starts, and the parts around you then stream in. Until that's done the
+-- screen stays covered (an opaque card: nothing half-built pops in behind it,
+-- and the 3D view isn't fighting the download for the frame time).
+--------------------------------------------------------------------------------
+local loading = {}
+do
+	local pg = player:FindFirstChildOfClass("PlayerGui") or player:WaitForChild("PlayerGui", 10)
+	local gui = Instance.new("ScreenGui")
+	gui.Name = "CityLoading"
+	gui.IgnoreGuiInset = true
+	gui.ResetOnSpawn = false
+	gui.DisplayOrder = 100
+	local bg = Instance.new("Frame")
+	bg.Size = UDim2.fromScale(1, 1)
+	bg.BackgroundColor3 = Color3.fromRGB(14, 16, 26)
+	bg.BorderSizePixel = 0
+	bg.Parent = gui
+	local grad = Instance.new("UIGradient")
+	grad.Color = ColorSequence.new(Color3.fromRGB(34, 40, 78), Color3.fromRGB(12, 12, 20))
+	grad.Rotation = 90
+	grad.Parent = bg
+	local function text(t, size, y, color, font)
+		local l = Instance.new("TextLabel")
+		l.BackgroundTransparency = 1
+		l.AnchorPoint = Vector2.new(0.5, 0.5)
+		l.Position = UDim2.fromScale(0.5, y)
+		l.Size = UDim2.new(0.8, 0, 0, size + 10)
+		l.Font = font or Enum.Font.GothamBlack
+		l.TextSize = size
+		l.TextColor3 = color
+		l.Text = t
+		l.Parent = bg
+		return l
+	end
+	text("🏙️", 64, 0.36, Color3.new(1, 1, 1), Enum.Font.Gotham)
+	text("AI CITY", 56, 0.46, Color3.fromRGB(255, 205, 80))
+	local status = text("Building the city...", 20, 0.56, Color3.fromRGB(190, 196, 220), Enum.Font.GothamBold)
+	local barBack = Instance.new("Frame")
+	barBack.AnchorPoint = Vector2.new(0.5, 0.5)
+	barBack.Position = UDim2.fromScale(0.5, 0.62)
+	barBack.Size = UDim2.fromOffset(320, 8)
+	barBack.BackgroundColor3 = Color3.fromRGB(50, 56, 90)
+	barBack.BorderSizePixel = 0
+	barBack.Parent = bg
+	local bar = Instance.new("Frame")
+	bar.Size = UDim2.fromScale(0.05, 1)
+	bar.BackgroundColor3 = Color3.fromRGB(255, 205, 80)
+	bar.BorderSizePixel = 0
+	bar.Parent = barBack
+	for _, f in ipairs({ barBack, bar }) do
+		local c = Instance.new("UICorner")
+		c.CornerRadius = UDim.new(1, 0)
+		c.Parent = f
+	end
+	gui.Parent = pg
+	loading.Gui, loading.Bg, loading.Status, loading.Bar = gui, bg, status, bar
+	pcall(function()
+		game:GetService("ReplicatedFirst"):RemoveDefaultLoadingScreen()
+	end)
+	function loading.Set(t, fraction)
+		status.Text = t
+		bar.Size = UDim2.fromScale(math.clamp(fraction, 0.05, 1), 1)
+	end
+	function loading.Done()
+		if loading.Finished then
+			return
+		end
+		loading.Finished = true
+		loading.Set("Welcome!", 1)
+		task.spawn(function()
+			for k = 1, 10 do
+				bg.BackgroundTransparency = k / 10
+				for _, d in ipairs(bg:GetDescendants()) do
+					if d:IsA("TextLabel") then
+						d.TextTransparency = k / 10
+					elseif d:IsA("Frame") then
+						d.BackgroundTransparency = k / 10
+					end
+				end
+				task.wait(0.03)
+			end
+			gui:Destroy()
+		end)
+	end
+end
+
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local remotes = ReplicatedStorage:WaitForChild("CityRemotes")
 local info = ReplicatedStorage:WaitForChild("CityInfo")
 ReplicatedStorage:WaitForChild("CityState")
+loading.Set("Moving in the citizens...", 0.45)
 
 local UI = require(script:WaitForChild("UI"))
 local Hud = require(script:WaitForChild("Hud"))
@@ -55,13 +145,25 @@ Panels.Start(ctx)
 Moves.Start(ctx)
 Gamepad.Start(ctx)
 Water.Start()
-Traffic.Start()
 Rides.Start(ctx)
-Pets.Start()
 Drive.Start(ctx)
-Ambient.Start()
 Emotes.Start(ctx)
 Race.Start(ctx)
+-- the busy things (traffic, pets, birds, flags, the surf...) wait until you
+-- start playing, so the welcome screen stays smooth
+local busyStarted = false
+local function startBusy()
+	if busyStarted then
+		return
+	end
+	busyStarted = true
+	Traffic.Start()
+	Pets.Start()
+	Ambient.Start()
+end
+Panels.OnStart = startBusy
+task.delay(20, startBusy)
+loading.Set("Loading the streets...", 0.6)
 
 -- the citizens' poses, props and faces, every frame (after animations)
 local step = RunService.PreSimulation or RunService.Stepped
@@ -184,6 +286,12 @@ handlers.Coins = function(d)
 	end
 end
 handlers.Welcome = function(d)
+	-- wait for the city around the welcome view (and you) to stream in
+	loading.Set("Loading your neighborhood...", 0.8)
+	pcall(function()
+		player:RequestStreamAroundAsync(Vector3.new(0, 20, 0), 6)
+	end)
+	loading.Done()
 	Panels.Welcome()
 	task.delay(1, function()
 		Hud.Toast("🏙️", "Welcome to AI City!", "It's " .. tostring(d.Weekday) .. ". The mayor is " .. tostring(d.Mayor or "nobody yet") .. ". Press H for help.", C.Gold)

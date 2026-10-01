@@ -16,6 +16,20 @@ Players can talk to anyone, give speeches, run for mayor and pass laws. They can
 
 | | |
 |---|---|
+| 🏙️ **25 new buildings** | The downtown blocks used to have one building at the front and empty pavement behind and beside it. Now every free side of those blocks faces its street with a new building: a pizzeria, a bowling alley, a nightclub, an aquarium, a barbershop, a drive-through car wash, an art gallery, a laundromat, a bistro, a yoga studio, a mini golf course, a second clothing store (Trendy Threads), a clinic, a donut shop (with a giant donut on the roof), a music store, a martial-arts dojo, a tech hub, a theater, a motel and six apartment blocks (50 more homes). Each one is furnished inside and has staff (21 new jobs), and citizens go there for errands, dates, family outings and nights out. |
+| 🎳 **Bowling** | Press **E** at a lane. A yellow arrow swings across the lane and your ball goes where it points: dead center (it turns green) is a **strike** (+15 coins), and people nearby cheer. The pins fall and set themselves up again, and the screen over the lane shows your score. |
+| 🎤 **Karaoke** | Sing on the stage at the Neon Nightclub. Everyone around dances, claps and cheers, and they tip you when the song ends. The dance floor glows and changes colour, and there's a disco ball and a DJ. |
+| ⛳ **Mini golf** | Six holes with rails, ramps, spinning bars and a windmill. A power bar rises and falls by the tee: putt when it's about two-thirds full (green) to sink it. Finish all six for coins; a hole in one gets a cheer. |
+| 🧽 **Car wash** | Drive your car into the Sparkle Car Wash tunnel: foam, spinning brushes, and your car sparkles for 3 minutes. |
+| 💈 **Hair dye** | At Fresh Cuts Barbershop, pick a new hair colour (black, chestnut, blonde, red, pink, blue, lavender, mint, silver). It stays after you respawn. |
+| 🎨 **Paint a picture** | At the Art Gallery's easel, paint an abstract picture. It goes up on the visitors' wall with your name on a gold plaque, and people stop to admire it (and tip). |
+| 🐠 **Aquarium, yoga and more** | Fish swim around the tanks (and race to the top when you feed them). The yoga class heals you and fills your energy. The motel has beds you can sleep in. |
+| ⚡ **A smooth start** | A loading screen now covers the city while it builds and streams in around you, so nothing pops in half-built. The welcome camera glides closer over downtown, and traffic, pets and birds only start once you press **Start exploring**. Also: buses no longer appear on top of other cars, cars wait at the line instead of stopping on the crosswalk behind a car in the intersection, and the birds and flags animate by frame time, so they stay smooth when a frame hitches. |
+
+## Earlier in this update
+
+| | |
+|---|---|
 | 🏙️ **A bigger city** | City blocks are now 200 studs apart instead of 150, every shop, office and public building is 75% bigger, and houses are two to three times their old size. There are 220 citizens instead of 90, spread across the whole map. |
 | 🚚 **Street life** | Six food trucks park around town (tacos, burgers, ice cream, gyros, noodles, coffee). Each has a cook at the window, a queue on the sidewalk and people eating nearby, and you can buy a bite that heals you. Street musicians play in the plaza, both parks, on the boardwalk and at Funland. People walking by stop to listen, clap, cheer or dance, and you can tip them. Tourists take photos at the plaza statue. |
 | 👕 **Clothes shopping** | The Clothing store and the new **Beach Boutique** on the sand now sell 16 fashion items as well as disguises: leather, denim, varsity and puffer jackets, a tracksuit, a tuxedo, a cap, a beanie, a cowboy hat, a bucket hat, a gold crown, sunglasses, heart glasses, a gold chain, a scarf and headphones. You wear one per slot (top, hat, eyes, neck). People compliment a good outfit, and a change of clothes also throws off the police. |

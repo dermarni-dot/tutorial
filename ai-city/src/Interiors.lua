@@ -91,6 +91,8 @@ local STOCK = {
 	Pharmacy = { Vector3.new(0.6, 0.8, 0.6), { WHITE, rgb(220, 240, 230), rgb(250, 220, 220), rgb(60, 170, 110) }, Enum.Material.SmoothPlastic, Gap = 0.8 },
 	Hardware = { Vector3.new(1, 1, 0.9), { rgb(230, 120, 40), rgb(120, 124, 132), rgb(240, 200, 60), rgb(60, 110, 170) }, Enum.Material.Metal },
 	Mall = { Vector3.new(1.1, 0.5, 0.9), { rgb(255, 92, 122), rgb(90, 160, 255), rgb(250, 250, 250), rgb(60, 60, 66), rgb(168, 110, 255) }, Enum.Material.Fabric, Stack = 3 },
+	Boutique = { Vector3.new(1.1, 0.5, 0.9), { rgb(250, 180, 200), rgb(30, 30, 34), rgb(250, 250, 250), rgb(200, 170, 120), rgb(120, 160, 220) }, Enum.Material.Fabric, Stack = 3 },
+	MusicStore = { Vector3.new(0.5, 1.3, 0.9), { rgb(170, 90, 40), rgb(30, 30, 34), rgb(200, 40, 50), rgb(240, 200, 120) }, Enum.Material.Wood, Gap = 0.9 },
 	PetShop = { Vector3.new(0.9, 1.3, 0.6), { rgb(200, 150, 90), rgb(90, 150, 200), rgb(220, 90, 70) }, Enum.Material.Fabric },
 	ToyStore = { Vector3.new(0.9, 0.9, 0.9), { rgb(255, 92, 122), rgb(255, 208, 60), rgb(90, 160, 255), rgb(120, 220, 120) }, Enum.Material.SmoothPlastic, Balls = true },
 }
@@ -1204,6 +1206,321 @@ function ROOMS.officeLight(b, f, list, rng, place)
 		end
 	end
 	plant(b, f, -W / 2 + 2.5, D / 2 - 2.5)
+end
+
+--------------------------------------------------------------------------------
+-- The back-lot places (see MapBuilder): bowling, the nightclub, the aquarium,
+-- the barbershop, the gallery, the laundromat, the yoga studio, the pizzeria
+--------------------------------------------------------------------------------
+local function tagged(p, tag)
+	game:GetService("CollectionService"):AddTag(p, tag)
+	return p
+end
+
+-- 🎳 four lanes running to the back wall, pins at the far end, seats and a
+-- shoe counter at the front
+function ROOMS.bowling(b, f, list, rng, place)
+	local W, D = b.W, b.D
+	local n = 4
+	local laneW = math.min(7, (W - 8) / n - 1.2)
+	local z0, z1 = -D / 2 + 16, D / 2 - 2.5
+	local len = z1 - z0
+	for k = 1, n do
+		local x = -W / 2 + 4 + (k - 0.5) * ((W - 8) / n)
+		local lane = box(b, f, "Lane", Vector3.new(laneW, 0.2, len), x, 0, (z0 + z1) / 2, rgb(214, 170, 110), Enum.Material.WoodPlanks)
+		lane:SetAttribute("Lane", k)
+		lane:SetAttribute("Length", len)
+		tagged(lane, "BowlingLane")
+		for _, sx in ipairs({ -1, 1 }) do
+			box(b, f, "Gutter", Vector3.new(0.7, 0.12, len), x + sx * (laneW / 2 + 0.35), 0, (z0 + z1) / 2, rgb(60, 60, 66), Enum.Material.Metal)
+		end
+		box(b, f, "FoulLine", Vector3.new(laneW, 0.22, 0.2), x, 0, z0 + 0.4, rgb(200, 40, 40), Enum.Material.Neon)
+		-- the pins, in a triangle at the far end
+		local row = 0
+		local pinIndex = 0
+		for r = 0, 3 do
+			for c = 0, r do
+				pinIndex += 1
+				local px = x + (c - r / 2) * 1.1
+				local pz = z1 - 4.5 + r * 1.0
+				local pin = MapKit.cylinder(b.Model, "Pin", 1.5, 0.55, at(b, f, px, 0.95, pz) * CFrame.Angles(0, 0, math.rad(90)), WHITE, Enum.Material.SmoothPlastic)
+				pin:SetAttribute("Lane", k)
+				pin:SetAttribute("Pin", pinIndex)
+				tagged(pin, "BowlingPin")
+				local _ = row
+			end
+		end
+		box(b, f, "PinDeck", Vector3.new(laneW, 6.2, 0.4), x, 0, z1 - 1, rgb(30, 30, 36))
+		-- the score screen above the lane
+		local screen = box(b, f, "ScoreScreen", Vector3.new(laneW - 1, 2.4, 0.2), x, 8, z0 - 2, rgb(20, 40, 90), Enum.Material.Neon)
+		screen:SetAttribute("Lane", k)
+		-- (hung from the ceiling)
+		box(b, f, "ScreenRod", Vector3.new(0.2, FLOOR_H - 10.4, 0.2), x, 10.4, z0 - 2, rgb(60, 60, 66), Enum.Material.Metal)
+		-- the ball return, and a seat
+		box(b, f, "BallReturn", Vector3.new(1.4, 1.6, 3), x + laneW / 2 + 0.4, 0, z0 - 3.5, rgb(40, 40, 46), Enum.Material.Metal)
+		MapKit.ball(b.Model, "SpareBall", 1, at(b, f, x + laneW / 2 + 0.4, 2.1, z0 - 3), MapKit.FLOWERS[k % #MapKit.FLOWERS + 1], Enum.Material.SmoothPlastic)
+		spot(list, b, f, x, z0 - 1.2, 0, 1, "bowl", "visit")
+		local seat = MapKit.seat(b.Model, "BowlingSeat", Vector3.new(4, 0.6, 2), at(b, f, x, 1.6, z0 - 7), rgb(220, 60, 90), Enum.Material.Fabric, place)
+		box(b, f, "SeatBase", Vector3.new(4, 1.3, 2), x, 0, z0 - 7, rgb(40, 40, 46), Enum.Material.Metal)
+		spot(list, b, f, x, z0 - 7, 0, 1, "sit", "visit", seat)
+	end
+	counter(b, f, W / 2 - 7, -D / 2 + 5, 8, rgb(30, 60, 140))
+	box(b, f, "ShoeRack", Vector3.new(6, 5, 1.2), W / 2 - 7, 0, -D / 2 + 1.4, rgb(120, 90, 60), Enum.Material.Wood)
+	register(b, f, W / 2 - 5, -D / 2 + 5)
+	spot(list, b, f, W / 2 - 7, -D / 2 + 2.9, 0, 1, "cashier", "work")
+end
+
+-- 🪩 a glowing dance floor, a DJ booth, a bar and a karaoke stage
+function ROOMS.club(b, f, list, rng, place)
+	local W, D = b.W, b.D
+	box(b, f, "ClubFloor", Vector3.new(W - 2, 0.05, D - 2), 0, 0, 0, rgb(20, 16, 30), Enum.Material.SmoothPlastic)
+	local tile = 3.2
+	local nx, nz = math.floor((W * 0.5) / tile), math.floor((D * 0.45) / tile)
+	for ix = 0, nx - 1 do
+		for iz = 0, nz - 1 do
+			local t = box(b, f, "DanceTile", Vector3.new(tile - 0.15, 0.12, tile - 0.15), (ix - (nx - 1) / 2) * tile, 0.02, (iz - (nz - 1) / 2) * tile + 1, MapKit.FLOWERS[(ix + iz) % #MapKit.FLOWERS + 1], Enum.Material.Neon)
+			t:SetAttribute("Phase", ix * 0.7 + iz * 1.3)
+			tagged(t, "DanceTile")
+		end
+	end
+	for k = 0, 9 do
+		local a = k / 10 * math.pi * 2
+		spot(list, b, f, math.cos(a) * nx * tile * 0.3, 1 + math.sin(a) * nz * tile * 0.3, -math.cos(a), -math.sin(a), "dance", "visit")
+	end
+	-- the disco ball
+	local ball = MapKit.ball(b.Model, "DiscoBall", 2.6, at(b, f, 0, MapKit.FLOOR_H - 3.4, 1), rgb(220, 224, 232), Enum.Material.Glass)
+	ball.Reflectance = 0.8
+	tagged(ball, "Spin")
+	box(b, f, "DiscoWire", Vector3.new(0.08, 2, 0.08), 0, MapKit.FLOOR_H - 2.2, 1, rgb(40, 40, 44))
+	-- the DJ booth at the back
+	box(b, f, "DJBooth", Vector3.new(10, 3.6, 3), 0, 0, D / 2 - 4, rgb(30, 30, 40), Enum.Material.Metal)
+	box(b, f, "BoothGlow", Vector3.new(10.1, 0.3, 3.1), 0, 1.6, D / 2 - 4, rgb(240, 60, 200), Enum.Material.Neon)
+	for _, sx in ipairs({ -1, 1 }) do
+		MapKit.cylinder(b.Model, "Turntable", 0.2, 2, at(b, f, sx * 2.4, 3.75, D / 2 - 4) * CFrame.Angles(0, 0, math.rad(90)), rgb(20, 20, 22), Enum.Material.SmoothPlastic)
+		box(b, f, "Speaker", Vector3.new(3, 7, 2.6), sx * (W / 2 - 3), 0, D / 2 - 3, rgb(24, 24, 28), Enum.Material.Metal)
+		MapKit.cylinder(b.Model, "Woofer", 0.2, 2.2, at(b, f, sx * (W / 2 - 3), 2.4, D / 2 - 4.35) * CFrame.Angles(0, math.rad(90), 0), rgb(60, 60, 66), Enum.Material.Metal)
+	end
+	spot(list, b, f, 0, D / 2 - 1.6, 0, -1, "dj", "work")
+	-- the bar along the left wall
+	box(b, f, "Bar", Vector3.new(2.4, 3.8, D * 0.45), -W / 2 + 4.5, 0, -D / 2 + D * 0.3, rgb(60, 30, 70), Enum.Material.Wood)
+	box(b, f, "BarGlow", Vector3.new(2.5, 0.2, D * 0.45), -W / 2 + 4.5, 3.8, -D / 2 + D * 0.3, rgb(80, 200, 255), Enum.Material.Neon)
+	for k = 0, 3 do
+		box(b, f, "BarBottle", Vector3.new(0.4, 1.1, 0.4), -W / 2 + 1.4, 4.2, -D / 2 + 6 + k * 1.2, MapKit.FLOWERS[k + 1], Enum.Material.Glass)
+	end
+	box(b, f, "BackBar", Vector3.new(1, 0.3, D * 0.4), -W / 2 + 1.4, 4, -D / 2 + D * 0.3, rgb(60, 30, 70), Enum.Material.Wood)
+	spot(list, b, f, -W / 2 + 2.4, -D / 2 + D * 0.3, 1, 0, "serve", "work")
+	for k = 0, 2 do
+		local z = -D / 2 + 6 + k * 3.4
+		local stool = MapKit.seat(b.Model, "BarStool", Vector3.new(1.4, 0.4, 1.4), at(b, f, -W / 2 + 7.2, 2.4, z), rgb(200, 60, 160), Enum.Material.Fabric, place)
+		box(b, f, "StoolPost", Vector3.new(0.3, 2.2, 0.3), -W / 2 + 7.2, 0, z, rgb(180, 180, 186), Enum.Material.Metal)
+		spot(list, b, f, -W / 2 + 7.2, z, -1, 0, "coffee", "visit", stool)
+	end
+	-- the karaoke stage (players sing here: see VenueService)
+	box(b, f, "KaraokeStage", Vector3.new(9, 1, 7), W / 2 - 6, 0, -D / 2 + 7, rgb(120, 30, 60), Enum.Material.WoodPlanks)
+	box(b, f, "MicStand", Vector3.new(0.2, 4.6, 0.2), W / 2 - 6, 1, -D / 2 + 7, rgb(40, 40, 44), Enum.Material.Metal)
+	local mic = MapKit.ball(b.Model, "KaraokeMic", 0.5, at(b, f, W / 2 - 6, 5.7, -D / 2 + 7), rgb(170, 174, 180), Enum.Material.Metal)
+	tagged(mic, "KaraokeMic")
+	box(b, f, "ScreenStand", Vector3.new(0.4, 4, 0.4), W / 2 - 6, 0, -D / 2 + 1.4, rgb(40, 40, 44), Enum.Material.Metal)
+	local lyrics = box(b, f, "LyricsScreen", Vector3.new(6, 3.4, 0.2), W / 2 - 6, 4, -D / 2 + 1.4, rgb(30, 20, 70), Enum.Material.Neon)
+	MapKit.signText(lyrics, Enum.NormalId.Back, "♪ KARAOKE ♪", rgb(255, 230, 120), Enum.Font.GothamBlack)
+	for _, sx in ipairs({ -1, 1 }) do
+		local spotLight = box(b, f, "StageLight", Vector3.new(1, 1, 1.6), W / 2 - 6 + sx * 3.6, MapKit.FLOOR_H - 2.6, -D / 2 + 4, rgb(40, 40, 44), Enum.Material.Metal)
+		box(b, f, "LightRod", Vector3.new(0.15, 1.6, 0.15), W / 2 - 6 + sx * 3.6, MapKit.FLOOR_H - 1.6, -D / 2 + 4, rgb(40, 40, 44), Enum.Material.Metal)
+		MapKit.light(spotLight, MapKit.FLOWERS[if sx < 0 then 1 else 5], 16, 1.2)
+	end
+end
+
+-- 🐠 big glowing tanks along the walls, a round tank in the middle, benches
+function ROOMS.aquarium(b, f, list, rng, place)
+	local W, D = b.W, b.D
+	box(b, f, "DarkFloor", Vector3.new(W - 2, 0.05, D - 2), 0, 0, 0, rgb(20, 40, 60), Enum.Material.SmoothPlastic)
+	-- (clear of the elevator in the back right corner)
+	local tanks = {
+		{ -6, D / 2 - 3, W - 20, 2.6, 0, -1 },
+		{ -W / 2 + 3, -4, 2.6, D - 22, 1, 0 },
+		{ W / 2 - 3, -4, 2.6, D - 22, -1, 0 },
+	}
+	for n, t in ipairs(tanks) do
+		local x, z, w, d = t[1], t[2], t[3], t[4]
+		box(b, f, "TankBase", Vector3.new(w, 1.2, d), x, 0, z, rgb(30, 50, 70), Enum.Material.Metal)
+		local water = box(b, f, "TankWater", Vector3.new(w, 7.4, d), x, 1.2, z, rgb(40, 140, 210), Enum.Material.Glass)
+		water.Transparency = 0.45
+		MapKit.light(water, rgb(80, 180, 255), 14, 0.7)
+		box(b, f, "TankSand", Vector3.new(w - 0.1, 0.4, d - 0.1), x, 1.2, z, rgb(230, 210, 160), Enum.Material.Sand)
+		-- swimming fish (the client moves them: see Ambient), coral and weed
+		local long = math.max(w, d)
+		for k = 0, 6 do
+			local fx = if w > d then x + (k / 6 - 0.5) * (w - 3) else x
+			local fz = if w > d then z else z + (k / 6 - 0.5) * (d - 3)
+			local fish = box(b, f, "AquaFish", Vector3.new(0.9, 0.5, 0.2), fx, 2.6 + (k % 3) * 1.8, fz, ({ rgb(255, 140, 40), rgb(255, 220, 60), rgb(80, 200, 255), rgb(240, 90, 140), rgb(250, 250, 250) })[k % 5 + 1], Enum.Material.SmoothPlastic, if w > d then nil else CFrame.Angles(0, math.rad(90), 0))
+			fish:SetAttribute("Range", long / 2 - 1.5)
+			fish:SetAttribute("Along", if w > d then "X" else "Z")
+			tagged(fish, "AquaFish")
+		end
+		for k = 0, 3 do
+			local cx = if w > d then x + (k / 3 - 0.5) * (w - 4) else x
+			local cz = if w > d then z else z + (k / 3 - 0.5) * (d - 4)
+			MapKit.ball(b.Model, "Coral", 1.4, at(b, f, cx, 2, cz), ({ rgb(250, 110, 110), rgb(250, 170, 80), rgb(200, 110, 230) })[k % 3 + 1], Enum.Material.Pebble)
+			box(b, f, "TankWeed", Vector3.new(0.3, 3.4, 0.1), cx + 0.8, 1.6, cz, rgb(60, 150, 70))
+		end
+		local sx, sz = t[5], t[6]
+		for k = -1, 1 do
+			local px = if sz ~= 0 then x + k * (w / 3) else x + sx * 3.4
+			local pz = if sz ~= 0 then z + sz * 3.4 else z + k * (d / 3)
+			spot(list, b, f, px, pz, -sx, -sz, "admire", "visit")
+		end
+	end
+	-- a round tank in the middle with a little shark circling
+	MapKit.cylinder(b.Model, "RoundTankBase", 1.2, 8.4, at(b, f, 0, 0.6, -2) * CFrame.Angles(0, 0, math.rad(90)), rgb(30, 50, 70), Enum.Material.Metal)
+	local mid = MapKit.cylinder(b.Model, "RoundTank", 7.4, 8, at(b, f, 0, 4.9, -2) * CFrame.Angles(0, 0, math.rad(90)), rgb(40, 140, 210), Enum.Material.Glass)
+	mid.Transparency = 0.45
+	local shark = box(b, f, "AquaFish", Vector3.new(0.5, 0.7, 2.2), 0, 4, -2, rgb(130, 140, 150), Enum.Material.SmoothPlastic)
+	shark:SetAttribute("Circle", 2.6)
+	tagged(shark, "AquaFish")
+	spot(list, b, f, 0, -D / 2 + 5, 0, 1, "present", "work")
+	spot(list, b, f, -6, -D / 2 + 9, 1, 0, "present", "work")
+	-- benches to sit and watch
+	for _, sx in ipairs({ -1, 1 }) do
+		local seat = MapKit.seat(b.Model, "Bench", Vector3.new(6, 0.5, 2), at(b, f, sx * 9, 1.6, -D / 2 + 7), rgb(60, 80, 110), Enum.Material.Wood, place)
+		box(b, f, "BenchBase", Vector3.new(5, 1.4, 1.6), sx * 9, 0, -D / 2 + 7, rgb(40, 50, 70), Enum.Material.Metal)
+		spot(list, b, f, sx * 9, -D / 2 + 7, 0, 1, "sit", "visit", seat)
+	end
+	-- the feeding station (players feed the fish: see VenueService)
+	if f == 1 then
+		local feed = box(b, f, "FishFeeder", Vector3.new(1.6, 3.6, 1.6), 0, 0, D / 2 - 7, rgb(250, 200, 60), Enum.Material.SmoothPlastic)
+		tagged(feed, "FishFeeder")
+	end
+end
+
+-- 💈 barber chairs at mirrors, a waiting bench and a striped pole
+function ROOMS.barber(b, f, list, rng, place)
+	local W, D = b.W, b.D
+	box(b, f, "Checker", Vector3.new(W - 2, 0.05, D - 2), 0, 0, 0, rgb(236, 236, 236), Enum.Material.Marble)
+	for k = 0, 2 do
+		local x = -W / 2 + 6 + k * ((W - 12) / 2)
+		box(b, f, "BarberMirror", Vector3.new(4, 5, 0.2), x, 3, D / 2 - 1.2, rgb(210, 230, 240), Enum.Material.Glass).Reflectance = 0.4
+		box(b, f, "BarberShelf", Vector3.new(4.4, 0.3, 1.2), x, 2.8, D / 2 - 1.6, WHITE, Enum.Material.Marble)
+		for n = 0, 2 do
+			box(b, f, "Bottle", Vector3.new(0.4, 0.8, 0.4), x - 1.2 + n * 1.2, 3.1, D / 2 - 1.6, ({ rgb(60, 140, 200), rgb(240, 160, 40), rgb(120, 200, 120) })[n + 1], Enum.Material.Glass)
+		end
+		local seat = MapKit.seat(b.Model, "BarberChair", Vector3.new(2.4, 0.6, 2.4), at(b, f, x, 2.1, D / 2 - 5.5), rgb(160, 30, 40), Enum.Material.Leather, place)
+		box(b, f, "BarberChairBack", Vector3.new(2.4, 2.8, 0.5), x, 2.4, D / 2 - 4.2, rgb(160, 30, 40), Enum.Material.Leather)
+		box(b, f, "BarberChairPost", Vector3.new(0.6, 1.8, 0.6), x, 0, D / 2 - 5.5, rgb(200, 200, 206), Enum.Material.Metal)
+		spot(list, b, f, x, D / 2 - 5.5, 0, 1, "sit", "visit", seat)
+		if k < 2 then
+			spot(list, b, f, x - 1.6, D / 2 - 7.4, 0.4, 1, "haircut", "work")
+		end
+	end
+	local bench = MapKit.seat(b.Model, "WaitingBench", Vector3.new(7, 0.5, 2), at(b, f, -W / 2 + 6, 1.6, -D / 2 + 4), rgb(120, 80, 50), Enum.Material.Wood, place)
+	box(b, f, "BenchBase", Vector3.new(6.4, 1.4, 1.8), -W / 2 + 6, 0, -D / 2 + 4, rgb(80, 60, 40), Enum.Material.Wood)
+	spot(list, b, f, -W / 2 + 6, -D / 2 + 4, 0, 1, "phone", "visit", bench)
+	register(b, f, W / 2 - 4, -D / 2 + 5)
+	counter(b, f, W / 2 - 4, -D / 2 + 5, 4, rgb(40, 40, 46))
+	local dye = box(b, f, "HairDyeStation", Vector3.new(2.4, 4.6, 1.2), W / 2 - 2, 0, 0, rgb(240, 120, 180), Enum.Material.SmoothPlastic)
+	tagged(dye, "BarberChairPrompt")
+end
+
+-- 🖼️ white walls hung with paintings, sculptures on plinths, an easel where
+-- visitors can paint (see VenueService)
+function ROOMS.gallery(b, f, list, rng, place)
+	local W, D = b.W, b.D
+	box(b, f, "GalleryFloor", Vector3.new(W - 2, 0.05, D - 2), 0, 0, 0, rgb(200, 190, 175), Enum.Material.WoodPlanks)
+	local PAINTS = { rgb(240, 120, 90), rgb(90, 150, 230), rgb(250, 210, 80), rgb(120, 200, 150), rgb(200, 120, 220), rgb(40, 40, 50) }
+	-- paintings on the back and side walls
+	for k = 0, 3 do
+		local x = -W / 2 + 6 + k * ((W - 12) / 3)
+		box(b, f, "ArtFrame", Vector3.new(6, 4.6, 0.3), x, 4, D / 2 - 1.1, rgb(40, 34, 30), Enum.Material.Wood)
+		box(b, f, "Canvas", Vector3.new(5.2, 3.8, 0.1), x, 4.4, D / 2 - 1.3, PAINTS[(k % #PAINTS) + 1], Enum.Material.SmoothPlastic)
+		box(b, f, "Canvas", Vector3.new(2.4, 1.6, 0.11), x - 0.8, 5, D / 2 - 1.36, PAINTS[((k + 2) % #PAINTS) + 1], Enum.Material.SmoothPlastic)
+		MapKit.ball(b.Model, "CanvasDot", 1.2, at(b, f, x + 1.4, 6.2, D / 2 - 1.36), PAINTS[((k + 4) % #PAINTS) + 1], Enum.Material.SmoothPlastic).Size = Vector3.new(1.2, 1.2, 0.12)
+		spot(list, b, f, x, D / 2 - 6, 0, 1, "admire", "visit")
+	end
+	-- sculptures
+	for k = -1, 1, 2 do
+		box(b, f, "Plinth", Vector3.new(2.4, 3.4, 2.4), k * W / 5, 0, 0, WHITE, Enum.Material.Marble)
+		local s = MapKit.ball(b.Model, "Sculpture", 2.2, at(b, f, k * W / 5, 4.6, 0), if k < 0 then rgb(200, 160, 80) else rgb(120, 130, 140), Enum.Material.Metal)
+		s.Size = Vector3.new(1.6, 2.6, 1.6)
+		spot(list, b, f, k * W / 5, -3.4, 0, 1, "admire", "visit")
+	end
+	-- the visitors' wall: what players paint goes up here
+	local wall = box(b, f, "VisitorWall", Vector3.new(0.3, 9, D - 14), -W / 2 + 1.3, 0, 0, rgb(236, 232, 224), Enum.Material.SmoothPlastic)
+	tagged(wall, "VisitorWall")
+	local easel = box(b, f, "PaintEasel", Vector3.new(2.2, 5, 1), W / 2 - 5, 0, -D / 2 + 8, rgb(150, 110, 70), Enum.Material.Wood)
+	tagged(easel, "PaintEasel")
+	box(b, f, "BlankCanvas", Vector3.new(2, 2.4, 0.12), W / 2 - 5, 3, -D / 2 + 7.5, WHITE, Enum.Material.Fabric)
+	counter(b, f, -W / 2 + 7, -D / 2 + 4, 6, rgb(40, 40, 46))
+	spot(list, b, f, -W / 2 + 7, -D / 2 + 1.8, 0, 1, "counter", "work")
+end
+
+-- 🧺 washers and dryers, a folding table, chairs to wait in
+function ROOMS.laundromat(b, f, list, rng, place)
+	local W, D = b.W, b.D
+	local n = math.floor((W - 6) / 3.4)
+	for k = 0, n - 1 do
+		local x = -W / 2 + 3.5 + k * 3.4
+		box(b, f, "Washer", Vector3.new(3, 3.4, 3), x, 0, D / 2 - 2.5, WHITE, Enum.Material.SmoothPlastic)
+		local door = MapKit.cylinder(b.Model, "WasherDoor", 0.2, 2, at(b, f, x, 1.8, D / 2 - 4.05) * CFrame.Angles(0, math.rad(90), 0), rgb(120, 170, 210), Enum.Material.Glass)
+		door.Transparency = 0.3
+		if k % 2 == 0 then
+			tagged(door, "Spin")
+		end
+		box(b, f, "Dryer", Vector3.new(3, 3, 3), x, 3.4, D / 2 - 2.5, rgb(220, 224, 230), Enum.Material.SmoothPlastic)
+	end
+	box(b, f, "FoldingTable", Vector3.new(10, 3, 3), 0, 0, 0, rgb(200, 200, 206), Enum.Material.Metal)
+	for k = 0, 2 do
+		box(b, f, "FoldedClothes", Vector3.new(1.6, 0.5 + k * 0.2, 1.4), -3 + k * 3, 3, 0, MapKit.FLOWERS[k * 2 + 1], Enum.Material.Fabric)
+	end
+	spot(list, b, f, 0, -2.2, 0, 1, "fold", "work")
+	spot(list, b, f, 3, 2.2, 0, -1, "fold", "visit")
+	for k = 0, 2 do
+		local x = -W / 2 + 4 + k * 3
+		local seat = chair(b, f, x, -D / 2 + 4, 0, 1, rgb(60, 140, 200), place)
+		spot(list, b, f, x, -D / 2 + 4, 0, 1, if k == 1 then "read" else "phone", "visit", seat)
+	end
+	box(b, f, "VendingMachine", Vector3.new(3, 6, 2.4), W / 2 - 2.5, 0, -D / 2 + 4, rgb(40, 120, 200), Enum.Material.SmoothPlastic)
+end
+
+-- 🧘 mats in rows facing the instructor, plants and soft light
+function ROOMS.yoga(b, f, list, rng, place)
+	local W, D = b.W, b.D
+	box(b, f, "StudioFloor", Vector3.new(W - 2, 0.05, D - 2), 0, 0, 0, rgb(210, 180, 140), Enum.Material.WoodPlanks)
+	box(b, f, "Mirror", Vector3.new(W - 6, 6, 0.2), 0, 1.5, D / 2 - 1.1, rgb(210, 230, 240), Enum.Material.Glass).Reflectance = 0.35
+	box(b, f, "InstructorMat", Vector3.new(3, 0.1, 6), 0, 0, D / 2 - 5, rgb(120, 80, 160), Enum.Material.Fabric)
+	spot(list, b, f, 0, D / 2 - 5, 0, -1, "yoga", "work")
+	local cols, rows = 4, 2
+	for cx = 0, cols - 1 do
+		for rz = 0, rows - 1 do
+			local x = (cx - (cols - 1) / 2) * 6
+			local z = -D / 2 + 7 + rz * 8
+			box(b, f, "YogaMat", Vector3.new(2.6, 0.1, 5.6), x, 0, z, MapKit.FLOWERS[(cx + rz * 2) % #MapKit.FLOWERS + 1], Enum.Material.Fabric)
+			spot(list, b, f, x, z, 0, 1, "yoga", "visit")
+		end
+	end
+	local sign = box(b, f, "YogaSign", Vector3.new(1.4, 4, 1.4), W / 2 - 3, 0, -D / 2 + 3, rgb(160, 210, 160), Enum.Material.SmoothPlastic)
+	tagged(sign, "YogaClass")
+	plant(b, f, -W / 2 + 2.5, D / 2 - 2.5)
+	plant(b, f, W / 2 - 2.5, D / 2 - 2.5)
+end
+
+-- 🍕 a brick pizza oven glowing at the back, a counter and tables
+function ROOMS.pizzeria(b, f, list, rng, place)
+	local W, D = b.W, b.D
+	box(b, f, "Checker", Vector3.new(W - 2, 0.05, D - 2), 0, 0, 0, rgb(236, 230, 220), Enum.Material.Marble)
+	local oven = MapKit.ball(b.Model, "PizzaOven", 7, at(b, f, -W / 4, 3, D / 2 - 4), rgb(170, 80, 60), Enum.Material.Brick)
+	oven.Size = Vector3.new(7, 6, 5)
+	local glow = box(b, f, "OvenGlow", Vector3.new(3, 1.6, 0.3), -W / 4, 1.8, D / 2 - 6.4, rgb(255, 140, 40), Enum.Material.Neon)
+	MapKit.light(glow, rgb(255, 150, 60), 12, 1)
+	counter(b, f, W / 6, D / 2 - 5, W / 2.4, rgb(40, 110, 60))
+	for k = 0, 2 do
+		MapKit.food(b.Model, "pizza", at(b, f, W / 6 - 3 + k * 3, 3.9, D / 2 - 5), 1.2)
+	end
+	register(b, f, W / 6 + W / 5.4, D / 2 - 5)
+	spot(list, b, f, -W / 4, D / 2 - 8.4, 0, 1, "cook", "work")
+	spot(list, b, f, W / 6, D / 2 - 2.6, 0, -1, "cook", "work")
+	spot(list, b, f, W / 6 + W / 5.4, D / 2 - 2.6, 0, -1, "cashier", "work")
+	for k = 0, 2 do
+		tableSet(b, f, -W / 2 + 7 + k * ((W - 14) / 2), -D / 2 + 7, list, "eat", place, rgb(240, 236, 228))
+	end
 end
 
 Interiors.Rooms = ROOMS
