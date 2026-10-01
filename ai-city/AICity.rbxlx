@@ -11910,6 +11910,9 @@ end
 -- People
 --------------------------------------------------------------------------------
 function Life:Age(c, day)
+	if not c or not c.BirthDay then
+		return c and c.Age or 30 -- (temporary people: officers, guards, staff are grown-ups)
+	end
 	return math.max(0, math.floor(((day or self.Day) - c.BirthDay) / (self.Config.DAYS_PER_YEAR or 2)))
 end
 
@@ -21965,6 +21968,12 @@ local inBrawl = {} -- [brain] = brawl (fighters, crowd and the officer)
 local nextFight = 0
 local grudges = {} -- ["a:b"] = true: they've fought before (and might again)
 
+local KID_REASONS = {
+	{ "Give it back! That's mine!", "Make me!" },
+	{ "Stop copying me!", "You stop copying ME!" },
+	{ "You pushed me!", "No I didn't, crybaby!" },
+	{ "Take that back!", "No! It's true!" },
+}
 local REASONS = {
 	{ "Hey! You bumped into me!", "So what? Watch where YOU'RE going!" },
 	{ "What did you just say about me?!", "You heard me!" },
@@ -22349,12 +22358,6 @@ function BrawlService.Fight(a, c, opts)
 	return b
 end
 
-local KID_REASONS = {
-	{ "Give it back! That's mine!", "Make me!" },
-	{ "Stop copying me!", "You stop copying ME!" },
-	{ "You pushed me!", "No I didn't, crybaby!" },
-	{ "Take that back!", "No! It's true!" },
-}
 
 -- a fight that pulls in the people around it: friends of the two jump in
 -- and it turns into a group brawl
@@ -29445,6 +29448,9 @@ local function getOut(d, at)
 		return
 	end
 	local brain = fare.Brain
+	-- (they won't wave this driver down again for a while)
+	d.Recent = d.Recent or {}
+	d.Recent[brain] = os.clock() + 300
 	if fare.Weld then
 		fare.Weld:Destroy()
 	end
@@ -29485,7 +29491,7 @@ local function findHail(player, d, car)
 	local best, bestD
 	for _, brain in ipairs(S.Citizens.Nearby(pos, 170)) do
 		local dist = (brain.Root.Position - pos).Magnitude
-		if dist > 35 and not brain.Temp and brain.State == "walk" and (brain.Floor or 1) == 1 and not brain.Building and S.Life:Age(brain.C) >= 16 and not brain.Model:GetAttribute("Hailing") and not brain.Model:GetAttribute("Passenger") then
+		if dist > 35 and not brain.Temp and brain.State == "walk" and not (d.Recent and d.Recent[brain] and os.clock() < d.Recent[brain]) and (brain.Floor or 1) == 1 and not brain.Building and S.Life:Age(brain.C) >= 16 and not brain.Model:GetAttribute("Hailing") and not brain.Model:GetAttribute("Passenger") then
 			if not bestD or math.abs(dist - 80) < math.abs(bestD - 80) then
 				best, bestD = brain, dist
 			end
@@ -36251,7 +36257,8 @@ function Gamepad.Button(key, down)
 		return true
 	elseif key == Enum.KeyCode.ButtonL3 then
 		if down then
-			sprintToggle = not sprintToggle
+			-- (the same switch as Shift and the Sprint button)
+			sprintToggle = not (if Moves.Sprinting then Moves.Sprinting() else sprintToggle)
 			Moves.SetSprint(sprintToggle)
 		end
 		return true

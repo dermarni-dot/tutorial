@@ -401,7 +401,7 @@ Your Config is the base. Every key you had is still there, and these were added:
 
 The game was run in a Luau test harness (a small Roblox simulation), and these checks pass:
 
-All 29 test suites pass: **391 checks, 0 failures**.
+All 30 test suites pass: **404 checks, 0 failures**.
 
 - **This update** (40 checks, plus 6 on the client: race rings, the detailed map, the surf and crabs, walking vs running, and cars stopping behind the crosswalk at red lights):
   - the walk signals take turns (never both directions at once), 15 people waited at the curb, and nobody got stuck at a crossing;
@@ -411,6 +411,7 @@ All 29 test suites pass: **391 checks, 0 failures**.
   - street races: two routes with every checkpoint on a road, the countdown, GO, checkpoints in order, a personal best on the board, no shortcuts, and getting out ending the race;
   - a school fight: not out on the street, no weapons at school, a punch, the kid fighting back, detention without police, and detention ending;
   - building details: 1,300 flower boxes, 540 drainpipes, fire escapes, 275 address plaques, satellite dishes, spinning fan blades and gondolas.
+- **A bug hunt** (13 checks): three players at once doing everything (rideshare with a ride abandoned halfway, 30 emotes in a row in a crowd, a school fight, a race) while the rain switches on and off, and leaving the game mid-race, mid-dance and mid-detention; then an hour of city life: no errors or warnings, nobody at a broken position, under the world or stuck under script control, no leftover passengers. It found and fixed: kids' recess fights never starting (a crash), ages of temporary people (officers, staff), and an abandoned passenger hailing the same driver straight away.
 - **Nothing floating:** of 92,000 parts, the only groups not resting on anything are the obby platforms, the volleyball and the balloons on strings (it was 3,818 groups before).
 
 - **The map:**

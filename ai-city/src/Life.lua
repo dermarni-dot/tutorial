@@ -91,6 +91,9 @@ end
 -- People
 --------------------------------------------------------------------------------
 function Life:Age(c, day)
+	if not c or not c.BirthDay then
+		return c and c.Age or 30 -- (temporary people: officers, guards, staff are grown-ups)
+	end
 	return math.max(0, math.floor(((day or self.Day) - c.BirthDay) / (self.Config.DAYS_PER_YEAR or 2)))
 end
 

@@ -177,7 +177,8 @@ function Gamepad.Button(key, down)
 		return true
 	elseif key == Enum.KeyCode.ButtonL3 then
 		if down then
-			sprintToggle = not sprintToggle
+			-- (the same switch as Shift and the Sprint button)
+			sprintToggle = not (if Moves.Sprinting then Moves.Sprinting() else sprintToggle)
 			Moves.SetSprint(sprintToggle)
 		end
 		return true

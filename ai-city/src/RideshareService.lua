@@ -80,6 +80,9 @@ local function getOut(d, at)
 		return
 	end
 	local brain = fare.Brain
+	-- (they won't wave this driver down again for a while)
+	d.Recent = d.Recent or {}
+	d.Recent[brain] = os.clock() + 300
 	if fare.Weld then
 		fare.Weld:Destroy()
 	end
@@ -120,7 +123,7 @@ local function findHail(player, d, car)
 	local best, bestD
 	for _, brain in ipairs(S.Citizens.Nearby(pos, 170)) do
 		local dist = (brain.Root.Position - pos).Magnitude
-		if dist > 35 and not brain.Temp and brain.State == "walk" and (brain.Floor or 1) == 1 and not brain.Building and S.Life:Age(brain.C) >= 16 and not brain.Model:GetAttribute("Hailing") and not brain.Model:GetAttribute("Passenger") then
+		if dist > 35 and not brain.Temp and brain.State == "walk" and not (d.Recent and d.Recent[brain] and os.clock() < d.Recent[brain]) and (brain.Floor or 1) == 1 and not brain.Building and S.Life:Age(brain.C) >= 16 and not brain.Model:GetAttribute("Hailing") and not brain.Model:GetAttribute("Passenger") then
 			if not bestD or math.abs(dist - 80) < math.abs(bestD - 80) then
 				best, bestD = brain, dist
 			end

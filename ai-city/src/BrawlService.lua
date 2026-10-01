@@ -35,6 +35,12 @@ local inBrawl = {} -- [brain] = brawl (fighters, crowd and the officer)
 local nextFight = 0
 local grudges = {} -- ["a:b"] = true: they've fought before (and might again)
 
+local KID_REASONS = {
+	{ "Give it back! That's mine!", "Make me!" },
+	{ "Stop copying me!", "You stop copying ME!" },
+	{ "You pushed me!", "No I didn't, crybaby!" },
+	{ "Take that back!", "No! It's true!" },
+}
 local REASONS = {
 	{ "Hey! You bumped into me!", "So what? Watch where YOU'RE going!" },
 	{ "What did you just say about me?!", "You heard me!" },
@@ -419,12 +425,6 @@ function BrawlService.Fight(a, c, opts)
 	return b
 end
 
-local KID_REASONS = {
-	{ "Give it back! That's mine!", "Make me!" },
-	{ "Stop copying me!", "You stop copying ME!" },
-	{ "You pushed me!", "No I didn't, crybaby!" },
-	{ "Take that back!", "No! It's true!" },
-}
 
 -- a fight that pulls in the people around it: friends of the two jump in
 -- and it turns into a group brawl
