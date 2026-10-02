@@ -11,7 +11,7 @@
 	  - running: a fast run animation that speeds up with you (capped so it never
 	    looks frantic), a forward lean, a speed trail and a wider camera view
 	  - getting hit: you tumble, stars spin around your head, the screen flashes red
-	  - lighting changes a little on every map
+	  - every zone has its own sky: time of day, haze, fog and clouds blend in as you run
 ]]
 
 local Players = game:GetService("Players")
@@ -473,21 +473,71 @@ HitRemote.OnClientEvent:Connect(function(_message)
 end)
 
 ------------------------------------------------------------------------
--- LIGHTING PER MAP: Map 1 is a bright sunny day, Map 2 a warm late afternoon
+-- SKY + LIGHT PER ZONE: every zone has its own sky (time of day, haze color,
+-- fog, clouds), blended smoothly as you run in. Islands use their map's look.
 ------------------------------------------------------------------------
-local LOOKS = {
-	{ clock = 14.6, atmosphere = Color3.fromRGB(200, 225, 255), decay = Color3.fromRGB(110, 150, 200), tint = Color3.fromRGB(255, 252, 245) },
-	{ clock = 16.9, atmosphere = Color3.fromRGB(255, 205, 175), decay = Color3.fromRGB(175, 95, 85), tint = Color3.fromRGB(255, 236, 220) },
+local function rgb(r, g, b) return Color3.fromRGB(r, g, b) end
+local MAP_LOOKS = {
+	{ clock = 14.6, atmo = rgb(200, 225, 255), decay = rgb(110, 150, 200), tint = rgb(255, 252, 245), density = 0.24, haze = 1.3, cover = 0.55, bright = 2.6 },
+	{ clock = 16.9, atmo = rgb(255, 205, 175), decay = rgb(175, 95, 85), tint = rgb(255, 236, 220), density = 0.26, haze = 1.6, cover = 0.5, bright = 2.4 },
 }
-local function applyLook()
-	local m = player:GetAttribute("CurrentMap") or 1
-	local look = LOOKS[math.clamp(m, 1, #LOOKS)]
+local ZONE_LOOKS = {
+	meadow  = MAP_LOOKS[1],
+	desert  = { clock = 13.2, atmo = rgb(255, 230, 190), decay = rgb(220, 170, 110), tint = rgb(255, 245, 225), density = 0.3, haze = 2.2, cover = 0.15, bright = 3 },
+	ice     = { clock = 11.5, atmo = rgb(215, 235, 255), decay = rgb(150, 190, 235), tint = rgb(235, 245, 255), density = 0.32, haze = 1.4, cover = 0.7, bright = 2.8 },
+	swamp   = { clock = 17.2, atmo = rgb(170, 200, 140), decay = rgb(80, 110, 60), tint = rgb(235, 255, 225), density = 0.4, haze = 2.6, cover = 0.8, bright = 2 },
+	lava    = { clock = 18.2, atmo = rgb(255, 150, 100), decay = rgb(140, 50, 30), tint = rgb(255, 225, 205), density = 0.38, haze = 2.4, cover = 0.6, bright = 2.2 },
+	candy   = { clock = 15, atmo = rgb(255, 210, 240), decay = rgb(230, 140, 200), tint = rgb(255, 240, 250), density = 0.26, haze = 1.4, cover = 0.45, bright = 2.7 },
+	neon    = { clock = 21.5, atmo = rgb(90, 70, 160), decay = rgb(30, 20, 80), tint = rgb(225, 225, 255), density = 0.3, haze = 1.6, cover = 0.4, bright = 1.6 },
+	crystal = { clock = 20, atmo = rgb(190, 150, 255), decay = rgb(90, 50, 160), tint = rgb(240, 230, 255), density = 0.3, haze = 1.8, cover = 0.35, bright = 1.9 },
+	storm   = { clock = 16, atmo = rgb(140, 145, 165), decay = rgb(70, 72, 90), tint = rgb(225, 230, 240), density = 0.42, haze = 2.4, cover = 0.95, bright = 1.6 },
+	void    = { clock = 0.5, atmo = rgb(120, 60, 200), decay = rgb(40, 10, 80), tint = rgb(235, 220, 255), density = 0.35, haze = 2, cover = 0.2, bright = 1.4 },
+	jungle  = MAP_LOOKS[2],
+	haunted = { clock = 22.5, atmo = rgb(120, 150, 130), decay = rgb(40, 60, 50), tint = rgb(220, 240, 230), density = 0.45, haze = 2.8, cover = 0.85, bright = 1.4 },
+	factory = { clock = 17.5, atmo = rgb(200, 180, 150), decay = rgb(110, 90, 70), tint = rgb(255, 240, 220), density = 0.4, haze = 2.6, cover = 0.75, bright = 2 },
+	space   = { clock = 0, atmo = rgb(60, 70, 140), decay = rgb(10, 10, 40), tint = rgb(225, 230, 255), density = 0.2, haze = 0.8, cover = 0, bright = 1.6 },
+	rainbow = { clock = 12.5, atmo = rgb(240, 225, 255), decay = rgb(200, 170, 255), tint = rgb(255, 250, 255), density = 0.22, haze = 1.2, cover = 0.4, bright = 3 },
+	inferno = { clock = 19, atmo = rgb(255, 110, 70), decay = rgb(120, 20, 10), tint = rgb(255, 220, 200), density = 0.45, haze = 3, cover = 0.7, bright = 2 },
+}
+local currentLook
+local function applyLook(look)
+	if look == currentLook then return end
+	currentLook = look
 	local info = TweenInfo.new(2.5, Enum.EasingStyle.Sine)
-	TweenService:Create(Lighting, info, { ClockTime = look.clock }):Play()
+	TweenService:Create(Lighting, info, { ClockTime = look.clock, Brightness = look.bright }):Play()
 	local atmo = Lighting:FindFirstChild("SVB_Atmosphere")
-	if atmo then TweenService:Create(atmo, info, { Color = look.atmosphere, Decay = look.decay }):Play() end
+	if atmo then TweenService:Create(atmo, info, { Color = look.atmo, Decay = look.decay, Density = look.density, Haze = look.haze }):Play() end
 	local cc = Lighting:FindFirstChild("SVB_Color")
 	if cc then TweenService:Create(cc, info, { TintColor = look.tint }):Play() end
+	local clouds = workspace.Terrain:FindFirstChildOfClass("Clouds")
+	if clouds then TweenService:Create(clouds, info, { Cover = look.cover }):Play() end
 end
-player:GetAttributeChangedSignal("CurrentMap"):Connect(applyLook)
-task.defer(applyLook)
+
+-- which zone am I in? (zones are published by the server in ReplicatedStorage.SVB_Zones)
+local zones = {}
+task.spawn(function()
+	local folder = ReplicatedStorage:WaitForChild("SVB_Zones", 30)
+	if not folder then return end
+	local function add(c)
+		table.insert(zones, { z0 = c:GetAttribute("Z0") or 0, z1 = c:GetAttribute("Z1") or 0, theme = c:GetAttribute("Theme"), map = c:GetAttribute("Map") or 1 })
+	end
+	for _, c in ipairs(folder:GetChildren()) do add(c) end
+	folder.ChildAdded:Connect(add)
+end)
+task.spawn(function()
+	while true do
+		local root = myRoot()
+		local look = MAP_LOOKS[math.clamp(player:GetAttribute("CurrentMap") or 1, 1, #MAP_LOOKS)]
+		if root then
+			local z = root.Position.Z
+			for _, zn in ipairs(zones) do
+				if z >= zn.z0 and z < zn.z1 then
+					look = ZONE_LOOKS[zn.theme] or MAP_LOOKS[math.clamp(zn.map, 1, #MAP_LOOKS)]
+					break
+				end
+			end
+		end
+		applyLook(look)
+		task.wait(0.5)
+	end
+end)

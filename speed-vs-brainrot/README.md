@@ -1,6 +1,6 @@
 # Speed vs Brainrot
 
-Three scripts:
+Four scripts:
 
 | Script | Where it goes |
 | --- | --- |
@@ -53,6 +53,19 @@ Three scripts:
   - Rainbow Road: white marble with rainbow lanes.
   - Inferno: basalt and cracked lava.
   - The start islands use grass, ground, cobblestone paths and a marble egg deck. The speed pad keeps its classic studs.
+- **The world uses real Roblox Terrain**, not only flat parts:
+  - Each zone floats on a terrain cliff in its own rock and sand materials, with boulders hanging underneath.
+  - Outside the glass walls, each zone has its own scenery, made of terrain:
+    - rolling hills (Meadow, Swamp, Jungle, Candy, Space, Rainbow);
+    - sandstone mesas (Desert);
+    - jagged peaks (Tundra, Storm, Haunted);
+    - volcanoes with glowing tops (Lava, Inferno);
+    - spikes (Crystal, Void);
+    - towers (Neon, Factory).
+  - The start islands are terrain too: grass terraces and a rocky underside.
+  - Below the world there is a real terrain ocean with waves, Roblox's 3D clouds overhead, and grassy sky islands floating off to the sides.
+- **Ramps**: zones with a solid floor have a small ramp hump every 200 studs, so the run isn't one flat strip. Zones with holes in the floor skip them.
+- **Your own models (optional)**: put models in `ServerStorage > SVB_Props` named `Tree`, `PineTree`, `PalmTree`, `DeadTree`, `Bush`, `Rock` or `Mushroom` (Toolbox models are fine). The game then uses them in place of its built-in blocky versions. They are anchored, sized and stood on the ground automatically, with a random turn each. Leave the folder empty to keep the built-in ones.
 - **Cash on the floor** comes in bill stacks with pale paper edges, a printed top with a "$" seal, and a gold paper band. Gold coins lie next to them. Piles grow in later zones: one stack, then two crossed stacks with a coin pile, then a pyramid topped with a gold bar. Each pile spins, sparkles and glows, with its value in a green tag above it.
 - **Obstacles** move smoothly on every screen and follow the server clock. They are sliders, spinners, swinging logs, crushers, blinking lasers and fire jets, and lightning or meteor strikes. Each zone has only a few.
 
@@ -98,8 +111,10 @@ No emojis or uploaded images: every icon is drawn from rounded frames (the `ICON
 
 - Moving obstacles, cash piles and eggs are animated on your own screen every frame, so they move smoothly.
 - **Running**: when you're fast, a bouncy run, then a ninja dash. Both come from Roblox's free animation packs. The playback speed is capped so it never looks frantic. You also lean forward, leave a speed trail, and the camera view widens.
-- **Lighting**: soft haze, bloom on neon, sun rays and a light color grade. Map 1 is a sunny day and Map 2 a warm late afternoon.
+- **Lighting and sky per zone**: as you cross into a new zone, the sky, sun angle, haze, color grade and cloud cover blend smoothly to match it. The Desert is a hazy gold, the Tundra a cold bright white, Lava a smoky red dusk, Neon City and Space night time, Storm Peaks dark and overcast, and so on. Bloom on neon and sun rays stay on everywhere.
 
+![Desert zone](map_desert.png)
+![Overview](map_overview.png)
 ![HUD](svb_hud.png)
 ![Menus](svb_menus.png)
 ![Egg hatch](svb_hatch.png)

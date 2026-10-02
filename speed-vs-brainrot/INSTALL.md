@@ -1,7 +1,7 @@
 # Installing Speed vs Brainrot (for a person or another Claude chat)
 
 Everything is plain Luau. There are 4 scripts and no models or images to upload,
-because the server script builds the whole world when the game starts.
+because the server script builds the whole world (parts and Terrain) when the game starts.
 
 ## Fastest way: open the ready-made place
 
@@ -31,6 +31,8 @@ so the HUD doesn't show twice.
   but nothing is saved in Studio.
 - **Workspace > StreamingEnabled**: on is recommended. The map is about 14,000 parts.
 - Delete the default Baseplate if you like. The script removes it anyway.
+- Don't add your own Terrain where the map goes: the script fills in its own terrain
+  (cliffs, scenery, ocean and clouds) along the Z axis when the game starts.
 
 ## 3. Optional settings (top of the server script, `CONFIG`)
 
@@ -40,6 +42,14 @@ so the HUD doesn't show twice.
 - `ZoneLength`, `BossHeadStart`, `BossLeash`, `CashPerZone`, speed costs and more are
   explained in comments next to each value.
 - Maps, zones, bosses, eggs and pets are tables (`MAPS`, `ZONE_BOSSES`) near the top.
+
+## 3b. Optional: your own scenery models
+
+Make a Folder named `SVB_Props` in **ServerStorage** (the .rbxlx already has it) and put
+models in it named `Tree`, `PineTree`, `PalmTree`, `DeadTree`, `Bush`, `Rock` or
+`Mushroom`. Toolbox models work. Each one replaces the built-in version of that prop
+everywhere. The script anchors, sizes and grounds them itself. Leave out any you don't
+want, and the built-in version is used. Use low-part models: they're placed many times.
 
 ## 4. Test
 
@@ -52,5 +62,6 @@ pad, cross the red line and run from the boss. In Studio you're the owner, so th
 - Copy each file's full contents exactly. They are long (the server script is about
   4,000 lines), so don't summarize or shorten them.
 - The server script must be a normal Script. The other three must be LocalScripts.
-- Nothing else is needed: no ReplicatedStorage setup, folders, remotes or assets.
+- Nothing else is needed: no ReplicatedStorage setup, folders, remotes or assets
+  (the `SVB_Props` folder is optional).
   The server creates `SVB_Remotes`, `SVB_Pets`, `SVB_Maps` and so on when it starts.

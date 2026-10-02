@@ -702,6 +702,152 @@ local function textured(part, material)
 	return part
 end
 
+------------------------------------------------------------------------
+-- TERRAIN: real Roblox terrain for the cliffs under the track, the islands,
+-- the ocean and the big scenery on both sides of every zone
+------------------------------------------------------------------------
+local Terrain = workspace.Terrain
+local TK = {} -- terrain + custom-model helpers (in one table to keep the script under Luau's local limit)
+function TK.fillBlock(cf, size, mat) pcall(function() Terrain:FillBlock(cf, size, mat) end) end
+function TK.fillBall(pos, radius, mat) pcall(function() Terrain:FillBall(pos, radius, mat) end) end
+function TK.fillCyl(cf, height, radius, mat) pcall(function() Terrain:FillCylinder(cf, height, radius, mat) end) end
+
+do
+	local TERRAIN_COLORS = {
+		Grass = Color3.fromRGB(95, 200, 75), LeafyGrass = Color3.fromRGB(60, 160, 60), Ground = Color3.fromRGB(150, 100, 60),
+		Rock = Color3.fromRGB(120, 120, 132), Sand = Color3.fromRGB(240, 210, 125), Sandstone = Color3.fromRGB(205, 150, 90),
+		Snow = Color3.fromRGB(245, 248, 255), Glacier = Color3.fromRGB(150, 205, 245), Mud = Color3.fromRGB(95, 80, 55),
+		Basalt = Color3.fromRGB(60, 45, 45), CrackedLava = Color3.fromRGB(255, 110, 40), Salt = Color3.fromRGB(255, 170, 215),
+		Limestone = Color3.fromRGB(175, 125, 235), Slate = Color3.fromRGB(95, 100, 135), Concrete = Color3.fromRGB(140, 140, 150),
+		Asphalt = Color3.fromRGB(60, 52, 75), Pavement = Color3.fromRGB(55, 55, 72),
+	}
+	for name, color in pairs(TERRAIN_COLORS) do
+		pcall(function() Terrain:SetMaterialColor(Enum.Material[name], color) end)
+	end
+	pcall(function()
+		Terrain.WaterColor = Color3.fromRGB(40, 150, 225)
+		Terrain.WaterTransparency = 0.35
+		Terrain.WaterWaveSize = 0.3
+		Terrain.WaterWaveSpeed = 8
+		Terrain.WaterReflectance = 0.6
+		Terrain.Decoration = true -- swaying grass on Grass terrain
+	end)
+end
+
+-- the terrain look of each theme: what the cliffs are made of and what rises beside the track
+TK.THEMES = {
+	meadow  = { under = M.Ground,    shape = "hills",   main = M.Grass,      cap = M.Grass },
+	desert  = { under = M.Sandstone, shape = "mesa",    main = M.Sandstone,  cap = M.Sand },
+	ice     = { under = M.Glacier,   shape = "peaks",   main = M.Glacier,    cap = M.Snow },
+	swamp   = { under = M.Mud,       shape = "hills",   main = M.Mud,        cap = M.LeafyGrass },
+	lava    = { under = M.Basalt,    shape = "volcano", main = M.Basalt,     cap = M.CrackedLava },
+	candy   = { under = M.Salt,      shape = "hills",   main = M.Salt,       cap = M.Snow },
+	neon    = { under = M.Pavement,  shape = "towers",  main = M.Pavement,   cap = M.Pavement },
+	crystal = { under = M.Limestone, shape = "spikes",  main = M.Limestone,  cap = M.Limestone },
+	storm   = { under = M.Rock,      shape = "peaks",   main = M.Rock,       cap = M.Slate },
+	void    = { under = M.Asphalt,   shape = "spikes",  main = M.Asphalt,    cap = M.Asphalt },
+	jungle  = { under = M.Ground,    shape = "hills",   main = M.LeafyGrass, cap = M.LeafyGrass },
+	haunted = { under = M.Asphalt,   shape = "peaks",   main = M.Asphalt,    cap = M.Slate },
+	factory = { under = M.Concrete,  shape = "towers",  main = M.Concrete,   cap = M.Concrete },
+	space   = { under = M.Slate,     shape = "hills",   main = M.Slate,      cap = M.Slate },
+	rainbow = { under = M.Snow,      shape = "hills",   main = M.Snow,       cap = M.Snow },
+	inferno = { under = M.Basalt,    shape = "volcano", main = M.Basalt,     cap = M.CrackedLava },
+}
+
+-- cliffs under a zone: a slab right under the floor and big boulders hanging below it
+function TK.zoneUnderside(k, theme, rng)
+	local t = TK.THEMES[theme]
+	if not t then return false end
+	local cz = k * L + L / 2
+	TK.fillBlock(CFrame.new(0, -7.5, cz), Vector3.new(W, 12, L), t.under)
+	for _ = 1, math.floor(L / 40) do
+		local r = rng:NextInteger(9, 20)
+		TK.fillBall(Vector3.new(rng:NextInteger(-math.floor(HALF_W - r), math.floor(HALF_W - r)), -10 - r * 0.6, k * L + rng:NextInteger(r, L - r)), r, t.under)
+	end
+	return true
+end
+
+-- scenery beside a zone (outside the glass walls)
+function TK.zoneScenery(k, theme, rng)
+	local t = TK.THEMES[theme]
+	if not t then return end
+	local per = math.max(2, math.floor(L / 100))
+	for _, side in ipairs({ -1, 1 }) do
+		for i = 1, per do
+			local x = side * (HALF_W + 30 + rng:NextInteger(0, 60))
+			local z = k * L + (i - 0.5) * (L / per) + rng:NextInteger(-20, 20)
+			local h = rng:NextInteger(35, 75)
+			if t.shape == "hills" then
+				local r = rng:NextInteger(30, 46)
+				TK.fillBall(Vector3.new(x, -r + rng:NextInteger(5, 22), z), r, t.main)
+				TK.fillBall(Vector3.new(x + side * r * 0.6, -r * 0.8, z + rng:NextInteger(-25, 25)), r * 0.7, t.cap)
+			elseif t.shape == "mesa" then
+				local r = rng:NextInteger(18, 30)
+				TK.fillCyl(CFrame.new(x, -40 + h / 2, z), h, r, t.main)
+				TK.fillCyl(CFrame.new(x, -40 + h + 1, z), 4, r - 1, t.cap)
+				TK.fillCyl(CFrame.new(x + side * r, -40 + h * 0.3, z + 10), h * 0.6, r * 0.6, t.main)
+			elseif t.shape == "peaks" or t.shape == "volcano" then
+				local r0 = rng:NextInteger(30, 44)
+				for s = 0, 4 do
+					TK.fillBall(Vector3.new(x, -40 + s * (h / 4), z), r0 * (1 - s * 0.19), t.main)
+				end
+				TK.fillBall(Vector3.new(x, -40 + h + 2, z), r0 * 0.28, t.cap)
+				if t.shape == "volcano" then
+					-- a glowing crater
+					newPart{ Name = "VolcanoGlow", Shape = Enum.PartType.Ball, Size = Vector3.one * (r0 * 0.4), Position = Vector3.new(x, -40 + h + 6, z), Color = Color3.fromRGB(255, 110, 30), Material = Enum.Material.Neon, CanCollide = false, CastShadow = false, Parent = Decor }
+				end
+			elseif t.shape == "spikes" then
+				for s = 1, 3 do
+					local sh = h * (0.6 + s * 0.15)
+					TK.fillBlock(CFrame.new(x + rng:NextInteger(-14, 14), -40 + sh / 2, z + rng:NextInteger(-14, 14)) * CFrame.Angles(math.rad(rng:NextInteger(-12, 12)), math.rad(rng:NextInteger(0, 90)), math.rad(rng:NextInteger(-12, 12))), Vector3.new(10, sh, 10), t.main)
+				end
+			elseif t.shape == "towers" then
+				local w = rng:NextInteger(22, 36)
+				TK.fillBlock(CFrame.new(x, -40 + h / 2, z), Vector3.new(w, h, w), t.main)
+				TK.fillBlock(CFrame.new(x + side * w * 0.4, -40 + h * 0.35, z + w * 0.6), Vector3.new(w * 0.7, h * 0.7, w * 0.7), t.main)
+			end
+		end
+	end
+end
+
+-- a floating island made of terrain (dirt, rock underneath, grass on top)
+function TK.terrainIsle(x, y, z, size)
+	TK.fillBall(Vector3.new(x, y - size * 0.35, z), size * 0.55, M.Ground)
+	TK.fillBall(Vector3.new(x + size * 0.1, y - size * 0.85, z - size * 0.1), size * 0.35, M.Rock)
+	TK.fillCyl(CFrame.new(x, y, z), 4, size * 0.55, M.Grass)
+end
+
+------------------------------------------------------------------------
+-- YOUR OWN MODELS: put models in ServerStorage > SVB_Props named Tree, PineTree,
+-- PalmTree, DeadTree, Bush, Rock or Mushroom, and the map uses them instead of
+-- the built-in block versions (Toolbox models work great)
+------------------------------------------------------------------------
+TK.props = game:GetService("ServerStorage"):FindFirstChild("SVB_Props")
+function TK.customProp(kind, x, y, z, scale)
+	local src = TK.props and TK.props:FindFirstChild(kind)
+	if not src then return false end
+	local c = src:Clone()
+	for _, p in ipairs(c:GetDescendants()) do
+		if p:IsA("BasePart") then p.Anchored = true end
+	end
+	if c:IsA("BasePart") then c.Anchored = true end
+	if c:IsA("Model") and scale and scale ~= 1 then
+		pcall(function() c:ScaleTo(c:GetScale() * scale) end)
+	end
+	c:PivotTo(CFrame.new(x, y, z) * CFrame.Angles(0, math.random() * math.pi * 2, 0))
+	-- stand it on the ground, whatever its pivot is
+	local ok, cf, size = pcall(function()
+		if c:IsA("Model") then return c:GetBoundingBox() end
+		return c.CFrame, c.Size
+	end)
+	if ok and cf then
+		local offset = y - (cf.Position.Y - size.Y / 2)
+		c:PivotTo(c:GetPivot() + Vector3.new(0, offset, 0))
+	end
+	c.Parent = Decor
+	return true
+end
+
 -- Floor made of tiles with holes in it (used by The Void). There is always a path through.
 local function buildHoleyFloor(k, color, rng)
 	local cols, rows = math.floor(W / 10), math.floor(L / 10)
@@ -772,21 +918,23 @@ local function buildZoneShell(k, floorColor, underColor, accent, holey, rng, the
 				end
 			end
 		end
-		-- a chunky underside so the track floats in the sky like an island
-		local under = newPart{ Name = "Underside", Size = Vector3.new(W, 10, L), Position = Vector3.new(0, -5.5, cz), Color = underColor, Parent = Map }
-		underSides(under)
-		for _ = 1, 6 do
-			local cw = rng:NextInteger(14, 30)
-			local ch = rng:NextInteger(6, 16)
-			local half = math.floor(HALF_W - cw / 2)
-			local chunk = newPart{
-				Name = "UnderChunk",
-				Size = Vector3.new(cw, ch, rng:NextInteger(18, 40)),
-				Position = Vector3.new(rng:NextInteger(-half, half), -10.5 - ch / 2, k * L + rng:NextInteger(25, L - 25)),
-				Color = underColor:Lerp(BLACK, 0.12),
-				Parent = Map,
-			}
-			underSides(chunk)
+		-- terrain cliffs under the track (falls back to parts for themes without terrain)
+		if not TK.zoneUnderside(k, theme, rng) then
+			local under = newPart{ Name = "Underside", Size = Vector3.new(W, 10, L), Position = Vector3.new(0, -5.5, cz), Color = underColor, Parent = Map }
+			underSides(under)
+			for _ = 1, 6 do
+				local cw = rng:NextInteger(14, 30)
+				local ch = rng:NextInteger(6, 16)
+				local half = math.floor(HALF_W - cw / 2)
+				local chunk = newPart{
+					Name = "UnderChunk",
+					Size = Vector3.new(cw, ch, rng:NextInteger(18, 40)),
+					Position = Vector3.new(rng:NextInteger(-half, half), -10.5 - ch / 2, k * L + rng:NextInteger(25, L - 25)),
+					Color = underColor:Lerp(BLACK, 0.12),
+					Parent = Map,
+				}
+				underSides(chunk)
+			end
 		end
 	end
 	for _, side in ipairs({ -1, 1 }) do
@@ -884,6 +1032,7 @@ local function cartoonTree(x, z, s, leaf, baseY)
 	s = s or 1
 	leaf = leaf or Color3.fromRGB(80, 190, 70)
 	local y0 = baseY or FLOOR_Y
+	if TK.customProp("Tree", x, y0, z, s) then return end
 	local trunk = Color3.fromRGB(125, 85, 50)
 	vcyl(6 * s, 2.8 * s, x, y0, z, trunk, Enum.Material.Wood)
 	vcyl(4 * s, 2 * s, x, y0 + 6 * s, z, trunk, Enum.Material.Wood)
@@ -901,12 +1050,14 @@ end
 local function bush(x, z, color, baseY)
 	color = color or Color3.fromRGB(70, 170, 60)
 	local y0 = baseY or FLOOR_Y
+	if TK.customProp("Bush", x, y0, z, 1) then return end
 	ball(4.5, x, y0 + 1.6, z, color)
 	ball(3.6, x + 2.4, y0 + 1.2, z + 0.8, color:Lerp(WHITE, 0.1))
 	ball(3.4, x - 2.2, y0 + 1.1, z - 0.6, color:Lerp(BLACK, 0.1))
 end
 
 local function rock(x, z, size, color, baseY)
+	if TK.customProp("Rock", x, baseY or FLOOR_Y, z, size / 6) then return end
 	local r = prop{ Shape = Enum.PartType.Ball, Size = Vector3.one * size, Position = Vector3.new(x, (baseY or FLOOR_Y) + size * 0.2, z), Color = color or Color3.fromRGB(140, 140, 150) }
 	return squash(r, 1.3, 0.7, 1)
 end
@@ -925,6 +1076,7 @@ local PETALS, decorateZone -- set in the block below
 do
 	local function mushroom(x, z, s, cap, material)
 		s = s or 1
+		if TK.customProp("Mushroom", x, FLOOR_Y, z, s) then return end
 		vcyl(3 * s, 1.4 * s, x, FLOOR_Y, z, Color3.fromRGB(245, 235, 210))
 		local top = prop{ Shape = Enum.PartType.Ball, Size = Vector3.one * 4 * s, Position = Vector3.new(x, FLOOR_Y + 3.2 * s, z), Color = cap or Color3.fromRGB(230, 60, 60), Material = material }
 		squash(top, 1, 0.6, 1)
@@ -937,6 +1089,7 @@ do
 
 	local function pineTree(x, z, s)
 		s = s or 1
+		if TK.customProp("PineTree", x, FLOOR_Y, z, s) then return end
 		vcyl(4 * s, 1.6 * s, x, FLOOR_Y, z, Color3.fromRGB(110, 75, 45), Enum.Material.Wood)
 		local green = Color3.fromRGB(40, 120, 80)
 		for t = 0, 2 do
@@ -950,6 +1103,7 @@ do
 	end
 
 	local function palmTree(x, z, side)
+		if TK.customProp("PalmTree", x, FLOOR_Y, z, 1) then return end
 		local trunk = Color3.fromRGB(150, 110, 70)
 		for seg = 0, 3 do
 			block(1.8 - seg * 0.15, 3.2, 1.8 - seg * 0.15, CFrame.new(x - side * seg * 0.5, FLOOR_Y + 1.6 + seg * 3, z) * CFrame.Angles(0, 0, -side * 0.12), trunk:Lerp(BLACK, (seg % 2) * 0.1))
@@ -997,6 +1151,7 @@ do
 	end
 
 	local function deadTree(x, z, color)
+		if TK.customProp("DeadTree", x, FLOOR_Y, z, 1) then return end
 		color = color or Color3.fromRGB(80, 60, 45)
 		vcyl(12, 1.8, x, FLOOR_Y, z, color, Enum.Material.Wood)
 		block(0.9, 5, 0.9, CFrame.new(x + 1.6, FLOOR_Y + 9, z) * CFrame.Angles(0, 0, -0.7), color, Enum.Material.Wood)
@@ -1755,16 +1910,27 @@ end
 -- THE SKY WORLD: an ocean far below, little floating islands and clouds
 ------------------------------------------------------------------------
 local GRASS = Color3.fromRGB(95, 200, 75)
-local DIRT = Color3.fromRGB(150, 95, 55)
 local PATH = Color3.fromRGB(215, 150, 85)
 
-for i = 0, math.ceil((WORLD_END + 800) / 2048) - 1 do
-	newPart{ Name = "Ocean", Size = Vector3.new(2048, 2, 2048), Position = Vector3.new(0, -62, -400 + 1024 + i * 2048), Color = Color3.fromRGB(45, 150, 230), Reflectance = 0.12, CanCollide = false, CastShadow = false, Parent = Map }
+-- a real terrain ocean far below (with waves), filled in strips so each fill stays small
+for z = -600, WORLD_END + 600, 1000 do
+	TK.fillBlock(CFrame.new(0, -68, z + 500), Vector3.new(1200, 12, 1000), Enum.Material.Water)
+end
+-- soft moving clouds in the sky
+do
+	local old = Terrain:FindFirstChildOfClass("Clouds")
+	if old then old:Destroy() end
+	local clouds = Instance.new("Clouds")
+	clouds.Cover = 0.55
+	clouds.Density = 0.6
+	clouds.Color = WHITE
+	clouds.Parent = Terrain
 end
 
 do
 	local skyRng = Random.new(77)
-	local clouds = math.floor(WORLD_END / 120)
+	-- a few puffy cloud clusters below the track (the sky clouds are Roblox's own)
+	local clouds = math.floor(WORLD_END / 300)
 	for i = 1, clouds do
 		local side = (i % 2 == 0) and 1 or -1
 		local x = side * skyRng:NextInteger(95, 380)
@@ -1777,10 +1943,7 @@ do
 	end
 
 	local function floatingIsle(x, y, z, size, rng)
-		local depth = size * (0.7 + rng:NextNumber() * 0.6)
-		textured(prop{ Name = "IsleDirt", Size = Vector3.new(size, depth, size), Position = Vector3.new(x, y - depth / 2, z), Color = DIRT }, Enum.Material.Ground)
-		textured(prop{ Name = "IsleDirt", Size = Vector3.new(size * 0.55, depth * 0.7, size * 0.55), Position = Vector3.new(x + size * 0.12, y - depth * 1.35, z - size * 0.1), Color = DIRT:Lerp(BLACK, 0.12) }, Enum.Material.Rock)
-		textured(prop{ Name = "IsleGrass", Size = Vector3.new(size + 0.8, 2, size + 0.8), Position = Vector3.new(x, y + 1, z), Color = GRASS }, Enum.Material.Grass)
+		TK.terrainIsle(x, y, z, size * 1.4)
 		if size >= 14 then
 			cartoonTree(x, z, size / 18, nil, y + 2)
 		else
@@ -1789,7 +1952,7 @@ do
 	end
 	for i = 1, math.floor(WORLD_END / 230) do
 		local side = (i % 2 == 0) and 1 or -1
-		floatingIsle(side * skyRng:NextInteger(110, 260), skyRng:NextInteger(-30, 10), skyRng:NextInteger(-100, WORLD_END), skyRng:NextInteger(10, 26), skyRng)
+		floatingIsle(side * skyRng:NextInteger(HALF_W + 140, HALF_W + 320), skyRng:NextInteger(-30, 10), skyRng:NextInteger(-100, WORLD_END), skyRng:NextInteger(10, 26), skyRng)
 	end
 end
 
@@ -2179,7 +2342,11 @@ local function buildStartIsland(map)
 	local m, oz = map.index, map.oz + L - IL
 	local startFloor = newPart{ Name = "Island" .. m .. "Floor", Size = Vector3.new(W, 1, IL), Position = Vector3.new(0, 0, oz + IL / 2), Color = GRASS, Parent = Map }
 	textured(startFloor, M.Grass)
-	textured(newPart{ Name = "IslandDirt", Size = Vector3.new(W, 44, IL), Position = Vector3.new(0, -22.5, oz + IL / 2), Color = DIRT, Parent = Map }, M.Ground)
+	TK.fillBlock(CFrame.new(0, -24, oz + IL / 2), Vector3.new(W, 44, IL), M.Ground)
+	for _ = 1, 10 do -- rocky chunks hanging under the island
+		local r = math.random(10, 22)
+		TK.fillBall(Vector3.new(math.random(-math.floor(HALF_W - r), math.floor(HALF_W - r)), -44 - r * 0.4, oz + math.random(r, IL - r)), r, M.Rock)
+	end
 	publishZone(map.startG, map.title, WHITE, 0, "start", 0, m, 0, 1)
 	floorPatches(map.startG, GRASS, Random.new(2 + m), oz, IL, M.LeafyGrass)
 
@@ -2190,8 +2357,9 @@ local function buildStartIsland(map)
 		local options = (ring == 1 and { 0, 1.5, 3 }) or (ring == 2 and { 3, 5, 7 }) or { 7, 10, 13 }
 		local top = FLOOR_Y + options[terrRng:NextInteger(1, 3)]
 		local bottom = -44 - terrRng:NextInteger(0, 22)
-		textured(newPart{ Name = "TerraceDirt", Size = Vector3.new(10, top - 1.2 - bottom, 10), Position = Vector3.new(cx, (top - 1.2 + bottom) / 2, cz), Color = DIRT:Lerp(BLACK, terrRng:NextNumber() * 0.1), Parent = Map }, M.Ground)
-		textured(newPart{ Name = "TerraceGrass", Size = Vector3.new(10.3, 1.2, 10.3), Position = Vector3.new(cx, top - 0.6, cz), Color = GRASS:Lerp(WHITE, terrRng:NextNumber() * 0.08), Parent = Map }, M.Grass)
+		-- terrain hills: dirt below, grass on top (terrain smooths the steps into slopes)
+		TK.fillBlock(CFrame.new(cx, (top - 3 + bottom) / 2, cz), Vector3.new(10, top - 3 - bottom, 10), M.Ground)
+		TK.fillBlock(CFrame.new(cx, top - 1.5, cz), Vector3.new(10, 3, 10), M.Grass)
 		table.insert(terraceTops, { x = cx, z = cz, y = top, ring = ring })
 	end
 	for zc = -25, IL - 5, 10 do
@@ -2488,6 +2656,25 @@ for m, map in ipairs(MAPS) do
 		buildZoneShell(k, zone.floor, zone.wall, zone.accent, holey, rng, zone.theme)
 		if not holey then floorPatches(k, zone.floor, rng, nil, nil, THEME_LOOK[zone.theme] and THEME_LOOK[zone.theme].patch) end
 		decorateZone(k, zone.theme)
+		TK.zoneScenery(k, zone.theme, rng)
+		-- rolling ramps across the track: run over them fast and you get some air
+		if not holey then
+			local look = THEME_LOOK[zone.theme] or {}
+			for part = 0, math.floor(L / 200) - 1 do
+				local rz = k * L + part * 200 + 24
+				for dir = 0, 1 do
+					local ramp = newWedge{
+						Name = "Ramp",
+						Size = Vector3.new(W - 2, 2.6, 9),
+						CFrame = CFrame.new(0, FLOOR_Y + 1.3, rz + (dir == 0 and -4.5 or 4.5)) * CFrame.Angles(0, (dir == 0) and 0 or math.pi, 0),
+						Color = zone.floor:Lerp(WHITE, 0.12),
+						Parent = Map,
+					}
+					if look.floor then ramp.Material = look.floor end
+				end
+				newPart{ Name = "RampStripe", Size = Vector3.new(W - 2, 0.12, 0.8), Position = Vector3.new(0, FLOOR_Y + 2.62, rz), Color = zone.accent, Material = Enum.Material.Neon, CanCollide = false, CastShadow = false, Parent = Decor }
+			end
+		end
 		local build = OBSTACLES[zone.theme]
 		if build then
 			-- obstacle layouts are 200 studs long: repeat them down the whole zone
