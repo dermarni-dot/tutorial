@@ -39,7 +39,7 @@ local CollectionService = game:GetService("CollectionService")
 -- CONFIG  (tweak these to balance the game)
 ------------------------------------------------------------------------
 local CONFIG = {
-	ZoneWidth = 110,          -- every zone, including the start zones, is this wide...
+	ZoneWidth = 140,          -- every zone, including the start zones, is this wide...
 	ZoneLength = 400,         -- ...and this long (long zones = more room to pull away from the boss)
 	IslandLength = 200,       -- the start islands stay this long (they sit at the end of their slot)
 	MapGap = 1,               -- empty sky (in zone lengths) between one map's end and the next island
@@ -1402,6 +1402,9 @@ end
 
 local OBSTACLES -- set in the block below
 do
+	-- obstacle spreads were made for a 110-wide track: scale them to the real width
+	local XS = HALF_W / 55
+	local function rx(n) return math.floor(n * XS + 0.5) end
 	-- Box test in the part's own space, padded so it catches the player's body
 	local function boxCheck(part, pad)
 		pad = pad or Vector3.new(2, 6, 2)
@@ -1529,7 +1532,7 @@ do
 		local wood, darkWood = Color3.fromRGB(150, 100, 55), Color3.fromRGB(115, 75, 40)
 		for _, dz in ipairs({ 60, 110, 165 }) do
 			local z = z0 + dz
-			local gap = rng:NextInteger(-35, 35)
+			local gap = rng:NextInteger(-rx(35), rx(35))
 			local x = -HALF_W
 			while x < HALF_W do
 				local nx = math.min(x + 10, HALF_W)
@@ -1542,7 +1545,7 @@ do
 				end
 				x = nx
 			end
-			solid{ Name = "HayBale", Size = Vector3.new(6, 4, 4), Position = Vector3.new(rng:NextInteger(-40, 40), FLOOR_Y + 2, z + rng:NextInteger(12, 22)), Color = Color3.fromRGB(230, 200, 90), Material = Enum.Material.Fabric }
+			solid{ Name = "HayBale", Size = Vector3.new(6, 4, 4), Position = Vector3.new(rng:NextInteger(-rx(40), rx(40)), FLOOR_Y + 2, z + rng:NextInteger(12, 22)), Color = Color3.fromRGB(230, 200, 90), Material = Enum.Material.Fabric }
 		end
 		slider(k, z0 + 138, Vector3.new(8, 5, 6), Color3.fromRGB(230, 200, 90), Enum.Material.Fabric, 5, 0, "A hay cart bonked you!")
 	end
@@ -1551,9 +1554,9 @@ do
 	function OBSTACLES.desert(k, z0, rng)
 		for _ = 1, 8 do
 			local h = rng:NextInteger(8, 16)
-			solid{ Name = "SandPillar", Shape = Enum.PartType.Cylinder, Size = Vector3.new(h, 5, 5), CFrame = CFrame.new(rng:NextInteger(-42, 42), FLOOR_Y + h / 2, z0 + rng:NextInteger(40, 120)) * ROT_UP, Color = Color3.fromRGB(215, 170, 105), Material = Enum.Material.Sandstone }
+			solid{ Name = "SandPillar", Shape = Enum.PartType.Cylinder, Size = Vector3.new(h, 5, 5), CFrame = CFrame.new(rng:NextInteger(-rx(42), rx(42)), FLOOR_Y + h / 2, z0 + rng:NextInteger(40, 120)) * ROT_UP, Color = Color3.fromRGB(215, 170, 105), Material = Enum.Material.Sandstone }
 		end
-		newWedge{ Name = "SandRamp", Size = Vector3.new(16, 5, 18), CFrame = CFrame.new(rng:NextInteger(-30, 30), FLOOR_Y + 2.5, z0 + 135), Color = Color3.fromRGB(235, 195, 120), Material = Enum.Material.Sand, Parent = Obstacles }
+		newWedge{ Name = "SandRamp", Size = Vector3.new(16, 5, 18), CFrame = CFrame.new(rng:NextInteger(-rx(30), rx(30)), FLOOR_Y + 2.5, z0 + 135), Color = Color3.fromRGB(235, 195, 120), Material = Enum.Material.Sand, Parent = Obstacles }
 		slider(k, z0 + 160, Vector3.new(6, 6, 6), Color3.fromRGB(170, 120, 60), Enum.Material.Grass, 3.6, 0, "A tumbleweed rolled you over!")
 		slider(k, z0 + 182, Vector3.new(6, 6, 6), Color3.fromRGB(170, 120, 60), Enum.Material.Grass, 3.2, 0.5, "A tumbleweed rolled you over!")
 	end
@@ -1581,7 +1584,7 @@ do
 			local goo = solid{ Name = "ToxicGoo", Size = Vector3.new(W, 0.4, 12), Position = Vector3.new(0, FLOOR_Y + 0.2, z), Color = Color3.fromRGB(120, 255, 60), Material = Enum.Material.Neon, CanCollide = false }
 			addHazard(k, goo, nil, nil, "The toxic goo got you! Jump over it or use a log.")
 			for _ = 1, 2 do
-				solid{ Name = "LogBridge", Shape = Enum.PartType.Cylinder, Size = Vector3.new(16, 3, 3), CFrame = CFrame.new(rng:NextInteger(-40, 40), FLOOR_Y + 1.2, z) * CFrame.Angles(0, math.rad(90), 0), Color = Color3.fromRGB(110, 75, 45), Material = Enum.Material.Wood }
+				solid{ Name = "LogBridge", Shape = Enum.PartType.Cylinder, Size = Vector3.new(16, 3, 3), CFrame = CFrame.new(rng:NextInteger(-rx(40), rx(40)), FLOOR_Y + 1.2, z) * CFrame.Angles(0, math.rad(90), 0), Color = Color3.fromRGB(110, 75, 45), Material = Enum.Material.Wood }
 			end
 		end
 		slider(k, z0 + 110, Vector3.new(7, 7, 7), Color3.fromRGB(90, 70, 45), Enum.Material.Mud, 3, 0.25, "A mud ball splatted you!")
@@ -1594,10 +1597,10 @@ do
 			local lava = solid{ Name = "LavaRiver", Size = Vector3.new(W, 0.4, 14), Position = Vector3.new(0, FLOOR_Y + 0.2, z), Color = Color3.fromRGB(255, 100, 20), Material = Enum.Material.Neon, CanCollide = false }
 			addHazard(k, lava, nil, nil, "You fell in the lava! Use the stone bridges.")
 			for _ = 1, 2 do
-				solid{ Name = "StoneBridge", Size = Vector3.new(8, 1, 16), Position = Vector3.new(rng:NextInteger(-38, 38), FLOOR_Y + 0.9, z), Color = Color3.fromRGB(70, 55, 50), Material = Enum.Material.Basalt }
+				solid{ Name = "StoneBridge", Size = Vector3.new(8, 1, 16), Position = Vector3.new(rng:NextInteger(-rx(38), rx(38)), FLOOR_Y + 0.9, z), Color = Color3.fromRGB(70, 55, 50), Material = Enum.Material.Basalt }
 			end
 		end
-		for i, x in ipairs({ -30, 0, 30 }) do
+		for i, x in ipairs({ -rx(30), 0, rx(30) }) do
 			crusher(k, x, z0 + 105, Color3.fromRGB(70, 55, 50), 2.6, i * 0.3, "SMASHED by a lava rock!")
 		end
 	end
@@ -1607,9 +1610,9 @@ do
 		local colors = { Color3.fromRGB(255, 90, 170), Color3.fromRGB(120, 220, 255), Color3.fromRGB(255, 220, 80) }
 		for i = 1, 6 do
 			local d = rng:NextInteger(8, 11)
-			solid{ Name = "Gumdrop", Shape = Enum.PartType.Ball, Size = Vector3.new(d, d, d), Position = Vector3.new(rng:NextInteger(-40, 40), FLOOR_Y + d * 0.2, z0 + rng:NextInteger(75, 95)), Color = colors[i % 3 + 1], Material = Enum.Material.Glass }
+			solid{ Name = "Gumdrop", Shape = Enum.PartType.Ball, Size = Vector3.new(d, d, d), Position = Vector3.new(rng:NextInteger(-rx(40), rx(40)), FLOOR_Y + d * 0.2, z0 + rng:NextInteger(75, 95)), Color = colors[i % 3 + 1], Material = Enum.Material.Glass }
 		end
-		for s = 0, 10 do
+		for s = 0, math.floor(W / 10) - 1 do
 			solid{ Name = "CandyHurdle", Size = Vector3.new(10, 2, 2), Position = Vector3.new(-HALF_W + 5 + s * 10, FLOOR_Y + 1, z0 + 50), Color = (s % 2 == 0) and Color3.fromRGB(230, 40, 60) or WHITE }
 		end
 		spinner(k, Vector3.new(0, FLOOR_Y, z0 + 125), 40, Color3.fromRGB(255, 80, 170), 4.2, "A giant lollipop smacked you!")
@@ -1647,7 +1650,7 @@ do
 			local x = -gapSide * (HALF_W - len / 2)
 			solid{ Name = "CrystalWall", Size = Vector3.new(len, 10, 3), Position = Vector3.new(x, FLOOR_Y + 5, z), Color = colors[i % 3 + 1], Material = Enum.Material.Glass, Transparency = 0.2 }
 			for c = 1, 4 do
-				solid{ Name = "CrystalSpike", Size = Vector3.new(2, 5, 2), CFrame = CFrame.new(x - len / 2 + c * (len / 5), FLOOR_Y + 11.5, z) * CFrame.Angles(0, math.rad(45), math.rad(rng:NextInteger(-20, 20))), Color = colors[(i + c) % 3 + 1], Material = Enum.Material.Neon }
+				solid{ Name = "CrystalSpike", Size = Vector3.new(2, 5, 2), CFrame = CFrame.new(x - len / 2 + c * (len / 5), FLOOR_Y + 11.5, z) * CFrame.Angles(0, math.rad(45), math.rad(rng:NextInteger(-rx(20), rx(20)))), Color = colors[(i + c) % 3 + 1], Material = Enum.Material.Neon }
 			end
 		end
 		slider(k, z0 + 70, Vector3.new(4, 7, 4), colors[2], Enum.Material.Neon, 2.4, 0, "A crystal shard sliced you!")
@@ -1657,11 +1660,11 @@ do
 	-- lightning strikes (yellow circle blinks, then BOOM) + rock spires
 	function OBSTACLES.storm(k, z0, rng)
 		for i = 1, 7 do
-			strike(k, rng:NextInteger(-38, 38), z0 + rng:NextInteger(45, 185), i * 0.95, 4.2, Color3.fromRGB(255, 235, 60), "Struck by lightning! Stay off the yellow circles.")
+			strike(k, rng:NextInteger(-rx(38), rx(38)), z0 + rng:NextInteger(45, 185), i * 0.95, 4.2, Color3.fromRGB(255, 235, 60), "Struck by lightning! Stay off the yellow circles.")
 		end
 		for _ = 1, 5 do
 			local h = rng:NextInteger(10, 22)
-			solid{ Name = "RockSpire", Size = Vector3.new(6, h, 6), CFrame = CFrame.new(rng:NextInteger(-40, 40), FLOOR_Y + h / 2 - 1, z0 + rng:NextInteger(45, 185)) * CFrame.Angles(0.06, rng:NextNumber() * 3, -0.08), Color = Color3.fromRGB(85, 88, 100), Material = Enum.Material.Slate }
+			solid{ Name = "RockSpire", Size = Vector3.new(6, h, 6), CFrame = CFrame.new(rng:NextInteger(-rx(40), rx(40)), FLOOR_Y + h / 2 - 1, z0 + rng:NextInteger(45, 185)) * CFrame.Angles(0.06, rng:NextNumber() * 3, -0.08), Color = Color3.fromRGB(85, 88, 100), Material = Enum.Material.Slate }
 		end
 	end
 
@@ -1677,7 +1680,7 @@ do
 	function OBSTACLES.jungle(k, z0, rng)
 		for i, dz in ipairs({ 55, 110, 165 }) do
 			local z = z0 + dz
-			local top = Vector3.new(rng:NextInteger(-20, 20), FLOOR_Y + 26, z)
+			local top = Vector3.new(rng:NextInteger(-rx(20), rx(20)), FLOOR_Y + 26, z)
 			solid{ Name = "VineBranch", Size = Vector3.new(W, 2, 2), Position = Vector3.new(0, top.Y + 1, z), Color = Color3.fromRGB(100, 70, 40), Material = Enum.Material.Wood }
 			local opts = { amp = math.rad(60), period = 2.8, phase = i * 0.33, len = 22 }
 			-- swings side to side around the branch (the log points down the track)
@@ -1685,7 +1688,7 @@ do
 			mover(k, { Name = "Vine", Size = Vector3.new(0.5, 22, 0.5), CFrame = CFrame.new(top), Color = Color3.fromRGB(60, 140, 50) }, "swing", { amp = opts.amp, period = opts.period, phase = opts.phase, len = 11 })
 		end
 		for _ = 1, 5 do
-			solid{ Name = "JungleRock", Shape = Enum.PartType.Ball, Size = Vector3.one * 7, Position = Vector3.new(rng:NextInteger(-40, 40), FLOOR_Y + 1, z0 + rng:NextInteger(70, 190)), Color = Color3.fromRGB(100, 120, 90), Material = Enum.Material.Slate }
+			solid{ Name = "JungleRock", Shape = Enum.PartType.Ball, Size = Vector3.one * 7, Position = Vector3.new(rng:NextInteger(-rx(40), rx(40)), FLOOR_Y + 1, z0 + rng:NextInteger(70, 190)), Color = Color3.fromRGB(100, 120, 90), Material = Enum.Material.Slate }
 		end
 	end
 
@@ -1697,26 +1700,26 @@ do
 			ghost.Transparency = 0.35
 		end
 		for _ = 1, 6 do
-			solid{ Name = "Tombstone", Size = Vector3.new(5, 6, 1.5), Position = Vector3.new(rng:NextInteger(-42, 42), FLOOR_Y + 3, z0 + rng:NextInteger(40, 190)), Color = Color3.fromRGB(120, 120, 135), Material = Enum.Material.Slate }
+			solid{ Name = "Tombstone", Size = Vector3.new(5, 6, 1.5), Position = Vector3.new(rng:NextInteger(-rx(42), rx(42)), FLOOR_Y + 3, z0 + rng:NextInteger(40, 190)), Color = Color3.fromRGB(120, 120, 135), Material = Enum.Material.Slate }
 		end
 	end
 
 	-- two rows of pistons + crates
 	function OBSTACLES.factory(k, z0, rng)
 		for row, dz in ipairs({ 70, 145 }) do
-			for i, x in ipairs({ -36, -12, 12, 36 }) do
+			for i, x in ipairs({ -rx(36), -rx(12), rx(12), rx(36) }) do
 				crusher(k, x, z0 + dz, Color3.fromRGB(110, 115, 125), 2.4, (i + row) * 0.25, "A piston squashed you flat!")
 			end
 		end
 		for _ = 1, 4 do
-			solid{ Name = "Crate", Size = Vector3.new(5, 5, 5), Position = Vector3.new(rng:NextInteger(-42, 42), FLOOR_Y + 2.5, z0 + rng:NextInteger(95, 120)), Color = Color3.fromRGB(170, 120, 70), Material = Enum.Material.WoodPlanks }
+			solid{ Name = "Crate", Size = Vector3.new(5, 5, 5), Position = Vector3.new(rng:NextInteger(-rx(42), rx(42)), FLOOR_Y + 2.5, z0 + rng:NextInteger(95, 120)), Color = Color3.fromRGB(170, 120, 70), Material = Enum.Material.WoodPlanks }
 		end
 	end
 
 	-- meteor strikes + spinning satellites
 	function OBSTACLES.space(k, z0, rng)
 		for i = 1, 7 do
-			strike(k, rng:NextInteger(-38, 38), z0 + rng:NextInteger(40, 185), i * 0.8, 3.6, Color3.fromRGB(255, 140, 50), "A meteor landed on you!")
+			strike(k, rng:NextInteger(-rx(38), rx(38)), z0 + rng:NextInteger(40, 185), i * 0.8, 3.6, Color3.fromRGB(255, 140, 50), "A meteor landed on you!")
 		end
 		spinner(k, Vector3.new(-20, FLOOR_Y, z0 + 100), 30, Color3.fromRGB(120, 200, 255), 3, "A satellite smacked you!")
 		spinner(k, Vector3.new(20, FLOOR_Y, z0 + 160), 30, Color3.fromRGB(120, 200, 255), -2.8, "A satellite smacked you!")
@@ -1737,10 +1740,10 @@ do
 			local z = z0 + dz
 			local lava = solid{ Name = "LavaRiver", Size = Vector3.new(W, 0.4, 14), Position = Vector3.new(0, FLOOR_Y + 0.2, z), Color = Color3.fromRGB(255, 70, 20), Material = Enum.Material.Neon, CanCollide = false }
 			addHazard(k, lava, nil, nil, "Burned in the inferno! Use the bridges.")
-			solid{ Name = "StoneBridge", Size = Vector3.new(8, 1, 16), Position = Vector3.new(rng:NextInteger(-38, 38), FLOOR_Y + 0.9, z), Color = Color3.fromRGB(40, 30, 30), Material = Enum.Material.Basalt }
+			solid{ Name = "StoneBridge", Size = Vector3.new(8, 1, 16), Position = Vector3.new(rng:NextInteger(-rx(38), rx(38)), FLOOR_Y + 0.9, z), Color = Color3.fromRGB(40, 30, 30), Material = Enum.Material.Basalt }
 		end
 		for i = 0, 4 do
-			local x = -40 + i * 20
+			local x = rx(-40 + i * 20)
 			solid{ Name = "FireVent", Size = Vector3.new(5, 0.6, 5), Position = Vector3.new(x, FLOOR_Y + 0.3, z0 + 100), Color = Color3.fromRGB(40, 30, 30), Material = Enum.Material.Basalt }
 			local jet = solid{ Name = "FireJet", Size = Vector3.new(4, 14, 4), Position = Vector3.new(x, FLOOR_Y + 7, z0 + 100), Color = Color3.fromRGB(255, 120, 30), Material = Enum.Material.Neon, CanCollide = false, Transparency = 0.2 }
 			blinker(k, jet, i * 0.5, 2.5, 1.2, "Toasted by a fire jet!")
@@ -2368,8 +2371,8 @@ local function buildStartIsland(map)
 			flower(x + math.random(-1, 1), z - 5 + f * 1.7, PETALS[f % #PETALS + 1], FLOOR_Y + 0.8)
 		end
 	end
-	planter(49, oz + 30)
-	planter(49, oz + 50)
+	planter(HALF_W - 6, oz + 30)
+	planter(HALF_W - 6, oz + 50)
 
 	cartoonTree(-44, oz + 14, 1.1)
 	cartoonTree(44, oz + 12, 1, Color3.fromRGB(110, 205, 80))
@@ -2379,7 +2382,7 @@ local function buildStartIsland(map)
 
 	-- leaderboards along the left edge, facing the middle
 	for i, stat in ipairs(LB_STATS) do
-		buildLeaderboard(stat, -52, oz + 40 + i * 24)
+		buildLeaderboard(stat, -HALF_W + 3, oz + 40 + i * 24)
 	end
 
 	-- The green pad: stand on it to buy speed (cash is only for speed)
