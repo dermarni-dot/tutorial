@@ -1,29 +1,33 @@
 --[[
-	SPEED VS BRAINROT  —  HUD  (LocalScript)
-	Put this in: StarterPlayer > StarterPlayerScripts  (next to SpeedVsBrainrot_Client)
+	SPEED VS BRAINROT  -  HUD  (LocalScript)
+	Put this in: StarterPlayer > StarterPlayerScripts  (next to SpeedVsBrainrot_World)
 
 	What it adds:
-	  • Three chunky studded stat tiles on the left: Speed (red, a sneaker),
+	  - Three chunky studded stat tiles on the left: Speed (red, a sneaker),
 	    Cash (green, a cash brick) and Trophies (yellow, a trophy). The numbers
 	    count up and the tile bounces when they go up.
-	  • Four big square buttons under them:
-	      Teleport  (a swirling portal)   - spawn, the speed pad, or the egg row
+	  - Six square buttons under them:
+	      Teleport  (a swirling portal)   - spawn, the speed pad, the eggs, Map 1 / Map 2
 	      3x Cash   (an angry bat)        - your gamepass ("ONLY <robux>price!" above it)
 	      Invite    (two friends)         - invite friends ("Play with friends!")
 	      Pets      (a puppy)             - your pets, what they give, and Fuse 3 -> 1 better pet
-	  • When you collect cash: a big cash brick with "+545" pops up on the
+	      Rebirth   (orange arrows)       - reset cash + speed for a cash multiplier
+	      Prestige  (a gold star)         - lights up once you reach the final zone
+	  - When you collect cash: a big cash brick with "+545" pops up on the
 	    screen, wiggles, then flies into your Cash tile; and a green swirl
 	    spins around your character (other players see your swirl too).
-	  • When you earn trophies: a gold banner slides down at the top (trophy +3).
+	  - When you make it out of a zone: a "ZONE CLEARED" card with a shine,
+	    the trophies counting up, then flying into your Trophies tile.
+	  - Hatching an egg: the screen dims, the egg wobbles, cracks, flashes and
+	    pops open to show your pet (with its rarity) in front of spinning rays.
 
 	No emojis and no uploaded images: every icon is drawn out of rounded
 	frames (see ICONS below), so it looks the same on every device.
 
-	It reads the stats the server already puts on your player (Cash, Speed,
-	Trophies, HasCashPass, PetsJson, EquippedPets) and uses the server's
-	remotes (CashFx, Teleport, Fuse), so the server script needs no changes.
-	If your SpeedVsBrainrot_Client already draws its own stat boxes, delete
-	those so you don't see them twice.
+	It reads the stats the server puts on your player (Cash, Speed, Trophies,
+	HasCashPass, PetsJson, EquippedPets, MaxMap, PrestigeReady, ...) and uses the
+	server's remotes (CashFx, Teleport, Fuse, Rebirth, Prestige, PetHatched,
+	ZoneCleared).
 ]]
 
 local Players = game:GetService("Players")
@@ -39,7 +43,12 @@ local remotes = ReplicatedStorage:WaitForChild("SVB_Remotes")
 local CashFxRemote = remotes:WaitForChild("CashFx")
 local TeleportRemote = remotes:WaitForChild("Teleport")
 local FuseRemote = remotes:WaitForChild("Fuse")
+local RebirthRemote = remotes:WaitForChild("Rebirth")
+local PrestigeRemote = remotes:WaitForChild("Prestige")
+local PetHatchedRemote = remotes:WaitForChild("PetHatched")
+local ZoneClearedRemote = remotes:WaitForChild("ZoneCleared")
 local PetInfo = ReplicatedStorage:WaitForChild("SVB_Pets")
+local MapInfo = ReplicatedStorage:WaitForChild("SVB_Maps")
 
 local ROBUX = utf8.char(0xE002) -- the Robux symbol in Roblox fonts
 local FONT = Enum.Font.FredokaOne
@@ -53,6 +62,8 @@ local COLORS = {
 	pass = Color3.fromRGB(46, 170, 70),
 	invite = Color3.fromRGB(250, 208, 40),
 	pets = Color3.fromRGB(80, 178, 238),
+	rebirth = Color3.fromRGB(250, 140, 40),
+	prestige = Color3.fromRGB(150, 90, 235),
 }
 
 -- ICONS BEGIN
@@ -222,13 +233,59 @@ function ICONS.pet(body, accent)
 	}
 end
 
--- an egg with spots
-function ICONS.egg()
+-- an egg with a stripe and spots (colors from the egg; cream + green by default)
+function ICONS.egg(color, spots)
+	color = color or rgb(250, 240, 220)
+	spots = spots or rgb(120, 210, 90)
 	return {
-		S(0.5, 0.54, 0.62, 0.8, rgb(250, 240, 220), { r = 0.5 }),
-		S(0.38, 0.42, 0.14, 0.12, rgb(120, 210, 90), { r = 0.5, line = 0 }),
-		S(0.6, 0.6, 0.18, 0.15, rgb(120, 210, 90), { r = 0.5, line = 0 }),
-		S(0.42, 0.74, 0.12, 0.1, rgb(120, 210, 90), { r = 0.5, line = 0 }),
+		S(0.5, 0.54, 0.62, 0.8, color, { r = 0.5 }),
+		S(0.5, 0.56, 0.6, 0.08, spots, { line = 0, flat = true }),
+		S(0.38, 0.38, 0.14, 0.12, spots, { r = 0.5, line = 0 }),
+		S(0.62, 0.42, 0.11, 0.1, spots, { r = 0.5, line = 0 }),
+		S(0.6, 0.72, 0.16, 0.13, spots, { r = 0.5, line = 0 }),
+		S(0.4, 0.74, 0.11, 0.1, spots, { r = 0.5, line = 0 }),
+		S(0.36, 0.3, 0.07, 0.14, rgb(255, 255, 255), { r = 0.5, line = 0, flat = true, a = 0.35, rot = 20 }),
+	}
+end
+
+-- two white arrows chasing each other around an orange coin (rebirth)
+function ICONS.rebirth()
+	local o, white, dark = rgb(255, 150, 40), rgb(255, 250, 240), rgb(110, 50, 10)
+	return {
+		S(0.5, 0.5, 0.86, 0.86, o, { r = 0.5 }),
+		S(0.5, 0.5, 0.62, 0.62, dark, { r = 0.5, ring = true, line = 14 }),
+		S(0.5, 0.5, 0.62, 0.62, white, { r = 0.5, ring = true, line = 8 }),
+		-- gaps in the ring, then the arrow heads
+		S(0.24, 0.36, 0.16, 0.12, o, { r = 0.2, rot = 35, line = 0, flat = true }),
+		S(0.76, 0.64, 0.16, 0.12, o, { r = 0.2, rot = 35, line = 0, flat = true }),
+		S(0.27, 0.27, 0.17, 0.17, white, { rot = 10, r = 0.1 }),
+		S(0.73, 0.73, 0.17, 0.17, white, { rot = 10, r = 0.1 }),
+		S(0.5, 0.5, 0.3, 0.3, o, { r = 0.5, line = 0, flat = true, text = "R", tc = white }),
+	}
+end
+
+-- a big gold star burst (prestige)
+function ICONS.star()
+	local gold, deep = rgb(255, 205, 50), rgb(250, 160, 30)
+	return {
+		S(0.5, 0.5, 0.74, 0.74, deep, { r = 0.12, rot = 22.5 }),
+		S(0.5, 0.5, 0.74, 0.74, deep, { r = 0.12, rot = 67.5 }),
+		S(0.5, 0.5, 0.7, 0.7, gold, { r = 0.1 }),
+		S(0.5, 0.5, 0.7, 0.7, gold, { r = 0.1, rot = 45 }),
+		S(0.5, 0.5, 0.42, 0.42, rgb(255, 240, 160), { r = 0.5 }),
+		S(0.42, 0.42, 0.1, 0.1, rgb(255, 255, 255), { r = 0.5, line = 0, flat = true }),
+		S(0.5, 0.52, 0.26, 0.26, rgb(255, 240, 160), { r = 0.5, line = 0, flat = true, text = "P", tc = rgb(200, 110, 20) }),
+	}
+end
+
+-- a lock (things you can't use yet)
+function ICONS.lock()
+	local steel, dark = rgb(200, 205, 220), rgb(90, 95, 110)
+	return {
+		S(0.5, 0.36, 0.44, 0.44, steel, { r = 0.5, ring = true, line = 10 }),
+		S(0.5, 0.64, 0.66, 0.46, rgb(255, 200, 50), { r = 0.16 }),
+		S(0.5, 0.6, 0.12, 0.12, dark, { r = 0.5, line = 0, flat = true }),
+		S(0.5, 0.7, 0.06, 0.14, dark, { r = 0.5, line = 0, flat = true }),
 	}
 end
 -- ICONS END
@@ -432,12 +489,14 @@ local gui = new("ScreenGui", {
 	ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
 	Parent = player:WaitForChild("PlayerGui"),
 })
--- one size on every screen (designed for a 720 px tall screen)
+-- one size on every screen (designed for a 720 px tall screen, then shrunk a bit
+-- so it doesn't cover the game)
+local UI_SIZE = 0.8
 local screenScale = new("UIScale", { Parent = gui })
 local function rescale()
 	local cam = workspace.CurrentCamera
 	local h = cam and cam.ViewportSize.Y or 720
-	screenScale.Scale = math.clamp(h / 720, 0.62, 1.35)
+	screenScale.Scale = math.clamp(h / 720, 0.6, 1.25) * UI_SIZE
 end
 rescale()
 if workspace.CurrentCamera then
@@ -447,8 +506,8 @@ end
 local column = new("Frame", {
 	Name = "LeftColumn",
 	BackgroundTransparency = 1,
-	Position = UDim2.fromOffset(16, 96),
-	Size = UDim2.fromOffset(240, 600),
+	Position = UDim2.fromOffset(14, 80),
+	Size = UDim2.fromOffset(240, 760),
 	Parent = gui,
 })
 
@@ -532,6 +591,9 @@ local _tpTile, tpScale, tpButton = squareButton("Teleport", "portal", "Teleport"
 local passTile, passScale, passButton, passIcon, passText = squareButton("CashPass", "bat", "3x", COLORS.pass, BTN + GAP, rowY)
 local _invTile, invScale, invButton = squareButton("Invite", "friends", "Invite", COLORS.invite, 0, rowY + BTN + GAP + 26)
 local _petTile, petScale, petButton = squareButton("Pets", "pet", "Pets", COLORS.pets, BTN + GAP, rowY + BTN + GAP + 26)
+local row3 = rowY + 2 * (BTN + GAP + 26)
+local _rbTile, rbScale, rbButton = squareButton("Rebirth", "rebirth", "Rebirth", COLORS.rebirth, 0, row3)
+local prTile, prScale, prButton, prIcon = squareButton("Prestige", "star", "Prestige", COLORS.prestige, BTN + GAP, row3)
 -- "3x" and a little cash brick under the bat
 passText.Size = UDim2.new(0.42, 0, 0, 32)
 passText.Position = UDim2.new(0.36, 0, 1, -14)
@@ -661,11 +723,11 @@ local function panel(name, size, title, color, iconName)
 	return p
 end
 
--- teleport menu
-local tpPanel = panel("TeleportMenu", UDim2.fromOffset(300, 250), "Teleport", COLORS.teleport, "portal")
-for i, place in ipairs({ { "spawn", "Spawn", "portal" }, { "pad", "Speed Pad", "shoe" }, { "eggs", "Pet Eggs", "egg" } }) do
+-- teleport menu: places on this map, then every map (locked ones show a lock)
+local tpPanel = panel("TeleportMenu", UDim2.fromOffset(320, 72 + 5 * 58), "Teleport", COLORS.teleport, "portal")
+local function tpButtonRow(i, iconName, caption)
 	local b = new("TextButton", {
-		Position = UDim2.fromOffset(20, 62 + (i - 1) * 60),
+		Position = UDim2.fromOffset(20, 62 + (i - 1) * 58),
 		Size = UDim2.new(1, -40, 0, 50),
 		BackgroundColor3 = COLORS.teleport:Lerp(WHITE, 0.1),
 		Text = "",
@@ -674,13 +736,142 @@ for i, place in ipairs({ { "spawn", "Spawn", "portal" }, { "pad", "Speed Pad", "
 	})
 	corner(b, 12)
 	stroke(b, COLORS.teleport:Lerp(Color3.new(0, 0, 0), 0.4), 3)
-	drawIcon(b, place[3], 40).Position = UDim2.fromOffset(8, 2)
-	label(b, place[2], UDim2.new(1, -70, 1, -12), { Position = UDim2.fromOffset(58, 6), TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 23 })
+	local icon = drawIcon(b, iconName, 40)
+	icon.Position = UDim2.fromOffset(8, 5)
+	local text = label(b, caption, UDim2.new(1, -70, 1, -14), { Position = UDim2.fromOffset(58, 7), TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 23 })
+	return b, text
+end
+for i, place in ipairs({ { "spawn", "Spawn", "portal" }, { "pad", "Speed Pad", "shoe" }, { "eggs", "Pet Eggs", "egg" } }) do
+	local b = tpButtonRow(i, place[3], place[2])
 	b.Activated:Connect(function()
 		TeleportRemote:FireServer(place[1])
 		closePanel()
 	end)
 end
+local mapButtons = {}
+local mapList = MapInfo:GetChildren()
+table.sort(mapList, function(a, b) return (a:GetAttribute("Index") or 0) < (b:GetAttribute("Index") or 0) end)
+for _, info in ipairs(mapList) do
+	local m = info:GetAttribute("Index") or 1
+	local b, text = tpButtonRow(3 + m, "portal", "Map " .. m .. ": " .. (info:GetAttribute("Title") or ""))
+	local accent = info:GetAttribute("Color") or COLORS.teleport
+	b.BackgroundColor3 = accent:Lerp(Color3.new(0, 0, 0), 0.25)
+	local lock = drawIcon(b, "lock", 34)
+	lock.AnchorPoint = Vector2.new(1, 0.5)
+	lock.Position = UDim2.new(1, -8, 0.5, 0)
+	mapButtons[m] = { button = b, text = text, lock = lock }
+	b.Activated:Connect(function()
+		if (player:GetAttribute("MaxMap") or 1) >= m then
+			TeleportRemote:FireServer("map" .. m)
+			closePanel()
+		else
+			bounce(b:FindFirstChildOfClass("UIScale") or new("UIScale", { Parent = b }), 0.9)
+		end
+	end)
+end
+tpPanel.Size = UDim2.fromOffset(320, 72 + (3 + #mapList) * 58)
+local function refreshMaps()
+	local maxMap = player:GetAttribute("MaxMap") or 1
+	local here = player:GetAttribute("CurrentMap") or 1
+	for m, mb in pairs(mapButtons) do
+		local open = maxMap >= m
+		mb.lock.Visible = not open
+		mb.text.TextTransparency = open and 0 or 0.45
+		mb.button.AutoButtonColor = open
+		mb.text.Text = (if here == m then "> " else "") .. "Map " .. m .. ": " .. (mapList[m] and mapList[m]:GetAttribute("Title") or "")
+	end
+end
+refreshMaps()
+player:GetAttributeChangedSignal("MaxMap"):Connect(refreshMaps)
+player:GetAttributeChangedSignal("CurrentMap"):Connect(refreshMaps)
+
+-- a big round action button at the bottom of a panel
+local function panelAction(p, text, color, onClick)
+	local b = new("TextButton", {
+		AnchorPoint = Vector2.new(0.5, 1),
+		Position = UDim2.new(0.5, 0, 1, -16),
+		Size = UDim2.new(1, -60, 0, 50),
+		BackgroundColor3 = color,
+		Text = "",
+		ZIndex = 22,
+		Parent = p,
+	})
+	corner(b, 14)
+	stroke(b, color:Lerp(Color3.new(0, 0, 0), 0.45), 3)
+	local t = label(b, text, UDim2.new(1, -20, 1, -12), { Position = UDim2.fromOffset(10, 6), ZIndex = 23 })
+	b.Activated:Connect(onClick)
+	return b, t
+end
+local function panelLine(p, y, color)
+	return label(p, "", UDim2.new(1, -40, 0, 24), { Position = UDim2.fromOffset(20, y), TextColor3 = color or WHITE, ZIndex = 22 })
+end
+
+-- rebirth: reset cash + speed for a bigger cash multiplier
+local rebirthPanel = panel("RebirthMenu", UDim2.fromOffset(360, 270), "Rebirth", COLORS.rebirth, "rebirth")
+local rbNeed = panelLine(rebirthPanel, 66)
+local rbMult = panelLine(rebirthPanel, 98, Color3.fromRGB(150, 255, 150))
+local rbNote = panelLine(rebirthPanel, 132, Color3.fromRGB(200, 205, 225))
+rbNote.Text = "Resets cash + speed. Keeps pets, trophies and wins."
+rbNote.Size = UDim2.new(1, -40, 0, 36)
+local rbAction, rbActionText = panelAction(rebirthPanel, "REBIRTH", Color3.fromRGB(70, 200, 90), function()
+	RebirthRemote:FireServer()
+	closePanel()
+end)
+local function refreshRebirth()
+	local speed = player:GetAttribute("Speed") or 0
+	local need = player:GetAttribute("RebirthSpeed") or 0
+	local can = speed >= need
+	rbNeed.Text = "Speed: " .. fmt(speed) .. " / " .. fmt(need)
+	rbNeed.TextColor3 = can and Color3.fromRGB(150, 255, 150) or Color3.fromRGB(255, 140, 140)
+	rbMult.Text = string.format("Cash x%.1f  >  x%.1f", player:GetAttribute("Multiplier") or 1, player:GetAttribute("NextMultiplier") or 1)
+	rbAction.BackgroundColor3 = can and Color3.fromRGB(70, 200, 90) or Color3.fromRGB(95, 100, 115)
+	rbActionText.Text = can and "REBIRTH!" or "Need more speed"
+end
+for _, a in ipairs({ "Speed", "RebirthSpeed", "Multiplier", "NextMultiplier" }) do
+	player:GetAttributeChangedSignal(a):Connect(refreshRebirth)
+end
+refreshRebirth()
+
+-- prestige: unlocked at the final zone; start over with a trophy multiplier
+local prestigePanel = panel("PrestigeMenu", UDim2.fromOffset(380, 290), "Prestige", COLORS.prestige, "star")
+local prState = panelLine(prestigePanel, 66)
+local prMult = panelLine(prestigePanel, 100, Color3.fromRGB(255, 220, 90))
+local prNote = panelLine(prestigePanel, 134, Color3.fromRGB(200, 205, 225))
+prNote.Text = "Resets cash, speed, trophies and maps. Keeps your pets and rebirths."
+prNote.Size = UDim2.new(1, -40, 0, 40)
+local prAction, prActionText = panelAction(prestigePanel, "PRESTIGE", Color3.fromRGB(150, 90, 235), function()
+	if player:GetAttribute("PrestigeReady") then
+		PrestigeRemote:FireServer()
+		closePanel()
+	end
+end)
+-- the prestige button is dim with a lock until you can use it, then it glows
+local prLock = drawIcon(prTile, "lock", 40)
+prLock.AnchorPoint = Vector2.new(0.5, 0.5)
+prLock.Position = UDim2.fromScale(0.78, 0.3)
+prLock.ZIndex = 6
+local prDim = new("Frame", { BackgroundColor3 = Color3.new(0, 0, 0), BackgroundTransparency = 0.45, Size = UDim2.fromScale(1, 1), ZIndex = 4, Parent = prTile })
+corner(prDim, 10)
+local function refreshPrestige()
+	local ready = player:GetAttribute("PrestigeReady") == true
+	local p = player:GetAttribute("Prestige") or 0
+	prState.Text = ready and "You reached the final zone!" or "Reach the final zone to prestige"
+	prState.TextColor3 = ready and Color3.fromRGB(150, 255, 150) or Color3.fromRGB(255, 160, 160)
+	prMult.Text = "Prestige " .. p .. "  -  Trophies x" .. (1 + p) .. "  >  x" .. (2 + p)
+	prAction.BackgroundColor3 = ready and Color3.fromRGB(150, 90, 235) or Color3.fromRGB(95, 100, 115)
+	prActionText.Text = ready and "PRESTIGE!" or "Locked"
+	prLock.Visible = not ready
+	prDim.Visible = not ready
+end
+for _, a in ipairs({ "PrestigeReady", "Prestige" }) do
+	player:GetAttributeChangedSignal(a):Connect(refreshPrestige)
+end
+refreshPrestige()
+RunService.RenderStepped:Connect(function()
+	if player:GetAttribute("PrestigeReady") then
+		prIcon.Rotation = math.sin(os.clock() * 4) * 10
+	end
+end)
 
 -- pets: what you own, what it gives, fuse 3 into a better one
 local TIER_NAMES = { "", "Golden ", "Rainbow " }
@@ -792,6 +983,14 @@ pressable(invButton, invScale, function()
 			SocialService:PromptGameInvite(player)
 		end)
 	end
+end)
+pressable(rbButton, rbScale, function()
+	refreshRebirth()
+	showPanel(rebirthPanel)
+end)
+pressable(prButton, prScale, function()
+	refreshPrestige()
+	showPanel(prestigePanel)
 end)
 pressable(passButton, passScale, function()
 	if player:GetAttribute("HasCashPass") then
@@ -936,45 +1135,296 @@ CashFxRemote.OnClientEvent:Connect(function(_pos, amount, who)
 end)
 
 ------------------------------------------------------------------------
--- trophy banner: slides down at the top when you earn trophies
+-- ZONE CLEARED: a gold card drops in, a shine sweeps across it, the trophies
+-- count up, then the card shrinks and flies into your Trophies tile
 ------------------------------------------------------------------------
-local banner = new("Frame", {
-	AnchorPoint = Vector2.new(0.5, 0),
-	Position = UDim2.new(0.5, 0, 0, -130),
-	Size = UDim2.new(1, 0, 0, 84),
-	BackgroundColor3 = Color3.fromRGB(120, 92, 30),
-	BackgroundTransparency = 0.35,
-	BorderSizePixel = 0,
-	ZIndex = 40,
-	Parent = gui,
-})
-new("UIGradient", {
-	Color = ColorSequence.new({ ColorSequenceKeypoint.new(0, Color3.fromRGB(70, 70, 80)), ColorSequenceKeypoint.new(0.5, Color3.fromRGB(190, 150, 50)), ColorSequenceKeypoint.new(1, Color3.fromRGB(70, 70, 80)) }),
-	Parent = banner,
-})
-for _, y in ipairs({ 0, 1 }) do
-	new("Frame", { AnchorPoint = Vector2.new(0, y), Position = UDim2.fromScale(0, y), Size = UDim2.new(1, 0, 0, 3), BackgroundColor3 = Color3.fromRGB(255, 205, 60), BorderSizePixel = 0, ZIndex = 41, Parent = banner })
-end
-local bannerIcon = drawIcon(banner, "trophy", 66)
-bannerIcon.AnchorPoint = Vector2.new(1, 0)
-bannerIcon.Position = UDim2.new(0.5, -10, 0, 9)
-local bannerText = label(banner, "", UDim2.new(0.4, 0, 0, 62), { Position = UDim2.new(0.5, 4, 0, 11), TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 41 })
-local lastTrophies = player:GetAttribute("Trophies") or 0
-local bannerToken = 0
-player:GetAttributeChangedSignal("Trophies"):Connect(function()
-	local now = player:GetAttribute("Trophies") or 0
-	local gained = now - lastTrophies
-	lastTrophies = now
-	if gained <= 0 then
-		return
+local clearLayer = new("Frame", { Name = "ZoneCleared", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 40, Parent = gui })
+local clearToken = 0
+
+local function burstStars(parent, center, color)
+	for i = 1, 10 do
+		local a = i / 10 * math.pi * 2
+		local star = new("Frame", {
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromOffset(center.X, center.Y),
+			Size = UDim2.fromOffset(14, 14),
+			Rotation = 45,
+			BackgroundColor3 = color,
+			BorderSizePixel = 0,
+			ZIndex = 44,
+			Parent = parent,
+		})
+		corner(star, 3)
+		local dist = math.random(90, 150)
+		tween(star, 0.6, { Position = UDim2.fromOffset(center.X + math.cos(a) * dist, center.Y + math.sin(a) * dist), Rotation = 225, BackgroundTransparency = 1, Size = UDim2.fromOffset(6, 6) })
+		task.delay(0.65, function() star:Destroy() end)
 	end
-	bannerToken += 1
-	local token = bannerToken
-	bannerText.Text = "+" .. fmt(gained)
-	tween(banner, 0.35, { Position = UDim2.new(0.5, 0, 0, 0) }, Enum.EasingStyle.Back)
-	task.delay(2.2, function()
-		if bannerToken == token then
-			tween(banner, 0.3, { Position = UDim2.new(0.5, 0, 0, -130) }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+end
+
+local function zoneCleared(zoneName, trophies, mapName)
+	clearToken += 1
+	local token = clearToken
+	clearLayer:ClearAllChildren()
+	local card = new("Frame", {
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.new(0.5, 0, 0, -120),
+		Size = UDim2.fromOffset(430, 140),
+		BackgroundColor3 = Color3.fromRGB(255, 200, 50),
+		ClipsDescendants = false,
+		ZIndex = 41,
+		Parent = clearLayer,
+	})
+	corner(card, 18)
+	stroke(card, Color3.fromRGB(150, 90, 15), 4)
+	new("UIGradient", { Color = ColorSequence.new(Color3.fromRGB(255, 230, 120), Color3.fromRGB(240, 160, 30)), Rotation = 90, Parent = card })
+	local cardScale = new("UIScale", { Parent = card })
+	-- the shine: a slanted white bar that sweeps across (clipped to the card)
+	local clip = new("Frame", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ClipsDescendants = true, ZIndex = 42, Parent = card })
+	corner(clip, 18)
+	local shine = new("Frame", {
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.new(0, -60, 0.5, 0),
+		Size = UDim2.new(0, 46, 1.6, 0),
+		Rotation = 20,
+		BackgroundColor3 = WHITE,
+		BackgroundTransparency = 0.45,
+		BorderSizePixel = 0,
+		ZIndex = 42,
+		Parent = clip,
+	})
+	local icon = drawIcon(card, "trophy", 120)
+	icon.AnchorPoint = Vector2.new(0.5, 0.5)
+	icon.Position = UDim2.fromOffset(62, 62)
+	icon.ZIndex = 43
+	label(card, "ZONE CLEARED!", UDim2.fromOffset(290, 40), { Position = UDim2.fromOffset(122, 10), TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 43 })
+	label(card, (mapName and (mapName .. "  -  ") or "") .. (zoneName or ""), UDim2.fromOffset(290, 24), { Position = UDim2.fromOffset(122, 50), TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = Color3.fromRGB(255, 250, 225), ZIndex = 43 })
+	local count = label(card, "+0", UDim2.fromOffset(290, 52), { Position = UDim2.fromOffset(122, 76), TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = Color3.fromRGB(255, 255, 255), ZIndex = 43 })
+	count:FindFirstChildOfClass("UIStroke").Color = Color3.fromRGB(150, 80, 10)
+	count:FindFirstChildOfClass("UIStroke").Thickness = 4
+
+	-- drop in
+	tween(card, 0.45, { Position = UDim2.new(0.5, 0, 0.2, 0) }, Enum.EasingStyle.Back)
+	task.delay(0.3, function()
+		if token ~= clearToken then return end
+		burstStars(clearLayer, Vector2.new(clearLayer.AbsoluteSize.X / 2, clearLayer.AbsoluteSize.Y * 0.2), Color3.fromRGB(255, 230, 90))
+		tween(shine, 0.6, { Position = UDim2.new(1, 60, 0.5, 0) }, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut)
+	end)
+	-- count up + trophy wobble
+	task.spawn(function()
+		local t0 = os.clock()
+		while token == clearToken do
+			local u = math.min(1, (os.clock() - t0) / 0.9)
+			count.Text = "+" .. fmt(trophies * (1 - (1 - u) ^ 3))
+			icon.Rotation = math.sin(os.clock() * 12) * 8 * (1 - u)
+			if u >= 1 then break end
+			RunService.RenderStepped:Wait()
 		end
+	end)
+	-- fly into the Trophies tile
+	task.delay(2.3, function()
+		if token ~= clearToken then return end
+		local tile = stats.Trophies.Tile
+		local target = tile.AbsolutePosition + tile.AbsoluteSize / 2 - clearLayer.AbsolutePosition
+		tween(card, 0.45, { Position = UDim2.fromOffset(target.X, target.Y) }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+		tween(cardScale, 0.45, { Scale = 0.1 }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+		task.wait(0.45)
+		if token == clearToken then
+			card:Destroy()
+			bounce(stats.Trophies.Scale, 1.2)
+		end
+	end)
+end
+ZoneClearedRemote.OnClientEvent:Connect(zoneCleared)
+
+------------------------------------------------------------------------
+-- EGG HATCHING: dim the screen, the egg wobbles harder and cracks, a flash,
+-- the two halves fly apart and your pet pops out in front of spinning rays
+------------------------------------------------------------------------
+local TIER_RAY = { nil, Color3.fromRGB(255, 215, 60), Color3.fromRGB(255, 120, 230) }
+local hatchLayer = new("Frame", { Name = "Hatch", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 60, Visible = false, Parent = gui })
+local hatchQueue = {}
+local hatching = false
+
+local function playHatch(petName, tier, bonus, fused)
+	local info = PetInfo:FindFirstChild(petName)
+	local body = info and info:GetAttribute("Body")
+	local accent = info and info:GetAttribute("Accent")
+	local eggColor = info and info:GetAttribute("EggColor") or Color3.fromRGB(250, 240, 220)
+	local eggSpots = info and info:GetAttribute("EggSpots") or Color3.fromRGB(120, 210, 90)
+	local rarityName = info and info:GetAttribute("Rarity") or "Common"
+	local rarityColor = info and info:GetAttribute("RarityColor") or WHITE
+	local rayColor = TIER_RAY[tier] or rarityColor
+
+	hatchLayer:ClearAllChildren()
+	hatchLayer.Visible = true
+	local dim = new("Frame", { BackgroundColor3 = Color3.fromRGB(10, 10, 20), BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 60, Parent = hatchLayer })
+	tween(dim, 0.25, { BackgroundTransparency = 0.35 })
+	local center = new("Frame", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.45), Size = UDim2.fromOffset(240, 240), BackgroundTransparency = 1, ZIndex = 61, Parent = hatchLayer })
+	local centerScale = new("UIScale", { Scale = 0, Parent = center })
+
+	if fused then
+		-- three pets spin in and merge
+		local minis = {}
+		for i = 1, 3 do
+			local mini = drawIcon(center, "pet", 90, body, accent)
+			mini.AnchorPoint = Vector2.new(0.5, 0.5)
+			local a = i / 3 * math.pi * 2
+			mini.Position = UDim2.new(0.5, math.cos(a) * 110, 0.5, math.sin(a) * 110)
+			minis[i] = mini
+		end
+		tween(centerScale, 0.3, { Scale = 1 }, Enum.EasingStyle.Back)
+		task.wait(0.4)
+		for _, mini in ipairs(minis) do
+			tween(mini, 0.6, { Position = UDim2.fromScale(0.5, 0.5), Rotation = 360 }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+		end
+		task.wait(0.6)
+		for _, mini in ipairs(minis) do mini:Destroy() end
+	else
+		-- the egg pops up, then wobbles harder and harder while it cracks
+		local egg = drawIcon(center, "egg", 240, eggColor, eggSpots)
+		tween(centerScale, 0.35, { Scale = 1 }, Enum.EasingStyle.Back)
+		task.wait(0.4)
+		local cracks = {
+			{ 0.42, 0.34, 0.14, 0.3 }, { 0.5, 0.42, 0.12, -0.6 }, { 0.58, 0.36, 0.13, 0.5 },
+			{ 0.35, 0.52, 0.12, -0.4 }, { 0.65, 0.5, 0.12, 0.4 },
+		}
+		for step = 1, 3 do
+			for k = 1, 6 do
+				local amount = 6 + step * 6
+				egg.Rotation = math.sin(k * 1.5) * amount
+				task.wait(0.05 - step * 0.008)
+			end
+			egg.Rotation = 0
+			for c = 1, math.min(#cracks, step * 2 - 1) do
+				local cr = cracks[c]
+				if not egg:FindFirstChild("Crack" .. c) then
+					new("Frame", {
+						Name = "Crack" .. c,
+						AnchorPoint = Vector2.new(0.5, 0.5),
+						Position = UDim2.fromScale(cr[1], cr[2] + 0.12),
+						Size = UDim2.new(cr[3], 0, 0, 5),
+						Rotation = math.deg(cr[4]),
+						BackgroundColor3 = eggColor:Lerp(Color3.new(0, 0, 0), 0.6),
+						BorderSizePixel = 0,
+						ZIndex = 62,
+						Parent = egg,
+					})
+				end
+			end
+			task.wait(0.18)
+		end
+		-- the halves: two copies of the egg, each showing only its top or bottom
+		local halves = {}
+		for h = 1, 2 do
+			local clip = new("Frame", {
+				BackgroundTransparency = 1,
+				ClipsDescendants = true,
+				Position = UDim2.fromScale(0, h == 1 and 0 or 0.56),
+				Size = UDim2.fromScale(1, h == 1 and 0.56 or 0.44),
+				ZIndex = 62,
+				Parent = center,
+			})
+			local copy = drawIcon(clip, "egg", 240, eggColor, eggSpots)
+			copy.Position = UDim2.fromOffset(0, h == 1 and 0 or -240 * 0.56)
+			halves[h] = clip
+		end
+		egg:Destroy()
+		tween(halves[1], 0.5, { Position = UDim2.new(-0.35, 0, -0.45, 0), Rotation = -35 }, Enum.EasingStyle.Quad)
+		tween(halves[2], 0.5, { Position = UDim2.new(0.35, 0, 0.95, 0), Rotation = 25 }, Enum.EasingStyle.Quad)
+		task.delay(0.5, function()
+			for _, h in ipairs(halves) do h:Destroy() end
+		end)
+	end
+
+	-- flash
+	local flash = new("Frame", { BackgroundColor3 = WHITE, BackgroundTransparency = 0, Size = UDim2.fromScale(1, 1), ZIndex = 70, Parent = hatchLayer })
+	tween(flash, 0.5, { BackgroundTransparency = 1 })
+
+	-- spinning rays in the pet's rarity color
+	local rays = new("Frame", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.45), Size = UDim2.fromOffset(520, 520), BackgroundTransparency = 1, ZIndex = 61, Parent = hatchLayer })
+	for r = 1, 12 do
+		local ray = new("Frame", {
+			AnchorPoint = Vector2.new(0.5, 1),
+			Position = UDim2.fromScale(0.5, 0.5),
+			Size = UDim2.new(0, 34, 0.5, 0),
+			Rotation = r * 30,
+			BackgroundColor3 = rayColor,
+			BorderSizePixel = 0,
+			ZIndex = 61,
+			Parent = rays,
+		})
+		new("UIGradient", { Transparency = NumberSequence.new(1, 0.35), Rotation = 90, Parent = ray })
+	end
+	-- the rays turn around their bottom center, so give each one a pivot frame
+	for _, ray in ipairs(rays:GetChildren()) do
+		local rot = ray.Rotation
+		local pivot = new("Frame", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromScale(1, 1), Rotation = rot, BackgroundTransparency = 1, ZIndex = 61, Parent = rays })
+		ray.Rotation = 0
+		ray.Parent = pivot
+	end
+	local glow = new("Frame", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.45), Size = UDim2.fromOffset(230, 230), BackgroundColor3 = rayColor, BackgroundTransparency = 0.55, ZIndex = 61, Parent = hatchLayer })
+	corner(glow, 999)
+
+	-- the pet
+	local petHolder = new("Frame", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.45), Size = UDim2.fromOffset(200, 200), BackgroundTransparency = 1, ZIndex = 63, Parent = hatchLayer })
+	local petScale = new("UIScale", { Scale = 0.2, Parent = petHolder })
+	drawIcon(petHolder, "pet", 200, body, accent)
+	tween(petScale, 0.5, { Scale = 1 }, Enum.EasingStyle.Back)
+	center:Destroy()
+
+	local tierName = TIER_NAMES[tier] or ""
+	local title = label(hatchLayer, (fused and "FUSED!  " or "") .. tierName .. petName, UDim2.fromOffset(520, 52), {
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.new(0.5, 0, 0.45, 120),
+		TextColor3 = TIER_COLORS[tier] or WHITE,
+		ZIndex = 64,
+	})
+	local sub = label(hatchLayer, string.upper(rarityName) .. "   +" .. fmt(bonus) .. "% cash", UDim2.fromOffset(420, 32), {
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.new(0.5, 0, 0.45, 176),
+		TextColor3 = rarityColor,
+		ZIndex = 64,
+	})
+	for _, l in ipairs({ title, sub }) do
+		l.TextTransparency = 1
+		tween(l, 0.4, { TextTransparency = 0 })
+	end
+
+	local t0 = os.clock()
+	local done = false
+	local skip = new("TextButton", { BackgroundTransparency = 1, Text = "", Size = UDim2.fromScale(1, 1), ZIndex = 80, Parent = hatchLayer })
+	skip.Activated:Connect(function() done = true end)
+	while not done and os.clock() - t0 < 2.6 do
+		local t = os.clock() - t0
+		rays.Rotation = t * 40
+		petHolder.Rotation = math.sin(t * 3) * 6
+		glow.Size = UDim2.fromOffset(230 + math.sin(t * 5) * 14, 230 + math.sin(t * 5) * 14)
+		RunService.RenderStepped:Wait()
+	end
+	tween(petScale, 0.25, { Scale = 0 }, Enum.EasingStyle.Back, Enum.EasingDirection.In)
+	tween(dim, 0.3, { BackgroundTransparency = 1 })
+	for _, l in ipairs({ title, sub }) do tween(l, 0.25, { TextTransparency = 1 }) end
+	rays.Visible = false
+	glow.Visible = false
+	task.wait(0.3)
+	hatchLayer.Visible = false
+	hatchLayer:ClearAllChildren()
+end
+
+PetHatchedRemote.OnClientEvent:Connect(function(petName, tier, bonus, fused)
+	if #hatchQueue >= 3 then return end
+	table.insert(hatchQueue, { petName, tier, bonus, fused })
+	if hatching then return end
+	hatching = true
+	task.spawn(function()
+		while #hatchQueue > 0 do
+			local h = table.remove(hatchQueue, 1)
+			local ok, err = pcall(playHatch, h[1], h[2], h[3], h[4])
+			if not ok then
+				warn("hatch animation: " .. tostring(err))
+				hatchLayer.Visible = false
+			end
+		end
+		hatching = false
 	end)
 end)

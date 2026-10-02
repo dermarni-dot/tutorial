@@ -1,15 +1,58 @@
-# Speed vs Brainrot: HUD
+# Speed vs Brainrot
 
-`src/SpeedVsBrainrot_HUD.client.lua` is a LocalScript for **StarterPlayer > StarterPlayerScripts**, next to the game's `SpeedVsBrainrot_Client`. It works with the existing server script (no server changes needed).
+Three scripts:
 
-- **Stat tiles** (left): Speed (a sneaker), Cash (a cash brick), Trophies (a trophy) on studded brick tiles; numbers count up and the tile bounces when they rise.
-- **Buttons**: Teleport (a portal), 3x Cash gamepass (an angry bat, with its live Robux price), Invite (two friends), Pets (a puppy) (your pets, their cash bonus, Fuse 3 → Golden → Rainbow).
-- **Collecting cash**: a cash brick with "+545" pops up on screen, wiggles and flies into the Cash tile, and a green swirl spins around the player who grabbed it (everyone sees it).
-- **Trophies**: a gold trophy "+3" banner slides down at the top.
+| Script | Where it goes |
+| --- | --- |
+| `src/SpeedVsBrainrot_Server.server.lua` | ServerScriptService (a normal Script). Builds the whole world. |
+| `src/SpeedVsBrainrot_HUD.client.lua` | StarterPlayer > StarterPlayerScripts (LocalScript) |
+| `src/SpeedVsBrainrot_World.client.lua` | StarterPlayer > StarterPlayerScripts (LocalScript) |
 
-If the old client already draws stat boxes, remove them so they don't show twice.
+## Maps and bosses
 
-No emojis or uploaded images: every icon is drawn from rounded frames (the `ICONS` table in the script).
+- **Map 1: Brainrot Skylands**. Its boss is **Il Grande Zoomerone**. 10 zones that pay **1 to 1K trophies**: Meadow, Desert, Tundra, Swamp, Lava, Candy, Neon, Crystal, Storm, Void.
+- **Map 2: Turbo Badlands**. Its boss is **Tralalero Turbino**, a bigger, boxier boss. 6 zones that pay **1.5K to 500K trophies**: Jungle, Haunted, Factory, Space, Rainbow, Inferno.
+- Each map has its own start island with a speed pad, 4 eggs, leaderboards and a portal.
+- Reaching a map's finish unlocks the next map and takes you there. To add a third map, copy a block in `MAPS`.
+- The boss gets faster in every zone. Each zone has a **pace**, so speed is relative: the same Speed makes you run faster in a harder zone, and its boss is faster too.
+- **Leaving a zone takes a certain Speed.** The golden gate shows the requirement and glows red until you have it. If you're too slow, you're pushed back.
+- **Getting hit sends you back to the start.** That covers obstacles, falling off and the boss catching you. You tumble with stars around your head and a red flash, then reappear at the start.
+- **Obstacles** move smoothly on every screen and follow the server clock. They are sliders, spinners, swinging logs, crushers, blinking lasers and fire jets, and lightning or meteor strikes. Each zone has only a few.
+
+## Eggs, pets, rebirth, prestige
+
+- **4 eggs per map**:
+  - Map 1: 20, 100, 500 and 1K trophies.
+  - Map 2: 2.5K, 10K, 50K and 250K trophies.
+- Each egg holds 4 pets, Common to Legendary, for 32 pets in total.
+- Eggs are detailed: a pedestal, stripes, spots and a shine. They spin and glow, and show their pets and odds above them.
+- **Rebirth** resets your cash and speed for a cash multiplier.
+- **Prestige** unlocks once you reach the final zone of the final map. You start over from Map 1 with a permanent trophy multiplier. You keep your pets and rebirths.
+- **Leaderboards** on every island show top Cash, top Speed and most Pets Hatched. They are global, saved in ordered data stores.
+
+## HUD
+
+- **Stat tiles**: Speed, Cash and Trophies on studded brick tiles. The numbers count up.
+- **Buttons**:
+  - Teleport: spawn, the speed pad, the eggs, Map 1 or Map 2.
+  - 3x Cash gamepass.
+  - Invite.
+  - Pets, with Fuse 3 to upgrade.
+  - Rebirth.
+  - Prestige, which stays locked until you can use it.
+- **Cash pickups**: a cash brick with "+545" pops up and flies into the Cash tile, and a green swirl spins around the player.
+- **Zone cleared**: a gold card drops in, a shine sweeps across it and the trophies count up. The card then flies into the Trophies tile.
+- **Egg hatch**: the screen dims, the egg wobbles and cracks, there is a flash and the halves fly apart. Your pet pops out in front of spinning rays, with its rarity. Fusing pets plays its own version.
+- The whole UI is drawn at 80% size so it covers less of the screen. Change `UI_SIZE` in the HUD script to adjust it.
+
+No emojis or uploaded images: every icon is drawn from rounded frames (the `ICONS` table in the HUD script).
+
+## World script (smoothness, animations, lighting)
+
+- Moving obstacles, cash piles and eggs are animated on your own screen every frame, so they move smoothly.
+- **Running**: when you're fast, a bouncy run, then a ninja dash. Both come from Roblox's free animation packs. The playback speed is capped so it never looks frantic. You also lean forward, leave a speed trail, and the camera view widens.
+- **Lighting**: soft haze, bloom on neon, sun rays and a light color grade. Map 1 is a sunny day and Map 2 a warm late afternoon.
 
 ![HUD](svb_hud.png)
 ![Menus](svb_menus.png)
+![Egg hatch](svb_hatch.png)
