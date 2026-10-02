@@ -56,7 +56,8 @@ local CONFIG = {
 
 	BossHeadStart = 45,       -- how far behind you the boss appears
 	BossGraceTime = 0.8,      -- seconds the boss waits before it starts running
-	BossLeash = 60,           -- if you get farther ahead than this, the boss speeds up to stay close
+	BossAccel = 6,            -- the boss gains at least this much speed every second while it's slower than you
+	BossOvertake = 1.1,       -- ...until it's this much faster than you (but never past its map's topSpeed)
 	BossTick = 0.1,           -- seconds between boss brain updates
 
 	HitTime = 0.8,            -- after a hit you tumble for this long, then go back to the start
@@ -98,7 +99,8 @@ local function rgb(r, g, b) return Color3.fromRGB(r, g, b) end
 local MAPS = {
 	{
 		name = "Map 1", title = "Brainrot Skylands",
-		boss = { name = "Il Grande Zoomerone", look = "zoomerone", size = 12, style = "round",
+		-- topSpeed = the fastest this map's boss can ever run: get faster than that and it can't catch you
+		boss = { name = "Il Grande Zoomerone", look = "zoomerone", size = 12, style = "round", topSpeed = 175,
 			body = rgb(105, 50, 175), accent = rgb(0, 230, 255) },
 		zones = {
 			{ name = "Green Meadow",  theme = "meadow",  cash = 1,    trophies = 1,    need = 0,    pace = 1.00,
@@ -151,7 +153,7 @@ local MAPS = {
 	},
 	{
 		name = "Map 2", title = "Turbo Badlands",
-		boss = { name = "Tralalero Turbino", look = "tralalero", legScale = 0.5, size = 15, style = "boxy",
+		boss = { name = "Tralalero Turbino", look = "tralalero", legScale = 0.5, size = 15, style = "boxy", topSpeed = 330,
 			body = rgb(30, 120, 200), accent = rgb(255, 70, 40) },
 		zones = {
 			{ name = "Jungle Run",    theme = "jungle",   cash = 12000,   trophies = 1500,   need = 6000,   pace = 1.24,
@@ -196,42 +198,11 @@ local MAPS = {
 	},
 }
 
-------------------------------------------------------------------------
--- ZONE BOSSES  (every zone has its own boss that chases you through it;
--- the last zone of each map is the map's big boss above)
---   style = "round" or "boxy" body, hat = crown / horns / fin / antenna / leaf / cap / none
---   size grows a little every zone, and each boss is faster than the one before
-------------------------------------------------------------------------
-local ZONE_BOSSES = {
-	{ -- Map 1
-		{ name = "Tung Tung Sahur", look = "tungtung", legScale = 0.55,       style = "boxy",  hat = "none",    body = rgb(175, 125, 75),  accent = rgb(95, 60, 35) },
-		{ name = "Brr Brr Patapim", look = "patapim", legScale = 0.6,       style = "round", hat = "leaf",    body = rgb(110, 175, 80),  accent = rgb(150, 100, 60) },
-		{ name = "Lirili Larila", look = "lirili", legScale = 0.35,         style = "round", hat = "antenna", body = rgb(150, 155, 165), accent = rgb(80, 170, 90) },
-		{ name = "Bombardiro Crocodilo", look = "bombardiro",  style = "boxy",  hat = "fin",     body = rgb(85, 125, 75),   accent = rgb(60, 70, 60) },
-		{ name = "Trippi Troppi", look = "trippi",         style = "round", hat = "horns",   body = rgb(255, 130, 60),  accent = rgb(200, 70, 40) },
-		{ name = "Ballerina Cappuccina", look = "ballerina", legScale = 0.6,  style = "round", hat = "crown",   body = rgb(255, 170, 210), accent = rgb(130, 85, 60), eyes = rgb(255, 60, 160) },
-		{ name = "Chimpanzini Bananini", look = "chimpanzini", legScale = 0.5,  style = "round", hat = "leaf",    body = rgb(255, 225, 80),  accent = rgb(120, 85, 50) },
-		{ name = "Cappuccino Assassino", look = "assassino",  style = "boxy",  hat = "cap",     body = rgb(120, 80, 55),   accent = rgb(30, 30, 35) },
-		{ name = "Bombombini Gusini", look = "bombombini",     style = "round", hat = "fin",     body = rgb(240, 240, 245), accent = rgb(255, 160, 40) },
-	},
-	{ -- Map 2
-		{ name = "Frigo Camelo", look = "frigo", legScale = 0.7,          style = "boxy",  hat = "antenna", body = rgb(230, 240, 250), accent = rgb(200, 160, 100), eyes = rgb(60, 200, 255) },
-		{ name = "Glorbo Fruttodrillo", look = "glorbo", legScale = 0.35,   style = "round", hat = "horns",   body = rgb(60, 165, 70),   accent = rgb(240, 70, 80) },
-		{ name = "La Vaca Saturno", look = "vaca",       style = "boxy",  hat = "horns",   body = rgb(245, 245, 245), accent = rgb(30, 30, 35), eyes = rgb(255, 210, 60) },
-		{ name = "Garamararam", look = "garamararam",           style = "round", hat = "antenna", body = rgb(60, 110, 230),  accent = rgb(255, 200, 60) },
-		{ name = "Bobrito Bandito", look = "bobrito", legScale = 0.4,       style = "boxy",  hat = "cap",     body = rgb(150, 100, 60),  accent = rgb(200, 40, 50) },
-	},
-}
 for m, map in ipairs(MAPS) do
 	map.boss.hat = map.boss.hat or (map.boss.style == "boxy" and "fin" or "crown")
 	map.boss.eyes = map.boss.eyes or (map.boss.style == "boxy" and map.boss.accent or nil)
-	local n = #map.zones
-	for j, zone in ipairs(map.zones) do
-		local def = (j < n and ZONE_BOSSES[m] and ZONE_BOSSES[m][j]) or map.boss
-		if def ~= map.boss then
-			def.size = def.size or math.floor((map.boss.size * (0.72 + 0.25 * j / n)) * 10) / 10
-		end
-		zone.boss = def
+	for _, zone in ipairs(map.zones) do
+		zone.boss = map.boss -- one boss chases you through the whole map
 	end
 end
 
@@ -3390,13 +3361,6 @@ local function buildBoss(def, ownerName, cf)
 		local len = (b - a).Magnitude
 		return add(CYL, Vector3.new(len, d * s, d * s), color, CFrame.lookAt((a + b) / 2, b + Vector3.new(0.001, 0.001, 0)) * CFrame.Angles(0, math.pi / 2, 0), material, parent)
 	end
-	local function cup(y0, y1, d0, d1, color, z) -- a tapered cup from y0 to y1
-		local n = 6
-		for i = 0, n - 1 do
-			local f = (i + 0.5) / n
-			bcyl((y1 - y0) / n + 0.01, d0 + (d1 - d0) * f, color, V(0, y0 + (y1 - y0) * f, z or 0))
-		end
-	end
 	local bodyTop = 0.5
 
 	-- FACE on a head: hc = centre (studs), hd = head size (studs),
@@ -3465,39 +3429,14 @@ local function buildBoss(def, ownerName, cf)
 		local footY = -legLen / 2 + s * 0.05
 		for _, sx in ipairs({ -1, 1 }) do
 			local p = limb("LegMotor", Vector3.new(o.thick * s, legLen, o.thick * s), o.color or acc, CFrame.new(sx * o.x * s, -s / 2 + s * 0.1, (o.z or 0) * s), sx)
-			local foot = o.foot or "sneaker"
-			if foot == "sneaker" then
-				local fs = o.footSize or 1
-				add(nil, Vector3.new(0.3, 0.14, 0.42) * s * fs, o.shoe or WHITE, CFrame.new(0, footY, -s * 0.06 * fs), nil, p)
-				add(nil, Vector3.new(0.32, 0.05, 0.45) * s * fs, Color3.fromRGB(40, 40, 45), CFrame.new(0, footY - s * 0.08 * fs, -s * 0.06 * fs), nil, p)
-				add(nil, Vector3.new(0.02, 0.05, 0.26) * s * fs, o.swoosh or acc, CFrame.new(sx * s * 0.155 * fs, footY, -s * 0.05 * fs) * CFrame.Angles(math.rad(-12), 0, 0), NEON, p)
-				ell(Vector3.new(0.3, 0.13, 0.14) * s * fs, (o.shoe or WHITE):Lerp(BLACK, 0.1), CFrame.new(0, footY, -s * 0.24 * fs), nil, p)
-				for l = 0, 2 do
-					add(nil, Vector3.new(0.16, 0.02, 0.03) * s * fs, o.swoosh or acc, CFrame.new(0, footY + s * 0.075 * fs, -s * (0.1 - l * 0.06) * fs), nil, p)
-				end
-			elseif foot == "hoof" then
-				add(nil, Vector3.new(o.thick * 1.25, 0.14, o.thick * 1.3) * s, Color3.fromRGB(60, 45, 35), CFrame.new(0, footY - s * 0.02, 0), nil, p)
-				add(nil, Vector3.new(0.015, 0.15, o.thick * 1.32) * s, Color3.fromRGB(30, 22, 18), CFrame.new(0, footY - s * 0.02, 0), nil, p)
-			elseif foot == "ballet" then
-				ell(Vector3.new(0.13, 0.12, 0.3) * s, Color3.fromRGB(255, 160, 200), CFrame.new(0, footY - s * 0.02, -s * 0.06), nil, p)
-				add(nil, Vector3.new(o.thick * 1.1, 0.03, o.thick * 1.1) * s, Color3.fromRGB(255, 120, 180), CFrame.new(0, footY + s * 0.12, 0), nil, p)
-			elseif foot == "paw" then
-				ell(Vector3.new(0.3, 0.12, 0.36) * s, o.pawColor or dark, CFrame.new(0, footY - s * 0.02, -s * 0.06), nil, p)
-				for t = -1, 1 do
-					ball(0.08, o.clawColor or Color3.fromRGB(245, 240, 225), Vector3.new(t * s * 0.09, footY - s * 0.03, -s * 0.24), nil, p)
-				end
-			elseif foot == "root" then
-				for r = 0, 3 do
-					local a = r * math.pi / 2 + 0.4
-					local base = Vector3.new(0, footY + s * 0.04, 0)
-					seg(base, base + Vector3.new(math.cos(a) * s * 0.22, -s * 0.08, math.sin(a) * s * 0.22), 0.06, o.color or acc, Enum.Material.Wood, p)
-				end
-			elseif foot == "sandal" then
-				add(nil, Vector3.new(o.thick * 1.2, 0.05, o.thick * 1.35) * s, Color3.fromRGB(150, 100, 55), CFrame.new(0, footY - s * 0.06, -s * 0.03), nil, p)
-				add(nil, Vector3.new(o.thick * 1.02, 0.04, 0.05) * s, Color3.fromRGB(110, 70, 40), CFrame.new(0, footY + s * 0.02, -s * 0.06), nil, p)
-				for t = -1, 1 do
-					ball(0.07, Color3.fromRGB(240, 235, 225), Vector3.new(t * s * 0.08, footY - s * 0.02, -o.thick * s * 0.55), nil, p)
-				end
+			-- big sneakers: white upper, dark sole, a colored swoosh, a toe cap and laces
+			local fs = o.footSize or 1
+			add(nil, Vector3.new(0.3, 0.14, 0.42) * s * fs, o.shoe or WHITE, CFrame.new(0, footY, -s * 0.06 * fs), nil, p)
+			add(nil, Vector3.new(0.32, 0.05, 0.45) * s * fs, Color3.fromRGB(40, 40, 45), CFrame.new(0, footY - s * 0.08 * fs, -s * 0.06 * fs), nil, p)
+			add(nil, Vector3.new(0.02, 0.05, 0.26) * s * fs, o.swoosh or acc, CFrame.new(sx * s * 0.155 * fs, footY, -s * 0.05 * fs) * CFrame.Angles(math.rad(-12), 0, 0), NEON, p)
+			ell(Vector3.new(0.3, 0.13, 0.14) * s * fs, (o.shoe or WHITE):Lerp(BLACK, 0.1), CFrame.new(0, footY, -s * 0.24 * fs), nil, p)
+			for l = 0, 2 do
+				add(nil, Vector3.new(0.16, 0.02, 0.03) * s * fs, o.swoosh or acc, CFrame.new(0, footY + s * 0.075 * fs, -s * (0.1 - l * 0.06) * fs), nil, p)
 			end
 		end
 	end
@@ -3513,15 +3452,6 @@ local function buildBoss(def, ownerName, cf)
 			hands[sx] = hand
 		end
 	end
-	local function hover() -- flying bosses: a glow underneath instead of legs
-		ell(V(0.8, 0.06, 0.8), acc, C(0, -0.62, 0), NEON).Transparency = 0.4
-	end
-	local function propeller(pos, d, parent)
-		bcyl(0.12, 0.1, Color3.fromRGB(60, 60, 65), pos, Enum.Material.Metal, parent)
-		for b = 0, 1 do
-			add(nil, Vector3.new(d * s, 0.07 * s, 0.03 * s), Color3.fromRGB(35, 35, 40), CFrame.new(pos + Vector3.new(0, 0, -0.07 * s)) * CFrame.Angles(0, 0, b * math.pi / 2 + 0.4), nil, parent)
-		end
-	end
 	local function crown(pos, w)
 		add(nil, Vector3.new(w, w * 0.22, w), GOLD, CFrame.new(pos), NEON)
 		for i = 0, 4 do
@@ -3530,251 +3460,7 @@ local function buildBoss(def, ownerName, cf)
 			ball(0.05, Color3.fromRGB(255, 60, 90), pos + Vector3.new(math.cos(a) * w * 0.5, 0, math.sin(a) * w * 0.5), NEON)
 		end
 	end
-	local function horns(hc, hd, color)
-		for _, sx in ipairs({ -1, 1 }) do
-			local base = hc + Vector3.new(sx * hd * 0.32, hd * 0.36, 0)
-			seg(base, base + Vector3.new(sx * hd * 0.2, hd * 0.22, 0), 0.1, color)
-			seg(base + Vector3.new(sx * hd * 0.2, hd * 0.22, 0), base + Vector3.new(sx * hd * 0.24, hd * 0.42, -hd * 0.05), 0.06, color)
-		end
-	end
-
 	local BUILD = {}
-	-- Tung Tung Sahur: a tall wooden log with a baseball bat
-	BUILD.tungtung = function()
-		local wood = Enum.Material.Wood
-		bcyl(1.5, 0.72, skin, V(0, 0.25, 0), wood)
-		bcyl(0.02, 0.62, light, V(0, 1.0, 0), wood)
-		bcyl(0.025, 0.42, dark, V(0, 1.005, 0), wood)
-		bcyl(0.03, 0.2, light, V(0, 1.01, 0), wood)
-		for g = 0, 6 do -- bark grain, all round the back and sides
-			local a = math.rad(-60 + g * 50)
-			add(nil, V(0.03, 1.3, 0.02), dark, CFrame.new(math.sin(a) * 0.36 * s, 0.25 * s, math.cos(a) * 0.36 * s) * CFrame.Angles(0, a, 0))
-		end
-		ell(V(0.12, 0.18, 0.05), dark, C(0.3, -0.1, -0.2) * CFrame.Angles(0, -0.9, 0))
-		face(V(0, 0.58, 0), 0.72 * s, "cyl", { mouthW = 1.25, teeth = 3, eyeSize = 0.95 })
-		arms({ x = 0.4, y = 0.35, len = 0.7, thick = 0.1, color = skin:Lerp(BLACK, 0.1), glove = skin, cuff = false })
-		legs({ x = 0.17, thick = 0.13, color = skin:Lerp(BLACK, 0.1) })
-		local bat = Color3.fromRGB(205, 160, 95)
-		add(CYL, V(0.95, 0.1, 0.1), bat, CFrame.new(0, s * 0.4, -s * 0.06) * UPRIGHT, wood, hands[1])
-		ball(0.18, bat, Vector3.new(0, s * 0.85, -s * 0.06), wood, hands[1])
-		add(CYL, V(0.12, 0.12, 0.12), Color3.fromRGB(40, 40, 45), CFrame.new(0, s * 0.02, -s * 0.06) * UPRIGHT, nil, hands[1])
-		bodyTop = 1.0
-	end
-	-- Brr Brr Patapim: a walking tree with a huge nose and root feet
-	BUILD.patapim = function()
-		local bark, leaf = Color3.fromRGB(120, 85, 50), skin
-		bcyl(1.15, 0.62, bark, V(0, 0.07, 0), Enum.Material.Wood)
-		ell(V(1.45, 0.8, 1.25), leaf, C(0, 0.9, 0.08), Enum.Material.Grass)
-		ell(V(0.7, 0.55, 0.6), leaf:Lerp(WHITE, 0.15), C(0.45, 1.05, -0.2), Enum.Material.Grass)
-		ell(V(0.7, 0.5, 0.6), leaf:Lerp(BLACK, 0.15), C(-0.5, 0.95, 0.15), Enum.Material.Grass)
-		ell(V(0.6, 0.5, 0.6), leaf:Lerp(WHITE, 0.08), C(0, 1.25, 0.2), Enum.Material.Grass)
-		for i = 0, 4 do -- little red berries in the leaves
-			local a = i * 1.3
-			ball(0.08, Color3.fromRGB(230, 50, 60), V(math.cos(a) * 0.6, 0.75 + (i % 2) * 0.2, math.sin(a) * 0.5 - 0.1))
-		end
-		local F = face(V(0, 0.22, 0), 0.62 * s, "cyl", { nose = false, eyeSize = 1.05, browColor = Color3.fromRGB(70, 45, 25) })
-		ell(Vector3.new(0.22, 0.2, 0.42) * 0.62 * s, Color3.fromRGB(200, 140, 100), F(0, -0.04, 0.2) * CFrame.Angles(math.rad(20), 0, 0))
-		for _, sx in ipairs({ -1, 1 }) do -- a bushy mustache
-			ell(Vector3.new(0.22, 0.08, 0.08) * 0.62 * s, Color3.fromRGB(70, 45, 25), F(sx * 0.12, -0.12, 0.1) * CFrame.Angles(0, 0, sx * 0.3))
-		end
-		arms({ x = 0.33, y = 0.3, len = 0.6, thick = 0.08, color = bark, glove = leaf, hand = 0.24, cuff = false })
-		legs({ x = 0.15, thick = 0.11, color = bark, foot = "root" })
-		bodyTop = 1.35
-	end
-	-- Lirili Larila: an elephant with a cactus growing on its back and sandals
-	BUILD.lirili = function()
-		ell(V(1.15, 1.0, 1.15), skin, C(0, 0, 0.12))
-		ball(0.78, skin, V(0, 0.18, -0.32))
-		for _, sx in ipairs({ -1, 1 }) do
-			ell(V(0.08, 0.62, 0.52), skin:Lerp(BLACK, 0.1), C(sx * 0.42, 0.22, -0.2) * CFrame.Angles(0, sx * 0.5, 0))
-			ell(V(0.06, 0.44, 0.36), Color3.fromRGB(240, 170, 180), C(sx * 0.4, 0.22, -0.23) * CFrame.Angles(0, sx * 0.5, 0))
-			seg(V(sx * 0.12, -0.04, -0.64), V(sx * 0.17, -0.1, -0.8), 0.06, Color3.fromRGB(250, 245, 230)) -- tusks
-		end
-		local F = face(V(0, 0.18, -0.32), 0.78 * s, "sphere", { nose = false, mouthY = -0.3, mouthW = 0.7 })
-		local prev = F(0, -0.05, 0.02).Position
-		for i = 1, 5 do -- the trunk swings down and curls forward
-			local a = i * 0.42
-			local nxt = prev + Vector3.new(0, -math.cos(a) * s * 0.12, -math.sin(a) * s * 0.08)
-			seg(prev, nxt, 0.15 - i * 0.015, skin:Lerp(BLACK, 0.05))
-			prev = nxt
-		end
-		-- the cactus on its back, with a pink flower
-		local green = Color3.fromRGB(70, 160, 70)
-		bcyl(0.5, 0.2, green, V(0, 0.7, 0.3))
-		ball(0.2, green, V(0, 0.95, 0.3))
-		for _, sx in ipairs({ -1, 1 }) do
-			seg(V(0, 0.65, 0.3), V(sx * 0.2, 0.65, 0.3), 0.12, green)
-			bcyl(0.2, 0.12, green, V(sx * 0.2, 0.75, 0.3))
-		end
-		ball(0.1, Color3.fromRGB(255, 90, 170), V(0, 1.06, 0.3), NEON)
-		for i = 1, 16 do -- spines on the elephant
-			local a, b = i * 2.4, (i % 5) * 0.5 - 0.9
-			local dir = Vector3.new(math.cos(a) * math.cos(b), math.sin(b), math.sin(a) * math.cos(b))
-			if dir.Z > -0.2 then
-				add(nil, V(0.025, 0.025, 0.1), Color3.fromRGB(250, 245, 220), CFrame.lookAt(Vector3.new(dir.X * 0.57, dir.Y * 0.5, dir.Z * 0.57 + 0.12) * s, Vector3.new(dir.X * 2, dir.Y * 2, dir.Z * 2 + 0.12) * s))
-			end
-		end
-		legs({ x = 0.3, thick = 0.26, color = skin:Lerp(BLACK, 0.08), foot = "sandal" })
-		bodyTop = 1.05
-	end
-	-- Bombardiro Crocodilo: a crocodile bomber plane (it flies)
-	BUILD.bombardiro = function()
-		ell(V(0.8, 0.75, 1.9), skin, C(0, 0, 0.3))
-		ell(V(0.6, 0.35, 1.5), skin:Lerp(WHITE, 0.35), C(0, -0.22, 0.3))
-		for i = 0, 3 do -- camo patches
-			ell(V(0.3, 0.06, 0.4), skin:Lerp(BLACK, 0.3), C(((i % 2) * 2 - 1) * 0.15, 0.36, 0.0 + i * 0.3) * CFrame.Angles(0, i, 0))
-		end
-		ball(0.72, skin, V(0, 0.1, -0.42))
-		local F = face(V(0, 0.1, -0.42), 0.72 * s, "sphere", { mouth = false, nose = false, eyeY = 0.24, blush = false })
-		local snout = add(nil, V(0.5, 0.2, 0.62), skin:Lerp(BLACK, 0.08), C(0, -0.05, -0.92))
-		add(nil, V(0.48, 0.04, 0.6), Color3.fromRGB(45, 12, 18), C(0, -0.12, 0), nil, snout)
-		for _, sx in ipairs({ -1, 1 }) do
-			ball(0.07, Color3.fromRGB(30, 50, 30), Vector3.new(sx * s * 0.1, s * 0.1, -s * 0.26), nil, snout)
-			for t = 0, 4 do
-				add(nil, V(0.05, 0.08, 0.05), WHITE, CFrame.new(sx * s * 0.23, -s * 0.11, -s * 0.26 + t * s * 0.12) * CFrame.Angles(0, 0, math.rad(45)), nil, snout)
-			end
-		end
-		-- wings with propellers and bombs
-		local metal = Color3.fromRGB(110, 120, 110)
-		add(nil, V(2.5, 0.07, 0.6), metal, C(0, -0.02, 0.2), Enum.Material.Metal)
-		for _, sx in ipairs({ -1, 1 }) do
-			add(nil, V(0.2, 0.08, 0.62), Color3.fromRGB(200, 40, 40), C(sx * 1.15, -0.02, 0.2))
-			bcyl(0.02, 0.22, WHITE, V(sx * 0.8, 0.02, 0.2))
-			bcyl(0.025, 0.12, Color3.fromRGB(200, 40, 40), V(sx * 0.8, 0.025, 0.2))
-			add(CYL, V(0.4, 0.18, 0.18), Color3.fromRGB(70, 75, 70), C(sx * 0.65, -0.08, -0.05) * CFrame.Angles(0, math.pi / 2, 0), Enum.Material.Metal)
-			propeller(V(sx * 0.65, -0.08, -0.27), 0.5)
-			ell(V(0.14, 0.14, 0.42), Color3.fromRGB(45, 45, 50), C(sx * 0.35, -0.32, 0.25))
-		end
-		add(nil, V(0.07, 0.45, 0.38), skin, C(0, 0.35, 1.1) * CFrame.Angles(math.rad(-25), 0, 0))
-		add(nil, V(0.9, 0.06, 0.3), metal, C(0, 0.08, 1.12), Enum.Material.Metal)
-		hover()
-		bodyTop = 0.6
-	end
-	-- Trippi Troppi: a shrimp body with a cat's head
-	BUILD.trippi = function()
-		for i = 0, 5 do -- curled shrimp shell, segment by segment
-			local a = i * 0.38
-			local d = 0.75 - i * 0.09
-			ell(V(d, d * 0.85, 0.32), (i % 2 == 0) and skin or skin:Lerp(WHITE, 0.2), C(0, -0.05 - math.sin(a) * 0.25 + i * 0.02, 0.1 + i * 0.2 - math.max(0, i - 3) * 0.05) * CFrame.Angles(a, 0, 0))
-		end
-		for _, sx in ipairs({ -1, 1 }) do -- tail fan
-			ell(V(0.24, 0.05, 0.3), acc, C(sx * 0.12, -0.32, 1.25) * CFrame.Angles(0.5, sx * 0.4, 0))
-		end
-		for i = 0, 2 do -- little shrimp legs under the belly
-			for _, sx in ipairs({ -1, 1 }) do
-				seg(V(sx * 0.15, -0.3, 0.4 + i * 0.18), V(sx * 0.2, -0.48, 0.38 + i * 0.18), 0.04, acc)
-			end
-		end
-		local catFur = Color3.fromRGB(245, 200, 150)
-		ball(0.8, catFur, V(0, 0.15, -0.3))
-		face(V(0, 0.15, -0.3), 0.8 * s, "sphere", { noseColor = Color3.fromRGB(255, 120, 150), mouthW = 0.7, teeth = 1 })
-		for _, sx in ipairs({ -1, 1 }) do
-			local ear = CFrame.new(sx * s * 0.24, s * 0.52, -s * 0.3) * CFrame.Angles(0, 0, -sx * 0.35)
-			add(nil, V(0.2, 0.24, 0.06), catFur, ear * CFrame.Angles(0, 0, math.rad(45)))
-			add(nil, V(0.12, 0.15, 0.065), Color3.fromRGB(255, 170, 190), ear * CFrame.new(0, -s * 0.01, -s * 0.005) * CFrame.Angles(0, 0, math.rad(45)))
-			for w = -1, 1 do
-				add(nil, V(0.32, 0.012, 0.012), Color3.fromRGB(30, 30, 30), C(sx * 0.4, 0.03 + w * 0.04, -0.66) * CFrame.Angles(0, 0, sx * w * 0.2))
-			end
-			-- shrimp feelers
-			seg(V(sx * 0.1, 0.5, -0.45), V(sx * 0.35, 1.0, -0.7), 0.025, acc)
-		end
-		arms({ x = 0.36, y = -0.05, z = -0.2, len = 0.3, thick = 0.08, color = acc, glove = acc, hand = 0.16, cuff = false })
-		legs({ x = 0.18, thick = 0.12, color = acc })
-		bodyTop = 0.6
-	end
-	-- Ballerina Cappuccina: a ballerina with a cappuccino cup for a head
-	BUILD.ballerina = function()
-		ell(V(0.42, 0.55, 0.34), skin, C(0, -0.18, 0))
-		for r = 0, 2 do -- the tutu: layered frills
-			bcyl(0.06, 1.15 - r * 0.15, (r % 2 == 0) and Color3.fromRGB(255, 190, 225) or Color3.fromRGB(255, 225, 240), V(0, -0.36 + r * 0.05, 0)).Transparency = 0.1
-		end
-		for i = 0, 11 do
-			local a = i * TAU / 12
-			ball(0.12, Color3.fromRGB(255, 205, 230), V(math.cos(a) * 0.56, -0.37, math.sin(a) * 0.56))
-		end
-		bcyl(0.1, 0.16, Color3.fromRGB(255, 220, 200), V(0, 0.12, 0))
-		local cupColor = Color3.fromRGB(250, 248, 240)
-		cup(0.15, 0.8, 0.5, 0.72, cupColor)
-		bcyl(0.05, 0.71, acc, V(0, 0.68, 0))
-		ell(V(0.68, 0.14, 0.68), Color3.fromRGB(245, 230, 205), C(0, 0.8, 0))
-		ell(V(0.18, 0.025, 0.16), Color3.fromRGB(170, 110, 70), C(0, 0.87, 0))
-		add(CYL, V(0.06, 0.26, 0.26), cupColor, C(0.4, 0.48, 0) * CFrame.Angles(0, math.pi / 2, 0))
-		face(V(0, 0.42, 0), 0.62 * s, "cyl", { eyeY = 0.08, mouthW = 0.7, teeth = 1 })
-		crown(V(0, 0.92, 0), 0.25 * s)
-		arms({ x = 0.2, y = 0.0, len = 0.5, thick = 0.07, color = Color3.fromRGB(255, 220, 200), glove = Color3.fromRGB(255, 220, 200), hand = 0.12, splay = 2.4, cuff = false })
-		legs({ x = 0.1, thick = 0.08, color = Color3.fromRGB(255, 225, 210), foot = "ballet" })
-		bodyTop = 1.05
-	end
-	-- Chimpanzini Bananini: a monkey poking out of a peeled banana
-	BUILD.chimpanzini = function()
-		local yellow, cream = skin, Color3.fromRGB(255, 245, 200)
-		for i = 0, 5 do -- the banana, curving back at the top
-			local f = i / 5
-			ell(V(0.75 - f * 0.25, 0.4, 0.7 - f * 0.25), yellow, C(0, -0.32 + f * 1.05, 0.05 + f * f * 0.35))
-		end
-		ell(V(0.14, 0.18, 0.14), Color3.fromRGB(90, 70, 40), C(0, 0.8, 0.42))
-		for i = 0, 3 do -- peel flaps opening outward
-			local a = i * math.pi / 2 + math.pi / 4
-			local flap = CFrame.new(math.cos(a) * s * 0.4, s * 0.0, math.sin(a) * s * 0.4) * CFrame.Angles(0, -a + math.pi / 2, 0) * CFrame.Angles(math.rad(-25), 0, 0)
-			add(nil, V(0.32, 0.5, 0.05), yellow, flap)
-			add(nil, V(0.28, 0.46, 0.02), cream, flap * CFrame.new(0, 0, -s * 0.03))
-		end
-		local fur = Color3.fromRGB(120, 80, 45)
-		ball(0.62, fur, V(0, 0.4, -0.18))
-		ell(V(0.5, 0.42, 0.18), Color3.fromRGB(235, 195, 155), C(0, 0.36, -0.42))
-		for _, sx in ipairs({ -1, 1 }) do
-			ball(0.2, fur, V(sx * 0.33, 0.45, -0.15))
-			ball(0.12, Color3.fromRGB(235, 195, 155), V(sx * 0.36, 0.45, -0.2))
-		end
-		face(V(0, 0.4, -0.22), 0.6 * s, "sphere", { noseColor = Color3.fromRGB(90, 55, 30), mouthW = 0.8 })
-		arms({ x = 0.36, y = 0.15, len = 0.6, thick = 0.1, color = fur, glove = Color3.fromRGB(235, 195, 155), cuff = false })
-		legs({ x = 0.16, thick = 0.11, color = fur, foot = "paw", pawColor = Color3.fromRGB(235, 195, 155) })
-		bodyTop = 0.9
-	end
-	-- Cappuccino Assassino: a coffee cup ninja with two blades
-	BUILD.assassino = function()
-		local cupColor = Color3.fromRGB(245, 240, 230)
-		cup(-0.5, 0.55, 0.68, 0.98, cupColor)
-		bcyl(0.12, 0.92, skin, V(0, 0.38, 0))
-		ell(V(0.92, 0.16, 0.92), Color3.fromRGB(235, 215, 185), C(0, 0.56, 0))
-		ell(V(0.4, 0.2, 0.4), skin, C(0, 0.6, 0))
-		add(CYL, V(0.08, 0.36, 0.36), cupColor, C(0.53, 0.0, 0) * CFrame.Angles(0, math.pi / 2, 0))
-		-- the ninja mask band, its knot and tails at the back
-		bcyl(0.2, 0.95, Color3.fromRGB(25, 25, 30), V(0, 0.15, 0))
-		ball(0.14, Color3.fromRGB(25, 25, 30), V(0, 0.15, 0.48))
-		for _, sx in ipairs({ -1, 1 }) do
-			add(nil, V(0.1, 0.4, 0.03), Color3.fromRGB(25, 25, 30), C(sx * 0.08, -0.05, 0.52) * CFrame.Angles(0.2, 0, sx * 0.3))
-		end
-		face(V(0, 0.1, 0), 0.92 * s, "cyl", { eyeY = 0.05, eyeSize = 0.8, blush = false, nose = false, mouthY = -0.22, mouthW = 0.8 })
-		arms({ x = 0.5, y = 0.05, len = 0.42, thick = 0.12, color = Color3.fromRGB(30, 30, 35), glove = Color3.fromRGB(30, 30, 35), cuffColor = Color3.fromRGB(200, 30, 40) })
-		for _, sx in ipairs({ -1, 1 }) do
-			add(nil, V(0.05, 0.12, 0.06), Color3.fromRGB(80, 40, 30), C(0, -0.05, -0.08), nil, hands[sx])
-			add(nil, V(0.02, 0.07, 0.42), Color3.fromRGB(215, 220, 230), C(0, -0.05, -0.33), Enum.Material.Metal, hands[sx])
-		end
-		legs({ x = 0.2, thick = 0.14, color = Color3.fromRGB(30, 30, 35), shoe = Color3.fromRGB(40, 40, 45), swoosh = Color3.fromRGB(200, 30, 40) })
-		bodyTop = 0.7
-	end
-	-- Bombombini Gusini: a goose that is also a jet (it flies)
-	BUILD.bombombini = function()
-		ell(V(0.85, 0.75, 1.3), skin, C(0, 0, 0.2))
-		ell(V(0.65, 0.4, 1.0), skin:Lerp(Color3.fromRGB(200, 200, 210), 0.5), C(0, -0.22, 0.25))
-		seg(V(0, 0.2, -0.25), V(0, 0.72, -0.5), 0.26, skin)
-		ball(0.5, skin, V(0, 0.8, -0.55))
-		local F = face(V(0, 0.8, -0.55), 0.5 * s, "sphere", { mouth = false, nose = false, eyeY = 0.1 })
-		ell(Vector3.new(0.4, 0.18, 0.6) * 0.5 * s, acc, F(0, -0.12, 0.2))
-		ell(Vector3.new(0.38, 0.06, 0.55) * 0.5 * s, acc:Lerp(BLACK, 0.3), F(0, -0.18, 0.2))
-		local metal = Color3.fromRGB(150, 155, 165)
-		for _, sx in ipairs({ -1, 1 }) do
-			add(nil, V(1.0, 0.06, 0.55), metal, C(sx * 0.75, 0, 0.25) * CFrame.Angles(0, sx * -0.35, 0), Enum.Material.Metal)
-			add(nil, V(0.5, 0.07, 0.1), acc, C(sx * 0.8, 0.01, 0.05) * CFrame.Angles(0, sx * -0.35, 0))
-			add(CYL, V(0.6, 0.2, 0.2), Color3.fromRGB(80, 85, 95), C(sx * 0.55, -0.15, 0.25) * CFrame.Angles(0, math.pi / 2, 0), Enum.Material.Metal)
-			add(CYL, V(0.04, 0.16, 0.16), Color3.fromRGB(255, 150, 40), C(sx * 0.55, -0.15, 0.56) * CFrame.Angles(0, math.pi / 2, 0), NEON)
-			ell(V(0.18, 0.04, 0.24), acc, C(sx * 0.15, -0.5, 0.1)) -- dangling goose feet
-		end
-		add(nil, V(0.06, 0.4, 0.35), metal, C(0, 0.35, 0.8) * CFrame.Angles(math.rad(-25), 0, 0), Enum.Material.Metal)
-		hover()
-		bodyTop = 1.1
-	end
 	-- Il Grande Zoomerone: the king of Map 1, with a crown, a cape and a sceptre
 	BUILD.zoomerone = function()
 		add(BALL, V(1, 1, 1), skin, CFrame.new())
@@ -3794,151 +3480,6 @@ local function buildBoss(def, ownerName, cf)
 		ball(0.15, acc, Vector3.new(0, s * 0.72, -s * 0.05), NEON, hands[1])
 		legs({ x = 0.22, thick = 0.18 })
 		bodyTop = 0.75
-	end
-	-- Frigo Camelo: a fridge with a camel on top, on long camel legs
-	BUILD.frigo = function()
-		local white, metal = skin, Color3.fromRGB(190, 195, 205)
-		add(nil, V(0.85, 1.25, 0.75), white, C(0, 0.125, 0))
-		add(nil, V(0.86, 0.02, 0.76), metal, C(0, 0.4, 0))
-		add(nil, V(0.04, 0.3, 0.06), metal, C(0.33, 0.6, -0.4), Enum.Material.Metal)
-		add(nil, V(0.04, 0.5, 0.06), metal, C(0.33, 0.05, -0.4), Enum.Material.Metal)
-		for i, col in ipairs({ Color3.fromRGB(255, 80, 80), Color3.fromRGB(80, 180, 255), Color3.fromRGB(255, 210, 60) }) do -- fridge magnets
-			add(nil, V(0.08, 0.08, 0.02), col, C(-0.25 + i * 0.1, 0.2 - (i % 2) * 0.12, -0.38))
-		end
-		add(nil, V(0.75, 0.04, 0.02), Color3.fromRGB(60, 200, 255), C(0, 0.72, -0.38), NEON)
-		local tan = acc
-		for i = 0, 1 do -- humps
-			ell(V(0.4, 0.38, 0.32), tan, C(0, 0.85, 0.08 + i * 0.25))
-		end
-		seg(V(0, 0.75, -0.18), V(0, 1.15, -0.32), 0.2, tan)
-		ell(V(0.42, 0.38, 0.58), tan, C(0, 1.2, -0.42))
-		ell(V(0.3, 0.22, 0.25), tan:Lerp(WHITE, 0.2), C(0, 1.12, -0.68))
-		for _, sx in ipairs({ -1, 1 }) do
-			ell(V(0.06, 0.14, 0.1), tan:Lerp(BLACK, 0.2), C(sx * 0.2, 1.38, -0.32) * CFrame.Angles(0, 0, -sx * 0.4))
-		end
-		face(V(0, 1.2, -0.42), 0.48 * s, "sphere", { eyeY = 0.18, mouthY = -0.27, mouthW = 0.6, teeth = 1, nose = false })
-		legs({ x = 0.26, thick = 0.12, color = tan, foot = "hoof" })
-		bodyTop = 1.45
-	end
-	-- Glorbo Fruttodrillo: a watermelon crocodile
-	BUILD.glorbo = function()
-		ell(V(1.1, 0.95, 1.3), skin, C(0, 0, 0.15))
-		for i = -2, 2 do -- melon stripes front to back
-			local x = i * 0.2
-			local f = math.sqrt(math.max(0.01, 1 - (x / 0.55) ^ 2))
-			ell(V(0.08, 0.96 * f, 1.31 * f), skin:Lerp(BLACK, 0.45), C(x, 0, 0.15))
-		end
-		-- a slice cut out of the top: red fruit with seeds
-		ell(V(0.6, 0.06, 0.6), Color3.fromRGB(240, 70, 80), C(0, 0.46, 0.35))
-		for i = 0, 5 do
-			local a = i * TAU / 6
-			ell(V(0.04, 0.02, 0.07), BLACK, C(math.cos(a) * 0.18, 0.49, 0.35 + math.sin(a) * 0.18))
-		end
-		local croc = Color3.fromRGB(70, 140, 70)
-		ball(0.68, croc, V(0, 0.12, -0.45))
-		face(V(0, 0.12, -0.45), 0.68 * s, "sphere", { mouth = false, nose = false, eyeY = 0.26, blush = false })
-		local snout = add(nil, V(0.45, 0.18, 0.55), croc, C(0, -0.03, -0.92))
-		add(nil, V(0.43, 0.04, 0.53), Color3.fromRGB(45, 12, 18), C(0, -0.1, 0), nil, snout)
-		for _, sx in ipairs({ -1, 1 }) do
-			ball(0.06, Color3.fromRGB(30, 60, 30), Vector3.new(sx * s * 0.1, s * 0.09, -s * 0.24), nil, snout)
-			for t = 0, 3 do
-				add(nil, V(0.05, 0.08, 0.05), WHITE, CFrame.new(sx * s * 0.21, -s * 0.1, -s * 0.22 + t * s * 0.12) * CFrame.Angles(0, 0, math.rad(45)), nil, snout)
-			end
-		end
-		for i = 0, 3 do -- croc tail
-			ell(V(0.35 - i * 0.07, 0.25 - i * 0.04, 0.35), croc, C(0, -0.2 - i * 0.05, 0.85 + i * 0.25))
-		end
-		legs({ x = 0.32, thick = 0.18, color = croc, foot = "paw", pawColor = croc:Lerp(BLACK, 0.2) })
-		bodyTop = 0.55
-	end
-	-- La Vaca Saturno: a cow planet with a ring (it floats)
-	BUILD.vaca = function()
-		add(BALL, V(1, 1, 1), skin, CFrame.new())
-		for i = 1, 7 do -- cow spots
-			local a = i * 1.9
-			local y = ((i % 3) - 1) * 0.2
-			local r = math.sqrt(0.25 - y * y)
-			local x, z = math.cos(a) * r, math.sin(a) * r
-			if z > -0.25 then
-				ell(V(0.26, 0.2, 0.03), BLACK, CFrame.lookAt(V(x, y, z), V(x * 2, y * 2, z * 2)))
-			end
-		end
-		local ring = bcyl(0.04, 1.75, def.eyes or GOLD, V(0, -0.05, 0), NEON)
-		ring.CFrame = root.CFrame * C(0, -0.05, 0) * CFrame.Angles(0.35, 0, 0) * UPRIGHT
-		ring.Transparency = 0.25
-		local F = face(Vector3.zero, s, "sphere", { mouth = false, nose = false, eyeY = 0.14 })
-		ell(V(0.5, 0.28, 0.2), Color3.fromRGB(255, 180, 190), F(0, -0.17, 0.04))
-		for _, sx in ipairs({ -1, 1 }) do
-			ell(V(0.07, 0.1, 0.04), Color3.fromRGB(150, 70, 90), F(sx * 0.1, -0.15, 0.12))
-			ell(V(0.08, 0.18, 0.3), skin, C(sx * 0.55, 0.22, -0.05) * CFrame.Angles(0, 0, sx * 0.9))
-		end
-		horns(Vector3.zero, s, Color3.fromRGB(245, 235, 210))
-		for i = 0, 1 do -- two little moons
-			local a = i * math.pi + 0.6
-			ball(0.12, Color3.fromRGB(200, 200, 215), V(math.cos(a) * 0.95, 0.25 - i * 0.4, math.sin(a) * 0.6))
-		end
-		hover()
-		bodyTop = 0.75
-	end
-	-- Garamararam: a three-eyed alien with tentacles (it floats)
-	BUILD.garamararam = function()
-		add(BALL, V(1, 1, 1), skin, CFrame.new())
-		ell(V(0.98, 0.45, 0.98), skin:Lerp(BLACK, 0.2), C(0, -0.25, 0))
-		for i = 0, 7 do
-			local a = i * 0.8
-			ball(0.1, light, V(math.cos(a) * 0.42, 0.18 + (i % 2) * 0.1, math.sin(a) * 0.3 + 0.12))
-		end
-		local F = face(Vector3.zero, s, "sphere", { blush = false, eyeX = 0.24 })
-		ell(V(0.24, 0.26, 0.1), WHITE, F(0, 0.34, 0.0))
-		ell(V(0.12, 0.14, 0.04), def.eyes or acc, F(0, 0.34, 0.05), NEON)
-		ell(V(0.05, 0.07, 0.03), BLACK, F(0, 0.34, 0.07))
-		for i = 0, 5 do -- tentacles with gold suckers
-			local a = i * TAU / 6
-			local prev = V(math.cos(a) * 0.32, -0.35, math.sin(a) * 0.32)
-			for k = 1, 3 do
-				local nxt = prev + V(math.cos(a) * 0.08, -0.14, math.sin(a) * 0.08)
-				seg(prev, nxt, 0.13 - k * 0.025, skin:Lerp(BLACK, 0.1))
-				ball(0.05, acc, (prev + nxt) / 2 + Vector3.new(0, 0, -0.04 * s))
-				prev = nxt
-			end
-		end
-		for _, sx in ipairs({ -1, 1 }) do
-			seg(V(sx * 0.16, 0.42, 0), V(sx * 0.25, 0.75, 0), 0.04, BLACK)
-			ball(0.13, acc, V(sx * 0.25, 0.78, 0), NEON)
-		end
-		hover()
-		bodyTop = 0.9
-	end
-	-- Bobrito Bandito: a beaver bandit in a cowboy hat with a bag of cash
-	BUILD.bobrito = function()
-		ell(V(0.9, 1.05, 0.85), skin, C(0, 0.02, 0))
-		ell(V(0.6, 0.75, 0.3), light, C(0, -0.05, -0.32))
-		ball(0.72, skin, V(0, 0.72, -0.05))
-		local F = face(V(0, 0.72, -0.05), 0.72 * s, "sphere", { mouth = false, noseColor = Color3.fromRGB(40, 25, 20), browColor = Color3.fromRGB(40, 25, 20) })
-		ell(V(0.76, 0.16, 0.76), Color3.fromRGB(25, 25, 30), C(0, 0.8, -0.05)) -- bandit mask
-		for _, sx in ipairs({ -1, 1 }) do
-			add(nil, Vector3.new(0.12, 0.17, 0.05) * 0.72 * s, WHITE, F(sx * 0.07, -0.2, 0.03))
-			ball(0.14, skin:Lerp(BLACK, 0.2), V(sx * 0.3, 1.0, -0.05))
-		end
-		ell(V(0.5, 0.06, 0.26), Color3.fromRGB(70, 35, 25), C(0, 0.6, -0.36)) -- grin
-		-- red bandana and cowboy hat
-		ell(V(0.75, 0.16, 0.7), acc, C(0, 0.42, -0.02))
-		add(nil, V(0.2, 0.22, 0.04), acc, C(0, 0.3, -0.36) * CFrame.Angles(0, 0, math.rad(45)))
-		local hat = Color3.fromRGB(110, 70, 40)
-		bcyl(0.05, 1.0, hat, V(0, 1.06, -0.05))
-		bcyl(0.28, 0.5, hat, V(0, 1.2, -0.05))
-		bcyl(0.06, 0.52, Color3.fromRGB(40, 25, 20), V(0, 1.1, -0.05))
-		-- flat beaver tail with a criss-cross pattern
-		local tail = ell(V(0.5, 0.08, 0.7), Color3.fromRGB(80, 55, 40), C(0, -0.38, 0.72))
-		for g = -1, 1 do
-			add(nil, V(0.4, 0.01, 0.02), Color3.fromRGB(55, 38, 25), C(0, 0.04, g * 0.15), nil, tail)
-		end
-		arms({ x = 0.42, y = 0.1, len = 0.45, thick = 0.12, color = skin, glove = skin:Lerp(BLACK, 0.2), cuff = false })
-		local bag = ell(V(0.32, 0.36, 0.3), Color3.fromRGB(110, 170, 90), C(0, -0.25, 0), nil, hands[-1])
-		add(nil, V(0.14, 0.04, 0.14), Color3.fromRGB(80, 60, 40), C(0, 0.16, 0), nil, bag)
-		add(nil, V(0.02, 0.16, 0.1), Color3.fromRGB(40, 90, 40), C(-0.165, 0, 0), nil, bag)
-		legs({ x = 0.2, thick = 0.13, color = skin, foot = "paw", pawColor = skin:Lerp(BLACK, 0.25) })
-		bodyTop = 1.35
 	end
 	-- Tralalero Turbino: a shark on legs with big sneakers
 	BUILD.tralalero = function()
@@ -4056,6 +3597,8 @@ local function removeChaser(plr)
 		plr:SetAttribute("ChasedBy", nil)
 		plr:SetAttribute("BossGap", nil)
 		plr:SetAttribute("BossZ", nil)
+		plr:SetAttribute("BossRunSpeed", nil)
+		plr:SetAttribute("BossTopSpeed", nil)
 	end
 end
 
@@ -4093,41 +3636,6 @@ local function bossBaseSpeed(z)
 	local info = ZONE_AT[k]
 	if not info or not info.zone then return CONFIG.BaseWalkSpeed end
 	return bossSpeedIn(info.zone, (z - k * L) / L)
-end
-
--- a giant statue of each zone's brainrot stands on the bank beside the track
--- (the same model as the boss, 2.6x bigger, frozen in place)
-for _, info in ipairs(ZONE_LIST) do
-	local def = info.zone.boss
-	if def then
-		local big = table.clone(def)
-		big.size = math.min(40, def.size * 2.6)
-		local s = big.size
-		local leg = s * (big.legScale or 0.45)
-		local side = (info.j % 2 == 0) and 1 or -1
-		local x, z = side * (HALF_W + 34), info.g * L + L * 0.3
-		local groundY = FLOOR_Y - 2.5
-		local y = groundY + 3 + leg + s / 2
-		local ok, model = pcall(buildBoss, big, "", CFrame.lookAt(Vector3.new(x, y, z), Vector3.new(0, y, z - 120)))
-		if ok and model then
-			CollectionService:RemoveTag(model, "SVB_Boss")
-			for _, d in ipairs(model:GetDescendants()) do
-				if d:IsA("BasePart") then
-					d.Anchored = true
-					d.CanCollide = false
-					d.CanQuery = false
-				elseif d:IsA("Humanoid") or d:IsA("BillboardGui") or d:IsA("ParticleEmitter") or d:IsA("PointLight") or d:IsA("Motor6D") or d:IsA("WeldConstraint") then
-					d:Destroy()
-				end
-			end
-			model.Name = def.name .. " Statue"
-			model.Parent = Decor
-			-- a stone plinth with the name on it
-			TK.fillCyl(CFrame.new(x, groundY + 1.5, z), 3, s * 0.75, Enum.Material.Cobblestone)
-			local plate = newPart{ Name = "StatuePlate", Size = Vector3.new(s * 0.9, 3, 0.6), CFrame = CFrame.lookAt(Vector3.new(x - side * s * 0.62, groundY + 1.5, z - s * 0.3), Vector3.new(0, groundY + 1.5, z - 120)), Color = Color3.fromRGB(70, 55, 40), CanCollide = false, Parent = Decor }
-			addSign(plate, Enum.NormalId.Front, { { text = string.upper(def.name), color = GOLD } }, 12)
-		end
-	end
 end
 
 ------------------------------------------------------------------------
@@ -4176,13 +3684,6 @@ local function chaserTick()
 			if c and not c.caught then removeChaser(plr) end
 		else
 			local pos = hrp.Position
-			if c and not c.caught and c.zone ~= info.zone then
-				-- a new zone = a new boss: the old one vanishes and this zone's boss takes over
-				local old = c.name
-				removeChaser(plr)
-				c = spawnChaser(plr, info.map, pos, info.zone)
-				notify(plr, old .. " gave up... " .. c.name .. " takes over the chase!", Color3.fromRGB(255, 90, 90))
-			end
 			if not c and (info.j > 1 or pos.Z >= (info.map.startG + 1) * L + 30) then
 				c = spawnChaser(plr, info.map, pos, info.zone)
 			end
@@ -4198,11 +3699,22 @@ local function chaserTick()
 
 				local dist = ((pos - bpos) * Vector3.new(1, 0, 1)).Magnitude
 				if os.clock() >= c.readyAt then
-					local speed = bossBaseSpeed(pos.Z)
-					if dist > CONFIG.BossLeash then
-						-- you got far ahead: it speeds up so it's always close behind you
-						speed = math.max(speed, hum.WalkSpeed * (1 + (dist - CONFIG.BossLeash) / 60))
+					-- it runs at least the zone's pace (faster in every zone), and while you're
+					-- faster it keeps speeding up until it's faster than you. It never goes past
+					-- its map's top speed, so if you're faster than that you can get away.
+					local now = os.clock()
+					local dt = math.min(0.5, now - (c.lastTick or now))
+					c.lastTick = now
+					local top = c.map.boss.topSpeed or CONFIG.MaxWalkSpeed
+					local base = math.min(top, bossBaseSpeed(pos.Z))
+					local want = math.min(top, math.max(base, hum.WalkSpeed * CONFIG.BossOvertake))
+					c.speed = c.speed or base
+					if c.speed < want then
+						c.speed = math.min(want, c.speed + math.max(CONFIG.BossAccel, c.speed * 0.08) * dt)
+					else
+						c.speed = want
 					end
+					local speed = c.speed
 					-- admins can slow down or pause the bosses (for everyone, or for one player)
 					speed *= workspace:GetAttribute("BossSpeed") or 1
 					if plr:GetAttribute("BossPaused") then speed = 0 end
@@ -4215,6 +3727,8 @@ local function chaserTick()
 				plr:SetAttribute("ChasedBy", c.name)
 				plr:SetAttribute("BossGap", math.max(0, math.floor(dist - c.catch)))
 				plr:SetAttribute("BossZ", bpos.Z)
+				plr:SetAttribute("BossRunSpeed", math.floor((c.speed or 0) + 0.5))
+				plr:SetAttribute("BossTopSpeed", c.map.boss.topSpeed)
 
 				if dist <= c.catch and os.clock() >= c.readyAt then
 					hitPlayer(plr, c.name .. " caught you! Buy more speed on the green pad.")

@@ -1783,7 +1783,7 @@ local chase = new("Frame", {
 	Name = "BossChase",
 	AnchorPoint = Vector2.new(0.5, 0),
 	Position = UDim2.new(0.5, 0, 0, 8),
-	Size = UDim2.fromOffset(380, 66),
+	Size = UDim2.fromOffset(440, 66),
 	BackgroundColor3 = Color3.fromRGB(40, 20, 28),
 	BackgroundTransparency = 0.15,
 	Visible = false,
@@ -1813,7 +1813,13 @@ RunService.RenderStepped:Connect(function(dt)
 	local danger = Color3.fromRGB(255, 60, 60):Lerp(Color3.fromRGB(110, 230, 90), u)
 	chaseFill.BackgroundColor3 = danger
 	chaseStroke.Color = danger
-	chaseText.Text = math.floor(gap) .. " studs behind you"
+	-- its speed next to yours: it keeps speeding up until it's faster than you, up to its top speed
+	local bossSpeed = player:GetAttribute("BossRunSpeed") or 0
+	local top = player:GetAttribute("BossTopSpeed") or 0
+	local myHum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+	local mine = math.floor(myHum and myHum.WalkSpeed or 0)
+	local tail = (top > 0 and bossSpeed >= top) and " (MAX)" or ""
+	chaseText.Text = math.floor(gap) .. " studs behind  |  boss " .. bossSpeed .. tail .. "  vs  you " .. mine
 	chase.Rotation = (u < 0.25) and math.sin(os.clock() * 40) * 1.5 or 0
 end)
 

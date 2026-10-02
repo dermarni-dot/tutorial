@@ -37,14 +37,18 @@ Four scripts:
 
 ## Maps and bosses
 
-- **Map 1: Brainrot Skylands**. Its boss is **Il Grande Zoomerone**. 10 zones that pay **1 to 1K trophies**: Meadow, Desert, Tundra, Swamp, Lava, Candy, Neon, Crystal, Storm, Void.
-- **Map 2: Turbo Badlands**. Its boss is **Tralalero Turbino**, a bigger, boxier boss. 6 zones that pay **1.5K to 500K trophies**: Jungle, Haunted, Factory, Space, Rainbow, Inferno.
+- **Map 1: Brainrot Skylands**. Its boss is **Il Grande Zoomerone**, a king with a crown, cape and sceptre. 10 zones that pay **1 to 1K trophies**: Meadow, Desert, Tundra, Swamp, Lava, Candy, Neon, Crystal, Storm, Void.
+- **Map 2: Turbo Badlands**. Its boss is **Tralalero Turbino**, a bigger shark in big sneakers. 6 zones that pay **1.5K to 500K trophies**: Jungle, Haunted, Factory, Space, Rainbow, Inferno.
 - Each map has its own start island with a speed pad, 4 eggs, leaderboards and a portal.
 - Reaching a map's finish unlocks the next map and takes you there. To add a third map, copy a block in `MAPS`.
-- **Every boss has its own body**, not just a different color. Tung Tung Sahur is a tall log with a baseball bat. Brr Brr Patapim is a walking tree with a huge nose and root feet. Lirili Larila is an elephant with a cactus on its back and sandals. Bombardiro Crocodilo is a crocodile bomber plane that flies. Trippi Troppi is a shrimp with a cat's head. Ballerina Cappuccina is a ballerina with a cappuccino cup for a head and a tutu. Chimpanzini Bananini is a monkey in a peeled banana. Cappuccino Assassino is a ninja coffee cup with two blades. Bombombini Gusini is a goose jet. Frigo Camelo is a fridge with a camel on top. Glorbo Fruttodrillo is a watermelon crocodile. La Vaca Saturno is a cow planet with a ring. Garamararam is a three-eyed alien with tentacles. Bobrito Bandito is a beaver bandit in a cowboy hat with a bag of cash. Tralalero Turbino is a shark in big sneakers. Il Grande Zoomerone is a king with a crown, cape and sceptre. All of them have big eyes with a shine, an open mouth with teeth, arms that pump and legs that swing as they run.
-- **Every zone has its own boss** that chases you through it, and each one is bigger and faster than the last: Tung Tung Sahur, Brr Brr Patapim, Lirili Larila, Bombardiro Crocodilo, Trippi Troppi, Ballerina Cappuccina, Chimpanzini Bananini, Cappuccino Assassino and Bombombini Gusini on Map 1; Frigo Camelo, Glorbo Fruttodrillo, La Vaca Saturno, Garamararam and Bobrito Bandito on Map 2. The last zone of each map has the map's big boss. When you cross into the next zone, the old boss vanishes and the new one takes over. Bosses swing their legs as they run and kick up dust. A bar at the top of the screen shows who is chasing you and how close they are. Edit them in `ZONE_BOSSES`.
+- **One boss per map** chases you through every zone of that map. It has big eyes with a shine, an open mouth with teeth, arms that pump and legs that swing as it runs, and it kicks up dust.
+- **How the boss's speed works**:
+  - It gets faster in every zone: each zone has a pace it runs at least.
+  - If you're faster than it, it keeps speeding up until it's faster than you, so it slowly catches up.
+  - Each map's boss has a **top speed** it can never go past: Il Grande Zoomerone tops out at 175, Tralalero Turbino at 330. Get faster than that and you can leave it behind for good. Change `topSpeed` on each map's `boss` in `MAPS`, and `BossAccel` and `BossOvertake` in `CONFIG` for how fast it speeds up.
+  - The bar at the top of the screen shows who is chasing you, how far behind it is, and its speed against yours, with "MAX" once it's at its top speed.
 - **Zones are long (600 studs) and wide (180 studs)**, so you have room to pull away from the boss, and it starts further behind you. Obstacles, decorations and cash repeat down the whole zone. Change `ZoneLength` in `CONFIG` to make them longer or shorter. The start islands stay the same size (`IslandLength`).
-- The boss gets faster in every zone. Each zone has a **pace**, so speed is relative: the same Speed makes you run faster in a harder zone, and its boss is faster too.
+- Each zone has a **pace**, so speed is relative: the same Speed makes you run faster in a harder zone, and the boss runs faster there too.
 - **Every zone is open to everyone.** There's no Speed you need to get in. The only way to fail is getting caught (or hit). The golden gate at the end of each zone shows the trophies you get for making it out.
 - **Getting hit sends you back to the start.** That covers obstacles, falling off and the boss catching you. You tumble with stars around your head and a red flash, then reappear at the start.
 - **Every zone has its own textures** in place of plain plastic studs. Each has its own ground, a trail down the middle and patches on the ground, and the cliff underneath matches the theme:
@@ -91,7 +95,6 @@ Four scripts:
   - Each zone runs through land: banks in the zone's own terrain (grass, sand, snow and so on) on both sides, with hills, mesas, peaks or towers behind them.
   - Striped curbs line the walls, and lamp posts glow in the zone's color.
   - A gantry over the middle of each zone shows its number and name.
-  - A **giant statue of the zone's brainrot** stands beside the track on a stone plinth with its name.
 
 ## Eggs, pets, rebirth, prestige
 
@@ -142,7 +145,6 @@ No emojis or uploaded images: every icon is drawn from rounded frames (the `ICON
 - **Running**: when you're fast, a bouncy run, then a ninja dash. Both come from Roblox's free animation packs. The playback speed is capped so it never looks frantic. You also lean forward, leave a speed trail, and the camera view widens.
 - **Lighting and sky per zone** (toned down so it's no longer too bright: lower exposure, less bloom, softer haze; `LIGHT_SCALE` in the World script makes it brighter or darker): as you cross into a new zone, the sky, sun angle, haze, color grade and cloud cover blend smoothly to match it. The Desert is a hazy gold, the Tundra a cold bright white, Lava a smoky red dusk, Neon City and Space night time, Storm Peaks dark and overcast, and so on. Bloom on neon and sun rays stay on everywhere.
 
-![Bosses](bosses3d.png)
 ![Meadow zone](map_meadow.png)
 ![Desert zone](map_desert.png)
 ![Overview](map_overview.png)
