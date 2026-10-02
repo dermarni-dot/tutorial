@@ -2332,11 +2332,6 @@ local function buildEggStand(egg, x, z)
 	end
 	-- a soft glossy highlight on the upper left
 	paint(math.rad(205), 2.1, 0.55, 1.3, WHITE, 0.35, NEON, 0.08, 0.55)
-	-- a glowing halo around its middle and a soft beam of light under it
-	for i = 0, 1 do
-		local halo = eggPart{ Name = "EggHalo", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.12, R * 2.9 - i * 0.5, R * 2.9 - i * 0.5), CFrame = CFrame.new(center) * CFrame.Angles(0.35 + i * 0.5, 0, math.pi / 2), Color = (i == 0) and egg.color:Lerp(WHITE, 0.4) or egg.spots, Material = NEON, Transparency = 0.45 }
-		halo.CastShadow = false
-	end
 	model.PrimaryPart = shell
 	local light = Instance.new("PointLight")
 	light.Color = egg.color
@@ -3361,7 +3356,6 @@ local function buildBoss(def, ownerName, cf, ownerId)
 	-- in boss units (s): the body's bottom is at y = -0.5, front is -Z.
 	--------------------------------------------------------------------
 	local skin = def.body
-	local light = skin:Lerp(WHITE, 0.4)
 	local dark = skin:Lerp(BLACK, 0.25)
 	local acc = def.accent
 	local NEON = Enum.Material.Neon
@@ -3386,51 +3380,52 @@ local function buildBoss(def, ownerName, cf, ownerId)
 	local function bcyl(h, d, color, pos, material, parent) -- a standing cylinder
 		return add(CYL, Vector3.new(h * s, d * s, d * s), color, CFrame.new(pos) * UPRIGHT, material, parent)
 	end
-	local function seg(a, b, d, color, material, parent) -- a rod from a to b (studs)
-		local len = (b - a).Magnitude
-		return add(CYL, Vector3.new(len, d * s, d * s), color, CFrame.lookAt((a + b) / 2, b + Vector3.new(0.001, 0.001, 0)) * CFrame.Angles(0, math.pi / 2, 0), material, parent)
-	end
 	local bodyTop = 0.5
 	local frontReach = 0.55 -- how far its front sticks out ahead of its middle (you're caught when it reaches you)
 
-	-- FACE on a head: hc = centre (studs), hd = head size (studs),
-	-- kind = "sphere" | "cyl" (round left-right only) | "flat" (a box front)
-	local function face(hc, hd, kind, o)
+	--------------------------------------------------------------------
+	-- SMOOTH DETAILS: eyes, brows, buttons, gills, laces and so on are painted onto the
+	-- curve of whatever they sit on (a thin oval bent to the same curve), so nothing
+	-- sticks out, and every limb, fin and horn starts inside the body it grows from.
+	--------------------------------------------------------------------
+	-- p, n = a point on a surface and its outward normal (studs). w, h = size (studs).
+	-- o.R = how round the surface is there (studs), o.layer = paint on top of paint,
+	-- o.raise = lift it into a soft bump (boss units), o.t = thickness override (studs)
+	local function decal(p, n, w, h, color, o)
 		o = o or {}
-		local function fz(x, y)
-			if kind == "flat" then return hc.Z - hd * 0.5 end
-			if kind == "cyl" then return hc.Z - hd * math.sqrt(math.max(0.02, 0.25 - x * x)) end
-			return hc.Z - hd * math.sqrt(math.max(0.02, 0.25 - x * x - y * y))
-		end
-		local function F(x, y, out)
-			return CFrame.new(hc.X + x * hd, hc.Y + y * hd, fz(x, y) - (out or 0) * hd)
-		end
-		local ey, es, ex0 = o.eyeY or 0.12, o.eyeSize or 1, o.eyeX or 0.2
-		for _, sx in ipairs({ -1, 1 }) do
-			local ex = sx * ex0
-			ell(Vector3.new(0.3, 0.34, 0.18) * hd * es, WHITE, F(ex, ey, 0.01))
-			ell(Vector3.new(0.17, 0.19, 0.06) * hd * es, def.eyes or Color3.fromRGB(255, 40, 40), F(ex + sx * 0.01, ey - 0.01, 0.085 * es), NEON)
-			ell(Vector3.new(0.08, 0.1, 0.04) * hd * es, Color3.fromRGB(15, 10, 15), F(ex + sx * 0.01, ey - 0.01, 0.11 * es))
-			add(BALL, Vector3.one * hd * 0.045 * es, WHITE, F(ex - 0.03, ey + 0.05, 0.125 * es), NEON)
-			if o.brows ~= false then
-				add(nil, Vector3.new(0.32, 0.07, 0.12) * hd * es, o.browColor or Color3.fromRGB(25, 20, 20), F(ex, ey + 0.19 * es, 0.02) * CFrame.Angles(0, 0, sx * 0.4))
-			end
-			if o.blush ~= false then
-				ell(Vector3.new(0.14, 0.07, 0.04) * hd, Color3.fromRGB(255, 120, 140), F(sx * 0.34, ey - 0.16, 0.005) * CFrame.Angles(0, -sx * 0.6, 0)).Transparency = 0.3
-			end
-		end
-		if o.nose ~= false then ell(Vector3.new(0.12, 0.09, 0.1) * hd, o.noseColor or dark, F(0, ey - 0.13, 0.03)) end
-		if o.mouth ~= false then
-			local my, mw = o.mouthY or (ey - 0.29), o.mouthW or 1
-			ell(Vector3.new(0.46 * mw, 0.2, 0.08) * hd, Color3.fromRGB(45, 12, 18), F(0, my, 0.01))
-			ell(Vector3.new(0.22 * mw, 0.08, 0.05) * hd, Color3.fromRGB(240, 100, 120), F(0, my - 0.05, 0.035))
-			local teeth = o.teeth or 2
-			for t = -teeth, teeth do
-				local tx = t * 0.17 * mw / teeth
-				add(nil, Vector3.new(0.06, 0.07, 0.04) * hd, WHITE, F(tx, my + 0.07, 0.03) * CFrame.Angles(0, 0, math.rad(45)))
-			end
-		end
-		return F
+		local R = o.R or s * 0.5
+		local t = o.t or math.max(s * 0.008, math.max(w, h) ^ 2 / (2 * R))
+		local lift = s * (0.002 + 0.002 * (o.layer or 0) + (o.raise or 0))
+		local c = p + n * (lift - t / 2)
+		local up = (math.abs(n.Y) > 0.9) and Vector3.zAxis or Vector3.yAxis
+		local d = ell(Vector3.new(w, h, t), color, CFrame.lookAt(c, c + n, up) * CFrame.Angles(0, 0, o.roll or 0), o.material, o.parent)
+		if o.transparency then d.Transparency = o.transparency end
+		return d
+	end
+	-- points on an oval (centre c, half-sizes r, both in boss units), with the outward normal
+	local function atXY(c, r, x, y, side) -- front (-1) or back (+1), at (x, y)
+		local u, v = (x - c.X) / r.X, (y - c.Y) / r.Y
+		local w = math.sqrt(math.max(0.0004, 1 - u * u - v * v)) * (side or -1)
+		return (c + Vector3.new(u * r.X, v * r.Y, w * r.Z)) * s, Vector3.new(u / r.X, v / r.Y, w / r.Z).Unit
+	end
+	local function atYZ(c, r, y, z, side) -- left (-1) or right (+1), at (y, z)
+		local v, w = (y - c.Y) / r.Y, (z - c.Z) / r.Z
+		local u = math.sqrt(math.max(0.0004, 1 - v * v - w * w)) * side
+		return (c + Vector3.new(u * r.X, v * r.Y, w * r.Z)) * s, Vector3.new(u / r.X, v / r.Y, w / r.Z).Unit
+	end
+	local function atXZ(c, r, x, z, side) -- top (+1) or bottom (-1), at (x, z)
+		local u, w = (x - c.X) / r.X, (z - c.Z) / r.Z
+		local v = math.sqrt(math.max(0.0004, 1 - u * u - w * w)) * side
+		return (c + Vector3.new(u * r.X, v * r.Y, w * r.Z)) * s, Vector3.new(u / r.X, v / r.Y, w / r.Z).Unit
+	end
+	local function wedge(size, color, cf, material, parent)
+		local w = Instance.new("WedgePart")
+		w.Size = size
+		w.Color = color
+		w.Material = material or Enum.Material.SmoothPlastic
+		w.TopSurface = Enum.SurfaceType.Smooth
+		w.BottomSurface = Enum.SurfaceType.Smooth
+		return weldTo(parent or root, w, cf)
 	end
 
 	-- LIMBS on joints (the World client swings them while it runs)
@@ -3441,6 +3436,7 @@ local function buildBoss(def, ownerName, cf, ownerId)
 		p.CanCollide = false
 		p.CanQuery = false
 		p.Massless = true
+		p.Transparency = 1 -- the joint itself is hidden; a smooth round limb is drawn on it
 		p.CFrame = root.CFrame * joint * CFrame.new(0, -size.Y / 2, 0)
 		p.Parent = model
 		local motor = Instance.new("Motor6D")
@@ -3454,242 +3450,233 @@ local function buildBoss(def, ownerName, cf, ownerId)
 		return p
 	end
 	local hands = {}
-	local function wedge(size, color, cf, material, parent)
-		local w = Instance.new("WedgePart")
-		w.Size = size
-		w.Color = color
-		w.Material = material or Enum.Material.SmoothPlastic
-		w.TopSurface = Enum.SurfaceType.Smooth
-		w.BottomSurface = Enum.SurfaceType.Smooth
-		return weldTo(parent or root, w, cf)
-	end
-	-- legs: o.x / o.z = where the hips are, o.third = z of a third leg in the middle,
-	-- o.muscle = calves and knees, o.boot = royal boots instead of sneakers
+	-- legs: o.x / o.z = hips, o.hipY = how high the hips sit (inside the body), o.third = z of a
+	-- middle leg, o.muscle = calves, o.boot = leather boots instead of sneakers
 	local function legs(o)
-		local legLen = leg + s * 0.1
+		local hipY = o.hipY or -0.4
+		local legLen = leg + s * (hipY + 0.5)
 		local footY = -legLen / 2 + s * 0.05
 		local list = { { -1, -o.x, o.z or 0 }, { 1, o.x, o.z or 0 } }
-		if o.third then table.insert(list, { -1, 0, o.third }) end -- the middle leg steps with the left one
+		if o.third then table.insert(list, { -1, 0, o.third }) end
 		for _, spec in ipairs(list) do
 			local sx, lx, lz = spec[1], spec[2], spec[3]
-			local p = limb("LegMotor", Vector3.new(o.thick * s, legLen, o.thick * s), o.color or acc, CFrame.new(lx * s, -s / 2 + s * 0.1, lz * s), sx)
-			if o.round then
-				p.Transparency = 1
-				add(CYL, Vector3.new(legLen, o.thick * s, o.thick * s), o.color or acc, UPRIGHT, nil, p)
-			end
+			local col = o.color or acc
+			local p = limb("LegMotor", Vector3.new(o.thick * s, legLen, o.thick * s), col, CFrame.new(lx * s, hipY * s, lz * s), sx)
+			add(CYL, Vector3.new(legLen, o.thick * s, o.thick * s), col, UPRIGHT, nil, p)
+			ball(o.thick * 1.15, col, Vector3.new(0, legLen / 2, 0), nil, p) -- the hip, blending into the body
 			if o.muscle then
-				ell(Vector3.new(o.thick * 1.25 * s, legLen * 0.42, o.thick * 1.3 * s), o.color or acc, CFrame.new(0, -legLen * 0.08, s * 0.012), nil, p)
+				ell(Vector3.new(o.thick * 1.22 * s, legLen * 0.4, o.thick * 1.28 * s), col, CFrame.new(0, -legLen * 0.1, s * 0.012), nil, p)
 			end
 			local fs = o.footSize or 1
 			if o.boot then
-				local leather, buckle = Color3.fromRGB(55, 30, 25), GOLD
-				add(CYL, Vector3.new(0.26 * s, o.thick * 1.25 * s, o.thick * 1.25 * s), leather, CFrame.new(0, footY + s * 0.12, 0) * UPRIGHT, nil, p)
-				add(CYL, Vector3.new(0.04 * s, o.thick * 1.35 * s, o.thick * 1.35 * s), Color3.fromRGB(200, 160, 60), CFrame.new(0, footY + s * 0.25, 0) * UPRIGHT, Enum.Material.Metal, p)
-				ell(Vector3.new(0.24, 0.15, 0.44) * s, leather, CFrame.new(0, footY, -s * 0.08), nil, p)
-				add(nil, Vector3.new(0.26, 0.04, 0.42) * s, Color3.fromRGB(25, 15, 12), CFrame.new(0, footY - s * 0.07, -s * 0.07), nil, p)
-				ball(0.08, leather, Vector3.new(0, footY + s * 0.03, -s * 0.31), nil, p) -- curled toe
-				add(nil, Vector3.new(0.12, 0.08, 0.03) * s, buckle, CFrame.new(0, footY + s * 0.04, -s * 0.24) * CFrame.Angles(math.rad(-30), 0, 0), Enum.Material.Metal, p)
+				local leather = Color3.fromRGB(58, 32, 26)
+				local bc, br = Vector3.new(0, footY / s, -0.07), Vector3.new(0.13, 0.075, 0.23)
+				add(CYL, Vector3.new(0.25 * s, o.thick * 1.2 * s, o.thick * 1.2 * s), leather, CFrame.new(0, footY + 0.125 * s, 0) * UPRIGHT, nil, p)
+				add(CYL, Vector3.new(0.03 * s, o.thick * 1.24 * s, o.thick * 1.24 * s), GOLD, CFrame.new(0, footY + 0.235 * s, 0) * UPRIGHT, Enum.Material.Metal, p)
+				ell(br * 2 * s, leather, CFrame.new(bc * s), nil, p)
+				ell(Vector3.new(0.27, 0.04, 0.48) * s, Color3.fromRGB(25, 15, 12), CFrame.new(0, footY - 0.06 * s, -0.07 * s), nil, p)
+				local bp, bn = atXY(bc, br, 0, bc.Y + 0.035, -1)
+				decal(bp, bn, 0.09 * s, 0.06 * s, GOLD, { R = 0.13 * s, material = Enum.Material.Metal, parent = p })
 			else
-				-- sneakers: white upper, dark sole, swoosh, toe cap, tongue, heel tab and laces
+				-- sneakers: one smooth upper on a white midsole and a dark outsole, with a
+				-- swoosh on each side and laces painted on top
 				local shoe = o.shoe or WHITE
-				add(nil, Vector3.new(0.3, 0.14, 0.42) * s * fs, shoe, CFrame.new(0, footY, -s * 0.06 * fs), nil, p)
-				add(nil, Vector3.new(0.32, 0.05, 0.46) * s * fs, Color3.fromRGB(40, 40, 45), CFrame.new(0, footY - s * 0.08 * fs, -s * 0.06 * fs), nil, p)
-				add(nil, Vector3.new(0.33, 0.02, 0.47) * s * fs, Color3.fromRGB(230, 230, 230), CFrame.new(0, footY - s * 0.05 * fs, -s * 0.06 * fs), nil, p)
-				for _, side in ipairs({ -1, 1 }) do -- a swoosh on both sides
-					ell(Vector3.new(0.02, 0.05, 0.3) * s * fs, o.swoosh or acc, CFrame.new(side * s * 0.155 * fs, footY, -s * 0.05 * fs) * CFrame.Angles(math.rad(-14), 0, 0), nil, p)
+				local uc, ur = Vector3.new(0, footY / s + 0.01 * fs, -0.07 * fs), Vector3.new(0.15, 0.085, 0.24) * fs
+				ell(ur * 2 * s, shoe, CFrame.new(uc * s), nil, p)
+				ell(Vector3.new(0.32, 0.07, 0.5) * s * fs, Color3.fromRGB(238, 238, 238), CFrame.new(0, footY - 0.055 * s * fs, -0.07 * s * fs), nil, p)
+				ell(Vector3.new(0.33, 0.04, 0.51) * s * fs, Color3.fromRGB(40, 40, 45), CFrame.new(0, footY - 0.08 * s * fs, -0.07 * s * fs), nil, p)
+				for _, side in ipairs({ -1, 1 }) do
+					local wp, wn = atYZ(uc, ur, uc.Y - 0.01 * fs, uc.Z + 0.03 * fs, side)
+					decal(wp, wn, 0.22 * s * fs, 0.04 * s * fs, o.swoosh or acc, { R = 0.15 * s * fs, roll = side * 0.2, parent = p })
 				end
-				ell(Vector3.new(0.3, 0.13, 0.14) * s * fs, shoe:Lerp(BLACK, 0.08), CFrame.new(0, footY, -s * 0.25 * fs), nil, p)
-				add(nil, Vector3.new(0.16, 0.12, 0.04) * s * fs, shoe:Lerp(BLACK, 0.04), CFrame.new(0, footY + s * 0.1 * fs, -s * 0.12 * fs) * CFrame.Angles(math.rad(-20), 0, 0), nil, p)
-				add(nil, Vector3.new(0.1, 0.1, 0.03) * s * fs, o.swoosh or acc, CFrame.new(0, footY + s * 0.06 * fs, s * 0.16 * fs), nil, p)
-				for l = 0, 3 do
-					add(nil, Vector3.new(0.17, 0.018, 0.025) * s * fs, Color3.fromRGB(245, 245, 245), CFrame.new(0, footY + s * 0.075 * fs, -s * (0.17 - l * 0.045) * fs), nil, p)
+				for l = 0, 2 do
+					local lp, ln = atXZ(uc, ur, 0, uc.Z - 0.1 * fs + l * 0.05 * fs, 1)
+					decal(lp, ln, 0.11 * s * fs, 0.018 * s * fs, shoe:Lerp(BLACK, 0.25), { R = 0.12 * s * fs, parent = p })
 				end
 			end
 		end
 	end
-	-- arms: o.sleeve = a puffy sleeve colour, o.fingers = a hand with four fingers and a thumb
+	-- arms: o.sleeve = a cloth sleeve colour, o.fingers = a gloved hand with fingers and a thumb
 	local function arms(o)
 		for _, sx in ipairs({ -1, 1 }) do
 			local armLen = o.len * s
 			local shoulder = CFrame.new(sx * o.x * s, o.y * s, (o.z or 0) * s) * CFrame.Angles(0, 0, sx * (o.splay or 0.35))
-			local arm = limb("ArmMotor", Vector3.new(o.thick * s, armLen, o.thick * s), o.color or dark, shoulder, sx)
-			if o.round then
-				arm.Transparency = 1
-				add(CYL, Vector3.new(armLen, o.thick * s, o.thick * s), o.color or dark, UPRIGHT, nil, arm)
-			end
+			local col = o.color or dark
+			local arm = limb("ArmMotor", Vector3.new(o.thick * s, armLen, o.thick * s), col, shoulder, sx)
+			add(CYL, Vector3.new(armLen, o.thick * s, o.thick * s), col, UPRIGHT, o.sleeve and Enum.Material.Fabric or nil, arm)
+			ball(o.thick * 1.3, o.sleeve or col, Vector3.new(0, armLen / 2, 0), o.sleeve and Enum.Material.Fabric or nil, arm) -- shoulder
 			if o.sleeve then
-				ell(Vector3.new(o.thick * 1.6 * s, armLen * 0.55, o.thick * 1.6 * s), o.sleeve, CFrame.new(0, armLen * 0.2, 0), Enum.Material.Fabric, arm)
+				ell(Vector3.new(o.thick * 1.4 * s, armLen * 0.75, o.thick * 1.4 * s), o.sleeve, CFrame.new(0, armLen * 0.1, 0), Enum.Material.Fabric, arm)
 			end
+			add(CYL, Vector3.new(0.07 * s, o.thick * 1.45 * s, o.thick * 1.45 * s), o.cuffColor or acc, CFrame.new(0, -armLen / 2 + 0.03 * s, 0) * UPRIGHT, o.cuffMaterial, arm)
 			local glove = o.glove or WHITE
-			local hand = ell(Vector3.new(0.17, 0.15, 0.13) * s, glove, CFrame.new(0, -armLen / 2 - s * 0.05, 0), nil, arm)
+			local hand = ell(Vector3.new(0.15, 0.13, 0.11) * s, glove, CFrame.new(0, -armLen / 2 - 0.045 * s, 0), nil, arm)
 			if o.fingers then
 				for f = 1, 4 do
-					local fx = (f - 2.5) * 0.04 * s
-					local len = (f == 1 or f == 4) and 0.09 or 0.11
-					add(CYL, Vector3.new(len * s, 0.038 * s, 0.038 * s), glove, CFrame.new(fx, -s * (0.07 + len / 2), -s * 0.02) * UPRIGHT, nil, hand)
-					ball(0.04, glove, Vector3.new(fx, -s * (0.07 + len), -s * 0.02), nil, hand)
+					local fx = (f - 2.5) * 0.034 * s
+					local len = (f == 1 or f == 4) and 0.07 or 0.085
+					add(CYL, Vector3.new(len * s, 0.034 * s, 0.034 * s), glove, CFrame.new(fx, -s * (0.05 + len / 2), -s * 0.01) * UPRIGHT, nil, hand)
+					ball(0.034, glove, Vector3.new(fx, -s * (0.05 + len), -s * 0.01), nil, hand)
 				end
-				ell(Vector3.new(0.05, 0.1, 0.05) * s, glove, CFrame.new(-sx * s * 0.07, -s * 0.03, -s * 0.06) * CFrame.Angles(math.rad(-35), 0, sx * 0.4), nil, hand)
-			end
-			if o.cuff ~= false then
-				add(CYL, Vector3.new(0.06 * s, o.thick * 1.4 * s, o.thick * 1.4 * s), o.cuffColor or acc, CFrame.new(0, -armLen / 2 + s * 0.03, 0) * UPRIGHT, nil, arm)
+				ell(Vector3.new(0.045, 0.09, 0.045) * s, glove, CFrame.new(-sx * s * 0.06, -s * 0.03, -s * 0.045) * CFrame.Angles(math.rad(-30), 0, sx * 0.35), nil, hand)
 			end
 			hands[sx] = hand
 		end
 	end
 
 	local BUILD = {}
-	-- Il Grande Zoomerone: the king of Map 1 in full royal dress
+	-- Il Grande Zoomerone: the king of Map 1 in royal dress, everything shaped to his round body
 	BUILD.zoomerone = function()
-		local robe, robeDark = Color3.fromRGB(150, 20, 45), Color3.fromRGB(95, 10, 28)
-		local ermine = Color3.fromRGB(250, 248, 240)
-		local hair = Color3.fromRGB(225, 225, 230)
-		-- the body, softly shaded
+		local robe = Color3.fromRGB(140, 18, 40)
+		local ermine = Color3.fromRGB(248, 246, 238)
+		local hair = Color3.fromRGB(228, 228, 232)
+		local METAL, FABRIC, GLASS = Enum.Material.Metal, Enum.Material.Fabric, Enum.Material.Glass
+		local B0, BR = Vector3.zero, Vector3.new(0.5, 0.5, 0.5)
+		local function paint(x, y, w, h, color, o)
+			local p, n = atXY(B0, BR, x, y, -1)
+			o = o or {}
+			return decal(p, n, w * s, h * s, color, o)
+		end
 		add(BALL, V(1, 1, 1), skin, CFrame.new())
-		ell(V(0.7, 0.3, 0.7), light, C(-0.08, 0.3, -0.12)).Transparency = 0.5
-		-- the robe over the lower half, with a gold hem, a belt, buttons and an ermine collar
-		ell(V(1.07, 0.56, 1.07), robe, C(0, -0.28, 0), Enum.Material.Fabric)
-		bcyl(0.05, 0.84, GOLD, V(0, -0.46, 0), Enum.Material.Metal)
-		bcyl(0.07, 1.04, Color3.fromRGB(60, 30, 20), V(0, -0.2, 0))
-		add(nil, V(0.18, 0.13, 0.05), GOLD, C(0, -0.2, -0.52), Enum.Material.Metal)
-		ball(0.07, Color3.fromRGB(40, 120, 255), V(0, -0.2, -0.55), NEON)
-		for b = 0, 1 do
-			ball(0.06, GOLD, V(0, -0.31 - b * 0.08, -0.5 + b * 0.03), Enum.Material.Metal)
-		end
-		bcyl(0.1, 1.08, ermine, V(0, -0.06, 0), Enum.Material.Fabric)
-		for i = 0, 23 do
-			local a = i * TAU / 24
-			local pos = V(math.cos(a) * 0.53, -0.06 + ((i % 2) - 0.5) * 0.03, math.sin(a) * 0.53)
-			ball(0.1, ermine:Lerp(Color3.fromRGB(225, 220, 210), (i % 2) * 0.5), pos, Enum.Material.Fabric)
-		end
-		-- a long velvet cape at the back with an ermine edge
-		add(nil, V(0.95, 1.05, 0.05), robeDark, C(0, -0.15, 0.53) * CFrame.Angles(math.rad(10), 0, 0), Enum.Material.Fabric)
-		add(nil, V(0.07, 1.05, 0.06), ermine, C(-0.48, -0.15, 0.53) * CFrame.Angles(math.rad(10), 0, 0), Enum.Material.Fabric)
-		add(nil, V(0.07, 1.05, 0.06), ermine, C(0.48, -0.15, 0.53) * CFrame.Angles(math.rad(10), 0, 0), Enum.Material.Fabric)
 
-		-- the face: stern eyes with lids, a big nose, a curled royal mustache and a goatee
-		local function F(x, y, out)
-			return CFrame.new(x * s, y * s, -s * math.sqrt(math.max(0.02, 0.25 - x * x - y * y)) - (out or 0) * s)
+		-- the robe over his lower half: a gold hem, a belt with a jewelled buckle, two buttons,
+		-- and a soft ermine collar hugging him where the robe begins
+		local RC, RR = Vector3.new(0, -0.28, 0), Vector3.new(0.515, 0.28, 0.515)
+		ell(RR * 2 * s, robe, CFrame.new(RC * s), FABRIC)
+		bcyl(0.04, 0.85, GOLD, V(0, -0.44, 0), METAL)
+		bcyl(0.055, 1.0, Color3.fromRGB(55, 28, 20), V(0, -0.2, 0))
+		decal(V(0, -0.2, -0.5), -Vector3.zAxis, 0.13 * s, 0.1 * s, GOLD, { material = METAL })
+		decal(V(0, -0.2, -0.5), -Vector3.zAxis, 0.05 * s, 0.05 * s, Color3.fromRGB(40, 110, 255), { material = GLASS, layer = 1 })
+		for _, by in ipairs({ -0.29, -0.36 }) do
+			local p, n = atXY(RC, RR, 0, by, -1)
+			decal(p, n, 0.035 * s, 0.035 * s, GOLD, { material = METAL, raise = 0.004 })
 		end
+		bcyl(0.1, 1.0, ermine, V(0, -0.13, 0), FABRIC)
+		for i = -3, 3 do
+			local a = i * 0.32
+			decal(V(math.sin(a) * 0.5, -0.13 + (i % 2) * 0.025, -math.cos(a) * 0.5), Vector3.new(math.sin(a), 0, -math.cos(a)), 0.022 * s, 0.045 * s, Color3.fromRGB(25, 25, 28))
+		end
+		-- a cloak over his back, shaped to his body
+		local cp, cn = atXY(B0, BR, 0, -0.02, 1)
+		decal(cp, cn, 0.82 * s, 0.78 * s, robe:Lerp(BLACK, 0.3), { material = FABRIC })
+
+		-- the face: stern eyes with heavy lids, bushy brows, a round nose, rosy cheeks,
+		-- a curled mustache, a small smirk and a goatee, all on the curve of his body
 		for _, sx in ipairs({ -1, 1 }) do
-			local ex, ey = sx * 0.17, 0.2
-			ell(V(0.2, 0.17, 0.1), WHITE, F(ex, ey, 0.0))
-			ell(V(0.1, 0.1, 0.03), Color3.fromRGB(205, 140, 35), F(ex, ey - 0.01, 0.045))
-			ell(V(0.05, 0.05, 0.02), BLACK, F(ex, ey - 0.01, 0.06))
-			ball(0.025, WHITE, F(ex - 0.025, ey + 0.02, 0.07).Position, NEON)
-			ell(V(0.23, 0.09, 0.12), skin:Lerp(BLACK, 0.15), F(ex, ey + 0.065, 0.005) * CFrame.Angles(0, 0, sx * 0.25)) -- heavy upper lid
-			ell(V(0.24, 0.07, 0.08), hair, F(ex, ey + 0.14, 0.02) * CFrame.Angles(0, 0, sx * 0.3)) -- bushy brow
-			ell(V(0.08, 0.16, 0.12), skin, C(sx * 0.5, 0.14, 0)) -- ears
-			-- mustache: a thick sweep out to each side and a curl at the end
-			ell(V(0.2, 0.07, 0.08), hair, F(sx * 0.1, 0.0, 0.06) * CFrame.Angles(0, 0, -sx * 0.25))
-			ell(V(0.07, 0.05, 0.05), hair:Lerp(BLACK, 0.12), F(sx * 0.21, 0.04, 0.03) * CFrame.Angles(0, 0, sx * 0.9))
-			ell(V(0.06, 0.09, 0.05), skin:Lerp(Color3.fromRGB(255, 120, 140), 0.4), F(sx * 0.3, 0.07, 0.0)).Transparency = 0.2 -- rosy cheeks
+			local ex, ey = sx * 0.16, 0.2
+			paint(ex, ey, 0.16, 0.135, WHITE)
+			paint(ex + sx * 0.005, ey - 0.005, 0.085, 0.085, Color3.fromRGB(190, 130, 40), { layer = 1 })
+			paint(ex + sx * 0.005, ey - 0.005, 0.04, 0.04, Color3.fromRGB(12, 10, 12), { layer = 2 })
+			paint(ex - 0.018, ey + 0.016, 0.022, 0.022, WHITE, { layer = 3, material = NEON })
+			paint(ex, ey + 0.055, 0.18, 0.06, skin:Lerp(BLACK, 0.18), { layer = 4, roll = sx * 0.18 }) -- heavy upper lid
+			paint(ex, ey - 0.066, 0.14, 0.012, skin:Lerp(BLACK, 0.3), { layer = 4 })
+			paint(ex, 0.31, 0.19, 0.045, hair, { raise = 0.006, roll = sx * 0.28 })
+			paint(sx * 0.27, 0.11, 0.085, 0.05, Color3.fromRGB(255, 120, 140), { transparency = 0.45 })
+			paint(sx * 0.085, 0.045, 0.17, 0.05, hair, { raise = 0.006, roll = sx * 0.25 })
+			paint(sx * 0.17, 0.08, 0.05, 0.05, hair, { raise = 0.006 })
 		end
-		ell(V(0.16, 0.14, 0.15), skin:Lerp(Color3.fromRGB(255, 110, 130), 0.25), F(0, 0.07, 0.07)) -- nose
-		for _, sx in ipairs({ -1, 1 }) do ell(V(0.03, 0.025, 0.02), skin:Lerp(BLACK, 0.5), F(sx * 0.03, 0.035, 0.13)) end
-		ell(V(0.26, 0.08, 0.05), Color3.fromRGB(50, 12, 20), F(0.02, -0.08, 0.01)) -- a smirk
-		for t = -2, 1 do
-			add(nil, V(0.035, 0.04, 0.02), WHITE, F(0.02 + t * 0.045 + 0.02, -0.06, 0.03))
-		end
-		ell(V(0.13, 0.15, 0.09), hair, F(0, -0.18, 0.04)) -- goatee
+		paint(0, 0.1, 0.12, 0.1, skin:Lerp(Color3.fromRGB(255, 110, 130), 0.25), { t = 0.06 * s, raise = 0.03 }) -- nose
+		paint(0.01, -0.02, 0.16, 0.035, Color3.fromRGB(60, 15, 25))
+		paint(0.01, -0.012, 0.1, 0.014, WHITE, { layer = 1 })
+		paint(0, -0.066, 0.06, 0.045, hair, { raise = 0.004 })
 
-		-- the crown: velvet cap, a jewelled gold band, eight points with pearls and a cross on top
-		ell(V(0.44, 0.28, 0.44), robe, C(0, 0.55, 0), Enum.Material.Fabric)
-		bcyl(0.1, 0.5, GOLD, V(0, 0.49, 0), Enum.Material.Metal)
-		local gems = { Color3.fromRGB(230, 30, 50), Color3.fromRGB(40, 110, 255), Color3.fromRGB(40, 200, 90) }
+		-- the crown sits down on his head: a velvet cap, a gold band set with jewels,
+		-- eight points with pearls and an orb with a cross on top
+		ell(V(0.4, 0.22, 0.4), robe, C(0, 0.49, 0), FABRIC)
+		bcyl(0.1, 0.44, GOLD, V(0, 0.45, 0), METAL)
+		local gems = { Color3.fromRGB(220, 30, 50), Color3.fromRGB(40, 110, 255), Color3.fromRGB(40, 190, 90) }
 		for i = 0, 7 do
 			local a = i * TAU / 8
-			local pos = V(math.cos(a) * 0.25, 0.49, math.sin(a) * 0.25)
-			ell(V(0.05, 0.05, 0.02), gems[i % 3 + 1], CFrame.lookAt(pos, pos * Vector3.new(2, 1, 2)), NEON)
-			local tip = V(math.cos(a) * 0.23, 0.6, math.sin(a) * 0.23)
-			add(nil, V(0.05, 0.13, 0.03), GOLD, CFrame.lookAt(tip, tip * Vector3.new(2, 1, 2)), Enum.Material.Metal)
-			ball(0.045, Color3.fromRGB(250, 245, 235), tip + V(0, 0.08, 0))
+			local out = Vector3.new(math.cos(a), 0, math.sin(a))
+			decal(V(math.cos(a) * 0.22, 0.45, math.sin(a) * 0.22), out, 0.045 * s, 0.045 * s, gems[i % 3 + 1], { R = 0.22 * s, material = GLASS, raise = 0.003 })
+			local tip = V(math.cos(a) * 0.21, 0.5, math.sin(a) * 0.21)
+			add(nil, V(0.06, 0.06, 0.025), GOLD, CFrame.lookAt(tip, tip + out) * CFrame.Angles(0, 0, math.rad(45)), METAL)
+			ball(0.026, Color3.fromRGB(250, 246, 236), tip + V(0, 0.042, 0))
 		end
-		ball(0.1, GOLD, V(0, 0.71, 0), Enum.Material.Metal)
-		add(nil, V(0.03, 0.12, 0.03), GOLD, C(0, 0.8, 0), Enum.Material.Metal)
-		add(nil, V(0.08, 0.03, 0.03), GOLD, C(0, 0.81, 0), Enum.Material.Metal)
+		ball(0.08, GOLD, V(0, 0.6, 0), METAL)
+		add(nil, V(0.022, 0.08, 0.022), GOLD, C(0, 0.665, 0), METAL)
+		add(nil, V(0.056, 0.02, 0.022), GOLD, C(0, 0.675, 0), METAL)
 
-		-- arms in velvet sleeves with ermine cuffs and white gloves, a sceptre and an orb
-		arms({ x = 0.47, y = -0.1, len = 0.4, thick = 0.13, color = robe, sleeve = robe, glove = WHITE, cuffColor = ermine, fingers = true, round = true })
-		local rod = add(CYL, V(0.85, 0.05, 0.05), GOLD, CFrame.new(0, s * 0.25, -s * 0.03) * UPRIGHT, Enum.Material.Metal, hands[1])
-		for g = 0, 2 do
-			add(CYL, V(0.03, 0.07, 0.07), gems[g + 1], CFrame.new(0, s * (0.0 + g * 0.2), -s * 0.03) * UPRIGHT, NEON, hands[1])
+		-- arms in velvet sleeves with fur cuffs and white gloves; a sceptre and an orb
+		arms({ x = 0.45, y = -0.15, len = 0.38, thick = 0.13, color = robe, sleeve = robe, glove = WHITE, cuffColor = ermine, cuffMaterial = FABRIC, fingers = true })
+		add(CYL, V(0.85, 0.045, 0.045), GOLD, CFrame.new(0, s * 0.27, -s * 0.02) * UPRIGHT, METAL, hands[1])
+		for _, ry in ipairs({ 0.12, 0.34 }) do
+			add(CYL, V(0.025, 0.058, 0.058), GOLD:Lerp(BLACK, 0.15), CFrame.new(0, s * ry, -s * 0.02) * UPRIGHT, METAL, hands[1])
 		end
-		ball(0.14, GOLD, Vector3.new(0, s * 0.7, -s * 0.03), Enum.Material.Metal, hands[1])
-		ball(0.08, gems[1], Vector3.new(0, s * 0.7, -s * 0.1), NEON, hands[1])
-		add(nil, V(0.03, 0.14, 0.03), GOLD, CFrame.new(0, s * 0.83, -s * 0.03), Enum.Material.Metal, hands[1])
-		add(nil, V(0.09, 0.03, 0.03), GOLD, CFrame.new(0, s * 0.84, -s * 0.03), Enum.Material.Metal, hands[1])
-		local orb = ball(0.2, GOLD, Vector3.new(0, s * 0.02, -s * 0.12), Enum.Material.Metal, hands[-1])
-		bcyl(0.03, 0.205, gems[2], Vector3.new(0, 0, 0), NEON, orb)
-		add(nil, V(0.025, 0.1, 0.025), GOLD, C(0, 0.14, 0), Enum.Material.Metal, orb)
-		add(nil, V(0.07, 0.025, 0.025), GOLD, C(0, 0.15, 0), Enum.Material.Metal, orb)
-		_ = rod
-		legs({ x = 0.2, thick = 0.14, color = Color3.fromRGB(60, 25, 70), boot = true, round = true })
-		bodyTop = 0.85
-		frontReach = 0.62
+		ball(0.13, GOLD, Vector3.new(0, s * 0.74, -s * 0.02), METAL, hands[1])
+		decal(Vector3.new(0, s * 0.74, -s * 0.085), -Vector3.zAxis, 0.05 * s, 0.05 * s, gems[1], { R = 0.065 * s, material = GLASS, parent = hands[1] })
+		add(nil, V(0.02, 0.08, 0.02), GOLD, CFrame.new(0, s * 0.82, -s * 0.02), METAL, hands[1])
+		add(nil, V(0.055, 0.02, 0.02), GOLD, CFrame.new(0, s * 0.83, -s * 0.02), METAL, hands[1])
+		ball(0.18, GOLD, Vector3.new(0, 0, -s * 0.1), METAL, hands[-1])
+		add(CYL, V(0.02, 0.183, 0.183), gems[2], CFrame.new(0, 0, -s * 0.1) * UPRIGHT, GLASS, hands[-1])
+		add(nil, V(0.02, 0.06, 0.02), GOLD, CFrame.new(0, s * 0.11, -s * 0.1), METAL, hands[-1])
+		add(nil, V(0.05, 0.018, 0.02), GOLD, CFrame.new(0, s * 0.12, -s * 0.1), METAL, hands[-1])
+		legs({ x = 0.19, hipY = -0.38, thick = 0.14, color = Color3.fromRGB(70, 30, 80), boot = true })
+		bodyTop = 0.7
+		frontReach = 0.56
 	end
-	-- Tralalero Turbino: a real-looking shark (blue back, white belly, black eyes, rows of
-	-- teeth, gills, every fin and a crescent tail) running on three legs in sneakers
+	-- Tralalero Turbino: a great white style shark (blue back, white belly) on three legs in
+	-- sneakers. Eyes, gills, nostrils and mouth are painted onto its curves; every fin grows
+	-- out of the body
 	BUILD.tralalero = function()
-		local back, belly, fin = skin, Color3.fromRGB(236, 240, 245), skin:Lerp(BLACK, 0.2)
-		-- one long smooth body, plus a tapered snout and tail
-		ell(V(0.92, 0.82, 1.9), back, C(0, 0.05, 0.0))
-		ell(V(0.9, 0.58, 1.86), belly, C(0, -0.09, -0.02))
-		ell(V(0.62, 0.52, 0.7), back, C(0, 0.06, -0.78))
-		ell(V(0.6, 0.36, 0.68), belly, C(0, -0.03, -0.79))
-		ell(V(0.34, 0.24, 0.5), back, C(0, 0.1, -1.02) * CFrame.Angles(math.rad(8), 0, 0)) -- pointed snout
-		ell(V(0.5, 0.48, 0.9), back, C(0, 0.06, 0.95))
-		ell(V(0.26, 0.26, 0.6), back, C(0, 0.08, 1.25))
-		ell(V(0.3, 0.6, 1.4), back:Lerp(BLACK, 0.12), C(0, 0.22, 0.05)) -- a darker back
-
-		-- fins
-		wedge(V(0.06, 0.6, 0.55), fin, C(0, 0.72, 0.02) * CFrame.Angles(math.rad(-6), 0, 0))
-		wedge(V(0.04, 0.18, 0.18), fin, C(0, 0.33, 0.86))
-		wedge(V(0.04, 0.14, 0.16), fin, C(0, -0.22, 0.88) * CFrame.Angles(math.pi, 0, 0))
-		ell(V(0.05, 0.85, 0.22), fin, C(0, 0.4, 1.38) * CFrame.Angles(math.rad(-35), 0, 0))
-		ell(V(0.05, 0.5, 0.2), fin, C(0, -0.16, 1.33) * CFrame.Angles(math.rad(38), 0, 0))
+		local back, belly, fin = skin, Color3.fromRGB(236, 240, 245), skin:Lerp(BLACK, 0.18)
+		-- one smooth torpedo from snout to tail, with a white belly inside it that shows underneath
+		local MC, MR = Vector3.new(0, 0.05, 0), Vector3.new(0.46, 0.41, 1.3)
+		local BC, BR = Vector3.new(0, -0.09, -0.02), Vector3.new(0.45, 0.29, 1.27)
+		ell(MR * 2 * s, back, CFrame.new(MC * s))
+		ell(BR * 2 * s, belly, CFrame.new(BC * s))
+		-- fins, each rooted inside the body
+		wedge(V(0.06, 0.55, 0.5), fin, C(0, 0.38 + 0.275, 0.02))
+		wedge(V(0.04, 0.17, 0.17), fin, C(0, 0.3 + 0.085, 0.86))
+		wedge(V(0.04, 0.13, 0.15), fin, C(0, -0.265, 0.9) * CFrame.Angles(math.pi, 0, 0))
+		local function blade(a, b, w, thick)
+			local mid = (a + b) / 2
+			ell(Vector3.new(thick * s, w * s, (b - a).Magnitude), fin, CFrame.lookAt(mid, b))
+		end
+		blade(V(0, 0.09, 1.2), V(0, 0.68, 1.62), 0.2, 0.05) -- the tail: a tall upper lobe...
+		blade(V(0, 0.04, 1.2), V(0, -0.3, 1.5), 0.16, 0.05) -- ...and a shorter lower one
 		for _, sx in ipairs({ -1, 1 }) do
-			ell(V(0.62, 0.05, 0.28), fin, C(sx * 0.55, -0.2, -0.22) * CFrame.Angles(0, sx * 0.55, sx * -0.4))
-			ell(V(0.22, 0.04, 0.14), fin, C(sx * 0.2, -0.32, 0.56) * CFrame.Angles(0, sx * 0.4, sx * -0.3))
+			ell(V(0.62, 0.05, 0.28), fin, C(sx * 0.5, -0.2, -0.32) * CFrame.Angles(0, sx * 0.55, sx * -0.4))
+			ell(V(0.22, 0.04, 0.14), fin, C(sx * 0.18, -0.31, 0.56) * CFrame.Angles(0, sx * 0.4, sx * -0.3))
+			-- glossy black eyes set into the head, with a darker rim and a glint
+			local ep, en = atYZ(MC, MR, 0.15, -0.85, sx)
+			decal(ep, en, 0.14 * s, 0.115 * s, back:Lerp(BLACK, 0.35), { R = 0.35 * s })
+			decal(ep, en, 0.11 * s, 0.09 * s, Color3.fromRGB(8, 8, 12), { R = 0.35 * s, layer = 1, raise = 0.008, t = 0.04 * s, material = Enum.Material.Glass })
+			local gp, gn = atYZ(MC, MR, 0.17, -0.88, sx)
+			decal(gp, gn, 0.025 * s, 0.025 * s, WHITE, { R = 0.35 * s, layer = 6, material = NEON })
 			-- five gill slits
 			for g = 0, 4 do
-				ell(V(0.01, 0.22 - g * 0.015, 0.018), back:Lerp(BLACK, 0.4), C(sx * 0.455, 0.03, -0.5 + g * 0.055) * CFrame.Angles(0, sx * 0.25, 0))
+				local p, n = atYZ(MC, MR, 0.03, -0.55 + g * 0.055, sx)
+				decal(p, n, 0.012 * s, (0.22 - g * 0.015) * s, back:Lerp(BLACK, 0.4), { R = 0.45 * s })
 			end
-			-- glossy black eyes with a small shine
-			ell(V(0.03, 0.11, 0.14), back:Lerp(BLACK, 0.3), C(sx * 0.29, 0.15, -0.72) * CFrame.Angles(0, sx * 0.5, 0))
-			ball(0.1, Color3.fromRGB(8, 8, 12), V(sx * 0.3, 0.15, -0.72), Enum.Material.Glass)
-			ball(0.025, WHITE, V(sx * 0.345, 0.17, -0.75), NEON)
-			ell(V(0.025, 0.02, 0.03), BLACK, C(sx * 0.07, 0.03, -1.15)) -- nostrils
+			local np, nn = atXY(MC, MR, sx * 0.06, 0.1, -1)
+			decal(np, nn, 0.03 * s, 0.018 * s, Color3.fromRGB(20, 25, 35), { R = 0.2 * s })
 		end
-		-- the mouth under the snout: pink gums and two rows of pointed teeth
-		-- (the mouth sits a little open under the snout, so the teeth show from the front)
-		ell(V(0.5, 0.13, 0.4), Color3.fromRGB(70, 15, 25), C(0, -0.2, -0.86))
-		ell(V(0.44, 0.05, 0.34), Color3.fromRGB(220, 100, 120), C(0, -0.235, -0.85))
+		-- the mouth under the snout, rimmed with pointed teeth
+		local mp, mn = atXZ(BC, BR, 0, -0.95, -1)
+		decal(mp, mn, 0.36 * s, 0.22 * s, Color3.fromRGB(70, 15, 25), { R = 0.35 * s })
+		decal(mp, mn, 0.28 * s, 0.15 * s, Color3.fromRGB(215, 95, 115), { R = 0.35 * s, layer = 1 })
 		for i = -5, 5 do
-			local a = i * 0.27
-			local x, z = math.sin(a) * 0.23, -1.04 + (1 - math.cos(a)) * 0.32
-			add(nil, V(0.04, 0.04, 0.02), WHITE, C(x, -0.155, z) * CFrame.Angles(0, -a, math.rad(45)))
-			if i > -5 and i < 5 then
-				add(nil, V(0.034, 0.034, 0.02), WHITE, C(x * 0.92, -0.245, z + 0.025) * CFrame.Angles(0, -a, math.rad(45)))
-			end
+			local a = i * 0.24
+			local tp = atXZ(BC, BR, math.sin(a) * 0.17, -0.95 - math.cos(a) * 0.105, -1)
+			local out = Vector3.new(math.sin(a), 0, -math.cos(a))
+			add(nil, V(0.035, 0.035, 0.02), WHITE, CFrame.lookAt(tp, tp + out) * CFrame.Angles(0, 0, math.rad(45)))
 		end
-		-- three legs in sneakers, with muscly calves
-		legs({ x = 0.24, z = -0.08, third = 0.34, thick = 0.12, color = back, muscle = true, round = true, footSize = 0.85, swoosh = Color3.fromRGB(20, 20, 25) })
-		bodyTop = 1.05
-		frontReach = 1.18
+		legs({ x = 0.24, z = -0.08, third = 0.34, hipY = -0.25, thick = 0.12, color = back, footSize = 0.85, swoosh = Color3.fromRGB(20, 20, 25) })
+		bodyTop = 0.95
+		frontReach = 1.3
 	end
-	-- anything without a look of its own: a classic ball or block brainrot
+	-- anything without a look of its own: a smooth round brainrot
 	BUILD.classic = function()
-		if def.style == "boxy" then
-			add(nil, V(1, 0.9, 1), skin, CFrame.new())
-			add(nil, V(1.02, 0.3, 1.02), light, C(0, -0.3, 0))
-			face(Vector3.zero, s, "flat", {})
-		else
-			add(BALL, V(1, 1, 1), skin, CFrame.new())
-			ell(V(0.62, 0.5, 0.22), light, C(0, -0.16, -0.38))
-			face(Vector3.zero, s, "sphere", {})
+		add(BALL, V(1, 1, 1), skin, CFrame.new())
+		for _, sx in ipairs({ -1, 1 }) do
+			local p, n = atXY(Vector3.zero, Vector3.new(0.5, 0.5, 0.5), sx * 0.17, 0.15, -1)
+			decal(p, n, 0.17 * s, 0.17 * s, WHITE)
+			decal(p, n, 0.08 * s, 0.08 * s, def.eyes or BLACK, { layer = 1 })
 		end
-		arms({ x = 0.48, y = -0.04, len = 0.42, thick = 0.13 })
+		local p, n = atXY(Vector3.zero, Vector3.new(0.5, 0.5, 0.5), 0, -0.12, -1)
+		decal(p, n, 0.3 * s, 0.08 * s, Color3.fromRGB(60, 15, 25))
+		arms({ x = 0.46, y = -0.06, len = 0.42, thick = 0.13 })
 		legs({ x = 0.22, thick = 0.18 })
 	end
 	;(BUILD[def.look] or BUILD.classic)()
@@ -7880,6 +7867,24 @@ do
 		local function ball(d, color, pos, material) return part(Enum.PartType.Ball, Vector3.one * d, color, CFrame.new(pos), material) end
 		local C = CFrame.new
 		local light, dark = body:Lerp(WHITE, 0.35), body:Lerp(BLACK, 0.25)
+		-- eyes, cheeks, noses and bellies are painted onto the curve of the body (a thin oval
+		-- bent to the same curve), so nothing sticks out of the pet
+		local BR = (style == "slime") and Vector3.new(1.3, 0.95, 1.2) or Vector3.new(1.15, 1.1, 1.1)
+		local function paint(x, y, w, h, color, o)
+			o = o or {}
+			local u, v = x / BR.X, y / BR.Y
+			local wz = -math.sqrt(math.max(0.0004, 1 - u * u - v * v))
+			local pnt = Vector3.new(u * BR.X, v * BR.Y, wz * BR.Z)
+			local n = Vector3.new(u / BR.X, v / BR.Y, wz / BR.Z).Unit
+			local th = o.t or math.max(0.05, math.max(w, h) ^ 2 / 2.2)
+			local c = pnt + n * (0.01 + 0.012 * (o.layer or 0) + (o.raise or 0) - th / 2)
+			local d = ell(Vector3.new(w, h, th), color, CFrame.lookAt(c, c + n) * CFrame.Angles(0, 0, o.roll or 0), o.material)
+			if o.transparency then d.Transparency = o.transparency end
+			return d
+		end
+		local function topY(z) -- the top of the body at depth z
+			return BR.Y * math.sqrt(math.max(0, 1 - (z / BR.Z) ^ 2))
+		end
 
 		-- the round chibi body + a face (big shiny eyes, cheeks, a little mouth)
 		local core
@@ -7899,15 +7904,15 @@ do
 			if style == "slime" then core.Transparency = 0.15 end
 			if style == "wisp" then core.Transparency = 0.25 end
 			if style ~= "slime" and style ~= "wisp" and style ~= "cloud" then
-				ell(Vector3.new(1.4, 1.2, 0.5), light, C(0, -0.35, -0.85)) -- lighter belly / muzzle
+				paint(0, -0.4, 1.3, 1.0, light) -- lighter belly / muzzle
 			end
 			for _, sx in ipairs({ -1, 1 }) do
-				ell(Vector3.new(0.5, 0.6, 0.25), WHITE, C(sx * 0.42, 0.22, -0.98))
-				ell(Vector3.new(0.32, 0.42, 0.12), (style == "overlord") and Color3.fromRGB(255, 50, 50) or Color3.fromRGB(25, 20, 30), C(sx * 0.42, 0.18, -1.08), (style == "overlord") and Enum.Material.Neon or nil)
-				ball(0.13, WHITE, Vector3.new(sx * 0.42 - 0.07, 0.32, -1.14), Enum.Material.Neon)
-				ell(Vector3.new(0.3, 0.14, 0.06), Color3.fromRGB(255, 130, 160), C(sx * 0.72, -0.12, -0.86) * CFrame.Angles(0, -sx * 0.6, 0)).Transparency = 0.3
+				paint(sx * 0.42, 0.22, 0.5, 0.58, WHITE, { layer = 1 })
+				paint(sx * 0.43, 0.19, 0.32, 0.4, (style == "overlord") and Color3.fromRGB(255, 50, 50) or Color3.fromRGB(25, 20, 30), { layer = 2, material = (style == "overlord") and Enum.Material.Neon or nil })
+				paint(sx * 0.42 - 0.07, 0.3, 0.12, 0.12, WHITE, { layer = 3, material = Enum.Material.Neon })
+				paint(sx * 0.7, -0.12, 0.3, 0.16, Color3.fromRGB(255, 130, 160), { layer = 1, transparency = 0.3 })
 			end
-			ell(Vector3.new(0.3, 0.12, 0.08), Color3.fromRGB(70, 25, 35), C(0, -0.22, -1.08))
+			paint(0, -0.24, 0.26, 0.1, Color3.fromRGB(70, 25, 35), { layer = 1 })
 		end
 
 		-- what each kind of pet has
@@ -7926,7 +7931,7 @@ do
 					ball(0.38, light, Vector3.new(sx * 0.75, 1.0, -0.15))
 				end
 			end
-			ell(Vector3.new(0.3, 0.2, 0.2), BLACK, C(0, -0.02, -1.15))
+			paint(0, -0.02, 0.3, 0.2, BLACK, { layer = 2, raise = 0.06, t = 0.16 })
 			if style == "pup" then ell(Vector3.new(0.25, 0.25, 0.8), accent, C(0, 0.2, 1.2) * CFrame.Angles(-0.7, 0, 0)) end
 		elseif style == "cat" or style == "fox" or style == "wolf" then
 			local earH = (style == "cat") and 0.7 or 0.9
@@ -7945,23 +7950,28 @@ do
 					end
 				end
 			end
-			ell(Vector3.new(0.18, 0.13, 0.12), BLACK, C(0, -0.05, -1.13))
+			paint(0, -0.05, 0.18, 0.13, BLACK, { layer = 2, raise = 0.04, t = 0.1 })
 			local tail = ell(Vector3.new(0.6, 0.6, 1.4), (style == "cat") and body or accent, C(0, 0.3, 1.3) * CFrame.Angles(-0.8, 0, 0))
 			if style ~= "cat" then ball(0.5, WHITE, Vector3.new(0, 0.85, 1.85)) end
 			_ = tail
 		elseif style == "bee" then
+			-- stripes wrapped around the body: thin slices that follow its curve
 			for i = -1, 1 do
-				part(Enum.PartType.Cylinder, Vector3.new(0.25, 2.32, 2.32), accent, C(0, i * 0.5, 0.1) * CFrame.Angles(0, 0, math.pi / 2) * CFrame.Angles(0.2, 0, 0))
+				for k = 0, 3 do
+					local y = i * 0.5 - 0.105 + k * 0.07
+					local d = 2 * BR.X * math.sqrt(math.max(0, 1 - (y / BR.Y) ^ 2)) + 0.03
+					part(Enum.PartType.Cylinder, Vector3.new(0.075, d, d), accent, C(0, y, 0) * CFrame.Angles(0, 0, math.pi / 2))
+				end
 			end
 			for _, sx in ipairs({ -1, 1 }) do
 				ell(Vector3.new(1.2, 0.08, 0.7), Color3.fromRGB(220, 240, 255), C(sx * 0.9, 1.0, 0.4) * CFrame.Angles(0, 0, sx * 0.5)).Transparency = 0.35
-				part(nil, Vector3.new(0.06, 0.7, 0.06), BLACK, C(sx * 0.3, 1.35, -0.6) * CFrame.Angles(-0.4, 0, sx * 0.3))
-				ball(0.18, BLACK, Vector3.new(sx * 0.42, 1.68, -0.78))
+				part(nil, Vector3.new(0.06, 0.7, 0.06), BLACK, C(sx * 0.3, 1.28, -0.6) * CFrame.Angles(-0.4, 0, sx * 0.3))
+				ball(0.18, BLACK, Vector3.new(sx * 0.4, 1.6, -0.74))
 			end
 		elseif style == "beetle" then
 			for _, sx in ipairs({ -1, 1 }) do
 				ell(Vector3.new(1.25, 1.5, 2.1), accent, C(sx * 0.55, 0.5, 0.25), Enum.Material.Glass)
-				for k = -1, 1 do part(nil, Vector3.new(0.6, 0.08, 0.08), BLACK, C(sx * 1.1, -0.85, k * 0.5) * CFrame.Angles(0, 0, sx * 0.6)) end
+				for k = -1, 1 do part(nil, Vector3.new(0.6, 0.08, 0.08), BLACK, C(sx * 0.9, -0.82, k * 0.5) * CFrame.Angles(0, 0, sx * 0.6)) end
 			end
 			part(nil, Vector3.new(0.15, 0.8, 0.15), accent, C(0, 1.15, -0.6) * CFrame.Angles(-0.5, 0, 0))
 		elseif style == "penguin" then
@@ -7976,7 +7986,10 @@ do
 				part(nil, Vector3.new(0.18, 0.7, 0.18), accent, C(sx * 0.5, 1.2, 0.1) * CFrame.Angles(0.4, 0, -sx * 0.3))
 				ell(Vector3.new(1.4, 0.1, 0.9), accent, C(sx * 1.3, 0.6, 0.5) * CFrame.Angles(0, sx * 0.3, sx * 0.5))
 			end
-			for k = 0, 3 do ball(0.3 - k * 0.04, accent, Vector3.new(0, 1.05 - k * 0.12, 0.2 + k * 0.38)) end
+			for k = 0, 3 do
+				local z = 0.15 + k * 0.24
+				ball(0.32 - k * 0.04, accent, Vector3.new(0, topY(z) - 0.04, z))
+			end
 			ell(Vector3.new(0.5, 0.5, 1.4), body, C(0, -0.4, 1.3) * CFrame.Angles(-0.5, 0, 0))
 		elseif style == "slime" then
 			ell(Vector3.new(0.7, 0.35, 0.5), WHITE, C(-0.5, 0.65, -0.5)).Transparency = 0.5
@@ -7994,9 +8007,12 @@ do
 			end
 		elseif style == "unicorn" then
 			for k = 0, 3 do
-				part(Enum.PartType.Cylinder, Vector3.new(0.3, 0.42 - k * 0.09, 0.42 - k * 0.09), Color3.fromRGB(255, 215, 80), C(0, 1.2 + k * 0.28, -0.4) * CFrame.Angles(-0.3, 0, math.pi / 2), Enum.Material.Neon)
+				part(Enum.PartType.Cylinder, Vector3.new(0.3, 0.42 - k * 0.09, 0.42 - k * 0.09), Color3.fromRGB(255, 215, 80), C(0, 0.92 + k * 0.27, -0.42 - k * 0.08) * CFrame.Angles(-0.3, 0, math.pi / 2), Enum.Material.Neon)
 			end
-			for k = 0, 4 do ball(0.45, accent, Vector3.new(0, 1.0 - k * 0.2, 0.1 + k * 0.28)) end
+			for k = 0, 4 do
+				local z = 0.05 + k * 0.2
+				ball(0.42, accent, Vector3.new(0, topY(z) - 0.08, z))
+			end
 			for _, sx in ipairs({ -1, 1 }) do ell(Vector3.new(0.3, 0.6, 0.3), body, C(sx * 0.55, 1.05, 0.1)) end
 		elseif style == "bat" then
 			for _, sx in ipairs({ -1, 1 }) do

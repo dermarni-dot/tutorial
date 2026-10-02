@@ -41,9 +41,10 @@ Four scripts:
 - **Map 2: Turbo Badlands**. Its boss is **Tralalero Turbino**, a bigger shark in big sneakers. 6 zones that pay **1.5K to 500K trophies**: Jungle, Haunted, Factory, Space, Rainbow, Inferno.
 - Each map has its own start island with a speed pad, 4 eggs, leaderboards and a portal.
 - Reaching a map's finish unlocks the next map and takes you there. To add a third map, copy a block in `MAPS`.
+- **Smooth, joined-up designs**: on the bosses and pets, every detail (eyes, lids, brows, mustaches, cheeks, noses, gills, buttons, jewels, laces, swooshes) is painted onto the curve of the body it sits on, instead of being stuck on top. Arms, legs, fins, horns, spikes and manes all start inside the body they grow from, so nothing floats or pokes out. Eggs have no rings or bits sticking out of them.
 - **One giant boss per map**: it's about as wide as the track (80% of `ZoneWidth`) and a couple of hundred studs tall, so there's no getting around it. You can only run. It catches you when its face reaches you.
   - **Il Grande Zoomerone** (Map 1) is a king in full royal dress. He has a jewelled crown with pearls and a cross, stern eyes with heavy lids and bushy brows, a big nose, a curled mustache and a goatee. He wears a velvet robe with a gold hem, belt and buttons, an ermine collar and a long cape, white gloves with real fingers, and royal boots with gold buckles. He holds a jewelled sceptre and an orb.
-  - **Tralalero Turbino** (Map 2) is a real-looking shark: a smooth blue back and white belly, glossy black eyes, a pointed snout, a mouth with two rows of pointed teeth, five gill slits on each side, dorsal, pectoral, pelvic and anal fins and a crescent tail. It runs on three muscly legs in sneakers.
+  - **Tralalero Turbino** (Map 2) is a real-looking shark: one smooth torpedo-shaped body with a blue back and a white belly, glossy black eyes, a pointed snout, a mouth with two rows of pointed teeth, five gill slits on each side, dorsal, pectoral, pelvic and anal fins and a crescent tail. It runs on three muscly legs in sneakers.
   - **Only you see your own boss.** Everyone has their own, and other players' bosses are hidden on your screen.
 - **How the boss's speed works**:
   - It gets faster in every zone: each zone has a pace it runs at least.
@@ -105,7 +106,7 @@ Four scripts:
   - Map 1: 20, 100, 500 and 1K trophies.
   - Map 2: 2.5K, 10K, 50K and 250K trophies.
 - Each egg holds **6 pets**, one of each rarity: Common, Uncommon, Rare, Epic, Legendary and Mythic (50%, 25%, 14%, 8%, 2.5% and 0.5%). That's 48 pets in total. Legendary and Mythic hatches are announced to the whole server.
-- Eggs are big (1.6x), float over their pedestals in a soft beam of light with a glowing ring around them, spin and sparkle. Their name and price float above them.
+- Eggs are big (1.6x), float over their pedestals in a soft beam of light, spin and sparkle. Their name and price float above them.
 - **Opening eggs**: walk up to any egg and the **egg panel** slides up from the bottom of the screen. It shows the egg, its price, how many trophies you have, and every pet inside as a card with its picture, chance and rarity. Press **OPEN** to hatch one, or **AUTO** to keep opening while you can afford it. If the egg's map isn't unlocked yet, it says so. The old E prompt still works too.
 - **Pets follow you**: your equipped pets float and hop along behind you as detailed 3D models, built by their kind:
   - bunnies have long ears with pink insides;

@@ -599,6 +599,24 @@ do
 		local function ball(d, color, pos, material) return part(Enum.PartType.Ball, Vector3.one * d, color, CFrame.new(pos), material) end
 		local C = CFrame.new
 		local light, dark = body:Lerp(WHITE, 0.35), body:Lerp(BLACK, 0.25)
+		-- eyes, cheeks, noses and bellies are painted onto the curve of the body (a thin oval
+		-- bent to the same curve), so nothing sticks out of the pet
+		local BR = (style == "slime") and Vector3.new(1.3, 0.95, 1.2) or Vector3.new(1.15, 1.1, 1.1)
+		local function paint(x, y, w, h, color, o)
+			o = o or {}
+			local u, v = x / BR.X, y / BR.Y
+			local wz = -math.sqrt(math.max(0.0004, 1 - u * u - v * v))
+			local pnt = Vector3.new(u * BR.X, v * BR.Y, wz * BR.Z)
+			local n = Vector3.new(u / BR.X, v / BR.Y, wz / BR.Z).Unit
+			local th = o.t or math.max(0.05, math.max(w, h) ^ 2 / 2.2)
+			local c = pnt + n * (0.01 + 0.012 * (o.layer or 0) + (o.raise or 0) - th / 2)
+			local d = ell(Vector3.new(w, h, th), color, CFrame.lookAt(c, c + n) * CFrame.Angles(0, 0, o.roll or 0), o.material)
+			if o.transparency then d.Transparency = o.transparency end
+			return d
+		end
+		local function topY(z) -- the top of the body at depth z
+			return BR.Y * math.sqrt(math.max(0, 1 - (z / BR.Z) ^ 2))
+		end
 
 		-- the round chibi body + a face (big shiny eyes, cheeks, a little mouth)
 		local core
@@ -618,15 +636,15 @@ do
 			if style == "slime" then core.Transparency = 0.15 end
 			if style == "wisp" then core.Transparency = 0.25 end
 			if style ~= "slime" and style ~= "wisp" and style ~= "cloud" then
-				ell(Vector3.new(1.4, 1.2, 0.5), light, C(0, -0.35, -0.85)) -- lighter belly / muzzle
+				paint(0, -0.4, 1.3, 1.0, light) -- lighter belly / muzzle
 			end
 			for _, sx in ipairs({ -1, 1 }) do
-				ell(Vector3.new(0.5, 0.6, 0.25), WHITE, C(sx * 0.42, 0.22, -0.98))
-				ell(Vector3.new(0.32, 0.42, 0.12), (style == "overlord") and Color3.fromRGB(255, 50, 50) or Color3.fromRGB(25, 20, 30), C(sx * 0.42, 0.18, -1.08), (style == "overlord") and Enum.Material.Neon or nil)
-				ball(0.13, WHITE, Vector3.new(sx * 0.42 - 0.07, 0.32, -1.14), Enum.Material.Neon)
-				ell(Vector3.new(0.3, 0.14, 0.06), Color3.fromRGB(255, 130, 160), C(sx * 0.72, -0.12, -0.86) * CFrame.Angles(0, -sx * 0.6, 0)).Transparency = 0.3
+				paint(sx * 0.42, 0.22, 0.5, 0.58, WHITE, { layer = 1 })
+				paint(sx * 0.43, 0.19, 0.32, 0.4, (style == "overlord") and Color3.fromRGB(255, 50, 50) or Color3.fromRGB(25, 20, 30), { layer = 2, material = (style == "overlord") and Enum.Material.Neon or nil })
+				paint(sx * 0.42 - 0.07, 0.3, 0.12, 0.12, WHITE, { layer = 3, material = Enum.Material.Neon })
+				paint(sx * 0.7, -0.12, 0.3, 0.16, Color3.fromRGB(255, 130, 160), { layer = 1, transparency = 0.3 })
 			end
-			ell(Vector3.new(0.3, 0.12, 0.08), Color3.fromRGB(70, 25, 35), C(0, -0.22, -1.08))
+			paint(0, -0.24, 0.26, 0.1, Color3.fromRGB(70, 25, 35), { layer = 1 })
 		end
 
 		-- what each kind of pet has
@@ -645,7 +663,7 @@ do
 					ball(0.38, light, Vector3.new(sx * 0.75, 1.0, -0.15))
 				end
 			end
-			ell(Vector3.new(0.3, 0.2, 0.2), BLACK, C(0, -0.02, -1.15))
+			paint(0, -0.02, 0.3, 0.2, BLACK, { layer = 2, raise = 0.06, t = 0.16 })
 			if style == "pup" then ell(Vector3.new(0.25, 0.25, 0.8), accent, C(0, 0.2, 1.2) * CFrame.Angles(-0.7, 0, 0)) end
 		elseif style == "cat" or style == "fox" or style == "wolf" then
 			local earH = (style == "cat") and 0.7 or 0.9
@@ -664,23 +682,28 @@ do
 					end
 				end
 			end
-			ell(Vector3.new(0.18, 0.13, 0.12), BLACK, C(0, -0.05, -1.13))
+			paint(0, -0.05, 0.18, 0.13, BLACK, { layer = 2, raise = 0.04, t = 0.1 })
 			local tail = ell(Vector3.new(0.6, 0.6, 1.4), (style == "cat") and body or accent, C(0, 0.3, 1.3) * CFrame.Angles(-0.8, 0, 0))
 			if style ~= "cat" then ball(0.5, WHITE, Vector3.new(0, 0.85, 1.85)) end
 			_ = tail
 		elseif style == "bee" then
+			-- stripes wrapped around the body: thin slices that follow its curve
 			for i = -1, 1 do
-				part(Enum.PartType.Cylinder, Vector3.new(0.25, 2.32, 2.32), accent, C(0, i * 0.5, 0.1) * CFrame.Angles(0, 0, math.pi / 2) * CFrame.Angles(0.2, 0, 0))
+				for k = 0, 3 do
+					local y = i * 0.5 - 0.105 + k * 0.07
+					local d = 2 * BR.X * math.sqrt(math.max(0, 1 - (y / BR.Y) ^ 2)) + 0.03
+					part(Enum.PartType.Cylinder, Vector3.new(0.075, d, d), accent, C(0, y, 0) * CFrame.Angles(0, 0, math.pi / 2))
+				end
 			end
 			for _, sx in ipairs({ -1, 1 }) do
 				ell(Vector3.new(1.2, 0.08, 0.7), Color3.fromRGB(220, 240, 255), C(sx * 0.9, 1.0, 0.4) * CFrame.Angles(0, 0, sx * 0.5)).Transparency = 0.35
-				part(nil, Vector3.new(0.06, 0.7, 0.06), BLACK, C(sx * 0.3, 1.35, -0.6) * CFrame.Angles(-0.4, 0, sx * 0.3))
-				ball(0.18, BLACK, Vector3.new(sx * 0.42, 1.68, -0.78))
+				part(nil, Vector3.new(0.06, 0.7, 0.06), BLACK, C(sx * 0.3, 1.28, -0.6) * CFrame.Angles(-0.4, 0, sx * 0.3))
+				ball(0.18, BLACK, Vector3.new(sx * 0.4, 1.6, -0.74))
 			end
 		elseif style == "beetle" then
 			for _, sx in ipairs({ -1, 1 }) do
 				ell(Vector3.new(1.25, 1.5, 2.1), accent, C(sx * 0.55, 0.5, 0.25), Enum.Material.Glass)
-				for k = -1, 1 do part(nil, Vector3.new(0.6, 0.08, 0.08), BLACK, C(sx * 1.1, -0.85, k * 0.5) * CFrame.Angles(0, 0, sx * 0.6)) end
+				for k = -1, 1 do part(nil, Vector3.new(0.6, 0.08, 0.08), BLACK, C(sx * 0.9, -0.82, k * 0.5) * CFrame.Angles(0, 0, sx * 0.6)) end
 			end
 			part(nil, Vector3.new(0.15, 0.8, 0.15), accent, C(0, 1.15, -0.6) * CFrame.Angles(-0.5, 0, 0))
 		elseif style == "penguin" then
@@ -695,7 +718,10 @@ do
 				part(nil, Vector3.new(0.18, 0.7, 0.18), accent, C(sx * 0.5, 1.2, 0.1) * CFrame.Angles(0.4, 0, -sx * 0.3))
 				ell(Vector3.new(1.4, 0.1, 0.9), accent, C(sx * 1.3, 0.6, 0.5) * CFrame.Angles(0, sx * 0.3, sx * 0.5))
 			end
-			for k = 0, 3 do ball(0.3 - k * 0.04, accent, Vector3.new(0, 1.05 - k * 0.12, 0.2 + k * 0.38)) end
+			for k = 0, 3 do
+				local z = 0.15 + k * 0.24
+				ball(0.32 - k * 0.04, accent, Vector3.new(0, topY(z) - 0.04, z))
+			end
 			ell(Vector3.new(0.5, 0.5, 1.4), body, C(0, -0.4, 1.3) * CFrame.Angles(-0.5, 0, 0))
 		elseif style == "slime" then
 			ell(Vector3.new(0.7, 0.35, 0.5), WHITE, C(-0.5, 0.65, -0.5)).Transparency = 0.5
@@ -713,9 +739,12 @@ do
 			end
 		elseif style == "unicorn" then
 			for k = 0, 3 do
-				part(Enum.PartType.Cylinder, Vector3.new(0.3, 0.42 - k * 0.09, 0.42 - k * 0.09), Color3.fromRGB(255, 215, 80), C(0, 1.2 + k * 0.28, -0.4) * CFrame.Angles(-0.3, 0, math.pi / 2), Enum.Material.Neon)
+				part(Enum.PartType.Cylinder, Vector3.new(0.3, 0.42 - k * 0.09, 0.42 - k * 0.09), Color3.fromRGB(255, 215, 80), C(0, 0.92 + k * 0.27, -0.42 - k * 0.08) * CFrame.Angles(-0.3, 0, math.pi / 2), Enum.Material.Neon)
 			end
-			for k = 0, 4 do ball(0.45, accent, Vector3.new(0, 1.0 - k * 0.2, 0.1 + k * 0.28)) end
+			for k = 0, 4 do
+				local z = 0.05 + k * 0.2
+				ball(0.42, accent, Vector3.new(0, topY(z) - 0.08, z))
+			end
 			for _, sx in ipairs({ -1, 1 }) do ell(Vector3.new(0.3, 0.6, 0.3), body, C(sx * 0.55, 1.05, 0.1)) end
 		elseif style == "bat" then
 			for _, sx in ipairs({ -1, 1 }) do
