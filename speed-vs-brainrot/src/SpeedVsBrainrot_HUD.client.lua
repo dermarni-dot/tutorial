@@ -3,18 +3,21 @@
 	Put this in: StarterPlayer > StarterPlayerScripts  (next to SpeedVsBrainrot_Client)
 
 	What it adds:
-	  • Three chunky studded stat tiles on the left: 👟 Speed (red), 💵 Cash
-	    (green) and 🏆 Trophies (yellow). The numbers count up and the tile
-	    bounces when they go up.
+	  • Three chunky studded stat tiles on the left: Speed (red, a sneaker),
+	    Cash (green, a cash brick) and Trophies (yellow, a trophy). The numbers
+	    count up and the tile bounces when they go up.
 	  • Four big square buttons under them:
-	      🌀 Teleport  - spawn, the green speed pad, or the egg row
-	      🦇 3x Cash   - your gamepass (shows "ONLY ⏣price!" above it)
-	      👥 Invite    - invite friends ("Play with friends!")
-	      🐶 Pets      - your pets, what they give, and Fuse 3 → 1 better pet
+	      Teleport  (a swirling portal)   - spawn, the speed pad, or the egg row
+	      3x Cash   (an angry bat)        - your gamepass ("ONLY <robux>price!" above it)
+	      Invite    (two friends)         - invite friends ("Play with friends!")
+	      Pets      (a puppy)             - your pets, what they give, and Fuse 3 -> 1 better pet
 	  • When you collect cash: a big cash brick with "+545" pops up on the
 	    screen, wiggles, then flies into your Cash tile; and a green swirl
 	    spins around your character (other players see your swirl too).
-	  • When you earn trophies: a gold banner slides down at the top ("🏆 +3").
+	  • When you earn trophies: a gold banner slides down at the top (trophy +3).
+
+	No emojis and no uploaded images: every icon is drawn out of rounded
+	frames (see ICONS below), so it looks the same on every device.
 
 	It reads the stats the server already puts on your player (Cash, Speed,
 	Trophies, HasCashPass, PetsJson, EquippedPets) and uses the server's
@@ -51,6 +54,210 @@ local COLORS = {
 	invite = Color3.fromRGB(250, 205, 50),
 	pets = Color3.fromRGB(80, 170, 235),
 }
+
+-- ICONS BEGIN
+------------------------------------------------------------------------
+-- ICONS: each icon is a list of shapes on a 1 x 1 square (x, y = the
+-- shape's center, w, h = its size, all 0..1; y goes down).
+--   r     = how round the corners are (0.5 = a circle / pill)
+--   rot   = rotation in degrees
+--   ring  = only the outline (no fill), line = outline thickness (at 100 px)
+--   flat  = no top-to-bottom shading, a = transparency
+--   text  = a little text on the shape (tc = its color)
+-- Shapes are drawn in order, so later ones sit on top.
+------------------------------------------------------------------------
+local ICONS = {}
+local function rgb(r, g, b)
+	return Color3.fromRGB(r, g, b)
+end
+local function S(x, y, w, h, c, opts)
+	local sh = { x = x, y = y, w = w, h = h, c = c }
+	for k, v in pairs(opts or {}) do
+		sh[k] = v
+	end
+	return sh
+end
+
+-- a red sneaker (facing right)
+function ICONS.shoe()
+	local red, white = rgb(235, 55, 65), rgb(250, 250, 250)
+	local list = {
+		S(0.5, 0.78, 0.88, 0.15, white, { r = 0.5 }),
+		S(0.36, 0.56, 0.5, 0.42, red, { r = 0.38 }),
+		S(0.66, 0.64, 0.52, 0.27, red, { r = 0.5 }),
+		S(0.44, 0.4, 0.15, 0.22, rgb(255, 120, 120), { r = 0.4, rot = 20 }),
+		S(0.27, 0.38, 0.24, 0.1, rgb(150, 25, 35), { r = 0.5, flat = true }),
+		S(0.5, 0.64, 0.36, 0.07, white, { r = 0.5, rot = -12, flat = true }),
+		S(0.5, 0.74, 0.86, 0.03, rgb(190, 190, 200), { flat = true, line = 0 }),
+	}
+	for i = 0, 2 do
+		table.insert(list, S(0.47 + i * 0.07, 0.47 + i * 0.045, 0.11, 0.035, white, { r = 0.5, rot = 25, line = 0, flat = true }))
+	end
+	return list
+end
+
+-- a stack of cash: green bills, a lighter top, a yellow paper band
+function ICONS.cash()
+	local g = rgb(70, 200, 75)
+	return {
+		S(0.5, 0.6, 0.86, 0.44, g, { r = 0.12, rot = -14 }),
+		S(0.53, 0.42, 0.82, 0.16, rgb(140, 240, 120), { r = 0.2, rot = -14 }),
+		S(0.5, 0.6, 0.8, 0.03, rgb(30, 120, 40), { rot = -14, line = 0, flat = true }),
+		S(0.5, 0.71, 0.8, 0.03, rgb(30, 120, 40), { rot = -14, line = 0, flat = true }),
+		S(0.52, 0.56, 0.2, 0.58, rgb(255, 195, 50), { r = 0.08, rot = -14 }),
+	}
+end
+
+-- a gold trophy with a "1" on it
+function ICONS.trophy()
+	local gold, dark = rgb(255, 200, 40), rgb(200, 140, 20)
+	return {
+		S(0.22, 0.33, 0.22, 0.26, gold, { ring = true, line = 6, r = 0.5 }),
+		S(0.78, 0.33, 0.22, 0.26, gold, { ring = true, line = 6, r = 0.5 }),
+		S(0.5, 0.64, 0.12, 0.18, dark, {}),
+		S(0.5, 0.42, 0.52, 0.32, gold, { r = 0.5 }),
+		S(0.5, 0.28, 0.54, 0.34, gold, { r = 0.22 }),
+		S(0.36, 0.28, 0.06, 0.18, rgb(255, 245, 190), { r = 0.5, line = 0, flat = true, a = 0.2 }),
+		S(0.5, 0.36, 0.2, 0.2, rgb(255, 230, 120), { r = 0.5, text = "1", tc = rgb(150, 90, 20) }),
+		S(0.5, 0.74, 0.4, 0.08, gold, { r = 0.3 }),
+		S(0.5, 0.85, 0.54, 0.15, rgb(120, 70, 40), { r = 0.2 }),
+		S(0.5, 0.85, 0.3, 0.06, gold, { line = 0, flat = true }),
+	}
+end
+
+-- a stone teleport portal with a pink swirl inside
+function ICONS.portal()
+	return {
+		S(0.5, 0.5, 0.94, 0.94, rgb(150, 155, 170), { r = 0.5 }),
+		S(0.5, 0.5, 0.8, 0.8, rgb(215, 218, 228), { r = 0.5, ring = true, line = 3 }),
+		S(0.5, 0.5, 0.72, 0.72, rgb(230, 60, 170), { r = 0.5 }),
+		S(0.54, 0.46, 0.52, 0.52, rgb(150, 50, 220), { r = 0.5, line = 0 }),
+		S(0.47, 0.53, 0.36, 0.36, rgb(255, 120, 210), { r = 0.5, line = 0 }),
+		S(0.53, 0.48, 0.2, 0.2, rgb(255, 210, 245), { r = 0.5, line = 0 }),
+		S(0.5, 0.5, 0.08, 0.08, rgb(255, 255, 255), { r = 0.5, line = 0, flat = true }),
+	}
+end
+
+-- an angry purple bat (the 3x cash pass)
+function ICONS.bat()
+	local wing, body = rgb(70, 40, 100), rgb(95, 55, 135)
+	local list = {}
+	for _, side in ipairs({ -1, 1 }) do
+		local function wx(x)
+			return if side < 0 then x else 1 - x
+		end
+		table.insert(list, S(wx(0.25), 0.4, 0.38, 0.15, wing, { r = 0.5, rot = side * 30 }))
+		table.insert(list, S(wx(0.22), 0.52, 0.4, 0.15, wing, { r = 0.5, rot = side * 5 }))
+		table.insert(list, S(wx(0.26), 0.63, 0.34, 0.14, wing, { r = 0.5, rot = -side * 20 }))
+		table.insert(list, S(wx(0.38), 0.32, 0.11, 0.17, body, { r = 0.2, rot = side * 20 }))
+	end
+	table.insert(list, S(0.5, 0.55, 0.4, 0.44, body, { r = 0.5 }))
+	for _, side in ipairs({ -1, 1 }) do
+		table.insert(list, S(0.5 + side * 0.08, 0.5, 0.11, 0.11, rgb(255, 50, 50), { r = 0.5, flat = true }))
+		table.insert(list, S(0.5 + side * 0.065, 0.48, 0.035, 0.035, rgb(255, 255, 255), { r = 0.5, line = 0, flat = true }))
+		table.insert(list, S(0.5 + side * 0.09, 0.42, 0.13, 0.035, rgb(30, 15, 40), { rot = side * 22, line = 0, flat = true }))
+		table.insert(list, S(0.5 + side * 0.04, 0.665, 0.04, 0.07, rgb(255, 255, 255), { line = 0, flat = true }))
+	end
+	return list
+end
+
+-- two friends
+function ICONS.friends()
+	local skin = rgb(255, 210, 80)
+	local function person(x, y, sz, shirt, hair)
+		return {
+			S(x, y + 0.36 * sz, 0.62 * sz, 0.44 * sz, shirt, { r = 0.45 }),
+			S(x, y, 0.5 * sz, 0.5 * sz, skin, { r = 0.5 }),
+			S(x, y - 0.17 * sz, 0.52 * sz, 0.2 * sz, hair, { r = 0.5 }),
+			S(x - 0.09 * sz, y + 0.02 * sz, 0.06 * sz, 0.08 * sz, rgb(40, 30, 30), { r = 0.5, line = 0, flat = true }),
+			S(x + 0.09 * sz, y + 0.02 * sz, 0.06 * sz, 0.08 * sz, rgb(40, 30, 30), { r = 0.5, line = 0, flat = true }),
+		}
+	end
+	local list = person(0.66, 0.42, 0.62, rgb(60, 140, 230), rgb(120, 70, 40))
+	for _, sh in ipairs(person(0.38, 0.5, 0.74, rgb(240, 110, 60), rgb(70, 45, 30))) do
+		table.insert(list, sh)
+	end
+	return list
+end
+
+-- a pet: a round face with ears (colors from the pet; a puppy by default)
+function ICONS.pet(body, accent)
+	body = body or rgb(200, 140, 80)
+	accent = accent or rgb(140, 85, 45)
+	return {
+		S(0.22, 0.42, 0.22, 0.4, accent, { r = 0.5, rot = 20 }),
+		S(0.78, 0.42, 0.22, 0.4, accent, { r = 0.5, rot = -20 }),
+		S(0.5, 0.52, 0.66, 0.62, body, { r = 0.5 }),
+		S(0.5, 0.66, 0.36, 0.26, body:Lerp(rgb(255, 255, 255), 0.55), { r = 0.5 }),
+		S(0.5, 0.6, 0.14, 0.09, rgb(30, 25, 25), { r = 0.5, flat = true }),
+		S(0.38, 0.46, 0.08, 0.11, rgb(30, 25, 25), { r = 0.5, line = 0, flat = true }),
+		S(0.62, 0.46, 0.08, 0.11, rgb(30, 25, 25), { r = 0.5, line = 0, flat = true }),
+		S(0.39, 0.44, 0.03, 0.03, rgb(255, 255, 255), { r = 0.5, line = 0, flat = true }),
+		S(0.63, 0.44, 0.03, 0.03, rgb(255, 255, 255), { r = 0.5, line = 0, flat = true }),
+		S(0.5, 0.75, 0.08, 0.08, rgb(255, 120, 150), { r = 0.5, line = 0, flat = true }),
+	}
+end
+
+-- an egg with spots
+function ICONS.egg()
+	return {
+		S(0.5, 0.54, 0.62, 0.8, rgb(250, 240, 220), { r = 0.5 }),
+		S(0.38, 0.42, 0.14, 0.12, rgb(120, 210, 90), { r = 0.5, line = 0 }),
+		S(0.6, 0.6, 0.18, 0.15, rgb(120, 210, 90), { r = 0.5, line = 0 }),
+		S(0.42, 0.74, 0.12, 0.1, rgb(120, 210, 90), { r = 0.5, line = 0 }),
+	}
+end
+-- ICONS END
+
+-- draws icon `name` into a new square frame `px` pixels across
+local function drawIcon(parent, name, px, ...)
+	local holder = Instance.new("Frame")
+	holder.Name = "Icon_" .. name
+	holder.BackgroundTransparency = 1
+	holder.Size = UDim2.fromOffset(px, px)
+	for _, sh in ipairs(ICONS[name](...)) do
+		local f = Instance.new("Frame")
+		f.AnchorPoint = Vector2.new(0.5, 0.5)
+		f.Position = UDim2.fromScale(sh.x, sh.y)
+		f.Size = UDim2.fromScale(sh.w, sh.h)
+		f.Rotation = sh.rot or 0
+		f.BorderSizePixel = 0
+		f.BackgroundColor3 = sh.c
+		f.BackgroundTransparency = if sh.ring then 1 else (sh.a or 0)
+		if (sh.r or 0) > 0 then
+			local c = Instance.new("UICorner")
+			c.CornerRadius = UDim.new(sh.r, 0)
+			c.Parent = f
+		end
+		local line = sh.line or 2.5
+		if line > 0 then
+			local st = Instance.new("UIStroke")
+			st.Color = if sh.ring then sh.c else sh.c:Lerp(Color3.new(0, 0, 0), 0.55)
+			st.Thickness = math.max(1, line * px / 100)
+			st.LineJoinMode = Enum.LineJoinMode.Round
+			st.Parent = f
+		end
+		if not sh.flat and not sh.ring then
+			local g = Instance.new("UIGradient")
+			g.Color = ColorSequence.new(sh.c:Lerp(Color3.new(1, 1, 1), 0.25), sh.c:Lerp(Color3.new(0, 0, 0), 0.12))
+			g.Rotation = 90
+			g.Parent = f
+		end
+		if sh.text then
+			local t = Instance.new("TextLabel")
+			t.BackgroundTransparency = 1
+			t.Size = UDim2.fromScale(1, 1)
+			t.Font = Enum.Font.FredokaOne
+			t.TextScaled = true
+			t.Text = sh.text
+			t.TextColor3 = sh.tc or Color3.new(1, 1, 1)
+			t.Parent = f
+		end
+		f.Parent = holder
+	end
+	holder.Parent = parent
+	return holder
+end
 
 ------------------------------------------------------------------------
 -- Helpers
@@ -215,12 +422,12 @@ local column = new("Frame", {
 })
 
 ------------------------------------------------------------------------
--- Stat tiles: 👟 Speed, 💵 Cash, 🏆 Trophies
+-- Stat tiles: Speed (sneaker), Cash (cash brick), Trophies (trophy)
 ------------------------------------------------------------------------
 local stats = {}
 local function statTile(key, icon, y, color)
 	local tile, scale = studTile(column, color, UDim2.fromOffset(176, 66), { Position = UDim2.fromOffset(0, y), Name = key .. "Tile" })
-	label(tile, icon, UDim2.fromOffset(56, 56), { Position = UDim2.fromOffset(4, 5), ZIndex = 3 })
+	drawIcon(tile, icon, 58).Position = UDim2.fromOffset(3, 1)
 	local value = label(tile, "0", UDim2.new(1, -66, 0, 40), {
 		Position = UDim2.fromOffset(60, 13),
 		TextXAlignment = Enum.TextXAlignment.Left,
@@ -229,9 +436,9 @@ local function statTile(key, icon, y, color)
 	stats[key] = { Tile = tile, Scale = scale, Value = value, Shown = 0, Target = 0, Prefix = "" }
 	return stats[key]
 end
-statTile("Speed", "👟", 0, COLORS.speed)
-statTile("Cash", "💵", 76, COLORS.cash)
-statTile("Trophies", "🏆", 152, COLORS.trophies)
+statTile("Speed", "shoe", 0, COLORS.speed)
+statTile("Cash", "cash", 76, COLORS.cash)
+statTile("Trophies", "trophy", 152, COLORS.trophies)
 
 local function readStat(key)
 	local s = stats[key]
@@ -280,16 +487,24 @@ local function squareButton(name, icon, text, color, x, y)
 		ZIndex = 5,
 		Parent = tile,
 	})
-	local iconLabel = label(tile, icon, UDim2.fromOffset(62, 62), { AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 6), ZIndex = 3 })
+	local iconLabel = drawIcon(tile, icon, 64)
+	iconLabel.AnchorPoint = Vector2.new(0.5, 0)
+	iconLabel.Position = UDim2.new(0.5, 0, 0, 4)
 	local textLabel = label(tile, text, UDim2.new(1, -8, 0, 26), { AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -4), ZIndex = 4 })
 	return tile, scale, button, iconLabel, textLabel
 end
 
 local rowY = 152 + 66 + 36
-local _tpTile, tpScale, tpButton = squareButton("Teleport", "🌀", "Teleport", COLORS.teleport, 0, rowY)
-local passTile, passScale, passButton, passIcon, passText = squareButton("CashPass", "🦇", "3x 💵", COLORS.pass, BTN + GAP, rowY)
-local _invTile, invScale, invButton = squareButton("Invite", "👥", "Invite", COLORS.invite, 0, rowY + BTN + GAP + 22)
-local _petTile, petScale, petButton = squareButton("Pets", "🐶", "Pets", COLORS.pets, BTN + GAP, rowY + BTN + GAP + 22)
+local _tpTile, tpScale, tpButton = squareButton("Teleport", "portal", "Teleport", COLORS.teleport, 0, rowY)
+local passTile, passScale, passButton, passIcon, passText = squareButton("CashPass", "bat", "3x", COLORS.pass, BTN + GAP, rowY)
+local _invTile, invScale, invButton = squareButton("Invite", "friends", "Invite", COLORS.invite, 0, rowY + BTN + GAP + 22)
+local _petTile, petScale, petButton = squareButton("Pets", "pet", "Pets", COLORS.pets, BTN + GAP, rowY + BTN + GAP + 22)
+-- "3x" and a little cash brick under the bat
+passText.Size = UDim2.new(0.4, 0, 0, 26)
+passText.Position = UDim2.new(0.38, 0, 1, -4)
+local passCash = drawIcon(passTile, "cash", 30)
+passCash.AnchorPoint = Vector2.new(0.5, 1)
+passCash.Position = UDim2.new(0.68, 0, 1, -2)
 
 -- "Play with friends!" under the invite button
 label(column, "Play with friends!", UDim2.fromOffset(BTN + 20, 20), { Position = UDim2.fromOffset(-10, rowY + 2 * BTN + GAP + 24) })
@@ -335,7 +550,7 @@ task.spawn(function()
 end)
 local function refreshPass()
 	if player:GetAttribute("HasCashPass") then
-		priceLabel.Text = "OWNED ✅"
+		priceLabel.Text = "OWNED!"
 	end
 end
 refreshPass()
@@ -368,7 +583,7 @@ local function showPanel(p)
 	tween(s, 0.3, { Scale = 1 }, Enum.EasingStyle.Back)
 end
 
-local function panel(name, size, title, color)
+local function panel(name, size, title, color, iconName)
 	local p = new("Frame", {
 		Name = name,
 		AnchorPoint = Vector2.new(0.5, 0.5),
@@ -384,7 +599,9 @@ local function panel(name, size, title, color)
 	new("UIScale", { Parent = p })
 	local head = new("Frame", { BackgroundColor3 = color, Size = UDim2.new(1, 0, 0, 50), ZIndex = 21, Parent = p })
 	corner(head, 16)
-	label(head, title, UDim2.new(1, -70, 0, 40), { Position = UDim2.fromOffset(16, 5), TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 22 })
+	local icon = drawIcon(head, iconName, 44)
+	icon.Position = UDim2.fromOffset(10, 3)
+	label(head, title, UDim2.new(1, -120, 0, 40), { Position = UDim2.fromOffset(60, 5), TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 22 })
 	local close = new("TextButton", {
 		AnchorPoint = Vector2.new(1, 0),
 		Position = UDim2.new(1, -8, 0, 6),
@@ -402,9 +619,9 @@ local function panel(name, size, title, color)
 	return p
 end
 
--- 🌀 teleport menu
-local tpPanel = panel("TeleportMenu", UDim2.fromOffset(300, 250), "🌀 Teleport", COLORS.teleport)
-for i, place in ipairs({ { "spawn", "🏝️ Spawn" }, { "pad", "⚡ Speed Pad" }, { "eggs", "🥚 Pet Eggs" } }) do
+-- teleport menu
+local tpPanel = panel("TeleportMenu", UDim2.fromOffset(300, 250), "Teleport", COLORS.teleport, "portal")
+for i, place in ipairs({ { "spawn", "Spawn", "portal" }, { "pad", "Speed Pad", "shoe" }, { "eggs", "Pet Eggs", "egg" } }) do
 	local b = new("TextButton", {
 		Position = UDim2.fromOffset(20, 62 + (i - 1) * 60),
 		Size = UDim2.new(1, -40, 0, 50),
@@ -415,18 +632,19 @@ for i, place in ipairs({ { "spawn", "🏝️ Spawn" }, { "pad", "⚡ Speed Pad" 
 	})
 	corner(b, 12)
 	stroke(b, COLORS.teleport:Lerp(Color3.new(0, 0, 0), 0.4), 3)
-	label(b, place[2], UDim2.new(1, -16, 1, -12), { Position = UDim2.fromOffset(8, 6), ZIndex = 23 })
+	drawIcon(b, place[3], 40).Position = UDim2.fromOffset(8, 2)
+	label(b, place[2], UDim2.new(1, -70, 1, -12), { Position = UDim2.fromOffset(58, 6), TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 23 })
 	b.Activated:Connect(function()
 		TeleportRemote:FireServer(place[1])
 		closePanel()
 	end)
 end
 
--- 🐶 pets: what you own, what it gives, fuse 3 into a better one
+-- pets: what you own, what it gives, fuse 3 into a better one
 local TIER_NAMES = { "", "Golden ", "Rainbow " }
 local TIER_COLORS = { WHITE, Color3.fromRGB(255, 215, 60), Color3.fromRGB(255, 120, 230) }
 local TIER_MULT = { 1, 3, 9 }
-local petPanel = panel("PetsMenu", UDim2.fromOffset(470, 380), "🐶 Your Pets", COLORS.pets)
+local petPanel = panel("PetsMenu", UDim2.fromOffset(470, 380), "Your Pets", COLORS.pets, "pet")
 local bonusLabel = label(petPanel, "", UDim2.new(1, -32, 0, 22), { Position = UDim2.fromOffset(16, 56), TextColor3 = Color3.fromRGB(150, 255, 150), TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 22 })
 local petList = new("ScrollingFrame", {
 	Position = UDim2.fromOffset(12, 84),
@@ -469,18 +687,20 @@ local function refreshPets()
 		return a.bonus > b.bonus
 	end)
 	if #list == 0 then
-		label(petList, "No pets yet! Hatch eggs with 🏆 trophies.", UDim2.fromOffset(400, 30), { ZIndex = 23 })
+		label(petList, "No pets yet! Hatch eggs with trophies.", UDim2.fromOffset(400, 30), { ZIndex = 23 })
 		return
 	end
 	for i, p in ipairs(list) do
 		local card = new("Frame", { LayoutOrder = i, BackgroundColor3 = Color3.fromRGB(58, 64, 86), ZIndex = 23, Parent = petList })
 		corner(card, 12)
 		stroke(card, if equipped[p.key] then Color3.fromRGB(120, 255, 120) else TIER_COLORS[p.tier], 3)
-		label(card, p.info:GetAttribute("Icon") or "🐾", UDim2.fromOffset(52, 52), { AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 4), ZIndex = 24 })
+		local face = drawIcon(card, "pet", 54, p.info:GetAttribute("Body"), p.info:GetAttribute("Accent"))
+		face.AnchorPoint = Vector2.new(0.5, 0)
+		face.Position = UDim2.new(0.5, 0, 0, 3)
 		label(card, TIER_NAMES[p.tier] .. p.name, UDim2.new(1, -8, 0, 18), { Position = UDim2.fromOffset(4, 58), TextColor3 = TIER_COLORS[p.tier], ZIndex = 24 })
 		label(card, "+" .. fmt(p.bonus) .. "% cash  •  x" .. p.count, UDim2.new(1, -8, 0, 16), { Position = UDim2.fromOffset(4, 78), TextColor3 = Color3.fromRGB(150, 255, 150), ZIndex = 24 })
 		if equipped[p.key] then
-			label(card, "✅ Equipped", UDim2.new(1, -8, 0, 14), { Position = UDim2.fromOffset(4, 96), ZIndex = 24 })
+			label(card, "EQUIPPED", UDim2.new(1, -8, 0, 14), { Position = UDim2.fromOffset(4, 96), ZIndex = 24 })
 		end
 		if p.tier < 3 then
 			local can = p.count >= 3
@@ -494,7 +714,7 @@ local function refreshPets()
 				Parent = card,
 			})
 			corner(fuse, 8)
-			label(fuse, if can then "Fuse 3 → " .. TIER_NAMES[p.tier + 1] else "Fuse (" .. p.count .. "/3)", UDim2.new(1, -8, 1, -6), { Position = UDim2.fromOffset(4, 3), ZIndex = 25 })
+			label(fuse, if can then "Fuse 3 > " .. TIER_NAMES[p.tier + 1] else "Fuse (" .. p.count .. "/3)", UDim2.new(1, -8, 1, -6), { Position = UDim2.fromOffset(4, 3), ZIndex = 25 })
 			fuse.Activated:Connect(function()
 				if can then
 					FuseRemote:FireServer(p.key)
@@ -541,43 +761,12 @@ pressable(passButton, passScale, function()
 end)
 
 ------------------------------------------------------------------------
--- 💵 COLLECTING CASH
+-- COLLECTING CASH
 --   on your screen: a cash brick with "+545" pops up, wiggles, and flies
 --   into your Cash tile
 --   in the world: a green swirl spins up around whoever grabbed it
 ------------------------------------------------------------------------
 local fxLayer = new("Frame", { Name = "CashPops", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 30, Parent = gui })
-
--- a little 2D cash brick like the icon: green stack, yellow band, bill lines
-local function cashBrick(parent, size)
-	local holder = new("Frame", { BackgroundTransparency = 1, Size = UDim2.fromOffset(size, size), ZIndex = 31, Parent = parent })
-	local body = new("Frame", {
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.fromScale(0.5, 0.5),
-		Size = UDim2.fromScale(0.95, 0.7),
-		BackgroundColor3 = Color3.fromRGB(70, 200, 75),
-		Rotation = -14,
-		ZIndex = 31,
-		Parent = holder,
-	})
-	corner(body, 6)
-	new("UIStroke", { Color = Color3.fromRGB(20, 80, 30), Thickness = 3, Parent = body })
-	new("UIGradient", { Color = ColorSequence.new(Color3.fromRGB(120, 235, 110), Color3.fromRGB(50, 160, 60)), Rotation = 90, Parent = body })
-	for k = 1, 3 do
-		new("Frame", { Position = UDim2.new(0, 0, k / 4, 0), Size = UDim2.new(1, 0, 0, 2), BackgroundColor3 = Color3.fromRGB(30, 120, 40), BorderSizePixel = 0, ZIndex = 32, Parent = body })
-	end
-	local band = new("Frame", {
-		AnchorPoint = Vector2.new(0.5, 0),
-		Position = UDim2.fromScale(0.5, 0),
-		Size = UDim2.new(0.26, 0, 1, 0),
-		BackgroundColor3 = Color3.fromRGB(255, 190, 50),
-		BorderSizePixel = 0,
-		ZIndex = 33,
-		Parent = body,
-	})
-	new("UIGradient", { Color = ColorSequence.new(Color3.fromRGB(255, 225, 110), Color3.fromRGB(240, 160, 30)), Rotation = 90, Parent = band })
-	return holder
-end
 
 local active = 0
 local function cashPop(amount)
@@ -599,8 +788,8 @@ local function cashPop(amount)
 		Parent = fxLayer,
 	})
 	local scale = new("UIScale", { Scale = 0, Parent = pop })
-	local brick = cashBrick(pop, 96)
-	brick.Position = UDim2.fromOffset(46, 0)
+	local brick = drawIcon(pop, "cash", 104)
+	brick.Position = UDim2.fromOffset(33, -8)
 	local text = new("TextLabel", {
 		BackgroundTransparency = 1,
 		Position = UDim2.fromOffset(0, 76),
@@ -705,7 +894,7 @@ CashFxRemote.OnClientEvent:Connect(function(_pos, amount, who)
 end)
 
 ------------------------------------------------------------------------
--- 🏆 trophy banner: slides down at the top when you earn trophies
+-- trophy banner: slides down at the top when you earn trophies
 ------------------------------------------------------------------------
 local banner = new("Frame", {
 	AnchorPoint = Vector2.new(0.5, 0),
@@ -720,7 +909,10 @@ new("UIGradient", {
 	Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.2, 0.2), NumberSequenceKeypoint.new(0.8, 0.2), NumberSequenceKeypoint.new(1, 1) }),
 	Parent = banner,
 })
-local bannerText = label(banner, "", UDim2.new(1, 0, 0, 70), { Position = UDim2.fromOffset(0, 10), ZIndex = 41 })
+local bannerIcon = drawIcon(banner, "trophy", 74)
+bannerIcon.AnchorPoint = Vector2.new(1, 0)
+bannerIcon.Position = UDim2.new(0.5, -8, 0, 8)
+local bannerText = label(banner, "", UDim2.new(0.4, 0, 0, 70), { Position = UDim2.new(0.5, 4, 0, 10), TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 41 })
 local lastTrophies = player:GetAttribute("Trophies") or 0
 local bannerToken = 0
 player:GetAttributeChangedSignal("Trophies"):Connect(function()
@@ -732,7 +924,7 @@ player:GetAttributeChangedSignal("Trophies"):Connect(function()
 	end
 	bannerToken += 1
 	local token = bannerToken
-	bannerText.Text = "🏆 +" .. fmt(gained)
+	bannerText.Text = "+" .. fmt(gained)
 	tween(banner, 0.35, { Position = UDim2.new(0.5, 0, 0, 0) }, Enum.EasingStyle.Back)
 	task.delay(2.2, function()
 		if bannerToken == token then
