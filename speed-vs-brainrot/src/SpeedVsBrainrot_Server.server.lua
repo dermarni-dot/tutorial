@@ -61,11 +61,13 @@ local CONFIG = {
 	BossBigStuds = 7,         -- big Lego-style studs: about this many across the boss (0 = Roblox's own 1-stud studs)
 	BossStudTexture = "",     -- optional: a studs texture image (e.g. "rbxassetid://123") for BIG studs on the giant bosses
 	BossStudSize = 8,         -- how wide each of those big studs is (studs)
-	BossStartRatio = 0.85,    -- the boss starts at this share of YOUR speed (never slower than the zone's pace)
-	BossAccel = 6,            -- it then gains at least this much speed every second while it's slower than you...
-	BossAccelRatio = 0.12,    -- ...or this share of your speed per second, whichever is more
-	BossOvertake = 1.1,       -- ...until it's this much faster than you
-	BossMaxSpeed = 300,       -- no boss ever runs faster than this (each map's boss.topSpeed caps it lower); outrun it to escape
+	-- THE BOSS IS FASTER THAN YOU UNTIL YOU REACH ITS MAX SPEED: it starts at its map's
+	-- boss.startSpeed, always runs BossOvertake times your speed (whichever is more), and
+	-- stops at its top speed. Get faster than that and you can finally outrun it.
+	BossOvertake = 1.1,       -- the boss runs this much faster than you...
+	BossAccel = 6,            -- ...and when you speed up it catches up by at least this much speed a second...
+	BossAccelRatio = 0.12,    -- ...or this share of your speed a second, whichever is more
+	BossMaxSpeed = 300,       -- no boss ever runs faster than this (each map's boss.topSpeed caps it lower)
 	BossTick = 0.1,           -- seconds between boss brain updates
 
 	HitTime = 0.8,            -- after a hit you tumble for this long, then go back to the start
@@ -108,7 +110,7 @@ local MAPS = {
 	{
 		name = "Map 1", title = "Brainrot Skylands",
 		-- topSpeed = the fastest this map's boss can ever run: get faster than that and it can't catch you
-		boss = { name = "Il Grande Zoomerone", look = "zoomerone", size = 12, style = "round", topSpeed = 175,
+		boss = { name = "Il Grande Zoomerone", look = "zoomerone", size = 12, style = "round", startSpeed = 24, topSpeed = 175,
 			body = rgb(105, 50, 175), accent = rgb(0, 230, 255) },
 		zones = {
 			{ name = "Green Meadow",  theme = "meadow",  cash = 1,    trophies = 1,    need = 0,    pace = 1.00,
@@ -169,7 +171,7 @@ local MAPS = {
 	},
 	{
 		name = "Map 2", title = "Turbo Badlands",
-		boss = { name = "Tralalero Turbino", look = "tralalero", legScale = 0.5, size = 15, style = "boxy", topSpeed = 330,
+		boss = { name = "Tralalero Turbino", look = "tralalero", legScale = 0.5, size = 15, style = "boxy", startSpeed = 60, topSpeed = 330,
 			body = rgb(30, 120, 200), accent = rgb(255, 70, 40) },
 		zones = {
 			{ name = "Jungle Run",    theme = "jungle",   cash = 12000,   trophies = 1500,   need = 6000,   pace = 1.24,
@@ -4295,14 +4297,16 @@ local function chaserTick()
 					local now = os.clock()
 					local dt = math.min(0.5, now - (c.lastTick or now))
 					c.lastTick = now
-					-- everything scales with YOUR speed: it starts a bit slower than you, closes
-					-- in at a rate that grows with your speed, and ends up faster than you,
-					-- but never past its top speed (CONFIG.BossMaxSpeed, or the map's lower one)
+					-- it starts at its map's start speed (or the zone's pace, if that's more) and
+					-- is always faster than you, until you're faster than its top speed
+					-- (CONFIG.BossMaxSpeed, or the map's lower one): then you can get away
 					local mine = hum.WalkSpeed
 					local top = math.min(c.map.boss.topSpeed or CONFIG.MaxWalkSpeed, CONFIG.BossMaxSpeed or math.huge)
-					local base = math.min(top, math.max(bossBaseSpeed(pos.Z), mine * CONFIG.BossStartRatio))
+					local base = math.min(top, math.max(c.map.boss.startSpeed or 0, bossBaseSpeed(pos.Z)))
 					local want = math.min(top, math.max(base, mine * CONFIG.BossOvertake))
-					c.speed = math.max(c.speed or base, base)
+					-- it appears already faster than you; if you speed up after that, it catches up quickly
+					c.speed = c.speed or want
+					c.speed = math.max(c.speed, base)
 					if c.speed < want then
 						c.speed = math.min(want, c.speed + math.max(CONFIG.BossAccel, mine * CONFIG.BossAccelRatio) * dt)
 					else
