@@ -209,6 +209,38 @@ end
 task.spawn(startWorld)
 
 ------------------------------------------------------------------------
+-- BOSSES: swing their legs while they run (faster when they're faster)
+------------------------------------------------------------------------
+local bosses = {} -- [model] = { motors = {...}, phase }
+
+local function addBoss(model)
+	local root = model:WaitForChild("HumanoidRootPart", 5)
+	if not root then return end
+	local motors = {}
+	for _, m in ipairs(root:GetChildren()) do
+		if m:IsA("Motor6D") and m.Name == "LegMotor" then
+			table.insert(motors, m)
+		end
+	end
+	bosses[model] = { root = root, motors = motors, phase = 0 }
+end
+watchTag("SVB_Boss", function(m) task.spawn(addBoss, m) end, bosses)
+
+RunService.Stepped:Connect(function(_, dt)
+	for model, b in pairs(bosses) do
+		if model.Parent and b.root.Parent then
+			local speed = (b.root.AssemblyLinearVelocity * Vector3.new(1, 0, 1)).Magnitude
+			local stride = math.clamp(speed / 40, 0, 1)
+			b.phase += dt * math.min(18, 4 + speed * 0.12)
+			for _, m in ipairs(b.motors) do
+				local side = m:GetAttribute("Side") or 1
+				m.Transform = CFrame.Angles(math.sin(b.phase) * side * 0.9 * stride, 0, 0)
+			end
+		end
+	end
+end)
+
+------------------------------------------------------------------------
 -- RUNNING: our own run animation over the default one, a lean, a trail, a wider view
 ------------------------------------------------------------------------
 -- Roblox's own animation packs (free for every game): a bouncy run, then a ninja dash

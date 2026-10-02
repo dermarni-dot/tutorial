@@ -190,6 +190,45 @@ local MAPS = {
 	},
 }
 
+------------------------------------------------------------------------
+-- ZONE BOSSES  (every zone has its own boss that chases you through it;
+-- the last zone of each map is the map's big boss above)
+--   style = "round" or "boxy" body, hat = crown / horns / fin / antenna / leaf / cap / none
+--   size grows a little every zone, and each boss is faster than the one before
+------------------------------------------------------------------------
+local ZONE_BOSSES = {
+	{ -- Map 1
+		{ name = "Tung Tung Sahur",       style = "boxy",  hat = "none",    body = rgb(175, 125, 75),  accent = rgb(95, 60, 35) },
+		{ name = "Brr Brr Patapim",       style = "round", hat = "leaf",    body = rgb(110, 175, 80),  accent = rgb(150, 100, 60) },
+		{ name = "Lirili Larila",         style = "round", hat = "antenna", body = rgb(150, 155, 165), accent = rgb(80, 170, 90) },
+		{ name = "Bombardiro Crocodilo",  style = "boxy",  hat = "fin",     body = rgb(85, 125, 75),   accent = rgb(60, 70, 60) },
+		{ name = "Trippi Troppi",         style = "round", hat = "horns",   body = rgb(255, 130, 60),  accent = rgb(200, 70, 40) },
+		{ name = "Ballerina Cappuccina",  style = "round", hat = "crown",   body = rgb(255, 170, 210), accent = rgb(130, 85, 60), eyes = rgb(255, 60, 160) },
+		{ name = "Chimpanzini Bananini",  style = "round", hat = "leaf",    body = rgb(255, 225, 80),  accent = rgb(120, 85, 50) },
+		{ name = "Cappuccino Assassino",  style = "boxy",  hat = "cap",     body = rgb(120, 80, 55),   accent = rgb(30, 30, 35) },
+		{ name = "Bombombini Gusini",     style = "round", hat = "fin",     body = rgb(240, 240, 245), accent = rgb(255, 160, 40) },
+	},
+	{ -- Map 2
+		{ name = "Frigo Camelo",          style = "boxy",  hat = "antenna", body = rgb(230, 240, 250), accent = rgb(200, 160, 100), eyes = rgb(60, 200, 255) },
+		{ name = "Glorbo Fruttodrillo",   style = "round", hat = "horns",   body = rgb(140, 70, 190),  accent = rgb(90, 200, 90) },
+		{ name = "La Vaca Saturno",       style = "boxy",  hat = "horns",   body = rgb(245, 245, 245), accent = rgb(30, 30, 35), eyes = rgb(255, 210, 60) },
+		{ name = "Garamararam",           style = "round", hat = "antenna", body = rgb(60, 110, 230),  accent = rgb(255, 200, 60) },
+		{ name = "Bobrito Bandito",       style = "boxy",  hat = "cap",     body = rgb(150, 100, 60),  accent = rgb(200, 40, 50) },
+	},
+}
+for m, map in ipairs(MAPS) do
+	map.boss.hat = map.boss.hat or (map.boss.style == "boxy" and "fin" or "crown")
+	map.boss.eyes = map.boss.eyes or (map.boss.style == "boxy" and map.boss.accent or nil)
+	local n = #map.zones
+	for j, zone in ipairs(map.zones) do
+		local def = (j < n and ZONE_BOSSES[m] and ZONE_BOSSES[m][j]) or map.boss
+		if def ~= map.boss then
+			def.size = def.size or math.floor((map.boss.size * (0.72 + 0.25 * j / n)) * 10) / 10
+		end
+		zone.boss = def
+	end
+end
+
 local PET_TIERS = {
 	{ name = "",        mult = 1 },
 	{ name = "Golden",  mult = 3 },
@@ -2683,38 +2722,84 @@ local function buildBoss(def, ownerName, cf)
 	root.Parent = model
 	model.PrimaryPart = root
 
-	if def.style == "boxy" then
-		-- a chunky shark-blue block with a fin, teeth and rocket sneakers
+	local boxy = def.style == "boxy"
+	if boxy then
+		-- a chunky block with a lighter belly
 		weldTo(root, bossPart(nil, Vector3.new(s, s * 0.9, s), def.body), CFrame.new())
-		weldTo(root, bossPart(nil, Vector3.new(s * 1.02, s * 0.3, s * 1.02), Color3.fromRGB(235, 240, 250)), CFrame.new(0, -s * 0.3, 0))
-		weldTo(root, bossPart(nil, Vector3.new(s * 0.12, s * 0.45, s * 0.5), def.body:Lerp(BLACK, 0.2)), CFrame.new(0, s * 0.66, s * 0.1))
-		for t = -2, 2 do
+		weldTo(root, bossPart(nil, Vector3.new(s * 1.02, s * 0.3, s * 1.02), def.body:Lerp(WHITE, 0.6)), CFrame.new(0, -s * 0.3, 0))
+		for t = -2, 2 do -- a row of teeth
 			weldTo(root, bossPart(nil, Vector3.new(s * 0.1, s * 0.14, s * 0.06), WHITE), CFrame.new(t * s * 0.15, -s * 0.12, -s * 0.52) * CFrame.Angles(0, 0, math.rad(45)))
 		end
 	else
 		weldTo(root, bossPart(Enum.PartType.Ball, Vector3.new(s, s, s), def.body), CFrame.new())
-		-- gold crown
-		weldTo(root, bossPart(nil, Vector3.new(s * 0.5, s * 0.1, s * 0.5), GOLD, Enum.Material.Neon), CFrame.new(0, s * 0.5, 0))
-		for _, c in ipairs({ { -1, -1 }, { -1, 1 }, { 1, -1 }, { 1, 1 } }) do
-			weldTo(root, bossPart(nil, Vector3.new(s * 0.08, s * 0.2, s * 0.08), GOLD, Enum.Material.Neon), CFrame.new(c[1] * s * 0.21, s * 0.62, c[2] * s * 0.21))
+		weldTo(root, bossPart(nil, Vector3.new(s * 0.45, s * 0.13, s * 0.1), Color3.fromRGB(40, 10, 10)), CFrame.new(0, -s * 0.15, -s * 0.46))
+		for _, sx in ipairs({ -1, 1 }) do -- fangs
+			weldTo(root, bossPart(nil, Vector3.new(s * 0.07, s * 0.1, s * 0.05), WHITE), CFrame.new(sx * s * 0.12, -s * 0.1, -s * 0.52))
 		end
 	end
+	local top = boxy and s * 0.45 or s * 0.5
+
+	-- what it wears on its head
+	local hat = def.hat or "none"
+	if hat == "crown" then
+		weldTo(root, bossPart(nil, Vector3.new(s * 0.5, s * 0.1, s * 0.5), GOLD, Enum.Material.Neon), CFrame.new(0, top, 0))
+		for _, c in ipairs({ { -1, -1 }, { -1, 1 }, { 1, -1 }, { 1, 1 } }) do
+			weldTo(root, bossPart(nil, Vector3.new(s * 0.08, s * 0.2, s * 0.08), GOLD, Enum.Material.Neon), CFrame.new(c[1] * s * 0.21, top + s * 0.12, c[2] * s * 0.21))
+		end
+	elseif hat == "horns" then
+		for _, sx in ipairs({ -1, 1 }) do
+			weldTo(root, bossPart(nil, Vector3.new(s * 0.12, s * 0.36, s * 0.12), Color3.fromRGB(245, 235, 210)), CFrame.new(sx * s * 0.28, top + s * 0.02, 0) * CFrame.Angles(0, 0, -sx * 0.35))
+		end
+	elseif hat == "fin" then
+		weldTo(root, bossPart(nil, Vector3.new(s * 0.12, s * 0.45, s * 0.5), def.body:Lerp(BLACK, 0.2)), CFrame.new(0, top + s * 0.18, s * 0.1) * CFrame.Angles(math.rad(-20), 0, 0))
+	elseif hat == "antenna" then
+		for _, sx in ipairs({ -1, 1 }) do
+			weldTo(root, bossPart(nil, Vector3.new(s * 0.05, s * 0.4, s * 0.05), BLACK), CFrame.new(sx * s * 0.16, top + s * 0.15, 0) * CFrame.Angles(0, 0, -sx * 0.3))
+			weldTo(root, bossPart(Enum.PartType.Ball, Vector3.one * s * 0.14, def.accent, Enum.Material.Neon), CFrame.new(sx * s * 0.23, top + s * 0.36, 0))
+		end
+	elseif hat == "leaf" then
+		weldTo(root, bossPart(nil, Vector3.new(s * 0.06, s * 0.2, s * 0.06), Color3.fromRGB(100, 70, 40)), CFrame.new(0, top + s * 0.08, 0))
+		weldTo(root, bossPart(nil, Vector3.new(s * 0.32, s * 0.05, s * 0.18), Color3.fromRGB(70, 190, 70)), CFrame.new(s * 0.14, top + s * 0.17, 0) * CFrame.Angles(0, 0, 0.3))
+	elseif hat == "cap" then
+		weldTo(root, bossPart(nil, Vector3.new(s * 0.7, s * 0.14, s * 0.7), def.accent), CFrame.new(0, top + s * 0.02, 0))
+		weldTo(root, bossPart(nil, Vector3.new(s * 0.7, s * 0.05, s * 0.4), def.accent:Lerp(BLACK, 0.2)), CFrame.new(0, top - s * 0.03, -s * 0.45))
+	end
+
 	for _, sx in ipairs({ -1, 1 }) do
 		-- eyes (glowing pupils) + angry brows
 		weldTo(root, bossPart(Enum.PartType.Ball, Vector3.one * s * 0.3, WHITE), CFrame.new(sx * s * 0.2, s * 0.12, -s * 0.42))
-		weldTo(root, bossPart(Enum.PartType.Ball, Vector3.one * s * 0.13, def.style == "boxy" and def.accent or Color3.fromRGB(255, 30, 30), Enum.Material.Neon), CFrame.new(sx * s * 0.2, s * 0.12, -s * 0.56))
+		weldTo(root, bossPart(Enum.PartType.Ball, Vector3.one * s * 0.13, def.eyes or Color3.fromRGB(255, 30, 30), Enum.Material.Neon), CFrame.new(sx * s * 0.2, s * 0.12, -s * 0.56))
 		weldTo(root, bossPart(nil, Vector3.new(s * 0.32, s * 0.07, s * 0.1), Color3.fromRGB(25, 20, 20)), CFrame.new(sx * s * 0.2, s * 0.3, -s * 0.47) * CFrame.Angles(0, 0, sx * 0.4))
-		if def.style ~= "boxy" then
-			-- fangs + horns
-			weldTo(root, bossPart(nil, Vector3.new(s * 0.07, s * 0.1, s * 0.05), WHITE), CFrame.new(sx * s * 0.12, -s * 0.1, -s * 0.52))
-			weldTo(root, bossPart(nil, Vector3.new(s * 0.12, s * 0.36, s * 0.12), Color3.fromRGB(245, 235, 210)), CFrame.new(sx * s * 0.28, s * 0.52, 0) * CFrame.Angles(0, 0, -sx * 0.35))
-		end
-		-- legs + sneakers
-		weldTo(root, bossPart(nil, Vector3.new(s * 0.18, leg + s * 0.1, s * 0.18), def.accent), CFrame.new(sx * s * 0.22, -s / 2 - leg / 2 + s * 0.05, 0))
-		weldTo(root, bossPart(nil, Vector3.new(s * 0.3, s * 0.14, s * 0.42), WHITE), CFrame.new(sx * s * 0.22, -s / 2 - leg + s * 0.07, -s * 0.06))
-	end
-	if def.style ~= "boxy" then
-		weldTo(root, bossPart(nil, Vector3.new(s * 0.45, s * 0.13, s * 0.1), Color3.fromRGB(40, 10, 10)), CFrame.new(0, -s * 0.15, -s * 0.46))
+
+		-- legs on hip joints (the World client swings them while it runs), with big sneakers
+		local legPart = bossPart(nil, Vector3.new(s * 0.18, leg + s * 0.1, s * 0.18), def.accent)
+		legPart.Name = "BossLeg"
+		legPart.Anchored = false
+		legPart.CanCollide = false
+		legPart.CanQuery = false
+		legPart.Massless = true
+		local hip = CFrame.new(sx * s * 0.22, -s / 2 + s * 0.1, 0)
+		legPart.CFrame = root.CFrame * hip * CFrame.new(0, -(leg + s * 0.1) / 2, 0)
+		legPart.Parent = model
+		local motor = Instance.new("Motor6D")
+		motor.Name = "LegMotor"
+		motor.Part0 = root
+		motor.Part1 = legPart
+		motor.C0 = hip
+		motor.C1 = CFrame.new(0, (leg + s * 0.1) / 2, 0)
+		motor:SetAttribute("Side", sx)
+		motor.Parent = root
+		local shoe = bossPart(nil, Vector3.new(s * 0.3, s * 0.14, s * 0.42), WHITE)
+		shoe.Anchored = false
+		shoe.CanCollide = false
+		shoe.CanQuery = false
+		shoe.Massless = true
+		shoe.CFrame = legPart.CFrame * CFrame.new(0, -(leg + s * 0.1) / 2 + s * 0.05, -s * 0.06)
+		local w = Instance.new("WeldConstraint")
+		w.Part0 = legPart
+		w.Part1 = shoe
+		w.Parent = shoe
+		shoe.Parent = model
 	end
 
 	local glow = Instance.new("PointLight")
@@ -2732,6 +2817,22 @@ local function buildBoss(def, ownerName, cf)
 	burst.Speed = NumberRange.new(20, 35)
 	burst.SpreadAngle = Vector2.new(180, 180)
 	burst.Parent = root
+
+	-- dust kicked up behind it
+	local dust = Instance.new("ParticleEmitter")
+	dust.Name = "Dust"
+	dust.Rate = 12
+	dust.Color = ColorSequence.new(Color3.fromRGB(230, 220, 200))
+	dust.Transparency = NumberSequence.new(0.4, 1)
+	dust.Size = NumberSequence.new(s * 0.12, s * 0.3)
+	dust.Lifetime = NumberRange.new(0.5, 0.8)
+	dust.Speed = NumberRange.new(2, 4)
+	dust.SpreadAngle = Vector2.new(40, 40)
+	dust.EmissionDirection = Enum.NormalId.Back
+	local feet = Instance.new("Attachment")
+	feet.Position = Vector3.new(0, -s / 2 - leg + s * 0.1, s * 0.2)
+	feet.Parent = root
+	dust.Parent = feet
 
 	addBillboard(root, {
 		{ text = def.name, color = WHITE },
@@ -2760,6 +2861,7 @@ local function buildBoss(def, ownerName, cf)
 		hum:SetStateEnabled(state, false)
 	end
 
+	CollectionService:AddTag(model, "SVB_Boss")
 	model.Parent = BossFolder
 	pcall(function() root:SetNetworkOwner(nil) end)
 	return model, root, hum, burst
@@ -2784,8 +2886,8 @@ local function removeChaser(plr)
 	end
 end
 
-local function spawnChaser(plr, map, ownerPos)
-	local def = map.boss
+local function spawnChaser(plr, map, ownerPos, zone)
+	local def = (zone and zone.boss) or map.boss
 	local s = def.size
 	local leg = s * 0.45
 	local model, root, hum, burst = buildBoss(def, plr.DisplayName, behindCFrame(map, ownerPos, s, leg))
@@ -2804,6 +2906,7 @@ local function spawnChaser(plr, map, ownerPos)
 		minZ = (map.startG + 1) * L + s / 2 + 1,
 		maxZ = map.endZ - s / 2 - 1,
 		readyAt = os.clock() + CONFIG.BossGraceTime,
+		zone = zone,
 	}
 	Chasers[plr] = c
 	burst:Emit(40)
@@ -2865,8 +2968,15 @@ local function chaserTick()
 			if c and not c.caught then removeChaser(plr) end
 		else
 			local pos = hrp.Position
+			if c and not c.caught and c.zone ~= info.zone then
+				-- a new zone = a new boss: the old one vanishes and this zone's boss takes over
+				local old = c.name
+				removeChaser(plr)
+				c = spawnChaser(plr, info.map, pos, info.zone)
+				notify(plr, old .. " gave up... " .. c.name .. " takes over the chase!", Color3.fromRGB(255, 90, 90))
+			end
 			if not c and (info.j > 1 or pos.Z >= (info.map.startG + 1) * L + 30) then
-				c = spawnChaser(plr, info.map, pos)
+				c = spawnChaser(plr, info.map, pos, info.zone)
 			end
 			if c and not c.caught then
 				local bpos = c.root.Position

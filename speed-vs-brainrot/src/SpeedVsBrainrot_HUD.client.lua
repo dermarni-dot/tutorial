@@ -215,22 +215,218 @@ function ICONS.friends()
 	return list
 end
 
--- a pet: a round face with ears (colors from the pet; a puppy by default)
-function ICONS.pet(body, accent)
+-- a pet, drawn by its style (bunny, pup, cat, fox, wolf, bear, bee, beetle,
+-- penguin, dragon, slime, bird, cloud, unicorn, robot, bat, wisp, overlord),
+-- in its own colors. With no style it's a puppy (the Pets button).
+function ICONS.pet(body, accent, style)
 	body = body or rgb(200, 140, 80)
 	accent = accent or rgb(140, 85, 45)
-	return {
-		S(0.22, 0.42, 0.22, 0.4, accent, { r = 0.5, rot = 20 }),
-		S(0.78, 0.42, 0.22, 0.4, accent, { r = 0.5, rot = -20 }),
-		S(0.5, 0.52, 0.66, 0.62, body, { r = 0.5 }),
-		S(0.5, 0.66, 0.36, 0.26, body:Lerp(rgb(255, 255, 255), 0.55), { r = 0.5 }),
-		S(0.5, 0.6, 0.14, 0.09, rgb(30, 25, 25), { r = 0.5, flat = true }),
-		S(0.38, 0.46, 0.08, 0.11, rgb(30, 25, 25), { r = 0.5, line = 0, flat = true }),
-		S(0.62, 0.46, 0.08, 0.11, rgb(30, 25, 25), { r = 0.5, line = 0, flat = true }),
-		S(0.39, 0.44, 0.03, 0.03, rgb(255, 255, 255), { r = 0.5, line = 0, flat = true }),
-		S(0.63, 0.44, 0.03, 0.03, rgb(255, 255, 255), { r = 0.5, line = 0, flat = true }),
-		S(0.5, 0.75, 0.08, 0.08, rgb(255, 120, 150), { r = 0.5, line = 0, flat = true }),
-	}
+	style = style or "pup"
+	local black, white = rgb(0, 0, 0), rgb(255, 255, 255)
+	local ink = rgb(30, 25, 30)
+	local pink = rgb(255, 130, 160)
+	local light = body:Lerp(white, 0.55)
+	-- dark pets get light eyes so you can still see them
+	if body.R * 0.3 + body.G * 0.59 + body.B * 0.11 < 0.3 then
+		ink = rgb(245, 245, 255)
+	end
+	local list = {}
+	local function add(...)
+		for _, sh in ipairs({ ... }) do
+			table.insert(list, sh)
+		end
+	end
+	local function flat(x, y, w, h, c, extra)
+		local o = { r = 0.5, line = 0, flat = true }
+		for k, v in pairs(extra or {}) do
+			o[k] = v
+		end
+		return S(x, y, w, h, c, o)
+	end
+	-- a pointy ear: a turned square, half hidden behind the head
+	local function pointyEar(x, y, size, tilt, inner)
+		add(S(x, y, size, size, body, { r = 0.12, rot = 45 + tilt }))
+		if inner then
+			add(flat(x, y + size * 0.08, size * 0.55, size * 0.55, inner, { r = 0.12, rot = 45 + tilt }))
+		end
+	end
+	-- the eyes: big and shiny (tall ovals for most, visor slits for robots)
+	local function eyes(y, gap, size, color)
+		for _, sx in ipairs({ -1, 1 }) do
+			add(flat(0.5 + sx * gap, y, size, size * 1.3, color or ink))
+			add(flat(0.5 + sx * gap - size * 0.18, y - size * 0.3, size * 0.4, size * 0.4, white))
+		end
+	end
+	local function cheeks(y, gap)
+		for _, sx in ipairs({ -1, 1 }) do
+			add(flat(0.5 + sx * gap, y, 0.1, 0.06, pink, { a = 0.4 }))
+		end
+	end
+	local function head(x, y, w, h, c)
+		add(S(x or 0.5, y or 0.54, w or 0.66, h or 0.6, c or body, { r = 0.5 }))
+	end
+	local function muzzle(y, nose)
+		add(S(0.5, y or 0.66, 0.34, 0.24, light, { r = 0.5, line = 1.5 }))
+		add(flat(0.5, (y or 0.66) - 0.05, 0.12, 0.08, nose or ink))
+	end
+
+	if style == "bunny" then
+		for _, sx in ipairs({ -1, 1 }) do
+			add(S(0.5 + sx * 0.14, 0.2, 0.15, 0.42, body, { r = 0.5, rot = sx * 10 }))
+			add(flat(0.5 + sx * 0.14, 0.22, 0.07, 0.3, accent, { rot = sx * 10 }))
+		end
+		head()
+		eyes(0.5, 0.12, 0.08)
+		muzzle(0.66, pink)
+		add(flat(0.5, 0.75, 0.08, 0.06, white)) -- teeth
+		cheeks(0.62, 0.22)
+	elseif style == "cat" or style == "fox" or style == "wolf" then
+		local ear = style == "cat" and 0.22 or 0.26
+		pointyEar(0.27, 0.27, ear, -10, style == "wolf" and body:Lerp(black, 0.3) or accent)
+		pointyEar(0.73, 0.27, ear, 10, style == "wolf" and body:Lerp(black, 0.3) or accent)
+		head()
+		if style == "fox" then
+			add(flat(0.36, 0.66, 0.28, 0.22, white), flat(0.64, 0.66, 0.28, 0.22, white))
+		end
+		eyes(0.5, 0.13, 0.08, style == "cat" and rgb(60, 160, 60) or nil)
+		if style == "wolf" then
+			add(flat(0.37, 0.4, 0.14, 0.035, ink, { rot = 15 }), flat(0.63, 0.4, 0.14, 0.035, ink, { rot = -15 }))
+		end
+		add(flat(0.5, 0.62, 0.09, 0.06, style == "cat" and pink or ink))
+		for _, sx in ipairs({ -1, 1 }) do -- whiskers
+			add(flat(0.5 + sx * 0.25, 0.66, 0.18, 0.02, ink, { a = 0.3, rot = sx * 8 }))
+			add(flat(0.5 + sx * 0.25, 0.71, 0.18, 0.02, ink, { a = 0.3, rot = -sx * 8 }))
+		end
+		cheeks(0.62, 0.2)
+	elseif style == "bear" then
+		for _, sx in ipairs({ -1, 1 }) do
+			add(S(0.5 + sx * 0.26, 0.26, 0.22, 0.22, body, { r = 0.5 }))
+			add(flat(0.5 + sx * 0.26, 0.27, 0.11, 0.11, accent))
+		end
+		head()
+		eyes(0.48, 0.13, 0.075)
+		muzzle(0.66)
+		cheeks(0.6, 0.22)
+	elseif style == "bee" then
+		for _, sx in ipairs({ -1, 1 }) do -- wings and feelers
+			add(S(0.5 + sx * 0.3, 0.3, 0.26, 0.2, rgb(220, 240, 255), { r = 0.5, rot = sx * 30, a = 0.25 }))
+			add(flat(0.5 + sx * 0.1, 0.16, 0.03, 0.18, ink, { rot = sx * 20 }))
+			add(flat(0.5 + sx * 0.14, 0.08, 0.07, 0.07, ink))
+		end
+		head()
+		add(flat(0.5, 0.66, 0.6, 0.07, accent), flat(0.5, 0.77, 0.46, 0.06, accent))
+		eyes(0.48, 0.13, 0.08)
+		add(flat(0.5, 0.58, 0.1, 0.04, ink))
+		cheeks(0.58, 0.22)
+	elseif style == "beetle" then
+		for _, sx in ipairs({ -1, 1 }) do
+			add(flat(0.5 + sx * 0.12, 0.15, 0.03, 0.18, ink, { rot = sx * 25 }))
+		end
+		head(0.5, 0.56, 0.7, 0.6, accent)
+		add(S(0.5, 0.42, 0.7, 0.36, body, { r = 0.5 }))     -- shiny shell on top
+		add(flat(0.5, 0.42, 0.02, 0.34, body:Lerp(black, 0.4)))
+		add(flat(0.36, 0.38, 0.08, 0.07, ink, { a = 0.3 }), flat(0.64, 0.4, 0.07, 0.06, ink, { a = 0.3 }))
+		add(flat(0.38, 0.32, 0.12, 0.05, white, { a = 0.4, rot = -20 }))
+		eyes(0.66, 0.12, 0.07)
+		cheeks(0.74, 0.2)
+	elseif style == "penguin" then
+		head(0.5, 0.52, 0.7, 0.66)
+		add(S(0.5, 0.6, 0.5, 0.48, accent, { r = 0.5, line = 1.5 }))
+		eyes(0.52, 0.11, 0.075)
+		add(S(0.5, 0.66, 0.12, 0.12, rgb(255, 160, 40), { r = 0.15, rot = 45 }))
+		cheeks(0.64, 0.2)
+	elseif style == "dragon" then
+		for _, sx in ipairs({ -1, 1 }) do
+			add(S(0.5 + sx * 0.34, 0.42, 0.24, 0.16, accent, { r = 0.3, rot = sx * -35 })) -- little wings
+			add(S(0.5 + sx * 0.18, 0.18, 0.08, 0.22, accent, { r = 0.5, rot = sx * 25 }))  -- horns
+		end
+		head()
+		for i = -1, 1 do
+			add(S(0.5 + i * 0.08, 0.25, 0.07, 0.07, accent, { r = 0.15, rot = 45 })) -- spikes
+		end
+		eyes(0.48, 0.13, 0.08)
+		add(S(0.5, 0.67, 0.36, 0.22, light, { r = 0.5, line = 1.5 }))
+		add(flat(0.44, 0.64, 0.04, 0.04, ink), flat(0.56, 0.64, 0.04, 0.04, ink))
+		cheeks(0.6, 0.22)
+	elseif style == "slime" then
+		add(S(0.5, 0.6, 0.74, 0.6, body, { r = 0.5 }))
+		add(S(0.5, 0.44, 0.5, 0.4, body, { r = 0.5, line = 0 }))
+		add(flat(0.3, 0.86, 0.1, 0.1, body), flat(0.66, 0.88, 0.08, 0.08, body))
+		add(flat(0.36, 0.38, 0.12, 0.08, white, { a = 0.4, rot = -25 }))
+		eyes(0.56, 0.12, 0.08)
+		add(flat(0.5, 0.68, 0.12, 0.05, accent))
+		cheeks(0.66, 0.22)
+	elseif style == "bird" then
+		for i = -1, 1 do
+			add(S(0.5 + i * 0.07, 0.17, 0.07, 0.2, accent, { r = 0.5, rot = i * 25 })) -- crest
+		end
+		head()
+		eyes(0.48, 0.13, 0.08)
+		add(S(0.5, 0.62, 0.14, 0.14, rgb(255, 170, 40), { r = 0.15, rot = 45 }))
+		cheeks(0.6, 0.22)
+	elseif style == "cloud" then
+		for _, c in ipairs({ { 0.3, 0.5, 0.36 }, { 0.7, 0.5, 0.36 }, { 0.5, 0.38, 0.42 }, { 0.5, 0.6, 0.6 } }) do
+			add(S(c[1], c[2], c[3], c[3] * 0.9, body, { r = 0.5 }))
+		end
+		add(flat(0.5, 0.55, 0.6, 0.3, body))
+		eyes(0.54, 0.11, 0.07)
+		add(flat(0.5, 0.64, 0.08, 0.04, ink))
+		cheeks(0.62, 0.2)
+	elseif style == "unicorn" then
+		for i = 1, 3 do
+			add(S(0.26 + i * 0.03, 0.3 + i * 0.12, 0.16, 0.2, accent, { r = 0.5, rot = -20 })) -- mane
+		end
+		add(S(0.68, 0.24, 0.1, 0.16, body, { r = 0.12, rot = 30 })) -- ear
+		head()
+		add(S(0.5, 0.16, 0.09, 0.26, rgb(255, 215, 80), { r = 0.4 })) -- horn
+		add(flat(0.5, 0.12, 0.09, 0.02, rgb(220, 160, 30)), flat(0.5, 0.18, 0.09, 0.02, rgb(220, 160, 30)))
+		eyes(0.5, 0.12, 0.08)
+		muzzle(0.68, pink)
+		cheeks(0.62, 0.22)
+	elseif style == "robot" then
+		add(flat(0.5, 0.16, 0.03, 0.14, ink), S(0.5, 0.09, 0.08, 0.08, accent, { r = 0.5 }))
+		add(S(0.5, 0.54, 0.68, 0.56, body, { r = 0.18 }))
+		add(S(0.5, 0.48, 0.5, 0.16, ink, { r = 0.3 }))
+		add(flat(0.39, 0.48, 0.1, 0.07, accent), flat(0.61, 0.48, 0.1, 0.07, accent))
+		for i = -1, 1 do
+			add(flat(0.5 + i * 0.07, 0.68, 0.04, 0.06, ink, { r = 0.2 }))
+		end
+		add(S(0.14, 0.54, 0.06, 0.16, accent, { r = 0.3 }), S(0.86, 0.54, 0.06, 0.16, accent, { r = 0.3 }))
+	elseif style == "bat" then
+		pointyEar(0.24, 0.28, 0.3, -20, accent)
+		pointyEar(0.76, 0.28, 0.3, 20, accent)
+		head()
+		eyes(0.5, 0.13, 0.08, accent)
+		add(flat(0.5, 0.62, 0.08, 0.05, ink))
+		add(S(0.45, 0.7, 0.04, 0.07, white, { r = 0.1, line = 1 }), S(0.55, 0.7, 0.04, 0.07, white, { r = 0.1, line = 1 }))
+		cheeks(0.62, 0.22)
+	elseif style == "wisp" then
+		add(S(0.5, 0.36, 0.34, 0.34, accent, { r = 0.15, rot = 45, a = 0.3 }))
+		add(S(0.5, 0.6, 0.62, 0.56, body, { r = 0.5 }))
+		add(S(0.5, 0.4, 0.38, 0.38, body, { r = 0.15, rot = 45, line = 0 }))
+		add(flat(0.5, 0.6, 0.36, 0.34, accent, { a = 0.5 }))
+		eyes(0.6, 0.11, 0.1)
+		cheeks(0.7, 0.18)
+	elseif style == "overlord" then
+		head(0.5, 0.56, 0.7, 0.6)
+		add(S(0.5, 0.25, 0.42, 0.16, rgb(255, 210, 60), { r = 0.1 })) -- crown
+		for i = -1, 1 do
+			add(S(0.5 + i * 0.14, 0.17, 0.09, 0.09, rgb(255, 210, 60), { r = 0.1, rot = 45 }))
+		end
+		add(flat(0.5, 0.25, 0.07, 0.07, rgb(230, 50, 80)))
+		eyes(0.52, 0.16, 0.075, accent)
+		add(flat(0.5, 0.42, 0.08, 0.1, accent))
+		add(flat(0.5, 0.68, 0.22, 0.05, ink))
+	else -- pup
+		add(S(0.22, 0.42, 0.22, 0.4, accent, { r = 0.5, rot = 20 }))
+		add(S(0.78, 0.42, 0.22, 0.4, accent, { r = 0.5, rot = -20 }))
+		head(0.5, 0.52, 0.66, 0.62)
+		muzzle(0.66)
+		eyes(0.46, 0.12, 0.08)
+		add(flat(0.5, 0.75, 0.08, 0.08, pink))
+		cheeks(0.6, 0.22)
+	end
+	return list
 end
 
 -- a shiny egg: a smooth egg shape (narrow top, round bottom) built from thin
@@ -971,7 +1167,7 @@ local function refreshPets()
 		local card = new("Frame", { LayoutOrder = i, BackgroundColor3 = Color3.fromRGB(58, 64, 86), ZIndex = 23, Parent = petList })
 		corner(card, 12)
 		stroke(card, if equipped[p.key] then Color3.fromRGB(120, 255, 120) else TIER_COLORS[p.tier], 3)
-		local face = drawIcon(card, "pet", 54, p.info:GetAttribute("Body"), p.info:GetAttribute("Accent"))
+		local face = drawIcon(card, "pet", 54, p.info:GetAttribute("Body"), p.info:GetAttribute("Accent"), p.info:GetAttribute("Style"))
 		face.AnchorPoint = Vector2.new(0.5, 0)
 		face.Position = UDim2.new(0.5, 0, 0, 3)
 		label(card, TIER_NAMES[p.tier] .. p.name, UDim2.new(1, -8, 0, 18), { Position = UDim2.fromOffset(4, 58), TextColor3 = TIER_COLORS[p.tier], ZIndex = 24 })
@@ -1179,6 +1375,47 @@ CashFxRemote.OnClientEvent:Connect(function(_pos, amount, who)
 end)
 
 ------------------------------------------------------------------------
+-- BOSS CHASE BAR: who's chasing you and how close it is (top middle)
+------------------------------------------------------------------------
+local chase = new("Frame", {
+	Name = "BossChase",
+	AnchorPoint = Vector2.new(0.5, 0),
+	Position = UDim2.new(0.5, 0, 0, 8),
+	Size = UDim2.fromOffset(380, 66),
+	BackgroundColor3 = Color3.fromRGB(40, 20, 28),
+	BackgroundTransparency = 0.15,
+	Visible = false,
+	ZIndex = 35,
+	Parent = gui,
+})
+corner(chase, 14)
+local chaseStroke = stroke(chase, Color3.fromRGB(255, 70, 70), 3)
+local chaseName = label(chase, "", UDim2.new(1, -24, 0, 26), { Position = UDim2.fromOffset(12, 5), TextColor3 = Color3.fromRGB(255, 120, 120), ZIndex = 36 })
+local chaseBack = new("Frame", { Position = UDim2.new(0, 14, 0, 38), Size = UDim2.new(1, -28, 0, 16), BackgroundColor3 = Color3.fromRGB(20, 12, 16), ZIndex = 36, Parent = chase })
+corner(chaseBack, 8)
+local chaseFill = new("Frame", { Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.fromRGB(110, 230, 90), ZIndex = 37, Parent = chaseBack })
+corner(chaseFill, 8)
+local chaseText = label(chaseBack, "", UDim2.new(1, 0, 1, 2), { Position = UDim2.fromOffset(0, -1), ZIndex = 38 })
+local CHASE_RANGE = 60
+local shownGap = CHASE_RANGE
+RunService.RenderStepped:Connect(function(dt)
+	local who = player:GetAttribute("ChasedBy")
+	chase.Visible = who ~= nil
+	if not who then return end
+	local gap = player:GetAttribute("BossGap") or CHASE_RANGE
+	shownGap += (gap - shownGap) * math.min(1, dt * 8)
+	local u = math.clamp(shownGap / CHASE_RANGE, 0, 1)
+	chaseName.Text = string.upper(who) .. " IS CHASING YOU!"
+	chaseFill.Size = UDim2.fromScale(math.max(0.03, u), 1)
+	-- green when you're far ahead, red (and shaking) when it's right behind you
+	local danger = Color3.fromRGB(255, 60, 60):Lerp(Color3.fromRGB(110, 230, 90), u)
+	chaseFill.BackgroundColor3 = danger
+	chaseStroke.Color = danger
+	chaseText.Text = math.floor(gap) .. " studs behind you"
+	chase.Rotation = (u < 0.25) and math.sin(os.clock() * 40) * 1.5 or 0
+end)
+
+------------------------------------------------------------------------
 -- ZONE CLEARED: a gold card drops in, a shine sweeps across it, the trophies
 -- count up, then the card shrinks and flies into your Trophies tile
 ------------------------------------------------------------------------
@@ -1293,6 +1530,7 @@ local function playHatch(petName, tier, bonus, fused)
 	local info = PetInfo:FindFirstChild(petName)
 	local body = info and info:GetAttribute("Body")
 	local accent = info and info:GetAttribute("Accent")
+	local style = info and info:GetAttribute("Style")
 	local eggColor = info and info:GetAttribute("EggColor") or Color3.fromRGB(250, 240, 220)
 	local eggSpots = info and info:GetAttribute("EggSpots") or Color3.fromRGB(120, 210, 90)
 	local rarityName = info and info:GetAttribute("Rarity") or "Common"
@@ -1310,7 +1548,7 @@ local function playHatch(petName, tier, bonus, fused)
 		-- three pets spin in and merge
 		local minis = {}
 		for i = 1, 3 do
-			local mini = drawIcon(center, "pet", 90, body, accent)
+			local mini = drawIcon(center, "pet", 90, body, accent, style)
 			mini.AnchorPoint = Vector2.new(0.5, 0.5)
 			local a = i / 3 * math.pi * 2
 			mini.Position = UDim2.new(0.5, math.cos(a) * 110, 0.5, math.sin(a) * 110)
@@ -1412,7 +1650,7 @@ local function playHatch(petName, tier, bonus, fused)
 	-- the pet
 	local petHolder = new("Frame", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.45), Size = UDim2.fromOffset(200, 200), BackgroundTransparency = 1, ZIndex = 63, Parent = hatchLayer })
 	local petScale = new("UIScale", { Scale = 0.2, Parent = petHolder })
-	drawIcon(petHolder, "pet", 200, body, accent)
+	drawIcon(petHolder, "pet", 200, body, accent, style)
 	tween(petScale, 0.5, { Scale = 1 }, Enum.EasingStyle.Back)
 	center:Destroy()
 

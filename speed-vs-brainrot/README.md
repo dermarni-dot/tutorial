@@ -14,6 +14,7 @@ Three scripts:
 - **Map 2: Turbo Badlands**. Its boss is **Tralalero Turbino**, a bigger, boxier boss. 6 zones that pay **1.5K to 500K trophies**: Jungle, Haunted, Factory, Space, Rainbow, Inferno.
 - Each map has its own start island with a speed pad, 4 eggs, leaderboards and a portal.
 - Reaching a map's finish unlocks the next map and takes you there. To add a third map, copy a block in `MAPS`.
+- **Every zone has its own boss** that chases you through it, and each one is bigger and faster than the last: Tung Tung Sahur, Brr Brr Patapim, Lirili Larila, Bombardiro Crocodilo, Trippi Troppi, Ballerina Cappuccina, Chimpanzini Bananini, Cappuccino Assassino and Bombombini Gusini on Map 1; Frigo Camelo, Glorbo Fruttodrillo, La Vaca Saturno, Garamararam and Bobrito Bandito on Map 2. The last zone of each map has the map's big boss. When you cross into the next zone, the old boss vanishes and the new one takes over. Bosses swing their legs as they run and kick up dust. A bar at the top of the screen shows who is chasing you and how close they are. Edit them in `ZONE_BOSSES`.
 - The boss gets faster in every zone. Each zone has a **pace**, so speed is relative: the same Speed makes you run faster in a harder zone, and its boss is faster too.
 - **Leaving a zone takes a certain Speed.** The golden gate shows the requirement and glows red until you have it. If you're too slow, you're pushed back.
 - **Getting hit sends you back to the start.** That covers obstacles, falling off and the boss catching you. You tumble with stars around your head and a red flash, then reappear at the start.
@@ -43,7 +44,7 @@ Three scripts:
 - **Cash pickups**: a cash brick with "+545" pops up and flies into the Cash tile, and a green swirl spins around the player.
 - **Zone cleared**: a gold card drops in, a shine sweeps across it and the trophies count up. The card then flies into the Trophies tile.
 - **Egg icons**: each egg is drawn in its own colors, with a smooth egg shape, shading on the lower right, a glossy highlight, a zigzag stripe, raised spots and a shadow underneath.
-- **Egg hatch**: the screen dims, the egg wobbles and cracks, there is a flash and the halves fly apart. Your pet pops out in front of spinning rays, with its rarity. Fusing pets plays its own version.
+- **Egg hatch**: the screen dims, the egg wobbles and cracks, there is a flash and the halves fly apart. Your actual pet pops out in front of spinning rays, with its rarity. Every pet is drawn by its kind (bunny, pup, cat, fox, wolf, bear, bee, beetle, penguin, dragon, slime, bird, cloud, unicorn, robot, bat, wisp, overlord) in its own colors, in the hatch screen and in the Pets menu. Fusing pets plays its own version.
 - The whole UI is drawn at 80% size so it covers less of the screen. Change `UI_SIZE` in the HUD script to adjust it.
 
 No emojis or uploaded images: every icon is drawn from rounded frames (the `ICONS` table in the HUD script).
@@ -58,3 +59,4 @@ No emojis or uploaded images: every icon is drawn from rounded frames (the `ICON
 ![Menus](svb_menus.png)
 ![Egg hatch](svb_hatch.png)
 ![Egg icons](svb_eggs.png)
+![All pets](svb_pets.png)
