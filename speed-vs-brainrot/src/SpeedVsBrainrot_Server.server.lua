@@ -37,8 +37,9 @@ local CollectionService = game:GetService("CollectionService")
 ------------------------------------------------------------------------
 local CONFIG = {
 	ZoneWidth = 110,          -- every zone, including the start zones, is this wide...
-	ZoneLength = 200,         -- ...and this long
-	MapGap = 2,               -- empty sky (in zone lengths) between one map's end and the next island
+	ZoneLength = 400,         -- ...and this long (long zones = more room to pull away from the boss)
+	IslandLength = 200,       -- the start islands stay this long (they sit at the end of their slot)
+	MapGap = 1,               -- empty sky (in zone lengths) between one map's end and the next island
 
 	BaseWalkSpeed = 16,
 	StartZoneWalkSpeed = 16,  -- everyone walks at this speed until they cross the red line
@@ -49,12 +50,12 @@ local CONFIG = {
 	SpeedCostCurve = 80,
 	PadBuyInterval = 0.2,     -- while you stand on the green pad, it buys speed this often
 
-	CashPerZone = 16,         -- cash pickups lying in each zone
+	CashPerZone = 24,         -- cash pickups lying in each zone
 	CashRespawnTime = 8,      -- seconds before picked-up cash comes back
 
-	BossHeadStart = 26,       -- how far behind you the boss appears
+	BossHeadStart = 45,       -- how far behind you the boss appears
 	BossGraceTime = 0.8,      -- seconds the boss waits before it starts running
-	BossLeash = 30,           -- if you get farther ahead than this, the boss speeds up to stay close
+	BossLeash = 60,           -- if you get farther ahead than this, the boss speeds up to stay close
 	BossTick = 0.1,           -- seconds between boss brain updates
 
 	HitTime = 0.8,            -- after a hit you tumble for this long, then go back to the start
@@ -733,14 +734,15 @@ local function buildZoneShell(k, floorColor, underColor, accent, holey, rng)
 end
 
 -- Lighter / darker patches on the floor so it isn't one flat color
-local function floorPatches(k, color, rng)
-	for i = 1, 14 do
+local function floorPatches(k, color, rng, z0, len)
+	z0, len = z0 or k * L, len or L
+	for i = 1, math.floor(14 * len / 200) do
 		local amt = 0.06 + rng:NextNumber() * 0.06
 		local c = (i % 2 == 0) and color:Lerp(WHITE, amt) or color:Lerp(BLACK, amt)
 		local patch = newPart{
 			Name = "Patch",
 			Size = Vector3.new(rng:NextInteger(8, 22), 0.1, rng:NextInteger(8, 22)),
-			Position = Vector3.new(rng:NextInteger(-HALF_W + 14, HALF_W - 14), FLOOR_Y + 0.05, k * L + rng:NextInteger(12, L - 12)),
+			Position = Vector3.new(rng:NextInteger(-HALF_W + 14, HALF_W - 14), FLOOR_Y + 0.05, z0 + rng:NextInteger(12, len - 12)),
 			Color = c,
 			CanCollide = false,
 			CastShadow = false,
@@ -1286,7 +1288,7 @@ do
 	function decorateZone(k, theme)
 		local fn = DECOR[theme]
 		if not fn then return end
-		local count = 16
+		local count = math.floor(16 * L / 200)
 		for i = 1, count do
 			local side = (i % 2 == 0) and 1 or -1
 			local z = k * L + (i - 0.5) * (L / count)
@@ -2105,12 +2107,14 @@ end
 local PortalPrompts = {}
 
 local function buildStartIsland(map)
-	local m, oz = map.index, map.oz
-	local startFloor = newPart{ Name = "Island" .. m .. "Floor", Size = Vector3.new(W, 1, L), Position = Vector3.new(0, 0, oz + L / 2), Color = GRASS, Parent = Map }
+	local IL = CONFIG.IslandLength
+	-- the island sits at the end of its slot, right before the map's first zone
+	local m, oz = map.index, map.oz + L - IL
+	local startFloor = newPart{ Name = "Island" .. m .. "Floor", Size = Vector3.new(W, 1, IL), Position = Vector3.new(0, 0, oz + IL / 2), Color = GRASS, Parent = Map }
 	addStuds(startFloor, Enum.NormalId.Top)
-	studSides(newPart{ Name = "IslandDirt", Size = Vector3.new(W, 44, L), Position = Vector3.new(0, -22.5, oz + L / 2), Color = DIRT, Parent = Map })
+	studSides(newPart{ Name = "IslandDirt", Size = Vector3.new(W, 44, IL), Position = Vector3.new(0, -22.5, oz + IL / 2), Color = DIRT, Parent = Map })
 	publishZone(map.startG, map.title, WHITE, 0, "start", 0, m, 0, 1)
-	floorPatches(map.startG, GRASS, Random.new(2 + m))
+	floorPatches(map.startG, GRASS, Random.new(2 + m), oz, IL)
 
 	-- blocky grass terraces stepping up around the edges, with dirt cliffs below
 	local terrRng = Random.new(3 + m)
@@ -2123,7 +2127,7 @@ local function buildStartIsland(map)
 		studsAll(newPart{ Name = "TerraceGrass", Size = Vector3.new(10.3, 1.2, 10.3), Position = Vector3.new(cx, top - 0.6, cz), Color = GRASS:Lerp(WHITE, terrRng:NextNumber() * 0.08), Parent = Map })
 		table.insert(terraceTops, { x = cx, z = cz, y = top, ring = ring })
 	end
-	for zc = -25, L - 5, 10 do
+	for zc = -25, IL - 5, 10 do
 		local backRing = (zc < 0) and math.ceil(-zc / 10) or 0
 		for ringIdx = 1, 3 do
 			local ring = math.max(ringIdx, backRing)
@@ -2215,7 +2219,7 @@ local function buildStartIsland(map)
 		block(4.6, 0.5, 4.6, base * CFrame.new(0, 0, 6.2) * CFrame.Angles(0, math.rad(45), 0), red).CanCollide = false
 	end
 	for _, ax in ipairs({ -36, -18, 0, 18, 36 }) do
-		redArrow(ax, oz + L + 6)
+		redArrow(ax, oz + IL + 6)
 	end
 
 	-- a ring of blocks (fountain rims)
@@ -2418,7 +2422,12 @@ for m, map in ipairs(MAPS) do
 		if not holey then floorPatches(k, zone.floor, rng) end
 		decorateZone(k, zone.theme)
 		local build = OBSTACLES[zone.theme]
-		if build then build(k, k * L, rng) end
+		if build then
+			-- obstacle layouts are 200 studs long: repeat them down the whole zone
+			for part = 0, math.floor(L / 200) - 1 do
+				build(k, k * L + part * 200, rng)
+			end
+		end
 		if j < #map.zones then
 			local nextZone = map.zones[j + 1]
 			buildTrophyGate((k + 1) * L, {
