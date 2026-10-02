@@ -60,3 +60,5 @@ No emojis or uploaded images: every icon is drawn from rounded frames (the `ICON
 ![Egg hatch](svb_hatch.png)
 ![Egg icons](svb_eggs.png)
 ![All pets](svb_pets.png)
+![3D eggs, Map 1](eggs3d_map1.png)
+![3D eggs, Map 2](eggs3d_map2.png)
