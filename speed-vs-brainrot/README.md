@@ -42,9 +42,11 @@ Four scripts:
 - Each map has its own start island with a speed pad, 4 eggs, leaderboards and a portal.
 - Reaching a map's finish unlocks the next map and takes you there. To add a third map, copy a block in `MAPS`.
 - **Smooth, joined-up designs**: on the bosses and pets, every detail (eyes, lids, brows, mustaches, cheeks, noses, gills, buttons, jewels, laces, swooshes) is painted onto the curve of the body it sits on, instead of being stuck on top. Arms, legs, fins, horns, spikes and manes all start inside the body they grow from, so nothing floats or pokes out. Eggs have no rings or bits sticking out of them.
-- **Studded bosses (like Steal a Pet Egg)**: by default the bosses are built from blocks and wedges with classic Roblox studs on every face. Their details (eyes, brows, mustache, buttons, gills, mouth and teeth) are flat tiles laid on the faces, so nothing pokes out.
-  - Roblox studs are always 1 stud wide, so on a boss this big they look like a fine studded texture from a distance and show clearly up close.
-  - For **big chunky studs**, put a studs texture image in `CONFIG.BossStudTexture` (for example `"rbxassetid://123456"`, from a studs texture in the Toolbox), and set their size with `BossStudSize`.
+- **Studded bosses (like Steal a Pet Egg)**: by default the bosses are built from blocks and wedges with big chunky Lego studs. Their details (eyes, brows, mustache, buttons, gills, mouth and teeth) are flat tiles laid on the faces, so nothing pokes out.
+  - The studs are about 7 across the boss (`CONFIG.BossBigStuds`). They are built on your own screen only, for your own boss, so they don't cost the server anything.
+  - Studs skip the faces of tiles (eyes, mouths, buttons) and faces covered by another block, and the king's face and the shark's snout stay flat so their faces read clearly.
+  - The shark has a wide toothy grin, red-glint eyes and angry brows on the front of its head, so you see its face while it chases you.
+  - Set `BossBigStuds = 0` to use Roblox's own 1-stud studs instead. Those are tiny on a boss this big; you can add a studs image in `CONFIG.BossStudTexture` (sized with `BossStudSize`) to make them bigger.
   - Set `CONFIG.BossStyle = "smooth"` to go back to the smooth round versions described below.
 - **One giant boss per map**: it's about as wide as the track (80% of `ZoneWidth`) and a couple of hundred studs tall, so there's no getting around it. You can only run. It catches you when its face reaches you.
   - **Il Grande Zoomerone** (Map 1) is a king in full royal dress. He has a jewelled crown with pearls and a cross, stern eyes with heavy lids and bushy brows, a big nose, a curled mustache and a goatee. He wears a velvet robe with a gold hem, belt and buttons, an ermine collar and a long cape, white gloves with real fingers, and royal boots with gold buckles. He holds a jewelled sceptre and an orb.

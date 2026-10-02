@@ -196,6 +196,77 @@ local function hideBossPart(d)
 		d.Enabled = false
 	end
 end
+-- BIG STUDS on your own boss: classic Lego-style studs, a few across each face (Roblox's
+-- own studs are 1 stud wide, far too small to see on a boss this size). Built on your
+-- screen only, welded to the boss so they move with it.
+local function makeStuds(part, spacing, budget, tiles, solids)
+	local made = 0
+	local sz = part.Size
+	local d, h = spacing * 0.62, spacing * 0.22
+	local color = part.Color:Lerp(WHITE, 0.06)
+	-- every face but the bottom: its normal and the two sizes across it
+	local FACES = {
+		{ Vector3.new(0, 1, 0), sz.X, sz.Z, Vector3.xAxis, Vector3.zAxis, sz.Y },
+		{ Vector3.new(0, 0, -1), sz.X, sz.Y, Vector3.xAxis, Vector3.yAxis, sz.Z },
+		{ Vector3.new(0, 0, 1), sz.X, sz.Y, Vector3.xAxis, Vector3.yAxis, sz.Z },
+		{ Vector3.new(1, 0, 0), sz.Z, sz.Y, Vector3.zAxis, Vector3.yAxis, sz.X },
+		{ Vector3.new(-1, 0, 0), sz.Z, sz.Y, Vector3.zAxis, Vector3.yAxis, sz.X },
+	}
+	for _, f in ipairs(FACES) do
+		local n, wU, wV, u, v, depth = f[1], f[2], f[3], f[4], f[5], f[6]
+		local nu, nv = math.floor(wU / spacing), math.floor(wV / spacing)
+		if n.Z < 0 and part:GetAttribute("FlatFront") then nu = 0 end -- a face goes here: keep it flat
+		for i = 1, nu do
+			for j = 1, nv do
+				if made >= budget then return made end
+				local offU = (i - (nu + 1) / 2) * spacing
+				local offV = (j - (nv + 1) / 2) * spacing
+				local localPos = n * (depth / 2 + h / 2) + u * offU + v * offV
+				local worldPos = part.CFrame:PointToWorldSpace(localPos)
+				-- leave the face, eyes, gills and buttons clear
+				local clear = true
+				for _, tile in ipairs(tiles) do
+					if (tile.Position - worldPos).Magnitude < tile.Size.Magnitude / 2 + d * 0.6 then
+						clear = false
+						break
+					end
+				end
+				-- and only where the face is out in the open (not buried in another block)
+				if clear then
+					local base = part.CFrame:PointToWorldSpace(n * (depth / 2 + h * 0.4) + u * offU + v * offV)
+					for _, other in ipairs(solids) do
+						if other ~= part then
+							local q = other.CFrame:PointToObjectSpace(base)
+							local hs = other.Size / 2
+							if math.abs(q.X) < hs.X and math.abs(q.Y) < hs.Y and math.abs(q.Z) < hs.Z then
+								clear = false
+								break
+							end
+						end
+					end
+				end
+				if not clear then continue end
+				local stud = Instance.new("Part")
+				stud.Name = "BigStud"
+				stud.Shape = Enum.PartType.Cylinder
+				stud.Size = Vector3.new(h, d, d)
+				stud.Color = color
+				stud.Material = part.Material
+				stud.TopSurface, stud.BottomSurface = Enum.SurfaceType.Smooth, Enum.SurfaceType.Smooth
+				stud.CanCollide, stud.CanQuery, stud.CanTouch, stud.Massless, stud.CastShadow = false, false, false, true, false
+				local worldN = part.CFrame:VectorToWorldSpace(n)
+				stud.CFrame = CFrame.lookAt(worldPos, worldPos + worldN) * CFrame.Angles(0, math.pi / 2, 0)
+				local w = Instance.new("WeldConstraint")
+				w.Part0, w.Part1 = part, stud
+				w.Parent = stud
+				stud.Parent = part
+				made += 1
+			end
+		end
+	end
+	return made
+end
+
 local function addBoss(model)
 	local owner = model:GetAttribute("OwnerId")
 	if owner and owner ~= player.UserId then
@@ -205,6 +276,23 @@ local function addBoss(model)
 	end
 	local root = model:WaitForChild("HumanoidRootPart", 5)
 	if not root then return end
+	local spacing = model:GetAttribute("StudSpacing")
+	if spacing and spacing > 0 then
+		task.spawn(function()
+			local budget = 900
+			local tiles, solids = {}, {}
+			for _, part in ipairs(model:GetDescendants()) do
+				if part:IsA("BasePart") and part:GetAttribute("NoStuds") then table.insert(tiles, part) end
+				if part:IsA("BasePart") and part:GetAttribute("BigStuds") then table.insert(solids, part) end
+			end
+			for _, part in ipairs(model:GetDescendants()) do
+				if part:IsA("BasePart") and part:GetAttribute("BigStuds") then
+					budget -= makeStuds(part, spacing, budget, tiles, solids)
+					if budget <= 0 then break end
+				end
+			end
+		end)
+	end
 	local motors = {}
 	for _, m in ipairs(root:GetChildren()) do
 		if m:IsA("Motor6D") and (m.Name == "LegMotor" or m.Name == "ArmMotor") then

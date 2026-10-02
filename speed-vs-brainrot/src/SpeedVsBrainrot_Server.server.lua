@@ -57,6 +57,7 @@ local CONFIG = {
 	BossHeadStart = 45,       -- how far behind you the boss appears
 	BossGraceTime = 0.8,      -- seconds the boss waits before it starts running
 	BossStyle = "studs",      -- "studs" = studded block bosses (like Steal a Pet Egg), "smooth" = smooth round ones
+	BossBigStuds = 7,         -- big Lego-style studs: about this many across the boss (0 = Roblox's own 1-stud studs)
 	BossStudTexture = "",     -- optional: a studs texture image (e.g. "rbxassetid://123") for BIG studs on the giant bosses
 	BossStudSize = 8,         -- how wide each of those big studs is (studs)
 	BossAccel = 6,            -- the boss gains at least this much speed every second while it's slower than you
@@ -3710,15 +3711,16 @@ local function buildBoss(def, ownerName, cf, ownerId)
 	end
 	-- flat tiles on a face: front (-Z) face at z, side face at x (signed), bottom face at y
 	local TILE = 0.012
+	local function noStuds(part) part:SetAttribute("NoStuds", true) return part end
 	local function frontTile(zf, x, y, w, h, color, layer, roll, material, parent)
-		return box(V(w, h, TILE), color, C(x, y, zf - TILE / 2 - (layer or 0) * 0.004) * CFrame.Angles(0, 0, roll or 0), material, parent)
+		return noStuds(box(V(w, h, TILE), color, C(x, y, zf - TILE / 2 - (layer or 0) * 0.004) * CFrame.Angles(0, 0, roll or 0), material, parent))
 	end
 	local function sideTile(xf, y, z, w, h, color, layer, roll, material)
 		local sx = (xf < 0) and -1 or 1
-		return box(V(TILE, h, w), color, C(xf + sx * (TILE / 2 + (layer or 0) * 0.004), y, z) * CFrame.Angles(roll or 0, 0, 0), material)
+		return noStuds(box(V(TILE, h, w), color, C(xf + sx * (TILE / 2 + (layer or 0) * 0.004), y, z) * CFrame.Angles(roll or 0, 0, 0), material))
 	end
 	local function bottomTile(yf, x, z, w, d, color, layer, material)
-		return box(V(w, TILE, d), color, C(x, yf - TILE / 2 - (layer or 0) * 0.004, z), material)
+		return noStuds(box(V(w, TILE, d), color, C(x, yf - TILE / 2 - (layer or 0) * 0.004, z), material))
 	end
 	-- block legs and arms on the same joints the World script swings
 	local function blockLegs(o)
@@ -3752,9 +3754,12 @@ local function buildBoss(def, ownerName, cf, ownerId)
 	BUILD.zoomerone_studs = function()
 		local robe, ermine, hair = Color3.fromRGB(150, 22, 45), Color3.fromRGB(248, 246, 238), Color3.fromRGB(228, 228, 232)
 		local FZ = -0.43 -- the front of his head-body block
-		box(V(0.92, 0.9, 0.86), skin, C(0, 0.03, 0))
+		for _, hb in ipairs({ V(0.92, 0.9, 0.86), V(0.82, 0.98, 0.76), V(0.98, 0.78, 0.76) }) do -- stepped edges make him rounder
+			box(hb, skin, C(0, 0.03, 0)):SetAttribute("FlatFront", true) -- his face is on the front
+		end
 		-- robe, gold hem, belt with a buckle, ermine collar, buttons
 		box(V(0.98, 0.36, 0.92), robe, C(0, -0.3, 0))
+		box(V(1.04, 0.28, 0.84), robe, C(0, -0.3, 0))
 		box(V(1.0, 0.05, 0.94), GOLD, C(0, -0.455, 0))
 		box(V(1.0, 0.06, 0.94), Color3.fromRGB(60, 30, 22), C(0, -0.2, 0))
 		frontTile(-0.47, 0, -0.2, 0.14, 0.1, GOLD)
@@ -3815,10 +3820,34 @@ local function buildBoss(def, ownerName, cf, ownerId)
 			{ -1.38, -1.12, 0.3, 0.28, 0.08 }, { -1.12, -0.78, 0.62, 0.58, 0.06 }, { -0.78, -0.2, 0.86, 0.78, 0.05 },
 			{ -0.2, 0.4, 0.92, 0.82, 0.05 }, { 0.4, 0.85, 0.74, 0.64, 0.06 }, { 0.85, 1.15, 0.5, 0.44, 0.07 }, { 1.15, 1.4, 0.28, 0.26, 0.08 },
 		}
-		for _, g in ipairs(SEG) do
+		for i, g in ipairs(SEG) do
 			local z0, z1, w, h, cy = g[1], g[2], g[3], g[4], g[5]
-			box(V(w, h, z1 - z0), back, C(0, cy, (z0 + z1) / 2))
-			box(V(w + 0.006, h * 0.42, z1 - z0 - 0.004), belly, C(0, cy - h / 2 + h * 0.21 - 0.003, (z0 + z1) / 2))
+			local top = box(V(w, h, z1 - z0), back, C(0, cy, (z0 + z1) / 2))
+			local low = box(V(w + 0.006, h * 0.42, z1 - z0 - 0.004), belly, C(0, cy - h / 2 + h * 0.21 - 0.003, (z0 + z1) / 2))
+			if i <= 2 then -- the face is on these: no studs on their fronts
+				top:SetAttribute("FlatFront", true)
+				low:SetAttribute("FlatFront", true)
+			end
+		end
+		-- the face you see when it is chasing you: a wide toothy grin under the nose and
+		-- two glaring eyes beside it, all flat tiles on the front of the head
+		local zf = -1.12
+		local gum, tooth = Color3.fromRGB(150, 40, 55), Color3.fromRGB(245, 242, 230)
+		frontTile(zf, 0, -0.135, 0.56, 0.13, Color3.fromRGB(30, 4, 10))
+		frontTile(zf, 0, -0.17, 0.4, 0.05, gum, 1)
+		for k = -6, 6 do
+			for _, ty in ipairs({ -0.07, -0.2 }) do
+				local d = (math.abs(k) <= 4) and 0.04 or 0.03 -- smaller teeth at the corners
+				frontTile(zf, k * 0.042, ty, d, d, tooth, 2, math.rad(45)).Name = "Tooth"
+			end
+		end
+		frontTile(zf, 0, -0.056, 0.58, 0.028, belly, 3) -- lips hide the back half of each tooth
+		frontTile(zf, 0, -0.214, 0.58, 0.028, belly, 3)
+		for _, sx in ipairs({ -1, 1 }) do
+			frontTile(zf, sx * 0.23, 0.14, 0.12, 0.1, back:Lerp(BLACK, 0.5))
+			frontTile(zf, sx * 0.23, 0.135, 0.085, 0.07, Color3.fromRGB(4, 4, 6), 1, 0, Enum.Material.Glass)
+			frontTile(zf, sx * 0.21, 0.155, 0.022, 0.022, Color3.fromRGB(255, 70, 60), 2, 0, Enum.Material.Neon)
+			frontTile(zf, sx * 0.23, 0.215, 0.15, 0.03, back:Lerp(BLACK, 0.6), 2, sx * math.rad(-18)) -- angry brow
 		end
 		-- a sloped snout and jaw so the head comes to a point
 		wedge(V(0.62, 0.14, 0.34), back, C(0, 0.06 + 0.29 + 0.07, -0.95))
@@ -3859,11 +3888,22 @@ local function buildBoss(def, ownerName, cf, ownerId)
 	if studded then
 		-- classic studs on every face (shiny materials keep their look)
 		local SHINY = { [Enum.Material.Neon] = true, [Enum.Material.Glass] = true }
+		local big = CONFIG.BossBigStuds > 0
+		if big then model:SetAttribute("StudSpacing", s / CONFIG.BossBigStuds) end
 		for _, part in ipairs(model:GetDescendants()) do
 			if part:IsA("BasePart") and part ~= root and (part.Transparency or 0) < 1 and not SHINY[part.Material] then
-				part.Material = Enum.Material.Plastic
-				for _, face in ipairs({ "TopSurface", "BottomSurface", "LeftSurface", "RightSurface", "FrontSurface", "BackSurface" }) do
-					part[face] = Enum.SurfaceType.Studs
+				part.Material = Enum.Material.SmoothPlastic
+				if big then
+					-- the World script grows chunky studs on these faces (tiles and thin bits stay flat)
+					local sz = part.Size
+					if not part:GetAttribute("NoStuds") and part:IsA("Part") and math.min(sz.X, sz.Y, sz.Z) > s * 0.05 then
+						part:SetAttribute("BigStuds", true)
+					end
+				else
+					part.Material = Enum.Material.Plastic
+					for _, face in ipairs({ "TopSurface", "BottomSurface", "LeftSurface", "RightSurface", "FrontSurface", "BackSurface" }) do
+						part[face] = Enum.SurfaceType.Studs
+					end
 				end
 				-- Roblox's studs are 1 stud each, tiny on a giant boss: with a studs image set,
 				-- every face also gets big studs tinted to the part's colour
