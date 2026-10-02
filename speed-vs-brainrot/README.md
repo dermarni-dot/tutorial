@@ -42,6 +42,7 @@ Three scripts:
   - Prestige, which stays locked until you can use it.
 - **Cash pickups**: a cash brick with "+545" pops up and flies into the Cash tile, and a green swirl spins around the player.
 - **Zone cleared**: a gold card drops in, a shine sweeps across it and the trophies count up. The card then flies into the Trophies tile.
+- **Egg icons**: each egg is drawn in its own colors, with a smooth egg shape, shading on the lower right, a glossy highlight, a zigzag stripe, raised spots and a shadow underneath.
 - **Egg hatch**: the screen dims, the egg wobbles and cracks, there is a flash and the halves fly apart. Your pet pops out in front of spinning rays, with its rarity. Fusing pets plays its own version.
 - The whole UI is drawn at 80% size so it covers less of the screen. Change `UI_SIZE` in the HUD script to adjust it.
 
@@ -56,3 +57,4 @@ No emojis or uploaded images: every icon is drawn from rounded frames (the `ICON
 ![HUD](svb_hud.png)
 ![Menus](svb_menus.png)
 ![Egg hatch](svb_hatch.png)
+![Egg icons](svb_eggs.png)

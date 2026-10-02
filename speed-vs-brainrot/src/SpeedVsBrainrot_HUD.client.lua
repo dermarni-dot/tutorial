@@ -233,19 +233,63 @@ function ICONS.pet(body, accent)
 	}
 end
 
--- an egg with a stripe and spots (colors from the egg; cream + green by default)
+-- a shiny egg: a smooth egg shape (narrow top, round bottom) built from thin
+-- rounded slices, shaded darker on the lower right, lit from the top left,
+-- with a zigzag stripe, raised spots and a soft shadow under it
+-- (colors from the egg; cream + green by default)
 function ICONS.egg(color, spots)
 	color = color or rgb(250, 240, 220)
 	spots = spots or rgb(120, 210, 90)
-	return {
-		S(0.5, 0.54, 0.62, 0.8, color, { r = 0.5 }),
-		S(0.5, 0.56, 0.6, 0.08, spots, { line = 0, flat = true }),
-		S(0.38, 0.38, 0.14, 0.12, spots, { r = 0.5, line = 0 }),
-		S(0.62, 0.42, 0.11, 0.1, spots, { r = 0.5, line = 0 }),
-		S(0.6, 0.72, 0.16, 0.13, spots, { r = 0.5, line = 0 }),
-		S(0.4, 0.74, 0.11, 0.1, spots, { r = 0.5, line = 0 }),
-		S(0.36, 0.3, 0.07, 0.14, rgb(255, 255, 255), { r = 0.5, line = 0, flat = true, a = 0.35, rot = 20 }),
+	local black, white = rgb(0, 0, 0), rgb(255, 255, 255)
+	local outline, dark, light = color:Lerp(black, 0.6), color:Lerp(black, 0.3), color:Lerp(white, 0.4)
+	local spotDark = spots:Lerp(black, 0.35)
+	local CY, B, A = 0.52, 0.42, 0.3 -- center, half height, half width
+	-- half the egg's width at v (-1 = the top tip, 1 = the bottom)
+	local function halfWidth(v)
+		return A * math.sqrt(math.max(0, 1 - v * v)) * (1 + 0.16 * v)
+	end
+	local list = {
+		S(0.5, 0.95, 0.5, 0.06, black, { r = 0.5, line = 0, flat = true, a = 0.75 }), -- shadow on the ground
 	}
+	local SLICES = 22
+	-- the egg shape scaled by k around its center, moved by dx/dy, grown by `grow`
+	local function body(c, grow, dx, dy, k, opts)
+		for i = 0, SLICES - 1 do
+			local v = -1 + (i + 0.5) * 2 / SLICES
+			local o = { r = 0.5, line = 0, flat = true }
+			for key, val in pairs(opts or {}) do
+				o[key] = val
+			end
+			local w = 2 * halfWidth(v) * k + grow
+			-- tall slices with round ends overlap, so the edge comes out smooth
+			local h = math.min(2 * B / SLICES * 3 * k, w * 0.9) + grow
+			table.insert(list, S(0.5 + dx, CY + v * B * k + dy, w, h, c, o))
+		end
+	end
+	body(outline, 0.045, 0, 0, 1)                           -- dark outline
+	body(dark, 0, 0, 0, 1)                                  -- shadow side (shows on the lower right)
+	body(color, 0, -0.022, -0.02, 0.9)                      -- the main color
+	table.insert(list, S(0.44, 0.38, 0.26, 0.4, light, { r = 0.5, line = 0, flat = true, a = 0.55, rot = 12 })) -- soft light, upper left
+	-- zigzag stripe (kept inside the egg)
+	local sv = (0.56 - CY) / B
+	local sw = 2 * halfWidth(sv) * 0.88
+	table.insert(list, S(0.5, 0.582, sw * 0.96, 0.022, spotDark, { line = 0, flat = true }))
+	table.insert(list, S(0.5, 0.56, sw, 0.04, spots, { line = 0, flat = true }))
+	for i = 0, 5 do
+		local x = 0.5 - sw * 0.4 + i * (sw * 0.8 / 5)
+		table.insert(list, S(x, 0.56, 0.06, 0.06, spots, { rot = 45, line = 0, flat = true }))
+	end
+	-- raised spots (a darker rim under each, a little shine on top)
+	for _, sp in ipairs({ { 0.42, 0.33, 0.09 }, { 0.6, 0.4, 0.065 }, { 0.37, 0.73, 0.1 }, { 0.61, 0.76, 0.08 }, { 0.5, 0.86, 0.05 } }) do
+		local x, y, d = sp[1], sp[2], sp[3]
+		table.insert(list, S(x + 0.007, y + 0.009, d, d * 0.85, spotDark, { r = 0.5, line = 0, flat = true }))
+		table.insert(list, S(x, y, d, d * 0.85, spots, { r = 0.5, line = 0 }))
+		table.insert(list, S(x - d * 0.18, y - d * 0.18, d * 0.3, d * 0.22, white, { r = 0.5, line = 0, flat = true, a = 0.45 }))
+	end
+	-- glossy highlight
+	table.insert(list, S(0.38, 0.27, 0.07, 0.17, white, { r = 0.5, line = 0, flat = true, a = 0.35, rot = 24 }))
+	table.insert(list, S(0.42, 0.18, 0.03, 0.03, white, { r = 0.5, line = 0, flat = true, a = 0.2 }))
+	return list
 end
 
 -- two white arrows chasing each other around an orange coin (rebirth)
