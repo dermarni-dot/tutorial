@@ -126,28 +126,36 @@ local MAPS = {
 		},
 		eggs = {
 			{ name = "Grass Egg", price = 20, color = rgb(120, 225, 90), spots = rgb(255, 255, 255), pets = {
-				{ name = "Leafy Bunny",   chance = 60, bonus = 10,  body = rgb(245, 245, 245), accent = rgb(120, 220, 90), style = "bunny" },
-				{ name = "Clover Pup",    chance = 28, bonus = 20,  body = rgb(160, 215, 110), accent = rgb(80, 160, 60), style = "pup" },
-				{ name = "Sunny Bee",     chance = 10, bonus = 45,  body = rgb(255, 210, 60), accent = rgb(45, 35, 25), style = "bee" },
-				{ name = "Daisy Dragon",  chance = 2,  bonus = 100, body = rgb(250, 250, 240), accent = rgb(255, 205, 40), style = "dragon" },
+				{ name = "Leafy Bunny",   chance = 50, bonus = 10,  body = rgb(245, 245, 245), accent = rgb(120, 220, 90), style = "bunny" },
+				{ name = "Ladybug",         chance = 25,  bonus = 14,     body = rgb(230, 50, 50), accent = rgb(30, 30, 30), style = "beetle" },
+				{ name = "Clover Pup",    chance = 14, bonus = 20,  body = rgb(160, 215, 110), accent = rgb(80, 160, 60), style = "pup" },
+				{ name = "Sunny Bee",     chance = 8, bonus = 45,  body = rgb(255, 210, 60), accent = rgb(45, 35, 25), style = "bee" },
+				{ name = "Daisy Dragon",  chance = 2.5,  bonus = 100, body = rgb(250, 250, 240), accent = rgb(255, 205, 40), style = "dragon" },
+				{ name = "Bloom Unicorn",   chance = 0.5, bonus = 300,    body = rgb(255, 250, 250), accent = rgb(255, 120, 200), style = "unicorn" },
 			} },
 			{ name = "Sand Egg", price = 100, color = rgb(240, 205, 120), spots = rgb(200, 140, 70), pets = {
-				{ name = "Cactus Cat",    chance = 60, bonus = 40,  body = rgb(110, 190, 90), accent = rgb(255, 120, 170), style = "cat" },
-				{ name = "Dune Fox",      chance = 28, bonus = 75,  body = rgb(240, 150, 70), accent = rgb(255, 255, 255), style = "fox" },
-				{ name = "Golden Scarab", chance = 10, bonus = 150, body = rgb(255, 200, 50), accent = rgb(60, 160, 120), style = "beetle" },
-				{ name = "Sphinx Kitty",  chance = 2,  bonus = 320, body = rgb(235, 190, 110), accent = rgb(40, 90, 200), style = "cat" },
+				{ name = "Cactus Cat",    chance = 50, bonus = 40,  body = rgb(110, 190, 90), accent = rgb(255, 120, 170), style = "cat" },
+				{ name = "Sand Bat",        chance = 25,  bonus = 55,     body = rgb(210, 170, 110), accent = rgb(120, 80, 40), style = "bat" },
+				{ name = "Dune Fox",      chance = 14, bonus = 75,  body = rgb(240, 150, 70), accent = rgb(255, 255, 255), style = "fox" },
+				{ name = "Golden Scarab", chance = 8, bonus = 150, body = rgb(255, 200, 50), accent = rgb(60, 160, 120), style = "beetle" },
+				{ name = "Sphinx Kitty",  chance = 2.5,  bonus = 320, body = rgb(235, 190, 110), accent = rgb(40, 90, 200), style = "cat" },
+				{ name = "Pharaoh Dragon",  chance = 0.5, bonus = 960,    body = rgb(255, 205, 60), accent = rgb(40, 90, 200), style = "dragon" },
 			} },
 			{ name = "Ice Egg", price = 500, color = rgb(180, 230, 255), spots = rgb(255, 255, 255), pets = {
-				{ name = "Snow Pup",      chance = 60, bonus = 150,  body = rgb(240, 248, 255), accent = rgb(120, 190, 255), style = "pup" },
-				{ name = "Frost Penguin", chance = 28, bonus = 280,  body = rgb(40, 50, 70), accent = rgb(255, 255, 255), style = "penguin" },
-				{ name = "Ice Dragon",    chance = 10, bonus = 550,  body = rgb(140, 210, 255), accent = rgb(255, 255, 255), style = "dragon" },
-				{ name = "Aurora Wisp",   chance = 2,  bonus = 1200, body = rgb(120, 255, 200), accent = rgb(200, 120, 255), style = "wisp" },
+				{ name = "Snow Pup",      chance = 50, bonus = 150,  body = rgb(240, 248, 255), accent = rgb(120, 190, 255), style = "pup" },
+				{ name = "Frosty Bunny",    chance = 25,  bonus = 205,    body = rgb(230, 245, 255), accent = rgb(120, 190, 255), style = "bunny" },
+				{ name = "Frost Penguin", chance = 14, bonus = 280,  body = rgb(40, 50, 70), accent = rgb(255, 255, 255), style = "penguin" },
+				{ name = "Ice Dragon",    chance = 8, bonus = 550,  body = rgb(140, 210, 255), accent = rgb(255, 255, 255), style = "dragon" },
+				{ name = "Aurora Wisp",   chance = 2.5,  bonus = 1200, body = rgb(120, 255, 200), accent = rgb(200, 120, 255), style = "wisp" },
+				{ name = "Glacier Overlord", chance = 0.5, bonus = 3600,  body = rgb(150, 220, 255), accent = rgb(255, 255, 255), style = "overlord" },
 			} },
 			{ name = "Lava Egg", price = 1000, color = rgb(255, 110, 40), spots = rgb(255, 230, 80), pets = {
-				{ name = "Magma Slime",   chance = 60, bonus = 400,  body = rgb(255, 90, 30), accent = rgb(255, 220, 80), style = "slime" },
-				{ name = "Ember Fox",     chance = 28, bonus = 750,  body = rgb(200, 50, 30), accent = rgb(255, 180, 40), style = "fox" },
-				{ name = "Phoenix Chick", chance = 10, bonus = 1500, body = rgb(255, 160, 40), accent = rgb(255, 60, 30), style = "bird" },
-				{ name = "Volcano Bear",  chance = 2,  bonus = 3500, body = rgb(60, 40, 40), accent = rgb(255, 110, 30), style = "bear" },
+				{ name = "Magma Slime",   chance = 50, bonus = 400,  body = rgb(255, 90, 30), accent = rgb(255, 220, 80), style = "slime" },
+				{ name = "Cinder Bat",      chance = 25,  bonus = 550,    body = rgb(60, 40, 40), accent = rgb(255, 120, 30), style = "bat" },
+				{ name = "Ember Fox",     chance = 14, bonus = 750,  body = rgb(200, 50, 30), accent = rgb(255, 180, 40), style = "fox" },
+				{ name = "Phoenix Chick", chance = 8, bonus = 1500, body = rgb(255, 160, 40), accent = rgb(255, 60, 30), style = "bird" },
+				{ name = "Volcano Bear",  chance = 2.5,  bonus = 3500, body = rgb(60, 40, 40), accent = rgb(255, 110, 30), style = "bear" },
+				{ name = "Inferno Phoenix", chance = 0.5, bonus = 10500,  body = rgb(255, 80, 20), accent = rgb(255, 220, 60), style = "bird" },
 			} },
 		},
 	},
@@ -171,34 +179,44 @@ local MAPS = {
 		},
 		eggs = {
 			{ name = "Jungle Egg", price = 2500, color = rgb(70, 190, 90), spots = rgb(255, 220, 70), pets = {
-				{ name = "Tiki Bear",     chance = 60, bonus = 1200,  body = rgb(160, 110, 60), accent = rgb(255, 210, 60), style = "bear" },
-				{ name = "Parrot Pal",    chance = 28, bonus = 2200,  body = rgb(230, 50, 50), accent = rgb(60, 140, 255), style = "bird" },
-				{ name = "Vine Slime",    chance = 10, bonus = 4500,  body = rgb(90, 200, 80), accent = rgb(255, 120, 200), style = "slime" },
-				{ name = "Jade Dragon",   chance = 2,  bonus = 10000, body = rgb(40, 170, 110), accent = rgb(255, 215, 60), style = "dragon" },
+				{ name = "Tiki Bear",     chance = 50, bonus = 1200,  body = rgb(160, 110, 60), accent = rgb(255, 210, 60), style = "bear" },
+				{ name = "Tree Frog",       chance = 25,  bonus = 1600,   body = rgb(80, 200, 90), accent = rgb(255, 140, 40), style = "slime" },
+				{ name = "Parrot Pal",    chance = 14, bonus = 2200,  body = rgb(230, 50, 50), accent = rgb(60, 140, 255), style = "bird" },
+				{ name = "Vine Slime",    chance = 8, bonus = 4500,  body = rgb(90, 200, 80), accent = rgb(255, 120, 200), style = "slime" },
+				{ name = "Jade Dragon",   chance = 2.5,  bonus = 10000, body = rgb(40, 170, 110), accent = rgb(255, 215, 60), style = "dragon" },
+				{ name = "Temple Unicorn",  chance = 0.5, bonus = 30000,  body = rgb(60, 180, 120), accent = rgb(255, 215, 60), style = "unicorn" },
 			} },
 			{ name = "Candy Egg", price = 10000, color = rgb(255, 150, 210), spots = rgb(130, 220, 255), pets = {
-				{ name = "Gummy Bear",       chance = 60, bonus = 3500,  body = rgb(255, 80, 120), accent = rgb(255, 200, 220), style = "bear" },
-				{ name = "Cotton Cloud",     chance = 28, bonus = 6500,  body = rgb(255, 220, 245), accent = rgb(180, 220, 255), style = "cloud" },
-				{ name = "Lollipop Unicorn", chance = 10, bonus = 13000, body = rgb(255, 255, 255), accent = rgb(255, 120, 200), style = "unicorn" },
-				{ name = "Sugar Dragon",     chance = 2,  bonus = 30000, body = rgb(255, 170, 220), accent = rgb(120, 220, 255), style = "dragon" },
+				{ name = "Gummy Bear",       chance = 50, bonus = 3500,  body = rgb(255, 80, 120), accent = rgb(255, 200, 220), style = "bear" },
+				{ name = "Jelly Bee",       chance = 25,  bonus = 4800,   body = rgb(255, 150, 200), accent = rgb(255, 255, 255), style = "bee" },
+				{ name = "Cotton Cloud",     chance = 14, bonus = 6500,  body = rgb(255, 220, 245), accent = rgb(180, 220, 255), style = "cloud" },
+				{ name = "Lollipop Unicorn", chance = 8, bonus = 13000, body = rgb(255, 255, 255), accent = rgb(255, 120, 200), style = "unicorn" },
+				{ name = "Sugar Dragon",     chance = 2.5,  bonus = 30000, body = rgb(255, 170, 220), accent = rgb(120, 220, 255), style = "dragon" },
+				{ name = "Candy Overlord",  chance = 0.5, bonus = 90000,  body = rgb(255, 120, 200), accent = rgb(120, 220, 255), style = "overlord" },
 			} },
 			{ name = "Robo Egg", price = 50000, color = rgb(60, 60, 110), spots = rgb(0, 255, 230), pets = {
-				{ name = "Robo Kitty",    chance = 60, bonus = 10000, body = rgb(180, 190, 210), accent = rgb(0, 255, 230), style = "robot" },
-				{ name = "Glitch Bat",    chance = 28, bonus = 19000, body = rgb(70, 40, 110), accent = rgb(255, 40, 200), style = "bat" },
-				{ name = "Neon Dragon",   chance = 10, bonus = 38000, body = rgb(30, 30, 60), accent = rgb(0, 255, 230), style = "dragon" },
-				{ name = "Mecha Unicorn", chance = 2,  bonus = 90000, body = rgb(200, 205, 220), accent = rgb(255, 60, 120), style = "unicorn" },
+				{ name = "Robo Kitty",    chance = 50, bonus = 10000, body = rgb(180, 190, 210), accent = rgb(0, 255, 230), style = "robot" },
+				{ name = "Bolt Pup",        chance = 25,  bonus = 14000,  body = rgb(160, 170, 190), accent = rgb(255, 200, 40), style = "pup" },
+				{ name = "Glitch Bat",    chance = 14, bonus = 19000, body = rgb(70, 40, 110), accent = rgb(255, 40, 200), style = "bat" },
+				{ name = "Neon Dragon",   chance = 8, bonus = 38000, body = rgb(30, 30, 60), accent = rgb(0, 255, 230), style = "dragon" },
+				{ name = "Mecha Unicorn", chance = 2.5,  bonus = 90000, body = rgb(200, 205, 220), accent = rgb(255, 60, 120), style = "unicorn" },
+				{ name = "Omega Robot",     chance = 0.5, bonus = 270000, body = rgb(255, 205, 60), accent = rgb(255, 60, 60), style = "robot" },
 			} },
 			{ name = "Cosmic Egg", price = 250000, color = rgb(40, 20, 70), spots = rgb(190, 80, 255), pets = {
-				{ name = "Void Wisp",       chance = 60, bonus = 30000,  body = rgb(140, 60, 255), accent = rgb(230, 200, 255), style = "wisp" },
-				{ name = "Star Bunny",      chance = 28, bonus = 55000,  body = rgb(255, 245, 190), accent = rgb(255, 200, 40), style = "bunny" },
-				{ name = "Shadow Wolf",     chance = 10, bonus = 110000, body = rgb(30, 25, 45), accent = rgb(190, 80, 255), style = "wolf" },
-				{ name = "Cosmic Overlord", chance = 2,  bonus = 280000, body = rgb(20, 10, 40), accent = rgb(255, 215, 60), style = "overlord" },
+				{ name = "Void Wisp",       chance = 50, bonus = 30000,  body = rgb(140, 60, 255), accent = rgb(230, 200, 255), style = "wisp" },
+				{ name = "Nebula Cat",      chance = 25,  bonus = 41000,  body = rgb(120, 70, 200), accent = rgb(255, 150, 230), style = "cat" },
+				{ name = "Star Bunny",      chance = 14, bonus = 55000,  body = rgb(255, 245, 190), accent = rgb(255, 200, 40), style = "bunny" },
+				{ name = "Shadow Wolf",     chance = 8, bonus = 110000, body = rgb(30, 25, 45), accent = rgb(190, 80, 255), style = "wolf" },
+				{ name = "Cosmic Overlord", chance = 2.5,  bonus = 280000, body = rgb(20, 10, 40), accent = rgb(255, 215, 60), style = "overlord" },
+				{ name = "Galaxy Dragon",   chance = 0.5, bonus = 840000, body = rgb(25, 15, 60), accent = rgb(120, 200, 255), style = "dragon" },
 			} },
 		},
 	},
 }
 
 for m, map in ipairs(MAPS) do
+	-- the boss is as wide as the track, so there's no getting around it (widthFill of the track)
+	map.boss.size = math.floor(CONFIG.ZoneWidth * (map.boss.widthFill or 0.8))
 	map.boss.hat = map.boss.hat or (map.boss.style == "boxy" and "fin" or "crown")
 	map.boss.eyes = map.boss.eyes or (map.boss.style == "boxy" and map.boss.accent or nil)
 	for _, zone in ipairs(map.zones) do
@@ -215,9 +233,11 @@ local PET_TIERS = {
 -- rarity names + colors (by the pet's place in its egg)
 local RARITY = {
 	{ name = "Common",    color = rgb(235, 235, 235) },
+	{ name = "Uncommon",  color = rgb(110, 230, 90) },
 	{ name = "Rare",      color = rgb(90, 180, 255) },
 	{ name = "Epic",      color = rgb(200, 110, 255) },
 	{ name = "Legendary", color = rgb(255, 200, 40) },
+	{ name = "Mythic",    color = rgb(255, 70, 110) },
 }
 
 local W, L = CONFIG.ZoneWidth, CONFIG.ZoneLength
@@ -519,6 +539,7 @@ for _, map in ipairs(MAPS) do
 			c:SetAttribute("EggDesign", egg.design)
 			c:SetAttribute("Chance", pet.chance)
 			c:SetAttribute("Rarity", RARITY[pet.rarity].name)
+			c:SetAttribute("RarityIndex", pet.rarity)
 			c:SetAttribute("RarityColor", RARITY[pet.rarity].color)
 			c.Parent = PetInfo
 		end
@@ -2086,8 +2107,9 @@ local function buildEggStand(egg, x, z)
 	-- own design, painted flat onto the shell, so nothing sticks out of it.
 	local model = Instance.new("Model")
 	model.Name = egg.name .. " Display"
-	local R, H = 3, 3.9 -- egg radius + half height
-	local center = Vector3.new(x, deckTop + 3.8 + H + 0.8, z)
+	local R, H = 3, 3.9 -- egg radius + half height (built at this size, then scaled up by EGG_SCALE)
+	local EGG_SCALE = 1.6
+	local center = Vector3.new(x, deckTop + 3.8 + H * EGG_SCALE + 1.6, z)
 	local rng = Random.new(egg.order * 31 + egg.map * 7)
 	local function eggPart(props)
 		props.CanCollide = false
@@ -2307,6 +2329,11 @@ local function buildEggStand(egg, x, z)
 	end
 	-- a soft glossy highlight on the upper left
 	paint(math.rad(205), 2.1, 0.55, 1.3, WHITE, 0.35, NEON, 0.08, 0.55)
+	-- a glowing halo around its middle and a soft beam of light under it
+	for i = 0, 1 do
+		local halo = eggPart{ Name = "EggHalo", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.12, R * 2.9 - i * 0.5, R * 2.9 - i * 0.5), CFrame = CFrame.new(center) * CFrame.Angles(0.35 + i * 0.5, 0, math.pi / 2), Color = (i == 0) and egg.color:Lerp(WHITE, 0.4) or egg.spots, Material = NEON, Transparency = 0.45 }
+		halo.CastShadow = false
+	end
 	model.PrimaryPart = shell
 	local light = Instance.new("PointLight")
 	light.Color = egg.color
@@ -2322,9 +2349,11 @@ local function buildEggStand(egg, x, z)
 	sparkle.SpreadAngle = Vector2.new(180, 180)
 	sparkle.Rate = 4
 	sparkle.Parent = shell
+	pcall(function() model:ScaleTo(EGG_SCALE) end)
 	model:SetAttribute("BaseCF", model:GetPivot())
 	CollectionService:AddTag(model, "SVB_EggSpin")
 	model.Parent = Map
+	newPart{ Name = "EggBeam", Shape = Enum.PartType.Cylinder, Size = Vector3.new(center.Y - deckTop - 3.8, 5.5, 5.5), CFrame = CFrame.new(x, (center.Y + deckTop + 3.8) / 2, z) * ROT_UP, Color = egg.color:Lerp(WHITE, 0.5), Material = NEON, Transparency = 0.82, CanCollide = false, CanQuery = false, CastShadow = false, Parent = Map }
 
 	-- name + price plate leaning at the front (players walk up from -X)
 	local plate = newPart{ Name = "PricePlate", Size = Vector3.new(0.4, 2.6, 7.5), CFrame = CFrame.new(x - 6.4, deckTop + 1.2, z) * CFrame.Angles(0, 0, math.rad(-25)), Color = DARK, Parent = Map }
@@ -2333,12 +2362,8 @@ local function buildEggStand(egg, x, z)
 		{ text = fmt(egg.price) .. " TROPHIES", color = Color3.fromRGB(255, 220, 80), weight = 1 },
 	}, 30)
 
-	-- what's inside (pet + chance, colored by rarity)
-	local lines = { { text = egg.name .. "  -  " .. fmt(egg.price) .. " Trophies", color = Color3.fromRGB(255, 220, 80) } }
-	for _, pet in ipairs(egg.pets) do
-		table.insert(lines, { text = pet.name .. "  " .. pet.chance .. "%  (+" .. fmt(pet.bonus) .. "%)", color = RARITY[pet.rarity].color })
-	end
-	studsBillboard(shell, lines, H + 6, 14, 1.3, 70)
+	-- the name floats above it (walk up to it to see what's inside on the egg panel)
+	studsBillboard(shell, { { text = string.upper(egg.name), color = egg.color:Lerp(WHITE, 0.35) }, { text = fmt(egg.price) .. " TROPHIES", color = Color3.fromRGB(255, 220, 80) } }, H * EGG_SCALE + 3, 12, 1.6, 90)
 	EggConfigs[egg.name]:SetAttribute("Position", center)
 
 	local prompt = Instance.new("ProximityPrompt")
@@ -3309,7 +3334,7 @@ local function weldTo(root, p, offset)
 	return p
 end
 
-local function buildBoss(def, ownerName, cf)
+local function buildBoss(def, ownerName, cf, ownerId)
 	local s = def.size
 	local leg = s * (def.legScale or 0.45)
 
@@ -3319,7 +3344,8 @@ local function buildBoss(def, ownerName, cf)
 
 	local root = Instance.new("Part")
 	root.Name = "HumanoidRootPart"
-	root.Size = Vector3.new(s, s, s)
+	-- a small root (the body is welded around it), so a giant boss still moves easily
+	root.Size = Vector3.new(4, 4, 4)
 	root.Transparency = 1
 	root.CanCollide = false -- it runs through obstacles and other players
 	root.CanQuery = false
@@ -3362,6 +3388,7 @@ local function buildBoss(def, ownerName, cf)
 		return add(CYL, Vector3.new(len, d * s, d * s), color, CFrame.lookAt((a + b) / 2, b + Vector3.new(0.001, 0.001, 0)) * CFrame.Angles(0, math.pi / 2, 0), material, parent)
 	end
 	local bodyTop = 0.5
+	local frontReach = 0.55 -- how far its front sticks out ahead of its middle (you're caught when it reaches you)
 
 	-- FACE on a head: hc = centre (studs), hd = head size (studs),
 	-- kind = "sphere" | "cyl" (round left-right only) | "flat" (a box front)
@@ -3424,81 +3451,229 @@ local function buildBoss(def, ownerName, cf)
 		return p
 	end
 	local hands = {}
+	local function wedge(size, color, cf, material, parent)
+		local w = Instance.new("WedgePart")
+		w.Size = size
+		w.Color = color
+		w.Material = material or Enum.Material.SmoothPlastic
+		w.TopSurface = Enum.SurfaceType.Smooth
+		w.BottomSurface = Enum.SurfaceType.Smooth
+		return weldTo(parent or root, w, cf)
+	end
+	-- legs: o.x / o.z = where the hips are, o.third = z of a third leg in the middle,
+	-- o.muscle = calves and knees, o.boot = royal boots instead of sneakers
 	local function legs(o)
 		local legLen = leg + s * 0.1
 		local footY = -legLen / 2 + s * 0.05
-		for _, sx in ipairs({ -1, 1 }) do
-			local p = limb("LegMotor", Vector3.new(o.thick * s, legLen, o.thick * s), o.color or acc, CFrame.new(sx * o.x * s, -s / 2 + s * 0.1, (o.z or 0) * s), sx)
-			-- big sneakers: white upper, dark sole, a colored swoosh, a toe cap and laces
+		local list = { { -1, -o.x, o.z or 0 }, { 1, o.x, o.z or 0 } }
+		if o.third then table.insert(list, { -1, 0, o.third }) end -- the middle leg steps with the left one
+		for _, spec in ipairs(list) do
+			local sx, lx, lz = spec[1], spec[2], spec[3]
+			local p = limb("LegMotor", Vector3.new(o.thick * s, legLen, o.thick * s), o.color or acc, CFrame.new(lx * s, -s / 2 + s * 0.1, lz * s), sx)
+			if o.round then
+				p.Transparency = 1
+				add(CYL, Vector3.new(legLen, o.thick * s, o.thick * s), o.color or acc, UPRIGHT, nil, p)
+			end
+			if o.muscle then
+				ell(Vector3.new(o.thick * 1.25 * s, legLen * 0.42, o.thick * 1.3 * s), o.color or acc, CFrame.new(0, -legLen * 0.08, s * 0.012), nil, p)
+			end
 			local fs = o.footSize or 1
-			add(nil, Vector3.new(0.3, 0.14, 0.42) * s * fs, o.shoe or WHITE, CFrame.new(0, footY, -s * 0.06 * fs), nil, p)
-			add(nil, Vector3.new(0.32, 0.05, 0.45) * s * fs, Color3.fromRGB(40, 40, 45), CFrame.new(0, footY - s * 0.08 * fs, -s * 0.06 * fs), nil, p)
-			add(nil, Vector3.new(0.02, 0.05, 0.26) * s * fs, o.swoosh or acc, CFrame.new(sx * s * 0.155 * fs, footY, -s * 0.05 * fs) * CFrame.Angles(math.rad(-12), 0, 0), NEON, p)
-			ell(Vector3.new(0.3, 0.13, 0.14) * s * fs, (o.shoe or WHITE):Lerp(BLACK, 0.1), CFrame.new(0, footY, -s * 0.24 * fs), nil, p)
-			for l = 0, 2 do
-				add(nil, Vector3.new(0.16, 0.02, 0.03) * s * fs, o.swoosh or acc, CFrame.new(0, footY + s * 0.075 * fs, -s * (0.1 - l * 0.06) * fs), nil, p)
+			if o.boot then
+				local leather, buckle = Color3.fromRGB(55, 30, 25), GOLD
+				add(CYL, Vector3.new(0.26 * s, o.thick * 1.25 * s, o.thick * 1.25 * s), leather, CFrame.new(0, footY + s * 0.12, 0) * UPRIGHT, nil, p)
+				add(CYL, Vector3.new(0.04 * s, o.thick * 1.35 * s, o.thick * 1.35 * s), Color3.fromRGB(200, 160, 60), CFrame.new(0, footY + s * 0.25, 0) * UPRIGHT, Enum.Material.Metal, p)
+				ell(Vector3.new(0.24, 0.15, 0.44) * s, leather, CFrame.new(0, footY, -s * 0.08), nil, p)
+				add(nil, Vector3.new(0.26, 0.04, 0.42) * s, Color3.fromRGB(25, 15, 12), CFrame.new(0, footY - s * 0.07, -s * 0.07), nil, p)
+				ball(0.08, leather, Vector3.new(0, footY + s * 0.03, -s * 0.31), nil, p) -- curled toe
+				add(nil, Vector3.new(0.12, 0.08, 0.03) * s, buckle, CFrame.new(0, footY + s * 0.04, -s * 0.24) * CFrame.Angles(math.rad(-30), 0, 0), Enum.Material.Metal, p)
+			else
+				-- sneakers: white upper, dark sole, swoosh, toe cap, tongue, heel tab and laces
+				local shoe = o.shoe or WHITE
+				add(nil, Vector3.new(0.3, 0.14, 0.42) * s * fs, shoe, CFrame.new(0, footY, -s * 0.06 * fs), nil, p)
+				add(nil, Vector3.new(0.32, 0.05, 0.46) * s * fs, Color3.fromRGB(40, 40, 45), CFrame.new(0, footY - s * 0.08 * fs, -s * 0.06 * fs), nil, p)
+				add(nil, Vector3.new(0.33, 0.02, 0.47) * s * fs, Color3.fromRGB(230, 230, 230), CFrame.new(0, footY - s * 0.05 * fs, -s * 0.06 * fs), nil, p)
+				for _, side in ipairs({ -1, 1 }) do -- a swoosh on both sides
+					ell(Vector3.new(0.02, 0.05, 0.3) * s * fs, o.swoosh or acc, CFrame.new(side * s * 0.155 * fs, footY, -s * 0.05 * fs) * CFrame.Angles(math.rad(-14), 0, 0), nil, p)
+				end
+				ell(Vector3.new(0.3, 0.13, 0.14) * s * fs, shoe:Lerp(BLACK, 0.08), CFrame.new(0, footY, -s * 0.25 * fs), nil, p)
+				add(nil, Vector3.new(0.16, 0.12, 0.04) * s * fs, shoe:Lerp(BLACK, 0.04), CFrame.new(0, footY + s * 0.1 * fs, -s * 0.12 * fs) * CFrame.Angles(math.rad(-20), 0, 0), nil, p)
+				add(nil, Vector3.new(0.1, 0.1, 0.03) * s * fs, o.swoosh or acc, CFrame.new(0, footY + s * 0.06 * fs, s * 0.16 * fs), nil, p)
+				for l = 0, 3 do
+					add(nil, Vector3.new(0.17, 0.018, 0.025) * s * fs, Color3.fromRGB(245, 245, 245), CFrame.new(0, footY + s * 0.075 * fs, -s * (0.17 - l * 0.045) * fs), nil, p)
+				end
 			end
 		end
 	end
+	-- arms: o.sleeve = a puffy sleeve colour, o.fingers = a hand with four fingers and a thumb
 	local function arms(o)
 		for _, sx in ipairs({ -1, 1 }) do
 			local armLen = o.len * s
 			local shoulder = CFrame.new(sx * o.x * s, o.y * s, (o.z or 0) * s) * CFrame.Angles(0, 0, sx * (o.splay or 0.35))
 			local arm = limb("ArmMotor", Vector3.new(o.thick * s, armLen, o.thick * s), o.color or dark, shoulder, sx)
-			local hand = add(BALL, Vector3.one * s * (o.hand or 0.2), o.glove or WHITE, CFrame.new(0, -armLen / 2 - s * 0.05, 0), nil, arm)
+			if o.round then
+				arm.Transparency = 1
+				add(CYL, Vector3.new(armLen, o.thick * s, o.thick * s), o.color or dark, UPRIGHT, nil, arm)
+			end
+			if o.sleeve then
+				ell(Vector3.new(o.thick * 1.6 * s, armLen * 0.55, o.thick * 1.6 * s), o.sleeve, CFrame.new(0, armLen * 0.2, 0), Enum.Material.Fabric, arm)
+			end
+			local glove = o.glove or WHITE
+			local hand = ell(Vector3.new(0.17, 0.15, 0.13) * s, glove, CFrame.new(0, -armLen / 2 - s * 0.05, 0), nil, arm)
+			if o.fingers then
+				for f = 1, 4 do
+					local fx = (f - 2.5) * 0.04 * s
+					local len = (f == 1 or f == 4) and 0.09 or 0.11
+					add(CYL, Vector3.new(len * s, 0.038 * s, 0.038 * s), glove, CFrame.new(fx, -s * (0.07 + len / 2), -s * 0.02) * UPRIGHT, nil, hand)
+					ball(0.04, glove, Vector3.new(fx, -s * (0.07 + len), -s * 0.02), nil, hand)
+				end
+				ell(Vector3.new(0.05, 0.1, 0.05) * s, glove, CFrame.new(-sx * s * 0.07, -s * 0.03, -s * 0.06) * CFrame.Angles(math.rad(-35), 0, sx * 0.4), nil, hand)
+			end
 			if o.cuff ~= false then
-				add(nil, Vector3.new(o.thick * 1.3, 0.05, o.thick * 1.3) * s, o.cuffColor or acc, CFrame.new(0, -armLen / 2 + s * 0.03, 0), nil, arm)
+				add(CYL, Vector3.new(0.06 * s, o.thick * 1.4 * s, o.thick * 1.4 * s), o.cuffColor or acc, CFrame.new(0, -armLen / 2 + s * 0.03, 0) * UPRIGHT, nil, arm)
 			end
 			hands[sx] = hand
 		end
 	end
-	local function crown(pos, w)
-		add(nil, Vector3.new(w, w * 0.22, w), GOLD, CFrame.new(pos), NEON)
-		for i = 0, 4 do
-			local a = i * TAU / 5
-			add(nil, Vector3.new(w * 0.14, w * 0.4, w * 0.14), GOLD, CFrame.new(pos + Vector3.new(math.cos(a) * w * 0.42, w * 0.25, math.sin(a) * w * 0.42)), NEON)
-			ball(0.05, Color3.fromRGB(255, 60, 90), pos + Vector3.new(math.cos(a) * w * 0.5, 0, math.sin(a) * w * 0.5), NEON)
-		end
-	end
+
 	local BUILD = {}
-	-- Il Grande Zoomerone: the king of Map 1, with a crown, a cape and a sceptre
+	-- Il Grande Zoomerone: the king of Map 1 in full royal dress
 	BUILD.zoomerone = function()
+		local robe, robeDark = Color3.fromRGB(150, 20, 45), Color3.fromRGB(95, 10, 28)
+		local ermine = Color3.fromRGB(250, 248, 240)
+		local hair = Color3.fromRGB(225, 225, 230)
+		-- the body, softly shaded
 		add(BALL, V(1, 1, 1), skin, CFrame.new())
-		ell(V(0.98, 0.5, 0.98), dark, C(0, -0.24, 0))
-		ell(V(0.62, 0.5, 0.22), light, C(0, -0.16, -0.38))
-		for i = -1, 1, 2 do
-			local y = i * 0.2
-			local r = math.sqrt(0.25 - y * y) * 2.04
-			bcyl(0.05, r, acc, V(0, y, 0), NEON).Transparency = 0.1
+		ell(V(0.7, 0.3, 0.7), light, C(-0.08, 0.3, -0.12)).Transparency = 0.5
+		-- the robe over the lower half, with a gold hem, a belt, buttons and an ermine collar
+		ell(V(1.07, 0.56, 1.07), robe, C(0, -0.28, 0), Enum.Material.Fabric)
+		bcyl(0.05, 0.84, GOLD, V(0, -0.46, 0), Enum.Material.Metal)
+		bcyl(0.07, 1.04, Color3.fromRGB(60, 30, 20), V(0, -0.2, 0))
+		add(nil, V(0.18, 0.13, 0.05), GOLD, C(0, -0.2, -0.52), Enum.Material.Metal)
+		ball(0.07, Color3.fromRGB(40, 120, 255), V(0, -0.2, -0.55), NEON)
+		for b = 0, 1 do
+			ball(0.06, GOLD, V(0, -0.31 - b * 0.08, -0.5 + b * 0.03), Enum.Material.Metal)
 		end
-		face(Vector3.zero, s, "sphere", {})
-		crown(V(0, 0.5, 0), 0.45 * s)
-		add(nil, V(0.9, 0.95, 0.05), Color3.fromRGB(190, 30, 50), C(0, -0.15, 0.53) * CFrame.Angles(math.rad(12), 0, 0), Enum.Material.Fabric)
-		add(nil, V(0.92, 0.06, 0.08), GOLD, C(0, 0.3, 0.49), NEON)
-		arms({ x = 0.46, y = -0.04, len = 0.42, thick = 0.13 })
-		add(CYL, V(0.8, 0.06, 0.06), GOLD, CFrame.new(0, s * 0.3, -s * 0.05) * UPRIGHT, NEON, hands[1]) -- the sceptre
-		ball(0.15, acc, Vector3.new(0, s * 0.72, -s * 0.05), NEON, hands[1])
-		legs({ x = 0.22, thick = 0.18 })
-		bodyTop = 0.75
-	end
-	-- Tralalero Turbino: a shark on legs with big sneakers
-	BUILD.tralalero = function()
-		ell(V(0.85, 0.8, 1.9), skin, C(0, 0, 0.25))
-		ell(V(0.7, 0.4, 1.7), Color3.fromRGB(240, 245, 250), C(0, -0.2, 0.2))
-		ball(0.76, skin, V(0, 0.04, -0.42))
-		ell(V(0.66, 0.36, 0.5), Color3.fromRGB(240, 245, 250), C(0, -0.14, -0.52))
-		face(V(0, 0.04, -0.42), 0.76 * s, "sphere", { eyeY = 0.18, eyeSize = 0.85, nose = false, blush = false, mouthY = -0.2, mouthW = 1.25, teeth = 4 })
-		add(nil, V(0.08, 0.5, 0.5), dark, C(0, 0.55, 0.25) * CFrame.Angles(math.rad(-30), 0, 0))
+		bcyl(0.1, 1.08, ermine, V(0, -0.06, 0), Enum.Material.Fabric)
+		for i = 0, 23 do
+			local a = i * TAU / 24
+			local pos = V(math.cos(a) * 0.53, -0.06 + ((i % 2) - 0.5) * 0.03, math.sin(a) * 0.53)
+			ball(0.1, ermine:Lerp(Color3.fromRGB(225, 220, 210), (i % 2) * 0.5), pos, Enum.Material.Fabric)
+		end
+		-- a long velvet cape at the back with an ermine edge
+		add(nil, V(0.95, 1.05, 0.05), robeDark, C(0, -0.15, 0.53) * CFrame.Angles(math.rad(10), 0, 0), Enum.Material.Fabric)
+		add(nil, V(0.07, 1.05, 0.06), ermine, C(-0.48, -0.15, 0.53) * CFrame.Angles(math.rad(10), 0, 0), Enum.Material.Fabric)
+		add(nil, V(0.07, 1.05, 0.06), ermine, C(0.48, -0.15, 0.53) * CFrame.Angles(math.rad(10), 0, 0), Enum.Material.Fabric)
+
+		-- the face: stern eyes with lids, a big nose, a curled royal mustache and a goatee
+		local function F(x, y, out)
+			return CFrame.new(x * s, y * s, -s * math.sqrt(math.max(0.02, 0.25 - x * x - y * y)) - (out or 0) * s)
+		end
 		for _, sx in ipairs({ -1, 1 }) do
-			for g = 0, 2 do
-				add(nil, V(0.01, 0.22, 0.025), dark, C(sx * 0.42, 0.05, -0.1 + g * 0.08))
-			end
-			add(nil, V(0.45, 0.06, 0.3), dark, C(sx * 0.5, -0.15, 0.1) * CFrame.Angles(0, sx * -0.4, sx * -0.4))
+			local ex, ey = sx * 0.17, 0.2
+			ell(V(0.2, 0.17, 0.1), WHITE, F(ex, ey, 0.0))
+			ell(V(0.1, 0.1, 0.03), Color3.fromRGB(205, 140, 35), F(ex, ey - 0.01, 0.045))
+			ell(V(0.05, 0.05, 0.02), BLACK, F(ex, ey - 0.01, 0.06))
+			ball(0.025, WHITE, F(ex - 0.025, ey + 0.02, 0.07).Position, NEON)
+			ell(V(0.23, 0.09, 0.12), skin:Lerp(BLACK, 0.15), F(ex, ey + 0.065, 0.005) * CFrame.Angles(0, 0, sx * 0.25)) -- heavy upper lid
+			ell(V(0.24, 0.07, 0.08), hair, F(ex, ey + 0.14, 0.02) * CFrame.Angles(0, 0, sx * 0.3)) -- bushy brow
+			ell(V(0.08, 0.16, 0.12), skin, C(sx * 0.5, 0.14, 0)) -- ears
+			-- mustache: a thick sweep out to each side and a curl at the end
+			ell(V(0.2, 0.07, 0.08), hair, F(sx * 0.1, 0.0, 0.06) * CFrame.Angles(0, 0, -sx * 0.25))
+			ell(V(0.07, 0.05, 0.05), hair:Lerp(BLACK, 0.12), F(sx * 0.21, 0.04, 0.03) * CFrame.Angles(0, 0, sx * 0.9))
+			ell(V(0.06, 0.09, 0.05), skin:Lerp(Color3.fromRGB(255, 120, 140), 0.4), F(sx * 0.3, 0.07, 0.0)).Transparency = 0.2 -- rosy cheeks
 		end
-		add(nil, V(0.07, 0.6, 0.3), dark, C(0, 0.25, 1.2) * CFrame.Angles(math.rad(-35), 0, 0))
-		add(nil, V(0.07, 0.45, 0.25), dark, C(0, -0.2, 1.15) * CFrame.Angles(math.rad(35), 0, 0))
-		legs({ x = 0.2, thick = 0.15, color = skin, footSize = 1.25, swoosh = acc })
+		ell(V(0.16, 0.14, 0.15), skin:Lerp(Color3.fromRGB(255, 110, 130), 0.25), F(0, 0.07, 0.07)) -- nose
+		for _, sx in ipairs({ -1, 1 }) do ell(V(0.03, 0.025, 0.02), skin:Lerp(BLACK, 0.5), F(sx * 0.03, 0.035, 0.13)) end
+		ell(V(0.26, 0.08, 0.05), Color3.fromRGB(50, 12, 20), F(0.02, -0.08, 0.01)) -- a smirk
+		for t = -2, 1 do
+			add(nil, V(0.035, 0.04, 0.02), WHITE, F(0.02 + t * 0.045 + 0.02, -0.06, 0.03))
+		end
+		ell(V(0.13, 0.15, 0.09), hair, F(0, -0.18, 0.04)) -- goatee
+
+		-- the crown: velvet cap, a jewelled gold band, eight points with pearls and a cross on top
+		ell(V(0.44, 0.28, 0.44), robe, C(0, 0.55, 0), Enum.Material.Fabric)
+		bcyl(0.1, 0.5, GOLD, V(0, 0.49, 0), Enum.Material.Metal)
+		local gems = { Color3.fromRGB(230, 30, 50), Color3.fromRGB(40, 110, 255), Color3.fromRGB(40, 200, 90) }
+		for i = 0, 7 do
+			local a = i * TAU / 8
+			local pos = V(math.cos(a) * 0.25, 0.49, math.sin(a) * 0.25)
+			ell(V(0.05, 0.05, 0.02), gems[i % 3 + 1], CFrame.lookAt(pos, pos * Vector3.new(2, 1, 2)), NEON)
+			local tip = V(math.cos(a) * 0.23, 0.6, math.sin(a) * 0.23)
+			add(nil, V(0.05, 0.13, 0.03), GOLD, CFrame.lookAt(tip, tip * Vector3.new(2, 1, 2)), Enum.Material.Metal)
+			ball(0.045, Color3.fromRGB(250, 245, 235), tip + V(0, 0.08, 0))
+		end
+		ball(0.1, GOLD, V(0, 0.71, 0), Enum.Material.Metal)
+		add(nil, V(0.03, 0.12, 0.03), GOLD, C(0, 0.8, 0), Enum.Material.Metal)
+		add(nil, V(0.08, 0.03, 0.03), GOLD, C(0, 0.81, 0), Enum.Material.Metal)
+
+		-- arms in velvet sleeves with ermine cuffs and white gloves, a sceptre and an orb
+		arms({ x = 0.47, y = -0.1, len = 0.4, thick = 0.13, color = robe, sleeve = robe, glove = WHITE, cuffColor = ermine, fingers = true, round = true })
+		local rod = add(CYL, V(0.85, 0.05, 0.05), GOLD, CFrame.new(0, s * 0.25, -s * 0.03) * UPRIGHT, Enum.Material.Metal, hands[1])
+		for g = 0, 2 do
+			add(CYL, V(0.03, 0.07, 0.07), gems[g + 1], CFrame.new(0, s * (0.0 + g * 0.2), -s * 0.03) * UPRIGHT, NEON, hands[1])
+		end
+		ball(0.14, GOLD, Vector3.new(0, s * 0.7, -s * 0.03), Enum.Material.Metal, hands[1])
+		ball(0.08, gems[1], Vector3.new(0, s * 0.7, -s * 0.1), NEON, hands[1])
+		add(nil, V(0.03, 0.14, 0.03), GOLD, CFrame.new(0, s * 0.83, -s * 0.03), Enum.Material.Metal, hands[1])
+		add(nil, V(0.09, 0.03, 0.03), GOLD, CFrame.new(0, s * 0.84, -s * 0.03), Enum.Material.Metal, hands[1])
+		local orb = ball(0.2, GOLD, Vector3.new(0, s * 0.02, -s * 0.12), Enum.Material.Metal, hands[-1])
+		bcyl(0.03, 0.205, gems[2], Vector3.new(0, 0, 0), NEON, orb)
+		add(nil, V(0.025, 0.1, 0.025), GOLD, C(0, 0.14, 0), Enum.Material.Metal, orb)
+		add(nil, V(0.07, 0.025, 0.025), GOLD, C(0, 0.15, 0), Enum.Material.Metal, orb)
+		_ = rod
+		legs({ x = 0.2, thick = 0.14, color = Color3.fromRGB(60, 25, 70), boot = true, round = true })
 		bodyTop = 0.85
+		frontReach = 0.62
+	end
+	-- Tralalero Turbino: a real-looking shark (blue back, white belly, black eyes, rows of
+	-- teeth, gills, every fin and a crescent tail) running on three legs in sneakers
+	BUILD.tralalero = function()
+		local back, belly, fin = skin, Color3.fromRGB(236, 240, 245), skin:Lerp(BLACK, 0.2)
+		-- one long smooth body, plus a tapered snout and tail
+		ell(V(0.92, 0.82, 1.9), back, C(0, 0.05, 0.0))
+		ell(V(0.9, 0.58, 1.86), belly, C(0, -0.09, -0.02))
+		ell(V(0.62, 0.52, 0.7), back, C(0, 0.06, -0.78))
+		ell(V(0.6, 0.36, 0.68), belly, C(0, -0.03, -0.79))
+		ell(V(0.34, 0.24, 0.5), back, C(0, 0.1, -1.02) * CFrame.Angles(math.rad(8), 0, 0)) -- pointed snout
+		ell(V(0.5, 0.48, 0.9), back, C(0, 0.06, 0.95))
+		ell(V(0.26, 0.26, 0.6), back, C(0, 0.08, 1.25))
+		ell(V(0.3, 0.6, 1.4), back:Lerp(BLACK, 0.12), C(0, 0.22, 0.05)) -- a darker back
+
+		-- fins
+		wedge(V(0.06, 0.6, 0.55), fin, C(0, 0.72, 0.02) * CFrame.Angles(math.rad(-6), 0, 0))
+		wedge(V(0.04, 0.18, 0.18), fin, C(0, 0.33, 0.86))
+		wedge(V(0.04, 0.14, 0.16), fin, C(0, -0.22, 0.88) * CFrame.Angles(math.pi, 0, 0))
+		ell(V(0.05, 0.85, 0.22), fin, C(0, 0.4, 1.38) * CFrame.Angles(math.rad(-35), 0, 0))
+		ell(V(0.05, 0.5, 0.2), fin, C(0, -0.16, 1.33) * CFrame.Angles(math.rad(38), 0, 0))
+		for _, sx in ipairs({ -1, 1 }) do
+			ell(V(0.62, 0.05, 0.28), fin, C(sx * 0.55, -0.2, -0.22) * CFrame.Angles(0, sx * 0.55, sx * -0.4))
+			ell(V(0.22, 0.04, 0.14), fin, C(sx * 0.2, -0.32, 0.56) * CFrame.Angles(0, sx * 0.4, sx * -0.3))
+			-- five gill slits
+			for g = 0, 4 do
+				ell(V(0.01, 0.22 - g * 0.015, 0.018), back:Lerp(BLACK, 0.4), C(sx * 0.455, 0.03, -0.5 + g * 0.055) * CFrame.Angles(0, sx * 0.25, 0))
+			end
+			-- glossy black eyes with a small shine
+			ell(V(0.03, 0.11, 0.14), back:Lerp(BLACK, 0.3), C(sx * 0.29, 0.15, -0.72) * CFrame.Angles(0, sx * 0.5, 0))
+			ball(0.1, Color3.fromRGB(8, 8, 12), V(sx * 0.3, 0.15, -0.72), Enum.Material.Glass)
+			ball(0.025, WHITE, V(sx * 0.345, 0.17, -0.75), NEON)
+			ell(V(0.025, 0.02, 0.03), BLACK, C(sx * 0.07, 0.03, -1.15)) -- nostrils
+		end
+		-- the mouth under the snout: pink gums and two rows of pointed teeth
+		-- (the mouth sits a little open under the snout, so the teeth show from the front)
+		ell(V(0.5, 0.13, 0.4), Color3.fromRGB(70, 15, 25), C(0, -0.2, -0.86))
+		ell(V(0.44, 0.05, 0.34), Color3.fromRGB(220, 100, 120), C(0, -0.235, -0.85))
+		for i = -5, 5 do
+			local a = i * 0.27
+			local x, z = math.sin(a) * 0.23, -1.04 + (1 - math.cos(a)) * 0.32
+			add(nil, V(0.04, 0.04, 0.02), WHITE, C(x, -0.155, z) * CFrame.Angles(0, -a, math.rad(45)))
+			if i > -5 and i < 5 then
+				add(nil, V(0.034, 0.034, 0.02), WHITE, C(x * 0.92, -0.245, z + 0.025) * CFrame.Angles(0, -a, math.rad(45)))
+			end
+		end
+		-- three legs in sneakers, with muscly calves
+		legs({ x = 0.24, z = -0.08, third = 0.34, thick = 0.12, color = back, muscle = true, round = true, footSize = 0.85, swoosh = Color3.fromRGB(20, 20, 25) })
+		bodyTop = 1.05
+		frontReach = 1.18
 	end
 	-- anything without a look of its own: a classic ball or block brainrot
 	BUILD.classic = function()
@@ -3551,11 +3726,11 @@ local function buildBoss(def, ownerName, cf)
 	addBillboard(root, {
 		{ text = def.name, color = WHITE },
 		{ text = "chasing " .. ownerName, color = Color3.fromRGB(255, 110, 110) },
-	}, bodyTop * s + 3.5, 180, 260, 24)
+	}, bodyTop * s + 6, 2000, 320, 30)
 
 	local hum = Instance.new("Humanoid")
 	hum.RigType = Enum.HumanoidRigType.R15
-	hum.HipHeight = leg
+	hum.HipHeight = leg + s / 2 - 2 -- from the bottom of the small root to the ground
 	hum.WalkSpeed = 0
 	hum.AutoRotate = true
 	hum.RequiresNeck = false
@@ -3575,15 +3750,18 @@ local function buildBoss(def, ownerName, cf)
 		hum:SetStateEnabled(state, false)
 	end
 
+	model:SetAttribute("OwnerId", ownerId) -- only its owner sees it (the World script hides other players' bosses)
 	CollectionService:AddTag(model, "SVB_Boss")
 	model.Parent = BossFolder
 	pcall(function() root:SetNetworkOwner(nil) end)
-	return model, root, hum, burst
+	model:SetAttribute("Front", frontReach * s)
+	return model, root, hum, burst, frontReach * s
 end
 
 -- where the boss appears: a bit behind you, inside the map's zones
-local function behindCFrame(map, ownerPos, s, leg)
-	local z = math.max((map.startG + 1) * L + s / 2 + 1, ownerPos.Z - CONFIG.BossHeadStart)
+-- (front = how far its face sticks out ahead of its middle)
+local function behindCFrame(map, ownerPos, s, leg, front)
+	local z = math.max(map.oz + L - CONFIG.IslandLength + 10, ownerPos.Z - CONFIG.BossHeadStart - (front or s / 2))
 	local x = math.clamp(ownerPos.X, -HALF_W + s / 2 + 1, HALF_W - s / 2 - 1)
 	local y = FLOOR_Y + leg + s / 2 + 0.2
 	return CFrame.lookAt(Vector3.new(x, y, z), Vector3.new(ownerPos.X, y, ownerPos.Z + 0.01))
@@ -3606,7 +3784,12 @@ local function spawnChaser(plr, map, ownerPos, zone)
 	local def = (zone and zone.boss) or map.boss
 	local s = def.size
 	local leg = s * (def.legScale or 0.45)
-	local model, root, hum, burst = buildBoss(def, plr.DisplayName, behindCFrame(map, ownerPos, s, leg))
+	local front = s * 0.6
+	local model, root, hum, burst, reach = buildBoss(def, plr.DisplayName, behindCFrame(map, ownerPos, s, leg, front), plr.UserId)
+	if reach and math.abs(reach - front) > 0.5 then
+		front = reach
+		model:PivotTo(behindCFrame(map, ownerPos, s, leg, front))
+	end
 	local c = {
 		map = map,
 		model = model,
@@ -3616,10 +3799,11 @@ local function spawnChaser(plr, map, ownerPos, zone)
 		name = def.name,
 		size = s,
 		leg = leg,
-		catch = s / 2 + 2.5,
+		front = front,
+		catch = front + 2.5,
 		minX = -HALF_W + s / 2 + 1,
 		maxX = HALF_W - s / 2 - 1,
-		minZ = (map.startG + 1) * L + s / 2 + 1,
+		minZ = map.oz + L - CONFIG.IslandLength + 10,
 		maxZ = map.endZ - s / 2 - 1,
 		readyAt = os.clock() + CONFIG.BossGraceTime,
 		zone = zone,
@@ -3684,20 +3868,23 @@ local function chaserTick()
 			if c and not c.caught then removeChaser(plr) end
 		else
 			local pos = hrp.Position
-			if not c and (info.j > 1 or pos.Z >= (info.map.startG + 1) * L + 30) then
+			-- it appears once you're far enough in for it to fit behind you
+			local bossS = info.map.boss.size
+			if not c and pos.Z - CONFIG.BossHeadStart - bossS * 1.3 >= info.map.oz + L - CONFIG.IslandLength + 10 then
 				c = spawnChaser(plr, info.map, pos, info.zone)
 			end
 			if c and not c.caught then
 				local bpos = c.root.Position
 				if bpos.Y < FLOOR_Y - 10 then
 					-- it fell into a hole: put it back behind you
-					c.model:PivotTo(behindCFrame(c.map, pos, c.size, c.leg))
+					c.model:PivotTo(behindCFrame(c.map, pos, c.size, c.leg, c.front))
 					c.readyAt = os.clock() + 0.5
 					c.burst:Emit(30)
 					bpos = c.root.Position
 				end
 
-				local dist = ((pos - bpos) * Vector3.new(1, 0, 1)).Magnitude
+				-- the boss fills the track, so all that matters is how far ahead of its face you are
+				local dist = pos.Z - bpos.Z
 				if os.clock() >= c.readyAt then
 					-- it runs at least the zone's pace (faster in every zone), and while you're
 					-- faster it keeps speeding up until it's faster than you. It never goes past
@@ -3929,8 +4116,8 @@ local function hatch(plr, egg)
 	syncPets(plr)
 	syncStats(plr)
 	PetHatchedRemote:FireClient(plr, pet.name, 1, petBonusOf(key), false)
-	if pet.rarity >= #RARITY then
-		notifyAll(plr.DisplayName .. " hatched a LEGENDARY " .. pet.name .. "!", RARITY[#RARITY].color)
+	if pet.rarity >= 5 then
+		notifyAll(plr.DisplayName .. " hatched a " .. string.upper(RARITY[pet.rarity].name) .. " " .. pet.name .. "!", RARITY[pet.rarity].color)
 	end
 end
 
@@ -3939,6 +4126,15 @@ for _, entry in ipairs(EggPrompts) do
 		hatch(plr, entry.egg)
 	end)
 end
+-- the Open button on the egg panel (you have to be standing by that egg)
+makeRemote("HatchEgg").OnServerEvent:Connect(function(plr, eggName)
+	local egg = type(eggName) == "string" and EGG_BY_NAME[eggName]
+	local root = plr.Character and plr.Character:FindFirstChild("HumanoidRootPart")
+	local at = egg and EggConfigs[egg.name] and EggConfigs[egg.name]:GetAttribute("Position")
+	if not egg or not root or typeof(at) ~= "Vector3" then return end
+	if (root.Position - at).Magnitude > 32 then return end
+	hatch(plr, egg)
+end)
 
 FuseRemote.OnServerEvent:Connect(function(plr, key)
 	local d = Data[plr]

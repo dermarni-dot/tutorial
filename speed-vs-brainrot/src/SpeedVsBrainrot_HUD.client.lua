@@ -930,7 +930,22 @@ local function statTile(key, icon, y, color)
 		TextXAlignment = Enum.TextXAlignment.Left,
 		ZIndex = 3,
 	})
-	stats[key] = { Tile = tile, Scale = scale, Value = value, Shown = 0, Target = 0, Prefix = "" }
+	-- a small caption, a glossy top half and a shine that sweeps across now and then
+	label(tile, string.upper(key), UDim2.fromOffset(110, 14), { Position = UDim2.fromOffset(70, 3), TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = color:Lerp(WHITE, 0.7), ZIndex = 3 })
+	local studs = tile:FindFirstChild("Studs")
+	local gloss = new("Frame", { Name = "Gloss", BackgroundColor3 = WHITE, BackgroundTransparency = 0.82, BorderSizePixel = 0, Size = UDim2.new(1, 0, 0.45, 0), ZIndex = 2, Parent = studs or tile })
+	new("UIGradient", { Transparency = NumberSequence.new(0.2, 1), Rotation = 90, Parent = gloss })
+	local shine = new("Frame", { Name = "Shine", BackgroundColor3 = WHITE, BorderSizePixel = 0, Rotation = 20, Position = UDim2.new(-0.4, 0, -0.5, 0), Size = UDim2.new(0, 26, 2, 0), ZIndex = 2, Parent = studs or tile })
+	new("UIGradient", { Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.5, 0.45), NumberSequenceKeypoint.new(1, 1) }), Parent = shine })
+	task.spawn(function()
+		task.wait(math.random() * 3)
+		while tile.Parent do
+			shine.Position = UDim2.new(-0.4, 0, -0.5, 0)
+			tween(shine, 0.9, { Position = UDim2.new(1.2, 0, -0.5, 0) }, Enum.EasingStyle.Sine)
+			task.wait(4 + math.random() * 2)
+		end
+	end)
+	stats[key] = { Tile = tile, Scale = scale, Value = value, Shown = 0, Target = 0, Prefix = (key == "Cash") and "$" or "" }
 	return stats[key]
 end
 statTile("Speed", "shoe", 0, COLORS.speed)
@@ -1016,11 +1031,24 @@ for _, d in ipairs(workspace:GetDescendants()) do addPadLabel(d) end
 workspace.DescendantAdded:Connect(addPadLabel)
 refreshBuy()
 
+-- a little "+$545" that floats up off the Cash tile whenever your cash goes up
+local function tickerUp(s, gain)
+	local tk = label(s.Tile, "+" .. s.Prefix .. fmt(gain), UDim2.fromOffset(150, 26), {
+		AnchorPoint = Vector2.new(0, 1),
+		Position = UDim2.new(0, 70, 0, 2),
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextColor3 = Color3.fromRGB(170, 255, 140),
+		ZIndex = 6,
+	})
+	tween(tk, 0.9, { Position = UDim2.new(0, 70, 0, -30), TextTransparency = 1 })
+	task.delay(0.9, function() tk:Destroy() end)
+end
 local function readStat(key)
 	local s = stats[key]
 	local v = player:GetAttribute(key) or 0
 	if v > s.Target and s.Target > 0 then
 		bounce(s.Scale, 1.12)
+		if key == "Cash" then tickerUp(s, v - s.Target) end
 	end
 	s.Target = v
 end
@@ -1028,7 +1056,7 @@ for key in pairs(stats) do
 	local s = stats[key]
 	s.Target = player:GetAttribute(key) or 0
 	s.Shown = s.Target
-	s.Value.Text = fmt(s.Shown)
+	s.Value.Text = s.Prefix .. fmt(s.Shown)
 	player:GetAttributeChangedSignal(key):Connect(function()
 		readStat(key)
 	end)
@@ -1044,7 +1072,7 @@ RunService.RenderStepped:Connect(function(dt)
 			else
 				s.Shown += diff * math.min(1, dt * 10)
 			end
-			s.Value.Text = fmt(s.Shown)
+			s.Value.Text = s.Prefix .. fmt(s.Shown)
 		end
 	end
 end)
@@ -1532,15 +1560,52 @@ end)
 local fxLayer = new("Frame", { Name = "CashPops", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 30, Parent = gui })
 
 local active = 0
-local function cashPop(amount)
+-- screen pixels -> this GUI's own (scaled) units
+local function toGui(v)
+	local sc = screenScale.Scale
+	return Vector2.new(v.X / sc, v.Y / sc)
+end
+-- bills that stream from where you grabbed the cash into your Cash tile
+local function billStream(from)
+	local tile = stats.Cash.Tile
+	local target = toGui(tile.AbsolutePosition + tile.AbsoluteSize / 2 - fxLayer.AbsolutePosition)
+	for i = 1, 6 do
+		task.delay(i * 0.06, function()
+			local bill = drawIcon(fxLayer, "cash", 40)
+			bill.AnchorPoint = Vector2.new(0.5, 0.5)
+			bill.Position = UDim2.fromOffset(from.X + math.random(-30, 30), from.Y + math.random(-20, 20))
+			bill.Rotation = math.random(-40, 40)
+			bill.ZIndex = 33
+			local mid = (from + target) / 2 + Vector2.new(math.random(-80, 80), -math.random(60, 140))
+			tween(bill, 0.28, { Position = UDim2.fromOffset(mid.X, mid.Y), Rotation = bill.Rotation + 90 }, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+			task.delay(0.28, function()
+				tween(bill, 0.3, { Position = UDim2.fromOffset(target.X, target.Y), Size = UDim2.fromOffset(18, 18) }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+				task.delay(0.3, function()
+					bill:Destroy()
+					bounce(stats.Cash.Scale, 1.08)
+				end)
+			end)
+		end)
+	end
+end
+local function cashPop(amount, worldPos)
 	if active > 8 then
 		return -- plenty on screen already
 	end
 	active += 1
-	local view = fxLayer.AbsoluteSize
-	-- somewhere on the right two-thirds of the screen (clear of the buttons)
+	local view = toGui(fxLayer.AbsoluteSize)
+	-- where the cash was on screen (or somewhere on the right if it was off screen)
 	local x = math.random(math.floor(view.X * 0.38), math.floor(view.X * 0.85))
 	local y = math.random(math.floor(view.Y * 0.25), math.floor(view.Y * 0.72))
+	local cam = workspace.CurrentCamera
+	if cam and typeof(worldPos) == "Vector3" then
+		local sp, onScreen = cam:WorldToScreenPoint(worldPos)
+		if onScreen then
+			local g = toGui(Vector2.new(sp.X, sp.Y))
+			x, y = math.clamp(g.X, 90, view.X - 90), math.clamp(g.Y - 60, 80, view.Y - 80)
+		end
+	end
+	billStream(Vector2.new(x, y))
 	local pop = new("Frame", {
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.fromOffset(x, y),
@@ -1551,6 +1616,13 @@ local function cashPop(amount)
 		Parent = fxLayer,
 	})
 	local scale = new("UIScale", { Scale = 0, Parent = pop })
+	-- spinning gold rays behind the cash brick
+	local rays = new("Frame", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromOffset(85, 40), Size = UDim2.fromOffset(190, 190), BackgroundTransparency = 1, ZIndex = 31, Parent = pop })
+	for k = 0, 5 do
+		local ray = new("Frame", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.new(0, 22, 1, 0), Rotation = k * 30, BackgroundColor3 = Color3.fromRGB(255, 235, 120), BorderSizePixel = 0, ZIndex = 31, Parent = rays })
+		new("UIGradient", { Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.5, 0.35), NumberSequenceKeypoint.new(1, 1) }), Rotation = 90, Parent = ray })
+	end
+	tween(rays, 1.2, { Rotation = 90 })
 	local brick = drawIcon(pop, "cash", 116)
 	brick.Position = UDim2.fromOffset(27, -18)
 	local text = new("TextLabel", {
@@ -1558,7 +1630,7 @@ local function cashPop(amount)
 		Position = UDim2.fromOffset(0, 76),
 		Size = UDim2.fromOffset(170, 66),
 		Font = FONT,
-		Text = "+" .. fmt(amount),
+		Text = "+$" .. fmt(amount),
 		TextColor3 = Color3.fromRGB(215, 255, 200),
 		TextScaled = true,
 		ZIndex = 34,
@@ -1576,7 +1648,7 @@ local function cashPop(amount)
 		end
 		task.wait(0.3)
 		local tile = stats.Cash.Tile
-		local target = tile.AbsolutePosition + tile.AbsoluteSize / 2 - fxLayer.AbsolutePosition
+		local target = toGui(tile.AbsolutePosition + tile.AbsoluteSize / 2 - fxLayer.AbsolutePosition)
 		tween(pop, 0.45, { Position = UDim2.fromOffset(target.X, target.Y), Rotation = 0 }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
 		tween(scale, 0.45, { Scale = 0.25 }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
 		task.wait(0.45)
@@ -1766,9 +1838,9 @@ local function cashAura(character)
 	end)
 end
 
-CashFxRemote.OnClientEvent:Connect(function(_pos, amount, who)
+CashFxRemote.OnClientEvent:Connect(function(pos, amount, who)
 	if who == player then
-		cashPop(amount)
+		cashPop(amount, pos)
 	end
 	if who and who.Character then
 		swirl(who.Character)
@@ -2119,3 +2191,159 @@ PetHatchedRemote.OnClientEvent:Connect(function(petName, tier, bonus, fused)
 		hatching = false
 	end)
 end)
+
+------------------------------------------------------------------------
+-- EGG PANEL: walk up to any egg and it shows what's inside (every pet, its rarity and
+-- its chance) with a big OPEN button and an AUTO button that keeps opening for you
+------------------------------------------------------------------------
+do
+	local EggInfo = ReplicatedStorage:WaitForChild("SVB_Eggs", 10)
+	local hatchRemote = remotes:WaitForChild("HatchEgg", 10)
+	local NEAR = 16
+
+	local panel = new("Frame", {
+		Name = "EggPanel",
+		AnchorPoint = Vector2.new(0.5, 1),
+		Position = UDim2.new(0.5, 0, 1, 40),
+		Size = UDim2.fromOffset(600, 232),
+		BackgroundColor3 = Color3.fromRGB(28, 30, 44),
+		BackgroundTransparency = 0.08,
+		Visible = false,
+		ZIndex = 30,
+		Parent = gui,
+	})
+	corner(panel, 18)
+	local panelStroke = stroke(panel, WHITE, 3.5)
+	new("UIGradient", { Color = ColorSequence.new(Color3.fromRGB(60, 64, 92), Color3.fromRGB(26, 28, 40)), Rotation = 90, Parent = panel })
+	local eggHolder = new("Frame", { BackgroundTransparency = 1, Position = UDim2.fromOffset(-26, -46), Size = UDim2.fromOffset(110, 110), ZIndex = 32, Parent = panel })
+	local title = label(panel, "", UDim2.new(1, -240, 0, 34), { Position = UDim2.fromOffset(92, 8), TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 32 })
+	local priceText = label(panel, "", UDim2.new(1, -240, 0, 22), { Position = UDim2.fromOffset(92, 42), TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = Color3.fromRGB(255, 220, 80), ZIndex = 32 })
+	local trophyIcon = drawIcon(panel, "trophy", 30)
+	trophyIcon.Position = UDim2.new(1, -150, 0, 8)
+	trophyIcon.ZIndex = 32
+	local haveText = label(panel, "", UDim2.fromOffset(110, 24), { Position = UDim2.new(1, -118, 0, 12), TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 32 })
+
+	local row = new("Frame", { BackgroundTransparency = 1, Position = UDim2.fromOffset(14, 72), Size = UDim2.new(1, -28, 0, 104), ZIndex = 31, Parent = panel })
+	new("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 8), HorizontalAlignment = Enum.HorizontalAlignment.Center, SortOrder = Enum.SortOrder.LayoutOrder, Parent = row })
+
+	local function button(text, color, x, w)
+		local b = new("TextButton", { Text = "", AutoButtonColor = true, BackgroundColor3 = color, Position = UDim2.new(0.5, x, 1, -50), Size = UDim2.fromOffset(w, 40), ZIndex = 33, Parent = panel })
+		corner(b, 12)
+		stroke(b, color:Lerp(Color3.new(0, 0, 0), 0.5), 3)
+		new("UIGradient", { Color = ColorSequence.new(color:Lerp(WHITE, 0.25), color:Lerp(Color3.new(0, 0, 0), 0.15)), Rotation = 90, Parent = b })
+		local l = label(b, text, UDim2.new(1, -12, 1, -8), { Position = UDim2.fromOffset(6, 4), ZIndex = 34 })
+		local sc = new("UIScale", { Parent = b })
+		b.MouseButton1Down:Connect(function() tween(sc, 0.08, { Scale = 0.92 }) end)
+		b.MouseButton1Up:Connect(function() tween(sc, 0.2, { Scale = 1 }, Enum.EasingStyle.Back) end)
+		return b, l
+	end
+	local openButton, openLabel = button("OPEN", Color3.fromRGB(60, 190, 80), -205, 230)
+	local autoButton, autoLabel = button("AUTO: OFF", Color3.fromRGB(240, 150, 40), 35, 170)
+	local lockedText = label(panel, "", UDim2.new(1, -28, 0, 30), { Position = UDim2.new(0, 14, 1, -46), TextColor3 = Color3.fromRGB(255, 130, 130), ZIndex = 33, Visible = false })
+
+	local current, auto, lastOpen = nil, false, 0
+	local function petsOf(eggName)
+		local list = {}
+		for _, info in ipairs(PetInfo:GetChildren()) do
+			if info:GetAttribute("Egg") == eggName then table.insert(list, info) end
+		end
+		table.sort(list, function(a, b) return (a:GetAttribute("RarityIndex") or 0) < (b:GetAttribute("RarityIndex") or 0) end)
+		return list
+	end
+	local function canOpen(egg)
+		return (player:GetAttribute("MaxMap") or 1) >= (egg:GetAttribute("Map") or 1)
+			and (player:GetAttribute("Trophies") or 0) >= (egg:GetAttribute("Price") or 0)
+	end
+	local function refresh()
+		if not current then return end
+		local price = current:GetAttribute("Price") or 0
+		local have = player:GetAttribute("Trophies") or 0
+		local unlocked = (player:GetAttribute("MaxMap") or 1) >= (current:GetAttribute("Map") or 1)
+		haveText.Text = fmt(have)
+		haveText.TextColor3 = (have >= price) and Color3.fromRGB(150, 255, 140) or Color3.fromRGB(255, 130, 130)
+		openButton.Visible, autoButton.Visible, lockedText.Visible = unlocked, unlocked, not unlocked
+		lockedText.Text = "Beat Map " .. ((current:GetAttribute("Map") or 2) - 1) .. " to unlock this egg"
+		openLabel.Text = (have >= price) and ("OPEN  -  " .. fmt(price)) or ("NEED " .. fmt(price))
+		openButton.BackgroundColor3 = (have >= price) and Color3.fromRGB(60, 190, 80) or Color3.fromRGB(110, 110, 120)
+	end
+	local function show(egg)
+		current = egg
+		auto = false
+		autoLabel.Text = "AUTO: OFF"
+		for _, c in ipairs(row:GetChildren()) do if c:IsA("Frame") then c:Destroy() end end
+		eggHolder:ClearAllChildren()
+		local ic = drawIcon(eggHolder, "egg", 110, egg:GetAttribute("Color"), egg:GetAttribute("Spots"), egg:GetAttribute("Design"))
+		ic.ZIndex = 32
+		title.Text = string.upper(egg.Name)
+		title.TextColor3 = (egg:GetAttribute("Color") or WHITE):Lerp(WHITE, 0.45)
+		priceText.Text = fmt(egg:GetAttribute("Price") or 0) .. " TROPHIES  -  " .. #petsOf(egg.Name) .. " PETS INSIDE"
+		panelStroke.Color = (egg:GetAttribute("Color") or WHITE):Lerp(WHITE, 0.3)
+		for i, info in ipairs(petsOf(egg.Name)) do
+			local rc = info:GetAttribute("RarityColor") or WHITE
+			local card = new("Frame", { LayoutOrder = i, Size = UDim2.fromOffset(84, 104), BackgroundColor3 = rc:Lerp(Color3.fromRGB(20, 20, 30), 0.7), ZIndex = 31, Parent = row })
+			corner(card, 12)
+			stroke(card, rc, 2.5)
+			new("UIGradient", { Color = ColorSequence.new(rc:Lerp(Color3.fromRGB(20, 20, 30), 0.45), rc:Lerp(Color3.fromRGB(20, 20, 30), 0.85)), Rotation = 90, Parent = card })
+			local face = drawIcon(card, "pet", 58, info:GetAttribute("Body"), info:GetAttribute("Accent"), info:GetAttribute("Style"))
+			face.Position = UDim2.fromOffset(13, 2)
+			face.ZIndex = 32
+			label(card, info.Name, UDim2.new(1, -6, 0, 16), { Position = UDim2.fromOffset(3, 60), ZIndex = 33 })
+			label(card, (info:GetAttribute("Chance") or 0) .. "%", UDim2.new(1, -6, 0, 16), { Position = UDim2.fromOffset(3, 76), TextColor3 = rc, ZIndex = 33 })
+			label(card, string.upper(info:GetAttribute("Rarity") or ""), UDim2.new(1, -6, 0, 11), { Position = UDim2.fromOffset(3, 91), TextColor3 = rc:Lerp(WHITE, 0.3), ZIndex = 33 })
+		end
+		refresh()
+		panel.Visible = true
+		panel.Position = UDim2.new(0.5, 0, 1, 260)
+		tween(panel, 0.35, { Position = UDim2.new(0.5, 0, 1, compact and -8 or -16) }, Enum.EasingStyle.Back)
+	end
+	local function hide()
+		if not current then return end
+		current, auto = nil, false
+		local tw = tween(panel, 0.2, { Position = UDim2.new(0.5, 0, 1, 260) })
+		tw.Completed:Connect(function() if not current then panel.Visible = false end end)
+	end
+	local function open()
+		if not current or not hatchRemote then return end
+		if os.clock() - lastOpen < 1.3 then return end
+		lastOpen = os.clock()
+		hatchRemote:FireServer(current.Name)
+	end
+	openButton.Activated:Connect(open)
+	autoButton.Activated:Connect(function()
+		auto = not auto
+		autoLabel.Text = auto and "AUTO: ON" or "AUTO: OFF"
+	end)
+	for _, a in ipairs({ "Trophies", "MaxMap" }) do
+		player:GetAttributeChangedSignal(a):Connect(refresh)
+	end
+
+	-- which egg am I standing by?
+	task.spawn(function()
+		while EggInfo do
+			task.wait(0.2)
+			local char = player.Character
+			local root = char and char:FindFirstChild("HumanoidRootPart")
+			local best, bestD = nil, NEAR
+			if root then
+				for _, egg in ipairs(EggInfo:GetChildren()) do
+					local pos = egg:GetAttribute("Position")
+					if typeof(pos) == "Vector3" then
+						local d = ((pos - root.Position) * Vector3.new(1, 0, 1)).Magnitude
+						if d < bestD then best, bestD = egg, d end
+					end
+				end
+			end
+			if best ~= current then
+				if best then show(best) else hide() end
+			end
+			if current and auto then
+				if canOpen(current) then
+					open()
+				else
+					auto = false
+					autoLabel.Text = "AUTO: OFF"
+				end
+			end
+		end
+	end)
+end

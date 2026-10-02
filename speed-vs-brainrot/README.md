@@ -41,7 +41,10 @@ Four scripts:
 - **Map 2: Turbo Badlands**. Its boss is **Tralalero Turbino**, a bigger shark in big sneakers. 6 zones that pay **1.5K to 500K trophies**: Jungle, Haunted, Factory, Space, Rainbow, Inferno.
 - Each map has its own start island with a speed pad, 4 eggs, leaderboards and a portal.
 - Reaching a map's finish unlocks the next map and takes you there. To add a third map, copy a block in `MAPS`.
-- **One boss per map** chases you through every zone of that map. It has big eyes with a shine, an open mouth with teeth, arms that pump and legs that swing as it runs, and it kicks up dust.
+- **One giant boss per map**: it's about as wide as the track (80% of `ZoneWidth`) and a couple of hundred studs tall, so there's no getting around it. You can only run. It catches you when its face reaches you.
+  - **Il Grande Zoomerone** (Map 1) is a king in full royal dress. He has a jewelled crown with pearls and a cross, stern eyes with heavy lids and bushy brows, a big nose, a curled mustache and a goatee. He wears a velvet robe with a gold hem, belt and buttons, an ermine collar and a long cape, white gloves with real fingers, and royal boots with gold buckles. He holds a jewelled sceptre and an orb.
+  - **Tralalero Turbino** (Map 2) is a real-looking shark: a smooth blue back and white belly, glossy black eyes, a pointed snout, a mouth with two rows of pointed teeth, five gill slits on each side, dorsal, pectoral, pelvic and anal fins and a crescent tail. It runs on three muscly legs in sneakers.
+  - **Only you see your own boss.** Everyone has their own, and other players' bosses are hidden on your screen.
 - **How the boss's speed works**:
   - It gets faster in every zone: each zone has a pace it runs at least.
   - If you're faster than it, it keeps speeding up until it's faster than you, so it slowly catches up.
@@ -101,8 +104,28 @@ Four scripts:
 - **4 eggs per map**:
   - Map 1: 20, 100, 500 and 1K trophies.
   - Map 2: 2.5K, 10K, 50K and 250K trophies.
-- Each egg holds 4 pets, Common to Legendary, for 32 pets in total.
-- Eggs are detailed: a pedestal, stripes, spots and a shine. They spin and glow, and show their pets and odds above them.
+- Each egg holds **6 pets**, one of each rarity: Common, Uncommon, Rare, Epic, Legendary and Mythic (50%, 25%, 14%, 8%, 2.5% and 0.5%). That's 48 pets in total. Legendary and Mythic hatches are announced to the whole server.
+- Eggs are big (1.6x), float over their pedestals in a soft beam of light with a glowing ring around them, spin and sparkle. Their name and price float above them.
+- **Opening eggs**: walk up to any egg and the **egg panel** slides up from the bottom of the screen. It shows the egg, its price, how many trophies you have, and every pet inside as a card with its picture, chance and rarity. Press **OPEN** to hatch one, or **AUTO** to keep opening while you can afford it. If the egg's map isn't unlocked yet, it says so. The old E prompt still works too.
+- **Pets follow you**: your equipped pets float and hop along behind you as detailed 3D models, built by their kind:
+  - bunnies have long ears with pink insides;
+  - pups have floppy ears and a wagging tail;
+  - cats, foxes and wolves have pointy ears, and foxes and wolves have bushy white-tipped tails;
+  - bears have round ears;
+  - bees have stripes, see-through wings and antennae;
+  - beetles have glossy shells and little legs;
+  - penguins have a white belly, a beak and flippers;
+  - dragons have horns, wings, back spikes and a tail;
+  - slimes are wobbly see-through blobs;
+  - birds have a beak, wings and a crest;
+  - clouds are puffs;
+  - unicorns have a golden horn and a mane;
+  - robots are boxy with a glowing visor and an antenna;
+  - bats have big wings and fangs;
+  - wisps are flames;
+  - overlords have a crown and a cape.
+
+  Golden pets are shiny gold, Rainbow pets shift through the colors, and Legendary and Mythic pets sparkle. You see everyone's pets.
 - **Buying speed**: each purchase gives you 10% of the Speed you already have (at least +1), so it keeps up as you get faster. You can buy it two ways:
   - stand on the green pad on the island (it's smaller now) and it keeps buying;
   - tap the green **Buy Speed** button under your stats, or hold it to keep buying.
@@ -122,7 +145,7 @@ Four scripts:
 
 ## HUD
 
-- **Stat tiles**: Speed, Cash and Trophies on studded brick tiles. The numbers count up.
+- **Stat tiles**: Speed, Cash and Trophies on studded brick tiles, each with a small caption, a glossy top and a shine that sweeps across. The numbers count up, cash shows with a "$", and every time your cash goes up a green "+$545" floats up off the Cash tile.
 - **Buttons**:
   - Teleport: spawn, the speed pad, the eggs, Map 1 or Map 2.
   - 3x Cash gamepass.
@@ -130,7 +153,7 @@ Four scripts:
   - Pets, with Fuse 3 to upgrade.
   - Rebirth.
   - Prestige, which stays locked until you can use it.
-- **Cash pickups**: a cash brick with "+545" pops up and flies into the Cash tile. Around the player who grabbed it (everyone sees it): a green swirl, a green glow on the body, a green and a gold ring rippling out on the floor, bills and coins bursting out and bouncing, and "$" signs floating up.
+- **Cash pickups**: a cash brick with "+$545" pops up right where you grabbed the cash, in front of spinning gold rays. A stream of bills arcs from there into your Cash tile, and the tile bounces as each one lands. Around the player who grabbed it (everyone sees it): a green swirl, a green glow on the body, a green and a gold ring rippling out on the floor, bills and coins bursting out and bouncing, and "$" signs floating up.
 - **Zone cleared**: a gold card drops in, a shine sweeps across it and the trophies count up. The card then flies into the Trophies tile.
 - **Egg icons**: each egg has its own design, matching its 3D egg, with a smooth egg shape, shading, a glossy highlight and a shadow underneath.
 - **Egg hatch**: the screen dims, the egg wobbles and cracks, there is a flash and the halves fly apart. Your actual pet pops out in front of spinning rays, with its rarity. Every pet is drawn by its kind (bunny, pup, cat, fox, wolf, bear, bee, beetle, penguin, dragon, slime, bird, cloud, unicorn, robot, bat, wisp, overlord) in its own colors, in the hatch screen and in the Pets menu. Fusing pets plays its own version.
@@ -145,6 +168,9 @@ No emojis or uploaded images: every icon is drawn from rounded frames (the `ICON
 - **Running**: when you're fast, a bouncy run, then a ninja dash. Both come from Roblox's free animation packs. The playback speed is capped so it never looks frantic. You also lean forward, leave a speed trail, and the camera view widens.
 - **Lighting and sky per zone** (toned down so it's no longer too bright: lower exposure, less bloom, softer haze; `LIGHT_SCALE` in the World script makes it brighter or darker): as you cross into a new zone, the sky, sun angle, haze, color grade and cloud cover blend smoothly to match it. The Desert is a hazy gold, the Tundra a cold bright white, Lava a smoky red dusk, Neon City and Space night time, Storm Peaks dark and overcast, and so on. Bloom on neon and sun rays stay on everywhere.
 
+![Il Grande Zoomerone](bosses_front.png)
+![Tralalero Turbino](bosses_side.png)
+![Pets](pets3d.png)
 ![Meadow zone](map_meadow.png)
 ![Desert zone](map_desert.png)
 ![Overview](map_overview.png)

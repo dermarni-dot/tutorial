@@ -188,7 +188,21 @@ task.spawn(startWorld)
 ------------------------------------------------------------------------
 local bosses = {} -- [model] = { motors = {...}, phase }
 
+-- you only ever see your own boss: everyone else's is hidden on your screen
+local function hideBossPart(d)
+	if d:IsA("BasePart") then
+		d.LocalTransparencyModifier = 1
+	elseif d:IsA("BillboardGui") or d:IsA("ParticleEmitter") or d:IsA("PointLight") then
+		d.Enabled = false
+	end
+end
 local function addBoss(model)
+	local owner = model:GetAttribute("OwnerId")
+	if owner and owner ~= player.UserId then
+		for _, d in ipairs(model:GetDescendants()) do hideBossPart(d) end
+		model.DescendantAdded:Connect(hideBossPart)
+		return
+	end
 	local root = model:WaitForChild("HumanoidRootPart", 5)
 	if not root then return end
 	local motors = {}
@@ -535,3 +549,293 @@ task.spawn(function()
 		task.wait(0.5)
 	end
 end)
+
+------------------------------------------------------------------------
+-- PETS THAT FOLLOW YOU: everyone's equipped pets float and hop along behind them.
+-- Each kind of pet is built from parts with its own look (ears, tails, wings,
+-- horns, beaks...). Golden pets are gold, Rainbow pets shift through the colours,
+-- Legendary and Mythic pets sparkle. Built on each screen, so it costs the server nothing.
+------------------------------------------------------------------------
+do
+	local PetInfo = ReplicatedStorage:WaitForChild("SVB_Pets", 10)
+	local folder = Instance.new("Folder")
+	folder.Name = "SVB_LocalPets"
+	folder.Parent = workspace
+	local BLACK = Color3.new(0, 0, 0)
+	local MAX_PETS = 4
+	local FLYERS = { bee = true, bird = true, bat = true, wisp = true, cloud = true, overlord = true, dragon = true }
+
+	local function build(info, tier)
+		local body = info:GetAttribute("Body") or WHITE
+		local accent = info:GetAttribute("Accent") or BLACK
+		local style = info:GetAttribute("Style") or "pup"
+		local gold = tier == 2
+		if gold then
+			body, accent = Color3.fromRGB(255, 205, 60), Color3.fromRGB(255, 240, 160)
+		end
+		local model = Instance.new("Model")
+		model.Name = info.Name
+		local parts = {}
+		local function part(shape, size, color, cf, material, oval)
+			local p = Instance.new("Part")
+			if shape then p.Shape = shape end
+			p.Size = size
+			p.Color = color
+			p.Material = material or (gold and Enum.Material.Metal or Enum.Material.SmoothPlastic)
+			if gold then p.Reflectance = 0.25 end
+			p.TopSurface, p.BottomSurface = Enum.SurfaceType.Smooth, Enum.SurfaceType.Smooth
+			p.Anchored, p.CanCollide, p.CanQuery, p.CanTouch, p.CastShadow = true, false, false, false, false
+			p.CFrame = cf
+			if oval then
+				local m = Instance.new("SpecialMesh")
+				m.MeshType = Enum.MeshType.Sphere
+				m.Parent = p
+			end
+			p.Parent = model
+			table.insert(parts, { p = p, base = color, isBody = (color == body) })
+			return p
+		end
+		local function ell(size, color, cf, material) return part(nil, size, color, cf, material, true) end
+		local function ball(d, color, pos, material) return part(Enum.PartType.Ball, Vector3.one * d, color, CFrame.new(pos), material) end
+		local C = CFrame.new
+		local light, dark = body:Lerp(WHITE, 0.35), body:Lerp(BLACK, 0.25)
+
+		-- the round chibi body + a face (big shiny eyes, cheeks, a little mouth)
+		local core
+		if style == "robot" then
+			core = part(nil, Vector3.new(2.3, 2.1, 2.1), body, C(0, 0, 0), Enum.Material.Metal)
+			part(nil, Vector3.new(1.8, 0.7, 0.1), Color3.fromRGB(20, 25, 35), C(0, 0.25, -1.06))
+			for _, sx in ipairs({ -1, 1 }) do
+				part(nil, Vector3.new(0.45, 0.28, 0.05), accent, C(sx * 0.42, 0.25, -1.12), Enum.Material.Neon)
+				ball(0.3, dark, Vector3.new(sx * 1.2, 0, 0), Enum.Material.Metal)
+			end
+			part(nil, Vector3.new(0.08, 0.7, 0.08), dark, C(0, 1.35, 0))
+			ball(0.35, accent, Vector3.new(0, 1.75, 0), Enum.Material.Neon)
+			part(nil, Vector3.new(1.2, 0.08, 0.05), accent, C(0, -0.45, -1.07), Enum.Material.Neon)
+		else
+			local squash = (style == "slime") and Vector3.new(2.6, 1.9, 2.4) or Vector3.new(2.3, 2.2, 2.2)
+			core = ell(squash, body, C(0, 0, 0), (style == "wisp") and Enum.Material.Neon or nil)
+			if style == "slime" then core.Transparency = 0.15 end
+			if style == "wisp" then core.Transparency = 0.25 end
+			if style ~= "slime" and style ~= "wisp" and style ~= "cloud" then
+				ell(Vector3.new(1.4, 1.2, 0.5), light, C(0, -0.35, -0.85)) -- lighter belly / muzzle
+			end
+			for _, sx in ipairs({ -1, 1 }) do
+				ell(Vector3.new(0.5, 0.6, 0.25), WHITE, C(sx * 0.42, 0.22, -0.98))
+				ell(Vector3.new(0.32, 0.42, 0.12), (style == "overlord") and Color3.fromRGB(255, 50, 50) or Color3.fromRGB(25, 20, 30), C(sx * 0.42, 0.18, -1.08), (style == "overlord") and Enum.Material.Neon or nil)
+				ball(0.13, WHITE, Vector3.new(sx * 0.42 - 0.07, 0.32, -1.14), Enum.Material.Neon)
+				ell(Vector3.new(0.3, 0.14, 0.06), Color3.fromRGB(255, 130, 160), C(sx * 0.72, -0.12, -0.86) * CFrame.Angles(0, -sx * 0.6, 0)).Transparency = 0.3
+			end
+			ell(Vector3.new(0.3, 0.12, 0.08), Color3.fromRGB(70, 25, 35), C(0, -0.22, -1.08))
+		end
+
+		-- what each kind of pet has
+		if style == "bunny" then
+			for _, sx in ipairs({ -1, 1 }) do
+				ell(Vector3.new(0.45, 1.6, 0.3), body, C(sx * 0.4, 1.55, 0.05) * CFrame.Angles(0, 0, -sx * 0.15))
+				ell(Vector3.new(0.25, 1.2, 0.1), Color3.fromRGB(255, 170, 190), C(sx * 0.4, 1.5, -0.08) * CFrame.Angles(0, 0, -sx * 0.15))
+			end
+			ball(0.6, light, Vector3.new(0, -0.3, 1.1))
+		elseif style == "pup" or style == "bear" then
+			for _, sx in ipairs({ -1, 1 }) do
+				if style == "pup" then
+					ell(Vector3.new(0.4, 0.9, 0.5), accent, C(sx * 1.05, 0.35, 0) * CFrame.Angles(0, 0, sx * 0.3))
+				else
+					ball(0.65, body, Vector3.new(sx * 0.75, 1.0, 0))
+					ball(0.38, light, Vector3.new(sx * 0.75, 1.0, -0.15))
+				end
+			end
+			ell(Vector3.new(0.3, 0.2, 0.2), BLACK, C(0, -0.02, -1.15))
+			if style == "pup" then ell(Vector3.new(0.25, 0.25, 0.8), accent, C(0, 0.2, 1.2) * CFrame.Angles(-0.7, 0, 0)) end
+		elseif style == "cat" or style == "fox" or style == "wolf" then
+			local earH = (style == "cat") and 0.7 or 0.9
+			for _, sx in ipairs({ -1, 1 }) do
+				local ear = C(sx * 0.55, 1.05, 0) * CFrame.Angles(0, 0, -sx * 0.25)
+				local w = Instance.new("WedgePart")
+				w.Size = Vector3.new(0.2, earH, 0.6)
+				w.Color = (style == "cat") and body or accent
+				w.Anchored, w.CanCollide, w.CanQuery, w.CastShadow = true, false, false, false
+				w.CFrame = ear * CFrame.Angles(0, math.pi / 2, 0)
+				w.Parent = model
+				table.insert(parts, { p = w, base = w.Color })
+				if style == "cat" then
+					for k = -1, 1 do
+						part(nil, Vector3.new(0.7, 0.03, 0.03), Color3.fromRGB(40, 40, 40), C(sx * 1.05, -0.12 + k * 0.1, -0.85) * CFrame.Angles(0, 0, sx * k * 0.15))
+					end
+				end
+			end
+			ell(Vector3.new(0.18, 0.13, 0.12), BLACK, C(0, -0.05, -1.13))
+			local tail = ell(Vector3.new(0.6, 0.6, 1.4), (style == "cat") and body or accent, C(0, 0.3, 1.3) * CFrame.Angles(-0.8, 0, 0))
+			if style ~= "cat" then ball(0.5, WHITE, Vector3.new(0, 0.85, 1.85)) end
+			_ = tail
+		elseif style == "bee" then
+			for i = -1, 1 do
+				part(Enum.PartType.Cylinder, Vector3.new(0.25, 2.32, 2.32), accent, C(0, i * 0.5, 0.1) * CFrame.Angles(0, 0, math.pi / 2) * CFrame.Angles(0.2, 0, 0))
+			end
+			for _, sx in ipairs({ -1, 1 }) do
+				ell(Vector3.new(1.2, 0.08, 0.7), Color3.fromRGB(220, 240, 255), C(sx * 0.9, 1.0, 0.4) * CFrame.Angles(0, 0, sx * 0.5)).Transparency = 0.35
+				part(nil, Vector3.new(0.06, 0.7, 0.06), BLACK, C(sx * 0.3, 1.35, -0.6) * CFrame.Angles(-0.4, 0, sx * 0.3))
+				ball(0.18, BLACK, Vector3.new(sx * 0.42, 1.68, -0.78))
+			end
+		elseif style == "beetle" then
+			for _, sx in ipairs({ -1, 1 }) do
+				ell(Vector3.new(1.25, 1.5, 2.1), accent, C(sx * 0.55, 0.5, 0.25), Enum.Material.Glass)
+				for k = -1, 1 do part(nil, Vector3.new(0.6, 0.08, 0.08), BLACK, C(sx * 1.1, -0.85, k * 0.5) * CFrame.Angles(0, 0, sx * 0.6)) end
+			end
+			part(nil, Vector3.new(0.15, 0.8, 0.15), accent, C(0, 1.15, -0.6) * CFrame.Angles(-0.5, 0, 0))
+		elseif style == "penguin" then
+			ell(Vector3.new(1.7, 1.8, 0.6), WHITE, C(0, -0.15, -0.8))
+			ell(Vector3.new(0.4, 0.22, 0.5), Color3.fromRGB(255, 160, 40), C(0, -0.05, -1.25))
+			for _, sx in ipairs({ -1, 1 }) do
+				ell(Vector3.new(0.3, 1.1, 0.6), body, C(sx * 1.15, -0.1, 0) * CFrame.Angles(0, 0, sx * 0.35))
+				ell(Vector3.new(0.5, 0.15, 0.7), Color3.fromRGB(255, 160, 40), C(sx * 0.45, -1.1, -0.3))
+			end
+		elseif style == "dragon" then
+			for _, sx in ipairs({ -1, 1 }) do
+				part(nil, Vector3.new(0.18, 0.7, 0.18), accent, C(sx * 0.5, 1.2, 0.1) * CFrame.Angles(0.4, 0, -sx * 0.3))
+				ell(Vector3.new(1.4, 0.1, 0.9), accent, C(sx * 1.3, 0.6, 0.5) * CFrame.Angles(0, sx * 0.3, sx * 0.5))
+			end
+			for k = 0, 3 do ball(0.3 - k * 0.04, accent, Vector3.new(0, 1.05 - k * 0.12, 0.2 + k * 0.38)) end
+			ell(Vector3.new(0.5, 0.5, 1.4), body, C(0, -0.4, 1.3) * CFrame.Angles(-0.5, 0, 0))
+		elseif style == "slime" then
+			ell(Vector3.new(0.7, 0.35, 0.5), WHITE, C(-0.5, 0.65, -0.5)).Transparency = 0.5
+			ell(Vector3.new(0.3, 0.5, 0.3), body, C(0.7, -0.75, -0.6)).Transparency = 0.15
+		elseif style == "bird" then
+			ell(Vector3.new(0.35, 0.25, 0.55), Color3.fromRGB(255, 180, 50), C(0, -0.05, -1.25))
+			for _, sx in ipairs({ -1, 1 }) do
+				ell(Vector3.new(0.3, 1.0, 1.2), accent, C(sx * 1.15, 0.1, 0.2) * CFrame.Angles(0, 0, sx * 0.5))
+			end
+			for k = -1, 1 do ell(Vector3.new(0.15, 0.6, 0.2), accent, C(k * 0.15, 1.3, 0) * CFrame.Angles(0, 0, k * 0.4)) end
+		elseif style == "cloud" then
+			for i = 0, 5 do
+				local a = i * TAU / 6
+				ball(1.2, body, Vector3.new(math.cos(a) * 1.0, 0.1 + (i % 2) * 0.25, math.sin(a) * 0.7 + 0.3))
+			end
+		elseif style == "unicorn" then
+			for k = 0, 3 do
+				part(Enum.PartType.Cylinder, Vector3.new(0.3, 0.42 - k * 0.09, 0.42 - k * 0.09), Color3.fromRGB(255, 215, 80), C(0, 1.2 + k * 0.28, -0.4) * CFrame.Angles(-0.3, 0, math.pi / 2), Enum.Material.Neon)
+			end
+			for k = 0, 4 do ball(0.45, accent, Vector3.new(0, 1.0 - k * 0.2, 0.1 + k * 0.28)) end
+			for _, sx in ipairs({ -1, 1 }) do ell(Vector3.new(0.3, 0.6, 0.3), body, C(sx * 0.55, 1.05, 0.1)) end
+		elseif style == "bat" then
+			for _, sx in ipairs({ -1, 1 }) do
+				ell(Vector3.new(1.8, 0.1, 1.0), accent, C(sx * 1.6, 0.3, 0.3) * CFrame.Angles(0, 0, sx * 0.25))
+				ell(Vector3.new(0.4, 0.8, 0.25), body, C(sx * 0.6, 1.1, 0) * CFrame.Angles(0, 0, -sx * 0.25))
+				part(nil, Vector3.new(0.08, 0.15, 0.06), WHITE, C(sx * 0.1, -0.33, -1.1))
+			end
+		elseif style == "wisp" then
+			for k = 0, 2 do
+				local f = ball(1.1 - k * 0.3, accent, Vector3.new(0, 1.0 + k * 0.45, 0.2 + k * 0.15), Enum.Material.Neon)
+				f.Transparency = 0.3 + k * 0.15
+			end
+		elseif style == "overlord" then
+			part(Enum.PartType.Cylinder, Vector3.new(0.3, 1.3, 1.3), Color3.fromRGB(255, 215, 60), C(0, 1.15, 0) * CFrame.Angles(0, 0, math.pi / 2), Enum.Material.Neon)
+			for i = 0, 4 do
+				local a = i * TAU / 5
+				part(nil, Vector3.new(0.18, 0.45, 0.18), Color3.fromRGB(255, 215, 60), C(math.cos(a) * 0.55, 1.45, math.sin(a) * 0.55), Enum.Material.Neon)
+			end
+			part(nil, Vector3.new(2.0, 2.2, 0.1), accent, C(0, -0.2, 1.1) * CFrame.Angles(0.15, 0, 0), Enum.Material.Fabric)
+		end
+		-- little feet for the walkers
+		if not FLYERS[style] and style ~= "slime" then
+			for _, sx in ipairs({ -1, 1 }) do
+				ell(Vector3.new(0.55, 0.35, 0.7), dark, C(sx * 0.5, -1.05, -0.15))
+			end
+		end
+		model.PrimaryPart = core
+		-- rare pets sparkle
+		local rarity = info:GetAttribute("RarityIndex") or 1
+		if rarity >= 5 or tier >= 2 then
+			local sp = Instance.new("ParticleEmitter")
+			sp.Color = ColorSequence.new((info:GetAttribute("RarityColor") or WHITE):Lerp(WHITE, 0.3))
+			sp.LightEmission = 1
+			sp.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(0.5, 0.25), NumberSequenceKeypoint.new(1, 0) })
+			sp.Lifetime = NumberRange.new(0.6, 1)
+			sp.Speed = NumberRange.new(0.5, 1.5)
+			sp.SpreadAngle = Vector2.new(180, 180)
+			sp.Rate = 6
+			sp.Parent = core
+		end
+		model.Parent = folder
+		return { model = model, parts = parts, flyer = FLYERS[style] == true, rainbow = tier == 3 }
+	end
+
+	local owners = {} -- [player] = { key = "...", pets = { {pet...}, ... } }
+	local function clear(plr)
+		local o = owners[plr]
+		if o then
+			for _, p in ipairs(o.pets) do p.model:Destroy() end
+		end
+		owners[plr] = nil
+	end
+	local function refresh(plr)
+		local key = plr:GetAttribute("EquippedPets") or ""
+		if owners[plr] and owners[plr].key == key then return end
+		clear(plr)
+		local o = { key = key, pets = {} }
+		local n = 0
+		for item in string.gmatch(key, "[^,]+") do
+			local name, tier = string.match(item, "^(.+)|(%d)$")
+			local info = name and PetInfo and PetInfo:FindFirstChild(name)
+			if info and n < MAX_PETS then
+				n += 1
+				local ok, pet = pcall(build, info, tonumber(tier) or 1)
+				if ok and pet then
+					pet.slot = n
+					pet.cf = nil
+					table.insert(o.pets, pet)
+				end
+			end
+		end
+		owners[plr] = o
+	end
+	local function watch(plr)
+		refresh(plr)
+		plr:GetAttributeChangedSignal("EquippedPets"):Connect(function() refresh(plr) end)
+	end
+	for _, p in ipairs(Players:GetPlayers()) do task.spawn(watch, p) end
+	Players.PlayerAdded:Connect(watch)
+	Players.PlayerRemoving:Connect(clear)
+
+	-- where each pet sits behind its owner: a little fan
+	local SLOTS = { Vector3.new(-3.6, 0, 4.2), Vector3.new(3.6, 0, 4.2), Vector3.new(-2, 0, 7.4), Vector3.new(2, 0, 7.4) }
+	RunService.RenderStepped:Connect(function(dt)
+		local t = os.clock()
+		local cam = workspace.CurrentCamera
+		for plr, o in pairs(owners) do
+			local char = plr.Character
+			local root = char and char:FindFirstChild("HumanoidRootPart")
+			local far = root and cam and (root.Position - cam.CFrame.Position).Magnitude > 250
+			for _, pet in ipairs(o.pets) do
+				if not root or far then
+					pet.model.Parent = nil
+				else
+					pet.model.Parent = folder
+					local look = root.CFrame.LookVector * Vector3.new(1, 0, 1)
+					if look.Magnitude < 0.01 then look = Vector3.zAxis end
+					local flat = CFrame.lookAt(root.Position, root.Position + look)
+					local off = SLOTS[pet.slot] or SLOTS[1]
+					local moving = (root.AssemblyLinearVelocity * Vector3.new(1, 0, 1)).Magnitude > 2
+					local bob
+					if pet.flyer then
+						bob = 2.2 + math.sin(t * 3 + pet.slot) * 0.45
+					else
+						bob = -1.6 + (moving and math.abs(math.sin(t * 9 + pet.slot)) * 0.9 or math.sin(t * 2 + pet.slot) * 0.1)
+					end
+					local goal = flat * CFrame.new(off.X, bob, off.Z)
+					local face = CFrame.lookAt(goal.Position, goal.Position + look)
+					pet.cf = pet.cf and pet.cf:Lerp(face, math.min(1, dt * 10)) or face
+					-- keep up even at huge speeds
+					if (pet.cf.Position - face.Position).Magnitude > 40 then pet.cf = face end
+					pet.model:PivotTo(pet.cf * CFrame.Angles(0, 0, pet.flyer and math.sin(t * 2 + pet.slot) * 0.08 or 0))
+					if pet.rainbow then
+						local c = Color3.fromHSV((t * 0.25 + pet.slot * 0.1) % 1, 0.55, 1)
+						for _, e in ipairs(pet.parts) do
+							if e.isBody then e.p.Color = c end
+						end
+					end
+				end
+			end
+		end
+	end)
+end
