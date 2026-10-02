@@ -42,6 +42,10 @@ Four scripts:
 - Each map has its own start island with a speed pad, 4 eggs, leaderboards and a portal.
 - Reaching a map's finish unlocks the next map and takes you there. To add a third map, copy a block in `MAPS`.
 - **Smooth, joined-up designs**: on the bosses and pets, every detail (eyes, lids, brows, mustaches, cheeks, noses, gills, buttons, jewels, laces, swooshes) is painted onto the curve of the body it sits on, instead of being stuck on top. Arms, legs, fins, horns, spikes and manes all start inside the body they grow from, so nothing floats or pokes out. Eggs have no rings or bits sticking out of them.
+- **Studded bosses (like Steal a Pet Egg)**: by default the bosses are built from blocks and wedges with classic Roblox studs on every face. Their details (eyes, brows, mustache, buttons, gills, mouth and teeth) are flat tiles laid on the faces, so nothing pokes out.
+  - Roblox studs are always 1 stud wide, so on a boss this big they look like a fine studded texture from a distance and show clearly up close.
+  - For **big chunky studs**, put a studs texture image in `CONFIG.BossStudTexture` (for example `"rbxassetid://123456"`, from a studs texture in the Toolbox), and set their size with `BossStudSize`.
+  - Set `CONFIG.BossStyle = "smooth"` to go back to the smooth round versions described below.
 - **One giant boss per map**: it's about as wide as the track (80% of `ZoneWidth`) and a couple of hundred studs tall, so there's no getting around it. You can only run. It catches you when its face reaches you.
   - **Il Grande Zoomerone** (Map 1) is a king in full royal dress. He has a jewelled crown with pearls and a cross, stern eyes with heavy lids and bushy brows, a big nose, a curled mustache and a goatee. He wears a velvet robe with a gold hem, belt and buttons, an ermine collar and a long cape, white gloves with real fingers, and royal boots with gold buckles. He holds a jewelled sceptre and an orb.
   - **Tralalero Turbino** (Map 2) is a scary great white: one smooth torpedo-shaped body with a dark slate back, a white belly, dead black eyes, long gill slits and old scars. A gaping mouth under its snout is lined with two rows of teeth set into the jaw. Its fins and crescent tail are swept-back triangles growing out of the body. It runs on three legs in black sneakers with red swooshes.
@@ -169,6 +173,9 @@ No emojis or uploaded images: every icon is drawn from rounded frames (the `ICON
 - **Running**: when you're fast, a bouncy run, then a ninja dash. Both come from Roblox's free animation packs. The playback speed is capped so it never looks frantic. You also lean forward, leave a speed trail, and the camera view widens.
 - **Lighting and sky per zone** (toned down so it's no longer too bright: lower exposure, less bloom, softer haze; `LIGHT_SCALE` in the World script makes it brighter or darker): as you cross into a new zone, the sky, sun angle, haze, color grade and cloud cover blend smoothly to match it. The Desert is a hazy gold, the Tundra a cold bright white, Lava a smoky red dusk, Neon City and Space night time, Storm Peaks dark and overcast, and so on. Bloom on neon and sun rays stay on everywhere.
 
+![Studded Il Grande Zoomerone](bosses_studs_king.png)
+![Studded Tralalero Turbino](bosses_studs_shark.png)
+![Studs up close](bosses_studs_closeup.png)
 ![Il Grande Zoomerone](bosses_front.png)
 ![Tralalero Turbino](bosses_side.png)
 ![Tralalero Turbino from below](shark_front.png)

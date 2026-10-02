@@ -56,6 +56,9 @@ local CONFIG = {
 
 	BossHeadStart = 45,       -- how far behind you the boss appears
 	BossGraceTime = 0.8,      -- seconds the boss waits before it starts running
+	BossStyle = "studs",      -- "studs" = studded block bosses (like Steal a Pet Egg), "smooth" = smooth round ones
+	BossStudTexture = "",     -- optional: a studs texture image (e.g. "rbxassetid://123") for BIG studs on the giant bosses
+	BossStudSize = 8,         -- how wide each of those big studs is (studs)
 	BossAccel = 6,            -- the boss gains at least this much speed every second while it's slower than you
 	BossOvertake = 1.1,       -- ...until it's this much faster than you (but never past its map's topSpeed)
 	BossTick = 0.1,           -- seconds between boss brain updates
@@ -3697,7 +3700,187 @@ local function buildBoss(def, ownerName, cf, ownerId)
 		arms({ x = 0.46, y = -0.06, len = 0.42, thick = 0.13 })
 		legs({ x = 0.22, thick = 0.18 })
 	end
-	;(BUILD[def.look] or BUILD.classic)()
+	--------------------------------------------------------------------
+	-- STUDDED BLOCK BOSSES (like the studded showpiece pets in Steal a Pet Egg):
+	-- built from blocks and wedges, every face gets classic Roblox studs, and the
+	-- details are flat tiles laid on the faces so nothing pokes out
+	--------------------------------------------------------------------
+	local function box(size, color, cf, material, parent)
+		return add(nil, size, color, cf, material, parent)
+	end
+	-- flat tiles on a face: front (-Z) face at z, side face at x (signed), bottom face at y
+	local TILE = 0.012
+	local function frontTile(zf, x, y, w, h, color, layer, roll, material, parent)
+		return box(V(w, h, TILE), color, C(x, y, zf - TILE / 2 - (layer or 0) * 0.004) * CFrame.Angles(0, 0, roll or 0), material, parent)
+	end
+	local function sideTile(xf, y, z, w, h, color, layer, roll, material)
+		local sx = (xf < 0) and -1 or 1
+		return box(V(TILE, h, w), color, C(xf + sx * (TILE / 2 + (layer or 0) * 0.004), y, z) * CFrame.Angles(roll or 0, 0, 0), material)
+	end
+	local function bottomTile(yf, x, z, w, d, color, layer, material)
+		return box(V(w, TILE, d), color, C(x, yf - TILE / 2 - (layer or 0) * 0.004, z), material)
+	end
+	-- block legs and arms on the same joints the World script swings
+	local function blockLegs(o)
+		local hipY = o.hipY or -0.4
+		local legLen = leg + s * (hipY + 0.5)
+		local footY = -legLen / 2 + s * 0.06
+		local list = { { -1, -o.x, o.z or 0 }, { 1, o.x, o.z or 0 } }
+		if o.third then table.insert(list, { -1, 0, o.third }) end
+		for _, spec in ipairs(list) do
+			local p = limb("LegMotor", Vector3.new(o.thick * s, legLen, o.thick * s), o.color, CFrame.new(spec[2] * s, hipY * s, spec[3] * s), spec[1])
+			p.Transparency = 0
+			box(V(o.thick + 0.08, 0.12, 0.36), o.shoe, CFrame.new(0, footY, -0.06 * s), nil, p)
+			box(V(o.thick + 0.1, 0.04, 0.38), o.sole, CFrame.new(0, footY - 0.075 * s, -0.06 * s), nil, p)
+			if o.stripe then
+				for _, side in ipairs({ -1, 1 }) do
+					box(V(TILE, 0.04, 0.2), o.stripe, CFrame.new(side * ((o.thick + 0.08) / 2 + TILE / 2) * s, footY, -0.07 * s), nil, p)
+				end
+			end
+		end
+	end
+	local function blockArms(o)
+		for _, sx in ipairs({ -1, 1 }) do
+			local armLen = o.len * s
+			local arm = limb("ArmMotor", Vector3.new(o.thick * s, armLen, o.thick * s), o.color, CFrame.new(sx * o.x * s, o.y * s, 0) * CFrame.Angles(0, 0, sx * 0.3), sx)
+			arm.Transparency = 0
+			box(V(o.thick + 0.03, 0.06, o.thick + 0.03), o.cuff, CFrame.new(0, -armLen / 2 + 0.03 * s, 0), nil, arm)
+			hands[sx] = box(V(0.15, 0.13, 0.13), o.glove, CFrame.new(0, -armLen / 2 - 0.065 * s, 0), nil, arm)
+		end
+	end
+
+	BUILD.zoomerone_studs = function()
+		local robe, ermine, hair = Color3.fromRGB(150, 22, 45), Color3.fromRGB(248, 246, 238), Color3.fromRGB(228, 228, 232)
+		local FZ = -0.43 -- the front of his head-body block
+		box(V(0.92, 0.9, 0.86), skin, C(0, 0.03, 0))
+		-- robe, gold hem, belt with a buckle, ermine collar, buttons
+		box(V(0.98, 0.36, 0.92), robe, C(0, -0.3, 0))
+		box(V(1.0, 0.05, 0.94), GOLD, C(0, -0.455, 0))
+		box(V(1.0, 0.06, 0.94), Color3.fromRGB(60, 30, 22), C(0, -0.2, 0))
+		frontTile(-0.47, 0, -0.2, 0.14, 0.1, GOLD)
+		frontTile(-0.47, 0, -0.2, 0.05, 0.05, Color3.fromRGB(40, 110, 255), 1, 0, Enum.Material.Glass)
+		box(V(1.0, 0.09, 0.94), ermine, C(0, -0.105, 0))
+		for i = -3, 3 do frontTile(-0.47, i * 0.13, -0.105 + (i % 2) * 0.015, 0.022, 0.045, Color3.fromRGB(25, 25, 28)) end
+		for _, by in ipairs({ -0.29, -0.37 }) do frontTile(-0.46, 0, by, 0.04, 0.04, GOLD) end
+		-- the face, as flat tiles on the front
+		for _, sx in ipairs({ -1, 1 }) do
+			local ex, ey = sx * 0.17, 0.2
+			frontTile(FZ, ex, ey, 0.17, 0.14, WHITE)
+			frontTile(FZ, ex + sx * 0.005, ey - 0.005, 0.09, 0.09, Color3.fromRGB(190, 130, 40), 1)
+			frontTile(FZ, ex + sx * 0.005, ey - 0.005, 0.04, 0.04, Color3.fromRGB(12, 10, 12), 2)
+			frontTile(FZ, ex - 0.02, ey + 0.02, 0.022, 0.022, WHITE, 3, 0, NEON)
+			frontTile(FZ, ex, ey + 0.06, 0.19, 0.05, skin:Lerp(BLACK, 0.18), 4, sx * 0.18)
+			frontTile(FZ, ex, 0.32, 0.2, 0.045, hair, 0, sx * 0.28)
+			frontTile(FZ, sx * 0.28, 0.1, 0.09, 0.05, Color3.fromRGB(240, 120, 140))
+			frontTile(FZ, sx * 0.09, 0.03, 0.18, 0.05, hair, 0, sx * 0.25)
+			frontTile(FZ, sx * 0.19, 0.06, 0.05, 0.05, hair)
+		end
+		box(V(0.11, 0.09, 0.05), skin:Lerp(Color3.fromRGB(255, 110, 130), 0.25), C(0, 0.09, FZ - 0.025)) -- nose
+		frontTile(FZ, 0.01, -0.03, 0.17, 0.035, Color3.fromRGB(60, 15, 25))
+		frontTile(FZ, 0.01, -0.022, 0.11, 0.014, WHITE, 1)
+		frontTile(FZ, 0, -0.068, 0.06, 0.035, hair)
+		-- crown: a square jewelled band with points, on a velvet cap
+		box(V(0.44, 0.08, 0.44), robe, C(0, 0.52, 0))
+		for _, b in ipairs({ { 0, -0.22, 0.5, 0.06 }, { 0, 0.22, 0.5, 0.06 }, { -0.22, 0, 0.06, 0.5 }, { 0.22, 0, 0.06, 0.5 } }) do
+			box(V(b[3], 0.1, b[4]), GOLD, C(b[1], 0.53, b[2]))
+		end
+		local gems = { Color3.fromRGB(220, 30, 50), Color3.fromRGB(40, 110, 255), Color3.fromRGB(40, 190, 90) }
+		for i = -1, 1 do frontTile(-0.25, i * 0.14, 0.53, 0.05, 0.05, gems[i + 2], 0, 0, Enum.Material.Glass) end
+		for _, px in ipairs({ -0.22, 0, 0.22 }) do
+			for _, pz in ipairs({ -0.22, 0.22 }) do box(V(0.06, 0.08, 0.06), GOLD, C(px, 0.62, pz)) end
+		end
+		box(V(0.07, 0.07, 0.07), GOLD, C(0, 0.595, 0))
+		box(V(0.02, 0.08, 0.02), GOLD, C(0, 0.67, 0))
+		box(V(0.06, 0.02, 0.02), GOLD, C(0, 0.68, 0))
+		-- arms, a sceptre and an orb
+		blockArms({ x = 0.5, y = -0.12, len = 0.36, thick = 0.13, color = robe, cuff = ermine, glove = WHITE })
+		box(V(0.045, 0.85, 0.045), GOLD, CFrame.new(0, s * 0.27, -s * 0.02), nil, hands[1])
+		box(V(0.12, 0.12, 0.12), GOLD, CFrame.new(0, s * 0.74, -s * 0.02), nil, hands[1])
+		box(V(0.05, 0.05, TILE), gems[1], CFrame.new(0, s * 0.74, -s * (0.08 + TILE / 2)), Enum.Material.Glass, hands[1])
+		box(V(0.02, 0.08, 0.02), GOLD, CFrame.new(0, s * 0.83, -s * 0.02), nil, hands[1])
+		box(V(0.06, 0.02, 0.02), GOLD, CFrame.new(0, s * 0.84, -s * 0.02), nil, hands[1])
+		box(V(0.17, 0.17, 0.17), GOLD, CFrame.new(0, 0, -s * 0.13), nil, hands[-1])
+		box(V(0.18, 0.03, 0.18), gems[2], CFrame.new(0, 0, -s * 0.13), Enum.Material.Glass, hands[-1])
+		box(V(0.02, 0.06, 0.02), GOLD, CFrame.new(0, s * 0.115, -s * 0.13), nil, hands[-1])
+		blockLegs({ x = 0.2, hipY = -0.4, thick = 0.15, color = Color3.fromRGB(70, 30, 80), shoe = Color3.fromRGB(58, 32, 26), sole = Color3.fromRGB(25, 15, 12), stripe = GOLD })
+		bodyTop = 0.7
+		frontReach = 0.5
+	end
+
+	BUILD.tralalero_studs = function()
+		local back, belly = Color3.fromRGB(78, 96, 116), Color3.fromRGB(232, 234, 236)
+		local fin = back:Lerp(BLACK, 0.2)
+		-- a tapered torpedo of blocks, nose to tail; each has a white belly block under it
+		local SEG = {
+			{ -1.38, -1.12, 0.3, 0.28, 0.08 }, { -1.12, -0.78, 0.62, 0.58, 0.06 }, { -0.78, -0.2, 0.86, 0.78, 0.05 },
+			{ -0.2, 0.4, 0.92, 0.82, 0.05 }, { 0.4, 0.85, 0.74, 0.64, 0.06 }, { 0.85, 1.15, 0.5, 0.44, 0.07 }, { 1.15, 1.4, 0.28, 0.26, 0.08 },
+		}
+		for _, g in ipairs(SEG) do
+			local z0, z1, w, h, cy = g[1], g[2], g[3], g[4], g[5]
+			box(V(w, h, z1 - z0), back, C(0, cy, (z0 + z1) / 2))
+			box(V(w + 0.006, h * 0.42, z1 - z0 - 0.004), belly, C(0, cy - h / 2 + h * 0.21 - 0.003, (z0 + z1) / 2))
+		end
+		-- a sloped snout and jaw so the head comes to a point
+		wedge(V(0.62, 0.14, 0.34), back, C(0, 0.06 + 0.29 + 0.07, -0.95))
+		wedge(V(0.86, 0.12, 0.3), back, C(0, 0.05 + 0.39 + 0.06, -0.63))
+		-- wedge fins (wedges get studs too) and a two-lobed tail
+		wedge(V(0.06, 0.5, 0.48), fin, C(0, 0.46 + 0.25, 0.1))
+		wedge(V(0.04, 0.16, 0.16), fin, C(0, 0.37 + 0.08, 0.95))
+		wedge(V(0.05, 0.6, 0.3), fin, C(0, 0.38, 1.5) * CFrame.Angles(math.rad(-25), 0, 0))
+		wedge(V(0.05, 0.38, 0.24), fin, C(0, -0.2, 1.47) * CFrame.Angles(math.pi + math.rad(25), 0, 0))
+		for _, sx in ipairs({ -1, 1 }) do
+			-- flat pectoral fins (a wedge laid on its side) and small pelvic fins
+			wedge(V(0.04, 0.5, 0.36), fin, C(sx * 0.66, -0.22, -0.32) * CFrame.Angles(0, 0, sx * math.rad(75)) * CFrame.Angles(0, math.pi, 0))
+			wedge(V(0.03, 0.2, 0.16), fin, C(sx * 0.42, -0.32, 0.6) * CFrame.Angles(0, 0, sx * math.rad(70)) * CFrame.Angles(0, math.pi, 0))
+			-- eyes, gills and scars as flat tiles on the sides
+			local xf = sx * 0.43
+			sideTile(xf, 0.17, -0.62, 0.12, 0.1, back:Lerp(BLACK, 0.45))
+			sideTile(xf, 0.17, -0.62, 0.08, 0.07, Color3.fromRGB(4, 4, 6), 1, 0, Enum.Material.Glass)
+			for k = 0, 4 do sideTile(sx * 0.46, 0.02, -0.12 + k * 0.07, 0.02, 0.3 - k * 0.02, back:Lerp(BLACK, 0.5)) end
+			sideTile(sx * 0.46, 0.25, 0.15, 0.2, 0.014, back:Lerp(WHITE, 0.35), 0, 0.3)
+		end
+		-- the mouth on the underside of the head, with rows of teeth tiled into it
+		local yf = 0.05 - 0.39
+		bottomTile(yf, 0, -0.55, 0.56, 0.3, Color3.fromRGB(35, 6, 12))
+		bottomTile(yf, 0, -0.55, 0.46, 0.18, Color3.fromRGB(110, 20, 35), 1)
+		for k = -5, 5 do
+			for _, row in ipairs({ -1, 1 }) do
+				local t = box(V(0.035, TILE, 0.035), Color3.fromRGB(245, 242, 230), C(k * 0.045, yf - TILE / 2 - 0.008, -0.55 + row * 0.12) * CFrame.Angles(0, math.rad(45), 0))
+				t.Name = "Tooth"
+			end
+		end
+		blockLegs({ x = 0.24, z = -0.08, third = 0.34, hipY = -0.3, thick = 0.13, color = back, shoe = Color3.fromRGB(30, 30, 34), sole = WHITE, stripe = Color3.fromRGB(200, 30, 40) })
+		bodyTop = 1.0
+		frontReach = 1.38
+	end
+	-- CONFIG.BossStyle: "studs" = studded blocks, "smooth" = the smooth round versions
+	local studded = CONFIG.BossStyle ~= "smooth" and BUILD[(def.look or "") .. "_studs"]
+	;(studded or BUILD[def.look] or BUILD.classic)()
+	if studded then
+		-- classic studs on every face (shiny materials keep their look)
+		local SHINY = { [Enum.Material.Neon] = true, [Enum.Material.Glass] = true }
+		for _, part in ipairs(model:GetDescendants()) do
+			if part:IsA("BasePart") and part ~= root and (part.Transparency or 0) < 1 and not SHINY[part.Material] then
+				part.Material = Enum.Material.Plastic
+				for _, face in ipairs({ "TopSurface", "BottomSurface", "LeftSurface", "RightSurface", "FrontSurface", "BackSurface" }) do
+					part[face] = Enum.SurfaceType.Studs
+				end
+				-- Roblox's studs are 1 stud each, tiny on a giant boss: with a studs image set,
+				-- every face also gets big studs tinted to the part's colour
+				if CONFIG.BossStudTexture ~= "" and part.Size.Magnitude > CONFIG.BossStudSize then
+					for _, face in ipairs(Enum.NormalId:GetEnumItems()) do
+						local tx = Instance.new("Texture")
+						tx.Texture = CONFIG.BossStudTexture
+						tx.Face = face
+						tx.StudsPerTileU = CONFIG.BossStudSize
+						tx.StudsPerTileV = CONFIG.BossStudSize
+						tx.Color3 = part.Color
+						tx.Parent = part
+					end
+				end
+			end
+		end
+	end
 
 	local glow = Instance.new("PointLight")
 	glow.Color = def.accent
