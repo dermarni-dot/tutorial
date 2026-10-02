@@ -19,6 +19,24 @@ Three scripts:
 - The boss gets faster in every zone. Each zone has a **pace**, so speed is relative: the same Speed makes you run faster in a harder zone, and its boss is faster too.
 - **Leaving a zone takes a certain Speed.** The golden gate shows the requirement and glows red until you have it. If you're too slow, you're pushed back.
 - **Getting hit sends you back to the start.** That covers obstacles, falling off and the boss catching you. You tumble with stars around your head and a red flash, then reappear at the start.
+- **Every zone has its own textures** in place of plain plastic studs. Each has its own ground, a trail down the middle and patches on the ground, and the cliff underneath matches the theme:
+  - Meadow: grass and a dirt trail.
+  - Desert: sand and sandstone.
+  - Tundra: snow, a sheet of ice and glacier patches.
+  - Swamp: mud and a pebble trail.
+  - Lava Lands: basalt and glowing cracked-lava patches.
+  - Candy Kingdom: pink marble and a candy-cane striped trail.
+  - Neon City: asphalt road with yellow lane lines.
+  - Crystal Caves: slate, a marble trail and glass patches.
+  - Storm Peaks: rock and cobblestone.
+  - The Void: granite tiles.
+  - Jungle: leafy grass and a mud trail.
+  - Haunted Woods: dark ground and cobblestone.
+  - Robo Factory: diamond-plate metal with lane lines.
+  - Outer Space: moon rock and a metal walkway.
+  - Rainbow Road: white marble with rainbow lanes.
+  - Inferno: basalt and cracked lava.
+  - The start islands use grass, ground, cobblestone paths and a marble egg deck. The speed pad keeps its classic studs.
 - **Cash on the floor** comes in bill stacks with pale paper edges, a printed top with a "$" seal, and a gold paper band. Gold coins lie next to them. Piles grow in later zones: one stack, then two crossed stacks with a coin pile, then a pyramid topped with a gold bar. Each pile spins, sparkles and glows, with its value in a green tag above it.
 - **Obstacles** move smoothly on every screen and follow the server clock. They are sliders, spinners, swinging logs, crushers, blinking lasers and fire jets, and lightning or meteor strikes. Each zone has only a few.
 

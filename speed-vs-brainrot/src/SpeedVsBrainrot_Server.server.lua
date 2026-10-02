@@ -316,11 +316,6 @@ local function studSides(target)
 	end
 end
 
-local function studsAll(target)
-	studSides(target)
-	target.TopSurface = Enum.SurfaceType.Studs
-end
-
 -- Sign text on one face of a part. lines = { {text, color, weight}, ... }
 -- pps = pixels per stud: lower = bigger text (text can't go above 100px, so big signs need a low value)
 local function addSign(target, face, lines, pps)
@@ -669,6 +664,37 @@ local function publishZone(k, name, color, need, theme, trophies, m, j, pace)
 	c:SetAttribute("Trophies", trophies or 0) -- what you get for making it out of this zone
 	c.Parent = ZoneInfo
 end
+-- Every theme gets its own textures: the ground, the cliff under the track,
+-- a trail down the middle and patches on the ground
+local M = Enum.Material
+local THEME_LOOK = {
+	meadow  = { floor = M.Grass,        under = M.Ground,    path = M.Ground,      pathColor = Color3.fromRGB(150, 110, 70),  patch = M.LeafyGrass },
+	desert  = { floor = M.Sand,         under = M.Sandstone, path = M.Sandstone,   pathColor = Color3.fromRGB(225, 185, 120), patch = M.Sand },
+	ice     = { floor = M.Snow,         under = M.Glacier,   path = M.Ice,         pathColor = Color3.fromRGB(165, 215, 250), patch = M.Glacier },
+	swamp   = { floor = M.Mud,          under = M.Ground,    path = M.Pebble,      pathColor = Color3.fromRGB(115, 120, 95),  patch = M.Mud },
+	lava    = { floor = M.Basalt,       under = M.Basalt,    path = M.Slate,       pathColor = Color3.fromRGB(80, 65, 60),    patch = M.CrackedLava },
+	candy   = { floor = M.Marble,       under = M.Marble,    path = M.SmoothPlastic, pathColor = Color3.fromRGB(255, 245, 250), patch = M.Marble, stripes = true },
+	neon    = { floor = M.Asphalt,      under = M.Concrete,  path = M.Asphalt,     pathColor = Color3.fromRGB(35, 35, 45),    patch = M.Concrete, lanes = true },
+	crystal = { floor = M.Slate,        under = M.Rock,      path = M.Marble,      pathColor = Color3.fromRGB(190, 160, 235), patch = M.Glass },
+	storm   = { floor = M.Rock,         under = M.Slate,     path = M.Cobblestone, pathColor = Color3.fromRGB(120, 120, 130), patch = M.Pebble },
+	void    = { floor = M.Granite },
+	jungle  = { floor = M.LeafyGrass,   under = M.Ground,    path = M.Mud,         pathColor = Color3.fromRGB(120, 85, 55),   patch = M.Grass },
+	haunted = { floor = M.Ground,       under = M.Rock,      path = M.Cobblestone, pathColor = Color3.fromRGB(100, 95, 110),  patch = M.Mud },
+	factory = { floor = M.DiamondPlate, under = M.Metal,     path = M.Concrete,    pathColor = Color3.fromRGB(150, 150, 155), patch = M.CorrodedMetal, lanes = true },
+	space   = { floor = M.Rock,         under = M.Basalt,    path = M.Metal,       pathColor = Color3.fromRGB(170, 180, 200), patch = M.Pebble },
+	rainbow = { floor = M.Marble,       under = M.Marble,    path = M.SmoothPlastic, pathColor = WHITE,                       patch = M.Marble, rainbow = true },
+	inferno = { floor = M.Basalt,       under = M.Basalt,    path = M.Slate,       pathColor = Color3.fromRGB(70, 45, 40),    patch = M.CrackedLava },
+}
+
+-- a textured part: its material, no studs
+local function textured(part, material)
+	part.Material = material
+	for _, surface in ipairs({ "TopSurface", "BottomSurface", "LeftSurface", "RightSurface", "FrontSurface", "BackSurface" }) do
+		part[surface] = Enum.SurfaceType.Smooth
+	end
+	return part
+end
+
 -- Floor made of tiles with holes in it (used by The Void). There is always a path through.
 local function buildHoleyFloor(k, color, rng)
 	local cols, rows = math.floor(W / 10), math.floor(L / 10)
@@ -692,7 +718,7 @@ local function buildHoleyFloor(k, color, rng)
 					Color = ((r + c) % 2 == 0) and color or color:Lerp(WHITE, 0.07),
 					Parent = Map,
 				}
-				addStuds(tile, Enum.NormalId.Top)
+				textured(tile, THEME_LOOK.void.floor)
 			end
 		end
 	end
@@ -701,16 +727,47 @@ local function buildHoleyFloor(k, color, rng)
 end
 
 -- Floating slab + see-through glass walls for zone k (all zones are the same size)
-local function buildZoneShell(k, floorColor, underColor, accent, holey, rng)
+local function buildZoneShell(k, floorColor, underColor, accent, holey, rng, theme)
 	local cz = k * L + L / 2
+	local look = THEME_LOOK[theme] or {}
+	local function underSides(part)
+		if look.under then textured(part, look.under) else studSides(part) end
+	end
 	if holey then
 		buildHoleyFloor(k, floorColor, rng)
 	else
 		local floor = newPart{ Name = "Zone" .. k .. "Floor", Size = Vector3.new(W, 1, L), Position = Vector3.new(0, 0, cz), Color = floorColor, Parent = Map }
-		addStuds(floor, Enum.NormalId.Top)
-		-- chunky studded underside so the track floats in the sky like an island
+		if look.floor then textured(floor, look.floor) else addStuds(floor, Enum.NormalId.Top) end
+		-- a trail down the middle of the track
+		if look.path then
+			local trail = newPart{ Name = "Trail", Size = Vector3.new(26, 0.12, L), Position = Vector3.new(0, FLOOR_Y + 0.06, cz), Color = look.pathColor, CanCollide = false, CastShadow = false, Parent = Decor }
+			textured(trail, look.path)
+			for _, side in ipairs({ -1, 1 }) do
+				local edge = newPart{ Name = "TrailEdge", Size = Vector3.new(1.2, 0.14, L), Position = Vector3.new(side * 13.6, FLOOR_Y + 0.07, cz), Color = look.pathColor:Lerp(BLACK, 0.3), CanCollide = false, CastShadow = false, Parent = Decor }
+				textured(edge, look.path)
+			end
+			if look.lanes then
+				-- dashed yellow road lines
+				for d = 0, math.floor(L / 16) - 1 do
+					newPart{ Name = "LaneDash", Size = Vector3.new(0.6, 0.15, 8), Position = Vector3.new(0, FLOOR_Y + 0.08, k * L + 8 + d * 16), Color = Color3.fromRGB(255, 205, 40), CanCollide = false, CastShadow = false, Parent = Decor }
+				end
+			elseif look.stripes then
+				-- candy-cane stripes across the trail
+				for d = 0, math.floor(L / 10) - 1 do
+					newPart{ Name = "CandyStripe", Size = Vector3.new(22, 0.14, 3.2), CFrame = CFrame.new(0, FLOOR_Y + 0.08, k * L + 5 + d * 10) * CFrame.Angles(0, math.rad(25), 0), Color = Color3.fromRGB(255, 110, 170), CanCollide = false, CastShadow = false, Parent = Decor }
+				end
+			elseif look.rainbow then
+				-- rainbow lanes
+				local cols = { Color3.fromRGB(255, 80, 80), Color3.fromRGB(255, 170, 60), Color3.fromRGB(255, 230, 70), Color3.fromRGB(100, 220, 90), Color3.fromRGB(80, 170, 255), Color3.fromRGB(170, 100, 255) }
+				for i, c in ipairs(cols) do
+					local lane = newPart{ Name = "RainbowLane", Size = Vector3.new(26 / #cols, 0.14, L), Position = Vector3.new(-13 + (i - 0.5) * (26 / #cols), FLOOR_Y + 0.08, cz), Color = c, CanCollide = false, CastShadow = false, Parent = Decor }
+					textured(lane, M.SmoothPlastic)
+				end
+			end
+		end
+		-- a chunky underside so the track floats in the sky like an island
 		local under = newPart{ Name = "Underside", Size = Vector3.new(W, 10, L), Position = Vector3.new(0, -5.5, cz), Color = underColor, Parent = Map }
-		studSides(under)
+		underSides(under)
 		for _ = 1, 6 do
 			local cw = rng:NextInteger(14, 30)
 			local ch = rng:NextInteger(6, 16)
@@ -722,7 +779,7 @@ local function buildZoneShell(k, floorColor, underColor, accent, holey, rng)
 				Color = underColor:Lerp(BLACK, 0.12),
 				Parent = Map,
 			}
-			studSides(chunk)
+			underSides(chunk)
 		end
 	end
 	for _, side in ipairs({ -1, 1 }) do
@@ -734,7 +791,7 @@ local function buildZoneShell(k, floorColor, underColor, accent, holey, rng)
 end
 
 -- Lighter / darker patches on the floor so it isn't one flat color
-local function floorPatches(k, color, rng, z0, len)
+local function floorPatches(k, color, rng, z0, len, material)
 	z0, len = z0 or k * L, len or L
 	for i = 1, math.floor(14 * len / 200) do
 		local amt = 0.06 + rng:NextNumber() * 0.06
@@ -748,7 +805,7 @@ local function floorPatches(k, color, rng, z0, len)
 			CastShadow = false,
 			Parent = Decor,
 		}
-		addStuds(patch, Enum.NormalId.Top)
+		if material then textured(patch, material) else addStuds(patch, Enum.NormalId.Top) end
 	end
 end
 
@@ -1711,9 +1768,9 @@ do
 
 	local function floatingIsle(x, y, z, size, rng)
 		local depth = size * (0.7 + rng:NextNumber() * 0.6)
-		studSides(prop{ Name = "IsleDirt", Size = Vector3.new(size, depth, size), Position = Vector3.new(x, y - depth / 2, z), Color = DIRT })
-		studSides(prop{ Name = "IsleDirt", Size = Vector3.new(size * 0.55, depth * 0.7, size * 0.55), Position = Vector3.new(x + size * 0.12, y - depth * 1.35, z - size * 0.1), Color = DIRT:Lerp(BLACK, 0.12) })
-		studsAll(prop{ Name = "IsleGrass", Size = Vector3.new(size + 0.8, 2, size + 0.8), Position = Vector3.new(x, y + 1, z), Color = GRASS })
+		textured(prop{ Name = "IsleDirt", Size = Vector3.new(size, depth, size), Position = Vector3.new(x, y - depth / 2, z), Color = DIRT }, Enum.Material.Ground)
+		textured(prop{ Name = "IsleDirt", Size = Vector3.new(size * 0.55, depth * 0.7, size * 0.55), Position = Vector3.new(x + size * 0.12, y - depth * 1.35, z - size * 0.1), Color = DIRT:Lerp(BLACK, 0.12) }, Enum.Material.Rock)
+		textured(prop{ Name = "IsleGrass", Size = Vector3.new(size + 0.8, 2, size + 0.8), Position = Vector3.new(x, y + 1, z), Color = GRASS }, Enum.Material.Grass)
 		if size >= 14 then
 			cartoonTree(x, z, size / 18, nil, y + 2)
 		else
@@ -2111,10 +2168,10 @@ local function buildStartIsland(map)
 	-- the island sits at the end of its slot, right before the map's first zone
 	local m, oz = map.index, map.oz + L - IL
 	local startFloor = newPart{ Name = "Island" .. m .. "Floor", Size = Vector3.new(W, 1, IL), Position = Vector3.new(0, 0, oz + IL / 2), Color = GRASS, Parent = Map }
-	addStuds(startFloor, Enum.NormalId.Top)
-	studSides(newPart{ Name = "IslandDirt", Size = Vector3.new(W, 44, IL), Position = Vector3.new(0, -22.5, oz + IL / 2), Color = DIRT, Parent = Map })
+	textured(startFloor, M.Grass)
+	textured(newPart{ Name = "IslandDirt", Size = Vector3.new(W, 44, IL), Position = Vector3.new(0, -22.5, oz + IL / 2), Color = DIRT, Parent = Map }, M.Ground)
 	publishZone(map.startG, map.title, WHITE, 0, "start", 0, m, 0, 1)
-	floorPatches(map.startG, GRASS, Random.new(2 + m), oz, IL)
+	floorPatches(map.startG, GRASS, Random.new(2 + m), oz, IL, M.LeafyGrass)
 
 	-- blocky grass terraces stepping up around the edges, with dirt cliffs below
 	local terrRng = Random.new(3 + m)
@@ -2123,8 +2180,8 @@ local function buildStartIsland(map)
 		local options = (ring == 1 and { 0, 1.5, 3 }) or (ring == 2 and { 3, 5, 7 }) or { 7, 10, 13 }
 		local top = FLOOR_Y + options[terrRng:NextInteger(1, 3)]
 		local bottom = -44 - terrRng:NextInteger(0, 22)
-		studSides(newPart{ Name = "TerraceDirt", Size = Vector3.new(10, top - 1.2 - bottom, 10), Position = Vector3.new(cx, (top - 1.2 + bottom) / 2, cz), Color = DIRT:Lerp(BLACK, terrRng:NextNumber() * 0.1), Parent = Map })
-		studsAll(newPart{ Name = "TerraceGrass", Size = Vector3.new(10.3, 1.2, 10.3), Position = Vector3.new(cx, top - 0.6, cz), Color = GRASS:Lerp(WHITE, terrRng:NextNumber() * 0.08), Parent = Map })
+		textured(newPart{ Name = "TerraceDirt", Size = Vector3.new(10, top - 1.2 - bottom, 10), Position = Vector3.new(cx, (top - 1.2 + bottom) / 2, cz), Color = DIRT:Lerp(BLACK, terrRng:NextNumber() * 0.1), Parent = Map }, M.Ground)
+		textured(newPart{ Name = "TerraceGrass", Size = Vector3.new(10.3, 1.2, 10.3), Position = Vector3.new(cx, top - 0.6, cz), Color = GRASS:Lerp(WHITE, terrRng:NextNumber() * 0.08), Parent = Map }, M.Grass)
 		table.insert(terraceTops, { x = cx, z = cz, y = top, ring = ring })
 	end
 	for zc = -25, IL - 5, 10 do
@@ -2173,7 +2230,7 @@ local function buildStartIsland(map)
 	-- dirt paths (fountain -> start line, and speed pad <-> egg row)
 	local function pathStrip(x0, x1, z0, z1)
 		local p = newPart{ Name = "DirtPath", Size = Vector3.new(x1 - x0, 0.2, z1 - z0), Position = Vector3.new((x0 + x1) / 2, FLOOR_Y + 0.1, oz + (z0 + z1) / 2), Color = PATH, CanCollide = false, Parent = Decor }
-		addStuds(p, Enum.NormalId.Top)
+		textured(p, M.Cobblestone)
 	end
 	pathStrip(-8, 8, 48, 190)
 	pathStrip(-44, 22, 141, 159)
@@ -2351,8 +2408,8 @@ local function buildStartIsland(map)
 	-- PET EGGS: 4 eggs on a grey platform (bought with trophies)
 	local petX = 37
 	local deckZ = oz + 125
-	local deck = newPart{ Name = "EggPlatform", Size = Vector3.new(30, 0.6, 104), Position = Vector3.new(petX, FLOOR_Y + 0.3, deckZ), Color = Color3.fromRGB(150, 155, 172), Parent = Map }
-	addStuds(deck, Enum.NormalId.Top)
+	local deck = newPart{ Name = "EggPlatform", Size = Vector3.new(30, 0.6, 104), Position = Vector3.new(petX, FLOOR_Y + 0.3, deckZ), Color = Color3.fromRGB(215, 215, 228), Parent = Map }
+	textured(deck, M.Marble)
 	for _, d in ipairs({ -1, 1 }) do
 		newPart{ Name = "DeckEdge", Size = Vector3.new(0.8, 0.8, 104), Position = Vector3.new(petX + d * 15, FLOOR_Y + 0.4, deckZ), Color = Color3.fromRGB(255, 140, 230), Material = Enum.Material.Neon, CanCollide = false, Parent = Map }
 	end
@@ -2418,8 +2475,8 @@ for m, map in ipairs(MAPS) do
 		local k = zone.g
 		local rng = Random.new(1000 + k) -- same layout every time the server starts
 		local holey = zone.theme == "void"
-		buildZoneShell(k, zone.floor, zone.wall, zone.accent, holey, rng)
-		if not holey then floorPatches(k, zone.floor, rng) end
+		buildZoneShell(k, zone.floor, zone.wall, zone.accent, holey, rng, zone.theme)
+		if not holey then floorPatches(k, zone.floor, rng, nil, nil, THEME_LOOK[zone.theme] and THEME_LOOK[zone.theme].patch) end
 		decorateZone(k, zone.theme)
 		local build = OBSTACLES[zone.theme]
 		if build then
