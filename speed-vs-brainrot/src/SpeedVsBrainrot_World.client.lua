@@ -596,8 +596,34 @@ local function applyLook(look)
 	}):Play()
 	local atmo = Lighting:FindFirstChild("SVB_Atmosphere")
 	if atmo then TweenService:Create(atmo, info, { Color = look.atmo, Decay = look.decay, Density = look.density * 0.85, Haze = look.haze * 0.55, Glare = 0.1 }):Play() end
+	-- the mood of the light: night zones glow (stronger bloom on the neon, cool moonlight,
+	-- softer shadows), sunset zones get warm sun rays, day zones crisp shadows
+	local night = look.clock < 6 or look.clock >= 19.5
+	local sunset = not night and look.clock >= 16
+	TweenService:Create(Lighting, info, {
+		ColorShift_Top = night and Color3.fromRGB(150, 170, 230) or (sunset and Color3.fromRGB(255, 190, 140) or Color3.fromRGB(240, 225, 200)),
+		ShadowSoftness = night and 0.45 or 0.15,
+	}):Play()
 	local cc = Lighting:FindFirstChild("SVB_Color")
-	if cc then TweenService:Create(cc, info, { TintColor = look.tint }):Play() end
+	if cc then
+		TweenService:Create(cc, info, {
+			TintColor = look.tint,
+			Saturation = night and 0.22 or 0.15,
+			Contrast = night and 0.18 or 0.14,
+		}):Play()
+	end
+	local bloom = Lighting:FindFirstChild("SVB_Bloom")
+	if bloom then
+		TweenService:Create(bloom, info, {
+			Intensity = night and 0.75 or 0.3,
+			Size = night and 30 or 22,
+			Threshold = night and 1.4 or 2.2,
+		}):Play()
+	end
+	local rays = Lighting:FindFirstChild("SVB_SunRays")
+	if rays then
+		TweenService:Create(rays, info, { Intensity = night and 0 or (sunset and 0.1 or 0.05), Spread = sunset and 0.7 or 0.5 }):Play()
+	end
 	local clouds = workspace.Terrain:FindFirstChildOfClass("Clouds")
 	if clouds then TweenService:Create(clouds, info, { Cover = look.cover }):Play() end
 end
@@ -607,6 +633,86 @@ workspace:GetAttributeChangedSignal("AdminClock"):Connect(function()
 	local look = currentLook
 	currentLook = nil
 	if look then applyLook(look) end
+end)
+
+-- AMBIENT PARTICLES: every zone has something drifting through the air around you
+-- (pollen, dust, snow, fireflies, embers, sparkles, stars, rain), only on your screen
+local AMBIENT = {
+	meadow  = { color = rgb(255, 250, 200), size = 0.35, rate = 14, fall = -0.3, life = 7, glow = 0.3 },
+	jungle  = { color = rgb(200, 255, 140), size = 0.35, rate = 16, fall = -0.3, life = 7, glow = 0.4 },
+	desert  = { color = rgb(235, 205, 150), size = 0.5, rate = 30, fall = 0, wind = 7, life = 5, glow = 0, alpha = 0.5 },
+	ice     = { color = rgb(255, 255, 255), size = 0.45, rate = 60, fall = -5, wind = 1.5, life = 8, glow = 0.2 },
+	swamp   = { color = rgb(200, 255, 120), size = 0.45, rate = 10, fall = 0.2, life = 6, glow = 1, flicker = true },
+	haunted = { color = rgb(170, 255, 200), size = 0.45, rate = 10, fall = 0.2, life = 6, glow = 1, flicker = true },
+	lava    = { color = rgb(255, 140, 50), size = 0.35, rate = 30, fall = 4, life = 4, glow = 1 },
+	inferno = { color = rgb(255, 100, 40), size = 0.4, rate = 45, fall = 5, life = 4, glow = 1 },
+	candy   = { colors = { rgb(255, 150, 210), rgb(150, 220, 255), rgb(255, 240, 140) }, size = 0.4, rate = 18, fall = -0.8, life = 7, glow = 0.5 },
+	rainbow = { colors = { rgb(255, 120, 120), rgb(255, 220, 100), rgb(120, 240, 140), rgb(120, 190, 255), rgb(210, 140, 255) }, size = 0.4, rate = 22, fall = -0.4, life = 6, glow = 0.8 },
+	crystal = { color = rgb(220, 190, 255), size = 0.35, rate = 22, fall = 0.3, life = 6, glow = 1, flicker = true },
+	neon    = { colors = { rgb(255, 60, 200), rgb(60, 230, 255) }, size = 0.3, rate = 20, fall = 0.5, life = 5, glow = 1 },
+	void    = { color = rgb(190, 140, 255), size = 0.3, rate = 25, fall = 0.6, life = 6, glow = 1, flicker = true },
+	space   = { color = rgb(255, 255, 255), size = 0.22, rate = 25, fall = 0, life = 8, glow = 1, flicker = true },
+	storm   = { color = rgb(190, 200, 220), size = 0.12, rate = 160, fall = -60, wind = 5, life = 1.2, glow = 0, alpha = 0.4, streak = true },
+	factory = { color = rgb(200, 190, 175), size = 0.6, rate = 15, fall = 0.4, wind = 2, life = 6, glow = 0, alpha = 0.6 },
+}
+local ambientPart = Instance.new("Part")
+ambientPart.Name = "SVB_Ambient"
+ambientPart.Anchored = true
+ambientPart.CanCollide = false
+ambientPart.CanQuery = false
+ambientPart.CanTouch = false
+ambientPart.Transparency = 1
+ambientPart.Size = Vector3.new(140, 1, 140)
+ambientPart.Parent = workspace
+local ambient = Instance.new("ParticleEmitter")
+ambient.Name = "Ambient"
+ambient.Rate = 0
+ambient.EmissionDirection = Enum.NormalId.Bottom
+ambient.Shape = Enum.ParticleEmitterShape.Box
+ambient.ShapeStyle = Enum.ParticleEmitterShapeStyle.Volume
+ambient.SpreadAngle = Vector2.new(30, 30)
+ambient.Parent = ambientPart
+local currentAmbient
+local function setAmbient(theme)
+	local a = AMBIENT[theme]
+	if a == currentAmbient then return end
+	currentAmbient = a
+	if not a then
+		ambient.Rate = 0
+		return
+	end
+	if a.colors then
+		local keys = {}
+		for i, c in ipairs(a.colors) do table.insert(keys, ColorSequenceKeypoint.new((i - 1) / math.max(1, #a.colors - 1), c)) end
+		if #keys == 1 then table.insert(keys, ColorSequenceKeypoint.new(1, a.colors[1])) end
+		ambient.Color = ColorSequence.new(keys)
+	else
+		ambient.Color = ColorSequence.new(a.color)
+	end
+	local s = a.size
+	ambient.Size = a.flicker
+		and NumberSequence.new({ NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(0.25, s), NumberSequenceKeypoint.new(0.5, s * 0.3), NumberSequenceKeypoint.new(0.75, s), NumberSequenceKeypoint.new(1, 0) })
+		or NumberSequence.new({ NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(0.15, s), NumberSequenceKeypoint.new(0.85, s), NumberSequenceKeypoint.new(1, 0) })
+	local alpha = a.alpha or 0.15
+	ambient.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.2, alpha), NumberSequenceKeypoint.new(0.8, alpha), NumberSequenceKeypoint.new(1, 1) })
+	ambient.LightEmission = a.glow
+	ambient.Lifetime = NumberRange.new(a.life * 0.7, a.life)
+	ambient.Speed = NumberRange.new(0.5, 1.5)
+	ambient.Acceleration = Vector3.new(a.wind or 0.6, a.fall, (a.wind or 0) * 0.3)
+	ambient.Drag = a.streak and 0 or 0.4
+	ambient.RotSpeed = NumberRange.new(-60, 60)
+	-- rain falls as long streaks
+	ambient.Orientation = a.streak and Enum.ParticleOrientation.VelocityParallel or Enum.ParticleOrientation.FacingCamera
+	ambient.Squash = a.streak and NumberSequence.new(3) or NumberSequence.new(0)
+	ambient.Rate = a.rate
+end
+RunService.Heartbeat:Connect(function()
+	local cam = workspace.CurrentCamera
+	if cam then
+		-- the cloud of particles rides along just above and ahead of the camera
+		local ahead = cam.CFrame.LookVector * Vector3.new(1, 0, 1) * 25
+		ambientPart.CFrame = CFrame.new(cam.CFrame.Position + ahead + Vector3.new(0, 18, 0))
+	end
 end)
 
 -- which zone am I in? (zones are published by the server in ReplicatedStorage.SVB_Zones)
@@ -624,16 +730,19 @@ task.spawn(function()
 	while true do
 		local root = myRoot()
 		local look = MAP_LOOKS[math.clamp(player:GetAttribute("CurrentMap") or 1, 1, #MAP_LOOKS)]
+		local theme = ((player:GetAttribute("CurrentMap") or 1) == 2) and "jungle" or "meadow"
 		if root then
 			local z = root.Position.Z
 			for _, zn in ipairs(zones) do
 				if z >= zn.z0 and z < zn.z1 then
 					look = ZONE_LOOKS[zn.theme] or MAP_LOOKS[math.clamp(zn.map, 1, #MAP_LOOKS)]
+					theme = zn.theme
 					break
 				end
 			end
 		end
 		applyLook(look)
+		setAmbient(theme)
 		task.wait(0.5)
 	end
 end)

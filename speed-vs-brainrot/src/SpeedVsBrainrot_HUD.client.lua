@@ -2347,3 +2347,148 @@ do
 		end
 	end)
 end
+
+------------------------------------------------------------------------
+-- MOTION: the HUD pops in when you join, icons bob, buttons lean in when
+-- you hover them, icons spin when a stat goes up, the speed button glows
+-- when you can afford it (and shakes when you can't), the 3x button twinkles
+------------------------------------------------------------------------
+do
+	local function iconOf(tile)
+		for _, c in ipairs(tile:GetChildren()) do
+			if string.sub(c.Name, 1, 5) == "Icon_" then return c end
+		end
+	end
+	local function iconScale(icon)
+		return icon:FindFirstChildOfClass("UIScale") or new("UIScale", { Parent = icon })
+	end
+
+	-- pop in one after another
+	local rainbowScale = new("UIScale", { Parent = rainbowFrame })
+	local entrance = {
+		stats.Speed.Scale, stats.Cash.Scale, stats.Trophies.Scale, buyScale,
+		tpScale, passScale, invScale, petScale, rbScale, prScale,
+	}
+	for _, sc in ipairs(entrance) do sc.Scale = 0 end
+	rainbowScale.Scale = 0
+	for i, sc in ipairs(entrance) do
+		task.delay(0.2 + i * 0.07, function()
+			tween(sc, 0.45, { Scale = 1 }, Enum.EasingStyle.Back)
+			if sc == passScale then tween(rainbowScale, 0.45, { Scale = 1 }, Enum.EasingStyle.Back) end
+		end)
+	end
+
+	-- icons bob gently, each a little out of step with the next
+	local bobbing = {}
+	local function addBob(tile)
+		local icon = tile and iconOf(tile)
+		if icon then table.insert(bobbing, { icon = icon, base = icon.Position, phase = #bobbing * 0.9 }) end
+		return icon
+	end
+	for _, key in ipairs({ "Speed", "Cash", "Trophies" }) do addBob(stats[key].Tile) end
+	for _, tile in ipairs(squares) do addBob(tile) end
+	RunService.RenderStepped:Connect(function()
+		local t = os.clock()
+		for _, b in ipairs(bobbing) do
+			b.icon.Position = b.base + UDim2.fromOffset(0, math.sin(t * 2.2 + b.phase) * 3)
+		end
+	end)
+
+	-- hovering a button: it grows a little and its icon jumps up
+	local buttons = { { tpButton, tpScale, _tpTile }, { passButton, passScale, passTile }, { invButton, invScale, _invTile },
+		{ petButton, petScale, _petTile }, { rbButton, rbScale, _rbTile }, { prButton, prScale, prTile } }
+	for _, b in ipairs(buttons) do
+		local button, scale, tile = b[1], b[2], b[3]
+		local icon = iconOf(tile)
+		local isc = icon and iconScale(icon)
+		button.MouseEnter:Connect(function()
+			tween(scale, 0.2, { Scale = 1.06 }, Enum.EasingStyle.Back)
+			if isc then tween(isc, 0.25, { Scale = 1.15 }, Enum.EasingStyle.Back) end
+		end)
+		button.MouseLeave:Connect(function()
+			if isc then tween(isc, 0.2, { Scale = 1 }) end
+		end)
+	end
+
+	-- a stat goes up: its icon spins and pops, and Speed and Trophies float their gain up too
+	-- (Cash already does)
+	for _, key in ipairs({ "Speed", "Cash", "Trophies" }) do
+		local s = stats[key]
+		local icon = iconOf(s.Tile)
+		local isc = icon and iconScale(icon)
+		local last = player:GetAttribute(key) or 0
+		player:GetAttributeChangedSignal(key):Connect(function()
+			local v = player:GetAttribute(key) or 0
+			if v > last and icon then
+				icon.Rotation = -25
+				isc.Scale = 1.3
+				tween(icon, 0.5, { Rotation = 0 }, Enum.EasingStyle.Back)
+				tween(isc, 0.4, { Scale = 1 }, Enum.EasingStyle.Back)
+				if key ~= "Cash" and last > 0 then tickerUp(s, v - last) end
+			end
+			last = v
+		end)
+	end
+
+	-- the speed button breathes a gold glow when you can afford a step
+	local ring = new("Frame", {
+		Name = "AffordGlow",
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.new(1, 8, 1, 8),
+		BackgroundTransparency = 1,
+		ZIndex = 6,
+		Parent = buyTile,
+	})
+	corner(ring, 14)
+	local ringStroke = new("UIStroke", { Color = Color3.fromRGB(255, 225, 90), Thickness = 4, Transparency = 1, Parent = ring })
+	local function canAfford()
+		return (player:GetAttribute("Cash") or 0) >= (player:GetAttribute("NextSpeedCost") or 1)
+	end
+	RunService.RenderStepped:Connect(function()
+		if canAfford() then
+			ringStroke.Transparency = 0.35 + 0.45 * (0.5 + 0.5 * math.sin(os.clock() * 4))
+		else
+			ringStroke.Transparency = 1
+		end
+	end)
+	-- ...and shakes "no" when you can't
+	local shaking = false
+	buyButton.MouseButton1Down:Connect(function()
+		if canAfford() or shaking then return end
+		shaking = true
+		local base = buyTile.Position
+		task.spawn(function()
+			for i = 1, 6 do
+				buyTile.Position = base + UDim2.fromOffset((i % 2 == 0) and 6 or -6, 0)
+				task.wait(0.04)
+			end
+			buyTile.Position = base
+			shaking = false
+		end)
+		buyCost.TextColor3 = Color3.fromRGB(255, 70, 70)
+		task.delay(0.4, refreshBuy)
+	end)
+
+	-- little stars twinkle on the 3x button
+	task.spawn(function()
+		while passTile.Parent do
+			task.wait(0.6 + math.random() * 0.9)
+			local star = new("Frame", {
+				AnchorPoint = Vector2.new(0.5, 0.5),
+				Position = UDim2.fromScale(0.1 + math.random() * 0.8, 0.1 + math.random() * 0.8),
+				Size = UDim2.fromOffset(4, 4),
+				Rotation = 45,
+				BackgroundColor3 = Color3.fromRGB(255, 250, 210),
+				BorderSizePixel = 0,
+				ZIndex = 7,
+				Parent = passTile,
+			})
+			tween(star, 0.35, { Size = UDim2.fromOffset(13, 13), Rotation = 135 }, Enum.EasingStyle.Back)
+			task.delay(0.35, function()
+				tween(star, 0.4, { Size = UDim2.fromOffset(2, 2), BackgroundTransparency = 1, Rotation = 225 })
+				task.delay(0.4, function() star:Destroy() end)
+			end)
+		end
+	end)
+end

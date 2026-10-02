@@ -1,5 +1,6 @@
 <roblox xmlns:xmime="http://www.w3.org/2005/05/xmlmime" version="4">
 <Item class="Workspace" referent="RBX0"><Properties><string name="Name">Workspace</string><bool name="StreamingEnabled">true</bool></Properties></Item>
+<Item class="Lighting" referent="RBX10"><Properties><string name="Name">Lighting</string><token name="Technology">4</token></Properties></Item>
 <Item class="ServerScriptService" referent="RBX1"><Properties><string name="Name">ServerScriptService</string></Properties>
 <Item class="Script" referent="RBX2"><Properties><string name="Name">SpeedVsBrainrot_Server</string><ProtectedString name="Source"><![CDATA[--[[
 	SPEED VS BRAINROT  -  Server Script
@@ -606,8 +607,10 @@ Lighting.OutdoorAmbient = rgb(112, 112, 128)
 Lighting.ColorShift_Top = rgb(235, 215, 185)
 Lighting.ShadowSoftness = 0.2
 Lighting.GlobalShadows = true
-Lighting.EnvironmentDiffuseScale = 0.55
-Lighting.EnvironmentSpecularScale = 0.45
+-- (the place uses Future lighting, so lamps and neon cast real light and the sky
+-- reflects off shiny surfaces)
+Lighting.EnvironmentDiffuseScale = 0.7
+Lighting.EnvironmentSpecularScale = 0.8
 Lighting.ExposureCompensation = -0.3
 do
 	local function fx(class, name, props)
@@ -793,7 +796,14 @@ function TK.zoneDetail(k, zone, j, rng)
 		for z = z0 + 50, z1 - 50, 100 do
 			local x = side * (HALF_W + 5)
 			newPart{ Name = "LampPost", Shape = Enum.PartType.Cylinder, Size = Vector3.new(14, 1, 1), CFrame = CFrame.new(x, FLOOR_Y - 2.5 + 7, z) * CFrame.Angles(0, 0, math.pi / 2), Color = Color3.fromRGB(45, 45, 55), Material = Enum.Material.Metal, CanCollide = false, Parent = Decor }
-			newPart{ Name = "LampGlow", Shape = Enum.PartType.Ball, Size = Vector3.one * 2.6, Position = Vector3.new(x, FLOOR_Y - 2.5 + 15, z), Color = accent:Lerp(WHITE, 0.4), Material = Enum.Material.Neon, CanCollide = false, CastShadow = false, Parent = Decor }
+			local bulb = newPart{ Name = "LampGlow", Shape = Enum.PartType.Ball, Size = Vector3.one * 2.6, Position = Vector3.new(x, FLOOR_Y - 2.5 + 15, z), Color = accent:Lerp(WHITE, 0.4), Material = Enum.Material.Neon, CanCollide = false, CastShadow = false, Parent = Decor }
+			-- a real light: a warm pool on the track around every lamp
+			local lamp = Instance.new("PointLight")
+			lamp.Color = accent:Lerp(Color3.fromRGB(255, 220, 170), 0.5)
+			lamp.Range = 26
+			lamp.Brightness = 1.1
+			lamp.Shadows = false
+			lamp.Parent = bulb
 		end
 	end
 	-- the gantry over the middle of the zone: ZONE 3 - ICY TUNDRA
@@ -803,7 +813,15 @@ function TK.zoneDetail(k, zone, j, rng)
 		newPart{ Name = "GantryLeg", Size = Vector3.new(2.5, h, 2.5), Position = Vector3.new(side * (HALF_W + 2), FLOOR_Y + h / 2 - 2.5, gz), Color = Color3.fromRGB(60, 62, 75), Material = Enum.Material.Metal, Parent = Decor }
 	end
 	newPart{ Name = "GantryBeam", Size = Vector3.new(W + 6, 2, 2), Position = Vector3.new(0, FLOOR_Y + h - 2.5, gz), Color = Color3.fromRGB(60, 62, 75), Material = Enum.Material.Metal, CanCollide = false, Parent = Decor }
-	newPart{ Name = "GantryLight", Size = Vector3.new(W + 4, 0.4, 0.6), Position = Vector3.new(0, FLOOR_Y + h - 3.7, gz), Color = accent, Material = Enum.Material.Neon, CanCollide = false, CastShadow = false, Parent = Decor }
+	local strip = newPart{ Name = "GantryLight", Size = Vector3.new(W + 4, 0.4, 0.6), Position = Vector3.new(0, FLOOR_Y + h - 3.7, gz), Color = accent, Material = Enum.Material.Neon, CanCollide = false, CastShadow = false, Parent = Decor }
+	-- the light strip washes the track under the gantry in the zone's colour
+	local wash = Instance.new("SurfaceLight")
+	wash.Face = Enum.NormalId.Bottom
+	wash.Color = accent
+	wash.Range = 26
+	wash.Angle = 120
+	wash.Brightness = 1.2
+	wash.Parent = strip
 	local board = newPart{ Name = "GantrySign", Size = Vector3.new(60, 8, 0.6), Position = Vector3.new(0, FLOOR_Y + h + 2.5, gz), Color = Color3.fromRGB(25, 25, 35), CanCollide = false, Parent = Decor }
 	for _, face in ipairs({ Enum.NormalId.Front, Enum.NormalId.Back }) do
 		addSign(board, face, {
@@ -851,6 +869,120 @@ function TK.zoneScenery(k, theme, rng)
 				TK.fillBlock(CFrame.new(x, -40 + h / 2, z), Vector3.new(w, h, w), t.main)
 				TK.fillBlock(CFrame.new(x + side * w * 0.4, -40 + h * 0.35, z + w * 0.6), Vector3.new(w * 0.7, h * 0.7, w * 0.7), t.main)
 			end
+		end
+	end
+end
+
+-- MORE DETAIL for every zone: strings of flags across the track, and little things
+-- scattered over the banks (grass tufts, rocks, ice shards, crystals, gravestones,
+-- crates...) so the land beside the track isn't bare
+local CLUTTER = {
+	meadow  = { kind = "blades", color = Color3.fromRGB(90, 175, 70) },
+	jungle  = { kind = "blades", color = Color3.fromRGB(50, 140, 60) },
+	swamp   = { kind = "blades", color = Color3.fromRGB(95, 120, 60) },
+	desert  = { kind = "rocks", color = Color3.fromRGB(200, 160, 110), material = Enum.Material.Sandstone },
+	storm   = { kind = "rocks", color = Color3.fromRGB(110, 112, 125), material = Enum.Material.Slate },
+	lava    = { kind = "rocks", color = Color3.fromRGB(50, 40, 40), material = Enum.Material.Basalt, glow = Color3.fromRGB(255, 110, 30) },
+	inferno = { kind = "rocks", color = Color3.fromRGB(45, 30, 30), material = Enum.Material.Basalt, glow = Color3.fromRGB(255, 70, 20) },
+	space   = { kind = "rocks", color = Color3.fromRGB(120, 120, 135), material = Enum.Material.Slate },
+	void    = { kind = "shards", color = Color3.fromRGB(150, 90, 255), material = Enum.Material.Neon },
+	ice     = { kind = "shards", color = Color3.fromRGB(190, 230, 255), material = Enum.Material.Ice },
+	crystal = { kind = "shards", color = Color3.fromRGB(200, 140, 255), material = Enum.Material.Glass },
+	rainbow = { kind = "shards", rainbow = true, material = Enum.Material.Glass },
+	neon    = { kind = "shards", rainbow = true, material = Enum.Material.Neon, small = true },
+	candy   = { kind = "sweets" },
+	haunted = { kind = "graves", color = Color3.fromRGB(120, 125, 130), material = Enum.Material.Slate },
+	factory = { kind = "crates", color = Color3.fromRGB(160, 115, 65), material = Enum.Material.WoodPlanks },
+}
+local RAINBOW = { Color3.fromRGB(255, 90, 90), Color3.fromRGB(255, 190, 60), Color3.fromRGB(110, 230, 90), Color3.fromRGB(70, 180, 255), Color3.fromRGB(180, 100, 255) }
+function TK.zoneExtras(k, zone, rng)
+	local z0 = k * L
+	local accent = zone.accent or WHITE
+	local function bit(props)
+		props.Anchored = true
+		props.CanCollide = false
+		props.CastShadow = false
+		props.Parent = Decor
+		return newPart(props)
+	end
+	-- bunting: a sagging rope across the track with diamond flags hanging off it
+	local flagColors = { accent, WHITE, accent:Lerp(Color3.new(0, 0, 0), 0.3) }
+	for _, f in ipairs({ 0.27, 0.73 }) do
+		local z = z0 + L * f
+		local top, sag = FLOOR_Y + 24, 5
+		local function ropeY(x) return top - sag * (1 - (x / (HALF_W + 2)) ^ 2) end
+		local SEGS = 8
+		for i = 0, SEGS - 1 do
+			local xa = -(HALF_W + 2) + (W + 4) * i / SEGS
+			local xb = -(HALF_W + 2) + (W + 4) * (i + 1) / SEGS
+			local a, b = Vector3.new(xa, ropeY(xa), z), Vector3.new(xb, ropeY(xb), z)
+			bit{ Name = "BuntingRope", Size = Vector3.new(0.25, 0.25, (b - a).Magnitude), CFrame = CFrame.lookAt((a + b) / 2, b), Color = Color3.fromRGB(240, 235, 220) }
+		end
+		local n = 0
+		for x = -HALF_W + 6, HALF_W - 6, 8 do
+			n += 1
+			bit{ Name = "BuntingFlag", Size = Vector3.new(2.6, 2.6, 0.15), CFrame = CFrame.new(x, ropeY(x) - 1.75, z) * CFrame.Angles(0, 0, math.rad(45)), Color = flagColors[n % #flagColors + 1], Material = Enum.Material.Fabric }
+		end
+	end
+	-- the banks: little clusters of themed things
+	local c = CLUTTER[zone.theme]
+	if not c then return end
+	local baseY = FLOOR_Y - 2.5
+	local N = 44
+	for i = 1, N do
+		local side = (i % 2 == 0) and 1 or -1
+		local x = side * (HALF_W + rng:NextInteger(7, 58))
+		local z = z0 + (i - 0.5) * (L / N) + rng:NextInteger(-6, 6)
+		local color = c.color or RAINBOW[rng:NextInteger(1, #RAINBOW)]
+		if c.kind == "blades" then
+			for b = 1, 7 do
+				local h = rng:NextNumber(2.4, 4.8)
+				bit{ Name = "GrassTuft", Size = Vector3.new(0.5, h, 0.5), CFrame = CFrame.new(x + rng:NextNumber(-1.8, 1.8), baseY + h / 2 - 0.2, z + rng:NextNumber(-1.8, 1.8)) * CFrame.Angles(rng:NextNumber(-0.35, 0.35), rng:NextNumber(0, 3), rng:NextNumber(-0.35, 0.35)), Color = color:Lerp(Color3.fromRGB(200, 230, 120), rng:NextNumber(0, 0.3)), Material = Enum.Material.Grass }
+			end
+			if i % 3 == 0 then
+				-- a round bush beside the tuft
+				local s = rng:NextNumber(4, 7)
+				bit{ Name = "BankBush", Shape = Enum.PartType.Ball, Size = Vector3.new(s * 1.3, s * 0.8, s), Position = Vector3.new(x + side * 4, baseY + s * 0.2, z + 2), Color = color:Lerp(Color3.new(0, 0, 0), 0.15), Material = Enum.Material.Grass }
+			elseif i % 3 == 1 and zone.theme ~= "swamp" then
+				-- wildflowers
+				for b = 1, 3 do
+					local fx, fz = x + rng:NextNumber(-3, 3), z + rng:NextNumber(-3, 3)
+					bit{ Name = "WildflowerStem", Size = Vector3.new(0.25, 2.4, 0.25), Position = Vector3.new(fx, baseY + 1.1, fz), Color = Color3.fromRGB(70, 150, 60) }
+					bit{ Name = "Wildflower", Shape = Enum.PartType.Ball, Size = Vector3.new(1.3, 0.7, 1.3), Position = Vector3.new(fx, baseY + 2.4, fz), Color = RAINBOW[rng:NextInteger(1, #RAINBOW)]:Lerp(WHITE, 0.2) }
+				end
+			end
+		elseif c.kind == "rocks" then
+			for b = 1, 3 do
+				local s = rng:NextNumber(2.2, 5) / b
+				local r = bit{ Name = "Pebble", Shape = Enum.PartType.Ball, Size = Vector3.new(s * 1.4, s * 0.8, s), Position = Vector3.new(x + (b - 2) * 1.8, baseY + s * 0.25, z + rng:NextNumber(-1, 1)), Color = color:Lerp(Color3.new(0, 0, 0), rng:NextNumber(0, 0.2)), Material = c.material }
+				if c.glow and b == 1 then
+					bit{ Name = "EmberCrack", Size = Vector3.new(s * 0.9, 0.12, 0.25), CFrame = CFrame.new(r.Position + Vector3.new(0, s * 0.38, 0)) * CFrame.Angles(0, rng:NextNumber(0, 3), 0), Color = c.glow, Material = Enum.Material.Neon }
+				end
+			end
+		elseif c.kind == "shards" then
+			local sc = c.small and 0.6 or 1
+			for b = 1, 4 do
+				local h = rng:NextNumber(3.5, 8) * sc / (b == 1 and 1 or 1.6)
+				bit{ Name = "Shard", Size = Vector3.new(1.3 * sc, h, 1.3 * sc), CFrame = CFrame.new(x + rng:NextNumber(-1.5, 1.5), baseY + h * 0.4, z + rng:NextNumber(-1.5, 1.5)) * CFrame.Angles(rng:NextNumber(-0.4, 0.4), rng:NextNumber(0, 3), rng:NextNumber(-0.4, 0.4)), Color = c.rainbow and RAINBOW[rng:NextInteger(1, #RAINBOW)] or color, Material = c.material, Transparency = (c.material == Enum.Material.Glass) and 0.15 or 0 }
+			end
+		elseif c.kind == "sweets" then
+			-- a lollipop and a couple of gumdrops
+			local h = rng:NextNumber(3, 5)
+			bit{ Name = "LollipopStick", Shape = Enum.PartType.Cylinder, Size = Vector3.new(h, 0.3, 0.3), CFrame = CFrame.new(x, baseY + h / 2, z) * CFrame.Angles(0, 0, math.pi / 2), Color = WHITE }
+			bit{ Name = "Lollipop", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.5, 2.6, 2.6), CFrame = CFrame.new(x, baseY + h + 1, z) * CFrame.Angles(0, math.pi / 2, 0), Color = RAINBOW[rng:NextInteger(1, #RAINBOW)], Material = Enum.Material.SmoothPlastic }
+			for b = 1, 2 do
+				bit{ Name = "Gumdrop", Shape = Enum.PartType.Ball, Size = Vector3.new(1.6, 1.3, 1.6), Position = Vector3.new(x + b * 1.8 - 2.7, baseY + 0.45, z + 1.5), Color = RAINBOW[rng:NextInteger(1, #RAINBOW)], Material = Enum.Material.Glass }
+			end
+		elseif c.kind == "graves" then
+			local tilt = rng:NextNumber(-0.18, 0.18)
+			local stone = bit{ Name = "Gravestone", Size = Vector3.new(3, 3.6, 0.8), CFrame = CFrame.new(x, baseY + 1.6, z) * CFrame.Angles(0, side * math.pi / 2, tilt), Color = color, Material = c.material }
+			bit{ Name = "GravestoneTop", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.8, 3, 3), CFrame = stone.CFrame * CFrame.new(0, 1.8, 0) * CFrame.Angles(0, math.pi / 2, 0), Color = color, Material = c.material }
+			bit{ Name = "GraveMound", Shape = Enum.PartType.Ball, Size = Vector3.new(3.2, 1, 5), Position = Vector3.new(x - side * 3, baseY + 0.1, z), Color = Color3.fromRGB(70, 60, 50), Material = Enum.Material.Ground }
+		elseif c.kind == "crates" then
+			local s = rng:NextNumber(2.5, 3.5)
+			bit{ Name = "Crate", Size = Vector3.one * s, CFrame = CFrame.new(x, baseY + s / 2, z) * CFrame.Angles(0, rng:NextNumber(0, 1), 0), Color = color, Material = c.material }
+			bit{ Name = "Crate", Size = Vector3.one * s * 0.7, CFrame = CFrame.new(x + 0.3, baseY + s + s * 0.35, z) * CFrame.Angles(0, rng:NextNumber(0, 1.5), 0), Color = color:Lerp(WHITE, 0.1), Material = c.material }
+			bit{ Name = "Barrel", Shape = Enum.PartType.Cylinder, Size = Vector3.new(3.4, 2.4, 2.4), CFrame = CFrame.new(x, baseY + 1.7, z + s + 0.5) * CFrame.Angles(0, 0, math.pi / 2), Color = Color3.fromRGB(70, 90, 110), Material = Enum.Material.Metal }
 		end
 	end
 end
@@ -2707,6 +2839,7 @@ for m, map in ipairs(MAPS) do
 		decorateZone(k, zone.theme)
 		TK.zoneScenery(k, zone.theme, rng)
 		TK.zoneDetail(k, zone, j, rng)
+		TK.zoneExtras(k, zone, rng)
 		-- rolling ramps across the track: run over them fast and you get some air
 		if not holey then
 			local look = THEME_LOOK[zone.theme] or {}
@@ -7509,6 +7642,151 @@ do
 		end
 	end)
 end
+
+------------------------------------------------------------------------
+-- MOTION: the HUD pops in when you join, icons bob, buttons lean in when
+-- you hover them, icons spin when a stat goes up, the speed button glows
+-- when you can afford it (and shakes when you can't), the 3x button twinkles
+------------------------------------------------------------------------
+do
+	local function iconOf(tile)
+		for _, c in ipairs(tile:GetChildren()) do
+			if string.sub(c.Name, 1, 5) == "Icon_" then return c end
+		end
+	end
+	local function iconScale(icon)
+		return icon:FindFirstChildOfClass("UIScale") or new("UIScale", { Parent = icon })
+	end
+
+	-- pop in one after another
+	local rainbowScale = new("UIScale", { Parent = rainbowFrame })
+	local entrance = {
+		stats.Speed.Scale, stats.Cash.Scale, stats.Trophies.Scale, buyScale,
+		tpScale, passScale, invScale, petScale, rbScale, prScale,
+	}
+	for _, sc in ipairs(entrance) do sc.Scale = 0 end
+	rainbowScale.Scale = 0
+	for i, sc in ipairs(entrance) do
+		task.delay(0.2 + i * 0.07, function()
+			tween(sc, 0.45, { Scale = 1 }, Enum.EasingStyle.Back)
+			if sc == passScale then tween(rainbowScale, 0.45, { Scale = 1 }, Enum.EasingStyle.Back) end
+		end)
+	end
+
+	-- icons bob gently, each a little out of step with the next
+	local bobbing = {}
+	local function addBob(tile)
+		local icon = tile and iconOf(tile)
+		if icon then table.insert(bobbing, { icon = icon, base = icon.Position, phase = #bobbing * 0.9 }) end
+		return icon
+	end
+	for _, key in ipairs({ "Speed", "Cash", "Trophies" }) do addBob(stats[key].Tile) end
+	for _, tile in ipairs(squares) do addBob(tile) end
+	RunService.RenderStepped:Connect(function()
+		local t = os.clock()
+		for _, b in ipairs(bobbing) do
+			b.icon.Position = b.base + UDim2.fromOffset(0, math.sin(t * 2.2 + b.phase) * 3)
+		end
+	end)
+
+	-- hovering a button: it grows a little and its icon jumps up
+	local buttons = { { tpButton, tpScale, _tpTile }, { passButton, passScale, passTile }, { invButton, invScale, _invTile },
+		{ petButton, petScale, _petTile }, { rbButton, rbScale, _rbTile }, { prButton, prScale, prTile } }
+	for _, b in ipairs(buttons) do
+		local button, scale, tile = b[1], b[2], b[3]
+		local icon = iconOf(tile)
+		local isc = icon and iconScale(icon)
+		button.MouseEnter:Connect(function()
+			tween(scale, 0.2, { Scale = 1.06 }, Enum.EasingStyle.Back)
+			if isc then tween(isc, 0.25, { Scale = 1.15 }, Enum.EasingStyle.Back) end
+		end)
+		button.MouseLeave:Connect(function()
+			if isc then tween(isc, 0.2, { Scale = 1 }) end
+		end)
+	end
+
+	-- a stat goes up: its icon spins and pops, and Speed and Trophies float their gain up too
+	-- (Cash already does)
+	for _, key in ipairs({ "Speed", "Cash", "Trophies" }) do
+		local s = stats[key]
+		local icon = iconOf(s.Tile)
+		local isc = icon and iconScale(icon)
+		local last = player:GetAttribute(key) or 0
+		player:GetAttributeChangedSignal(key):Connect(function()
+			local v = player:GetAttribute(key) or 0
+			if v > last and icon then
+				icon.Rotation = -25
+				isc.Scale = 1.3
+				tween(icon, 0.5, { Rotation = 0 }, Enum.EasingStyle.Back)
+				tween(isc, 0.4, { Scale = 1 }, Enum.EasingStyle.Back)
+				if key ~= "Cash" and last > 0 then tickerUp(s, v - last) end
+			end
+			last = v
+		end)
+	end
+
+	-- the speed button breathes a gold glow when you can afford a step
+	local ring = new("Frame", {
+		Name = "AffordGlow",
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.new(1, 8, 1, 8),
+		BackgroundTransparency = 1,
+		ZIndex = 6,
+		Parent = buyTile,
+	})
+	corner(ring, 14)
+	local ringStroke = new("UIStroke", { Color = Color3.fromRGB(255, 225, 90), Thickness = 4, Transparency = 1, Parent = ring })
+	local function canAfford()
+		return (player:GetAttribute("Cash") or 0) >= (player:GetAttribute("NextSpeedCost") or 1)
+	end
+	RunService.RenderStepped:Connect(function()
+		if canAfford() then
+			ringStroke.Transparency = 0.35 + 0.45 * (0.5 + 0.5 * math.sin(os.clock() * 4))
+		else
+			ringStroke.Transparency = 1
+		end
+	end)
+	-- ...and shakes "no" when you can't
+	local shaking = false
+	buyButton.MouseButton1Down:Connect(function()
+		if canAfford() or shaking then return end
+		shaking = true
+		local base = buyTile.Position
+		task.spawn(function()
+			for i = 1, 6 do
+				buyTile.Position = base + UDim2.fromOffset((i % 2 == 0) and 6 or -6, 0)
+				task.wait(0.04)
+			end
+			buyTile.Position = base
+			shaking = false
+		end)
+		buyCost.TextColor3 = Color3.fromRGB(255, 70, 70)
+		task.delay(0.4, refreshBuy)
+	end)
+
+	-- little stars twinkle on the 3x button
+	task.spawn(function()
+		while passTile.Parent do
+			task.wait(0.6 + math.random() * 0.9)
+			local star = new("Frame", {
+				AnchorPoint = Vector2.new(0.5, 0.5),
+				Position = UDim2.fromScale(0.1 + math.random() * 0.8, 0.1 + math.random() * 0.8),
+				Size = UDim2.fromOffset(4, 4),
+				Rotation = 45,
+				BackgroundColor3 = Color3.fromRGB(255, 250, 210),
+				BorderSizePixel = 0,
+				ZIndex = 7,
+				Parent = passTile,
+			})
+			tween(star, 0.35, { Size = UDim2.fromOffset(13, 13), Rotation = 135 }, Enum.EasingStyle.Back)
+			task.delay(0.35, function()
+				tween(star, 0.4, { Size = UDim2.fromOffset(2, 2), BackgroundTransparency = 1, Rotation = 225 })
+				task.delay(0.4, function() star:Destroy() end)
+			end)
+		end
+	end)
+end
 ]]></ProtectedString></Properties></Item>
 <Item class="LocalScript" referent="RBX6"><Properties><string name="Name">SpeedVsBrainrot_World</string><ProtectedString name="Source"><![CDATA[--[[
 	SPEED VS BRAINROT  -  World effects (LocalScript)
@@ -8108,8 +8386,34 @@ local function applyLook(look)
 	}):Play()
 	local atmo = Lighting:FindFirstChild("SVB_Atmosphere")
 	if atmo then TweenService:Create(atmo, info, { Color = look.atmo, Decay = look.decay, Density = look.density * 0.85, Haze = look.haze * 0.55, Glare = 0.1 }):Play() end
+	-- the mood of the light: night zones glow (stronger bloom on the neon, cool moonlight,
+	-- softer shadows), sunset zones get warm sun rays, day zones crisp shadows
+	local night = look.clock < 6 or look.clock >= 19.5
+	local sunset = not night and look.clock >= 16
+	TweenService:Create(Lighting, info, {
+		ColorShift_Top = night and Color3.fromRGB(150, 170, 230) or (sunset and Color3.fromRGB(255, 190, 140) or Color3.fromRGB(240, 225, 200)),
+		ShadowSoftness = night and 0.45 or 0.15,
+	}):Play()
 	local cc = Lighting:FindFirstChild("SVB_Color")
-	if cc then TweenService:Create(cc, info, { TintColor = look.tint }):Play() end
+	if cc then
+		TweenService:Create(cc, info, {
+			TintColor = look.tint,
+			Saturation = night and 0.22 or 0.15,
+			Contrast = night and 0.18 or 0.14,
+		}):Play()
+	end
+	local bloom = Lighting:FindFirstChild("SVB_Bloom")
+	if bloom then
+		TweenService:Create(bloom, info, {
+			Intensity = night and 0.75 or 0.3,
+			Size = night and 30 or 22,
+			Threshold = night and 1.4 or 2.2,
+		}):Play()
+	end
+	local rays = Lighting:FindFirstChild("SVB_SunRays")
+	if rays then
+		TweenService:Create(rays, info, { Intensity = night and 0 or (sunset and 0.1 or 0.05), Spread = sunset and 0.7 or 0.5 }):Play()
+	end
 	local clouds = workspace.Terrain:FindFirstChildOfClass("Clouds")
 	if clouds then TweenService:Create(clouds, info, { Cover = look.cover }):Play() end
 end
@@ -8119,6 +8423,86 @@ workspace:GetAttributeChangedSignal("AdminClock"):Connect(function()
 	local look = currentLook
 	currentLook = nil
 	if look then applyLook(look) end
+end)
+
+-- AMBIENT PARTICLES: every zone has something drifting through the air around you
+-- (pollen, dust, snow, fireflies, embers, sparkles, stars, rain), only on your screen
+local AMBIENT = {
+	meadow  = { color = rgb(255, 250, 200), size = 0.35, rate = 14, fall = -0.3, life = 7, glow = 0.3 },
+	jungle  = { color = rgb(200, 255, 140), size = 0.35, rate = 16, fall = -0.3, life = 7, glow = 0.4 },
+	desert  = { color = rgb(235, 205, 150), size = 0.5, rate = 30, fall = 0, wind = 7, life = 5, glow = 0, alpha = 0.5 },
+	ice     = { color = rgb(255, 255, 255), size = 0.45, rate = 60, fall = -5, wind = 1.5, life = 8, glow = 0.2 },
+	swamp   = { color = rgb(200, 255, 120), size = 0.45, rate = 10, fall = 0.2, life = 6, glow = 1, flicker = true },
+	haunted = { color = rgb(170, 255, 200), size = 0.45, rate = 10, fall = 0.2, life = 6, glow = 1, flicker = true },
+	lava    = { color = rgb(255, 140, 50), size = 0.35, rate = 30, fall = 4, life = 4, glow = 1 },
+	inferno = { color = rgb(255, 100, 40), size = 0.4, rate = 45, fall = 5, life = 4, glow = 1 },
+	candy   = { colors = { rgb(255, 150, 210), rgb(150, 220, 255), rgb(255, 240, 140) }, size = 0.4, rate = 18, fall = -0.8, life = 7, glow = 0.5 },
+	rainbow = { colors = { rgb(255, 120, 120), rgb(255, 220, 100), rgb(120, 240, 140), rgb(120, 190, 255), rgb(210, 140, 255) }, size = 0.4, rate = 22, fall = -0.4, life = 6, glow = 0.8 },
+	crystal = { color = rgb(220, 190, 255), size = 0.35, rate = 22, fall = 0.3, life = 6, glow = 1, flicker = true },
+	neon    = { colors = { rgb(255, 60, 200), rgb(60, 230, 255) }, size = 0.3, rate = 20, fall = 0.5, life = 5, glow = 1 },
+	void    = { color = rgb(190, 140, 255), size = 0.3, rate = 25, fall = 0.6, life = 6, glow = 1, flicker = true },
+	space   = { color = rgb(255, 255, 255), size = 0.22, rate = 25, fall = 0, life = 8, glow = 1, flicker = true },
+	storm   = { color = rgb(190, 200, 220), size = 0.12, rate = 160, fall = -60, wind = 5, life = 1.2, glow = 0, alpha = 0.4, streak = true },
+	factory = { color = rgb(200, 190, 175), size = 0.6, rate = 15, fall = 0.4, wind = 2, life = 6, glow = 0, alpha = 0.6 },
+}
+local ambientPart = Instance.new("Part")
+ambientPart.Name = "SVB_Ambient"
+ambientPart.Anchored = true
+ambientPart.CanCollide = false
+ambientPart.CanQuery = false
+ambientPart.CanTouch = false
+ambientPart.Transparency = 1
+ambientPart.Size = Vector3.new(140, 1, 140)
+ambientPart.Parent = workspace
+local ambient = Instance.new("ParticleEmitter")
+ambient.Name = "Ambient"
+ambient.Rate = 0
+ambient.EmissionDirection = Enum.NormalId.Bottom
+ambient.Shape = Enum.ParticleEmitterShape.Box
+ambient.ShapeStyle = Enum.ParticleEmitterShapeStyle.Volume
+ambient.SpreadAngle = Vector2.new(30, 30)
+ambient.Parent = ambientPart
+local currentAmbient
+local function setAmbient(theme)
+	local a = AMBIENT[theme]
+	if a == currentAmbient then return end
+	currentAmbient = a
+	if not a then
+		ambient.Rate = 0
+		return
+	end
+	if a.colors then
+		local keys = {}
+		for i, c in ipairs(a.colors) do table.insert(keys, ColorSequenceKeypoint.new((i - 1) / math.max(1, #a.colors - 1), c)) end
+		if #keys == 1 then table.insert(keys, ColorSequenceKeypoint.new(1, a.colors[1])) end
+		ambient.Color = ColorSequence.new(keys)
+	else
+		ambient.Color = ColorSequence.new(a.color)
+	end
+	local s = a.size
+	ambient.Size = a.flicker
+		and NumberSequence.new({ NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(0.25, s), NumberSequenceKeypoint.new(0.5, s * 0.3), NumberSequenceKeypoint.new(0.75, s), NumberSequenceKeypoint.new(1, 0) })
+		or NumberSequence.new({ NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(0.15, s), NumberSequenceKeypoint.new(0.85, s), NumberSequenceKeypoint.new(1, 0) })
+	local alpha = a.alpha or 0.15
+	ambient.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.2, alpha), NumberSequenceKeypoint.new(0.8, alpha), NumberSequenceKeypoint.new(1, 1) })
+	ambient.LightEmission = a.glow
+	ambient.Lifetime = NumberRange.new(a.life * 0.7, a.life)
+	ambient.Speed = NumberRange.new(0.5, 1.5)
+	ambient.Acceleration = Vector3.new(a.wind or 0.6, a.fall, (a.wind or 0) * 0.3)
+	ambient.Drag = a.streak and 0 or 0.4
+	ambient.RotSpeed = NumberRange.new(-60, 60)
+	-- rain falls as long streaks
+	ambient.Orientation = a.streak and Enum.ParticleOrientation.VelocityParallel or Enum.ParticleOrientation.FacingCamera
+	ambient.Squash = a.streak and NumberSequence.new(3) or NumberSequence.new(0)
+	ambient.Rate = a.rate
+end
+RunService.Heartbeat:Connect(function()
+	local cam = workspace.CurrentCamera
+	if cam then
+		-- the cloud of particles rides along just above and ahead of the camera
+		local ahead = cam.CFrame.LookVector * Vector3.new(1, 0, 1) * 25
+		ambientPart.CFrame = CFrame.new(cam.CFrame.Position + ahead + Vector3.new(0, 18, 0))
+	end
 end)
 
 -- which zone am I in? (zones are published by the server in ReplicatedStorage.SVB_Zones)
@@ -8136,16 +8520,19 @@ task.spawn(function()
 	while true do
 		local root = myRoot()
 		local look = MAP_LOOKS[math.clamp(player:GetAttribute("CurrentMap") or 1, 1, #MAP_LOOKS)]
+		local theme = ((player:GetAttribute("CurrentMap") or 1) == 2) and "jungle" or "meadow"
 		if root then
 			local z = root.Position.Z
 			for _, zn in ipairs(zones) do
 				if z >= zn.z0 and z < zn.z1 then
 					look = ZONE_LOOKS[zn.theme] or MAP_LOOKS[math.clamp(zn.map, 1, #MAP_LOOKS)]
+					theme = zn.theme
 					break
 				end
 			end
 		end
 		applyLook(look)
+		setAmbient(theme)
 		task.wait(0.5)
 	end
 end)

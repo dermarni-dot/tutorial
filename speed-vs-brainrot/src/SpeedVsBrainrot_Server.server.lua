@@ -603,8 +603,10 @@ Lighting.OutdoorAmbient = rgb(112, 112, 128)
 Lighting.ColorShift_Top = rgb(235, 215, 185)
 Lighting.ShadowSoftness = 0.2
 Lighting.GlobalShadows = true
-Lighting.EnvironmentDiffuseScale = 0.55
-Lighting.EnvironmentSpecularScale = 0.45
+-- (the place uses Future lighting, so lamps and neon cast real light and the sky
+-- reflects off shiny surfaces)
+Lighting.EnvironmentDiffuseScale = 0.7
+Lighting.EnvironmentSpecularScale = 0.8
 Lighting.ExposureCompensation = -0.3
 do
 	local function fx(class, name, props)
@@ -790,7 +792,14 @@ function TK.zoneDetail(k, zone, j, rng)
 		for z = z0 + 50, z1 - 50, 100 do
 			local x = side * (HALF_W + 5)
 			newPart{ Name = "LampPost", Shape = Enum.PartType.Cylinder, Size = Vector3.new(14, 1, 1), CFrame = CFrame.new(x, FLOOR_Y - 2.5 + 7, z) * CFrame.Angles(0, 0, math.pi / 2), Color = Color3.fromRGB(45, 45, 55), Material = Enum.Material.Metal, CanCollide = false, Parent = Decor }
-			newPart{ Name = "LampGlow", Shape = Enum.PartType.Ball, Size = Vector3.one * 2.6, Position = Vector3.new(x, FLOOR_Y - 2.5 + 15, z), Color = accent:Lerp(WHITE, 0.4), Material = Enum.Material.Neon, CanCollide = false, CastShadow = false, Parent = Decor }
+			local bulb = newPart{ Name = "LampGlow", Shape = Enum.PartType.Ball, Size = Vector3.one * 2.6, Position = Vector3.new(x, FLOOR_Y - 2.5 + 15, z), Color = accent:Lerp(WHITE, 0.4), Material = Enum.Material.Neon, CanCollide = false, CastShadow = false, Parent = Decor }
+			-- a real light: a warm pool on the track around every lamp
+			local lamp = Instance.new("PointLight")
+			lamp.Color = accent:Lerp(Color3.fromRGB(255, 220, 170), 0.5)
+			lamp.Range = 26
+			lamp.Brightness = 1.1
+			lamp.Shadows = false
+			lamp.Parent = bulb
 		end
 	end
 	-- the gantry over the middle of the zone: ZONE 3 - ICY TUNDRA
@@ -800,7 +809,15 @@ function TK.zoneDetail(k, zone, j, rng)
 		newPart{ Name = "GantryLeg", Size = Vector3.new(2.5, h, 2.5), Position = Vector3.new(side * (HALF_W + 2), FLOOR_Y + h / 2 - 2.5, gz), Color = Color3.fromRGB(60, 62, 75), Material = Enum.Material.Metal, Parent = Decor }
 	end
 	newPart{ Name = "GantryBeam", Size = Vector3.new(W + 6, 2, 2), Position = Vector3.new(0, FLOOR_Y + h - 2.5, gz), Color = Color3.fromRGB(60, 62, 75), Material = Enum.Material.Metal, CanCollide = false, Parent = Decor }
-	newPart{ Name = "GantryLight", Size = Vector3.new(W + 4, 0.4, 0.6), Position = Vector3.new(0, FLOOR_Y + h - 3.7, gz), Color = accent, Material = Enum.Material.Neon, CanCollide = false, CastShadow = false, Parent = Decor }
+	local strip = newPart{ Name = "GantryLight", Size = Vector3.new(W + 4, 0.4, 0.6), Position = Vector3.new(0, FLOOR_Y + h - 3.7, gz), Color = accent, Material = Enum.Material.Neon, CanCollide = false, CastShadow = false, Parent = Decor }
+	-- the light strip washes the track under the gantry in the zone's colour
+	local wash = Instance.new("SurfaceLight")
+	wash.Face = Enum.NormalId.Bottom
+	wash.Color = accent
+	wash.Range = 26
+	wash.Angle = 120
+	wash.Brightness = 1.2
+	wash.Parent = strip
 	local board = newPart{ Name = "GantrySign", Size = Vector3.new(60, 8, 0.6), Position = Vector3.new(0, FLOOR_Y + h + 2.5, gz), Color = Color3.fromRGB(25, 25, 35), CanCollide = false, Parent = Decor }
 	for _, face in ipairs({ Enum.NormalId.Front, Enum.NormalId.Back }) do
 		addSign(board, face, {
@@ -848,6 +865,120 @@ function TK.zoneScenery(k, theme, rng)
 				TK.fillBlock(CFrame.new(x, -40 + h / 2, z), Vector3.new(w, h, w), t.main)
 				TK.fillBlock(CFrame.new(x + side * w * 0.4, -40 + h * 0.35, z + w * 0.6), Vector3.new(w * 0.7, h * 0.7, w * 0.7), t.main)
 			end
+		end
+	end
+end
+
+-- MORE DETAIL for every zone: strings of flags across the track, and little things
+-- scattered over the banks (grass tufts, rocks, ice shards, crystals, gravestones,
+-- crates...) so the land beside the track isn't bare
+local CLUTTER = {
+	meadow  = { kind = "blades", color = Color3.fromRGB(90, 175, 70) },
+	jungle  = { kind = "blades", color = Color3.fromRGB(50, 140, 60) },
+	swamp   = { kind = "blades", color = Color3.fromRGB(95, 120, 60) },
+	desert  = { kind = "rocks", color = Color3.fromRGB(200, 160, 110), material = Enum.Material.Sandstone },
+	storm   = { kind = "rocks", color = Color3.fromRGB(110, 112, 125), material = Enum.Material.Slate },
+	lava    = { kind = "rocks", color = Color3.fromRGB(50, 40, 40), material = Enum.Material.Basalt, glow = Color3.fromRGB(255, 110, 30) },
+	inferno = { kind = "rocks", color = Color3.fromRGB(45, 30, 30), material = Enum.Material.Basalt, glow = Color3.fromRGB(255, 70, 20) },
+	space   = { kind = "rocks", color = Color3.fromRGB(120, 120, 135), material = Enum.Material.Slate },
+	void    = { kind = "shards", color = Color3.fromRGB(150, 90, 255), material = Enum.Material.Neon },
+	ice     = { kind = "shards", color = Color3.fromRGB(190, 230, 255), material = Enum.Material.Ice },
+	crystal = { kind = "shards", color = Color3.fromRGB(200, 140, 255), material = Enum.Material.Glass },
+	rainbow = { kind = "shards", rainbow = true, material = Enum.Material.Glass },
+	neon    = { kind = "shards", rainbow = true, material = Enum.Material.Neon, small = true },
+	candy   = { kind = "sweets" },
+	haunted = { kind = "graves", color = Color3.fromRGB(120, 125, 130), material = Enum.Material.Slate },
+	factory = { kind = "crates", color = Color3.fromRGB(160, 115, 65), material = Enum.Material.WoodPlanks },
+}
+local RAINBOW = { Color3.fromRGB(255, 90, 90), Color3.fromRGB(255, 190, 60), Color3.fromRGB(110, 230, 90), Color3.fromRGB(70, 180, 255), Color3.fromRGB(180, 100, 255) }
+function TK.zoneExtras(k, zone, rng)
+	local z0 = k * L
+	local accent = zone.accent or WHITE
+	local function bit(props)
+		props.Anchored = true
+		props.CanCollide = false
+		props.CastShadow = false
+		props.Parent = Decor
+		return newPart(props)
+	end
+	-- bunting: a sagging rope across the track with diamond flags hanging off it
+	local flagColors = { accent, WHITE, accent:Lerp(Color3.new(0, 0, 0), 0.3) }
+	for _, f in ipairs({ 0.27, 0.73 }) do
+		local z = z0 + L * f
+		local top, sag = FLOOR_Y + 24, 5
+		local function ropeY(x) return top - sag * (1 - (x / (HALF_W + 2)) ^ 2) end
+		local SEGS = 8
+		for i = 0, SEGS - 1 do
+			local xa = -(HALF_W + 2) + (W + 4) * i / SEGS
+			local xb = -(HALF_W + 2) + (W + 4) * (i + 1) / SEGS
+			local a, b = Vector3.new(xa, ropeY(xa), z), Vector3.new(xb, ropeY(xb), z)
+			bit{ Name = "BuntingRope", Size = Vector3.new(0.25, 0.25, (b - a).Magnitude), CFrame = CFrame.lookAt((a + b) / 2, b), Color = Color3.fromRGB(240, 235, 220) }
+		end
+		local n = 0
+		for x = -HALF_W + 6, HALF_W - 6, 8 do
+			n += 1
+			bit{ Name = "BuntingFlag", Size = Vector3.new(2.6, 2.6, 0.15), CFrame = CFrame.new(x, ropeY(x) - 1.75, z) * CFrame.Angles(0, 0, math.rad(45)), Color = flagColors[n % #flagColors + 1], Material = Enum.Material.Fabric }
+		end
+	end
+	-- the banks: little clusters of themed things
+	local c = CLUTTER[zone.theme]
+	if not c then return end
+	local baseY = FLOOR_Y - 2.5
+	local N = 44
+	for i = 1, N do
+		local side = (i % 2 == 0) and 1 or -1
+		local x = side * (HALF_W + rng:NextInteger(7, 58))
+		local z = z0 + (i - 0.5) * (L / N) + rng:NextInteger(-6, 6)
+		local color = c.color or RAINBOW[rng:NextInteger(1, #RAINBOW)]
+		if c.kind == "blades" then
+			for b = 1, 7 do
+				local h = rng:NextNumber(2.4, 4.8)
+				bit{ Name = "GrassTuft", Size = Vector3.new(0.5, h, 0.5), CFrame = CFrame.new(x + rng:NextNumber(-1.8, 1.8), baseY + h / 2 - 0.2, z + rng:NextNumber(-1.8, 1.8)) * CFrame.Angles(rng:NextNumber(-0.35, 0.35), rng:NextNumber(0, 3), rng:NextNumber(-0.35, 0.35)), Color = color:Lerp(Color3.fromRGB(200, 230, 120), rng:NextNumber(0, 0.3)), Material = Enum.Material.Grass }
+			end
+			if i % 3 == 0 then
+				-- a round bush beside the tuft
+				local s = rng:NextNumber(4, 7)
+				bit{ Name = "BankBush", Shape = Enum.PartType.Ball, Size = Vector3.new(s * 1.3, s * 0.8, s), Position = Vector3.new(x + side * 4, baseY + s * 0.2, z + 2), Color = color:Lerp(Color3.new(0, 0, 0), 0.15), Material = Enum.Material.Grass }
+			elseif i % 3 == 1 and zone.theme ~= "swamp" then
+				-- wildflowers
+				for b = 1, 3 do
+					local fx, fz = x + rng:NextNumber(-3, 3), z + rng:NextNumber(-3, 3)
+					bit{ Name = "WildflowerStem", Size = Vector3.new(0.25, 2.4, 0.25), Position = Vector3.new(fx, baseY + 1.1, fz), Color = Color3.fromRGB(70, 150, 60) }
+					bit{ Name = "Wildflower", Shape = Enum.PartType.Ball, Size = Vector3.new(1.3, 0.7, 1.3), Position = Vector3.new(fx, baseY + 2.4, fz), Color = RAINBOW[rng:NextInteger(1, #RAINBOW)]:Lerp(WHITE, 0.2) }
+				end
+			end
+		elseif c.kind == "rocks" then
+			for b = 1, 3 do
+				local s = rng:NextNumber(2.2, 5) / b
+				local r = bit{ Name = "Pebble", Shape = Enum.PartType.Ball, Size = Vector3.new(s * 1.4, s * 0.8, s), Position = Vector3.new(x + (b - 2) * 1.8, baseY + s * 0.25, z + rng:NextNumber(-1, 1)), Color = color:Lerp(Color3.new(0, 0, 0), rng:NextNumber(0, 0.2)), Material = c.material }
+				if c.glow and b == 1 then
+					bit{ Name = "EmberCrack", Size = Vector3.new(s * 0.9, 0.12, 0.25), CFrame = CFrame.new(r.Position + Vector3.new(0, s * 0.38, 0)) * CFrame.Angles(0, rng:NextNumber(0, 3), 0), Color = c.glow, Material = Enum.Material.Neon }
+				end
+			end
+		elseif c.kind == "shards" then
+			local sc = c.small and 0.6 or 1
+			for b = 1, 4 do
+				local h = rng:NextNumber(3.5, 8) * sc / (b == 1 and 1 or 1.6)
+				bit{ Name = "Shard", Size = Vector3.new(1.3 * sc, h, 1.3 * sc), CFrame = CFrame.new(x + rng:NextNumber(-1.5, 1.5), baseY + h * 0.4, z + rng:NextNumber(-1.5, 1.5)) * CFrame.Angles(rng:NextNumber(-0.4, 0.4), rng:NextNumber(0, 3), rng:NextNumber(-0.4, 0.4)), Color = c.rainbow and RAINBOW[rng:NextInteger(1, #RAINBOW)] or color, Material = c.material, Transparency = (c.material == Enum.Material.Glass) and 0.15 or 0 }
+			end
+		elseif c.kind == "sweets" then
+			-- a lollipop and a couple of gumdrops
+			local h = rng:NextNumber(3, 5)
+			bit{ Name = "LollipopStick", Shape = Enum.PartType.Cylinder, Size = Vector3.new(h, 0.3, 0.3), CFrame = CFrame.new(x, baseY + h / 2, z) * CFrame.Angles(0, 0, math.pi / 2), Color = WHITE }
+			bit{ Name = "Lollipop", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.5, 2.6, 2.6), CFrame = CFrame.new(x, baseY + h + 1, z) * CFrame.Angles(0, math.pi / 2, 0), Color = RAINBOW[rng:NextInteger(1, #RAINBOW)], Material = Enum.Material.SmoothPlastic }
+			for b = 1, 2 do
+				bit{ Name = "Gumdrop", Shape = Enum.PartType.Ball, Size = Vector3.new(1.6, 1.3, 1.6), Position = Vector3.new(x + b * 1.8 - 2.7, baseY + 0.45, z + 1.5), Color = RAINBOW[rng:NextInteger(1, #RAINBOW)], Material = Enum.Material.Glass }
+			end
+		elseif c.kind == "graves" then
+			local tilt = rng:NextNumber(-0.18, 0.18)
+			local stone = bit{ Name = "Gravestone", Size = Vector3.new(3, 3.6, 0.8), CFrame = CFrame.new(x, baseY + 1.6, z) * CFrame.Angles(0, side * math.pi / 2, tilt), Color = color, Material = c.material }
+			bit{ Name = "GravestoneTop", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.8, 3, 3), CFrame = stone.CFrame * CFrame.new(0, 1.8, 0) * CFrame.Angles(0, math.pi / 2, 0), Color = color, Material = c.material }
+			bit{ Name = "GraveMound", Shape = Enum.PartType.Ball, Size = Vector3.new(3.2, 1, 5), Position = Vector3.new(x - side * 3, baseY + 0.1, z), Color = Color3.fromRGB(70, 60, 50), Material = Enum.Material.Ground }
+		elseif c.kind == "crates" then
+			local s = rng:NextNumber(2.5, 3.5)
+			bit{ Name = "Crate", Size = Vector3.one * s, CFrame = CFrame.new(x, baseY + s / 2, z) * CFrame.Angles(0, rng:NextNumber(0, 1), 0), Color = color, Material = c.material }
+			bit{ Name = "Crate", Size = Vector3.one * s * 0.7, CFrame = CFrame.new(x + 0.3, baseY + s + s * 0.35, z) * CFrame.Angles(0, rng:NextNumber(0, 1.5), 0), Color = color:Lerp(WHITE, 0.1), Material = c.material }
+			bit{ Name = "Barrel", Shape = Enum.PartType.Cylinder, Size = Vector3.new(3.4, 2.4, 2.4), CFrame = CFrame.new(x, baseY + 1.7, z + s + 0.5) * CFrame.Angles(0, 0, math.pi / 2), Color = Color3.fromRGB(70, 90, 110), Material = Enum.Material.Metal }
 		end
 	end
 end
@@ -2704,6 +2835,7 @@ for m, map in ipairs(MAPS) do
 		decorateZone(k, zone.theme)
 		TK.zoneScenery(k, zone.theme, rng)
 		TK.zoneDetail(k, zone, j, rng)
+		TK.zoneExtras(k, zone, rng)
 		-- rolling ramps across the track: run over them fast and you get some air
 		if not holey then
 			local look = THEME_LOOK[zone.theme] or {}

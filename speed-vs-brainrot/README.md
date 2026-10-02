@@ -103,8 +103,11 @@ Four scripts:
   - there are fewer lightning and meteor strikes and fewer holes in the Void.
 - **Map detail**:
   - Each zone runs through land: banks in the zone's own terrain (grass, sand, snow and so on) on both sides, with hills, mesas, peaks or towers behind them.
-  - Striped curbs line the walls, and lamp posts glow in the zone's color.
-  - A gantry over the middle of each zone shows its number and name.
+  - Striped curbs line the walls, and lamp posts glow in the zone's color and cast a real pool of light on the track.
+  - A gantry over the middle of each zone shows its number and name, and its light strip washes the track below in the zone's color.
+  - Two strings of flags in the zone's colors sag across the track in every zone.
+  - The banks beside the track are covered in themed clutter: grass tufts, bushes and wildflowers on grassy zones, rocks on desert and storm zones, glowing cracked rocks on lava, ice shards on the tundra, crystals and neon shards on crystal, rainbow and neon zones, lollipops and gumdrops in Candy Land, gravestones in the haunted zone, and crates and barrels in the factory.
+  - Every zone has something drifting through the air around you, on your own screen only: pollen in the meadow and jungle, blowing dust in the desert, snow on the tundra, fireflies in the swamp and haunted zone, embers on lava and inferno, sparkles in the candy, rainbow, crystal and neon zones, twinkling stars in space and the void, rain streaks in the storm, and floating soot in the factory.
 
 ## Eggs, pets, rebirth, prestige
 
@@ -165,6 +168,7 @@ Four scripts:
 - **Egg icons**: each egg has its own design, matching its 3D egg, with a smooth egg shape, shading, a glossy highlight and a shadow underneath.
 - **Egg hatch**: the screen dims, the egg wobbles and cracks, there is a flash and the halves fly apart. Your actual pet pops out in front of spinning rays, with its rarity. Every pet is drawn by its kind (bunny, pup, cat, fox, wolf, bear, bee, beetle, penguin, dragon, slime, bird, cloud, unicorn, robot, bat, wisp, overlord) in its own colors, in the hatch screen and in the Pets menu. Fusing pets plays its own version.
 - The whole UI is drawn at 80% size so it covers less of the screen. Change `UI_SIZE` in the HUD script to adjust it.
+- **Motion**: when you join, the tiles and buttons pop in one after another. Icons bob gently, out of step with each other. Hovering a button makes it grow a little and its icon jump. When Speed, Cash or Trophies go up, the icon spins and pops, and Speed and Trophies float their gain up too. The Buy Speed button breathes a gold glow when you can afford a step and shakes "no" when you can't. Little stars twinkle on the 3x button.
 - **On phones** (touch screens and short screens) the HUD switches to a compact layout: the stats and the Buy Speed button go in a row along the top and the buttons in one row under them, away from the thumbstick and the jump button.
 
 No emojis or uploaded images: every icon is drawn from rounded frames (the `ICONS` table in the HUD script).
@@ -174,6 +178,8 @@ No emojis or uploaded images: every icon is drawn from rounded frames (the `ICON
 - Moving obstacles, cash piles and eggs are animated on your own screen every frame, so they move smoothly.
 - **Running**: when you're fast, a bouncy run, then a ninja dash. Both come from Roblox's free animation packs. The playback speed is capped so it never looks frantic. You also lean forward, leave a speed trail, and the camera view widens.
 - **Lighting and sky per zone** (toned down so it's no longer too bright: lower exposure, less bloom, softer haze; `LIGHT_SCALE` in the World script makes it brighter or darker): as you cross into a new zone, the sky, sun angle, haze, color grade and cloud cover blend smoothly to match it. The Desert is a hazy gold, the Tundra a cold bright white, Lava a smoky red dusk, Neon City and Space night time, Storm Peaks dark and overcast, and so on. Bloom on neon and sun rays stay on everywhere.
+  - The place uses **Future** lighting, so lamps, neon and the boss glow cast real light.
+  - Each zone also sets the mood of the light. Night zones get stronger bloom so neon really glows, cool moonlight and softer shadows. Sunset zones get warm light and longer sun rays. Day zones get crisp shadows. Saturation and contrast are tuned for each.
 
 ![Studded Il Grande Zoomerone](bosses_studs_king.png)
 ![Studded Tralalero Turbino](bosses_studs_shark.png)
@@ -184,6 +190,7 @@ No emojis or uploaded images: every icon is drawn from rounded frames (the `ICON
 ![Pets](pets3d.png)
 ![Meadow zone](map_meadow.png)
 ![Desert zone](map_desert.png)
+![Banks beside the track](map_banks.png)
 ![Overview](map_overview.png)
 ![HUD](svb_hud.png)
 ![Menus](svb_menus.png)
