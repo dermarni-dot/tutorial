@@ -50,7 +50,7 @@ local CONFIG = {
 	SpeedCostCurve = 80,
 	PadBuyInterval = 0.2,     -- while you stand on the green pad, it buys speed this often
 
-	CashPerZone = 24,         -- cash pickups lying in each zone
+	CashPerZone = 20,         -- cash pickups lying in each zone
 	CashRespawnTime = 8,      -- seconds before picked-up cash comes back
 
 	BossHeadStart = 45,       -- how far behind you the boss appears
@@ -2750,36 +2750,115 @@ local function cashPiece(model, props)
 	return newPart(props)
 end
 
-local BILL = Color3.fromRGB(75, 205, 80)
-local BILL_EDGE = Color3.fromRGB(40, 150, 50)
-local BAND = Color3.fromRGB(255, 185, 45)
+local BILL = Color3.fromRGB(80, 200, 85)
+local BILL_DARK = Color3.fromRGB(45, 150, 60)
+local PAPER = Color3.fromRGB(242, 252, 228)
+local BAND = Color3.fromRGB(255, 190, 50)
 local COIN = Color3.fromRGB(255, 205, 50)
 
--- one brick of bills: green stack, darker bill lines, a paper band with a "$" on it
-local function cashBrick(model, cf, s)
-	cashPiece(model, { Name = "CashBrick", Size = Vector3.new(3.2, 1.4, 2.1) * s, CFrame = cf, Color = BILL })
-	for _, dy in ipairs({ -0.25, 0.25 }) do
-		cashPiece(model, { Name = "BillEdge", Size = Vector3.new(3.24, 0.08, 2.14) * s, CFrame = cf * CFrame.new(0, dy * s, 0), Color = BILL_EDGE })
+-- the printed face of a bill: a dark green border, a light middle and a "$" seal
+local function billPrint(part, face, rotate)
+	local sg = Instance.new("SurfaceGui")
+	sg.Face = face
+	sg.LightInfluence = 0.6
+	sg.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+	sg.PixelsPerStud = 40
+	local border = Instance.new("Frame")
+	border.AnchorPoint = Vector2.new(0.5, 0.5)
+	border.Position = UDim2.fromScale(0.5, 0.5)
+	border.Size = UDim2.fromScale(0.9, 0.8)
+	border.BackgroundColor3 = Color3.fromRGB(150, 225, 140)
+	border.BorderSizePixel = 0
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = Color3.fromRGB(30, 110, 45)
+	stroke.Thickness = 3
+	stroke.Parent = border
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0.12, 0)
+	corner.Parent = border
+	local seal = Instance.new("TextLabel")
+	seal.AnchorPoint = Vector2.new(0.5, 0.5)
+	seal.Position = UDim2.fromScale(0.5, 0.5)
+	seal.Size = UDim2.fromScale(0.42, 0.9)
+	seal.SizeConstraint = Enum.SizeConstraint.RelativeYY
+	seal.BackgroundColor3 = Color3.fromRGB(60, 160, 70)
+	seal.Font = Enum.Font.FredokaOne
+	seal.Text = "$"
+	seal.TextScaled = true
+	seal.TextColor3 = Color3.fromRGB(225, 255, 210)
+	seal.Rotation = rotate or 0
+	local sc = Instance.new("UICorner")
+	sc.CornerRadius = UDim.new(0.5, 0)
+	sc.Parent = seal
+	seal.Parent = border
+	for _, x in ipairs({ 0.12, 0.88 }) do -- little corner numbers
+		local n = Instance.new("TextLabel")
+		n.AnchorPoint = Vector2.new(0.5, 0.5)
+		n.Position = UDim2.fromScale(x, 0.5)
+		n.Size = UDim2.fromScale(0.16, 0.5)
+		n.BackgroundTransparency = 1
+		n.Font = Enum.Font.FredokaOne
+		n.Text = "100"
+		n.TextScaled = true
+		n.TextColor3 = Color3.fromRGB(30, 110, 45)
+		n.Parent = border
 	end
-	local band = cashPiece(model, { Name = "Band", Size = Vector3.new(0.85, 1.46, 2.16) * s, CFrame = cf, Color = BAND })
+	border.Parent = sg
+	sg.Parent = part
+end
+
+-- one brick of bills: a pale paper stack between green bills, a printed top,
+-- and a gold paper band with a "$" on it
+local function cashBrick(model, cf, s)
+	local paper = cashPiece(model, { Name = "CashBrick", Size = Vector3.new(3.1, 1.0, 1.66) * s, CFrame = cf, Color = PAPER })
+	paper.Material = Enum.Material.SmoothPlastic
+	local top = cashPiece(model, { Name = "TopBill", Size = Vector3.new(3.24, 0.14, 1.78) * s, CFrame = cf * CFrame.new(0, 0.52 * s, 0), Color = BILL })
+	billPrint(top, Enum.NormalId.Top)
+	cashPiece(model, { Name = "MidBill", Size = Vector3.new(3.2, 0.09, 1.74) * s, CFrame = cf * CFrame.new(0, 0.05 * s, 0), Color = BILL })
+	cashPiece(model, { Name = "BottomBill", Size = Vector3.new(3.24, 0.14, 1.78) * s, CFrame = cf * CFrame.new(0, -0.52 * s, 0), Color = BILL_DARK })
+	local band = cashPiece(model, { Name = "Band", Size = Vector3.new(0.7, 1.22, 1.84) * s, CFrame = cf, Color = BAND })
+	band.Reflectance = 0.1
 	local sg = Instance.new("SurfaceGui")
 	sg.Face = Enum.NormalId.Top
-	sg.LightInfluence = 0
-	sg.CanvasSize = Vector2.new(40, 100)
+	sg.LightInfluence = 0.6
+	sg.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+	sg.PixelsPerStud = 40
 	local t = Instance.new("TextLabel")
 	t.Size = UDim2.fromScale(1, 1)
 	t.BackgroundTransparency = 1
 	t.Font = Enum.Font.FredokaOne
 	t.TextScaled = true
 	t.Text = "$"
-	t.TextColor3 = Color3.fromRGB(40, 120, 40)
-	t.Rotation = 90
+	t.TextColor3 = Color3.fromRGB(150, 95, 15)
 	t.Parent = sg
 	sg.Parent = band
 end
 
+-- a shiny gold coin with a raised rim (cf = its center, flat side facing up)
 local function coin(model, cf, s)
-	cashPiece(model, { Name = "Coin", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.3, 1.3, 1.3) * s, CFrame = cf, Color = COIN, Material = Enum.Material.SmoothPlastic, Reflectance = 0.25 })
+	local c = cashPiece(model, { Name = "Coin", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.22, 1.25, 1.25) * s, CFrame = cf * ROT_UP, Color = COIN })
+	c.Reflectance = 0.3
+	local sg = Instance.new("SurfaceGui")
+	sg.Face = Enum.NormalId.Right -- the cylinder's top end
+	sg.LightInfluence = 0.6
+	sg.CanvasSize = Vector2.new(100, 100)
+	local t = Instance.new("TextLabel")
+	t.Size = UDim2.fromScale(1, 1)
+	t.BackgroundTransparency = 1
+	t.Font = Enum.Font.FredokaOne
+	t.TextScaled = true
+	t.Text = "$"
+	t.TextColor3 = Color3.fromRGB(190, 130, 20)
+	t.Parent = sg
+	sg.Parent = c
+	return c
+end
+
+-- a gold bar (a wide base with a narrower top, so it looks like an ingot)
+local function goldBar(model, cf, s)
+	local g = Color3.fromRGB(255, 200, 40)
+	cashPiece(model, { Name = "GoldBar", Size = Vector3.new(2.0, 0.5, 1.0) * s, CFrame = cf, Color = g, Reflectance = 0.35 })
+	cashPiece(model, { Name = "GoldBarTop", Size = Vector3.new(1.6, 0.25, 0.7) * s, CFrame = cf * CFrame.new(0, 0.37 * s, 0), Color = g:Lerp(WHITE, 0.25), Reflectance = 0.35 })
 end
 
 local function spawnCash(k)
@@ -2791,7 +2870,7 @@ local function spawnCash(k)
 	local info = ZONE_AT[k]
 	local zone = info.zone
 	local tier = math.min(3, math.clamp(math.ceil(info.j / #info.map.zones * 2), 1, 2) + (info.m - 1)) -- bigger piles deeper in
-	local s = 1 + tier * 0.06
+	local s = 1 + tier * 0.05
 	local ground = CFrame.new(x, FLOOR_Y, z)
 
 	local model = Instance.new("Model")
@@ -2804,53 +2883,85 @@ local function spawnCash(k)
 	-- the part that spins + bobs on screen
 	local spin = Instance.new("Model")
 	spin.Name = "Spin"
-	local core = ground * CFrame.new(0, 1.6, 0) * CFrame.Angles(0, math.random() * math.pi, 0)
-	cashBrick(spin, core * CFrame.Angles(0, 0, math.rad(6)), s)
-	if tier >= 2 then
-		cashBrick(spin, core * CFrame.new(0.5 * s, 1.45 * s, 0.2 * s) * CFrame.Angles(0, 0.5, math.rad(-4)), s * 0.92)
-	end
-	if tier >= 3 then
-		cashBrick(spin, core * CFrame.new(-0.4 * s, 2.8 * s, -0.1 * s) * CFrame.Angles(0, -0.4, math.rad(5)), s * 0.84)
-	end
-	for c = 1, math.min(tier, 3) do
-		local a = c * 2.1
-		coin(spin, core * CFrame.new(math.cos(a) * 2.3 * s, -0.4 + (c % 2) * 0.3, math.sin(a) * 2.3 * s) * CFrame.Angles(0, a, math.rad(70)), s)
+	local core = ground * CFrame.new(0, 1.3, 0) * CFrame.Angles(0, math.random() * math.pi, 0)
+	if tier == 1 then
+		-- one stack, a coin leaning on it
+		cashBrick(spin, core * CFrame.Angles(0, 0, math.rad(4)), s)
+		for c = 0, 1 do
+			coin(spin, core * CFrame.new(-2.1 * s, -0.5 + c * 0.24 * s, 0.4 * s) * CFrame.Angles(0, c, 0), s)
+		end
+	elseif tier == 2 then
+		-- two stacks crossed on top of each other, a little stack of coins
+		cashBrick(spin, core, s)
+		cashBrick(spin, core * CFrame.new(0.15 * s, 1.24 * s, 0.1 * s) * CFrame.Angles(0, math.rad(35), 0), s * 0.95)
+		for c = 0, 2 do
+			coin(spin, core * CFrame.new(-2.2 * s, -0.5 + c * 0.24 * s, 0.6 * s) * CFrame.Angles(0, c * 0.6, 0), s)
+		end
+	else
+		-- a little pyramid of stacks, a gold bar and a pile of coins
+		cashBrick(spin, core * CFrame.new(0, 0, -0.95 * s), s)
+		cashBrick(spin, core * CFrame.new(0, 0, 0.95 * s), s)
+		cashBrick(spin, core * CFrame.new(0, 1.24 * s, 0) * CFrame.Angles(0, math.rad(90), 0), s * 0.95)
+		goldBar(spin, core * CFrame.new(0, 2.15 * s, 0) * CFrame.Angles(0, math.rad(20), 0), s) -- on top of the pile
+		for c = 0, 2 do
+			coin(spin, core * CFrame.new(-2.3 * s, -0.5 + c * 0.24 * s, -0.3 * s) * CFrame.Angles(0, c * 0.7, 0), s)
+		end
 	end
 	local anchor = spin:FindFirstChild("CashBrick")
 	spin.PrimaryPart = anchor
 	spin:SetAttribute("BaseCF", spin:GetPivot())
 	spin.Parent = model
 
-	-- little sparkles so cash is easy to spot
+	-- little gold sparkles so cash is easy to spot
 	local sparkle = Instance.new("ParticleEmitter")
 	sparkle.Name = "Sparkle"
-	sparkle.Color = ColorSequence.new(Color3.fromRGB(255, 255, 190))
+	sparkle.Color = ColorSequence.new(Color3.fromRGB(255, 250, 180))
 	sparkle.LightEmission = 1
-	sparkle.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(0.5, 0.45), NumberSequenceKeypoint.new(1, 0) })
+	sparkle.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(0.5, 0.5), NumberSequenceKeypoint.new(1, 0) })
 	sparkle.Lifetime = NumberRange.new(0.6, 1)
 	sparkle.Speed = NumberRange.new(0.5, 1.5)
 	sparkle.SpreadAngle = Vector2.new(180, 180)
-	sparkle.Rate = 3
+	sparkle.Rate = 4
 	sparkle.Parent = hitbox
+	local glowLight = Instance.new("PointLight")
+	glowLight.Color = Color3.fromRGB(140, 255, 120)
+	glowLight.Range = 7
+	glowLight.Brightness = 0.8
+	glowLight.Parent = hitbox
 
-	-- soft glow ring on the floor
-	cashPiece(model, { Name = "Glow", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.12, 6, 6), CFrame = ground * CFrame.new(0, 0.1, 0) * ROT_UP, Color = Color3.fromRGB(120, 255, 120), Material = Enum.Material.Neon, Transparency = 0.65 })
+	-- a soft glowing ring on the floor, with a faint disc inside
+	cashPiece(model, { Name = "Glow", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.1, 6.4, 6.4), CFrame = ground * CFrame.new(0, 0.08, 0) * ROT_UP, Color = Color3.fromRGB(120, 255, 120), Material = Enum.Material.Neon, Transparency = 0.55 })
+	cashPiece(model, { Name = "GlowInner", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.12, 5.6, 5.6), CFrame = ground * CFrame.new(0, 0.09, 0) * ROT_UP, Color = Color3.fromRGB(70, 160, 70), Transparency = 0.6 })
 
+	-- the value in a little green tag
 	local bb = Instance.new("BillboardGui")
-	bb.Size = UDim2.fromOffset(90, 28)
-	bb.StudsOffset = Vector3.new(0, 2.6 + tier * 0.6, 0)
+	bb.Size = UDim2.fromOffset(96, 30)
+	bb.StudsOffset = Vector3.new(0, 2.4 + tier * 0.9, 0)
 	bb.MaxDistance = 70
 	bb.LightInfluence = 0
+	local tag = Instance.new("Frame")
+	tag.Size = UDim2.fromScale(1, 1)
+	tag.BackgroundColor3 = Color3.fromRGB(25, 90, 35)
+	tag.BackgroundTransparency = 0.2
+	local tc = Instance.new("UICorner")
+	tc.CornerRadius = UDim.new(0.5, 0)
+	tc.Parent = tag
+	local ts = Instance.new("UIStroke")
+	ts.Color = Color3.fromRGB(150, 255, 130)
+	ts.Thickness = 2
+	ts.Parent = tag
 	local value = Instance.new("TextLabel")
-	value.Size = UDim2.fromScale(1, 1)
+	value.Size = UDim2.new(1, -10, 1, -4)
+	value.Position = UDim2.fromOffset(5, 2)
 	value.BackgroundTransparency = 1
 	value.Font = Enum.Font.FredokaOne
 	value.TextScaled = true
 	value.Text = "$" .. fmt(zone.cash)
-	value.TextColor3 = Color3.fromRGB(150, 255, 130)
-	value.TextStrokeColor3 = Color3.fromRGB(20, 80, 25)
+	value.TextColor3 = Color3.fromRGB(200, 255, 180)
+	value.TextStrokeColor3 = Color3.fromRGB(20, 70, 25)
 	value.TextStrokeTransparency = 0
-	value.Parent = bb
+	value.Parent = tag
+	tag.Parent = bb
 	bb.Parent = hitbox
 
 	model.Parent = CashFolder

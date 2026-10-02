@@ -19,6 +19,7 @@ Three scripts:
 - The boss gets faster in every zone. Each zone has a **pace**, so speed is relative: the same Speed makes you run faster in a harder zone, and its boss is faster too.
 - **Leaving a zone takes a certain Speed.** The golden gate shows the requirement and glows red until you have it. If you're too slow, you're pushed back.
 - **Getting hit sends you back to the start.** That covers obstacles, falling off and the boss catching you. You tumble with stars around your head and a red flash, then reappear at the start.
+- **Cash on the floor** comes in bill stacks with pale paper edges, a printed top with a "$" seal, and a gold paper band. Gold coins lie next to them. Piles grow in later zones: one stack, then two crossed stacks with a coin pile, then a pyramid topped with a gold bar. Each pile spins, sparkles and glows, with its value in a green tag above it.
 - **Obstacles** move smoothly on every screen and follow the server clock. They are sliders, spinners, swinging logs, crushers, blinking lasers and fire jets, and lightning or meteor strikes. Each zone has only a few.
 
 ## Eggs, pets, rebirth, prestige
@@ -70,6 +71,7 @@ No emojis or uploaded images: every icon is drawn from rounded frames (the `ICON
 ![Egg hatch](svb_hatch.png)
 ![Egg icons](svb_eggs.png)
 ![All pets](svb_pets.png)
+![Cash piles](cash3d.png)
 ![3D eggs up close](eggs3d_closeups.png)
 ![3D eggs, Map 1](eggs3d_map1.png)
 ![3D eggs, Map 2](eggs3d_map2.png)
