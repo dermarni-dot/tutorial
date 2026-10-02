@@ -3616,52 +3616,73 @@ local function buildBoss(def, ownerName, cf, ownerId)
 	-- sneakers. Eyes, gills, nostrils and mouth are painted onto its curves; every fin grows
 	-- out of the body
 	BUILD.tralalero = function()
-		local back, belly, fin = skin, Color3.fromRGB(236, 240, 245), skin:Lerp(BLACK, 0.18)
-		-- one smooth torpedo from snout to tail, with a white belly inside it that shows underneath
-		local MC, MR = Vector3.new(0, 0.05, 0), Vector3.new(0.46, 0.41, 1.3)
-		local BC, BR = Vector3.new(0, -0.09, -0.02), Vector3.new(0.45, 0.29, 1.27)
+		-- a great white: dark slate back, white belly, dead black eyes, a gaping mouth full of
+		-- teeth and swept-back triangular fins. Everything lies on or grows out of one smooth body.
+		local back = Color3.fromRGB(78, 96, 116)
+		local belly = Color3.fromRGB(232, 234, 236)
+		local fin = back:Lerp(BLACK, 0.2)
+		local MC, MR = Vector3.new(0, 0.05, 0), Vector3.new(0.46, 0.41, 1.4)
+		local BC, BR = Vector3.new(0, -0.1, -0.02), Vector3.new(0.45, 0.28, 1.37)
 		ell(MR * 2 * s, back, CFrame.new(MC * s))
 		ell(BR * 2 * s, belly, CFrame.new(BC * s))
-		-- fins, each rooted inside the body
-		wedge(V(0.06, 0.55, 0.5), fin, C(0, 0.38 + 0.275, 0.02))
-		wedge(V(0.04, 0.17, 0.17), fin, C(0, 0.3 + 0.085, 0.86))
-		wedge(V(0.04, 0.13, 0.15), fin, C(0, -0.265, 0.9) * CFrame.Angles(math.pi, 0, 0))
-		local function blade(a, b, w, thick)
-			local mid = (a + b) / 2
-			ell(Vector3.new(thick * s, w * s, (b - a).Magnitude), fin, CFrame.lookAt(mid, b))
+		-- a flat triangle (fin or tooth): base centre (studs), pointing along d, lying in the plane
+		-- across n, h long, w wide at the base, thick thick (studs)
+		local function tri(base, d, n, h, w, thick, color, material)
+			local c = base + d * (h / 2)
+			local cf = CFrame.lookAt(c, c + d:Cross(n), d)
+			wedge(Vector3.new(thick, h, w / 2), color, cf * CFrame.new(0, 0, -w / 4), material)
+			wedge(Vector3.new(thick, h, w / 2), color, cf * CFrame.new(0, 0, w / 4) * CFrame.Angles(0, math.pi, 0), material)
 		end
-		blade(V(0, 0.09, 1.2), V(0, 0.68, 1.62), 0.2, 0.05) -- the tail: a tall upper lobe...
-		blade(V(0, 0.04, 1.2), V(0, -0.3, 1.5), 0.16, 0.05) -- ...and a shorter lower one
+		local X = Vector3.xAxis
+		-- fins: dorsal, a small second dorsal, the anal fin and a tall crescent tail
+		tri(V(0, 0.4, -0.02), Vector3.new(0, 0.93, 0.37).Unit, X, 0.6 * s, 0.48 * s, 0.05 * s, fin)
+		tri(V(0, 0.3, 0.95), Vector3.new(0, 0.85, 0.53).Unit, X, 0.17 * s, 0.15 * s, 0.03 * s, fin)
+		tri(V(0, -0.2, 0.95), Vector3.new(0, -0.85, 0.53).Unit, X, 0.15 * s, 0.14 * s, 0.03 * s, fin)
+		tri(V(0, 0.08, 1.3), Vector3.new(0, 0.78, 0.63).Unit, X, 0.7 * s, 0.24 * s, 0.045 * s, fin)
+		tri(V(0, 0.03, 1.3), Vector3.new(0, -0.72, 0.69).Unit, X, 0.42 * s, 0.2 * s, 0.045 * s, fin)
 		for _, sx in ipairs({ -1, 1 }) do
-			ell(V(0.62, 0.05, 0.28), fin, C(sx * 0.5, -0.2, -0.32) * CFrame.Angles(0, sx * 0.55, sx * -0.4))
-			ell(V(0.22, 0.04, 0.14), fin, C(sx * 0.18, -0.31, 0.56) * CFrame.Angles(0, sx * 0.4, sx * -0.3))
-			-- glossy black eyes set into the head, with a darker rim and a glint
-			local ep, en = atYZ(MC, MR, 0.15, -0.85, sx)
-			decal(ep, en, 0.14 * s, 0.115 * s, back:Lerp(BLACK, 0.35), { R = 0.35 * s })
-			decal(ep, en, 0.11 * s, 0.09 * s, Color3.fromRGB(8, 8, 12), { R = 0.35 * s, layer = 1, raise = 0.008, t = 0.04 * s, material = Enum.Material.Glass })
-			local gp, gn = atYZ(MC, MR, 0.17, -0.88, sx)
-			decal(gp, gn, 0.025 * s, 0.025 * s, WHITE, { R = 0.35 * s, layer = 6, material = NEON })
-			-- five gill slits
+			-- swept-back pectoral fins and small pelvic fins
+			local pd = Vector3.new(sx * 0.82, -0.3, 0.48).Unit
+			local pn = pd:Cross(Vector3.zAxis).Unit
+			local pr = atYZ(MC, MR, -0.16, -0.38, sx)
+			tri(pr - pd * 0.06 * s, pd, pn, 0.62 * s, 0.32 * s, 0.035 * s, fin)
+			local vd = Vector3.new(sx * 0.6, -0.5, 0.62).Unit
+			local vr = atXZ(BC, BR, sx * 0.16, 0.6, -1)
+			tri(vr - vd * 0.03 * s, vd, vd:Cross(Vector3.zAxis).Unit, 0.2 * s, 0.13 * s, 0.025 * s, fin)
+			-- dead black eyes sunk into the head
+			local ep, en = atYZ(MC, MR, 0.15, -0.95, sx)
+			decal(ep, en, 0.11 * s, 0.09 * s, back:Lerp(BLACK, 0.45), { R = 0.35 * s })
+			decal(ep, en, 0.085 * s, 0.07 * s, Color3.fromRGB(4, 4, 6), { R = 0.35 * s, layer = 1, material = Enum.Material.Glass })
+			-- long gill slits
 			for g = 0, 4 do
-				local p, n = atYZ(MC, MR, 0.03, -0.55 + g * 0.055, sx)
-				decal(p, n, 0.012 * s, (0.22 - g * 0.015) * s, back:Lerp(BLACK, 0.4), { R = 0.45 * s })
+				local p, n = atYZ(MC, MR, 0.02, -0.62 + g * 0.06, sx)
+				decal(p, n, 0.014 * s, (0.3 - g * 0.02) * s, back:Lerp(BLACK, 0.5), { R = 0.45 * s })
 			end
-			local np, nn = atXY(MC, MR, sx * 0.06, 0.1, -1)
-			decal(np, nn, 0.03 * s, 0.018 * s, Color3.fromRGB(20, 25, 35), { R = 0.2 * s })
+			-- old scars
+			for k = 1, 2 do
+				local p, n = atYZ(MC, MR, 0.22 - k * 0.08, 0.1 + k * 0.18 * sx, sx)
+				decal(p, n, 0.2 * s, 0.012 * s, back:Lerp(WHITE, 0.35), { R = 0.45 * s, roll = 0.3 * k })
+			end
 		end
-		-- the mouth under the snout, rimmed with pointed teeth
-		local mp, mn = atXZ(BC, BR, 0, -0.95, -1)
-		decal(mp, mn, 0.36 * s, 0.22 * s, Color3.fromRGB(70, 15, 25), { R = 0.35 * s })
-		decal(mp, mn, 0.28 * s, 0.15 * s, Color3.fromRGB(215, 95, 115), { R = 0.35 * s, layer = 1 })
-		for i = -5, 5 do
-			local a = i * 0.24
-			local tp = atXZ(BC, BR, math.sin(a) * 0.17, -0.95 - math.cos(a) * 0.105, -1)
-			local out = Vector3.new(math.sin(a), 0, -math.cos(a))
-			add(nil, V(0.035, 0.035, 0.02), WHITE, CFrame.lookAt(tp, tp + out) * CFrame.Angles(0, 0, math.rad(45)))
+		-- the gaping mouth under the snout (where a real shark's is), two rows of teeth set into it
+		local mcz, mw, md = -0.98, 0.25, 0.16
+		local mp, mn = atXZ(BC, BR, 0, mcz, -1)
+		decal(mp, mn, mw * 2 * s, md * 2 * s, Color3.fromRGB(35, 6, 12), { R = 0.6 * s })
+		decal(mp, mn, mw * 1.6 * s, md * 1.3 * s, Color3.fromRGB(110, 20, 35), { R = 0.6 * s, layer = 1 })
+		for row = -1, 1, 2 do
+			for k = -5, 5 do
+				local x = k * 0.04
+				local edge = mcz + row * md * math.sqrt(math.max(0, 1 - (x / mw) ^ 2)) * 0.9
+				local p, n = atXZ(BC, BR, x, edge, -1)
+				local into = Vector3.new(0, 0, -row)
+				local d = (into - n * n:Dot(into)).Unit
+				local th = (row == -1) and 0.075 or 0.055
+				tri(p + n * 0.012 * s, d, n, th * s, 0.045 * s, 0.008 * s, Color3.fromRGB(245, 242, 230))
+			end
 		end
-		legs({ x = 0.24, z = -0.08, third = 0.34, hipY = -0.25, thick = 0.12, color = back, footSize = 0.85, swoosh = Color3.fromRGB(20, 20, 25) })
-		bodyTop = 0.95
-		frontReach = 1.3
+		legs({ x = 0.24, z = -0.08, third = 0.34, hipY = -0.25, thick = 0.13, color = back, footSize = 0.85, shoe = Color3.fromRGB(30, 30, 34), swoosh = Color3.fromRGB(200, 30, 40) })
+		bodyTop = 1.0
+		frontReach = 1.4
 	end
 	-- anything without a look of its own: a smooth round brainrot
 	BUILD.classic = function()

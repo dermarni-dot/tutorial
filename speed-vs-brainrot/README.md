@@ -44,7 +44,7 @@ Four scripts:
 - **Smooth, joined-up designs**: on the bosses and pets, every detail (eyes, lids, brows, mustaches, cheeks, noses, gills, buttons, jewels, laces, swooshes) is painted onto the curve of the body it sits on, instead of being stuck on top. Arms, legs, fins, horns, spikes and manes all start inside the body they grow from, so nothing floats or pokes out. Eggs have no rings or bits sticking out of them.
 - **One giant boss per map**: it's about as wide as the track (80% of `ZoneWidth`) and a couple of hundred studs tall, so there's no getting around it. You can only run. It catches you when its face reaches you.
   - **Il Grande Zoomerone** (Map 1) is a king in full royal dress. He has a jewelled crown with pearls and a cross, stern eyes with heavy lids and bushy brows, a big nose, a curled mustache and a goatee. He wears a velvet robe with a gold hem, belt and buttons, an ermine collar and a long cape, white gloves with real fingers, and royal boots with gold buckles. He holds a jewelled sceptre and an orb.
-  - **Tralalero Turbino** (Map 2) is a real-looking shark: one smooth torpedo-shaped body with a blue back and a white belly, glossy black eyes, a pointed snout, a mouth with two rows of pointed teeth, five gill slits on each side, dorsal, pectoral, pelvic and anal fins and a crescent tail. It runs on three muscly legs in sneakers.
+  - **Tralalero Turbino** (Map 2) is a scary great white: one smooth torpedo-shaped body with a dark slate back, a white belly, dead black eyes, long gill slits and old scars. A gaping mouth under its snout is lined with two rows of teeth set into the jaw. Its fins and crescent tail are swept-back triangles growing out of the body. It runs on three legs in black sneakers with red swooshes.
   - **Only you see your own boss.** Everyone has their own, and other players' bosses are hidden on your screen.
 - **How the boss's speed works**:
   - It gets faster in every zone: each zone has a pace it runs at least.
@@ -171,6 +171,7 @@ No emojis or uploaded images: every icon is drawn from rounded frames (the `ICON
 
 ![Il Grande Zoomerone](bosses_front.png)
 ![Tralalero Turbino](bosses_side.png)
+![Tralalero Turbino from below](shark_front.png)
 ![Pets](pets3d.png)
 ![Meadow zone](map_meadow.png)
 ![Desert zone](map_desert.png)
