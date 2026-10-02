@@ -52,7 +52,7 @@ Three scripts:
   - Pets, with Fuse 3 to upgrade.
   - Rebirth.
   - Prestige, which stays locked until you can use it.
-- **Cash pickups**: a cash brick with "+545" pops up and flies into the Cash tile, and a green swirl spins around the player.
+- **Cash pickups**: a cash brick with "+545" pops up and flies into the Cash tile. Around the player who grabbed it (everyone sees it): a green swirl, a green glow on the body, a green and a gold ring rippling out on the floor, bills and coins bursting out and bouncing, and "$" signs floating up.
 - **Zone cleared**: a gold card drops in, a shine sweeps across it and the trophies count up. The card then flies into the Trophies tile.
 - **Egg icons**: each egg has its own design, matching its 3D egg, with a smooth egg shape, shading, a glossy highlight and a shadow underneath.
 - **Egg hatch**: the screen dims, the egg wobbles and cracks, there is a flash and the halves fly apart. Your actual pet pops out in front of spinning rays, with its rarity. Every pet is drawn by its kind (bunny, pup, cat, fox, wolf, bear, bee, beetle, penguin, dragon, slime, bird, cloud, unicorn, robot, bat, wisp, overlord) in its own colors, in the hatch screen and in the Pets menu. Fusing pets plays its own version.
@@ -72,6 +72,7 @@ No emojis or uploaded images: every icon is drawn from rounded frames (the `ICON
 ![Egg icons](svb_eggs.png)
 ![All pets](svb_pets.png)
 ![Cash piles](cash3d.png)
+![Cash pickup effect](cash_pickup_fx.png)
 ![3D eggs up close](eggs3d_closeups.png)
 ![3D eggs, Map 1](eggs3d_map1.png)
 ![3D eggs, Map 2](eggs3d_map2.png)

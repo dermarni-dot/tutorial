@@ -14,8 +14,9 @@
 	      Rebirth   (orange arrows)       - reset cash + speed for a cash multiplier
 	      Prestige  (a gold star)         - lights up once you reach the final zone
 	  - When you collect cash: a big cash brick with "+545" pops up on the
-	    screen, wiggles, then flies into your Cash tile; and a green swirl
-	    spins around your character (other players see your swirl too).
+	    screen, wiggles, then flies into your Cash tile. Around your character
+	    (everyone sees it): a green swirl, a green glow, rings rippling out on
+	    the floor, bills and coins bursting out and "$" signs floating up.
 	  - When you make it out of a zone: a "ZONE CLEARED" card with a shine,
 	    the trophies counting up, then flying into your Trophies tile.
 	  - Hatching an egg: the screen dims, the egg wobbles, cracks, flashes and
@@ -1518,12 +1519,132 @@ local function swirl(character)
 	end)
 end
 
+-- the cash burst around a character when they grab cash: a green glow on the
+-- whole body, a ring rippling out on the floor, bills and coins flying out,
+-- and green "$" signs floating up
+local lastAura = setmetatable({}, { __mode = "k" })
+local function cashAura(character)
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	if not root then
+		return
+	end
+	local now = os.clock()
+	if lastAura[character] and now - lastAura[character] < 0.25 then
+		return -- grabbing lots of cash at once: don't stack bursts
+	end
+	lastAura[character] = now
+	local folder = new("Folder", { Name = "CashAura", Parent = workspace })
+	local feet = root.Position - Vector3.new(0, 2.9, 0)
+
+	-- green glow on the body
+	local glow = new("Highlight", {
+		FillColor = Color3.fromRGB(110, 255, 110),
+		OutlineColor = Color3.fromRGB(210, 255, 190),
+		FillTransparency = 0.55,
+		OutlineTransparency = 0,
+		DepthMode = Enum.HighlightDepthMode.Occluded,
+		Adornee = character,
+		Parent = folder,
+	})
+	tween(glow, 0.7, { FillTransparency = 1, OutlineTransparency = 1 })
+
+	-- a ring rippling out on the floor (two of them, one after the other)
+	for i = 0, 1 do
+		local ring = new("Part", {
+			Anchored = true, CanCollide = false, CanQuery = false, CanTouch = false, CastShadow = false,
+			Shape = Enum.PartType.Cylinder,
+			Material = Enum.Material.Neon,
+			Color = (i == 0) and Color3.fromRGB(120, 255, 110) or Color3.fromRGB(255, 225, 80),
+			Size = Vector3.new(0.15, 2, 2),
+			Transparency = 0.15,
+			CFrame = CFrame.new(feet + Vector3.new(0, 0.1 + i * 0.02, 0)) * CFrame.Angles(0, 0, math.rad(90)),
+			Parent = folder,
+		})
+		task.delay(i * 0.12, function()
+			tween(ring, 0.55, { Size = Vector3.new(0.15, 13 - i * 3, 13 - i * 3), Transparency = 1 }, Enum.EasingStyle.Quad)
+		end)
+	end
+
+	-- bills and coins burst out, spin, and fall back down
+	local bits = {}
+	for i = 1, 10 do
+		local isCoin = i % 3 == 0
+		local p = new("Part", {
+			Anchored = true, CanCollide = false, CanQuery = false, CanTouch = false, CastShadow = false,
+			Shape = isCoin and Enum.PartType.Cylinder or Enum.PartType.Block,
+			Size = isCoin and Vector3.new(0.12, 0.6, 0.6) or Vector3.new(0.9, 0.05, 0.45),
+			Color = isCoin and Color3.fromRGB(255, 205, 50) or Color3.fromRGB(90, 210, 90),
+			Material = Enum.Material.SmoothPlastic,
+			Reflectance = isCoin and 0.3 or 0,
+			Parent = folder,
+		})
+		local a = (i / 10) * math.pi * 2 + math.random() * 0.5
+		local speed = 9 + math.random() * 6
+		table.insert(bits, {
+			part = p,
+			vel = Vector3.new(math.cos(a) * speed * 0.6, 14 + math.random() * 8, math.sin(a) * speed * 0.6),
+			spin = Vector3.new(math.random() * 12 - 6, math.random() * 12 - 6, math.random() * 12 - 6),
+			pos = root.Position + Vector3.new(0, 0.5, 0),
+		})
+	end
+
+	-- "$" signs floating up around them
+	for i = 1, 5 do
+		local bb = new("BillboardGui", {
+			Size = UDim2.fromOffset(40, 40),
+			StudsOffset = Vector3.new(math.random() * 4 - 2, 0, 0),
+			AlwaysOnTop = false,
+			LightInfluence = 0,
+			Adornee = root,
+			Parent = folder,
+		})
+		local t = new("TextLabel", {
+			Size = UDim2.fromScale(1, 1),
+			BackgroundTransparency = 1,
+			Font = FONT,
+			Text = "$",
+			TextScaled = true,
+			TextColor3 = (i % 2 == 0) and Color3.fromRGB(255, 225, 80) or Color3.fromRGB(140, 255, 120),
+			Parent = bb,
+		})
+		new("UIStroke", { Color = Color3.fromRGB(20, 80, 25), Thickness = 3, Parent = t })
+		local x = bb.StudsOffset.X
+		task.delay(i * 0.07, function()
+			tween(bb, 0.9, { StudsOffset = Vector3.new(x * 1.4, 4.5 + math.random() * 1.5, 0) }, Enum.EasingStyle.Quad)
+			tween(t, 0.9, { TextTransparency = 1 }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+			tween(t:FindFirstChildOfClass("UIStroke"), 0.9, { Transparency = 1 }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+		end)
+	end
+
+	local t0 = os.clock()
+	local conn
+	conn = RunService.RenderStepped:Connect(function(dt)
+		local t = os.clock() - t0
+		if t > 1.1 then
+			conn:Disconnect()
+			folder:Destroy()
+			return
+		end
+		for _, b in ipairs(bits) do
+			b.vel += Vector3.new(0, -45 * dt, 0)
+			b.pos += b.vel * dt
+			if b.pos.Y < feet.Y + 0.1 then
+				b.pos = Vector3.new(b.pos.X, feet.Y + 0.1, b.pos.Z)
+				b.vel = Vector3.new(b.vel.X * 0.5, -b.vel.Y * 0.3, b.vel.Z * 0.5)
+			end
+			b.part.CFrame = CFrame.new(b.pos) * CFrame.Angles(b.spin.X * t, b.spin.Y * t, b.spin.Z * t)
+			b.part.Transparency = math.clamp((t - 0.7) / 0.4, 0, 1)
+		end
+	end)
+end
+
 CashFxRemote.OnClientEvent:Connect(function(_pos, amount, who)
 	if who == player then
 		cashPop(amount)
 	end
 	if who and who.Character then
 		swirl(who.Character)
+		cashAura(who.Character)
 	end
 end)
 
