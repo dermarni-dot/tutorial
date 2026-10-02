@@ -7,6 +7,22 @@ Three scripts:
 | `src/SpeedVsBrainrot_Server.server.lua` | ServerScriptService (a normal Script). Builds the whole world. |
 | `src/SpeedVsBrainrot_HUD.client.lua` | StarterPlayer > StarterPlayerScripts (LocalScript) |
 | `src/SpeedVsBrainrot_World.client.lua` | StarterPlayer > StarterPlayerScripts (LocalScript) |
+| `src/SpeedVsBrainrot_Admin.client.lua` | StarterPlayer > StarterPlayerScripts (LocalScript) |
+
+## Admin panel
+
+- The game's **owner is always an admin**: the account that owns the game, or the owner (rank 255) if it's a group game. In Studio, everyone testing is the owner. To add more owner accounts, put their UserIds in `CONFIG.OwnerUserIds`.
+- Admins get an **ADMIN** button at the top right, or press **F2**. Everything works by clicking:
+  - **Player tab**: pick a player, or Everyone, from the list. You can then:
+    - give or take cash, speed and trophies, with quick buttons or a custom amount;
+    - give any pet as Normal, Golden or Rainbow;
+    - go to the player, bring them to you, or send them to Map 1 or Map 2;
+    - unlock all maps or unlock prestige;
+    - turn on god mode, so nothing can hit them;
+    - reset their data or kick them. Both need a second click to confirm.
+  - **Server tab**: send an announcement banner to everyone, start a cash event (x2, x5 or x10), or remove all bosses.
+  - **Admins tab** (owner only): add an admin by typing a username (they can be offline) or by picking someone in the player list, and remove admins. The admin list is saved and works in every server.
+- Every click is checked on the server, so nobody else can use these buttons. Announcements and kick reasons go through Roblox's text filter.
 
 ## Maps and bosses
 
