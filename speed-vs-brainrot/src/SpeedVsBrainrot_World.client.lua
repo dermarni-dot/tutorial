@@ -7,7 +7,6 @@
 	  - moving obstacles (sliders, spinners, swinging logs, crushers), lasers, fire jets
 	    and strikes follow the server clock, so they're exactly where the server checks them
 	  - cash piles and eggs spin and bob
-	  - zone gates glow green when your Speed is enough, red when it isn't
 	  - running: a fast run animation that speeds up with you (capped so it never
 	    looks frantic), a forward lean, a speed trail and a wider camera view
 	  - getting hit: you tumble, stars spin around your head, the screen flashes red
@@ -128,29 +127,6 @@ local function addEgg(model)
 end
 
 ------------------------------------------------------------------------
--- ZONE GATES: green when you're fast enough, red when you're not
-------------------------------------------------------------------------
-local gates = {}
-local GATE_OK = Color3.fromRGB(110, 255, 120)
-local GATE_NO = Color3.fromRGB(255, 70, 70)
-
-local function paintGate(part)
-	local need = part:GetAttribute("Need") or 0
-	local ok = (player:GetAttribute("Speed") or 0) >= need
-	part.Color = ok and GATE_OK or GATE_NO
-	part.Transparency = ok and 0.85 or 0.6
-end
-
-local function addGate(part)
-	gates[part] = true
-	paintGate(part)
-end
-
-player:GetAttributeChangedSignal("Speed"):Connect(function()
-	for part in pairs(gates) do paintGate(part) end
-end)
-
-------------------------------------------------------------------------
 -- every frame: move what's near you
 ------------------------------------------------------------------------
 local NEAR = 320
@@ -161,7 +137,6 @@ local function startWorld()
 	watchTag("SVB_Blink", addBlinker, blinkers)
 	watchTag("SVB_Strike", addStrike, strikes)
 	watchTag("SVB_EggSpin", addEgg, spinners)
-	watchTag("SVB_SpeedGate", addGate, gates)
 	local cashFolder = workspace:WaitForChild("SVB_Cash")
 	for _, m in ipairs(cashFolder:GetChildren()) do task.spawn(addCash, m) end
 	cashFolder.ChildAdded:Connect(addCash)
@@ -218,7 +193,7 @@ local function addBoss(model)
 	if not root then return end
 	local motors = {}
 	for _, m in ipairs(root:GetChildren()) do
-		if m:IsA("Motor6D") and m.Name == "LegMotor" then
+		if m:IsA("Motor6D") and (m.Name == "LegMotor" or m.Name == "ArmMotor") then
 			table.insert(motors, m)
 		end
 	end
@@ -234,7 +209,11 @@ RunService.Stepped:Connect(function(_, dt)
 			b.phase += dt * math.min(18, 4 + speed * 0.12)
 			for _, m in ipairs(b.motors) do
 				local side = m:GetAttribute("Side") or 1
-				m.Transform = CFrame.Angles(math.sin(b.phase) * side * 0.9 * stride, 0, 0)
+				if m.Name == "ArmMotor" then -- arms pump the other way from the legs
+					m.Transform = CFrame.Angles(-math.sin(b.phase) * side * 0.8 * stride - 0.25 * stride, 0, 0)
+				else
+					m.Transform = CFrame.Angles(math.sin(b.phase) * side * 0.9 * stride, 0, 0)
+				end
 			end
 		end
 	end
@@ -477,6 +456,7 @@ end)
 -- fog, clouds), blended smoothly as you run in. Islands use their map's look.
 ------------------------------------------------------------------------
 local function rgb(r, g, b) return Color3.fromRGB(r, g, b) end
+local LIGHT_SCALE = 0.6
 local MAP_LOOKS = {
 	{ clock = 14.6, atmo = rgb(200, 225, 255), decay = rgb(110, 150, 200), tint = rgb(255, 252, 245), density = 0.24, haze = 1.3, cover = 0.55, bright = 2.6 },
 	{ clock = 16.9, atmo = rgb(255, 205, 175), decay = rgb(175, 95, 85), tint = rgb(255, 236, 220), density = 0.26, haze = 1.6, cover = 0.5, bright = 2.4 },
@@ -504,14 +484,28 @@ local function applyLook(look)
 	if look == currentLook then return end
 	currentLook = look
 	local info = TweenInfo.new(2.5, Enum.EasingStyle.Sine)
-	TweenService:Create(Lighting, info, { ClockTime = look.clock, Brightness = look.bright }):Play()
+	-- LIGHT_SCALE tones every zone down together (raise it for a brighter game)
+	local dim = look.bright / 3
+	TweenService:Create(Lighting, info, {
+		ClockTime = workspace:GetAttribute("AdminClock") or look.clock, -- admins can set the time for everyone
+		Brightness = look.bright * LIGHT_SCALE,
+		ExposureCompensation = -0.3,
+		OutdoorAmbient = Color3.fromRGB(112, 112, 128):Lerp(look.decay, 0.25):Lerp(Color3.new(0, 0, 0), 0.35 * (1 - dim)),
+	}):Play()
 	local atmo = Lighting:FindFirstChild("SVB_Atmosphere")
-	if atmo then TweenService:Create(atmo, info, { Color = look.atmo, Decay = look.decay, Density = look.density, Haze = look.haze }):Play() end
+	if atmo then TweenService:Create(atmo, info, { Color = look.atmo, Decay = look.decay, Density = look.density * 0.85, Haze = look.haze * 0.55, Glare = 0.1 }):Play() end
 	local cc = Lighting:FindFirstChild("SVB_Color")
 	if cc then TweenService:Create(cc, info, { TintColor = look.tint }):Play() end
 	local clouds = workspace.Terrain:FindFirstChildOfClass("Clouds")
 	if clouds then TweenService:Create(clouds, info, { Cover = look.cover }):Play() end
 end
+
+-- an admin changed the time of day: blend to it right away
+workspace:GetAttributeChangedSignal("AdminClock"):Connect(function()
+	local look = currentLook
+	currentLook = nil
+	if look then applyLook(look) end
+end)
 
 -- which zone am I in? (zones are published by the server in ReplicatedStorage.SVB_Zones)
 local zones = {}

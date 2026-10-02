@@ -887,10 +887,22 @@ local gui = new("ScreenGui", {
 -- so it doesn't cover the game)
 local UI_SIZE = 0.8
 local screenScale = new("UIScale", { Parent = gui })
+-- phones (or any short screen) get the compact layout: see applyLayout below
+local UserInputService = game:GetService("UserInputService")
+local compact = false
+local applyLayout -- set once every button exists
 local function rescale()
 	local cam = workspace.CurrentCamera
-	local h = cam and cam.ViewportSize.Y or 720
-	screenScale.Scale = math.clamp(h / 720, 0.6, 1.25) * UI_SIZE
+	local size = cam and cam.ViewportSize or Vector2.new(1280, 720)
+	local h = size.Y
+	compact = h < 560 or (UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled)
+	if compact then
+		-- smaller on phones, but never so small the buttons are hard to tap
+		screenScale.Scale = math.clamp(h / 720, 0.42, 1) * 0.9
+	else
+		screenScale.Scale = math.clamp(h / 720, 0.6, 1.25) * UI_SIZE
+	end
+	if applyLayout then applyLayout() end
 end
 rescale()
 if workspace.CurrentCamera then
@@ -924,6 +936,85 @@ end
 statTile("Speed", "shoe", 0, COLORS.speed)
 statTile("Cash", "cash", 78, COLORS.cash)
 statTile("Trophies", "trophy", 156, COLORS.trophies)
+
+------------------------------------------------------------------------
+-- BUY SPEED: one tap buys a step of speed (10% of the Speed you have), hold to keep buying.
+-- It shows what you get and what it costs; the price turns red when you can't afford it.
+------------------------------------------------------------------------
+local buyTile, buyScale = studTile(column, COLORS.cash, UDim2.fromOffset(190, 46), { Position = UDim2.fromOffset(0, 232), Name = "BuySpeedTile" })
+local buyButton = new("TextButton", { BackgroundTransparency = 1, Text = "", Size = UDim2.fromScale(1, 1), ZIndex = 5, Parent = buyTile })
+local buyGain = label(buyTile, "+1 SPEED", UDim2.new(0.6, -8, 1, -12), { Position = UDim2.fromOffset(8, 6), TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 3 })
+local buyCost = label(buyTile, "$1", UDim2.new(0.4, -10, 1, -16), { Position = UDim2.new(0.6, 0, 0, 8), TextXAlignment = Enum.TextXAlignment.Right, ZIndex = 3 })
+local buyRemote = remotes:WaitForChild("BuySpeed", 10)
+local padLabels = {}
+local function refreshBuy()
+	local gain = player:GetAttribute("NextSpeedGain") or 1
+	local cost = player:GetAttribute("NextSpeedCost") or 1
+	local can = (player:GetAttribute("Cash") or 0) >= cost
+	buyGain.Text = "+" .. fmt(gain) .. " SPEED"
+	buyCost.Text = "$" .. fmt(cost)
+	buyCost.TextColor3 = can and Color3.fromRGB(255, 240, 120) or Color3.fromRGB(255, 120, 120)
+	for _, l in ipairs(padLabels) do
+		l.gain.Text = "+" .. fmt(gain) .. " SPEED"
+		l.cost.Text = "$" .. fmt(cost) .. " each"
+		l.cost.TextColor3 = buyCost.TextColor3
+	end
+end
+for _, a in ipairs({ "NextSpeedGain", "NextSpeedCost", "Cash" }) do
+	player:GetAttributeChangedSignal(a):Connect(refreshBuy)
+end
+local holding = false
+buyButton.MouseButton1Down:Connect(function()
+	tween(buyScale, 0.08, { Scale = 0.92 })
+	if holding then return end
+	holding = true
+	task.spawn(function()
+		local first = true
+		while holding do
+			if buyRemote then buyRemote:FireServer() end
+			task.wait(first and 0.4 or 0.15) -- tap = one step, hold = keeps buying
+			first = false
+		end
+	end)
+end)
+local function stopBuying()
+	holding = false
+	tween(buyScale, 0.2, { Scale = 1 }, Enum.EasingStyle.Back)
+end
+buyButton.MouseButton1Up:Connect(stopBuying)
+buyButton.MouseLeave:Connect(stopBuying)
+
+-- the same price + gain floats over every green speed pad (only you see your numbers)
+local function addPadLabel(pad)
+	if not (pad:IsA("BasePart") and pad.Name == "SpeedPad") then return end
+	local bb = new("BillboardGui", {
+		Name = "SVB_PadPrice",
+		Adornee = pad,
+		Size = UDim2.fromOffset(150, 46),
+		StudsOffset = Vector3.new(0, 4.2, 0),
+		MaxDistance = 90,
+		LightInfluence = 0,
+		Parent = gui,
+	})
+	local box = new("Frame", { Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.fromRGB(20, 70, 30), BackgroundTransparency = 0.2, Parent = bb })
+	corner(box, 12)
+	stroke(box, Color3.fromRGB(150, 255, 130), 2)
+	local l = {
+		gain = label(box, "", UDim2.new(1, -10, 0.55, 0), { Position = UDim2.fromOffset(5, 2) }),
+		cost = label(box, "", UDim2.new(1, -10, 0.4, 0), { Position = UDim2.new(0, 5, 0.56, 0) }),
+	}
+	table.insert(padLabels, l)
+	pad.AncestryChanged:Connect(function(_, parent)
+		if not parent then
+			bb:Destroy()
+			table.remove(padLabels, table.find(padLabels, l))
+		end
+	end)
+	refreshBuy()
+end
+for _, d in ipairs(workspace:GetDescendants()) do addPadLabel(d) end
+workspace.DescendantAdded:Connect(addPadLabel)
+refreshBuy()
 
 local function readStat(key)
 	local s = stats[key]
@@ -980,7 +1071,7 @@ local function squareButton(name, icon, text, color, x, y)
 	return tile, scale, button, iconLabel, textLabel
 end
 
-local rowY = 156 + 68 + 44
+local rowY = 232 + 46 + 44
 local _tpTile, tpScale, tpButton = squareButton("Teleport", "portal", "Teleport", COLORS.teleport, 0, rowY)
 local passTile, passScale, passButton, passIcon, passText = squareButton("CashPass", "bat", "3x", COLORS.pass, BTN + GAP, rowY)
 local _invTile, invScale, invButton = squareButton("Invite", "friends", "Invite", COLORS.invite, 0, rowY + BTN + GAP + 26)
@@ -996,7 +1087,7 @@ passCash.AnchorPoint = Vector2.new(0.5, 0.5)
 passCash.Position = UDim2.new(0.7, 0, 1, -16)
 
 -- "Play with friends!" under the invite button
-label(column, "Play with friends!", UDim2.fromOffset(BTN + 24, 22), { Position = UDim2.fromOffset(-12, rowY + 2 * BTN + GAP + 32) })
+local friendsLabel = label(column, "Play with friends!", UDim2.fromOffset(BTN + 24, 22), { Position = UDim2.fromOffset(-12, rowY + 2 * BTN + GAP + 32) })
 
 -- the gamepass button: a thick spinning rainbow frame, the price above it
 passText.TextColor3 = Color3.fromRGB(120, 255, 90)
@@ -1053,6 +1144,43 @@ local function refreshPass()
 end
 refreshPass()
 player:GetAttributeChangedSignal("HasCashPass"):Connect(refreshPass)
+
+------------------------------------------------------------------------
+-- LAYOUT: a tall column on computers; on phones the stats go in a row along the
+-- top and the buttons in one row under them, so nothing sits under your thumbs
+-- (the thumbstick is bottom left, the jump button bottom right)
+------------------------------------------------------------------------
+local squares = { _tpTile, passTile, _invTile, _petTile, _rbTile, prTile }
+local normalPos = {}
+for i, tile in ipairs(squares) do normalPos[i] = tile.Position end
+function applyLayout()
+	local passPos
+	if compact then
+		column.Position = UDim2.fromOffset(12, 20)
+		stats.Speed.Tile.Position = UDim2.fromOffset(0, 0)
+		stats.Cash.Tile.Position = UDim2.fromOffset(200, 0)
+		stats.Trophies.Tile.Position = UDim2.fromOffset(400, 0)
+		buyTile.Position = UDim2.fromOffset(600, 11)
+		local y = 68 + 44
+		for i, tile in ipairs(squares) do
+			tile.Position = UDim2.fromOffset((i - 1) * (BTN + GAP), y)
+		end
+		passPos = Vector2.new(BTN + GAP, y)
+		friendsLabel.Position = UDim2.fromOffset(2 * (BTN + GAP) - 12, y + BTN + 6)
+	else
+		column.Position = UDim2.fromOffset(14, 80)
+		stats.Speed.Tile.Position = UDim2.fromOffset(0, 0)
+		stats.Cash.Tile.Position = UDim2.fromOffset(0, 78)
+		stats.Trophies.Tile.Position = UDim2.fromOffset(0, 156)
+		buyTile.Position = UDim2.fromOffset(0, 232)
+		for i, tile in ipairs(squares) do tile.Position = normalPos[i] end
+		passPos = Vector2.new(BTN + GAP, rowY)
+		friendsLabel.Position = UDim2.fromOffset(-12, rowY + 2 * BTN + GAP + 32)
+	end
+	rainbowFrame.Position = UDim2.fromOffset(passPos.X + BTN / 2, passPos.Y + BTN / 2)
+	priceLabel.Position = UDim2.fromOffset(passPos.X - 8, passPos.Y - 36)
+end
+rescale()
 
 ------------------------------------------------------------------------
 -- Popup panels (teleport menu, pets)

@@ -20,7 +20,7 @@
 	     Fuse 3 of the same pet into a better one.
 	  3. Cross the RED LINE and your full speed turns on. Speed is relative: every zone has
 	     a "pace", so the same Speed makes you run faster in a harder zone (and so does its boss).
-	  4. Every zone needs a certain Speed to leave it (shown on its golden gate).
+	  4. Every zone is open to everyone: the only way to fail is getting caught (or hit).
 	  5. Get hit by an obstacle or caught by the boss and you're sent back to the start.
 	  6. Rebirth when you're fast enough: resets cash + speed for a cash multiplier.
 	     PRESTIGE once you reach the final zone of the final map: start over from Map 1
@@ -39,8 +39,8 @@ local CollectionService = game:GetService("CollectionService")
 -- CONFIG  (tweak these to balance the game)
 ------------------------------------------------------------------------
 local CONFIG = {
-	ZoneWidth = 140,          -- every zone, including the start zones, is this wide...
-	ZoneLength = 400,         -- ...and this long (long zones = more room to pull away from the boss)
+	ZoneWidth = 180,          -- every zone, including the start zones, is this wide...
+	ZoneLength = 600,         -- ...and this long (long zones = more room to pull away from the boss)
 	IslandLength = 200,       -- the start islands stay this long (they sit at the end of their slot)
 	MapGap = 1,               -- empty sky (in zone lengths) between one map's end and the next island
 
@@ -51,9 +51,10 @@ local CONFIG = {
 	MaxSpeed = 1e9,           -- the most Speed you can buy
 	SpeedCostLinear = 0.05,   -- price of one point of Speed = 1 + Speed * linear + (Speed / curve)^2
 	SpeedCostCurve = 80,
-	PadBuyInterval = 0.2,     -- while you stand on the green pad, it buys speed this often
+	PadBuyInterval = 0.3,     -- while you stand on the green pad, it buys one step of speed this often
+	SpeedStep = 0.1,          -- one step of speed = 10% of the Speed you already have (at least +1)
 
-	CashPerZone = 20,         -- cash pickups lying in each zone
+	CashPerZone = 30,         -- cash pickups lying in each zone
 	CashRespawnTime = 8,      -- seconds before picked-up cash comes back
 
 	BossHeadStart = 45,       -- how far behind you the boss appears
@@ -89,7 +90,7 @@ local CONFIG = {
 --   zone fields:
 --     cash     = what each cash pickup in the zone is worth
 --     trophies = trophies for making it out of this zone (shown on the gate at its end)
---     need     = Speed you need to get into this zone (the boss is tuned to it)
+--     need     = Speed this zone is tuned for (its boss just about loses to this Speed)
 --     pace     = how much faster the same Speed runs here (harder zone = higher pace)
 --     theme    = which decorations + obstacles the zone gets
 --   egg fields: price = trophies to hatch one; pet bonus = extra cash % (Golden 3x, Rainbow 9x)
@@ -100,7 +101,7 @@ local function rgb(r, g, b) return Color3.fromRGB(r, g, b) end
 local MAPS = {
 	{
 		name = "Map 1", title = "Brainrot Skylands",
-		boss = { name = "Il Grande Zoomerone", size = 12, style = "round",
+		boss = { name = "Il Grande Zoomerone", look = "zoomerone", size = 12, style = "round",
 			body = rgb(105, 50, 175), accent = rgb(0, 230, 255) },
 		zones = {
 			{ name = "Green Meadow",  theme = "meadow",  cash = 1,    trophies = 1,    need = 0,    pace = 1.00,
@@ -153,7 +154,7 @@ local MAPS = {
 	},
 	{
 		name = "Map 2", title = "Turbo Badlands",
-		boss = { name = "Tralalero Turbino", size = 15, style = "boxy",
+		boss = { name = "Tralalero Turbino", look = "tralalero", legScale = 0.5, size = 15, style = "boxy",
 			body = rgb(30, 120, 200), accent = rgb(255, 70, 40) },
 		zones = {
 			{ name = "Jungle Run",    theme = "jungle",   cash = 12000,   trophies = 1500,   need = 6000,   pace = 1.24,
@@ -206,22 +207,22 @@ local MAPS = {
 ------------------------------------------------------------------------
 local ZONE_BOSSES = {
 	{ -- Map 1
-		{ name = "Tung Tung Sahur",       style = "boxy",  hat = "none",    body = rgb(175, 125, 75),  accent = rgb(95, 60, 35) },
-		{ name = "Brr Brr Patapim",       style = "round", hat = "leaf",    body = rgb(110, 175, 80),  accent = rgb(150, 100, 60) },
-		{ name = "Lirili Larila",         style = "round", hat = "antenna", body = rgb(150, 155, 165), accent = rgb(80, 170, 90) },
-		{ name = "Bombardiro Crocodilo",  style = "boxy",  hat = "fin",     body = rgb(85, 125, 75),   accent = rgb(60, 70, 60) },
-		{ name = "Trippi Troppi",         style = "round", hat = "horns",   body = rgb(255, 130, 60),  accent = rgb(200, 70, 40) },
-		{ name = "Ballerina Cappuccina",  style = "round", hat = "crown",   body = rgb(255, 170, 210), accent = rgb(130, 85, 60), eyes = rgb(255, 60, 160) },
-		{ name = "Chimpanzini Bananini",  style = "round", hat = "leaf",    body = rgb(255, 225, 80),  accent = rgb(120, 85, 50) },
-		{ name = "Cappuccino Assassino",  style = "boxy",  hat = "cap",     body = rgb(120, 80, 55),   accent = rgb(30, 30, 35) },
-		{ name = "Bombombini Gusini",     style = "round", hat = "fin",     body = rgb(240, 240, 245), accent = rgb(255, 160, 40) },
+		{ name = "Tung Tung Sahur", look = "tungtung", legScale = 0.55,       style = "boxy",  hat = "none",    body = rgb(175, 125, 75),  accent = rgb(95, 60, 35) },
+		{ name = "Brr Brr Patapim", look = "patapim", legScale = 0.6,       style = "round", hat = "leaf",    body = rgb(110, 175, 80),  accent = rgb(150, 100, 60) },
+		{ name = "Lirili Larila", look = "lirili", legScale = 0.35,         style = "round", hat = "antenna", body = rgb(150, 155, 165), accent = rgb(80, 170, 90) },
+		{ name = "Bombardiro Crocodilo", look = "bombardiro",  style = "boxy",  hat = "fin",     body = rgb(85, 125, 75),   accent = rgb(60, 70, 60) },
+		{ name = "Trippi Troppi", look = "trippi",         style = "round", hat = "horns",   body = rgb(255, 130, 60),  accent = rgb(200, 70, 40) },
+		{ name = "Ballerina Cappuccina", look = "ballerina", legScale = 0.6,  style = "round", hat = "crown",   body = rgb(255, 170, 210), accent = rgb(130, 85, 60), eyes = rgb(255, 60, 160) },
+		{ name = "Chimpanzini Bananini", look = "chimpanzini", legScale = 0.5,  style = "round", hat = "leaf",    body = rgb(255, 225, 80),  accent = rgb(120, 85, 50) },
+		{ name = "Cappuccino Assassino", look = "assassino",  style = "boxy",  hat = "cap",     body = rgb(120, 80, 55),   accent = rgb(30, 30, 35) },
+		{ name = "Bombombini Gusini", look = "bombombini",     style = "round", hat = "fin",     body = rgb(240, 240, 245), accent = rgb(255, 160, 40) },
 	},
 	{ -- Map 2
-		{ name = "Frigo Camelo",          style = "boxy",  hat = "antenna", body = rgb(230, 240, 250), accent = rgb(200, 160, 100), eyes = rgb(60, 200, 255) },
-		{ name = "Glorbo Fruttodrillo",   style = "round", hat = "horns",   body = rgb(140, 70, 190),  accent = rgb(90, 200, 90) },
-		{ name = "La Vaca Saturno",       style = "boxy",  hat = "horns",   body = rgb(245, 245, 245), accent = rgb(30, 30, 35), eyes = rgb(255, 210, 60) },
-		{ name = "Garamararam",           style = "round", hat = "antenna", body = rgb(60, 110, 230),  accent = rgb(255, 200, 60) },
-		{ name = "Bobrito Bandito",       style = "boxy",  hat = "cap",     body = rgb(150, 100, 60),  accent = rgb(200, 40, 50) },
+		{ name = "Frigo Camelo", look = "frigo", legScale = 0.7,          style = "boxy",  hat = "antenna", body = rgb(230, 240, 250), accent = rgb(200, 160, 100), eyes = rgb(60, 200, 255) },
+		{ name = "Glorbo Fruttodrillo", look = "glorbo", legScale = 0.35,   style = "round", hat = "horns",   body = rgb(60, 165, 70),   accent = rgb(240, 70, 80) },
+		{ name = "La Vaca Saturno", look = "vaca",       style = "boxy",  hat = "horns",   body = rgb(245, 245, 245), accent = rgb(30, 30, 35), eyes = rgb(255, 210, 60) },
+		{ name = "Garamararam", look = "garamararam",           style = "round", hat = "antenna", body = rgb(60, 110, 230),  accent = rgb(255, 200, 60) },
+		{ name = "Bobrito Bandito", look = "bobrito", legScale = 0.4,       style = "boxy",  hat = "cap",     body = rgb(150, 100, 60),  accent = rgb(200, 40, 50) },
 	},
 }
 for m, map in ipairs(MAPS) do
@@ -521,6 +522,7 @@ local HitRemote = makeRemote("Hit")             -- (message) you got hit: play t
 local ZoneClearedRemote = makeRemote("ZoneCleared") -- (zoneName, trophies, mapName)
 local AdminRemote = makeRemote("Admin")             -- admin panel buttons (checked on the server)
 local AnnounceRemote = makeRemote("Announce")       -- (message, from) big banner for everyone
+local BuySpeedRemote = makeRemote("BuySpeed")       -- the Buy Speed button on your screen
 local EventMultiplier = 1                           -- admin cash event (x2, x5, ...)
 
 local function notify(plr, text, color)
@@ -602,15 +604,15 @@ for _, name in ipairs({ "SVB_Atmosphere", "SVB_Bloom", "SVB_SunRays", "SVB_Color
 end
 Lighting.ClockTime = 14.6
 Lighting.GeographicLatitude = 35
-Lighting.Brightness = 2.6
-Lighting.Ambient = rgb(95, 95, 115)
-Lighting.OutdoorAmbient = rgb(145, 145, 160)
-Lighting.ColorShift_Top = rgb(255, 240, 215)
-Lighting.ShadowSoftness = 0.25
+Lighting.Brightness = 1.7
+Lighting.Ambient = rgb(70, 70, 85)
+Lighting.OutdoorAmbient = rgb(112, 112, 128)
+Lighting.ColorShift_Top = rgb(235, 215, 185)
+Lighting.ShadowSoftness = 0.2
 Lighting.GlobalShadows = true
-Lighting.EnvironmentDiffuseScale = 0.9
-Lighting.EnvironmentSpecularScale = 0.6
-Lighting.ExposureCompensation = 0.1
+Lighting.EnvironmentDiffuseScale = 0.55
+Lighting.EnvironmentSpecularScale = 0.45
+Lighting.ExposureCompensation = -0.3
 do
 	local function fx(class, name, props)
 		local o = Instance.new(class)
@@ -619,10 +621,10 @@ do
 		o.Parent = Lighting
 		return o
 	end
-	fx("Atmosphere", "SVB_Atmosphere", { Density = 0.24, Offset = 0.12, Color = rgb(200, 225, 255), Decay = rgb(110, 150, 200), Glare = 0.35, Haze = 1.3 })
-	fx("BloomEffect", "SVB_Bloom", { Intensity = 0.55, Size = 26, Threshold = 1.5 })
-	fx("SunRaysEffect", "SVB_SunRays", { Intensity = 0.05, Spread = 0.6 })
-	fx("ColorCorrectionEffect", "SVB_Color", { Saturation = 0.15, Contrast = 0.07, Brightness = 0.02, TintColor = rgb(255, 252, 245) })
+	fx("Atmosphere", "SVB_Atmosphere", { Density = 0.24, Offset = 0.12, Color = rgb(200, 225, 255), Decay = rgb(110, 150, 200), Glare = 0.1, Haze = 0.8 })
+	fx("BloomEffect", "SVB_Bloom", { Intensity = 0.3, Size = 22, Threshold = 2.2 })
+	fx("SunRaysEffect", "SVB_SunRays", { Intensity = 0.03, Spread = 0.5 })
+	fx("ColorCorrectionEffect", "SVB_Color", { Saturation = 0.12, Contrast = 0.12, Brightness = -0.04, TintColor = rgb(255, 250, 240) })
 	fx("Sky", "SVB_Sky", { SunAngularSize = 16, MoonAngularSize = 9, StarCount = 2500, CelestialBodiesShown = true })
 end
 
@@ -771,13 +773,57 @@ function TK.zoneUnderside(k, theme, rng)
 end
 
 -- scenery beside a zone (outside the glass walls)
+-- DETAIL for every zone: grassy (sandy, snowy...) banks outside the walls so the track
+-- runs through land instead of empty sky, striped curbs, lamp posts and a gantry with
+-- the zone's name over the middle of the track
+function TK.zoneDetail(k, zone, j, rng)
+	local t = TK.THEMES[zone.theme]
+	if not t then return end
+	local z0, z1 = k * L, (k + 1) * L
+	local accent = zone.accent or WHITE
+	for _, side in ipairs({ -1, 1 }) do
+		-- the bank: a wide shelf just below the track, with a lumpy outer edge
+		TK.fillBlock(CFrame.new(side * (HALF_W + 36), FLOOR_Y - 10.5, (z0 + z1) / 2), Vector3.new(66, 16, L), t.cap)
+		TK.fillBlock(CFrame.new(side * (HALF_W + 36), FLOOR_Y - 22, (z0 + z1) / 2), Vector3.new(60, 8, L), t.main)
+		for z = z0 + 15, z1 - 15, 30 do
+			TK.fillBall(Vector3.new(side * (HALF_W + 66 + rng:NextInteger(-4, 4)), FLOOR_Y - 9 + rng:NextInteger(-2, 3), z + rng:NextInteger(-6, 6)), rng:NextInteger(8, 13), (rng:NextNumber() < 0.5) and t.cap or t.main)
+		end
+		-- striped curbs along the foot of the walls
+		local seg = 50
+		for i = 0, math.floor(L / seg) - 1 do
+			newPart{ Name = "Curb", Size = Vector3.new(2, 0.6, seg), Position = Vector3.new(side * (HALF_W - 1), FLOOR_Y + 0.3, z0 + (i + 0.5) * seg), Color = (i % 2 == 0) and accent or WHITE, CanCollide = false, CastShadow = false, Parent = Decor }
+		end
+		-- lamp posts on the banks, glowing in the zone's colour
+		for z = z0 + 50, z1 - 50, 100 do
+			local x = side * (HALF_W + 5)
+			newPart{ Name = "LampPost", Shape = Enum.PartType.Cylinder, Size = Vector3.new(14, 1, 1), CFrame = CFrame.new(x, FLOOR_Y - 2.5 + 7, z) * CFrame.Angles(0, 0, math.pi / 2), Color = Color3.fromRGB(45, 45, 55), Material = Enum.Material.Metal, CanCollide = false, Parent = Decor }
+			newPart{ Name = "LampGlow", Shape = Enum.PartType.Ball, Size = Vector3.one * 2.6, Position = Vector3.new(x, FLOOR_Y - 2.5 + 15, z), Color = accent:Lerp(WHITE, 0.4), Material = Enum.Material.Neon, CanCollide = false, CastShadow = false, Parent = Decor }
+		end
+	end
+	-- the gantry over the middle of the zone: ZONE 3 - ICY TUNDRA
+	local gz = z0 + L / 2
+	local h = 26
+	for _, side in ipairs({ -1, 1 }) do
+		newPart{ Name = "GantryLeg", Size = Vector3.new(2.5, h, 2.5), Position = Vector3.new(side * (HALF_W + 2), FLOOR_Y + h / 2 - 2.5, gz), Color = Color3.fromRGB(60, 62, 75), Material = Enum.Material.Metal, Parent = Decor }
+	end
+	newPart{ Name = "GantryBeam", Size = Vector3.new(W + 6, 2, 2), Position = Vector3.new(0, FLOOR_Y + h - 2.5, gz), Color = Color3.fromRGB(60, 62, 75), Material = Enum.Material.Metal, CanCollide = false, Parent = Decor }
+	newPart{ Name = "GantryLight", Size = Vector3.new(W + 4, 0.4, 0.6), Position = Vector3.new(0, FLOOR_Y + h - 3.7, gz), Color = accent, Material = Enum.Material.Neon, CanCollide = false, CastShadow = false, Parent = Decor }
+	local board = newPart{ Name = "GantrySign", Size = Vector3.new(60, 8, 0.6), Position = Vector3.new(0, FLOOR_Y + h + 2.5, gz), Color = Color3.fromRGB(25, 25, 35), CanCollide = false, Parent = Decor }
+	for _, face in ipairs({ Enum.NormalId.Front, Enum.NormalId.Back }) do
+		addSign(board, face, {
+			{ text = "ZONE " .. j, color = accent:Lerp(WHITE, 0.3), weight = 0.7 },
+			{ text = string.upper(zone.name), color = WHITE, weight = 1.2 },
+		}, 10)
+	end
+end
+
 function TK.zoneScenery(k, theme, rng)
 	local t = TK.THEMES[theme]
 	if not t then return end
 	local per = math.max(2, math.floor(L / 100))
 	for _, side in ipairs({ -1, 1 }) do
 		for i = 1, per do
-			local x = side * (HALF_W + 30 + rng:NextInteger(0, 60))
+			local x = side * (HALF_W + 75 + rng:NextInteger(0, 70))
 			local z = k * L + (i - 0.5) * (L / per) + rng:NextInteger(-20, 20)
 			local h = rng:NextInteger(35, 75)
 			if t.shape == "hills" then
@@ -866,7 +912,7 @@ local function buildHoleyFloor(k, color, rng)
 	for r = 1, rows do
 		for c = 1, cols do
 			local safeRow = r <= 3 or r > rows - 3
-			if safeRow or keep[r][c] or rng:NextNumber() > 0.32 then
+			if safeRow or keep[r][c] or rng:NextNumber() > 0.22 then
 				local tile = newPart{
 					Name = "VoidTile",
 					Size = Vector3.new(tileW, 1, tileL),
@@ -968,9 +1014,9 @@ local function floorPatches(k, color, rng, z0, len, material)
 end
 
 -- Golden gate at the END of a zone: shows the trophies you get for making it out,
--- and the Speed you need to go through (the force field is red until you have it)
+-- and the zone that comes next
 local GATE_GOLD = Color3.fromRGB(255, 200, 40)
-local function buildTrophyGate(z, lines, need)
+local function buildTrophyGate(z, lines)
 	local h = 26
 	for _, side in ipairs({ -1, 1 }) do
 		local x = side * (HALF_W - 1.5)
@@ -987,12 +1033,6 @@ local function buildTrophyGate(z, lines, need)
 	newPart{ Name = "GateSill", Size = Vector3.new(W - 3, 0.3, 3), Position = Vector3.new(0, FLOOR_Y + 0.15, z), Color = GATE_GOLD, Material = Enum.Material.Neon, CanCollide = false, Parent = Map }
 	-- see-through panel you run through, with the reward on it
 	local panel = newPart{ Name = "TrophyPanel", Size = Vector3.new(W - 6, h - 3, 0.3), Position = Vector3.new(0, FLOOR_Y + (h - 3) / 2, z), Color = Color3.fromRGB(255, 225, 120), Transparency = 0.8, CanCollide = false, CastShadow = false, Parent = Map }
-	if need then
-		-- the client colors this green when your Speed is enough, red when it isn't
-		panel.Name = "SpeedGate"
-		panel:SetAttribute("Need", need)
-		CollectionService:AddTag(panel, "SVB_SpeedGate")
-	end
 	for _, face in ipairs({ Enum.NormalId.Front, Enum.NormalId.Back }) do
 		addSign(panel, face, lines, 8)
 	end
@@ -1515,7 +1555,10 @@ do
 			local side = (i % 2 == 0) and 1 or -1
 			local z = k * L + (i - 0.5) * (L / count)
 			local x = side * (HALF_W - math.random(6, 11))
-			fn(x, z, side, i)
+			-- keep the golden gates (zone edges) and the finish gate clear
+			if z - k * L > 14 and (k + 1) * L - z > 32 then
+				fn(x, z, side, i)
+			end
 		end
 	end
 end
@@ -1562,7 +1605,7 @@ do
 	local function rx(n) return math.floor(n * XS + 0.5) end
 	-- Box test in the part's own space, padded so it catches the player's body
 	local function boxCheck(part, pad)
-		pad = pad or Vector3.new(2, 6, 2)
+		pad = pad or Vector3.new(1, 4, 1)
 		return function(pos)
 			local rel = part.CFrame:PointToObjectSpace(pos)
 			local half = (part.Size + pad) / 2
@@ -1599,7 +1642,7 @@ do
 		CollectionService:AddTag(part, "SVB_Mover")
 		part.CFrame = moverCF(m, workspace:GetServerTimeNow())
 		if message then
-			pad = pad or Vector3.new(2, 6, 2)
+			pad = pad or Vector3.new(1, 4, 1)
 			addHazard(k, part, nil, function(pos)
 				local cf = moverCF(m, workspace:GetServerTimeNow())
 				local rel = cf:PointToObjectSpace(pos)
@@ -1615,12 +1658,17 @@ do
 		local center = basePos + Vector3.new(0, 2.2, 0)
 		solid{ Name = "SpinnerHub", Shape = Enum.PartType.Cylinder, Size = Vector3.new(4.4, 4, 4), CFrame = CFrame.new(center) * ROT_UP, Color = Color3.fromRGB(50, 50, 60) }
 		solid{ Name = "SpinnerCap", Shape = Enum.PartType.Ball, Size = Vector3.one * 3, Position = center + Vector3.new(0, 2.4, 0), Color = color, Material = Enum.Material.Neon }
-		mover(k, { Name = "SpinnerBar", Size = Vector3.new(length, 1.4, 1.4), CFrame = CFrame.new(center), Color = color, Material = Enum.Material.Neon }, "spin", { period = period }, message, Vector3.new(2, 5, 2))
+		-- never so fast you can't jump it (keeps its direction)
+		local sign = (period < 0) and -1 or 1
+		period = sign * math.max(math.abs(period), 4.5)
+		mover(k, { Name = "SpinnerBar", Size = Vector3.new(length, 1.4, 1.4), CFrame = CFrame.new(center), Color = color, Material = Enum.Material.Neon }, "spin", { period = period }, message, Vector3.new(1, 3, 1))
 	end
 
 	-- something that slides from wall to wall across the track
+	local SLIDE_MAX = 32
 	local function slider(k, z, size, color, material, period, phase, message, y)
 		local amp = HALF_W - size.X / 2 - 2
+		period = math.max(math.abs(period), TAU * amp / SLIDE_MAX)
 		return mover(k, { Name = "Slider", Size = size, Position = Vector3.new(0, FLOOR_Y + (y or size.Y / 2), z), Color = color, Material = material }, "slide", { amp = amp, period = period, phase = phase }, message)
 	end
 
@@ -1720,8 +1768,8 @@ do
 	function OBSTACLES.ice(k, z0, rng)
 		for _, dz in ipairs({ 55, 105, 165 }) do
 			local z = z0 + dz
-			local g1, g2 = rng:NextInteger(-42, -12), rng:NextInteger(12, 42)
-			local edges = { -HALF_W, g1 - 6, g1 + 6, g2 - 6, g2 + 6, HALF_W }
+			local g1, g2 = rng:NextInteger(-rx(42), -rx(14)), rng:NextInteger(rx(14), rx(42))
+			local edges = { -HALF_W, g1 - 9, g1 + 9, g2 - 9, g2 + 9, HALF_W }
 			for i = 1, #edges - 1, 2 do
 				local a, b = edges[i], edges[i + 1]
 				if b - a > 1 then
@@ -1737,9 +1785,9 @@ do
 		for _, dz in ipairs({ 70, 150 }) do
 			local z = z0 + dz
 			local goo = solid{ Name = "ToxicGoo", Size = Vector3.new(W, 0.4, 12), Position = Vector3.new(0, FLOOR_Y + 0.2, z), Color = Color3.fromRGB(120, 255, 60), Material = Enum.Material.Neon, CanCollide = false }
-			addHazard(k, goo, nil, nil, "The toxic goo got you! Jump over it or use a log.")
-			for _ = 1, 2 do
-				solid{ Name = "LogBridge", Shape = Enum.PartType.Cylinder, Size = Vector3.new(16, 3, 3), CFrame = CFrame.new(rng:NextInteger(-rx(40), rx(40)), FLOOR_Y + 1.2, z) * CFrame.Angles(0, math.rad(90), 0), Color = Color3.fromRGB(110, 75, 45), Material = Enum.Material.Wood }
+			addHazard(k, goo, nil, boxCheck(goo, Vector3.new(0, 7, 0)), "The toxic goo got you! Jump over it or use a log.")
+			for b = -1, 1 do
+				solid{ Name = "LogBridge", Shape = Enum.PartType.Cylinder, Size = Vector3.new(16, 4, 4), CFrame = CFrame.new(b * rx(32) + rng:NextInteger(-6, 6), FLOOR_Y + 1.6, z) * CFrame.Angles(0, math.rad(90), 0), Color = Color3.fromRGB(110, 75, 45), Material = Enum.Material.Wood }
 			end
 		end
 		slider(k, z0 + 110, Vector3.new(7, 7, 7), Color3.fromRGB(90, 70, 45), Enum.Material.Mud, 3, 0.25, "A mud ball splatted you!")
@@ -1750,13 +1798,13 @@ do
 		for _, dz in ipairs({ 60, 150 }) do
 			local z = z0 + dz
 			local lava = solid{ Name = "LavaRiver", Size = Vector3.new(W, 0.4, 14), Position = Vector3.new(0, FLOOR_Y + 0.2, z), Color = Color3.fromRGB(255, 100, 20), Material = Enum.Material.Neon, CanCollide = false }
-			addHazard(k, lava, nil, nil, "You fell in the lava! Use the stone bridges.")
-			for _ = 1, 2 do
-				solid{ Name = "StoneBridge", Size = Vector3.new(8, 1, 16), Position = Vector3.new(rng:NextInteger(-rx(38), rx(38)), FLOOR_Y + 0.9, z), Color = Color3.fromRGB(70, 55, 50), Material = Enum.Material.Basalt }
+			addHazard(k, lava, nil, boxCheck(lava, Vector3.new(0, 7, 0)), "You fell in the lava! Use the stone bridges.")
+			for b = -1, 1 do
+				solid{ Name = "StoneBridge", Size = Vector3.new(12, 1, 18), Position = Vector3.new(b * rx(32) + rng:NextInteger(-6, 6), FLOOR_Y + 0.9, z), Color = Color3.fromRGB(70, 55, 50), Material = Enum.Material.Basalt }
 			end
 		end
 		for i, x in ipairs({ -rx(30), 0, rx(30) }) do
-			crusher(k, x, z0 + 105, Color3.fromRGB(70, 55, 50), 2.6, i * 0.3, "SMASHED by a lava rock!")
+			crusher(k, x, z0 + 105, Color3.fromRGB(70, 55, 50), 3.4, i * 0.3, "SMASHED by a lava rock!")
 		end
 	end
 
@@ -1778,7 +1826,7 @@ do
 	function OBSTACLES.neon(k, z0, rng)
 		for i, dz in ipairs({ 55, 115, 175 }) do
 			local laser = solid{ Name = "Laser", Size = Vector3.new(W, 0.5, 0.5), Position = Vector3.new(0, FLOOR_Y + 1.6, z0 + dz), Color = Color3.fromRGB(255, 40, 60), Material = Enum.Material.Neon, CanCollide = false }
-			blinker(k, laser, i * 0.6, 2.4, 1.3, "Zapped by a laser! Jump over them or wait for them to turn off.")
+			blinker(k, laser, i * 0.6, 2.8, 1.0, "Zapped by a laser! Jump over them or wait for them to turn off.")
 			for _, side in ipairs({ -1, 1 }) do
 				solid{ Name = "LaserPost", Size = Vector3.new(1.5, 4, 1.5), Position = Vector3.new(side * (HALF_W - 0.75), FLOOR_Y + 2, z0 + dz), Color = Color3.fromRGB(40, 40, 60) }
 			end
@@ -1814,7 +1862,7 @@ do
 
 	-- lightning strikes (yellow circle blinks, then BOOM) + rock spires
 	function OBSTACLES.storm(k, z0, rng)
-		for i = 1, 7 do
+		for i = 1, 5 do
 			strike(k, rng:NextInteger(-rx(38), rx(38)), z0 + rng:NextInteger(45, 185), i * 0.95, 4.2, Color3.fromRGB(255, 235, 60), "Struck by lightning! Stay off the yellow circles.")
 		end
 		for _ = 1, 5 do
@@ -1863,7 +1911,7 @@ do
 	function OBSTACLES.factory(k, z0, rng)
 		for row, dz in ipairs({ 70, 145 }) do
 			for i, x in ipairs({ -rx(36), -rx(12), rx(12), rx(36) }) do
-				crusher(k, x, z0 + dz, Color3.fromRGB(110, 115, 125), 2.4, (i + row) * 0.25, "A piston squashed you flat!")
+				crusher(k, x, z0 + dz, Color3.fromRGB(110, 115, 125), 3.4, (i + row) * 0.25, "A piston squashed you flat!")
 			end
 		end
 		for _ = 1, 4 do
@@ -1873,8 +1921,8 @@ do
 
 	-- meteor strikes + spinning satellites
 	function OBSTACLES.space(k, z0, rng)
-		for i = 1, 7 do
-			strike(k, rng:NextInteger(-rx(38), rx(38)), z0 + rng:NextInteger(40, 185), i * 0.8, 3.6, Color3.fromRGB(255, 140, 50), "A meteor landed on you!")
+		for i = 1, 5 do
+			strike(k, rng:NextInteger(-rx(38), rx(38)), z0 + rng:NextInteger(40, 185), i * 0.8, 4, Color3.fromRGB(255, 140, 50), "A meteor landed on you!")
 		end
 		spinner(k, Vector3.new(-20, FLOOR_Y, z0 + 100), 30, Color3.fromRGB(120, 200, 255), 3, "A satellite smacked you!")
 		spinner(k, Vector3.new(20, FLOOR_Y, z0 + 160), 30, Color3.fromRGB(120, 200, 255), -2.8, "A satellite smacked you!")
@@ -1894,17 +1942,19 @@ do
 		for _, dz in ipairs({ 50, 160 }) do
 			local z = z0 + dz
 			local lava = solid{ Name = "LavaRiver", Size = Vector3.new(W, 0.4, 14), Position = Vector3.new(0, FLOOR_Y + 0.2, z), Color = Color3.fromRGB(255, 70, 20), Material = Enum.Material.Neon, CanCollide = false }
-			addHazard(k, lava, nil, nil, "Burned in the inferno! Use the bridges.")
-			solid{ Name = "StoneBridge", Size = Vector3.new(8, 1, 16), Position = Vector3.new(rng:NextInteger(-rx(38), rx(38)), FLOOR_Y + 0.9, z), Color = Color3.fromRGB(40, 30, 30), Material = Enum.Material.Basalt }
+			addHazard(k, lava, nil, boxCheck(lava, Vector3.new(0, 7, 0)), "Burned in the inferno! Use the bridges.")
+			for b = -1, 1 do
+				solid{ Name = "StoneBridge", Size = Vector3.new(12, 1, 18), Position = Vector3.new(b * rx(32) + rng:NextInteger(-6, 6), FLOOR_Y + 0.9, z), Color = Color3.fromRGB(40, 30, 30), Material = Enum.Material.Basalt }
+			end
 		end
 		for i = 0, 4 do
 			local x = rx(-40 + i * 20)
 			solid{ Name = "FireVent", Size = Vector3.new(5, 0.6, 5), Position = Vector3.new(x, FLOOR_Y + 0.3, z0 + 100), Color = Color3.fromRGB(40, 30, 30), Material = Enum.Material.Basalt }
 			local jet = solid{ Name = "FireJet", Size = Vector3.new(4, 14, 4), Position = Vector3.new(x, FLOOR_Y + 7, z0 + 100), Color = Color3.fromRGB(255, 120, 30), Material = Enum.Material.Neon, CanCollide = false, Transparency = 0.2 }
-			blinker(k, jet, i * 0.5, 2.5, 1.2, "Toasted by a fire jet!")
+			blinker(k, jet, i * 0.5, 2.8, 1.0, "Toasted by a fire jet!")
 		end
 		for i, x in ipairs({ -25, 25 }) do
-			crusher(k, x, z0 + 130, Color3.fromRGB(50, 35, 35), 2.2, i * 0.5, "SMASHED by a magma block!")
+			crusher(k, x, z0 + 130, Color3.fromRGB(50, 35, 35), 3.2, i * 0.5, "SMASHED by a magma block!")
 		end
 	end
 end
@@ -2555,7 +2605,7 @@ local function buildStartIsland(map)
 
 	-- The green pad: stand on it to buy speed (cash is only for speed)
 	local function buildSpeedPad(cx, cz)
-		local size = 22
+		local size = 14
 		local pad = newPart{ Name = "SpeedPad", Size = Vector3.new(size, 0.6, size), Position = Vector3.new(cx, FLOOR_Y + 0.3, cz), Color = Color3.fromRGB(60, 220, 80), Parent = Map }
 		addStuds(pad, Enum.NormalId.Top)
 		local edge = Color3.fromRGB(160, 255, 130)
@@ -2563,7 +2613,8 @@ local function buildStartIsland(map)
 			newPart{ Name = "PadEdge", Size = Vector3.new(size + 2, 0.8, 1), Position = Vector3.new(cx, FLOOR_Y + 0.4, cz + d * (size / 2 + 0.5)), Color = edge, Material = Enum.Material.Neon, CanCollide = false, Parent = Map }
 			newPart{ Name = "PadEdge", Size = Vector3.new(1, 0.8, size + 2), Position = Vector3.new(cx + d * (size / 2 + 0.5), FLOOR_Y + 0.4, cz), Color = edge, Material = Enum.Material.Neon, CanCollide = false, Parent = Map }
 		end
-		studsBillboard(pad, { { text = "BUY SPEED", color = edge } }, 10, 22, 3.4, 200)
+		-- the price and how much you get are drawn per player by the HUD (they're different for everyone)
+		studsBillboard(pad, { { text = "BUY SPEED", color = edge } }, 7, 12, 2.2, 160)
 		return {
 			min = Vector3.new(cx - size / 2, -10, cz - size / 2),
 			max = Vector3.new(cx + size / 2, FLOOR_Y + 10, cz + size / 2),
@@ -2660,6 +2711,7 @@ for m, map in ipairs(MAPS) do
 		if not holey then floorPatches(k, zone.floor, rng, nil, nil, THEME_LOOK[zone.theme] and THEME_LOOK[zone.theme].patch) end
 		decorateZone(k, zone.theme)
 		TK.zoneScenery(k, zone.theme, rng)
+		TK.zoneDetail(k, zone, j, rng)
 		-- rolling ramps across the track: run over them fast and you get some air
 		if not holey then
 			local look = THEME_LOOK[zone.theme] or {}
@@ -2690,8 +2742,8 @@ for m, map in ipairs(MAPS) do
 			buildTrophyGate((k + 1) * L, {
 				{ text = fmt(zone.trophies) .. " TROPHIES", color = Color3.fromRGB(255, 225, 80), weight = 2.2 },
 				{ text = "for making it out of ZONE " .. j, color = WHITE, weight = 0.55 },
-				{ text = "NEXT: " .. string.upper(nextZone.name) .. "  -  NEED " .. fmt(nextZone.need) .. " SPEED", color = Color3.fromRGB(255, 160, 160), weight = 0.6 },
-			}, nextZone.need)
+				{ text = "NEXT: " .. string.upper(nextZone.name), color = Color3.fromRGB(255, 200, 160), weight = 0.6 },
+			})
 		end
 		publishZone(k, zone.name, zone.accent, zone.need, zone.theme, zone.trophies, m, j, zone.pace)
 	end
@@ -2715,7 +2767,7 @@ for m, map in ipairs(MAPS) do
 	newPart{ Name = "EndWall", Size = Vector3.new(W + 2, 28, 1), Position = Vector3.new(0, FLOOR_Y + 14, endZ + 0.5), Color = Color3.fromRGB(200, 235, 255), Material = Enum.Material.Glass, Transparency = 0.82, CastShadow = false, Parent = Map }
 	do
 		local gold = Color3.fromRGB(255, 200, 40)
-		local x, z = 0, endZ - 2.5
+		local x, z = 0, endZ - 6 -- clear of the end wall
 		block(8, 2, 4, CFrame.new(x, FLOOR_Y + 1, z), Color3.fromRGB(70, 45, 30))
 		vcyl(3, 1.6, x, FLOOR_Y + 2, z, gold).Reflectance = 0.3
 		vcyl(5, 7, x, FLOOR_Y + 6.5, z, gold).Reflectance = 0.3
@@ -2805,6 +2857,18 @@ end
 local function pointCost(s)
 	return math.floor(1 + s * CONFIG.SpeedCostLinear + (s / CONFIG.SpeedCostCurve) ^ 2)
 end
+-- speed is bought in steps that grow with you: a step is SpeedStep (10%) of your Speed.
+-- SPEEDBUY.cost(s, n) = the price of n points starting at Speed s (all of pointCost added up)
+local SPEEDBUY = {}
+function SPEEDBUY.gain(speed)
+	return math.max(1, math.floor(speed * CONFIG.SpeedStep))
+end
+function SPEEDBUY.cost(s, n)
+	local function sq(m) return m * (m + 1) * (2 * m + 1) / 6 end
+	local s1 = n * s + n * (n - 1) / 2
+	local s2 = sq(s + n - 1) - ((s > 0) and sq(s - 1) or 0)
+	return math.floor(n + s1 * CONFIG.SpeedCostLinear + s2 / CONFIG.SpeedCostCurve ^ 2)
+end
 
 -- rebirths need Speed (not cash: cash is only for buying speed)
 local function rebirthSpeed(d)
@@ -2841,7 +2905,8 @@ local function applySpeed(plr)
 	local hum = char and char:FindFirstChildOfClass("Humanoid")
 	local hrp = char and char:FindFirstChild("HumanoidRootPart")
 	if d and hum then
-		local target = walkSpeedAt(d, hrp and hrp.Position)
+		-- admins can start a speed event for everyone
+		local target = walkSpeedAt(d, hrp and hrp.Position) * (workspace:GetAttribute("SpeedEvent") or 1)
 		if math.abs(hum.WalkSpeed - target) > 0.05 then
 			hum.WalkSpeed = target
 		end
@@ -2930,7 +2995,9 @@ local function syncStats(plr)
 	plr:SetAttribute("NextMultiplier", mult / multiplier(d) * (1 + (d.rebirths + 1) * CONFIG.RebirthBonus))
 	plr:SetAttribute("WalkSpeed", walkSpeedAt(d, hrp and hrp.Position))
 	plr:SetAttribute("MaxSpeed", CONFIG.MaxSpeed)
-	plr:SetAttribute("NextSpeedCost", pointCost(d.speed))
+	local gain = math.min(SPEEDBUY.gain(d.speed), math.max(0, CONFIG.MaxSpeed - d.speed))
+	plr:SetAttribute("NextSpeedGain", gain)
+	plr:SetAttribute("NextSpeedCost", SPEEDBUY.cost(d.speed, math.max(1, gain)))
 	plr:SetAttribute("RebirthSpeed", rebirthSpeed(d))
 	plr:SetAttribute("HasCashPass", HasPass[plr] == true)
 	updateSpeedTag(plr)
@@ -2987,7 +3054,7 @@ floorRay.RespectCanCollide = true
 local function findCashSpot(k)
 	for _ = 1, 12 do
 		local x = math.random(-(HALF_W - 16), HALF_W - 16)
-		local z = math.random(k * L + 12, (k + 1) * L - 12)
+		local z = math.random(k * L + 14, (k + 1) * L - 30) -- not inside the gates
 		local blocked = #workspace:GetPartBoundsInBox(CFrame.new(x, FLOOR_Y + 2.5, z), Vector3.new(7, 5, 7), obstacleOverlap) > 0
 		if not blocked then
 			local hit = workspace:Raycast(Vector3.new(x, FLOOR_Y + 3, z), Vector3.new(0, -8, 0), floorRay)
@@ -3118,10 +3185,10 @@ local function goldBar(model, cf, s)
 	cashPiece(model, { Name = "GoldBarTop", Size = Vector3.new(1.6, 0.25, 0.7) * s, CFrame = cf * CFrame.new(0, 0.37 * s, 0), Color = g:Lerp(WHITE, 0.25), Reflectance = 0.35 })
 end
 
-local function spawnCash(k)
+local function spawnCash(k, once) -- once = an extra pile that doesn't come back (admin cash rain)
 	local x, z = findCashSpot(k)
 	if not x then
-		task.delay(CONFIG.CashRespawnTime, spawnCash, k)
+		if not once then task.delay(CONFIG.CashRespawnTime, spawnCash, k) end
 		return
 	end
 	local info = ZONE_AT[k]
@@ -3236,7 +3303,7 @@ local function spawnCash(k)
 		syncStats(plr)
 		CashFxRemote:FireAllClients(hitbox.Position, amount, plr)
 		model:Destroy()
-		task.delay(CONFIG.CashRespawnTime, spawnCash, k)
+		if not once then task.delay(CONFIG.CashRespawnTime, spawnCash, k) end
 	end)
 end
 
@@ -3276,7 +3343,7 @@ end
 
 local function buildBoss(def, ownerName, cf)
 	local s = def.size
-	local leg = s * 0.45
+	local leg = s * (def.legScale or 0.45)
 
 	local model = Instance.new("Model")
 	model.Name = def.name
@@ -3292,85 +3359,624 @@ local function buildBoss(def, ownerName, cf)
 	root.Parent = model
 	model.PrimaryPart = root
 
-	local boxy = def.style == "boxy"
-	if boxy then
-		-- a chunky block with a lighter belly
-		weldTo(root, bossPart(nil, Vector3.new(s, s * 0.9, s), def.body), CFrame.new())
-		weldTo(root, bossPart(nil, Vector3.new(s * 1.02, s * 0.3, s * 1.02), def.body:Lerp(WHITE, 0.6)), CFrame.new(0, -s * 0.3, 0))
-		for t = -2, 2 do -- a row of teeth
-			weldTo(root, bossPart(nil, Vector3.new(s * 0.1, s * 0.14, s * 0.06), WHITE), CFrame.new(t * s * 0.15, -s * 0.12, -s * 0.52) * CFrame.Angles(0, 0, math.rad(45)))
-		end
-	else
-		weldTo(root, bossPart(Enum.PartType.Ball, Vector3.new(s, s, s), def.body), CFrame.new())
-		weldTo(root, bossPart(nil, Vector3.new(s * 0.45, s * 0.13, s * 0.1), Color3.fromRGB(40, 10, 10)), CFrame.new(0, -s * 0.15, -s * 0.46))
-		for _, sx in ipairs({ -1, 1 }) do -- fangs
-			weldTo(root, bossPart(nil, Vector3.new(s * 0.07, s * 0.1, s * 0.05), WHITE), CFrame.new(sx * s * 0.12, -s * 0.1, -s * 0.52))
+	--------------------------------------------------------------------
+	-- every brainrot has its own body (see BUILD below). Coordinates are
+	-- in boss units (s): the body's bottom is at y = -0.5, front is -Z.
+	--------------------------------------------------------------------
+	local skin = def.body
+	local light = skin:Lerp(WHITE, 0.4)
+	local dark = skin:Lerp(BLACK, 0.25)
+	local acc = def.accent
+	local NEON = Enum.Material.Neon
+	local BALL = Enum.PartType.Ball
+	local CYL = Enum.PartType.Cylinder
+	local UPRIGHT = CFrame.Angles(0, 0, math.pi / 2) -- stands a cylinder (axis X) up
+	local function V(x, y, z) return Vector3.new(x * s, y * s, z * s) end
+	local function C(x, y, z) return CFrame.new(x * s, y * s, z * s) end
+	local function add(shape, size, color, cf, material, parent)
+		return weldTo(parent or root, bossPart(shape, size, color, material), cf)
+	end
+	local function ell(size, color, cf, material, parent) -- an oval
+		local p = bossPart(nil, size, color, material)
+		local mesh = Instance.new("SpecialMesh")
+		mesh.MeshType = Enum.MeshType.Sphere
+		mesh.Parent = p
+		return weldTo(parent or root, p, cf)
+	end
+	local function ball(d, color, pos, material, parent)
+		return add(BALL, Vector3.one * d * s, color, CFrame.new(pos), material, parent)
+	end
+	local function bcyl(h, d, color, pos, material, parent) -- a standing cylinder
+		return add(CYL, Vector3.new(h * s, d * s, d * s), color, CFrame.new(pos) * UPRIGHT, material, parent)
+	end
+	local function seg(a, b, d, color, material, parent) -- a rod from a to b (studs)
+		local len = (b - a).Magnitude
+		return add(CYL, Vector3.new(len, d * s, d * s), color, CFrame.lookAt((a + b) / 2, b + Vector3.new(0.001, 0.001, 0)) * CFrame.Angles(0, math.pi / 2, 0), material, parent)
+	end
+	local function cup(y0, y1, d0, d1, color, z) -- a tapered cup from y0 to y1
+		local n = 6
+		for i = 0, n - 1 do
+			local f = (i + 0.5) / n
+			bcyl((y1 - y0) / n + 0.01, d0 + (d1 - d0) * f, color, V(0, y0 + (y1 - y0) * f, z or 0))
 		end
 	end
-	local top = boxy and s * 0.45 or s * 0.5
+	local bodyTop = 0.5
 
-	-- what it wears on its head
-	local hat = def.hat or "none"
-	if hat == "crown" then
-		weldTo(root, bossPart(nil, Vector3.new(s * 0.5, s * 0.1, s * 0.5), GOLD, Enum.Material.Neon), CFrame.new(0, top, 0))
-		for _, c in ipairs({ { -1, -1 }, { -1, 1 }, { 1, -1 }, { 1, 1 } }) do
-			weldTo(root, bossPart(nil, Vector3.new(s * 0.08, s * 0.2, s * 0.08), GOLD, Enum.Material.Neon), CFrame.new(c[1] * s * 0.21, top + s * 0.12, c[2] * s * 0.21))
+	-- FACE on a head: hc = centre (studs), hd = head size (studs),
+	-- kind = "sphere" | "cyl" (round left-right only) | "flat" (a box front)
+	local function face(hc, hd, kind, o)
+		o = o or {}
+		local function fz(x, y)
+			if kind == "flat" then return hc.Z - hd * 0.5 end
+			if kind == "cyl" then return hc.Z - hd * math.sqrt(math.max(0.02, 0.25 - x * x)) end
+			return hc.Z - hd * math.sqrt(math.max(0.02, 0.25 - x * x - y * y))
 		end
-	elseif hat == "horns" then
+		local function F(x, y, out)
+			return CFrame.new(hc.X + x * hd, hc.Y + y * hd, fz(x, y) - (out or 0) * hd)
+		end
+		local ey, es, ex0 = o.eyeY or 0.12, o.eyeSize or 1, o.eyeX or 0.2
 		for _, sx in ipairs({ -1, 1 }) do
-			weldTo(root, bossPart(nil, Vector3.new(s * 0.12, s * 0.36, s * 0.12), Color3.fromRGB(245, 235, 210)), CFrame.new(sx * s * 0.28, top + s * 0.02, 0) * CFrame.Angles(0, 0, -sx * 0.35))
+			local ex = sx * ex0
+			ell(Vector3.new(0.3, 0.34, 0.18) * hd * es, WHITE, F(ex, ey, 0.01))
+			ell(Vector3.new(0.17, 0.19, 0.06) * hd * es, def.eyes or Color3.fromRGB(255, 40, 40), F(ex + sx * 0.01, ey - 0.01, 0.085 * es), NEON)
+			ell(Vector3.new(0.08, 0.1, 0.04) * hd * es, Color3.fromRGB(15, 10, 15), F(ex + sx * 0.01, ey - 0.01, 0.11 * es))
+			add(BALL, Vector3.one * hd * 0.045 * es, WHITE, F(ex - 0.03, ey + 0.05, 0.125 * es), NEON)
+			if o.brows ~= false then
+				add(nil, Vector3.new(0.32, 0.07, 0.12) * hd * es, o.browColor or Color3.fromRGB(25, 20, 20), F(ex, ey + 0.19 * es, 0.02) * CFrame.Angles(0, 0, sx * 0.4))
+			end
+			if o.blush ~= false then
+				ell(Vector3.new(0.14, 0.07, 0.04) * hd, Color3.fromRGB(255, 120, 140), F(sx * 0.34, ey - 0.16, 0.005) * CFrame.Angles(0, -sx * 0.6, 0)).Transparency = 0.3
+			end
 		end
-	elseif hat == "fin" then
-		weldTo(root, bossPart(nil, Vector3.new(s * 0.12, s * 0.45, s * 0.5), def.body:Lerp(BLACK, 0.2)), CFrame.new(0, top + s * 0.18, s * 0.1) * CFrame.Angles(math.rad(-20), 0, 0))
-	elseif hat == "antenna" then
-		for _, sx in ipairs({ -1, 1 }) do
-			weldTo(root, bossPart(nil, Vector3.new(s * 0.05, s * 0.4, s * 0.05), BLACK), CFrame.new(sx * s * 0.16, top + s * 0.15, 0) * CFrame.Angles(0, 0, -sx * 0.3))
-			weldTo(root, bossPart(Enum.PartType.Ball, Vector3.one * s * 0.14, def.accent, Enum.Material.Neon), CFrame.new(sx * s * 0.23, top + s * 0.36, 0))
+		if o.nose ~= false then ell(Vector3.new(0.12, 0.09, 0.1) * hd, o.noseColor or dark, F(0, ey - 0.13, 0.03)) end
+		if o.mouth ~= false then
+			local my, mw = o.mouthY or (ey - 0.29), o.mouthW or 1
+			ell(Vector3.new(0.46 * mw, 0.2, 0.08) * hd, Color3.fromRGB(45, 12, 18), F(0, my, 0.01))
+			ell(Vector3.new(0.22 * mw, 0.08, 0.05) * hd, Color3.fromRGB(240, 100, 120), F(0, my - 0.05, 0.035))
+			local teeth = o.teeth or 2
+			for t = -teeth, teeth do
+				local tx = t * 0.17 * mw / teeth
+				add(nil, Vector3.new(0.06, 0.07, 0.04) * hd, WHITE, F(tx, my + 0.07, 0.03) * CFrame.Angles(0, 0, math.rad(45)))
+			end
 		end
-	elseif hat == "leaf" then
-		weldTo(root, bossPart(nil, Vector3.new(s * 0.06, s * 0.2, s * 0.06), Color3.fromRGB(100, 70, 40)), CFrame.new(0, top + s * 0.08, 0))
-		weldTo(root, bossPart(nil, Vector3.new(s * 0.32, s * 0.05, s * 0.18), Color3.fromRGB(70, 190, 70)), CFrame.new(s * 0.14, top + s * 0.17, 0) * CFrame.Angles(0, 0, 0.3))
-	elseif hat == "cap" then
-		weldTo(root, bossPart(nil, Vector3.new(s * 0.7, s * 0.14, s * 0.7), def.accent), CFrame.new(0, top + s * 0.02, 0))
-		weldTo(root, bossPart(nil, Vector3.new(s * 0.7, s * 0.05, s * 0.4), def.accent:Lerp(BLACK, 0.2)), CFrame.new(0, top - s * 0.03, -s * 0.45))
+		return F
 	end
 
-	for _, sx in ipairs({ -1, 1 }) do
-		-- eyes (glowing pupils) + angry brows
-		weldTo(root, bossPart(Enum.PartType.Ball, Vector3.one * s * 0.3, WHITE), CFrame.new(sx * s * 0.2, s * 0.12, -s * 0.42))
-		weldTo(root, bossPart(Enum.PartType.Ball, Vector3.one * s * 0.13, def.eyes or Color3.fromRGB(255, 30, 30), Enum.Material.Neon), CFrame.new(sx * s * 0.2, s * 0.12, -s * 0.56))
-		weldTo(root, bossPart(nil, Vector3.new(s * 0.32, s * 0.07, s * 0.1), Color3.fromRGB(25, 20, 20)), CFrame.new(sx * s * 0.2, s * 0.3, -s * 0.47) * CFrame.Angles(0, 0, sx * 0.4))
-
-		-- legs on hip joints (the World client swings them while it runs), with big sneakers
-		local legPart = bossPart(nil, Vector3.new(s * 0.18, leg + s * 0.1, s * 0.18), def.accent)
-		legPart.Name = "BossLeg"
-		legPart.Anchored = false
-		legPart.CanCollide = false
-		legPart.CanQuery = false
-		legPart.Massless = true
-		local hip = CFrame.new(sx * s * 0.22, -s / 2 + s * 0.1, 0)
-		legPart.CFrame = root.CFrame * hip * CFrame.new(0, -(leg + s * 0.1) / 2, 0)
-		legPart.Parent = model
+	-- LIMBS on joints (the World client swings them while it runs)
+	local function limb(motorName, size, color, joint, sx)
+		local p = bossPart(nil, size, color)
+		p.Name = (motorName == "LegMotor") and "BossLeg" or "BossArm"
+		p.Anchored = false
+		p.CanCollide = false
+		p.CanQuery = false
+		p.Massless = true
+		p.CFrame = root.CFrame * joint * CFrame.new(0, -size.Y / 2, 0)
+		p.Parent = model
 		local motor = Instance.new("Motor6D")
-		motor.Name = "LegMotor"
+		motor.Name = motorName
 		motor.Part0 = root
-		motor.Part1 = legPart
-		motor.C0 = hip
-		motor.C1 = CFrame.new(0, (leg + s * 0.1) / 2, 0)
+		motor.Part1 = p
+		motor.C0 = joint
+		motor.C1 = CFrame.new(0, size.Y / 2, 0)
 		motor:SetAttribute("Side", sx)
 		motor.Parent = root
-		local shoe = bossPart(nil, Vector3.new(s * 0.3, s * 0.14, s * 0.42), WHITE)
-		shoe.Anchored = false
-		shoe.CanCollide = false
-		shoe.CanQuery = false
-		shoe.Massless = true
-		shoe.CFrame = legPart.CFrame * CFrame.new(0, -(leg + s * 0.1) / 2 + s * 0.05, -s * 0.06)
-		local w = Instance.new("WeldConstraint")
-		w.Part0 = legPart
-		w.Part1 = shoe
-		w.Parent = shoe
-		shoe.Parent = model
+		return p
 	end
+	local hands = {}
+	local function legs(o)
+		local legLen = leg + s * 0.1
+		local footY = -legLen / 2 + s * 0.05
+		for _, sx in ipairs({ -1, 1 }) do
+			local p = limb("LegMotor", Vector3.new(o.thick * s, legLen, o.thick * s), o.color or acc, CFrame.new(sx * o.x * s, -s / 2 + s * 0.1, (o.z or 0) * s), sx)
+			local foot = o.foot or "sneaker"
+			if foot == "sneaker" then
+				local fs = o.footSize or 1
+				add(nil, Vector3.new(0.3, 0.14, 0.42) * s * fs, o.shoe or WHITE, CFrame.new(0, footY, -s * 0.06 * fs), nil, p)
+				add(nil, Vector3.new(0.32, 0.05, 0.45) * s * fs, Color3.fromRGB(40, 40, 45), CFrame.new(0, footY - s * 0.08 * fs, -s * 0.06 * fs), nil, p)
+				add(nil, Vector3.new(0.02, 0.05, 0.26) * s * fs, o.swoosh or acc, CFrame.new(sx * s * 0.155 * fs, footY, -s * 0.05 * fs) * CFrame.Angles(math.rad(-12), 0, 0), NEON, p)
+				ell(Vector3.new(0.3, 0.13, 0.14) * s * fs, (o.shoe or WHITE):Lerp(BLACK, 0.1), CFrame.new(0, footY, -s * 0.24 * fs), nil, p)
+				for l = 0, 2 do
+					add(nil, Vector3.new(0.16, 0.02, 0.03) * s * fs, o.swoosh or acc, CFrame.new(0, footY + s * 0.075 * fs, -s * (0.1 - l * 0.06) * fs), nil, p)
+				end
+			elseif foot == "hoof" then
+				add(nil, Vector3.new(o.thick * 1.25, 0.14, o.thick * 1.3) * s, Color3.fromRGB(60, 45, 35), CFrame.new(0, footY - s * 0.02, 0), nil, p)
+				add(nil, Vector3.new(0.015, 0.15, o.thick * 1.32) * s, Color3.fromRGB(30, 22, 18), CFrame.new(0, footY - s * 0.02, 0), nil, p)
+			elseif foot == "ballet" then
+				ell(Vector3.new(0.13, 0.12, 0.3) * s, Color3.fromRGB(255, 160, 200), CFrame.new(0, footY - s * 0.02, -s * 0.06), nil, p)
+				add(nil, Vector3.new(o.thick * 1.1, 0.03, o.thick * 1.1) * s, Color3.fromRGB(255, 120, 180), CFrame.new(0, footY + s * 0.12, 0), nil, p)
+			elseif foot == "paw" then
+				ell(Vector3.new(0.3, 0.12, 0.36) * s, o.pawColor or dark, CFrame.new(0, footY - s * 0.02, -s * 0.06), nil, p)
+				for t = -1, 1 do
+					ball(0.08, o.clawColor or Color3.fromRGB(245, 240, 225), Vector3.new(t * s * 0.09, footY - s * 0.03, -s * 0.24), nil, p)
+				end
+			elseif foot == "root" then
+				for r = 0, 3 do
+					local a = r * math.pi / 2 + 0.4
+					local base = Vector3.new(0, footY + s * 0.04, 0)
+					seg(base, base + Vector3.new(math.cos(a) * s * 0.22, -s * 0.08, math.sin(a) * s * 0.22), 0.06, o.color or acc, Enum.Material.Wood, p)
+				end
+			elseif foot == "sandal" then
+				add(nil, Vector3.new(o.thick * 1.2, 0.05, o.thick * 1.35) * s, Color3.fromRGB(150, 100, 55), CFrame.new(0, footY - s * 0.06, -s * 0.03), nil, p)
+				add(nil, Vector3.new(o.thick * 1.02, 0.04, 0.05) * s, Color3.fromRGB(110, 70, 40), CFrame.new(0, footY + s * 0.02, -s * 0.06), nil, p)
+				for t = -1, 1 do
+					ball(0.07, Color3.fromRGB(240, 235, 225), Vector3.new(t * s * 0.08, footY - s * 0.02, -o.thick * s * 0.55), nil, p)
+				end
+			end
+		end
+	end
+	local function arms(o)
+		for _, sx in ipairs({ -1, 1 }) do
+			local armLen = o.len * s
+			local shoulder = CFrame.new(sx * o.x * s, o.y * s, (o.z or 0) * s) * CFrame.Angles(0, 0, sx * (o.splay or 0.35))
+			local arm = limb("ArmMotor", Vector3.new(o.thick * s, armLen, o.thick * s), o.color or dark, shoulder, sx)
+			local hand = add(BALL, Vector3.one * s * (o.hand or 0.2), o.glove or WHITE, CFrame.new(0, -armLen / 2 - s * 0.05, 0), nil, arm)
+			if o.cuff ~= false then
+				add(nil, Vector3.new(o.thick * 1.3, 0.05, o.thick * 1.3) * s, o.cuffColor or acc, CFrame.new(0, -armLen / 2 + s * 0.03, 0), nil, arm)
+			end
+			hands[sx] = hand
+		end
+	end
+	local function hover() -- flying bosses: a glow underneath instead of legs
+		ell(V(0.8, 0.06, 0.8), acc, C(0, -0.62, 0), NEON).Transparency = 0.4
+	end
+	local function propeller(pos, d, parent)
+		bcyl(0.12, 0.1, Color3.fromRGB(60, 60, 65), pos, Enum.Material.Metal, parent)
+		for b = 0, 1 do
+			add(nil, Vector3.new(d * s, 0.07 * s, 0.03 * s), Color3.fromRGB(35, 35, 40), CFrame.new(pos + Vector3.new(0, 0, -0.07 * s)) * CFrame.Angles(0, 0, b * math.pi / 2 + 0.4), nil, parent)
+		end
+	end
+	local function crown(pos, w)
+		add(nil, Vector3.new(w, w * 0.22, w), GOLD, CFrame.new(pos), NEON)
+		for i = 0, 4 do
+			local a = i * TAU / 5
+			add(nil, Vector3.new(w * 0.14, w * 0.4, w * 0.14), GOLD, CFrame.new(pos + Vector3.new(math.cos(a) * w * 0.42, w * 0.25, math.sin(a) * w * 0.42)), NEON)
+			ball(0.05, Color3.fromRGB(255, 60, 90), pos + Vector3.new(math.cos(a) * w * 0.5, 0, math.sin(a) * w * 0.5), NEON)
+		end
+	end
+	local function horns(hc, hd, color)
+		for _, sx in ipairs({ -1, 1 }) do
+			local base = hc + Vector3.new(sx * hd * 0.32, hd * 0.36, 0)
+			seg(base, base + Vector3.new(sx * hd * 0.2, hd * 0.22, 0), 0.1, color)
+			seg(base + Vector3.new(sx * hd * 0.2, hd * 0.22, 0), base + Vector3.new(sx * hd * 0.24, hd * 0.42, -hd * 0.05), 0.06, color)
+		end
+	end
+
+	local BUILD = {}
+	-- Tung Tung Sahur: a tall wooden log with a baseball bat
+	BUILD.tungtung = function()
+		local wood = Enum.Material.Wood
+		bcyl(1.5, 0.72, skin, V(0, 0.25, 0), wood)
+		bcyl(0.02, 0.62, light, V(0, 1.0, 0), wood)
+		bcyl(0.025, 0.42, dark, V(0, 1.005, 0), wood)
+		bcyl(0.03, 0.2, light, V(0, 1.01, 0), wood)
+		for g = 0, 6 do -- bark grain, all round the back and sides
+			local a = math.rad(-60 + g * 50)
+			add(nil, V(0.03, 1.3, 0.02), dark, CFrame.new(math.sin(a) * 0.36 * s, 0.25 * s, math.cos(a) * 0.36 * s) * CFrame.Angles(0, a, 0))
+		end
+		ell(V(0.12, 0.18, 0.05), dark, C(0.3, -0.1, -0.2) * CFrame.Angles(0, -0.9, 0))
+		face(V(0, 0.58, 0), 0.72 * s, "cyl", { mouthW = 1.25, teeth = 3, eyeSize = 0.95 })
+		arms({ x = 0.4, y = 0.35, len = 0.7, thick = 0.1, color = skin:Lerp(BLACK, 0.1), glove = skin, cuff = false })
+		legs({ x = 0.17, thick = 0.13, color = skin:Lerp(BLACK, 0.1) })
+		local bat = Color3.fromRGB(205, 160, 95)
+		add(CYL, V(0.95, 0.1, 0.1), bat, CFrame.new(0, s * 0.4, -s * 0.06) * UPRIGHT, wood, hands[1])
+		ball(0.18, bat, Vector3.new(0, s * 0.85, -s * 0.06), wood, hands[1])
+		add(CYL, V(0.12, 0.12, 0.12), Color3.fromRGB(40, 40, 45), CFrame.new(0, s * 0.02, -s * 0.06) * UPRIGHT, nil, hands[1])
+		bodyTop = 1.0
+	end
+	-- Brr Brr Patapim: a walking tree with a huge nose and root feet
+	BUILD.patapim = function()
+		local bark, leaf = Color3.fromRGB(120, 85, 50), skin
+		bcyl(1.15, 0.62, bark, V(0, 0.07, 0), Enum.Material.Wood)
+		ell(V(1.45, 0.8, 1.25), leaf, C(0, 0.9, 0.08), Enum.Material.Grass)
+		ell(V(0.7, 0.55, 0.6), leaf:Lerp(WHITE, 0.15), C(0.45, 1.05, -0.2), Enum.Material.Grass)
+		ell(V(0.7, 0.5, 0.6), leaf:Lerp(BLACK, 0.15), C(-0.5, 0.95, 0.15), Enum.Material.Grass)
+		ell(V(0.6, 0.5, 0.6), leaf:Lerp(WHITE, 0.08), C(0, 1.25, 0.2), Enum.Material.Grass)
+		for i = 0, 4 do -- little red berries in the leaves
+			local a = i * 1.3
+			ball(0.08, Color3.fromRGB(230, 50, 60), V(math.cos(a) * 0.6, 0.75 + (i % 2) * 0.2, math.sin(a) * 0.5 - 0.1))
+		end
+		local F = face(V(0, 0.22, 0), 0.62 * s, "cyl", { nose = false, eyeSize = 1.05, browColor = Color3.fromRGB(70, 45, 25) })
+		ell(Vector3.new(0.22, 0.2, 0.42) * 0.62 * s, Color3.fromRGB(200, 140, 100), F(0, -0.04, 0.2) * CFrame.Angles(math.rad(20), 0, 0))
+		for _, sx in ipairs({ -1, 1 }) do -- a bushy mustache
+			ell(Vector3.new(0.22, 0.08, 0.08) * 0.62 * s, Color3.fromRGB(70, 45, 25), F(sx * 0.12, -0.12, 0.1) * CFrame.Angles(0, 0, sx * 0.3))
+		end
+		arms({ x = 0.33, y = 0.3, len = 0.6, thick = 0.08, color = bark, glove = leaf, hand = 0.24, cuff = false })
+		legs({ x = 0.15, thick = 0.11, color = bark, foot = "root" })
+		bodyTop = 1.35
+	end
+	-- Lirili Larila: an elephant with a cactus growing on its back and sandals
+	BUILD.lirili = function()
+		ell(V(1.15, 1.0, 1.15), skin, C(0, 0, 0.12))
+		ball(0.78, skin, V(0, 0.18, -0.32))
+		for _, sx in ipairs({ -1, 1 }) do
+			ell(V(0.08, 0.62, 0.52), skin:Lerp(BLACK, 0.1), C(sx * 0.42, 0.22, -0.2) * CFrame.Angles(0, sx * 0.5, 0))
+			ell(V(0.06, 0.44, 0.36), Color3.fromRGB(240, 170, 180), C(sx * 0.4, 0.22, -0.23) * CFrame.Angles(0, sx * 0.5, 0))
+			seg(V(sx * 0.12, -0.04, -0.64), V(sx * 0.17, -0.1, -0.8), 0.06, Color3.fromRGB(250, 245, 230)) -- tusks
+		end
+		local F = face(V(0, 0.18, -0.32), 0.78 * s, "sphere", { nose = false, mouthY = -0.3, mouthW = 0.7 })
+		local prev = F(0, -0.05, 0.02).Position
+		for i = 1, 5 do -- the trunk swings down and curls forward
+			local a = i * 0.42
+			local nxt = prev + Vector3.new(0, -math.cos(a) * s * 0.12, -math.sin(a) * s * 0.08)
+			seg(prev, nxt, 0.15 - i * 0.015, skin:Lerp(BLACK, 0.05))
+			prev = nxt
+		end
+		-- the cactus on its back, with a pink flower
+		local green = Color3.fromRGB(70, 160, 70)
+		bcyl(0.5, 0.2, green, V(0, 0.7, 0.3))
+		ball(0.2, green, V(0, 0.95, 0.3))
+		for _, sx in ipairs({ -1, 1 }) do
+			seg(V(0, 0.65, 0.3), V(sx * 0.2, 0.65, 0.3), 0.12, green)
+			bcyl(0.2, 0.12, green, V(sx * 0.2, 0.75, 0.3))
+		end
+		ball(0.1, Color3.fromRGB(255, 90, 170), V(0, 1.06, 0.3), NEON)
+		for i = 1, 16 do -- spines on the elephant
+			local a, b = i * 2.4, (i % 5) * 0.5 - 0.9
+			local dir = Vector3.new(math.cos(a) * math.cos(b), math.sin(b), math.sin(a) * math.cos(b))
+			if dir.Z > -0.2 then
+				add(nil, V(0.025, 0.025, 0.1), Color3.fromRGB(250, 245, 220), CFrame.lookAt(Vector3.new(dir.X * 0.57, dir.Y * 0.5, dir.Z * 0.57 + 0.12) * s, Vector3.new(dir.X * 2, dir.Y * 2, dir.Z * 2 + 0.12) * s))
+			end
+		end
+		legs({ x = 0.3, thick = 0.26, color = skin:Lerp(BLACK, 0.08), foot = "sandal" })
+		bodyTop = 1.05
+	end
+	-- Bombardiro Crocodilo: a crocodile bomber plane (it flies)
+	BUILD.bombardiro = function()
+		ell(V(0.8, 0.75, 1.9), skin, C(0, 0, 0.3))
+		ell(V(0.6, 0.35, 1.5), skin:Lerp(WHITE, 0.35), C(0, -0.22, 0.3))
+		for i = 0, 3 do -- camo patches
+			ell(V(0.3, 0.06, 0.4), skin:Lerp(BLACK, 0.3), C(((i % 2) * 2 - 1) * 0.15, 0.36, 0.0 + i * 0.3) * CFrame.Angles(0, i, 0))
+		end
+		ball(0.72, skin, V(0, 0.1, -0.42))
+		local F = face(V(0, 0.1, -0.42), 0.72 * s, "sphere", { mouth = false, nose = false, eyeY = 0.24, blush = false })
+		local snout = add(nil, V(0.5, 0.2, 0.62), skin:Lerp(BLACK, 0.08), C(0, -0.05, -0.92))
+		add(nil, V(0.48, 0.04, 0.6), Color3.fromRGB(45, 12, 18), C(0, -0.12, 0), nil, snout)
+		for _, sx in ipairs({ -1, 1 }) do
+			ball(0.07, Color3.fromRGB(30, 50, 30), Vector3.new(sx * s * 0.1, s * 0.1, -s * 0.26), nil, snout)
+			for t = 0, 4 do
+				add(nil, V(0.05, 0.08, 0.05), WHITE, CFrame.new(sx * s * 0.23, -s * 0.11, -s * 0.26 + t * s * 0.12) * CFrame.Angles(0, 0, math.rad(45)), nil, snout)
+			end
+		end
+		-- wings with propellers and bombs
+		local metal = Color3.fromRGB(110, 120, 110)
+		add(nil, V(2.5, 0.07, 0.6), metal, C(0, -0.02, 0.2), Enum.Material.Metal)
+		for _, sx in ipairs({ -1, 1 }) do
+			add(nil, V(0.2, 0.08, 0.62), Color3.fromRGB(200, 40, 40), C(sx * 1.15, -0.02, 0.2))
+			bcyl(0.02, 0.22, WHITE, V(sx * 0.8, 0.02, 0.2))
+			bcyl(0.025, 0.12, Color3.fromRGB(200, 40, 40), V(sx * 0.8, 0.025, 0.2))
+			add(CYL, V(0.4, 0.18, 0.18), Color3.fromRGB(70, 75, 70), C(sx * 0.65, -0.08, -0.05) * CFrame.Angles(0, math.pi / 2, 0), Enum.Material.Metal)
+			propeller(V(sx * 0.65, -0.08, -0.27), 0.5)
+			ell(V(0.14, 0.14, 0.42), Color3.fromRGB(45, 45, 50), C(sx * 0.35, -0.32, 0.25))
+		end
+		add(nil, V(0.07, 0.45, 0.38), skin, C(0, 0.35, 1.1) * CFrame.Angles(math.rad(-25), 0, 0))
+		add(nil, V(0.9, 0.06, 0.3), metal, C(0, 0.08, 1.12), Enum.Material.Metal)
+		hover()
+		bodyTop = 0.6
+	end
+	-- Trippi Troppi: a shrimp body with a cat's head
+	BUILD.trippi = function()
+		for i = 0, 5 do -- curled shrimp shell, segment by segment
+			local a = i * 0.38
+			local d = 0.75 - i * 0.09
+			ell(V(d, d * 0.85, 0.32), (i % 2 == 0) and skin or skin:Lerp(WHITE, 0.2), C(0, -0.05 - math.sin(a) * 0.25 + i * 0.02, 0.1 + i * 0.2 - math.max(0, i - 3) * 0.05) * CFrame.Angles(a, 0, 0))
+		end
+		for _, sx in ipairs({ -1, 1 }) do -- tail fan
+			ell(V(0.24, 0.05, 0.3), acc, C(sx * 0.12, -0.32, 1.25) * CFrame.Angles(0.5, sx * 0.4, 0))
+		end
+		for i = 0, 2 do -- little shrimp legs under the belly
+			for _, sx in ipairs({ -1, 1 }) do
+				seg(V(sx * 0.15, -0.3, 0.4 + i * 0.18), V(sx * 0.2, -0.48, 0.38 + i * 0.18), 0.04, acc)
+			end
+		end
+		local catFur = Color3.fromRGB(245, 200, 150)
+		ball(0.8, catFur, V(0, 0.15, -0.3))
+		face(V(0, 0.15, -0.3), 0.8 * s, "sphere", { noseColor = Color3.fromRGB(255, 120, 150), mouthW = 0.7, teeth = 1 })
+		for _, sx in ipairs({ -1, 1 }) do
+			local ear = CFrame.new(sx * s * 0.24, s * 0.52, -s * 0.3) * CFrame.Angles(0, 0, -sx * 0.35)
+			add(nil, V(0.2, 0.24, 0.06), catFur, ear * CFrame.Angles(0, 0, math.rad(45)))
+			add(nil, V(0.12, 0.15, 0.065), Color3.fromRGB(255, 170, 190), ear * CFrame.new(0, -s * 0.01, -s * 0.005) * CFrame.Angles(0, 0, math.rad(45)))
+			for w = -1, 1 do
+				add(nil, V(0.32, 0.012, 0.012), Color3.fromRGB(30, 30, 30), C(sx * 0.4, 0.03 + w * 0.04, -0.66) * CFrame.Angles(0, 0, sx * w * 0.2))
+			end
+			-- shrimp feelers
+			seg(V(sx * 0.1, 0.5, -0.45), V(sx * 0.35, 1.0, -0.7), 0.025, acc)
+		end
+		arms({ x = 0.36, y = -0.05, z = -0.2, len = 0.3, thick = 0.08, color = acc, glove = acc, hand = 0.16, cuff = false })
+		legs({ x = 0.18, thick = 0.12, color = acc })
+		bodyTop = 0.6
+	end
+	-- Ballerina Cappuccina: a ballerina with a cappuccino cup for a head
+	BUILD.ballerina = function()
+		ell(V(0.42, 0.55, 0.34), skin, C(0, -0.18, 0))
+		for r = 0, 2 do -- the tutu: layered frills
+			bcyl(0.06, 1.15 - r * 0.15, (r % 2 == 0) and Color3.fromRGB(255, 190, 225) or Color3.fromRGB(255, 225, 240), V(0, -0.36 + r * 0.05, 0)).Transparency = 0.1
+		end
+		for i = 0, 11 do
+			local a = i * TAU / 12
+			ball(0.12, Color3.fromRGB(255, 205, 230), V(math.cos(a) * 0.56, -0.37, math.sin(a) * 0.56))
+		end
+		bcyl(0.1, 0.16, Color3.fromRGB(255, 220, 200), V(0, 0.12, 0))
+		local cupColor = Color3.fromRGB(250, 248, 240)
+		cup(0.15, 0.8, 0.5, 0.72, cupColor)
+		bcyl(0.05, 0.71, acc, V(0, 0.68, 0))
+		ell(V(0.68, 0.14, 0.68), Color3.fromRGB(245, 230, 205), C(0, 0.8, 0))
+		ell(V(0.18, 0.025, 0.16), Color3.fromRGB(170, 110, 70), C(0, 0.87, 0))
+		add(CYL, V(0.06, 0.26, 0.26), cupColor, C(0.4, 0.48, 0) * CFrame.Angles(0, math.pi / 2, 0))
+		face(V(0, 0.42, 0), 0.62 * s, "cyl", { eyeY = 0.08, mouthW = 0.7, teeth = 1 })
+		crown(V(0, 0.92, 0), 0.25 * s)
+		arms({ x = 0.2, y = 0.0, len = 0.5, thick = 0.07, color = Color3.fromRGB(255, 220, 200), glove = Color3.fromRGB(255, 220, 200), hand = 0.12, splay = 2.4, cuff = false })
+		legs({ x = 0.1, thick = 0.08, color = Color3.fromRGB(255, 225, 210), foot = "ballet" })
+		bodyTop = 1.05
+	end
+	-- Chimpanzini Bananini: a monkey poking out of a peeled banana
+	BUILD.chimpanzini = function()
+		local yellow, cream = skin, Color3.fromRGB(255, 245, 200)
+		for i = 0, 5 do -- the banana, curving back at the top
+			local f = i / 5
+			ell(V(0.75 - f * 0.25, 0.4, 0.7 - f * 0.25), yellow, C(0, -0.32 + f * 1.05, 0.05 + f * f * 0.35))
+		end
+		ell(V(0.14, 0.18, 0.14), Color3.fromRGB(90, 70, 40), C(0, 0.8, 0.42))
+		for i = 0, 3 do -- peel flaps opening outward
+			local a = i * math.pi / 2 + math.pi / 4
+			local flap = CFrame.new(math.cos(a) * s * 0.4, s * 0.0, math.sin(a) * s * 0.4) * CFrame.Angles(0, -a + math.pi / 2, 0) * CFrame.Angles(math.rad(-25), 0, 0)
+			add(nil, V(0.32, 0.5, 0.05), yellow, flap)
+			add(nil, V(0.28, 0.46, 0.02), cream, flap * CFrame.new(0, 0, -s * 0.03))
+		end
+		local fur = Color3.fromRGB(120, 80, 45)
+		ball(0.62, fur, V(0, 0.4, -0.18))
+		ell(V(0.5, 0.42, 0.18), Color3.fromRGB(235, 195, 155), C(0, 0.36, -0.42))
+		for _, sx in ipairs({ -1, 1 }) do
+			ball(0.2, fur, V(sx * 0.33, 0.45, -0.15))
+			ball(0.12, Color3.fromRGB(235, 195, 155), V(sx * 0.36, 0.45, -0.2))
+		end
+		face(V(0, 0.4, -0.22), 0.6 * s, "sphere", { noseColor = Color3.fromRGB(90, 55, 30), mouthW = 0.8 })
+		arms({ x = 0.36, y = 0.15, len = 0.6, thick = 0.1, color = fur, glove = Color3.fromRGB(235, 195, 155), cuff = false })
+		legs({ x = 0.16, thick = 0.11, color = fur, foot = "paw", pawColor = Color3.fromRGB(235, 195, 155) })
+		bodyTop = 0.9
+	end
+	-- Cappuccino Assassino: a coffee cup ninja with two blades
+	BUILD.assassino = function()
+		local cupColor = Color3.fromRGB(245, 240, 230)
+		cup(-0.5, 0.55, 0.68, 0.98, cupColor)
+		bcyl(0.12, 0.92, skin, V(0, 0.38, 0))
+		ell(V(0.92, 0.16, 0.92), Color3.fromRGB(235, 215, 185), C(0, 0.56, 0))
+		ell(V(0.4, 0.2, 0.4), skin, C(0, 0.6, 0))
+		add(CYL, V(0.08, 0.36, 0.36), cupColor, C(0.53, 0.0, 0) * CFrame.Angles(0, math.pi / 2, 0))
+		-- the ninja mask band, its knot and tails at the back
+		bcyl(0.2, 0.95, Color3.fromRGB(25, 25, 30), V(0, 0.15, 0))
+		ball(0.14, Color3.fromRGB(25, 25, 30), V(0, 0.15, 0.48))
+		for _, sx in ipairs({ -1, 1 }) do
+			add(nil, V(0.1, 0.4, 0.03), Color3.fromRGB(25, 25, 30), C(sx * 0.08, -0.05, 0.52) * CFrame.Angles(0.2, 0, sx * 0.3))
+		end
+		face(V(0, 0.1, 0), 0.92 * s, "cyl", { eyeY = 0.05, eyeSize = 0.8, blush = false, nose = false, mouthY = -0.22, mouthW = 0.8 })
+		arms({ x = 0.5, y = 0.05, len = 0.42, thick = 0.12, color = Color3.fromRGB(30, 30, 35), glove = Color3.fromRGB(30, 30, 35), cuffColor = Color3.fromRGB(200, 30, 40) })
+		for _, sx in ipairs({ -1, 1 }) do
+			add(nil, V(0.05, 0.12, 0.06), Color3.fromRGB(80, 40, 30), C(0, -0.05, -0.08), nil, hands[sx])
+			add(nil, V(0.02, 0.07, 0.42), Color3.fromRGB(215, 220, 230), C(0, -0.05, -0.33), Enum.Material.Metal, hands[sx])
+		end
+		legs({ x = 0.2, thick = 0.14, color = Color3.fromRGB(30, 30, 35), shoe = Color3.fromRGB(40, 40, 45), swoosh = Color3.fromRGB(200, 30, 40) })
+		bodyTop = 0.7
+	end
+	-- Bombombini Gusini: a goose that is also a jet (it flies)
+	BUILD.bombombini = function()
+		ell(V(0.85, 0.75, 1.3), skin, C(0, 0, 0.2))
+		ell(V(0.65, 0.4, 1.0), skin:Lerp(Color3.fromRGB(200, 200, 210), 0.5), C(0, -0.22, 0.25))
+		seg(V(0, 0.2, -0.25), V(0, 0.72, -0.5), 0.26, skin)
+		ball(0.5, skin, V(0, 0.8, -0.55))
+		local F = face(V(0, 0.8, -0.55), 0.5 * s, "sphere", { mouth = false, nose = false, eyeY = 0.1 })
+		ell(Vector3.new(0.4, 0.18, 0.6) * 0.5 * s, acc, F(0, -0.12, 0.2))
+		ell(Vector3.new(0.38, 0.06, 0.55) * 0.5 * s, acc:Lerp(BLACK, 0.3), F(0, -0.18, 0.2))
+		local metal = Color3.fromRGB(150, 155, 165)
+		for _, sx in ipairs({ -1, 1 }) do
+			add(nil, V(1.0, 0.06, 0.55), metal, C(sx * 0.75, 0, 0.25) * CFrame.Angles(0, sx * -0.35, 0), Enum.Material.Metal)
+			add(nil, V(0.5, 0.07, 0.1), acc, C(sx * 0.8, 0.01, 0.05) * CFrame.Angles(0, sx * -0.35, 0))
+			add(CYL, V(0.6, 0.2, 0.2), Color3.fromRGB(80, 85, 95), C(sx * 0.55, -0.15, 0.25) * CFrame.Angles(0, math.pi / 2, 0), Enum.Material.Metal)
+			add(CYL, V(0.04, 0.16, 0.16), Color3.fromRGB(255, 150, 40), C(sx * 0.55, -0.15, 0.56) * CFrame.Angles(0, math.pi / 2, 0), NEON)
+			ell(V(0.18, 0.04, 0.24), acc, C(sx * 0.15, -0.5, 0.1)) -- dangling goose feet
+		end
+		add(nil, V(0.06, 0.4, 0.35), metal, C(0, 0.35, 0.8) * CFrame.Angles(math.rad(-25), 0, 0), Enum.Material.Metal)
+		hover()
+		bodyTop = 1.1
+	end
+	-- Il Grande Zoomerone: the king of Map 1, with a crown, a cape and a sceptre
+	BUILD.zoomerone = function()
+		add(BALL, V(1, 1, 1), skin, CFrame.new())
+		ell(V(0.98, 0.5, 0.98), dark, C(0, -0.24, 0))
+		ell(V(0.62, 0.5, 0.22), light, C(0, -0.16, -0.38))
+		for i = -1, 1, 2 do
+			local y = i * 0.2
+			local r = math.sqrt(0.25 - y * y) * 2.04
+			bcyl(0.05, r, acc, V(0, y, 0), NEON).Transparency = 0.1
+		end
+		face(Vector3.zero, s, "sphere", {})
+		crown(V(0, 0.5, 0), 0.45 * s)
+		add(nil, V(0.9, 0.95, 0.05), Color3.fromRGB(190, 30, 50), C(0, -0.15, 0.53) * CFrame.Angles(math.rad(12), 0, 0), Enum.Material.Fabric)
+		add(nil, V(0.92, 0.06, 0.08), GOLD, C(0, 0.3, 0.49), NEON)
+		arms({ x = 0.46, y = -0.04, len = 0.42, thick = 0.13 })
+		add(CYL, V(0.8, 0.06, 0.06), GOLD, CFrame.new(0, s * 0.3, -s * 0.05) * UPRIGHT, NEON, hands[1]) -- the sceptre
+		ball(0.15, acc, Vector3.new(0, s * 0.72, -s * 0.05), NEON, hands[1])
+		legs({ x = 0.22, thick = 0.18 })
+		bodyTop = 0.75
+	end
+	-- Frigo Camelo: a fridge with a camel on top, on long camel legs
+	BUILD.frigo = function()
+		local white, metal = skin, Color3.fromRGB(190, 195, 205)
+		add(nil, V(0.85, 1.25, 0.75), white, C(0, 0.125, 0))
+		add(nil, V(0.86, 0.02, 0.76), metal, C(0, 0.4, 0))
+		add(nil, V(0.04, 0.3, 0.06), metal, C(0.33, 0.6, -0.4), Enum.Material.Metal)
+		add(nil, V(0.04, 0.5, 0.06), metal, C(0.33, 0.05, -0.4), Enum.Material.Metal)
+		for i, col in ipairs({ Color3.fromRGB(255, 80, 80), Color3.fromRGB(80, 180, 255), Color3.fromRGB(255, 210, 60) }) do -- fridge magnets
+			add(nil, V(0.08, 0.08, 0.02), col, C(-0.25 + i * 0.1, 0.2 - (i % 2) * 0.12, -0.38))
+		end
+		add(nil, V(0.75, 0.04, 0.02), Color3.fromRGB(60, 200, 255), C(0, 0.72, -0.38), NEON)
+		local tan = acc
+		for i = 0, 1 do -- humps
+			ell(V(0.4, 0.38, 0.32), tan, C(0, 0.85, 0.08 + i * 0.25))
+		end
+		seg(V(0, 0.75, -0.18), V(0, 1.15, -0.32), 0.2, tan)
+		ell(V(0.42, 0.38, 0.58), tan, C(0, 1.2, -0.42))
+		ell(V(0.3, 0.22, 0.25), tan:Lerp(WHITE, 0.2), C(0, 1.12, -0.68))
+		for _, sx in ipairs({ -1, 1 }) do
+			ell(V(0.06, 0.14, 0.1), tan:Lerp(BLACK, 0.2), C(sx * 0.2, 1.38, -0.32) * CFrame.Angles(0, 0, -sx * 0.4))
+		end
+		face(V(0, 1.2, -0.42), 0.48 * s, "sphere", { eyeY = 0.18, mouthY = -0.27, mouthW = 0.6, teeth = 1, nose = false })
+		legs({ x = 0.26, thick = 0.12, color = tan, foot = "hoof" })
+		bodyTop = 1.45
+	end
+	-- Glorbo Fruttodrillo: a watermelon crocodile
+	BUILD.glorbo = function()
+		ell(V(1.1, 0.95, 1.3), skin, C(0, 0, 0.15))
+		for i = -2, 2 do -- melon stripes front to back
+			local x = i * 0.2
+			local f = math.sqrt(math.max(0.01, 1 - (x / 0.55) ^ 2))
+			ell(V(0.08, 0.96 * f, 1.31 * f), skin:Lerp(BLACK, 0.45), C(x, 0, 0.15))
+		end
+		-- a slice cut out of the top: red fruit with seeds
+		ell(V(0.6, 0.06, 0.6), Color3.fromRGB(240, 70, 80), C(0, 0.46, 0.35))
+		for i = 0, 5 do
+			local a = i * TAU / 6
+			ell(V(0.04, 0.02, 0.07), BLACK, C(math.cos(a) * 0.18, 0.49, 0.35 + math.sin(a) * 0.18))
+		end
+		local croc = Color3.fromRGB(70, 140, 70)
+		ball(0.68, croc, V(0, 0.12, -0.45))
+		face(V(0, 0.12, -0.45), 0.68 * s, "sphere", { mouth = false, nose = false, eyeY = 0.26, blush = false })
+		local snout = add(nil, V(0.45, 0.18, 0.55), croc, C(0, -0.03, -0.92))
+		add(nil, V(0.43, 0.04, 0.53), Color3.fromRGB(45, 12, 18), C(0, -0.1, 0), nil, snout)
+		for _, sx in ipairs({ -1, 1 }) do
+			ball(0.06, Color3.fromRGB(30, 60, 30), Vector3.new(sx * s * 0.1, s * 0.09, -s * 0.24), nil, snout)
+			for t = 0, 3 do
+				add(nil, V(0.05, 0.08, 0.05), WHITE, CFrame.new(sx * s * 0.21, -s * 0.1, -s * 0.22 + t * s * 0.12) * CFrame.Angles(0, 0, math.rad(45)), nil, snout)
+			end
+		end
+		for i = 0, 3 do -- croc tail
+			ell(V(0.35 - i * 0.07, 0.25 - i * 0.04, 0.35), croc, C(0, -0.2 - i * 0.05, 0.85 + i * 0.25))
+		end
+		legs({ x = 0.32, thick = 0.18, color = croc, foot = "paw", pawColor = croc:Lerp(BLACK, 0.2) })
+		bodyTop = 0.55
+	end
+	-- La Vaca Saturno: a cow planet with a ring (it floats)
+	BUILD.vaca = function()
+		add(BALL, V(1, 1, 1), skin, CFrame.new())
+		for i = 1, 7 do -- cow spots
+			local a = i * 1.9
+			local y = ((i % 3) - 1) * 0.2
+			local r = math.sqrt(0.25 - y * y)
+			local x, z = math.cos(a) * r, math.sin(a) * r
+			if z > -0.25 then
+				ell(V(0.26, 0.2, 0.03), BLACK, CFrame.lookAt(V(x, y, z), V(x * 2, y * 2, z * 2)))
+			end
+		end
+		local ring = bcyl(0.04, 1.75, def.eyes or GOLD, V(0, -0.05, 0), NEON)
+		ring.CFrame = root.CFrame * C(0, -0.05, 0) * CFrame.Angles(0.35, 0, 0) * UPRIGHT
+		ring.Transparency = 0.25
+		local F = face(Vector3.zero, s, "sphere", { mouth = false, nose = false, eyeY = 0.14 })
+		ell(V(0.5, 0.28, 0.2), Color3.fromRGB(255, 180, 190), F(0, -0.17, 0.04))
+		for _, sx in ipairs({ -1, 1 }) do
+			ell(V(0.07, 0.1, 0.04), Color3.fromRGB(150, 70, 90), F(sx * 0.1, -0.15, 0.12))
+			ell(V(0.08, 0.18, 0.3), skin, C(sx * 0.55, 0.22, -0.05) * CFrame.Angles(0, 0, sx * 0.9))
+		end
+		horns(Vector3.zero, s, Color3.fromRGB(245, 235, 210))
+		for i = 0, 1 do -- two little moons
+			local a = i * math.pi + 0.6
+			ball(0.12, Color3.fromRGB(200, 200, 215), V(math.cos(a) * 0.95, 0.25 - i * 0.4, math.sin(a) * 0.6))
+		end
+		hover()
+		bodyTop = 0.75
+	end
+	-- Garamararam: a three-eyed alien with tentacles (it floats)
+	BUILD.garamararam = function()
+		add(BALL, V(1, 1, 1), skin, CFrame.new())
+		ell(V(0.98, 0.45, 0.98), skin:Lerp(BLACK, 0.2), C(0, -0.25, 0))
+		for i = 0, 7 do
+			local a = i * 0.8
+			ball(0.1, light, V(math.cos(a) * 0.42, 0.18 + (i % 2) * 0.1, math.sin(a) * 0.3 + 0.12))
+		end
+		local F = face(Vector3.zero, s, "sphere", { blush = false, eyeX = 0.24 })
+		ell(V(0.24, 0.26, 0.1), WHITE, F(0, 0.34, 0.0))
+		ell(V(0.12, 0.14, 0.04), def.eyes or acc, F(0, 0.34, 0.05), NEON)
+		ell(V(0.05, 0.07, 0.03), BLACK, F(0, 0.34, 0.07))
+		for i = 0, 5 do -- tentacles with gold suckers
+			local a = i * TAU / 6
+			local prev = V(math.cos(a) * 0.32, -0.35, math.sin(a) * 0.32)
+			for k = 1, 3 do
+				local nxt = prev + V(math.cos(a) * 0.08, -0.14, math.sin(a) * 0.08)
+				seg(prev, nxt, 0.13 - k * 0.025, skin:Lerp(BLACK, 0.1))
+				ball(0.05, acc, (prev + nxt) / 2 + Vector3.new(0, 0, -0.04 * s))
+				prev = nxt
+			end
+		end
+		for _, sx in ipairs({ -1, 1 }) do
+			seg(V(sx * 0.16, 0.42, 0), V(sx * 0.25, 0.75, 0), 0.04, BLACK)
+			ball(0.13, acc, V(sx * 0.25, 0.78, 0), NEON)
+		end
+		hover()
+		bodyTop = 0.9
+	end
+	-- Bobrito Bandito: a beaver bandit in a cowboy hat with a bag of cash
+	BUILD.bobrito = function()
+		ell(V(0.9, 1.05, 0.85), skin, C(0, 0.02, 0))
+		ell(V(0.6, 0.75, 0.3), light, C(0, -0.05, -0.32))
+		ball(0.72, skin, V(0, 0.72, -0.05))
+		local F = face(V(0, 0.72, -0.05), 0.72 * s, "sphere", { mouth = false, noseColor = Color3.fromRGB(40, 25, 20), browColor = Color3.fromRGB(40, 25, 20) })
+		ell(V(0.76, 0.16, 0.76), Color3.fromRGB(25, 25, 30), C(0, 0.8, -0.05)) -- bandit mask
+		for _, sx in ipairs({ -1, 1 }) do
+			add(nil, Vector3.new(0.12, 0.17, 0.05) * 0.72 * s, WHITE, F(sx * 0.07, -0.2, 0.03))
+			ball(0.14, skin:Lerp(BLACK, 0.2), V(sx * 0.3, 1.0, -0.05))
+		end
+		ell(V(0.5, 0.06, 0.26), Color3.fromRGB(70, 35, 25), C(0, 0.6, -0.36)) -- grin
+		-- red bandana and cowboy hat
+		ell(V(0.75, 0.16, 0.7), acc, C(0, 0.42, -0.02))
+		add(nil, V(0.2, 0.22, 0.04), acc, C(0, 0.3, -0.36) * CFrame.Angles(0, 0, math.rad(45)))
+		local hat = Color3.fromRGB(110, 70, 40)
+		bcyl(0.05, 1.0, hat, V(0, 1.06, -0.05))
+		bcyl(0.28, 0.5, hat, V(0, 1.2, -0.05))
+		bcyl(0.06, 0.52, Color3.fromRGB(40, 25, 20), V(0, 1.1, -0.05))
+		-- flat beaver tail with a criss-cross pattern
+		local tail = ell(V(0.5, 0.08, 0.7), Color3.fromRGB(80, 55, 40), C(0, -0.38, 0.72))
+		for g = -1, 1 do
+			add(nil, V(0.4, 0.01, 0.02), Color3.fromRGB(55, 38, 25), C(0, 0.04, g * 0.15), nil, tail)
+		end
+		arms({ x = 0.42, y = 0.1, len = 0.45, thick = 0.12, color = skin, glove = skin:Lerp(BLACK, 0.2), cuff = false })
+		local bag = ell(V(0.32, 0.36, 0.3), Color3.fromRGB(110, 170, 90), C(0, -0.25, 0), nil, hands[-1])
+		add(nil, V(0.14, 0.04, 0.14), Color3.fromRGB(80, 60, 40), C(0, 0.16, 0), nil, bag)
+		add(nil, V(0.02, 0.16, 0.1), Color3.fromRGB(40, 90, 40), C(-0.165, 0, 0), nil, bag)
+		legs({ x = 0.2, thick = 0.13, color = skin, foot = "paw", pawColor = skin:Lerp(BLACK, 0.25) })
+		bodyTop = 1.35
+	end
+	-- Tralalero Turbino: a shark on legs with big sneakers
+	BUILD.tralalero = function()
+		ell(V(0.85, 0.8, 1.9), skin, C(0, 0, 0.25))
+		ell(V(0.7, 0.4, 1.7), Color3.fromRGB(240, 245, 250), C(0, -0.2, 0.2))
+		ball(0.76, skin, V(0, 0.04, -0.42))
+		ell(V(0.66, 0.36, 0.5), Color3.fromRGB(240, 245, 250), C(0, -0.14, -0.52))
+		face(V(0, 0.04, -0.42), 0.76 * s, "sphere", { eyeY = 0.18, eyeSize = 0.85, nose = false, blush = false, mouthY = -0.2, mouthW = 1.25, teeth = 4 })
+		add(nil, V(0.08, 0.5, 0.5), dark, C(0, 0.55, 0.25) * CFrame.Angles(math.rad(-30), 0, 0))
+		for _, sx in ipairs({ -1, 1 }) do
+			for g = 0, 2 do
+				add(nil, V(0.01, 0.22, 0.025), dark, C(sx * 0.42, 0.05, -0.1 + g * 0.08))
+			end
+			add(nil, V(0.45, 0.06, 0.3), dark, C(sx * 0.5, -0.15, 0.1) * CFrame.Angles(0, sx * -0.4, sx * -0.4))
+		end
+		add(nil, V(0.07, 0.6, 0.3), dark, C(0, 0.25, 1.2) * CFrame.Angles(math.rad(-35), 0, 0))
+		add(nil, V(0.07, 0.45, 0.25), dark, C(0, -0.2, 1.15) * CFrame.Angles(math.rad(35), 0, 0))
+		legs({ x = 0.2, thick = 0.15, color = skin, footSize = 1.25, swoosh = acc })
+		bodyTop = 0.85
+	end
+	-- anything without a look of its own: a classic ball or block brainrot
+	BUILD.classic = function()
+		if def.style == "boxy" then
+			add(nil, V(1, 0.9, 1), skin, CFrame.new())
+			add(nil, V(1.02, 0.3, 1.02), light, C(0, -0.3, 0))
+			face(Vector3.zero, s, "flat", {})
+		else
+			add(BALL, V(1, 1, 1), skin, CFrame.new())
+			ell(V(0.62, 0.5, 0.22), light, C(0, -0.16, -0.38))
+			face(Vector3.zero, s, "sphere", {})
+		end
+		arms({ x = 0.48, y = -0.04, len = 0.42, thick = 0.13 })
+		legs({ x = 0.22, thick = 0.18 })
+	end
+	;(BUILD[def.look] or BUILD.classic)()
 
 	local glow = Instance.new("PointLight")
 	glow.Color = def.accent
@@ -3407,7 +4013,7 @@ local function buildBoss(def, ownerName, cf)
 	addBillboard(root, {
 		{ text = def.name, color = WHITE },
 		{ text = "chasing " .. ownerName, color = Color3.fromRGB(255, 110, 110) },
-	}, s / 2 + 3.5, 180, 260, 24)
+	}, bodyTop * s + 3.5, 180, 260, 24)
 
 	local hum = Instance.new("Humanoid")
 	hum.RigType = Enum.HumanoidRigType.R15
@@ -3459,7 +4065,7 @@ end
 local function spawnChaser(plr, map, ownerPos, zone)
 	local def = (zone and zone.boss) or map.boss
 	local s = def.size
-	local leg = s * 0.45
+	local leg = s * (def.legScale or 0.45)
 	local model, root, hum, burst = buildBoss(def, plr.DisplayName, behindCFrame(map, ownerPos, s, leg))
 	local c = {
 		map = map,
@@ -3490,6 +4096,41 @@ local function bossBaseSpeed(z)
 	local info = ZONE_AT[k]
 	if not info or not info.zone then return CONFIG.BaseWalkSpeed end
 	return bossSpeedIn(info.zone, (z - k * L) / L)
+end
+
+-- a giant statue of each zone's brainrot stands on the bank beside the track
+-- (the same model as the boss, 2.6x bigger, frozen in place)
+for _, info in ipairs(ZONE_LIST) do
+	local def = info.zone.boss
+	if def then
+		local big = table.clone(def)
+		big.size = math.min(40, def.size * 2.6)
+		local s = big.size
+		local leg = s * (big.legScale or 0.45)
+		local side = (info.j % 2 == 0) and 1 or -1
+		local x, z = side * (HALF_W + 34), info.g * L + L * 0.3
+		local groundY = FLOOR_Y - 2.5
+		local y = groundY + 3 + leg + s / 2
+		local ok, model = pcall(buildBoss, big, "", CFrame.lookAt(Vector3.new(x, y, z), Vector3.new(0, y, z - 120)))
+		if ok and model then
+			CollectionService:RemoveTag(model, "SVB_Boss")
+			for _, d in ipairs(model:GetDescendants()) do
+				if d:IsA("BasePart") then
+					d.Anchored = true
+					d.CanCollide = false
+					d.CanQuery = false
+				elseif d:IsA("Humanoid") or d:IsA("BillboardGui") or d:IsA("ParticleEmitter") or d:IsA("PointLight") or d:IsA("Motor6D") or d:IsA("WeldConstraint") then
+					d:Destroy()
+				end
+			end
+			model.Name = def.name .. " Statue"
+			model.Parent = Decor
+			-- a stone plinth with the name on it
+			TK.fillCyl(CFrame.new(x, groundY + 1.5, z), 3, s * 0.75, Enum.Material.Cobblestone)
+			local plate = newPart{ Name = "StatuePlate", Size = Vector3.new(s * 0.9, 3, 0.6), CFrame = CFrame.lookAt(Vector3.new(x - side * s * 0.62, groundY + 1.5, z - s * 0.3), Vector3.new(0, groundY + 1.5, z - 120)), Color = Color3.fromRGB(70, 55, 40), CanCollide = false, Parent = Decor }
+			addSign(plate, Enum.NormalId.Front, { { text = string.upper(def.name), color = GOLD } }, 12)
+		end
+	end
 end
 
 ------------------------------------------------------------------------
@@ -3565,6 +4206,9 @@ local function chaserTick()
 						-- you got far ahead: it speeds up so it's always close behind you
 						speed = math.max(speed, hum.WalkSpeed * (1 + (dist - CONFIG.BossLeash) / 60))
 					end
+					-- admins can slow down or pause the bosses (for everyone, or for one player)
+					speed *= workspace:GetAttribute("BossSpeed") or 1
+					if plr:GetAttribute("BossPaused") then speed = 0 end
 					c.hum.WalkSpeed = speed
 					c.hum:MoveTo(Vector3.new(math.clamp(pos.X, c.minX, c.maxX), FLOOR_Y, math.clamp(pos.Z, c.minZ, c.maxZ)))
 				else
@@ -3584,11 +4228,9 @@ local function chaserTick()
 end
 
 ------------------------------------------------------------------------
--- PER-PLAYER TICK: relative speed, the Speed you need to leave a zone,
+-- PER-PLAYER TICK: relative speed,
 -- trophies for leaving zones, new zones reached
 ------------------------------------------------------------------------
-local gateWarned = {}
-
 local function playerTick()
 	for _, plr in ipairs(Players:GetPlayers()) do
 		local d = Data[plr]
@@ -3600,18 +4242,6 @@ local function playerTick()
 			local info = k and ZONE_AT[k]
 			if info and CurMap[plr] ~= info.m then
 				setMap(plr, info.m)
-			end
-
-			-- each zone needs a certain Speed to get into: not enough = pushed back through the gate
-			if info and info.zone and d.speed < info.zone.need then
-				local back = k * L - 6
-				teleportPlayer(plr, Vector3.new(hrp.Position.X, FLOOR_Y, back), -Vector3.zAxis)
-				if not gateWarned[plr] or os.clock() - gateWarned[plr] > 2 then
-					gateWarned[plr] = os.clock()
-					notify(plr, "You need " .. fmt(info.zone.need) .. " Speed to get into " .. info.zone.name .. "!", Color3.fromRGB(255, 110, 110))
-				end
-				k = k - 1
-				info = ZONE_AT[k]
 			end
 
 			applySpeed(plr)
@@ -3630,7 +4260,7 @@ local function playerTick()
 					end
 					RunBest[plr] = k
 					if earned > 0 then
-						earned *= trophyMultiplier(d)
+						earned *= trophyMultiplier(d) * (workspace:GetAttribute("TrophyEvent") or 1)
 						d.trophies += earned
 						syncStats(plr)
 						ZoneClearedRemote:FireClient(plr, lastName, earned, info.map.name)
@@ -3679,16 +4309,25 @@ end
 ------------------------------------------------------------------------
 local padTime, padWarned = {}, {}
 
--- buys up to `want` points of speed with the player's cash, returns how many it bought
-local function buySpeed(plr, want)
+-- buys one step of speed (or as much of it as the player's cash covers), returns how much it bought
+local function buySpeed(plr)
 	local d = Data[plr]
-	local n, cost = 0, 0
-	while n < want and d.speed + n < CONFIG.MaxSpeed do
-		local c = pointCost(d.speed + n)
-		if cost + c > d.cash then break end
-		cost += c
-		n += 1
+	local want = math.min(SPEEDBUY.gain(d.speed), CONFIG.MaxSpeed - d.speed)
+	local n = 0
+	if want >= 1 then
+		if SPEEDBUY.cost(d.speed, want) <= d.cash then
+			n = want
+		else
+			-- not enough for the whole step: buy the biggest part you can afford
+			local lo, hi = 0, want
+			while lo < hi do
+				local mid = math.floor((lo + hi + 1) / 2)
+				if SPEEDBUY.cost(d.speed, mid) <= d.cash then lo = mid else hi = mid - 1 end
+			end
+			n = lo
+		end
 	end
+	local cost = (n > 0) and SPEEDBUY.cost(d.speed, n) or 0
 	if n > 0 then
 		d.cash -= cost
 		d.speed += n
@@ -3712,11 +4351,7 @@ local function padTick(dt)
 		end
 		if onPad then
 			padTime[plr] = (padTime[plr] or 0) + dt
-			local t = padTime[plr]
-			-- buys faster the longer you stand on it (and in bigger steps when you're fast)
-			local pct = (t > 4 and 0.06) or (t > 1.5 and 0.02) or 0.005
-			local want = math.max((t > 4 and 10) or (t > 1.5 and 3) or 1, math.floor(d.speed * pct))
-			if buySpeed(plr, want) == 0 and not padWarned[plr] then
+			if buySpeed(plr) == 0 and not padWarned[plr] then
 				padWarned[plr] = true
 				if d.speed >= CONFIG.MaxSpeed then
 					notify(plr, "You're at max speed! Try a rebirth.", Color3.fromRGB(255, 200, 80))
@@ -3729,6 +4364,24 @@ local function padTick(dt)
 			padWarned[plr] = nil
 		end
 	end
+end
+
+-- the Buy Speed button on screen: one step per press (a little cooldown so it can't be spammed)
+do
+	local lastBuy = {}
+	BuySpeedRemote.OnServerEvent:Connect(function(plr)
+		local d = Data[plr]
+		if not d or (lastBuy[plr] and os.clock() - lastBuy[plr] < 0.12) then return end
+		lastBuy[plr] = os.clock()
+		if buySpeed(plr) == 0 then
+			if d.speed >= CONFIG.MaxSpeed then
+				notify(plr, "You're at max speed! Try a rebirth.", Color3.fromRGB(255, 200, 80))
+			else
+				notify(plr, "You need $" .. fmt(pointCost(d.speed)) .. " for more speed. Go grab cash!", Color3.fromRGB(255, 110, 110))
+			end
+		end
+	end)
+	Players.PlayerRemoving:Connect(function(plr) lastBuy[plr] = nil end)
 end
 
 ------------------------------------------------------------------------
@@ -3883,7 +4536,6 @@ Players.PlayerRemoving:Connect(function(plr)
 	padWarned[plr] = nil
 	hatchCooldown[plr] = nil
 	RunBest[plr] = nil
-	gateWarned[plr] = nil
 	lastWin[plr] = nil
 end)
 
@@ -4239,6 +4891,137 @@ do -- (in its own block so its locals stay out of the main script)
 			notifyAll("The cash event has ended.", Color3.fromRGB(255, 200, 80))
 		end
 		return "Cash event x" .. mult
+	end
+
+	-- more player tools ---------------------------------------------------
+	function ACTIONS.freeze(admin, targets)
+		local state
+		for _, p in ipairs(targets) do
+			local root = p.Character and p.Character:FindFirstChild("HumanoidRootPart")
+			if root then
+				if state == nil then state = not root.Anchored end
+				root.Anchored = state
+				if p ~= admin then notify(p, state and "An admin froze you!" or "You can move again.", GOLD) end
+			end
+		end
+		return state and "Frozen" or "Unfrozen"
+	end
+
+	function ACTIONS.respawn(admin, targets)
+		for _, p in ipairs(targets) do
+			removeChaser(p)
+			p:LoadCharacter()
+		end
+		return "Respawned " .. #targets .. " player(s)"
+	end
+
+	function ACTIONS.size(admin, targets, scale)
+		scale = math.clamp(tonumber(scale) or 1, 0.3, 4)
+		for _, p in ipairs(targets) do
+			local char = p.Character
+			if char then pcall(function() char:ScaleTo(scale) end) end
+		end
+		return "Size x" .. scale
+	end
+
+	function ACTIONS.toZone(admin, targets, m, j)
+		m, j = tonumber(m), tonumber(j)
+		local map = m and MAPS[m]
+		local zone = map and j and map.zones[j]
+		if not zone then return "No zone " .. tostring(j) .. " on map " .. tostring(m) end
+		for _, p in ipairs(targets) do
+			local d = Data[p]
+			if d then
+				d.maxMap = math.max(d.maxMap, m)
+				setMap(p, m)
+				removeChaser(p)
+				teleportPlayer(p, Vector3.new(0, FLOOR_Y + 3, zone.g * L + 30))
+				syncStats(p)
+			end
+		end
+		return "Sent to " .. zone.name
+	end
+
+	function ACTIONS.allPets(admin, targets, tier)
+		tier = math.clamp(tonumber(tier) or 1, 1, #PET_TIERS)
+		for _, p in ipairs(targets) do
+			local d = Data[p]
+			if d then
+				for name in pairs(PET_BY_NAME) do
+					local key = petKey(name, tier)
+					d.pets[key] = (d.pets[key] or 0) + 1
+				end
+				syncPets(p)
+				syncStats(p)
+			end
+		end
+		return "Gave every pet"
+	end
+
+	function ACTIONS.rebirths(admin, targets, amount)
+		amount = math.clamp(math.floor(tonumber(amount) or 1), -1000, 1000)
+		for _, p in ipairs(targets) do
+			local d = Data[p]
+			if d then
+				d.rebirths = math.max(0, d.rebirths + amount)
+				syncStats(p)
+			end
+		end
+		return (amount >= 0 and "+" or "") .. amount .. " rebirths"
+	end
+
+	function ACTIONS.pauseBoss(admin, targets)
+		local state
+		for _, p in ipairs(targets) do
+			if state == nil then state = not p:GetAttribute("BossPaused") end
+			p:SetAttribute("BossPaused", state or nil)
+		end
+		return "Boss " .. (state and "paused" or "running")
+	end
+
+	-- more server tools ---------------------------------------------------
+	local function serverEvent(attr, label)
+		return function(admin, _, mult)
+			mult = math.clamp(tonumber(mult) or 1, 1, 100)
+			workspace:SetAttribute(attr, (mult > 1) and mult or nil)
+			for _, p in ipairs(Players:GetPlayers()) do applySpeed(p) end
+			if mult > 1 then
+				AnnounceRemote:FireAllClients(mult .. "x " .. label .. " EVENT!", "EVENT")
+			else
+				notifyAll("The " .. string.lower(label) .. " event has ended.", Color3.fromRGB(255, 200, 80))
+			end
+			return label .. " event x" .. mult
+		end
+	end
+	ACTIONS.speedEvent = serverEvent("SpeedEvent", "SPEED")
+	ACTIONS.trophyEvent = serverEvent("TrophyEvent", "TROPHY")
+
+	function ACTIONS.cashRain()
+		for _, info in ipairs(ZONE_LIST) do
+			if info.j > 0 then
+				for _ = 1, 8 do spawnCash(info.g, true) end
+			end
+		end
+		AnnounceRemote:FireAllClients("IT'S RAINING CASH! Extra cash dropped in every zone!", "EVENT")
+		return "Cash rain!"
+	end
+
+	function ACTIONS.gravity(admin, _, g)
+		g = math.clamp(tonumber(g) or 196.2, 20, 400)
+		workspace.Gravity = g
+		return "Gravity " .. g
+	end
+
+	function ACTIONS.time(admin, _, clock)
+		clock = tonumber(clock)
+		workspace:SetAttribute("AdminClock", clock and math.clamp(clock, 0, 24) or nil)
+		return clock and ("Time set to " .. clock .. ":00") or "Time follows the zones again"
+	end
+
+	function ACTIONS.bossSpeed(admin, _, mult)
+		mult = math.clamp(tonumber(mult) or 1, 0, 3)
+		workspace:SetAttribute("BossSpeed", (mult ~= 1) and mult or nil)
+		return (mult == 0) and "Bosses paused" or ("Bosses x" .. mult)
 	end
 
 	function ACTIONS.clearBosses()
@@ -5325,10 +6108,22 @@ local gui = new("ScreenGui", {
 -- so it doesn't cover the game)
 local UI_SIZE = 0.8
 local screenScale = new("UIScale", { Parent = gui })
+-- phones (or any short screen) get the compact layout: see applyLayout below
+local UserInputService = game:GetService("UserInputService")
+local compact = false
+local applyLayout -- set once every button exists
 local function rescale()
 	local cam = workspace.CurrentCamera
-	local h = cam and cam.ViewportSize.Y or 720
-	screenScale.Scale = math.clamp(h / 720, 0.6, 1.25) * UI_SIZE
+	local size = cam and cam.ViewportSize or Vector2.new(1280, 720)
+	local h = size.Y
+	compact = h < 560 or (UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled)
+	if compact then
+		-- smaller on phones, but never so small the buttons are hard to tap
+		screenScale.Scale = math.clamp(h / 720, 0.42, 1) * 0.9
+	else
+		screenScale.Scale = math.clamp(h / 720, 0.6, 1.25) * UI_SIZE
+	end
+	if applyLayout then applyLayout() end
 end
 rescale()
 if workspace.CurrentCamera then
@@ -5362,6 +6157,85 @@ end
 statTile("Speed", "shoe", 0, COLORS.speed)
 statTile("Cash", "cash", 78, COLORS.cash)
 statTile("Trophies", "trophy", 156, COLORS.trophies)
+
+------------------------------------------------------------------------
+-- BUY SPEED: one tap buys a step of speed (10% of the Speed you have), hold to keep buying.
+-- It shows what you get and what it costs; the price turns red when you can't afford it.
+------------------------------------------------------------------------
+local buyTile, buyScale = studTile(column, COLORS.cash, UDim2.fromOffset(190, 46), { Position = UDim2.fromOffset(0, 232), Name = "BuySpeedTile" })
+local buyButton = new("TextButton", { BackgroundTransparency = 1, Text = "", Size = UDim2.fromScale(1, 1), ZIndex = 5, Parent = buyTile })
+local buyGain = label(buyTile, "+1 SPEED", UDim2.new(0.6, -8, 1, -12), { Position = UDim2.fromOffset(8, 6), TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 3 })
+local buyCost = label(buyTile, "$1", UDim2.new(0.4, -10, 1, -16), { Position = UDim2.new(0.6, 0, 0, 8), TextXAlignment = Enum.TextXAlignment.Right, ZIndex = 3 })
+local buyRemote = remotes:WaitForChild("BuySpeed", 10)
+local padLabels = {}
+local function refreshBuy()
+	local gain = player:GetAttribute("NextSpeedGain") or 1
+	local cost = player:GetAttribute("NextSpeedCost") or 1
+	local can = (player:GetAttribute("Cash") or 0) >= cost
+	buyGain.Text = "+" .. fmt(gain) .. " SPEED"
+	buyCost.Text = "$" .. fmt(cost)
+	buyCost.TextColor3 = can and Color3.fromRGB(255, 240, 120) or Color3.fromRGB(255, 120, 120)
+	for _, l in ipairs(padLabels) do
+		l.gain.Text = "+" .. fmt(gain) .. " SPEED"
+		l.cost.Text = "$" .. fmt(cost) .. " each"
+		l.cost.TextColor3 = buyCost.TextColor3
+	end
+end
+for _, a in ipairs({ "NextSpeedGain", "NextSpeedCost", "Cash" }) do
+	player:GetAttributeChangedSignal(a):Connect(refreshBuy)
+end
+local holding = false
+buyButton.MouseButton1Down:Connect(function()
+	tween(buyScale, 0.08, { Scale = 0.92 })
+	if holding then return end
+	holding = true
+	task.spawn(function()
+		local first = true
+		while holding do
+			if buyRemote then buyRemote:FireServer() end
+			task.wait(first and 0.4 or 0.15) -- tap = one step, hold = keeps buying
+			first = false
+		end
+	end)
+end)
+local function stopBuying()
+	holding = false
+	tween(buyScale, 0.2, { Scale = 1 }, Enum.EasingStyle.Back)
+end
+buyButton.MouseButton1Up:Connect(stopBuying)
+buyButton.MouseLeave:Connect(stopBuying)
+
+-- the same price + gain floats over every green speed pad (only you see your numbers)
+local function addPadLabel(pad)
+	if not (pad:IsA("BasePart") and pad.Name == "SpeedPad") then return end
+	local bb = new("BillboardGui", {
+		Name = "SVB_PadPrice",
+		Adornee = pad,
+		Size = UDim2.fromOffset(150, 46),
+		StudsOffset = Vector3.new(0, 4.2, 0),
+		MaxDistance = 90,
+		LightInfluence = 0,
+		Parent = gui,
+	})
+	local box = new("Frame", { Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.fromRGB(20, 70, 30), BackgroundTransparency = 0.2, Parent = bb })
+	corner(box, 12)
+	stroke(box, Color3.fromRGB(150, 255, 130), 2)
+	local l = {
+		gain = label(box, "", UDim2.new(1, -10, 0.55, 0), { Position = UDim2.fromOffset(5, 2) }),
+		cost = label(box, "", UDim2.new(1, -10, 0.4, 0), { Position = UDim2.new(0, 5, 0.56, 0) }),
+	}
+	table.insert(padLabels, l)
+	pad.AncestryChanged:Connect(function(_, parent)
+		if not parent then
+			bb:Destroy()
+			table.remove(padLabels, table.find(padLabels, l))
+		end
+	end)
+	refreshBuy()
+end
+for _, d in ipairs(workspace:GetDescendants()) do addPadLabel(d) end
+workspace.DescendantAdded:Connect(addPadLabel)
+refreshBuy()
 
 local function readStat(key)
 	local s = stats[key]
@@ -5418,7 +6292,7 @@ local function squareButton(name, icon, text, color, x, y)
 	return tile, scale, button, iconLabel, textLabel
 end
 
-local rowY = 156 + 68 + 44
+local rowY = 232 + 46 + 44
 local _tpTile, tpScale, tpButton = squareButton("Teleport", "portal", "Teleport", COLORS.teleport, 0, rowY)
 local passTile, passScale, passButton, passIcon, passText = squareButton("CashPass", "bat", "3x", COLORS.pass, BTN + GAP, rowY)
 local _invTile, invScale, invButton = squareButton("Invite", "friends", "Invite", COLORS.invite, 0, rowY + BTN + GAP + 26)
@@ -5434,7 +6308,7 @@ passCash.AnchorPoint = Vector2.new(0.5, 0.5)
 passCash.Position = UDim2.new(0.7, 0, 1, -16)
 
 -- "Play with friends!" under the invite button
-label(column, "Play with friends!", UDim2.fromOffset(BTN + 24, 22), { Position = UDim2.fromOffset(-12, rowY + 2 * BTN + GAP + 32) })
+local friendsLabel = label(column, "Play with friends!", UDim2.fromOffset(BTN + 24, 22), { Position = UDim2.fromOffset(-12, rowY + 2 * BTN + GAP + 32) })
 
 -- the gamepass button: a thick spinning rainbow frame, the price above it
 passText.TextColor3 = Color3.fromRGB(120, 255, 90)
@@ -5491,6 +6365,43 @@ local function refreshPass()
 end
 refreshPass()
 player:GetAttributeChangedSignal("HasCashPass"):Connect(refreshPass)
+
+------------------------------------------------------------------------
+-- LAYOUT: a tall column on computers; on phones the stats go in a row along the
+-- top and the buttons in one row under them, so nothing sits under your thumbs
+-- (the thumbstick is bottom left, the jump button bottom right)
+------------------------------------------------------------------------
+local squares = { _tpTile, passTile, _invTile, _petTile, _rbTile, prTile }
+local normalPos = {}
+for i, tile in ipairs(squares) do normalPos[i] = tile.Position end
+function applyLayout()
+	local passPos
+	if compact then
+		column.Position = UDim2.fromOffset(12, 20)
+		stats.Speed.Tile.Position = UDim2.fromOffset(0, 0)
+		stats.Cash.Tile.Position = UDim2.fromOffset(200, 0)
+		stats.Trophies.Tile.Position = UDim2.fromOffset(400, 0)
+		buyTile.Position = UDim2.fromOffset(600, 11)
+		local y = 68 + 44
+		for i, tile in ipairs(squares) do
+			tile.Position = UDim2.fromOffset((i - 1) * (BTN + GAP), y)
+		end
+		passPos = Vector2.new(BTN + GAP, y)
+		friendsLabel.Position = UDim2.fromOffset(2 * (BTN + GAP) - 12, y + BTN + 6)
+	else
+		column.Position = UDim2.fromOffset(14, 80)
+		stats.Speed.Tile.Position = UDim2.fromOffset(0, 0)
+		stats.Cash.Tile.Position = UDim2.fromOffset(0, 78)
+		stats.Trophies.Tile.Position = UDim2.fromOffset(0, 156)
+		buyTile.Position = UDim2.fromOffset(0, 232)
+		for i, tile in ipairs(squares) do tile.Position = normalPos[i] end
+		passPos = Vector2.new(BTN + GAP, rowY)
+		friendsLabel.Position = UDim2.fromOffset(-12, rowY + 2 * BTN + GAP + 32)
+	end
+	rainbowFrame.Position = UDim2.fromOffset(passPos.X + BTN / 2, passPos.Y + BTN / 2)
+	priceLabel.Position = UDim2.fromOffset(passPos.X - 8, passPos.Y - 36)
+end
+rescale()
 
 ------------------------------------------------------------------------
 -- Popup panels (teleport menu, pets)
@@ -6433,7 +7344,6 @@ end)
 	  - moving obstacles (sliders, spinners, swinging logs, crushers), lasers, fire jets
 	    and strikes follow the server clock, so they're exactly where the server checks them
 	  - cash piles and eggs spin and bob
-	  - zone gates glow green when your Speed is enough, red when it isn't
 	  - running: a fast run animation that speeds up with you (capped so it never
 	    looks frantic), a forward lean, a speed trail and a wider camera view
 	  - getting hit: you tumble, stars spin around your head, the screen flashes red
@@ -6554,29 +7464,6 @@ local function addEgg(model)
 end
 
 ------------------------------------------------------------------------
--- ZONE GATES: green when you're fast enough, red when you're not
-------------------------------------------------------------------------
-local gates = {}
-local GATE_OK = Color3.fromRGB(110, 255, 120)
-local GATE_NO = Color3.fromRGB(255, 70, 70)
-
-local function paintGate(part)
-	local need = part:GetAttribute("Need") or 0
-	local ok = (player:GetAttribute("Speed") or 0) >= need
-	part.Color = ok and GATE_OK or GATE_NO
-	part.Transparency = ok and 0.85 or 0.6
-end
-
-local function addGate(part)
-	gates[part] = true
-	paintGate(part)
-end
-
-player:GetAttributeChangedSignal("Speed"):Connect(function()
-	for part in pairs(gates) do paintGate(part) end
-end)
-
-------------------------------------------------------------------------
 -- every frame: move what's near you
 ------------------------------------------------------------------------
 local NEAR = 320
@@ -6587,7 +7474,6 @@ local function startWorld()
 	watchTag("SVB_Blink", addBlinker, blinkers)
 	watchTag("SVB_Strike", addStrike, strikes)
 	watchTag("SVB_EggSpin", addEgg, spinners)
-	watchTag("SVB_SpeedGate", addGate, gates)
 	local cashFolder = workspace:WaitForChild("SVB_Cash")
 	for _, m in ipairs(cashFolder:GetChildren()) do task.spawn(addCash, m) end
 	cashFolder.ChildAdded:Connect(addCash)
@@ -6644,7 +7530,7 @@ local function addBoss(model)
 	if not root then return end
 	local motors = {}
 	for _, m in ipairs(root:GetChildren()) do
-		if m:IsA("Motor6D") and m.Name == "LegMotor" then
+		if m:IsA("Motor6D") and (m.Name == "LegMotor" or m.Name == "ArmMotor") then
 			table.insert(motors, m)
 		end
 	end
@@ -6660,7 +7546,11 @@ RunService.Stepped:Connect(function(_, dt)
 			b.phase += dt * math.min(18, 4 + speed * 0.12)
 			for _, m in ipairs(b.motors) do
 				local side = m:GetAttribute("Side") or 1
-				m.Transform = CFrame.Angles(math.sin(b.phase) * side * 0.9 * stride, 0, 0)
+				if m.Name == "ArmMotor" then -- arms pump the other way from the legs
+					m.Transform = CFrame.Angles(-math.sin(b.phase) * side * 0.8 * stride - 0.25 * stride, 0, 0)
+				else
+					m.Transform = CFrame.Angles(math.sin(b.phase) * side * 0.9 * stride, 0, 0)
+				end
 			end
 		end
 	end
@@ -6903,6 +7793,7 @@ end)
 -- fog, clouds), blended smoothly as you run in. Islands use their map's look.
 ------------------------------------------------------------------------
 local function rgb(r, g, b) return Color3.fromRGB(r, g, b) end
+local LIGHT_SCALE = 0.6
 local MAP_LOOKS = {
 	{ clock = 14.6, atmo = rgb(200, 225, 255), decay = rgb(110, 150, 200), tint = rgb(255, 252, 245), density = 0.24, haze = 1.3, cover = 0.55, bright = 2.6 },
 	{ clock = 16.9, atmo = rgb(255, 205, 175), decay = rgb(175, 95, 85), tint = rgb(255, 236, 220), density = 0.26, haze = 1.6, cover = 0.5, bright = 2.4 },
@@ -6930,14 +7821,28 @@ local function applyLook(look)
 	if look == currentLook then return end
 	currentLook = look
 	local info = TweenInfo.new(2.5, Enum.EasingStyle.Sine)
-	TweenService:Create(Lighting, info, { ClockTime = look.clock, Brightness = look.bright }):Play()
+	-- LIGHT_SCALE tones every zone down together (raise it for a brighter game)
+	local dim = look.bright / 3
+	TweenService:Create(Lighting, info, {
+		ClockTime = workspace:GetAttribute("AdminClock") or look.clock, -- admins can set the time for everyone
+		Brightness = look.bright * LIGHT_SCALE,
+		ExposureCompensation = -0.3,
+		OutdoorAmbient = Color3.fromRGB(112, 112, 128):Lerp(look.decay, 0.25):Lerp(Color3.new(0, 0, 0), 0.35 * (1 - dim)),
+	}):Play()
 	local atmo = Lighting:FindFirstChild("SVB_Atmosphere")
-	if atmo then TweenService:Create(atmo, info, { Color = look.atmo, Decay = look.decay, Density = look.density, Haze = look.haze }):Play() end
+	if atmo then TweenService:Create(atmo, info, { Color = look.atmo, Decay = look.decay, Density = look.density * 0.85, Haze = look.haze * 0.55, Glare = 0.1 }):Play() end
 	local cc = Lighting:FindFirstChild("SVB_Color")
 	if cc then TweenService:Create(cc, info, { TintColor = look.tint }):Play() end
 	local clouds = workspace.Terrain:FindFirstChildOfClass("Clouds")
 	if clouds then TweenService:Create(clouds, info, { Cover = look.cover }):Play() end
 end
+
+-- an admin changed the time of day: blend to it right away
+workspace:GetAttributeChangedSignal("AdminClock"):Connect(function()
+	local look = currentLook
+	currentLook = nil
+	if look then applyLook(look) end
+end)
 
 -- which zone am I in? (zones are published by the server in ReplicatedStorage.SVB_Zones)
 local zones = {}
@@ -6988,6 +7893,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
 
 local player = Players.LocalPlayer
 local remotes = ReplicatedStorage:WaitForChild("SVB_Remotes")
@@ -7055,7 +7961,15 @@ end
 -- Announcement banner (everyone sees these)
 ------------------------------------------------------------------------
 local gui = new("ScreenGui", { Name = "SVB_Admin", ResetOnSpawn = false, DisplayOrder = 30, IgnoreGuiInset = true, Parent = player:WaitForChild("PlayerGui") })
-new("UIScale", { Scale = 0.85, Parent = gui })
+-- fits any screen: full size on a computer, shrinks to fit a phone
+local uiScale = new("UIScale", { Scale = 0.85, Parent = gui })
+local function fitScreen()
+	local cam = workspace.CurrentCamera
+	local v = cam and cam.ViewportSize or Vector2.new(1280, 720)
+	uiScale.Scale = math.min(0.85, v.X / 800, (v.Y - 20) / 520)
+end
+fitScreen()
+if workspace.CurrentCamera then workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(fitScreen) end
 
 local banner = new("Frame", {
 	AnchorPoint = Vector2.new(0.5, 0),
@@ -7165,7 +8079,7 @@ local function buildPanel()
 		local r = new("Frame", { Size = UDim2.new(1, -10, 0, 64), BackgroundColor3 = CARD, LayoutOrder = rowOrder, Parent = page })
 		corner(r, 10)
 		text(r, title, UDim2.new(1, -16, 0, 18), { Position = UDim2.fromOffset(8, 4), TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = Color3.fromRGB(200, 205, 230) })
-		local holder = new("Frame", { Position = UDim2.fromOffset(8, 26), Size = UDim2.new(1, -16, 0, 32), BackgroundTransparency = 1, Parent = r })
+		local holder = new("ScrollingFrame", { Position = UDim2.fromOffset(8, 26), Size = UDim2.new(1, -16, 0, 34), BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = 3, ScrollingDirection = Enum.ScrollingDirection.X, AutomaticCanvasSize = Enum.AutomaticSize.X, CanvasSize = UDim2.new(), Parent = r })
 		new("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 6), Parent = holder })
 		for _, spec in ipairs(buttons) do
 			if spec.danger then
@@ -7219,10 +8133,29 @@ local function buildPanel()
 		{ "To Map 1", function() act("toMap", 1) end, color = PURPLE, w = 100 },
 		{ "To Map 2", function() act("toMap", 2) end, color = PURPLE, w = 100 },
 	})
+	local zoneBox = {}
+	row(pPage, "Send to a zone (type the zone number)", {
+		{ "Zone #", box = true, ref = zoneBox, w = 90 },
+		{ "Map 1 zone", function() act("toZone", 1, tonumber(zoneBox.box.Text) or 1) end, color = PURPLE, w = 120 },
+		{ "Map 2 zone", function() act("toZone", 2, tonumber(zoneBox.box.Text) or 1) end, color = PURPLE, w = 120 },
+	})
 	row(pPage, "Progress", {
 		{ "Unlock maps", function() act("unlockMaps") end, color = PURPLE, w = 130 },
 		{ "Unlock prestige", function() act("prestigeReady") end, color = PURPLE, w = 150 },
-		{ "God mode", function() act("god") end, color = GOLDC, w = 110 },
+		{ "+1 rebirth", function() act("rebirths", 1) end, color = Color3.fromRGB(240, 130, 40), w = 110 },
+		{ "+10 rebirths", function() act("rebirths", 10) end, color = Color3.fromRGB(240, 130, 40), w = 120 },
+	})
+	row(pPage, "Fun", {
+		{ "God mode", function() act("god") end, color = GOLDC, w = 100 },
+		{ "Freeze", function() act("freeze") end, color = BLUE, w = 90 },
+		{ "Respawn", function() act("respawn") end, color = BLUE, w = 100 },
+		{ "Pause boss", function() act("pauseBoss") end, color = PURPLE, w = 110 },
+	})
+	row(pPage, "Size", {
+		{ "Tiny", function() act("size", 0.5) end, color = BLUE, w = 80 },
+		{ "Normal", function() act("size", 1) end, color = BLUE, w = 90 },
+		{ "Big", function() act("size", 2) end, color = BLUE, w = 80 },
+		{ "Giant", function() act("size", 3.5) end, color = BLUE, w = 90 },
 	})
 	local kickReason = {}
 	row(pPage, "Danger zone", {
@@ -7246,6 +8179,10 @@ local function buildPanel()
 			for j, b in ipairs(tierButtons) do b.BackgroundColor3 = (j == i) and ACCENT or Color3.fromRGB(70, 75, 100) end
 		end)
 	end
+	local allPetsButton = button(tierBar, "Give ALL pets", GREEN, UDim2.fromOffset(140, 28), function()
+		act("allPets", tier)
+	end)
+	allPetsButton.LayoutOrder = 10
 	local grid = new("Frame", { Position = UDim2.fromOffset(8, 62), Size = UDim2.new(1, -16, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1, Parent = petCard })
 	new("UIGridLayout", { CellSize = UDim2.fromOffset(122, 30), CellPadding = UDim2.fromOffset(6, 6), SortOrder = Enum.SortOrder.LayoutOrder, Parent = grid })
 	new("UIPadding", { PaddingBottom = UDim.new(0, 10), Parent = petCard })
@@ -7275,8 +8212,96 @@ local function buildPanel()
 		{ "x5", function() AdminRemote:FireServer("event", 0, 5) end, color = GREEN, w = 80 },
 		{ "x10", function() AdminRemote:FireServer("event", 0, 10) end, color = GREEN, w = 80 },
 	})
+	local function server(action, value) return function() AdminRemote:FireServer(action, 0, value) end end
+	row(sPage, "Speed event (everyone runs faster)", {
+		{ "Off", server("speedEvent", 1), color = Color3.fromRGB(90, 95, 115), w = 80 },
+		{ "x1.5", server("speedEvent", 1.5), color = Color3.fromRGB(220, 70, 70), w = 80 },
+		{ "x2", server("speedEvent", 2), color = Color3.fromRGB(220, 70, 70), w = 80 },
+		{ "x3", server("speedEvent", 3), color = Color3.fromRGB(220, 70, 70), w = 80 },
+	})
+	row(sPage, "Trophy event (more trophies for every zone)", {
+		{ "Off", server("trophyEvent", 1), color = Color3.fromRGB(90, 95, 115), w = 80 },
+		{ "x2", server("trophyEvent", 2), color = GOLDC, w = 80 },
+		{ "x5", server("trophyEvent", 5), color = GOLDC, w = 80 },
+		{ "x10", server("trophyEvent", 10), color = GOLDC, w = 80 },
+	})
+	row(sPage, "Cash rain + gravity", {
+		{ "Cash rain!", server("cashRain"), color = GREEN, w = 120 },
+		{ "Low gravity", server("gravity", 60), color = BLUE, w = 120 },
+		{ "Normal gravity", server("gravity", 196.2), color = Color3.fromRGB(90, 95, 115), w = 140 },
+	})
+	row(sPage, "Time of day", {
+		{ "Zones decide", server("time", nil), color = Color3.fromRGB(90, 95, 115), w = 130 },
+		{ "Day", server("time", 13), color = GOLDC, w = 80 },
+		{ "Sunset", server("time", 18), color = Color3.fromRGB(240, 130, 40), w = 90 },
+		{ "Night", server("time", 0), color = Color3.fromRGB(60, 70, 140), w = 80 },
+	})
 	row(sPage, "Bosses", {
-		{ "Remove all bosses", function() AdminRemote:FireServer("clearBosses", 0) end, color = PURPLE, w = 180 },
+		{ "Remove all", function() AdminRemote:FireServer("clearBosses", 0) end, color = PURPLE, w = 110 },
+		{ "Slow", server("bossSpeed", 0.6), color = PURPLE, w = 80 },
+		{ "Normal", server("bossSpeed", 1), color = Color3.fromRGB(90, 95, 115), w = 90 },
+		{ "Fast", server("bossSpeed", 1.5), color = Color3.fromRGB(200, 60, 70), w = 80 },
+		{ "Pause", server("bossSpeed", 0), color = BLUE, w = 80 },
+	})
+
+	-- ME tab: things for the admin themselves (fly, spectate)
+	local mPage = tab("Me", 4)
+	local flySpeed, flyConn, flyVel = 80, nil, nil
+	local function stopFly()
+		if flyConn then flyConn:Disconnect() flyConn = nil end
+		if flyVel then flyVel:Destroy() flyVel = nil end
+		local hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+		if hum then hum.PlatformStand = false end
+	end
+	local function startFly()
+		stopFly()
+		local char = player.Character
+		local root = char and char:FindFirstChild("HumanoidRootPart")
+		local hum = char and char:FindFirstChildOfClass("Humanoid")
+		if not root or not hum then return end
+		local att = root:FindFirstChild("RootAttachment") or new("Attachment", { Parent = root })
+		flyVel = new("LinearVelocity", { Attachment0 = att, MaxForce = math.huge, RelativeTo = Enum.ActuatorRelativeTo.World, VectorVelocity = Vector3.zero, Parent = root })
+		hum.PlatformStand = true
+		-- move with the normal controls (keys, thumbstick); look up or down to climb or dive.
+		-- Space goes up, Ctrl goes down on a keyboard
+		flyConn = RunService.RenderStepped:Connect(function()
+			local cam = workspace.CurrentCamera
+			local look = cam.CFrame.LookVector
+			local flat = Vector3.new(look.X, 0, look.Z)
+			local move = hum.MoveDirection
+			local v = move
+			if move.Magnitude > 0 and flat.Magnitude > 0 then
+				v = move + Vector3.new(0, look.Y * move:Dot(flat.Unit) * 1.5, 0)
+			end
+			if UserInputService:IsKeyDown(Enum.KeyCode.Space) then v += Vector3.yAxis end
+			if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then v -= Vector3.yAxis end
+			flyVel.VectorVelocity = v * flySpeed
+			if flat.Magnitude > 0 then root.CFrame = CFrame.lookAt(root.Position, root.Position + flat) end
+		end)
+	end
+	player.CharacterAdded:Connect(function() flyConn, flyVel = nil, nil end)
+	row(mPage, "Fly (move normally, look up or down to climb)", {
+		{ "Fly ON", startFly, color = GREEN, w = 100 },
+		{ "Fly OFF", stopFly, color = Color3.fromRGB(90, 95, 115), w = 100 },
+		{ "Slow", function() flySpeed = 40 end, color = BLUE, w = 70 },
+		{ "Fast", function() flySpeed = 150 end, color = BLUE, w = 70 },
+		{ "Zoom", function() flySpeed = 400 end, color = BLUE, w = 70 },
+	})
+	row(mPage, "Spectate (pick a player on the left first)", {
+		{ "Watch them", function()
+			local target = Players:GetPlayerByUserId(selectedId)
+			local hum = target and target.Character and target.Character:FindFirstChildOfClass("Humanoid")
+			if hum then workspace.CurrentCamera.CameraSubject = hum end
+		end, color = PURPLE, w = 130 },
+		{ "Back to me", function()
+			local hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+			if hum then workspace.CurrentCamera.CameraSubject = hum end
+		end, color = Color3.fromRGB(90, 95, 115), w = 130 },
+	})
+	row(mPage, "Quick: give yourself", {
+		{ "God mode", function() AdminRemote:FireServer("god", player.UserId) end, color = GOLDC, w = 110 },
+		{ "+1B cash", function() AdminRemote:FireServer("cash", player.UserId, 1e9) end, color = GREEN, w = 110 },
+		{ "+100K speed", function() AdminRemote:FireServer("speed", player.UserId, 1e5) end, color = Color3.fromRGB(220, 70, 70), w = 130 },
 	})
 
 	-- ADMINS tab (owner only)

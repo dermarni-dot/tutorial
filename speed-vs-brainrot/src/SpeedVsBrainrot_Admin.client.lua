@@ -18,6 +18,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
 
 local player = Players.LocalPlayer
 local remotes = ReplicatedStorage:WaitForChild("SVB_Remotes")
@@ -85,7 +86,15 @@ end
 -- Announcement banner (everyone sees these)
 ------------------------------------------------------------------------
 local gui = new("ScreenGui", { Name = "SVB_Admin", ResetOnSpawn = false, DisplayOrder = 30, IgnoreGuiInset = true, Parent = player:WaitForChild("PlayerGui") })
-new("UIScale", { Scale = 0.85, Parent = gui })
+-- fits any screen: full size on a computer, shrinks to fit a phone
+local uiScale = new("UIScale", { Scale = 0.85, Parent = gui })
+local function fitScreen()
+	local cam = workspace.CurrentCamera
+	local v = cam and cam.ViewportSize or Vector2.new(1280, 720)
+	uiScale.Scale = math.min(0.85, v.X / 800, (v.Y - 20) / 520)
+end
+fitScreen()
+if workspace.CurrentCamera then workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(fitScreen) end
 
 local banner = new("Frame", {
 	AnchorPoint = Vector2.new(0.5, 0),
@@ -195,7 +204,7 @@ local function buildPanel()
 		local r = new("Frame", { Size = UDim2.new(1, -10, 0, 64), BackgroundColor3 = CARD, LayoutOrder = rowOrder, Parent = page })
 		corner(r, 10)
 		text(r, title, UDim2.new(1, -16, 0, 18), { Position = UDim2.fromOffset(8, 4), TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = Color3.fromRGB(200, 205, 230) })
-		local holder = new("Frame", { Position = UDim2.fromOffset(8, 26), Size = UDim2.new(1, -16, 0, 32), BackgroundTransparency = 1, Parent = r })
+		local holder = new("ScrollingFrame", { Position = UDim2.fromOffset(8, 26), Size = UDim2.new(1, -16, 0, 34), BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = 3, ScrollingDirection = Enum.ScrollingDirection.X, AutomaticCanvasSize = Enum.AutomaticSize.X, CanvasSize = UDim2.new(), Parent = r })
 		new("UIListLayout", { FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 6), Parent = holder })
 		for _, spec in ipairs(buttons) do
 			if spec.danger then
@@ -249,10 +258,29 @@ local function buildPanel()
 		{ "To Map 1", function() act("toMap", 1) end, color = PURPLE, w = 100 },
 		{ "To Map 2", function() act("toMap", 2) end, color = PURPLE, w = 100 },
 	})
+	local zoneBox = {}
+	row(pPage, "Send to a zone (type the zone number)", {
+		{ "Zone #", box = true, ref = zoneBox, w = 90 },
+		{ "Map 1 zone", function() act("toZone", 1, tonumber(zoneBox.box.Text) or 1) end, color = PURPLE, w = 120 },
+		{ "Map 2 zone", function() act("toZone", 2, tonumber(zoneBox.box.Text) or 1) end, color = PURPLE, w = 120 },
+	})
 	row(pPage, "Progress", {
 		{ "Unlock maps", function() act("unlockMaps") end, color = PURPLE, w = 130 },
 		{ "Unlock prestige", function() act("prestigeReady") end, color = PURPLE, w = 150 },
-		{ "God mode", function() act("god") end, color = GOLDC, w = 110 },
+		{ "+1 rebirth", function() act("rebirths", 1) end, color = Color3.fromRGB(240, 130, 40), w = 110 },
+		{ "+10 rebirths", function() act("rebirths", 10) end, color = Color3.fromRGB(240, 130, 40), w = 120 },
+	})
+	row(pPage, "Fun", {
+		{ "God mode", function() act("god") end, color = GOLDC, w = 100 },
+		{ "Freeze", function() act("freeze") end, color = BLUE, w = 90 },
+		{ "Respawn", function() act("respawn") end, color = BLUE, w = 100 },
+		{ "Pause boss", function() act("pauseBoss") end, color = PURPLE, w = 110 },
+	})
+	row(pPage, "Size", {
+		{ "Tiny", function() act("size", 0.5) end, color = BLUE, w = 80 },
+		{ "Normal", function() act("size", 1) end, color = BLUE, w = 90 },
+		{ "Big", function() act("size", 2) end, color = BLUE, w = 80 },
+		{ "Giant", function() act("size", 3.5) end, color = BLUE, w = 90 },
 	})
 	local kickReason = {}
 	row(pPage, "Danger zone", {
@@ -276,6 +304,10 @@ local function buildPanel()
 			for j, b in ipairs(tierButtons) do b.BackgroundColor3 = (j == i) and ACCENT or Color3.fromRGB(70, 75, 100) end
 		end)
 	end
+	local allPetsButton = button(tierBar, "Give ALL pets", GREEN, UDim2.fromOffset(140, 28), function()
+		act("allPets", tier)
+	end)
+	allPetsButton.LayoutOrder = 10
 	local grid = new("Frame", { Position = UDim2.fromOffset(8, 62), Size = UDim2.new(1, -16, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1, Parent = petCard })
 	new("UIGridLayout", { CellSize = UDim2.fromOffset(122, 30), CellPadding = UDim2.fromOffset(6, 6), SortOrder = Enum.SortOrder.LayoutOrder, Parent = grid })
 	new("UIPadding", { PaddingBottom = UDim.new(0, 10), Parent = petCard })
@@ -305,8 +337,96 @@ local function buildPanel()
 		{ "x5", function() AdminRemote:FireServer("event", 0, 5) end, color = GREEN, w = 80 },
 		{ "x10", function() AdminRemote:FireServer("event", 0, 10) end, color = GREEN, w = 80 },
 	})
+	local function server(action, value) return function() AdminRemote:FireServer(action, 0, value) end end
+	row(sPage, "Speed event (everyone runs faster)", {
+		{ "Off", server("speedEvent", 1), color = Color3.fromRGB(90, 95, 115), w = 80 },
+		{ "x1.5", server("speedEvent", 1.5), color = Color3.fromRGB(220, 70, 70), w = 80 },
+		{ "x2", server("speedEvent", 2), color = Color3.fromRGB(220, 70, 70), w = 80 },
+		{ "x3", server("speedEvent", 3), color = Color3.fromRGB(220, 70, 70), w = 80 },
+	})
+	row(sPage, "Trophy event (more trophies for every zone)", {
+		{ "Off", server("trophyEvent", 1), color = Color3.fromRGB(90, 95, 115), w = 80 },
+		{ "x2", server("trophyEvent", 2), color = GOLDC, w = 80 },
+		{ "x5", server("trophyEvent", 5), color = GOLDC, w = 80 },
+		{ "x10", server("trophyEvent", 10), color = GOLDC, w = 80 },
+	})
+	row(sPage, "Cash rain + gravity", {
+		{ "Cash rain!", server("cashRain"), color = GREEN, w = 120 },
+		{ "Low gravity", server("gravity", 60), color = BLUE, w = 120 },
+		{ "Normal gravity", server("gravity", 196.2), color = Color3.fromRGB(90, 95, 115), w = 140 },
+	})
+	row(sPage, "Time of day", {
+		{ "Zones decide", server("time", nil), color = Color3.fromRGB(90, 95, 115), w = 130 },
+		{ "Day", server("time", 13), color = GOLDC, w = 80 },
+		{ "Sunset", server("time", 18), color = Color3.fromRGB(240, 130, 40), w = 90 },
+		{ "Night", server("time", 0), color = Color3.fromRGB(60, 70, 140), w = 80 },
+	})
 	row(sPage, "Bosses", {
-		{ "Remove all bosses", function() AdminRemote:FireServer("clearBosses", 0) end, color = PURPLE, w = 180 },
+		{ "Remove all", function() AdminRemote:FireServer("clearBosses", 0) end, color = PURPLE, w = 110 },
+		{ "Slow", server("bossSpeed", 0.6), color = PURPLE, w = 80 },
+		{ "Normal", server("bossSpeed", 1), color = Color3.fromRGB(90, 95, 115), w = 90 },
+		{ "Fast", server("bossSpeed", 1.5), color = Color3.fromRGB(200, 60, 70), w = 80 },
+		{ "Pause", server("bossSpeed", 0), color = BLUE, w = 80 },
+	})
+
+	-- ME tab: things for the admin themselves (fly, spectate)
+	local mPage = tab("Me", 4)
+	local flySpeed, flyConn, flyVel = 80, nil, nil
+	local function stopFly()
+		if flyConn then flyConn:Disconnect() flyConn = nil end
+		if flyVel then flyVel:Destroy() flyVel = nil end
+		local hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+		if hum then hum.PlatformStand = false end
+	end
+	local function startFly()
+		stopFly()
+		local char = player.Character
+		local root = char and char:FindFirstChild("HumanoidRootPart")
+		local hum = char and char:FindFirstChildOfClass("Humanoid")
+		if not root or not hum then return end
+		local att = root:FindFirstChild("RootAttachment") or new("Attachment", { Parent = root })
+		flyVel = new("LinearVelocity", { Attachment0 = att, MaxForce = math.huge, RelativeTo = Enum.ActuatorRelativeTo.World, VectorVelocity = Vector3.zero, Parent = root })
+		hum.PlatformStand = true
+		-- move with the normal controls (keys, thumbstick); look up or down to climb or dive.
+		-- Space goes up, Ctrl goes down on a keyboard
+		flyConn = RunService.RenderStepped:Connect(function()
+			local cam = workspace.CurrentCamera
+			local look = cam.CFrame.LookVector
+			local flat = Vector3.new(look.X, 0, look.Z)
+			local move = hum.MoveDirection
+			local v = move
+			if move.Magnitude > 0 and flat.Magnitude > 0 then
+				v = move + Vector3.new(0, look.Y * move:Dot(flat.Unit) * 1.5, 0)
+			end
+			if UserInputService:IsKeyDown(Enum.KeyCode.Space) then v += Vector3.yAxis end
+			if UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) then v -= Vector3.yAxis end
+			flyVel.VectorVelocity = v * flySpeed
+			if flat.Magnitude > 0 then root.CFrame = CFrame.lookAt(root.Position, root.Position + flat) end
+		end)
+	end
+	player.CharacterAdded:Connect(function() flyConn, flyVel = nil, nil end)
+	row(mPage, "Fly (move normally, look up or down to climb)", {
+		{ "Fly ON", startFly, color = GREEN, w = 100 },
+		{ "Fly OFF", stopFly, color = Color3.fromRGB(90, 95, 115), w = 100 },
+		{ "Slow", function() flySpeed = 40 end, color = BLUE, w = 70 },
+		{ "Fast", function() flySpeed = 150 end, color = BLUE, w = 70 },
+		{ "Zoom", function() flySpeed = 400 end, color = BLUE, w = 70 },
+	})
+	row(mPage, "Spectate (pick a player on the left first)", {
+		{ "Watch them", function()
+			local target = Players:GetPlayerByUserId(selectedId)
+			local hum = target and target.Character and target.Character:FindFirstChildOfClass("Humanoid")
+			if hum then workspace.CurrentCamera.CameraSubject = hum end
+		end, color = PURPLE, w = 130 },
+		{ "Back to me", function()
+			local hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+			if hum then workspace.CurrentCamera.CameraSubject = hum end
+		end, color = Color3.fromRGB(90, 95, 115), w = 130 },
+	})
+	row(mPage, "Quick: give yourself", {
+		{ "God mode", function() AdminRemote:FireServer("god", player.UserId) end, color = GOLDC, w = 110 },
+		{ "+1B cash", function() AdminRemote:FireServer("cash", player.UserId, 1e9) end, color = GREEN, w = 110 },
+		{ "+100K speed", function() AdminRemote:FireServer("speed", player.UserId, 1e5) end, color = Color3.fromRGB(220, 70, 70), w = 130 },
 	})
 
 	-- ADMINS tab (owner only)

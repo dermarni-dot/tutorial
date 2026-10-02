@@ -29,7 +29,7 @@ so the HUD doesn't show twice.
 - **Game Settings > Security > Enable Studio Access to API Services**: on. This is needed
   for saving, the leaderboards and the admin list. The game still runs without it,
   but nothing is saved in Studio.
-- **Workspace > StreamingEnabled**: on is recommended. The map is about 14,000 parts.
+- **Workspace > StreamingEnabled**: on is recommended. The map is about 20,000 parts plus terrain.
 - Delete the default Baseplate if you like. The script removes it anyway.
 - Don't add your own Terrain where the map goes: the script fills in its own terrain
   (cliffs, scenery, ocean and clouds) along the Z axis when the game starts.
@@ -60,7 +60,7 @@ pad, cross the red line and run from the boss. In Studio you're the owner, so th
 ## Notes for a Claude chat doing the install
 
 - Copy each file's full contents exactly. They are long (the server script is about
-  4,000 lines), so don't summarize or shorten them.
+  5,200 lines), so don't summarize or shorten them.
 - The server script must be a normal Script. The other three must be LocalScripts.
 - Nothing else is needed: no ReplicatedStorage setup, folders, remotes or assets
   (the `SVB_Props` folder is optional).
