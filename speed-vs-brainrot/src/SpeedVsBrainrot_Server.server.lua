@@ -797,8 +797,29 @@ function TK.zoneDetail(k, zone, j, rng)
 		-- lamp posts on the banks, glowing in the zone's colour
 		for z = z0 + 50, z1 - 50, 100 do
 			local x = side * (HALF_W + 5)
-			newPart{ Name = "LampPost", Shape = Enum.PartType.Cylinder, Size = Vector3.new(14, 1, 1), CFrame = CFrame.new(x, FLOOR_Y - 2.5 + 7, z) * CFrame.Angles(0, 0, math.pi / 2), Color = Color3.fromRGB(45, 45, 55), Material = Enum.Material.Metal, CanCollide = false, Parent = Decor }
-			local bulb = newPart{ Name = "LampGlow", Shape = Enum.PartType.Ball, Size = Vector3.one * 2.6, Position = Vector3.new(x, FLOOR_Y - 2.5 + 15, z), Color = accent:Lerp(WHITE, 0.4), Material = Enum.Material.Neon, CanCollide = false, CastShadow = false, Parent = Decor }
+			-- a street lamp: stone plinth, ringed pole, an arm over the track with a lantern
+			local metal = Color3.fromRGB(45, 45, 55)
+			local by = FLOOR_Y - 2.5
+			local function lampBit(props)
+				props.CanCollide = false
+				props.Parent = Decor
+				return newPart(props)
+			end
+			lampBit{ Name = "LampPlinth", Size = Vector3.new(2.6, 1.2, 2.6), Position = Vector3.new(x, by + 0.6, z), Color = Color3.fromRGB(150, 148, 140), Material = Enum.Material.Slate }
+			lampBit{ Name = "LampPost", Shape = Enum.PartType.Cylinder, Size = Vector3.new(14, 1, 1), CFrame = CFrame.new(x, by + 7, z) * CFrame.Angles(0, 0, math.pi / 2), Color = metal, Material = Enum.Material.Metal }
+			for _, ry in ipairs({ 1.6, 6, 13.6 }) do
+				lampBit{ Name = "LampCollar", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.5, 1.5, 1.5), CFrame = CFrame.new(x, by + ry, z) * CFrame.Angles(0, 0, math.pi / 2), Color = metal:Lerp(WHITE, 0.15), Material = Enum.Material.Metal }
+			end
+			local lx = x - side * 3
+			lampBit{ Name = "LampArm", Size = Vector3.new(3.6, 0.4, 0.4), Position = Vector3.new(x - side * 1.6, by + 14.2, z), Color = metal, Material = Enum.Material.Metal }
+			lampBit{ Name = "LampBrace", Size = Vector3.new(2.4, 0.3, 0.3), CFrame = CFrame.new(x - side * 0.9, by + 13.4, z) * CFrame.Angles(0, 0, side * math.rad(40)), Color = metal, Material = Enum.Material.Metal }
+			lampBit{ Name = "LanternRoof", Size = Vector3.new(2.8, 0.5, 2.8), Position = Vector3.new(lx, by + 13.7, z), Color = metal, Material = Enum.Material.Metal }
+			lampBit{ Name = "LanternCap", Shape = Enum.PartType.Ball, Size = Vector3.new(1, 0.7, 1), Position = Vector3.new(lx, by + 14.1, z), Color = metal, Material = Enum.Material.Metal }
+			lampBit{ Name = "LanternBase", Size = Vector3.new(2.2, 0.35, 2.2), Position = Vector3.new(lx, by + 11.2, z), Color = metal, Material = Enum.Material.Metal }
+			for _, c in ipairs({ { -1, -1 }, { 1, -1 }, { -1, 1 }, { 1, 1 } }) do
+				lampBit{ Name = "LanternBar", Size = Vector3.new(0.2, 2.3, 0.2), Position = Vector3.new(lx + c[1] * 0.95, by + 12.45, z + c[2] * 0.95), Color = metal, Material = Enum.Material.Metal }
+			end
+			local bulb = lampBit{ Name = "LampGlow", Shape = Enum.PartType.Ball, Size = Vector3.one * 1.7, Position = Vector3.new(lx, by + 12.45, z), Color = accent:Lerp(WHITE, 0.4), Material = Enum.Material.Neon, CastShadow = false }
 			-- a real light: a warm pool on the track around every lamp
 			local lamp = Instance.new("PointLight")
 			lamp.Color = accent:Lerp(Color3.fromRGB(255, 220, 170), 0.5)
@@ -813,6 +834,14 @@ function TK.zoneDetail(k, zone, j, rng)
 	local h = 26
 	for _, side in ipairs({ -1, 1 }) do
 		newPart{ Name = "GantryLeg", Size = Vector3.new(2.5, h, 2.5), Position = Vector3.new(side * (HALF_W + 2), FLOOR_Y + h / 2 - 2.5, gz), Color = Color3.fromRGB(60, 62, 75), Material = Enum.Material.Metal, Parent = Decor }
+		local lx = side * (HALF_W + 2)
+		-- a bolted foot plate, hazard stripes and a diagonal brace up to the beam
+		newPart{ Name = "GantryFoot", Size = Vector3.new(4.5, 0.8, 4.5), Position = Vector3.new(lx, FLOOR_Y - 2.1, gz), Color = Color3.fromRGB(80, 82, 95), Material = Enum.Material.DiamondPlate, CanCollide = false, Parent = Decor }
+		for s = 0, 3 do
+			newPart{ Name = "GantryStripe", Size = Vector3.new(2.7, 0.6, 2.7), Position = Vector3.new(lx, FLOOR_Y - 1 + s * 1.2, gz), Color = (s % 2 == 0) and Color3.fromRGB(250, 200, 40) or Color3.fromRGB(30, 30, 35), CanCollide = false, Parent = Decor }
+		end
+		local a0, a1 = Vector3.new(lx, FLOOR_Y + h - 10, gz), Vector3.new(lx - side * 8, FLOOR_Y + h - 2.5, gz)
+		newPart{ Name = "GantryBrace", Size = Vector3.new(0.8, 0.8, (a1 - a0).Magnitude), CFrame = CFrame.lookAt((a0 + a1) / 2, a1), Color = Color3.fromRGB(60, 62, 75), Material = Enum.Material.Metal, CanCollide = false, Parent = Decor }
 	end
 	newPart{ Name = "GantryBeam", Size = Vector3.new(W + 6, 2, 2), Position = Vector3.new(0, FLOOR_Y + h - 2.5, gz), Color = Color3.fromRGB(60, 62, 75), Material = Enum.Material.Metal, CanCollide = false, Parent = Decor }
 	local strip = newPart{ Name = "GantryLight", Size = Vector3.new(W + 4, 0.4, 0.6), Position = Vector3.new(0, FLOOR_Y + h - 3.7, gz), Color = accent, Material = Enum.Material.Neon, CanCollide = false, CastShadow = false, Parent = Decor }
@@ -1168,9 +1197,28 @@ local function buildTrophyGate(z, lines)
 			newPart{ Name = "GateStud", Shape = Enum.PartType.Ball, Size = Vector3.one * 1.3, Position = Vector3.new(x - side * 1.4, FLOOR_Y + s * (h / 7), z), Color = Color3.fromRGB(255, 240, 150), Material = Enum.Material.Neon, CanCollide = false, Parent = Map }
 		end
 		newPart{ Name = "GateFoot", Size = Vector3.new(5, 2, 5), Position = Vector3.new(x, FLOOR_Y + 1, z), Color = GATE_GOLD:Lerp(BLACK, 0.25), Parent = Map }
+		newPart{ Name = "GateStep", Size = Vector3.new(6.4, 0.8, 6.4), Position = Vector3.new(x, FLOOR_Y + 0.4, z), Color = GATE_GOLD:Lerp(BLACK, 0.45), CanCollide = false, Parent = Map }
+		for _, by in ipairs({ 8, 16 }) do
+			newPart{ Name = "GatePostBand", Size = Vector3.new(3.4, 0.6, 3.4), Position = Vector3.new(x, FLOOR_Y + by, z), Color = GATE_GOLD:Lerp(BLACK, 0.35), CanCollide = false, Parent = Map }
+		end
 		newPart{ Name = "GateKnob", Shape = Enum.PartType.Ball, Size = Vector3.new(4, 4, 4), Position = Vector3.new(x, FLOOR_Y + h + 1.5, z), Color = GATE_GOLD, Material = Enum.Material.Neon, Parent = Map }
 	end
 	newPart{ Name = "GateBeam", Size = Vector3.new(W - 3, 3, 3), Position = Vector3.new(0, FLOOR_Y + h - 1.5, z), Color = GATE_GOLD, Reflectance = 0.15, Parent = Map }
+	-- details: dark trim bands on the beam, a big gold star in the middle, and
+	-- pennants hanging under the beam
+	local trim = GATE_GOLD:Lerp(BLACK, 0.35)
+	for _, dy in ipairs({ -1.6, 1.6 }) do
+		newPart{ Name = "GateBeamTrim", Size = Vector3.new(W - 2.6, 0.35, 3.3), Position = Vector3.new(0, FLOOR_Y + h - 1.5 + dy, z), Color = trim, CanCollide = false, Parent = Map }
+	end
+	for _, rot in ipairs({ 0, 45 }) do
+		newPart{ Name = "GateStar", Size = Vector3.new(5, 5, 1), CFrame = CFrame.new(0, FLOOR_Y + h + 2.2, z) * CFrame.Angles(0, 0, math.rad(rot)), Color = GATE_GOLD, Reflectance = 0.2, CanCollide = false, Parent = Map }
+	end
+	newPart{ Name = "GateStarGem", Shape = Enum.PartType.Ball, Size = Vector3.new(2, 2, 1.4), Position = Vector3.new(0, FLOOR_Y + h + 2.2, z), Color = Color3.fromRGB(230, 60, 70), Material = Enum.Material.Glass, CanCollide = false, Parent = Map }
+	local pn = 0
+	for x = -HALF_W + 10, HALF_W - 10, 9 do
+		pn += 1
+		newPart{ Name = "GatePennant", Size = Vector3.new(2.6, 2.6, 0.15), CFrame = CFrame.new(x, FLOOR_Y + h - 4.4, z) * CFrame.Angles(0, 0, math.rad(45)), Color = (pn % 2 == 0) and Color3.fromRGB(230, 50, 60) or WHITE, Material = Enum.Material.Fabric, CanCollide = false, CastShadow = false, Parent = Map }
+	end
 	newPart{ Name = "GateSill", Size = Vector3.new(W - 3, 0.3, 3), Position = Vector3.new(0, FLOOR_Y + 0.15, z), Color = GATE_GOLD, Material = Enum.Material.Neon, CanCollide = false, Parent = Map }
 	-- see-through panel you run through, with the reward on it
 	local panel = newPart{ Name = "TrophyPanel", Size = Vector3.new(W - 6, h - 3, 0.3), Position = Vector3.new(0, FLOOR_Y + (h - 3) / 2, z), Color = Color3.fromRGB(255, 225, 120), Transparency = 0.8, CanCollide = false, CastShadow = false, Parent = Map }
@@ -2712,9 +2760,13 @@ local function buildStartIsland(map)
 
 	-- lamp posts along the path with party flags strung between them
 	local function lampPost(x, z)
+		block(2, 0.8, 2, CFrame.new(x, FLOOR_Y + 0.4, z), Color3.fromRGB(150, 148, 140), Enum.Material.Slate)
 		vcyl(9, 0.8, x, FLOOR_Y, z, Color3.fromRGB(50, 50, 60))
+		vcyl(0.4, 1.3, x, FLOOR_Y + 2.5, z, Color3.fromRGB(70, 70, 82))
+		vcyl(0.5, 1.2, x, FLOOR_Y + 8.5, z, Color3.fromRGB(70, 70, 82))
 		ball(2.2, x, FLOOR_Y + 9.8, z, Color3.fromRGB(250, 240, 215), Enum.Material.SmoothPlastic) -- a frosted globe, not a light
 		block(2.8, 0.5, 2.8, CFrame.new(x, FLOOR_Y + 11.1, z), Color3.fromRGB(50, 50, 60))
+		ball(0.8, x, FLOOR_Y + 11.6, z, Color3.fromRGB(50, 50, 60)).CanCollide = false
 	end
 	local function buntingAcross(z, y)
 		prop{ Name = "BuntingString", Size = Vector3.new(22, 0.1, 0.1), Position = Vector3.new(0, y, z), Color = WHITE, CanCollide = false }
@@ -4672,7 +4724,8 @@ MarketplaceService.PromptGamePassPurchaseFinished:Connect(function(plr, id, purc
 end)
 
 ------------------------------------------------------------------------
--- REBIRTH (needs Speed, not cash; you keep your pets, trophies and wins)
+-- REBIRTH (needs Speed, not cash): you lose your cash, speed and PETS, and go back to
+-- Zone 1 of Map 1 (map unlocks reset too). You keep your trophies and wins.
 ------------------------------------------------------------------------
 RebirthRemote.OnServerEvent:Connect(function(plr)
 	local d = Data[plr]
@@ -4685,9 +4738,14 @@ RebirthRemote.OnServerEvent:Connect(function(plr)
 	d.cash = 0
 	d.speed = 0
 	d.rebirths += 1
+	d.pets = {}
+	d.bestZone = 0
+	d.maxMap = 1
+	syncPets(plr)
+	travel(plr, 1) -- back to the start of Map 1, before Zone 1
 	applySpeed(plr)
 	syncStats(plr)
-	notify(plr, "REBIRTH! Cash is now x" .. string.format("%.1f", cashMultiplier(plr)), Color3.fromRGB(255, 140, 40))
+	notify(plr, "REBIRTH! Pets and progress reset. Cash is now x" .. string.format("%.1f", cashMultiplier(plr)), Color3.fromRGB(255, 140, 40))
 end)
 
 ------------------------------------------------------------------------

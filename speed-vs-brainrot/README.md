@@ -107,7 +107,9 @@ Four scripts:
 - **Map detail**:
   - Each zone runs through land: banks in the zone's own terrain (grass, sand, snow and so on) on both sides, with hills, mesas, peaks or towers behind them.
   - Striped curbs line the walls, and lamp posts glow in the zone's color and cast a real pool of light on the track.
-  - A gantry over the middle of each zone shows its number and name, and its light strip washes the track below in the zone's color.
+  - Lamp posts are proper street lamps: a stone plinth, a ringed pole, and an arm with a brace holding a caged lantern over the bank.
+  - A gantry over the middle of each zone shows its number and name, and its light strip washes the track below in the zone's color. Its legs stand on diamond-plate feet with yellow and black hazard stripes, braced up to the beam.
+  - Trophy gates have stepped gold bases, dark bands on the posts and beam, a big gold star with a red gem on top, and red and white pennants hanging under the beam.
   - Two strings of flags in the zone's colors sag across the track in every zone.
   - The banks beside the track are covered in themed clutter: grass tufts, bushes and wildflowers on grassy zones, rocks on desert and storm zones, glowing cracked rocks on lava, ice shards on the tundra, crystals and neon shards on crystal, rainbow and neon zones, lollipops and gumdrops in Candy Land, gravestones in the haunted zone, and crates and barrels in the factory.
   - Every zone has something drifting through the air around you, on your own screen only: pollen in the meadow and jungle, blowing dust in the desert, snow on the tundra, fireflies in the swamp and haunted zone, embers on lava and inferno, sparkles in the candy, rainbow, crystal and neon zones, twinkling stars in space and the void, rain streaks in the storm, and floating soot in the factory.
@@ -143,7 +145,7 @@ Four scripts:
   - stand on the green pad on the island (it's smaller now) and it keeps buying;
   - tap the green **Buy Speed** button under your stats, or hold it to keep buying.
   - Both show exactly how much Speed you get and what it costs. The price turns red when you can't afford it. Change `SpeedStep` in `CONFIG` to change the 10%.
-- **Rebirth** resets your cash and speed for a cash multiplier.
+- **Rebirth** gives you a bigger cash multiplier, but you **lose your cash, speed and all your pets**, and go back to the start of Map 1 (Zone 1). Map unlocks reset too. You keep your trophies and wins.
 - **Prestige** unlocks once you reach the final zone of the final map. You start over from Map 1 with a permanent trophy multiplier. You keep your pets and rebirths.
 - **Every egg has its own design**, painted flat on the shell so nothing sticks out:
   - Grass: a fringe of grass blades and daisies.
@@ -182,6 +184,7 @@ No emojis or uploaded images: every icon is drawn from rounded frames (the `ICON
 - **Running**: when you're fast, a bouncy run, then a ninja dash. Both come from Roblox's free animation packs. The playback speed is capped so it never looks frantic. You also lean forward, leave a speed trail, and the camera view widens.
 - **Lighting and sky per zone** (toned down so it's no longer too bright: lower exposure, less bloom, softer haze; `LIGHT_SCALE` in the World script makes it brighter or darker): as you cross into a new zone, the sky, sun angle, haze, color grade and cloud cover blend smoothly to match it. The Desert is a hazy gold, the Tundra a cold bright white, Lava a smoky red dusk, Neon City and Space night time, Storm Peaks dark and overcast, and so on. Bloom on neon and sun rays stay on everywhere.
   - The place uses **Future** lighting, so lamps, neon and the boss glow cast real light.
+  - **No zone is too dark**: every zone has a minimum brightness. Night zones (Neon City, Crystal, Void, Haunted, Space) get a bright moonlit ambient fill and a lighter exposure, so you can always see. Dim zones like Storm and Swamp get lighter haze, and cloud cover is capped.
   - Each zone also sets the mood of the light. Night zones get stronger bloom so neon really glows, cool moonlight and softer shadows. Sunset zones get warm light and longer sun rays. Day zones get crisp shadows. Saturation and contrast are tuned for each.
 
 ![Studded Il Grande Zoomerone](bosses_studs_king.png)
@@ -195,6 +198,7 @@ No emojis or uploaded images: every icon is drawn from rounded frames (the `ICON
 ![Desert zone](map_desert.png)
 ![Banks beside the track](map_banks.png)
 ![Spawn](spawn.png)
+![Trophy gate](trophy_gate.png)
 ![Overview](map_overview.png)
 ![HUD](svb_hud.png)
 ![Menus](svb_menus.png)

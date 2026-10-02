@@ -11,7 +11,7 @@
 	      3x Cash   (an angry bat)        - your gamepass ("ONLY <robux>price!" above it)
 	      Invite    (two friends)         - invite friends ("Play with friends!")
 	      Pets      (a puppy)             - your pets, what they give, and Fuse 3 -> 1 better pet
-	      Rebirth   (orange arrows)       - reset cash + speed for a cash multiplier
+	      Rebirth   (orange arrows)       - reset cash, speed, pets and zones for a cash multiplier
 	      Prestige  (a gold star)         - lights up once you reach the final zone
 	  - When you collect cash: a big cash brick with "+545" pops up on the
 	    screen, wiggles, then flies into your Cash tile. Around your character
@@ -1361,7 +1361,7 @@ local rebirthPanel = panel("RebirthMenu", UDim2.fromOffset(360, 270), "Rebirth",
 local rbNeed = panelLine(rebirthPanel, 66)
 local rbMult = panelLine(rebirthPanel, 98, Color3.fromRGB(150, 255, 150))
 local rbNote = panelLine(rebirthPanel, 132, Color3.fromRGB(200, 205, 225))
-rbNote.Text = "Resets cash + speed. Keeps pets, trophies and wins."
+rbNote.Text = "Resets cash, speed, PETS and zones. Keeps trophies and wins."
 rbNote.Size = UDim2.new(1, -40, 0, 36)
 local rbAction, rbActionText = panelAction(rebirthPanel, "REBIRTH", Color3.fromRGB(70, 200, 90), function()
 	RebirthRemote:FireServer()

@@ -587,19 +587,28 @@ local function applyLook(look)
 	currentLook = look
 	local info = TweenInfo.new(2.5, Enum.EasingStyle.Sine)
 	-- LIGHT_SCALE tones every zone down together (raise it for a brighter game)
-	local dim = look.bright / 3
+	-- no zone gets too dark: brightness has a floor, night zones get a bright moonlit
+	-- ambient fill (at night the sun is down, so ambient is most of the light), and dim
+	-- zones get a lighter exposure
+	local clockNow = workspace:GetAttribute("AdminClock") or look.clock
+	local isNight = clockNow < 6 or clockNow >= 19.5
+	local dimZone = look.bright < 2.2
 	TweenService:Create(Lighting, info, {
-		ClockTime = workspace:GetAttribute("AdminClock") or look.clock, -- admins can set the time for everyone
-		Brightness = look.bright * LIGHT_SCALE,
-		ExposureCompensation = -0.3,
-		OutdoorAmbient = Color3.fromRGB(112, 112, 128):Lerp(look.decay, 0.25):Lerp(Color3.new(0, 0, 0), 0.35 * (1 - dim)),
+		ClockTime = clockNow, -- admins can set the time for everyone
+		Brightness = math.max(look.bright * LIGHT_SCALE, isNight and 1.4 or 1.15),
+		ExposureCompensation = isNight and 0.25 or (dimZone and 0 or -0.3),
+		Ambient = isNight and Color3.fromRGB(105, 105, 130) or Color3.fromRGB(80, 80, 92),
+		OutdoorAmbient = isNight
+			and Color3.fromRGB(150, 155, 195):Lerp(look.atmo, 0.25)
+			or Color3.fromRGB(125, 125, 138):Lerp(look.decay, 0.2),
 	}):Play()
 	local atmo = Lighting:FindFirstChild("SVB_Atmosphere")
-	if atmo then TweenService:Create(atmo, info, { Color = look.atmo, Decay = look.decay, Density = look.density * 0.85, Haze = look.haze * 0.55, Glare = 0.1 }):Play() end
+	-- (thick haze makes far things murky: kept lighter in dim zones)
+	if atmo then TweenService:Create(atmo, info, { Color = look.atmo, Decay = look.decay:Lerp(look.atmo, dimZone and 0.4 or 0), Density = math.min(look.density * 0.85, dimZone and 0.3 or 0.34), Haze = look.haze * (dimZone and 0.4 or 0.55), Glare = 0.1 }):Play() end
 	-- the mood of the light: night zones glow (stronger bloom on the neon, cool moonlight,
 	-- softer shadows), sunset zones get warm sun rays, day zones crisp shadows
-	local night = look.clock < 6 or look.clock >= 19.5
-	local sunset = not night and look.clock >= 16
+	local night = isNight
+	local sunset = not night and clockNow >= 16
 	TweenService:Create(Lighting, info, {
 		ColorShift_Top = night and Color3.fromRGB(150, 170, 230) or (sunset and Color3.fromRGB(255, 190, 140) or Color3.fromRGB(240, 225, 200)),
 		ShadowSoftness = night and 0.45 or 0.15,
@@ -625,7 +634,8 @@ local function applyLook(look)
 		TweenService:Create(rays, info, { Intensity = night and 0 or (sunset and 0.1 or 0.05), Spread = sunset and 0.7 or 0.5 }):Play()
 	end
 	local clouds = workspace.Terrain:FindFirstChildOfClass("Clouds")
-	if clouds then TweenService:Create(clouds, info, { Cover = look.cover }):Play() end
+	-- (thick cloud cover made zones gloomy, so it's capped)
+	if clouds then TweenService:Create(clouds, info, { Cover = math.min(look.cover, 0.72) }):Play() end
 end
 
 -- an admin changed the time of day: blend to it right away
