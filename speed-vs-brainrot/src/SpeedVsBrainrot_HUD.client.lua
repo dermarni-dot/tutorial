@@ -98,16 +98,33 @@ end
 
 -- a stack of cash: green bills, a lighter top, a yellow paper band
 function ICONS.cash()
-	-- a chunky 3D stack: the front of the bills, the lighter top, and a
-	-- yellow paper band wrapping over both
+	-- a chunky 3D stack of bills, tipped up a little: the front (with the
+	-- edges of the bills), a lighter top, the darker end, and a yellow paper
+	-- band wrapping over the top and down the front. Each face is placed in
+	-- the brick's own tilted space so the faces meet up.
+	local ang = math.rad(-14)
+	local cx, cy = 0.5, 0.56
+	local cs, sn = math.cos(ang), math.sin(ang)
+	local k = 1.14 -- (a touch bigger than the shapes below)
+	local function at(lx, ly, w, h, c, opts)
+		local o = { rot = -14 }
+		for key, v in pairs(opts or {}) do
+			o[key] = v
+		end
+		lx, ly = lx * k, ly * k
+		return S(cx + lx * cs - ly * sn, cy + lx * sn + ly * cs, w * k, h * k, c, o)
+	end
+	local edge = { line = 0, flat = true }
 	return {
-		S(0.5, 0.63, 0.86, 0.38, rgb(50, 175, 60), { r = 0.1, rot = -12 }),
-		S(0.5, 0.58, 0.82, 0.03, rgb(25, 110, 35), { rot = -12, line = 0, flat = true }),
-		S(0.5, 0.67, 0.82, 0.03, rgb(25, 110, 35), { rot = -12, line = 0, flat = true }),
-		S(0.5, 0.76, 0.8, 0.03, rgb(25, 110, 35), { rot = -12, line = 0, flat = true }),
-		S(0.53, 0.4, 0.84, 0.2, rgb(140, 235, 110), { r = 0.12, rot = -12 }),
-		S(0.51, 0.64, 0.2, 0.39, rgb(240, 165, 30), { r = 0.04, rot = -12 }),
-		S(0.53, 0.4, 0.19, 0.21, rgb(255, 215, 80), { r = 0.04, rot = -12 }),
+		at(0.4, -0.06, 0.1, 0.32, rgb(35, 135, 45), { r = 0.1 }), -- the end
+		at(0, 0.04, 0.76, 0.3, rgb(60, 185, 65), { r = 0.08 }), -- the front
+		at(0, -0.04, 0.72, 0.025, rgb(25, 105, 35), edge),
+		at(0, 0.04, 0.72, 0.025, rgb(25, 105, 35), edge),
+		at(0, 0.12, 0.72, 0.025, rgb(25, 105, 35), edge),
+		at(0.05, -0.17, 0.76, 0.13, rgb(150, 238, 120), { r = 0.12 }), -- the top
+		at(0.05, -0.17, 0.66, 0.025, rgb(205, 255, 185), edge), -- a shine on top
+		at(0.02, 0.04, 0.17, 0.3, rgb(240, 160, 30), { r = 0.04 }), -- the band (front)
+		at(0.07, -0.17, 0.17, 0.13, rgb(255, 215, 80), { r = 0.04 }), -- the band (top)
 	}
 end
 
