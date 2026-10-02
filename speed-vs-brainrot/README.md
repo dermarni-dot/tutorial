@@ -29,6 +29,15 @@ Three scripts:
 - Eggs are detailed: a pedestal, stripes, spots and a shine. They spin and glow, and show their pets and odds above them.
 - **Rebirth** resets your cash and speed for a cash multiplier.
 - **Prestige** unlocks once you reach the final zone of the final map. You start over from Map 1 with a permanent trophy multiplier. You keep your pets and rebirths.
+- **Every egg has its own design**, painted flat on the shell so nothing sticks out:
+  - Grass: a fringe of grass blades and daisies.
+  - Sand: desert layers and a turquoise band with gold diamonds.
+  - Ice: snowflakes under a frosty glass shell.
+  - Lava: dark rock with glowing cracks.
+  - Jungle: watermelon stripes and a tribal band.
+  - Candy: crossing swirls and sprinkles.
+  - Robo: shiny metal with neon circuits.
+  - Cosmic: a nebula swirl, stars and a shimmering force field.
 - **Leaderboards** on every island show top Cash, top Speed and most Pets Hatched. They are global, saved in ordered data stores.
 
 ## HUD
@@ -43,7 +52,7 @@ Three scripts:
   - Prestige, which stays locked until you can use it.
 - **Cash pickups**: a cash brick with "+545" pops up and flies into the Cash tile, and a green swirl spins around the player.
 - **Zone cleared**: a gold card drops in, a shine sweeps across it and the trophies count up. The card then flies into the Trophies tile.
-- **Egg icons**: each egg is drawn in its own colors, with a smooth egg shape, shading on the lower right, a glossy highlight, a zigzag stripe, raised spots and a shadow underneath.
+- **Egg icons**: each egg has its own design, matching its 3D egg, with a smooth egg shape, shading, a glossy highlight and a shadow underneath.
 - **Egg hatch**: the screen dims, the egg wobbles and cracks, there is a flash and the halves fly apart. Your actual pet pops out in front of spinning rays, with its rarity. Every pet is drawn by its kind (bunny, pup, cat, fox, wolf, bear, bee, beetle, penguin, dragon, slime, bird, cloud, unicorn, robot, bat, wisp, overlord) in its own colors, in the hatch screen and in the Pets menu. Fusing pets plays its own version.
 - The whole UI is drawn at 80% size so it covers less of the screen. Change `UI_SIZE` in the HUD script to adjust it.
 
@@ -60,5 +69,6 @@ No emojis or uploaded images: every icon is drawn from rounded frames (the `ICON
 ![Egg hatch](svb_hatch.png)
 ![Egg icons](svb_eggs.png)
 ![All pets](svb_pets.png)
+![3D eggs up close](eggs3d_closeups.png)
 ![3D eggs, Map 1](eggs3d_map1.png)
 ![3D eggs, Map 2](eggs3d_map2.png)

@@ -433,11 +433,17 @@ end
 -- rounded slices, shaded darker on the lower right, lit from the top left,
 -- with a zigzag stripe, raised spots and a soft shadow under it
 -- (colors from the egg; cream + green by default)
-function ICONS.egg(color, spots)
+function ICONS.egg(color, spots, design)
 	color = color or rgb(250, 240, 220)
 	spots = spots or rgb(120, 210, 90)
 	local black, white = rgb(0, 0, 0), rgb(255, 255, 255)
-	local outline, dark, light = color:Lerp(black, 0.6), color:Lerp(black, 0.3), color:Lerp(white, 0.4)
+	-- the shell color for designs that change it
+	local base = color
+	if design == "lava" then base = rgb(55, 35, 32) end
+	if design == "cosmic" then base = rgb(40, 20, 70) end
+	if design == "robo" then base = rgb(40, 42, 70) end
+	if design == "ice" then base = color:Lerp(rgb(60, 140, 220), 0.35) end
+	local outline, dark, light = base:Lerp(black, 0.6), base:Lerp(black, 0.3), base:Lerp(white, 0.4)
 	local spotDark = spots:Lerp(black, 0.35)
 	local CY, B, A = 0.52, 0.42, 0.3 -- center, half height, half width
 	-- half the egg's width at v (-1 = the top tip, 1 = the bottom)
@@ -447,6 +453,7 @@ function ICONS.egg(color, spots)
 	local list = {
 		S(0.5, 0.95, 0.5, 0.06, black, { r = 0.5, line = 0, flat = true, a = 0.75 }), -- shadow on the ground
 	}
+	local function add(sh) table.insert(list, sh) end
 	local SLICES = 22
 	-- the egg shape scaled by k around its center, moved by dx/dy, grown by `grow`
 	local function body(c, grow, dx, dy, k, opts)
@@ -459,32 +466,178 @@ function ICONS.egg(color, spots)
 			local w = 2 * halfWidth(v) * k + grow
 			-- tall slices with round ends overlap, so the edge comes out smooth
 			local h = math.min(2 * B / SLICES * 3 * k, w * 0.9) + grow
-			table.insert(list, S(0.5 + dx, CY + v * B * k + dy, w, h, c, o))
+			add(S(0.5 + dx, CY + v * B * k + dy, w, h, c, o))
 		end
 	end
 	body(outline, 0.045, 0, 0, 1)                           -- dark outline
 	body(dark, 0, 0, 0, 1)                                  -- shadow side (shows on the lower right)
-	body(color, 0, -0.022, -0.02, 0.9)                      -- the main color
-	table.insert(list, S(0.44, 0.38, 0.26, 0.4, light, { r = 0.5, line = 0, flat = true, a = 0.55, rot = 12 })) -- soft light, upper left
-	-- zigzag stripe (kept inside the egg)
-	local sv = (0.56 - CY) / B
-	local sw = 2 * halfWidth(sv) * 0.88
-	table.insert(list, S(0.5, 0.582, sw * 0.96, 0.022, spotDark, { line = 0, flat = true }))
-	table.insert(list, S(0.5, 0.56, sw, 0.04, spots, { line = 0, flat = true }))
-	for i = 0, 5 do
-		local x = 0.5 - sw * 0.4 + i * (sw * 0.8 / 5)
-		table.insert(list, S(x, 0.56, 0.06, 0.06, spots, { rot = 45, line = 0, flat = true }))
+	body(base, 0, -0.022, -0.02, 0.9)                       -- the main color
+	add(S(0.44, 0.38, 0.26, 0.4, light, { r = 0.5, line = 0, flat = true, a = 0.55, rot = 12 })) -- soft light, upper left
+
+	-- drawing helpers that stay inside the egg
+	local function inside(x, y, pad)
+		local v = (y - CY) / B
+		return math.abs(v) < 0.96 and math.abs(x - 0.5) <= halfWidth(v) * (pad or 0.92)
 	end
-	-- raised spots (a darker rim under each, a little shine on top)
-	for _, sp in ipairs({ { 0.42, 0.33, 0.09 }, { 0.6, 0.4, 0.065 }, { 0.37, 0.73, 0.1 }, { 0.61, 0.76, 0.08 }, { 0.5, 0.86, 0.05 } }) do
-		local x, y, d = sp[1], sp[2], sp[3]
-		table.insert(list, S(x + 0.007, y + 0.009, d, d * 0.85, spotDark, { r = 0.5, line = 0, flat = true }))
-		table.insert(list, S(x, y, d, d * 0.85, spots, { r = 0.5, line = 0 }))
-		table.insert(list, S(x - d * 0.18, y - d * 0.18, d * 0.3, d * 0.22, white, { r = 0.5, line = 0, flat = true, a = 0.45 }))
+	local function flat(x, y, w, h, c, extra)
+		local o = { r = 0.5, line = 0, flat = true }
+		for k, val in pairs(extra or {}) do o[k] = val end
+		return S(x, y, w, h, c, o)
+	end
+	-- a band across the egg at height y (as wide as the egg is there)
+	local function hband(y, h, c, extra)
+		local w = 2 * math.min(halfWidth((y - h / 2 - CY) / B), halfWidth((y + h / 2 - CY) / B)) * 0.86
+		if w > 0.02 then add(flat(0.5, y, w, h, c, extra)) end
+	end
+	-- a line from (x1, y1) to (x2, y2), cut into short pieces that stay inside the egg
+	local function seg(x1, y1, x2, y2, w, c, extra)
+		local len = math.sqrt((x2 - x1) ^ 2 + (y2 - y1) ^ 2)
+		local n = math.max(1, math.ceil(len / 0.05))
+		local rot = math.deg(math.atan2(y2 - y1, x2 - x1))
+		for i = 0, n - 1 do
+			local ax, ay = x1 + (x2 - x1) * i / n, y1 + (y2 - y1) * i / n
+			local bx, by = x1 + (x2 - x1) * (i + 1) / n, y1 + (y2 - y1) * (i + 1) / n
+			if inside(ax, ay, 0.8) and inside(bx, by, 0.8) then
+				local o = { rot = rot, r = 0.5 }
+				for k, val in pairs(extra or {}) do o[k] = val end
+				add(flat((ax + bx) / 2, (ay + by) / 2, len / n + w * 0.8, w, c, o))
+			end
+		end
+	end
+	local function path(pts, w, c, extra)
+		for i = 1, #pts - 1 do
+			seg(pts[i][1], pts[i][2], pts[i + 1][1], pts[i + 1][2], w, c, extra)
+		end
+	end
+	local function dot(x, y, d, c, extra)
+		if inside(x, y) then add(flat(x, y, d, d, c, extra)) end
+	end
+	local function flower(x, y, size, petal, middle)
+		if not inside(x, y, 0.8) then return end
+		for k = 0, 2 do
+			add(flat(x, y, size * 0.32, size, petal, { rot = k * 60 }))
+		end
+		add(flat(x, y, size * 0.36, size * 0.36, middle))
+	end
+
+	if design == "grass" then
+		local leaf = rgb(60, 160, 60)
+		for i = 0, 12 do
+			local x = 0.24 + i * 0.044
+			if inside(x, 0.84, 1) then
+				add(flat(x, 0.83, 0.035, 0.13, (i % 2 == 0) and leaf or leaf:Lerp(white, 0.25), { rot = (i % 3 - 1) * 12 }))
+			end
+		end
+		for i, f in ipairs({ { 0.4, 0.3 }, { 0.6, 0.38 }, { 0.43, 0.52 }, { 0.64, 0.6 }, { 0.36, 0.68 }, { 0.53, 0.22 }, { 0.55, 0.7 } }) do
+			flower(f[1], f[2], 0.11, (i % 3 == 0) and rgb(255, 200, 230) or white, rgb(255, 205, 50))
+		end
+	elseif design == "sand" then
+		local tones = { rgb(205, 150, 85), rgb(225, 180, 110), rgb(185, 125, 70) }
+		for i, y in ipairs({ 0.2, 0.26, 0.74, 0.8, 0.87 }) do
+			hband(y, 0.022 + (i % 2) * 0.012, tones[i % 3 + 1])
+		end
+		hband(0.52, 0.1, rgb(40, 165, 155))
+		hband(0.47, 0.012, rgb(255, 215, 60))
+		hband(0.57, 0.012, rgb(255, 215, 60))
+		for i = 0, 4 do
+			dot(0.33 + i * 0.085, 0.52, 0.04, rgb(255, 215, 60), { rot = 45, r = 0.1 })
+		end
+	elseif design == "ice" then
+		hband(0.82, 0.04, white)
+		for _, f in ipairs({ { 0.41, 0.32, 0.15 }, { 0.62, 0.48, 0.13 }, { 0.38, 0.62, 0.14 }, { 0.58, 0.76, 0.12 } }) do
+			if inside(f[1], f[2], 0.8) then
+				for k = 0, 2 do
+					add(flat(f[1], f[2], 0.016, f[3], white, { rot = k * 60, r = 0.3 }))
+				end
+				add(flat(f[1], f[2], 0.03, 0.03, rgb(170, 230, 255)))
+			end
+		end
+		-- frosty glass sheen
+		add(flat(0.4, 0.48, 0.12, 0.5, white, { a = 0.75, rot = 8 }))
+	elseif design == "lava" then
+		hband(0.83, 0.05, color)
+		hband(0.79, 0.02, color:Lerp(rgb(255, 230, 80), 0.5), { a = 0.3 })
+		local hot, warm = spots, color
+		path({ { 0.42, 0.17 }, { 0.47, 0.3 }, { 0.41, 0.43 }, { 0.48, 0.58 }, { 0.43, 0.73 }, { 0.49, 0.88 } }, 0.022, hot)
+		path({ { 0.61, 0.22 }, { 0.67, 0.38 }, { 0.6, 0.52 }, { 0.68, 0.68 }, { 0.62, 0.86 } }, 0.022, warm)
+		path({ { 0.41, 0.43 }, { 0.32, 0.52 }, { 0.3, 0.62 } }, 0.016, warm)
+		path({ { 0.6, 0.52 }, { 0.53, 0.46 } }, 0.016, hot)
+	elseif design == "jungle" then
+		local stripe = color:Lerp(black, 0.35)
+		for i = -3, 3 do
+			local x = 0.5 + i * 0.08
+			local top, bottom
+			for yy = 0.1, 0.94, 0.01 do
+				if inside(x, yy, 0.97) then
+					top = top or yy
+					bottom = yy
+				end
+			end
+			if top then add(flat(x, (top + bottom) / 2, 0.035, bottom - top, stripe)) end
+		end
+		hband(0.52, 0.08, rgb(255, 205, 60))
+		hband(0.475, 0.012, rgb(120, 70, 30))
+		hband(0.565, 0.012, rgb(120, 70, 30))
+		for i = 0, 5 do
+			dot(0.29 + i * 0.084, 0.52, 0.035, (i % 2 == 0) and rgb(230, 90, 40) or rgb(40, 140, 70), { rot = 45, r = 0.1 })
+		end
+	elseif design == "candy" then
+		local swirl = { white, rgb(130, 220, 255), rgb(255, 90, 150) }
+		for i = 0, 2 do
+			local y0 = 0.22 + i * 0.22
+			seg(0.12, y0, 0.88, y0 + 0.3, 0.05, swirl[i + 1], { r = 0.2 })
+		end
+		local bits = { white, rgb(255, 230, 80), rgb(120, 230, 120), rgb(130, 220, 255) }
+		for i, b in ipairs({ { 0.4, 0.25 }, { 0.6, 0.3 }, { 0.36, 0.45 }, { 0.65, 0.5 }, { 0.48, 0.62 }, { 0.34, 0.78 }, { 0.6, 0.82 }, { 0.55, 0.16 } }) do
+			if inside(b[1], b[2]) then
+				add(flat(b[1], b[2], 0.014, 0.045, bits[i % #bits + 1], { rot = i * 47 }))
+			end
+		end
+	elseif design == "robo" then
+		local glow = spots
+		hband(0.82, 0.04, rgb(150, 155, 170))
+		hband(0.52, 0.016, glow)
+		for _, x in ipairs({ 0.36, 0.5, 0.64 }) do
+			seg(x, 0.14, x, 0.9, 0.012, glow)
+		end
+		for _, x in ipairs({ 0.36, 0.5, 0.64 }) do
+			dot(x, 0.52, 0.05, rgb(20, 20, 35))
+			dot(x, 0.52, 0.028, glow)
+		end
+		path({ { 0.42, 0.36 }, { 0.42, 0.3 }, { 0.46, 0.27 } }, 0.012, glow)
+		dot(0.47, 0.265, 0.026, glow)
+		path({ { 0.58, 0.68 }, { 0.58, 0.74 }, { 0.55, 0.77 } }, 0.012, glow)
+		dot(0.545, 0.775, 0.026, glow)
+	elseif design == "cosmic" then
+		seg(0.14, 0.66, 0.86, 0.4, 0.12, rgb(120, 50, 200), { a = 0.35 })
+		seg(0.14, 0.66, 0.86, 0.4, 0.04, spots, { a = 0.2 })
+		for i, st in ipairs({ { 0.38, 0.26 }, { 0.6, 0.22 }, { 0.32, 0.5 }, { 0.68, 0.58 }, { 0.47, 0.72 }, { 0.6, 0.8 }, { 0.4, 0.84 }, { 0.53, 0.38 }, { 0.7, 0.36 }, { 0.3, 0.68 } }) do
+			dot(st[1], st[2], (i % 3 == 0) and 0.022 or 0.014, white)
+		end
+		for _, st in ipairs({ { 0.62, 0.3 }, { 0.42, 0.62 } }) do
+			add(flat(st[1], st[2], 0.012, 0.075, white))
+			add(flat(st[1], st[2], 0.075, 0.012, white))
+		end
+	else
+		-- classic: zigzag stripe + raised spots
+		local sv = (0.56 - CY) / B
+		local sw = 2 * halfWidth(sv) * 0.88
+		add(S(0.5, 0.582, sw * 0.96, 0.022, spotDark, { line = 0, flat = true }))
+		add(S(0.5, 0.56, sw, 0.04, spots, { line = 0, flat = true }))
+		for i = 0, 5 do
+			local x = 0.5 - sw * 0.4 + i * (sw * 0.8 / 5)
+			add(S(x, 0.56, 0.06, 0.06, spots, { rot = 45, line = 0, flat = true }))
+		end
+		for _, sp in ipairs({ { 0.42, 0.33, 0.09 }, { 0.6, 0.4, 0.065 }, { 0.37, 0.73, 0.1 }, { 0.61, 0.76, 0.08 }, { 0.5, 0.86, 0.05 } }) do
+			local x, y, d = sp[1], sp[2], sp[3]
+			add(S(x + 0.007, y + 0.009, d, d * 0.85, spotDark, { r = 0.5, line = 0, flat = true }))
+			add(S(x, y, d, d * 0.85, spots, { r = 0.5, line = 0 }))
+			add(S(x - d * 0.18, y - d * 0.18, d * 0.3, d * 0.22, white, { r = 0.5, line = 0, flat = true, a = 0.45 }))
+		end
 	end
 	-- glossy highlight
-	table.insert(list, S(0.38, 0.27, 0.07, 0.17, white, { r = 0.5, line = 0, flat = true, a = 0.35, rot = 24 }))
-	table.insert(list, S(0.42, 0.18, 0.03, 0.03, white, { r = 0.5, line = 0, flat = true, a = 0.2 }))
+	add(S(0.38, 0.27, 0.07, 0.17, white, { r = 0.5, line = 0, flat = true, a = 0.35, rot = 24 }))
+	add(S(0.42, 0.18, 0.03, 0.03, white, { r = 0.5, line = 0, flat = true, a = 0.2 }))
 	return list
 end
 
@@ -1533,6 +1686,7 @@ local function playHatch(petName, tier, bonus, fused)
 	local style = info and info:GetAttribute("Style")
 	local eggColor = info and info:GetAttribute("EggColor") or Color3.fromRGB(250, 240, 220)
 	local eggSpots = info and info:GetAttribute("EggSpots") or Color3.fromRGB(120, 210, 90)
+	local eggDesign = info and info:GetAttribute("EggDesign")
 	local rarityName = info and info:GetAttribute("Rarity") or "Common"
 	local rarityColor = info and info:GetAttribute("RarityColor") or WHITE
 	local rayColor = TIER_RAY[tier] or rarityColor
@@ -1563,7 +1717,7 @@ local function playHatch(petName, tier, bonus, fused)
 		for _, mini in ipairs(minis) do mini:Destroy() end
 	else
 		-- the egg pops up, then wobbles harder and harder while it cracks
-		local egg = drawIcon(center, "egg", 240, eggColor, eggSpots)
+		local egg = drawIcon(center, "egg", 240, eggColor, eggSpots, eggDesign)
 		tween(centerScale, 0.35, { Scale = 1 }, Enum.EasingStyle.Back)
 		task.wait(0.4)
 		local cracks = {
@@ -1606,7 +1760,7 @@ local function playHatch(petName, tier, bonus, fused)
 				ZIndex = 62,
 				Parent = center,
 			})
-			local copy = drawIcon(clip, "egg", 240, eggColor, eggSpots)
+			local copy = drawIcon(clip, "egg", 240, eggColor, eggSpots, eggDesign)
 			copy.Position = UDim2.fromOffset(0, h == 1 and 0 or -240 * 0.56)
 			halves[h] = clip
 		end

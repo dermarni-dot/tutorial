@@ -472,6 +472,7 @@ for m, map in ipairs(MAPS) do
 		egg.totalChance = total
 		egg.map = m
 		egg.order = e
+		egg.design = egg.design or string.lower(string.match(egg.name, "^(%a+)") or "classic")
 		EGG_BY_NAME[egg.name] = egg
 	end
 end
@@ -539,6 +540,7 @@ for _, map in ipairs(MAPS) do
 			c:SetAttribute("Egg", egg.name)
 			c:SetAttribute("EggColor", egg.color)
 			c:SetAttribute("EggSpots", egg.spots)
+			c:SetAttribute("EggDesign", egg.design)
 			c:SetAttribute("Chance", pet.chance)
 			c:SetAttribute("Rarity", RARITY[pet.rarity].name)
 			c:SetAttribute("RarityColor", RARITY[pet.rarity].color)
@@ -562,6 +564,7 @@ for _, map in ipairs(MAPS) do
 		c:SetAttribute("UnlockZone", 0)
 		c:SetAttribute("Color", egg.color)
 		c:SetAttribute("Spots", egg.spots)
+		c:SetAttribute("Design", egg.design)
 		c.Parent = EggInfo
 		EggConfigs[egg.name] = c
 	end
@@ -1816,51 +1819,241 @@ local function buildEggStand(egg, x, z)
 	newPart{ Name = "StandGlow", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.3, 9.8, 9.8), CFrame = CFrame.new(x, deckTop + 1.35, z) * ROT_UP, Color = egg.color, Material = Enum.Material.Neon, CanCollide = false, Parent = Map }
 	newPart{ Name = "StandColumn", Shape = Enum.PartType.Cylinder, Size = Vector3.new(2.2, 7.6, 7.6), CFrame = CFrame.new(x, deckTop + 2.5, z) * ROT_UP, Color = Color3.fromRGB(240, 240, 248), Parent = Map }
 	newPart{ Name = "StandTop", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.3, 8.2, 8.2), CFrame = CFrame.new(x, deckTop + 3.65, z) * ROT_UP, Color = egg.color:Lerp(WHITE, 0.3), CanCollide = false, Parent = Map }
+	-- flat neon gems set into the base (nothing sticks out)
 	for i = 0, 5 do
 		local a = i * math.pi / 3
-		newPart{ Name = "StandGem", Shape = Enum.PartType.Ball, Size = Vector3.one * 0.9, Position = Vector3.new(x + math.cos(a) * 5.2, deckTop + 1.3, z + math.sin(a) * 5.2), Color = egg.spots, Material = Enum.Material.Neon, CanCollide = false, Parent = Map }
+		local gem = newPart{ Name = "StandGem", Shape = Enum.PartType.Ball, Size = Vector3.one * 1.1, CFrame = CFrame.new(x + math.cos(a) * 5.15, deckTop + 1.2, z + math.sin(a) * 5.15), Color = egg.spots, Material = Enum.Material.Neon, CanCollide = false, Parent = Map }
+		local gm = Instance.new("SpecialMesh")
+		gm.MeshType = Enum.MeshType.Sphere
+		gm.Scale = Vector3.new(1, 0.25, 1)
+		gm.Parent = gem
 	end
 
-	-- the egg itself (a model so the client can spin + bob it)
+	-- the egg itself (a model so the client can spin + bob it). Every egg has its
+	-- own design, painted flat onto the shell, so nothing sticks out of it.
 	local model = Instance.new("Model")
 	model.Name = egg.name .. " Display"
 	local R, H = 3, 3.9 -- egg radius + half height
 	local center = Vector3.new(x, deckTop + 3.8 + H + 0.8, z)
+	local rng = Random.new(egg.order * 31 + egg.map * 7)
 	local function eggPart(props)
 		props.CanCollide = false
+		props.CanQuery = false
 		props.CastShadow = props.CastShadow or false
 		props.Parent = model
 		return newPart(props)
 	end
-	local shell = eggPart{ Name = "Egg", Shape = Enum.PartType.Ball, Size = Vector3.one * (R * 2), Position = center, Color = egg.color, CastShadow = true }
-	shell.Material = Enum.Material.SmoothPlastic
-	shell.Reflectance = 0.08
-	local mesh = Instance.new("SpecialMesh")
-	mesh.MeshType = Enum.MeshType.Sphere
-	mesh.Scale = Vector3.new(1, H / R, 1)
-	mesh.Parent = shell
+	local function sphereMesh(part, scale)
+		local m = Instance.new("SpecialMesh")
+		m.MeshType = Enum.MeshType.Sphere
+		m.Scale = scale
+		m.Parent = part
+		return m
+	end
 	local function radiusAt(y) return R * math.sqrt(math.max(0, 1 - (y / H) ^ 2)) end
-	-- two stripes
-	for _, y in ipairs({ -1.5, 1.5 }) do
-		local band = eggPart{ Name = "EggBand", Shape = Enum.PartType.Ball, Size = Vector3.one * (radiusAt(y) * 2 + 0.16), Position = center + Vector3.new(0, y, 0), Color = egg.spots }
-		local bm = Instance.new("SpecialMesh")
-		bm.MeshType = Enum.MeshType.Sphere
-		bm.Scale = Vector3.new(1, 0.6 / (radiusAt(y) * 2 + 0.16), 1)
-		bm.Parent = band
+
+	local design = egg.design
+	local bodyColor = egg.color
+	if design == "lava" then bodyColor = Color3.fromRGB(55, 35, 32) end
+	if design == "cosmic" then bodyColor = Color3.fromRGB(28, 14, 50) end
+	local shell = eggPart{ Name = "Egg", Shape = Enum.PartType.Ball, Size = Vector3.one * (R * 2), Position = center, Color = bodyColor, CastShadow = true }
+	shell.Material = Enum.Material.SmoothPlastic
+	shell.Reflectance = (design == "robo") and 0.25 or 0.06
+	sphereMesh(shell, Vector3.new(1, H / R, 1))
+
+	-- a ring hugging the egg at height y: thin slices that follow the egg's curve
+	local function band(y, thick, color, material, transparency)
+		local n = math.max(1, math.ceil(thick / 0.14))
+		for i = 0, n - 1 do
+			local sy = y - thick / 2 + (i + 0.5) * thick / n
+			if math.abs(sy) < H - 0.05 then
+				local d = radiusAt(sy) * 2 + 0.07
+				eggPart{ Name = "EggBand", Shape = Enum.PartType.Cylinder, Size = Vector3.new(thick / n + 0.01, d, d), CFrame = CFrame.new(center + Vector3.new(0, sy, 0)) * ROT_UP, Color = color, Material = material, Transparency = transparency }
+			end
+		end
 	end
-	-- spots between the stripes and on the top
-	for i = 0, 5 do
-		local a = i * math.pi / 3 + 0.5
-		local r = radiusAt(0) * 0.9
-		eggPart{ Name = "EggSpot", Shape = Enum.PartType.Ball, Size = Vector3.one * 1.3, Position = center + Vector3.new(math.cos(a) * r, 0, math.sin(a) * r), Color = egg.spots }
+	-- where the shell is at angle theta / height y, facing straight out of it
+	local function surface(theta, y, out)
+		local r = radiusAt(y)
+		local p = Vector3.new(math.cos(theta) * r, y, math.sin(theta) * r)
+		local n = Vector3.new(p.X / (R * R), p.Y / (H * H), p.Z / (R * R)).Unit
+		local pos = center + p + n * (out or 0.03)
+		local up = (math.abs(n.Y) > 0.95) and Vector3.xAxis or Vector3.yAxis
+		return CFrame.lookAt(pos, pos + n, up), p
 	end
-	for i = 0, 2 do
-		local a = i * math.pi * 2 / 3
-		local r = radiusAt(2.9) * 0.85
-		eggPart{ Name = "EggSpot", Shape = Enum.PartType.Ball, Size = Vector3.one * 1, Position = center + Vector3.new(math.cos(a) * r, 2.9, math.sin(a) * r), Color = egg.spots }
+	-- a flat painted oval lying on the shell (w wide, h tall, turned by rot)
+	local function paint(theta, y, w, h, color, rot, material, out, transparency)
+		local s = math.max(w, h)
+		local p = eggPart{ Name = "EggPaint", Shape = Enum.PartType.Ball, Size = Vector3.one * s, CFrame = surface(theta, y, out) * CFrame.Angles(0, 0, rot or 0), Color = color, Material = material, Transparency = transparency }
+		sphereMesh(p, Vector3.new(w / s, h / s, 0.12 / s))
+		return p
 	end
-	-- a soft white shine
-	eggPart{ Name = "EggShine", Shape = Enum.PartType.Ball, Size = Vector3.new(0.9, 1.6, 0.9), Position = center + Vector3.new(-radiusAt(1.8) * 0.85, 1.8, -0.6), Color = WHITE, Material = Enum.Material.Neon, Transparency = 0.35 }
+	-- a painted line from (t1, y1) to (t2, y2) along the shell
+	local function line(t1, y1, t2, y2, width, color, material)
+		local cf = surface((t1 + t2) / 2, (y1 + y2) / 2)
+		local _, a = surface(t1, y1)
+		local _, b = surface(t2, y2)
+		local dir = b - a
+		local rot = math.atan2(-dir:Dot(cf.RightVector), dir:Dot(cf.UpVector))
+		-- a thin flat strip lying on the shell (segments join into a smooth line)
+		return eggPart{ Name = "EggLine", Size = Vector3.new(width, dir.Magnitude + 0.06, 0.08), CFrame = cf * CFrame.Angles(0, 0, rot), Color = color, Material = material }
+	end
+	-- a painted stripe from the top to the bottom, turned by yaw
+	local function meridian(yaw, thick, color, material)
+		local steps = 10
+		for i = 0, steps - 1 do
+			local y1 = -H * 0.93 + (i / steps) * H * 1.86
+			local y2 = -H * 0.93 + ((i + 1) / steps) * H * 1.86
+			line(yaw, y1, yaw, y2, thick, color, material)
+		end
+	end
+	-- a painted ring tipped over by tilt, turned by yaw (for swirls)
+	local function tiltBand(tilt, yaw, thick, color, material)
+		local rot = CFrame.Angles(0, yaw, 0) * CFrame.Angles(tilt, 0, 0)
+		local pts = {}
+		for i = 0, 24 do
+			local a = i / 24 * math.pi * 2
+			local d = rot:VectorToWorldSpace(Vector3.new(math.cos(a), 0, math.sin(a)))
+			local k = 1 / math.sqrt((d.X * d.X + d.Z * d.Z) / (R * R) + d.Y * d.Y / (H * H))
+			local p = d * k
+			pts[i] = { math.atan2(p.Z, p.X), p.Y }
+		end
+		for i = 0, 23 do
+			local t1, t2 = pts[i][1], pts[i + 1][1]
+			if t2 - t1 > math.pi then t2 -= math.pi * 2 elseif t1 - t2 > math.pi then t2 += math.pi * 2 end
+			line(t1, pts[i][2], t2, pts[i + 1][2], thick, color, material)
+		end
+	end
+	local TAU = math.pi * 2
+	local NEON = Enum.Material.Neon
+
+	if design == "grass" then
+		-- a meadow egg: a fringe of grass blades around the bottom, daisies all over
+		local leaf = Color3.fromRGB(60, 160, 60)
+		band(-3.15, 0.8, leaf:Lerp(BLACK, 0.25))
+		for i = 0, 17 do
+			local t = i / 18 * TAU
+			paint(t, -2.25, 0.42, 1.7, (i % 2 == 0) and leaf or leaf:Lerp(WHITE, 0.25), (i % 3 - 1) * 0.25)
+		end
+		for i = 0, 21 do
+			-- spread evenly over the egg (golden angle)
+			local t, y = i * 2.4, -1.0 + (i / 21) * 3.9
+			local petal = (i % 3 == 0) and Color3.fromRGB(255, 200, 230) or WHITE
+			for k = 0, 2 do
+				paint(t, y, 0.3, 1.0, petal, k * math.pi / 3)
+			end
+			paint(t, y, 0.4, 0.4, Color3.fromRGB(255, 205, 50), 0, nil, 0.05)
+		end
+	elseif design == "sand" then
+		-- desert layers, with a turquoise band of gold diamonds
+		local tones = { Color3.fromRGB(205, 150, 85), Color3.fromRGB(225, 180, 110), Color3.fromRGB(185, 125, 70) }
+		for i, y in ipairs({ -3.2, -2.5, -1.8, 2.3, 3.0 }) do
+			band(y, 0.3 + (i % 2) * 0.15, tones[i % 3 + 1])
+		end
+		band(0.2, 1.3, Color3.fromRGB(40, 165, 155))
+		band(-0.48, 0.12, GOLD)
+		band(0.88, 0.12, GOLD)
+		for i = 0, 9 do
+			paint(i / 10 * TAU, 0.2, 0.55, 0.55, GOLD, math.rad(45))
+		end
+	elseif design == "ice" then
+		-- frozen: big snowflakes under a clear frosty glass shell
+		bodyColor = egg.color:Lerp(Color3.fromRGB(60, 140, 220), 0.35)
+		shell.Color = bodyColor
+		band(-3.15, 0.8, WHITE)
+		for i = 0, 11 do
+			local t, y = i * 2.4, -1.9 + (i / 11) * 4.6
+			for k = 0, 2 do
+				paint(t, y, 0.14, 1.5, WHITE, k * math.pi / 3)
+				-- little V tips on each arm
+				for _, e in ipairs({ -1, 1 }) do
+					local cf = surface(t, y)
+					local arm = CFrame.Angles(0, 0, k * math.pi / 3)
+					local tip = (cf * arm * CFrame.new(0, e * 0.55, 0)).Position - center
+					local ty = tip.Y
+					local tt = math.atan2(tip.Z, tip.X)
+					paint(tt, ty, 0.1, 0.45, WHITE, k * math.pi / 3 + math.pi / 2)
+				end
+			end
+			paint(t, y, 0.3, 0.3, Color3.fromRGB(170, 230, 255), 0, NEON, 0.05)
+		end
+		local glass = eggPart{ Name = "EggGlass", Shape = Enum.PartType.Ball, Size = Vector3.one * (R * 2 + 0.25), Position = center, Color = Color3.fromRGB(220, 245, 255), Material = Enum.Material.Glass, Transparency = 0.6 }
+		sphereMesh(glass, Vector3.new(1, (2 * H + 0.25) / (2 * R + 0.25), 1))
+	elseif design == "lava" then
+		-- dark rock split by glowing cracks, molten glow at the bottom
+		band(-3.2, 0.9, egg.color, NEON)
+		for i = 0, 5 do
+			local t, y = i / 6 * TAU + rng:NextNumber() * 0.5, -2.9
+			while y < 3.1 do
+				local nt, ny = t + rng:NextNumber(-0.35, 0.35), y + rng:NextNumber(0.7, 1.1)
+				line(t, y, nt, math.min(ny, 3.3), 0.16, (y < 0) and egg.color or egg.spots, NEON)
+				t, y = nt, ny
+			end
+		end
+	elseif design == "jungle" then
+		-- watermelon-style stripes with a tribal band
+		for i = 0, 15 do
+			meridian(i / 16 * math.pi * 2, 0.5, egg.color:Lerp(BLACK, 0.35))
+		end
+		band(0, 1.1, Color3.fromRGB(255, 205, 60))
+		band(-0.62, 0.14, Color3.fromRGB(120, 70, 30))
+		band(0.62, 0.14, Color3.fromRGB(120, 70, 30))
+		for i = 0, 11 do
+			paint(i / 12 * TAU, 0, 0.42, 0.42, (i % 2 == 0) and Color3.fromRGB(230, 90, 40) or Color3.fromRGB(40, 140, 70), math.rad(45))
+		end
+	elseif design == "candy" then
+		-- crossing candy swirls + sprinkles
+		local swirl = { WHITE, Color3.fromRGB(130, 220, 255), Color3.fromRGB(255, 90, 150) }
+		for i = 0, 2 do
+			tiltBand(0.55, i * TAU / 3, 0.55, swirl[i + 1])
+		end
+		local bits = { WHITE, Color3.fromRGB(255, 230, 80), Color3.fromRGB(120, 230, 120), Color3.fromRGB(130, 220, 255) }
+		for i = 1, 26 do
+			paint(rng:NextNumber() * TAU, rng:NextNumber(-3.2, 3.2), 0.15, 0.48, bits[i % #bits + 1], rng:NextNumber() * math.pi)
+		end
+	elseif design == "robo" then
+		-- shiny metal with glowing circuit lines
+		band(-3.0, 0.7, Color3.fromRGB(150, 155, 170))
+		band(0, 0.2, egg.spots, NEON)
+		for i = 0, 3 do
+			meridian(i / 4 * math.pi, 0.14, egg.spots, NEON)
+		end
+		for i = 0, 7 do
+			local t = i / 8 * TAU
+			paint(t, 0, 0.6, 0.6, Color3.fromRGB(20, 20, 35), 0, nil, 0.04)
+			paint(t, 0, 0.32, 0.32, egg.spots, 0, NEON, 0.06)
+		end
+		for i = 0, 5 do
+			local t = (i + 0.5) / 6 * TAU
+			line(t, 1.2, t + 0.3, 1.2, 0.1, egg.spots, NEON)
+			line(t + 0.3, 1.2, t + 0.3, 2.1, 0.1, egg.spots, NEON)
+			paint(t + 0.3, 2.15, 0.28, 0.28, egg.spots, 0, NEON, 0.05)
+		end
+	elseif design == "cosmic" then
+		-- deep space: a glowing nebula swirl, stars and a shimmering force field
+		tiltBand(0.35, 0.6, 1.4, Color3.fromRGB(120, 50, 200), NEON, 0.35)
+		tiltBand(-0.5, 2.2, 0.6, egg.spots, NEON, 0.45)
+		for _ = 1, 34 do
+			local d = rng:NextNumber(0.1, 0.24)
+			paint(rng:NextNumber() * TAU, rng:NextNumber(-3.4, 3.4), d, d, WHITE, 0, NEON, 0.05)
+		end
+		for _ = 1, 4 do
+			local t, y = rng:NextNumber() * TAU, rng:NextNumber(-2.5, 2.5)
+			paint(t, y, 0.12, 0.9, WHITE, 0, NEON, 0.06)
+			paint(t, y, 0.12, 0.9, WHITE, math.pi / 2, NEON, 0.06)
+		end
+		local field = eggPart{ Name = "EggField", Shape = Enum.PartType.Ball, Size = Vector3.one * (R * 2 + 0.2), Position = center, Color = Color3.fromRGB(200, 120, 255), Material = Enum.Material.ForceField }
+		sphereMesh(field, Vector3.new(1, (2 * H + 0.2) / (2 * R + 0.2), 1))
+	else
+		-- classic: two stripes and painted spots
+		band(-1.5, 0.6, egg.spots)
+		band(1.5, 0.6, egg.spots)
+		for i = 0, 5 do
+			paint(i / 6 * TAU + 0.5, 0, 1.1, 1.1, egg.spots)
+		end
+	end
+	-- a soft glossy highlight on the upper left
+	paint(math.rad(205), 2.1, 0.55, 1.3, WHITE, 0.35, NEON, 0.08, 0.55)
 	model.PrimaryPart = shell
 	local light = Instance.new("PointLight")
 	light.Color = egg.color
