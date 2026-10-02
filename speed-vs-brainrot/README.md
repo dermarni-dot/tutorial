@@ -53,11 +53,11 @@ Four scripts:
   - **Tralalero Turbino** (Map 2) is a scary great white: one smooth torpedo-shaped body with a dark slate back, a white belly, dead black eyes, long gill slits and old scars. A gaping mouth under its snout is lined with two rows of teeth set into the jaw. Its fins and crescent tail are swept-back triangles growing out of the body. It runs on three legs in black sneakers with red swooshes.
   - **Only you see your own boss.** Everyone has their own, and other players' bosses are hidden on your screen.
 - **How the boss's speed works**:
-  - It gets faster in every zone: each zone has a pace it runs at least.
-  - If you're faster than it, it keeps speeding up until it's faster than you, so it slowly catches up.
-  - Each map's boss has a **top speed** it can never go past: Il Grande Zoomerone tops out at 175, Tralalero Turbino at 330. Get faster than that and you can leave it behind for good. Change `topSpeed` on each map's `boss` in `MAPS`, and `BossAccel` and `BossOvertake` in `CONFIG` for how fast it speeds up.
+  - It follows **your** speed. It starts at 85% of your speed (`BossStartRatio`), and never slower than the zone's pace, which goes up every zone.
+  - It then speeds up by about 12% of your speed every second (`BossAccelRatio`, or at least `BossAccel`) until it's 10% faster than you (`BossOvertake`). The faster you are, the faster it closes in, so buying speed doesn't make it trivial.
+  - It has a **max speed** it can never go past: `CONFIG.BossMaxSpeed` (300) for every boss, and each map's own `topSpeed` caps it lower (Il Grande Zoomerone 175, Tralalero Turbino 300 because of the global cap). Get faster than its max and you leave it behind for good.
   - The bar at the top of the screen shows who is chasing you, how far behind it is, and its speed against yours, with "MAX" once it's at its top speed.
-- **Zones are long (600 studs) and wide (180 studs)**, so you have room to pull away from the boss, and it starts further behind you. Obstacles, decorations and cash repeat down the whole zone. Change `ZoneLength` in `CONFIG` to make them longer or shorter. The start islands stay the same size (`IslandLength`).
+- **Zones are long (600 studs) and wide (180 studs)**, so you have room to pull away from the boss, and it starts further behind you. Decorations and cash repeat down the whole zone. Obstacles only fill the middle third of each zone, so the start and end are open running (`ObstacleSets` in `CONFIG`: 1 = one set per zone, up to 3). Change `ZoneLength` in `CONFIG` to make them longer or shorter. The start islands stay the same size (`IslandLength`).
 - Each zone has a **pace**, so speed is relative: the same Speed makes you run faster in a harder zone, and the boss runs faster there too.
 - **Every zone is open to everyone.** There's no Speed you need to get in. The only way to fail is getting caught (or hit). The golden gate at the end of each zone shows the trophies you get for making it out.
 - **Getting hit sends you back to the start.** That covers obstacles, falling off and the boss catching you. You tumble with stars around your head and a red flash, then reappear at the start.
@@ -79,6 +79,9 @@ Four scripts:
   - Rainbow Road: white marble with rainbow lanes.
   - Inferno: basalt and cracked lava.
   - The start islands use grass, ground, cobblestone paths and a marble egg deck. The speed pad keeps its classic studs.
+  - **Spawn**: you spawn on a quiet cobblestone plaza where the paths cross, with a faint stone star set into it. There is no glowing ring. Four stone planters with little trees and flowers stand around it, and flower beds line the main path.
+  - **No bright lights on the islands**: nothing there glows or casts light. The lamp posts have frosted globes, and the pad, egg deck, egg stands and leaderboards are plain colors. Only the portal keeps its swirl.
+  - **No flickering ground**: flat floor details (patches, trails, lanes, paths) each sit at their own height and never overlap, so they don't flicker against each other.
 - **The world uses real Roblox Terrain**, not only flat parts:
   - Each zone floats on a terrain cliff in its own rock and sand materials, with boulders hanging underneath.
   - Outside the glass walls, each zone has its own scenery, made of terrain:
@@ -93,13 +96,13 @@ Four scripts:
 - **Ramps**: zones with a solid floor have a small ramp hump every 200 studs, so the run isn't one flat strip. Zones with holes in the floor skip them.
 - **Your own models (optional)**: put models in `ServerStorage > SVB_Props` named `Tree`, `PineTree`, `PalmTree`, `DeadTree`, `Bush`, `Rock` or `Mushroom` (Toolbox models are fine). The game then uses them in place of its built-in blocky versions. They are anchored, sized and stood on the ground automatically, with a random turn each. Leave the folder empty to keep the built-in ones.
 - **Cash on the floor** comes in bill stacks with pale paper edges, a printed top with a "$" seal, and a gold paper band. Gold coins lie next to them. Piles grow in later zones: one stack, then two crossed stacks with a coin pile, then a pyramid topped with a gold bar. Each pile spins, sparkles and glows, with its value in a green tag above it.
+- **No maze walls**: the meadow fences, tundra ice walls and zig-zag crystal walls are gone. Those zones now have a few hay bales, ice blocks or crystal clusters to run around instead.
 - **Obstacles** move smoothly on every screen and follow the server clock. They are sliders, spinners, swinging logs, crushers, blinking lasers and fire jets, and lightning or meteor strikes. Each zone has only a few, and none is impossible:
   - sliders never move faster than 32 studs a second, so you can see them coming;
   - spinners and crushers are slower;
   - lasers and fire jets stay on for less time;
   - hitboxes fit the obstacles more tightly;
   - every goo or lava river has three bridges;
-  - ice walls have wider gaps;
   - there are fewer lightning and meteor strikes and fewer holes in the Void.
 - **Map detail**:
   - Each zone runs through land: banks in the zone's own terrain (grass, sand, snow and so on) on both sides, with hills, mesas, peaks or towers behind them.
@@ -191,6 +194,7 @@ No emojis or uploaded images: every icon is drawn from rounded frames (the `ICON
 ![Meadow zone](map_meadow.png)
 ![Desert zone](map_desert.png)
 ![Banks beside the track](map_banks.png)
+![Spawn](spawn.png)
 ![Overview](map_overview.png)
 ![HUD](svb_hud.png)
 ![Menus](svb_menus.png)

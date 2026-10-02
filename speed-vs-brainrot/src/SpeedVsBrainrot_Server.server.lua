@@ -38,6 +38,7 @@ local CollectionService = game:GetService("CollectionService")
 local CONFIG = {
 	ZoneWidth = 180,          -- every zone, including the start zones, is this wide...
 	ZoneLength = 600,         -- ...and this long (long zones = more room to pull away from the boss)
+	ObstacleSets = 1,         -- obstacle sets per zone (each is 200 studs long; 1 = one set in the middle, up to ZoneLength / 200)
 	IslandLength = 200,       -- the start islands stay this long (they sit at the end of their slot)
 	MapGap = 1,               -- empty sky (in zone lengths) between one map's end and the next island
 
@@ -60,8 +61,11 @@ local CONFIG = {
 	BossBigStuds = 7,         -- big Lego-style studs: about this many across the boss (0 = Roblox's own 1-stud studs)
 	BossStudTexture = "",     -- optional: a studs texture image (e.g. "rbxassetid://123") for BIG studs on the giant bosses
 	BossStudSize = 8,         -- how wide each of those big studs is (studs)
-	BossAccel = 6,            -- the boss gains at least this much speed every second while it's slower than you
-	BossOvertake = 1.1,       -- ...until it's this much faster than you (but never past its map's topSpeed)
+	BossStartRatio = 0.85,    -- the boss starts at this share of YOUR speed (never slower than the zone's pace)
+	BossAccel = 6,            -- it then gains at least this much speed every second while it's slower than you...
+	BossAccelRatio = 0.12,    -- ...or this share of your speed per second, whichever is more
+	BossOvertake = 1.1,       -- ...until it's this much faster than you
+	BossMaxSpeed = 300,       -- no boss ever runs faster than this (each map's boss.topSpeed caps it lower); outrun it to escape
 	BossTick = 0.1,           -- seconds between boss brain updates
 
 	HitTime = 0.8,            -- after a hit you tumble for this long, then go back to the start
@@ -1066,27 +1070,27 @@ local function buildZoneShell(k, floorColor, underColor, accent, holey, rng, the
 		if look.floor then textured(floor, look.floor) else addStuds(floor, Enum.NormalId.Top) end
 		-- a trail down the middle of the track
 		if look.path then
-			local trail = newPart{ Name = "Trail", Size = Vector3.new(26, 0.12, L), Position = Vector3.new(0, FLOOR_Y + 0.06, cz), Color = look.pathColor, CanCollide = false, CastShadow = false, Parent = Decor }
+			local trail = newPart{ Name = "Trail", Size = Vector3.new(26, 0.14, L), Position = Vector3.new(0, FLOOR_Y + 0.07, cz), Color = look.pathColor, CanCollide = false, CastShadow = false, Parent = Decor }
 			textured(trail, look.path)
 			for _, side in ipairs({ -1, 1 }) do
-				local edge = newPart{ Name = "TrailEdge", Size = Vector3.new(1.2, 0.14, L), Position = Vector3.new(side * 13.6, FLOOR_Y + 0.07, cz), Color = look.pathColor:Lerp(BLACK, 0.3), CanCollide = false, CastShadow = false, Parent = Decor }
+				local edge = newPart{ Name = "TrailEdge", Size = Vector3.new(1.2, 0.18, L), Position = Vector3.new(side * 13.6, FLOOR_Y + 0.09, cz), Color = look.pathColor:Lerp(BLACK, 0.3), CanCollide = false, CastShadow = false, Parent = Decor }
 				textured(edge, look.path)
 			end
 			if look.lanes then
 				-- dashed yellow road lines
 				for d = 0, math.floor(L / 16) - 1 do
-					newPart{ Name = "LaneDash", Size = Vector3.new(0.6, 0.15, 8), Position = Vector3.new(0, FLOOR_Y + 0.08, k * L + 8 + d * 16), Color = Color3.fromRGB(255, 205, 40), CanCollide = false, CastShadow = false, Parent = Decor }
+					newPart{ Name = "LaneDash", Size = Vector3.new(0.6, 0.12, 8), Position = Vector3.new(0, FLOOR_Y + 0.18, k * L + 8 + d * 16), Color = Color3.fromRGB(255, 205, 40), CanCollide = false, CastShadow = false, Parent = Decor }
 				end
 			elseif look.stripes then
 				-- candy-cane stripes across the trail
 				for d = 0, math.floor(L / 10) - 1 do
-					newPart{ Name = "CandyStripe", Size = Vector3.new(22, 0.14, 3.2), CFrame = CFrame.new(0, FLOOR_Y + 0.08, k * L + 5 + d * 10) * CFrame.Angles(0, math.rad(25), 0), Color = Color3.fromRGB(255, 110, 170), CanCollide = false, CastShadow = false, Parent = Decor }
+					newPart{ Name = "CandyStripe", Size = Vector3.new(22, 0.12, 3.2), CFrame = CFrame.new(0, FLOOR_Y + 0.18, k * L + 5 + d * 10) * CFrame.Angles(0, math.rad(25), 0), Color = Color3.fromRGB(255, 110, 170), CanCollide = false, CastShadow = false, Parent = Decor }
 				end
 			elseif look.rainbow then
 				-- rainbow lanes
 				local cols = { Color3.fromRGB(255, 80, 80), Color3.fromRGB(255, 170, 60), Color3.fromRGB(255, 230, 70), Color3.fromRGB(100, 220, 90), Color3.fromRGB(80, 170, 255), Color3.fromRGB(170, 100, 255) }
 				for i, c in ipairs(cols) do
-					local lane = newPart{ Name = "RainbowLane", Size = Vector3.new(26 / #cols, 0.14, L), Position = Vector3.new(-13 + (i - 0.5) * (26 / #cols), FLOOR_Y + 0.08, cz), Color = c, CanCollide = false, CastShadow = false, Parent = Decor }
+					local lane = newPart{ Name = "RainbowLane", Size = Vector3.new(26 / #cols, 0.12, L), Position = Vector3.new(-13 + (i - 0.5) * (26 / #cols), FLOOR_Y + 0.18, cz), Color = c, CanCollide = false, CastShadow = false, Parent = Decor }
 					textured(lane, M.SmoothPlastic)
 				end
 			end
@@ -1121,19 +1125,30 @@ end
 -- Lighter / darker patches on the floor so it isn't one flat color
 local function floorPatches(k, color, rng, z0, len, material)
 	z0, len = z0 or k * L, len or L
-	for i = 1, math.floor(14 * len / 200) do
-		local amt = 0.06 + rng:NextNumber() * 0.06
-		local c = (i % 2 == 0) and color:Lerp(WHITE, amt) or color:Lerp(BLACK, amt)
-		local patch = newPart{
-			Name = "Patch",
-			Size = Vector3.new(rng:NextInteger(8, 22), 0.1, rng:NextInteger(8, 22)),
-			Position = Vector3.new(rng:NextInteger(-HALF_W + 14, HALF_W - 14), FLOOR_Y + 0.05, z0 + rng:NextInteger(12, len - 12)),
-			Color = c,
-			CanCollide = false,
-			CastShadow = false,
-			Parent = Decor,
-		}
-		if material then textured(patch, material) else addStuds(patch, Enum.NormalId.Top) end
+	-- one patch per cell (rows 30 studs long, one cell each side of the middle trail),
+	-- so patches never overlap each other or the trail: overlapping flat parts at the
+	-- same height flicker (z-fighting)
+	local ROW = 30
+	local inner, outer = 16, HALF_W - 14
+	local i = 0
+	for zc = z0 + 12, z0 + len - 12 - ROW, ROW do
+		for _, side in ipairs({ -1, 1 }) do
+			i += 1
+			local sx, sz = rng:NextInteger(8, 22), rng:NextInteger(8, ROW - 6)
+			local cx = side * rng:NextInteger(math.ceil(inner + sx / 2), math.floor(outer - sx / 2))
+			local amt = 0.06 + rng:NextNumber() * 0.06
+			local c = (i % 2 == 0) and color:Lerp(WHITE, amt) or color:Lerp(BLACK, amt)
+			local patch = newPart{
+				Name = "Patch",
+				Size = Vector3.new(sx, 0.06, sz),
+				Position = Vector3.new(cx, FLOOR_Y + 0.03, zc + ROW / 2),
+				Color = c,
+				CanCollide = false,
+				CastShadow = false,
+				Parent = Decor,
+			}
+			if material then textured(patch, material) else addStuds(patch, Enum.NormalId.Top) end
+		end
 	end
 end
 
@@ -1854,25 +1869,12 @@ do
 
 	-- MAP 1 -----------------------------------------------------------
 
-	-- wooden fences (jump them or find the gap) + a hay cart rolling across
+	-- hay bales dotted around (no fence walls) + a hay cart rolling across
 	function OBSTACLES.meadow(k, z0, rng)
-		local wood, darkWood = Color3.fromRGB(150, 100, 55), Color3.fromRGB(115, 75, 40)
 		for _, dz in ipairs({ 60, 110, 165 }) do
-			local z = z0 + dz
-			local gap = rng:NextInteger(-rx(35), rx(35))
-			local x = -HALF_W
-			while x < HALF_W do
-				local nx = math.min(x + 10, HALF_W)
-				local mid = (x + nx) / 2
-				if math.abs(mid - gap) > 8 then
-					local len = nx - x
-					solid{ Name = "Fence", Size = Vector3.new(len, 0.6, 0.6), Position = Vector3.new(mid, FLOOR_Y + 2.3, z), Color = wood, Material = Enum.Material.Wood }
-					solid{ Name = "Fence", Size = Vector3.new(len, 0.6, 0.6), Position = Vector3.new(mid, FLOOR_Y + 1.2, z), Color = wood, Material = Enum.Material.Wood }
-					solid{ Name = "FencePost", Size = Vector3.new(0.9, 3, 0.9), Position = Vector3.new(x + 0.45, FLOOR_Y + 1.5, z), Color = darkWood, Material = Enum.Material.Wood }
-				end
-				x = nx
+			for _ = 1, 2 do
+				solid{ Name = "HayBale", Size = Vector3.new(6, 4, 4), Position = Vector3.new(rng:NextInteger(-rx(40), rx(40)), FLOOR_Y + 2, z0 + dz + rng:NextInteger(-6, 22)), Color = Color3.fromRGB(230, 200, 90), Material = Enum.Material.Fabric }
 			end
-			solid{ Name = "HayBale", Size = Vector3.new(6, 4, 4), Position = Vector3.new(rng:NextInteger(-rx(40), rx(40)), FLOOR_Y + 2, z + rng:NextInteger(12, 22)), Color = Color3.fromRGB(230, 200, 90), Material = Enum.Material.Fabric }
 		end
 		slider(k, z0 + 138, Vector3.new(8, 5, 6), Color3.fromRGB(230, 200, 90), Enum.Material.Fabric, 5, 0, "A hay cart bonked you!")
 	end
@@ -1888,17 +1890,12 @@ do
 		slider(k, z0 + 182, Vector3.new(6, 6, 6), Color3.fromRGB(170, 120, 60), Enum.Material.Grass, 3.2, 0.5, "A tumbleweed rolled you over!")
 	end
 
-	-- ice walls with two gaps each + a spinning snowplow
+	-- ice blocks to dodge (no walls) + a spinning snowplow
 	function OBSTACLES.ice(k, z0, rng)
 		for _, dz in ipairs({ 55, 105, 165 }) do
-			local z = z0 + dz
-			local g1, g2 = rng:NextInteger(-rx(42), -rx(14)), rng:NextInteger(rx(14), rx(42))
-			local edges = { -HALF_W, g1 - 9, g1 + 9, g2 - 9, g2 + 9, HALF_W }
-			for i = 1, #edges - 1, 2 do
-				local a, b = edges[i], edges[i + 1]
-				if b - a > 1 then
-					solid{ Name = "IceWall", Size = Vector3.new(b - a, 8, 3), Position = Vector3.new((a + b) / 2, FLOOR_Y + 4, z), Color = Color3.fromRGB(165, 220, 255), Material = Enum.Material.Ice, Transparency = 0.1 }
-				end
+			for _ = 1, 2 do
+				local s = rng:NextInteger(5, 8)
+				solid{ Name = "IceBlock", Size = Vector3.new(s, s, s), CFrame = CFrame.new(rng:NextInteger(-rx(40), rx(40)), FLOOR_Y + s / 2, z0 + dz + rng:NextInteger(-8, 8)) * CFrame.Angles(0, rng:NextNumber() * 1.5, 0), Color = Color3.fromRGB(165, 220, 255), Material = Enum.Material.Ice, Transparency = 0.1 }
 			end
 		end
 		spinner(k, Vector3.new(0, FLOOR_Y, z0 + 135), 36, Color3.fromRGB(120, 220, 255), 3.4, "The snowplow swept you away!")
@@ -1967,17 +1964,14 @@ do
 		end
 	end
 
-	-- crystal walls that zig-zag + crystal shards sliding between them
+	-- crystal clusters to run around (no walls) + crystal shards sliding across
 	function OBSTACLES.crystal(k, z0, rng)
 		local colors = { Color3.fromRGB(200, 120, 255), Color3.fromRGB(120, 255, 250), Color3.fromRGB(255, 120, 220) }
 		for i, dz in ipairs({ 45, 95, 145, 185 }) do
-			local z = z0 + dz
-			local gapSide = (i % 2 == 0) and 1 or -1
-			local len = W - 28
-			local x = -gapSide * (HALF_W - len / 2)
-			solid{ Name = "CrystalWall", Size = Vector3.new(len, 10, 3), Position = Vector3.new(x, FLOOR_Y + 5, z), Color = colors[i % 3 + 1], Material = Enum.Material.Glass, Transparency = 0.2 }
-			for c = 1, 4 do
-				solid{ Name = "CrystalSpike", Size = Vector3.new(2, 5, 2), CFrame = CFrame.new(x - len / 2 + c * (len / 5), FLOOR_Y + 11.5, z) * CFrame.Angles(0, math.rad(45), math.rad(rng:NextInteger(-rx(20), rx(20)))), Color = colors[(i + c) % 3 + 1], Material = Enum.Material.Neon }
+			local x, z = rng:NextInteger(-rx(40), rx(40)), z0 + dz
+			for c = 1, 3 do
+				local h = rng:NextInteger(6, 11)
+				solid{ Name = "CrystalCluster", Size = Vector3.new(3, h, 3), CFrame = CFrame.new(x + (c - 2) * 2.5, FLOOR_Y + h / 2 - 0.5, z + rng:NextNumber(-1, 1)) * CFrame.Angles(0, math.rad(45), math.rad((c - 2) * 14)), Color = colors[(i + c) % 3 + 1], Material = Enum.Material.Glass, Transparency = 0.15 }
 			end
 		end
 		slider(k, z0 + 70, Vector3.new(4, 7, 4), colors[2], Enum.Material.Neon, 2.4, 0, "A crystal shard sliced you!")
@@ -2586,8 +2580,10 @@ local function buildStartIsland(map)
 		local p = newPart{ Name = "DirtPath", Size = Vector3.new(x1 - x0, 0.2, z1 - z0), Position = Vector3.new((x0 + x1) / 2, FLOOR_Y + 0.1, oz + (z0 + z1) / 2), Color = PATH, CanCollide = false, Parent = Decor }
 		textured(p, M.Cobblestone)
 	end
+	-- (the cross path is split around the main one: overlapping flat parts flicker)
 	pathStrip(-8, 8, 48, 190)
-	pathStrip(-44, 22, 141, 159)
+	pathStrip(-44, -8, 141, 159)
+	pathStrip(8, 22, 141, 159)
 
 	-- spawn: a glowing ring close to the start line so the walk is short
 	map.spawn = Vector3.new(0, FLOOR_Y, oz + 150)
@@ -2602,11 +2598,40 @@ local function buildStartIsland(map)
 		spawnPad.Transparency = 1
 		spawnPad.Parent = Map
 	end
-	prop{ Name = "SpawnRing", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.3, 15, 15), CFrame = CFrame.new(map.spawn + Vector3.new(0, 0.32, 0)) * ROT_UP, Color = Color3.fromRGB(255, 215, 50), Material = Enum.Material.Neon, CanCollide = false }
-	prop{ Name = "SpawnInner", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.34, 11.5, 11.5), CFrame = CFrame.new(map.spawn + Vector3.new(0, 0.34, 0)) * ROT_UP, Color = Color3.fromRGB(255, 248, 210), CanCollide = false }
-	for i = 0, 7 do
-		local a = i * math.pi / 4
-		ball(1.2, map.spawn.X + math.cos(a) * 9, FLOOR_Y + 0.6, map.spawn.Z + math.sin(a) * 9, (i % 2 == 0) and Color3.fromRGB(255, 220, 60) or WHITE, Enum.Material.Neon).CanCollide = false
+	-- the spawn point: a quiet cobblestone plaza where the paths cross, with a faint stone
+	-- star set into it (no glow), four stone planters with little trees around it
+	local stoneLight, stoneDark = Color3.fromRGB(196, 190, 178), Color3.fromRGB(128, 122, 114)
+	local sp = map.spawn
+	local border = prop{ Name = "PlazaBorder", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.08, 27.2, 27.2), CFrame = CFrame.new(sp.X, FLOOR_Y + 0.24, sp.Z) * ROT_UP, Color = stoneDark, CanCollide = false, CastShadow = false }
+	textured(border, M.Cobblestone)
+	local plaza = prop{ Name = "Plaza", Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.08, 25.6, 25.6), CFrame = CFrame.new(sp.X, FLOOR_Y + 0.27, sp.Z) * ROT_UP, Color = stoneLight, CanCollide = false, CastShadow = false }
+	textured(plaza, M.Cobblestone)
+	for _, ang in ipairs({ 0, 45 }) do
+		prop{ Name = "PlazaStar", Size = Vector3.new(1.4, 0.06, 9), CFrame = CFrame.new(sp.X, FLOOR_Y + 0.33, sp.Z) * CFrame.Angles(0, math.rad(ang), 0), Color = stoneLight:Lerp(WHITE, 0.25), Material = Enum.Material.Slate, CanCollide = false, CastShadow = false }
+		prop{ Name = "PlazaStar", Size = Vector3.new(1.4, 0.06, 9), CFrame = CFrame.new(sp.X, FLOOR_Y + 0.33, sp.Z) * CFrame.Angles(0, math.rad(ang + 90), 0), Color = stoneLight:Lerp(WHITE, 0.25), Material = Enum.Material.Slate, CanCollide = false, CastShadow = false }
+	end
+	for _, d in ipairs({ { -1, -1 }, { 1, -1 }, { -1, 1 }, { 1, 1 } }) do
+		local px, pz = sp.X + d[1] * 13, sp.Z + d[2] * 13
+		vcyl(1.6, 7, px, FLOOR_Y, pz, stoneDark, Enum.Material.Slate)
+		vcyl(0.3, 6, px, FLOOR_Y + 1.4, pz, Color3.fromRGB(90, 60, 40), Enum.Material.Ground)
+		cartoonTree(px, pz, 0.45, (d[1] == d[2]) and Color3.fromRGB(110, 205, 80) or nil, FLOOR_Y + 1.6)
+		for f = 1, 4 do
+			local a = f * 1.57 + 0.8
+			flower(px + math.cos(a) * 2.2, pz + math.sin(a) * 2.2, PETALS[f % #PETALS + 1], FLOOR_Y + 1.5)
+		end
+	end
+	-- flower beds along both sides of the main path
+	for _, seg in ipairs({ { 52, 66 }, { 74, 106 }, { 114, 134 } }) do
+		for _, side in ipairs({ -1, 1 }) do
+			local x = side * 9.4
+			local bed = prop{ Name = "FlowerBed", Size = Vector3.new(1.8, 0.35, seg[2] - seg[1]), Position = Vector3.new(x, FLOOR_Y + 0.175, oz + (seg[1] + seg[2]) / 2), Color = Color3.fromRGB(95, 65, 42), Material = Enum.Material.Ground, CanCollide = false }
+			bed.CastShadow = false
+			local n = 0
+			for z = seg[1] + 1.5, seg[2] - 1, 2.5 do
+				n += 1
+				flower(x, oz + z, PETALS[n % #PETALS + 1], FLOOR_Y + 0.3)
+			end
+		end
 	end
 
 	-- checkered START line, then the RED LINE (cross it and your full speed turns on)
@@ -2686,12 +2711,7 @@ local function buildStartIsland(map)
 	-- lamp posts along the path with party flags strung between them
 	local function lampPost(x, z)
 		vcyl(9, 0.8, x, FLOOR_Y, z, Color3.fromRGB(50, 50, 60))
-		local bulb = ball(2.2, x, FLOOR_Y + 9.8, z, Color3.fromRGB(255, 240, 180), Enum.Material.Neon)
-		local light = Instance.new("PointLight")
-		light.Range = 18
-		light.Brightness = 1.2
-		light.Color = Color3.fromRGB(255, 230, 170)
-		light.Parent = bulb
+		ball(2.2, x, FLOOR_Y + 9.8, z, Color3.fromRGB(250, 240, 215), Enum.Material.SmoothPlastic) -- a frosted globe, not a light
 		block(2.8, 0.5, 2.8, CFrame.new(x, FLOOR_Y + 11.1, z), Color3.fromRGB(50, 50, 60))
 	end
 	local function buntingAcross(z, y)
@@ -2818,6 +2838,22 @@ local function buildStartIsland(map)
 	prompt.RequiresLineOfSight = false
 	prompt.Parent = swirl
 	table.insert(PortalPrompts, { prompt = prompt, target = target })
+
+	-- no bright lights at spawn: nothing on the island glows or casts light (the
+	-- portal keeps its swirl so you can see it's a portal)
+	for _, folder in ipairs({ Map, Decor }) do
+		for _, d in ipairs(folder:GetDescendants()) do
+			if d:IsA("BasePart") and d.Name ~= "PortalSwirl" then
+				local z = d.Position.Z
+				if z > oz - 60 and z < oz + IL + 2 then
+					if d.Material == Enum.Material.Neon then d.Material = Enum.Material.SmoothPlastic end
+					for _, l in ipairs(d:GetChildren()) do
+						if l:IsA("Light") then l:Destroy() end
+					end
+				end
+			end
+		end
+	end
 end
 
 ------------------------------------------------------------------------
@@ -2856,8 +2892,12 @@ for m, map in ipairs(MAPS) do
 		end
 		local build = OBSTACLES[zone.theme]
 		if build then
-			-- obstacle layouts are 200 studs long: repeat them down the whole zone
-			for part = 0, math.floor(L / 200) - 1 do
+			-- obstacle layouts are 200 studs long. CONFIG.ObstacleSets says how many go in
+			-- each zone (1 = just one set in the middle, so the rest of the zone is open)
+			local slots = math.floor(L / 200)
+			local sets = math.clamp(CONFIG.ObstacleSets or 1, 0, slots)
+			for i = 1, sets do
+				local part = math.floor((i - 0.5) * slots / sets)
 				build(k, k * L + part * 200, rng)
 			end
 		end
@@ -4255,12 +4295,16 @@ local function chaserTick()
 					local now = os.clock()
 					local dt = math.min(0.5, now - (c.lastTick or now))
 					c.lastTick = now
-					local top = c.map.boss.topSpeed or CONFIG.MaxWalkSpeed
-					local base = math.min(top, bossBaseSpeed(pos.Z))
-					local want = math.min(top, math.max(base, hum.WalkSpeed * CONFIG.BossOvertake))
-					c.speed = c.speed or base
+					-- everything scales with YOUR speed: it starts a bit slower than you, closes
+					-- in at a rate that grows with your speed, and ends up faster than you,
+					-- but never past its top speed (CONFIG.BossMaxSpeed, or the map's lower one)
+					local mine = hum.WalkSpeed
+					local top = math.min(c.map.boss.topSpeed or CONFIG.MaxWalkSpeed, CONFIG.BossMaxSpeed or math.huge)
+					local base = math.min(top, math.max(bossBaseSpeed(pos.Z), mine * CONFIG.BossStartRatio))
+					local want = math.min(top, math.max(base, mine * CONFIG.BossOvertake))
+					c.speed = math.max(c.speed or base, base)
 					if c.speed < want then
-						c.speed = math.min(want, c.speed + math.max(CONFIG.BossAccel, c.speed * 0.08) * dt)
+						c.speed = math.min(want, c.speed + math.max(CONFIG.BossAccel, mine * CONFIG.BossAccelRatio) * dt)
 					else
 						c.speed = want
 					end
@@ -4278,7 +4322,7 @@ local function chaserTick()
 				plr:SetAttribute("BossGap", math.max(0, math.floor(dist - c.catch)))
 				plr:SetAttribute("BossZ", bpos.Z)
 				plr:SetAttribute("BossRunSpeed", math.floor((c.speed or 0) + 0.5))
-				plr:SetAttribute("BossTopSpeed", c.map.boss.topSpeed)
+				plr:SetAttribute("BossTopSpeed", math.min(c.map.boss.topSpeed or CONFIG.MaxWalkSpeed, CONFIG.BossMaxSpeed or math.huge))
 
 				if dist <= c.catch and os.clock() >= c.readyAt then
 					hitPlayer(plr, c.name .. " caught you! Buy more speed on the green pad.")
