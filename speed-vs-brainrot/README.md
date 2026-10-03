@@ -62,6 +62,7 @@ Four scripts:
 - **Every zone is open to everyone.** There's no Speed you need to get in. The only way to fail is getting caught (or hit). The golden gate at the end of each zone shows the trophies you get for making it out.
 - **Getting hit sends you back to the start.** That covers obstacles, falling off and the boss catching you. You tumble with stars around your head and a red flash, then reappear at the start.
 - **Clean terrain** (`CONFIG.TerrainDecor = false`): there are no terrain hills, mesas, spikes or towers beside the zones, no lumpy blobs along the bank edges or under the track, no rock chunks under the islands, and no blocky stepped terraces around the start islands. The flat banks beside the track (with their lamps, bushes and props) and the solid ground under the track stay. The title sign now stands at the back of the island. Set `TerrainDecor = true` to bring all of that terrain back.
+- **Smooth terrain in each zone's colour**: every zone theme has its own terrain material, tinted to the zone's colour, and the zone's floor, banks and the cliff under it all use it. Each zone is one smooth colour: green Meadow, golden Desert, pale-blue snowy Tundra, pink Candy Kingdom, deep purple Crystal Caves, and so on. The terrain under the track sits a whole terrain cell below the floor, so it no longer pokes through in brown blotches.
 - **Real terrain floors** (`CONFIG.FloorStyle = "terrain"`, the default): the ground you run on is real Roblox terrain in each zone's own material: grass in the Meadow, sand in the Desert, snow on the Tundra, mud and leafy grass in the Swamp, cracked lava rock in Lava Lands and the Inferno, and so on. The start islands are grass. An invisible floor part stays on top so running and hitboxes work exactly as before. No squares, no lines, no patches.
 - **Smooth floors** (`FloorStyle = "smooth"`): every floor (all zones and both start islands) is plain, smooth and flat in the zone's colour, with no lines or patches. The trail down the middle keeps its own material.
 - **Cartoon square floors** (`CONFIG.FloorStyle = "grid"`, off): every floor (all zones and both start islands) is smooth and flat in the zone's colour, with darker lines every 2 studs (`GridSize`; the lines get thinner as the squares get smaller), so it reads as clean cartoony squares. The lines are flat, non-colliding decoration. The trail down the middle keeps its own material, and the Void's holey floor stays smooth without lines.
@@ -171,8 +172,8 @@ Four scripts:
 
 ## HUD
 
-- **Regular cartoon UI, no studs**: every tile and button is a smooth glossy cartoon panel: rounded, a thick dark outline, a darker lip along the bottom so it looks pressable, and a soft highlight across the top. Popup panels have a glossy coloured header and a matching red close button, and the boss chase bar has a gradient. (The old studded brick look is gone.)
-- **Stat tiles**: Speed, Cash and Trophies on glossy tiles, each with a small caption, a glossy top and a shine that sweeps across. The numbers count up, cash shows with a "$", and every time your cash goes up a green "+$545" floats up off the Cash tile.
+- **Clean, realistic UI**: every tile, button and menu is a dark see-through rounded glass panel with a hairline border and a slim coloured accent, in the Gotham font with light shadows. Icons are small and flat: a map pin for Teleport, plain "3x" for the cash gamepass, a circular arrow for Rebirth, a double chevron for Prestige, two people for Invite. No studs, rainbow frames, sparkles, bobbing or wobbling. Cash pickups show a plain "+$545" that rises and fades, and Zone Cleared is a glass card with gold text.
+- **Stat tiles**: Speed, Cash and Trophies on glass tiles, each with a small caption, a glossy top and a shine that sweeps across. The numbers count up, cash shows with a "$", and every time your cash goes up a green "+$545" floats up off the Cash tile.
 - **Buttons**:
   - Teleport: spawn, the speed pad, the eggs, Map 1 or Map 2.
   - 3x Cash gamepass.
@@ -215,6 +216,8 @@ No emojis or uploaded images: every icon is drawn from rounded frames (the `ICON
 ![Terrain floor: Meadow](terrain_zone.png)
 ![Terrain floor: spawn island](terrain_spawn.png)
 ![Terrain floor: Desert](terrain_desert.png)
+![Terrain floor: Tundra](terrain_ice.png)
+![Terrain floor: Candy Kingdom](terrain_candy.png)
 
 ![Overview](map_overview.png)
 ![HUD](svb_hud.png)

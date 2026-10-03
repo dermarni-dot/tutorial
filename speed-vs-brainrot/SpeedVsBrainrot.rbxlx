@@ -813,6 +813,25 @@ function TK.fillBall(pos, radius, mat) pcall(function() Terrain:FillBall(pos, ra
 function TK.fillCyl(cf, height, radius, mat) pcall(function() Terrain:FillCylinder(cf, height, radius, mat) end) end
 -- CONFIG.FloorStyle = "terrain": real terrain in the zone's material makes the ground you
 -- run on (top exactly at the floor's top); the floor part stays as an invisible collider
+-- SMOOTH TERRAIN IN THE ZONE'S COLOUR: every theme gets its own terrain material (no two
+-- share one), and that material is tinted to the zone's floor colour. The zone's floor,
+-- its banks and the cliff under it all use it, so each zone is one smooth colour.
+TK.FLOOR_MAT = {
+	meadow = M.Grass, desert = M.Sand, ice = M.Snow, swamp = M.Mud, lava = M.CrackedLava,
+	candy = M.Salt, neon = M.Pavement, crystal = M.Limestone, storm = M.Slate, void = M.Asphalt,
+	jungle = M.LeafyGrass, haunted = M.Ground, factory = M.Concrete, space = M.Glacier,
+	rainbow = M.Ice, inferno = M.Basalt,
+}
+TK.tinted = {}
+function TK.tintMaterial(mat, color)
+	if not mat or TK.tinted[mat] then return end
+	TK.tinted[mat] = true
+	pcall(function() Terrain:SetMaterialColor(mat, color) end)
+end
+function TK.zoneMat(theme)
+	if CONFIG.FloorStyle ~= "terrain" then return nil end
+	return TK.FLOOR_MAT[theme]
+end
 function TK.terrainFloor(part, material)
 	if CONFIG.FloorStyle ~= "terrain" or not material then return false end
 	local s = part.Size
@@ -869,7 +888,9 @@ function TK.zoneUnderside(k, theme, rng)
 	local t = TK.THEMES[theme]
 	if not t then return false end
 	local cz = k * L + L / 2
-	TK.fillBlock(CFrame.new(0, -7.5, cz), Vector3.new(W, 12, L), t.under)
+	-- (top at y = -4, a whole terrain cell below the floor: terrain rounds to 4-stud
+	-- cells and used to bulge up through the floor in brown blotches)
+	TK.fillBlock(CFrame.new(0, -10, cz), Vector3.new(W, 12, L), TK.zoneMat(theme) or t.under)
 	for _ = 1, CONFIG.TerrainDecor and math.floor(L / 40) or 0 do
 		local r = rng:NextInteger(9, 20)
 		TK.fillBall(Vector3.new(rng:NextInteger(-math.floor(HALF_W - r), math.floor(HALF_W - r)), -10 - r * 0.6, k * L + rng:NextInteger(r, L - r)), r, t.under)
@@ -888,8 +909,9 @@ function TK.zoneDetail(k, zone, j, rng)
 	local accent = zone.accent or WHITE
 	for _, side in ipairs({ -1, 1 }) do
 		-- the bank: a wide shelf just below the track, with a lumpy outer edge
-		TK.fillBlock(CFrame.new(side * (HALF_W + 36), FLOOR_Y - 10.5, (z0 + z1) / 2), Vector3.new(66, 16, L), t.cap)
-		TK.fillBlock(CFrame.new(side * (HALF_W + 36), FLOOR_Y - 22, (z0 + z1) / 2), Vector3.new(60, 8, L), t.main)
+		local zm = TK.zoneMat(zone.theme)
+		TK.fillBlock(CFrame.new(side * (HALF_W + 36), FLOOR_Y - 10.5, (z0 + z1) / 2), Vector3.new(66, 16, L), zm or t.cap)
+		TK.fillBlock(CFrame.new(side * (HALF_W + 36), FLOOR_Y - 22, (z0 + z1) / 2), Vector3.new(60, 8, L), zm or t.main)
 		for z = z0 + 15, CONFIG.TerrainDecor and (z1 - 15) or z0, 30 do
 			TK.fillBall(Vector3.new(side * (HALF_W + 66 + rng:NextInteger(-4, 4)), FLOOR_Y - 9 + rng:NextInteger(-2, 3), z + rng:NextInteger(-6, 6)), rng:NextInteger(8, 13), (rng:NextNumber() < 0.5) and t.cap or t.main)
 		end
@@ -1124,7 +1146,7 @@ end
 
 -- a floating island made of terrain (dirt, rock underneath, grass on top)
 function TK.terrainIsle(x, y, z, size)
-	TK.fillBall(Vector3.new(x, y - size * 0.35, z), size * 0.55, M.Ground)
+	TK.fillBall(Vector3.new(x, y - size * 0.35, z), size * 0.55, M.Rock)
 	TK.fillBall(Vector3.new(x + size * 0.1, y - size * 0.85, z - size * 0.1), size * 0.35, M.Rock)
 	TK.fillCyl(CFrame.new(x, y, z), 4, size * 0.55, M.Grass)
 end
@@ -1207,7 +1229,8 @@ local function buildZoneShell(k, floorColor, underColor, accent, holey, rng, the
 		if look.floor then textured(floor, look.floor) else addStuds(floor, Enum.NormalId.Top) end
 		squareTiles(floor)
 		groundTexture(floor)
-		TK.terrainFloor(floor, TK.THEMES[theme] and TK.THEMES[theme].cap)
+		if TK.zoneMat(theme) then TK.tintMaterial(TK.zoneMat(theme), floorColor) end
+		TK.terrainFloor(floor, TK.zoneMat(theme) or (TK.THEMES[theme] and TK.THEMES[theme].cap))
 		-- a trail down the middle of the track
 		if look.path then
 			local trail = newPart{ Name = "Trail", Size = Vector3.new(26, 0.14, L), Position = Vector3.new(0, FLOOR_Y + 0.07, cz), Color = look.pathColor, CanCollide = false, CastShadow = false, Parent = Decor }
@@ -1376,16 +1399,37 @@ local function cartoonTree(x, z, s, leaf, baseY)
 	local y0 = baseY or FLOOR_Y
 	if TK.customProp("Tree", x, y0, z, s) then return end
 	local trunk = Color3.fromRGB(125, 85, 50)
+	local bark = trunk:Lerp(BLACK, 0.18)
+	-- a grass tuft and root flares at the base
+	local tuft = ball(5.5 * s, x, y0 + 0.2 * s, z, leaf:Lerp(BLACK, 0.25))
+	squash(tuft, 1, 0.22, 1)
+	for r = 0, 3 do
+		local a = r * math.pi / 2 + 0.6
+		local root = prop{ Size = Vector3.new(0.9 * s, 1.4 * s, 2.4 * s), CFrame = CFrame.new(x + math.cos(a) * 1.4 * s, y0 + 0.5 * s, z + math.sin(a) * 1.4 * s) * CFrame.Angles(0, -a + math.pi / 2, 0) * CFrame.Angles(math.rad(-35), 0, 0), Color = bark, Material = Enum.Material.Wood }
+		root.CanCollide = false
+	end
+	-- a trunk that tapers, with a bark ring and two branches up into the leaves
 	vcyl(6 * s, 2.8 * s, x, y0, z, trunk, Enum.Material.Wood)
 	vcyl(4 * s, 2 * s, x, y0 + 6 * s, z, trunk, Enum.Material.Wood)
-	ball(10 * s, x, y0 + 12.5 * s, z, leaf)
-	ball(7.5 * s, x + 3.8 * s, y0 + 11 * s, z + 1.5 * s, leaf:Lerp(WHITE, 0.12))
-	ball(7.5 * s, x - 3.6 * s, y0 + 11.5 * s, z - 1.8 * s, leaf:Lerp(BLACK, 0.12))
-	ball(6.5 * s, x + 0.8 * s, y0 + 16 * s, z - 0.6 * s, leaf:Lerp(WHITE, 0.2))
-	for f = 1, 4 do
-		local a = f * 1.57 + 0.4
-		local fruit = ball(1.1 * s, x + math.cos(a) * 4.7 * s, y0 + (12 + (f % 2) * 2) * s, z + math.sin(a) * 4.7 * s, Color3.fromRGB(235, 60, 60))
+	vcyl(0.5 * s, 3 * s, x, y0 + 5.8 * s, z, bark, Enum.Material.Wood).CanCollide = false
+	for _, b in ipairs({ { 1, 0.4 }, { -1, -0.5 } }) do
+		local br = prop{ Shape = Enum.PartType.Cylinder, Size = Vector3.new(4.5 * s, 0.9 * s, 0.9 * s), CFrame = CFrame.new(x + b[1] * 1.6 * s, y0 + 8.4 * s, z + b[2] * s) * CFrame.Angles(0, 0, b[1] * math.rad(50)), Color = trunk, Material = Enum.Material.Wood }
+		br.CanCollide = false
+	end
+	-- a full, two-tone canopy: big clumps, smaller clumps around the edge, light on top
+	local clumps = {
+		{ 10, 0, 12.5, 0, 0 }, { 7.5, 3.8, 11, 1.5, 0.12 }, { 7.5, -3.6, 11.5, -1.8, -0.12 }, { 6.5, 0.8, 16, -0.6, 0.2 },
+		{ 6, -1.5, 10.5, 3.6, -0.06 }, { 6, 1.8, 10.8, -3.6, 0.04 }, { 5, -3.2, 14.6, 1.2, 0.16 }, { 5, 3, 14.4, -1.8, 0.18 },
+	}
+	for _, c in ipairs(clumps) do
+		local col = (c[5] >= 0) and leaf:Lerp(WHITE, c[5]) or leaf:Lerp(BLACK, -c[5])
+		ball(c[1] * s, x + c[2] * s, y0 + c[3] * s, z + c[4] * s, col).CanCollide = (c[1] >= 10)
+	end
+	for f = 1, 5 do
+		local a = f * 1.26 + 0.4
+		local fruit = ball(1.1 * s, x + math.cos(a) * 4.9 * s, y0 + (11.6 + (f % 3) * 1.5) * s, z + math.sin(a) * 4.9 * s, Color3.fromRGB(235, 60, 60))
 		fruit.CanCollide = false
+		ball(0.35 * s, fruit.Position.X + 0.25 * s, fruit.Position.Y + 0.3 * s, fruit.Position.Z, WHITE).CanCollide = false
 	end
 end
 
@@ -1396,12 +1440,33 @@ local function bush(x, z, color, baseY)
 	ball(4.5, x, y0 + 1.6, z, color)
 	ball(3.6, x + 2.4, y0 + 1.2, z + 0.8, color:Lerp(WHITE, 0.1))
 	ball(3.4, x - 2.2, y0 + 1.1, z - 0.6, color:Lerp(BLACK, 0.1))
+	ball(3, x + 0.6, y0 + 1, z - 2, color:Lerp(BLACK, 0.05)).CanCollide = false
+	ball(2.6, x - 0.8, y0 + 2.9, z + 0.6, color:Lerp(WHITE, 0.18)).CanCollide = false
+	-- berries or little flowers dotted over it
+	local dot = (math.floor(x + z) % 2 == 0) and Color3.fromRGB(230, 50, 70) or Color3.fromRGB(255, 240, 120)
+	for b = 1, 5 do
+		local a = b * 1.25
+		ball(0.55, x + math.cos(a) * 2.1, y0 + 1.6 + (b % 2) * 0.9, z + math.sin(a) * 2.1, dot).CanCollide = false
+	end
 end
 
 local function rock(x, z, size, color, baseY)
 	if TK.customProp("Rock", x, baseY or FLOOR_Y, z, size / 6) then return end
-	local r = prop{ Shape = Enum.PartType.Ball, Size = Vector3.one * size, Position = Vector3.new(x, (baseY or FLOOR_Y) + size * 0.2, z), Color = color or Color3.fromRGB(140, 140, 150) }
-	return squash(r, 1.3, 0.7, 1)
+	local y0 = baseY or FLOOR_Y
+	local c = color or Color3.fromRGB(140, 140, 150)
+	local r = prop{ Shape = Enum.PartType.Ball, Size = Vector3.one * size, Position = Vector3.new(x, y0 + size * 0.2, z), Color = c, Material = Enum.Material.Slate }
+	squash(r, 1.3, 0.7, 1)
+	-- a couple of pebbles around it, and moss on top of grey rocks
+	for k = 1, 2 do
+		local a = k * 2.4 + size
+		local pb = ball(size * 0.32, x + math.cos(a) * size * 0.7, y0 + size * 0.05, z + math.sin(a) * size * 0.7, c:Lerp(BLACK, 0.12), Enum.Material.Slate)
+		squash(pb, 1.2, 0.6, 1)
+	end
+	if not color then
+		local moss = ball(size * 0.75, x - size * 0.1, y0 + size * 0.42, z, Color3.fromRGB(90, 150, 70), Enum.Material.Grass)
+		squash(moss, 1.2, 0.3, 0.9)
+	end
+	return r
 end
 
 local function flower(x, z, color, baseY)
@@ -1433,10 +1498,11 @@ do
 		s = s or 1
 		if TK.customProp("PineTree", x, FLOOR_Y, z, s) then return end
 		vcyl(4 * s, 1.6 * s, x, FLOOR_Y, z, Color3.fromRGB(110, 75, 45), Enum.Material.Wood)
+		vcyl(0.8 * s, 2.6 * s, x, FLOOR_Y, z, Color3.fromRGB(95, 62, 38), Enum.Material.Wood).CanCollide = false
 		local green = Color3.fromRGB(40, 120, 80)
-		for t = 0, 2 do
-			local size = (8 - t * 2.2) * s
-			local y = FLOOR_Y + (5 + t * 3.6) * s
+		for t = 0, 3 do
+			local size = (8.6 - t * 1.9) * s
+			local y = FLOOR_Y + (4.6 + t * 3) * s
 			local layer = prop{ Shape = Enum.PartType.Ball, Size = Vector3.one * size, Position = Vector3.new(x, y, z), Color = green:Lerp(WHITE, t * 0.05) }
 			squash(layer, 1, 0.75, 1)
 			local snow = prop{ Shape = Enum.PartType.Ball, Size = Vector3.one * size * 0.72, Position = Vector3.new(x, y + size * 0.22, z), Color = Color3.fromRGB(250, 252, 255) }
@@ -1447,17 +1513,25 @@ do
 	local function palmTree(x, z, side)
 		if TK.customProp("PalmTree", x, FLOOR_Y, z, 1) then return end
 		local trunk = Color3.fromRGB(150, 110, 70)
-		for seg = 0, 3 do
-			block(1.8 - seg * 0.15, 3.2, 1.8 - seg * 0.15, CFrame.new(x - side * seg * 0.5, FLOOR_Y + 1.6 + seg * 3, z) * CFrame.Angles(0, 0, -side * 0.12), trunk:Lerp(BLACK, (seg % 2) * 0.1))
+		-- a curved trunk of rings (alternate shades), leaning away from the track
+		for seg = 0, 7 do
+			local w = 1.9 - seg * 0.09
+			vcyl(1.6, w, x - side * seg * 0.28, FLOOR_Y + seg * 1.55, z, trunk:Lerp(BLACK, (seg % 2) * 0.14), Enum.Material.Wood)
 		end
-		local top = Vector3.new(x - side * 2, FLOOR_Y + 13, z)
-		for l = 1, 6 do
-			local a = l * (math.pi * 2 / 6)
-			local leaf = block(0.3, 7, 1.8, CFrame.new(top) * CFrame.Angles(0, a, 0) * CFrame.new(0, -0.8, -3) * CFrame.Angles(math.rad(70), 0, 0), Color3.fromRGB(60, 170, 70))
-			leaf.CanCollide = false
+		local top = Vector3.new(x - side * 2.2, FLOOR_Y + 13, z)
+		ball(2.4, top.X, top.Y, top.Z, Color3.fromRGB(60, 150, 60)).CanCollide = false
+		-- fronds: an inner part reaching out and a tip that droops down
+		for l = 1, 8 do
+			local a = l * (math.pi * 2 / 8)
+			local green = Color3.fromRGB(60, 170, 70):Lerp(BLACK, (l % 2) * 0.12)
+			local base = CFrame.new(top) * CFrame.Angles(0, a, 0)
+			block(0.25, 4.2, 1.9, base * CFrame.new(0, 0.2, -2) * CFrame.Angles(math.rad(80), 0, 0), green).CanCollide = false
+			block(0.22, 3.4, 1.4, base * CFrame.new(0, -0.9, -4.8) * CFrame.Angles(math.rad(120), 0, 0), green:Lerp(WHITE, 0.08)).CanCollide = false
 		end
-		ball(1.2, top.X + 0.6, top.Y - 0.8, top.Z, Color3.fromRGB(110, 70, 35))
-		ball(1.2, top.X - 0.5, top.Y - 0.9, top.Z + 0.6, Color3.fromRGB(110, 70, 35))
+		for c = 1, 3 do
+			local a = c * 2.1
+			ball(1.2, top.X + math.cos(a) * 0.9, top.Y - 1, top.Z + math.sin(a) * 0.9, Color3.fromRGB(110, 70, 35)).CanCollide = false
+		end
 	end
 
 	local function cupcake(x, z, color)
@@ -1546,6 +1620,15 @@ do
 			vcyl(3, 1.8, x - 3.4, FLOOR_Y + 8, z, g)
 			ball(1.8, x - 3.4, FLOOR_Y + 11, z, g)
 			ball(1.4, x, FLOOR_Y + 14.6, z, Color3.fromRGB(255, 110, 170)) -- cactus flower
+			-- ribs down the trunk and little spines
+			for rib = 0, 3 do
+				local a = rib * math.pi / 2 + math.pi / 4
+				block(0.35, 11, 0.35, CFrame.new(x + math.cos(a) * 1.5, FLOOR_Y + 6.5, z + math.sin(a) * 1.5), g:Lerp(BLACK, 0.2)).CanCollide = false
+			end
+			for sp = 1, 8 do
+				local a = sp * 0.8
+				ball(0.3, x + math.cos(a) * 1.65, FLOOR_Y + 2 + sp * 1.3, z + math.sin(a) * 1.65, Color3.fromRGB(250, 245, 215)).CanCollide = false
+			end
 		elseif r == 1 then
 			palmTree(x, z, side)
 		else
@@ -2715,8 +2798,9 @@ local function buildStartIsland(map)
 	textured(startFloor, M.Grass)
 	squareTiles(startFloor)
 	groundTexture(startFloor)
+	TK.tintMaterial(M.Grass, MAPS[1].zones[1].floor)
 	TK.terrainFloor(startFloor, M.Grass)
-	TK.fillBlock(CFrame.new(0, -24, oz + IL / 2), Vector3.new(W, 44, IL), M.Ground)
+	TK.fillBlock(CFrame.new(0, -26, oz + IL / 2), Vector3.new(W, 44, IL), M.Rock) -- (top at -4, clear of the floor)
 	for _ = 1, CONFIG.TerrainDecor and 10 or 0 do -- rocky chunks hanging under the island
 		local r = math.random(10, 22)
 		TK.fillBall(Vector3.new(math.random(-math.floor(HALF_W - r), math.floor(HALF_W - r)), -44 - r * 0.4, oz + math.random(r, IL - r)), r, M.Rock)
@@ -2858,9 +2942,7 @@ local function buildStartIsland(map)
 		block(2.6, 0.5, 5, base * CFrame.new(0, 0, 2.5), red).CanCollide = false
 		block(4.6, 0.5, 4.6, base * CFrame.new(0, 0, 6.2) * CFrame.Angles(0, math.rad(45), 0), red).CanCollide = false
 	end
-	for _, ax in ipairs({ -36, -18, 0, 18, 36 }) do
-		redArrow(ax, oz + IL + 6)
-	end
+	-- (no arrows at the red line)
 
 	-- a ring of blocks (fountain rims)
 	local function ring(cx, y, cz, radius, height, thick, color, segments, material)
@@ -5603,7 +5685,7 @@ local PetInfo = ReplicatedStorage:WaitForChild("SVB_Pets")
 local MapInfo = ReplicatedStorage:WaitForChild("SVB_Maps")
 
 local ROBUX = utf8.char(0xE002) -- the Robux symbol in Roblox fonts
-local FONT = Enum.Font.FredokaOne
+local FONT = Enum.Font.GothamBold -- clean, realistic UI font
 local WHITE = Color3.new(1, 1, 1)
 
 local COLORS = {
@@ -5710,16 +5792,13 @@ end
 
 -- a stone teleport portal with a pink swirl inside
 function ICONS.portal()
+	-- a simple map pin
+	local c, hole = rgb(90, 180, 250), rgb(16, 18, 26)
 	return {
-		-- an eight-sided stone frame (two turned squares)
-		S(0.5, 0.5, 0.86, 0.86, rgb(145, 150, 165), { r = 0.18 }),
-		S(0.5, 0.5, 0.86, 0.86, rgb(145, 150, 165), { r = 0.18, rot = 45 }),
-		S(0.5, 0.5, 0.8, 0.8, rgb(215, 218, 228), { r = 0.5, ring = true, line = 3 }),
-		S(0.5, 0.5, 0.72, 0.72, rgb(230, 60, 170), { r = 0.5 }),
-		S(0.54, 0.46, 0.52, 0.52, rgb(150, 50, 220), { r = 0.5, line = 0 }),
-		S(0.47, 0.53, 0.36, 0.36, rgb(255, 120, 210), { r = 0.5, line = 0 }),
-		S(0.53, 0.48, 0.2, 0.2, rgb(255, 210, 245), { r = 0.5, line = 0 }),
-		S(0.5, 0.5, 0.08, 0.08, rgb(255, 255, 255), { r = 0.5, line = 0, flat = true }),
+		S(0.5, 0.58, 0.34, 0.34, c, { rot = 45, r = 0.12, line = 0, flat = true }),
+		S(0.5, 0.4, 0.62, 0.62, c, { r = 0.5, line = 0, flat = true }),
+		S(0.5, 0.4, 0.26, 0.26, hole, { r = 0.5, line = 0, flat = true }),
+		S(0.5, 0.92, 0.36, 0.08, rgb(255, 255, 255), { r = 0.5, line = 0, flat = true, a = 0.6 }),
 	}
 end
 
@@ -5748,23 +5827,14 @@ end
 
 -- two friends
 function ICONS.friends()
-	local skin = rgb(255, 210, 80)
-	-- blocky Roblox-style heads with a smile
-	local function person(x, y, sz, shirt, hair)
-		return {
-			S(x, y + 0.38 * sz, 0.66 * sz, 0.42 * sz, shirt, { r = 0.3 }),
-			S(x, y, 0.56 * sz, 0.52 * sz, skin, { r = 0.24 }),
-			S(x, y - 0.21 * sz, 0.58 * sz, 0.14 * sz, hair, { r = 0.3 }),
-			S(x - 0.1 * sz, y - 0.02 * sz, 0.06 * sz, 0.09 * sz, rgb(40, 30, 30), { r = 0.5, line = 0, flat = true }),
-			S(x + 0.1 * sz, y - 0.02 * sz, 0.06 * sz, 0.09 * sz, rgb(40, 30, 30), { r = 0.5, line = 0, flat = true }),
-			S(x, y + 0.12 * sz, 0.22 * sz, 0.05 * sz, rgb(40, 30, 30), { r = 0.5, line = 0, flat = true }),
-		}
-	end
-	local list = person(0.66, 0.42, 0.62, rgb(60, 140, 230), rgb(120, 70, 40))
-	for _, sh in ipairs(person(0.38, 0.5, 0.74, rgb(240, 110, 60), rgb(70, 45, 30))) do
-		table.insert(list, sh)
-	end
-	return list
+	-- two people
+	local a, b = rgb(250, 210, 70), rgb(200, 205, 215)
+	return {
+		S(0.66, 0.34, 0.24, 0.24, b, { r = 0.5, line = 0, flat = true }),
+		S(0.66, 0.72, 0.4, 0.34, b, { r = 0.45, line = 0, flat = true }),
+		S(0.38, 0.3, 0.28, 0.28, a, { r = 0.5, line = 0, flat = true }),
+		S(0.38, 0.74, 0.46, 0.38, a, { r = 0.45, line = 0, flat = true }),
+	}
 end
 
 -- a pet, drawn by its style (bunny, pup, cat, fox, wolf, bear, bee, beetle,
@@ -6195,32 +6265,25 @@ end
 
 -- two white arrows chasing each other around an orange coin (rebirth)
 function ICONS.rebirth()
-	local o, white, dark = rgb(255, 150, 40), rgb(255, 250, 240), rgb(110, 50, 10)
+	-- a plain circular arrow
+	local c, bg = rgb(255, 160, 60), rgb(16, 18, 26)
 	return {
-		S(0.5, 0.5, 0.86, 0.86, o, { r = 0.5 }),
-		S(0.5, 0.5, 0.62, 0.62, dark, { r = 0.5, ring = true, line = 14 }),
-		S(0.5, 0.5, 0.62, 0.62, white, { r = 0.5, ring = true, line = 8 }),
-		-- gaps in the ring, then the arrow heads
-		S(0.24, 0.36, 0.16, 0.12, o, { r = 0.2, rot = 35, line = 0, flat = true }),
-		S(0.76, 0.64, 0.16, 0.12, o, { r = 0.2, rot = 35, line = 0, flat = true }),
-		S(0.27, 0.27, 0.17, 0.17, white, { rot = 10, r = 0.1 }),
-		S(0.73, 0.73, 0.17, 0.17, white, { rot = 10, r = 0.1 }),
-		S(0.5, 0.5, 0.3, 0.3, o, { r = 0.5, line = 0, flat = true, text = "R", tc = white }),
+		S(0.5, 0.5, 0.7, 0.7, c, { r = 0.5, ring = true, line = 9 }),
+		S(0.78, 0.3, 0.2, 0.26, bg, { line = 0, flat = true }),
+		S(0.72, 0.2, 0.22, 0.22, c, { rot = 45, line = 0, flat = true }),
 	}
 end
 
 -- a big gold star burst (prestige)
 function ICONS.star()
-	local gold, deep = rgb(255, 205, 50), rgb(250, 160, 30)
-	return {
-		S(0.5, 0.5, 0.74, 0.74, deep, { r = 0.12, rot = 22.5 }),
-		S(0.5, 0.5, 0.74, 0.74, deep, { r = 0.12, rot = 67.5 }),
-		S(0.5, 0.5, 0.7, 0.7, gold, { r = 0.1 }),
-		S(0.5, 0.5, 0.7, 0.7, gold, { r = 0.1, rot = 45 }),
-		S(0.5, 0.5, 0.42, 0.42, rgb(255, 240, 160), { r = 0.5 }),
-		S(0.42, 0.42, 0.1, 0.1, rgb(255, 255, 255), { r = 0.5, line = 0, flat = true }),
-		S(0.5, 0.52, 0.26, 0.26, rgb(255, 240, 160), { r = 0.5, line = 0, flat = true, text = "P", tc = rgb(200, 110, 20) }),
-	}
+	-- prestige: a double chevron pointing up (rank up)
+	local c = rgb(190, 140, 255)
+	local list = {}
+	for _, y in ipairs({ 0.4, 0.66 }) do
+		table.insert(list, S(0.38, y, 0.36, 0.13, c, { rot = -40, r = 0.5, line = 0, flat = true }))
+		table.insert(list, S(0.62, y, 0.36, 0.13, c, { rot = 40, r = 0.5, line = 0, flat = true }))
+	end
+	return list
 end
 
 -- a lock (things you can't use yet)
@@ -6335,7 +6398,7 @@ local function label(parent, text, size, props)
 		Size = size,
 		Parent = parent,
 	})
-	new("UIStroke", { Color = Color3.fromRGB(25, 25, 30), Thickness = 3, LineJoinMode = Enum.LineJoinMode.Round, Parent = l })
+	new("UIStroke", { Color = Color3.new(0, 0, 0), Thickness = 1.5, Transparency = 0.45, LineJoinMode = Enum.LineJoinMode.Round, Parent = l })
 	for k, v in pairs(props or {}) do
 		l[k] = v
 	end
@@ -6348,46 +6411,38 @@ local function tween(obj, t, goal, style, dir)
 	return tw
 end
 
--- a chunky cartoon button: rounded, thick dark outline, a darker "lip" along the bottom
--- so it looks pressable, a glossy face with a soft highlight on top. (No studs.)
--- The child named "Studs" is the clipped face that the gloss and shine sit in.
+-- a sleek glass tile: dark see-through rounded panel, a hairline border and a slim
+-- coloured accent along the bottom. The child named "Studs" is the clipped face that
+-- the sweeping shine sits in.
+local GLASS = Color3.fromRGB(16, 18, 26)
 local function studTile(parent, color, size, props)
-	local dark = color:Lerp(Color3.new(0, 0, 0), 0.55)
-	local LIP = math.clamp(math.floor(size.Y.Offset * 0.09 + 0.5), 4, 8)
 	local tile = new("Frame", {
-		BackgroundColor3 = color:Lerp(Color3.new(0, 0, 0), 0.3), -- the lip colour shows along the bottom
+		BackgroundColor3 = GLASS,
+		BackgroundTransparency = 0.3,
 		Size = size,
 		BorderSizePixel = 0,
 		Parent = parent,
 	})
-	corner(tile, 14)
-	stroke(tile, dark, 3.5)
+	corner(tile, 10)
+	stroke(tile, WHITE, 1, 0.82)
 	local face = new("Frame", {
 		Name = "Studs",
-		BackgroundColor3 = color,
-		BorderSizePixel = 0,
-		Size = UDim2.new(1, 0, 1, -LIP),
+		BackgroundTransparency = 1,
+		Size = UDim2.fromScale(1, 1),
 		ClipsDescendants = true,
 		Parent = tile,
 	})
-	corner(face, 14)
-	new("UIGradient", {
-		Color = ColorSequence.new(color:Lerp(WHITE, 0.22), color:Lerp(Color3.new(0, 0, 0), 0.06)),
-		Rotation = 90,
-		Parent = face,
-	})
-	-- glossy highlight across the top, inset from the edges
-	local hi = new("Frame", {
-		Name = "Highlight",
-		BackgroundColor3 = WHITE,
-		BackgroundTransparency = 0.72,
+	corner(face, 10)
+	local accent = new("Frame", {
+		Name = "Accent",
+		AnchorPoint = Vector2.new(0.5, 1),
+		Position = UDim2.new(0.5, 0, 1, -3),
+		Size = UDim2.new(1, -20, 0, 3),
+		BackgroundColor3 = color,
 		BorderSizePixel = 0,
-		Position = UDim2.new(0, 6, 0, 4),
-		Size = UDim2.new(1, -12, 0.36, 0),
-		Parent = face,
+		Parent = tile,
 	})
-	corner(hi, 10)
-	new("UIGradient", { Transparency = NumberSequence.new(0, 0.85), Rotation = 90, Parent = hi })
+	corner(accent, 2)
 	local scale = new("UIScale", { Parent = tile })
 	for k, v in pairs(props or {}) do
 		tile[k] = v
@@ -6464,14 +6519,14 @@ local stats = {}
 local function statTile(key, icon, y, color)
 	local tile, scale = studTile(column, color, UDim2.fromOffset(190, 68), { Position = UDim2.fromOffset(0, y), Name = key .. "Tile" })
 	-- (the icon is bigger than the tile and pokes out of its left edge)
-	drawIcon(tile, icon, 78).Position = UDim2.fromOffset(-12, -6)
-	local value = label(tile, "0", UDim2.new(1, -76, 0, 46), {
-		Position = UDim2.fromOffset(68, 11),
+	drawIcon(tile, icon, 40).Position = UDim2.fromOffset(10, 14)
+	local value = label(tile, "0", UDim2.new(1, -70, 0, 34), {
+		Position = UDim2.fromOffset(60, 22),
 		TextXAlignment = Enum.TextXAlignment.Left,
 		ZIndex = 3,
 	})
 	-- a small caption and a shine that sweeps across now and then (the tile has its own gloss)
-	label(tile, string.upper(key), UDim2.fromOffset(110, 14), { Position = UDim2.fromOffset(70, 3), TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = color:Lerp(WHITE, 0.7), ZIndex = 3 })
+	label(tile, string.upper(key), UDim2.fromOffset(110, 13), { Position = UDim2.fromOffset(61, 7), TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = color:Lerp(WHITE, 0.35), ZIndex = 3 })
 	local studs = tile:FindFirstChild("Studs")
 	local shine = new("Frame", { Name = "Shine", BackgroundColor3 = WHITE, BorderSizePixel = 0, Rotation = 20, Position = UDim2.new(-0.4, 0, -0.5, 0), Size = UDim2.new(0, 26, 2, 0), ZIndex = 2, Parent = studs or tile })
 	new("UIGradient", { Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.5, 0.45), NumberSequenceKeypoint.new(1, 1) }), Parent = shine })
@@ -6630,34 +6685,30 @@ local function squareButton(name, icon, text, color, x, y)
 		Parent = tile,
 	})
 	-- a big icon that pokes out over the top, the name across the bottom edge
-	local iconLabel = drawIcon(tile, icon, 86)
+	local iconLabel = drawIcon(tile, icon, 54)
 	iconLabel.AnchorPoint = Vector2.new(0.5, 0)
-	iconLabel.Position = UDim2.new(0.5, 0, 0, -16)
-	local textLabel = label(tile, text, UDim2.new(1, 8, 0, 30), { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 1, -12), ZIndex = 4 })
+	iconLabel.Position = UDim2.new(0.5, 0, 0, 12)
+	local textLabel = label(tile, text, UDim2.new(1, -16, 0, 20), { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 1, -22), ZIndex = 4 })
 	return tile, scale, button, iconLabel, textLabel
 end
 
 local rowY = 232 + 46 + 44
 local _tpTile, tpScale, tpButton = squareButton("Teleport", "portal", "Teleport", COLORS.teleport, 0, rowY)
-local passTile, passScale, passButton, passIcon, passText = squareButton("CashPass", "bat", "3x", COLORS.pass, BTN + GAP, rowY)
+local passTile, passScale, passButton, passIcon, passText = squareButton("CashPass", "cash", "Cash", COLORS.pass, BTN + GAP, rowY)
 local _invTile, invScale, invButton = squareButton("Invite", "friends", "Invite", COLORS.invite, 0, rowY + BTN + GAP + 26)
 local _petTile, petScale, petButton = squareButton("Pets", "pet", "Pets", COLORS.pets, BTN + GAP, rowY + BTN + GAP + 26)
 local row3 = rowY + 2 * (BTN + GAP + 26)
 local _rbTile, rbScale, rbButton = squareButton("Rebirth", "rebirth", "Rebirth", COLORS.rebirth, 0, row3)
 local prTile, prScale, prButton, prIcon = squareButton("Prestige", "star", "Prestige", COLORS.prestige, BTN + GAP, row3)
--- "3x" and a little cash brick under the bat
-passText.Size = UDim2.new(0.42, 0, 0, 32)
-passText.Position = UDim2.new(0.36, 0, 1, -14)
-local passCash = drawIcon(passTile, "cash", 40)
-passCash.AnchorPoint = Vector2.new(0.5, 0.5)
-passCash.Position = UDim2.new(0.7, 0, 1, -16)
+-- the gamepass button just says "3x" over "Cash"
+passIcon.Visible = false
+local passBig = label(passTile, "3x", UDim2.new(1, -20, 0, 46), { AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 14), TextColor3 = Color3.fromRGB(120, 235, 110), ZIndex = 4 })
 
 -- "Play with friends!" under the invite button
-local friendsLabel = label(column, "Play with friends!", UDim2.fromOffset(BTN + 24, 22), { Position = UDim2.fromOffset(-12, rowY + 2 * BTN + GAP + 32) })
+local friendsLabel = label(column, "", UDim2.fromOffset(BTN + 24, 22), { Position = UDim2.fromOffset(-12, rowY + 2 * BTN + GAP + 32), Visible = false })
 
 -- the gamepass button: a thick spinning rainbow frame, the price above it
-passText.TextColor3 = Color3.fromRGB(120, 255, 90)
-passText:FindFirstChildOfClass("UIStroke").Color = Color3.fromRGB(15, 70, 25)
+
 local rainbowFrame = new("Frame", {
 	Name = "RainbowFrame",
 	AnchorPoint = Vector2.new(0.5, 0.5),
@@ -6665,6 +6716,7 @@ local rainbowFrame = new("Frame", {
 	Size = UDim2.fromOffset(BTN + 14, BTN + 14),
 	BackgroundColor3 = WHITE,
 	ZIndex = 0,
+	Visible = false, -- (no spinning rainbow frame: plain button)
 	Parent = column,
 })
 corner(rainbowFrame, 14)
@@ -6680,32 +6732,32 @@ local rainbow = new("UIGradient", {
 	}),
 	Parent = rainbowFrame,
 })
-local priceLabel = label(column, "ONLY " .. ROBUX .. "?!", UDim2.fromOffset(BTN + 16, 26), {
-	Position = UDim2.fromOffset(BTN + GAP - 8, rowY - 36),
+local priceLabel = label(column, "", UDim2.fromOffset(BTN + 16, 18), {
+	Position = UDim2.fromOffset(BTN + GAP - 8, rowY - 24),
+	TextColor3 = Color3.fromRGB(200, 205, 215),
 })
 RunService.RenderStepped:Connect(function()
-	rainbow.Rotation = (os.clock() * 90) % 360
-	passIcon.Rotation = math.sin(os.clock() * 3) * 8
+	rainbow.Rotation = 0
 end)
 
 local passId = workspace:GetAttribute("CashGamepassId") or 0
 task.spawn(function()
 	if passId <= 0 then
-		priceLabel.Text = "3x CASH!"
+		priceLabel.Text = ""
 		return
 	end
 	local ok, info = pcall(function()
 		return MarketplaceService:GetProductInfo(passId, Enum.InfoType.GamePass)
 	end)
 	if ok and info and info.PriceInRobux then
-		priceLabel.Text = "ONLY " .. ROBUX .. info.PriceInRobux .. "!"
+		priceLabel.Text = ROBUX .. " " .. info.PriceInRobux
 	else
-		priceLabel.Text = "3x CASH!"
+		priceLabel.Text = ""
 	end
 end)
 local function refreshPass()
 	if player:GetAttribute("HasCashPass") then
-		priceLabel.Text = "OWNED!"
+		priceLabel.Text = "Owned"
 	end
 end
 refreshPass()
@@ -6744,7 +6796,7 @@ function applyLayout()
 		friendsLabel.Position = UDim2.fromOffset(-12, rowY + 2 * BTN + GAP + 32)
 	end
 	rainbowFrame.Position = UDim2.fromOffset(passPos.X + BTN / 2, passPos.Y + BTN / 2)
-	priceLabel.Position = UDim2.fromOffset(passPos.X - 8, passPos.Y - 36)
+	priceLabel.Position = UDim2.fromOffset(passPos.X - 8, passPos.Y - 24)
 end
 rescale()
 
@@ -6786,23 +6838,23 @@ local function panel(name, size, title, color, iconName)
 		ZIndex = 20,
 		Parent = gui,
 	})
-	corner(p, 18)
-	stroke(p, Color3.fromRGB(18, 18, 26), 4)
-	new("UIGradient", { Color = ColorSequence.new(Color3.fromRGB(58, 64, 92), Color3.fromRGB(30, 33, 48)), Rotation = 90, Parent = p })
+	p.BackgroundColor3 = Color3.fromRGB(16, 18, 26)
+	p.BackgroundTransparency = 0.12
+	corner(p, 12)
+	stroke(p, WHITE, 1, 0.82)
 	new("UIScale", { Parent = p })
-	local head = new("Frame", { BackgroundColor3 = color, Size = UDim2.new(1, 0, 0, 50), ZIndex = 21, Parent = p })
-	corner(head, 18)
-	new("UIGradient", { Color = ColorSequence.new(color:Lerp(WHITE, 0.2), color:Lerp(Color3.new(0, 0, 0), 0.12)), Rotation = 90, Parent = head })
-	local headGloss = new("Frame", { BackgroundColor3 = WHITE, BackgroundTransparency = 0.75, BorderSizePixel = 0, Position = UDim2.new(0, 8, 0, 4), Size = UDim2.new(1, -16, 0, 16), ZIndex = 21, Parent = head })
-	corner(headGloss, 8)
-	local icon = drawIcon(head, iconName, 44)
-	icon.Position = UDim2.fromOffset(10, 3)
-	label(head, title, UDim2.new(1, -120, 0, 40), { Position = UDim2.fromOffset(60, 5), TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 22 })
+	-- plain header: title on the left, a thin coloured line under it
+	local head = new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 50), ZIndex = 21, Parent = p })
+	new("Frame", { BackgroundColor3 = color, BorderSizePixel = 0, Position = UDim2.new(0, 16, 1, -2), Size = UDim2.new(1, -32, 0, 2), ZIndex = 21, Parent = head })
+	local icon = drawIcon(head, iconName, 30)
+	icon.Position = UDim2.fromOffset(16, 10)
+	label(head, title, UDim2.new(1, -120, 0, 26), { Position = UDim2.fromOffset(56, 12), TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 22 })
 	local close = new("TextButton", {
 		AnchorPoint = Vector2.new(1, 0),
 		Position = UDim2.new(1, -8, 0, 6),
-		Size = UDim2.fromOffset(40, 38),
-		BackgroundColor3 = Color3.fromRGB(235, 70, 80),
+		Size = UDim2.fromOffset(34, 34),
+		BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+		BackgroundTransparency = 0.9,
 		BorderSizePixel = 0,
 		Text = "X",
 		Font = FONT,
@@ -6811,10 +6863,7 @@ local function panel(name, size, title, color, iconName)
 		ZIndex = 23,
 		Parent = p,
 	})
-	corner(close, 12)
-	stroke(close, Color3.fromRGB(90, 15, 25), 3)
-	new("UIGradient", { Color = ColorSequence.new(Color3.fromRGB(255, 120, 125), Color3.fromRGB(210, 45, 60)), Rotation = 90, Parent = close })
-	new("UIStroke", { Color = Color3.fromRGB(25, 25, 30), Thickness = 2.5, ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual, Parent = close })
+	corner(close, 17)
 	close.Activated:Connect(closePanel)
 	return p
 end
@@ -6825,16 +6874,16 @@ local function tpButtonRow(i, iconName, caption)
 	local b = new("TextButton", {
 		Position = UDim2.fromOffset(20, 62 + (i - 1) * 58),
 		Size = UDim2.new(1, -40, 0, 50),
-		BackgroundColor3 = COLORS.teleport:Lerp(WHITE, 0.1),
+		BackgroundColor3 = WHITE,
+		BackgroundTransparency = 0.92,
 		Text = "",
 		ZIndex = 22,
 		Parent = tpPanel,
 	})
-	corner(b, 12)
-	stroke(b, COLORS.teleport:Lerp(Color3.new(0, 0, 0), 0.4), 3)
-	local icon = drawIcon(b, iconName, 40)
-	icon.Position = UDim2.fromOffset(8, 5)
-	local text = label(b, caption, UDim2.new(1, -70, 1, -14), { Position = UDim2.fromOffset(58, 7), TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 23 })
+	corner(b, 8)
+	local icon = drawIcon(b, iconName, 30)
+	icon.Position = UDim2.fromOffset(12, 10)
+	local text = label(b, caption, UDim2.new(1, -70, 0, 22), { Position = UDim2.fromOffset(54, 14), TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 23 })
 	return b, text
 end
 for i, place in ipairs({ { "spawn", "Spawn", "portal" }, { "pad", "Speed Pad", "shoe" }, { "eggs", "Pet Eggs", "egg" } }) do
@@ -6892,9 +6941,8 @@ local function panelAction(p, text, color, onClick)
 		ZIndex = 22,
 		Parent = p,
 	})
-	corner(b, 14)
-	stroke(b, color:Lerp(Color3.new(0, 0, 0), 0.45), 3)
-	local t = label(b, text, UDim2.new(1, -20, 1, -12), { Position = UDim2.fromOffset(10, 6), ZIndex = 23 })
+	corner(b, 8)
+	local t = label(b, text, UDim2.new(1, -20, 0, 22), { Position = UDim2.fromOffset(10, 14), ZIndex = 23 })
 	b.Activated:Connect(onClick)
 	return b, t
 end
@@ -6948,6 +6996,7 @@ prLock.Position = UDim2.fromScale(0.78, 0.3)
 prLock.ZIndex = 6
 local prDim = new("Frame", { BackgroundColor3 = Color3.new(0, 0, 0), BackgroundTransparency = 0.45, Size = UDim2.fromScale(1, 1), ZIndex = 4, Parent = prTile })
 corner(prDim, 10)
+prDim.BackgroundTransparency = 0.55
 local function refreshPrestige()
 	local ready = player:GetAttribute("PrestigeReady") == true
 	local p = player:GetAttribute("Prestige") or 0
@@ -6963,11 +7012,7 @@ for _, a in ipairs({ "PrestigeReady", "Prestige" }) do
 	player:GetAttributeChangedSignal(a):Connect(refreshPrestige)
 end
 refreshPrestige()
-RunService.RenderStepped:Connect(function()
-	if player:GetAttribute("PrestigeReady") then
-		prIcon.Rotation = math.sin(os.clock() * 4) * 10
-	end
-end)
+
 
 -- pets: what you own, what it gives, fuse 3 into a better one
 local TIER_NAMES = { "", "Golden ", "Rainbow " }
@@ -7151,56 +7196,25 @@ local function cashPop(amount, worldPos)
 			x, y = math.clamp(g.X, 90, view.X - 90), math.clamp(g.Y - 60, 80, view.Y - 80)
 		end
 	end
-	billStream(Vector2.new(x, y))
-	local pop = new("Frame", {
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.fromOffset(x, y),
-		Size = UDim2.fromOffset(170, 150),
-		BackgroundTransparency = 1,
-		Rotation = math.random(-12, 12),
-		ZIndex = 31,
-		Parent = fxLayer,
-	})
-	local scale = new("UIScale", { Scale = 0, Parent = pop })
-	-- spinning gold rays behind the cash brick
-	local rays = new("Frame", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromOffset(85, 40), Size = UDim2.fromOffset(190, 190), BackgroundTransparency = 1, ZIndex = 31, Parent = pop })
-	for k = 0, 5 do
-		local ray = new("Frame", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.new(0, 22, 1, 0), Rotation = k * 30, BackgroundColor3 = Color3.fromRGB(255, 235, 120), BorderSizePixel = 0, ZIndex = 31, Parent = rays })
-		new("UIGradient", { Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.5, 0.35), NumberSequenceKeypoint.new(1, 1) }), Rotation = 90, Parent = ray })
-	end
-	tween(rays, 1.2, { Rotation = 90 })
-	local brick = drawIcon(pop, "cash", 116)
-	brick.Position = UDim2.fromOffset(27, -18)
 	local text = new("TextLabel", {
+		AnchorPoint = Vector2.new(0.5, 0.5),
 		BackgroundTransparency = 1,
-		Position = UDim2.fromOffset(0, 76),
-		Size = UDim2.fromOffset(170, 66),
+		Position = UDim2.fromOffset(x, y),
+		Size = UDim2.fromOffset(140, 30),
 		Font = FONT,
 		Text = "+$" .. fmt(amount),
-		TextColor3 = Color3.fromRGB(215, 255, 200),
+		TextColor3 = Color3.fromRGB(130, 235, 120),
 		TextScaled = true,
 		ZIndex = 34,
-		Parent = pop,
+		Parent = fxLayer,
 	})
-	new("UIStroke", { Color = Color3.fromRGB(25, 95, 35), Thickness = 5, LineJoinMode = Enum.LineJoinMode.Round, Parent = text })
-	new("UIGradient", { Color = ColorSequence.new(WHITE, Color3.fromRGB(190, 255, 170)), Rotation = 90, Parent = text })
-	-- pop in with a bounce, wiggle, then fly into the Cash tile
-	tween(scale, 0.35, { Scale = 1 }, Enum.EasingStyle.Back)
-	task.spawn(function()
-		local r0 = pop.Rotation
-		for k = 1, 6 do
-			pop.Rotation = r0 + math.sin(k * 1.4) * 6
-			task.wait(0.06)
-		end
-		task.wait(0.3)
-		local tile = stats.Cash.Tile
-		local target = toGui(tile.AbsolutePosition + tile.AbsoluteSize / 2 - fxLayer.AbsolutePosition)
-		tween(pop, 0.45, { Position = UDim2.fromOffset(target.X, target.Y), Rotation = 0 }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
-		tween(scale, 0.45, { Scale = 0.25 }, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
-		task.wait(0.45)
-		pop:Destroy()
+	new("UIStroke", { Color = Color3.new(0, 0, 0), Thickness = 1.5, Transparency = 0.4, Parent = text })
+	-- rises a little and fades out
+	tween(text, 0.9, { Position = UDim2.fromOffset(x, y - 46), TextTransparency = 1 }, Enum.EasingStyle.Quad)
+	tween(text:FindFirstChildOfClass("UIStroke"), 0.9, { Transparency = 1 })
+	task.delay(0.9, function()
+		text:Destroy()
 		active -= 1
-		bounce(stats.Cash.Scale, 1.14)
 	end)
 end
 
@@ -7402,15 +7416,14 @@ local chase = new("Frame", {
 	AnchorPoint = Vector2.new(0.5, 0),
 	Position = UDim2.new(0.5, 0, 0, 8),
 	Size = UDim2.fromOffset(440, 66),
-	BackgroundColor3 = Color3.fromRGB(46, 22, 32),
-	BackgroundTransparency = 0.05,
+	BackgroundColor3 = Color3.fromRGB(16, 18, 26),
+	BackgroundTransparency = 0.25,
 	Visible = false,
 	ZIndex = 35,
 	Parent = gui,
 })
-corner(chase, 16)
-new("UIGradient", { Color = ColorSequence.new(Color3.fromRGB(80, 34, 48), Color3.fromRGB(34, 16, 24)), Rotation = 90, Parent = chase })
-local chaseStroke = stroke(chase, Color3.fromRGB(255, 70, 70), 3.5)
+corner(chase, 10)
+local chaseStroke = stroke(chase, Color3.fromRGB(255, 70, 70), 1, 0.4)
 local chaseName = label(chase, "", UDim2.new(1, -24, 0, 26), { Position = UDim2.fromOffset(12, 5), TextColor3 = Color3.fromRGB(255, 120, 120), ZIndex = 36 })
 local chaseBack = new("Frame", { Position = UDim2.new(0, 14, 0, 38), Size = UDim2.new(1, -28, 0, 16), BackgroundColor3 = Color3.fromRGB(20, 12, 16), ZIndex = 36, Parent = chase })
 corner(chaseBack, 8)
@@ -7477,14 +7490,14 @@ local function zoneCleared(zoneName, trophies, mapName)
 		AnchorPoint = Vector2.new(0.5, 0.5),
 		Position = UDim2.new(0.5, 0, 0, -120),
 		Size = UDim2.fromOffset(430, 140),
-		BackgroundColor3 = Color3.fromRGB(255, 200, 50),
+		BackgroundColor3 = Color3.fromRGB(16, 18, 26),
+		BackgroundTransparency = 0.2,
 		ClipsDescendants = false,
 		ZIndex = 41,
 		Parent = clearLayer,
 	})
-	corner(card, 18)
-	stroke(card, Color3.fromRGB(150, 90, 15), 4)
-	new("UIGradient", { Color = ColorSequence.new(Color3.fromRGB(255, 230, 120), Color3.fromRGB(240, 160, 30)), Rotation = 90, Parent = card })
+	corner(card, 12)
+	stroke(card, Color3.fromRGB(255, 205, 70), 1.5, 0.2)
 	local cardScale = new("UIScale", { Parent = card })
 	-- the shine: a slanted white bar that sweeps across (clipped to the card)
 	local clip = new("Frame", { BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ClipsDescendants = true, ZIndex = 42, Parent = card })
@@ -7495,26 +7508,23 @@ local function zoneCleared(zoneName, trophies, mapName)
 		Size = UDim2.new(0, 46, 1.6, 0),
 		Rotation = 20,
 		BackgroundColor3 = WHITE,
-		BackgroundTransparency = 0.45,
+		BackgroundTransparency = 1, -- (no shine sweep)
 		BorderSizePixel = 0,
 		ZIndex = 42,
 		Parent = clip,
 	})
-	local icon = drawIcon(card, "trophy", 120)
+	local icon = drawIcon(card, "trophy", 72)
 	icon.AnchorPoint = Vector2.new(0.5, 0.5)
-	icon.Position = UDim2.fromOffset(62, 62)
+	icon.Position = UDim2.fromOffset(62, 70)
 	icon.ZIndex = 43
-	label(card, "ZONE CLEARED!", UDim2.fromOffset(290, 40), { Position = UDim2.fromOffset(122, 10), TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 43 })
-	label(card, (mapName and (mapName .. "  -  ") or "") .. (zoneName or ""), UDim2.fromOffset(290, 24), { Position = UDim2.fromOffset(122, 50), TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = Color3.fromRGB(255, 250, 225), ZIndex = 43 })
-	local count = label(card, "+0", UDim2.fromOffset(290, 52), { Position = UDim2.fromOffset(122, 76), TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = Color3.fromRGB(255, 255, 255), ZIndex = 43 })
-	count:FindFirstChildOfClass("UIStroke").Color = Color3.fromRGB(150, 80, 10)
-	count:FindFirstChildOfClass("UIStroke").Thickness = 4
+	label(card, "Zone cleared", UDim2.fromOffset(290, 30), { Position = UDim2.fromOffset(122, 16), TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = Color3.fromRGB(255, 215, 90), ZIndex = 43 })
+	label(card, (mapName and (mapName .. "  -  ") or "") .. (zoneName or ""), UDim2.fromOffset(290, 18), { Position = UDim2.fromOffset(122, 50), TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = Color3.fromRGB(200, 205, 215), ZIndex = 43 })
+	local count = label(card, "+0", UDim2.fromOffset(290, 40), { Position = UDim2.fromOffset(122, 78), TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = Color3.fromRGB(255, 255, 255), ZIndex = 43 })
 
 	-- drop in
-	tween(card, 0.45, { Position = UDim2.new(0.5, 0, 0.2, 0) }, Enum.EasingStyle.Back)
+	tween(card, 0.35, { Position = UDim2.new(0.5, 0, 0.2, 0) }, Enum.EasingStyle.Quad)
 	task.delay(0.3, function()
 		if token ~= clearToken then return end
-		burstStars(clearLayer, Vector2.new(clearLayer.AbsoluteSize.X / 2, clearLayer.AbsoluteSize.Y * 0.2), Color3.fromRGB(255, 230, 90))
 		tween(shine, 0.6, { Position = UDim2.new(1, 60, 0.5, 0) }, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut)
 	end)
 	-- count up + trophy wobble
@@ -7523,7 +7533,6 @@ local function zoneCleared(zoneName, trophies, mapName)
 		while token == clearToken do
 			local u = math.min(1, (os.clock() - t0) / 0.9)
 			count.Text = "+" .. fmt(trophies * (1 - (1 - u) ^ 3))
-			icon.Rotation = math.sin(os.clock() * 12) * 8 * (1 - u)
 			if u >= 1 then break end
 			RunService.RenderStepped:Wait()
 		end
@@ -7910,37 +7919,6 @@ do
 		return icon:FindFirstChildOfClass("UIScale") or new("UIScale", { Parent = icon })
 	end
 
-	-- pop in one after another
-	local rainbowScale = new("UIScale", { Parent = rainbowFrame })
-	local entrance = {
-		stats.Speed.Scale, stats.Cash.Scale, stats.Trophies.Scale, buyScale,
-		tpScale, passScale, invScale, petScale, rbScale, prScale,
-	}
-	for _, sc in ipairs(entrance) do sc.Scale = 0 end
-	rainbowScale.Scale = 0
-	for i, sc in ipairs(entrance) do
-		task.delay(0.2 + i * 0.07, function()
-			tween(sc, 0.45, { Scale = 1 }, Enum.EasingStyle.Back)
-			if sc == passScale then tween(rainbowScale, 0.45, { Scale = 1 }, Enum.EasingStyle.Back) end
-		end)
-	end
-
-	-- icons bob gently, each a little out of step with the next
-	local bobbing = {}
-	local function addBob(tile)
-		local icon = tile and iconOf(tile)
-		if icon then table.insert(bobbing, { icon = icon, base = icon.Position, phase = #bobbing * 0.9 }) end
-		return icon
-	end
-	for _, key in ipairs({ "Speed", "Cash", "Trophies" }) do addBob(stats[key].Tile) end
-	for _, tile in ipairs(squares) do addBob(tile) end
-	RunService.RenderStepped:Connect(function()
-		local t = os.clock()
-		for _, b in ipairs(bobbing) do
-			b.icon.Position = b.base + UDim2.fromOffset(0, math.sin(t * 2.2 + b.phase) * 3)
-		end
-	end)
-
 	-- hovering a button: it grows a little and its icon jumps up
 	local buttons = { { tpButton, tpScale, _tpTile }, { passButton, passScale, passTile }, { invButton, invScale, _invTile },
 		{ petButton, petScale, _petTile }, { rbButton, rbScale, _rbTile }, { prButton, prScale, prTile } }
@@ -7949,8 +7927,7 @@ do
 		local icon = iconOf(tile)
 		local isc = icon and iconScale(icon)
 		button.MouseEnter:Connect(function()
-			tween(scale, 0.2, { Scale = 1.06 }, Enum.EasingStyle.Back)
-			if isc then tween(isc, 0.25, { Scale = 1.15 }, Enum.EasingStyle.Back) end
+			tween(scale, 0.15, { Scale = 1.03 })
 		end)
 		button.MouseLeave:Connect(function()
 			if isc then tween(isc, 0.2, { Scale = 1 }) end
@@ -7967,10 +7944,6 @@ do
 		player:GetAttributeChangedSignal(key):Connect(function()
 			local v = player:GetAttribute(key) or 0
 			if v > last and icon then
-				icon.Rotation = -25
-				isc.Scale = 1.3
-				tween(icon, 0.5, { Rotation = 0 }, Enum.EasingStyle.Back)
-				tween(isc, 0.4, { Scale = 1 }, Enum.EasingStyle.Back)
 				if key ~= "Cash" and last > 0 then tickerUp(s, v - last) end
 			end
 			last = v
@@ -8017,27 +7990,7 @@ do
 		task.delay(0.4, refreshBuy)
 	end)
 
-	-- little stars twinkle on the 3x button
-	task.spawn(function()
-		while passTile.Parent do
-			task.wait(0.6 + math.random() * 0.9)
-			local star = new("Frame", {
-				AnchorPoint = Vector2.new(0.5, 0.5),
-				Position = UDim2.fromScale(0.1 + math.random() * 0.8, 0.1 + math.random() * 0.8),
-				Size = UDim2.fromOffset(4, 4),
-				Rotation = 45,
-				BackgroundColor3 = Color3.fromRGB(255, 250, 210),
-				BorderSizePixel = 0,
-				ZIndex = 7,
-				Parent = passTile,
-			})
-			tween(star, 0.35, { Size = UDim2.fromOffset(13, 13), Rotation = 135 }, Enum.EasingStyle.Back)
-			task.delay(0.35, function()
-				tween(star, 0.4, { Size = UDim2.fromOffset(2, 2), BackgroundTransparency = 1, Rotation = 225 })
-				task.delay(0.4, function() star:Destroy() end)
-			end)
-		end
-	end)
+
 end
 ]]></ProtectedString></Properties></Item>
 <Item class="LocalScript" referent="RBX6"><Properties><string name="Name">SpeedVsBrainrot_World</string><ProtectedString name="Source"><![CDATA[--[[

@@ -809,6 +809,25 @@ function TK.fillBall(pos, radius, mat) pcall(function() Terrain:FillBall(pos, ra
 function TK.fillCyl(cf, height, radius, mat) pcall(function() Terrain:FillCylinder(cf, height, radius, mat) end) end
 -- CONFIG.FloorStyle = "terrain": real terrain in the zone's material makes the ground you
 -- run on (top exactly at the floor's top); the floor part stays as an invisible collider
+-- SMOOTH TERRAIN IN THE ZONE'S COLOUR: every theme gets its own terrain material (no two
+-- share one), and that material is tinted to the zone's floor colour. The zone's floor,
+-- its banks and the cliff under it all use it, so each zone is one smooth colour.
+TK.FLOOR_MAT = {
+	meadow = M.Grass, desert = M.Sand, ice = M.Snow, swamp = M.Mud, lava = M.CrackedLava,
+	candy = M.Salt, neon = M.Pavement, crystal = M.Limestone, storm = M.Slate, void = M.Asphalt,
+	jungle = M.LeafyGrass, haunted = M.Ground, factory = M.Concrete, space = M.Glacier,
+	rainbow = M.Ice, inferno = M.Basalt,
+}
+TK.tinted = {}
+function TK.tintMaterial(mat, color)
+	if not mat or TK.tinted[mat] then return end
+	TK.tinted[mat] = true
+	pcall(function() Terrain:SetMaterialColor(mat, color) end)
+end
+function TK.zoneMat(theme)
+	if CONFIG.FloorStyle ~= "terrain" then return nil end
+	return TK.FLOOR_MAT[theme]
+end
 function TK.terrainFloor(part, material)
 	if CONFIG.FloorStyle ~= "terrain" or not material then return false end
 	local s = part.Size
@@ -865,7 +884,9 @@ function TK.zoneUnderside(k, theme, rng)
 	local t = TK.THEMES[theme]
 	if not t then return false end
 	local cz = k * L + L / 2
-	TK.fillBlock(CFrame.new(0, -7.5, cz), Vector3.new(W, 12, L), t.under)
+	-- (top at y = -4, a whole terrain cell below the floor: terrain rounds to 4-stud
+	-- cells and used to bulge up through the floor in brown blotches)
+	TK.fillBlock(CFrame.new(0, -10, cz), Vector3.new(W, 12, L), TK.zoneMat(theme) or t.under)
 	for _ = 1, CONFIG.TerrainDecor and math.floor(L / 40) or 0 do
 		local r = rng:NextInteger(9, 20)
 		TK.fillBall(Vector3.new(rng:NextInteger(-math.floor(HALF_W - r), math.floor(HALF_W - r)), -10 - r * 0.6, k * L + rng:NextInteger(r, L - r)), r, t.under)
@@ -884,8 +905,9 @@ function TK.zoneDetail(k, zone, j, rng)
 	local accent = zone.accent or WHITE
 	for _, side in ipairs({ -1, 1 }) do
 		-- the bank: a wide shelf just below the track, with a lumpy outer edge
-		TK.fillBlock(CFrame.new(side * (HALF_W + 36), FLOOR_Y - 10.5, (z0 + z1) / 2), Vector3.new(66, 16, L), t.cap)
-		TK.fillBlock(CFrame.new(side * (HALF_W + 36), FLOOR_Y - 22, (z0 + z1) / 2), Vector3.new(60, 8, L), t.main)
+		local zm = TK.zoneMat(zone.theme)
+		TK.fillBlock(CFrame.new(side * (HALF_W + 36), FLOOR_Y - 10.5, (z0 + z1) / 2), Vector3.new(66, 16, L), zm or t.cap)
+		TK.fillBlock(CFrame.new(side * (HALF_W + 36), FLOOR_Y - 22, (z0 + z1) / 2), Vector3.new(60, 8, L), zm or t.main)
 		for z = z0 + 15, CONFIG.TerrainDecor and (z1 - 15) or z0, 30 do
 			TK.fillBall(Vector3.new(side * (HALF_W + 66 + rng:NextInteger(-4, 4)), FLOOR_Y - 9 + rng:NextInteger(-2, 3), z + rng:NextInteger(-6, 6)), rng:NextInteger(8, 13), (rng:NextNumber() < 0.5) and t.cap or t.main)
 		end
@@ -1120,7 +1142,7 @@ end
 
 -- a floating island made of terrain (dirt, rock underneath, grass on top)
 function TK.terrainIsle(x, y, z, size)
-	TK.fillBall(Vector3.new(x, y - size * 0.35, z), size * 0.55, M.Ground)
+	TK.fillBall(Vector3.new(x, y - size * 0.35, z), size * 0.55, M.Rock)
 	TK.fillBall(Vector3.new(x + size * 0.1, y - size * 0.85, z - size * 0.1), size * 0.35, M.Rock)
 	TK.fillCyl(CFrame.new(x, y, z), 4, size * 0.55, M.Grass)
 end
@@ -1203,7 +1225,8 @@ local function buildZoneShell(k, floorColor, underColor, accent, holey, rng, the
 		if look.floor then textured(floor, look.floor) else addStuds(floor, Enum.NormalId.Top) end
 		squareTiles(floor)
 		groundTexture(floor)
-		TK.terrainFloor(floor, TK.THEMES[theme] and TK.THEMES[theme].cap)
+		if TK.zoneMat(theme) then TK.tintMaterial(TK.zoneMat(theme), floorColor) end
+		TK.terrainFloor(floor, TK.zoneMat(theme) or (TK.THEMES[theme] and TK.THEMES[theme].cap))
 		-- a trail down the middle of the track
 		if look.path then
 			local trail = newPart{ Name = "Trail", Size = Vector3.new(26, 0.14, L), Position = Vector3.new(0, FLOOR_Y + 0.07, cz), Color = look.pathColor, CanCollide = false, CastShadow = false, Parent = Decor }
@@ -1372,16 +1395,37 @@ local function cartoonTree(x, z, s, leaf, baseY)
 	local y0 = baseY or FLOOR_Y
 	if TK.customProp("Tree", x, y0, z, s) then return end
 	local trunk = Color3.fromRGB(125, 85, 50)
+	local bark = trunk:Lerp(BLACK, 0.18)
+	-- a grass tuft and root flares at the base
+	local tuft = ball(5.5 * s, x, y0 + 0.2 * s, z, leaf:Lerp(BLACK, 0.25))
+	squash(tuft, 1, 0.22, 1)
+	for r = 0, 3 do
+		local a = r * math.pi / 2 + 0.6
+		local root = prop{ Size = Vector3.new(0.9 * s, 1.4 * s, 2.4 * s), CFrame = CFrame.new(x + math.cos(a) * 1.4 * s, y0 + 0.5 * s, z + math.sin(a) * 1.4 * s) * CFrame.Angles(0, -a + math.pi / 2, 0) * CFrame.Angles(math.rad(-35), 0, 0), Color = bark, Material = Enum.Material.Wood }
+		root.CanCollide = false
+	end
+	-- a trunk that tapers, with a bark ring and two branches up into the leaves
 	vcyl(6 * s, 2.8 * s, x, y0, z, trunk, Enum.Material.Wood)
 	vcyl(4 * s, 2 * s, x, y0 + 6 * s, z, trunk, Enum.Material.Wood)
-	ball(10 * s, x, y0 + 12.5 * s, z, leaf)
-	ball(7.5 * s, x + 3.8 * s, y0 + 11 * s, z + 1.5 * s, leaf:Lerp(WHITE, 0.12))
-	ball(7.5 * s, x - 3.6 * s, y0 + 11.5 * s, z - 1.8 * s, leaf:Lerp(BLACK, 0.12))
-	ball(6.5 * s, x + 0.8 * s, y0 + 16 * s, z - 0.6 * s, leaf:Lerp(WHITE, 0.2))
-	for f = 1, 4 do
-		local a = f * 1.57 + 0.4
-		local fruit = ball(1.1 * s, x + math.cos(a) * 4.7 * s, y0 + (12 + (f % 2) * 2) * s, z + math.sin(a) * 4.7 * s, Color3.fromRGB(235, 60, 60))
+	vcyl(0.5 * s, 3 * s, x, y0 + 5.8 * s, z, bark, Enum.Material.Wood).CanCollide = false
+	for _, b in ipairs({ { 1, 0.4 }, { -1, -0.5 } }) do
+		local br = prop{ Shape = Enum.PartType.Cylinder, Size = Vector3.new(4.5 * s, 0.9 * s, 0.9 * s), CFrame = CFrame.new(x + b[1] * 1.6 * s, y0 + 8.4 * s, z + b[2] * s) * CFrame.Angles(0, 0, b[1] * math.rad(50)), Color = trunk, Material = Enum.Material.Wood }
+		br.CanCollide = false
+	end
+	-- a full, two-tone canopy: big clumps, smaller clumps around the edge, light on top
+	local clumps = {
+		{ 10, 0, 12.5, 0, 0 }, { 7.5, 3.8, 11, 1.5, 0.12 }, { 7.5, -3.6, 11.5, -1.8, -0.12 }, { 6.5, 0.8, 16, -0.6, 0.2 },
+		{ 6, -1.5, 10.5, 3.6, -0.06 }, { 6, 1.8, 10.8, -3.6, 0.04 }, { 5, -3.2, 14.6, 1.2, 0.16 }, { 5, 3, 14.4, -1.8, 0.18 },
+	}
+	for _, c in ipairs(clumps) do
+		local col = (c[5] >= 0) and leaf:Lerp(WHITE, c[5]) or leaf:Lerp(BLACK, -c[5])
+		ball(c[1] * s, x + c[2] * s, y0 + c[3] * s, z + c[4] * s, col).CanCollide = (c[1] >= 10)
+	end
+	for f = 1, 5 do
+		local a = f * 1.26 + 0.4
+		local fruit = ball(1.1 * s, x + math.cos(a) * 4.9 * s, y0 + (11.6 + (f % 3) * 1.5) * s, z + math.sin(a) * 4.9 * s, Color3.fromRGB(235, 60, 60))
 		fruit.CanCollide = false
+		ball(0.35 * s, fruit.Position.X + 0.25 * s, fruit.Position.Y + 0.3 * s, fruit.Position.Z, WHITE).CanCollide = false
 	end
 end
 
@@ -1392,12 +1436,33 @@ local function bush(x, z, color, baseY)
 	ball(4.5, x, y0 + 1.6, z, color)
 	ball(3.6, x + 2.4, y0 + 1.2, z + 0.8, color:Lerp(WHITE, 0.1))
 	ball(3.4, x - 2.2, y0 + 1.1, z - 0.6, color:Lerp(BLACK, 0.1))
+	ball(3, x + 0.6, y0 + 1, z - 2, color:Lerp(BLACK, 0.05)).CanCollide = false
+	ball(2.6, x - 0.8, y0 + 2.9, z + 0.6, color:Lerp(WHITE, 0.18)).CanCollide = false
+	-- berries or little flowers dotted over it
+	local dot = (math.floor(x + z) % 2 == 0) and Color3.fromRGB(230, 50, 70) or Color3.fromRGB(255, 240, 120)
+	for b = 1, 5 do
+		local a = b * 1.25
+		ball(0.55, x + math.cos(a) * 2.1, y0 + 1.6 + (b % 2) * 0.9, z + math.sin(a) * 2.1, dot).CanCollide = false
+	end
 end
 
 local function rock(x, z, size, color, baseY)
 	if TK.customProp("Rock", x, baseY or FLOOR_Y, z, size / 6) then return end
-	local r = prop{ Shape = Enum.PartType.Ball, Size = Vector3.one * size, Position = Vector3.new(x, (baseY or FLOOR_Y) + size * 0.2, z), Color = color or Color3.fromRGB(140, 140, 150) }
-	return squash(r, 1.3, 0.7, 1)
+	local y0 = baseY or FLOOR_Y
+	local c = color or Color3.fromRGB(140, 140, 150)
+	local r = prop{ Shape = Enum.PartType.Ball, Size = Vector3.one * size, Position = Vector3.new(x, y0 + size * 0.2, z), Color = c, Material = Enum.Material.Slate }
+	squash(r, 1.3, 0.7, 1)
+	-- a couple of pebbles around it, and moss on top of grey rocks
+	for k = 1, 2 do
+		local a = k * 2.4 + size
+		local pb = ball(size * 0.32, x + math.cos(a) * size * 0.7, y0 + size * 0.05, z + math.sin(a) * size * 0.7, c:Lerp(BLACK, 0.12), Enum.Material.Slate)
+		squash(pb, 1.2, 0.6, 1)
+	end
+	if not color then
+		local moss = ball(size * 0.75, x - size * 0.1, y0 + size * 0.42, z, Color3.fromRGB(90, 150, 70), Enum.Material.Grass)
+		squash(moss, 1.2, 0.3, 0.9)
+	end
+	return r
 end
 
 local function flower(x, z, color, baseY)
@@ -1429,10 +1494,11 @@ do
 		s = s or 1
 		if TK.customProp("PineTree", x, FLOOR_Y, z, s) then return end
 		vcyl(4 * s, 1.6 * s, x, FLOOR_Y, z, Color3.fromRGB(110, 75, 45), Enum.Material.Wood)
+		vcyl(0.8 * s, 2.6 * s, x, FLOOR_Y, z, Color3.fromRGB(95, 62, 38), Enum.Material.Wood).CanCollide = false
 		local green = Color3.fromRGB(40, 120, 80)
-		for t = 0, 2 do
-			local size = (8 - t * 2.2) * s
-			local y = FLOOR_Y + (5 + t * 3.6) * s
+		for t = 0, 3 do
+			local size = (8.6 - t * 1.9) * s
+			local y = FLOOR_Y + (4.6 + t * 3) * s
 			local layer = prop{ Shape = Enum.PartType.Ball, Size = Vector3.one * size, Position = Vector3.new(x, y, z), Color = green:Lerp(WHITE, t * 0.05) }
 			squash(layer, 1, 0.75, 1)
 			local snow = prop{ Shape = Enum.PartType.Ball, Size = Vector3.one * size * 0.72, Position = Vector3.new(x, y + size * 0.22, z), Color = Color3.fromRGB(250, 252, 255) }
@@ -1443,17 +1509,25 @@ do
 	local function palmTree(x, z, side)
 		if TK.customProp("PalmTree", x, FLOOR_Y, z, 1) then return end
 		local trunk = Color3.fromRGB(150, 110, 70)
-		for seg = 0, 3 do
-			block(1.8 - seg * 0.15, 3.2, 1.8 - seg * 0.15, CFrame.new(x - side * seg * 0.5, FLOOR_Y + 1.6 + seg * 3, z) * CFrame.Angles(0, 0, -side * 0.12), trunk:Lerp(BLACK, (seg % 2) * 0.1))
+		-- a curved trunk of rings (alternate shades), leaning away from the track
+		for seg = 0, 7 do
+			local w = 1.9 - seg * 0.09
+			vcyl(1.6, w, x - side * seg * 0.28, FLOOR_Y + seg * 1.55, z, trunk:Lerp(BLACK, (seg % 2) * 0.14), Enum.Material.Wood)
 		end
-		local top = Vector3.new(x - side * 2, FLOOR_Y + 13, z)
-		for l = 1, 6 do
-			local a = l * (math.pi * 2 / 6)
-			local leaf = block(0.3, 7, 1.8, CFrame.new(top) * CFrame.Angles(0, a, 0) * CFrame.new(0, -0.8, -3) * CFrame.Angles(math.rad(70), 0, 0), Color3.fromRGB(60, 170, 70))
-			leaf.CanCollide = false
+		local top = Vector3.new(x - side * 2.2, FLOOR_Y + 13, z)
+		ball(2.4, top.X, top.Y, top.Z, Color3.fromRGB(60, 150, 60)).CanCollide = false
+		-- fronds: an inner part reaching out and a tip that droops down
+		for l = 1, 8 do
+			local a = l * (math.pi * 2 / 8)
+			local green = Color3.fromRGB(60, 170, 70):Lerp(BLACK, (l % 2) * 0.12)
+			local base = CFrame.new(top) * CFrame.Angles(0, a, 0)
+			block(0.25, 4.2, 1.9, base * CFrame.new(0, 0.2, -2) * CFrame.Angles(math.rad(80), 0, 0), green).CanCollide = false
+			block(0.22, 3.4, 1.4, base * CFrame.new(0, -0.9, -4.8) * CFrame.Angles(math.rad(120), 0, 0), green:Lerp(WHITE, 0.08)).CanCollide = false
 		end
-		ball(1.2, top.X + 0.6, top.Y - 0.8, top.Z, Color3.fromRGB(110, 70, 35))
-		ball(1.2, top.X - 0.5, top.Y - 0.9, top.Z + 0.6, Color3.fromRGB(110, 70, 35))
+		for c = 1, 3 do
+			local a = c * 2.1
+			ball(1.2, top.X + math.cos(a) * 0.9, top.Y - 1, top.Z + math.sin(a) * 0.9, Color3.fromRGB(110, 70, 35)).CanCollide = false
+		end
 	end
 
 	local function cupcake(x, z, color)
@@ -1542,6 +1616,15 @@ do
 			vcyl(3, 1.8, x - 3.4, FLOOR_Y + 8, z, g)
 			ball(1.8, x - 3.4, FLOOR_Y + 11, z, g)
 			ball(1.4, x, FLOOR_Y + 14.6, z, Color3.fromRGB(255, 110, 170)) -- cactus flower
+			-- ribs down the trunk and little spines
+			for rib = 0, 3 do
+				local a = rib * math.pi / 2 + math.pi / 4
+				block(0.35, 11, 0.35, CFrame.new(x + math.cos(a) * 1.5, FLOOR_Y + 6.5, z + math.sin(a) * 1.5), g:Lerp(BLACK, 0.2)).CanCollide = false
+			end
+			for sp = 1, 8 do
+				local a = sp * 0.8
+				ball(0.3, x + math.cos(a) * 1.65, FLOOR_Y + 2 + sp * 1.3, z + math.sin(a) * 1.65, Color3.fromRGB(250, 245, 215)).CanCollide = false
+			end
 		elseif r == 1 then
 			palmTree(x, z, side)
 		else
@@ -2711,8 +2794,9 @@ local function buildStartIsland(map)
 	textured(startFloor, M.Grass)
 	squareTiles(startFloor)
 	groundTexture(startFloor)
+	TK.tintMaterial(M.Grass, MAPS[1].zones[1].floor)
 	TK.terrainFloor(startFloor, M.Grass)
-	TK.fillBlock(CFrame.new(0, -24, oz + IL / 2), Vector3.new(W, 44, IL), M.Ground)
+	TK.fillBlock(CFrame.new(0, -26, oz + IL / 2), Vector3.new(W, 44, IL), M.Rock) -- (top at -4, clear of the floor)
 	for _ = 1, CONFIG.TerrainDecor and 10 or 0 do -- rocky chunks hanging under the island
 		local r = math.random(10, 22)
 		TK.fillBall(Vector3.new(math.random(-math.floor(HALF_W - r), math.floor(HALF_W - r)), -44 - r * 0.4, oz + math.random(r, IL - r)), r, M.Rock)
@@ -2854,9 +2938,7 @@ local function buildStartIsland(map)
 		block(2.6, 0.5, 5, base * CFrame.new(0, 0, 2.5), red).CanCollide = false
 		block(4.6, 0.5, 4.6, base * CFrame.new(0, 0, 6.2) * CFrame.Angles(0, math.rad(45), 0), red).CanCollide = false
 	end
-	for _, ax in ipairs({ -36, -18, 0, 18, 36 }) do
-		redArrow(ax, oz + IL + 6)
-	end
+	-- (no arrows at the red line)
 
 	-- a ring of blocks (fountain rims)
 	local function ring(cx, y, cz, radius, height, thick, color, segments, material)
