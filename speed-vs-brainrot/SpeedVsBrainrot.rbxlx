@@ -58,6 +58,7 @@ local CONFIG = {
 	EggStuds = false,         -- false = plain smooth bricks (no studs on the eggs); true = studs (EggTexture below)
 	EggTexture = "rbxassetid://8089383689", -- studs image for the brick eggs when EggStuds is on
 	EggStudSize = 1,          -- studs wide one tile of that image is on the eggs
+	TerrainDecor = false,     -- true = terrain hills/mesas/spikes beside the zones, lumpy bank edges and blobs underneath, and the blocky grass terraces around the start islands
 	IslandLength = 200,       -- the start islands stay this long (they sit at the end of their slot)
 	MapGap = 1,               -- empty sky (in zone lengths) between one map's end and the next island
 
@@ -855,7 +856,7 @@ function TK.zoneUnderside(k, theme, rng)
 	if not t then return false end
 	local cz = k * L + L / 2
 	TK.fillBlock(CFrame.new(0, -7.5, cz), Vector3.new(W, 12, L), t.under)
-	for _ = 1, math.floor(L / 40) do
+	for _ = 1, CONFIG.TerrainDecor and math.floor(L / 40) or 0 do
 		local r = rng:NextInteger(9, 20)
 		TK.fillBall(Vector3.new(rng:NextInteger(-math.floor(HALF_W - r), math.floor(HALF_W - r)), -10 - r * 0.6, k * L + rng:NextInteger(r, L - r)), r, t.under)
 	end
@@ -875,7 +876,7 @@ function TK.zoneDetail(k, zone, j, rng)
 		-- the bank: a wide shelf just below the track, with a lumpy outer edge
 		TK.fillBlock(CFrame.new(side * (HALF_W + 36), FLOOR_Y - 10.5, (z0 + z1) / 2), Vector3.new(66, 16, L), t.cap)
 		TK.fillBlock(CFrame.new(side * (HALF_W + 36), FLOOR_Y - 22, (z0 + z1) / 2), Vector3.new(60, 8, L), t.main)
-		for z = z0 + 15, z1 - 15, 30 do
+		for z = z0 + 15, CONFIG.TerrainDecor and (z1 - 15) or z0, 30 do
 			TK.fillBall(Vector3.new(side * (HALF_W + 66 + rng:NextInteger(-4, 4)), FLOOR_Y - 9 + rng:NextInteger(-2, 3), z + rng:NextInteger(-6, 6)), rng:NextInteger(8, 13), (rng:NextNumber() < 0.5) and t.cap or t.main)
 		end
 		-- striped curbs along the foot of the walls
@@ -953,7 +954,7 @@ end
 
 function TK.zoneScenery(k, theme, rng)
 	local t = TK.THEMES[theme]
-	if not t then return end
+	if not t or not CONFIG.TerrainDecor then return end
 	local per = math.max(2, math.floor(L / 100))
 	for _, side in ipairs({ -1, 1 }) do
 		for i = 1, per do
@@ -2700,7 +2701,7 @@ local function buildStartIsland(map)
 	squareTiles(startFloor)
 	groundTexture(startFloor)
 	TK.fillBlock(CFrame.new(0, -24, oz + IL / 2), Vector3.new(W, 44, IL), M.Ground)
-	for _ = 1, 10 do -- rocky chunks hanging under the island
+	for _ = 1, CONFIG.TerrainDecor and 10 or 0 do -- rocky chunks hanging under the island
 		local r = math.random(10, 22)
 		TK.fillBall(Vector3.new(math.random(-math.floor(HALF_W - r), math.floor(HALF_W - r)), -44 - r * 0.4, oz + math.random(r, IL - r)), r, M.Rock)
 	end
@@ -2719,7 +2720,7 @@ local function buildStartIsland(map)
 		TK.fillBlock(CFrame.new(cx, top - 1.5, cz), Vector3.new(10, 3, 10), M.Grass)
 		table.insert(terraceTops, { x = cx, z = cz, y = top, ring = ring })
 	end
-	for zc = -25, IL - 5, 10 do
+	for zc = -25, CONFIG.TerrainDecor and (IL - 5) or -100, 10 do
 		local backRing = (zc < 0) and math.ceil(-zc / 10) or 0
 		for ringIdx = 1, 3 do
 			local ring = math.max(ringIdx, backRing)
@@ -2727,7 +2728,7 @@ local function buildStartIsland(map)
 			terraceColumn(HALF_W + ringIdx * 10 - 5, oz + zc, ring)
 		end
 	end
-	for xc = -HALF_W + 5, HALF_W - 5, 10 do
+	for xc = -HALF_W + 5, CONFIG.TerrainDecor and (HALF_W - 5) or -1e9, 10 do
 		for ringIdx = 1, 3 do
 			terraceColumn(xc, oz - (ringIdx * 10 - 5), ringIdx)
 		end
@@ -2748,18 +2749,18 @@ local function buildStartIsland(map)
 	end
 
 	-- title sign on the back hills
-	local titleSign = newPart{ Name = "TitleSign", Size = Vector3.new(80, 18, 1.5), Position = Vector3.new(0, FLOOR_Y + 30, oz - 12), Color = DARK, Parent = Map }
+	local titleSign = newPart{ Name = "TitleSign", Size = Vector3.new(80, 18, 1.5), Position = Vector3.new(0, FLOOR_Y + 30, oz + (CONFIG.TerrainDecor and -12 or 3)), Color = DARK, Parent = Map }
 	addSign(titleSign, Enum.NormalId.Back, {
 		{ text = "SPEED VS BRAINROT", color = Color3.fromRGB(255, 220, 60), weight = 1.4 },
 		{ text = string.upper(map.name .. "  -  " .. map.title), color = WHITE, weight = 0.8 },
 		{ text = "Boss: " .. map.boss.name, color = map.boss.accent:Lerp(WHITE, 0.3), weight = 0.8 },
 	}, 10)
 	for _, d in ipairs({ -1, 1 }) do
-		newPart{ Name = "SignPost", Size = Vector3.new(2, 24, 2), Position = Vector3.new(d * 34, FLOOR_Y + 10, oz - 12), Color = Color3.fromRGB(120, 80, 45), Material = Enum.Material.Wood, Parent = Map }
+		newPart{ Name = "SignPost", Size = Vector3.new(2, 40, 2), Position = Vector3.new(d * 34, FLOOR_Y + 20, oz + (CONFIG.TerrainDecor and -12 or 3)), Color = Color3.fromRGB(120, 80, 45), Material = Enum.Material.Wood, Parent = Map }
 	end
 	for i, c in ipairs(BALLOON_COLORS) do
-		balloon(-44 + i * 1.6, FLOOR_Y + 40 + (i % 2) * 2, oz - 10, c)
-		balloon(44 - i * 1.6, FLOOR_Y + 40 + (i % 2) * 2, oz - 10, c)
+		balloon(-44 + i * 1.6, FLOOR_Y + 40 + (i % 2) * 2, oz + (CONFIG.TerrainDecor and -10 or 5), c)
+		balloon(44 - i * 1.6, FLOOR_Y + 40 + (i % 2) * 2, oz + (CONFIG.TerrainDecor and -10 or 5), c)
 	end
 
 	-- dirt paths (fountain -> start line, and speed pad <-> egg row)
