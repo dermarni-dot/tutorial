@@ -43,11 +43,11 @@ local CONFIG = {
 	-- each zone's colour. "" = use the realistic materials (grass, sand, ice...) instead.
 	-- If the ground shows plain colour with no image, the ID is a Decal's ID, not its
 	-- image's: in Studio paste it into any Texture's Texture box and copy the number it becomes.
-	GroundTexture = "rbxassetid://8089383689",
+	GroundTexture = "",       -- e.g. "rbxassetid://8089383689" for a studded floor
 	GroundTextureSize = 8,    -- how many studs wide one tile of the image is
 	GroundTextureTint = true, -- tint the image to the zone's colour (false = the image's own colours)
 	EggStyle = "studs",       -- "studs" = blocky eggs made of studded bricks, "smooth" = round painted eggs
-	EggTexture = "",          -- studs image for the brick eggs ("" = use GroundTexture; both "" = Roblox's own studs)
+	EggTexture = "rbxassetid://8089383689", -- studs image for the brick eggs ("" = use GroundTexture; both "" = Roblox's own studs)
 	EggStudSize = 1,          -- studs wide one tile of that image is on the eggs
 	IslandLength = 200,       -- the start islands stay this long (they sit at the end of their slot)
 	MapGap = 1,               -- empty sky (in zone lengths) between one map's end and the next island

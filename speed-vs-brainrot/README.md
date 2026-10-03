@@ -61,10 +61,7 @@ Four scripts:
 - Each zone has a **pace**, so speed is relative: the same Speed makes you run faster in a harder zone, and the boss runs faster there too.
 - **Every zone is open to everyone.** There's no Speed you need to get in. The only way to fail is getting caught (or hit). The golden gate at the end of each zone shows the trophies you get for making it out.
 - **Getting hit sends you back to the start.** That covers obstacles, falling off and the boss catching you. You tumble with stars around your head and a red flash, then reappear at the start.
-- **Ground texture**: every floor (all zones and both start islands) has the texture `rbxassetid://8089383689` laid over it, tinted to each zone's colour. The ground patches are skipped so it reads clean.
-  - Change it with `CONFIG.GroundTexture`, the tile size with `GroundTextureSize` (studs), and turn the tint off with `GroundTextureTint = false` to show the image's own colours.
-  - Set `GroundTexture = ""` to go back to the realistic materials described below.
-  - If the ground shows plain colour and no image, the number is a Decal's ID rather than its image's. In Studio, paste it into any Texture's Texture box, and Studio swaps it for the image's number. Put that number in `GroundTexture`.
+- **Ground texture (off)**: `CONFIG.GroundTexture` can lay a texture over every floor, tinted to each zone's colour (for example `"rbxassetid://8089383689"` for studs). It's empty, so the floors use the realistic materials below. `GroundTextureSize` sets the tile size and `GroundTextureTint` the tint. If a texture shows plain colour, the number is a Decal's ID: paste it into any Texture's Texture box in Studio to get the image's number.
 - **Every zone has its own textures** in place of plain plastic studs. Each has its own ground, a trail down the middle and patches on the ground, and the cliff underneath matches the theme:
   - Meadow: grass and a dirt trail.
   - Desert: sand and sandstone.
@@ -121,7 +118,7 @@ Four scripts:
 ## Eggs, pets, rebirth, prestige
 
 - **Studded brick eggs** (`CONFIG.EggStyle = "studs"`): each egg on the stands is built from stacked brick layers that step in and out to make an egg shape. Each layer is two crossed bricks, so the corners are cut. The bricks are covered in the studs texture, with a band of the egg's second colour every few layers.
-  - The studs image is `EggTexture`, or the ground's `GroundTexture` if that's empty. With both empty, Roblox's own studs are used. `EggStudSize` sets how big each stud is.
+  - The studs image is `EggTexture` (`rbxassetid://8089383689`), or the ground's `GroundTexture` if that's empty. With both empty, Roblox's own studs are used. `EggStudSize` sets how big each stud is.
   - Set `EggStyle = "smooth"` for the round painted eggs described below.
 
 - **4 eggs per map**:
@@ -208,10 +205,8 @@ No emojis or uploaded images: every icon is drawn from rounded frames (the `ICON
 ![Spawn](spawn.png)
 ![Trophy gate](trophy_gate.png)
 ![Studded brick eggs](eggs_studs.png)
-![Studded ground: Meadow](studs_zone.png)
-![Studded ground: spawn island](studs_spawn.png)
 ![Studded eggs up close](studs_eggs.png)
-![Studded ground: Desert](studs_desert.png)
+
 ![Overview](map_overview.png)
 ![HUD](svb_hud.png)
 ![Menus](svb_menus.png)
