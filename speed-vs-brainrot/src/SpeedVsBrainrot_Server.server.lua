@@ -43,11 +43,13 @@ local CONFIG = {
 	-- each zone's colour. "" = use the realistic materials (grass, sand, ice...) instead.
 	-- If the ground shows plain colour with no image, the ID is a Decal's ID, not its
 	-- image's: in Studio paste it into any Texture's Texture box and copy the number it becomes.
+	FloorStyle = "tiles",     -- "tiles" = every floor is a grid of small square tiles in the zone's colour (Roblox's CeramicTiles material); "themed" = grass, sand, ice...
 	GroundTexture = "",       -- e.g. "rbxassetid://8089383689" for a studded floor
 	GroundTextureSize = 8,    -- how many studs wide one tile of the image is
 	GroundTextureTint = true, -- tint the image to the zone's colour (false = the image's own colours)
 	EggStyle = "studs",       -- "studs" = blocky eggs made of studded bricks, "smooth" = round painted eggs
-	EggTexture = "rbxassetid://8089383689", -- studs image for the brick eggs ("" = use GroundTexture; both "" = Roblox's own studs)
+	EggStuds = false,         -- false = plain smooth bricks (no studs on the eggs); true = studs (EggTexture below)
+	EggTexture = "rbxassetid://8089383689", -- studs image for the brick eggs when EggStuds is on
 	EggStudSize = 1,          -- studs wide one tile of that image is on the eggs
 	IslandLength = 200,       -- the start islands stay this long (they sit at the end of their slot)
 	MapGap = 1,               -- empty sky (in zone lengths) between one map's end and the next island
@@ -718,6 +720,14 @@ local function textured(part, material)
 	return part
 end
 
+-- CONFIG.FloorStyle = "tiles": the floor becomes a grid of small square tiles (the built-in
+-- CeramicTiles material), keeping the zone's colour
+local function squareTiles(part)
+	if CONFIG.FloorStyle ~= "tiles" then return false end
+	part.Material = Enum.Material.CeramicTiles
+	return true
+end
+
 -- puts CONFIG.GroundTexture on top of a floor part (returns false when it's turned off)
 local function groundTexture(part)
 	if (CONFIG.GroundTexture or "") == "" then return false end
@@ -1105,6 +1115,7 @@ local function buildHoleyFloor(k, color, rng)
 					Parent = Map,
 				}
 				textured(tile, THEME_LOOK.void.floor)
+				squareTiles(tile)
 				groundTexture(tile)
 			end
 		end
@@ -1125,6 +1136,7 @@ local function buildZoneShell(k, floorColor, underColor, accent, holey, rng, the
 	else
 		local floor = newPart{ Name = "Zone" .. k .. "Floor", Size = Vector3.new(W, 1, L), Position = Vector3.new(0, 0, cz), Color = floorColor, Parent = Map }
 		if look.floor then textured(floor, look.floor) else addStuds(floor, Enum.NormalId.Top) end
+		squareTiles(floor)
 		groundTexture(floor)
 		-- a trail down the middle of the track
 		if look.path then
@@ -1182,7 +1194,7 @@ end
 
 -- Lighter / darker patches on the floor so it isn't one flat color
 local function floorPatches(k, color, rng, z0, len, material)
-	if (CONFIG.GroundTexture or "") ~= "" then return end -- the ground texture is the detail
+	if (CONFIG.GroundTexture or "") ~= "" or CONFIG.FloorStyle == "tiles" then return end -- the texture / tiles are the detail
 	z0, len = z0 or k * L, len or L
 	-- one patch per cell (rows 30 studs long, one cell each side of the middle trail),
 	-- so patches never overlap each other or the trail: overlapping flat parts at the
@@ -2351,6 +2363,7 @@ local function buildEggStand(egg, x, z)
 		local STEP = 0.78
 		local layers = math.floor(2 * H / STEP)
 		local studImage = (CONFIG.EggTexture ~= "" and CONFIG.EggTexture) or CONFIG.GroundTexture or ""
+		local studs = CONFIG.EggStuds ~= false
 		for i = 0, layers - 1 do
 			local y = -H + (i + 0.5) * STEP
 			local w = math.max(1.2, math.floor(2 * radiusAt(y) / 0.6 + 0.5) * 0.6)
@@ -2360,7 +2373,9 @@ local function buildEggStand(egg, x, z)
 			for _, dims in ipairs({ Vector3.new(w, STEP, w * 0.72), Vector3.new(w * 0.72, STEP, w) }) do
 				local brick = eggPart{ Name = "EggBrick", Size = dims, Position = center + Vector3.new(0, y, 0), Color = c, CastShadow = true }
 				brick.Material = Enum.Material.SmoothPlastic
-				if studImage ~= "" then
+				if not studs then
+					-- plain smooth bricks
+				elseif studImage ~= "" then
 					for _, face in ipairs({ Enum.NormalId.Top, Enum.NormalId.Bottom, Enum.NormalId.Left, Enum.NormalId.Right, Enum.NormalId.Front, Enum.NormalId.Back }) do
 						local tx = Instance.new("Texture")
 						tx.Texture = studImage
@@ -2628,6 +2643,7 @@ local function buildStartIsland(map)
 	local m, oz = map.index, map.oz + L - IL
 	local startFloor = newPart{ Name = "Island" .. m .. "Floor", Size = Vector3.new(W, 1, IL), Position = Vector3.new(0, 0, oz + IL / 2), Color = GRASS, Parent = Map }
 	textured(startFloor, M.Grass)
+	squareTiles(startFloor)
 	groundTexture(startFloor)
 	TK.fillBlock(CFrame.new(0, -24, oz + IL / 2), Vector3.new(W, 44, IL), M.Ground)
 	for _ = 1, 10 do -- rocky chunks hanging under the island
