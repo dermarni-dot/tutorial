@@ -49,6 +49,8 @@ local CONFIG = {
 	-- image's: in Studio paste it into any Texture's Texture box and copy the number it becomes.
 	FloorStyle = "grid",      -- "grid" = smooth floors in the zone's colour with thin lines making small squares; "tiles" = Roblox's CeramicTiles material; "themed" = grass, sand, ice...
 	GridSize = 4,             -- how many studs wide each square of the "grid" floor is
+	GridStuds = true,         -- a stud in the middle of every square (the GridStudTexture image, one per square)
+	GridStudTexture = "rbxassetid://8089383689", -- "" = Roblox's own small studs on the floor instead
 	GroundTexture = "",       -- e.g. "rbxassetid://8089383689" for a studded floor
 	GroundTextureSize = 8,    -- how many studs wide one tile of the image is
 	GroundTextureTint = true, -- tint the image to the zone's colour (false = the image's own colours)
@@ -738,6 +740,22 @@ local function squareTiles(part, grid)
 	part.Material = Enum.Material.SmoothPlastic
 	if grid == false then return true end
 	local g = CONFIG.GridSize or 4
+	if CONFIG.GridStuds then
+		if (CONFIG.GridStudTexture or "") ~= "" then
+			-- one stud per square: the image tiles exactly on the grid, starting at the floor's edge like the lines
+			local tx = Instance.new("Texture")
+			tx.Name = "GridStuds"
+			tx.Texture = CONFIG.GridStudTexture
+			tx.Face = Enum.NormalId.Top
+			tx.StudsPerTileU = g
+			tx.StudsPerTileV = g
+			tx.Color3 = part.Color:Lerp(Color3.new(1, 1, 1), 0.2)
+			tx.Parent = part
+		else
+			part.Material = Enum.Material.Plastic
+			part.TopSurface = Enum.SurfaceType.Studs
+		end
+	end
 	local size, cf = part.Size, part.CFrame
 	local top = size.Y / 2 + 0.02
 	local line = part.Color:Lerp(Color3.new(0, 0, 0), 0.25) -- bold cartoon outlines
