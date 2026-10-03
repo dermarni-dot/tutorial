@@ -49,7 +49,7 @@ local CONFIG = {
 	-- image's: in Studio paste it into any Texture's Texture box and copy the number it becomes.
 	FloorStyle = "grid",      -- "grid" = smooth floors in the zone's colour with thin lines making small squares; "tiles" = Roblox's CeramicTiles material; "themed" = grass, sand, ice...
 	GridSize = 2,             -- how many studs wide each square of the "grid" floor is (one stud per square)
-	GridStuds = true,         -- a stud in the middle of every square (the GridStudTexture image, one per square)
+	GridStuds = false,        -- true = a stud in the middle of every square (the GridStudTexture image, one per square)
 	GridStudTexture = "rbxassetid://8089383689", -- "" = Roblox's own small studs on the floor instead
 	GroundTexture = "",       -- e.g. "rbxassetid://8089383689" for a studded floor
 	GroundTextureSize = 8,    -- how many studs wide one tile of the image is
