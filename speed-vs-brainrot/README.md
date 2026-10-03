@@ -61,6 +61,10 @@ Four scripts:
 - Each zone has a **pace**, so speed is relative: the same Speed makes you run faster in a harder zone, and the boss runs faster there too.
 - **Every zone is open to everyone.** There's no Speed you need to get in. The only way to fail is getting caught (or hit). The golden gate at the end of each zone shows the trophies you get for making it out.
 - **Getting hit sends you back to the start.** That covers obstacles, falling off and the boss catching you. You tumble with stars around your head and a red flash, then reappear at the start.
+- **Ground texture**: every floor (all zones and both start islands) has the texture `rbxassetid://8089383689` laid over it, tinted to each zone's colour. The ground patches are skipped so it reads clean.
+  - Change it with `CONFIG.GroundTexture`, the tile size with `GroundTextureSize` (studs), and turn the tint off with `GroundTextureTint = false` to show the image's own colours.
+  - Set `GroundTexture = ""` to go back to the realistic materials described below.
+  - If the ground shows plain colour and no image, the number is a Decal's ID rather than its image's. In Studio, paste it into any Texture's Texture box, and Studio swaps it for the image's number. Put that number in `GroundTexture`.
 - **Every zone has its own textures** in place of plain plastic studs. Each has its own ground, a trail down the middle and patches on the ground, and the cliff underneath matches the theme:
   - Meadow: grass and a dirt trail.
   - Desert: sand and sandstone.

@@ -43,6 +43,13 @@ local CONFIG = {
 	ZoneWidth = 180,          -- every zone, including the start zones, is this wide...
 	ZoneLength = 600,         -- ...and this long (long zones = more room to pull away from the boss)
 	ObstacleSets = 1,         -- obstacle sets per zone (each is 200 studs long; 1 = one set in the middle, up to ZoneLength / 200)
+	-- GROUND TEXTURE: an image laid over every floor (zones and start islands), tinted to
+	-- each zone's colour. "" = use the realistic materials (grass, sand, ice...) instead.
+	-- If the ground shows plain colour with no image, the ID is a Decal's ID, not its
+	-- image's: in Studio paste it into any Texture's Texture box and copy the number it becomes.
+	GroundTexture = "rbxassetid://8089383689",
+	GroundTextureSize = 8,    -- how many studs wide one tile of the image is
+	GroundTextureTint = true, -- tint the image to the zone's colour (false = the image's own colours)
 	IslandLength = 200,       -- the start islands stay this long (they sit at the end of their slot)
 	MapGap = 1,               -- empty sky (in zone lengths) between one map's end and the next island
 
@@ -712,6 +719,21 @@ local function textured(part, material)
 	return part
 end
 
+-- puts CONFIG.GroundTexture on top of a floor part (returns false when it's turned off)
+local function groundTexture(part)
+	if (CONFIG.GroundTexture or "") == "" then return false end
+	part.Material = Enum.Material.SmoothPlastic
+	local tx = Instance.new("Texture")
+	tx.Name = "GroundTexture"
+	tx.Texture = CONFIG.GroundTexture
+	tx.Face = Enum.NormalId.Top
+	tx.StudsPerTileU = CONFIG.GroundTextureSize or 8
+	tx.StudsPerTileV = CONFIG.GroundTextureSize or 8
+	tx.Color3 = CONFIG.GroundTextureTint and part.Color:Lerp(Color3.new(1, 1, 1), 0.25) or Color3.new(1, 1, 1)
+	tx.Parent = part
+	return true
+end
+
 ------------------------------------------------------------------------
 -- TERRAIN: real Roblox terrain for the cliffs under the track, the islands,
 -- the ocean and the big scenery on both sides of every zone
@@ -1084,6 +1106,7 @@ local function buildHoleyFloor(k, color, rng)
 					Parent = Map,
 				}
 				textured(tile, THEME_LOOK.void.floor)
+				groundTexture(tile)
 			end
 		end
 	end
@@ -1103,6 +1126,7 @@ local function buildZoneShell(k, floorColor, underColor, accent, holey, rng, the
 	else
 		local floor = newPart{ Name = "Zone" .. k .. "Floor", Size = Vector3.new(W, 1, L), Position = Vector3.new(0, 0, cz), Color = floorColor, Parent = Map }
 		if look.floor then textured(floor, look.floor) else addStuds(floor, Enum.NormalId.Top) end
+		groundTexture(floor)
 		-- a trail down the middle of the track
 		if look.path then
 			local trail = newPart{ Name = "Trail", Size = Vector3.new(26, 0.14, L), Position = Vector3.new(0, FLOOR_Y + 0.07, cz), Color = look.pathColor, CanCollide = false, CastShadow = false, Parent = Decor }
@@ -1159,6 +1183,7 @@ end
 
 -- Lighter / darker patches on the floor so it isn't one flat color
 local function floorPatches(k, color, rng, z0, len, material)
+	if (CONFIG.GroundTexture or "") ~= "" then return end -- the ground texture is the detail
 	z0, len = z0 or k * L, len or L
 	-- one patch per cell (rows 30 studs long, one cell each side of the middle trail),
 	-- so patches never overlap each other or the trail: overlapping flat parts at the
@@ -2566,6 +2591,7 @@ local function buildStartIsland(map)
 	local m, oz = map.index, map.oz + L - IL
 	local startFloor = newPart{ Name = "Island" .. m .. "Floor", Size = Vector3.new(W, 1, IL), Position = Vector3.new(0, 0, oz + IL / 2), Color = GRASS, Parent = Map }
 	textured(startFloor, M.Grass)
+	groundTexture(startFloor)
 	TK.fillBlock(CFrame.new(0, -24, oz + IL / 2), Vector3.new(W, 44, IL), M.Ground)
 	for _ = 1, 10 do -- rocky chunks hanging under the island
 		local r = math.random(10, 22)
