@@ -3,7 +3,7 @@
 	Put this in: StarterPlayer > StarterPlayerScripts  (next to SpeedVsBrainrot_World)
 
 	What it adds:
-	  - Three chunky studded stat tiles on the left: Speed (red, a sneaker),
+	  - Three chunky glossy cartoon stat tiles on the left: Speed (red, a sneaker),
 	    Cash (green, a cash brick) and Trophies (yellow, a trophy). The numbers
 	    count up and the tile bounces when they go up.
 	  - Six square buttons under them:
@@ -797,57 +797,46 @@ local function tween(obj, t, goal, style, dir)
 	return tw
 end
 
--- a chunky Roblox-brick tile: rounded, outlined, shaded, with studs on it
+-- a chunky cartoon button: rounded, thick dark outline, a darker "lip" along the bottom
+-- so it looks pressable, a glossy face with a soft highlight on top. (No studs.)
+-- The child named "Studs" is the clipped face that the gloss and shine sit in.
 local function studTile(parent, color, size, props)
-	local dark = color:Lerp(Color3.new(0, 0, 0), 0.5)
+	local dark = color:Lerp(Color3.new(0, 0, 0), 0.55)
+	local LIP = math.clamp(math.floor(size.Y.Offset * 0.09 + 0.5), 4, 8)
 	local tile = new("Frame", {
-		BackgroundColor3 = color,
+		BackgroundColor3 = color:Lerp(Color3.new(0, 0, 0), 0.3), -- the lip colour shows along the bottom
 		Size = size,
 		BorderSizePixel = 0,
 		Parent = parent,
 	})
-	corner(tile, 10)
+	corner(tile, 14)
 	stroke(tile, dark, 3.5)
-	new("UIGradient", {
-		Color = ColorSequence.new(color:Lerp(WHITE, 0.1), color:Lerp(Color3.new(0, 0, 0), 0.1)),
-		Rotation = 90,
-		Parent = tile,
-	})
-	-- the studs: a grid of square cells, each with a round raised bump
-	-- (lit from the top left), like the top of a Roblox brick
-	local studs = new("Frame", {
+	local face = new("Frame", {
 		Name = "Studs",
-		BackgroundTransparency = 1,
-		Size = UDim2.fromScale(1, 1),
+		BackgroundColor3 = color,
+		BorderSizePixel = 0,
+		Size = UDim2.new(1, 0, 1, -LIP),
 		ClipsDescendants = true,
 		Parent = tile,
 	})
-	corner(studs, 10)
-	local CELL = 18
-	new("UIGridLayout", {
-		CellSize = UDim2.fromOffset(CELL, CELL),
-		CellPadding = UDim2.fromOffset(0, 0),
-		HorizontalAlignment = Enum.HorizontalAlignment.Center,
-		VerticalAlignment = Enum.VerticalAlignment.Center,
-		Parent = studs,
+	corner(face, 14)
+	new("UIGradient", {
+		Color = ColorSequence.new(color:Lerp(WHITE, 0.22), color:Lerp(Color3.new(0, 0, 0), 0.06)),
+		Rotation = 90,
+		Parent = face,
 	})
-	local w, h = size.X.Offset, size.Y.Offset
-	local count = (math.floor(w / CELL) + 1) * (math.floor(h / CELL) + 1)
-	for _ = 1, count do
-		local cell = new("Frame", { BackgroundTransparency = 1, Parent = studs })
-		new("UIStroke", { Color = dark, Thickness = 1, Transparency = 0.82, Parent = cell })
-		local bump = new("Frame", {
-			AnchorPoint = Vector2.new(0.5, 0.5),
-			Position = UDim2.fromScale(0.5, 0.5),
-			Size = UDim2.fromScale(0.62, 0.62),
-			BackgroundColor3 = color,
-			BorderSizePixel = 0,
-			Parent = cell,
-		})
-		corner(bump, 99)
-		new("UIGradient", { Color = ColorSequence.new(color:Lerp(WHITE, 0.28), color:Lerp(Color3.new(0, 0, 0), 0.18)), Rotation = 45, Parent = bump })
-		new("UIStroke", { Color = dark, Thickness = 1, Transparency = 0.6, Parent = bump })
-	end
+	-- glossy highlight across the top, inset from the edges
+	local hi = new("Frame", {
+		Name = "Highlight",
+		BackgroundColor3 = WHITE,
+		BackgroundTransparency = 0.72,
+		BorderSizePixel = 0,
+		Position = UDim2.new(0, 6, 0, 4),
+		Size = UDim2.new(1, -12, 0.36, 0),
+		Parent = face,
+	})
+	corner(hi, 10)
+	new("UIGradient", { Transparency = NumberSequence.new(0, 0.85), Rotation = 90, Parent = hi })
 	local scale = new("UIScale", { Parent = tile })
 	for k, v in pairs(props or {}) do
 		tile[k] = v
@@ -930,11 +919,9 @@ local function statTile(key, icon, y, color)
 		TextXAlignment = Enum.TextXAlignment.Left,
 		ZIndex = 3,
 	})
-	-- a small caption, a glossy top half and a shine that sweeps across now and then
+	-- a small caption and a shine that sweeps across now and then (the tile has its own gloss)
 	label(tile, string.upper(key), UDim2.fromOffset(110, 14), { Position = UDim2.fromOffset(70, 3), TextXAlignment = Enum.TextXAlignment.Left, TextColor3 = color:Lerp(WHITE, 0.7), ZIndex = 3 })
 	local studs = tile:FindFirstChild("Studs")
-	local gloss = new("Frame", { Name = "Gloss", BackgroundColor3 = WHITE, BackgroundTransparency = 0.82, BorderSizePixel = 0, Size = UDim2.new(1, 0, 0.45, 0), ZIndex = 2, Parent = studs or tile })
-	new("UIGradient", { Transparency = NumberSequence.new(0.2, 1), Rotation = 90, Parent = gloss })
 	local shine = new("Frame", { Name = "Shine", BackgroundColor3 = WHITE, BorderSizePixel = 0, Rotation = 20, Position = UDim2.new(-0.4, 0, -0.5, 0), Size = UDim2.new(0, 26, 2, 0), ZIndex = 2, Parent = studs or tile })
 	new("UIGradient", { Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.5, 0.45), NumberSequenceKeypoint.new(1, 1) }), Parent = shine })
 	task.spawn(function()
@@ -1248,11 +1235,15 @@ local function panel(name, size, title, color, iconName)
 		ZIndex = 20,
 		Parent = gui,
 	})
-	corner(p, 16)
-	stroke(p, color, 4)
+	corner(p, 18)
+	stroke(p, Color3.fromRGB(18, 18, 26), 4)
+	new("UIGradient", { Color = ColorSequence.new(Color3.fromRGB(58, 64, 92), Color3.fromRGB(30, 33, 48)), Rotation = 90, Parent = p })
 	new("UIScale", { Parent = p })
 	local head = new("Frame", { BackgroundColor3 = color, Size = UDim2.new(1, 0, 0, 50), ZIndex = 21, Parent = p })
-	corner(head, 16)
+	corner(head, 18)
+	new("UIGradient", { Color = ColorSequence.new(color:Lerp(WHITE, 0.2), color:Lerp(Color3.new(0, 0, 0), 0.12)), Rotation = 90, Parent = head })
+	local headGloss = new("Frame", { BackgroundColor3 = WHITE, BackgroundTransparency = 0.75, BorderSizePixel = 0, Position = UDim2.new(0, 8, 0, 4), Size = UDim2.new(1, -16, 0, 16), ZIndex = 21, Parent = head })
+	corner(headGloss, 8)
 	local icon = drawIcon(head, iconName, 44)
 	icon.Position = UDim2.fromOffset(10, 3)
 	label(head, title, UDim2.new(1, -120, 0, 40), { Position = UDim2.fromOffset(60, 5), TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 22 })
@@ -1261,6 +1252,7 @@ local function panel(name, size, title, color, iconName)
 		Position = UDim2.new(1, -8, 0, 6),
 		Size = UDim2.fromOffset(40, 38),
 		BackgroundColor3 = Color3.fromRGB(235, 70, 80),
+		BorderSizePixel = 0,
 		Text = "X",
 		Font = FONT,
 		TextScaled = true,
@@ -1268,7 +1260,10 @@ local function panel(name, size, title, color, iconName)
 		ZIndex = 23,
 		Parent = p,
 	})
-	corner(close, 10)
+	corner(close, 12)
+	stroke(close, Color3.fromRGB(90, 15, 25), 3)
+	new("UIGradient", { Color = ColorSequence.new(Color3.fromRGB(255, 120, 125), Color3.fromRGB(210, 45, 60)), Rotation = 90, Parent = close })
+	new("UIStroke", { Color = Color3.fromRGB(25, 25, 30), Thickness = 2.5, ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual, Parent = close })
 	close.Activated:Connect(closePanel)
 	return p
 end
@@ -1856,14 +1851,15 @@ local chase = new("Frame", {
 	AnchorPoint = Vector2.new(0.5, 0),
 	Position = UDim2.new(0.5, 0, 0, 8),
 	Size = UDim2.fromOffset(440, 66),
-	BackgroundColor3 = Color3.fromRGB(40, 20, 28),
-	BackgroundTransparency = 0.15,
+	BackgroundColor3 = Color3.fromRGB(46, 22, 32),
+	BackgroundTransparency = 0.05,
 	Visible = false,
 	ZIndex = 35,
 	Parent = gui,
 })
-corner(chase, 14)
-local chaseStroke = stroke(chase, Color3.fromRGB(255, 70, 70), 3)
+corner(chase, 16)
+new("UIGradient", { Color = ColorSequence.new(Color3.fromRGB(80, 34, 48), Color3.fromRGB(34, 16, 24)), Rotation = 90, Parent = chase })
+local chaseStroke = stroke(chase, Color3.fromRGB(255, 70, 70), 3.5)
 local chaseName = label(chase, "", UDim2.new(1, -24, 0, 26), { Position = UDim2.fromOffset(12, 5), TextColor3 = Color3.fromRGB(255, 120, 120), ZIndex = 36 })
 local chaseBack = new("Frame", { Position = UDim2.new(0, 14, 0, 38), Size = UDim2.new(1, -28, 0, 16), BackgroundColor3 = Color3.fromRGB(20, 12, 16), ZIndex = 36, Parent = chase })
 corner(chaseBack, 8)

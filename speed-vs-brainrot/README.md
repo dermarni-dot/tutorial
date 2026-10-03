@@ -171,7 +171,8 @@ Four scripts:
 
 ## HUD
 
-- **Stat tiles**: Speed, Cash and Trophies on studded brick tiles, each with a small caption, a glossy top and a shine that sweeps across. The numbers count up, cash shows with a "$", and every time your cash goes up a green "+$545" floats up off the Cash tile.
+- **Regular cartoon UI, no studs**: every tile and button is a smooth glossy cartoon panel: rounded, a thick dark outline, a darker lip along the bottom so it looks pressable, and a soft highlight across the top. Popup panels have a glossy coloured header and a matching red close button, and the boss chase bar has a gradient. (The old studded brick look is gone.)
+- **Stat tiles**: Speed, Cash and Trophies on glossy tiles, each with a small caption, a glossy top and a shine that sweeps across. The numbers count up, cash shows with a "$", and every time your cash goes up a green "+$545" floats up off the Cash tile.
 - **Buttons**:
   - Teleport: spawn, the speed pad, the eggs, Map 1 or Map 2.
   - 3x Cash gamepass.
