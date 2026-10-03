@@ -47,7 +47,8 @@ local CONFIG = {
 	-- each zone's colour. "" = use the realistic materials (grass, sand, ice...) instead.
 	-- If the ground shows plain colour with no image, the ID is a Decal's ID, not its
 	-- image's: in Studio paste it into any Texture's Texture box and copy the number it becomes.
-	FloorStyle = "tiles",     -- "tiles" = every floor is a grid of small square tiles in the zone's colour (Roblox's CeramicTiles material); "themed" = grass, sand, ice...
+	FloorStyle = "grid",      -- "grid" = smooth floors in the zone's colour with thin lines making small squares; "tiles" = Roblox's CeramicTiles material; "themed" = grass, sand, ice...
+	GridSize = 4,             -- how many studs wide each square of the "grid" floor is
 	GroundTexture = "",       -- e.g. "rbxassetid://8089383689" for a studded floor
 	GroundTextureSize = 8,    -- how many studs wide one tile of the image is
 	GroundTextureTint = true, -- tint the image to the zone's colour (false = the image's own colours)
@@ -726,9 +727,40 @@ end
 
 -- CONFIG.FloorStyle = "tiles": the floor becomes a grid of small square tiles (the built-in
 -- CeramicTiles material), keeping the zone's colour
-local function squareTiles(part)
-	if CONFIG.FloorStyle ~= "tiles" then return false end
-	part.Material = Enum.Material.CeramicTiles
+-- CONFIG.FloorStyle = "grid": a smooth floor with thin darker lines laid on it every
+-- GridSize studs, so it reads as small smooth squares
+local function squareTiles(part, grid)
+	if CONFIG.FloorStyle == "tiles" then
+		part.Material = Enum.Material.CeramicTiles
+		return true
+	end
+	if CONFIG.FloorStyle ~= "grid" then return false end
+	part.Material = Enum.Material.SmoothPlastic
+	if grid == false then return true end
+	local g = CONFIG.GridSize or 4
+	local size, cf = part.Size, part.CFrame
+	local top = size.Y / 2 + 0.02
+	local line = part.Color:Lerp(Color3.new(0, 0, 0), 0.25) -- bold cartoon outlines
+	local function gridLine(name, lx, lz, sx, sz)
+		local l = Instance.new("Part")
+		l.Name = name
+		l.Anchored = true
+		l.CanCollide = false
+		l.CanQuery = false
+		l.CanTouch = false
+		l.CastShadow = false
+		l.Material = Enum.Material.SmoothPlastic
+		l.Color = line
+		l.Size = Vector3.new(sx, 0.04, sz)
+		l.CFrame = cf * CFrame.new(lx, top, lz)
+		l.Parent = Decor
+	end
+	for x = -size.X / 2 + g, size.X / 2 - g / 2, g do
+		gridLine("GridLineZ", x, 0, 0.32, size.Z)
+	end
+	for z = -size.Z / 2 + g, size.Z / 2 - g / 2, g do
+		gridLine("GridLineX", 0, z, size.X, 0.32)
+	end
 	return true
 end
 
@@ -1119,7 +1151,7 @@ local function buildHoleyFloor(k, color, rng)
 					Parent = Map,
 				}
 				textured(tile, THEME_LOOK.void.floor)
-				squareTiles(tile)
+				squareTiles(tile, false) -- (no lines over the holes)
 				groundTexture(tile)
 			end
 		end
@@ -1198,7 +1230,7 @@ end
 
 -- Lighter / darker patches on the floor so it isn't one flat color
 local function floorPatches(k, color, rng, z0, len, material)
-	if (CONFIG.GroundTexture or "") ~= "" or CONFIG.FloorStyle == "tiles" then return end -- the texture / tiles are the detail
+	if (CONFIG.GroundTexture or "") ~= "" or CONFIG.FloorStyle == "tiles" or CONFIG.FloorStyle == "grid" then return end -- the texture / tiles / grid are the detail
 	z0, len = z0 or k * L, len or L
 	-- one patch per cell (rows 30 studs long, one cell each side of the middle trail),
 	-- so patches never overlap each other or the trail: overlapping flat parts at the

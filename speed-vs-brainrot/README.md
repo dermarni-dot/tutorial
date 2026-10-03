@@ -61,7 +61,8 @@ Four scripts:
 - Each zone has a **pace**, so speed is relative: the same Speed makes you run faster in a harder zone, and the boss runs faster there too.
 - **Every zone is open to everyone.** There's no Speed you need to get in. The only way to fail is getting caught (or hit). The golden gate at the end of each zone shows the trophies you get for making it out.
 - **Getting hit sends you back to the start.** That covers obstacles, falling off and the boss catching you. You tumble with stars around your head and a red flash, then reappear at the start.
-- **Tiled floors** (`CONFIG.FloorStyle = "tiles"`): every floor (all zones and both start islands) is a grid of small square tiles in the zone's colour, using Roblox's built-in CeramicTiles material, so no image ID is needed. The trail down the middle keeps its own material. Set `FloorStyle = "themed"` for the grass, sand, ice and other materials described below.
+- **Cartoon square floors** (`CONFIG.FloorStyle = "grid"`): every floor (all zones and both start islands) is smooth and flat in the zone's colour, with bold darker lines every 4 studs (`GridSize`), so it reads as clean cartoony squares. The lines are flat, non-colliding decoration. The trail down the middle keeps its own material, and the Void's holey floor stays smooth without lines.
+  - `FloorStyle = "tiles"` uses Roblox's CeramicTiles material instead (rougher tiles). `FloorStyle = "themed"` brings back the grass, sand, ice and other materials described below.
 - **Ground texture (off)**: `CONFIG.GroundTexture` can lay a texture over every floor, tinted to each zone's colour (for example `"rbxassetid://8089383689"` for studs). It's empty, so the floors use the realistic materials below. `GroundTextureSize` sets the tile size and `GroundTextureTint` the tint. If a texture shows plain colour, the number is a Decal's ID: paste it into any Texture's Texture box in Studio to get the image's number.
 - **Every zone has its own textures** in place of plain plastic studs. Each has its own ground, a trail down the middle and patches on the ground, and the cliff underneath matches the theme:
   - Meadow: grass and a dirt trail.
@@ -206,10 +207,10 @@ No emojis or uploaded images: every icon is drawn from rounded frames (the `ICON
 ![Spawn](spawn.png)
 ![Trophy gate](trophy_gate.png)
 ![Brick eggs](eggs_studs.png)
-![Tiled floor: Meadow](tiles_zone.png)
-![Tiled floor: spawn island](tiles_spawn.png)
-![Eggs on the tiled floor](tiles_eggs.png)
-![Tiled floor: Desert](tiles_desert.png)
+![Square floor: Meadow](tiles_zone.png)
+![Square floor: spawn island](tiles_spawn.png)
+![Eggs on the square floor](tiles_eggs.png)
+![Square floor: Desert](tiles_desert.png)
 
 ![Overview](map_overview.png)
 ![HUD](svb_hud.png)
