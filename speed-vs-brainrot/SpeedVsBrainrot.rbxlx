@@ -47,7 +47,7 @@ local CONFIG = {
 	-- each zone's colour. "" = use the realistic materials (grass, sand, ice...) instead.
 	-- If the ground shows plain colour with no image, the ID is a Decal's ID, not its
 	-- image's: in Studio paste it into any Texture's Texture box and copy the number it becomes.
-	FloorStyle = "grid",      -- "grid" = smooth floors in the zone's colour with thin lines making small squares; "tiles" = Roblox's CeramicTiles material; "themed" = grass, sand, ice...
+	FloorStyle = "terrain",   -- "terrain" = real Roblox terrain in each zone's own material (grass, sand, snow...) under an invisible floor; "smooth" = plain smooth floors in the zone's colour; "grid" = the same with lines making small squares; "tiles" = Roblox's CeramicTiles material; "themed" = grass, sand, ice...
 	GridSize = 2,             -- how many studs wide each square of the "grid" floor is (one stud per square)
 	GridStuds = false,        -- true = a stud in the middle of every square (the GridStudTexture image, one per square)
 	GridStudTexture = "rbxassetid://8089383689", -- "" = Roblox's own small studs on the floor instead
@@ -737,6 +737,10 @@ local function squareTiles(part, grid)
 		part.Material = Enum.Material.CeramicTiles
 		return true
 	end
+	if CONFIG.FloorStyle == "smooth" then
+		part.Material = Enum.Material.SmoothPlastic
+		return true
+	end
 	if CONFIG.FloorStyle ~= "grid" then return false end
 	part.Material = Enum.Material.SmoothPlastic
 	if grid == false then return true end
@@ -807,6 +811,16 @@ local TK = {} -- terrain + custom-model helpers (in one table to keep the script
 function TK.fillBlock(cf, size, mat) pcall(function() Terrain:FillBlock(cf, size, mat) end) end
 function TK.fillBall(pos, radius, mat) pcall(function() Terrain:FillBall(pos, radius, mat) end) end
 function TK.fillCyl(cf, height, radius, mat) pcall(function() Terrain:FillCylinder(cf, height, radius, mat) end) end
+-- CONFIG.FloorStyle = "terrain": real terrain in the zone's material makes the ground you
+-- run on (top exactly at the floor's top); the floor part stays as an invisible collider
+function TK.terrainFloor(part, material)
+	if CONFIG.FloorStyle ~= "terrain" or not material then return false end
+	local s = part.Size
+	TK.fillBlock(part.CFrame * CFrame.new(0, s.Y / 2 - 2.5, 0), Vector3.new(s.X, 5, s.Z), material)
+	part.Transparency = 1
+	part.CastShadow = false
+	return true
+end
 
 do
 	local TERRAIN_COLORS = {
@@ -1193,6 +1207,7 @@ local function buildZoneShell(k, floorColor, underColor, accent, holey, rng, the
 		if look.floor then textured(floor, look.floor) else addStuds(floor, Enum.NormalId.Top) end
 		squareTiles(floor)
 		groundTexture(floor)
+		TK.terrainFloor(floor, TK.THEMES[theme] and TK.THEMES[theme].cap)
 		-- a trail down the middle of the track
 		if look.path then
 			local trail = newPart{ Name = "Trail", Size = Vector3.new(26, 0.14, L), Position = Vector3.new(0, FLOOR_Y + 0.07, cz), Color = look.pathColor, CanCollide = false, CastShadow = false, Parent = Decor }
@@ -1249,7 +1264,7 @@ end
 
 -- Lighter / darker patches on the floor so it isn't one flat color
 local function floorPatches(k, color, rng, z0, len, material)
-	if (CONFIG.GroundTexture or "") ~= "" or CONFIG.FloorStyle == "tiles" or CONFIG.FloorStyle == "grid" then return end -- the texture / tiles / grid are the detail
+	if (CONFIG.GroundTexture or "") ~= "" or CONFIG.FloorStyle == "tiles" or CONFIG.FloorStyle == "grid" or CONFIG.FloorStyle == "smooth" or CONFIG.FloorStyle == "terrain" then return end -- the texture / tiles / grid are the detail
 	z0, len = z0 or k * L, len or L
 	-- one patch per cell (rows 30 studs long, one cell each side of the middle trail),
 	-- so patches never overlap each other or the trail: overlapping flat parts at the
@@ -2700,6 +2715,7 @@ local function buildStartIsland(map)
 	textured(startFloor, M.Grass)
 	squareTiles(startFloor)
 	groundTexture(startFloor)
+	TK.terrainFloor(startFloor, M.Grass)
 	TK.fillBlock(CFrame.new(0, -24, oz + IL / 2), Vector3.new(W, 44, IL), M.Ground)
 	for _ = 1, CONFIG.TerrainDecor and 10 or 0 do -- rocky chunks hanging under the island
 		local r = math.random(10, 22)

@@ -62,7 +62,9 @@ Four scripts:
 - **Every zone is open to everyone.** There's no Speed you need to get in. The only way to fail is getting caught (or hit). The golden gate at the end of each zone shows the trophies you get for making it out.
 - **Getting hit sends you back to the start.** That covers obstacles, falling off and the boss catching you. You tumble with stars around your head and a red flash, then reappear at the start.
 - **Clean terrain** (`CONFIG.TerrainDecor = false`): there are no terrain hills, mesas, spikes or towers beside the zones, no lumpy blobs along the bank edges or under the track, no rock chunks under the islands, and no blocky stepped terraces around the start islands. The flat banks beside the track (with their lamps, bushes and props) and the solid ground under the track stay. The title sign now stands at the back of the island. Set `TerrainDecor = true` to bring all of that terrain back.
-- **Cartoon square floors** (`CONFIG.FloorStyle = "grid"`): every floor (all zones and both start islands) is smooth and flat in the zone's colour, with darker lines every 2 studs (`GridSize`; the lines get thinner as the squares get smaller), so it reads as clean cartoony squares. The lines are flat, non-colliding decoration. The trail down the middle keeps its own material, and the Void's holey floor stays smooth without lines.
+- **Real terrain floors** (`CONFIG.FloorStyle = "terrain"`, the default): the ground you run on is real Roblox terrain in each zone's own material: grass in the Meadow, sand in the Desert, snow on the Tundra, mud and leafy grass in the Swamp, cracked lava rock in Lava Lands and the Inferno, and so on. The start islands are grass. An invisible floor part stays on top so running and hitboxes work exactly as before. No squares, no lines, no patches.
+- **Smooth floors** (`FloorStyle = "smooth"`): every floor (all zones and both start islands) is plain, smooth and flat in the zone's colour, with no lines or patches. The trail down the middle keeps its own material.
+- **Cartoon square floors** (`CONFIG.FloorStyle = "grid"`, off): every floor (all zones and both start islands) is smooth and flat in the zone's colour, with darker lines every 2 studs (`GridSize`; the lines get thinner as the squares get smaller), so it reads as clean cartoony squares. The lines are flat, non-colliding decoration. The trail down the middle keeps its own material, and the Void's holey floor stays smooth without lines.
   - **A stud in every square (off)** (`GridStuds = true` turns it on): the studs image (`GridStudTexture`, `rbxassetid://8089383689`) is laid over the floor so each square holds one stud, lined up with the lines and tinted to the zone's colour. With `GridStudTexture = ""` the floor uses Roblox's own small studs instead, and `GridStuds = false` leaves plain smooth squares. The preview pictures draw a stand-in stud, because the real image can't be downloaded here.
   - `FloorStyle = "tiles"` uses Roblox's CeramicTiles material instead (rougher tiles). `FloorStyle = "themed"` brings back the grass, sand, ice and other materials described below.
 - **Ground texture (off)**: `CONFIG.GroundTexture` can lay a texture over every floor, tinted to each zone's colour (for example `"rbxassetid://8089383689"` for studs). It's empty, so the floors use the realistic materials below. `GroundTextureSize` sets the tile size and `GroundTextureTint` the tint. If a texture shows plain colour, the number is a Decal's ID: paste it into any Texture's Texture box in Studio to get the image's number.
@@ -209,10 +211,9 @@ No emojis or uploaded images: every icon is drawn from rounded frames (the `ICON
 ![Spawn](spawn.png)
 ![Trophy gate](trophy_gate.png)
 ![Brick eggs](eggs_studs.png)
-![Square floor: Meadow](tiles_zone.png)
-![Square floor: spawn island](tiles_spawn.png)
-![Eggs on the square floor](tiles_eggs.png)
-![Square floor: Desert](tiles_desert.png)
+![Terrain floor: Meadow](terrain_zone.png)
+![Terrain floor: spawn island](terrain_spawn.png)
+![Terrain floor: Desert](terrain_desert.png)
 
 ![Overview](map_overview.png)
 ![HUD](svb_hud.png)
