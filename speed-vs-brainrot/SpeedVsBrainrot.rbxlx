@@ -48,7 +48,7 @@ local CONFIG = {
 	-- If the ground shows plain colour with no image, the ID is a Decal's ID, not its
 	-- image's: in Studio paste it into any Texture's Texture box and copy the number it becomes.
 	FloorStyle = "grid",      -- "grid" = smooth floors in the zone's colour with thin lines making small squares; "tiles" = Roblox's CeramicTiles material; "themed" = grass, sand, ice...
-	GridSize = 4,             -- how many studs wide each square of the "grid" floor is
+	GridSize = 2,             -- how many studs wide each square of the "grid" floor is (one stud per square)
 	GridStuds = true,         -- a stud in the middle of every square (the GridStudTexture image, one per square)
 	GridStudTexture = "rbxassetid://8089383689", -- "" = Roblox's own small studs on the floor instead
 	GroundTexture = "",       -- e.g. "rbxassetid://8089383689" for a studded floor
@@ -774,10 +774,10 @@ local function squareTiles(part, grid)
 		l.Parent = Decor
 	end
 	for x = -size.X / 2 + g, size.X / 2 - g / 2, g do
-		gridLine("GridLineZ", x, 0, 0.32, size.Z)
+		gridLine("GridLineZ", x, 0, math.clamp(g * 0.1, 0.14, 0.32), size.Z)
 	end
 	for z = -size.Z / 2 + g, size.Z / 2 - g / 2, g do
-		gridLine("GridLineX", 0, z, size.X, 0.32)
+		gridLine("GridLineX", 0, z, size.X, math.clamp(g * 0.1, 0.14, 0.32))
 	end
 	return true
 end
