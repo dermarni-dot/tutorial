@@ -120,6 +120,10 @@ Four scripts:
 
 ## Eggs, pets, rebirth, prestige
 
+- **Studded brick eggs** (`CONFIG.EggStyle = "studs"`): each egg on the stands is built from stacked brick layers that step in and out to make an egg shape. Each layer is two crossed bricks, so the corners are cut. The bricks are covered in the studs texture, with a band of the egg's second colour every few layers.
+  - The studs image is `EggTexture`, or the ground's `GroundTexture` if that's empty. With both empty, Roblox's own studs are used. `EggStudSize` sets how big each stud is.
+  - Set `EggStyle = "smooth"` for the round painted eggs described below.
+
 - **4 eggs per map**:
   - Map 1: 20, 100, 500 and 1K trophies.
   - Map 2: 2.5K, 10K, 50K and 250K trophies.
@@ -203,6 +207,7 @@ No emojis or uploaded images: every icon is drawn from rounded frames (the `ICON
 ![Banks beside the track](map_banks.png)
 ![Spawn](spawn.png)
 ![Trophy gate](trophy_gate.png)
+![Studded brick eggs](eggs_studs.png)
 ![Overview](map_overview.png)
 ![HUD](svb_hud.png)
 ![Menus](svb_menus.png)

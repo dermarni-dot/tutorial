@@ -46,6 +46,9 @@ local CONFIG = {
 	GroundTexture = "rbxassetid://8089383689",
 	GroundTextureSize = 8,    -- how many studs wide one tile of the image is
 	GroundTextureTint = true, -- tint the image to the zone's colour (false = the image's own colours)
+	EggStyle = "studs",       -- "studs" = blocky eggs made of studded bricks, "smooth" = round painted eggs
+	EggTexture = "",          -- studs image for the brick eggs ("" = use GroundTexture; both "" = Roblox's own studs)
+	EggStudSize = 1,          -- studs wide one tile of that image is on the eggs
 	IslandLength = 200,       -- the start islands stay this long (they sit at the end of their slot)
 	MapGap = 1,               -- empty sky (in zone lengths) between one map's end and the next island
 
@@ -2340,6 +2343,43 @@ local function buildEggStand(egg, x, z)
 	shell.Reflectance = (design == "robo") and 0.25 or 0.06
 	sphereMesh(shell, Vector3.new(1, H / R, 1))
 
+	if CONFIG.EggStyle == "studs" then
+		-- STUDDED BRICK EGG: stacked square layers that step in and out along the egg's
+		-- outline (each layer is two crossed bricks, so the corners are cut), covered in
+		-- a studs texture. Every few layers is a band in the egg's second colour.
+		shell.Transparency = 1 -- the round shell stays (invisible) so spinning + the name tag still work
+		local STEP = 0.78
+		local layers = math.floor(2 * H / STEP)
+		local studImage = (CONFIG.EggTexture ~= "" and CONFIG.EggTexture) or CONFIG.GroundTexture or ""
+		for i = 0, layers - 1 do
+			local y = -H + (i + 0.5) * STEP
+			local w = math.max(1.2, math.floor(2 * radiusAt(y) / 0.6 + 0.5) * 0.6)
+			local c = bodyColor
+			if i % 4 == 2 then c = egg.spots end
+			if i == layers - 1 then c = c:Lerp(WHITE, 0.15) end
+			for _, dims in ipairs({ Vector3.new(w, STEP, w * 0.72), Vector3.new(w * 0.72, STEP, w) }) do
+				local brick = eggPart{ Name = "EggBrick", Size = dims, Position = center + Vector3.new(0, y, 0), Color = c, CastShadow = true }
+				brick.Material = Enum.Material.SmoothPlastic
+				if studImage ~= "" then
+					for _, face in ipairs({ Enum.NormalId.Top, Enum.NormalId.Bottom, Enum.NormalId.Left, Enum.NormalId.Right, Enum.NormalId.Front, Enum.NormalId.Back }) do
+						local tx = Instance.new("Texture")
+						tx.Texture = studImage
+						tx.Face = face
+						tx.StudsPerTileU = CONFIG.EggStudSize or 1
+						tx.StudsPerTileV = CONFIG.EggStudSize or 1
+						tx.Color3 = c:Lerp(WHITE, 0.25)
+						tx.Parent = brick
+					end
+				else
+					for _, s in ipairs({ "TopSurface", "BottomSurface", "LeftSurface", "RightSurface", "FrontSurface", "BackSurface" }) do
+						brick[s] = Enum.SurfaceType.Studs
+					end
+					brick.Material = Enum.Material.Plastic
+				end
+			end
+		end
+	else
+
 	-- a ring hugging the egg at height y: thin slices that follow the egg's curve
 	local function band(y, thick, color, material, transparency)
 		local n = math.max(1, math.ceil(thick / 0.14))
@@ -2533,6 +2573,7 @@ local function buildEggStand(egg, x, z)
 	end
 	-- a soft glossy highlight on the upper left
 	paint(math.rad(205), 2.1, 0.55, 1.3, WHITE, 0.35, NEON, 0.08, 0.55)
+	end -- (smooth egg)
 	model.PrimaryPart = shell
 	local light = Instance.new("PointLight")
 	light.Color = egg.color
