@@ -62,6 +62,9 @@ Four scripts:
 - **Every zone is open to everyone.** There's no Speed you need to get in. The only way to fail is getting caught (or hit). The golden gate at the end of each zone shows the trophies you get for making it out.
 - **Getting hit sends you back to the start.** That covers obstacles, falling off and the boss catching you. You tumble with stars around your head and a red flash, then reappear at the start.
 - **Clean terrain** (`CONFIG.TerrainDecor = false`): there are no terrain hills, mesas, spikes or towers beside the zones, no lumpy blobs along the bank edges or under the track, no rock chunks under the islands, and no blocky stepped terraces around the start islands. The flat banks beside the track (with their lamps, bushes and props) and the solid ground under the track stay. The title sign now stands at the back of the island. Set `TerrainDecor = true` to bring all of that terrain back.
+- **Blocky designs like the brick eggs** (`CONFIG.BlockyDecor = true`): all the round scenery is rebuilt from stepped bricks, the same way as the brick eggs. Tree canopies, bushes, rocks, mushrooms, snowmen, clouds, lamps and landmark domes are stacked brick layers that step in and out to follow their shape, with two crossed bricks per layer on the bigger ones so the corners are cut. Tiny balls (fruit, berries, flower heads) are little cubes, and round posts and trunks are square. Only scenery changes: the track, cash, eggs, bosses, pets and obstacles keep their shapes.
+- **Landmarks**: every zone has three big themed set pieces on its banks, on alternating sides: a windmill and a red barn in the Meadow, stepped pyramids in the Desert, igloos and an ice castle on the Tundra, giant glowing-spotted mushrooms in the Swamp, volcanoes with glowing lava flows in Lava Lands and the Inferno, giant lollipops in Candy Kingdom, skyscrapers with neon floor strips in Neon City, huge crystal clusters in the Crystal Caves, a lightning tower in Storm Peaks, floating shards in the Void, a temple in the Jungle, a spooky house with lit windows in the Haunted Woods, smoking smokestacks in the Factory, a ringed planet and a rocket in Outer Space, and a rainbow arch on Rainbow Road.
+- **Sun glare**: day zones have strong glare from the sun across the sky, a bigger sun, sun rays when you look toward it, a little more bloom and richer colour. Night zones keep their moonlit look.
 - **Smooth terrain in each zone's colour**: every zone theme has its own terrain material, tinted to the zone's colour, and the zone's floor, banks and the cliff under it all use it. Each zone is one smooth colour: green Meadow, golden Desert, pale-blue snowy Tundra, pink Candy Kingdom, deep purple Crystal Caves, and so on. The terrain under the track sits a whole terrain cell below the floor, so it no longer pokes through in brown blotches.
 - **Real terrain floors** (`CONFIG.FloorStyle = "terrain"`, the default): the ground you run on is real Roblox terrain in each zone's own material: grass in the Meadow, sand in the Desert, snow on the Tundra, mud and leafy grass in the Swamp, cracked lava rock in Lava Lands and the Inferno, and so on. The start islands are grass. An invisible floor part stays on top so running and hitboxes work exactly as before. No squares, no lines, no patches.
 - **Smooth floors** (`FloorStyle = "smooth"`): every floor (all zones and both start islands) is plain, smooth and flat in the zone's colour, with no lines or patches. The trail down the middle keeps its own material.
@@ -218,6 +221,11 @@ No emojis or uploaded images: every icon is drawn from rounded frames (the `ICON
 ![Terrain floor: Desert](terrain_desert.png)
 ![Terrain floor: Tundra](terrain_ice.png)
 ![Terrain floor: Candy Kingdom](terrain_candy.png)
+![Blocky Meadow with a windmill](blocky_meadow.png)
+![Blocky spawn island](blocky_spawn.png)
+![Tundra landmarks](blocky_ice.png)
+![Candy Kingdom landmarks](blocky_candy.png)
+![Desert pyramids](blocky_desert.png)
 
 ![Overview](map_overview.png)
 ![HUD](svb_hud.png)

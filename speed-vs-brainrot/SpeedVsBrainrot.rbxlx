@@ -58,6 +58,7 @@ local CONFIG = {
 	EggStuds = false,         -- false = plain smooth bricks (no studs on the eggs); true = studs (EggTexture below)
 	EggTexture = "rbxassetid://8089383689", -- studs image for the brick eggs when EggStuds is on
 	EggStudSize = 1,          -- studs wide one tile of that image is on the eggs
+	BlockyDecor = true,       -- true = all the round scenery (trees, bushes, rocks, lamps, landmarks...) is built from stepped bricks like the brick eggs
 	TerrainDecor = false,     -- true = terrain hills/mesas/spikes beside the zones, lumpy bank edges and blobs underneath, and the blocky grass terraces around the start islands
 	IslandLength = 200,       -- the start islands stay this long (they sit at the end of their slot)
 	MapGap = 1,               -- empty sky (in zone lengths) between one map's end and the next island
@@ -646,7 +647,7 @@ do
 	fx("BloomEffect", "SVB_Bloom", { Intensity = 0.3, Size = 22, Threshold = 2.2 })
 	fx("SunRaysEffect", "SVB_SunRays", { Intensity = 0.03, Spread = 0.5 })
 	fx("ColorCorrectionEffect", "SVB_Color", { Saturation = 0.12, Contrast = 0.12, Brightness = -0.04, TintColor = rgb(255, 250, 240) })
-	fx("Sky", "SVB_Sky", { SunAngularSize = 16, MoonAngularSize = 9, StarCount = 2500, CelestialBodiesShown = true })
+	fx("Sky", "SVB_Sky", { SunAngularSize = 22, MoonAngularSize = 11, StarCount = 3000, CelestialBodiesShown = true }) -- a bigger sun for more glare
 end
 
 ------------------------------------------------------------------------
@@ -1141,6 +1142,235 @@ function TK.zoneExtras(k, zone, rng)
 			bit{ Name = "Crate", Size = Vector3.one * s * 0.7, CFrame = CFrame.new(x + 0.3, baseY + s + s * 0.35, z) * CFrame.Angles(0, rng:NextNumber(0, 1.5), 0), Color = color:Lerp(WHITE, 0.1), Material = c.material }
 			bit{ Name = "Barrel", Shape = Enum.PartType.Cylinder, Size = Vector3.new(3.4, 2.4, 2.4), CFrame = CFrame.new(x, baseY + 1.7, z + s + 0.5) * CFrame.Angles(0, 0, math.pi / 2), Color = Color3.fromRGB(70, 90, 110), Material = Enum.Material.Metal }
 		end
+	end
+end
+
+-- LANDMARKS: big themed set pieces on the banks beside every zone (three per zone,
+-- alternating sides) so each zone has something eye-catching to run past
+function TK.landmarks(k, zone, rng)
+	local z0 = k * L
+	local base = FLOOR_Y - 2.5 -- the top of the banks
+	local accent = zone.accent or WHITE
+	local floor = zone.floor or WHITE
+	local function P(props)
+		props.Anchored = true
+		props.CanCollide = false
+		props.Parent = Decor
+		return newPart(props)
+	end
+	local function box(sx, sy, sz, cf, color, mat, extra)
+		local pr = { Size = Vector3.new(sx, sy, sz), CFrame = cf, Color = color, Material = mat or Enum.Material.SmoothPlastic }
+		for a, b in pairs(extra or {}) do pr[a] = b end
+		return P(pr)
+	end
+	local function cyl(h, d, x, y, z, color, mat) -- standing, y = bottom
+		return P{ Shape = Enum.PartType.Cylinder, Size = Vector3.new(h, d, d), CFrame = CFrame.new(x, y + h / 2, z) * CFrame.Angles(0, 0, math.pi / 2), Color = color, Material = mat or Enum.Material.SmoothPlastic }
+	end
+	local function sphere(d, x, y, z, color, mat, sy)
+		local b = P{ Shape = Enum.PartType.Ball, Size = Vector3.one * d, Position = Vector3.new(x, y, z), Color = color, Material = mat or Enum.Material.SmoothPlastic }
+		if sy then
+			local m = Instance.new("SpecialMesh")
+			m.MeshType = Enum.MeshType.Sphere
+			m.Scale = Vector3.new(1, sy, 1)
+			m.Parent = b
+		end
+		return b
+	end
+	local function wedgeRoof(w, h, d, cf, color)
+		for _, s in ipairs({ -1, 1 }) do
+			newWedge{ Name = "Roof", Size = Vector3.new(d, h, w / 2), CFrame = cf * CFrame.new(s * w / 4, h / 2, 0) * CFrame.Angles(0, s * math.pi / 2, 0), Color = color, Anchored = true, CanCollide = false, Parent = Decor }
+		end
+	end
+	local NEON, GLASS = Enum.Material.Neon, Enum.Material.Glass
+	local BUILD = {}
+	function BUILD.meadow(x, z, i)
+		if i % 2 == 1 then -- windmill
+			for s = 0, 3 do cyl(7, 12 - s * 1.6, x, base + s * 7, z, Color3.fromRGB(245, 240, 230)) end
+			sphere(9, x, base + 29, z, Color3.fromRGB(200, 70, 60), nil, 0.9)
+			local hub = Vector3.new(x - (x > 0 and 5 or -5), base + 25, z)
+			sphere(2.4, hub.X, hub.Y, hub.Z, Color3.fromRGB(90, 60, 40))
+			for b = 0, 3 do
+				box(1, 22, 3.2, CFrame.new(hub) * CFrame.Angles(math.rad(b * 90 + 20), 0, 0) * CFrame.new(0, 11, 0), Color3.fromRGB(235, 225, 205))
+			end
+			box(0.6, 3.2, 2.4, CFrame.new(x - (x > 0 and 5.6 or -5.6), base + 3, z), Color3.fromRGB(120, 80, 50)) -- door
+		else -- barn
+			box(20, 12, 26, CFrame.new(x, base + 6, z), Color3.fromRGB(190, 45, 40))
+			wedgeRoof(22, 8, 28, CFrame.new(x, base + 12, z) * CFrame.Angles(0, math.pi / 2, 0), Color3.fromRGB(90, 60, 50))
+			for _, dz in ipairs({ -6, 6 }) do box(0.4, 8, 0.6, CFrame.new(x - (x > 0 and 10.1 or -10.1), base + 4, z + dz), WHITE) end
+			box(0.5, 8, 9, CFrame.new(x - (x > 0 and 10.2 or -10.2), base + 4, z), Color3.fromRGB(150, 35, 30))
+			box(0.6, 0.6, 12, CFrame.new(x - (x > 0 and 10.3 or -10.3), base + 4, z) * CFrame.Angles(math.rad(34), 0, 0), WHITE)
+			box(0.6, 0.6, 12, CFrame.new(x - (x > 0 and 10.3 or -10.3), base + 4, z) * CFrame.Angles(math.rad(-34), 0, 0), WHITE)
+		end
+	end
+	function BUILD.desert(x, z)
+		local sand = Color3.fromRGB(225, 185, 115)
+		for s = 0, 7 do
+			local w = 40 - s * 5
+			box(w, 4.5, w, CFrame.new(x, base + 2.25 + s * 4.5, z), sand:Lerp(Color3.new(0, 0, 0), (s % 2) * 0.06), Enum.Material.Sandstone)
+		end
+		box(3, 2.5, 3, CFrame.new(x, base + 37.3, z), Color3.fromRGB(255, 210, 80), Enum.Material.Metal)
+		box(1, 6, 5, CFrame.new(x - (x > 0 and 20.4 or -20.4), base + 3, z), Color3.fromRGB(60, 40, 25)) -- doorway
+	end
+	function BUILD.ice(x, z, i)
+		local ice, snow = Color3.fromRGB(170, 220, 255), Color3.fromRGB(245, 250, 255)
+		if i % 2 == 1 then -- igloo
+			sphere(24, x, base, z, snow, Enum.Material.Snow, 0.75)
+			cyl(1, 1, x, base, z, snow) -- (keeps the base flush)
+			for r = 1, 3 do box(24.2, 0.3, 24.2, CFrame.new(x, base + r * 2.6, z), ice, nil, { Transparency = 0.6 }) end
+			box(8, 7, 8, CFrame.new(x - (x > 0 and 11 or -11), base + 3.5, z), snow, Enum.Material.Snow)
+			box(1, 5, 4, CFrame.new(x - (x > 0 and 15.1 or -15.1), base + 2.5, z), Color3.fromRGB(40, 60, 90))
+		else -- ice castle tower
+			cyl(30, 12, x, base, z, ice, GLASS).Transparency = 0.15
+			for c = 0, 7 do
+				local a = c * math.pi / 4
+				box(2.4, 3, 2.4, CFrame.new(x + math.cos(a) * 5.2, base + 31.5, z + math.sin(a) * 5.2), snow, Enum.Material.Snow)
+			end
+			for _, s in ipairs({ -1, 1 }) do cyl(18, 6, x, base, z + s * 10, ice:Lerp(WHITE, 0.2), GLASS).Transparency = 0.15 end
+			box(0.6, 3, 1.8, CFrame.new(x - (x > 0 and 6.1 or -6.1), base + 20, z), Color3.fromRGB(120, 220, 255), NEON)
+		end
+	end
+	function BUILD.swamp(x, z)
+		for m = 1, 3 do
+			local h, d = 10 + m * 6, 10 + m * 4
+			local mx, mz = x + (m - 2) * 7, z + (m % 2) * 8 - 4
+			cyl(h, 2.5 + m * 0.6, mx, base, mz, Color3.fromRGB(235, 225, 200))
+			sphere(d, mx, base + h, mz, (m % 2 == 0) and Color3.fromRGB(150, 70, 190) or Color3.fromRGB(110, 190, 70), nil, 0.5)
+			for s = 1, 4 do
+				local a = s * 1.57 + m
+				sphere(d * 0.15, mx + math.cos(a) * d * 0.28, base + h + d * 0.18, mz + math.sin(a) * d * 0.28, Color3.fromRGB(200, 255, 160), NEON)
+			end
+		end
+	end
+	function BUILD.lava(x, z)
+		local rock = Color3.fromRGB(55, 40, 38)
+		for s = 0, 5 do cyl(6, 44 - s * 6.5, x, base + s * 6, z, rock:Lerp(Color3.new(0, 0, 0), (s % 2) * 0.15), Enum.Material.Basalt) end
+		cyl(1.2, 8, x, base + 36, z, Color3.fromRGB(255, 110, 30), NEON)
+		for f = 0, 2 do
+			local a = f * 2.1
+			box(2.4, 26, 1, CFrame.new(x + math.cos(a) * 11, base + 18, z + math.sin(a) * 11) * CFrame.Angles(0, -a, 0) * CFrame.Angles(0, 0, math.rad(18)), Color3.fromRGB(255, 90, 20), NEON)
+		end
+	end
+	BUILD.inferno = BUILD.lava
+	function BUILD.candy(x, z)
+		local cols = { Color3.fromRGB(255, 90, 160), Color3.fromRGB(110, 200, 255), Color3.fromRGB(255, 220, 90) }
+		for l = 1, 2 do
+			local lz = z + (l == 1 and -8 or 8)
+			local h = 22 + l * 6
+			cyl(h, 1.6, x, base, lz, WHITE)
+			P{ Shape = Enum.PartType.Cylinder, Size = Vector3.new(2, 16, 16), CFrame = CFrame.new(x, base + h + 7, lz), Color = cols[l] }
+			for r = 1, 3 do
+				P{ Shape = Enum.PartType.Cylinder, Size = Vector3.new(2.2, 16 - r * 4, 16 - r * 4), CFrame = CFrame.new(x, base + h + 7, lz), Color = (r % 2 == 1) and WHITE or cols[(l % 3) + 1] }
+			end
+		end
+	end
+	function BUILD.neon(x, z, i)
+		local h = 50 + (i % 3) * 14
+		box(18, h, 18, CFrame.new(x, base + h / 2, z), Color3.fromRGB(30, 32, 50))
+		for f = 1, math.floor(h / 6) do
+			box(18.4, 0.5, 18.4, CFrame.new(x, base + f * 6, z), (f % 2 == 0) and accent or Color3.fromRGB(255, 60, 200), NEON)
+		end
+		box(2, 10, 2, CFrame.new(x, base + h + 5, z), Color3.fromRGB(60, 60, 80), Enum.Material.Metal)
+		sphere(2, x, base + h + 10.5, z, Color3.fromRGB(255, 50, 60), NEON)
+	end
+	function BUILD.crystal(x, z)
+		for c = 1, 6 do
+			local h = 14 + (c * 7) % 24
+			local a = c * 1.05
+			box(5 + (c % 3), h, 5 + (c % 3), CFrame.new(x + math.cos(a) * 6, base + h * 0.42, z + math.sin(a) * 6) * CFrame.Angles(math.cos(a) * 0.35, a, math.sin(a) * 0.35), (c % 2 == 0) and accent or Color3.fromRGB(150, 100, 240), GLASS, { Transparency = 0.12 })
+		end
+		box(7, 34, 7, CFrame.new(x, base + 15, z) * CFrame.Angles(0, 0.4, 0), Color3.fromRGB(220, 170, 255), NEON)
+	end
+	function BUILD.storm(x, z)
+		local metal = Color3.fromRGB(80, 85, 100)
+		for _, o in ipairs({ { -3, -3 }, { 3, -3 }, { -3, 3 }, { 3, 3 } }) do
+			box(1, 46, 1, CFrame.new(x + o[1], base + 23, z + o[2]) * CFrame.Angles(o[2] * -0.012, 0, o[1] * 0.012), metal, Enum.Material.Metal)
+		end
+		for r = 1, 7 do box(7.4 - r * 0.25, 0.6, 7.4 - r * 0.25, CFrame.new(x, base + r * 6, z), metal, Enum.Material.Metal) end
+		box(0.8, 10, 0.8, CFrame.new(x, base + 51, z), metal, Enum.Material.Metal)
+		for b = 0, 3 do
+			box(0.7, 6, 0.7, CFrame.new(x + (b % 2) * 1.6 - 0.8, base + 54 + b * 4.5, z) * CFrame.Angles(0, 0, (b % 2 == 0) and 0.5 or -0.5), Color3.fromRGB(255, 240, 90), NEON)
+		end
+	end
+	function BUILD.void(x, z)
+		for s = 1, 5 do
+			local h = 6 + s * 3
+			box(3 + s % 2, h, 3 + s % 2, CFrame.new(x + (s - 3) * 5, base + 10 + s * 5, z + ((s * 3) % 7) - 3) * CFrame.Angles(s, s * 0.7, s * 0.3), (s % 2 == 0) and accent or Color3.fromRGB(40, 20, 70), (s % 2 == 0) and NEON or nil)
+		end
+	end
+	function BUILD.jungle(x, z)
+		local stone = Color3.fromRGB(120, 130, 110)
+		for s = 0, 5 do box(34 - s * 5, 5, 34 - s * 5, CFrame.new(x, base + 2.5 + s * 5, z), stone:Lerp(Color3.new(0, 0, 0), (s % 2) * 0.08), Enum.Material.Slate) end
+		box(8, 8, 8, CFrame.new(x, base + 34, z), stone:Lerp(Color3.new(0, 0, 0), 0.1), Enum.Material.Slate)
+		box(6, 34, 1, CFrame.new(x - (x > 0 and 14 or -14), base + 14, z) * CFrame.Angles(0, 0, (x > 0 and -1 or 1) * 0.72), stone:Lerp(WHITE, 0.1), Enum.Material.Slate) -- stairs
+		for v = 1, 5 do box(0.5, 10 + v * 2, 0.5, CFrame.new(x + (v - 3) * 5, base + 22 - v, z - 15.5), Color3.fromRGB(60, 140, 50)) end
+		sphere(3, x, base + 40, z, accent, NEON)
+	end
+	function BUILD.haunted(x, z)
+		local wood = Color3.fromRGB(60, 52, 70)
+		box(22, 16, 18, CFrame.new(x, base + 8, z), wood, Enum.Material.WoodPlanks)
+		wedgeRoof(24, 10, 20, CFrame.new(x, base + 16, z), Color3.fromRGB(35, 30, 45))
+		box(8, 10, 8, CFrame.new(x + 5, base + 21, z + 5), wood, Enum.Material.WoodPlanks)
+		wedgeRoof(9, 7, 9, CFrame.new(x + 5, base + 26, z + 5), Color3.fromRGB(35, 30, 45))
+		for _, w in ipairs({ { -5, 5 }, { 5, 5 }, { -5, 11 }, { 5, 11 } }) do
+			box(0.6, 3, 2.6, CFrame.new(x - (x > 0 and 11.1 or -11.1), base + w[2], z + w[1]), Color3.fromRGB(255, 220, 90), NEON)
+		end
+		box(0.6, 6, 4, CFrame.new(x - (x > 0 and 11.1 or -11.1), base + 3, z), Color3.fromRGB(25, 20, 30))
+	end
+	function BUILD.factory(x, z)
+		for s = 0, 1 do
+			local sz = z + (s == 0 and -6 or 7)
+			cyl(40 + s * 8, 6, x, base, sz, Color3.fromRGB(150, 70, 55), Enum.Material.Brick)
+			for b = 1, 3 do cyl(1.5, 6.4, x, base + 10 + b * 10 + s * 4, sz, (b % 2 == 0) and WHITE or Color3.fromRGB(220, 40, 40)) end
+			local smoke = Instance.new("ParticleEmitter")
+			smoke.Texture = "rbxasset://textures/particles/smoke_main.dds"
+			smoke.Color = ColorSequence.new(Color3.fromRGB(200, 200, 200))
+			smoke.Size = NumberSequence.new(4, 12)
+			smoke.Transparency = NumberSequence.new(0.4, 1)
+			smoke.Lifetime = NumberRange.new(4, 6)
+			smoke.Speed = NumberRange.new(4, 6)
+			smoke.Rate = 3
+			smoke.EmissionDirection = Enum.NormalId.Top
+			local top = box(2, 0.2, 2, CFrame.new(x, base + 40 + s * 8, sz), Color3.fromRGB(30, 30, 30), nil, { Transparency = 1 })
+			smoke.Parent = top
+		end
+		box(14, 10, 12, CFrame.new(x + (x > 0 and 6 or -6), base + 5, z), Color3.fromRGB(140, 145, 155), Enum.Material.DiamondPlate)
+	end
+	function BUILD.space(x, z, i)
+		if i % 2 == 1 then -- ringed planet floating above the bank
+			local pc = Vector3.new(x, base + 34, z)
+			sphere(26, pc.X, pc.Y, pc.Z, Color3.fromRGB(240, 160, 90))
+			sphere(26.4, pc.X, pc.Y + 4, pc.Z, Color3.fromRGB(220, 120, 70), nil, 0.25)
+			P{ Shape = Enum.PartType.Cylinder, Size = Vector3.new(0.4, 46, 46), CFrame = CFrame.new(pc) * CFrame.Angles(0, 0, math.pi / 2) * CFrame.Angles(0.35, 0, 0), Color = Color3.fromRGB(230, 210, 170), Transparency = 0.25 }
+		else -- rocket on a pad
+			cyl(2, 20, x, base, z, Color3.fromRGB(90, 95, 110), Enum.Material.DiamondPlate)
+			cyl(30, 8, x, base + 2, z, WHITE)
+			sphere(8, x, base + 32, z, Color3.fromRGB(230, 50, 50), nil, 1.6)
+			cyl(2, 8.2, x, base + 22, z, Color3.fromRGB(230, 50, 50))
+			for f = 0, 2 do
+				local a = f * 2.094
+				box(0.8, 9, 6, CFrame.new(x + math.cos(a) * 5, base + 6.5, z + math.sin(a) * 5) * CFrame.Angles(0, -a, 0), Color3.fromRGB(230, 50, 50))
+			end
+			sphere(3, x - (x > 0 and 4 or -4), base + 24, z, Color3.fromRGB(120, 200, 255), GLASS)
+		end
+	end
+	function BUILD.rainbow(x, z)
+		local cols = { Color3.fromRGB(255, 80, 80), Color3.fromRGB(255, 170, 60), Color3.fromRGB(255, 230, 70), Color3.fromRGB(100, 220, 90), Color3.fromRGB(80, 170, 255), Color3.fromRGB(170, 100, 255) }
+		local R = 24
+		for b, c in ipairs(cols) do
+			local r = R - (b - 1) * 2.2
+			for s = 0, 11 do
+				local a = s / 12 * math.pi + math.pi / 24
+				local seg = 2 * math.pi * r / 24 * 1.15
+				box(2.4, 2.2, seg, CFrame.new(x, base + math.sin(a) * r, z + math.cos(a) * r) * CFrame.Angles(a, 0, 0), c, NEON, { Transparency = 0.15 })
+			end
+		end
+		for _, s in ipairs({ -1, 1 }) do sphere(10, x, base + 1, z + s * (R - 5), WHITE, nil, 0.6) end
+	end
+	local build = BUILD[zone.theme]
+	if not build then return end
+	for i, f in ipairs({ 0.2, 0.5, 0.8 }) do
+		local side = (i % 2 == 1) and -1 or 1
+		build(side * (HALF_W + 38), z0 + L * f + ((i == 2) and 40 or 0), i)
 	end
 end
 
@@ -3162,6 +3392,7 @@ for m, map in ipairs(MAPS) do
 		TK.zoneScenery(k, zone.theme, rng)
 		TK.zoneDetail(k, zone, j, rng)
 		TK.zoneExtras(k, zone, rng)
+		TK.landmarks(k, zone, rng)
 		-- rolling ramps across the track: run over them fast and you get some air
 		if not holey then
 			local look = THEME_LOOK[zone.theme] or {}
@@ -3231,6 +3462,69 @@ for m, map in ipairs(MAPS) do
 		end
 		vcyl(0.5, 7.4, x, FLOOR_Y + 11.5, z, Color3.fromRGB(255, 235, 120), Enum.Material.Neon)
 	end
+end
+
+-- BLOCKY DESIGNS (like the brick eggs): every round decoration in the world is rebuilt
+-- from stacked brick layers that step in and out to follow its shape (bigger ones use
+-- two crossed bricks per layer so the corners are cut), tiny balls become little cubes,
+-- and round posts become square. Only scenery (the Decor folder) is changed: the track,
+-- cash, eggs, bosses, pets and obstacles keep their shapes.
+if CONFIG.BlockyDecor ~= false then
+	local function brickify(p)
+		local mesh = p:FindFirstChildOfClass("SpecialMesh")
+		local isBall = p.Shape == Enum.PartType.Ball or (mesh and mesh.MeshType == Enum.MeshType.Sphere)
+		if not isBall then
+			if p.Shape == Enum.PartType.Cylinder and not mesh then p.Shape = Enum.PartType.Block end
+			return
+		end
+		local scale = mesh and mesh.Scale or Vector3.one
+		local size = p.Size * scale
+		local cf = p.CFrame
+		local function brick(sz, offset)
+			local b = Instance.new("Part")
+			b.Name = p.Name ~= "Part" and p.Name or "Brick"
+			b.Anchored = true
+			b.CanCollide = p.CanCollide
+			b.CanQuery = p.CanQuery
+			b.CastShadow = p.CastShadow
+			b.Color = p.Color
+			b.Material = p.Material
+			b.Transparency = p.Transparency
+			b.Reflectance = p.Reflectance
+			b.TopSurface = Enum.SurfaceType.Smooth
+			b.BottomSurface = Enum.SurfaceType.Smooth
+			b.Size = sz
+			b.CFrame = cf * CFrame.new(offset)
+			b.Parent = p.Parent
+			return b
+		end
+		local first
+		local big = math.max(size.X, size.Z)
+		if big < 1.6 and size.Y < 1.6 then
+			first = brick(size * 0.82, Vector3.zero) -- a little cube
+		else
+			local layers = (size.Y >= 6) and 4 or 3
+			local step = size.Y / layers
+			for i = 0, layers - 1 do
+				local y = -size.Y / 2 + (i + 0.5) * step
+				local f = math.sqrt(math.max(0.12, 1 - (y / (size.Y / 2)) ^ 2))
+				local sx, sz = size.X * f, size.Z * f
+				local b = brick(Vector3.new(sx, step, sz) * Vector3.new(big >= 5 and 1 or 0.92, 1, big >= 5 and 0.72 or 0.92), Vector3.new(0, y, 0))
+				first = first or b
+				if big >= 5 then brick(Vector3.new(sx * 0.72, step, sz), Vector3.new(0, y, 0)) end
+			end
+		end
+		-- keep lights, particles and attachments
+		for _, c in ipairs(p:GetChildren()) do
+			if not c:IsA("SpecialMesh") then c.Parent = first end
+		end
+		p:Destroy()
+	end
+	local list = {}
+	for _, d in ipairs(Decor:GetDescendants()) do
+		if d:IsA("Part") then table.insert(list, d) end
+	end
+	for _, p in ipairs(list) do brickify(p) end
 end
 
 -- Things the client needs to know
@@ -8599,7 +8893,7 @@ local function applyLook(look)
 	}):Play()
 	local atmo = Lighting:FindFirstChild("SVB_Atmosphere")
 	-- (thick haze makes far things murky: kept lighter in dim zones)
-	if atmo then TweenService:Create(atmo, info, { Color = look.atmo, Decay = look.decay:Lerp(look.atmo, dimZone and 0.4 or 0), Density = math.min(look.density * 0.85, dimZone and 0.3 or 0.34), Haze = look.haze * (dimZone and 0.4 or 0.55), Glare = 0.1 }):Play() end
+	if atmo then TweenService:Create(atmo, info, { Color = look.atmo, Decay = look.decay:Lerp(look.atmo, dimZone and 0.4 or 0), Density = math.min(look.density * 0.85, dimZone and 0.3 or 0.34), Haze = look.haze * (dimZone and 0.4 or 0.55), Glare = isNight and 0.15 or 0.55 }):Play() end -- glare: the sun's glow across the sky
 	-- the mood of the light: night zones glow (stronger bloom on the neon, cool moonlight,
 	-- softer shadows), sunset zones get warm sun rays, day zones crisp shadows
 	local night = isNight
@@ -8612,21 +8906,22 @@ local function applyLook(look)
 	if cc then
 		TweenService:Create(cc, info, {
 			TintColor = look.tint,
-			Saturation = night and 0.22 or 0.15,
-			Contrast = night and 0.18 or 0.14,
+			Saturation = night and 0.25 or 0.22,
+			Contrast = night and 0.2 or 0.16,
 		}):Play()
 	end
 	local bloom = Lighting:FindFirstChild("SVB_Bloom")
 	if bloom then
 		TweenService:Create(bloom, info, {
-			Intensity = night and 0.75 or 0.3,
-			Size = night and 30 or 22,
-			Threshold = night and 1.4 or 2.2,
+			Intensity = night and 0.75 or 0.45,
+			Size = night and 30 or 28,
+			Threshold = night and 1.4 or 1.9,
 		}):Play()
 	end
 	local rays = Lighting:FindFirstChild("SVB_SunRays")
 	if rays then
-		TweenService:Create(rays, info, { Intensity = night and 0 or (sunset and 0.1 or 0.05), Spread = sunset and 0.7 or 0.5 }):Play()
+		-- sun rays streaming across the sky when you look toward the sun
+		TweenService:Create(rays, info, { Intensity = night and 0.02 or (sunset and 0.2 or 0.13), Spread = sunset and 0.85 or 0.7 }):Play()
 	end
 	local clouds = workspace.Terrain:FindFirstChildOfClass("Clouds")
 	-- (thick cloud cover made zones gloomy, so it's capped)

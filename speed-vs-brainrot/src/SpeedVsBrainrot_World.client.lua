@@ -604,7 +604,7 @@ local function applyLook(look)
 	}):Play()
 	local atmo = Lighting:FindFirstChild("SVB_Atmosphere")
 	-- (thick haze makes far things murky: kept lighter in dim zones)
-	if atmo then TweenService:Create(atmo, info, { Color = look.atmo, Decay = look.decay:Lerp(look.atmo, dimZone and 0.4 or 0), Density = math.min(look.density * 0.85, dimZone and 0.3 or 0.34), Haze = look.haze * (dimZone and 0.4 or 0.55), Glare = 0.1 }):Play() end
+	if atmo then TweenService:Create(atmo, info, { Color = look.atmo, Decay = look.decay:Lerp(look.atmo, dimZone and 0.4 or 0), Density = math.min(look.density * 0.85, dimZone and 0.3 or 0.34), Haze = look.haze * (dimZone and 0.4 or 0.55), Glare = isNight and 0.15 or 0.55 }):Play() end -- glare: the sun's glow across the sky
 	-- the mood of the light: night zones glow (stronger bloom on the neon, cool moonlight,
 	-- softer shadows), sunset zones get warm sun rays, day zones crisp shadows
 	local night = isNight
@@ -617,21 +617,22 @@ local function applyLook(look)
 	if cc then
 		TweenService:Create(cc, info, {
 			TintColor = look.tint,
-			Saturation = night and 0.22 or 0.15,
-			Contrast = night and 0.18 or 0.14,
+			Saturation = night and 0.25 or 0.22,
+			Contrast = night and 0.2 or 0.16,
 		}):Play()
 	end
 	local bloom = Lighting:FindFirstChild("SVB_Bloom")
 	if bloom then
 		TweenService:Create(bloom, info, {
-			Intensity = night and 0.75 or 0.3,
-			Size = night and 30 or 22,
-			Threshold = night and 1.4 or 2.2,
+			Intensity = night and 0.75 or 0.45,
+			Size = night and 30 or 28,
+			Threshold = night and 1.4 or 1.9,
 		}):Play()
 	end
 	local rays = Lighting:FindFirstChild("SVB_SunRays")
 	if rays then
-		TweenService:Create(rays, info, { Intensity = night and 0 or (sunset and 0.1 or 0.05), Spread = sunset and 0.7 or 0.5 }):Play()
+		-- sun rays streaming across the sky when you look toward the sun
+		TweenService:Create(rays, info, { Intensity = night and 0.02 or (sunset and 0.2 or 0.13), Spread = sunset and 0.85 or 0.7 }):Play()
 	end
 	local clouds = workspace.Terrain:FindFirstChildOfClass("Clouds")
 	-- (thick cloud cover made zones gloomy, so it's capped)
