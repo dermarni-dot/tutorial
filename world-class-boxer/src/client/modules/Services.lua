@@ -1,8 +1,10 @@
 -- Services: the gym's service windows.
---  Barber Shop  - restyle / recolour / dye / highlights / beards, trims reset growth
---  Locker Room  - trunks, socks, shoes, wraps, mouthguard, robe and glove customization
---                 (glove options unlock with better gloves: trim, stitching, finishes,
---                 metallic, logos, name & nickname embroidery)
+--  Barber Shop  - grouped styles, hair types, hairline / line-up, part, recolour / dye / highlights,
+--                 beards + beard colour; a fresh cut resets growth (previewed live); prices from
+--                 Looks.BarberPrice (the same function the server charges with)
+--  Locker Room  - trunks, socks, shoes, laces, wraps + wrap pattern, mouthguard, robe and glove
+--                 customization (glove options unlock with better gloves: trim, stitching, finishes,
+--                 metallic, logos, name & nickname embroidery, brand on custom gloves)
 --  Nutrition Bar, water coolers, and Sleep (ends the day with a day transition)
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
@@ -46,6 +48,36 @@ end
 ------------------------------------------------------------------------
 local session -- { section, look, shade, win, body, dirty, conn, camConn, saved }
 
+-- a soft client-only key light on the face while sitting in the barber chair
+local function keyLight(on)
+	local cam = workspace.CurrentCamera
+	local old = cam and cam:FindFirstChild("BarberKeyLight")
+	if old then
+		old:Destroy()
+	end
+	if not (on and cam) then
+		return nil
+	end
+	local p = Instance.new("Part")
+	p.Name = "BarberKeyLight"
+	p.Anchored = true
+	p.CanCollide = false
+	p.CanQuery = false
+	p.CanTouch = false
+	p.CastShadow = false
+	p.Transparency = 1
+	p.Size = Vector3.new(0.2, 0.2, 0.2)
+	local key = Instance.new("SpotLight")
+	key.Brightness = 1.3
+	key.Range = 9
+	key.Angle = 50
+	key.Color = Color3.fromRGB(255, 238, 220)
+	key.Face = Enum.NormalId.Front
+	key.Parent = p
+	p.Parent = cam
+	return p
+end
+
 local function closeSession(save)
 	local s = session
 	if not s then
@@ -60,6 +92,7 @@ local function closeSession(save)
 	if s.camConn then
 		s.camConn:Disconnect()
 	end
+	keyLight(false)
 	workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
 	local _, hum = State.char()
 	if hum then
@@ -78,6 +111,7 @@ local function sessionCamera(head)
 	local cam = workspace.CurrentCamera
 	cam.CameraType = Enum.CameraType.Scriptable
 	local yaw = 0
+	local light = head and keyLight(true) or nil
 	return RunService.RenderStepped:Connect(function(dt)
 		cam = workspace.CurrentCamera
 		if cam.CameraType ~= Enum.CameraType.Scriptable then
@@ -97,6 +131,9 @@ local function sessionCamera(head)
 		if head then
 			local t = h.Position
 			goal = CFrame.lookAt(t + look * 4.2 + right * 1.6 + Vector3.new(0, 0.3, 0), t + right * 1.2)
+			if light and light.Parent then
+				light.CFrame = CFrame.lookAt(t + look * 2.2 + right * 1.3 + Vector3.new(0, 1.1, 0), t)
+			end
 		else
 			local t = root.Position + Vector3.new(0, 0.6, 0)
 			goal = CFrame.lookAt(t + look * 10 + right * 3.6 + Vector3.new(0, 0.8, 0), t + right * 2.8)
@@ -188,7 +225,7 @@ local function openSession(section, title, width, onRender, footerFn)
 			s.dirty = false
 			s.lastSent = os.clock()
 			task.spawn(function()
-				local res = State.req("PreviewLook", s.look, section == "locker" and "gloves" or "wraps")
+				local res = State.req("PreviewLook", s.look, section == "locker" and "gloves" or "wraps", s.popts and s.popts() or nil)
 				if res and res.throttled and session == s then
 					s.dirty = true
 				end
@@ -228,75 +265,103 @@ end
 ------------------------------------------------------------------------
 -- Barber
 ------------------------------------------------------------------------
+-- the shared price function (Looks.BarberPrice) so the label always matches what the server charges
 local function barberPrice(old, new)
-	local price = 30
-	local h1, h2 = old.hair, new.hair
-	if h2.hl ~= h1.hl or h2.dye ~= h1.dye or ((h2.hl or h2.dye ~= "None") and not sameColor(h2.hcolor, h1.hcolor)) then
-		price += 60
-	end
-	if not sameColor(h2.color, h1.color) then
-		price += 40
-	end
-	return price
+	local ok, price = pcall(Looks.BarberPrice, old, new)
+	return ok and price or 30
 end
 
 function Services.Barber()
 	local opts = { cut = true, shave = false }
-	openSession("barber", "BARBER SHOP", 560, function(s)
+	local sess = openSession("barber", "BARBER SHOP", 560, function(s)
 		local body = s.body
 		local h = s.look.hair
+		local beard = s.look.beard
 		local P = State.P
-		UI.Line(body, string.format("Big Lou: \"Sit down, champ. Hair's grown %d%% since your last cut.\"", math.floor((P.appearance.hair.growth or 0) / 1.5 * 100)), { TextColor3 = Color3.fromRGB(255, 210, 160), TextSize = 14 })
-		UI.Cycler(body, "Hair type", Looks.HairTypes, h.type, function(v)
-			h.type = v
-			s.preview()
-		end)
-		local grid = UI.Frame(body, { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y })
-		UI.Grid(grid, UDim2.new(1 / 3, -6, 0, 30), nil, 6)
-		for i, st in ipairs(Looks.HairStyles) do
-			UI.Button(grid, st, { LayoutOrder = i, TextSize = 13, BackgroundColor3 = h.style == st and T.gold or T.panel2, TextColor3 = h.style == st and T.bg or T.text }, function()
-				h.style = st
+		local grown = (P.appearance.hair and P.appearance.hair.growth) or 0
+		local days = math.floor(grown / (Config.HairGrowthPerDay or 0.02) + 0.5)
+		UI.Line(body, string.format("Big Lou: \"Sit down, champ. That's about %d day%s of growth since your last cut.\"", days, days == 1 and "" or "s"), { TextColor3 = Color3.fromRGB(255, 210, 160), TextSize = 14 })
+		if not Config.BaldMode then
+			UI.Cycler(body, "Hair type", Looks.HairTypeOrder, h.type, function(v)
+				h.type = v
+				s.preview()
+			end, Looks.HairTypeName)
+			for _, group in ipairs(Looks.HairStyleGroups) do
+				UI.Header(body, group.name:upper())
+				local grid = UI.Frame(body, { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y })
+				UI.Grid(grid, UDim2.new(1 / 3, -6, 0, 30), nil, 6)
+				for i, st in ipairs(group.styles) do
+					UI.Button(grid, st, { LayoutOrder = i, TextSize = 13, BackgroundColor3 = h.style == st and T.gold or T.panel2, TextColor3 = h.style == st and T.bg or T.text }, function()
+						h.style = st
+						s.preview()
+						s.render()
+					end)
+				end
+			end
+			UI.Header(body, "CUT")
+			UI.Cycler(body, "Hairline", Looks.Hairlines, h.hairline or "Natural", function(v)
+				h.hairline = v
+				s.preview()
+			end, function(v)
+				return v == "Line-Up" and "Line-Up / edge-up" or v
+			end)
+			UI.Cycler(body, "Part", Looks.HairParts, h.part or "None", function(v)
+				h.part = v
+				s.preview()
+			end)
+			for _, sl in ipairs(Looks.HairSliders) do
+				UI.Slider(body, sl.label, sl.min, sl.max, h[sl.key] or 0.5, nil, function(v)
+					h[sl.key] = v
+					s.preview()
+				end)
+			end
+			UI.Toggle(body, "Fresh cut (resets hair growth)", opts.cut, function(v)
+				opts.cut = v
+				s.preview()
+			end)
+			UI.Header(body, "COLOUR")
+			colorField(s, body, "Hair colour", function()
+				return h.color
+			end, function(c)
+				h.color = c
+			end, Looks.HairColors)
+			UI.Toggle(body, "Highlights", h.hl, function(v)
+				h.hl = v
+				s.preview()
+			end)
+			UI.Cycler(body, "Dye pattern", Looks.DyePatterns, h.dye, function(v)
+				h.dye = v
+				s.preview()
+			end)
+			colorField(s, body, "Highlight / dye colour", function()
+				return h.hcolor
+			end, function(c)
+				h.hcolor = c
+			end, Looks.HairColors)
+		end
+		if s.look.gender == 1 then
+			UI.Header(body, "BEARD")
+			UI.Cycler(body, "Beard style", Looks.BeardStyles, beard.style, function(v)
+				beard.style = v
+				s.preview()
+			end)
+			UI.Toggle(body, "Beard matches hair colour", beard.color == nil, function(v)
+				beard.color = (not v) and table.clone(h.color) or nil
 				s.preview()
 				s.render()
 			end)
-		end
-		for _, sl in ipairs(Looks.HairSliders) do
-			UI.Slider(body, sl.label, sl.min, sl.max, h[sl.key] or 0.5, nil, function(v)
-				h[sl.key] = v
-				s.preview()
-			end)
-		end
-		colorField(s, body, "Hair colour", function()
-			return h.color
-		end, function(c)
-			h.color = c
-		end, Looks.HairColors)
-		UI.Toggle(body, "Highlights", h.hl, function(v)
-			h.hl = v
-			s.preview()
-		end)
-		UI.Cycler(body, "Dye pattern", Looks.DyePatterns, h.dye, function(v)
-			h.dye = v
-			s.preview()
-		end)
-		colorField(s, body, "Highlight / dye colour", function()
-			return h.hcolor
-		end, function(c)
-			h.hcolor = c
-		end, Looks.HairColors)
-		if s.look.gender == 1 then
-			UI.Cycler(body, "Beard style", Looks.BeardStyles, s.look.beard.style, function(v)
-				s.look.beard.style = v
-				s.preview()
-			end)
+			if beard.color then
+				colorField(s, body, "Beard colour", function()
+					return beard.color
+				end, function(c)
+					beard.color = c
+				end, Looks.HairColors)
+			end
 			UI.Toggle(body, "Shave / trim beard back", opts.shave, function(v)
 				opts.shave = v
 			end)
 		end
-		UI.Toggle(body, "Fresh cut (resets hair growth)", opts.cut, function(v)
-			opts.cut = v
-		end)
-		UI.Line(body, "Cut $30  -  new colour +$40  -  highlights / dye +$60", { TextColor3 = T.sub, TextSize = 13 })
+		UI.Line(body, "Cut $30  -  new colour +$40  -  highlights / dye +$60  -  locs, twists & braids +$90-140  -  fades +$10  -  line-up +$15  -  new beard style +$15  -  beard colour +$20", { TextColor3 = T.sub, TextSize = 13 })
 	end, function(s)
 		local btn = UI.Button(s.footer, "", { Size = UDim2.new(0.62, 0, 1, 0), BackgroundColor3 = T.gold, TextColor3 = T.bg })
 		s.updateFooter = function()
@@ -316,6 +381,13 @@ function Services.Barber()
 			closeSession(false)
 		end)
 	end)
+	if sess then
+		-- preview the cut fresh (growth 0) or as it is now; only the head needs rebuilding
+		sess.popts = function()
+			return { growth = opts.cut and 0 or nil, only = { Face = true, Hair = true, Beard = true } }
+		end
+		sess.preview()
+	end
 end
 
 ------------------------------------------------------------------------
@@ -381,6 +453,24 @@ function Services.Locker()
 				s.preview()
 			end)
 		end
+		if custom.brand then
+			-- custom gloves can carry any maker's signature
+			local own = Catalog.GearBrand("gloves", glove.id, nil)
+			local brands = { "Auto" }
+			for _, id in ipairs(Catalog.BrandOrder) do
+				table.insert(brands, id)
+			end
+			UI.Cycler(body, "Brand", brands, table.find(brands, g.brand) and g.brand or "Auto", function(v)
+				g.brand = v
+				s.preview()
+			end, function(v)
+				if v == "Auto" then
+					return "Own (" .. ((own and own.name) or "maker") .. ")"
+				end
+				local b = Catalog.Brand(v)
+				return b and b.name or v
+			end)
+		end
 		if custom.embroidery then
 			UI.Toggle(body, "Embroider name (left cuff)", g.embName, function(v)
 				g.embName = v
@@ -392,7 +482,7 @@ function Services.Locker()
 			end)
 		end
 		local locked = {}
-		for _, k in ipairs({ "trim", "stitching", "finish", "metallic", "logo", "embroidery" }) do
+		for _, k in ipairs({ "trim", "stitching", "finish", "metallic", "logo", "embroidery", "brand" }) do
 			if not custom[k] then
 				table.insert(locked, k)
 			end
@@ -440,11 +530,20 @@ function Services.Locker()
 			a.shoeStyle = v
 			s.preview()
 		end)
+		colorField(s, body, "Laces", function()
+			return a.laces
+		end, function(c)
+			a.laces = c
+		end, pal)
 		colorField(s, body, "Hand wraps", function()
 			return a.wraps
 		end, function(c)
 			a.wraps = c
 		end, pal)
+		UI.Cycler(body, "Wrap pattern", Looks.WrapPatterns, a.wrapPattern or "Solid", function(v)
+			a.wrapPattern = v
+			s.preview()
+		end)
 		colorField(s, body, "Mouthguard", function()
 			return a.mouthguard
 		end, function(c)

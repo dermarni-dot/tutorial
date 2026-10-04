@@ -459,7 +459,9 @@ local function buildStructure(root)
 	band("S", -109, -10)
 	band("S", 10, 109)
 	band("W", -79, 79)
-	band("E", -79, 79)
+	-- the east wall opens into the Elite Performance Wing at z 44..56 (MapBuilder.EliteWing)
+	band("E", -79, 43.5)
+	band("E", 56.5, 79)
 	-- EXIT signs over both doorways
 	for _, d in ipairs({ { "S", 0 }, { "N", 0 } }) do
 		local box, face = onWall(f, "ExitSign", d[1], d[2], 15.3, 3, 1, 0.4, Color3.fromRGB(20, 20, 22), M.SmoothPlastic)
@@ -1066,7 +1068,8 @@ local function buildRecovery(root)
 		point(emitter(f, CF(p + V3(0, 5.9, 0))), Color3.fromRGB(255, 205, 150), 14, 0.65)
 	end
 	wallText(f, "S", 90, 10, 26, 2.6, "RECOVERY IS PART OF TRAINING", Color3.fromRGB(120, 230, 210))
-	wallText(f, "E", 50, 7.5, 16, 1.6, "BREATHE  -  RESET  -  REBUILD", Color3.fromRGB(220, 220, 230), Enum.Font.GothamBold)
+	-- (moved north of the Elite wing doorway)
+	wallText(f, "E", 33, 7.5, 16, 1.6, "BREATHE  -  RESET  -  REBUILD", Color3.fromRGB(220, 220, 230), Enum.Font.GothamBold)
 end
 
 ------------------------------------------------------------------------
@@ -1297,7 +1300,10 @@ local function buildExterior(root)
 	end
 	for _, z in ipairs({ -35, 47 }) do
 		part(f, "PilasterW", V3(0.8, 30, 2.2), CF(-111.4, 15, z), C.brickDark, M.Brick)
-		part(f, "PilasterE", V3(0.8, 30, 2.2), CF(111.4, 15, z), C.brickDark, M.Brick)
+		-- the Elite wing annex (z 30..66) is built against the east wall where the second pilaster was
+		if z ~= 47 then
+			part(f, "PilasterE", V3(0.8, 30, 2.2), CF(111.4, 15, z), C.brickDark, M.Brick)
+		end
 	end
 	part(f, "CorniceS", V3(225, 1.3, 1.2), CF(0, 29.4, 81.6), Color3.fromRGB(60, 34, 30), M.Concrete)
 	part(f, "CorniceN", V3(225, 1.3, 1.2), CF(0, 29.4, -81.6), Color3.fromRGB(60, 34, 30), M.Concrete)

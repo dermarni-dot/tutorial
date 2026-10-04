@@ -1,35 +1,50 @@
 -- GymVisuals: draws YOUR gym's equipment (client side) at every station, matched to
 -- your upgrade level and its condition: worn canvas bags with duct tape and tears,
 -- leather and smart bags, speed-bag platforms, double-end bags on elastic cords,
--- benches, racks, plates, treadmills, bikes, rowers, ice baths, sauna, massage table,
--- the elite recovery chamber, pool upgrades and the sparring-ring styling.
+-- benches, racks, plates, the medicine-ball station, treadmills, bikes, rowers, ice baths,
+-- sauna, massage table, the elite recovery chamber, pool upgrades and the sparring-ring styling.
 -- Every level reads at a glance: level 1 is worn, rusty, taped and mismatched, the middle
 -- levels are clean pro gear, the top levels get gold trim, LED accents and smart screens.
--- Bags swing when you hit them, the speed bag rebounds, the double-end bag springs
--- back, belts, flywheels, pedals and fans spin while someone trains, smart displays show
--- your numbers, and the bar / dumbbells / rope / handle you pick up leave the rack.
+-- Hanging bags are real pendulums (swing, twist, shock-spring bob, segment dents, stand shake,
+-- chain jingle, per-material sound) and react to YOUR punches, to other players training and to
+-- the gym members working the members' bags (Animator's client-local AutoAct, CONTRACTS s.7).
+-- The speed bag rebounds, the double-end bag springs back, belts, flywheels, pedals and fans
+-- spin while someone trains, smart displays show your numbers, sweat drips onto the floor,
+-- and the bar / dumbbells / rope / ball you pick up leave the rack. An upgrade is revealed with
+-- a fade-in, confetti and a chime. Refresh(P) also hands the facility tier to GymFacility (tier
+-- dressing, elite wing, career wall, trophies) and Ambience (dust, grade).
 local RunService = game:GetService("RunService")
+local Players = game:GetService("Players")
+local CollectionService = game:GetService("CollectionService")
+local TweenService = game:GetService("TweenService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Catalog = require(Shared:WaitForChild("Catalog"))
+local GymSound = require(script.Parent:WaitForChild("GymSound"))
 
 local GymVisuals = {}
 local Debris = game:GetService("Debris")
+local player = Players.LocalPlayer
 
--- built-in Roblox sounds (no uploaded assets needed)
+-- optional companions: if one of them fails to load the stations still work
+local function optional(name)
+	local ok, mod = pcall(function()
+		return require(script.Parent:WaitForChild(name, 10))
+	end)
+	if not ok then
+		warn("[GymVisuals] " .. name .. " unavailable: " .. tostring(mod))
+		return nil
+	end
+	return mod
+end
+
+-- built-in Roblox sounds (no uploaded assets needed); played through GymSound's pool
 local THUD = "rbxasset://sounds/action_jump_land.mp3"
 function GymVisuals.Sound(pos, speed, volume, id)
-	local att = Instance.new("Attachment")
-	att.WorldPosition = pos
-	att.Parent = workspace.Terrain
-	local snd = Instance.new("Sound")
-	snd.SoundId = id or THUD
-	snd.PlaybackSpeed = speed or 1
-	snd.Volume = volume or 0.5
-	snd.RollOffMaxDistance = 70
-	snd.Parent = att
-	snd:Play()
-	Debris:AddItem(att, 2)
+	if typeof(pos) ~= "Vector3" then
+		return
+	end
+	GymSound.Play("raw", pos, { id = id or THUD, speed = speed or 1, volume = volume or 0.5, maxDistance = 70 })
 end
 
 local V3 = Vector3.new
@@ -335,6 +350,264 @@ local function towel(model, cf, color, w, d)
 end
 
 ------------------------------------------------------------------------
+-- Hanging-bag physics (heavy bag station and the members' bags)
+------------------------------------------------------------------------
+-- A real pendulum about the hook: angular acceleration -(g / L) * sin(angle) on two axes, with
+-- g = real gravity at 0.28 m per stud so a bag on a short chain swings with a heavy bag's ~2.4 s
+-- period and the members' long-chain bags sway slowly. Plus a torsional twist about the chain,
+-- a bob on the shock spring, per-segment dents and a stand shake. Masses differ per level: the
+-- old canvas bag flies around, the champion bag barely moves.
+local SEGS = 5
+local G = 35 -- studs / s^2
+local TWIST_K, TWIST_C = 6, 1.6 -- chain / swivel torsion spring and its damping
+local DENT_W = 28 -- dent spring: angular frequency and damping (zeta ~0.35)
+local DENT_W2, DENT_C = DENT_W * DENT_W, 2 * 0.35 * DENT_W
+-- the stand pieces near the hook that shake on a hit
+local STAND_SHAKE = { StandArm = true, ArmCap = true, ArmBrace = true, MountPlate = true, Bolt = true, EyeShank = true, EyeBolt = true }
+
+-- how each punch moves the bag: forward swing, sideways push and twist (both x hand side) and the
+-- shock-spring bob (uppercuts lift it, overhands drive it down)
+local SWING = { jab = 1, cross = 1.05, leadhook = 0.55, rearhook = 0.6, uppercut = 0.4, overhand = 0.95 }
+local LATERAL = { jab = 0.05, cross = 0.05, leadhook = -0.55, rearhook = -0.55, uppercut = 0, overhand = -0.2 }
+local TWIST = { jab = 0.3, cross = 0.35, leadhook = -0.95, rearhook = -1.0, uppercut = 0.12, overhand = -0.5 }
+local BOB = { uppercut = 1, overhand = -0.45 }
+-- where on the bag a punch lands (segment 1 = bottom .. 5 = top)
+local function dentSegment(ptype, zone)
+	if zone == "body" then
+		return ptype == "uppercut" and 3 or 2
+	end
+	return ptype == "uppercut" and 3 or 4
+end
+
+-- hook: CFrame of the pivot; group: every part that swings; o = { L, mass, bagCF, len, segL, radius,
+-- topDepth, springParts, spring, bulges, standParts, standGain, material, fx, damp }
+local function newPendulum(hook, group, o)
+	local d = {
+		kind = "pendulum", hook = hook, parts = {}, rels = {}, segOf = {}, twistW = {}, bobW = {},
+		L = o.L or 5, mass = o.mass or 1, damp = o.damp or 0.42, ax = 0, az = 0, vx = 0, vz = 0, yaw = 0, vyaw = 0, bob = 0, vbob = 0,
+		segs = {}, segDir = V3(0, 0, -1), dentSeg = 3, bulges = o.bulges or {}, fx = o.fx, material = o.material or "leather",
+		hits = 0, shake = 0, shakeT = 0, shakeDir = V3(0, 0, -1), standGain = o.standGain or 1, spring = o.spring == true,
+		len = o.len, segL = o.segL, radius = o.radius or 1, lastSign = 0, chainAt = 0, settled = true,
+	}
+	for i = 1, SEGS do
+		d.segs[i] = { off = 0, v = 0 }
+	end
+	local topDepth = o.topDepth or 2.45
+	local springParts = o.springParts or {}
+	local bagCF = o.bagCF
+	d.bagRel = bagCF and hook:ToObjectSpace(bagCF) or CF(0, -d.L, 0)
+	d.home = bagCF and bagCF.Position or (hook * CF(0, -d.L, 0)).Position
+	for _, p in ipairs(group) do
+		local rel = hook:ToObjectSpace(p.CFrame)
+		local depth = -rel.Position.Y
+		local seg, tw, bw = 0, 1, 1
+		if depth < topDepth then
+			-- chain between the hook and the top of the bag: winds up progressively, never dents
+			tw = math.clamp(depth / topDepth, 0, 1)
+		elseif bagCF and o.len and o.segL then
+			local ly = bagCF:PointToObjectSpace(p.Position).Y
+			if ly < -o.len / 2 - 0.25 then
+				seg = 1
+			elseif ly <= o.len / 2 + 0.25 then
+				seg = math.clamp(math.floor((ly + o.len / 2) / o.segL) + 1, 1, SEGS)
+			else
+				seg = SEGS
+			end
+		end
+		if d.spring then
+			-- only what hangs below the shock spring bobs; the coils squash progressively
+			bw = springParts[p] or (depth >= 1.2 and 1 or 0)
+		end
+		table.insert(d.parts, p)
+		table.insert(d.rels, rel)
+		table.insert(d.segOf, seg)
+		table.insert(d.twistW, tw)
+		table.insert(d.bobW, bw)
+	end
+	d.standParts, d.standBase = {}, {}
+	for _, p in ipairs(o.standParts or {}) do
+		table.insert(d.standParts, p)
+		table.insert(d.standBase, p.CFrame)
+	end
+	return d
+end
+
+
+-- advance one bag by dt and queue its parts' CFrames for one BulkMoveTo
+local function stepPendulum(d, dt, now, bulkP, bulkC)
+	local w2 = G / d.L
+	local damp = math.exp(-dt * d.damp)
+	d.vx = (d.vx - w2 * math.sin(d.ax) * dt) * damp
+	d.vz = (d.vz - w2 * math.sin(d.az) * dt) * damp
+	d.ax = math.clamp(d.ax + d.vx * dt, -0.7, 0.7)
+	d.az = math.clamp(d.az + d.vz * dt, -0.7, 0.7)
+	d.vyaw = (d.vyaw - TWIST_K * d.yaw * dt) * math.exp(-dt * TWIST_C)
+	d.yaw = math.clamp(d.yaw + d.vyaw * dt, -1.3, 1.3)
+	if d.spring then
+		d.vbob = (d.vbob - 170 * d.bob * dt) * math.exp(-dt * 7)
+		d.bob = math.clamp(d.bob + d.vbob * dt, -0.22, 0.22)
+	end
+	-- chain jingle when the swing turns around with some speed behind it
+	local sign = d.vx > 0.02 and 1 or (d.vx < -0.02 and -1 or 0)
+	if sign ~= 0 and sign ~= d.lastSign then
+		if d.lastSign ~= 0 and math.abs(d.ax) > 0.045 and now - d.chainAt > 0.4 then
+			d.chainAt = now
+			GymSound.Play("chain", d.hook.Position - V3(0, 1, 0), { volume = math.clamp(math.abs(d.ax) * 8, 0.3, 1.2) })
+		end
+		d.lastSign = sign
+	end
+	-- dents: stiff, so sub-stepped
+	local denting = false
+	if d.dentT then
+		if now - d.dentT < 1.4 then
+			local n = math.max(1, math.ceil(dt * 240))
+			local h = dt / n
+			for _ = 1, n do
+				for _, s in ipairs(d.segs) do
+					s.v += (-DENT_W2 * s.off - DENT_C * s.v) * h
+					s.off += s.v * h
+				end
+			end
+		else
+			for _, s in ipairs(d.segs) do
+				s.off, s.v = 0, 0
+			end
+			d.dentT = nil
+		end
+		denting = true
+	end
+	-- stand shake (the hook rides on the arm, so the bag shakes with it)
+	local shakeOff = Vector3.zero
+	if d.shake > 0 then
+		local el = now - d.shakeT
+		local amp = d.shake * math.exp(-el * 8)
+		if amp < 0.0015 then
+			d.shake = 0
+		else
+			shakeOff = d.shakeDir * (amp * math.sin(el * 70))
+		end
+		for i, p in ipairs(d.standParts) do
+			table.insert(bulkP, p)
+			table.insert(bulkC, d.standBase[i] + shakeOff)
+		end
+	end
+	local moving = math.abs(d.ax) + math.abs(d.az) + math.abs(d.vx) + math.abs(d.vz) + math.abs(d.yaw) + math.abs(d.vyaw) + math.abs(d.bob) + math.abs(d.vbob) > 0.0015
+	if not (moving or denting or d.shake > 0) then
+		if d.settled then
+			return
+		end
+		d.settled = true -- one last write puts everything exactly home
+	else
+		d.settled = false
+	end
+	local base = (d.hook + shakeOff) * CFrame.Angles(d.ax, 0, d.az)
+	for i, p in ipairs(d.parts) do
+		local cf = base
+		local seg = d.segOf[i]
+		if seg > 0 then
+			local off = d.segs[seg].off
+			if off ~= 0 then
+				cf = cf * CF(d.segDir * off)
+			end
+		end
+		local tw = d.twistW[i] * d.yaw
+		if tw ~= 0 then
+			cf = cf * CFrame.Angles(0, tw, 0)
+		end
+		local by = d.bobW[i] * d.bob
+		if by ~= 0 then
+			cf = cf * CF(0, by, 0)
+		end
+		table.insert(bulkP, p)
+		table.insert(bulkC, cf * d.rels[i])
+	end
+	-- side bulges ride on the dented segment and swell while it is compressed
+	if #d.bulges > 0 and d.segL then
+		local s = d.segs[d.dentSeg]
+		local amt = math.clamp(math.abs(s and s.off or 0) / 0.12, 0, 1)
+		local segY = -d.len / 2 + (d.dentSeg - 0.5) * d.segL
+		local twisted = base * CF(d.segDir * (s and s.off or 0) * 0.5) * CFrame.Angles(0, d.yaw, 0) * CF(0, d.bob, 0) * d.bagRel
+		for _, b in ipairs(d.bulges) do
+			b.mesh.Scale = V3(0.6 + amt * 1.25, 1 - amt * 0.08, 1 + amt * 0.1)
+			table.insert(bulkP, b.part)
+			table.insert(bulkC, twisted * CF(b.side * (d.radius - 0.22), segY, 0))
+		end
+	end
+end
+
+-- a punch lands on a hanging bag. power 0..1.5 (negative = toward the boxer), side -1 L / 1 R
+local function hitPendulum(d, power, side, ptype, zone, opts)
+	local p = math.abs(power)
+	local dir = power < 0 and -1 or 1
+	local zoneMul = zone == "body" and 0.85 or 1
+	-- a punch gives the bag ~0.5 m/s (1.8 studs/s) at full power; as an angular velocity that is
+	-- v / L, so a long-chain bag moves further but slower, like the real thing
+	local k = 1.8 * p / d.mass / d.L
+	ptype = SWING[ptype] and ptype or "cross"
+	d.vx += k * SWING[ptype] * zoneMul * dir
+	d.vz += k * LATERAL[ptype] * side
+	d.vyaw += 0.75 * p / d.mass * TWIST[ptype] * side
+	if d.spring then
+		d.vbob += (BOB[ptype] or 0.12) * p * 1.7
+	end
+	d.settled = false
+	local now = os.clock()
+	-- dent: the hit segment is shoved in, the neighbours follow a little
+	if d.segL then
+		local seg = dentSegment(ptype, zone)
+		local soft = d.material == "canvas" and 1.3 or (d.material == "smart" and 0.9 or 1)
+		local amp = math.min(0.2, 0.12 * p * soft)
+		local lateral = (LATERAL[ptype] or 0) * side
+		d.segDir = V3(-lateral * 1.1, 0, -1).Unit * dir
+		d.dentSeg = seg
+		for i, s in ipairs(d.segs) do
+			local f = i == seg and 1 or (math.abs(i - seg) == 1 and 0.35 or 0)
+			if f > 0 then
+				s.off = s.off * 0.3 + amp * f
+				s.v = 0
+			end
+		end
+		d.dentT = now
+	end
+	-- the stand rocks
+	d.shake = math.min(0.08, d.shake * 0.5 + 0.022 * p * d.standGain)
+	d.shakeT = now
+	d.shakeDir = V3(LATERAL[ptype] * side * 0.5, 0, -1).Unit * dir
+	-- sound: the material of the bag, deeper for body shots; smart bags add a sensor ping
+	local segY = d.segL and (-d.len / 2 + (dentSegment(ptype, zone) - 0.5) * d.segL) or 0
+	local hitPos = (d.hook * d.bagRel * CF(0, segY, d.radius)).Position
+	local vol = (0.55 + p * 0.45) * (opts and opts.remote and 0.6 or 1)
+	local prof = zone == "body" and "bag_body"
+		or ({ canvas = "bag_canvas", leather = "bag_leather", premium = "bag_premium", smart = "bag_leather" })[d.material] or "bag_leather"
+	GymSound.Play(prof, hitPos, { volume = vol, speed = 1 - math.clamp(d.mass - 1, 0, 0.4) * 0.15 })
+	if zone == "body" and d.material ~= "canvas" then
+		GymSound.Play(d.material == "premium" and "bag_premium" or "bag_leather", hitPos, { volume = vol * 0.35, speed = 1.15 })
+	end
+	if d.material == "smart" then
+		task.delay(0.09, function()
+			GymSound.Play("bag_smartping", hitPos, { volume = opts and opts.remote and 0.5 or 1 })
+		end)
+	end
+	if p > 0.95 and now - d.chainAt > 0.3 then
+		d.chainAt = now
+		GymSound.Play("chain", d.hook.Position - V3(0, 0.8, 0), { volume = 0.8 + p * 0.3 })
+	end
+	-- dust / sweat burst off the face that was hit
+	local fx = d.fx
+	if fx and fx.att and fx.att.Parent then
+		pcall(function()
+			fx.att.WorldCFrame = CF(hitPos)
+			if fx.dust then
+				fx.dust:Emit(math.floor(2 + p * 5))
+			end
+			if fx.spray and (opts and opts.sweat or 0) > 0.25 then
+				fx.spray:Emit(math.floor(1 + p * 3 * (opts.sweat or 0)))
+			end
+		end)
+	end
+end
+
+------------------------------------------------------------------------
 -- builders: B[id](model, O, level, cond, rng, ctx) -> dynamic state (optional)
 ------------------------------------------------------------------------
 local B = {}
@@ -426,7 +699,17 @@ B.heavybag = function(m, O, lv, cond, rng)
 	vcyl(m, "EyeShank", 0.12, 0.08, at(0, 10.13, 0), STEEL, M.Metal)
 	cyl(m, "EyeBolt", 0.05, 0.2, at(0, 10.07, 0) * ANG(0, RAD(90), 0), lv == 1 and RUST or STEEL, M.Metal)
 
-	-- everything below the hook swings with the bag
+	-- the stand's top pieces shake a little on every hit (the hook rides on them)
+	local standParts = {}
+	for _, p in ipairs(m:GetChildren()) do
+		if STAND_SHAKE[p.Name] and p:IsA("BasePart") then
+			table.insert(standParts, p)
+		end
+	end
+
+	-- everything below the hook swings with the bag. The bag body is five stacked segments so a
+	-- punch can dent it: the hit segment is shoved in and springs back, its neighbours follow,
+	-- and two hidden side bulges push out while it is compressed
 	local hook = at(0, 10.05, 0)
 	local group = {}
 	local function g(p)
@@ -439,11 +722,13 @@ B.heavybag = function(m, O, lv, cond, rng)
 	local chainC = st.chain
 	g(cyl(m, "Shackle", 0.05, 0.22, H(0, -0.06, 0), chainC, M.Metal))
 	g(vcyl(m, "Swivel", 0.3, 0.2, H(0, -0.42, 0), chainC, M.Metal))
+	local springParts = {}
 	if lv >= 3 then
-		-- shock spring between the swivel and the spreader chains
+		-- shock spring between the swivel and the spreader chains (compresses on uppercuts)
 		g(vcyl(m, "SpringCore", 0.78, 0.07, H(0, -1.18, 0), STEEL, M.Metal))
 		for k = 0, 4 do
-			g(cyl(m, "SpringCoil", 0.045, 0.34, H(0, -0.5 - k * 0.15, 0) * ANG(RAD(k % 2 == 0 and 9 or -9), 0, RAD(90)), chainC, M.Metal))
+			local coil = g(cyl(m, "SpringCoil", 0.045, 0.34, H(0, -0.5 - k * 0.15, 0) * ANG(RAD(k % 2 == 0 and 9 or -9), 0, RAD(90)), chainC, M.Metal))
+			springParts[coil] = k / 4
 		end
 	else
 		chain(m, H(0, -0.42, 0).Position, H(0, -1.0, 0).Position, 2, chainC, 0.18, group)
@@ -465,16 +750,29 @@ B.heavybag = function(m, O, lv, cond, rng)
 	end
 	local bagCF = H(0, -2.45 - len / 2, 0)
 	local up = ANG(0, 0, RAD(90))
-	local bag = g(cyl(m, "Bag", len, st.d, bagCF * up, wear(st.color, cond, 0.35), st.mat))
+	local segL = len / SEGS
+	local bagColor = wear(st.color, cond, 0.35)
+	local bag
+	for s = 1, SEGS do
+		local y = -len / 2 + (s - 0.5) * segL
+		-- a hair longer than its slot so a dented segment never opens a visible gap
+		local seg = g(cyl(m, s == 3 and "Bag" or "BagSeg", segL + 0.05, st.d, bagCF * CF(0, y, 0) * up, bagColor, st.mat))
+		if s == 3 then
+			bag = seg
+		end
+	end
 	local capMat = st.capMat or (lv == 1 and M.Fabric or M.Leather)
 	g(cyl(m, "BagTop", 0.22, st.d * 0.98, bagCF * CF(0, len / 2 + 0.08, 0) * up, st.cap, capMat))
 	g(cyl(m, "BagBottom", 0.22, st.d * 0.98, bagCF * CF(0, -len / 2 - 0.08, 0) * up, st.cap, capMat))
 	for _, s in ipairs({ -1, 1 }) do
 		g(cyl(m, "Piping", 0.08, st.d * 1.03, bagCF * CF(0, s * (len / 2 - 0.02), 0) * up, st.rim, st.rimMat or M.Leather))
 	end
-	-- vertical seams between the panels, stitch lines near the caps
+	-- vertical seams between the panels (one piece per segment so they dent with it), stitch lines near the caps
 	for k = 0, 3 do
-		g(part(m, "Seam", V3(0.05, len - 0.25, 0.05), bagCF * ANG(0, RAD(45 + k * 90), 0) * CF(0, 0, r), st.seam, M.Fabric))
+		for s = 1, SEGS do
+			local y = -len / 2 + (s - 0.5) * segL
+			g(part(m, "Seam", V3(0.05, segL - 0.02, 0.05), bagCF * CF(0, y, 0) * ANG(0, RAD(45 + k * 90), 0) * CF(0, 0, r), st.seam, M.Fabric))
+		end
 	end
 	if lv >= 2 then
 		for _, s in ipairs({ -1, 1 }) do
@@ -526,6 +824,47 @@ B.heavybag = function(m, O, lv, cond, rng)
 		cyl(m, "AnchorRing", 0.06, 0.32, at(0, 0.24, 0) * ANG(0, RAD(90), 0), CHROME, M.Metal)
 	end
 	bagWear(m, bagCF, r, len, cond, rng, group)
+	-- the side bulges: hidden inside the bag until a hit squashes the segment they sit at
+	local bulges = {}
+	for _, sx in ipairs({ -1, 1 }) do
+		local b = part(m, "BagBulge", V3(0.5, segL * 0.9, st.d * 0.55), bagCF * CF(sx * (r - 0.22), 0, 0), bagColor, st.mat, { ellipsoid = true, shadow = false })
+		local mesh = b:FindFirstChildOfClass("SpecialMesh")
+		mesh.Scale = V3(0.6, 1, 1)
+		table.insert(bulges, { part = b, mesh = mesh, side = sx })
+	end
+	-- impact effects: dust from an old canvas bag, sweat spray off any bag (emitted in bursts only)
+	local fxAtt = Instance.new("Attachment")
+	fxAtt.Name = "ImpactFX"
+	fxAtt.Parent = bag
+	local dust = Instance.new("ParticleEmitter")
+	dust.Name = "Dust"
+	dust.Enabled = false
+	dust.Texture = "rbxasset://textures/particles/smoke_main.dds"
+	dust.Color = ColorSequence.new(lv <= 1 and rgb(200, 182, 150) or rgb(170, 165, 158))
+	dust.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.55), NumberSequenceKeypoint.new(1, 1) })
+	dust.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.25), NumberSequenceKeypoint.new(1, 0.9) })
+	dust.Lifetime = NumberRange.new(0.6, 1.3)
+	dust.Speed = NumberRange.new(1, 2.4)
+	dust.SpreadAngle = Vector2.new(40, 40)
+	dust.Acceleration = V3(0, -0.6, 0)
+	dust.Drag = 3
+	dust.LightInfluence = 1
+	dust.EmissionDirection = Enum.NormalId.Back
+	dust.Parent = fxAtt
+	local spray = Instance.new("ParticleEmitter")
+	spray.Name = "Spray"
+	spray.Enabled = false
+	spray.Color = ColorSequence.new(rgb(200, 225, 240))
+	spray.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.3), NumberSequenceKeypoint.new(1, 1) })
+	spray.Size = NumberSequence.new(0.06)
+	spray.Lifetime = NumberRange.new(0.3, 0.55)
+	spray.Speed = NumberRange.new(4, 7)
+	spray.SpreadAngle = Vector2.new(30, 30)
+	spray.Acceleration = V3(0, -40, 0)
+	spray.LightEmission = 0.2
+	spray.LightInfluence = 1
+	spray.EmissionDirection = Enum.NormalId.Back
+	spray.Parent = fxAtt
 	-- smart impact screen on a side arm (level 5+), angled at the boxer
 	local display
 	if lv >= 5 then
@@ -536,11 +875,15 @@ B.heavybag = function(m, O, lv, cond, rng)
 		display = surfaceText(screen, Enum.NormalId.Back, "IMPACT\n-- lbs", rgb(80, 200, 255), rgb(8, 10, 14), 60)
 		light(screen, rgb(80, 200, 255), 6, 0.35)
 	end
-	local rel = {}
-	for _, p in ipairs(group) do
-		rel[p] = hook:ToObjectSpace(p.CFrame)
-	end
-	return { kind = "pendulum", hook = hook, rel = rel, ax = 0, az = 0, vx = 0, vz = 0, display = display, hits = 0, plaque = O * CF(2.6, 2.4, 1.2) }
+	local dyn = newPendulum(hook, group, {
+		L = 2.45 + len / 2, mass = ({ 0.8, 1.0, 1.1, 1.2, 1.25, 1.4 })[lv] or 1, bagCF = bagCF, len = len, segL = segL,
+		radius = r, springParts = springParts, spring = lv >= 3, bulges = bulges, standParts = standParts,
+		standGain = lv == 1 and 1.6 or 1, material = ({ "canvas", "leather", "leather", "premium", "smart", "premium" })[lv] or "leather",
+		fx = { att = fxAtt, dust = lv <= 2 and dust or nil, spray = spray },
+	})
+	dyn.display = display
+	dyn.plaque = O * CF(2.6, 2.4, 1.2)
+	return dyn
 end
 
 B.speedbag = function(m, O, lv, cond, rng)
@@ -1439,6 +1782,177 @@ B.pullup = function(m, O, lv, cond, rng)
 	return { plaque = O * CF(3.8, 2.4, 1.5) }
 end
 
+-- MEDICINE BALL: slams onto a pad in front of the athlete, Russian twists, wall-ball target from level 3.
+-- Level 1: a cracked old leather ball and a scrap of plywood on the bare floor. Level 2: a rubber
+-- ball set on a rack. Level 3: slam balls, a thick slam pad and a wall-ball target board.
+-- Level 4: the elite core station with a rep-counting screen and an LED target ring.
+B.medball = function(m, O, lv, cond, rng)
+	local function at(x, y, z)
+		return O * CF(x, y, z)
+	end
+	local o = O.Position
+	local frame = ({ RUST, BLACK, BLACK, BLACK })[lv] or BLACK
+	local trim = ({ RUST, STEEL, RED, GOLD })[lv] or STEEL
+	local slamZ = 2.2 -- where the ball hits the floor (between the target and the athlete at z 3.8)
+	-- a medicine ball: leather / rubber sphere with seams, grip panels and a weight label
+	local function ball(cf, d, color, mat, label, labelColor, style)
+		local b = part(m, "MedBall", V3(d, d * (style == "cracked" and 0.94 or 1), d), cf, color, mat, { ellipsoid = true })
+		cyl(m, "BallSeam", 0.04, d * 1.02, cf * ANG(0, 0, RAD(90)), style == "cracked" and rgb(60, 40, 25) or DARK, M.Fabric)
+		cyl(m, "BallSeam", 0.04, d * 1.02, cf * ANG(0, RAD(90), 0), style == "cracked" and rgb(60, 40, 25) or DARK, M.Fabric)
+		if style == "slam" then
+			-- textured slam ball: a grip band round the equator
+			cyl(m, "GripBand", d * 0.28, d * 1.01, cf * ANG(0, 0, RAD(90)) * ANG(RAD(90), 0, 0), rgb(40, 40, 44), M.Rubber)
+		end
+		if label then
+			-- on the side facing the athlete / the station camera (+Z)
+			local plate = part(m, "BallLabel", V3(d * 0.42, d * 0.24, 0.04), cf * CF(0, 0, d / 2 - 0.03), labelColor or WHITE, M.SmoothPlastic)
+			tag(plate, Enum.NormalId.Back, label, style == "elite" and GOLD or BLACK, 0.95, 0.85)
+		end
+		return b
+	end
+	if lv == 1 then
+		-- bare floor: a cracked plywood offcut to slam on, a taped X, chalk marks and scuffs
+		part(m, "Plywood", V3(3.0, 0.08, 2.6), at(0.2, 0.04, slamZ) * ANG(0, RAD(6), 0), wear(rgb(170, 135, 90), cond, 0.5), M.WoodPlanks)
+		part(m, "PlyCrack", V3(0.05, 0.09, 1.6), at(0.6, 0.045, slamZ - 0.1) * ANG(0, RAD(30), 0), rgb(60, 45, 30), M.SmoothPlastic)
+		for _, a in ipairs({ 40, -40 }) do
+			part(m, "TapeX", V3(0.22, 0.05, 1.2), at(0.1, 0.09, slamZ) * ANG(0, RAD(a), 0), TAPE, M.Foil)
+		end
+		scuffs(m, O, 4, 0, slamZ, 1.6, 1.2, 0.012, rng)
+		-- the old ball, cracked and taped, resting by a crate
+		local rest = at(-2.6, 0.62, 0.4)
+		local held = Instance.new("Model")
+		held.Name = "RestBall"
+		held.Parent = m
+		local bm = ball(rest, 1.15, wear(rgb(120, 78, 44), cond, 0.4), M.Leather, nil, nil, "cracked")
+		bm.Parent = held
+		for _, c in ipairs(m:GetChildren()) do
+			if c.Name == "BallSeam" then
+				c.Parent = held
+			end
+		end
+		part(held, "BallTape", V3(0.5, 0.18, 0.05), rest * CF(0.2, 0.25, -0.52) * ANG(0, 0, RAD(20)), TAPE, M.Foil)
+		part(m, "Crate", V3(1.6, 1.2, 1.4), at(-3.0, 0.6, -1.2) * ANG(0, RAD(-8), 0), wear(rgb(150, 115, 70), cond, 0.4), M.WoodPlanks, { collide = true })
+		local cardboard = part(m, "Cardboard", V3(1.4, 0.9, 0.05), at(-3.0, 1.55, -1.22) * ANG(RAD(-6), RAD(-8), 0), rgb(180, 150, 110), M.Fabric)
+		tag(cardboard, Enum.NormalId.Back, "CORE\nOR\nNOTHING", rgb(40, 30, 25), 0.9, 0.85)
+		return { kind = "medball", rackBar = held, slam = at(0.2, 0.1, slamZ), level = lv, plaque = O * CF(3.2, 2.4, 1.6) }
+	end
+	-- rubber slam mat (thick pad from level 3) with a painted target
+	local padH = lv >= 3 and 0.28 or 0.07
+	part(m, "SlamMat", V3(3.6, padH, 3.0), at(0, padH / 2, slamZ), wear(lv >= 4 and rgb(22, 22, 26) or RUBBER, cond, 0.3), M.Rubber, { collide = lv >= 3 })
+	if lv >= 3 then
+		part(m, "MatEdge", V3(3.7, padH * 0.6, 3.1), at(0, padH * 0.3, slamZ), trim, M.SmoothPlastic)
+	end
+	local tgt = part(m, "MatTarget", V3(1.4, 0.02, 1.4), at(0, padH + 0.012, slamZ), Color3.new(), M.SmoothPlastic, { transparency = 1 })
+	local tsg = Instance.new("SurfaceGui")
+	tsg.Face = Enum.NormalId.Top
+	tsg.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+	tsg.PixelsPerStud = 40
+	tsg.LightInfluence = 1
+	tsg.Parent = tgt
+	for i, f in ipairs({ 1, 0.66, 0.33 }) do
+		local ring = Instance.new("Frame")
+		ring.AnchorPoint = Vector2.new(0.5, 0.5)
+		ring.Position = UDim2.fromScale(0.5, 0.5)
+		ring.Size = UDim2.fromScale(f, f)
+		ring.BackgroundColor3 = i % 2 == 1 and (lv >= 4 and GOLD or RED) or (lv >= 4 and DARK or WHITE)
+		ring.BackgroundTransparency = 0.15
+		local corner = Instance.new("UICorner")
+		corner.CornerRadius = UDim.new(0.5, 0)
+		corner.Parent = ring
+		ring.Parent = tsg
+	end
+	scuffs(m, O, 1 + math.floor((100 - cond) / 30), 0, slamZ, 1.4, 1.0, padH + 0.015, rng)
+	-- ball rack: A-frame shelves on the athlete's left with the set, lightest on top
+	local rk = at(-3.6, 0, 0.4)
+	local rackH = lv >= 3 and 3.6 or 2.6
+	for _, z in ipairs({ -0.9, 0.9 }) do
+		for _, s in ipairs({ -1, 1 }) do
+			beam(m, "RackLeg", (rk * CF(s * 0.55, 0, z)).Position, (rk * CF(s * 0.15, rackH, z)).Position, 0.14, 0.14, frame, M.Metal)
+		end
+	end
+	part(m, "RackTop", V3(0.4, 0.12, 2.0), rk * CF(0, rackH, 0), trim, M.Metal)
+	local balls = lv == 2 and { { 1.0, "6" }, { 1.1, "10" }, { 1.2, "14" } }
+		or (lv == 3 and { { 1.0, "10" }, { 1.08, "15" }, { 1.15, "20" }, { 1.22, "25" }, { 1.3, "30" } })
+		or { { 1.0, "8" }, { 1.06, "12" }, { 1.12, "16" }, { 1.18, "20" }, { 1.24, "25" }, { 1.3, "30" } }
+	local shelves = lv >= 3 and 3 or 2
+	for sIdx = 1, shelves do
+		local y = 0.35 + (sIdx - 1) * (rackH - 0.6) / math.max(1, shelves - 1)
+		for _, sx in ipairs({ -1, 1 }) do
+			part(m, "Shelf", V3(0.12, 0.1, 2.0), rk * CF(sx * 0.32, y, 0), frame, M.Metal)
+		end
+	end
+	local held = Instance.new("Model")
+	held.Name = "RestBall"
+	held.Parent = m
+	local colors = lv >= 4 and { DARK, rgb(40, 40, 46), DARK } or { RED, BLUE, BLACK, YELLOW, GREEN }
+	for i, b in ipairs(balls) do
+		local sIdx = math.min(shelves, math.floor((i - 1) / 2) + 1)
+		local y = 0.35 + (sIdx - 1) * (rackH - 0.6) / math.max(1, shelves - 1)
+		local z = ((i - 1) % 2 == 0) and -0.48 or 0.48
+		local c = colors[(i - 1) % #colors + 1]
+		ball(rk * CF(0, y + b[1] / 2 + 0.04, z), b[1], c, lv >= 3 and M.Rubber or M.SmoothPlastic, b[2] .. " LB", lv >= 4 and DARK or WHITE, lv >= 4 and "elite" or (lv >= 3 and "slam" or nil))
+	end
+	-- the working ball waits on the mat edge (it vanishes while you hold your own)
+	local restCF = at(1.9, 0.6, slamZ + 0.4)
+	ball(restCF, 1.2, lv >= 4 and DARK or rgb(40, 40, 46), M.Rubber, lv >= 4 and "PRO 20" or "20 LB", lv >= 4 and GOLD or WHITE, lv >= 3 and "slam" or nil).Parent = held
+	for _, c in ipairs(m:GetChildren()) do
+		if (c.Name == "BallSeam" or c.Name == "GripBand" or c.Name == "BallLabel") and (c.Position - restCF.Position).Magnitude < 1 then
+			c.Parent = held
+		end
+	end
+	local display, ledRing
+	if lv >= 3 then
+		-- wall-ball target: a freestanding board behind the pad with a target ring 9 studs up
+		local bz = -1.6
+		for _, x in ipairs({ -2.0, 2.0 }) do
+			part(m, "TargetPost", V3(0.3, 11, 0.3), at(x, 5.5, bz), frame, M.Metal, { collide = true })
+			part(m, "TargetFoot", V3(0.4, 0.2, 2.4), at(x, 0.1, bz + 0.4), frame, M.Metal, { collide = true })
+		end
+		local board = part(m, "TargetBoard", V3(3.8, 9, 0.16), at(0, 6, bz), lv >= 4 and rgb(26, 26, 30) or WHITE, M.SmoothPlastic)
+		part(m, "TargetRing", V3(1.7, 1.7, 0.05), at(0, 9, bz + 0.1), lv >= 4 and GOLD or RED, M.SmoothPlastic, { ellipsoid = true })
+		part(m, "TargetInner", V3(1.1, 1.1, 0.06), at(0, 9, bz + 0.12), lv >= 4 and DARK or WHITE, M.SmoothPlastic, { ellipsoid = true })
+		tag(board, Enum.NormalId.Back, lv >= 4 and "ELITE CORE" or "WALL BALL", lv >= 4 and GOLD or RED, 0.9, 0.08, 0.5, 0.06)
+		if lv >= 4 then
+			ledRing = part(m, "TargetLED", V3(2.0, 2.0, 0.04), at(0, 9, bz + 0.08), rgb(255, 200, 70), M.Neon, { ellipsoid = true, transparency = 0.35 })
+			-- rep-counting screen on the board, sensor strip on the pad
+			local screen = part(m, "CoreScreen", V3(2.6, 1.5, 0.05), at(0, 4.4, bz + 0.12), rgb(8, 10, 14), M.SmoothPlastic)
+			display = surfaceText(screen, Enum.NormalId.Back, "CORE STATION\nREADY", rgb(255, 210, 90), rgb(8, 10, 14), 60)
+			light(screen, rgb(255, 210, 120), 6, 0.3)
+			part(m, "PadSensor", V3(3.0, 0.03, 0.12), at(0, padH + 0.02, slamZ - 1.3), rgb(255, 200, 70), M.Neon)
+			local logo = part(m, "MatLogo", V3(2.4, 0.02, 0.8), at(0, padH + 0.015, slamZ + 1.1), Color3.new(), M.SmoothPlastic, { transparency = 1 })
+			surfaceText(logo, Enum.NormalId.Top, "WCB CORE", GOLD, nil, 40)
+			-- ab wheel and a gold-trim towel for the twists
+			cyl(m, "AbWheel", 0.3, 0.8, at(2.6, 0.4, 0.2), DARK, M.Rubber)
+			cyl(m, "AbHandle", 1.2, 0.1, at(2.6, 0.4, 0.2), GOLD, M.Metal)
+		else
+			cyl(m, "AbWheel", 0.3, 0.8, at(2.6, 0.4, 0.2), RED, M.Rubber)
+			cyl(m, "AbHandle", 1.2, 0.1, at(2.6, 0.4, 0.2), STEEL, M.Metal)
+		end
+		towel(m, at(2.3, 0.06, 2.6) * ANG(0, RAD(15), 0), lv >= 4 and DARK or WHITE, 1.4, 0.9)
+	end
+	bottle(m, at(2.9, 0, -0.8), lv >= 4 and GOLD or rgb(40, 120, 220))
+	-- chalk / dust puff on a slam
+	local fxAtt = Instance.new("Attachment")
+	fxAtt.Name = "SlamFX"
+	fxAtt.Parent = tgt
+	local puff = Instance.new("ParticleEmitter")
+	puff.Enabled = false
+	puff.Texture = "rbxasset://textures/particles/smoke_main.dds"
+	puff.Color = ColorSequence.new(lv == 1 and rgb(190, 175, 150) or rgb(225, 225, 225))
+	puff.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.55), NumberSequenceKeypoint.new(1, 1) })
+	puff.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.4), NumberSequenceKeypoint.new(1, 1.4) })
+	puff.Lifetime = NumberRange.new(0.5, 1.1)
+	puff.Speed = NumberRange.new(2, 4)
+	puff.SpreadAngle = Vector2.new(80, 80)
+	puff.Drag = 4
+	puff.Acceleration = V3(0, -1, 0)
+	puff.Parent = fxAtt
+	return {
+		kind = "medball", rackBar = held, display = display, led = ledRing, puff = puff, slam = at(0, padH + 0.1, slamZ),
+		level = lv, plaque = O * CF(3.4, 2.4, 2.2),
+	}
+end
+
 B.treadmill = function(m, O, lv, cond, rng)
 	local body = ({ rgb(205, 195, 170), BLACK, rgb(40, 40, 46), BLACK })[lv] or BLACK
 	local accent = ({ rgb(150, 140, 120), STEEL, rgb(200, 30, 35), NEONBLUE })[lv] or STEEL
@@ -2290,6 +2804,7 @@ local function styleGymRing(lv)
 			end
 		end
 	end
+	lv = math.clamp(lv, 1, 3)
 	local canvas = ({ Color3.fromRGB(150, 146, 136), Color3.fromRGB(40, 70, 170), Color3.fromRGB(235, 235, 240) })[lv] or Color3.fromRGB(40, 70, 170)
 	local ropes = ({ { Color3.fromRGB(200, 200, 200), Color3.fromRGB(170, 170, 170) }, { Color3.fromRGB(200, 30, 35), Color3.fromRGB(240, 240, 240) }, { GOLD, WHITE } })[lv]
 	local i = 0
@@ -2319,6 +2834,78 @@ local function stationOrigin(id)
 		return nil, nil
 	end
 	return CF(base.Position - V3(0, 0.5, 0)), m
+end
+
+-- the upgrade reveal: the new equipment fades in, gold confetti bursts over it, a banner names the
+-- level and a chime plays. Only when a level actually went UP (not on condition-only rebuilds).
+local function reveal(m, O, title, levelDef)
+	local targets = {}
+	for _, p in ipairs(m:GetDescendants()) do
+		if p:IsA("BasePart") and p.Transparency < 1 then
+			targets[p] = p.Transparency
+			p.Transparency = 1
+		end
+	end
+	local info = TweenInfo.new(0.7, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+	for p, tr in pairs(targets) do
+		local delay = math.clamp((p.Position.Y - O.Position.Y) / 12, 0, 0.5) -- builds up from the floor
+		task.delay(delay, function()
+			if p.Parent then
+				TweenService:Create(p, info, { Transparency = tr }):Play()
+			end
+		end)
+	end
+	local holder = Instance.new("Part")
+	holder.Name = "RevealFX"
+	holder.Anchored, holder.CanCollide, holder.CanQuery, holder.CanTouch = true, false, false, false
+	holder.Transparency = 1
+	holder.Size = V3(1, 1, 1)
+	holder.CFrame = O * CF(0, 7, 0)
+	holder.Parent = m
+	local conf = Instance.new("ParticleEmitter")
+	conf.Enabled = false
+	conf.Color = ColorSequence.new({ ColorSequenceKeypoint.new(0, GOLD), ColorSequenceKeypoint.new(0.5, WHITE), ColorSequenceKeypoint.new(1, GOLD) })
+	conf.Size = NumberSequence.new(0.18)
+	conf.Lifetime = NumberRange.new(1.4, 2.4)
+	conf.Speed = NumberRange.new(8, 16)
+	conf.SpreadAngle = Vector2.new(70, 70)
+	conf.Acceleration = V3(0, -18, 0)
+	conf.Drag = 1.5
+	conf.Rotation = NumberRange.new(0, 360)
+	conf.RotSpeed = NumberRange.new(-300, 300)
+	conf.LightEmission = 0.4
+	conf.Parent = holder
+	conf:Emit(60)
+	local bb = Instance.new("BillboardGui")
+	bb.Size = UDim2.fromOffset(300, 70)
+	bb.StudsOffset = V3(0, 1.5, 0)
+	bb.AlwaysOnTop = true
+	bb.MaxDistance = 120
+	bb.Parent = holder
+	local t = Instance.new("TextLabel")
+	t.BackgroundTransparency = 1
+	t.Size = UDim2.fromScale(1, 1)
+	t.Font = Enum.Font.GothamBlack
+	t.TextScaled = true
+	t.TextColor3 = GOLD
+	t.TextStrokeTransparency = 0.2
+	t.Text = string.format("UPGRADED!\n%s: %s", (title or ""):upper(), (levelDef and levelDef.name or ""):upper())
+	t.TextTransparency = 1
+	t.Parent = bb
+	TweenService:Create(t, TweenInfo.new(0.35), { TextTransparency = 0 }):Play()
+	task.delay(3.4, function()
+		if t.Parent then
+			TweenService:Create(t, TweenInfo.new(0.6), { TextTransparency = 1, TextStrokeTransparency = 1 }):Play()
+		end
+	end)
+	Debris:AddItem(holder, 4.5)
+	GymSound.Play("reveal", holder.Position, { volume = 1.2 })
+	task.delay(0.18, function()
+		GymSound.Play("reveal", holder.Position, { volume = 1, speed = 1.26 })
+	end)
+	task.delay(0.36, function()
+		GymSound.Play("reveal", holder.Position, { volume = 1, speed = 1.5 })
+	end)
 end
 
 local function buildStation(id, lv, cond, ctx)
@@ -2352,10 +2939,11 @@ local function buildStation(id, lv, cond, ctx)
 	dyn.model = m
 	dyn.station = stationModel
 	dyn.level = lv
-	built[id] = { key = ctx.key, model = m }
+	dyn.origin = O
+	built[id] = { key = ctx.key, model = m, lv = lv }
 	dynamics[id] = dyn
 	if dyn.rackBar and stationModel then
-		-- the resting bar / dumbbells / rope / handle vanish while you hold your own
+		-- the resting bar / dumbbells / rope / handle / ball vanish while you hold your own
 		local function sync()
 			local inUse = stationModel:GetAttribute("InUse") == true
 			for _, p in ipairs(dyn.rackBar:GetDescendants()) do
@@ -2369,25 +2957,92 @@ local function buildStation(id, lv, cond, ctx)
 		sync()
 		built[id].conn = stationModel:GetAttributeChangedSignal("InUse"):Connect(sync)
 	end
+	if old and old.lv and lv > old.lv and ctx.reveal ~= false then
+		pcall(reveal, m, O, TITLES[id] or id, levelDef)
+	end
 end
 
-local poolKey, ringKey
+------------------------------------------------------------------------
+-- Members' hanging bags (server rigs tagged MemberBag; swung locally)
+------------------------------------------------------------------------
+local memberBags = {} -- rig -> dynamics id
+local function addMemberBag(rig)
+	if not rig:IsA("Model") or memberBags[rig] then
+		return
+	end
+	local hookPos = rig:GetAttribute("Hook")
+	if typeof(hookPos) ~= "Vector3" then
+		return
+	end
+	local parts = {}
+	local bagPart
+	for _, p in ipairs(rig:GetDescendants()) do
+		if p:IsA("BasePart") then
+			table.insert(parts, p)
+			if p.Name == "MemberBag" then
+				bagPart = p
+			end
+		end
+	end
+	if #parts == 0 or not bagPart then
+		return
+	end
+	local hook = CF(hookPos)
+	local L = hookPos.Y - bagPart.Position.Y
+	local d = newPendulum(hook, parts, {
+		L = L, mass = 1.5, damp = 0.3, topDepth = hookPos.Y - (bagPart.Position.Y + bagPart.Size.X / 2) - 0.1,
+		material = "leather", radius = bagPart.Size.Y / 2,
+	})
+	d.bagRel = CF(0, -L, 0)
+	d.home = bagPart.Position
+	d.model = rig
+	d.member = true
+	local id = "memberbag_" .. tostring(rig:GetAttribute("Index") or (#memberBags + 1))
+	memberBags[rig] = id
+	dynamics[id] = d
+end
+
+-- the members' bag closest to pos (within maxDist studs, flat distance)
+local function nearestMemberBag(pos, maxDist)
+	local best, bestD
+	for rig, id in pairs(memberBags) do
+		local d = dynamics[id]
+		if not rig.Parent then
+			memberBags[rig] = nil
+			dynamics[id] = nil
+		elseif d then
+			local dist = V3(d.home.X - pos.X, 0, d.home.Z - pos.Z).Magnitude
+			if dist <= (maxDist or 6) and (not bestD or dist < bestD) then
+				best, bestD = id, dist
+			end
+		end
+	end
+	return best
+end
+
+------------------------------------------------------------------------
+-- Build / refresh
+------------------------------------------------------------------------
+local GymFacility, GymMirror, Ambience
+local poolKey, ringKey, tierIdx
 function GymVisuals.Refresh(P)
 	if not P or not P.created or not P.gym then
 		return
 	end
-	if not folder or not folder.Parent then
+	if not folder or not (folder.Parent or GymVisuals.hidden) then
 		folder = Instance.new("Folder")
 		folder.Name = "LocalGym"
 		folder.Parent = workspace
+		GymVisuals.hidden = false
 	end
 	local owns = P.owned and P.owned.RecoveryChamber == true
+	local first = next(built) == nil
 	for id in pairs(B) do
 		local lv = math.max(1, P.gym.levels[id] or 1)
 		local cond = P.gym.cond[id] or 100
 		local key = string.format("%d|%d|%s", lv, math.floor(cond / 5), tostring(id == "chamber" and owns))
 		if not built[id] or built[id].key ~= key then
-			buildStation(id, lv, cond, { key = key, ownsChamber = owns })
+			buildStation(id, lv, cond, { key = key, ownsChamber = owns, reveal = not first })
 		end
 	end
 	local plv = math.max(1, P.gym.levels.pool or 1)
@@ -2407,39 +3062,128 @@ function GymVisuals.Refresh(P)
 		ringKey = rlv
 		styleGymRing(rlv)
 	end
+	-- facility tier (derived, never saved): tier dressing, elite wing, career wall, trophies
+	local ok, idx, def, frac, needs = pcall(Catalog.GymTier, P.gym.levels, P.owned, P.tier)
+	if not ok then
+		idx, def, frac, needs = 1, nil, 0, nil
+	end
+	local prevTier = tierIdx
+	tierIdx = idx
+	GymVisuals.Tier = idx
+	GymFacility = GymFacility or optional("GymFacility")
+	if GymFacility then
+		local okF, err = pcall(GymFacility.Refresh, P, folder, { idx = idx, def = def, frac = frac, needs = needs, prev = prevTier, ringLevel = rlv })
+		if not okF then
+			warn("[GymVisuals] facility:", err)
+		end
+	end
+	Ambience = Ambience or optional("Ambience")
+	if Ambience and Ambience.SetTier then
+		pcall(Ambience.SetTier, idx)
+	end
+	GymMirror = GymMirror or optional("GymMirror")
+	if GymMirror and GymMirror.Start then
+		pcall(GymMirror.Start, function()
+			local d = dynamics.mirror
+			return d and d.model and d.model:FindFirstChild("Mirror")
+		end)
+	end
 end
 
 ------------------------------------------------------------------------
 -- Interaction effects
 ------------------------------------------------------------------------
--- power 0..1.5, side -1 (left hand) .. 1 (right hand)
-function GymVisuals.Impact(id, power, side)
+-- power 0..1.5 (negative = toward the boxer: the double-end bag springs at you), side -1 (left
+-- hand) .. 1 (right hand); ptype / zone (optional) = Config.Punches id and "head" | "body";
+-- opts (optional) = { remote = true (someone else's punch: quieter), sweat = 0..1 }
+function GymVisuals.Impact(id, power, side, ptype, zone, opts)
 	local d = dynamics[id]
 	if not d then
 		return
 	end
-	power = power or 1
-	side = side or 0
+	power = tonumber(power) or 1
+	side = tonumber(side) or 0
 	local lv = d.level or 1
 	if d.kind == "pendulum" then
-		d.vx += 0.9 * power -- swings away from the boxer
-		d.vz += 0.35 * power * side
-		d.hits = (d.hits or 0) + 1
-		GymVisuals.Sound(d.hook.Position - Vector3.new(0, 5, 0), 1.15 + lv * 0.06 + math.random() * 0.1, 0.35 + power * 0.25)
-		if d.display then
-			d.display.Text = string.format("IMPACT\n%d lbs\n%d hits", math.floor(350 + power * 900 + math.random(-40, 40)), d.hits)
+		if opts == nil then
+			-- your own punch: your sweat flies off the bag
+			local c = player.Character
+			opts = { sweat = c and c:GetAttribute("Sweat") or 0 }
+		end
+		hitPendulum(d, power, side, ptype, zone, opts)
+		if not (opts and opts.remote) then
+			d.hits = (d.hits or 0) + 1
+			if d.display then
+				d.display.Text = string.format("IMPACT\n%d lbs\n%d hits", math.floor(350 + math.abs(power) * 900 + math.random(-40, 40)), d.hits)
+			end
 		end
 	elseif d.kind == "rebound" then
-		d.amp = math.min(1.2, 0.55 + power * 0.5)
+		d.amp = math.min(1.2, 0.55 + math.abs(power) * 0.5)
 		d.t0 = os.clock()
-		GymVisuals.Sound(d.pivot.Position, 2.3 + lv * 0.15 + math.random() * 0.08, 0.25 + lv * 0.05)
+		-- the speed bag's rattle: front board, back board, front board
+		GymSound.Burst("speedbag", d.pivot.Position, 3, 0.042, { speed = 1 + lv * 0.06, volume = (0.8 + lv * 0.1) * (opts and opts.remote and 0.6 or 1) })
 	elseif d.kind == "spring" then
 		d.vz -= 7 * power
 		d.vx += 3 * power * side
 		if power > 0 then
-			GymVisuals.Sound(d.home.Position, 1.8 + lv * 0.1, 0.35)
+			GymSound.Play("doubleend", d.home.Position, { speed = 1 + lv * 0.05, volume = opts and opts.remote and 0.6 or 1 })
+		end
+	elseif d.kind == "medball" then
+		-- a slam (power > 0) or a catch / twist touch (power <= 0)
+		local pos = d.slam and d.slam.Position or (d.origin and d.origin.Position) or Vector3.zero
+		if power > 0 then
+			GymSound.Play("slam", pos, { volume = 0.7 + power * 0.4 })
+			GymSound.Play("ballcatch", pos, { volume = 0.4, speed = 0.8 })
+			if d.puff then
+				pcall(function()
+					d.puff:Emit(math.floor(4 + power * 8))
+				end)
+			end
+			if d.led then
+				d.led.Transparency = 0
+				task.delay(0.15, function()
+					if d.led.Parent then
+						d.led.Transparency = 0.35
+					end
+				end)
+			end
+		else
+			GymSound.Play("ballcatch", pos + V3(0, 3, 0), { volume = 0.5 })
 		end
 	end
+end
+
+-- sweat dripping onto the floor at a station: a small wet patch that evaporates over ~90 s
+local SWEAT_CAP = 8
+local sweatPatches = {} -- station id -> { parts (FIFO) }
+function GymVisuals.SweatDrop(id)
+	local gym = workspace:FindFirstChild("Gym")
+	local m = gym and gym:FindFirstChild("Station_" .. tostring(id))
+	local use = m and m:FindFirstChild("UsePoint")
+	if not (use and folder) then
+		return
+	end
+	local f = folder:FindFirstChild("Sweat")
+	if not f then
+		f = Instance.new("Folder")
+		f.Name = "Sweat"
+		f.Parent = folder
+	end
+	local list = sweatPatches[id] or {}
+	sweatPatches[id] = list
+	while #list >= SWEAT_CAP do
+		local oldest = table.remove(list, 1)
+		if oldest and oldest.Parent then
+			oldest:Destroy()
+		end
+	end
+	local floorY = (m:FindFirstChild("Base") and m.Base.Position.Y - 0.5) or 0.5
+	local pos = V3(use.Position.X + (math.random() * 2 - 1) * 1.2, floorY + 0.012, use.Position.Z + (math.random() * 2 - 1) * 1.2)
+	local size = 0.4 + math.random() * 0.5
+	local p = part(f, "SweatDrop", V3(size, 0.02, size * (0.7 + math.random() * 0.5)), CF(pos) * ANG(0, math.random() * math.pi, 0), rgb(150, 170, 185), M.Glass, { ellipsoid = true, shadow = false, transparency = 0.55, reflect = 0.25 })
+	table.insert(list, p)
+	TweenService:Create(p, TweenInfo.new(90, Enum.EasingStyle.Linear), { Transparency = 1 }):Play()
+	Debris:AddItem(p, 91)
 end
 
 function GymVisuals.SetDisplay(id, text)
@@ -2465,6 +3209,90 @@ function GymVisuals.Origin(id)
 end
 
 ------------------------------------------------------------------------
+-- Other people's punches (client-local AutoAct / AutoActId published by the Animator on other
+-- players' Trainee rigs and on the members working bags or sparring). Nothing replicates.
+------------------------------------------------------------------------
+local POWER = { jab = 0.55, cross = 0.9, leadhook = 0.95, rearhook = 1.05, uppercut = 1.0, overhand = 1.25 }
+local REMOTE_NEAR = 140
+local watched = {} -- model -> connection
+
+local function camPos()
+	local cam = workspace.CurrentCamera
+	return cam and cam.CFrame.Position or Vector3.zero
+end
+
+local function onAutoAct(model)
+	local act = model:GetAttribute("AutoAct")
+	local root = model:FindFirstChild("HumanoidRootPart")
+	if type(act) ~= "string" or not root or (root.Position - camPos()).Magnitude > REMOTE_NEAR then
+		return
+	end
+	local ptype, hand, zone, windup, pw = string.match(act, "^([^|]+)|?([^|]*)|?([^|]*)|?([^|]*)|?([^|]*)$")
+	local base = POWER[ptype or ""]
+	if not base then
+		return -- slips, rolls and other moves hit nothing
+	end
+	local side = hand == "L" and -1 or 1
+	local power = base * 0.8 * math.clamp(tonumber(pw) or 1, 0.3, 1.6)
+	local sweat = model:GetAttribute("Sweat") or 0
+	task.delay(math.clamp(tonumber(windup) or 0.2, 0, 0.6), function()
+		if not model.Parent then
+			return
+		end
+		local station = model:GetAttribute("Station")
+		if station and dynamics[station] and CollectionService:HasTag(model, "Trainee") then
+			GymVisuals.Impact(station, power, side, ptype, zone ~= "" and zone or nil, { remote = true, sweat = sweat })
+			return
+		end
+		if model:GetAttribute("Loop") == "spar" then
+			-- the partner's glove / headgear pops
+			local partnerName = model:GetAttribute("SparPartner")
+			local members = workspace:FindFirstChild("GymMembers")
+			local partner = members and partnerName and members:FindFirstChild(partnerName)
+			local head = partner and partner:FindFirstChild("Head")
+			GymSound.Play("glove", head and head.Position or root.Position, { volume = 0.5 + power * 0.25 })
+			return
+		end
+		local bag = nearestMemberBag(root.Position, 6)
+		if bag then
+			GymVisuals.Impact(bag, power, side, ptype, zone ~= "" and zone or nil, { remote = true, sweat = sweat })
+		end
+	end)
+end
+
+local function watchModel(model)
+	if watched[model] or not model:IsA("Model") or model == player.Character then
+		return
+	end
+	watched[model] = model:GetAttributeChangedSignal("AutoActId"):Connect(function()
+		onAutoAct(model)
+	end)
+end
+
+local function unwatchModel(model)
+	if CollectionService:HasTag(model, "Trainee") or CollectionService:HasTag(model, "Ambient") then
+		return -- still tagged the other way
+	end
+	local c = watched[model]
+	if c then
+		c:Disconnect()
+		watched[model] = nil
+	end
+end
+
+for _, tagName in ipairs({ "Trainee", "Ambient" }) do
+	for _, m in ipairs(CollectionService:GetTagged(tagName)) do
+		watchModel(m)
+	end
+	CollectionService:GetInstanceAddedSignal(tagName):Connect(watchModel)
+	CollectionService:GetInstanceRemovedSignal(tagName):Connect(unwatchModel)
+end
+for _, rig in ipairs(CollectionService:GetTagged("MemberBag")) do
+	addMemberBag(rig)
+end
+CollectionService:GetInstanceAddedSignal("MemberBag"):Connect(addMemberBag)
+
+------------------------------------------------------------------------
 -- Per-frame motion
 ------------------------------------------------------------------------
 -- stretch a cord part between two points
@@ -2474,36 +3302,73 @@ local function cord(cp, a, b, w)
 	cp.CFrame = CFrame.lookAt((a + b) / 2, b, upFor(b - a)) * CFrame.Angles(math.pi / 2, 0, 0)
 end
 
+local MOTION_NEAR = 150 -- equipment further from the camera than this freezes
+local FAR_GYM = 420 -- the whole local gym is unparented beyond this (fight venues, the far city)
+local bulkP, bulkC = {}, {}
+local hideAcc = 0
+
+local function flush()
+	if #bulkP == 0 then
+		return
+	end
+	local ok = pcall(function()
+		workspace:BulkMoveTo(bulkP, bulkC, Enum.BulkMoveMode.FireCFrameChanged)
+	end)
+	if not ok then
+		for i, p in ipairs(bulkP) do
+			p.CFrame = bulkC[i]
+		end
+	end
+	table.clear(bulkP)
+	table.clear(bulkC)
+end
+
 RunService.RenderStepped:Connect(function(dt)
 	dt = math.min(dt, 0.05)
 	local t = os.clock()
+	local cam = camPos()
+	-- perf: stop drawing the whole local gym while the camera is far away (fight venues sit at
+	-- x/z 4000+, the city edges ~400 studs out); it comes back the moment you return
+	hideAcc += dt
+	if hideAcc > 0.5 and folder then
+		hideAcc = 0
+		local far = V3(cam.X, 0, cam.Z).Magnitude > FAR_GYM
+		if far and folder.Parent then
+			GymVisuals.hidden = true
+			folder.Parent = nil
+		elseif not far and not folder.Parent and GymVisuals.hidden then
+			folder.Parent = workspace
+			GymVisuals.hidden = false
+		end
+	end
+	if GymVisuals.hidden then
+		return
+	end
 	for id, d in pairs(dynamics) do
 		if not (d.model and d.model.Parent) then
+			if d.member then
+				dynamics[id] = nil
+			end
+			continue
+		end
+		local anchor = d.home or d.hook or d.pivot or d.origin
+		if typeof(anchor) == "CFrame" then
+			anchor = anchor.Position
+		end
+		if typeof(anchor) == "Vector3" and (anchor - cam).Magnitude > MOTION_NEAR then
 			continue
 		end
 		local inUse = d.station and d.station:GetAttribute("InUse") == true
 		if d.kind == "pendulum" then
-			-- damped pendulum about the hook
-			local g = 9
-			d.vx += (-g * math.sin(d.ax)) * dt * 1.2
-			d.vz += (-g * math.sin(d.az)) * dt * 1.2
-			d.vx *= math.exp(-dt * 1.6)
-			d.vz *= math.exp(-dt * 1.6)
-			d.ax = math.clamp(d.ax + d.vx * dt, -0.6, 0.6)
-			d.az = math.clamp(d.az + d.vz * dt, -0.6, 0.6)
-			if math.abs(d.ax) + math.abs(d.az) + math.abs(d.vx) + math.abs(d.vz) > 0.002 then
-				local rot = d.hook * CFrame.Angles(d.ax, 0, d.az)
-				for p, rel in pairs(d.rel) do
-					p.CFrame = rot * rel
-				end
-			end
+			stepPendulum(d, dt, t, bulkP, bulkC)
 		elseif d.kind == "rebound" then
 			local el = t - d.t0
 			local a = d.amp * math.exp(-el * 3.2) * math.sin(el * d.freq * 2)
 			if math.abs(a) > 0.001 or el < 2 then
 				local rot = d.pivot * CFrame.Angles(a * 0.9, 0, 0)
 				for p, rel in pairs(d.rel) do
-					p.CFrame = rot * rel
+					table.insert(bulkP, p)
+					table.insert(bulkC, rot * rel)
 				end
 			end
 		elseif d.kind == "spring" then
@@ -2532,26 +3397,31 @@ RunService.RenderStepped:Connect(function(dt)
 				d.offset = (d.offset + dt * 6) % 1.1
 				for i, s in ipairs(d.stripes) do
 					local z = -3 + ((i - 1) * 1.1 + d.offset) % 6.6
-					s.CFrame = d.beltCF * CF(0, 0, z - 0.2)
+					table.insert(bulkP, s)
+					table.insert(bulkC, d.beltCF * CF(0, 0, z - 0.2))
 				end
 			end
 		elseif d.kind == "spinner" then
 			if inUse then
 				d.angle += dt
 				for _, s in ipairs(d.parts) do
+					local cf
 					if s.rel then
 						-- orbits / swings about a pivot (pedals, air-bike arms)
 						local a = s.swing and math.sin(d.angle * s.speed + (s.phase or 0)) * s.swing or d.angle * s.speed
-						s.p.CFrame = s.base * CFrame.Angles(a, 0, 0) * s.rel
+						cf = s.base * CFrame.Angles(a, 0, 0) * s.rel
 					elseif s.axis == "Y" then
-						s.p.CFrame = s.base * CFrame.Angles(0, d.angle * s.speed, 0)
+						cf = s.base * CFrame.Angles(0, d.angle * s.speed, 0)
 					else
-						s.p.CFrame = s.base * CFrame.Angles(d.angle * s.speed, 0, 0)
+						cf = s.base * CFrame.Angles(d.angle * s.speed, 0, 0)
 					end
+					table.insert(bulkP, s.p)
+					table.insert(bulkC, cf)
 				end
 			end
 		end
 	end
+	flush()
 end)
 
 return GymVisuals

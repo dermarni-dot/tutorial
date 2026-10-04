@@ -15,30 +15,41 @@ Ambient.Roles = {} -- role -> model
 
 local V3 = Vector3.new
 
--- at = where they stand, look = what they face, floor = floor height there
+-- at = where they stand, look = what they face, floor = floor height there.
+-- physique = Config.Physiques id (their body type: Builder draws it), sweat = how wet they are
+-- from training (Builder.SetSweat), partner = the sparring partner they trade shots with.
 local MEMBERS = {
-	{ name = "Rico Vance", tag = "Gym Member", loop = "heavybag", at = V3(-36, 0, -26.4), look = V3(-36, 0, -30), hands = "gloves", seed = 101 },
-	{ name = "Dee Okafor", tag = "Gym Member", loop = "heavybag", at = V3(-24, 0, -26.4), look = V3(-24, 0, -30), hands = "gloves", seed = 202, gender = 2 },
-	{ name = "Coach Benny", tag = "Mitt Trainer", role = "MittCoach", loop = "mittidle", at = V3(14, 0, -13.5), look = V3(14, 0, -10), props = "mitts", seed = 303, age = 52 },
-	{ name = "Marco Silva", tag = "Gym Member", loop = "shadow", at = V3(30, 0, -42), look = V3(22, 0, -50), hands = "wraps", seed = 404 },
-	{ name = "Tasha Brooks", tag = "Gym Member", loop = "rope", at = V3(60, 0, 8), look = V3(60, 0, 0), props = "rope", seed = 505, gender = 2, stand = 0 },
-	{ name = "Andre Cole", tag = "Gym Member", loop = "curl", at = V3(-62, 0, 8), look = V3(-62, 0, 0), props = "curl", seed = 606 },
-	{ name = "Yuki Sato", tag = "Gym Member", loop = "stretch", at = V3(100, 0, 64), look = V3(90, 0, 64), seed = 707, gender = 2 },
-	{ name = "Big Lou", tag = "Barber", role = "Barber", loop = "idle", at = V3(-97.6, 0, 39.6), look = V3(-95, 0, 38), props = "clippers", seed = 808, age = 46, hands = "bare" },
-	{ name = "Chef Ana", tag = "Nutrition Bar", role = "Chef", loop = "idle", at = V3(-70, 0, 74.5), look = V3(-70, 0, 64), seed = 909, gender = 2, hands = "bare" },
-	{ name = "Kim Park", tag = "Massage Therapist", role = "Masseuse", loop = "idle", at = V3(61.4, 0, 60.4), look = V3(64, 0, 60.4), seed = 1001, gender = 2, hands = "bare" },
-	{ name = "Old Pete", tag = "Gym Owner", loop = "sitwatch", at = V3(-20, 0, -45), look = V3(0, 0, -50), seed = 1111, age = 68, hands = "bare", seat = 1.5, bench = true },
-	{ name = "Jay Ortiz", tag = "Sparring", loop = "spar", at = V3(-2.4, 0, -50), look = V3(2.4, 0, -50), hands = "gloves", seed = 1212, floor = 2.8, headgear = Color3.fromRGB(170, 25, 30) },
-	{ name = "Kofi Mensah", tag = "Sparring", loop = "spar", at = V3(2.4, 0, -50), look = V3(-2.4, 0, -50), hands = "gloves", seed = 1313, floor = 2.8, headgear = Color3.fromRGB(30, 60, 160) },
-	{ name = "Coach Ray", tag = "Head Coach", loop = "walk", walk = { V3(-20, 0, 12), V3(20, 0, 12), V3(24, 0, -28), V3(-8, 0, -32), V3(-30, 0, -6) }, speed = 6, seed = 1414, age = 57, hands = "bare" },
-	{ name = "Nia Grant", tag = "Roadwork", loop = "run", walk = { V3(-160, 0, 120), V3(160, 0, 120), V3(160, 0, -190), V3(-160, 0, -190) }, speed = 15, seed = 1515, gender = 2, hands = "wraps", floor = 0.3 },
-	{ name = "Maya Reyes", tag = "Front Desk", loop = "idle", at = V3(28, 0, 73.5), look = V3(28, 0, 60), seed = 1616, gender = 2, hands = "bare", floor = 0.4 },
-	{ name = "Leon Price", tag = "Gym Member", loop = "idle", pose = "run", spot = "treadmill", seed = 1717, hands = "wraps" },
-	{ name = "Sofia Marin", tag = "Gym Member", loop = "idle", pose = "bike", spot = "bike", seed = 1818, gender = 2, hands = "bare" },
-	{ name = "Hank Duro", tag = "Gym Member", loop = "idle", pose = "bench", at = V3(-62, 0, -49.3), look = V3(-62, 0, -60), lie = 1.675, props = "bench", seed = 1919, hands = "bare" },
-	{ name = "Gus Ferreira", tag = "Local", loop = "walk", walk = { V3(-150, 0, 184), V3(100, 0, 184) }, speed = 5, seed = 2020, age = 61, hands = "bare", floor = 0.5 },
-	{ name = "Lena Shaw", tag = "Local", loop = "walk", walk = { V3(90, 0, 184), V3(-140, 0, 184) }, speed = 5.5, seed = 2121, gender = 2, hands = "bare", floor = 0.5 },
+	{ name = "Rico Vance", tag = "Gym Member", loop = "heavybag", at = V3(-36, 0, -26.4), look = V3(-36, 0, -30), hands = "gloves", seed = 101, physique = "PowerPuncher", sweat = 0.6 },
+	{ name = "Dee Okafor", tag = "Gym Member", loop = "heavybag", at = V3(-24, 0, -26.4), look = V3(-24, 0, -30), hands = "gloves", seed = 202, gender = 2, physique = "Balanced", sweat = 0.55 },
+	{ name = "Coach Benny", tag = "Mitt Trainer", role = "MittCoach", loop = "mittidle", at = V3(14, 0, -13.5), look = V3(14, 0, -10), props = "mitts", seed = 303, age = 52, physique = "Balanced", fit = 0.3, coach = true },
+	{ name = "Marco Silva", tag = "Gym Member", loop = "shadow", at = V3(30, 0, -42), look = V3(22, 0, -50), hands = "wraps", seed = 404, physique = "LeanTechnical", sweat = 0.45 },
+	{ name = "Tasha Brooks", tag = "Gym Member", loop = "rope", at = V3(60, 0, 8), look = V3(60, 0, 0), props = "rope", seed = 505, gender = 2, stand = 0, physique = "LeanTechnical", sweat = 0.55 },
+	{ name = "Andre Cole", tag = "Gym Member", loop = "curl", at = V3(-62, 0, 8), look = V3(-62, 0, 0), props = "curl", seed = 606, physique = "PowerPuncher", sweat = 0.4 },
+	{ name = "Yuki Sato", tag = "Gym Member", loop = "stretch", at = V3(100, 0, 64), look = V3(90, 0, 64), seed = 707, gender = 2, physique = "LeanTechnical", sweat = 0.2 },
+	{ name = "Big Lou", tag = "Barber", role = "Barber", loop = "idle", at = V3(-97.6, 0, 39.6), look = V3(-95, 0, 38), props = "clippers", seed = 808, age = 46, hands = "bare", physique = "Heavyweight", fit = 0.25 },
+	{ name = "Chef Ana", tag = "Nutrition Bar", role = "Chef", loop = "idle", at = V3(-70, 0, 74.5), look = V3(-70, 0, 64), seed = 909, gender = 2, hands = "bare", physique = "Balanced", fit = 0.3 },
+	{ name = "Kim Park", tag = "Massage Therapist", role = "Masseuse", loop = "idle", at = V3(61.4, 0, 60.4), look = V3(64, 0, 60.4), seed = 1001, gender = 2, hands = "bare", physique = "Balanced", fit = 0.35 },
+	{ name = "Old Pete", tag = "Gym Owner", loop = "sitwatch", at = V3(-20, 0, -45), look = V3(0, 0, -50), seed = 1111, age = 68, hands = "bare", seat = 1.5, bench = true, physique = "BeginnerLean", coach = true },
+	{ name = "Jay Ortiz", tag = "Sparring", loop = "spar", at = V3(-2.4, 0, -50), look = V3(2.4, 0, -50), hands = "gloves", seed = 1212, floor = 2.8, headgear = Color3.fromRGB(170, 25, 30), physique = "LeanTechnical", sweat = 0.7, partner = "Kofi Mensah" },
+	{ name = "Kofi Mensah", tag = "Sparring", loop = "spar", at = V3(2.4, 0, -50), look = V3(-2.4, 0, -50), hands = "gloves", seed = 1313, floor = 2.8, headgear = Color3.fromRGB(30, 60, 160), physique = "PowerPuncher", sweat = 0.7, partner = "Jay Ortiz" },
+	{ name = "Coach Ray", tag = "Head Coach", loop = "walk", walk = { V3(-20, 0, 12), V3(20, 0, 12), V3(24, 0, -28), V3(-8, 0, -32), V3(-30, 0, -6) }, speed = 6, seed = 1414, age = 57, hands = "bare", physique = "Balanced", fit = 0.3, coach = true },
+	{ name = "Nia Grant", tag = "Roadwork", loop = "run", walk = { V3(-160, 0, 120), V3(160, 0, 120), V3(160, 0, -190), V3(-160, 0, -190) }, speed = 15, seed = 1515, gender = 2, hands = "wraps", floor = 0.3, physique = "LeanTechnical", sweat = 0.6 },
+	{ name = "Maya Reyes", tag = "Front Desk", loop = "idle", at = V3(28, 0, 73.5), look = V3(28, 0, 60), seed = 1616, gender = 2, hands = "bare", floor = 0.4, physique = "Balanced", fit = 0.3 },
+	{ name = "Leon Price", tag = "Gym Member", loop = "idle", pose = "run", spot = "treadmill", seed = 1717, hands = "wraps", physique = "LeanTechnical", sweat = 0.5 },
+	{ name = "Sofia Marin", tag = "Gym Member", loop = "idle", pose = "bike", spot = "bike", seed = 1818, gender = 2, hands = "bare", physique = "Balanced", sweat = 0.45 },
+	{ name = "Hank Duro", tag = "Gym Member", loop = "idle", pose = "bench", at = V3(-62, 0, -49.3), look = V3(-62, 0, -60), lie = 1.675, props = "bench", seed = 1919, hands = "bare", physique = "Heavyweight", sweat = 0.4 },
+	{ name = "Gus Ferreira", tag = "Local", loop = "walk", walk = { V3(-150, 0, 184), V3(100, 0, 184) }, speed = 5, seed = 2020, age = 61, hands = "bare", floor = 0.5, physique = "BeginnerLean", fit = 0.1 },
+	{ name = "Lena Shaw", tag = "Local", loop = "walk", walk = { V3(90, 0, 184), V3(-140, 0, 184) }, speed = 5.5, seed = 2121, gender = 2, hands = "bare", floor = 0.5, physique = "BeginnerLean", fit = 0.15 },
+	-- the sparring ring is a show: a coach calls it from the apron, a cornerman waits in the red
+	-- corner and two members lean on the apron to watch (Loops coachwatch / cornerman / ringside)
+	{ name = "Coach Dre", tag = "Sparring Coach", role = "RingCoach", loop = "coachwatch", at = V3(14.6, 0, -55), look = V3(0, 0, -50), seed = 2222, age = 49, hands = "bare", physique = "Balanced", fit = 0.35, coach = true },
+	{ name = "Sal Romano", tag = "Cutman", role = "Cornerman", loop = "cornerman", at = V3(-13.8, 0, -61.4), look = V3(0, 0, -50), seed = 2323, age = 55, hands = "bare", physique = "Heavyweight", fit = 0.2, coach = true },
+	{ name = "Luis Ortega", tag = "Gym Member", loop = "ringside", at = V3(-4.5, 0, -36.4), look = V3(-4.5, 0, -50), hands = "wraps", seed = 2424, physique = "Balanced", sweat = 0.3 },
+	{ name = "Rosa Diaz", tag = "Gym Member", loop = "ringside", at = V3(5.5, 0, -36.4), look = V3(5.5, 0, -50), hands = "wraps", seed = 2525, gender = 2, physique = "LeanTechnical", sweat = 0.35 },
 }
+
+-- what their faces show while they loop (E's face rig reads the Expr attribute)
+local WORK_LOOPS = { heavybag = true, spar = true, shadow = true, rope = true, run = true, curl = true }
 
 -- members working out on the decorative cardio machines (GymDecor records where they are
 -- when the gym is built; these are the fallbacks)
@@ -112,10 +123,17 @@ local function spawnMember(folder, def)
 		app.hair.color = { 160, 160, 160 }
 		app.beard.growth = 0.8
 	end
-	local fit = def.loop == "sitwatch" and 0.15 or 0.55
-	local build = Looks.RandomBuild(def.seed, fit, def.age or 26, app.body.frame)
-	local gear = { gloves = "Competition", glovesCond = 70, wrapsCond = 80 }
-	local npc = Builder.CreateNPC(app, build, gear, def.name, { hands = def.hands or "wraps", name = def.name, nick = "", waistText = "" })
+	local fit = def.fit or (def.loop == "sitwatch" and 0.15 or 0.55)
+	local physique = def.physique
+	if physique and app.body then
+		app.body.physique = physique -- pinned: Builder draws this archetype, not a random one
+	end
+	local build = Looks.RandomBuild(def.seed, fit, def.age or 26, app.body.frame, physique)
+	local gear = { gloves = "Competition", glovesCond = 70, wraps = "OldWraps", wrapsCond = 80, shoes = def.coach and "Sneakers" or nil, shoesCond = 70 }
+	local npc = Builder.CreateNPC(app, build, gear, def.name, {
+		hands = def.hands or "wraps", name = def.name, nick = "", waistText = "",
+		detail = "medium", physique = physique, age = def.age or 26, sweat = def.sweat,
+	})
 	if not npc then
 		return nil
 	end
@@ -125,8 +143,18 @@ local function spawnMember(folder, def)
 		npc:SetAttribute("Pose", def.pose)
 	end
 	npc:SetAttribute("AmbientSeed", def.seed)
+	if def.partner then
+		npc:SetAttribute("SparPartner", def.partner)
+	end
+	-- a face that fits what they are doing: focused when training, otherwise calm or confident by seed
+	local expr = WORK_LOOPS[def.loop] and "determined" or ((def.seed // 101) % 3 == 0 and "confident" or "neutral")
+	npc:SetAttribute("Expr", expr)
 	if def.headgear then
 		Builder.SetHeadgear(npc, def.headgear, true)
+	end
+	-- members who are mid-workout glisten (Builder keeps the Sweat attribute as the single source)
+	if def.sweat and def.sweat > 0 then
+		pcall(Builder.SetSweat, npc, app, def.sweat)
 	end
 	local hum = npc:FindFirstChildOfClass("Humanoid")
 	if hum then

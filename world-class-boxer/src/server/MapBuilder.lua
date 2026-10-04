@@ -5,6 +5,7 @@
 -- Equipment visuals per upgrade level are drawn client-side (GymVisuals) at each
 -- station's Base; the server provides the anchors, use points and prompts.
 local Lighting = game:GetService("Lighting")
+local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
@@ -108,6 +109,9 @@ MapBuilder.StationDefs = {
 	{ id = "barbell", act = "Barbell", pos = V3(-92, 0, -24), use = V3(-92, 0, -24), pose = "deadlift", stand = 0.3, exit = V3(0, 0, 5.5) },
 	{ id = "squat", act = "Squat", pos = V3(-72, 0, -24), use = V3(-72, 0, -24.3), pose = "squat", stand = 0.2, exit = V3(0, 0, 4.5) },
 	{ id = "pullup", act = "PullUps", pos = V3(-92, 0, 2), use = V3(-92, 0, 2), pose = "pullup", exit = V3(0, 0, 3.5) },
+	-- medicine ball: slam pad / wall-ball target at pos, the athlete stands 3.8 studs south of it
+	-- (clear of Andre Cole's curl spot at x -62 and the z = 20 divider)
+	{ id = "medball", act = "MedBall", pos = V3(-74, 0, -1), use = V3(-74, 0, 2.8), pose = "medball", stand = 0, exit = V3(0, 0, 3.2) },
 	-- Cardio Room
 	{ id = "treadmill", act = "Treadmill", pos = V3(70, 0, -52), use = V3(70, 0, -51.6), pose = "run", stand = 0.7, exit = V3(3.6, 0, 0) },
 	{ id = "bike", act = "Bike", pos = V3(90, 0, -52), use = V3(90, 0, -51.2), pose = "bike", seat = 2.7, exit = V3(3.4, 0, 0) },
@@ -125,6 +129,14 @@ MapBuilder.StationDefs = {
 MapBuilder.FloorY = 0.5 -- top of the zone floors (stations stand on these)
 
 MapBuilder.RingCenter = V3(0, 0, -50) -- gym sparring ring (visual)
+
+-- Elite Performance Wing: an annex on the east side of the Recovery Area, entered through a
+-- door in the east wall. The server builds the shell (everyone shares it); the interior and
+-- whether the doors open are drawn client-side from YOUR facility tier (GymVisuals).
+MapBuilder.EliteWing = { x1 = 111, x2 = 153, z1 = 30, z2 = 66, h = 20, door = { 44, 56 } }
+
+-- members' hanging bags (server rigs the client swings when members / players hit them)
+MapBuilder.MemberBags = { V3(-36, 0, -30), V3(-24, 0, -30) }
 
 ------------------------------------------------------------------------
 -- Gym building
@@ -184,11 +196,13 @@ local function wallWithOpenings(parent, axis, c, from, to, h, openings, color)
 	end
 end
 
--- glass, jambs, head, sill, mullion and transom for one window opening (frames show inside and out)
-local function windowFrame(parent, axis, c, along)
+-- glass, jambs, head, sill, mullion and transom for one window opening (frames show inside and out).
+-- width / y0 / y1 default to the main hall's window band; the Elite wing passes its own.
+local function windowFrame(parent, axis, c, along, width, y0, y1)
 	local frameColor = Color3.fromRGB(30, 30, 34)
-	local h = WIN_Y1 - WIN_Y0
-	local midY = (WIN_Y0 + WIN_Y1) / 2
+	local winW, winY0, winY1 = width or WIN_W, y0 or WIN_Y0, y1 or WIN_Y1
+	local h = winY1 - winY0
+	local midY = (winY0 + winY1) / 2
 	local function box(name, alongOff, y, w, hh, depth, color, material, extra)
 		local size = axis == "X" and V3(w, hh, depth) or V3(depth, hh, w)
 		local pos = axis == "X" and V3(along + alongOff, y, c) or V3(c, y, along + alongOff)
@@ -198,13 +212,13 @@ local function windowFrame(parent, axis, c, along)
 		end
 		return part(parent, props)
 	end
-	box("WindowGlass", 0, midY, WIN_W, h, 0.2, Color3.fromRGB(170, 205, 230), Enum.Material.Glass, { Transparency = 0.62, CastShadow = false, Reflectance = 0.08 })
-	box("WindowJamb", -WIN_W / 2 + 0.2, midY, 0.4, h, 2.4, frameColor)
-	box("WindowJamb", WIN_W / 2 - 0.2, midY, 0.4, h, 2.4, frameColor)
-	box("WindowHead", 0, WIN_Y1 - 0.2, WIN_W, 0.4, 2.4, frameColor)
-	box("WindowSill", 0, WIN_Y0 - 0.15, WIN_W + 1, 0.5, 3.2, Color3.fromRGB(150, 146, 140), Enum.Material.Concrete)
+	box("WindowGlass", 0, midY, winW, h, 0.2, Color3.fromRGB(170, 205, 230), Enum.Material.Glass, { Transparency = 0.62, CastShadow = false, Reflectance = 0.08 })
+	box("WindowJamb", -winW / 2 + 0.2, midY, 0.4, h, 2.4, frameColor)
+	box("WindowJamb", winW / 2 - 0.2, midY, 0.4, h, 2.4, frameColor)
+	box("WindowHead", 0, winY1 - 0.2, winW, 0.4, 2.4, frameColor)
+	box("WindowSill", 0, winY0 - 0.15, winW + 1, 0.5, 3.2, Color3.fromRGB(150, 146, 140), Enum.Material.Concrete)
 	box("WindowMullion", 0, midY, 0.25, h, 0.5, frameColor, nil, { CanCollide = false })
-	box("WindowTransom", 0, WIN_Y0 + h * 0.66, WIN_W, 0.22, 0.5, frameColor, nil, { CanCollide = false })
+	box("WindowTransom", 0, winY0 + h * 0.66, winW, 0.22, 0.5, frameColor, nil, { CanCollide = false })
 end
 
 local function zoneSign(parent, text, cf, color)
@@ -277,6 +291,162 @@ local function buildStationAnchors(gym, def)
 	return m
 end
 
+-- A member bag hanging from the roof on a long chain. Only the swinging pieces go in the rig
+-- model (tag "MemberBag", attribute Hook = the pivot): the client swings, twists and dents it
+-- locally when a member or another player throws a punch at it (GymVisuals). The ceiling rod
+-- and plate stay outside the rig because they never move.
+local function buildMemberBag(gym, x, z, i)
+	local hookY = 25.1
+	local steel = Color3.fromRGB(150, 150, 160)
+	deco(gym, "BeamBag", V3(0.4, 30 - hookY, 0.4), CF(x, (30 + hookY) / 2, z), steel, Enum.Material.Metal)
+	deco(gym, "BagCeilingPlate", V3(1.4, 0.2, 1.4), CF(x, 29.9, z), Color3.fromRGB(60, 60, 66), Enum.Material.Metal)
+	local rig = Instance.new("Model")
+	rig.Name = "MemberBagRig"
+	rig:SetAttribute("Hook", V3(x, hookY, z))
+	rig:SetAttribute("Index", i)
+	rig.Parent = gym
+	local leather = i == 1 and Color3.fromRGB(150, 30, 30) or Color3.fromRGB(30, 30, 30)
+	local trim = i == 1 and Color3.fromRGB(30, 30, 30) or Color3.fromRGB(200, 170, 60)
+	local chainC = Color3.fromRGB(160, 160, 165)
+	local function link(a, b, k)
+		local d = b - a
+		local cf = CFrame.lookAt((a + b) / 2, b, Vector3.xAxis) * CFrame.Angles(math.rad(90), (k % 2) * math.pi / 2, 0)
+		deco(rig, "Chain", V3(0.22, d.Magnitude * 1.15, 0.08), cf, chainC, Enum.Material.Metal, { CanCollide = false, CanQuery = false })
+	end
+	-- main chain: 9 long links from the hook to the swivel above the bag
+	local top, bottom = V3(x, hookY, z), V3(x, 9.3, z)
+	for k = 1, 9 do
+		link(top:Lerp(bottom, (k - 1) / 9), top:Lerp(bottom, k / 9), k)
+	end
+	deco(rig, "Swivel", V3(0.3, 0.45, 0.3), CF(x, 9.1, z), chainC, Enum.Material.Metal, { CanCollide = false })
+	-- four spreader chains to D-rings on the top cap
+	for _, s in ipairs({ { 1, 1 }, { -1, 1 }, { 1, -1 }, { -1, -1 } }) do
+		local foot = V3(x + s[1] * 0.6, 8.25, z + s[2] * 0.6)
+		link(V3(x, 8.9, z), foot, s[1] + 2)
+	end
+	local up = CFrame.Angles(0, 0, math.rad(90))
+	local bag = deco(rig, "MemberBag", V3(5, 2.6, 2.6), CF(x, 5.6, z) * up, leather, Enum.Material.Leather)
+	bag.Shape = Enum.PartType.Cylinder
+	bag.Size = V3(5, 2.6, 2.6)
+	for _, y in ipairs({ 8.12, 3.08 }) do
+		local cap = deco(rig, "BagCap", V3(0.2, 2.55, 2.55), CF(x, y, z) * up, Color3.fromRGB(22, 22, 26), Enum.Material.Leather)
+		cap.Shape = Enum.PartType.Cylinder
+	end
+	for _, y in ipairs({ 7.1, 4.1 }) do
+		local band = deco(rig, "BagBand", V3(0.22, 2.64, 2.64), CF(x, y, z) * up, trim, Enum.Material.Leather)
+		band.Shape = Enum.PartType.Cylinder
+	end
+	local patch = deco(rig, "BagPatch", V3(1.1, 0.7, 0.2), CF(x, 6.1, z + 1.24), Color3.fromRGB(20, 20, 24), Enum.Material.Leather)
+	sign(patch, Enum.NormalId.Back, "WCB", Color3.fromRGB(20, 20, 24), Color3.fromRGB(255, 200, 40))
+	CollectionService:AddTag(rig, "MemberBag")
+	return rig
+end
+
+-- Elite Performance Wing shell (see MapBuilder.EliteWing): floor, clad walls with tall windows,
+-- a roof with two skylights, the doorway into the main hall with glass doors (they open for you
+-- locally once your gym reaches the Elite tier) and ceiling lights that stay off until then.
+local function buildEliteWing(gym)
+	local E = MapBuilder.EliteWing
+	local f = Instance.new("Folder")
+	f.Name = "EliteWing"
+	f.Parent = gym
+	local x1, x2, z1, z2, h = E.x1, E.x2, E.z1, E.z2, E.h
+	local cx, cz = (x1 + x2) / 2, (z1 + z2) / 2
+	local clad = Color3.fromRGB(46, 48, 54)
+	local floorC = Color3.fromRGB(196, 198, 204)
+	deco(f, "EliteFloor", V3(x2 - x1, 0.5, z2 - z1), CF(cx, 0.25, cz), floorC, Enum.Material.Marble)
+	-- tall windows: two on the east face, two on the south face, all glass named WindowGlass so the
+	-- client's sun shafts find them like the hall's windows
+	local wy0, wy1, ww = 3, 15, 9
+	local function openings(list)
+		local out = {}
+		for _, a in ipairs(list) do
+			table.insert(out, { a - ww / 2, a + ww / 2, wy0, wy1 })
+		end
+		return out
+	end
+	local eastWin, southWin = { 40, 56 }, { 122, 142 }
+	wallWithOpenings(f, "X", z1, x1, x2 + 1, h, {}, clad)
+	wallWithOpenings(f, "X", z2, x1, x2 + 1, h, openings(southWin), clad)
+	wallWithOpenings(f, "Z", x2, z1 + 1, z2 - 1, h, openings(eastWin), clad)
+	for _, w in ipairs(f:GetChildren()) do
+		if w.Name == "Wall" then
+			w.Material = Enum.Material.Concrete
+		end
+	end
+	for _, a in ipairs(eastWin) do
+		windowFrame(f, "Z", x2, a, ww, wy0, wy1)
+	end
+	for _, a in ipairs(southWin) do
+		windowFrame(f, "X", z2, a, ww, wy0, wy1)
+	end
+	-- roof in three slabs around two skylights (glass named SkylightGlass: shafts from above)
+	local sky = { { 122, 128 }, { 136, 142 } } -- x spans of the skylights
+	local cuts = { x1 - 0.5, sky[1][1], sky[1][2], sky[2][1], sky[2][2], x2 + 1.5 }
+	for k = 1, #cuts - 1, 2 do
+		local a, b = cuts[k], cuts[k + 1]
+		deco(f, "EliteRoof", V3(b - a, 1, z2 - z1 + 2), CF((a + b) / 2, h + 0.5, cz), Color3.fromRGB(38, 40, 44), Enum.Material.Metal)
+	end
+	for _, s in ipairs(sky) do
+		local a, b = s[1], s[2]
+		-- solid strips at both ends of each skylight, glass between them
+		for _, zz in ipairs({ z1 + 2, z2 - 2 }) do
+			deco(f, "EliteRoof", V3(b - a, 1, 6), CF((a + b) / 2, h + 0.5, zz), Color3.fromRGB(38, 40, 44), Enum.Material.Metal)
+		end
+		local glassLen = z2 - z1 - 10
+		deco(f, "SkylightGlass", V3(b - a, 0.2, glassLen), CF((a + b) / 2, h + 0.6, cz), Color3.fromRGB(180, 210, 235), Enum.Material.Glass, { Transparency = 0.55, CastShadow = false })
+		for k = 1, 4 do
+			deco(f, "SkylightMullion", V3(b - a, 0.3, 0.25), CF((a + b) / 2, h + 0.3, z1 + 5 + k * glassLen / 5), Color3.fromRGB(30, 30, 34), Enum.Material.Metal, { CanCollide = false })
+		end
+	end
+	deco(f, "EliteParapet", V3(x2 - x1 + 2, 1.4, 0.6), CF(cx, h + 1.7, z2 + 0.9), Color3.fromRGB(30, 30, 34), Enum.Material.Metal)
+	deco(f, "EliteParapet", V3(x2 - x1 + 2, 1.4, 0.6), CF(cx, h + 1.7, z1 - 0.9), Color3.fromRGB(30, 30, 34), Enum.Material.Metal)
+	deco(f, "EliteParapet", V3(0.6, 1.4, z2 - z1 + 2), CF(x2 + 0.9, h + 1.7, cz), Color3.fromRGB(30, 30, 34), Enum.Material.Metal)
+	-- exterior name band (faces east, towards the yard and the loop road)
+	local band = deco(f, "EliteSignBand", V3(0.4, 2.4, 26), CF(x2 + 1.25, h - 2, cz), Color3.fromRGB(16, 16, 20))
+	sign(band, Enum.NormalId.Right, "WCB ELITE PERFORMANCE", Color3.fromRGB(16, 16, 20), Color3.fromRGB(220, 230, 240))
+	-- doorway through the hall's east wall: frame, header and two sliding glass leaves
+	local d0, d1 = E.door[1], E.door[2]
+	local dm = (d0 + d1) / 2
+	for _, zz in ipairs({ d0 - 0.25, d1 + 0.25 }) do
+		deco(f, "EliteDoorFrame", V3(2.6, 14, 0.5), CF(110, 7, zz), Color3.fromRGB(26, 26, 30), Enum.Material.Metal)
+	end
+	deco(f, "EliteDoorHeader", V3(2.6, 0.6, d1 - d0 + 1), CF(110, 14.2, dm), Color3.fromRGB(26, 26, 30), Enum.Material.Metal)
+	for _, s in ipairs({ -1, 1 }) do
+		-- named EliteGate: the client slides these open (locally) for an Elite-tier gym
+		local leaf = deco(f, "EliteGate", V3(0.3, 13.4, (d1 - d0) / 2), CF(110, 7.1, dm + s * (d1 - d0) / 4), Color3.fromRGB(170, 200, 220), Enum.Material.Glass, { Transparency = 0.45, CastShadow = false })
+		leaf:SetAttribute("Side", s)
+	end
+	-- (between the door header and the RECOVERY AREA zone sign above it)
+	local head = deco(f, "EliteDoorSign", V3(0.3, 0.8, 12), CF(108.75, 14.95, dm), Color3.fromRGB(16, 16, 20))
+	sign(head, Enum.NormalId.Left, "ELITE PERFORMANCE WING", Color3.fromRGB(16, 16, 20), Color3.fromRGB(150, 220, 255))
+	-- ceiling light rig (off for everyone; the client switches it on for an unlocked wing)
+	for _, x in ipairs({ 121, 143 }) do
+		for _, zz in ipairs({ 38, 58 }) do
+			local fix = deco(f, "EliteLightPanel", V3(6, 0.25, 2), CF(x, h - 0.2, zz), Color3.fromRGB(235, 240, 250), Enum.Material.SmoothPlastic, { CanCollide = false, CastShadow = false })
+			local l = Instance.new("SpotLight")
+			l.Name = "EliteLight"
+			l.Face = Enum.NormalId.Bottom
+			l.Angle = 120
+			l.Range = 30
+			l.Brightness = 1.6
+			l.Color = Color3.fromRGB(228, 238, 255)
+			l.Shadows = false
+			l.Enabled = false
+			l.Parent = fix
+		end
+	end
+	return f
+end
+
+-- invisible boxes tagged LightZone: the client grades the picture for the zone the camera is in
+local function lightZone(parent, name, size, cf, profile)
+	local p = deco(parent, name, size, cf, Color3.new(), nil, { Transparency = 1, CanCollide = false, CanQuery = false, CanTouch = false, CastShadow = false })
+	p:SetAttribute("Profile", profile)
+	CollectionService:AddTag(p, "LightZone")
+	return p
+end
+
 local function buildAction(gym, name, text, area, pos, attrs, labelColor)
 	local p = deco(gym, name, V3(1, 1, 1), CF(pos + V3(0, 3.2, 0)), Color3.new(), nil, { Transparency = 1, CanCollide = false, CanQuery = false })
 	prompt(p, text, area, attrs)
@@ -320,7 +490,9 @@ function MapBuilder.BuildGym()
 	wallWithOpenings(gym, "X", Z1, X1 - 1, X2 + 1, H, openings(MapBuilder.Windows.N, { -8, 8, 0, 14 }), WALL) -- north (to pool)
 	wallWithOpenings(gym, "X", Z2, X1 - 1, X2 + 1, H, openings(MapBuilder.Windows.S, { -10, 10, 0, 14 }), WALL) -- south (main entrance)
 	wallWithOpenings(gym, "Z", X1, Z1 + 1, Z2 - 1, H, openings(MapBuilder.Windows.W), WALL)
-	wallWithOpenings(gym, "Z", X2, Z1 + 1, Z2 - 1, H, openings(MapBuilder.Windows.E), WALL)
+	-- east wall: windows plus the doorway into the Elite Performance Wing annex
+	local wingDoor = MapBuilder.EliteWing.door
+	wallWithOpenings(gym, "Z", X2, Z1 + 1, Z2 - 1, H, openings(MapBuilder.Windows.E, { wingDoor[1], wingDoor[2], 0, 14 }), WALL)
 	for _, a in ipairs(MapBuilder.Windows.N) do
 		windowFrame(gym, "X", Z1, a)
 	end
@@ -391,15 +563,20 @@ function MapBuilder.BuildGym()
 	buildAction(gym, "SparPrompt", "Spar (Light / Medium / Hard)", "Sparring Ring", rc + V3(0, 0, 14), { Activity = "Sparring", Station = "ring" }, Color3.fromRGB(255, 220, 90))
 	local ringSign = deco(gym, "RingSign", V3(20, 3, 0.5), CF(rc + V3(0, 13, -13)), Color3.fromRGB(18, 18, 22))
 	sign(ringSign, Enum.NormalId.Back, "SPARRING RING", Color3.fromRGB(18, 18, 22), Color3.new(1, 1, 1))
-	-- decorative extra bags along the boxing area wall (gym members use these)
-	for i, x in ipairs({ -36, -24 }) do
-		deco(gym, "BeamBag", V3(0.4, 8, 0.4), CF(x, 25, -30), Color3.fromRGB(150, 150, 160), Enum.Material.Metal)
-		local bag = deco(gym, "MemberBag", V3(2.6, 5, 2.6), CF(x, 5.5, -30), i == 1 and Color3.fromRGB(150, 30, 30) or Color3.fromRGB(30, 30, 30), Enum.Material.Leather)
-		bag.Shape = Enum.PartType.Cylinder
-		bag.Size = V3(5, 2.6, 2.6)
-		bag.CFrame = CF(x, 5.6, -30) * CFrame.Angles(0, 0, math.rad(90))
-		deco(gym, "Chain", V3(0.15, 17, 0.15), CF(x, 16.6, -30), Color3.fromRGB(160, 160, 165), Enum.Material.Metal, { CanCollide = false })
+	-- members' hanging bags along the boxing area (members and other players hit these; the
+	-- client swings them)
+	for i, p in ipairs(MapBuilder.MemberBags) do
+		buildMemberBag(gym, p.X, p.Z, i)
 	end
+	-- the Elite Performance Wing shell east of the Recovery Area
+	local okWing, wingErr = pcall(buildEliteWing, gym)
+	if not okWing then
+		warn("[Boxer] elite wing failed: " .. tostring(wingErr))
+	end
+	-- colour-grade zones the client reads (Ambience): the warm main hall and the cool elite wing
+	local W = MapBuilder.EliteWing
+	lightZone(gym, "LightZoneGym", V3(X2 - X1, H, Z2 - Z1), CF(0, H / 2, 0), "GymWarm")
+	lightZone(gym, "LightZoneElite", V3(W.x2 - W.x1, W.h, W.z2 - W.z1), CF((W.x1 + W.x2) / 2, W.h / 2, (W.z1 + W.z2) / 2), "GymElite")
 
 	-- services: barber, lockers, nutrition bar, bunks, water coolers
 	local barberChair = deco(gym, "BarberChair", V3(3, 3, 3), CF(-95, 1.5, 38), Color3.fromRGB(160, 20, 30), Enum.Material.Leather)
@@ -418,7 +595,7 @@ function MapBuilder.BuildGym()
 	deco(poleModel, "PoleCap", V3(1.5, 0.5, 1.5), CF(-103, 3.8, 28.5), Color3.fromRGB(200, 200, 205), Enum.Material.Metal)
 	poleModel.PrimaryPart = pole
 	poleModel:SetAttribute("Speed", 2.2)
-	game:GetService("CollectionService"):AddTag(poleModel, "SpinFan")
+	CollectionService:AddTag(poleModel, "SpinFan")
 	buildAction(gym, "BarberPrompt", "Barber Shop", "Hair & beard", V3(-95, 0, 42), { Action = "Barber" }, Color3.fromRGB(240, 200, 140))
 	for i = 0, 7 do
 		local l = deco(gym, "Locker", V3(3, 8, 2), CF(-80 + i * 3.1, 4, 25), i % 2 == 0 and Color3.fromRGB(40, 70, 150) or Color3.fromRGB(35, 60, 130), Enum.Material.DiamondPlate)

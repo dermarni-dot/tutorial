@@ -12,9 +12,13 @@
 --  pace      treadmill / bike / rower intervals with live machine readouts
 --  ladder    named agility drills (smart reaction lights at the top level)
 --  rope      basic bounce, boxer skip, double unders
+--  medball   medicine ball: overhead slams on the pad, then Russian twists on the beat
 --  hold      recovery breathing: ice bath, stretching, massage, sauna, recovery chamber
 --  course    roadwork loop      swim  pool lengths (both measured by the server)
 -- Sparring opens the intensity picker and hands over to the fight client.
+-- While you work the body shows it: Effort / LivePump (client-local attributes the Animator reads),
+-- sweat drips onto the floor when your heart rate is high, the coaches react to great and sloppy
+-- work, and the result screen lists every muscle part that grew, the pump and a FLEX button.
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
@@ -27,6 +31,11 @@ local Catalog = require(Shared:WaitForChild("Catalog"))
 local UI = require(Shared:WaitForChild("UI"))
 local State = require(script.Parent:WaitForChild("State"))
 local GymVisuals = require(script.Parent:WaitForChild("GymVisuals"))
+-- coach reactions are a nice-to-have: the drills run without them
+local okAmbience, Ambience = pcall(require, script.Parent:WaitForChild("Ambience"))
+if not okAmbience then
+	Ambience = nil
+end
 local T = UI.Theme
 local K = Enum.KeyCode
 
@@ -41,7 +50,14 @@ local STAGE_Y = 92
 local STAGE_H = 120
 local STUD_M = 0.28 -- metres per stud (roadwork distance)
 -- how hard each drill works you even between presses (heart-rate effort floor, 0..1)
-local BASE_EFFORT = { combo = 0.45, rhythm = 0.3, reaction = 0.5, mitts = 0.55, shadow = 0.45, ladder = 0.45, rope = 0.45 }
+local BASE_EFFORT = { combo = 0.45, rhythm = 0.3, reaction = 0.5, mitts = 0.55, shadow = 0.45, ladder = 0.45, rope = 0.45, medball = 0.5 }
+-- the pose to strike when you press FLEX after a session (Config.Pump.poses), by exercise
+local FLEX_FOR = { Bench = "flex_chest", Dumbbells = "flex_biceps", PullUps = "flex_lat", Barbell = "flex_most", Squat = "flex_most", MedBall = "flex_abs",
+	HeavyBag = "flex_most", MittWork = "flex_biceps" }
+
+-- a decaying station-camera kick on heavy shots (set by ctx.impact, read by stationCamera)
+local camKick = { t = 0, amp = 0 }
+local pumpFadeToken = 0 -- a new session stops the previous session's pump fade
 
 local WINDUP = { jab = 0.16, cross = 0.22, leadhook = 0.24, rearhook = 0.26, uppercut = 0.26, overhand = 0.34 }
 local HAND = { jab = "L", cross = "R", leadhook = "L", rearhook = "R", uppercut = "R", overhand = "R" }
@@ -165,6 +181,7 @@ local function newContext(info)
 	function ctx.setInfo(text)
 		ctx.info.Text = text
 	end
+	local lastReact = 0
 	function ctx.feedback(text, color)
 		ctx.flash.Text = text
 		ctx.flash.TextColor3 = color or T.text
@@ -175,6 +192,11 @@ local function newContext(info)
 				ctx.flash.Text = ""
 			end
 		end)
+		-- a coach nearby shouts at gold (great) and red (sloppy) moments - not every single one
+		if Ambience and Ambience.React and (color == T.gold or color == T.red) and id - lastReact > 4 and math.random() < 0.6 then
+			lastReact = id
+			pcall(Ambience.React, nil, color == T.gold and "good" or "bad")
+		end
 	end
 	-- the session summary (result screen) and the numbers sent to the server
 	function ctx.note(text)
@@ -202,7 +224,10 @@ local function newContext(info)
 	local recHR = Config.RecoveryHR[info.act.id]
 	ctx.recovery = recHR ~= nil
 	ctx.workHR = recHR and (ctx.restHR + recHR) or (Config.TrainingHR[info.act.id] or 150)
-	local activity, sinceLive = 0, 1
+	local activity, sinceLive, sinceEffort, sinceSweat = 0, 1, 1, 0
+	pumpFadeToken += 1
+	local startChar = player.Character
+	ctx.livePump = startChar and tonumber(startChar:GetAttribute("LivePump")) or 0
 	function ctx.pulse(n)
 		activity = math.min(6, activity + 0.25 * (n or 1))
 	end
@@ -247,6 +272,25 @@ local function newContext(info)
 		if sinceLive >= 0.15 then
 			sinceLive = 0
 			ctx.refreshLive()
+		end
+		-- Effort (client-local, 0..1 in 0.05 steps): the Animator's strain tremor and face
+		sinceEffort += dt
+		if sinceEffort >= 0.25 then
+			sinceEffort = 0
+			local e = math.clamp((ctx.hr - ctx.restHR) / math.max(1, ctx.maxHR - ctx.restHR), 0, 1)
+			e = math.floor(math.clamp(e * 0.7 + (ctx.intensity or 0) * 0.3, 0, 1) * 20 + 0.5) / 20
+			if e ~= ctx.effortSent then
+				ctx.effortSent = e
+				ctx.attr("Effort", e)
+			end
+		end
+		-- sweat drips onto the floor while you work hard
+		if ctx.hr > 0.8 * ctx.maxHR and ctx.mode == "work" and ctx.station then
+			sinceSweat += dt
+			if sinceSweat >= 6 then
+				sinceSweat = math.random() * 1.5
+				pcall(GymVisuals.SweatDrop, ctx.station)
+			end
 		end
 	end))
 
@@ -383,7 +427,8 @@ local function newContext(info)
 
 	-- local animation helpers
 	local char = player.Character
-	function ctx.punch(ptype, zone)
+	-- power (optional, ~0.3..1.5) goes out as the 5th Act field: the Animator scales hip rotation by it
+	function ctx.punch(ptype, zone, power)
 		local c = player.Character
 		if not c then
 			return 0.2, "R"
@@ -393,7 +438,11 @@ local function newContext(info)
 			ctx.upHand = ctx.upHand == "R" and "L" or "R"
 			hand = ctx.upHand
 		end
-		c:SetAttribute("Act", string.format("%s|%s|%s|%.2f", ptype, hand, zone or "head", WINDUP[ptype] or 0.2))
+		local act = string.format("%s|%s|%s|%.2f", ptype, hand, zone or "head", WINDUP[ptype] or 0.2)
+		if power then
+			act ..= string.format("|%.2f", math.clamp(power, 0, 2))
+		end
+		c:SetAttribute("Act", act)
 		c:SetAttribute("ActId", (c:GetAttribute("ActId") or 0) + 1)
 		return WINDUP[ptype] or 0.2, hand
 	end
@@ -419,10 +468,19 @@ local function newContext(info)
 			char:SetAttribute(name, v)
 		end
 	end
-	function ctx.impact(power, side)
+	-- the bag / ball reacts; ptype and zone (optional) shape the swing, twist, dent and sound
+	function ctx.impact(power, side, ptype, zone)
 		if ctx.station then
-			GymVisuals.Impact(ctx.station, power, side)
+			GymVisuals.Impact(ctx.station, power, side, ptype, zone)
+			if (power or 0) > 1.0 then
+				camKick.t, camKick.amp = os.clock(), math.min(1.6, power)
+			end
 		end
+	end
+	-- a good rep pumps the worked muscles a little more (client-local LivePump, BodyFX reads it)
+	function ctx.pump(amount)
+		ctx.livePump = math.clamp((ctx.livePump or 0) + (amount or 0.1), 0, 1)
+		ctx.attr("LivePump", math.floor(ctx.livePump * 20 + 0.5) / 20)
 	end
 	-- keys work while the panel is alive
 	table.insert(ctx.conns, UserInputService.InputBegan:Connect(function(input, gp)
@@ -453,8 +511,23 @@ local function newContext(info)
 			panel:Destroy()
 		end
 		if char then
-			for _, a in ipairs({ "PoseDrive", "PoseSpeed", "RepCount", "RopeSpin", "RopeFoot" }) do
+			for _, a in ipairs({ "PoseDrive", "PoseSpeed", "RepCount", "RopeSpin", "RopeFoot", "Effort", "TwistSide" }) do
 				char:SetAttribute(a, nil)
+			end
+			-- the live pump fades over half a minute instead of vanishing with the panel
+			local pumpLeft = ctx.livePump or 0
+			if pumpLeft > 0 then
+				local c = char
+				local token = pumpFadeToken
+				task.spawn(function()
+					while pumpLeft > 0 and c.Parent and token == pumpFadeToken do
+						task.wait(1)
+						pumpLeft = math.max(0, pumpLeft - 0.035)
+						c:SetAttribute("LivePump", pumpLeft > 0 and (math.floor(pumpLeft * 20 + 0.5) / 20) or nil)
+					end
+				end)
+			else
+				char:SetAttribute("LivePump", nil)
 			end
 		end
 	end
@@ -591,12 +664,13 @@ GAMES.combo = function(ctx)
 			local want = combo[idx]:gsub("%*", "")
 			local body = combo[idx]:find("%*") ~= nil
 			if id == want then
-				local windup, hand = ctx.punch(id, body and "body" or "head")
 				local pw = POWER[id] * (0.85 + math.random() * 0.3)
+				local zone = body and "body" or "head"
+				local windup, hand = ctx.punch(id, zone, pw)
 				local lbs = punchLbs(ctx, id, 0.5 + math.random() * 0.35)
 				maxLbs = math.max(maxLbs, lbs)
 				task.delay(windup, function()
-					ctx.impact(pw, hand == "L" and -1 or 1)
+					ctx.impact(pw, hand == "L" and -1 or 1, id, zone)
 				end)
 				punches += 1
 				chips[idx].BackgroundColor3 = T.green
@@ -715,10 +789,10 @@ GAMES.combo = function(ctx)
 			maxLbs = math.max(maxLbs, lbs)
 			powerSum += timing
 			punches += 1
-			local windup, hand = ctx.punch(thrown.ptype)
 			local imp = math.min(1.5, 0.5 + timing * (0.6 + 0.4 * POWER[thrown.ptype] / 1.25))
+			local windup, hand = ctx.punch(thrown.ptype, "head", imp)
 			task.delay(windup, function()
-				ctx.impact(imp, hand == "L" and -1 or 1)
+				ctx.impact(imp, hand == "L" and -1 or 1, thrown.ptype, "head")
 			end)
 			bagScreen(ctx, string.format("POWER\n%s lbs\nBEST %s", fmtInt(lbs), fmtInt(maxLbs)))
 			local verdict, col
@@ -771,9 +845,10 @@ GAMES.combo = function(ctx)
 		lastHand = id
 		count += 1
 		punches += 1
-		local windup, hand = ctx.punch(id == "L" and "jab" or "cross")
+		local ptype = id == "L" and "jab" or "cross"
+		local windup, hand = ctx.punch(ptype, "head", 0.4)
 		task.delay(windup * 0.6, function()
-			ctx.impact(0.3 + math.random() * 0.15, hand == "L" and -1 or 1)
+			ctx.impact(0.3 + math.random() * 0.15, hand == "L" and -1 or 1, ptype, "head")
 		end)
 	end)
 	local t0 = os.clock()
@@ -1498,7 +1573,8 @@ local function liftLoad(ctx)
 	end
 	local P = State.P
 	local power = P and P.stats and P.stats.Power or 40
-	local muscle = P and P.body and P.body[def.muscle] or 10
+	-- the exercise's own sub-muscle sets the load (falls back to its group for old summaries)
+	local muscle = P and P.body and (def.part and Config.PartValue and Config.PartValue(P.body, def.part) or P.body[def.muscle]) or 10
 	local st = Catalog.Stations[ctx.station]
 	local maxLv = st and #st.levels or 4
 	local s = math.clamp((power - 20) / 79, 0, 1) * 0.6 + math.clamp(muscle / 100, 0, 1) * 0.25
@@ -1644,6 +1720,206 @@ GAMES.reps = function(ctx)
 		return nil
 	end
 	return math.clamp(total / (sets * reps), 0, 1)
+end
+
+-- MEDICINE BALL ---------------------------------------------------------
+-- Set 1 SLAMS: hold to drive the ball overhead, release in the green zone and the ball is slammed
+-- into the pad (the station thumps, the dust flies). Set 2 RUSSIAN TWISTS: touch the ball down
+-- LEFT / RIGHT on the beat (TwistSide drives the Animator's rotation). Abs and obliques get the
+-- live pump with every clean rep.
+GAMES.medball = function(ctx)
+	local lv = ctx.level
+	local load, loadText = liftLoad(ctx)
+	loadText = loadText or "MED BALL"
+	-- SET 1: SLAMS
+	ctx.bind({ { id = "lift", label = "HOLD: RAISE  /  RELEASE: SLAM", keys = { K.Space }, color = T.gold } }, 1)
+	if ctx.buttons.lift then
+		ctx.buttons.lift.TextColor3 = T.bg
+	end
+	ctx.setInfo("Hold SPACE to drive the ball overhead, release inside the green zone to SLAM it. Brace your core - power comes from the trunk, not the arms.")
+	if not ctx.round(1, 2, "SLAMS" .. DOT .. loadText, "SET") then
+		return nil
+	end
+	UI.Clear(ctx.stage)
+	local barBg = UI.Frame(ctx.stage, { Position = UDim2.new(0, 20, 0, 18), Size = UDim2.new(1, -40, 0, 34), BackgroundColor3 = Color3.fromRGB(40, 20, 20) })
+	UI.Corner(barBg, 6)
+	local zone = UI.Frame(barBg, { BackgroundColor3 = T.green, Size = UDim2.fromScale(0.2, 1) })
+	UI.Corner(zone, 6)
+	local fill = UI.Frame(barBg, { BackgroundColor3 = T.gold, BackgroundTransparency = 0.25, Size = UDim2.fromScale(0, 1) })
+	UI.Corner(fill, 6)
+	local repText = UI.Text(ctx.stage, "", { Font = T.bold, Position = UDim2.fromOffset(20, 58), Size = UDim2.new(1, -40, 0, 24), AutomaticSize = Enum.AutomaticSize.None })
+	local holding = false
+	ctx.on(function(_, down)
+		holding = down
+	end)
+	local slams = 5 + math.min(lv, 3)
+	local slamScore, cleanSlams = 0, 0
+	for r = 1, slams do
+		local width = math.max(0.1, 0.22 - r * 0.008 + lv * 0.012)
+		local lo = math.clamp(0.62 + math.random() * 0.16, 0.5, 0.96 - width)
+		zone.Position = UDim2.fromScale(lo, 0)
+		zone.Size = UDim2.fromScale(width, 1)
+		repText.Text = string.format("SLAM %d / %d", r, slams)
+		ctx.attr("RepCount", r)
+		ctx.intensity = 0.35
+		while not holding do
+			if ctx.cancelled then
+				return nil
+			end
+			RunService.Heartbeat:Wait()
+		end
+		ctx.intensity = 0.9
+		local f, over = 0, false
+		local speed = 0.85 + r * 0.03 + lv * 0.05
+		while holding do
+			if ctx.cancelled then
+				return nil
+			end
+			f = math.min(1, f + RunService.Heartbeat:Wait() * speed)
+			fill.Size = UDim2.fromScale(f, 1)
+			ctx.drive(f) -- PoseDrive: the ball rises overhead
+			if f >= 1 then
+				over = true
+				break
+			end
+		end
+		local q
+		if over then
+			q = 0.35
+			ctx.feedback("OVERREACHED - BRACE!", T.orange)
+		elseif f >= lo and f <= lo + width then
+			local center = math.abs(f - (lo + width / 2)) / (width / 2)
+			q = center < 0.35 and 1 or 0.85
+			cleanSlams += 1
+			ctx.feedback(center < 0.35 and "MONSTER SLAM!" or "GOOD SLAM", center < 0.35 and T.gold or T.green)
+			ctx.pump(0.08)
+		else
+			q = f < lo and 0.45 or 0.4
+			ctx.feedback(f < lo and "ALL ARMS - GET IT OVERHEAD" or "LOST THE BRACE", T.orange)
+		end
+		slamScore += q
+		-- the slam: drive down fast, the ball hits the pad
+		local t0 = os.clock()
+		while os.clock() - t0 < 0.22 do
+			if ctx.cancelled then
+				return nil
+			end
+			ctx.drive(f * (1 - (os.clock() - t0) / 0.22))
+			RunService.Heartbeat:Wait()
+		end
+		ctx.drive(0)
+		ctx.impact(0.6 + q * 0.7, 0, "slam", "body")
+		fill.Size = UDim2.fromScale(0, 1)
+		holding = false
+		ctx.stats(string.format("Slam %d/%d%s%d clean", r, slams, DOT, cleanSlams))
+		ctx.progress(r / slams)
+		if not ctx.wait(0.35) then
+			return nil
+		end
+		-- catch it off the bounce
+		ctx.impact(-0.3, 0)
+	end
+	ctx.intensity = nil
+	if not ctx.rest(3, "SLAMS DONE", string.format("%d/%d clean slams", cleanSlams, slams)) then
+		return nil
+	end
+
+	-- SET 2: RUSSIAN TWISTS on a metronome
+	ctx.bind({ { id = "L", label = "TWIST LEFT", keys = { K.Q, K.A, K.J }, color = T.blue }, { id = "R", label = "TWIST RIGHT", keys = { K.E, K.D, K.K }, color = T.red } }, 2)
+	local bpm = ({ 64, 76, 88, 100 })[math.clamp(lv, 1, 4)]
+	ctx.setInfo(string.format("Feet up, chest proud: touch the ball down LEFT and RIGHT on every beat (%d BPM). Rotate from the ribs - this is your body-shot armour.", bpm))
+	if not ctx.round(2, 2, "RUSSIAN TWISTS" .. DOT .. bpm .. " BPM", "SET") then
+		return nil
+	end
+	UI.Clear(ctx.stage)
+	local interval = 60 / bpm
+	local count = 14 + math.min(lv, 4) * 2
+	local lineX = 70
+	UI.Frame(ctx.stage, { Position = UDim2.new(0, lineX - 2, 0, 6), Size = UDim2.new(0, 4, 1, -46), BackgroundColor3 = T.gold })
+	local notes = {}
+	local start = os.clock() + 1.2
+	for i = 1, count do
+		local lane = (i % 2 == 1) and "L" or "R"
+		local f = UI.Frame(ctx.stage, { Size = UDim2.fromOffset(26, 26), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0, -100, 0, lane == "L" and 30 or 62), BackgroundColor3 = lane == "L" and T.blue or T.red })
+		UI.Corner(f, 13)
+		UI.Text(f, lane, { Font = T.bold, TextSize = 13, TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.fromScale(1, 1), AutomaticSize = Enum.AutomaticSize.None })
+		notes[i] = { t = start + (i - 1) * interval, lane = lane, f = f, judged = false }
+	end
+	local onBeat, streak, bestStreak = 0, 0, 0
+	ctx.intensity = 0.6
+	ctx.on(function(id, down)
+		if not down then
+			return
+		end
+		ctx.attr("TwistSide", id == "L" and -1 or 1)
+		local now = os.clock()
+		local best, bestDt
+		for _, n in ipairs(notes) do
+			if not n.judged and n.lane == id then
+				local dt = now - n.t
+				if math.abs(dt) < 0.25 and (not best or math.abs(dt) < math.abs(bestDt)) then
+					best, bestDt = n, dt
+				end
+			end
+		end
+		if best then
+			best.judged = true
+			best.f.Visible = false
+			if math.abs(bestDt) < 0.12 then
+				onBeat += 1
+				streak += 1
+				bestStreak = math.max(bestStreak, streak)
+				ctx.feedback(streak >= 6 and ("ON FIRE x" .. streak) or "TOUCH", streak >= 6 and T.gold or T.green)
+				ctx.impact(-0.2, id == "L" and -1 or 1) -- the ball taps the floor
+				if streak % 4 == 0 then
+					ctx.pump(0.05)
+				end
+			else
+				streak = 0
+				ctx.feedback("OFF BEAT", T.orange)
+			end
+		end
+	end)
+	local pxPerSec = 220
+	while true do
+		if ctx.cancelled then
+			return nil
+		end
+		local now = os.clock()
+		local alive = false
+		for _, n in ipairs(notes) do
+			if not n.judged then
+				alive = true
+				n.f.Position = UDim2.new(0, lineX + (n.t - now) * pxPerSec, 0, n.lane == "L" and 30 or 62)
+				if now - n.t > 0.25 then
+					n.judged = true
+					n.f.Visible = false
+					streak = 0
+					ctx.feedback("MISSED", T.red)
+				end
+			end
+		end
+		ctx.progress((now - start) / (count * interval))
+		ctx.stats(string.format("%d/%d on the beat%sstreak %d", onBeat, count, DOT, streak))
+		if not alive then
+			break
+		end
+		RunService.Heartbeat:Wait()
+	end
+	ctx.on(nil)
+	ctx.intensity = nil
+	ctx.attr("TwistSide", 0)
+	local twistScore = onBeat / count
+	ctx.put("load", load or 0)
+	ctx.put("cleanSlams", cleanSlams)
+	ctx.put("twists", onBeat)
+	ctx.put("bestStreak", bestStreak)
+	ctx.note(string.format("%s%s%d/%d clean slams", loadText, DOT, cleanSlams, slams))
+	ctx.note(string.format("%d/%d twists on the beat (best streak %d)", onBeat, count, bestStreak))
+	if not ctx.wait(0.6) then
+		return nil
+	end
+	return math.clamp(0.55 * slamScore / slams + 0.45 * twistScore, 0, 1)
 end
 
 -- CARDIO MACHINES -------------------------------------------------------
@@ -2413,6 +2689,8 @@ local function stationCamera(pose)
 	end
 	cam.CameraType = Enum.CameraType.Scriptable
 	local base = root.CFrame
+	local baseFov = cam.FieldOfView
+	camKick.baseFov = baseFov
 	return RunService.RenderStepped:Connect(function(dt)
 		cam = workspace.CurrentCamera
 		if cam.CameraType ~= Enum.CameraType.Scriptable then
@@ -2437,6 +2715,15 @@ local function stationCamera(pose)
 			goal = CFrame.lookAt(p + right * 3.8 - look * 6 + Vector3.new(0, 3.2, 0), p + look * 2.6 + Vector3.new(0, 0.1, 0))
 		end
 		cam.CFrame = cam.CFrame:Lerp(goal, math.clamp(dt * 6, 0, 1))
+		-- heavy shots kick the camera: a quick decaying shake plus a small FOV punch
+		local el = os.clock() - camKick.t
+		if el < 0.45 and camKick.amp > 0 then
+			local k = camKick.amp * math.exp(-el * 9)
+			cam.CFrame = cam.CFrame * CFrame.new(math.sin(el * 70) * 0.06 * k, math.sin(el * 55 + 1) * 0.05 * k, 0)
+			cam.FieldOfView = baseFov - 1.5 * k * math.max(0, 1 - el * 4)
+		elseif cam.FieldOfView ~= baseFov then
+			cam.FieldOfView = baseFov
+		end
 	end)
 end
 
@@ -2450,7 +2737,7 @@ local STAT_NAMES = {
 	distance = "Distance", topSpeed = "Top speed", maxWatts = "Max watts", avgRpm = "Avg cadence", meters = "Distance",
 	maxSpm = "Stroke rate", inZone = "Time in zone", stepsPerSec = "Foot speed", drills = "Drills completed",
 	cleanJumps = "Clean jumps", doubleUnders = "Double unders", sync = "Breathing sync", waterLost = "Water cut",
-	lengths = "Lengths", speed = "Average speed",
+	lengths = "Lengths", speed = "Average speed", cleanSlams = "Clean slams", twists = "Twists on the beat",
 }
 local STAT_UNITS = {
 	maxPower = " lbs", handSpeed = " punches/s", accuracy = "%", load = " lbs", addedLoad = " lbs", volume = " lbs",
@@ -2493,7 +2780,29 @@ local function resultLines(res)
 			table.insert(lines, { table.concat(parts, "   "), T.green })
 		end
 	end
-	if r.muscle then
+	-- muscle growth per part (the exact muscles this exercise built), biggest first; groups as a fallback
+	local partNames = Config.MusclePartNames or {}
+	if type(r.parts) == "table" and next(r.parts) then
+		local list = {}
+		for id, g in pairs(r.parts) do
+			if type(g) == "number" and g > 0.005 then
+				table.insert(list, { id = id, g = g })
+			end
+		end
+		table.sort(list, function(a, b)
+			return a.g > b.g
+		end)
+		local parts = {}
+		for i, e in ipairs(list) do
+			if i > 6 then
+				break
+			end
+			table.insert(parts, string.format("+%.2f %s", e.g, partNames[e.id] or e.id))
+		end
+		if #parts > 0 then
+			table.insert(lines, { "Muscle: " .. table.concat(parts, ", "), Color3.fromRGB(150, 200, 255) })
+		end
+	elseif r.muscle then
 		local parts = {}
 		for _, k in ipairs(Config.MuscleKeys) do
 			local g = r.muscle[k]
@@ -2504,6 +2813,34 @@ local function resultLines(res)
 		if #parts > 0 then
 			table.insert(lines, { "Muscle: " .. table.concat(parts, ", "), Color3.fromRGB(150, 200, 255) })
 		end
+	end
+	if type(r.pump) == "table" and type(r.pump.parts) == "table" and #r.pump.parts > 0 then
+		local names = {}
+		for i, id in ipairs(r.pump.parts) do
+			if i > 4 then
+				break
+			end
+			table.insert(names, partNames[id] or tostring(id))
+		end
+		table.insert(lines, { string.format("PUMP %d%%: %s - hit FLEX to show it off", math.floor((tonumber(r.pump.level) or 0) * 100 + 0.5), table.concat(names, ", ")), Color3.fromRGB(255, 170, 90) })
+	end
+	if type(r.vasc) == "number" and r.vasc > 0.005 then
+		table.insert(lines, { string.format("Vascularity +%.2f", r.vasc), Color3.fromRGB(200, 150, 255) })
+	end
+	if type(r.sore) == "table" then
+		local sore = {}
+		for _, k in ipairs(Config.MuscleKeys) do
+			local v = tonumber(r.sore[k])
+			if v and v >= 0.3 then
+				table.insert(sore, string.format("%s %d%%", Config.MuscleNames[k] or k, math.floor(v * 100 + 0.5)))
+			end
+		end
+		if #sore > 0 then
+			table.insert(lines, { "Sore: " .. table.concat(sore, ", ") .. " (grows overnight - eat and sleep)", T.orange })
+		end
+	end
+	if type(r.sweat) == "number" and r.sweat > 0 then
+		table.insert(lines, { string.format("Sweat %d%%", math.floor(r.sweat * 100 + 0.5)), Color3.fromRGB(150, 200, 230) })
 	end
 	if r.fat and math.abs(r.fat) > 0.001 then
 		table.insert(lines, { string.format("Body fat %+.2f%%", r.fat), r.fat < 0 and T.green or T.orange })
@@ -2591,17 +2928,41 @@ local function showResult(ctx, res, quality)
 	end
 	ctx.quit.Text = "CLOSE"
 	ctx.quit.BackgroundColor3 = T.panel2
-	ctx.bind({ { id = "close", label = "CONTINUE", keys = { K.Space }, color = T.gold } }, 1)
+	-- FLEX: strike the pose that shows the muscles you just pumped (server: handlers.Flex)
+	local r = res.result or {}
+	local flexKind = FLEX_FOR[ctx.act.id] or "flex_most"
+	local canFlex = (type(r.pump) == "table" or type(r.parts) == "table") and not ctx.recovery
+	local actions = { { id = "close", label = "CONTINUE", keys = { K.Space }, color = T.gold } }
+	if canFlex then
+		table.insert(actions, { id = "flex", label = "FLEX", keys = { K.F }, color = Color3.fromRGB(255, 140, 60) })
+	end
+	ctx.bind(actions, #actions)
 	if ctx.buttons.close then
 		ctx.buttons.close.TextColor3 = T.bg
 	end
 	local closed = false
 	local t0 = os.clock()
-	ctx.on(function(_, down)
+	local lastFlex = 0
+	ctx.on(function(id, down)
 		-- a key still being mashed from the drill (SPACE) mustn't skip the results instantly
-		if down and os.clock() - t0 > 0.8 then
-			closed = true
+		if not down or os.clock() - t0 <= 0.8 then
+			return
 		end
+		if id == "flex" then
+			if os.clock() - lastFlex > 3.5 then
+				lastFlex = os.clock()
+				t0 = os.clock() + 2.6 -- keep the results up while you hold the pose
+				ctx.feedback("FLEX!", Color3.fromRGB(255, 160, 70))
+				task.spawn(function()
+					local ok, out = pcall(State.req, "Flex", flexKind)
+					if ok and type(out) == "table" and out.ok == false and out.err then
+						State.toast(out.err, T.red)
+					end
+				end)
+			end
+			return
+		end
+		closed = true
 	end)
 	ctx.cancelled = false
 	while not closed and not ctx.cancelled and os.clock() - t0 < 15 do
@@ -2718,6 +3079,9 @@ function Activities.Start(actId)
 				camConn:Disconnect()
 				camConn = nil
 				workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
+				if camKick.baseFov then
+					workspace.CurrentCamera.FieldOfView = camKick.baseFov
+				end
 			end
 			if fin.result and fin.result.injury then
 				State.toast("INJURY: " .. fin.result.injury, T.red, 6)
@@ -2729,6 +3093,9 @@ function Activities.Start(actId)
 	end
 	if camConn then
 		camConn:Disconnect()
+		if camKick.baseFov then
+			workspace.CurrentCamera.FieldOfView = camKick.baseFov
+		end
 	end
 	workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
 	ctx.destroy()

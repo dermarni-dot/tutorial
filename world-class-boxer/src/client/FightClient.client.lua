@@ -1,7 +1,13 @@
 -- FightClient: fight-night presentation and controls (also used for gym sparring).
--- TV broadcast overlay, weigh-in + tale of the tape, ring walks with music, pyro and
--- sweeping spotlights, crowd reactions, venue lighting, live commentary ticker,
--- defense call-outs, knockdown get-up meter, corner advice between rounds.
+-- TV broadcast overlay, weigh-in + tale of the tape, ring walks with music, live commentary
+-- ticker, defense call-outs, corner advice between rounds. HUD with separate HEAD / BODY / STAMINA
+-- bars (permanent-damage caps + trailing "ghost" chips, tier colours) and status chips (ROCKED /
+-- DAZED / IN DANGER / OUT ON HIS FEET). Cinematic screen FX scaled by Config.ScreenFX: concussion
+-- blur + colour drain, vignette / tunnel vision, red hit flash, FOV kick and roll, drunk camera,
+-- muffled audio (SoundService.FightMix), heartbeat, sweat and blood spray, letterbox, broadcast
+-- cuts. Knockdowns: skill-based get-up (timing marker + mashing), mandatory eight count, referee
+-- check, out-cold ragdoll. Venue dressing / lighting / crowd come from VenueFX (stream G) when it is
+-- present; the old built-in venue effects stay as a fallback so a fight always presents.
 -- Controls: 1/J jab, 2/K cross, 3/L lead hook, 4 rear hook, 5/U uppercut, 6/O overhand,
 -- hold SHIFT = to the body, hold F block, R parry, Q/E slip, C roll, Z/X pivot, G clinch.
 local Players = game:GetService("Players")
@@ -21,29 +27,128 @@ local FightRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Figh
 
 local gui = UI.New("ScreenGui", { Name = "FightUI", ResetOnSpawn = false, IgnoreGuiInset = false, Enabled = false, DisplayOrder = 5, Parent = player:WaitForChild("PlayerGui") })
 
-local Debris = game:GetService("Debris")
 local F = {} -- current fight state
-
--- built-in Roblox sounds (no uploaded assets needed)
-local function sfx(part, speed, volume, id)
-	if not part then
-		return
-	end
-	local snd = Instance.new("Sound")
-	snd.SoundId = id or "rbxasset://sounds/action_jump_land.mp3"
-	snd.PlaybackSpeed = speed or 1
-	snd.Volume = volume or 0.5
-	snd.RollOffMaxDistance = 90
-	snd.Parent = part
-	snd:Play()
-	Debris:AddItem(snd, 2)
-end
 local camConn, fxConn
 local music
 local savedLighting
 
 local function send(msg)
 	FightRemote:FireServer(msg)
+end
+
+-- accessibility scale for blur / shake / flashes / colour (0 disables them)
+local function fxScale()
+	return math.clamp(tonumber(Config.ScreenFX) or 1, 0, 2)
+end
+
+local BUILTIN = Config.BuiltinSounds or {}
+local function soundId(key, fallback)
+	local ok, id = pcall(Config.SoundId, key)
+	return (ok and id) or BUILTIN[fallback] or "rbxasset://sounds/action_jump_land.mp3"
+end
+
+------------------------------------------------------------------------
+-- VenueFX (stream G): optional. Every call is pcall-guarded; without it the legacy effects run.
+------------------------------------------------------------------------
+local VenueFX = nil -- nil = not resolved yet, false = not available
+local venueOn = false
+local resolving = false
+-- wait = true only from the background task at startup; a fight start never blocks on it
+local function resolveVenueFX(wait)
+	if VenueFX ~= nil or resolving then
+		return VenueFX or nil
+	end
+	resolving = true
+	local ok, mod = pcall(function()
+		local folder = script.Parent:FindFirstChild("BoxerClient") or (wait and script.Parent:WaitForChild("BoxerClient", 8))
+		local m = folder and (folder:FindFirstChild("VenueFX") or (wait and folder:WaitForChild("VenueFX", 2)))
+		return m and require(m)
+	end)
+	resolving = false
+	if ok and type(mod) == "table" then
+		VenueFX = mod
+	elseif wait or not ok then
+		VenueFX = false
+	end
+	return VenueFX or nil
+end
+task.spawn(resolveVenueFX, true)
+
+local function vfx(name, ...)
+	if not venueOn or not VenueFX then
+		return nil
+	end
+	local fn = VenueFX[name]
+	if type(fn) ~= "function" then
+		return nil
+	end
+	local ok, r = pcall(fn, ...)
+	if not ok then
+		warn("[FightClient] VenueFX." .. name .. ":", r)
+		return nil
+	end
+	return r
+end
+
+------------------------------------------------------------------------
+-- Audio: SoundService.FightMix (concussion muffling for every fight sound, VenueFX routes its
+-- crowd / bell / music through it too) and a small round-robin pool (no Instance.new per hit)
+------------------------------------------------------------------------
+local mix, mixEq
+local pool, poolIdx = {}, 0
+
+local function ensureMix()
+	if mix and mix.Parent then
+		return mix
+	end
+	mix = SoundService:FindFirstChild("FightMix")
+	if not mix then
+		mix = Instance.new("SoundGroup")
+		mix.Name = "FightMix"
+		mix.Volume = 1
+		mix.Parent = SoundService
+	end
+	mixEq = mix:FindFirstChild("ConcussionEQ")
+	if not mixEq then
+		mixEq = Instance.new("EqualizerSoundEffect")
+		mixEq.Name = "ConcussionEQ"
+		mixEq.HighGain, mixEq.MidGain, mixEq.LowGain = 0, 0, 0
+		mixEq.Parent = mix
+	end
+	table.clear(pool)
+	for i = 1, 10 do
+		local s = Instance.new("Sound")
+		s.Name = "FightSfx" .. i
+		s.SoundGroup = mix
+		s.Parent = mix
+		pool[i] = s
+	end
+	return mix
+end
+
+local function destroyMix()
+	table.clear(pool)
+	local m = SoundService:FindFirstChild("FightMix")
+	if m then
+		m:Destroy()
+	end
+	mix, mixEq = nil, nil
+end
+
+local function sfx(id, speed, volume)
+	if #pool == 0 then
+		ensureMix()
+	end
+	poolIdx = poolIdx % #pool + 1
+	local s = pool[poolIdx]
+	if not s or not s.Parent then
+		return
+	end
+	s:Stop()
+	s.SoundId = id
+	s.PlaybackSpeed = speed or 1
+	s.Volume = volume or 0.5
+	s:Play()
 end
 
 ------------------------------------------------------------------------
@@ -53,23 +158,91 @@ local bug = UI.Frame(gui, { Size = UDim2.fromOffset(200, 28), Position = UDim2.f
 UI.Corner(bug, 4)
 local bugText = UI.Text(bug, "LIVE  -  WCB SPORTS", { Font = T.bold, TextSize = 14, TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.fromScale(1, 1), AutomaticSize = Enum.AutomaticSize.None })
 
+local function tierColor(tier)
+	local def = Config.HeadTiers[(tier or 0) + 1] or Config.HeadTiers[1]
+	local c = def.rgb
+	return Color3.fromRGB(c[1], c[2], c[3])
+end
+
+-- a bar with a permanent-damage cap (striped, from the far end), a trailing white "ghost" that
+-- shows the chunk just lost, and the live fill. side "R" depletes toward the outside edge.
+local function hudBar(parent, y, label, color, side)
+	local right = side == "R"
+	UI.Text(parent, label, { TextSize = 11, Font = T.semi, TextColor3 = T.sub, Position = UDim2.fromOffset(10, y), Size = UDim2.fromOffset(58, 14), AutomaticSize = Enum.AutomaticSize.None })
+	local bg = UI.Frame(parent, { Position = UDim2.new(0, 68, 0, y), Size = UDim2.new(1, -78, 0, 14), BackgroundColor3 = Color3.fromRGB(16, 16, 20), ClipsDescendants = true })
+	UI.Corner(bg, 3)
+	local anchor = right and Vector2.new(1, 0) or Vector2.new(0, 0)
+	local pos = right and UDim2.fromScale(1, 0) or UDim2.fromScale(0, 0)
+	local ghost = UI.Frame(bg, { Size = UDim2.fromScale(1, 1), AnchorPoint = anchor, Position = pos, BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = 0.25, ZIndex = 2 })
+	local fill = UI.Frame(bg, { Size = UDim2.fromScale(1, 1), AnchorPoint = anchor, Position = pos, BackgroundColor3 = color, ZIndex = 3 })
+	UI.New("UIGradient", { Rotation = 90, Color = ColorSequence.new(Color3.new(1, 1, 1), Color3.fromRGB(170, 170, 170)), Parent = fill })
+	-- the cap eats in from the far end: damage that will not come back this fight
+	local cap = UI.Frame(bg, { Size = UDim2.fromScale(0, 1), AnchorPoint = right and Vector2.new(0, 0) or Vector2.new(1, 0),
+		Position = right and UDim2.fromScale(0, 0) or UDim2.fromScale(1, 0), BackgroundColor3 = Color3.fromRGB(70, 14, 18), ZIndex = 4 })
+	UI.New("UIGradient", { Rotation = 35, Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.1), NumberSequenceKeypoint.new(0.24, 0.1), NumberSequenceKeypoint.new(0.25, 0.55), NumberSequenceKeypoint.new(0.49, 0.55),
+		NumberSequenceKeypoint.new(0.5, 0.1), NumberSequenceKeypoint.new(0.74, 0.1), NumberSequenceKeypoint.new(0.75, 0.55), NumberSequenceKeypoint.new(1, 0.55),
+	}), Parent = cap })
+	local value = UI.Text(bg, "", { TextSize = 10, Font = T.semi, TextStrokeTransparency = 0.4, ZIndex = 5, Size = UDim2.fromScale(1, 1), AutomaticSize = Enum.AutomaticSize.None,
+		TextXAlignment = right and Enum.TextXAlignment.Left or Enum.TextXAlignment.Right })
+	UI.New("UIPadding", { PaddingLeft = UDim.new(0, 4), PaddingRight = UDim.new(0, 4), Parent = value })
+	return { bg = bg, fill = fill, ghost = ghost, cap = cap, value = value, v = 1, ghostV = 1, pending = false }
+end
+
+local function setBar(b, frac, capFrac, color)
+	frac = math.clamp(frac or 0, 0, 1)
+	capFrac = math.clamp(capFrac or 1, 0, 1)
+	b.fill.Size = UDim2.fromScale(frac, 1)
+	if color then
+		b.fill.BackgroundColor3 = color
+	end
+	b.cap.Size = UDim2.fromScale(1 - capFrac, 1)
+	b.value.Text = tostring(math.floor(frac * 100 + 0.5))
+	if frac < b.ghostV - 0.003 then
+		-- hold the lost chunk for a beat, then let it drain away
+		if not b.pending then
+			b.pending = true
+			task.delay(0.35, function()
+				b.pending = false
+				b.ghostV = b.v
+				TweenService:Create(b.ghost, TweenInfo.new(0.45, Enum.EasingStyle.Quad), { Size = UDim2.fromScale(b.v, 1) }):Play()
+			end)
+		end
+	elseif not b.pending then
+		b.ghostV = frac
+		b.ghost.Size = UDim2.fromScale(frac, 1)
+	end
+	b.v = frac
+end
+
 local function fighterPanel(side)
-	local f = UI.Frame(gui, { Size = UDim2.new(0.34, 0, 0, 92), Position = side == "L" and UDim2.new(0, 16, 0, 40) or UDim2.new(1, -16, 0, 40),
+	local f = UI.Frame(gui, { Size = UDim2.new(0.34, 0, 0, side == "L" and 116 or 106), Position = side == "L" and UDim2.new(0, 16, 0, 40) or UDim2.new(1, -16, 0, 40),
 		AnchorPoint = side == "L" and Vector2.new(0, 0) or Vector2.new(1, 0), BackgroundColor3 = T.bg, BackgroundTransparency = 0.2 })
 	UI.Corner(f, 8)
 	UI.Stroke(f, side == "L" and T.red or T.blue, 2)
+	UI.New("UISizeConstraint", { MinSize = Vector2.new(250, 0), Parent = f })
 	local name = UI.Text(f, "", { Font = T.bold, TextSize = 16, Position = UDim2.fromOffset(10, 4), Size = UDim2.new(1, -20, 0, 22), AutomaticSize = Enum.AutomaticSize.None,
-		TextXAlignment = side == "L" and Enum.TextXAlignment.Left or Enum.TextXAlignment.Right })
-	local function bar(y, color, label)
-		UI.Text(f, label, { TextSize = 11, TextColor3 = T.sub, Position = UDim2.fromOffset(10, y - 1), Size = UDim2.fromOffset(52, 14), AutomaticSize = Enum.AutomaticSize.None })
-		local bg = UI.Frame(f, { Position = UDim2.new(0, 62, 0, y), Size = UDim2.new(1, -72, 0, 12), BackgroundColor3 = Color3.fromRGB(60, 10, 10) })
-		UI.Corner(bg, 3)
-		local _, set = UI.Bar(bg, { Size = UDim2.fromScale(1, 1) }, color)
-		return set
-	end
-	return {
-		frame = f, name = name, setHp = bar(30, T.green, "HEAD"), setBody = bar(50, T.orange, "BODY"), setStam = bar(70, T.blue, "STAMINA"),
+		TextXAlignment = side == "L" and Enum.TextXAlignment.Left or Enum.TextXAlignment.Right, TextTruncate = Enum.TextTruncate.AtEnd })
+	-- status chip: sits at the inner end of the name row
+	local chip = UI.Frame(f, { Size = UDim2.fromOffset(0, 18), AutomaticSize = Enum.AutomaticSize.X, AnchorPoint = side == "L" and Vector2.new(1, 0) or Vector2.new(0, 0),
+		Position = side == "L" and UDim2.new(1, -8, 0, 6) or UDim2.new(0, 8, 0, 6), BackgroundColor3 = T.gold, Visible = false, ZIndex = 6 })
+	UI.Corner(chip, 4)
+	local chipText = UI.Text(chip, "", { Font = T.bold, TextSize = 11, TextColor3 = Color3.fromRGB(15, 15, 18), Size = UDim2.fromOffset(0, 18), AutomaticSize = Enum.AutomaticSize.X, ZIndex = 7,
+		TextXAlignment = Enum.TextXAlignment.Center })
+	UI.New("UIPadding", { PaddingLeft = UDim.new(0, 6), PaddingRight = UDim.new(0, 6), Parent = chipText })
+	local p = {
+		frame = f, name = name, chip = chip, chipText = chipText,
+		head = hudBar(f, 32, "HEAD", T.green, side), body = hudBar(f, 52, "BODY", T.orange, side), stam = hudBar(f, 72, "STAMINA", T.blue, side),
 	}
+	if side == "L" then
+		-- the player's own legs: below a third, the next big shot (or a whiffed hook) staggers you
+		UI.Text(f, "BALANCE", { TextSize = 9, Font = T.semi, TextColor3 = T.sub, Position = UDim2.fromOffset(10, 92), Size = UDim2.fromOffset(58, 12), AutomaticSize = Enum.AutomaticSize.None })
+		local bg = UI.Frame(f, { Position = UDim2.new(0, 68, 0, 95), Size = UDim2.new(1, -78, 0, 5), BackgroundColor3 = Color3.fromRGB(16, 16, 20) })
+		UI.Corner(bg, 2)
+		p.bal = UI.Frame(bg, { Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.fromRGB(200, 200, 210) })
+		UI.Corner(p.bal, 2)
+	end
+	return p
 end
 local L = fighterPanel("L")
 local R = fighterPanel("R")
@@ -91,7 +264,7 @@ local ticker = UI.Frame(gui, { Size = UDim2.new(1, 0, 0, 30), Position = UDim2.n
 local tickerTag = UI.Frame(ticker, { Size = UDim2.fromOffset(110, 30), BackgroundColor3 = T.red })
 UI.Text(tickerTag, "COMMENTARY", { Font = T.bold, TextSize = 13, TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.fromScale(1, 1), AutomaticSize = Enum.AutomaticSize.None })
 local tickerText = UI.Text(ticker, "", { TextSize = 15, Font = T.semi, TextXAlignment = Enum.TextXAlignment.Left, Position = UDim2.fromOffset(120, 0), Size = UDim2.new(1, -130, 1, 0), AutomaticSize = Enum.AutomaticSize.None })
-local controls = UI.Text(gui, "1/J Jab  2/K Cross  3/L Lead Hook  4 Rear Hook  5/U Uppercut  6/O Overhand  |  SHIFT body  F block  R parry  Q/E slip  C roll  Z/X pivot  G clinch",
+local controls = UI.Text(gui, "1/J Jab  2/K Cross  3/L Lead Hook  4 Rear Hook  5/U Uppercut  6/O Overhand  |  SHIFT body  F block  R parry  Q/E slip  C roll  Z/X pivot  G clinch  |  down: SPACE",
 	{ TextSize = 12, TextColor3 = T.sub, TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.new(1, 0, 0, 18), Position = UDim2.new(0, 0, 1, -50), AutomaticSize = Enum.AutomaticSize.None })
 
 local function showBanner(text, color, dur)
@@ -130,7 +303,14 @@ UI.Corner(overlay, 12)
 UI.Stroke(overlay, T.gold, 2)
 UI.Pad(overlay, 14)
 UI.List(overlay, 3)
-UI.New("UISizeConstraint", { MaxSize = Vector2.new(660, 440), Parent = overlay })
+UI.New("UISizeConstraint", { MaxSize = Vector2.new(660, 460), Parent = overlay })
+
+-- an overlay line: { text, bold?, size?, color?, left? }
+local function line(text, props)
+	props = props or {}
+	props[1] = text
+	return props
+end
 
 local function overlayLines(lines)
 	UI.Clear(overlay)
@@ -141,20 +321,41 @@ local function overlayLines(lines)
 	overlay.Visible = true
 end
 
--- get-up meter
-local getup = UI.Frame(gui, { Size = UDim2.fromOffset(420, 90), Position = UDim2.new(0.5, 0, 0.62, 0), AnchorPoint = Vector2.new(0.5, 0), BackgroundColor3 = T.bg, Visible = false })
+------------------------------------------------------------------------
+-- Get-up: mash SPACE / tap, and time presses on the sweeping marker (green zone = worth 3)
+------------------------------------------------------------------------
+local getup = UI.Frame(gui, { Size = UDim2.fromOffset(440, 126), Position = UDim2.new(0.5, 0, 0.6, 0), AnchorPoint = Vector2.new(0.5, 0), BackgroundColor3 = T.bg, Visible = false })
 UI.Corner(getup, 10)
 UI.Stroke(getup, T.red, 2)
-UI.Text(getup, "YOU'RE DOWN!  MASH SPACE / TAP TO GET UP", { Font = T.bold, TextSize = 16, TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.fromOffset(0, 8), Size = UDim2.new(1, 0, 0, 22), TextColor3 = T.red, AutomaticSize = Enum.AutomaticSize.None })
-local _, setGetup = UI.Bar(getup, { Position = UDim2.fromOffset(16, 42), Size = UDim2.new(1, -32, 0, 22) }, T.gold)
-local getupBtn = UI.Button(getup, "", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, ZIndex = 5 }, function()
-	if F.down then
-		F.mash += 1
-		send({ t = "mash" })
-		setGetup(F.mash / math.max(1, F.target))
+local getupTitle = UI.Text(getup, "YOU'RE DOWN!  MASH SPACE / TAP - HIT THE GREEN ZONE", { Font = T.bold, TextSize = 15, TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.fromOffset(0, 8), Size = UDim2.new(1, 0, 0, 22), TextColor3 = T.red, AutomaticSize = Enum.AutomaticSize.None })
+local _, setGetup = UI.Bar(getup, { Position = UDim2.fromOffset(16, 38), Size = UDim2.new(1, -32, 0, 18) }, T.gold)
+local timing = UI.Frame(getup, { Position = UDim2.fromOffset(16, 70), Size = UDim2.new(1, -32, 0, 20), BackgroundColor3 = Color3.fromRGB(30, 30, 36) })
+UI.Corner(timing, 4)
+local zone = UI.Frame(timing, { AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.fromScale(0.5, 0), Size = UDim2.fromScale(0.2, 1), BackgroundColor3 = T.green, BackgroundTransparency = 0.25 })
+UI.Corner(zone, 4)
+local marker = UI.Frame(timing, { AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.fromScale(0.5, -0.15), Size = UDim2.new(0, 4, 1.3, 0), BackgroundColor3 = Color3.new(1, 1, 1), ZIndex = 3 })
+local getupHint = UI.Text(getup, "", { TextSize = 12, TextColor3 = T.sub, TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.fromOffset(0, 98), Size = UDim2.new(1, 0, 0, 18), AutomaticSize = Enum.AutomaticSize.None })
+
+local function getupPress()
+	if not F.down then
+		return
 	end
-end)
+	local m = F.markerPos or 0
+	local good = math.abs(m - 0.5) <= (F.zoneW or 0.2) / 2
+	F.mash += good and 3 or 1
+	send({ t = "mash", good = good })
+	zone.BackgroundColor3 = good and Color3.fromRGB(120, 255, 150) or T.red
+	task.delay(0.12, function()
+		zone.BackgroundColor3 = T.green
+	end)
+	setGetup(F.mash / math.max(1, F.target))
+end
+
+local getupBtn = UI.Button(getup, "", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, ZIndex = 5 }, getupPress)
 getupBtn.Text = ""
+
+-- punches go through throwPunch (defined with the input code) so taps are predicted like keys
+local throwPunch
 
 -- touch controls
 local touchPad
@@ -174,7 +375,7 @@ local function buildTouch()
 	end
 	local function punch(p)
 		return function()
-			send({ t = "punch", p = p, body = F.bodyMod == true and p ~= "overhand" })
+			throwPunch(p, F.bodyMod == true and p ~= "overhand")
 		end
 	end
 	tb("JAB", T.red, punch("jab"))
@@ -218,7 +419,257 @@ local function buildTouch()
 end
 
 ------------------------------------------------------------------------
--- Venue presentation: lighting, crowd, spotlights, pyro, screens
+-- Screen FX layer (below the HUD): flashes, vignette, letterbox, blackout
+------------------------------------------------------------------------
+local fxGui = UI.New("ScreenGui", { Name = "FightFX", ResetOnSpawn = false, IgnoreGuiInset = true, Enabled = false, DisplayOrder = 4, Parent = player:WaitForChild("PlayerGui") })
+local redFlash = UI.Frame(fxGui, { Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.fromRGB(150, 0, 0), BackgroundTransparency = 1, ZIndex = 2 })
+local whiteFlash = UI.Frame(fxGui, { Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = 1, ZIndex = 3 })
+local blackout = UI.Frame(fxGui, { Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.new(0, 0, 0), BackgroundTransparency = 1, ZIndex = 5 })
+-- vignette: four edge panels with transparency ramps; they darken (and redden) with damage
+local vignette = {}
+for _, v in ipairs({
+	{ UDim2.fromScale(1, 0.38), UDim2.fromScale(0, 0), 90 }, { UDim2.fromScale(1, 0.38), UDim2.fromScale(0, 0.62), 270 },
+	{ UDim2.fromScale(0.3, 1), UDim2.fromScale(0, 0), 0 }, { UDim2.fromScale(0.3, 1), UDim2.fromScale(0.7, 0), 180 },
+}) do
+	local fr = UI.Frame(fxGui, { Size = v[1], Position = v[2], BackgroundColor3 = Color3.new(0, 0, 0), BackgroundTransparency = 0, ZIndex = 1 })
+	local grad = UI.New("UIGradient", { Rotation = v[3], Transparency = NumberSequence.new(1), Parent = fr })
+	table.insert(vignette, { frame = fr, grad = grad })
+end
+-- cinematic letterbox for walkouts, the tape, knockdowns and the final bell
+local boxTop = UI.Frame(fxGui, { Size = UDim2.fromScale(1, 0), BackgroundColor3 = Color3.new(0, 0, 0), ZIndex = 6 })
+local boxBottom = UI.Frame(fxGui, { Size = UDim2.fromScale(1, 0), AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), BackgroundColor3 = Color3.new(0, 0, 0), ZIndex = 6 })
+local letterboxOn = false
+local function letterbox(on)
+	if letterboxOn == on then
+		return
+	end
+	letterboxOn = on
+	local h = on and 0.1 or 0
+	local ti = TweenInfo.new(0.6, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+	TweenService:Create(boxTop, ti, { Size = UDim2.fromScale(1, h) }):Play()
+	TweenService:Create(boxBottom, ti, { Size = UDim2.fromScale(1, h) }):Play()
+end
+
+local function flashFrame(frame, from, dur)
+	frame.BackgroundTransparency = from
+	TweenService:Create(frame, TweenInfo.new(dur, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { BackgroundTransparency = 1 }):Play()
+end
+
+-- post effects live on the camera (never collide with the gym's Lighting effects)
+local blurFx, gradeFx
+local function ensurePost()
+	local cam = workspace.CurrentCamera
+	if not cam then
+		return
+	end
+	if not (blurFx and blurFx.Parent == cam) then
+		blurFx = cam:FindFirstChild("ConcussionBlur") or Instance.new("BlurEffect")
+		blurFx.Name = "ConcussionBlur"
+		blurFx.Size = 0
+		blurFx.Parent = cam
+	end
+	if not (gradeFx and gradeFx.Parent == cam) then
+		gradeFx = cam:FindFirstChild("ConcussionGrade") or Instance.new("ColorCorrectionEffect")
+		gradeFx.Name = "ConcussionGrade"
+		gradeFx.Saturation, gradeFx.Contrast, gradeFx.Brightness = 0, 0, 0
+		gradeFx.TintColor = Color3.new(1, 1, 1)
+		gradeFx.Parent = cam
+	end
+end
+local function destroyPost()
+	for _, inst in ipairs({ blurFx, gradeFx }) do
+		if inst then
+			inst:Destroy()
+		end
+	end
+	blurFx, gradeFx = nil, nil
+	local cam = workspace.CurrentCamera
+	if cam then
+		for _, n in ipairs({ "ConcussionBlur", "ConcussionGrade" }) do
+			local e = cam:FindFirstChild(n)
+			if e then
+				e:Destroy()
+			end
+		end
+	end
+end
+
+-- transient FX state (decays every frame)
+local FX = { shake = 0, hitBlur = 0, fovKick = 0, roll = 0, rollVel = 0, hitStop = 0, grade = 0, heartAt = 0, downBlur = 0, vig = -1, vigTier = -1 }
+local VIG_RED, VIG_BLACK, WHITE = Color3.fromRGB(60, 0, 0), Color3.new(0, 0, 0), Color3.new(1, 1, 1)
+
+------------------------------------------------------------------------
+-- Sweat & blood spray (client-only emitters, Emit bursts) and blood drops on the canvas
+------------------------------------------------------------------------
+local SPRAY_TEX = "rbxasset://textures/particles/sparkles_main.dds"
+local function sprayEmitters(part)
+	local att = part:FindFirstChild("FightSprayAtt")
+	if att then
+		return att, att:FindFirstChild("Sweat"), att:FindFirstChild("Blood")
+	end
+	att = Instance.new("Attachment")
+	att.Name = "FightSprayAtt"
+	att.Parent = part
+	local function emitter(name, color, size, speed, life, accel, rate)
+		local pe = Instance.new("ParticleEmitter")
+		pe.Name = name
+		pe.Texture = SPRAY_TEX
+		pe.Color = ColorSequence.new(color)
+		pe.LightEmission = name == "Sweat" and 0.35 or 0
+		pe.LightInfluence = 1
+		pe.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, size), NumberSequenceKeypoint.new(1, 0) })
+		pe.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, name == "Sweat" and 0.2 or 0), NumberSequenceKeypoint.new(1, 1) })
+		pe.Speed = NumberRange.new(speed[1], speed[2])
+		pe.Lifetime = NumberRange.new(life[1], life[2])
+		pe.Acceleration = Vector3.new(0, accel, 0)
+		pe.Drag = 2
+		pe.SpreadAngle = Vector2.new(28, 28)
+		pe.EmissionDirection = Enum.NormalId.Top
+		pe.Rate = rate or 0
+		pe.Enabled = true
+		pe.Parent = att
+		return pe
+	end
+	local sweat = emitter("Sweat", Color3.fromRGB(215, 235, 255), 0.09, { 8, 14 }, { 0.25, 0.45 }, -30)
+	local blood = emitter("Blood", Color3.fromRGB(120, 8, 10), 0.11, { 5, 10 }, { 0.3, 0.55 }, -45)
+	return att, sweat, blood
+end
+
+local bloodFolder
+local function bloodDrop(model)
+	if not F.arena or #(bloodFolder and bloodFolder:GetChildren() or {}) >= 12 then
+		return
+	end
+	local root = model and model:FindFirstChild("HumanoidRootPart")
+	if not root then
+		return
+	end
+	if not (bloodFolder and bloodFolder.Parent) then
+		bloodFolder = Instance.new("Folder")
+		bloodFolder.Name = "FightBlood"
+		bloodFolder.Parent = workspace
+	end
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	local exclude = { bloodFolder }
+	for _, m in ipairs({ player.Character, F.opp, F.ref }) do
+		if m then
+			table.insert(exclude, m)
+		end
+	end
+	params.FilterDescendantsInstances = exclude
+	local origin = root.Position + Vector3.new(math.random() * 1.6 - 0.8, 0, math.random() * 1.6 - 0.8)
+	local hit = workspace:Raycast(origin, Vector3.new(0, -8, 0), params)
+	if not hit then
+		return
+	end
+	local d = Instance.new("Part")
+	d.Name = "BloodDrop"
+	d.Anchored, d.CanCollide, d.CanQuery, d.CanTouch, d.CastShadow = true, false, false, false, false
+	d.Shape = Enum.PartType.Cylinder
+	local s = 0.25 + math.random() * 0.35
+	d.Size = Vector3.new(0.02, s, s)
+	d.Color = Color3.fromRGB(90 + math.random(0, 30), 6, 10)
+	d.Material = Enum.Material.SmoothPlastic
+	d.Reflectance = 0.05
+	d.CFrame = CFrame.new(hit.Position + Vector3.new(0, 0.012, 0)) * CFrame.Angles(0, 0, math.pi / 2)
+	d.Parent = bloodFolder
+end
+
+local function spray(model, partName, dir, amount, bleed)
+	local part = model and model:FindFirstChild(partName)
+	if not part then
+		return
+	end
+	local att, sweat, blood = sprayEmitters(part)
+	if not att then
+		return
+	end
+	local pos = part.Position
+	-- point the attachment's up axis along the punch so EmissionDirection Top sprays off the far side
+	att.WorldCFrame = CFrame.lookAt(pos, pos + dir) * CFrame.Angles(-math.pi / 2, 0, 0)
+	local wet = (model:GetAttribute("Sweat") or 0.3) + 0.25
+	if sweat then
+		sweat:Emit(math.floor(4 + amount * 10 * wet))
+	end
+	if bleed and blood then
+		blood:Emit(math.floor(2 + amount * 6))
+		if math.random() < 0.35 + amount * 0.3 then
+			bloodDrop(model)
+		end
+	end
+end
+
+------------------------------------------------------------------------
+-- Ragdoll for the local character on an out-cold KO (the client owns its physics)
+------------------------------------------------------------------------
+local ragdoll
+local function setRagdoll(on)
+	local char = player.Character
+	local hum = char and char:FindFirstChildOfClass("Humanoid")
+	if on then
+		if ragdoll or not char or not hum then
+			return
+		end
+		ragdoll = { motors = {}, made = {}, collide = {} }
+		local ok, err = pcall(function()
+			for _, m in ipairs(char:GetDescendants()) do
+				if m:IsA("Motor6D") and m.Part0 and m.Part1 and m.Parent and m.Parent.Parent == char and m.Name ~= "Root" and m.Enabled then
+					local a0 = Instance.new("Attachment")
+					a0.CFrame = m.C0
+					a0.Parent = m.Part0
+					local a1 = Instance.new("Attachment")
+					a1.CFrame = m.C1
+					a1.Parent = m.Part1
+					local bs = Instance.new("BallSocketConstraint")
+					bs.LimitsEnabled = true
+					bs.UpperAngle = m.Name == "Neck" and 35 or 65
+					bs.TwistLimitsEnabled = true
+					bs.TwistLowerAngle, bs.TwistUpperAngle = -25, 25
+					bs.Attachment0, bs.Attachment1 = a0, a1
+					bs.Parent = m.Parent
+					table.insert(ragdoll.made, a0)
+					table.insert(ragdoll.made, a1)
+					table.insert(ragdoll.made, bs)
+					table.insert(ragdoll.motors, m)
+					m.Enabled = false
+					if not ragdoll.collide[m.Part1] then
+						ragdoll.collide[m.Part1] = m.Part1.CanCollide
+						m.Part1.CanCollide = true
+					end
+				end
+			end
+			hum:ChangeState(Enum.HumanoidStateType.Physics)
+		end)
+		if not ok then
+			warn("[FightClient] ragdoll:", err)
+		end
+	elseif ragdoll then
+		local r = ragdoll
+		ragdoll = nil
+		pcall(function()
+			for _, m in ipairs(r.motors) do
+				if m.Parent then
+					m.Enabled = true
+				end
+			end
+			for _, inst in ipairs(r.made) do
+				inst:Destroy()
+			end
+			for part, was in pairs(r.collide) do
+				if part.Parent then
+					part.CanCollide = was
+				end
+			end
+			if hum then
+				hum:ChangeState(Enum.HumanoidStateType.GettingUp)
+			end
+		end)
+	end
+end
+
+------------------------------------------------------------------------
+-- Legacy venue presentation (used only when VenueFX is missing or failed to start)
 ------------------------------------------------------------------------
 local VENUE_LIGHT = {
 	Stadium = { ClockTime = 21, Brightness = 1.2, Ambient = Color3.fromRGB(50, 50, 60), OutdoorAmbient = Color3.fromRGB(40, 40, 55), Exposure = 0.2 },
@@ -228,9 +679,9 @@ local VENUE_LIGHT = {
 	Gym = { ClockTime = 14, Brightness = 0.9, Ambient = Color3.fromRGB(78, 78, 86), OutdoorAmbient = Color3.fromRGB(95, 95, 105), Exposure = -0.1 },
 }
 
--- the gym's outdoor look (sun rays, warm grade, hazy atmosphere) is switched off for fight
--- nights in the venues and put back afterwards
-local GYM_EFFECTS = { "GymSunRays", "GymGrade" }
+-- the gym's outdoor look (sun rays, warm grade, bloom, hazy atmosphere) is switched off for
+-- fight nights in the venues and put back afterwards
+local GYM_EFFECTS = { "GymSunRays", "GymGrade", "GymBloom" }
 local function setVenueLighting(venue)
 	if not savedLighting then
 		savedLighting = { ClockTime = Lighting.ClockTime, Brightness = Lighting.Brightness, Ambient = Lighting.Ambient, OutdoorAmbient = Lighting.OutdoorAmbient, Exposure = Lighting.ExposureCompensation, effects = {} }
@@ -302,11 +753,13 @@ local function startVenueFx(arena)
 	local sf = arena:FindFirstChild("Spots")
 	if sf then
 		for i, s in ipairs(sf:GetChildren()) do
-			table.insert(spots, { p = s, base = s.Position, phase = i })
+			if s:IsA("BasePart") then
+				table.insert(spots, { p = s, base = s.Position, phase = i })
+			end
 		end
 	end
 	for _, d in ipairs(arena:GetDescendants()) do
-		if d.Name == "TallyLight" then
+		if d.Name == "TallyLight" and d:IsA("BasePart") then
 			table.insert(tallies, d)
 		end
 	end
@@ -348,10 +801,18 @@ local function startVenueFx(arena)
 end
 
 local function cheer(amount)
+	if venueOn then
+		vfx("Cheer", math.clamp(amount / 1.6, 0, 1))
+		return
+	end
 	excitement = math.min(1.6, excitement + amount)
 end
 
 local function screens(text)
+	if venueOn then
+		vfx("Screens", text)
+		return
+	end
 	if not F.arena then
 		return
 	end
@@ -369,6 +830,10 @@ local function screens(text)
 end
 
 local function pyro(side)
+	if venueOn then
+		vfx("Pyro", side)
+		return
+	end
 	local folder = F.arena and F.arena:FindFirstChild("Pyro")
 	if not folder then
 		return
@@ -387,32 +852,65 @@ local function pyro(side)
 	sweeping = 4
 end
 
+local function phase(name, data)
+	vfx("Phase", name, data or {})
+end
+
 ------------------------------------------------------------------------
 -- Camera
 ------------------------------------------------------------------------
-local shake = 0
 local camMode = "fight" -- fight | entrance | wide | tape
 local camTarget
+local baseFov
 
 local function getRoot(model)
 	return model and model:FindFirstChild("HumanoidRootPart")
 end
 
--- ropes, posts and pads that sit between the camera and the fighters fade out so they never block the action
+-- ropes, posts and pads that sit between the camera and the fighters fade out so they never block
+-- the action. VenueFX ropes are invisible proxy parts named Rope that each hold a visible Beam.
 local ringParts, faded, fadeClock = {}, {}, 0
-local function collectRingParts()
-	table.clear(ringParts)
+local FADE_NAMES = { Rope = true, Post = true, Pad = true, TurnbucklePad = true }
+local function setFade(p, on)
+	p.LocalTransparencyModifier = on and 0.8 or 0
+	for _, c in ipairs(p:GetChildren()) do
+		if c:IsA("Beam") then
+			if on then
+				if c:GetAttribute("FadeSaved") == nil then
+					c:SetAttribute("FadeSaved", true)
+					faded[c] = c.Transparency
+				end
+				c.Transparency = NumberSequence.new(0.8)
+			elseif faded[c] then
+				c.Transparency = faded[c]
+				faded[c] = nil
+				c:SetAttribute("FadeSaved", nil)
+			end
+		end
+	end
+end
+local function clearFades()
 	for p in pairs(faded) do
-		if p.Parent then
-			p.LocalTransparencyModifier = 0
+		if p.Parent and p:IsA("BasePart") then
+			setFade(p, false)
+		end
+	end
+	for b, seq in pairs(faded) do
+		if b.Parent and b:IsA("Beam") then
+			b.Transparency = seq
+			b:SetAttribute("FadeSaved", nil)
 		end
 	end
 	table.clear(faded)
+end
+local function collectRingParts()
+	table.clear(ringParts)
+	clearFades()
 	if not F.arena then
 		return
 	end
 	for _, d in ipairs(F.arena:GetDescendants()) do
-		if d:IsA("BasePart") and (d.Name == "Rope" or d.Name == "Post" or d.Name == "Pad") then
+		if d:IsA("BasePart") and FADE_NAMES[d.Name] then
 			table.insert(ringParts, d)
 		end
 	end
@@ -443,11 +941,12 @@ local function segSegDist(p1, q1, p2, q2)
 	return ((p1 + d1 * s) - (p2 + d2 * t)).Magnitude, s
 end
 
+local fadeHit = {}
 local function updateOccluders(camPos, targets)
 	if #ringParts == 0 then
 		return
 	end
-	local hitNow = {}
+	table.clear(fadeHit)
 	for _, p in ipairs(ringParts) do
 		if p.Parent then
 			-- ropes run along their length (Z); posts and pads stand upright (Y)
@@ -461,54 +960,141 @@ local function updateOccluders(camPos, targets)
 			for _, target in ipairs(targets) do
 				local d, s = segSegDist(camPos, target, a, b)
 				if d < thr and s < 0.93 then
-					hitNow[p] = true
+					fadeHit[p] = true
 					break
 				end
 			end
 		end
 	end
 	for p in pairs(faded) do
-		if not hitNow[p] then
-			p.LocalTransparencyModifier = 0
+		if p:IsA("BasePart") and not fadeHit[p] then
+			if p.Parent then
+				setFade(p, false)
+			end
 			faded[p] = nil
 		end
 	end
-	for p in pairs(hitNow) do
-		p.LocalTransparencyModifier = 0.8
-		faded[p] = true
+	for p in pairs(fadeHit) do
+		if not faded[p] then
+			setFade(p, true)
+			faded[p] = true
+		end
 	end
+end
+
+-- per-frame screen FX from the latest state (tier, concussion) plus the transient kicks
+local function updateFX(dt, now)
+	local fx = fxScale()
+	local me = F.me or {}
+	local tier, conc = me.tier or 0, me.conc or 0
+	FX.hitBlur = math.max(0, FX.hitBlur - dt * 14)
+	FX.fovKick += (0 - FX.fovKick) * math.clamp(dt * 4, 0, 1)
+	FX.grade = math.max(0, FX.grade - dt * 1.5)
+	-- camera roll is a damped spring so a hook "knocks" the picture sideways and it wobbles back
+	FX.rollVel += (-FX.roll * 60 - FX.rollVel * 9) * dt
+	FX.roll += FX.rollVel * dt
+	if blurFx then
+		local size = (Config.Concussion.blurPerTier * tier + Config.Concussion.blurPerConc * conc + FX.hitBlur + FX.downBlur) * fx
+		blurFx.Size = math.clamp(size, 0, 24)
+	end
+	if gradeFx then
+		local C = Config.Concussion
+		gradeFx.Saturation = math.clamp(-(C.desatPerTier * tier + C.desatPerConc * conc) * fx - FX.grade * 0.3 * fx, -1, 0)
+		gradeFx.Contrast = 0.04 * tier * fx
+		gradeFx.Brightness = -0.06 * FX.grade * fx
+		if tier >= 3 then
+			-- out on your feet: the picture pulses red with the heartbeat
+			local pulse = (math.sin(now * 6) * 0.5 + 0.5) * 0.25 * fx
+			gradeFx.TintColor = Color3.new(1, 1 - pulse, 1 - pulse)
+		elseif gradeFx.TintColor ~= WHITE then
+			gradeFx.TintColor = WHITE
+		end
+	end
+	local C = Config.Concussion
+	local vig = math.clamp((C.vignettePerTier * tier + C.vignettePerConc * conc) * fx + (F.down and 0.35 or 0), 0, 0.9)
+	vig = math.floor(vig * 50 + 0.5) / 50 -- rebuild the gradients only when it visibly changes
+	if vig ~= FX.vig or tier ~= FX.vigTier then
+		FX.vig, FX.vigTier = vig, tier
+		local vigColor = tier >= 2 and VIG_RED or VIG_BLACK
+		for _, v in ipairs(vignette) do
+			v.frame.BackgroundColor3 = vigColor
+			if vig < 0.01 then
+				v.frame.Visible = false
+			else
+				v.frame.Visible = true
+				v.grad.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1 - vig), NumberSequenceKeypoint.new(0.6, 1 - vig * 0.25), NumberSequenceKeypoint.new(1, 1) })
+			end
+		end
+	end
+	-- muffled hearing: the high end drops away with concussion and danger
+	if mixEq and mixEq.Parent then
+		mixEq.HighGain = math.clamp(-(20 * conc + 6 * tier) * math.min(fx, 1), -40, 0)
+		mixEq.MidGain = math.clamp(-(6 * conc + 2 * tier) * math.min(fx, 1), -20, 0)
+	end
+	-- heartbeat in your ears when you are in danger
+	if F.active and (tier >= 2 or conc > 0.6 or F.down) and now >= FX.heartAt then
+		local bpm = 70 + 18 * tier + (F.down and 30 or 0)
+		FX.heartAt = now + 60 / bpm
+		local id = soundId("Heartbeat", "Thud")
+		sfx(id, 0.35, 0.5)
+		task.delay(0.16, function()
+			sfx(id, 0.32, 0.35)
+		end)
+	end
+	-- the player's HUD head bar pulses at danger
+	if tier >= 2 then
+		local p = math.sin(now * (tier >= 3 and 9 or 5)) * 0.5 + 0.5
+		L.head.fill.BackgroundColor3 = tierColor(tier):Lerp(Color3.new(1, 1, 1), p * 0.35)
+	end
+	local ot = F.opp and F.oppState and F.oppState.tier or 0
+	if ot >= 2 then
+		local p = math.sin(now * (ot >= 3 and 9 or 5)) * 0.5 + 0.5
+		R.head.fill.BackgroundColor3 = tierColor(ot):Lerp(Color3.new(1, 1, 1), p * 0.35)
+	end
+	return tier, conc, fx
 end
 
 local function startCamera()
 	local cam = workspace.CurrentCamera
 	cam.CameraType = Enum.CameraType.Scriptable
+	baseFov = baseFov or cam.FieldOfView
 	if camConn then
 		camConn:Disconnect()
 	end
 	collectRingParts()
 	local t0 = os.clock()
+	local targets = {}
 	camConn = RunService.RenderStepped:Connect(function(dt)
 		cam = workspace.CurrentCamera
 		if cam.CameraType ~= Enum.CameraType.Scriptable then
 			cam.CameraType = Enum.CameraType.Scriptable
 		end
+		local now = os.clock()
+		local tier, conc, fx = updateFX(dt, now)
 		local me = getRoot(player.Character)
 		local opp = getRoot(F.opp)
 		if not me then
 			return
 		end
-		shake = math.max(0, shake - dt * 3)
-		local sh = Vector3.new(math.random() - 0.5, math.random() - 0.5, 0) * shake
+		FX.shake = math.max(0, FX.shake - dt * 3)
+		local sh = Vector3.new(math.random() - 0.5, math.random() - 0.5, 0) * FX.shake * fx
 		local goal
-		if camMode == "entrance" and camTarget then
+		if F.broadcastUntil and now < F.broadcastUntil and F.broadcastCF then
+			goal = F.broadcastCF -- hard cut to the on-air camera
+		elseif camMode == "entrance" and camTarget then
 			local r = getRoot(camTarget)
 			if r then
+				-- ringwalk dolly: tracking backwards in front of the walker, slowly arcing round
 				local p = r.Position
-				goal = CFrame.lookAt(p + r.CFrame.LookVector * 10 + Vector3.new(2.5, 3, 0), p + Vector3.new(0, 1.5, 0))
+				local a = (now - (F.walkStart or now)) * 0.18
+				local look = r.CFrame.LookVector
+				local side = r.CFrame.RightVector
+				local offset = look * (9 - math.min(3, (now - (F.walkStart or now)) * 0.4)) + side * (math.sin(a) * 3.5) + Vector3.new(0, 2.6, 0)
+				goal = CFrame.lookAt(p + offset, p + Vector3.new(0, 1.5, 0))
 			end
 		elseif camMode == "wide" or camMode == "tape" then
 			local center = F.center or me.Position
-			local a = (os.clock() - t0) * 0.15
+			local a = (now - t0) * 0.15
 			local dist = F.spar and 22 or 30
 			goal = CFrame.lookAt(center + Vector3.new(math.cos(a) * dist, 14, math.sin(a) * dist), center + Vector3.new(0, 3, 0))
 		elseif opp then
@@ -538,23 +1124,59 @@ local function startCamera()
 			goal = CFrame.lookAt(pos, mid)
 		end
 		if goal then
-			cam.CFrame = cam.CFrame:Lerp(goal, math.clamp(dt * 8, 0, 1)) + sh
+			-- drunk camera: a slow, sick sway that grows with the head tier and concussion
+			local sway = (tier * 0.35 + conc) * fx
+			if sway > 0.01 and camMode == "fight" then
+				goal *= CFrame.Angles(math.sin(now * 0.8) * 0.01 * sway, math.sin(now * 1.1) * 0.02 * sway, math.sin(now * 0.7) * 0.04 * sway)
+			end
+			if math.abs(FX.roll) > 0.0005 then
+				goal *= CFrame.Angles(0, 0, FX.roll * fx)
+			end
+			if FX.hitStop > now then
+				-- hit-stop: freeze the picture for a few frames on a big landed shot
+				cam.CFrame += sh
+			elseif F.broadcastUntil and now < F.broadcastUntil then
+				cam.CFrame = goal + sh
+			else
+				cam.CFrame = cam.CFrame:Lerp(goal, math.clamp(dt * 8, 0, 1)) + sh
+			end
 		end
+		cam.FieldOfView = math.clamp((baseFov or 70) + FX.fovKick * fx, 40, 100)
 		fadeClock += dt
 		if fadeClock > 0.08 then
 			fadeClock = 0
-			local targets = { me.Position + Vector3.new(0, 1.5, 0), me.Position, me.Position - Vector3.new(0, 1.2, 0) }
+			table.clear(targets)
+			targets[1] = me.Position + Vector3.new(0, 1.5, 0)
+			targets[2] = me.Position
+			targets[3] = me.Position - Vector3.new(0, 1.2, 0)
 			if opp then
-				table.insert(targets, opp.Position + Vector3.new(0, 1.5, 0))
-				table.insert(targets, opp.Position)
+				targets[4] = opp.Position + Vector3.new(0, 1.5, 0)
+				targets[5] = opp.Position
 			end
 			updateOccluders(cam.CFrame.Position, targets)
+		end
+		-- broadcast cuts while the camera is wide (between rounds, knockdowns, the final bell)
+		if (camMode == "wide" or camMode == "tape") and venueOn and now >= (F.nextCut or 0) then
+			F.nextCut = now + 4.5
+			local cf = vfx("BroadcastCFrame", now)
+			if typeof(cf) == "CFrame" and not (F.broadcastUntil and now < F.broadcastUntil) and math.random() < 0.6 then
+				F.broadcastCF = cf
+				F.broadcastUntil = now + 2.8
+			end
+		end
+		-- get-up timing marker
+		if F.down then
+			F.markerPos = 0.5 + 0.5 * math.sin((now - (F.downAt or now)) * (F.markerSpeed or 3))
+			marker.Position = UDim2.fromScale(F.markerPos, -0.15)
+			FX.downBlur = 14 * math.clamp(1 - F.mash / math.max(1, F.target), 0, 1)
+		else
+			FX.downBlur = math.max(0, FX.downBlur - dt * 20)
 		end
 	end)
 end
 
 ------------------------------------------------------------------------
--- Input
+-- Input (with local punch prediction: the Animator starts the punch on the key press)
 ------------------------------------------------------------------------
 local keyPunch = {
 	[Enum.KeyCode.One] = "jab", [Enum.KeyCode.J] = "jab",
@@ -565,14 +1187,42 @@ local keyPunch = {
 	[Enum.KeyCode.Six] = "overhand", [Enum.KeyCode.O] = "overhand",
 }
 
+local pred = { id = 0, busyUntil = 0, lastAt = 0, hand = "R" }
+throwPunch = function(p, body)
+	send({ t = "punch", p = p, body = body })
+	local P = Config.Punches[p]
+	local char = player.Character
+	local now = os.clock()
+	-- only predict what the server will almost surely accept (not down / stumbling / mid-punch)
+	if not P or not char or not F.active or F.down or now < (F.stumbleUntil or 0) or now < pred.busyUntil then
+		return
+	end
+	local stam = F.me and F.me.max and F.me.stam / math.max(1, F.me.max) or 1
+	local windup = P.windup * (stam < 0.3 and 1.25 or 1) * (1 + 0.08 * ((F.me and F.me.tier) or 0))
+	local hand = P.hand
+	if p == "uppercut" then
+		hand = (pred.hand == "R" and now - pred.lastAt < 0.7) and "L" or "R"
+	end
+	pred.hand = hand
+	pred.lastAt = now
+	pred.busyUntil = now + windup * 1.9
+	pred.id += 1
+	char:SetAttribute("PredAct", string.format("%s|%s|%s|%.2f", p, hand, body and "body" or "head", windup))
+	char:SetAttribute("PredActId", pred.id)
+end
+
 UserInputService.InputBegan:Connect(function(input, gp)
-	if not F.active or gp then
+	if not F.active and not F.down then
+		return
+	end
+	if gp then
 		return
 	end
 	if F.down and (input.KeyCode == Enum.KeyCode.Space or input.UserInputType == Enum.UserInputType.MouseButton1) then
-		F.mash += 1
-		send({ t = "mash" })
-		setGetup(F.mash / math.max(1, F.target))
+		getupPress()
+		return
+	end
+	if not F.active then
 		return
 	end
 	local body = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) or UserInputService:IsKeyDown(Enum.KeyCode.RightShift) or F.bodyMod == true
@@ -584,7 +1234,7 @@ UserInputService.InputBegan:Connect(function(input, gp)
 	end
 	local k = input.KeyCode
 	if p then
-		send({ t = "punch", p = p, body = body and p ~= "overhand" })
+		throwPunch(p, body and p ~= "overhand")
 	elseif k == Enum.KeyCode.F then
 		send({ t = "block", on = true })
 	elseif k == Enum.KeyCode.R then
@@ -649,31 +1299,100 @@ local function stopMusic()
 	end
 end
 
+local function chipFor(s, hurt, female)
+	local tier = s.tier or 0
+	if tier >= 1 then
+		local label = (Config.HeadTiers[tier + 1] or {}).label or ""
+		if female then
+			label = label:gsub("HIS", "HER")
+		end
+		return label, tierColor(tier)
+	elseif hurt then
+		return "ROCKED", T.gold
+	elseif (s.conc or 0) > 0.45 then
+		return "CONCUSSED", Color3.fromRGB(190, 150, 255)
+	elseif s.stam and s.max and s.stam < s.max * 0.2 then
+		return "GASSED", Color3.fromRGB(150, 160, 175)
+	elseif s.body and s.body < 30 then
+		return "BODY HURT", T.orange
+	end
+	return nil
+end
+
+local function setChip(panel, text, color)
+	if not text then
+		panel.chip.Visible = false
+		panel.chipLast = nil
+		return
+	end
+	panel.chip.Visible = true
+	panel.chip.BackgroundColor3 = color
+	panel.chipText.Text = text
+	if panel.chipLast ~= text then
+		panel.chipLast = text
+		-- pop when it changes
+		panel.chip.Size = UDim2.fromOffset(0, 24)
+		TweenService:Create(panel.chip, TweenInfo.new(0.25, Enum.EasingStyle.Back), { Size = UDim2.fromOffset(0, 18) }):Play()
+	end
+end
+
 local function finish()
 	F.active = false
 	F.down = false
 	gui.Enabled = false
+	fxGui.Enabled = false
 	overlay.Visible = false
 	getup.Visible = false
+	setRagdoll(false)
 	if camConn then
 		camConn:Disconnect()
 		camConn = nil
 	end
-	for p in pairs(faded) do
-		if p.Parent then
-			p.LocalTransparencyModifier = 0
-		end
-	end
-	table.clear(faded)
+	clearFades()
 	table.clear(ringParts)
 	if fxConn then
 		fxConn:Disconnect()
 		fxConn = nil
 	end
 	stopMusic()
-	setAnimate(true)
+	if venueOn then
+		vfx("Stop")
+		venueOn = false
+	end
 	restoreLighting()
-	workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
+	destroyPost()
+	destroyMix()
+	if bloodFolder then
+		bloodFolder:Destroy()
+		bloodFolder = nil
+	end
+	for _, m in ipairs({ player.Character, F.opp }) do
+		for _, n in ipairs({ "Head", "UpperTorso" }) do
+			local part = m and m:FindFirstChild(n)
+			local att = part and part:FindFirstChild("FightSprayAtt")
+			if att then
+				att:Destroy()
+			end
+		end
+	end
+	local char = player.Character
+	if char then
+		char:SetAttribute("PredAct", nil)
+		char:SetAttribute("PredActId", nil)
+	end
+	for k in pairs(FX) do
+		FX[k] = 0
+	end
+	FX.vig, FX.vigTier = -1, -1
+	letterbox(false)
+	blackout.BackgroundTransparency = 1
+	setAnimate(true)
+	local cam = workspace.CurrentCamera
+	if baseFov then
+		cam.FieldOfView = baseFov
+		baseFov = nil
+	end
+	cam.CameraType = Enum.CameraType.Custom
 	player:SetAttribute("InFight", false)
 end
 
@@ -682,11 +1401,14 @@ local PUNCH_NAME = { jab = "JAB", cross = "CROSS", leadhook = "LEAD HOOK", rearh
 local handlers = {}
 
 function handlers.start(msg)
-	F = { active = false, mash = 0, target = 10, arena = msg.arena, opp = msg.oppModel, rounds = msg.rounds, tape = msg.tape, kind = msg.kind,
+	F = { active = false, mash = 0, target = 10, arena = msg.arena, opp = msg.oppModel, ref = msg.refModel, rounds = msg.rounds, tape = msg.tape, kind = msg.kind,
 		spar = msg.spar, venue = msg.venue, venueName = msg.venueName, weighIn = msg.weighIn, notes = msg.notes, talk = msg.talk, myLine = msg.myLine }
 	player:SetAttribute("InFight", true)
 	gui.Enabled = true
+	fxGui.Enabled = true
 	L.frame.Visible, R.frame.Visible, clock.Visible, controls.Visible = false, false, false, false
+	setChip(L, nil)
+	setChip(R, nil)
 	if F.arena then
 		local center = F.arena:FindFirstChild("Anchors") and F.arena.Anchors:FindFirstChild("RingCenter")
 		F.center = center and center.Position
@@ -713,20 +1435,41 @@ function handlers.start(msg)
 	end
 	setTicker(string.format("%s vs %s  -  %d ROUND%s  -  %s%s", msg.tape.you.name:upper(), msg.tape.opp.name:upper(), msg.rounds, msg.rounds > 1 and "S" or "", F.stakesText,
 		(msg.venueName and msg.venueName ~= "" and not F.spar) and ("  -  LIVE FROM THE " .. msg.venueName:upper()) or ""))
+	-- the mix exists BEFORE VenueFX starts so its crowd / bell / music route through FightMix
+	ensureMix()
+	ensurePost()
+	resolveVenueFX()
+	venueOn = false
+	if VenueFX and type(VenueFX.Start) == "function" then
+		local ok, err = pcall(VenueFX.Start, F.arena, {
+			venue = F.spar and "Gym" or msg.venue, venueName = msg.venueName, spar = F.spar, stakes = stakes, kind = msg.kind, tape = msg.tape,
+			rounds = msg.rounds, oppModel = F.opp, myModel = player.Character,
+		})
+		venueOn = ok
+		if not ok then
+			warn("[FightClient] VenueFX.Start failed, using built-in venue effects:", err)
+		end
+	end
+	if not venueOn then
+		setVenueLighting(F.spar and "Gym" or msg.venue)
+		startVenueFx(F.arena)
+	end
 	screens(msg.tape.you.name:upper() .. "\nvs\n" .. msg.tape.opp.name:upper())
-	setVenueLighting(F.spar and "Gym" or msg.venue)
-	startVenueFx(F.arena)
 	startCamera()
 	camMode = F.spar and "wide" or "entrance"
+	letterbox(not F.spar)
 	buildTouch()
 end
 
 function handlers.entrance(msg)
+	F.walkStart = os.clock()
+	letterbox(true)
 	if msg.phase == "opp" then
 		camMode = "entrance"
 		camTarget = F.opp
 		showBanner("INTRODUCING...", T.blue, 2.5)
 		setTicker("Making the walk to the ring: " .. ((F.tape.opp.nick or "") ~= "" and ("\"" .. F.tape.opp.nick .. "\" ") or "") .. F.tape.opp.name)
+		phase("entrance", { who = "opp", target = F.opp, pyro = msg.pyro == true })
 		cheer(0.6)
 		if msg.pyro then
 			pyro("blue")
@@ -736,6 +1479,7 @@ function handlers.entrance(msg)
 		camTarget = player.Character
 		showBanner("YOUR WALKOUT", T.red, 2.5)
 		setTicker((msg.intro or "And now...") .. "  " .. F.tape.you.name:upper() .. " \"" .. (F.tape.you.nick or "") .. "\"!")
+		phase("entrance", { who = "you", target = player.Character, pyro = msg.pyro == true })
 		cheer(1.2)
 		if msg.pyro then
 			pyro("red")
@@ -749,6 +1493,7 @@ function handlers.entrance(msg)
 			music = Instance.new("Sound")
 			music.SoundId = "rbxassetid://" .. msg.music
 			music.Volume = 0.8
+			music.SoundGroup = ensureMix()
 			music.Parent = SoundService
 			music:Play()
 		end
@@ -757,6 +1502,7 @@ end
 
 function handlers.tape()
 	camMode = "tape"
+	letterbox(true)
 	local y, o = F.tape.you, F.tape.opp
 	local function r(x)
 		return string.format("%d-%d-%d (%d KO)", x.record.w, x.record.l, x.record.d, x.record.ko)
@@ -802,51 +1548,103 @@ function handlers.round(msg)
 	setAnimate(false)
 	F.active = true
 	camMode = "fight"
+	F.broadcastUntil = nil
+	letterbox(false)
 	L.frame.Visible, R.frame.Visible, clock.Visible, controls.Visible = true, true, true, true
 	roundText.Text = string.format("ROUND %d / %d", msg.n, msg.total)
 	timeText.Text = fmtTime(F.spar and Config.SparRoundSeconds or Config.RoundSeconds)
 	showBanner("ROUND " .. msg.n, T.gold, 1.8)
+	phase("round", { n = msg.n })
+	if not venueOn then
+		sfx(BUILTIN.Ping or "rbxasset://sounds/electronicpingshort.wav", 0.55, 0.6)
+	end
 	screens("ROUND " .. msg.n)
 	cheer(0.5)
 end
 
 function handlers.state(msg)
 	timeText.Text = fmtTime(msg.time)
-	local function apply(panel, s)
-		panel.setHp(s.hp / 100, s.hurt and T.red or T.green)
-		panel.setBody(s.body / 100)
-		panel.setStam(s.stam / s.max)
+	F.me, F.oppState = msg.me, msg.opp
+	local function apply(panel, s, female)
+		local tier = s.tier or 0
+		local headColor = tier >= 1 and tierColor(tier) or (s.hurt and T.gold or T.green)
+		if tier < 2 then
+			setBar(panel.head, s.hp / 100, (s.cap or 100) / 100, headColor)
+		else
+			setBar(panel.head, s.hp / 100, (s.cap or 100) / 100) -- colour pulses in updateFX
+		end
+		setBar(panel.body, s.body / 100, (s.bodyCap or 100) / 100, s.body < 30 and T.red or T.orange)
+		local max = math.max(1, s.max or 100)
+		setBar(panel.stam, s.stam / max, (s.stamCap or max) / max, s.stam < max * 0.25 and Color3.fromRGB(120, 125, 140) or T.blue)
+		setChip(panel, chipFor(s, s.hurt, female))
 	end
-	apply(L, msg.me)
-	apply(R, msg.opp)
+	apply(L, msg.me, F.tape and F.tape.you.female)
+	apply(R, msg.opp, F.tape and F.tape.opp.female)
+	if L.bal and msg.me.bal then
+		local b = math.clamp(msg.me.bal / 100, 0, 1)
+		L.bal.Size = UDim2.fromScale(b, 1)
+		L.bal.BackgroundColor3 = b < 0.3 and T.red or (b < 0.55 and T.gold or Color3.fromRGB(200, 200, 210))
+	end
 	angleTag.Visible = msg.me.angle == true
+	vfx("State", msg)
 end
 
 function handlers.hit(msg)
 	local mine = msg.who == "you"
 	local target = mine and F.opp or player.Character
-	local part = target and target:FindFirstChild(msg.body and "UpperTorso" or "Head")
-	sfx(part, (msg.body and 1.0 or 1.25) + math.random() * 0.15 - (msg.heavy and 0.2 or 0), math.clamp(0.35 + (msg.dmg or 3) / 12, 0.35, 1))
+	local attacker = mine and player.Character or F.opp
+	local sev = msg.sev or (msg.heavy and 1 or 0.4)
+	local fx = fxScale()
+	if msg.body then
+		sfx(soundId("BodyShot", "Thud"), 0.95 + math.random() * 0.1 - (msg.heavy and 0.15 or 0), math.clamp(0.4 + sev * 0.45, 0.35, 1))
+	else
+		sfx(soundId("PunchImpact", "Thud"), 1.2 + math.random() * 0.15 - (msg.heavy and 0.25 or 0), math.clamp(0.35 + sev * 0.5, 0.35, 1))
+	end
 	if msg.heavy then
-		cheer(0.5)
-		if not mine then
-			shake = 0.6
+		sfx(BUILTIN.SwordHit or "rbxasset://sounds/swordhit.wav", 0.45 + math.random() * 0.1, 0.25)
+	end
+	-- spray flies off the far side of the target, along the punch
+	local tr, ar = getRoot(target), getRoot(attacker)
+	if tr and ar then
+		local dir = tr.Position - ar.Position
+		dir = Vector3.new(dir.X, 0.35, dir.Z)
+		if dir.Magnitude > 0.05 then
+			spray(target, msg.body and "UpperTorso" or "Head", dir.Unit, sev, msg.bleed == true and not msg.body)
 		end
 	end
-	local text = (msg.counter and "COUNTER " or "") .. (PUNCH_NAME[msg.punch] or msg.punch:upper()) .. (msg.body and " TO THE BODY" or "")
+	vfx("Hit", { target = target, heavy = msg.heavy == true, dmg = msg.dmg, punch = msg.punch })
+	if msg.heavy then
+		cheer(0.5)
+	end
+	if mine then
+		if msg.heavy then
+			FX.hitStop = os.clock() + 0.06
+			flashFrame(whiteFlash, 1 - 0.18 * fx, 0.15)
+		end
+	else
+		-- taking it: the picture lurches toward the side the punch came from, blurs and flashes red
+		FX.shake = math.max(FX.shake, 0.25 + sev * 0.45)
+		FX.rollVel += (msg.hand == "L" and 1 or -1) * (msg.body and 0.15 or 0.6) * sev
+		if msg.heavy then
+			FX.hitBlur = math.max(FX.hitBlur, 4 + sev * 7)
+			FX.fovKick = -6 * sev
+			flashFrame(redFlash, 1 - math.clamp(0.25 + sev * 0.25, 0, 0.6) * fx, 0.35)
+		end
+		if msg.body then
+			FX.grade = math.max(FX.grade, 0.6 * sev) -- breath knocked out of you
+		end
+	end
+	local text = (msg.counter and "COUNTER " or "") .. (PUNCH_NAME[msg.punch] or tostring(msg.punch):upper()) .. (msg.body and " TO THE BODY" or "")
 	if msg.heavy or msg.counter then
 		showFlash(flash, text .. "!", mine and T.gold or T.red)
-	end
-	if not mine then
-		shake = math.max(shake, 0.25)
 	end
 end
 
 function handlers.blocked(msg)
-	local target = msg.who == "you" and player.Character or F.opp
-	sfx(target and target:FindFirstChild("LeftHand"), 1.9, 0.25)
+	sfx(BUILTIN.Thud or "rbxasset://sounds/action_jump_land.mp3", 1.9, 0.25)
 	if msg.who == "you" then
 		showFlash(flash, "BLOCKED", T.blue, 0.5)
+		FX.shake = math.max(FX.shake, 0.08)
 	end
 end
 
@@ -861,6 +1659,10 @@ function handlers.defense(msg)
 end
 
 function handlers.miss(msg)
+	if msg.why ~= "short" then
+		-- the whoosh of a punch cutting air
+		sfx(BUILTIN.SwordLunge or "rbxasset://sounds/swordlunge.wav", 1.5 + math.random() * 0.3, 0.12)
+	end
 	if msg.who == "you" and msg.why == "short" then
 		showFlash(flash, "OUT OF RANGE", T.sub, 0.5)
 	end
@@ -875,56 +1677,184 @@ function handlers.announce(msg)
 	showFlash(flash, msg.text, T.gold, 1.2)
 end
 
-function handlers.kd(msg)
+local TIER_CALL = { "ROCKED!", "HURT BAD!", "OUT ON HIS FEET!" }
+function handlers.tier(msg)
+	local tier = msg.tier or 0
+	phase("tier", { who = msg.who, tier = tier })
+	local prev = msg.who == "you" and F.myTier or F.oppTier
+	if msg.who == "you" then
+		F.myTier = tier
+	else
+		F.oppTier = tier
+	end
+	if tier <= (prev or 0) then
+		return
+	end
+	if msg.who == "opp" then
+		local call = TIER_CALL[tier] or "ROCKED!"
+		if F.tape and F.tape.opp.female then
+			call = call:gsub("HIS", "HER")
+		end
+		showFlash(defFlash, call .. " FINISH IT!", tierColor(tier), 1.2)
+		screens(call)
+		cheer(0.4 * tier)
+	else
+		showFlash(defFlash, tier >= 2 and "YOU'RE IN TROUBLE - HOLD (G) AND COVER UP!" or "YOU'RE HURT - TIE HIM UP (G)!", tierColor(tier), 1.6)
+		flashFrame(redFlash, 1 - 0.35 * fxScale(), 0.6)
+	end
+end
+
+function handlers.stumble(msg)
+	local mine = msg.who == "you"
+	if mine then
+		-- the server owns the timing; the client owns the character's physics, so it pushes the stagger
+		local dir = Vector3.new(msg.dir and msg.dir.x or 0, 0, msg.dir and msg.dir.z or 0)
+		local dur = msg.dur or 0.6
+		F.stumbleUntil = os.clock() + dur
+		FX.rollVel += (math.random() < 0.5 and -1 or 1) * 0.5 * (msg.sev or 0.5)
+		FX.shake = math.max(FX.shake, 0.3)
+		local hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+		if hum and dir.Magnitude > 0.05 then
+			local unit = dir.Unit
+			local conn
+			conn = RunService.Heartbeat:Connect(function()
+				if os.clock() > F.stumbleUntil or not hum.Parent then
+					conn:Disconnect()
+					hum:Move(Vector3.zero)
+					return
+				end
+				hum:Move(unit, false)
+			end)
+		end
+		sfx(BUILTIN.Footsteps or "rbxasset://sounds/action_footsteps_plastic.mp3", 0.8, 0.4)
+	else
+		cheer(0.3)
+	end
+end
+
+function handlers.ropes(msg)
 	local target = msg.who == "you" and player.Character or F.opp
-	sfx(target and target:FindFirstChild("HumanoidRootPart"), 0.7, 1, "rbxasset://sounds/action_falling.ogg")
+	vfx("Hit", { target = target, heavy = true, dmg = 0, punch = "ropes" })
+	cheer(0.3)
+end
+
+local SEVERITY_TEXT = { flash = "FLASH KNOCKDOWN!", heavy = "DOWN HARD!", out = "OUT COLD!" }
+function handlers.kd(msg)
+	local mine = msg.who == "you"
+	local target = mine and player.Character or F.opp
+	sfx(BUILTIN.Falling or "rbxasset://sounds/action_falling.ogg", 0.7, 1)
+	sfx(BUILTIN.Thud or "rbxasset://sounds/action_jump_land.mp3", 0.5, 0.9)
+	phase("kd", { who = msg.who, target = target, severity = msg.severity })
 	cheer(1.6)
-	shake = 1
+	FX.shake = 1
 	sweeping = 3
 	camMode = "wide"
-	showBanner(msg.who == "you" and "YOU'RE DOWN!" or "DOWN GOES " .. F.tape.opp.name:upper() .. "!", msg.who == "you" and T.red or T.gold, 2.5)
-	screens("KNOCKDOWN!")
-	if msg.who == "you" then
+	letterbox(true)
+	local name = mine and "YOU'RE DOWN!" or ("DOWN GOES " .. F.tape.opp.name:upper() .. "!")
+	if msg.severity == "out" and not mine then
+		name = F.tape.opp.name:upper() .. " IS OUT COLD!"
+	end
+	showBanner(name, mine and T.red or T.gold, 2.5)
+	if SEVERITY_TEXT[msg.severity] and msg.severity ~= "out" then
+		showFlash(defFlash, SEVERITY_TEXT[msg.severity], mine and T.red or T.gold, 2)
+	end
+	screens(msg.severity == "out" and "KNOCKOUT!" or "KNOCKDOWN!")
+	if mine then
 		F.down = true
 		F.mash = 0
+		F.downAt = os.clock()
+		flashFrame(redFlash, 1 - 0.6 * fxScale(), 0.8)
+		if msg.severity == "out" then
+			-- lights out: ragdoll and fade to near-black
+			setRagdoll(true)
+			TweenService:Create(blackout, TweenInfo.new(1.4), { BackgroundTransparency = 0.25 }):Play()
+		end
 	end
 end
 
 function handlers.getupStart(msg)
 	F.target = msg.target
 	F.mash = 0
+	F.downAt = os.clock()
+	local ability = math.clamp(tonumber(msg.ability) or 0.5, 0, 1)
+	F.zoneW = 0.12 + ability * 0.25
+	local conc = F.me and F.me.conc or 0
+	F.markerSpeed = 3.2 - ability * 1.2 + conc * 1.5
+	zone.Size = UDim2.fromScale(F.zoneW, 1)
 	setGetup(0)
+	getupTitle.Text = msg.severity == "flash" and "FLASH KNOCKDOWN! SHAKE IT OFF - MASH / HIT THE GREEN" or "YOU'RE DOWN!  MASH SPACE / TAP - HIT THE GREEN ZONE"
+	getupHint.Text = string.format("Get up before 10. Green-zone presses count triple. (needed: %d)", msg.target or 10)
 	getup.Visible = true
 end
 
 function handlers.count(msg)
-	showBanner(tostring(msg.n), Color3.new(1, 1, 1), 0.8)
-	if msg.who == "you" then
+	local n = msg.n or 0
+	if msg.standing then
+		showBanner("EIGHT COUNT: " .. n, Color3.fromRGB(230, 230, 230), 0.5)
+	else
+		showBanner(tostring(n), Color3.new(1, 1, 1), 0.8)
+	end
+	phase("count", { n = n })
+	sfx(soundId("RefereeCount", "Click"), 0.8, 0.45)
+	if msg.who == "you" and not msg.standing then
 		setGetup((msg.mash or F.mash) / math.max(1, msg.target or F.target))
 	end
 end
 
 function handlers.getup(msg)
-	F.down = false
-	getup.Visible = false
-	camMode = "fight"
+	local mine = msg.who == "you"
+	if mine then
+		F.down = false
+		getup.Visible = false
+		sfx(BUILTIN.Grunt or "rbxasset://sounds/uuhhh.mp3", 1, 0.5)
+		FX.hitBlur = 10 -- the world swims back into focus
+	end
+	phase("getup", { who = msg.who })
 	cheer(0.8)
-	setTicker(msg.who == "you" and "You beat the count!" or (F.tape.opp.name .. " beats the count!"))
+	setTicker(mine and "You beat the count! Show the referee you can continue..." or (F.tape.opp.name .. " beats the count!"))
+end
+
+function handlers.refcheck(msg)
+	if msg.ok then
+		showBanner("OK TO CONTINUE", T.green, 1.2)
+		camMode = "fight"
+		letterbox(false)
+	else
+		showBanner("WAVED OFF!", T.red, 2.5)
+		cheer(1.2)
+	end
 end
 
 function handlers.bell(msg)
 	F.active = false
 	showBanner("DING DING DING", T.gold, 1.5)
 	setTicker("End of round " .. msg.n)
+	phase("bell", { n = msg.n })
+	if not venueOn then
+		local bell = BUILTIN.Ping or "rbxasset://sounds/electronicpingshort.wav"
+		for i = 0, 2 do
+			task.delay(i * 0.28, function()
+				sfx(bell, 0.6, 0.7)
+			end)
+		end
+	end
 end
 
 function handlers.rest(msg)
 	camMode = "wide"
+	phase("rest", { n = msg.n })
 	local lines = {
 		{ "YOUR CORNER  -  END OF ROUND " .. msg.n, bold = true, size = 22, color = T.gold },
 		{ string.format("Unofficial card: %d - %d   (this round %d-%d)", msg.unofficial[1], msg.unofficial[2], msg.card[1], msg.card[2]), bold = true },
 		{ string.format("Punches: you %d/%d   opponent %d/%d", msg.stats.landed, msg.stats.thrown, msg.stats.oppLanded, msg.stats.oppThrown), color = T.sub },
 	}
+	local c = msg.cond
+	if type(c) == "table" then
+		table.insert(lines, line(string.format("HEAD %d%% (max %d%%)    BODY %d%% (max %d%%)", c.head or 0, c.cap or 100, c.body or 0, c.bodyCap or 100), { color = (c.head or 100) < 30 and T.red or T.text, size = 14 }))
+		if c.notes and #c.notes > 0 then
+			table.insert(lines, line("Cutman: " .. table.concat(c.notes, "  |  "), { color = T.orange, size = 13 }))
+		end
+	end
 	for _, a in ipairs(msg.advice) do
 		table.insert(lines, { "\"" .. a .. "\"", left = true })
 	end
@@ -946,9 +1876,18 @@ function handlers.final(msg)
 	end
 	camMode = "wide"
 	sweeping = 4
+	letterbox(true)
+	phase("final", { result = res.outcome, method = res.method })
 	showBanner(text, res.outcome == "win" and T.gold or T.red, 3)
 	screens(res.outcome == "win" and ("WINNER\n" .. F.tape.you.name:upper()) or (res.outcome == "loss" and ("WINNER\n" .. F.tape.opp.name:upper()) or "DRAW"))
 	cheer(1.6)
+	-- the server moves the character home ~3 s after this: stand back up before that
+	if ragdoll then
+		task.delay(2.2, function()
+			setRagdoll(false)
+			TweenService:Create(blackout, TweenInfo.new(0.6), { BackgroundTransparency = 1 }):Play()
+		end)
+	end
 end
 
 function handlers.result()
@@ -964,6 +1903,9 @@ function handlers.aborted()
 end
 
 FightRemote.OnClientEvent:Connect(function(msg)
+	if type(msg) ~= "table" then
+		return
+	end
 	local h = handlers[msg.t]
 	if h then
 		local ok, err = pcall(h, msg)
@@ -974,6 +1916,7 @@ FightRemote.OnClientEvent:Connect(function(msg)
 end)
 
 player.CharacterAdded:Connect(function()
+	ragdoll = nil -- the old rig is gone with its constraints
 	if F.active or gui.Enabled then
 		finish()
 	end

@@ -5,6 +5,8 @@
 -- * anticipates the player's favourite punches (learned from previous fights)
 -- * exploits weaknesses (shelling up -> body shots, gassed -> pressure)
 -- * switches game plan with the scorecards; protects itself when hurt
+-- * reads the head-HP tiers and concussion (F.tier / F.conc): goes for the finish when the other man
+--   is dazed, holds / covers / freezes when it is dazed itself, and reacts slower when concussed
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
 
@@ -30,6 +32,8 @@ function FightAI.new(F, O, engine)
 	self.nextMove = 0
 	self.circleDir = self.rng:NextNumber() < 0.5 and -1 or 1
 	self.mode = "plan"
+	self.nextMode = 0
+	self.freezeUntil = 0
 	self.bodyBias = 0.2
 	self.blockUntil = 0
 	local learned = F.data.learned or {}
@@ -87,11 +91,18 @@ function FightAI:OnOppPunch(ptype, body, windup)
 	if engine:IsHurt(F) then
 		chance += 0.12
 	end
+	-- dazed / concussed: sees it late and cannot always do anything about it
+	local tier, conc = F.tier or 0, F.conc or 0
+	local C = Config.Concussion
+	chance *= (1 - C.aiDefense * conc) * (1 - C.tierDefense * tier)
+	if engine:IsStumbling(F) or engine:Now() < self.freezeUntil then
+		return
+	end
 	chance = math.clamp(chance, 0.05, 0.8)
 	if self.rng:NextNumber() > chance then
 		return
 	end
-	local react = math.max(0.06, 0.26 - s.Reflexes * 0.0018)
+	local react = math.max(0.06, 0.26 - s.Reflexes * 0.0018) + C.aiReact * conc + 0.04 * tier
 	if react >= windup then
 		return
 	end
@@ -147,23 +158,30 @@ function FightAI:OnOppPunch(ptype, body, windup)
 	end)
 end
 
+-- game plan; the engine also calls this whenever either fighter's head tier changes
 function FightAI:UpdateMode()
 	local engine, F, O = self.engine, self.F, self.O
 	local lead = engine:EstimateLead(F)
 	local r, total = engine.round, engine.rounds
-	if engine:IsHurt(F) or F.health < 30 then
+	local myTier, oTier = F.tier or 0, O.tier or 0
+	self.nextMode = engine:Now() + 1.5
+	if engine:IsHurt(F) or F.health < 30 or myTier >= 1 then
 		self.mode = "survive"
-	elseif r > total / 2 and lead < 0 then
+	elseif oTier >= 1 or (O.conc or 0) > 0.4 then
+		-- killer instinct: the other man is dazed, go and end it
+		self.mode = "finish"
+	elseif (r > total / 2 and lead < 0) or engine:IsHurt(O) or O.health < 35 then
 		self.mode = "pressure"
 	elseif r >= total - 1 and lead >= 2 then
 		self.mode = "cruise"
-	elseif engine:IsHurt(O) or O.health < 35 then
-		self.mode = "pressure"
 	else
 		self.mode = "plan"
 	end
 	local intel = self:Intel()
 	self.bodyBias = 0.12 + self.arch.body + intel.blockRatio * 0.55 * self.arch.adapt
+	if self.mode == "finish" then
+		self.bodyBias *= 0.3 -- head hunting
+	end
 	self.exploitGassed = O.stamina < O.maxStam * 0.3
 end
 
@@ -171,6 +189,8 @@ function FightAI:Aggression()
 	local a = self.baseAggr
 	if self.mode == "pressure" then
 		a += 0.3
+	elseif self.mode == "finish" then
+		a += 0.45
 	elseif self.mode == "cruise" then
 		a -= 0.2
 	elseif self.mode == "survive" then
@@ -193,6 +213,8 @@ function FightAI:Range()
 		return jab * 1.9
 	elseif self.mode == "pressure" then
 		return jab * math.min(self.baseRange, 0.74)
+	elseif self.mode == "finish" then
+		return jab * 0.7
 	elseif self.mode == "cruise" then
 		return jab * math.max(self.baseRange, 0.94)
 	end
@@ -207,8 +229,10 @@ function FightAI:BuildCombo()
 	local n = 1
 	local aggr = self:Aggression()
 	if self.rng:NextNumber() < aggr then
-		n = self.rng:NextInteger(2, self.comboMax + (self.engine:IsHurt(self.O) and 1 or 0))
+		local extra = (self.engine:IsHurt(self.O) or self.mode == "finish") and 1 or 0
+		n = self.rng:NextInteger(2, self.comboMax + extra)
 	end
+	local finish = self.mode == "finish" and 0.2 or 0
 	n = math.max(1, math.min(n, math.floor(self.F.stamina / 6)))
 	local dist = self.engine:Distance(self.F, self.O)
 	local list = {}
@@ -218,8 +242,8 @@ function FightAI:BuildCombo()
 		if not (i == 1 and roll < self.jabRate + (self.mode == "cruise" and 0.25 or 0)) then
 			local pool, total = {}, 0
 			for _, opt in ipairs({
-				{ "cross", 0.4 }, { "leadhook", 0.25 }, { "rearhook", 0.18 }, { "uppercut", 0.15 },
-				{ "overhand", 0.03 + self.arch.overhand }, { "jab", 0.12 },
+				{ "cross", 0.4 }, { "leadhook", 0.25 + finish }, { "rearhook", 0.18 + finish }, { "uppercut", 0.15 + finish },
+				{ "overhand", 0.03 + self.arch.overhand + finish }, { "jab", 0.12 },
 			}) do
 				if self:Fits(opt[1], dist) then
 					table.insert(pool, opt)
@@ -251,13 +275,38 @@ function FightAI:Think(now)
 		self.queue = {}
 		return
 	end
+	if now >= self.nextMode then
+		self:UpdateMode()
+	end
+	local tier = F.tier or 0
+	-- a dazed fighter sometimes just freezes for a moment (and gets hit): ~15% per second per tier
+	if now < self.freezeUntil or engine:IsStumbling(F) then
+		return
+	end
+	if tier >= 1 and self.rng:NextNumber() < 0.15 * tier * 0.32 then
+		self.freezeUntil = now + 0.4
+		self.queue = {}
+		return
+	end
 	local dist = engine:Distance(F, O)
 	if now >= self.nextMove then
 		self.nextMove = now + 0.35
 		if self.rng:NextNumber() < 0.08 then
 			self.circleDir = -self.circleDir
 		end
-		engine:MoveAI(F, self:Range(), self.circleDir * (self.style.id == "OutBoxer" and 0.45 or 0.22))
+		local circle = self.circleDir * (self.style.id == "OutBoxer" and 0.45 or 0.22)
+		if tier >= 1 then
+			-- hurt: circle away hard toward open space (the ring centre), never along the ropes
+			local c = engine.anchors and engine.anchors.RingCenter
+			if c and F.root and O.root then
+				local toC = c.Position - F.root.Position
+				local fromO = F.root.Position - O.root.Position
+				local cross = fromO.X * toC.Z - fromO.Z * toC.X
+				self.circleDir = cross >= 0 and -1 or 1
+			end
+			circle = self.circleDir * 0.6
+		end
+		engine:MoveAI(F, self:Range(), circle)
 	end
 	if F.blocking and now >= self.blockUntil then
 		engine:SetBlock(F, false)
@@ -271,7 +320,7 @@ function FightAI:Think(now)
 		return
 	end
 	if self.mode == "survive" then
-		if dist < 4.2 and self.rng:NextNumber() < 0.25 and engine:CanClinch(F) then
+		if dist < 4.2 and self.rng:NextNumber() < (tier >= 1 and 0.45 or 0.25) and engine:CanClinch(F) then
 			engine:Clinch(F)
 			return
 		end

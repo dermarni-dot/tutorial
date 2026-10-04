@@ -1,6 +1,6 @@
 -- Poser: puts a character (player or NPC) at a training spot in the right posture
 -- (standing, seated or lying, matched to the equipment height) and attaches
--- held equipment props (barbells, dumbbells, rope handles, mitts...).
+-- held equipment props (barbells, dumbbells, rope handles, mitts, medicine ball...).
 -- The joint animation itself runs client-side (Animator) from the "Pose" attribute.
 local Poser = {}
 
@@ -119,6 +119,19 @@ local function dumbbell(folder, hand, level)
 	end
 end
 
+-- medicine ball held against the right palm, between both hands (the Animator's medball pose keeps
+-- the hands one ball-width apart, 2 x 0.56 studs). Worn rubber at low levels, leather and a
+-- coloured grip band at higher ones; the band also shows the ball spinning on twists and slams.
+local MEDBALL_D = 1.1
+local function medicineBall(folder, hand, level)
+	local c = hand.CFrame * CF(-MEDBALL_D * 0.5, -0.25, 0)
+	local shell = level >= 3 and Color3.fromRGB(28, 28, 32) or Color3.fromRGB(74, 52, 38)
+	local band = ({ Color3.fromRGB(150, 120, 60), Color3.fromRGB(150, 120, 60), Color3.fromRGB(190, 30, 35), Color3.fromRGB(212, 175, 55) })[math.clamp(level, 1, 4)]
+	mk(folder, hand, "MedBall", V3(MEDBALL_D, MEDBALL_D, MEDBALL_D), c, shell, level >= 3 and Enum.Material.Leather or Enum.Material.Fabric, Enum.PartType.Ball)
+	-- the grip band: a thin disc through the middle, a hair wider than the ball
+	mk(folder, hand, "MedBallBand", V3(0.16, MEDBALL_D * 1.02, MEDBALL_D * 1.02), c * CFrame.Angles(0, 0, math.rad(90)), band, Enum.Material.SmoothPlastic, Enum.PartType.Cylinder)
+end
+
 function Poser.ClearProps(model)
 	local look = model:FindFirstChild("BoxerLook")
 	local f = look and look:FindFirstChild("Held")
@@ -166,6 +179,8 @@ function Poser.AttachProps(model, pose, level)
 		end
 	elseif pose == "clippers" then
 		mk(folder, rh, "Clippers", V3(0.3, 0.7, 0.25), rh.CFrame * CF(0, -0.45, 0), Color3.fromRGB(25, 25, 28), Enum.Material.SmoothPlastic)
+	elseif pose == "medball" then
+		medicineBall(folder, rh, level)
 	end
 end
 

@@ -1,9 +1,12 @@
 -- DataManager: loads/saves each player's career with DataStoreService.
 -- If Studio API access is off, the game still runs (progress lasts for the session only).
 -- Old-version saves start a fresh career but keep the list of past careers.
+-- Saves of the current version are brought up to date in place by Training.Migrate
+-- (new fields are added, never removed): Config.DataVersion must not be bumped for additions.
 local DataStoreService = game:GetService("DataStoreService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Config = require(ReplicatedStorage.Shared.Config)
+local Training = require(script.Parent:WaitForChild("Training"))
 
 local DataManager = {}
 DataManager.Profiles = {}
@@ -54,7 +57,17 @@ function DataManager.Load(player)
 		-- a save from an older version of the game: keep the hall of past careers
 		data = DataManager.Blank(type(data.pastCareers) == "table" and data.pastCareers or {})
 	end
-	data.pastCareers = data.pastCareers or {}
+	if type(data.pastCareers) ~= "table" then
+		data.pastCareers = {}
+	end
+	if data.created then
+		-- additive backfill (sub-muscles, soreness, face damage, medicine ball station, v2 looks...);
+		-- a bug here must never cost a player the career, so it is guarded and the save kept as is
+		local ok, err = pcall(Training.Migrate, data)
+		if not ok then
+			warn("[Boxer] Save migration failed, career loaded unchanged:", err)
+		end
+	end
 	if player.Parent then
 		DataManager.Profiles[player] = data
 	end
