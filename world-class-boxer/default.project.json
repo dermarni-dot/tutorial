@@ -19,7 +19,48 @@
       }
     },
     "ServerScriptService": {
-      "$path": "src/server"
+      "Main": {
+        "$path": "src/server/Main.server.lua"
+      },
+      "BoxerModules": {
+        "$className": "Folder",
+        "Ambient": {
+          "$path": "src/server/Ambient.lua"
+        },
+        "Career": {
+          "$path": "src/server/Career.lua"
+        },
+        "CityMap": {
+          "$path": "src/server/CityMap.lua"
+        },
+        "DataManager": {
+          "$path": "src/server/DataManager.lua"
+        },
+        "FightAI": {
+          "$path": "src/server/FightAI.lua"
+        },
+        "FightEngine": {
+          "$path": "src/server/FightEngine.lua"
+        },
+        "GymDecor": {
+          "$path": "src/server/GymDecor.lua"
+        },
+        "MapBuilder": {
+          "$path": "src/server/MapBuilder.lua"
+        },
+        "Poser": {
+          "$path": "src/server/Poser.lua"
+        },
+        "Training": {
+          "$path": "src/server/Training.lua"
+        },
+        "Venues": {
+          "$path": "src/server/Venues.lua"
+        },
+        "World": {
+          "$path": "src/server/World.lua"
+        }
+      }
     },
     "StarterPlayer": {
       "StarterPlayerScripts": {

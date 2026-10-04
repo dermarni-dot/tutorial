@@ -29,6 +29,87 @@ Config.MuscleNames = {
 	legs = "Legs", core = "Core", neck = "Neck",
 }
 
+-- Sub-muscles. Each belongs to one coarse group above; the group value is the share-weighted
+-- sum of its parts (Config.SyncGroups), so everything that reads the 7 groups (weight, fight
+-- power, Builder.Scales, Hub bars, lift loads) keeps working. Parts are stored as FLAT numeric
+-- keys in profile.body next to the groups (Career.Summary rounds every body value, so no
+-- nested tables there). Part ids never equal a group id.
+Config.MuscleParts = {
+	{ id = "pecs", group = "chest", share = 0.65, name = "Chest (Lower/Mid Pecs)" },
+	{ id = "upperChest", group = "chest", share = 0.35, name = "Upper Chest" },
+	{ id = "frontDelt", group = "shoulders", share = 0.35, name = "Front Delts" },
+	{ id = "sideDelt", group = "shoulders", share = 0.4, name = "Side Delts" },
+	{ id = "rearDelt", group = "shoulders", share = 0.25, name = "Rear Delts" },
+	{ id = "biceps", group = "arms", share = 0.4, name = "Biceps" },
+	{ id = "triceps", group = "arms", share = 0.4, name = "Triceps" },
+	{ id = "forearms", group = "arms", share = 0.2, name = "Forearms" },
+	{ id = "lats", group = "back", share = 0.4, name = "Lats" },
+	{ id = "traps", group = "back", share = 0.25, name = "Traps" },
+	{ id = "upperBack", group = "back", share = 0.2, name = "Upper Back" },
+	{ id = "lowerBack", group = "back", share = 0.15, name = "Lower Back" },
+	{ id = "abs", group = "core", share = 0.4, name = "Abs" },
+	{ id = "lowerAbs", group = "core", share = 0.2, name = "Lower Abs" },
+	{ id = "obliques", group = "core", share = 0.3, name = "Obliques" },
+	{ id = "serratus", group = "core", share = 0.1, name = "Serratus" },
+	{ id = "quads", group = "legs", share = 0.4, name = "Quads" },
+	{ id = "hamstrings", group = "legs", share = 0.2, name = "Hamstrings" },
+	{ id = "glutes", group = "legs", share = 0.2, name = "Glutes" },
+	{ id = "calves", group = "legs", share = 0.2, name = "Calves" },
+	{ id = "neckSCM", group = "neck", share = 1.0, name = "Neck" },
+}
+Config.MusclePartNames = {} -- part id -> display name
+Config.MusclePartGroup = {} -- part id -> coarse group key
+Config.MuscleGroupParts = {} -- group key -> { part defs in display order }
+for _, k in ipairs(Config.MuscleKeys) do
+	Config.MuscleGroupParts[k] = {}
+end
+for _, p in ipairs(Config.MuscleParts) do
+	Config.MusclePartNames[p.id] = p.name
+	Config.MusclePartGroup[p.id] = p.group
+	table.insert(Config.MuscleGroupParts[p.group], p)
+end
+
+-- a sub-muscle's development in a build table; falls back to its group (old saves, NPC builds)
+function Config.PartValue(build, id)
+	local v = build and build[id]
+	if type(v) == "number" then
+		return v
+	end
+	local g = Config.MusclePartGroup[id] or id
+	v = build and build[g]
+	return type(v) == "number" and v or 8
+end
+
+-- fill every missing sub-muscle from its group (idempotent; used by save migration and NPC builds)
+function Config.FillParts(body)
+	for _, p in ipairs(Config.MuscleParts) do
+		if type(body[p.id]) ~= "number" then
+			body[p.id] = type(body[p.group]) == "number" and body[p.group] or 8
+		end
+	end
+	return body
+end
+
+-- recompute the 7 coarse groups from their parts (a group with no parts present is left alone)
+function Config.SyncGroups(body)
+	for _, g in ipairs(Config.MuscleKeys) do
+		local total, any = 0, false
+		for _, p in ipairs(Config.MuscleGroupParts[g]) do
+			local v = body[p.id]
+			if type(v) == "number" then
+				any = true
+			else
+				v = type(body[g]) == "number" and body[g] or 8
+			end
+			total += p.share * v
+		end
+		if any then
+			body[g] = total
+		end
+	end
+	return body
+end
+
 Config.WeightClasses = {
 	{ name = "Flyweight", limit = 112, min = 105 },
 	{ name = "Bantamweight", limit = 118, min = 113 },
@@ -112,6 +193,114 @@ Config.BodyTypes = {
 	{ id = "Heavyweight Build", width = 1.18, depth = 1.14, potential = 1.25, mods = { Power = 4, Chin = 3, PunchSpeed = -2, Footwork = -3, Stamina = -2 } },
 }
 
+-- Physique archetypes: what the trained body LOOKS like (separate id space from
+-- Config.Archetypes, which are AI ring personalities). Classified from the build by
+-- Config.ClassifyPhysique; an appearance may pin one with app.body.physique (default "Auto").
+-- shape = visual size multiplier per coarse group (Builder only), partBias = additive
+-- development bias for AI builds (Looks.RandomBuild), defBonus adds to muscle definition,
+-- fatBias shifts AI body fat, vein scales vascularity, width/depth add to the frame scale
+-- (quantise before use), bellyAt = fat level where the belly shows.
+Config.Physiques = {
+	{ id = "BeginnerLean", name = "Beginner Lean", desc = "Untrained and narrow - everything is still to build",
+		shape = { chest = 0.9, shoulders = 0.9, arms = 0.9, back = 0.9, legs = 0.95, core = 0.95, neck = 0.9 },
+		partBias = {}, defBonus = 0, fatBias = 0, vein = 0.5, width = -0.02, depth = -0.02, bellyAt = 19 },
+	{ id = "LeanTechnical", name = "Lean Technical", desc = "Wiry and dry: long muscles, visible abs, built to move",
+		shape = { chest = 0.85, shoulders = 0.95, arms = 0.85, back = 0.9, legs = 0.95, core = 1.15, neck = 0.85 },
+		partBias = { calves = 4, obliques = 4, serratus = 4, abs = 3, pecs = -6, biceps = -6, traps = -6 },
+		defBonus = 0.25, fatBias = -2, vein = 0.9, width = -0.03, depth = -0.02, bellyAt = 20 },
+	{ id = "Balanced", name = "Balanced Pro", desc = "Athletic all-round boxer's build",
+		shape = { chest = 1, shoulders = 1, arms = 1, back = 1, legs = 1, core = 1, neck = 1 },
+		partBias = {}, defBonus = 0.05, fatBias = 0, vein = 1, width = 0, depth = 0, bellyAt = 19 },
+	{ id = "PowerPuncher", name = "Power Puncher", desc = "Thick traps, big shoulders and back, heavy legs",
+		shape = { chest = 1.15, shoulders = 1.25, arms = 1.1, back = 1.15, legs = 1.1, core = 1.0, neck = 1.3 },
+		partBias = { traps = 12, lats = 10, sideDelt = 12, frontDelt = 8, glutes = 8, quads = 6, neckSCM = 10 },
+		defBonus = 0, fatBias = 1, vein = 1, width = 0.04, depth = 0.03, bellyAt = 19 },
+	{ id = "Heavyweight", name = "Heavyweight", desc = "Big, powerful frame carrying extra mass",
+		shape = { chest = 1.2, shoulders = 1.15, arms = 1.15, back = 1.2, legs = 1.2, core = 0.9, neck = 1.3 },
+		partBias = { traps = 10, neckSCM = 10, quads = 8, glutes = 8, pecs = 6 },
+		defBonus = -0.3, fatBias = 5, vein = 0.7, width = 0.06, depth = 0.06, bellyAt = 16, soft = 1.5 },
+	{ id = "EliteChampion", name = "Elite Champion", desc = "Complete, balanced, shredded - the body of a world champion",
+		shape = { chest = 1.1, shoulders = 1.1, arms = 1.1, back = 1.1, legs = 1.1, core = 1.1, neck = 1.1 },
+		partBias = { serratus = 6, obliques = 6, lats = 6, sideDelt = 6, calves = 4 },
+		defBonus = 0.35, fatBias = -3, vein = 1.3, width = 0.03, depth = 0.02, bellyAt = 21, shadows = true },
+}
+
+-- Rule that names a build's physique. body = profile.body / Builder build table.
+-- info = { frame = BodyTypes id, tier = career tier, weightClass = index, overall = OVR, champion = bool }
+-- Order matters: Elite Champion > Heavyweight > Beginner Lean > Power Puncher > Lean Technical > Balanced.
+function Config.ClassifyPhysique(body, info)
+	info = info or {}
+	local frame = Config.FindById(Config.BodyTypes, info.frame or "Athletic") or Config.BodyTypes[2]
+	local cap = 100 * frame.potential
+	local function g(k)
+		return tonumber(body and body[k]) or 8
+	end
+	local fat = tonumber(body and body.fat) or 14
+	local all, minRatio = 0, math.huge
+	for _, k in ipairs(Config.MuscleKeys) do
+		all += g(k)
+		minRatio = math.min(minRatio, g(k) / cap)
+	end
+	all /= #Config.MuscleKeys
+	local upper = (g("chest") + g("shoulders") + g("arms") + g("back")) / 4
+	local power = (g("back") + g("shoulders") + g("chest")) / 3
+	local elite = (info.tier or 1) >= 8 or (info.overall or 0) >= 85 or info.champion == true
+	if elite and minRatio >= 0.6 and fat <= 11 then
+		return "EliteChampion"
+	elseif fat >= 20 or (fat >= 15 and ((info.weightClass or 0) >= 8 or frame.id == "Heavyweight Build")) then
+		return "Heavyweight"
+	elseif all < 22 and fat < 17 then
+		return "BeginnerLean"
+	elseif power >= 45 and g("legs") >= 40 and fat >= 10 and fat <= 17 then
+		return "PowerPuncher"
+	elseif fat <= 12.5 and upper < 45 then
+		return "LeanTechnical"
+	end
+	return "Balanced"
+end
+
+-- Body fat & definition. Definition 0 = smooth, 1 = shredded: (defZero - fat) / (defZero - defFull).
+Config.BodyFat = {
+	min = 7, max = 30, default = 14,
+	defZero = 16, defFull = 8, -- definition starts below 16% and peaks at 8%
+	bellyAt = 19, -- belly overlay (physique bellyAt overrides)
+	loveHandlesAt = 16, softChestAt = 18, armFatAt = 20, faceFatAt = 18, jowlsAt = 20,
+	gauntBelow = 9, -- hollow cheeks (also after a hard weight cut: condition.water < 0)
+	absRow4Def = 0.85, -- 8-pack row needs this definition
+	veinDef = 0.5, -- veins start reading above this definition
+	softK = 0.12, -- extra roundness per unit of fatK on muscle overlays (Builder)
+}
+function Config.Definition(fat, bonus)
+	local f = Config.BodyFat
+	local d = ((f.defZero - (tonumber(fat) or f.default)) / (f.defZero - f.defFull)) + (bonus or 0)
+	return math.clamp(d, 0, 1)
+end
+
+-- Muscle growth / recovery model (server Training; shown by Hub)
+Config.MuscleGrowth = {
+	base = 1.3, -- gain = base * weight * quality * condition * room (room = 1 - cur/cap) * scale
+	immediate = 0.65, -- share of a session's growth applied at once; the rest is condition.pending until sleep
+	sorePerWeight = 0.25, -- condition.sore[group] += weight * quality * this
+	sorePenalty = 0.45, -- growth x (1 - sorePenalty * sore)
+	soreInjuryRisk = 0.03, -- extra injury risk per point of max soreness
+	soreSleepKeep = 0.55, -- sleep: sore *= soreSleepKeep - soreSleepQ * sleepQ
+	soreSleepQ = 0.25,
+	detrainGraceDays = 6, -- a part untouched this long starts to fade
+	detrainRate = 0.004, -- per day: lose value * rate * min(3, (idle - grace) / 7)
+	detrainFloor = 4,
+	detrainAgeFrom = 33, -- detraining doubles from this age
+	vascGain = 0.6, -- default act.vasc for vein-building lifts (dumbbells)
+	vascFatFade = 16, -- body.vasc fades 0.05/day while fat is above this
+}
+-- Post-workout pump & flexing (client visual only, driven by character attributes)
+Config.Pump = {
+	duration = 150, -- seconds for a pump to fade completely
+	scale = 0.08, -- max extra SpecialMesh scale on a pumped part
+	veinBoost = 0.4, -- extra vein opacity while pumped
+	flexScale = 0.12, -- contraction while flexing
+	poses = { "flex_biceps", "flex_lat", "flex_chest", "flex_most", "flex_abs" }, -- Pose attribute values
+}
+
 -- Career tiers. rounds = fight length at that tier; campDays = days of training camp.
 Config.Tiers = {
 	{ name = "Amateur", rounds = 3, purse = { 50, 200 }, campDays = 3 },
@@ -152,14 +341,175 @@ Config.PunchNames = {
 	jab = "Jab", cross = "Cross", leadhook = "Lead Hook", rearhook = "Rear Hook",
 	uppercut = "Uppercut", overhand = "Overhand",
 }
+-- head = head-HP multiplier, body = body-HP multiplier, ko = knockdown-odds multiplier,
+-- stun = balance damage (stumbles), face = which face zones a clean head shot marks
 Config.Punches = {
-	jab = { dmg = 3.0, stam = 2.5, windup = 0.16, hit = 0.82, range = 1.10, cutChance = 0.01, hand = "L", kind = "straight" },
-	cross = { dmg = 6.5, stam = 5.0, windup = 0.24, hit = 0.70, range = 1.05, cutChance = 0.03, hand = "R", kind = "straight" },
-	leadhook = { dmg = 7.5, stam = 5.5, windup = 0.26, hit = 0.64, range = 0.85, cutChance = 0.05, hand = "L", kind = "hook" },
-	rearhook = { dmg = 8.5, stam = 6.5, windup = 0.30, hit = 0.60, range = 0.85, cutChance = 0.05, hand = "R", kind = "hook" },
-	uppercut = { dmg = 9.0, stam = 6.5, windup = 0.30, hit = 0.58, range = 0.75, cutChance = 0.03, hand = "R", kind = "uppercut" },
-	overhand = { dmg = 10.5, stam = 8.5, windup = 0.42, hit = 0.52, range = 1.0, cutChance = 0.06, hand = "R", kind = "overhand", overGuard = 0.5 },
+	jab = { dmg = 3.0, stam = 2.5, windup = 0.16, hit = 0.82, range = 1.10, cutChance = 0.01, hand = "L", kind = "straight",
+		head = 0.65, body = 0.8, ko = 0.25, stun = 6, face = { "eye", "nose", "lip" } },
+	cross = { dmg = 6.5, stam = 5.0, windup = 0.24, hit = 0.70, range = 1.05, cutChance = 0.03, hand = "R", kind = "straight",
+		head = 1.0, body = 1.0, ko = 1.0, stun = 12, face = { "eye", "nose", "lip" } },
+	leadhook = { dmg = 7.5, stam = 5.5, windup = 0.26, hit = 0.64, range = 0.85, cutChance = 0.05, hand = "L", kind = "hook",
+		head = 1.25, body = 1.25, ko = 1.35, stun = 18, face = { "cheek", "eye", "ear", "bruise" } },
+	rearhook = { dmg = 8.5, stam = 6.5, windup = 0.30, hit = 0.60, range = 0.85, cutChance = 0.05, hand = "R", kind = "hook",
+		head = 1.3, body = 1.3, ko = 1.45, stun = 20, face = { "cheek", "eye", "ear", "bruise" } },
+	uppercut = { dmg = 9.0, stam = 6.5, windup = 0.30, hit = 0.58, range = 0.75, cutChance = 0.03, hand = "R", kind = "uppercut",
+		head = 1.55, body = 1.15, ko = 1.8, stun = 24, face = { "lip", "nose", "bruise" } },
+	overhand = { dmg = 10.5, stam = 8.5, windup = 0.42, hit = 0.52, range = 1.0, cutChance = 0.06, hand = "R", kind = "overhand", overGuard = 0.5,
+		head = 1.4, body = 0.9, ko = 1.6, stun = 22, face = { "forehead", "eye", "bruise" } },
 }
+
+------------------------------------------------------------------------
+-- Fight health model: head HP tiers, knockouts, concussion, face damage
+------------------------------------------------------------------------
+-- The fighter field F.health IS head HP (0..100, capped by F.healthCap); F.body is body HP.
+-- Head tiers by head HP: 100-30 conscious, 30-15 dazed, 15-5 severe danger, <5 high KO chance.
+Config.HeadTiers = {
+	{ id = "conscious", min = 30, label = "", rgb = { 70, 200, 90 } },
+	{ id = "dazed", min = 15, label = "DAZED", rgb = { 240, 200, 40 } },
+	{ id = "danger", min = 5, label = "IN DANGER", rgb = { 240, 120, 30 } },
+	{ id = "out", min = -math.huge, label = "OUT ON HIS FEET", rgb = { 230, 40, 40 } },
+}
+-- 0 = conscious, 1 = dazed, 2 = severe danger, 3 = high KO chance (index into HeadTiers is tier + 1)
+function Config.HeadTier(hp)
+	hp = tonumber(hp) or 100
+	for i, t in ipairs(Config.HeadTiers) do
+		if hp >= t.min then
+			return i - 1
+		end
+	end
+	return #Config.HeadTiers - 1
+end
+
+-- Knockdown odds per LANDED head shot. Every factor is a multiplier around 1:
+--   chin          chinBase - Chin/100                      (defender Chin stat)
+--   conditioning  condBase - (Endurance + Stamina)/400     (defender stats)
+--   stamina       stamBase - stamK * stamPct               (defender stamina / maxStam)
+--   power         powerBase + Power/330                    (attacker Power stat)
+--   accuracy      accBase + accK * clean                   (clean 0..1 = how cleanly the hit roll landed; 0.5 through a block)
+--   previous      1 + kdTotal*kdK + conc*concK + (100 - healthCap)/capDiv + trauma/traumaDiv
+-- plus the punch's ko multiplier, a damage term clamp((hd/hdRef)^hdExp, hdMin, hdMax)
+-- (hdRef = 6 * HEAD_SCALE * damageScale) and x counterMul on counters.
+Config.KO = {
+	base = { 0, 0.06, 0.22, 0.6 }, -- by head tier 0..3 (index tier + 1)
+	flash = 0.035, -- tier 0: only a clean COUNTER can drop a fighter (a flash knockdown)
+	flashMinHd = 1.0, -- ... and only when hd/hdRef is at least this
+	hdExp = 1.2, hdMin = 0.2, hdMax = 2.5,
+	counterMul = 1.6,
+	chinBase = 1.45, condBase = 1.15, stamBase = 1.25, stamK = 0.45, powerBase = 0.85, accBase = 0.7, accK = 0.6,
+	kdK = 0.25, concK = 0.8, capDiv = 150, traumaDiv = 200,
+	composureK = 0.002, -- x (1 - composureK * (Composure - 50)) on the defender
+	cap = 0.92,
+	tierDamage = 0.1, -- incoming head damage x (1 + tierDamage * tier): hurt fighters take more
+	severity = { heavyTier = 2, heavyHd = 1.8, outHd = 2.5 }, -- knockdown severity: flash | normal | heavy | out
+	falls = { "back", "side", "knee", "sit", "face" }, -- DownPose attribute values
+}
+
+-- a = { tier, punch (Config.Punches id), hd, hdRef, counter, chin, endurance, stamina, stamPct,
+--       power, clean, kdTotal, conc, healthCap, trauma, composure }  -> probability 0..cap, flash (bool)
+function Config.KOChance(a)
+	local K = Config.KO
+	local tier = math.clamp(math.floor(tonumber(a.tier) or 0), 0, 3)
+	local P = Config.Punches[a.punch or ""] or Config.Punches.cross
+	local rel = (tonumber(a.hd) or 0) / math.max(0.01, tonumber(a.hdRef) or 3.3)
+	local base = K.base[tier + 1]
+	local flash = false
+	if tier == 0 then
+		if not (a.counter and rel >= K.flashMinHd) then
+			return 0, false
+		end
+		base, flash = K.flash, true
+	end
+	local dmgTerm = math.clamp(rel ^ K.hdExp, K.hdMin, K.hdMax)
+	local chin = K.chinBase - (a.chin or 50) / 100
+	local cond = K.condBase - ((a.endurance or 50) + (a.stamina or 50)) / 400
+	local stam = K.stamBase - K.stamK * math.clamp(a.stamPct or 1, 0, 1)
+	local power = K.powerBase + (a.power or 50) / 330
+	local acc = K.accBase + K.accK * math.clamp(a.clean or 0.5, 0, 1)
+	local prev = 1 + (a.kdTotal or 0) * K.kdK + (a.conc or 0) * K.concK + (100 - (a.healthCap or 100)) / K.capDiv + (a.trauma or 0) / K.traumaDiv
+	local comp = 1 - K.composureK * ((a.composure or 50) - 50)
+	local p = base * (P.ko or 1) * dmgTerm * chin * cond * stam * power * acc * prev * comp * (a.counter and K.counterMul or 1)
+	return math.clamp(p, 0, K.cap), flash
+end
+
+-- Concussion: F.conc 0..1 inside a fight; career-long condition.trauma 0..100 feeds the start value.
+Config.Concussion = {
+	startFromTrauma = 1 / 250, -- F.conc starts at trauma * this (+ activeInjury if a concussion injury is active)
+	activeInjury = 0.15,
+	perHeadDamage = 1 / 80, -- conc += hd * this * punch.ko * (1.3 - Chin/150)
+	perKnockdown = 0.25, perFlashKnockdown = 0.1,
+	decay = 0.006, decayPerRecovery = 0.00012, -- per second: decay + Recovery * decayPerRecovery
+	restHeal = 0.12, restHealElite = 0.18, -- between rounds
+	-- effect magnitudes at conc = 1 (scale linearly)
+	windup = 0.35, -- punch windup x (1 + windup * conc)
+	hitChance = 0.25, -- own hit chance x (1 - hitChance * conc)
+	defense = 0.3, -- slip/roll/parry windows x (1 - defense * conc)
+	speed = 0.3, -- movement x (1 - speed * conc)
+	aiReact = 0.12, aiDefense = 0.35, -- AI reaction +aiReact*conc s, defense chance x (1 - aiDefense * conc)
+	-- per head tier (on top of conc): windup +8%, hit chance -8%, defense -12%, movement -10% per tier
+	tierWindup = 0.08, tierHitChance = 0.08, tierDefense = 0.12, tierSpeed = 0.1,
+	-- after the fight (Training / Career)
+	injuryAt = 0.5, -- concPeak above this with a knockdown against -> 'concussion' injury
+	traumaPerDamage = 1 / 12, traumaPerKnockdown = 6, traumaDecayPerDay = 0.5, traumaChinDiv = 10,
+	-- screen effects (client) at conc = 1 / per tier
+	blurPerTier = 2, blurPerConc = 8, desatPerTier = 0.15, desatPerConc = 0.45, vignettePerTier = 0.15, vignettePerConc = 0.4,
+}
+Config.ScreenFX = 1 -- accessibility scale for blur / shake / colour effects (0 disables)
+
+-- Facial damage. The dmg table (fight and persistent) uses these numeric fields, 0..1 unless noted:
+--   leftEye, rightEye (swelling), cut (0..1.2), cutSide (-1|1), cut2, cutSide2, noseBleed, nose (bool: broken),
+--   bruise, lip, cheekL, cheekR, forehead (lump), earL, earR, redness, ribsL, ribsR, age (days since the fight)
+Config.FaceDamage = {
+	fields = { "leftEye", "rightEye", "cut", "cut2", "noseBleed", "bruise", "lip", "cheekL", "cheekR", "forehead", "earL", "earR", "redness", "ribsL", "ribsR" },
+	weights = { eyes = 0.35, cut = 0.25, bruise = 0.2, lip = 0.1, nose = 0.1, cheeks = 0.1 },
+	stages = { -- score thresholds -> FaceDmgTier attribute 0..4
+		{ id = "none", min = 0, label = "Fresh" },
+		{ id = "light", min = 0.1, label = "Light marks" },
+		{ id = "moderate", min = 0.3, label = "Moderate swelling" },
+		{ id = "heavy", min = 0.55, label = "Heavy damage" },
+		{ id = "severe", min = 0.8, label = "Severe damage" },
+	},
+	-- healing per in-game day (Training dayTick); mul = multiply, sub = subtract
+	heal = {
+		leftEye = { mul = 0.55 }, rightEye = { mul = 0.55 }, lip = { mul = 0.6 }, cheekL = { mul = 0.6 }, cheekR = { mul = 0.6 },
+		forehead = { mul = 0.55 }, earL = { mul = 0.7 }, earR = { mul = 0.7 }, redness = { mul = 0.3 },
+		ribsL = { mul = 0.6 }, ribsR = { mul = 0.6 }, noseBleed = { mul = 0 },
+		bruise = { sub = 0.12 }, cut = { sub = 0.12 }, cut2 = { sub = 0.12 },
+	},
+	physioHeal = 1.5, -- owning the Physiotherapist speeds healing
+	postFightCarry = 0.75, -- share of fight damage still visible after the suspension days (applied AFTER PassDays)
+	sparCarry = 0.5, -- sparring res.face x this (res.face is already scaled by the engine's damageScale)
+	seedFromResidual = 0.8, -- a fight starts with F.dmg = residual face * this
+	clearBelow = 0.03, -- values below this snap to 0; the table is dropped when everything is 0
+	scarAt = 0.6, maxScars = 6, -- a cut this deep leaves a permanent scar in appearance.battle.scars
+	noseBendChance = 0.35, noseBendStep = 0.34, -- a broken nose may add to appearance.battle.nose
+	cauliflowerAt = 0.6, cauliflowerStep = 0.2, -- an ear swollen this much may add to appearance.battle.ears
+	-- bruise colour by age (days): fresh red-purple, blue-purple, yellow-green, then skin
+	bruiseColors = { { day = 0, rgb = { 95, 25, 40 } }, { day = 1, rgb = { 70, 45, 95 } }, { day = 4, rgb = { 150, 150, 70 } }, { day = 8 } },
+}
+function Config.FaceDamageScore(dmg)
+	if type(dmg) ~= "table" then
+		return 0
+	end
+	local function n(k)
+		return tonumber(dmg[k]) or 0
+	end
+	local w = Config.FaceDamage.weights
+	local s = w.eyes * math.max(n("leftEye"), n("rightEye")) + w.cut * math.min(1, math.max(n("cut"), n("cut2")))
+		+ w.bruise * n("bruise") + w.lip * n("lip") + w.nose * math.max(dmg.nose == true and 0.6 or 0, n("noseBleed"))
+		+ w.cheeks * math.max(n("cheekL"), n("cheekR"), n("forehead"))
+	return math.clamp(s, 0, 1)
+end
+-- stage index 0..4 (none, light, moderate, heavy, severe) and its definition
+function Config.FaceDamageStage(dmg)
+	local s = Config.FaceDamageScore(dmg)
+	local stages = Config.FaceDamage.stages
+	for i = #stages, 1, -1 do
+		if s >= stages[i].min then
+			return i - 1, stages[i]
+		end
+	end
+	return 0, stages[1]
+end
 
 ------------------------------------------------------------------------
 -- Training
@@ -202,7 +552,7 @@ Config.Activities = {
 		wear = { wraps = 0.2 }, injuries = { "shoulder" }, desc = "Upper body strength, punching power" },
 	{ id = "Dumbbells", name = "Dumbbells", area = "Weight Room", station = "dumbbells", minigame = "reps", pose = "curl",
 		energy = 16, hydration = 4, nutrition = 6, fatigue = 11, fat = -0.03,
-		gains = { Power = 0.4, Blocking = 0.45 }, muscle = { arms = 1.4, shoulders = 0.4 },
+		gains = { Power = 0.4, Blocking = 0.45 }, muscle = { arms = 1.4, shoulders = 0.4 }, vasc = 0.6,
 		wear = {}, injuries = { "wrist" }, desc = "Arm strength, stability" },
 	{ id = "Barbell", name = "Barbell Deadlifts", area = "Weight Room", station = "barbell", minigame = "reps", pose = "deadlift",
 		energy = 26, hydration = 6, nutrition = 9, fatigue = 17, fat = -0.05,
@@ -216,6 +566,14 @@ Config.Activities = {
 		energy = 18, hydration = 5, nutrition = 6, fatigue = 13, fat = -0.04,
 		gains = { Endurance = 0.5, Power = 0.3 }, muscle = { back = 1.4, arms = 0.5 },
 		wear = {}, injuries = { "shoulder" }, desc = "Back strength, endurance, posture" },
+	-- Medicine ball: slams + seated Russian twists. Needs (wave 2): Catalog.Stations.medball (done),
+	-- MapBuilder.StationDefs 'medball' (stand), GymVisuals B.medball, Activities GAMES.medball
+	-- (alternating SLAM and TWIST sets; 'reps' is an acceptable MVP), Animator POSE.medball,
+	-- Poser prop 'medball' (ball in both hands), Main PROP_FOR.medball and MIN_TIME.medball = 9.
+	{ id = "MedBall", name = "Medicine Ball", area = "Weight Room", station = "medball", minigame = "medball", pose = "medball",
+		energy = 18, hydration = 6, nutrition = 5, fatigue = 12, fat = -0.12,
+		gains = { Endurance = 0.45, Chin = 0.25, Power = 0.25 }, muscle = { core = 1.4, shoulders = 0.2, back = 0.1 },
+		wear = {}, injuries = { "back" }, desc = "Core power and rotation: abs, obliques, body-shot armour" },
 	{ id = "Roadwork", name = "Roadwork Running", area = "Outdoors", station = "track", minigame = "course", pose = "none",
 		energy = 26, hydration = 15, nutrition = 8, fatigue = 15, fat = -0.45,
 		gains = { Stamina = 1.0, Endurance = 0.7, Recovery = 0.3 }, muscle = { legs = 0.45 },
@@ -262,11 +620,50 @@ Config.Injuries = {
 	wrist = { name = "Sprained Wrist", days = { 3, 6 }, blocks = { "HeavyBag", "SpeedBag", "MittWork", "DoubleEnd", "Dumbbells", "Sparring" }, fight = { Power = -6, PunchSpeed = -4 } },
 	shoulder = { name = "Shoulder Strain", days = { 4, 8 }, blocks = { "Bench", "PullUps", "HeavyBag", "Swimming", "Rower" }, fight = { Power = -5, Blocking = -3 } },
 	hamstring = { name = "Pulled Hamstring", days = { 4, 8 }, blocks = { "Roadwork", "Squat", "Ladder", "Rope", "Treadmill" }, fight = { Footwork = -8 } },
-	back = { name = "Back Spasm", days = { 3, 7 }, blocks = { "Barbell", "Squat", "PullUps", "Rower" }, fight = { Power = -4, Endurance = -4 } },
+	back = { name = "Back Spasm", days = { 3, 7 }, blocks = { "Barbell", "Squat", "PullUps", "Rower", "MedBall" }, fight = { Power = -4, Endurance = -4 } },
 	ankle = { name = "Rolled Ankle", days = { 3, 6 }, blocks = { "Roadwork", "Ladder", "Rope", "Treadmill" }, fight = { Footwork = -6 } },
-	ribs = { name = "Bruised Ribs", days = { 5, 10 }, blocks = { "Sparring", "Rower", "Swimming" }, fight = { Endurance = -6, Chin = -3 } },
+	ribs = { name = "Bruised Ribs", days = { 5, 10 }, blocks = { "Sparring", "Rower", "Swimming", "MedBall" }, fight = { Endurance = -6, Chin = -3 } },
 	cut = { name = "Cut Eyebrow", days = { 6, 12 }, blocks = { "Sparring" }, fight = { Chin = -2 }, reopens = true },
+	-- fight injuries (given by Training/Career after fights, see Config.Concussion / Config.FaceDamage)
+	nose = { name = "Broken Nose", days = { 10, 18 }, blocks = { "Sparring", "MittWork" }, fight = { Chin = -2 } },
+	concussion = { name = "Concussion", days = { 10, 30 }, blocks = { "Sparring", "HeavyBag", "MittWork" }, fight = { Chin = -5, Reflexes = -4 } },
 }
+
+-- Per-exercise sub-muscle targeting (act.parts). Weights are chosen so the share-weighted
+-- group pace stays close to the old act.muscle values (act.muscle stays for old code and as
+-- the group-level summary). Training.Perform grows these parts and re-derives the groups.
+Config.ExerciseTargets = {
+	HeavyBag = { frontDelt = 0.8, sideDelt = 0.8, rearDelt = 0.4, triceps = 0.5, forearms = 0.6, biceps = 0.2, obliques = 0.6, abs = 0.2, serratus = 0.3 },
+	SpeedBag = { sideDelt = 0.4, frontDelt = 0.3, rearDelt = 0.3, forearms = 0.8, biceps = 0.2, triceps = 0.15 },
+	DoubleEnd = { frontDelt = 0.3, sideDelt = 0.3, rearDelt = 0.1 },
+	MittWork = { frontDelt = 0.5, sideDelt = 0.5, rearDelt = 0.3, triceps = 0.4, forearms = 0.5, biceps = 0.1, obliques = 0.5, abs = 0.15 },
+	Shadow = { sideDelt = 0.25, frontDelt = 0.2, rearDelt = 0.1, calves = 0.2 },
+	Sparring = { neckSCM = 0.4, frontDelt = 0.2, sideDelt = 0.2, rearDelt = 0.2, obliques = 0.2, abs = 0.2 },
+	-- bench -> chest / front delts / triceps
+	Bench = { pecs = 1.3, upperChest = 1.3, frontDelt = 1.2, sideDelt = 0.15, triceps = 1.0 },
+	-- dumbbells -> biceps / forearms / side delts (+ veins via act.vasc)
+	Dumbbells = { biceps = 2.0, forearms = 1.6, triceps = 0.7, sideDelt = 0.8, frontDelt = 0.3 },
+	Barbell = { lowerBack = 1.6, traps = 1.4, upperBack = 0.8, lats = 0.4, hamstrings = 1.2, glutes = 1.2, quads = 0.3,
+		abs = 0.5, obliques = 0.5, lowerAbs = 0.5, serratus = 0.5, forearms = 0.6, neckSCM = 0.3 },
+	-- squat -> quads / calves / glutes
+	Squat = { quads = 2.0, glutes = 1.6, calves = 1.0, hamstrings = 1.0, abs = 0.3, obliques = 0.3, lowerAbs = 0.3, lowerBack = 0.3 },
+	-- pull-ups -> lats / upper back (V-taper)
+	PullUps = { lats = 2.0, upperBack = 1.6, traps = 0.8, lowerBack = 0.4, biceps = 0.9, forearms = 0.7, rearDelt = 0.5, serratus = 0.3 },
+	-- medicine ball -> abs / obliques / lower abs
+	MedBall = { abs = 1.4, obliques = 1.8, lowerAbs = 1.2, serratus = 0.8, frontDelt = 0.4, sideDelt = 0.2, lats = 0.3 },
+	Roadwork = { calves = 0.8, hamstrings = 0.5, quads = 0.3, glutes = 0.2 },
+	Treadmill = { calves = 0.6, hamstrings = 0.3, quads = 0.2, glutes = 0.2 },
+	Bike = { quads = 0.8, calves = 0.4, glutes = 0.3, hamstrings = 0.3 },
+	Rower = { lats = 0.7, upperBack = 0.9, traps = 0.3, lowerBack = 0.5, rearDelt = 0.4, quads = 0.4, glutes = 0.3, hamstrings = 0.3, biceps = 0.3, forearms = 0.4 },
+	Swimming = { frontDelt = 0.5, sideDelt = 0.6, rearDelt = 0.5, lats = 0.8, upperBack = 0.5, traps = 0.2, pecs = 0.3, upperChest = 0.3,
+		triceps = 0.5, biceps = 0.2, forearms = 0.2, quads = 0.3, hamstrings = 0.3, glutes = 0.3, calves = 0.3,
+		abs = 0.3, obliques = 0.3, lowerAbs = 0.3, serratus = 0.3 },
+	Ladder = { calves = 0.8, quads = 0.2, hamstrings = 0.1, glutes = 0.2 },
+	Rope = { calves = 1.2, quads = 0.2, hamstrings = 0.2, glutes = 0.2, forearms = 0.3 },
+}
+for _, a in ipairs(Config.Activities) do
+	a.parts = a.parts or Config.ExerciseTargets[a.id]
+end
 
 Config.Meals = {
 	{ id = "Water", name = "Water (Cooler)", price = 0, hydration = 35, nutrition = 0, energy = 0, fat = 0 },
@@ -316,7 +713,7 @@ Config.TrainingTimeScale = 6
 -- working heart-rate target (bpm) while training hard at each activity
 Config.TrainingHR = {
 	HeavyBag = 170, SpeedBag = 150, DoubleEnd = 156, MittWork = 166, Shadow = 142,
-	Bench = 128, Dumbbells = 120, Barbell = 140, Squat = 142, PullUps = 134,
+	Bench = 128, Dumbbells = 120, Barbell = 140, Squat = 142, PullUps = 134, MedBall = 152,
 	Roadwork = 172, Treadmill = 170, Bike = 166, Rower = 172, Swimming = 158,
 	Ladder = 154, Rope = 166,
 }
@@ -373,6 +770,10 @@ Config.TrainingTips = {
 	Squat = {
 		"Knees track over your toes.", "Sit back and down, chest proud.", "Drive up through your heels.",
 		"Brace like you're about to take a body shot.",
+	},
+	MedBall = {
+		"Brace your core before every slam.", "Rotate from the ribs, not the arms.", "Exhale hard as the ball hits the floor.",
+		"Twist like you're slipping and coming back with a hook.", "Abs are your body-shot armour.",
 	},
 	PullUps = {
 		"Full hang at the bottom, chin over the bar at the top.", "Pull your elbows down to your ribs.",
@@ -447,6 +848,7 @@ Config.ActivityRemarks = {
 	Barbell = { hi = "Textbook pulls. Strong back.", lo = "Watch that back - technique before weight." },
 	Squat = { hi = "Deep and powerful. Those legs carry punches.", lo = "Too shallow. Sit into it." },
 	PullUps = { hi = "Strict and strong. That back is coming along.", lo = "Half reps don't count. Full range." },
+	MedBall = { hi = "Explosive slams, sharp twists. That core can take a shot.", lo = "You're throwing it with your arms. Use your core!" },
 	Roadwork = { hi = "That's championship roadwork.", lo = "You jogged it. Push the pace." },
 	Treadmill = { hi = "Every interval on the money.", lo = "Hit your zones - sprint means sprint." },
 	Bike = { hi = "Big engine today. Great intervals.", lo = "Your cadence was all over the place." },
@@ -461,13 +863,14 @@ Config.ActivityRemarks = {
 	Sauna = { hi = "Controlled cut. Smart work.", lo = "Easy on the breathing - stay calm in the heat." },
 }
 
--- strength stations: exercise name, believable load range and the muscle group that sets it
+-- strength stations: exercise name, believable load range and the muscle group (and sub-muscle part) that sets it
 Config.LiftLoads = {
-	Bench = { name = "BENCH PRESS", min = 95, max = 315, muscle = "chest" },
-	Dumbbells = { name = "DUMBBELL CURLS", min = 20, max = 80, muscle = "arms", each = true },
-	Barbell = { name = "DEADLIFT", min = 135, max = 495, muscle = "back" },
-	Squat = { name = "BACK SQUAT", min = 115, max = 405, muscle = "legs" },
-	PullUps = { name = "PULL-UPS", min = 0, max = 45, muscle = "back", bodyweight = true },
+	Bench = { name = "BENCH PRESS", min = 95, max = 315, muscle = "chest", part = "pecs" },
+	Dumbbells = { name = "DUMBBELL CURLS", min = 20, max = 80, muscle = "arms", part = "biceps", each = true },
+	Barbell = { name = "DEADLIFT", min = 135, max = 495, muscle = "back", part = "lowerBack" },
+	Squat = { name = "BACK SQUAT", min = 115, max = 405, muscle = "legs", part = "quads" },
+	PullUps = { name = "PULL-UPS", min = 0, max = 45, muscle = "back", part = "lats", bodyweight = true },
+	MedBall = { name = "MED BALL SLAMS", min = 6, max = 30, muscle = "core", part = "abs" },
 }
 
 -- agility ladder drills (F = up, B = down, L = left, R = right); lv = ladder level needed
@@ -629,6 +1032,110 @@ Config.Legends = {
 	{ name = "Eddie \"The Eagle\" Tran", score = 150 },
 }
 Config.HallOfFameScore = 450
+
+------------------------------------------------------------------------
+-- Gym facility tiers (one per player; derived, never saved)
+------------------------------------------------------------------------
+-- Computed by Catalog.GymTier(gymLevels, owned, careerTier) from the average upgrade progress
+-- over Catalog.StationOrder (frac 0..1), the career tier, and Shop ownership.
+-- A tier is reached when frac >= minFrac AND careerTier >= minCareerTier (or the player owns
+-- any orOwned item instead of the career tier) AND owns every needsOwned item.
+-- growth multiplies muscle growth (stat gains already use each station's level mult).
+-- facilities = what this tier ADDS (cumulative with the tiers below); visuals are client-only.
+Config.GymTiers = {
+	{ id = "Beginner", name = "Beginner Gym", minFrac = 0, minCareerTier = 1, growth = 1.0,
+		desc = "Torn bags, taped ropes, flickering lights and water stains",
+		facilities = { "wornRing", "freeWeights", "cardioCorner", "recoveryBasics" } },
+	{ id = "Intermediate", name = "Intermediate Gym", minFrac = 0.25, minCareerTier = 2, growth = 1.04,
+		desc = "Fresh paint, club ring, sponsor banners and LED strips",
+		facilities = { "clubRing", "sponsorBanners", "ledStrips", "roundTimers", "careerPosters" } },
+	{ id = "Elite", name = "Elite Training Center", minFrac = 0.55, minCareerTier = 5, orOwned = { "SmartSystem" }, growth = 1.08,
+		desc = "Elite Performance wing: cryotherapy, recovery pools, sports science, motion tracking",
+		facilities = { "eliteWing", "cryotherapy", "plungePools", "sportsScience", "motionTracking", "analyticsWall", "glassPartitions" } },
+	{ id = "WorldChampion", name = "World Champion Facility", minFrac = 0.8, minCareerTier = 8, needsOwned = { "RecoveryChamber" }, growth = 1.12,
+		desc = "Home of the champ: gold trim, title photos, media wall, fans at the door",
+		facilities = { "championWall", "titlePhotos", "goldTrim", "mediaBackdrop", "redCarpet", "fanZone", "championBanner" } },
+}
+Config.FacilityNames = {
+	wornRing = "Worn Gym Ring", freeWeights = "Free Weights", cardioCorner = "Cardio Corner", recoveryBasics = "Ice Tub & Stretch Mats",
+	clubRing = "Club Ring", sponsorBanners = "Sponsor Banners", ledStrips = "LED Strips", roundTimers = "Round Timers", careerPosters = "Career Posters",
+	eliteWing = "Elite Performance Wing", cryotherapy = "Cryotherapy Cabin", plungePools = "Hot & Cold Plunge Pools",
+	sportsScience = "Sports Science Lab", motionTracking = "Motion Tracking Cameras", analyticsWall = "Analytics Wall", glassPartitions = "Glass Partitions",
+	championWall = "Champion Wall", titlePhotos = "Championship Photos", goldTrim = "Gold Trim", mediaBackdrop = "Media Backdrop",
+	redCarpet = "Red Carpet", fanZone = "Fan Zone", championBanner = "Champion Banner",
+}
+
+------------------------------------------------------------------------
+-- Character detail levels (Builder opts.detail) and expressions
+------------------------------------------------------------------------
+-- full = players + fight opponent, medium = gym NPCs / referee, low = far or crowd NPCs.
+-- Budgets are extra parts over the pre-BALD-MODE character WITH its old hair: full = A 60 (face rig,
+-- eyes, skin, hair beyond the old hair) + B 60 (body/gear). Fight damage (<= 20, temporary) is counted
+-- separately. Strands/veins are Beams (no parts).
+Config.Detail = {
+	full = { partBudget = 120, eyeExtras = true, freckles = 26, wrinkles = true, sweatBeads = true, strands = 80, hairBumps = 53,
+		muscleLayers = 2, grooves = true, veins = true, wordmarks = true, laces = "full", shadows = true },
+	medium = { partBudget = 20, eyeExtras = false, freckles = 8, wrinkles = true, sweatBeads = false, strands = 16, hairBumps = 18,
+		muscleLayers = 1, grooves = false, veins = false, wordmarks = false, laces = "merged", shadows = false },
+	low = { partBudget = 0, eyeExtras = false, freckles = 0, wrinkles = false, sweatBeads = false, strands = 0, hairBumps = 10,
+		muscleLayers = 1, grooves = false, veins = false, wordmarks = false, laces = "none", shadows = false },
+}
+Config.DetailAliases = { hero = "full", npc = "medium", lite = "low" }
+-- (opts) -> "full"|"medium"|"low", its Config.Detail entry. Missing/unknown -> full.
+function Config.DetailLevel(opts)
+	local d = type(opts) == "table" and (opts.detail or opts.lod) or opts
+	d = Config.DetailAliases[d] or d
+	if not Config.Detail[d] then
+		d = "full"
+	end
+	return d, Config.Detail[d]
+end
+
+-- Expr model attribute values (face rig blend targets on the client)
+Config.Expressions = { "neutral", "confident", "determined", "anger", "fear", "fatigue", "pain", "dazed", "effort", "happy", "ko" }
+
+-- true = draw no hair at all (the old hard-coded BALD MODE); kept as a one-line debug toggle
+Config.BaldMode = false
+
+-- daily growth of hair / beard (0..1.5 / 0..1) used by Training.dayTick
+Config.HairGrowthPerDay = 0.02
+Config.BeardGrowthPerDay = 0.02
+
+------------------------------------------------------------------------
+-- Sounds
+------------------------------------------------------------------------
+-- Only these ship with every Roblox client and are safe to play anywhere.
+Config.BuiltinSounds = {
+	Thud = "rbxasset://sounds/action_jump_land.mp3",
+	Footsteps = "rbxasset://sounds/action_footsteps_plastic.mp3",
+	Falling = "rbxasset://sounds/action_falling.ogg",
+	Jump = "rbxasset://sounds/action_jump.mp3",
+	GetUp = "rbxasset://sounds/action_get_up.mp3",
+	Splash = "rbxasset://sounds/impact_water.mp3",
+	SwordHit = "rbxasset://sounds/swordhit.wav",
+	SwordLunge = "rbxasset://sounds/swordlunge.wav",
+	Ping = "rbxasset://sounds/electronicpingshort.wav",
+	Button = "rbxasset://sounds/button.wav",
+	Click = "rbxasset://sounds/clickfast.wav",
+	Grunt = "rbxasset://sounds/uuhhh.mp3",
+}
+-- Optional uploaded assets ("rbxassetid://..."). Every entry defaults to "" and is SKIPPED when
+-- empty; code must fall back to a shaped built-in (or silence). Read through Config.SoundId(key).
+Config.SoundIds = {
+	CrowdRoar = "", CrowdMurmur = "", CrowdBoo = "", CrowdOoh = "", -- arena crowd bed / reactions
+	RingBell = "", -- round bell (fallback: Ping at high PlaybackSpeed)
+	WalkoutMusic = "", ArenaMusic = "", GymMusic = "", -- music beds
+	CoachShout = "", CornerShout = "", RefereeCount = "", Announcer = "", -- voices
+	BagThud = "", BagChain = "", SpeedBag = "", PunchImpact = "", BodyShot = "", -- impacts (fallback: Thud shaped)
+	GymAmbience = "", CityAmbience = "", Heartbeat = "", Breathing = "", CameraFlash = "",
+}
+function Config.SoundId(key)
+	local id = Config.SoundIds[key]
+	if type(id) == "string" and id ~= "" then
+		return id
+	end
+	return nil
+end
 
 ------------------------------------------------------------------------
 -- Helpers
