@@ -1,7 +1,8 @@
 -- Hub: the Career Hub window.
--- Career (offers, camp, fight night), Training (condition, food, sleep, every activity),
--- Body (physique & muscle groups), Stats, Gym (upgrade / repair equipment), Gear
--- (gloves, shoes, wraps, mouthguards, robes), Coaches, Rankings, Rivals, Shop, Legacy.
+-- Career (offers, camp, fight night), Training (condition, face, soreness, food, sleep, every
+-- activity), Body (physique badge, every muscle, soreness, veins, FLEX), Stats, Gym (facility tier,
+-- upgrade / repair equipment), Gear (gloves, shoes, wraps, mouthguards, robes), Coaches, Sponsors
+-- (deals and offers), Life (home, travel, garage, fame), Rankings, Rivals, Shop, Legacy.
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
@@ -14,11 +15,55 @@ local rec = State.rec
 local Hub = {}
 local shade, win, content
 local tab = "Career"
-local TABS = { "Career", "Training", "Body", "Stats", "Gym", "Gear", "Coaches", "Rankings", "Rivals", "Shop", "Legacy" }
+local TABS = { "Career", "Training", "Body", "Stats", "Gym", "Gear", "Coaches", "Sponsors", "Life", "Rankings", "Rivals", "Shop", "Legacy" }
 local tabButtons = {}
 
 local function money(n)
 	return Config.Money(n)
+end
+
+-- 1234567 -> "1,234,567"
+local function commas(n)
+	local s = tostring(math.floor(tonumber(n) or 0))
+	local out = s:reverse():gsub("(%d%d%d)", "%1,"):reverse()
+	return (out:gsub("^,", ""))
+end
+
+-- social following derived from fame and wins (display only)
+local function followers(P)
+	local pop = tonumber(P.popularity) or 0
+	local w = P.record and tonumber(P.record.w) or 0
+	return math.floor(pop * pop * 950 + w * 120)
+end
+Hub.Followers = followers
+
+local function rgb(t, fallback)
+	if type(t) == "table" and tonumber(t[1]) then
+		return Color3.fromRGB(t[1], t[2] or 0, t[3] or 0)
+	end
+	return fallback or T.panel2
+end
+
+local function ownsAny(owned, list)
+	for _, id in ipairs(list or {}) do
+		if owned and owned[id] then
+			return true
+		end
+	end
+	return false
+end
+
+-- the player's best home (Summary sends P.home; derive it for older servers)
+local function bestHome(P)
+	if P.home then
+		return P.home
+	end
+	for _, id in ipairs({ "Mansion", "House", "Apartment" }) do
+		if P.owned and P.owned[id] then
+			return id
+		end
+	end
+	return nil
 end
 
 local function rankText(ranks)
@@ -57,6 +102,29 @@ local function buttons(parent, list, h)
 		make(row)
 	end
 	return row
+end
+
+-- a sponsor's logo as a little coloured badge (bg / fg / text from Catalog.Sponsors logo)
+local function logoChip(parent, logo, w, h)
+	logo = type(logo) == "table" and logo or {}
+	local f = UI.Frame(parent, { Size = UDim2.fromOffset(w or 130, h or 40), BackgroundColor3 = rgb(logo.bg, T.panel2) })
+	UI.Corner(f, 6)
+	UI.Text(f, tostring(logo.text or "?"), { Font = T.bold, TextScaled = true, TextColor3 = rgb(logo.fg, T.text), Size = UDim2.new(1, -10, 0.62, 0), Position = UDim2.fromOffset(5, 3), AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Center })
+	if logo.glyph then
+		UI.Text(f, tostring(logo.glyph), { Font = T.semi, TextScaled = true, TextColor3 = rgb(logo.fg, T.text), Size = UDim2.new(1, -10, 0.28, 0), Position = UDim2.new(0, 5, 0.66, 0), AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Center })
+	end
+	return f
+end
+
+-- server travel (TravelHome / LeaveHome / TravelPlace): close the Hub on success
+local function travel(action, ...)
+	local r = State.req(action, ...)
+	if r.ok then
+		Hub.Close()
+	else
+		State.toast(r.err or "Can't go there right now.", T.red)
+	end
+	return r.ok
 end
 
 local function result(r, okText)
@@ -127,6 +195,17 @@ R.Career = function(body, P)
 	UI.Line(head, string.format("%s  -  %s  -  Age %d  -  Day %d  -  %s", P.tierName, P.className, P.identity.age, P.day, P.identity.nationality))
 	UI.Line(head, string.format("Pro record %s    Amateur %s", rec(P.record), rec(P.amateurRecord)))
 	UI.Line(head, string.format("Money %s    Popularity %d    Overall %d    Style %s", money(P.money), P.popularity, P.overall, P.style))
+	-- fame & sponsors: the city reacts to these (fans, billboards, your logo on the trunks)
+	local deals = {}
+	if P.sponsors and P.sponsors.deals then
+		for _, slot in ipairs(Catalog.SponsorSlots) do
+			local d = P.sponsors.deals[slot]
+			if d then
+				table.insert(deals, d.name)
+			end
+		end
+	end
+	UI.Line(head, string.format("Followers %s%s", commas(followers(P)), #deals > 0 and ("    Sponsored by " .. table.concat(deals, ", ")) or ""), { TextColor3 = T.sub, TextSize = 14 })
 	if P.tier >= 2 then
 		UI.Line(head, "Rankings: " .. rankText(P.ranks), { TextColor3 = T.sub })
 	end
@@ -285,6 +364,38 @@ R.Training = function(body, P)
 	UI.StatRow(card, "Nutrition", c.nutrition, 100, c.nutrition < 30 and T.red or T.green)
 	UI.StatRow(card, "Fatigue", c.fatigue, 100, c.fatigue > 70 and T.red or (c.fatigue > 40 and T.orange or T.green))
 	UI.Line(card, string.format("Sleep quality %d%%   Weight %.1f / %d lbs   Body fat %.1f%%", math.floor(c.sleepQ * 100), P.weight, P.weightLimit, P.body.fat or 14), { TextSize = 13, TextColor3 = T.sub })
+	-- residual fight damage healing day by day, accumulated head trauma, muscle soreness
+	if c.face and (tonumber(c.face.stage) or 0) > 0 then
+		local f = c.face
+		local bits = {}
+		if f.eyes and f.eyes > 0.3 then
+			table.insert(bits, "swollen eye")
+		end
+		if f.cut then
+			table.insert(bits, "stitched cut")
+		end
+		if f.nose then
+			table.insert(bits, "broken nose")
+		end
+		UI.Line(card, string.format("FACE: %s%s - about %d day%s to heal.", tostring(f.label or ""), #bits > 0 and (" (" .. table.concat(bits, ", ") .. ")") or "", f.days or 0, (f.days or 0) == 1 and "" or "s"),
+			{ TextColor3 = (f.stage or 0) >= 3 and T.red or T.orange, TextSize = 13, Font = T.semi })
+	end
+	if (tonumber(c.trauma) or 0) > 0 then
+		UI.StatRow(card, "Head trauma", c.trauma, 100, c.trauma >= 40 and T.red or T.orange)
+		if c.trauma >= 40 then
+			UI.Line(card, "Accumulated head trauma weakens your chin. Time between fights lets it settle.", { TextColor3 = T.red, TextSize = 12 })
+		end
+	end
+	local soreTxt = {}
+	for _, k in ipairs(Config.MuscleKeys) do
+		local v = c.sore and tonumber(c.sore[k])
+		if v and v >= 0.1 then
+			table.insert(soreTxt, string.format("%s %d%%", Config.MuscleNames[k], math.floor(v * 100)))
+		end
+	end
+	if #soreTxt > 0 then
+		UI.Line(card, "Sore: " .. table.concat(soreTxt, ", ") .. "  - growth is slower on sore muscles; sleep and eat to recover.", { TextColor3 = T.orange, TextSize = 13 })
+	end
 	if c.fatigue > 70 then
 		UI.Line(card, "OVERTRAINING: gains are cut in half and injury risk is high. Recover (ice bath, massage, stretching) or sleep.", { TextColor3 = T.red, TextSize = 13 })
 	elseif c.fatigue > 40 then
@@ -362,20 +473,111 @@ R.Training = function(body, P)
 	end
 end
 
+local FLEX_NAMES = {
+	flex_biceps = "DOUBLE BICEPS", flex_lat = "LAT SPREAD", flex_chest = "SIDE CHEST", flex_most = "MOST MUSCULAR", flex_abs = "ABS & THIGH",
+}
+
+-- which exercises build which muscles (from Config.ExerciseTargets via act.parts), strongest first
+local function exerciseGuide()
+	local lines = {}
+	for _, a in ipairs(Config.Activities) do
+		if type(a.parts) == "table" and not a.recovery then
+			local list = {}
+			for id, wgt in pairs(a.parts) do
+				table.insert(list, { id = id, w = tonumber(wgt) or 0 })
+			end
+			table.sort(list, function(x, y)
+				return x.w > y.w
+			end)
+			local names = {}
+			for i = 1, math.min(4, #list) do
+				table.insert(names, Config.MusclePartNames[list[i].id] or list[i].id)
+			end
+			if #names > 0 then
+				table.insert(lines, a.name .. ": " .. table.concat(names, ", "))
+			end
+		end
+	end
+	return lines
+end
+
 R.Body = function(body, P)
-	local c = UI.Card(body)
-	UI.Line(c, "PHYSIQUE: " .. P.physique:upper(), { Font = T.bold, TextSize = 20, TextColor3 = T.gold })
-	UI.Line(c, string.format("Height %s  -  Reach %d in  -  Weight %.1f lbs  -  Body fat %.1f%%  -  Frame: %s",
-		Config.HeightText(P.physical.height), P.physical.reach, P.weight, P.body.fat or 14, P.appearance.body.frame), { TextSize = 14 })
+	local c = UI.Card(body, { stroke = T.gold })
+	UI.Line(c, "PHYSIQUE: " .. tostring(P.physique or "?"):upper(), { Font = T.bold, TextSize = 22, TextColor3 = T.gold })
+	if P.physiqueDesc and P.physiqueDesc ~= "" then
+		UI.Line(c, P.physiqueDesc, { TextSize = 14 })
+	end
+	if P.physiquePinned then
+		UI.Line(c, "Look chosen in the creator: training still grows every muscle, the silhouette keeps this archetype.", { TextColor3 = T.sub, TextSize = 12 })
+	end
+	-- the archetype ladder: where this build sits among the physiques the game recognises
+	local row = UI.Row(c, 30)
+	for _, ph in ipairs(Config.Physiques) do
+		local cur = ph.id == P.physiqueId or ph.name == P.physique
+		local chip = UI.Text(row, ph.name, { Size = UDim2.fromOffset(118, 26), AutomaticSize = Enum.AutomaticSize.None, TextSize = 12, Font = cur and T.bold or T.font,
+			TextXAlignment = Enum.TextXAlignment.Center, BackgroundTransparency = 0, BackgroundColor3 = cur and T.gold or T.panel2, TextColor3 = cur and T.bg or T.sub })
+		UI.Corner(chip, 6)
+	end
+	local fat = P.body.fat or 14
+	local ph = Config.FindById(Config.Physiques, P.physiqueId or "")
+	local def = Config.Definition(fat, ph and ph.defBonus or 0)
+	UI.Line(c, string.format("Height %s  -  Reach %d in  -  Weight %.1f lbs  -  Frame: %s",
+		Config.HeightText(P.physical.height), P.physical.reach, P.weight, P.appearance.body.frame), { TextSize = 14 })
+	UI.StatRow(c, "Body fat", fat - 6, 24, fat > 18 and T.orange or T.green, string.format("%.1f%%", fat))
+	UI.StatRow(c, "Definition", def * 100, 100, Color3.fromRGB(150, 200, 255), string.format("%d%%", math.floor(def * 100 + 0.5)))
+	UI.StatRow(c, "Vascularity", P.body.vasc or 0, 100, Color3.fromRGB(110, 150, 230), string.format("%d", math.floor(P.body.vasc or 0)))
+	local fat2 = fat >= Config.BodyFat.bellyAt and "A soft belly is showing - cardio and clean meals bring the abs back."
+		or (def >= Config.BodyFat.absRow4Def and "Shredded: full eight-pack, veins and muscle separation on show."
+		or (def >= 0.4 and "Abs are visible; drop a little more fat for full separation." or "Muscles are smooth under the skin - lower body fat brings out definition."))
+	UI.Line(c, fat2, { TextColor3 = T.sub, TextSize = 12 })
+
+	-- every muscle under its group; soreness tints the bar
 	local frame = Config.FindById(Config.BodyTypes, P.appearance.body.frame) or Config.BodyTypes[2]
 	local cap = 100 * frame.potential
+	local sore = P.condition and P.condition.sore or {}
 	local m = UI.Card(body)
 	UI.Line(m, string.format("MUSCLE DEVELOPMENT  (your frame's potential: %d)", math.floor(cap)), { Font = T.bold, TextColor3 = T.gold })
 	for _, k in ipairs(Config.MuscleKeys) do
-		UI.StatRow(m, Config.MuscleNames[k], P.body[k] or 0, cap, Color3.fromRGB(150, 200, 255), string.format("%.1f", P.body[k] or 0))
+		local sv = tonumber(sore[k]) or 0
+		local gcol = sv >= 0.4 and T.orange or Color3.fromRGB(150, 200, 255)
+		local gname = Config.MuscleNames[k]:upper() .. (sv >= 0.1 and string.format("  (sore %d%%)", math.floor(sv * 100)) or "")
+		local gr = UI.StatRow(m, gname, P.body[k] or 0, cap, gcol, string.format("%.1f", P.body[k] or 0))
+		gr:FindFirstChildOfClass("TextLabel").Font = T.bold
+		for _, part in ipairs(Config.MuscleGroupParts[k] or {}) do
+			local v = tonumber(P.body[part.id]) or tonumber(P.body[k]) or 0
+			local r = UI.StatRow(m, "      " .. part.name, v, cap, Color3.fromRGB(110, 160, 220), string.format("%.1f", v))
+			r.Size = UDim2.new(1, 0, 0, 18)
+			for _, t in ipairs(r:GetChildren()) do
+				if t:IsA("TextLabel") then
+					t.TextSize = 12
+					t.TextColor3 = T.sub
+				end
+			end
+		end
 	end
-	UI.StatRow(m, "Body fat", (P.body.fat or 14) - 6, 24, T.orange, string.format("%.1f%%", P.body.fat or 14))
-	UI.Line(body, "Your body changes as you train: bench, dumbbells, deadlifts, squats and pull-ups build chest, arms, shoulders, back and legs. Running, swimming, rope and bike burn fat. Muscle adds punching power and weight; fat costs stamina and makes weight harder to make. Bulk up and you may need to move up a division.", { TextColor3 = T.sub, TextSize = 13 })
+
+	-- flex in front of the mirror: shows off the pump, veins and every muscle you built
+	local fl = UI.Card(body)
+	UI.Line(fl, "FLEX", { Font = T.bold, TextColor3 = T.gold })
+	UI.Line(fl, "Strike a pose wherever you stand. Freshly trained muscles show a pump and the veins come up.", { TextColor3 = T.sub, TextSize = 12 })
+	local flexRow = UI.Row(fl, 34)
+	for _, pose in ipairs((Config.Pump and Config.Pump.poses) or {}) do
+		UI.Button(flexRow, FLEX_NAMES[pose] or pose, { Size = UDim2.fromOffset(132, 32), TextSize = 12 }, function()
+			local r = State.req("Flex", pose)
+			if r.ok then
+				Hub.Close()
+			else
+				State.toast(r.err or "Can't flex right now.", T.red)
+			end
+		end)
+	end
+
+	local g = UI.Card(body)
+	UI.Line(g, "WHAT BUILDS WHAT", { Font = T.bold, TextColor3 = T.gold })
+	for _, line in ipairs(exerciseGuide()) do
+		UI.Line(g, line, { TextSize = 12, TextColor3 = T.sub })
+	end
+	UI.Line(body, "Every session grows the muscles it works; most of the growth lands overnight if you sleep and eat well. Muscles you neglect for a week start to fade. Muscle adds punching power and weight; fat costs stamina and makes weight harder to make. Bulk up and you may need to move up a division.", { TextColor3 = T.sub, TextSize = 13 })
 end
 
 R.Stats = function(body, P)
@@ -396,7 +598,71 @@ R.Stats = function(body, P)
 	UI.Line(body, "Confidence boosts power, Focus improves accuracy, Composure helps you beat the count, Discipline speeds up training, Aggression adds pop. Stats gain less as they get higher - and age catches up with everyone after 30.", { TextColor3 = T.sub, TextSize = 13 })
 end
 
+-- facility tier card (CONTRACTS section 9): derived from equipment levels, career tier and Shop items
+local function facilityCard(body, P)
+	local gt = P.gymTier
+	if type(gt) ~= "table" then
+		local ok, idx, def, frac, needs = pcall(Catalog.GymTier, P.gym and P.gym.levels, P.owned, P.tier)
+		if not ok then
+			return
+		end
+		local nextDef = Config.GymTiers[idx + 1]
+		gt = { index = idx, id = def.id, name = def.name, desc = def.desc, growth = def.growth, frac = frac, needs = needs or {}, nextName = nextDef and nextDef.name }
+	end
+	local c = UI.Card(body, { stroke = T.gold })
+	UI.Line(c, string.format("FACILITY: %s (%d%%)", tostring(gt.name or gt.id):upper(), math.floor((gt.frac or 0) * 100 + 0.5)), { Font = T.bold, TextSize = 20, TextColor3 = T.gold })
+	if gt.desc then
+		UI.Line(c, gt.desc, { TextSize = 13 })
+	end
+	UI.Line(c, string.format("Muscle growth x%.2f from the facility", tonumber(gt.growth) or 1), { TextSize = 13, TextColor3 = T.green })
+	-- tier ladder
+	local row = UI.Row(c, 28)
+	for i, t in ipairs(Config.GymTiers) do
+		local cur = i == gt.index
+		local reached = i <= (gt.index or 1)
+		local chip = UI.Text(row, t.name, { Size = UDim2.fromOffset(170, 24), AutomaticSize = Enum.AutomaticSize.None, TextSize = 12, Font = cur and T.bold or T.font,
+			TextXAlignment = Enum.TextXAlignment.Center, BackgroundTransparency = 0, BackgroundColor3 = cur and T.gold or (reached and Color3.fromRGB(60, 50, 20) or T.panel2), TextColor3 = cur and T.bg or (reached and T.gold or T.sub) })
+		UI.Corner(chip, 6)
+	end
+	if gt.nextName then
+		UI.Line(c, "NEXT: " .. gt.nextName, { Font = T.semi, TextSize = 14 })
+		for _, n in ipairs(gt.needs or {}) do
+			UI.Line(c, "  - " .. n, { TextSize = 13, TextColor3 = T.orange })
+		end
+		if #(gt.needs or {}) == 0 then
+			UI.Line(c, "  Ready: the upgrade lands with your next push.", { TextSize = 13, TextColor3 = T.green })
+		end
+	else
+		UI.Line(c, "Top tier: the best gym in the world is yours.", { TextSize = 13, TextColor3 = T.gold })
+	end
+	local names = {}
+	local ok, set = pcall(Catalog.GymFacilities, gt.index)
+	if ok then
+		for _, t in ipairs(Config.GymTiers) do
+			for _, fid in ipairs(t.facilities) do
+				if set[fid] then
+					table.insert(names, Config.FacilityNames[fid] or fid)
+				end
+			end
+		end
+	end
+	if #names > 0 then
+		UI.Line(c, "Facilities: " .. table.concat(names, ", "), { TextSize = 12, TextColor3 = T.sub })
+	end
+	local elite = (gt.index or 1) >= 3
+	UI.Line(c, elite and "The WCB Elite Performance Center across town is open to you." or "The WCB Elite Performance Center (north-east of the arena) opens at the Elite tier.",
+		{ TextSize = 13, TextColor3 = elite and T.green or T.sub })
+	if elite then
+		buttons(c, {
+			act("GO TO THE ELITE CENTER", T.gold, function()
+				travel("TravelPlace", "elite")
+			end, 240),
+		}, 32)
+	end
+end
+
 R.Gym = function(body, P)
+	facilityCard(body, P)
 	UI.Line(body, "Money " .. money(P.money), { Font = T.bold, TextColor3 = T.green, TextSize = 18 })
 	UI.Line(body, "Better equipment = faster gains (and it looks the part). Equipment wears down with use: below 30% condition gains drop - repair it.", { TextColor3 = T.sub, TextSize = 13 })
 	local lastArea
@@ -558,6 +824,232 @@ R.Coaches = function(body, P)
 	end
 end
 
+------------------------------------------------------------------------
+-- Sponsors: real deals (one brand per slot), paid every fight
+------------------------------------------------------------------------
+local SLOT_NAMES = { trunks = "TRUNKS", robe = "ROBE", corner = "CORNER (fight night)", gear = "GEAR & MERCH" }
+local SLOT_WHERE = {
+	trunks = "Logo on your trunks, on billboards and in their shop window.",
+	robe = "Logo on your ring robe and on billboards.",
+	corner = "Their banner in your corner and on the ring apron on fight night.",
+	gear = "Your face in their store window and ads around the city.",
+}
+local dropConfirm = nil
+
+local function payLine(d)
+	return string.format("%s per fight  +%s win  +%s KO", money(d.perFight or 0), money(d.winBonus or 0), money(d.koBonus or 0))
+end
+
+R.Sponsors = function(body, P)
+	local sp = P.sponsors or {}
+	local deals = sp.deals or {}
+	UI.Line(body, "Sponsors pay every fight you take, with bonuses for wins and knockouts. One brand per slot. Bigger names come to you as your tier and popularity grow.", { TextColor3 = T.sub, TextSize = 13 })
+	for _, slot in ipairs(Catalog.SponsorSlots) do
+		local d = deals[slot]
+		local c = UI.Card(body, { stroke = d and T.gold or nil })
+		UI.Line(c, (SLOT_NAMES[slot] or slot:upper()) .. (d and "" or "  -  open slot"), { Font = T.bold, TextColor3 = d and T.gold or T.sub })
+		if d then
+			local row = UI.Row(c, 44)
+			logoChip(row, d.logo)
+			local info = UI.Frame(row, { BackgroundTransparency = 1, Size = UDim2.new(1, -150, 1, 0) })
+			UI.List(info, 2)
+			UI.Line(info, string.format("%s  (%s)", d.name, d.scope or ""), { Font = T.semi, TextSize = 15 })
+			UI.Line(info, string.format("%s   -   %d fight%s left", payLine(d), d.fightsLeft or 0, (d.fightsLeft or 0) == 1 and "" or "s"), { TextSize = 12, TextColor3 = T.sub })
+			UI.Line(c, SLOT_WHERE[slot] or "", { TextSize = 12, TextColor3 = T.sub })
+			local confirming = dropConfirm == slot
+			buttons(c, {
+				act(confirming and "CONFIRM: END DEAL" or "END DEAL", confirming and T.red or T.panel2, function()
+					if not confirming then
+						dropConfirm = slot
+						Hub.Render()
+						return
+					end
+					dropConfirm = nil
+					result(State.req("DropSponsor", slot), "Deal ended.")
+				end, 180),
+			}, 30)
+		else
+			UI.Line(c, SLOT_WHERE[slot] or "", { TextSize = 12, TextColor3 = T.sub })
+		end
+	end
+	local offers = sp.offers or {}
+	UI.Header(body, "OFFERS ON THE TABLE")
+	if #offers == 0 then
+		UI.Line(body, "No brand wants you yet. Win fights, climb the tiers and build your popularity.", { TextColor3 = T.sub, TextSize = 13 })
+	end
+	for _, o in ipairs(offers) do
+		local c = UI.Card(body)
+		local row = UI.Row(c, 44)
+		logoChip(row, o.logo)
+		local info = UI.Frame(row, { BackgroundTransparency = 1, Size = UDim2.new(1, -150, 1, 0) })
+		UI.List(info, 2)
+		UI.Line(info, string.format("%s  -  %s  (%s)", o.name, SLOT_NAMES[o.slot] or o.slot, o.scope or ""), { Font = T.semi, TextSize = 15 })
+		UI.Line(info, string.format("%s   -   %d-fight contract%s", payLine(o), o.fights or 0, (o.signingBonus or 0) > 0 and ("   -   signing bonus " .. money(o.signingBonus)) or ""), { TextSize = 12, TextColor3 = T.sub })
+		buttons(c, {
+			act(o.taken and ("REPLACE " .. tostring(o.taken):upper()) or "SIGN", o.taken and T.panel2 or T.gold, function()
+				if result(State.req("SignSponsor", o.id, o.taken ~= nil), "Signed with " .. o.name .. "!") then
+					dropConfirm = nil
+				end
+			end, o.taken and 260 or 140),
+		}, 30)
+	end
+	-- who comes next: requirements of the brands not interested yet
+	local later = {}
+	local active = {}
+	for _, d in pairs(deals) do
+		active[d.id] = true
+	end
+	local offered = {}
+	for _, o in ipairs(offers) do
+		offered[o.id] = true
+	end
+	for _, def in ipairs(Catalog.Sponsors) do
+		if not active[def.id] and not offered[def.id] then
+			local tierName = Config.Tiers[def.minTier] and Config.Tiers[def.minTier].name or ("tier " .. def.minTier)
+			table.insert(later, string.format("%s (%s, %s): needs %s and %d popularity", def.name, def.scope, SLOT_NAMES[def.slot] or def.slot, tierName, def.minPop))
+		end
+	end
+	if #later > 0 then
+		local c = UI.Card(body)
+		UI.Line(c, "WATCHING YOUR CAREER", { Font = T.bold, TextColor3 = T.sub })
+		for _, l in ipairs(later) do
+			UI.Line(c, l, { TextSize = 12, TextColor3 = T.sub })
+		end
+	end
+end
+
+------------------------------------------------------------------------
+-- Life: home, travel around the city, garage, fame
+------------------------------------------------------------------------
+local CAR_NAMES = { SportsCar = "Sports Car", Supercar = "Supercar", Hypercar = "Hypercar" }
+local HOME_WHERE = {
+	Apartment = "Penthouse at Riverside Apartments, Main Street",
+	House = "Your house on Oak Street",
+	Mansion = "The Hillcrest estate at the top of Oak Street",
+}
+local WAKE = { { "here", "WHERE I SLEPT" }, { "home", "AT HOME" }, { "gym", "AT THE GYM" } }
+local CITY_GUIDE = {
+	{ "Iron Supplements", "protein, creatine and pre-workout (gains buffs)" },
+	{ "Champ's Diner / Tony's Pizza", "real food: refuel your nutrition" },
+	{ "WCB Pro Shop", "gloves, boots, wraps, robes by every brand" },
+	{ "Fresh Fades Barbershop", "haircuts, fades, beards" },
+	{ "Prestige Motors", "sports cars, supercars and the hypercar" },
+	{ "Boxing Hall of Fame Museum", "the legends - and one day your exhibit" },
+	{ "WCB Arena Tickets", "fight offers and your next card" },
+}
+
+R.Life = function(body, P)
+	local home = bestHome(P)
+	local owned = P.owned or {}
+	-- home
+	local hc = UI.Card(body, { stroke = home and T.gold or nil })
+	local item = home and Catalog.Find(Catalog.Shop, home)
+	UI.Line(hc, home and ("HOME: " .. (item and item.name or home):upper()) or "HOME: THE GYM BUNK ROOM", { Font = T.bold, TextSize = 20, TextColor3 = T.gold })
+	UI.Line(hc, home and (HOME_WHERE[home] or "") or "You sleep in the gym's bunk room. Buy a home in the Shop to sleep better and give the city something to talk about.", { TextSize = 13, TextColor3 = T.sub })
+	if item and item.sleep then
+		UI.Line(hc, string.format("Sleep quality +%d%%", math.floor(item.sleep * 100 + 0.5)), { TextSize = 13, TextColor3 = T.green })
+	end
+	local addons = {}
+	for _, it in ipairs(Catalog.Shop) do
+		if it.cat == "Home Upgrades" then
+			table.insert(addons, (owned[it.id] and "[x] " or "[ ] ") .. it.name)
+		end
+	end
+	UI.Line(hc, "Upgrades: " .. table.concat(addons, "   "), { TextSize = 12, TextColor3 = T.sub })
+	local list = {}
+	if home then
+		table.insert(list, act("GO HOME", T.gold, function()
+			travel("TravelHome")
+		end, 140))
+		table.insert(list, act("STEP OUTSIDE", T.panel2, function()
+			travel("LeaveHome")
+		end, 150))
+	end
+	table.insert(list, act("HOMES & UPGRADES", T.panel2, function()
+		tab = "Shop"
+		Hub.Render()
+	end, 190))
+	buttons(hc, list, 34)
+	if home then
+		local wake = (P.settings and P.settings.wakeAt) or "here"
+		local row = UI.Row(hc, 30)
+		UI.Text(row, "Wake up:", { Size = UDim2.fromOffset(80, 28), AutomaticSize = Enum.AutomaticSize.None, TextSize = 13, TextColor3 = T.sub })
+		for _, w in ipairs(WAKE) do
+			UI.Button(row, w[2], { Size = UDim2.fromOffset(140, 28), TextSize = 12, BackgroundColor3 = wake == w[1] and T.gold or T.panel2, TextColor3 = wake == w[1] and T.bg or T.text }, function()
+				result(State.req("SetWakeAt", w[1]))
+			end)
+		end
+	end
+
+	-- travel
+	local tc = UI.Card(body)
+	UI.Line(tc, "AROUND THE CITY", { Font = T.bold, TextColor3 = T.gold })
+	local gt = P.gymTier and P.gymTier.index or 1
+	local trips = {
+		act("GYM", T.panel2, function()
+			travel("TravelPlace", "gym")
+		end, 110),
+		act("MAIN STREET", T.panel2, function()
+			travel("TravelPlace", "city")
+		end, 140),
+		act(gt >= 3 and "ELITE CENTER" or "ELITE CENTER (LOCKED)", gt >= 3 and T.panel2 or Color3.fromRGB(50, 40, 40), function()
+			if gt < 3 then
+				State.toast("Reach the Elite facility tier first (Gym tab).", T.red)
+				return
+			end
+			travel("TravelPlace", "elite")
+		end, 200),
+		act("HILLCREST", T.panel2, function()
+			travel("TravelPlace", "estate")
+		end, 120),
+	}
+	if P.camp and (owned.MountainCamp or owned.EliteCamp) then
+		table.insert(trips, act("TRAINING CAMP", T.gold, function()
+			travel("TravelPlace", "camp")
+		end, 160))
+	end
+	buttons(tc, trips, 34)
+	for _, g in ipairs(CITY_GUIDE) do
+		UI.Line(tc, g[1] .. "  -  " .. g[2], { TextSize = 12, TextColor3 = T.sub })
+	end
+
+	-- garage
+	local cars = {}
+	for _, id in ipairs({ "Hypercar", "Supercar", "SportsCar" }) do
+		if owned[id] then
+			table.insert(cars, CAR_NAMES[id])
+		end
+	end
+	local gc = UI.Card(body)
+	UI.Line(gc, "GARAGE", { Font = T.bold, TextColor3 = T.gold })
+	if #cars == 0 then
+		UI.Line(gc, "No car yet. Prestige Motors on Main Street sells them; your best car takes the reserved bay outside the gym.", { TextSize = 13, TextColor3 = T.sub })
+	else
+		UI.Line(gc, table.concat(cars, ", "), { TextSize = 15, Font = T.semi })
+		UI.Line(gc, "Your best car is parked in the reserved bay at the gym" .. (home and (owned.Garage and " and the whole collection at home." or " and at home.") or "."), { TextSize = 12, TextColor3 = T.sub })
+	end
+
+	-- fame
+	local fc = UI.Card(body)
+	UI.Line(fc, "FAME", { Font = T.bold, TextColor3 = T.gold })
+	UI.Line(fc, string.format("%s followers  -  popularity %d", commas(followers(P)), P.popularity or 0), { TextSize = 15, Font = T.semi })
+	UI.StatRow(fc, "Popularity", P.popularity or 0, 100, T.gold)
+	local pop = P.popularity or 0
+	local fans = pop >= 70 and "Crowds wait outside the gym and the arena, the paparazzi follow you." or (pop >= 35 and "Fans wait outside the gym with signs." or (pop >= 10 and "A few locals recognise you on the street." or "Nobody knows your name yet."))
+	UI.Line(fc, fans, { TextSize = 13, TextColor3 = T.sub })
+	if P.legacy then
+		UI.Line(fc, string.format("Legacy %d  -  all-time rank #%d%s", P.legacy.score or 0, P.legacy.goatRank or 0, P.legacy.hof and "  -  HALL OF FAMER" or ""), { TextSize = 13 })
+	end
+	buttons(fc, {
+		act(P.autographReady == false and "SIGNED TODAY" or "SIGN AUTOGRAPHS", P.autographReady == false and T.panel2 or T.gold, function()
+			if P.autographReady == false then
+				return
+			end
+			result(State.req("Autograph"), "The fans love you. Popularity up.")
+		end, 200),
+	}, 32)
+end
+
 local rankClass, rankOrg = nil, "WBA"
 R.Rankings = function(body, P)
 	rankClass = rankClass or P.physical.weightClass
@@ -634,12 +1126,31 @@ R.Shop = function(body, P)
 		end
 		local owned = P.owned[item.id]
 		local locked = item.requiresTier and P.tier < item.requiresTier
+		-- home add-ons need a home (Career.Buy checks requiresAny too)
+		local needsHome = item.requiresAny and not ownsAny(P.owned, item.requiresAny)
+		local isHome = item.cat == "Houses"
 		local c = UI.Card(body, { stroke = owned and T.gold or nil })
 		UI.Line(c, item.name, { Font = T.bold })
 		UI.Line(c, item.desc, { TextSize = 13, TextColor3 = T.sub })
+		if needsHome and not owned then
+			local names = {}
+			for _, id in ipairs(item.requiresAny) do
+				local def = Catalog.Find(Catalog.Shop, id)
+				table.insert(names, def and def.name or id)
+			end
+			UI.Line(c, "Needs: " .. table.concat(names, " or "), { TextSize = 12, TextColor3 = T.orange })
+		end
+		local text = owned and (isHome and "OWNED - GO HOME" or "OWNED") or (locked and "WORLD CHAMPS ONLY" or (needsHome and "NEEDS A HOME" or money(item.price)))
+		local color = owned and (isHome and T.gold or T.panel2) or ((locked or needsHome) and T.panel2 or (P.money >= item.price and T.gold or Color3.fromRGB(70, 40, 40)))
 		buttons(c, {
-			act(owned and "OWNED" or (locked and "WORLD CHAMPS ONLY" or money(item.price)), owned and T.panel2 or (locked and T.panel2 or (P.money >= item.price and T.gold or Color3.fromRGB(70, 40, 40))), function()
-				if owned or locked then
+			act(text, color, function()
+				if owned then
+					if isHome then
+						travel("TravelHome", item.id)
+					end
+					return
+				end
+				if locked or needsHome then
 					return
 				end
 				result(State.req("Buy", item.id), "Purchased: " .. item.name)

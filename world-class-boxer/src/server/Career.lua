@@ -85,7 +85,32 @@ end
 -- Helpers
 ------------------------------------------------------------------------
 function Career.Owned(profile, id)
-	return profile.owned[id] == true
+	return type(profile.owned) == "table" and profile.owned[id] == true
+end
+
+-- the player's best home (Mansion > House > Apartment) or nil; homes are Catalog.Shop "Houses"
+Career.HomeOrder = { "Mansion", "House", "Apartment" }
+function Career.HomeOf(profile)
+	for _, id in ipairs(Career.HomeOrder) do
+		if Career.Owned(profile, id) then
+			return id
+		end
+	end
+	return nil
+end
+
+-- pcall wrapper for the Training calls the look / fight hand-off makes: one bad save value must
+-- never stop applyLook (it runs outside its own pcall) or a fight from starting
+local function safe(fn, ...)
+	if type(fn) ~= "function" then
+		return nil
+	end
+	local ok, res = pcall(fn, ...)
+	if ok then
+		return res
+	end
+	warn("[Career] " .. tostring(res))
+	return nil
 end
 
 function Career.OppView(profile, b)
@@ -337,6 +362,23 @@ function Career.Buy(profile, id)
 	if item.requiresTier and profile.tier < item.requiresTier then
 		return false, "Elite equipment unlocks when you become a World Champion."
 	end
+	-- home add-ons need somewhere to put them
+	if type(item.requiresAny) == "table" then
+		local has = false
+		for _, need in ipairs(item.requiresAny) do
+			if Career.Owned(profile, need) then
+				has = true
+			end
+		end
+		if not has then
+			local names = {}
+			for _, need in ipairs(item.requiresAny) do
+				local def = Catalog.Find(Catalog.Shop, need)
+				table.insert(names, def and def.name or need)
+			end
+			return false, "You need a home first: " .. table.concat(names, " / ") .. "."
+		end
+	end
 	if profile.money < item.price then
 		return false, "Not enough money"
 	end
@@ -352,21 +394,233 @@ function Career.Buy(profile, id)
 end
 
 ------------------------------------------------------------------------
+-- Sponsors: real deals with fictional brands (Catalog.Sponsors). One deal per slot
+-- (trunks | robe | corner | gear); each pays per fight plus win / KO bonuses for a set number
+-- of fights. Saved lazily as profile.sponsors = { deals = { [slot] = { id, fightsLeft, signedDay } },
+-- signed = { [id] = true } } (signed: first-time signing bonus and popularity only once per brand).
+------------------------------------------------------------------------
+-- share of the old popularity formula still paid as merch / appearance fees (deals pay the rest)
+local ENDORSE_SHARE = 0.5
+
+local function sponsorState(profile)
+	local s = profile.sponsors
+	if type(s) ~= "table" then
+		s = {}
+		profile.sponsors = s
+	end
+	if type(s.deals) ~= "table" then
+		s.deals = {}
+	end
+	if type(s.signed) ~= "table" then
+		s.signed = {}
+	end
+	-- drop corrupt or unknown deals (a sponsor removed from the catalog, a wrong slot, NaN fights)
+	for slot, d in pairs(s.deals) do
+		local def = type(d) == "table" and Catalog.Sponsor(d.id)
+		local left = def and tonumber(d.fightsLeft)
+		if not def or def.slot ~= slot or not left or left ~= left or left <= 0 then
+			s.deals[slot] = nil
+		else
+			d.fightsLeft = clamp(math.floor(left), 1, 99)
+			d.signedDay = tonumber(d.signedDay) or 1
+		end
+	end
+	return s
+end
+
+-- { [slot] = sponsor id } of the running deals (Venues.New opts.sponsors, LookOpts patches)
+function Career.ActiveSponsors(profile)
+	local out = {}
+	if type(profile) ~= "table" or not profile.created then
+		return out
+	end
+	for slot, d in pairs(sponsorState(profile).deals) do
+		out[slot] = d.id
+	end
+	return out
+end
+
+local function logoOf(def)
+	local l = def and def.logo
+	if type(l) ~= "table" then
+		return nil
+	end
+	return { text = l.text, glyph = l.glyph, fg = l.fg, bg = l.bg }
+end
+
+local function sponsorView(def)
+	return {
+		id = def.id, name = def.name, scope = def.scope, slot = def.slot, perFight = def.perFight, winBonus = def.winBonus,
+		koBonus = def.koBonus, fights = def.fights, minTier = def.minTier, minPop = def.minPop, logo = logoOf(def), shop = def.shop,
+	}
+end
+
+-- deals the career qualifies for that are not running; `taken` names the deal already in that slot
+function Career.SponsorOffers(profile)
+	local s = sponsorState(profile)
+	local active = {}
+	for _, d in pairs(s.deals) do
+		active[d.id] = true
+	end
+	local out = {}
+	for _, def in ipairs(Catalog.SponsorsFor(profile.tier, profile.popularity)) do
+		if not active[def.id] then
+			local v = sponsorView(def)
+			local cur = s.deals[def.slot]
+			local curDef = cur and Catalog.Sponsor(cur.id)
+			v.taken = curDef and curDef.name or nil
+			v.signingBonus = not s.signed[def.id] and math.floor(def.perFight * 0.5) or 0
+			table.insert(out, v)
+		end
+	end
+	return out
+end
+
+-- sign a deal; replace = true swaps out whatever runs in that slot. -> ok, err | name
+function Career.SignSponsor(profile, id, replace)
+	if profile.retired then
+		return false, "You're retired."
+	end
+	local def = Catalog.Sponsor(id)
+	if not def then
+		return false, "Unknown sponsor"
+	end
+	local eligible = false
+	for _, e in ipairs(Catalog.SponsorsFor(profile.tier, profile.popularity)) do
+		if e.id == def.id then
+			eligible = true
+		end
+	end
+	if not eligible then
+		return false, string.format("%s wants a bigger name: %s and %d popularity.", def.name,
+			Config.Tiers[def.minTier] and Config.Tiers[def.minTier].name or ("tier " .. def.minTier), def.minPop)
+	end
+	local s = sponsorState(profile)
+	local cur = s.deals[def.slot]
+	if cur and cur.id == def.id then
+		return false, "Already signed."
+	end
+	if cur and replace ~= true then
+		local curDef = Catalog.Sponsor(cur.id)
+		return false, string.format("Your %s slot already carries %s.", def.slot, curDef and curDef.name or cur.id)
+	end
+	s.deals[def.slot] = { id = def.id, fightsLeft = def.fights, signedDay = profile.day }
+	-- a brand's first deal: signing bonus and a popularity bump from the announcement
+	if not s.signed[def.id] then
+		s.signed[def.id] = true
+		profile.money += math.floor(def.perFight * 0.5)
+		profile.popularity = clamp(profile.popularity + 1, 0, 100)
+	end
+	return true, def.name
+end
+
+-- end a deal early (slot name or sponsor id)
+function Career.DropSponsor(profile, key)
+	local s = sponsorState(profile)
+	for slot, d in pairs(s.deals) do
+		if slot == key or d.id == key then
+			s.deals[slot] = nil
+			local def = Catalog.Sponsor(d.id)
+			return true, def and def.name or d.id
+		end
+	end
+	return false, "No such deal."
+end
+
+-- fight-night pay from every running deal; counts the contracts down. -> total, notes
+function Career.SponsorIncome(profile, win, isKO)
+	local s = sponsorState(profile)
+	local total, notes, names = 0, {}, {}
+	for _, slot in ipairs(Catalog.SponsorSlots) do
+		local d = s.deals[slot]
+		local def = d and Catalog.Sponsor(d.id)
+		if def then
+			local pay = def.perFight + (win and def.winBonus or 0) + ((win and isKO) and def.koBonus or 0)
+			total += pay
+			table.insert(names, def.name)
+			d.fightsLeft -= 1
+			if d.fightsLeft <= 0 then
+				s.deals[slot] = nil
+				table.insert(notes, string.format("Your %s deal is complete. Sign a new one in the Sponsors tab.", def.name))
+			end
+		end
+	end
+	if #names > 0 then
+		table.insert(notes, 1, string.format("Sponsors (%s) paid %s.", table.concat(names, ", "), Config.Money(total)))
+	end
+	return total, notes
+end
+
+-- autograph session with the fans outside (once per day, small popularity bump)
+function Career.Autograph(profile)
+	if profile.lastAutographDay == profile.day then
+		return false, "You already signed for the fans today."
+	end
+	if (profile.popularity or 0) < 3 then
+		return false, "Nobody's asking for your autograph yet. Win some fights!"
+	end
+	profile.lastAutographDay = profile.day
+	profile.popularity = clamp(profile.popularity + 0.2, 0, 100)
+	return true
+end
+
+-- where the boxer wakes up after sleeping: "here" (default), "home" (bedroom) or "gym"
+function Career.SetWakeAt(profile, where)
+	if where ~= "home" and where ~= "gym" and where ~= "here" then
+		return false, "Unknown place"
+	end
+	if where == "home" and not Career.HomeOf(profile) then
+		return false, "Buy a home first."
+	end
+	if type(profile.settings) ~= "table" then
+		profile.settings = {}
+	end
+	profile.settings.wakeAt = where ~= "here" and where or nil
+	return true
+end
+
+------------------------------------------------------------------------
 -- Fighters for the fight engine
 ------------------------------------------------------------------------
 function Career.GearView(profile)
 	local g = profile.gear
+	local eq = g.equipped or {}
 	return {
-		gloves = g.equipped.gloves, glovesCond = Training.GearCondition(profile, "gloves"),
-		wrapsCond = Training.GearCondition(profile, "wraps"), shoesCond = Training.GearCondition(profile, "shoes"), robe = g.equipped.robe,
+		gloves = eq.gloves, glovesCond = Training.GearCondition(profile, "gloves"),
+		wraps = eq.wraps, wrapsCond = Training.GearCondition(profile, "wraps"),
+		shoes = eq.shoes, shoesCond = Training.GearCondition(profile, "shoes"),
+		mouthguard = eq.mouthguard, robe = eq.robe,
 	}
+end
+
+-- a running deal's patch for Builder (opts.sponsorTrunks / sponsorRobe = { text, fg, bg })
+local function sponsorPatch(profile, slot)
+	local s = profile.sponsors
+	local d = type(s) == "table" and type(s.deals) == "table" and s.deals[slot]
+	local def = type(d) == "table" and Catalog.Sponsor(d.id)
+	local l = def and def.logo
+	if type(l) ~= "table" then
+		return nil
+	end
+	return { text = l.text, fg = l.fg, bg = l.bg }
 end
 
 function Career.LookOpts(profile, extra)
 	local o = {
 		name = profile.identity.name, nick = profile.identity.nickname, nat = profile.identity.nationality,
 		waistText = profile.identity.nickname, robe = profile.gear.equipped.robe,
+		age = profile.identity.age, tier = profile.tier,
+		sponsorTrunks = sponsorPatch(profile, "trunks"), sponsorRobe = sponsorPatch(profile, "robe"),
 	}
+	-- one physique source of truth (Hub badge == rendered body), residual fight damage
+	local info = safe(Training.PhysiqueInfo, profile)
+	o.physique = type(info) == "table" and info.id or nil
+	o.damage = safe(Training.FaceView, profile)
+	-- a hard weight cut (negative water) dries the physique out
+	local water = type(profile.condition) == "table" and tonumber(profile.condition.water) or 0
+	if water and water == water and water < 0 then
+		o.dry = clamp(-water / 5, 0, 1)
+	end
 	for k, v in pairs(extra or {}) do
 		o[k] = v
 	end
@@ -379,6 +633,7 @@ function Career.FighterFromProfile(profile)
 	for k, v in pairs(mods.stats) do
 		stats[k] = clamp((stats[k] or 30) + v, 10, Config.StatCap)
 	end
+	local cond = profile.condition or {}
 	return {
 		isPlayer = true, name = profile.identity.name, nick = profile.identity.nickname,
 		stats = stats, mental = table.clone(profile.mental), style = profile.style,
@@ -389,25 +644,68 @@ function Career.FighterFromProfile(profile)
 		music = profile.identity.music, voice = profile.identity.voice,
 		eliteCorner = Training.EliteCorner(profile), nutrition = Training.Owned(profile, "Nutritionist"),
 		lookOpts = Career.LookOpts(profile),
+		-- damage persistence (section 8.5): the residual face, career head trauma, an open cut, a concussion
+		face = safe(Training.FaceView, profile), trauma = tonumber(cond.trauma) or 0,
+		injuryCut = safe(Training.HasInjury, profile, "cut") == true,
+		concussed = safe(Training.HasInjury, profile, "concussion") == true,
+		age = profile.identity.age,
 	}
 end
 
 function Career.FighterFromBoxer(b)
 	local app, build, gear = World.Look(b)
+	-- the same build bonuses players get (FightEngine folds mods.chinAdd into Chin once for AI fighters)
+	local mods = safe(Training.FightModifiersFromBuild, build) or {}
 	return {
 		isPlayer = false, id = b.id, name = b.name, nick = b.nick, stats = table.clone(b.stats),
 		mental = table.clone(b.mental), style = b.style, archetype = b.archetype, class = b.class,
 		reach = (b.height or 70) + (#b.name % 5), height = b.height or 70, app = app, build = build, gear = gear,
 		fatigue = 0, record = b.record, nat = b.nat, personality = b.personality,
-		learned = table.clone(b.learned or {}), h2h = b.h2h,
-		lookOpts = { name = b.name, nick = b.nick, nat = b.nat, waistText = b.nick, robe = "Classic" },
+		learned = table.clone(b.learned or {}), h2h = b.h2h, mods = mods, age = b.age,
+		lookOpts = { name = b.name, nick = b.nick, nat = b.nat, waistText = b.nick, robe = "Classic", age = b.age },
 	}
 end
 
 ------------------------------------------------------------------------
 -- Simulated fight (for players who want to skip a bout)
 ------------------------------------------------------------------------
+-- A simulated fight has no punch-by-punch face model: turn the damage taken (and knockdowns
+-- suffered) into the same dmg table a live fight returns (CONTRACTS section 8), so skipped fights
+-- still leave a black eye, a cut or a broken nose that heals over the next days.
+function Career.SimFace(damage, kdAgainst, r)
+	r = r or rng
+	local k = clamp((tonumber(damage) or 0) / 140 + (tonumber(kdAgainst) or 0) * 0.12, 0, 1)
+	if k < 0.06 then
+		return nil
+	end
+	local function v(lo, hi)
+		return clamp(k * r:NextNumber(lo, hi), 0, 1)
+	end
+	local face = {
+		leftEye = v(0.3, 1.1), rightEye = v(0.3, 1.1), bruise = v(0.6, 1.1), lip = v(0.2, 0.8),
+		cheekL = v(0.2, 0.9), cheekR = v(0.2, 0.9), forehead = v(0, 0.6), redness = clamp(k * 1.3, 0, 1),
+		noseBleed = k > 0.35 and v(0.4, 1) or 0, earL = v(0, 0.4), earR = v(0, 0.4), age = 0,
+	}
+	if k > 0.4 and r:NextNumber() < k then
+		face.cut = clamp(k * r:NextNumber(0.5, 1.15), 0, 1.2)
+		face.cutSide = r:NextNumber() < 0.5 and -1 or 1
+	end
+	if k > 0.8 and r:NextNumber() < 0.3 then
+		face.cut2 = clamp(k * r:NextNumber(0.3, 0.8), 0, 1.2)
+		face.cutSide2 = -(face.cutSide or 1)
+	end
+	if k > 0.7 and r:NextNumber() < 0.2 then
+		face.nose = true
+	end
+	return face
+end
+
 function Career.SimFight(profile, offer)
+	local function withFace(res)
+		res.face = Career.SimFace(res.damageTaken, res.kdAgainst)
+		res.noseBroken = res.face ~= nil and res.face.nose == true
+		return res
+	end
 	local b = profile.world.boxers[offer.oppId]
 	local p = Career.FighterFromProfile(profile)
 	local pPow = (p.stats.Power + p.stats.PunchSpeed + p.stats.Countering + p.stats.RingIQ) / 4
@@ -455,11 +753,11 @@ function Career.SimFight(profile, offer)
 			cards[j][2] += c
 		end
 		if kdFor >= 2 and oDmg > 70 or kdFor >= 3 then
-			return { outcome = "win", method = rng:NextNumber() < 0.5 and "KO" or "TKO", round = r, cards = cards,
-				kdFor = kdFor, kdAgainst = kdAg, landed = landed, oppLanded = oLanded, punches = punches, simulated = true, damageTaken = pDmg }
+			return withFace({ outcome = "win", method = rng:NextNumber() < 0.5 and "KO" or "TKO", round = r, cards = cards,
+				kdFor = kdFor, kdAgainst = kdAg, landed = landed, oppLanded = oLanded, punches = punches, simulated = true, damageTaken = pDmg })
 		elseif kdAg >= 2 and pDmg > 70 or kdAg >= 3 then
-			return { outcome = "loss", method = rng:NextNumber() < 0.5 and "KO" or "TKO", round = r, cards = cards,
-				kdFor = kdFor, kdAgainst = kdAg, landed = landed, oppLanded = oLanded, punches = punches, simulated = true, damageTaken = pDmg }
+			return withFace({ outcome = "loss", method = rng:NextNumber() < 0.5 and "KO" or "TKO", round = r, cards = cards,
+				kdFor = kdFor, kdAgainst = kdAg, landed = landed, oppLanded = oLanded, punches = punches, simulated = true, damageTaken = pDmg })
 		end
 	end
 	local res = Career.DecideCards(cards)
@@ -469,7 +767,7 @@ function Career.SimFight(profile, offer)
 	res.punches = punches
 	res.simulated = true
 	res.damageTaken = pDmg
-	return res
+	return withFace(res)
 end
 
 function Career.DecideCards(cards)
@@ -570,9 +868,12 @@ function Career.ApplyResult(profile, res)
 	if win then
 		purse = round(purse * 1.2)
 	end
-	local sponsor = 0
+	-- sponsors are real deals now (Career.SponsorIncome); half of the old popularity formula is
+	-- still paid as merch & appearance fees so a career without deals keeps some income
+	local sponsor, sponsorNotes = Career.SponsorIncome(profile, win, isKO)
+	local endorse = 0
 	if profile.tier >= 3 and profile.popularity >= 5 then
-		sponsor = round((profile.popularity ^ 1.4) * 35 * profile.tier)
+		endorse = round((profile.popularity ^ 1.4) * 35 * profile.tier * ENDORSE_SHARE)
 	end
 	local tv = 0
 	if profile.tier >= 5 then
@@ -584,9 +885,13 @@ function Career.ApplyResult(profile, res)
 		fine = round(purse * res.weighIn.fine)
 		table.insert(notes, string.format("Missed weight by %.1f lbs: fined %s.", res.weighIn.over, Config.Money(fine)))
 	end
-	local total = purse + sponsor + tv - salary - fine
+	local total = purse + sponsor + endorse + tv - salary - fine
 	profile.money += total
-	table.insert(notes, string.format("Purse %s  Sponsors %s  TV %s  Team salaries -%s", Config.Money(purse), Config.Money(sponsor), Config.Money(tv), Config.Money(salary)))
+	table.insert(notes, string.format("Purse %s  Sponsors %s  Endorsements %s  TV %s  Team salaries -%s", Config.Money(purse), Config.Money(sponsor),
+		Config.Money(endorse), Config.Money(tv), Config.Money(salary)))
+	for _, n in ipairs(sponsorNotes) do
+		table.insert(notes, n)
+	end
 
 	local m = profile.mental
 	if win then
@@ -658,9 +963,7 @@ function Career.ApplyResult(profile, res)
 		profile.tier = 9
 		profile.undisputedReigns += 1
 		table.insert(notes, "UNDISPUTED CHAMPION OF THE WORLD!")
-	elseif nBelts > 0 and profile.tier < 8 then
-		profile.tier = 8
-	elseif nBelts < 4 and profile.tier >= 9 and nBelts > 0 then
+	elseif nBelts > 0 and (profile.tier < 8 or (nBelts < 4 and profile.tier >= 9)) then
 		profile.tier = 8
 	elseif nBelts == 0 and profile.tier >= 8 then
 		profile.tier = 7
@@ -671,12 +974,16 @@ function Career.ApplyResult(profile, res)
 	local suspension = 21
 	if loss and isKO then
 		suspension = 45
-	elseif loss then
-		suspension = 28
-	elseif (res.kdAgainst or 0) > 0 then
+	elseif loss or (res.kdAgainst or 0) > 0 then
 		suspension = 28
 	end
 	for _, n in ipairs(Training.PassDays(profile, suspension)) do
+		table.insert(notes, n)
+	end
+	-- fight damage persists (CONTRACTS 8.3): what is left after the suspension heals over the next
+	-- days; head trauma accumulates and a bad concussion / broken nose becomes an injury
+	safe(Training.AddFaceDamage, profile, res.face, Config.FaceDamage.postFightCarry)
+	for _, n in ipairs(safe(Training.AddTrauma, profile, res) or {}) do
 		table.insert(notes, n)
 	end
 	table.insert(notes, string.format("%d days of recovery before your next camp.", suspension))
@@ -727,7 +1034,7 @@ end
 ------------------------------------------------------------------------
 -- Legacy
 ------------------------------------------------------------------------
-function Career.Legacy(profile)
+local function legacyParts(profile)
 	local r = profile.record
 	local parts = {
 		{ "Pro wins", r.w * 3 },
@@ -744,7 +1051,22 @@ function Career.Legacy(profile)
 	for _, p in ipairs(parts) do
 		score += p[2]
 	end
-	score = math.max(0, round(score))
+	return parts, math.max(0, round(score))
+end
+
+-- where a legacy score ranks among the all-time greats (1 = the GOAT)
+local function goatRank(score)
+	local rank = 1
+	for _, e in ipairs(Config.Legends) do
+		if e.score > score then
+			rank += 1
+		end
+	end
+	return rank
+end
+
+function Career.Legacy(profile)
+	local parts, score = legacyParts(profile)
 	local list = table.clone(Config.Legends)
 	table.insert(list, { name = profile.identity.name .. " (YOU)", score = score, you = true })
 	table.sort(list, function(a, b)
@@ -794,6 +1116,62 @@ local function r2(n)
 	return math.floor(n * 100 + 0.5) / 100
 end
 
+-- residual face damage for the Hub: { stage 0..4, label, days until it reads as fresh } or nil
+local function faceSummary(profile)
+	local f = safe(Training.FaceView, profile)
+	if type(f) ~= "table" then
+		return nil
+	end
+	local FD = Config.FaceDamage
+	local stage, def = Config.FaceDamageStage(f)
+	-- the slowest field at its daily heal rate decides when the face is clean again
+	local days = 0
+	for _, k in ipairs(FD.fields) do
+		local v, rule = tonumber(f[k]), FD.heal[k]
+		if v and v > FD.clearBelow and rule then
+			local d = 1
+			if rule.sub and rule.sub > 0 then
+				d = math.ceil((v - FD.clearBelow) / rule.sub)
+			elseif rule.mul and rule.mul > 0 and rule.mul < 1 then
+				d = math.ceil(math.log(FD.clearBelow / v) / math.log(rule.mul))
+			end
+			days = math.max(days, d)
+		end
+	end
+	return {
+		stage = stage, label = def and def.label or "", days = days, nose = f.nose == true,
+		cut = math.max(tonumber(f.cut) or 0, tonumber(f.cut2) or 0) > 0.05,
+		eyes = math.max(tonumber(f.leftEye) or 0, tonumber(f.rightEye) or 0),
+	}
+end
+
+-- derived gym facility tier (CONTRACTS section 9): never saved
+local function gymTierSummary(profile)
+	local ok, idx, def, frac, needs = pcall(Catalog.GymTier, profile.gym and profile.gym.levels, profile.owned, profile.tier)
+	if not ok or type(def) ~= "table" then
+		return { index = 1, id = "Beginner", name = "Beginner Gym", frac = 0, needs = {} }
+	end
+	local nextDef = Config.GymTiers[idx + 1]
+	return {
+		index = idx, id = def.id, name = def.name, desc = def.desc, growth = def.growth, frac = r2(frac or 0),
+		needs = needs or {}, nextName = nextDef and nextDef.name or nil,
+	}
+end
+
+local function sponsorSummary(profile)
+	local s = sponsorState(profile)
+	local deals = {}
+	for slot, d in pairs(s.deals) do
+		local def = Catalog.Sponsor(d.id)
+		if def then
+			local v = sponsorView(def)
+			v.fightsLeft, v.signedDay = d.fightsLeft, d.signedDay
+			deals[slot] = v
+		end
+	end
+	return { deals = deals, offers = Career.SponsorOffers(profile) }
+end
+
 function Career.Summary(profile, storeOk)
 	if not profile.created then
 		return { created = false, pastCareers = profile.pastCareers, storeOk = storeOk }
@@ -836,6 +1214,17 @@ function Career.Summary(profile, storeOk)
 	end
 	local style = Config.FindById(Config.Styles, profile.style)
 	local wi = Training.WeighIn(profile)
+	local physique = safe(Training.PhysiqueInfo, profile) or { id = "Balanced", name = Training.Physique(profile), desc = "" }
+	local sore = {}
+	for grp, v in pairs(type(c.sore) == "table" and c.sore or {}) do
+		v = tonumber(v)
+		if type(grp) == "string" and v and v == v and v > 0.01 then
+			sore[grp] = r2(math.clamp(v, 0, 1))
+		end
+	end
+	local _, lgScore = legacyParts(profile)
+	local trauma = tonumber(c.trauma) or 0
+	trauma = trauma == trauma and math.floor(math.clamp(trauma, 0, 100)) or 0
 	-- training records per activity: best / last session quality, session count, best numbers
 	local records = {}
 	if type(profile.records) == "table" then
@@ -859,16 +1248,26 @@ function Career.Summary(profile, storeOk)
 		owned = profile.owned, camp = camp, ranks = ranks, bestRank = best < 999 and best or nil, bestOrg = bestOrg,
 		history = hist, pastCareers = profile.pastCareers, final = profile.final,
 		className = Config.WeightClasses[profile.physical.weightClass].name,
-		body = body, physique = Training.Physique(profile), weight = r2(wi.weight), weightLimit = wi.limit, overWeight = r2(wi.over),
+		body = body, physique = Training.Physique(profile), physiqueId = physique.id, physiqueDesc = physique.desc,
+		physiquePinned = physique.pinned == true,
+		weight = r2(wi.weight), weightLimit = wi.limit, overWeight = r2(wi.over),
 		condition = {
 			energy = math.floor(c.energy), hydration = math.floor(c.hydration), nutrition = math.floor(c.nutrition),
 			fatigue = math.floor(c.fatigue), sleepQ = r2(c.sleepQ or 0.8), injuries = injuries,
 			buffs = c.buffs, flexible = c.flexible, water = r2(c.water or 0),
+			sore = sore, trauma = trauma, face = faceSummary(profile),
 		},
 		gym = { levels = profile.gym.levels, cond = gymCond },
+		gymTier = gymTierSummary(profile),
 		gear = { owned = profile.gear.owned, equipped = profile.gear.equipped, cond = gearCond },
 		coaches = profile.coaches, salary = Training.TeamSalary(profile), sessions = profile.sessions or 0,
 		records = records,
+		-- city & career immersion (Hub Life / Sponsors tabs, CityVisuals)
+		home = Career.HomeOf(profile), sponsors = sponsorSummary(profile),
+		legacy = { score = lgScore, hof = lgScore >= Config.HallOfFameScore, goatRank = goatRank(lgScore) },
+		settings = { wakeAt = type(profile.settings) == "table" and profile.settings.wakeAt or nil },
+		autographReady = profile.lastAutographDay ~= profile.day and (profile.popularity or 0) >= 3,
+		lastFightDay = tonumber(profile.lastFightDay),
 	}
 end
 

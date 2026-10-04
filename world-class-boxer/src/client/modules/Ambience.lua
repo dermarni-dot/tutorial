@@ -1025,6 +1025,8 @@ function Ambience.Start()
 		local cam = camPos()
 		updateFans(step, cam)
 		updateTickers(step, cam)
+		-- (at 30 Hz so treadmill strides and rope ticks keep their real cadence)
+		safe(updateMemberSounds, cam, os.clock())
 		if slowAcc >= 0.25 then
 			local slowStep = slowAcc
 			slowAcc = 0
@@ -1033,14 +1035,14 @@ function Ambience.Start()
 			updateNeons(cam)
 			safe(updateGrade, slowStep, cam)
 			safe(updateReverb, cam)
-			safe(updateMemberSounds, cam, now)
 			safe(updateRandomNoises, cam, now)
 			safe(updateChatter, cam, now)
 			safe(updateLookAt)
 			safe(updateDust, cam)
 		end
-		-- shafts follow the sun: on a time-of-day change, and every few seconds for the camera cull
-		if shaftsDirty or shaftAcc >= 3 then
+		-- shafts follow the sun: on a time-of-day change (at most 5x a second while ClientMain tweens
+		-- the clock), and every few seconds for the camera cull
+		if (shaftsDirty and shaftAcc >= 0.2) or shaftAcc >= 3 then
 			shaftsDirty = false
 			shaftAcc = 0
 			pcall(updateShafts, cam)

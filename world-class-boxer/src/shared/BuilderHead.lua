@@ -1,12 +1,15 @@
 -- BuilderHead: everything built on the head (server side; the Creator also calls SetDamage locally).
 -- * procedural face on the R15 head: sculpted planes (brow ridge, cheekbones, jaw angles, nasolabial
---   folds, philtrum, chin, lip fold), layered eyes (socket shading, tinted sclera, iris with limbal
---   ring and collarette, pupil, two catchlights, wet tear line, caruncle, lids with thickness and a
---   crease), full lips with a vermilion border, teeth + mouth interior (mouthguard at teeth depth),
---   ears with helix and lobe, 6 brow styles, heterochromia, asymmetry, undertone
--- * boxer wear and skin: cauliflower ear, bent nose, permanent fight scars (app.battle), wrinkles by
---   age, pore texture (an honest approximation: material + sparse dots), temple/forehead veins,
---   face fat (full cheeks, jowls) and weight-cut hollows, grime
+--   folds, philtrum, chin, lip fold), layered eyes (tinted sclera, iris with limbal ring and collarette,
+--   pupil, catchlight, lids with thickness, a wet lower lid and a crease on hooded / ageing lids,
+--   under-eye shadow), full lips with a vermilion border, teeth + mouth interior (mouthguard at teeth
+--   depth), ears with a helix rim, 6 brow styles, heterochromia, asymmetry, undertone
+-- * boxer wear and skin: cauliflower ear, bent nose, permanent fight scars (app.battle), a stitched
+--   surgical repair scar, acne (active spots when young, pitted scars on adult skin), wrinkles by age,
+--   pore texture (an honest approximation: material + sparse dots), temple/forehead veins, face fat
+--   (full cheeks, jowls) and weight-cut hollows, grime (own folder, refreshed by SetSweat)
+-- * part budget: A's share of Config.Detail partBudget (+60 / +10 / 0 over the old face, hair and beard);
+--   optional face details and hair decorations are drawn in priority order while it lasts
 -- * face rig the client animates (Motor6D "FaceJoint", tag FaceRig, attribute Role): brows, lids,
 --   lower lids, eyes (invisible EyeBall pivots), lips, mouth corners, mouth interior; BlinkLid parts
 -- * hair: every Looks.HairStyles id x 5 hair types (shrinkage, curl size, sheen, material), fades
@@ -193,6 +196,156 @@ local function rigOn(detail, role)
 	return detail == "medium" and (role == "EyeL" or role == "EyeR" or role == "BrowL" or role == "BrowR")
 end
 
+------------------------------------------------------------------------
+-- Part budget (CONTRACTS section 16 B: baseline = the pre-overhaul face + old hair + old beard)
+------------------------------------------------------------------------
+-- A's share of Config.Detail[d].partBudget (B owns the other half; medium / low are whole-character
+-- limits, so A keeps half of medium and nothing at low). Every head step records its parts over the
+-- baseline in its folder's attribute "Extra"; the face is built first and takes what it needs (capped
+-- by FACE_CAP), the hair gets the rest minus a beard reserve, the beard builds last into what is left.
+local A_BUDGET = { full = 60, medium = 10, low = 0 }
+local FACE_CAP = { full = 38, medium = 6, low = -2 }
+local BEARD_RESERVE = { full = 4, medium = 2, low = 0 }
+-- per-cut ceiling (section 16 A: hero ~60, NPC ~30 hair parts) even where the old hair had more
+local HAIR_MAX = { full = 60, medium = 30, low = 15 }
+
+local function countParts(folder)
+	local n = 0
+	if folder then
+		for _, d in ipairs(folder:GetDescendants()) do
+			if d:IsA("BasePart") then
+				n += 1
+			end
+		end
+	end
+	return n
+end
+
+-- the Extra a step recorded (nil-safe: a missing folder costs its default)
+local function extraOf(model, name, default)
+	local look = model:FindFirstChild("BoxerLook")
+	local f = look and look:FindFirstChild(name)
+	local v = f and f:GetAttribute("Extra")
+	return type(v) == "number" and v or default
+end
+
+-- part count of the pre-overhaul face for these sliders (it had no detail levels)
+local function oldFaceParts(face, opts)
+	local shape = face.shape or "Oval"
+	local jawW, cheek, cheekFat, chinDrop, browRidge = face.jawWidth or 0, face.cheek or 0, 0, 0, 0
+	if shape == "Square" then
+		jawW += 0.6
+	elseif shape == "Diamond" then
+		cheek += 0.7
+		jawW -= 0.5
+	elseif shape == "Round" then
+		cheekFat = 0.8
+		jawW += 0.3
+	elseif shape == "Long" then
+		chinDrop = 0.12
+		cheek -= 0.3
+	elseif shape == "Heart" then
+		browRidge = 0.6
+		jawW -= 0.4
+	end
+	-- ears, chin, 2 x (sclera, iris, pupil, glint, lid, brow), nose + tip, nostrils, lips + mouth line
+	local n = 22
+	n += (jawW > 0.1 and 1 or 0) + (chinDrop > 0 and 1 or 0) + (cheek > -0.5 and 2 or 0) + (cheekFat > 0 and 2 or 0)
+	n += (math.max(browRidge, (face.forehead or 0) * 0.6) > 0.2 and 1 or 0) + ((face.lashes or 0) > 0.15 and 2 or 0)
+	n += math.floor((face.freckles or 0) * 26) + math.floor(face.moles or 0) + math.floor(face.scars or 0)
+	n += math.floor((face.acne or 0) * 14) + ((face.marks or 0) > 0.05 and 1 or 0) + (opts.mouthguard and 1 or 0)
+	return n
+end
+
+-- the beard style beardBuild draws for this app (nil = none), whether it is a mere shadow, its growth and
+-- whether the style comes from growth alone (no style chosen); shared with the face (lips through a beard)
+local function beardStyle(app)
+	if app.gender == 2 then
+		return nil
+	end
+	local beard = type(app.beard) == "table" and app.beard or {}
+	local style = beard.style or "None"
+	if not table.find(Looks.BeardStyles, style) then
+		style = Looks.BeardStyleBase[style] or "None"
+	end
+	local g = clamp(tonumber(beard.growth) or 0, 0, 1)
+	if style == "None" then
+		if g < 0.2 then
+			return nil
+		elseif g < 0.8 then
+			return "Stubble", g < 0.45, g, true
+		end
+		return "Short Boxed", false, (g - 0.8) * 2, true
+	end
+	return style, false, g, false
+end
+
+-- part count of the pre-overhaul beard
+local function oldBeardParts(app)
+	if app.gender == 2 then
+		return 0
+	end
+	local beard = type(app.beard) == "table" and app.beard or {}
+	local style = beard.style or "None"
+	if style == "None" then
+		return clamp(tonumber(beard.growth) or 0, 0, 1) >= 0.45 and 1 or 0
+	end
+	return (style == "Stubble" or style == "Moustache") and 1 or (style == "Chin Strap" and 3 or 2)
+end
+
+-- everything the Face step reads from app.hair / app.beard / app.attire, for B's head cache key (Builder
+-- headSig) in place of the whole tables: the brow colour, whether a beard covers the lips and the
+-- mouthguard colour. Any other hair / beard / attire change never changes the face.
+function Head.FaceSigParts(app)
+	app = type(app) == "table" and app or {}
+	local style = beardStyle(app)
+	return {
+		hairColor = (type(app.hair) == "table" and app.hair.color) or false,
+		lipsCovered = style ~= nil and style ~= "Stubble",
+		mouthguard = (type(app.attire) == "table" and app.attire.mouthguard) or false,
+	}
+end
+
+-- road dirt on the face (CONTRACTS section 7: I sets the model attribute Grime after roadwork and clears
+-- it at the shower; an opts.grime given to the last face build wins). Its own folder keyed by level,
+-- detail and head, so Head.SetSweat - which B runs at the end of every Cosmetics, head-only rebuilds
+-- included - shows and clears it without a face rebuild (the face itself may be served from cache).
+local function faceGrime(model, app)
+	local head = part(model, "Head")
+	local look = model:FindFirstChild("BoxerLook")
+	if not (head and look) then
+		return
+	end
+	local faceF = look:FindFirstChild("Face")
+	local detail = (faceF and faceF:GetAttribute("Detail")) or model:GetAttribute("Detail") or "full"
+	local g = tonumber(faceF and faceF:GetAttribute("OptGrime")) or tonumber(model:GetAttribute("Grime")) or 0
+	g = math.floor(clamp(g, 0, 1) * 10 + 0.5) / 10
+	local old = look:FindFirstChild("FaceGrime")
+	if g <= 0.1 or detail ~= "full" then
+		if old then
+			old:Destroy()
+		end
+		return
+	end
+	local L = Head.FaceLayout(head, (app and app.face) or {})
+	local key = string.format("%.1f|%.3f|%.3f", g, head.Size.X, L.browY)
+	if old and old:GetAttribute("Key") == key then
+		local p = old:FindFirstChildWhichIsA("BasePart")
+		local w = p and p:FindFirstChildOfClass("WeldConstraint")
+		if w and w.Part0 == head then
+			return
+		end
+	end
+	local folder = getFolder(model, "FaceGrime")
+	folder:SetAttribute("Key", key)
+	local s, hcf = L.s, head.CFrame
+	local dirt = Color3.fromRGB(110, 90, 70)
+	mk(folder, head, "Grime", V3(0.26 * s.X, 0.1 * s.Y, 0.03 * s.Z), hcf * surfCF(L, -0.1 * s.X, L.browY + 0.08 * s.Y, 0.003), dirt, "Ellipsoid", SMOOTH, 0.88 - 0.22 * g)
+	if g > 0.5 then
+		mk(folder, head, "Grime", V3(0.16 * s.X, 0.12 * s.Y, 0.03 * s.Z), hcf * surfCF(L, 0.3 * s.X, -0.15 * s.Y, 0.003), dirt, "Ellipsoid", SMOOTH, 0.9 - 0.22 * g)
+	end
+end
+
 local function faceBuild(model, app, opts, build)
 	opts = opts or {}
 	app = app or {}
@@ -323,17 +476,40 @@ local function faceBuild(model, app, opts, build)
 	local wr = math.max(face.wrinkles or 0, clamp((age - 30) / 26, 0, 1) * 0.85)
 	local scarCount = type(battle.scars) == "table" and #battle.scars or 0
 	-- optional detail spends from two small budgets so a veteran, aged, pore-heavy face stays inside
-	-- the part budget: wear (scars, cauliflower, bent nose) first, then age / skin cosmetics
-	local budget = { wear = full and 8 or (detail == "medium" and 2 or 0), skin = full and 8 or (detail == "medium" and 2 or 0) }
+	-- the part budget: wear (scars, cauliflower, bent nose) first, then age / skin cosmetics. A spend
+	-- also never takes the face past FACE_CAP parts over the old face, leaving the hair its share.
+	local budget = { wear = full and 8 or (detail == "medium" and 2 or 0), skin = full and 8 or (detail == "medium" and 1 or 0) }
+	local oldParts = oldFaceParts(face, opts)
 	local function spend(kind, n)
-		if budget[kind] < n then
+		if budget[kind] < n or countParts(folder) + n - oldParts > FACE_CAP[detail] then
 			return false
 		end
 		budget[kind] -= n
 		return true
 	end
+	-- optional details are queued and drawn at the end in this order, when every fixed part exists and
+	-- the cap check above sees the real count (fn may spend() again for nested extras)
+	local queued = {}
+	local function opt(kind, n, fn)
+		queued[#queued + 1] = { kind, n, fn }
+	end
+	-- left / right halves of one detail are queued as a pair so a face is never shaded on one side only
+	local sides = {}
+	local function side2(key, kind, n, fn)
+		local entry = sides[key]
+		if not entry then
+			entry = {}
+			sides[key] = entry
+			opt(kind, n * 2, function()
+				for _, f in ipairs(entry) do
+					f()
+				end
+			end)
+		end
+		entry[#entry + 1] = fn
+	end
 
-	-- ears: shell + helix rim + lobe; cauliflower lumps fill the upper rim
+	-- ears: shell + helix rim; cauliflower lumps fill the upper rim
 	local earS = 1 + 0.2 * (face.earSize or 0)
 	for side = -1, 1, 2 do
 		local ecf = at(side * 0.5 * s.X, 0.02 * s.Y, 0.04 * s.Z) * ANG(0, side * rad(6 + 10 * cauli), 0)
@@ -341,16 +517,15 @@ local function faceBuild(model, app, opts, build)
 		if full then
 			add("EarHelix", V3(0.045 * s.X, 0.26 * s.Y * earS, 0.06 * s.Z * earS), ecf * CF(side * 0.03 * s.X, 0.015 * s.Y, 0.055 * s.Z * earS), darken(skin, 0.96), "Ellipsoid")
 		end
-		if full then
-			add("EarLobe", V3(0.05 * s.X, 0.065 * s.Y * earS, 0.06 * s.Z * earS), ecf * CF(side * 0.012 * s.X, -0.115 * s.Y * earS, -0.015 * s.Z), lerpColor(skin, under, 0.12), "Ellipsoid")
-		end
-		if cauli > 0.15 then
+		if cauli > 0.15 and not low then
 			local lumps = full and math.min(2, 1 + math.floor(cauli * 2)) or 1
-			for i = 1, (not low and spend("wear", lumps)) and lumps or 0 do
-				local sz = (0.05 + 0.045 * cauli) * s.X * (1 - 0.15 * (i - 1))
-				add("Cauliflower", V3(sz * 0.9, sz, sz), ecf * CF(side * 0.03 * s.X, (0.08 - 0.06 * (i - 1)) * s.Y * earS, (0.02 + 0.02 * i) * s.Z),
-					lerpColor(skin, Color3.fromRGB(150, 100, 100), 0.12 + 0.1 * cauli), "Ellipsoid")
-			end
+			side2("cauli", "wear", lumps, function()
+				for i = 1, lumps do
+					local sz = (0.05 + 0.045 * cauli) * s.X * (1 - 0.15 * (i - 1))
+					add("Cauliflower", V3(sz * 0.9, sz, sz), ecf * CF(side * 0.03 * s.X, (0.08 - 0.06 * (i - 1)) * s.Y * earS, (0.02 + 0.02 * i) * s.Z),
+						lerpColor(skin, Color3.fromRGB(150, 100, 100), 0.12 + 0.1 * cauli), "Ellipsoid")
+				end
+			end)
 		end
 	end
 	-- jaw (square / wide jaws stand out from the round head) and the jaw angles that make a jawline
@@ -358,7 +533,7 @@ local function faceBuild(model, app, opts, build)
 		local w = (0.82 + 0.2 * jawW) * s.X
 		add("Jaw", V3(w, 0.3 * s.Y, 0.86 * s.Z), at(0, -0.36 * s.Y, 0.02 * s.Z), skin, jawDef > 0.55 and "Block" or "Ellipsoid")
 	end
-	if not low then
+	if full then
 		local ja = (female and 0.75 or 1) * (0.8 + 0.4 * jawDef)
 		for side = -1, 1, 2 do
 			add("JawAngle", V3(0.16 * s.X * ja, 0.2 * s.Y, 0.3 * s.Z), at(side * (0.41 + 0.05 * math.max(jawW, -0.5)) * s.X, -0.32 * s.Y, 0.1 * s.Z) * ANG(0, 0, rad(side * 10)), skin, "Ellipsoid")
@@ -372,20 +547,27 @@ local function faceBuild(model, app, opts, build)
 	if chinDrop > 0 then -- long face: extend the lower face
 		add("LowerFace", V3(0.7 * s.X, chinDrop * 2 * s.Y, 0.7 * s.Z), at(0, -0.5 * s.Y, 0), skin, "Ellipsoid")
 	end
-	if (face.chinCleft or 0) > 0.15 and full and spend("skin", 1) then
-		local c = face.chinCleft
-		add("ChinCleft", V3(0.012 * s.X, (0.05 + 0.05 * c) * s.Y, 0.03 * s.Z), at(0, chinY + 0.005 * s.Y, L.front(0) * 0.9 - 0.062 * s.Z), darken(skin, 0.8), "Ellipsoid", SMOOTH, 0.75 - 0.35 * c)
+	if (face.chinCleft or 0) > 0.15 and full then
+		opt("skin", 1, function()
+			local c = face.chinCleft
+			add("ChinCleft", V3(0.012 * s.X, (0.05 + 0.05 * c) * s.Y, 0.03 * s.Z), at(0, chinY + 0.005 * s.Y, L.front(0) * 0.9 - 0.062 * s.Z), darken(skin, 0.8), "Ellipsoid", SMOOTH, 0.75 - 0.35 * c)
+		end)
 	end
-	if jowl > 0.05 and full and spend("skin", 2) then
-		for side = -1, 1, 2 do
-			add("Jowl", V3(0.2 * s.X, (0.14 + 0.06 * jowl) * s.Y, 0.24 * s.Z), at(side * 0.3 * s.X, -0.38 * s.Y, -0.24 * s.Z), skin, "Ellipsoid")
-		end
+	if jowl > 0.05 and full then
+		opt("skin", 2, function()
+			for side = -1, 1, 2 do
+				add("Jowl", V3(0.2 * s.X, (0.14 + 0.06 * jowl) * s.Y, 0.24 * s.Z), at(side * 0.3 * s.X, -0.38 * s.Y, -0.24 * s.Z), skin, "Ellipsoid")
+			end
+		end)
 	end
-	if jowl > 0.3 and not low and spend("skin", 1) then
-		add("DoubleChin", V3((0.42 + 0.12 * jowl) * s.X, (0.1 + 0.06 * jowl) * s.Y, 0.45 * s.Z), at(0, -0.5 * s.Y, -0.18 * s.Z), skin, "Ellipsoid")
+	if jowl > 0.3 and not low then
+		opt("skin", 1, function()
+			add("DoubleChin", V3((0.42 + 0.12 * jowl) * s.X, (0.1 + 0.06 * jowl) * s.Y, 0.45 * s.Z), at(0, -0.5 * s.Y, -0.18 * s.Z), skin, "Ellipsoid")
+		end)
 	end
-	-- cheekbones and cheeks (lean faces show more bone)
-	if cheek > -0.5 then
+	-- cheekbones and cheeks (lean faces show more bone); below full detail full cheeks replace the bone
+	local fullCheeks = cheekFat > 0.05 and hollow <= 0.1
+	if cheek > -0.5 and (full or not fullCheeks) then
 		local bone = 1 + 0.25 * hollow
 		for side = -1, 1, 2 do
 			local x = side * 0.3 * s.X
@@ -393,7 +575,7 @@ local function faceBuild(model, app, opts, build)
 				at(x, -0.02 * s.Y, L.front(x) + 0.035 - 0.025 * cheek - 0.008 * hollow), skin, "Ellipsoid")
 		end
 	end
-	if cheekFat > 0.05 and hollow <= 0.1 then
+	if fullCheeks then
 		for side = -1, 1, 2 do
 			local x = side * 0.33 * s.X
 			add("Cheek", V3(0.26 * s.X, 0.24 * s.Y, 0.16 * s.Z), at(x, -0.2 * s.Y, L.front(x) + 0.05 + 0.03 * (1 - math.min(cheekFat, 1))), skin, "Ellipsoid")
@@ -407,12 +589,15 @@ local function faceBuild(model, app, opts, build)
 	end
 	-- brow ridge: two halves that follow the forehead curve (scar tissue thickens it on veterans)
 	local ridge = math.max(browRidge, (face.forehead or 0) * 0.6, female and 0 or 0.25, math.min(scarCount, 3) * 0.15)
-	if not low then
+	if full then
 		for side = -1, 1, 2 do
 			local x = side * 0.16 * s.X
 			add("BrowRidge", V3((0.3 + 0.05 * ridge) * s.X, (0.05 + 0.03 * ridge) * s.Y, (0.035 + 0.025 * ridge) * s.Z),
 				on(x, L.browY + 0.012 * s.Y, -0.004 + 0.006 * ridge), skin, "Ellipsoid")
 		end
+	elseif detail == "medium" and math.max(browRidge, (face.forehead or 0) * 0.6) > 0.2 then
+		-- one bar across both brows (a heavy forehead / heart face reads from a distance)
+		add("BrowRidge", V3((0.62 + 0.12 * ridge) * s.X, 0.06 * s.Y, 0.06 * s.Z), on(0, L.browY + 0.012 * s.Y, 0.002), skin, "Ellipsoid")
 	end
 
 	-- eyes
@@ -428,7 +613,7 @@ local function faceBuild(model, app, opts, build)
 	local browColor = darken(hairColor, 0.88)
 	local bt = (0.028 + 0.02 * ((face.browThick or 0) + 1)) * s.Y * brow.thick
 	local lashT = 1 - (0.35 + 0.6 * clamp(face.lashes or 0, 0, 1))
-	local underEye = full and (wr > 0.3 or heavy > 0.6) and spend("skin", 2)
+	local underEye = full and (wr > 0.3 or heavy > 0.6)
 	for side = -1, 1, 2 do
 		local roleSide = side == -1 and "L" or "R"
 		local x = side * L.eyeX
@@ -442,9 +627,6 @@ local function faceBuild(model, app, opts, build)
 			return ecf * CF(dx, dy, dz)
 		end
 		local eyeColor = eyeColors[side]
-		if full then
-			add("Socket", V3(w * 1.55, h * 2.1, 0.03 * s.Z), e(0, h * 0.15, 0.006), darken(skin, 0.84), "Ellipsoid", SMOOTH, 0.6)
-		end
 		local sclera = add("Sclera", V3(w, h, 0.05 * s.Z), e(0, 0, -0.004), scleraColor, "Ellipsoid")
 		sclera:SetAttribute("BaseColor", scleraColor)
 		sclera:SetAttribute("Side", side)
@@ -466,11 +648,6 @@ local function faceBuild(model, app, opts, build)
 		end
 		mk(folder, holder, "Pupil", V3(iris * 0.46, math.min(iris * 0.46, h * 0.6), 0.02 * s.Z), e(0, 0, -0.032), Color3.fromRGB(8, 8, 10), "Ellipsoid")
 		add("Glint", V3(iris * 0.18, iris * 0.18, 0.01), at(x + iris * 0.15, y + iris * 0.15, z - 0.04), WHITE, "Ellipsoid")
-		if full then
-			add("Glint2", V3(iris * 0.09, iris * 0.09, 0.01), at(x - iris * 0.2, y - iris * 0.16, z - 0.039), WHITE, "Ellipsoid", SMOOTH, 0.35)
-			-- moist inner corner and the wet line along the lower lid
-			add("Caruncle", V3(0.022 * s.X, 0.03 * s.Y, 0.02 * s.Z), e(-side * w * 0.46, -h * 0.05, -0.018), lerpColor(Color3.fromRGB(214, 128, 128), skin, 0.3), "Ellipsoid")
-		end
 		-- upper lid: shapes the eye (hooded lids cover more of it); damage swelling hides it
 		local lidH = h * (0.32 + 0.22 * heavy)
 		local lid = rig("Lid" .. roleSide, side, "Lid", V3(w * 1.08, lidH, 0.045 * s.Z), e(0, h * (0.42 - 0.08 * heavy), -0.012), lidColor, "Ellipsoid")
@@ -483,11 +660,16 @@ local function faceBuild(model, app, opts, build)
 			lashes:SetAttribute("Side", side)
 		end
 		if full then
-			add("Crease", V3(w * 0.98, 0.008 * s.Y, 0.02 * s.Z), e(0, h * 0.42 + lidH * 0.52, -0.006), darken(skin, 0.74), "Ellipsoid", SMOOTH, 0.45 + 0.45 * heavy)
-			local lower = rig("LowerLid" .. roleSide, side, "LowerLid", V3(w * 1.02, h * 0.24, 0.04 * s.Z), e(0, -h * 0.5, -0.01), lerpColor(lidColor, skin, 0.5), "Ellipsoid")
+			-- the lid crease shows on hooded and ageing lids
+			if heavy > 0.3 or wr > 0.4 then
+				side2("crease", "skin", 1, function()
+					add("Crease", V3(w * 0.98, 0.008 * s.Y, 0.02 * s.Z), e(0, h * 0.42 + lidH * 0.52, -0.006), darken(skin, 0.74), "Ellipsoid", SMOOTH, 0.45 + 0.45 * heavy)
+				end)
+			end
+			-- lower lid with the wet rim (tear line) in its colour: one part, rigged for squints
+			local lower = rig("LowerLid" .. roleSide, side, "LowerLid", V3(w * 1.02, h * 0.24, 0.04 * s.Z), e(0, -h * 0.5, -0.01),
+				lerpColor(lerpColor(lidColor, skin, 0.5), Color3.fromRGB(226, 160, 158), 0.18), "Ellipsoid")
 			lower:SetAttribute("Side", side)
-			local tear = mk(folder, lower, "TearLine", V3(w * 0.78, 0.007 * s.Y, 0.012 * s.Z), e(0, -h * 0.38, -0.03), Color3.fromRGB(226, 160, 158), "Ellipsoid", SMOOTH, 0.2)
-			tear.Reflectance = 0.1
 		end
 		if not low then
 			-- the client shows this for a blink (never the Lid, which SetDamage hides)
@@ -495,7 +677,10 @@ local function faceBuild(model, app, opts, build)
 			blink:SetAttribute("Side", side)
 		end
 		if underEye then
-			add("UnderEye", V3(w * 1.1, h * 0.5, 0.03 * s.Z), e(0, -h * 0.9, 0.004), darken(skin, 0.82), "Ellipsoid", SMOOTH, 0.82 - 0.3 * wr)
+			-- under-eye shadow (also the socket depth the eye loses without a socket part)
+			side2("underEye", "skin", 1, function()
+				add("UnderEye", V3(w * 1.1, h * 0.5, 0.03 * s.Z), e(0, -h * 0.9, 0.004), darken(skin, 0.82), "Ellipsoid", SMOOTH, 0.82 - 0.3 * wr)
+			end)
 		end
 		-- eyebrow: inner head, body and tail; the body is the rigged part, the others are welded to it
 		local bx = side * L.eyeX * 1.02
@@ -524,19 +709,17 @@ local function faceBuild(model, app, opts, build)
 	local nose = add("Nose", V3(nW, L.noseLen, nB),
 		at(dev * 0.4, (L.noseTopY + L.noseBottomY) / 2, L.front(0) - nB / 2 + 0.012) * ANG(0, 0, rad(-7 * noseBreak * bend)), noseCol, "Wedge")
 	nose:SetAttribute("Base", true)
-	add("NoseTip", V3(nW * 0.9, nW * 0.7, nB * 0.7), at(dev, L.noseBottomY + nW * 0.25, L.front(0) - nB * 0.75), noseCol, "Ellipsoid")
+	-- at full the tip also spans the alar wings (one wide, flatter part instead of three)
+	add("NoseTip", V3(nW * (full and 1.12 or 0.9), nW * 0.7, nB * (full and 0.66 or 0.7)), at(dev, L.noseBottomY + nW * 0.25, L.front(0) - nB * 0.75), noseCol, "Ellipsoid")
 	if full then
-		for side = -1, 1, 2 do
-			add("NoseWing", V3(nW * 0.4, nW * 0.5, nB * 0.55), at(dev + side * nW * 0.47, L.noseBottomY + nW * 0.24, L.front(0) - nB * 0.42), darken(skin, 0.95), "Ellipsoid")
-		end
-	end
-	if not low then
 		for side = -1, 1, 2 do
 			add("Nostril", V3(0.03 * s.X, 0.02 * s.Y, 0.03 * s.Z), at(dev + side * nW * 0.28, L.noseBottomY + 0.006, L.front(0) - nB * 0.6), darken(skin, 0.45), "Ellipsoid")
 		end
 	end
-	if noseBreak > 0.3 and full and spend("wear", 1) then
-		add("NoseBump", V3(nW * 0.55, L.noseLen * 0.22, nB * 0.5), at(dev * 0.3, L.noseTopY - L.noseLen * 0.3, L.front(0) - nB * 0.62), noseCol, "Ellipsoid")
+	if noseBreak > 0.3 and full then
+		opt("wear", 1, function()
+			add("NoseBump", V3(nW * 0.55, L.noseLen * 0.22, nB * 0.5), at(dev * 0.3, L.noseTopY - L.noseLen * 0.3, L.front(0) - nB * 0.62), noseCol, "Ellipsoid")
+		end)
 	end
 	-- nasolabial folds: deepen with age, fat and a big smile line
 	if full then
@@ -573,6 +756,15 @@ local function faceBuild(model, app, opts, build)
 	lower:SetAttribute("BaseSize", lower.Size)
 	local mline = add("MouthLine", V3(mw * 0.85, 0.008 * s.Y, 0.03 * s.Z), m(0, -gap * 0.5, -0.022), darken(lipColor, 0.45), "Block", SMOOTH, guard and 0.7 or 0)
 	mline:SetAttribute("BaseSize", mline.Size)
+	-- a beard covering the mouth pushes the lips out so they show through it. The face does this itself
+	-- (the same rule beardBuild applies from BaseSize) so a face-only rebuild, e.g. after a body fat
+	-- change while the beard is cached, never buries the lips.
+	local bStyle = beardStyle(app)
+	if bStyle and bStyle ~= "Stubble" then
+		for _, p in ipairs({ upper, lower, mline }) do
+			p.Size = p:GetAttribute("BaseSize") + V3(0, 0, 0.03)
+		end
+	end
 	if full then
 		-- vermilion border: the pale rim that outlines the upper lip; a soft sheen on the lower lip
 		mk(folder, upper, "LipBorder", V3(mw * 1.02, 0.01 * s.Y, 0.03 * s.Z), m(0, upperH * 1.02, -0.02), lerpColor(skin, WHITE, 0.16), "Ellipsoid", SMOOTH, 0.45)
@@ -586,9 +778,13 @@ local function faceBuild(model, app, opts, build)
 		local py0 = L.noseBottomY - 0.004 * s.Y
 		local py1 = L.mouthY + upperH * 1.05
 		if py0 > py1 then
-			add("Philtrum", V3(0.055 * s.X, py0 - py1, 0.02 * s.Z), at(dev * 0.5, (py0 + py1) / 2, mz - 0.004), darken(skin, 0.88), "Ellipsoid", SMOOTH, 0.6)
+			opt("skin", 1, function()
+				add("Philtrum", V3(0.055 * s.X, py0 - py1, 0.02 * s.Z), at(dev * 0.5, (py0 + py1) / 2, mz - 0.004), darken(skin, 0.88), "Ellipsoid", SMOOTH, 0.6)
+			end)
 		end
-		line("LipFold", -mw * 0.28, L.mouthY - lowerH * 1.2 - gap, mw * 0.28, L.mouthY - lowerH * 1.2 - gap, 0.012 * s.Y, darken(skin, 0.8), 0.6, 0.002)
+		opt("skin", 1, function()
+			line("LipFold", -mw * 0.28, L.mouthY - lowerH * 1.2 - gap, mw * 0.28, L.mouthY - lowerH * 1.2 - gap, 0.012 * s.Y, darken(skin, 0.8), 0.6, 0.002)
+		end)
 	end
 
 	-- skin details (deterministic from the face seed; draw order is load-bearing, keep it)
@@ -615,8 +811,16 @@ local function faceBuild(model, app, opts, build)
 		local a = math.rad(rng:NextNumber(-40, 40))
 		add("Scar", V3(0.016, rng:NextNumber(0.1, 0.2) * s.Y, 0.012), at(x, y, L.front(x) - 0.006) * ANG(0, 0, a), lerpColor(skin, Color3.fromRGB(235, 190, 190), 0.55), "Block")
 	end
-	for _ = 1, math.floor((face.acne or 0) * 14) do
-		spot("Acne", V3(0.024, 0.024, 0.012), lerpColor(skin, Color3.fromRGB(190, 60, 60), 0.5), 0.05, 0.36, -0.32, 0.32, nil, low)
+	-- acne: inflamed spots on a young face; from the mid twenties (or with heavy acne) what is left are
+	-- pitted scars, slightly darker shallow dents rather than red bumps. Same rng draws either way. An
+	-- unknown age (Creator preview) keeps the spots the player is choosing.
+	local acneScars = (tonumber(opts.age) or 0) >= 25 or (face.acne or 0) > 0.6
+	for i = 1, math.floor((face.acne or 0) * 14) do
+		if acneScars and i % 3 ~= 0 then
+			spot("AcneScar", V3(0.03, 0.026, 0.008), darken(skin, 0.86), 0.05, 0.36, -0.32, 0.32, 0.55, low)
+		else
+			spot("Acne", V3(0.024, 0.024, 0.012), lerpColor(skin, Color3.fromRGB(190, 60, 60), 0.5), 0.05, 0.36, -0.32, 0.32, nil, low)
+		end
 	end
 	if (face.marks or 0) > 0.05 then
 		local sz = 0.08 + 0.14 * face.marks
@@ -629,82 +833,107 @@ local function faceBuild(model, app, opts, build)
 	-- permanent fight scars where the cuts happened
 	if full and type(battle.scars) == "table" then
 		for i, sc in ipairs(battle.scars) do
-			if i > 6 or not spend("wear", 1) then
-				break
-			end
-			if type(sc) == "table" then
-				local side = (tonumber(sc.side) or 1) < 0 and -1 or 1
-				local t = clamp(tonumber(sc.at) or 0.5, 0, 1)
-				local size = clamp(tonumber(sc.size) or 0.5, 0, 1)
-				local len = (0.06 + 0.1 * size) * s.Y
-				local kind = sc.kind
-				local x, y, ang = side * L.eyeX * (0.55 + 0.7 * t), L.browY + 0.01 * s.Y, side * rad(70)
-				if kind == "cheek" then
-					x, y, ang = side * (0.2 + 0.12 * t) * s.X, -0.06 * s.Y, side * rad(20)
-				elseif kind == "nose" then
-					x, y, ang = side * 0.015 * s.X, L.noseTopY - t * L.noseLen * 0.55, rad(80)
-				elseif kind == "lip" then
-					x, y, ang = side * mw * 0.3 * t, L.mouthY + upperH * 1.3, rad(95)
-				elseif kind == "chin" then
-					x, y, ang = side * 0.09 * t * s.X, chinY + 0.02 * s.Y, rad(15 * side)
-				end
-				local dx, dy = math.cos(ang) * len * 0.5, math.sin(ang) * len * 0.5
-				line("BattleScar", x - dx, y - dy, x + dx, y + dy, (0.012 + 0.01 * size) * s.X, scarColor, 0.1, 0.004)
-				if (kind == "brow" or kind == nil) and spend("wear", 1) then
-					-- the hair never grows back through a brow scar
-					local bp
-					for _, c in ipairs(folder:GetChildren()) do
-						if c.Name == "Brow" and c:GetAttribute("Side") == side then
-							bp = c
-						end
+			if i <= 6 and type(sc) == "table" then
+				opt("wear", 1, function()
+					local side = (tonumber(sc.side) or 1) < 0 and -1 or 1
+					local t = clamp(tonumber(sc.at) or 0.5, 0, 1)
+					local size = clamp(tonumber(sc.size) or 0.5, 0, 1)
+					local len = (0.06 + 0.1 * size) * s.Y
+					local kind = sc.kind
+					local x, y, ang = side * L.eyeX * (0.55 + 0.7 * t), L.browY + 0.01 * s.Y, side * rad(70)
+					if kind == "cheek" then
+						x, y, ang = side * (0.2 + 0.12 * t) * s.X, -0.06 * s.Y, side * rad(20)
+					elseif kind == "nose" then
+						x, y, ang = side * 0.015 * s.X, L.noseTopY - t * L.noseLen * 0.55, rad(80)
+					elseif kind == "lip" then
+						x, y, ang = side * mw * 0.3 * t, L.mouthY + upperH * 1.3, rad(95)
+					elseif kind == "chin" then
+						x, y, ang = side * 0.09 * t * s.X, chinY + 0.02 * s.Y, rad(15 * side)
 					end
-					mk(folder, bp or head, "BrowGap", V3(0.018 * s.X, bt * 1.4, 0.04 * s.Z), hcf * CF(x, L.browY + (L.eyeYS[side] - L.eyeY), L.front(x) - 0.014), skin, "Block")
-				end
+					local dx, dy = math.cos(ang) * len * 0.5, math.sin(ang) * len * 0.5
+					line("BattleScar", x - dx, y - dy, x + dx, y + dy, (0.012 + 0.01 * size) * s.X, scarColor, 0.1, 0.004)
+					if (kind == "brow" or kind == nil) and spend("wear", 1) then
+						-- the hair never grows back through a brow scar
+						local bp
+						for _, c in ipairs(folder:GetChildren()) do
+							if c.Name == "Brow" and c:GetAttribute("Side") == side then
+								bp = c
+							end
+						end
+						mk(folder, bp or head, "BrowGap", V3(0.018 * s.X, bt * 1.4, 0.04 * s.Z), hcf * CF(x, L.browY + (L.eyeYS[side] - L.eyeY), L.front(x) - 0.014), skin, "Block")
+					end
+				end)
 			end
 		end
 	end
+	-- a surgically repaired cut: a straight, pale scar over the brow with the cross-marks the stitches
+	-- left ("railroad tracks"); for a chosen scarred face or a boxer who has been cut more than once
+	if full and ((face.scars or 0) >= 1 or scarCount >= 2) then
+		local r3 = Random.new((face.seed or 7) + 204)
+		local side = r3:NextNumber() < 0.5 and -1 or 1
+		local x0 = side * L.eyeX * r3:NextNumber(0.45, 0.7)
+		local x1 = side * L.eyeX * r3:NextNumber(1.25, 1.5)
+		local y0 = L.browY + r3:NextNumber(0.03, 0.05) * s.Y
+		local y1 = y0 + r3:NextNumber(-0.03, 0.02) * s.Y
+		opt("skin", 4, function()
+			line("SurgicalScar", x0, y0, x1, y1, 0.011 * s.X, scarColor, 0.05, 0.004)
+			local dx, dy = x1 - x0, y1 - y0
+			local len = math.sqrt(dx * dx + dy * dy)
+			local nx, ny = -dy / len * 0.016 * s.Y, dx / len * 0.016 * s.Y
+			for k = 1, 3 do
+				local px, py = x0 + dx * k / 4, y0 + dy * k / 4
+				line("Suture", px - nx, py - ny, px + nx, py + ny, 0.006 * s.X, lerpColor(scarColor, WHITE, 0.15), 0.15, 0.005)
+			end
+		end)
+	end
 	-- wrinkles with age (forehead lines, crow's feet)
-	if D.wrinkles and full and wr > 0.25 and spend("skin", 2) then
-		local lines = (wr > 0.75 and spend("skin", 2)) and 2 or 1
-		for i = 1, lines do
-			local yy = L.browY + (0.08 + 0.05 * i) * s.Y
-			local wob = r2:NextNumber(-0.01, 0.01) * s.Y
-			for side = -1, 1, 2 do
-				line("ForeheadLine", side * 0.01 * s.X, yy + wob, side * (0.22 - 0.03 * i) * s.X, yy - 0.012 * s.Y, 0.01 * s.Y, darken(skin, 0.8), 0.86 - 0.3 * wr, 0.001)
+	if D.wrinkles and full and wr > 0.25 then
+		opt("skin", 2, function()
+			local lines = (wr > 0.75 and spend("skin", 2)) and 2 or 1
+			for i = 1, lines do
+				local yy = L.browY + (0.08 + 0.05 * i) * s.Y
+				local wob = r2:NextNumber(-0.01, 0.01) * s.Y
+				for side = -1, 1, 2 do
+					line("ForeheadLine", side * 0.01 * s.X, yy + wob, side * (0.22 - 0.03 * i) * s.X, yy - 0.012 * s.Y, 0.01 * s.Y, darken(skin, 0.8), 0.86 - 0.3 * wr, 0.001)
+				end
 			end
-		end
-		if wr > 0.35 and spend("skin", 2) then
-			for side = -1, 1, 2 do
-				local x0 = side * (L.eyeX + 0.1 * s.X)
-				line("CrowFeet", x0, L.eyeY + 0.01 * s.Y, x0 + side * 0.06 * s.X, L.eyeY - 0.015 * s.Y + r2:NextNumber(-0.01, 0.01) * s.Y, 0.008 * s.Y, darken(skin, 0.8), 0.86 - 0.3 * wr, 0.001)
+			if wr > 0.35 and spend("skin", 2) then
+				for side = -1, 1, 2 do
+					local x0 = side * (L.eyeX + 0.1 * s.X)
+					line("CrowFeet", x0, L.eyeY + 0.01 * s.Y, x0 + side * 0.06 * s.X, L.eyeY - 0.015 * s.Y + r2:NextNumber(-0.01, 0.01) * s.Y, 0.008 * s.Y, darken(skin, 0.8), 0.86 - 0.3 * wr, 0.001)
+				end
 			end
-		end
+		end)
 	end
 	-- pores: textures are not possible here, so a pore-heavy skin gets a grainy material (above)
 	-- plus a few sparse darker dots on the nose and cheeks at full detail
 	if full and (face.pores or 0) > 0.3 then
-		local n = math.min(5, math.floor((face.pores - 0.3) / 0.7 * 5 + 0.5))
-		for _ = 1, n do
-			if not spend("skin", 1) then
-				break
+		opt("skin", 0, function()
+			local n = math.min(5, math.floor((face.pores - 0.3) / 0.7 * 5 + 0.5))
+			for _ = 1, n do
+				if not spend("skin", 1) then
+					break
+				end
+				local x = r2:NextNumber(-0.28, 0.28) * s.X
+				local y = r2:NextNumber(-0.14, 0.02) * s.Y
+				add("Pore", V3(0.014, 0.014, 0.008), on(x, y, 0.002), darken(skin, 0.8), "Ellipsoid", SMOOTH, 0.6)
 			end
-			local x = r2:NextNumber(-0.28, 0.28) * s.X
-			local y = r2:NextNumber(-0.14, 0.02) * s.Y
-			add("Pore", V3(0.014, 0.014, 0.008), on(x, y, 0.002), darken(skin, 0.8), "Ellipsoid", SMOOTH, 0.6)
-		end
+		end)
 	end
 	-- a living flush on the cheeks (reads on light and mid skin tones)
-	if full and skinL > 0.35 and wr < 0.3 and spend("skin", 2) then
-		for side = -1, 1, 2 do
-			add("Blush", V3(0.2 * s.X, 0.12 * s.Y, 0.03 * s.Z), on(side * 0.27 * s.X, -0.06 * s.Y, 0.002), under, "Ellipsoid", SMOOTH, 0.9 - (female and 0.04 or 0))
-		end
+	if full and skinL > 0.35 and wr < 0.3 then
+		opt("skin", 2, function()
+			for side = -1, 1, 2 do
+				add("Blush", V3(0.2 * s.X, 0.12 * s.Y, 0.03 * s.Z), on(side * 0.27 * s.X, -0.06 * s.Y, 0.002), under, "Ellipsoid", SMOOTH, 0.9 - (female and 0.04 or 0))
+			end
+		end)
 	end
 	-- veins the client reveals during effort / anger / heavy sweat; leaner faces show them more
 	if full then
 		local veinColor = lerpColor(darken(skin, 0.86), Color3.fromRGB(70, 92, 140), 0.18)
 		local vis = clamp(0.62 - 0.25 * clamp((FB.defZero - fat) / (FB.defZero - FB.defFull), 0, 1), 0.3, 0.7)
 		-- one temple (seeded side) and the classic diagonal forehead vein on the other
-		local vs = (r2:NextNumber() < 0.5) and -1 or 1
+		local vs = (Random.new((face.seed or 7) + 203):NextNumber() < 0.5) and -1 or 1
 		local veins = {
 			line("TempleVein", vs * 0.36 * s.X, L.browY + 0.02 * s.Y, vs * 0.33 * s.X, L.browY + 0.14 * s.Y, 0.014 * s.X, veinColor, 1, 0.006),
 			line("ForeheadVein", -vs * 0.07 * s.X, L.browY + 0.05 * s.Y, -vs * 0.1 * s.X, L.browY + 0.19 * s.Y, 0.014 * s.X, veinColor, 1, 0.006),
@@ -713,24 +942,25 @@ local function faceBuild(model, app, opts, build)
 			v:SetAttribute("BaseTransparency", vis)
 		end
 	end
-	-- dirt from roadwork / floor drills
-	local grime = clamp(tonumber(opts.grime) or tonumber(model:GetAttribute("Grime")) or 0, 0, 1)
-	local dirt = Color3.fromRGB(110, 90, 70)
-	if grime > 0.1 and full then
-		add("Grime", V3(0.26 * s.X, 0.1 * s.Y, 0.03 * s.Z), on(-0.1 * s.X, L.browY + 0.08 * s.Y, 0.003), dirt, "Ellipsoid", SMOOTH, 0.88 - 0.22 * grime)
-	end
-	if grime > 0.5 and full then
-		add("Grime", V3(0.16 * s.X, 0.12 * s.Y, 0.03 * s.Z), on(0.3 * s.X, -0.15 * s.Y, 0.003), dirt, "Ellipsoid", SMOOTH, 0.9 - 0.22 * grime)
-	end
-	-- mouthguard sits at teeth depth, showing between the parted lips (bloodied after a split lip)
+	-- mouthguard sits at teeth depth, showing between the parted lips. Head.SetDamage tints it after a
+	-- split lip (from BaseColor), so in-fight damage shows without a face rebuild.
 	if guard then
 		local mg = Looks.Color(app.attire and app.attire.mouthguard, Color3.fromRGB(40, 80, 200))
-		local dmg = type(opts.damage) == "table" and opts.damage or nil
-		if dmg and (tonumber(dmg.lip) or 0) > 0.6 then
-			mg = lerpColor(mg, Color3.fromRGB(140, 10, 16), 0.3)
-		end
-		add("Mouthguard", V3(mw * 0.92, (0.05 + 0.01 * lt) * s.Y, 0.03 * s.Z), m(0, -gap * 0.5, -0.02), mg, "Ellipsoid")
+		local mgPart = add("Mouthguard", V3(mw * 0.92, (0.05 + 0.01 * lt) * s.Y, 0.03 * s.Z), m(0, -gap * 0.5, -0.02), mg, "Ellipsoid")
+		mgPart:SetAttribute("BaseColor", mg)
 	end
+
+	-- optional details, in priority order, while the budget lasts
+	for _, q in ipairs(queued) do
+		if spend(q[1], q[2]) then
+			q[3]()
+		end
+	end
+	-- parts over the old face (the hair and beard steps read this to share A's budget)
+	folder:SetAttribute("Extra", countParts(folder) - oldParts)
+	-- grime lives in its own folder (Head.SetSweat refreshes it); a grime opt rides on the face folder
+	folder:SetAttribute("OptGrime", tonumber(opts.grime))
+	faceGrime(model, app)
 end
 
 ------------------------------------------------------------------------
@@ -760,6 +990,61 @@ local SHORT = {
 	["Buzz Cut"] = 0.035, ["Crew Cut"] = 0.06, Fade = 0.08, ["Low Fade"] = 0.08, ["Mid Fade"] = 0.08, ["High Fade"] = 0.09,
 	["Caesar Cut"] = 0.06, ["Modern Athlete"] = 0.08, ["Taper Fade"] = 0.08, ["Textured Crop"] = 0.07, ["360 Waves"] = 0.03,
 }
+
+-- lower bound on the part count of the pre-overhaul hair (the CONTRACTS 16 B budget baseline), from
+-- the old builder's own counts; a style it did not have counts as its Looks.HairStyleBase style
+local OLD_SHORT = {
+	["Buzz Cut"] = 1, ["Crew Cut"] = 2, Fade = 2, ["Low Fade"] = 2, ["Mid Fade"] = 2, ["High Fade"] = 2,
+	["Caesar Cut"] = 2, ["Modern Athlete"] = 9,
+}
+local function oldHairParts(hair, style)
+	style = Looks.HairStyleBase[style] or style
+	local d = clamp(tonumber(hair.density) or 0.7, 0, 1)
+	local L = clamp((tonumber(hair.length) or 0.5) + (tonumber(hair.growth) or 0) * 0.6, 0, 1.5)
+	local htype = hair.type or "Straight"
+	local floor = math.floor
+	-- the old top texture: curl bumps on curly types, four wave bands on wavy hair
+	local function tex(count)
+		return CURLY[htype] and floor(count * (0.5 + d)) or (htype == "Wavy" and 4 or 0)
+	end
+	if style == "Bald" then
+		return 0
+	elseif OLD_SHORT[style] then
+		return OLD_SHORT[style] + tex(18)
+	elseif style == "Afro" then
+		return 2 + floor(floor(34 * (0.5 + d)) * 0.94) -- a few curls were skipped in front of the face
+	elseif style == "High Top" then
+		return 2
+	elseif style == "Mohawk" then
+		return 7
+	elseif style == "Slick Back" then
+		return 6 + (L > 0.6 and 2 or 0)
+	elseif style == "Undercut" then
+		return 7 + tex(10)
+	elseif style == "Messy Hair" then
+		return 1 + floor(10 + d * 10)
+	elseif style == "Cornrows" then
+		local rows = 5 + floor(d * 3)
+		return 1 + rows * 4 + (L > 0.45 and floor(rows / 2) * 2 or 0)
+	elseif style == "Dreadlocks" or style == "Twists" or style == "Braids" then
+		local n = floor(8 + d * 12)
+		local segs = style == "Twists" and 1 or (L > 0.7 and 3 or 2)
+		return 1 + floor(n * 0.75) * segs + floor(n / 2) * 2
+	elseif style == "Short Dreads" then
+		return 47 + floor(23 * d)
+	elseif style == "Short Curly" then
+		return 1 + floor(28 * (0.6 + d))
+	elseif style == "Long Curly" then
+		return 2 + floor(26 * (0.6 + d)) + floor(6 + d * 6) * (L > 0.6 and 3 or 2)
+	elseif style == "Long Hair" then
+		return 2 + 3 * (L > 0.75 and 3 or 2) + tex(12)
+	elseif style == "Wolf Cut" then
+		return 19 + tex(12)
+	elseif style == "Ponytail" then
+		return 3 + (L > 0.6 and 4 or 3)
+	end
+	return 1 + tex(14)
+end
 
 local function hairPalette(hair)
 	local base = Looks.Color(hair.color, Color3.fromRGB(25, 20, 18))
@@ -797,6 +1082,23 @@ end
 
 local function hpart(H, name, size, localCF, color, shape, material, transparency, anchor)
 	return mk(H.folder, anchor or H.head, name, size, H.hcf * localCF, color, shape or "Ellipsoid", material or H.mat, transparency)
+end
+
+-- a decoration part (curl, tuft, wave band...) queued until the cut's structure exists; hairBuild then
+-- draws as many as the part budget leaves room for, in queue order. The material is resolved now
+-- (styles swap H.mat around their curl clusters).
+local function later(H, name, size, localCF, color, shape, material, transparency, anchor)
+	local mat = material or H.mat
+	H.deco[#H.deco + 1] = function()
+		hpart(H, name, size, localCF, color, shape, mat, transparency, anchor)
+	end
+end
+
+-- parts the cut may still add before reaching its cap (structural choices that scale use this); one
+-- part stays reserved for the strand anchor until it exists (strands themselves cost no parts)
+local function room(H, reserve)
+	local anchor = (H.anchor or H.maxStrands <= 0) and 0 or 1
+	return H.cap - countParts(H.folder) - (reserve or 0) - anchor
 end
 
 -- invisible part that carries every strand attachment (never parented to the Head: getFolder's
@@ -1012,7 +1314,7 @@ local function bumps(H, count, radius, yMin, seed, anchor)
 		end
 		local y = 0.18 * s.Y + yN * 0.42 * s.Y
 		local r = radius * rng:NextNumber(0.8, 1.25)
-		hpart(H, "Curl", V3(r, r, r), CF(x, y, z), H.colorFn(i, yN, x), "Ball", H.mat, nil, anchor)
+		later(H, "Curl", V3(r, r, r), CF(x, y, z), H.colorFn(i, yN, x), "Ball", H.mat, nil, anchor)
 	end
 end
 
@@ -1066,8 +1368,12 @@ local function hairBuild(model, app, opts)
 		density = hair.density or 0.7, thick = hair.thickness or 0.5,
 		seed = app.face and app.face.seed or 7, fore = app.face and app.face.forehead or 0,
 		recede = hair.hairline == "Receding" and 1 or 0,
-		strands = 0, maxStrands = D.strands or 0, skin = skinOf(app),
+		strands = 0, maxStrands = D.strands or 0, skin = skinOf(app), deco = {},
 	}
+	-- part cap: the old hair's count plus what is left of A's budget after the face (already built)
+	-- and a reserve for the beard (built after the hair)
+	local faceExtra = extraOf(model, "Face", FACE_CAP[detail])
+	H.cap = math.min(HAIR_MAX[detail], oldHairParts(hair, style) + A_BUDGET[detail] - faceExtra - BEARD_RESERVE[detail])
 	H.base = H.colorFn(1, 0, 0)
 	H.Lay = Head.FaceLayout(head, app.face or {})
 	H.hlY = (0.37 + 0.03 * H.fore + 0.06 * H.recede) * s.Y
@@ -1110,7 +1416,8 @@ local function hairBuild(model, app, opts)
 		local size = V3(s.X * (0.98 + t), s.Y * (0.66 + t - level * 0.1), s.Z * (0.96 + t))
 		add("HairTop", size, CF(c), base, "Ellipsoid", mat)
 		setShell(c, size)
-		local bands = lod(H, 3, 2, 1)
+		-- medium keeps the old two-tone cut (top + sides): the bands only read up close
+		local bands = lod(H, 3, 1, 1)
 		for i = 1, bands do
 			local f = bands == 1 and 1 or (i - 1) / (bands - 1)
 			local shade = k * (0.3 + 0.7 * f)
@@ -1126,7 +1433,7 @@ local function hairBuild(model, app, opts)
 			bumps(H, math.min(math.floor(count * (0.5 + density)), lod(H, 24, 8, 4)), r * s.X * (0.8 + 0.4 * thick), 0.25, H.seed + 3, anchor)
 		elseif htype == "Wavy" and H.detail ~= "low" then
 			for i = 1, 4 do
-				add("Wave", V3(s.X * 0.9, 0.025 * s.Y, 0.12 * s.Z), at(0, (0.3 + i * 0.045) * s.Y, (-0.35 + i * 0.16) * s.Z) * ANG(math.rad(-20 + i * 10), 0, 0), darken(base, 0.85), "Ellipsoid", mat)
+				later(H, "Wave", V3(s.X * 0.9, 0.025 * s.Y, 0.12 * s.Z), at(0, (0.3 + i * 0.045) * s.Y, (-0.35 + i * 0.16) * s.Z) * ANG(math.rad(-20 + i * 10), 0, 0), darken(base, 0.85), "Ellipsoid", mat)
 			end
 		end
 	end
@@ -1139,6 +1446,9 @@ local function hairBuild(model, app, opts)
 		local sx = s.X
 		if frontTransparency ~= false then
 			local segs = lod(H, 4, 2, 1)
+			if segs > 1 and room(H) < 2 * segs then
+				segs = 1 -- a tight budget: one strip still marks the hairline
+			end
 			local pts = {}
 			for i = 0, segs do
 				local x = (-0.34 + 0.68 * i / segs) * sx
@@ -1149,11 +1459,11 @@ local function hairBuild(model, app, opts)
 		end
 		if kind == "Widow's Peak" then
 			add("WidowsPeak", V3(0.08 * sx, 0.08 * sx, 0.03 * s.Z), surfCF(Lay, 0, hlY - 0.02 * s.Y, 0.008) * ANG(0, 0, math.rad(45)), base, "Block", mat)
-		elseif kind == "Straight" and H.detail ~= "low" then
+		elseif kind == "Straight" and H.detail ~= "low" and room(H) >= 2 then
 			surfacePath(H.folder, head, head, Lay, "HairlineEdge", { { -0.28 * sx, hlY - 0.005 * s.Y }, { 0, hlY - 0.012 * s.Y }, { 0.28 * sx, hlY - 0.005 * s.Y } }, 0.045 * s.Y, 0.03 * s.Z, base, 0, 0.01, mat)
 		end
 		-- the line-up: barber-sharp edges at the hairline, temple corners and sideburns (gone in ~2 weeks)
-		if (kind == "Line-Up" or (shaved and kind == "Straight")) and growth < 0.35 and H.detail == "full" then
+		if (kind == "Line-Up" or (shaved and kind == "Straight")) and growth < 0.35 and H.detail == "full" and room(H) >= 8 then
 			local edge = lerpColor(darken(base, 0.7), base, growth * 2)
 			local y0 = hlY - 0.015 * s.Y
 			for side = -1, 1, 2 do
@@ -1165,7 +1475,7 @@ local function hairBuild(model, app, opts)
 		end
 		-- a part: a clean shaved line on short cuts, the scalp showing through on longer hair
 		local p = hair.part or "None"
-		if p ~= "None" and H.capC and H.detail == "full" then
+		if p ~= "None" and H.capC and H.detail == "full" and room(H) >= 2 then
 			local f = p == "Left" and -0.32 or (p == "Right" and 0.32 or 0)
 			local col = lerpColor(base, skin, shaved and 0.75 or 0.45)
 			pathLine(H, "HairPart", { hairlinePoint(H, f * 0.5 * sx, 0.016), combPoint(H, f, -0.45, 0.005), combPoint(H, f * 0.95, 0.1, 0.005) },
@@ -1174,9 +1484,9 @@ local function hairBuild(model, app, opts)
 	end
 	-- growth stages: hair creeps down the nape and over the ears as a cut grows out
 	local function grownOut()
-		if growth > 0.6 and H.detail ~= "low" then
+		if growth > 0.6 and H.detail ~= "low" and room(H) >= 1 then
 			add("Nape", V3(0.78 * s.X, (0.16 + 0.12 * grow) * s.Y, 0.3 * s.Z), at(0, -0.12 * s.Y, 0.42 * s.Z), lerpColor(base, skin, 0.15), "Ellipsoid", mat)
-			if growth > 0.9 then
+			if growth > 0.9 and room(H) >= 2 then
 				for side = -1, 1, 2 do
 					add("EarTuft", V3(0.08 * s.X, 0.12 * s.Y, 0.18 * s.Z), at(side * 0.5 * s.X, 0.16 * s.Y, 0.08 * s.Z), base, "Ellipsoid", mat)
 				end
@@ -1202,10 +1512,12 @@ local function hairBuild(model, app, opts)
 		elseif style == "Taper Fade" then
 			-- the fade only tapers at the sideburns and the nape
 			fadeCut(t, 0.15, 0.25)
-			if H.detail ~= "low" then
+			if H.detail ~= "low" and room(H, lod(H, 5, 3, 2)) >= 1 then
 				add("NapeTaper", V3(0.8 * s.X, 0.22 * s.Y, 0.3 * s.Z), at(0, -0.08 * s.Y, 0.42 * s.Z), lerpColor(base, skin, 0.7 * (1 - 0.8 * grow)), "Ellipsoid", SMOOTH)
-				for side = -1, 1, 2 do
-					add("SideburnTaper", V3(0.05 * s.X, 0.2 * s.Y, 0.12 * s.Z), at(side * 0.5 * s.X, 0.02 * s.Y, -0.06 * s.Z), lerpColor(base, skin, 0.5 * (1 - 0.8 * grow)), "Ellipsoid", SMOOTH)
+				if H.detail == "full" or room(H, 3) >= 2 then
+					for side = -1, 1, 2 do
+						add("SideburnTaper", V3(0.05 * s.X, 0.2 * s.Y, 0.12 * s.Z), at(side * 0.5 * s.X, 0.02 * s.Y, -0.06 * s.Z), lerpColor(base, skin, 0.5 * (1 - 0.8 * grow)), "Ellipsoid", SMOOTH)
+					end
 				end
 			end
 		elseif style == "Buzz Cut" or style == "360 Waves" then
@@ -1242,7 +1554,7 @@ local function hairBuild(model, app, opts)
 			fadeCut(t, 0.7, 0.55)
 			for i = 1, lod(H, 7, 4, 2) do
 				local x = (i - 4) * 0.12 * s.X
-				add("Texture", V3(0.13 * s.X, (0.09 + L * 0.06) * s.Y, 0.5 * s.Z), at(x, 0.55 * s.Y, -0.05 * s.Z) * ANG(math.rad(-10), 0, math.rad((i % 2 == 0) and 6 or -6)),
+				later(H, "Texture", V3(0.13 * s.X, (0.09 + L * 0.06) * s.Y, 0.5 * s.Z), at(x, 0.55 * s.Y, -0.05 * s.Z) * ANG(math.rad(-10), 0, math.rad((i % 2 == 0) and 6 or -6)),
 					colorFn(i, 0.2, x), "Ellipsoid", mat)
 			end
 		elseif style == "Textured Crop" then
@@ -1253,7 +1565,7 @@ local function hairBuild(model, app, opts)
 			for i = 1, lod(H, 10, 5, 3) do
 				local x = rng:NextNumber(-0.3, 0.3) * s.X
 				local z = rng:NextNumber(-0.38, 0.15) * s.Z
-				add("Tuft", V3(0.11 * s.X, (0.1 + 0.06 * L) * s.Y, 0.12 * s.Z), at(x, (0.55 - 0.15 * (z / s.Z + 0.38) * 0.4) * s.Y, z) * ANG(rng:NextNumber(-0.9, -0.4), rng:NextNumber(-0.4, 0.4), rng:NextNumber(-0.3, 0.3)),
+				later(H, "Tuft", V3(0.11 * s.X, (0.1 + 0.06 * L) * s.Y, 0.12 * s.Z), at(x, (0.55 - 0.15 * (z / s.Z + 0.38) * 0.4) * s.Y, z) * ANG(rng:NextNumber(-0.9, -0.4), rng:NextNumber(-0.4, 0.4), rng:NextNumber(-0.3, 0.3)),
 					colorFn(i, 0.3, x), "Wedge", mat)
 			end
 			shaved = false
@@ -1275,7 +1587,7 @@ local function hairBuild(model, app, opts)
 		local k = 0.75 * (1 - 0.8 * grow)
 		for side = -1, 1, 2 do
 			add("Burst", V3(0.14 * s.X, 0.5 * s.Y, 0.6 * s.Z), at(side * 0.5 * s.X, 0.02 * s.Y, 0.04 * s.Z), lerpColor(base, skin, k * 0.55), "Ellipsoid", SMOOTH)
-			if H.detail ~= "low" then
+			if H.detail ~= "low" and room(H, lod(H, 5, 3, 2)) >= 1 then
 				add("BurstSkin", V3(0.1 * s.X, 0.34 * s.Y, 0.42 * s.Z), at(side * 0.53 * s.X, -0.02 * s.Y, 0.04 * s.Z), lerpColor(base, skin, k), "Ellipsoid", SMOOTH, 0.15)
 			end
 		end
@@ -1297,7 +1609,7 @@ local function hairBuild(model, app, opts)
 		local pivot = bouncePivot(H, V3(0, 0.45 * s.Y, 0))
 		local oldMat = H.mat
 		H.mat = TT.mat
-		bumps(H, math.floor(lod(H, 30, 16, 8) * (0.6 + 0.5 * density)), (0.1 + 0.05 * thick + 0.04 * L * TT.shrink) * TT.radius * s.X, 0.55, H.seed + 23, pivot)
+		bumps(H, math.floor(lod(H, 30, 10, 6) * (0.6 + 0.5 * density)), (0.1 + 0.05 * thick + 0.04 * L * TT.shrink) * TT.radius * s.X, 0.55, H.seed + 23, pivot)
 		H.mat = oldMat
 		coilHalo(H, lod(H, 14, 5, 0), V3(0, 0.36 * s.Y, 0.06 * s.Z), V3(0.46 * s.X, 0.36 * s.Y, 0.46 * s.Z), H.seed + 24)
 		hairline(true)
@@ -1325,7 +1637,7 @@ local function hairBuild(model, app, opts)
 			local px, py, pz = math.cos(a) * ring * hx * 0.96, cy + u * hy * 0.96, cz + math.sin(a) * ring * hz * 0.96
 			if not (pz < -0.2 * s.Z and py < 0.34 * s.Y) then
 				local r = (0.15 + 0.05 * thick) * s.X * rng:NextNumber(0.8, 1.25) * (0.7 + 0.3 * TT.radius)
-				add("Curl", V3(r, r, r), at(px, py, pz), colorFn(i, (u + 1) / 2, px), "Ball", hm, nil, pivot)
+				later(H, "Curl", V3(r, r, r), at(px, py, pz), colorFn(i, (u + 1) / 2, px), "Ball", hm, nil, pivot)
 			end
 		end
 		coilHalo(H, lod(H, 18, 6, 0), V3(0, cy, cz), V3(hx, hy, hz), H.seed + 12)
@@ -1342,7 +1654,8 @@ local function hairBuild(model, app, opts)
 		for i = 1, lod(H, 10, 5, 0) do
 			local x, z = rng:NextNumber(-0.4, 0.4) * s.X, rng:NextNumber(-0.4, 0.4) * s.Z
 			local r = 0.09 * s.X * rng:NextNumber(0.8, 1.2)
-			add("Curl", V3(r, r * 0.6, r), at(x, (0.45 + hgt) * s.Y, z), colorFn(i, 1, x), "Ball", hm, nil, pivot)
+			-- flattened twists: a Ball part is always a sphere, so these are ellipsoids
+			later(H, "Curl", V3(r, r * 0.6, r), at(x, (0.45 + hgt) * s.Y, z), colorFn(i, 1, x), "Ellipsoid", hm, nil, pivot)
 		end
 		hairline(true)
 	elseif style == "Mohawk" then
@@ -1374,7 +1687,7 @@ local function hairBuild(model, app, opts)
 		if H.detail == "full" then
 			for i = 1, 4 do
 				local x = (i - 2.5) * 0.18 * s.X
-				add("Groove", V3(0.02 * s.X, 0.02 * s.Y, 0.7 * s.Z), at(x, 0.56 * s.Y, 0.02 * s.Z), darken(base, 0.6), "Block", SMOOTH)
+				later(H, "Groove", V3(0.02 * s.X, 0.02 * s.Y, 0.7 * s.Z), at(x, 0.56 * s.Y, 0.02 * s.Z), darken(base, 0.6), "Block", SMOOTH)
 			end
 		end
 		combLines(H, lod(H, 14, 6, 0), 0.75, 1.5, (0.03 + 0.02 * thick) * s.X)
@@ -1391,7 +1704,7 @@ local function hairBuild(model, app, opts)
 		setShell(V3(0.04 * s.X, 0.5 * s.Y - topH * 0.18, 0), V3(s.X * 0.9, topH, s.Z * 1.04))
 		for i = 1, lod(H, 5, 3, 1) do
 			local x = (i - 3) * 0.15 * s.X
-			add("Sweep", V3(0.16 * s.X, (0.1 + L * 0.06) * s.Y, 0.6 * s.Z), at(x + 0.05 * s.X, 0.5 * s.Y + topH * 0.3, -0.12 * s.Z) * ANG(math.rad(-14), 0, math.rad(-12)),
+			later(H, "Sweep", V3(0.16 * s.X, (0.1 + L * 0.06) * s.Y, 0.6 * s.Z), at(x + 0.05 * s.X, 0.5 * s.Y + topH * 0.3, -0.12 * s.Z) * ANG(math.rad(-14), 0, math.rad(-12)),
 				colorFn(i, 0.2, x), "Ellipsoid", mat)
 		end
 		texture(10, 0.08)
@@ -1403,7 +1716,7 @@ local function hairBuild(model, app, opts)
 		for i = 1, math.floor(lod(H, 10, 6, 4) + density * lod(H, 10, 4, 0)) do
 			local a = rng:NextNumber(0, math.pi * 2)
 			local x, z = math.cos(a) * 0.35 * s.X, math.sin(a) * 0.35 * s.Z
-			add("Tuft", V3(0.12 * s.X, (0.15 + L * 0.2 * T.shrink) * s.Y, 0.12 * s.Z),
+			later(H, "Tuft", V3(0.12 * s.X, (0.15 + L * 0.2 * T.shrink) * s.Y, 0.12 * s.Z),
 				at(x, 0.52 * s.Y, z) * ANG(rng:NextNumber(-0.7, 0.7), 0, rng:NextNumber(-0.7, 0.7)), colorFn(i, 0.3, x), "Wedge", mat)
 		end
 		flyaways(H, lod(H, 20, 8, 0), 0.5 + 0.4 * L, 0.05, 1.3)
@@ -1411,17 +1724,20 @@ local function hairBuild(model, app, opts)
 	elseif style == "Cornrows" then
 		add("Scalp", V3(s.X * 1.03, s.Y * 0.5, s.Z * 1.05), at(0, 0.36 * s.Y, 0.03 * s.Z), lerpColor(base, skin, 0.25), "Ellipsoid", SMOOTH)
 		setShell(V3(0, 0.36 * s.Y, 0.03 * s.Z), V3(s.X * 1.03, s.Y * 0.5, s.Z * 1.05))
-		local rows = lod(H, 5 + math.floor(density * 3), 5, 3)
+		local per = lod(H, 4, 3, 2)
+		local tail = lod(H, 5, 2, 1) + 2 + ((growth > 0.4 and H.detail ~= "low") and 1 or 0)
+		-- rows fit the cap (at least three); the hanging ends below only while there is room left
+		local rows = clamp(math.floor(room(H, tail) / per), 3, lod(H, 5 + math.floor(density * 3), 5, 3))
 		for i = 1, rows do
 			local x = (i - (rows + 1) / 2) * (0.85 / rows) * s.X
-			for j = 0, lod(H, 4, 3, 2) - 1 do
-				local a = math.rad(-50 + j * (152 / lod(H, 4, 3, 2)))
+			for j = 0, per - 1 do
+				local a = math.rad(-50 + j * (152 / per))
 				local y = 0.3 * s.Y + math.cos(a) * 0.25 * s.Y
 				local z = math.sin(a) * 0.58 * s.Z
 				-- alternate a slight twist so each row reads as plaited
 				add("Row", V3(0.07 * s.X * (0.8 + thick * 0.5), 0.07 * s.Y, 0.24 * s.Z), at(x, y, z) * ANG(a, 0, math.rad((j % 2 == 0) and 8 or -8)), colorFn(i, j / 3, x), "Ellipsoid", mat)
 			end
-			if hang > 0.45 and i % 2 == 0 and H.detail ~= "low" then
+			if hang > 0.45 and i % 2 == 0 and H.detail ~= "low" and room(H, tail + (rows - i) * per) >= 2 then
 				chain(H, V3(x, -0.05 * s.Y, 0.5 * s.Z), V3(0, -1, 0.2), 2, 0.25 * s.Y * hang, 0.07 * s.X, 0.07 * s.Z, i, htype, true, 0.5, 1.3)
 			end
 		end
@@ -1435,16 +1751,19 @@ local function hairBuild(model, app, opts)
 		local braided = style == "Braids" or box
 		local twists = style == "Twists"
 		-- locs, twists and braids keep their length (the hair is set), but grow heavier and stiffer
-		local n = math.floor(lod(H, box and 14 or 10, 8, 5) + density * lod(H, box and 4 or 6, 2, 1))
+		local n = math.floor(lod(H, box and 14 or 10, box and 6 or 8, 5) + density * lod(H, box and 4 or 6, 2, 1))
 		local segs = twists and 1 or ((hang > 0.7 or L > 0.7) and lod(H, 3, 1, 1) or lod(H, 2, 1, 1))
 		local segLen = (twists and 0.22 or 0.28 + 0.2 * L) * s.Y
 		if segs == 1 and not twists then
 			segLen *= 1.6
 		end
 		local w = (box and 0.06 or (braided and 0.07 or 0.1)) * s.X * (0.8 + 0.5 * thick)
-		-- keep the chains inside the part budget (hero ~50, NPC ~22 segments)
+		-- keep the chains inside the part budget (hero ~50, NPC ~22 segments, and the cut's cap less what
+		-- the parting grid, root frizz and hairline still add), never fewer than four locs
 		local crownSegs = segs >= 3 and 1 or segs
-		n = math.min(n, math.floor(lod(H, 50, 22, 10) / (segs + 0.5 * crownSegs)))
+		local tail = lod(H, 5, 2, 1) + 2 + ((box and H.detail ~= "low") and lod(H, 6, 4, 0) or 0) + ((growth > 0.4 and H.detail ~= "low") and 1 or 0)
+		n = math.min(n, math.floor(math.min(lod(H, 50, 22, 10), room(H, tail)) / (segs + 0.5 * crownSegs)))
+		n = math.max(n, 4)
 		local stiff = braided and 0.55 or 0.7
 		local mass = braided and 1.3 or 1.6
 		local ltype = braided and (CURLY[htype] and htype or "Curly") or "Coiled"
@@ -1570,7 +1889,7 @@ local function hairBuild(model, app, opts)
 			for i = 1, lod(H, 9, 5, 2) do
 				local a = rng:NextNumber(0, math.pi * 2)
 				local x, z = math.cos(a) * 0.38 * s.X, math.sin(a) * 0.38 * s.Z
-				add("Shag", V3(0.16 * s.X, 0.2 * s.Y, 0.16 * s.Z), at(x, 0.52 * s.Y, z) * ANG(rng:NextNumber(-0.5, 0.5), 0, rng:NextNumber(-0.5, 0.5)), colorFn(i, 0.2, x), "Wedge", mat)
+				later(H, "Shag", V3(0.16 * s.X, 0.2 * s.Y, 0.16 * s.Z), at(x, 0.52 * s.Y, z) * ANG(rng:NextNumber(-0.5, 0.5), 0, rng:NextNumber(-0.5, 0.5)), colorFn(i, 0.2, x), "Wedge", mat)
 			end
 			-- choppy fringe: separate strands that follow the curve of the forehead
 			for i = 1, lod(H, 5, 3, 0) do
@@ -1604,7 +1923,10 @@ local function hairBuild(model, app, opts)
 			end
 		end
 		local tie = V3(0, 0.28 * s.Y, 0.56 * s.Z)
-		add("HairTie", V3(0.14 * s.X, 0.14 * s.Y, 0.1 * s.Z), CF(tie), Looks.Color(app.attire and app.attire.trim, WHITE), "Ellipsoid", SMOOTH)
+		-- a hair elastic in a shade of the hair (it only depends on hair data: the head cache key for the
+		-- Hair step does not cover attire); dark hair gets a soft charcoal band so it still reads
+		local tieColor = lum(base) > 0.22 and darken(base, 0.45) or Color3.fromRGB(62, 60, 66)
+		add("HairTie", V3(0.14 * s.X, 0.14 * s.Y, 0.1 * s.Z), CF(tie), tieColor, "Ellipsoid", SMOOTH)
 		chain(H, V3(0, 0.28 * s.Y, 0.6 * s.Z), V3(0, -0.8, 0.6), lod(H, hang > 0.6 and 4 or 3, 2, 1), (0.22 + 0.12 * hang) * s.Y * lod(H, 1, 1.5, 3), (0.2 + 0.1 * thick) * s.X, (0.2 + 0.1 * thick) * s.Z, 1, htype, false, T.stiff, T.mass)
 		-- hair pulled back tight from the hairline to the tie
 		local n = lod(H, 11, 5, 0)
@@ -1623,6 +1945,12 @@ local function hairBuild(model, app, opts)
 		hairline(false)
 	end
 
+	-- decorations (curls, tufts, wave bands...) in queue order while the cap leaves room
+	for i = 1, math.min(#H.deco, math.max(0, room(H))) do
+		H.deco[i]()
+	end
+	-- parts over the old hair (the beard reads this to share A's budget)
+	folder:SetAttribute("Extra", countParts(folder) - oldHairParts(hair, style))
 	-- sheen by hair type on the hair material (curls and coils stay matte)
 	if T.sheen > 0 then
 		for _, p in ipairs(folder:GetDescendants()) do
@@ -1710,29 +2038,25 @@ local function beardBuild(model, app, opts)
 			end
 		end
 	end
-	local beard = app.beard or { style = "None", growth = 0 }
-	if app.gender == 2 then
-		return
-	end
-	local style = beard.style or "None"
-	if not table.find(Looks.BeardStyles, style) then
-		style = Looks.BeardStyleBase[style] or "None"
-	end
-	local g = clamp(tonumber(beard.growth) or 0, 0, 1)
-	-- growth stages without a chosen style: shadow -> stubble -> a short natural beard
-	local shadow = false
-	if style == "None" then
-		if g < 0.2 then
-			return
-		elseif g < 0.45 then
-			style, shadow = "Stubble", true
-		elseif g < 0.8 then
-			style = "Stubble"
-		else
-			style, g = "Short Boxed", (g - 0.8) * 2
+	local detail = Config.DetailLevel(opts)
+	local full, low = detail == "full", detail == "low"
+	-- growth stages without a chosen style: shadow -> stubble -> a short natural beard (beardStyle)
+	local style, shadow, g, grown = beardStyle(app)
+	-- the lips follow the full-detail rule at every detail level, exactly as faceBuild pushes them
+	local coversLips = style ~= nil and style ~= "Stubble"
+	if style and low and grown then
+		-- far away a five o'clock shadow is invisible and a grown-in beard reads as stubble (old budget)
+		if shadow then
+			style = nil
+		elseif style == "Short Boxed" then
+			style, g = "Stubble", 1
 		end
 	end
-	local detail = Config.DetailLevel(opts)
+	if not style then
+		folder:SetAttribute("Extra", 0 - oldBeardParts(app))
+		return
+	end
+	local beard = app.beard or {}
 	local s = head.Size
 	local hcf = head.CFrame
 	local L = Head.FaceLayout(head, app.face or {})
@@ -1746,6 +2070,12 @@ local function beardBuild(model, app, opts)
 	end
 	local htype = hair.type or "Straight"
 	local mat = (htype == "Kinky" or htype == "Coiled") and SAND or FABRIC
+	-- part cap: the old beard plus what the face and hair left of A's budget (both are built first)
+	local old = oldBeardParts(app)
+	local cap = old + A_BUDGET[detail] - extraOf(model, "Face", FACE_CAP[detail]) - extraOf(model, "Hair", 0)
+	local function fits(n)
+		return countParts(folder) + n <= cap
+	end
 	local function at(x, y, z)
 		return hcf * CF(x, y, z)
 	end
@@ -1754,45 +2084,47 @@ local function beardBuild(model, app, opts)
 	end
 	local mw = L.mouthW
 	local function moustache(width, drop)
-		-- two halves angled down toward the mouth corners
-		for side = -1, 1, 2 do
-			add("Moustache", V3((width or 0.17) * s.X, (0.045 + 0.03 * g) * s.Y, 0.06 * s.Z),
-				at(side * 0.075 * s.X, L.mouthY + 0.062 * s.Y, L.front(side * 0.075 * s.X) - 0.025) * ANG(0, 0, L.mouthTilt + side * math.rad(-(drop or 10))))
+		if full and fits(2) then
+			-- two halves angled down toward the mouth corners
+			for side = -1, 1, 2 do
+				add("Moustache", V3((width or 0.17) * s.X, (0.045 + 0.03 * g) * s.Y, 0.06 * s.Z),
+					at(side * 0.075 * s.X, L.mouthY + 0.062 * s.Y, L.front(side * 0.075 * s.X) - 0.025) * ANG(0, 0, L.mouthTilt + side * math.rad(-(drop or 10))))
+			end
+		else
+			-- one centred bar (medium / low detail, or no room left)
+			add("Moustache", V3(((width or 0.17) + 0.13) * s.X, (0.045 + 0.03 * g) * s.Y, 0.06 * s.Z),
+				at(0, L.mouthY + 0.064 * s.Y, L.front(0) - 0.025) * ANG(0, 0, L.mouthTilt))
 		end
 	end
 	local function chinPatch(w, h, y)
 		add("Goatee", V3(w * s.X, (h + 0.08 * g) * s.Y, 0.16 * s.Z), at(0, (y or -0.44) * s.Y, L.front(0) * 0.82))
 	end
-	local function sideburns(t)
-		for side = -1, 1, 2 do
-			add("Sideburn", V3(0.05 * s.X, 0.26 * s.Y, 0.14 * s.Z), at(side * 0.5 * s.X, -0.02 * s.Y, -0.06 * s.Z), color, "Ellipsoid", mat, t)
-		end
-	end
-	local function neck(t)
-		if detail ~= "low" then
-			add("NeckBeard", V3(0.72 * s.X, 0.12 * s.Y, 0.6 * s.Z), at(0, -0.49 * s.Y, -0.12 * s.Z), color, "Ellipsoid", mat, t)
-		end
-	end
+	-- optional pieces, drawn after the style's own parts while the cap leaves room
+	local wantSideburns, wantNeck, neckT = false, false, nil
 	if style == "Stubble" then
 		-- front-biased shell: covers the jaw, chin and upper lip but never the back of the head
 		local t = shadow and 0.9 or (0.8 - 0.12 * g)
 		add("Stubble", V3(s.X * 1.06, s.Y * 0.46, s.Z * 1.0), at(0, -0.3 * s.Y, -0.07 * s.Z), color, "Ellipsoid", SMOOTH, t)
-		neck(math.min(0.95, t + 0.05))
+		wantNeck, neckT = true, math.min(0.95, t + 0.05)
 	elseif style == "Goatee" then
 		chinPatch(0.24, 0.2)
 		moustache()
 	elseif style == "Van Dyke" then
 		-- pointed chin beard and a moustache that does not connect to it
 		add("Goatee", V3(0.2 * s.X, (0.22 + 0.08 * g) * s.Y, 0.15 * s.Z), at(0, -0.46 * s.Y, L.front(0) * 0.8), color, "Ellipsoid")
-		add("SoulPatch", V3(0.06 * s.X, 0.06 * s.Y, 0.05 * s.Z), at(0, L.mouthY - 0.085 * s.Y, L.front(0) - 0.02))
+		if not low then
+			add("SoulPatch", V3(0.06 * s.X, 0.06 * s.Y, 0.05 * s.Z), at(0, L.mouthY - 0.085 * s.Y, L.front(0) - 0.02))
+		end
 		moustache(0.16, 18)
 	elseif style == "Circle Beard" then
 		chinPatch(0.26, 0.18)
 		moustache()
 		-- the ring around the mouth joining moustache and chin
-		for side = -1, 1, 2 do
-			local x = side * mw * 0.62
-			add("CircleSide", V3(0.05 * s.X, 0.16 * s.Y, 0.05 * s.Z), at(x, L.mouthY - 0.03 * s.Y, L.front(x) - 0.012) * ANG(0, 0, side * math.rad(8)))
+		if not low then
+			for side = -1, 1, 2 do
+				local x = side * mw * 0.62
+				add("CircleSide", V3(0.05 * s.X, 0.16 * s.Y, 0.05 * s.Z), at(x, L.mouthY - 0.03 * s.Y, L.front(x) - 0.012) * ANG(0, 0, side * math.rad(8)))
+			end
 		end
 	elseif style == "Moustache" then
 		moustache()
@@ -1809,26 +2141,41 @@ local function beardBuild(model, app, opts)
 		moustache(0.18, 6)
 	elseif style == "Short Boxed" then
 		add("Beard", V3(s.X * 1.06, s.Y * (0.48 + 0.06 * g), s.Z * 1.02), at(0, -0.3 * s.Y, -0.06 * s.Z))
-		neck()
-		sideburns()
 		moustache()
+		wantSideburns, wantNeck = true, true
 	else -- Full Beard
 		add("Beard", V3(s.X * 1.1, s.Y * (0.58 + 0.16 * g), s.Z * 1.06), at(0, -0.36 * s.Y, -0.06 * s.Z))
-		add("BeardChin", V3(0.5 * s.X, (0.2 + 0.1 * g) * s.Y, 0.3 * s.Z), at(0, (-0.55 - 0.05 * g) * s.Y, -0.3 * s.Z))
-		neck()
-		sideburns()
+		if not low then
+			add("BeardChin", V3(0.5 * s.X, (0.2 + 0.1 * g) * s.Y, 0.3 * s.Z), at(0, (-0.55 - 0.05 * g) * s.Y, -0.3 * s.Z))
+		end
 		moustache(0.18, 8)
+		wantSideburns, wantNeck = true, true
+	end
+	-- sideburns joining the beard to the hair, then the neck line (full detail only)
+	if wantSideburns and full and fits(2) then
+		for side = -1, 1, 2 do
+			add("Sideburn", V3(0.05 * s.X, 0.26 * s.Y, 0.14 * s.Z), at(side * 0.5 * s.X, -0.02 * s.Y, -0.06 * s.Z), color, "Ellipsoid", mat)
+		end
+	end
+	if wantNeck and full and fits(1) then
+		add("NeckBeard", V3(0.72 * s.X, 0.12 * s.Y, 0.6 * s.Z), at(0, -0.49 * s.Y, -0.12 * s.Z), color, "Ellipsoid", mat, neckT)
 	end
 	-- grey flecks on older beards
-	if grey > 0.15 and detail == "full" and style ~= "Stubble" then
+	if grey > 0.15 and full and style ~= "Stubble" then
 		local rng = Random.new((app.face and app.face.seed or 7) + 404)
 		for _ = 1, 2 + math.floor(grey * 4) do
 			local x = rng:NextNumber(-0.12, 0.12) * s.X
-			add("GreyFleck", V3(0.05 * s.X, 0.04 * s.Y, 0.03 * s.Z), at(x, rng:NextNumber(-0.47, -0.36) * s.Y, L.front(x) * 0.84 - 0.03), Color3.fromRGB(200, 198, 192), "Ellipsoid", mat, 0.3)
+			local y = rng:NextNumber(-0.47, -0.36) * s.Y
+			if not fits(1) then
+				break
+			end
+			add("GreyFleck", V3(0.05 * s.X, 0.04 * s.Y, 0.03 * s.Z), at(x, y, L.front(x) * 0.84 - 0.03), Color3.fromRGB(200, 198, 192), "Ellipsoid", mat, 0.3)
 		end
 	end
-	-- keep the lips visible through the beard (from their base size: rebuilds never stack)
-	if face and style ~= "Stubble" then
+	folder:SetAttribute("Extra", countParts(folder) - old)
+	-- keep the lips visible through the beard (from their base size: rebuilds never stack; faceBuild
+	-- applies the same rule when it is rebuilt on its own)
+	if face and coversLips then
 		for _, n in ipairs({ "UpperLip", "LowerLip", "MouthLine" }) do
 			local p = face:FindFirstChild(n)
 			if p then
@@ -1972,6 +2319,12 @@ function Head.SetDamage(model, app, dmg, folderName)
 						local red = clamp((side and eyeV[side] or 0) * 0.5 + (severe and 0.35 or 0) + n("redness") * 0.15, 0, 0.8)
 						c.Color = lerpColor(baseC, Color3.fromRGB(228, 150, 140), red)
 					end
+				elseif c.Name == "Mouthguard" then
+					-- bloodied after a split lip; SetDamage(model, app, {}) cleans it again
+					local baseC = c:GetAttribute("BaseColor")
+					if typeof(baseC) == "Color3" then
+						c.Color = n("lip") > 0.6 and lerpColor(baseC, Color3.fromRGB(140, 10, 16), 0.3) or baseC
+					end
 				end
 			end
 		end
@@ -2093,6 +2446,10 @@ local function wetHair(model, q)
 				if d:IsA("BasePart") and d.Transparency < 1 then
 					local dry = d:GetAttribute("DryColor")
 					if typeof(dry) ~= "Color3" then
+						if q <= 0 then
+							-- dry and never wetted since this build: nothing to restore, no attribute writes
+							continue
+						end
 						dry = d.Color
 						d:SetAttribute("DryColor", dry)
 						d:SetAttribute("DryRefl", d.Reflectance)
@@ -2122,7 +2479,9 @@ local function faceSweat(model, app, q)
 	end
 	local faceF = look:FindFirstChild("Face")
 	local detail = (faceF and faceF:GetAttribute("Detail")) or model:GetAttribute("Detail") or "full"
-	local key = string.format("%.2f|%s|%.3f", q, tostring(detail), head.Size.X)
+	local L = Head.FaceLayout(head, app.face or {})
+	-- the face sliders move the brow / nose the sheen follows: they are part of the key too
+	local key = string.format("%.2f|%s|%.3f|%.3f|%.3f", q, tostring(detail), head.Size.X, L.browY, L.noseTopY)
 	local old = look:FindFirstChild("FaceSweat")
 	if old and old:GetAttribute("Key") == key then
 		local a = old:FindFirstChild("SweatAnchor")
@@ -2139,7 +2498,6 @@ local function faceSweat(model, app, q)
 	end
 	local folder = getFolder(model, "FaceSweat")
 	folder:SetAttribute("Key", key)
-	local L = Head.FaceLayout(head, app.face or {})
 	local s = L.s
 	local hcf = head.CFrame
 	local anchor = mk(folder, head, "SweatAnchor", V3(0.05, 0.05, 0.05), hcf, WHITE, "Block", SMOOTH, 1)
@@ -2199,7 +2557,9 @@ function Head.SetSweat(model, app, level)
 	for _, n in ipairs(SKIN_PARTS) do
 		local p = part(model, n)
 		if p and p:IsA("BasePart") then
-			p.Reflectance = r
+			if math.abs(p.Reflectance - r) > 1e-4 then
+				p.Reflectance = r
+			end
 			if q > 0.05 then
 				if p:GetAttribute("DryMaterial") == nil then
 					local ok, name = pcall(function()
@@ -2221,6 +2581,7 @@ function Head.SetSweat(model, app, level)
 	end
 	wetHair(model, q)
 	faceSweat(model, app, q)
+	faceGrime(model, app)
 end
 
 ------------------------------------------------------------------------

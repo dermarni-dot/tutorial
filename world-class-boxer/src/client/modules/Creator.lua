@@ -323,12 +323,16 @@ local function pctFmt(v)
 	return string.format("%+d", math.floor(v * 100 + (v >= 0 and 0.5 or -0.5)))
 end
 
--- sliders for one Looks slider list (face / eye / skin / wear), head-only previews
+-- face keys the body builder reads too (BuilderBody: skin smoothness picks the limb / torso skin
+-- material, the seed varies the muscles); a change to them needs the whole character rebuilt
+local BODY_FACE_KEYS = { smooth = true, seed = true }
+
+-- sliders for one Looks slider list (face / eye / skin / wear), head-only previews where possible
 local function sliderList(list, f)
 	for _, s in ipairs(list) do
 		UI.Slider(body, s.label, s.min, s.max, f[s.key] or 0, s.step, function(v)
 			f[s.key] = v
-			previewHead()
+			preview(not BODY_FACE_KEYS[s.key])
 		end, s.min < 0 and pctFmt or nil)
 	end
 end
@@ -349,10 +353,16 @@ local function pageFace()
 	sliderList(Looks.WearSliders, f)
 	UI.Line(body, "Fights add their own wear: deep cuts scar, broken noses bend and swollen ears can turn into cauliflower ears.", { TextColor3 = T.sub, TextSize = 13 })
 	UI.Button(body, "Randomize face", { Size = UDim2.new(0, 200, 0, 34) }, function()
-		-- every face and eye slider (incl. the newer ones), shape, undertone, brows and the skin pattern
+		-- every face and eye slider and the newer (v2) skin sliders, shape, undertone, brows, both eye
+		-- colours and the skin pattern; the boxer-wear sliders stay the player's own choice
 		local r = Looks.Random(math.random(1, 1000000), C.look.gender)
 		for _, list in ipairs({ Looks.FaceSliders, Looks.EyeSliders }) do
 			for _, s in ipairs(list) do
+				f[s.key] = r.face[s.key]
+			end
+		end
+		for _, s in ipairs(Looks.SkinSliders) do
+			if s.v2 then
 				f[s.key] = r.face[s.key]
 			end
 		end
@@ -361,7 +371,8 @@ local function pageFace()
 		f.undertone = r.face.undertone
 		f.browStyle = r.face.browStyle
 		f.eyeColor = r.face.eyeColor
-		previewHead()
+		f.eyeColor2 = r.face.eyeColor2 or 0
+		preview() -- the seed also varies the body
 		render()
 	end)
 	UI.Header(body, "PREVIEW")
@@ -414,7 +425,7 @@ local function pageEyesSkin()
 	UI.Line(body, "Skin texture is suggested with a fine-grain finish and scattered pores up close; wrinkles also deepen with age.", { TextColor3 = T.sub, TextSize = 13 })
 	UI.Button(body, "New skin detail pattern", { Size = UDim2.new(0, 230, 0, 32), TextSize = 14 }, function()
 		f.seed = math.random(1, 1000000)
-		previewHead()
+		preview() -- the seed also varies the body
 	end)
 end
 

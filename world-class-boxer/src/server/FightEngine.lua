@@ -162,6 +162,10 @@ local function makeFighter(data, model, player)
 		totals = { landed = 0, thrown = 0, power = 0, body = 0 },
 		punchesUsed = { jab = 0, cross = 0, leadhook = 0, rearhook = 0, uppercut = 0, overhand = 0 },
 	}
+	-- what the fighter walked in with, so the result reports only what happened in THIS fight
+	-- (an old, healing broken nose or half-closed cut must not be "news" that restarts the healing clock)
+	F.noseAtStart = F.dmg.nose == true
+	F.cutAtStart = math.max(F.dmg.cut, F.dmg.cut2)
 	return F
 end
 
@@ -353,7 +357,7 @@ function Fight:CheckTier(F)
 		elseif t == 2 then
 			self:Comment(name .. " is in serious trouble! One more clean shot could end it!", true)
 		else
-			self:Comment(name .. " is OUT ON " .. his(F):upper() .. " FEET! The referee is watching closely!", true)
+			self:Comment(name .. " is OUT ON " .. his(F):upper() .. " FEET! " .. self:Official(true) .. " is watching closely!", true)
 		end
 	end
 	if self.O.ai then
@@ -964,20 +968,29 @@ function Fight:Clinch(F)
 	F.balance = math.min(100, F.balance + 25)
 	F.hurtUntil = math.min(F.hurtUntil, now + 0.6)
 	self:CheckTier(F)
-	self:Send({ t = "announce", text = "CLINCH! The referee steps in..." })
+	self:Send({ t = "announce", text = self.spar and "COACH: \"Break! Let go, work your way out.\"" or "CLINCH! The referee steps in..." })
 	self:Comment(F.data.name .. " ties up. Smart veteran move.")
 end
 
 ------------------------------------------------------------------------
 -- Referee (a real Builder NPC in the ring: moves with the action, counts, waves it off)
 ------------------------------------------------------------------------
+-- who runs the ring: a fight-night referee, or in a gym spar the coach (older, gym polo + towel)
+function Fight:Official(capital)
+	if self.spar then
+		return capital and "The coach" or "the coach"
+	end
+	return capital and "The referee" or "the referee"
+end
+
 function Fight:SpawnReferee()
 	local ok, model = pcall(function()
 		local seed = 9000 + self.rng:NextInteger(1, 50000)
-		local age = self.rng:NextInteger(38, 58)
+		local age = self.spar and self.rng:NextInteger(45, 62) or self.rng:NextInteger(38, 58)
 		local app = Looks.Random(seed, 1, {})
-		local build = Looks.RandomBuild(seed, 0.2, age)
-		return Builder.CreateNPC(app, build, {}, "Referee", { detail = "medium", outfit = "referee", hands = "bare", age = age, name = "", nick = "", waistText = "" })
+		local build = Looks.RandomBuild(seed, self.spar and 0.35 or 0.2, age)
+		local outfit = self.spar and "cornerman" or "referee"
+		return Builder.CreateNPC(app, build, {}, "Referee", { detail = "medium", outfit = outfit, hands = "bare", age = age, name = "", nick = "", waistText = "" })
 	end)
 	if not ok or not model then
 		warn("[Boxer] referee could not be built:", model)
@@ -985,10 +998,14 @@ function Fight:SpawnReferee()
 	end
 	model.Name = "Referee"
 	-- never part of the fight physics: fighters walk straight through him
+	local solid = {}
 	for _, d in ipairs(model:GetDescendants()) do
 		if d:IsA("BasePart") then
 			d.CanCollide = false
 			d.CanTouch = false
+			if d.Parent == model then
+				table.insert(solid, d)
+			end
 		end
 	end
 	local center = self.anchors.RingCenter.Position
@@ -1004,6 +1021,19 @@ function Fight:SpawnReferee()
 		end)
 	end
 	local R = { model = model, root = root, hum = hum, actId = 0, nextMove = 0 }
+	-- the Humanoid turns CanCollide back on for the head / torso parts in its own step; re-clear the rig
+	-- parts before every physics step so he never shoves the NPC or jitters against the player in a clinch
+	R.noclip = RunService.Stepped:Connect(function()
+		if not model.Parent then
+			if R.noclip then
+				R.noclip:Disconnect()
+			end
+			return
+		end
+		for _, part in ipairs(solid) do
+			part.CanCollide = false
+		end
+	end)
 	if hum and root then
 		hum.WalkSpeed = 11
 		hum.AutoRotate = false
@@ -1094,6 +1124,12 @@ function Fight:Ragdoll(F)
 		return
 	end
 	local ok, err = pcall(function()
+		if F.hum then
+			-- the Neck motor is disabled below: with RequiresNeck on the Humanoid would die, and BreakJointsOnDeath
+			-- would then snap the cosmetic face / hair Motor6Ds under BoxerLook while the KO is on camera
+			F.hum.RequiresNeck = false
+			F.hum.BreakJointsOnDeath = false
+		end
 		for _, m in ipairs(F.model:GetDescendants()) do
 			-- only the R15 rig joints (cosmetic FaceJoint / HairJoint motors live deeper, under BoxerLook)
 			if m:IsA("Motor6D") and m.Part0 and m.Part1 and m.Parent and m.Parent.Parent == F.model and m.Name ~= "Root" then
@@ -1163,6 +1199,12 @@ function Fight:Knockdown(F, by, severity, fall, cause)
 	setAttr(F.model, "Count", 0)
 	self:UpdateGuard(F)
 	self:SyncAttrs(F)
+	if severity == "out" and F.isPlayer and F.hum then
+		-- belt and braces for FightClient's ragdoll (it disables the Neck motor): a neckless death would
+		-- fire Main's Died -> Abort before End records the KO. Replicates ahead of the kd message.
+		F.hum.RequiresNeck = false
+		self.neckOff = true
+	end
 	self:Send({ t = "kd", who = self:Who(F), severity = severity, fall = fall })
 	local NAME = F.data.name:upper()
 	if severity == "flash" then
@@ -1314,15 +1356,20 @@ function Fight:GetUp(F, n)
 	self:Send({ t = "refcheck", who = self:Who(F), ok = ok })
 	if not ok then
 		self:RefAct("waveoff")
-		self:Comment("The referee looks into " .. his(F) .. " eyes... and waves it off!", true)
-		self:End(self:Other(F), "TKO", "Referee waves it off after the count")
+		self:Comment(self:Official(true) .. " looks into " .. his(F) .. " eyes... and waves it off!", true)
+		if self.spar then
+			self:End(self:Other(F), "Stopped", "Coach stops the sparring session after the count")
+		else
+			self:End(self:Other(F), "TKO", "Referee waves it off after the count")
+		end
 		return
 	end
-	self:Comment("The referee asks " .. F.data.name .. " to walk forward... OK to continue!", true)
+	self:Comment(self:Official(true) .. " asks " .. F.data.name .. " to walk forward... OK to continue!", true)
 	task.wait(0.6)
 	if self.id == id and not self.finished then
 		self:Send({ t = "announce", text = "BOX!" })
 		self.paused = false
+		self.resumedAt = self:Now()
 	end
 end
 
@@ -1342,7 +1389,8 @@ function Fight:CheckStoppage(F)
 	if n >= 4 then
 		self:Comment(self:Other(F).data.name .. " is unloading a flurry!")
 	end
-	local idle = now - F.lastPunch
+	-- time since the fighter last threw, not counting a pause he could not punch through
+	local idle = now - math.max(F.lastPunch, self.resumedAt or 0)
 	local stop = (F.health < 16 and n >= 5 and idle > 2)
 		-- out on the feet and not fighting back: the referee saves the fighter
 		or (F.tier >= 3 and n >= 3 and idle > 1.5 and not F.blocking)
@@ -1350,12 +1398,14 @@ function Fight:CheckStoppage(F)
 		-- hurt and taking a beating without answering back
 		or (F.tier >= 1 and n >= 6 and idle > 2 and not F.blocking)
 	if stop then
-		if self.allowKD then
-			self:RefAct("waveoff")
+		self:RefAct("waveoff")
+		if self.spar then
+			-- in the gym the man in the ring is the coach: he stops a spar, there is no TKO on a record
+			self:Send({ t = "announce", text = "COACH: \"That's enough! Stop!\"" })
+			self:End(self:Other(F), "Stopped", "Coach stops the sparring session")
+		else
 			self:Comment("The referee waves it off!", true)
 			self:End(self:Other(F), "TKO", "Referee stops the fight")
-		else
-			self:End(self:Other(F), "Stopped", "Coach stops the sparring session")
 		end
 	end
 end
@@ -1579,7 +1629,11 @@ function Fight:Update(dt)
 			self:Separate()
 		end
 		self:UpdateGuard(F)
-		self:CheckStoppage(F)
+		-- nobody can punch during a count / eight count / referee check, so "not answering back" means nothing
+		-- then (the standing man would otherwise be stopped in favour of the one on the canvas)
+		if not self.paused then
+			self:CheckStoppage(F)
+		end
 		if F.stamina < F.maxStam * 0.15 and not F.gassedNoted then
 			F.gassedNoted = true
 			self:Comment(F.data.name .. " is running on fumes!")
@@ -1894,6 +1948,10 @@ function Fight:Run()
 		},
 		talk = offer.talk, myLine = offer.myLine,
 	})
+	-- the Animator only drives tagged models: tag now so the ring walk / warm-up (Guard "walkout") is animated
+	-- (E's integration request; the later AddTag calls are harmless no-ops)
+	CollectionService:AddTag(P.model, "Fighter")
+	CollectionService:AddTag(O.model, "Fighter")
 	if self.spar then
 		self:Place(O, self.anchors.BlueCorner.Position)
 		self:Place(P, self.anchors.RedCorner.Position)
@@ -1937,6 +1995,7 @@ function Fight:Run()
 		task.wait(2)
 		self.live = true
 		self.paused = false
+		self.resumedAt = self:Now()
 		local remaining = self.roundSeconds
 		self.roundEnd = self:Now() + remaining
 		while remaining > 0 and not self.finished and not self.aborted do
@@ -2004,12 +2063,16 @@ function Fight:Run()
 	res.punches = P.punchesUsed
 	res.damageDealt, res.damageTaken = P.damageDealt, P.damageTaken
 	res.weighIn = P.data.mods and P.data.mods.weighIn
-	res.cutTaken = P.dmg.cut > 0.3 or P.dmg.cut2 > 0.3
+	-- a cut counts when it was opened (or ripped open further) tonight, not when an old one merely shows
+	local cutNow = math.max(P.dmg.cut, P.dmg.cut2)
+	res.cutTaken = cutNow > 0.3 and cutNow > (P.cutAtStart or 0) + 0.1
 	-- persistence hand-off (CONTRACTS section 8): Career / Training carry these into the profile
 	res.face = cloneDamage(P.dmg)
 	res.oppFace = cloneDamage(O.dmg)
 	res.concPeak = math.floor(P.concPeak * 100) / 100
-	res.noseBroken = P.dmg.nose == true
+	res.noseBroken = P.dmg.nose == true and not P.noseAtStart
+	-- the profile residual already carries an old break (AddFaceDamage never clears it): only a fresh one is news
+	res.face.nose = res.noseBroken
 	res.knockdowns = self.knockdowns
 	res.bodyTaken = math.floor(100 - P.bodyCap)
 	res.headTaken = math.floor(P.headTaken * 10) / 10 -- Training.AddTrauma prefers this over damageTaken
@@ -2034,6 +2097,16 @@ function Fight:Cleanup()
 		end
 	end
 	local P = self.P
+	if P.hum and self.neckOff then
+		-- FightClient re-enables the rig 2.2 s after "final"; Cleanup runs 3 s after it, so wait a little longer
+		-- before the neck is required again (a slow client would otherwise die on the spot)
+		local hum = P.hum
+		task.delay(4, function()
+			if hum.Parent then
+				hum.RequiresNeck = true
+			end
+		end)
+	end
 	if P.hum then
 		P.hum.AutoRotate = true
 		P.hum.WalkSpeed = 16
@@ -2054,6 +2127,10 @@ function Fight:Cleanup()
 			end
 		end
 		pcall(Builder.SetSweat, P.model, P.data.app, 0)
+	end
+	if self.ref and self.ref.noclip then
+		self.ref.noclip:Disconnect()
+		self.ref.noclip = nil
 	end
 	if self.arena then
 		self.arena:Destroy()

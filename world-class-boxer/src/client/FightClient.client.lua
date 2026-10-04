@@ -501,7 +501,8 @@ local VIG_RED, VIG_BLACK, WHITE = Color3.fromRGB(60, 0, 0), Color3.new(0, 0, 0),
 ------------------------------------------------------------------------
 -- Sweat & blood spray (client-only emitters, Emit bursts) and blood drops on the canvas
 ------------------------------------------------------------------------
-local SPRAY_TEX = "rbxasset://textures/particles/sparkles_main.dds"
+-- the soft round puff (not the 4-point sparkle star), squashed along the flight path into droplets
+local SPRAY_TEX = "rbxasset://textures/particles/smoke_main.dds"
 local function sprayEmitters(part)
 	local att = part:FindFirstChild("FightSprayAtt")
 	if att then
@@ -515,8 +516,14 @@ local function sprayEmitters(part)
 		pe.Name = name
 		pe.Texture = SPRAY_TEX
 		pe.Color = ColorSequence.new(color)
-		pe.LightEmission = name == "Sweat" and 0.35 or 0
+		-- sweat catches the ring lights (a wet glint); blood stays matte and dark
+		pe.LightEmission = name == "Sweat" and 0.2 or 0
 		pe.LightInfluence = 1
+		pcall(function()
+			pe.Brightness = name == "Sweat" and 1.5 or 1
+			pe.Squash = NumberSequence.new({ NumberSequenceKeypoint.new(0, -0.6), NumberSequenceKeypoint.new(1, 0) })
+			pe.Orientation = Enum.ParticleOrientation.VelocityParallel
+		end)
 		pe.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, size), NumberSequenceKeypoint.new(1, 0) })
 		pe.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, name == "Sweat" and 0.2 or 0), NumberSequenceKeypoint.new(1, 1) })
 		pe.Speed = NumberRange.new(speed[1], speed[2])
@@ -603,6 +610,7 @@ end
 ------------------------------------------------------------------------
 -- Ragdoll for the local character on an out-cold KO (the client owns its physics)
 ------------------------------------------------------------------------
+local STUMBLE_STEP = "FightStumble" -- RenderStep binding that drives the player's stagger (handlers.stumble)
 local ragdoll
 local function setRagdoll(on)
 	local char = player.Character
@@ -613,6 +621,9 @@ local function setRagdoll(on)
 		end
 		ragdoll = { motors = {}, made = {}, collide = {} }
 		local ok, err = pcall(function()
+			-- the Neck motor is disabled below: with RequiresNeck on, the Humanoid would die, the death replicates
+			-- (the client owns this Humanoid) and Main's Died handler aborts the fight before the KO is recorded
+			hum.RequiresNeck = false
 			for _, m in ipairs(char:GetDescendants()) do
 				if m:IsA("Motor6D") and m.Part0 and m.Part1 and m.Parent and m.Parent.Parent == char and m.Name ~= "Root" and m.Enabled then
 					local a0 = Instance.new("Attachment")
@@ -652,6 +663,11 @@ local function setRagdoll(on)
 				if m.Parent then
 					m.Enabled = true
 				end
+			end
+			if hum then
+				-- back to the default (the server may already have replicated false before the kd message,
+				-- so the value seen when the ragdoll started is not a reliable "previous" value)
+				hum.RequiresNeck = true
 			end
 			for _, inst in ipairs(r.made) do
 				inst:Destroy()
@@ -1194,7 +1210,13 @@ throwPunch = function(p, body)
 	local char = player.Character
 	local now = os.clock()
 	-- only predict what the server will almost surely accept (not down / stumbling / mid-punch)
-	if not P or not char or not F.active or F.down or now < (F.stumbleUntil or 0) or now < pred.busyUntil then
+	if not P or not char or not F.active or F.down or F.paused or now < (F.stumbleUntil or 0) or now < pred.busyUntil then
+		return
+	end
+	-- the server's CanAct also refuses in a clinch, while down, in the corner or on the ring walk, and nobody
+	-- may punch a man on the canvas: the Guard attributes it replicates already say so
+	local g = char:GetAttribute("Guard")
+	if g == "clinch" or g == "down" or g == "rest" or g == "walkout" or (F.opp and F.opp:GetAttribute("Guard") == "down") then
 		return
 	end
 	local stam = F.me and F.me.max and F.me.stam / math.max(1, F.me.max) or 1
@@ -1344,6 +1366,8 @@ local function finish()
 	overlay.Visible = false
 	getup.Visible = false
 	setRagdoll(false)
+	F.stumbleUntil = 0
+	pcall(RunService.UnbindFromRenderStep, RunService, STUMBLE_STEP)
 	if camConn then
 		camConn:Disconnect()
 		camConn = nil
@@ -1547,6 +1571,7 @@ function handlers.round(msg)
 	overlay.Visible = false
 	setAnimate(false)
 	F.active = true
+	F.paused = false
 	camMode = "fight"
 	F.broadcastUntil = nil
 	letterbox(false)
@@ -1716,10 +1741,13 @@ function handlers.stumble(msg)
 		local hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
 		if hum and dir.Magnitude > 0.05 then
 			local unit = dir.Unit
-			local conn
-			conn = RunService.Heartbeat:Connect(function()
+			pcall(RunService.UnbindFromRenderStep, RunService, STUMBLE_STEP)
+			-- the default ControlModule calls Move every frame from RenderStep (Input priority), even with no
+			-- keys held; binding right after it makes this write the last one before physics, so the stagger
+			-- is involuntary (a Heartbeat write would be overwritten before it was ever simulated)
+			RunService:BindToRenderStep(STUMBLE_STEP, Enum.RenderPriority.Input.Value + 1, function()
 				if os.clock() > F.stumbleUntil or not hum.Parent then
-					conn:Disconnect()
+					pcall(RunService.UnbindFromRenderStep, RunService, STUMBLE_STEP)
 					hum:Move(Vector3.zero)
 					return
 				end
@@ -1741,6 +1769,8 @@ end
 local SEVERITY_TEXT = { flash = "FLASH KNOCKDOWN!", heavy = "DOWN HARD!", out = "OUT COLD!" }
 function handlers.kd(msg)
 	local mine = msg.who == "you"
+	-- the server pauses the fight for the count, eight count and referee check (no punches are accepted)
+	F.paused = true
 	local target = mine and player.Character or F.opp
 	sfx(BUILTIN.Falling or "rbxasset://sounds/action_falling.ogg", 0.7, 1)
 	sfx(BUILTIN.Thud or "rbxasset://sounds/action_jump_land.mp3", 0.5, 0.9)
@@ -1811,11 +1841,12 @@ function handlers.getup(msg)
 	end
 	phase("getup", { who = msg.who })
 	cheer(0.8)
-	setTicker(mine and "You beat the count! Show the referee you can continue..." or (F.tape.opp.name .. " beats the count!"))
+	setTicker(mine and ("You beat the count! Show the " .. (F.spar and "coach" or "referee") .. " you can continue...") or (F.tape.opp.name .. " beats the count!"))
 end
 
 function handlers.refcheck(msg)
 	if msg.ok then
+		F.paused = false
 		showBanner("OK TO CONTINUE", T.green, 1.2)
 		camMode = "fight"
 		letterbox(false)

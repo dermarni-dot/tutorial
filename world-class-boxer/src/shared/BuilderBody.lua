@@ -1,10 +1,13 @@
 -- BuilderBody: everything built on the body below the head (server side), split out of Builder.
+-- * hull: smooth rounded skin (limb cylinders, joint balls, a tapered torso) in place of the blocky R15
+--   upper torso and limbs, which go transparent at medium / full detail
 -- * body evolution: layered anatomical muscles for every Config.MuscleParts id (mass layer + peak /
---   head layer) that grow with training, physique archetypes, body fat, definition, veins (Beams)
+--   head layer) that grow with training, physique archetypes, body fat, definition, veins (Beams), with
+--   per-boxer insertions / lengths / asymmetry from the face seed
 -- * colours: skin, satin trunks, shoes, referee / cornerman outfits on the R15 parts
 -- * attire: trunks (sized around the muscles), sponsor patches, socks, trainers / boxing boots by
 --   brand (sole types, laces with swinging tails), referee and cornerman outfits, robe
--- * gloves with brand signatures (shape, oz, lace / velcro closure, piping, stitching, palm panel,
+-- * gloves with brand signatures (shape, oz, lace / velcro closure, piping, stitching, palm tone,
 --   wordmark, plates, fight-night tape), visible wear and sweat; layered hand wraps
 -- * level of detail (Config.DetailLevel) and per-folder rebuild caching (Kit.cached / Kit.seal)
 -- Builder.Cosmetics runs Colors first, then (after the head) Muscles, Attire and Hands; Builder
@@ -221,10 +224,16 @@ local SPEC = {
 -- the valleys between muscles (the muscles cover them where they bulge). Full detail, lean bodies.
 local GROOVES = {
 	{ n = "Midline", on = "UT", sex = "m", ax = "F", u = 0, v = -0.18, a = 0.028, b = 0.62, t = 0.06, p = 0.008 },
-	{ n = "PecLine", on = "UT", mirror = true, sex = "m", ax = "F", u = 0.25, v = -0.05, a = 0.36, b = 0.03, t = 0.06, p = 0.008, r = { 0, 0, 10 } },
+	{ n = "PecLine", on = "UT", mirror = true, sex = "m", ax = "F", u = 0.25, v = -0.05, a = 0.36, b = 0.03, t = 0.06, p = 0.008, r = { 0, 0, 10 }, follow = "PecSternal" },
 	{ n = "Iliac", on = "UT", mirror = true, ax = "F", u = 0.2, v = -0.42, a = 0.04, b = 0.26, t = 0.06, p = 0.008, r = { 0, 0, -28 }, min = 0.6 },
 	{ n = "DeltGroove", on = "UA", ax = "F", u = 0.36, v = 0.06, a = 0.06, b = 0.36, t = 0.06, p = 0.01, r = { 0, 0, -15 } },
 }
+
+-- SPEC index by muscle name (first entry), so a groove can follow its muscle's per-boxer insertion
+local SPEC_AT = {}
+for i, m in ipairs(SPEC) do
+	SPEC_AT[m.n] = SPEC_AT[m.n] or i
+end
 
 local ANCHOR = { UT = "UpperTorso", LT = "LowerTorso", UA = "UpperArm", LA = "LowerArm", UL = "UpperLeg", LL = "LowerLeg" }
 local LIMB = { UA = true, LA = true, UL = true, LL = true }
@@ -335,7 +344,8 @@ local function veinBeam(host, at0, at1, width, curve, color, base, id)
 end
 
 -- attire / robe clipping envelope: how far (ratio of the half size) the muscles reach past each anchor
-local ENV_FAMS = { "UT", "UA", "UL", "LL", "LA" }
+-- (LT = the hips: glutes and the hip-shape slider, read by the robe skirt)
+local ENV_FAMS = { "UT", "UA", "UL", "LL", "LA", "LT" }
 local function readEnv(model)
 	local look = model:FindFirstChild("BoxerLook")
 	local f = look and look:FindFirstChild("Muscles")
@@ -371,6 +381,43 @@ local function outfitColors(app, outfit)
 	return nil
 end
 
+-- Per-boxer anatomy (REQUEST: "unique body proportions, muscle insertions"): every SPEC entry gets
+-- its own insertion height, belly length, fullness and a slight left/right asymmetry from the boxer's
+-- stable face seed. A fixed number of draws per entry, in SPEC order, so the stream never shifts.
+-- AMP_V scales the insertion shift per muscle: calf height, lat insertion and biceps peak are the
+-- famous genetic tells; ab rows move only a little (they stay rows) but the columns stagger.
+local AMP_V = { calves = 1.8, lats = 1.3, biceps = 1.3, pecs = 0.8, abs = 0.3, lowerAbs = 0.3 }
+local function anatomyOf(app)
+	local seed = tonumber(app.face and app.face.seed) or 7
+	local rng = Random.new(math.floor(seed) + 909)
+	local out = { abStagger = rng:NextNumber(-0.022, 0.022) }
+	for i, m in ipairs(SPEC) do
+		local dv, kb = rng:NextNumber(-0.035, 0.035), rng:NextNumber(0.9, 1.1)
+		local asym, kp = rng:NextNumber(-0.03, 0.03), rng:NextNumber(0.92, 1.08)
+		out[i] = { dv = dv * (AMP_V[m.id] or 1), kb = kb, asym = asym, kp = m.L == 2 and kp or 1 + (kp - 1) * 0.5 }
+	end
+	return out
+end
+
+-- Hull: smooth skin that replaces the blocky R15 upper torso and limbs (REQUEST: no default blocky
+-- body parts). Those nine parts go Transparency 1 (they still drive the animation, the hit boxes and
+-- the welds) and rounded parts take their place: a cylinder per limb segment, a ball in each elbow and
+-- knee (full detail) so a bent joint stays round, and a torso of a core block between two vertical
+-- side cylinders (a stadium cross section) that lean in toward the waist for the V-taper. The head,
+-- lower torso, hands and feet stay: the face, trunks, gloves and shoes cover them. Low detail keeps
+-- the plain R15 parts. Transparent parts cost no draw call, so the hull's visible cost is its parts
+-- minus the nine it hides.
+local HULL_PARTS = { "UpperTorso", "LeftUpperArm", "RightUpperArm", "LeftLowerArm", "RightLowerArm", "LeftUpperLeg", "RightUpperLeg", "LeftLowerLeg", "RightLowerLeg" }
+local function hideBlocks(model, on)
+	local t = on and 1 or 0
+	for _, n in ipairs(HULL_PARTS) do
+		local p = part(model, n)
+		if p and p:IsA("BasePart") and p.Transparency ~= t then
+			p.Transparency = t
+		end
+	end
+end
+
 local function musclesBuild(model, app, build, opts, sp, gear)
 	opts = opts or {}
 	sp = sp or resolve(app, build, opts)
@@ -384,12 +431,20 @@ local function musclesBuild(model, app, build, opts, sp, gear)
 	local top = Looks.Color(a.trim, WHITE)
 	local shirt, trousers = outfitColors(app, sp.outfit)
 	local lowCalf = a.shoeStyle == "Low-Top" or shoeOf(gear).style == "trainer"
-	local key = Kit.sig("M3", sp.ph.id, sp.detail, sp.female, sp.lv, sp.fat, sp.def, sp.vein, sp.dry, sp.grime, app.skin, smoothSkin,
-		sl, a.trunks, a.trim, lowCalf, sp.outfit, sizesOf(model, BODY_PARTS))
+	local seed = tonumber(app.face and app.face.seed) or 7
+	-- M4: hull, per-boxer anatomy (seed) and the LT envelope
+	local key = Kit.sig("M4", sp.ph.id, sp.detail, sp.female, sp.lv, sp.fat, sp.def, sp.vein, sp.dry, sp.grime, app.skin, smoothSkin,
+		sl, a.trunks, a.trim, lowCalf, sp.outfit, seed, sizesOf(model, BODY_PARTS))
 	if Kit.cached(model, "Muscles", key) then
+		-- re-assert the hidden R15 blocks (cheap, change-only) in case anything reset them
+		local f = model.BoxerLook:FindFirstChild("Muscles")
+		hideBlocks(model, f ~= nil and f:GetAttribute("Hull") == true)
 		return readEnv(model)
 	end
 	local folder = getFolder(model, "Muscles")
+	-- the old hull went with the old folder: show the R15 blocks until the new hull is complete, so a
+	-- build that errors half way never leaves an invisible body
+	hideBlocks(model, false)
 	local cfg, lod, pv, ph = sp.cfg, sp.lod, sp.pv, sp.ph
 	local def, fatK, fat = sp.def, sp.fatK, sp.fat
 	local BF = Config.BodyFat
@@ -444,8 +499,77 @@ local function musclesBuild(model, app, build, opts, sp, gear)
 		return { 0 }
 	end
 
+	-- 0) hull (medium and full detail)
+	local hull = lod >= 2
+	local hullWaist = 0
+	if hull then
+		local function hullPart(name, anchor, size, cf, shape, on, pos)
+			local color, mat, cloth = dress(on, pos or V3(), anchor, nil)
+			local p = mk(folder, anchor, name, size, cf, color, shape, mat)
+			p:SetAttribute("Base", true) -- bare skin: SetSweat shines it like the muscles
+			if cloth then
+				p:SetAttribute("Cloth", true)
+			end
+			p.CastShadow = true -- the hidden R15 blocks no longer cast the body's shadow
+			return p
+		end
+		local function dia(seg)
+			return 0.96 * math.max(seg.Size.X, seg.Size.Z)
+		end
+		for _, on in ipairs({ "UA", "LA", "UL", "LL" }) do
+			for side = -1, 1, 2 do
+				local seg = anchorFor(on, side)
+				if seg then
+					local d = dia(seg)
+					hullPart("Hull", seg, V3(seg.Size.Y * 1.02, d, d), seg.CFrame * ANG(0, 0, RAD(90)), "Cylinder", on)
+					-- elbow / knee: a ball at the joint, coloured like the segment below it (bare forearm
+					-- under a short sleeve, trousers on an official's knee)
+					local below = on == "UA" and "LA" or (on == "UL" and "LL" or nil)
+					local low = below and lod >= 3 and anchorFor(below, side)
+					if low then
+						local jd = math.min(d, dia(low))
+						hullPart("HullJoint", seg, V3(jd, jd, jd), seg.CFrame * CF(0, -seg.Size.Y / 2, 0), "Ball", below)
+					end
+				end
+			end
+		end
+		local ut0 = part(model, "UpperTorso")
+		if ut0 then
+			local s = ut0.Size
+			local r = math.min(s.Z / 2, s.X / 2)
+			local x0 = s.X / 2 - r
+			-- waist taper (studs per side): lean physiques and wide lats taper more, fat fills it in
+			local wk = (0.03 + 0.025 * (sp.lv.lats or 0)) * (2 - pv.waist) * pv.taper * (1 - 0.5 * fatK) + (sp.female and 0.015 or 0)
+			hullWaist = math.min(math.clamp(wk, 0.005, 0.09) * s.X, x0 + r * 0.3)
+			local Y = s.Y
+			local function xAt(y)
+				return x0 - hullWaist * (Y / 2 - y) / Y
+			end
+			-- the female sports top ends at -0.18 Y: split there so the band below is bare skin
+			local bands = { { -Y / 2, Y / 2 } }
+			if sp.female and not shirt then
+				bands = { { -0.18 * Y, Y / 2 }, { -Y / 2, -0.18 * Y } }
+			end
+			for _, b in ipairs(bands) do
+				local y0, y1 = b[1], b[2]
+				local h, ym = y1 - y0, (y0 + y1) / 2
+				local pos = V3(0, ym, 0)
+				hullPart("HullCore", ut0, V3(math.max(2 * x0, 0.05), h, s.Z), ut0.CFrame * CF(0, ym, 0), "Block", "UT", pos)
+				local dx = xAt(y1) - xAt(y0)
+				local len = math.sqrt(h * h + dx * dx)
+				for side = -1, 1, 2 do
+					-- cylinder axis = part X; turned up to vertical, then leaned in toward the waist
+					local tilt = math.atan2(dx, h)
+					hullPart("HullSide", ut0, V3(len + 0.01, 2 * r, 2 * r), ut0.CFrame * CF(side * (xAt(y0) + xAt(y1)) / 2, ym, 0) * ANG(0, 0, RAD(90) - side * tilt), "Cylinder", "UT", pos)
+				end
+			end
+		end
+	end
+	folder:SetAttribute("HullWaist", q(hullWaist, 0.01))
+
 	-- 1) muscles
-	for _, m in ipairs(SPEC) do
+	local anat = anatomyOf(app)
+	for i, m in ipairs(SPEC) do
 		local lvl = sp.lv[m.id] or 0
 		local ok = lod >= m.lod and (m.L == 1 or cfg.muscleLayers >= 2)
 			and (m.sex == nil or (m.sex == "f") == sp.female)
@@ -457,11 +581,17 @@ local function musclesBuild(model, app, build, opts, sp, gear)
 			for _, side in ipairs(sidesOf(m)) do
 				local anchor = anchorFor(m.on, side)
 				if anchor then
-					local mm = m
+					-- this boxer's insertion / length / fullness, slightly different left and right
+					local j = anat[i]
+					local mm = table.clone(m)
 					if m.vLow and lowCalf then
-						mm = table.clone(m)
 						mm.v, mm.b = m.vLow, m.bLow or m.b
 					end
+					local stagger = (m.n == "Ab" or m.n == "AbRow4") and side * anat.abStagger or 0
+					mm.v = mm.v + j.dv + stagger
+					mm.b = mm.b * j.kb
+					mm.a = mm.a * (1 + side * j.asym)
+					mm.p1 = (mm.p1 or 0) * j.kp
 					local kk = k
 					if m.id == "lats" then
 						kk = { soft = k.soft, flat = k.flat * pv.taper, elong = k.elong }
@@ -493,15 +623,18 @@ local function musclesBuild(model, app, build, opts, sp, gear)
 		local d = (0.5 + 0.22 * sp.lv.neckSCM + 0.06 * sp.lv.traps + 0.08 * (tonumber(sl.neck) or 0)) * head.Size.X * (sp.female and 0.9 or 1)
 		local neck = mk(folder, ut, "Neck", V3(0.4, d, d), ut.CFrame * CF(0, s.Y * 0.5 + 0.08, 0.02) * ANG(0, 0, RAD(90)), skin, "Cylinder", skinMat)
 		neck:SetAttribute("Base", true)
-		if sp.female and not shirt then
-			-- sports top with a bare midriff (the upper torso itself is coloured as the top)
+		if sp.female and not shirt and not hull then
+			-- sports top with a bare midriff (the upper torso itself is coloured as the top; with the hull
+			-- the torso's lower band is the bare midriff)
 			local mid = mk(folder, ut, "Midriff", V3(s.X * 1.01, s.Y * 0.32, s.Z * 1.02), ut.CFrame * CF(0, -0.34 * s.Y, 0), skin, "Block", skinMat)
 			mid:SetAttribute("Base", true)
 		end
-		if lod >= 3 and not sp.female then
+		if lod >= 3 then
+			-- women get slimmer SCMs (still a flex / pump target and the jugular under strain)
 			local lvl = sp.lv.neckSCM
+			local fk = sp.female and 0.7 or 1
 			for side = -1, 1, 2 do
-				local size = V3(0.2 * d * (1 + 0.5 * lvl), 0.46, 0.22 * d * (1 + 0.5 * lvl))
+				local size = V3(0.2 * d * (1 + 0.5 * lvl) * fk, 0.46, 0.22 * d * (1 + 0.5 * lvl) * fk)
 				local cf = ut.CFrame * CF(side * 0.28 * d, s.Y * 0.5 + 0.1, -0.39 * d + 0.02) * ANG(RAD(24), 0, RAD(-16 * side))
 				local p = mk(folder, ut, "NeckSCM", size, cf, skin, "Ellipsoid", skinMat)
 				tagMuscle(p, "neckSCM", side, 1)
@@ -522,7 +655,12 @@ local function musclesBuild(model, app, build, opts, sp, gear)
 	if cfg.grooves and def > 0.3 and not shirt then
 		local alpha = math.clamp(1 - 0.55 * def * pv.groove, 0.3, 0.95)
 		local gcol = darken(skin, 0.74)
-		for _, g in ipairs(GROOVES) do
+		for _, g0 in ipairs(GROOVES) do
+			local g = g0
+			if g0.follow and SPEC_AT[g0.follow] then
+				g = table.clone(g0)
+				g.v = g0.v + anat[SPEC_AT[g0.follow]].dv
+			end
 			if (g.sex == nil or (g.sex == "f") == sp.female) and def > (g.min or 0) then
 				for _, side in ipairs(sidesOf(g)) do
 					local anchor = anchorFor(g.on, side)
@@ -601,6 +739,7 @@ local function musclesBuild(model, app, build, opts, sp, gear)
 			local p = mk(folder, lt, "HipShape", V3(0.3 * s.X * waist * pv.waist, s.Y * 1.4, 0.8 * s.Z), lt.CFrame * CF(side * 0.48 * s.X, 0.25 * s.Y, 0), trousers or trunks, "Ellipsoid", trousers and FABRIC or SMOOTH)
 			p:SetAttribute("Fat", true)
 			p:SetAttribute("Cloth", true)
+			env.LT.x = math.max(env.LT.x, (0.48 * s.X + p.Size.X / 2) / (s.X / 2))
 		end
 	end
 
@@ -611,7 +750,7 @@ local function musclesBuild(model, app, build, opts, sp, gear)
 			for _, on in ipairs({ "LL", "LA" }) do
 				local anchor = anchorFor(on, side)
 				if anchor and not (trousers and on == "LL") then
-					local cf, size = place(anchor, side, { ax = "F", u = 0, v = on == "LL" and 0.1 or -0.1, a = 0.95, b = 0.7, t = 0.3, p = 0.012 }, 0, { soft = 1, flat = 1, elong = 1 })
+					local cf, size = place(anchor, side, { ax = "F", u = 0, v = on == "LL" and 0.1 or -0.1, a = 0.8, b = 0.7, t = 0.5, p = 0.006 }, 0, { soft = 1, flat = 1, elong = 1 })
 					local p = mk(folder, anchor, "Grime", size, cf, dirt, "Ellipsoid", SMOOTH, math.clamp(1 - 0.5 * sp.grime, 0.5, 0.95))
 					p:SetAttribute("Grime", true)
 				end
@@ -671,6 +810,8 @@ local function musclesBuild(model, app, build, opts, sp, gear)
 		folder:SetAttribute("Env" .. fam, V3(q(e.x, 0.01), q(e.zf, 0.01), q(e.zb, 0.01)))
 		folder:SetAttribute("EnvTop" .. fam, q(e.y, 0.01))
 	end
+	folder:SetAttribute("Hull", hull)
+	hideBlocks(model, hull)
 	Kit.seal(model, "Muscles", key)
 	return readEnv(model)
 end
@@ -678,10 +819,17 @@ end
 ------------------------------------------------------------------------
 -- Colours of the R15 parts (skin, trunks, shoes, outfits)
 ------------------------------------------------------------------------
+-- shoe wear in 5-point steps (60 = like new): the uncached R15 feet and the cached Attire overlays
+-- (toe box, collar, boot shaft, tongue) both use this bucket, and the Attire key includes it, so the
+-- two never drift into a clean toe and a grubby heel
+local function shoeCond(gear)
+	return math.min(60, q(tonumber(gear.shoesCond) or 100, 5))
+end
+
 local function shoeColorOf(app, gear)
 	local a = app.attire or {}
 	local c = Looks.Color(a.shoes, Color3.fromRGB(25, 25, 25))
-	local cond = gear.shoesCond or 100
+	local cond = shoeCond(gear)
 	if cond < 60 then
 		-- worn-out shoes fade and get grubby
 		c = lerpColor(c, Color3.fromRGB(95, 85, 70), (60 - cond) / 60 * 0.45)
@@ -859,10 +1007,13 @@ local function shoesBuild(folder, model, app, opts, gear, sp, env)
 				mk(folder, ll, "BootShaft", V3(s.X * 1.1, s.Y * h, s.Z * zb), ll.CFrame * CF(0, s.Y * cy, s.Z * 0.02), shoeColor, "Block", LEATHER)
 				mk(folder, ll, "Sock", V3(s.X * 1.05, s.Y * 0.09, s.Z * 1.08), ll.CFrame * CF(0, s.Y * (topY + 0.045), s.Z * 0.01), socks, "Block", SMOOTH)
 				local fz = -s.Z * 0.56 - 0.012
-				if lod >= 2 then
+				if lod >= 2 and cfg.laces ~= "full" then
+					-- eyelet rows (the full criss-cross laces cover that line, so they are skipped there)
 					for _, ex in ipairs({ -1, 1 }) do
 						mk(folder, ll, "Eyelets", V3(0.035, s.Y * (h - 0.14), 0.03), ll.CFrame * CF(ex * s.X * 0.15, s.Y * (cy + 0.03), fz - 0.004), eyeletColor, "Block", metal)
 					end
+				end
+				if lod >= 2 then
 					-- padded tongue rising out of the shaft top
 					mk(folder, ll, "Tongue", V3(s.X * 0.32, 0.16, 0.06), ll.CFrame * CF(0, s.Y * topY + 0.05, fz + 0.01), darken(shoeColor, 0.9), "Block", LEATHER)
 				end
@@ -927,7 +1078,8 @@ local function shoesBuild(folder, model, app, opts, gear, sp, env)
 				if lod >= 2 then
 					mk(folder, foot, "ToeBox", V3(fs.X * 1.0, fs.Y * 1.05, fs.Z * 0.5), foot.CFrame * CF(0, 0, -fs.Z * 0.3), shoeColor, "Ellipsoid", LEATHER)
 				end
-				if cfg.laces ~= "none" then
+				-- foot lacing strip, unless the criss-cross laces are already drawn on the shaft
+				if cfg.laces ~= "none" and not (cfg.laces == "full" and ll) then
 					mk(folder, foot, "Laces", V3(0.25, 0.04, fs.Z * 0.5), foot.CFrame * CF(0, fs.Y * 0.5, -fs.Z * 0.1), laceColor, "Block", SMOOTH)
 				end
 			end
@@ -1025,9 +1177,10 @@ local function attireBuild(model, app, opts, gear, sp, env)
 		return math.ceil(x / 0.05 - 1e-6) * 0.05
 	end
 	local eUL = { x = up(env.UL.x), zf = up(env.UL.zf), zb = up(env.UL.zb) }
+	local eLL = { x = up(env.LL.x), zf = up(env.LL.zf), zb = up(env.LL.zb) }
 	local spT, spF, spB = sponsorOf(opts.sponsorTrunks)
-	local key = Kit.sig("A3", a, opts.waistText or "", spT or "", spF or "", spB or "", sp.outfit, sp.detail, gear.shoes, gear.shoesCond >= 60, gear.shoesCond >= 40,
-		eUL, topRel, opts.name or "", app.gender, sizesOf(model, ATTIRE_PARTS))
+	local key = Kit.sig("A3", a, opts.waistText or "", spT or "", spF or "", spB or "", sp.outfit, sp.detail, gear.shoes, shoeCond(gear), gear.shoesCond >= 60, gear.shoesCond >= 40,
+		eUL, a.trunkStyle == "Long" and eLL or false, topRel, opts.name or "", app.gender, sizesOf(model, ATTIRE_PARTS))
 	if Kit.cached(model, "Attire", key) then
 		return
 	end
@@ -1077,9 +1230,8 @@ local function attireBuild(model, app, opts, gear, sp, env)
 				mk(folder, ul, "Hem", V3(us.X * (wX + 0.02), us.Y * 0.1, dZ + 0.024), ul.CFrame * CF(0, us.Y * (low + 0.05), zc), trim, "Block", SMOOTH)
 				mk(folder, ul, "SidePanel", V3(0.05, us.Y * panelH, dZ * 0.52), ul.CFrame * CF(px, us.Y * panelY, zc), trim, "Block", SMOOTH)
 				if sp.lod >= 2 then
-					for k = -1, 1 do
-						mk(folder, ul, "SideStripe", V3(0.062, us.Y * (panelH - 0.02), dZ * 0.07), ul.CFrame * CF(px + sign * 0.006, us.Y * panelY, zc + k * dZ * 0.16), white, "Block", SMOOTH)
-					end
+					-- one broad white stripe down the panel (three thin ones cost 4 parts for little at range)
+					mk(folder, ul, "SideStripe", V3(0.062, us.Y * (panelH - 0.02), dZ * 0.2), ul.CFrame * CF(px + sign * 0.006, us.Y * panelY, zc), white, "Block", SMOOTH)
 				end
 			end
 			-- sponsor patch on the front of the right leg (left leg carries the boxer's own colours)
@@ -1088,8 +1240,12 @@ local function attireBuild(model, app, opts, gear, sp, env)
 			end
 		end
 		if ll and a.trunkStyle == "Long" then
+			-- the knee-length cuff, sized around the calf heads (the envelope, rounded up) so they never clip
 			local s = ll.Size
-			mk(folder, ll, "TrunkLeg", V3(s.X * 1.06, s.Y * 0.25, s.Z * 1.06), ll.CFrame * CF(0, s.Y * 0.38, 0), trunks, "Block", SMOOTH)
+			local wx = math.max(1.06, eLL.x + 0.06)
+			local fr = math.max(0.53 * s.Z, eLL.zf * s.Z / 2 + 0.03)
+			local bk = math.max(0.53 * s.Z, eLL.zb * s.Z / 2 + 0.03)
+			mk(folder, ll, "TrunkLeg", V3(s.X * wx, s.Y * 0.25, fr + bk), ll.CFrame * CF(0, s.Y * 0.38, (bk - fr) / 2), trunks, "Block", SMOOTH)
 		end
 	end
 	shoesBuild(folder, model, app, opts, gear, sp, env)
@@ -1463,25 +1619,43 @@ function Body.SetRobe(model, app, on, opts)
 			textPatch(folder, ut, "SponsorPatch", V3(s.X * 0.7, s.Y * 0.16, 0.02), shell.CFrame * CF(0, -s.Y * 0.22, s.Z * rz * 0.5 + 0.012), spT, spF, Enum.NormalId.Back, "GothamBlack", spB)
 		end
 		if robeId == "Hooded" or robeId == "Champion" then
-			mk(folder, ut, "Hood", V3(s.X * 0.75, s.Y * 0.55, s.Z * 0.8), ut.CFrame * CF(0, s.Y * 0.55 + (ry - 1.06) * s.Y * 0.4, s.Z * 0.45), color, "Ellipsoid", mat)
+			-- the hood is UP for the walkout (BuilderHead hides the hair under it): a shell over the crown,
+			-- sides and back, welded to the head so it turns with it. Its front edge sits at about -0.41 of
+			-- the head depth: in front of A's hidden-hair line (-0.36), behind the face (-0.5), so the face
+			-- stays open. The drape is the fabric falling from the hood onto the shoulders.
+			mk(folder, ut, "HoodDrape", V3(s.X * 0.75, s.Y * 0.55, s.Z * 0.8), ut.CFrame * CF(0, s.Y * 0.55 + (ry - 1.06) * s.Y * 0.4, s.Z * 0.45), color, "Ellipsoid", mat)
+			local head = part(model, "Head")
+			if head then
+				local hs = head.Size
+				-- keep the name "Hood": Builder.Cosmetics checks for it before restoring hidden hair
+				mk(folder, head, "Hood", V3(hs.X * 1.26, hs.Y * 1.18, hs.Z * 1.14), head.CFrame * CF(0, hs.Y * 0.1, hs.Z * 0.16), color, "Ellipsoid", mat)
+			end
 		end
 	end
 	if lt then
+		-- skirt and belt around the glutes and the hip-shape slider (the LT envelope)
 		local s = lt.Size
-		mk(folder, lt, "RobeSkirt", V3(s.X * 1.25, 2.2, s.Z * 1.35), lt.CFrame * CF(0, -1.0, 0), color, "Block", mat).Reflectance = refl
-		mk(folder, lt, "RobeBelt", V3(s.X * 1.28, 0.22, s.Z * 1.38), lt.CFrame * CF(0, 0.1, 0), trim, "Block", mat)
+		local eLT = env.LT
+		local kx = math.max(1.25, eLT.x + 0.08)
+		local kz = math.max(1.35, math.max(eLT.zf, eLT.zb) + 0.12)
+		mk(folder, lt, "RobeSkirt", V3(s.X * kx, 2.2, s.Z * kz), lt.CFrame * CF(0, -1.0, 0), color, "Block", mat).Reflectance = refl
+		mk(folder, lt, "RobeBelt", V3(s.X * (kx + 0.03), 0.22, s.Z * (kz + 0.03)), lt.CFrame * CF(0, 0.1, 0), trim, "Block", mat)
 	end
 	local sx = math.max(1.2, eUA.x + 0.1)
 	local sz = math.max(1.2, math.max(eUA.zf, eUA.zb) + 0.1)
 	local sy = math.clamp(eUA.y, 1.02, 1.2)
+	-- forearm sleeves around the flexors / brachioradialis
+	local eLA = env.LA
+	local lx = math.max(1.22, eLA.x + 0.1)
+	local lz = math.max(1.22, math.max(eLA.zf, eLA.zb) + 0.1)
 	for _, side in ipairs({ "Left", "Right" }) do
 		local ua, la = part(model, side .. "UpperArm"), part(model, side .. "LowerArm")
 		if ua then
 			mk(folder, ua, "Sleeve", ua.Size * V3(sx, sy, sz), ua.CFrame * CF(0, ua.Size.Y * (sy - 1.02) * 0.5, 0), color, "Block", mat).Reflectance = refl
 		end
 		if la then
-			mk(folder, la, "SleeveLow", la.Size * V3(1.22, 0.7, 1.22), la.CFrame * CF(0, la.Size.Y * 0.12, 0), color, "Block", mat).Reflectance = refl
-			mk(folder, la, "SleeveTrim", V3(la.Size.X * 1.25, 0.1, la.Size.Z * 1.25), la.CFrame * CF(0, -la.Size.Y * 0.22, 0), trim, "Block", mat)
+			mk(folder, la, "SleeveLow", la.Size * V3(lx, 0.7, lz), la.CFrame * CF(0, la.Size.Y * 0.12, 0), color, "Block", mat).Reflectance = refl
+			mk(folder, la, "SleeveTrim", V3(la.Size.X * (lx + 0.03), 0.1, la.Size.Z * (lz + 0.03)), la.CFrame * CF(0, -la.Size.Y * 0.22, 0), trim, "Block", mat)
 		end
 	end
 	local hood = robeId == "Hooded" or robeId == "Champion"
@@ -1520,7 +1694,9 @@ function Body.SetSweat(model, app, level)
 				if kind == "glove" and typeof(bc) == "Color3" then
 					-- sweat darkens leather and adds a little shine
 					p.Color = bc:Lerp(darken(bc, 0.8), level * 0.7)
-					p.Reflectance = math.min((p:GetAttribute("BaseRefl") or 0) + 0.05 * level, 0.27)
+					-- never below the build value: metallic (Foil, 0.35) gloves keep their designed shine
+					local br = p:GetAttribute("BaseRefl") or 0
+					p.Reflectance = math.max(br, math.min(br + 0.05 * level, 0.27))
 				elseif kind == "wrap" and typeof(bc) == "Color3" then
 					-- soaked cotton goes grey and darker
 					p.Color = bc:Lerp(darken(bc, 0.84), level * 0.8)
@@ -1572,6 +1748,16 @@ function Body.SetDamage(model, app, dmg)
 	end
 	local skin = Looks.Color(Looks.SkinTones[(app and app.skin) or 5])
 	local s = ut.Size
+	-- women: on the bare midriff, under the sports top (which ends at -0.18 Y)
+	local female = app and app.gender == 2
+	local cy, cy2, hMax = -0.14, -0.18, 0.4
+	if female then
+		cy, cy2, hMax = -0.33, -0.36, 0.26
+	end
+	-- the hull leans in toward the waist: pull the bruise in with it so it hugs the flank
+	local mf = look:FindFirstChild("Muscles")
+	local hw = mf and tonumber(mf:GetAttribute("HullWaist")) or 0
+	local inX = hw * (0.5 - cy) * 0.9
 	for _, e in ipairs({ { -1, "ribsL" }, { 1, "ribsR" } }) do
 		local side, v = e[1], math.clamp(tonumber(dmg[e[2]]) or 0, 0, 1)
 		if v > 0.08 then
@@ -1582,9 +1768,9 @@ function Body.SetDamage(model, app, dmg)
 			end
 			local c = lerpColor(skin, bruiseColor(skin, dmg.age), 0.75)
 			-- the bruise wraps the lower ribs from the flank round to the front
-			mk(folder, ut, "RibBruise", V3((0.28 + 0.1 * v) * s.X, (0.26 + 0.14 * v) * s.Y, s.Z * 1.06), ut.CFrame * CF(side * 0.38 * s.X, -0.14 * s.Y, -0.02), c, "Ellipsoid", SMOOTH, math.clamp(0.78 - 0.4 * v, 0.35, 0.8))
+			mk(folder, ut, "RibBruise", V3((0.28 + 0.1 * v) * s.X, math.min(0.26 + 0.14 * v, hMax) * s.Y, s.Z * 1.06), ut.CFrame * CF(side * (0.38 * s.X - inX), cy * s.Y, -0.02), c, "Ellipsoid", SMOOTH, math.clamp(0.78 - 0.4 * v, 0.35, 0.8))
 			if v > 0.5 then
-				mk(folder, ut, "RibBruise", V3(0.16 * s.X, 0.14 * s.Y, s.Z * 1.08), ut.CFrame * CF(side * 0.42 * s.X, -0.18 * s.Y, -0.02), darken(c, 0.85), "Ellipsoid", SMOOTH, math.clamp(0.85 - 0.5 * v, 0.4, 0.8))
+				mk(folder, ut, "RibBruise", V3(0.16 * s.X, 0.14 * s.Y, s.Z * 1.08), ut.CFrame * CF(side * (0.42 * s.X - inX), cy2 * s.Y, -0.02), darken(c, 0.85), "Ellipsoid", SMOOTH, math.clamp(0.85 - 0.5 * v, 0.4, 0.8))
 			end
 		end
 	end

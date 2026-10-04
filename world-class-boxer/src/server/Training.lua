@@ -582,6 +582,12 @@ function Training.GrowMuscles(profile, act, quality, scale, condMult)
 			end
 		end
 	end
+	-- punching (any gloved work: bag, mitts, pads, sparring) keeps the neck braced against the
+	-- recoil: it holds off neck detraining without growing it (growth stays with Config targets).
+	-- Without this a pure bag-and-weights boxer ended up with a neck thinner than on day one.
+	if type(act.wear) == "table" and finite(act.wear.gloves, 0) > 0 then
+		log.neckSCM = day
+	end
 
 	-- soreness: the harder the session hits a group, the sorer it gets (0..1)
 	out.sore = {}
@@ -1096,9 +1102,19 @@ function Training.FaceView(profile)
 	return f
 end
 
+-- Was the nose still broken (not yet set) when the fight that is being applied started?
+-- FightEngine seeds each fight's damage from the healing face (CONTRACTS 8.6), so its res.face /
+-- res.noseBroken carry an old, unset break over. Career.ApplyResult runs PassDays (which may set
+-- that old nose) before AddFaceDamage / AddTrauma, so PassDays snapshots the pre-fight state here
+-- for those two to read. Weak keys: per running profile, never saved.
+local preFightNose = setmetatable({}, { __mode = "k" })
+
 -- Merges a fight's (or spar's) face damage into the profile, field by field by max, times scale
--- (Config.FaceDamage.postFightCarry / sparCarry). The residual's age restarts at 0 (fresh bruises).
--- Fields that got worse are flagged for the permanent-mark check on the next night (HealFace).
+-- (Config.FaceDamage.postFightCarry / sparCarry). The residual's age restarts at 0 (fresh bruises)
+-- only when something actually got worse: a light spar must not restart the nose-setting clock.
+-- A broken nose that was already broken when the fight started is the old break carried over by
+-- the engine's seed, not a new one. Fields that got worse are flagged for the permanent-mark check
+-- on the next night (HealFace).
 function Training.AddFaceDamage(profile, face, scale)
 	local add = cleanFace(face, clamp(finite(scale, 1), 0, 2))
 	if not add then
@@ -1107,10 +1123,12 @@ function Training.AddFaceDamage(profile, face, scale)
 	local c = profile.condition
 	local cur = cleanFace(c.face) or {}
 	local marks = type(c.faceMarks) == "table" and c.faceMarks or {}
+	local worse = false
 	for _, k in ipairs(FACE_FIELDS) do
 		local v = add[k]
 		if v and v > (cur[k] or 0) then
 			cur[k] = v
+			worse = true
 			if k == "cut" then
 				cur.cutSide = add.cutSide
 				marks.cut = true
@@ -1122,11 +1140,14 @@ function Training.AddFaceDamage(profile, face, scale)
 			end
 		end
 	end
-	if add.nose then
+	if add.nose and not cur.nose and not preFightNose[profile] then
 		cur.nose = true
+		worse = true
 	end
-	cur.age = 0
-	c.face = cur
+	if worse or cur.age == nil then
+		cur.age = 0
+	end
+	c.face = cleanFace(cur)
 	c.faceMarks = next(marks) ~= nil and marks or nil
 	return Training.FaceView(profile)
 end
@@ -1283,8 +1304,15 @@ function Training.AddTrauma(profile, res)
 			table.insert(notes, "DOCTOR: " .. name .. ". No sparring or bag work until it clears.")
 		end
 	end
+	-- a new break only: D's explicit flag wins (the face table is the fallback for older results),
+	-- and a nose that was already broken when the fight started cannot break again (the engine
+	-- seeds it; FightEngine never re-breaks a flagged nose) - otherwise every fight before the nose
+	-- set re-created the injury and re-rolled the bend
 	local face = type(res.face) == "table" and res.face or nil
-	if res.noseBroken == true or (face and face.nose == true) then
+	local seeded = preFightNose[profile] == true
+	preFightNose[profile] = nil
+	local broke = res.noseBroken == true or (res.noseBroken == nil and face ~= nil and face.nose == true)
+	if broke and not seeded then
 		local name, new = addInjury(profile, "nose", rng:NextNumber())
 		if name and new then
 			table.insert(notes, "DOCTOR: " .. name .. ". Keep the mitts and sparring away from it.")
@@ -1302,6 +1330,9 @@ end
 -- Neglected muscle fades: a part not trained for detrainGraceDays loses
 -- value * detrainRate * min(3, (idle - grace) / 7) per day (x2 from detrainAgeFrom), never below the
 -- floor. mul < 1 = active rest (fight suspension). Parts with no log entry start their clock now.
+-- detraining multiplier during a post-fight medical suspension (enforced rest, light work only)
+local SUSPENSION_DETRAIN = 0.1
+
 local function detrain(profile, mul)
 	local body, log = profile.body, muscleLog(profile)
 	local day = finite(profile.day, 1)
@@ -1465,11 +1496,16 @@ end
 function Training.PassDays(profile, days)
 	local notes = {}
 	days = math.max(0, math.floor(finite(days, 0)))
+	-- the fight that sends us here started on this face: remember whether its nose was still broken
+	local f0 = profile.condition and profile.condition.face
+	preFightNose[profile] = type(f0) == "table" and f0.nose == true
 	-- the camp's last sessions still turn into muscle (rest is all a fighter does now)
 	applyPending(profile, 0.9)
 	for _ = 1, days do
-		-- light work during the suspension: untrained muscle fades at about a third of the rate
-		for _, n in ipairs(dayTick(profile, { detrainMul = 0.35, suspension = true })) do
+		-- light work during the suspension: untrained muscle fades at a tenth of the rate (a 45-day
+		-- KO suspension costs ~3% of a part, close to the original per-group 0.02/day; at 0.35 every
+		-- loss cost ~11% and frequent fights kept the physique near beginner level)
+		for _, n in ipairs(dayTick(profile, { detrainMul = SUSPENSION_DETRAIN, suspension = true })) do
 			table.insert(notes, n)
 		end
 	end
@@ -1775,11 +1811,14 @@ local function tableIn(t, k, default)
 end
 
 -- An old save only knows the 7 groups. Each group with no parts yet is split across its parts by
--- the player's own training history (profile.records sessions x each exercise's targeting, +-20%),
--- so a bench-heavy career migrates with fuller pecs and front delts. The share-weighted sum is
--- re-balanced to exactly the old group value: weight, power and lift loads do not move.
+-- the player's own training history (profile.records sessions x each exercise's targeting), so a
+-- bench-heavy career migrates with fuller pecs and front delts. Each part gets a bias b in
+-- [-lim, lim] (lim <= 20%) and the share-weighted sum is re-balanced to exactly the old group value
+-- (part = gv * (1 + b - mean b)): weight, power and lift loads do not move. lim shrinks with the
+-- headroom to the frame cap, so no part ends above it (gv * (1 + 2 lim) <= cap) on veteran saves.
 local function seedPartsFromHistory(profile, body)
 	local records = type(profile.records) == "table" and profile.records or {}
+	local cap = Training.MuscleCap(profile)
 	local affinity = {}
 	for _, act in ipairs(Config.Activities) do
 		local r = records[act.id]
@@ -1800,6 +1839,7 @@ local function seedPartsFromHistory(profile, body)
 		end
 		if missing then
 			local gv = body[g]
+			local lim = math.min(0.2, math.max(0, (cap / math.max(gv, 1e-6) - 1) / 2))
 			local mean = 0
 			for _, p in ipairs(parts) do
 				mean += p.share * (affinity[p.id] or 0)
@@ -1807,7 +1847,7 @@ local function seedPartsFromHistory(profile, body)
 			local sum = 0
 			for _, p in ipairs(parts) do
 				local rel = mean > 0 and (affinity[p.id] or 0) / mean or 1
-				body[p.id] = gv * (1 + clamp((rel - 1) * 0.2, -0.2, 0.2))
+				body[p.id] = gv * (1 + clamp((rel - 1) * 0.2, -lim, lim))
 				sum += p.share * body[p.id]
 			end
 			local delta = gv - sum
@@ -1876,8 +1916,11 @@ function Training.Migrate(profile)
 	numIn(body, "fat", Config.BodyFat.min, Config.BodyFat.max, Config.BodyFat.default)
 	local records = seedPartsFromHistory(profile, body)
 	Config.FillParts(body)
+	-- no part above the frame's cap (CONTRACTS 2: 0..100*potential): a corrupt value or a frame
+	-- changed to a smaller one is brought back under it; a cap clamp keeps this idempotent
+	local partCap = Training.MuscleCap(profile)
 	for _, p in ipairs(Config.MuscleParts) do
-		numIn(body, p.id, 0, 130, 8)
+		numIn(body, p.id, 0, partCap, 8)
 	end
 	if body.vasc == nil then
 		-- veterans of the dumbbell rack start with some veins

@@ -206,6 +206,19 @@ local function sig(...)
 	return table.concat(out)
 end
 
+-- fixed-length digest of a signature: the folder stores 16 hex chars instead of the 400-1100 char key
+-- (attributes replicate to every client, and only the server's cached() ever reads them).
+-- Two 32-bit rolling hashes, exact in doubles (h1 * 33 < 2^38, h2 * 65599 < 2^49).
+local function digest(s)
+	local h1, h2 = 5381, 0
+	for i = 1, #s do
+		local c = string.byte(s, i)
+		h1 = (h1 * 33 + c) % 4294967296
+		h2 = (h2 * 65599 + c) % 4294967296
+	end
+	return string.format("%08x%08x", h1, h2)
+end
+
 -- every weld / motor in the folder still holds on to a part of this model (a respawn, a head swap or
 -- a rescale through ApplyDescription replaces or moves the anchors, so the old parts are stale)
 local function intact(model, folder)
@@ -227,7 +240,7 @@ local function cached(model, name, key)
 	end
 	local look = model:FindFirstChild("BoxerLook")
 	local f = look and look:FindFirstChild(name)
-	return f ~= nil and f:GetAttribute("Sig") == key and intact(model, f)
+	return f ~= nil and f:GetAttribute("Sig") == digest(key) and intact(model, f)
 end
 
 -- stamp a finished folder with the signature it was built from (set last: a build that errors
@@ -236,7 +249,7 @@ local function seal(model, name, key)
 	local look = model:FindFirstChild("BoxerLook")
 	local f = look and look:FindFirstChild(name)
 	if f then
-		f:SetAttribute("Sig", key)
+		f:SetAttribute("Sig", digest(key))
 	end
 end
 
@@ -257,6 +270,7 @@ Kit.getFolder = getFolder
 Kit.part = part
 Kit.joint = joint
 Kit.sig = sig
+Kit.digest = digest
 Kit.intact = intact
 Kit.cached = cached
 Kit.seal = seal

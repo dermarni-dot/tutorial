@@ -81,13 +81,41 @@ local function newBoxer(world, rng, ci, target, usedNames, ageLo, ageHi)
 	}
 end
 
--- full look + build for an AI boxer (deterministic)
+-- full look + build + gear for an AI boxer (deterministic: the same boxer always looks the same).
+-- Looks.Random gets the ring personality / champion status / career length so the physique
+-- archetype and the boxer's battle wear (cauliflower ears, bent nose, scars) match who he is, and
+-- RandomBuild gets that physique so the muscles agree with it (CONTRACTS 1, 4).
 function World.Look(b)
-	local frac = math.clamp((b.overall - 26) / 64, 0, 1)
-	local app = Looks.Random(b.lookSeed or hash(b.id), b.gender or 1, { class = b.class, age = b.age, veteran = b.age >= 31 or (b.record.w + b.record.l) > 30, height = b.height })
-	local build = Looks.RandomBuild(b.lookSeed or hash(b.id), frac, b.age, app.body.frame)
+	local frac = math.clamp(((tonumber(b.overall) or 50) - 26) / 64, 0, 1)
+	local rec = type(b.record) == "table" and b.record or {}
+	local fights = (rec.w or 0) + (rec.l or 0) + (rec.d or 0)
+	local age = tonumber(b.age) or 25
+	local seed = b.lookSeed or hash(tostring(b.id))
+	local champion = type(b.belts) == "table" and #b.belts > 0
+	local app = Looks.Random(seed, b.gender or 1, {
+		-- veteran keeps its old definition: it changes how many legacy draws Looks.Random makes
+		class = b.class, age = b.age, veteran = age >= 31 or ((rec.w or 0) + (rec.l or 0)) > 30, height = b.height,
+		archetype = b.archetype, champion = champion, fights = fights,
+	})
+	local physique = app.body and app.body.physique
+	if physique == "Auto" then
+		physique = nil
+	end
+	local build = Looks.RandomBuild(seed, frac, age, app.body.frame, physique)
+	-- kit follows the level: champions wear the best, prospects the basics (Catalog ids)
 	local gloveTier = frac > 0.8 and "Championship" or (frac > 0.55 and "Professional" or (frac > 0.3 and "Competition" or "Cheap"))
-	local gear = { gloves = gloveTier, glovesCond = 70 + frac * 30, wrapsCond = 90 }
+	if champion and frac > 0.85 then
+		gloveTier = "Custom"
+	end
+	local wraps = frac > 0.55 and "Gel" or (frac > 0.2 and "Cotton" or "OldWraps")
+	local shoes = frac > 0.8 and "EliteBoots" or (frac > 0.55 and "ProBoots" or (frac > 0.2 and "Boots" or "Sneakers"))
+	local gear = {
+		gloves = gloveTier, glovesCond = 70 + frac * 30,
+		wraps = wraps, wrapsCond = 80 + frac * 20,
+		shoes = shoes, shoesCond = 75 + frac * 25,
+		mouthguard = frac > 0.5 and "CustomFit" or "BoilBite",
+		robe = champion and "Champion" or (frac > 0.6 and "Hooded" or "Classic"),
+	}
 	return app, build, gear
 end
 

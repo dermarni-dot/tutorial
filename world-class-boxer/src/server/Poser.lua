@@ -119,9 +119,10 @@ local function dumbbell(folder, hand, level)
 	end
 end
 
--- medicine ball held against the right palm, between both hands (the Animator's medball pose keeps
--- the hands one ball-width apart, 2 x 0.56 studs). Worn rubber at low levels, leather and a
--- coloured grip band at higher ones; the band also shows the ball spinning on twists and slams.
+-- medicine ball held against the right palm, between both hands: the Animator's medball pose turns
+-- both palms in (hand X axes along the torso's X, so this weld's -X points at the left palm) and
+-- keeps the hand centres ~1.1 studs apart. Worn rubber at low levels, leather and a coloured grip
+-- band at higher ones; the band also shows the ball turning with the hands on twists and slams.
 local MEDBALL_D = 1.1
 local function medicineBall(folder, hand, level)
 	local c = hand.CFrame * CF(-MEDBALL_D * 0.5, -0.25, 0)

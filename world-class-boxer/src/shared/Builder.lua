@@ -125,11 +125,19 @@ Builder.Resolve = Body.Resolve -- (app, build, opts) -> body spec (levels, fat, 
 ------------------------------------------------------------------------
 -- Rebuild caching for the head steps (the body steps cache themselves in BuilderBody)
 ------------------------------------------------------------------------
--- opts keys the head steps never read; everything else that is a plain value goes in the signature
+-- opts keys the head steps never read (grime is keyed below as the quantised value the face really uses);
+-- everything else that is a plain value goes in the signature
 local HEAD_SIG_SKIP = {
 	sweat = true, hands = true, robe = true, waistText = true, name = true, nick = true, nat = true,
-	fightNight = true, physique = true, tier = true, sponsorTrunks = true, sponsorRobe = true,
+	fightNight = true, physique = true, tier = true, sponsorTrunks = true, sponsorRobe = true, grime = true,
 }
+-- Inputs the head steps read beyond the plain opts. Face = face fat, opts.grime (stored on the face
+-- folder as OptGrime), the mouthguard colour and its bloodied tint (opts.damage.lip > 0.6), and only the
+-- hair / beard fields it really uses (Head.FaceSigParts: brow colour, lips covered), so a barber visit
+-- never rebuilds the face. The Grime ATTRIBUTE (CONTRACTS section 7: I sets it after roadwork, the
+-- shower clears it) is deliberately not in the key: BuilderHead draws face dirt in its own FaceGrime
+-- folder from that attribute on every Head.SetSweat, which Cosmetics always runs last, so roadwork and
+-- the shower never cost a full face rebuild.
 local function headSig(model, app, build, opts, name)
 	local o = {}
 	for k, v in pairs(opts) do
@@ -139,10 +147,29 @@ local function headSig(model, app, build, opts, name)
 		end
 	end
 	local head = model:FindFirstChild("Head")
-	-- only the face reads the build (face fat); whole percent steps are plenty for cheeks / jowls
-	local fat = name == "Face" and build and tonumber(build.fat) or 0
-	return Kit.sig("HD1", name, app.gender, app.skin, app.height, app.face, app.hair, app.beard, app.battle, o,
-		math.floor(fat + 0.5), head and head.Size or false, Config.BaldMode)
+	local fat, extra = 0, false
+	local hair, beard = app.hair, app.beard
+	if name == "Face" then
+		-- whole percent steps are plenty for cheeks / jowls
+		fat = build and tonumber(build.fat) or 0
+		local at = type(app.attire) == "table" and app.attire or {}
+		local og = tonumber(opts.grime)
+		local dmg = type(opts.damage) == "table" and opts.damage or nil
+		extra = {
+			grime = og and math.floor(math.clamp(og, 0, 1) * 10 + 0.5) or "attr",
+			guard = opts.mouthguard and (at.mouthguard or true) or false,
+			guardBlood = opts.mouthguard and dmg ~= nil and (tonumber(dmg.lip) or 0) > 0.6 or false,
+		}
+		if type(Head.FaceSigParts) == "function" then
+			local ok, parts = pcall(Head.FaceSigParts, app)
+			if ok and type(parts) == "table" then
+				hair, beard = parts, false
+			end
+		end
+	end
+	-- HD2: folders sealed under the old key rebuild once
+	return Kit.sig("HD2", name, app.gender, app.skin, app.height, app.face, hair, beard, app.battle, o,
+		math.floor(fat + 0.5), head and head.Size or false, Config.BaldMode, extra)
 end
 
 -- Head.Face(model, app, opts, build) / Head.Hair(model, app, opts) / Head.Beard(model, app, opts)

@@ -270,6 +270,7 @@ local function onAttr(rig, name)
 		if v ~= old then
 			rig.poseT = now
 			rig.combo = nil
+			rig.nextLook = 0 -- re-target now (bag on / off, watchers)
 		end
 	elseif name == "Count" then
 		rig.countT = now
@@ -452,7 +453,9 @@ end
 -- relaxed standing with breathing and a slow weight shift; plants the feet
 local function stand(p, rig, t, dt, breathe, shift)
 	local amp = ampOf(rig)
-	local out = 0.06 + 0.13 * bulkOf(rig)
+	-- arms hang out from the body (+Z on the right shoulder = hand away from the hip): more with bulk,
+	-- so big lats / arms clear the hips and lat overlays
+	local out = 0.03 + 0.12 * bulkOf(rig)
 	rig.breathPhase += dt * (0.25 + 0.1 * (breathe or 1))
 	local b = K.breath(rig.breathPhase) * 0.03 * (breathe or 1)
 	-- weight shift: hips drift over one leg, the torso counter-rolls (contrapposto)
@@ -460,9 +463,9 @@ local function stand(p, rig, t, dt, breathe, shift)
 	p.Root = CF(0.07 * ws, -0.03 - 0.02 * abs(ws), 0) * A(0, 0.04 * ws, -0.035 * ws)
 	p.W = A(b - 0.02, 0, 0.03 * ws)
 	p.Neck = A(-b * 0.6, 0, -0.02 * ws)
-	p.RS = A(0.04 + b, 0, -out - b * 0.5)
+	p.RS = A(0.04 + b, 0, out + b * 0.5)
 	p.RE = A(0.18, 0, 0)
-	p.LS = A(0.04 + b, 0, out + b * 0.5)
+	p.LS = A(0.04 + b, 0, -out - b * 0.5)
 	p.LE = A(0.18, 0, 0)
 	plant(rig, 0.1, 0.02, 0.12, -0.12, 0, 0)
 	-- the unweighted leg relaxes: knee forward, heel light
@@ -1459,16 +1462,41 @@ local function punchAct(p, rig, act, el, near)
 		local g = rig.geo
 		if tgt and tgt.Parent and g.ok and g.utScale then
 			local ut = rig.root.CFrame * g.rootC0 * p.Root * g.rootC1inv * g.waistC0 * p.W * g.waistC1inv
-			local lp = ut:PointToObjectSpace(tgt.Position - V3(0, body and 0.3 or 0, 0))
 			local sc = g.utScale
-			lp = V3(lp.X / sc.X, lp.Y / sc.Y, lp.Z / sc.Z)
-			if lp.Z < -0.8 and lp.Magnitude < 6 then
-				-- straights go through the target, hooks / uppercuts land on its near side
-				local k = kin.straight and 1 or 0.55
-				local aim = kin.ik > 0 and 0.85 or 0.5
-				px = lerp(px, lp.X, aim)
-				py = lerp(py, lp.Y, aim)
-				pz = lerp(pz, kin.straight and lp.Z - 0.4 or max(lp.Z * k, pk.z * 1.15), aim)
+			local isBag = tgt == rig.bagPart
+			local lp
+			if isBag then
+				-- a hanging bag (5 studs tall): land on its near surface, at the chin / rib height this
+				-- punch would find on a man; the glove's padding sinks in, so the hand centre stops just
+				-- outside the cover. The side facing this shoulder, so hooks meet the bag's flank.
+				local arm = g[ARM_OF[act.hand][3]]
+				local shW = ut:PointToWorldSpace(arm and arm.c0.Position or V3())
+				local hY = ut:PointToWorldSpace(V3(0, (body and pk.by or pk.y) * sc.Y, 0)).Y
+				local c = tgt.Position
+				local dx, dz = shW.X - c.X, shW.Z - c.Z
+				local dm = sqrt(dx * dx + dz * dz)
+				local r = min(tgt.Size.Y, tgt.Size.Z) * 0.5 + 0.1
+				if dm > r then
+					lp = ut:PointToObjectSpace(V3(c.X + dx / dm * r, hY, c.Z + dz / dm * r))
+				end
+			else
+				lp = ut:PointToObjectSpace(tgt.Position - V3(0, body and 0.3 or 0, 0))
+			end
+			if lp then
+				lp = V3(lp.X / sc.X, lp.Y / sc.Y, lp.Z / sc.Z)
+			end
+			if lp and lp.Z < -0.8 and lp.Magnitude < 6 then
+				if isBag then
+					-- every punch type lands ON the surface point (no follow-through past it)
+					px, py, pz = lerp(px, lp.X, 0.85), lerp(py, lp.Y, 0.85), lerp(pz, lp.Z, 0.85)
+				else
+					-- straights go through the target, hooks / uppercuts land on its near side
+					local k = kin.straight and 1 or 0.55
+					local aim = kin.ik > 0 and 0.85 or 0.5
+					px = lerp(px, lp.X, aim)
+					py = lerp(py, lp.Y, aim)
+					pz = lerp(pz, kin.straight and lp.Z - 0.4 or max(lp.Z * k, pk.z * 1.15), aim)
+				end
 			end
 		end
 		-- the peak sits just past full extension from this shoulder, so the elbow straightens at
@@ -1792,10 +1820,15 @@ POSE.bench = function(p, rig, t, d, w, model, dt)
 	p.Root = A(PI / 2, 0, 0)
 	p.W = A(0.12 + 0.05 * (1 - d), 0, 0)
 	p.Neck = A(-0.12, 0, 0)
-	p.RS = A(lerp(0.32, 1.57, d), 0, lerp(0.55, 0.08, d))
-	p.RE = A(lerp(1.75, 0.05, d), 0, 0)
-	p.LS = A(lerp(0.32, 1.57, d), 0, lerp(-0.55, -0.08, d))
-	p.LE = A(lerp(1.75, 0.05, d), 0, 0)
+	local sp, el = lerp(0.32, 1.57, d), lerp(1.75, 0.05, d)
+	p.RS = A(sp, 0, lerp(0.55, 0.08, d))
+	p.RE = A(el, 0, 0)
+	p.LS = A(sp, 0, lerp(-0.55, -0.08, d))
+	p.LE = A(el, 0, 0)
+	-- Poser welds the bar along the right hand's X axis: undo the elbow flare at the wrists so both
+	-- hands' X axes stay on the torso's X and the bar stays level through both palms
+	p.RW = (p.RS * p.RE):Inverse() * A(sp + el, 0, 0)
+	p.LW = (p.LS * p.LE):Inverse() * A(sp + el, 0, 0)
 	p.RH = A(0.05 - 0.08 * drive, 0, 0.22)
 	p.RK = A(-1.75 + 0.12 * drive, 0, 0)
 	p.RA = A(0.4, 0, 0)
@@ -1852,6 +1885,11 @@ POSE.squat = function(p, rig, t, d, w, model, dt)
 	p.RE = A(1.7, 0, 0)
 	p.LS = A(-0.25, 0, -1.25)
 	p.LE = A(1.7, 0, 0)
+	-- hands on the bar Poser puts behind the neck (UpperTorso y 0.42 * Size.Y = 0.67 guard units,
+	-- z +0.62 * Size.Z): fists just under the bar axis; the authored arms above stay the fallback for
+	-- far rigs / rigs without arm geometry
+	guardArm(rig, p, "R", 1.3, 0.62, 0.62, 1, -0.3, 0.3, -1)
+	guardArm(rig, p, "L", -1.3, 0.62, 0.62, 1, -0.3, 0.3, -1)
 	plant(rig, 0, 0.22, 0.35, -0.35, 0, 0)
 	flexAct(rig, "Squat", 0.3 + 0.7 * sin(PI * clamp(d * 1.1, 0, 1)))
 	flex(rig, "abs", 0.6)
@@ -1870,7 +1908,9 @@ POSE.curl = function(p, rig, t, d, w, model, dt)
 		local right = rep % 2 == 0
 		local S, E, Wr = right and "RS" or "LS", right and "RE" or "LE", right and "RW" or "LW"
 		local side = right and 1 or -1
-		p[S] = A(0.1 + 0.28 * d * d, 0, right and -0.1 or 0.1)
+		-- elbow pinned at the side: just clear of the hip, wider with bulk (+Z right = outward)
+		local tuck = 0.02 + 0.08 * bulkOf(rig)
+		p[S] = A(0.1 + 0.28 * d * d, 0, right and tuck or -tuck)
 		p[E] = A(lerp(0.15, 2.35, d), 0, 0)
 		p[Wr] = A(-0.2 * d, side * -lerp(0, 0.85, d), 0)
 		if eff > 0.7 then
@@ -1937,8 +1977,19 @@ POSE.pullup = function(p, rig, t, d, w, model, dt)
 	return p
 end
 
--- half the distance between the hands holding the medicine ball (Poser: ball diameter 1.1)
-local MEDBALL_HALF = 0.56
+-- half the distance between the hand centres holding the medicine ball (Poser: ball diameter 1.1,
+-- welded 0.55 along the right hand's -X): with the palms turned in the fists sit on the ball surface
+local MEDBALL_HALF = 0.4
+local PALM_KEYS = { { "RS", "RE", "RW" }, { "LS", "LE", "LW" } }
+-- run both hands' X axes along the torso's X (palms facing each other across the ball), fingers
+-- continuing the forearm: the ball Poser hangs off the right palm then lands against the left one
+local function palmsIn(p)
+	for _, k in ipairs(PALM_KEYS) do
+		local fore = (p[k[1]] * p[k[2]]).Rotation
+		local f = fore:VectorToWorldSpace(V3(0, -1, 0))
+		p[k[3]] = fore:Inverse() * A(atan2(-f.Z, -f.Y), 0, 0)
+	end
+end
 
 -- medicine ball: SLAM sets (reach overhead on the toes, hinge and drive it into the floor) and
 -- seated RUSSIAN TWISTS (TwistSide = -1 / +1 from Activities); remote viewers alternate sets
@@ -1968,8 +2019,11 @@ POSE.medball = function(p, rig, t, d, w, model, dt)
 		p.LE = A(1.25, 0, 0)
 		-- both hands on the ball (Poser's medball sits against the right palm), in front of the
 		-- chest; the torso turn carries it from hip to hip
-		guardArm(rig, p, "R", MEDBALL_HALF, 0.05, -0.95, 1, 0.3, 0.8, -0.6)
-		guardArm(rig, p, "L", -MEDBALL_HALF, 0.05, -0.95, 1, 0.3, 0.8, -0.6)
+		local okR = guardArm(rig, p, "R", MEDBALL_HALF, 0.05, -0.95, 1, 0.3, 0.8, -0.6)
+		local okL = guardArm(rig, p, "L", -MEDBALL_HALF, 0.05, -0.95, 1, 0.3, 0.8, -0.6)
+		if okR and okL then
+			palmsIn(p)
+		end
 		p.LH = A(1.55, 0, -0.08)
 		p.LK = A(-1.4, 0, 0)
 		p.LA = A(0.3, 0, 0)
@@ -1998,8 +2052,11 @@ POSE.medball = function(p, rig, t, d, w, model, dt)
 	-- hinged forward at the bottom), bulging forward on the way down; hands one ball-width apart
 	local by = lerp(-0.75, 2.5, up)
 	local bz = lerp(-1.05, -0.3, up) - 0.45 * sin(PI * up)
-	guardArm(rig, p, "R", MEDBALL_HALF, by, bz, 1, -0.1, 1, 0)
-	guardArm(rig, p, "L", -MEDBALL_HALF, by, bz, 1, -0.1, 1, 0)
+	local okR = guardArm(rig, p, "R", MEDBALL_HALF, by, bz, 1, -0.1, 1, 0)
+	local okL = guardArm(rig, p, "L", -MEDBALL_HALF, by, bz, 1, -0.1, 1, 0)
+	if okR and okL then
+		palmsIn(p)
+	end
 	local toes = up * up * up * 0.35
 	plant(rig, 0, 0.16, 0.2, -0.2, toes, toes)
 	flexAct(rig, "MedBall", 0.4 + 0.6 * h)
@@ -2142,9 +2199,9 @@ POSE.walk = function(p, rig, t, d, w, model, dt)
 	p.Root = CF(0.04 * s, 0.05 * abs(c) - 0.04, 0) * A(-0.03, 0.08 * s, 0.03 * s)
 	p.W = A(0.02, -0.13 * s, -0.02 * s)
 	p.Neck = A(0, 0.05 * s, 0)
-	p.RS = A(-0.38 * s, 0, -out)
+	p.RS = A(-0.38 * s, 0, out)
 	p.RE = A(0.25 + 0.2 * max(0, -s), 0, 0)
-	p.LS = A(0.38 * s, 0, out)
+	p.LS = A(0.38 * s, 0, -out)
 	p.LE = A(0.25 + 0.2 * max(0, s), 0, 0)
 	p.RH = A(0.45 * s, 0, 0)
 	p.RK = A(-0.6 * max(0, -c), 0, 0)
@@ -2351,8 +2408,8 @@ POSE.preview = function(p, rig, t, d, w, model, dt)
 	stand(p, rig, t, dt, 1, 0.6)
 	p.W = p.W * A(0.05, 0, 0)
 	p.Neck = p.Neck * A(0.04, 0, 0)
-	p.RS = p.RS * A(0, 0, -0.04)
-	p.LS = p.LS * A(0, 0, 0.04)
+	p.RS = p.RS * A(0, 0, 0.04)
+	p.LS = p.LS * A(0, 0, -0.04)
 	p.RE = A(0.35, 0, 0)
 	p.LE = A(0.35, 0, 0)
 	return p
@@ -2607,6 +2664,37 @@ local function nearestRig(rig, pos, maxD, filter)
 	return best, bd
 end
 
+-- the hanging bag in front of a bag worker: the local gym's station bag (GymVisuals builds it in
+-- workspace.LocalGym.Visual_<Station>, segment "Bag" = the middle of the bag) or a members' bag
+-- (MapBuilder: model tagged MemberBag, part "MemberBag"); flat distance from the root under 6 studs
+local BAG_RANGE = 6
+local function findBag(rig, pos)
+	local function flat(part)
+		local d = part.Position - pos
+		return sqrt(d.X * d.X + d.Z * d.Z)
+	end
+	if rig.isTrainee then
+		local st = rig.a.Station
+		local lg = workspace:FindFirstChild("LocalGym")
+		local vm = lg and lg:FindFirstChild("Visual_" .. (type(st) == "string" and st or "heavybag"))
+		local bag = vm and vm:FindFirstChild("Bag", true)
+		if bag and bag:IsA("BasePart") and flat(bag) < BAG_RANGE then
+			return bag
+		end
+	end
+	local best, bd = nil, BAG_RANGE
+	for _, m in ipairs(CollectionService:GetTagged("MemberBag")) do
+		local bp = m:FindFirstChild("MemberBag", true)
+		if bp and bp:IsA("BasePart") then
+			local d = flat(bp)
+			if d < bd then
+				best, bd = bp, d
+			end
+		end
+	end
+	return best
+end
+
 local WATCHERS = { coachwatch = true, ringside = true, cornerman = true, sitwatch = true, idle = true, mittidle = true, mitts = true }
 
 local function chooseLook(rig, t)
@@ -2617,6 +2705,13 @@ local function chooseLook(rig, t)
 	local a = rig.a
 	local pos = rig.root.Position
 	rig.lookPart, rig.lookA, rig.lookB, rig.watch = nil, nil, nil, nil
+	if rig.bagPart then
+		-- left the bag (re-found below while still on it)
+		if rig.oppHead == rig.bagPart then
+			rig.oppHead, rig.oppTorso = nil, nil
+		end
+		rig.bagPart = nil
+	end
 	if rig.isFighter then
 		local o = nearestRig(rig, pos, 40, isFighterRig)
 		rig.oppHead = o and o.model:FindFirstChild("Head") or nil
@@ -2653,6 +2748,14 @@ local function chooseLook(rig, t)
 			rig.oppHead = rig.lookPart
 			rig.oppTorso = partner.model:FindFirstChild("UpperTorso")
 			rig.watch = partner.model
+		end
+		return
+	end
+	-- bag work: the bag is the target the punches land on (punchAct), eyes on it
+	if (rig.isTrainee and a.Pose == "heavybag") or (rig.isAmbient and not a.Pose and loop == "heavybag") then
+		local bag = findBag(rig, pos)
+		if bag then
+			rig.bagPart, rig.oppHead, rig.oppTorso = bag, bag, bag
 		end
 		return
 	end

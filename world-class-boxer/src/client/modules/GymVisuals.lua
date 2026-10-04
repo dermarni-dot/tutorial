@@ -3009,7 +3009,10 @@ local function nearestMemberBag(pos, maxDist)
 		local d = dynamics[id]
 		if not rig.Parent then
 			memberBags[rig] = nil
-			dynamics[id] = nil
+			-- a rebuilt gym re-registers its rig under the same id: only drop OUR dynamics entry
+			if d and d.model == rig then
+				dynamics[id] = nil
+			end
 		elseif d then
 			local dist = V3(d.home.X - pos.X, 0, d.home.Z - pos.Z).Magnitude
 			if dist <= (maxDist or 6) and (not bestD or dist < bestD) then
@@ -3254,8 +3257,12 @@ local function onAutoAct(model)
 			return
 		end
 		local bag = nearestMemberBag(root.Position, 6)
-		if bag then
-			GymVisuals.Impact(bag, power, side, ptype, zone ~= "" and zone or nil, { remote = true, sweat = sweat })
+		local bd = bag and dynamics[bag]
+		if bd then
+			-- the members' rigs hang square to the world: a punch from the +Z side drives the bag to -Z
+			-- (positive power), one from the other side swings it back the other way
+			local from = (root.Position.Z >= bd.home.Z) and 1 or -1
+			GymVisuals.Impact(bag, power * from, side * from, ptype, zone ~= "" and zone or nil, { remote = true, sweat = sweat })
 		end
 	end)
 end
