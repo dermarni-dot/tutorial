@@ -1,0 +1,41 @@
+{
+  "name": "BecomeAWorldClassBoxer",
+  "tree": {
+    "$className": "DataModel",
+    "Lighting": {
+      "$properties": {
+        "GlobalShadows": true,
+        "Technology": "Future"
+      }
+    },
+    "MaterialService": {
+      "$properties": {
+        "Use2022Materials": true
+      }
+    },
+    "ReplicatedStorage": {
+      "Shared": {
+        "$path": "src/shared"
+      }
+    },
+    "ServerScriptService": {
+      "$path": "src/server"
+    },
+    "StarterPlayer": {
+      "StarterPlayerScripts": {
+        "Animator": {
+          "$path": "src/client/Animator.client.lua"
+        },
+        "ClientMain": {
+          "$path": "src/client/ClientMain.client.lua"
+        },
+        "FightClient": {
+          "$path": "src/client/FightClient.client.lua"
+        },
+        "BoxerClient": {
+          "$path": "src/client/modules"
+        }
+      }
+    }
+  }
+}
