@@ -399,7 +399,7 @@ end
 -- of fights. Saved lazily as profile.sponsors = { deals = { [slot] = { id, fightsLeft, signedDay } },
 -- signed = { [id] = true } } (signed: first-time signing bonus and popularity only once per brand).
 ------------------------------------------------------------------------
--- share of the old popularity formula still paid as merch / appearance fees (deals pay the rest)
+-- share of the old popularity formula paid as merch / appearance fees while you have NO deal
 local ENDORSE_SHARE = 0.5
 
 local function sponsorState(profile)
@@ -868,11 +868,14 @@ function Career.ApplyResult(profile, res)
 	if win then
 		purse = round(purse * 1.2)
 	end
-	-- sponsors are real deals now (Career.SponsorIncome); half of the old popularity formula is
-	-- still paid as merch & appearance fees so a career without deals keeps some income
+	-- sponsors are real deals now (Career.SponsorIncome) and their income REPLACES the old popularity
+	-- formula (CONTRACTS s.16 H). Only a career with no deal at all still gets half of that formula as
+	-- unsigned merch & appearance fees (the gap map's fallback), so not signing never pays more than
+	-- signing: at tier 3+ even the smallest local deal outpays it within a few fights.
+	local hadDeals = next(sponsorState(profile).deals) ~= nil -- before SponsorIncome expires any
 	local sponsor, sponsorNotes = Career.SponsorIncome(profile, win, isKO)
 	local endorse = 0
-	if profile.tier >= 3 and profile.popularity >= 5 then
+	if not hadDeals and profile.tier >= 3 and profile.popularity >= 5 then
 		endorse = round((profile.popularity ^ 1.4) * 35 * profile.tier * ENDORSE_SHARE)
 	end
 	local tv = 0

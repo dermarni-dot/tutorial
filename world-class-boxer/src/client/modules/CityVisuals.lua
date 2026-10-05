@@ -306,19 +306,30 @@ local function houseBuild(f, P, base)
 	wedge(f, "HouseRoof", V3(W + 1.2, R, D / 2 + 0.7), CFrame.lookAt(b, b - front), roofC, M.Slate, { collide = true })
 	part(f, "Chimney", V3(1.8, 5, 1.8), mb * CF(-W * 0.3, H + R - 0.6, D * 0.18), Color3.fromRGB(130, 70, 56), M.Brick)
 	-- garage wing with its door (raised when you own a home gym: the bag hangs inside)
+	-- a hollow shell (back, sides, header and jambs) so a raised door really shows what is inside
 	local gb = base * CF(9.5, 0, 4)
-	part(f, "Garage", V3(8, 9, 12), gb * CF(0, 4.5, 0), wall, M.WoodPlanks, { collide = true })
+	part(f, "GarageBack", V3(8, 9, 0.4), gb * CF(0, 4.5, 5.85), wall, M.WoodPlanks, { collide = true })
+	for _, sx in ipairs({ -1, 1 }) do
+		part(f, "GarageSide", V3(0.4, 9, 12.05), gb * CF(sx * 3.8, 4.5, 0.02), wall, M.WoodPlanks, { collide = true })
+		part(f, "GarageJamb", V3(0.4, 6.7, 0.4), gb * CF(sx * 3.4, 3.35, -5.8), wall, M.WoodPlanks, { collide = true })
+	end
+	part(f, "GarageHeader", V3(7.2, 2.3, 0.4), gb * CF(0, 7.85, -5.8), wall, M.WoodPlanks, { collide = true })
 	part(f, "GarageRoof", V3(8.6, 0.5, 12.6), gb * CF(0, 9.2, 0), roofC, M.Slate)
 	local gym = owned.HomeGym
-	local door = part(f, "GarageDoor", V3(6.4, gym and 2.2 or 6.6, 0.2), gb * CF(0, gym and 6.8 or 3.4, -6.05), Color3.fromRGB(236, 236, 232), M.SmoothPlastic, { collide = not gym })
+	-- the garage is the gym when you own one; otherwise the Garage add-on keeps your second car here
+	local showCar = owned.Garage and carsOf(owned)[2] ~= nil and not gym
+	local open = gym or showCar
+	local door = part(f, "GarageDoor", V3(6.4, open and 2.2 or 6.6, 0.2), gb * CF(0, open and 6.8 or 3.4, -6.05), Color3.fromRGB(236, 236, 232), M.SmoothPlastic, { collide = not open })
 	local dsg = gui(door, Enum.NormalId.Front, 20, 0.6, 120)
 	for k = 1, 5 do
 		frame(dsg, { Size = UDim2.new(1, 0, 0, 2), Position = UDim2.fromScale(0, k / 6), BackgroundColor3 = Color3.fromRGB(190, 190, 186) })
 	end
-	if gym then
-		part(f, "GarageFloor", V3(7.4, 0.1, 11), gb * CF(0, 0.2, 0), Color3.fromRGB(32, 32, 35), M.Rubber)
-		part(f, "GarageBagChain", V3(0.15, 2, 0.15), gb * CF(0, 7.8, -2), Color3.fromRGB(150, 153, 160), M.Metal)
-		cyl(f, "GarageBag", 4, 1.8, gb * CF(0, 4.6, -2) * ANG(0, 0, RAD(90)), Color3.fromRGB(150, 24, 30), M.Leather)
+	if open then
+		part(f, "GarageFloor", V3(7.2, 0.1, 11.4), gb * CF(0, 0.2, 0), gym and Color3.fromRGB(32, 32, 35) or Color3.fromRGB(120, 120, 118), gym and M.Rubber or M.Concrete)
+		if gym then
+			part(f, "GarageBagChain", V3(0.15, 2, 0.15), gb * CF(0, 7.8, -2), Color3.fromRGB(150, 153, 160), M.Metal)
+			cyl(f, "GarageBag", 4, 1.8, gb * CF(0, 4.6, -2) * ANG(0, 0, RAD(90)), Color3.fromRGB(150, 24, 30), M.Leather)
+		end
 		local gl = part(f, "GarageLight", V3(0.2, 0.2, 0.2), gb * CF(0, 8, 0), WHITE, M.SmoothPlastic, { transparency = 1 })
 		local l = Instance.new("PointLight")
 		l.Color, l.Range, l.Brightness, l.Shadows = Color3.fromRGB(255, 240, 220), 12, 0.8, false
@@ -339,9 +350,10 @@ local function houseBuild(f, P, base)
 	end
 	part(f, "FrontDoor", V3(2.8, 5.8, 0.2), base * CF(mainX, 3.5, fz - 0.1), Color3.fromRGB(30, 60, 110), M.Wood)
 	for _, w in ipairs({ { -5.5, 4.5 }, { 5.5, 4.5 }, { -5.5, 11 }, { 0, 11 }, { 5.5, 11 } }) do
-		part(f, "HouseWindow", V3(3, 3.2, 0.15), base * CF(mainX + w[1], w[2], fz - 0.08), Color3.fromRGB(170, 205, 230), M.Glass, { transparency = 0.25 })
+		-- glass sits proud of the wall face (fz), the night glow in the gap behind it
+		part(f, "HouseWindow", V3(3, 3.2, 0.15), base * CF(mainX + w[1], w[2], fz - 0.14), Color3.fromRGB(170, 205, 230), M.Glass, { transparency = 0.25 })
 		part(f, "WindowTrim", V3(3.5, 0.3, 0.3), base * CF(mainX + w[1], w[2] - 1.75, fz - 0.15), trim, M.Wood)
-		local win = part(f, "WindowGlow", V3(2.6, 2.8, 0.05), base * CF(mainX + w[1], w[2], fz + 0.05), Color3.fromRGB(255, 214, 150), M.Neon, { transparency = 0.55, shadow = false })
+		local win = part(f, "WindowGlow", V3(2.6, 2.8, 0.05), base * CF(mainX + w[1], w[2], fz - 0.03), Color3.fromRGB(255, 214, 150), M.Neon, { transparency = 0.55, shadow = false })
 		tag(win, "NightLens")
 	end
 	for _, x in ipairs({ -1.8, 1.8 }) do
@@ -376,7 +388,15 @@ local function villaBuild(f, P, base)
 	local dark = Color3.fromRGB(34, 34, 38)
 	local glassC = Color3.fromRGB(150, 190, 215)
 	-- central two-storey block with a glass curtain front, two single-storey wings
-	part(f, "VillaCore", V3(30, 18, 22), base * CF(0, 9, 1), white, M.Concrete, { collide = true })
+	-- the core's face sits 4 studs behind the glass curtain: a double-height gallery you see from the
+	-- drive (trophy pedestals live there), closed at the sides by two short walls
+	part(f, "VillaCore", V3(30, 18, 18), base * CF(0, 9, 3), white, M.Concrete, { collide = true })
+	part(f, "GalleryFloor", V3(26, 0.2, 4.2), base * CF(0, 0.1, -8.05), Color3.fromRGB(230, 226, 218), M.Marble)
+	for _, sx in ipairs({ -1, 1 }) do
+		part(f, "GalleryWall", V3(2, 18, 4.4), base * CF(sx * 14, 9, -8.15), white, M.Concrete, { collide = true })
+	end
+	local gl = part(f, "GalleryLight", V3(0.2, 0.2, 0.2), base * CF(0, 15, -8), WHITE, M.SmoothPlastic, { transparency = 1, shadow = false })
+	nightLight(gl, Color3.fromRGB(255, 226, 180), 18, 0.9)
 	part(f, "VillaGlass", V3(26, 15.5, 0.3), base * CF(0, 8.6, -10.2), glassC, M.Glass, { transparency = 0.35, reflect = 0.15 })
 	for k = 0, 6 do
 		part(f, "VillaMullion", V3(0.3, 15.5, 0.5), base * CF(-13 + k * 26 / 6, 8.6, -10.3), dark, M.Metal)
@@ -390,7 +410,7 @@ local function villaBuild(f, P, base)
 		part(f, "WingRoof", V3(25, 0.8, 25), wcf * CF(sx * 1.2, 9.4, -1.5), dark, M.Metal, { collide = true })
 		part(f, "TerraceRail", V3(22, 1.4, 0.15), wcf * CF(0, 10.5, -10), glassC, M.Glass, { transparency = 0.5 })
 		-- warm interior glow through the glass after dark
-		local glow = part(f, "WingGlow", V3(16, 6, 0.05), wcf * CF(0, 4.6, -9.9), Color3.fromRGB(255, 214, 160), M.Neon, { transparency = 0.6, shadow = false })
+		local glow = part(f, "WingGlow", V3(16, 6, 0.05), wcf * CF(0, 4.6, -10.025), Color3.fromRGB(255, 214, 160), M.Neon, { transparency = 0.6, shadow = false })
 		tag(glow, "NightLens")
 		local up = part(f, "Uplight", V3(0.6, 0.3, 0.6), base * CF(sx * 12, 0.15, -12), dark, M.Metal)
 		local l = Instance.new("SpotLight")
@@ -400,7 +420,7 @@ local function villaBuild(f, P, base)
 		l.Parent = up
 		tag(l, "NightLight")
 	end
-	local coreGlow = part(f, "CoreGlow", V3(24, 14, 0.05), base * CF(0, 8.6, -9.9), Color3.fromRGB(255, 220, 170), M.Neon, { transparency = 0.65, shadow = false })
+	local coreGlow = part(f, "CoreGlow", V3(24, 14, 0.05), base * CF(0, 8.6, -6.025), Color3.fromRGB(255, 220, 170), M.Neon, { transparency = 0.65, shadow = false })
 	tag(coreGlow, "NightLens")
 	-- entrance: door, canopy on columns, topiary planters
 	part(f, "VillaDoor", V3(5, 10, 0.3), base * CF(0, 5, -10.5), Color3.fromRGB(60, 40, 28), M.Wood)
@@ -415,9 +435,13 @@ local function villaBuild(f, P, base)
 		local belts = beltsOf(P)
 		for i = 1, math.max(1, #belts) do
 			local px = -9 + (i - 1) * 6
-			part(f, "Pedestal", V3(2, 3.4, 2), base * CF(px, 1.7, -7), white, M.Marble)
-			part(f, "PedestalBelt", V3(2.6, 0.6, 0.2), base * CF(px, 3.9, -7.4), DARK, M.Leather)
-			cyl(f, "PedestalPlate", 0.2, 1.0, base * CF(px, 3.9, -7.55) * ANG(0, RAD(90), 0), GOLD, M.Metal, { reflect = 0.3 })
+			part(f, "Pedestal", V3(2, 3.4, 2), base * CF(px, 1.9, -7.6), white, M.Marble)
+			part(f, "PedestalBelt", V3(2.6, 0.6, 0.2), base * CF(px, 4.1, -8.0), DARK, M.Leather)
+			cyl(f, "PedestalPlate", 0.2, 1.0, base * CF(px, 4.1, -8.15) * ANG(0, RAD(90), 0), GOLD, M.Metal, { reflect = 0.3 })
+		end
+	else
+		for _, sx in ipairs({ -1, 1 }) do
+			plant(f, base * CF(sx * 10, 0.2, -8), 1.2)
 		end
 	end
 	-- gold name plaque at the gate
@@ -437,7 +461,8 @@ local function villaBuild(f, P, base)
 		end
 		local cars = carsOf(owned)
 		for i = 1, math.min(3, #cars) do
-			CityProps.SportsCar(f, gcf * CF((i - 2) * 8.4, 0, -10), cars[i], nil, surnameOf(P):upper():sub(1, 8))
+			-- parked nose-out on the apron, tails clear of the garage face (local z -5)
+			CityProps.SportsCar(f, gcf * CF((i - 2) * 8.4, 0, -12), cars[i], nil, surnameOf(P):upper():sub(1, 8))
 		end
 	end
 	-- pool deck (infinity pool with a caustic pattern) or a sculpture lawn
@@ -544,7 +569,8 @@ local function updateCars(P)
 	local cars = carsOf(owned)
 	local home = P.home
 	local bay = siteCF("CarBay")
-	local key = #cars > 0 and (table.concat(cars, ",") .. "|" .. tostring(home) .. "|" .. (bay and "b" or "-") .. "|" .. surnameOf(P)) or ""
+	-- Garage / HomeGym decide whether the second car stands in the house garage
+	local key = #cars > 0 and (table.concat(cars, ",") .. "|" .. tostring(home) .. "|" .. (bay and "b" or "-") .. "|" .. surnameOf(P) .. "|" .. (owned.Garage and "G" or "-") .. (owned.HomeGym and "H" or "-")) or ""
 	group("Cars", key, function(f)
 		local plate = surnameOf(P):upper():sub(1, 8)
 		if bay then
@@ -554,13 +580,14 @@ local function updateCars(P)
 			local hb = siteCF("HomeHouse")
 			if hb then
 				CityProps.SportsCar(f, hb * CF(9.5, 0.18, -12), cars[1], nil, plate)
-				if owned.Garage and cars[2] then
-					CityProps.SportsCar(f, hb * CF(9.5, 0.1, 4.5), cars[2], nil, plate)
+				-- (the garage is the gym when you own one, so the second car only shows without it)
+				if owned.Garage and cars[2] and not owned.HomeGym then
+					CityProps.SportsCar(f, hb * CF(9.5, 0.25, 4), cars[2], nil, plate)
 				end
 			end
 		elseif home == "Apartment" then
 			-- kerbside in front of Riverside Apartments
-			CityProps.SportsCar(f, CF(115, 0.3, 179.6) * ANG(0, RAD(-90), 0), cars[1], nil, plate)
+			CityProps.SportsCar(f, CF(115, 0.3, 180.2) * ANG(0, RAD(-90), 0), cars[1], nil, plate)
 		end
 	end)
 	for _, p in ipairs(screens("Reserved")) do
@@ -1019,7 +1046,8 @@ local function fanCount(P)
 	if #beltsOf(P) > 0 then
 		n += 8
 	end
-	return math.clamp(n, 0, 30)
+	-- capped at 24 figures (7 parts each, ~170 parts) to stay inside the client part budget
+	return math.clamp(n, 0, 24)
 end
 
 local function fanSigns(P)
@@ -1073,7 +1101,10 @@ local function buildFans(f, P, n)
 		e.base = base
 		e.phase = rng:NextNumber(0, math.pi * 2)
 		e.rate = rng:NextNumber(2.5, 4)
-		e.rel = { torso = base:ToObjectSpace(e.torso.CFrame), head = base:ToObjectSpace(e.head.CFrame), sign = e.sign and base:ToObjectSpace(e.sign.CFrame) }
+		e.rel = {}
+		for k, p in ipairs(e.parts) do
+			e.rel[k] = base:ToObjectSpace(p.CFrame)
+		end
 		table.insert(fans, e)
 	end
 	-- an autograph prompt on the first fan by the gym
@@ -1094,8 +1125,10 @@ local function buildFans(f, P, n)
 		if cf then
 			for k = 0, 1 do
 				local pb = cf * CF(-5 + k * 10, 0, -2.5) * ANG(0, RAD(k == 0 and 20 or -20), 0)
-				local e = CityProps.Fan(f, pb, DARK, skinColor(rng), nil)
-				local cam = part(f, "PapCamera", V3(0.8, 0.6, 0.9), pb * CF(0.3, 3.9, -0.8), DARK, M.Metal)
+				local e = CityProps.Fan(f, pb, DARK, skinColor(rng), nil, nil, nil, { pose = "camera" })
+				-- the camera body in both hands in front of the face, the flash gun on top
+				local cam = part(f, "PapCamera", V3(0.9, 0.65, 0.8), pb * CF(0, 4.7, -1.05), DARK, M.Metal)
+				cyl(f, "PapLens", 0.6, 0.5, cam.CFrame * CF(0, 0, -0.65) * ANG(0, RAD(90), 0), Color3.fromRGB(30, 30, 34), M.Metal)
 				local flash = part(f, "PapFlash", V3(0.5, 0.25, 0.1), cam.CFrame * CF(0, 0.45, -0.3), WHITE, M.Neon, { shadow = false, transparency = 1 })
 				local l = Instance.new("PointLight")
 				l.Range, l.Brightness, l.Shadows, l.Enabled = 14, 4, false, false
@@ -1103,7 +1136,12 @@ local function buildFans(f, P, n)
 				e.base = pb
 				e.phase = rng:NextNumber(0, 6)
 				e.rate = 1.5
-				e.rel = { torso = pb:ToObjectSpace(e.torso.CFrame), head = pb:ToObjectSpace(e.head.CFrame) }
+				table.insert(e.parts, cam)
+				table.insert(e.parts, flash)
+				e.rel = {}
+				for k, p in ipairs(e.parts) do
+					e.rel[k] = pb:ToObjectSpace(p.CFrame)
+				end
 				table.insert(fans, e)
 				table.insert(flashes, { part = flash, light = l, t = 0 })
 			end
@@ -1124,9 +1162,50 @@ local function updateFans(P)
 	end
 end
 
--- Main Street life: pedestrians on both sidewalks and a few cars in the two lanes
+-- Main Street life: pedestrians on both sidewalks and everyday traffic in the two lanes.
+-- Street cross-section (z): north curb 167 | eastbound lane ~169.6 | centre line 172.2 | westbound
+-- lane ~174.8 | parked cars 180.2 (CityMap) | south curb 183. Hatchbacks are +-2.48 wide at the
+-- wheels, so neighbouring lanes and the parked row never touch.
 local PED_LANES = { 166.3, 184.6 }
-local CAR_LANES = { { z = 170, dir = 1 }, { z = 174.4, dir = -1 } }
+local CAR_LANES = { { z = 169.6, dir = 1 }, { z = 174.8, dir = -1 } }
+local CROSSWALK_X = { -12.5, 12.5 } -- module scope: animate() runs at 30 Hz and must not allocate
+local HEADWAY = 14 -- studs kept to the car in front (a car is ~9 long)
+local STREET_SPAN = 680 -- traffic loops x -340..340
+
+local bulkParts, bulkCFrames = {}, {}
+local function bulkSet(p, cf)
+	table.insert(bulkParts, p)
+	table.insert(bulkCFrames, cf)
+end
+local function directSet(p, cf)
+	p.CFrame = cf
+end
+
+-- one walking pose; set = bulkSet in the loop, directSet when building (so nobody waits at the
+-- world origin for the first animation frame)
+local function posePed(e, swing, set)
+	local cf = CF(e.x, 0.5, e.z) * ANG(0, e.dir > 0 and RAD(-90) or RAD(90), 0)
+	local lift = math.abs(swing) * 0.08
+	set(e.legL, cf * CF(-0.35, 2.2, 0) * ANG(swing, 0, 0) * CF(0, -1.1, 0))
+	set(e.legR, cf * CF(0.35, 2.2, 0) * ANG(-swing, 0, 0) * CF(0, -1.1, 0))
+	set(e.torso, cf * CF(0, 3.3 + lift, 0))
+	set(e.head, cf * CF(0, 4.95 + lift, 0))
+	-- arms swing against the legs, hinged at the shoulders
+	set(e.armL, cf * CF(-0.98, 4.2 + lift, 0) * ANG(-swing * 0.8, 0, RAD(-4)) * CF(0, -1.0, 0))
+	set(e.armR, cf * CF(0.98, 4.2 + lift, 0) * ANG(swing * 0.8, 0, RAD(4)) * CF(0, -1.0, 0))
+	if e.bag then
+		set(e.bag, cf * CF(1.6, 3.0 + lift, 0) * ANG(-swing * 0.3, 0, 0))
+	end
+end
+
+local function poseCar(c, set)
+	local cf = CF(c.x, 0.3, c.z) * ANG(0, c.dir > 0 and RAD(-90) or RAD(90), 0)
+	for i, p in ipairs(c.parts) do
+		set(p, cf * c.rel[i])
+	end
+end
+
+local TRAFFIC_COLORS = { Color3.fromRGB(235, 235, 238), Color3.fromRGB(40, 80, 170), Color3.fromRGB(28, 28, 32), Color3.fromRGB(150, 152, 158), Color3.fromRGB(150, 30, 36), Color3.fromRGB(60, 110, 80) }
 
 local function buildStreetLife(f, count)
 	peds = {}
@@ -1137,28 +1216,39 @@ local function buildStreetLife(f, count)
 		local e = { x = rng:NextNumber(-300, 300), z = lane + rng:NextNumber(-0.3, 0.3), dir = rng:NextNumber() < 0.5 and -1 or 1, speed = rng:NextNumber(3.5, 5.5), phase = rng:NextNumber(0, 6) }
 		local shirt = SHIRTS[rng:NextInteger(1, #SHIRTS)]
 		local pants = ({ Color3.fromRGB(40, 50, 80), Color3.fromRGB(30, 30, 34), Color3.fromRGB(120, 100, 80) })[rng:NextInteger(1, 3)]
+		local skin = skinColor(rng)
 		e.legL = part(f, "PedLeg", V3(0.6, 2.2, 0.6), CF(), pants, M.Fabric)
 		e.legR = part(f, "PedLeg", V3(0.6, 2.2, 0.6), CF(), pants, M.Fabric)
 		e.torso = part(f, "PedTorso", V3(1.5, 2.2, 0.8), CF(), shirt, M.Fabric)
-		e.head = ball(f, "PedHead", 1.0, CF(), skinColor(rng), M.SmoothPlastic)
+		e.head = ball(f, "PedHead", 1.0, CF(), skin, M.SmoothPlastic)
+		-- short sleeves: the arm is mostly skin with the shirt colour on the upper half
+		local sleeve = rng:NextNumber() < 0.5
+		e.armL = part(f, "PedArm", V3(0.45, 2.0, 0.45), CF(), sleeve and skin or shirt, M.Fabric)
+		e.armR = part(f, "PedArm", V3(0.45, 2.0, 0.45), CF(), sleeve and skin or shirt, M.Fabric)
 		if rng:NextNumber() < 0.4 then
 			e.bag = part(f, "PedBag", V3(0.4, 1.2, 1.0), CF(), ({ Color3.fromRGB(150, 110, 70), DARK, Color3.fromRGB(200, 40, 40) })[rng:NextInteger(1, 3)], M.Leather)
 		end
+		posePed(e, 0, directSet)
 		table.insert(peds, e)
 	end
 	for i = 1, 4 do
 		local lane = CAR_LANES[(i % 2) + 1]
-		local kind = ({ "SportsCar", "SportsCar", "Supercar", "SportsCar" })[i]
-		local color = ({ Color3.fromRGB(235, 235, 238), Color3.fromRGB(40, 80, 170), Color3.fromRGB(28, 28, 32), Color3.fromRGB(150, 152, 158) })[i]
-		local m = CityProps.SportsCar(f, CF(), kind, color)
-		local list, rel = {}, {}
+		local x0 = -300 + i * 140
+		local c = { parts = {}, rel = {}, x = x0, z = lane.z, dir = lane.dir, speed = rng:NextNumber(16, 22), wait = 0 }
+		-- built at its lane start, offsets taken from there (not from the world origin)
+		local start = CF(x0, 0.3, lane.z) * ANG(0, lane.dir > 0 and RAD(-90) or RAD(90), 0)
+		local m = CityProps.SportsCar(f, start, "Hatchback", TRAFFIC_COLORS[(i - 1) % #TRAFFIC_COLORS + 1])
 		for _, d in ipairs(m:GetDescendants()) do
 			if d:IsA("BasePart") then
-				table.insert(list, d)
-				table.insert(rel, d.CFrame)
+				-- moved every frame: never solid, so it can't shove you or block a ray
+				d.CanCollide = false
+				d.CanQuery = false
+				d.CanTouch = false
+				table.insert(c.parts, d)
+				table.insert(c.rel, start:ToObjectSpace(d.CFrame))
 			end
 		end
-		table.insert(cars, { parts = list, rel = rel, x = -300 + i * 140, z = lane.z, dir = lane.dir, speed = rng:NextNumber(16, 22), wait = 0 })
+		table.insert(cars, c)
 	end
 end
 
@@ -1214,6 +1304,15 @@ end
 local CAMP_CENTER = V3(-3000, 0, 3000)
 local campSaved
 local function updateCampAir(pos)
+	-- hands off while a fight (or spar) is on: VenueFX snapshots the Atmosphere at Start and puts it
+	-- back at Stop (before InFight clears). If we restored here mid-fight (the fight starts while you
+	-- are still at camp, then the arena move takes you "outside") we would overwrite the venue air and
+	-- VenueFX would later put the camp haze back over the city. Left alone, campSaved still holds the
+	-- city values and the first tick after the fight restores them (or keeps the tint at camp).
+	local busy = player:GetAttribute("Busy")
+	if player:GetAttribute("InFight") == true or busy == "fight" or busy == "spar" then
+		return
+	end
 	local inside = pos and (V3(pos.X, 0, pos.Z) - CAMP_CENTER).Magnitude < 200
 	local atm = Lighting:FindFirstChildOfClass("Atmosphere")
 	if not atm then
@@ -1240,7 +1339,6 @@ end
 local NEAR = 180
 local acc, slowAcc, tagAcc = 0, 0, 0
 local clock = 0
-local bulkParts, bulkCFrames = {}, {}
 
 local function pushBulk()
 	if #bulkParts == 0 then
@@ -1260,7 +1358,8 @@ end
 
 local function animate(dt, camPos, rootPos)
 	clock += dt
-	-- fans: bob, cheer and turn towards you when you are close; signs go up
+	-- fans: bob, cheer and turn towards you when you are close; signs sway (the whole figure moves
+	-- as one, so arms stay on the shoulders and hands on the sign)
 	for _, e in ipairs(fans) do
 		if e.torso.Parent and (e.base.Position - camPos).Magnitude < NEAR then
 			local near = rootPos and (e.base.Position - rootPos).Magnitude or 999
@@ -1273,14 +1372,13 @@ local function animate(dt, camPos, rootPos)
 					base = CFrame.lookAt(base.Position, look)
 				end
 			end
-			local up = CF(0, hop, 0)
-			table.insert(bulkParts, e.torso)
-			table.insert(bulkCFrames, base * up * e.rel.torso)
-			table.insert(bulkParts, e.head)
-			table.insert(bulkCFrames, base * up * e.rel.head)
-			if e.sign and e.rel.sign then
-				table.insert(bulkParts, e.sign)
-				table.insert(bulkCFrames, base * up * CF(0, near < 26 and 0.8 or 0, 0) * e.rel.sign * ANG(0, 0, math.sin(clock * 3 + e.phase) * 0.12 * excite))
+			local moved = base * CF(0, hop, 0)
+			for k, p in ipairs(e.parts) do
+				if p == e.sign then
+					bulkSet(p, moved * e.rel[k] * ANG(0, 0, math.sin(clock * 3 + e.phase) * 0.08 * excite))
+				else
+					bulkSet(p, moved * e.rel[k])
+				end
 			end
 		end
 	end
@@ -1308,47 +1406,42 @@ local function animate(dt, camPos, rootPos)
 				e.x = math.clamp(e.x, -318, 318)
 			end
 			if math.abs(e.x - camPos.X) < 220 then
-				local cf = CF(e.x, 0.5, e.z) * ANG(0, e.dir > 0 and RAD(-90) or RAD(90), 0)
-				local swing = math.sin(clock * e.speed * 1.6 + e.phase) * 0.5
-				table.insert(bulkParts, e.legL)
-				table.insert(bulkCFrames, cf * CF(-0.35, 2.2, 0) * ANG(swing, 0, 0) * CF(0, -1.1, 0))
-				table.insert(bulkParts, e.legR)
-				table.insert(bulkCFrames, cf * CF(0.35, 2.2, 0) * ANG(-swing, 0, 0) * CF(0, -1.1, 0))
-				table.insert(bulkParts, e.torso)
-				table.insert(bulkCFrames, cf * CF(0, 3.3 + math.abs(swing) * 0.08, 0))
-				table.insert(bulkParts, e.head)
-				table.insert(bulkCFrames, cf * CF(0, 4.95 + math.abs(swing) * 0.08, 0))
-				if e.bag then
-					table.insert(bulkParts, e.bag)
-					table.insert(bulkCFrames, cf * CF(0.95, 3.0, 0) * ANG(-swing * 0.3, 0, 0))
-				end
+				posePed(e, math.sin(clock * e.speed * 1.6 + e.phase) * 0.5, bulkSet)
 			end
 		end
 		for _, c in ipairs(cars) do
+			-- distance to the nearest car ahead in the same lane (the street wraps at +-340)
+			local gap = math.huge
+			for _, o in ipairs(cars) do
+				if o ~= c and o.z == c.z then
+					local dx = (o.x - c.x) * c.dir
+					if dx < 0 then
+						dx += STREET_SPAN
+					end
+					gap = math.min(gap, dx)
+				end
+			end
 			if c.wait > 0 then
 				c.wait -= dt
 			else
 				local before = c.x
-				c.x += c.dir * c.speed * dt
+				-- never closer than HEADWAY: queue behind a car that stopped at a crosswalk
+				c.x += c.dir * math.min(c.speed * dt, math.max(0, gap - HEADWAY))
 				-- a short stop at the crosswalks now and then
-				for _, cw in ipairs({ -12.5, 12.5 }) do
+				for _, cw in ipairs(CROSSWALK_X) do
 					local edge = cw - c.dir * 7
-					if (before - edge) * (c.x - edge) <= 0 and math.random() < 0.35 then
+					if (before - edge) * (c.x - edge) < 0 and math.random() < 0.35 then
 						c.wait = 2 + math.random() * 2
 					end
 				end
-				if c.x > 340 then
-					c.x = -340
-				elseif c.x < -340 then
-					c.x = 340
+				if c.x > STREET_SPAN / 2 then
+					c.x -= STREET_SPAN
+				elseif c.x < -STREET_SPAN / 2 then
+					c.x += STREET_SPAN
 				end
 			end
 			if math.abs(c.x - camPos.X) < 260 then
-				local cf = CF(c.x, 0.3, c.z) * ANG(0, c.dir > 0 and RAD(-90) or RAD(90), 0)
-				for i, p in ipairs(c.parts) do
-					table.insert(bulkParts, p)
-					table.insert(bulkCFrames, cf * c.rel[i])
-				end
+				poseCar(c, bulkSet)
 			end
 		end
 	end
@@ -1498,6 +1591,28 @@ function CityVisuals.Prompt(action, prompt)
 	elseif action == "Autograph" then
 		local r = State.req("Autograph")
 		State.toast(r.ok and "The fans go wild. Popularity up!" or (r.err or "Not now."), r.ok and GOLD or Color3.fromRGB(220, 40, 45))
+		return true
+	elseif action == "Flex" then
+		-- safety net for the gym mirror's FlexPrompt (F asks ClientMain for its own branch above the
+		-- catch-all; this only runs if that branch is missing): next pose, then face the glass
+		local poses = (Config.Pump and Config.Pump.poses) or { "flex_most" }
+		local n = ((prompt and prompt:GetAttribute("FlexIdx")) or 0) % #poses + 1
+		if prompt then
+			prompt:SetAttribute("FlexIdx", n)
+		end
+		local r = State.req("Flex", poses[n])
+		if r.ok then
+			local face = prompt and prompt:GetAttribute("FaceAt")
+			local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+			if root and typeof(face) == "Vector3" then
+				local look = V3(face.X, root.Position.Y, face.Z)
+				if (look - root.Position).Magnitude > 0.5 then
+					root.CFrame = CFrame.lookAt(root.Position, look)
+				end
+			end
+		else
+			State.toast(r.err or "Can't flex right now.", Color3.fromRGB(220, 40, 45))
+		end
 		return true
 	end
 	return CityStores.Open(action, prompt and prompt:GetAttribute("Store")) == true

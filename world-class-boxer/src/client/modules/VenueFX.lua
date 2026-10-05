@@ -365,10 +365,13 @@ local function kick(c, sat, exposure, bloom)
 	S.kick.bloom += bloom * fx
 end
 
+-- module-level so the 30 Hz lighting tick allocates nothing (PLAN constraint 4)
+local LIGHT_KEYS = { "exposure", "contrast", "saturation", "bloomI", "house", "dof", "spot", "density", "haze" }
+
 local function updateLighting(dt)
 	local cur, tgt, k = S.cur, S.tgt, S.kick
 	local a = approach(dt, 1.6)
-	for _, key in ipairs({ "exposure", "contrast", "saturation", "bloomI", "house", "dof", "spot", "density", "haze" }) do
+	for _, key in ipairs(LIGHT_KEYS) do
 		cur[key] = lerp(cur[key], tgt[key], a)
 	end
 	cur.tint = cur.tint:Lerp(tgt.tint, a)
@@ -424,7 +427,13 @@ local function figureArms(fig)
 	for _, n in ipairs({ "ArmL", "ArmR" }) do
 		local a = fig:FindFirstChild(n)
 		if a then
-			table.insert(t, { p = a, side = a:GetAttribute("Side") or (n == "ArmL" and -1 or 1), pitch = a:GetAttribute("Pitch") or 0, roll = a:GetAttribute("Roll") or 0 })
+			local e = { p = a, side = a:GetAttribute("Side") or (n == "ArmL" and -1 or 1), pitch = a:GetAttribute("Pitch") or 0, roll = a:GetAttribute("Roll") or 0 }
+			-- the announcer's mic is held in the right hand: it follows that arm's pose
+			local mic = n == "ArmR" and fig:FindFirstChild("Mic")
+			if mic and mic:IsA("BasePart") then
+				e.held, e.heldRel = mic, a.CFrame:ToObjectSpace(mic.CFrame)
+			end
+			table.insert(t, e)
 		end
 	end
 	return t
@@ -440,6 +449,9 @@ local function poseArms(fig, arms, pitchL, rollL, pitchR, rollR)
 		local pitch = a.side < 0 and pitchL or pitchR
 		local roll = a.side < 0 and rollL or rollR
 		a.p.CFrame = tcf * CF(a.side * 1.05, 0.75, 0) * CFrame.Angles(pitch, 0, roll * a.side) * CF(0, -0.9, 0)
+		if a.held then
+			a.held.CFrame = a.p.CFrame * a.heldRel
+		end
 	end
 end
 
@@ -521,19 +533,22 @@ local function ropePoint(r, t)
 end
 
 local ropePush = {}
+-- how much each rope tier gives under a body (bottom, middle, top)
+local TIER_W = { 0.55, 1, 0.9 }
 local function updateRopes(dt, now)
 	if #S.ropes == 0 then
 		return
 	end
 	dt = math.min(dt, 1 / 20)
-	-- who can touch the ropes: both boxers and the referee
+	-- who can touch the ropes: both boxers and the referee (reused table: this runs every Heartbeat)
 	local roots = ropePush
 	table.clear(roots)
-	for _, m in ipairs({ S.info.myModel, S.info.oppModel }) do
-		local r = rootOf(m)
-		if r then
-			table.insert(roots, r.Position)
-		end
+	local mine, opp = rootOf(S.info.myModel), rootOf(S.info.oppModel)
+	if mine then
+		table.insert(roots, mine.Position)
+	end
+	if opp then
+		table.insert(roots, opp.Position)
 	end
 	for _, ref in ipairs(S.referees) do
 		local r = rootOf(ref)
@@ -541,7 +556,6 @@ local function updateRopes(dt, now)
 			table.insert(roots, r.Position)
 		end
 	end
-	local tierW = { 0.55, 1, 0.9 }
 	for _, r in ipairs(S.ropes) do
 		local push, at = 0, r.s
 		local pcf = r.p.CFrame
@@ -553,7 +567,7 @@ local function updateRopes(dt, now)
 				local d = lp.X * r.outL.X + lp.Z * r.outL.Z + 2.25
 				local hy = math.abs(lp.Y + 0.2)
 				if d > 0 and hy < 4.5 then
-					local p = math.min(d * 0.95, 1.7) * tierW[r.tier] * math.clamp(1.2 - hy / 4, 0.3, 1)
+					local p = math.min(d * 0.95, 1.7) * TIER_W[r.tier] * math.clamp(1.2 - hy / 4, 0.3, 1)
 					if p > push then
 						push, at = p, s
 					end
@@ -620,6 +634,31 @@ end
 -- Follow spots with beams and light pools
 ------------------------------------------------------------------------
 local rayParams
+-- what the follow-spot rays must pass through to land on the canvas: our own local parts, the boxers,
+-- the crowd, the jumbotron, the invisible RingWall collision boxes at the rope line (Venues also builds
+-- them CanQuery = false; this covers an older template), the officials' proxies and the referee
+-- (no light disc on anybody's head). Rebuilt when the referee's tag replicates late.
+local function refreshRayFilter()
+	rayParams = rayParams or RaycastParams.new()
+	rayParams.FilterType = Enum.RaycastFilterType.Exclude
+	local ex = { S.folder }
+	if typeof(S.info.myModel) == "Instance" then
+		table.insert(ex, S.info.myModel)
+	end
+	if typeof(S.info.oppModel) == "Instance" then
+		table.insert(ex, S.info.oppModel)
+	end
+	for _, c in ipairs(S.arena:GetChildren()) do
+		if c.Name == "RingWall" or c.Name == "Crowd" or c.Name == "Jumbotron" or c.Name == "Officials" then
+			table.insert(ex, c)
+		end
+	end
+	for _, r in ipairs(S.referees) do
+		table.insert(ex, r)
+	end
+	rayParams.FilterDescendantsInstances = ex
+end
+
 local function setupSpots()
 	S.spots = {}
 	local folder = S.arena:FindFirstChild("Spots")
@@ -657,55 +696,42 @@ local function setupSpots()
 			})
 		end
 	end
-	rayParams = RaycastParams.new()
-	rayParams.FilterType = Enum.RaycastFilterType.Exclude
-	local ex = { S.folder }
-	for _, m in ipairs({ S.info.myModel, S.info.oppModel }) do
-		if typeof(m) == "Instance" then
-			table.insert(ex, m)
-		end
+	refreshRayFilter()
+end
+
+-- spot goals (module-level helpers: no per-frame closures)
+local function spotOn(model, wobble, s, now)
+	local r = rootOf(model)
+	if r then
+		local p = r.Position
+		return V3(p.X + math.cos(now * 0.7 + s.i) * wobble, p.Y - 2.6, p.Z + math.sin(now * 0.6 + s.i) * wobble)
 	end
-	local crowd = S.arena:FindFirstChild("Crowd")
-	if crowd then
-		table.insert(ex, crowd)
-	end
-	local js = S.arena:FindFirstChild("Jumbotron")
-	if js then
-		table.insert(ex, js)
-	end
-	rayParams.FilterDescendantsInstances = ex
+	return nil
+end
+
+local function spotSweep(s, now)
+	local a = now * 0.35 + s.i * 1.7
+	local rr = S.crowdR
+	return S.center + V3(math.cos(a) * rr, S.crowdY + math.sin(now * 0.9 + s.i) * 3, math.sin(a * 0.8) * rr)
 end
 
 local function spotGoal(s, now)
 	local mode = S.spotMode
-	local function on(model, wobble)
-		local r = rootOf(model)
-		if r then
-			local p = r.Position
-			return V3(p.X + math.cos(now * 0.7 + s.i) * wobble, p.Y - 2.6, p.Z + math.sin(now * 0.6 + s.i) * wobble)
-		end
-		return nil
-	end
-	local function sweep()
-		local a = now * 0.35 + s.i * 1.7
-		local rr = S.crowdR
-		return S.center + V3(math.cos(a) * rr, S.crowdY + math.sin(now * 0.9 + s.i) * 3, math.sin(a * 0.8) * rr)
-	end
 	if mode == "walker" then
 		if s.i <= 2 then
-			return on(S.focusModel, 0.3) or sweep()
+			return spotOn(S.focusModel, 0.3, s, now) or spotSweep(s, now)
 		end
-		return sweep()
+		return spotSweep(s, now)
 	elseif mode == "downed" then
-		return on(S.downModel, 0.15) or S.center
+		return spotOn(S.downModel, 0.15, s, now) or S.center
 	elseif mode == "winner" then
-		return on(S.winModel, 0.25) or sweep()
+		return spotOn(S.winModel, 0.25, s, now) or spotSweep(s, now)
 	elseif mode == "sweep" then
-		return sweep()
+		return spotSweep(s, now)
 	end
 	-- ring: the spots split over the two boxers, operators drifting a little
 	local m = s.i % 2 == 1 and S.info.myModel or S.info.oppModel
-	return on(m, 0.6) or (S.center + V3(math.cos(now * 0.3 + s.i) * 3, 0, math.sin(now * 0.25 + s.i) * 3))
+	return spotOn(m, 0.6, s, now) or (S.center + V3(math.cos(now * 0.3 + s.i) * 3, 0, math.sin(now * 0.25 + s.i) * 3))
 end
 
 local function updateSpots(dt, now)
@@ -876,17 +902,22 @@ end
 ------------------------------------------------------------------------
 -- Particles: phone lights, camera flashes, smoke, CO2, confetti, gerbs, fireworks, dust
 ------------------------------------------------------------------------
+-- client-shipped sprites: without a Texture every emitter draws the default four-pointed sparkle
+local SMOKE_TEX = "rbxasset://textures/particles/smoke_main.dds"
+
 local function setupParticles()
 	S.phones, S.flashes = {}, {}
-	-- one volume per stand side, sized from the fans actually seated there
+	-- one volume per stand side AND row, sized from the fans actually seated there: the stands are
+	-- raked, so a single box per side is mostly empty air above the lower rows (phones in mid-air)
 	local boxes = {}
 	for _, e in ipairs(S.fans) do
 		local p = e.fan.Position - S.center
 		local side = math.abs(p.Z) > math.abs(p.X) and (p.Z > 0 and 1 or 3) or (p.X > 0 and 2 or 4)
-		local b = boxes[side]
+		local key = side * 100 + (e.fan:GetAttribute("VIP") and 99 or (e.fan:GetAttribute("Row") or 0))
+		local b = boxes[key]
 		if not b then
 			b = { min = p, max = p }
-			boxes[side] = b
+			boxes[key] = b
 		end
 		b.min = V3(math.min(b.min.X, p.X), math.min(b.min.Y, p.Y), math.min(b.min.Z, p.Z))
 		b.max = V3(math.max(b.max.X, p.X), math.max(b.max.Y, p.Y), math.max(b.max.Z, p.Z))
@@ -896,6 +927,8 @@ local function setupParticles()
 		local size = (b.max - b.min) + V3(2, 2, 2)
 		table.insert(vols, localPart("CrowdVolume", size, CF(S.center + (b.min + b.max) / 2 + V3(0, 1.2, 0)), WHITE, nil, { Transparency = 1 }))
 	end
+	-- the ground stands used to be 4 volumes: keep the venue's total phone / flash counts unchanged
+	S.groundShare = 4 / math.max(1, #vols)
 	local bowl = S.arena:FindFirstChild("Bowl")
 	if bowl then
 		for _, slab in ipairs(bowl:GetChildren()) do
@@ -966,14 +999,14 @@ local function setupParticles()
 			local corner = d:GetAttribute("Corner")
 			if d.Name == "SmokeJet" and S.smoke[corner] then
 				table.insert(S.smoke[corner], emitter(d, {
-					Name = "Smoke", EmissionDirection = Enum.NormalId.Top, Lifetime = NumberRange.new(4, 7), Speed = NumberRange.new(1.5, 4), SpreadAngle = Vector2.new(60, 60),
+					Name = "Smoke", Texture = SMOKE_TEX, EmissionDirection = Enum.NormalId.Top, Lifetime = NumberRange.new(4, 7), Speed = NumberRange.new(1.5, 4), SpreadAngle = Vector2.new(60, 60),
 					Acceleration = V3(0, 0.3, 0), Drag = 0.8, RotSpeed = NumberRange.new(-20, 20), Rotation = NumberRange.new(0, 360),
 					Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 3), NumberSequenceKeypoint.new(1, 12) }),
 					Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.55), NumberSequenceKeypoint.new(1, 1) }), LightInfluence = 1, Color = ColorSequence.new(rgb(190, 190, 200)),
 				}))
 			elseif d.Name == "CO2Jet" and S.co2[corner] then
 				table.insert(S.co2[corner], emitter(d, {
-					Name = "CO2", EmissionDirection = Enum.NormalId.Top, Lifetime = NumberRange.new(0.6, 1.0), Speed = NumberRange.new(45, 58), SpreadAngle = Vector2.new(5, 5),
+					Name = "CO2", Texture = SMOKE_TEX, EmissionDirection = Enum.NormalId.Top, Lifetime = NumberRange.new(0.6, 1.0), Speed = NumberRange.new(45, 58), SpreadAngle = Vector2.new(5, 5),
 					Drag = 3, Acceleration = V3(0, -6, 0), Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(1, 7) }),
 					Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.1), NumberSequenceKeypoint.new(1, 1) }), LightInfluence = 0.6, Color = ColorSequence.new(WHITE),
 				}))
@@ -987,7 +1020,7 @@ local function setupParticles()
 				local dir = (t.Position - S.center).Z < 0 and 1 or -1
 				local p = localPart("TunnelSmoke", V3(8, 1, 2), CF(t.Position + V3(0, -6.5, dir * 3)), WHITE, nil, { Transparency = 1 })
 				table.insert(S.smoke[corner], emitter(p, {
-					Name = "Smoke", EmissionDirection = Enum.NormalId.Top, Lifetime = NumberRange.new(3, 5), Speed = NumberRange.new(1, 3), SpreadAngle = Vector2.new(70, 70),
+					Name = "Smoke", Texture = SMOKE_TEX, EmissionDirection = Enum.NormalId.Top, Lifetime = NumberRange.new(3, 5), Speed = NumberRange.new(1, 3), SpreadAngle = Vector2.new(70, 70),
 					Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 2.5), NumberSequenceKeypoint.new(1, 9) }), RotSpeed = NumberRange.new(-20, 20),
 					Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.6), NumberSequenceKeypoint.new(1, 1) }), LightInfluence = 1, Color = ColorSequence.new(rgb(180, 180, 190)),
 				}))
@@ -997,8 +1030,9 @@ local function setupParticles()
 end
 
 local function phones(rate)
+	local ground = S.groundShare or 1
 	for _, pe in ipairs(S.phones) do
-		pe.Rate = rate * (pe.Parent and pe.Parent.Name == "BowlTier" and 2.2 or 1)
+		pe.Rate = rate * (pe.Parent and pe.Parent.Name == "BowlTier" and 2.2 or ground)
 	end
 end
 
@@ -1006,8 +1040,21 @@ local function flashBurst(n)
 	if not S then
 		return
 	end
+	-- camera flashes are strobing light: the accessibility scale thins them out (0 = none)
+	local fx = math.min(1, fxScale())
+	local ground = S.groundShare or 1
 	for _, pe in ipairs(S.flashes) do
-		pe:Emit(math.max(1, math.floor(n * (pe.Parent and pe.Parent.Name == "BowlTier" and 1.6 or 1))))
+		-- per volume: a fractional expected count, rounded at random so small volumes still flash sometimes
+		local want = n * (pe.Parent and pe.Parent.Name == "BowlTier" and 1.6 or ground) * fx
+		local k = math.floor(want + math.random())
+		if k > 0 then
+			pe:Emit(k)
+		end
+	end
+	local now = os.clock()
+	if S.snd.flash and n >= 10 and fx > 0 and now - (S.lastFlashSnd or 0) > 0.25 then
+		S.lastFlashSnd = now
+		play(S.snd.flash, math.min(0.5, 0.12 + n * 0.004), 0.9 + math.random() * 0.2)
 	end
 end
 
@@ -1047,7 +1094,7 @@ local function fireworks(bursts)
 			f.pe.Color = ColorSequence.new(col, col:Lerp(WHITE, 0.5))
 			f.pe:Emit(80)
 			f.light.Color = col
-			f.light.Brightness = 6
+			f.light.Brightness = 6 * math.min(1, fxScale())
 			task.delay(0.25, function()
 				if f.light.Parent then
 					f.light.Brightness = 0
@@ -1228,11 +1275,14 @@ local function updateScreens(dt, now)
 	end
 	local rf = S.ribbonFlash
 	local on = rf and now < rf.untilT
+	-- accessibility (Config.ScreenFX): a low scale holds a steady tint instead of the 4 Hz strobe
+	local fx = math.min(1, fxScale())
+	local strobe = fx > 0.5
 	for _, f in ipairs(S.flashFrames) do
-		if on then
-			local blink = math.floor(now * 8) % 2 == 0
-			f.BackgroundColor3 = blink and rf.color or WHITE
-			f.BackgroundTransparency = blink and 0.35 or 0.7
+		if on and fx > 0 then
+			local blink = strobe and math.floor(now * 8) % 2 == 0
+			f.BackgroundColor3 = (blink or not strobe) and rf.color or WHITE
+			f.BackgroundTransparency = 1 - (strobe and (blink and 0.65 or 0.3) or 0.35) * fx
 		elseif f.BackgroundTransparency < 1 then
 			f.BackgroundTransparency = 1
 		end
@@ -1339,10 +1389,39 @@ local function setupPeople()
 	end
 end
 
+-- people and stools travel instead of teleporting (the wide and broadcast cameras are watching):
+-- an eased glide plus a hop that covers climbing the steps onto the apron. Keyed by model, so a new
+-- move simply replaces one still running; Stop() snaps everything home.
+local function startMove(m, goal, dur, hop)
+	local from = m:GetPivot()
+	if not S.moves[m] and (from.Position - goal.Position).Magnitude < 0.05 then
+		-- already there (e.g. round 1 sends everyone "home"): no hop on the spot
+		return
+	end
+	S.moves[m] = { from = from, goal = goal, t0 = os.clock(), dur = dur, hop = hop }
+end
+
+local function updateMoves(_dt, now)
+	for m, mv in pairs(S.moves) do
+		if not m.Parent then
+			S.moves[m] = nil
+		else
+			local k = math.clamp((now - mv.t0) / mv.dur, 0, 1)
+			local ease = k * k * (3 - 2 * k)
+			m:PivotTo(mv.from:Lerp(mv.goal, ease) + V3(0, math.sin(k * math.pi) * mv.hop, 0))
+			if k >= 1 then
+				-- clearing the current key during pairs() is allowed
+				S.moves[m] = nil
+			end
+		end
+	end
+end
+
 local function cornerMode(on)
-	for _, e in ipairs(S.corner) do
+	for i, e in ipairs(S.corner) do
 		if e.m.Parent then
-			e.m:PivotTo(on and e.rest or e.home)
+			-- the two cornermen of a corner do not move in lockstep
+			startMove(e.m, on and e.rest or e.home, 1.0 + (i % 2) * 0.25, 1.1)
 			if not on and e.arms[1] then
 				-- back on the floor with their hands down
 				poseArms(e.m, e.arms, e.arms[1].pitch, e.arms[1].roll, e.arms[1].pitch, e.arms[1].roll)
@@ -1351,7 +1430,7 @@ local function cornerMode(on)
 	end
 	for _, s in ipairs(S.stools) do
 		if s.m.Parent then
-			s.m:PivotTo(on and s.rest or s.home)
+			startMove(s.m, on and s.rest or s.home, 0.9, 0.8)
 		end
 	end
 	S.cornerOn = on
@@ -1360,7 +1439,8 @@ end
 local function announcerMode(on)
 	local a = S.announcer
 	if a and a.m.Parent then
-		a.m:PivotTo(on and a.stage or a.home)
+		-- he walks up the steps and out to the centre (and back)
+		startMove(a.m, on and a.stage or a.home, 2.2, 1.2)
 		S.announcing = on
 	end
 end
@@ -1537,7 +1617,7 @@ local function setupGym()
 			local len = (stop - start).Magnitude
 			local shaft = localPart("DustShaft", V3(d.Size.Z * 0.8, d.Size.Y * 0.6, len), CFrame.lookAt((start + stop) / 2, stop), WHITE, nil, { Transparency = 1 })
 			emitter(shaft, {
-				Name = "Dust", Rate = 7, Lifetime = NumberRange.new(6, 10), Speed = NumberRange.new(0.05, 0.2), SpreadAngle = Vector2.new(180, 180),
+				Name = "Dust", Texture = SMOKE_TEX, Rate = 7, Lifetime = NumberRange.new(6, 10), Speed = NumberRange.new(0.05, 0.2), SpreadAngle = Vector2.new(180, 180),
 				Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.07), NumberSequenceKeypoint.new(1, 0.05) }), Acceleration = V3(0, -0.02, 0),
 				Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.3, 0.35), NumberSequenceKeypoint.new(1, 1) }),
 				LightEmission = 0.6, Color = ColorSequence.new(rgb(255, 236, 200)), RotSpeed = NumberRange.new(-30, 30),
@@ -1575,10 +1655,15 @@ local function setTimer(phaseText, timeText, lamp, color)
 			t.time.TextColor3 = color
 		end
 	end
-	for n, p in pairs({ go = t.go, warn = t.warn, rest = t.rest }) do
-		if p then
-			p.Transparency = (n == lamp) and 0 or 0.65
-		end
+	-- set directly: this runs on every 10 Hz State message
+	if t.go then
+		t.go.Transparency = lamp == "go" and 0 or 0.65
+	end
+	if t.warn then
+		t.warn.Transparency = lamp == "warn" and 0 or 0.65
+	end
+	if t.rest then
+		t.rest.Transparency = lamp == "rest" and 0 or 0.65
 	end
 end
 
@@ -1600,6 +1685,9 @@ local function update(dt)
 	S.supportBoost = math.max(0, S.supportBoost - dt * 0.4)
 	step("ropes", updateRopes, dt, now)
 	step("spots", updateSpots, dt, now)
+	if next(S.moves) then
+		step("moves", updateMoves, dt, now)
+	end
 	acc30 += dt
 	if acc30 >= 1 / 30 then
 		local d = acc30
@@ -1621,6 +1709,9 @@ local function update(dt)
 				if r:IsDescendantOf(S.arena) then
 					table.insert(S.referees, r)
 				end
+			end
+			if #S.referees > 0 and #S.spots > 0 then
+				refreshRayFilter()
 			end
 		end
 		-- crowd audio follows excitement
@@ -1672,7 +1763,7 @@ function VenueFX.Start(arena, info)
 		arena = arena, info = info, venue = venue, profile = PROFILES[venue] or PROFILES.Arena, spar = info.spar, stakes = stakes,
 		center = center.Position, ringHalf = arena:GetAttribute("RingHalf") or 11,
 		floorY = floor and (floor.Position.Y + floor.Size.Y / 2) or (center.Position.Y - 4),
-		folder = folder, soundFolder = soundFolder, created = {}, dead = {}, snd = {},
+		folder = folder, soundFolder = soundFolder, created = {}, dead = {}, snd = {}, moves = {},
 		excite = 0.3, baseExcite = 0.3, supportBoost = 0, screenPop = 0, spotMode = "ring", house = {}, houseLamps = {}, bowlGuis = {},
 		referees = {}, spots = {}, ropes = {}, ties = {}, fans = {}, phones = {}, flashes = {}, confetti = {}, gerbs = {}, fireworks = {},
 		smoke = { Red = {}, Blue = {} }, co2 = { Red = {}, Blue = {} }, cams = {}, sources = {}, corner = {}, stools = {}, watchers = {},
@@ -2031,7 +2122,7 @@ function VenueFX.Pyro(side)
 				local l = track(Instance.new("PointLight"))
 				l.Color = rgb(255, 170, 80)
 				l.Range = 40
-				l.Brightness = 5
+				l.Brightness = 5 * math.min(1, fxScale())
 				l.Parent = p
 				task.delay(0.9, function()
 					l:Destroy()
@@ -2054,8 +2145,11 @@ function VenueFX.BroadcastCFrame(now)
 	local focus = focusPoint()
 	local pos
 	if src.kind == "cam" then
-		-- tighter than the tripod itself (a long lens), and just above the top rope
-		pos = src.e.pos:Lerp(focus, 0.3) + V3(0, 0.8, 0)
+		-- tighter than the tripod itself (a long lens). The tripods stand on the neutral-corner diagonals,
+		-- so the pulled-in lens sits right behind a corner post: raise it to shoot over the post cap
+		-- (canvas + 5.7) and the top rope (canvas + 4.4) instead of through the turnbuckles and ropes
+		pos = src.e.pos:Lerp(focus, 0.3)
+		pos = V3(pos.X, math.max(pos.Y + 0.8, S.center.Y + 7.5), pos.Z)
 	elseif src.kind == "jib" then
 		pos = src.e.head and src.e.head.Position or nil
 	elseif src.kind == "sky" then

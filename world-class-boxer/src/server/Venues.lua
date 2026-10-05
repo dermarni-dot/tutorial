@@ -291,7 +291,10 @@ local function hairColor(rng)
 end
 
 ------------------------------------------------------------------------
--- Cheap people (judges, crew, cornermen, press): 7-9 parts, never Builder NPCs (CONTRACTS 11).
+-- Cheap people (judges, crew, cornermen, press): at most 6 parts each (CONTRACTS 11), never Builder NPCs.
+-- Torso, Head, ArmL, ArmR, one legs block (standing "Legs", seated "Lap") and an optional Hair cap or Mic.
+-- Ties, towels and headsets are SurfaceGui prints, not parts. Seated people only ever sit at the skirted
+-- ringside tables, which hide their shins from the ring, so they get no shin block.
 -- cf = feet (or seat) position, LookVector = where they face. Arms are named ArmL / ArmR with an
 -- attribute Side so VenueFX can swing them around the shoulder (Torso.CFrame * (side*1.05, 0.75, 0)).
 ------------------------------------------------------------------------
@@ -308,23 +311,23 @@ local function figure(parent, name, cf, rng, o)
 	local pants = o.pants or rgb(28, 28, 34)
 	local seated = o.pose == "sit"
 	local hipY = seated and (o.seatH or 1.7) or 2.6
+	local parts = 0
 	if seated then
-		for _, sx in ipairs({ -0.36, 0.36 }) do
-			prop(m, "Thigh", V3(0.62, 0.6, 1.45), cf * CF(sx, hipY + 0.3, -0.6), pants, M.Fabric, { CastShadow = false })
-			prop(m, "Shin", V3(0.58, hipY, 0.6), cf * CF(sx, hipY / 2, -1.25), pants, M.Fabric, { CastShadow = false })
-		end
+		prop(m, "Lap", V3(1.3, 0.6, 1.45), cf * CF(0, hipY + 0.3, -0.6), pants, M.Fabric, { CastShadow = false })
 	else
-		for _, sx in ipairs({ -0.36, 0.36 }) do
-			prop(m, sx < 0 and "LegL" or "LegR", V3(0.62, 2.6, 0.68), cf * CF(sx, 1.3, 0), pants, M.Fabric, { CastShadow = false })
+		local legs = prop(m, "Legs", V3(1.3, 2.6, 0.68), cf * CF(0, 1.3, 0), pants, M.Fabric, { CastShadow = false })
+		-- a darker seam from the crotch down reads as two legs at any distance
+		for _, f in ipairs({ FACE.Front, FACE.Back }) do
+			local sg = gui(legs, f, 20, 1, 1)
+			frame(sg, { Size = UDim2.fromScale(0.07, 0.8), Position = UDim2.fromScale(0.465, 0.2), BackgroundColor3 = pants:Lerp(BLACK, 0.6) })
 		end
 	end
+	parts += 1
 	local torsoY = hipY + (seated and 0.6 or 0) + 0.95
 	local torsoCF = cf * CF(0, torsoY, 0)
 	local torso = prop(m, "Torso", V3(1.6, 1.9, 0.85), torsoCF, shirt, M.Fabric, { CastShadow = false })
 	local head = blob(m, "Head", V3(1.02, 1.18, 1.08), cf * CF(0, torsoY + 1.55, 0), skin, M.SmoothPlastic, { CastShadow = false })
-	if o.hair ~= false and rng:NextNumber() < 0.8 then
-		blob(m, "Hair", V3(1.08, 0.62, 1.12), head.CFrame * CF(0, 0.33, 0.06), o.hairColor or hairColor(rng), M.Fabric, { CastShadow = false })
-	end
+	parts += 2
 	local arms = o.arms or { { 0, 0.08 }, { 0, 0.08 } }
 	for i, side in ipairs({ -1, 1 }) do
 		local a = arms[i] or arms[1]
@@ -332,19 +335,48 @@ local function figure(parent, name, cf, rng, o)
 		arm:SetAttribute("Side", side)
 		arm:SetAttribute("Pitch", a[1])
 		arm:SetAttribute("Roll", a[2])
+		parts += 1
+	end
+	if o.mic then
+		local armR = m:FindFirstChild("ArmR")
+		prop(m, "Mic", V3(0.2, 0.2, 0.7), armR.CFrame * CF(0, -0.95, -0.25), rgb(30, 30, 32), M.Metal, { CastShadow = false })
+		parts += 1
+	end
+	-- the roll is always drawn so the venue's random stream does not depend on the part budget
+	local wantsHair = o.hair ~= false and rng:NextNumber() < 0.8
+	if wantsHair and parts < 6 then
+		blob(m, "Hair", V3(1.08, 0.62, 1.12), head.CFrame * CF(0, 0.33, 0.06), o.hairColor or hairColor(rng), M.Fabric, { CastShadow = false })
+	end
+	-- shirt-front prints: tie (on a white shirt front) and the cutman's towel over one shoulder
+	local front
+	if o.tie or o.towel then
+		front = gui(torso, FACE.Front, 30, 1, 1)
 	end
 	if o.tie then
-		prop(m, "Tie", V3(0.22, 1.1, 0.05), torsoCF * CF(0, 0.2, -0.45), o.tie, M.Fabric, { CastShadow = false })
-	end
-	if o.headset then
-		prop(m, "Headset", V3(1.12, 0.18, 0.3), head.CFrame * CF(0, 0.2, 0), rgb(20, 20, 22), M.Plastic, { CastShadow = false })
+		frame(front, { Name = "Shirt", Size = UDim2.fromScale(0.24, 0.42), Position = UDim2.fromScale(0.38, 0), BackgroundColor3 = rgb(236, 236, 240) })
+		frame(front, { Name = "Tie", Size = UDim2.fromScale(0.12, 0.6), Position = UDim2.fromScale(0.44, 0.06), BackgroundColor3 = o.tie, ZIndex = 2 })
 	end
 	if o.towel then
-		prop(m, "Towel", V3(0.5, 0.12, 1.1), torsoCF * CF(-0.55, 0.98, 0), WHITE, M.Fabric, { CastShadow = false })
+		frame(front, { Name = "Towel", Size = UDim2.fromScale(0.24, 0.55), Position = UDim2.fromScale(0.06, 0), BackgroundColor3 = WHITE, ZIndex = 3 })
 	end
-	if o.text then
+	if o.headset then
+		-- ear cups on both sides of the head plus a short boom mic
+		for _, f in ipairs({ FACE.Left, FACE.Right }) do
+			local sg = gui(head, f, 40, 1, 1)
+			round(frame(sg, { Name = "EarCup", Size = UDim2.fromScale(0.42, 0.36), Position = UDim2.fromScale(0.29, 0.36), BackgroundColor3 = rgb(20, 20, 22) }), 0.5)
+		end
+		local sg = gui(head, FACE.Front, 40, 1, 1)
+		frame(sg, { Name = "Boom", Size = UDim2.fromScale(0.3, 0.06), Position = UDim2.fromScale(0.62, 0.7), BackgroundColor3 = rgb(20, 20, 22) })
+	end
+	if o.text or o.towel then
 		local back = gui(torso, FACE.Back, 30, 1, 1)
-		label(back, { Size = UDim2.fromScale(0.9, 0.35), Position = UDim2.fromScale(0.05, 0.12), Text = o.text, TextColor3 = o.textColor or WHITE })
+		if o.towel then
+			-- the towel hangs down the back of the same shoulder (Back face is mirrored)
+			frame(back, { Name = "Towel", Size = UDim2.fromScale(0.24, 0.4), Position = UDim2.fromScale(0.7, 0), BackgroundColor3 = WHITE })
+		end
+		if o.text then
+			label(back, { Size = UDim2.fromScale(0.9, 0.35), Position = UDim2.fromScale(0.05, 0.12), Text = o.text, TextColor3 = o.textColor or WHITE, ZIndex = 2 })
+		end
 	end
 	m.PrimaryPart = torso
 	m:SetAttribute("Pose", seated and "sit" or "stand")
@@ -383,6 +415,8 @@ local function buildCrowd(arena, spec, rng)
 	local crowd = Instance.new("Folder")
 	crowd.Name = "Crowd"
 	crowd.Parent = arena
+	-- body sizes and hair come from their own stream so the seating draws stay as they were
+	local vary = Random.new(spec.half * 977 + spec.tier * 31 + spec.rows)
 	for side = 0, 3 do
 		local rot = CFrame.Angles(0, side * math.pi / 2, 0)
 		for row = 0, spec.rows - 1 do
@@ -418,14 +452,22 @@ local function buildCrowd(arena, spec, rng)
 					end
 					local shirt = SHIRTS[rng:NextInteger(1, #SHIRTS)]
 					local y = spec.chairs and 2 or 1
-					local fan = deco(crowd, "Fan", V3(1.6, 2, 1), base * CF(0, y, 0), c3(shirt), M.Fabric, { CanCollide = false, CastShadow = false, CanQuery = false, CanTouch = false })
+					-- no two fans the same build: broad / narrow shoulders, tall / short (seat stays put)
+					local sw, sh = 1.6 * (0.88 + vary:NextNumber() * 0.26), 2 * (0.9 + vary:NextNumber() * 0.2)
+					local cy = y - (2 - sh) / 2
+					local fan = deco(crowd, "Fan", V3(sw, sh, 1), base * CF(0, cy, 0), c3(shirt), M.Fabric, { CanCollide = false, CastShadow = false, CanQuery = false, CanTouch = false })
 					fan:SetAttribute("Row", row)
-					local head = deco(fan, "Head", V3(1.2, 1.2, 1.2), base * CF(0, y + 1.6, 0), skinColor(rng), nil, { CanCollide = false, CastShadow = false, CanQuery = false, CanTouch = false })
+					local headCF = base * CF(0, cy + sh / 2 + 0.6, 0)
+					local head = deco(fan, "Head", V3(1.2, 1.2, 1.2), headCF, skinColor(rng), nil, { CanCollide = false, CastShadow = false, CanQuery = false, CanTouch = false })
 					head.Shape = Enum.PartType.Ball
+					-- the camera-facing rows get hair caps; the rows behind stay one block + one ball (part budget)
+					if row <= 1 and vary:NextNumber() < 0.75 then
+						blob(fan, "Hair", V3(1.25, 0.6, 1.25), headCF * CF(0, 0.38, 0.05), hairColor(vary), M.Fabric, { CanCollide = false, CastShadow = false, CanQuery = false, CanTouch = false })
+					end
 					-- the front row is what the camera sees: they get arms VenueFX can throw in the air
 					if row == 0 then
 						for _, sx in ipairs({ -1, 1 }) do
-							local arm = prop(fan, sx < 0 and "ArmL" or "ArmR", V3(0.42, 1.6, 0.45), base * CF(sx * 1.02, y + 0.05, -0.05), fan.Color, M.Fabric, { CastShadow = false })
+							local arm = prop(fan, sx < 0 and "ArmL" or "ArmR", V3(0.42, 1.6, 0.45), base * CF(sx * (sw / 2 + 0.22), y + 0.05, -0.05), fan.Color, M.Fabric, { CastShadow = false })
 							arm:SetAttribute("Side", sx)
 						end
 					end
@@ -654,7 +696,8 @@ local function buildRing(arena, spec)
 			local p0 = V3(cx, RH + h, cz)
 			pipe(arena, "Turnbuckle", p0 + inward * 0.35, p0 + inward * 1.05, 0.22, rgb(170, 172, 178), M.Metal, { CastShadow = false })
 			if spec.pads == "pillow" then
-				local pad = blob(arena, "TurnbucklePad", V3(1.25, 1.05, 1.25), CF(p0 + inward * 0.55), CORNER_COLORS[i], M.Leather)
+				-- faces the ring centre so the sponsor print on FACE.Front reads from inside the ring (UpVector stays +Y)
+				local pad = blob(arena, "TurnbucklePad", V3(1.25, 1.05, 1.25), CFrame.lookAt(p0 + inward * 0.55, V3(0, p0.Y, 0)), CORNER_COLORS[i], M.Leather)
 				pad:SetAttribute("Corner", i)
 				pad:SetAttribute("RopeTier", ti)
 			end
@@ -686,7 +729,8 @@ local function buildRing(arena, spec)
 		end
 	end
 	for _, w in ipairs({ { 0, -half, half * 2, 0.5 }, { 0, half, half * 2, 0.5 }, { -half, 0, 0.5, half * 2 }, { half, 0, 0.5, half * 2 } }) do
-		deco(arena, "RingWall", V3(w[3], 12, w[4]), CF(w[1], RH + 6, w[2]), Color3.new(), nil, { Transparency = 1 })
+		-- collision only: no queries (follow-spot / camera rays must reach the canvas) and no touches
+		deco(arena, "RingWall", V3(w[3], 12, w[4]), CF(w[1], RH + 6, w[2]), Color3.new(), nil, { Transparency = 1, CanQuery = false, CanTouch = false })
 	end
 	-- steps with hand rails on both sides of the ring
 	for _, z in ipairs({ -1, 1 }) do
@@ -812,6 +856,7 @@ local function buildRingside(arena, spec, rng)
 	-- VIP rows on both walkway sides (their fans join the Crowd so they cheer with everyone)
 	if spec.vip then
 		local crowd = arena:FindFirstChild("Crowd")
+		local vary = Random.new(spec.half * 613 + spec.tier)
 		for _, z in ipairs({ -1, 1 }) do
 			for row = 0, 1 do
 				for i = 0, 4 do
@@ -826,6 +871,10 @@ local function buildRingside(arena, spec, rng)
 						fan:SetAttribute("VIP", true)
 						local head = deco(fan, "Head", V3(1.15, 1.15, 1.15), cf * CF(0, 4.25, 0.1), skinColor(rng), nil, { CanCollide = false, CastShadow = false, CanQuery = false, CanTouch = false })
 						head.Shape = Enum.PartType.Ball
+						-- right behind the walkways and in every walkout shot: most VIPs get hair
+						if vary:NextNumber() < 0.8 then
+							blob(fan, "Hair", V3(1.2, 0.58, 1.2), head.CFrame * CF(0, 0.36, 0.05), hairColor(vary), M.Fabric, { CastShadow = false })
+						end
 					end
 				end
 			end
@@ -848,12 +897,8 @@ local function buildRingside(arena, spec, rng)
 		end
 	end
 	-- ring announcer waits by the officials' table; VenueFX walks him to the centre for the intros
-	local ann = figure(officials, "Announcer", CFrame.lookAt(V3(-(E + 1.4), 0, 6.5), V3(0, 0, 6.5)), rng,
-		{ shirt = rgb(15, 15, 18), sleeves = rgb(15, 15, 18), pants = rgb(15, 15, 18), tie = rgb(240, 240, 240), role = "Announcer", arms = { { 0.1, 0.1 }, { 1.3, 0.05 } } })
-	local armR = ann:FindFirstChild("ArmR")
-	if armR then
-		prop(ann, "Mic", V3(0.2, 0.2, 0.7), armR.CFrame * CF(0, -0.95, -0.25), rgb(30, 30, 32), M.Metal, { CastShadow = false })
-	end
+	figure(officials, "Announcer", CFrame.lookAt(V3(-(E + 1.4), 0, 6.5), V3(0, 0, 6.5)), rng,
+		{ shirt = rgb(15, 15, 18), sleeves = rgb(15, 15, 18), pants = rgb(15, 15, 18), tie = rgb(240, 240, 240), role = "Announcer", arms = { { 0.1, 0.1 }, { 1.3, 0.05 } }, mic = true })
 	-- crowd barrier in front of the first row: LED boards for the big shows, steel barricades in clubs
 	if spec.barrier and spec.rows > 0 then
 		local rb = spec.rowStart - 0.6
@@ -1107,7 +1152,15 @@ local function buildScreens(arena, spec, kind)
 	-- banner on the +Z wall (the community hall's is a hand-painted cloth)
 	-- in bowl venues the banner hangs above the upper tier (it would be hidden behind it)
 	local bannerY = spec.bowlTop and math.min(H - 5, spec.bowlTop + 7) or H * 0.55
-	local banner = deco(arena, "Banner", V3(math.min(80, S * 0.5), 8, 1), CF(0, bannerY, S / 2 - 1.5), spec.tier == 1 and rgb(235, 232, 220) or rgb(14, 14, 18), spec.tier == 1 and M.Fabric or M.SmoothPlastic)
+	local bannerSize = V3(math.min(80, S * 0.5), 8, 1)
+	if spec.gym then
+		-- slim banner above the round timer and telemetry board that share this wall (clear of the LED strip)
+		bannerY, bannerSize = H - 3.2, V3(20, 3, 0.4)
+	elseif not spec.bowlTop then
+		-- clear of the 14-stud entrance tunnel standing in front of this wall
+		bannerY = math.max(bannerY, 18.6)
+	end
+	local banner = deco(arena, "Banner", bannerSize, CF(0, bannerY, S / 2 - 1 - bannerSize.Z / 2), spec.tier == 1 and rgb(235, 232, 220) or rgb(14, 14, 18), spec.tier == 1 and M.Fabric or M.SmoothPlastic)
 	if spec.tier == 1 then
 		sign(banner, FACE.Front, spec.banner, rgb(235, 232, 220), rgb(170, 25, 30), 12, spec.bannerFont or Enum.Font.GothamBlack, 1)
 	else
@@ -1261,6 +1314,10 @@ local function buildWalkways(arena, spec, kind)
 				pe.LightEmission = 1
 				pe.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 2.5), NumberSequenceKeypoint.new(1, 0.5) })
 				pe.Color = ColorSequence.new(rgb(255, 220, 120), rgb(255, 80, 20))
+				-- client-shipped flame sprite: the default sparkle texture reads as giant stars, not a flame jet
+				pe.Texture = "rbxasset://textures/particles/fire_main.dds"
+				pe.RotSpeed = NumberRange.new(-90, 90)
+				pe.Rotation = NumberRange.new(0, 360)
 				pe.EmissionDirection = FACE.Top
 				pe.Parent = emitterPart
 			end
@@ -1720,6 +1777,13 @@ local function applyTitle(arena, spec, stakes, rng)
 	-- org banners hang over the four stands (or from the truss in smaller rooms)
 	local r = spec.rows > 0 and (spec.rowStart + spec.rows * spec.rowGap * 0.5) or (half + 8)
 	local y = math.min(spec.height - 8, spec.rows * spec.rowRise + 20)
+	local rigBottom = (spec.rigY or 40) - 0.7
+	if not spec.roof then
+		-- open-air venue (the stadium): nothing overhead but the light rig, so the banners hang from its
+		-- four truss corners (diagonal angles below put them exactly under the corner nodes)
+		r = (half + 3) * math.sqrt(2)
+		y = rigBottom - 6.4
+	end
 	for i = 1, 4 do
 		local org = stakes[(i - 1) % #stakes + 1]
 		local oc = ORG_COLORS[org] or { strap = BLACK, accent = GOLD }
@@ -1731,9 +1795,8 @@ local function applyTitle(arena, spec, stakes, rng)
 		label(sg, { Size = UDim2.fromScale(0.86, 0.1), Position = UDim2.fromScale(0.07, 0.42), Text = "WORLD CHAMPIONSHIP", TextColor3 = WHITE, Font = Enum.Font.GothamBold })
 		local disc = frame(sg, { Size = UDim2.fromScale(0.5, 0.25), Position = UDim2.fromScale(0.25, 0.6), BackgroundColor3 = oc.accent })
 		round(disc, 0.5)
-		if spec.roof then
-			rod(arena, "BannerWire", pos + V3(0, 6, 0), V3(pos.X, spec.height - 1, pos.Z), 0.06, rgb(30, 30, 30), M.Metal, { CastShadow = false })
-		end
+		local top = spec.roof and spec.height - 1 or rigBottom
+		rod(arena, "BannerWire", pos + V3(0, 6, 0), V3(pos.X, top, pos.Z), 0.06, rgb(30, 30, 30), M.Metal, { CastShadow = false })
 	end
 	-- title fights get gold top ropes
 	for _, d in ipairs(arena:GetChildren()) do

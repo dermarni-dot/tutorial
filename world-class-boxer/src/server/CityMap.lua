@@ -455,7 +455,7 @@ local SHOPS = {
 		interior = "diner", action = "Diner", actionText = "Order food", zone = "Store" },
 	{ x0 = -256, x1 = -222, h = 16, color = Color3.fromRGB(70, 72, 78), sign = "IRON SUPPLEMENTS", signBg = Color3.fromRGB(16, 18, 20), signFg = Color3.fromRGB(80, 220, 110), awning = Color3.fromRGB(30, 110, 60),
 		interior = "supplements", action = "Supplements", actionText = "Buy supplements", zone = "Store" },
-	{ x0 = -216, x1 = -176, h = 18, color = Color3.fromRGB(32, 32, 36), sign = "WCB PRO SHOP - GLOVES & GEAR", signBg = Color3.fromRGB(14, 14, 16), signFg = C.gold, awning = Color3.fromRGB(20, 20, 24),
+	{ x0 = -216, x1 = -176, h = 18, color = Color3.fromRGB(32, 32, 36), sign = "WCB PRO SHOP - GLOVES & GEAR", shop = "WCB PRO SHOP", signBg = Color3.fromRGB(14, 14, 16), signFg = C.gold, awning = Color3.fromRGB(20, 20, 24),
 		interior = "proshop", action = "ProShop", actionText = "Browse gear", zone = "Store" },
 	{ x0 = -170, x1 = -126, h = 34, color = Color3.fromRGB(134, 72, 56), mat = M.Brick, sign = "CORNER CAFE", signBg = Color3.fromRGB(60, 40, 30), signFg = Color3.fromRGB(255, 230, 190), awning = Color3.fromRGB(90, 60, 40), floors = 3 },
 	{ x0 = -120, x1 = -90, h = 14, color = Color3.fromRGB(200, 222, 240), sign = "SPIN CITY LAUNDROMAT", signBg = Color3.fromRGB(40, 110, 200), signFg = Color3.new(1, 1, 1), awning = Color3.fromRGB(40, 110, 200) },
@@ -857,7 +857,11 @@ local function shop(f, d, rng)
 	end
 	part(f, "Cornice", V3(w + 0.8, 0.9, depth + 0.8), CF(cx, h + 0.45, FRONT_Z + depth / 2), Color3.fromRGB(60, 58, 56), M.Concrete)
 	-- where a sponsor's poster goes in this shop's window (CityVisuals, when you carry their brand)
-	site("Window_" .. d.sign:gsub("[^%w]", ""), CFrame.lookAt(V3(d.x0 + 4.5, SW_H, FRONT_Z + 1.2), V3(d.x0 + 4.5, SW_H, FRONT_Z - 5)), { Shop = d.sign })
+	-- walk-in shops: just behind the glass, inside the room; facade-only shops are a solid block from
+	-- FRONT_Z back, so their standee stands on the sidewalk in front of the window (foot clear of the
+	-- glass at FRONT_Z - 0.2 and the kickplate). Shop = the Catalog sponsor's `shop` key when the sign is longer.
+	local wz = d.interior and FRONT_Z + 1.2 or FRONT_Z - 1.4
+	site("Window_" .. d.sign:gsub("[^%w]", ""), CFrame.lookAt(V3(d.x0 + 4.5, SW_H, wz), V3(d.x0 + 4.5, SW_H, wz - 6)), { Shop = d.shop or d.sign })
 	-- the prompt: at the counter inside walk-in shops, by the door otherwise
 	if d.action then
 		local at = counterAt or V3(doorX, SW_H + 2.4, FRONT_Z - 1.6)
@@ -951,7 +955,8 @@ local function gasStation(f)
 	GymDecor.Sign(gs, Enum.NormalId.Front, "FUEL & GO - SNACKS - ICE", Color3.new(1, 1, 1), Color3.fromRGB(200, 30, 36), 20)
 	local gw = part(f, "GasShopWindow", V3(20, 5, 0.1), CF(cx, 3.6, cz + 10.9), Color3.fromRGB(170, 205, 230), M.Glass, { transparency = 0.45, shadow = false })
 	gw:SetAttribute("Shop", "FUEL & GO")
-	site("Window_FUELGO", CFrame.lookAt(V3(cx - 6, 0.2, cz + 12), V3(cx - 6, 0.2, cz)), { Shop = "FUEL & GO" })
+	-- on the apron in front of the shop window (cz + 10.9); the shop block itself starts at cz + 11
+	site("Window_FUELGO", CFrame.lookAt(V3(cx - 6, 0.2, cz + 9.8), V3(cx - 6, 0.2, cz)), { Shop = "FUEL & GO" })
 	local py = V3(cx - 25, 0, cz - 9)
 	part(f, "PylonPole", V3(0.8, 16, 0.8), CF(py + V3(0, 8, 0)), C.steel, M.Metal, { collide = true })
 	local pylon = part(f, "Pylon", V3(6, 6, 1), CF(py + V3(0, 17, 0)), Color3.fromRGB(200, 30, 36), M.SmoothPlastic)
@@ -1068,7 +1073,8 @@ local function buildSouth(root)
 	slab(f, "MainStreet", -330, 330, 167, 183, 0.3, ASPHALT, M.Asphalt)
 	for x = -320, 320, 10 do
 		if math.abs(x) > 10 then
-			part(f, "CenterDash", V3(4, 0.03, 0.35), CF(x, 0.315, 175), LINE_YELLOW, M.SmoothPlastic)
+			-- between the two traffic lanes (169.6 / 174.8, CityVisuals); the parking row is 177.4..183
+			part(f, "CenterDash", V3(4, 0.03, 0.35), CF(x, 0.315, 172.2), LINE_YELLOW, M.SmoothPlastic)
 		end
 	end
 	for _, seg in ipairs({ { -330, -269 }, { -255, -8 }, { 8, 330 } }) do
@@ -1079,7 +1085,7 @@ local function buildSouth(root)
 		crosswalk(f, V3(x, 0.32, 175), false, 16, 5)
 	end
 	for i, x in ipairs({ -244, -150, -36, 78, 132, 284 }) do
-		car(f, CF(x, 0.3, 179.6) * ANG(0, RAD(i % 2 == 0 and 90 or -90), 0), CAR_COLORS[(i + 2) % #CAR_COLORS + 1])
+		car(f, CF(x, 0.3, 180.2) * ANG(0, RAD(i % 2 == 0 and 90 or -90), 0), CAR_COLORS[(i + 2) % #CAR_COLORS + 1])
 	end
 	-- street lights between the sidewalk trees, plus a few on the shop side
 	for _, x in ipairs({ -278, -188, -108, 92, 172, 252 }) do
@@ -2050,7 +2056,8 @@ end
 local function tvWall(f, cf, w, profile)
 	part(f, "TVConsole", V3(w, 1.6, 1.8), cf * CF(0, 0.8, 0), Color3.fromRGB(40, 32, 26), M.Wood, { collide = true })
 	local scr = part(f, "TVScreen", V3(w * 0.75, w * 0.42, 0.2), cf * CF(0, 2.2 + w * 0.21, 0.6), Color3.fromRGB(10, 10, 14), M.Glass)
-	local sg = gui(scr, Enum.NormalId.Front, 30, 0, 120)
+	-- the picture is on the +Z face (Back), towards the sofa and the door side of the room
+	local sg = gui(scr, Enum.NormalId.Back, 30, 0, 120)
 	frame(sg, { Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.fromRGB(14, 16, 26) })
 	frame(sg, { Size = UDim2.fromScale(1, 0.18), BackgroundColor3 = Color3.fromRGB(190, 20, 30) })
 	label(sg, "WCB SPORTS  -  LIVE", { TextColor3 = Color3.new(1, 1, 1), Size = UDim2.fromScale(0.9, 0.14), Position = UDim2.fromScale(0.05, 0.02) })
@@ -2104,7 +2111,8 @@ local function furnish(f, base, spec, kind, profile)
 	promptPart(f, "SleepPrompt", (bedCF * CF(-bw / 2 - 2.5, 2.6, -2)).Position, "Sleep (End Day)", "Home sweet home", { Action = "Sleep" }, Color3.fromRGB(170, 170, 255))
 	local lounge = base * CF(-w * 0.12, 0, -d * 0.12)
 	part(f, "Rug", V3(14, 0.06, 10), lounge * CF(0, 0.03, 0), kind == "Mansion" and Color3.fromRGB(150, 120, 80) or Color3.fromRGB(120, 60, 50), M.Fabric)
-	sofa(f, lounge * CF(0, 0, 4) * ANG(0, RAD(180), 0), kind == "Apartment" and 9 or 12, spec.sofa)
+	-- the sofa's seat faces its local -Z (back at +Z), i.e. towards the TV wall at lounge z -4.2
+	sofa(f, lounge * CF(0, 0, 4), kind == "Apartment" and 9 or 12, spec.sofa)
 	part(f, "CoffeeTable", V3(5, 1.4, 2.6), lounge * CF(0, 0.7, 0.4), Color3.fromRGB(46, 36, 28), M.Wood, { collide = true })
 	tvWall(f, lounge * CF(0, 0, -4.2), kind == "Mansion" and 12 or 9, profile)
 	local kLen = kind == "Apartment" and 10 or 14
@@ -2172,9 +2180,12 @@ local function furnish(f, base, spec, kind, profile)
 			ball(f, "ChandelierCrystal", 0.6, ch * CF(math.cos(a) * 2.6, -0.6 - (k % 2) * 0.5, math.sin(a) * 2.6), Color3.fromRGB(240, 246, 255), M.Glass, { transparency = 0.2, reflect = 0.3 })
 		end
 		point(emitter(f, ch * CF(0, -1, 0)), Color3.fromRGB(255, 228, 190), 34, 1.2)
+		-- the left flight stands 12 studs in from the wall so the front door, the Exit prompt and the
+		-- arrival spot (all on the left wall at z d/2 - 12) stay clear underneath it
 		for _, sx in ipairs({ -1, 1 }) do
+			local stairX = sx < 0 and -(w / 2 - 12) or (w / 2 - 4)
 			for k = 0, 10 do
-				part(f, "Stair", V3(5, 0.8, 1.6), base * CF(sx * (w / 2 - 4), 0.4 + k * 0.95, d / 2 - 26 + k * 1.6), Color3.fromRGB(236, 232, 224), M.Marble, { collide = true })
+				part(f, "Stair", V3(5, 0.8, 1.6), base * CF(stairX, 0.4 + k * 0.95, d / 2 - 26 + k * 1.6), Color3.fromRGB(236, 232, 224), M.Marble, { collide = true })
 			end
 		end
 		part(f, "Mezzanine", V3(w, 0.8, 10), base * CF(0, 10, d / 2 - 5), Color3.fromRGB(236, 232, 224), M.Marble, { collide = true })

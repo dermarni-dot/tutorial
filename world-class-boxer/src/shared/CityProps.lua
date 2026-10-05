@@ -1,6 +1,6 @@
 -- CityProps: small procedural props shared by the server city (CityMap) and the client's
--- per-player city dressing (CityVisuals): sports cars, the bronze statue, walk-of-fame stars and
--- low-poly fan proxies. Everything is plain Parts / SpecialMeshes / SurfaceGuis (no assets), so the
+-- per-player city dressing (CityVisuals): sports cars (and the plain hatchbacks of city traffic), the
+-- bronze statue, walk-of-fame stars and fan figures. Everything is plain Parts / SpecialMeshes / SurfaceGuis (no assets), so the
 -- same builder looks identical in the Prestige Motors showroom and in your own driveway.
 local CollectionService = game:GetService("CollectionService")
 
@@ -145,6 +145,9 @@ CityProps.CarSpecs = {
 	SportsCar = { color = Color3.fromRGB(190, 24, 32), len = 10.4, width = 5.0, body = 1.25, cabin = 1.25, cabinLen = 4.2, rim = Color3.fromRGB(200, 202, 208), wing = false, glow = nil, name = "Sports Car" },
 	Supercar = { color = Color3.fromRGB(245, 190, 20), len = 11.2, width = 5.4, body = 1.05, cabin = 1.1, cabinLen = 3.8, rim = Color3.fromRGB(30, 30, 34), wing = true, glow = nil, name = "Supercar" },
 	Hypercar = { color = Color3.fromRGB(20, 22, 30), len = 12.0, width = 5.6, body = 1.0, cabin = 1.05, cabinLen = 3.6, rim = Color3.fromRGB(230, 180, 40), wing = true, glow = Color3.fromRGB(0, 200, 255), name = "Hypercar" },
+	-- everyday city traffic (never sold): narrower and taller, so two lanes of it fit beside the
+	-- parked cars on Main Street (wheels +-2.48 studs)
+	Hatchback = { color = Color3.fromRGB(150, 152, 158), len = 9.0, width = 4.3, body = 1.5, cabin = 1.6, cabinLen = 4.9, rim = Color3.fromRGB(170, 172, 178), wing = false, glow = nil, name = "Hatchback" },
 }
 CityProps.CarOrder = { "Hypercar", "Supercar", "SportsCar" } -- best first
 
@@ -273,19 +276,59 @@ function CityProps.Statue(parent, cf, opts)
 end
 
 ------------------------------------------------------------------------
--- Fan proxy: torso + head + sign (3 parts). Returns { torso, head, sign, rel } for animation.
--- cf = ground position, facing local -Z. text on the sign (nil = no sign).
+-- Fan figure (never a Builder character): legs, torso with rounded shoulders, head, two arms hinged
+-- at the shoulders, and optionally a hand-held sign or a camera. 6-7 parts.
+-- cf = ground position, facing local -Z. text = sign text (nil = no sign).
+-- opts.pose = "camera" raises both hands to the face (paparazzi; the caller adds the camera body).
+-- Returns { torso, head, sign, parts = { ... } } - parts is every piece, so the caller can move the
+-- whole figure as one (CityVisuals stores each part's offset from cf and bobs them together).
 ------------------------------------------------------------------------
-function CityProps.Fan(parent, cf, shirt, skin, text, signColor, textColor)
-	local torso = part(parent, "FanTorso", V3(1.6, 2.4, 0.9), cf * CF(0, 2.1, 0), shirt, M.Fabric)
-	local head = ball(parent, "FanHead", 1.1, cf * CF(0, 3.85, 0), skin, M.SmoothPlastic)
+local PANTS = { Color3.fromRGB(40, 50, 80), Color3.fromRGB(30, 30, 34), Color3.fromRGB(120, 100, 80), Color3.fromRGB(70, 74, 82) }
+
+-- an arm from the shoulder to the hand, as a part whose long axis is Y
+local function limb(parent, name, cf, from, to, width, color, material)
+	local a = (cf * CF(from)).Position
+	local b = (cf * CF(to)).Position
+	local len = (b - a).Magnitude
+	-- lookAt aims -Z at the hand; turning it -90 degrees about X puts +Y on that axis
+	local ori = CFrame.lookAt((a + b) / 2, b, cf.UpVector) * ANG(RAD(-90), 0, 0)
+	return part(parent, name, V3(width, len, width), ori, color, material or M.Fabric)
+end
+
+function CityProps.Fan(parent, cf, shirt, skin, text, signColor, textColor, opts)
+	opts = opts or {}
+	local seed = math.floor((shirt.R * 7 + shirt.G * 13 + skin.B * 5) * 10) % #PANTS + 1
+	local pants = opts.pants or PANTS[seed]
+	local parts = {}
+	local function add(p)
+		table.insert(parts, p)
+		return p
+	end
+	add(part(parent, "FanLegs", V3(1.3, 1.9, 0.75), cf * CF(0, 0.95, 0), pants, M.Fabric))
+	local torso = add(part(parent, "FanTorso", V3(1.5, 2.1, 0.85), cf * CF(0, 2.95, 0), shirt, M.Fabric))
+	add(blob(parent, "FanShoulders", V3(2.0, 0.75, 0.95), cf * CF(0, 3.85, 0), shirt, M.Fabric))
+	local head = add(ball(parent, "FanHead", 1.1, cf * CF(0, 4.75, 0), skin, M.SmoothPlastic))
 	local sign
+	local shoulderY = 3.85
 	if text then
-		sign = part(parent, "FanSign", V3(1.9, 1.1, 0.06), cf * CF(0, 4.7, -0.55) * ANG(RAD(-10), 0, 0), signColor or Color3.new(1, 1, 1), M.SmoothPlastic, { shadow = false })
+		-- a placard held up above the head, both hands on its lower corners
+		sign = add(part(parent, "FanSign", V3(1.9, 1.1, 0.06), cf * CF(0, 6.05, -0.55) * ANG(RAD(-8), 0, 0), signColor or Color3.new(1, 1, 1), M.SmoothPlastic, { shadow = false }))
 		local sg = gui(sign, Enum.NormalId.Front, 40, 0.2, 90)
 		label(sg, text, { TextColor3 = textColor or Color3.fromRGB(200, 20, 30), Size = UDim2.fromScale(0.94, 0.86), Position = UDim2.fromScale(0.03, 0.07) })
+		for _, sx in ipairs({ -1, 1 }) do
+			add(limb(parent, "FanArm", cf, V3(sx * 0.95, shoulderY, 0), V3(sx * 0.8, 5.55, -0.5), 0.42, shirt))
+		end
+	elseif opts.pose == "camera" then
+		for _, sx in ipairs({ -1, 1 }) do
+			add(limb(parent, "FanArm", cf, V3(sx * 0.95, shoulderY, 0), V3(sx * 0.35, 4.6, -0.85), 0.42, shirt))
+		end
+	else
+		-- arms down at the sides, slightly away from the body
+		for _, sx in ipairs({ -1, 1 }) do
+			add(limb(parent, "FanArm", cf, V3(sx * 0.95, shoulderY, 0), V3(sx * 1.08, 2.0, -0.05), 0.42, shirt))
+		end
 	end
-	return { torso = torso, head = head, sign = sign }
+	return { torso = torso, head = head, sign = sign, parts = parts }
 end
 
 return CityProps
