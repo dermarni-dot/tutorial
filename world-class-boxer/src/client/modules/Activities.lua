@@ -31,6 +31,7 @@ local Catalog = require(Shared:WaitForChild("Catalog"))
 local UI = require(Shared:WaitForChild("UI"))
 local State = require(script.Parent:WaitForChild("State"))
 local GymVisuals = require(script.Parent:WaitForChild("GymVisuals"))
+local BodyMap = require(script.Parent:WaitForChild("BodyMap"))
 -- coach reactions are a nice-to-have: the drills run without them
 local okAmbience, Ambience = pcall(require, script.Parent:WaitForChild("Ambience"))
 if not okAmbience then
@@ -46,6 +47,8 @@ local current = nil
 local TIME_SCALE = Config.TrainingTimeScale or 6 -- training seconds per real second (kcal, distance, time-in)
 local DOT = " · "
 local PANEL_H = 314
+local PANEL_W = 660
+local SIDE_W = 212 -- the "muscles worked" card beside the panel
 local STAGE_Y = 92
 local STAGE_H = 120
 local STUD_M = 0.28 -- metres per stud (roadwork distance)
@@ -153,38 +156,238 @@ local function newContext(info)
 		tipIndex = math.random(0, 5), mode = "work", resting = false, baseEffort = info.baseEffort,
 	}
 	ctx.smart = ctx.params.smart == true
-	local panel = UI.Frame(State.gui, { Name = "Activity", AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -12), Size = UDim2.new(0.96, 0, 0, PANEL_H), BackgroundColor3 = T.bg, BackgroundTransparency = 0.04 })
-	UI.New("UISizeConstraint", { MaxSize = Vector2.new(600, PANEL_H), Parent = panel })
-	UI.Corner(panel, 12)
-	UI.Stroke(panel, T.gold, 2)
+	local panel = UI.Frame(State.gui, { Name = "Activity", AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -12), Size = UDim2.new(0.96, 0, 0, PANEL_H) })
+	UI.New("UISizeConstraint", { MaxSize = Vector2.new(PANEL_W, PANEL_H), Parent = panel })
+	UI.Glass(panel, { transparency = 0.05, radius = UI.R.xl })
+	ctx.fit = UI.New("UIScale", { Name = "Fit", Parent = panel })
+	-- a gold rule along the top edge (the broadcast panel look)
+	local rule = UI.Frame(panel, { Name = "Rule", Position = UDim2.fromOffset(18, 0), Size = UDim2.new(1, -36, 0, 2), BackgroundColor3 = T.gold })
+	UI.Gradient(rule, Color3.new(1, 1, 1), 0, NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.2, 0), NumberSequenceKeypoint.new(0.8, 0), NumberSequenceKeypoint.new(1, 1) }))
 	ctx.panel = panel
-	ctx.title = UI.Text(panel, info.act.name:upper(), { Font = T.bold, TextSize = 20, TextColor3 = T.gold, Position = UDim2.fromOffset(14, 8), Size = UDim2.new(0.4, -14, 0, 24), AutomaticSize = Enum.AutomaticSize.None, TextScaled = true, TextWrapped = false })
-	UI.New("UITextSizeConstraint", { MaxTextSize = 20, MinTextSize = 10, Parent = ctx.title })
-	-- live numbers: heart rate, calories, round - and the drill's own stats on a second line
-	ctx.live = UI.Text(panel, "", { Font = T.semi, TextSize = 13, RichText = true, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -108, 0, 4), Size = UDim2.new(0.6, -116, 0, 32), TextXAlignment = Enum.TextXAlignment.Right, TextYAlignment = Enum.TextYAlignment.Center, TextScaled = true, TextWrapped = false, AutomaticSize = Enum.AutomaticSize.None })
+	ctx.title = UI.Text(panel, info.act.name:upper(), { Face = "display", TextSize = 24, TextColor3 = T.text, Position = UDim2.fromOffset(16, 6), Size = UDim2.new(0.42, -16, 0, 28), AutomaticSize = Enum.AutomaticSize.None, TextScaled = true, TextWrapped = false })
+	UI.New("UITextSizeConstraint", { MaxTextSize = 24, MinTextSize = 12, Parent = ctx.title })
+	-- the drill's own live numbers (heart rate, calories and the set live on the metrics strip)
+	ctx.live = UI.Text(panel, "", { Font = T.semi, TextSize = 13, RichText = true, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -112, 0, 4), Size = UDim2.new(0.58, -116, 0, 32), TextColor3 = T.text, TextXAlignment = Enum.TextXAlignment.Right, TextYAlignment = Enum.TextYAlignment.Center, TextScaled = true, TextWrapped = false, AutomaticSize = Enum.AutomaticSize.None })
 	UI.New("UITextSizeConstraint", { MaxTextSize = 13, MinTextSize = 8, Parent = ctx.live })
-	ctx.info = UI.Text(panel, "", { TextSize = 13, TextColor3 = T.sub, Position = UDim2.fromOffset(14, 36), Size = UDim2.new(1, -28, 0, 30), AutomaticSize = Enum.AutomaticSize.None })
-	-- ROUND / SET header
-	ctx.header = UI.Text(panel, "", { Font = T.bold, TextSize = 13, TextColor3 = T.gold, Position = UDim2.fromOffset(14, 67), Size = UDim2.new(1, -28, 0, 14), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
-	local _, setProg = UI.Bar(panel, { Position = UDim2.new(0, 14, 0, 83), Size = UDim2.new(1, -28, 0, 5) }, T.gold)
+	ctx.info = UI.Text(panel, "", { TextSize = 13, TextColor3 = T.sub, Position = UDim2.fromOffset(16, 36), Size = UDim2.new(1, -32, 0, 30), AutomaticSize = Enum.AutomaticSize.None })
+	-- ROUND / SET header and the session progress
+	ctx.header = UI.Text(panel, "", { Face = "displayMed", TextSize = 15, TextColor3 = T.gold, Position = UDim2.fromOffset(16, 66), Size = UDim2.new(1, -32, 0, 16), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
+	local progBg, setProg = UI.Bar(panel, { Position = UDim2.new(0, 16, 0, 84), Size = UDim2.new(1, -32, 0, 4) }, T.gold)
+	progBg.BackgroundColor3 = T.ink
 	ctx.setProgress = setProg
 	setProg(0)
-	ctx.stage = UI.Frame(panel, { Name = "Stage", Position = UDim2.new(0, 14, 0, STAGE_Y), Size = UDim2.new(1, -28, 0, STAGE_H), BackgroundColor3 = Color3.fromRGB(10, 10, 14), ClipsDescendants = true })
+	ctx.stage = UI.Frame(panel, { Name = "Stage", Position = UDim2.new(0, 14, 0, STAGE_Y), Size = UDim2.new(1, -28, 0, STAGE_H), BackgroundColor3 = Color3.fromRGB(8, 9, 13), ClipsDescendants = true })
 	UI.Corner(ctx.stage, 8)
-	ctx.flash = UI.Text(panel, "", { Font = T.bold, TextSize = 28, TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.new(1, -28, 0, 34), Position = UDim2.new(0, 14, 0, STAGE_Y + 84), ZIndex = 5, AutomaticSize = Enum.AutomaticSize.None, TextStrokeTransparency = 0.4 })
+	UI.Stroke(ctx.stage, Color3.new(1, 1, 1), 1, 0.9)
+	ctx.flash = UI.Text(panel, "", { Face = "display", TextSize = 30, TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.new(1, -28, 0, 34), Position = UDim2.new(0, 14, 0, STAGE_Y + 84), ZIndex = 5, AutomaticSize = Enum.AutomaticSize.None, TextStrokeTransparency = 0.4 })
 	ctx.inputBar = UI.Frame(panel, { BackgroundTransparency = 1, Position = UDim2.new(0, 14, 0, STAGE_Y + STAGE_H + 6), Size = UDim2.new(1, -28, 0, 88) })
 	UI.Grid(ctx.inputBar, UDim2.new(1 / 6, -5, 0, 40), nil, 5)
-	ctx.quit = UI.Button(panel, "QUIT", { Size = UDim2.fromOffset(86, 28), Position = UDim2.new(1, -100, 0, 8), BackgroundColor3 = T.red, TextSize = 13 }, function()
+	ctx.quit = UI.Button(panel, "QUIT", { Size = UDim2.fromOffset(88, 28), Position = UDim2.new(1, -104, 0, 8), BackgroundColor3 = T.red, TextSize = 14 }, function()
 		ctx.cancelled = true
 	end)
+
+	-- metrics strip: SET | REPS / CLEAN | QUALITY | TIME | HEART RATE | KCAL (above the panel; a 2 x 3
+	-- grid beside it on short screens)
+	ctx.t0 = os.clock()
+	ctx.tiles = {}
+	ctx.qSum, ctx.qN, ctx.clean = 0, 0, 0
+	local metrics = UI.Frame(panel, { Name = "Metrics", BackgroundTransparency = 1, AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 0, 0, -8), Size = UDim2.new(1, 0, 0, 56) })
+	ctx.metrics = metrics
+	ctx.metricsGrid = UI.New("UIGridLayout", { CellSize = UDim2.new(1 / 6, -5, 1, 0), CellPadding = UDim2.fromOffset(6, 6), SortOrder = Enum.SortOrder.LayoutOrder, Parent = metrics })
+	local function tile(key, caption, order)
+		local f = UI.Frame(metrics, { Name = key, LayoutOrder = order })
+		UI.Glass(f, { transparency = 0.12, radius = UI.R.md })
+		local cap = UI.Text(f, caption, { Font = T.semi, TextSize = 10, TextColor3 = T.sub, Position = UDim2.fromOffset(10, 6), Size = UDim2.new(1, -20, 0, 12), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
+		local val = UI.Text(f, "-", { Face = "number", TextSize = 24, Position = UDim2.fromOffset(10, 18), Size = UDim2.new(1, -20, 0, 30), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
+		ctx.tiles[key] = { frame = f, cap = cap, val = val }
+		return ctx.tiles[key]
+	end
+	tile("set", "SESSION", 1)
+	tile("reps", "CLEAN", 2)
+	local qTile = tile("quality", "QUALITY", 3)
+	local qBar = UI.Frame(qTile.frame, { Position = UDim2.new(0, 10, 1, -8), Size = UDim2.new(1, -20, 0, 3), BackgroundColor3 = T.ink })
+	UI.Corner(qBar, 2)
+	qTile.fill = UI.Frame(qBar, { Size = UDim2.fromScale(0, 1), BackgroundColor3 = T.gold })
+	UI.Corner(qTile.fill, 2)
+	tile("time", "TIME", 4)
+	tile("hr", "HEART RATE", 5)
+	tile("kcal", "KCAL", 6)
+	function ctx.updateMetrics()
+		local tl = ctx.tiles
+		if ctx.reps then
+			tl.reps.cap.Text = "REPS"
+			tl.reps.val.Text = tostring(ctx.reps)
+		else
+			tl.reps.val.Text = tostring(ctx.clean)
+		end
+		if ctx.qN > 0 then
+			local q = ctx.qSum / ctx.qN
+			tl.quality.val.Text = string.format("%d%%", math.floor(q * 100 + 0.5))
+			local col = q >= 0.85 and T.gold or (q >= 0.65 and T.green or (q >= 0.45 and T.orange or T.red))
+			tl.quality.val.TextColor3 = col
+			tl.quality.fill.BackgroundColor3 = col
+			tl.quality.fill.Size = UDim2.fromScale(math.clamp(q, 0, 1), 1)
+		end
+	end
+
+	-- what this exercise works: the body map (Config.ExerciseTargets / act.parts), the top targets and
+	-- the energy / fatigue it will cost; after the session the same card shows the growth
+	local side = UI.Frame(panel, { Name = "Works", AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(0, -12, 1, 0), Size = UDim2.fromOffset(SIDE_W, PANEL_H) })
+	UI.Glass(side, { transparency = 0.06, radius = UI.R.xl })
+	ctx.side = side
+	local recovery = type(info.act.recovery) == "table" and info.act.recovery or nil
+	local sideKicker = UI.Kicker(side, recovery and "Recovery" or "Muscles worked", recovery and T.cyan or T.red, { Position = UDim2.fromOffset(14, 10), Size = UDim2.new(1, -28, 0, 16) })
+	ctx.sideCaption = sideKicker:FindFirstChildOfClass("TextLabel")
+	ctx.sideTick = sideKicker:FindFirstChildOfClass("Frame")
+	local okMap, map = pcall(BodyMap.new, side, { Size = UDim2.fromOffset(SIDE_W - 28, 160), Position = UDim2.fromOffset(14, 32) })
+	ctx.map = okMap and map or nil
+	ctx.sideList = UI.Frame(side, { Name = "Targets", BackgroundTransparency = 1, Position = UDim2.fromOffset(14, 198), Size = UDim2.new(1, -28, 0, 60) })
+	UI.List(ctx.sideList, 4)
+	-- rows: { name, value text, fraction, color }
+	function ctx.sideRows(rows)
+		UI.Clear(ctx.sideList)
+		for i, r in ipairs(rows) do
+			local row = UI.Frame(ctx.sideList, { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 16), LayoutOrder = i })
+			UI.Text(row, string.upper(r[1]), { Font = T.semi, TextSize = 10, TextColor3 = T.text, Size = UDim2.new(0.6, 0, 0, 12), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
+			UI.Text(row, r[2] or "", { Face = "number", TextSize = 12, TextColor3 = r[4] or T.sub, AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(1, 0), Size = UDim2.new(0.4, 0, 0, 12), AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Right, TextWrapped = false })
+			local bg = UI.Frame(row, { Position = UDim2.fromOffset(0, 13), Size = UDim2.new(1, 0, 0, 2), BackgroundColor3 = T.ink })
+			UI.Frame(bg, { Size = UDim2.fromScale(math.clamp(r[3] or 0, 0, 1), 1), BackgroundColor3 = r[4] or T.red })
+		end
+	end
+	local targets = info.act.parts or {}
+	if recovery then
+		-- recovery works the whole body: everything glows a cool cyan
+		local all = {}
+		for _, p in ipairs(Config.MuscleParts) do
+			all[p.id] = 0.5
+		end
+		if ctx.map then
+			ctx.map:SetTargets(all, T.cyan, 1)
+		end
+		local rows = {}
+		if recovery.fatigue then
+			table.insert(rows, { "Fatigue", string.format("%+d", recovery.fatigue), math.min(1, math.abs(recovery.fatigue) / 50), recovery.fatigue < 0 and T.green or T.orange })
+		end
+		if recovery.energy then
+			table.insert(rows, { "Energy", string.format("%+d", recovery.energy), math.min(1, math.abs(recovery.energy) / 30), recovery.energy > 0 and T.green or T.red })
+		end
+		if recovery.heal and recovery.heal > 0 then
+			table.insert(rows, { "Injury healing", string.format("x%.1f", recovery.heal), math.min(1, recovery.heal / 2), T.cyan })
+		end
+		ctx.sideRows(rows)
+	else
+		if ctx.map then
+			ctx.map:SetTargets(targets, T.red)
+		end
+		local list, max = {}, 0
+		for id, w in pairs(targets) do
+			table.insert(list, { id = id, w = w })
+			max = math.max(max, w)
+		end
+		table.sort(list, function(a, b)
+			return a.w > b.w
+		end)
+		local rows = {}
+		for i = 1, math.min(3, #list) do
+			local e = list[i]
+			local k = max > 0 and e.w / max or 0
+			table.insert(rows, { (Config.MusclePartNames or {})[e.id] or e.id, k >= 0.75 and "PRIMARY" or "SECONDARY", k, k >= 0.75 and T.red or T.orange })
+		end
+		ctx.sideRows(rows)
+	end
+	-- energy and fatigue: now, with what the session will cost striped on top
+	local function condBar(y, caption, color)
+		UI.Text(side, caption, { Font = T.semi, TextSize = 10, TextColor3 = T.sub, Position = UDim2.fromOffset(14, y), Size = UDim2.new(0.5, -14, 0, 12), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
+		local val = UI.Text(side, "", { Face = "number", TextSize = 13, TextColor3 = T.text, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -14, 0, y - 1), Size = UDim2.new(0.5, -14, 0, 14), AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Right, TextWrapped = false, RichText = true })
+		local bg = UI.Frame(side, { Position = UDim2.fromOffset(14, y + 15), Size = UDim2.new(1, -28, 0, 5), BackgroundColor3 = T.ink })
+		UI.Corner(bg, 2)
+		local fill = UI.Frame(bg, { Size = UDim2.fromScale(0, 1), BackgroundColor3 = color })
+		UI.Corner(fill, 2)
+		local cost = UI.Frame(bg, { Size = UDim2.fromScale(0, 1), BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = 0.35, Visible = false })
+		return { val = val, fill = fill, cost = cost }
+	end
+	ctx.energyBar = condBar(PANEL_H - 52, "ENERGY", T.green)
+	ctx.fatigueBar = condBar(PANEL_H - 28, "FATIGUE", T.orange)
+	-- delta > 0 adds (fatigue), < 0 takes away (energy cost); the change shows as a white segment.
+	-- showAfter: the label shows the value after the change (the result screen) instead of now
+	local function round(v)
+		return v >= 0 and math.floor(v + 0.5) or -math.floor(-v + 0.5)
+	end
+	function ctx.setCond(bar, now, delta, goodUp, showAfter)
+		now = math.clamp(tonumber(now) or 0, 0, 100)
+		delta = tonumber(delta) or 0
+		local after = math.clamp(now + delta, 0, 100)
+		bar.fill.Size = UDim2.fromScale(math.min(now, after) / 100, 1)
+		bar.cost.Visible = math.abs(after - now) >= 0.5
+		bar.cost.Position = UDim2.fromScale(math.min(now, after) / 100, 0)
+		bar.cost.Size = UDim2.fromScale(math.abs(after - now) / 100, 1)
+		local good = (delta > 0) == goodUp
+		local d = round(after - now)
+		local tag = d ~= 0 and string.format('  <font color="#%s">%+d</font>', (good and T.green or T.red):ToHex(), d) or ""
+		bar.val.Text = string.format("%d%s", round(showAfter and after or now), tag)
+	end
+	local cond0 = P and P.condition or {}
+	ctx.cond0 = { energy = tonumber(cond0.energy) or 0, fatigue = tonumber(cond0.fatigue) or 0 }
+	if recovery then
+		ctx.setCond(ctx.energyBar, cond0.energy, recovery.energy or 0, true)
+		ctx.setCond(ctx.fatigueBar, cond0.fatigue, recovery.fatigue or 0, false)
+	else
+		ctx.setCond(ctx.energyBar, cond0.energy, -(tonumber(info.act.energy) or 0), true)
+		ctx.setCond(ctx.fatigueBar, cond0.fatigue, tonumber(info.act.fatigue) or 0, false)
+	end
+
+	-- responsive: short (phone) screens scale the panel down and move the metrics into a grid on its right
+	function ctx.layout()
+		if not panel.Parent then
+			return
+		end
+		local canvas = UI.CanvasSize(panel)
+		local compact = canvas.Y < 640
+		local k = compact and math.clamp((canvas.Y - 150) / PANEL_H, 0.6, 0.8) or 1
+		ctx.fit.Scale = k
+		if compact then
+			metrics.AnchorPoint = Vector2.new(0, 1)
+			metrics.Position = UDim2.new(1, 12, 1, 0)
+			metrics.Size = UDim2.fromOffset(SIDE_W, 186)
+			ctx.metricsGrid.CellSize = UDim2.new(0.5, -3, 1 / 3, -4)
+		else
+			metrics.AnchorPoint = Vector2.new(0, 1)
+			metrics.Position = UDim2.new(0, 0, 0, -8)
+			metrics.Size = UDim2.new(1, 0, 0, 56)
+			ctx.metricsGrid.CellSize = UDim2.new(1 / 6, -5, 1, 0)
+		end
+		-- the side card needs room on the left of the panel
+		local panelW = math.min(PANEL_W, canvas.X * 0.96) * k
+		side.Visible = (canvas.X - panelW) / 2 >= (SIDE_W + 16) * k
+	end
+	ctx.layout()
+	table.insert(ctx.conns, State.screen:GetPropertyChangedSignal("AbsoluteSize"):Connect(ctx.layout))
+	-- the HUD plate would sit behind the panel: hide it while the session runs
+	State.HideHud("Activity", true)
 
 	function ctx.setInfo(text)
 		ctx.info.Text = text
 	end
 	local lastReact = 0
+	-- feedback colours grade the work: gold great, green good, orange sloppy, red a miss
+	local GRADE_OF = { [T.gold] = 1, [T.green] = 0.8, [T.orange] = 0.45, [T.red] = 0 }
 	function ctx.feedback(text, color)
 		ctx.flash.Text = text
 		ctx.flash.TextColor3 = color or T.text
+		local score
+		for c, v in pairs(GRADE_OF) do
+			if color == c then
+				score = v
+			end
+		end
+		if score and ctx.mode ~= "done" then
+			ctx.qN += 1
+			ctx.qSum += score
+			if score >= 0.8 then
+				ctx.clean += 1
+			end
+			ctx.updateMetrics()
+		end
 		local id = os.clock()
 		ctx.flashId = id
 		task.delay(0.8, function()
@@ -234,13 +437,14 @@ local function newContext(info)
 	function ctx.refreshLive()
 		local hr = math.floor(ctx.hr + 0.5)
 		local f = hr / ctx.maxHR
-		local col = f >= 0.9 and "#FF5A50" or (f >= 0.8 and "#FFA040" or (f >= 0.65 and "#6EE696" or "#F0F0F5"))
-		local top = string.format('<font color="%s">HR %d</font> bpm%s%d kcal', col, hr, DOT, math.floor(ctx.kcal + 0.5))
-		if ctx.roundText then
-			top ..= DOT .. ctx.roundText
+		local tl = ctx.tiles
+		tl.hr.val.Text = tostring(hr)
+		tl.hr.val.TextColor3 = f >= 0.9 and T.red or (f >= 0.8 and T.orange or (f >= 0.65 and T.green or T.text))
+		tl.kcal.val.Text = tostring(math.floor(ctx.kcal + 0.5))
+		if ctx.mode ~= "done" then
+			tl.time.val.Text = clock(os.clock() - ctx.t0)
 		end
-		local extra = ctx.statsText
-		ctx.live.Text = (extra and extra ~= "") and (top .. "\n" .. extra) or top
+		ctx.live.Text = ctx.statsText or ""
 	end
 	-- the drill's live numbers (second line of the live readout)
 	function ctx.stats(text)
@@ -346,9 +550,9 @@ local function newContext(info)
 
 	-- rounds, rests and progress
 	local function overlay(transparency)
-		local o = UI.Frame(panel, { Name = "Overlay", Position = UDim2.new(0, 14, 0, STAGE_Y), Size = UDim2.new(1, -28, 0, STAGE_H), BackgroundColor3 = Color3.fromRGB(14, 14, 20), BackgroundTransparency = transparency or 0, ZIndex = 8 })
+		local o = UI.Frame(panel, { Name = "Overlay", Position = UDim2.new(0, 14, 0, STAGE_Y), Size = UDim2.new(1, -28, 0, STAGE_H), BackgroundColor3 = Color3.fromRGB(12, 14, 20), BackgroundTransparency = transparency or 0, ZIndex = 8 })
 		UI.Corner(o, 8)
-		UI.Stroke(o, T.line, 1)
+		UI.Stroke(o, T.gold, 1, 0.7)
 		return o
 	end
 	function ctx.nextTip()
@@ -366,16 +570,21 @@ local function newContext(info)
 		local tag = n > 1 and string.format("%s %d/%d", kind, i, n) or kind
 		ctx.roundText = n > 1 and tag or nil
 		ctx.header.Text = name and (tag .. DOT .. name) or tag
+		ctx.tiles.set.cap.Text = string.upper(kind)
+		ctx.tiles.set.val.Text = n > 1 and string.format("%d/%d", i, n) or "1/1"
 		ctx.refreshLive()
 		sec = sec or (i == 1 and 1.4 or 1.0)
 		if sec <= 0 then
 			return not ctx.cancelled
 		end
 		ctx.resting = true
-		local o = overlay(0.12)
-		UI.Text(o, n > 1 and string.format("%s %d", kind, i) or kind, { Font = T.bold, TextSize = 34, TextColor3 = T.gold, TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.fromOffset(0, 20), Size = UDim2.new(1, 0, 0, 40), AutomaticSize = Enum.AutomaticSize.None })
+		local o = overlay(0.08)
+		UI.Text(o, n > 1 and string.format("%s %d", kind, i) or kind, { Face = "display", TextSize = 46, TextColor3 = T.gold, TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.fromOffset(0, 14), Size = UDim2.new(1, 0, 0, 52), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
+		if n > 1 then
+			UI.Text(o, string.format("OF %d", n), { Font = T.semi, TextSize = 11, TextColor3 = T.sub, TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.fromOffset(0, 64), Size = UDim2.new(1, 0, 0, 14), AutomaticSize = Enum.AutomaticSize.None })
+		end
 		if name then
-			UI.Text(o, name, { Font = T.semi, TextSize = 18, TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.fromOffset(0, 64), Size = UDim2.new(1, 0, 0, 24), AutomaticSize = Enum.AutomaticSize.None })
+			UI.Text(o, string.upper(name), { Face = "displayMed", TextSize = 18, TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.fromOffset(0, 82), Size = UDim2.new(1, 0, 0, 24), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
 		end
 		local ok = ctx.wait(sec)
 		o:Destroy()
@@ -387,15 +596,18 @@ local function newContext(info)
 		ctx.resting = true
 		ctx.mode = "rest"
 		local o = overlay(0.03)
-		UI.Text(o, title or "REST", { Font = T.bold, TextSize = 17, TextColor3 = T.gold, Position = UDim2.fromOffset(12, 8), Size = UDim2.new(1, -110, 0, 22), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
+		UI.Text(o, string.upper(title or "REST"), { Face = "displayMed", TextSize = 20, TextColor3 = T.gold, Position = UDim2.fromOffset(12, 6), Size = UDim2.new(1, -110, 0, 24), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
 		if note then
 			UI.Text(o, note, { Font = T.semi, TextSize = 13, TextColor3 = T.sub, Position = UDim2.fromOffset(12, 31), Size = UDim2.new(1, -110, 0, 18), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
 		end
-		local count = UI.Text(o, "", { Font = T.bold, TextSize = 40, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -14, 0, 2), Size = UDim2.fromOffset(90, 44), TextXAlignment = Enum.TextXAlignment.Right, AutomaticSize = Enum.AutomaticSize.None })
+		local count = UI.Text(o, "", { Face = "number", TextSize = 44, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -14, 0, 0), Size = UDim2.fromOffset(90, 46), TextXAlignment = Enum.TextXAlignment.Right, AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
 		UI.Text(o, "REST", { Font = T.semi, TextSize = 11, TextColor3 = T.sub, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -14, 0, 44), Size = UDim2.fromOffset(90, 12), TextXAlignment = Enum.TextXAlignment.Right, AutomaticSize = Enum.AutomaticSize.None })
 		tip = tip or ctx.nextTip()
 		if tip then
-			UI.Text(o, "COACH:  \"" .. tip .. "\"", { Font = T.semi, TextSize = 15, Position = UDim2.fromOffset(12, 58), Size = UDim2.new(1, -24, 0, 44), TextYAlignment = Enum.TextYAlignment.Top, AutomaticSize = Enum.AutomaticSize.None })
+			local tipBox = UI.Frame(o, { BackgroundColor3 = T.panel2, BackgroundTransparency = 0.5, Position = UDim2.fromOffset(12, 56), Size = UDim2.new(1, -24, 0, 44), ZIndex = 8 })
+			UI.Corner(tipBox, 4)
+			UI.Frame(tipBox, { Size = UDim2.new(0, 3, 1, -10), Position = UDim2.fromOffset(0, 5), BackgroundColor3 = T.gold, ZIndex = 8 })
+			UI.Text(tipBox, "COACH:  \"" .. tip .. "\"", { Font = T.semi, TextSize = 14, Position = UDim2.fromOffset(12, 0), Size = UDim2.new(1, -20, 1, 0), TextYAlignment = Enum.TextYAlignment.Center, AutomaticSize = Enum.AutomaticSize.None, ZIndex = 8 })
 		end
 		local _, setBar = UI.Bar(o, { Position = UDim2.new(0, 12, 1, -12), Size = UDim2.new(1, -24, 0, 4) }, T.blue)
 		local t0 = os.clock()
@@ -467,13 +679,18 @@ local function newContext(info)
 		if char then
 			char:SetAttribute(name, v)
 		end
+		if name == "RepCount" and type(v) == "number" then
+			ctx.reps = v
+			ctx.updateMetrics()
+		end
 	end
 	-- the bag / ball reacts; ptype and zone (optional) shape the swing, twist, dent and sound
 	function ctx.impact(power, side, ptype, zone)
 		if ctx.station then
 			GymVisuals.Impact(ctx.station, power, side, ptype, zone)
-			if (power or 0) > 1.0 then
-				camKick.t, camKick.amp = os.clock(), math.min(1.6, power)
+			local shake = math.clamp(tonumber(player:GetAttribute("CamShake")) or 1, 0, 1.5) -- Settings
+			if (power or 0) > 1.0 and shake > 0 then
+				camKick.t, camKick.amp = os.clock(), math.min(1.6, power) * shake
 			end
 		end
 	end
@@ -501,6 +718,7 @@ local function newContext(info)
 	function ctx.destroy()
 		ctx.mode = "done"
 		ctx.handler = nil
+		State.HideHud("Activity", false)
 		for _, c in ipairs(ctx.conns) do
 			c:Disconnect()
 		end
@@ -2881,6 +3099,14 @@ local function showResult(ctx, res, quality)
 	ctx.header.Text = "SESSION COMPLETE" .. DOT .. "GRADE " .. grade
 	ctx.header.TextColor3 = gcol
 	ctx.setProgress(1)
+	-- the strip shows the graded session (the server's quality), the stage grows for the report
+	ctx.tiles.quality.val.Text = string.format("%d%%", Config.QualityPct(quality))
+	ctx.tiles.quality.val.TextColor3 = gcol
+	ctx.tiles.quality.fill.BackgroundColor3 = gcol
+	ctx.tiles.quality.fill.Size = UDim2.fromScale(math.clamp(Config.QualityPct(quality) / 100, 0, 1), 1)
+	ctx.tiles.time.val.Text = clock(os.clock() - ctx.t0)
+	ctx.stage.Size = UDim2.new(1, -28, 0, STAGE_H + 50)
+	ctx.inputBar.Position = UDim2.new(0, 14, 0, STAGE_Y + STAGE_H + 56)
 	local parts = { string.format("Session quality %d%%", Config.QualityPct(quality)) }
 	if type(rec.best) == "number" and rec.best > 0 then
 		table.insert(parts, string.format("Personal best %d%%", Config.QualityPct(rec.best)))
@@ -2889,13 +3115,49 @@ local function showResult(ctx, res, quality)
 		table.insert(parts, string.format("%d session%s", rec.sessions, rec.sessions == 1 and "" or "s"))
 	end
 	ctx.info.Text = table.concat(parts, DOT)
-	-- the grade badge
-	local badge = UI.Frame(ctx.stage, { Position = UDim2.fromOffset(8, 8), Size = UDim2.fromOffset(88, STAGE_H - 16), BackgroundColor3 = T.panel2 })
+	-- the grade badge: the letter in the grade colour on a lit tile
+	local badge = UI.Frame(ctx.stage, { Name = "Grade", Position = UDim2.fromOffset(8, 8), Size = UDim2.fromOffset(92, STAGE_H + 34), BackgroundColor3 = UI.Shade(gcol, -0.72) })
 	UI.Corner(badge, 10)
-	UI.Stroke(badge, gcol, 2)
-	local letter = UI.Text(badge, grade, { Font = T.bold, TextSize = 24, TextColor3 = gcol, TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.fromOffset(0, 4), Size = UDim2.new(1, 0, 0, 72), AutomaticSize = Enum.AutomaticSize.None, TextStrokeTransparency = 0.5 })
-	TweenService:Create(letter, TweenInfo.new(0.45, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { TextSize = 66 }):Play()
-	UI.Text(badge, "GRADE", { Font = T.semi, TextSize = 12, TextColor3 = T.sub, TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.new(0, 0, 1, -24), Size = UDim2.new(1, 0, 0, 16), AutomaticSize = Enum.AutomaticSize.None })
+	UI.Stroke(badge, gcol, 2, 0.1)
+	UI.Gradient(badge, { Color3.new(1, 1, 1), Color3.fromRGB(150, 150, 150) }, 90)
+	local letter = UI.Text(badge, grade, { Face = "display", TextSize = 30, TextColor3 = gcol, TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.fromOffset(0, 10), Size = UDim2.new(1, 0, 0, 100), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
+	TweenService:Create(letter, TweenInfo.new(0.45, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { TextSize = 88 }):Play()
+	UI.Text(badge, string.format("GRADE  ·  %d%%", Config.QualityPct(quality)), { Font = T.semi, TextSize = 10, TextColor3 = T.text, TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.new(0, 0, 1, -22), Size = UDim2.new(1, 0, 0, 14), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
+	-- the side card turns into the growth report: the muscles that grew (body map + biggest gains)
+	local r0 = res.result or {}
+	if ctx.side and ctx.sideCaption then
+		if type(r0.parts) == "table" and next(r0.parts) then
+			ctx.sideCaption.Text = "GROWTH THIS SESSION"
+			ctx.sideCaption.TextColor3 = T.green
+			if ctx.sideTick then
+				ctx.sideTick.BackgroundColor3 = T.green
+			end
+			local list = ctx.map and ctx.map:SetGrowth(r0.parts, T.green) or {}
+			if ctx.map then
+				ctx.map:Pulse(2)
+			end
+			local rows, top = {}, list[1] and list[1].g or 1
+			for i = 1, math.min(3, #list) do
+				local e = list[i]
+				table.insert(rows, { (Config.MusclePartNames or {})[e.id] or e.id, string.format("+%.2f", e.g), e.g / math.max(top, 1e-6), T.green })
+			end
+			ctx.sideRows(rows)
+		end
+		-- energy / fatigue after the session (the server's numbers once the profile arrives)
+		local c0 = ctx.cond0 or {}
+		local function settle()
+			local P1 = State.P and State.P.condition or {}
+			local e1 = tonumber(P1.energy) or c0.energy or 0
+			local f1 = tonumber(r0.fatigue) or tonumber(P1.fatigue) or c0.fatigue or 0
+			ctx.setCond(ctx.energyBar, c0.energy or e1, e1 - (c0.energy or e1), true, true)
+			ctx.setCond(ctx.fatigueBar, c0.fatigue or f1, f1 - (c0.fatigue or f1), false, true)
+		end
+		settle()
+		local conn = State.Changed:Connect(settle)
+		ctx.onDestroy(function()
+			conn:Disconnect()
+		end)
+	end
 	-- details
 	local list = UI.Scroll(ctx.stage, { Position = UDim2.fromOffset(104, 6), Size = UDim2.new(1, -110, 1, -12) })
 	UI.List(list, 2)

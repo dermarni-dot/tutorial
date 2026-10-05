@@ -27,6 +27,9 @@ local JOINTS = {
 	LH = { "LeftUpperLeg", "LeftHip" }, LK = { "LeftLowerLeg", "LeftKnee" }, LA = { "LeftFoot", "LeftAnkle" },
 }
 local KEYS = { "Root", "W", "Neck", "RS", "RE", "RW", "LS", "LE", "LW", "RH", "RK", "RA", "LH", "LK", "LA" }
+-- the joint each joint hangs from (KEYS lists parents before children); "HRP" = the HumanoidRootPart
+local PARENT = { Root = "HRP", W = "Root", Neck = "W", RS = "W", RE = "RS", RW = "RE", LS = "W", LE = "LS", LW = "LE",
+	RH = "Root", RK = "RH", RA = "RK", LH = "Root", LK = "LH", LA = "LK" }
 local LEG_KEYS = { RH = true, RK = true, RA = true, LH = true, LK = true, LA = true }
 local SIDES = { "L", "R" }
 local LEG_OF = { L = { "LH", "LK", "LA" }, R = { "RH", "RK", "RA" } }
@@ -195,7 +198,168 @@ function AnimRig.computeGeo(rig)
 	if J.Neck then
 		g.neckC0 = jointC0(J.Neck.motor)
 	end
+	-- forward kinematics (AnimRig.fk): every joint's C0 / C1 and the size of the part it drives
+	g.jc0, g.jc1i, g.sz = g.jc0 or {}, g.jc1i or {}, g.sz or {}
+	for _, key in ipairs(KEYS) do
+		local j = J[key]
+		if j then
+			g.jc0[key] = jointC0(j.motor)
+			g.jc1i[key] = jointC1(j.motor):Inverse()
+			local part = j.motor.Part1
+			g.sz[key] = part and part.Size or V3(1, 1, 1)
+		else
+			g.jc0[key] = nil
+		end
+	end
+	-- a glove is far bigger than the hand it sits on: the contact sphere of each fist
+	local look = rig.model:FindFirstChild("BoxerLook")
+	local hands = look and look:FindFirstChild("Hands")
+	for _, s in ipairs(SIDES) do
+		local glove = hands and hands:FindFirstChild("Glove" .. s)
+		local hs = g.sz[s .. "W"] or V3(0.5, 0.3, 0.5)
+		g["fistR" .. s] = (glove and glove:IsA("BasePart")) and glove.Size.Magnitude * 0.3 or max(hs.X, hs.Z) * 0.5
+	end
+	local hd = g.sz.Neck
+	g.headR = hd and hd.Y * 0.5 or 0.6
 	g.ok = true
+end
+
+------------------------------------------------------------------------
+-- Forward kinematics and the canvas: lying, kneeling and getting-up poses are authored as joint
+-- angles; where the body actually rests comes from its real part sizes
+------------------------------------------------------------------------
+-- out[key] = the CFrame (HumanoidRootPart space) of the part joint `key` drives, for the pose p
+function AnimRig.fk(rig, p, out)
+	local g = rig.geo
+	out.HRP = I
+	for _, k in ipairs(KEYS) do
+		local c0 = g.jc0[k]
+		local par = out[PARENT[k]]
+		if c0 and par then
+			out[k] = par * c0 * p[k] * g.jc1i[k]
+		else
+			out[k] = nil
+		end
+	end
+	return out
+end
+
+-- lowest point of a box (centre CFrame cf, size sz), optionally grown by `pad`
+local function boxLow(cf, sz, pad)
+	pad = pad or 0
+	return cf.Y - (abs(cf.XVector.Y) * (sz.X * 0.5 + pad) + abs(cf.YVector.Y) * sz.Y * 0.5 + abs(cf.ZVector.Y) * (sz.Z * 0.5 + pad))
+end
+AnimRig.boxLow = boxLow
+
+-- what rests on the canvas: trunk, head, legs and the upper arms (a man on his side lies on his
+-- shoulder); forearms and fists are laid on it separately (liftArms)
+local SUPPORT = { "Root", "W", "Neck", "RH", "RK", "RA", "LH", "LK", "LA", "RS", "LS" }
+-- box padding per part: the trunk's muscles and shorts stand a little proud of the R15 boxes, the
+-- R15 arm boxes are fatter than the arms drawn over them
+local PAD = { Root = 0.05, W = 0.05, RS = -0.14, LS = -0.14 }
+-- the lowest point of the body (HRP space) for the pose already in `out` (AnimRig.fk)
+function AnimRig.lowest(rig, out)
+	local g = rig.geo
+	local low = math.huge
+	for _, k in ipairs(SUPPORT) do
+		local cf = out[k]
+		if cf then
+			local y
+			if k == "Neck" then
+				-- the head is round: between its box and its sphere
+				y = boxLow(cf, g.sz.Neck) * 0.6 + (cf.Y - g.headR) * 0.4
+			else
+				y = boxLow(cf, g.sz[k], PAD[k])
+			end
+			if y < low then
+				low = y
+			end
+		end
+	end
+	return low
+end
+
+-- puts the body ON the canvas: shifts p.Root so the lowest point of the trunk / head / legs rests
+-- `clear` studs above the floor (falls, lying poses, kneeling, the get-up). Returns the shift.
+function AnimRig.groundSolve(rig, p, out, clear)
+	local g = rig.geo
+	if not (g.ok and g.jc0 and g.jc0.Root) then
+		return 0
+	end
+	AnimRig.fk(rig, p, out)
+	local dy = (g.groundY + (clear or 0.03)) - AnimRig.lowest(rig, out)
+	if abs(dy) > 1e-4 then
+		p.Root = CF(0, dy, 0) * p.Root
+		-- (every part moves with the root: shift the solved frames too instead of solving again)
+		local sh = CF(0, dy, 0)
+		for _, k in ipairs(KEYS) do
+			local cf = out[k]
+			if cf then
+				out[k] = sh * cf
+			end
+		end
+	end
+	return dy
+end
+
+-- an arm that would go through the canvas is lifted at the shoulder until the fist / elbow rests on
+-- it (lying, falling, getting up). Needs `out` from AnimRig.fk / groundSolve for this pose.
+local function armChain(rig, p, out, s)
+	local g = rig.geo
+	local kS, kE, kW = s .. "S", s .. "E", s .. "W"
+	if not (out.W and g.jc0[kS] and g.jc0[kE] and g.jc0[kW]) then
+		return false
+	end
+	out[kS] = out.W * g.jc0[kS] * p[kS] * g.jc1i[kS]
+	out[kE] = out[kS] * g.jc0[kE] * p[kE] * g.jc1i[kE]
+	out[kW] = out[kE] * g.jc0[kW] * p[kW] * g.jc1i[kW]
+	return true
+end
+function AnimRig.liftArms(rig, p, out, clear)
+	local g = rig.geo
+	if not (g.ok and g.jc0) then
+		return
+	end
+	local floorY = g.groundY + (clear or 0.04)
+	for _, s in ipairs(SIDES) do
+		local kS, kE, kW = s .. "S", s .. "E", s .. "W"
+		for _ = 1, 2 do
+			if not armChain(rig, p, out, s) then
+				break
+			end
+			local pivotCF = out.W * g.jc0[kS]
+			local piv = pivotCF.Position
+			-- the two points that touch first: the fist (glove sphere) and the elbow
+			local hand, r = out[kW].Position, g["fistR" .. s] or 0.4
+			local elbow = (out[kE] * CF(0, (g.sz[kE] or V3(1, 1, 1)).Y * 0.5, 0)).Position
+			local needH = floorY + r - hand.Y
+			local needE = floorY + 0.28 - elbow.Y
+			local pt, need = hand, needH
+			if needE > needH then
+				pt, need = elbow, needE
+			end
+			if need <= 0.002 then
+				break
+			end
+			local v = pt - piv
+			local L = v.Magnitude
+			if L < 1e-3 then
+				break
+			end
+			local h = V3(v.X, 0, v.Z)
+			if h.Magnitude < 1e-3 then
+				-- hanging straight down: swing it out to the side
+				h = out.W.RightVector * (s == "L" and -1 or 1)
+			end
+			h = h.Unit
+			local e = math.asin(clamp(v.Y / L, -1, 1))
+			-- (from a shoulder too close to the canvas the arm cannot clear it: it lies flat out)
+			local want = math.asin(clamp((v.Y + need) / L, -1, 0.95))
+			local R = CFrame.fromAxisAngle(h:Cross(Vector3.yAxis), want - e)
+			local pr = pivotCF.Rotation
+			p[kS] = (pr:Inverse() * R * pr) * p[kS]
+		end
+	end
 end
 
 ------------------------------------------------------------------------
@@ -410,7 +574,7 @@ AnimRig.pairRotation = pairRotation
 -- for any pole, including elbows above the shoulder. d = fist target, n = pole, both in the
 -- shoulder joint's frame. Returns the shoulder and elbow Transforms.
 function AnimRig.solveArm(arm, d, nx, ny, nz)
-	local D = clamp(K.softReach(d.Magnitude, arm.dMax, arm.dMax * 0.07), arm.dMin, arm.dMax)
+	local D = clamp(K.softReach(d.Magnitude, arm.dMax, arm.dMax * 0.04), arm.dMin, arm.dMax)
 	local dn = D > 1e-6 and d.Unit or V3(0, -1, 0)
 	-- hinge angle: |u0e + Rx(alpha) v0| = D, solved in the elbow's YZ plane
 	local Dp2 = max(1e-6, D * D - arm.kk * arm.kk)

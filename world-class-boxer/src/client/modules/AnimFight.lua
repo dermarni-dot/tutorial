@@ -450,8 +450,8 @@ end
 -- pow = how hard the fist accelerates; rec = recovery (x windup); pivot / heel / knee = feet; path =
 -- the fist's shape; reach = share of the full extension; wrist = corkscrew; low = aim lower
 local PUNCH = {
-	jab = { hand = "L", path = "straight", hip = -0.07, sho = -0.24, fwd = 0.16, side = -0.03, dip = 0.03, lean = -0.05, roll = 0.07,
-		load = 0.12, aHip = 0.02, aSho = 0.02, aDip = 0, aLean = 0, tHip = 0, tSho = 0.08, tArm = 0.14, pow = 1.5, rec = 0.92,
+	jab = { hand = "L", path = "straight", hip = -0.08, sho = -0.28, fwd = 0.2, side = -0.03, dip = 0.03, lean = -0.05, roll = 0.07,
+		load = 0.12, aHip = 0.02, aSho = 0.02, aDip = 0, aLean = 0, tHip = 0, tSho = 0.08, tArm = 0.2, pow = 1.9, rec = 0.92,
 		heelL = 0.14, wrist = 1.25, rise = 0.05, reach = 1, nx = 0.06,
 		variants = {
 			{ w = 3, name = "snap" },
@@ -459,8 +459,8 @@ local PUNCH = {
 			{ w = 1.4, name = "paw", reach = 0.82, sho = -0.12, hip = -0.03, rec = 0.72, pow = 1.25, low = 0.18 },
 			{ w = 1.4, name = "long", lean = -0.13, fwd = 0.26, sho = -0.3, dip = 0.08, reach = 1.06 },
 		} },
-	cross = { hand = "R", path = "straight", hip = 0.44, sho = 0.34, fwd = 0.28, side = -0.07, dip = 0.06, lean = -0.08, roll = -0.09,
-		load = 0.22, aHip = 0.07, aSho = 0.05, aDip = 0.03, aLean = 0.03, tHip = 0, tSho = 0.16, tArm = 0.26, pow = 1.75, rec = 1.0,
+	cross = { hand = "R", path = "straight", hip = 0.52, sho = 0.42, fwd = 0.36, side = -0.08, dip = 0.07, lean = -0.12, roll = -0.1,
+		load = 0.22, aHip = 0.07, aSho = 0.05, aDip = 0.03, aLean = 0.03, tHip = 0, tSho = 0.16, tArm = 0.3, pow = 2.1, rec = 1.0,
 		pivot = "R", pivotAmt = 0.62, heelR = 0.55, kneeR = 0.25, wrist = 1.2, rise = 0.04, reach = 1, nx = -0.1,
 		variants = {
 			{ w = 3, name = "standard" },
@@ -468,30 +468,30 @@ local PUNCH = {
 			{ w = 1.4, name = "dip", dip = 0.22, roll = -0.16, lean = -0.12, nx = -0.2 },
 			{ w = 1.0, name = "counter", aLean = 0.1, aDip = 0.0, load = 0.3, fwd = 0.22 },
 		} },
-	leadhook = { hand = "L", path = "hook", hip = -0.3, sho = -0.3, fwd = 0.05, side = 0.12, dip = 0.12, lean = -0.04, roll = 0.14,
-		load = 0.25, aHip = 0.1, aSho = 0.06, aDip = 0.05, aLean = 0, tHip = 0, tSho = 0.12, tArm = 0.2, pow = 1.55, rec = 1.0,
+	leadhook = { hand = "L", path = "hook", hip = -0.33, sho = -0.32, fwd = 0.06, side = 0.12, dip = 0.12, lean = -0.04, roll = 0.14,
+		load = 0.25, aHip = 0.1, aSho = 0.06, aDip = 0.05, aLean = 0, tHip = 0, tSho = 0.12, tArm = 0.27, pow = 1.9, rec = 1.0,
 		pivot = "L", pivotAmt = 0.7, heelL = 0.5, kneeL = 0.28, wrist = 0.15, arc = 0.6, reach = 0.92, nx = 0.08,
 		variants = {
 			{ w = 3, name = "tight", arc = 0.45 },
-			{ w = 1.6, name = "wide", arc = 0.9, hip = -0.38, sho = -0.36, load = 0.3 },
-			{ w = 1.0, name = "check", hip = -0.48, sho = -0.36, stepR = { 0.45, 0.3 } },
+			{ w = 1.6, name = "wide", arc = 0.9, hip = -0.42, sho = -0.38, load = 0.3 },
+			{ w = 1.0, name = "check", hip = -0.5, sho = -0.36, stepR = { 0.45, 0.3 } },
 		} },
-	rearhook = { hand = "R", path = "hook", hip = 0.46, sho = 0.4, fwd = 0.08, side = -0.12, dip = 0.12, lean = -0.04, roll = -0.14,
-		load = 0.26, aHip = 0.1, aSho = 0.06, aDip = 0.05, aLean = 0, tHip = 0, tSho = 0.12, tArm = 0.22, pow = 1.55, rec = 1.0,
+	rearhook = { hand = "R", path = "hook", hip = 0.5, sho = 0.44, fwd = 0.1, side = -0.12, dip = 0.12, lean = -0.04, roll = -0.14,
+		load = 0.26, aHip = 0.1, aSho = 0.06, aDip = 0.05, aLean = 0, tHip = 0, tSho = 0.12, tArm = 0.29, pow = 1.9, rec = 1.0,
 		pivot = "R", pivotAmt = 0.7, heelR = 0.55, kneeR = 0.28, wrist = -0.15, arc = 0.6, reach = 0.92, nx = -0.1,
 		variants = {
 			{ w = 3, name = "tight", arc = 0.45 },
-			{ w = 1.6, name = "wide", arc = 0.95, hip = 0.54, sho = 0.46, load = 0.32 },
+			{ w = 1.6, name = "wide", arc = 0.95, hip = 0.6, sho = 0.5, load = 0.32 },
 		} },
 	uppercut = { hand = "R", path = "upper", hip = 0.3, sho = 0.18, fwd = 0.1, side = -0.04, dip = -0.1, lean = 0.06, roll = -0.06,
-		load = 0.36, aHip = 0.08, aSho = 0.05, aDip = 0.28, aLean = -0.06, tHip = 0.1, tSho = 0.24, tArm = 0.3, pow = 1.7, rec = 1.0,
+		load = 0.36, aHip = 0.08, aSho = 0.05, aDip = 0.34, aLean = -0.06, tHip = 0.1, tSho = 0.24, tArm = 0.34, pow = 2.0, rec = 1.0,
 		pivot = "R", pivotAmt = 0.45, heelR = 0.45, kneeR = 0.22, rise = true, wrist = 0, reach = 0.9, nx = -0.05,
 		variants = {
 			{ w = 2, name = "short", aDip = 0.2, dip = -0.06 },
 			{ w = 1.5, name = "dipping", aDip = 0.4, dip = -0.16, load = 0.42, aLean = -0.1 },
 		} },
-	overhand = { hand = "R", path = "over", hip = 0.44, sho = 0.38, fwd = 0.26, side = -0.16, dip = 0.16, lean = -0.18, roll = -0.22,
-		load = 0.3, aHip = 0.08, aSho = 0.04, aDip = -0.04, aLean = 0.05, tHip = 0, tSho = 0.14, tArm = 0.22, pow = 1.6, rec = 1.05,
+	overhand = { hand = "R", path = "over", hip = 0.5, sho = 0.44, fwd = 0.34, side = -0.16, dip = 0.18, lean = -0.24, roll = -0.24,
+		load = 0.3, aHip = 0.08, aSho = 0.04, aDip = -0.04, aLean = 0.05, tHip = 0, tSho = 0.14, tArm = 0.28, pow = 2.0, rec = 1.05,
 		pivot = "R", pivotAmt = 0.6, heelR = 0.6, kneeR = 0.3, wrist = 1.0, reach = 1, nx = -0.22,
 		variants = {
 			{ w = 2, name = "looping" },
@@ -617,56 +617,68 @@ local function aimPoint(rig, p, act, body, near)
 	local ut = R.torsoCF(rig, p.Root, p.W)
 	local sc = g.utScale
 	local isBag = tgt == rig.bagPart
-	local prm = act.prm
-	local lp
-	if isBag then
-		-- a hanging bag: land on its near surface at the height this punch would find on a man
-		local arm = g[R.ARM_OF[act.hand][3]]
-		local shW = ut:PointToWorldSpace(arm and arm.c0.Position or V3())
-		local pk = PEAK[prm.path]
-		local hY = ut:PointToWorldSpace(V3(0, (body and pk.by or pk.y) * sc.Y, 0)).Y
-		local c = tgt.Position
-		local dx, dz = shW.X - c.X, shW.Z - c.Z
-		local dm = sqrt(dx * dx + dz * dz)
-		local r = min(tgt.Size.Y, tgt.Size.Z) * 0.5 + 0.4
-		if dm > r then
-			lp = ut:PointToObjectSpace(V3(c.X + dx / dm * r, hY, c.Z + dz / dm * r))
+	-- the spot is chosen once, on the punch's first frame, and kept in the target's own space: it
+	-- follows the target if it moves but never jumps while the body turns under the punch
+	if act.aimTgt ~= tgt then
+		act.aimTgt = tgt
+		act.aimLocal = nil
+		local prm = act.prm
+		local pt
+		if isBag then
+			-- a hanging bag: land on its near surface at the height this punch would find on a man
+			local arm = g[R.ARM_OF[act.hand][3]]
+			local shW = ut:PointToWorldSpace(arm and arm.c0.Position or V3())
+			local pk = PEAK[prm.path]
+			local hY = ut:PointToWorldSpace(V3(0, (body and pk.by or pk.y) * sc.Y, 0)).Y
+			local c = tgt.Position
+			local dx, dz = shW.X - c.X, shW.Z - c.Z
+			local dm = sqrt(dx * dx + dz * dz)
+			local r = min(tgt.Size.Y, tgt.Size.Z) * 0.5 + 0.4
+			if dm > r then
+				pt = V3(c.X + dx / dm * r, hY, c.Z + dz / dm * r)
+			end
+		else
+			-- the target's surface facing us (gloves touch, they do not sink into heads)
+			local c = tgt.Position
+			local toMe = ut.Position - c
+			toMe = V3(toMe.X, 0, toMe.Z)
+			local dist = toMe.Magnitude
+			if dist >= 0.1 then
+				toMe /= dist
+				local depth = body and tgt.Size.Z * 0.5 + 0.25 or tgt.Size.Z * 0.45 + 0.22
+				pt = c + toMe * depth
+				if body then
+					pt -= V3(0, tgt.Size.Y * 0.18, 0)
+				end
+				if prm.path == "hook" then
+					-- hooks land on the side of the jaw / the flank: aim at the side the fist comes from
+					local side = ut.RightVector * (act.hand == "L" and -1 or 1)
+					pt += side * (body and 0.35 or 0.28) + toMe * 0.1
+				elseif prm.path == "upper" then
+					pt -= V3(0, body and 0.1 or 0.32, 0)
+				end
+			end
 		end
-	else
-		-- the target's surface facing us (gloves touch, they do not sink into heads)
-		local c = tgt.Position
-		local toMe = ut.Position - c
-		toMe = V3(toMe.X, 0, toMe.Z)
-		local dist = toMe.Magnitude
-		if dist < 0.1 then
-			return nil
+		if pt then
+			local lp = ut:PointToObjectSpace(pt)
+			lp = V3(lp.X / sc.X, lp.Y / sc.Y, lp.Z / sc.Z)
+			-- only something in front of us, within a few arm lengths
+			if lp.Z <= (isBag and 0.2 or -0.7) and lp.Magnitude <= 6 then
+				act.aimLocal = tgt.CFrame:PointToObjectSpace(pt)
+			end
 		end
-		toMe /= dist
-		local depth = body and tgt.Size.Z * 0.5 + 0.25 or tgt.Size.Z * 0.45 + 0.22
-		local pt = c + toMe * depth
-		if body then
-			pt -= V3(0, tgt.Size.Y * 0.18, 0)
-		end
-		if prm.path == "hook" then
-			-- hooks land on the side of the jaw / the flank: aim at the side the fist comes from
-			local side = ut.RightVector * (act.hand == "L" and -1 or 1)
-			pt += side * (body and 0.35 or 0.28) + toMe * 0.1
-		elseif prm.path == "upper" then
-			pt -= V3(0, body and 0.1 or 0.32, 0)
-		end
-		lp = ut:PointToObjectSpace(pt)
 	end
-	if not lp then
+	if not act.aimLocal then
 		return nil
 	end
+	local lp = ut:PointToObjectSpace(tgt.CFrame:PointToWorldSpace(act.aimLocal))
 	lp = V3(lp.X / sc.X, lp.Y / sc.Y, lp.Z / sc.Z)
-	if lp.Z > (isBag and 0.2 or -0.7) or lp.Magnitude > 6 then
+	if lp.Magnitude > 8 then
 		return nil
 	end
 	return lp, isBag
 end
 
--- the fist's world-to-path shape: control points of the cubic from the start to the end point
 local function pathPoints(path, P0, P3, inward, arc, rise)
 	local d = P3 - P0
 	if path == "hook" then
@@ -682,11 +694,14 @@ local function pathPoints(path, P0, P3, inward, arc, rise)
 	return P0 + d * 0.33 + up, P3 - d * 0.3 + up * 0.5
 end
 
-local function poleOf(path)
-	return POLE[path] or POLE.straight
+-- body shots: a hook's elbow stays level with the fist (it would line up with a low arm otherwise)
+local POLE_BODY = { hook = { 1, -0.35, 0.3 } }
+local function poleOf(path, body)
+	return (body and POLE_BODY[path]) or POLE[path] or POLE.straight
 end
 
 -- evaluate one punch layer; returns false when finished
+local LATE = 1 / smooth(0.8)
 local function evalPunch(p, rig, act, t, near, driveBody)
 	local prm = act.prm
 	local w = act.windup
@@ -703,8 +718,10 @@ local function evalPunch(p, rig, act, t, near, driveBody)
 	local contact = false
 	if el < w then
 		anti = K.bump(u, 0, prm.load * 2)
-		hipK = smooth((u - prm.tHip) / (1 - prm.tHip))
-		shoK = smooth((u - prm.tSho) / (1 - prm.tSho))
+		-- hips, then shoulders, then the arm: the trunk is still turning at contact (~2/3 of its top
+		-- speed) while the arm accelerates all the way into the target
+		hipK = smooth(0.8 * (u - prm.tHip) / (1 - prm.tHip)) * LATE
+		shoK = smooth(0.8 * (u - prm.tSho) / (1 - prm.tSho)) * LATE
 		armK = K.drive((u - prm.tArm) / (1 - prm.tArm), prm.pow)
 	elseif el < w + hold then
 		armK = 1
@@ -736,8 +753,10 @@ local function evalPunch(p, rig, act, t, near, driveBody)
 		local fh, fs = drv and (1 - hipK) or 0, drv and (1 - shoK) or 0
 		local dipExtra = body and (prm.path == "upper" and 0.2 or 0.42) or 0
 		local leanExtra = body and -0.06 or 0
-		local hip = prm.hip * mirror * pw * hipK + bf.hip * fh - prm.aHip * mirror * anti
-		local sho = prm.sho * mirror * pw * shoK + bf.sho * fs - prm.aSho * mirror * anti
+		-- (a hook to the body turns less: the fist has to land in front of the chest, not beside it)
+		local rk = (body and prm.path == "hook") and 0.72 or 1
+		local hip = prm.hip * mirror * pw * rk * hipK + bf.hip * fh - prm.aHip * mirror * anti
+		local sho = prm.sho * mirror * pw * rk * shoK + bf.sho * fs - prm.aSho * mirror * anti
 		local lean = (prm.lean + leanExtra) * pw * shoK + bf.lean * fs + prm.aLean * anti
 		local roll = (prm.roll * mirror * pw + (body and prm.path == "hook" and (L_ and 0.12 or -0.12) or 0)) * shoK + bf.roll * fs
 		local fwd = prm.fwd * pw * hipK + bf.fwd * fh
@@ -798,22 +817,33 @@ local function evalPunch(p, rig, act, t, near, driveBody)
 		if arm and arm.ok then
 			local sh = V3(arm.c0.Position.X / sc.X, arm.c0.Position.Y / sc.Y, arm.c0.Position.Z / sc.Z)
 			local v = P3 - sh
-			local reach = arm.dMax / max(0.2, sc.Y) * 1.04 * (prm.reach or 1)
+			-- (contact a touch short of full extension: the fist is still accelerating when it lands)
+			local reach = arm.dMax / max(0.2, sc.Y) * 0.985 * (prm.reach or 1)
 			if v.Magnitude > reach then
 				P3 = sh + v.Unit * reach
 			end
+			-- nor so close that the elbow has to fold shut: a target that ends up beside the shoulder
+			-- is met in front of it instead
+			local near = reach * 0.68
+			v = P3 - sh
+			if v.Magnitude < near then
+				local fwdD = sqrt(max(0, near * near - v.X * v.X - v.Y * v.Y))
+				P3 = V3(P3.X, P3.Y, sh.Z - fwdD)
+			end
 		end
 		local pos
-		local pole = poleOf(prm.path)
+		local pole = poleOf(prm.path, body)
 		local kp
 		if retK > 0 then
 			-- recovery: the fist comes home first, a little lower and inside, fast then easing
 			local hit = act.hitPos or P3
-			local k = K.easeOut(min(1, retK / 0.8))
+			-- (the fist rests on the target for the hold: it leaves from a standstill)
+			local k = K.easeInOut(min(1, retK / 0.8))
 			local c1 = hit + (Pg - hit) * 0.3 + V3(0, -0.12, 0.1)
 			local c2 = Pg + V3(0, -0.05, -0.15)
 			pos = K.bezier(hit, c1, c2, Pg, k)
-			kp = 1 - k
+			-- the elbow settles back to the guard more slowly than the fist comes home
+			kp = 1 - smooth(retK)
 		else
 			local B1, B2 = pathPoints(prm.path, P0, P3, inward, prm.arc or 0.6, prm.rise)
 			pos = K.bezier(P0, B1, B2, P3, armK)
@@ -825,7 +855,11 @@ local function evalPunch(p, rig, act, t, near, driveBody)
 				end
 			end
 			act.hitPos = pos
-			kp = smooth(clamp(armK / 0.85, 0, 1))
+			-- the elbow's line through the punch follows time, not the accelerating fist
+			kp = smooth(clamp((u - prm.tArm) / ((1 - prm.tArm) * 0.85), 0, 1))
+			if contact then
+				kp = 1
+			end
 		end
 		act.lastPos = pos
 		-- the elbow rises into the punch (a hook's elbow comes up late) and settles back on the way home
@@ -915,12 +949,12 @@ end
 -- head-shot reaction impulses: head pitch / yaw / roll, torso pitch / yaw / roll, back, side, drop
 -- (a lead hook lands on the defender's right: his head snaps to his left = + yaw)
 local HIT = {
-	jab = { 2.6, 0, 0, 0.8, 0, 0, 0.9, 0, 0 },
-	cross = { 4.2, 0, 0.5, 1.3, 0, 0.2, 1.5, 0, 0.3 },
-	leadhook = { 0.6, 6.4, 3.2, 0.3, 1.6, 1.0, 0.2, -1.0, 0.5 },
-	rearhook = { 0.6, -6.6, -3.3, 0.3, -1.7, -1.0, 0.2, 1.0, 0.5 },
-	uppercut = { 7.4, 0, 0.8, 2.0, 0, 0.3, 0.8, 0, -0.9 },
-	overhand = { -3.0, -2.6, -3.6, -0.6, -0.8, -1.0, 0.5, 0.6, 1.3 },
+	jab = { 3.6, 0, 0.4, 1.0, 0, 0.15, 1.2, 0, 0 },
+	cross = { 5.4, 0, 0.7, 1.6, 0, 0.25, 2.1, 0, 0.35 },
+	leadhook = { 0.8, 7.6, 3.6, 0.4, 2.0, 1.2, 0.3, -1.3, 0.6 },
+	rearhook = { 0.8, -7.8, -3.7, 0.4, -2.1, -1.2, 0.3, 1.3, 0.6 },
+	uppercut = { 8.6, 0, 1.0, 2.4, 0, 0.35, 1.0, 0, -1.0 },
+	overhand = { -3.6, -3.2, -4.2, -0.8, -1.0, -1.2, 0.6, 0.8, 1.5 },
 }
 HIT.hook = HIT.rearhook
 -- which way the blow pushes the body (body space: x right, z back)
@@ -953,7 +987,7 @@ local function catchStep(rig, px, pz, size, t, hold)
 	return s
 end
 
-function AnimFight.react(rig, kind, ptype, flag, sev, t)
+function AnimFight.react(rig, kind, ptype, flag, sev, t, hand)
 	local model = rig.model
 	local daze = num(rig.a.Daze, 0)
 	sev = clamp(sev or 0.5, 0, 1.5)
@@ -970,7 +1004,13 @@ function AnimFight.react(rig, kind, ptype, flag, sev, t)
 	if kind == "hit" then
 		local h = HIT[ptype] or HIT.cross
 		local m = (0.45 + sev) * (flag == "counter" and 1.35 or (flag == "heavy" and 1.25 or 1)) * (1 + 0.2 * daze)
-		local rs = rig.rng:NextNumber() < 0.5 and -1 or 1 -- straight shots tilt the head either way
+		-- straight shots tilt the head away from the punching hand (either way when it is unknown)
+		local rs
+		if hand == "L" or hand == "R" then
+			rs = hand == "R" and 1 or -1
+		else
+			rs = rig.rng:NextNumber() < 0.5 and -1 or 1
+		end
 		local roll = h[3] * ((ptype == "cross" or ptype == "uppercut" or ptype == "jab") and rs or 1)
 		-- light shots snap the head; the body joins in from medium up
 		local bodyM = tier == 1 and 0.4 or 1
@@ -1209,15 +1249,33 @@ function AnimFight.applyAct(p, rig, act, t)
 		p.LE = p.LE:Lerp(A(0.2, 0, 0), e)
 		p.RE = p.RE:Lerp(A(0.2, 0, 0), e)
 	elseif k == "catch" then
-		-- the referee wraps his arms round a man out on his feet and holds him up
+		-- the referee wraps his arms round a man out on his feet and holds him up: braced, leaning in,
+		-- hands under the armpits and round the back
 		local e = smooth(el / 0.35) * (1 - smooth((el - act.dur + 0.4) / 0.4))
-		p.Root = CF(0, -0.22 * e, -0.25 * e) * p.Root
-		p.W = p.W * A(-0.22 * e, 0, 0)
+		p.Root = CF(0, -0.3 * e, -0.15 * e) * p.Root
+		p.W = p.W * A(-0.18 * e, 0, 0)
 		p.LS = p.LS:Lerp(A(1.35, 0, -0.15), e)
 		p.RS = p.RS:Lerp(A(1.35, 0, 0.15), e)
-		p.LE = p.LE:Lerp(A(1.7, 0, 0), e)
-		p.RE = p.RE:Lerp(A(1.7, 0, 0), e)
-		p.Neck = p.Neck * A(0.1 * e, 0.4 * e, 0)
+		p.LE = p.LE:Lerp(A(1.0, 0, 0), e)
+		p.RE = p.RE:Lerp(A(1.0, 0, 0), e)
+		p.Neck = p.Neck * A(0.05 * e, 0.4 * e, 0)
+		local vm = rig.lookPart and rig.lookPart.Parent
+		local ut = vm and vm:FindFirstChild("UpperTorso")
+		if ut and rig.geo.ok and rig.lod >= 2 then
+			-- each hand to the side of the fighter's chest nearest to it, reaching round towards his back
+			local rc = rig.root.CFrame
+			local c = ut.Position
+			local to = V3(c.X - rc.X, 0, c.Z - rc.Z)
+			to = to.Magnitude > 0.1 and to.Unit or rc.LookVector
+			local hx = ut.Size.X * 0.5 + 0.05
+			for _, s in ipairs(R.SIDES) do
+				local side = rc.RightVector * (s == "L" and -hx or hx)
+				R.armIK(rig, p, s, c + side + to * 0.3 + V3(0, 0.2, 0), e)
+			end
+		end
+		flex(rig, "lats", 0.7 * e)
+		flex(rig, "biceps", 0.6 * e)
+		flex(rig, "quads", 0.5 * e)
 	end
 	return true
 end

@@ -29,7 +29,10 @@
 --            fat (%, 0.5 steps), def (0..1), vein (0..1), bulk (0..1), dry (0..1), vasc (0..100),
 --            pv = { elong, flat, groove, waist, taper }, potential },
 --   build = { [Config.MuscleParts id] = raw value (whole units), fat, vasc },
---   attire = { trunks, trim (also the female sports top), trunkStyle, outfit, hands },
+--   attire = { trunks, trim (also the female sports top), trunkStyle, outfit, hands,
+--              parts = { [R15 body part] = { r, g, b } } (0..255: the round-1 colour of every torso / limb
+--              part that is NOT skin: LowerTorso = the trunks, UpperTorso = the female sports top or an
+--              official's shirt, limbs = shirt sleeves / trousers; a part absent here is bare skin) },
 -- }
 local LookData = {}
 
@@ -43,15 +46,18 @@ LookData.SECTION_ORDER = { "Body", "Head", "Hair" }
 
 -- the inputs each section's generator may read (dotted paths into the look table). A generator that
 -- reads anything else must have it added here, or its meshes go stale when that input changes.
+-- look.detail (the server's part-built detail level) is deliberately in no section: the meshes' level of
+-- detail is the client's own choice, so a server-side detail change must not regenerate anything.
 LookData.SECTIONS = {
-	Body = { "v", "g", "skin", "skinRGB", "height", "age", "detail", "scale", "rig", "body", "build", "attire" },
+	Body = { "v", "g", "skin", "skinRGB", "height", "age", "scale", "rig", "body", "build", "attire" },
 	Head = {
-		"v", "g", "skin", "skinRGB", "age", "detail", "rig.parts.Head", "rig.joints.Neck", "face", "battle", "beard",
+		"v", "g", "skin", "skinRGB", "age", "rig.parts.Head", "rig.joints.Neck", "face", "battle", "beard",
 		"hair.color", "body.fat", "body.dry",
 	},
+	-- rig.joints.Neck / rig.parts.UpperTorso: where long hair, locs and ponytails meet the neck and shoulders
 	Hair = {
-		"v", "g", "skinRGB", "age", "detail", "rig.parts.Head", "hair", "face.seed", "face.shape", "face.forehead",
-		"face.skullWidth", "face.skullLength", "face.crown", "face.browRidge", "face.asym",
+		"v", "g", "skinRGB", "age", "rig.parts.Head", "rig.joints.Neck", "rig.parts.UpperTorso", "hair", "face.seed",
+		"face.shape", "face.forehead", "face.skullWidth", "face.skullLength", "face.crown", "face.browRidge", "face.asym",
 	},
 }
 
@@ -469,6 +475,35 @@ local function copyRGB(c)
 	return nil
 end
 
+LookData.BODY_PARTS = {
+	"UpperTorso", "LowerTorso", "LeftUpperArm", "RightUpperArm", "LeftLowerArm", "RightLowerArm", "LeftUpperLeg",
+	"RightUpperLeg", "LeftLowerLeg", "RightLowerLeg",
+}
+-- the round-1 colours of the R15 torso / limb parts that are not skin (trunks on the LowerTorso, the female
+-- sports top, officials' shirts and trousers), read from the model after Builder's Colors step: exactly
+-- what the Body meshes hide, so they can draw it. The Head part (else the skin tone) is the skin reference.
+local function clothParts(model, skinRGB)
+	local out = {}
+	if not model then
+		return out
+	end
+	local head = model:FindFirstChild("Head")
+	local skin = head and head:IsA("BasePart") and head.Color
+		or (skinRGB and Color3.fromRGB(skinRGB[1], skinRGB[2], skinRGB[3]))
+	for _, name in ipairs(LookData.BODY_PARTS) do
+		local p = model:FindFirstChild(name)
+		if p and p:IsA("BasePart") then
+			local c = p.Color
+			local r, g, b = math.floor(c.R * 255 + 0.5), math.floor(c.G * 255 + 0.5), math.floor(c.B * 255 + 0.5)
+			local same = skin and math.abs(r - skin.R * 255) < 1.5 and math.abs(g - skin.G * 255) < 1.5 and math.abs(b - skin.B * 255) < 1.5
+			if not same then
+				out[name] = { r, g, b }
+			end
+		end
+	end
+	return out
+end
+
 -- the look table for a model being built by Builder.Cosmetics. sp = Builder.Resolve(app, build, opts)
 -- (BuilderBody's body spec), scales = Builder.Scales(app, build, opts). Returns a quantised table.
 function LookData.FromBuilder(model, app, build, opts, sp, scales)
@@ -551,7 +586,7 @@ function LookData.FromBuilder(model, app, build, opts, sp, scales)
 	look.build = bd
 	look.attire = {
 		trunks = copyRGB(attire.trunks), trim = copyRGB(attire.trim), trunkStyle = attire.trunkStyle,
-		outfit = opts.outfit, hands = opts.hands or "gloves",
+		outfit = opts.outfit, hands = opts.hands or "gloves", parts = clothParts(model, look.skinRGB),
 	}
 	return quantize(look)
 end
@@ -631,15 +666,28 @@ function LookData.Get(model)
 	return look, str
 end
 
--- the fast-changing extras: { dmg = {...}, sweat = 0..1, grime = 0..1, tier = 0..4 }
+-- the fast-changing extras: { dmg = {...}, sweat = 0..1, grime = 0..1, tier = 0..4 }. One table per model,
+-- refreshed in place, and the damage table is decoded only when LookFx changes: FX modules may call this
+-- every frame (no allocation). Both tables are shared: read them, never write them.
+local fxCache = setmetatable({}, { __mode = "k" })
+local EMPTY = table.freeze({})
 function LookData.Fx(model)
-	local dmg = LookData.Decode(model:GetAttribute(LookData.FX_ATTR) or "")
-	return {
-		dmg = type(dmg) == "table" and dmg or {},
-		sweat = tonumber(model:GetAttribute("Sweat")) or 0,
-		grime = tonumber(model:GetAttribute("Grime")) or 0,
-		tier = tonumber(model:GetAttribute("FaceDmgTier")) or 0,
-	}
+	local str = model:GetAttribute(LookData.FX_ATTR)
+	local c = fxCache[model]
+	if not c then
+		c = { str = false, out = { dmg = EMPTY, sweat = 0, grime = 0, tier = 0 } }
+		fxCache[model] = c
+	end
+	local out = c.out
+	if c.str ~= str then
+		c.str = str
+		local dmg = type(str) == "string" and LookData.Decode(str) or nil
+		out.dmg = type(dmg) == "table" and dmg or EMPTY
+	end
+	out.sweat = tonumber(model:GetAttribute("Sweat")) or 0
+	out.grime = tonumber(model:GetAttribute("Grime")) or 0
+	out.tier = tonumber(model:GetAttribute("FaceDmgTier")) or 0
+	return out
 end
 
 return LookData

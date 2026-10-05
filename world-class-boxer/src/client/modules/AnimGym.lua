@@ -764,7 +764,8 @@ POSE.mitts = function(p, rig, t, d, w, model, dt)
 	local wr = rig.watch and rigs[rig.watch]
 	local act = wr and (wr.bodyAct or wr.act or wr.autoAct)
 	if act and PUNCHES[act.kind] then
-		local el = t - act.start - act.windup
+		-- (the trainee's act runs on the trainee's own clock: every rig keeps its own)
+		local el = wr.clock - act.start - act.windup
 		if el > -0.02 and el < 0.22 then
 			local r = K.attackDecay(el + 0.02, 0.04, 0.24)
 			-- same pad mapping as MittCall: a left-hand punch lands on the pad raised for "L"
@@ -961,6 +962,8 @@ local function scheduleReaction(rig, act, t)
 		return
 	end
 	local r = partner.rng:NextNumber()
+	-- "at" is read against the partner's own clock (runPending): every rig keeps its own
+	t = partner.clock
 	local hook = act.kind == "leadhook" or act.kind == "rearhook"
 	local react
 	if r < 0.45 then

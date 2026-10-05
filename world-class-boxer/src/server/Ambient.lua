@@ -135,7 +135,7 @@ local function spawnMember(folder, def)
 	local gear = { gloves = "Competition", glovesCond = 70, wraps = "OldWraps", wrapsCond = 80, shoes = def.coach and "Sneakers" or nil, shoesCond = 70 }
 	local npc = Builder.CreateNPC(app, build, gear, def.name, {
 		hands = def.hands or "wraps", name = def.name, nick = "", waistText = "",
-		detail = "medium", physique = physique, age = def.age or 26, sweat = def.sweat,
+		detail = def.detail or "medium", physique = physique, age = def.age or 26, sweat = def.sweat,
 	})
 	if not npc then
 		return nil
@@ -242,6 +242,20 @@ function Ambient.Start()
 		end
 		task.wait()
 	end
+end
+
+-- One athlete outside the gym (the sparring room template in Venues): def.at / def.look are
+-- relative to origin, a point on that room's floor. Same Loop / Expr / tag conventions as the
+-- members, so the Animator drives them, and they go away with the folder they are parented to.
+-- No role and no walking: they are scenery and nothing else looks them up.
+function Ambient.SpawnAt(folder, def, origin)
+	origin = origin or Vector3.zero
+	local d = table.clone(def)
+	d.at = origin + (def.at or Vector3.zero)
+	d.look = def.look and origin + def.look or nil
+	d.floor = origin.Y + (def.floor or 0)
+	d.role, d.walk, d.bench, d.spot = nil, nil, nil, nil
+	return spawnMember(folder, d)
 end
 
 -- change what a role NPC is doing (e.g. the mitt coach raises the pads)

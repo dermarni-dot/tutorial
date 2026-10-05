@@ -1,6 +1,7 @@
--- MainMenu: the title screen. Your boxer stands in the real gym in front of the ring while the camera
--- drifts on a slow dolly (key + rim lights, depth of field, a warm grade, dust in the light); the logo
--- reveals and a shine sweeps across it; a broadcast-style menu sits on the left.
+-- MainMenu: the title screen. Your boxer stands in his corner of a ring in a gym at night (MenuStage: a
+-- set built on this client, holding a clone of your character) while the camera drifts on a slow dolly
+-- (key + rim lights, hanging lamps, a shaft of window light with dust, depth of field, a warm grade); the
+-- logo reveals and a shine sweeps across it; a broadcast-style menu sits on the left.
 --   CONTINUE / NEW CAREER   back to the gym  /  the character creator
 --   CAREER      your professional fighter card (FighterCard)
 --   CHARACTER   barber, locker room, physique, stats (Services / Career Hub)
@@ -13,7 +14,8 @@
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
-local CollectionService = game:GetService("CollectionService")
+local SoundService = game:GetService("SoundService")
+local GuiService = game:GetService("GuiService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
@@ -23,6 +25,7 @@ local State = require(Modules:WaitForChild("State"))
 local Settings = require(Modules:WaitForChild("Settings"))
 local Flags = require(Modules:WaitForChild("Flags"))
 local FighterCard = require(Modules:WaitForChild("FighterCard"))
+local MenuStage = require(Modules:WaitForChild("MenuStage"))
 local T = UI.Theme
 local K = Enum.KeyCode
 
@@ -52,21 +55,11 @@ local function compact()
 end
 
 ------------------------------------------------------------------------
--- Camera scene: the boxer in the gym
+-- Camera scene: your boxer in the menu set (MenuStage)
 ------------------------------------------------------------------------
-local function ringCenter()
-	local gym = workspace:FindFirstChild("Gym")
-	local ring = gym and gym:FindFirstChild("GymRing")
-	local canvas = ring and ring:FindFirstChild("Canvas")
-	if canvas and canvas:IsA("BasePart") then
-		return canvas.Position
-	end
-	return nil
-end
-
-local rayParams = RaycastParams.new()
-rayParams.FilterType = Enum.RaycastFilterType.Exclude
-
+-- The set is built on this client far above the map and holds a clone of your character: your real
+-- character never moves (only its controls are held while the menu is up, so W / S in the menu do not
+-- walk it), nothing replicates, and no NPC, player or pillar of the real gym can get into the shot.
 local function light(parent, class, props)
 	local l = Instance.new(class)
 	for k, v in pairs(props) do
@@ -76,10 +69,64 @@ local function light(parent, class, props)
 	return l
 end
 
-local function sceneStart()
+local function holdControls(hum)
+	if scene.hum == hum then
+		return
+	end
+	scene.hum = hum
+	scene.walk, scene.jump = hum.WalkSpeed, hum.JumpHeight
+	hum.WalkSpeed, hum.JumpHeight = 0, 0
+end
+
+local function releaseControls(s)
+	local hum = s.hum
+	if hum and hum.Parent then
+		-- only undo our own hold (a server change made meanwhile stands)
+		if hum.WalkSpeed == 0 then
+			hum.WalkSpeed = (s.walk and s.walk > 0) and s.walk or 16
+		end
+		if hum.JumpHeight == 0 then
+			hum.JumpHeight = (s.jump and s.jump > 0) and s.jump or 7.2
+		end
+	end
+end
+
+-- (re)stage the clone of the current character
+local function stageBoxer()
+	if not scene then
+		return
+	end
 	local char, hum, rootPart = State.char()
+	if char and hum and rootPart then
+		holdControls(hum)
+		-- hear the gym from where you stand, not from the set high above it
+		if not scene.listener then
+			scene.listener = pcall(function()
+				SoundService:SetListener(Enum.ListenerType.ObjectCFrame, rootPart)
+			end)
+		end
+		MenuStage.Place(scene.stage, char)
+		scene.guard = nil
+		-- a new look (barber, creator, a new career) re-stages the clone a moment later
+		if scene.lookConn then
+			scene.lookConn:Disconnect()
+		end
+		local token = 0
+		scene.lookConn = char:GetAttributeChangedSignal("LookSig"):Connect(function()
+			token += 1
+			local mine = token
+			task.delay(1, function()
+				if mine == token and scene and isOpen then
+					MenuStage.Place(scene.stage, char)
+				end
+			end)
+		end)
+	end
+end
+
+local function sceneStart()
 	local cam = workspace.CurrentCamera
-	scene = { t0 = os.clock(), parts = {}, fx = {}, mode = "home", blur = 0 }
+	scene = { t0 = os.clock(), fx = {}, blur = 0 }
 	if not cam then
 		return
 	end
@@ -89,128 +136,41 @@ local function sceneStart()
 	scene.fx.grade = light(cam, "ColorCorrectionEffect", { Name = "MenuGrade", Contrast = 0.14, Saturation = -0.06, Brightness = -0.02, TintColor = Color3.fromRGB(255, 244, 232) })
 	scene.fx.bloom = light(cam, "BloomEffect", { Name = "MenuBloom", Intensity = 0.55, Size = 28, Threshold = 1.4 })
 	scene.fx.blur = light(cam, "BlurEffect", { Name = "MenuBlur", Size = 0 })
-	if not (char and hum and rootPart) then
-		return
-	end
-	scene.char, scene.hum, scene.root = char, hum, rootPart
-	scene.walk, scene.jump = hum.WalkSpeed, hum.JumpHeight
-	hum.WalkSpeed, hum.JumpHeight = 0, 0
-	State.SetAnimate(false)
-	-- the Animator gives a Preview-tagged rig a proud, relaxed stance; sceneStep raises the guard now
-	-- and then (Pose, client-local)
-	CollectionService:AddTag(char, "Preview")
-	char:SetAttribute("ExprPreview", "confident")
-	scene.home = rootPart.CFrame
-	-- in the gym the boxer steps onto a mark in front of the ring (it fills the background); anywhere
-	-- else he stays put and the shot is framed around him
-	local rc = ringCenter()
-	local p = rootPart.Position
-	local fromRing = rc and Vector3.new(p.X - rc.X, 0, p.Z - rc.Z) or Vector3.zero
-	if rc and fromRing.Magnitude < 160 then
-		local mark = rc + Vector3.new(0, 0, 28)
-		rayParams.FilterDescendantsInstances = { char }
-		local floor = workspace:Raycast(mark + Vector3.new(0, 12, 0), Vector3.new(0, -30, 0), rayParams)
-		if floor then
-			scene.facing = Vector3.new(0, 0, 1)
-			local y = floor.Position.Y + hum.HipHeight + rootPart.Size.Y / 2
-			local spot = Vector3.new(mark.X, y, mark.Z)
-			rootPart.CFrame = CFrame.lookAt(spot, spot + scene.facing)
-			rootPart.AssemblyLinearVelocity = Vector3.zero
-			scene.staged = true
-		end
-	end
-	if not scene.staged then
-		local away = rc and fromRing or Vector3.zero
-		if away.Magnitude > 4 then
-			scene.facing = away.Unit
-			rootPart.CFrame = CFrame.lookAt(p, p + scene.facing)
-		else
-			local lv = rootPart.CFrame.LookVector
-			scene.facing = Vector3.new(lv.X, 0, lv.Z).Magnitude > 0.1 and Vector3.new(lv.X, 0, lv.Z).Unit or Vector3.new(0, 0, 1)
-		end
-	end
-	-- key light (front-left, warm), rim light (behind, gold), cool fill near the lens
-	local rig = Instance.new("Part")
-	rig.Name = "MenuLightRig"
-	rig.Anchored, rig.CanCollide, rig.CanQuery, rig.CanTouch, rig.CastShadow = true, false, false, false, false
-	rig.Transparency = 1
-	rig.Size = Vector3.new(0.2, 0.2, 0.2)
-	rig.Parent = cam
-	scene.parts.key = rig
-	scene.key = light(rig, "SpotLight", { Brightness = 2.2, Range = 26, Angle = 48, Color = Color3.fromRGB(255, 232, 206), Face = Enum.NormalId.Front, Shadows = true })
-	local rim = rig:Clone()
-	rim.Name = "MenuRimRig"
-	rim:ClearAllChildren()
-	rim.Parent = cam
-	scene.parts.rim = rim
-	scene.rim = light(rim, "SpotLight", { Brightness = 4.5, Range = 22, Angle = 55, Color = Color3.fromRGB(255, 196, 120), Face = Enum.NormalId.Front })
-	scene.fill = light(rig, "PointLight", { Brightness = 0.35, Range = 12, Color = Color3.fromRGB(170, 196, 255) })
+	scene.stage = MenuStage.Build(Settings.Get("detail"))
+	stageBoxer()
+	-- the first frame sits on the shot (no swoop down from the gym)
+	local cf, fov = MenuStage.Shot(scene.stage, view, 0, Settings.Get("shake") or 1)
+	cam.CFrame = cf
+	cam.FieldOfView = fov
 end
-
--- camera presets per view: distance, side offset, height, how far left of the boxer the lens aims
-local SHOTS = {
-	home = { d = 9.2, side = 2.6, h = 1.0, aim = 2.0, fov = 38, blur = 0 },
-	career = { d = 7.5, side = -2.0, h = 0.8, aim = -1.2, fov = 34, blur = 16 },
-	rankings = { d = 11, side = 3.4, h = 1.6, aim = 3.0, fov = 40, blur = 18 },
-	settings = { d = 10, side = 2.8, h = 1.3, aim = 2.6, fov = 40, blur = 18 },
-	character = { d = 6.2, side = -1.6, h = 0.6, aim = -1.4, fov = 34, blur = 10 },
-}
 
 local function sceneStep(dt)
 	local cam = workspace.CurrentCamera
-	if not (scene and cam) then
+	local st = scene and scene.stage
+	if not (st and cam) then
 		return
 	end
 	if cam.CameraType ~= Enum.CameraType.Scriptable then
 		cam.CameraType = Enum.CameraType.Scriptable
 	end
-	local shot = SHOTS[view] or SHOTS.home
 	local t = os.clock() - scene.t0
-	local rootPart = scene.root
-	if not (rootPart and rootPart.Parent) then
-		return
-	end
-	-- life: every few seconds the boxer raises his guard and bounces, then relaxes again
-	local guardUp = (t % 11) > 7 and not scene.relax
-	if guardUp ~= scene.guard and scene.char then
+	-- life: now and then the boxer raises his guard and bounces for a few seconds, then relaxes again
+	-- (the first look at him is the relaxed, proud stance with his face in the light)
+	local clone = st.clone
+	local guardUp = view == "home" and t > 6 and (t % 14) > 10.5
+	if clone and guardUp ~= scene.guard then
 		scene.guard = guardUp
-		scene.char:SetAttribute("Pose", guardUp and "guard" or nil)
+		clone:SetAttribute("Pose", guardUp and "guard" or nil)
 	end
-	local p = rootPart.Position
-	local f = scene.facing or Vector3.new(0, 0, 1)
-	local right = f:Cross(Vector3.yAxis).Unit
-	-- the slow dolly: an orbit that sways +-9 degrees, breathing in and out, plus a little handheld drift
-	local sway = math.sin(t * 0.21) * 0.16
-	local dir = (f * math.cos(sway) + right * math.sin(sway)).Unit
-	local r2 = dir:Cross(Vector3.yAxis).Unit
-	local d = shot.d + math.sin(t * 0.13) * 0.6
-	local shake = Settings.Get("shake") or 1
-	local hand = Vector3.new(math.sin(t * 1.3) * 0.03, math.sin(t * 0.9 + 1) * 0.025, 0) * shake
-	local chest = p + Vector3.new(0, 1.3, 0)
-	local want = chest + dir * d - r2 * shot.side + Vector3.new(0, shot.h + math.sin(t * 0.17) * 0.15, 0)
-	-- keep a wall from cutting into the shot
-	rayParams.FilterDescendantsInstances = { scene.char, cam }
-	local hit = workspace:Raycast(chest, want - chest, rayParams)
-	if hit then
-		want = chest + (want - chest).Unit * math.max(2.5, hit.Distance - 0.6)
-	end
-	local aim = chest + r2 * shot.aim
-	local goal = CFrame.lookAt(want, aim) * CFrame.new(hand)
+	MenuStage.Step(st, t)
+	local goal, fov, focus, blur = MenuStage.Shot(st, view, t, Settings.Get("shake") or 1)
 	cam.CFrame = cam.CFrame:Lerp(goal, math.clamp(dt * 2.2, 0, 1))
-	cam.FieldOfView += (shot.fov - cam.FieldOfView) * math.clamp(dt * 2, 0, 1)
-	-- lights ride with the shot; the rim breathes like a hanging lamp swinging a little
-	if scene.parts.key then
-		scene.parts.key.CFrame = CFrame.lookAt(chest + dir * 6 - r2 * 3 + Vector3.new(0, 3.2, 0), chest)
-	end
-	if scene.parts.rim then
-		scene.parts.rim.CFrame = CFrame.lookAt(chest - dir * 5 + r2 * 2 + Vector3.new(0, 4, 0), chest)
-		scene.rim.Brightness = 4 + math.sin(t * 0.7) * 0.6
-	end
+	cam.FieldOfView += (fov - cam.FieldOfView) * math.clamp(dt * 2, 0, 1)
 	if scene.fx.dof then
-		scene.fx.dof.FocusDistance = (want - chest).Magnitude
+		scene.fx.dof.FocusDistance = focus
 	end
 	if scene.fx.blur then
-		scene.blur += (shot.blur - scene.blur) * math.clamp(dt * 5, 0, 1)
+		scene.blur += (blur - scene.blur) * math.clamp(dt * 5, 0, 1)
 		scene.fx.blur.Size = scene.blur
 	end
 end
@@ -224,31 +184,21 @@ local function sceneStop()
 	for _, fx in pairs(s.fx) do
 		fx:Destroy()
 	end
-	for _, part in pairs(s.parts) do
-		part:Destroy()
+	if s.lookConn then
+		s.lookConn:Disconnect()
 	end
+	MenuStage.Destroy(s.stage)
 	local cam = workspace.CurrentCamera
 	if cam then
 		cam.CameraType = Enum.CameraType.Custom
 		cam.FieldOfView = 70
 	end
-	local char = s.char
-	if char and char.Parent then
-		CollectionService:RemoveTag(char, "Preview")
-		if char:GetAttribute("Pose") == "guard" then
-			char:SetAttribute("Pose", nil)
-		end
-		char:SetAttribute("ExprPreview", nil)
-		-- back to where you were standing (the mark was only for the shot)
-		if s.staged and s.home and s.root and s.root.Parent and not s.keepSpot then
-			s.root.CFrame = s.home
-		end
+	if s.listener then
+		pcall(function()
+			SoundService:SetListener(Enum.ListenerType.Camera)
+		end)
 	end
-	if s.hum and s.hum.Parent then
-		s.hum.WalkSpeed = (s.walk and s.walk > 0) and s.walk or 16
-		s.hum.JumpHeight = (s.jump and s.jump > 0) and s.jump or 7.2
-	end
-	State.SetAnimate(true)
+	releaseControls(s)
 end
 
 ------------------------------------------------------------------------
@@ -395,6 +345,7 @@ end
 
 local activate -- forward
 local show -- forward
+local openScout -- forward
 
 local function itemMetrics()
 	local small = compact()
@@ -525,11 +476,14 @@ local function buildProfile(layer)
 	local P = State.P
 	if not created() then
 		-- a new player: the call to action
-		local card = UI.Frame(layer, { Name = "Welcome", AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -48, 1, -64), Size = UDim2.fromOffset(440, 118), BackgroundColor3 = T.bg })
+		local small = compact()
+		local card = UI.Frame(layer, { Name = "Welcome", AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -48, 1, small and -48 or -64), Size = UDim2.fromOffset(440, 146), BackgroundColor3 = T.bg })
 		UI.Glass(card, { transparency = 0.2 })
-		UI.Kicker(card, "A NEW CAREER", T.gold, { Position = UDim2.fromOffset(22, 18), Size = UDim2.new(1, -44, 0, 18) })
-		UI.Text(card, "Create your boxer and start in a beginner gym. Train, fight, climb the rankings and become undisputed.", { TextSize = 14, TextColor3 = T.text,
-			Position = UDim2.fromOffset(22, 44), Size = UDim2.new(1, -44, 0, 60), AutomaticSize = Enum.AutomaticSize.None })
+		UI.Frame(card, { Name = "Stripe", Size = UDim2.new(0, 5, 1, -24), Position = UDim2.fromOffset(0, 12), BackgroundColor3 = T.gold })
+		UI.Kicker(card, "A NEW CAREER", T.gold, { Position = UDim2.fromOffset(22, 16), Size = UDim2.new(1, -44, 0, 18) })
+		UI.Title(card, "FROM NOBODY TO UNDISPUTED", { TextSize = 28, Position = UDim2.fromOffset(22, 36), Size = UDim2.new(1, -44, 0, 34) })
+		UI.Text(card, "Create your boxer and start in a beginner gym. Train, fight, climb the rankings and become undisputed.", { TextSize = 14, TextColor3 = T.sub,
+			Position = UDim2.fromOffset(22, 76), Size = UDim2.new(1, -44, 0, 54), AutomaticSize = Enum.AutomaticSize.None, TextYAlignment = Enum.TextYAlignment.Top })
 		return
 	end
 	local small = compact()
@@ -617,18 +571,7 @@ local function screenCareer(layer)
 	local w = math.min(1260, canvasW - (small and 104 or 144))
 	local top = small and 124 or 158
 	local h = math.min(640, canvasH - top - (small and 14 or 78))
-	-- the photo is a snapshot: let a raised guard drop first so the face and physique show
-	if scene then
-		scene.relax = true
-		if scene.char and scene.char:GetAttribute("Pose") == "guard" then
-			scene.char:SetAttribute("Pose", nil)
-			scene.guard = false
-			task.wait(0.45)
-			if view ~= "career" then
-				return
-			end
-		end
-	end
+	-- the photo is a posed portrait (FighterCard: gloves at the chest, chin level), not the live pose
 	local card = FighterCard.Full(layer, P, { Size = UDim2.fromOffset(w, h), Position = UDim2.fromOffset(small and 52 or 72, top), compact = small })
 	card.Name = "Card"
 	-- actions: bottom right; on phones they sit in the header row
@@ -671,7 +614,7 @@ local TILES = {
 local function screenCharacter(layer)
 	local small = compact()
 	screenHeader(layer, "MY BOXER", "CHARACTER")
-	local grid = UI.Frame(layer, { Name = "Tiles", BackgroundTransparency = 1, Position = UDim2.fromOffset(small and 52 or 72, small and 110 or 180), Size = UDim2.fromOffset(small and 640 or 760, small and 300 or 420) })
+	local grid = UI.Frame(layer, { Name = "Tiles", BackgroundTransparency = 1, Position = UDim2.fromOffset(small and 52 or 72, small and 122 or 180), Size = UDim2.fromOffset(small and 640 or 760, small and 290 or 420) })
 	UI.Grid(grid, UDim2.new(0.5, -8, 0.5, -8), nil, 16)
 	for i, t in ipairs(TILES) do
 		local b = UI.Button(grid, "", { Name = "Tile", LayoutOrder = i, BackgroundColor3 = T.bg, BackgroundTransparency = 0.15 }, function()
@@ -721,7 +664,8 @@ local function rankRow(list, e, i, onPick)
 	return row
 end
 
-local function scoutPanel(panel, id)
+-- grow = the panel is a scrolling frame (the phone overlay): the report grows downward in it
+local function scoutPanel(panel, id, grow)
 	UI.Clear(panel)
 	local res = State.req("GetBoxer", id)
 	if not (res and res.ok and res.boxer) then
@@ -729,7 +673,8 @@ local function scoutPanel(panel, id)
 		return
 	end
 	local b = res.boxer
-	local body = UI.Frame(panel, { BackgroundTransparency = 1, Position = UDim2.fromOffset(22, 20), Size = UDim2.new(1, -44, 1, -40) })
+	local body = UI.Frame(panel, { BackgroundTransparency = 1, Position = UDim2.fromOffset(22, 20), Size = grow and UDim2.new(1, -44, 0, 0) or UDim2.new(1, -44, 1, -40),
+		AutomaticSize = grow and Enum.AutomaticSize.Y or Enum.AutomaticSize.None })
 	UI.List(body, 8)
 	UI.Kicker(body, "SCOUTING REPORT", T.gold, { order = 1 })
 	local nameRow = UI.Frame(body, { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 44), LayoutOrder = 2 })
@@ -758,12 +703,39 @@ local function scoutPanel(panel, id)
 	end
 end
 
+-- the phone version of the scouting panel: a glass sheet over the rankings table with a back button
+local scoutSheet
+local function closeScout()
+	if scoutSheet then
+		scoutSheet:Destroy()
+		scoutSheet = nil
+		return true
+	end
+	return false
+end
+function openScout(layer, over, id)
+	closeScout()
+	local sheet = UI.Frame(layer, { Name = "ScoutSheet", Position = over.Position, Size = over.Size, ZIndex = 6 })
+	UI.Glass(sheet, { transparency = 0.04 })
+	scoutSheet = sheet
+	local back = UI.Button(sheet, "BACK", { Name = "Back", Size = UDim2.fromOffset(110, 38), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -14, 0, 12), BackgroundColor3 = T.panel2,
+		BackgroundTransparency = 0.15, ZIndex = 8 }, closeScout)
+	back.ZIndex = 8
+	local sc = UI.Scroll(sheet, { Name = "Report", Position = UDim2.fromOffset(0, 0), Size = UDim2.fromScale(1, 1), ZIndex = 7 })
+	task.spawn(scoutPanel, sc, id, true)
+	sheet.Destroying:Connect(function()
+		if scoutSheet == sheet then
+			scoutSheet = nil
+		end
+	end)
+end
+
 local function screenRankings(layer)
 	local P = State.P
 	local small = compact()
 	rankClass = rankClass or (P and P.physical and P.physical.weightClass) or 5
 	screenHeader(layer, "WORLD RANKINGS", string.upper(Config.WeightClasses[rankClass].name))
-	local top = small and 100 or 156
+	local top = small and 120 or 156
 	-- division + organisation controls
 	local controls = UI.Frame(layer, { Name = "Controls", BackgroundTransparency = 1, Position = UDim2.fromOffset(small and 52 or 72, top), Size = UDim2.fromOffset(900, 40) })
 	UI.List(controls, 8, true)
@@ -834,62 +806,140 @@ local function screenRankings(layer)
 			end
 			if scout then
 				task.spawn(scoutPanel, scout, entry.id)
-			elseif State.open.BoxerCard then
-				State.open.BoxerCard(entry.id)
+			else
+				-- phones: the report opens over the table, inside the menu (the Hub's card would sit
+				-- under the menu's layers)
+				openScout(layer, panel, entry.id)
 			end
 		end)
 	end
 end
 
 -- SETTINGS
+-- keyboard / gamepad focus over the setting rows: up / down picks a row, left / right steps it
+-- (UI.Nudge), Enter flips a toggle or presses the button. A gamepad with Roblox's own UI selection on
+-- moves between the [-] / [+] buttons instead (those inputs reach us as processed).
+local settingsRows, settingsFocus, settingsBody = {}, 0, nil
+local function focusSetting(i)
+	if #settingsRows == 0 then
+		return
+	end
+	settingsFocus = math.clamp(i, 1, #settingsRows)
+	for j, r in ipairs(settingsRows) do
+		local st = r.frame:FindFirstChild("Focus")
+		if st then
+			st.Enabled = j == settingsFocus
+		end
+	end
+	-- keep the focused row in view
+	local row = settingsRows[settingsFocus].frame
+	local body = settingsBody
+	if body and body.Parent then
+		local s = UI.ScaleOf(body)
+		local top = (row.AbsolutePosition.Y - body.AbsolutePosition.Y) / s + body.CanvasPosition.Y
+		local h = body.AbsoluteSize.Y / s
+		local y = body.CanvasPosition.Y
+		if top < y + 8 then
+			y = top - 8
+		elseif top + row.AbsoluteSize.Y / s > y + h - 8 then
+			y = top + row.AbsoluteSize.Y / s - h + 8
+		end
+		body.CanvasPosition = Vector2.new(0, math.max(0, y))
+	end
+end
+
 local function screenSettings(layer)
 	local small = compact()
 	screenHeader(layer, "OPTIONS", "SETTINGS")
-	local top = small and 100 or 160
+	local top = small and 122 or 160
 	local w = math.min(1100, canvasW - (small and 104 or 144))
 	local panel = UI.Frame(layer, { Name = "Panel", Position = UDim2.fromOffset(small and 52 or 72, top), Size = UDim2.fromOffset(w, canvasH - top - (small and 20 or 80)) })
 	UI.Glass(panel, { transparency = 0.1 })
 	local body = UI.Scroll(panel, { Position = UDim2.fromOffset(24, 18), Size = UDim2.new(1, -48, 1, -36) })
+	settingsBody = body
 	UI.List(body, 10)
 	UI.Pad(body, 2, 4)
+	table.clear(settingsRows)
+	local order = 0
+	local function add(f, activate)
+		order += 1
+		f.LayoutOrder = order
+		if activate then
+			UI.New("UIStroke", { Name = "Focus", Color = T.gold, Thickness = 2, Transparency = 0.1, Enabled = false, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = f })
+			table.insert(settingsRows, { frame = f, activate = activate })
+		end
+		return f
+	end
+	-- dir 0 = Enter: flips a toggle, leaves a slider / cycler alone
+	local function nudge(f, toggle)
+		return function(dir)
+			if dir ~= 0 or toggle then
+				UI.Nudge(f, dir == 0 and 1 or dir)
+			end
+		end
+	end
+	local function header(text)
+		add(UI.Header(body, text).Parent)
+	end
 	local v = Settings.Values
 	local function pct(x)
 		return string.format("%d%%", math.floor(x * 100 + 0.5))
 	end
-	UI.Header(body, "DISPLAY")
-	UI.Slider(body, "UI scale", 0.8, 1.25, v.uiScale, 0.05, function(x)
+	header("DISPLAY")
+	-- the UI scale applies when the slider is let go: the screen it lives on is rebuilt at the new scale
+	local scaleRow = UI.Slider(body, "UI scale", 0.8, 1.25, v.uiScale, 0.05, function(x)
 		Settings.Set("uiScale", x)
-	end, pct)
-	UI.Cycler(body, "Graphics detail", Settings.Details, v.detail, function(x)
+	end, pct, { onRelease = true })
+	add(scaleRow, nudge(scaleRow))
+	local detailRow = UI.Cycler(body, "Graphics detail", Settings.Details, v.detail, function(x)
 		Settings.Set("detail", x)
 	end, function(x)
 		return x == "Auto" and "Auto (by distance and device)" or x
 	end)
-	UI.Header(body, "CAMERA & EFFECTS")
-	UI.Slider(body, "Screen effects", 0, 1.5, v.screenFx, 0.05, function(x)
+	add(detailRow, nudge(detailRow))
+	header("CAMERA & EFFECTS")
+	local fxRow = UI.Slider(body, "Screen effects", 0, 1.5, v.screenFx, 0.05, function(x)
 		Settings.Set("screenFx", x)
 	end, pct)
-	UI.Text(body, "Blur, colour drain, flashes and vignettes when you get hurt in a fight. Lower it if it gets too intense.", { TextSize = 12, TextColor3 = T.sub })
-	UI.Slider(body, "Camera shake", 0, 1.5, v.shake, 0.05, function(x)
+	add(fxRow, nudge(fxRow))
+	add(UI.Text(body, "Blur, colour drain, flashes and vignettes when you get hurt in a fight. Lower it if it gets too intense.", { TextSize = 13, TextColor3 = T.sub }))
+	local shakeRow = UI.Slider(body, "Camera shake", 0, 1.5, v.shake, 0.05, function(x)
 		Settings.Set("shake", x)
 	end, pct)
-	UI.Header(body, "AUDIO")
-	UI.Slider(body, "Music", 0, 1, v.music, 0.05, function(x)
+	add(shakeRow, nudge(shakeRow))
+	header("AUDIO")
+	local musicRow = UI.Slider(body, "Music", 0, 1, v.music, 0.05, function(x)
 		Settings.Set("music", x)
 	end, pct)
-	UI.Slider(body, "Sound effects", 0, 1, v.sfx, 0.05, function(x)
+	add(musicRow, nudge(musicRow))
+	local sfxRow = UI.Slider(body, "Sound effects", 0, 1, v.sfx, 0.05, function(x)
 		Settings.Set("sfx", x)
 	end, pct)
-	UI.Header(body, "GAME")
-	UI.Toggle(body, "Show the main menu when I join", v.menuAtStart, function(on)
+	add(sfxRow, nudge(sfxRow))
+	header("GAME")
+	local menuRow = UI.Toggle(body, "Show the main menu when I join", v.menuAtStart, function(on)
 		Settings.Set("menuAtStart", on)
 	end)
-	UI.Button(body, "RESET TO DEFAULTS", { Size = UDim2.fromOffset(220, 40) }, function()
+	add(menuRow, nudge(menuRow, true))
+	local hintsRow = UI.Toggle(body, "Always show the fight controls strip", v.controlHints, function(on)
+		Settings.Set("controlHints", on)
+	end)
+	add(hintsRow, nudge(hintsRow, true))
+	local function reset()
 		for k, def in pairs(Settings.Defaults) do
 			Settings.Set(k, def)
 		end
 		show("settings", true)
+	end
+	local resetBtn = UI.Button(body, "RESET TO DEFAULTS", { Size = UDim2.fromOffset(240, 40) }, reset)
+	add(resetBtn, function(dir)
+		if dir == 0 then
+			reset()
+		end
 	end)
+	if settingsFocus > 0 then
+		task.defer(focusSetting, settingsFocus)
+	end
 end
 
 local SCREENS = { career = screenCareer, character = screenCharacter, rankings = screenRankings, settings = screenSettings }
@@ -938,9 +988,6 @@ function show(name, instant)
 	end
 	local from = view
 	view = name
-	if scene then
-		scene.relax = name == "career"
-	end
 	if name == "home" then
 		layers.screen.Visible = false
 		UI.Clear(layers.screen)
@@ -1008,6 +1055,8 @@ function activate(it)
 	end
 end
 
+local LEFT = { [K.Left] = true, [K.A] = true, [K.DPadLeft] = true }
+local RIGHT = { [K.Right] = true, [K.D] = true, [K.DPadRight] = true }
 local function onInput(input, gp)
 	if gp or not isOpen or closing then
 		return
@@ -1019,10 +1068,31 @@ local function onInput(input, gp)
 		elseif k == K.Up or k == K.W or k == K.DPadUp then
 			selectItem((sel - 2) % #items + 1)
 		elseif k == K.Return or k == K.Space or k == K.ButtonA then
-			activate(items[sel])
+			local it = items[sel]
+			if it and it.id == "settings" then
+				settingsFocus = 1 -- arrived by keys: the first row takes the focus
+			end
+			activate(it)
 		end
 	elseif k == K.Backspace or k == K.ButtonB then
-		show("home")
+		if not closeScout() then
+			show("home")
+		end
+	elseif view == "settings" then
+		local r = settingsRows[settingsFocus]
+		if k == K.Down or k == K.S or k == K.DPadDown then
+			focusSetting(settingsFocus + 1)
+		elseif k == K.Up or k == K.W or k == K.DPadUp then
+			focusSetting(math.max(1, settingsFocus - 1))
+		elseif LEFT[k] or RIGHT[k] then
+			if r then
+				r.activate(LEFT[k] and -1 or 1)
+			else
+				focusSetting(1)
+			end
+		elseif (k == K.Return or k == K.Space or k == K.ButtonA) and r then
+			r.activate(0)
+		end
 	end
 end
 
@@ -1079,21 +1149,34 @@ function MainMenu.Open(which)
 	sceneStart()
 	track(RunService.RenderStepped:Connect(sceneStep))
 	track(UserInputService.InputBegan:Connect(onInput))
-	-- a new screen size (rotation, window resize, UI scale setting): rebuild in place
-	track(root:GetAttributeChangedSignal("UIScale"):Connect(function()
-		measure()
-		if view == "home" then
-			buildHome()
-		else
-			show(view, true)
-		end
-	end))
+	-- a new screen size (rotation, window resize, UI scale setting): rebuild in place, once the change
+	-- settles and no pointer is held (a drag in progress keeps its widget)
+	local rebuildToken = 0
+	local function rebuildSoon()
+		rebuildToken += 1
+		local token = rebuildToken
+		task.delay(0.15, function()
+			if token ~= rebuildToken or not isOpen or closing then
+				return
+			end
+			if UserInputService:IsMouseButtonPressed(Enum.UserInputType.MouseButton1) then
+				rebuildSoon()
+				return
+			end
+			measure()
+			if view == "home" then
+				buildHome()
+			else
+				show(view, true)
+			end
+		end)
+	end
+	track(root:GetAttributeChangedSignal("UIScale"):Connect(rebuildSoon))
 	-- the character respawned under the menu: stage the new one
 	track(player.CharacterAdded:Connect(function()
-		task.wait(0.5)
-		if isOpen then
-			sceneStop()
-			sceneStart()
+		task.wait(1)
+		if isOpen and scene then
+			stageBoxer()
 		end
 	end))
 	-- live numbers on the home screen
@@ -1135,6 +1218,8 @@ function MainMenu.Close(after)
 		end
 		gui, root = nil, nil
 		table.clear(layers)
+		table.clear(settingsRows)
+		settingsFocus, settingsBody, scoutSheet = 0, nil, nil
 		isOpen, closing = false, false
 		view = "home"
 		State.HidePrompts("Menu", false)

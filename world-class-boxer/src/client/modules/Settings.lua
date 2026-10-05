@@ -2,13 +2,15 @@
 --   uiScale     0.8 .. 1.25  multiplier on the responsive UI scale (UI.SetUserScale)
 --   screenFx    0 .. 1.5     blur / colour drain / flashes in fights (Config.ScreenFX, read by FightClient + VenueFX)
 --   shake       0 .. 1.5     camera shake and kicks (FightClient, training camera, main menu)
---   music       0 .. 1       music volume (sounds named *Music*, walkout music)
---   sfx         0 .. 1       every other sound (all SoundGroups: gym, fight mix)
---   detail      Auto | High | Medium | Low   graphics detail (AnatomyClient budget when it exposes one,
---                                           client attribute GfxDetail for everyone else)
+--   music       0 .. 1       music volume (SoundService.MusicMix: every Sound named *Music*, walkout music)
+--   sfx         0 .. 1       every other sound (all other SoundGroups: gym, fight mix)
+--   detail      Auto | High | Medium | Low   graphics detail (AnatomyClient.Settings: full-detail count,
+--                                           ranges, build budget, textures; client attribute GfxDetail)
 --   menuAtStart bool         open the main menu when you join
--- Saved with the profile through the "SaveSettings" request (R-ui integration request for Main); a
--- server without that handler simply keeps them for the session.
+--   controlHints bool        keep the fight's key-cap strip on screen (otherwise it fades after round 1)
+-- Saved with the profile through the "SaveSettings" request (R-ui integration request for Main). The
+-- server's summary carries P.settings (a table) once it supports that; until then nothing is sent and
+-- the settings last for the session.
 local Players = game:GetService("Players")
 local SoundService = game:GetService("SoundService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -19,7 +21,7 @@ local UI = require(Shared:WaitForChild("UI"))
 local Settings = {}
 local player = Players.LocalPlayer
 
-Settings.Defaults = { uiScale = 1, screenFx = 1, shake = 1, music = 0.8, sfx = 1, detail = "Auto", menuAtStart = true }
+Settings.Defaults = { uiScale = 1, screenFx = 1, shake = 1, music = 0.8, sfx = 1, detail = "Auto", menuAtStart = true, controlHints = false }
 Settings.Details = { "Auto", "High", "Medium", "Low" }
 local RANGES = { uiScale = { 0.8, 1.25 }, screenFx = { 0, 1.5 }, shake = { 0, 1.5 }, music = { 0, 1 }, sfx = { 0, 1 } }
 
@@ -38,8 +40,10 @@ function Settings.Sanitize(t)
 	if table.find(Settings.Details, t.detail) then
 		out.detail = t.detail
 	end
-	if type(t.menuAtStart) == "boolean" then
-		out.menuAtStart = t.menuAtStart
+	for _, k in ipairs({ "menuAtStart", "controlHints" }) do
+		if type(t[k]) == "boolean" then
+			out[k] = t[k]
+		end
 	end
 	return out
 end
@@ -53,14 +57,27 @@ function Settings.Get(k)
 end
 
 ------------------------------------------------------------------------
--- Audio: SoundGroups scale with sfx; music sounds with music
+-- Audio: music plays through SoundService.MusicMix (volume = the music setting); every other
+-- SoundGroup (gym, FightMix...) scales with the sfx setting
 ------------------------------------------------------------------------
 local function isMusic(s)
 	return s.Name:find("Music") ~= nil or (s.Parent ~= nil and s.Parent.Name:find("Music") ~= nil)
 end
 
+local MUSIC_MIX = "MusicMix"
+local function musicMix()
+	local g = SoundService:FindFirstChild(MUSIC_MIX)
+	if not (g and g:IsA("SoundGroup")) then
+		g = Instance.new("SoundGroup")
+		g.Name = MUSIC_MIX
+		g.Parent = SoundService
+	end
+	g.Volume = Settings.Values.music
+	return g
+end
+
 local function applyGroup(g)
-	if not g:IsA("SoundGroup") then
+	if not g:IsA("SoundGroup") or g.Name == MUSIC_MIX then
 		return
 	end
 	local base = g:GetAttribute("BaseVolume")
@@ -71,16 +88,17 @@ local function applyGroup(g)
 	g.Volume = base * Settings.Values.sfx
 end
 
+-- a music Sound (walkout, arena, the gym speakers, anywhere in the game) is routed through MusicMix:
+-- the music setting reaches it live, its own Volume stays whatever its module sets, and the sfx
+-- setting no longer touches it
 local function applyMusic(s)
 	if not (s:IsA("Sound") and isMusic(s)) then
 		return
 	end
-	local base = s:GetAttribute("BaseVolume")
-	if base == nil then
-		base = s.Volume
-		s:SetAttribute("BaseVolume", base)
+	local mix = musicMix()
+	if s.SoundGroup ~= mix then
+		s.SoundGroup = mix
 	end
-	s.Volume = base * Settings.Values.music
 end
 
 local musicWatch = {}
@@ -90,24 +108,28 @@ local function watchMusic(container)
 	end
 	musicWatch[container] = container.DescendantAdded:Connect(function(d)
 		if d.ClassName == "Sound" then
-			-- the name is set before parenting by every module that makes music
+			-- deferred: the module that made it names it and picks its group first
 			task.defer(applyMusic, d)
 		end
 	end)
+	for _, d in ipairs(container:GetDescendants()) do
+		if d.ClassName == "Sound" then
+			applyMusic(d)
+		end
+	end
 end
 
 function Settings.ApplyAudio()
+	musicMix()
 	for _, g in ipairs(SoundService:GetChildren()) do
 		applyGroup(g)
 	end
-	for _, s in ipairs(SoundService:GetDescendants()) do
-		applyMusic(s)
-	end
 end
 
--- the volume a music Sound should play at (for modules that create their own music)
-function Settings.MusicVolume(base)
-	return (base or 1) * Settings.Values.music
+-- the SoundGroup music plays through (a module making its own music may set it directly; any Sound
+-- named *Music* is routed there automatically)
+function Settings.MusicGroup()
+	return musicMix()
 end
 
 ------------------------------------------------------------------------
@@ -127,18 +149,45 @@ local function anatomyModule()
 	return anatomy or nil
 end
 
+-- AnatomyClient's public Settings table (mesh rework): how many characters get full-detail meshes,
+-- how far away, how much build time per frame and whether colour textures are made. "Auto" puts
+-- back whatever the module had before this menu first changed it.
+local DETAIL_KNOBS = {
+	High = { maxFull = 10, fullRange = 90, lodRange = 200, frameBudget = 0.004, textures = true },
+	Medium = { maxFull = 4, fullRange = 50, lodRange = 120, frameBudget = 0.002, textures = true },
+	Low = { maxFull = 1, fullRange = 30, lodRange = 80, frameBudget = 0.0015, textures = false },
+}
+local anatomyBase -- the module's own values, captured the first time a level is forced
 function Settings.ApplyDetail()
 	local d = Settings.Values.detail
 	player:SetAttribute("GfxDetail", d) -- client-local: any visual module may read it
 	local ac = anatomyModule()
-	if ac then
-		-- whichever knob the anatomy module exposes (names checked, every call guarded)
-		local level = ({ Auto = nil, High = "full", Medium = "medium", Low = "low" })[d]
-		for _, fn in ipairs({ "SetDetail", "SetQuality", "SetBudget" }) do
-			if type(ac[fn]) == "function" then
-				pcall(ac[fn], level or "auto")
-				break
-			end
+	if not ac then
+		return
+	end
+	-- a dedicated setter wins if the module ever exposes one (names checked, every call guarded)
+	local level = ({ High = "full", Medium = "medium", Low = "low" })[d]
+	for _, fn in ipairs({ "SetDetail", "SetQuality", "SetBudget" }) do
+		if type(ac[fn]) == "function" then
+			pcall(ac[fn], level or "auto")
+			return
+		end
+	end
+	local cfg = type(ac.Settings) == "table" and ac.Settings or nil
+	if not cfg then
+		return
+	end
+	local knobs = DETAIL_KNOBS[d]
+	if knobs and not anatomyBase then
+		anatomyBase = {}
+		for k in pairs(DETAIL_KNOBS.High) do
+			anatomyBase[k] = cfg[k]
+		end
+	end
+	knobs = knobs or anatomyBase
+	for k, v in pairs(knobs or {}) do
+		if cfg[k] ~= nil and type(cfg[k]) == type(v) then
+			cfg[k] = v
 		end
 	end
 end
@@ -164,10 +213,17 @@ function Settings.Set(k, value)
 	saveToken += 1
 	local token = saveToken
 	task.delay(1.5, function()
-		if token == saveToken and State then
+		if token == saveToken and Settings.Supported() then
 			task.spawn(State.req, "SaveSettings", Settings.Values)
 		end
 	end)
+end
+
+-- does the server store settings? (its summary carries P.settings; older servers answer
+-- "Unknown action", so nothing is sent to them)
+function Settings.Supported()
+	local P = State and State.P
+	return P ~= nil and type(P.settings) == "table"
 end
 
 -- the server's copy (P.settings.ui once Main stores it); local edits this session win

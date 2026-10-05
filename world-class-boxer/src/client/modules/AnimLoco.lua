@@ -724,6 +724,66 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 	return rootT
 end
 
+-- far away (no foot IK): a cheap procedural stride in step with the speed, or bent standing legs
+function AnimLoco.farLegs(p, rig, rootT, dt)
+	local lo = rig.loco
+	local g = rig.geo
+	local len = g.legLen or 2.3
+	local depth = max(0, -rootT.Position.Y)
+	local a = math.acos(clamp(1 - depth / len, -1, 1))
+	local v = lo.speed
+	local k = (lo.moving and rig.gaitKind) and smooth((v - 0.4) / 1.2) or 0
+	if k > 0 then
+		local T = walkParams(v, len)
+		lo.farPh = ((lo.farPh or 0) + dt / T) % 1
+	end
+	local ph = 2 * PI * (lo.farPh or 0)
+	local s, c = sin(ph), cos(ph)
+	local run = lo.run or 0
+	local swing = (0.22 + 0.025 * min(v, 20)) * k
+	-- the knee folds while the thigh comes through (more for runners)
+	local fold = (0.3 + 0.9 * run) * k
+	p.LH = A(a + swing * s, 0, 0)
+	p.RH = A(a - swing * s, 0, 0)
+	p.LK = A(-2 * a - fold * max(0, c), 0, 0)
+	p.RK = A(-2 * a - fold * max(0, -c), 0, 0)
+	p.LA = A(a - swing * s * 0.5, 0, 0)
+	p.RA = A(a + swing * s * 0.5, 0, 0)
+end
+
+-- planting starts after keyed legs (a get-up, a landing, leaving a seat): each foot starts where the
+-- keyed legs left it and steps home from there, instead of sliding over to its stance spot
+function AnimLoco.seedFeet(rig, t)
+	local g = rig.geo
+	if not (g.ok and g.jc0 and g.jc0.Root) then
+		return
+	end
+	local p = rig.seedP or {}
+	rig.seedP = p
+	for _, k in ipairs(R.KEYS) do
+		local j = rig.joints[k]
+		p[k] = j and j.cur or CFrame.identity
+	end
+	local out = R.fk(rig, p, rig.seedOut or {})
+	rig.seedOut = out
+	local rc = rig.root.CFrame
+	for _, s in ipairs(SIDES) do
+		local key = s .. "A"
+		local fcf = out[key]
+		local f = rig.foot[s]
+		if fcf then
+			-- the ankle joint (the foot part's frame back through the ankle's C1), straight down to the canvas
+			local ank = (fcf * g.jc1i[key]:Inverse()).Position
+			local look = rc:VectorToWorldSpace(fcf.LookVector)
+			f.P = rc:PointToWorldSpace(V3(ank.X, g.groundY, ank.Z))
+			f.yawW = atan2(-look.X, -look.Z)
+			f.swing, f.curLift, f.want = false, 0, false
+			f.pitchS = 0
+			f.lastStep = t
+		end
+	end
+end
+
 -- the feet stop being managed (keyed legs): forget the planted state
 function AnimLoco.release(rig)
 	rig.foot.L.P, rig.foot.R.P = nil, nil

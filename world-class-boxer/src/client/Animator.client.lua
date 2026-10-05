@@ -126,6 +126,12 @@ local function onAttr(rig, name)
 			rig.prevGuard = old
 			rig.guardT = now
 			if old == "down" then
+				-- up again without the server's get-up act (the end of a fight, an older server): he still
+				-- gets up off the canvas the way he fell instead of popping upright
+				local d = rig.down
+				if d and not (rig.act and rig.act.kind == "getup") then
+					rig.act = Down.recoverAct(d, now)
+				end
 				Down.clear(rig)
 			end
 		end
@@ -254,7 +260,8 @@ onAct = function(rig, s, now, predicted)
 	elseif k == "hit" or k == "hitbody" or k == "blockhit" then
 		act.sev = clamp(tonumber(f4) or 0.5, 0, 1.5)
 		act.dur = k == "blockhit" and 0.4 or 0.5 + 0.25 * act.sev
-		Fight.react(rig, k, f2, f3, act.sev, now)
+		-- (hit|punch|flag|sev|hand: the 5th field, the punching hand, is round 2 and optional)
+		Fight.react(rig, k, f2, f3, act.sev, now, f5 ~= "" and f5 or nil)
 	elseif k == "parryhit" then
 		act.dur = 0.25
 	elseif k == "slip" then
@@ -275,7 +282,13 @@ onAct = function(rig, s, now, predicted)
 		R.kick(rig, 1.2 * act.sev, 0, 0, 0.8 * act.sev, 0, 0, 0, 0, 0.6 * act.sev, 0, 0.5 * act.sev, 0.5 * act.sev, 0.4, 0.4)
 	elseif k == "getup" then
 		act.fall = f2 ~= "" and f2 or "back"
-		act.dur = clamp(tonumber(f4) or 0.9, 0.4, 3) + 0.45
+		-- (round 2: the server sends the get-up time of the fall, FightMotion.GetUpTime)
+		act.dur = clamp(tonumber(f4) or 0.9, 0.4, 3.2)
+		-- the get-up starts from the fall he is lying in (side, the way it turned him)
+		local d = rig.down
+		if d then
+			act.side, act.yaw = d.side, d.yaw
+		end
 	elseif k == "refcount" then
 		act.n = tonumber(f2) or 1
 		act.dur = 0.95
@@ -559,7 +572,7 @@ local SHOUT_ARMS = { idle = true, walk = true, coachwatch = true, ringside = tru
 	mittidle = true }
 local PUBLISH_POSE = { heavybag = "heavybag", guard = "shadow", speedbag = "speedbag" }
 
-local function updateRig(rig, model, t, dt, lod)
+local function updateRig(rig, model, t, dt, lod, rdt)
 	-- joints get replaced (head swap, rescale, respawn): re-resolve dead motors
 	if t >= rig.nextResolve then
 		rig.nextResolve = t + 1
@@ -577,7 +590,8 @@ local function updateRig(rig, model, t, dt, lod)
 		rig.nextGeo = t + 2.5
 		R.computeGeo(rig)
 	end
-	Loco.sense(rig, dt)
+	-- (the root moves in real time: sensing uses the real frame time, never the slowed one)
+	Loco.sense(rig, rdt)
 	R.clearPose(rig)
 	rig.lod = lod
 	rig.dt = dt
@@ -788,20 +802,31 @@ local function updateRig(rig, model, t, dt, lod)
 		end
 	end
 	if plantOn then
-		if not rig.wasPlant then
+		-- planting starts, or the rig crosses the foot-IK distance: blend the legs over (no pop)
+		local nearLegs = lod >= 2
+		if not rig.wasPlant or rig.nearLegs ~= nearLegs then
+			-- (a distance switch eases over more slowly: the two leg solutions can be far apart)
+			rig.plantBlend = (rig.wasPlant and rig.nearLegs ~= nil) and 0.45 or 0.25
 			rig.plantT = t
+			rig.nearLegs = nearLegs
+			if not rig.wasPlant and nearLegs and rig.keyedLegs then
+				-- out of keyed legs (a get-up, a fall, a seat): the feet start where they are
+				Loco.seedFeet(rig, t)
+			end
 		end
 		local rootT = rig.rootOut or joints.Root.cur
-		if lod >= 2 then
+		if nearLegs then
 			rootT = Loco.feet(rig, p, rootT, t, dt, true)
 			rig.rootOut = rootT
 		else
-			R.legAngles(p, -rootT.Position.Y, 0.15, rig.geo.legLen)
+			Loco.farLegs(p, rig, rootT, dt)
 			rig.foot.L.P, rig.foot.R.P = nil, nil
 		end
 		-- blend into the IK legs when planting starts (get-up, leaving a seat)
-		local bl = min(1, (t - (rig.plantT or 0)) / 0.25)
-		local la = bl < 1 and (0.25 + 0.75 * bl) or 1
+		local pb = rig.plantBlend or 0.25
+		local bl = min(1, (t - (rig.plantT or 0)) / pb)
+		local l0 = pb > 0.3 and 0.1 or 0.25
+		local la = bl < 1 and (l0 + (1 - l0) * bl) or 1
 		for k in pairs(LEG_KEYS) do
 			local j = joints[k]
 			if j then
@@ -811,6 +836,7 @@ local function updateRig(rig, model, t, dt, lod)
 	else
 		Loco.release(rig)
 	end
+	rig.keyedLegs = not plantOn and joints.Root ~= nil
 	rig.wasPlant = plantOn
 	for _, k in ipairs(KEYS) do
 		local j = joints[k]
@@ -876,12 +902,16 @@ local function fxStep(name, fn, ...)
 	end
 end
 
+-- cost of the per-frame update (rigs + FX), readable by profilers / tests: R.stats
+local stats = { frames = 0, total = 0, max = 0, rigs = 0 }
+R.stats = stats
 RunService.PreSimulation:Connect(function(dt)
 	local t = os.clock()
 	dt = min(dt, 0.1)
 	cam = workspace.CurrentCamera
 	local camPos = cam and cam.CFrame.Position or Vector3.zero
 	local localChar = player.Character
+	local updated = 0
 	for model, rig in pairs(rigs) do
 		if not model.Parent then
 			if rig.conn then
@@ -922,12 +952,18 @@ RunService.PreSimulation:Connect(function(dt)
 		rig.frameSkip = 0
 		local rdt = clamp(t - rig.lastT, 1 / 240, 0.25)
 		rig.lastT = t
-		-- the rig's own clock (a knockout plays its key moment in slow motion)
-		rig.timeScale = Down.timeScale(rig, rig.clock)
-		local sdt = rdt * rig.timeScale
+		-- the rig's own clock: a knockout plays its key moment in slow motion (a real-time envelope that
+		-- both fighters share); a rig whose root is travelling is never slowed (its feet must keep up)
+		local ts = Down.timeScale(rig, t)
+		if ts < 1 and rig.loco.speed > 1.5 then
+			ts = 1
+		end
+		rig.timeScale = ts
+		local sdt = rdt * ts
 		rig.clock += sdt
 		local lod = (dist < NEAR and onScreen) and 3 or (dist < MID and 2 or 1)
-		local ok, err = pcall(updateRig, rig, model, rig.clock, sdt, lod)
+		updated += 1
+		local ok, err = pcall(updateRig, rig, model, rig.clock, sdt, lod, rdt)
 		if not ok and not warned[model] then
 			warned[model] = true
 			warn("[Animator] " .. model.Name .. ": " .. tostring(err))
@@ -941,6 +977,13 @@ RunService.PreSimulation:Connect(function(dt)
 	end
 	if HairFX then
 		fxStep("HairFX", HairFX.Update, dt, t, camPos, cam)
+	end
+	local cost = os.clock() - t
+	stats.rigs = updated
+	stats.frames += 1
+	stats.total += cost
+	if cost > stats.max then
+		stats.max = cost
 	end
 end)
 

@@ -16,6 +16,12 @@ local Looks = require(Shared:WaitForChild("Looks"))
 local Catalog = require(Shared:WaitForChild("Catalog"))
 local UI = require(Shared:WaitForChild("UI"))
 local State = require(script.Parent:WaitForChild("State"))
+local okFlags, Flags = pcall(function()
+	return require(script.Parent:WaitForChild("Flags", 5))
+end)
+if not okFlags then
+	Flags = nil
+end
 local T = UI.Theme
 -- the face module draws the client-side fight-damage preview (same visuals as a real fight)
 local okHead, Head = pcall(function()
@@ -280,6 +286,7 @@ end
 -- Pages
 ------------------------------------------------------------------------
 local render
+local updatePlate
 
 local function pageIdentity()
 	UI.TextInput(body, "First name", C.first, "e.g. Marcus", 14, function(v)
@@ -673,15 +680,16 @@ local function pageStyle()
 	UI.Header(body, "BOXING STYLE")
 	for _, s in ipairs(Config.Styles) do
 		local selected = C.style == s.id
-		local b = UI.Button(body, "", { Size = UDim2.new(1, 0, 0, 62), BackgroundColor3 = selected and Color3.fromRGB(60, 50, 20) or T.panel }, function()
+		local b = UI.Button(body, "", { Size = UDim2.new(1, 0, 0, 66), BackgroundColor3 = selected and T.panel:Lerp(T.gold, 0.16) or T.panel }, function()
 			C.style = s.id
 			render()
 		end)
 		if selected then
 			UI.Stroke(b, T.gold, 2)
+			UI.Frame(b, { Size = UDim2.new(0, 4, 1, -16), Position = UDim2.fromOffset(0, 8), BackgroundColor3 = T.gold })
 		end
-		UI.Text(b, s.name, { Font = T.bold, Position = UDim2.fromOffset(12, 4), Size = UDim2.new(1, -24, 0, 22), AutomaticSize = Enum.AutomaticSize.None })
-		UI.Text(b, s.desc .. "  (" .. modsText(s.mods) .. ")", { TextColor3 = T.sub, TextSize = 13, Position = UDim2.fromOffset(12, 26), Size = UDim2.new(1, -24, 0, 32), AutomaticSize = Enum.AutomaticSize.None })
+		UI.Text(b, string.upper(s.name), { Face = "display", TextSize = 22, TextColor3 = selected and T.gold or T.text, Position = UDim2.fromOffset(14, 4), Size = UDim2.new(1, -28, 0, 28), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
+		UI.Text(b, s.desc .. "  (" .. modsText(s.mods) .. ")", { TextColor3 = T.sub, TextSize = 13, Position = UDim2.fromOffset(14, 32), Size = UDim2.new(1, -28, 0, 30), AutomaticSize = Enum.AutomaticSize.None })
 	end
 	local specs = idsOf(Config.Specialties)
 	UI.Cycler(body, "Specialty", specs, C.specialty, function(v)
@@ -692,11 +700,13 @@ local function pageStyle()
 	UI.Line(body, "Specialty bonus: " .. modsText(spec.stats) .. " and +25% training gains on those stats.", { TextColor3 = T.sub, TextSize = 13 })
 	UI.Header(body, "STARTING STATS")
 	local grid = UI.Frame(body, { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y })
-	UI.Grid(grid, UDim2.new(0.5, -4, 0, 24), nil, 4)
+	UI.Grid(grid, UDim2.new(0.5, -6, 0, 24), nil, 4)
+	grid:FindFirstChildOfClass("UIGridLayout").CellPadding = UDim2.fromOffset(12, 4)
 	local stats = startingStats()
 	for i, k in ipairs(Config.StatKeys) do
 		local v = stats[k]
-		UI.Text(grid, string.format("%s  %d", Config.StatNames[k], v), { TextSize = 15, LayoutOrder = i, AutomaticSize = Enum.AutomaticSize.None, Size = UDim2.new(1, 0, 1, 0), TextColor3 = v >= 40 and T.green or T.text })
+		local row = UI.StatRow(grid, string.upper(Config.StatNames[k]), v, 100, v >= 40 and T.green or T.gold)
+		row.LayoutOrder = i
 	end
 	UI.Line(body, string.format("Overall %d  -  You'll start as an amateur at the local gym with %s.", Config.Overall(stats), Config.Money(500)), { Font = T.semi, TextSize = 14 })
 end
@@ -713,8 +723,11 @@ function render()
 		return
 	end
 	UI.Clear(tabsFrame)
+	local cur = table.find(PAGES, page) or 1
 	for i, name in ipairs(PAGES) do
-		UI.Button(tabsFrame, name, { LayoutOrder = i, TextSize = 13, BackgroundColor3 = name == page and T.gold or T.panel2, TextColor3 = name == page and T.bg or T.text }, function()
+		local done = i < cur
+		UI.Button(tabsFrame, string.format("%d  %s", i, string.upper(name)), { LayoutOrder = i, TextSize = 13, BackgroundColor3 = name == page and T.gold or T.panel2,
+			TextColor3 = name == page and T.bg or (done and T.gold or T.text) }, function()
 			local wasHands = hands()
 			page = name
 			if hands() ~= wasHands then
@@ -737,6 +750,32 @@ function render()
 	end)
 	if nextBtn then
 		nextBtn.Text = page == PAGES[#PAGES] and "BEGIN CAREER" or "NEXT"
+	end
+end
+
+-- the live fighter plate (built in Creator.Open)
+local plate, plateFlag, plateNick, plateName, plateInfo, plateKey, plateConn
+function updatePlate()
+	if not (plate and plate.Parent) then
+		return
+	end
+	local wc = Config.WeightClasses[C.weightClass]
+	local style = Config.FindById(Config.Styles, C.style)
+	local key = table.concat({ C.first, C.last, C.nickname, C.nationality, tostring(C.weightClass), C.style, tostring(C.age) }, "|")
+	if key == plateKey then
+		return
+	end
+	plateKey = key
+	local first = C.first:gsub("^%s+", ""):gsub("%s+$", "")
+	local last = C.last:gsub("^%s+", ""):gsub("%s+$", "")
+	local name = (first .. " " .. last):gsub("^%s+", "")
+	plateName.Text = name ~= "" and string.upper(name) or "YOUR NAME"
+	plateName.TextColor3 = name ~= "" and T.text or T.dim
+	plateNick.Text = C.nickname ~= "" and ('"' .. string.upper(C.nickname) .. '"') or "AMATEUR  ·  DEBUT"
+	plateInfo.Text = string.format("%s  ·  %s  ·  %s  ·  AGE %d", string.upper(C.nationality), string.upper(wc and wc.name or "-"), string.upper(style and style.name or "-"), C.age)
+	UI.Clear(plateFlag)
+	if Flags then
+		pcall(Flags.Draw, plateFlag, C.nationality, { Size = UDim2.fromOffset(36, 24) })
 	end
 end
 
@@ -800,22 +839,53 @@ function Creator.Open()
 			State.toast(res.err or "Couldn't create your boxer", T.red)
 		end
 	end)
-	-- turntable controls (right side of the screen)
-	local turn = UI.Frame(shade, { Name = "Turntable", BackgroundTransparency = 1, Size = UDim2.fromOffset(220, 40), Position = UDim2.new(0.75, -110, 1, -60) })
-	UI.List(turn, 8, true, Enum.HorizontalAlignment.Center)
+	-- the live fighter plate over the 3D view: flag, name, nickname, division, style (updates as you type)
+	plate = UI.Frame(shade, { Name = "FighterPlate", AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -28, 1, -84), Size = UDim2.fromOffset(440, 112) })
+	UI.Glass(plate, { transparency = 0.12, radius = UI.R.lg })
+	UI.Frame(plate, { Name = "Accent", Size = UDim2.new(0, 4, 1, -20), Position = UDim2.fromOffset(0, 10), BackgroundColor3 = T.gold })
+	plateFlag = UI.Frame(plate, { Name = "Flag", BackgroundTransparency = 1, Position = UDim2.fromOffset(18, 16), Size = UDim2.fromOffset(36, 24) })
+	plateNick = UI.Text(plate, "", { Font = T.semi, TextSize = 12, TextColor3 = T.gold, Position = UDim2.fromOffset(64, 12), Size = UDim2.new(1, -80, 0, 14), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
+	plateName = UI.Text(plate, "", { Face = "display", TextSize = 34, Position = UDim2.fromOffset(64, 24), Size = UDim2.new(1, -80, 0, 42), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
+	plateInfo = UI.Text(plate, "", { Font = T.semi, TextSize = 12, TextColor3 = T.sub, Position = UDim2.fromOffset(18, 76), Size = UDim2.new(1, -36, 0, 24), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
+	plateKey = nil
+	-- phones: the plate moves to the top-right corner so it never covers the boxer
+	local function placePlate()
+		if not (plate and plate.Parent) then
+			return
+		end
+		local small = UI.CanvasSize(plate).Y < 640
+		plate.AnchorPoint = small and Vector2.new(1, 0) or Vector2.new(1, 1)
+		plate.Position = small and UDim2.new(1, -20, 0, 12) or UDim2.new(1, -28, 1, -84)
+	end
+	placePlate()
+	if plateConn then
+		plateConn:Disconnect()
+	end
+	plateConn = State.screen:GetPropertyChangedSignal("AbsoluteSize"):Connect(placePlate)
+	-- turntable dock (right side of the screen): rotate and zoom
+	local dock = UI.Frame(shade, { Name = "Turntable", AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -28, 1, -24), Size = UDim2.fromOffset(0, 48), AutomaticSize = Enum.AutomaticSize.X })
+	UI.Glass(dock, { transparency = 0.15, radius = 24 })
+	UI.New("UIPadding", { PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8), Parent = dock })
+	UI.List(dock, 6, true, Enum.HorizontalAlignment.Center)
+	UI.Text(dock, "ROTATE", { Font = T.semi, TextSize = 10, TextColor3 = T.sub, Size = UDim2.fromOffset(50, 48), AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false, LayoutOrder = 0 })
+	local turn = dock
 	local function spin(d)
 		camYaw += d
 	end
 	local held = 0
-	local zoom = UI.Frame(shade, { Name = "Zoom", BackgroundTransparency = 1, Size = UDim2.fromOffset(120, 40), Position = UDim2.new(0.75, -60, 1, -104) })
-	UI.List(zoom, 8, true, Enum.HorizontalAlignment.Center)
-	for _, z in ipairs({ { "+", -0.4 }, { "-", 0.4 } }) do
-		UI.Button(zoom, z[1], { Size = UDim2.fromOffset(50, 36), TextSize = 16 }, function()
+	local zoom = dock
+	UI.Frame(dock, { Size = UDim2.fromOffset(1, 26), BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = 0.8, LayoutOrder = 5 })
+	UI.Text(dock, "ZOOM", { Font = T.semi, TextSize = 10, TextColor3 = T.sub, Size = UDim2.fromOffset(40, 48), AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false, LayoutOrder = 6 })
+	for i, z in ipairs({ { "minus", 0.4 }, { "plus", -0.4 } }) do
+		local zb = UI.Button(zoom, "", { Size = UDim2.fromOffset(36, 36), LayoutOrder = 6 + i }, function()
 			camZoom = math.clamp(camZoom + z[2], -1, 1)
 		end)
+		zb:FindFirstChildOfClass("UICorner").CornerRadius = UDim.new(0, 18)
+		UI.Icon(zb, z[1], 14, T.text, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5) })
 	end
-	for _, def in ipairs({ { "<", 0.35 }, { "FRONT", 0 }, { ">", -0.35 } }) do
-		local b = UI.Button(turn, def[1], { Size = UDim2.fromOffset(def[1] == "FRONT" and 80 or 50, 36), TextSize = 14 }, function()
+	for i, def in ipairs({ { "<", 0.35 }, { "FRONT", 0 }, { ">", -0.35 } }) do
+		local icon = def[1] == "<" and "left" or (def[1] == ">" and "right" or nil)
+		local b = UI.Button(turn, icon and "" or def[1], { Size = UDim2.fromOffset(icon and 36 or 74, 36), TextSize = 14, LayoutOrder = i }, function()
 			if def[2] == 0 then
 				camYaw = 0
 			else
@@ -833,6 +903,10 @@ function Creator.Open()
 		b.MouseLeave:Connect(function()
 			held = 0
 		end)
+		b:FindFirstChildOfClass("UICorner").CornerRadius = UDim.new(0, 18)
+		if icon then
+			UI.Icon(b, icon, 14, T.text, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5) })
+		end
 	end
 	freeze(true)
 	camera(true)
@@ -848,6 +922,7 @@ function Creator.Open()
 		if held ~= 0 then
 			camYaw += held * dt * 4
 		end
+		updatePlate()
 		if dirty and os.clock() - lastSent > 0.28 then
 			local full = dirtyFull
 			dirty, dirtyFull = false, false
@@ -884,6 +959,10 @@ function Creator.Close()
 	if previewConn then
 		previewConn:Disconnect()
 		previewConn = nil
+	end
+	if plateConn then
+		plateConn:Disconnect()
+		plateConn = nil
 	end
 	camera(false)
 	setKeyLight(false)

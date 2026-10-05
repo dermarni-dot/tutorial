@@ -12,6 +12,9 @@
 --   m.groups[name] = { vertex ids } (deformation regions FaceFX / BodyFX drive, paint masks)
 --   m.W[name] = { per-vertex weight } (optional scalar channels, e.g. flex weights)
 --   m.landmarks[name] = { x, y, z } (points other systems align to, in the same space as P)
+--   m.morphs[name] = { ids = { vertex ids }, d = { dx, dy, dz, ... } } (blend shapes; optional, nil until
+--     AddMorph). Clone / Transform / Mirror / Append / Weld / Subdivide carry groups, W, landmarks and
+--     morphs along; Polygonize / Surface / Loft build fresh geometry (add morphs after them)
 -- Space: whatever the caller builds in; the anatomy generators build each piece in the local space of
 -- the R15 part it is welded to (studs, +X = the character's right, +Y up, -Z forward).
 --
@@ -48,7 +51,9 @@ MeshKit.RIGHT, MeshKit.FRONT, MeshKit.LEFT, MeshKit.BACK = 0, pi / 2, pi, pi * 1
 -- Chunking
 ------------------------------------------------------------------------
 local tickFn, tickCount = nil, 0
-MeshKit.TICK_EVERY = 600
+-- small enough that a loop of user callbacks (SDF samples, paint / shade functions at ~1-5 us each,
+-- counted 1 unit per call) reaches the tick well inside a millisecond; the tick itself is one clock read
+MeshKit.TICK_EVERY = 200
 
 -- fn() is called from inside heavy loops; it may yield (task.wait / coroutine.yield). nil = never.
 function MeshKit.SetTick(fn)
@@ -60,7 +65,8 @@ function MeshKit.GetTick()
 	return tickFn
 end
 
--- n units of work were done (a vertex ~ 1, a triangle ~ 1, an SDF sample ~ 0.3)
+-- n units of work were done (a vertex ~ 1, a triangle ~ 1, a user callback (SDF sample, paint / shade
+-- function) 1; cheap inner-loop steps less)
 local function step(n)
 	if tickFn then
 		tickCount += n or 1
@@ -347,12 +353,49 @@ function MeshKit.SelectGroup(m, name, fn, first, last)
 		if fn(P[i * 3 - 2], P[i * 3 - 1], P[i * 3], i) then
 			g[#g + 1] = i
 		end
+		step(1)
 	end
 	return g
 end
 
 function MeshKit.SetLandmark(m, name, x, y, z)
 	m.landmarks[name] = { x, y, z }
+end
+
+-- blend shape entry: vertex i moves by (dx, dy, dz) at full weight of morph `name` (piece-local studs).
+-- Seam duplicates (same position) need the same delta: add every vertex the region covers.
+function MeshKit.AddMorph(m, name, i, dx, dy, dz)
+	m.morphs = m.morphs or {}
+	local mo = m.morphs[name]
+	if not mo then
+		mo = { ids = {}, d = {} }
+		m.morphs[name] = mo
+	end
+	local n = #mo.ids + 1
+	mo.ids[n] = i
+	mo.d[n * 3 - 2], mo.d[n * 3 - 1], mo.d[n * 3] = dx, dy, dz
+end
+
+-- morphs remapped through map[oldId] -> newId (nil = dropped; the first delta wins for merged ids)
+local function remapMorphs(morphs, map)
+	if not morphs then
+		return nil
+	end
+	local out = {}
+	for name, mo in pairs(morphs) do
+		local ids, d, seen = {}, {}, {}
+		for k, i in ipairs(mo.ids) do
+			local n = map[i]
+			if n and not seen[n] then
+				seen[n] = true
+				local c = #ids + 1
+				ids[c] = n
+				d[c * 3 - 2], d[c * 3 - 1], d[c * 3] = mo.d[k * 3 - 2], mo.d[k * 3 - 1], mo.d[k * 3]
+			end
+		end
+		out[name] = { ids = ids, d = d }
+	end
+	return out
 end
 
 function MeshKit.Counts(m)
@@ -415,6 +458,12 @@ function MeshKit.Clone(m)
 		c.W = {}
 		for k, w in pairs(m.W) do
 			c.W[k] = copyList(w)
+		end
+	end
+	if m.morphs then
+		c.morphs = {}
+		for k, mo in pairs(m.morphs) do
+			c.morphs[k] = { ids = copyList(mo.ids), d = copyList(mo.d) }
 		end
 	end
 	c.meta = m.meta
@@ -536,6 +585,21 @@ function MeshKit.Transform(m, mt, first, last)
 		N[i3 - 2], N[i3 - 1], N[i3] = ux, uy, uz
 		step(0.3)
 	end
+	-- blend shape deltas are directions: the linear part only, for the vertices transformed
+	if m.morphs then
+		local lo, hi = first or 1, last or m.nv
+		for _, mo in pairs(m.morphs) do
+			local d = mo.d
+			for k, i in ipairs(mo.ids) do
+				if i >= lo and i <= hi then
+					local dx, dy, dz = d[k * 3 - 2], d[k * 3 - 1], d[k * 3]
+					d[k * 3 - 2] = mt[1] * dx + mt[2] * dy + mt[3] * dz
+					d[k * 3 - 1] = mt[4] * dx + mt[5] * dy + mt[6] * dz
+					d[k * 3] = mt[7] * dx + mt[8] * dy + mt[9] * dz
+				end
+			end
+		end
+	end
 	if not first and not last then
 		for _, p in pairs(m.landmarks) do
 			p[1], p[2], p[3] = MeshKit.MatApply(mt, p[1], p[2], p[3])
@@ -622,6 +686,15 @@ function MeshKit.Append(dst, src, mt, landmarkPrefix)
 		end
 		dst.landmarks[(landmarkPrefix or "") .. k] = { x, y, z }
 	end
+	for name, mo in pairs(src.morphs or {}) do
+		for k, i in ipairs(mo.ids) do
+			local dx, dy, dz = mo.d[k * 3 - 2], mo.d[k * 3 - 1], mo.d[k * 3]
+			if mt then
+				dx, dy, dz = mt[1] * dx + mt[2] * dy + mt[3] * dz, mt[4] * dx + mt[5] * dy + mt[6] * dz, mt[7] * dx + mt[8] * dy + mt[9] * dz
+			end
+			MeshKit.AddMorph(dst, name, i + base, dx, dy, dz)
+		end
+	end
 	return base
 end
 
@@ -668,6 +741,13 @@ function MeshKit.Mirror(m, axis, swapNames)
 			l[swap(k)] = v
 		end
 		c.groups, c.landmarks = g, l
+		if c.morphs then
+			local mo = {}
+			for k, v in pairs(c.morphs) do
+				mo[swap(k)] = v
+			end
+			c.morphs = mo
+		end
 	end
 	return c
 end
@@ -1565,7 +1645,8 @@ function MeshKit.Polygonize(m, f, x0, y0, z0, x1, y1, z1, cell, opts)
 		error("MeshKit.Polygonize: too many cells (" .. nx * ny * nz .. ")", 2)
 	end
 	local px, py = nx + 1, ny + 1
-	local F = {}
+	-- preallocated (index 0 aside, the array part): no multi-millisecond rehash halfway through sampling
+	local F = table.create(px * py * (nz + 1), 0)
 	local evals = 0
 	local function sample(i, j, k)
 		evals += 1
@@ -1581,8 +1662,8 @@ function MeshKit.Polygonize(m, f, x0, y0, z0, x1, y1, z1, cell, opts)
 				for i = 0, nx do
 					F[i + px * (j + py * k)] = sample(i, j, k)
 				end
+				step(px)
 			end
-			step(px * py * 0.3)
 		end
 	else
 		-- even lattice first, then every other point only where its nearest even point does not already
@@ -1592,8 +1673,8 @@ function MeshKit.Polygonize(m, f, x0, y0, z0, x1, y1, z1, cell, opts)
 				for i = 0, nx, 2 do
 					F[i + px * (j + py * k)] = sample(i, j, k)
 				end
+				step(px * 0.5)
 			end
-			step(px * py * 0.08)
 		end
 		local d1, d2, d3 = h * 1.15, h * sqrt(2) * 1.15, h * sqrt(3) * 1.15
 		for k = 0, nz do
@@ -1610,11 +1691,12 @@ function MeshKit.Polygonize(m, f, x0, y0, z0, x1, y1, z1, cell, opts)
 							F[i + px * (j + py * k)] = c < 0 and -(a - d) or (a - d)
 						else
 							F[i + px * (j + py * k)] = sample(i, j, k)
+							step(1)
 						end
 					end
 				end
+				step(px * 0.05)
 			end
-			step(px * py * 0.15)
 		end
 	end
 	-- one vertex per cell the surface crosses: the mean of its edge crossings
@@ -1654,8 +1736,8 @@ function MeshKit.Polygonize(m, f, x0, y0, z0, x1, y1, z1, cell, opts)
 					cellV[i + nx * (j + ny * k)] = vertex(m, x0 + (i + sx / cnt) * h, y0 + (j + sy / cnt) * h, z0 + (k + sz / cnt) * h)
 				end
 			end
+			step(nx * 0.4)
 		end
-		step(nx * ny * 0.4)
 	end
 	-- faces: every grid edge with a sign change gets a quad of the four cells around it
 	local function cellAt(i, j, k)
@@ -1702,8 +1784,8 @@ function MeshKit.Polygonize(m, f, x0, y0, z0, x1, y1, z1, cell, opts)
 					end
 				end
 			end
+			step(nx * 0.25)
 		end
-		step(nx * ny * 0.25)
 	end
 	-- project onto the surface (Newton steps on forward differences) and take the normal from the field
 	local refine = opts.refine or 1
@@ -1750,7 +1832,7 @@ function MeshKit.Polygonize(m, f, x0, y0, z0, x1, y1, z1, cell, opts)
 		if opts.group then
 			MeshKit.AddToGroup(m, opts.group, i)
 		end
-		step(1.5)
+		step(1 + 4 * max(1, refine))
 	end
 	if not smooth then
 		MeshKit.ComputeNormals(m, { first = first })
@@ -1874,18 +1956,19 @@ local function topology(m)
 			l[#l + 1] = b
 		end
 	end
+	local function edge(u, v)
+		if u ~= v then
+			link(u, v)
+			link(v, u)
+			local key = min(u, v) * stride + max(u, v)
+			edges[key] = (edges[key] or 0) + 1
+		end
+	end
 	for t = 1, m.nt do
 		local a, b, c = canon[T[t * 3 - 2]], canon[T[t * 3 - 1]], canon[T[t * 3]]
-		for _, e in ipairs({ { a, b }, { b, c }, { c, a } }) do
-			local u, v = e[1], e[2]
-			if u ~= v then
-				link(u, v)
-				link(v, u)
-				local lo, hi = min(u, v), max(u, v)
-				local key = lo * stride + hi
-				edges[key] = (edges[key] or 0) + 1
-			end
-		end
+		edge(a, b)
+		edge(b, c)
+		edge(c, a)
 		step(1)
 	end
 	return canon, nbr, edges, stride
@@ -1962,6 +2045,20 @@ function MeshKit.Weld(m, eps)
 	for k, p in pairs(m.landmarks) do
 		out.landmarks[k] = { p[1], p[2], p[3] }
 	end
+	if m.W then
+		out.W = {}
+		for k, w in pairs(m.W) do
+			local nw = table.create(out.nv, 0)
+			for i = 1, m.nv do
+				if canon[i] == i then
+					nw[map[i]] = w[i] or 0
+				end
+			end
+			out.W[k] = nw
+		end
+	end
+	out.morphs = remapMorphs(m.morphs, map)
+	out.meta = m.meta
 	return out, map
 end
 
@@ -2046,20 +2143,22 @@ function MeshKit.Subdivide(m, levels)
 		local P, T = cur.P, cur.T
 		-- opposite vertices per canonical edge
 		local opp = {}
+		local function addOpp(u, v, w)
+			if u ~= v then
+				local key = min(u, v) * stride + max(u, v)
+				local o = opp[key]
+				if not o then
+					o = {}
+					opp[key] = o
+				end
+				o[#o + 1] = w
+			end
+		end
 		for t = 1, cur.nt do
 			local a, b, c = canon[T[t * 3 - 2]], canon[T[t * 3 - 1]], canon[T[t * 3]]
-			for _, e in ipairs({ { a, b, c }, { b, c, a }, { c, a, b } }) do
-				local u, v, w = e[1], e[2], e[3]
-				if u ~= v then
-					local key = min(u, v) * stride + max(u, v)
-					local o = opp[key]
-					if not o then
-						o = {}
-						opp[key] = o
-					end
-					o[#o + 1] = w
-				end
-			end
+			addOpp(a, b, c)
+			addOpp(b, c, a)
+			addOpp(c, a, b)
 			step(1)
 		end
 		-- boundary neighbours of each canonical vertex
@@ -2191,6 +2290,30 @@ function MeshKit.Subdivide(m, levels)
 		for k, p in pairs(cur.landmarks) do
 			out.landmarks[k] = { p[1], p[2], p[3] }
 		end
+		-- blend shapes: even vertices keep their delta, odd ones take the mean of their parents' (a parent
+		-- outside the morph counts as 0)
+		if cur.morphs then
+			out.morphs = {}
+			for name, mo in pairs(cur.morphs) do
+				local dx, dy, dz = {}, {}, {}
+				local ids, d = table.clone(mo.ids), table.clone(mo.d)
+				for k, i in ipairs(mo.ids) do
+					dx[i], dy[i], dz[i] = mo.d[k * 3 - 2], mo.d[k * 3 - 1], mo.d[k * 3]
+				end
+				for idx = cur.nv + 1, out.nv do
+					local p = parents[idx]
+					if p and (dx[p[1]] or dx[p[2]]) then
+						local a, b = p[1], p[2]
+						local c = #ids + 1
+						ids[c] = idx
+						d[c * 3 - 2] = ((dx[a] or 0) + (dx[b] or 0)) / 2
+						d[c * 3 - 1] = ((dy[a] or 0) + (dy[b] or 0)) / 2
+						d[c * 3] = ((dz[a] or 0) + (dz[b] or 0)) / 2
+					end
+				end
+				out.morphs[name] = { ids = ids, d = d }
+			end
+		end
 		out.meta = cur.meta
 		cur = out
 	end
@@ -2226,7 +2349,7 @@ function MeshKit.Paint(m, fn, first, last)
 				ensureAlpha(m)[i] = a
 			end
 		end
-		step(0.5)
+		step(1)
 	end
 end
 
@@ -2342,7 +2465,7 @@ function MeshKit.BakeAO(m, opts)
 	local kc, kr, kd = opts.cavity or 0.35, opts.ridge or 0.08, opts.down or 0.12
 	local occ = opts.occluders
 	local ko = opts.occStrength or 0.5
-	local tint = opts.tint or { 0.35, 0.18, 0.14 }
+	local tint = opts.tint or { 0.42, 0.3, 0.26 }
 	local P, N, C = m.P, m.N, m.C
 	for i = 1, m.nv do
 		local i3 = i * 3
@@ -2374,7 +2497,7 @@ function MeshKit.BakeAO(m, opts)
 		g = lerp(g, g * tint[2] * 2, dark)
 		b = lerp(b, b * tint[3] * 2, dark)
 		C[i3 - 2], C[i3 - 1], C[i3] = min(1, r + light * (1 - r)), min(1, g + light * (1 - g)), min(1, b + light * (1 - b))
-		step(0.5)
+		step(occ and 0.5 + 0.1 * #occ or 0.5)
 	end
 	return cav
 end
@@ -2388,6 +2511,7 @@ function MeshKit.NoiseColor(m, amp, freq, seed, first, last)
 		C[i3 - 2] = clamp(C[i3 - 2] * k, 0, 1)
 		C[i3 - 1] = clamp(C[i3 - 1] * k, 0, 1)
 		C[i3] = clamp(C[i3] * k, 0, 1)
+		step(0.5)
 	end
 end
 
@@ -2403,7 +2527,7 @@ function MeshKit.Displace(m, fn, first, last)
 			P[i3 - 1] += ny * d
 			P[i3] += nz * d
 		end
-		step(0.3)
+		step(1)
 	end
 end
 
@@ -2416,7 +2540,7 @@ function MeshKit.Deform(m, fn, first, last)
 		if x then
 			P[i3 - 2], P[i3 - 1], P[i3] = x, y, z
 		end
-		step(0.3)
+		step(1)
 	end
 end
 
@@ -2448,10 +2572,13 @@ end
 ------------------------------------------------------------------------
 -- Checks
 ------------------------------------------------------------------------
--- returns ok, report { nv, nt, nan, badIndex, degenerate, badNormal, overLimit, msg }
+-- returns ok, report { nv, nt, nan, badIndex, repeated, degenerate, badNormal, overLimit, msg }.
+-- repeated (a triangle naming one vertex twice) fails: EditableMesh:AddTriangle refuses it, and an
+-- engine error there would read as an API fault. degenerate (zero area, three distinct vertices) only
+-- counts.
 function MeshKit.Validate(m, limits)
 	limits = limits or MeshKit.LIMITS
-	local rep = { nv = m.nv, nt = m.nt, nan = 0, badIndex = 0, degenerate = 0, badNormal = 0, overLimit = false }
+	local rep = { nv = m.nv, nt = m.nt, nan = 0, badIndex = 0, repeated = 0, degenerate = 0, badNormal = 0, overLimit = false }
 	for i = 1, m.nv * 3 do
 		local v = m.P[i]
 		if v ~= v or v == math.huge or v == -math.huge or m.N[i] ~= m.N[i] or m.C[i] ~= m.C[i] then
@@ -2469,6 +2596,7 @@ function MeshKit.Validate(m, limits)
 		if abs(l - 1) > 1e-3 then
 			rep.badNormal += 1
 		end
+		step(0.5)
 	end
 	local P = m.P
 	for t = 1, m.nt do
@@ -2477,7 +2605,7 @@ function MeshKit.Validate(m, limits)
 			or a % 1 ~= 0 or b % 1 ~= 0 or c % 1 ~= 0 then
 			rep.badIndex += 1
 		elseif a == b or b == c or a == c then
-			rep.degenerate += 1
+			rep.repeated += 1
 		else
 			local nx, ny, nz = cross(P[b * 3 - 2] - P[a * 3 - 2], P[b * 3 - 1] - P[a * 3 - 1], P[b * 3] - P[a * 3],
 				P[c * 3 - 2] - P[a * 3 - 2], P[c * 3 - 1] - P[a * 3 - 1], P[c * 3] - P[a * 3])
@@ -2485,11 +2613,12 @@ function MeshKit.Validate(m, limits)
 				rep.degenerate += 1
 			end
 		end
+		step(0.5)
 	end
 	rep.overLimit = m.nv > limits.verts or m.nt > limits.tris
-	local ok = rep.nan == 0 and rep.badIndex == 0 and rep.badNormal == 0 and not rep.overLimit and m.nt > 0
-	rep.msg = string.format("nv=%d nt=%d nan=%d badIndex=%d degenerate=%d badNormal=%d overLimit=%s", m.nv, m.nt, rep.nan, rep.badIndex,
-		rep.degenerate, rep.badNormal, tostring(rep.overLimit))
+	local ok = rep.nan == 0 and rep.badIndex == 0 and rep.repeated == 0 and rep.badNormal == 0 and not rep.overLimit and m.nt > 0
+	rep.msg = string.format("nv=%d nt=%d nan=%d badIndex=%d repeated=%d degenerate=%d badNormal=%d overLimit=%s", m.nv, m.nt, rep.nan,
+		rep.badIndex, rep.repeated, rep.degenerate, rep.badNormal, tostring(rep.overLimit))
 	return ok, rep
 end
 
@@ -2520,6 +2649,9 @@ function MeshKit.RasterizeUV(m, w, h, shade, opts)
 		buffer.writeu8(buf, o + 1, floor(bg[2] * 255))
 		buffer.writeu8(buf, o + 2, floor(bg[3] * 255))
 		buffer.writeu8(buf, o + 3, floor((bg[4] or 0) * 255))
+		if px % w == 0 then
+			step(w * 0.1)
+		end
 	end
 	for t = 1, m.nt do
 		local ia, ib, ic = T[t * 3 - 2], T[t * 3 - 1], T[t * 3]
@@ -2551,31 +2683,36 @@ function MeshKit.RasterizeUV(m, w, h, shade, opts)
 						put(px, py, r, g, b, a or 1)
 					end
 				end
+				-- a row of texel tests (a shade callback each): big triangles must not stall the frame
+				step((x1 - x0 + 1) * (shade and 1 or 0.2))
 			end
 		end
-		step(2)
+		step(1)
 	end
-	-- dilate filled texels into empty neighbours (mip / filtering bleed at UV seams)
+	-- dilate filled texels into empty neighbours (mip / filtering bleed at UV seams). Flat index lists:
+	-- no table per texel
+	local DX, DY = { 1, -1, 0, 0 }, { 0, 0, 1, -1 }
 	for _ = 1, opts.pad or 2 do
-		local add = {}
+		local dst, src, n = {}, {}, 0
 		for py = 0, h - 1 do
 			for px = 0, w - 1 do
 				if not filled[py * w + px + 1] then
-					for _, d in ipairs({ { 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 } }) do
-						local qx, qy = px + d[1], py + d[2]
+					for d = 1, 4 do
+						local qx, qy = px + DX[d], py + DY[d]
 						if qx >= 0 and qx < w and qy >= 0 and qy < h and filled[qy * w + qx + 1] then
-							add[#add + 1] = { px, py, (qy * w + qx) * 4 }
+							n += 1
+							dst[n], src[n] = py * w + px, qy * w + qx
 							break
 						end
 					end
 				end
 			end
-			step(w * 0.05)
+			step(w * 0.2)
 		end
-		for _, a in ipairs(add) do
-			local o, src = (a[2] * w + a[1]) * 4, a[3]
-			buffer.writeu32(buf, o, buffer.readu32(buf, src))
-			filled[a[2] * w + a[1] + 1] = true
+		for k = 1, n do
+			local o = dst[k]
+			buffer.writeu32(buf, o * 4, buffer.readu32(buf, src[k] * 4))
+			filled[o + 1] = true
 		end
 	end
 	return buf

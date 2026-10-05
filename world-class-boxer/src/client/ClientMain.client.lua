@@ -180,12 +180,19 @@ local function showResult(data)
 	local res = data.result
 	local shade
 	local function close()
+		State.windows.Result = nil
 		if shade then
 			shade:Destroy()
 		end
 	end
 	local win, body
-	shade, win, body = UI.Window(gui, "Result", 760, 700, nil, { footer = 64, accent = res.outcome == "win" and T.gold or (res.outcome == "loss" and T.red or T.sub) })
+	shade, win, body = UI.Window(gui, "Result", 760, 700, nil, { footer = 64, onClose = close, accent = res.outcome == "win" and T.gold or (res.outcome == "loss" and T.red or T.sub) })
+	-- a modal result: the HUD plate stays out of the picture until it is dismissed
+	State.HideHud("Result", true)
+	State.windows.Result = close -- another big window (Hub, barber...) closes it
+	shade.Destroying:Connect(function()
+		State.HideHud("Result", false)
+	end)
 	local col = res.outcome == "win" and T.gold or (res.outcome == "loss" and T.red or T.text)
 	local title = res.outcome == "win" and "VICTORY" or (res.outcome == "loss" and "DEFEAT" or "DRAW")
 	body.Position = UDim2.fromOffset(28, 150)
@@ -249,12 +256,18 @@ local function showSparResult(data)
 	local tr = data.training or {}
 	local shade
 	local function close()
+		State.windows.SparResult = nil
 		if shade then
 			shade:Destroy()
 		end
 	end
 	local win, body
-	shade, win, body = UI.Window(gui, "SparResult", 620, 560, "SPARRING  ·  " .. string.upper(data.intensity or ""), { footer = 60, kicker = "SESSION COMPLETE", accent = T.blue })
+	shade, win, body = UI.Window(gui, "SparResult", 620, 560, "SPARRING  ·  " .. string.upper(data.intensity or ""), { footer = 60, kicker = "SESSION COMPLETE", accent = T.blue, onClose = close })
+	State.HideHud("SparResult", true)
+	State.windows.SparResult = close
+	shade.Destroying:Connect(function()
+		State.HideHud("SparResult", false)
+	end)
 	UI.Line(body, string.format("Partner: %s  ·  %s", data.partner or "?", res.outcome == "win" and "you got the better of it" or (res.outcome == "loss" and "they got the better of it" or "an even session")),
 		{ Font = T.semi, TextSize = 15 })
 	local stats = UI.Card(body, { pad = 16 })

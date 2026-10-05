@@ -28,6 +28,13 @@ State.screen = UI.New("ScreenGui", {
 	ZIndexBehavior = Enum.ZIndexBehavior.Sibling, Parent = player:WaitForChild("PlayerGui"),
 })
 State.gui = UI.MountRoot(State.screen)
+-- toasts get their own layer above every full-screen UI (the main menu is DisplayOrder 30, the fight
+-- HUD 5): feedback raised while the menu is open is not buried under its backdrop
+State.toastScreen = UI.New("ScreenGui", {
+	Name = "BoxerToasts", ResetOnSpawn = false, IgnoreGuiInset = false, DisplayOrder = 35,
+	ZIndexBehavior = Enum.ZIndexBehavior.Sibling, Parent = player:WaitForChild("PlayerGui"),
+})
+State.toastRoot = UI.MountRoot(State.toastScreen)
 
 local changed = Instance.new("BindableEvent")
 State.Changed = changed.Event
@@ -56,7 +63,7 @@ function State.req(action, ...)
 end
 
 function State.toast(text, color, duration)
-	UI.Toast(State.gui, text, color, duration)
+	UI.Toast(State.toastRoot, text, color, duration)
 end
 
 function State.busy()

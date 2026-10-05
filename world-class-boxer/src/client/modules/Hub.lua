@@ -1399,6 +1399,7 @@ function Hub.Close()
 		shade:Destroy()
 		shade = nil
 	end
+	State.HideHud("Hub", false)
 end
 
 function Hub.IsOpen()
@@ -1418,6 +1419,9 @@ function Hub.Open(which)
 		return
 	end
 	State.closeAll("Hub")
+	-- the hub is modal: the HUD plate would peek out from behind it (hidden before the window exists,
+	-- so the refresh this triggers does not try to render a half-built hub)
+	State.HideHud("Hub", true)
 	local body
 	shade, win, body = UI.Window(State.gui, "Hub", 1180, 760, "CAREER HUB", { onClose = Hub.Close, scroll = false, kicker = string.format("%s  ·  %s", P.tierName, P.className) })
 	State.windows.Hub = Hub.Close

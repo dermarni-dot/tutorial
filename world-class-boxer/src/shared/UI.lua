@@ -261,6 +261,71 @@ local function textRole(props)
 	return nil
 end
 
+------------------------------------------------------------------------
+-- Readability floor: no text renders below UI.MinTextPx screen pixels
+------------------------------------------------------------------------
+-- A label's design size is kept in the attribute TextBase (and a UITextSizeConstraint's in MinTextBase);
+-- under a scaled root (UI.MountRoot) the size actually used is max(design, TextFloor(root scale)), so
+-- the 10 px captions of a 1080p layout grow to 14 design px at 720p and 15 on a phone, and stay 10 where
+-- there is room. Re-applied when a root rescales and when a subtree built elsewhere is parented under
+-- a root. Labels whose size changes later go through UI.SetTextSize.
+UI.MinTextPx = 11
+local FLOOR_LIMIT = 22 -- design sizes from here up are never below the floor (smallest root scale ~0.55)
+function UI.TextFloor(scale)
+	scale = tonumber(scale) or 1
+	return math.ceil(UI.MinTextPx / math.max(scale, 0.1) - 1e-6)
+end
+
+local function floorText(obj, floor)
+	local base = obj:GetAttribute("TextBase")
+	if type(base) == "number" then
+		local want = math.max(base, floor)
+		if obj.TextSize ~= want then
+			obj.TextSize = want
+		end
+		return
+	end
+	base = obj:GetAttribute("MinTextBase")
+	if type(base) == "number" and obj:IsA("UITextSizeConstraint") then
+		local want = math.max(base, floor)
+		if obj.MinTextSize ~= want then
+			if obj.MaxTextSize < want then
+				obj.MaxTextSize = want
+			end
+			obj.MinTextSize = want
+		end
+	end
+end
+
+local mounted = {} -- [root] = { gui, scale, floor } (UI.MountRoot)
+local function rootOf(obj)
+	local r = obj
+	while r and not mounted[r] do
+		r = r.Parent
+	end
+	return r
+end
+
+-- design text size for a label / button / box (the floor applies on top); use it instead of
+-- writing TextSize directly when a small label's size changes after it was built
+function UI.SetTextSize(obj, size)
+	if size < FLOOR_LIMIT then
+		obj:SetAttribute("TextBase", size)
+		local r = rootOf(obj)
+		obj.TextSize = r and math.max(size, mounted[r].floor) or size
+	else
+		obj:SetAttribute("TextBase", nil)
+		obj.TextSize = size
+	end
+	return obj
+end
+
+local function registerText(obj, props)
+	if not props.TextScaled and (props.TextSize or 16) < FLOOR_LIMIT then
+		UI.SetTextSize(obj, props.TextSize or 16)
+	end
+end
+
 function UI.Text(parent, text, props)
 	props = props or {}
 	props.Parent = parent
@@ -283,6 +348,7 @@ function UI.Text(parent, text, props)
 	end
 	local label = UI.New("TextLabel", props)
 	applyFace(label, props, role)
+	registerText(label, props)
 	return label
 end
 
@@ -462,6 +528,7 @@ function UI.Button(parent, text, props, onClick)
 	props.BorderSizePixel = 0
 	local b = UI.New("TextButton", props)
 	applyFace(b, props, role)
+	registerText(b, props)
 	UI.Corner(b, UI.R.md)
 	if b.BackgroundTransparency < 0.98 then
 		if variant == "secondary" then
@@ -674,7 +741,6 @@ function UI.ScaleFor(w, h, userScale)
 	return s * math.clamp(tonumber(userScale) or 1, 0.75, 1.3)
 end
 
-local mounted = {} -- [root] = { gui, scale }
 local function applyScale(root, info)
 	local gui = info.gui
 	local abs = gui.AbsoluteSize
@@ -685,30 +751,55 @@ local function applyScale(root, info)
 	local s = UI.ScaleFor(abs.X, abs.Y, UI.UserScale)
 	info.scale.Scale = s
 	root.Size = UDim2.fromScale(1 / s, 1 / s)
+	-- the readability floor follows the scale: every registered label under this root gets it
+	local floor = UI.TextFloor(s)
+	if floor ~= info.floor then
+		info.floor = floor
+		for _, d in ipairs(root:GetDescendants()) do
+			if d:GetAttribute("TextBase") ~= nil or d:GetAttribute("MinTextBase") ~= nil then
+				floorText(d, floor)
+			end
+		end
+	end
 	root:SetAttribute("UIScale", s)
 end
 
--- gives a ScreenGui one scaled root frame; everything goes inside it (returns the root)
+-- gives a ScreenGui one scaled root frame; everything goes inside it (returns the root). The
+-- listeners go away with the root (MainMenu mounts a new one every time it opens).
 function UI.MountRoot(gui, name)
 	local root = UI.New("Frame", { Name = name or "Root", BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.fromScale(1, 1), Parent = gui })
-	local info = { gui = gui, scale = UI.New("UIScale", { Name = "RootScale", Parent = root }) }
+	local info = { gui = gui, scale = UI.New("UIScale", { Name = "RootScale", Parent = root }), floor = 0 }
 	mounted[root] = info
 	applyScale(root, info)
-	gui:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+	local conns = {}
+	local function rescale()
 		if root.Parent then
 			applyScale(root, info)
 		end
-	end)
+	end
+	table.insert(conns, gui:GetPropertyChangedSignal("AbsoluteSize"):Connect(rescale))
 	local cam = workspace.CurrentCamera
 	if cam then
-		cam:GetPropertyChangedSignal("ViewportSize"):Connect(function()
-			if root.Parent then
-				applyScale(root, info)
-			end
-		end)
+		table.insert(conns, cam:GetPropertyChangedSignal("ViewportSize"):Connect(rescale))
 	end
+	-- a subtree built elsewhere and parented in here picks up the floor; a size constraint keeps its
+	-- design minimum in MinTextBase the first time it is seen
+	table.insert(conns, root.DescendantAdded:Connect(function(d)
+		if d:GetAttribute("TextBase") ~= nil or d:GetAttribute("MinTextBase") ~= nil then
+			floorText(d, info.floor)
+		elseif d:IsA("UITextSizeConstraint") then
+			if d.MinTextSize < FLOOR_LIMIT then
+				d:SetAttribute("MinTextBase", d.MinTextSize)
+				floorText(d, info.floor)
+			end
+		end
+	end))
 	root.Destroying:Connect(function()
 		mounted[root] = nil
+		for _, c in ipairs(conns) do
+			c:Disconnect()
+		end
+		table.clear(conns)
 	end)
 	return root
 end
@@ -725,19 +816,13 @@ end
 
 -- the scale of the root an object lives under (screen px per design px)
 function UI.ScaleOf(obj)
-	local root = obj
-	while root and not mounted[root] do
-		root = root.Parent
-	end
+	local root = rootOf(obj)
 	return root and mounted[root].scale.Scale or 1
 end
 
 -- the design-pixel size of the area an object lays out in (its root's canvas)
 function UI.CanvasSize(obj)
-	local root = obj
-	while root and not mounted[root] do
-		root = root.Parent
-	end
+	local root = rootOf(obj)
 	local screen = root and mounted[root].gui or obj:FindFirstAncestorWhichIsA("LayerCollector")
 	local abs = screen and screen.AbsoluteSize or Vector2.zero
 	if abs.X < 2 or abs.Y < 2 then
@@ -893,7 +978,8 @@ end
 ------------------------------------------------------------------------
 -- Inputs
 ------------------------------------------------------------------------
-local function dragTracker(target, onPos)
+-- onPos(screen position) while the pointer is held on target; onEnd() once it is released
+local function dragTracker(target, onPos, onEnd)
 	local dragging = false
 	local function update(input)
 		onPos(Vector2.new(input.Position.X, input.Position.Y))
@@ -910,8 +996,11 @@ local function dragTracker(target, onPos)
 		end
 	end)
 	local c2 = UserInputService.InputEnded:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+		if dragging and (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
 			dragging = false
+			if onEnd then
+				onEnd()
+			end
 		end
 	end)
 	target.Destroying:Connect(function()
@@ -930,10 +1019,24 @@ local function inputRow(parent, label, h)
 	return f
 end
 
--- slider row: returns frame, setValue(v)
-function UI.Slider(parent, label, min, max, value, step, onChange, fmt)
+-- input rows (slider, cycler, toggle) by frame: their step function, for keyboard / gamepad focus
+-- navigation (UI.Nudge; MainMenu's settings screen)
+local inputNudge = {}
+local function registerNudge(f, fn)
+	inputNudge[f] = fn
+	f.Destroying:Connect(function()
+		inputNudge[f] = nil
+	end)
+end
+
+-- slider row: returns frame, setValue(v). [-] and [+] buttons step it (gamepad selection + A, mouse,
+-- touch); dragging the track sets it directly. opts.onRelease: onChange fires when a drag ends
+-- instead of on every step of it (a setting that rebuilds the screen it lives on: the UI scale)
+function UI.Slider(parent, label, min, max, value, step, onChange, fmt, opts)
+	opts = opts or {}
 	local f = inputRow(parent, label)
-	local track = UI.Frame(f, { Name = "Track", Position = UDim2.new(0.36, 0, 0.5, -2), Size = UDim2.new(0.5, -18, 0, 4), BackgroundColor3 = T.ink, BackgroundTransparency = 0.1, Active = true })
+	f:SetAttribute("Slider", true)
+	local track = UI.Frame(f, { Name = "Track", Position = UDim2.new(0.36, 40, 0.5, -2), Size = UDim2.new(0.5, -98, 0, 4), BackgroundColor3 = T.ink, BackgroundTransparency = 0.1, Active = true })
 	UI.Corner(track, 2)
 	local fill = UI.Frame(track, { Size = UDim2.fromScale(0, 1), BackgroundColor3 = T.gold })
 	UI.Corner(fill, 2)
@@ -941,10 +1044,11 @@ function UI.Slider(parent, label, min, max, value, step, onChange, fmt)
 	local knob = UI.Frame(track, { Size = UDim2.fromOffset(16, 16), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0, 0.5), BackgroundColor3 = T.white })
 	UI.Corner(knob, 8)
 	UI.Stroke(knob, T.gold, 2)
-	local hit = UI.New("TextButton", { Parent = track, Text = "", BackgroundTransparency = 1, Size = UDim2.new(1, 16, 0, 32), Position = UDim2.new(0, -8, 0.5, -16) })
+	local hit = UI.New("TextButton", { Parent = track, Text = "", BackgroundTransparency = 1, Size = UDim2.new(1, 16, 0, 32), Position = UDim2.new(0, -8, 0.5, -16), Selectable = false })
 	local valText = UI.Text(f, "", { Face = "number", Position = UDim2.new(0.86, 0, 0, 0), Size = UDim2.new(0.14, -14, 1, 0), TextXAlignment = Enum.TextXAlignment.Right, TextSize = 17,
 		AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
 	local cur = value
+	local dragging = false
 	local function show(v)
 		local a = (v - min) / (max - min)
 		fill.Size = UDim2.fromScale(a, 1)
@@ -959,20 +1063,55 @@ function UI.Slider(parent, label, min, max, value, step, onChange, fmt)
 		if v ~= cur then
 			cur = v
 			show(v)
-			if fire and onChange then
+			if fire and onChange and not (dragging and opts.onRelease) then
 				onChange(v)
 			end
 		end
 	end
+	local committed = value
 	dragTracker(hit, function(pos)
+		dragging = true
 		local a = math.clamp((pos.X - track.AbsolutePosition.X) / math.max(1, track.AbsoluteSize.X), 0, 1)
 		set(min + (max - min) * a, true)
+	end, function()
+		dragging = false
+		if opts.onRelease and onChange and cur ~= committed then
+			committed = cur
+			onChange(cur)
+		end
 	end)
+	local function nudge(d)
+		set(cur + d * (step or (max - min) / 20), true)
+		committed = cur
+	end
+	for _, spec in ipairs({ { "Minus", -1, UDim2.new(0.36, 0, 0.5, 0), "minus" }, { "Plus", 1, UDim2.new(0.86, -50, 0.5, 0), "plus" } }) do
+		local b = UI.Button(f, "", { Name = spec[1], Size = UDim2.fromOffset(32, 32), AnchorPoint = Vector2.new(0, 0.5), Position = spec[3], BackgroundColor3 = T.panel2, BackgroundTransparency = 0.2 }, function()
+			nudge(spec[2])
+		end)
+		UI.Icon(b, spec[4], 12, T.text, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5) })
+	end
+	registerNudge(f, nudge)
 	show(value)
 	return f, function(v)
 		cur = v
+		committed = v
 		show(v)
 	end
+end
+
+-- steps the input row that contains obj (a slider's [-] / [+], a cycler, a toggle, or the row itself)
+-- by dir (-1 / +1; a toggle flips); false if obj is in none
+function UI.Nudge(obj, dir)
+	local o = obj
+	while o do
+		local fn = inputNudge[o]
+		if fn then
+			fn(dir)
+			return true
+		end
+		o = o.Parent
+	end
+	return false
 end
 
 -- on/off toggle row: a pill switch that slides
@@ -1001,13 +1140,15 @@ function UI.Toggle(parent, label, value, onChange)
 		stateText.Text = state and "ON" or "OFF"
 		stateText.TextColor3 = state and T.green or T.sub
 	end
-	sw.MouseButton1Click:Connect(function()
+	local function flip()
 		state = not state
 		show(true)
 		if onChange then
 			onChange(state)
 		end
-	end)
+	end
+	sw.MouseButton1Click:Connect(flip)
+	registerNudge(f, flip)
 	show(false)
 	return f
 end
@@ -1038,6 +1179,7 @@ function UI.Cycler(parent, label, list, value, onChange, display)
 		step(1)
 	end)
 	UI.Icon(nextB, "right", 12, T.text, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5) })
+	registerNudge(f, step)
 	show()
 	return f, function(v)
 		cur = v
@@ -1182,6 +1324,7 @@ function UI.TextInput(parent, label, value, placeholder, maxLen, onChange)
 		Position = UDim2.new(0.36, 0, 0.5, -17), Size = UDim2.new(0.64, -14, 0, 34), BackgroundColor3 = T.ink, BackgroundTransparency = 0.2, BorderSizePixel = 0,
 		TextColor3 = T.text, PlaceholderColor3 = T.dim, Font = T.font, TextSize = 15, TextXAlignment = Enum.TextXAlignment.Left,
 	})
+	UI.SetTextSize(box, 15)
 	UI.Corner(box, UI.R.md)
 	UI.Pad(box, 0, 10)
 	local stroke = UI.New("UIStroke", { Color = Color3.new(1, 1, 1), Transparency = 0.85, Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = box })

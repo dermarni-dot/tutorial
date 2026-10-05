@@ -199,20 +199,44 @@ local function museum()
 	end
 end
 
+-- what still stands between this gym and the ELITE tier (the summary's needs only cover the next tier
+-- up); a lower tier's line is kept only when Elite has none of its kind (e.g. a waived career rank)
+local function eliteNeeds(P, frac)
+	local list, kinds = {}, {}
+	for i = 3, 2, -1 do
+		local def = Config.GymTiers and Config.GymTiers[i]
+		local ok, needs = pcall(Catalog.GymTierNeeds, def, tonumber(frac) or 0, P.owned, P.tier)
+		for _, n in ipairs(ok and type(needs) == "table" and needs or {}) do
+			local kind = tostring(n):match("^%a+") or n
+			if i == 3 or not kinds[kind] then
+				kinds[kind] = true
+				table.insert(list, n)
+			end
+		end
+	end
+	return list
+end
+
 local function eliteCenter()
 	local P = State.P
 	local gt = P.gymTier or {}
 	local idx = gt.index or 1
+	-- exact progress (the summary's gt.frac is rounded to 2 places, which can round 54.5% up past 55%)
+	local frac = tonumber(gt.frac) or 0
+	if P.gym and type(P.gym.levels) == "table" then
+		local ok, f = pcall(Catalog.GymProgress, P.gym.levels)
+		frac = ok and tonumber(f) or frac
+	end
 	local body = openWindow("WCB ELITE PERFORMANCE CENTER", 560, 560)
 	if idx >= 3 then
 		UI.Line(body, "Welcome back. Cryotherapy, hot and cold plunge pools, the sports science lab and the motion capture studio are yours.", { TextSize = 14 })
 	else
 		UI.Line(body, "Members only. The center opens to fighters whose own gym reaches the Elite tier.", { TextSize = 14, TextColor3 = T.orange })
-		for _, n in ipairs(gt.needs or {}) do
+		for _, n in ipairs(eliteNeeds(P, frac)) do
 			UI.Line(body, "  - " .. n, { TextSize = 13, TextColor3 = T.sub })
 		end
 	end
-	UI.Line(body, string.format("Your facility: %s (%d%%)", tostring(gt.name or "Beginner Gym"), math.floor((gt.frac or 0) * 100 + 0.5)), { Font = T.semi })
+	UI.Line(body, string.format("Your facility: %s (%d%%)", tostring(gt.name or "Beginner Gym"), math.floor(frac * 100)), { Font = T.semi })
 	UI.Button(body, "FACILITY & EQUIPMENT", { Size = UDim2.new(0, 260, 0, 36), BackgroundColor3 = T.gold, TextColor3 = T.bg }, function()
 		hub("Gym")
 	end)

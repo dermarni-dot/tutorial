@@ -854,7 +854,9 @@ local function updateLegacy(P)
 	end)
 	local ecf = siteCF("MuseumExhibit")
 	local exhibit = (P.titlesWon or 0) > 0 or (P.legacy and P.legacy.hof)
-	group("MuseumExhibit", (exhibit and ecf) and (name .. tostring(P.titlesWon) .. table.concat(beltsOf(P), ",")) or "", function(f)
+	-- the plaque prints the nickname and record, so they are part of the key (rebuilt after each fight; ~10 parts)
+	local exKey = table.concat({ name, tostring(P.titlesWon), table.concat(beltsOf(P), ","), recText(P), nickOf(P) }, "|")
+	group("MuseumExhibit", (exhibit and ecf) and exKey or "", function(f)
 		part(f, "ExhibitBase", V3(6, 3, 3), ecf * CF(0, 1.5, 0), Color3.fromRGB(30, 26, 22), M.Wood, { collide = true })
 		part(f, "ExhibitGlass", V3(6, 3.4, 3), ecf * CF(0, 4.7, 0), Color3.fromRGB(210, 230, 245), M.Glass, { transparency = 0.65 })
 		local belts = beltsOf(P)
@@ -883,6 +885,7 @@ end
 -- Elite Performance Center: opens for an Elite-tier facility
 ------------------------------------------------------------------------
 local mocap = { cams = {}, target = nil, site = nil }
+local labMonitors = {} -- { name = TextLabel, bar = Frame } x3 in the sports science lab
 
 local function setEliteOpen(open)
 	local c = cityRoot()
@@ -907,7 +910,7 @@ local function setEliteOpen(open)
 	end
 end
 
-local function eliteDecor(f, P)
+local function eliteDecor(f)
 	local rec = siteCF("EliteRecovery")
 	if rec then
 		-- cryotherapy cabin with cold fog, hot & cold plunge pools with their temperatures
@@ -991,26 +994,46 @@ local function eliteDecor(f, P)
 		local edge = part(f, "ForcePlateEdge", V3(4.2, 0.05, 4.2), plate.CFrame * CF(0, 0.1, 0), Color3.fromRGB(80, 220, 255), M.Neon, { transparency = 0.5, shadow = false })
 		edge.CastShadow = false
 		part(f, "LabDesk", V3(9, 3, 2.6), lab * CF(0, 1.5, 7), WHITE, M.SmoothPlastic, { collide = true })
-		local recs = P.records or {}
-		local top = {}
-		for id, r in pairs(recs) do
-			if type(r) == "table" and (tonumber(r.best) or 0) > 0 then
-				table.insert(top, { id = id, best = tonumber(r.best) or 0 })
-			end
-		end
-		table.sort(top, function(x, y)
-			return x.best > y.best
-		end)
+		-- the monitors are filled by updateLabMonitors on every refresh (EliteDecor itself is only rebuilt when the center opens)
+		labMonitors = {}
 		for k = 0, 2 do
 			local mon = part(f, "LabMonitor", V3(2.6, 1.7, 0.12), lab * CF(-3 + k * 3, 4.0, 7.6), Color3.fromRGB(12, 14, 20), M.Glass)
 			local sg = gui(mon, Enum.NormalId.Front, 40, 0, 50)
 			frame(sg, { Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.fromRGB(10, 16, 28) })
-			local e = top[k + 1]
-			label(sg, e and tostring(e.id):upper() or "NO DATA", { TextColor3 = Color3.fromRGB(150, 220, 255), Size = UDim2.fromScale(0.9, 0.22), Position = UDim2.fromScale(0.05, 0.04) })
-			local pct = e and math.clamp(e.best / 1.45, 0, 1) or 0
-			frame(sg, { Size = UDim2.fromScale(0.8 * pct, 0.2), Position = UDim2.fromScale(0.1, 0.55), BackgroundColor3 = Color3.fromRGB(60, 200, 110) })
+			local title = label(sg, "NO DATA", { TextColor3 = Color3.fromRGB(150, 220, 255), Size = UDim2.fromScale(0.9, 0.22), Position = UDim2.fromScale(0.05, 0.04) })
+			local bar = frame(sg, { Size = UDim2.fromScale(0, 0.2), Position = UDim2.fromScale(0.1, 0.55), BackgroundColor3 = Color3.fromRGB(60, 200, 110) })
 			frame(sg, { Size = UDim2.fromScale(0.8, 0.02), Position = UDim2.fromScale(0.1, 0.78), BackgroundColor3 = Color3.fromRGB(80, 90, 110) })
+			table.insert(labMonitors, { name = title, bar = bar })
 		end
+	end
+end
+
+-- the lab's three best drills, refreshed in place after every training session
+local function updateLabMonitors(P)
+	if #labMonitors == 0 or not labMonitors[1].name.Parent then
+		return
+	end
+	local top = {}
+	for id, r in pairs(type(P.records) == "table" and P.records or {}) do
+		local best = type(r) == "table" and tonumber(r.best) or 0
+		if best == best and best > 0 then
+			table.insert(top, { id = id, best = best })
+		end
+	end
+	table.sort(top, function(x, y)
+		if x.best ~= y.best then
+			return x.best > y.best
+		end
+		return tostring(x.id) < tostring(y.id) -- stable order on ties (pairs order is not)
+	end)
+	for k, mon in ipairs(labMonitors) do
+		local e = top[k]
+		local act = e and Config.FindById and Config.FindById(Config.Activities, e.id)
+		local text = e and (act and act.name or tostring(e.id)):upper() or "NO DATA"
+		if mon.name.Text ~= text then
+			mon.name.Text = text
+		end
+		mon.bar.Size = UDim2.fromScale(0.8 * (e and math.clamp(e.best / 1.45, 0, 1) or 0), 0.2)
 	end
 end
 
@@ -1019,8 +1042,9 @@ local function updateElite(P)
 	setEliteOpen(open)
 	local ready = siteCF("EliteMocap") ~= nil
 	group("EliteDecor", (open and ready) and "open" or "", function(f)
-		eliteDecor(f, P)
+		eliteDecor(f)
 	end)
+	updateLabMonitors(P)
 	if not open then
 		mocap.cams = {}
 	end

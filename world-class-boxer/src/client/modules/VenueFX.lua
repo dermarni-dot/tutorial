@@ -772,8 +772,20 @@ local function updateSpots(dt, now)
 end
 
 ------------------------------------------------------------------------
--- Crowd (front-row arms, supporters, bulk-moved, distance-culled) and the upper bowl
+-- Crowd (front-row arms, supporters, bulk-moved, view-culled under a part budget) and the upper bowl
 ------------------------------------------------------------------------
+-- Every fan sits inside any venue-sized radius (Stadium's back row is ~126 studs from the ring), so
+-- distance alone culls nothing: a full Stadium is ~3,100 crowd parts. Instead only fans inside the
+-- camera's view cone bob, front rows first. The first CROWD_BUDGET parts queued in a tick move at the
+-- full rate (each fan every other tick, 15 Hz); fans past that still move, at half that rate (every
+-- 4th tick, 7.5 Hz: they are the back rows, small on screen), up to CROWD_SLOW_BUDGET more parts. A
+-- fan that leaves the view (or both budgets) is put back at rest once (no one frozen mid-jump).
+-- No distance cut: at 1080p / 70 deg a stud is still ~7 px at 110 studs, and an excited bob is 1-1.5
+-- studs, so the far rows of a wide shot visibly jump too.
+local CROWD_BUDGET = 420 -- full-rate parts per 30 Hz tick
+local CROWD_SLOW_BUDGET = 300 -- reduced-rate parts per tick once CROWD_BUDGET is spent
+local CROWD_EDGE = 3 -- studs of slack around the view cone (a fan's size)
+
 local function setupCrowd()
 	S.fans = {}
 	S.bulkParts, S.bulkCFs = {}, {}
@@ -782,7 +794,7 @@ local function setupCrowd()
 	if crowd then
 		for _, fan in ipairs(crowd:GetChildren()) do
 			if fan:IsA("BasePart") and fan.Name == "Fan" then
-				local e = { fan = fan, base = fan.CFrame, kids = {}, phase = math.random() * 6.28, speed = 5 + math.random() * 4, sup = fan:GetAttribute("Supporter") == true }
+				local e = { fan = fan, base = fan.CFrame, pos = fan.Position, kids = {}, phase = math.random() * 6.28, speed = 5 + math.random() * 4, sup = fan:GetAttribute("Supporter") == true, live = false }
 				for _, c in ipairs(fan:GetChildren()) do
 					if c:IsA("BasePart") then
 						local side = c:GetAttribute("Side")
@@ -790,8 +802,10 @@ local function setupCrowd()
 						table.insert(e.kids, { p = c, rel = rel, side = (c.Name == "ArmL" or c.Name == "ArmR") and side or nil })
 					end
 				end
+				e.n = 1 + #e.kids
 				table.insert(S.fans, e)
 				local flat = V3(fan.Position.X - S.center.X, 0, fan.Position.Z - S.center.Z)
+				e.ringD = flat.Magnitude
 				minR = math.min(minR, flat.Magnitude)
 				maxR = math.max(maxR, flat.Magnitude)
 				sumY += fan.Position.Y
@@ -799,9 +813,24 @@ local function setupCrowd()
 			end
 		end
 	end
+	-- front rows first: when the budget runs out it is the far, small fans that hold still
+	table.sort(S.fans, function(a, b)
+		return a.ringD < b.ringD
+	end)
 	S.crowdR = n > 0 and (minR + maxR) / 2 or 30
 	S.crowdY = n > 0 and (sumY / n - S.center.Y) or 4
 	S.fanIdx = 0
+end
+
+-- queue a fan (and its head / hair / arms) back at its seated pose
+local function homeFan(e, parts, cfs, k)
+	k += 1
+	parts[k], cfs[k] = e.fan, e.base
+	for _, c in ipairs(e.kids) do
+		k += 1
+		parts[k], cfs[k] = c.p, e.base * c.rel
+	end
+	return k
 end
 
 local function updateCrowd(dt, now)
@@ -811,15 +840,41 @@ local function updateCrowd(dt, now)
 		return
 	end
 	local cam = workspace.CurrentCamera
-	local camPos = cam and cam.CFrame.Position or S.center
+	local camCF = cam and cam.CFrame or CF(S.center)
+	local camPos, look = camCF.Position, camCF.LookVector
+	-- the view cone through the frustum's corners: tan(half diagonal) = tan(vfov/2) * sqrt(1 + aspect^2)
+	local vp = cam and cam.ViewportSize
+	local aspect = (vp and vp.Y > 0) and vp.X / vp.Y or 16 / 9
+	local tanD = math.tan(math.rad((cam and cam.FieldOfView or 70) * 0.5)) * math.sqrt(1 + aspect * aspect)
 	local ex = S.excite
 	local parts, cfs = S.bulkParts, S.bulkCFs
-	local k = 0
-	-- half the crowd per tick: at 30 Hz each fan still moves 15 times a second
-	S.fanIdx = (S.fanIdx + 1) % 2
+	local k, moved, slow = 0, 0, 0
+	-- half the crowd per tick: at 30 Hz each fan still moves 15 times a second. The slow lane takes
+	-- every other one of this tick's fans in turn (fanTick 0..3), so each of them moves every 4th tick
+	S.fanTick = ((S.fanTick or 0) + 1) % 4
+	S.fanIdx = S.fanTick % 2
+	local slowTurn = S.fanTick < 2 and 0 or 1
 	for i = 1 + S.fanIdx, count, 2 do
 		local e = fans[i]
-		if (e.base.Position - camPos).Magnitude < 170 then
+		local d = e.pos - camPos
+		local along = d:Dot(look)
+		local show, hold = false, false
+		if along > -CROWD_EDGE then
+			local reach = math.max(along, 0) * tanD + CROWD_EDGE
+			if d:Dot(d) - along * along <= reach * reach then
+				if moved + e.n <= CROWD_BUDGET then
+					show = true
+					moved += e.n
+				elseif math.floor((i - 1) / 2) % 2 ~= slowTurn then
+					hold = e.live -- in view, not its slow-lane turn: keep the last pose
+				elseif slow + e.n <= CROWD_SLOW_BUDGET then
+					show = true
+					slow += e.n
+				end
+			end
+		end
+		if show then
+			e.live = true
 			local amp = 0.08 + ex * 1.1 + (e.sup and S.supportBoost or 0)
 			local up = math.max(0, math.sin(now * e.speed + e.phase)) * amp
 			local sway = math.sin(now * 1.1 + e.phase) * 0.05 * (0.3 + ex)
@@ -838,6 +893,10 @@ local function updateCrowd(dt, now)
 					cfs[k] = cf * c.rel
 				end
 			end
+		elseif e.live and not hold then
+			-- out of view / budget: back in the seat once, then left alone
+			e.live = false
+			k = homeFan(e, parts, cfs, k)
 		end
 	end
 	for j = k + 1, #parts do

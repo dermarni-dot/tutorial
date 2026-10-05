@@ -9,16 +9,23 @@
 -- * per section: generate (pure MeshKit data, cached by section signature + level of detail), write
 --   EditableMeshes, AssetService:CreateMeshPartAsync, weld the MeshParts to their parts, optional
 --   EditableImage colour texture, then hide what the section replaces (LocalTransparencyModifier);
---   a rebuild swaps geometry in place with MeshPart:ApplyMesh
+--   a rebuild builds the new MeshParts first and swaps them in within one frame (no flicker)
 -- * level of detail: full for the local player, the fight opponent and the Config.Anatomy.maxFull
 --   nearest within fullRange; medium / low further out; round-1 parts beyond lodRange
 -- * one serial worker, time-sliced (Config.Anatomy.frameBudget per frame through MeshKit's tick), so
 --   building never hitches; cancelled when the model goes away or its look changes again
--- * any Editable API failure (not enabled for the experience, memory budget) disables meshes for the
---   session, restores every character and warns once; a generator error disables that section only
+-- * the Editable API not working at all (not enabled for the experience, unverified creator: the
+--   one-time probe fails) disables meshes for the session, restores every character and warns once;
+--   a creation failing later (the per-device memory budget) only lowers how much is built: a cap on
+--   the estimated Editable memory, the farthest characters back to round-1 parts, a cool-down, and
+--   only after repeated failures the session switch-off; a generator error disables that section only
 -- Start: AnatomyClient.Start() (idempotent, client only). Any other public call starts it too, so the
--- first module that touches it (ClientMain, FaceFX, the Creator) brings it up. ANATOMY_CONTRACTS.md has
--- the generator contract (piece / landmark / replace rule shapes, budgets, coordinate conventions).
+-- first module that touches it (ClientMain, FaceFX, the Creator) brings it up. Settings: SetEnabled(on),
+-- SetDetail("full" | "medium" | "low" | "auto"), the Settings table. FX modules: OnBuilt / OnRestored,
+-- GetPieces, GetLandmarks / GetLandmarkWorld, SetMorphs (blend shapes), SetVertexOffsets / SetVertexColors,
+-- SetPieceTransform (rigid lids / jaw / hair clumps), IsReplaced (leave hidden round-1 parts alone).
+-- ANATOMY_CONTRACTS.md has the generator contract (piece / landmark / morph / replace rule shapes,
+-- budgets, coordinate conventions).
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local CollectionService = game:GetService("CollectionService")
@@ -37,16 +44,21 @@ AnatomyClient.Settings = {
 	meshCentered = true, -- a MeshPart made from an EditableMesh is centred on the mesh's bounding box
 	flipV = false, -- flip texture v if textures show upside down
 	cacheSize = 24, -- generated sections kept for re-use (NPCs walking back into range, LOD flips)
+	cacheMB = 32, -- ... and at most this much Lua memory of mesh data (estimate) in that cache
 	promoteHold = 1.5, -- seconds a model must want a higher level of detail before it is rebuilt
-	demoteHold = 12, -- ... and a lower one (or out of range): lowering only saves memory, so it waits -- seconds a model keeps its level of detail before it may change again
+	demoteHold = 12, -- ... and a lower one (or out of range): lowering only saves memory, so it waits
 	debug = false,
 }
+
+-- the module's own values (Start() puts Config.Anatomy over every setting still equal to these)
+local DEFAULTS = table.clone(AnatomyClient.Settings)
 
 local TRACK_TAGS = { "Anatomy", "Fighter", "Trainee", "Ambient", "Referee", "Preview" }
 local SECTION_ORDER = { Body = 1, Head = 2, Hair = 3 }
 local GENERATORS = { AnatomyBody = "Body", AnatomyHead = "Head", AnatomyHair = "Hair" }
 local LOD_RANK = { full = 3, medium = 2, low = 1 }
-local CANCEL = "\0AnatomyCancelled"
+-- raised through MeshKit's tick to abandon a build (printable: it shows up in logs as a caught error)
+local CANCEL = "[AnatomyClient: build cancelled]"
 
 local started = false
 local running = false
@@ -61,8 +73,20 @@ local warned = {}
 local listeners = { built = {}, restored = {} }
 local conns = {}
 local workerBusy = false
+local workerGen = 0 -- a Stop() + Start() never leaves two workers running
 local lastEval = 0
 local localHidden = false
+local userSet = {} -- Settings keys SetDetail forced (Config.Anatomy does not overwrite them at boot)
+-- Editable memory pressure: the budget per device is not documented, so a creation failure after a
+-- working probe sets a cap on the estimated live Editable bytes (85 % of what was alive then), sheds
+-- the lowest-priority characters to fit and pauses building for a few seconds. MAX_PRESSURE failures
+-- (or one with nothing alive) switch meshes off for the session.
+local pressure = { cap = math.huge, fails = 0, untilT = 0 }
+local MAX_PRESSURE = 4
+local PRESSURE_COOLDOWN = 6
+-- rough EditableMesh / EditableImage memory per element (bytes): only ratios matter (the cap is set
+-- from the same estimate)
+local BYTES_PER_VERT, BYTES_PER_TRI = 64, 48
 
 local function log(...)
 	if AnatomyClient.Settings.debug then
@@ -282,12 +306,19 @@ local function reassertLocal()
 			inst.LocalTransparencyModifier = 1
 		end
 	end
+	for part in pairs(rec.covered) do
+		if part.Parent == nil then
+			rec.covered[part] = nil
+		elseif part.LocalTransparencyModifier < 1 then
+			part.LocalTransparencyModifier = 1
+		end
+	end
 end
 
 local function updateLocalBinding()
 	local char = Players.LocalPlayer and Players.LocalPlayer.Character
 	local rec = char and records[char]
-	local want = rec ~= nil and next(rec.hidden) ~= nil
+	local want = rec ~= nil and (next(rec.hidden) ~= nil or next(rec.covered) ~= nil)
 	if want == localHidden then
 		return
 	end
@@ -307,6 +338,40 @@ end
 -- Pieces (MeshParts) on a model
 ------------------------------------------------------------------------
 -- the part a piece is welded to: an R15 part name, or a dotted path from the model ("BoxerLook.Hair.Pivot")
+-- headgear / robe hood: Builder sets HairHiddenHeadgear / HairHiddenHood on the model (BuilderHair.SetHairHidden).
+-- Pieces with hideUnder (default: every Hair piece) are hidden locally while the matching one is on.
+local COVER_DEFAULT = { headgear = true, hood = true }
+local function applyCovers(rec)
+	local model = rec.model
+	local hg = model:GetAttribute("HairHiddenHeadgear") == true
+	local hood = model:GetAttribute("HairHiddenHood") == true
+	for section, st in pairs(rec.sections) do
+		for _, pr in pairs(st.pieces or {}) do
+			local part = pr.part
+			if part then
+				local rule = pr.hideUnder
+				if rule == nil and section == "Hair" then
+					rule = COVER_DEFAULT
+				end
+				local hide = type(rule) == "table" and ((hg and rule.headgear ~= false) or (hood and rule.hood ~= false))
+				if hide then
+					rec.covered[part] = true
+					part.LocalTransparencyModifier = 1
+				elseif rec.covered[part] then
+					rec.covered[part] = nil
+					part.LocalTransparencyModifier = 0
+				end
+			end
+		end
+	end
+	for part in pairs(rec.covered) do
+		if part.Parent == nil then
+			rec.covered[part] = nil
+		end
+	end
+	updateLocalBinding()
+end
+
 local function resolveAttach(model, attach)
 	local cur = model
 	for name in string.gmatch(attach, "[^%.]+") do
@@ -404,19 +469,42 @@ local function cacheGet(key)
 	return nil
 end
 
+-- Lua heap a generated result holds (16 bytes per array slot: P N C 3 each, U 2, A / W 1, T 3 per triangle)
+local function resultBytes(result)
+	local n = 0
+	for _, piece in pairs(result.pieces or {}) do
+		local m = piece.mesh
+		if type(m) == "table" and m.nv then
+			n += (m.nv * 12 + m.nt * 3) * 16
+		end
+	end
+	return n
+end
+
+local cacheBytes = 0
 local function cachePut(key, result)
-	if not cache[key] then
+	local old = cache[key]
+	if old then
+		cacheBytes -= old.bytes
+	else
 		cacheCount += 1
 	end
 	useCounter += 1
-	cache[key] = { result = result, used = useCounter }
-	while cacheCount > AnatomyClient.Settings.cacheSize do
+	local bytes = resultBytes(result)
+	cache[key] = { result = result, used = useCounter, bytes = bytes }
+	cacheBytes += bytes
+	local S = AnatomyClient.Settings
+	while cacheCount > 1 and (cacheCount > S.cacheSize or cacheBytes > (S.cacheMB or 32) * 1048576) do
 		local oldKey, oldUse = nil, math.huge
 		for k, c in pairs(cache) do
-			if c.used < oldUse then
+			if c.used < oldUse and k ~= key then
 				oldKey, oldUse = k, c.used
 			end
 		end
+		if not oldKey then
+			break
+		end
+		cacheBytes -= cache[oldKey].bytes
 		cache[oldKey] = nil
 		cacheCount -= 1
 	end
@@ -510,7 +598,8 @@ local function sectionFailed(section, err)
 end
 
 -- MeshPart for one piece (not parented yet); returns piece record or nil, err, fatal
-local function makePiece(rec, name, piece, bodyLod)
+local makePiece
+function makePiece(rec, name, piece, bodyLod)
 	local model = rec.model
 	local attachName = piece.attach or name
 	local attach = resolveAttach(model, attachName)
@@ -522,19 +611,65 @@ local function makePiece(rec, name, piece, bodyLod)
 	if not ok then
 		return nil, "invalid mesh " .. name .. ": " .. rep.msg, "gen"
 	end
-	local em, info = MeshKit.ToEditableMesh(mesh, { assetService = AssetService, flipV = AnatomyClient.Settings.flipV })
+	-- the colour texture first: when it exists the mesh is written WITHOUT vertex colours (the texture,
+	-- rasterised from them, carries the colour), so the look never depends on how the engine combines the
+	-- two; when it cannot be made the mesh keeps its vertex colours
+	local img
+	local texBytes = 0
+	local tex = piece.texture
+	if tex and AnatomyClient.Settings.textures and api.textures then
+		local w, h = tex.w or (tex.size and tex.size[1]) or 256, tex.h or (tex.size and tex.size[2]) or 256
+		local buf = tex.buffer
+		if not buf then
+			local okR, res = pcall(MeshKit.RasterizeUV, mesh, w, h, tex.shade, { pad = tex.pad })
+			if not okR then
+				if isCancel(res) then
+					error(res, 0)
+				end
+				warnOnce("tex" .. name, "texture for " .. name .. " failed:", res)
+			else
+				buf = res
+			end
+		end
+		if buf then
+			local im, err = MeshKit.ToEditableImage(w, h, buf, { assetService = AssetService })
+			if im then
+				img = im
+				texBytes = w * h * 4
+			else
+				-- textures are optional: keep the vertex colours, stop asking for images this session
+				api.textures = false
+				warnOnce("teximg", "EditableImage textures are off for this session:", err)
+			end
+		end
+	end
+	local em, info = MeshKit.ToEditableMesh(mesh, { assetService = AssetService, flipV = AnatomyClient.Settings.flipV, noColors = img ~= nil })
 	if not em then
+		if img then
+			pcall(img.Destroy, img)
+		end
+		-- the writer's own pcall also catches a cancellation raised by the tick inside it: not an API fault
+		if isCancel(info) then
+			error(CANCEL, 0)
+		end
 		return nil, info, "api"
 	end
-	tick()
 	local okMP, mp = pcall(function()
 		return AssetService:CreateMeshPartAsync(Content.fromObject(em), {
 			CollisionFidelity = Enum.CollisionFidelity.Box, RenderFidelity = Enum.RenderFidelity.Automatic,
 		})
 	end)
 	sliceStart = os.clock()
-	if not okMP or not mp then
+	if not okMP or not mp or (currentJob and currentJob.cancelled) then
+		-- (CreateMeshPartAsync yields: the job may have been cancelled meanwhile)
 		pcall(em.Destroy, em)
+		if img then
+			pcall(img.Destroy, img)
+		end
+		if okMP and mp then
+			mp:Destroy()
+			error(CANCEL, 0)
+		end
 		return nil, "CreateMeshPartAsync: " .. tostring(mp), "api"
 	end
 	local cx, cy, cz, sx, sy, sz = MeshKit.BoxCenter(mesh)
@@ -555,58 +690,41 @@ local function makePiece(rec, name, piece, bodyLod)
 			mp.DoubleSided = true
 		end)
 	end
+	if img then
+		local okT, errT = pcall(function()
+			mp.TextureContent = Content.fromObject(img)
+		end)
+		if not okT then
+			-- the mesh was written without vertex colours (the texture carried them): drop this one and
+			-- make the piece again with its vertex colours, textures off for the session
+			pcall(img.Destroy, img)
+			pcall(em.Destroy, em)
+			mp:Destroy()
+			api.textures = false
+			warnOnce("texset", "TextureContent refused (" .. tostring(errT) .. "): textures are off for this session")
+			return makePiece(rec, name, piece, bodyLod)
+		end
+	end
 	-- a MeshPart is centred on its mesh's bounding box: the weld puts that centre where it sits in the
 	-- attach part's space
 	local centre = AnatomyClient.Settings.meshCentered and CFrame.new(cx, cy, cz) or CFrame.identity
-	local pr = { name = name, attach = attachName, attachPart = attach, part = mp, em = em, info = info, mesh = mesh,
-		centre = centre, size = Vector3.new(sx, sy, sz), lod = bodyLod, bounds = { MeshKit.Bounds(mesh) } }
-	-- colour texture
-	local tex = piece.texture
-	if tex and AnatomyClient.Settings.textures and api.textures then
-		local w, h = tex.w or (tex.size and tex.size[1]) or 256, tex.h or (tex.size and tex.size[2]) or 256
-		local buf = tex.buffer
-		if not buf then
-			local okR, res = pcall(MeshKit.RasterizeUV, mesh, w, h, tex.shade, { pad = tex.pad })
-			if not okR then
-				if isCancel(res) then
-					destroyPiece(pr)
-					error(res, 0)
-				end
-				warnOnce("tex" .. name, "texture for " .. name .. " failed:", res)
-			else
-				buf = res
-			end
-		end
-		if buf then
-			local img, err = MeshKit.ToEditableImage(w, h, buf, { assetService = AssetService })
-			if img then
-				pr.img = img
-				local okT = pcall(function()
-					mp.TextureContent = Content.fromObject(img)
-				end)
-				if not okT then
-					pcall(img.Destroy, img)
-					pr.img = nil
-				end
-			else
-				-- textures are optional: keep the vertex colours, stop asking for images
-				api.textures = false
-				warnOnce("teximg", "EditableImage textures are off for this session:", err)
-			end
-		end
-	end
+	local cost = mesh.nv * BYTES_PER_VERT + mesh.nt * BYTES_PER_TRI + (img and texBytes or 0)
+	local pr = { name = name, attach = attachName, attachPart = attach, part = mp, em = em, info = info, mesh = mesh, img = img,
+		centre = centre, size = Vector3.new(sx, sy, sz), lod = bodyLod, bounds = { MeshKit.Bounds(mesh) }, hideUnder = piece.hideUnder,
+		cost = cost }
 	return pr
 end
 
 local function attachPiece(rec, pr)
 	local attach = pr.attachPart
 	local mp = pr.part
-	mp.CFrame = attach.CFrame * pr.centre
+	local c0 = (pr.xform or CFrame.identity) * pr.centre
+	mp.CFrame = attach.CFrame * c0
 	local weld = Instance.new("Weld")
 	weld.Name = "AnatomyWeld"
 	weld.Part0 = attach
 	weld.Part1 = mp
-	weld.C0 = pr.centre
+	weld.C0 = c0
 	weld.C1 = CFrame.identity
 	weld.Parent = mp
 	pr.weld = weld
@@ -645,6 +763,53 @@ local function landmarksOf(result, section)
 	return out
 end
 
+-- estimated Editable bytes alive right now (every built piece on every model)
+local function liveCost()
+	local total = 0
+	for _, rec in pairs(records) do
+		for _, st in pairs(rec.sections) do
+			for _, pr in pairs(st.pieces or {}) do
+				total += pr.cost or 0
+			end
+		end
+	end
+	return total
+end
+
+-- estimated bytes of one section at one level: the cached generation if there is one, else the budget
+local function sectionCost(section, sig, lod)
+	local c = cache[section .. "|" .. tostring(sig) .. "|" .. lod]
+	if c then
+		local total = 0
+		for _, piece in pairs(c.result.pieces or {}) do
+			local m = piece.mesh
+			if m then
+				total += m.nv * BYTES_PER_VERT + m.nt * BYTES_PER_TRI
+			end
+		end
+		return total
+	end
+	local tris = Config and Config.Anatomy and Config.Anatomy.tris and Config.Anatomy.tris[section]
+	tris = tris and tris[lod] or 5000
+	return tris * (0.6 * BYTES_PER_VERT + BYTES_PER_TRI)
+end
+
+-- a creation failed although the probe worked: the device's Editable memory is full. Returns true when
+-- meshes stay on (with a lower cap), false when they were switched off for the session.
+local function onCreateFailed(err)
+	pressure.fails += 1
+	local live = liveCost()
+	if pressure.fails >= MAX_PRESSURE or live <= 0 then
+		disableEditables(err)
+		return false
+	end
+	pressure.cap = math.min(pressure.cap, live * 0.85)
+	pressure.untilT = os.clock() + PRESSURE_COOLDOWN
+	warnOnce("pressure", "Editable memory is full (" .. tostring(err) .. "): fewer / lower-detail mesh characters from now on")
+	lastEval = 0
+	return true
+end
+
 local function runJob(job)
 	local rec, section, lod = job.rec, job.section, job.lod
 	local def = registry[section]
@@ -655,7 +820,9 @@ local function runJob(job)
 		return
 	end
 	local model = rec.model
-	local look = rec.look
+	-- the look this job was queued with: the generation is cached under job.sig, so it must come from
+	-- exactly that look even if a newer one arrived meanwhile (the newer one gets its own job)
+	local look = job.look
 	if not look or not model.Parent then
 		return
 	end
@@ -722,7 +889,10 @@ local function runJob(job)
 		if not pr then
 			abandon()
 			if kind == "api" then
-				disableEditables(err)
+				-- retried after the cool-down (at whatever level the lower cap allows)
+				if onCreateFailed(err) then
+					job.retry = true
+				end
 			elseif kind == "gen" then
 				sectionFailed(section, err)
 			else
@@ -739,40 +909,40 @@ local function runJob(job)
 	end
 	MeshKit.SetTick(nil)
 	currentJob = nil
-	-- 3) swap in atomically: same-named pieces take the new geometry in place (ApplyMesh)
+	-- 3) swap in within this frame: the new MeshParts (welded, parented) replace the old ones, which are
+	-- destroyed right after, so the character never shows a gap or a doubled piece. A rigid transform
+	-- (SetPieceTransform) carries over to the same-named piece. (No MeshPart:ApplyMesh: whether a part
+	-- that took another's mesh stays live-linked to that EditableMesh is not documented.)
 	if job.cancelled or not model.Parent or rec.dead then
 		abandon()
 		return
 	end
 	local st = rec.sections[section] or { pieces = {} }
 	local old = st.pieces or {}
+	if next(made) == nil then
+		-- the generator drew nothing for this look (e.g. clothes it does not model): keep the round-1
+		-- parts, remember the decision so the same look and level are not generated again
+		local had = st.active
+		unhideSection(rec, section)
+		for _, prev in pairs(old) do
+			destroyPiece(prev)
+		end
+		st.pieces, st.rules, st.landmarks = {}, nil, nil
+		st.sig, st.lod, st.active, st.skipped, st.job = job.sig, lod, false, true, nil
+		rec.sections[section] = st
+		applyCovers(rec)
+		if had then
+			fire(listeners.restored, model, section)
+		end
+		return
+	end
 	local pieces = {}
 	for name, pr in pairs(made) do
 		local prev = old[name]
-		local swapped = false
-		if prev and prev.part and prev.part.Parent and prev.attachPart == pr.attachPart then
-			swapped = pcall(function()
-				local a, b = prev.part, pr.part
-				a:ApplyMesh(b)
-				a.Size = b.Size
-				a.TextureContent = b.TextureContent
-				a.Material, a.Color, a.Transparency, a.Reflectance, a.CastShadow = b.Material, b.Color, b.Transparency, b.Reflectance, b.CastShadow
-				a.DoubleSided = b.DoubleSided
-				prev.weld.C0 = pr.centre
-			end)
+		if prev and prev.xform then
+			pr.xform = prev.xform
 		end
-		if swapped then
-			local keepPart, keepWeld, keepConn = prev.part, prev.weld, prev.ancestry
-			pcall(prev.em.Destroy, prev.em)
-			if prev.img then
-				pcall(prev.img.Destroy, prev.img)
-			end
-			pr.part:Destroy()
-			pr.part, pr.weld, pr.ancestry = keepPart, keepWeld, keepConn
-			old[name] = nil
-		else
-			attachPiece(rec, pr)
-		end
+		attachPiece(rec, pr)
 		pieces[name] = pr
 	end
 	for _, prev in pairs(old) do
@@ -781,14 +951,14 @@ local function runJob(job)
 	-- 4) hide what the new meshes replace (and stop hiding what they no longer replace)
 	unhideSection(rec, section)
 	st.pieces = pieces
-	st.sig, st.lod, st.active = job.sig, lod, true
+	st.sig, st.lod, st.active, st.skipped = job.sig, lod, true, nil
 	st.rules = rulesFor(def, look, lod, result)
 	st.landmarks = landmarksOf(result, section)
 	st.builtAt = os.clock()
 	st.job = nil
 	rec.sections[section] = st
 	applyRules(rec, section, st.rules)
-	updateLocalBinding()
+	applyCovers(rec)
 	log(string.format("built %s %s %s in %.0f ms", model.Name, section, lod, (os.clock() - t0) * 1000))
 	local view = AnatomyClient.GetPieces(model, section)
 	fire(listeners.built, model, section, view, st.landmarks)
@@ -876,6 +1046,39 @@ local function evaluate()
 			end
 		end
 	end
+	-- Editable memory cap (after a budget failure): walk the characters in priority order and give each
+	-- the best level that still fits; the rest keep their round-1 parts. Applied at once (no hold).
+	local forced = {}
+	if pressure.cap < math.huge then
+		local used = 0
+		local LEVELS = { "full", "medium", "low" }
+		for _, rec in ipairs(list) do
+			local w = want[rec]
+			if w then
+				local got = false
+				for li = LOD_RANK[w] and (4 - LOD_RANK[w]) or 3, 3 do
+					local lvl = LEVELS[li]
+					local c = 0
+					for section, def in pairs(registry) do
+						if not def.failed and not (def.lods and not def.lods[lvl]) then
+							c += sectionCost(section, rec.sigs[section], lvl)
+						end
+					end
+					if used + c <= pressure.cap then
+						used += c
+						got = lvl
+						break
+					end
+				end
+				if got ~= w then
+					want[rec] = got
+					if rec.lod and (not got or LOD_RANK[got] < LOD_RANK[rec.lod]) then
+						forced[rec] = true
+					end
+				end
+			end
+		end
+	end
 	for _, rec in ipairs(list) do
 		local wanted = want[rec] or nil
 		-- promotions after promoteHold, demotions (and leaving range) only after demoteHold of wanting
@@ -887,9 +1090,15 @@ local function evaluate()
 			end
 			local up = rec.lod == nil or (wanted ~= nil and LOD_RANK[wanted] > LOD_RANK[rec.lod])
 			local hold = up and S.promoteHold or S.demoteHold
-			if rec.lod == nil or now - rec.pendingAt >= hold then
+			if rec.lod == nil or forced[rec] or now - rec.pendingAt >= hold then
 				rec.lod = wanted
 				rec.pendingLod = nil
+				if forced[rec] then
+					-- over the memory cap: free the old meshes first (a swap would hold old + new at once)
+					for section in pairs(rec.sections) do
+						restoreSection(rec, section, "memory cap")
+					end
+				end
 			end
 		else
 			rec.pendingLod = nil
@@ -904,7 +1113,7 @@ local function evaluate()
 			else
 				local sig = rec.sigs[section]
 				local busy = st and st.job and not st.job.cancelled
-				local fresh = st and st.active and st.sig == sig and st.lod == want
+				local fresh = st and (st.active or st.skipped) and st.sig == sig and st.lod == want
 				if not fresh and not (busy and st.job.sig == sig and st.job.lod == want) then
 					if busy then
 						st.job.cancelled = true
@@ -919,6 +1128,9 @@ end
 
 -- next job: best priority, then nearest, then section order
 local function nextJob()
+	if os.clock() < pressure.untilT then
+		return nil
+	end
 	local best, bestKey
 	for _, rec in pairs(records) do
 		if not rec.dead then
@@ -936,8 +1148,12 @@ local function nextJob()
 	return best
 end
 
-local function worker()
-	while running do
+local function worker(gen)
+	-- a previous worker (Stop() then Start()) finishes its cancelled job first: MeshKit's tick is global
+	while workerBusy and gen == workerGen do
+		task.wait()
+	end
+	while running and gen == workerGen do
 		local job = (api.state ~= "disabled") and nextJob() or nil
 		if not job then
 			task.wait(0.15)
@@ -976,11 +1192,20 @@ end
 local function readLook(rec)
 	local look = LookData.Get(rec.model)
 	if not look then
+		-- the server took the look away (or it no longer decodes): back to the part-built body
 		rec.look = nil
+		rec.sigs = {}
+		restoreAll(rec, "look removed")
 		return
 	end
 	rec.look = look
 	rec.sigs = LookData.Sigs(look)
+	-- jobs for a section whose inputs changed are stale: drop them now (evaluate queues the new ones)
+	for section, st in pairs(rec.sections) do
+		if st.job and st.job.sig ~= rec.sigs[section] then
+			st.job.cancelled = true
+		end
+	end
 end
 
 local function untrack(model)
@@ -1010,8 +1235,13 @@ local function track(model)
 		end)
 		return
 	end
-	local rec = { model = model, sections = {}, hidden = {}, conns = {}, sigs = {}, priority = 2, dist = math.huge }
+	local rec = { model = model, sections = {}, hidden = {}, covered = {}, conns = {}, sigs = {}, priority = 2, dist = math.huge }
 	records[model] = rec
+	for _, attr in ipairs({ "HairHiddenHeadgear", "HairHiddenHood" }) do
+		table.insert(rec.conns, model:GetAttributeChangedSignal(attr):Connect(function()
+			applyCovers(rec)
+		end))
+	end
 	readLook(rec)
 	table.insert(rec.conns, model:GetAttributeChangedSignal(LookData.ATTR):Connect(function()
 		readLook(rec)
@@ -1033,10 +1263,29 @@ local function track(model)
 	lastEval = 0
 end
 
--- welds whose attach part was replaced (head swap, respawned limb): re-attach to the new part
+-- welds whose attach part was replaced (head swap, respawned limb): re-attach to the new part; pieces
+-- something else destroyed: give the section back to the round-1 parts (and rebuild it); hidden
+-- round-1 instances that were destroyed (Builder rebuilds its folders) are forgotten
 local function maintain()
 	for model, rec in pairs(records) do
-		for _, st in pairs(rec.sections) do
+		for inst in pairs(rec.hidden) do
+			if inst.Parent == nil then
+				rec.hidden[inst] = nil
+			end
+		end
+		for section, st in pairs(rec.sections) do
+			local lost = false
+			for _, pr in pairs(st.pieces or {}) do
+				if pr.part and not pr.part:IsDescendantOf(model) then
+					lost = true
+					break
+				end
+			end
+			if lost then
+				restoreSection(rec, section, "piece removed")
+				lastEval = 0
+				continue
+			end
 			for _, pr in pairs(st.pieces or {}) do
 				if pr.part and pr.weld and (pr.weld.Part0 == nil or not pr.weld.Part0:IsDescendantOf(model)) then
 					local p = resolveAttach(model, pr.attach)
@@ -1045,7 +1294,7 @@ local function maintain()
 							pr.ancestry:Disconnect()
 						end
 						pr.attachPart = p
-						pr.part.CFrame = p.CFrame * pr.centre
+						pr.part.CFrame = p.CFrame * (pr.xform or CFrame.identity) * pr.centre
 						pr.weld.Part0 = p
 						pr.ancestry = p.AncestryChanged:Connect(function()
 							lastEval = 0
@@ -1126,13 +1375,9 @@ local function boot()
 		return
 	end
 	-- Config.Anatomy defaults under any setting a caller already changed
-	local defaults = {
-		enabled = true, maxFull = 6, fullRange = 70, lodRange = 160, frameBudget = 0.0025, textures = true,
-		meshCentered = true, flipV = false, cacheSize = 24, promoteHold = 1.5, demoteHold = 12, debug = false,
-	}
 	local cfg = Config and Config.Anatomy or {}
 	for k, v in pairs(cfg) do
-		if defaults[k] ~= nil and AnatomyClient.Settings[k] == defaults[k] then
+		if DEFAULTS[k] ~= nil and not userSet[k] and AnatomyClient.Settings[k] == DEFAULTS[k] then
 			AnatomyClient.Settings[k] = v
 		end
 	end
@@ -1170,7 +1415,8 @@ local function boot()
 		watchPlayer(plr)
 	end
 	table.insert(conns, Players.PlayerAdded:Connect(watchPlayer))
-	task.spawn(worker)
+	workerGen += 1
+	task.spawn(worker, workerGen)
 end
 
 -- idempotent; never yields (the module waits for its shared modules in its own thread). Client only.
@@ -1199,7 +1445,15 @@ function AnatomyClient.Stop()
 	started = false
 end
 
+local function ensureStarted()
+	if not started then
+		task.defer(AnatomyClient.Start)
+	end
+end
+
+-- the graphics setting's master switch (also starts the module: the Settings screen is one way it comes up)
 function AnatomyClient.SetEnabled(on)
+	ensureStarted()
 	AnatomyClient.Settings.enabled = on and true or false
 	lastEval = 0
 	if not on then
@@ -1209,10 +1463,36 @@ function AnatomyClient.SetEnabled(on)
 	end
 end
 
-local function ensureStarted()
-	if not started then
-		task.defer(AnatomyClient.Start)
+-- graphics detail presets: SetDetail("full" | "medium" | "low") writes these knobs; "auto" (or anything
+-- else) puts back Config.Anatomy's values. Takes effect on the next evaluation (a fraction of a second);
+-- pieces keep the texture choice they were built with until they are rebuilt.
+AnatomyClient.DETAIL = {
+	full = { maxFull = 10, fullRange = 90, lodRange = 200, frameBudget = 0.004, textures = true },
+	medium = { maxFull = 4, fullRange = 50, lodRange = 120, frameBudget = 0.002, textures = true },
+	low = { maxFull = 1, fullRange = 30, lodRange = 80, frameBudget = 0.0015, textures = false },
+}
+function AnatomyClient.SetDetail(level)
+	ensureStarted()
+	local preset = AnatomyClient.DETAIL[level]
+	local S = AnatomyClient.Settings
+	for k in pairs(AnatomyClient.DETAIL.full) do
+		local v
+		if preset then
+			v = preset[k]
+		else
+			local cfg = Config and Config.Anatomy
+			v = cfg and cfg[k]
+			if v == nil then
+				v = DEFAULTS[k]
+			end
+		end
+		if v ~= nil then
+			S[k] = v
+		end
+		userSet[k] = preset ~= nil or nil
 	end
+	lastEval = 0
+	return true
 end
 
 ------------------------------------------------------------------------
@@ -1259,7 +1539,14 @@ end
 
 -- world position of a landmark (nil when unknown)
 function AnatomyClient.GetLandmarkWorld(model, name)
-	local lm = AnatomyClient.GetLandmarks(model)[name]
+	local rec = records[model]
+	local lm
+	for _, st in pairs(rec and rec.sections or {}) do
+		if st.active and st.landmarks and st.landmarks[name] then
+			lm = st.landmarks[name]
+			break
+		end
+	end
 	local part = lm and resolveAttach(model, lm.part)
 	if not part then
 		return nil
@@ -1277,29 +1564,73 @@ local function pieceRec(model, section, piece)
 	return nil
 end
 
+-- The MeshPart was sized to the generated bounding box. A deformation that moved the box (a vertex past
+-- it, or the vertex that defines a face of it moved inward) would change the mesh's bounds and the
+-- engine would rescale / recentre the whole piece. So every deformed position is clamped into the box,
+-- and the vertices lying ON a face of the box keep that coordinate (pinned per axis): the box never
+-- changes. Built once per piece, on the first deformation.
+local function pinsOf(pr)
+	local pin = pr.pin
+	if pin then
+		return pin
+	end
+	local P, b = pr.mesh.P, pr.bounds
+	local ex = 1e-6 + 1e-6 * math.max(b[4] - b[1], b[5] - b[2], b[6] - b[3])
+	local px, py, pz = {}, {}, {}
+	for i = 1, pr.mesh.nv do
+		local x, y, z = P[i * 3 - 2], P[i * 3 - 1], P[i * 3]
+		if x <= b[1] + ex or x >= b[4] - ex then
+			px[i] = true
+		end
+		if y <= b[2] + ex or y >= b[5] - ex then
+			py[i] = true
+		end
+		if z <= b[3] + ex or z >= b[6] - ex then
+			pz[i] = true
+		end
+	end
+	pin = { x = px, y = py, z = pz }
+	pr.pin = pin
+	return pin
+end
+
+-- the deformed position of mesh vertex i (offset ox, oy, oz from its generated position), kept in the box
+local function boxed(pr, pin, i, ox, oy, oz)
+	local P, b = pr.mesh.P, pr.bounds
+	local x, y, z = P[i * 3 - 2], P[i * 3 - 1], P[i * 3]
+	if not pin.x[i] then
+		x = math.clamp(x + ox, b[1], b[4])
+	end
+	if not pin.y[i] then
+		y = math.clamp(y + oy, b[2], b[5])
+	end
+	if not pin.z[i] then
+		z = math.clamp(z + oz, b[3], b[6])
+	end
+	return Vector3.new(x, y, z)
+end
+
 -- low-rate deformation (expressions, flex): vertex ids (MeshKit indices, e.g. from mesh.groups) move by
--- offsets (Vector3, piece-local studs) from their generated position. Clamped to the generated bounding
--- box so the MeshPart's size never has to change. Returns true when applied.
+-- offsets (Vector3, piece-local studs) from their generated position. Kept inside the generated bounding
+-- box (pinsOf) so the MeshPart's size and centre never change. Normals stay as generated. Returns true
+-- when applied.
 function AnatomyClient.SetVertexOffsets(model, section, piece, ids, offsets)
 	ensureStarted()
 	local pr = pieceRec(model, section, piece)
 	if not pr or type(ids) ~= "table" or type(offsets) ~= "table" then
 		return false
 	end
-	local P = pr.mesh.P
-	local b = pr.bounds
-	local x0, y0, z0, x1, y1, z1 = b[1], b[2], b[3], b[4], b[5], b[6]
 	local vid = pr.info.vid
 	local em = pr.em
+	local pin = pinsOf(pr)
+	-- these vertices no longer sit where SetMorphs last put them: its next call must write
+	pr.morphDirty = true
 	local ok = pcall(function()
 		for k, i in ipairs(ids) do
 			local o = offsets[k]
 			local id = vid[i]
 			if id and o then
-				local x = math.clamp(P[i * 3 - 2] + o.X, x0, x1)
-				local y = math.clamp(P[i * 3 - 1] + o.Y, y0, y1)
-				local z = math.clamp(P[i * 3] + o.Z, z0, z1)
-				em:SetPosition(id, Vector3.new(x, y, z))
+				em:SetPosition(id, boxed(pr, pin, i, o.X, o.Y, o.Z))
 			end
 		end
 	end)
@@ -1312,6 +1643,7 @@ function AnatomyClient.ResetVertexOffsets(model, section, piece, ids)
 	if not pr then
 		return false
 	end
+	pr.morphDirty = true
 	return (MeshKit.UpdatePositions(pr.em, pr.info, pr.mesh, ids))
 end
 
@@ -1341,6 +1673,110 @@ function AnatomyClient.SetVertexColors(model, section, piece, ids, colors)
 	end))
 end
 
+-- expressions / flex as blend shapes: a piece mesh may carry
+--   mesh.morphs[name] = { ids = { MeshKit vertex ids }, d = { dx, dy, dz, ... } }  (full-strength offsets,
+--   piece-local studs; seam duplicates must be listed with the same delta)
+-- SetMorphs sums weight * delta over the named morphs and writes every vertex any morph touches (those
+-- whose morphs are all at 0 go back to the generated position). Skips the write when the weights did
+-- not change. Cost ~ the touched vertices: call at a low rate (10-20 Hz) and only for near characters.
+function AnatomyClient.SetMorphs(model, section, piece, weights)
+	ensureStarted()
+	local pr = pieceRec(model, section, piece)
+	local morphs = pr and pr.mesh.morphs
+	if type(morphs) ~= "table" or type(weights) ~= "table" then
+		return false
+	end
+	local ms = pr.morphState
+	if not ms then
+		-- union of every morph's vertices, a slot per vertex, and reusable accumulators
+		local slot, ids = {}, {}
+		for _, mo in pairs(morphs) do
+			for _, i in ipairs(mo.ids or {}) do
+				if not slot[i] then
+					ids[#ids + 1] = i
+					slot[i] = #ids
+				end
+			end
+		end
+		ms = { slot = slot, ids = ids, ox = table.create(#ids, 0), oy = table.create(#ids, 0), oz = table.create(#ids, 0), last = {} }
+		pr.morphState = ms
+	end
+	local same = true
+	for name, w in pairs(weights) do
+		if ms.last[name] ~= w then
+			same = false
+			break
+		end
+	end
+	for name, w in pairs(ms.last) do
+		if weights[name] ~= w then
+			same = false
+			break
+		end
+	end
+	if same and not pr.morphDirty then
+		return true
+	end
+	pr.morphDirty = nil
+	table.clear(ms.last)
+	local ox, oy, oz, slot = ms.ox, ms.oy, ms.oz, ms.slot
+	for k = 1, #ms.ids do
+		ox[k], oy[k], oz[k] = 0, 0, 0
+	end
+	for name, w in pairs(weights) do
+		ms.last[name] = w
+		local mo = morphs[name]
+		if mo and type(w) == "number" and w ~= 0 and mo.ids and mo.d then
+			local d = mo.d
+			for k, i in ipairs(mo.ids) do
+				local sl = slot[i]
+				ox[sl] += d[k * 3 - 2] * w
+				oy[sl] += d[k * 3 - 1] * w
+				oz[sl] += d[k * 3] * w
+			end
+		end
+	end
+	local vid, em = pr.info.vid, pr.em
+	local pin = pinsOf(pr)
+	return (pcall(function()
+		for k, i in ipairs(ms.ids) do
+			local id = vid[i]
+			if id then
+				em:SetPosition(id, boxed(pr, pin, i, ox[k], oy[k], oz[k]))
+			end
+		end
+	end))
+end
+
+-- rigid motion of a whole piece (eyelids, jaw, hair clumps, locs): cf is applied to the generated geometry
+-- in the attach part's space (CFrame.identity = as built). To swing about a pivot p (part-local):
+-- CFrame.new(p) * rotation * CFrame.new(-p). Survives in-place rebuilds; costs one Weld.C0 write.
+function AnatomyClient.SetPieceTransform(model, section, piece, cf)
+	local rec = records[model]
+	local st = rec and rec.sections[section]
+	local pr = st and st.active and st.pieces[piece]
+	if not (pr and pr.weld and typeof(cf) == "CFrame") then
+		return false
+	end
+	pr.xform = cf
+	pr.weld.C0 = cf * pr.centre
+	return true
+end
+
+-- true while inst (a round-1 part / decal / beam) is hidden on this client because a mesh replaces it:
+-- FX modules leave its LocalTransparencyModifier / Transparency / Enabled alone then
+function AnatomyClient.IsReplaced(inst)
+	local cur = inst and inst.Parent
+	while cur do
+		local rec = records[cur]
+		if rec then
+			return rec.hidden[inst] ~= nil
+		end
+		cur = cur.Parent
+	end
+	return false
+end
+
 -- force a rebuild of one model (all sections) on the next evaluation
 function AnatomyClient.Rebuild(model)
 	ensureStarted()
@@ -1357,7 +1793,9 @@ end
 -- counters for tools and tests
 function AnatomyClient.Status()
 	local s = { started = started, running = running, api = api.state, reason = api.reason, textures = api.textures,
-		sections = {}, models = 0, built = { full = 0, medium = 0, low = 0 }, hidden = 0, queued = 0, busy = workerBusy, cache = cacheCount }
+		sections = {}, models = 0, built = { full = 0, medium = 0, low = 0 }, hidden = 0, queued = 0, busy = workerBusy, cache = cacheCount,
+		pressure = { fails = pressure.fails, cap = pressure.cap < math.huge and math.floor(pressure.cap) or nil, live = math.floor(liveCost()) },
+		skipped = 0, cacheMB = math.floor(cacheBytes / 104857.6) / 10 }
 	for name, def in pairs(registry) do
 		s.sections[name] = def.failed and "failed" or "ok"
 	end
@@ -1369,6 +1807,8 @@ function AnatomyClient.Status()
 		for _, st in pairs(rec.sections) do
 			if st.active and st.lod then
 				s.built[st.lod] = (s.built[st.lod] or 0) + 1
+			elseif st.skipped then
+				s.skipped += 1
 			end
 			if st.job and not st.job.cancelled then
 				s.queued += 1

@@ -17,6 +17,15 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
 local Builder = require(Shared:WaitForChild("Builder"))
 local Looks = require(Shared:WaitForChild("Looks"))
+-- R-anim: how fighters go down (DownPose / DownDir / DownDist / KOKind), nil-safe if missing
+local FightMotion
+do
+	local fm = Shared:FindFirstChild("FightMotion")
+	if fm then
+		local ok, mod = pcall(require, fm)
+		FightMotion = ok and mod or nil
+	end
+end
 local FightAI = require(script.Parent.FightAI)
 local Career = require(script.Parent.Career)
 
@@ -672,6 +681,8 @@ function Fight:Resolve(F, O, ptype, body, stamPct)
 	end
 	table.insert(O.recentHits, now)
 	local kd, severity, fall, cause = false, nil, nil, nil
+	-- what the knockdown animation needs to know about this punch (FightMotion.ChooseFall)
+	local kdInfo = { ptype = ptype, body = body, hand = F.hand, counter = false, tier = O.tier }
 	local rel, liver
 	if body then
 		F.tally.body += 1
@@ -748,7 +759,7 @@ function Fight:Resolve(F, O, ptype, body, stamPct)
 	if body then
 		self:SetAct(O, string.format("hitbody|%s|%s|%.2f", ptype, F.hand == "L" and "R" or "L", sev))
 	else
-		self:SetAct(O, string.format("hit|%s|%s|%.2f", ptype, heavy and "heavy" or (counter and "counter" or "head"), sev))
+		self:SetAct(O, string.format("hit|%s|%s|%.2f|%s", ptype, heavy and "heavy" or (counter and "counter" or "head"), sev, F.hand or "R"))
 	end
 	self:Send({
 		t = "hit", who = self:Who(F), punch = ptype, body = body, dmg = math.floor(dmg * 10) / 10, counter = counter, heavy = heavy,
@@ -779,12 +790,15 @@ function Fight:Resolve(F, O, ptype, body, stamPct)
 		task.delay(0.6, function()
 			if self.id == fightId and not self.finished and self.live and not self.paused and O.state ~= "down" then
 				self:Comment("Delayed reaction... that's the LIVER! " .. O.data.name .. " folds up!", true)
+				O.kdInfo = { ptype = ptype, body = true, hand = F.hand, tier = O.tier }
 				self:Knockdown(O, F, "normal", "knee", "liver")
 			end
 		end)
 	end
 	if kd then
 		if self.allowKD then
+			kdInfo.counter = counter
+			O.kdInfo = kdInfo
 			self:Knockdown(O, F, severity or "normal", fall or "back", cause)
 		else
 			-- sparring: the coach steps in instead of a knockdown
@@ -1075,7 +1089,19 @@ function Fight:UpdateReferee(now)
 	end
 	local target, look
 	local down = (P.state == "down" and P) or (O.state == "down" and O) or nil
-	if down then
+	local catching = R.catching
+	if catching and now > catching.untilT then
+		R.catching = nil
+		catching = nil
+	end
+	if catching then
+		-- holding up a fighter knocked out on his feet
+		target, look = catching.at, catching.look
+		R.nextMove = now + 0.1
+		if R.hum and R.hum.WalkSpeed < 16 then
+			R.hum.WalkSpeed = 16
+		end
+	elseif down then
 		-- stand over the downed fighter, between him and the other man (who is in the neutral corner)
 		local other = self:Other(down)
 		local d = unitOr(flat(other.root.Position - down.root.Position), Vector3.new(1, 0, 0))
@@ -1103,7 +1129,7 @@ function Fight:UpdateReferee(now)
 	end
 	target = self:ClampToRing(target)
 	local p = R.root.Position
-	if flat(target - p).Magnitude > 0.8 then
+	if flat(target - p).Magnitude > (catching and 0.3 or 0.8) then
 		R.hum:MoveTo(Vector3.new(target.X, p.Y, target.Z))
 	end
 	if R.align then
@@ -1168,6 +1194,88 @@ function Fight:Ragdoll(F)
 	end
 end
 
+-- room (studs, centre to centre) a fall that folds forward needs in front of the man going down: the
+-- attacker backs off to it. A face-first timber fall goes diagonally past him (FightMotion), the
+-- others fold onto the hands / knees / into the referee's arms just in front of the feet
+local FALL_ROOM = { face = 4.6, forward = 4.0, standing = 4.2, knee = 3.3, flash = 3.3 }
+
+-- walks a fighter's root over the canvas at a walking pace (never a teleport): the Animator senses the
+-- motion and gives him real steps. The speed ramps up and brakes into the spot; a newer glide or a
+-- Place cancels it. onArrive runs when he gets there.
+function Fight:Glide(F, goal, speed, onArrive)
+	if not (F.root and F.model) then
+		return
+	end
+	F.glideId = (F.glideId or 0) + 1
+	local id, fightId = F.glideId, self.id
+	task.spawn(function()
+		local v, acc = 0, speed * 4
+		while F.glideId == id and self.id == fightId and not self.aborted and F.root and F.root.Parent do
+			local dt = RunService.Heartbeat:Wait()
+			local d = flat(goal - F.root.Position)
+			local m = d.Magnitude
+			-- brake into the spot (v^2 = 2 a s), never slower than a shuffle until there
+			v = math.min(speed, v + acc * dt, math.sqrt(2 * acc * m))
+			local step = math.max(v, 0.8) * dt
+			if m <= step then
+				F.model:PivotTo(F.root.CFrame + d)
+				if onArrive then
+					onArrive()
+				end
+				break
+			end
+			F.model:PivotTo(F.root.CFrame + d * (step / m))
+		end
+	end)
+end
+
+-- the fall for this knockdown (FightMotion when present, else the round-1 pose)
+function Fight:ChooseFall(F, by, severity, cause, fall)
+	local info = F.kdInfo or {}
+	F.kdInfo = nil
+	local legacy = { pose = fall or "back", dir = (fall == "face" or fall == "knee") and 0 or math.pi, dist = 20, ko = nil }
+	if not (FightMotion and FightMotion.ChooseFall) then
+		return legacy
+	end
+	local P = info.ptype and Config.Punches[info.ptype]
+	local vr, ar = F.root, by and by.root
+	local c = self.anchors and self.anchors.RingCenter
+	local yaw
+	if vr then
+		local look = vr.CFrame.LookVector
+		yaw = math.atan2(-look.X, -look.Z)
+	end
+	local ok, res = pcall(FightMotion.ChooseFall, {
+		ptype = info.ptype, kind = P and P.kind or nil, body = info.body, hand = info.hand, severity = severity,
+		cause = cause, tier = info.tier, counter = info.counter,
+		victimX = vr and vr.Position.X, victimZ = vr and vr.Position.Z, victimYaw = yaw,
+		attackerX = ar and ar.Position.X, attackerZ = ar and ar.Position.Z,
+		ringX = c and c.Position.X, ringZ = c and c.Position.Z, ringHalf = self.ringHalf,
+		roll = self.rng:NextNumber(), roll2 = self.rng:NextNumber(),
+	})
+	if ok and type(res) == "table" and FightMotion.ValidFall[res.pose] then
+		return res
+	end
+	return legacy
+end
+
+-- a knockout on the feet: the referee rushes in, gets his arms round the fighter and holds him up. He
+-- stands chest to chest at arm's length (2.4 studs, centre to centre: two torsos plus the arms between
+-- them); the fighter sags forward into him
+local CATCH_DIST = 2.4
+function Fight:RefCatch(F)
+	local R = self.ref
+	if not (R and R.root and R.model.Parent and F.root) then
+		return
+	end
+	local other = self:Other(F)
+	local toward = other.root and flat(other.root.Position - F.root.Position) or flat(F.root.CFrame.LookVector)
+	local d = unitOr(toward, Vector3.new(1, 0, 0))
+	R.catching = { at = self:ClampToRing(F.root.Position + d * CATCH_DIST), look = F.root.Position, untilT = self:Now() + 6 }
+	R.nextMove = 0
+	self:RefAct(string.format("catch|%.1f", (FightMotion and FightMotion.CATCH_TIME or 2) + 1.4))
+end
+
 function Fight:Knockdown(F, by, severity, fall, cause)
 	if F.state == "down" or self.finished then
 		return
@@ -1192,10 +1300,18 @@ function Fight:Knockdown(F, by, severity, fall, cause)
 	F.conc = math.min(1, F.conc + add)
 	F.concPeak = math.max(F.concPeak, F.conc)
 	by.tally.kd += 1
+	-- how he goes down (R-anim FightMotion: the punch, the severity, where he stands in the ring)
+	local choice = self:ChooseFall(F, by, severity, cause, fall)
+	fall = choice.pose
+	F.koKind = choice.ko
 	table.insert(self.knockdowns, { who = self:Who(F), severity = severity, fall = fall, round = self.round, cause = cause })
 	self.paused = true
-	-- DownPose before Guard = "down" so the Animator picks the right fall on the first frame
+	-- DownPose (+ DownDir / DownDist / KOKind) before Guard = "down" so the Animator picks the right
+	-- fall on the first frame
 	setAttr(F.model, "DownPose", fall)
+	setAttr(F.model, "DownDir", choice.dir)
+	setAttr(F.model, "DownDist", choice.dist)
+	setAttr(F.model, "KOKind", severity == "out" and choice.ko or nil)
 	setAttr(F.model, "Count", 0)
 	self:UpdateGuard(F)
 	self:SyncAttrs(F)
@@ -1205,7 +1321,9 @@ function Fight:Knockdown(F, by, severity, fall, cause)
 		F.hum.RequiresNeck = false
 		self.neckOff = true
 	end
-	self:Send({ t = "kd", who = self:Who(F), severity = severity, fall = fall })
+	-- anim = true: the knockout is animated on every client (FightClient skips its physics ragdoll)
+	local animKO = severity == "out" and FightMotion ~= nil and FightMotion.ANIMATED_KO == true
+	self:Send({ t = "kd", who = self:Who(F), severity = severity, fall = fall, ko = choice.ko, anim = animKO or nil })
 	local NAME = F.data.name:upper()
 	if severity == "flash" then
 		self:Comment("Flash knockdown! " .. F.data.name .. " is down - more surprised than hurt!", true)
@@ -1216,14 +1334,63 @@ function Fight:Knockdown(F, by, severity, fall, cause)
 	elseif cause ~= "liver" then
 		self:Comment("DOWN GOES " .. NAME .. "!", true)
 	end
-	local corner = (by == self.P) and self.anchors.RedNeutral or self.anchors.BlueNeutral
-	self:Place(by, corner.Position)
+	-- a man folding forward goes past the one who dropped him, not through him: the attacker backs off a
+	-- step to give the fall its room (a walk the Animator turns into real steps, never a teleport)
+	local room = FALL_ROOM[fall]
+	if room and F.root and by.root then
+		local d = flat(F.root.Position - by.root.Position)
+		if d.Magnitude > 0.05 and d.Magnitude < room then
+			self:Glide(by, self:ClampToRing(by.root.Position - d.Unit * (room - d.Magnitude)), 6)
+		end
+	end
+	-- driven into the ropes / the corner: his root really staggers there (the body never drifts away from
+	-- it, so the get-up does not slide), and the ropes take the impact
+	if choice.moveX and choice.moveZ and F.root then
+		local fightId = self.id
+		local goal = self:ClampToRing(F.root.Position + Vector3.new(choice.moveX, 0, choice.moveZ))
+		self:Glide(F, goal, math.clamp((choice.dist or 1) / 0.45, 3, 9), function()
+			if self.id == fightId and not self.finished then
+				self:Send({ t = "ropes", who = self:Who(F) })
+			end
+		end)
+	end
 	if severity == "out" then
-		self:Ragdoll(F)
+		if not animKO then
+			self:Ragdoll(F)
+		end
+		if choice.ko == "standing" then
+			-- out on his feet: the referee rushes in and catches him before he waves it off
+			self:RefCatch(F)
+			task.wait(FightMotion and FightMotion.CATCH_TIME or 2)
+		else
+			-- the fall plays out (the slow-motion beat included) before anybody reacts to it
+			task.wait(FightMotion and FightMotion.KOFallWall and FightMotion.KOFallWall(choice.ko, fall) or 1.6)
+		end
+		-- no neutral corner after a knockout: it is over, the winner celebrates where he stands
+		by.guardOverride = "win"
+		self:UpdateGuard(by)
 		self:RefAct("waveoff")
-		task.wait(1.6)
+		task.wait(1.2)
 		self:End(by, "KO", "Knocked out cold")
 		return
+	end
+	-- to the neutral corner once the fall has landed in front of him: an NPC walks there (backing off, eyes
+	-- on the man he dropped), the player's character is walked there by the server
+	local corner = (by == self.P) and self.anchors.RedNeutral or self.anchors.BlueNeutral
+	do
+		local fightId = self.id
+		task.delay(0.6, function()
+			if self.id ~= fightId or self.finished or F.state ~= "down" then
+				return
+			end
+			if by.isPlayer or not by.hum then
+				self:Glide(by, corner.Position, 8)
+			else
+				by.glideId = (by.glideId or 0) + 1
+				by.cornerWalk = corner.Position
+				by.cornerWalkSent = false
+			end
+		end)
 	end
 	if F.kdRound >= 3 then
 		task.wait(1.5)
@@ -1320,13 +1487,15 @@ function Fight:GetUp(F, n)
 	end
 	F.body = math.max(F.body, 20)
 	F.state = "idle"
-	F.hurtUntil = now + (sev == "flash" and 1.2 or 2.5)
-	F.busyUntil = now + 0.8
+	-- every fall has its own get-up (off the back: roll, hands and knees, a knee, up)
+	local fall = F.model:GetAttribute("DownPose") or "back"
+	local upT = FightMotion and FightMotion.GetUpTime and FightMotion.GetUpTime(fall) or 0.9
+	F.hurtUntil = now + upT + (sev == "flash" and 1.2 or 2.5)
+	F.busyUntil = now + upT
 	F.stamina = math.max(F.stamina, F.maxStam * 0.3)
 	F.balance = 70
 	F.strain = 1
-	local fall = F.model:GetAttribute("DownPose") or "back"
-	self:SetAct(F, string.format("getup|%s|0|%.2f", fall, 0.9))
+	self:SetAct(F, string.format("getup|%s|0|%.2f", fall, upT))
 	self:CheckTier(F)
 	self:UpdateGuard(F)
 	self:Send({ t = "getup", who = self:Who(F) })
@@ -1342,6 +1511,11 @@ function Fight:GetUp(F, n)
 		self:Send({ t = "count", n = k, who = self:Who(F), standing = true })
 	end
 	task.wait(0.55)
+	-- the referee looks into his eyes once he is all the way up
+	local upLeft = now + upT + 0.15 - self:Now()
+	if upLeft > 0 then
+		task.wait(upLeft)
+	end
 	if self.id ~= id or self.finished then
 		return
 	end
@@ -1353,6 +1527,9 @@ function Fight:GetUp(F, n)
 	local ok = self.rng:NextNumber() >= risk
 	setAttr(F.model, "Count", 0)
 	setAttr(F.model, "DownPose", nil)
+	setAttr(F.model, "DownDir", nil)
+	setAttr(F.model, "DownDist", nil)
+	setAttr(F.model, "KOKind", nil)
 	self:Send({ t = "refcheck", who = self:Who(F), ok = ok })
 	if not ok then
 		self:RefAct("waveoff")
@@ -1417,6 +1594,7 @@ function Fight:Place(F, pos, lookAt)
 	if not F.root then
 		return
 	end
+	F.glideId = (F.glideId or 0) + 1 -- a placement wins over any walk in progress
 	local target = lookAt or self.anchors.RingCenter.Position
 	local p = Vector3.new(pos.X, pos.Y + 3.2, pos.Z)
 	F.model:PivotTo(CFrame.lookAt(p, Vector3.new(target.X, p.Y, target.Z)))
@@ -1456,6 +1634,19 @@ function Fight:MoveAI(F, range, circle)
 			end
 		end
 	end
+	-- pace: cover the way in about the AI's decision interval (never slower than a shuffle)
+	local togo = flat(target - F.root.Position).Magnitude
+	F.aiStepSpeed = math.clamp(togo / 0.42, 4, 30)
+	-- a new spot within a few inches of the current one is not worth a restart of the walk, as long as that
+	-- walk is still live (UpdateMovement forgets it whenever it cancels the walk) and younger than Roblox's
+	-- 8 s MoveTo timeout
+	local now = self:Now()
+	local last = F.aiTarget
+	if last and flat(last - target).Magnitude < 0.35 and togo > 0.35 and now - (F.aiTargetT or 0) < 4 then
+		return
+	end
+	F.aiTarget = target
+	F.aiTargetT = now
 	F.hum:MoveTo(target)
 end
 
@@ -1522,7 +1713,15 @@ function Fight:UpdateMovement(F, dt)
 	if F.hum then
 		local s = F.data.stats
 		local speed = (8 + s.Footwork * 0.08) * F.style.fight.move * F.moveMul
-		if F.state == "down" or F.state == "clinch" or self.paused or not self.live then
+		local cw = F.cornerWalk
+		if cw and (not F.root or F.isPlayer or F.state == "down" or not self.paused or flat(cw - F.root.Position).Magnitude < 1.2) then
+			F.cornerWalk = nil
+			cw = nil
+		end
+		if cw then
+			-- after a knockdown: backs off to the neutral corner at a walk (AnimLoco gives him real steps)
+			speed = 8
+		elseif F.state == "down" or F.state == "clinch" or self.paused or not self.live then
 			speed = 0
 		elseif stumbling then
 			-- the player's client pushes the stagger with Humanoid:Move; NPCs glide below
@@ -1541,11 +1740,26 @@ function Fight:UpdateMovement(F, dt)
 			end
 			-- dazed legs and a concussion slow every step
 			speed *= (1 - CONC.tierSpeed * F.tier) * (1 - CONC.speed * F.conc)
+			-- an NPC paces itself to arrive about when the AI next decides: continuous footwork instead
+			-- of dash-and-stop (its full speed is still there for a long way to go)
+			if not F.isPlayer and F.aiStepSpeed then
+				speed = math.min(speed, F.aiStepSpeed)
+			end
 		end
-		if math.abs(F.hum.WalkSpeed - speed) > 0.05 then
+		-- quantised: no replication churn from tiny changes
+		speed = quant(speed, 0.5)
+		if F.hum.WalkSpeed ~= speed then
 			F.hum.WalkSpeed = speed
 		end
-		if speed == 0 and not F.isPlayer then
+		if cw then
+			if not F.cornerWalkSent then
+				F.cornerWalkSent = true
+				F.aiTarget = nil
+				F.hum:MoveTo(Vector3.new(cw.X, F.root.Position.Y, cw.Z))
+			end
+		elseif speed == 0 and not F.isPlayer then
+			-- the walk is cancelled: MoveAI must re-issue its next spot even if that spot has not moved
+			F.aiTarget = nil
 			F.hum:MoveTo(F.root.Position)
 		end
 	end
@@ -2079,7 +2293,7 @@ function Fight:Run()
 	return res
 end
 
-local FIGHT_ATTRS = { "Guard", "Act", "HeadHP", "BodyHP", "Stam", "Daze", "Conc", "Strain", "DownPose", "Count", "Style", "Expr" }
+local FIGHT_ATTRS = { "Guard", "Act", "HeadHP", "BodyHP", "Stam", "Daze", "Conc", "Strain", "DownPose", "DownDir", "DownDist", "KOKind", "Count", "Style", "Expr" }
 
 function Fight:Cleanup()
 	for _, F in ipairs({ self.P, self.O }) do

@@ -1827,7 +1827,10 @@ end
 ------------------------------------------------------------------------
 local homesFolder
 local homeSlots = {} -- slot index -> player
-local homes = {} -- player -> { model, kind, sig, spawn, slot }
+local homes = {} -- player -> { model, kind, sig, spawn, slot, tokens, tokAt }
+-- interior rebuild budget per player: a burst of REBUILD_BURST, refilling one per REBUILD_GAP seconds
+local REBUILD_BURST = 3
+local REBUILD_GAP = 1.5
 
 local HOME_SPEC = {
 	Apartment = { w = 46, d = 30, h = 13, zone = "Apartment", floor = Color3.fromRGB(150, 112, 78), floorMat = M.WoodPlanks,
@@ -2262,9 +2265,26 @@ function CityMap.EnterHome(player, profile, kind)
 	end
 	local h = homes[player]
 	local sig = homeSig(profile, kind)
-	if h and h.sig == sig and h.model and h.model.Parent then
+	local live = h and h.model and h.model.Parent
+	if live and h.sig == sig then
 		return h.spawn, kind
 	end
+	-- TravelHome is client-driven and a rebuild replicates ~170 parts to everyone: a small token
+	-- bucket per player lets a quick switch or two through but caps spam. Out of budget: same kind ->
+	-- the slightly stale interior (the next visit refreshes it), another kind -> refused.
+	local now = os.clock()
+	local tokens = REBUILD_BURST
+	if h and h.tokens then
+		tokens = math.min(REBUILD_BURST, h.tokens + (now - (h.tokAt or now)) / REBUILD_GAP)
+	end
+	if live and tokens < 1 then
+		h.tokens, h.tokAt = tokens, now
+		if h.kind == kind then
+			return h.spawn, kind
+		end
+		return nil, "Hold on - you just moved. Try again in a moment."
+	end
+	tokens = math.max(0, tokens - 1)
 	local slot = h and h.slot
 	if not slot then
 		slot = 1
@@ -2289,7 +2309,7 @@ function CityMap.EnterHome(player, profile, kind)
 	end
 	m.Parent = homesFolder
 	local spawnCF = CFrame.lookAt((base * CF(-spec.w / 2 + 4, 3.2, spec.d / 2 - 12)).Position, (base * CF(0, 3.2, 0)).Position)
-	homes[player] = { model = m, kind = kind, sig = sig, spawn = spawnCF, slot = slot }
+	homes[player] = { model = m, kind = kind, sig = sig, spawn = spawnCF, slot = slot, tokens = tokens, tokAt = now }
 	return spawnCF, kind
 end
 

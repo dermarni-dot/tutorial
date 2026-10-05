@@ -177,7 +177,9 @@ function FighterCard.Photo(parent, opts)
 		local target = full and (root.Position + Vector3.new(0, 0.6, 0)) or (head.Position - Vector3.new(0, 1.15, 0))
 		local half = full and 3.8 or 2.3
 		local dist = half / math.tan(math.rad(cam.FieldOfView / 2))
-		cam.CFrame = CFrame.lookAt(target + look * dist + right * dist * 0.22 + Vector3.new(0, dist * 0.06, 0), target)
+		-- a three-quarter angle from the lead (left) side: in the guard the face reads past the lead arm
+		local side = opts.side or -0.6
+		cam.CFrame = CFrame.lookAt(target + (look + right * side).Unit * dist + Vector3.new(0, dist * 0.07, 0), target)
 		cam.Parent = vf
 		vf.CurrentCamera = cam
 		-- key light from the front-left, above (LightDirection = the way the light travels)
@@ -307,7 +309,7 @@ function FighterCard.Full(parent, P, opts)
 	local titles = FighterCard.Titles(P)
 	local numbers = {
 		{ ri.text, ri.pro and "PRO RECORD" or "AMATEUR RECORD", T.text },
-		{ tostring(ri.ko), "KNOCKOUTS", T.red },
+		{ tostring(ri.ko), "KNOCKOUTS", ri.ko > 0 and T.red or nil },
 		{ ri.koPct .. "%", "KO RATIO", T.text },
 		{ tostring(#titles), "TITLES", #titles > 0 and T.gold or T.text },
 		{ rankText, "BEST RANKING", champ and T.gold or T.text },
@@ -384,7 +386,7 @@ function FighterCard.Compact(parent, P, opts)
 	local rankText, champ = FighterCard.BestRank(P)
 	for i, n in ipairs({ { ri.text, ri.pro and "RECORD" or "AMATEUR" }, { tostring(ri.ko), "KOS" }, { tostring(P.overall or 0), "OVR" }, { rankText, "RANKING" } }) do
 		UI.Stat(strip, n[1], n[2], { Size = UDim2.new(i == 4 and 0.34 or 0.2, -8, 1, 0), valueSize = 26, order = i, scaled = true,
-			valueColor = (i == 4 and champ) and T.gold or (i == 2 and T.red or T.text) })
+			valueColor = (i == 4 and champ) and T.gold or ((i == 2 and ri.ko > 0) and T.red or T.text) })
 	end
 	return card
 end

@@ -85,7 +85,9 @@ local function peakBuild(app)
 		b[g] = 0.9 * cap * ((ph and ph.shape and ph.shape[g]) or 1)
 	end
 	Config.FillParts(b)
-	return b
+	-- the shape it was built from is the physique it is drawn as: left to classification, a fully
+	-- trained Balanced build reads as a Power Puncher ("Auto" would preview a different body than "Balanced")
+	return b, ph and ph.id or "Balanced"
 end
 
 -- gym facility tier 1..4 (CONTRACTS section 9: never saved, always derived)
@@ -109,9 +111,10 @@ end
 local function summary(player)
 	local profile = DataManager.Get(player)
 	if not profile then
-		return { created = false, loading = true }
+		-- also while a failed DataStore read is being retried: the client waits on its loading state
+		return { created = false, loading = true, loadRetry = DataManager.LoadPending(player) or nil }
 	end
-	local s = Career.Summary(profile, DataManager.StoreAvailable)
+	local s = Career.Summary(profile, DataManager.CanSave(player))
 	s.busy = busy[player]
 	s.studio = RunService:IsStudio()
 	return s
@@ -200,14 +203,16 @@ local function applyLook(player, previewApp, hands, popts)
 			if profile and char and char.Parent and b ~= "fight" and b ~= "spar" and (profile.created or st.app) then
 				local app = st.app or profile.appearance
 				local build = profile.created and profile.body or PREVIEW_BUILD
+				local peakPhysique
 				if st.app and st.popts and st.popts.peak then
-					build = peakBuild(app)
+					build, peakPhysique = peakBuild(app)
 				end
 				local gear = profile.created and Career.GearView(profile) or PREVIEW_GEAR
 				local opts = profile.created and Career.LookOpts(profile, { hands = st.hands or "wraps", detail = "full" })
 					or { hands = st.hands or "wraps", name = "", nick = "", waistText = "", detail = "full" }
 				if st.app and st.popts then
 					opts.previewGrowth = st.popts.growth
+					opts.physique = peakPhysique or opts.physique
 					if not st.needFull then
 						opts.only = st.popts.only
 					end
@@ -605,6 +610,68 @@ end)
 ------------------------------------------------------------------------
 -- Fight night
 ------------------------------------------------------------------------
+-- A career bout the player walks out of after the opening bell (reset, leaving) is a loss: retired in
+-- the corner. Otherwise a losing fighter could reset or rejoin and get the same fight again, fresh.
+-- Before the bell nothing has happened yet, so the fight is just called off (camp kept); an engine
+-- crash also only calls it off. fightWatch[player] = { profile, offer, decided = the engine's result
+-- once it announced it, quit = the forfeit to record, settled = the result was applied }.
+local fightWatch = {}
+local shuttingDown = false
+
+-- the result of a fight the player is leaving right now, or nil when there is nothing to record
+local function quitResult(player)
+	local fight = FightEngine.Active[player]
+	if type(fight) ~= "table" or fight.spar then
+		return nil
+	end
+	local round = tonumber(fight.round) or 0
+	local P, O = fight.P, fight.O
+	local res
+	if fight.finished and fight.winner and not fight.aborted then
+		-- the stoppage was already called this frame: that is the result, not a forfeit
+		res = { outcome = fight.winner == P and "win" or "loss", method = fight.method, reason = fight.reason, round = fight.endRound or round }
+	elseif round >= 1 then
+		res = { outcome = "loss", method = "RTD", reason = "Did not continue", round = round }
+	else
+		return nil
+	end
+	res.kdFor, res.kdAgainst = 0, 0
+	-- what the engine would hand Career (FightEngine's result fields); guarded, the engine is the source
+	pcall(function()
+		res.cards = fight.cards
+		res.knockdowns = fight.knockdowns
+		res.kdFor, res.kdAgainst = O.kdTotal or 0, P.kdTotal or 0
+		res.landed, res.thrown = P.totals.landed, P.totals.thrown
+		res.oppLanded, res.oppThrown = O.totals.landed, O.totals.thrown
+		res.punches = P.punchesUsed
+		res.damageDealt, res.damageTaken = P.damageDealt, P.damageTaken
+		res.weighIn = P.data.mods and P.data.mods.weighIn
+		res.concPeak = math.floor((tonumber(P.concPeak) or 0) * 100) / 100
+		res.headTaken = math.floor((tonumber(P.headTaken) or 0) * 10) / 10
+		res.bodyTaken = math.floor(100 - (tonumber(P.bodyCap) or 100))
+		if type(P.dmg) == "table" then
+			res.face = table.clone(P.dmg)
+			res.face.age = 0
+			res.noseBroken = P.dmg.nose == true and not P.noseAtStart
+			res.face.nose = res.noseBroken
+		end
+	end)
+	return res
+end
+
+-- apply a fight result to the career exactly once (the fight thread and PlayerRemoving can both get here)
+local function settleFight(player, watch, res)
+	if watch.settled or not res then
+		return nil
+	end
+	local profile = watch.profile
+	if DataManager.Get(player) ~= profile or not (profile.camp and profile.camp.offer == watch.offer) then
+		return nil
+	end
+	watch.settled = true
+	return Career.ApplyResult(profile, res)
+end
+
 local function runFight(player, profile)
 	local offer = profile.camp.offer
 	local b = profile.world.boxers[offer.oppId]
@@ -633,13 +700,27 @@ local function runFight(player, profile)
 	local oData = Career.FighterFromBoxer(b)
 	local char = player.Character
 	local hum = char and char:FindFirstChildOfClass("Humanoid")
+	local watch = { profile = profile, offer = offer }
+	fightWatch[player] = watch
+	-- the engine announces its result ("final") a few seconds before Run returns: remember it, so a
+	-- player who leaves during the closing scene still gets the real result recorded
+	local remote = {}
+	function remote.FireClient(_, plr, msg)
+		if type(msg) == "table" and msg.t == "final" and type(msg.result) == "table" then
+			watch.decided = msg.result
+		end
+		FightRemote:FireClient(plr, msg)
+	end
 	local diedConn
 	if hum then
 		diedConn = hum.Died:Connect(function()
+			if not watch.decided then
+				watch.quit = quitResult(player)
+			end
 			FightEngine.Abort(player)
 		end)
 	end
-	local ok, res = pcall(FightEngine.Run, player, FightRemote, offer, pData, oData, arena)
+	local ok, res = pcall(FightEngine.Run, player, remote, offer, pData, oData, arena)
 	if not ok then
 		warn("[Boxer] fight crashed:", res)
 		res = nil
@@ -650,15 +731,19 @@ local function runFight(player, profile)
 	if diedConn then
 		diedConn:Disconnect()
 	end
+	if fightWatch[player] == watch then
+		fightWatch[player] = nil
+	end
 	setBusy(player, nil)
 	if not player.Parent then
-		return
+		return -- PlayerRemoving settled the bout before the leave save
 	end
 	if player.Character then
 		player.Character:PivotTo(gymSpawnCFrame())
 	end
-	if res and DataManager.Get(player) == profile and profile.camp then
-		local out = Career.ApplyResult(profile, res)
+	res = res or watch.quit
+	local out = settleFight(player, watch, res)
+	if out then
 		FightRemote:FireClient(player, { t = "result", result = res, notes = out.notes, earnings = out.earnings, opp = b.name, kind = offer.kind, venue = offer.venueName })
 		task.spawn(DataManager.Save, player, true)
 	else
@@ -1078,9 +1163,20 @@ function handlers.Eat(player, profile, mealId)
 	if busy[player] == "fight" or busy[player] == "spar" then
 		return { ok = false, err = "Not now!" }
 	end
+	-- the Hub badge and the rendered body must agree (CONTRACTS section 2): rebuild when a meal moves the
+	-- physique class or the body fat by a step the Builder draws (it quantises fat to 0.5)
+	local function fatStep()
+		return math.floor((tonumber(profile.body and profile.body.fat) or 14) * 2 + 0.5)
+	end
+	local okBefore, before = pcall(Training.PhysiqueInfo, profile)
+	local f0 = fatStep()
 	local ok, info = Training.Eat(profile, mealId)
 	if not ok then
 		return { ok = false, err = info }
+	end
+	local okAfter, after = pcall(Training.PhysiqueInfo, profile)
+	if fatStep() ~= f0 or not (okBefore and okAfter and before.id == after.id) then
+		applyLook(player)
 	end
 	return { ok = true, info = info }
 end
@@ -1259,7 +1355,12 @@ function handlers.ChangeWeightClass(player, profile, dir)
 end
 
 function handlers.GetRankings(player, profile, classIdx, org)
-	classIdx = math.clamp(tonumber(classIdx) or profile.physical.weightClass, 1, #Config.WeightClasses)
+	-- integer class index only: 1.5 / NaN / "nan" would index no class list
+	local ci = tonumber(classIdx)
+	if not ci or ci ~= ci then
+		ci = profile.physical.weightClass
+	end
+	classIdx = math.clamp(math.floor(ci), 1, #Config.WeightClasses)
 	if not table.find(Config.Orgs, org) then
 		org = "WBA"
 	end
@@ -1303,6 +1404,10 @@ function handlers.GetRivals(player, profile)
 end
 
 function handlers.GetLegacy(player, profile)
+	if not profile.created and not profile.final then
+		-- the creator / a fresh career after retiring: no record to score yet, only the hall of past careers
+		return { ok = true, legacy = nil, pastCareers = profile.pastCareers }
+	end
 	local lg = profile.final or Career.Legacy(profile)
 	return { ok = true, legacy = lg, pastCareers = profile.pastCareers }
 end
@@ -1392,6 +1497,17 @@ local function onCharacter(player, char)
 	end
 end
 
+-- a career whose load failed at join arrived on a retry: show it and dress the character
+DataManager.OnLoaded = function(player)
+	if not player.Parent then
+		return
+	end
+	push(player)
+	if player.Character then
+		onCharacter(player, player.Character)
+	end
+end
+
 local function onPlayer(player)
 	player.CharacterAdded:Connect(function(char)
 		onCharacter(player, char)
@@ -1415,9 +1531,24 @@ for _, player in ipairs(Players:GetPlayers()) do
 end
 
 Players.PlayerRemoving:Connect(function(player)
+	-- leaving a career bout: record it (the real result if it was already announced, else a forfeit
+	-- after the opening bell) BEFORE the leave save. A server shutdown is not the player's doing.
+	local watch = fightWatch[player]
+	if watch then
+		local ok, err = pcall(function()
+			local res = watch.decided or (not shuttingDown and quitResult(player)) or nil
+			settleFight(player, watch, res)
+		end)
+		if not ok then
+			warn("[Boxer] fight settle on leave:", err)
+		end
+	end
 	FightEngine.Abort(player)
 	endSession(player, true)
 	busy[player] = nil
+	if customizing[player] == "barber" then
+		Ambient.SetLoop("Barber", "idle") -- the shared barber NPC stops cutting for an empty chair
+	end
 	customizing[player] = nil
 	lookState[player] = nil
 	lastPreview[player] = nil
@@ -1431,9 +1562,21 @@ Players.PlayerRemoving:Connect(function(player)
 end)
 
 game:BindToClose(function()
+	shuttingDown = true
+	-- save everyone in parallel so the retries fit the shutdown budget, then wait for the leave saves
+	local left = 0
 	for _, player in ipairs(Players:GetPlayers()) do
-		DataManager.Save(player, true)
+		left += 1
+		task.spawn(function()
+			DataManager.Save(player, true)
+			left -= 1
+		end)
 	end
+	local t0 = os.clock()
+	while left > 0 and os.clock() - t0 < 25 do
+		task.wait(0.25)
+	end
+	DataManager.WaitForReleases(25 - (os.clock() - t0))
 end)
 
 task.spawn(function()

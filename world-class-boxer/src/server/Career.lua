@@ -19,15 +19,25 @@ local function round(n)
 	return math.floor(n + 0.5)
 end
 
+-- a whole number in [lo, hi] from client data; NaN / inf / non-numbers give the default
+-- (tonumber passes NaN, and math.floor / math.clamp both return NaN for it)
+local function int(v, lo, hi, default)
+	v = tonumber(v)
+	if v == nil or v ~= v or v == math.huge or v == -math.huge then
+		return default
+	end
+	return clamp(math.floor(v), lo, hi)
+end
+
 ------------------------------------------------------------------------
 -- Creation
 ------------------------------------------------------------------------
 -- d = { first, last, name, nickname, age, nationality, music, voice, weightClass, weight, reachDelta, style, specialty, look }
 function Career.CreateProfile(old, d, userId)
 	local look = Looks.Sanitize(d.look)
-	local ci = clamp(math.floor(tonumber(d.weightClass) or 5), 1, #Config.WeightClasses)
+	local ci = int(d.weightClass, 1, #Config.WeightClasses, 5)
 	local wc = Config.WeightClasses[ci]
-	local age = clamp(math.floor(tonumber(d.age) or 20), 16, 35)
+	local age = int(d.age, 16, 35, 20)
 	local style = Config.FindById(Config.Styles, d.style) or Config.Styles[4]
 	local spec = Config.FindById(Config.Specialties, d.specialty) or Config.Specialties[1]
 	local frame = Config.FindById(Config.BodyTypes, look.body.frame) or Config.BodyTypes[2]
@@ -50,7 +60,7 @@ function Career.CreateProfile(old, d, userId)
 		appearance = look,
 		physical = {
 			height = look.height, weightClass = ci,
-			reach = look.height + clamp(math.floor(tonumber(d.reachDelta) or 2), -3, 6),
+			reach = look.height + int(d.reachDelta, -3, 6, 2),
 			baseWeight = wc.limit,
 		},
 		style = style.id, specialty = spec.id,
@@ -74,8 +84,10 @@ function Career.CreateProfile(old, d, userId)
 		owned = {}, camp = nil, offers = nil, history = {},
 	}
 	-- starting walk-around weight: what the player picked (inside the class range)
-	local target = clamp(math.floor(tonumber(d.weight) or (wc.limit - 2)), wc.min, wc.limit)
+	local target = int(d.weight, wc.min, wc.limit, wc.limit - 2)
 	Training.SetBaseWeight(profile, target)
+	-- the starting muscle is the detraining floor: neglect never shrinks a part below it
+	Training.MuscleBase(profile, true)
 	profile.world = World.Generate((userId or 1) + os.time())
 	profile.overall = Config.Overall(stats)
 	return profile
@@ -248,8 +260,10 @@ function Career.GetOffers(profile)
 		end
 	end
 	if #belts > 0 then
+		-- the best-ranked contender not already offered (the #1 is often another org's champion,
+		-- who already has the Unification offer: add() would drop him and there would be no defense)
 		for _, e in ipairs(World.Rankings(profile, ci, belts[1])) do
-			if not e.isPlayer and e.rank ~= "C" then
+			if not e.isPlayer and e.rank ~= "C" and not used[e.id] and world.boxers[e.id] then
 				add(makeOffer(profile, world.boxers[e.id], "Title Defense", { playerStakes = belts, purseMult = 1.2 }))
 				break
 			end
@@ -257,7 +271,7 @@ function Career.GetOffers(profile)
 	end
 	if tier == 6 and bestOrg then
 		for _, e in ipairs(World.Rankings(profile, ci, bestOrg)) do
-			if not e.isPlayer and e.rank ~= "C" and e.rank <= 5 and e.overall <= pOv + 8 then
+			if not e.isPlayer and e.rank ~= "C" and e.rank <= 5 and e.overall <= pOv + 8 and not used[e.id] and world.boxers[e.id] then
 				add(makeOffer(profile, world.boxers[e.id], "Title Eliminator", { purseMult = 1.3 }))
 				break
 			end
@@ -986,7 +1000,8 @@ function Career.ApplyResult(profile, res)
 	-- fight damage persists (CONTRACTS 8.3): what is left after the suspension heals over the next
 	-- days; head trauma accumulates and a bad concussion / broken nose becomes an injury
 	safe(Training.AddFaceDamage, profile, res.face, Config.FaceDamage.postFightCarry)
-	for _, n in ipairs(safe(Training.AddTrauma, profile, res) or {}) do
+	-- injuries date from fight night: they have healed through the suspension already
+	for _, n in ipairs(safe(Training.AddTrauma, profile, res, suspension) or {}) do
 		table.insert(notes, n)
 	end
 	table.insert(notes, string.format("%d days of recovery before your next camp.", suspension))

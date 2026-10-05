@@ -86,6 +86,7 @@ local function closeSession(save)
 	session = nil
 	State.windows.Custom = nil
 	State.HidePrompts("Custom", false)
+	State.HideHud("Custom", false)
 	if s.conn then
 		s.conn:Disconnect()
 	end
@@ -170,10 +171,15 @@ local function openSession(section, title, width, onRender, footerFn)
 	end })
 	s.footer = UI.Frame(s.win, { BackgroundTransparency = 1, Position = UDim2.new(0, 16, 1, -56), Size = UDim2.new(1, -32, 0, 44) })
 	-- turntable buttons
-	local turn = UI.Frame(s.shade, { BackgroundTransparency = 1, Size = UDim2.fromOffset(170, 40), Position = UDim2.new(0.75, -85, 1, -60) })
-	UI.List(turn, 8, true, Enum.HorizontalAlignment.Center)
-	for _, d in ipairs({ { "<", 1 }, { ">", -1 } }) do
-		local b = UI.Button(turn, d[1], { Size = UDim2.fromOffset(60, 36) })
+	local turn = UI.Frame(s.shade, { Name = "Turntable", AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -28, 1, -24), Size = UDim2.fromOffset(0, 48), AutomaticSize = Enum.AutomaticSize.X })
+	UI.Glass(turn, { transparency = 0.15, radius = 24 })
+	UI.New("UIPadding", { PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8), Parent = turn })
+	UI.List(turn, 6, true, Enum.HorizontalAlignment.Center)
+	UI.Text(turn, "ROTATE", { Font = T.semi, TextSize = 10, TextColor3 = T.sub, Size = UDim2.fromOffset(50, 48), AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false, LayoutOrder = 0 })
+	for i, d in ipairs({ { "<", 1 }, { ">", -1 } }) do
+		local b = UI.Button(turn, "", { Size = UDim2.fromOffset(36, 36), LayoutOrder = i })
+		b:FindFirstChildOfClass("UICorner").CornerRadius = UDim.new(0, 18)
+		UI.Icon(b, d[1] == "<" and "left" or "right", 14, T.text, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5) })
 		b.MouseButton1Down:Connect(function()
 			if session then
 				session.spin = d[2]
@@ -234,6 +240,8 @@ local function openSession(section, title, width, onRender, footerFn)
 	end)
 	s.render()
 	State.HidePrompts("Custom", true)
+	-- the barber chair / locker is a full-screen scene: the HUD plate steps aside
+	State.HideHud("Custom", true)
 	if section == "locker" then
 		s.preview() -- show the gloves on straight away
 	end
@@ -581,36 +589,49 @@ local function renderNutrition(body)
 	local P = State.P
 	UI.Clear(body)
 	local c = P.condition
+	-- the numbers that matter at the counter: cash, weight against the limit, body fat
+	local tiles = UI.Frame(body, { BackgroundTransparency = 1, Size = UDim2.new(1, -8, 0, 64) })
+	UI.Grid(tiles, UDim2.new(1 / 3, -6, 1, 0), nil, 8)
+	local over = (P.weight or 0) > (P.weightLimit or math.huge)
+	UI.Stat(tiles, Config.Money(P.money), "Cash", { valueColor = T.green, order = 1, scaled = true })
+	UI.Stat(tiles, string.format("%.1f", P.weight or 0), string.format("lbs  ·  limit %d", P.weightLimit or 0), { valueColor = over and T.red or T.text, order = 2 })
+	UI.Stat(tiles, string.format("%.1f%%", P.body.fat or 14), "Body fat", { order = 3 })
 	local card = UI.Card(body)
-	UI.Line(card, "Money " .. Config.Money(P.money), { Font = T.bold, TextColor3 = T.green })
-	UI.StatRow(card, "Energy", c.energy, 100, T.gold)
-	UI.StatRow(card, "Hydration", c.hydration, 100, T.blue)
-	UI.StatRow(card, "Nutrition", c.nutrition, 100, T.green)
-	UI.Line(card, string.format("Weight %.1f lbs (limit %d)  -  Body fat %.1f%%", P.weight, P.weightLimit, P.body.fat or 14), { TextSize = 13, TextColor3 = T.sub })
+	UI.StatRow(card, "ENERGY", c.energy, 100, T.gold)
+	UI.StatRow(card, "HYDRATION", c.hydration, 100, T.blue)
+	UI.StatRow(card, "NUTRITION", c.nutrition, 100, T.green)
+	local function hex(col)
+		return "#" .. col:ToHex()
+	end
 	for _, meal in ipairs(Config.Meals) do
 		local locked = meal.requires and not P.owned[meal.requires]
-		local row = UI.Card(body)
-		UI.Line(row, meal.name .. (meal.price > 0 and ("  -  " .. Config.Money(meal.price)) or "  -  free"), { Font = T.bold })
+		local row = UI.Card(body, locked and {} or (meal.price >= 150 and { stroke = T.gold } or {}))
+		local head = UI.Frame(row, { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 26) })
+		UI.Text(head, string.upper(meal.name), { Face = "displayMed", TextSize = 20, TextColor3 = locked and T.sub or T.text, Size = UDim2.new(1, -110, 1, 0), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
+		UI.Chip(head, meal.price > 0 and Config.Money(meal.price) or "FREE", meal.price > 0 and T.gold or T.green, { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, 0, 0.5, 0), h = 24, TextSize = 12, solid = meal.price == 0 })
 		local fx = {}
+		local function add(text, col)
+			table.insert(fx, string.format('<font color="%s">%s</font>', hex(col), text))
+		end
 		if meal.nutrition ~= 0 then
-			table.insert(fx, string.format("%+d nutrition", meal.nutrition))
+			add(string.format("%+d nutrition", meal.nutrition), meal.nutrition > 0 and T.green or T.red)
 		end
 		if meal.hydration ~= 0 then
-			table.insert(fx, string.format("%+d hydration", meal.hydration))
+			add(string.format("%+d hydration", meal.hydration), meal.hydration > 0 and T.blue or T.red)
 		end
 		if meal.energy ~= 0 then
-			table.insert(fx, string.format("%+d energy", meal.energy))
+			add(string.format("%+d energy", meal.energy), T.gold)
 		end
 		if meal.fat ~= 0 then
-			table.insert(fx, meal.fat > 0 and "adds body fat" or "lean")
+			add(meal.fat > 0 and "adds body fat" or "lean", meal.fat > 0 and T.orange or T.cyan)
 		end
 		if meal.gainsBuff then
-			table.insert(fx, string.format("+%d%% training gains today", meal.gainsBuff * 100))
+			add(string.format("+%d%% training gains today", meal.gainsBuff * 100), T.purple)
 		end
 		if meal.muscleBuff then
-			table.insert(fx, string.format("+%d%% muscle growth today", meal.muscleBuff * 100))
+			add(string.format("+%d%% muscle growth today", meal.muscleBuff * 100), T.purple)
 		end
-		UI.Line(row, table.concat(fx, "  -  "), { TextSize = 13, TextColor3 = T.sub })
+		UI.Line(row, table.concat(fx, "   ·   "), { TextSize = 13, TextColor3 = T.sub, RichText = true })
 		UI.Button(row, locked and "NEEDS NUTRITIONIST" or (meal.id == "Water" and "DRINK" or "BUY & EAT"), { Size = UDim2.new(0, 190, 0, 32), TextSize = 14,
 			BackgroundColor3 = locked and T.panel2 or T.gold, TextColor3 = locked and T.sub or T.bg }, function()
 			if locked then
@@ -661,8 +682,9 @@ end
 ------------------------------------------------------------------------
 local function dayTransition(res)
 	local overlay = UI.Frame(State.gui, { Name = "Night", Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.new(0, 0, 0), BackgroundTransparency = 1, ZIndex = 60 })
-	local title = UI.Text(overlay, "", { Font = T.bold, TextSize = 48, TextColor3 = T.gold, TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.new(1, 0, 0, 60), Position = UDim2.new(0, 0, 0.32, 0), ZIndex = 61, TextTransparency = 1, AutomaticSize = Enum.AutomaticSize.None })
-	local sub = UI.Text(overlay, "", { TextSize = 18, TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.new(0.8, 0, 0, 0), Position = UDim2.new(0.1, 0, 0.32, 70), ZIndex = 61, TextTransparency = 1 })
+	local kicker = UI.Text(overlay, "A NEW DAY AT THE GYM", { Font = T.semi, TextSize = 14, TextColor3 = T.sub, TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.new(1, 0, 0, 18), Position = UDim2.new(0, 0, 0.3, -24), ZIndex = 61, TextTransparency = 1, AutomaticSize = Enum.AutomaticSize.None })
+	local title = UI.Text(overlay, "", { Face = "display", TextSize = 96, TextColor3 = T.gold, TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.new(1, 0, 0, 104), Position = UDim2.new(0, 0, 0.3, 0), ZIndex = 61, TextTransparency = 1, AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
+	local sub = UI.Text(overlay, "", { TextSize = 18, TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.new(0.8, 0, 0, 0), Position = UDim2.new(0.1, 0, 0.3, 116), ZIndex = 61, TextTransparency = 1 })
 	TweenService:Create(overlay, TweenInfo.new(0.7), { BackgroundTransparency = 0 }):Play()
 	task.wait(0.8)
 	local s = res.sleep or {}
@@ -675,10 +697,12 @@ local function dayTransition(res)
 		table.insert(lines, n)
 	end
 	sub.Text = table.concat(lines, "\n")
+	TweenService:Create(kicker, TweenInfo.new(0.5), { TextTransparency = 0 }):Play()
 	TweenService:Create(title, TweenInfo.new(0.5), { TextTransparency = 0 }):Play()
 	TweenService:Create(sub, TweenInfo.new(0.5), { TextTransparency = 0 }):Play()
 	task.wait(2.6)
 	TweenService:Create(overlay, TweenInfo.new(0.8), { BackgroundTransparency = 1 }):Play()
+	TweenService:Create(kicker, TweenInfo.new(0.6), { TextTransparency = 1 }):Play()
 	TweenService:Create(title, TweenInfo.new(0.6), { TextTransparency = 1 }):Play()
 	TweenService:Create(sub, TweenInfo.new(0.6), { TextTransparency = 1 }):Play()
 	task.wait(0.9)
@@ -703,10 +727,14 @@ function Services.Sleep()
 		end
 	end
 	local _, _, body
-	shade, _, body = UI.Window(State.gui, "Sleep", 480, 380, "END THE DAY?", { onClose = close })
+	shade, _, body = UI.Window(State.gui, "Sleep", 480, 330, "END THE DAY?", { onClose = close })
 	State.windows.Sleep = close
 	local c = P.condition
-	UI.Line(body, string.format("Day %d  -  Energy %d%%  -  Fatigue %d%%", P.day, c.energy, c.fatigue), { Font = T.semi })
+	local tiles = UI.Frame(body, { BackgroundTransparency = 1, Size = UDim2.new(1, -8, 0, 64) })
+	UI.Grid(tiles, UDim2.new(1 / 3, -6, 1, 0), nil, 8)
+	UI.Stat(tiles, tostring(P.day), "Day", { valueColor = T.gold, order = 1 })
+	UI.Stat(tiles, string.format("%d%%", c.energy), "Energy", { valueColor = c.energy < 30 and T.red or T.text, order = 2 })
+	UI.Stat(tiles, string.format("%d%%", c.fatigue), "Fatigue", { valueColor = c.fatigue > 60 and T.orange or T.text, order = 3 })
 	UI.Line(body, "Sleep restores energy and clears fatigue. Sleep quality depends on your housing, hydration, nutrition, fatigue and injuries. Each night also counts down your fight camp, heals injuries, and your hair and beard keep growing.", { TextColor3 = T.sub, TextSize = 14 })
 	if c.hydration < 40 or c.nutrition < 40 then
 		UI.Line(body, "Tip: eat and drink before bed - you'll sleep better.", { TextColor3 = T.orange, TextSize = 14 })
@@ -714,7 +742,7 @@ function Services.Sleep()
 	if P.camp then
 		UI.Line(body, string.format("Fight camp: %d day(s) left before fight night.", P.camp.daysLeft), { TextColor3 = T.gold, TextSize = 14 })
 	end
-	UI.Button(body, "SLEEP", { Size = UDim2.new(0, 200, 0, 40), BackgroundColor3 = T.gold, TextColor3 = T.bg }, function()
+	UI.Button(body, "SLEEP  ·  END THE DAY", { Size = UDim2.new(1, -8, 0, 44), BackgroundColor3 = T.gold, TextColor3 = T.bg }, function()
 		close()
 		local r = State.req("Sleep")
 		if r.ok then

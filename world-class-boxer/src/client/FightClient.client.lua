@@ -258,16 +258,17 @@ local function setBar(b, frac, capFrac, color)
 end
 
 -- the little body silhouette that flashes where a punch lands (head, left / right ribs)
+local ZONE_IDLE = Color3.fromRGB(62, 69, 88)
 local function zoneMap(parent, side)
 	local f = UI.Frame(parent, { Name = "Zones", BackgroundTransparency = 1, Size = UDim2.fromOffset(34, 74), AnchorPoint = Vector2.new(side == "L" and 0 or 1, 0),
 		Position = side == "L" and UDim2.fromOffset(12, 48) or UDim2.new(1, -12, 0, 48) })
-	local head = UI.Frame(f, { Name = "Head", AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.fromScale(0.5, 0), Size = UDim2.fromOffset(18, 20), BackgroundColor3 = T.panel2 })
+	local head = UI.Frame(f, { Name = "Head", AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.fromScale(0.5, 0), Size = UDim2.fromOffset(18, 20), BackgroundColor3 = ZONE_IDLE })
 	UI.Corner(head, 9)
-	local bodyL = UI.Frame(f, { Name = "BodyL", Position = UDim2.fromOffset(2, 24), Size = UDim2.fromOffset(14, 34), BackgroundColor3 = T.panel2 })
+	local bodyL = UI.Frame(f, { Name = "BodyL", Position = UDim2.fromOffset(2, 24), Size = UDim2.fromOffset(14, 34), BackgroundColor3 = ZONE_IDLE })
 	UI.Corner(bodyL, 5)
-	local bodyR = UI.Frame(f, { Name = "BodyR", Position = UDim2.fromOffset(18, 24), Size = UDim2.fromOffset(14, 34), BackgroundColor3 = T.panel2 })
+	local bodyR = UI.Frame(f, { Name = "BodyR", Position = UDim2.fromOffset(18, 24), Size = UDim2.fromOffset(14, 34), BackgroundColor3 = ZONE_IDLE })
 	UI.Corner(bodyR, 5)
-	local hips = UI.Frame(f, { Name = "Hips", Position = UDim2.fromOffset(5, 60), Size = UDim2.fromOffset(24, 12), BackgroundColor3 = T.panel2, BackgroundTransparency = 0.4 })
+	local hips = UI.Frame(f, { Name = "Hips", Position = UDim2.fromOffset(5, 60), Size = UDim2.fromOffset(24, 12), BackgroundColor3 = ZONE_IDLE, BackgroundTransparency = 0.4 })
 	UI.Corner(hips, 4)
 	return { frame = f, head = head, bodyL = bodyL, bodyR = bodyR }
 end
@@ -547,10 +548,10 @@ local function zoneFlash(panel, isBody, hand, sev)
 		target = hand == "L" and z.bodyR or z.bodyL
 	end
 	target.BackgroundColor3 = Color3.new(1, 1, 1)
-	UI.Tween(target, { BackgroundColor3 = T.red:Lerp(T.panel2, math.clamp(1 - sev, 0, 0.6)) }, TweenInfo.new(0.12))
+	UI.Tween(target, { BackgroundColor3 = T.red:Lerp(ZONE_IDLE, math.clamp(1 - sev, 0, 0.6)) }, TweenInfo.new(0.12))
 	task.delay(0.5, function()
 		if target.Parent then
-			UI.Tween(target, { BackgroundColor3 = T.panel2 }, TweenInfo.new(0.8))
+			UI.Tween(target, { BackgroundColor3 = ZONE_IDLE }, TweenInfo.new(0.8))
 		end
 	end)
 end
@@ -1318,7 +1319,7 @@ end
 
 local function cheer(amount)
 	-- the HUD's crowd meter follows every cheer (VenueFX or the built-in crowd does the sound / bob)
-	crowdMeter.level = math.clamp(crowdMeter.level + (amount or 0) * 0.3, 0, 1)
+	crowdMeter.level = math.clamp(crowdMeter.level + (amount or 0) * 0.35, 0, 1)
 	if venueOn then
 		vfx("Cheer", math.clamp(amount / 1.6, 0, 1))
 		return
@@ -1587,7 +1588,7 @@ local function updateFX(dt, now)
 		R.head.fill.BackgroundColor3 = tierColor(ot):Lerp(Color3.new(1, 1, 1), p * 0.35)
 		R.health.fill.BackgroundColor3 = tierColor(ot):Lerp(Color3.new(1, 1, 1), p * 0.25)
 	end
-	crowdMeter.level = math.max(0.12, crowdMeter.level - dt * 0.06)
+	crowdMeter.level = math.max(0.15, crowdMeter.level - dt * 0.035)
 	updateCrowd(dt)
 	return tier, conc, fx
 end
@@ -1980,7 +1981,7 @@ function handlers.start(msg)
 		panel.kdCount = 0
 		panel.cut.Visible, panel.swell.Visible, panel.ribs.Visible = false, false, false
 		for _, z in ipairs({ panel.zones.head, panel.zones.bodyL, panel.zones.bodyR }) do
-			z.BackgroundColor3 = T.panel2
+			z.BackgroundColor3 = ZONE_IDLE
 		end
 	end
 	crowdMeter.level, crowdMeter.lean = 0.2, 0

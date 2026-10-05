@@ -88,6 +88,33 @@ function Training.NewBody(frameId)
 	return body
 end
 
+-- Per-part detraining floor: what the boxer started with, so neglect can never leave a muscle
+-- smaller than a brand-new boxer's (CreateProfile records the real seed with fromBody = true).
+-- Saves from before it get 6 * potential, the low end of NewBody's seed. C only, never sent.
+function Training.MuscleBase(profile, fromBody)
+	local base = profile.muscleBase
+	if type(base) ~= "table" then
+		base = {}
+		profile.muscleBase = base
+	end
+	local def = 6 * Training.Frame(profile).potential
+	local cap = Training.MuscleCap(profile)
+	local body = type(profile.body) == "table" and profile.body or {}
+	for k in pairs(base) do
+		if not PART_SHARE[k] then
+			base[k] = nil
+		end
+	end
+	for _, p in ipairs(Config.MuscleParts) do
+		local v = finite(base[p.id], nil)
+		if v == nil then
+			v = fromBody and finite(body[p.id], def) or def
+		end
+		base[p.id] = clamp(v, 0, cap)
+	end
+	return base
+end
+
 function Training.NewCondition()
 	-- sore = { [group] = 0..1 }, pending = { [partId] = growth due tonight }, trauma 0..100,
 	-- face = persistent dmg table or nil (Config.FaceDamage)
@@ -133,6 +160,10 @@ end
 -- Lookups
 ------------------------------------------------------------------------
 function Training.Activity(id)
+	-- strings only: FindById matches the first entry without a name for a nil id
+	if type(id) ~= "string" then
+		return nil
+	end
 	return Config.FindById(Config.Activities, id)
 end
 
@@ -195,24 +226,30 @@ function Training.HasInjury(profile, id)
 end
 
 -- adds an injury (or extends a running one); sev 0..1 picks the length inside the def's range.
--- Returns the injury name and whether it is new.
-local function addInjury(profile, id, sev)
+-- healed = days it has already been healing (an injury dated in the past; x1.5 with the Physio like
+-- Training.Heal). Returns the injury name, whether it is new and the days left (0 = already over).
+local function addInjury(profile, id, sev, healed)
 	local def = Config.Injuries[id]
 	if not def then
-		return nil, false
+		return nil, false, 0
 	end
 	local c = profile.condition
 	if type(c.injuries) ~= "table" then
 		c.injuries = {}
 	end
 	local days = math.floor(def.days[1] + (def.days[2] - def.days[1]) * clamp(finite(sev, 0.5), 0, 1) + 0.5)
+	healed = math.max(0, finite(healed, 0)) * (Training.Owned(profile, "Physio") and 1.5 or 1)
+	days = math.max(0, days - healed)
+	if days <= 0 then
+		return def.name, false, 0
+	end
 	local cur = activeInjury(profile, id)
 	if cur then
 		cur.days = math.max(cur.days, days)
-		return def.name, false
+		return def.name, false, cur.days
 	end
 	table.insert(c.injuries, { id = id, days = days })
-	return def.name, true
+	return def.name, true, days
 end
 
 function Training.ActiveInjuries(profile)
@@ -482,6 +519,10 @@ function Training.EnergyCost(profile, act, intensity)
 	return math.floor(e)
 end
 
+-- a day's water cut is bounded (Sleep resets condition.water); below this hydration the sauna is refused
+local MAX_WATER_CUT = -8
+local SAUNA_MIN_HYDRATION = 10
+
 function Training.CanDo(profile, act, intensity)
 	if not act then
 		return false, "Unknown activity"
@@ -505,6 +546,14 @@ function Training.CanDo(profile, act, intensity)
 		end
 		if (act.recovery.energy or 0) < 0 and profile.condition.energy < -act.recovery.energy then
 			return false, "Too exhausted. Sleep first."
+		end
+		if (act.recovery.water or 0) < 0 then
+			if finite(profile.condition.hydration, 80) <= SAUNA_MIN_HYDRATION then
+				return false, "Too dehydrated for the sauna. Drink water first."
+			end
+			if finite(profile.condition.water, 0) <= MAX_WATER_CUT + 0.05 then
+				return false, "You can't sweat out any more today. Sleep, then cut again tomorrow."
+			end
 		end
 		return true
 	end
@@ -740,10 +789,11 @@ function Training.Perform(profile, act, quality, opts)
 	local scale = opts.scale or 1
 	-- stat gains
 	for stat, weight in pairs(act.gains or {}) do
-		local cur = profile.stats[stat]
+		local cur = finite(profile.stats[stat], 10)
 		local dim = clamp(1 - (cur - 25) / 78, 0.05, 1.1)
 		local g = Config.GainScale * weight * Training.GainMultiplier(profile, stat, act) * quality * condMult * dim * scale
-		local new = math.min(Config.StatCap, cur + g)
+		-- NaN-safe: math.min(cap, NaN) is the cap, so a NaN gain would max the stat out
+		local new = clamp(finite(cur + g, cur), 1, Config.StatCap)
 		result.gains[stat] = new - cur
 		profile.stats[stat] = new
 	end
@@ -810,6 +860,11 @@ function Training.Perform(profile, act, quality, opts)
 	return result
 end
 
+-- A paid recovery the player could not pay for at the finish (Recover returned unpaid = true):
+-- the very next Training.Record for that activity stores nothing, as if noStore had been passed,
+-- so an unpaid session never counts towards sessions / best grade. Weak keys, never saved.
+local unpaidSession = setmetatable({}, { __mode = "k" })
+
 function Training.Recover(profile, act, quality)
 	quality = clamp(tonumber(quality) or 1, 0.5, 1.5)
 	local c = profile.condition
@@ -818,6 +873,14 @@ function Training.Recover(profile, act, quality)
 	local mult = (lv and lv.mult or 1) * (0.8 + 0.2 * quality)
 	local result = { notes = {} }
 	if act.price and not (act.station == "massage" and Training.StationLevel(profile, "massage") >= 2) then
+		-- CanDo checked the price at the start, but food can be bought mid-session: never go below 0
+		if finite(profile.money, 0) < act.price then
+			table.insert(result.notes, "You couldn't pay the " .. Config.Money(act.price) .. " at the end, so the session didn't count.")
+			result.unpaid = true
+			result.fatigue = c.fatigue
+			unpaidSession[profile] = act.id
+			return result
+		end
 		profile.money -= act.price
 		table.insert(result.notes, "Paid " .. Config.Money(act.price) .. " for the session.")
 	end
@@ -827,9 +890,18 @@ function Training.Recover(profile, act, quality)
 		c.hydration = clamp(c.hydration + r.hydration, 0, 100)
 	end
 	if r.water then
+		-- bounded per day: stacked sauna sessions cannot cut more than MAX_WATER_CUT before Sleep
+		local cur = finite(c.water, 0)
 		local w = r.water * mult
-		c.water = (c.water or 0) + w
-		table.insert(result.notes, string.format("Sweated out %.1f lbs of water weight. Rehydrate after the weigh-in.", -w))
+		if w < 0 then
+			w = math.max(w, math.min(0, MAX_WATER_CUT - cur))
+		end
+		c.water = cur + w
+		if r.water < 0 and w > -0.05 then
+			table.insert(result.notes, "You can't sweat out any more today.")
+		else
+			table.insert(result.notes, string.format("Sweated out %.1f lbs of water weight. Rehydrate after the weigh-in.", -w))
+		end
 	end
 	if r.heal then
 		local healed = Training.Heal(profile, r.heal * mult)
@@ -912,6 +984,10 @@ end
 -- result screen shows. noStore = the session doesn't count (e.g. finished impossibly fast).
 -- profile.records[actId] = { best, sessions, last, stats = { key = best number } }
 function Training.Record(profile, actId, quality, stats, noStore)
+	if unpaidSession[profile] ~= nil then
+		noStore = noStore or unpaidSession[profile] == actId
+		unpaidSession[profile] = nil
+	end
 	local q = tonumber(quality) or 0
 	if q ~= q then
 		q = 0
@@ -980,7 +1056,7 @@ end
 -- Food & sleep
 ------------------------------------------------------------------------
 function Training.Eat(profile, mealId)
-	local meal = Config.FindById(Config.Meals, mealId)
+	local meal = type(mealId) == "string" and Config.FindById(Config.Meals, mealId) or nil
 	if not meal then
 		return false, "Unknown item"
 	end
@@ -1275,8 +1351,9 @@ end
 -- After a fight (Career.ApplyResult, after PassDays): head trauma accumulates from head damage and
 -- knockdowns (it decays slowly and costs Chin in FightModifiers), a bad concussion or a broken nose
 -- becomes an injury. res = the fight result (concPeak, kdAgainst, noseBroken, headTaken | damageTaken,
--- outcome, method, face). Returns notes.
-function Training.AddTrauma(profile, res)
+-- outcome, method, face). elapsed = days since fight night (the medical suspension PassDays just ran):
+-- the injuries date from the fight, so they have already healed that long. Returns notes.
+function Training.AddTrauma(profile, res, elapsed)
 	local notes = {}
 	if type(res) ~= "table" then
 		return notes
@@ -1299,9 +1376,11 @@ function Training.AddTrauma(profile, res)
 	end
 	if concussed then
 		local sev = peak and clamp((peak - CC.injuryAt) / math.max(0.05, 1 - CC.injuryAt), 0, 1) or 0.5
-		local name = addInjury(profile, "concussion", sev)
-		if name then
-			table.insert(notes, "DOCTOR: " .. name .. ". No sparring or bag work until it clears.")
+		local name, _, left = addInjury(profile, "concussion", sev, elapsed)
+		if name and left > 0 then
+			table.insert(notes, string.format("DOCTOR: %s. No sparring or bag work for %d more days.", name, math.ceil(left)))
+		elseif name then
+			table.insert(notes, "DOCTOR: " .. name .. ". It cleared during the medical suspension.")
 		end
 	end
 	-- a new break only: D's explicit flag wins (the face table is the fallback for older results),
@@ -1313,9 +1392,27 @@ function Training.AddTrauma(profile, res)
 	preFightNose[profile] = nil
 	local broke = res.noseBroken == true or (res.noseBroken == nil and face ~= nil and face.nose == true)
 	if broke and not seeded then
-		local name, new = addInjury(profile, "nose", rng:NextNumber())
+		local name, new, left = addInjury(profile, "nose", rng:NextNumber(), elapsed)
 		if name and new then
 			table.insert(notes, "DOCTOR: " .. name .. ". Keep the mitts and sparring away from it.")
+		elseif name and left <= 0 then
+			-- the break healed during the suspension: set the nose now (as HealFace does once the
+			-- injury is over) - AddFaceDamage just flagged it with a fresh age, which would otherwise
+			-- keep it broken (and seeded into the next fight) for another 10 days
+			table.insert(notes, "DOCTOR: " .. name .. ". It knitted during the medical suspension.")
+			local f = cleanFace(c.face)
+			if f and f.nose then
+				f.nose = nil
+				local battle = battleOf(profile)
+				if rng:NextNumber() < FD.noseBendChance and battle.nose < 1 then
+					battle.nose = math.min(1, battle.nose + FD.noseBendStep)
+					table.insert(notes, "Your nose healed with a slight bend.")
+				end
+				c.face = cleanFace(f)
+				if not c.face then
+					c.faceMarks = nil
+				end
+			end
 		end
 	end
 	if c.trauma >= 40 and before < 40 then
@@ -1329,12 +1426,13 @@ end
 ------------------------------------------------------------------------
 -- Neglected muscle fades: a part not trained for detrainGraceDays loses
 -- value * detrainRate * min(3, (idle - grace) / 7) per day (x2 from detrainAgeFrom), never below the
--- floor. mul < 1 = active rest (fight suspension). Parts with no log entry start their clock now.
+-- part's starting size (Training.MuscleBase) or detrainFloor. mul < 1 = active rest (fight suspension). Parts with no log entry start their clock now.
 -- detraining multiplier during a post-fight medical suspension (enforced rest, light work only)
 local SUSPENSION_DETRAIN = 0.1
 
 local function detrain(profile, mul)
 	local body, log = profile.body, muscleLog(profile)
+	local base = type(profile.muscleBase) == "table" and profile.muscleBase or Training.MuscleBase(profile)
 	local day = finite(profile.day, 1)
 	local age = type(profile.identity) == "table" and finite(profile.identity.age, 25) or 25
 	local ageMul = age >= MG.detrainAgeFrom and 2 or 1
@@ -1346,9 +1444,12 @@ local function detrain(profile, mul)
 			local idle = day - last
 			if idle > MG.detrainGraceDays then
 				local v = finite(body[p.id], Config.PartValue(body, p.id))
-				if v > MG.detrainFloor then
+				-- never below the part's starting size (Training.MuscleBase): an untargeted muscle
+				-- fades back to where the career began, not to half of a beginner's
+				local floor = math.max(MG.detrainFloor, finite(base[p.id], MG.detrainFloor))
+				if v > floor then
 					local loss = v * MG.detrainRate * math.min(3, (idle - MG.detrainGraceDays) / 7) * ageMul * (mul or 1)
-					body[p.id] = math.max(MG.detrainFloor, v - loss)
+					body[p.id] = math.max(floor, v - loss)
 				end
 			end
 		end
@@ -1728,29 +1829,42 @@ function Training.RepairGear(profile, kind)
 	return true, cost
 end
 
+-- coach specialties by id only (Config.FindById also matches display names, and the first entry
+-- for a nil id): every key written to profile.coaches must be a CoachSpecialties id
+local function coachSpec(specId)
+	if type(specId) ~= "string" then
+		return nil
+	end
+	return Catalog.Find(Catalog.CoachSpecialties, specId)
+end
+
 function Training.HireCoach(profile, specId, tier)
-	tier = math.floor(tonumber(tier) or 0)
-	local spec = Config.FindById(Catalog.CoachSpecialties, specId)
+	tier = math.floor(finite(tier, 0))
+	local spec = coachSpec(specId)
 	local def = Catalog.CoachTiers[tier]
-	if not spec or not def then
+	local names = spec and Catalog.CoachNames[spec.id]
+	local name = type(names) == "table" and names[tier] or nil
+	if not spec or not def or not name then
 		return false, "Unknown coach"
 	end
-	if (profile.coaches[specId] or 0) >= tier then
+	if (profile.coaches[spec.id] or 0) >= tier then
 		return false, "You already have a coach at that level."
 	end
 	if profile.money < def.cost then
 		return false, "Signing fee is " .. Config.Money(def.cost) .. "."
 	end
+	-- pay last: every lookup above has already succeeded
 	profile.money -= def.cost
-	profile.coaches[specId] = tier
-	return true, Catalog.CoachNames[specId][tier]
+	profile.coaches[spec.id] = tier
+	return true, name
 end
 
 function Training.FireCoach(profile, specId)
-	if (profile.coaches[specId] or 0) == 0 then
+	local spec = coachSpec(specId)
+	if not spec or (profile.coaches[spec.id] or 0) == 0 then
 		return false, "No coach to release."
 	end
-	profile.coaches[specId] = 0
+	profile.coaches[spec.id] = 0
 	return true
 end
 
@@ -1876,6 +1990,8 @@ function Training.Migrate(profile)
 	for _, k in ipairs(Config.StatKeys) do
 		numIn(stats, k, 1, Config.StatCap, 30)
 	end
+	-- derived from the (now finite) stats: a NaN overall saves as null and the client formats it
+	profile.overall = Config.Overall(stats)
 	local mental = tableIn(profile, "mental")
 	for _, k in ipairs(Config.MentalKeys) do
 		numIn(mental, k, 0, 100, 50)
@@ -1980,6 +2096,8 @@ function Training.Migrate(profile)
 			log[p.id] = profile.day
 		end
 	end
+	-- detraining floor per part (saves from before it: 6 * potential)
+	Training.MuscleBase(profile)
 
 	-- gym: every station (the medicine ball is new) with the level / condition a new career gets
 	local gym = tableIn(profile, "gym", Training.NewGym())
@@ -2008,6 +2126,13 @@ function Training.Migrate(profile)
 		end
 	end
 	local coaches = tableIn(profile, "coaches")
+	-- only specialty ids: an old HireCoach bug saved display-name keys ('Ring IQ') that cost a
+	-- salary every fight (TeamSalary) and never gave a boost (CoachBoost)
+	for k in pairs(coaches) do
+		if type(k) ~= "string" or not Catalog.Find(Catalog.CoachSpecialties, k) then
+			coaches[k] = nil
+		end
+	end
 	for _, spec in ipairs(Catalog.CoachSpecialties) do
 		coaches[spec.id] = math.floor(clamp(finite(coaches[spec.id], 0), 0, #Catalog.CoachTiers))
 	end

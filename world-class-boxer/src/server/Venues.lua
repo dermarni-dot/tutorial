@@ -1534,6 +1534,72 @@ local function poster(parent, cf, w, h, top, mid, bottom, bg, fg, rng)
 	return p
 end
 
+-- Gym members training around the sparring room: real Builder rigs (the same Ambient NPCs as the
+-- gym's members, Loop heavybag / rope / shadow, tag Ambient) so the Animator drives them, at medium /
+-- low detail. They are built once into the template (no per-spar Builder cost) and pruned per gym tier
+-- in applyGymTier (Slot > athletes kept). Positions are on the template floor (y 0), facing their work.
+-- The bag athletes stand on the bag's +-Z side: the members'-bag swing code (GymVisuals.onAutoAct /
+-- hitPendulum) takes a punch as arriving along world Z, so this way the bag swings away from them.
+local ATHLETES = {
+	{ name = "Darnell Hayes", tag = "Gym Member", loop = "heavybag", at = V3(-30, 0, -12.4), look = V3(-30, 0, -16), hands = "gloves", seed = 3101, physique = "PowerPuncher", sweat = 0.6, detail = "medium" },
+	{ name = "Keisha Moore", tag = "Gym Member", loop = "rope", at = V3(24, 0, 20), look = V3(14, 0, 12), props = "rope", stand = 0, seed = 3202, gender = 2, physique = "LeanTechnical", sweat = 0.55, detail = "low" },
+	{ name = "Mateo Cruz", tag = "Gym Member", loop = "shadow", at = V3(22, 0, -22), look = V3(12, 0, -14), hands = "wraps", seed = 3303, physique = "LeanTechnical", sweat = 0.45, detail = "low" },
+	{ name = "Ivy Chen", tag = "Gym Member", loop = "heavybag", at = V3(-30, 0, 12.4), look = V3(-30, 0, 16), hands = "gloves", seed = 3404, gender = 2, physique = "Balanced", sweat = 0.55, detail = "low" },
+}
+
+-- Runs in its own thread once the template is in ServerStorage: Builder.CreateNPC yields on the avatar
+-- service (CreateHumanoidModelFromDescription), and server startup must not wait on that. Each rig is
+-- built off-template and only parented in finished, so a spar cloned meanwhile simply has fewer
+-- athletes. A rig that fails is retried once a little later.
+local ATHLETE_RETRY = 15
+
+local function buildGymAthletes(arena)
+	local ok, Ambient = pcall(require, script.Parent.Ambient)
+	if not ok or type(Ambient) ~= "table" or type(Ambient.SpawnAt) ~= "function" then
+		return
+	end
+	local folder = Instance.new("Folder")
+	folder.Name = "Athletes"
+	folder.Parent = arena
+	local function spawnOne(i, def)
+		local stage = Instance.new("Folder")
+		local good, npc = pcall(Ambient.SpawnAt, stage, def, Vector3.zero)
+		if good and npc then
+			npc:SetAttribute("Slot", i)
+			-- the template may have been rebuilt while this rig was being made
+			if folder.Parent == arena and arena.Parent then
+				npc.Parent = folder
+			else
+				npc:Destroy()
+			end
+		end
+		stage:Destroy()
+		if not (good and npc) then
+			warn("[Venues] sparring room athlete failed:", def.name, npc)
+			return false
+		end
+		return true
+	end
+	local missing = {}
+	for i, def in ipairs(ATHLETES) do
+		if not arena.Parent then
+			return
+		end
+		if not spawnOne(i, def) then
+			table.insert(missing, i)
+		end
+	end
+	if #missing > 0 then
+		task.wait(ATHLETE_RETRY)
+		for _, i in ipairs(missing) do
+			if not arena.Parent then
+				return
+			end
+			spawnOne(i, ATHLETES[i])
+		end
+	end
+end
+
 local function buildGymRoom(arena, spec, rng)
 	local S, H = spec.size, spec.height
 	local half = S / 2
@@ -1569,12 +1635,22 @@ local function buildGymRoom(arena, spec, rng)
 	for _, m in ipairs({ { 0, -(spec.half + 6), 28, 4 }, { 0, spec.half + 6, 28, 4 }, { -(spec.half + 6), 0, 4, 20 }, { spec.half + 6, 0, 4, 20 } }) do
 		prop(arena, "Mat", V3(m[3], 0.1, m[4]), CF(m[1], 0.05, m[2]), rgb(40, 40, 46), M.Rubber, { CanCollide = false })
 	end
-	-- heavy bags on chains along the -X wall, a speed bag platform, a bench under the windows
-	for _, z in ipairs({ -16, 16 }) do
+	-- heavy bags on chains along the -X wall, a speed bag platform, a bench under the windows.
+	-- Each bag is a members' bag rig (tag MemberBag, body part "MemberBag", Hook = the pivot) so the
+	-- athletes' Animator finds it and lands punches on its surface; Venues.New re-bases Hook to world
+	-- space after the pivot and gives each copy its own Index
+	for i, z in ipairs({ -16, 16 }) do
 		local top = V3(-half + 5, H - 0.5, z)
-		rod(arena, "BagChain", top, V3(top.X, 7.7, z), 0.12, rgb(120, 120, 126), M.Metal)
-		local bag = prop(arena, "HeavyBag", V3(4.2, 2.1, 2.1), CF(top.X, 5.5, z) * CFrame.Angles(0, 0, math.pi / 2), rgb(140, 20, 24), M.Leather)
+		local rig = Instance.new("Model")
+		rig.Name = "HeavyBag"
+		rig:SetAttribute("Hook", top)
+		rig:SetAttribute("Index", i)
+		rod(rig, "BagChain", top, V3(top.X, 7.7, z), 0.12, rgb(120, 120, 126), M.Metal)
+		local bag = prop(rig, "MemberBag", V3(4.2, 2.1, 2.1), CF(top.X, 5.5, z) * CFrame.Angles(0, 0, math.pi / 2), rgb(140, 20, 24), M.Leather)
 		bag.Shape = Enum.PartType.Cylinder
+		rig.PrimaryPart = bag
+		rig.Parent = arena
+		tag(rig, "MemberBag")
 	end
 	prop(arena, "SpeedBoard", V3(3, 0.4, 3), CF(-half + 2.5, 9.5, 0), rgb(70, 45, 25), M.Wood)
 	blob(arena, "SpeedBag", V3(0.9, 1.3, 0.9), CF(-half + 3.2, 8.6, 0), rgb(150, 25, 25), M.Leather)
@@ -1606,7 +1682,8 @@ local function buildGymRoom(arena, spec, rng)
 	local officials = arena:FindFirstChild("Officials") or Instance.new("Folder")
 	officials.Name = "Officials"
 	officials.Parent = arena
-	figure(officials, "Coach", CFrame.lookAt(V3(-(spec.half + 4.2), 0, -(spec.half + 2)), V3(0, 0, 0)), rng,
+	-- (off the red corner's diagonal: that spot belongs to the corner team below)
+	figure(officials, "Coach", CFrame.lookAt(V3(-(spec.half + 4.2), 0, -(spec.half - 2)), V3(0, 0, 0)), rng,
 		{ shirt = rgb(30, 30, 34), sleeves = rgb(30, 30, 34), loop = "coachwatch", role = "Coach", text = "COACH", arms = { { 0.35, 0.3 }, { 0.35, 0.3 } } })
 	local watchers = { V3(-(spec.half + 3.9), 0, 5), V3(4, 0, spec.half + 3.9), V3(spec.half + 3.9, 0, -4), V3(-5, 0, -(spec.half + 3.9)) }
 	for i, p in ipairs(watchers) do
@@ -1616,6 +1693,24 @@ local function buildGymRoom(arena, spec, rng)
 		})
 		fig:SetAttribute("Slot", i)
 	end
+	-- a corner team per fighter, as at the real venues (cheap proxies, Loop cornerman): the trainer
+	-- always, the cutman (Slot 2) only in tier 3+ rooms (applyGymTier drops him). VenueFX finds them
+	-- in Officials and walks them into the corner between rounds.
+	for _, c in ipairs({ { "Red", -1, RED }, { "Blue", 1, BLUE } }) do
+		local s = c[2]
+		local diag = V3(s, 0, s).Unit
+		local perp = V3(-diag.Z, 0, diag.X)
+		for i, role in ipairs({ "Trainer", "Cutman" }) do
+			local pos = V3(s * (spec.half + 4.6), 0, s * (spec.half + 4.6)) + perp * (i == 1 and -1.5 or 1.5)
+			local fig = figure(officials, "Cornerman", CFrame.lookAt(pos, V3(0, 0, 0)), rng, {
+				shirt = c[3]:Lerp(BLACK, 0.35), sleeves = c[3]:Lerp(BLACK, 0.35), text = "CORNER", towel = role == "Cutman", loop = "cornerman", role = role,
+				arms = { { 0.1, 0.12 }, { 0.1, 0.12 } },
+			})
+			fig:SetAttribute("Corner", c[1])
+			fig:SetAttribute("Slot", i)
+		end
+	end
+	-- (the athletes are added by buildTemplate once the template is parented: buildGymAthletes yields)
 end
 
 ------------------------------------------------------------------------
@@ -1678,6 +1773,9 @@ local function buildTemplate(kind)
 	-- the referee starts between the neutral corners, off the fighters' line
 	anchor("RefereeSpot", V3(c * 0.95, RH, -c * 0.15))
 	arena.Parent = ServerStorage
+	if spec.gym then
+		task.spawn(buildGymAthletes, arena)
+	end
 	return arena
 end
 
@@ -1973,12 +2071,22 @@ local function applyGymTier(arena, spec, tier, rng)
 		local bsg = gui(banner, FACE.Left, 12, 1, 1)
 		label(bsg, { Size = UDim2.fromScale(0.9, 0.7), Position = UDim2.fromScale(0.05, 0.15), Text = "HOME OF THE CHAMPION", TextColor3 = rgb(255, 215, 90) })
 	end
-	-- more people train around better rooms; extra onlookers already exist, hide the surplus
+	-- more people train around better rooms; extra onlookers / athletes already exist, drop the
+	-- surplus (2 athletes in a tier 1 room up to 4 at tier 3+); cutmen only work tier 3+ corners
 	local keep = 1 + tier
+	local keepAthletes = math.clamp(tier + 1, 2, 4)
+	local doomed = {}
 	for _, d in ipairs(arena:GetDescendants()) do
-		if d:IsA("Model") and d.Name == "Onlooker" and (d:GetAttribute("Slot") or 0) > keep then
-			d:Destroy()
+		if d:IsA("Model") then
+			local slot = d:GetAttribute("Slot") or 0
+			if (d.Name == "Onlooker" and slot > keep) or (d.Name == "Cornerman" and tier < 3 and slot >= 2)
+				or (d.Parent and d.Parent.Name == "Athletes" and slot > keepAthletes) then
+				table.insert(doomed, d)
+			end
 		end
+	end
+	for _, d in ipairs(doomed) do
+		d:Destroy()
 	end
 end
 
@@ -2105,7 +2213,20 @@ function Venues.New(kind, opts)
 		end)
 	end
 	local slot = count % 12
+	local before = arena:GetPivot()
 	arena:PivotTo(CF(4000 + (slot % 4) * 500, 0, 4000 + math.floor(slot / 4) * 500))
+	-- members' bag rigs keep their pivot as a world-space attribute (GymVisuals / Animator read it):
+	-- follow the move, and give every copy its own Index so two rooms never share a bag id
+	local moved = arena:GetPivot() * before:Inverse()
+	for _, d in ipairs(arena:GetDescendants()) do
+		if d:IsA("Model") and CollectionService:HasTag(d, "MemberBag") then
+			local hook = d:GetAttribute("Hook")
+			if typeof(hook) == "Vector3" then
+				d:SetAttribute("Hook", moved * hook)
+			end
+			d:SetAttribute("Index", "venue" .. count .. "_" .. tostring(d:GetAttribute("Index") or 1))
+		end
+	end
 	arena.Parent = workspace
 	return arena
 end

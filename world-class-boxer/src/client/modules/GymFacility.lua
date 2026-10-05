@@ -507,6 +507,45 @@ end
 -- analytics screen (Elite+): your best session quality per drill as animated bars
 ------------------------------------------------------------------------
 local DRILLS = { "HeavyBag", "SpeedBag", "DoubleEnd", "MittWork", "Shadow", "Bench", "Squat", "Treadmill" }
+-- live screens: the models holding them are keyed by tier, so the bars are refreshed in place
+-- (rebuilding TierDressing / the wing after every session would churn hundreds of parts)
+local screens = {} -- { sg, rows = { { id, best, fill, value } } }
+
+local function bestOf(recs, id)
+	local r = recs[id]
+	local best = type(r) == "table" and tonumber(r.best) or 0
+	return best == best and best or 0
+end
+
+local function drillPct(best)
+	return math.clamp(Config.QualityPct and Config.QualityPct(best) or best * 70, 0, 100)
+end
+
+local function setBar(row, best, i)
+	row.best = best
+	local pct = drillPct(best)
+	row.fill.BackgroundColor3 = pct >= 85 and GOLD or rgb(80, 200, 255)
+	TweenService:Create(row.fill, TweenInfo.new(1.2 + i * 0.12, Enum.EasingStyle.Quart), { Size = UDim2.fromScale(pct / 100, 1) }):Play()
+	row.value.Text = best > 0 and (math.floor(pct) .. "%") or "--"
+end
+
+local function updateScreens(P)
+	local recs = type(P) == "table" and type(P.records) == "table" and P.records or {}
+	for k = #screens, 1, -1 do
+		local s = screens[k]
+		if not (s.sg.Parent and s.sg.Parent.Parent) then
+			table.remove(screens, k)
+		else
+			for i, row in ipairs(s.rows) do
+				local best = bestOf(recs, row.id)
+				if best ~= row.best then
+					setBar(row, best, i)
+				end
+			end
+		end
+	end
+end
+
 function GymFacility.AnalyticsScreen(_m, screen, face, P, title, list)
 	if not screen then
 		return
@@ -517,18 +556,19 @@ function GymFacility.AnalyticsScreen(_m, screen, face, P, title, list)
 	local recs = type(P) == "table" and type(P.records) == "table" and P.records or {}
 	local ids = list or DRILLS
 	local n = #ids
+	local rows = {}
 	for i, id in ipairs(ids) do
-		local r = recs[id]
-		local best = type(r) == "table" and tonumber(r.best) or 0
-		local pct = math.clamp(Config.QualityPct and Config.QualityPct(best) or best * 70, 0, 100)
 		local act = Config.FindById and Config.FindById(Config.Activities, id)
 		local y = 0.2 + (i - 1) * (0.76 / n)
 		label(sg, (act and act.name or id):upper(), { TextColor3 = rgb(200, 210, 225), Font = Enum.Font.GothamBold, TextXAlignment = Enum.TextXAlignment.Left, Size = UDim2.fromScale(0.3, 0.6 / n), Position = UDim2.fromScale(0.04, y) })
 		local track = frame(sg, { Size = UDim2.fromScale(0.5, 0.45 / n), Position = UDim2.fromScale(0.36, y + 0.08 / n), BackgroundColor3 = rgb(30, 40, 56) })
-		local fill = frame(track, { Size = UDim2.fromScale(0, 1), BackgroundColor3 = pct >= 85 and GOLD or rgb(80, 200, 255) })
-		TweenService:Create(fill, TweenInfo.new(1.2 + i * 0.12, Enum.EasingStyle.Quart), { Size = UDim2.fromScale(pct / 100, 1) }):Play()
-		label(sg, best > 0 and (math.floor(pct) .. "%") or "--", { TextColor3 = WHITE, Font = Enum.Font.Code, Size = UDim2.fromScale(0.1, 0.55 / n), Position = UDim2.fromScale(0.88, y) })
+		local row = { id = id }
+		row.fill = frame(track, { Size = UDim2.fromScale(0, 1) })
+		row.value = label(sg, "--", { TextColor3 = WHITE, Font = Enum.Font.Code, Size = UDim2.fromScale(0.1, 0.55 / n), Position = UDim2.fromScale(0.88, y) })
+		setBar(row, bestOf(recs, id), i)
+		rows[i] = row
 	end
+	table.insert(screens, { sg = sg, rows = rows })
 	point(screen, rgb(90, 170, 255), 9, 0.4)
 end
 
@@ -1648,6 +1688,24 @@ end
 ------------------------------------------------------------------------
 -- Refresh + per-frame
 ------------------------------------------------------------------------
+-- what still stands between this gym and the ELITE tier (the summary's needs only cover the next tier
+-- up); a lower tier's line is kept only when Elite has none of its kind (e.g. a waived career rank)
+local function eliteNeeds(P, frac)
+	local list, kinds = {}, {}
+	for i = 3, 2, -1 do
+		local def = Config.GymTiers and Config.GymTiers[i]
+		local ok, needs = pcall(Catalog.GymTierNeeds, def, tonumber(frac) or 0, P.owned, P.tier)
+		for _, n in ipairs(ok and type(needs) == "table" and needs or {}) do
+			local kind = tostring(n):match("^%a+") or n
+			if i == 3 or not kinds[kind] then
+				kinds[kind] = true
+				table.insert(list, n)
+			end
+		end
+	end
+	return list
+end
+
 local root -- LocalGym/Facility
 function GymFacility.Refresh(P, localGym, info)
 	if not (P and localGym and info) then
@@ -1661,8 +1719,9 @@ function GymFacility.Refresh(P, localGym, info)
 	pcall(applyLamps, idx)
 	pcall(restyleRacks, idx)
 	rebuild(root, "TierDressing", tostring(idx), buildDressing, idx, P)
-	local needKey = info.needs and info.needs[1] or ""
-	rebuild(root, "EliteWingLocal", string.format("%d|%d|%s", idx, idx < 3 and math.floor((info.frac or 0) * 100) or 0, idx < 3 and needKey or ""), buildWing, idx, P, info.frac, info.needs)
+	local wingNeeds = idx < 3 and eliteNeeds(P, info.frac) or nil
+	local needKey = wingNeeds and wingNeeds[1] or ""
+	rebuild(root, "EliteWingLocal", string.format("%d|%d|%s", idx, idx < 3 and math.floor((info.frac or 0) * 100) or 0, needKey), buildWing, idx, P, info.frac, wingNeeds)
 	pcall(setGate, idx >= 3)
 	-- career wall: the newest fights (the summary sends newest first)
 	local hist = type(P.history) == "table" and P.history or {}
@@ -1680,6 +1739,7 @@ function GymFacility.Refresh(P, localGym, info)
 	rebuild(root, "ChampionDressing", string.format("%d|%d|%s", idx, math.floor((tonumber(P.popularity) or 0) / 10), titleKey), buildChampion, P, idx)
 	rebuild(root, "RingUpgrades", string.format("%d|%d", info.ringLevel or 1, idx), buildRing, info.ringLevel or 1, idx)
 	rebuild(root, "Crew", tostring(math.min(idx, 4)), buildCrew, idx)
+	pcall(updateScreens, P)
 	if info.prev and idx > info.prev then
 		pcall(revealTier, idx, info.def)
 	end

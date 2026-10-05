@@ -1,6 +1,6 @@
 -- BuilderHair: the hair on the head (server side), split verbatim out of BuilderHead so the hair and
 -- the head have separate owners. Behaviour is identical to the pre-split BuilderHead (proven by
--- /tmp/claude-0/tests/anatomy_foundation/hair_split_equivalence.py).
+-- /tmp/claude-0/tests/anatomy_foundation/run_equiv.py: identical instance dumps, mutations detected).
 -- * every Looks.HairStyles id x 5 hair types (shrinkage, curl size, sheen, material), fades with
 --   gradient bands and a sharp line-up, hairlines and parts, visible growth stages, Beam strands
 --   (tag HairStrand) for depth, sway joints (tag HairSway) on locs/braids/long hair and a bounce
