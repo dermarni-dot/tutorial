@@ -356,6 +356,13 @@ local function pageFace()
 		end)
 	end
 	sliderList(Looks.FaceSliders, f)
+	-- v3 sculpt (organic head meshes): skull, cheekbones, jaw, chin, eyes, nose, lips + the nose shape
+	UI.Header(body, "SCULPT")
+	UI.Cycler(body, "Nose shape", Looks.NoseTypes or { "Straight" }, f.noseType or "Straight", function(v)
+		f.noseType = v
+		previewHead()
+	end)
+	sliderList(Looks.SculptSliders or {}, f)
 	UI.Header(body, "BOXER WEAR")
 	sliderList(Looks.WearSliders, f)
 	UI.Line(body, "Fights add their own wear: deep cuts scar, broken noses bend and swollen ears can turn into cauliflower ears.", { TextColor3 = T.sub, TextSize = 13 })
@@ -363,11 +370,12 @@ local function pageFace()
 		-- every face and eye slider and the newer (v2) skin sliders, shape, undertone, brows, both eye
 		-- colours and the skin pattern; the boxer-wear sliders stay the player's own choice
 		local r = Looks.Random(math.random(1, 1000000), C.look.gender)
-		for _, list in ipairs({ Looks.FaceSliders, Looks.EyeSliders }) do
+		for _, list in ipairs({ Looks.FaceSliders, Looks.EyeSliders, Looks.SculptSliders or {} }) do
 			for _, s in ipairs(list) do
 				f[s.key] = r.face[s.key]
 			end
 		end
+		f.noseType = r.face.noseType or f.noseType
 		for _, s in ipairs(Looks.SkinSliders) do
 			if s.v2 then
 				f[s.key] = r.face[s.key]
@@ -468,6 +476,13 @@ local function pageHair()
 		end)
 		for _, s in ipairs(Looks.HairSliders) do
 			UI.Slider(body, s.label, s.min, s.max, h[s.key] or 0.5, nil, function(v)
+				h[s.key] = v
+				previewHead()
+			end)
+		end
+		-- v3 strand detail for the hair meshes: clumping, frizz, volume, curl size
+		for _, s in ipairs(Looks.HairDetailSliders or {}) do
+			UI.Slider(body, s.label, s.min, s.max, h[s.key] or 0, nil, function(v)
 				h[s.key] = v
 				previewHead()
 			end)

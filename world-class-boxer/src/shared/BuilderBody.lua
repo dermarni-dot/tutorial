@@ -1779,7 +1779,91 @@ end
 ------------------------------------------------------------------------
 -- Build steps (called by Builder.Cosmetics) and helpers shared with Builder
 ------------------------------------------------------------------------
+------------------------------------------------------------------------
+-- The gear's look for the anatomy meshes (look.attire.gear): AnatomyBody draws the gloves / wraps / shoes
+-- itself when the meshes are on, from the same colours, styles and sizes the round-1 parts are built with
+------------------------------------------------------------------------
+local function c255(c)
+	return { math.floor(c.R * 255 + 0.5), math.floor(c.G * 255 + 0.5), math.floor(c.B * 255 + 0.5) }
+end
+
+local function gearLook(app, gear, opts)
+	opts = opts or {}
+	gear = gearOf(gear)
+	local a = app.attire or {}
+	-- gloves (glovesBuild's derivation)
+	local g = app.gloves or {}
+	local gloveDef = Catalog.Find(Catalog.Gloves, gear.gloves) or Catalog.Gloves[1]
+	local brand = Catalog.GearBrand("gloves", gloveDef.id, g.brand)
+	local custom = gloveDef.custom or {}
+	local cond = gear.glovesCond or 100
+	local pal = brand.palette or {}
+	local main = wearColor(Looks.Color(g.color, rgb(pal.primary, Color3.fromRGB(200, 25, 30))), cond)
+	local trim = custom.trim and Looks.Color(g.trim, WHITE) or wearColor(Color3.fromRGB(236, 234, 228), cond)
+	local finish = custom.finish and (g.finish or brand.finish or "Leather") or (brand.finish or "Leather")
+	if finish == "Metallic" and not (custom.metallic or brand.finish == "Metallic") then
+		finish = "Patent"
+	end
+	if gloveDef.id == "WorldChampion" then
+		trim = GOLD
+	end
+	local piping = nil
+	if brand.piping == "trim" then
+		piping = trim
+	elseif type(brand.piping) == "table" then
+		piping = rgb(brand.piping)
+	end
+	local stitch = brand.stitch or "Single"
+	if custom.stitching and g.stitching and g.stitching ~= "Classic" then
+		stitch = g.stitching
+	end
+	local lum = 0.299 * main.R + 0.587 * main.G + 0.114 * main.B
+	local stitchColor = lum < 0.15 and lerpColor(main, WHITE, 0.35) or darken(main, 0.55)
+	if stitch == "Contrast" then
+		stitchColor = trim
+	elseif stitch == "Gold" then
+		stitchColor = GOLD
+	end
+	local strapColor = custom.trim and trim or rgb(pal.secondary, trim)
+	local oz = gloveDef.oz or 16
+	if opts.fightNight then
+		oz = math.min(oz, 10)
+	end
+	local shape = brand.shape or {}
+	local glove = {
+		c = c255(main), trim = c255(trim), palm = c255(darken(main, brand.palm or 0.9)), stitch = c255(stitchColor), stitchKind = stitch,
+		piping = piping and c255(piping) or nil, strap = c255(strapColor), finish = finish, oz = oz, w = shape.width or 1, l = shape.len or 1,
+		k = shape.knuckle or 1, cuff = shape.cuff or 1, closure = brand.closure or "velcro", tape = opts.fightNight == true,
+		target = brand.targetArea == true, cond = q(cond, 10),
+	}
+	-- wraps
+	local wc, c2, c3 = wrapColors(app, gear)
+	local wrapDef = Catalog.Find(Catalog.Wraps, gear.wraps) or Catalog.Wraps[1]
+	local wrap = { c = c255(wc), c2 = c255(c2), c3 = c255(c3), gel = wrapDef.style == "gel", cond = q(gear.wrapsCond or 100, 10) }
+	-- shoes (shoesBuild's derivation)
+	local shoe = shoeOf(gear)
+	local sBrand = Catalog.GearBrand("shoes", shoe.id)
+	local shoeColor = shoeColorOf(app, gear)
+	local sPal = sBrand.palette or {}
+	local accent = rgb(sPal.secondary, WHITE)
+	if (accent.R + accent.G + accent.B) - (shoeColor.R + shoeColor.G + shoeColor.B) < 0.25 and (shoeColor.R + shoeColor.G + shoeColor.B) - (accent.R + accent.G + accent.B) < 0.25 then
+		accent = rgb(sPal.accent, contrast(shoeColor))
+	end
+	local soleKind = shoe.sole or sBrand.sole or "Rubber"
+	local so = SOLE[soleKind] or SOLE.Rubber
+	local laceColor = Looks.Color(a.laces, Color3.fromRGB(240, 240, 240))
+	if (gear.shoesCond or 100) < 40 then
+		laceColor = lerpColor(laceColor, Color3.fromRGB(170, 160, 140), 0.5)
+	end
+	local shoeL = {
+		c = c255(shoeColor), accent = c255(accent), sole = c255(so.color or Looks.Color(a.trim, WHITE)), soleKind = soleKind, lace = c255(laceColor),
+		sock = c255(Looks.Color(a.socks, WHITE)), style = shoe.style or "boot", tall = a.shoeStyle ~= "Low-Top", cond = q(shoeCond(gear) / 60 * 100, 10),
+	}
+	return { glove = glove, wrap = wrap, shoe = shoeL }
+end
+
 Body.Colors = colorBody -- (model, app, gear, opts)
+Body.GearLook = gearLook -- (app, gear, opts) -> look.attire.gear for the anatomy meshes
 Body.Muscles = musclesBuild -- (model, app, build, opts?, spec?, gear?) -> envelope
 Body.Attire = attireBuild -- (model, app, opts, gear, spec?, envelope?)
 Body.Hands = handsBuild -- (model, app, gear, opts, spec?)

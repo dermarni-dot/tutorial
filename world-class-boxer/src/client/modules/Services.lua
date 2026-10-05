@@ -323,6 +323,13 @@ function Services.Barber()
 					s.preview()
 				end)
 			end
+			-- v3 strand detail for the hair meshes (the cut is styled at the barber too; free like length)
+			for _, sl in ipairs(Looks.HairDetailSliders or {}) do
+				UI.Slider(body, sl.label, sl.min, sl.max, h[sl.key] or 0, nil, function(v)
+					h[sl.key] = v
+					s.preview()
+				end)
+			end
 			UI.Toggle(body, "Fresh cut (resets hair growth)", opts.cut, function(v)
 				opts.cut = v
 				s.preview()

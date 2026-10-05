@@ -433,7 +433,16 @@ function Catalog.GymTierNeeds(tierDef, frac, owned, careerTier)
 	end
 	if (careerTier or 1) < tierDef.minCareerTier and not (tierDef.orOwned and ownsAny(owned, tierDef.orOwned)) then
 		local tierName = Config.Tiers[tierDef.minCareerTier] and Config.Tiers[tierDef.minCareerTier].name or ("tier " .. tierDef.minCareerTier)
-		local alt = tierDef.orOwned and (" (or own " .. table.concat(tierDef.orOwned, " / ") .. ")") or ""
+		-- only offer alternatives that can be bought before that rank (an item locked behind a higher
+		-- career tier is no shortcut), by their shop names
+		local alts = {}
+		for _, id in ipairs(tierDef.orOwned or {}) do
+			local item = Catalog.Find(Catalog.Shop, id)
+			if not (item and item.requiresTier and item.requiresTier >= tierDef.minCareerTier) then
+				table.insert(alts, item and item.name or tostring(id))
+			end
+		end
+		local alt = #alts > 0 and (" (or own the " .. table.concat(alts, " / ") .. ")") or ""
 		table.insert(needs, "Reach " .. tierName .. alt)
 	end
 	for _, id in ipairs(tierDef.needsOwned or {}) do

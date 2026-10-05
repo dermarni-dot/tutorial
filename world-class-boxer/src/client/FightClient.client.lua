@@ -17,6 +17,7 @@ local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local SoundService = game:GetService("SoundService")
 local Lighting = game:GetService("Lighting")
+local StarterGui = game:GetService("StarterGui")
 
 local player = Players.LocalPlayer
 local Shared = ReplicatedStorage:WaitForChild("Shared")
@@ -160,6 +161,11 @@ end
 
 local function sfx(id, speed, volume)
 	if #pool == 0 then
+		-- never rebuild the mix outside a fight: a delayed beat / bell landing after finish() would
+		-- otherwise leave a new FightMix (and its pooled Sounds) behind until the next fight
+		if not gui.Enabled then
+			return
+		end
 		ensureMix()
 	end
 	poolIdx = poolIdx % #pool + 1
@@ -1263,6 +1269,15 @@ for _, v in ipairs({
 	local grad = UI.New("UIGradient", { Rotation = v[3], Transparency = NumberSequence.new(1), Parent = fr })
 	table.insert(vignette, { frame = fr, grad = grad })
 end
+-- a swollen-shut eye darkens its half of the picture (the camera sits behind the fighter, so his left
+-- eye is the screen's left); [1] = left eye, [2] = right eye
+local eyeShade = {}
+for i, v in ipairs({ { UDim2.fromScale(0, 0), 0 }, { UDim2.fromScale(0.5, 0), 180 } }) do
+	local fr = UI.Frame(fxGui, { Name = i == 1 and "EyeL" or "EyeR", Size = UDim2.fromScale(0.5, 1), Position = v[1], BackgroundColor3 = Color3.fromRGB(14, 6, 10),
+		BackgroundTransparency = 0, ZIndex = 1, Visible = false })
+	local grad = UI.New("UIGradient", { Rotation = v[2], Transparency = NumberSequence.new(1), Parent = fr })
+	eyeShade[i] = { frame = fr, grad = grad }
+end
 -- cinematic letterbox for walkouts, the tape, knockdowns and the final bell
 local boxTop = UI.Frame(fxGui, { Size = UDim2.fromScale(1, 0), BackgroundColor3 = Color3.new(0, 0, 0), ZIndex = 6 })
 local boxBottom = UI.Frame(fxGui, { Size = UDim2.fromScale(1, 0), AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), BackgroundColor3 = Color3.new(0, 0, 0), ZIndex = 6 })
@@ -1323,7 +1338,14 @@ local function destroyPost()
 end
 
 -- transient FX state (decays every frame)
-local FX = { shake = 0, hitBlur = 0, fovKick = 0, roll = 0, rollVel = 0, hitStop = 0, grade = 0, heartAt = 0, downBlur = 0, vig = -1, vigTier = -1 }
+local FX = { shake = 0, hitBlur = 0, fovKick = 0, roll = 0, rollVel = 0, hitStop = 0, grade = 0, heartAt = 0, downBlur = 0, vig = -1, vigTier = -1, eyeL = -1, eyeR = -1 }
+
+-- how dark a swollen eye's side of the screen gets: nothing until the lid starts to close (0.45),
+-- nearly black when it is shut (CONTRACTS 8: face damage 0..1), scaled by Config.ScreenFX
+local function eyeDark(eye, fx)
+	local a = math.clamp((eye - 0.45) * 1.8, 0, 0.9) * math.min(fx, 1.2)
+	return math.floor(math.clamp(a, 0, 0.92) * 50 + 0.5) / 50
+end
 local VIG_RED, VIG_BLACK, WHITE = Color3.fromRGB(60, 0, 0), Color3.new(0, 0, 0), Color3.new(1, 1, 1)
 
 ------------------------------------------------------------------------
@@ -1888,8 +1910,11 @@ local function updateFX(dt, now)
 	-- camera roll is a damped spring so a hook "knocks" the picture sideways and it wobbles back
 	FX.rollVel += (-FX.roll * 60 - FX.rollVel * 9) * dt
 	FX.roll += FX.rollVel * dt
+	local eyeL, eyeR = math.clamp(tonumber(me.eyeL) or 0, 0, 1), math.clamp(tonumber(me.eyeR) or 0, 0, 1)
 	if blurFx then
-		local size = (Config.Concussion.blurPerTier * tier + Config.Concussion.blurPerConc * conc + FX.hitBlur + FX.downBlur) * fx
+		-- a closing eye also smears the whole picture a little (Roblox blur is full-screen)
+		local eyeBlur = math.max(0, math.max(eyeL, eyeR) - 0.6) * 4
+		local size = (Config.Concussion.blurPerTier * tier + Config.Concussion.blurPerConc * conc + FX.hitBlur + FX.downBlur + eyeBlur) * fx
 		blurFx.Size = math.clamp(size, 0, 24)
 	end
 	if gradeFx then
@@ -1921,6 +1946,18 @@ local function updateFX(dt, now)
 			end
 		end
 	end
+	-- difficulty seeing: a swollen-shut eye blacks out its side of the screen
+	local aL, aR = eyeDark(eyeL, fx), eyeDark(eyeR, fx)
+	if aL ~= FX.eyeL or aR ~= FX.eyeR then
+		FX.eyeL, FX.eyeR = aL, aR
+		for i, a in ipairs({ aL, aR }) do
+			local e = eyeShade[i]
+			e.frame.Visible = a > 0
+			if a > 0 then
+				e.grad.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1 - a), NumberSequenceKeypoint.new(0.45, 1 - a * 0.7), NumberSequenceKeypoint.new(1, 1) })
+			end
+		end
+	end
 	-- muffled hearing: the high end drops away with concussion and danger
 	if mixEq and mixEq.Parent then
 		mixEq.HighGain = math.clamp(-(20 * conc + 6 * tier) * math.min(fx, 1), -40, 0)
@@ -1932,8 +1969,11 @@ local function updateFX(dt, now)
 		FX.heartAt = now + 60 / bpm
 		local id = soundId("Heartbeat", "Thud")
 		sfx(id, 0.35, 0.5)
+		local fight = F
 		task.delay(0.16, function()
-			sfx(id, 0.32, 0.35)
+			if F == fight and gui.Enabled then
+				sfx(id, 0.32, 0.35)
+			end
 		end)
 	end
 	-- the HUD head and health bars pulse at danger (keeping their value colour), stamina pulses red
@@ -1993,6 +2033,23 @@ local function startCamera()
 		local kick = shakeScale()
 		local sh = Vector3.new(math.random() - 0.5, math.random() - 0.5, 0) * FX.shake * fx * kick
 		local goal
+		local koModel = F.koTrack
+		if koModel then
+			local head = koModel.Parent and koModel:FindFirstChild("Head")
+			local landed = koModel:GetAttribute("KOLanded")
+			local done = not head or now - (F.koTrackFrom or now) > 4 or (type(landed) == "number" and now > landed + 0.8)
+			if done then
+				F.koTrack = nil
+			else
+				-- a low shot from the side of the fall, looking at the head wherever it goes
+				local hp = head.Position
+				local side = head.CFrame.RightVector
+				local flatSide = Vector3.new(side.X, 0, side.Z)
+				flatSide = flatSide.Magnitude > 0.05 and flatSide.Unit or Vector3.xAxis
+				F.broadcastCF = CFrame.lookAt(hp + flatSide * 7 + Vector3.new(0, 1.2, 0), hp)
+				F.broadcastUntil = now + 0.1
+			end
+		end
 		if F.broadcastUntil and now < F.broadcastUntil and F.broadcastCF then
 			goal = F.broadcastCF -- hard cut to the on-air camera
 		elseif camMode == "entrance" and camTarget then
@@ -2280,7 +2337,22 @@ local function setChip(panel, text, color)
 	end
 end
 
+-- Career fights: leaving after the opening bell counts as a loss (RTD) on the server, so the reset
+-- button is switched off for the bout and back on in finish(). Spars keep it (a reset only ends them).
+-- SetCore can fail while the CoreScripts are still registering: then the button simply stays as it was.
+local resetLocked = false
+local function lockReset(on)
+	if on == resetLocked then
+		return
+	end
+	local ok = pcall(StarterGui.SetCore, StarterGui, "ResetButtonCallback", not on)
+	if ok or not on then
+		resetLocked = on and ok
+	end
+end
+
 local function finish()
+	lockReset(false)
 	F.active = false
 	F.down = false
 	gui.Enabled = false
@@ -2298,6 +2370,8 @@ local function finish()
 	UI.Clear(markers)
 	setRagdoll(false)
 	F.stumbleUntil = 0
+	F.koTrack = nil
+	F.broadcastUntil = nil
 	pcall(RunService.UnbindFromRenderStep, RunService, STUMBLE_STEP)
 	if camConn then
 		camConn:Disconnect()
@@ -2339,6 +2413,10 @@ local function finish()
 		FX[k] = 0
 	end
 	FX.vig, FX.vigTier = -1, -1
+	FX.eyeL, FX.eyeR = -1, -1
+	for _, e in ipairs(eyeShade) do
+		e.frame.Visible = false
+	end
 	letterbox(false)
 	blackout.BackgroundTransparency = 1
 	setAnimate(true)
@@ -2361,6 +2439,7 @@ function handlers.start(msg)
 	player:SetAttribute("InFight", true)
 	gui.Enabled = true
 	fxGui.Enabled = true
+	lockReset(not F.spar)
 	L.frame.Visible, R.frame.Visible, clock.Visible, controls.Visible = false, false, false, false
 	setChip(L, nil)
 	setChip(R, nil)
@@ -2784,6 +2863,10 @@ function handlers.kd(msg)
 	-- the server pauses the fight for the count, eight count and referee check (no punches are accepted)
 	F.paused = true
 	local target = mine and player.Character or F.opp
+	-- R-anim: the knockout close-up follows the falling man's head until he has landed (+0.8 s)
+	if msg.severity == "out" and target then
+		F.koTrack, F.koTrackFrom = target, os.clock()
+	end
 	sfx(BUILTIN.Falling or "rbxasset://sounds/action_falling.ogg", 0.7, 1)
 	sfx(BUILTIN.Thud or "rbxasset://sounds/action_jump_land.mp3", 0.5, 0.9)
 	phase("kd", { who = msg.who, target = target, severity = msg.severity })
@@ -2814,8 +2897,11 @@ function handlers.kd(msg)
 		refreshControls()
 		flashFrame(redFlash, 1 - 0.6 * fxScale(), 0.8)
 		if msg.severity == "out" then
-			-- lights out: ragdoll and fade to near-black
-			setRagdoll(true)
+			-- lights out: the Animator plays the knockout fall (msg.anim); the physics ragdoll is the
+			-- round-1 fallback for a server that does not animate it
+			if not msg.anim then
+				setRagdoll(true)
+			end
 			TweenService:Create(blackout, TweenInfo.new(1.4), { BackgroundTransparency = 0.25 }):Play()
 		end
 	end
@@ -2892,9 +2978,12 @@ function handlers.bell(msg)
 	phase("bell", { n = msg.n })
 	if not venueOn then
 		local bell = BUILTIN.Ping or "rbxasset://sounds/electronicpingshort.wav"
+		local fight = F
 		for i = 0, 2 do
 			task.delay(i * 0.28, function()
-				sfx(bell, 0.6, 0.7)
+				if F == fight and gui.Enabled then
+					sfx(bell, 0.6, 0.7)
+				end
 			end)
 		end
 	end

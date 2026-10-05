@@ -117,6 +117,11 @@ local function summary(player)
 	local s = Career.Summary(profile, DataManager.CanSave(player))
 	s.busy = busy[player]
 	s.studio = RunService:IsStudio()
+	-- R-ui: always a table (Settings.Supported() checks it); ui = the saved values, or nil before the first save
+	s.settings = type(s.settings) == "table" and s.settings or {}
+	if type(profile.settings) == "table" and type(profile.settings.ui) == "table" then
+		s.settings.ui = profile.settings.ui
+	end
 	return s
 end
 
@@ -1354,6 +1359,37 @@ function handlers.ChangeWeightClass(player, profile, dir)
 	return { ok = ok, err = not ok and info or nil, class = ok and info or nil, vacated = vacated }
 end
 
+-- R-ui Settings screen: UI scale, screen FX, camera shake, music / sfx volume, graphics detail, menu at start,
+-- the fight's control strip (same ranges as Settings.Sanitize on the client; unknown keys dropped)
+local UI_SETTING_RANGES = { uiScale = { 0.8, 1.25 }, screenFx = { 0, 1.5 }, shake = { 0, 1.5 }, music = { 0, 1 }, sfx = { 0, 1 } }
+local UI_DETAILS = { Auto = true, High = true, Medium = true, Low = true }
+local UI_FLAGS = { "menuAtStart", "controlHints" }
+function handlers.SaveSettings(player, profile, t)
+	if type(t) ~= "table" then
+		return { ok = false, err = "Bad settings" }
+	end
+	local clean = {}
+	for k, r in pairs(UI_SETTING_RANGES) do
+		local v = tonumber(t[k])
+		if v and v == v then
+			clean[k] = math.floor(math.clamp(v, r[1], r[2]) * 100 + 0.5) / 100
+		end
+	end
+	if type(t.detail) == "string" and UI_DETAILS[t.detail] then
+		clean.detail = t.detail
+	end
+	for _, k in ipairs(UI_FLAGS) do
+		if type(t[k]) == "boolean" then
+			clean[k] = t[k]
+		end
+	end
+	if type(profile.settings) ~= "table" then
+		profile.settings = {}
+	end
+	profile.settings.ui = clean
+	return { ok = true }
+end
+
 function handlers.GetRankings(player, profile, classIdx, org)
 	-- integer class index only: 1.5 / NaN / "nan" would index no class list
 	local ci = tonumber(classIdx)
@@ -1437,9 +1473,13 @@ function handlers.DebugMoney(player, profile)
 	return { ok = true }
 end
 
-local PRE_CREATE = { GetProfile = true, CreateBoxer = true, NewCareer = true, PreviewLook = true, GetLegacy = true }
+local PRE_CREATE = { GetProfile = true, CreateBoxer = true, NewCareer = true, PreviewLook = true, GetLegacy = true, SaveSettings = true }
 local READ_ONLY = { GetProfile = true, GetRankings = true, GetBoxer = true, PreviewLook = true, GetOffers = true, GetRivals = true, GetLegacy = true }
-local DURING_ACTIVITY = { FinishActivity = true, CancelActivity = true, Eat = true }
+local DURING_ACTIVITY = { FinishActivity = true, CancelActivity = true, Eat = true, SaveSettings = true }
+-- actions that change nothing the summary shows: no push afterwards (R-ui)
+local NO_PUSH = { SaveSettings = true }
+-- allowed in the ring too: the Settings screen opens mid-fight and its save is never retried
+local IN_RING = { SaveSettings = true }
 
 Request.OnServerInvoke = function(player, action, ...)
 	local profile = DataManager.Get(player)
@@ -1454,7 +1494,7 @@ Request.OnServerInvoke = function(player, action, ...)
 		return { ok = false, err = "Create your boxer first." }
 	end
 	local b = busy[player]
-	if (b == "fight" or b == "spar") and not READ_ONLY[action] then
+	if (b == "fight" or b == "spar") and not READ_ONLY[action] and not IN_RING[action] then
 		return { ok = false, err = "You're in the ring!" }
 	end
 	if b == "activity" and not READ_ONLY[action] and not DURING_ACTIVITY[action] then
@@ -1465,7 +1505,7 @@ Request.OnServerInvoke = function(player, action, ...)
 		warn("[Boxer] handler error", action, res)
 		return { ok = false, err = "Server error" }
 	end
-	if not READ_ONLY[action] then
+	if not READ_ONLY[action] and not NO_PUSH[action] then
 		task.defer(push, player)
 	end
 	return res

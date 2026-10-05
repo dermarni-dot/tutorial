@@ -46,6 +46,16 @@ else
 	warn("[ClientMain] CityVisuals unavailable:", CityVisuals)
 	CityVisuals = nil
 end
+-- anatomy meshes (EditableMesh characters, ANATOMY_CONTRACTS.md): optional; any failure keeps the
+-- part-built look
+local okAnatomy, AnatomyClient = pcall(function()
+	return require(Modules:WaitForChild("AnatomyClient", 10))
+end)
+if okAnatomy and type(AnatomyClient) == "table" then
+	pcall(AnatomyClient.Start)
+else
+	warn("[ClientMain] AnatomyClient unavailable:", AnatomyClient)
+end
 local gui = State.gui
 local rec = State.rec
 
@@ -396,9 +406,15 @@ end
 ------------------------------------------------------------------------
 local menuShownOnce = false
 local lastFlag
+-- the server is retrying a failed DataStore read: say so once (the career is not lost)
+local loadRetryShown = false
 local function refresh()
 	local P = State.P
 	if not P or P.loading then
+		if P and P.loadRetry and not loadRetryShown then
+			loadRetryShown = true
+			State.toast("Couldn't reach Roblox's save servers. Retrying... your career is safe.", T.red, 8)
+		end
 		return
 	end
 	local fight = State.inFight()

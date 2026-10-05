@@ -3388,6 +3388,18 @@ RunService.RenderStepped:Connect(function(dt)
 		end
 	end
 	if GymVisuals.hidden then
+		-- members' bags outside the gym (the sparring room's MemberBag rigs) still swing: they are
+		-- server rigs, not inside the hidden folder
+		for id, d in pairs(dynamics) do
+			if d.member then
+				if not (d.model and d.model.Parent) then
+					dynamics[id] = nil
+				elseif d.kind == "pendulum" and (d.home - cam).Magnitude <= MOTION_NEAR then
+					stepPendulum(d, dt, t, bulkP, bulkC)
+				end
+			end
+		end
+		flush()
 		return
 	end
 	for id, d in pairs(dynamics) do

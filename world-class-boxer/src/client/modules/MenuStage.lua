@@ -314,7 +314,9 @@ function MenuStage.Place(st, char)
 	if not (ok and clone) then
 		return nil
 	end
-	-- the generated anatomy meshes belong to the real character: AnatomyClient builds the clone its own
+	-- the generated anatomy meshes belong to the real character (their EditableMeshes die with its next
+	-- rebuild): AnatomyClient builds the clone its own (tag "Preview" below), and until then, or when
+	-- meshes are unavailable, the clone shows the round-1 parts
 	local anatomy = clone:FindFirstChild("Anatomy")
 	if anatomy and anatomy:IsA("Folder") then
 		anatomy:Destroy()
@@ -325,11 +327,20 @@ function MenuStage.Place(st, char)
 		end
 		if STRIP[d.ClassName] or d:IsA("BodyMover") then
 			d:Destroy()
+		elseif d:IsA("SurfaceGui") and d:GetAttribute("AnatomyHid") == true then
+			-- a gui the live character's meshes hid (Enabled is copied, LocalTransparencyModifier is not):
+			-- the copy starts with the round-1 look, which stays if AnatomyClient never builds this clone
+			d.Enabled = true
+			d:SetAttribute("AnatomyHid", nil)
 		elseif d:IsA("BasePart") then
 			d.CanCollide = false
 			d.CanQuery = false
 			d.CanTouch = false
 			d.Anchored = false
+			-- whatever the live character's camera / meshes hid stays the live character's business
+			d.LocalTransparencyModifier = 0
+		elseif d:IsA("Decal") then
+			d.LocalTransparencyModifier = 0
 		end
 	end
 	for _, tag in ipairs(CollectionService:GetTags(clone)) do

@@ -195,7 +195,9 @@ local function mkSound(name, id, volume, looped, speed)
 	s.Volume = volume or 0.5
 	s.Looped = looped == true
 	s.PlaybackSpeed = speed or 1
-	local mix = SoundService:FindFirstChild("FightMix")
+	-- music (arena / walkout) plays through the Settings screen's MusicMix so the Music slider
+	-- reaches it; everything else rides the fight's sfx mix (nil-safe: without Settings no MusicMix)
+	local mix = SoundService:FindFirstChild(name:find("Music") and "MusicMix" or "FightMix")
 	if mix and mix:IsA("SoundGroup") then
 		s.SoundGroup = mix
 	end
@@ -203,13 +205,30 @@ local function mkSound(name, id, volume, looped, speed)
 	return s
 end
 
+-- upload, else Config's shaped built-in stand-in (nil = stay silent). The stand-in's volume / speed
+-- multipliers ride on the Sound as VolK / SpdK so driven volumes and speeds keep the shaping.
+local function specSound(name, key, volume, looped)
+	local ok, spec = pcall(function()
+		return Config.SoundSpec and Config.SoundSpec(key)
+	end)
+	if not (ok and type(spec) == "table" and spec.id) then
+		return nil
+	end
+	local s = mkSound(name, spec.id, (volume or 0.5) * (spec.volume or 1), looped, spec.speed)
+	if s then
+		s:SetAttribute("VolK", spec.volume or 1)
+		s:SetAttribute("SpdK", spec.speed or 1)
+	end
+	return s
+end
+
 local function play(s, volume, speed)
 	if s then
 		if volume then
-			s.Volume = volume
+			s.Volume = volume * (tonumber(s:GetAttribute("VolK")) or 1)
 		end
 		if speed then
-			s.PlaybackSpeed = speed
+			s.PlaybackSpeed = speed * (tonumber(s:GetAttribute("SpdK")) or 1)
 		end
 		s.TimePosition = 0
 		s:Play()
@@ -1775,10 +1794,10 @@ local function update(dt)
 		end
 		-- crowd audio follows excitement
 		if S.snd.roar then
-			S.snd.roar.Volume = 0.05 + S.excite * 0.6
+			S.snd.roar.Volume = (0.05 + S.excite * 0.6) * (tonumber(S.snd.roar:GetAttribute("VolK")) or 1)
 		end
 		if S.snd.murmur then
-			S.snd.murmur.Volume = 0.25 + (1 - S.excite) * 0.15
+			S.snd.murmur.Volume = (0.25 + (1 - S.excite) * 0.15) * (tonumber(S.snd.murmur:GetAttribute("VolK")) or 1)
 		end
 	end
 	if S.screenHold and now > S.screenHold and S.defaultScreen then
@@ -1858,18 +1877,19 @@ function VenueFX.Start(arena, info)
 		}) do
 			step(piece[1], piece[2])
 		end
-		-- audio: crowd bed and reactions only with uploads; the bell has a built-in stand-in
-		S.snd.murmur = mkSound("CrowdMurmur", soundId("CrowdMurmur"), 0.3, true)
-		S.snd.roar = mkSound("CrowdRoar", soundId("CrowdRoar"), 0.1, true)
-		S.snd.ooh = mkSound("CrowdOoh", soundId("CrowdOoh"), 0.6, false)
-		S.snd.boo = mkSound("CrowdBoo", soundId("CrowdBoo"), 0.5, false)
+		-- audio: crowd bed and reactions from uploads or Config's shaped built-in stand-ins; music and
+		-- the announcer only with uploads; the bell has a built-in stand-in
+		S.snd.murmur = specSound("CrowdMurmur", "CrowdMurmur", 0.3, true)
+		S.snd.roar = specSound("CrowdRoar", "CrowdRoar", 0.1, true)
+		S.snd.ooh = specSound("CrowdOoh", "CrowdOoh", 0.6, false)
+		S.snd.boo = specSound("CrowdBoo", "CrowdBoo", 0.5, false)
 		S.snd.bell = mkSound("RingBell", soundId("RingBell"), 0.9, false)
 		S.snd.ping = mkSound("BellPing", builtin("Ping"), 0.55, false, 1.25)
 		S.snd.clang = mkSound("BellClang", builtin("SwordHit"), 0.18, false, 1.6)
 		S.snd.music = mkSound("ArenaMusic", soundId("ArenaMusic"), 0.3, true)
 		S.snd.walkout = mkSound("WalkoutMusic", soundId("WalkoutMusic"), 0.6, true)
 		S.snd.announcer = mkSound("Announcer", soundId("Announcer"), 0.9, false)
-		S.snd.flash = mkSound("CameraFlash", soundId("CameraFlash"), 0.25, false)
+		S.snd.flash = specSound("CameraFlash", "CameraFlash", 0.25, false)
 		if not S.spar then
 			for _, k in ipairs({ "murmur", "roar", "music" }) do
 				if S.snd[k] then

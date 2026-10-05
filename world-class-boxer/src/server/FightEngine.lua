@@ -12,6 +12,7 @@
 -- eight count with a referee check, and a referee NPC who moves, counts and waves it off.
 local RunService = game:GetService("RunService")
 local CollectionService = game:GetService("CollectionService")
+local PhysicsService = game:GetService("PhysicsService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
@@ -178,8 +179,25 @@ local function makeFighter(data, model, player)
 	-- (an old, healing broken nose or half-closed cut must not be "news" that restarts the healing clock)
 	F.noseAtStart = F.dmg.nose == true
 	F.cutAtStart = math.max(F.dmg.cut, F.dmg.cut2)
+	F.dmgStart = table.clone(F.dmg)
 	return F
 end
+
+-- the fight's damage table minus what the fighter walked in with: a zone that did not get worse
+-- tonight reports 0. The seed is the healing residual, and Career heals that over the suspension
+-- before it merges res.face, so reporting it again would bring old marks back fresh (age 0) and
+-- flag an old cut as new (a second scar for it). A zone that did get worse keeps its full value.
+local function tonightDamage(F)
+	local d = cloneDamage(F.dmg)
+	local start = F.dmgStart or {}
+	for _, k in ipairs(DMG_FIELDS) do
+		if d[k] <= (tonumber(start[k]) or 0) + 0.01 then
+			d[k] = 0
+		end
+	end
+	return d
+end
+FightEngine.TonightDamage = tonightDamage
 
 function Fight:Now()
 	return os.clock()
@@ -1003,6 +1021,58 @@ function Fight:Official(capital)
 	return capital and "The referee" or "the referee"
 end
 
+-- Collision groups: the referee walks through both fighters (he never shoves the NPC or jitters
+-- against the player in a clinch) and still stands on the canvas like any NPC. The Humanoid turns
+-- CanCollide back on for his head / torso every step, so a group is the only lasting way; it costs
+-- nothing per frame. Fighters join "Boxers" for the fight (they still collide with each other and the
+-- world) and get their old group back in Cleanup. nil = not tried yet, false = unavailable (the
+-- per-step CanCollide fallback runs then).
+local REF_GROUP, BOXER_GROUP = "Referee", "Boxers"
+local groupsReady
+local function ensureGroups()
+	if groupsReady == nil then
+		local ok, err = pcall(function()
+			for _, g in ipairs({ REF_GROUP, BOXER_GROUP }) do
+				if not PhysicsService:IsCollisionGroupRegistered(g) then
+					PhysicsService:RegisterCollisionGroup(g)
+				end
+			end
+			PhysicsService:CollisionGroupSetCollidable(REF_GROUP, BOXER_GROUP, false)
+		end)
+		groupsReady = ok
+		if not ok then
+			warn("[Boxer] referee collision group unavailable, using the per-step fallback:", err)
+		end
+	end
+	return groupsReady
+end
+
+-- puts a fighter's colliding parts in "Boxers", remembering the group each had
+local function joinBoxers(F)
+	if not F.model or F.groupWas then
+		return
+	end
+	F.groupWas = {}
+	for _, d in ipairs(F.model:GetDescendants()) do
+		if d:IsA("BasePart") and (d.Parent == F.model or d.CanCollide) then
+			F.groupWas[d] = d.CollisionGroup
+			d.CollisionGroup = BOXER_GROUP
+		end
+	end
+end
+
+local function leaveBoxers(F)
+	local was = F.groupWas
+	F.groupWas = nil
+	if was then
+		for part, g in pairs(was) do
+			if part.Parent then
+				part.CollisionGroup = g
+			end
+		end
+	end
+end
+
 function Fight:SpawnReferee()
 	local ok, model = pcall(function()
 		local seed = 9000 + self.rng:NextInteger(1, 50000)
@@ -1041,19 +1111,29 @@ function Fight:SpawnReferee()
 		end)
 	end
 	local R = { model = model, root = root, hum = hum, actId = 0, nextMove = 0 }
-	-- the Humanoid turns CanCollide back on for the head / torso parts in its own step; re-clear the rig
-	-- parts before every physics step so he never shoves the NPC or jitters against the player in a clinch
-	R.noclip = RunService.Stepped:Connect(function()
-		if not model.Parent then
-			if R.noclip then
-				R.noclip:Disconnect()
+	if ensureGroups() then
+		for _, d in ipairs(model:GetDescendants()) do
+			if d:IsA("BasePart") then
+				d.CollisionGroup = REF_GROUP
 			end
-			return
 		end
-		for _, part in ipairs(solid) do
-			part.CanCollide = false
-		end
-	end)
+		joinBoxers(self.P)
+		joinBoxers(self.O)
+	else
+		-- fallback: the Humanoid turns CanCollide back on for the head / torso parts in its own step;
+		-- re-clear the rig parts before every physics step
+		R.noclip = RunService.Stepped:Connect(function()
+			if not model.Parent then
+				if R.noclip then
+					R.noclip:Disconnect()
+				end
+				return
+			end
+			for _, part in ipairs(solid) do
+				part.CanCollide = false
+			end
+		end)
+	end
 	if hum and root then
 		hum.WalkSpeed = 11
 		hum.AutoRotate = false
@@ -1887,7 +1967,9 @@ function Fight:Update(dt)
 			t = "state",
 			time = math.max(0, math.ceil(self.roundEnd - now)),
 			me = { hp = P.health, cap = P.healthCap, body = P.body, bodyCap = P.bodyCap, stam = P.stamina, max = P.maxStam, stamCap = P.stamCap,
-				hurt = self:IsHurt(P), angle = now < P.angleUntil, tier = P.tier, conc = P.conc, bal = P.balance },
+				hurt = self:IsHurt(P), angle = now < P.angleUntil, tier = P.tier, conc = P.conc, bal = P.balance,
+				-- swollen eyes: FightClient darkens that side of the screen (CONTRACTS 8: P.dmg 0..1)
+				eyeL = quant(P.dmg.leftEye, 0.05), eyeR = quant(P.dmg.rightEye, 0.05) },
 			opp = { hp = O.health, cap = O.healthCap, body = O.body, bodyCap = O.bodyCap, stam = O.stamina, max = O.maxStam, stamCap = O.stamCap,
 				hurt = self:IsHurt(O), tier = O.tier, conc = O.conc },
 		})
@@ -1897,6 +1979,37 @@ end
 ------------------------------------------------------------------------
 -- Scoring & corner
 ------------------------------------------------------------------------
+-- One judge's 10-point must card for a round. diff = the judge's punch differential (positive: the
+-- first fighter did the better work), kdA / kdB = knockdowns each fighter SCORED. As real judges do:
+-- the round winner gets 10 and the loser 9; a knockdown wins the round for whoever scored it (equal
+-- knockdowns cancel and the work decides), and every net knockdown costs the man who went down one
+-- more point (one knockdown 10-8, two 10-7) - unless he dominated the rest of the round, which earns
+-- that point back (10-9). 10-10 only for a truly even round with no knockdowns; never 9-9.
+local EVEN_ROUND = 0.25 -- |diff| under this is an even round (rare: judges are told to pick a winner)
+local DOMINANT_ROUND = 3 -- a punch differential this big outweighs one knockdown point
+function FightEngine.MustScore(diff, kdA, kdB)
+	kdA, kdB = tonumber(kdA) or 0, tonumber(kdB) or 0
+	diff = tonumber(diff) or 0
+	local net = kdA - kdB
+	local aWins
+	if net ~= 0 then
+		aWins = net > 0
+	elseif kdA == 0 and math.abs(diff) < EVEN_ROUND then
+		return 10, 10
+	else
+		aWins = diff >= 0
+	end
+	local down = math.abs(net)
+	if down > 0 and (aWins and -diff or diff) >= DOMINANT_ROUND then
+		down -= 1 -- the knocked-down man won the rest of the round clearly
+	end
+	local loser = math.max(6, 9 - down)
+	if aWins then
+		return 10, loser
+	end
+	return loser, 10
+end
+
 function Fight:ScoreRound()
 	local P, O = self.P, self.O
 	local function pts(F, other)
@@ -1907,15 +2020,7 @@ function Fight:ScoreRound()
 	local round = {}
 	for j = 1, 3 do
 		local diff = pP - pO + self.rng:NextNumber(-1.6, 1.6) * (j == 3 and 1.4 or 1)
-		local a, b = 10, 10
-		if diff > 0.7 then
-			b = 9
-		elseif diff < -0.7 then
-			a = 9
-		end
-		a -= O.tally.kd
-		b -= P.tally.kd
-		a, b = math.max(6, a), math.max(6, b)
+		local a, b = FightEngine.MustScore(diff, P.tally.kd, O.tally.kd)
 		self.cards[j][1] += a
 		self.cards[j][2] += b
 		round[j] = { a, b }
@@ -2288,8 +2393,8 @@ function Fight:Run()
 	local cutNow = math.max(P.dmg.cut, P.dmg.cut2)
 	res.cutTaken = cutNow > 0.3 and cutNow > (P.cutAtStart or 0) + 0.1
 	-- persistence hand-off (CONTRACTS section 8): Career / Training carry these into the profile
-	res.face = cloneDamage(P.dmg)
-	res.oppFace = cloneDamage(O.dmg)
+	res.face = tonightDamage(P)
+	res.oppFace = tonightDamage(O)
 	res.concPeak = math.floor(P.concPeak * 100) / 100
 	res.noseBroken = P.dmg.nose == true and not P.noseAtStart
 	-- the profile residual already carries an old break (AddFaceDamage never clears it): only a fresh one is news
@@ -2304,6 +2409,7 @@ local FIGHT_ATTRS = { "Guard", "Act", "HeadHP", "BodyHP", "Stam", "Daze", "Conc"
 
 function Fight:Cleanup()
 	for _, F in ipairs({ self.P, self.O }) do
+		leaveBoxers(F)
 		if F.model then
 			CollectionService:RemoveTag(F.model, "Fighter")
 			for _, k in ipairs(FIGHT_ATTRS) do

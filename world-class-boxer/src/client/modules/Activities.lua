@@ -595,12 +595,19 @@ local function newContext(info)
 				ctx.attr("Effort", e)
 			end
 		end
-		-- sweat drips onto the floor while you work hard
-		if ctx.hr > 0.8 * ctx.maxHR and ctx.mode == "work" and ctx.station then
-			sinceSweat += dt
-			if sinceSweat >= 6 then
-				sinceSweat = math.random() * 1.5
-				pcall(GymVisuals.SweatDrop, ctx.station)
+		-- sweat drips onto the floor while you work: driven by how wet the boxer already is (the server's
+		-- Sweat attribute) or by working close to this drill's own working HR. An absolute 80% of max HR
+		-- was out of reach at every weight station, so the floor never got wet. Recovery work stays dry.
+		if ctx.mode == "work" and ctx.station and not ctx.recovery then
+			local ch = player.Character
+			local sw = (ch and tonumber(ch:GetAttribute("Sweat"))) or 0
+			sw = sw == sw and math.clamp(sw, 0, 1) or 0
+			if sw >= 0.35 or ctx.hr > 0.85 * ctx.workHR then
+				sinceSweat += dt * (0.5 + sw)
+				if sinceSweat >= 6 then
+					sinceSweat = math.random() * 1.5
+					pcall(GymVisuals.SweatDrop, ctx.station)
+				end
 			end
 		end
 	end))

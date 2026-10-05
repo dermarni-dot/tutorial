@@ -170,7 +170,14 @@ local function hideInst(rec, inst, section)
 			return
 		end
 		h = { kind = kind, sections = {}, n = 0 }
-		h.orig = kind == "ltm" and inst.LocalTransparencyModifier or inst.Enabled
+		if kind == "ltm" then
+			h.orig = inst.LocalTransparencyModifier
+		else
+			-- Enabled is a saved property (a Clone of the character copies it, LocalTransparencyModifier is not):
+			-- a gui this client hid carries AnatomyHid, so a copy made meanwhile knows its real state is "on"
+			h.orig = inst.Enabled or inst:GetAttribute("AnatomyHid") == true
+			inst:SetAttribute("AnatomyHid", true)
+		end
 		rec.hidden[inst] = h
 	end
 	if not h.sections[section] then
@@ -192,6 +199,7 @@ local function unhideSection(rec, section)
 						inst.LocalTransparencyModifier = (type(h.orig) == "number" and h.orig < 1) and h.orig or 0
 					else
 						inst.Enabled = h.orig ~= false
+						inst:SetAttribute("AnatomyHid", nil)
 					end
 				end)
 			end
@@ -1254,6 +1262,14 @@ local function track(model)
 	end
 	local rec = { model = model, sections = {}, hidden = {}, covered = {}, conns = {}, sigs = {}, priority = 2, dist = math.huge }
 	records[model] = rec
+	-- a copy of a character whose guis this client had hidden (MenuStage / FighterCard clones copy Enabled =
+	-- false): the round-1 look first, its own build hides them again
+	for _, d in ipairs(model:GetDescendants()) do
+		if (d:IsA("SurfaceGui") or d:IsA("BillboardGui")) and d:GetAttribute("AnatomyHid") == true then
+			d.Enabled = true
+			d:SetAttribute("AnatomyHid", nil)
+		end
+	end
 	for _, attr in ipairs({ "HairHiddenHeadgear", "HairHiddenHood" }) do
 		table.insert(rec.conns, model:GetAttributeChangedSignal(attr):Connect(function()
 			applyCovers(rec)
@@ -1522,7 +1538,8 @@ function AnatomyClient.Enabled()
 end
 
 -- { [pieceName] = { part = MeshPart, attach = part name / path, mesh = MeshKit data (read-only),
---   groups = mesh.groups, lod } } or nil when the section is not built on this model
+--   groups = mesh.groups, lod, image = its EditableImage colour texture or nil } } or nil when the section is
+-- not built on this model
 function AnatomyClient.GetPieces(model, section)
 	ensureStarted()
 	local rec = records[model]
@@ -1532,7 +1549,8 @@ function AnatomyClient.GetPieces(model, section)
 	end
 	local out = {}
 	for name, pr in pairs(st.pieces) do
-		out[name] = { part = pr.part, attach = pr.attach, mesh = pr.mesh, groups = pr.mesh.groups, lod = pr.lod }
+		-- image: the piece's EditableImage colour texture (nil when it has none): FX modules paint into it
+		out[name] = { part = pr.part, attach = pr.attach, mesh = pr.mesh, groups = pr.mesh.groups, lod = pr.lod, image = pr.img }
 	end
 	return out
 end

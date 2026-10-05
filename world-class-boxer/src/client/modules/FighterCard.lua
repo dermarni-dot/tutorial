@@ -8,7 +8,10 @@
 --   FighterCard.Full(parent, P)      the Career screen of the main menu (about 1240 x 640 design px)
 --   FighterCard.Compact(parent, P)   the header of the Career Hub's Career tab
 -- The posed clone is built once per look (LookSig, the anatomy meshes' builds) and cached; each photo
--- clones the cached copy (the Hub re-renders on every profile push).
+-- clones the cached copy (the Hub re-renders on every profile push). With AnatomyClient's organic meshes
+-- the copy keeps them (the copied MeshParts share the live EditableMeshes) and hides what they replace;
+-- a copy whose meshes did not come along shows the round-1 parts, and open photos re-shoot after every
+-- mesh rebuild (the old EditableMeshes are destroyed then).
 local Players = game:GetService("Players")
 local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -158,12 +161,85 @@ local function pairTrees(src, dst, map)
 	end
 end
 
--- what the camera hides on the live character (LocalTransparencyModifier: the round-1 parts an anatomy
--- mesh replaces) stays hidden in the photo
-local function copyHidden(map)
+-- AnatomyClient (the organic EditableMesh characters), required lazily: nil without the module
+local anatomy
+local anatomyLoaded = false
+local function anatomyClient()
+	if not anatomyLoaded then
+		anatomyLoaded = true
+		local m = script.Parent:FindFirstChild("AnatomyClient")
+		local ok, ac = false, nil
+		if m then
+			ok, ac = pcall(require, m)
+		end
+		anatomy = (ok and type(ac) == "table") and ac or nil
+	end
+	return anatomy
+end
+
+-- does a copied anatomy MeshPart still show its mesh? Its geometry is an EditableMesh referenced
+-- through MeshContent (Content.fromObject): a copy that lost the reference would draw nothing
+local function meshCarried(mp)
+	local ok, has = pcall(function()
+		local c = mp.MeshContent
+		return c ~= nil and c.Object ~= nil
+	end)
+	return ok and has == true
+end
+
+-- the copied anatomy meshes (model.Anatomy): kept when every piece still carries its mesh, else
+-- removed so the photo falls back to the round-1 parts (true = the organic look is in the copy)
+local function keepMeshes(clone)
+	local folder = clone:FindFirstChild("Anatomy")
+	if not folder then
+		return false
+	end
+	local n = 0
+	for _, d in ipairs(folder:GetDescendants()) do
+		if d:IsA("MeshPart") then
+			if not meshCarried(d) then
+				folder:Destroy()
+				return false
+			end
+			n += 1
+		end
+	end
+	if n == 0 then
+		folder:Destroy()
+		return false
+	end
+	return true
+end
+
+-- what the anatomy meshes hide on the live character (LocalTransparencyModifier / Enabled, both
+-- local) stays hidden in the photo when the meshes came along; without them the round-1 parts show.
+-- The camera's own fading (first person) is not copied: only what AnatomyClient replaced, and the mesh
+-- pieces it tucked under headgear / a hood
+local function copyHidden(char, map, meshes)
+	local ac = anatomyClient()
+	local isReplaced = ac and ac.IsReplaced
+	-- the hands are never replaced by meshes: hidden hands mean the camera is fading the character
+	local hand = char:FindFirstChild("RightHand") or char:FindFirstChild("LeftHand")
+	local cameraFade = hand ~= nil and hand:IsA("BasePart") and hand.LocalTransparencyModifier > 0
+	local pieces = char:FindFirstChild("Anatomy")
 	for copy, src in pairs(map) do
-		if src:IsA("BasePart") and src.LocalTransparencyModifier > 0 then
-			copy.Transparency = 1 - (1 - src.Transparency) * (1 - src.LocalTransparencyModifier)
+		local replaced = false
+		if isReplaced then
+			local ok, r = pcall(isReplaced, src)
+			replaced = ok and r == true
+		end
+		if copy:IsA("SurfaceGui") or copy:IsA("BillboardGui") then
+			if copy:GetAttribute("AnatomyHid") == true then
+				-- Enabled is copied: false while the live meshes hide it
+				copy.Enabled = not meshes
+				copy:SetAttribute("AnatomyHid", nil)
+			end
+		elseif meshes and (copy:IsA("BasePart") or copy:IsA("Decal")) then
+			-- a round-1 part a mesh replaced, or a mesh piece tucked under headgear / a hood
+			local covered = not cameraFade and pieces ~= nil and copy:IsA("MeshPart") and src.LocalTransparencyModifier >= 0.99 and src:IsDescendantOf(pieces)
+			if replaced or covered then
+				copy.Transparency = 1
+			end
 		end
 	end
 end
@@ -271,7 +347,7 @@ local function buildMaster(char)
 	end
 	local map = {}
 	pcall(pairTrees, char, clone, map)
-	copyHidden(map)
+	copyHidden(char, map, keepMeshes(clone))
 	for _, d in ipairs(clone:GetDescendants()) do
 		for _, tag in ipairs(CollectionService:GetTags(d)) do
 			CollectionService:RemoveTag(d, tag)
@@ -311,28 +387,29 @@ end
 -- cache: one master per look
 local anatomyBuilds = 0
 local anatomyHooked = false
+local refreshPhotos, photos
 local function hookAnatomy()
 	if anatomyHooked then
 		return
 	end
 	anatomyHooked = true
 	task.spawn(function()
-		local m = script.Parent:FindFirstChild("AnatomyClient")
-		local ok, ac = false, nil
-		if m then
-			ok, ac = pcall(require, m)
+		local ac = anatomyClient()
+		if not ac then
+			return
 		end
-		if ok and type(ac) == "table" then
-			for _, sig in ipairs({ ac.OnBuilt, ac.OnRestored }) do
-				if type(sig) == "table" and type(sig.Connect) == "function" then
-					pcall(function()
-						sig:Connect(function(model)
-							if model == player.Character then
-								anatomyBuilds += 1
-							end
-						end)
+		for _, sig in ipairs({ ac.OnBuilt, ac.OnRestored }) do
+			if type(sig) == "table" and type(sig.Connect) == "function" then
+				pcall(function()
+					sig:Connect(function(model)
+						if model == player.Character then
+							anatomyBuilds += 1
+							-- every rebuild makes new meshes (the old ones are destroyed): open photos
+							-- re-shoot so they never show a copy of a mesh that is gone
+							refreshPhotos()
+						end
 					end)
-				end
+				end)
 			end
 		end
 	end)
@@ -403,6 +480,59 @@ function FighterCard.Frame(model, aspect, fov)
 	return CFrame.lookAt(pos, target), fov
 end
 
+-- puts a fresh posed copy of the character in a ViewportFrame with its camera and key light (replacing
+-- an earlier shot); false without a character to photograph
+local function shoot(vf, aspect, fovOpt)
+	local clone = FighterCard.Snapshot()
+	local root = clone and clone:FindFirstChild("HumanoidRootPart")
+	local camCF, fov
+	if clone and root then
+		camCF, fov = FighterCard.Frame(clone, aspect, fovOpt)
+	end
+	if not camCF then
+		if clone then
+			clone:Destroy()
+		end
+		return false
+	end
+	for _, c in ipairs(vf:GetChildren()) do
+		if c.Name == "Portrait" or c:IsA("Camera") then
+			c:Destroy()
+		end
+	end
+	clone.Parent = vf
+	local cam = Instance.new("Camera")
+	cam.FieldOfView = fov
+	cam.CFrame = camCF
+	cam.Parent = vf
+	vf.CurrentCamera = cam
+	-- key light from the front-left, above (LightDirection = the way the light travels)
+	local look, right = root.CFrame.LookVector, root.CFrame.RightVector
+	vf.LightDirection = (-Vector3.new(look.X, 0, look.Z).Unit * 0.7 + Vector3.new(right.X, 0, right.Z).Unit * 0.45 + Vector3.new(0, -0.65, 0)).Unit
+	return true
+end
+
+-- open photos (a closed screen's ViewportFrame drops out once it leaves the game); re-shot a moment after
+-- the character's anatomy meshes are rebuilt or restored (one shot per burst: Body / Head / Hair build in turn)
+photos = {}
+local refreshToken = 0
+refreshPhotos = function()
+	refreshToken += 1
+	local token = refreshToken
+	task.delay(0.4, function()
+		if token ~= refreshToken then
+			return
+		end
+		for vf, o in pairs(photos) do
+			if vf:IsDescendantOf(game) then
+				pcall(shoot, vf, o.aspect, o.fov)
+			else
+				photos[vf] = nil
+			end
+		end
+	end)
+end
+
 -- opts: Size, Position, ZIndex, aspect (width / height of the photo; read from the frame when it is
 -- laid out)
 function FighterCard.Photo(parent, opts)
@@ -426,31 +556,19 @@ function FighterCard.Photo(parent, opts)
 		Name = "View", Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, ZIndex = holder.ZIndex,
 		Ambient = Color3.fromRGB(86, 82, 92), LightColor = Color3.fromRGB(255, 232, 206), Parent = holder,
 	})
-	local clone = FighterCard.Snapshot()
-	local root = clone and clone:FindFirstChild("HumanoidRootPart")
 	local aspect = opts.aspect
 	if not aspect then
 		local abs = holder.AbsoluteSize
 		aspect = (abs.X > 4 and abs.Y > 4) and abs.X / abs.Y or 0.68
 	end
-	local camCF, fov
-	if clone and root then
-		camCF, fov = FighterCard.Frame(clone, aspect, opts.fov)
-	end
-	if camCF then
-		clone.Parent = vf
-		local cam = Instance.new("Camera")
-		cam.FieldOfView = fov
-		cam.CFrame = camCF
-		cam.Parent = vf
-		vf.CurrentCamera = cam
-		-- key light from the front-left, above (LightDirection = the way the light travels)
-		local look, right = root.CFrame.LookVector, root.CFrame.RightVector
-		vf.LightDirection = (-Vector3.new(look.X, 0, look.Z).Unit * 0.7 + Vector3.new(right.X, 0, right.Z).Unit * 0.45 + Vector3.new(0, -0.65, 0)).Unit
-	else
-		if clone then
-			clone:Destroy()
+	for v in pairs(photos) do
+		if not v:IsDescendantOf(game) then
+			photos[v] = nil
 		end
+	end
+	if shoot(vf, aspect, opts.fov) then
+		photos[vf] = { aspect = aspect, fov = opts.fov }
+	else
 		-- no character to photograph: a silhouette
 		local s = UI.Frame(holder, { AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.fromScale(0.5, 1), Size = UDim2.fromScale(0.62, 0.78), BackgroundColor3 = Color3.fromRGB(14, 14, 18), ZIndex = holder.ZIndex })
 		UI.Corner(s, 60)

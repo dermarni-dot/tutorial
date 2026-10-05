@@ -102,7 +102,9 @@ local PIECES = {
 	LeftUpperLeg = { "UpperLeg", -1, 4 }, RightUpperLeg = { "UpperLeg", 1, 4 },
 	LeftLowerLeg = { "LowerLeg", -1, 4 }, RightLowerLeg = { "LowerLeg", 1, 4 },
 }
-local MORPH_BUDGET = 1500 -- vertex writes per frame, every character together
+-- vertex writes per frame, every character together: FaceFX writes about 1000 more (one Head SetMorphs per
+-- frame), and the contract caps every FX module together at 2000 (ANATOMY_CONTRACTS section 11)
+local MORPH_BUDGET = 1000
 local MORPH_STEP = 0.1 -- weights move in these steps (a flex step is a millimetre or two: no write below it)
 local MORPH_RATE = 1 / 20 -- per character: blend shapes at most this often (near), half as often far
 local BREATH_RATE = 1 / 10 -- breathing (slow, tiny) at most this often
@@ -118,6 +120,7 @@ local restore -- (rec) round-1 muscle scales and veins back to the Builder's val
 local views = setmetatable({}, { __mode = "k" }) -- model -> AnatomyClient piece view of the Body section
 local landmarksOf = setmetatable({}, { __mode = "k" }) -- model -> Body landmarks
 local queue = {} -- flat list of mesh piece states (round-robin writes)
+local draining = {} -- piece states of untracked characters still relaxing (flushMorphs writes them within the budget)
 local queueDirty = true
 local cursor = 1
 
@@ -441,6 +444,13 @@ local function rebuildQueue()
 			end
 		end
 	end
+	for st in pairs(draining) do
+		if st.pending then
+			queue[#queue + 1] = st
+		else
+			draining[st] = nil
+		end
+	end
 	cursor = 1
 	queueDirty = false
 end
@@ -469,18 +479,27 @@ function BodyFX.Track(model)
 	end
 end
 
--- every blend shape back to the generated shape
+-- every blend shape back to the generated shape: queued, so flushMorphs writes it within the frame budget (a
+-- camera cut can send many characters out of range in the same frame)
 local function relaxMesh(rec)
-	if not (rec.mesh and Anatomy) then
+	if not rec.mesh then
 		return
 	end
-	for name, st in pairs(rec.mesh) do
-		if st.sent.flex ~= 0 or st.sent.breathe ~= 0 or st.sent.tense ~= 0 then
-			st.w.flex, st.w.breathe, st.w.tense = 0, 0, 0
-			Anatomy.SetMorphs(rec.model, SECTION, name, st.w)
-			st.sent.flex, st.sent.breathe, st.sent.tense = 0, 0, 0
+	for _, st in pairs(rec.mesh) do
+		local w, s = st.w, st.sent
+		for k in pairs(w) do
+			w[k] = 0
 		end
-		st.pending = false
+		local moved = false
+		for k, v in pairs(s) do
+			if v ~= 0 then
+				moved = true
+			end
+			if w[k] == nil then
+				w[k] = 0
+			end
+		end
+		st.pending = moved
 	end
 end
 
@@ -500,7 +519,13 @@ function BodyFX.Untrack(model)
 			v.beam.Transparency = NumberSequence.new(v.base)
 		end
 	end
+	-- the shapes relax over the next frames (the record leaves the round-robin, its piece states stay queued)
 	relaxMesh(rec)
+	for _, st in pairs(rec.mesh or {}) do
+		if st.pending then
+			draining[st] = true
+		end
+	end
 	tracked[model] = nil
 	queueDirty = true
 end
@@ -757,6 +782,11 @@ local function flushMorphs()
 			Anatomy.SetMorphs(st.rec.model, SECTION, st.name, w)
 			s.flex, s.breathe, s.tense = w.flex, w.breathe, w.tense
 			st.pending = false
+			if draining[st] then
+				-- an untracked character's shapes are back at rest: it leaves the round-robin
+				draining[st] = nil
+				queueDirty = true
+			end
 			budget -= cost
 			wrote = true
 			stats.morphWrites += 1

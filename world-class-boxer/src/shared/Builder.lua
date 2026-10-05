@@ -202,10 +202,26 @@ end
 ------------------------------------------------------------------------
 -- LookData (anatomy meshes): what the clients build each character's meshes from
 ------------------------------------------------------------------------
--- cheap and change-only: the encoded look is compared with the attribute before anything is written
-local function publishLook(model, app, build, opts, sp)
+-- cheap and change-only: the encoded look is compared with the attribute before anything is written.
+-- look.attire.gear: what the boxer wears on the hands and feet (the Body meshes draw the gloves / wraps /
+-- shoes); a head-only preview rebuild (gear = nil) keeps the gear the last full build published
+local function publishLook(model, app, build, opts, sp, gear)
 	sp = sp or Body.Resolve(app, build, opts, model)
 	local look = LookData.FromBuilder(model, app, build, opts, sp, Builder.Scales(app, build, opts))
+	if type(look.attire) == "table" then
+		if gear ~= nil then
+			local ok, g = pcall(Body.GearLook, app, gear, opts)
+			if ok and type(g) == "table" then
+				look.attire.gear = LookData.Quantize(g)
+			end
+		else
+			local prev = LookData.Get(model)
+			local g = prev and type(prev.attire) == "table" and prev.attire.gear
+			if type(g) == "table" then
+				look.attire.gear = g
+			end
+		end
+	end
 	LookData.Publish(model, look)
 end
 
@@ -278,7 +294,7 @@ function Builder.Cosmetics(model, app, build, gear, opts)
 	end
 	Builder.SetSweat(model, app, opts.sweat or model:GetAttribute("Sweat") or 0)
 	-- last: the rig is final (head swap, rescale) and every attribute above is set
-	step("LookData", publishLook, model, app, build, opts, sp)
+	step("LookData", publishLook, model, app, build, opts, sp, gear)
 end
 
 -- Apply to a live player character (yields). Re-scales only when the body changed.

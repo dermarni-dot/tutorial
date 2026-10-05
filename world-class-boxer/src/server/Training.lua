@@ -308,11 +308,19 @@ function Training.PhysiqueInfo(profile)
 				champion = true
 			end
 		end
+		-- the last classified id gives the rule its hysteresis (a 0.1% fat change or one session must
+		-- not flip the badge and the rendered body back and forth at a threshold)
+		local c = type(profile.condition) == "table" and profile.condition or nil
+		local prev = c and type(c.physiqueId) == "string" and c.physiqueId or nil
 		local ok, id = pcall(Config.ClassifyPhysique, profile.body, {
 			frame = Training.Frame(profile).id, tier = profile.tier, overall = profile.overall, champion = champion,
-			weightClass = type(profile.physical) == "table" and profile.physical.weightClass or nil,
+			weightClass = type(profile.physical) == "table" and profile.physical.weightClass or nil, prev = prev,
 		})
-		def = ok and Config.FindById(Config.Physiques, id) or Config.FindById(Config.Physiques, "Balanced")
+		def = ok and Config.FindById(Config.Physiques, id) or nil
+		if def and c then
+			c.physiqueId = def.id
+		end
+		def = def or Config.FindById(Config.Physiques, prev or "Balanced") or Config.FindById(Config.Physiques, "Balanced")
 	end
 	return { id = def.id, name = def.name, desc = def.desc, pinned = pinned }
 end
@@ -2079,6 +2087,10 @@ function Training.Migrate(profile)
 		end
 	end
 	c.pending = pending
+	-- last classified physique (Training.PhysiqueInfo hysteresis); unknown ids are dropped
+	if type(c.physiqueId) ~= "string" or not Config.FindById(Config.Physiques, c.physiqueId) then
+		c.physiqueId = nil
+	end
 	c.face = cleanFace(c.face)
 	if not c.face or type(c.faceMarks) ~= "table" then
 		c.faceMarks = nil

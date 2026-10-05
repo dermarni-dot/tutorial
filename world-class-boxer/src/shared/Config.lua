@@ -203,7 +203,9 @@ Config.BodyTypes = {
 Config.Physiques = {
 	{ id = "BeginnerLean", name = "Beginner Lean", desc = "Untrained and narrow - everything is still to build",
 		shape = { chest = 0.9, shoulders = 0.9, arms = 0.9, back = 0.9, legs = 0.95, core = 0.95, neck = 0.9 },
-		partBias = {}, defBonus = 0, fatBias = 0, vein = 0.5, width = -0.02, depth = -0.02, bellyAt = 19 },
+		-- vein 0.8, not lower: an untrained body already has few veins (no vascularity, little definition),
+		-- and early dumbbell work should show on the forearms before the physique changes
+		partBias = {}, defBonus = 0, fatBias = 0, vein = 0.8, width = -0.02, depth = -0.02, bellyAt = 19 },
 	{ id = "LeanTechnical", name = "Lean Technical", desc = "Wiry and dry: long muscles, visible abs, built to move",
 		shape = { chest = 0.85, shoulders = 0.95, arms = 0.85, back = 0.9, legs = 0.95, core = 1.15, neck = 0.85 },
 		partBias = { calves = 4, obliques = 4, serratus = 4, abs = 3, pecs = -6, biceps = -6, traps = -6 },
@@ -225,35 +227,115 @@ Config.Physiques = {
 		defBonus = 0.35, fatBias = -3, vein = 1.3, width = 0.03, depth = 0.02, bellyAt = 21, shadows = true },
 }
 
--- Rule that names a build's physique. body = profile.body / Builder build table.
--- info = { frame = BodyTypes id, tier = career tier, weightClass = index, overall = OVR, champion = bool }
--- Order matters: Elite Champion > Heavyweight > Beginner Lean > Power Puncher > Lean Technical > Balanced.
-function Config.ClassifyPhysique(body, info)
+-- Rule that names a build's physique from the SHAPE of the development, not its absolute size:
+-- every group is read as a share of the frame's cap (100 * BodyTypes potential), so a Lean frame and a
+-- Heavyweight Build that trained the same way get the same physique. body = profile.body / Builder build.
+-- info = { frame = BodyTypes id, tier = career tier, weightClass = index, overall = OVR, champion = bool,
+--   prev = the id this build had last time (optional: Training.PhysiqueInfo keeps it, so a 0.1% fat or a
+--   one-session change cannot flip the label back and forth at a threshold) }
+-- Signals (all frame-relative 0..1+):
+--   dev   mean of the 6 trunk/limb groups (the neck is barely trained by anything, so it is left out)
+--   upper mean of chest, shoulders, arms, back      lowCore mean of legs and core
+--   power mean of chest, shoulders, back (upper-body mass)
+--   mass  the heavy compound-lift muscles (pecs, upper chest, lats, traps, upper/lower back, quads, glutes)
+--   agile the boxing / endurance muscles (calves, abs, obliques, serratus, side + rear delts, forearms)
+-- mass / agile tells a lifter (bench, pull-ups, squat, deadlift) from a boxer or runner whatever the
+-- overall size; for an evenly developed body it is 1, so even development stays Balanced.
+-- Order: Elite Champion > Heavyweight (overfed) > Beginner Lean > lifter (Power Puncher, or Heavyweight
+-- when he also eats big) > Heavyweight frame carrying fat > Lean Technical > Balanced.
+local MASS_PARTS = { "pecs", "upperChest", "lats", "traps", "upperBack", "lowerBack", "quads", "glutes" }
+local AGILE_PARTS = { "calves", "abs", "obliques", "serratus", "sideDelt", "rearDelt", "forearms" }
+local TRUNK_GROUPS = { "chest", "shoulders", "arms", "back", "legs", "core" }
+function Config.PhysiqueSignals(body, info)
 	info = info or {}
 	local frame = Config.FindById(Config.BodyTypes, info.frame or "Athletic") or Config.BodyTypes[2]
 	local cap = 100 * frame.potential
-	local function g(k)
-		return tonumber(body and body[k]) or 8
+	local function r(k)
+		local v = tonumber(body and body[k])
+		return (v and v == v and v or 8) / cap
 	end
+	local function partMean(list)
+		local t = 0
+		for _, id in ipairs(list) do
+			local v = tonumber(Config.PartValue(body, id)) or 8
+			t += (v == v and v or 8) / cap
+		end
+		return t / #list
+	end
+	local dev, maxR, minR = 0, 0, math.huge
+	for _, k in ipairs(TRUNK_GROUPS) do
+		local v = r(k)
+		dev += v
+		maxR = math.max(maxR, v)
+		minR = math.min(minR, v)
+	end
+	dev /= #TRUNK_GROUPS
 	local fat = tonumber(body and body.fat) or 14
-	local all, minRatio = 0, math.huge
-	for _, k in ipairs(Config.MuscleKeys) do
-		all += g(k)
-		minRatio = math.min(minRatio, g(k) / cap)
+	local mass, agile = partMean(MASS_PARTS), partMean(AGILE_PARTS)
+	return {
+		frame = frame, fat = fat ~= fat and 14 or fat, dev = dev, maxR = maxR, minR = minR,
+		upper = (r("chest") + r("shoulders") + r("arms") + r("back")) / 4,
+		lowCore = (r("legs") + r("core")) / 2,
+		power = (r("chest") + r("shoulders") + r("back")) / 3,
+		mass = mass, agile = agile, liftRatio = mass / math.max(agile, 0.02),
+	}
+end
+
+-- tuning of the rule above (frame-relative shares; fat in %)
+Config.PhysiqueRule = {
+	beginnerDev = 0.2, beginnerMax = 0.3, -- untrained: nothing developed past these shares
+	overfedFat = 20, -- anyone above reads as Heavyweight
+	liftRatio = 1.17, liftPower = 0.28, liftMass = 0.31, -- lifter: mass/agile, upper-body mass, (mass+power)/2
+	liftHeavyFat = 16, -- a lifter carrying this much fat is a Heavyweight-style mass build
+	heavyFrameFat = 15, heavyFrameDev = 0.25, -- heavy frame / class carrying fat over some muscle
+	leanFat = 12.5, leanSpread = 1.5, -- lean technical: lean, legs/core not behind the upper body, specialised
+	eliteFat = 11.5, eliteMin = 0.45, -- titled / OVR 85+ boxers: every group at least this share
+	elitePureFat = 10, elitePureDev = 0.7, elitePureMin = 0.55, -- untitled elite conditioning
+	-- hysteresis while the build keeps its previous id
+	keepFat = 0.6, keepShare = 0.025, keepRatio = 0.06,
+}
+
+function Config.ClassifyPhysique(body, info)
+	info = info or {}
+	local R = Config.PhysiqueRule
+	local s = Config.PhysiqueSignals(body, info)
+	local fat, prev = s.fat, info.prev
+	-- staying in the previous class is a little easier than entering it
+	local function k(id, amount)
+		return prev == id and amount or 0
 	end
-	all /= #Config.MuscleKeys
-	local upper = (g("chest") + g("shoulders") + g("arms") + g("back")) / 4
-	local power = (g("back") + g("shoulders") + g("chest")) / 3
 	local elite = (info.tier or 1) >= 8 or (info.overall or 0) >= 85 or info.champion == true
-	if elite and minRatio >= 0.6 and fat <= 11 then
+	local kf, ks = k("EliteChampion", R.keepFat), k("EliteChampion", R.keepShare)
+	if (elite and s.minR >= R.eliteMin - ks and fat <= R.eliteFat + kf)
+		or (s.dev >= R.elitePureDev - ks and s.minR >= R.elitePureMin - ks and fat <= R.elitePureFat + kf) then
 		return "EliteChampion"
-	elseif fat >= 20 or (fat >= 15 and ((info.weightClass or 0) >= 8 or frame.id == "Heavyweight Build")) then
+	end
+	if fat >= R.overfedFat - k("Heavyweight", R.keepFat) then
 		return "Heavyweight"
-	elseif all < 22 and fat < 17 then
+	end
+	ks = k("BeginnerLean", R.keepShare)
+	if s.dev < R.beginnerDev + ks and s.maxR < R.beginnerMax + ks then
 		return "BeginnerLean"
-	elseif power >= 45 and g("legs") >= 40 and fat >= 10 and fat <= 17 then
+	end
+	-- a lifter's build: the compound-lift muscles lead the boxing ones and the upper body carries mass.
+	-- No lower fat bound: a lean lifter keeps his traps and neck and just gets sharper (Config.Definition).
+	local wasLifter = prev == "PowerPuncher" or prev == "Heavyweight"
+	local kr, kl = wasLifter and R.keepRatio or 0, wasLifter and R.keepShare or 0
+	if s.liftRatio >= R.liftRatio - kr and s.power >= R.liftPower - kl and (s.mass + s.power) / 2 >= R.liftMass - kl then
+		if fat >= R.liftHeavyFat + (prev == "PowerPuncher" and R.keepFat or -k("Heavyweight", R.keepFat)) then
+			return "Heavyweight"
+		end
 		return "PowerPuncher"
-	elseif fat <= 12.5 and upper < 45 then
+	end
+	if fat >= R.heavyFrameFat - k("Heavyweight", R.keepFat) and s.dev >= R.heavyFrameDev
+		and ((info.weightClass or 0) >= 8 or s.frame.id == "Heavyweight Build") then
+		return "Heavyweight"
+	end
+	-- wiry and dry: lean, the upper body does not lead the legs and core, and the development is
+	-- specialised (runners, skippers, med-ball / bag boxers) rather than an all-round build
+	ks = k("LeanTechnical", R.keepShare)
+	if fat <= R.leanFat + k("LeanTechnical", R.keepFat) and s.upper <= s.lowCore + ks
+		and s.maxR >= (R.leanSpread - 4 * ks) * s.dev then
 		return "LeanTechnical"
 	end
 	return "Balanced"
@@ -647,8 +729,9 @@ Config.ExerciseTargets = {
 		abs = 0.5, obliques = 0.5, lowerAbs = 0.5, serratus = 0.5, forearms = 0.6, neckSCM = 0.3 },
 	-- squat -> quads / calves / glutes
 	Squat = { quads = 2.0, glutes = 1.6, calves = 1.0, hamstrings = 1.0, abs = 0.3, obliques = 0.3, lowerAbs = 0.3, lowerBack = 0.3 },
-	-- pull-ups -> lats / upper back (V-taper)
-	PullUps = { lats = 2.0, upperBack = 1.6, traps = 0.8, lowerBack = 0.4, biceps = 0.9, forearms = 0.7, rearDelt = 0.5, serratus = 0.3 },
+	-- pull-ups -> lats / upper back (V-taper) + the hanging core work that keeps the legs still
+	PullUps = { lats = 2.0, upperBack = 1.6, traps = 0.8, lowerBack = 0.4, biceps = 0.9, forearms = 0.7, rearDelt = 0.5, serratus = 0.3,
+		abs = 0.5, lowerAbs = 0.6, obliques = 0.35 },
 	-- medicine ball -> abs / obliques / lower abs
 	MedBall = { abs = 1.4, obliques = 1.8, lowerAbs = 1.2, serratus = 0.8, frontDelt = 0.4, sideDelt = 0.2, lats = 0.3 },
 	Roadwork = { calves = 0.8, hamstrings = 0.5, quads = 0.3, glutes = 0.2 },
@@ -1039,7 +1122,9 @@ Config.HallOfFameScore = 450
 -- Computed by Catalog.GymTier(gymLevels, owned, careerTier) from the average upgrade progress
 -- over Catalog.StationOrder (frac 0..1), the career tier, and Shop ownership.
 -- A tier is reached when frac >= minFrac AND careerTier >= minCareerTier (or the player owns
--- any orOwned item instead of the career tier) AND owns every needsOwned item.
+-- any orOwned item instead of the career tier) AND owns every needsOwned item. An orOwned item whose
+-- shop requiresTier is at or above minCareerTier is no shortcut (only an admin grant can use it), so
+-- Catalog.GymTierNeeds does not advertise it; lower that item's requiresTier to make it a real one.
 -- growth multiplies muscle growth (stat gains already use each station's level mult).
 -- facilities = what this tier ADDS (cumulative with the tiers below); visuals are client-only.
 Config.GymTiers = {
@@ -1136,22 +1221,113 @@ Config.BuiltinSounds = {
 	Click = "rbxasset://sounds/clickfast.wav",
 	Grunt = "rbxasset://sounds/uuhhh.mp3",
 }
--- Optional uploaded assets ("rbxassetid://..."). Every entry defaults to "" and is SKIPPED when
--- empty; code must fall back to a shaped built-in (or silence). Read through Config.SoundId(key).
+-- Optional uploaded assets. Every entry defaults to "" and is SKIPPED when empty: the game ships
+-- silent-safe (no uploaded audio can be vouched for), and code falls back to a shaped built-in from
+-- Config.SoundFallbacks or to silence. Read through Config.SoundId(key) (upload only) or
+-- Config.SoundSpec(key) (upload, else the shaped stand-in).
+--
+-- FOR THE OWNER: paste an audio asset you own or that is public on the Creator Store (Roblox-made or
+-- licensed for any experience), as "rbxassetid://123456789" or just the number. Test each in Studio:
+-- an id the experience may not play stays silent and only warns in the output.
+--   key            where it plays                                 what to upload (length, loop)
+--   CrowdMurmur    arena crowd bed, all fight night (VenueFX)      indoor crowd chatter/walla, 30-90 s seamless loop
+--   CrowdRoar      arena roar swell on big shots / KDs / walkout   stadium cheer, 10-30 s loop (volume is driven)
+--   CrowdOoh       crowd reaction to a hard landed shot            short "ooooh!" gasp, 1-2 s one-shot
+--   CrowdBoo       crowd reaction to holding / a dull round        short boo, 2-3 s one-shot
+--   RingBell       round start / end bell (venues + gym timers)    single boxing-bell ding, < 1 s (code repeats it)
+--   WalkoutMusic   fighter walkout to the ring                     hype hip-hop / rock instrumental, 60 s+ loop
+--   ArenaMusic     arena between rounds / before the walkout       arena PA music bed, 60 s+ loop
+--   GymMusic       wall speakers in the gym                        upbeat workout instrumental, 60 s+ loop
+--   CoachShout     coaches shouting instructions in the gym        short male shout ("Hey!" / "Go!"), < 1 s one-shot
+--   CornerShout    your corner shouting during rounds              short urgent shout, < 1 s one-shot
+--   RefereeCount   referee count over a knockdown                  one count word or a clap-like call, < 1 s (repeated)
+--   Announcer      ring announcer intro                            "Let's get ready..." style intro, 3-8 s one-shot
+--   BagThud / BagChain / SpeedBag / PunchImpact / BodyShot         gym and fight impacts (built-in thuds already
+--                  play when empty; uploads replace them)
+--   GymAmbience    gym room tone (Ambience)                        quiet gym room tone, 30 s+ loop
+--   CityAmbience   city streets                                    distant traffic / city bed, 30 s+ loop
+--   Heartbeat      fight heartbeat when hurt                       single low heartbeat thump, < 0.5 s
+--   Breathing      heavy breathing when gassed                     exhausted breathing, 2-4 s loop
+--   CameraFlash    ringside photographers                          camera shutter click, < 0.3 s
 Config.SoundIds = {
 	CrowdRoar = "", CrowdMurmur = "", CrowdBoo = "", CrowdOoh = "", -- arena crowd bed / reactions
-	RingBell = "", -- round bell (fallback: Ping at high PlaybackSpeed)
+	RingBell = "", -- round bell
 	WalkoutMusic = "", ArenaMusic = "", GymMusic = "", -- music beds
 	CoachShout = "", CornerShout = "", RefereeCount = "", Announcer = "", -- voices
-	BagThud = "", BagChain = "", SpeedBag = "", PunchImpact = "", BodyShot = "", -- impacts (fallback: Thud shaped)
+	BagThud = "", BagChain = "", SpeedBag = "", PunchImpact = "", BodyShot = "", -- impacts
 	GymAmbience = "", CityAmbience = "", Heartbeat = "", Breathing = "", CameraFlash = "",
 }
+
+-- an upload id in a usable form, or nil: "" / anything that is not an asset reference is skipped, a bare
+-- number (or numeric string) becomes "rbxassetid://n", so a mistyped entry never errors or plays junk
 function Config.SoundId(key)
 	local id = Config.SoundIds[key]
-	if type(id) == "string" and id ~= "" then
-		return id
+	if type(id) == "number" then
+		id = id == id and id > 0 and string.format("rbxassetid://%d", id) or nil
+	elseif type(id) == "string" then
+		id = string.gsub(id, "^%s+", "")
+		id = string.gsub(id, "%s+$", "")
+		if string.match(id, "^%d+$") then
+			id = "rbxassetid://" .. id
+		elseif not (string.match(id, "^rbxassetid://%d+$") or string.match(id, "^rbxasset://%S+$")
+			or string.match(id, "^https?://www%.roblox%.com/asset/%?id=%d+$")) then
+			id = nil
+		end
+	else
+		id = nil
 	end
-	return nil
+	return id
+end
+
+-- Shaped stand-ins built from Config.BuiltinSounds for slots where a built-in can pass for the real
+-- thing at a distance; false = no believable stand-in (music, spoken lines): stay silent and let the
+-- speech bubble / HUD text carry it. volume is a multiplier on the caller's own level, spread a
+-- random +- PlaybackSpeed share per play.
+Config.SoundFallbacks = {
+	CrowdMurmur = { builtin = "Footsteps", speed = 0.42, volume = 0.45, looped = true }, -- low shuffling rumble
+	CrowdRoar = { builtin = "Falling", speed = 0.55, volume = 0.6, looped = true }, -- slowed wind rush
+	CrowdOoh = { builtin = "Grunt", speed = 0.72, volume = 0.7, spread = 0.06 }, -- pitched-down "uuhh" = "oooh"
+	CrowdBoo = { builtin = "Grunt", speed = 0.52, volume = 0.6, spread = 0.05 }, -- low "uuh" = "booo"
+	RingBell = { builtin = "SwordHit", speed = 0.62, volume = 0.35, spread = 0.01 }, -- metallic ding
+	CoachShout = { builtin = "Grunt", speed = 1.0, volume = 0.3, spread = 0.1 }, -- a barked "huh!"
+	CornerShout = { builtin = "Grunt", speed = 1.08, volume = 0.3, spread = 0.1 },
+	RefereeCount = { builtin = "Click", speed = 0.8, volume = 0.45 }, -- a tick per count (FightClient's own stand-in)
+	Announcer = false, -- spoken words: text only
+	WalkoutMusic = false, ArenaMusic = false, GymMusic = false, -- no built-in music
+	BagThud = { builtin = "Thud", speed = 1.0, volume = 0.55, spread = 0.07 },
+	BodyShot = { builtin = "Thud", speed = 0.82, volume = 0.6, spread = 0.06 },
+	PunchImpact = { builtin = "Thud", speed = 1.6, volume = 0.38, spread = 0.12 },
+	SpeedBag = { builtin = "Thud", speed = 2.4, volume = 0.32, spread = 0.12 },
+	BagChain = { builtin = "SwordHit", speed = 1.9, volume = 0.07, spread = 0.25 },
+	GymAmbience = false, -- Ambience already runs a slowed-wind HVAC bed
+	CityAmbience = { builtin = "Falling", speed = 0.4, volume = 0.08, looped = true }, -- distant wind / traffic hush
+	Heartbeat = { builtin = "Thud", speed = 0.55, volume = 0.5 },
+	Breathing = false,
+	CameraFlash = { builtin = "Click", speed = 1.4, volume = 0.25, spread = 0.1 }, -- shutter click
+}
+
+-- slots that are beds (looped) whether uploaded or stood in for
+local LOOPED_SOUNDS = {
+	CrowdMurmur = true, CrowdRoar = true, WalkoutMusic = true, ArenaMusic = true, GymMusic = true,
+	GymAmbience = true, CityAmbience = true, Breathing = true,
+}
+
+-- (key) -> { id, speed, volume, looped, spread, uploaded } or nil (stay silent). An upload plays
+-- unshaped (speed 1, volume 1); otherwise the Config.SoundFallbacks stand-in. Never errors.
+function Config.SoundSpec(key)
+	local id = Config.SoundId(key)
+	if id then
+		return { id = id, speed = 1, volume = 1, spread = 0, looped = LOOPED_SOUNDS[key] == true, uploaded = true }
+	end
+	local fb = Config.SoundFallbacks[key]
+	local bid = type(fb) == "table" and Config.BuiltinSounds[fb.builtin] or nil
+	if not bid then
+		return nil
+	end
+	return {
+		id = bid, speed = tonumber(fb.speed) or 1, volume = tonumber(fb.volume) or 1, spread = tonumber(fb.spread) or 0,
+		looped = fb.looped == true or LOOPED_SOUNDS[key] == true, uploaded = false,
+	}
 end
 
 ------------------------------------------------------------------------
