@@ -925,6 +925,10 @@ function handlers.CreateBoxer(player, profile, data)
 	data.name = first .. " " .. last
 	data.nickname = filter(data.nickname, player.UserId, 20) or "The Prospect"
 	local newProfile = Career.CreateProfile(profile, data, player.UserId)
+	-- the player's UI settings (saved from the main menu before the boxer existed) carry over
+	if type(profile.settings) == "table" and type(profile.settings.ui) == "table" then
+		newProfile.settings = { ui = profile.settings.ui }
+	end
 	DataManager.Set(player, newProfile)
 	customizing[player] = nil
 	applyLook(player)
@@ -1461,7 +1465,12 @@ function handlers.NewCareer(player, profile)
 	if not profile.retired then
 		return { ok = false, err = "Retire first." }
 	end
-	DataManager.Set(player, DataManager.Blank(profile.pastCareers))
+	local blank = DataManager.Blank(profile.pastCareers)
+	-- UI preferences belong to the player, not the career (wakeAt stays career-specific and is dropped)
+	if type(profile.settings) == "table" and type(profile.settings.ui) == "table" then
+		blank.settings = { ui = profile.settings.ui }
+	end
+	DataManager.Set(player, blank)
 	return { ok = true }
 end
 

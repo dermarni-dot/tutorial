@@ -119,7 +119,13 @@ end
 -- the gym HUD hides while a full-screen screen (main menu, fighter card) is up
 local hudHolds = {}
 function State.HideHud(key, on)
-	hudHolds[key] = on and true or nil
+	local v = on and true or nil
+	if hudHolds[key] == v then
+		-- unchanged: no refresh (a Changed listener that closes windows, e.g. ClientMain's retired
+		-- branch calling Hub.Close, would otherwise re-enter itself without end)
+		return
+	end
+	hudHolds[key] = v
 	State.Refresh()
 end
 function State.HudHidden()

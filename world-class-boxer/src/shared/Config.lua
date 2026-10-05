@@ -319,9 +319,19 @@ function Config.ClassifyPhysique(body, info)
 	end
 	-- a lifter's build: the compound-lift muscles lead the boxing ones and the upper body carries mass.
 	-- No lower fat bound: a lean lifter keeps his traps and neck and just gets sharper (Config.Definition).
-	local wasLifter = prev == "PowerPuncher" or prev == "Heavyweight"
-	local kr, kl = wasLifter and R.keepRatio or 0, wasLifter and R.keepShare or 0
-	if s.liftRatio >= R.liftRatio - kr and s.power >= R.liftPower - kl and (s.mass + s.power) / 2 >= R.liftMass - kl then
+	local function lifts(kr, kl)
+		return s.liftRatio >= R.liftRatio - kr and s.power >= R.liftPower - kl and (s.mass + s.power) / 2 >= R.liftMass - kl
+	end
+	local lifter = lifts(0, 0)
+	if not lifter and prev == "PowerPuncher" then
+		lifter = lifts(R.keepRatio, R.keepShare)
+	elseif not lifter and prev == "Heavyweight" then
+		-- the eased lifter test only keeps a Heavyweight that still carries the mass-build fat; it must
+		-- never hand the body to PowerPuncher (a Heavyweight from the heavy-frame rule below would then
+		-- flip to PowerPuncher on the next call with an unchanged body)
+		lifter = fat >= R.liftHeavyFat - R.keepFat and lifts(R.keepRatio, R.keepShare)
+	end
+	if lifter then
 		if fat >= R.liftHeavyFat + (prev == "PowerPuncher" and R.keepFat or -k("Heavyweight", R.keepFat)) then
 			return "Heavyweight"
 		end
