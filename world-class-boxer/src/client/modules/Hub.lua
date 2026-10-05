@@ -19,6 +19,7 @@ local Hub = {}
 local shade, win, content
 local tab = "Career"
 local TABS = { "Career", "Training", "Body", "Stats", "Gym", "Gear", "Coaches", "Sponsors", "Life", "Rankings", "Rivals", "Shop", "Legacy" }
+Hub.Tabs = TABS -- every tab (the side navigation groups them in NAV)
 -- the side navigation, grouped like a sports game's career menu
 local NAV = {
 	{ "CAREER", { "Career", "Rankings", "Rivals", "Legacy" } },
@@ -608,20 +609,36 @@ end
 
 R.Body = function(body, P)
 	local c = UI.Card(body, { stroke = T.gold })
-	UI.Line(c, "PHYSIQUE: " .. tostring(P.physique or "?"):upper(), { Font = T.bold, TextSize = 22, TextColor3 = T.gold })
+	local frameDef = Config.FindById(Config.BodyTypes, P.appearance.body.frame) or Config.BodyTypes[2]
+	local top = UI.Frame(c, { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 236) })
+	-- the body map: every muscle part lit by how far it is developed toward the frame's potential
+	local map = BodyMap.new(top, { Size = UDim2.fromOffset(236, 236) })
+	local dev = {}
+	for _, part in ipairs(Config.MuscleParts) do
+		dev[part.id] = tonumber(P.body[part.id]) or tonumber(P.body[part.group]) or 0
+	end
+	map:SetTargets(dev, T.gold, 100 * frameDef.potential)
+	local info = UI.Frame(top, { BackgroundTransparency = 1, Position = UDim2.fromOffset(256, 0), Size = UDim2.new(1, -256, 1, 0) })
+	UI.List(info, 6)
+	UI.Kicker(info, "PHYSIQUE", T.gold, { order = 1 })
+	UI.Title(info, tostring(P.physique or "?"):upper(), { TextSize = 40, Size = UDim2.new(1, 0, 0, 44), LayoutOrder = 2, TextTruncate = Enum.TextTruncate.AtEnd })
 	if P.physiqueDesc and P.physiqueDesc ~= "" then
-		UI.Line(c, P.physiqueDesc, { TextSize = 14 })
+		UI.Line(info, P.physiqueDesc, { TextSize = 14, LayoutOrder = 3 })
 	end
 	if P.physiquePinned then
-		UI.Line(c, "Look chosen in the creator: training still grows every muscle, the silhouette keeps this archetype.", { TextColor3 = T.sub, TextSize = 12 })
+		UI.Line(info, "Look chosen in the creator: training still grows every muscle, the silhouette keeps this archetype.", { TextColor3 = T.sub, TextSize = 12, LayoutOrder = 4 })
 	end
+	UI.Line(info, "Brighter muscles are more developed. Train what is dark.", { TextColor3 = T.sub, TextSize = 12, LayoutOrder = 5 })
 	-- the archetype ladder: where this build sits among the physiques the game recognises
-	local row = UI.Row(c, 30)
-	for _, ph in ipairs(Config.Physiques) do
+	local row = UI.Frame(c, { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 26) })
+	UI.List(row, 6, true)
+	for i, ph in ipairs(Config.Physiques) do
 		local cur = ph.id == P.physiqueId or ph.name == P.physique
-		local chip = UI.Text(row, ph.name, { Size = UDim2.fromOffset(118, 26), AutomaticSize = Enum.AutomaticSize.None, TextSize = 12, Font = cur and T.bold or T.font,
-			TextXAlignment = Enum.TextXAlignment.Center, BackgroundTransparency = 0, BackgroundColor3 = cur and T.gold or T.panel2, TextColor3 = cur and T.bg or T.sub })
-		UI.Corner(chip, 6)
+		if cur then
+			UI.Badge(row, ph.name, T.gold, { order = i, h = 26 })
+		else
+			UI.Chip(row, ph.name, T.sub, { order = i, h = 26 })
+		end
 	end
 	local fat = P.body.fat or 14
 	local ph = Config.FindById(Config.Physiques, P.physiqueId or "")
@@ -637,8 +654,7 @@ R.Body = function(body, P)
 	UI.Line(c, fat2, { TextColor3 = T.sub, TextSize = 12 })
 
 	-- every muscle under its group; soreness tints the bar
-	local frame = Config.FindById(Config.BodyTypes, P.appearance.body.frame) or Config.BodyTypes[2]
-	local cap = 100 * frame.potential
+	local cap = 100 * frameDef.potential
 	local sore = P.condition and P.condition.sore or {}
 	local m = UI.Card(body)
 	UI.Line(m, string.format("MUSCLE DEVELOPMENT  (your frame's potential: %d)", math.floor(cap)), { Font = T.bold, TextColor3 = T.gold })
@@ -1158,18 +1174,21 @@ end
 local rankClass, rankOrg = nil, "WBA"
 R.Rankings = function(body, P)
 	rankClass = rankClass or P.physical.weightClass
-	local top = UI.Row(body, 38)
-	UI.Button(top, "<", { Size = UDim2.fromOffset(36, 34) }, function()
+	local top = UI.Row(body, 40)
+	local prev = UI.Button(top, "", { Size = UDim2.fromOffset(38, 38) }, function()
 		rankClass = math.max(1, rankClass - 1)
 		Hub.Render()
 	end)
-	UI.Text(top, Config.WeightClasses[rankClass].name, { Font = T.bold, Size = UDim2.fromOffset(170, 34), TextXAlignment = Enum.TextXAlignment.Center, AutomaticSize = Enum.AutomaticSize.None })
-	UI.Button(top, ">", { Size = UDim2.fromOffset(36, 34) }, function()
+	UI.Icon(prev, "left", 12, T.text, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5) })
+	UI.Text(top, string.upper(Config.WeightClasses[rankClass].name), { Face = "display", TextSize = 24, Size = UDim2.fromOffset(190, 38), TextXAlignment = Enum.TextXAlignment.Center,
+		AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
+	local nextB = UI.Button(top, "", { Size = UDim2.fromOffset(38, 38) }, function()
 		rankClass = math.min(#Config.WeightClasses, rankClass + 1)
 		Hub.Render()
 	end)
+	UI.Icon(nextB, "right", 12, T.text, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5) })
 	for _, org in ipairs(Config.Orgs) do
-		UI.Button(top, org, { Size = UDim2.fromOffset(66, 34), BackgroundColor3 = org == rankOrg and T.gold or T.panel2, TextColor3 = org == rankOrg and T.bg or T.text }, function()
+		UI.Button(top, org, { Size = UDim2.fromOffset(72, 38), BackgroundColor3 = org == rankOrg and T.gold or T.panel2 }, function()
 			rankOrg = org
 			Hub.Render()
 		end)
@@ -1179,18 +1198,32 @@ R.Rankings = function(body, P)
 		return
 	end
 	if P.tier < 2 then
-		UI.Line(body, "You're an amateur - win 4 amateur bouts to turn pro and enter the world rankings.", { TextColor3 = T.sub, TextSize = 14 })
+		UI.Line(body, "You're an amateur - win 4 amateur bouts to turn pro and enter the world rankings.", { TextColor3 = T.gold, TextSize = 14, Font = T.semi })
 	end
-	for _, e in ipairs(res.list) do
-		local b = UI.Button(body, "", { Size = UDim2.new(1, -8, 0, 34), BackgroundColor3 = e.isPlayer and Color3.fromRGB(70, 55, 15) or T.panel }, function()
+	for i, e in ipairs(res.list) do
+		local champ = e.rank == "C"
+		local b = UI.Button(body, "", { Size = UDim2.new(1, -8, 0, 44), BackgroundColor3 = e.isPlayer and Color3.fromRGB(58, 46, 16) or T.panel, BackgroundTransparency = e.isPlayer and 0 or (i % 2 == 0 and 0.4 or 0.15) }, function()
 			if not e.isPlayer then
 				showBoxer(e.id)
 			end
 		end)
-		local rk = e.rank == "C" and "CHAMP" or ("#" .. e.rank)
-		UI.Text(b, rk, { Font = T.bold, TextColor3 = e.rank == "C" and T.gold or T.text, Position = UDim2.fromOffset(10, 0), Size = UDim2.new(0, 70, 1, 0), AutomaticSize = Enum.AutomaticSize.None })
-		UI.Text(b, string.format("%s \"%s\"", e.name, e.nick), { Position = UDim2.fromOffset(84, 0), Size = UDim2.new(0.5, 0, 1, 0), TextSize = 15, AutomaticSize = Enum.AutomaticSize.None })
-		UI.Text(b, string.format("%s   OVR %d   %s", rec(e.record), e.overall, e.nat), { Position = UDim2.new(0.55, 0, 0, 0), Size = UDim2.new(0.45, -10, 1, 0), TextColor3 = T.sub, TextSize = 13, AutomaticSize = Enum.AutomaticSize.None })
+		if e.isPlayer then
+			UI.Stroke(b, T.gold, 1.5, 0.2)
+		end
+		local badge = UI.Frame(b, { Position = UDim2.fromOffset(8, 7), Size = UDim2.fromOffset(champ and 62 or 44, 30), BackgroundColor3 = champ and T.gold or T.panel2 })
+		UI.Corner(badge, 5)
+		UI.Text(badge, champ and "CHAMP" or tostring(e.rank), { Face = "number", TextSize = champ and 15 or 18, TextColor3 = champ and T.ink or T.text, Size = UDim2.fromScale(1, 1),
+			AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Center })
+		local x = champ and 80 or 62
+		Flags.Draw(b, e.nat, { Size = UDim2.fromOffset(27, 18), Position = UDim2.fromOffset(x, 13) })
+		UI.Text(b, string.format("%s  \"%s\"", e.name, e.nick), { Font = T.semi, TextSize = 15, TextColor3 = e.isPlayer and T.gold or T.text, Position = UDim2.fromOffset(x + 36, 0), Size = UDim2.new(0.55, -(x + 36), 1, 0),
+			AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
+		UI.Text(b, string.format("%d-%d-%d", e.record.w, e.record.l, e.record.d), { Face = "number", TextSize = 20, Position = UDim2.new(0.56, 0, 0, 0), Size = UDim2.new(0.2, 0, 1, 0),
+			AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false })
+		UI.Text(b, string.format("%d KO", e.record.ko), { Font = T.semi, TextSize = 11, TextColor3 = T.sub, Position = UDim2.new(0.76, 0, 0, 0), Size = UDim2.new(0.1, 0, 1, 0),
+			AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false })
+		UI.Text(b, tostring(e.overall), { Face = "number", TextSize = 20, TextColor3 = T.gold, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -12, 0, 0), Size = UDim2.fromOffset(40, 44),
+			AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Right, TextWrapped = false })
 	end
 end
 
@@ -1326,14 +1359,26 @@ end
 ------------------------------------------------------------------------
 -- Window
 ------------------------------------------------------------------------
+local function styleTab(name, b)
+	local on = name == tab
+	b.BackgroundTransparency = on and 0.1 or 1
+	local label = b:FindFirstChild("Label")
+	if label then
+		label.TextColor3 = on and T.text or T.sub
+	end
+	local bar = b:FindFirstChild("Active")
+	if bar then
+		bar.Visible = on
+	end
+end
+
 function Hub.Render()
 	local P = State.P
 	if not (shade and shade.Parent and P and P.created) then
 		return
 	end
 	for name, b in pairs(tabButtons) do
-		b.BackgroundColor3 = name == tab and T.gold or T.panel2
-		b.TextColor3 = name == tab and T.bg or T.text
+		styleTab(name, b)
 	end
 	local y = content.CanvasPosition
 	UI.Clear(content)
@@ -1374,20 +1419,37 @@ function Hub.Open(which)
 	end
 	State.closeAll("Hub")
 	local body
-	shade, win, body = UI.Window(State.gui, "Hub", 980, 660, "CAREER HUB", { onClose = Hub.Close, scroll = false })
+	shade, win, body = UI.Window(State.gui, "Hub", 1180, 760, "CAREER HUB", { onClose = Hub.Close, scroll = false, kicker = string.format("%s  ·  %s", P.tierName, P.className) })
 	State.windows.Hub = Hub.Close
-	local side = UI.Scroll(body, { Size = UDim2.new(0, 140, 1, 0) })
-	UI.List(side, 5)
+	local side = UI.Scroll(body, { Name = "Nav", Size = UDim2.new(0, 176, 1, 0) })
+	UI.List(side, 2)
 	tabButtons = {}
-	for i, name in ipairs(TABS) do
-		tabButtons[name] = UI.Button(side, name, { Size = UDim2.new(1, -8, 0, 36), LayoutOrder = i, TextSize = 14 }, function()
-			tab = name
-			content.CanvasPosition = Vector2.zero
-			Hub.Render()
-		end)
+	local order = 0
+	for _, group in ipairs(NAV) do
+		order += 1
+		UI.Text(side, group[1], { Font = T.semi, TextSize = 11, TextColor3 = T.dim, LayoutOrder = order, Size = UDim2.new(1, -8, 0, 26), AutomaticSize = Enum.AutomaticSize.None,
+			TextYAlignment = Enum.TextYAlignment.Bottom, TextWrapped = false })
+		for _, name in ipairs(group[2]) do
+			order += 1
+			local b = UI.New("TextButton", { Name = name, Text = "", AutoButtonColor = false, BorderSizePixel = 0, Size = UDim2.new(1, -8, 0, 36), LayoutOrder = order,
+				BackgroundColor3 = T.panel2, BackgroundTransparency = 1, Parent = side })
+			UI.Corner(b, UI.R.md)
+			UI.Hover(b, { amount = 0.94 })
+			local bar = UI.Frame(b, { Name = "Active", Position = UDim2.fromOffset(0, 8), Size = UDim2.fromOffset(3, 20), BackgroundColor3 = T.gold, Visible = false })
+			UI.Corner(bar, 2)
+			UI.Text(b, string.upper(name), { Name = "Label", Face = "displayMed", TextSize = 18, TextColor3 = T.sub, Position = UDim2.fromOffset(14, 0), Size = UDim2.new(1, -14, 1, 0),
+				AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
+			b.MouseButton1Click:Connect(function()
+				tab = name
+				content.CanvasPosition = Vector2.zero
+				Hub.Render()
+			end)
+			tabButtons[name] = b
+		end
 	end
-	content = UI.Scroll(body, { Position = UDim2.new(0, 150, 0, 0), Size = UDim2.new(1, -150, 1, 0) })
-	UI.List(content, 8)
+	UI.Frame(body, { Name = "NavLine", Position = UDim2.new(0, 184, 0, 0), Size = UDim2.new(0, 1, 1, 0), BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = 0.92 })
+	content = UI.Scroll(body, { Name = "Content", Position = UDim2.new(0, 200, 0, 0), Size = UDim2.new(1, -200, 1, 0) })
+	UI.List(content, 10)
 	UI.Pad(content, 2, 4)
 	Hub.Render()
 end

@@ -570,9 +570,10 @@ end
 function UI.Chip(parent, text, color, props)
 	props = props or {}
 	color = color or T.gold
+	-- outline chips sit on a dark fill so they read on any backdrop (blurred 3D, glass, photos)
 	local f = UI.Frame(parent, {
 		Size = props.Size or UDim2.fromOffset(0, props.h or 22), AutomaticSize = props.Size and Enum.AutomaticSize.None or Enum.AutomaticSize.X,
-		BackgroundColor3 = color, BackgroundTransparency = props.solid and 0 or 0.82, LayoutOrder = props.order or 0, Name = props.Name or "Chip",
+		BackgroundColor3 = props.solid and color or T.bg:Lerp(color, 0.12), BackgroundTransparency = props.solid and 0 or 0.2, LayoutOrder = props.order or 0, Name = props.Name or "Chip",
 	})
 	if props.Position then
 		f.Position = props.Position
@@ -1209,7 +1210,7 @@ function UI.Tabs(parent, names, current, onSelect, props)
 	UI.Frame(bar, { Name = "Track", AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.new(1, 0, 0, 1), BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = 0.88 })
 	local under = UI.Frame(bar, { Name = "Underline", AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.new(1 / #names, -4, 0, 3), BackgroundColor3 = T.gold, ZIndex = 2 })
 	local buttons = {}
-	local function select(name, animate)
+	local function pick(name, animate)
 		local idx = table.find(names, name) or 1
 		for n, b in pairs(buttons) do
 			b.TextColor3 = n == name and T.text or T.sub
@@ -1223,13 +1224,13 @@ function UI.Tabs(parent, names, current, onSelect, props)
 	end
 	for i, name in ipairs(names) do
 		buttons[name] = UI.Button(holder, string.upper(name), { Size = UDim2.new(1 / #names, -4, 1, 0), TextSize = 14, LayoutOrder = i, BackgroundTransparency = 1 }, function()
-			select(name, true)
+			pick(name, true)
 			onSelect(name)
 		end)
 	end
-	select(current, false)
+	pick(current, false)
 	return bar, function(name)
-		select(name, true)
+		pick(name, true)
 	end
 end
 

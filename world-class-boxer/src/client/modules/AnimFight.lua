@@ -178,10 +178,10 @@ function AnimFight.stance(p, rig, t, dt)
 	end
 	-- the counter puncher's shoulder roll (Philly shell rhythm)
 	local sroll = st.roll * 0.07 * sin(t * 1.3 * tempo + ns) * amp
-	local depth = st.depth * P.stance + bounce * -1 + 0.08 * tired + 0.05 * gut
+	local depth = st.depth * P.stance + 0.08 * tired + 0.05 * gut
 	-- hips: bladed, leaning into the direction of travel (AnimLoco adds momentum after the filters)
 	local lv = lo.lv
-	p.Root = CF(wx + wvx + slip * 0.6, -(depth + wvd) + bounce * 2, wz)
+	p.Root = CF(wx + wvx + slip * 0.6, -(depth + wvd) + bounce, wz)
 		* A(st.lean * 0.3 + P.lean * 0.3 + lv.Z * 0.008, st.hip, -lv.X * 0.008 - (wx + wvx) * 0.35)
 	p.W = A(st.lean + P.lean - 0.14 * gut + br - 0.02 * mv, st.wyaw + sroll * 0.5 + hx * 0.4, (wvx + slip) * 0.45 + sroll + hx * 0.3)
 	p.Neck = A(st.tuck + P.chin - br * 0.5 + 0.08 * gut + hy, -(st.hip + st.wyaw) * 0.85 - hx * 0.6, -(wvx + slip) * 0.35 - sroll + hx * 0.4)
@@ -730,21 +730,19 @@ local function evalPunch(p, rig, act, t, near, driveBody)
 	-- body schedule (the newest punch drives it, continuing from where the last one left the body)
 	if driveBody then
 		local bf = act.bodyFrom
-		local function seg(target, from, k)
-			if el < w then
-				return from + (target - from) * k
-			end
-			return target * k
-		end
+		-- during the drive each link travels from where the last punch left it to this punch's peak;
+		-- in the recovery it unwinds to the stance (fh / fs = the share of the starting values left)
+		local drv = el < w
+		local fh, fs = drv and (1 - hipK) or 0, drv and (1 - shoK) or 0
 		local dipExtra = body and (prm.path == "upper" and 0.2 or 0.42) or 0
 		local leanExtra = body and -0.06 or 0
-		local hip = seg(prm.hip * mirror * pw, bf.hip, hipK) - prm.aHip * mirror * anti
-		local sho = seg(prm.sho * mirror * pw, bf.sho, shoK) - prm.aSho * mirror * anti
-		local lean = seg((prm.lean + leanExtra) * pw, bf.lean, shoK) + prm.aLean * anti
-		local roll = seg(prm.roll * mirror * pw + (body and prm.path == "hook" and (L_ and 0.12 or -0.12) or 0), bf.roll, shoK)
-		local fwd = seg(prm.fwd * pw, bf.fwd, hipK)
-		local side = seg(prm.side * mirror * pw, bf.side, hipK)
-		local dip = seg((prm.dip + dipExtra) * pw, bf.dip, hipK) + prm.aDip * anti
+		local hip = prm.hip * mirror * pw * hipK + bf.hip * fh - prm.aHip * mirror * anti
+		local sho = prm.sho * mirror * pw * shoK + bf.sho * fs - prm.aSho * mirror * anti
+		local lean = (prm.lean + leanExtra) * pw * shoK + bf.lean * fs + prm.aLean * anti
+		local roll = (prm.roll * mirror * pw + (body and prm.path == "hook" and (L_ and 0.12 or -0.12) or 0)) * shoK + bf.roll * fs
+		local fwd = prm.fwd * pw * hipK + bf.fwd * fh
+		local side = prm.side * mirror * pw * hipK + bf.side * fh
+		local dip = (prm.dip + dipExtra) * pw * hipK + bf.dip * fh + prm.aDip * anti
 		local bc = rig.bodyCur
 		bc.hip, bc.sho, bc.lean, bc.roll, bc.fwd, bc.side, bc.dip = hip, sho, lean, roll, fwd, side, dip
 		p.Root = CF(side, -dip, -fwd) * p.Root * A(0, hip, 0)
@@ -1119,7 +1117,6 @@ function AnimFight.applyAct(p, rig, act, t)
 	elseif k == "parry" then
 		-- the rear hand slaps the incoming jab across (a short, sharp catch)
 		local Ls = act.f2 == "L"
-		local x = el / act.dur
 		local s = K.attackDecay(el, act.dur * 0.3, act.dur)
 		if rig.lod >= 2 and rig.gl then
 			local g = Ls and rig.gl or rig.gr
@@ -1132,7 +1129,6 @@ function AnimFight.applyAct(p, rig, act, t)
 		end
 		p.W = p.W * A(0, (Ls and -0.12 or 0.12) * s, 0)
 		flex(rig, "forearms", pulse, Ls and -1 or 1)
-		local _ = x
 	elseif k == "parryhit" then
 		-- the parried man's lead arm is knocked aside, the shoulder turns with it
 		p.LS = p.LS:Lerp(A(1.45, 0, -0.7), pulse)

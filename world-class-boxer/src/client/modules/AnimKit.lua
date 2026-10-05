@@ -344,6 +344,24 @@ function AnimKit.drive(x, p)
 	return x ^ (p or 1.8)
 end
 
+-- 0 -> 1 with zero speed at both ends but most of the travel early (velocity ~ u (1-u)^2): a
+-- running foot leaves the ground and accelerates forward at once, then slows into touchdown
+function AnimKit.earlyTravel(u)
+	u = clamp(u, 0, 1)
+	local u2 = u * u
+	return 6 * u2 - 8 * u2 * u + 3 * u2 * u2
+end
+
+-- a smooth bump u^a (1-u)^b normalised to peak at 1 (at u = a / (a + b)); flat at both ends
+function AnimKit.skewBump(u, a, b)
+	if u <= 0 or u >= 1 then
+		return 0
+	end
+	local m = a / (a + b)
+	local peak = m ^ a * (1 - m) ^ b
+	return (u ^ a * (1 - u) ^ b) / peak
+end
+
 -- cubic Bezier on vectors (p0 .. p3) and its derivative
 function AnimKit.bezier(p0, p1, p2, p3, t)
 	local u = 1 - t

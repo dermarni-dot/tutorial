@@ -147,6 +147,7 @@ function Settings.Apply()
 	local v = Settings.Values
 	UI.SetUserScale(v.uiScale)
 	Config.ScreenFX = v.screenFx -- read every frame by FightClient / VenueFX
+	player:SetAttribute("CamShake", v.shake) -- client-local: FightClient / training / menu cameras
 	Settings.ApplyAudio()
 	Settings.ApplyDetail()
 end

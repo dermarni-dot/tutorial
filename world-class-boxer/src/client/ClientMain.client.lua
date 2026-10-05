@@ -194,6 +194,8 @@ local function showResult(data)
 	local big = UI.Title(win, title, { TextSize = 84, TextColor3 = col, Position = UDim2.fromOffset(24, 38), Size = UDim2.new(1, -48, 0, 88), TextTransparency = 1 })
 	UI.Tween(big, { TextTransparency = 0 }, UI.Motion.slow)
 	if res.outcome == "win" then
+		-- a gradient multiplies the text colour: white text takes the gold ramp as is
+		big.TextColor3 = Color3.new(1, 1, 1)
 		UI.Gradient(big, { Color3.fromRGB(255, 240, 190), T.gold, T.goldDeep }, 90)
 	end
 	UI.Text(win, string.format("%s  ·  ROUND %d  ·  vs %s", string.upper(METHOD[res.method] or tostring(res.method)), res.round or 0, string.upper(data.opp or "?")),

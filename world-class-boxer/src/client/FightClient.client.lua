@@ -25,7 +25,8 @@ local UI = require(Shared:WaitForChild("UI"))
 local T = UI.Theme
 local FightRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Fight")
 
-local gui = UI.New("ScreenGui", { Name = "FightUI", ResetOnSpawn = false, IgnoreGuiInset = false, Enabled = false, DisplayOrder = 5, Parent = player:WaitForChild("PlayerGui") })
+local gui = UI.New("ScreenGui", { Name = "FightUI", ResetOnSpawn = false, IgnoreGuiInset = false, Enabled = false, DisplayOrder = 5, ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+	Parent = player:WaitForChild("PlayerGui") })
 
 local F = {} -- current fight state
 local camConn, fxConn
@@ -39,6 +40,11 @@ end
 -- accessibility scale for blur / shake / flashes / colour (0 disables them)
 local function fxScale()
 	return math.clamp(tonumber(Config.ScreenFX) or 1, 0, 2)
+end
+
+-- the player's camera-shake setting (Settings publishes it as a client-local attribute)
+local function shakeScale()
+	return math.clamp(tonumber(player:GetAttribute("CamShake")) or 1, 0, 1.5)
 end
 
 local BUILTIN = Config.BuiltinSounds or {}
@@ -73,6 +79,23 @@ local function resolveVenueFX(wait)
 	return VenueFX or nil
 end
 task.spawn(resolveVenueFX, true)
+
+-- nationality flags for the scoreboard (BoxerClient.Flags, R-ui); optional, cached once found
+local Flags
+local function getFlags()
+	if Flags then
+		return Flags
+	end
+	local ok, mod = pcall(function()
+		local folder = script.Parent:FindFirstChild("BoxerClient")
+		local m = folder and folder:FindFirstChild("Flags")
+		return m and require(m)
+	end)
+	if ok and type(mod) == "table" then
+		Flags = mod
+	end
+	return Flags
+end
 
 local function vfx(name, ...)
 	if not venueOn or not VenueFX then
@@ -152,11 +175,18 @@ local function sfx(id, speed, volume)
 end
 
 ------------------------------------------------------------------------
--- HUD
+-- HUD (broadcast style)
 ------------------------------------------------------------------------
-local bug = UI.Frame(gui, { Size = UDim2.fromOffset(200, 28), Position = UDim2.fromOffset(16, 6), BackgroundColor3 = T.red })
+-- The HUD lives on a scaled root (UI.MountRoot): built on the 1600 x 900 design canvas.
+local hud = UI.MountRoot(gui, "HUDRoot")
+local GuiService = game:GetService("GuiService")
+
+local bug = UI.Frame(hud, { Name = "Bug", Size = UDim2.fromOffset(0, 26), AutomaticSize = Enum.AutomaticSize.X, AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 152),
+	BackgroundColor3 = T.red, Visible = false })
 UI.Corner(bug, 4)
-local bugText = UI.Text(bug, "LIVE  -  WCB SPORTS", { Font = T.bold, TextSize = 14, TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.fromScale(1, 1), AutomaticSize = Enum.AutomaticSize.None })
+local bugText = UI.Text(bug, "LIVE  ·  WCB SPORTS", { Font = T.semi, TextSize = 12, TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.new(0, 0, 1, 0),
+	AutomaticSize = Enum.AutomaticSize.X, TextWrapped = false })
+UI.Pad(bugText, 0, 10)
 
 local function tierColor(tier)
 	local def = Config.HeadTiers[(tier or 0) + 1] or Config.HeadTiers[1]
@@ -166,26 +196,38 @@ end
 
 -- a bar with a permanent-damage cap (striped, from the far end), a trailing white "ghost" that
 -- shows the chunk just lost, and the live fill. side "R" depletes toward the outside edge.
-local function hudBar(parent, y, label, color, side)
+-- label (optional) sits inside the bar on the near end; the value on the far end.
+local function hudBar(parent, props, color, side, label, thick)
 	local right = side == "R"
-	UI.Text(parent, label, { TextSize = 11, Font = T.semi, TextColor3 = T.sub, Position = UDim2.fromOffset(10, y), Size = UDim2.fromOffset(58, 14), AutomaticSize = Enum.AutomaticSize.None })
-	local bg = UI.Frame(parent, { Position = UDim2.new(0, 68, 0, y), Size = UDim2.new(1, -78, 0, 14), BackgroundColor3 = Color3.fromRGB(16, 16, 20), ClipsDescendants = true })
-	UI.Corner(bg, 3)
+	local bg = UI.Frame(parent, props)
+	bg.BackgroundColor3 = T.ink
+	bg.BackgroundTransparency = 0.1
+	bg.ClipsDescendants = true
+	UI.Corner(bg, thick and 4 or 2)
 	local anchor = right and Vector2.new(1, 0) or Vector2.new(0, 0)
 	local pos = right and UDim2.fromScale(1, 0) or UDim2.fromScale(0, 0)
-	local ghost = UI.Frame(bg, { Size = UDim2.fromScale(1, 1), AnchorPoint = anchor, Position = pos, BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = 0.25, ZIndex = 2 })
-	local fill = UI.Frame(bg, { Size = UDim2.fromScale(1, 1), AnchorPoint = anchor, Position = pos, BackgroundColor3 = color, ZIndex = 3 })
-	UI.New("UIGradient", { Rotation = 90, Color = ColorSequence.new(Color3.new(1, 1, 1), Color3.fromRGB(170, 170, 170)), Parent = fill })
+	local ghost = UI.Frame(bg, { Name = "Ghost", Size = UDim2.fromScale(1, 1), AnchorPoint = anchor, Position = pos, BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = 0.2, ZIndex = 2 })
+	local fill = UI.Frame(bg, { Name = "Fill", Size = UDim2.fromScale(1, 1), AnchorPoint = anchor, Position = pos, BackgroundColor3 = color, ZIndex = 3 })
+	UI.Gradient(fill, { Color3.new(1, 1, 1), Color3.fromRGB(165, 165, 165) }, 90)
 	-- the cap eats in from the far end: damage that will not come back this fight
-	local cap = UI.Frame(bg, { Size = UDim2.fromScale(0, 1), AnchorPoint = right and Vector2.new(0, 0) or Vector2.new(1, 0),
-		Position = right and UDim2.fromScale(0, 0) or UDim2.fromScale(1, 0), BackgroundColor3 = Color3.fromRGB(70, 14, 18), ZIndex = 4 })
-	UI.New("UIGradient", { Rotation = 35, Transparency = NumberSequence.new({
+	local cap = UI.Frame(bg, { Name = "Cap", Size = UDim2.fromScale(0, 1), AnchorPoint = right and Vector2.new(0, 0) or Vector2.new(1, 0),
+		Position = right and UDim2.fromScale(0, 0) or UDim2.fromScale(1, 0), BackgroundColor3 = Color3.fromRGB(80, 14, 20), ZIndex = 4 })
+	local stripes = UI.Gradient(cap, Color3.new(1, 1, 1), 35, NumberSequence.new({
 		NumberSequenceKeypoint.new(0, 0.1), NumberSequenceKeypoint.new(0.24, 0.1), NumberSequenceKeypoint.new(0.25, 0.55), NumberSequenceKeypoint.new(0.49, 0.55),
 		NumberSequenceKeypoint.new(0.5, 0.1), NumberSequenceKeypoint.new(0.74, 0.1), NumberSequenceKeypoint.new(0.75, 0.55), NumberSequenceKeypoint.new(1, 0.55),
-	}), Parent = cap })
-	local value = UI.Text(bg, "", { TextSize = 10, Font = T.semi, TextStrokeTransparency = 0.4, ZIndex = 5, Size = UDim2.fromScale(1, 1), AutomaticSize = Enum.AutomaticSize.None,
-		TextXAlignment = right and Enum.TextXAlignment.Left or Enum.TextXAlignment.Right })
-	UI.New("UIPadding", { PaddingLeft = UDim.new(0, 4), PaddingRight = UDim.new(0, 4), Parent = value })
+	}))
+	pcall(function()
+		stripes.TileMode = Enum.GradientTileMode.Repeat
+		stripes.Scale = 0.25
+	end)
+	local value = UI.Text(bg, "", { Name = "Value", Face = "number", TextSize = thick and 15 or 11, TextStrokeTransparency = 0.5, ZIndex = 5, Size = UDim2.fromScale(1, 1),
+		AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = right and Enum.TextXAlignment.Left or Enum.TextXAlignment.Right, TextWrapped = false })
+	UI.New("UIPadding", { PaddingLeft = UDim.new(0, 6), PaddingRight = UDim.new(0, 6), Parent = value })
+	if label then
+		local l = UI.Text(bg, label, { Name = "Label", Font = T.semi, TextSize = thick and 11 or 9, TextColor3 = Color3.new(1, 1, 1), TextStrokeTransparency = 0.6, ZIndex = 5,
+			Size = UDim2.fromScale(1, 1), AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = right and Enum.TextXAlignment.Right or Enum.TextXAlignment.Left, TextWrapped = false })
+		UI.New("UIPadding", { PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8), Parent = l })
+	end
 	return { bg = bg, fill = fill, ghost = ghost, cap = cap, value = value, v = 1, ghostV = 1, pending = false }
 end
 
@@ -215,29 +257,108 @@ local function setBar(b, frac, capFrac, color)
 	b.v = frac
 end
 
+-- the little body silhouette that flashes where a punch lands (head, left / right ribs)
+local function zoneMap(parent, side)
+	local f = UI.Frame(parent, { Name = "Zones", BackgroundTransparency = 1, Size = UDim2.fromOffset(34, 74), AnchorPoint = Vector2.new(side == "L" and 0 or 1, 0),
+		Position = side == "L" and UDim2.fromOffset(12, 48) or UDim2.new(1, -12, 0, 48) })
+	local head = UI.Frame(f, { Name = "Head", AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.fromScale(0.5, 0), Size = UDim2.fromOffset(18, 20), BackgroundColor3 = T.panel2 })
+	UI.Corner(head, 9)
+	local bodyL = UI.Frame(f, { Name = "BodyL", Position = UDim2.fromOffset(2, 24), Size = UDim2.fromOffset(14, 34), BackgroundColor3 = T.panel2 })
+	UI.Corner(bodyL, 5)
+	local bodyR = UI.Frame(f, { Name = "BodyR", Position = UDim2.fromOffset(18, 24), Size = UDim2.fromOffset(14, 34), BackgroundColor3 = T.panel2 })
+	UI.Corner(bodyR, 5)
+	local hips = UI.Frame(f, { Name = "Hips", Position = UDim2.fromOffset(5, 60), Size = UDim2.fromOffset(24, 12), BackgroundColor3 = T.panel2, BackgroundTransparency = 0.4 })
+	UI.Corner(hips, 4)
+	return { frame = f, head = head, bodyL = bodyL, bodyR = bodyR }
+end
+
+-- small status icons: cut (a drop), swelling (an eye), ribs (bars)
+local function statusIcon(parent, kind, color, order)
+	local f = UI.Frame(parent, { Name = kind, Size = UDim2.fromOffset(0, 18), AutomaticSize = Enum.AutomaticSize.X, BackgroundColor3 = color, BackgroundTransparency = 0.2, Visible = false, LayoutOrder = order })
+	UI.Corner(f, 4)
+	UI.New("UIPadding", { PaddingLeft = UDim.new(0, 5), PaddingRight = UDim.new(0, 6), Parent = f })
+	UI.List(f, 4, true)
+	local glyph = UI.Frame(f, { BackgroundTransparency = 1, Size = UDim2.fromOffset(10, 18), LayoutOrder = 1 })
+	if kind == "Cut" then
+		local d = UI.Frame(glyph, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.58), Size = UDim2.fromOffset(8, 8), BackgroundColor3 = Color3.new(1, 1, 1) })
+		UI.Corner(d, 4)
+		UI.Frame(glyph, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.4), Size = UDim2.fromOffset(5, 5), Rotation = 45, BackgroundColor3 = Color3.new(1, 1, 1) })
+	elseif kind == "Swelling" then
+		local e = UI.Frame(glyph, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(10, 6), BackgroundColor3 = Color3.new(1, 1, 1) })
+		UI.Corner(e, 3)
+		local p = UI.Frame(e, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(4, 4), BackgroundColor3 = color })
+		UI.Corner(p, 2)
+	else
+		for i = 0, 2 do
+			UI.Frame(glyph, { Position = UDim2.fromOffset(1, 4 + i * 4), Size = UDim2.fromOffset(8, 2), BackgroundColor3 = Color3.new(1, 1, 1) })
+		end
+	end
+	UI.Text(f, string.upper(kind), { Font = T.semi, TextSize = 10, TextColor3 = Color3.new(1, 1, 1), Size = UDim2.new(0, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.X,
+		TextWrapped = false, LayoutOrder = 2 })
+	return f
+end
+
+local board = UI.Frame(hud, { Name = "Scoreboard", BackgroundTransparency = 1, AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 10), Size = UDim2.new(1, -40, 0, 134) })
+UI.New("UISizeConstraint", { MaxSize = Vector2.new(1380, 134), Parent = board })
+
 local function fighterPanel(side)
-	local f = UI.Frame(gui, { Size = UDim2.new(0.34, 0, 0, side == "L" and 116 or 106), Position = side == "L" and UDim2.new(0, 16, 0, 40) or UDim2.new(1, -16, 0, 40),
-		AnchorPoint = side == "L" and Vector2.new(0, 0) or Vector2.new(1, 0), BackgroundColor3 = T.bg, BackgroundTransparency = 0.2 })
-	UI.Corner(f, 8)
-	UI.Stroke(f, side == "L" and T.red or T.blue, 2)
-	UI.New("UISizeConstraint", { MinSize = Vector2.new(250, 0), Parent = f })
-	local name = UI.Text(f, "", { Font = T.bold, TextSize = 16, Position = UDim2.fromOffset(10, 4), Size = UDim2.new(1, -20, 0, 22), AutomaticSize = Enum.AutomaticSize.None,
-		TextXAlignment = side == "L" and Enum.TextXAlignment.Left or Enum.TextXAlignment.Right, TextTruncate = Enum.TextTruncate.AtEnd })
-	-- status chip: sits at the inner end of the name row
-	local chip = UI.Frame(f, { Size = UDim2.fromOffset(0, 18), AutomaticSize = Enum.AutomaticSize.X, AnchorPoint = side == "L" and Vector2.new(1, 0) or Vector2.new(0, 0),
-		Position = side == "L" and UDim2.new(1, -8, 0, 6) or UDim2.new(0, 8, 0, 6), BackgroundColor3 = T.gold, Visible = false, ZIndex = 6 })
+	local left = side == "L"
+	local accent = left and T.red or T.blue
+	local f = UI.Frame(board, { Name = left and "You" or "Opponent", Size = UDim2.new(0.5, -96, 1, 0), Position = left and UDim2.fromScale(0, 0) or UDim2.fromScale(1, 0),
+		AnchorPoint = left and Vector2.new(0, 0) or Vector2.new(1, 0), Visible = false })
+	UI.Glass(f, { transparency = 0.12, radius = UI.R.lg })
+	-- the corner colour along the outer edge
+	local edge = UI.Frame(f, { Name = "Corner", AnchorPoint = Vector2.new(left and 0 or 1, 0), Position = left and UDim2.fromOffset(0, 10) or UDim2.new(1, 0, 0, 10), Size = UDim2.new(0, 4, 1, -20), BackgroundColor3 = accent })
+	UI.Corner(edge, 2)
+	local inner = 56 -- room for the zone silhouette on the outer side
+	local align = left and Enum.TextXAlignment.Left or Enum.TextXAlignment.Right
+	local flagHolder = UI.Frame(f, { Name = "FlagHolder", BackgroundTransparency = 1, Size = UDim2.fromOffset(30, 20), AnchorPoint = Vector2.new(left and 0 or 1, 0),
+		Position = left and UDim2.fromOffset(16, 13) or UDim2.new(1, -16, 0, 13) })
+	local name = UI.Text(f, "", { Name = "Name", Face = "display", TextSize = 26, Position = left and UDim2.fromOffset(54, 6) or UDim2.new(0, 120, 0, 6), Size = UDim2.new(1, -174, 0, 32),
+		AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = align, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
+	if not left then
+		name.Position = UDim2.new(0, 120, 0, 6)
+		name.Size = UDim2.new(1, -174, 0, 32)
+	end
+	-- status chip at the inner end of the name row (ROCKED / DAZED / ...)
+	local chip = UI.Frame(f, { Name = "Chip", Size = UDim2.fromOffset(0, 20), AutomaticSize = Enum.AutomaticSize.X, AnchorPoint = left and Vector2.new(1, 0) or Vector2.new(0, 0),
+		Position = left and UDim2.new(1, -12, 0, 12) or UDim2.new(0, 12, 0, 12), BackgroundColor3 = T.gold, Visible = false, ZIndex = 6 })
 	UI.Corner(chip, 4)
-	local chipText = UI.Text(chip, "", { Font = T.bold, TextSize = 11, TextColor3 = Color3.fromRGB(15, 15, 18), Size = UDim2.fromOffset(0, 18), AutomaticSize = Enum.AutomaticSize.X, ZIndex = 7,
-		TextXAlignment = Enum.TextXAlignment.Center })
-	UI.New("UIPadding", { PaddingLeft = UDim.new(0, 6), PaddingRight = UDim.new(0, 6), Parent = chipText })
+	local chipText = UI.Text(chip, "", { Font = T.semi, TextSize = 11, TextColor3 = T.ink, Size = UDim2.fromOffset(0, 20), AutomaticSize = Enum.AutomaticSize.X, ZIndex = 7,
+		TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false })
+	UI.New("UIPadding", { PaddingLeft = UDim.new(0, 7), PaddingRight = UDim.new(0, 7), Parent = chipText })
+	-- record + knockdown tally under the name
+	local sub = UI.Text(f, "", { Name = "Sub", Font = T.semi, TextSize = 11, TextColor3 = T.sub, Position = left and UDim2.fromOffset(54, 36) or UDim2.new(0, 120, 0, 36),
+		Size = UDim2.new(1, -174, 0, 12), AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = align, TextWrapped = false })
+	local kdRow = UI.Frame(f, { Name = "KD", BackgroundTransparency = 1, Size = UDim2.fromOffset(120, 12), AnchorPoint = left and Vector2.new(1, 0) or Vector2.new(0, 0),
+		Position = left and UDim2.new(1, -12, 0, 36) or UDim2.new(0, 12, 0, 36) })
+	UI.List(kdRow, 3, true, left and Enum.HorizontalAlignment.Right or Enum.HorizontalAlignment.Left)
+	-- HEALTH (overall), then HEAD | BODY | STAMINA
+	local x0 = left and inner or 12
+	local barW = UDim2.new(1, -(inner + 12), 0, 16)
+	local health = hudBar(f, { Name = "Health", Position = UDim2.fromOffset(x0, 54), Size = barW }, T.green, side, "HEALTH", true)
+	local row = UI.Frame(f, { Name = "Pools", BackgroundTransparency = 1, Position = UDim2.fromOffset(x0, 76), Size = UDim2.new(1, -(inner + 12), 0, 26) })
+	local function pool(i, caption, color)
+		local cell = UI.Frame(row, { BackgroundTransparency = 1, Position = UDim2.new((i - 1) / 3, i > 1 and 4 or 0, 0, 0), Size = UDim2.new(1 / 3, -6, 1, 0) })
+		UI.Text(cell, caption, { Font = T.semi, TextSize = 9, TextColor3 = T.sub, Size = UDim2.new(1, 0, 0, 11), AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = align, TextWrapped = false })
+		return hudBar(cell, { Position = UDim2.fromOffset(0, 13), Size = UDim2.new(1, 0, 0, 10) }, color, side)
+	end
+	local head = pool(left and 1 or 3, "HEAD", T.green)
+	local body = pool(2, "BODY", T.orange)
+	local stam = pool(left and 3 or 1, "STAMINA", T.blue)
+	-- damage icons + the player's balance
+	local icons = UI.Frame(f, { Name = "Icons", BackgroundTransparency = 1, Position = UDim2.fromOffset(x0, 108), Size = UDim2.new(1, -(inner + 12), 0, 18) })
+	UI.List(icons, 5, true, left and Enum.HorizontalAlignment.Left or Enum.HorizontalAlignment.Right)
 	local p = {
-		frame = f, name = name, chip = chip, chipText = chipText,
-		head = hudBar(f, 32, "HEAD", T.green, side), body = hudBar(f, 52, "BODY", T.orange, side), stam = hudBar(f, 72, "STAMINA", T.blue, side),
+		frame = f, name = name, sub = sub, chip = chip, chipText = chipText, flag = flagHolder, kd = kdRow, kdCount = 0,
+		health = health, head = head, body = body, stam = stam, zones = zoneMap(f, side),
+		cut = statusIcon(icons, "Cut", T.red, 1), swell = statusIcon(icons, "Swelling", T.purple, 2), ribs = statusIcon(icons, "Ribs", T.orange, 3),
 	}
-	if side == "L" then
+	if left then
 		-- the player's own legs: below a third, the next big shot (or a whiffed hook) staggers you
-		UI.Text(f, "BALANCE", { TextSize = 9, Font = T.semi, TextColor3 = T.sub, Position = UDim2.fromOffset(10, 92), Size = UDim2.fromOffset(58, 12), AutomaticSize = Enum.AutomaticSize.None })
-		local bg = UI.Frame(f, { Position = UDim2.new(0, 68, 0, 95), Size = UDim2.new(1, -78, 0, 5), BackgroundColor3 = Color3.fromRGB(16, 16, 20) })
+		local balHolder = UI.Frame(icons, { BackgroundTransparency = 1, Size = UDim2.fromOffset(150, 18), LayoutOrder = 9 })
+		UI.Text(balHolder, "BALANCE", { Font = T.semi, TextSize = 9, TextColor3 = T.sub, Size = UDim2.fromOffset(52, 18), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
+		local bg = UI.Frame(balHolder, { Position = UDim2.new(0, 54, 0.5, -2), Size = UDim2.new(1, -54, 0, 4), BackgroundColor3 = T.ink })
 		UI.Corner(bg, 2)
 		p.bal = UI.Frame(bg, { Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.fromRGB(200, 200, 210) })
 		UI.Corner(p.bal, 2)
@@ -247,94 +368,429 @@ end
 local L = fighterPanel("L")
 local R = fighterPanel("R")
 
-local clock = UI.Frame(gui, { Size = UDim2.fromOffset(150, 70), Position = UDim2.new(0.5, 0, 0, 40), AnchorPoint = Vector2.new(0.5, 0), BackgroundColor3 = T.bg, BackgroundTransparency = 0.15 })
-UI.Corner(clock, 8)
-UI.Stroke(clock, T.gold, 2)
-local roundText = UI.Text(clock, "ROUND 1", { Font = T.bold, TextSize = 14, TextColor3 = T.gold, TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.new(1, 0, 0, 24), Position = UDim2.fromOffset(0, 4), AutomaticSize = Enum.AutomaticSize.None })
-local timeText = UI.Text(clock, "1:00", { Font = T.bold, TextSize = 30, TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.new(1, 0, 0, 36), Position = UDim2.fromOffset(0, 28), AutomaticSize = Enum.AutomaticSize.None })
-local angleTag = UI.Text(gui, "ANGLE! +ACCURACY", { Font = T.bold, TextSize = 14, TextColor3 = T.gold, TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.fromOffset(200, 20), Position = UDim2.new(0.5, -100, 0, 114), Visible = false, AutomaticSize = Enum.AutomaticSize.None })
+-- one red "KD" tag per knockdown under the fighter's name
+local function addKD(panel)
+	panel.kdCount += 1
+	local c = UI.Frame(panel.kd, { Name = "KD" .. panel.kdCount, Size = UDim2.fromOffset(24, 12), BackgroundColor3 = T.red, LayoutOrder = panel.kdCount })
+	UI.Corner(c, 3)
+	UI.Text(c, "KD", { Font = T.semi, TextSize = 9, TextColor3 = Color3.new(1, 1, 1), Size = UDim2.fromScale(1, 1), AutomaticSize = Enum.AutomaticSize.None,
+		TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false })
+end
 
-local banner = UI.Text(gui, "", { Font = T.bold, TextSize = 60, TextColor3 = T.gold, TextStrokeTransparency = 0, TextXAlignment = Enum.TextXAlignment.Center,
-	Size = UDim2.new(1, 0, 0, 80), Position = UDim2.new(0, 0, 0.3, 0), Visible = false, AutomaticSize = Enum.AutomaticSize.None })
-local flash = UI.Text(gui, "", { Font = T.bold, TextSize = 26, TextStrokeTransparency = 0.2, TextXAlignment = Enum.TextXAlignment.Center,
-	Size = UDim2.new(1, 0, 0, 34), Position = UDim2.new(0, 0, 0.5, 40), Visible = false, AutomaticSize = Enum.AutomaticSize.None })
-local defFlash = UI.Text(gui, "", { Font = T.bold, TextSize = 22, TextStrokeTransparency = 0.2, TextXAlignment = Enum.TextXAlignment.Center,
-	Size = UDim2.new(1, 0, 0, 30), Position = UDim2.new(0, 0, 0.5, 78), Visible = false, AutomaticSize = Enum.AutomaticSize.None })
-local ticker = UI.Frame(gui, { Size = UDim2.new(1, 0, 0, 30), Position = UDim2.new(0, 0, 1, -30), BackgroundColor3 = T.bg, BackgroundTransparency = 0.1 })
-local tickerTag = UI.Frame(ticker, { Size = UDim2.fromOffset(110, 30), BackgroundColor3 = T.red })
-UI.Text(tickerTag, "COMMENTARY", { Font = T.bold, TextSize = 13, TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.fromScale(1, 1), AutomaticSize = Enum.AutomaticSize.None })
-local tickerText = UI.Text(ticker, "", { TextSize = 15, Font = T.semi, TextXAlignment = Enum.TextXAlignment.Left, Position = UDim2.fromOffset(120, 0), Size = UDim2.new(1, -130, 1, 0), AutomaticSize = Enum.AutomaticSize.None })
-local controls = UI.Text(gui, "1/J Jab  2/K Cross  3/L Lead Hook  4 Rear Hook  5/U Uppercut  6/O Overhand  |  SHIFT body  F block  R parry  Q/E slip  C roll  Z/X pivot  G clinch  |  down: SPACE",
-	{ TextSize = 12, TextColor3 = T.sub, TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.new(1, 0, 0, 18), Position = UDim2.new(0, 0, 1, -50), AutomaticSize = Enum.AutomaticSize.None })
+-- center: the round and the clock, the crowd meter underneath
+local clock = UI.Frame(board, { Name = "Clock", Size = UDim2.new(0, 176, 1, 0), Position = UDim2.fromScale(0.5, 0), AnchorPoint = Vector2.new(0.5, 0), Visible = false })
+UI.Glass(clock, { transparency = 0.06, radius = UI.R.lg, color = T.ink })
+local clockTop = UI.Frame(clock, { Size = UDim2.new(1, 0, 0, 30), BackgroundColor3 = T.gold })
+UI.Corner(clockTop, UI.R.lg)
+UI.Frame(clockTop, { Position = UDim2.new(0, 0, 1, -10), Size = UDim2.new(1, 0, 0, 10), BackgroundColor3 = T.gold })
+local roundText = UI.Text(clockTop, "ROUND 1", { Face = "displayMed", TextSize = 18, TextColor3 = T.ink, TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.fromScale(1, 1),
+	AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
+local timeText = UI.Text(clock, "1:00", { Face = "number", TextSize = 50, TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.new(1, 0, 0, 56), Position = UDim2.fromOffset(0, 34),
+	AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
+local crowdBox = UI.Frame(clock, { Name = "Crowd", BackgroundTransparency = 1, Position = UDim2.new(0, 12, 1, -40), Size = UDim2.new(1, -24, 0, 30) })
+local crowdLabel = UI.Text(crowdBox, "CROWD  ·  QUIET", { Font = T.semi, TextSize = 9, TextColor3 = T.sub, Size = UDim2.new(1, 0, 0, 11), AutomaticSize = Enum.AutomaticSize.None,
+	TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false })
+local crowdBar = UI.Frame(crowdBox, { Position = UDim2.fromOffset(0, 15), Size = UDim2.new(1, 0, 0, 8), BackgroundColor3 = T.ink })
+UI.Corner(crowdBar, 4)
+local crowdLeft = UI.Frame(crowdBar, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(0.5, 0), Size = UDim2.fromScale(0, 1), BackgroundColor3 = T.red })
+UI.Corner(crowdLeft, 4)
+local crowdRight = UI.Frame(crowdBar, { Position = UDim2.fromScale(0.5, 0), Size = UDim2.fromScale(0, 1), BackgroundColor3 = T.blue })
+UI.Corner(crowdRight, 4)
+local crowdGlow = UI.Frame(crowdBar, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.new(0, 3, 1, 6), BackgroundColor3 = Color3.new(1, 1, 1) })
+local crowd = { level = 0.2, lean = 0, shownLevel = -1, shownLean = 99 }
+local CROWD_WORDS = { { 0.85, "ON THEIR FEET" }, { 0.6, "ROARING" }, { 0.35, "BUZZING" }, { 0, "QUIET" } }
+local function updateCrowd(dt)
+	crowd.lean *= math.exp(-dt / 6)
+	local lvl = math.floor(crowd.level * 20 + 0.5) / 20
+	local lean = math.floor(crowd.lean * 40 + 0.5) / 40
+	if lvl == crowd.shownLevel and lean == crowd.shownLean then
+		return
+	end
+	crowd.shownLevel, crowd.shownLean = lvl, lean
+	crowdLeft.Size = UDim2.fromScale(math.clamp(lean, 0, 1) * 0.5, 1)
+	crowdRight.Size = UDim2.fromScale(math.clamp(-lean, 0, 1) * 0.5, 1)
+	crowdGlow.BackgroundTransparency = 0.6 - lvl * 0.6
+	for _, w in ipairs(CROWD_WORDS) do
+		if lvl >= w[1] then
+			crowdLabel.Text = "CROWD  ·  " .. w[2]
+			crowdLabel.TextColor3 = lvl >= 0.6 and T.gold or T.sub
+			break
+		end
+	end
+end
+
+local angleTag = UI.Chip(hud, "ANGLE  +ACCURACY", T.gold, { solid = true, AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 184), h = 24, TextSize = 12 })
+angleTag.Visible = false
+
+-- the big centre banner (ROUND 1, KNOCKDOWN, KO!): a band that opens with display type
+local bannerBand = UI.Frame(hud, { Name = "Banner", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.36), Size = UDim2.new(1, 0, 0, 120),
+	BackgroundColor3 = T.ink, BackgroundTransparency = 1, Visible = false, ZIndex = 20 })
+UI.Gradient(bannerBand, Color3.new(1, 1, 1), 0, NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.2, 0.25), NumberSequenceKeypoint.new(0.8, 0.25), NumberSequenceKeypoint.new(1, 1) }))
+local bannerScale = UI.New("UIScale", { Parent = bannerBand })
+local banner = UI.Text(bannerBand, "", { Face = "display", TextSize = 96, TextColor3 = Color3.new(1, 1, 1), TextStrokeTransparency = 0.6, TextXAlignment = Enum.TextXAlignment.Center,
+	Size = UDim2.fromScale(1, 1), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, ZIndex = 21 })
+local bannerGrad = UI.Gradient(banner, { Color3.new(1, 1, 1), Color3.fromRGB(205, 205, 205) }, 90)
+local function label(y, size)
+	return UI.Text(hud, "", { Face = "display", TextSize = size, TextStrokeTransparency = 0.35, TextXAlignment = Enum.TextXAlignment.Center,
+		Size = UDim2.new(1, 0, 0, size + 8), AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 0, y, 0), Visible = false, AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, ZIndex = 18 })
+end
+local flash = label(0.6, 36)
+local defFlash = label(0.67, 28)
+
+-- the lower third: live commentary
+local ticker = UI.Frame(hud, { Name = "Ticker", AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -14), Size = UDim2.new(1, -48, 0, 40), BackgroundColor3 = T.bg })
+UI.New("UISizeConstraint", { MaxSize = Vector2.new(1080, 40), Parent = ticker })
+UI.Glass(ticker, { transparency = 0.12, radius = UI.R.md })
+local tickerTag = UI.Frame(ticker, { Size = UDim2.new(0, 132, 1, 0), BackgroundColor3 = T.red })
+UI.Corner(tickerTag, UI.R.md)
+UI.Frame(tickerTag, { Position = UDim2.new(1, -8, 0, 0), Size = UDim2.new(0, 8, 1, 0), BackgroundColor3 = T.red })
+local liveDot = UI.Frame(tickerTag, { AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 12, 0.5, 0), Size = UDim2.fromOffset(8, 8), BackgroundColor3 = Color3.new(1, 1, 1) })
+UI.Corner(liveDot, 4)
+UI.Text(tickerTag, "COMMENTARY", { Font = T.semi, TextSize = 12, TextXAlignment = Enum.TextXAlignment.Left, Position = UDim2.fromOffset(26, 0), Size = UDim2.new(1, -26, 1, 0),
+	AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
+local tickerText = UI.Text(ticker, "", { TextSize = 15, Font = T.semi, TextXAlignment = Enum.TextXAlignment.Left, Position = UDim2.fromOffset(146, 0), Size = UDim2.new(1, -160, 1, 0),
+	AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
+-- control hints (key caps) above the ticker; touch players get the pad instead
+local controls = UI.Frame(hud, { Name = "Controls", BackgroundTransparency = 1, AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -62), Size = UDim2.new(1, -48, 0, 22) })
+UI.List(controls, 14, true, Enum.HorizontalAlignment.Center)
+for i, k in ipairs({ { "1/J", "JAB" }, { "2/K", "CROSS" }, { "3/L", "L.HOOK" }, { "4", "R.HOOK" }, { "5/U", "UPPER" }, { "6/O", "OVERHAND" }, { "SHIFT", "BODY" },
+	{ "F", "BLOCK" }, { "R", "PARRY" }, { "Q/E", "SLIP" }, { "C", "ROLL" }, { "Z/X", "PIVOT" }, { "G", "CLINCH" } }) do
+	local f = UI.Frame(controls, { BackgroundTransparency = 1, Size = UDim2.fromOffset(0, 22), AutomaticSize = Enum.AutomaticSize.X, LayoutOrder = i })
+	UI.List(f, 5, true)
+	local cap = UI.Frame(f, { Size = UDim2.fromOffset(0, 20), AutomaticSize = Enum.AutomaticSize.X, BackgroundColor3 = T.bg, BackgroundTransparency = 0.25, LayoutOrder = 1 })
+	UI.Corner(cap, 4)
+	UI.Stroke(cap, Color3.new(1, 1, 1), 1, 0.8)
+	local t = UI.Text(cap, k[1], { Font = T.semi, TextSize = 10, Size = UDim2.new(0, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.X, TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false })
+	UI.Pad(t, 0, 6)
+	UI.Text(f, k[2], { Font = T.semi, TextSize = 10, TextColor3 = T.sub, Size = UDim2.new(0, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.X, TextWrapped = false, LayoutOrder = 2, TextStrokeTransparency = 0.7 })
+end
 
 local function showBanner(text, color, dur)
 	banner.Text = text
-	banner.TextColor3 = color or T.gold
-	banner.Visible = true
+	banner.TextColor3 = Color3.new(1, 1, 1)
+	bannerGrad.Color = ColorSequence.new(Color3.new(1, 1, 1), (color or T.gold))
+	bannerBand.Visible = true
+	bannerBand.BackgroundTransparency = 0
+	bannerScale.Scale = 1.25
+	banner.TextTransparency = 1
+	UI.Tween(bannerScale, { Scale = 1 }, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out))
+	UI.Tween(banner, { TextTransparency = 0 }, 0.18)
 	local id = os.clock()
-	banner:SetAttribute("Id", id)
+	bannerBand:SetAttribute("Id", id)
 	task.delay(dur or 1.6, function()
-		if banner:GetAttribute("Id") == id then
-			banner.Visible = false
+		if bannerBand:GetAttribute("Id") == id then
+			UI.Tween(banner, { TextTransparency = 1 }, 0.25)
+			task.delay(0.26, function()
+				if bannerBand:GetAttribute("Id") == id then
+					bannerBand.Visible = false
+				end
+			end)
 		end
 	end)
 end
 
-local function showFlash(label, text, color, dur)
-	label.Text = text
-	label.TextColor3 = color or T.text
-	label.Visible = true
+local function showFlash(lbl, text, color, dur)
+	lbl.Text = text
+	lbl.TextColor3 = color or T.text
+	lbl.Visible = true
+	lbl.TextTransparency = 0
 	local id = os.clock()
-	label:SetAttribute("Id", id)
+	lbl:SetAttribute("Id", id)
 	task.delay(dur or 0.8, function()
-		if label:GetAttribute("Id") == id then
-			label.Visible = false
+		if lbl:GetAttribute("Id") == id then
+			lbl.Visible = false
 		end
 	end)
 end
 
 local function setTicker(text)
 	tickerText.Text = text
+	tickerText.TextTransparency = 1
+	UI.Tween(tickerText, { TextTransparency = 0 }, 0.3)
 end
 
--- overlay panel used for the tale of the tape / corner
-local overlay = UI.Frame(gui, { Size = UDim2.new(0.94, 0, 0, 420), Position = UDim2.fromScale(0.5, 0.55), AnchorPoint = Vector2.new(0.5, 0.5), BackgroundColor3 = T.bg, BackgroundTransparency = 0.08, Visible = false })
-UI.Corner(overlay, 12)
-UI.Stroke(overlay, T.gold, 2)
-UI.Pad(overlay, 14)
-UI.List(overlay, 3)
-UI.New("UISizeConstraint", { MaxSize = Vector2.new(660, 460), Parent = overlay })
-
--- an overlay line: { text, bold?, size?, color?, left? }
-local function line(text, props)
-	props = props or {}
-	props[1] = text
-	return props
-end
-
-local function overlayLines(lines)
-	UI.Clear(overlay)
-	for _, l in ipairs(lines) do
-		UI.Text(overlay, l[1], { Font = l.bold and T.bold or T.font, TextSize = l.size or 16, TextColor3 = l.color or T.text,
-			TextXAlignment = l.left and Enum.TextXAlignment.Left or Enum.TextXAlignment.Center, AutomaticSize = Enum.AutomaticSize.Y, Size = UDim2.new(1, 0, 0, 0) })
+-- floating hit markers at the target's position on screen
+local markers = UI.Frame(hud, { Name = "Markers", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 15 })
+local function hitMarker(model, text, color, big)
+	local cam = workspace.CurrentCamera
+	local part = model and (model:FindFirstChild("Head") or model:FindFirstChild("HumanoidRootPart"))
+	if not (cam and part) then
+		return
 	end
+	local p, onScreen = cam:WorldToViewportPoint(part.Position + Vector3.new(0, 0.9, 0))
+	if not onScreen then
+		return
+	end
+	local s = UI.ScaleOf(hud)
+	local inset = GuiService:GetGuiInset()
+	local x, y = p.X / s, (p.Y - inset.Y) / s
+	local m = UI.Text(markers, text, { Face = "display", TextSize = big and 34 or 24, TextColor3 = color, TextStrokeTransparency = 0.3, AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromOffset(x + math.random(-14, 14), y), Size = UDim2.fromOffset(240, 40), AutomaticSize = Enum.AutomaticSize.None,
+		TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false, ZIndex = 16 })
+	local sc = UI.New("UIScale", { Scale = 0.6, Parent = m })
+	UI.Tween(sc, { Scale = 1 }, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out))
+	UI.Tween(m, { Position = m.Position - UDim2.fromOffset(0, 46), TextTransparency = 1, TextStrokeTransparency = 1 }, TweenInfo.new(0.9, Enum.EasingStyle.Quad, Enum.EasingDirection.In))
+	task.delay(0.95, function()
+		m:Destroy()
+	end)
+end
+
+-- the hit zone flashes on a fighter's silhouette (head / left ribs / right ribs)
+local function zoneFlash(panel, isBody, hand, sev)
+	local z = panel.zones
+	local target = z.head
+	if isBody then
+		-- the attacker's left hand lands on the target's right side
+		target = hand == "L" and z.bodyR or z.bodyL
+	end
+	target.BackgroundColor3 = Color3.new(1, 1, 1)
+	UI.Tween(target, { BackgroundColor3 = T.red:Lerp(T.panel2, math.clamp(1 - sev, 0, 0.6)) }, TweenInfo.new(0.12))
+	task.delay(0.5, function()
+		if target.Parent then
+			UI.Tween(target, { BackgroundColor3 = T.panel2 }, TweenInfo.new(0.8))
+		end
+	end)
+end
+
+-- overlay panel used for the tale of the tape and the corner / scorecard between rounds.
+-- Builders below add rows in order and return their height so the panel can be fitted (UIScale)
+-- between the scoreboard / letterbox and the ticker on any screen.
+local OVERLAY_W = 820
+local overlay = UI.Frame(hud, { Name = "Overlay", Size = UDim2.new(1, -80, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, Position = UDim2.fromScale(0.5, 0.56), AnchorPoint = Vector2.new(0.5, 0.5), Visible = false, ZIndex = 10 })
+UI.Glass(overlay, { transparency = 0.06, radius = UI.R.xl })
+UI.New("UISizeConstraint", { MaxSize = Vector2.new(OVERLAY_W, 2000), Parent = overlay })
+UI.New("UIPadding", { PaddingTop = UDim.new(0, 20), PaddingBottom = UDim.new(0, 22), PaddingLeft = UDim.new(0, 28), PaddingRight = UDim.new(0, 28), Parent = overlay })
+UI.List(overlay, 6)
+local overlayFit = UI.New("UIScale", { Name = "Fit", Parent = overlay })
+local OV = { order = 0, h = 0 }
+
+local function overlayWidth()
+	local canvas = UI.CanvasSize(hud)
+	return math.min(OVERLAY_W, canvas.X - 80) - 56
+end
+
+local function ovAdd(h)
+	OV.order += 1
+	OV.h += h + 6
+	return OV.order
+end
+
+local function overlayBegin()
+	UI.Clear(overlay)
+	OV.order, OV.h = 0, 42 - 6
+end
+
+-- scale the panel to the room between the scoreboard (or the letterbox) and the ticker
+local function overlayShow()
+	local canvas = UI.CanvasSize(hud)
+	local top = board.Visible and L.frame.Visible and 156 or math.floor(canvas.Y * 0.1) + 10
+	local bottom = 66
+	local avail = math.max(140, canvas.Y - top - bottom)
+	overlayFit.Scale = math.clamp(avail / math.max(1, OV.h), 0.5, 1)
+	overlay.Position = UDim2.new(0.5, 0, 0, math.floor(top + avail / 2))
 	overlay.Visible = true
+	overlay.BackgroundTransparency = 0.06
+end
+
+local function ovHead(kicker, title, color)
+	local f = UI.Frame(overlay, { Name = "Head", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 62), LayoutOrder = ovAdd(62) })
+	local k = UI.Frame(f, { AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.fromScale(0.5, 0), Size = UDim2.fromOffset(0, 16), AutomaticSize = Enum.AutomaticSize.X, BackgroundTransparency = 1 })
+	UI.List(k, 8, true, Enum.HorizontalAlignment.Center)
+	UI.Frame(k, { Size = UDim2.fromOffset(18, 2), BackgroundColor3 = color or T.gold, LayoutOrder = 1 })
+	UI.Text(k, string.upper(kicker or ""), { Font = T.semi, TextSize = 12, TextColor3 = color or T.gold, Size = UDim2.fromOffset(0, 16), AutomaticSize = Enum.AutomaticSize.X, TextWrapped = false, LayoutOrder = 2 })
+	UI.Frame(k, { Size = UDim2.fromOffset(18, 2), BackgroundColor3 = color or T.gold, LayoutOrder = 3 })
+	UI.Text(f, string.upper(title or ""), { Face = "display", TextSize = 36, Position = UDim2.fromOffset(0, 18), Size = UDim2.new(1, 0, 0, 42), AutomaticSize = Enum.AutomaticSize.None,
+		TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false })
+	return f
+end
+
+-- red corner vs blue corner: flags, names, nicknames
+local function ovVersus(you, opp)
+	local f = UI.Frame(overlay, { Name = "Versus", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 62), LayoutOrder = ovAdd(62) })
+	local fl = getFlags()
+	for i, t in ipairs({ you, opp }) do
+		local left = i == 1
+		local accent = left and T.red or T.blue
+		local side = UI.Frame(f, { Name = left and "Red" or "Blue", BackgroundColor3 = accent, BackgroundTransparency = 0.84, Size = UDim2.new(0.5, -44, 1, 0),
+			Position = left and UDim2.fromScale(0, 0) or UDim2.new(0.5, 44, 0, 0) })
+		UI.Corner(side, UI.R.md)
+		UI.Gradient(side, Color3.new(1, 1, 1), left and 0 or 180, NumberSequence.new(0, 0.6))
+		UI.Frame(side, { Size = UDim2.new(0, 4, 1, -14), Position = left and UDim2.fromOffset(0, 7) or UDim2.new(1, -4, 0, 7), BackgroundColor3 = accent })
+		local flag = UI.Frame(side, { Name = "Flag", BackgroundTransparency = 1, Size = UDim2.fromOffset(34, 22), Position = left and UDim2.fromOffset(16, 9) or UDim2.new(1, -50, 0, 9) })
+		if fl and t.nat then
+			pcall(fl.Draw, flag, t.nat, { Size = UDim2.fromOffset(34, 22) })
+		end
+		local x = left and 60 or 14
+		UI.Text(side, string.upper(t.name or ""), { Face = "display", TextSize = 26, Position = UDim2.fromOffset(x, 4), Size = UDim2.new(1, -74, 0, 32), AutomaticSize = Enum.AutomaticSize.None,
+			TextXAlignment = left and Enum.TextXAlignment.Left or Enum.TextXAlignment.Right, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
+		local nick = (t.nick and t.nick ~= "") and ('"' .. string.upper(t.nick) .. '"') or string.upper(t.nat or "")
+		UI.Text(side, nick, { Font = T.semi, TextSize = 12, TextColor3 = T.sub, Position = UDim2.fromOffset(left and 16 or 14, 38), Size = UDim2.new(1, -30, 0, 16), AutomaticSize = Enum.AutomaticSize.None,
+			TextXAlignment = left and Enum.TextXAlignment.Left or Enum.TextXAlignment.Right, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
+	end
+	UI.Text(f, "VS", { Face = "display", TextSize = 32, TextColor3 = T.gold, AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(80, 40),
+		AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false })
+	return f
+end
+
+-- a comparison row: left value | caption | right value (emphasis = big gold / red numbers)
+local function tapeRow(parent, a, caption, b, order, emphasis)
+	local h = emphasis and 40 or 32
+	local f = UI.Frame(parent, { Name = "Row", BackgroundColor3 = T.panel2, BackgroundTransparency = order % 2 == 0 and 0.55 or 0.8, Size = UDim2.new(1, 0, 0, h), LayoutOrder = order })
+	UI.Corner(f, 4)
+	local face = emphasis and "number" or "displayMed"
+	local size = emphasis and 28 or 19
+	UI.Text(f, tostring(a), { Face = face, TextSize = size, TextColor3 = emphasis and T.gold or T.text, Position = UDim2.fromOffset(14, 0), Size = UDim2.new(0.38, -14, 1, 0),
+		AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
+	UI.Text(f, string.upper(caption), { Font = T.semi, TextSize = 11, TextColor3 = T.sub, Position = UDim2.fromScale(0.38, 0), Size = UDim2.new(0.24, 0, 1, 0),
+		AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false })
+	UI.Text(f, tostring(b), { Face = face, TextSize = size, TextColor3 = emphasis and T.gold or T.text, Position = UDim2.fromScale(0.62, 0), Size = UDim2.new(0.38, -14, 1, 0),
+		AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Right, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
+	return f, h
+end
+
+local function ovRow(a, caption, b, emphasis)
+	local h = emphasis and 40 or 32
+	local order = ovAdd(h)
+	return tapeRow(overlay, a, caption, b, order, emphasis)
+end
+
+-- a wrapped line of copy (weigh-in, scouting, cutman); color tints a small tag in front
+local function ovNote(tag, text, color)
+	local w = overlayWidth()
+	local chars = #tag + #text + 4
+	local lines = math.max(1, math.ceil(chars * 7.4 / math.max(200, w - 16)))
+	local h = lines * 18 + 10
+	local f = UI.Frame(overlay, { Name = "Note", BackgroundColor3 = color or T.panel2, BackgroundTransparency = 0.86, Size = UDim2.new(1, 0, 0, h), LayoutOrder = ovAdd(h) })
+	UI.Corner(f, 4)
+	UI.Text(f, string.format('<font color="#%s"><b>%s</b></font>   %s', (color or T.gold):ToHex(), string.upper(tag), text), {
+		RichText = true, Font = T.font, TextSize = 14, TextColor3 = T.text, Position = UDim2.fromOffset(12, 5), Size = UDim2.new(1, -24, 1, -10), AutomaticSize = Enum.AutomaticSize.None,
+		TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Center })
+	return f
+end
+
+-- a quote with a coloured rule (corner advice, trash talk)
+local function ovQuote(text, who, color)
+	local w = overlayWidth()
+	local body = '"' .. text .. '"' .. (who and ("   -  " .. who) or "")
+	local lines = math.max(1, math.ceil(#body * 7.6 / math.max(200, w - 30)))
+	local h = lines * 19 + 12
+	local f = UI.Frame(overlay, { Name = "Quote", BackgroundColor3 = T.panel2, BackgroundTransparency = 0.6, Size = UDim2.new(1, 0, 0, h), LayoutOrder = ovAdd(h) })
+	UI.Corner(f, 4)
+	UI.Frame(f, { Size = UDim2.new(0, 3, 1, -12), Position = UDim2.fromOffset(0, 6), BackgroundColor3 = color or T.gold })
+	UI.Text(f, body, { Font = T.font, TextSize = 15, TextColor3 = T.text, Position = UDim2.fromOffset(16, 6), Size = UDim2.new(1, -28, 1, -12), AutomaticSize = Enum.AutomaticSize.None,
+		TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Center })
+	return f
+end
+
+-- the score: both corners' totals, big, with a caption between them
+local function ovScore(a, b, caption, you, opp)
+	local f = UI.Frame(overlay, { Name = "Score", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 72), LayoutOrder = ovAdd(72) })
+	for i, v in ipairs({ a, b }) do
+		local left = i == 1
+		local accent = left and T.red or T.blue
+		local lead = (left and a > b) or (not left and b > a)
+		local side = UI.Frame(f, { BackgroundColor3 = accent, BackgroundTransparency = 0.84, Size = UDim2.new(0.5, -64, 1, 0), Position = left and UDim2.fromScale(0, 0) or UDim2.new(0.5, 64, 0, 0) })
+		UI.Corner(side, UI.R.md)
+		UI.Frame(side, { Size = UDim2.new(0, 4, 1, -16), Position = left and UDim2.fromOffset(0, 8) or UDim2.new(1, -4, 0, 8), BackgroundColor3 = accent })
+		UI.Text(side, string.upper(left and you or opp), { Face = "displayMed", TextSize = 18, Position = UDim2.fromOffset(left and 16 or 90, 0), Size = UDim2.new(1, -106, 1, 0),
+			AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = left and Enum.TextXAlignment.Left or Enum.TextXAlignment.Right, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
+		UI.Text(side, tostring(v), { Face = "number", TextSize = 54, TextColor3 = lead and T.gold or T.text, AnchorPoint = Vector2.new(left and 1 or 0, 0.5),
+			Position = left and UDim2.new(1, -14, 0.5, 0) or UDim2.new(0, 14, 0.5, 0), Size = UDim2.fromOffset(78, 64), AutomaticSize = Enum.AutomaticSize.None,
+			TextXAlignment = left and Enum.TextXAlignment.Right or Enum.TextXAlignment.Left, TextWrapped = false })
+	end
+	UI.Text(f, caption, { Font = T.semi, TextSize = 11, TextColor3 = T.sub, AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(116, 40),
+		AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = true })
+	return f
+end
+
+-- round-by-round strip: R1 10-9 ... (red / blue underline for who took the round)
+local function ovRounds(cards, rounds, current)
+	local n = math.max(1, rounds or 1)
+	local f = UI.Frame(overlay, { Name = "Rounds", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 46), LayoutOrder = ovAdd(46) })
+	UI.List(f, 4, true, Enum.HorizontalAlignment.Center)
+	local w = overlayWidth()
+	local cellW = math.clamp(math.floor((w - (n - 1) * 4) / n), 36, 72)
+	for i = 1, n do
+		local c = cards[i]
+		local cell = UI.Frame(f, { Size = UDim2.fromOffset(cellW, 46), BackgroundColor3 = i == current and T.panel2:Lerp(T.gold, 0.12) or T.panel2, BackgroundTransparency = c and 0.15 or 0.7, LayoutOrder = i })
+		UI.Corner(cell, 4)
+		UI.Text(cell, "R" .. i, { Font = T.semi, TextSize = 10, TextColor3 = i == current and T.gold or T.sub, Size = UDim2.new(1, 0, 0, 16), Position = UDim2.fromOffset(0, 2),
+			AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false })
+		UI.Text(cell, c and string.format("%d-%d", c[1], c[2]) or "-", { Face = "number", TextSize = 17, TextColor3 = c and T.text or T.dim, Position = UDim2.fromOffset(0, 16),
+			Size = UDim2.new(1, 0, 0, 24), AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false })
+		if c then
+			local col = c[1] > c[2] and T.red or (c[2] > c[1] and T.blue or T.sub)
+			UI.Frame(cell, { Position = UDim2.new(0, 4, 1, -4), Size = UDim2.new(1, -8, 0, 3), BackgroundColor3 = col })
+		end
+	end
+	return f
+end
+
+-- the player's condition between rounds: head and body with their permanent caps
+local function ovCondition(c)
+	local f = UI.Frame(overlay, { Name = "Condition", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 36), LayoutOrder = ovAdd(36) })
+	for i, spec in ipairs({ { "HEAD", c.head, c.cap, T.green }, { "BODY", c.body, c.bodyCap, T.orange } }) do
+		local v, cap = tonumber(spec[2]) or 0, tonumber(spec[3]) or 100
+		local cell = UI.Frame(f, { BackgroundTransparency = 1, Position = UDim2.new((i - 1) * 0.5, i == 2 and 8 or 0, 0, 0), Size = UDim2.new(0.5, -8, 1, 0) })
+		UI.Text(cell, spec[1], { Font = T.semi, TextSize = 10, TextColor3 = T.sub, Size = UDim2.new(1, 0, 0, 12), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
+		UI.Text(cell, cap < 100 and string.format("MAX %d", cap) or "", { Font = T.semi, TextSize = 10, TextColor3 = T.red, Size = UDim2.new(1, 0, 0, 12), AutomaticSize = Enum.AutomaticSize.None,
+			TextXAlignment = Enum.TextXAlignment.Right, TextWrapped = false })
+		local color = v < 30 and T.red or spec[4]
+		local bar = hudBar(cell, { Position = UDim2.fromOffset(0, 16), Size = UDim2.new(1, 0, 0, 16) }, color, "L", nil, true)
+		setBar(bar, v / 100, cap / 100, color)
+	end
+	return f
+end
+
+-- the knockdown count: a band with the referee's count, big
+local countBox = UI.Frame(hud, { Name = "Count", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.4), Size = UDim2.fromOffset(520, 230), BackgroundTransparency = 1, Visible = false, ZIndex = 22 })
+local countKicker, countKickerText = UI.Chip(countBox, "KNOCKDOWN", T.red, { solid = true, textColor = Color3.new(1, 1, 1), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.fromScale(0.5, 0), h = 28, TextSize = 14 })
+countKicker.ZIndex = 23
+local countFit = UI.New("UIScale", { Name = "Fit", Parent = countBox })
+local countNum = UI.Text(countBox, "", { Face = "display", TextSize = 150, TextColor3 = Color3.new(1, 1, 1), TextStrokeTransparency = 0.5, Position = UDim2.fromOffset(0, 26), Size = UDim2.new(1, 0, 0, 160),
+	AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false, ZIndex = 23 })
+local countScale = UI.New("UIScale", { Parent = countNum })
+local countWho = UI.Text(countBox, "", { Face = "displayMed", TextSize = 22, TextColor3 = T.text, TextStrokeTransparency = 0.5, Position = UDim2.new(0, 0, 1, -34), Size = UDim2.new(1, 0, 0, 30),
+	AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false, ZIndex = 23 })
+-- kicker: "KNOCKDOWN" / "EIGHT COUNT" ...; who: the line under the number
+local function openCount(kicker, color, who)
+	local canvas = UI.CanvasSize(hud)
+	-- short (phone) screens: smaller and lower so the scoreboard stays readable
+	countFit.Scale = canvas.Y < 640 and 0.62 or 1
+	countBox.Position = UDim2.fromScale(0.5, canvas.Y < 640 and 0.55 or 0.42)
+	countKickerText.Text = string.upper(kicker)
+	countKicker.BackgroundColor3 = color or T.red
+	countWho.Text = who or ""
+	countNum.Text = ""
+	countBox.Visible = true
+end
+local function showCount(n, standing)
+	countBox.Visible = true
+	countNum.Text = tostring(n)
+	countNum.TextColor3 = standing and Color3.fromRGB(230, 230, 230) or (n >= 8 and T.red or Color3.new(1, 1, 1))
+	countScale.Scale = 1.35
+	UI.Tween(countScale, { Scale = 1 }, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out))
+end
+local function hideCount()
+	countBox.Visible = false
 end
 
 ------------------------------------------------------------------------
 -- Get-up: mash SPACE / tap, and time presses on the sweeping marker (green zone = worth 3)
 ------------------------------------------------------------------------
-local getup = UI.Frame(gui, { Size = UDim2.fromOffset(440, 126), Position = UDim2.new(0.5, 0, 0.6, 0), AnchorPoint = Vector2.new(0.5, 0), BackgroundColor3 = T.bg, Visible = false })
-UI.Corner(getup, 10)
-UI.Stroke(getup, T.red, 2)
-local getupTitle = UI.Text(getup, "YOU'RE DOWN!  MASH SPACE / TAP - HIT THE GREEN ZONE", { Font = T.bold, TextSize = 15, TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.fromOffset(0, 8), Size = UDim2.new(1, 0, 0, 22), TextColor3 = T.red, AutomaticSize = Enum.AutomaticSize.None })
-local _, setGetup = UI.Bar(getup, { Position = UDim2.fromOffset(16, 38), Size = UDim2.new(1, -32, 0, 18) }, T.gold)
-local timing = UI.Frame(getup, { Position = UDim2.fromOffset(16, 70), Size = UDim2.new(1, -32, 0, 20), BackgroundColor3 = Color3.fromRGB(30, 30, 36) })
-UI.Corner(timing, 4)
-local zone = UI.Frame(timing, { AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.fromScale(0.5, 0), Size = UDim2.fromScale(0.2, 1), BackgroundColor3 = T.green, BackgroundTransparency = 0.25 })
-UI.Corner(zone, 4)
-local marker = UI.Frame(timing, { AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.fromScale(0.5, -0.15), Size = UDim2.new(0, 4, 1.3, 0), BackgroundColor3 = Color3.new(1, 1, 1), ZIndex = 3 })
-local getupHint = UI.Text(getup, "", { TextSize = 12, TextColor3 = T.sub, TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.fromOffset(0, 98), Size = UDim2.new(1, 0, 0, 18), AutomaticSize = Enum.AutomaticSize.None })
+local getup = UI.Frame(hud, { Name = "GetUp", Size = UDim2.fromOffset(540, 156), Position = UDim2.new(0.5, 0, 0.64, 0), AnchorPoint = Vector2.new(0.5, 0), Visible = false, ZIndex = 24 })
+UI.Glass(getup, { transparency = 0.05, radius = UI.R.xl, stroke = T.red, strokeT = 0.3 })
+local getupTitle = UI.Text(getup, "YOU'RE DOWN!  MASH SPACE / TAP - HIT THE GREEN ZONE", { Face = "displayMed", TextSize = 22, TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.fromOffset(0, 12),
+	Size = UDim2.new(1, 0, 0, 26), TextColor3 = T.red, AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, ZIndex = 25 })
+local _, setGetup = UI.Bar(getup, { Position = UDim2.fromOffset(24, 48), Size = UDim2.new(1, -48, 0, 20), ZIndex = 25 }, T.gold)
+local timing = UI.Frame(getup, { Position = UDim2.fromOffset(24, 80), Size = UDim2.new(1, -48, 0, 26), BackgroundColor3 = T.ink, ZIndex = 25 })
+UI.Corner(timing, 6)
+local zone = UI.Frame(timing, { AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.fromScale(0.5, 0), Size = UDim2.fromScale(0.2, 1), BackgroundColor3 = T.green, BackgroundTransparency = 0.2, ZIndex = 26 })
+UI.Corner(zone, 6)
+local marker = UI.Frame(timing, { AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.fromScale(0.5, -0.2), Size = UDim2.new(0, 5, 1.4, 0), BackgroundColor3 = Color3.new(1, 1, 1), ZIndex = 27 })
+UI.Corner(marker, 2)
+local getupHint = UI.Text(getup, "", { Font = T.semi, TextSize = 12, TextColor3 = T.sub, TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.fromOffset(0, 118), Size = UDim2.new(1, 0, 0, 18),
+	AutomaticSize = Enum.AutomaticSize.None, ZIndex = 25 })
 
 local function getupPress()
 	if not F.down then
@@ -351,22 +807,27 @@ local function getupPress()
 	setGetup(F.mash / math.max(1, F.target))
 end
 
-local getupBtn = UI.Button(getup, "", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, ZIndex = 5 }, getupPress)
+local getupBtn = UI.Button(getup, "", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, ZIndex = 28 }, getupPress)
 getupBtn.Text = ""
 
 -- punches go through throwPunch (defined with the input code) so taps are predicted like keys
 local throwPunch
 
--- touch controls
+-- touch controls: round pads (red punches, blue defence, green movement)
 local touchPad
 local function buildTouch()
 	if touchPad or not UserInputService.TouchEnabled then
 		return
 	end
-	touchPad = UI.Frame(gui, { BackgroundTransparency = 1, Size = UDim2.fromOffset(380, 186), Position = UDim2.new(1, -12, 1, -56), AnchorPoint = Vector2.new(1, 1) })
-	UI.Grid(touchPad, 70, 56, 6)
+	touchPad = UI.Frame(hud, { Name = "TouchPad", BackgroundTransparency = 1, Size = UDim2.fromOffset(400, 220), Position = UDim2.new(1, -16, 1, -64), AnchorPoint = Vector2.new(1, 1) })
+	UI.Grid(touchPad, 72, 64, 8)
 	local function tb(label, color, down, up)
-		local b = UI.Button(touchPad, label, { BackgroundColor3 = color or T.panel2, BackgroundTransparency = 0.15, TextSize = 13 })
+		local b = UI.Button(touchPad, label, { BackgroundColor3 = T.bg, BackgroundTransparency = 0.25, TextSize = 13 })
+		b:FindFirstChildOfClass("UICorner").CornerRadius = UDim.new(0, 32)
+		local st = b:FindFirstChildOfClass("UIStroke")
+		if st then
+			st.Color, st.Transparency, st.Thickness = color or T.line, 0.15, 2
+		end
 		b.MouseButton1Down:Connect(down)
 		if up then
 			b.MouseButton1Up:Connect(up)
@@ -387,7 +848,7 @@ local function buildTouch()
 	local bodyBtn
 	bodyBtn = tb("BODY", T.orange, function()
 		F.bodyMod = not F.bodyMod
-		bodyBtn.BackgroundColor3 = F.bodyMod and T.gold or T.orange
+		bodyBtn.BackgroundColor3 = F.bodyMod and T.orange or T.bg
 		showFlash(flash, F.bodyMod and "BODY SHOTS" or "HEAD SHOTS", T.gold)
 	end)
 	tb("BLOCK", T.blue, function()
@@ -416,8 +877,10 @@ local function buildTouch()
 	tb("CLINCH", T.green, function()
 		send({ t = "clinch" })
 	end)
+	controls.Visible = false
 end
 
+------------------------------------------------------------------------
 ------------------------------------------------------------------------
 -- Screen FX layer (below the HUD): flashes, vignette, letterbox, blackout
 ------------------------------------------------------------------------
@@ -817,6 +1280,8 @@ local function startVenueFx(arena)
 end
 
 local function cheer(amount)
+	-- the HUD's crowd meter follows every cheer (VenueFX or the built-in crowd does the sound / bob)
+	crowd.level = math.clamp(crowd.level + (amount or 0) * 0.3, 0, 1)
 	if venueOn then
 		vfx("Cheer", math.clamp(amount / 1.6, 0, 1))
 		return
@@ -1073,16 +1538,20 @@ local function updateFX(dt, now)
 			sfx(id, 0.32, 0.35)
 		end)
 	end
-	-- the player's HUD head bar pulses at danger
+	-- the HUD head and health bars pulse at danger
 	if tier >= 2 then
 		local p = math.sin(now * (tier >= 3 and 9 or 5)) * 0.5 + 0.5
 		L.head.fill.BackgroundColor3 = tierColor(tier):Lerp(Color3.new(1, 1, 1), p * 0.35)
+		L.health.fill.BackgroundColor3 = tierColor(tier):Lerp(Color3.new(1, 1, 1), p * 0.25)
 	end
 	local ot = F.opp and F.oppState and F.oppState.tier or 0
 	if ot >= 2 then
 		local p = math.sin(now * (ot >= 3 and 9 or 5)) * 0.5 + 0.5
 		R.head.fill.BackgroundColor3 = tierColor(ot):Lerp(Color3.new(1, 1, 1), p * 0.35)
+		R.health.fill.BackgroundColor3 = tierColor(ot):Lerp(Color3.new(1, 1, 1), p * 0.25)
 	end
+	crowd.level = math.max(0.12, crowd.level - dt * 0.06)
+	updateCrowd(dt)
 	return tier, conc, fx
 end
 
@@ -1109,7 +1578,8 @@ local function startCamera()
 			return
 		end
 		FX.shake = math.max(0, FX.shake - dt * 3)
-		local sh = Vector3.new(math.random() - 0.5, math.random() - 0.5, 0) * FX.shake * fx
+		local kick = shakeScale()
+		local sh = Vector3.new(math.random() - 0.5, math.random() - 0.5, 0) * FX.shake * fx * kick
 		local goal
 		if F.broadcastUntil and now < F.broadcastUntil and F.broadcastCF then
 			goal = F.broadcastCF -- hard cut to the on-air camera
@@ -1162,7 +1632,7 @@ local function startCamera()
 				goal *= CFrame.Angles(math.sin(now * 0.8) * 0.01 * sway, math.sin(now * 1.1) * 0.02 * sway, math.sin(now * 0.7) * 0.04 * sway)
 			end
 			if math.abs(FX.roll) > 0.0005 then
-				goal *= CFrame.Angles(0, 0, FX.roll * fx)
+				goal *= CFrame.Angles(0, 0, FX.roll * fx * kick)
 			end
 			if FX.hitStop > now then
 				-- hit-stop: freeze the picture for a few frames on a big landed shot
@@ -1173,7 +1643,7 @@ local function startCamera()
 				cam.CFrame = cam.CFrame:Lerp(goal, math.clamp(dt * 8, 0, 1)) + sh
 			end
 		end
-		cam.FieldOfView = math.clamp((baseFov or 70) + FX.fovKick * fx, 40, 100)
+		cam.FieldOfView = math.clamp((baseFov or 70) + FX.fovKick * fx * kick, 40, 100)
 		fadeClock += dt
 		if fadeClock > 0.08 then
 			fadeClock = 0
@@ -1369,8 +1839,8 @@ local function setChip(panel, text, color)
 	if panel.chipLast ~= text then
 		panel.chipLast = text
 		-- pop when it changes
-		panel.chip.Size = UDim2.fromOffset(0, 24)
-		TweenService:Create(panel.chip, TweenInfo.new(0.25, Enum.EasingStyle.Back), { Size = UDim2.fromOffset(0, 18) }):Play()
+		panel.chip.Size = UDim2.fromOffset(0, 26)
+		TweenService:Create(panel.chip, TweenInfo.new(0.25, Enum.EasingStyle.Back), { Size = UDim2.fromOffset(0, 20) }):Play()
 	end
 end
 
@@ -1453,8 +1923,27 @@ function handlers.start(msg)
 		local center = F.arena:FindFirstChild("Anchors") and F.arena.Anchors:FindFirstChild("RingCenter")
 		F.center = center and center.Position
 	end
-	L.name.Text = msg.tape.you.name
-	R.name.Text = msg.tape.opp.name
+	L.name.Text = string.upper(msg.tape.you.name)
+	R.name.Text = string.upper(msg.tape.opp.name)
+	for _, pair in ipairs({ { L, msg.tape.you }, { R, msg.tape.opp } }) do
+		local panel, t = pair[1], pair[2]
+		local r = t.record or {}
+		panel.sub.Text = string.format("%d-%d-%d  ·  %d KO%s", r.w or 0, r.l or 0, r.d or 0, r.ko or 0, (t.nick and t.nick ~= "") and ('  ·  "' .. string.upper(t.nick) .. '"') or "")
+		UI.Clear(panel.flag)
+		local fl = getFlags()
+		if fl and t.nat then
+			pcall(fl.Draw, panel.flag, t.nat, { Size = UDim2.fromOffset(30, 20) })
+		end
+		UI.Clear(panel.kd)
+		panel.kdCount = 0
+		panel.cut.Visible, panel.swell.Visible, panel.ribs.Visible = false, false, false
+		for _, z in ipairs({ panel.zones.head, panel.zones.bodyL, panel.zones.bodyR }) do
+			z.BackgroundColor3 = T.panel2
+		end
+	end
+	crowd.level, crowd.lean = 0.2, 0
+	hideCount()
+	bug.Visible = true
 	local stakes = {}
 	for _, s in ipairs(msg.stakes or {}) do
 		table.insert(stakes, s)
@@ -1465,11 +1954,11 @@ function handlers.start(msg)
 		end
 	end
 	if F.spar then
-		bugText.Text = "SPARRING  -  " .. string.upper(F.spar)
+		bugText.Text = "SPARRING  ·  " .. string.upper(F.spar)
 		bug.BackgroundColor3 = T.blue
 		F.stakesText = string.format("SPARRING (%s) vs %s", string.upper(F.spar), msg.tape.opp.name)
 	else
-		bugText.Text = "LIVE  -  WCB SPORTS"
+		bugText.Text = "LIVE  ·  WCB SPORTS"
 		bug.BackgroundColor3 = T.red
 		F.stakesText = #stakes > 0 and (table.concat(stakes, " - ") .. " WORLD TITLE" .. (#stakes > 1 and "S" or "") .. " ON THE LINE") or msg.kind:upper()
 	end
@@ -1591,7 +2080,8 @@ function handlers.round(msg)
 	camMode = "fight"
 	F.broadcastUntil = nil
 	letterbox(false)
-	L.frame.Visible, R.frame.Visible, clock.Visible, controls.Visible = true, true, true, true
+	L.frame.Visible, R.frame.Visible, clock.Visible, controls.Visible = true, true, true, touchPad == nil
+	hideCount()
 	roundText.Text = string.format("ROUND %d / %d", msg.n, msg.total)
 	timeText.Text = fmtTime(F.spar and Config.SparRoundSeconds or Config.RoundSeconds)
 	showBanner("ROUND " .. msg.n, T.gold, 1.8)
@@ -1603,24 +2093,47 @@ function handlers.round(msg)
 	cheer(0.5)
 end
 
+-- overall health: the head carries more weight than the body (a fight ends on the chin)
+local function overallOf(s)
+	local hp, body = tonumber(s.hp) or 0, tonumber(s.body) or 0
+	local cap, bodyCap = tonumber(s.cap) or 100, tonumber(s.bodyCap) or 100
+	return (hp * 0.6 + body * 0.4) / 100, (cap * 0.6 + bodyCap * 0.4) / 100
+end
+
+local function healthColor(v, tier)
+	if (tier or 0) >= 1 then
+		return tierColor(tier)
+	end
+	return v > 0.6 and T.green or (v > 0.35 and T.gold or (v > 0.18 and T.orange or T.red))
+end
+
 function handlers.state(msg)
 	timeText.Text = fmtTime(msg.time)
+	timeText.TextColor3 = (msg.time or 99) <= 10 and T.red or T.text
 	F.me, F.oppState = msg.me, msg.opp
-	local function apply(panel, s, female)
+	local function apply(panel, s, female, model)
 		local tier = s.tier or 0
 		local headColor = tier >= 1 and tierColor(tier) or (s.hurt and T.gold or T.green)
+		local overall, overallCap = overallOf(s)
 		if tier < 2 then
 			setBar(panel.head, s.hp / 100, (s.cap or 100) / 100, headColor)
+			setBar(panel.health, overall, overallCap, healthColor(overall, tier))
 		else
-			setBar(panel.head, s.hp / 100, (s.cap or 100) / 100) -- colour pulses in updateFX
+			-- colours pulse in updateFX
+			setBar(panel.head, s.hp / 100, (s.cap or 100) / 100)
+			setBar(panel.health, overall, overallCap)
 		end
 		setBar(panel.body, s.body / 100, (s.bodyCap or 100) / 100, s.body < 30 and T.red or T.orange)
 		local max = math.max(1, s.max or 100)
 		setBar(panel.stam, s.stam / max, (s.stamCap or max) / max, s.stam < max * 0.25 and Color3.fromRGB(120, 125, 140) or T.blue)
 		setChip(panel, chipFor(s, s.hurt, female))
+		-- damage icons: swelling from the face damage stage the builder publishes, bruised ribs from body HP
+		local stage = model and tonumber(model:GetAttribute("FaceDmgTier")) or 0
+		panel.swell.Visible = stage >= 2
+		panel.ribs.Visible = (tonumber(s.body) or 100) < 40
 	end
-	apply(L, msg.me, F.tape and F.tape.you.female)
-	apply(R, msg.opp, F.tape and F.tape.opp.female)
+	apply(L, msg.me, F.tape and F.tape.you.female, player.Character)
+	apply(R, msg.opp, F.tape and F.tape.opp.female, F.opp)
 	if L.bal and msg.me.bal then
 		local b = math.clamp(msg.me.bal / 100, 0, 1)
 		L.bal.Size = UDim2.fromScale(b, 1)

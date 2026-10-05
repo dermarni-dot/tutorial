@@ -40,6 +40,7 @@ local itemFrames = {}
 local indicator
 local scene
 local canvasW, canvasH = 1600, 900
+local intro = true -- the logo / menu entrance plays once per open (not on a rebuild)
 
 local function track(c)
 	table.insert(conns, c)
@@ -62,6 +63,9 @@ local function ringCenter()
 	end
 	return nil
 end
+
+local rayParams = RaycastParams.new()
+rayParams.FilterType = Enum.RaycastFilterType.Exclude
 
 local function light(parent, class, props)
 	local l = Instance.new(class)
@@ -92,22 +96,39 @@ local function sceneStart()
 	scene.walk, scene.jump = hum.WalkSpeed, hum.JumpHeight
 	hum.WalkSpeed, hum.JumpHeight = 0, 0
 	State.SetAnimate(false)
-	-- the Animator gives a Preview-tagged rig its Pose: a live boxing stance (client-local)
+	-- the Animator gives a Preview-tagged rig a proud, relaxed stance; sceneStep raises the guard now
+	-- and then (Pose, client-local)
 	CollectionService:AddTag(char, "Preview")
-	char:SetAttribute("Pose", "guard")
 	char:SetAttribute("ExprPreview", "confident")
-	-- face away from the ring so it fills the background
+	scene.home = rootPart.CFrame
+	-- in the gym the boxer steps onto a mark in front of the ring (it fills the background); anywhere
+	-- else he stays put and the shot is framed around him
 	local rc = ringCenter()
 	local p = rootPart.Position
-	local away = rc and Vector3.new(p.X - rc.X, 0, p.Z - rc.Z) or Vector3.zero
-	if away.Magnitude > 4 and away.Magnitude < 160 then
-		scene.facing = away.Unit
-		rootPart.CFrame = CFrame.lookAt(p, p + scene.facing)
-	else
-		local lv = rootPart.CFrame.LookVector
-		scene.facing = Vector3.new(lv.X, 0, lv.Z).Magnitude > 0.1 and Vector3.new(lv.X, 0, lv.Z).Unit or Vector3.new(0, 0, 1)
+	local fromRing = rc and Vector3.new(p.X - rc.X, 0, p.Z - rc.Z) or Vector3.zero
+	if rc and fromRing.Magnitude < 160 then
+		local mark = rc + Vector3.new(0, 0, 28)
+		rayParams.FilterDescendantsInstances = { char }
+		local floor = workspace:Raycast(mark + Vector3.new(0, 12, 0), Vector3.new(0, -30, 0), rayParams)
+		if floor then
+			scene.facing = Vector3.new(0, 0, 1)
+			local y = floor.Position.Y + hum.HipHeight + rootPart.Size.Y / 2
+			local spot = Vector3.new(mark.X, y, mark.Z)
+			rootPart.CFrame = CFrame.lookAt(spot, spot + scene.facing)
+			rootPart.AssemblyLinearVelocity = Vector3.zero
+			scene.staged = true
+		end
 	end
-	scene.base = p
+	if not scene.staged then
+		local away = rc and fromRing or Vector3.zero
+		if away.Magnitude > 4 then
+			scene.facing = away.Unit
+			rootPart.CFrame = CFrame.lookAt(p, p + scene.facing)
+		else
+			local lv = rootPart.CFrame.LookVector
+			scene.facing = Vector3.new(lv.X, 0, lv.Z).Magnitude > 0.1 and Vector3.new(lv.X, 0, lv.Z).Unit or Vector3.new(0, 0, 1)
+		end
+	end
 	-- key light (front-left, warm), rim light (behind, gold), cool fill near the lens
 	local rig = Instance.new("Part")
 	rig.Name = "MenuLightRig"
@@ -135,9 +156,6 @@ local SHOTS = {
 	character = { d = 6.2, side = -1.6, h = 0.6, aim = -1.4, fov = 34, blur = 10 },
 }
 
-local rayParams = RaycastParams.new()
-rayParams.FilterType = Enum.RaycastFilterType.Exclude
-
 local function sceneStep(dt)
 	local cam = workspace.CurrentCamera
 	if not (scene and cam) then
@@ -151,6 +169,12 @@ local function sceneStep(dt)
 	local rootPart = scene.root
 	if not (rootPart and rootPart.Parent) then
 		return
+	end
+	-- life: every few seconds the boxer raises his guard and bounces, then relaxes again
+	local guardUp = (t % 11) > 7 and not scene.relax
+	if guardUp ~= scene.guard and scene.char then
+		scene.guard = guardUp
+		scene.char:SetAttribute("Pose", guardUp and "guard" or nil)
 	end
 	local p = rootPart.Position
 	local f = scene.facing or Vector3.new(0, 0, 1)
@@ -215,6 +239,10 @@ local function sceneStop()
 			char:SetAttribute("Pose", nil)
 		end
 		char:SetAttribute("ExprPreview", nil)
+		-- back to where you were standing (the mark was only for the shot)
+		if s.staged and s.home and s.root and s.root.Parent and not s.keepSpot then
+			s.root.CFrame = s.home
+		end
 	end
 	if s.hum and s.hum.Parent then
 		s.hum.WalkSpeed = (s.walk and s.walk > 0) and s.walk or 16
@@ -282,13 +310,14 @@ end
 ------------------------------------------------------------------------
 local function buildLogo(layer)
 	local small = compact()
-	local logo = UI.Frame(layer, { Name = "Logo", BackgroundTransparency = 1, Position = UDim2.fromOffset(small and 64 or 84, small and 46 or 74), Size = UDim2.fromOffset(640, small and 156 or 250) })
-	local kicker = UI.Text(logo, "THE ROAD TO UNDISPUTED", { Name = "Kicker", Font = T.semi, TextSize = small and 12 or 15, TextColor3 = T.gold, Size = UDim2.new(1, 0, 0, 18),
-		AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTransparency = 1 })
-	local world = UI.Title(logo, "WORLD CLASS", { Name = "World", TextSize = small and 40 or 64, Position = UDim2.fromOffset(-16, small and 18 or 22), Size = UDim2.new(1, 0, 0, small and 44 or 70),
+	-- on short screens the logo sits below the engine's top bar buttons (no kicker line)
+	local logo = UI.Frame(layer, { Name = "Logo", BackgroundTransparency = 1, Position = UDim2.fromOffset(small and 52 or 84, small and 60 or 74), Size = UDim2.fromOffset(640, small and 120 or 250) })
+	local kicker = UI.Text(logo, "THE ROAD TO UNDISPUTED", { Name = "Kicker", Font = T.semi, TextSize = 15, TextColor3 = T.gold, Size = UDim2.new(1, 0, 0, 18),
+		AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTransparency = 1, Visible = not small })
+	local world = UI.Title(logo, "WORLD CLASS", { Name = "World", TextSize = small and 32 or 64, Position = UDim2.fromOffset(small and -2 or -16, small and 0 or 22), Size = UDim2.new(1, 0, 0, small and 36 or 70),
 		TextTransparency = 1 })
-	local boxerY = small and 52 or 80
-	local boxerSize = small and 96 or 156
+	local boxerY = small and 26 or 80
+	local boxerSize = small and 78 or 156
 	local boxer = UI.Title(logo, "BOXER", { Name = "Boxer", TextSize = boxerSize, TextColor3 = Color3.new(1, 1, 1), Position = UDim2.fromOffset(-16, boxerY), Size = UDim2.new(1, 0, 0, boxerSize + 6),
 		TextTransparency = 1 })
 	UI.Gradient(boxer, { Color3.fromRGB(255, 236, 170), T.gold, T.goldDeep }, 90)
@@ -297,7 +326,7 @@ local function buildLogo(layer)
 	local shineGrad = UI.Gradient(shine, Color3.new(1, 1, 1), 20, NumberSequence.new({
 		NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.44, 1), NumberSequenceKeypoint.new(0.5, 0.15), NumberSequenceKeypoint.new(0.56, 1), NumberSequenceKeypoint.new(1, 1),
 	}), { offset = Vector2.new(-1, 0) })
-	local barY = boxerY + boxerSize + (small and 2 or 6)
+	local barY = boxerY + boxerSize + (small and 0 or 6)
 	local bar = UI.Frame(logo, { Name = "Bar", Position = UDim2.fromOffset(0, barY), Size = UDim2.fromOffset(0, small and 4 or 6), BackgroundColor3 = T.red })
 	UI.Gradient(bar, Color3.new(1, 1, 1), 0, NumberSequence.new({ NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(0.7, 0), NumberSequenceKeypoint.new(1, 1) }))
 	local tag = UI.Text(logo, "FROM UNKNOWN AMATEUR TO BOXING LEGEND", { Name = "Tagline", Font = T.semi, TextSize = small and 11 or 13, TextColor3 = T.sub, Position = UDim2.fromOffset(small and 128 or 200, barY - (small and 6 or 4)),
@@ -305,6 +334,10 @@ local function buildLogo(layer)
 	-- reveal: kicker, WORLD CLASS slides in, BOXER punches up, the bar wipes, the shine sweeps
 	local function slide(obj, dx, delay, extra)
 		local goal = obj.Position
+		if not intro then
+			obj.TextTransparency = 0
+			return
+		end
 		obj.Position = goal + UDim2.fromOffset(dx, 0)
 		task.delay(delay, function()
 			if obj.Parent then
@@ -319,12 +352,12 @@ local function buildLogo(layer)
 	slide(kicker, -20, 0.1)
 	slide(world, -40, 0.25)
 	slide(boxer, -60, 0.42)
-	task.delay(0.42, function()
+	task.delay(intro and 0.42 or 0, function()
 		if shine.Parent then
 			shine.TextTransparency = 0
 		end
 	end)
-	task.delay(0.75, function()
+	task.delay(intro and 0.75 or 0, function()
 		if bar.Parent then
 			UI.Tween(bar, { Size = UDim2.fromOffset(small and 110 or 180, bar.Size.Y.Offset) }, UI.Motion.slow)
 			UI.Tween(tag, { TextTransparency = 0 }, UI.Motion.slow)
@@ -365,7 +398,7 @@ local show -- forward
 
 local function itemMetrics()
 	local small = compact()
-	return small and 40 or 54, small and 2 or 4, small and 26 or 36
+	return small and 36 or 54, small and 2 or 4, small and 24 or 36
 end
 
 local function selectItem(i, instant)
@@ -410,7 +443,7 @@ local function buildMenu(layer)
 			table.insert(items, copy)
 		end
 	end
-	local top = small and 214 or 372
+	local top = small and 192 or 372
 	local menu = UI.Frame(layer, { Name = "Menu", BackgroundTransparency = 1, Position = UDim2.fromOffset(small and 52 or 68, top), Size = UDim2.fromOffset(520, #items * (h + pad)) })
 	local list = UI.Frame(menu, { Name = "Items", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1) })
 	UI.List(list, pad)
@@ -440,19 +473,22 @@ local function buildMenu(layer)
 			selectItem(i)
 			activate(it)
 		end)
-		-- staggered entrance
-		local goal = title.Position
-		title.Position = goal + UDim2.fromOffset(-30, 0)
-		task.delay(0.55 + i * 0.05, function()
-			if title.Parent then
-				UI.Tween(title, { TextTransparency = (i == sel) and 0 or (it.locked and 0.72 or 0.32), Position = (i == sel) and UDim2.fromOffset(62, 0) or goal }, UI.Motion.slow)
-			end
-		end)
 	end
 	sel = 1
 	selectItem(1, true)
-	for _, fr in ipairs(itemFrames) do
-		fr.title.TextTransparency = 1
+	if intro then
+		-- staggered entrance (the selected look is restored by the tween targets)
+		for i, fr in ipairs(itemFrames) do
+			local it = items[i]
+			local goal = fr.title.Position
+			fr.title.TextTransparency = 1
+			fr.title.Position = goal + UDim2.fromOffset(-30, 0)
+			task.delay(0.55 + i * 0.05, function()
+				if fr.title.Parent then
+					UI.Tween(fr.title, { TextTransparency = (i == sel) and 0 or (it.locked and 0.72 or 0.32), Position = goal }, UI.Motion.slow)
+				end
+			end)
+		end
 	end
 	return menu
 end
@@ -477,7 +513,7 @@ local function buildStatus(layer)
 		return
 	end
 	local small = compact()
-	local bar = UI.Frame(layer, { Name = "StatusBar", BackgroundTransparency = 1, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -48, 0, small and 40 or 64), Size = UDim2.fromOffset(600, 40) })
+	local bar = UI.Frame(layer, { Name = "StatusBar", BackgroundTransparency = 1, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, small and -32 or -48, 0, small and 62 or 64), Size = UDim2.fromOffset(600, 40) })
 	UI.List(bar, 8, true, Enum.HorizontalAlignment.Right)
 	chip(bar, "DAY", tostring(P.day or 1), T.text, 1)
 	chip(bar, "PURSE", Config.Money(P.money or 0), T.gold, 2)
@@ -541,6 +577,9 @@ end
 
 local function buildHints(layer, list)
 	local small = compact()
+	if small then
+		return nil -- phones: no keyboard hints, and the menu needs the room
+	end
 	local bar = UI.Frame(layer, { Name = "Hints", BackgroundTransparency = 1, AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, small and 52 or 72, 1, small and -16 or -30), Size = UDim2.fromOffset(700, 26) })
 	UI.List(bar, 18, true)
 	if UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled then
@@ -558,7 +597,8 @@ end
 ------------------------------------------------------------------------
 local function screenHeader(layer, kicker, title)
 	local small = compact()
-	local head = UI.Frame(layer, { Name = "Header", BackgroundTransparency = 1, Position = UDim2.fromOffset(small and 52 or 72, small and 30 or 56), Size = UDim2.new(1, -150, 0, small and 64 or 86) })
+	-- below the engine's top bar buttons on phones
+	local head = UI.Frame(layer, { Name = "Header", BackgroundTransparency = 1, Position = UDim2.fromOffset(small and 52 or 72, small and 52 or 56), Size = UDim2.new(1, -150, 0, small and 64 or 86) })
 	local back = UI.Button(head, "", { Name = "Back", Size = UDim2.fromOffset(small and 40 or 46, small and 40 or 46), Position = UDim2.fromOffset(0, small and 14 or 20), BackgroundColor3 = T.panel2,
 		BackgroundTransparency = 0.25 }, function()
 		show("home")
@@ -575,22 +615,38 @@ local function screenCareer(layer)
 	local small = compact()
 	screenHeader(layer, "MY CAREER", "FIGHTER CARD")
 	local w = math.min(1260, canvasW - (small and 104 or 144))
-	local h = math.min(640, canvasH - (small and 168 or 236))
-	local card = FighterCard.Full(layer, P, { Size = UDim2.fromOffset(w, h), Position = UDim2.fromOffset(small and 52 or 72, small and 104 or 158) })
+	local top = small and 124 or 158
+	local h = math.min(640, canvasH - top - (small and 14 or 78))
+	-- the photo is a snapshot: let a raised guard drop first so the face and physique show
+	if scene then
+		scene.relax = true
+		if scene.char and scene.char:GetAttribute("Pose") == "guard" then
+			scene.char:SetAttribute("Pose", nil)
+			scene.guard = false
+			task.wait(0.45)
+			if view ~= "career" then
+				return
+			end
+		end
+	end
+	local card = FighterCard.Full(layer, P, { Size = UDim2.fromOffset(w, h), Position = UDim2.fromOffset(small and 52 or 72, top), compact = small })
 	card.Name = "Card"
-	local actions = UI.Frame(layer, { Name = "Actions", BackgroundTransparency = 1, AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, small and -52 or -72, 1, small and -12 or -28), Size = UDim2.fromOffset(760, 46) })
+	-- actions: bottom right; on phones they sit in the header row
+	local actions = UI.Frame(layer, { Name = "Actions", BackgroundTransparency = 1, AnchorPoint = Vector2.new(1, small and 0 or 1),
+		Position = small and UDim2.new(1, -40, 0, 66) or UDim2.new(1, -72, 1, -28), Size = UDim2.fromOffset(760, small and 40 or 46) })
 	UI.List(actions, 10, true, Enum.HorizontalAlignment.Right)
-	UI.Button(actions, "CAREER HUB", { Size = UDim2.fromOffset(200, 44), BackgroundColor3 = T.gold, LayoutOrder = 3 }, function()
+	local bh = small and 38 or 44
+	UI.Button(actions, "CAREER HUB", { Size = UDim2.fromOffset(small and 150 or 200, bh), BackgroundColor3 = T.gold, LayoutOrder = 3 }, function()
 		MainMenu.Close(function()
 			State.open.Hub("Career")
 		end)
 	end)
-	UI.Button(actions, "PHYSIQUE", { Size = UDim2.fromOffset(160, 44), LayoutOrder = 2 }, function()
+	UI.Button(actions, "PHYSIQUE", { Size = UDim2.fromOffset(small and 120 or 160, bh), LayoutOrder = 2 }, function()
 		MainMenu.Close(function()
 			State.open.Hub("Body")
 		end)
 	end)
-	UI.Button(actions, "LEGACY", { Size = UDim2.fromOffset(150, 44), LayoutOrder = 1 }, function()
+	UI.Button(actions, "LEGACY", { Size = UDim2.fromOffset(small and 110 or 150, bh), LayoutOrder = 1 }, function()
 		MainMenu.Close(function()
 			State.open.Hub("Legacy")
 		end)
@@ -717,7 +773,7 @@ local function screenRankings(layer)
 	end)
 	UI.Icon(prev, "left", 12, T.text, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5) })
 	local wc = Config.WeightClasses[rankClass]
-	UI.Chip(controls, string.format("%s  ·  %d LBS", wc.name, wc.limit), T.text, { order = 2, h = 38, TextSize = 13 })
+	UI.Chip(controls, string.format("%d LBS LIMIT  ·  DIVISION %d OF %d", wc.limit, rankClass, #Config.WeightClasses), T.text, { order = 2, h = 38, TextSize = 13 })
 	local nextB = UI.Button(controls, "", { Size = UDim2.fromOffset(40, 38), LayoutOrder = 3 }, function()
 		rankClass = math.min(#Config.WeightClasses, rankClass + 1)
 		show("rankings", true)
@@ -759,6 +815,16 @@ local function screenRankings(layer)
 		UI.Corner(note, 6)
 		UI.Text(note, "You're an amateur: win 4 amateur bouts to turn pro and enter the world rankings.", { TextSize = 13, TextColor3 = T.gold, Position = UDim2.fromOffset(14, 0),
 			Size = UDim2.new(1, -28, 1, 0), AutomaticSize = Enum.AutomaticSize.None })
+	end
+	-- open on the champion's scouting report (or yours, once ranked)
+	local first
+	for _, e in ipairs(res.list or {}) do
+		if not e.isPlayer then
+			first = first or e
+		end
+	end
+	if scout and first then
+		task.spawn(scoutPanel, scout, first.id)
 	end
 	for i, e in ipairs(res.list or {}) do
 		rankRow(list, e, i, function(entry)
@@ -872,6 +938,9 @@ function show(name, instant)
 	end
 	local from = view
 	view = name
+	if scene then
+		scene.relax = name == "career"
+	end
 	if name == "home" then
 		layers.screen.Visible = false
 		UI.Clear(layers.screen)
@@ -1001,7 +1070,9 @@ function MainMenu.Open(which)
 	end)
 	buildBackdrop(layers.backdrop)
 	view = "home"
+	intro = true
 	buildHome()
+	intro = false
 	if which and which ~= "home" then
 		show(which, true)
 	end

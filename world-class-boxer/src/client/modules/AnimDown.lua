@@ -314,8 +314,6 @@ local function build(name, p, rig, d, t)
 		faceDown(p, rig)
 	elseif name == "sit" then
 		sitDown(p, rig)
-	elseif name == "onBack" then
-		onBack(p, rig)
 	elseif name == "hipSit" then
 		hipSit(p, rig, s)
 	elseif name == "onSide" then
@@ -330,7 +328,7 @@ local function build(name, p, rig, d, t)
 		sitRopes(p, rig, true)
 	elseif name == "slump" then
 		slump(p, rig, t, d.ns)
-	else
+	else -- "onBack" and anything unknown
 		onBack(p, rig)
 	end
 end
@@ -503,7 +501,10 @@ local function timber(p, rig, d, dt, t)
 	-- rotate the whole body about the ground point between the feet; the pelvis lowers by the body's
 	-- thickness at the end so he lies ON the canvas, not in it
 	local lie = smooth(abs(th) / 1.42)
-	p.Root = CF(0, -fh + 0.45 * lie * 0, 0) * A(th, 0, 0) * CF(0, fh, 0) * CF(0, -0.38 * lie, 0)
+	-- backwards he pivots on the heels, forwards on the toes; lying, his back (chest) rests ON the
+	-- canvas, so the body rises by half its thickness as it goes flat
+	local pz = d.timber > 0 and 0.3 or -0.45
+	p.Root = CF(0, 0.5 * lie, 0) * CF(0, -fh, pz) * A(th, 0, 0) * CF(0, fh, -pz)
 	-- stiff legs, locked knees; the arms freeze (one fencing arm up, stiff)
 	p.LH = A(0.05, 0, -0.05)
 	p.RH = A(0.05, 0, 0.05)

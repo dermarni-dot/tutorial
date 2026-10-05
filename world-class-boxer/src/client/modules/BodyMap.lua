@@ -134,17 +134,21 @@ local function eachRegion(self, fn)
 	end
 end
 
--- weights: { [partId] = number } (any scale; normalised to the biggest); color = the highlight
-function BodyMap:SetTargets(weights, color)
+-- weights: { [partId] = number } (any scale; normalised to the biggest, or to scaleMax when given);
+-- color = the highlight
+function BodyMap:SetTargets(weights, color, scaleMax)
 	color = color or T.red
 	local max = 0
 	for _, w in pairs(weights or {}) do
 		max = math.max(max, tonumber(w) or 0)
 	end
+	if scaleMax then
+		max = scaleMax
+	end
 	self.weights = {}
 	eachRegion(self, function(id, f)
 		local w = weights and tonumber(weights[id]) or 0
-		local k = max > 0 and w / max or 0
+		local k = max > 0 and math.clamp(w / max, 0, 1) or 0
 		self.weights[id] = k
 		local stroke = f:FindFirstChild("Glow")
 		if k > 0.01 then

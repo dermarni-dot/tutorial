@@ -144,7 +144,7 @@ end
 -- opts: Size, Position, framing = "upper" | "full"
 function FighterCard.Photo(parent, opts)
 	opts = opts or {}
-	local holder = UI.Frame(parent, { Name = "Photo", Size = opts.Size or UDim2.fromScale(1, 1), BackgroundColor3 = T.ink, ClipsDescendants = true, ZIndex = opts.ZIndex or 1 })
+	local holder = UI.Frame(parent, { Name = "Photo", Size = opts.Size or UDim2.fromScale(1, 1), BackgroundColor3 = Color3.new(1, 1, 1), ClipsDescendants = true, ZIndex = opts.ZIndex or 1 })
 	if opts.Position then
 		holder.Position = opts.Position
 	end
@@ -204,7 +204,7 @@ local function belt(parent, title, order)
 	UI.Corner(b, 10)
 	UI.Stroke(b, T.gold, 1.5, 0.2)
 	UI.Gradient(b, { Color3.new(1, 1, 1), Color3.fromRGB(150, 150, 150) }, 90)
-	local plate = UI.Frame(b, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(46, 34), BackgroundColor3 = T.gold })
+	local plate = UI.Frame(b, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(46, 34), BackgroundColor3 = Color3.new(1, 1, 1) })
 	UI.Corner(plate, 12)
 	UI.Gradient(plate, { Color3.fromRGB(255, 240, 190), T.goldDeep }, 110)
 	UI.Text(plate, title.world and title.name or title.name:sub(1, 3), { Face = "number", TextSize = 15, TextColor3 = Color3.fromRGB(60, 40, 6), Size = UDim2.fromScale(1, 1),
@@ -258,6 +258,7 @@ end
 ------------------------------------------------------------------------
 function FighterCard.Full(parent, P, opts)
 	opts = opts or {}
+	local small = opts.compact == true
 	local id = P.identity or {}
 	local card = UI.Frame(parent, { Name = "FighterCard", Size = opts.Size or UDim2.fromOffset(1240, 640), BackgroundTransparency = 1 })
 	if opts.Position then
@@ -267,7 +268,7 @@ function FighterCard.Full(parent, P, opts)
 		card.AnchorPoint = opts.AnchorPoint
 	end
 	-- photo column
-	local photoW = 430
+	local photoW = small and 300 or 430
 	local frame = UI.Frame(card, { Name = "PhotoFrame", Size = UDim2.new(0, photoW, 1, 0), BackgroundColor3 = T.ink })
 	UI.Corner(frame, UI.R.xl)
 	UI.Stroke(frame, Color3.new(1, 1, 1), 1, 0.86)
@@ -291,15 +292,16 @@ function FighterCard.Full(parent, P, opts)
 	local bar = UI.Frame(plate, { Position = UDim2.fromOffset(0, 56), Size = UDim2.fromOffset(120, 4), BackgroundColor3 = T.red, ZIndex = 6 })
 	UI.Gradient(bar, Color3.new(1, 1, 1), 0, NumberSequence.new({ NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(1, 1) }))
 
-	-- info column
-	local info = UI.Frame(card, { Name = "Info", Position = UDim2.new(0, photoW + 36, 0, 0), Size = UDim2.new(1, -(photoW + 36), 1, 0), BackgroundTransparency = 1 })
-	UI.List(info, 10)
+	-- info column (scrolls on short screens)
+	local info = UI.Scroll(card, { Name = "Info", Position = UDim2.new(0, photoW + (small and 20 or 36), 0, 0), Size = UDim2.new(1, -(photoW + (small and 20 or 36)), 1, 0) })
+	UI.List(info, small and 8 or 10)
+	UI.Pad(info, 0, 2)
 	UI.Kicker(info, ri.pro and ("PROFESSIONAL BOXER  ·  " .. string.upper(P.className or "") .. " DIVISION") or ("AMATEUR BOXER  ·  " .. string.upper(P.className or "")), T.gold, { order = 1 })
 	local nameHolder = UI.Frame(info, { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 2 })
 	UI.List(nameHolder, -6)
-	nameBlock(nameHolder, P, 66)
+	nameBlock(nameHolder, P, small and 46 or 66)
 	-- the headline numbers
-	local strip = UI.Frame(info, { Name = "Numbers", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 84), LayoutOrder = 3 })
+	local strip = UI.Frame(info, { Name = "Numbers", BackgroundTransparency = 1, Size = UDim2.new(1, -6, 0, small and 64 or 84), LayoutOrder = 3 })
 	UI.List(strip, 10, true)
 	local rankText, champ = FighterCard.BestRank(P)
 	local titles = FighterCard.Titles(P)
@@ -311,11 +313,11 @@ function FighterCard.Full(parent, P, opts)
 		{ rankText, "BEST RANKING", champ and T.gold or T.text },
 	}
 	for i, n in ipairs(numbers) do
-		UI.Stat(strip, n[1], n[2], { Size = UDim2.new(i == 5 and 0.26 or 0.172, -8, 1, 0), valueColor = n[3], valueSize = 38, order = i, scaled = true })
+		UI.Stat(strip, n[1], n[2], { Size = UDim2.new(i == 5 and 0.26 or 0.172, -8, 1, 0), valueColor = n[3], valueSize = small and 28 or 38, order = i, scaled = true })
 	end
 	-- tale of the tape
 	UI.Kicker(info, "TALE OF THE TAPE", T.sub, { order = 4 })
-	local grid = UI.Frame(info, { Name = "Tape", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 116), LayoutOrder = 5 })
+	local grid = UI.Frame(info, { Name = "Tape", BackgroundTransparency = 1, Size = UDim2.new(1, -6, 0, 116), LayoutOrder = 5 })
 	UI.Grid(grid, UDim2.new(0.25, -8, 0, 54), nil, 8)
 	local phys = P.physical or {}
 	local cells = {
