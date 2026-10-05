@@ -549,8 +549,10 @@ local function pageBody()
 		C.weight = math.clamp(C.weight, wc.min, wc.limit)
 		render()
 	end, function(v)
+		-- a division is known by its limit (the walk-around slider below covers its range); on a narrow
+		-- row the limit takes the second line
 		local wc = Config.WeightClasses[v]
-		return string.format("%s (%d-%d)", wc.name, wc.min, wc.limit)
+		return string.format("%s (%d lbs)", wc.name, wc.limit)
 	end)
 	local wc = Config.WeightClasses[C.weightClass]
 	C.weight = math.clamp(C.weight, wc.min, wc.limit)
@@ -680,16 +682,19 @@ local function pageStyle()
 	UI.Header(body, "BOXING STYLE")
 	for _, s in ipairs(Config.Styles) do
 		local selected = C.style == s.id
-		local b = UI.Button(body, "", { Size = UDim2.new(1, 0, 0, 66), BackgroundColor3 = selected and T.panel:Lerp(T.gold, 0.16) or T.panel }, function()
+		-- the card grows with its description (three lines on a phone-width window)
+		local b = UI.Button(body, "", { Size = UDim2.new(1, 0, 0, 66), AutomaticSize = Enum.AutomaticSize.Y, BackgroundColor3 = selected and T.panel:Lerp(T.gold, 0.16) or T.panel }, function()
 			C.style = s.id
 			render()
 		end)
+		UI.New("UIPadding", { PaddingBottom = UDim.new(0, 8), Parent = b })
 		if selected then
 			UI.Stroke(b, T.gold, 2)
 			UI.Frame(b, { Size = UDim2.new(0, 4, 1, -16), Position = UDim2.fromOffset(0, 8), BackgroundColor3 = T.gold })
 		end
 		UI.Text(b, string.upper(s.name), { Face = "display", TextSize = 22, TextColor3 = selected and T.gold or T.text, Position = UDim2.fromOffset(14, 4), Size = UDim2.new(1, -28, 0, 28), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
-		UI.Text(b, s.desc .. "  (" .. modsText(s.mods) .. ")", { TextColor3 = T.sub, TextSize = 13, Position = UDim2.fromOffset(14, 32), Size = UDim2.new(1, -28, 0, 30), AutomaticSize = Enum.AutomaticSize.None })
+		UI.Text(b, s.desc .. "  (" .. modsText(s.mods) .. ")", { TextColor3 = T.sub, TextSize = 13, Position = UDim2.fromOffset(14, 32), Size = UDim2.new(1, -28, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
+			TextYAlignment = Enum.TextYAlignment.Top })
 	end
 	local specs = idsOf(Config.Specialties)
 	UI.Cycler(body, "Specialty", specs, C.specialty, function(v)
@@ -716,13 +721,38 @@ local PAGE_FN = {
 	Body = pageBody, ["Gear & Style"] = pageGear, ["Fight Style"] = pageStyle,
 }
 
-local tabsFrame, nextBtn
+local tabsFrame, nextBtn, randomBtn
 local lastPage
+-- the window is 46% of the canvas (600 at most): under 480 the title and the RANDOM LOOK button
+-- collide, so the button takes the tab grid's free eighth cell instead
+local narrowHeader = false
+local function randomLook()
+	local g = C.look.gender
+	C.look = Looks.Random(math.random(1, 1000000), g)
+	C.look.body.frame = "Athletic"
+	-- a player's body follows training, and fight wear is earned (server-only)
+	C.look.body.physique = "Auto"
+	C.look.battle = nil
+	preview()
+	render()
+end
 function render()
 	if not (shade and shade.Parent) then
 		return
 	end
 	UI.Clear(tabsFrame)
+	if randomBtn then
+		randomBtn.Visible = not narrowHeader
+	end
+	if narrowHeader then
+		local rb = UI.Button(tabsFrame, "RANDOM", { Name = "RandomLook", LayoutOrder = #PAGES + 1, TextSize = 13, BackgroundColor3 = T.panel2, TextColor3 = T.gold }, randomLook)
+		UI.Stroke(rb, T.gold, 1, 0.55)
+	end
+	-- the title runs to the button (wide) or to the window's edge (narrow: no button up there)
+	local title = win and win:FindFirstChild("Title")
+	if title then
+		title.Size = UDim2.new(1, narrowHeader and -56 or -204, 0, title.Size.Y.Offset)
+	end
 	local cur = table.find(PAGES, page) or 1
 	for i, name in ipairs(PAGES) do
 		local done = i < cur
@@ -754,18 +784,27 @@ function render()
 end
 
 -- the live fighter plate (built in Creator.Open)
-local plate, plateFlag, plateNick, plateName, plateInfo, plateKey, plateConn
+local plate, plateFlag, plateNick, plateName, plateInfo, plateConn
+-- the fields the plate shows and what it last showed (compared field by field every frame: no
+-- table or string is built unless something changed)
+local PLATE_FIELDS = { "first", "last", "nickname", "nationality", "weightClass", "style", "age" }
+local plateSeen = {}
 function updatePlate()
 	if not (plate and plate.Parent) then
 		return
 	end
-	local wc = Config.WeightClasses[C.weightClass]
-	local style = Config.FindById(Config.Styles, C.style)
-	local key = table.concat({ C.first, C.last, C.nickname, C.nationality, tostring(C.weightClass), C.style, tostring(C.age) }, "|")
-	if key == plateKey then
+	local same = true
+	for _, k in ipairs(PLATE_FIELDS) do
+		if plateSeen[k] ~= C[k] then
+			plateSeen[k] = C[k]
+			same = false
+		end
+	end
+	if same then
 		return
 	end
-	plateKey = key
+	local wc = Config.WeightClasses[C.weightClass]
+	local style = Config.FindById(Config.Styles, C.style)
 	local first = C.first:gsub("^%s+", ""):gsub("%s+$", "")
 	local last = C.last:gsub("^%s+", ""):gsub("%s+$", "")
 	local name = (first .. " " .. last):gsub("^%s+", "")
@@ -792,16 +831,8 @@ function Creator.Open()
 	UI.Grid(tabsFrame, UDim2.new(0.25, -5, 0, 32), nil, 5)
 	body.Position = UDim2.fromOffset(16, 128)
 	body.Size = UDim2.new(1, -32, 1, -190)
-	UI.Button(win, "RANDOM LOOK", { Size = UDim2.fromOffset(140, 30), Position = UDim2.new(1, -156, 0, 12), TextSize = 13 }, function()
-		local g = C.look.gender
-		C.look = Looks.Random(math.random(1, 1000000), g)
-		C.look.body.frame = "Athletic"
-		-- a player's body follows training, and fight wear is earned (server-only)
-		C.look.body.physique = "Auto"
-		C.look.battle = nil
-		preview()
-		render()
-	end)
+	randomBtn = UI.Button(win, "RANDOM LOOK", { Name = "RandomLook", Size = UDim2.fromOffset(140, 30), Position = UDim2.new(1, -156, 0, 12), TextSize = 13 }, randomLook)
+	narrowHeader = UI.CanvasSize(State.gui).X * 0.46 < 480
 	local nav = UI.Frame(win, { BackgroundTransparency = 1, Position = UDim2.new(0, 16, 1, -54), Size = UDim2.new(1, -32, 0, 42) })
 	UI.Button(nav, "BACK", { Size = UDim2.new(0.3, 0, 1, 0) }, function()
 		local i = table.find(PAGES, page) or 1
@@ -847,15 +878,22 @@ function Creator.Open()
 	plateNick = UI.Text(plate, "", { Font = T.semi, TextSize = 12, TextColor3 = T.gold, Position = UDim2.fromOffset(64, 12), Size = UDim2.new(1, -80, 0, 14), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
 	plateName = UI.Text(plate, "", { Face = "display", TextSize = 34, Position = UDim2.fromOffset(64, 24), Size = UDim2.new(1, -80, 0, 42), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
 	plateInfo = UI.Text(plate, "", { Font = T.semi, TextSize = 12, TextColor3 = T.sub, Position = UDim2.fromOffset(18, 76), Size = UDim2.new(1, -36, 0, 24), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
-	plateKey = nil
-	-- phones: the plate moves to the top-right corner so it never covers the boxer
+	table.clear(plateSeen)
+	-- phones: the plate moves to the top-right corner so it never covers the boxer; a narrow window
+	-- moves RANDOM LOOK into the tab grid (re-rendered only when that changes)
 	local function placePlate()
 		if not (plate and plate.Parent) then
 			return
 		end
-		local small = UI.CanvasSize(plate).Y < 640
+		local canvas = UI.CanvasSize(plate)
+		local small = canvas.Y < 640
 		plate.AnchorPoint = small and Vector2.new(1, 0) or Vector2.new(1, 1)
 		plate.Position = small and UDim2.new(1, -20, 0, 12) or UDim2.new(1, -28, 1, -84)
+		local narrow = canvas.X * 0.46 < 480
+		if narrow ~= narrowHeader then
+			narrowHeader = narrow
+			render()
+		end
 	end
 	placePlate()
 	if plateConn then

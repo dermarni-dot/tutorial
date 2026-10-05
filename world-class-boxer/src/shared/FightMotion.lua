@@ -36,6 +36,19 @@ FightMotion.CATCH_TIME = 2.2
 -- how far inside the rope line a fighter's root stays (FightEngine:ClampToRing)
 FightMotion.ROPE_MARGIN = 1.5
 
+-- Fight spacing (studs, root to root), fitted to the rigs: with their shoulders and arms a jab lands
+-- with the arm nearly straight at about 4.4, and the two guards have about a stud of air between them
+-- at the AI's usual distance (0.72-0.94 of its jab range = 3.4-4.4). Round 1 used 3.5 / 2.85 / 2.6,
+-- where the guards already touched.
+--   base    PunchRange before the punch's Config range multiplier (jab 1.10 -> 4.73)
+--   min     no punch range is shorter (uppercuts / hooks up close)
+--   minSep  the bodies are never pushed closer than this (except in a clinch)
+--   inside  closer than this is "inside" (hooks and uppercuts do more, straights less)
+--   clinch  a clinch can be tied up from this close
+--   pivot   the AI pivots off the ropes when the other man is this close
+--   cover   a hurt AI covers up when the other man is this close
+FightMotion.Spacing = { base = 4.3, min = 3.4, minSep = 3.25, inside = 3.65, clinch = 4.8, pivot = 3.9, cover = 5.8 }
+
 -- seconds the get-up takes per fall (FightEngine sends it in the getup act; the client stages it:
 -- off the back he rolls to his side, onto hands and knees, one knee, then up; off the ropes he pulls
 -- himself up on them). The eight count and the referee check wait for it.
@@ -112,8 +125,9 @@ local function yawOf(dx: number, dz: number): number
 	return math.atan2(-dx, -dz)
 end
 
--- forward falls go past the attacker's shoulder, never through him: diagonal, to the side the blow
--- turned him (or either side for straight shots)
+-- forward falls go past the attacker's shoulder, never through him: diagonal (about 43 degrees, so a
+-- face-first timber fall of a whole body length clears a man backed off to 5 studs), to the side the
+-- blow turned him (or either side for straight shots)
 local function forwardDir(info: FallInfo, roll: number): number
 	local kind = info.kind or "straight"
 	if kind == "hook" or kind == "overhand" then
@@ -121,9 +135,9 @@ local function forwardDir(info: FallInfo, roll: number): number
 		if kind == "overhand" then
 			left = not left
 		end
-		return left and 0.55 or -0.55
+		return left and 0.75 or -0.75
 	end
-	return roll < 0.5 and 0.5 or -0.5
+	return roll < 0.5 and 0.72 or -0.72
 end
 
 -- the direction the blow pushes him, relative to his facing (radians, see DownDir)

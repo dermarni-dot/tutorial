@@ -565,6 +565,25 @@ end
 -- Bars & meters
 ------------------------------------------------------------------------
 -- horizontal bar; returns frame and setter(fraction, color?)
+-- the colour language for meters, one meaning per colour everywhere (fight HUD, gym, body map):
+-- "how much is left" bars (health, head, body, condition) follow the value: green above 60 %, gold
+-- above 35 %, orange above 18 %, red below. Stamina is blue while there is gas, amber from half,
+-- red under a quarter.
+UI.Amber = Color3.fromRGB(255, 178, 46)
+function UI.Ramp(v)
+	v = tonumber(v) or 0
+	return v > 0.6 and T.green or (v > 0.35 and T.gold or (v > 0.18 and T.orange or T.red))
+end
+function UI.StamColor(v)
+	v = tonumber(v) or 0
+	return v >= 0.5 and T.blue or (v >= 0.25 and UI.Amber or T.red)
+end
+-- dark or white text for a label on a solid colour (whichever reads better)
+function UI.InkOn(c)
+	local lum = 0.2126 * c.R + 0.7152 * c.G + 0.0722 * c.B
+	return lum > 0.42 and T.ink or Color3.new(1, 1, 1)
+end
+
 function UI.Bar(parent, props, color)
 	local bg = UI.Frame(parent, props)
 	bg.BackgroundColor3 = T.ink
@@ -616,6 +635,48 @@ function UI.StatRow(parent, label, value, max, color, valueText)
 	set((value or 0) / (max or 100))
 	UI.Text(f, valueText or tostring(math.floor(value or 0)), { Face = "number", Position = UDim2.new(0.86, 0, 0, 0), Size = UDim2.new(0.14, 0, 1, 0), TextSize = 16, AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Right, TextWrapped = false })
 	return f, set
+end
+
+-- A development bar on the 0..100 muscle scale, the same everywhere a muscle level is shown (Body tab,
+-- training cards, session result), so the picture means one thing: the fill is the level now, the
+-- gold tick the frame's potential. opts: value, cap, color (the fill), gain = { from, to } (the level
+-- before in the fill colour, the growth just made in bright green, at least 4 px so a small gain
+-- still shows), pending (the level once tonight's growth lands: a pale green stretch)
+function UI.LevelBar(parent, props, opts)
+	opts = opts or {}
+	local bg = UI.Frame(parent, props)
+	if not props.Name then
+		bg.Name = "Level"
+	end
+	bg.BackgroundColor3 = T.ink
+	bg.BackgroundTransparency = 0.05
+	UI.Corner(bg, UI.R.sm)
+	local function f01(v)
+		return math.clamp((tonumber(v) or 0) / 100, 0, 1)
+	end
+	local function seg(name, a, b, color, transparency, z, minPx)
+		if b - a <= 0 and not minPx then
+			return nil
+		end
+		local s = UI.Frame(bg, { Name = name, Position = UDim2.fromScale(a, 0), Size = UDim2.new(math.max(0, b - a), (b - a) < 0.012 and (minPx or 0) or 0, 1, 0),
+			BackgroundColor3 = color, BackgroundTransparency = transparency or 0, ZIndex = z or 2 })
+		UI.Corner(s, UI.R.sm)
+		return s
+	end
+	if opts.gain then
+		local from, to = f01(opts.gain[1]), f01(opts.gain[2])
+		seg("Before", 0, from, opts.color or T.line, 0, 2)
+		if opts.pending then
+			seg("Tonight", to, math.max(to, f01(opts.pending)), T.green, 0.62, 2)
+		end
+		seg("Gain", from, math.max(from, to), T.green, 0, 3, 4)
+	else
+		seg("Fill", 0, f01(opts.value), opts.color or T.green, 0, 2)
+	end
+	if opts.cap then
+		UI.Frame(bg, { Name = "Cap", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(f01(opts.cap), 0.5), Size = UDim2.new(0, 2, 1, 6), BackgroundColor3 = T.gold, ZIndex = 4 })
+	end
+	return bg
 end
 
 -- a big number over a small caption (stat tile)
@@ -1045,7 +1106,8 @@ function UI.Slider(parent, label, min, max, value, step, onChange, fmt, opts)
 	UI.Corner(knob, 8)
 	UI.Stroke(knob, T.gold, 2)
 	local hit = UI.New("TextButton", { Parent = track, Text = "", BackgroundTransparency = 1, Size = UDim2.new(1, 16, 0, 32), Position = UDim2.new(0, -8, 0.5, -16), Selectable = false })
-	local valText = UI.Text(f, "", { Face = "number", Position = UDim2.new(0.86, 0, 0, 0), Size = UDim2.new(0.14, -14, 1, 0), TextXAlignment = Enum.TextXAlignment.Right, TextSize = 17,
+	-- the value box reaches back to just right of the [+] button: "145 lbs" fits a phone-width row
+	local valText = UI.Text(f, "", { Face = "number", Position = UDim2.new(0.86, -12, 0, 0), Size = UDim2.new(0.14, -2, 1, 0), TextXAlignment = Enum.TextXAlignment.Right, TextSize = 17,
 		AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
 	local cur = value
 	local dragging = false
@@ -1157,8 +1219,9 @@ end
 function UI.Cycler(parent, label, list, value, onChange, display)
 	local f = inputRow(parent, label)
 	local cur = value
+	-- a long value on a narrow row takes a second line before it is cut ("Welterweight (136-147)")
 	local val = UI.Text(f, "", { Name = "Value", Position = UDim2.new(0.36, 40, 0, 0), Size = UDim2.new(0.64, -94, 1, 0), Font = T.semi, TextSize = 15, TextXAlignment = Enum.TextXAlignment.Center,
-		AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
+		AutomaticSize = Enum.AutomaticSize.None, TextWrapped = true, TextTruncate = Enum.TextTruncate.AtEnd, LineHeight = 0.95 })
 	local function show()
 		val.Text = display and display(cur) or tostring(cur)
 	end

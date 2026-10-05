@@ -234,6 +234,23 @@ local function ruleMatches(model, rule, inst, folder)
 	return false
 end
 
+-- a part matched by a rule with guis = true takes its Surface / BillboardGuis with it (text patches: the part
+-- itself is invisible, its gui is what shows)
+local function hideMatched(rec, rule, inst, section)
+	hideInst(rec, inst, section)
+	if rule.guis and inst:IsA("BasePart") then
+		local h = rec.hidden[inst]
+		if h then
+			h.guis = true
+		end
+		for _, g in ipairs(inst:GetChildren()) do
+			if g:IsA("SurfaceGui") or g:IsA("BillboardGui") then
+				hideInst(rec, g, section)
+			end
+		end
+	end
+end
+
 local function applyRules(rec, section, rules)
 	local model = rec.model
 	for _, rule in ipairs(rules) do
@@ -259,7 +276,7 @@ local function applyRules(rec, section, rules)
 			if f then
 				for _, d in ipairs(f:GetDescendants()) do
 					if ruleMatches(model, rule, d, rule.folder) then
-						hideInst(rec, d, section)
+						hideMatched(rec, rule, d, section)
 					end
 				end
 			end
@@ -277,16 +294,16 @@ local function onDescendantAdded(rec, inst)
 		if st.rules and st.active then
 			for _, rule in ipairs(st.rules) do
 				if ruleMatches(rec.model, rule, inst, folder) then
-					hideInst(rec, inst, section)
+					hideMatched(rec, rule, inst, section)
 					break
 				end
 			end
 		end
 	end
-	-- a decal added to a hidden R15 part
+	-- a decal added to a hidden R15 part, a gui added to a part hidden with its guis
 	local parent = inst.Parent
 	local h = parent and rec.hidden[parent]
-	if h and inst:IsA("Decal") then
+	if h and (inst:IsA("Decal") or (h.guis and (inst:IsA("SurfaceGui") or inst:IsA("BillboardGui")))) then
 		for section in pairs(h.sections) do
 			hideInst(rec, inst, section)
 		end
@@ -1698,7 +1715,8 @@ function AnatomyClient.SetMorphs(model, section, piece, weights)
 				end
 			end
 		end
-		ms = { slot = slot, ids = ids, ox = table.create(#ids, 0), oy = table.create(#ids, 0), oz = table.create(#ids, 0), last = {} }
+		ms = { slot = slot, ids = ids, ox = table.create(#ids, 0), oy = table.create(#ids, 0), oz = table.create(#ids, 0), last = {},
+			mark = table.create(#ids, 0), stamp = 0 }
 		pr.morphState = ms
 	end
 	local same = true
@@ -1717,7 +1735,25 @@ function AnatomyClient.SetMorphs(model, section, piece, weights)
 	if same and not pr.morphDirty then
 		return true
 	end
+	-- only the vertices of the blend shapes whose weight moved are rewritten (all of them after offsets
+	-- were written elsewhere)
+	local all = pr.morphDirty == true
 	pr.morphDirty = nil
+	ms.stamp += 1
+	local stamp, mark = ms.stamp, ms.mark
+	for name, mo in pairs(morphs) do
+		local w0, w1 = ms.last[name], weights[name]
+		w0 = type(w0) == "number" and w0 or 0
+		w1 = type(w1) == "number" and w1 or 0
+		if (all or w0 ~= w1) and mo.ids then
+			for _, i in ipairs(mo.ids) do
+				local sl = ms.slot[i]
+				if sl then
+					mark[sl] = stamp
+				end
+			end
+		end
+	end
 	table.clear(ms.last)
 	local ox, oy, oz, slot = ms.ox, ms.oy, ms.oz, ms.slot
 	for k = 1, #ms.ids do
@@ -1741,7 +1777,7 @@ function AnatomyClient.SetMorphs(model, section, piece, weights)
 	return (pcall(function()
 		for k, i in ipairs(ms.ids) do
 			local id = vid[i]
-			if id then
+			if id and mark[k] == stamp then
 				em:SetPosition(id, boxed(pr, pin, i, ox[k], oy[k], oz[k]))
 			end
 		end

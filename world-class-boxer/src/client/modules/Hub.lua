@@ -18,6 +18,12 @@ local rec = State.rec
 local Hub = {}
 local shade, win, content
 local tab = "Career"
+-- every Hub.Render bumps it; a tab that waited on the server stops when it is stale (closed, re-rendered or
+-- rebuilt for another screen size meanwhile), so no rows land in a destroyed or newer list
+local renderId = 0
+local function stale(body, id)
+	return id ~= renderId or not body.Parent
+end
 local TABS = { "Career", "Training", "Body", "Stats", "Gym", "Gear", "Coaches", "Sponsors", "Life", "Rankings", "Rivals", "Shop", "Legacy" }
 Hub.Tabs = TABS -- every tab (the side navigation groups them in NAV)
 -- the side navigation, grouped like a sports game's career menu
@@ -339,7 +345,11 @@ R.Career = function(body, P)
 		}, 44)
 	else
 		UI.Header(body, "FIGHT OFFERS")
+		local myId = renderId
 		local res = State.req("GetOffers")
+		if stale(body, myId) then
+			return
+		end
 		if not res.ok then
 			UI.Line(body, res.err or "No offers", { TextColor3 = T.red })
 		else
@@ -409,31 +419,41 @@ local function gainsText(a)
 	return table.concat(parts, ", ")
 end
 
--- "Best A (87%) · 12 sessions · last 71%" for an activity's training record
-local function recordText(r)
-	if type(r) ~= "table" or (tonumber(r.sessions) or 0) <= 0 then
-		return nil
-	end
-	local grade = Config.GradeFor(r.best)
-	local rgb = Config.GradeInfo(grade).rgb
-	return string.format('<font color="#%02X%02X%02X">Best %s (%d%%)</font>  ·  %d session%s  ·  last %d%%', rgb[1], rgb[2], rgb[3],
-		grade, Config.QualityPct(r.best), r.sessions, r.sessions == 1 and "" or "s", Config.QualityPct(r.last))
-end
 
--- the top muscle parts an activity builds (Config.ExerciseTargets via act.parts), strongest first
+-- the muscle parts an activity builds (Config.ExerciseTargets via act.parts), strongest first:
+-- { { id, w, k = w / strongest } }
 local function topParts(a, n)
 	local list = {}
 	for id, w in pairs(type(a.parts) == "table" and a.parts or {}) do
 		table.insert(list, { id = id, w = tonumber(w) or 0 })
 	end
 	table.sort(list, function(x, y)
-		return x.w > y.w
+		if x.w ~= y.w then
+			return x.w > y.w
+		end
+		return x.id < y.id
 	end)
 	local out = {}
+	local top = list[1] and list[1].w or 1
 	for i = 1, math.min(n or 3, #list) do
-		table.insert(out, Config.MusclePartNames[list[i].id] or list[i].id)
+		list[i].k = top > 0 and list[i].w / top or 0
+		table.insert(out, list[i])
 	end
 	return out
+end
+
+local function compactHub()
+	return UI.CanvasSize(State.gui).Y < 640
+end
+
+-- the frame's potential (cap on the 0..100 muscle scale)
+local function frameCap(P)
+	local frameDef = Config.FindById(Config.BodyTypes, P.appearance and P.appearance.body and P.appearance.body.frame or "") or Config.BodyTypes[2]
+	return 100 * (frameDef.potential or 1), frameDef
+end
+
+local function partLevel(P, id)
+	return tonumber(Config.PartValue and Config.PartValue(P.body, id) or (P.body and P.body[id])) or 0
 end
 
 -- one condition meter tile: big number, caption, bar
@@ -444,21 +464,129 @@ local function meterTile(parent, caption, value, color, order)
 	return f, v
 end
 
+-- the muscle colour for "how hard this exercise works it" (the body map's highlight)
+local WORK_IDLE = BodyMap.Colors.muscle
+local function workColor(k)
+	return WORK_IDLE:Lerp(T.red, 0.35 + 0.65 * math.clamp(k, 0, 1))
+end
+
+-- an exercise card: what it builds (stats), the muscles it works as level bars against the frame's
+-- potential (coloured by how hard it works them), your personal best and sessions, a body map thumbnail
+local CARD_H = 166
+local function exerciseCard(grid, a, P, order, cap)
+	local st = Catalog.Stations[a.station]
+	local lv = math.max(1, P.gym.levels[a.station] or 1)
+	local lvName = st and st.levels[math.min(lv, #st.levels)].name or ""
+	local cost = a.recovery and (a.price and (P.gym.levels.massage or 1) < 2 and money(a.price) or "free") or ("energy " .. (a.id == "Sparring" and "25-45" or tostring(a.energy)))
+	local tile = UI.Frame(grid, { Name = "Activity", LayoutOrder = order, BackgroundColor3 = T.panel, BackgroundTransparency = 0.05 })
+	UI.Corner(tile, UI.R.lg)
+	UI.Stroke(tile, Color3.new(1, 1, 1), 1, 0.92)
+	local accent = UI.Frame(tile, { Size = UDim2.new(0, 3, 1, -24), Position = UDim2.fromOffset(0, 12), BackgroundColor3 = a.recovery and T.blue or T.red })
+	UI.Corner(accent, 2)
+	local THUMB_W = 78
+	local right = THUMB_W + 22
+	UI.Text(tile, string.upper(a.name), { Face = "displayMed", TextSize = 20, Position = UDim2.fromOffset(16, 8), Size = UDim2.new(1, -(right + 90), 0, 24), AutomaticSize = Enum.AutomaticSize.None,
+		TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
+	UI.Chip(tile, cost, a.recovery and T.blue or T.gold, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -right, 0, 10), TextSize = 12 })
+	local detail = a.recovery and a.desc or gainsText(a)
+	UI.Text(tile, detail, { TextSize = 13, TextColor3 = T.sub, Position = UDim2.fromOffset(16, 34), Size = UDim2.new(1, -(right + 12), 0, a.recovery and 52 or 18), AutomaticSize = Enum.AutomaticSize.None,
+		TextYAlignment = Enum.TextYAlignment.Top, TextWrapped = a.recovery == true, TextTruncate = Enum.TextTruncate.AtEnd })
+	-- the muscles it works: name, level against the potential (tick), the level number
+	local listed = {}
+	if not a.recovery then
+		for i, e in ipairs(topParts(a, 3)) do
+			listed[e.id] = e.w
+			local y = 56 + (i - 1) * 21
+			local v = partLevel(P, e.id)
+			UI.Text(tile, string.upper(BodyMap.Short(e.id)), { Font = T.semi, TextSize = 12, TextColor3 = e.k >= 0.75 and T.text or T.sub, Position = UDim2.fromOffset(16, y), Size = UDim2.fromOffset(96, 16),
+				AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
+			UI.LevelBar(tile, { Position = UDim2.fromOffset(116, y + 5), Size = UDim2.new(1, -(right + 116 + 40), 0, 7) }, { value = v, cap = cap, color = workColor(e.k) })
+			UI.Text(tile, string.format("%d", math.floor(v + 0.5)), { Face = "number", TextSize = 15, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -(right + 2), 0, y - 1),
+				Size = UDim2.fromOffset(34, 18), AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Right, TextWrapped = false })
+		end
+	end
+	-- personal best: the grade letter, the best session's quality as a bar, sessions logged
+	local r = P.records and P.records[a.id]
+	local sessions = type(r) == "table" and (tonumber(r.sessions) or 0) or 0
+	local by = CARD_H - 36
+	if sessions > 0 then
+		local grade = Config.GradeFor(r.best)
+		local rgb = Config.GradeInfo(grade).rgb
+		local gcol = Color3.fromRGB(rgb[1], rgb[2], rgb[3])
+		local pct = Config.QualityPct(r.best)
+		UI.Text(tile, grade, { Face = "display", TextSize = 22, TextColor3 = gcol, Position = UDim2.fromOffset(16, by - 4), Size = UDim2.fromOffset(28, 26), AutomaticSize = Enum.AutomaticSize.None,
+			TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false })
+		UI.Text(tile, "BEST", { Font = T.semi, TextSize = 11, TextColor3 = T.sub, Position = UDim2.fromOffset(48, by - 2), Size = UDim2.fromOffset(40, 12), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
+		local _, set = UI.Bar(tile, { Position = UDim2.fromOffset(48, by + 13), Size = UDim2.new(1, -(right + 48 + 92), 0, 6) }, gcol)
+		set(pct / 100)
+		UI.Text(tile, string.format("%d%%  ·  %d×", pct, sessions), { Face = "number", TextSize = 15, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -(right + 2), 0, by + 2),
+			Size = UDim2.fromOffset(88, 18), AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Right, TextWrapped = false })
+	else
+		UI.Text(tile, lvName ~= "" and ("NOT TRIED YET  ·  " .. string.upper(lvName)) or "NOT TRIED YET", { Font = T.semi, TextSize = 12, TextColor3 = T.dim, Position = UDim2.fromOffset(16, by + 2),
+			Size = UDim2.new(1, -(right + 16), 0, 18), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
+	end
+	-- the body map: what it works (recovery: the whole body, cool)
+	local ok, map = pcall(BodyMap.new, tile, { Size = UDim2.fromOffset(THUMB_W, 100), views = "front", labels = false, glow = false, AnchorPoint = Vector2.new(1, 0),
+		Position = UDim2.new(1, -10, 0, 8) })
+	if ok and map then
+		if a.recovery then
+			local all = {}
+			for _, p in ipairs(Config.MuscleParts) do
+				all[p.id] = 0.5
+			end
+			map:SetTargets(all, T.cyan, 1)
+		else
+			-- the thumbnail lights what the card lists (its three main muscles)
+			map:SetTargets(listed, T.red)
+		end
+	end
+	UI.Button(tile, "GO", { Size = UDim2.fromOffset(THUMB_W, 32), AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -10, 1, -10), BackgroundColor3 = T.gold, TextSize = 16 }, function()
+		Hub.Close()
+		if a.id == "Sparring" then
+			State.open.Spar()
+			return
+		end
+		local res = State.req("TravelTo", a.station)
+		if res.ok then
+			task.wait(0.35)
+			State.open.Activity(a.id)
+		else
+			State.toast(res.err or "Can't go there", T.red)
+		end
+	end)
+	return tile
+end
+
 R.Training = function(body, P)
 	local c = P.condition
+	local compact = compactHub()
 	local card = UI.Card(body)
 	UI.Kicker(card, string.format("CONDITION  ·  DAY %d", P.day), T.gold)
-	local meters = UI.Frame(card, { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 70) })
-	UI.List(meters, 8, true)
-	meterTile(meters, "ENERGY", c.energy, c.energy < 25 and T.red or T.gold, 1)
-	meterTile(meters, "HYDRATION", c.hydration, c.hydration < 30 and T.red or T.cyan, 2)
-	meterTile(meters, "NUTRITION", c.nutrition, c.nutrition < 30 and T.red or T.green, 3)
-	meterTile(meters, "FATIGUE", c.fatigue, c.fatigue > 70 and T.red or (c.fatigue > 40 and T.orange or T.green), 4)
-	local chips = UI.Frame(card, { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 24) })
-	UI.List(chips, 6, true)
-	UI.Chip(chips, string.format("Sleep %d%%", math.floor(c.sleepQ * 100)), T.blue, { order = 1 })
-	UI.Chip(chips, string.format("%.1f / %d lbs", P.weight, P.weightLimit), P.overWeight > 0 and T.red or T.text, { order = 2 })
-	UI.Chip(chips, string.format("Body fat %.1f%%", P.body.fat or 14), T.text, { order = 3 })
+	if compact then
+		-- a phone: the condition as one line of chips, so the exercise cards start above the fold
+		local chips = UI.Frame(card, { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 26) })
+		UI.List(chips, 6, true)
+		local function chip(text, color, order)
+			UI.Chip(chips, text, color, { order = order, h = 26, TextSize = 13 })
+		end
+		chip(string.format("ENERGY %d", c.energy), c.energy < 25 and T.red or T.gold, 1)
+		chip(string.format("WATER %d", c.hydration), c.hydration < 30 and T.red or T.cyan, 2)
+		chip(string.format("FOOD %d", c.nutrition), c.nutrition < 30 and T.red or T.green, 3)
+		chip(string.format("FATIGUE %d", c.fatigue), c.fatigue > 70 and T.red or (c.fatigue > 40 and T.orange or T.green), 4)
+		chip(string.format("%.1f/%d LBS", P.weight, P.weightLimit), P.overWeight > 0 and T.red or T.sub, 5)
+	else
+		local meters = UI.Frame(card, { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 70) })
+		UI.List(meters, 8, true)
+		meterTile(meters, "ENERGY", c.energy, c.energy < 25 and T.red or T.gold, 1)
+		meterTile(meters, "HYDRATION", c.hydration, c.hydration < 30 and T.red or T.cyan, 2)
+		meterTile(meters, "NUTRITION", c.nutrition, c.nutrition < 30 and T.red or T.green, 3)
+		meterTile(meters, "FATIGUE", c.fatigue, c.fatigue > 70 and T.red or (c.fatigue > 40 and T.orange or T.green), 4)
+		local chips = UI.Frame(card, { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 24) })
+		UI.List(chips, 6, true)
+		UI.Chip(chips, string.format("Sleep %d%%", math.floor(c.sleepQ * 100)), T.blue, { order = 1, TextSize = 12 })
+		UI.Chip(chips, string.format("%.1f / %d lbs", P.weight, P.weightLimit), P.overWeight > 0 and T.red or T.text, { order = 2, TextSize = 12 })
+		UI.Chip(chips, string.format("Body fat %.1f%%", P.body.fat or 14), T.text, { order = 3, TextSize = 12 })
+	end
 	-- residual fight damage healing day by day, accumulated head trauma, muscle soreness
 	if c.face and (tonumber(c.face.stage) or 0) > 0 then
 		local f = c.face
@@ -478,7 +606,7 @@ R.Training = function(body, P)
 	if (tonumber(c.trauma) or 0) > 0 then
 		UI.StatRow(card, "HEAD TRAUMA", c.trauma, 100, c.trauma >= 40 and T.red or T.orange)
 		if c.trauma >= 40 then
-			UI.Line(card, "Accumulated head trauma weakens your chin. Time between fights lets it settle.", { TextColor3 = T.red, TextSize = 12 })
+			UI.Line(card, "Accumulated head trauma weakens your chin. Time between fights lets it settle.", { TextColor3 = T.red, TextSize = 13 })
 		end
 	end
 	local soreTxt = {}
@@ -489,11 +617,11 @@ R.Training = function(body, P)
 		end
 	end
 	if #soreTxt > 0 then
-		UI.Line(card, "SORE: " .. table.concat(soreTxt, ", ") .. "  - growth is slower on sore muscles; sleep and eat to recover.", { TextColor3 = T.orange, TextSize = 13 })
+		UI.Line(card, "SORE: " .. table.concat(soreTxt, ", ") .. (compact and "" or "  - growth is slower on sore muscles; sleep and eat to recover."), { TextColor3 = T.orange, TextSize = 13 })
 	end
 	if c.fatigue > 70 then
 		UI.Line(card, "OVERTRAINING: gains are cut in half and injury risk is high. Recover (ice bath, massage, stretching) or sleep.", { TextColor3 = T.red, TextSize = 13, Font = T.semi })
-	elseif c.fatigue > 40 then
+	elseif c.fatigue > 40 and not compact then
 		UI.Line(card, "Fatigue is building - gains are dropping. Mix in recovery.", { TextColor3 = T.orange, TextSize = 13 })
 	end
 	for _, inj in ipairs(c.injuries or {}) do
@@ -516,15 +644,17 @@ R.Training = function(body, P)
 		act("NUTRITION BAR", T.panel2, function()
 			Hub.Close()
 			State.open.Nutrition()
-		end, 160),
+		end, compact and 150 or 160),
 		act("DRINK WATER", T.panel2, function()
 			State.open.Water()
-		end, 140),
+		end, compact and 130 or 140),
 		act("SLEEP (END DAY)", T.gold, function()
 			Hub.Close()
 			State.open.Sleep()
-		end, 170),
-	}, 40)
+		end, compact and 160 or 170),
+	}, compact and 36 or 40)
+	local cap = frameCap(P)
+	local cols = (UI.CanvasSize(State.gui).X - (compact and 120 or 260)) >= 700 and 2 or 1
 	for _, area in ipairs(AREAS) do
 		local list = {}
 		for _, a in ipairs(Config.Activities) do
@@ -535,45 +665,9 @@ R.Training = function(body, P)
 		if #list > 0 then
 			UI.Header(body, area)
 			local grid = UI.Frame(body, { BackgroundTransparency = 1, Size = UDim2.new(1, -8, 0, 0), AutomaticSize = Enum.AutomaticSize.Y })
-			UI.Grid(grid, UDim2.new(0.5, -6, 0, 132), nil, 10)
+			UI.Grid(grid, UDim2.new(1 / cols, cols > 1 and -6 or 0, 0, CARD_H), nil, 10)
 			for i, a in ipairs(list) do
-				local st = Catalog.Stations[a.station]
-				local lv = math.max(1, P.gym.levels[a.station] or 1)
-				local lvName = st and st.levels[math.min(lv, #st.levels)].name or ""
-				local cost = a.recovery and (a.price and (P.gym.levels.massage or 1) < 2 and money(a.price) or "free") or ("energy " .. (a.id == "Sparring" and "25-45" or tostring(a.energy)))
-				local tile = UI.Frame(grid, { Name = "Activity", LayoutOrder = i, BackgroundColor3 = T.panel, BackgroundTransparency = 0.05 })
-				UI.Corner(tile, UI.R.lg)
-				UI.Stroke(tile, Color3.new(1, 1, 1), 1, 0.92)
-				local accent = UI.Frame(tile, { Size = UDim2.new(0, 3, 1, -24), Position = UDim2.fromOffset(0, 12), BackgroundColor3 = a.recovery and T.blue or T.red })
-				UI.Corner(accent, 2)
-				UI.Text(tile, string.upper(a.name), { Face = "displayMed", TextSize = 20, Position = UDim2.fromOffset(16, 10), Size = UDim2.new(1, -110, 0, 24), AutomaticSize = Enum.AutomaticSize.None,
-					TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
-				UI.Chip(tile, cost, a.recovery and T.blue or T.gold, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -12, 0, 12) })
-				local detail = a.recovery and a.desc or gainsText(a)
-				UI.Text(tile, detail, { TextSize = 12, TextColor3 = T.sub, Position = UDim2.fromOffset(16, 36), Size = UDim2.new(1, -28, 0, 30), AutomaticSize = Enum.AutomaticSize.None,
-					TextYAlignment = Enum.TextYAlignment.Top, TextTruncate = Enum.TextTruncate.AtEnd })
-				local works = topParts(a, 3)
-				if #works > 0 and not a.recovery then
-					UI.Text(tile, "WORKS  " .. string.upper(table.concat(works, "  ·  ")), { Font = T.semi, TextSize = 10, TextColor3 = T.orange, Position = UDim2.fromOffset(16, 68), Size = UDim2.new(1, -28, 0, 14),
-						AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
-				end
-				local best = recordText(P.records and P.records[a.id])
-				UI.Text(tile, best or (lvName ~= "" and ("Station: " .. lvName) or ""), { Font = T.semi, TextSize = 11, TextColor3 = T.sub, RichText = best ~= nil, Position = UDim2.new(0, 16, 1, -36),
-					Size = UDim2.new(1, -120, 0, 28), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = true, TextTruncate = Enum.TextTruncate.AtEnd })
-				UI.Button(tile, "GO", { Size = UDim2.fromOffset(84, 34), AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -12, 1, -12), BackgroundColor3 = T.gold, TextSize = 16 }, function()
-					Hub.Close()
-					if a.id == "Sparring" then
-						State.open.Spar()
-						return
-					end
-					local r = State.req("TravelTo", a.station)
-					if r.ok then
-						task.wait(0.35)
-						State.open.Activity(a.id)
-					else
-						State.toast(r.err or "Can't go there", T.red)
-					end
-				end)
+				exerciseCard(grid, a, P, i, cap)
 			end
 		end
 	end
@@ -607,83 +701,143 @@ local function exerciseGuide()
 	return lines
 end
 
+-- the exercise that works a muscle part hardest (ties: the cheaper one)
+local function bestExerciseFor(id)
+	local best, bw = nil, 0
+	for _, a in ipairs(Config.Activities) do
+		local w = not a.recovery and type(a.parts) == "table" and tonumber(a.parts[id]) or 0
+		if w > bw + 1e-6 or (best and math.abs(w - bw) <= 1e-6 and w > 0 and (tonumber(a.energy) or 99) < (tonumber(best.energy) or 99)) then
+			best, bw = a, w
+		end
+	end
+	return best
+end
+
+local function startExercise(a)
+	Hub.Close()
+	if a.id == "Sparring" then
+		State.open.Spar()
+		return
+	end
+	local res = State.req("TravelTo", a.station)
+	if res.ok then
+		task.wait(0.35)
+		State.open.Activity(a.id)
+	else
+		State.toast(res.err or "Can't go there", T.red)
+	end
+end
+
 R.Body = function(body, P)
-	local c = UI.Card(body, { stroke = T.gold })
-	local frameDef = Config.FindById(Config.BodyTypes, P.appearance.body.frame) or Config.BodyTypes[2]
-	local top = UI.Frame(c, { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 236) })
-	-- the body map: every muscle part lit by how far it is developed toward the frame's potential
-	local map = BodyMap.new(top, { Size = UDim2.fromOffset(236, 236) })
+	local compact = compactHub()
+	local cap, frameDef = frameCap(P)
 	local dev = {}
 	for _, part in ipairs(Config.MuscleParts) do
-		dev[part.id] = tonumber(P.body[part.id]) or tonumber(P.body[part.group]) or 0
+		dev[part.id] = partLevel(P, part.id)
 	end
-	map:SetTargets(dev, T.gold, 100 * frameDef.potential)
-	local info = UI.Frame(top, { BackgroundTransparency = 1, Position = UDim2.fromOffset(256, 0), Size = UDim2.new(1, -256, 1, 0) })
+	-- the physique hero: the body map coloured by development toward the frame's potential (dark =
+	-- untrained, gold = at the potential) beside the physique and the three muscles to train next
+	local c = UI.Card(body, { stroke = T.gold })
+	local mapW, mapH = compact and 220 or 330, compact and 290 or 420
+	local top = UI.Frame(c, { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, mapH) })
+	local map = BodyMap.new(top, { Size = UDim2.fromOffset(mapW, mapH), legend = true })
+	map:SetDevelopment(dev, cap)
+	local info = UI.Frame(top, { BackgroundTransparency = 1, Position = UDim2.fromOffset(mapW + 24, 0), Size = UDim2.new(1, -(mapW + 24), 1, 0) })
 	UI.List(info, 6)
 	UI.Kicker(info, "PHYSIQUE", T.gold, { order = 1 })
-	UI.Title(info, tostring(P.physique or "?"):upper(), { TextSize = 40, Size = UDim2.new(1, 0, 0, 44), LayoutOrder = 2, TextTruncate = Enum.TextTruncate.AtEnd })
+	UI.Title(info, tostring(P.physique or "?"):upper(), { TextSize = compact and 32 or 40, Size = UDim2.new(1, 0, 0, compact and 36 or 44), LayoutOrder = 2, TextTruncate = Enum.TextTruncate.AtEnd })
 	if P.physiqueDesc and P.physiqueDesc ~= "" then
-		UI.Line(info, P.physiqueDesc, { TextSize = 14, LayoutOrder = 3 })
+		UI.Line(info, P.physiqueDesc, { TextSize = 14, LayoutOrder = 3, TextColor3 = T.sub })
 	end
-	if P.physiquePinned then
-		UI.Line(info, "Look chosen in the creator: training still grows every muscle, the silhouette keeps this archetype.", { TextColor3 = T.sub, TextSize = 12, LayoutOrder = 4 })
+	if P.physiquePinned and not compact then
+		UI.Line(info, "Look chosen in the creator: training still grows every muscle, the silhouette keeps this archetype.", { TextColor3 = T.sub, TextSize = 13, LayoutOrder = 4 })
 	end
-	UI.Line(info, "Brighter muscles are more developed. Train what is dark.", { TextColor3 = T.sub, TextSize = 12, LayoutOrder = 5 })
+	-- the three least developed muscles (against the potential), each with the exercise that builds it
+	local order = {}
+	for _, part in ipairs(Config.MuscleParts) do
+		table.insert(order, { id = part.id, v = dev[part.id] or 0 })
+	end
+	table.sort(order, function(a, b)
+		if a.v ~= b.v then
+			return a.v < b.v
+		end
+		return a.id < b.id
+	end)
+	UI.Kicker(info, "TRAIN NEXT  ·  YOUR WEAKEST MUSCLES", T.red, { order = 5 })
+	for i = 1, 3 do
+		local e = order[i]
+		if not e then
+			break
+		end
+		local ex = bestExerciseFor(e.id)
+		local row = UI.Frame(info, { BackgroundColor3 = T.panel2, BackgroundTransparency = 0.45, Size = UDim2.new(1, 0, 0, 54), LayoutOrder = 5 + i })
+		UI.Corner(row, UI.R.md)
+		UI.Text(row, string.upper(BodyMap.Short(e.id)) .. (ex and string.format('<font color="#%s">  ·  %s</font>', T.sub:ToHex(), string.upper(ex.name)) or ""), {
+			Face = "displayMed", TextSize = 18, RichText = true, Position = UDim2.fromOffset(12, 4), Size = UDim2.new(1, -150, 0, 22), AutomaticSize = Enum.AutomaticSize.None,
+			TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
+		UI.LevelBar(row, { Position = UDim2.fromOffset(12, 32), Size = UDim2.new(1, -196, 0, 8) }, { value = e.v, cap = cap, color = BodyMap.DevColor(e.v / cap) })
+		UI.Text(row, string.format("%d / %d", math.floor(e.v + 0.5), math.floor(cap + 0.5)), { Face = "number", TextSize = 15, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -140, 0, 26),
+			Size = UDim2.fromOffset(52, 18), AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Right, TextWrapped = false })
+		if ex then
+			UI.Button(row, "TRAIN THIS", { Size = UDim2.fromOffset(120, 34), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -10, 0.5, 0), BackgroundColor3 = T.gold, TextColor3 = T.bg, TextSize = 14 }, function()
+				startExercise(ex)
+			end)
+		end
+	end
 	-- the archetype ladder: where this build sits among the physiques the game recognises
 	local row = UI.Frame(c, { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 26) })
 	UI.List(row, 6, true)
 	for i, ph in ipairs(Config.Physiques) do
 		local cur = ph.id == P.physiqueId or ph.name == P.physique
 		if cur then
-			UI.Badge(row, ph.name, T.gold, { order = i, h = 26 })
-		else
-			UI.Chip(row, ph.name, T.sub, { order = i, h = 26 })
+			UI.Badge(row, ph.name, T.gold, { order = i, h = 26, TextSize = 12 })
+		elseif not compact then
+			UI.Chip(row, ph.name, T.sub, { order = i, h = 26, TextSize = 12 })
 		end
 	end
 	local fat = P.body.fat or 14
 	local ph = Config.FindById(Config.Physiques, P.physiqueId or "")
 	local def = Config.Definition(fat, ph and ph.defBonus or 0)
-	UI.Line(c, string.format("Height %s  -  Reach %d in  -  Weight %.1f lbs  -  Frame: %s",
-		Config.HeightText(P.physical.height), P.physical.reach, P.weight, P.appearance.body.frame), { TextSize = 14 })
+	UI.Line(c, string.format("Height %s  ·  Reach %d in  ·  Weight %.1f lbs  ·  Frame: %s (potential %d)",
+		Config.HeightText(P.physical.height), P.physical.reach, P.weight, P.appearance.body.frame, math.floor(cap + 0.5)), { TextSize = 14 })
 	UI.StatRow(c, "Body fat", fat - 6, 24, fat > 18 and T.orange or T.green, string.format("%.1f%%", fat))
 	UI.StatRow(c, "Definition", def * 100, 100, Color3.fromRGB(150, 200, 255), string.format("%d%%", math.floor(def * 100 + 0.5)))
 	UI.StatRow(c, "Vascularity", P.body.vasc or 0, 100, Color3.fromRGB(110, 150, 230), string.format("%d", math.floor(P.body.vasc or 0)))
 	local fat2 = fat >= Config.BodyFat.bellyAt and "A soft belly is showing - cardio and clean meals bring the abs back."
 		or (def >= Config.BodyFat.absRow4Def and "Shredded: full eight-pack, veins and muscle separation on show."
 		or (def >= 0.4 and "Abs are visible; drop a little more fat for full separation." or "Muscles are smooth under the skin - lower body fat brings out definition."))
-	UI.Line(c, fat2, { TextColor3 = T.sub, TextSize = 12 })
+	UI.Line(c, fat2, { TextColor3 = T.sub, TextSize = 13 })
 
-	-- every muscle under its group; soreness tints the bar
-	local cap = 100 * frameDef.potential
+	-- every muscle under its group: the level bar (fill = level, gold tick = your frame's potential)
 	local sore = P.condition and P.condition.sore or {}
 	local m = UI.Card(body)
-	UI.Line(m, string.format("MUSCLE DEVELOPMENT  (your frame's potential: %d)", math.floor(cap)), { Font = T.bold, TextColor3 = T.gold })
+	UI.Kicker(m, "MUSCLE DEVELOPMENT", T.gold)
+	UI.Line(m, string.format("Bars fill toward 100; the gold tick is your frame's potential (%d). Soreness shows in orange.", math.floor(cap + 0.5)), { TextColor3 = T.sub, TextSize = 13 })
+	local function levelRow(parent, label, v, h, strong, labelColor)
+		local f = UI.Frame(parent, { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, h) })
+		UI.Text(f, label, { Font = strong and T.semi or T.font, TextSize = strong and 14 or 13, TextColor3 = labelColor or (strong and T.text or T.sub), Size = UDim2.new(0.34, 0, 1, 0),
+			AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
+		UI.LevelBar(f, { Position = UDim2.new(0.34, 0, 0.5, strong and -5 or -3), Size = UDim2.new(0.52, 0, 0, strong and 10 or 6) }, { value = v, cap = cap, color = BodyMap.DevColor(v / cap) })
+		UI.Text(f, string.format("%.1f", v), { Face = "number", TextSize = strong and 16 or 14, Position = UDim2.new(0.86, 0, 0, 0), Size = UDim2.new(0.14, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.None,
+			TextXAlignment = Enum.TextXAlignment.Right, TextWrapped = false })
+		return f
+	end
 	for _, k in ipairs(Config.MuscleKeys) do
 		local sv = tonumber(sore[k]) or 0
-		local gcol = sv >= 0.4 and T.orange or Color3.fromRGB(150, 200, 255)
-		local gname = Config.MuscleNames[k]:upper() .. (sv >= 0.1 and string.format("  (sore %d%%)", math.floor(sv * 100)) or "")
-		local gr = UI.StatRow(m, gname, P.body[k] or 0, cap, gcol, string.format("%.1f", P.body[k] or 0))
-		gr:FindFirstChildOfClass("TextLabel").Font = T.bold
+		local gname = Config.MuscleNames[k]:upper() .. (sv >= 0.1 and string.format("  ·  SORE %d%%", math.floor(sv * 100)) or "")
+		levelRow(m, gname, tonumber(P.body[k]) or 0, 26, true, sv >= 0.4 and T.orange or nil)
 		for _, part in ipairs(Config.MuscleGroupParts[k] or {}) do
-			local v = tonumber(P.body[part.id]) or tonumber(P.body[k]) or 0
-			local r = UI.StatRow(m, "      " .. part.name, v, cap, Color3.fromRGB(110, 160, 220), string.format("%.1f", v))
-			r.Size = UDim2.new(1, 0, 0, 18)
-			for _, t in ipairs(r:GetChildren()) do
-				if t:IsA("TextLabel") then
-					t.TextSize = 12
-					t.TextColor3 = T.sub
-				end
-			end
+			levelRow(m, "      " .. BodyMap.Short(part.id), dev[part.id] or 0, 20, false)
 		end
 	end
 
 	-- flex in front of the mirror: shows off the pump, veins and every muscle you built
 	local fl = UI.Card(body)
-	UI.Line(fl, "FLEX", { Font = T.bold, TextColor3 = T.gold })
-	UI.Line(fl, "Strike a pose wherever you stand. Freshly trained muscles show a pump and the veins come up.", { TextColor3 = T.sub, TextSize = 12 })
+	UI.Kicker(fl, "FLEX", T.gold)
+	UI.Line(fl, "Strike a pose wherever you stand. Freshly trained muscles show a pump and the veins come up.", { TextColor3 = T.sub, TextSize = 13 })
 	local flexRow = UI.Row(fl, 34)
 	for _, pose in ipairs((Config.Pump and Config.Pump.poses) or {}) do
-		UI.Button(flexRow, FLEX_NAMES[pose] or pose, { Size = UDim2.fromOffset(132, 32), TextSize = 12 }, function()
+		UI.Button(flexRow, FLEX_NAMES[pose] or pose, { Size = UDim2.fromOffset(132, 32), TextSize = 13 }, function()
 			local r = State.req("Flex", pose)
 			if r.ok then
 				Hub.Close()
@@ -694,9 +848,9 @@ R.Body = function(body, P)
 	end
 
 	local g = UI.Card(body)
-	UI.Line(g, "WHAT BUILDS WHAT", { Font = T.bold, TextColor3 = T.gold })
+	UI.Kicker(g, "WHAT BUILDS WHAT", T.gold)
 	for _, line in ipairs(exerciseGuide()) do
-		UI.Line(g, line, { TextSize = 12, TextColor3 = T.sub })
+		UI.Line(g, line, { TextSize = 13, TextColor3 = T.sub })
 	end
 	UI.Line(body, "Every session grows the muscles it works; most of the growth lands overnight if you sleep and eat well. Muscles you neglect for a week start to fade. Muscle adds punching power and weight; fat costs stamina and makes weight harder to make. Bulk up and you may need to move up a division.", { TextColor3 = T.sub, TextSize = 13 })
 end
@@ -1193,8 +1347,9 @@ R.Rankings = function(body, P)
 			Hub.Render()
 		end)
 	end
+	local myId = renderId
 	local res = State.req("GetRankings", rankClass, rankOrg)
-	if not res.ok then
+	if not res.ok or stale(body, myId) then
 		return
 	end
 	if P.tier < 2 then
@@ -1228,7 +1383,11 @@ R.Rankings = function(body, P)
 end
 
 R.Rivals = function(body, P)
+	local myId = renderId
 	local res = State.req("GetRivals")
+	if stale(body, myId) then
+		return
+	end
 	if not res.ok or #res.list == 0 then
 		UI.Line(body, "No rivals yet. Every opponent remembers you - rematches, revenge missions and trilogies appear as offers when rivalries heat up.", { TextColor3 = T.sub })
 		return
@@ -1332,8 +1491,9 @@ end
 Hub.LegacyBody = legacyBody
 
 R.Legacy = function(body, P)
+	local myId = renderId
 	local res = State.req("GetLegacy")
-	if not res.ok then
+	if not res.ok or stale(body, myId) then
 		return
 	end
 	legacyBody(body, res.legacy, res.pastCareers)
@@ -1381,6 +1541,7 @@ function Hub.Render()
 		styleTab(name, b)
 	end
 	local y = content.CanvasPosition
+	renderId += 1
 	UI.Clear(content)
 	local ok, err = pcall(R[tab], content, P)
 	if not ok then
@@ -1425,24 +1586,35 @@ function Hub.Open(which)
 	local body
 	shade, win, body = UI.Window(State.gui, "Hub", 1180, 760, "CAREER HUB", { onClose = Hub.Close, scroll = false, kicker = string.format("%s  ·  %s", P.tierName, P.className) })
 	State.windows.Hub = Hub.Close
-	local side = UI.Scroll(body, { Name = "Nav", Size = UDim2.new(0, 176, 1, 0) })
+	-- the side navigation: grouped tabs; on a phone a narrow rail (no group captions, centred labels)
+	-- so the tab's first cards show without scrolling
+	local rail = compactHub()
+	local navW = rail and 76 or 176
+	local side = UI.Scroll(body, { Name = "Nav", Size = UDim2.new(0, navW, 1, 0), ScrollBarThickness = rail and 0 or nil })
 	UI.List(side, 2)
 	tabButtons = {}
 	local order = 0
-	for _, group in ipairs(NAV) do
+	for gi, group in ipairs(NAV) do
 		order += 1
-		UI.Text(side, group[1], { Font = T.semi, TextSize = 11, TextColor3 = T.dim, LayoutOrder = order, Size = UDim2.new(1, -8, 0, 26), AutomaticSize = Enum.AutomaticSize.None,
-			TextYAlignment = Enum.TextYAlignment.Bottom, TextWrapped = false })
+		if rail then
+			if gi > 1 then
+				UI.Frame(side, { Name = "Gap", LayoutOrder = order, Size = UDim2.new(1, -12, 0, 1), BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = 0.88 })
+			end
+		else
+			UI.Text(side, group[1], { Font = T.semi, TextSize = 11, TextColor3 = T.dim, LayoutOrder = order, Size = UDim2.new(1, -8, 0, 26), AutomaticSize = Enum.AutomaticSize.None,
+				TextYAlignment = Enum.TextYAlignment.Bottom, TextWrapped = false })
+		end
 		for _, name in ipairs(group[2]) do
 			order += 1
-			local b = UI.New("TextButton", { Name = name, Text = "", AutoButtonColor = false, BorderSizePixel = 0, Size = UDim2.new(1, -8, 0, 36), LayoutOrder = order,
+			local b = UI.New("TextButton", { Name = name, Text = "", AutoButtonColor = false, BorderSizePixel = 0, Size = UDim2.new(1, rail and -4 or -8, 0, rail and 34 or 36), LayoutOrder = order,
 				BackgroundColor3 = T.panel2, BackgroundTransparency = 1, Parent = side })
 			UI.Corner(b, UI.R.md)
 			UI.Hover(b, { amount = 0.94 })
-			local bar = UI.Frame(b, { Name = "Active", Position = UDim2.fromOffset(0, 8), Size = UDim2.fromOffset(3, 20), BackgroundColor3 = T.gold, Visible = false })
+			local bar = UI.Frame(b, { Name = "Active", Position = UDim2.fromOffset(0, 8), Size = UDim2.fromOffset(3, rail and 18 or 20), BackgroundColor3 = T.gold, Visible = false })
 			UI.Corner(bar, 2)
-			UI.Text(b, string.upper(name), { Name = "Label", Face = "displayMed", TextSize = 18, TextColor3 = T.sub, Position = UDim2.fromOffset(14, 0), Size = UDim2.new(1, -14, 1, 0),
-				AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
+			UI.Text(b, string.upper(name), { Name = "Label", Face = "displayMed", TextSize = rail and 16 or 18, TextColor3 = T.sub, Position = UDim2.fromOffset(rail and 6 or 14, 0),
+				Size = UDim2.new(1, rail and -8 or -14, 1, 0), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false,
+				TextXAlignment = rail and Enum.TextXAlignment.Center or Enum.TextXAlignment.Left })
 			b.MouseButton1Click:Connect(function()
 				tab = name
 				content.CanvasPosition = Vector2.zero
@@ -1451,8 +1623,26 @@ function Hub.Open(which)
 			tabButtons[name] = b
 		end
 	end
-	UI.Frame(body, { Name = "NavLine", Position = UDim2.new(0, 184, 0, 0), Size = UDim2.new(0, 1, 1, 0), BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = 0.92 })
-	content = UI.Scroll(body, { Name = "Content", Position = UDim2.new(0, 200, 0, 0), Size = UDim2.new(1, -200, 1, 0) })
+	UI.Frame(body, { Name = "NavLine", Position = UDim2.new(0, navW + 8, 0, 0), Size = UDim2.new(0, 1, 1, 0), BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = 0.92 })
+	content = UI.Scroll(body, { Name = "Content", Position = UDim2.new(0, navW + (rail and 14 or 24), 0, 0), Size = UDim2.new(1, -(navW + (rail and 14 or 24)), 1, 0) })
+	-- the screen crosses the phone / desktop line (rotation, a resized window): rebuild for it
+	local sizeConn
+	sizeConn = State.gui:GetAttributeChangedSignal("UIScale"):Connect(function()
+		if not (shade and shade.Parent) then
+			sizeConn:Disconnect()
+			return
+		end
+		if compactHub() ~= rail then
+			sizeConn:Disconnect()
+			task.defer(function()
+				if Hub.IsOpen() then
+					local keep = tab
+					Hub.Close()
+					Hub.Open(keep)
+				end
+			end)
+		end
+	end)
 	UI.List(content, 10)
 	UI.Pad(content, 2, 4)
 	Hub.Render()

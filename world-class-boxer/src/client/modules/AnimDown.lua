@@ -123,22 +123,27 @@ local function handsKnees(p, rig)
 	p.RA = A(-0.55, 0, 0)
 end
 
--- face down on the canvas, head turned, one arm up by the head
-local function faceDown(p, rig)
+-- face down on the canvas, head turned, one arm up by the head (out cold: both arms by his sides)
+local function faceDown(p, rig, ko)
 	clear(p)
 	p.Root = CF(0, -2.9, -0.9) * A(-1.55, 0.3, 0)
 	p.W = A(-0.05, 0, 0)
-	p.Neck = A(0.25, 1.15, 0)
+	-- (the head turned onto its cheek and a little back: the chest, not the face, carries him)
+	p.Neck = A(0.45, 1.15, 0)
 	p.LS = A(2.5, 0, -0.45)
 	p.LE = A(0.6, 0, 0)
-	p.RS = A(0.15, 0, 0.3)
+	p.RS = A(0, 0, 0.6)
 	p.RE = A(0.2, 0, 0)
 	p.LH = A(-0.05, 0, -0.15)
-	p.LK = A(-0.9, 0, 0)
+	p.LK = A(-0.15, 0, 0)
 	p.RH = A(0, 0, 0.1)
 	p.RK = A(-0.2, 0, 0)
 	p.LA = A(-0.5, 0, 0)
 	p.RA = A(-0.5, 0, 0)
+	if ko then
+		p.LS = A(0, 0, -0.55)
+		p.LE = A(0.3, 0, 0)
+	end
 end
 
 -- sitting on the canvas: one leg out straight, the other knee up, gloves down beside the hips
@@ -152,12 +157,12 @@ local function sitDown(p, rig)
 	p.LE = A(0.15, 0, 0)
 	p.RS = A(-0.4, 0, 0.35)
 	p.RE = A(0.15, 0, 0)
-	p.LH = A(1.22, 0, -0.12)
+	p.LH = A(1.3, 0, -0.12)
 	p.LK = A(-0.08, 0, 0)
-	p.LA = A(-0.3, 0, 0)
+	p.LA = A(0.25, 0, 0)
 	p.RH = A(1.75, 0, 0.12)
-	p.RK = A(-1.5, 0, 0)
-	p.RA = A(-0.6, 0, 0)
+	p.RK = A(-1.0, 0, 0)
+	p.RA = A(-0.5, 0, 0)
 end
 
 -- the backward collapse's middle: the backside hits, the upper body still folding back, limp
@@ -171,11 +176,11 @@ local function sitSlump(p, rig)
 	p.RS = A(0.05, 0, 0.8)
 	p.RE = A(0.25, 0, 0)
 	p.LH = A(1.0, 0, -0.18)
-	p.LK = A(-0.15, 0, 0)
-	p.LA = A(-0.3, 0, 0)
+	p.LK = A(-0.02, 0, 0)
+	p.LA = A(0.25, 0, 0)
 	p.RH = A(1.25, 0, 0.15)
-	p.RK = A(-0.85, 0, 0)
-	p.RA = A(-0.4, 0, 0)
+	p.RK = A(-0.7, 0, 0)
+	p.RA = A(-0.3, 0, 0)
 end
 
 -- flat on the back, knees up a little, arms out
@@ -183,14 +188,14 @@ local function onBack(p, rig)
 	clear(p)
 	p.Root = CF(0, -2.9, 0.9) * A(1.55, 0, 0)
 	p.W = A(0, 0, 0)
-	p.Neck = A(0.15, 0, 0)
-	p.LS = A(0.3, 0, -1.2)
+	p.Neck = A(-0.3, 0, 0)
+	p.LS = A(0, -0.2, -1.3)
 	p.LE = A(0.4, 0, 0)
-	p.RS = A(0.2, 0, 1.35)
+	p.RS = A(0, 0.15, 1.35)
 	p.RE = A(0.3, 0, 0)
-	p.LH = A(0.35, 0, -0.12)
-	p.LK = A(-0.75, 0, 0)
-	p.LA = A(0.3, 0, 0)
+	p.LH = A(0.2, 0, -0.12)
+	p.LK = A(-0.4, 0, 0)
+	p.LA = A(0.1, 0, 0)
 	p.RH = A(0.12, 0, 0.1)
 	p.RK = A(-0.25, 0, 0)
 end
@@ -201,10 +206,10 @@ local function onBackLimp(p, rig)
 	local t = rig.koTilt or 0.3
 	p.Root = CF(0, -2.9, 1.2) * A(1.57, 0, 0.04)
 	p.W = A(0.02, 0, 0)
-	p.Neck = A(0.2, 0.75 * (t >= 0 and 1 or -1), 0.25)
-	p.LS = A(0.55, 0, -1.45)
+	p.Neck = A(-0.5, 0.35 * (t >= 0 and 1 or -1), 0.08)
+	p.LS = A(0, -0.35, -1.45)
 	p.LE = A(0.25, 0, 0)
-	p.RS = A(0.15, 0, 1.15)
+	p.RS = A(0, 0.2, 1.15)
 	p.RE = A(0.45, 0, 0)
 	p.LH = A(0.55, 0, -0.35)
 	p.LK = A(-1.0, 0, 0)
@@ -216,30 +221,32 @@ end
 -- on the hip, half sitting (the middle of a side fall); s = +1 falls to his right, -1 to his left
 local function hipSit(p, rig, s)
 	clear(p)
-	p.Root = CF(0.35 * s, -2.6, 0.2) * A(0.2, 0, -0.55 * s)
-	p.W = A(-0.1, 0, 0.25 * s)
-	p.Neck = A(-0.2, 0, 0.3 * s)
+	p.Root = CF(0.35 * s, -2.6, 0.2) * A(0.15, 0, -0.75 * s)
+	p.W = A(-0.1, 0, 0.3 * s)
+	p.Neck = A(-0.2, 0, 0.35 * s)
 	local near, far = s > 0 and "R" or "L", s > 0 and "L" or "R"
-	p[near .. "S"] = A(0.3, 0, 0.6 * s)
-	p[near .. "E"] = A(0.4, 0, 0)
+	p[near .. "S"] = A(-0.6, 0, 0.45 * s)
+	p[near .. "E"] = A(0.2, 0, 0)
 	p[far .. "S"] = A(0.9, 0, 0.2 * s)
 	p[far .. "E"] = A(1.0, 0, 0)
-	p.LH = A(1.0, 0, -0.1)
-	p.RH = A(0.9, 0, 0.1)
-	p.LK = A(-1.2, 0, 0)
-	p.RK = A(-1.0, 0, 0)
+	p[near .. "H"] = A(1.2, 0, 0.3 * s)
+	p[near .. "K"] = A(-1.9, 0, 0)
+	p[far .. "H"] = A(1.4, 0, -0.1 * s)
+	p[far .. "K"] = A(-1.4, 0, 0)
+	p[far .. "A"] = A(-0.3, 0, 0)
 end
 
 -- lying on the side, the under arm out in front of the head, the top arm over the body
 local function onSide(p, rig, s)
 	clear(p)
-	p.Root = CF(0.75 * s, -2.8, 0.1) * A(0.15, 0, -1.5 * s)
+	p.Root = CF(0.75 * s, -2.8, 0.1) * A(0.15, 0, -1.52 * s)
 	p.W = A(0.12, 0, 0)
 	p.Neck = A(-0.15, 0, 0.35 * s)
 	local near, far = s > 0 and "R" or "L", s > 0 and "L" or "R"
-	-- (the under arm reaches out past the head, along the canvas)
-	p[near .. "S"] = A(1.55, 0, 0.35 * s)
-	p[near .. "E"] = A(0.35, 0, 0)
+	-- (the under arm stretched out along the canvas above the head, the head resting on it: R15 arms
+	-- hang outside the chest, an arm left under him would prop the whole body up)
+	p[near .. "S"] = A(0.25, 0, 2.9 * s)
+	p[near .. "E"] = A(0.4, 0, 0)
 	p[far .. "S"] = A(0.75, 0, 0.3 * s)
 	p[far .. "E"] = A(1.15, 0, 0)
 	p.LH = A(0.95, 0, 0)
@@ -370,12 +377,12 @@ local function cornerSit(p, rig)
 	p.LE = A(0.75, 0, 0)
 	p.RS = A(-0.25, 0.5, 1.2)
 	p.RE = A(0.8, 0, 0)
-	p.LH = A(1.4, 0, -0.42)
-	p.LK = A(-0.55, 0, 0)
-	p.LA = A(-0.5, 0, 0)
+	p.LH = A(1.35, 0, -0.42)
+	p.LK = A(-0.2, 0, 0)
+	p.LA = A(0.1, 0, 0)
 	p.RH = A(1.3, 0, 0.38)
-	p.RK = A(-0.35, 0, 0)
-	p.RA = A(-0.6, 0, 0)
+	p.RK = A(-0.1, 0, 0)
+	p.RA = A(0.1, 0, 0)
 end
 
 -- out on his feet: knees bent, arms hanging, head down, swaying from the ankles
@@ -397,31 +404,34 @@ end
 -- lying on the back, stirring: knees drawn up, head and shoulders lifting, one elbow under him
 local function backStir(p, rig)
 	onBack(p, rig)
-	p.Root = p.Root * A(-0.25, 0, -0.1)
-	p.Neck = A(-0.5, 0, 0)
-	p.W = A(-0.15, 0, 0)
+	-- (the shoulders curl up at the waist: the pelvis stays flat on the canvas)
+	p.W = A(-0.4, 0, -0.08)
+	p.Neck = A(-0.45, 0, 0)
 	p.LS = A(0.3, 0, -0.55)
 	p.LE = A(1.5, 0, 0)
-	p.LH = A(1.0, 0, -0.1)
-	p.LK = A(-1.6, 0, 0)
-	p.RH = A(0.9, 0, 0.1)
-	p.RK = A(-1.4, 0, 0)
+	p.LH = A(0.6, 0, -0.1)
+	p.LK = A(-1.15, 0, 0)
+	p.LA = A(0.5, 0, 0)
+	p.RH = A(0.5, 0, 0.1)
+	p.RK = A(-1.0, 0, 0)
+	p.RA = A(0.45, 0, 0)
 end
 
--- rolled onto his left side, propped on the forearm, knees drawn up
+-- rolled onto his left side, propped up on the left forearm (upper arm straight down to the canvas,
+-- forearm along it), the top hand reaching across to push, knees drawn up
 local function rollSide(p, rig)
 	clear(p)
-	p.Root = CF(-0.45, -2.6, 0.55) * A(0.5, 0, 1.15)
-	p.W = A(-0.2, 0, -0.2)
-	p.Neck = A(-0.3, 0, -0.35)
-	p.LS = A(1.25, 0, -0.35)
-	p.LE = A(1.35, 0, 0)
-	p.RS = A(1.0, 0, 0.25)
+	p.Root = CF(-0.45, -2.6, 0.45) * A(0.2, 0, 1.25)
+	p.W = A(-0.15, 0, -0.35)
+	p.Neck = A(-0.2, 0, -0.4)
+	p.LS = A(0, 0, -1.5)
+	p.LE = A(1.5, 0, 0)
+	p.RS = A(1.1, 0, 0.3)
 	p.RE = A(0.6, 0, 0)
-	p.LH = A(1.35, 0, 0)
-	p.LK = A(-1.7, 0, 0)
-	p.RH = A(1.2, 0, 0)
-	p.RK = A(-1.6, 0, 0)
+	p.LH = A(1.2, 0, 0)
+	p.LK = A(-1.3, 0, 0)
+	p.RH = A(1.1, 0, 0)
+	p.RK = A(-1.2, 0, 0)
 end
 
 -- face down, pushing up: hands under the shoulders, chest off the canvas, knees still down
@@ -442,22 +452,23 @@ local function pushUp(p, rig)
 	p.RA = A(-0.5, 0, 0)
 end
 
--- sitting, about to rise: leaning forward over a tucked leg, a glove on the canvas beside him
+-- sitting, about to rise: rolled forward onto the right knee, sitting back on that heel, the left foot
+-- flat in front, a glove on the canvas, the other forearm on the knee
 local function sitTuck(p, rig)
 	clear(p)
-	p.Root = CF(0, -2.5, 0.25) * A(-0.35, 0, 0.1)
+	p.Root = CF(0, -2.2, 0.15) * A(-0.25, 0, 0.05)
 	p.W = A(-0.3, 0, 0)
 	p.Neck = A(-0.2, 0, 0)
-	p.LS = A(0.45, 0, -0.35)
-	p.LE = A(0.3, 0, 0)
+	p.LS = A(0.5, 0, -0.2)
+	p.LE = A(0.9, 0, 0)
 	p.RS = A(0.9, 0, 0.1)
-	p.RE = A(0.9, 0, 0)
-	p.LH = A(1.4, 0, -0.1)
-	p.LK = A(-1.7, 0, 0)
-	p.LA = A(0.3, 0, 0)
-	p.RH = A(0.6, 0, 0.2)
-	p.RK = A(-2.0, 0, 0)
-	p.RA = A(-0.6, 0, 0)
+	p.RE = A(0.3, 0, 0)
+	p.LH = A(1.5, 0, -0.1)
+	p.LK = A(-1.6, 0, 0)
+	p.LA = A(0.35, 0, 0)
+	p.RH = A(0.4, 0, 0.12)
+	p.RK = A(-2.3, 0, 0)
+	p.RA = A(0.5, 0, 0)
 end
 
 -- one knee down, pushing off it with a glove on the knee, head up: about to stand
@@ -480,8 +491,8 @@ local function ropeGrab(p, rig, corner)
 		p.RS = A(0.5, 0.5, 2.1)
 	else
 		ropeSit(p, rig)
-		p.LS = A(0.6, 0, -2.2)
-		p.RS = A(0.6, 0, 2.2)
+		p.LS = A(0.6, 0, -1.95)
+		p.RS = A(0.6, 0, 1.95)
 	end
 	p.LE = A(1.0, 0, 0)
 	p.RE = A(1.0, 0, 0)
@@ -555,7 +566,7 @@ local function build(name, p, rig, d, t)
 	elseif name == "handsKnees" then
 		handsKnees(p, rig)
 	elseif name == "faceDown" then
-		faceDown(p, rig)
+		faceDown(p, rig, d and d.ko)
 	elseif name == "sit" then
 		sitDown(p, rig)
 	elseif name == "hipSit" then
@@ -684,9 +695,26 @@ function AnimDown.start(rig, t)
 	if pose == "ropes" or pose == "corner" then
 		d.yaw = yaw -- turns his back to the ropes / the post as he staggers
 	else
-		d.yaw = clamp(yaw, -0.6, 0.6) -- a little variety, never a different fall
+		d.yaw = clamp(yaw, -0.8, 0.8) -- a little variety (and past the attacker), never a different fall
 	end
 	rig.down = d
+	if rig.act and rig.act.kind == "getup" then
+		rig.act = nil -- down again before he was all the way up
+	end
+	-- the fall owns the hips from here: a blow's hip / knee-drop springs would only drag the body around
+	for i = 7, 9 do
+		rig.sx[i], rig.sv[i] = 0, 0
+	end
+	-- a foot caught mid-step comes down where it visibly is (the fall's first instant keeps the feet
+	-- planted: it must not snap back to where the step started, or turn under him)
+	for _, side in ipairs(R.SIDES) do
+		local f = rig.foot and rig.foot[side]
+		if f and f.swing and f.cur then
+			f.P, f.yawW, f.swing, f.curLift, f.want = f.cur, f.curYaw, false, 0, false
+			f.pitchS = f.curPitch or f.pitchS
+			f.lastStep = t
+		end
+	end
 	if ko and ko ~= "standing" and ko ~= "delayed" then
 		AnimDown.slowMo(rig)
 	end
@@ -848,11 +876,18 @@ local function timber(p, rig, d, dt, t)
 	end
 	p[fenceS == "L" and "LE" or "RE"] = A(0.15, 0, 0)
 	p[fenceS == "L" and "RE" or "LE"] = A(0.5, 0, 0)
-	p.Neck = A(d.timber > 0 and 0.25 or -0.2, 0, 0)
 	p.W = A(0, 0, 0)
+	-- the head lags the fall (thrown back / dropped), then rests: on its back the chin comes down (the
+	-- R15 head is deeper than the chest), face first it turns onto a cheek; the impact whips it
 	local lie = smooth(abs(th) / LIE)
-	if lie > 0.95 then
-		p.Neck = p.Neck * A(0, 0.9 * (rig.koTilt or 0.3), 0.3 * (rig.koTilt or 0.3))
+	local tilt = rig.koTilt or 0.3
+	local side = tilt >= 0 and 1 or -1
+	if d.timber > 0 then
+		p.Neck = A(lerp(0.25, -0.55, lie), 0.25 * side * lie, 0.1 * side * lie)
+	else
+		-- (well onto the cheek and back: the R15 head is deeper than the chest, and the chest must
+		-- reach the canvas)
+		p.Neck = A(lerp(-0.2, 0.75, lie), 1.2 * side * lie, 0)
 	end
 end
 
@@ -864,12 +899,15 @@ local function stir(p, rig, d, count, t)
 	end
 	local pose = d.pose
 	if pose == "back" then
-		p.Neck = p.Neck:Lerp(A(-0.55, 0, 0), k)
-		p.Root = p.Root * A(-0.35 * k, 0, -0.5 * k)
+		-- (the shoulders curl up at the waist, the pelvis stays on the canvas; knees up, feet flat)
+		p.Neck = p.Neck:Lerp(A(-0.5, 0, 0), k)
+		p.W = p.W * A(-0.35 * k, 0, -0.1 * k)
+		p.Root = p.Root * A(0, 0, -0.2 * k)
 		p.LS = p.LS:Lerp(A(0.6, 0, -0.45), k)
 		p.LE = p.LE:Lerp(A(1.3, 0, 0), k)
-		p.LH = p.LH:Lerp(A(0.9, 0, 0), k)
-		p.LK = p.LK:Lerp(A(-1.6, 0, 0), k)
+		p.LH = p.LH:Lerp(A(0.6, 0, 0), k)
+		p.LK = p.LK:Lerp(A(-1.15, 0, 0), k)
+		p.LA = p.LA:Lerp(A(0.5, 0, 0), k)
 	elseif pose == "face" or pose == "forward" then
 		p.Root = p.Root * A(0.45 * k, 0, 0)
 		p.LS = p.LS:Lerp(A(1.4, 0, -0.25), k)
@@ -906,6 +944,9 @@ local function onCanvas(rig, p)
 	end
 	local out = rig.fkOut or {}
 	rig.fkOut = out
+	-- (an arm laid on the canvas no longer props the body: rest it again)
+	R.groundSolve(rig, p, out, 0.03)
+	R.liftArms(rig, p, out, 0.04)
 	R.groundSolve(rig, p, out, 0.03)
 	R.liftArms(rig, p, out, 0.04)
 end
@@ -943,11 +984,12 @@ function AnimDown.pose(p, rig, t, dt)
 		lean += ((ref and 1 or 0) - lean) * (1 - math.exp(-dt * 5))
 		d.lean = lean
 		if lean > 0.01 then
+			-- (his head goes onto the referee's shoulder, not into his chest)
 			local lp = rig.root.CFrame:VectorToObjectSpace(off or V3(0, 0, -1))
 			local yaw = math.atan2(-lp.X, -lp.Z)
-			p.Root = CF(0, -0.3 * lean, -0.3 * lean) * A(0, yaw * 0.5 * lean, 0) * p.Root * A(-0.3 * lean, 0, 0)
-			p.W = p.W * A(-0.15 * lean, 0, 0)
-			p.Neck = p.Neck * A(-0.15 * lean, yaw * 0.3 * lean, 0.3 * lean)
+			p.Root = CF(0, -0.3 * lean, -0.02 * lean) * A(0, yaw * 0.5 * lean, 0) * p.Root * A(-0.15 * lean, 0, 0)
+			p.W = p.W * A(-0.1 * lean, 0, 0.1 * lean)
+			p.Neck = p.Neck * A(-0.05 * lean, yaw * 0.3 * lean + 0.55 * lean, 0.25 * lean)
 			-- arms hang over the referee's
 			p.LS = p.LS:Lerp(A(0.75, 0, -0.35), lean)
 			p.RS = p.RS:Lerp(A(0.7, 0, 0.3), lean)

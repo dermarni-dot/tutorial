@@ -6,6 +6,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
 local ProximityPromptService = game:GetService("ProximityPromptService")
+local GuiService = game:GetService("GuiService")
 local TweenService = game:GetService("TweenService")
 local Lighting = game:GetService("Lighting")
 
@@ -65,7 +66,7 @@ UI.Corner(ovrBox, UI.R.md)
 UI.Stroke(ovrBox, T.gold, 1, 0.35)
 local hudOvr = UI.Text(ovrBox, "", { Face = "number", TextSize = 24, TextColor3 = T.gold, Size = UDim2.new(1, 0, 0, 26), Position = UDim2.fromOffset(0, 1), AutomaticSize = Enum.AutomaticSize.None,
 	TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false })
-UI.Text(ovrBox, "OVR", { Font = T.semi, TextSize = 9, TextColor3 = T.sub, Size = UDim2.new(1, 0, 0, 10), Position = UDim2.new(0, 0, 1, -13), AutomaticSize = Enum.AutomaticSize.None,
+UI.Text(ovrBox, "OVR", { Font = T.semi, TextSize = 11, TextColor3 = T.sub, Size = UDim2.new(1, 0, 0, 12), Position = UDim2.new(0, 0, 1, -14), AutomaticSize = Enum.AutomaticSize.None,
 	TextXAlignment = Enum.TextXAlignment.Center })
 local hudTier = UI.Text(hud, "", { Name = "Tier", Font = T.semi, TextSize = 12, TextColor3 = T.gold, LayoutOrder = 2, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
 local nums = UI.Frame(hud, { Name = "Numbers", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 52), LayoutOrder = 3 })
@@ -76,7 +77,7 @@ local bars = UI.Frame(hud, { Name = "Meters", BackgroundTransparency = 1, Size =
 UI.List(bars, 5)
 local function miniBar(label, color, order)
 	local f = UI.Frame(bars, { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 16), LayoutOrder = order })
-	UI.Text(f, label, { Font = T.semi, TextSize = 10, TextColor3 = T.sub, Size = UDim2.new(0, 84, 1, 0), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
+	UI.Text(f, label, { Font = T.semi, TextSize = 11, TextColor3 = T.sub, Size = UDim2.new(0, 84, 1, 0), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
 	local _, set = UI.Bar(f, { Position = UDim2.new(0, 86, 0.5, -3), Size = UDim2.new(1, -126, 0, 6) }, color)
 	local val = UI.Text(f, "", { Face = "number", TextSize = 15, Position = UDim2.new(1, -34, 0, 0), Size = UDim2.new(0, 34, 1, 0), TextXAlignment = Enum.TextXAlignment.Right,
 		AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
@@ -89,6 +90,24 @@ local setEnergy = miniBar("ENERGY", T.gold, 1)
 local setHydration = miniBar("HYDRATION", T.cyan, 2)
 local setNutrition = miniBar("NUTRITION", T.green, 3)
 local setFatigue = miniBar("FATIGUE", T.orange, 4)
+-- the phone plate: the four meters as one line of chips under the name
+local condStrip = UI.Frame(hud, { Name = "CondStrip", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 26), LayoutOrder = 4, Visible = false })
+UI.List(condStrip, 6, true)
+local condChips = {}
+for i, k in ipairs({ "ENERGY", "WATER", "FOOD", "FATIGUE" }) do
+	local f, t = UI.Chip(condStrip, k, T.sub, { order = i, h = 26, TextSize = 13 })
+	condChips[k] = { frame = f, text = t }
+end
+local function setCond(k, v, color)
+	local c = condChips[k]
+	c.text.Text = string.format("%s %d", k, math.floor(v))
+	c.text.TextColor3 = color
+	c.frame.BackgroundColor3 = T.bg:Lerp(color, 0.12)
+	local st = c.frame:FindFirstChildOfClass("UIStroke")
+	if st then
+		st.Color = color
+	end
+end
 local campBox = UI.Frame(hud, { Name = "Camp", Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundColor3 = T.panel2, BackgroundTransparency = 0.4, LayoutOrder = 5 })
 UI.Corner(campBox, UI.R.md)
 UI.New("UIPadding", { PaddingTop = UDim.new(0, 7), PaddingBottom = UDim.new(0, 7), PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 10), Parent = campBox })
@@ -132,11 +151,45 @@ local hintText = UI.Text(hint, "Walk up to any gym station and press E (or tap) 
 	AutomaticSize = Enum.AutomaticSize.X, TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false })
 UI.Pad(hintText, 0, 18)
 
+-- a phone (short canvas): the plate collapses to the name, OVR and one line of condition chips; the
+-- quick actions sit on the bottom edge (above the device's safe area) with the hint above them
+local hudCompact = nil
 local function layoutHud()
 	local s = UI.ScaleOf(hud)
-	hudButtons.Position = UDim2.new(0, 20, 0, 16 + hud.AbsoluteSize.Y / s + 10)
+	local canvas = UI.CanvasSize(gui)
+	local compact = canvas.Y < 640
+	if compact ~= hudCompact then
+		hudCompact = compact
+		hud.Size = UDim2.new(0, compact and 440 or 360, 0, 0)
+		hudTier.Visible = not compact
+		nums.Visible = not compact
+		bars.Visible = not compact
+		campBox.Visible = not compact
+		condStrip.Visible = compact
+		hintText.Text = compact and "Walk up to a gym station and tap (or press E) to train."
+			or "Walk up to any gym station and press E (or tap) to train."
+	end
+	if compact then
+		local bottom = 8
+		local ok, _, br = pcall(function()
+			return GuiService:GetGuiInset()
+		end)
+		if ok and typeof(br) == "Vector2" then
+			bottom += br.Y / math.max(0.1, s)
+		end
+		hudButtons.AnchorPoint = Vector2.new(0, 1)
+		hudButtons.Position = UDim2.new(0, 16, 1, -bottom)
+		hint.AnchorPoint = Vector2.new(0, 1)
+		hint.Position = UDim2.new(0, 16, 1, -(bottom + 40 + 8))
+	else
+		hudButtons.AnchorPoint = Vector2.new(0, 0)
+		hudButtons.Position = UDim2.new(0, 20, 0, 16 + hud.AbsoluteSize.Y / s + 10)
+		hint.AnchorPoint = Vector2.new(0.5, 1)
+		hint.Position = UDim2.new(0.5, 0, 1, -18)
+	end
 end
 hud:GetPropertyChangedSignal("AbsoluteSize"):Connect(layoutHud)
+gui:GetAttributeChangedSignal("UIScale"):Connect(layoutHud)
 
 ------------------------------------------------------------------------
 -- Time of day follows your energy (morning after sleep, night when you're spent)
@@ -161,17 +214,20 @@ end
 local METHOD = { KO = "Knockout", TKO = "Technical Knockout", RTD = "Corner Retirement", UD = "Unanimous Decision", SD = "Split Decision", MD = "Majority Decision", Draw = "Draw", Stopped = "Stopped by the coach" }
 
 -- a two-sided comparison row: value | caption | value, with bars growing toward the middle
+-- you (red corner, left) against the opponent (blue corner, right): the corner colours of the HUD,
+-- the tape and the scorecards
 local function versusRow(parent, caption, a, b, fmt, order)
 	local f = UI.Frame(parent, { Name = "Versus", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 30), LayoutOrder = order })
 	local total = math.max(1, (tonumber(a) or 0) + (tonumber(b) or 0))
-	UI.Text(f, fmt and fmt(a) or tostring(a), { Face = "number", TextSize = 22, TextColor3 = T.gold, Size = UDim2.new(0.18, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
-	UI.Text(f, fmt and fmt(b) or tostring(b), { Face = "number", TextSize = 22, TextColor3 = T.red, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 0), Size = UDim2.new(0.18, 0, 1, 0),
+	local na, nb = tonumber(a) or 0, tonumber(b) or 0
+	UI.Text(f, fmt and fmt(a) or tostring(a), { Face = "number", TextSize = 22, TextColor3 = na > nb and T.text or T.sub, Size = UDim2.new(0.18, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
+	UI.Text(f, fmt and fmt(b) or tostring(b), { Face = "number", TextSize = 22, TextColor3 = nb > na and T.text or T.sub, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 0), Size = UDim2.new(0.18, 0, 1, 0),
 		AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Right, TextWrapped = false })
-	UI.Text(f, caption, { Font = T.semi, TextSize = 11, TextColor3 = T.sub, AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 0), Size = UDim2.new(0.3, 0, 0, 14),
+	UI.Text(f, caption, { Font = T.semi, TextSize = 12, TextColor3 = T.sub, AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 0), Size = UDim2.new(0.3, 0, 0, 14),
 		AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false })
-	local la = UI.Frame(f, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(0.5, -4, 0, 19), Size = UDim2.new(0.3 * (tonumber(a) or 0) / total, 0, 0, 5), BackgroundColor3 = T.gold })
+	local la = UI.Frame(f, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(0.5, -4, 0, 19), Size = UDim2.new(0.3 * na / total, 0, 0, 5), BackgroundColor3 = T.red })
 	UI.Corner(la, 2)
-	local lb = UI.Frame(f, { Position = UDim2.new(0.5, 4, 0, 19), Size = UDim2.new(0.3 * (tonumber(b) or 0) / total, 0, 0, 5), BackgroundColor3 = T.red })
+	local lb = UI.Frame(f, { Position = UDim2.new(0.5, 4, 0, 19), Size = UDim2.new(0.3 * nb / total, 0, 0, 5), BackgroundColor3 = T.blue })
 	UI.Corner(lb, 2)
 	return f
 end
@@ -217,13 +273,17 @@ local function showResult(data)
 		local row = UI.Frame(body, { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 64) })
 		UI.List(row, 10, true)
 		for j, c in ipairs(res.cards) do
-			local won = c[1] > c[2]
-			UI.Stat(row, string.format("%d-%d", c[1], c[2]), "JUDGE " .. j, { Size = UDim2.new(1 / #res.cards, -8, 1, 0), order = j, valueSize = 30,
-				valueColor = won and T.gold or (c[1] < c[2] and T.red or T.text), align = Enum.TextXAlignment.Center })
+			-- the corner that took the judge's card: red (you) or blue (the opponent)
+			local f = UI.Stat(row, string.format("%d-%d", c[1], c[2]), "JUDGE " .. j, { Size = UDim2.new(1 / #res.cards, -8, 1, 0), order = j, valueSize = 30,
+				valueColor = T.text, align = Enum.TextXAlignment.Center })
+			if c[1] ~= c[2] then
+				local mark = UI.Frame(f, { Name = "Corner", AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -2), Size = UDim2.new(1, -24, 0, 3), BackgroundColor3 = c[1] > c[2] and T.red or T.blue })
+				UI.Corner(mark, 2)
+			end
 		end
 	end
 	if res.landed then
-		UI.Kicker(body, "FIGHT STATS", T.sub)
+		UI.Kicker(body, "FIGHT STATS  ·  RED = YOU, BLUE = OPPONENT", T.sub)
 		local stats = UI.Card(body, { pad = 16 })
 		versusRow(stats, "PUNCHES LANDED", res.landed or 0, res.oppLanded or 0, nil, 1)
 		versusRow(stats, "PUNCHES THROWN", res.thrown or res.landed or 0, res.oppThrown or 0, nil, 2)
@@ -370,6 +430,9 @@ local function refresh()
 	wasRetired = false
 	if not menuShownOnce then
 		menuShownOnce = true
+		-- the saved settings first (Settings listens to State.Changed too, but handler order is not
+		-- guaranteed): "show the menu at start" must be the player's saved choice
+		Settings.Load(P)
 		if MainMenu and Settings.Get("menuAtStart") and not fight then
 			task.defer(MainMenu.Open)
 		end
@@ -395,6 +458,10 @@ local function refresh()
 	setHydration(c.hydration, c.hydration < 30 and T.red or T.cyan)
 	setNutrition(c.nutrition, c.nutrition < 30 and T.red or T.green)
 	setFatigue(c.fatigue, c.fatigue > 70 and T.red or (c.fatigue > 40 and T.orange or T.green))
+	setCond("ENERGY", c.energy, c.energy < 25 and T.red or T.gold)
+	setCond("WATER", c.hydration, c.hydration < 30 and T.red or T.cyan)
+	setCond("FOOD", c.nutrition, c.nutrition < 30 and T.red or T.green)
+	setCond("FATIGUE", c.fatigue, c.fatigue > 70 and T.red or (c.fatigue > 40 and T.orange or T.green))
 	if P.camp then
 		hudCamp.Text = P.camp.daysLeft > 0 and string.format("FIGHT CAMP vs %s  ·  %d DAY%s  ·  %.1f / %d LBS", string.upper(P.camp.offer.opp.name), P.camp.daysLeft, P.camp.daysLeft == 1 and "" or "S", P.weight, P.weightLimit)
 			or string.format("FIGHT NIGHT vs %s - OPEN THE CAREER HUB", string.upper(P.camp.offer.opp.name))

@@ -197,6 +197,7 @@ function Settings.Apply()
 	UI.SetUserScale(v.uiScale)
 	Config.ScreenFX = v.screenFx -- read every frame by FightClient / VenueFX
 	player:SetAttribute("CamShake", v.shake) -- client-local: FightClient / training / menu cameras
+	player:SetAttribute("ControlHints", v.controlHints == true) -- FightClient: keep the key strip up
 	Settings.ApplyAudio()
 	Settings.ApplyDetail()
 end

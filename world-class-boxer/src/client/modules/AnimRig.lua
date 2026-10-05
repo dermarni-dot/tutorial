@@ -279,6 +279,20 @@ function AnimRig.lowest(rig, out)
 	return low
 end
 
+-- the last word for a body on the canvas (after the filters and the spring overlays): if any of it
+-- would sink below the floor, lift it (never lowers). `t` holds the final Transforms by key.
+function AnimRig.floorClamp(rig, t, out)
+	local g = rig.geo
+	if not (g.ok and g.jc0 and g.jc0.Root) then
+		return
+	end
+	AnimRig.fk(rig, t, out)
+	local dy = g.groundY - AnimRig.lowest(rig, out)
+	if dy > 1e-3 then
+		t.Root = CF(0, dy, 0) * t.Root
+	end
+end
+
 -- puts the body ON the canvas: shifts p.Root so the lowest point of the trunk / head / legs rests
 -- `clear` studs above the floor (falls, lying poses, kneeling, the get-up). Returns the shift.
 function AnimRig.groundSolve(rig, p, out, clear)
@@ -467,13 +481,13 @@ function AnimRig.seated(p, lean)
 end
 
 -- physique: big lats and arms hang further from the body; heavy frames move less
-local FRAME_AMP = { Lean = 1.12, Athletic = 1, Muscular = 0.92, ["Power Build"] = 0.82, ["Heavyweight Build"] = 0.66 }
+local FRAME_AMP = { Lean = 1.12, Athletic = 1, Muscular = 0.95, ["Power Build"] = 0.9, ["Heavyweight Build"] = 0.82 }
 function AnimRig.bulkOf(rig)
 	local b = rig.a.Bulk
 	return type(b) == "number" and clamp(b, 0, 1) or 0.3
 end
 function AnimRig.ampOf(rig)
-	return (FRAME_AMP[rig.a.Frame] or 1) * (1 - 0.22 * AnimRig.bulkOf(rig))
+	return (FRAME_AMP[rig.a.Frame] or 1) * (1 - 0.12 * AnimRig.bulkOf(rig))
 end
 
 ------------------------------------------------------------------------
@@ -653,12 +667,19 @@ end
 -- 1 head pitch (+ face up), 2 head yaw (+ left), 3 head roll, 4 torso pitch (+ back), 5 torso yaw,
 -- 6 torso roll, 7 hips back (studs, +Z), 8 hips sideways (+X), 9 knee drop (studs), 10 cover-up,
 -- 11 left arm drop, 12 right arm drop, 13 left arm out, 14 right arm out (radians)
+-- They are applied AFTER the pose filters (the Animator composes them onto the output), so a snap is
+-- never low-passed; the head is a stiff, fast spring (a head snap is out and back in ~0.2 s), the
+-- torso a slower one (the chest follows through)
 ------------------------------------------------------------------------
 local NSPR = 14
 AnimRig.NSPR = NSPR
-local SPR_K = { 170, 150, 150, 110, 110, 110, 60, 60, 45, 80, 90, 90, 80, 80 }
-local SPR_Z = { 0.3, 0.3, 0.35, 0.45, 0.45, 0.45, 0.75, 0.75, 0.55, 0.9, 0.5, 0.5, 0.45, 0.45 }
+local SPR_K = { 900, 800, 700, 110, 110, 110, 60, 60, 45, 80, 90, 90, 80, 80 }
+local SPR_Z = { 0.32, 0.32, 0.36, 0.45, 0.45, 0.45, 0.75, 0.75, 0.55, 0.9, 0.5, 0.5, 0.45, 0.45 }
 local SPR_MAX = { 1.0, 1.1, 0.8, 0.7, 0.6, 0.6, 1.2, 1.2, 0.9, 1.2, 1.3, 1.3, 1.2, 1.2 }
+-- kick() takes head impulses in the units of the old, softer head spring (same displacement for the
+-- same number); react() asks for real angular speeds and divides by these
+local HEAD_GAIN = { math.sqrt(900 / 170), math.sqrt(800 / 150), math.sqrt(700 / 150) }
+AnimRig.HEAD_GAIN = HEAD_GAIN
 
 function AnimRig.stepSprings(rig, dt)
 	local x, v = rig.sx, rig.sv
@@ -681,39 +702,69 @@ function AnimRig.stepSprings(rig, dt)
 	return active
 end
 
-function AnimRig.applySprings(rig, p)
-	local x = rig.sx
-	if x[1] ~= 0 or x[2] ~= 0 or x[3] ~= 0 then
-		p.Neck = p.Neck * A(x[1], x[2], x[3])
-	end
-	if x[4] ~= 0 or x[5] ~= 0 or x[6] ~= 0 then
-		p.W = p.W * A(x[4], x[5], x[6])
-	end
-	if x[7] ~= 0 or x[8] ~= 0 or x[9] ~= 0 then
-		p.Root = CF(x[8], -x[9], x[7]) * p.Root
-	end
-	local c = clamp(x[10], 0, 1)
+-- before the filters: the cover-up (a pose blend, it may glide)
+function AnimRig.applySpringsPre(rig, p)
+	local c = clamp(rig.sx[10], 0, 1)
 	if c > 0.01 then
 		p.LS = p.LS:Lerp(A(1.75, 0, 0.45), c)
 		p.LE = p.LE:Lerp(A(2.35, 0, 0), c)
 		p.RS = p.RS:Lerp(A(1.75, 0, -0.45), c)
 		p.RE = p.RE:Lerp(A(2.35, 0, 0), c)
 	end
-	-- arms knocked loose: drop (pitch down) and fling out (roll away from the body)
-	if x[11] ~= 0 or x[13] ~= 0 then
-		p.LS = A(-x[11], 0, -x[13]) * p.LS
+end
+
+-- after the filters: the hips / knee-drop translation onto the root (before the foot IK, so planted
+-- legs absorb it), or nil
+function AnimRig.springRoot(rig)
+	local x = rig.sx
+	if x[7] ~= 0 or x[8] ~= 0 or x[9] ~= 0 then
+		return CF(x[8], -x[9], x[7])
 	end
-	if x[12] ~= 0 or x[14] ~= 0 then
-		p.RS = A(-x[12], 0, x[14]) * p.RS
+	return nil
+end
+
+-- after the filters: compose the snaps onto a joint's output Transform (Neck, W, LS, RS)
+function AnimRig.springOut(rig, k, v)
+	local x = rig.sx
+	if k == "Neck" then
+		if x[1] ~= 0 or x[2] ~= 0 or x[3] ~= 0 then
+			return v * A(x[1], x[2], x[3])
+		end
+	elseif k == "W" then
+		if x[4] ~= 0 or x[5] ~= 0 or x[6] ~= 0 then
+			return v * A(x[4], x[5], x[6])
+		end
+	elseif k == "LS" then
+		-- arms knocked loose: drop (pitch down) and fling out (roll away from the body)
+		if x[11] ~= 0 or x[13] ~= 0 then
+			return A(-x[11], 0, -x[13]) * v
+		end
+	elseif k == "RS" then
+		if x[12] ~= 0 or x[14] ~= 0 then
+			return A(-x[12], 0, x[14]) * v
+		end
+	end
+	return v
+end
+
+-- all of it straight onto a pose (tools / previews that have no output stage)
+function AnimRig.applySprings(rig, p)
+	AnimRig.applySpringsPre(rig, p)
+	local st = AnimRig.springRoot(rig)
+	if st then
+		p.Root = st * p.Root
+	end
+	for _, k in ipairs({ "Neck", "W", "LS", "RS" }) do
+		p[k] = AnimRig.springOut(rig, k, p[k])
 	end
 end
 
 -- impulses (rad/s or studs/s) on the channels listed above
 function AnimRig.kick(rig, hp, hy, hr, tp, ty, tr, back, side, drop, cover, lDrop, rDrop, lOut, rOut)
 	local v = rig.sv
-	v[1] += hp or 0
-	v[2] += hy or 0
-	v[3] += hr or 0
+	v[1] += (hp or 0) * HEAD_GAIN[1]
+	v[2] += (hy or 0) * HEAD_GAIN[2]
+	v[3] += (hr or 0) * HEAD_GAIN[3]
 	v[4] += tp or 0
 	v[5] += ty or 0
 	v[6] += tr or 0

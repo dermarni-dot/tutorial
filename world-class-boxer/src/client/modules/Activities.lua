@@ -60,6 +60,9 @@ local FLEX_FOR = { Bench = "flex_chest", Dumbbells = "flex_biceps", PullUps = "f
 
 -- a decaying station-camera kick on heavy shots (set by ctx.impact, read by stationCamera)
 local camKick = { t = 0, amp = 0 }
+-- where the station camera puts the athlete across the screen (0..1; ctx.layout sets it: the middle of
+-- the space the panels leave)
+local camFrame = { fx = 0.5 }
 local pumpFadeToken = 0 -- a new session stops the previous session's pump fade
 
 local WINDUP = { jab = 0.16, cross = 0.22, leadhook = 0.24, rearhook = 0.26, uppercut = 0.26, overhand = 0.34 }
@@ -156,8 +159,18 @@ local function newContext(info)
 		tipIndex = math.random(0, 5), mode = "work", resting = false, baseEffort = info.baseEffort,
 	}
 	ctx.smart = ctx.params.smart == true
-	local panel = UI.Frame(State.gui, { Name = "Activity", AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -12), Size = UDim2.new(0.96, 0, 0, PANEL_H) })
-	UI.New("UISizeConstraint", { MaxSize = Vector2.new(PANEL_W, PANEL_H), Parent = panel })
+	ctx.body0 = {}
+	for _, part in ipairs(Config.MuscleParts) do
+		ctx.body0[part.id] = tonumber(P and P.body and (Config.PartValue and Config.PartValue(P.body, part.id) or P.body[part.id])) or 0
+	end
+	do
+		local frame = P and P.appearance and P.appearance.body and P.appearance.body.frame
+		local def = Config.FindById(Config.BodyTypes, frame or "") or Config.BodyTypes[2]
+		ctx.cap = 100 * (def.potential or 1)
+	end
+	-- the panel docks bottom-right (the athlete stays clear in the middle of the screen); ctx.layout
+	local panel = UI.Frame(State.gui, { Name = "Activity", AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -16, 1, -16), Size = UDim2.new(0.96, 0, 0, PANEL_H) })
+	ctx.panelMax = UI.New("UISizeConstraint", { MaxSize = Vector2.new(PANEL_W, PANEL_H), Parent = panel })
 	UI.Glass(panel, { transparency = 0.05, radius = UI.R.xl })
 	ctx.fit = UI.New("UIScale", { Name = "Fit", Parent = panel })
 	-- a gold rule along the top edge (the broadcast panel look)
@@ -186,8 +199,8 @@ local function newContext(info)
 		ctx.cancelled = true
 	end)
 
-	-- metrics strip: SET | REPS / CLEAN | QUALITY | TIME | HEART RATE | KCAL (above the panel; a 2 x 3
-	-- grid beside it on short screens)
+	-- metrics strip: SET | REP (or CLEAN) | GOOD (rep drills) | QUALITY | TIME | BPM (heart) | KCAL - the
+	-- one place the session's counters live (above the panel; a column beside it on short screens)
 	ctx.t0 = os.clock()
 	ctx.tiles = {}
 	ctx.qSum, ctx.qN, ctx.clean = 0, 0, 0
@@ -197,24 +210,30 @@ local function newContext(info)
 	local function tile(key, caption, order)
 		local f = UI.Frame(metrics, { Name = key, LayoutOrder = order })
 		UI.Glass(f, { transparency = 0.12, radius = UI.R.md })
-		local cap = UI.Text(f, caption, { Font = T.semi, TextSize = 10, TextColor3 = T.sub, Position = UDim2.fromOffset(10, 6), Size = UDim2.new(1, -20, 0, 12), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
-		local val = UI.Text(f, "-", { Face = "number", TextSize = 24, Position = UDim2.fromOffset(10, 18), Size = UDim2.new(1, -20, 0, 30), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
+		local cap = UI.Text(f, caption, { Font = T.semi, TextSize = 11, TextColor3 = T.sub, Position = UDim2.fromOffset(10, 5), Size = UDim2.new(1, -20, 0, 14), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
+		local val = UI.Text(f, "-", { Face = "number", TextSize = 24, Position = UDim2.fromOffset(10, 19), Size = UDim2.new(1, -20, 0, 30), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
 		ctx.tiles[key] = { frame = f, cap = cap, val = val }
 		return ctx.tiles[key]
 	end
 	tile("set", "SESSION", 1)
 	tile("reps", "CLEAN", 2)
-	local qTile = tile("quality", "QUALITY", 3)
+	tile("good", "GOOD", 3).frame.Visible = false
+	local qTile = tile("quality", "QUALITY", 4)
 	local qBar = UI.Frame(qTile.frame, { Position = UDim2.new(0, 10, 1, -8), Size = UDim2.new(1, -20, 0, 3), BackgroundColor3 = T.ink })
 	UI.Corner(qBar, 2)
 	qTile.fill = UI.Frame(qBar, { Size = UDim2.fromScale(0, 1), BackgroundColor3 = T.gold })
 	UI.Corner(qTile.fill, 2)
-	tile("time", "TIME", 4)
-	tile("hr", "HEART RATE", 5)
-	tile("kcal", "KCAL", 6)
+	tile("time", "TIME", 5)
+	tile("hr", "BPM", 6)
+	tile("kcal", "KCAL", 7)
+	ctx.tileCount = 6
 	function ctx.updateMetrics()
 		local tl = ctx.tiles
-		if ctx.reps then
+		if ctx.repOf then
+			tl.reps.cap.Text = "REP"
+			tl.reps.val.Text = string.format("%d/%d", ctx.repOf[1], ctx.repOf[2])
+			tl.good.val.Text = tostring(ctx.repOf[3] or 0)
+		elseif ctx.reps then
 			tl.reps.cap.Text = "REPS"
 			tl.reps.val.Text = tostring(ctx.reps)
 		else
@@ -230,6 +249,32 @@ local function newContext(info)
 		end
 	end
 
+	-- rep drills: the strip shows REP r/n and GOOD (the stage and the header no longer repeat them)
+	function ctx.setRep(r, n, good)
+		ctx.repOf = { r, n, good }
+		if not ctx.tiles.good.frame.Visible then
+			ctx.tiles.good.frame.Visible = true
+			ctx.tileCount = 7
+			if ctx.layout then
+				ctx.layout()
+			end
+		end
+		ctx.updateMetrics()
+	end
+	-- back to a drill without reps (the GOOD tile goes, the second tile counts clean work)
+	function ctx.clearRep()
+		ctx.repOf, ctx.reps = nil, nil
+		ctx.tiles.reps.cap.Text = "CLEAN"
+		if ctx.tiles.good.frame.Visible then
+			ctx.tiles.good.frame.Visible = false
+			ctx.tileCount = 6
+			if ctx.layout then
+				ctx.layout()
+			end
+		end
+		ctx.updateMetrics()
+	end
+
 	-- what this exercise works: the body map (Config.ExerciseTargets / act.parts), the top targets and
 	-- the energy / fatigue it will cost; after the session the same card shows the growth
 	local side = UI.Frame(panel, { Name = "Works", AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(0, -12, 1, 0), Size = UDim2.fromOffset(SIDE_W, PANEL_H) })
@@ -239,19 +284,37 @@ local function newContext(info)
 	local sideKicker = UI.Kicker(side, recovery and "Recovery" or "Muscles worked", recovery and T.cyan or T.red, { Position = UDim2.fromOffset(14, 10), Size = UDim2.new(1, -28, 0, 16) })
 	ctx.sideCaption = sideKicker:FindFirstChildOfClass("TextLabel")
 	ctx.sideTick = sideKicker:FindFirstChildOfClass("Frame")
-	local okMap, map = pcall(BodyMap.new, side, { Size = UDim2.fromOffset(SIDE_W - 28, 160), Position = UDim2.fromOffset(14, 32) })
+	-- the names under the figure: three lines, or five for a whole-body drill (the heavy bag lights nine
+	-- regions); the figure gives up the difference
+	local nLit = 0
+	for _, w in pairs(type(info.act.parts) == "table" and info.act.parts or {}) do
+		if (tonumber(w) or 0) > 0 then
+			nLit += 1
+		end
+	end
+	local listH = (not recovery and nLit > 5) and 78 or 50
+	local okMap, map = pcall(BodyMap.new, side, { Size = UDim2.fromOffset(SIDE_W - 28, 176 - (listH - 50)), Position = UDim2.fromOffset(14, 30) })
 	ctx.map = okMap and map or nil
-	ctx.sideList = UI.Frame(side, { Name = "Targets", BackgroundTransparency = 1, Position = UDim2.fromOffset(14, 198), Size = UDim2.new(1, -28, 0, 60) })
-	UI.List(ctx.sideList, 4)
-	-- rows: { name, value text, fraction, color }
+	ctx.sideList = UI.Frame(side, { Name = "Targets", BackgroundTransparency = 1, Position = UDim2.fromOffset(14, 260 - listH), Size = UDim2.new(1, -28, 0, listH), ClipsDescendants = true })
+	-- every lit region by its short name, the strongest in white (wraps; the map and the list match)
+	function ctx.sideNames(list, strongColor)
+		UI.Clear(ctx.sideList)
+		local bits = {}
+		for _, e in ipairs(list) do
+			local name = string.upper(BodyMap.Short(e.id))
+			table.insert(bits, e.w >= 0.75 and string.format('<font color="#%s">%s</font>', (strongColor or T.text):ToHex(), name) or name)
+		end
+		UI.Text(ctx.sideList, table.concat(bits, "  ·  "), { Font = T.semi, TextSize = 12, TextColor3 = T.sub, RichText = true, Size = UDim2.fromScale(1, 1), AutomaticSize = Enum.AutomaticSize.None,
+			TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top })
+	end
+	-- rows: { name, value text, fraction, color } (recovery: what the session restores)
 	function ctx.sideRows(rows)
 		UI.Clear(ctx.sideList)
+		UI.List(ctx.sideList, 2)
 		for i, r in ipairs(rows) do
 			local row = UI.Frame(ctx.sideList, { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 16), LayoutOrder = i })
-			UI.Text(row, string.upper(r[1]), { Font = T.semi, TextSize = 10, TextColor3 = T.text, Size = UDim2.new(0.6, 0, 0, 12), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
-			UI.Text(row, r[2] or "", { Face = "number", TextSize = 12, TextColor3 = r[4] or T.sub, AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(1, 0), Size = UDim2.new(0.4, 0, 0, 12), AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Right, TextWrapped = false })
-			local bg = UI.Frame(row, { Position = UDim2.fromOffset(0, 13), Size = UDim2.new(1, 0, 0, 2), BackgroundColor3 = T.ink })
-			UI.Frame(bg, { Size = UDim2.fromScale(math.clamp(r[3] or 0, 0, 1), 1), BackgroundColor3 = r[4] or T.red })
+			UI.Text(row, string.upper(r[1]), { Font = T.semi, TextSize = 12, TextColor3 = T.text, Size = UDim2.new(0.6, 0, 0, 14), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
+			UI.Text(row, r[2] or "", { Face = "number", TextSize = 13, TextColor3 = r[4] or T.sub, AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(1, 0), Size = UDim2.new(0.4, 0, 0, 14), AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Right, TextWrapped = false })
 		end
 	end
 	local targets = info.act.parts or {}
@@ -279,35 +342,40 @@ local function newContext(info)
 		if ctx.map then
 			ctx.map:SetTargets(targets, T.red)
 		end
+		-- the list names exactly what the map lights (strongest first; primary targets in red)
 		local list, max = {}, 0
 		for id, w in pairs(targets) do
-			table.insert(list, { id = id, w = w })
-			max = math.max(max, w)
+			w = tonumber(w) or 0
+			if w > 0 then
+				table.insert(list, { id = id, w = w })
+				max = math.max(max, w)
+			end
+		end
+		for _, e in ipairs(list) do
+			e.w = max > 0 and e.w / max or 0
 		end
 		table.sort(list, function(a, b)
-			return a.w > b.w
+			if a.w ~= b.w then
+				return a.w > b.w
+			end
+			return a.id < b.id
 		end)
-		local rows = {}
-		for i = 1, math.min(3, #list) do
-			local e = list[i]
-			local k = max > 0 and e.w / max or 0
-			table.insert(rows, { (Config.MusclePartNames or {})[e.id] or e.id, k >= 0.75 and "PRIMARY" or "SECONDARY", k, k >= 0.75 and T.red or T.orange })
-		end
-		ctx.sideRows(rows)
+		ctx.sideNames(list, T.red)
 	end
 	-- energy and fatigue: now, with what the session will cost striped on top
-	local function condBar(y, caption, color)
-		UI.Text(side, caption, { Font = T.semi, TextSize = 10, TextColor3 = T.sub, Position = UDim2.fromOffset(14, y), Size = UDim2.new(0.5, -14, 0, 12), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
-		local val = UI.Text(side, "", { Face = "number", TextSize = 13, TextColor3 = T.text, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -14, 0, y - 1), Size = UDim2.new(0.5, -14, 0, 14), AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Right, TextWrapped = false, RichText = true })
-		local bg = UI.Frame(side, { Position = UDim2.fromOffset(14, y + 15), Size = UDim2.new(1, -28, 0, 5), BackgroundColor3 = T.ink })
+	-- fromBottom: the caption's distance from the card's bottom edge (the card grows on the result screen)
+	local function condBar(fromBottom, caption, color)
+		UI.Text(side, caption, { Font = T.semi, TextSize = 11, TextColor3 = T.sub, Position = UDim2.new(0, 14, 1, -fromBottom), Size = UDim2.new(0.5, -14, 0, 14), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
+		local val = UI.Text(side, "", { Face = "number", TextSize = 13, TextColor3 = T.text, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -14, 1, -fromBottom - 1), Size = UDim2.new(0.5, -14, 0, 14), AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Right, TextWrapped = false, RichText = true })
+		local bg = UI.Frame(side, { Position = UDim2.new(0, 14, 1, -fromBottom + 15), Size = UDim2.new(1, -28, 0, 5), BackgroundColor3 = T.ink })
 		UI.Corner(bg, 2)
 		local fill = UI.Frame(bg, { Size = UDim2.fromScale(0, 1), BackgroundColor3 = color })
 		UI.Corner(fill, 2)
 		local cost = UI.Frame(bg, { Size = UDim2.fromScale(0, 1), BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = 0.35, Visible = false })
 		return { val = val, fill = fill, cost = cost }
 	end
-	ctx.energyBar = condBar(PANEL_H - 52, "ENERGY", T.green)
-	ctx.fatigueBar = condBar(PANEL_H - 28, "FATIGUE", T.orange)
+	ctx.energyBar = condBar(52, "ENERGY", T.green)
+	ctx.fatigueBar = condBar(28, "FATIGUE", T.orange)
 	-- delta > 0 adds (fatigue), < 0 takes away (energy cost); the change shows as a white segment.
 	-- showAfter: the label shows the value after the change (the result screen) instead of now
 	local function round(v)
@@ -336,29 +404,68 @@ local function newContext(info)
 		ctx.setCond(ctx.fatigueBar, cond0.fatigue, tonumber(info.act.fatigue) or 0, false)
 	end
 
-	-- responsive: short (phone) screens scale the panel down and move the metrics into a grid on its right
+	-- responsive: the panel docks bottom-right at its design size (nothing is scaled down, so no text
+	-- drops under the readability floor). Wide screens: the metrics strip on top of the panel, the
+	-- "muscles worked" card at the left edge, the camera puts the athlete in the clear middle. Short
+	-- (phone) screens: the metrics as a column beside the panel, the card only where it fits.
 	function ctx.layout()
 		if not panel.Parent then
 			return
 		end
 		local canvas = UI.CanvasSize(panel)
 		local compact = canvas.Y < 640
-		local k = compact and math.clamp((canvas.Y - 150) / PANEL_H, 0.6, 0.8) or 1
-		ctx.fit.Scale = k
+		ctx.fit.Scale = 1
+		local margin = compact and 8 or 16
+		local panelW = math.min(PANEL_W, canvas.X * 0.96)
+		panel.AnchorPoint = Vector2.new(1, 1)
+		panel.Position = UDim2.new(1, -margin, 1, -margin)
+		local panelLeft = canvas.X - margin - panelW
+		local n = ctx.tileCount or 6
+		local sideH = side.Size.Y.Offset
 		if compact then
-			metrics.AnchorPoint = Vector2.new(0, 1)
-			metrics.Position = UDim2.new(1, 12, 1, 0)
-			metrics.Size = UDim2.fromOffset(SIDE_W, 186)
-			ctx.metricsGrid.CellSize = UDim2.new(0.5, -3, 1 / 3, -4)
+			local colW = 150
+			metrics.AnchorPoint = Vector2.new(1, 1)
+			metrics.Position = UDim2.new(0, -10, 1, 0)
+			metrics.Size = UDim2.new(0, colW, 1, 0)
+			ctx.metricsGrid.CellSize = UDim2.new(1, 0, 1 / n, -math.ceil(6 * (n - 1) / n))
+			for _, t in pairs(ctx.tiles) do
+				-- one line per tile: caption left, number right
+				t.cap.Position, t.cap.Size = UDim2.new(0, 10, 0.5, -8), UDim2.new(0.62, -10, 0, 16)
+				t.val.Position, t.val.Size = UDim2.new(0.62, 0, 0.5, -14), UDim2.new(0.38, -10, 0, 28)
+				t.val.TextXAlignment = Enum.TextXAlignment.Right
+			end
+			local room = panelLeft - 10 - colW - 10 - margin
+			side.Visible = room >= SIDE_W
+			side.AnchorPoint = Vector2.new(1, 1)
+			side.Position = UDim2.new(0, -(10 + colW + 10), 1, 0)
+			camFrame.fx = 0.5
 		else
 			metrics.AnchorPoint = Vector2.new(0, 1)
 			metrics.Position = UDim2.new(0, 0, 0, -8)
 			metrics.Size = UDim2.new(1, 0, 0, 56)
-			ctx.metricsGrid.CellSize = UDim2.new(1 / 6, -5, 1, 0)
+			-- n cells and n - 1 gaps of 6 fill the width exactly (a 7th tile must not wrap)
+			ctx.metricsGrid.CellSize = UDim2.new(1 / n, -math.ceil(6 * (n - 1) / n), 1, 0)
+			for _, t in pairs(ctx.tiles) do
+				t.cap.Position, t.cap.Size = UDim2.fromOffset(10, 5), UDim2.new(1, -20, 0, 14)
+				t.val.Position, t.val.Size = UDim2.fromOffset(10, 19), UDim2.new(1, -20, 0, 30)
+				t.val.TextXAlignment = Enum.TextXAlignment.Left
+			end
+			side.Visible = true
+			side.AnchorPoint = Vector2.new(0, 1)
+			side.Position = UDim2.new(0, margin - panelLeft, 1, 0)
+			-- the athlete in the middle of the space between the card and the panel
+			local leftEdge = margin + SIDE_W + 16
+			camFrame.fx = math.clamp(((leftEdge + panelLeft) / 2) / canvas.X, 0.3, 0.5)
 		end
-		-- the side card needs room on the left of the panel
-		local panelW = math.min(PANEL_W, canvas.X * 0.96) * k
-		side.Visible = (canvas.X - panelW) / 2 >= (SIDE_W + 16) * k
+		side.Size = UDim2.fromOffset(SIDE_W, sideH)
+		if ctx.sizeResult then
+			-- the result report: the panel's height follows the screen; a growth card built taller
+			-- than a short screen steps aside
+			ctx.sizeResult()
+			if compact and sideH > canvas.Y - 16 then
+				side.Visible = false
+			end
+		end
 	end
 	ctx.layout()
 	table.insert(ctx.conns, State.screen:GetPropertyChangedSignal("AbsoluteSize"):Connect(ctx.layout))
@@ -569,7 +676,8 @@ local function newContext(info)
 		ctx.roundI, ctx.roundN = i, n
 		local tag = n > 1 and string.format("%s %d/%d", kind, i, n) or kind
 		ctx.roundText = n > 1 and tag or nil
-		ctx.header.Text = name and (tag .. DOT .. name) or tag
+		-- the header names what you are doing; the count lives on the metrics strip only
+		ctx.header.Text = name or ctx.act.name:upper()
 		ctx.tiles.set.cap.Text = string.upper(kind)
 		ctx.tiles.set.val.Text = n > 1 and string.format("%d/%d", i, n) or "1/1"
 		ctx.refreshLive()
@@ -752,9 +860,10 @@ local function newContext(info)
 	return ctx
 end
 
+-- the stage's width in design px (AbsoluteSize is in screen px under the root's UIScale)
 local function stageWidth(ctx)
-	local w = ctx.stage.AbsoluteSize.X
-	return w > 100 and w or 520
+	local w = ctx.stage.AbsoluteSize.X / math.max(0.1, UI.ScaleOf(ctx.stage))
+	return w > 100 and w or 620
 end
 
 local function chip(parent, text, x, w, color)
@@ -1821,7 +1930,6 @@ GAMES.reps = function(ctx)
 	UI.Corner(zone, 6)
 	local fill = UI.Frame(barBg, { BackgroundColor3 = T.gold, BackgroundTransparency = 0.25, Size = UDim2.fromScale(0, 1) })
 	UI.Corner(fill, 6)
-	local repText = UI.Text(ctx.stage, "", { Font = T.bold, Position = UDim2.fromOffset(20, 56), Size = UDim2.new(0.6, -20, 0, 24), AutomaticSize = Enum.AutomaticSize.None })
 	UI.Text(ctx.stage, loadText or "", { Font = T.bold, TextColor3 = T.gold, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -20, 0, 56), Size = UDim2.new(0.4, 0, 0, 24), TextXAlignment = Enum.TextXAlignment.Right, AutomaticSize = Enum.AutomaticSize.None })
 	local holding = false
 	ctx.on(function(_, down)
@@ -1834,17 +1942,19 @@ GAMES.reps = function(ctx)
 		return "RPE " .. (v % 1 == 0 and tostring(math.floor(v)) or string.format("%.1f", v))
 	end
 	for set = 1, sets do
-		if not ctx.round(set, sets, loadText and (exName .. DOT .. loadText) or exName, "SET") then
+		if not ctx.round(set, sets, exName, "SET") then
 			return nil
 		end
 		holding = false
 		local setGood, setFails = 0, 0
+		ctx.setRep(1, reps, 0)
+		ctx.stats(nil)
 		for r = 1, reps do
 			local width = math.max(0.08, (0.24 - r * 0.012 + lv * 0.01) * (set == 2 and 0.78 or 1))
 			local lo = math.clamp(0.58 + math.random() * 0.2, 0.5, 0.95 - width)
 			zone.Position = UDim2.fromScale(lo, 0)
 			zone.Size = UDim2.fromScale(width, 1)
-			repText.Text = string.format("SET %d%sREP %d / %d", set, DOT, r, reps)
+			ctx.setRep(r, reps, setGood)
 			local f = 0
 			local speed = (0.55 + r * 0.03) * (set == 2 and 1.08 or 1)
 			ctx.attr("RepCount", (set - 1) * reps + r)
@@ -1907,7 +2017,8 @@ GAMES.reps = function(ctx)
 			ctx.drive(0)
 			fill.Size = UDim2.fromScale(0, 1)
 			holding = false
-			ctx.stats(string.format("Set %d%s%d/%d good reps%s", set, DOT, setGood, r, setFails > 0 and (DOT .. setFails .. " spotted") or ""))
+			ctx.setRep(r, reps, setGood)
+			ctx.stats(setFails > 0 and string.format("%d spotted", setFails) or nil)
 			ctx.progress(r / reps)
 			if not ctx.wait(0.25) then
 				return nil
@@ -1963,6 +2074,7 @@ GAMES.medball = function(ctx)
 	if not ctx.round(1, 2, "SLAMS" .. DOT .. loadText, "SET") then
 		return nil
 	end
+	ctx.stats(nil)
 	UI.Clear(ctx.stage)
 	local barBg = UI.Frame(ctx.stage, { Position = UDim2.new(0, 20, 0, 18), Size = UDim2.new(1, -40, 0, 34), BackgroundColor3 = Color3.fromRGB(40, 20, 20) })
 	UI.Corner(barBg, 6)
@@ -1970,7 +2082,6 @@ GAMES.medball = function(ctx)
 	UI.Corner(zone, 6)
 	local fill = UI.Frame(barBg, { BackgroundColor3 = T.gold, BackgroundTransparency = 0.25, Size = UDim2.fromScale(0, 1) })
 	UI.Corner(fill, 6)
-	local repText = UI.Text(ctx.stage, "", { Font = T.bold, Position = UDim2.fromOffset(20, 58), Size = UDim2.new(1, -40, 0, 24), AutomaticSize = Enum.AutomaticSize.None })
 	local holding = false
 	ctx.on(function(_, down)
 		holding = down
@@ -1982,7 +2093,7 @@ GAMES.medball = function(ctx)
 		local lo = math.clamp(0.62 + math.random() * 0.16, 0.5, 0.96 - width)
 		zone.Position = UDim2.fromScale(lo, 0)
 		zone.Size = UDim2.fromScale(width, 1)
-		repText.Text = string.format("SLAM %d / %d", r, slams)
+		ctx.setRep(r, slams, cleanSlams)
 		ctx.attr("RepCount", r)
 		ctx.intensity = 0.35
 		while not holding do
@@ -2034,7 +2145,7 @@ GAMES.medball = function(ctx)
 		ctx.impact(0.6 + q * 0.7, 0, "slam", "body")
 		fill.Size = UDim2.fromScale(0, 1)
 		holding = false
-		ctx.stats(string.format("Slam %d/%d%s%d clean", r, slams, DOT, cleanSlams))
+		ctx.setRep(r, slams, cleanSlams)
 		ctx.progress(r / slams)
 		if not ctx.wait(0.35) then
 			return nil
@@ -2054,6 +2165,7 @@ GAMES.medball = function(ctx)
 	if not ctx.round(2, 2, "RUSSIAN TWISTS" .. DOT .. bpm .. " BPM", "SET") then
 		return nil
 	end
+	ctx.clearRep()
 	UI.Clear(ctx.stage)
 	local interval = 60 / bpm
 	local count = 14 + math.min(lv, 4) * 2
@@ -2904,6 +3016,49 @@ end
 local LOW = { bench = true, lie = true, lieup = true, longsit = true, sit = true, row = true, bike = true }
 -- lifts and cardio read best from the side; bag work over the shoulder
 local SIDE = { curl = true, deadlift = true, squat = true, pullup = true, run = true, rope = true, ladder = true, stretch = true }
+-- does the segment a -> a + d pass through the box (cf, size)? (slab test in the box's space)
+local function slab(pa, va, ha, t0, t1)
+	if math.abs(va) < 1e-6 then
+		if pa < -ha or pa > ha then
+			return nil
+		end
+		return t0, t1
+	end
+	local ta, tb = (-ha - pa) / va, (ha - pa) / va
+	if ta > tb then
+		ta, tb = tb, ta
+	end
+	t0, t1 = math.max(t0, ta), math.min(t1, tb)
+	if t0 > t1 then
+		return nil
+	end
+	return t0, t1
+end
+local function segmentHitsBox(a, d, cf, size)
+	local p = cf:PointToObjectSpace(a)
+	local v = cf:VectorToObjectSpace(d)
+	local t0, t1 = slab(p.X, v.X, size.X / 2, 0, 1)
+	if t0 then
+		t0, t1 = slab(p.Y, v.Y, size.Y / 2, t0, t1)
+	end
+	if t0 then
+		t0, t1 = slab(p.Z, v.Z, size.Z / 2, t0, t1)
+	end
+	return t0 ~= nil
+end
+
+-- shifts a camera goal sideways so the subject (dist studs ahead) sits at camFrame.fx across the screen
+local function frameShift(cam, goal, dist)
+	local shift = 0.5 - camFrame.fx
+	if math.abs(shift) < 0.01 then
+		return goal
+	end
+	local vp = cam.ViewportSize
+	local aspect = (vp.Y > 0) and (vp.X / vp.Y) or (16 / 9)
+	local halfW = math.tan(math.rad(cam.FieldOfView) / 2) * aspect * dist
+	return goal * CFrame.new(shift * 2 * halfW, 0, 0)
+end
+
 local function stationCamera(pose)
 	local cam = workspace.CurrentCamera
 	local _, _, root = State.char()
@@ -2937,6 +3092,7 @@ local function stationCamera(pose)
 			-- over the right shoulder, looking at the equipment
 			goal = CFrame.lookAt(p + right * 3.8 - look * 6 + Vector3.new(0, 3.2, 0), p + look * 2.6 + Vector3.new(0, 0.1, 0))
 		end
+		goal = frameShift(cam, goal, (goal.Position - p).Magnitude)
 		cam.CFrame = cam.CFrame:Lerp(goal, math.clamp(dt * 6, 0, 1))
 		-- heavy shots kick the camera: a quick decaying shake plus a small FOV punch
 		local el = os.clock() - camKick.t
@@ -2947,6 +3103,83 @@ local function stationCamera(pose)
 		elseif cam.FieldOfView ~= baseFov then
 			cam.FieldOfView = baseFov
 		end
+	end)
+end
+
+-- the result: a front view of the athlete (the pump and the growth are what the screen is about), in the
+-- clear part of the screen beside the docked panel, drifting slowly
+local function revealCamera()
+	local cam = workspace.CurrentCamera
+	local _, _, root = State.char()
+	if not root then
+		return nil
+	end
+	cam.CameraType = Enum.CameraType.Scriptable
+	local t0 = os.clock()
+	-- the station's equipment can stand between the lens and the athlete (the heavy bag hangs right in
+	-- front of him): on the first frame the camera swings round him to the first clear line of sight
+	-- and keeps that angle. The gym's equipment visuals are client-built and CanQuery = false, so a ray
+	-- does not see them: their models' bounding boxes are tested as well
+	local swing
+	local rayParams = RaycastParams.new()
+	rayParams.FilterType = Enum.RaycastFilterType.Exclude
+	local SWINGS = { 0, 0.9, -0.9, 1.6, -1.6, 2.4, -2.4 }
+	local function blocked(a, d, boxes)
+		if workspace:Raycast(a, d, rayParams) then
+			return true
+		end
+		for _, b in ipairs(boxes) do
+			if segmentHitsBox(a, d, b[1], b[2]) then
+				return true
+			end
+		end
+		return false
+	end
+	return RunService.RenderStepped:Connect(function(dt)
+		cam = workspace.CurrentCamera
+		if cam.CameraType ~= Enum.CameraType.Scriptable then
+			cam.CameraType = Enum.CameraType.Scriptable
+		end
+		local _, _, r = State.char()
+		if not r then
+			return
+		end
+		-- framed on the upper torso's own axes: standing, a front view; lying on a bench, from above
+		local char = r.Parent
+		local torso = char and char:FindFirstChild("UpperTorso")
+		local cf = torso and torso.CFrame or (r.CFrame * CFrame.new(0, 1.1, 0))
+		local look, right, up = cf.LookVector, cf.RightVector, cf.UpVector
+		local chest = cf.Position - up * 0.2
+		local drift = math.sin((os.clock() - t0) * 0.35) * 0.6
+		local dist = 7.5
+		if not swing then
+			swing = 0
+			rayParams.FilterDescendantsInstances = { char }
+			local boxes = {}
+			local localGym = workspace:FindFirstChild("LocalGym")
+			for _, m in ipairs(localGym and localGym:GetChildren() or {}) do
+				if m:IsA("Model") then
+					local bcf, bsize = m:GetBoundingBox()
+					-- near, and not a box he stands in (a platform under him would block every angle)
+					local q = bcf:PointToObjectSpace(chest)
+					local inside = math.abs(q.X) <= bsize.X / 2 and math.abs(q.Y) <= bsize.Y / 2 and math.abs(q.Z) <= bsize.Z / 2
+					if not inside and (bcf.Position - chest).Magnitude < 16 + bsize.Magnitude / 2 then
+						table.insert(boxes, { bcf, bsize })
+					end
+				end
+			end
+			for _, a in ipairs(SWINGS) do
+				local off = CFrame.fromAxisAngle(Vector3.yAxis, a):VectorToWorldSpace(look * dist + right * 1.3 + up * 0.7)
+				if not blocked(chest, off, boxes) then
+					swing = a
+					break
+				end
+			end
+		end
+		local off = CFrame.fromAxisAngle(Vector3.yAxis, swing):VectorToWorldSpace(look * dist + right * (1.3 + drift) + up * 0.7)
+		local eye = chest + off
+		local goal = frameShift(cam, CFrame.lookAt(eye, chest, up), dist)
+		cam.CFrame = cam.CFrame:Lerp(goal, math.clamp(dt * 3, 0, 1))
 	end)
 end
 
@@ -2988,93 +3221,61 @@ local function coachRemark(actId, grade)
 	return list[math.random(1, #list)]
 end
 
-local function resultLines(res)
-	local lines = {}
+-- the result's status chips: { text, color } (one colour per meaning: red = worked / pumped, orange =
+-- sore or a warning, cyan = sweat, blue = veins, green = fat coming off)
+local function statusChips(res)
 	local r = res.result or {}
-	if r.gains then
-		local parts = {}
-		for _, k in ipairs(Config.StatKeys) do
-			local g = r.gains[k]
-			if g and g > 0.001 then
-				table.insert(parts, string.format("+%.2f %s", g, Config.StatNames[k]))
-			end
-		end
-		if #parts > 0 then
-			table.insert(lines, { table.concat(parts, "   "), T.green })
-		end
-	end
-	-- muscle growth per part (the exact muscles this exercise built), biggest first; groups as a fallback
-	local partNames = Config.MusclePartNames or {}
-	if type(r.parts) == "table" and next(r.parts) then
-		local list = {}
-		for id, g in pairs(r.parts) do
-			if type(g) == "number" and g > 0.005 then
-				table.insert(list, { id = id, g = g })
-			end
-		end
-		table.sort(list, function(a, b)
-			return a.g > b.g
-		end)
-		local parts = {}
-		for i, e in ipairs(list) do
-			if i > 6 then
-				break
-			end
-			table.insert(parts, string.format("+%.2f %s", e.g, partNames[e.id] or e.id))
-		end
-		if #parts > 0 then
-			table.insert(lines, { "Muscle: " .. table.concat(parts, ", "), Color3.fromRGB(150, 200, 255) })
-		end
-	elseif r.muscle then
-		local parts = {}
-		for _, k in ipairs(Config.MuscleKeys) do
-			local g = r.muscle[k]
-			if g and g > 0.01 then
-				table.insert(parts, string.format("+%.1f %s", g, Config.MuscleNames[k]))
-			end
-		end
-		if #parts > 0 then
-			table.insert(lines, { "Muscle: " .. table.concat(parts, ", "), Color3.fromRGB(150, 200, 255) })
-		end
-	end
+	local chips = {}
 	if type(r.pump) == "table" and type(r.pump.parts) == "table" and #r.pump.parts > 0 then
 		local names = {}
 		for i, id in ipairs(r.pump.parts) do
-			if i > 4 then
+			if i > 3 then
 				break
 			end
-			table.insert(names, partNames[id] or tostring(id))
+			table.insert(names, string.upper(BodyMap.Short(id)))
 		end
-		table.insert(lines, { string.format("PUMP %d%%: %s - hit FLEX to show it off", math.floor((tonumber(r.pump.level) or 0) * 100 + 0.5), table.concat(names, ", ")), Color3.fromRGB(255, 170, 90) })
-	end
-	if type(r.vasc) == "number" and r.vasc > 0.005 then
-		table.insert(lines, { string.format("Vascularity +%.2f", r.vasc), Color3.fromRGB(200, 150, 255) })
+		table.insert(chips, { string.format("PUMP %d%%  ·  %s", math.floor((tonumber(r.pump.level) or 0) * 100 + 0.5), table.concat(names, ", ")), T.red })
 	end
 	if type(r.sore) == "table" then
-		local sore = {}
 		for _, k in ipairs(Config.MuscleKeys) do
 			local v = tonumber(r.sore[k])
 			if v and v >= 0.3 then
-				table.insert(sore, string.format("%s %d%%", Config.MuscleNames[k] or k, math.floor(v * 100 + 0.5)))
+				table.insert(chips, { string.format("SORE %s %d%%", string.upper(Config.MuscleNames[k] or k), math.floor(v * 100 + 0.5)), T.orange })
 			end
-		end
-		if #sore > 0 then
-			table.insert(lines, { "Sore: " .. table.concat(sore, ", ") .. " (grows overnight - eat and sleep)", T.orange })
 		end
 	end
 	if type(r.sweat) == "number" and r.sweat > 0 then
-		table.insert(lines, { string.format("Sweat %d%%", math.floor(r.sweat * 100 + 0.5)), Color3.fromRGB(150, 200, 230) })
+		table.insert(chips, { string.format("SWEAT %d%%", math.floor(r.sweat * 100 + 0.5)), T.cyan })
+	end
+	if type(r.vasc) == "number" and r.vasc > 0.005 then
+		table.insert(chips, { string.format("VEINS +%.2f", r.vasc), T.blue })
 	end
 	if r.fat and math.abs(r.fat) > 0.001 then
-		table.insert(lines, { string.format("Body fat %+.2f%%", r.fat), r.fat < 0 and T.green or T.orange })
+		table.insert(chips, { string.format("BODY FAT %+.2f%%", r.fat), r.fat < 0 and T.green or T.orange })
 	end
 	if r.fatigue then
-		table.insert(lines, { string.format("Fatigue now %d%%", math.floor(r.fatigue)), T.sub })
+		table.insert(chips, { string.format("FATIGUE %d%%", math.floor(r.fatigue)), r.fatigue > 70 and T.red or (r.fatigue > 40 and T.orange or T.sub) })
 	end
-	for _, n in ipairs(r.notes or {}) do
-		table.insert(lines, { n, n:find("INJURY") and T.red or T.sub })
+	return chips
+end
+
+-- a wrapping row of chips (auto-sized pills, new line when the width runs out)
+local function chipFlow(parent, list, order, width)
+	local rows = UI.Frame(parent, { Name = "Chips", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = order })
+	UI.List(rows, 6)
+	local row, used, n = nil, 0, 0
+	for _, c in ipairs(list) do
+		local est = #c[1] * 8.5 + 26
+		if not row or used + est > width then
+			n += 1
+			row = UI.Frame(rows, { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 28), LayoutOrder = n })
+			UI.List(row, 6, true)
+			used = 0
+		end
+		used += est + 6
+		UI.Chip(row, c[1], c[2], { h = 28, TextSize = 14, solid = c[3] == true, textColor = c[3] and T.ink or nil })
 	end
-	return lines
+	return rows
 end
 
 local function showResult(ctx, res, quality)
@@ -3095,18 +3296,17 @@ local function showResult(ctx, res, quality)
 	local rec = type(res.record) == "table" and res.record or {}
 	local grade = type(rec.grade) == "string" and rec.grade or Config.GradeFor(quality)
 	local gcol = gradeColor(grade)
+	local r0 = res.result or {}
 	ctx.title.Text = ctx.act.name:upper()
 	ctx.header.Text = "SESSION COMPLETE" .. DOT .. "GRADE " .. grade
 	ctx.header.TextColor3 = gcol
 	ctx.setProgress(1)
-	-- the strip shows the graded session (the server's quality), the stage grows for the report
+	-- the strip shows the graded session (the server's quality)
 	ctx.tiles.quality.val.Text = string.format("%d%%", Config.QualityPct(quality))
 	ctx.tiles.quality.val.TextColor3 = gcol
 	ctx.tiles.quality.fill.BackgroundColor3 = gcol
 	ctx.tiles.quality.fill.Size = UDim2.fromScale(math.clamp(Config.QualityPct(quality) / 100, 0, 1), 1)
 	ctx.tiles.time.val.Text = clock(os.clock() - ctx.t0)
-	ctx.stage.Size = UDim2.new(1, -28, 0, STAGE_H + 50)
-	ctx.inputBar.Position = UDim2.new(0, 14, 0, STAGE_Y + STAGE_H + 56)
 	local parts = { string.format("Session quality %d%%", Config.QualityPct(quality)) }
 	if type(rec.best) == "number" and rec.best > 0 then
 		table.insert(parts, string.format("Personal best %d%%", Config.QualityPct(rec.best)))
@@ -3115,33 +3315,156 @@ local function showResult(ctx, res, quality)
 		table.insert(parts, string.format("%d session%s", rec.sessions, rec.sessions == 1 and "" or "s"))
 	end
 	ctx.info.Text = table.concat(parts, DOT)
-	-- the grade badge: the letter in the grade colour on a lit tile
-	local badge = UI.Frame(ctx.stage, { Name = "Grade", Position = UDim2.fromOffset(8, 8), Size = UDim2.fromOffset(92, STAGE_H + 34), BackgroundColor3 = UI.Shade(gcol, -0.72) })
+	-- the report gets room: on a wide screen the panel grows upward (the metrics strip rides on top).
+	-- ctx.layout calls this again when the screen changes (a window resized, a phone turned), so the
+	-- panel never runs off the top of a smaller screen
+	function ctx.sizeResult()
+		local cv = UI.CanvasSize(ctx.panel)
+		local small = cv.Y < 640
+		local h = small and math.min(PANEL_H, math.floor(cv.Y - 16)) or math.floor(math.clamp(cv.Y - 230, PANEL_H, 560))
+		if ctx.panelMax then
+			ctx.panelMax.MaxSize = Vector2.new(PANEL_W, h)
+		end
+		ctx.panel.Size = UDim2.new(0.96, 0, 0, h)
+		ctx.stage.Size = UDim2.new(1, -28, 0, h - STAGE_Y - 58)
+		ctx.inputBar.Position = UDim2.new(0, 14, 0, h - 50)
+		return h, small, cv
+	end
+	local H, compact, canvas = ctx.sizeResult()
+	ctx.stage.BackgroundTransparency = 1
+	local list = UI.Scroll(ctx.stage, { Position = UDim2.fromOffset(0, 0), Size = UDim2.fromScale(1, 1) })
+	UI.List(list, 8)
+	local listW = math.min(PANEL_W, canvas.X * 0.96) - 28 - 16
+	local order = 0
+	local function nextOrder()
+		order += 1
+		return order
+	end
+	-- 1. the grade, the record and the coach
+	local top = UI.Frame(list, { Name = "Top", BackgroundTransparency = 1, Size = UDim2.new(1, -8, 0, 96), LayoutOrder = nextOrder() })
+	local badge = UI.Frame(top, { Name = "Grade", Size = UDim2.fromOffset(92, 96), BackgroundColor3 = UI.Shade(gcol, -0.72) })
 	UI.Corner(badge, 10)
 	UI.Stroke(badge, gcol, 2, 0.1)
 	UI.Gradient(badge, { Color3.new(1, 1, 1), Color3.fromRGB(150, 150, 150) }, 90)
-	local letter = UI.Text(badge, grade, { Face = "display", TextSize = 30, TextColor3 = gcol, TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.fromOffset(0, 10), Size = UDim2.new(1, 0, 0, 100), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
-	TweenService:Create(letter, TweenInfo.new(0.45, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { TextSize = 88 }):Play()
-	UI.Text(badge, string.format("GRADE  ·  %d%%", Config.QualityPct(quality)), { Font = T.semi, TextSize = 10, TextColor3 = T.text, TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.new(0, 0, 1, -22), Size = UDim2.new(1, 0, 0, 14), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
-	-- the side card turns into the growth report: the muscles that grew (body map + biggest gains)
-	local r0 = res.result or {}
+	local letter = UI.Text(badge, grade, { Face = "display", TextSize = 30, TextColor3 = gcol, TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.fromOffset(0, 4), Size = UDim2.new(1, 0, 0, 70), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
+	TweenService:Create(letter, TweenInfo.new(0.45, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { TextSize = 64 }):Play()
+	UI.Text(badge, string.format("%d%%", Config.QualityPct(quality)), { Face = "number", TextSize = 16, TextColor3 = T.text, TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.new(0, 0, 1, -24), Size = UDim2.new(1, 0, 0, 20), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
+	local right = UI.Frame(top, { BackgroundTransparency = 1, Position = UDim2.fromOffset(104, 0), Size = UDim2.new(1, -104, 1, 0) })
+	UI.List(right, 6)
+	local headline, hcol
+	if rec.newBest then
+		headline, hcol = string.format("NEW PERSONAL BEST!   (was %d%%)", Config.QualityPct(rec.prevBest or 0)), T.gold
+	elseif rec.first then
+		headline, hcol = "FIRST SESSION LOGGED - the score to beat", T.gold
+	elseif rec.uncounted then
+		headline, hcol = "Too quick to count for your records", T.orange
+	end
+	if headline then
+		UI.Text(right, headline, { Face = "displayMed", TextSize = 18, TextColor3 = hcol, Size = UDim2.new(1, 0, 0, 22), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd, LayoutOrder = 1 })
+	end
+	local quote = UI.Frame(right, { Name = "Coach", BackgroundColor3 = T.panel2, BackgroundTransparency = 0.35, Size = UDim2.new(1, 0, 0, headline and 62 or 92), LayoutOrder = 2 })
+	UI.Corner(quote, UI.R.md)
+	UI.Frame(quote, { Size = UDim2.new(0, 3, 1, -12), Position = UDim2.fromOffset(0, 6), BackgroundColor3 = gcol })
+	UI.Text(quote, string.format('"%s"  <font color="#%s">- COACH</font>', coachRemark(ctx.act.id, grade), T.sub:ToHex()), { RichText = true, Font = T.semi, TextSize = 14, Position = UDim2.fromOffset(14, 6), Size = UDim2.new(1, -24, 1, -12),
+		AutomaticSize = Enum.AutomaticSize.None, TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Center, TextTruncate = Enum.TextTruncate.AtEnd })
+	-- 2. muscle growth: every part that grew - the level before (its colour), the growth now (green),
+	-- tonight's share once you sleep (pale green), your frame's potential (gold tick) and the gain
+	local grown = {}
+	if type(r0.parts) == "table" then
+		for id, g in pairs(r0.parts) do
+			g = tonumber(g)
+			if g and g > 0.005 then
+				table.insert(grown, { id = id, g = g })
+			end
+		end
+		table.sort(grown, function(a, b)
+			return a.g > b.g
+		end)
+	end
+	if #grown > 0 then
+		UI.Kicker(list, "MUSCLE GROWTH", T.green, { order = nextOrder(), TextSize = 13 })
+		local now = (Config.MuscleGrowth and Config.MuscleGrowth.immediate) or 0.65
+		local cap = ctx.cap or 100
+		for i, e in ipairs(grown) do
+			if i > 6 then
+				UI.Text(list, string.format("+ %d more", #grown - 6), { Font = T.semi, TextSize = 14, TextColor3 = T.sub, Size = UDim2.new(1, 0, 0, 18), AutomaticSize = Enum.AutomaticSize.None, LayoutOrder = nextOrder() })
+				break
+			end
+			local before = ctx.body0 and ctx.body0[e.id] or 0
+			local row = UI.Frame(list, { Name = "Grow", BackgroundTransparency = 1, Size = UDim2.new(1, -8, 0, 24), LayoutOrder = nextOrder() })
+			UI.Text(row, string.upper(BodyMap.Short(e.id)), { Font = T.semi, TextSize = 14, Size = UDim2.new(0, 120, 1, 0), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
+			UI.LevelBar(row, { Position = UDim2.new(0, 126, 0.5, -5), Size = UDim2.new(1, -126 - 132, 0, 10) },
+				{ gain = { before, before + e.g * now }, pending = before + e.g, cap = cap, color = BodyMap.DevColor(before / cap) })
+			UI.Text(row, string.format("+%.2f", e.g), { Face = "number", TextSize = 18, TextColor3 = T.green, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -62, 0, 0), Size = UDim2.fromOffset(64, 24),
+				AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Right, TextWrapped = false })
+			UI.Text(row, string.format("%.1f", before + e.g), { Face = "number", TextSize = 15, TextColor3 = T.sub, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 2), Size = UDim2.fromOffset(56, 22),
+				AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Right, TextWrapped = false })
+		end
+		UI.Text(list, string.format("Green lands now; the pale stretch grows overnight if you sleep and eat well. Gold tick: your frame's potential (%d).", math.floor(cap + 0.5)),
+			{ TextSize = 13, TextColor3 = T.sub, Size = UDim2.new(1, -8, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = nextOrder() })
+	end
+	-- 3. stat gains as chips
+	local statChips = {}
+	if type(r0.gains) == "table" then
+		for _, k in ipairs(Config.StatKeys) do
+			local g = tonumber(r0.gains[k])
+			if g and g > 0.001 then
+				table.insert(statChips, { string.format("+%.2f %s", g, string.upper(Config.StatNames[k] or k)), T.green })
+			end
+		end
+	end
+	if type(rec.newStats) == "table" and type(rec.bests) == "table" then
+		for _, key in ipairs(rec.newStats) do
+			local v = rec.bests[key]
+			if type(v) == "number" then
+				table.insert(statChips, { "NEW BEST: " .. string.upper(statText(ctx.act.id, key, v)), T.gold })
+			end
+		end
+	end
+	if #statChips > 0 then
+		UI.Kicker(list, "STATS", T.green, { order = nextOrder(), TextSize = 13 })
+		chipFlow(list, statChips, nextOrder(), listW)
+	end
+	-- 4. the body: pump, soreness, sweat, veins, fat, fatigue
+	local sc = statusChips(res)
+	if #sc > 0 then
+		UI.Kicker(list, "YOUR BODY", T.red, { order = nextOrder(), TextSize = 13 })
+		chipFlow(list, sc, nextOrder(), listW)
+	end
+	-- 5. the session in numbers, then notes (injuries in red)
+	local summary = table.clone(ctx.lines)
+	table.insert(summary, ctx.recovery and string.format("HR settled at %d BPM", math.floor(ctx.hr + 0.5)) or string.format("HR peak %d BPM", math.floor(ctx.hrPeak + 0.5)))
+	table.insert(summary, string.format("%d kcal", math.floor(ctx.kcal + 0.5)))
+	UI.Text(list, table.concat(summary, DOT), { Font = T.semi, TextSize = 14, TextColor3 = Color3.fromRGB(150, 210, 255), Size = UDim2.new(1, -8, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = nextOrder() })
+	for _, n in ipairs(r0.notes or {}) do
+		UI.Text(list, n, { Font = T.semi, TextSize = 14, TextColor3 = n:find("INJURY") and T.red or T.sub, Size = UDim2.new(1, -8, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = nextOrder() })
+	end
+	-- the side card turns into the growth map: bigger, every part that grew lit and named
 	if ctx.side and ctx.sideCaption then
-		if type(r0.parts) == "table" and next(r0.parts) then
+		if #grown > 0 then
 			ctx.sideCaption.Text = "GROWTH THIS SESSION"
 			ctx.sideCaption.TextColor3 = T.green
 			if ctx.sideTick then
 				ctx.sideTick.BackgroundColor3 = T.green
 			end
-			local list = ctx.map and ctx.map:SetGrowth(r0.parts, T.green) or {}
+			-- a bigger figure for the report (the card grows with the panel on a wide screen)
+			if not compact then
+				ctx.side.Size = UDim2.fromOffset(SIDE_W, H)
+				if ctx.map then
+					ctx.map.frame:Destroy()
+				end
+				-- the names list: three lines, five when many parts grew
+				local listH = #grown > 5 and 78 or 50
+				local okMap, map = pcall(BodyMap.new, ctx.side, { Size = UDim2.fromOffset(SIDE_W - 28, math.max(176, H - 120 - listH)), Position = UDim2.fromOffset(14, 30) })
+				ctx.map = okMap and map or nil
+				ctx.sideList.Position = UDim2.new(0, 14, 1, -(78 + listH))
+				ctx.sideList.Size = UDim2.new(1, -28, 0, listH)
+			end
 			if ctx.map then
+				ctx.map:SetGrowth(r0.parts, T.green)
 				ctx.map:Pulse(2)
+				ctx.sideNames(ctx.map:Lit(), T.green)
 			end
-			local rows, top = {}, list[1] and list[1].g or 1
-			for i = 1, math.min(3, #list) do
-				local e = list[i]
-				table.insert(rows, { (Config.MusclePartNames or {})[e.id] or e.id, string.format("+%.2f", e.g), e.g / math.max(top, 1e-6), T.green })
-			end
-			ctx.sideRows(rows)
 		end
 		-- energy / fatigue after the session (the server's numbers once the profile arrives)
 		local c0 = ctx.cond0 or {}
@@ -3158,47 +3481,12 @@ local function showResult(ctx, res, quality)
 			conn:Disconnect()
 		end)
 	end
-	-- details
-	local list = UI.Scroll(ctx.stage, { Position = UDim2.fromOffset(104, 6), Size = UDim2.new(1, -110, 1, -12) })
-	UI.List(list, 2)
-	local order = 0
-	local function line(text, color, font, size)
-		order += 1
-		UI.Line(list, text, { TextColor3 = color or T.text, Font = font or T.semi, TextSize = size or 13, LayoutOrder = order })
-	end
-	if rec.newBest then
-		line(string.format("NEW PERSONAL BEST!   (was %d%%)", Config.QualityPct(rec.prevBest or 0)), T.gold, T.bold, 17)
-	elseif rec.first then
-		line("FIRST SESSION LOGGED - this is the score to beat.", T.gold, T.bold, 14)
-	elseif rec.uncounted then
-		line("Too quick to count for your records.", T.orange, T.semi, 13)
-	end
-	if type(rec.newStats) == "table" and type(rec.bests) == "table" then
-		for _, key in ipairs(rec.newStats) do
-			local v = rec.bests[key]
-			if type(v) == "number" then
-				line("NEW BEST: " .. statText(ctx.act.id, key, v), T.gold, T.semi, 13)
-			end
-		end
-	end
-	line("COACH:  \"" .. coachRemark(ctx.act.id, grade) .. "\"", T.text, T.semi, 14)
-	local summary = table.clone(ctx.lines)
-	if ctx.recovery then
-		table.insert(summary, string.format("HR settled at %d", math.floor(ctx.hr + 0.5)))
-	else
-		table.insert(summary, string.format("HR peak %d", math.floor(ctx.hrPeak + 0.5)))
-	end
-	table.insert(summary, string.format("%d kcal", math.floor(ctx.kcal + 0.5)))
-	line(table.concat(summary, DOT), Color3.fromRGB(150, 210, 255), T.semi, 13)
-	for _, l in ipairs(resultLines(res)) do
-		line(l[1], l[2], T.semi, 13)
-	end
+	ctx.layout()
 	ctx.quit.Text = "CLOSE"
 	ctx.quit.BackgroundColor3 = T.panel2
 	-- FLEX: strike the pose that shows the muscles you just pumped (server: handlers.Flex)
-	local r = res.result or {}
 	local flexKind = FLEX_FOR[ctx.act.id] or "flex_most"
-	local canFlex = (type(r.pump) == "table" or type(r.parts) == "table") and not ctx.recovery
+	local canFlex = (type(r0.pump) == "table" or type(r0.parts) == "table") and not ctx.recovery
 	local actions = { { id = "close", label = "CONTINUE", keys = { K.Space }, color = T.gold } }
 	if canFlex then
 		table.insert(actions, { id = "flex", label = "FLEX", keys = { K.F }, color = Color3.fromRGB(255, 140, 60) })
@@ -3353,6 +3641,9 @@ function Activities.Start(actId)
 			if fin.result and fin.result.injury then
 				State.toast("INJURY: " .. fin.result.injury, T.red, 6)
 			end
+			-- the reveal: the camera turns to face the athlete for the report
+			task.wait(0.2) -- the server lets go of the station pose
+			camConn = revealCamera()
 			showResult(ctx, fin, fin.quality or quality)
 		else
 			State.toast(fin.err or "Session didn't count.", T.red)

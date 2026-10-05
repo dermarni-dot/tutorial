@@ -1224,7 +1224,7 @@ local function attireBuild(model, app, opts, gear, sp, env)
 			local panelH = top - low - 0.12
 			local panelY = low + 0.08 + panelH / 2
 			if a.trunkStyle == "Striped" then
-				mk(folder, ul, "Stripe", V3(0.05, us.Y * panelH, dZ * 0.38), ul.CFrame * CF(px, us.Y * panelY, zc), trim, "Block", SMOOTH)
+				mk(folder, ul, "TrunkStripe", V3(0.05, us.Y * panelH, dZ * 0.38), ul.CFrame * CF(px, us.Y * panelY, zc), trim, "Block", SMOOTH)
 			elseif a.trunkStyle == "Pro" then
 				-- pro trunks: trim hem at the leg opening and a trim side panel with white stripes
 				mk(folder, ul, "Hem", V3(us.X * (wX + 0.02), us.Y * 0.1, dZ + 0.024), ul.CFrame * CF(0, us.Y * (low + 0.05), zc), trim, "Block", SMOOTH)

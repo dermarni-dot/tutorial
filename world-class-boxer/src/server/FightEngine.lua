@@ -28,6 +28,9 @@ do
 end
 local FightAI = require(script.Parent.FightAI)
 local Career = require(script.Parent.Career)
+-- fight spacing (FightMotion.Spacing; the round-1 numbers if that module is missing)
+local SPACING = FightMotion and FightMotion.Spacing
+	or { base = 3.5, min = 2.85, minSep = 2.6, inside = 3, clinch = 4.4, pivot = 3.2, cover = 5 }
 
 local FightEngine = {}
 FightEngine.Active = {} -- player -> fight
@@ -189,10 +192,13 @@ function Fight:Distance(A, B)
 	return flat(A.root.Position - B.root.Position).Magnitude
 end
 
+-- Ranges fit the rigs: with these shoulders and arms a jab lands with the arm nearly straight at about
+-- 4.4 studs root to root, and two guards have about a stud of air between them at the AI's usual 3.4-4.4
+-- (FightMotion.Spacing; the client fits each punch to the actual distance)
 function Fight:PunchRange(F, ptype)
-	local base = 3.5 + ((F.data.reach or 70) - 70) * 0.05 + ((F.data.height or 70) - 70) * 0.02
-	-- never shorter than the closest the bodies can get (2.6 apart), so every punch can land up close
-	return math.max(2.85, base * (Config.Punches[ptype] and Config.Punches[ptype].range or 1))
+	local base = SPACING.base + ((F.data.reach or 70) - 70) * 0.05 + ((F.data.height or 70) - 70) * 0.02
+	-- never shorter than the closest the bodies get (MIN_SEP), so every punch can land up close
+	return math.max(SPACING.min, base * (Config.Punches[ptype] and Config.Punches[ptype].range or 1))
 end
 
 function Fight:IsHurt(F)
@@ -625,7 +631,7 @@ function Fight:Resolve(F, O, ptype, body, stamPct)
 	if angled then
 		dmg *= 1.1
 	end
-	if dist < 3 then
+	if dist < SPACING.inside then
 		if P.kind == "hook" or P.kind == "uppercut" then
 			dmg *= F.style.fight.inside
 		else
@@ -956,7 +962,7 @@ end
 
 function Fight:CanClinch(F)
 	local O = self:Other(F)
-	return self:CanAct(F) and O.state ~= "down" and self:Now() >= F.nextClinch and F.stamina >= 4 and self:Distance(F, O) < 4.4
+	return self:CanAct(F) and O.state ~= "down" and self:Now() >= F.nextClinch and F.stamina >= 4 and self:Distance(F, O) < SPACING.clinch
 end
 
 function Fight:Clinch(F)
@@ -1197,7 +1203,7 @@ end
 -- room (studs, centre to centre) a fall that folds forward needs in front of the man going down: the
 -- attacker backs off to it. A face-first timber fall goes diagonally past him (FightMotion), the
 -- others fold onto the hands / knees / into the referee's arms just in front of the feet
-local FALL_ROOM = { face = 4.6, forward = 4.0, standing = 4.2, knee = 3.3, flash = 3.3 }
+local FALL_ROOM = { face = 5.0, forward = 4.2, standing = 5.0, knee = 3.8, flash = 3.8 }
 
 -- walks a fighter's root over the canvas at a walking pace (never a teleport): the Animator senses the
 -- motion and gives him real steps. The speed ramps up and brakes into the spot; a newer glide or a
@@ -1336,7 +1342,8 @@ function Fight:Knockdown(F, by, severity, fall, cause)
 	end
 	-- a man folding forward goes past the one who dropped him, not through him: the attacker backs off a
 	-- step to give the fall its room (a walk the Animator turns into real steps, never a teleport)
-	local room = FALL_ROOM[fall]
+	-- (a knocked-out man does not stop on his hands: a forward knockout goes all the way to the face)
+	local room = FALL_ROOM[(severity == "out" and fall == "forward") and "face" or fall]
 	if room and F.root and by.root then
 		local d = flat(F.root.Position - by.root.Position)
 		if d.Magnitude > 0.05 and d.Magnitude < room then
@@ -1609,7 +1616,7 @@ function Fight:ClampToRing(pos)
 end
 
 -- centre-to-centre spacing the bodies need so gloves and torsos never sink into each other
-local MIN_SEP, CLINCH_SEP = 2.6, 1.9
+local MIN_SEP, CLINCH_SEP = SPACING.minSep, 1.9
 
 function Fight:MoveAI(F, range, circle)
 	if not F.hum or F.state == "down" or F.state == "clinch" or self:IsStumbling(F) then

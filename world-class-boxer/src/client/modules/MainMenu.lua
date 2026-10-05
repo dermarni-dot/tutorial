@@ -716,7 +716,8 @@ end
 function openScout(layer, over, id)
 	closeScout()
 	local sheet = UI.Frame(layer, { Name = "ScoutSheet", Position = over.Position, Size = over.Size, ZIndex = 6 })
-	UI.Glass(sheet, { transparency = 0.04 })
+	-- opaque: the rankings rows under it must not bleed through the report's text
+	UI.Glass(sheet, { transparency = 0 })
 	scoutSheet = sheet
 	local back = UI.Button(sheet, "BACK", { Name = "Back", Size = UDim2.fromOffset(110, 38), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -14, 0, 12), BackgroundColor3 = T.panel2,
 		BackgroundTransparency = 0.15, ZIndex = 8 }, closeScout)
@@ -1152,6 +1153,7 @@ function MainMenu.Open(which)
 	-- a new screen size (rotation, window resize, UI scale setting): rebuild in place, once the change
 	-- settles and no pointer is held (a drag in progress keeps its widget)
 	local rebuildToken = 0
+	local builtW, builtH = canvasW, canvasH
 	local function rebuildSoon()
 		rebuildToken += 1
 		local token = rebuildToken
@@ -1164,6 +1166,10 @@ function MainMenu.Open(which)
 				return
 			end
 			measure()
+			if math.abs(canvasW - builtW) < 1 and math.abs(canvasH - builtH) < 1 then
+				return
+			end
+			builtW, builtH = canvasW, canvasH
 			if view == "home" then
 				buildHome()
 			else
@@ -1172,6 +1178,8 @@ function MainMenu.Open(which)
 		end)
 	end
 	track(root:GetAttributeChangedSignal("UIScale"):Connect(rebuildSoon))
+	-- the canvas also changes at a constant scale (two phone sizes both at the 0.78 floor)
+	track(gui:GetPropertyChangedSignal("AbsoluteSize"):Connect(rebuildSoon))
 	-- the character respawned under the menu: stage the new one
 	track(player.CharacterAdded:Connect(function()
 		task.wait(1)

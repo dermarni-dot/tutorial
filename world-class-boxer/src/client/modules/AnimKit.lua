@@ -310,6 +310,14 @@ function AnimKit.noise1(x, seed)
 	return (g0 * f + (g1 * (f - 1) - g0 * f) * u) * 2
 end
 
+-- organic motion that never stalls: a seeded sine (always on its way somewhere) varied by gradient
+-- noise (a single noise octave can sit near zero for seconds with an unlucky seed). About -1..1.
+function AnimKit.wander(t, f, seed)
+	seed = seed or 0
+	local ph = (seed * 2.399963) % 6.283185
+	return 0.6 * sin(t * f * 6.283185 + ph) + 0.5 * AnimKit.noise1(t * f * 1.7 + 13.1, seed)
+end
+
 -- fractal noise: two octaves, the second a quarter as strong (organic drift with a little texture)
 function AnimKit.fbm(x, seed)
 	return (AnimKit.noise1(x, seed) + 0.35 * AnimKit.noise1(x * 2.13 + 7.1, seed + 19)) / 1.35

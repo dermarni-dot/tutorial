@@ -58,6 +58,9 @@ local smooth = K.smooth
 local num = R.num
 
 local KEYS, LEG_KEYS = R.KEYS, R.LEG_KEYS
+-- the arm joints a punch drives, and the fastest any of them may turn while it does (rad/s)
+local ARM_KEYS = { LS = true, LE = true, LW = true, RS = true, RE = true, RW = true }
+local PUNCH_JOINT_RATE = 31
 local TAGS = { "Fighter", "Trainee", "Ambient", "Preview", "Referee" }
 -- player characters walk / run / jump with the procedural gait (false = Roblox's default Animate)
 local DRIVE_PLAYERS = true
@@ -731,9 +734,11 @@ local function updateRig(rig, model, t, dt, lod, rdt)
 			p[k] = j.base
 		end
 	end
-	-- overlays: reactions (springs), punches (per-hand layers), acts, gaze
-	if R.stepSprings(rig, dt) then
-		R.applySprings(rig, p)
+	-- overlays: reactions (springs: the cover-up here, the snaps after the filters), punches (per-hand
+	-- layers), acts, gaze
+	local springs = R.stepSprings(rig, dt)
+	if springs then
+		R.applySpringsPre(rig, p)
 	end
 	local near = lod >= 3
 	Gym.runPending(rig, t)
@@ -765,13 +770,29 @@ local function updateRig(rig, model, t, dt, lod, rdt)
 	if not rig.isFighter then
 		applyLook(p, rig, dt)
 	end
-	-- output filter (fast enough to keep the snap of a punch)
+	-- output filter (fast enough to keep the snap of a punch); while a punch is out the upper body
+	-- barely filters at all: the punch's own curves are smooth, and a 40/s low-pass would leave a fist
+	-- at 30 studs/s most of a stud behind the spot it was aimed at
 	local ao = 1 - exp(-dt * 40)
+	local aoPunch = 1 - exp(-dt * 100)
+	local punching = rig.pun and (rig.pun.L or rig.pun.R)
 	local plantOn = rig.plant and rig.geo.ok and joints.Root ~= nil
 	for _, k in ipairs(KEYS) do
 		local j = joints[k]
 		if j and not (plantOn and LEG_KEYS[k]) then
-			j.cur = j.cur:Lerp(p[k], ao)
+			if punching and ARM_KEYS[k] then
+				-- (and the punching arms never turn faster than PUNCH_JOINT_RATE: where the body's turn and
+				-- the fist's path add up, the arm lags its target by a hair instead of whipping round)
+				local nxt = j.cur:Lerp(p[k], aoPunch)
+				local _, ang = (j.cur:Inverse() * nxt):ToAxisAngle()
+				local maxA = PUNCH_JOINT_RATE * dt
+				if ang > maxA then
+					nxt = j.cur:Lerp(nxt, maxA / ang)
+				end
+				j.cur = nxt
+			else
+				j.cur = j.cur:Lerp(p[k], (punching and not LEG_KEYS[k]) and aoPunch or ao)
+			end
 		end
 	end
 	-- the gait's pelvis / shoulder motion and momentum, in step with the feet (after the filters)
@@ -783,6 +804,11 @@ local function updateRig(rig, model, t, dt, lod, rdt)
 		local rootT = joints.Root.cur
 		if rx ~= 0 or ry ~= 0 or yawP ~= 0 or rollP ~= 0 or pitchP ~= 0 then
 			rootT = CF(rx, ry, 0) * rootT * A(pitchP, yawP, rollP)
+		end
+		-- a blow's hip / knee-drop translation (unfiltered; planted legs absorb it below)
+		local st = springs and R.springRoot(rig)
+		if st then
+			rootT = st * rootT
 		end
 		-- a server nudge / pivot teleport glides instead of popping (the feet step after it)
 		if (jo and jo.Magnitude > 1e-3) or (jy and abs(jy) > 1e-3) then
@@ -838,9 +864,15 @@ local function updateRig(rig, model, t, dt, lod, rdt)
 	end
 	rig.keyedLegs = not plantOn and joints.Root ~= nil
 	rig.wasPlant = plantOn
+	-- the output: filtered pose + gait offsets, the reaction snaps composed on top (never low-passed)
+	local out = rig.outT
+	if not out then
+		out = {}
+		rig.outT = out
+	end
 	for _, k in ipairs(KEYS) do
 		local j = joints[k]
-		if j and j.motor.Parent then
+		if j then
 			local v = j.cur
 			if k == "Root" and rig.rootOut then
 				v = rig.rootOut
@@ -849,7 +881,27 @@ local function updateRig(rig, model, t, dt, lod, rdt)
 			elseif k == "Neck" and rig.nOut then
 				v = rig.nOut
 			end
-			j.motor.Transform = v
+			if springs then
+				v = R.springOut(rig, k, v)
+			end
+			out[k] = v
+		else
+			out[k] = I
+		end
+	end
+	-- a body on the canvas (keyed legs: a fall, the get-up) never sinks into it, whatever the springs do
+	if not plantOn and (rig.down or (rig.act and rig.act.kind == "getup")) and joints.Root then
+		local co = rig.clampOut
+		if not co then
+			co = {}
+			rig.clampOut = co
+		end
+		R.floorClamp(rig, out, co)
+	end
+	for _, k in ipairs(KEYS) do
+		local j = joints[k]
+		if j and j.motor.Parent then
+			j.motor.Transform = out[k]
 		end
 	end
 	Gym.ropeVisual(rig, model, ropeOn, rig.ropePhase or 0)

@@ -9,6 +9,18 @@
 --   is dazed, holds / covers / freezes when it is dazed itself, and reacts slower when concussed
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
+-- fight spacing (FightMotion.Spacing, R-anim; the round-1 numbers if that module is missing)
+local SPACING = { pivot = 3.2, clinch = 4.2, cover = 5 }
+do
+	local fm = ReplicatedStorage.Shared:FindFirstChild("FightMotion")
+	local ok, mod = false, nil
+	if fm then
+		ok, mod = pcall(require, fm)
+	end
+	if ok and type(mod) == "table" and mod.Spacing then
+		SPACING = { pivot = mod.Spacing.pivot, clinch = mod.Spacing.clinch - 0.2, cover = mod.Spacing.cover }
+	end
+end
 
 local FightAI = {}
 FightAI.__index = FightAI
@@ -315,16 +327,16 @@ function FightAI:Think(now)
 		return
 	end
 	-- cut off / escape the corner with a pivot
-	if self.arch.pivot > 0.15 and dist < 3.2 and self.rng:NextNumber() < self.arch.pivot * 0.08 then
+	if self.arch.pivot > 0.15 and dist < SPACING.pivot and self.rng:NextNumber() < self.arch.pivot * 0.08 then
 		engine:Pivot(F, self.circleDir)
 		return
 	end
 	if self.mode == "survive" then
-		if dist < 4.2 and self.rng:NextNumber() < (tier >= 1 and 0.45 or 0.25) and engine:CanClinch(F) then
+		if dist < SPACING.clinch and self.rng:NextNumber() < (tier >= 1 and 0.45 or 0.25) and engine:CanClinch(F) then
 			engine:Clinch(F)
 			return
 		end
-		if dist < 5 and self.rng:NextNumber() < 0.6 then
+		if dist < SPACING.cover and self.rng:NextNumber() < 0.6 then
 			engine:SetBlock(F, true)
 			self.blockUntil = now + 0.7
 			return
