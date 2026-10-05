@@ -55,6 +55,27 @@ LookData.SECTIONS = {
 	},
 }
 
+-- round-1 geometry each section hides (locally, once its meshes exist) when its generator gives no
+-- Replaces rules; AnatomyClient and the offline renderer both apply these. Rule shapes: { r15 = part },
+-- { folder = BoxerLook folder [, names = {...} | except = {...}] }, { tag = CollectionService tag }.
+LookData.DEFAULT_REPLACES = {
+	Body = {
+		{ r15 = "UpperTorso" }, { r15 = "LowerTorso" }, { r15 = "LeftUpperArm" }, { r15 = "RightUpperArm" },
+		{ r15 = "LeftLowerArm" }, { r15 = "RightLowerArm" }, { r15 = "LeftUpperLeg" }, { r15 = "RightUpperLeg" },
+		{ r15 = "LeftLowerLeg" }, { r15 = "RightLowerLeg" }, { folder = "Muscles" },
+	},
+	Head = {
+		{ r15 = "Head" },
+		{ folder = "Face", names = {
+			"Ear", "EarHelix", "Cauliflower", "Jaw", "JawAngle", "Chin", "LowerFace", "ChinCleft", "Jowl", "DoubleChin",
+			"Cheekbone", "Cheek", "Hollow", "BrowRidge", "Nose", "NoseTip", "Nostril", "NoseBump", "Nasolabial", "Philtrum",
+			"LipFold", "Freckle", "Mole", "Scar", "AcneScar", "Acne", "Birthmark", "BattleScar", "BrowGap", "SurgicalScar",
+			"Suture", "ForeheadLine", "CrowFeet", "Pore", "Blush", "Crease", "UnderEye",
+		} },
+	},
+	Hair = { { folder = "Hair" } },
+}
+
 LookData.R15 = {
 	"Head", "UpperTorso", "LowerTorso", "LeftUpperArm", "LeftLowerArm", "LeftHand", "RightUpperArm", "RightLowerArm",
 	"RightHand", "LeftUpperLeg", "LeftLowerLeg", "LeftFoot", "RightUpperLeg", "RightLowerLeg", "RightFoot",

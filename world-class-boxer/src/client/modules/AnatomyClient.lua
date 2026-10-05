@@ -36,8 +36,9 @@ AnatomyClient.Settings = {
 	textures = true, -- EditableImage colour textures for pieces that ask for one
 	meshCentered = true, -- a MeshPart made from an EditableMesh is centred on the mesh's bounding box
 	flipV = false, -- flip texture v if textures show upside down
-	cacheSize = 12, -- generated sections kept for re-use (NPCs walking back into range, LOD flips)
-	holdTime = 4, -- seconds a model keeps its level of detail before it may change again
+	cacheSize = 24, -- generated sections kept for re-use (NPCs walking back into range, LOD flips)
+	promoteHold = 1.5, -- seconds a model must want a higher level of detail before it is rebuilt
+	demoteHold = 12, -- ... and a lower one (or out of range): lowering only saves memory, so it waits -- seconds a model keeps its level of detail before it may change again
 	debug = false,
 }
 
@@ -46,25 +47,6 @@ local SECTION_ORDER = { Body = 1, Head = 2, Hair = 3 }
 local GENERATORS = { AnatomyBody = "Body", AnatomyHead = "Head", AnatomyHair = "Hair" }
 local LOD_RANK = { full = 3, medium = 2, low = 1 }
 local CANCEL = "\0AnatomyCancelled"
-
--- round-1 geometry each section hides when its generator gives no `replaces` rules
-local DEFAULT_REPLACES = {
-	Body = {
-		{ r15 = "UpperTorso" }, { r15 = "LowerTorso" }, { r15 = "LeftUpperArm" }, { r15 = "RightUpperArm" },
-		{ r15 = "LeftLowerArm" }, { r15 = "RightLowerArm" }, { r15 = "LeftUpperLeg" }, { r15 = "RightUpperLeg" },
-		{ r15 = "LeftLowerLeg" }, { r15 = "RightLowerLeg" }, { folder = "Muscles" },
-	},
-	Head = {
-		{ r15 = "Head" },
-		{ folder = "Face", names = {
-			"Ear", "EarHelix", "Cauliflower", "Jaw", "JawAngle", "Chin", "LowerFace", "ChinCleft", "Jowl", "DoubleChin",
-			"Cheekbone", "Cheek", "Hollow", "BrowRidge", "Nose", "NoseTip", "Nostril", "NoseBump", "Nasolabial", "Philtrum",
-			"LipFold", "Freckle", "Mole", "Scar", "AcneScar", "Acne", "Birthmark", "BattleScar", "BrowGap", "SurgicalScar",
-			"Suture", "ForeheadLine", "CrowFeet", "Pore", "Blush", "Crease", "UnderEye",
-		} },
-	},
-	Hair = { { folder = "Hair" } },
-}
 
 local started = false
 local running = false
@@ -503,7 +485,7 @@ local function rulesFor(def, look, lod, result)
 		local ok, r = pcall(base, look, lod)
 		base = ok and r or nil
 	end
-	for _, r in ipairs(type(base) == "table" and base or DEFAULT_REPLACES[def.section] or {}) do
+	for _, r in ipairs(type(base) == "table" and base or LookData.DEFAULT_REPLACES[def.section] or {}) do
 		rules[#rules + 1] = r
 	end
 	for _, piece in pairs(result.pieces or {}) do
@@ -831,7 +813,7 @@ end
 
 -- decide every model's level of detail and queue the sections that need (re)building
 local function evaluate()
-	if api.state == "disabled" or not running then
+	if api.state == "disabled" or not running or next(registry) == nil then
 		return
 	end
 	local S = AnatomyClient.Settings
@@ -859,30 +841,60 @@ local function evaluate()
 		end
 		return a.dist < b.dist
 	end)
-	local fulls = 0
 	local now = os.clock()
+	-- levels with hysteresis, so characters walking around do not flip (each flip is a rebuild):
+	-- a model already at full keeps it with some slack (rank <= maxFull + 2, 15% past fullRange); new
+	-- full slots only fill up to maxFull; the distance bands get +-12% margins around the current level
+	local want = {}
+	local fullKept = 0
 	for _, rec in ipairs(list) do
-		local want
 		if not S.enabled then
-			want = nil
+			want[rec] = false
 		elseif rec.priority <= 1 then
-			want = "full"
-		elseif rec.dist <= S.fullRange and fulls < S.maxFull then
-			want = "full"
-			fulls += 1
-		elseif rec.dist <= S.fullRange * 1.6 then
-			want = "medium"
-		elseif rec.dist <= S.lodRange then
-			want = "low"
+			want[rec] = "full"
+		elseif rec.lod == "full" and rec.dist <= S.fullRange * 1.15 and fullKept < S.maxFull + 2 then
+			want[rec] = "full"
+			fullKept += 1
 		end
-		-- hysteresis: keep the current level for holdTime unless the model left range entirely
-		if rec.lod and want ~= rec.lod and want ~= nil and now - (rec.lodAt or 0) < S.holdTime then
-			want = rec.lod
+	end
+	local fulls = fullKept
+	for _, rec in ipairs(list) do
+		if want[rec] == nil then
+			local d = rec.dist
+			local function band(limit, current)
+				return d <= limit * ((rec.lod == current) and 1.12 or 0.88)
+			end
+			if d <= S.fullRange and fulls < S.maxFull then
+				want[rec] = "full"
+				fulls += 1
+			elseif band(S.fullRange * 1.6, "medium") or (rec.lod == "full" and d <= S.fullRange * 1.6) then
+				want[rec] = "medium"
+			elseif band(S.lodRange, "low") or ((rec.lod == "full" or rec.lod == "medium") and d <= S.lodRange) then
+				want[rec] = "low"
+			else
+				want[rec] = false
+			end
 		end
-		if want ~= rec.lod then
-			rec.lod = want
-			rec.lodAt = now
+	end
+	for _, rec in ipairs(list) do
+		local wanted = want[rec] or nil
+		-- promotions after promoteHold, demotions (and leaving range) only after demoteHold of wanting
+		-- the lower level without a break: camera jumps (menus, training views) never cost a rebuild
+		if wanted ~= rec.lod then
+			if rec.pendingLod ~= (wanted or "none") then
+				rec.pendingLod = wanted or "none"
+				rec.pendingAt = now
+			end
+			local up = rec.lod == nil or (wanted ~= nil and LOD_RANK[wanted] > LOD_RANK[rec.lod])
+			local hold = up and S.promoteHold or S.demoteHold
+			if rec.lod == nil or now - rec.pendingAt >= hold then
+				rec.lod = wanted
+				rec.pendingLod = nil
+			end
+		else
+			rec.pendingLod = nil
 		end
+		local want = rec.lod
 		for section, def in pairs(registry) do
 			local st = rec.sections[section]
 			if def.failed or not want or (def.lods and not def.lods[want]) then
@@ -1116,7 +1128,7 @@ local function boot()
 	-- Config.Anatomy defaults under any setting a caller already changed
 	local defaults = {
 		enabled = true, maxFull = 6, fullRange = 70, lodRange = 160, frameBudget = 0.0025, textures = true,
-		meshCentered = true, flipV = false, cacheSize = 12, holdTime = 4, debug = false,
+		meshCentered = true, flipV = false, cacheSize = 24, promoteHold = 1.5, demoteHold = 12, debug = false,
 	}
 	local cfg = Config and Config.Anatomy or {}
 	for k, v in pairs(cfg) do

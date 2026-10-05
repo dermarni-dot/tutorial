@@ -39,35 +39,35 @@ local noise = K.noise1
 ------------------------------------------------------------------------
 local STYLE = {
 	BoxerPuncher = {
-		depth = 0.26, stagger = 1.0, width = 0.06, yawL = -0.22, yawR = -0.78, heel = 0.14, hip = -0.3, wyaw = -0.08,
+		depth = 0.28, stagger = 1.45, width = 0.1, yawL = -0.22, yawR = -0.78, heel = 0.14, hip = -0.3, wyaw = -0.08,
 		lean = -0.05, tuck = -0.15, leadT = { -0.32, 0.92, -1.38 }, rearT = { 0.36, 1.02, -0.8 },
 		bounce = { 0.04, 1.75, 0.08 }, shift = { 0.07, 0.32 }, head = { 0.05, 0.55, 0, 0.03 },
 		hands = { 0.12, 0.05, 0.6 }, feet = { 0.9, 0.14, 0 }, roll = 0, fidget = { 4, 7 },
 		likes = { tap = 1, roll = 1, feint = 2, pump = 1, neck = 1, adjust = 1 },
 	},
 	OutBoxer = {
-		depth = 0.2, stagger = 1.12, width = 0.03, yawL = -0.15, yawR = -0.85, heel = 0.3, hip = -0.4, wyaw = -0.1,
+		depth = 0.22, stagger = 1.6, width = 0.06, yawL = -0.15, yawR = -0.85, heel = 0.3, hip = -0.4, wyaw = -0.1,
 		lean = -0.02, tuck = -0.1, leadT = { -0.44, 0.55, -1.48 }, rearT = { 0.38, 0.98, -0.8 },
 		bounce = { 0.075, 2.25, 0.16 }, shift = { 0.05, 0.45 }, head = { 0.05, 0.8, 0, 0.05 },
 		hands = { 0.3, 0.08, 0.9 }, feet = { 1.9, 0.2, 0 }, roll = 0, fidget = { 3, 6 },
 		likes = { pump = 3, feint = 2, shake = 1, bounce2 = 2, tap = 1 },
 	},
 	Swarmer = {
-		depth = 0.4, stagger = 0.82, width = 0.1, yawL = -0.3, yawR = -0.6, heel = 0.12, hip = -0.18, wyaw = -0.04,
+		depth = 0.42, stagger = 1.2, width = 0.18, yawL = -0.3, yawR = -0.6, heel = 0.12, hip = -0.18, wyaw = -0.04,
 		lean = -0.2, tuck = -0.3, leadT = { -0.27, 1.12, -0.98 }, rearT = { 0.29, 1.12, -0.86 },
 		bounce = { 0.035, 1.6, 0.06 }, shift = { 0.06, 0.4 }, head = { 0.06, 0.7, 0.24, 0.04 },
 		hands = { 0.06, 0.04, 0.8 }, feet = { 1.1, 0.16, 1 }, roll = 0, fidget = { 3, 6 },
 		likes = { tap = 3, feint = 1, neck = 1, adjust = 1 },
 	},
 	Slugger = {
-		depth = 0.3, stagger = 1.06, width = 0.16, yawL = -0.25, yawR = -0.8, heel = 0.03, hip = -0.3, wyaw = -0.06,
+		depth = 0.32, stagger = 1.5, width = 0.2, yawL = -0.25, yawR = -0.8, heel = 0.03, hip = -0.3, wyaw = -0.06,
 		lean = -0.06, tuck = -0.2, leadT = { -0.38, 0.82, -1.28 }, rearT = { 0.44, 0.9, -0.82 },
 		bounce = { 0.012, 0.9, 0 }, shift = { 0.13, 0.17 }, head = { 0.04, 0.35, 0, 0.02 },
 		hands = { 0.05, 0.06, 0.4 }, feet = { 0.35, 0.12, 0 }, roll = 0.5, fidget = { 4, 8 },
 		likes = { roll = 3, tap = 2, neck = 2, breath = 2, adjust = 1 },
 	},
 	CounterPuncher = {
-		depth = 0.24, stagger = 1.0, width = 0.05, yawL = -0.25, yawR = -0.8, heel = 0.12, hip = -0.46, wyaw = -0.12,
+		depth = 0.26, stagger = 1.4, width = 0.08, yawL = -0.25, yawR = -0.8, heel = 0.12, hip = -0.46, wyaw = -0.12,
 		lean = -0.03, tuck = -0.22, leadT = { -0.16, 0.12, -1.02 }, rearT = { 0.3, 1.02, -0.76 },
 		bounce = { 0.025, 1.4, 0.05 }, shift = { 0.06, 0.28 }, head = { 0.05, 0.7, 0, 0.11 },
 		hands = { 0.05, 0.05, 0.5 }, feet = { 0.6, 0.12, 0 }, roll = 1, fidget = { 4, 7 },

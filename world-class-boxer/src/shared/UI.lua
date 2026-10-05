@@ -738,13 +738,14 @@ function UI.CanvasSize(obj)
 	while root and not mounted[root] do
 		root = root.Parent
 	end
-	local s = root and mounted[root].scale.Scale or 1
 	local screen = root and mounted[root].gui or obj:FindFirstAncestorWhichIsA("LayerCollector")
 	local abs = screen and screen.AbsoluteSize or Vector2.zero
 	if abs.X < 2 or abs.Y < 2 then
 		local cam = workspace.CurrentCamera
 		abs = cam and cam.ViewportSize or Vector2.new(1600, 900)
 	end
+	-- computed fresh (same formula as the root's UIScale) so a resize handler never sees a stale scale
+	local s = root and UI.ScaleFor(abs.X, abs.Y, UI.UserScale) or 1
 	return Vector2.new(abs.X / s, abs.Y / s)
 end
 

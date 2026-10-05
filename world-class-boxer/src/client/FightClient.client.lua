@@ -300,6 +300,7 @@ end
 
 local board = UI.Frame(hud, { Name = "Scoreboard", BackgroundTransparency = 1, AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 10), Size = UDim2.new(1, -40, 0, 134) })
 UI.New("UISizeConstraint", { MaxSize = Vector2.new(1380, 134), Parent = board })
+local boardScale = UI.New("UIScale", { Name = "Fit", Parent = board })
 
 local function fighterPanel(side)
 	local left = side == "L"
@@ -397,16 +398,16 @@ UI.Corner(crowdLeft, 4)
 local crowdRight = UI.Frame(crowdBar, { Position = UDim2.fromScale(0.5, 0), Size = UDim2.fromScale(0, 1), BackgroundColor3 = T.blue })
 UI.Corner(crowdRight, 4)
 local crowdGlow = UI.Frame(crowdBar, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.new(0, 3, 1, 6), BackgroundColor3 = Color3.new(1, 1, 1) })
-local crowd = { level = 0.2, lean = 0, shownLevel = -1, shownLean = 99 }
+local crowdMeter = { level = 0.2, lean = 0, shownLevel = -1, shownLean = 99 }
 local CROWD_WORDS = { { 0.85, "ON THEIR FEET" }, { 0.6, "ROARING" }, { 0.35, "BUZZING" }, { 0, "QUIET" } }
 local function updateCrowd(dt)
-	crowd.lean *= math.exp(-dt / 6)
-	local lvl = math.floor(crowd.level * 20 + 0.5) / 20
-	local lean = math.floor(crowd.lean * 40 + 0.5) / 40
-	if lvl == crowd.shownLevel and lean == crowd.shownLean then
+	crowdMeter.lean *= math.exp(-dt / 6)
+	local lvl = math.floor(crowdMeter.level * 20 + 0.5) / 20
+	local lean = math.floor(crowdMeter.lean * 40 + 0.5) / 40
+	if lvl == crowdMeter.shownLevel and lean == crowdMeter.shownLean then
 		return
 	end
-	crowd.shownLevel, crowd.shownLean = lvl, lean
+	crowdMeter.shownLevel, crowdMeter.shownLean = lvl, lean
 	crowdLeft.Size = UDim2.fromScale(math.clamp(lean, 0, 1) * 0.5, 1)
 	crowdRight.Size = UDim2.fromScale(math.clamp(-lean, 0, 1) * 0.5, 1)
 	crowdGlow.BackgroundTransparency = 0.6 - lvl * 0.6
@@ -451,18 +452,20 @@ UI.Text(tickerTag, "COMMENTARY", { Font = T.semi, TextSize = 12, TextXAlignment 
 local tickerText = UI.Text(ticker, "", { TextSize = 15, Font = T.semi, TextXAlignment = Enum.TextXAlignment.Left, Position = UDim2.fromOffset(146, 0), Size = UDim2.new(1, -160, 1, 0),
 	AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
 -- control hints (key caps) above the ticker; touch players get the pad instead
-local controls = UI.Frame(hud, { Name = "Controls", BackgroundTransparency = 1, AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -62), Size = UDim2.new(1, -48, 0, 22) })
-UI.List(controls, 14, true, Enum.HorizontalAlignment.Center)
+local controls = UI.Frame(hud, { Name = "Controls", AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -62), Size = UDim2.fromOffset(0, 30), AutomaticSize = Enum.AutomaticSize.X })
+UI.Glass(controls, { transparency = 0.35, radius = 15 })
+UI.New("UIPadding", { PaddingLeft = UDim.new(0, 12), PaddingRight = UDim.new(0, 14), Parent = controls })
+UI.List(controls, 12, true, Enum.HorizontalAlignment.Center)
 for i, k in ipairs({ { "1/J", "JAB" }, { "2/K", "CROSS" }, { "3/L", "L.HOOK" }, { "4", "R.HOOK" }, { "5/U", "UPPER" }, { "6/O", "OVERHAND" }, { "SHIFT", "BODY" },
 	{ "F", "BLOCK" }, { "R", "PARRY" }, { "Q/E", "SLIP" }, { "C", "ROLL" }, { "Z/X", "PIVOT" }, { "G", "CLINCH" } }) do
 	local f = UI.Frame(controls, { BackgroundTransparency = 1, Size = UDim2.fromOffset(0, 22), AutomaticSize = Enum.AutomaticSize.X, LayoutOrder = i })
 	UI.List(f, 5, true)
-	local cap = UI.Frame(f, { Size = UDim2.fromOffset(0, 20), AutomaticSize = Enum.AutomaticSize.X, BackgroundColor3 = T.bg, BackgroundTransparency = 0.25, LayoutOrder = 1 })
+	local cap = UI.Frame(f, { Size = UDim2.fromOffset(0, 18), AutomaticSize = Enum.AutomaticSize.X, BackgroundColor3 = T.panel2, BackgroundTransparency = 0, LayoutOrder = 1 })
 	UI.Corner(cap, 4)
-	UI.Stroke(cap, Color3.new(1, 1, 1), 1, 0.8)
+	UI.Stroke(cap, Color3.new(1, 1, 1), 1, 0.85)
 	local t = UI.Text(cap, k[1], { Font = T.semi, TextSize = 10, Size = UDim2.new(0, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.X, TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false })
 	UI.Pad(t, 0, 6)
-	UI.Text(f, k[2], { Font = T.semi, TextSize = 10, TextColor3 = T.sub, Size = UDim2.new(0, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.X, TextWrapped = false, LayoutOrder = 2, TextStrokeTransparency = 0.7 })
+	UI.Text(f, k[2], { Font = T.semi, TextSize = 10, TextColor3 = Color3.fromRGB(200, 205, 216), Size = UDim2.new(0, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.X, TextWrapped = false, LayoutOrder = 2 })
 end
 
 local function showBanner(text, color, dur)
@@ -581,15 +584,17 @@ local function overlayBegin()
 end
 
 -- scale the panel to the room between the scoreboard (or the letterbox) and the ticker
-local function overlayShow()
+local function fitOverlay()
 	local canvas = UI.CanvasSize(hud)
-	local top = board.Visible and L.frame.Visible and 156 or math.floor(canvas.Y * 0.1) + 10
+	local top = L.frame.Visible and (16 + 134 * boardScale.Scale) or math.floor(canvas.Y * 0.08) + 10
 	local bottom = 66
 	local avail = math.max(140, canvas.Y - top - bottom)
-	overlayFit.Scale = math.clamp(avail / math.max(1, OV.h), 0.5, 1)
+	overlayFit.Scale = math.clamp(avail / math.max(1, OV.h), 0.45, 1)
 	overlay.Position = UDim2.new(0.5, 0, 0, math.floor(top + avail / 2))
+end
+local function overlayShow()
+	fitOverlay()
 	overlay.Visible = true
-	overlay.BackgroundTransparency = 0.06
 end
 
 local function ovHead(kicker, title, color)
@@ -754,10 +759,6 @@ local countWho = UI.Text(countBox, "", { Face = "displayMed", TextSize = 22, Tex
 	AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false, ZIndex = 23 })
 -- kicker: "KNOCKDOWN" / "EIGHT COUNT" ...; who: the line under the number
 local function openCount(kicker, color, who)
-	local canvas = UI.CanvasSize(hud)
-	-- short (phone) screens: smaller and lower so the scoreboard stays readable
-	countFit.Scale = canvas.Y < 640 and 0.62 or 1
-	countBox.Position = UDim2.fromScale(0.5, canvas.Y < 640 and 0.55 or 0.42)
 	countKickerText.Text = string.upper(kicker)
 	countKicker.BackgroundColor3 = color or T.red
 	countWho.Text = who or ""
@@ -780,6 +781,7 @@ end
 ------------------------------------------------------------------------
 local getup = UI.Frame(hud, { Name = "GetUp", Size = UDim2.fromOffset(540, 156), Position = UDim2.new(0.5, 0, 0.64, 0), AnchorPoint = Vector2.new(0.5, 0), Visible = false, ZIndex = 24 })
 UI.Glass(getup, { transparency = 0.05, radius = UI.R.xl, stroke = T.red, strokeT = 0.3 })
+local getupFit = UI.New("UIScale", { Name = "Fit", Parent = getup })
 local getupTitle = UI.Text(getup, "YOU'RE DOWN!  MASH SPACE / TAP - HIT THE GREEN ZONE", { Face = "displayMed", TextSize = 22, TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.fromOffset(0, 12),
 	Size = UDim2.new(1, 0, 0, 26), TextColor3 = T.red, AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, ZIndex = 25 })
 local _, setGetup = UI.Bar(getup, { Position = UDim2.fromOffset(24, 48), Size = UDim2.new(1, -48, 0, 20), ZIndex = 25 }, T.gold)
@@ -809,6 +811,41 @@ end
 
 local getupBtn = UI.Button(getup, "", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, ZIndex = 28 }, getupPress)
 getupBtn.Text = ""
+
+-- responsive layout: short (phone) canvases get a smaller scoreboard, count and get-up panel; the
+-- network bug sits under the clock in rounds and in the corner during walkouts / the tape
+local function layoutHud()
+	local canvas = UI.CanvasSize(hud)
+	local compact = canvas.Y < 640
+	local k = compact and 0.8 or 1
+	if F.resting and overlay.Visible then
+		-- between rounds on a phone the scorecard needs the room; the scoreboard returns with the bell
+		L.frame.Visible, R.frame.Visible, clock.Visible = not compact, not compact, not compact
+	end
+	boardScale.Scale = k
+	board.Size = UDim2.new(1 / k, -40 / k, 0, 134)
+	local below = 10 + 134 * k
+	if clock.Visible then
+		bug.AnchorPoint = Vector2.new(0.5, 0)
+		bug.Position = UDim2.new(0.5, 0, 0, below + 8)
+	else
+		bug.AnchorPoint = Vector2.new(0, 0)
+		bug.Position = UDim2.fromOffset(20, 10)
+	end
+	angleTag.Position = UDim2.new(0.5, 0, 0, below + 40)
+	countFit.Scale = compact and 0.62 or 1
+	countBox.Position = UDim2.fromScale(0.5, compact and 0.56 or 0.42)
+	getupFit.Scale = compact and 0.72 or 1
+	getup.Position = UDim2.new(0.5, 0, compact and 0.6 or 0.64, 0)
+	banner.TextSize = compact and 68 or 96
+	bannerBand.Size = UDim2.new(1, 0, 0, compact and 90 or 120)
+	if overlay.Visible then
+		fitOverlay()
+	end
+end
+gui:GetPropertyChangedSignal("AbsoluteSize"):Connect(layoutHud)
+hud:GetAttributeChangedSignal("UIScale"):Connect(layoutHud)
+layoutHud()
 
 -- punches go through throwPunch (defined with the input code) so taps are predicted like keys
 local throwPunch
@@ -1281,7 +1318,7 @@ end
 
 local function cheer(amount)
 	-- the HUD's crowd meter follows every cheer (VenueFX or the built-in crowd does the sound / bob)
-	crowd.level = math.clamp(crowd.level + (amount or 0) * 0.3, 0, 1)
+	crowdMeter.level = math.clamp(crowdMeter.level + (amount or 0) * 0.3, 0, 1)
 	if venueOn then
 		vfx("Cheer", math.clamp(amount / 1.6, 0, 1))
 		return
@@ -1550,7 +1587,7 @@ local function updateFX(dt, now)
 		R.head.fill.BackgroundColor3 = tierColor(ot):Lerp(Color3.new(1, 1, 1), p * 0.35)
 		R.health.fill.BackgroundColor3 = tierColor(ot):Lerp(Color3.new(1, 1, 1), p * 0.25)
 	end
-	crowd.level = math.max(0.12, crowd.level - dt * 0.06)
+	crowdMeter.level = math.max(0.12, crowdMeter.level - dt * 0.06)
 	updateCrowd(dt)
 	return tier, conc, fx
 end
@@ -1851,6 +1888,11 @@ local function finish()
 	fxGui.Enabled = false
 	overlay.Visible = false
 	getup.Visible = false
+	hideCount()
+	bannerBand.Visible = false
+	angleTag.Visible = false
+	bug.Visible = false
+	UI.Clear(markers)
 	setRagdoll(false)
 	F.stumbleUntil = 0
 	pcall(RunService.UnbindFromRenderStep, RunService, STUMBLE_STEP)
@@ -1941,9 +1983,10 @@ function handlers.start(msg)
 			z.BackgroundColor3 = T.panel2
 		end
 	end
-	crowd.level, crowd.lean = 0.2, 0
+	crowdMeter.level, crowdMeter.lean = 0.2, 0
 	hideCount()
 	bug.Visible = true
+	layoutHud()
 	local stakes = {}
 	for _, s in ipairs(msg.stakes or {}) do
 		table.insert(stakes, s)
@@ -2020,6 +2063,7 @@ function handlers.entrance(msg)
 		end
 		if msg.music and msg.music ~= "" then
 			music = Instance.new("Sound")
+			music.Name = "WalkoutMusic" -- Settings scales sounds named *Music* by the music volume
 			music.SoundId = "rbxassetid://" .. msg.music
 			music.Volume = 0.8
 			music.SoundGroup = ensureMix()
@@ -2033,47 +2077,52 @@ function handlers.tape()
 	camMode = "tape"
 	letterbox(true)
 	local y, o = F.tape.you, F.tape.opp
-	local function r(x)
-		return string.format("%d-%d-%d (%d KO)", x.record.w, x.record.l, x.record.d, x.record.ko)
+	local canvas = UI.CanvasSize(hud)
+	local compact = canvas.Y < 640
+	local function rec(x)
+		local r = x.record or {}
+		return string.format("%d-%d-%d", r.w or 0, r.l or 0, r.d or 0)
 	end
-	local lines = {
-		{ "TALE OF THE TAPE", bold = true, size = 24, color = T.gold },
-		{ F.stakesText, bold = true, size = 14, color = T.red },
-		{ string.format("%s  vs  %s", y.name:upper(), o.name:upper()), bold = true, size = 21 },
-		{ string.format("\"%s\"   -   \"%s\"", y.nick or "", o.nick or ""), color = T.sub },
-		{ string.format("%s   RECORD   %s", r(y), r(o)) },
-		{ string.format("%s   HEIGHT   %s", Config.HeightText(y.height), Config.HeightText(o.height)) },
-		{ string.format("%d in   REACH   %d in", y.reach, o.reach) },
-		{ string.format("%s   STYLE   %s", y.style, o.style) },
-		{ string.format("%s   FROM   %s", y.nat, o.nat) },
-		{ string.format("%d   OVERALL   %d", y.overall, o.overall), bold = true },
-	}
-	if o.archetype then
-		table.insert(lines, { "Scouting report: " .. o.archetype, color = T.sub, size = 14 })
+	overlayBegin()
+	ovHead(F.stakesText or "", "TALE OF THE TAPE", F.spar and T.blue or T.red)
+	ovVersus(y, o)
+	ovRow(rec(y), "Record", rec(o))
+	ovRow((y.record or {}).ko or 0, "Knockouts", (o.record or {}).ko or 0)
+	ovRow(Config.HeightText(y.height), "Height", Config.HeightText(o.height))
+	ovRow(string.format("%d in", y.reach or 0), "Reach", string.format("%d in", o.reach or 0))
+	ovRow(string.upper(y.style or "-"), "Style", string.upper(o.style or "-"))
+	if not compact then
+		ovRow(string.upper(y.nat or "-"), "Nationality", string.upper(o.nat or "-"))
+	end
+	ovRow(y.overall or 0, "Overall", o.overall or 0, true)
+	if o.archetype and not compact then
+		ovNote("Scouting", o.archetype, T.blue)
 	end
 	local wi = F.weighIn
 	if wi then
 		if wi.over > 0 then
-			table.insert(lines, { string.format("WEIGH-IN: %.1f lbs (limit %d) - MISSED WEIGHT by %.1f lbs: stamina -%d%%%s", wi.weight, wi.limit, wi.over, math.floor(wi.penalty * 100), wi.fine > 0 and ", fined 20% of your purse" or ""), color = T.red, size = 14, bold = true })
+			ovNote("Weigh-in", string.format("%.1f lbs (limit %d) - MISSED WEIGHT by %.1f lbs: stamina -%d%%%s", wi.weight, wi.limit, wi.over, math.floor(wi.penalty * 100),
+				wi.fine > 0 and ", fined 20% of your purse" or ""), T.red)
 		else
-			table.insert(lines, { string.format("WEIGH-IN: %.1f lbs (limit %d) - MADE WEIGHT", wi.weight, wi.limit), color = T.green, size = 14 })
+			ovNote("Weigh-in", string.format("%.1f lbs (limit %d) - made weight", wi.weight, wi.limit), T.green)
 		end
 	end
 	if F.notes and #F.notes > 0 then
-		table.insert(lines, { "Your condition: " .. table.concat(F.notes, ", "), color = T.orange, size = 13 })
+		ovNote("Condition", table.concat(F.notes, ", "), T.orange)
 	end
 	if F.talk and F.talk ~= "" then
-		table.insert(lines, { "\"" .. F.talk .. "\"  - " .. o.name, color = Color3.fromRGB(255, 160, 160), size = 14 })
+		ovQuote(F.talk, o.name, T.blue)
 	end
-	if F.myLine and F.myLine ~= "" then
-		table.insert(lines, { "\"" .. F.myLine .. "\"  - " .. y.name, color = Color3.fromRGB(160, 200, 255), size = 14 })
+	if F.myLine and F.myLine ~= "" and not compact then
+		ovQuote(F.myLine, y.name, T.red)
 	end
-	overlayLines(lines)
+	overlayShow()
 	stopMusic()
 end
 
 function handlers.round(msg)
 	overlay.Visible = false
+	F.resting = false
 	setAnimate(false)
 	F.active = true
 	F.paused = false
@@ -2082,8 +2131,10 @@ function handlers.round(msg)
 	letterbox(false)
 	L.frame.Visible, R.frame.Visible, clock.Visible, controls.Visible = true, true, true, touchPad == nil
 	hideCount()
+	layoutHud()
 	roundText.Text = string.format("ROUND %d / %d", msg.n, msg.total)
 	timeText.Text = fmtTime(F.spar and Config.SparRoundSeconds or Config.RoundSeconds)
+	timeText.TextColor3 = T.text
 	showBanner("ROUND " .. msg.n, T.gold, 1.8)
 	phase("round", { n = msg.n })
 	if not venueOn then
@@ -2188,7 +2239,19 @@ function handlers.hit(msg)
 			FX.grade = math.max(FX.grade, 0.6 * sev) -- breath knocked out of you
 		end
 	end
+	-- the HUD: zone flash on the target's silhouette, the crowd leans, cuts show up
+	local panel = mine and R or L
+	zoneFlash(panel, msg.body == true, msg.hand, sev)
+	if msg.bleed and not msg.body then
+		panel.cut.Visible = true
+	end
+	crowdMeter.lean = math.clamp(crowdMeter.lean + (mine and 1 or -1) * (0.03 + sev * 0.07), -1, 1)
 	local text = (msg.counter and "COUNTER " or "") .. (PUNCH_NAME[msg.punch] or tostring(msg.punch):upper()) .. (msg.body and " TO THE BODY" or "")
+	if mine then
+		-- hit markers over the opponent for every punch you land
+		hitMarker(target, msg.counter and "COUNTER!" or (msg.heavy and "BIG SHOT!" or (PUNCH_NAME[msg.punch] or "HIT")), (msg.heavy or msg.counter) and T.gold or Color3.new(1, 1, 1),
+			msg.heavy == true or msg.counter == true)
+	end
 	if msg.heavy or msg.counter then
 		showFlash(flash, text .. "!", mine and T.gold or T.red)
 	end
@@ -2295,7 +2358,7 @@ function handlers.ropes(msg)
 	cheer(0.3)
 end
 
-local SEVERITY_TEXT = { flash = "FLASH KNOCKDOWN!", heavy = "DOWN HARD!", out = "OUT COLD!" }
+local SEVERITY_TEXT = { flash = "FLASH KNOCKDOWN!", heavy = "DOWN HARD!", out = "KNOCKOUT!" }
 function handlers.kd(msg)
 	local mine = msg.who == "you"
 	-- the server pauses the fight for the count, eight count and referee check (no punches are accepted)
@@ -2309,13 +2372,18 @@ function handlers.kd(msg)
 	sweeping = 3
 	camMode = "wide"
 	letterbox(true)
-	local name = mine and "YOU'RE DOWN!" or ("DOWN GOES " .. F.tape.opp.name:upper() .. "!")
-	if msg.severity == "out" and not mine then
-		name = F.tape.opp.name:upper() .. " IS OUT COLD!"
+	local oppName = F.tape and F.tape.opp.name:upper() or "HE"
+	local name = mine and "YOU'RE DOWN!" or ("DOWN GOES " .. oppName .. "!")
+	if msg.severity == "out" then
+		name = mine and "YOU'RE OUT COLD" or (oppName .. " IS OUT COLD!")
 	end
-	showBanner(name, mine and T.red or T.gold, 2.5)
-	if SEVERITY_TEXT[msg.severity] and msg.severity ~= "out" then
-		showFlash(defFlash, SEVERITY_TEXT[msg.severity], mine and T.red or T.gold, 2)
+	-- the count panel carries the headline; the referee's count fills it in
+	addKD(mine and L or R)
+	crowdMeter.lean = math.clamp(crowdMeter.lean + (mine and -0.6 or 0.6), -1, 1)
+	openCount(SEVERITY_TEXT[msg.severity] or "KNOCKDOWN!", mine and T.red or T.gold, name)
+	if msg.severity == "out" then
+		countNum.Text = "KO"
+		countNum.TextColor3 = mine and T.red or T.gold
 	end
 	screens(msg.severity == "out" and "KNOCKOUT!" or "KNOCKDOWN!")
 	if mine then
@@ -2348,11 +2416,11 @@ end
 
 function handlers.count(msg)
 	local n = msg.n or 0
-	if msg.standing then
-		showBanner("EIGHT COUNT: " .. n, Color3.fromRGB(230, 230, 230), 0.5)
-	else
-		showBanner(tostring(n), Color3.new(1, 1, 1), 0.8)
+	if msg.standing and countKickerText.Text ~= "EIGHT COUNT" then
+		countKickerText.Text = "EIGHT COUNT"
+		countKicker.BackgroundColor3 = T.blue
 	end
+	showCount(n, msg.standing == true)
 	phase("count", { n = n })
 	sfx(soundId("RefereeCount", "Click"), 0.8, 0.45)
 	if msg.who == "you" and not msg.standing then
@@ -2370,10 +2438,14 @@ function handlers.getup(msg)
 	end
 	phase("getup", { who = msg.who })
 	cheer(0.8)
+	countWho.Text = mine and "YOU BEAT THE COUNT" or ((F.tape and F.tape.opp.name:upper() or "HE") .. " BEATS THE COUNT")
+	countKickerText.Text = "EIGHT COUNT"
+	countKicker.BackgroundColor3 = T.blue
 	setTicker(mine and ("You beat the count! Show the " .. (F.spar and "coach" or "referee") .. " you can continue...") or (F.tape.opp.name .. " beats the count!"))
 end
 
 function handlers.refcheck(msg)
+	hideCount()
 	if msg.ok then
 		F.paused = false
 		showBanner("OK TO CONTINUE", T.green, 1.2)
@@ -2403,22 +2475,45 @@ end
 function handlers.rest(msg)
 	camMode = "wide"
 	phase("rest", { n = msg.n })
-	local lines = {
-		{ "YOUR CORNER  -  END OF ROUND " .. msg.n, bold = true, size = 22, color = T.gold },
-		{ string.format("Unofficial card: %d - %d   (this round %d-%d)", msg.unofficial[1], msg.unofficial[2], msg.card[1], msg.card[2]), bold = true },
-		{ string.format("Punches: you %d/%d   opponent %d/%d", msg.stats.landed, msg.stats.thrown, msg.stats.oppLanded, msg.stats.oppThrown), color = T.sub },
-	}
-	local c = msg.cond
-	if type(c) == "table" then
-		table.insert(lines, line(string.format("HEAD %d%% (max %d%%)    BODY %d%% (max %d%%)", c.head or 0, c.cap or 100, c.body or 0, c.bodyCap or 100), { color = (c.head or 100) < 30 and T.red or T.text, size = 14 }))
-		if c.notes and #c.notes > 0 then
-			table.insert(lines, line("Cutman: " .. table.concat(c.notes, "  |  "), { color = T.orange, size = 13 }))
+	F.cards = F.cards or {}
+	if type(msg.card) == "table" then
+		F.cards[msg.n] = { tonumber(msg.card[1]) or 0, tonumber(msg.card[2]) or 0 }
+	end
+	local canvas = UI.CanvasSize(hud)
+	local compact = canvas.Y < 640
+	F.resting = true
+	controls.Visible = false
+	bannerBand.Visible = false -- the bell's banner would sit on the scorecard
+	local you, opp = F.tape and F.tape.you.name or "You", F.tape and F.tape.opp.name or "Opponent"
+	overlayBegin()
+	ovHead(string.format("End of round %d  -  your corner", msg.n), F.spar and "BETWEEN ROUNDS" or "SCORECARD", T.gold)
+	local u = msg.unofficial or { 0, 0 }
+	ovScore(tonumber(u[1]) or 0, tonumber(u[2]) or 0, F.spar and "COACH'S CARD" or "UNOFFICIAL CARD", you, opp)
+	ovRounds(F.cards, F.rounds, msg.n)
+	local st = msg.stats
+	if type(st) == "table" then
+		local function pct(l, t)
+			return t > 0 and string.format("%d%%", math.floor(l / t * 100 + 0.5)) or "-"
+		end
+		ovRow(string.format("%d / %d", st.landed or 0, st.thrown or 0), "Landed / thrown", string.format("%d / %d", st.oppLanded or 0, st.oppThrown or 0))
+		if not compact then
+			ovRow(pct(st.landed or 0, st.thrown or 0), "Accuracy", pct(st.oppLanded or 0, st.oppThrown or 0))
 		end
 	end
-	for _, a in ipairs(msg.advice) do
-		table.insert(lines, { "\"" .. a .. "\"", left = true })
+	local c = msg.cond
+	if type(c) == "table" then
+		ovCondition(c)
+		if c.notes and #c.notes > 0 then
+			ovNote("Cutman", table.concat(c.notes, "  |  "), T.orange)
+		end
 	end
-	overlayLines(lines)
+	for i, line in ipairs(msg.advice or {}) do
+		if not compact or i == 1 then
+			ovQuote(line, "your corner", T.gold)
+		end
+	end
+	overlayShow()
+	layoutHud()
 end
 
 function handlers.final(msg)
@@ -2437,6 +2532,9 @@ function handlers.final(msg)
 	camMode = "wide"
 	sweeping = 4
 	letterbox(true)
+	hideCount()
+	overlay.Visible = false
+	controls.Visible = false
 	phase("final", { result = res.outcome, method = res.method })
 	showBanner(text, res.outcome == "win" and T.gold or T.red, 3)
 	screens(res.outcome == "win" and ("WINNER\n" .. F.tape.you.name:upper()) or (res.outcome == "loss" and ("WINNER\n" .. F.tape.opp.name:upper()) or "DRAW"))

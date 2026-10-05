@@ -159,13 +159,13 @@ end
 
 local function walkParams(v, legLen)
 	-- cadence (steps per second) and the per-foot cycle
-	local cad = v < 6 and (1.55 + 0.09 * v) or (2.35 + 0.045 * min(v, 30))
+	local cad = v < 6 and (1.55 + 0.09 * v) or (2.33 + 0.062 * min(v, 30))
 	-- starting / slow: quick short steps (the second foot must not wait half a second)
 	local T = min(2 / cad, 0.85)
 	-- duty factor: walk ~0.6, run ~0.35, sprint ~0.27; never a contact longer than the leg can sweep
 	local run = smooth((v - 5) / 4)
 	local duty = lerp(0.62 - 0.008 * v, 0.36 - 0.004 * max(0, v - 9), run)
-	duty = min(duty, legLen * lerp(1.0, 1.2, run) / max(0.1, v * T))
+	duty = min(duty, legLen * lerp(1.0, 0.95, run) / max(0.1, v * T))
 	duty = clamp(duty, 0.22, 0.66)
 	return T, duty, run
 end
@@ -287,8 +287,10 @@ function AnimLoco.bodyOffsets(rig, dt, t)
 			local c2 = cos(4 * PI * (ph - midL))
 			-- walking: highest over the stance leg (inverted pendulum); running: lowest there, and the
 			-- whole body rides a little lower on bent knees
-			local bobA = lerp(0.045 + 0.01 * v, 0.07 + 0.005 * v, run) * amp
-			rootY = (lerp(bobA * c2, -bobA * c2 + bobA * 0.6, run) - 0.1 * run) * w
+			local bobA = lerp(0.045 + 0.01 * v, 0.05 + 0.003 * v, run) * amp
+			-- (a runner touches down on a slightly bent knee: ~7 % of the leg lower than standing)
+			local legL = rig.geo.ok and rig.geo.legLen or 2.4
+			rootY = (lerp(bobA * c2, -bobA * c2 + bobA * 0.6, run) - 0.07 * legL * run) * w
 			-- sway over the stance leg
 			rootX = -lerp(0.07, 0.025, run) * amp * cos(2 * PI * (ph - midL)) * w
 			-- pelvis rotation (the swing leg's hip goes forward), shoulders counter-rotate
@@ -327,16 +329,20 @@ function AnimLoco.armSwing(p, rig, k)
 	local run = lo.run
 	local v = lo.speed
 	local c = cos(2 * PI * lo.armPhase)
-	local amp = lerp(0.32 + 0.03 * v, 0.55 + 0.015 * v, run)
+	local amp = lerp(0.32 + 0.03 * v, 0.5 + 0.01 * v, run)
 	local out = 0.07 + 0.12 * R.bulkOf(rig)
 	local el = lerp(0.3, 1.45, run)
+	-- runners drive the elbows back past the hip: the swing is centred a little behind
+	local base = lerp(0.05, -0.12, run)
 	-- left arm back when the left leg is forward (c = 1 at the left foot's landing)
 	local l = -amp * c
 	local r = amp * c
-	p.LS = p.LS:Lerp(A(0.05 + l, 0, -out), k)
-	p.RS = p.RS:Lerp(A(0.05 + r, 0, out), k)
-	p.LE = p.LE:Lerp(A(el + max(0, l) * 0.45, 0, 0), k)
-	p.RE = p.RE:Lerp(A(el + max(0, r) * 0.45, 0, 0), k)
+	-- the elbow closes as the hand comes forward (and across a touch), opens on the back swing
+	local inL, inR = max(0, l) * 0.15 * run, max(0, r) * 0.15 * run
+	p.LS = p.LS:Lerp(A(base + l, 0, -out + inL), k)
+	p.RS = p.RS:Lerp(A(base + r, 0, out - inR), k)
+	p.LE = p.LE:Lerp(A(el + max(0, l) * 0.4 - max(0, -l) * 0.35 * run, 0, 0), k)
+	p.RE = p.RE:Lerp(A(el + max(0, r) * 0.4 - max(0, -r) * 0.35 * run, 0, 0), k)
 end
 
 ------------------------------------------------------------------------
@@ -393,6 +399,8 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 	updateGait(rig, t, dt)
 	local moving = lo.moving and kind ~= nil
 	local walking = kind == "walk"
+	-- a runner's heel kick scales with the leg
+	local runLegK = (g.ok and g.legLen or 2.45) / 2.45
 	local legLen = g.legLen
 	-- per-foot desired ground point and yaw
 	for _, s in ipairs(SIDES) do
@@ -433,7 +441,7 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 					if not o.swing or overlap then
 						local liftH
 						if walking then
-							liftH = lerp(0.2 + 0.015 * speed, min(0.78, 0.42 + 0.02 * speed), lo.run)
+							liftH = lerp(0.2 + 0.015 * speed, min(1.1, 0.25 + 0.04 * speed) * runLegK, lo.run)
 						elseif kind == "stagger" then
 							liftH = 0.12 + 0.02 * speed
 						else
@@ -520,7 +528,7 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 			if urgent and moving and kind then
 				-- a foot left behind by an accelerating body joins the gait (lands with its lead)
 				dur = max(0.12, (1 - lo.duty) * lo.T * 0.8)
-				liftH = walking and lerp(0.2 + 0.015 * speed, min(0.78, 0.42 + 0.02 * speed), lo.run) or liftH
+				liftH = walking and lerp(0.2 + 0.015 * speed, min(1.1, 0.25 + 0.04 * speed) * runLegK, lo.run) or liftH
 				sk = kind
 			end
 			startSwing(f, t, dur, liftH, sk)
@@ -551,7 +559,7 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 				if sk == "walk" then
 					-- walkers plant half a contact ahead of the hip; runners land closer under the body
 					-- and push off further behind it
-					lead = lo.duty * lo.stride * lerp(0.5, 0.4, lo.run)
+					lead = lo.duty * lo.stride * lerp(0.5, 0.37, lo.run)
 				elseif sk == "stagger" then
 					lead = lo.stride * 0.25
 				else
@@ -582,16 +590,19 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 				end
 			end
 			local landYaw = f.homeYaw
+			-- the touchdown spot as seen from where the body is now (for the pelvis height)
+			f.landRel = tgt - vel * remain - V3(acc.X, 0, acc.Z) * (0.5 * remain * remain)
+			f.landYaw = landYaw
 			if u >= 1 then
 				f.swing, f.P, f.yawW, f.lastStep, f.curLift = false, V3(tgt.X, f.home.Y, tgt.Z), landYaw, t, 0
 				f.landT = t
 				f.pitchS = f.curPitch
 			else
 				-- horizontal travel: zero speed at lift-off and touchdown (the foot leaves and meets the
-				-- canvas without a skid), slightly front-loaded for runners
+				-- canvas without a skid); runners cruise and brake late (no hovering reach ahead)
 				local e = K.smoother(u)
 				if sk == "walk" and lo.run > 0.01 then
-					e = lerp(e, K.earlyTravel(u), lo.run * 0.35)
+					e = lerp(e, K.cruise(u), lo.run)
 				end
 				local pos = f.fromP:Lerp(tgt, e)
 				f.cur = V3(pos.X, f.home.Y, pos.Z)
@@ -599,8 +610,8 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 				-- the arc: walking peaks mid-swing; running kicks the heel up early behind the body,
 				-- then the knee unfolds as the foot reaches forward. A smooth skewed bump
 				-- u^a (1-u)^b (zero slope at lift-off and touchdown: no knee snap)
-				local a = 2
-				local b = sk == "walk" and lerp(2, 2.8, lo.run) or 2
+				local a = sk == "walk" and lerp(2, 1.2, lo.run) or 2
+				local b = sk == "walk" and lerp(2, 1.9, lo.run) or 2
 				f.curLift = f.liftH * K.skewBump(u, a, b)
 				-- foot roll through the swing: toe-off -> level -> landing attitude
 				local landP, mid
@@ -611,6 +622,7 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 					landP = f.heelS + 0.12 -- boxers land on the balls of the feet
 					mid = f.heelS + 0.05
 				end
+				f.landPitch = landP
 				local pt
 				if u < 0.45 then
 					pt = lerp(f.liftPitch, mid, smooth(u / 0.45))
@@ -630,6 +642,7 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 				local off = s == "L" and lo.offL or lo.offR
 				local sw = 1 - lo.duty
 				local sigma = ((lo.phase - off - sw) % 1) / lo.duty -- 0 at landing .. 1 at lift-off
+				f.sigma = sigma
 				local strike = lerp(-0.28, 0.02, lo.run)
 				local roll = strike * (1 - smooth(sigma / 0.18))
 				local off2 = lerp(0.55, 0.75, lo.run) * smooth((sigma - lerp(0.6, 0.45, lo.run)) / lerp(0.4, 0.55, lo.run))
@@ -677,11 +690,18 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 		-- walking legs straighten at heel strike / toe-off (little slack); fighters keep their knees
 		local slack = walking and moving and 0.985 or 0.965
 		if not f.swing then
+			if walking and moving and f.sigma then
+				-- the push-off leg is all but straight (the heel is up): no pelvis dip at toe-off
+				slack = lerp(slack, 0.999, smooth((f.sigma - 0.55) / 0.35))
+			end
 			drop = max(drop, R.dropFor(rig, s, rootT, tgt, slack))
 		else
+			-- (measured at the touchdown spot: a reaching swing leg simply straightens)
 			local u = (t - f.t0) / f.dur
-			if u > 0.6 then
-				drop = max(drop, R.dropFor(rig, s, rootT, tgt, slack) * smooth((u - 0.6) / 0.4))
+			if u > 0.6 and f.landRel then
+				local la = R.ankleOf(leg, f.landRel, fwdOf(f.landYaw), f.landPitch or 0)
+				local lt = trueCF:PointToObjectSpace(V3(la.X, la.Y + f.lift, la.Z))
+				drop = max(drop, R.dropFor(rig, s, rootT, lt, slack) * smooth((u - 0.6) / 0.4))
 			end
 		end
 	end

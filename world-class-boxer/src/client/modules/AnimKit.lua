@@ -352,6 +352,25 @@ function AnimKit.earlyTravel(u)
 	return 6 * u2 - 8 * u2 * u + 3 * u2 * u2
 end
 
+-- 0 -> 1 with zero speed at both ends but a flat cruising middle: velocity ~ 1 - (1 - 2u)^8 on
+-- the way up (a running foot leaves the ground and is up to speed at once, it does not trail far
+-- behind) and 1 - (2u - 1)^4 on the way down (it brakes late: no hovering reach ahead of the body)
+function AnimKit.cruise(u)
+	u = clamp(u, 0, 1)
+	local w
+	if u < 0.5 then
+		local c = 1 - 2 * u
+		local c2 = c * c
+		local c4 = c2 * c2
+		w = u + (c4 * c4 * c - 1) / 18
+	else
+		local c = 2 * u - 1
+		local c2 = c * c
+		w = 4 / 9 + (u - 0.5) - c2 * c2 * c * 0.1
+	end
+	return w / (4 / 9 + 0.4)
+end
+
 -- a smooth bump u^a (1-u)^b normalised to peak at 1 (at u = a / (a + b)); flat at both ends
 function AnimKit.skewBump(u, a, b)
 	if u <= 0 or u >= 1 then
