@@ -9,6 +9,7 @@
 -- are not mirrored inside out (none of the boxer's parts depend on that).
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
+local CollectionService = game:GetService("CollectionService")
 
 local GymMirror = {}
 local player = Players.LocalPlayer
@@ -48,8 +49,17 @@ local function copyCharacter(char, parent)
 	if not ok or not clone then
 		return nil, nil
 	end
+	-- strip every CollectionService tag (Clone copies them): the copy is posed by this module
+	-- alone; FaceFX / HairFX / BodyFX / the Animator / GymVisuals must not pick it up by tag
+	local function stripTags(inst)
+		for _, tg in ipairs(CollectionService:GetTags(inst)) do
+			CollectionService:RemoveTag(inst, tg)
+		end
+	end
+	stripTags(clone)
 	local pairsOut = {}
 	for _, d in ipairs(clone:GetDescendants()) do
+		stripTags(d)
 		-- scripts, sounds and effects go; joints too, because every part is placed directly
 		local junk = d:IsA("Script") or d:IsA("LocalScript") or d:IsA("ModuleScript") or d:IsA("Sound") or d:IsA("BillboardGui")
 			or d:IsA("ParticleEmitter") or d:IsA("Light") or d:IsA("JointInstance") or d:IsA("WeldConstraint")

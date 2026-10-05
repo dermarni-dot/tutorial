@@ -1663,9 +1663,14 @@ GAMES.reps = function(ctx)
 				result = center < 0.35 and 1 or 0.85
 				goodReps += 1
 				setGood += 1
+				-- the worked muscles fill up rep by rep (BodyFX reads LivePump; CONTRACTS s.7)
+				ctx.pump(center < 0.35 and 0.1 or 0.07)
 				ctx.feedback(center < 0.35 and "PERFECT REP" or "GOOD REP", center < 0.35 and T.gold or T.green)
 			else
 				result = f < lo and 0.45 or 0.3
+				if f < lo then
+					ctx.pump(0.03) -- a half rep still moves blood, just less
+				end
 				ctx.feedback(f < lo and "HALF REP" or "LOST CONTROL", T.orange)
 			end
 			total += result

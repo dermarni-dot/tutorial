@@ -180,6 +180,9 @@ local function scan(rec)
 				table.insert(rec.veins, { part = d, base = type(base) == "number" and base or 0.5 })
 			elseif n == "Sclera" then
 				rec.h = d.Size.Y
+				rec.ew = d.Size.X
+			elseif n == "Iris" then
+				rec.iw, rec.ih = d.Size.X, d.Size.Y
 			elseif n == "UpperLip" then
 				rec.mw = d.Size.X
 			elseif n == "Brow" then
@@ -188,19 +191,35 @@ local function scan(rec)
 		end
 	end
 	rec.veinOn = false
+	-- gaze slide: the EyeBall pivot sits only ~0.05 studs behind the iris, so turning it alone moves
+	-- the iris ~10% of the eye's width. Slide it too, so a full look (yaw 0.35 / pitch 0.2) carries
+	-- the iris ~85% of the way to the corner of the white (the lids cover the rest vertically)
+	local ew, iw = rec.ew, rec.iw
+	if ew and iw and ew > iw then
+		rec.slideX = clamp((0.85 * (ew - iw) / 2 - 0.052 * sin(0.35)) / 0.35, 0, 0.12)
+	else
+		rec.slideX = 0.05
+	end
+	local eh, ih = rec.h, rec.ih
+	if eh and ih and eh > ih then
+		rec.slideY = clamp((0.85 * (eh - ih) / 2 - 0.052 * sin(0.2)) / 0.2, 0, 0.08)
+	else
+		rec.slideY = 0.03
+	end
 end
 
 local function reset(rec)
 	for _, r in pairs(rec.roles) do
 		if r.m.Parent then
 			r.m.Transform = I
-			if r.mesh and r.last then
+			if r.mesh and (r.last or r.lo) then
 				r.mesh.Scale = r.base
 				r.mesh.Offset = r.off
 			end
 		end
 		r.last = nil
 		r.lc = nil
+		r.lo, r.lw = nil, nil
 	end
 	for _, b in pairs(rec.blink) do
 		if b.Parent then
@@ -473,7 +492,9 @@ function FaceFX.Update(dt, t, camPos, rigs, budget)
 			if r then
 				local dy = drift * 0.13 * K.noise(t * 0.6, s * 3)
 				local dp = drift * 0.07 * K.noise(t * 0.5, s * 7 + 1)
-				setT(r, A(rec.gp + dp, rec.gy + dy, 0))
+				local gy, gp = rec.gy + dy, rec.gp + dp
+				-- + yaw looks left (-X), + pitch looks up (+Y): the iris slides with the turn
+				setT(r, CF(-gy * rec.slideX, gp * rec.slideY, 0) * A(gp, gy, 0))
 			end
 		end
 
@@ -527,7 +548,12 @@ function FaceFX.Update(dt, t, camPos, rigs, budget)
 		if inside then
 			setT(inside, CF(0, -open * mw * 0.15, 0))
 			if inside.mesh then
-				inside.mesh.Scale = V3(inside.base.X * (1 + wide * 0.15), inside.base.Y * (1 + open * 2.4), inside.base.Z)
+				-- quantized + change-gated like every other mesh write (each write re-meshes the part)
+				local qo, qw = math.floor(open * 40 + 0.5) / 40, math.floor(wide * 40 + 0.5) / 40
+				if qo ~= inside.lo or qw ~= inside.lw then
+					inside.lo, inside.lw = qo, qw
+					inside.mesh.Scale = V3(inside.base.X * (1 + qw * 0.15), inside.base.Y * (1 + qo * 2.4), inside.base.Z)
+				end
 			end
 		end
 		-- pupils: dilate with fear / effort / pain; anisocoria when badly concussed
@@ -547,7 +573,7 @@ function FaceFX.Update(dt, t, camPos, rigs, budget)
 		local strain = type(a.Strain) == "number" and a.Strain or 0
 		local sweat = type(a.Sweat) == "number" and a.Sweat or 0
 		local angerW = w[EXPR_INDEX.anger] + w[EXPR_INDEX.effort] + effort * 0.8 + (now < rec.shoutUntil and 0.6 or 0)
-		local veinOn = angerW > 0.5 or strain > 0.5 or (sweat > 0.6 and effAttr > 0.4)
+		local veinOn = angerW > 0.5 or strain > 0.5 or sweat > 0.6
 		if veinOn ~= rec.veinOn then
 			rec.veinOn = veinOn
 			for _, v in ipairs(rec.veins) do

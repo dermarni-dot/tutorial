@@ -316,7 +316,10 @@ function BodyFX.Update(dt, t, camPos, rigs)
 			end
 			local pump = rec.pumpSet[id] and rec.pump or rec.pump * 0.3
 			local level = K.clamp01(pump * (1 + VEIN_BOOST) * 0.8 + c * 0.45 + rec.strain * 0.35)
-			local target = v.base - (v.base - min(v.base, 0.2)) * level
+			-- conditioning sets how far they come out: the Builder's base (VeinLevel) drops by at most
+			-- Config.Pump.veinBoost, so a beginner's pump shows faint veins, an athlete's clear ones,
+			-- and nothing goes past the elite floor (0.15) or ever fades below its own base
+			local target = min(v.base, max(0.15, v.base - VEIN_BOOST * level))
 			target = math.floor(target * 20 + 0.5) / 20
 			if target ~= v.last then
 				v.last = target

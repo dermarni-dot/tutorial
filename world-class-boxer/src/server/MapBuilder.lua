@@ -325,9 +325,15 @@ local function buildMemberBag(gym, x, z, i)
 		link(V3(x, 8.9, z), foot, s[1] + 2)
 	end
 	local up = CFrame.Angles(0, 0, math.rad(90))
-	local bag = deco(rig, "MemberBag", V3(5, 2.6, 2.6), CF(x, 5.6, z) * up, leather, Enum.Material.Leather)
-	bag.Shape = Enum.PartType.Cylinder
-	bag.Size = V3(5, 2.6, 2.6)
+	-- the 5-stud body is 5 stacked 1-stud cylinders (a hair longer so no seam shows) centred on
+	-- y 5.6: the client dents the hit segment and springs it back (GymVisuals.addMemberBag finds the
+	-- middle one by name "MemberBag"; BagLen tells it the body length)
+	rig:SetAttribute("BagLen", 5)
+	for k = 0, 4 do
+		local seg = deco(rig, k == 2 and "MemberBag" or "MemberBagSeg", V3(1.05, 2.6, 2.6), CF(x, 3.6 + k, z) * up, leather, Enum.Material.Leather)
+		seg.Shape = Enum.PartType.Cylinder
+		seg.Size = V3(1.05, 2.6, 2.6)
+	end
 	for _, y in ipairs({ 8.12, 3.08 }) do
 		local cap = deco(rig, "BagCap", V3(0.2, 2.55, 2.55), CF(x, y, z) * up, Color3.fromRGB(22, 22, 26), Enum.Material.Leather)
 		cap.Shape = Enum.PartType.Cylinder
@@ -336,7 +342,8 @@ local function buildMemberBag(gym, x, z, i)
 		local band = deco(rig, "BagBand", V3(0.22, 2.64, 2.64), CF(x, y, z) * up, trim, Enum.Material.Leather)
 		band.Shape = Enum.PartType.Cylinder
 	end
-	local patch = deco(rig, "BagPatch", V3(1.1, 0.7, 0.2), CF(x, 6.1, z + 1.24), Color3.fromRGB(20, 20, 24), Enum.Material.Leather)
+	-- the patch sits inside one segment (6.1..7.1) so it rides with that segment's dent
+	local patch = deco(rig, "BagPatch", V3(1.1, 0.7, 0.2), CF(x, 6.6, z + 1.24), Color3.fromRGB(20, 20, 24), Enum.Material.Leather)
 	sign(patch, Enum.NormalId.Back, "WCB", Color3.fromRGB(20, 20, 24), Color3.fromRGB(255, 200, 40))
 	CollectionService:AddTag(rig, "MemberBag")
 	return rig
@@ -556,6 +563,19 @@ function MapBuilder.BuildGym()
 	-- station anchors (equipment visuals are drawn client-side by level)
 	for _, def in ipairs(MapBuilder.StationDefs) do
 		buildStationAnchors(gym, def)
+	end
+	-- FLEX in front of the shadow-boxing mirror (CONTRACTS s.15 "Flex mirror"; ClientMain dispatches
+	-- Action "Flex"): walk up, press F, and the live mirror (GymMirror) shows the pose. Its own key
+	-- and a UI offset so it sits under the station's E prompt instead of fighting it; no label, the
+	-- station's floating name is already there. FaceAt = the glass, so the client turns you to it.
+	for _, def in ipairs(MapBuilder.StationDefs) do
+		if def.id == "mirror" then
+			local fp = deco(gym, "FlexPrompt", V3(1, 1, 1), CF(def.use.X, MapBuilder.FloorY + 3.2, def.use.Z + 1), Color3.new(), nil, { Transparency = 1, CanCollide = false, CanQuery = false })
+			local fpp = prompt(fp, "Flex in the mirror", "Mirror", { Action = "Flex", FaceAt = V3(def.pos.X, MapBuilder.FloorY, def.pos.Z) })
+			fpp.KeyboardKeyCode = Enum.KeyCode.F
+			fpp.GamepadKeyCode = Enum.KeyCode.ButtonY
+			fpp.UIOffset = Vector2.new(0, 72)
+		end
 	end
 	-- boxing area: the gym sparring ring
 	local rc = MapBuilder.RingCenter

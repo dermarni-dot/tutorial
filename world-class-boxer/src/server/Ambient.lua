@@ -40,12 +40,15 @@ local MEMBERS = {
 	{ name = "Hank Duro", tag = "Gym Member", loop = "idle", pose = "bench", at = V3(-62, 0, -49.3), look = V3(-62, 0, -60), lie = 1.675, props = "bench", seed = 1919, hands = "bare", physique = "Heavyweight", sweat = 0.4 },
 	{ name = "Gus Ferreira", tag = "Local", loop = "walk", walk = { V3(-150, 0, 184), V3(100, 0, 184) }, speed = 5, seed = 2020, age = 61, hands = "bare", floor = 0.5, physique = "BeginnerLean", fit = 0.1 },
 	{ name = "Lena Shaw", tag = "Local", loop = "walk", walk = { V3(90, 0, 184), V3(-140, 0, 184) }, speed = 5.5, seed = 2121, gender = 2, hands = "bare", floor = 0.5, physique = "BeginnerLean", fit = 0.15 },
-	-- the sparring ring is a show: a coach calls it from the apron, a cornerman waits in the red
-	-- corner and two members lean on the apron to watch (Loops coachwatch / cornerman / ringside)
+	-- the sparring ring is a show: a coach calls it from the floor, a cornerman waits in the red
+	-- corner and two members watch (Loops coachwatch / cornerman / ringside). The cornerman and the
+	-- watchers stand ON the apron (canvas top 2.8, the strip between the rope line at +-11 and the
+	-- apron edge at +-13 around the ring centre 0,-50), so their "hands / forearms on the ropes"
+	-- poses meet the ropes; from the floor the top rope (y 6.3) is above their heads
 	{ name = "Coach Dre", tag = "Sparring Coach", role = "RingCoach", loop = "coachwatch", at = V3(14.6, 0, -55), look = V3(0, 0, -50), seed = 2222, age = 49, hands = "bare", physique = "Balanced", fit = 0.35, coach = true },
-	{ name = "Sal Romano", tag = "Cutman", role = "Cornerman", loop = "cornerman", at = V3(-13.8, 0, -61.4), look = V3(0, 0, -50), seed = 2323, age = 55, hands = "bare", physique = "Heavyweight", fit = 0.2, coach = true },
-	{ name = "Luis Ortega", tag = "Gym Member", loop = "ringside", at = V3(-4.5, 0, -36.4), look = V3(-4.5, 0, -50), hands = "wraps", seed = 2424, physique = "Balanced", sweat = 0.3 },
-	{ name = "Rosa Diaz", tag = "Gym Member", loop = "ringside", at = V3(5.5, 0, -36.4), look = V3(5.5, 0, -50), hands = "wraps", seed = 2525, gender = 2, physique = "LeanTechnical", sweat = 0.35 },
+	{ name = "Sal Romano", tag = "Cutman", role = "Cornerman", loop = "cornerman", at = V3(-12.4, 0, -62.4), look = V3(0, 0, -50), floor = 2.8, seed = 2323, age = 55, hands = "bare", physique = "Heavyweight", fit = 0.2, coach = true },
+	{ name = "Luis Ortega", tag = "Gym Member", loop = "ringside", at = V3(-4.5, 0, -37.9), look = V3(-4.5, 0, -50), floor = 2.8, hands = "wraps", seed = 2424, physique = "Balanced", sweat = 0.3 },
+	{ name = "Rosa Diaz", tag = "Gym Member", loop = "ringside", at = V3(5.5, 0, -37.9), look = V3(5.5, 0, -50), floor = 2.8, hands = "wraps", seed = 2525, gender = 2, physique = "LeanTechnical", sweat = 0.35 },
 }
 
 -- what their faces show while they loop (E's face rig reads the Expr attribute)

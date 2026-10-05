@@ -1021,6 +1021,12 @@ end
 
 -- championship photos: a frozen clone of YOUR character (whatever pose it is in right now) in a
 -- ViewportFrame with the belt on the shoulder, one per title (max 3), on a champions wall
+local function stripTags(inst)
+	for _, tg in ipairs(CollectionService:GetTags(inst)) do
+		CollectionService:RemoveTag(inst, tg)
+	end
+end
+
 local function photoClone(char)
 	local ok, clone = pcall(function()
 		local was = char.Archivable
@@ -1032,7 +1038,13 @@ local function photoClone(char)
 	if not ok or not clone then
 		return nil
 	end
+	-- Clone copies CollectionService tags. A photo must stay frozen, so strip them all: otherwise
+	-- FaceFX (FaceRig), HairFX (HairSway/HairStrand), BodyFX (Vein), the Animator and
+	-- GymVisuals.watchModel (Trainee/Fighter) register the copy, animate it every frame and a
+	-- Trainee+Station copy could even publish AutoAct and swing the real bag.
+	stripTags(clone)
 	for _, d in ipairs(clone:GetDescendants()) do
+		stripTags(d)
 		if d:IsA("Script") or d:IsA("LocalScript") or d:IsA("ModuleScript") or d:IsA("Sound") or d:IsA("BillboardGui") or d:IsA("ParticleEmitter") then
 			d:Destroy()
 		elseif d:IsA("BasePart") then
@@ -1376,41 +1388,85 @@ local function buildRing(m, lv, idx)
 	end
 end
 
--- ropes give where a body leans on them; they settle back with a little wobble
-local function updateRopes(dt, t)
-	if #ropes == 0 then
+-- ropes give where a body leans on them; they settle back with a little wobble.
+-- Runs at 30 Hz near the ring, so it allocates nothing per tick (PLAN constraint 4): the push
+-- slots, the side normals and the list of bodies near the ring are module-level and reused.
+local ropePush = { 0, 0, 0, 0 }
+local ROPE_SIDES = { { 0, -1 }, { 1, 0 }, { 0, 1 }, { -1, 0 } }
+local ropeBodies = {} -- HumanoidRootParts of Fighter/Ambient models, refreshed at 2 Hz
+local ropeBodiesAt = -1
+local ropeIdleAt = -1 -- last time settled ropes were redrawn (only the tiny sway moves them)
+
+local function ropeLean(pos)
+	local lx, lz = pos.X - ringCenter.X, pos.Z - ringCenter.Z
+	if math.abs(lx) > RING_HALF + 2 or math.abs(lz) > RING_HALF + 2 or pos.Y < RING_H then
 		return
 	end
-	local push = { 0, 0, 0, 0 }
-	local function lean(pos)
-		local lx, lz = pos.X - ringCenter.X, pos.Z - ringCenter.Z
-		if math.abs(lx) > RING_HALF + 2 or math.abs(lz) > RING_HALF + 2 or pos.Y < RING_H then
-			return
-		end
-		for side, s in ipairs({ { 0, -1 }, { 1, 0 }, { 0, 1 }, { -1, 0 } }) do
-			local dist = RING_HALF - (s[1] ~= 0 and lx * s[1] or lz * s[2])
-			if dist < 1.6 then
-				push[side] = math.max(push[side], (1.6 - dist) * 0.5)
-			end
+	for side = 1, 4 do
+		local s = ROPE_SIDES[side]
+		local dist = RING_HALF - (s[1] ~= 0 and lx * s[1] or lz * s[2])
+		-- only a body INSIDE the ropes bows them out; the cutman and the ringside watchers stand
+		-- on the apron outside the rope line (dist < 0) and just rest on them
+		if dist > -0.4 and dist < 1.6 then
+			ropePush[side] = math.max(ropePush[side], (1.6 - dist) * 0.5)
 		end
 	end
+end
+
+-- who can lean on the ropes: cached so the 30 Hz tick does not call GetTagged (two fresh
+-- arrays, ~30 members) every time; bodies only need to be found within half a second
+local function refreshRopeBodies(t)
+	if t - ropeBodiesAt < 0.5 then
+		return
+	end
+	ropeBodiesAt = t
+	table.clear(ropeBodies)
 	for _, tagName in ipairs({ "Fighter", "Ambient" }) do
 		for _, mdl in ipairs(CollectionService:GetTagged(tagName)) do
 			local r = mdl:FindFirstChild("HumanoidRootPart")
 			if r then
-				lean(r.Position)
+				local lx, lz = r.Position.X - ringCenter.X, r.Position.Z - ringCenter.Z
+				-- generous margin: a body walking up to the ropes is picked up within one refresh
+				if math.abs(lx) < RING_HALF + 12 and math.abs(lz) < RING_HALF + 12 then
+					table.insert(ropeBodies, r)
+				end
 			end
+		end
+	end
+end
+
+local function updateRopes(dt, t)
+	if #ropes == 0 then
+		return
+	end
+	ropePush[1], ropePush[2], ropePush[3], ropePush[4] = 0, 0, 0, 0
+	refreshRopeBodies(t)
+	for _, r in ipairs(ropeBodies) do
+		if r.Parent then
+			ropeLean(r.Position)
 		end
 	end
 	local ch = player.Character
 	local myRoot = ch and ch:FindFirstChild("HumanoidRootPart")
 	if myRoot then
-		lean(myRoot.Position)
+		ropeLean(myRoot.Position)
 	end
+	local settled = true
 	for side = 1, 4 do
 		local st = sideState[side]
-		st.v += ((push[side] - st.off) * 90 - st.v * 6) * dt
+		st.v += ((ropePush[side] - st.off) * 90 - st.v * 6) * dt
 		st.off += st.v * dt
+		if math.abs(st.off) > 1e-3 or math.abs(st.v) > 1e-3 or ropePush[side] > 0 then
+			settled = false
+		end
+	end
+	-- with nobody on the ropes only the 0.015-stud sway moves them: redraw that at ~6 Hz
+	-- instead of rewriting 24 attachments and 12 beams 30 times a second
+	if settled then
+		if t - ropeIdleAt < 0.16 then
+			return
+		end
+		ropeIdleAt = t
 	end
 	for _, r in ipairs(ropes) do
 		local st = sideState[r.side]
@@ -1436,15 +1492,23 @@ local CREW = {
 	{ src = "Coach Benny", name = "Lou Marsh", role = "Camera Operator", at = V3(-19, 0, 49.6), look = V3(-19, 0, 36), minTier = 4 },
 }
 
+-- The source NPCs spawn one by one on the server (with yields), so on a fresh join they may not
+-- exist yet. A missing source clears the key (the next Refresh rebuilds, like the title photos)
+-- and schedules a few retries of its own, because an idle player may get no profile push soon.
+local crewRetries = 0
+local crewRetryPending = false
+local scheduleCrewRetry -- defined after buildCrew below
+
 local function buildCrew(m, idx)
 	local members = workspace:FindFirstChild("GymMembers")
-	if not members then
-		return
-	end
-	for _, def in ipairs(CREW) do
+	local missing = members == nil and idx >= 3 -- no staff below Elite, nothing to wait for
+	for _, def in ipairs(members and CREW or {}) do
 		if idx >= def.minTier then
 			local src = members:FindFirstChild(def.src)
 			local root = src and src:FindFirstChild("HumanoidRootPart")
+			if not root then
+				missing = true
+			end
 			if root then
 				local ok, clone = pcall(function()
 					local was = src.Archivable
@@ -1506,6 +1570,28 @@ local function buildCrew(m, idx)
 			end
 		end
 	end
+	if missing then
+		keys.Crew = nil -- the next Refresh tries again
+		scheduleCrewRetry(m.Parent) -- m.Parent is the Facility root
+	else
+		crewRetries = 0
+	end
+end
+
+function scheduleCrewRetry(facility)
+	if crewRetryPending or crewRetries >= 20 then
+		return -- ~60 s of retries covers the server's member spawn; Refresh keeps retrying after
+	end
+	crewRetryPending = true
+	crewRetries += 1
+	task.delay(3, function()
+		crewRetryPending = false
+		-- only if nothing rebuilt the crew meanwhile and the tier still wants staff
+		local tier = GymFacility.Tier or 0
+		if keys.Crew == nil and facility and facility.Parent and tier >= 3 then
+			rebuild(facility, "Crew", tostring(math.min(tier, 4)), buildCrew, tier)
+		end
+	end)
 end
 
 ------------------------------------------------------------------------
@@ -1602,6 +1688,7 @@ end
 
 -- ropes at 30 Hz near the ring, fans bob at 10 Hz near the door, roof leaks drip
 local acc, fanAcc, dripAt = 0, 0, 0
+local fanBulkP, fanBulkC = {}, {} -- reused every bob (no per-tick allocation)
 RunService.Heartbeat:Connect(function(dt)
 	if not (root and root.Parent and root.Parent.Parent) then
 		return
@@ -1621,7 +1708,7 @@ RunService.Heartbeat:Connect(function(dt)
 	end
 	if fanAcc >= 0.1 and #fans > 0 and (cp - V3(0, 0, 98)).Magnitude < 170 then
 		fanAcc = 0
-		local bp, bc = {}, {}
+		local bp, bc = fanBulkP, fanBulkC
 		for _, f in ipairs(fans) do
 			local lift = math.max(0, math.sin(t * f.speed + f.phase)) * 0.35
 			for i, p in ipairs(f.parts) do
@@ -1631,9 +1718,9 @@ RunService.Heartbeat:Connect(function(dt)
 				end
 			end
 		end
-		pcall(function()
-			workspace:BulkMoveTo(bp, bc, Enum.BulkMoveMode.FireCFrameChanged)
-		end)
+		pcall(workspace.BulkMoveTo, workspace, bp, bc, Enum.BulkMoveMode.FireCFrameChanged)
+		table.clear(bp)
+		table.clear(bc)
 	end
 	if GymFacility.Tier == 1 and t >= dripAt then
 		dripAt = t + 1.6 + math.random() * 1.6

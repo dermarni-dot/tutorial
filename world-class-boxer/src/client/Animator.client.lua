@@ -274,6 +274,13 @@ local function onAttr(rig, name)
 		end
 	elseif name == "Count" then
 		rig.countT = now
+	elseif name == "ShoutAt" then
+		-- Ambience (F) just put a chat bubble over this coach: open the mouth now, and cup a hand by
+		-- it when the arms are free (updateRig)
+		rig.shoutReq = now
+		if FaceFX then
+			FaceFX.Shout(model, 1.1)
+		end
 	end
 end
 
@@ -835,6 +842,9 @@ local function fightStance(p, rig, t, dt)
 	local amp = ampOf(rig)
 	local stam = clamp(num(a.Stam, 1), 0, 1)
 	local tired = 1 - stam
+	-- a beaten body (BodyHP, D): below 60% the fighter hunches over the ribs, sits lower and keeps
+	-- the rear elbow glued over the liver; it never fully goes away between exchanges
+	local gut = clamp((0.6 - num(a.BodyHP, 1)) / 0.6, 0, 1)
 	local root = rig.root
 	local lv = root.CFrame:VectorToObjectSpace(root.AssemblyLinearVelocity)
 	local moving = clamp(sqrt(lv.X * lv.X + lv.Z * lv.Z) / 8, 0, 1)
@@ -853,8 +863,11 @@ local function fightStance(p, rig, t, dt)
 	rig.breath = tired
 	-- hips bladed, leaning into the direction of travel
 	p.Root = CF(wx, -(depth + wdip), 0) * A(lv.Z * 0.012 - 0.02, st.hip, -lv.X * 0.01 - wx * 0.3)
-	p.W = A(-0.04 + br, st.wyaw + sroll * 0.5, wx * 0.35 + sroll)
-	p.Neck = A(st.tuck - br * 0.5, -(st.hip + st.wyaw) * 0.85, -wx * 0.25 - sroll)
+	p.W = A(-0.04 + br - 0.14 * gut, st.wyaw + sroll * 0.5, wx * 0.35 + sroll)
+	p.Neck = A(st.tuck - br * 0.5 + 0.08 * gut, -(st.hip + st.wyaw) * 0.85, -wx * 0.25 - sroll)
+	if gut > 0 then
+		p.Root = CF(0, -0.05 * gut, 0) * p.Root
+	end
 	-- the guard sags as the arms get heavy
 	local sag = 0.35 * tired
 	local Ld, Rr = st.lead, st.rear
@@ -872,7 +885,7 @@ local function fightStance(p, rig, t, dt)
 	rig.guardR = rt
 	rig.guardSink = sinkY
 	guardArm(rig, p, "L", lt[1], lt[2] - sinkY, lt[3] + sinkZ, 1)
-	guardArm(rig, p, "R", rt[1] + sroll * 0.5, rt[2] - sinkY, rt[3] + sinkZ, 1)
+	guardArm(rig, p, "R", rt[1] + sroll * 0.5, rt[2] - sinkY - 0.25 * gut, rt[3] + sinkZ, 1, nil, gut > 0 and lerp(0.2, 0.05, gut) or nil)
 	local up = max(0, b) * 2
 	plant(rig, st.stagger, st.width, st.yawL, st.yawR, st.heel * 0.6 + up, st.heel * 1.5 + up)
 	rig.stepDist = 0.3 -- boxers reset their feet constantly
@@ -880,8 +893,11 @@ local function fightStance(p, rig, t, dt)
 	-- a fighter's muscles never fully switch off in the stance
 	flex(rig, "forearms", 0.15)
 	flex(rig, "frontDelt", 0.12)
-	flex(rig, "abs", 0.12)
+	flex(rig, "abs", 0.12 + 0.3 * gut)
 	flex(rig, "calves", 0.1 + up)
+	if gut > 0.6 and not rig.exprHint then
+		rig.exprHint = "pain"
+	end
 	return st
 end
 
@@ -1475,7 +1491,7 @@ local function punchAct(p, rig, act, el, near)
 				local c = tgt.Position
 				local dx, dz = shW.X - c.X, shW.Z - c.Z
 				local dm = sqrt(dx * dx + dz * dz)
-				local r = min(tgt.Size.Y, tgt.Size.Z) * 0.5 + 0.1
+				local r = min(tgt.Size.Y, tgt.Size.Z) * 0.5 + 0.4
 				if dm > r then
 					lp = ut:PointToObjectSpace(V3(c.X + dx / dm * r, hY, c.Z + dz / dm * r))
 				end
@@ -1485,10 +1501,11 @@ local function punchAct(p, rig, act, el, near)
 			if lp then
 				lp = V3(lp.X / sc.X, lp.Y / sc.Y, lp.Z / sc.Z)
 			end
-			if lp and lp.Z < -0.8 and lp.Magnitude < 6 then
+			-- (the bag stays a target however close the shoulder turn brings it)
+			if lp and lp.Z < (isBag and 0 or -0.8) and lp.Magnitude < 6 then
 				if isBag then
 					-- every punch type lands ON the surface point (no follow-through past it)
-					px, py, pz = lerp(px, lp.X, 0.85), lerp(py, lp.Y, 0.85), lerp(pz, lp.Z, 0.85)
+					px, py, pz = lp.X, lp.Y, lp.Z
 				else
 					-- straights go through the target, hooks / uppercuts land on its near side
 					local k = kin.straight and 1 or 0.55
@@ -1788,7 +1805,22 @@ local function stanceTraining(p, rig, t, d, w, model, dt)
 	return p
 end
 POSE.guard = stanceTraining
-POSE.heavybag = stanceTraining
+-- the station's use point is ~3.6 studs from the bag's axis (MapBuilder / Ambient), beyond the reach
+-- of most punches: the boxer steps in to punching range (the HRP stays at the use point, the foot IK
+-- keeps the feet planted and walks them in); punchAct then lands every punch on the bag's surface
+POSE.heavybag = function(p, rig, t, d, w, model, dt)
+	stanceTraining(p, rig, t, d, w, model, dt)
+	local want = (rig.bagPart and rig.bagPart.Parent and rig.geo.ok) and (rig.bagWant or 0) or 0
+	-- ease in / out (a couple of shuffle steps, not a teleport)
+	local s = (rig.stepIn or 0) + (want - (rig.stepIn or 0)) * (1 - exp(-dt * 3))
+	rig.stepIn = s
+	if s > 0.01 then
+		rig.foot.L.z -= s
+		rig.foot.R.z -= s
+		p.Root = CF(0, 0, -s) * p.Root
+	end
+	return p
+end
 POSE.spar = stanceTraining
 POSE.shadow = stanceTraining
 
@@ -2514,6 +2546,7 @@ local function gestureOverlay(p, rig, t)
 	if not g then
 		return
 	end
+	rig.gestureDrawnT = t
 	local el = t - g.start
 	if el > g.dur then
 		rig.gesture = nil
@@ -2668,6 +2701,7 @@ end
 -- workspace.LocalGym.Visual_<Station>, segment "Bag" = the middle of the bag) or a members' bag
 -- (MapBuilder: model tagged MemberBag, part "MemberBag"); flat distance from the root under 6 studs
 local BAG_RANGE = 6
+local BAG_RANGE_IN = 1.55 -- root to bag surface at the working range (studs, scaled by the torso)
 local function findBag(rig, pos)
 	local function flat(part)
 		local d = part.Position - pos
@@ -2756,6 +2790,15 @@ local function chooseLook(rig, t)
 		local bag = findBag(rig, pos)
 		if bag then
 			rig.bagPart, rig.oppHead, rig.oppTorso = bag, bag, bag
+			-- how far to step in (POSE.heavybag): averaged over looks, so a swinging bag does not
+			-- drag the stance around
+			local lp = rig.root.CFrame:PointToObjectSpace(bag.Position)
+			local r = min(bag.Size.Y, bag.Size.Z) * 0.5
+			local sc = rig.geo.utScale
+			local want = clamp(-lp.Z - r - BAG_RANGE_IN * clamp(sc and sc.Y or 1, 0.7, 1.4), 0, 1.1)
+			rig.bagWant = rig.bagWant and lerp(rig.bagWant, want, 0.3) or want
+		else
+			rig.bagWant = nil
 		end
 		return
 	end
@@ -3020,6 +3063,9 @@ end
 ------------------------------------------------------------------------
 -- Per-rig update
 ------------------------------------------------------------------------
+-- poses whose arms are free for a shout gesture (mitt work keeps the pads up: face only)
+local SHOUT_ARMS = { idle = true, walk = true, coachwatch = true, ringside = true, cornerman = true, sitwatch = true,
+	mittidle = true }
 local PUBLISH_POSE = { heavybag = "heavybag", guard = "shadow", speedbag = "speedbag" }
 
 local function updateRig(rig, model, t, dt, lod)
@@ -3102,6 +3148,17 @@ local function updateRig(rig, model, t, dt, lod)
 		local fn = POSE[name] or POSE.idle
 		fn(p, rig, t, drive, w, model, dt)
 		rig.poseAct = rig.poseAct or POSE_ACT[name]
+		-- a coach's chat bubble (ShoutAt): the shout gesture goes with the words whenever the arms
+		-- are free; the watch poses draw their own gestures, the others get the overlay here
+		if rig.shoutReq then
+			if t - rig.shoutReq < 0.5 and not rig.gesture and SHOUT_ARMS[name] then
+				startGesture(rig, "shout", t, 1.2)
+			end
+			rig.shoutReq = nil
+		end
+		if rig.gesture and rig.gestureDrawnT ~= t and SHOUT_ARMS[name] then
+			gestureOverlay(p, rig, t)
+		end
 		-- other players' bag / shadow / speed-bag work is re-synthesized here and published
 		local autoLoop
 		if rig.isTrainee and not rig.isLocal then

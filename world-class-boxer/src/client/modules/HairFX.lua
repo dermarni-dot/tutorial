@@ -84,6 +84,9 @@ local function addJoint(m)
 		mass = type(mass) == "number" and clamp(mass, 0.3, 3) or 1, bounce = m:GetAttribute("Bounce") == true,
 		x = 0, z = 0, y = 0, vx = 0, vz = 0, vy = 0, anchor = nil, prevCF = nil, prevVel = Vector3.zero,
 		phase = (#o.joints * 1.37) % 6.28, written = false,
+		-- head hair / beard only: B's boot-lace tails and wrap ends share the HairSway tag but must not
+		-- be whipped by a punch to the head (they keep their motion-driven sway)
+		hair = m:FindFirstAncestor("Hair") ~= nil or m:FindFirstAncestor("Beard") ~= nil,
 	}
 	j.anchor = chainAnchor(m)
 	table.insert(o.joints, j)
@@ -115,12 +118,14 @@ function HairFX.Impulse(model, x, z, amount)
 	end
 	amount = amount or 1
 	for _, j in ipairs(o.joints) do
-		local k = amount * (0.6 + 0.25 * j.depth) / j.mass
-		-- Angles(+x) swings a segment's tip forward (-Z), Angles(0, 0, +z) to the right (+X)
-		j.vx -= (z or 0) * 6 * k
-		j.vz += (x or 0) * 6 * k
-		if j.bounce then
-			j.vy += 3 * k
+		if j.hair then
+			local k = amount * (0.6 + 0.25 * j.depth) / j.mass
+			-- Angles(+x) swings a segment's tip forward (-Z), Angles(0, 0, +z) to the right (+X)
+			j.vx -= (z or 0) * 6 * k
+			j.vz += (x or 0) * 6 * k
+			if j.bounce then
+				j.vy += 3 * k
+			end
 		end
 	end
 	o.kick = amount

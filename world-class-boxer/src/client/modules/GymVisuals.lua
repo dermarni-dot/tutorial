@@ -575,7 +575,10 @@ local function hitPendulum(d, power, side, ptype, zone, opts)
 	d.shakeDir = V3(LATERAL[ptype] * side * 0.5, 0, -1).Unit * dir
 	-- sound: the material of the bag, deeper for body shots; smart bags add a sensor ping
 	local segY = d.segL and (-d.len / 2 + (dentSegment(ptype, zone) - 0.5) * d.segL) or 0
-	local hitPos = (d.hook * d.bagRel * CF(0, segY, d.radius)).Position
+	-- face: which side of the bag the glove met (+1 = the rig's +Z face, where a station's boxer
+	-- stands; a members' bag can be worked from either side, see onAutoAct)
+	local face = opts and opts.face or 1
+	local hitPos = (d.hook * d.bagRel * CF(0, segY, d.radius * face)).Position
 	local vol = (0.55 + p * 0.45) * (opts and opts.remote and 0.6 or 1)
 	local prof = zone == "body" and "bag_body"
 		or ({ canvas = "bag_canvas", leather = "bag_leather", premium = "bag_premium", smart = "bag_leather" })[d.material] or "bag_leather"
@@ -596,7 +599,8 @@ local function hitPendulum(d, power, side, ptype, zone, opts)
 	local fx = d.fx
 	if fx and fx.att and fx.att.Parent then
 		pcall(function()
-			fx.att.WorldCFrame = CF(hitPos)
+			-- the emitters fire out of the attachment's +Z (NormalId.Back): turn them to the hit face
+			fx.att.WorldCFrame = face < 0 and CF(hitPos) * CFrame.Angles(0, math.pi, 0) or CF(hitPos)
 			if fx.dust then
 				fx.dust:Emit(math.floor(2 + p * 5))
 			end
@@ -605,6 +609,44 @@ local function hitPendulum(d, power, side, ptype, zone, opts)
 			end
 		end)
 	end
+end
+
+-- the burst emitters a hanging bag throws on a hit (never enabled: hitPendulum Emit()s them).
+-- dust off the bag face, sweat spray off the glove; the attachment is moved to the hit point.
+local function impactFX(parent, dustColor)
+	local fxAtt = Instance.new("Attachment")
+	fxAtt.Name = "ImpactFX"
+	fxAtt.Parent = parent
+	local dust = Instance.new("ParticleEmitter")
+	dust.Name = "Dust"
+	dust.Enabled = false
+	dust.Texture = "rbxasset://textures/particles/smoke_main.dds"
+	dust.Color = ColorSequence.new(dustColor)
+	dust.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.55), NumberSequenceKeypoint.new(1, 1) })
+	dust.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.25), NumberSequenceKeypoint.new(1, 0.9) })
+	dust.Lifetime = NumberRange.new(0.6, 1.3)
+	dust.Speed = NumberRange.new(1, 2.4)
+	dust.SpreadAngle = Vector2.new(40, 40)
+	dust.Acceleration = V3(0, -0.6, 0)
+	dust.Drag = 3
+	dust.LightInfluence = 1
+	dust.EmissionDirection = Enum.NormalId.Back
+	dust.Parent = fxAtt
+	local spray = Instance.new("ParticleEmitter")
+	spray.Name = "Spray"
+	spray.Enabled = false
+	spray.Color = ColorSequence.new(rgb(200, 225, 240))
+	spray.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.3), NumberSequenceKeypoint.new(1, 1) })
+	spray.Size = NumberSequence.new(0.06)
+	spray.Lifetime = NumberRange.new(0.3, 0.55)
+	spray.Speed = NumberRange.new(4, 7)
+	spray.SpreadAngle = Vector2.new(30, 30)
+	spray.Acceleration = V3(0, -40, 0)
+	spray.LightEmission = 0.2
+	spray.LightInfluence = 1
+	spray.EmissionDirection = Enum.NormalId.Back
+	spray.Parent = fxAtt
+	return fxAtt, dust, spray
 end
 
 ------------------------------------------------------------------------
@@ -833,38 +875,7 @@ B.heavybag = function(m, O, lv, cond, rng)
 		table.insert(bulges, { part = b, mesh = mesh, side = sx })
 	end
 	-- impact effects: dust from an old canvas bag, sweat spray off any bag (emitted in bursts only)
-	local fxAtt = Instance.new("Attachment")
-	fxAtt.Name = "ImpactFX"
-	fxAtt.Parent = bag
-	local dust = Instance.new("ParticleEmitter")
-	dust.Name = "Dust"
-	dust.Enabled = false
-	dust.Texture = "rbxasset://textures/particles/smoke_main.dds"
-	dust.Color = ColorSequence.new(lv <= 1 and rgb(200, 182, 150) or rgb(170, 165, 158))
-	dust.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.55), NumberSequenceKeypoint.new(1, 1) })
-	dust.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.25), NumberSequenceKeypoint.new(1, 0.9) })
-	dust.Lifetime = NumberRange.new(0.6, 1.3)
-	dust.Speed = NumberRange.new(1, 2.4)
-	dust.SpreadAngle = Vector2.new(40, 40)
-	dust.Acceleration = V3(0, -0.6, 0)
-	dust.Drag = 3
-	dust.LightInfluence = 1
-	dust.EmissionDirection = Enum.NormalId.Back
-	dust.Parent = fxAtt
-	local spray = Instance.new("ParticleEmitter")
-	spray.Name = "Spray"
-	spray.Enabled = false
-	spray.Color = ColorSequence.new(rgb(200, 225, 240))
-	spray.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.3), NumberSequenceKeypoint.new(1, 1) })
-	spray.Size = NumberSequence.new(0.06)
-	spray.Lifetime = NumberRange.new(0.3, 0.55)
-	spray.Speed = NumberRange.new(4, 7)
-	spray.SpreadAngle = Vector2.new(30, 30)
-	spray.Acceleration = V3(0, -40, 0)
-	spray.LightEmission = 0.2
-	spray.LightInfluence = 1
-	spray.EmissionDirection = Enum.NormalId.Back
-	spray.Parent = fxAtt
+	local fxAtt, dust, spray = impactFX(bag, lv <= 1 and rgb(200, 182, 150) or rgb(170, 165, 158))
 	-- smart impact screen on a side arm (level 5+), angled at the boxer
 	local display
 	if lv >= 5 then
@@ -2987,13 +2998,34 @@ local function addMemberBag(rig)
 	if #parts == 0 or not bagPart then
 		return
 	end
+	-- the body is SEGS stacked cylinders around the middle "MemberBag" (MapBuilder, attribute
+	-- BagLen = body length), so it dents where it is hit and springs back like the station bag;
+	-- a single-cylinder rig (no BagLen) still swings, its body then dents as one piece
+	local len = tonumber(rig:GetAttribute("BagLen")) or bagPart.Size.X
+	local segL = len / SEGS
+	local radius = bagPart.Size.Y / 2
+	local bagCF = CF(hookPos.X, bagPart.Position.Y, hookPos.Z)
 	local hook = CF(hookPos)
 	local L = hookPos.Y - bagPart.Position.Y
+	-- dust / sweat bursts and the two side bulges are client-only additions to the server rig
+	local fx
+	local bulges = {}
+	pcall(function()
+		local fxAtt, dust, spray = impactFX(bagPart, rgb(170, 165, 158))
+		fx = { att = fxAtt, dust = dust, spray = spray }
+		for _, sx in ipairs({ -1, 1 }) do
+			local b = part(rig, "BagBulge", V3(0.5, segL * 0.9, radius * 1.1), bagCF * CF(sx * (radius - 0.22), 0, 0), bagPart.Color, bagPart.Material, { ellipsoid = true, shadow = false })
+			local mesh = b:FindFirstChildOfClass("SpecialMesh")
+			if mesh then
+				mesh.Scale = V3(0.6, 1, 1)
+				table.insert(bulges, { part = b, mesh = mesh, side = sx })
+			end
+		end
+	end)
 	local d = newPendulum(hook, parts, {
-		L = L, mass = 1.5, damp = 0.3, topDepth = hookPos.Y - (bagPart.Position.Y + bagPart.Size.X / 2) - 0.1,
-		material = "leather", radius = bagPart.Size.Y / 2,
+		L = L, mass = 1.5, damp = 0.3, topDepth = hookPos.Y - (bagPart.Position.Y + len / 2) - 0.1,
+		material = "leather", radius = radius, bagCF = bagCF, len = len, segL = segL, bulges = bulges, fx = fx,
 	})
-	d.bagRel = CF(0, -L, 0)
 	d.home = bagPart.Position
 	d.model = rig
 	d.member = true
@@ -3262,7 +3294,7 @@ local function onAutoAct(model)
 			-- the members' rigs hang square to the world: a punch from the +Z side drives the bag to -Z
 			-- (positive power), one from the other side swings it back the other way
 			local from = (root.Position.Z >= bd.home.Z) and 1 or -1
-			GymVisuals.Impact(bag, power * from, side * from, ptype, zone ~= "" and zone or nil, { remote = true, sweat = sweat })
+			GymVisuals.Impact(bag, power * from, side * from, ptype, zone ~= "" and zone or nil, { remote = true, sweat = sweat, face = from })
 		end
 	end)
 end
@@ -3276,15 +3308,22 @@ local function watchModel(model)
 	end)
 end
 
+-- The removed signal also fires when a tagged model leaves the DataModel (Destroy, a player
+-- leaving, a crew rebuild), and Destroy does not clear tags, so "still tagged" alone would keep
+-- the entry (and the dead Model) forever. Deferred so the ancestry change has landed; a model
+-- that was only hidden and comes back (LocalGym unparent) is re-watched by the added signal.
 local function unwatchModel(model)
-	if CollectionService:HasTag(model, "Trainee") or CollectionService:HasTag(model, "Ambient") then
-		return -- still tagged the other way
-	end
-	local c = watched[model]
-	if c then
-		c:Disconnect()
-		watched[model] = nil
-	end
+	task.defer(function()
+		local inWorld = model:IsDescendantOf(workspace)
+		if inWorld and (CollectionService:HasTag(model, "Trainee") or CollectionService:HasTag(model, "Ambient")) then
+			return -- still tagged the other way
+		end
+		local c = watched[model]
+		if c then
+			c:Disconnect()
+			watched[model] = nil
+		end
+	end)
 end
 
 for _, tagName in ipairs({ "Trainee", "Ambient" }) do
