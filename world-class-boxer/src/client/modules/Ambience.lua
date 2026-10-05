@@ -648,6 +648,9 @@ local function say(model, text)
 	pcall(function()
 		TextChatService:DisplayBubble(head, text)
 	end)
+	-- client-local: the Animator opens the coach's mouth (FaceFX.Shout) and, when his arms are free,
+	-- plays the cupped-hand shout gesture in time with the bubble
+	model:SetAttribute("ShoutAt", os.clock())
 	GymSound.Play("shout", head.Position, { volume = 1 }) -- silent unless a CoachShout upload is set
 	return true
 end

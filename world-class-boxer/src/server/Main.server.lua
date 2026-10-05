@@ -23,6 +23,7 @@ local MapBuilder = require(Modules.MapBuilder)
 local Venues = require(Modules.Venues)
 local Poser = require(Modules.Poser)
 local Ambient = require(Modules.Ambient)
+local CityMap = require(Modules.CityMap) -- same instance MapBuilder built the city with (travel targets, home interiors)
 
 pcall(function()
 	StarterPlayer.LoadCharacterAppearance = false
@@ -61,14 +62,37 @@ local STATION = {}
 for _, def in ipairs(MapBuilder.StationDefs) do
 	STATION[def.id] = def
 end
-local PROP_FOR = { bench = "bench", deadlift = "deadlift", squat = "squat", curl = "curl", rope = "rope", row = "row" }
+local PROP_FOR = { bench = "bench", deadlift = "deadlift", squat = "squat", curl = "curl", rope = "rope", row = "row", medball = "medball" }
 -- shortest believable time for each minigame (anything faster is treated as a sloppy session)
-local MIN_TIME = { combo = 9, rhythm = 9, reaction = 9, mitts = 9, shadow = 9, reps = 9, pace = 11, ladder = 7, rope = 9, hold = 5 }
+local MIN_TIME = { combo = 9, rhythm = 9, reaction = 9, mitts = 9, shadow = 9, reps = 9, pace = 11, ladder = 7, rope = 9, hold = 5, medball = 9 }
 local SPAR_SCALE = { Light = 0.7, Medium = 1.0, Hard = 1.35 }
 local SPAR_RISK = { Light = 0, Medium = 0.01, Hard = 0.035 }
 local SPAR_RANGE = { Light = { -12, -4 }, Medium = { -5, 3 }, Hard = { 0, 8 } }
 local PREVIEW_BUILD = { chest = 8, shoulders = 8, arms = 8, back = 8, legs = 8, core = 8, neck = 8, fat = 14 }
-local PREVIEW_GEAR = { gloves = "Worn", glovesCond = 55, wrapsCond = 50 }
+-- the creator preview wears the real starter kit: worn gloves, old frayed wraps, sneakers, boil-and-bite guard
+local PREVIEW_GEAR = { gloves = "Worn", glovesCond = 55, wraps = "OldWraps", wrapsCond = 50, shoes = "Sneakers", shoesCond = 60, mouthguard = "BoilBite" }
+
+-- Creator "Peak" preview: what this frame / physique looks like fully trained (never saved)
+local function peakBuild(app)
+	local body = type(app) == "table" and type(app.body) == "table" and app.body or {}
+	-- FindById(list, nil) would match the first entry without a name: default explicitly
+	local frame = Config.FindById(Config.BodyTypes, type(body.frame) == "string" and body.frame or "Athletic") or Config.BodyTypes[2]
+	local cap = 100 * ((frame and frame.potential) or 1)
+	local ph = type(body.physique) == "string" and body.physique ~= "Auto" and Config.FindById(Config.Physiques, body.physique) or nil
+	ph = ph or Config.FindById(Config.Physiques, "Balanced")
+	local b = { fat = 10 }
+	for _, g in ipairs(Config.MuscleKeys) do
+		b[g] = 0.9 * cap * ((ph and ph.shape and ph.shape[g]) or 1)
+	end
+	Config.FillParts(b)
+	return b
+end
+
+-- gym facility tier 1..4 (CONTRACTS section 9: never saved, always derived)
+local function gymTierOf(profile)
+	local ok, idx = pcall(Catalog.GymTier, profile.gym and profile.gym.levels, profile.owned, profile.tier)
+	return ok and tonumber(idx) or 1
+end
 
 local function flatDist(a, b)
 	return V3(a.X - b.X, 0, a.Z - b.Z).Magnitude
@@ -93,9 +117,31 @@ local function summary(player)
 	return s
 end
 
+-- fame on the Player (CONTRACTS section 7; CityVisuals / GymVisuals / venues read other players' values).
+-- SetAttribute with an unchanged value fires nothing, so this is cheap on every push.
+local FAME_ATTRS = { "Tier", "Fame", "Belts", "Nick", "GymTier" }
+local function publishFame(player)
+	local profile = DataManager.Get(player)
+	if not (profile and profile.created) or profile.retired then
+		for _, k in ipairs(FAME_ATTRS) do
+			player:SetAttribute(k, nil)
+		end
+		return
+	end
+	player:SetAttribute("Tier", profile.tier)
+	player:SetAttribute("Fame", math.floor(tonumber(profile.popularity) or 0))
+	player:SetAttribute("Belts", table.concat(Career.PlayerBelts(profile), ","))
+	player:SetAttribute("Nick", tostring(profile.identity and profile.identity.nickname or ""))
+	player:SetAttribute("GymTier", gymTierOf(profile))
+end
+
 local function push(player)
 	if player.Parent then
 		ProfileRemote:FireClient(player, summary(player))
+		local ok, err = pcall(publishFame, player)
+		if not ok then
+			warn("[Boxer] fame attributes:", err)
+		end
 	end
 end
 
@@ -127,14 +173,19 @@ end
 -- Character look (serialized per player; previews use a temporary look)
 ------------------------------------------------------------------------
 local lookState = {}
-local function applyLook(player, previewApp, hands)
+local function applyLook(player, previewApp, hands, popts)
 	local st = lookState[player]
 	if not st then
-		st = {}
+		st = { needFull = true } -- the first build of a character is always a full one
 		lookState[player] = st
 	end
 	st.app = previewApp
 	st.hands = hands
+	st.popts = previewApp and popts or nil -- preview-only: growth / peak / head-only rebuild
+	-- any queued request that needs the whole character wins over head-only previews
+	if not (st.popts and st.popts.only) then
+		st.needFull = true
+	end
 	if st.running then
 		st.again = true
 		return
@@ -149,9 +200,19 @@ local function applyLook(player, previewApp, hands)
 			if profile and char and char.Parent and b ~= "fight" and b ~= "spar" and (profile.created or st.app) then
 				local app = st.app or profile.appearance
 				local build = profile.created and profile.body or PREVIEW_BUILD
+				if st.app and st.popts and st.popts.peak then
+					build = peakBuild(app)
+				end
 				local gear = profile.created and Career.GearView(profile) or PREVIEW_GEAR
-				local opts = profile.created and Career.LookOpts(profile, { hands = st.hands or "wraps" })
-					or { hands = st.hands or "wraps", name = "", nick = "", waistText = "" }
+				local opts = profile.created and Career.LookOpts(profile, { hands = st.hands or "wraps", detail = "full" })
+					or { hands = st.hands or "wraps", name = "", nick = "", waistText = "", detail = "full" }
+				if st.app and st.popts then
+					opts.previewGrowth = st.popts.growth
+					if not st.needFull then
+						opts.only = st.popts.only
+					end
+				end
+				st.needFull = false
 				local ok, err = pcall(Builder.Apply, char, app, build, gear, opts)
 				if not ok then
 					warn("[Boxer] look error:", err)
@@ -170,6 +231,56 @@ local function gymSpawnCFrame()
 	local spawn = workspace:FindFirstChild("Gym") and workspace.Gym:FindFirstChild("GymSpawn")
 	local p = spawn and spawn.Position or V3(0, 1, 60)
 	return CFrame.new(p + V3(rng:NextInteger(-4, 4), 4, rng:NextInteger(-4, 4)))
+end
+
+------------------------------------------------------------------------
+-- Sweat & road grime (CONTRACTS section 7). Builder.SetSweat is the only writer of the Sweat
+-- attribute (quantised to 0.05); the exact level is tracked here so slow build-up still adds up.
+-- Training raises it, idling dries it, the shower (locker room), ice bath and a night's sleep wash it
+-- off. Grime comes from roadwork and needs water to come off.
+------------------------------------------------------------------------
+local sweatState = {} -- player -> { char = Model, level = exact 0..1 }
+local GRIME_WASH = { Swimming = true, IceBath = true } -- sessions in the water rinse the road dirt off
+local SWEAT_RECOVERY = { Sauna = true } -- recovery sessions that still make you sweat (the weight-cut sauna)
+local SWEAT_TICK = 2 -- seconds between build-up / drying steps
+local SWEAT_GAIN = 0.15 / 60 -- per second of a session at fatigue 12 (CONTRACTS: about +0.15 a minute)
+local SWEAT_TRAIN_CAP = 0.85 -- build-up stops here; the finished session's own sweat can still go higher
+local SWEAT_DRY = 0.08 / 60 -- per second while idle
+
+local function quantSweat(level)
+	return math.floor(math.clamp(level, 0, 1) * 20 + 0.5) / 20
+end
+
+local function setSweat(player, char, level, force)
+	local profile = DataManager.Get(player)
+	if not (profile and profile.created and char and char.Parent) then
+		return
+	end
+	level = math.clamp(tonumber(level) or 0, 0, 1)
+	sweatState[player] = { char = char, level = level }
+	local q = quantSweat(level)
+	if not force and q == (tonumber(char:GetAttribute("Sweat")) or 0) then
+		return
+	end
+	local ok, err = pcall(Builder.SetSweat, char, profile.appearance, q)
+	if not ok then
+		warn("[Boxer] sweat:", err)
+	end
+end
+
+-- shower / ice bath / new day: clean skin; body grime is drawn by Cosmetics, so a grimy boxer is rebuilt
+local function wash(player)
+	local char = player.Character
+	if not (char and char.Parent) then
+		return
+	end
+	local grimy = (tonumber(char:GetAttribute("Grime")) or 0) > 0
+	char:SetAttribute("Grime", nil)
+	-- forced: Head.SetSweat also refreshes the face dirt (FaceGrime) from the attribute just cleared
+	setSweat(player, char, 0, true)
+	if grimy then
+		applyLook(player)
+	end
 end
 
 ------------------------------------------------------------------------
@@ -197,6 +308,13 @@ local function endSession(player, keepPosition)
 		Ambient.SetLoop("Masseuse", "idle")
 	end
 	local char = player.Character
+	if char then
+		-- cleared before the early return so a kept-position end (e.g. handing over to sparring) leaves no stale station
+		char:SetAttribute("Station", nil)
+		if char:GetAttribute("Expr") == "effort" then
+			char:SetAttribute("Expr", nil)
+		end
+	end
 	if keepPosition or not (char and char.Parent) then
 		return
 	end
@@ -292,6 +410,7 @@ local function startActivity(player, profile, actId)
 		hum.JumpHeight = 0
 		char:SetAttribute("Pose", def.pose)
 		char:SetAttribute("PoseLevel", level)
+		char:SetAttribute("Station", def.id) -- other clients' GymVisuals react to this player's punches
 		CollectionService:AddTag(char, "Trainee")
 		s.prop = PROP_FOR[def.pose]
 		if s.prop then
@@ -328,6 +447,9 @@ local function startActivity(player, profile, actId)
 	end
 	sessions[player] = s
 	setBusy(player, "activity")
+	if not act.recovery then
+		char:SetAttribute("Expr", "effort") -- the Animator's face strains through the set (cleared in endSession)
+	end
 	return {
 		ok = true, token = s.token, minigame = act.minigame, params = Training.MinigameParams(profile, act), level = level,
 		pose = s.pose, act = act.id, energy = Training.EnergyCost(profile, act), cps = s.cps and #s.cps or nil, lengths = s.target,
@@ -383,7 +505,32 @@ local function finishActivity(player, profile, token, score, stats)
 	end
 	local record = Training.Record(profile, act.id, quality, Training.SanitizeStats(stats), tooFast)
 	endSession(player)
+	-- road grime / a rinse go on the model BEFORE the rebuild, which draws the shin & forearm dirt from it
+	local trainedChar = player.Character
+	if trainedChar and GRIME_WASH[act.id] then
+		trainedChar:SetAttribute("Grime", nil)
+	elseif trainedChar and s.kind == "course" then
+		local grime = (tonumber(trainedChar:GetAttribute("Grime")) or 0) + 0.25 + 0.45 * (opts.scale or 1)
+		trainedChar:SetAttribute("Grime", math.floor(math.clamp(grime, 0, 1) * 20 + 0.5) / 20)
+	end
 	applyLook(player)
+	-- pump & sweat are attributes on the character model: they survive the rebuild applyLook starts
+	-- (Cosmetics re-applies the Sweat attribute) and E/B animate them client-side
+	if trainedChar and type(result) == "table" then
+		if not act.recovery then
+			Training.ApplyPump(trainedChar, result)
+		end
+		if act.id == "IceBath" then
+			setSweat(player, trainedChar, 0, true)
+		elseif not act.recovery or SWEAT_RECOVERY[act.id] then
+			-- the session result's sweat (C: act.fatigue / 24 * quality), never drier than the build-up so far;
+			-- the Sauna has no fatigue of its own and no result.sweat, so it falls back to 18 (about 0.75 at full quality)
+			local sweat = tonumber(result.sweat) or math.clamp((act.fatigue or 18) / 24 * quality, 0, 1)
+			local st = sweatState[player]
+			local cur = st and st.char == trainedChar and st.level or tonumber(trainedChar:GetAttribute("Sweat")) or 0
+			setSweat(player, trainedChar, math.max(cur, sweat))
+		end
+	end
 	task.spawn(DataManager.Save, player)
 	return { ok = true, result = result, quality = quality, act = act.id, record = record }
 end
@@ -420,6 +567,41 @@ RunService.Heartbeat:Connect(function()
 	end
 end)
 
+-- one build-up / drying step of the exact sweat level (act = the running session's activity or nil)
+local function sweatStep(level, act, dt)
+	if act and (not act.recovery or SWEAT_RECOVERY[act.id]) then
+		if level >= SWEAT_TRAIN_CAP then
+			return level
+		end
+		return math.min(SWEAT_TRAIN_CAP, level + SWEAT_GAIN * math.clamp((tonumber(act.fatigue) or 12) / 12, 0.4, 2) * dt)
+	end
+	return math.max(0, level - SWEAT_DRY * dt)
+end
+
+-- training sweat heartbeat: builds up through a session, dries off while idle. Fights and spars are
+-- FightEngine's (per round); look rebuilds and barber / locker previews are left alone.
+task.spawn(function()
+	while true do
+		task.wait(SWEAT_TICK)
+		for _, player in ipairs(Players:GetPlayers()) do
+			local b = busy[player]
+			local char = player.Character
+			local look = lookState[player]
+			if char and char.Parent and b ~= "fight" and b ~= "spar" and not customizing[player] and not (look and look.running) then
+				local cur = tonumber(char:GetAttribute("Sweat")) or 0
+				local st = sweatState[player]
+				-- keep the exact level unless someone else (a fight round) wrote the attribute since
+				local level = (st and st.char == char and quantSweat(st.level) == cur) and st.level or cur
+				local sess = sessions[player]
+				local nextLevel = sweatStep(level, sess and sess.act, SWEAT_TICK)
+				if nextLevel ~= level then
+					setSweat(player, char, nextLevel)
+				end
+			end
+		end
+	end
+end)
+
 ------------------------------------------------------------------------
 -- Fight night
 ------------------------------------------------------------------------
@@ -433,7 +615,20 @@ local function runFight(player, profile)
 	setBusy(player, "fight")
 	push(player)
 	offer.myLine = Career.PlayerLine(profile, b.name)
-	local arena = Venues.New(offer.venue or "Arena")
+	-- per-fight venue dressing (CONTRACTS section 7): title stakes, crowd from popularity, supporters with fan
+	-- signs, your sponsors on the corner / apron, the gym tier. Every field is optional for Venues.New.
+	local popularity = tonumber(profile.popularity) or 0
+	local venueOpts = {
+		stakes = offer.stakes, playerStakes = offer.playerStakes, kind = offer.kind, popularity = popularity,
+		nick = type(profile.identity) == "table" and profile.identity.nickname or nil,
+		gymTier = gymTierOf(profile),
+		supporters = math.clamp(popularity / 100, 0, 1),
+	}
+	local okSponsors, sponsors = pcall(Career.ActiveSponsors, profile)
+	if okSponsors and type(sponsors) == "table" then
+		venueOpts.sponsors = sponsors
+	end
+	local arena = Venues.New(offer.venue or "Arena", venueOpts)
 	local pData = Career.FighterFromProfile(profile)
 	local oData = Career.FighterFromBoxer(b)
 	local char = player.Character
@@ -503,7 +698,11 @@ local function runSpar(player, profile, intensity)
 		pData.mods.staminaMul = math.clamp(pData.mods.staminaMul + pData.mods.weighIn.penalty, 0.5, 1.1)
 		pData.mods.weighIn = nil
 	end
-	local arena = Venues.New("Gym", { ringLevel = math.max(1, profile.gym.levels.ring or 1) })
+	-- the sparring room follows the gym facility tier (Venues dresses it from the GymTier attribute)
+	local arena = Venues.New("Gym", {
+		ringLevel = math.max(1, profile.gym.levels.ring or 1), popularity = tonumber(profile.popularity) or 0,
+		nick = type(profile.identity) == "table" and profile.identity.nickname or nil, gymTier = gymTierOf(profile),
+	})
 	local offer = { kind = "Sparring", rounds = 1, venue = "Gym", venueName = "Sparring Ring", talk = "", stakes = {}, playerStakes = {} }
 	local char = player.Character
 	local hum = char and char:FindFirstChildOfClass("Humanoid")
@@ -541,6 +740,22 @@ local function runSpar(player, profile, intensity)
 		end
 		local act = Training.Activity("Sparring")
 		local out = Training.Perform(profile, act, q, { intensity = intensity, scale = SPAR_SCALE[intensity], extraRisk = SPAR_RISK[intensity] })
+		-- sparring marks follow the player home (CONTRACTS 8.3: res.face is already scaled by the session's
+		-- damage level; SPAR_SCALE above is the training-gain scale, unrelated)
+		if type(res.face) == "table" and type(Training.AddFaceDamage) == "function" then
+			local carry = Config.FaceDamage and Config.FaceDamage.sparCarry or 0.5
+			local okFace, errFace = pcall(Training.AddFaceDamage, profile, res.face, carry)
+			if not okFace then
+				warn("[Boxer] spar face damage:", errFace)
+			end
+		end
+		-- the rounds pump the shoulders / arms / neck worked (Pump / PumpParts / PumpAt attributes, BodyFX reads them)
+		if player.Character then
+			local okPump, errPump = pcall(Training.ApplyPump, player.Character, out)
+			if not okPump then
+				warn("[Boxer] spar pump:", errPump)
+			end
+		end
 		if intensity == "Hard" and res.cutTaken and not out.injury and rng:NextNumber() < 0.5 then
 			local def = Config.Injuries.cut
 			table.insert(profile.condition.injuries, { id = "cut", days = rng:NextInteger(def.days[1], def.days[2]) })
@@ -559,7 +774,7 @@ end
 ------------------------------------------------------------------------
 -- Look customization (barber / locker room)
 ------------------------------------------------------------------------
-local GLOVE_FIELDS = { color = "color", trim = "trim", finish = "finish", logo = "logo", stitching = "stitching", embName = "embroidery", embNick = "embroidery" }
+local GLOVE_FIELDS = { color = "color", trim = "trim", finish = "finish", logo = "logo", stitching = "stitching", embName = "embroidery", embNick = "embroidery", brand = "brand" }
 
 local function customLook(profile, section, input)
 	local old = profile.appearance
@@ -568,6 +783,10 @@ local function customLook(profile, section, input)
 	if section == "barber" then
 		out.hair = san.hair
 		out.beard = old.gender == 2 and old.beard or san.beard
+		-- "Beard matches hair colour": the client sends no beard.color; Sanitize would keep the old one
+		if out.beard == san.beard and type(input) == "table" and type(input.beard) == "table" and input.beard.color == nil then
+			out.beard.color = nil
+		end
 	elseif section == "locker" then
 		out.attire = san.attire
 		local glove = Catalog.Find(Catalog.Gloves, profile.gear.equipped.gloves) or Catalog.Gloves[1]
@@ -586,16 +805,9 @@ local function customLook(profile, section, input)
 	return out
 end
 
+-- one shared price: the Barber UI quotes the same Looks.BarberPrice
 local function barberPrice(old, new)
-	local price = 30
-	local h1, h2 = old.hair, new.hair
-	if h2.hl ~= h1.hl or h2.dye ~= h1.dye or (h2.hl or h2.dye ~= "None") and table.concat(h2.hcolor, ",") ~= table.concat(h1.hcolor, ",") then
-		price += 60
-	end
-	if table.concat(h2.color, ",") ~= table.concat(h1.color, ",") then
-		price += 40
-	end
-	return price
+	return Looks.BarberPrice(old, new)
 end
 
 ------------------------------------------------------------------------
@@ -631,7 +843,23 @@ function handlers.CreateBoxer(player, profile, data)
 end
 
 local lastPreview = {}
-function handlers.PreviewLook(player, profile, look, hands)
+-- preview-only options from the Creator / Barber (never saved): sanitize every field.
+-- { peak = Starting/Peak body toggle (creator only), growth = hair growth stage, only = head-only rebuild }
+local function previewOpts(popts, creating)
+	if type(popts) ~= "table" then
+		return nil
+	end
+	local g = tonumber(popts.growth)
+	local only = type(popts.only) == "table" and popts.only or nil
+	return {
+		peak = (popts.peak == true and creating) or nil,
+		growth = (g and g == g) and math.clamp(g, 0, 1.5) or nil,
+		only = (only and (only.Face == true or only.Hair == true or only.Beard == true))
+			and { Face = only.Face == true, Hair = only.Hair == true, Beard = only.Beard == true } or nil,
+	}
+end
+
+function handlers.PreviewLook(player, profile, look, hands, popts)
 	if type(look) ~= "table" then
 		return { ok = false }
 	end
@@ -651,7 +879,7 @@ function handlers.PreviewLook(player, profile, look, hands)
 	else
 		app = customLook(profile, section, look)
 	end
-	applyLook(player, app, hands == "gloves" and "gloves" or "wraps")
+	applyLook(player, app, hands == "gloves" and "gloves" or "wraps", previewOpts(popts, creating))
 	return { ok = true }
 end
 
@@ -661,6 +889,9 @@ function handlers.BeginCustomize(player, profile, section)
 	end
 	if busy[player] then
 		return { ok = false, err = "Finish what you're doing first." }
+	end
+	if section == "locker" then
+		wash(player) -- the locker room has the showers
 	end
 	customizing[player] = section
 	if section == "barber" then
@@ -754,6 +985,46 @@ function handlers.CancelActivity(player)
 	return { ok = true }
 end
 
+-- FLEX (Hub Body tab / training result screen / gym mirror prompt): the Animator plays Pose = kind for
+-- 3.2 s and contracts the matching muscles (BodyFX); pump from the last session shows through PumpParts
+local FLEX_POSES = {}
+for _, k in ipairs((Config.Pump and Config.Pump.poses) or {}) do
+	FLEX_POSES[k] = true
+end
+function handlers.Flex(player, profile, kind)
+	if type(kind) ~= "string" or not FLEX_POSES[kind] then
+		return { ok = false, err = "Unknown pose" }
+	end
+	if busy[player] then
+		return { ok = false, err = "Finish what you're doing first." }
+	end
+	local char = player.Character
+	local hum = char and char:FindFirstChildOfClass("Humanoid")
+	if not hum or hum.Health <= 0 then
+		return { ok = false, err = "Your character isn't ready." }
+	end
+	setBusy(player, "flex")
+	local speed = hum.WalkSpeed
+	hum.WalkSpeed = 0
+	char:SetAttribute("Pose", kind)
+	CollectionService:AddTag(char, "Trainee")
+	task.delay(3.2, function()
+		if busy[player] ~= "flex" then
+			return -- something else took over (fight, session): it owns Pose / Trainee now
+		end
+		setBusy(player, nil)
+		if char.Parent then
+			CollectionService:RemoveTag(char, "Trainee")
+			char:SetAttribute("Pose", nil)
+			if hum.Parent then
+				hum.WalkSpeed = speed > 0 and speed or 16
+			end
+		end
+		push(player)
+	end)
+	return { ok = true }
+end
+
 function handlers.StartSparring(player, profile, intensity)
 	if not SPAR_SCALE[intensity] then
 		intensity = "Medium"
@@ -819,13 +1090,118 @@ function handlers.Sleep(player, profile)
 		return { ok = false, err = "Finish what you're doing first." }
 	end
 	local res = Training.Sleep(profile)
+	-- a new day starts showered: no sweat, no road dirt (the rebuild below draws the clean body)
+	local char = player.Character
+	if char then
+		char:SetAttribute("Grime", nil)
+		setSweat(player, char, 0)
+	end
 	applyLook(player) -- hair and beard keep growing
+	-- wake up at home / at the gym when the player chose it in the Life tab (behind the client's fade to black)
+	local wake = type(profile.settings) == "table" and profile.settings.wakeAt or nil
+	if wake == "home" or wake == "gym" then
+		task.delay(1.1, function()
+			if busy[player] or not player.Parent or DataManager.Get(player) ~= profile then
+				return
+			end
+			local c = player.Character
+			if not (c and c:FindFirstChild("HumanoidRootPart")) then
+				return
+			end
+			local cf
+			if wake == "gym" then
+				cf = gymSpawnCFrame()
+			else
+				local ok, homeCF = pcall(CityMap.TravelCFrame, player, profile, "home")
+				cf = ok and homeCF or nil
+			end
+			if typeof(cf) == "CFrame" then
+				c:PivotTo(cf)
+			end
+		end)
+	end
 	task.spawn(DataManager.Save, player)
 	return { ok = true, sleep = res }
 end
 
+-- city travel: home interiors / estate / Elite Performance Center / Main Street / training camp
+local function travel(player, profile, where, kind)
+	if busy[player] then
+		return { ok = false, err = "Finish what you're doing first." }
+	end
+	local char = player.Character
+	local root = char and char:FindFirstChild("HumanoidRootPart")
+	if not root then
+		return { ok = false, err = "Your character isn't ready." }
+	end
+	local cf, err
+	if where == "gym" then
+		cf = gymSpawnCFrame()
+	else
+		local ok, a, b = pcall(CityMap.TravelCFrame, player, profile, where, kind)
+		if ok then
+			cf, err = a, b
+		else
+			warn("[Boxer] travel:", a)
+			err = "Can't go there right now."
+		end
+	end
+	if typeof(cf) ~= "CFrame" then
+		return { ok = false, err = type(err) == "string" and err or "Can't go there." }
+	end
+	char:PivotTo(cf)
+	return { ok = true, where = where }
+end
+
+function handlers.TravelHome(player, profile, kind)
+	return travel(player, profile, "home", type(kind) == "string" and kind or nil)
+end
+
+function handlers.LeaveHome(player, profile)
+	return travel(player, profile, "outside")
+end
+
+local TRAVEL_PLACES = { gym = true, city = true, elite = true, estate = true, camp = true, outside = true }
+function handlers.TravelPlace(player, profile, where)
+	if not TRAVEL_PLACES[where] then
+		return { ok = false, err = "Unknown place" }
+	end
+	return travel(player, profile, where)
+end
+
+function handlers.SignSponsor(player, profile, id, replace)
+	local ok, info = Career.SignSponsor(profile, tostring(id), replace == true)
+	if ok then
+		task.spawn(DataManager.Save, player)
+		applyLook(player) -- the logo goes on the trunks / robe
+	end
+	return { ok = ok, err = not ok and info or nil, name = ok and info or nil }
+end
+
+function handlers.DropSponsor(player, profile, key)
+	local ok, info = Career.DropSponsor(profile, tostring(key))
+	if ok then
+		applyLook(player)
+	end
+	return { ok = ok, err = not ok and info or nil }
+end
+
+function handlers.Autograph(player, profile)
+	local ok, err = Career.Autograph(profile)
+	return { ok = ok, err = err }
+end
+
+function handlers.SetWakeAt(player, profile, where)
+	local ok, err = Career.SetWakeAt(profile, where)
+	return { ok = ok, err = err }
+end
+
 function handlers.Buy(player, profile, id)
-	local ok, err = Career.Buy(profile, id)
+	local ok, err = Career.Buy(profile, tostring(id))
+	if ok then
+		-- homes, cars and facility items are big purchases: save now (the push re-publishes GymTier / Fame)
+		task.spawn(DataManager.Save, player)
+	end
 	return { ok = ok, err = err }
 end
 
@@ -1045,6 +1421,7 @@ Players.PlayerRemoving:Connect(function(player)
 	customizing[player] = nil
 	lookState[player] = nil
 	lastPreview[player] = nil
+	sweatState[player] = nil
 	for id, p in pairs(occupied) do
 		if p == player then
 			occupied[id] = nil

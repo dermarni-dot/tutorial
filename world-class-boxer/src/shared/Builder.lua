@@ -207,6 +207,10 @@ function Builder.Cosmetics(model, app, build, gear, opts)
 				headStep(model, app, build, opts, name)
 			end
 		end
+		-- a rebuilt face reopens swollen lids and clears the sclera / mouthguard tint: redraw the damage
+		if opts.only.Face and type(opts.damage) == "table" then
+			Builder.SetDamage(model, app, opts.damage)
+		end
 		Builder.SetSweat(model, app, opts.sweat or model:GetAttribute("Sweat") or 0)
 		return
 	end

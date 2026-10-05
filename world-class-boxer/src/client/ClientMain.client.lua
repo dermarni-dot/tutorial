@@ -1,5 +1,6 @@
 -- ClientMain: wires the client together - HUD, gym prompts, profile updates, results,
--- retirement, trophy case and the time of day (your energy is your daylight).
+-- retirement, the city dressing and the time of day (your energy is your daylight).
+-- The trophy case is drawn by GymVisuals.Refresh (GymFacility's LocalTrophies).
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
@@ -21,6 +22,17 @@ local Activities = require(Modules:WaitForChild("Activities"))
 local Services = require(Modules:WaitForChild("Services"))
 local Ambience = require(Modules:WaitForChild("Ambience"))
 Ambience.Start()
+-- city dressing (homes, fans, billboards, stores): optional, so a broken city never takes the HUD
+-- and the gym prompts down with it
+local okCityMod, CityVisuals = pcall(function()
+	return require(Modules:WaitForChild("CityVisuals", 10))
+end)
+if okCityMod and type(CityVisuals) == "table" then
+	pcall(CityVisuals.Start)
+else
+	warn("[ClientMain] CityVisuals unavailable:", CityVisuals)
+	CityVisuals = nil
+end
 local gui = State.gui
 local rec = State.rec
 
@@ -210,69 +222,6 @@ local function showRetired()
 end
 
 ------------------------------------------------------------------------
--- Trophy case (your belts on display in the lobby)
-------------------------------------------------------------------------
-local trophyFolder
-local trophyKey
-local function updateTrophies(P)
-	local list = {}
-	if P.regional.regional then
-		table.insert(list, { "REGIONAL", Color3.fromRGB(190, 190, 200) })
-	end
-	if P.regional.national then
-		table.insert(list, { "NATIONAL", Color3.fromRGB(205, 127, 50) })
-	end
-	for _, org in ipairs(Config.Orgs) do
-		if P.belts[org] then
-			table.insert(list, { org, Color3.fromRGB(255, 205, 50) })
-		end
-	end
-	local key = {}
-	for _, b in ipairs(list) do
-		table.insert(key, b[1])
-	end
-	local k = table.concat(key, ",")
-	if k == trophyKey then
-		return
-	end
-	trophyKey = k
-	if trophyFolder then
-		trophyFolder:Destroy()
-	end
-	local gym = workspace:FindFirstChild("Gym")
-	local case = gym and gym:FindFirstChild("TrophyCase")
-	if not case then
-		return
-	end
-	trophyFolder = Instance.new("Folder")
-	trophyFolder.Name = "LocalTrophies"
-	trophyFolder.Parent = workspace
-	for i, b in ipairs(list) do
-		local x = -6 + (i - 1) * 2.4
-		local strap = Instance.new("Part")
-		strap.Anchored, strap.CanCollide = true, false
-		strap.Size = Vector3.new(2, 0.6, 0.2)
-		strap.Color = Color3.fromRGB(20, 20, 20)
-		strap.CFrame = case.CFrame * CFrame.new(x, 2.2, 0)
-		strap.Parent = trophyFolder
-		local plate = Instance.new("Part")
-		plate.Anchored, plate.CanCollide = true, false
-		plate.Shape = Enum.PartType.Cylinder
-		plate.Size = Vector3.new(0.2, 1.2, 1.2)
-		plate.Material = Enum.Material.Foil
-		plate.Color = b[2]
-		plate.CFrame = case.CFrame * CFrame.new(x, 2.2, -0.15) * CFrame.Angles(0, math.rad(90), 0)
-		plate.Parent = trophyFolder
-		local bb = Instance.new("BillboardGui")
-		bb.Size = UDim2.fromOffset(80, 20)
-		bb.StudsOffset = Vector3.new(0, 1, 0)
-		bb.MaxDistance = 40
-		bb.Parent = plate
-		UI.Text(bb, b[1], { Size = UDim2.fromScale(1, 1), Font = T.bold, TextScaled = true, TextColor3 = b[2], TextXAlignment = Enum.TextXAlignment.Center, AutomaticSize = Enum.AutomaticSize.None })
-	end
-end
-
-------------------------------------------------------------------------
 -- Profile updates
 ------------------------------------------------------------------------
 local function refresh()
@@ -326,8 +275,13 @@ local function refresh()
 	hudWarn.Text = table.concat(warns, "  -  ")
 	hudWarn.Visible = #warns > 0
 	task.defer(layoutHud)
-	GymVisuals.Refresh(P)
-	updateTrophies(P)
+	GymVisuals.Refresh(P) -- also draws the trophy case, career wall and facility tier (GymFacility)
+	if CityVisuals then
+		local okCity, errCity = pcall(CityVisuals.Refresh, P)
+		if not okCity then
+			warn("[ClientMain] city:", errCity)
+		end
+	end
 	updateDaylight(P)
 	if Hub.IsOpen() and not Activities.Busy() then
 		Hub.Render()
@@ -384,6 +338,37 @@ ProximityPromptService.PromptTriggered:Connect(function(prompt)
 		Services.Sleep()
 	elseif action == "Water" then
 		Services.Water()
+	elseif action == "Flex" then
+		-- flex in the gym mirror: each press strikes the next pose of Config.Pump.poses (E's Flex
+		-- handler plays it for 3.2 s); you turn to face the glass so the live mirror shows it
+		local poses = (Config.Pump and Config.Pump.poses) or { "flex_most" }
+		local n = (prompt:GetAttribute("FlexIdx") or 0) % #poses + 1
+		prompt:SetAttribute("FlexIdx", n) -- client-side only: remembers where the cycle is
+		local faceAt = prompt:GetAttribute("FaceAt")
+		task.spawn(function()
+			local r = State.req("Flex", poses[n])
+			if type(r) == "table" and r.ok then
+				local ch = player.Character
+				local root = ch and ch:FindFirstChild("HumanoidRootPart")
+				if root and typeof(faceAt) == "Vector3" then
+					local look = Vector3.new(faceAt.X, root.Position.Y, faceAt.Z)
+					if (look - root.Position).Magnitude > 0.5 then
+						root.CFrame = CFrame.lookAt(root.Position, look)
+					end
+				end
+			elseif type(r) == "table" then
+				State.toast(r.err or "Can't flex right now", T.red)
+			end
+		end)
+	elseif action and CityVisuals then
+		-- city prompts (Home, LeaveHome, LeaveCamp, Autograph, Diner, Supplements, ProShop, Motors,
+		-- Museum, EliteCenter): CityVisuals / CityStores; unknown actions stay ignored
+		task.spawn(function()
+			local ok, err = pcall(CityVisuals.Prompt, action, prompt)
+			if not ok then
+				warn("[ClientMain] prompt " .. tostring(action) .. ":", err)
+			end
+		end)
 	end
 end)
 

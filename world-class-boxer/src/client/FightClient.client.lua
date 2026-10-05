@@ -886,11 +886,22 @@ end
 -- ropes, posts and pads that sit between the camera and the fighters fade out so they never block
 -- the action. VenueFX ropes are invisible proxy parts named Rope that each hold a visible Beam.
 local ringParts, faded, fadeClock = {}, {}, 0
-local FADE_NAMES = { Rope = true, Post = true, Pad = true, TurnbucklePad = true }
+local FADE_NAMES = { Rope = true, Post = true, Pad = true, TurnbucklePad = true, PostCap = true, PadSeam = true, Turnbuckle = true }
 local function setFade(p, on)
 	p.LocalTransparencyModifier = on and 0.8 or 0
 	for _, c in ipairs(p:GetChildren()) do
-		if c:IsA("Beam") then
+		if c:IsA("SurfaceGui") then
+			-- pad prints / sponsor logos ignore LocalTransparencyModifier: hide them while the pad is faded
+			if on then
+				if faded[c] == nil then
+					faded[c] = c.Enabled
+				end
+				c.Enabled = false
+			elseif faded[c] ~= nil then
+				c.Enabled = faded[c]
+				faded[c] = nil
+			end
+		elseif c:IsA("Beam") then
 			if on then
 				if c:GetAttribute("FadeSaved") == nil then
 					c:SetAttribute("FadeSaved", true)
@@ -915,6 +926,8 @@ local function clearFades()
 		if b.Parent and b:IsA("Beam") then
 			b.Transparency = seq
 			b:SetAttribute("FadeSaved", nil)
+		elseif b.Parent and b:IsA("SurfaceGui") then
+			b.Enabled = seq
 		end
 	end
 	table.clear(faded)
@@ -969,6 +982,9 @@ local function updateOccluders(camPos, targets)
 			local axis, half, thr
 			if p.Name == "Rope" then
 				axis, half, thr = p.CFrame.LookVector, p.Size.Z / 2, 1.9
+			elseif p.Name == "Turnbuckle" then
+				-- Cylinder parts run along their X axis
+				axis, half, thr = p.CFrame.RightVector, p.Size.X / 2, 1.6
 			else
 				axis, half, thr = p.CFrame.UpVector, p.Size.Y / 2, 1.6
 			end

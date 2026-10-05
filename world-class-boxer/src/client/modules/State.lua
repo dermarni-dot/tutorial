@@ -16,7 +16,7 @@ State.Request = Remotes:WaitForChild("Request")
 State.FightRemote = Remotes:WaitForChild("Fight")
 State.ProfileRemote = Remotes:WaitForChild("Profile")
 State.Notify = Remotes:WaitForChild("Notify")
-State.open = {} -- registry: Hub, Creator, Activity, Barber, Locker, Nutrition, Sleep ...
+State.open = {} -- registry: Hub, Creator, Activity, Spar, Barber, Locker, Nutrition, Water, Sleep, Store, Result
 State.activity = nil -- the running training session (client side)
 
 State.gui = UI.New("ScreenGui", {
