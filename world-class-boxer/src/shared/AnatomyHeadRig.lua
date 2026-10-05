@@ -127,15 +127,29 @@ local function faceMorphFns(F)
 		end
 		return dx, dy, dz
 	end
+	-- the nasolabial line (beside the wing down to past the mouth corner): distance from it, and how far along
+	local nlx0, nly0 = F.noseW + 0.012, F.noseBaseY + 0.022
+	local nlx1, nly1 = mW + 0.028, F.mouthY - 0.028
+	local function nasolabial(ax, y)
+		local vx, vy = nlx1 - nlx0, nly1 - nly0
+		local l2 = vx * vx + vy * vy
+		local u = clamp(((ax - nlx0) * vx + (y - nly0) * vy) / l2, 0, 1)
+		local dx, dy = ax - nlx0 - vx * u, y - nly0 - vy * u
+		return sqrt(dx * dx + dy * dy), u, (dx * vy - dy * vx) < 0
+	end
 	fns.smile = function(x, y, z, side)
 		local ax = abs(x)
 		local c = cornerW(ax, y, x)
-		local k = bump(((ax - 0.23) / 0.1) ^ 2 + ((y - (eyeY - 0.12)) / 0.09) ^ 2)
+		local k = bump(((ax - 0.21) / 0.1) ^ 2 + ((y - (eyeY - 0.115)) / 0.09) ^ 2)
 		local i = bump(((ax - F.eyeX) / 0.07) ^ 2 + ((y - (eyeY - 0.058)) / 0.022) ^ 2)
-		if c + k + i <= 0 then
+		-- the fold deepens (a dent along the line), the cheek bulges over it
+		local nd, nu, outer = nasolabial(ax, y)
+		local fold = nd < 0.03 and bump((nd / 0.012) ^ 2) * smoothstep(0, 0.2, nu) * (1 - smoothstep(0.8, 1, nu)) or 0
+		local over = (nd < 0.05 and outer) and bump(((nd - 0.02) / 0.022) ^ 2) * smoothstep(0, 0.2, nu) or 0
+		if c + k + i + fold + over <= 0 then
 			return nil
 		end
-		return side * 0.02 * c, 0.024 * c + 0.017 * k + 0.006 * i, 0.012 * c - 0.009 * k - 0.003 * i
+		return side * (0.03 * c + 0.004 * over), 0.045 * c + 0.03 * k + 0.006 * i + 0.004 * over, 0.01 * c - 0.012 * k - 0.003 * i + 0.005 * fold - 0.004 * over
 	end
 	fns.press = function(x, y, z, side)
 		local w, dy = lipMask(x, y)
@@ -189,24 +203,24 @@ local function faceMorphFns(F)
 		if b + l <= 0 then
 			return nil
 		end
-		return 0, 0.018 * b + 0.006 * l, 0
+		return 0, 0.026 * b + 0.008 * l, -0.002 * b
 	end
 	fns.browIn = function(x, y, z)
 		local ax = abs(x)
-		local b = bump(((ax - 0.07) / 0.075) ^ 2 + ((y - browY) / 0.045) ^ 2)
+		local b = bump(((ax - 0.07) / 0.085) ^ 2 + ((y - browY) / 0.055) ^ 2)
 		if b <= 0 then
 			return nil
 		end
-		return 0, 0.015 * b, 0
+		return 0, 0.032 * b, -0.002 * b
 	end
 	fns.knit = function(x, y, z, side)
 		local ax = abs(x)
 		local b = bump(((ax - 0.08) / 0.09) ^ 2 + ((y - browY) / 0.05) ^ 2)
-		local g = bump((x / 0.03) ^ 2 + ((y - (browY - 0.005)) / 0.035) ^ 2)
+		local g = bump((x / 0.03) ^ 2 + ((y - (browY - 0.012)) / 0.035) ^ 2)
 		if b + g <= 0 then
 			return nil
 		end
-		return -side * 0.01 * b, -0.005 * b, -0.001 * b - 0.005 * g
+		return -side * 0.02 * b, -0.012 * b - 0.004 * g, -0.003 * b - 0.008 * g
 	end
 	fns.lid = function(x, y, z)
 		local l = 0
@@ -257,8 +271,13 @@ local function faceMorphFns(F)
 			-- puffs the lid folds, brow and cheek round the orbit; fades in gently away from the rim (a steep
 			-- ramp would show as a band: blend shapes keep the generated normals)
 			local d3 = sqrt((x - e.x) ^ 2 + (y - e.y) ^ 2 + (z - e.z) ^ 2)
-			local w = bump(q) * smoothstep(F.eyeR + 0.008, F.eyeR + 0.045, d3)
-			return s * 0.004 * w, 0.002 * w, -0.013 * w
+			local w = bump(q) * smoothstep(F.eyeR + 0.006, F.eyeR + 0.03, d3)
+			if y > e.y then
+				-- the brow-lid fold sags over the lid
+				return s * 0.003 * w, -0.015 * w * smoothstep(e.y, e.y + 0.03, y) + 0.002 * w, -0.015 * w
+			end
+			-- the lower lid's bag rises
+			return s * 0.003 * w, 0.01 * w * smoothstep(e.y - 0.07, e.y - 0.02, y), -0.012 * w
 		end
 		fns["swellCheek" .. tag] = function(x, y, z)
 			local q = ((x - s * 0.25) / 0.1) ^ 2 + ((y - (eyeY - 0.085)) / 0.08) ^ 2
@@ -375,9 +394,10 @@ function Rig.AddFaceMorphs(m, F, first, last, ears)
 					end
 				end
 			end
+			-- every morph's function at this vertex
+			MeshKit.Step(#list)
 		end
 	end
-	MeshKit.Step(last - first + 1)
 	-- swollen ears: the ear inflates about its centre (a hematoma)
 	for _, ear in ipairs(ears or {}) do
 		local name = ear.side < 0 and "swellEarL" or "swellEarR"
@@ -386,6 +406,7 @@ function Rig.AddFaceMorphs(m, F, first, last, ears)
 			local x, y, z = P[i * 3 - 2], P[i * 3 - 1], P[i * 3]
 			MeshKit.AddMorph(m, name, i, (x - c[1]) * 0.14, (y - c[2]) * 0.1, (z - c[3]) * 0.14)
 		end
+		MeshKit.Step((ear.last - ear.first) // 4)
 	end
 end
 
@@ -555,19 +576,37 @@ end
 ------------------------------------------------------------------------
 -- style -> { thickness at growth 0 / 1, chin drop (full beards hang below the jaw) at growth 1 } and a mask
 local BEARDS = {
-	Moustache = { t0 = 0.007, t1 = 0.016 },
-	Goatee = { t0 = 0.01, t1 = 0.026 },
-	["Van Dyke"] = { t0 = 0.01, t1 = 0.028, drop = 0.03 },
-	["Circle Beard"] = { t0 = 0.009, t1 = 0.022 },
-	["Chin Strap"] = { t0 = 0.006, t1 = 0.012 },
-	["Mutton Chops"] = { t0 = 0.01, t1 = 0.026 },
-	["Short Boxed"] = { t0 = 0.008, t1 = 0.02, drop = 0.012 },
-	["Full Beard"] = { t0 = 0.016, t1 = 0.045, drop = 0.07 },
+	-- every style is painted into the head's texture (strands thinning into the skin); shell = true would also
+	-- grow a shell over the style's dense core at full (none does: painted beards read better at every range)
+	Moustache = { t0 = 0.005, t1 = 0.012 },
+	Goatee = { t0 = 0.007, t1 = 0.018 },
+	["Van Dyke"] = { t0 = 0.007, t1 = 0.02, drop = 0.026 },
+	["Circle Beard"] = { t0 = 0.006, t1 = 0.016 },
+	["Chin Strap"] = { t0 = 0.004, t1 = 0.009 },
+	["Mutton Chops"] = { t0 = 0.006, t1 = 0.016 },
+	["Short Boxed"] = { t0 = 0.006, t1 = 0.014, drop = 0.01 },
+	["Full Beard"] = { t0 = 0.012, t1 = 0.032, drop = 0.055 },
 }
 Rig.BEARDS = BEARDS
 
 -- 0..1 coverage of a beard style at a point (nominal)
+local beardMaskBase
 function Rig.BeardMask(F, style)
+	local base = beardMaskBase(F, style)
+	local seed = (F.seed or 0) + 11
+	local noise = MeshKit.Noise
+	-- a ragged edge: the transition band (not the full middle, not the bare skin) breaks up in patches
+	return function(x, y, z)
+		local w = base(x, y, z)
+		if w <= 0 or w >= 1 then
+			return w
+		end
+		local e = 4 * w * (1 - w)
+		local n = noise(x * 48, y * 48, z * 48, seed) * 0.7 + noise(x * 130, y * 130, z * 130, seed + 5) * 0.3
+		return clamp(w + 0.32 * n * e, 0, 1)
+	end
+end
+function beardMaskBase(F, style)
 	local zone = Paint.BeardZone(F)
 	local mW = F.mouthW
 	local nb = F.noseBaseY
@@ -586,17 +625,25 @@ function Rig.BeardMask(F, style)
 		local ends = bump(((ax - mW - 0.006) / 0.016) ^ 2 + ((y - (ml + 0.004)) / 0.02) ^ 2)
 		return max(w, ends)
 	end
+	-- the chin's beard: a wedge from just under the lower lip's border down to the chin's point (wide under
+	-- the lip, narrowing down; low = longer, pointed), a little under the chin; feathered edges
+	local _, hl0 = F.lipH(0)
 	local function chin(x, y, z, wide, low)
-		local q = (x / (0.08 * wide)) ^ 2 + ((y - (cy + 0.015)) / 0.075) ^ 2
-		local w = 1 - smoothstep(0.55, 1.0, q)
+		local top = F.mouthY - hl0 - 0.007
+		local bot = cy - 0.012 - (low and 0.03 or 0)
+		local t = clamp((top - y) / (top - bot), 0, 1)
+		local half = lerp(mW * 0.72 * wide, (low and 0.03 or 0.05) * wide, t ^ 0.85)
+		local ax = abs(x)
+		local w = (1 - smoothstep(half * 0.75, half * 1.12, ax)) * smoothstep(bot - 0.02, bot + 0.012, y)
 		-- under the chin
-		if y < cy + 0.01 and z < -0.15 then
-			w = max(w, bump((x / (0.08 * wide)) ^ 2 + ((z + 0.36) / 0.12) ^ 2) * (low and 1 or 0.7))
+		if y < cy + 0.02 and z < -0.12 then
+			local u = bump((x / (0.07 * wide)) ^ 2 + ((z + 0.36) / 0.1) ^ 2) * (low and 0.9 or 0.6)
+			w = max(w, u * smoothstep(cy - 0.08, cy - 0.02, y))
 		end
 		-- never above the lower lip's border
 		local ml = F.mouthLine(clamp(x, -mW, mW))
 		local _, hl = F.lipH(clamp(x, -mW, mW))
-		w *= smoothstep(ml - hl - 0.002, ml - hl - 0.012, y)
+		w *= smoothstep(ml - hl - 0.002, ml - hl - 0.01, y)
 		return w
 	end
 	local function jawBand(x, y, z)
@@ -621,7 +668,7 @@ function Rig.BeardMask(F, style)
 	elseif style == "Circle Beard" then
 		return function(x, y, z)
 			local ax = abs(x)
-			local ring = bump(((ax - mW - 0.012) / 0.02) ^ 2) * smoothstep(cy + 0.02, cy + 0.05, y) * (1 - smoothstep(F.mouthY + 0.01, F.mouthY + 0.03, y))
+			local ring = bump(((ax - mW - 0.008) / 0.03) ^ 2) * smoothstep(cy - 0.01, cy + 0.04, y) * (1 - smoothstep(F.mouthY + 0.0, F.mouthY + 0.03, y))
 			return max(moustache(x, y), chin(x, y, z, 1.05, false), ring) * min(1, zone(x, y, z) * 3)
 		end
 	elseif style == "Chin Strap" then
@@ -631,7 +678,9 @@ function Rig.BeardMask(F, style)
 	elseif style == "Mutton Chops" then
 		return function(x, y, z)
 			local ax = abs(x)
-			local chop = smoothstep(0.15, 0.2, ax) * smoothstep(F.gonionY - 0.06, F.gonionY - 0.02, y)
+			-- the chops' front edge curves forward as it comes down the cheek to the jaw corner
+			local x0 = lerp(0.215, 0.15, smoothstep(F.noseBaseY, F.gonionY, y))
+			local chop = smoothstep(x0 - 0.02, x0 + 0.015, ax) * smoothstep(F.gonionY - 0.07, F.gonionY - 0.02, y)
 			return max(moustache(x, y), chop) * zone(x, y, z)
 		end
 	end
@@ -663,8 +712,10 @@ function Rig.BeardMesh(head, F, look, gridN, lod)
 	local seed = F.seed
 	for i = 1, gridN do
 		local x, y, z = P[i * 3 - 2], P[i * 3 - 1], P[i * 3]
-		if z < 0.2 and y < F.noseBaseY + 0.02 and y > F.chinY - 0.25 then
-			local w = mask(x, y, z)
+		-- (not into the nose's base: the shell over the subnasale's fold would cut through the nostrils)
+		if z < 0.2 and y < F.noseBaseY - 0.006 and y > F.chinY - 0.25 then
+			-- the dense core only: the thinning edge is painted on the skin (the shell's edge sinks under it)
+			local w = smoothstep(0.6, 0.95, mask(x, y, z))
 			if w > 0.002 then
 				W[i] = w
 			end
@@ -683,10 +734,13 @@ function Rig.BeardMesh(head, F, look, gridN, lod)
 		if keep[i] then
 			local x, y, z = P[i * 3 - 2], P[i * 3 - 1], P[i * 3]
 			local w = W[i] or 0
-			local shape = smoothstep(0, 0.6, w)
-			-- clumps: the surface is not even
-			local clump = 1 + 0.25 * noise(x * 60, y * 60, z * 60, seed)
-			local off = T0 * shape * clump - sink * (1 + 3 * (1 - shape))
+			-- the shell thins to nothing at the edge (it leaves the skin at a shallow angle: no cut edge) and
+			-- swells into a volume of clumps inside (two noise scales: the mass and the tufts)
+			local shape = smoothstep(0.08, 0.95, w)
+			shape = shape * shape * (3 - 2 * shape) * shape
+			-- the mass in soft lumps (~0.02-0.04 across), a finer tuft breakup on top
+			local clump = 1 + 0.3 * noise(x * 30, y * 30, z * 30, seed) + 0.12 * noise(x * 90, y * 90, z * 90, seed + 3)
+			local off = T0 * shape * clump - sink * (1 - shape) * 0.4
 			local nx, ny, nz = N[i * 3 - 2], N[i * 3 - 1], N[i * 3]
 			local hang = 0
 			if drop > 0 and y < F.chinY + 0.04 then

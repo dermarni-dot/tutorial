@@ -56,19 +56,13 @@ local function shortTop(H, spec)
 	local flow = Kit.Flow(S, spec.flow or "forward", spec.flowOpts)
 	local len0, len1 = spec.len[1], spec.len[2]
 	local rise = spec.rise or 0.016
-	return Parts.Clumps(H, {
-		n = spec.n or 260, seed = 3, sides = H.lod == "full" and 4 or 3,
-		accept = spec.accept or topRegion(0.2, 0.34),
+	-- hundreds of fine strands lying with the comb flow and lifting a little off the shell: the hairy texture and
+	-- soft broken outline of a short cut (the shell's texture carries the strand streaks under them)
+	return Parts.Fur(H, {
+		n = spec.n or 520, accept = spec.accept or topRegion(0.2, 0.34), flow = flow, lift = 0.22 + 0.25 * (spec.lift or 0.3),
 		len = function(r)
 			return lerp(len0, len1, r[9]) * (spec.lenK and spec.lenK(r) or 1)
-		end,
-		w = spec.w or 0.017, h = spec.h or 0.0075, flow = flow, lift = (spec.lift or 0.3) + 0.15, stick = spec.stick or 0.3,
-		grav = 0, stiff = spec.stiff or 0.6, free = 2,
-		off = function(u)
-			return top * 0.75 + u * rise
-		end,
-		wave = ht == "Wavy" and { amp = 0.006, lam = 0.06 } or nil,
-		twist = 0.8, jitter = spec.jitter or { amp = 0.22, freq = 9 }, tips = spec.tips or 0.25, layerK = 1, maxRings = 6, taper = 0.35,
+		end, off = top * 0.6, jitter = spec.jitter and spec.jitter.amp or 0.22, share = spec.share or 0.9,
 	})
 end
 
@@ -79,7 +73,7 @@ local R = {}
 local fill
 
 local SHORT = {
-	["Buzz Cut"] = { top = 0.0045, side = 0.004, clumps = false, density = 0.62 },
+	["Buzz Cut"] = { top = 0.003, side = 0.0025, clumps = false, density = 0.62 },
 	["Crew Cut"] = { side = 0.011, len = { 0.05, 0.085 }, flow = "forward", lift = 0.45 },
 	["Caesar Cut"] = { side = 0.014, len = { 0.05, 0.075 }, flow = "forward", lift = 0.12, stick = 0.75, all = true },
 	["Fade"] = { side = 0.014, fade = "fade", len = { 0.05, 0.09 }, flow = "forward", lift = 0.35 },
@@ -91,7 +85,7 @@ local SHORT = {
 	["Textured Crop"] = { side = 0.013, fade = "mid", len = { 0.07, 0.12 }, flow = "forward", lift = 0.2,
 		jitter = { amp = 0.5, freq = 8 }, stick = 0.5 },
 	["Modern Athlete"] = { side = 0.013, fade = "high", len = { 0.08, 0.14 }, flow = "back", lift = 0.65, stick = 0.3 },
-	["360 Waves"] = { top = 0.008, side = 0.006, clumps = false, pattern = "waves", density = 0.9 },
+	["360 Waves"] = { top = 0.007, side = 0.005, clumps = false, pattern = "waves", density = 0.9 },
 }
 local FADE_TOP = { low = 0.15, mid = 0.24, high = 0.32, fade = 0.24, taper = 0.12, burst = 0.25 }
 
@@ -101,8 +95,9 @@ local function shortCut(H)
 	local grow = H.grow
 	local hasTop = sp.clumps ~= false
 	-- under the top clumps the shell is a thin dark under-layer; a clipper cut is the shell alone
-	local top = hasTop and (0.014 + 0.008 * L) or (sp.top + 0.006 * L + 0.012 * grow)
-	local side = sp.side + 0.008 * grow
+	-- a short cut's top is a volume of hair (its texture and fur on top), the sides fade
+	local top = hasTop and (0.022 + 0.022 * L) or (sp.top + 0.004 * L + 0.01 * grow)
+	local side = sp.side + 0.006 * grow
 	local fadeTop = FADE_TOP[sp.fade or ""] or 0.2
 	local coily = COILY[H.htype] and hasTop
 	if coily then
@@ -113,29 +108,27 @@ local function shortCut(H)
 	local clipper = not hasTop
 	local full = H.lod == "full"
 	Parts.Cap(H, {
-		top = top, side = side, fade = sp.fade, density = sp.density and lerp(sp.density, 1, grow * 0.7) or 1,
-		pattern = sp.pattern or (COILY[H.htype] and (hasTop and "coil" or "stubble") or (hasTop and "strands" or "stubble")),
+		-- (coily hair grows denser: a coily buzz is darker than a straight one)
+		top = top, side = side, fade = sp.fade, density = sp.density and lerp(sp.density * (COILY[H.htype] and 1.18 or 1), 1, grow * 0.7) or 1,
+		-- dense coily hair hides a low gradient: its fades are cut higher to read
+		fadeLift = coily and 0.07 or nil,
+		-- (curly hair: the shell carries curl clusters, not combed strands - a smooth shell under a few curls
+		-- reads as a glossy helmet)
+		pattern = sp.pattern or (COILY[H.htype] and (hasTop and "coil" or "stubble")) or (hasTop and (H.htype == "Curly" and "curl"
+			or "strands") or "stubble"),
 		flow = sp.pattern == "waves" and "down" or (sp.flow or "whorl"),
 		grain = hasTop and 1 or 0.75, part = hasTop and H.partX or nil, capT = coily and 0.6 or (hasTop and 0.35 or 0.8),
-		waveLam = 0.052, reflectance = sp.pattern == "waves" and 0.03 or nil, edge = hasTop and 0.07 or 0.05,
-		-- clipper hair is too short for strands: no streaks, a speckled grain
-		streak = (clipper and sp.pattern ~= "waves") and 0 or nil,
-		gridNormals = coily or clipper,
-		extra = (clipper and sp.pattern ~= "waves") and function(x, y, z, c)
-			-- clipper stubble: a fine relief catching the light unevenly (no smooth shell)
-			return (0.0016 + 0.002 * grow) * (Kit.RNoise(x, y, z, 26, seed, 1) + 0.5 * Kit.RNoise(x, y, z, 55, seed + 1, 2)) * c
-		end or coily and function(x, y, z, c)
-			local b = 0.006 * MeshKit.Noise(x * 22, y * 22, z * 22, seed) + 0.003 * MeshKit.Noise(x * 50, y * 50, z * 50, seed + 1)
-			return b * smoothstep(0.5, 0.9, c) * smoothstep(0.1, 0.3, y)
-		end or (sp.pattern == "waves" and function(x, y, z, c)
-			-- brushed waves are ridges in the hair itself
-			local wx, wy, wz = Kit.Whorl(H.S)
-			local dx, dy, dz = x - wx, y - wy, z - wz
-			local d = math.sqrt(dx * dx + dy * dy + dz * dz)
-			return 0.0022 * math.sin((d + 0.012 * math.sin(math.atan2(dx, dz) * 3)) / 0.052 * 2 * pi) * c
-		end) or nil,
-		cols = (coily and full and 56) or (clipper and (full and 84 or (H.lod == "medium" and 44 or nil))) or nil,
-		rows = (coily and full and 26) or (clipper and (full and 38 or (H.lod == "medium" and 18 or nil))) or nil,
+		waveLam = 0.052, edge = hasTop and 0.07 or 0.05,
+		-- clipper hair is too short for strands: no streaks, hair by hair over the scalp (the texture). A
+		-- clipper shell is a skin-thin layer with the scalp's own smooth normals and the skin's material: it
+		-- reads as a shadow on the scalp, never as a cap
+		-- (short hair: its streaks faint, a texture rather than combed lines)
+		streak = (clipper and sp.pattern ~= "waves") and 0 or 0.18,
+		-- the scalp's smooth normals: a relief the grid could carry would be lobes, finer detail is the texture
+		-- and the coil clusters
+		material = "Plastic", reflectance = 0,
+		cols = (coily and full and 56) or (clipper and (full and 64 or (H.lod == "medium" and 40 or nil))) or nil,
+		rows = (coily and full and 26) or (clipper and (full and 28 or (H.lod == "medium" and 16 or nil))) or nil,
 	})
 	if clipper and grow > 0.4 and H.lod ~= "low" then
 		-- a clipper cut left to grow becomes a short natural cut: tufts appear over the crown
@@ -143,15 +136,17 @@ local function shortCut(H)
 			accept = topRegion(0.1, 0.25) })
 	end
 	if coily and H.lod ~= "low" then
-		local fadeTop2 = FADE_TOP[sp.fade or ""] or 0.2
+		-- coil clusters and a little fuzz over the full part of the cut (above the fade, never in it)
+		local fadeTop2 = (FADE_TOP[sp.fade or ""] or 0.2) + 0.07
 		local acc = function(x, y, z, da, c)
-			return smoothstep(fadeTop2 - 0.04, fadeTop2 + 0.06, y) * smoothstep(0.6, 0.95, c)
+			return smoothstep(fadeTop2 + 0.02, fadeTop2 + 0.1, y) * smoothstep(0.6, 0.95, c)
 		end
+		local cut = H.cut
 		local layer = function(x, y, z)
-			return H.S.f(x, y, z) - top
+			return H.S.f(x, y, z) - (cut.thick(x, y, z))
 		end
-		Parts.Fuzz(H, { n = 220, vol = layer, accept = acc, len = 0.022 + 0.02 * L, zig = 0.004, share = 0.4 })
-		Parts.CoilHalo(H, { n = 90, vol = layer, accept = acc, radius = 0.009, tube = 0.0045 })
+		-- a soft, fuzzy outline: many short fine coils lifted a little off the surface, the surface's own tone
+		Parts.Fuzz(H, { n = 320, vol = layer, accept = acc, len = 0.012 + 0.008 * L, lift = 0.45, zig = 0.0035, share = 0.85 })
 		return
 	end
 	if hasTop and H.lod ~= "low" then
@@ -176,16 +171,20 @@ local function wavePhase(H)
 	end
 end
 
--- long, layered hair (straight / wavy); curly and coily types are routed to their own recipes
+-- long, layered hair (straight / wavy); curly and coily types are routed to their own recipes. The mass is a
+-- sculpted sheet of locks (ridges and grooves that shade, pointed lock ends, a darker inside) from the
+-- parting and the crown down past the shoulders; slim locks over it frame the face and break the silhouette
+-- and the hem; a few flyaways
 R["Long Hair"] = function(H)
 	local S = H.S
 	local L = H.len
 	local px = H.partX or 0
 	local flow = Kit.Flow(S, "part", { x = px })
 	local vol = H.volume
+	local full = H.lod == "full"
 	S.guardFace = true
 	Parts.Cap(H, { top = 0.02, side = 0.018, pattern = "strands", flow = "part", flowOpts = { x = px }, part = px, capT = 0.15,
-		cols = H.lod == "full" and 40 or nil, rows = H.lod == "full" and 17 or nil, streak = 0.7, material = "SmoothPlastic" })
+		cols = full and 40 or nil, rows = full and 17 or nil, streak = 0.7, long = true, material = "Plastic" })
 	local hangLen = 0.55 + 0.9 * L
 	local function len(r)
 		-- layers: the back longest, the face-framing front shorter
@@ -195,69 +194,138 @@ R["Long Hair"] = function(H)
 	local wavy = H.htype == "Wavy"
 	-- broad S-waves (sampled by enough rings per wavelength: an under-sampled wave turns into a zigzag)
 	local wave = wavy and { amp = 0.028, lam = 0.42, rise = 0.25, phase = wavePhase(H) } or nil
-	-- inner fill: a continuous two-sided sheet from temple to temple round the back
+	-- the mass: a continuous sheet of locks from temple to temple round the back, resting a little off the
+	-- shoulders and back (bodyOff) so a guard's raised trapezius does not cut into it
 	Parts.Curtain(H, {
-		cols = 22, az0 = -2.55, az1 = 2.55, th = function(az)
-			return 0.55 + 0.25 * (abs(az) / pi)
+		cols = 64, az0 = -2.7, az1 = 2.7, th = function(az)
+			-- the roots close round the crown at the back, along the parting toward the front
+			return 0.36 + 0.4 * (abs(az) / pi)
 		end, len = function(az, rnd)
 			-- the roots sit high on the crown: the strand first runs over the skull (~0.45), then hangs
-			local front = smoothstep(1.6, 2.5, abs(az))
+			local front = smoothstep(1.6, 2.6, abs(az))
 			return (0.45 - 0.1 * front + hangLen * (0.84 - 0.25 * front)) * (0.95 + 0.1 * rnd)
 		end, flow = flow, off = function(u)
-			return 0.016 + 0.008 * u
-		end, stick = 0.95, grav = 1, stiff = 0.2, shade = 0.8, hang = { prefix = "HairClump" }, wave = wave, bodyOff = 0.03,
-		half = H.lod == "low" and 0.012 or 0.006, rings0 = wavy and 18 or 14,
+			return 0.016 + 0.01 * u + 0.012 * vol * u
+		end, stick = 0.95, grav = 1, stiff = 0.2, shade = 0.95, innerShade = 0.5, hang = { prefix = "HairClump" }, wave = wave,
+		bodyOff = 0.075, half = H.lod == "low" and 0.012 or 0.006, rings0 = wavy and 22 or 18, innerStride = 2,
+		locks = { w = 4, amp = 0.016 + 0.006 * vol, root = 0.002, pointK = 0.18 },
 	})
-	-- outer layer: wide locks of hair overlapping into a full mass, lifted for volume
+	-- slim locks over the mass (face framing, the sides, the crown), lying on it
 	Parts.Clumps(H, {
-		n = 44, seed = 2, len = function(r)
+		n = 48, seed = 2, len = function(r)
 			return len(r) * (0.86 + 0.18 * r[9])
-		end, w = 0.07, h = 0.014, flow = flow, lift = 0.1 + 0.1 * vol, stick = 0.88, grav = 1, stiff = 0.25,
+		end, w = 0.032, h = 0.0075, flow = flow, lift = 0.06 + 0.08 * vol, stick = 0.9, grav = 1, stiff = 0.25,
 		off = function(u)
-			return 0.034 + 0.02 * vol + 0.016 * u
-		end, wave = wave, twist = 0.4, layerK = 1.0, hang = { prefix = "HairClump" }, tips = 0.7, maxRings = wavy and 17 or 12,
-		bodyOff = 0.05, share = 0.85, taper = 0.72, tipW = 0.3, flat = 0.45,
+			return 0.03 + 0.012 * vol + 0.014 * u
+		end, wave = wave, twist = 0.4, layerK = 1.02, hang = { prefix = "HairClump" }, tips = 0.7, maxRings = wavy and 13 or 9,
+		bodyOff = 0.09, share = 0.75, taper = 0.55, tipW = 0.08, flat = 0.25, sides = 3, accept = function(x, y, z, da, c)
+			-- more at the front and sides (over the face-framing sheet edges), fewer down the back
+			return smoothstep(0.35, 0.8, c) * (0.45 + 0.55 * smoothstep(1.0, 2.2, da))
+		end,
 	})
-	Parts.Flyaways(H, { n = 14, len = function(r)
+	Parts.Flyaways(H, { n = 16, len = function(r)
 		return 0.12 + 0.12 * r[9]
-	end, flow = flow })
+	end, flow = flow, share = 0.2 })
 	S.guardFace = false
 end
 
+-- combed straight back: a sheet of locks from the front hairline over the top and the sides to the back of the
+-- head (the comb's grooves shade it), its ends tucked where the head turns under at the occiput; a few loose
+-- locks over it, fine strands lifting off the crown
 R["Slick Back"] = function(H)
 	local S = H.S
 	local L = H.len
 	local flow = Kit.Flow(S, "back")
-	Parts.Cap(H, { top = 0.02, side = 0.016, pattern = "strands", flow = "back", grain = 0.8, capT = 0.45, contrast = 1.25, reflectance = 0.04 })
-	local len = 0.3 + 0.45 * L
-	Parts.Clumps(H, {
-		n = 80, seed = 4, len = function(r)
-			return len * (0.85 + 0.3 * r[9]) * (1 - 0.35 * smoothstep(1.4, 2.6, r[7]))
-		end, w = 0.024, h = 0.0065, flow = flow, lift = 0, stick = 1, grav = 1, stiff = 0.15, free = 0.95,
-		off = function(u)
-			return 0.017 + 0.004 * u
-		end, twist = 0.2, layerK = 1, material = "SmoothPlastic", reflectance = 0.05, maxRings = 10, taper = 0.6,
-		hang = L > 0.55 and { prefix = "HairClump" } or nil,
+	Parts.Cap(H, { top = 0.02, side = 0.016, pattern = "strands", flow = "back", grain = 0.8, capT = 0.45, contrast = 1.15,
+		material = "Plastic", reflectance = 0.02 })
+	local cut = H.cut
+	Parts.Curtain(H, {
+		cols = 44, az0 = pi - 1.55, az1 = pi + 1.55, th = function(az)
+			return Kit.HairlinePolar(S, cut, az, 0.012)
+		end, len = function()
+			return 1.3 + 0.2 * L
+		end, flow = flow, off = function(u)
+			-- rising out of the cap at the hairline (no lip on the forehead)
+			return 0.006 + 0.016 * smoothstep(0, 0.12, u) + 0.006 * u + 0.01 * H.volume * u
+		end, stick = 1, grav = 0.2, stiff = 0.3, free = 0.99, clipY = 0.02 - 0.08 * L,
+		shade = 1.02, innerShade = 0.55, half = 0.004, rings0 = 18, innerStride = 3, material = "Plastic",
+		locks = { w = 3, amp = 0.0065, root = 0.002, pointK = 0.04 },
 	})
+	Parts.Clumps(H, {
+		n = 34, seed = 4, len = function(r)
+			return (0.35 + 0.4 * L) * (0.8 + 0.3 * r[9])
+		end, w = 0.03, h = 0.005, flow = flow, lift = 0.02, stick = 1, grav = 0.2, stiff = 0.2, free = 0.99,
+		off = function(u)
+			return 0.03 + 0.004 * u
+		end, twist = 0.15, layerK = 1.04, material = "Plastic", maxRings = 9, taper = 0.6, tipW = 0.15, flat = 0.5, sides = 3,
+		accept = function(x, y, z, da, c)
+			return smoothstep(0.6, 0.9, c) * smoothstep(0.15, 0.3, y)
+		end, bend = function(pts)
+			-- tucked: never below the occiput
+			for i = 2, #pts do
+				if pts[i][2] < -0.08 then
+					return table.move(pts, 1, i, 1, {})
+				end
+			end
+			return pts
+		end, share = 0.6,
+	})
+	Parts.Fur(H, { n = 160, flow = flow, lift = 0.25, len = function(r)
+		return 0.04 + 0.04 * r[9]
+	end, off = 0.022, share = 0.35, accept = function(x, y, z, da, c)
+		return smoothstep(0.6, 0.9, c) * smoothstep(0.25, 0.45, y)
+	end })
 end
 
+-- messy: a thick textured base, many slim locks pointing every which way (lifted on the crown, falling at the
+-- nape), fine strands and flyaways breaking the outline
 R["Messy Hair"] = function(H)
 	local S = H.S
 	local L = H.len
 	local flow = Kit.Flow(S, "whorl")
-	Parts.Cap(H, { top = 0.036, side = 0.028, pattern = "strands", flow = "whorl", capT = 0.4 })
+	-- the shell is the hair's shadowed depth between the clumps (darker than they are)
+	Parts.Cap(H, { top = 0.036, side = 0.028, pattern = "strands", flow = "whorl", capT = 0.15, capK = 0.78, contrast = 0.9,
+		material = "Plastic" })
+	local wave = H.htype == "Wavy" and { amp = 0.01, lam = 0.16, phase = wavePhase(H) } or nil
+	if H.lod == "low" then
+		-- far away: a short, ragged layer round the back and sides keeps the tousled outline (not a smooth cap)
+		Parts.Curtain(H, { cols = 24, az0 = -2.4, az1 = 2.4, th = function(az)
+			return 0.9 + 0.25 * (abs(az) / pi)
+		end, len = function(az, rnd)
+			return (0.24 + 0.16 * L) * (1 - 0.35 * smoothstep(1.6, 2.4, abs(az)))
+		end, flow = Kit.Flow(S, "down"), off = function(u)
+			return 0.036 + 0.012 * u
+		end, stick = 0.7, grav = 0.6, stiff = 0.4, shade = 0.8, half = 0.008, material = "Plastic",
+			locks = { w = 3, amp = 0.01, root = 0.004, pointK = 0.4, jag = 0.25 } })
+	end
+	-- the nape's locks fall instead of sticking out sideways
+	local function nape(r)
+		return smoothstep(2.0, 2.5, r[7]) * (1 - smoothstep(0.05, 0.2, r[2]))
+	end
 	Parts.Clumps(H, {
-		n = 105, seed = 5, len = function(r)
-			return (0.12 + 0.18 * L) * (0.7 + 0.6 * r[9]) * (1 - 0.3 * smoothstep(1.2, 2.6, r[7]))
-		end, w = 0.03, h = 0.009, flow = flow, lift = 0.4, stick = 0.3, grav = 0.25, stiff = 0.45,
-		off = function(u)
-			return 0.03 + 0.02 * u
-		end, wave = H.htype == "Wavy" and { amp = 0.01, lam = 0.16, phase = wavePhase(H) } or nil, twist = 0.5,
-		jitter = { amp = 0.45, freq = 5 }, tips = 0.6, maxRings = 8,
+		n = 210, seed = 5, sides = 3, len = function(r)
+			-- shorter round the face (the temples) and at the nape (no rat tails)
+			local temple = smoothstep(0.7, 1.1, r[7]) * (1 - smoothstep(1.5, 1.9, r[7])) * (1 - smoothstep(0.25, 0.4, r[2]))
+			return (0.12 + 0.18 * L) * (0.7 + 0.6 * r[9]) * (1 - 0.3 * smoothstep(1.2, 2.6, r[7])) * (1 - 0.4 * temple)
+				* (1 - 0.4 * nape(r))
+		end, w = 0.026, h = 0.005, flat = 0.55, flow = flow, lift = 0.32, stick = 0.35, grav = 0.3, stiff = 0.45,
+		dir = function(r)
+			local k = nape(r)
+			if k > 0.3 then
+				return { r[4] * 0.2, -1, r[6] * 0.4 }
+			end
+			return nil
+		end, off = function(u)
+			return 0.03 + 0.016 * u
+		end, wave = wave, twist = 0.5, jitter = { amp = 0.4, freq = 5 }, tips = 0.5, maxRings = wave and 8 or 6, material = "Plastic",
+		taper = 0.55, tipW = 0.12, share = H.lod == "low" and 0.9 or 0.68, layerK = 1.05,
 	})
-	Parts.Flyaways(H, { n = 26, len = function(r)
+	Parts.Fur(H, { n = 260, flow = flow, lift = 0.45, jitter = 0.45, len = function(r)
+		return 0.04 + 0.05 * r[9]
+	end, off = 0.03, share = 0.2 })
+	Parts.Flyaways(H, { n = 22, len = function(r)
 		return 0.08 + 0.1 * r[9]
-	end, flow = flow })
+	end, flow = flow, share = 0.08 })
 end
 
 ------------------------------------------------------------------------
@@ -275,6 +343,32 @@ local function layerVol(S, t, mask)
 			d = max(d, -mask(x, y, z))
 		end
 		return d
+	end
+end
+
+-- smooth union / intersection of two distances (blend width k)
+local function smin(a, b, k)
+	local h = clamp(0.5 + 0.5 * (b - a) / k, 0, 1)
+	return lerp(b, a, h) - k * h * (1 - h)
+end
+local function smax(a, b, k)
+	local h = clamp(0.5 - 0.5 * (b - a) / k, 0, 1)
+	return lerp(b, a, h) + k * h * (1 - h)
+end
+
+-- a mass's underside curving back to the scalp: at most maxD deep, from ~0.03 at the height where the hair
+-- starts (yFront over the forehead, ySide over the ears, yBack at the nape) to `deep` a `span` higher. A smooth
+-- function of the position (not of the hairline distance, whose notches round the ears and temples would cut
+-- grooves into the mass), blended: the mass rounds into the hairline like the underside of a sphere (no brim,
+-- no flat underside)
+local function tuckUnder(S, vol, deep, span, yFront, ySide, yBack)
+	local f = S.f
+	local atan2 = math.atan2
+	return function(x, y, z)
+		local da = atan2(abs(x), 0.05 - z)
+		local yA = lerp(lerp(yFront, ySide, smoothstep(0.5, 1.4, da)), yBack, smoothstep(2.0, 2.8, da))
+		local maxD = 0.03 + deep * smoothstep(yA, yA + span, y) ^ 1.4
+		return smax(vol(x, y, z), f(x, y, z) - maxD, 0.05)
 	end
 end
 
@@ -297,14 +391,21 @@ local function bounceKey(H)
 end
 
 -- a short coily cut's shell: a layer of tight coils with a pebbled surface and coil texture
+-- the soft, fuzzy outline of a short coily cut: many short fine coils lifted a little off its surface, in the
+-- surface's own tone (vol = the layer's volume, acc = where)
+local function coilyFuzz(H, vol, acc, n)
+	return Parts.Fuzz(H, { n = n or 320, vol = vol, accept = acc, len = 0.012 + 0.01 * H.len, lift = 0.45, zig = 0.0035, share = 0.85 })
+end
+
 local function coilyCap(H, spec)
 	local S = H.S
 	local th = spec.thickness
 	return Parts.Volume(H, {
-		vol = layerVol(S, th, spec.mask), edge = spec.edge or 0.05, bump = spec.bump or 0.012, bumpFreq = 12,
+		vol = layerVol(S, th, spec.mask), layerT = th, layerMask = spec.mask, edge = spec.edge or 0.05,
+		bump = spec.bump or 0.004, bumpFreq = 5,
 		fade = spec.fade, top = spec.top or 0.012, side = spec.side or 0.01, region = spec.region, shaved = spec.shaved,
-		pattern = "coil", material = "Fabric", capT = 0.6, cols = spec.cols or (H.lod == "full" and 52 or nil),
-		rows = spec.rows or (H.lod == "full" and 24 or nil), part = spec.part,
+		pattern = "coil", material = "Plastic", capT = 0.6, cols = spec.cols or (H.lod == "full" and 52 or nil),
+		rows = spec.rows or (H.lod == "full" and 24 or nil), part = spec.part, radial = spec.radial,
 	})
 end
 
@@ -314,14 +415,17 @@ end
 -- a dark fill sheet behind hanging locs / twists / braids (temple to temple round the back): gaps between the
 -- strands show hair, not the neck. Swings with the strands' groups.
 fill = function(H, flow, len, prefix, shade)
+	-- rooted low on the back of the head (under the strands lying over it), ridged like more strands behind,
+	-- each ending on its own (no sheet edge, no straight hem)
 	return Parts.Curtain(H, {
-		cols = 16, rings0 = 10, az0 = -2.3, az1 = 2.3, th = function(az)
-			return 0.7 + 0.35 * (abs(az) / pi)
+		cols = 18, rings0 = 10, az0 = -1.9, az1 = 1.9, th = function(az)
+			return 1.15 + 0.3 * (abs(az) / pi)
 		end, len = function(az, rnd)
-			return len * (0.8 + 0.2 * rnd) * (1 - 0.35 * smoothstep(1.4, 2.3, abs(az)))
+			return len * (0.75 + 0.25 * rnd) * (1 - 0.4 * smoothstep(1.0, 1.9, abs(az)))
 		end, flow = flow, off = function(u)
 			return 0.022 + 0.01 * u
-		end, stick = 0.9, grav = 1, stiff = 0.2, shade = shade, hang = { prefix = prefix }, material = "Plastic", half = 0.008,
+		end, stick = 0.9, grav = 1, stiff = 0.2, shade = shade, innerShade = shade * 0.8, hang = { prefix = prefix }, material = "Fabric",
+		half = 0.008, locks = { w = 2, amp = 0.018, root = 0.004, pointK = 0.35, jag = 0.25 },
 	})
 end
 R["Afro"] = function(H)
@@ -329,58 +433,78 @@ R["Afro"] = function(H)
 	local L = H.len
 	local ht = COILY[H.htype] and H.htype or (H.htype == "Curly" and "Curly" or "Kinky")
 	local size = 0.13 + 0.24 * L * (0.55 + 0.45 * SHRINK[ht]) + 0.06 * H.volume
-	local cy, cz = 0.16 + 0.3 * size, 0.1 + 0.22 * size
+	-- the mass sits a little behind the hairline
+	local cy, cz = 0.12 + 0.3 * size, 0.17 + 0.22 * size
 	local rx, ry, rz = 0.41 + size, 0.42 + size * 0.95, 0.47 + size * 0.85
-	local vol = function(x, y, z)
+	local seed = H.seed % 1000
+	local ell = function(x, y, z)
 		local dx, dy, dz = x / rx, (y - cy) / ry, (z - cz) / rz
-		return (math.sqrt(dx * dx + dy * dy + dz * dz) - 1) * min(rx, ry, rz)
+		-- an irregular outline (a broad, gentle unevenness: not a perfect ellipse)
+		return (math.sqrt(dx * dx + dy * dy + dz * dz) - 1) * min(rx, ry, rz) + 0.035 * Kit.RNoise(x, y, z, 2.2, seed + 41, 1)
 	end
+	-- its underside curves back to the scalp at the nape and the sideburns (no mushroom brim)
+	local vol = tuckUnder(S, ell, 0.6, 0.38, 0.3, -0.1, -0.32)
 	local full = H.lod == "full"
 	Parts.Volume(H, {
-		vol = vol, edge = 0.08, frontEdge = 0.2, bump = ht == "Curly" and 0.045 or 0.04, bumpFreq = ht == "Curly" and 5 or 6, tmax = 0.7,
-		top = 0.02, side = 0.02, pattern = ht == "Curly" and "curl" or "coil", material = "Fabric", capT = 0.55, grain = H.lod == "full" and 1.9 or 1.5,
+		vol = vol, radial = true, edge = 0.04, frontEdge = 0.06, bump = ht == "Curly" and 0.055 or 0.05, bumpFreq = 4.5, tmax = 0.7,
+		top = 0.02, side = 0.02, pattern = ht == "Curly" and "curl" or "coil", material = "Fabric", capT = 0.55,
+		grain = ht == "Curly" and 1.3 or (H.lod == "full" and 1.9 or 1.5),
 		cols = full and 64 or (H.lod == "medium" and 40 or 20), rows = full and 30 or (H.lod == "medium" and 17 or 9),
 	})
 	if ht == "Curly" then
-		Parts.Curls(H, { n = 70, vol = vol, accept = function(x, y, z, da, c)
+		-- curl clusters half sunk in the mass (bumps of ringlets breaking up the surface and its outline)
+		Parts.Curls(H, { n = 90, vol = vol, accept = function(x, y, z, da, c)
 			return smoothstep(0.7, 0.95, c)
 		end, flow = Kit.Flow(S, "whorl"), lift = 1, stick = 0, grav = 0.1, stiff = 0.8, len = function(r)
-			return 0.06 + 0.05 * r[9]
-		end, radius = 0.03, tube = 0.011, off = function(u, r)
-			return Parts.DepthIn(vol, r[1], r[2], r[3], r[4], r[5], r[6], 0.7) - 0.03
-		end, bounce = bounceKey(H), share = 0.8 })
+			return 0.04 + 0.04 * r[9]
+		end, radius = 0.03, tube = 0.012, off = function(u, r)
+			return Parts.DepthIn(vol, r[1], r[2], r[3], r[4], r[5], r[6], 0.7) - 0.045
+		end, bounce = bounceKey(H), share = 0.75 })
 	else
-		Parts.Fuzz(H, { n = 320, vol = vol, len = 0.05, zig = 0.007, share = 0.4 })
-		Parts.CoilHalo(H, { n = 150, vol = vol, bounce = bounceKey(H) })
+		Parts.Fuzz(H, { n = 320, vol = vol, len = 0.016, zig = 0.004, lift = 0.2, share = 0.35 })
+		Parts.CoilHalo(H, { n = 90, vol = vol, sink = 0.85, bounce = bounceKey(H), share = 0.5 })
 	end
 	H.fx = { kind = "bounce", stiff = 0.7, mass = 1.4 }
 end
 
+-- the high top: a tall column of coils over a high fade. Its section a superellipse (rounded, not a box),
+-- a little wider toward the soft-domed top, the front face leaning back, its edges well rounded, its foot
+-- blended into the faded sides
 R["High Top"] = function(H)
 	local S = H.S
 	local L = H.len
 	local yTop = 0.66 + 0.32 * L * (0.6 + 0.4 * SHRINK[H.htype]) + 0.04 * H.volume
 	local yb = 0.18
-	local hy = (yTop - yb) / 2
+	local f = S.f
+	local seed = H.seed % 1000
 	local vol = function(x, y, z)
-		-- a flat-topped block with rounded edges, a little narrower at the top
-		local k = smoothstep(yb, yTop, y)
-		local hx, hz = 0.44 - 0.03 * k, 0.5 - 0.03 * k
-		local qx, qy, qz = abs(x) - hx + 0.09, abs(y - (yb + hy)) - hy + 0.09, abs(z - 0.04) - hz + 0.09
-		local ox, oy, oz = max(qx, 0), max(qy, 0), max(qz, 0)
-		return math.sqrt(ox * ox + oy * oy + oz * oz) + min(max(qx, max(qy, qz)), 0) - 0.09
+		local k = clamp((y - yb) / (yTop - yb), 0, 1)
+		local hx = 0.44 + 0.03 * k
+		-- the front face leans back ~8 degrees (its centre moves back, its depth shrinks)
+		local lean = 0.07 * (y - yb)
+		local hz = 0.5 - lean
+		local cz = 0.04 + lean
+		local ax, az = abs(x) / hx, abs(z - cz) / hz
+		local r = (ax ^ 2.6 + az ^ 2.6) ^ (1 / 2.6)
+		local dSide = (r - 1) * min(hx, hz)
+		local dTop = y - (yTop + 0.04 * (1 - min(1, r * r)))
+		local d = smax(dSide, dTop, 0.2) + 0.012 * Kit.RNoise(x, y, z, 3, seed + 43, 1)
+		-- the foot blends into the thin faded layer at the sides and back (no ledge); the front face rises
+		-- straight from the line-up (a blend there would bulge into a brow)
+		local da = math.atan2(abs(x), 0.05 - z)
+		return smin(d, f(x, y, z) - 0.012, 0.01 + 0.11 * smoothstep(0.7, 1.4, da))
 	end
 	local full = H.lod == "full"
 	Parts.Volume(H, {
-		vol = vol, edge = 0.05, frontEdge = 0.06, bump = 0.028, bumpFreq = 7, tmax = 0.8, fade = "high", top = 0.016, side = 0.012,
+		vol = vol, radial = true, edge = 0.02, frontEdge = 0.03, bump = full and 0.045 or 0.03, bumpFreq = 5, tmax = 0.8, fade = "high", top = 0.016, side = 0.012,
 		pattern = "coil", material = "Fabric", capT = 0.55, grain = H.lod == "full" and 1.9 or 1.5,
 		cols = full and 64 or (H.lod == "medium" and 40 or 20), rows = full and 32 or (H.lod == "medium" and 17 or 9),
 	})
 	local acc = function(x, y, z, da, c)
 		return smoothstep(0.3, 0.42, y) * smoothstep(0.6, 0.9, c)
 	end
-	Parts.Fuzz(H, { n = 240, vol = vol, accept = acc, len = 0.04, zig = 0.006, share = 0.45 })
-	Parts.CoilHalo(H, { n = 90, vol = vol, accept = acc, bounce = bounceKey(H) })
+	Parts.Fuzz(H, { n = 260, vol = vol, accept = acc, len = 0.016, zig = 0.004, lift = 0.2, share = 0.35 })
+	Parts.CoilHalo(H, { n = 90, vol = vol, accept = acc, sink = 0.85, bounce = bounceKey(H), share = 0.5 })
 	H.fx = { kind = "bounce", stiff = 0.8, mass = 1.3 }
 end
 
@@ -389,9 +513,8 @@ R["Short Curly"] = function(H)
 	local L = H.len
 	if COILY[H.htype] then
 		local t = 0.045 + 0.06 * L * SHRINK[H.htype] + 0.015 * H.volume
-		coilyCap(H, { thickness = t, bump = 0.016 })
-		Parts.Fuzz(H, { n = 260, vol = layerVol(S, t), len = 0.035, zig = 0.006, share = 0.4 })
-		Parts.CoilHalo(H, { n = 110, vol = layerVol(S, t), bounce = bounceKey(H) })
+		coilyCap(H, { thickness = t, bump = 0.005 })
+		coilyFuzz(H, layerVol(S, t))
 	else
 		-- a dark, lumpy under-volume of curls, ringlets over it
 		local t = 0.03 + 0.03 * L
@@ -410,17 +533,17 @@ end
 R["Curly Top"] = function(H)
 	local S = H.S
 	local L = H.len
+	-- the curly top rises over the high fade's band (a gradient, not a ledge)
 	local topMask = function(x, y, z)
-		return (y - 0.3) * 4
+		return (y - 0.24) * 2.2
 	end
 	local acc = function(x, y, z, da, c)
 		return smoothstep(0.3, 0.4, y) * smoothstep(0.6, 0.9, c)
 	end
 	if COILY[H.htype] then
 		local t = 0.06 + 0.08 * L
-		coilyCap(H, { thickness = t, mask = topMask, fade = "high", bump = 0.016, edge = 0.04 })
-		Parts.Fuzz(H, { n = 220, vol = layerVol(S, t, topMask), accept = acc, len = 0.035, zig = 0.006, share = 0.4 })
-		Parts.CoilHalo(H, { n = 90, vol = layerVol(S, t, topMask), accept = acc, bounce = bounceKey(H) })
+		coilyCap(H, { thickness = t, mask = topMask, fade = "high", bump = 0.005, edge = 0.04 })
+		coilyFuzz(H, layerVol(S, t, topMask), acc)
 	else
 		local t = 0.035 + 0.04 * L
 		Parts.Volume(H, { vol = layerVol(S, t, topMask), edge = 0.04, bump = 0.022, bumpFreq = 7, fade = "high", top = 0.016, side = 0.012,
@@ -445,51 +568,72 @@ local function longCurly(H)
 		-- coils shrink: the length becomes a big rounded volume, deeper at the back and sides
 		local size = 0.12 + 0.22 * L * SHRINK[H.htype] + 0.05 * H.volume
 		local drop = 0.1 + 0.35 * L * SHRINK[H.htype]
-		local vol = function(x, y, z)
-			local dx, dy, dz = x / (0.42 + size), (y - 0.1 + 0.25 * drop) / (0.47 + size + drop * 0.6), (z - 0.1 - 0.15 * size) / (0.5 + size * 0.8)
-			return (math.sqrt(dx * dx + dy * dy + dz * dz) - 1) * 0.45
+		local seed = H.seed % 1000
+		local ell = function(x, y, z)
+			local dx, dy, dz = x / (0.42 + size), (y - 0.1 + 0.25 * drop) / (0.47 + size + drop * 0.6), (z - 0.14 - 0.15 * size) / (0.5 + size * 0.8)
+			return (math.sqrt(dx * dx + dy * dy + dz * dz) - 1) * 0.45 + 0.035 * Kit.RNoise(x, y, z, 2.2, seed + 41, 1)
 		end
+		-- deeper at the back and sides; the underside still tucks in at the nape (lower for longer hair)
+		local vol = tuckUnder(S, ell, 0.65, 0.45, 0.28, -0.05 - 0.2 * drop, -0.36 - 0.3 * drop)
 		local full = H.lod == "full"
-		Parts.Volume(H, { vol = vol, edge = 0.08, frontEdge = 0.2, bump = 0.04, bumpFreq = 6, tmax = 0.8, top = 0.02, side = 0.02,
+		Parts.Volume(H, { vol = vol, radial = true, edge = 0.04, frontEdge = 0.06, bump = 0.04, bumpFreq = 5, tmax = 0.8, top = 0.02, side = 0.02,
 			pattern = "coil", material = "Fabric", capT = 0.55, grain = H.lod == "full" and 1.9 or 1.5, cols = full and 64 or (H.lod == "medium" and 40 or 20),
 			rows = full and 30 or (H.lod == "medium" and 17 or 9) })
-		Parts.Fuzz(H, { n = 300, vol = vol, len = 0.05, zig = 0.007, share = 0.4 })
-		Parts.CoilHalo(H, { n = 140, vol = vol, bounce = bounceKey(H) })
+		Parts.Fuzz(H, { n = 300, vol = vol, len = 0.016, zig = 0.004, lift = 0.2, share = 0.35 })
+		Parts.CoilHalo(H, { n = 90, vol = vol, sink = 0.85, bounce = bounceKey(H), share = 0.5 })
 		H.fx = { kind = "bounce", stiff = 0.65, mass = 1.4 }
 		S.guardFace = false
 		return
 	end
 	local hangLen = (0.45 + 0.85 * L) * SHRINK.Curly
+	local vol = H.volume
 	local flow = Kit.Flow(S, "part", { x = H.partX or 0 })
-	local t = 0.035 + 0.02 * L
-	Parts.Volume(H, { vol = layerVol(S, t), edge = 0.05, bump = 0.022, bumpFreq = 7, top = 0.02, side = 0.02, pattern = "curl",
+	local t = 0.035 + 0.02 * L + 0.01 * vol
+	Parts.Volume(H, { vol = layerVol(S, t), layerT = t, edge = 0.05, bump = 0.02, bumpFreq = 6, top = 0.02, side = 0.02, pattern = "curl",
 		material = "Fabric", capT = 0.3, cols = H.lod == "full" and 44 or nil, rows = H.lod == "full" and 20 or nil })
-	-- a dark curly mass behind the hanging ringlets, down to where they end (the roots sit high on the head:
-	-- the strand first runs over the skull)
-	Parts.Curtain(H, { cols = 20, az0 = -2.45, az1 = 2.45, th = function(az)
-		return 0.7 + 0.3 * (abs(az) / pi)
+	-- A-line: below the ears the mass flares out, wider toward the ends (big curly hair is a triangle, not a sign
+	-- hanging off the head)
+	local flare = (0.1 + 0.08 * vol) * (0.6 + 0.4 * L)
+	local function spread(pts)
+		for _, p in ipairs(pts) do
+			local k = smoothstep(0.15, -0.65, p[2]) ^ 1.3
+			if k > 0 then
+				local ox, _, oz = Kit.norm3(p[1], 0, p[3] - 0.04)
+				p[1] += ox * flare * k
+				p[3] += oz * flare * k * 0.8
+			end
+		end
+		return pts
+	end
+	-- the mass: a deep-ridged sheet of curly locks (ringlet bundles) from high on the head round the back and the
+	-- sides to the shoulders, crimped by the curl, its hem uneven and soft (no corners: the sides end in short
+	-- locks well behind the face)
+	Parts.Curtain(H, { cols = 40, az0 = -2.2, az1 = 2.2, th = function(az)
+		return 0.42 + 0.4 * (abs(az) / pi)
 	end, len = function(az, rnd)
-		return 0.36 + hangLen * (0.95 - 0.3 * smoothstep(1.5, 2.4, abs(az)))
+		return (0.48 + hangLen * (0.95 - 0.35 * smoothstep(1.3, 2.2, abs(az)))) * (0.92 + 0.16 * rnd)
 	end, flow = flow, off = function(u)
-		return t + 0.012 + 0.05 * u
-	end, shade = 0.6, hang = { prefix = "HairCurl" }, material = "Fabric", half = 0.02,
-		wave = { amp = 0.035, lam = 0.11, rise = 0.1 } })
-	-- short curls on the crown
-	Parts.Curls(H, { n = 40, flow = Kit.Flow(S, "down"), lift = 0.55, stick = 0.2, grav = 0.25, stiff = 0.5, accept = function(x, y, z, da, c)
-		return smoothstep(0.25, 0.4, y) * smoothstep(0.6, 0.9, c)
+		return t + 0.012 + 0.03 * u
+	end, stick = 0.9, grav = 1, stiff = 0.2, bend = spread, shade = 0.8, innerShade = 0.45, hang = { prefix = "HairCurl" },
+		material = "Fabric", half = 0.012, bodyOff = 0.08, rings0 = 22, streakK = 0.18,
+		wave = { amp = 0.026 * (1 + 0.4 * vol), lam = 0.11, rise = 0.1 },
+		locks = { w = 3, amp = 0.028, root = 0.004, pointK = 0.06, jag = 0.2 } })
+	-- curls on the crown and round the face
+	Parts.Curls(H, { n = 110, flow = Kit.Flow(S, "down"), lift = 0.45, stick = 0.3, grav = 0.3, stiff = 0.5, accept = function(x, y, z, da, c)
+		return smoothstep(0.2, 0.36, y) * smoothstep(0.6, 0.9, c)
 	end, len = function(r)
-		return 0.08 + 0.06 * r[9]
-	end, radius = 0.03, tube = 0.0115, off = function()
-		return t * 0.7
-	end, share = 0.3 })
-	-- long ringlets from round the lower head, hanging to the shoulders
-	Parts.Curls(H, { n = 60, flow = flow, lift = 0.2, stick = 0.5, grav = 1, stiff = 0.35, accept = function(x, y, z, da, c)
-		return (1 - smoothstep(0.22, 0.34, y)) * smoothstep(0.7, 1.1, da) * smoothstep(0.5, 0.9, c)
+		return 0.09 + 0.07 * r[9]
+	end, radius = 0.03, tube = 0.012, off = function()
+		return t * 0.8
+	end, pitch = 2.8, perTurn = 5, sides = 3, share = 0.3 })
+	-- ringlets lying on the mass, hanging with it (cheap springs: few sides and points per turn)
+	Parts.Curls(H, { n = 90, flow = flow, lift = 0.2, stick = 0.5, grav = 1, stiff = 0.35, accept = function(x, y, z, da, c)
+		return (1 - smoothstep(0.3, 0.42, y)) * smoothstep(0.5, 1.0, da) * smoothstep(0.5, 0.9, c)
 	end, len = function(r)
-		return hangLen * (0.75 + 0.35 * r[9])
-	end, radius = 0.03, tube = 0.0165, off = function(u)
-		return t + 0.025 + 0.045 * u
-	end, hang = { prefix = "HairCurl" }, pitch = 1.75 })
+		return hangLen * (0.7 + 0.35 * r[9])
+	end, radius = 0.035 * (1 + 0.4 * vol), tube = 0.012, off = function(u)
+		return t + 0.04 + 0.03 * u
+	end, bend = spread, hang = { prefix = "HairCurl" }, pitch = 3.2, maxTurns = 7, perTurn = 5, sides = 3, share = 0.7 })
 	H.fx = { kind = "swing", stiff = 0.45, mass = 1.0 }
 	S.guardFace = false
 end
@@ -502,16 +646,27 @@ R["Dreadlocks"] = function(H)
 	S.guardFace = true
 	local grown = H.growth > 0.4
 	-- new growth at the roots reads as a soft coily halo on the shell
-	Parts.Cap(H, { top = 0.024, side = 0.02, pattern = grown and "coil" or "strands", flow = "down", capT = 0.3, material = "Plastic" })
+	-- the scalp between the locs: matte and darker (sectioned roots), soft new growth when grown out
+	Parts.Cap(H, { top = 0.024, side = 0.02, pattern = (grown or COILY[H.htype]) and "coil" or "strands", flow = "down", capT = 0.2,
+		capK = 0.85, material = "Fabric", reflectance = 0 })
 	local flow = Kit.Flow(S, "part", { x = H.partX or 0 })
 	local hang = clamp(0.45 + 0.8 * L, 0.3, 1.4)
 	H.sparseTop = true
-	fill(H, flow, hang * 0.85, "HairLoc", 0.5)
-	Parts.Tubes(H, { n = 52, minN = 10, section = "loc", r = 0.042, flow = flow, lift = 0.4, stick = 0.45, grav = 1, stiff = 0.4, sides = 5, ringsPer = 15,
+	-- up close the locs are dense enough on their own (between them: the neck, as on a real head of locs; a
+	-- sheet behind them reads as a dark panel with a straight top edge). Further away a sheet in a shadowed
+	-- tone of the locs keeps the mass of the hair
+	if H.lod ~= "full" then
+		fill(H, flow, hang * 0.6, "HairLoc", 0.75)
+	end
+	-- many locs of uneven thickness, lumpy, thinner at the root, gently S-bent, matte and frizzy
+	-- (far away fewer, thicker locs keep the silhouette of a head of locs)
+	Parts.Tubes(H, { n = 72, minN = 10, section = "loc", r = H.lod == "low" and 0.056 or (H.lod == "medium" and 0.044 or 0.036), rVar = 0.3, flow = flow, lift = 0.4, stick = 0.45,
+		grav = 1, stiff = 0.4,
+		sides = H.lod == "full" and 4 or nil, ringsPer = 11, wave = { amp = 0.012, lam = 0.35 }, frizz = 0.12, material = "Fabric",
 		lodK = { full = 1, medium = 0.5, low = 0.3 }, len = function(r)
 			local front = 1 - smoothstep(0.4, 1.4, r[7])
-			return hang * (0.85 + 0.25 * r[9]) * (1 - 0.3 * front)
-		end, hang = { prefix = "HairLoc" }, tip = "dome" })
+			return hang * (0.75 + 0.4 * r[9]) * (1 - 0.3 * front)
+		end, hang = { prefix = "HairLoc" }, tip = "dome", bodyOff = 0.06, share = 0.95 })
 	H.fx = { kind = "swing", stiff = 0.6, mass = 1.6 }
 	S.guardFace = false
 end
@@ -519,12 +674,15 @@ end
 R["Short Dreads"] = function(H)
 	local S = H.S
 	local L = H.len
-	Parts.Cap(H, { top = 0.024, side = 0.02, pattern = H.growth > 0.4 and "coil" or "strands", flow = "down", capT = 0.3, material = "Plastic" })
+	Parts.Cap(H, { top = 0.024, side = 0.02, pattern = (H.growth > 0.4 or COILY[H.htype]) and "coil" or "strands", flow = "down", capT = 0.2,
+		capK = 0.85, material = "Fabric", reflectance = 0 })
 	local flow = Kit.Flow(S, "whorl")
-	Parts.Tubes(H, { n = 56, minN = 12, section = "loc", r = 0.034, flow = flow, lift = 0.75, stick = 0.15, grav = 0.55, stiff = 0.6,
+	-- short locs lying out and down from the crown (not radial spikes), uneven in length, thickness and spacing
+	Parts.Tubes(H, { n = 64, minN = 12, section = "loc", r = 0.032, rVar = 0.25, flow = flow, lift = 0.4, stick = 0.15, grav = 0.8, stiff = 0.6,
 		free = 0.2, lodK = { full = 1, medium = 0.45, low = 0.28 }, len = function(r)
-			return (0.13 + 0.12 * r[9]) * (0.8 + 0.6 * L)
-		end, ringsPer = 22, tip = "dome", piece = H.lod == "low" and "HairTop" or nil })
+			return (0.12 + 0.12 * r[9]) * (0.8 + 0.6 * L) * (0.6 + 0.8 * ((r[9] * 7.3) % 1))
+		end, ringsPer = 18, tip = "dome", piece = H.lod == "low" and "HairTop" or nil, rootJitter = 2.2, frizz = 0.12, material = "Fabric",
+		jitter = { amp = 0.35, freq = 7 }, share = 0.95 })
 	H.fx = { kind = "bounce", stiff = 0.75, mass = 1.3 }
 end
 
@@ -532,15 +690,14 @@ R["Twists"] = function(H)
 	local S = H.S
 	local L = H.len
 	S.guardFace = true
-	Parts.Cap(H, { top = 0.02, side = 0.018, pattern = "coil", flow = "down", capT = 0.3, material = "Plastic" })
+	Parts.Cap(H, { top = 0.02, side = 0.018, pattern = "coil", flow = "down", capT = 0.3, capK = 0.85, material = "Fabric", reflectance = 0 })
 	local flow = Kit.Flow(S, "part", { x = H.partX or 0 })
 	local hang = 0.22 + 0.55 * L
 	H.sparseTop = true
-	fill(H, flow, hang * 0.8, "HairTwist", 0.45)
-	Parts.Tubes(H, { n = 52, minN = 10, section = "twist", period = 0.075, r = 0.038, flow = flow, lift = 0.4, stick = 0.45, sides = H.lod == "full" and 4 or nil,
-		grav = 0.9, stiff = 0.45, lodK = { full = 1, medium = 0.45, low = 0.28 }, len = function(r)
-			return hang * (0.85 + 0.3 * r[9])
-		end, hang = { prefix = "HairTwist" }, tip = "dome" })
+	Parts.Tubes(H, { n = 64, minN = 10, section = "twist", period = 0.1, r = 0.034, rVar = 0.15, flow = flow, lift = 0.4, stick = 0.45,
+		sides = H.lod == "full" and 4 or nil, grav = 0.9, stiff = 0.45, lodK = { full = 1, medium = 0.45, low = 0.28 }, len = function(r)
+			return hang * (0.8 + 0.35 * r[9])
+		end, hang = { prefix = "HairTwist" }, tip = "dome", maxRings = 36, wave = { amp = 0.008, lam = 0.4 }, share = 0.95 })
 	H.fx = { kind = "swing", stiff = 0.55, mass = 1.3 }
 	S.guardFace = false
 end
@@ -565,15 +722,17 @@ local function braids(H, box)
 	local flow = Kit.Flow(S, "back")
 	local hang = 0.4 + 0.85 * L
 	H.sparseTop = true
-	fill(H, Kit.Flow(S, "part", { x = 0 }), hang * 0.82, "HairBraid", 0.5)
-	Parts.Tubes(H, { n = box and 30 or 16, minN = box and 10 or 6, section = "braid", period = box and 0.08 or 0.1,
-		r = box and 0.03 or 0.05, flow = flow, lift = 0.15, stick = 0.7, grav = 1, stiff = 0.3, sides = box and H.lod == "full" and 4 or nil,
-		lodK = { full = 1, medium = 0.5, low = 0.32 }, len = function(r)
+	-- (no fill sheet: between braids the parted scalp shows)
+	-- braids: a few thick plaits (the weave modelled); box braids: many thin ones (~70-100 triangles each: a
+	-- cord with the plait's crossings in its tone)
+	Parts.Tubes(H, { n = box and 90 or 16, minN = box and 10 or 6, section = box and "boxbraid" or "braid", period = box and 0.06 or 0.1,
+		r = box and 0.026 or 0.05, flow = flow, lift = 0.15, stick = 0.7, grav = 1, stiff = 0.3, sides = box and 4 or nil,
+		ringsPer = box and 9 or nil, rVar = box and 0.08 or nil, frizz = box and 0.08 or nil, lodK = { full = 1, medium = 0.5, low = 0.32 }, len = function(r)
 			local front = 1 - smoothstep(0.4, 1.4, r[7])
 			return hang * (0.9 + 0.2 * r[9]) * (1 - 0.2 * front)
 		end, hang = { prefix = "HairBraid" }, tip = "dome", accept = function(x, y, z, da, c)
 			return smoothstep(0.5, 0.9, c)
-		end })
+		end, share = 0.95 })
 	H.fx = { kind = "swing", stiff = 0.45, mass = 1.3 }
 	S.guardFace = false
 end
@@ -609,9 +768,15 @@ R["Ponytail"] = function(H)
 	local tx, ty, tz = S.ray(0, 0.42, 0.9, 0.035)
 	local tie = { tx, ty, tz }
 	local flow = Kit.Flow(S, "tie", { p = tie })
-	Parts.Cap(H, { top = 0.012, side = 0.012, pattern = "strands", flow = "tie", capT = 0.4, streak = 0.6,
-		material = H.htype == "Straight" and "SmoothPlastic" or "Plastic" })
-	if H.lod ~= "low" then
+	if COILY[H.htype] then
+		-- coily hair pulled back: a slight layer of tight coils brushed toward the tie (matte, coil texture)
+		Parts.Cap(H, { top = 0.012, side = 0.012, pattern = "coil", grain = 2.4, flow = "tie", flowOpts = { p = tie }, capT = 0.5,
+			material = "Fabric", reflectance = 0 })
+	else
+		Parts.Cap(H, { top = 0.012, side = 0.012, pattern = "strands", flow = "tie", capT = 0.4, streak = 0.6,
+			material = H.htype == "Straight" and "SmoothPlastic" or "Plastic" })
+	end
+	if H.lod ~= "low" and not COILY[H.htype] then
 		-- hair pulled back tight from the hairline into the tie
 		Parts.Clumps(H, { n = 110, seed = 9, sides = H.lod == "full" and 4 or 3, flow = flow, lift = 0, stick = 1, grav = 0, stiff = 0.2,
 			free = 2, glue = true, len = function(r)
@@ -636,25 +801,94 @@ R["Ponytail"] = function(H)
 	local pal = H.pal
 	local lum = pal.lum
 	if COILY[H.htype] then
-		-- coily hair gathers into a puff
-		local pr = 0.1 + 0.12 * L * SHRINK[H.htype]
-		local cx, cy, cz = tie[1], tie[2] + 0.02, tie[3] + pr * 0.85
-		local vol = function(x, y, z)
-			local dx, dy, dz = x - cx, y - cy, z - cz
-			return math.sqrt(dx * dx + dy * dy + dz * dz) - pr
-		end
-		local m = Parts.Piece(H, "HairTail01", { material = "Plastic", castShadow = true }).mesh
+		-- coily hair gathers into a puff: a big, slightly squashed ball of coil clusters (lumpy outline, light
+		-- cluster tops, dark gaps between them, a fuzzy fine grain), matte
+		local pr = 0.14 + 0.16 * L * SHRINK[H.htype] + 0.03 * H.volume
+		local ex, ey, ez = 1.15, 0.9, 1.05
+		local cx, cy, cz = tie[1], tie[2] + 0.03, tie[3] + pr * ez * 0.8
+		local m = Parts.Piece(H, "HairTail01", { material = "Fabric", castShadow = true }).mesh
 		local seed = H.seed % 1000
-		MeshKit.Ellipsoid(m, cx, cy, cz, pr, pr, pr, { rings = H.lod == "full" and 16 or 8, sides = H.lod == "full" and 22 or 10,
+		local worley = Kit.Worley(H.seed % 9973 + 17)
+		local full = H.lod == "full"
+		local darkLift = clamp((0.16 - lum) / 0.16, 0, 1) * 0.1
+		-- the clusters, by direction on the ball (~0.05-stud cells on its surface)
+		local cf = 0.85 / 0.06 * pr
+		local function cluster(dx, dy, dz)
+			local wx = 0.25 * MeshKit.Noise(dx * 3, dy * 3, dz * 3, seed + 5)
+			local f1, f2 = worley((dx + wx) * cf, (dy - wx) * cf, (dz + wx) * cf)
+			return 1 - smoothstep(0.05, 0.55, f1), smoothstep(0.0, 0.25, f2 - f1)
+		end
+		local step = MeshKit.Step
+		MeshKit.Ellipsoid(m, cx, cy, cz, pr * ex, pr * ey, pr * ez, { rings = full and 24 or 10, sides = full and 34 or 14,
 			radial = function(dx, dy, dz)
-				return 1 + 0.09 * MeshKit.Noise(dx * 3.5, dy * 3.5, dz * 3.5, seed) + 0.04 * MeshKit.Noise(dx * 9, dy * 9, dz * 9, seed + 1)
+				-- (a cellular lookup and two noises a vertex)
+				step(6)
+				local top = cluster(dx, dy, dz)
+				return 1 + 0.07 * MeshKit.Noise(dx * 2.2, dy * 2.2, dz * 2.2, seed) + (full and 0.07 or 0.04) * (top - 0.5)
 			end,
 			color = function(x, y, z, dx, dy, dz)
+				step(6)
+				local top, crev = cluster(dx, dy, dz)
 				local r, g, b = pal.at(0.5, 0.7, x)
-				local k = 0.75 + 0.35 * smoothstep(-0.5, 0.9, MeshKit.Noise(x * 40, y * 40, z * 40, seed + 2))
-				return r * k, g * k, b * k
+				local k = (0.95 + 0.45 * top) * (0.85 + 0.15 * crev) * (0.92 + 0.16 * MeshKit.Noise(x * 60, y * 60, z * 60, seed + 2))
+				local l = darkLift * (0.5 + 0.7 * top)
+				return r * k + l, g * k + l * 0.82, b * k + l * 0.62
 			end })
 		MeshKit.ComputeNormals(m)
+		if H.lod ~= "low" then
+			-- coil clusters half sunk in the puff (3-4 short springs each): bumps that break up its surface and
+			-- its outline, bouncing with it
+			local rng = MeshKit.Rng(H.seed + 97)
+			local out = H.out
+			local nc = floor((full and 30 or 10) * (H.nScale or 1) + 0.5)
+			local rx, ry, rz = pr * ex, pr * ey, pr * ez
+			for i = 1, nc do
+				-- spread over the puff (a Fibonacci lattice), the part against the head left out
+				local zc = 1 - (i - 0.5) / nc * 1.7
+				local rr = math.sqrt(max(0, 1 - zc * zc))
+				local a = i * 2.399963 + rng:Range(-0.3, 0.3)
+				local dx, dy, dz = rr * cos(a), zc, rr * sin(a)
+				if dz > -0.55 then
+					local nx, ny, nz = Kit.norm3(dx / rx, dy / ry, dz / rz)
+					local px, py, pz = cx + dx * rx, cy + dy * ry, cz + dz * rz
+					local tx, ty, tz = Kit.norm3(Kit.cross(nx, ny, nz, 0.3, 1, 0.2))
+					if tx == 0 and ty == 0 and tz == 0 then
+						tx, ty, tz = 1, 0, 0
+					end
+					local bx2, by2, bz2 = Kit.cross(nx, ny, nz, tx, ty, tz)
+					local rnd = rng:Next()
+					for _ = 1, 3 + floor(rng:Next() * 1.99) do
+						local ang, dist = rng:Range(0, 2 * pi), 0.012 * rng:Range(0.3, 1.6)
+						local rad = 0.011 * (0.75 + 0.5 * rng:Next())
+						local sunk = rad * 0.85
+						local ox = (tx * cos(ang) + bx2 * sin(ang)) * dist
+						local oy = (ty * cos(ang) + by2 * sin(ang)) * dist
+						local oz = (tz * cos(ang) + bz2 * sin(ang)) * dist
+						local qx, qy, qz = px + ox - nx * sunk, py + oy - ny * sunk, pz + oz - nz * sunk
+						local len = 0.022 * (0.7 + 0.6 * rng:Next())
+						local ddx, ddy, ddz = Kit.norm3(nx + rng:Range(-0.35, 0.35), ny + rng:Range(-0.3, 0.3), nz + rng:Range(-0.35, 0.35))
+						local base = {}
+						for k = 0, 3 do
+							local u = k / 3
+							base[#base + 1] = { qx + ddx * len * u, qy + ddy * len * u, qz + ddz * len * u }
+						end
+						local hp = Kit.Helix(base, out, rad, clamp(len / (rad * 2.2), 1, 2), rng:Range(0, 2 * pi), 4)
+						local tube = rad * 0.5
+						Kit.Tube(m, hp, {
+							sides = 3, out = out, rad = tube, tip = "point",
+							r = function(t)
+								return tube * (1 - 0.35 * smoothstep(0.75, 1, t))
+							end,
+							color = function(t, ang2)
+								local r, g, b = pal.at(rnd, 0.6 + 0.4 * t, px, nil, py, (1 - t) * len)
+								local k = (0.95 + 0.3 * smoothstep(-0.5, 0.9, math.sin(ang2))) * (0.92 + 0.15 * t)
+								return r * k + darkLift, g * k + darkLift * 0.82, b * k + darkLift * 0.62
+							end,
+						})
+					end
+				end
+			end
+		end
 		H.bounce = H.bounce or {}
 		H.bounce.HairTail01 = true
 		H.fx = { kind = "bounce", stiff = 0.6, mass = 1.2 }
@@ -686,15 +920,19 @@ R["Mohawk"] = function(H)
 	local strip = stripRegion(0.11)
 	if CURLY[H.htype] then
 		-- a frohawk / curly crest
-		local t = 0.08 + 0.16 * L * SHRINK[H.htype]
+		-- (a rounded crest grown along the rays from the head's centre: its walls cannot fold over the crown)
+		local t = 0.06 + 0.12 * L * SHRINK[H.htype]
 		local mask = function(x, y, z)
-			return (0.13 - abs(x)) * 6
+			return (0.135 - abs(x)) * 3.5
 		end
-		coilyCap(H, { thickness = t, mask = mask, region = strip, shaved = 0.18, bump = 0.012, edge = 0.03 })
-		Parts.CoilHalo(H, { n = 70, vol = layerVol(S, t, mask), accept = function(x, y, z, da, c)
+		-- (a fine grid across the crest: its rounded shoulders span several columns, no steep slivers)
+		-- (the crest's texture is drawn at its raised surface, which the radial growth spreads ~15% wider: the
+		-- haired strip is as much wider)
+		coilyCap(H, { thickness = t, mask = mask, region = stripRegion(0.135), shaved = 0.18, bump = 0.005, edge = 0.03, radial = true,
+			cols = H.lod == "full" and 84 or nil, rows = H.lod == "full" and 26 or nil })
+		coilyFuzz(H, layerVol(S, t, mask), function(x, y, z, da, c)
 			return (1 - smoothstep(0.08, 0.12, abs(x))) * smoothstep(0.6, 0.9, c)
-		end, bounce = bounceKey(H) })
-		H.fx = { kind = "bounce", stiff = 0.6, mass = 1.2 }
+		end)
 		return
 	end
 	Parts.Cap(H, { top = 0.02, side = 0.006, pattern = "strands", flow = "up", capT = 0.35, region = strip, shaved = 0.18 })
@@ -723,10 +961,10 @@ R["Undercut"] = function(H)
 			local mask = function(x, y, z)
 				return (y - 0.29) * 5
 			end
-			coilyCap(H, { thickness = t, mask = mask, region = region, shaved = 0.2, bump = 0.009, edge = 0.03 })
-			Parts.CoilHalo(H, { n = 70, vol = layerVol(S, t, mask), accept = function(x, y, z, da, c)
+			coilyCap(H, { thickness = t, mask = mask, region = region, shaved = 0.2, bump = 0.005, edge = 0.03 })
+			coilyFuzz(H, layerVol(S, t, mask), function(x, y, z, da, c)
 				return smoothstep(0.32, 0.4, y) * smoothstep(0.6, 0.9, c)
-			end, bounce = bounceKey(H) })
+			end)
 		else
 			Parts.Cap(H, { top = 0.03, side = 0.006, pattern = "strands", flow = "whorl", capT = 0.35, region = region, shaved = 0.2, material = "Plastic" })
 			Parts.Curls(H, { n = 70, flow = Kit.Flow(S, "side", { dir = 1 }), lift = 0.6, stick = 0.2, grav = 0.2, stiff = 0.5,
@@ -741,84 +979,166 @@ R["Undercut"] = function(H)
 		H.fx = { kind = "bounce", stiff = 0.6, mass = 1.1 }
 		return
 	end
-	Parts.Cap(H, { top = 0.026, side = 0.006, pattern = "strands", flow = "side", flowOpts = { dir = 1 }, capT = 0.35, region = region, shaved = 0.2 })
-	local flow = Kit.Flow(S, "side", { dir = 1 })
-	Parts.Clumps(H, { n = 95, seed = 13, flow = flow, lift = 0.45, stick = 0.7, grav = 0.3, stiff = 0.35, accept = function(x, y, z, da, c)
+	Parts.Cap(H, { top = 0.026, side = 0.006, pattern = "strands", flow = "side", flowOpts = { dir = 1 }, capT = 0.35, region = region,
+		shaved = 0.2, material = "Plastic" })
+	-- swept across to the right and back; over the forehead up and back (never down over the eyes)
+	local flow = function(x, y, z, nx, ny, nz)
+		local front = smoothstep(-0.1, -0.35, z)
+		local back = smoothstep(0.2, 0.5, z)
+		local vx, vy, vz = 1 - 0.5 * back, -0.25 + 0.3 * front - 0.3 * back, 0.3 + 0.2 * z + 0.7 * front + 0.3 * back
+		local d = vx * nx + vy * ny + vz * nz
+		return Kit.norm3(vx - nx * d, vy - ny * d, vz - nz * d)
+	end
+	local wave = H.htype == "Wavy" and { amp = 0.01, lam = 0.24, phase = wavePhase(H) } or nil
+	-- the long top swept over to the right: a sheet of locks from the left edge of the top over the crown, ending
+	-- over the right side (its ends pointed and uneven), slim locks and fine strands over it
+	local vol = H.volume
+	Parts.Curtain(H, {
+		az0 = 1.5 * pi - 1.4, az1 = 1.5 * pi + 1.45, th = function(az)
+			-- just inside the top region's left edge (and the front hairline)
+			local da = abs(az - pi)
+			local yl = lerp(0.27, 0.14, smoothstep(1.7, 2.8, da)) + 0.03
+			local lo, hi = 0.1, 2.4
+			for _ = 1, 12 do
+				local mid = (lo + hi) * 0.5
+				local _, y = Kit.ScalpAt(S, az, mid, 0)
+				if y > yl then
+					lo = mid
+				else
+					hi = mid
+				end
+			end
+			return min(lo, Kit.HairlinePolar(S, H.cut, az, 0.02))
+		end, len = function(az, rnd)
+			return (0.85 + 0.3 * L) * lerp(1, 0.5, smoothstep(0.7, 1.45, abs(az - 1.5 * pi))) * (0.94 + 0.12 * rnd)
+		end, flow = flow, off = function(u)
+			return 0.03 + 0.022 * smoothstep(0, 0.25, u) * (1 + vol * 0.6) - 0.012 * u
+		end, stick = 0.92, grav = 0.25, stiff = 0.35, free = 0.85, clipY = 0.21, wave = wave,
+		shade = 1.0, innerShade = 0.55, half = 0.005, rings0 = 16, innerStride = 3, material = "Plastic", streakK = 0.2,
+		cols = 46, locks = { w = 3, amp = 0.009, root = 0.002, pointK = 0.2 },
+	})
+	-- slim locks lying in the sheet (half sunk: raised strands of it, not shavings on it), a touch lighter
+	Parts.Clumps(H, { n = 56, seed = 13, sides = 3, flow = flow, lift = 0.1, stick = 0.85, grav = 0.25, stiff = 0.35, accept = function(x, y, z, da, c)
 		return region(x, y, z, da) * smoothstep(0.7, 0.95, c)
+	end, bend = function(pts, r)
+		-- the top's locks end at the cut line (a little over it), never hanging over the shaved back
+		local yl = lerp(0.27, 0.14, smoothstep(1.7, 2.8, r[7])) - 0.04
+		for i = 3, #pts do
+			if pts[i][2] < yl then
+				return table.move(pts, 1, i, 1, {})
+			end
+		end
+		return pts
 	end, len = function(r)
-		return (0.2 + 0.28 * L) * (0.8 + 0.35 * r[9])
-	end, w = 0.034, h = 0.009, off = function(u)
-		return 0.026 + 0.03 * u * (1 + H.volume * 0.5)
-	end, wave = H.htype == "Wavy" and { amp = 0.012, lam = 0.2, phase = wavePhase(H) } or nil, twist = 0.5, maxRings = 10, tips = 0.5 })
+		return (0.22 + 0.3 * L) * (0.8 + 0.35 * r[9])
+	end, w = 0.022, h = 0.005, flat = 0.5, off = function(u)
+		return 0.038 + 0.016 * smoothstep(0, 0.3, u) * (1 + vol * 0.5)
+	end, wave = wave, twist = 0.3, maxRings = 10, tips = 0.5, material = "Plastic", taper = 0.55, tipW = 0.12, layerK = 1.1,
+		share = 0.45 })
+	Parts.Fur(H, { n = 300, flow = flow, lift = 0.2, len = function(r)
+		return 0.05 + 0.06 * r[9]
+	end, off = 0.045, share = 0.35, accept = function(x, y, z, da, c)
+		return region(x, y, z, da) * smoothstep(0.7, 0.95, c)
+	end })
 	Parts.Flyaways(H, { n = 10, flow = flow, accept = function(x, y, z, da, c)
 		return region(x, y, z, da) * c
-	end })
+	end, share = 0.08 })
 	H.fx = { kind = "bounce", stiff = 0.6, mass = 0.9 }
 end
 
+-- the wolf cut: a shaggy, layered cut - a sheet of choppy locks from the crown over the back and sides to
+-- the neck, its ends flicking out (the mullet line), short choppy layers lifted on the crown, a fringe stopping
+-- above the brows, fine strands and flyaways. Every layer has its own share of the budget (the back layer is the
+-- style: it is built first, as the mass)
 R["Wolf Cut"] = function(H)
 	local S = H.S
 	local L = H.len
 	if CURLY[H.htype] then
 		return longCurly(H)
 	end
-	S.guardFace = true
-	Parts.Cap(H, { top = 0.03, side = 0.026, pattern = "strands", flow = "whorl", capT = 0.3, streak = 0.6 })
+	Parts.Cap(H, { top = 0.03, side = 0.026, pattern = "strands", flow = "whorl", capT = 0.2, capK = 0.8, streak = 0.6, material = "Plastic" })
 	local whorl = Kit.Flow(S, "down")
 	local wave = { amp = H.htype == "Wavy" and 0.022 or 0.01, lam = 0.2, phase = wavePhase(H), rise = 0.08 }
-	-- the crown: short choppy layers lifted for volume
-	Parts.Clumps(H, { n = 70, seed = 14, flow = whorl, lift = 0.45, stick = 0.35, grav = 0.35, stiff = 0.4,
+	-- the back and side layer falls straight down the back and the sides (a little back at the temples)
+	local fall = function(x, y, z, nx, ny, nz)
+		local vx, vy, vz = 0.2 * x, -1, 0.15 + 0.5 * smoothstep(0.05, -0.35, z)
+		local d = vx * nx + vy * ny + vz * nz
+		return Kit.norm3(vx - nx * d, vy - ny * d, vz - nz * d)
+	end
+	-- the ends flick outward (the shag's flipped-out hem)
+	local flick = function(pts)
+		local n = #pts
+		local i0 = floor(n * 0.72)
+		for i = i0, n do
+			local u = (i - i0) / max(1, n - i0)
+			local p = pts[i]
+			local ox, _, oz = Kit.norm3(p[1], 0, p[3] - 0.05)
+			p[1] += ox * 0.045 * u * u
+			p[3] += oz * 0.045 * u * u
+			p[2] += 0.018 * u * u
+		end
+		return pts
+	end
+	Parts.Curtain(H, {
+		cols = 52, az0 = -2.5, az1 = 2.5, th = function(az)
+			-- under the crown layers: high on the back, lower round the sides to the temples
+			return 1.08 - 0.12 * smoothstep(0.4, 1.6, abs(az)) + 0.04 * smoothstep(1.8, 2.5, abs(az))
+		end, len = function(az, rnd)
+			-- longest at the back (to the neck), shorter round the sides, shortest at the temples
+			local a = abs(az)
+			return (0.62 + 0.45 * L) * lerp(1, 0.62, smoothstep(0.5, 1.7, a)) * lerp(1, 0.75, smoothstep(1.9, 2.5, a))
+				* (0.9 + 0.2 * rnd)
+		end, flow = fall, off = function(u)
+			return 0.03 + 0.014 * u
+		end, stick = 0.8, grav = 1, stiff = 0.3, bend = flick, wave = wave, bodyOff = 0.07, hang = { prefix = "HairClump" },
+		shade = 0.98, innerShade = 0.5, half = 0.005, rings0 = 16, innerStride = 2, material = "Plastic",
+		locks = { w = 3, amp = 0.012, root = 0.004, pointK = 0.22, jag = 0.16 },
+	})
+	-- slim locks over the back layer: strand detail and a broken, flicked hem
+	Parts.Clumps(H, { n = 46, seed = 16, sides = 3, flow = fall, lift = 0.04, stick = 0.85, grav = 1, stiff = 0.3,
 		accept = function(x, y, z, da, c)
-			return smoothstep(0.3, 0.42, y) * smoothstep(0.6, 0.9, c)
+			return smoothstep(1.1, 2.0, da) * smoothstep(0.12, 0.24, y) * (1 - smoothstep(0.36, 0.44, y)) * smoothstep(0.6, 0.9, c)
 		end, len = function(r)
-			return (0.14 + 0.12 * L) * (0.75 + 0.5 * r[9])
-		end, w = 0.034, h = 0.01, off = function(u)
-			return 0.03 + 0.03 * u
-		end, wave = wave, twist = 0.8, jitter = { amp = 0.35, freq = 6 }, maxRings = 9, tips = 0.5 })
-	-- the fringe: choppy, falling forward, stopping above the brows
-	S.guardFace = false
-	Parts.Clumps(H, { n = 22, seed = 15, flow = Kit.Flow(S, "forward"), lift = 0.25, stick = 0.6, grav = 0.6, stiff = 0.4, free = 0.6,
+			local a = abs(math.atan2(r[1], r[3]))
+			return (0.5 + 0.4 * L) * lerp(1, 0.6, smoothstep(0.5, 1.7, a)) * (0.85 + 0.3 * r[9])
+		end, w = 0.024, h = 0.005, flat = 0.4, off = function(u)
+			return 0.046 + 0.014 * u
+		end, bend = flick, wave = wave, twist = 0.4, bodyOff = 0.085, hang = { prefix = "HairClump" }, maxRings = 9, tips = 0.6,
+		material = "Plastic", taper = 0.55, tipW = 0.1, share = 0.16 })
+	-- the crown: short choppy layers lifted for volume, lying over the back layer's roots
+	Parts.Clumps(H, { n = 280, seed = 14, sides = 3, flow = whorl, lift = 0.3, stick = 0.5, grav = 0.4, stiff = 0.4,
 		accept = function(x, y, z, da, c)
+			return smoothstep(0.24, 0.36, y) * smoothstep(0.6, 0.9, c)
+		end, len = function(r)
+			return (0.15 + 0.12 * L) * (0.75 + 0.5 * r[9])
+		end, w = 0.026, h = 0.005, flat = 0.5, off = function(u)
+			return 0.04 + 0.022 * u
+		end, wave = wave, twist = 0.6, jitter = { amp = 0.3, freq = 6 }, maxRings = 6, tips = 0.5, material = "Plastic",
+		taper = 0.55, tipW = 0.12, share = 0.44 })
+	-- the fringe: choppy, falling forward, stopping above the brows
+	Parts.Clumps(H, { n = 30, seed = 15, sides = 3, flow = Kit.Flow(S, "forward"), lift = 0.2, stick = 0.6, grav = 0.6, stiff = 0.4,
+		free = 0.6, accept = function(x, y, z, da, c)
 			return (1 - smoothstep(0.5, 0.9, da)) * smoothstep(0.5, 0.9, c)
 		end, len = function(r)
 			return (0.12 + 0.08 * L) * (0.8 + 0.4 * r[9])
-		end, w = 0.03, h = 0.009, off = function(u)
-			return 0.03 + 0.01 * u
+		end, w = 0.024, h = 0.005, flat = 0.5, off = function(u)
+			return 0.035 + 0.01 * u
 		end, bend = function(pts)
-			-- never below the brows (nominal y ~0.13)
+			-- never below the brows
 			for _, p in ipairs(pts) do
-				if p[2] < 0.15 then
-					p[2] = 0.15
+				if p[2] < 0.2 then
+					p[2] = 0.2
 				end
 			end
 			return pts
-		end, twist = 0.6, maxRings = 8, tips = 0.5 })
-	S.guardFace = true
-	-- sides and back: longer layers that flick out at the ends (the mullet line)
-	local flow = Kit.Flow(S, "down")
-	Parts.Clumps(H, { n = 60, seed = 16, flow = flow, lift = 0.25, stick = 0.8, grav = 1, stiff = 0.3,
-		accept = function(x, y, z, da, c)
-			return smoothstep(0.9, 1.4, da) * smoothstep(0.5, 0.9, c) * (1 - smoothstep(0.38, 0.5, y))
-		end, len = function(r)
-			return (0.26 + 0.3 * L) * (0.8 + 0.4 * r[9])
-		end, w = 0.036, h = 0.01, off = function(u)
-			return 0.034 + 0.02 * u
-		end, bend = function(pts)
-			-- the ends flick outward
-			local n = #pts
-			for i = math.floor(n * 0.7), n do
-				local u = (i - n * 0.7) / (n * 0.3)
-				local p = pts[i]
-				local ox, oy, oz = Kit.norm3(p[1], 0, p[3] - 0.05)
-				p[1] += ox * 0.05 * u * u
-				p[3] += oz * 0.05 * u * u
-				p[2] += 0.02 * u * u
-			end
-			return pts
-		end, wave = wave, hang = { prefix = "HairClump" }, twist = 0.6, maxRings = 12, tips = 0.5 })
-	Parts.Flyaways(H, { n = 18, flow = whorl })
+		end, twist = 0.5, maxRings = 8, tips = 0.5, material = "Plastic", taper = 0.55, tipW = 0.12, share = 0.12 })
+	Parts.Fur(H, { n = 200, flow = whorl, lift = 0.4, len = function(r)
+		return 0.05 + 0.05 * r[9]
+	end, off = 0.035, share = 0.12, accept = function(x, y, z, da, c)
+		return smoothstep(0.6, 0.9, c) * smoothstep(0.2, 0.35, y)
+	end })
+	Parts.Flyaways(H, { n = 18, flow = whorl, share = 0.06 })
 	H.fx = { kind = "swing", stiff = 0.3, mass = 0.9 }
-	S.guardFace = false
 end
 
 ------------------------------------------------------------------------
@@ -886,12 +1206,11 @@ local function build(look, lod, ctx, style, htype, nScale)
 		end
 		local full = H.lod == "full"
 		local seed = H.seed % 1000
-		Parts.Cap(H, { top = 0.004 + 0.006 * H.grow, side = 0.004 + 0.005 * H.grow, density = clamp(0.2 + 0.5 * H.grow, 0, 0.72),
-			pattern = "stubble", flow = "whorl", grain = 0.75, capT = 0.8, edge = 0.05, gridNormals = true, streak = 0,
-			cols = full and 84 or (H.lod == "medium" and 44 or nil), rows = full and 38 or (H.lod == "medium" and 18 or nil),
-			extra = function(x, y, z, c)
-				return 0.0015 * (Kit.RNoise(x, y, z, 26, seed, 1) + 0.5 * Kit.RNoise(x, y, z, 55, seed + 1, 2)) * c
-			end })
+		-- regrowth on a shaved head: a skin-thin stubble layer (texture only, the scalp's own normals and
+		-- material), sparse enough that the skin shows through as a shadow
+		Parts.Cap(H, { top = 0.0025 + 0.002 * H.grow, side = 0.002 + 0.0015 * H.grow, density = clamp(0.12 + 0.3 * H.grow, 0, 0.42),
+			pattern = "stubble", flow = "whorl", grain = 0.75, capT = 0.8, edge = 0.05, streak = 0, material = "SmoothPlastic",
+			reflectance = 0, cols = full and 64 or (H.lod == "medium" and 40 or nil), rows = full and 28 or (H.lod == "medium" and 16 or nil) })
 	else
 		recipeFor(style, htype)(H)
 	end

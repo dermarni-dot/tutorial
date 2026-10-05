@@ -9,16 +9,23 @@
 --    a group's lower segment ("b") hangs from the upper one (chain composition) and lags it
 --  * bounce (afros, coily volumes, curls, short locs, mohawks, puffs): a vertical spring (compress / spring
 --    back) plus a small tilt, driven by vertical / lateral acceleration and impulses
---  * wet hair (the model's Sweat attribute): heavier and more damped, darker and a touch shinier
--- Round-1 hair (the part-built fallback, CONTRACTS section 5) keeps its behaviour, and is skipped while a model's
--- mesh hair replaces it:
+--  * swinging tips stay out of the body: capsules over the trapezius / deltoids (neck base to each upper arm)
+--    and the chest / back push a segment back about its pivot (guard poses, neck turns, punches)
+--  * wet hair (the model's Sweat attribute): heavier and more damped, darker and a touch shinier. Vertex
+--    coloured pieces darken through MeshPart.Color; a textured piece (the cap) through its own texture (a
+--    part's Color does not tint a texture): its original pixels are read once and each wetness step rewrites
+--    the image from them, a few rows per frame
+-- Round-1 hair (the part-built fallback, CONTRACTS section 5) keeps its behaviour:
 --  * HairSway Motor6Ds (hair chains, braids, locs, ponytails, boot lace tails, frayed wrap ends): a damped
 --    spring per joint, excited by the joint pivot's motion, gravity bias, Stiff / Mass / Sweat
 --  * HairBounce clusters: a vertical / lateral jiggle; HairStrand Beams: curve sway from the head's motion
+--  * only what a mesh hides rests: BoxerLook.Hair while the model has mesh hair, any other chain whose
+--    segment AnatomyClient replaced (a mesh beard); boot laces and wrap ends keep swinging
 -- HairFX.Impulse(model, x, z, amount): an extra whip ((x, z) = the direction the hair is flung in head space,
 -- +x = the head's right, +z = backwards).
 -- LOD: every frame under 25 studs, every 2nd frame to 60, frozen (eased back to rest) beyond, skipped off
--- screen. No per-frame allocation (CFrames are values).
+-- screen (the motion history is dropped there, so a model coming back on screen gets no false whip). No
+-- per-frame allocation: the pivot frames are built once per piece; CFrame products are the only temporaries.
 local CollectionService = game:GetService("CollectionService")
 
 local K = require(script.Parent:WaitForChild("AnimKit"))
@@ -46,6 +53,8 @@ local DOWN = Vector3.new(0, -1, 0)
 
 local NEAR, MID = 25, 60
 local MAXA = 1.15 -- rad: a hair joint never swings further than this
+local FWD = 0.35 -- rad: a mesh hair segment never swings further toward the face than this
+local WET_ROWS = 16 -- texture rows rewritten per frame for the wet look (256 / 128 are multiples)
 local owners = {} -- model -> { joints = {}, strands = {}, head, ... } (round-1 hair)
 local meshes = {} -- model -> { pieces = { list }, byName = {}, head, sweat, ... } (mesh hair)
 
@@ -111,6 +120,10 @@ local function addJoint(m)
 		-- head hair / beard only: B's boot-lace tails and wrap ends share the HairSway tag but must not
 		-- be whipped by a punch to the head (they keep their motion-driven sway)
 		hair = m:FindFirstAncestor("Hair") ~= nil or m:FindFirstAncestor("Beard") ~= nil,
+		-- in BoxerLook.Hair: hidden (and left at rest) while the model has mesh hair
+		inHair = m:FindFirstAncestor("Hair") ~= nil,
+		-- its segment is hidden by another mesh (AnatomyClient.IsReplaced, refreshed twice a second)
+		replaced = false,
 	}
 	j.anchor = chainAnchor(m)
 	table.insert(o.joints, j)
@@ -133,15 +146,17 @@ local function addStrand(b)
 	})
 end
 
-local function relax(o)
-	for _, j in ipairs(o.joints) do
-		j.x, j.z, j.y, j.vx, j.vz, j.vy = 0, 0, 0, 0, 0, 0
-		j.prevCF = nil
-		if j.written and j.m.Parent then
-			j.m.Transform = I
-		end
-		j.written = false
+local function restJoint(j)
+	j.x, j.z, j.y, j.vx, j.vz, j.vy = 0, 0, 0, 0, 0, 0
+	j.prevCF = nil
+	j.prevVel = Vector3.zero
+	if j.written and j.m.Parent then
+		j.m.Transform = I
 	end
+	j.written = false
+end
+
+local function restStrands(o)
 	for _, s in ipairs(o.strands) do
 		if s.last0 and s.b.Parent then
 			s.b.CurveSize0 = s.c0
@@ -150,6 +165,13 @@ local function relax(o)
 		s.last0, s.last1 = nil, nil
 	end
 	o.lastPos = nil
+end
+
+local function relax(o)
+	for _, j in ipairs(o.joints) do
+		restJoint(j)
+	end
+	restStrands(o)
 	o.rest = true
 end
 
@@ -241,15 +263,203 @@ local function windAt(t, seed)
 	return gx, gz
 end
 
+-- texture rows rewritten for the wet look so far (diagnostics; read-only for callers)
+local wetStats = { rows = 0 }
+HairFX.WetStats = wetStats
+
+-- a textured piece's wet look: start rewriting its image at wetness q (the original pixels are read once)
+local function wetTexture(e, q)
+	local img = e.image
+	if not img then
+		return
+	end
+	if not e.orig then
+		if q <= 0.001 then
+			return
+		end
+		local ok, buf = pcall(function()
+			return img:ReadPixelsBuffer(Vector2.zero, img.Size)
+		end)
+		local size = ok and img.Size
+		if not ok or typeof(buf) ~= "buffer" or size.X < 1 or size.Y % WET_ROWS ~= 0 then
+			e.image = nil
+			return
+		end
+		e.orig, e.tw, e.th = buf, size.X, size.Y
+		e.rows = buffer.create(size.X * WET_ROWS * 4)
+		e.rowSize = Vector2.new(size.X, WET_ROWS)
+		e.rowPos = {}
+		for r = 0, size.Y - WET_ROWS, WET_ROWS do
+			e.rowPos[#e.rowPos + 1] = Vector2.new(0, r)
+		end
+		e.lut = table.create(256, 0)
+	end
+	-- a darker multiplier (wet hair loses its scattered light), as a lookup table for this level
+	local k = 1 - 0.28 * q
+	for i = 0, 255 do
+		e.lut[i + 1] = math.floor(i * k + 0.5)
+	end
+	e.wetQ, e.wetChunk = q, 1
+end
+
+-- rewrite the next WET_ROWS rows of a piece's texture from its original pixels (one chunk per frame)
+local function stepWetTexture(e)
+	local chunk = e.wetChunk
+	local pos = e.rowPos and e.rowPos[chunk]
+	if not pos then
+		e.wetChunk = nil
+		return
+	end
+	local src, dst, lut = e.orig, e.rows, e.lut
+	local base = (chunk - 1) * WET_ROWS * e.tw * 4
+	local readu8, writeu8 = buffer.readu8, buffer.writeu8
+	for o = 0, e.tw * WET_ROWS * 4 - 4, 4 do
+		writeu8(dst, o, lut[readu8(src, base + o) + 1])
+		writeu8(dst, o + 1, lut[readu8(src, base + o + 1) + 1])
+		writeu8(dst, o + 2, lut[readu8(src, base + o + 2) + 1])
+		writeu8(dst, o + 3, readu8(src, base + o + 3))
+	end
+	local ok = pcall(e.image.WritePixelsBuffer, e.image, pos, e.rowSize, dst)
+	if not ok then
+		-- the image went away with its piece (a rebuild): stop
+		e.image, e.wetChunk = nil, nil
+		return
+	end
+	wetStats.rows += WET_ROWS
+	e.wetChunk = chunk + 1
+	if chunk + 1 > #e.rowPos then
+		e.wetChunk = nil
+		if e.wetQ <= 0.001 then
+			-- dry again: the original pixels are back, drop the copy
+			e.orig, e.rows, e.rowPos = nil, nil, nil
+		end
+	end
+end
+
 local function setWet(rec, q)
 	rec.wetApplied = q
 	for _, p in ipairs(rec.list) do
 		local part = p.part
 		if part and part.Parent then
-			-- darker (a multiplier on the hair's own colours) and a touch shinier; never mirror-like
-			local c = 1 - 0.3 * q
-			part.Color = Color3.new(c, c, c)
+			-- a touch shinier, never mirror-like
 			part.Reflectance = min(0.08, p.baseRefl + 0.05 * q)
+			if p.image then
+				wetTexture(p, q)
+				rec.wetBusy = true
+			elseif not p.textured then
+				-- darker: a multiplier on the hair's own vertex colours
+				local c = 1 - 0.3 * q
+				part.Color = Color3.new(c, c, c)
+			end
+		end
+	end
+end
+
+-- the body long hair must stay out of: the generator's body proxy (AnatomyHairKit S.body: the trapezius
+-- ellipsoid and the upper torso's rounded box, both in the UpperTorso's space) and a deltoid sphere per arm
+-- round its shoulder pivot (it moves with the arm: a guard raises it). Sizes from the parts, the head scale k.
+local function bodyOf(model, head)
+	local torso = model:FindFirstChild("UpperTorso")
+	if not (torso and torso:IsA("BasePart") and head) then
+		return nil
+	end
+	local k = head.Size.Y / 1.2
+	local ts = torso.Size
+	-- a little clearance over the proxy: the visible body (meshes) is fuller than it
+	local c = 0.035 * k
+	local b = {
+		torso = torso, tcf = CFrame.identity, arms = {},
+		ex = 0.94 * ts.X / 2 + c, ey = 0.25 * k + c, ez = 0.92 * ts.Z / 2 + c, ecy = ts.Y / 2 - 0.17 * k,
+		bx = 0.88 * ts.X / 2 + c, by = ts.Y / 2 + c, bz = 0.96 * ts.Z / 2 + c, br = 0.2 * k + c,
+	}
+	b.emin = min(b.ex, b.ey, b.ez)
+	-- the bind pose (Transform identity): the torso in head space is Neck.C1 * Neck.C0^-1, an arm in torso space
+	-- Shoulder.C0 * Shoulder.C1^-1. What the built hair already touches there is not a collision
+	local neck = head:FindFirstChild("Neck")
+	if neck and neck:IsA("Motor6D") then
+		b.bind = neck.C1 * neck.C0:Inverse()
+	end
+	for _, side in ipairs({ "Left", "Right" }) do
+		local arm = model:FindFirstChild(side .. "UpperArm")
+		local m = arm and arm:FindFirstChild(side .. "Shoulder")
+		if arm and arm:IsA("BasePart") and m and m:IsA("Motor6D") then
+			local at = m.C1.Position * 0.7
+			local a = { part = arm, at = at, c = Vector3.zero, r = 0.24 * min(arm.Size.X, arm.Size.Z) + c }
+			if b.bind then
+				a.c0 = b.bind:PointToWorldSpace((m.C0 * m.C1:Inverse()):PointToWorldSpace(at))
+			end
+			table.insert(b.arms, a)
+		end
+	end
+	return b
+end
+
+local function sgn(v)
+	return v < 0 and -1 or 1
+end
+
+-- how deep a head-space point is inside the body: depth, push direction (head space, unit) or nil.
+-- bind: measured in the bind pose instead of this frame's
+local function bodyDepth(b, tip, bind)
+	local tcf = bind and b.bind or b.tcf
+	local p = tcf:PointToObjectSpace(tip)
+	local px, py, pz = p.X, p.Y, p.Z
+	local best, gx, gy, gz = 0, 0, 0, 0
+	-- trapezius
+	local qx, qy, qz = px / b.ex, (py - b.ecy) / b.ey, pz / b.ez
+	local l = sqrt(qx * qx + qy * qy + qz * qz)
+	if l < 1 and l > 1e-4 then
+		best = (1 - l) * b.emin
+		gx, gy, gz = qx / b.ex, qy / b.ey, qz / b.ez
+	end
+	-- upper torso (rounded box)
+	local r = b.br
+	local ax, ay, az = abs(px) - (b.bx - r), abs(py) - (b.by - r), abs(pz) - (b.bz - r)
+	local ox, oy, oz = max(ax, 0), max(ay, 0), max(az, 0)
+	local d = sqrt(ox * ox + oy * oy + oz * oz) + min(max(ax, max(ay, az)), 0) - r
+	if d < 0 and -d > best then
+		best = -d
+		if ox + oy + oz > 0 then
+			gx, gy, gz = ox * sgn(px), oy * sgn(py), oz * sgn(pz)
+		elseif ax >= ay and ax >= az then
+			gx, gy, gz = sgn(px), 0, 0
+		elseif ay >= az then
+			gx, gy, gz = 0, sgn(py), 0
+		else
+			gx, gy, gz = 0, 0, sgn(pz)
+		end
+	end
+	local n
+	if best > 0 then
+		n = tcf:VectorToWorldSpace(V3(gx, gy, gz))
+		local m = n.Magnitude
+		n = m > 1e-6 and n / m or nil
+	end
+	-- deltoids (head space already)
+	for _, a in ipairs(b.arms) do
+		local dv = tip - (bind and a.c0 or a.c)
+		local dl = dv.Magnitude
+		if dl < a.r and a.r - dl > best and dl > 1e-5 then
+			best, n = a.r - dl, dv / dl
+		end
+	end
+	if n then
+		return best, n
+	end
+	return 0, nil
+end
+
+-- the body in the head's frame this frame
+local function bodyFrame(rec, hcf)
+	local b = rec.body
+	if not b.torso.Parent then
+		rec.body = nil
+		return
+	end
+	b.tcf = hcf:ToObjectSpace(b.torso.CFrame)
+	for _, a in ipairs(b.arms) do
+		if a.part.Parent then
+			a.c = hcf:PointToObjectSpace(a.part.CFrame:PointToWorldSpace(a.at))
 		end
 	end
 end
@@ -262,13 +472,16 @@ local function onBuilt(model, section, pieces)
 	local rec = meshes[model]
 	local old = rec and rec.byName or {}
 	rec = { model = model, list = {}, byName = {}, head = model:FindFirstChild("Head"), sweat = 0, nextAttr = 0, frame = 0,
-		rest = true, wetApplied = -1, seed = (#model.Name * 1.37) % 6.28 }
+		rest = true, wetApplied = -1, seed = (#model.Name * 1.37) % 6.28, gap = true }
+	rec.body = bodyOf(model, rec.head)
 	for name, pr in pairs(type(pieces) == "table" and pieces or {}) do
 		local mesh = pr.mesh
 		local fx = mesh and mesh.hairfx
 		local part = pr.part
 		local entry = {
 			name = name, part = part, baseRefl = part and part.Reflectance or 0, fx = fx,
+			-- a textured piece (the image AnatomyClient made for it): wetness darkens the texture itself
+			image = pr.image, textured = pr.image ~= nil,
 			-- spring state: swing angles (x about the head's X, z about its Z) / bounce height y
 			x = 0, z = 0, y = 0, vx = 0, vz = 0, vy = 0, prevPos = nil, prevVel = Vector3.zero, written = false,
 			cf = I,
@@ -278,6 +491,8 @@ local function onBuilt(model, section, pieces)
 			local tp = type(fx.tip) == "table" and fx.tip or fx.pivot
 			entry.tip = V3(tp[1], tp[2], tp[3])
 			entry.len = (entry.tip - entry.pivot).Magnitude
+			-- the swing about the pivot is CF(p) * rotation * CF(-p): the two constant frames are built once
+			entry.pcf, entry.pinv = CF(entry.pivot), CF(-entry.pivot)
 			entry.stiff = clamp(tonumber(fx.stiff) or 0.3, 0, 1)
 			entry.mass = clamp(tonumber(fx.mass) or 1, 0.3, 3)
 			entry.seg = tonumber(fx.seg) or 1
@@ -305,11 +520,21 @@ local function onBuilt(model, section, pieces)
 		end
 		return a.name < b.name
 	end)
+	-- the body contact each swinging piece's tip already has as built (the bind pose)
+	local b = rec.body
+	if b and b.bind then
+		for _, e in ipairs(rec.list) do
+			if e.tip and not e.bounce then
+				e.depth0 = bodyDepth(b, e.tip, true)
+			end
+		end
+	end
 	meshes[model] = rec
 	rec.sweat = model:GetAttribute("Sweat")
 	rec.sweat = type(rec.sweat) == "number" and clamp(rec.sweat, 0, 1) or 0
-	if rec.sweat > 0.02 then
-		setWet(rec, rec.sweat)
+	local q = math.floor(rec.sweat * 4 + 0.5) / 4
+	if q > 0 then
+		setWet(rec, q)
 	end
 end
 
@@ -331,6 +556,50 @@ local function relaxMesh(rec)
 		e.cf = I
 	end
 	rec.rest = true
+end
+
+-- keep a swinging segment's tip (head space) out of the body: rotate it about its pivot, small-angle
+-- (Angles(+x) moves a tip by X x r, Angles(0, 0, +z) by Z x r; r = the pivot-to-tip arm), and stop the
+-- motion into the body. True when it moved the segment.
+-- how often the body pushed hair out, and the deepest push (diagnostics; read-only for callers)
+local colStats = { pushes = 0, deepest = 0 }
+HairFX.CollisionStats = colStats
+
+local function collide(rec, e, tip, piv)
+	local depth, n = bodyDepth(rec.body, tip)
+	-- only what goes deeper than the hair was built (a group's mean tip can sit just inside the proxy)
+	depth -= e.depth0 or 0
+	if not n or depth <= 0 then
+		return false
+	end
+	colStats.pushes += 1
+	if depth > colStats.deepest then
+		colStats.deepest = depth
+	end
+	local r = tip - piv
+	local ax, ay, az = 0, -r.Z, r.Y -- X x r
+	local bx, by = -r.Y, r.X -- Z x r (its z component is 0)
+	local la, lb = ay * ay + az * az, bx * bx + by * by
+	local dx, dy, dz = n.X * depth, n.Y * depth, n.Z * depth
+	if la > 1e-4 then
+		local k = (dy * ay + dz * az) / la
+		e.x += k
+		if k > 0 then
+			e.vx = max(e.vx, 0)
+		else
+			e.vx = min(e.vx, 0)
+		end
+	end
+	if lb > 1e-4 then
+		local k = (dx * bx + dy * by) / lb
+		e.z += k
+		if k > 0 then
+			e.vz = max(e.vz, 0)
+		else
+			e.vz = min(e.vz, 0)
+		end
+	end
+	return true
 end
 
 -- one moving piece: forcing from its pivot's acceleration (head space), gravity bias, wind, idle; spring
@@ -371,8 +640,7 @@ local function stepPiece(rec, e, dt, t, hcf, g, wx, wz)
 		e.y = clamp(e.y, -lim, lim * 0.6)
 		e.x = clamp(e.x, -0.1, 0.1)
 		e.z = clamp(e.z, -0.1, 0.1)
-		local p = e.pivot
-		e.cf = CF(0, e.y, 0) * CF(p) * A(e.x, 0, e.z) * CF(-p)
+		e.cf = CF(0, e.y, 0) * e.pcf * A(e.x, 0, e.z) * e.pinv
 		return
 	end
 	-- swing: gravity bias first (the hair keeps hanging down when the head tilts), weaker for stiff hair
@@ -391,17 +659,21 @@ local function stepPiece(rec, e, dt, t, hcf, g, wx, wz)
 	e.x, e.vx = K.spring(e.x, e.vx, tx, kk, cc, dt)
 	e.z, e.vz = K.spring(e.z, e.vz, tz, kk, cc, dt)
 	local lim = e.seg <= 1 and 0.6 or 0.8
-	if abs(e.x) > lim then
-		e.x = clamp(e.x, -lim, lim)
+	-- Angles(+x) swings the tip forward: toward the face / chest, never far
+	if e.x > FWD or e.x < -lim then
+		e.x = clamp(e.x, -lim, FWD)
 		e.vx *= -0.3
 	end
 	if abs(e.z) > lim then
 		e.z = clamp(e.z, -lim, lim)
 		e.vz *= -0.3
 	end
-	local p = e.pivot
 	-- the lower segment swings about its own pivot inside its parent's motion
-	e.cf = parentCF * CF(p) * A(e.x, 0, e.z) * CF(-p)
+	e.cf = parentCF * e.pcf * A(e.x, 0, e.z) * e.pinv
+	-- the tip where this swing puts it (head space): out of the shoulders, chest and back
+	if rec.body and collide(rec, e, e.cf:PointToWorldSpace(e.tip), parentCF:PointToWorldSpace(e.pivot)) then
+		e.cf = parentCF * e.pcf * A(e.x, 0, e.z) * e.pinv
+	end
 end
 
 local function stepMesh(rec, dt, t, hcf)
@@ -409,6 +681,9 @@ local function stepMesh(rec, dt, t, hcf)
 	local wx, wz = windAt(t, rec.seed)
 	-- wind in the head's frame (a world-space breeze)
 	local wv = hcf:VectorToObjectSpace(V3(wx, 0, wz))
+	if rec.body then
+		bodyFrame(rec, hcf)
+	end
 	for _, e in ipairs(rec.list) do
 		if e.fx then
 			stepPiece(rec, e, dt, t, hcf, g, wv.X, wv.Z)
@@ -495,6 +770,8 @@ function HairFX.Update(dt, t, camPos, cam)
 			if not rec.rest and dist > MID then
 				relaxMesh(rec)
 			end
+			-- paused: the pivots' motion history is stale when it comes back (no false whip then)
+			rec.gap = true
 			continue
 		end
 		local stepN = dist < NEAR and 1 or 2
@@ -504,13 +781,33 @@ function HairFX.Update(dt, t, camPos, cam)
 		end
 		local sdt = min(dt * stepN, 1 / 15)
 		rec.rest = false
+		if rec.gap then
+			rec.gap = false
+			for _, e in ipairs(rec.list) do
+				e.prevPos = nil
+				e.prevVel = Vector3.zero
+			end
+		end
 		if t >= rec.nextAttr then
 			rec.nextAttr = t + 0.5
 			local sw = model:GetAttribute("Sweat")
 			rec.sweat = type(sw) == "number" and clamp(sw, 0, 1) or 0
-			if abs(rec.sweat - rec.wetApplied) >= 0.05 then
-				setWet(rec, rec.sweat)
+			-- wetness in steps (a textured piece rewrites its image for each one)
+			local q = math.floor(rec.sweat * 4 + 0.5) / 4
+			if q ~= rec.wetApplied then
+				setWet(rec, q)
 			end
+		end
+		if rec.wetBusy then
+			-- one chunk of rows per frame for every texture still being rewritten
+			local busy = false
+			for _, e in ipairs(rec.list) do
+				if e.wetChunk then
+					stepWetTexture(e)
+					busy = busy or e.wetChunk ~= nil
+				end
+			end
+			rec.wetBusy = busy
 		end
 		stepMesh(rec, sdt, t, head.CFrame)
 	end
@@ -537,12 +834,17 @@ function HairFX.Update(dt, t, camPos, cam)
 			owners[model] = nil
 			continue
 		end
-		-- mesh hair replaces this model's round-1 hair: those parts are hidden, leave them at rest
-		if meshes[model] then
-			if not o.rest then
-				relax(o)
+		-- mesh hair replaces BoxerLook.Hair only: those joints and strands rest (hidden); boot-lace tails, wrap
+		-- ends and the beard are not the Hair section's and keep swinging
+		local meshHair = meshes[model] ~= nil
+		if meshHair ~= (o.meshHair or false) then
+			o.meshHair = meshHair
+			for _, j in ipairs(js) do
+				if j.inHair then
+					restJoint(j)
+				end
 			end
-			continue
+			restStrands(o)
 		end
 		local head = o.head
 		if not head or not head.Parent then
@@ -576,12 +878,27 @@ function HairFX.Update(dt, t, camPos, cam)
 			o.nextAttr = t + 0.5
 			local sw = model:GetAttribute("Sweat")
 			o.sweat = type(sw) == "number" and clamp(sw, 0, 1) or 0
+			-- a chain another mesh hides (a mesh beard): at rest while hidden
+			if Anatomy and Anatomy.IsReplaced then
+				for _, j in ipairs(js) do
+					if not j.inHair then
+						local p1 = j.m.Part1
+						local rep = p1 ~= nil and Anatomy.IsReplaced(p1) == true
+						if rep and not j.replaced then
+							restJoint(j)
+						end
+						j.replaced = rep
+					end
+				end
+			end
 		end
 		for _, j in ipairs(js) do
-			stepJoint(j, sdt, o.sweat, t)
+			if not (j.replaced or (meshHair and j.inHair)) then
+				stepJoint(j, sdt, o.sweat, t)
+			end
 		end
-		-- strands: sway from the head's own motion (head space), only up close
-		if #ss > 0 and dist < NEAR then
+		-- strands (all in BoxerLook.Hair): sway from the head's own motion (head space), only up close
+		if #ss > 0 and dist < NEAR and not meshHair then
 			local hv = Vector3.zero
 			if o.lastPos then
 				hv = head.CFrame:VectorToObjectSpace((hp - o.lastPos) / sdt)

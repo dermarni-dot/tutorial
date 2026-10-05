@@ -16,14 +16,18 @@ local clamp, smooth, lerp, bell, bell3, bell2 = Kit.clamp, Kit.smooth, Kit.lerp,
 local TAU = pi * 2
 
 Torso.RES = {
-	full = { rings = 33, sides = 36, ltRings = 10, ltSides = 28, dome = 1, ltDome = 2, warp = 0.32 },
-	medium = { rings = 22, sides = 28, ltRings = 8, ltSides = 18, dome = 1, ltDome = 1, warp = 0.28 },
-	low = { rings = 12, sides = 14, ltRings = 5, ltSides = 12, dome = 1, ltDome = 1, warp = 0.2 },
+	full = { rings = 29, sides = 32, ltRings = 12, ltSides = 28, dome = 1, ltDome = 2, warp = 0.32 },
+	medium = { rings = 21, sides = 24, ltRings = 8, ltSides = 16, dome = 1, ltDome = 1, warp = 0.28 },
+	low = { rings = 12, sides = 12, ltRings = 5, ltSides = 12, dome = 1, ltDome = 1, warp = 0.2 },
 }
 
 ------------------------------------------------------------------------
 -- Silhouettes (half width W in shoulder-span units, front F / back K depth in half-depth units)
 ------------------------------------------------------------------------
+-- The R15 shoulder pivots sit at the torso box's edge and the arms are thick, so the torso proper stays
+-- inside the arms: widest at the armpit (chest wall + lats), then it narrows above the armpit and runs up
+-- the trapezius slope to the neck, tucked under the deltoid caps the arm pieces carry. The shoulder line is
+-- the arm's deltoid, never a corner of the torso.
 function Torso.Profiles(sk, P)
 	local fem = P.female
 	local lv, fk = P.lv, P.fatK
@@ -37,35 +41,47 @@ function Torso.Profiles(sk, P)
 	-- allows (still at least the contract minimum all round)
 	local rz = max(rMin * 1.06, min(rn * 0.97, 0.78 * hz)) -- the front is 0.95 of this: still over the minimum
 	local nx, fN, kN = rn / xS, rz * 0.95 / hz, rz * 1.04 / hz
-	local wk = (1 + 0.05 * P.sl.waist) * (1 + 0.1 * min(fk, 1.2))
+	local wk = (1 + 0.05 * P.sl.waist) * (1 + 0.1 * min(fk, 1.2)) * (1 - 0.05 * (P.pv.taper - 1))
 	local trap = 1 + 0.25 * lv.traps * (fem and 0.6 or 1)
+	-- the lats widen the back under the armpits (the V); the chest slider widens the rib cage
+	local lat = (0.015 + 0.06 * lv.lats) * P.pv.taper * (fem and 0.6 or 1)
+	local cw = 1 + 0.03 * P.sl.chest
+	-- the trapezius slope: from inside the deltoid at the shoulder pivot (u ~0.875) up to the neck
+	local ts = trap ^ 0.25
 	local W, F, K
 	if fem then
 		W = Kit.Curve({
-			{ -0.14, 0.76 }, { 0.0, 0.66 * wk }, { 0.12, 0.665 * wk }, { 0.25, 0.71 }, { 0.38, 0.77 }, { 0.5, 0.81 }, { 0.62, 0.83 },
-			{ 0.72, 0.85 }, { 0.8, 0.88 }, { 0.86, 0.92 }, { 0.92, 0.94 }, { 0.96, 0.9 }, { 0.99, max(0.8, nx * 1.75) },
-			{ 1.02, max(0.67, nx * 1.55) }, { 1.05, max(0.56, nx * 1.4) }, { 1.08, nx * 1.25 }, { 1.12, nx * 1.05 }, { 1.2, nx },
+			{ -0.14, 0.72 }, { 0.0, 0.6 * wk }, { 0.12, 0.605 * wk }, { 0.25, 0.66 }, { 0.38, 0.72 * cw }, { 0.5, 0.765 * cw + lat * 0.5 },
+			{ 0.62, 0.795 * cw + lat }, { 0.72, 0.81 * cw + lat * 0.8 }, { 0.8, 0.805 + lat * 0.3 }, { 0.86, 0.79 }, { 0.9, 0.765 },
+			{ 0.935, 0.72 * ts }, { 0.965, max(0.66 * ts, nx * 1.9) }, { 0.995, max(0.58, nx * 1.68) }, { 1.03, max(0.47, nx * 1.4) },
+			{ 1.07, nx * 1.15 }, { 1.12, nx * 1.03 }, { 1.2, nx },
 		})
 	else
+		-- (the torso's top edge meets the deltoid cap at about x 0.9 xS, 0.1 above the shoulder pivot (u ~0.93);
+		-- from there the trapezius rises to the neck)
 		W = Kit.Curve({
-			{ -0.14, 0.77 * wk }, { 0.0, 0.72 * wk }, { 0.12, 0.73 * wk }, { 0.25, 0.77 }, { 0.38, 0.83 }, { 0.5, 0.865 }, { 0.62, 0.885 },
-			{ 0.72, 0.9 }, { 0.8, 0.93 }, { 0.86, 0.965 }, { 0.92, 0.98 }, { 0.96, 0.935 }, { 0.99, max(0.84 * trap ^ 0.3, nx * 1.8) },
-			{ 1.02, max(0.7 * trap ^ 0.5, nx * 1.6) }, { 1.05, max(0.575 * trap ^ 0.5, nx * 1.42) }, { 1.08, max(nx * 1.28, 0.47 * trap ^ 0.4) },
-			{ 1.12, nx * 1.05 }, { 1.2, nx },
+			{ -0.14, 0.75 * wk }, { 0.0, 0.69 * wk }, { 0.12, 0.7 * wk }, { 0.25, 0.745 }, { 0.38, 0.795 * cw + lat * 0.3 },
+			{ 0.5, 0.835 * cw + lat * 0.65 }, { 0.62, 0.86 * cw + lat }, { 0.72, 0.875 * cw + lat * 0.9 }, { 0.8, 0.87 + lat * 0.4 },
+			{ 0.86, 0.84 }, { 0.9, 0.8 }, { 0.935, 0.765 * ts }, { 0.965, max(0.7 * ts, nx * 1.95) }, { 0.995, max(0.6 * ts, nx * 1.7) },
+			{ 1.03, max(0.5, nx * 1.42) }, { 1.07, nx * 1.16 }, { 1.12, nx * 1.03 }, { 1.2, nx },
 		})
 	end
 	-- the tops run down into the neck monotonically: no dip (a crease) where the neck is thick for the torso
 	F = Kit.Curve({
-		{ -0.14, 0.9 }, { 0.0, 0.88 }, { 0.2, 0.9 }, { 0.35, 0.95 }, { 0.5, 0.98 }, { 0.62, 0.98 }, { 0.74, 0.95 }, { 0.84, max(0.88, fN * 1.4) },
-		{ 0.92, max(0.77, fN * 1.28) }, { 0.97, max(0.66, fN * 1.13) }, { 1.01, fN * 1.04 }, { 1.06, fN * 1.01 }, { 1.2, fN },
+		{ -0.14, 0.9 }, { 0.0, 0.88 }, { 0.2, 0.9 }, { 0.35, 0.95 }, { 0.5, 0.98 }, { 0.62, 0.98 }, { 0.74, 0.95 }, { 0.84, max(0.87, fN * 1.4) },
+		{ 0.92, max(0.74, fN * 1.27) }, { 0.97, max(0.63, fN * 1.13) }, { 1.02, fN * 1.04 }, { 1.07, fN * 1.01 }, { 1.2, fN },
 	})
+	-- the back: full over the shoulder blades, then the trapezius sheet rising into the neck (a tent, no shelf)
 	K = Kit.Curve({
-		{ -0.14, 0.93 }, { 0.02, 0.86 }, { 0.18, 0.88 }, { 0.33, 0.93 }, { 0.48, 0.97 }, { 0.62, 0.99 }, { 0.74, max(0.99, min(1.04, kN * 1.5)) },
-		{ 0.84, max(0.95, min(1.02, kN * 1.42)) }, { 0.92, max(0.87, kN * 1.33) }, { 0.98, max(0.76, kN * 1.22) }, { 1.03, kN * 1.12 },
+		{ -0.14, 0.93 }, { 0.02, 0.86 }, { 0.18, 0.88 }, { 0.33, 0.93 }, { 0.48, 0.97 }, { 0.62, 1.0 }, { 0.74, max(1.0, min(1.04, kN * 1.5)) },
+		{ 0.84, max(0.96, min(1.02, kN * 1.42)) }, { 0.92, max(0.85, kN * 1.33) }, { 0.98, max(0.74, kN * 1.22) }, { 1.03, kN * 1.12 },
 		{ 1.08, kN * 1.04 }, { 1.2, kN },
 	})
-	local nF = Kit.Curve({ { -0.1, 2.2 }, { 0.5, 2.25 }, { 0.9, 2.25 }, { 1.0, 2.1 }, { 1.06, 2.0 } })
-	local nB = Kit.Curve({ { -0.1, 2.3 }, { 0.5, 2.4 }, { 0.9, 2.35 }, { 1.0, 2.15 }, { 1.06, 2.0 } })
+	-- the shoulders round off toward the deltoids (a squarer section keeps the torso's corner in front of the
+	-- deltoid cap, which then reads as an arm hung beside a box)
+	local nF = Kit.Curve({ { -0.1, 2.2 }, { 0.5, 2.25 }, { 0.7, 2.2 }, { 0.84, 1.95 }, { 0.95, 1.85 }, { 1.06, 2.0 } })
+	-- the upper back rounds into the sides (a squarer section reads as a box from behind)
+	local nB = Kit.Curve({ { -0.1, 2.3 }, { 0.42, 2.3 }, { 0.6, 2.05 }, { 0.84, 1.88 }, { 0.95, 1.85 }, { 1.06, 2.0 } })
 	-- posture: the neck rises a little behind the torso centre (under the skull's base)
 	local zc = Kit.Curve({ { 0.92, 0 }, { 1.05, 0.04 * hz }, { 1.2, 0.08 * hz } })
 	return { W = W, F = F, K = K, nF = nF, nB = nB, zc = zc, rn = rn, rz = rz }
@@ -85,7 +101,7 @@ local function torsoField(sk, P, prof, nv)
 	local W = prof.W
 	local ch = { groove = table.create(nv, 0), crown = table.create(nv, 0), pec = table.create(nv, 0), lat = table.create(nv, 0),
 		trap = table.create(nv, 0), abs = table.create(nv, 0), obl = table.create(nv, 0), rib = table.create(nv, 0),
-		belly = table.create(nv, 0) }
+		belly = table.create(nv, 0), raise = table.create(nv, 0), reach = table.create(nv, 0), fibre = table.create(nv, 0) }
 	local sideK = { [1] = Kit.SideK(P, 1), [-1] = Kit.SideK(P, -1) }
 	local hzK = (hz / 0.5) ^ 0.5
 	-- pectoralis major: every man has a chest plate; training thickens it, fat softens and lowers it
@@ -94,7 +110,9 @@ local function torsoField(sk, P, prof, nv)
 	-- (never sharper than ~2 ring spacings: a hard border stair-steps where it runs diagonally to the armpit)
 	local pecEdge = max(0.034, 0.022 + 0.03 * (1 - def) + 0.03 * fk)
 	local pecDrop = V.pecBorder - 0.03 * lv.pecs - 0.04 * fk
-	local pecBorder = Kit.Curve({ { 0.02, 0.505 }, { 0.22, 0.48 }, { 0.46, 0.47 }, { 0.66, 0.53 }, { 0.8, 0.62 }, { 0.92, 0.74 }, { 1.05, 0.86 } })
+	-- the lower border is a crescent: lowest under the nipple line, a rounded inner corner at the sternum,
+	-- sweeping up into the armpit fold (a flat line across the chest reads as two carved slabs)
+	local pecBorder = Kit.Curve({ { 0.02, 0.53 }, { 0.18, 0.485 }, { 0.38, 0.455 }, { 0.55, 0.475 }, { 0.7, 0.545 }, { 0.82, 0.64 }, { 0.92, 0.75 }, { 1.0, 0.84 }, { 1.05, 0.9 } })
 	-- rectus abdominis
 	local absH = (0.005 + 0.045 * lv.abs) * (0.15 + 0.85 * def) * (fem and 0.6 or 1) * pv.groove ^ 0.5
 	local absBand = (0.008 + 0.018 * lv.abs) * (1 - 0.5 * min(fk, 1))
@@ -118,17 +136,21 @@ local function torsoField(sk, P, prof, nv)
 	local serH = (0.003 + 0.014 * lv.serratus) * def * V.serratus * (fem and 0.5 or 1)
 	local latH = (0.012 + 0.085 * lv.lats) * pv.taper * flat
 	local trapH = (0.012 + 0.085 * lv.traps) * V.trapSlope * (fem and 0.7 or 1)
-	local trapBackH = (0.006 + 0.03 * lv.traps + 0.012 * lv.upperBack) * flat
-	local scapH = (0.008 + 0.035 * lv.upperBack + 0.015 * lv.rearDelt) * flat
-	local erecH = (0.008 + 0.045 * lv.lowerBack) * flat
-	local spineD = (0.01 + 0.02 * def) * (0.6 + 0.4 * lv.lowerBack)
+	-- the back carries as much relief as the front: the trapezius diamond, the muscles over the shoulder
+	-- blades, the erector columns either side of a real spine groove (a smooth plane reads as a box)
+	local backK = fem and 0.75 or 1
+	local trapBackH = (0.015 + 0.07 * lv.traps + 0.03 * lv.upperBack) * flat * backK
+	local scapH = (0.02 + 0.09 * lv.upperBack + 0.03 * lv.rearDelt) * flat * backK
+	local erecH = (0.02 + 0.1 * lv.lowerBack) * flat * backK
+	local spineD = (0.025 + 0.035 * def) * (0.6 + 0.4 * lv.lowerBack)
+	local spineW = 0.07 / xS
 	local clavH = 0.008 + 0.018 * lean * (fem and 0.8 or 1)
 	local ribH = 0.006 + 0.012 * lean
 	local scmH = (0.012 + 0.03 * lv.neckSCM) * (fem and 0.6 or 1)
 	local bellyH = 0.3 * fk ^ 1.4 * (hz / 0.5) * (fem and 0.6 or 1)
 	local handleH = 0.11 * fk * pv.waist
 	-- breasts (under the sports top)
-	local breastH = fem and (0.15 + 0.05 * min(fk + 0.3, 1)) * hzK or 0
+	local breastH = fem and (0.21 + 0.08 * min(fk + 0.3, 1)) * hzK or 0
 	local yN = sk.yN
 	local rn = prof.rn
 	-- sternocleidomastoid: mastoid (behind the ear, up the neck) -> sternal head (by the notch)
@@ -137,7 +159,7 @@ local function torsoField(sk, P, prof, nv)
 	local scmBot = { 0.15 * rn, yW + 0.975 * H, -0.95 * prof.F(0.975) * hz }
 	local baseDef = 0.25 + 0.75 * def -- separations everyone shows a little of
 
-	local function field(i, x, y, z, nx, ny, nz)
+	local function field(i, x, y, z, nx, ny, nz, detail)
 		local u = (y - yW) / H
 		local ax = abs(x)
 		local s = x < 0 and -1 or 1
@@ -156,15 +178,22 @@ local function torsoField(sk, P, prof, nv)
 			local edge = pecEdge * (1 + 1.8 * smooth(0.62, 0.95, fx))
 			local inside = smooth(ub - edge, ub + edge, u)
 			if inside > 0 then
-				local top = 1 - smooth(0.84, 0.97, u)
+				-- the upper border runs diagonally from the clavicle by the sternum down to the front deltoid
+				local topU = 0.955 - 0.11 * fx
+				local top = 1 - smooth(topU - 0.07, topU + 0.03, u)
 				local upper = lerp(1, upperK, smooth(ub + 0.08, 0.86, u))
 				local med = smooth(0.012, 0.1 + 0.14 * max(fk, 1 - def), fx)
 				local lat = 1 - smooth(0.84, 1.03, fx)
 				local swell = 0.72 + 0.28 * bell((fx - 0.5) / 0.48)
-				-- the full lower shelf in the middle of the chest; toward the armpit it flattens into the fold
-				local shelf = 1 + 0.4 * bell((u - (ub + 0.075)) / 0.1) * (1 - 0.75 * smooth(0.55, 0.95, fx))
+				-- the full lower shelf under the nipple line; toward the sternum and the armpit it fades
+				local shelf = 1 + 0.45 * bell((u - (ub + 0.075)) / 0.1) * bell((fx - 0.42) / 0.34)
 				local face = smooth(-0.35, 0.3, -nz)
 				local w = inside * top * upper * med * lat * swell * shelf * face
+				if detail then
+					-- the fan of fibres converging on the armpit insertion: faint light / dark striations
+					local au = math.atan2(u - 0.8, 0.98 - fx)
+					ch.fibre[i] = (0.5 + 0.5 * cos(au * 26)) * w * def * smooth(0.15, 0.4, fx)
+				end
 				local h = pecH * sk1 * w
 				d += h
 				ch.pec[i] = h
@@ -173,19 +202,21 @@ local function torsoField(sk, P, prof, nv)
 					* (1 - 0.85 * smooth(0.6, 0.95, fx))
 				groove += (1 - smooth(0.0, 0.09, fx)) * smooth(0.5, 0.62, u) * (1 - smooth(0.85, 0.95, u)) * 0.5 * baseDef
 				crown += w * 0.6
-				-- the groove between the pec and the front of the shoulder
-				groove += bell((fx - 0.9) / 0.07) * smooth(0.76, 0.84, u) * (1 - smooth(0.9, 0.96, u)) * face * 0.4 * baseDef
+				-- the deltopectoral groove: a diagonal line from under the clavicle down toward the armpit
+				local dpU = 0.9 - (fx - 0.86) * 2.4
+				groove += bell((u - dpU) / 0.035) * smooth(0.8, 0.88, fx) * (1 - smooth(0.97, 1.02, fx)) * face * 0.45 * baseDef
 			end
 		end
 		-- breasts under a compression top (women) --------------------------------
 		if fem and u > 0.38 and u < 0.95 and fx < 0.95 then
-			local w = bell2((fx - 0.38) / 0.4, (u - 0.6) / 0.21) * smooth(-0.4, 0.3, -nz)
-			-- the top binds them into one shelf: a shallow valley between, not two spheres
-			local valley = 1 - 0.35 * (1 - smooth(0.0, 0.16, fx))
+			-- fuller below, a defined underbust crease (the top binds them: one shelf with a shallow valley)
+			local du = u - 0.585
+			local w = bell2((fx - 0.4) / 0.42, du < 0 and du / 0.15 or du / 0.25) * smooth(-0.4, 0.3, -nz)
+			local valley = 1 - 0.3 * (1 - smooth(0.0, 0.16, fx))
 			local h = breastH * w * valley
 			d += h
 			ch.pec[i] = h * 0.3
-			groove += bell((u - 0.44) / 0.05) * smooth(0.1, 0.25, fx) * (1 - smooth(0.7, 0.85, fx)) * 0.5
+			groove += bell((u - 0.445) / 0.04) * smooth(0.1, 0.25, fx) * (1 - smooth(0.72, 0.86, fx)) * 0.8
 		end
 		-- rectus abdominis: two columns of pillow blocks --------------------------------
 		if u > -0.34 and u < 0.56 and front > 0 then
@@ -259,16 +290,16 @@ local function torsoField(sk, P, prof, nv)
 			crown += w * 0.3 * def
 		end
 		-- trapezius: the slope from the neck to the shoulder ------------------------------
-		if u > 0.84 and fx < 1.0 then
-			local w = bell2((fx - 0.52) / 0.46, (u - 1.0) / 0.12) * smooth(-0.6, 0.3, ny + 0.4 * nz)
+		if u > 0.8 and fx < 1.0 then
+			local w = bell2((fx - 0.38) / 0.6, (u - 0.99) / 0.15) * smooth(-0.6, 0.3, ny + 0.4 * nz)
 			local h = trapH * w
 			d += h
 			ch.trap[i] = h
 			crown += w * 0.3
 		end
 		-- ... up the back of the neck to the skull (one smooth sheet, no step at the neck base)
-		if u > 0.9 and nz > -0.25 then
-			local w = (1 - smooth(0.25, 0.7, fx)) * bell((u - 1.06) / 0.14) * smooth(-0.25, 0.55, nz)
+		if u > 0.8 and nz > -0.25 then
+			local w = (1 - smooth(0.25, 0.7, fx)) * bell((u - 1.02) / 0.22) * smooth(-0.25, 0.55, nz)
 			d += trapH * 0.5 * w
 			ch.trap[i] += trapH * 0.5 * w
 		end
@@ -300,7 +331,7 @@ local function torsoField(sk, P, prof, nv)
 			groove += bell((fx - 0.235) / 0.045) * (1 - smooth(0.22, 0.5, u)) * backF * 0.35 * def * min(1, erecH / 0.03)
 		end
 		if backF > 0 and u < 1.0 then
-			local w = (1 - smooth(0.0, 0.045 / xS, fx)) * backF * (1 - smooth(0.9, 1.0, u))
+			local w = (1 - smooth(0.0, spineW, fx)) * backF * (1 - smooth(0.9, 1.0, u))
 			local depth = spineD * lerp(1, 0.45, smooth(0.3, 0.8, u))
 			d -= depth * w
 			groove += w * 0.7 * baseDef
@@ -346,6 +377,11 @@ local function torsoField(sk, P, prof, nv)
 		end
 		-- breathing: the ribcage
 		ch.rib[i] = bell((u - 0.55) / 0.42) * (0.4 + 0.6 * front)
+		-- the shoulder girdle when the arm goes up (AnatomyBody's raise / reach shapes, BodyFX drives them from
+		-- the shoulder angle): the trapezius slope and the top of the shoulder lift, the front of the shoulder
+		-- comes forward
+		ch.raise[i] = smooth(0.3, 0.78, fx) * smooth(0.74, 0.9, u) * (1 - smooth(1.0, 1.1, u))
+		ch.reach[i] = smooth(0.45, 0.85, fx) * smooth(0.6, 0.82, u) * (1 - smooth(0.98, 1.06, u))
 		ch.groove[i] = clamp(groove, 0, 1)
 		ch.crown[i] = clamp(crown, 0, 1)
 		return d
@@ -398,8 +434,10 @@ function Torso.Upper(sk, P, lod, opt)
 	local warp = Kit.FrontWarp(R.warp)
 	local tuckU = opt.trunks and Torso.BAND_TOP / H or nil
 	local m = MeshKit.New("UpperTorso")
-	local info = MeshKit.Loft(m, {
-		rings = rings, sides = R.sides, spine = spine, exact = true,
+	local capD = 0.12
+	local info = Kit.GridLoft(m, MeshKit, {
+		rings = rings, sides = R.sides, spine = spine, exact = true, rowB = U,
+		capS = { depth = capD, rings = R.dome, bDepth = capD / H }, capE = { depth = capD, rings = R.dome, bDepth = capD / H },
 		section = function(t, a)
 			local i = math.floor(t * (rings - 1) + 0.5) + 1
 			local u = U[i]
@@ -423,15 +461,16 @@ function Torso.Upper(sk, P, lod, opt)
 			end
 			return x, f
 		end,
-		capStart = "dome", capEnd = "dome", capDepth = 0.12, domeRings = R.dome,
 	})
-	MeshKit.ComputeNormals(m, { weld = false })
+	Kit.GridNormals(m, MeshKit, info)
+	-- the undisplaced surface: the colour texture evaluates the same brushes per texel there
+	local P0, N0 = table.clone(m.P), table.clone(m.N)
 	local field, ch = torsoField(sk, P, prof, m.nv)
 	if tuckU then
 		-- nothing sculpted under the waistband (and no blend shape pushes through it)
 		local inner = field
-		field = function(i, x, y, z, nx, ny, nz)
-			local d = inner(i, x, y, z, nx, ny, nz)
+		field = function(i, x, y, z, nx, ny, nz, detail)
+			local d = inner(i, x, y, z, nx, ny, nz, detail)
 			-- the sculpting eases off just above the band's top edge (the elastic holds the belly in), so the
 			-- skin meets the band inside it instead of lapping over it
 			local k = smooth(tuckU - 0.02, tuckU + 0.07, (y - yW) / H)
@@ -446,8 +485,15 @@ function Torso.Upper(sk, P, lod, opt)
 		end
 	end
 	MeshKit.Displace(m, field)
-	MeshKit.ComputeNormals(m, { weld = false })
-	return m, { prof = prof, ch = ch, loft = info, U = U }
+	if opt.top then
+		-- the sports top's elastic hem stands a hair proud of the skin (the garment reads as fabric)
+		MeshKit.Displace(m, function(i, x, y, z)
+			local _, hem = Torso.TopMask(sk, x, y, z, 0.35)
+			return 0.01 * hem
+		end)
+	end
+	Kit.GridNormals(m, MeshKit, info)
+	return m, { prof = prof, ch = ch, loft = info, U = U, field = field, P0 = P0, N0 = N0 }
 end
 
 ------------------------------------------------------------------------
@@ -465,12 +511,24 @@ function Torso.Lower(sk, P, lod, prof, opt)
 	local trunks = opt.trunks
 	local ease = trunks and 0.03 or 0
 	local thighR = 0.48 * ul[1] * (1 + 0.06 * lv.quads)
-	local hipW = (xH + thighR) * (fem and 1.06 or 1) * (1 + 0.06 * P.sl.waist * P.pv.waist) + 0.06 * fk + ease
+	-- (women: a clear waist-to-hip curve, front and back)
+	local hipW = (xH + thighR) * (fem and 1.2 or 1) * (1 + 0.06 * P.sl.waist * P.pv.waist) + 0.06 * fk + ease
+	-- with trunks the seat is at least as wide / deep as the satin legs' tops (opt.legTop: x, front, back),
+	-- so a leg never steps out of the seat
+	local legTop = trunks and opt.legTop or nil
+	if legTop then
+		hipW = max(hipW, legTop[1] + 0.008)
+	end
 	local waistW = prof.W(0.0) * xS * 1.015 + 0.02 * fk + ease
 	local drop = (yW - yH) -- LowerTorso height
-	-- the crotch: with trunks the seat ends at the leg openings' top (the legs carry the rest)
-	local bot = yH - (trunks and 0.2 or 0.3) * (drop / 0.4) ^ 0.5
+	-- the bottom: with trunks the seat ends just under the hip pivots, inside the satin legs (they carry the
+	-- trunks from there down, their inner faces meeting on the midline); without, the crotch
+	local bot = trunks and legTop and (yH - 0.03) or (yH - (trunks and 0.2 or 0.3) * (drop / 0.4) ^ 0.5)
 	local Fw, Kw = prof.F(0.0) * hz + ease, prof.K(0.0) * hz + ease
+	local hipF, hipK = Fw * 0.97, Kw * 0.96
+	if legTop then
+		hipF, hipK = max(hipF, legTop[2] + 0.008), max(hipK, legTop[3] + 0.008)
+	end
 	local top, bandBot = yW + 0.015, nil
 	local Wc, Fc, Kc
 	local Ys
@@ -481,17 +539,21 @@ function Torso.Lower(sk, P, lod, prof, opt)
 		bandBot = yW - 0.17 * (drop / 0.4) ^ 0.5
 		local bw, bf, bk = waistW + 0.01, Fw + 0.012, Kw + 0.012
 		local sw = lerp(hipW, waistW, 0.85)
-		Wc = Kit.Curve({ { bot, hipW * 0.6 }, { yH - 0.1, hipW * 0.9 }, { yH + 0.06, hipW }, { bandBot - 0.03, sw }, { bandBot - 0.0005, sw - 0.004 },
-			{ bandBot, bw }, { top, bw } })
-		Fc = Kit.Curve({ { bot, Fw * 0.55 }, { yH - 0.1, Fw * 0.86 }, { yH + 0.12, Fw * 0.97 }, { bandBot - 0.0005, Fw * 0.985 }, { bandBot, bf }, { top, bf } })
-		Kc = Kit.Curve({ { bot, Kw * 0.45 }, { yH - 0.1, Kw * 0.85 }, { yH + 0.08, Kw * 0.96 }, { bandBot - 0.0005, Kw * 0.965 }, { bandBot, bk }, { top, bk } })
+		local lx, lf, lk = hipW, hipF, hipK
+		if legTop then
+			lx, lf, lk = legTop[1], legTop[2], legTop[3]
+		end
+		local yS = yH + 0.05 -- the seat's full section (above the legs' tops)
+		Wc = Kit.Curve({ { bot, lx - 0.035 }, { yS, hipW }, { bandBot - 0.03, sw }, { bandBot - 0.0005, sw - 0.004 }, { bandBot, bw }, { top, bw } })
+		Fc = Kit.Curve({ { bot, lf - 0.03 }, { yS, hipF }, { bandBot - 0.0005, max(Fw * 0.985, (hipF + Fw) / 2) }, { bandBot, bf }, { top, bf } })
+		Kc = Kit.Curve({ { bot, lk - 0.03 }, { yS, hipK }, { bandBot - 0.0005, max(Kw * 0.965, (hipK + Kw) / 2) }, { bandBot, bk }, { top, bk } })
 		local list
 		if rings >= 10 then
-			list = { bot, bot + 0.3 * (yH - 0.12 - bot), yH - 0.12, yH, yH + 0.09, (yH + 0.09 + bandBot) / 2, bandBot - 0.012, bandBot, (bandBot + top) / 2, top }
+			list = { bot, (bot + yS) / 2, yS, yS + 0.3 * (bandBot - yS), yS + 0.62 * (bandBot - yS), bandBot - 0.03, bandBot - 0.012, bandBot, (bandBot + top) / 2, top }
 		elseif rings >= 8 then
-			list = { bot, yH - 0.12, yH + 0.04, (yH + bandBot) / 2, bandBot - 0.012, bandBot, (bandBot + top) / 2, top }
+			list = { bot, yS, yS + 0.4 * (bandBot - yS), bandBot - 0.03, bandBot - 0.012, bandBot, (bandBot + top) / 2, top }
 		else
-			list = { bot, yH, bandBot - 0.012, bandBot, top }
+			list = { bot, yS, bandBot - 0.012, bandBot, top }
 		end
 		rings = #list
 		Ys = list
@@ -511,8 +573,13 @@ function Torso.Lower(sk, P, lod, prof, opt)
 		spine[i] = { 0, Ys[i], 0.02 * hz }
 	end
 	local m = MeshKit.New("LowerTorso")
-	local info = MeshKit.Loft(m, {
-		rings = rings, sides = R.ltSides, spine = spine, exact = true,
+	-- the crotch: with trunks a deeper rounded gusset between the legs (the satin bridges the thighs, no V)
+	local botD = trunks and (legTop and 0.06 or 0.2 * (drop / 0.4) ^ 0.5) or 0.14
+	local info = Kit.GridLoft(m, MeshKit, {
+		rings = rings, sides = R.ltSides, spine = spine, exact = true, rowB = Ys,
+		capS = { depth = botD, rings = R.ltDome, bDepth = botD },
+		-- with trunks the top is the waistband's lip: a flat cap inside the torso
+		capE = trunks and { depth = 0, rings = 0, bDepth = 0 } or { depth = 0.14, rings = R.ltDome, bDepth = 0.14 },
 		section = function(t, a)
 			local i = math.floor(t * (rings - 1) + 0.5) + 1
 			local y = Ys[i]
@@ -522,10 +589,8 @@ function Torso.Lower(sk, P, lod, prof, opt)
 			local f = s >= 0 and Fc(y) * s ^ e or -Kc(y) * (-s) ^ e
 			return x, f
 		end,
-		-- with trunks the top is the waistband's lip: a flat cap inside the torso
-		capStart = "dome", capEnd = trunks and "flat" or "dome", capDepth = 0.14, domeRings = R.ltDome,
 	})
-	MeshKit.ComputeNormals(m, { weld = false })
+	Kit.GridNormals(m, MeshKit, info)
 	local gH = (0.05 + 0.13 * lv.glutes) * P.pv.flat + (fem and 0.06 or 0) + 0.06 * fk
 	local bellyH = 0.16 * fk ^ 1.5 * (fem and 0.6 or 1)
 	local crown = table.create(m.nv, 0)
@@ -539,19 +604,54 @@ function Torso.Lower(sk, P, lod, prof, opt)
 		local d = 0
 		-- glutes: two rounded masses behind the hips, fullest a little under the hip pivots
 		local g = bell3((ax - 0.62 * xH - 0.05) / (0.58 * hipW), (y - (yH - 0.02)) / 0.36, 0) * smooth(-0.1, 0.5, nz) * (trunks and (1 - smooth(yH + 0.05, bandY - 0.03, y)) or 1)
-		d += gH * g * (trunks and 0.55 or 1)
+		-- (under the satin a softer push: a full seat reads as an inflated diaper)
+		d += gH * g * (trunks and 0.22 or 1)
 		glute[i] = gH * g
 		crown[i] = g * 0.4
 		-- the cleft between them (satin bridges it)
 		d -= (trunks and 0.008 or 0.025) * (1 - smooth(0.0, 0.06, ax)) * smooth(0.2, 0.6, nz) * smooth(yH + 0.25, yH - 0.05, y)
 		-- lower belly
 		d += bellyH * bell2(ax / (0.8 * hipW), (y - (yW - 0.05)) / 0.3) * smooth(-0.1, 0.5, -nz)
+		if trunks then
+			-- satin drape: soft vertical folds from the band down, deeper toward the legs
+			local a = math.atan2(-z, x)
+			local hang = smooth(bandY - 0.02, yH, y)
+			d += 0.011 * (sin(6 * a + 0.7) + 0.6 * sin(11 * a + 2.1)) * hang
+		end
 		return d
 	end)
-	MeshKit.ComputeNormals(m, { weld = false })
+	Kit.GridNormals(m, MeshKit, info)
 	return m, { crown = crown, glute = glute, hipW = hipW, bot = bot, top = top, bandBot = bandBot, loft = info }
 end
 Torso.BAND_TOP = 0.035 -- waistband top edge above the waist pivot (studs)
+
+-- the female sports top over the chest (the R15 UpperTorso was the top in round 1): band under the bust,
+-- scoop neckline in front, racer back behind, wide straps. Returns the cover (0..1) and the hem band (0..1:
+-- the elastic edge just inside the border). soft scales every edge's width (1 = the vertex colours' soft
+-- edge, ~0.2 = a crisp edge about a texel wide: sharp, without stair steps)
+function Torso.TopMask(sk, x, y, z, soft)
+	local u = (y - sk.yW) / sk.H
+	local fx = abs(x) / sk.xS
+	-- the front scoop and the higher back line blend across the shoulder line (no step where z changes sign)
+	local back = smooth(-0.08, 0.08, z)
+	local function cover(k)
+		local band = smooth(0.375 - 0.035 * k, 0.375 + 0.035 * k, u)
+		local nf = 1 - smooth(0.83 - 0.05 * k, 0.83 + 0.05 * k, u + 0.1 * (1 - smooth(0.0, 0.45, fx)))
+		local nb = 1 - smooth(0.905 - 0.045 * k, 0.905 + 0.045 * k, u)
+		local neckline = nf + (nb - nf) * back
+		-- the straps over the shoulders: a fixed width, k only softens their edges
+		local strap = smooth(0.84 - 0.04 * k, 0.84 + 0.04 * k, u) * (1 - smooth(-0.06 * k, 0.06 * k, abs(fx - 0.52) - 0.19))
+		local armhole = 1 - smooth(0.82 - 0.06 * k, 0.82 + 0.06 * k, fx) * smooth(0.66 - 0.08 * k, 0.66 + 0.08 * k, u)
+		return clamp(band * max(neckline * armhole, strap), 0, 1)
+	end
+	local w = cover(soft)
+	if w <= 0 then
+		return 0, 0
+	end
+	-- the hem: inside the cover but near its border (a wider version of the same mask falls off there)
+	local wide = cover(soft + 0.55)
+	return w, clamp(w * (1 - wide) * 2.2, 0, 1)
+end
 
 -- the waistband's front (body space, the same numbers Torso.Lower builds it from): centre of the band's
 -- front at mid height, the band's top edge, and a point half way to the side on the band's surface

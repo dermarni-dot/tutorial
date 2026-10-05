@@ -13,8 +13,15 @@
 --    the mesh instead of the round-1 rig (which is hidden under it): lids turn about their hinge
 --    (blinks, closure, swollen shut), eyeballs turn (gaze), the jaw piece swings (MouthLower), the Head
 --    piece's blend shapes take the expression (10-15 Hz, one model per frame), fight damage swells
---    (morphs) and colours (bruises, cuts, blood painted into the head's texture, or its vertex colours
---    when textures are off), sweat sheen, a worn mouthguard colours the teeth
+--    (morphs) and colours: AnatomyHeadDamage turns LookFx damage + the Grime attribute into 3D marks
+--    (bruise blots weighted by surface distance and facing, curved tapered cuts, trickles running down
+--    the surface) and a time-sliced job paints them into the head's texture (the head's triangles
+--    rasterised into strips over several frames, at most PAINT_BUDGET of CPU per frame for all heads
+--    together; the strips are written together when the job ends, so the face changes in one step; a
+--    newer damage state is queued, never restarts a running job), or
+--    into the vertex colours when the head has no texture; eye whites redden, the lids take the
+--    bruise. Sweat sheen; a worn mouthguard colours the teeth. Mesh heads get a record from
+--    Anatomy.OnBuilt even without a round-1 face rig (server detail "low")
 -- Round-1 path writes only Motor6D.Transform, SpecialMesh.Scale/Offset and the Transparency of BlinkLid
 -- and the face veins (client-toggled parts, CONTRACTS section 5); the mesh path writes only through
 -- AnatomyClient (SetPieceTransform / SetMorphs / SetVertexColors), the Head pieces' Reflectance and the
@@ -46,16 +53,16 @@ do
 	end
 	LookData = ok and type(mod) == "table" and mod or nil
 end
-local BRUISE_STOPS
+-- the damage marks (AnatomyHeadDamage: pure, shared with tools); absent = swelling / marks off
+local Damage
 do
 	local shared = ReplicatedStorage:FindFirstChild("Shared")
-	local m = shared and shared:FindFirstChild("Config")
-	local ok, Config = false, nil
+	local m = shared and shared:FindFirstChild("AnatomyHeadDamage")
+	local ok, mod = false, nil
 	if m then
-		ok, Config = pcall(require, m)
+		ok, mod = pcall(require, m)
 	end
-	BRUISE_STOPS = ok and type(Config) == "table" and Config.FaceDamage and Config.FaceDamage.bruiseColors
-	BRUISE_STOPS = BRUISE_STOPS or { { day = 0, rgb = { 95, 25, 40 } }, { day = 1, rgb = { 70, 45, 95 } }, { day = 4, rgb = { 150, 150, 70 } }, { day = 8 } }
+	Damage = ok and type(mod) == "table" and mod or nil
 end
 
 local FaceFX = {}
@@ -80,17 +87,17 @@ local player = Players.LocalPlayer
 local NCH = 12
 local EXPR = {
 	neutral = { 0, 0, 0, 0.05, 0, 0, 0.05, 0, 0, 0, 0, 0 },
-	confident = { 0.12, 0, 0, 0.14, 0.1, 0, 0.25, 0.28, 0, 0.05, 0.7, 0 },
-	determined = { -0.1, -0.45, 0.45, 0.16, 0.3, 0, 0.6, -0.1, 0, 0.05, 0, 0.05 },
-	anger = { -0.2, -0.9, 0.85, 0.05, 0.5, 0.12, 0.2, -0.35, 0.65, 0.4, 0.2, 0.15 },
-	fear = { 0.65, 0.85, 0.3, -0.28, 0, 0.25, 0, -0.3, 0.1, 0.35, 0, 0.3 },
+	confident = { 0.1, 0, 0, 0.12, 0.15, 0, 0.2, 0.35, 0, 0.05, 0.8, 0 },
+	determined = { -0.1, -0.5, 0.55, 0.15, 0.3, 0, 0.6, -0.1, 0, 0.05, 0, 0.05 },
+	anger = { -0.3, -1.0, 1.0, -0.18, 0.45, 0.08, 0.65, -0.35, 0.6, 0.3, 0.15, 0.15 },
+	fear = { 0.95, 1.0, 0.35, -0.5, 0, 0.32, 0, -0.35, 0.1, 0.85, 0, 0.3 },
 	fatigue = { 0.1, 0.45, 0.1, 0.42, 0.05, 0.35, 0, -0.2, 0, 0.1, 0, 0 },
-	pain = { 0.1, 0.55, 0.75, 0.55, 0.8, 0.3, 0, -0.6, 0.35, 0.6, 0.2, 0.2 },
+	pain = { 0.1, 0.55, 0.85, 0.55, 0.85, 0.3, 0, -0.6, 0.45, 0.6, 0.2, 0.2 },
 	dazed = { 0.2, 0.3, 0, 0.45, 0, 0.22, 0, -0.15, 0, 0, 0.3, 0.1 },
-	effort = { -0.1, -0.4, 0.6, 0.2, 0.6, 0.1, 0.15, -0.25, 0.5, 0.55, 0, 0.12 },
-	happy = { 0.3, 0.1, 0, 0.1, 0.4, 0.3, 0, 0.95, 0.1, 0.45, 0.1, 0.05 },
+	effort = { -0.1, -0.5, 0.7, 0.2, 0.6, 0.1, 0.3, -0.25, 0.5, 0.55, 0, 0.12 },
+	happy = { 0.2, 0.1, 0, 0.12, 0.55, 0.12, 0, 1.0, 0.1, 0.2, 0.1, 0.05 },
 	ko = { 0, 0.15, 0, 0.62, 0, 0.42, 0, -0.1, 0, 0, 0.4, 0.35 },
-	shout = { 0.15, -0.5, 0.5, 0.1, 0.35, 0.75, 0, -0.1, 0.5, 0.5, 0, 0.1 },
+	shout = { 0.15, -0.5, 0.6, 0.05, 0.35, 0.85, 0, -0.1, 0.5, 0.5, 0, 0.1 },
 }
 local EXPR_NAMES = {}
 for name in pairs(EXPR) do
@@ -414,7 +421,9 @@ local function vec(lms, name)
 end
 
 -- the pieces AnatomyHead gives a colour texture (others never have one: no need to look)
-local TEXTURED = { full = { Head = true, EyeL = true, EyeR = true, Beard = true }, medium = { Head = true, Beard = true } }
+local TEXTURED = {
+	full = { Head = true, EyeL = true, EyeR = true, Beard = true }, medium = { Head = true, Beard = true }, low = { Head = true },
+}
 
 local function imageOf(part)
 	if not part then
@@ -454,7 +463,8 @@ local function buildView(model)
 		jaw = vec(lms, "JawPivot"),
 		eyeR = lms.EyeRadius and lms.EyeRadius.pos and lms.EyeRadius.pos[1] or 0.06,
 		w = {}, sent = {}, nextMorph = 0, hasMorphs = false,
-		dmgStr = false, swell = {}, refl = -1, guardKey = false, nextGuard = 0,
+		dmgSeen = false, dmgRaw = nil, dmgTier = 0, dmgGrime = 0, swell = {}, refl = -1, guardKey = false, nextGuard = 0,
+		job = nil, jobArgs = nil,
 	}
 	local axis = {}
 	for s = -1, 1, 2 do
@@ -513,486 +523,213 @@ local function meshReset(model, v)
 end
 
 ------------------------------------------------------------------------
--- Damage on the mesh: swelling (morphs), bruises / cuts / blood (texture pixels or vertex colours)
+-- Damage on the mesh: swelling (morphs, at once) and the marks AnatomyHeadDamage places on the surface (bruises,
+-- cuts, blood, grime), painted by a time-sliced job: into the Head texture (one write when done) or its vertex
+-- colours, the lids' skin, the eyeballs' whites
 ------------------------------------------------------------------------
-local function bruiseRGB(sr, sg, sb, age)
-	local function col(stop)
-		if stop and stop.rgb then
-			return stop.rgb[1] / 255, stop.rgb[2] / 255, stop.rgb[3] / 255
-		end
-		return sr, sg, sb
-	end
-	local r, g, b = col(BRUISE_STOPS[1])
-	for i = 1, #BRUISE_STOPS - 1 do
-		local a, c = BRUISE_STOPS[i], BRUISE_STOPS[i + 1]
-		if age >= a.day and age <= c.day then
-			local t = (age - a.day) / max(0.01, c.day - a.day)
-			local r0, g0, b0 = col(a)
-			local r1, g1, b1 = col(c)
-			r, g, b = r0 + (r1 - r0) * t, g0 + (g1 - g0) * t, b0 + (b1 - b0) * t
-			break
-		elseif age > c.day then
-			r, g, b = col(c)
-		end
-	end
-	-- deep skin bruises darker rather than purple
-	local dark = clamp((0.45 - (0.299 * sr + 0.587 * sg + 0.114 * sb)) / 0.3, 0, 1)
-	local k = dark * 0.55
-	return r + (sr * 0.55 - r) * k, g + (sg * 0.55 - g) * k, b + (sb * 0.55 - b) * k
-end
-
--- the marks a damage table leaves, in the Head part's space: ellipses { x, y, rx, ry, rot } and lines
--- { x, y, x1, y1, w }, each with a colour and an opacity
-local function damageBlobs(model, v, dmg, tier)
-	local lms = v.lms
-	local function p(name)
-		local l = lms[name]
-		return l and l.pos
-	end
-	local eL, eR = p("EyeL"), p("EyeR")
-	if not (eL and eR) then
-		return {}, {}, {}
-	end
-	local k = v.eyeR / 0.06
-	local function n(key)
-		return clamp(tonumber(dmg[key]) or 0, 0, 1.5)
-	end
-	local look = LookData and LookData.Get(model)
-	local rgb = look and type(look.skinRGB) == "table" and look.skinRGB or { 200, 150, 110 }
-	local sr, sg, sb = (rgb[1] or 200) / 255, (rgb[2] or 150) / 255, (rgb[3] or 110) / 255
-	local age = max(0, tonumber(dmg.age) or 0)
-	local fade = clamp(1 - age / 8, 0.15, 1)
-	local fresh = age < 0.5
-	local br, bg, bb = bruiseRGB(sr, sg, sb, age)
-	local blobs = {}
-	local function ell(x, y, rx, ry, rot, r, g, b, a)
-		if a > 0.01 then
-			blobs[#blobs + 1] = { kind = 1, x = x, y = y, rx = rx, ry = ry, rot = rot or 0, r = r, g = g, b = b, a = a }
-		end
-	end
-	local function line(x, y, x1, y1, w, r, g, b, a)
-		if a > 0.01 then
-			blobs[#blobs + 1] = { kind = 2, x = x, y = y, x1 = x1, y1 = y1, rx = w, ry = w, r = r, g = g, b = b, a = a }
-		end
-	end
-	local swell = {}
-	local lid = {}
-	local eyes = { [-1] = { eL, n("leftEye"), n("cheekL"), n("earL") }, [1] = { eR, n("rightEye"), n("cheekR"), n("earR") } }
-	for s = -1, 1, 2 do
-		local e, ev, ck, ear = eyes[s][1], eyes[s][2], eyes[s][3], eyes[s][4]
-		local tag = s < 0 and "L" or "R"
-		if ev > 0.08 then
-			-- a black eye: round the orbit on the skin the lids leave visible (under the eye deepest, the lid
-			-- crease, the outer corner; the eye opening itself is no paintable skin)
-			local a0 = clamp(0.15 + 0.6 * ev, 0, 0.8) * fade
-			local r0 = (0.045 + 0.02 * ev) * k
-			ell(e[1] + s * 0.01 * k, e[2] - 0.058 * k, r0 * 1.5, r0, 0, br, bg, bb, a0)
-			ell(e[1], e[2] + 0.062 * k, r0 * 1.4, r0 * 0.75, 0, br, bg, bb, a0 * 0.8)
-			ell(e[1] + s * 0.075 * k, e[2] + 0.004 * k, r0 * 0.8, r0 * 1.2, 0, br, bg, bb, a0 * 0.75)
-			ell(e[1] - s * 0.062 * k, e[2] - 0.01 * k, r0 * 0.6, r0, 0, br, bg, bb, a0 * 0.6)
-			-- the lids themselves (separate vertex-coloured pieces) take most of the colour
-			lid[s] = { br, bg, bb, a0 * 0.85 }
-		end
-		if ck > 0.1 then
-			ell(s * 0.25 * k, e[2] - 0.085 * k, (0.07 + 0.03 * ck) * k, (0.055 + 0.02 * ck) * k, s * 0.3, br, bg, bb, clamp(0.1 + 0.45 * ck, 0, 0.6) * fade)
-		end
-		swell["swellEye" .. tag] = clamp(ev * 0.9, 0, 1.2)
-		swell["swellCheek" .. tag] = clamp(ck * 0.85, 0, 1.2)
-		swell["swellEar" .. tag] = clamp(ear, 0, 1.2)
-	end
-	local bru = n("bruise")
-	if bru > 0.2 then
-		for s = -1, 1, 2 do
-			ell(s * 0.27 * k, eL[2] - 0.07 * k, 0.09 * k, 0.07 * k, 0, br, bg, bb, clamp(0.08 + 0.3 * bru, 0, 0.45) * fade)
-		end
-	elseif tier >= 1 or n("redness") > 0.1 then
-		local r = max(n("redness"), 0.3)
-		for s = -1, 1, 2 do
-			ell(s * 0.27 * k, eL[2] - 0.07 * k, 0.1 * k, 0.075 * k, 0, 0.8, 0.25, 0.25, 0.06 + 0.12 * r)
-		end
-	end
-	local tip, nas = p("NoseTip"), p("Nasion")
-	if dmg.nose == true and tip and nas then
-		ell((tip[1] + nas[1]) * 0.5, (tip[2] + nas[2]) * 0.5, 0.035 * k, 0.075 * k, 0.15, br, bg, bb, 0.35 * fade)
-		swell.swellNose = 0.6
-	end
-	local cutSide = (tonumber(dmg.cutSide) or 1) < 0 and -1 or 1
-	local lump = n("forehead")
-	if lump > 0.2 then
-		ell(cutSide * 0.12 * k, eL[2] + 0.19 * k, (0.04 + 0.02 * lump) * k, (0.035 + 0.015 * lump) * k, 0, br, bg, bb, 0.3 * fade)
-		swell[cutSide < 0 and "swellBrowL" or "swellBrowR"] = clamp(lump, 0, 1.2)
-	end
-	-- cuts over the eyes (the second on the other side by default), bleeding while fresh
-	local cuts = { { n("cut"), cutSide, 0 }, { n("cut2"), (tonumber(dmg.cutSide2) or -cutSide) < 0 and -1 or 1, 0.025 } }
-	for _, c in ipairs(cuts) do
-		local cv, s, up = c[1], c[2], c[3]
-		if cv > 0.05 then
-			local mid = p(s < 0 and "BrowMidL" or "BrowMidR")
-			local outer = p(s < 0 and "BrowOuterL" or "BrowOuterR")
-			if mid and outer then
-				local y0 = mid[2] + (0.02 + up) * k
-				local len = (0.05 + 0.05 * min(cv, 1)) * k
-				local x0 = mid[1] + s * 0.012 * k
-				local x1, y1 = x0 + s * len, y0 + 0.008 * k
-				-- fresh: open and red; after a day a dark scab; after a week a pink healing line
-				local cr, cg, cb = 0.42, 0.02, 0.03
-				if age > 1 then
-					local h = clamp((age - 1) / 6, 0, 1)
-					cr, cg, cb = 0.28 + 0.5 * h, 0.08 + 0.4 * h, 0.07 + 0.38 * h
-				end
-				line(x0, y0, x1, y1, (0.004 + 0.003 * min(cv, 1)) * k, cr, cg, cb, 0.95 * (1 - 0.4 * clamp((age - 4) / 6, 0, 1)))
-				if cv > 0.35 and fresh then
-					line(x1, y1, x1 + s * 0.012 * k, y1 - (0.08 + 0.18 * min(cv, 1)) * k, 0.008 * k, 0.5, 0.02, 0.04, 0.8)
-				end
-			end
-		end
-	end
-	local bleed = n("noseBleed")
-	if bleed > 0.2 and fresh then
-		for s = -1, 1, 2 do
-			local ns = p(s < 0 and "NostrilL" or "NostrilR")
-			local lu = p("LipUpper")
-			if ns and lu then
-				line(ns[1], ns[2], ns[1] * 1.25, lu[2] + (0.03 - 0.03 * bleed) * k, (0.007 + 0.004 * bleed) * k, 0.5, 0.02, 0.04, 0.85)
-			end
-		end
-	end
-	local lip = n("lip")
-	local ll = p("LipLower")
-	if lip > 0.25 and ll then
-		ell(ll[1] + 0.045 * k, ll[2] - 0.004 * k, (0.012 + 0.008 * lip) * k, (0.009 + 0.004 * lip) * k, 0, 0.45, 0.02, 0.05, 0.9)
-		ell(ll[1] + 0.03 * k, ll[2], 0.045 * k, 0.02 * k, 0, br, bg, bb, clamp(0.3 * lip, 0, 0.4) * fade)
-		swell.swellLip = clamp((lip - 0.25) * 1.3, 0, 1.2)
-		if lip > 0.6 and fresh then
-			line(ll[1] + 0.05 * k, ll[2] - 0.01 * k, ll[1] + 0.055 * k, ll[2] - 0.11 * k, 0.008 * k, 0.48, 0.02, 0.04, 0.8)
-		end
-	end
-	local chin = p("Chin")
-	if tier >= 4 and fresh and chin and (n("cut") > 0.3 or bleed > 0.3 or lip > 0.5) then
-		ell(chin[1] + 0.02 * k, chin[2] + 0.04 * k, 0.09 * k, 0.045 * k, 0, 0.43, 0.02, 0.04, 0.5)
-	end
-	return blobs, swell, lid
-end
-
--- (x, y) on the face front -> texture (u, v), from the Head mesh's own vertices (front-facing grid only)
-local function uvLookup(mesh)
-	local P, U = mesh.P, mesh.U
-	local cell = 0.025
-	local bins = {}
-	for i = 1, mesh.nv do
-		local z = P[i * 3]
-		local v = U[i * 2]
-		if z < -0.05 and v < 0.9 then
-			local cx, cy = math.floor(P[i * 3 - 2] / cell), math.floor(P[i * 3 - 1] / cell)
-			local key = cy * 4096 + cx
-			local b = bins[key]
-			if not b then
-				b = {}
-				bins[key] = b
-			end
-			b[#b + 1] = i
-		end
-	end
-	local function uvAt(x, y)
-		local cx, cy = math.floor(x / cell), math.floor(y / cell)
-		-- the three nearest (x, y) vertices, the most forward wins ties (nose over cheek)
-		local b1, b2, b3, d1, d2, d3 = 0, 0, 0, math.huge, math.huge, math.huge
-		for oy = -1, 1 do
-			for ox = -1, 1 do
-				local b = bins[(cy + oy) * 4096 + cx + ox]
-				if b then
-					for _, i in ipairs(b) do
-						local dx, dy = P[i * 3 - 2] - x, P[i * 3 - 1] - y
-						local d = dx * dx + dy * dy
-						if d < d1 then
-							b3, d3, b2, d2, b1, d1 = b2, d2, b1, d1, i, d
-						elseif d < d2 then
-							b3, d3, b2, d2 = b2, d2, i, d
-						elseif d < d3 then
-							b3, d3 = i, d
-						end
-					end
-				end
-			end
-		end
-		if b1 == 0 then
-			return nil
-		end
-		local w1, w2, w3 = 1 / (d1 + 1e-7), b2 > 0 and 1 / (d2 + 1e-7) or 0, b3 > 0 and 1 / (d3 + 1e-7) or 0
-		local sw = w1 + w2 + w3
-		local u = (U[b1 * 2 - 1] * w1 + (b2 > 0 and U[b2 * 2 - 1] * w2 or 0) + (b3 > 0 and U[b3 * 2 - 1] * w3 or 0)) / sw
-		local v = (U[b1 * 2] * w1 + (b2 > 0 and U[b2 * 2] * w2 or 0) + (b3 > 0 and U[b3 * 2] * w3 or 0)) / sw
-		return u, v
-	end
-	return uvAt
-end
-
--- the blob's opacity at head-space offset (dx, dy) from its anchor
-local function blobAlpha(b, dx, dy)
-	if b.kind == 1 then
-		local c, s = math.cos(b.rot), math.sin(b.rot)
-		local qx, qy = (dx * c + dy * s) / b.rx, (-dx * s + dy * c) / b.ry
-		local q = qx * qx + qy * qy
-		if q >= 1 then
-			return 0
-		end
-		local w = 1 - q
-		return w * w * b.a
-	end
-	local vx, vy = b.x1 - b.x, b.y1 - b.y
-	local l2 = vx * vx + vy * vy
-	local t = l2 > 0 and clamp((dx * vx + dy * vy) / l2, 0, 1) or 0
-	local ex, ey = dx - vx * t, dy - vy * t
-	local d = math.sqrt(ex * ex + ey * ey) / b.rx
-	if d >= 1 then
-		return 0
-	end
-	-- a streak thins toward its end
-	return (1 - d * d) * b.a * (1 - 0.5 * t)
-end
-
--- paint the blobs into the Head's texture (from the pixels AnatomyClient made: never accumulates)
-local function paintImage(v, blobs)
-	local img = v.headImg
-	local mesh = v.pieces.Head.mesh
-	v.uvAt = v.uvAt or uvLookup(mesh)
-	local size = img.Size
-	local W, H = size.X, size.Y
-	if not v.orig then
-		local ok, buf = pcall(img.ReadPixelsBuffer, img, Vector2.zero, size)
-		if not ok then
-			v.headImg = nil
-			return false
-		end
-		v.orig = buf
-	end
-	local uvAt = v.uvAt
-	local hstep = 0.02
-	local x0, y0, x1, y1 = math.huge, math.huge, -math.huge, -math.huge
-	for _, b in ipairs(blobs) do
-		local u, vv = uvAt(b.x, b.y)
-		local ux, vx = uvAt(b.x + hstep, b.y)
-		local uy, vy = uvAt(b.x, b.y + hstep)
-		if u and ux and uy then
-			-- the local map from head-space offsets to UV, inverted for the texel loop
-			local a11, a12, a21, a22 = (ux - u) / hstep, (uy - u) / hstep, (vx - vv) / hstep, (vy - vv) / hstep
-			local det = a11 * a22 - a12 * a21
-			if math.abs(det) > 1e-9 then
-				b.u, b.v = u, vv
-				b.i11, b.i12, b.i21, b.i22 = a22 / det, -a12 / det, -a21 / det, a11 / det
-				local ext = b.kind == 1 and max(b.rx, b.ry) or (math.sqrt((b.x1 - b.x) ^ 2 + (b.y1 - b.y) ^ 2) + b.rx)
-				local cxA, cyA = b.kind == 1 and 0 or (b.x1 - b.x) * 0.5, b.kind == 1 and 0 or (b.y1 - b.y) * 0.5
-				local cu = u + a11 * cxA + a12 * cyA
-				local cv = vv + a21 * cxA + a22 * cyA
-				local eu = (math.abs(a11) + math.abs(a12)) * ext
-				local ev = (math.abs(a21) + math.abs(a22)) * ext
-				b.px0, b.px1 = max(0, math.floor((cu - eu) * W)), min(W - 1, math.ceil((cu + eu) * W))
-				b.py0, b.py1 = max(0, math.floor((cv - ev) * H)), min(H - 1, math.ceil((cv + ev) * H))
-				x0, y0, x1, y1 = min(x0, b.px0), min(y0, b.py0), max(x1, b.px1), max(y1, b.py1)
-			end
-		end
-	end
-	-- repaint where marks are now and where they were
-	local last = v.lastRect
-	if last then
-		x0, y0, x1, y1 = min(x0, last[1]), min(y0, last[2]), max(x1, last[3]), max(y1, last[4])
-	end
-	if x1 < x0 or y1 < y0 then
-		return true
-	end
-	local rw, rh = x1 - x0 + 1, y1 - y0 + 1
-	local out = buffer.create(rw * rh * 4)
-	local orig = v.orig
-	for py = y0, y1 do
-		for px = x0, x1 do
-			local o = (py * W + px) * 4
-			local r, g, b = readu8(orig, o) / 255, readu8(orig, o + 1) / 255, readu8(orig, o + 2) / 255
-			for _, bl in ipairs(blobs) do
-				if bl.u and px >= bl.px0 and px <= bl.px1 and py >= bl.py0 and py <= bl.py1 then
-					local du, dv = (px + 0.5) / W - bl.u, (py + 0.5) / H - bl.v
-					local a = blobAlpha(bl, bl.i11 * du + bl.i12 * dv, bl.i21 * du + bl.i22 * dv)
-					if a > 0 then
-						r, g, b = r + (bl.r - r) * a, g + (bl.g - g) * a, b + (bl.b - b) * a
-					end
-				end
-			end
-			local q = ((py - y0) * rw + (px - x0)) * 4
-			writeu8(out, q, math.floor(clamp(r, 0, 1) * 255 + 0.5))
-			writeu8(out, q + 1, math.floor(clamp(g, 0, 1) * 255 + 0.5))
-			writeu8(out, q + 2, math.floor(clamp(b, 0, 1) * 255 + 0.5))
-			writeu8(out, q + 3, readu8(orig, o + 3))
-		end
-	end
-	local ok = pcall(img.WritePixelsBuffer, img, V2(x0, y0), V2(rw, rh), out)
-	if not ok then
-		v.headImg = nil
-		return false
-	end
-	v.lastRect = #blobs > 0 and { x0, y0, x1, y1 } or nil
-	return true
-end
-
--- the same marks as vertex colours (the Head piece without a texture)
-local function paintVertices(model, v, blobs)
-	local mesh = v.pieces.Head.mesh
-	local P, C = mesh.P, mesh.C
-	local ids, cols = {}, {}
-	local touched = v.touched or {}
-	local now = {}
-	for i = 1, mesh.nv do
-		local x, y, z = P[i * 3 - 2], P[i * 3 - 1], P[i * 3]
-		if z < -0.05 then
-			local r, g, b = C[i * 3 - 2], C[i * 3 - 1], C[i * 3]
-			local hit = false
-			for _, bl in ipairs(blobs) do
-				local a = blobAlpha(bl, x - bl.x, y - bl.y)
-				if a > 0 then
-					r, g, b = r + (bl.r - r) * a, g + (bl.g - g) * a, b + (bl.b - b) * a
-					hit = true
-				end
-			end
-			if hit or touched[i] then
-				ids[#ids + 1] = i
-				cols[#cols + 1] = { r, g, b }
-				if hit then
-					now[i] = true
-				end
-			end
-		end
-	end
-	v.touched = now
-	if #ids > 0 then
-		Anatomy.SetVertexColors(model, "Head", "Head", ids, cols)
+local PAINT_BUDGET = 0.0015 -- seconds of damage painting per frame, every model together
+local paintT0, paintLeft = 0, 0
+-- called by AnatomyHeadDamage inside a job every few units of work: past this frame's budget -> next frame
+local function paintStep()
+	if os.clock() - paintT0 > paintLeft then
+		coroutine.yield()
 	end
 end
 
--- the lids are vertex-coloured pieces beside the (textured) head: their skin (the generator's LidSkin group,
--- never the lash line or the lashes) takes a black eye's colour plus any mark under it. Always from the
--- generated colours, so a healed eye goes back exactly
+-- the lids are vertex-coloured pieces beside the head: their skin (the generator's LidSkin group, never the lash
+-- line or the lashes) takes a black eye's tint (multiplied into its own colour: deepest along the lash line)
+-- plus any mark over it. Always from the generated colours, so a healed eye goes back exactly
 local LID_PIECES = { "LidL", "LidR", "LidLow", "LidUpper", "Eyes" }
-local function paintLids(model, v, blobs, lid)
+local function paintLids(model, v, marks, lid)
 	v.lidTouched = v.lidTouched or {}
 	for _, name in ipairs(LID_PIECES) do
 		local pc = v.pieces[name]
 		local ids = pc and pc.groups and pc.groups.LidSkin
 		local mesh = pc and pc.mesh
 		if type(ids) == "table" and type(mesh) == "table" and mesh.C then
-			local P, C = mesh.P, mesh.C
+			local P, C, N = mesh.P, mesh.C, mesh.N
 			local was = v.lidTouched[name]
 			local out, cols, any = {}, {}, false
-			for _, i in ipairs(ids) do
-				local x, y = P[i * 3 - 2], P[i * 3 - 1]
+			for n, i in ipairs(ids) do
+				local x, y, z = P[i * 3 - 2], P[i * 3 - 1], P[i * 3]
 				local r, g, b = C[i * 3 - 2], C[i * 3 - 1], C[i * 3]
 				local hit = false
 				local side = x < 0 and -1 or 1
 				local t = lid[side]
 				local e = v.eye[side]
 				if t and e then
-					-- deepest along the lash line, lighter toward the crease (generated, open-lid positions)
-					local a = t[4] * (1 - 0.35 * clamp((math.abs(y - e.Y) / v.eyeR - 0.35) / 0.6, 0, 1))
-					r, g, b = r + (t[1] - r) * a, g + (t[2] - g) * a, b + (t[3] - b) * a
+					local a = t[4] * (1 - 0.35 * clamp((abs(y - e.Y) / v.eyeR - 0.35) / 0.6, 0, 1))
+					r, g, b = r * (1 + (t[1] - 1) * a), g * (1 + (t[2] - 1) * a), b * (1 + (t[3] - 1) * a)
 					hit = true
 				end
-				for _, bl in ipairs(blobs) do
-					local a = blobAlpha(bl, x - bl.x, y - bl.y)
-					if a > 0 then
-						r, g, b = r + (bl.r - r) * a, g + (bl.g - g) * a, b + (bl.b - b) * a
-						hit = true
+				if #marks > 0 then
+					local nx, ny, nz = 0, 0, -1
+					if N then
+						nx, ny, nz = N[i * 3 - 2], N[i * 3 - 1], N[i * 3]
 					end
+					local hm
+					r, g, b, hm = Damage.Shade(marks, x, y, z, nx, ny, nz, 0.006, r, g, b)
+					hit = hit or hm
 				end
 				if hit or was then
 					out[#out + 1] = i
-					cols[#cols + 1] = { r, g, b }
+					cols[#cols + 1] = { clamp(r, 0, 1), clamp(g, 0, 1), clamp(b, 0, 1) }
 					any = any or hit
+				end
+				if n % 64 == 0 then
+					paintStep()
 				end
 			end
 			v.lidTouched[name] = any
 			if #out > 0 then
-				Anatomy.SetVertexColors(model, "Head", name, out, cols)
+				pcall(Anatomy.SetVertexColors, model, "Head", name, out, cols)
 			end
 		end
 	end
 end
 
--- sclera redness on textured eyeballs (the polar map: the sclera is beyond radius 0.27 of the texture)
-local function paintEyes(v, red)
-	for s = -1, 1, 2 do
-		local img = v.eyeImg and v.eyeImg[s]
-		if img then
-			local size = img.Size
-			local W, H = size.X, size.Y
-			v.eyeOrig = v.eyeOrig or {}
-			if not v.eyeOrig[s] then
-				local ok, buf = pcall(img.ReadPixelsBuffer, img, Vector2.zero, size)
-				if not ok then
-					v.eyeImg[s] = nil
-					continue
-				end
-				v.eyeOrig[s] = buf
+-- a job: the marks of one damage state, painted over the next frames (FaceFX.Update resumes it)
+local function damageJob(model, v, dmg, tier, grime, red)
+	local mesh = v.pieces.Head.mesh
+	if not v.surf then
+		v.surf = Damage.Surface(mesh, paintStep)
+	end
+	local marks, lid = Damage.Marks(v.lms, v.eyeR, dmg, tier, grime, v.surf, paintStep)
+	local img = v.headImg
+	if img and not v.orig then
+		local okS, size = pcall(function()
+			return img.Size
+		end)
+		local ok, buf = false, nil
+		if okS and typeof(size) == "Vector2" then
+			ok, buf = pcall(img.ReadPixelsBuffer, img, Vector2.zero, size)
+		end
+		if ok and type(buf) == "buffer" then
+			v.orig, v.texW, v.texH = buf, size.X, size.Y
+		else
+			v.headImg, img = nil, nil
+		end
+	end
+	if img then
+		local strips, now = Damage.PaintTexture(mesh, v.texW, v.texH, v.orig, marks, v.painted, paintStep)
+		-- every strip in the same frame: the face changes in one step
+		for _, st in ipairs(strips or {}) do
+			if not pcall(img.WritePixelsBuffer, img, V2(st[1], st[2]), V2(st[3], st[4]), st[5]) then
+				v.headImg = nil
+				break
 			end
-			local orig = v.eyeOrig[s]
-			local out = buffer.create(W * H * 4)
-			buffer.copy(out, 0, orig, 0, W * H * 4)
-			local k = red[s]
-			if k > 0.01 then
-				for py = 0, H - 1 do
-					for px = 0, W - 1 do
-						local du, dv = (px + 0.5) / W - 0.5, (py + 0.5) / H - 0.5
-						local r = math.sqrt(du * du + dv * dv)
-						if r > 0.25 then
-							local a = k * clamp((r - 0.25) / 0.05, 0, 1)
-							local o = (py * W + px) * 4
-							writeu8(out, o, math.floor(readu8(orig, o) + (232 - readu8(orig, o)) * a + 0.5))
-							writeu8(out, o + 1, math.floor(readu8(orig, o + 1) + (140 - readu8(orig, o + 1)) * a + 0.5))
-							writeu8(out, o + 2, math.floor(readu8(orig, o + 2) + (132 - readu8(orig, o + 2)) * a + 0.5))
-						end
+		end
+		v.painted = now
+	elseif type(mesh.C) == "table" then
+		local ids, cols, now = Damage.PaintVertices(mesh, marks, v.touched, paintStep, nil, v.eyeR * 0.2)
+		if #ids > 0 then
+			pcall(Anatomy.SetVertexColors, model, "Head", "Head", ids, cols)
+		end
+		v.touched = now
+	end
+	paintLids(model, v, marks, lid)
+	-- bloodshot whites (textured eyeballs)
+	if v.eyeImg then
+		v.eyeRed = v.eyeRed or { [-1] = 0, [1] = 0 }
+		v.eyeOrig = v.eyeOrig or {}
+		for s = -1, 1, 2 do
+			local eimg = v.eyeImg[s]
+			local k = red[s] or 0
+			if eimg and abs(k - v.eyeRed[s]) > 0.005 then
+				if not v.eyeOrig[s] then
+					local okS, size = pcall(function()
+						return eimg.Size
+					end)
+					local ok, buf = false, nil
+					if okS and typeof(size) == "Vector2" then
+						ok, buf = pcall(eimg.ReadPixelsBuffer, eimg, Vector2.zero, size)
+					end
+					if ok and type(buf) == "buffer" then
+						v.eyeOrig[s] = { buf, size.X, size.Y }
+					else
+						v.eyeImg[s] = nil
+					end
+				end
+				local o = v.eyeOrig[s]
+				if o and v.eyeImg[s] then
+					local pix = Damage.Sclera(o[2], o[3], o[1], k, s, paintStep)
+					if pcall(eimg.WritePixelsBuffer, eimg, Vector2.zero, V2(o[2], o[3]), pix) then
+						v.eyeRed[s] = k
+					else
+						v.eyeImg[s] = nil
 					end
 				end
 			end
-			pcall(img.WritePixelsBuffer, img, Vector2.zero, size, out)
 		end
 	end
 end
 
--- damage state -> swell weights (into v.swell) + marks; only when the LookFx string / tier changed
+local warnedJob = false
+local function runJob(v)
+	local co = v.job
+	paintT0 = os.clock()
+	local ok, err = true, nil
+	local args = v.jobArgs
+	if args then
+		v.jobArgs = nil
+		ok, err = coroutine.resume(co, args[1], args[2], args[3], args[4], args[5], args[6])
+	else
+		ok, err = coroutine.resume(co)
+	end
+	if not ok then
+		if not warnedJob then
+			warnedJob = true
+			warn("FaceFX: damage painting failed:", err)
+		end
+		-- this view paints no more (swelling still works)
+		v.paintOff, v.nextArgs = true, nil
+	end
+	if coroutine.status(co) == "dead" then
+		v.job = nil
+		-- the newest state that came in meanwhile (coalesced: a job always finishes, so marks always show)
+		if v.nextArgs then
+			v.job, v.jobArgs, v.nextArgs = coroutine.create(damageJob), v.nextArgs, nil
+		end
+	end
+	paintLeft -= os.clock() - paintT0
+end
+
+-- damage state -> swell weights (into v.swell), lids closing and a paint job; only when the LookFx string, the
+-- damage tier or the (0.1-quantised) Grime attribute changed: no allocation on the frames between
+local FX_ATTR = LookData and LookData.FX_ATTR or "LookFx"
+local NO_DMG = {}
 local function applyDamage(model, v, tier)
-	local fx = LookData and LookData.Fx(model)
-	local dmg = fx and fx.dmg or {}
-	local key = (model:GetAttribute(LookData and LookData.FX_ATTR or "LookFx") or "") .. "|" .. tostring(tier)
-	if key == v.dmgStr then
+	local raw = model:GetAttribute(FX_ATTR)
+	local grime = model:GetAttribute("Grime")
+	grime = type(grime) == "number" and math.floor(clamp(grime, 0, 1) * 10 + 0.5) / 10 or 0
+	if v.dmgSeen and raw == v.dmgRaw and tier == v.dmgTier and grime == v.dmgGrime then
 		return
 	end
-	v.dmgStr = key
-	local blobs, swell, lid = damageBlobs(model, v, dmg, tier)
+	local first = not v.dmgSeen
+	v.dmgSeen, v.dmgRaw, v.dmgTier, v.dmgGrime = true, raw, tier, grime
+	local fx = LookData and LookData.Fx(model)
+	local dmg = fx and fx.dmg or NO_DMG
+	if not Damage then
+		return
+	end
+	local swell, closing, red = Damage.Swell(dmg, tier)
 	table.clear(v.swell)
 	for k, w in pairs(swell) do
-		if w > 0.005 then
-			v.swell[k] = w
-		end
+		v.swell[k] = w
 	end
-	v.closing = {
-		[-1] = clamp(((tonumber(dmg.leftEye) or 0) - 0.3) / 0.7, 0, 1),
-		[1] = clamp(((tonumber(dmg.rightEye) or 0) - 0.3) / 0.7, 0, 1),
-	}
-	if v.headImg then
-		paintImage(v, blobs)
-	elseif v.lod ~= "low" then
-		paintVertices(model, v, blobs)
-	end
-	paintLids(model, v, blobs, lid)
-	if v.eyeImg then
-		local severe = tier >= 4
-		local red = {}
-		for s = -1, 1, 2 do
-			local ev = tonumber(s < 0 and dmg.leftEye or dmg.rightEye) or 0
-			red[s] = clamp(ev * 0.5 + (severe and 0.35 or 0) + (tonumber(dmg.redness) or 0) * 0.15, 0, 0.8)
-		end
-		if (red[-1] > 0.01 or red[1] > 0.01) or v.eyeRed then
-			paintEyes(v, red)
-			v.eyeRed = red[-1] > 0.01 or red[1] > 0.01
-		end
-	end
+	v.closing = closing
 	v.sent.__dmg = nil
+	-- nothing to paint on a clean face that was never painted
+	if v.paintOff or first and not Damage.Any(dmg, tier, grime) and red[-1] <= 0.01 and red[1] <= 0.01 then
+		return
+	end
+	local args = { model, v, dmg, tier, grime, red }
+	if v.job then
+		-- a job is running: the newest state waits for it (it starts when that one is done)
+		v.nextArgs = args
+	else
+		v.job, v.jobArgs = coroutine.create(damageJob), args
+	end
 end
 
 -- a worn mouthguard (the round-1 part, hidden under the mesh) colours the upper teeth
@@ -1051,10 +788,11 @@ local function q50(x)
 	return math.floor(x * 50 + 0.5) / 50
 end
 
+local NO_CLOSING = { [-1] = 0, [1] = 0 }
 local function meshUpdate(model, rec, v, ch, blinkC, lidC, gaze, near, now, a, breathe)
 	v.active = true
 	-- upper lids: closure (expression / blink / swollen shut) turns them about the hinge axis
-	local closing = v.closing or { [-1] = 0, [1] = 0 }
+	local closing = v.closing or NO_CLOSING
 	for s = -1, 1, 2 do
 		local c = max(lidC[s], blinkC)
 		if closing[s] > 0 then
@@ -1147,6 +885,7 @@ end
 function FaceFX.Update(dt, t, camPos, rigs, budget)
 	local rescans = 0
 	morphFrame += 1
+	paintLeft = PAINT_BUDGET
 	for model, rec in pairs(faces) do
 		if not model.Parent then
 			dropRec(model)
@@ -1309,6 +1048,9 @@ function FaceFX.Update(dt, t, camPos, rigs, budget)
 				gz = gazeStep(rec, rig, model, camPos, head, dt, t, now, daze, conc, ko)
 			end
 			applyDamage(model, mv, tier)
+			if mv.job and paintLeft > 0 then
+				runJob(mv)
+			end
 			applySweat(mv, type(a.Sweat) == "number" and a.Sweat or 0)
 			local flare = breathe * (0.35 + 0.65 * max(0, K.breath(rec.breathPhase)))
 			meshUpdate(model, rec, mv, ch, blinkC, lidC, gz, near, now, a, flare)
@@ -1458,10 +1200,14 @@ end
 if Anatomy and Anatomy.OnBuilt and Anatomy.OnRestored then
 	Anatomy.OnBuilt:Connect(function(model, section)
 		if section == "Head" then
+			-- every built head gets a record: crowd / low-detail characters carry no round-1 face rig (never
+			-- tagged FaceRig) but still blink their lids, swell and show their damage on the mesh
 			local rec = faces[model]
-			if rec then
-				rec.mvDirty = true
+			if not rec then
+				rec = newRec(model)
+				faces[model] = rec
 			end
+			rec.mvDirty = true
 		end
 	end)
 	Anatomy.OnRestored:Connect(function(model, section)
@@ -1484,7 +1230,8 @@ function FaceFX.Debug(model)
 	return {
 		mesh = mv ~= nil, meshActive = mv and mv.active or false, lod = mv and mv.lod, roles = next(rec.roles) ~= nil,
 		active = rec.active, dirty = rec.dirty, mvDirty = rec.mvDirty, headImage = mv and mv.headImg ~= nil or false,
-		morphs = mv and mv.hasMorphs or false,
+		morphs = mv and mv.hasMorphs or false, painting = mv and mv.job ~= nil or false,
+		painted = mv and (next(mv.painted or {}) ~= nil or next(mv.touched or {}) ~= nil) or false,
 	}
 end
 

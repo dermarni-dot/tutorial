@@ -10,11 +10,14 @@
 -- Two paths, picked per character:
 --  * anatomy meshes (AnatomyClient built the "Body" section): the pieces' blend shapes are driven
 --    instead of part scales: flex (contraction + pump + jiggle), breathe (rig.breath / breathPhase),
---    tense (core bracing, body-shot jiggle, Strain). Writes are low rate and budgeted (a few thousand
---    vertex writes per frame across every character, round-robin, only when a weight changes by a
---    0.05 step). Sweat shows as the pieces' Reflectance, rib bruises (LookFx ribsL / ribsR) are painted
---    into the UpperTorso piece's vertex colours, and the trunks' waistband text / sponsor patch (hidden
---    with the round-1 trunk blocks) come back as client text plates on the mesh trunks (landmarks).
+--    tense (core bracing, body-shot jiggle, Strain), raiseL / raiseR / reachL / reachR (the shoulder
+--    girdle following the upper arm's angle). Writes are low rate and budgeted (MORPH_BUDGET vertex writes
+--    per frame across every character, round-robin, only when a weight changes by a 0.1 step). Sweat shows
+--    as the pieces' Reflectance; rib bruises (LookFx ribsL / ribsR) and road grime (LookFx grime / the Grime
+--    attribute) are painted into the pieces: their vertex colours, or their colour textures (a few
+--    thousand texels per frame, time-sliced); the trunks' waistband text / sponsor patch and the gear's
+--    glove logo, cuff wordmark, boot wordmark and heel mark (hidden with the round-1 parts they sat on)
+--    come back as client text plates on the mesh (landmarks).
 --  * round-1 parts (no meshes, or meshes off): only SpecialMesh.Scale (from the BaseScale attribute) and
 --    Beam.Transparency are written, never Size, so no physics is recomputed (CONTRACTS section 5).
 -- Nothing allocates per frame.
@@ -102,9 +105,12 @@ local PIECES = {
 	LeftUpperLeg = { "UpperLeg", -1, 4 }, RightUpperLeg = { "UpperLeg", 1, 4 },
 	LeftLowerLeg = { "LowerLeg", -1, 4 }, RightLowerLeg = { "LowerLeg", 1, 4 },
 }
+-- the blend shapes BodyFX drives (a piece has the ones its mesh carries)
+local SHAPES = { "flex", "breathe", "tense", "raiseL", "raiseR", "reachL", "reachR" }
 -- vertex writes per frame, every character together: FaceFX writes about 1000 more (one Head SetMorphs per
 -- frame), and the contract caps every FX module together at 2000 (ANATOMY_CONTRACTS section 11)
 local MORPH_BUDGET = 1000
+local PAINT_BUDGET = 4096 -- texels per frame recomposed into piece textures (bruises / grime)
 local MORPH_STEP = 0.1 -- weights move in these steps (a flex step is a millimetre or two: no write below it)
 local MORPH_RATE = 1 / 20 -- per character: blend shapes at most this often (near), half as often far
 local BREATH_RATE = 1 / 10 -- breathing (slow, tiny) at most this often
@@ -114,7 +120,7 @@ local function quant(x)
 	return floor(x / MORPH_STEP + 0.5) * MORPH_STEP
 end
 
-local stats = { morphWrites = 0, vertexWrites = 0, plates = 0, bruises = 0, sweat = 0, maxFrame = 0 }
+local stats = { morphWrites = 0, vertexWrites = 0, plates = 0, bruises = 0, grime = 0, texJobs = 0, texWrites = 0, texels = 0, sweat = 0, maxFrame = 0 }
 local tracked = {} -- model -> rec
 local restore -- (rec) round-1 muscle scales and veins back to the Builder's values (defined below)
 local views = setmetatable({}, { __mode = "k" }) -- model -> AnatomyClient piece view of the Body section
@@ -182,76 +188,348 @@ local function bruiseRGB(sr, sg, sb, age)
 	return col(BRUISE[1])
 end
 
--- the lower ribs from the flank round toward the front (the round-1 RibBruise ellipsoids' place, which the
--- Body section hides), painted into the UpperTorso piece; v = 0..1 per side. Restores what it painted.
-local function applyBruise(model, view, rec, ribsL, ribsR, age)
-	local pv = view.UpperTorso
-	local mesh = pv and pv.mesh
-	local part = pv and pv.part
-	if not (mesh and part and Anatomy) then
+local function sstep(e0, e1, x)
+	local t = math.clamp((x - e0) / (e1 - e0), 0, 1)
+	return t * t * (3 - 2 * t)
+end
+
+------------------------------------------------------------------------
+-- Skin paint layers (rib bruises, road grime) on the mesh pieces: per piece, layers of per-vertex weights
+-- toward a colour, composed over the generated colour. A vertex-coloured piece gets them through
+-- SetVertexColors; a textured piece (its EditableImage, AnatomyClient view .image) is recomposed texel by
+-- texel from its original texels through the mesh's texMap (each texel's four lattice vertices), a few
+-- thousand texels per frame. Garment vertices (the mesh group "cloth") are never painted.
+------------------------------------------------------------------------
+local paintJobs = {} -- queue of texture recompose jobs
+local LAYER_ORDER = { "bruiseL", "bruiseR", "grime" }
+
+local function clothSet(pv)
+	if pv.cloth == nil then
+		local set = false
+		local g = pv.groups and pv.groups.cloth
+		if type(g) == "table" and #g > 0 then
+			set = {}
+			for _, i in ipairs(g) do
+				set[i] = true
+			end
+		end
+		pv.cloth = set
+	end
+	return pv.cloth
+end
+
+-- texture recompose: rows of texels from the original, blended toward each layer's colour by the
+-- bilinear weight of the texel's lattice vertices
+local function startTexJob(model, pv)
+	local img, map = pv.image, pv.mesh and pv.mesh.texMap
+	if not (img and map) then
 		return
 	end
-	age = floor((tonumber(age) or 0) * 10 + 0.5) / 10
-	if pv.bruiseL == ribsL and pv.bruiseR == ribsR and pv.bruiseAge == age then
-		return
+	for i = #paintJobs, 1, -1 do
+		if paintJobs[i].pv == pv then
+			table.remove(paintJobs, i)
+		end
 	end
-	pv.bruiseL, pv.bruiseR, pv.bruiseAge = ribsL, ribsR, age
-	local P, C = mesh.P, mesh.C
-	-- mesh positions are in the R15 UpperTorso's space: place the bruise where the round-1 plates sat
-	local ut = model:FindFirstChild("UpperTorso")
-	local s = ut and ut:IsA("BasePart") and ut.Size or part.Size
-	local look = LookData and LookData.Get(model)
-	local female = type(look) == "table" and look.g == 2
-	local ids, cols = {}, {}
-	local painted = pv.bruised or {}
-	local seen = {}
-	for _, e in ipairs({ { -1, ribsL }, { 1, ribsR } }) do
-		local side, v = e[1], e[2]
-		if v > 0.08 then
-			local cx, cy = side * 0.36 * s.X, (female and -0.33 or -0.14) * s.Y
-			local ax, ay = (0.17 + 0.06 * v) * s.X, (0.16 + 0.08 * v) * s.Y
-			local alpha = math.clamp(0.22 + 0.45 * v, 0.2, 0.65)
-			for i = 1, mesh.nv do
-				local x, y = P[i * 3 - 2], P[i * 3 - 1]
-				if x * side > 0 then
-					local dx, dy = (x - cx) / ax, (y - cy) / ay
-					local d2 = dx * dx + dy * dy
-					if d2 < 1 then
-						local w = (1 - d2) * (1 - d2) * alpha
-						local r0, g0, b0 = C[i * 3 - 2], C[i * 3 - 1], C[i * 3]
-						local br, bg, bb = bruiseRGB(r0, g0, b0, age)
-						-- the round-1 plate: 75 % of the way from the skin to the bruise colour
-						br, bg, bb = r0 + (br - r0) * 0.75, g0 + (bg - g0) * 0.75, b0 + (bb - b0) * 0.75
-						local k = seen[i]
-						if not k then
-							k = #ids + 1
-							ids[k] = i
-							seen[i] = k
-						end
-						local c = cols[k]
-						local cr, cg, cb = r0, g0, b0
-						if c then
-							cr, cg, cb = c.R, c.G, c.B
-						end
-						cols[k] = Color3.new(cr + (br - cr) * w, cg + (bg - cg) * w, cb + (bb - cb) * w)
+	local layers = {}
+	for _, key in ipairs(LAYER_ORDER) do
+		local L = pv.layers and pv.layers[key]
+		if L and L.any then
+			layers[#layers + 1] = L
+		end
+	end
+	table.insert(paintJobs, { model = model, pv = pv, img = img, map = map, layers = layers, py = 0, r0 = 1, out = nil })
+	stats.texJobs += 1
+end
+
+local function texJobStep(job, budget)
+	local pv, map, img = job.pv, job.map, job.img
+	local w, h = map.w, map.h
+	if not job.out then
+		if not pv.orig then
+			local ok, buf = pcall(function()
+				return img:ReadPixelsBuffer(Vector2.zero, Vector2.new(w, h))
+			end)
+			if not ok or type(buf) ~= "buffer" or buffer.len(buf) ~= w * h * 4 then
+				pv.image = nil -- not paintable: this piece keeps its generated texture
+				return true, 0
+			end
+			pv.orig = buf
+		end
+		job.out = buffer.create(w * h * 4)
+		buffer.copy(job.out, 0, pv.orig, 0, w * h * 4)
+	end
+	local layers = job.layers
+	local nL = #layers
+	local out, orig = job.out, pv.orig
+	local rv, rs, rn = map.v, map.s, map.n
+	local nr = #rv
+	local sides, uA, uB = map.sides, map.uA, map.uB
+	local readu8, writeu8 = buffer.readu8, buffer.writeu8
+	local used = 0
+	while job.py < h and used < budget do
+		local py = job.py
+		job.py += 1
+		used += 16 -- a row's fixed cost
+		if nL > 0 then
+			local v = (py + 0.5) / h
+			local r0 = job.r0
+			while r0 < nr - 1 and rv[r0 + 1] < v do
+				r0 += 1
+			end
+			job.r0 = r0
+			local va, vb = rv[r0], rv[r0 + 1]
+			local t = vb > va and math.clamp((v - va) / (vb - va), 0, 1) or 0
+			local sa, sb, na, nb = rs[r0], rs[r0 + 1], rn[r0], rn[r0 + 1]
+			-- rows whose lattice vertices carry no weight stay the original texels
+			local live = false
+			for q = 1, nL do
+				local W = layers[q].W
+				for j = 0, na - 1 do
+					if W[sa + j] > 0 then
+						live = true
+						break
 					end
 				end
+				if not live then
+					for j = 0, nb - 1 do
+						if W[sb + j] > 0 then
+							live = true
+							break
+						end
+					end
+				end
+				if live then
+					break
+				end
+			end
+			if live then
+				for px = 0, w - 1 do
+					local jf = math.clamp(((px + 0.5) / w - uA) / (uB - uA), 0, 1) * sides
+					local j = floor(jf)
+					if j > sides - 1 then
+						j = sides - 1
+					end
+					local f = jf - j
+					local i1, i2 = sa + min(j, na - 1), sa + min(j + 1, na - 1)
+					local i3, i4 = sb + min(j, nb - 1), sb + min(j + 1, nb - 1)
+					local w1, w2, w3, w4 = (1 - f) * (1 - t), f * (1 - t), (1 - f) * t, f * t
+					local o = (py * w + px) * 4
+					local r, g, b
+					for q = 1, nL do
+						local L = layers[q]
+						local W = L.W
+						local k = W[i1] * w1 + W[i2] * w2 + W[i3] * w3 + W[i4] * w4
+						if k > 0.004 then
+							if not r then
+								r, g, b = readu8(orig, o) / 255, readu8(orig, o + 1) / 255, readu8(orig, o + 2) / 255
+							end
+							r, g, b = r + (L.r - r) * k, g + (L.g - g) * k, b + (L.b - b) * k
+						end
+					end
+					if r then
+						writeu8(out, o, floor(math.clamp(r, 0, 1) * 255 + 0.5))
+						writeu8(out, o + 1, floor(math.clamp(g, 0, 1) * 255 + 0.5))
+						writeu8(out, o + 2, floor(math.clamp(b, 0, 1) * 255 + 0.5))
+					end
+				end
+				used += w
+				stats.texels += w
 			end
 		end
 	end
-	-- vertices painted last time and not now: back to the generated colour
-	for i in pairs(painted) do
-		if not seen[i] then
+	if job.py >= h then
+		local ok = pcall(function()
+			img:WritePixelsBuffer(Vector2.zero, Vector2.new(w, h), job.out)
+		end)
+		if ok then
+			stats.texWrites += 1
+		else
+			pv.image = nil
+		end
+		return true, used
+	end
+	return false, used
+end
+
+-- recompose the paint jobs within the frame's texel budget
+local function paintStep()
+	local budget = PAINT_BUDGET
+	while budget > 0 and #paintJobs > 0 do
+		local job = paintJobs[1]
+		local done, used = true, 0
+		if job.model.Parent and job.pv.image and job.pv.part and job.pv.part.Parent then
+			done, used = texJobStep(job, budget)
+		end
+		budget -= math.max(used, 1)
+		if done then
+			table.remove(paintJobs, 1)
+		end
+	end
+end
+
+-- apply a piece's layers: vertex colours (untextured piece) or a texture job
+local function composePiece(model, pv, name)
+	if not (pv.mesh and pv.part and Anatomy) then
+		return
+	end
+	if pv.image and pv.mesh.texMap then
+		startTexJob(model, pv)
+		return
+	end
+	local C = pv.mesh.C
+	if type(C) ~= "table" then
+		return
+	end
+	local ids, cols = {}, {}
+	local now = {}
+	local painted = pv.painted or {}
+	for i = 1, pv.mesh.nv do
+		local r, g, b
+		for _, key in ipairs(LAYER_ORDER) do
+			local L = pv.layers and pv.layers[key]
+			local k = L and L.any and L.W[i] or 0
+			if k > 0.004 then
+				if not r then
+					r, g, b = C[i * 3 - 2], C[i * 3 - 1], C[i * 3]
+				end
+				r, g, b = r + (L.r - r) * k, g + (L.g - g) * k, b + (L.b - b) * k
+			end
+		end
+		if r then
+			ids[#ids + 1] = i
+			cols[#ids] = Color3.new(r, g, b)
+			now[i] = true
+		elseif painted[i] then
+			-- back to the generated colour
 			ids[#ids + 1] = i
 			cols[#ids] = Color3.new(C[i * 3 - 2], C[i * 3 - 1], C[i * 3])
 		end
 	end
 	if #ids > 0 then
-		Anatomy.SetVertexColors(model, SECTION, "UpperTorso", ids, cols)
+		Anatomy.SetVertexColors(model, SECTION, name, ids, cols)
+	end
+	pv.painted = now
+end
+
+-- a weight layer on a piece (weights by vertex from fn(i, x, y, z, nx, ny, nz) -> 0..1); true when it changed
+local function setLayer(pv, key, r, g, b, fn)
+	pv.layers = pv.layers or {}
+	local mesh = pv.mesh
+	local P, N = mesh.P, mesh.N
+	local cloth = clothSet(pv)
+	local L = pv.layers[key]
+	if not fn then
+		if L and L.any then
+			L.any = false
+			table.clear(L.W)
+			return true
+		end
+		return false
+	end
+	local W = table.create(mesh.nv, 0)
+	local any = false
+	for i = 1, mesh.nv do
+		if not (cloth and cloth[i]) then
+			local k = fn(i, P[i * 3 - 2], P[i * 3 - 1], P[i * 3], N[i * 3 - 2], N[i * 3 - 1], N[i * 3])
+			if k > 0.004 then
+				W[i] = math.min(k, 1)
+				any = true
+			end
+		end
+	end
+	pv.layers[key] = { W = W, r = r, g = g, b = b, any = any }
+	return any or (L ~= nil and L.any)
+end
+
+-- rib bruises (LookFx ribsL / ribsR, 0..1 each) on the UpperTorso piece where the round-1 RibBruise plates
+-- sat (the lower ribs from the flank round toward the front)
+local function applyBruise(model, view, rec, ribsL, ribsR, age)
+	local pv = view.UpperTorso
+	if not (pv and pv.mesh and pv.part and Anatomy) then
+		return
+	end
+	age = floor((tonumber(age) or 0) * 10 + 0.5) / 10
+	ribsL, ribsR = floor(ribsL * 20 + 0.5) / 20, floor(ribsR * 20 + 0.5) / 20
+	if pv.bruiseL == ribsL and pv.bruiseR == ribsR and pv.bruiseAge == age then
+		return
+	end
+	pv.bruiseL, pv.bruiseR, pv.bruiseAge = ribsL, ribsR, age
+	-- mesh positions are in the R15 UpperTorso's space: place the bruise where the round-1 plates sat
+	local ut = model:FindFirstChild("UpperTorso")
+	local s = ut and ut:IsA("BasePart") and ut.Size or pv.part.Size
+	local look = LookData and LookData.Get(model)
+	local female = type(look) == "table" and look.g == 2
+	local sk = LookData and type(look) == "table" and look.skinRGB
+	local sr, sg, sb = 0.8, 0.6, 0.45
+	if type(sk) == "table" and tonumber(sk[1]) then
+		sr, sg, sb = sk[1] / 255, sk[2] / 255, sk[3] / 255
+	end
+	local br, bg, bb = bruiseRGB(sr, sg, sb, age)
+	local changed = false
+	for _, e in ipairs({ { -1, ribsL, "bruiseL" }, { 1, ribsR, "bruiseR" } }) do
+		local side, v, key = e[1], e[2], e[3]
+		local fn
+		if v > 0.08 then
+			local cx, cy = side * 0.36 * s.X, (female and -0.33 or -0.14) * s.Y
+			local ax, ay = (0.17 + 0.06 * v) * s.X, (0.16 + 0.08 * v) * s.Y
+			-- the round-1 plate: 75 % of the way from the skin to the bruise colour at its centre
+			local alpha = math.clamp(0.22 + 0.45 * v, 0.2, 0.65) * 0.75
+			fn = function(_, x, y)
+				if x * side <= 0 then
+					return 0
+				end
+				local dx, dy = (x - cx) / ax, (y - cy) / ay
+				local d2 = dx * dx + dy * dy
+				if d2 >= 1 then
+					return 0
+				end
+				return (1 - d2) * (1 - d2) * alpha
+			end
+		end
+		if setLayer(pv, key, br, bg, bb, fn) then
+			changed = true
+		end
+	end
+	if changed then
+		composePiece(model, pv, "UpperTorso")
 		stats.bruises += 1
 	end
-	pv.bruised = seen
 	return rec
+end
+
+-- road grime (LookFx grime / the Grime attribute, 0..1): dirt on the front of the shins and forearms (the
+-- round-1 Grime patches live in the Muscles folder the meshes replace)
+local GRIME_PIECES = { "LeftLowerLeg", "RightLowerLeg", "LeftLowerArm", "RightLowerArm" }
+local DIRT_R, DIRT_G, DIRT_B = 96 / 255, 80 / 255, 60 / 255
+local function applyGrime(model, view, grime)
+	local g = floor(math.clamp(tonumber(grime) or 0, 0, 1) * 10 + 0.5) / 10
+	for _, name in ipairs(GRIME_PIECES) do
+		local pv = view[name]
+		local mesh = pv and pv.mesh
+		if mesh and pv.part and pv.grimeLevel ~= g then
+			pv.grimeLevel = g
+			local fn
+			if g >= 0.1 then
+				local P = mesh.P
+				local ylo, yhi = math.huge, -math.huge
+				for i = 1, mesh.nv do
+					local y = P[i * 3 - 1]
+					ylo, yhi = min(ylo, y), max(yhi, y)
+				end
+				local leg = string.find(name, "Leg") ~= nil
+				local span = max(1e-6, yhi - ylo)
+				fn = function(_, _x, y, _z, _nx, _ny, nz)
+					local t = (y - ylo) / span
+					local band = leg and sstep(0.33, 0.45, t) * (1 - sstep(0.8, 0.92, t)) or sstep(0.13, 0.25, t) * (1 - sstep(0.75, 0.87, t))
+					return band * math.clamp(-nz * 1.4, 0, 1) * (0.25 + 0.35 * g)
+				end
+			end
+			if setLayer(pv, "grime", DIRT_R, DIRT_G, DIRT_B, fn) then
+				composePiece(model, pv, name)
+				stats.grime += 1
+			end
+		end
+	end
 end
 
 -- the trunks' lettering on the mesh: a client plate (an invisible part carrying a copy of the round-1
@@ -273,7 +551,8 @@ local function clearPlates(model)
 	end
 end
 
-local function makePlate(folder, name, src, attach, centre, size)
+-- cf: the plate's frame in the attach part's space (a Vector3 = axis aligned, the gui facing -Z)
+local function makePlate(folder, name, src, attach, cf, size)
 	local gui = src and src:FindFirstChildOfClass("SurfaceGui")
 	if not (gui and attach) then
 		return nil
@@ -288,11 +567,12 @@ local function makePlate(folder, name, src, attach, centre, size)
 	p.Massless = true
 	p.CastShadow = false
 	p.Anchored = false
-	local c0 = CFrame.new(centre)
+	local c0 = typeof(cf) == "CFrame" and cf or CFrame.new(cf)
 	p.CFrame = attach.CFrame * c0
 	local g = gui:Clone()
 	g.Face = Enum.NormalId.Front
 	g.Enabled = true
+	g:SetAttribute("AnatomyHid", nil)
 	g.Parent = p
 	local w = Instance.new("Weld")
 	w.Part0 = attach
@@ -313,39 +593,100 @@ local function lmVec(lm, name)
 	return V3(pos[1], pos[2], pos[3])
 end
 
--- (re)make the plates for the current round-1 patches; returns the sources used (to notice a rebuild)
+-- the round-1 patch's text area (its SurfaceGui face's two extents)
+local function textArea(src)
+	local gui = src:FindFirstChildOfClass("SurfaceGui")
+	local face = gui and gui.Face or Enum.NormalId.Front
+	local s = src.Size
+	if face == Enum.NormalId.Left or face == Enum.NormalId.Right then
+		return s.Z, s.Y
+	elseif face == Enum.NormalId.Top or face == Enum.NormalId.Bottom then
+		return s.X, s.Z
+	end
+	return s.X, s.Y
+end
+
+-- "R" / "L" from the R15 part a patch is welded to
+local function patchSide(src)
+	local wc = src:FindFirstChildOfClass("WeldConstraint")
+	local a = wc and wc.Part0
+	local n = a and a.Name or ""
+	if string.sub(n, 1, 5) == "Right" then
+		return "R"
+	elseif string.sub(n, 1, 4) == "Left" then
+		return "L"
+	end
+	return nil
+end
+
+-- gear lettering: the source patches (by folder and name) and the landmark spot each goes to
+local GEAR_PLATES = {
+	{ folder = "Hands", name = "Logo", spot = "GloveLogo" },
+	{ folder = "Hands", name = "Wordmark", spot = "CuffWord" },
+	{ folder = "Attire", name = "Wordmark", spot = "BootWord" },
+	{ folder = "Attire", name = "HeelMark", spot = "BootHeel" },
+}
+
+-- (re)make the plates for the current round-1 patches; returns a key of the sources used (to notice a
+-- rebuild of the Attire / Hands folders)
 local function applyPlates(model, lm)
 	clearPlates(model)
 	local look = model:FindFirstChild("BoxerLook")
 	local attire = look and look:FindFirstChild("Attire")
-	if not (attire and lm) then
+	local hands = look and look:FindFirstChild("Hands")
+	if not (look and lm) then
 		return nil
 	end
-	local waistSrc = attire:FindFirstChild("WaistText")
-	local patchSrc = attire:FindFirstChild("SponsorPatch")
-	-- only while the mesh trunks replace them (the Body section hides them then)
-	local hiddenW = waistSrc and Anatomy and Anatomy.IsReplaced(waistSrc)
-	local hiddenP = patchSrc and Anatomy and Anatomy.IsReplaced(patchSrc)
 	local folder
-	local front, top, edge = lmVec(lm, "WaistFront"), lmVec(lm, "WaistBandTop"), lmVec(lm, "WaistFrontEdge")
-	local lt = model:FindFirstChild("LowerTorso")
-	if hiddenW and front and top and edge and lt then
-		local half = abs(edge.X - front.X)
-		local h = math.min(waistSrc.Size.Y, abs(top.Y - front.Y) * 2 * 0.85)
-		-- a flat plate on a curved band: kept to the band's flatter middle so its ends do not stand off much
-		local wdt = math.clamp(half * 1.8, 0.2, waistSrc.Size.X)
-		folder = folder or plateFolder(model)
-		makePlate(folder, "WaistText", waistSrc, lt, V3(front.X, front.Y, front.Z - 0.016), V3(wdt, h, 0.02))
+	if attire then
+		local waistSrc = attire:FindFirstChild("WaistText")
+		local patchSrc = attire:FindFirstChild("SponsorPatch")
+		-- only while the mesh trunks replace them (the Body section hides them then)
+		local hiddenW = waistSrc and Anatomy and Anatomy.IsReplaced(waistSrc)
+		local hiddenP = patchSrc and Anatomy and Anatomy.IsReplaced(patchSrc)
+		local front, top, edge = lmVec(lm, "WaistFront"), lmVec(lm, "WaistBandTop"), lmVec(lm, "WaistFrontEdge")
+		local lt = model:FindFirstChild("LowerTorso")
+		if hiddenW and front and top and edge and lt then
+			local half = abs(edge.X - front.X)
+			local h = math.min(waistSrc.Size.Y, abs(top.Y - front.Y) * 2 * 0.85)
+			-- a flat plate on a curved band: kept to the band's flatter middle so its ends do not stand off much
+			local wdt = math.clamp(half * 1.8, 0.2, waistSrc.Size.X)
+			folder = folder or plateFolder(model)
+			makePlate(folder, "WaistText", waistSrc, lt, V3(front.X, front.Y, front.Z - 0.016), V3(wdt, h, 0.02))
+		end
+		local pc, pe = lmVec(lm, "TrunkPatchR"), lmVec(lm, "TrunkPatchREdge")
+		local ul = model:FindFirstChild("RightUpperLeg")
+		if hiddenP and pc and pe and ul then
+			local half = abs(pe.X - pc.X)
+			local wdt = math.clamp(half * 1.6, 0.2, patchSrc.Size.X)
+			folder = folder or plateFolder(model)
+			makePlate(folder, "SponsorPatch", patchSrc, ul, V3(pc.X, pc.Y, pc.Z - 0.016), V3(wdt, patchSrc.Size.Y, 0.02))
+		end
 	end
-	local pc, pe = lmVec(lm, "TrunkPatchR"), lmVec(lm, "TrunkPatchREdge")
-	local ul = model:FindFirstChild("RightUpperLeg")
-	if hiddenP and pc and pe and ul then
-		local half = abs(pe.X - pc.X)
-		local wdt = math.clamp(half * 1.6, 0.2, patchSrc.Size.X)
-		folder = folder or plateFolder(model)
-		makePlate(folder, "SponsorPatch", patchSrc, ul, V3(pc.X, pc.Y, pc.Z - 0.016), V3(wdt, patchSrc.Size.Y, 0.02))
+	-- the gear's lettering (gloves, boots), each on its side's spot: a plate turned to the surface there
+	for _, e in ipairs(GEAR_PLATES) do
+		local f = e.folder == "Hands" and hands or attire
+		if f then
+			for _, src in ipairs(f:GetChildren()) do
+				if src.Name == e.name and src:IsA("BasePart") and Anatomy and Anatomy.IsReplaced(src) then
+					local L = patchSide(src)
+					local key = L and e.spot .. L
+					local entry = key and lm[key]
+					local pos, n, up = lmVec(lm, key), key and lmVec(lm, key .. "N"), key and lmVec(lm, key .. "U")
+					local attach = entry and type(entry.part) == "string" and model:FindFirstChild(entry.part)
+					if pos and n and up and attach and attach:IsA("BasePart") then
+						local dir = (n - pos).Unit
+						local upv = (up - pos).Unit
+						local cf = CFrame.lookAt(pos + dir * 0.012, pos + dir, upv)
+						local aw, ah = textArea(src)
+						folder = folder or plateFolder(model)
+						makePlate(folder, e.spot .. L, src, attach, cf, V3(aw, ah, 0.02))
+					end
+				end
+			end
+		end
 	end
-	return (waistSrc or false), (patchSrc or false)
+	return attire or false, hands or false
 end
 
 ------------------------------------------------------------------------
@@ -375,16 +716,22 @@ local function meshState(rec, view)
 		local info = PIECES[name]
 		local morphs = pv.mesh and pv.mesh.morphs
 		if info and type(morphs) == "table" and next(morphs) ~= nil then
-			local function n(mo)
-				return mo and mo.ids and #mo.ids or 0
+			-- the shapes this piece carries, their vertex counts (AnatomyClient rewrites the vertices of the
+			-- shapes whose weight moved: cost per shape, and the whole union as the cap)
+			local names, n, w, sent = {}, {}, {}, {}
+			for _, k in ipairs(SHAPES) do
+				local mo = morphs[k]
+				if mo then
+					names[#names + 1] = k
+					n[k] = mo.ids and #mo.ids or 0
+					w[k], sent[k] = 0, 0
+				end
 			end
 			st[name] = {
 				rec = rec, name = name, kind = info[1], side = info[2], region = info[3],
 				hasFlex = morphs.flex ~= nil, hasBreathe = morphs.breathe ~= nil, hasTense = morphs.tense ~= nil,
-				-- AnatomyClient rewrites the vertices of the shapes whose weight moved: cost per shape, and the
-				-- whole union as the cap
-				cost = morphCost(pv.mesh), nFlex = n(morphs.flex), nBreathe = n(morphs.breathe), nTense = n(morphs.tense),
-				w = { flex = 0, breathe = 0, tense = 0 }, sent = { flex = 0, breathe = 0, tense = 0 }, pending = false,
+				hasShoulder = morphs.raiseL ~= nil or morphs.raiseR ~= nil or morphs.reachL ~= nil or morphs.reachR ~= nil,
+				names = names, n = n, cost = morphCost(pv.mesh), w = w, sent = sent, pending = false,
 			}
 		end
 	end
@@ -403,22 +750,29 @@ local function setView(model, view, lm)
 		end
 		rec.mesh = view and meshState(rec, view) or nil
 		rec.sweat = -1
-		rec.plateSrcW, rec.plateSrcP = nil, nil
+		rec.plateSrcW, rec.plateSrcP, rec.plateDue = nil, nil, nil
 		queueDirty = true
 	end
 	if view then
-		-- static extras for every model with meshes (tracked or not): sheen, bruises, lettering
+		-- static extras for every model with meshes (tracked or not): sheen, bruises, grime, lettering
 		local fx = LookData and LookData.Fx(model)
 		applySweat(model, view, fx and fx.sweat or (tonumber(model:GetAttribute("Sweat")) or 0))
 		if fx then
 			applyBruise(model, view, rec, tonumber(fx.dmg.ribsL) or 0, tonumber(fx.dmg.ribsR) or 0, fx.dmg.age)
 		end
+		applyGrime(model, view, fx and fx.grime or model:GetAttribute("Grime"))
 		local w, p = applyPlates(model, lm)
 		if rec then
 			rec.plateSrcW, rec.plateSrcP = w, p
 		end
 	else
 		clearPlates(model)
+		-- (a restored character's paint jobs go with its pieces)
+		for i = #paintJobs, 1, -1 do
+			if paintJobs[i].model == model then
+				table.remove(paintJobs, i)
+			end
+		end
 	end
 end
 
@@ -633,12 +987,20 @@ local function readAttrs(rec, now)
 		if fx then
 			applyBruise(m, view, rec, tonumber(fx.dmg.ribsL) or 0, tonumber(fx.dmg.ribsR) or 0, fx.dmg.age)
 		end
+		applyGrime(m, view, fx and fx.grime or m:GetAttribute("Grime"))
+		-- a rebuilt Attire / Hands folder (new lettering): re-plate a moment later, once AnatomyClient has
+		-- hidden the new patches
 		local look = m:FindFirstChild("BoxerLook")
-		local attire = look and look:FindFirstChild("Attire")
-		local w = attire and attire:FindFirstChild("WaistText") or false
-		local p = attire and attire:FindFirstChild("SponsorPatch") or false
-		if w ~= rec.plateSrcW or p ~= rec.plateSrcP then
-			rec.plateSrcW, rec.plateSrcP = applyPlates(m, landmarksOf[m])
+		local attire = look and look:FindFirstChild("Attire") or false
+		local hands = look and look:FindFirstChild("Hands") or false
+		if attire ~= rec.plateSrcW or hands ~= rec.plateSrcP then
+			if not rec.plateDue then
+				rec.plateDue = now + 0.5
+			elseif now >= rec.plateDue then
+				rec.plateDue = nil
+				applyPlates(m, landmarksOf[m])
+				rec.plateSrcW, rec.plateSrcP = attire, hands
+			end
 		end
 	end
 end
@@ -704,6 +1066,20 @@ local function pumpOf(rec, id, liveSet)
 	return p
 end
 
+-- the shoulder girdle follows the upper arm: raise (the arm lifted out / up: the trapezius and the top of the
+-- shoulder lift) and reach (the arm forward: the shoulder comes forward round the ribs), from the arm's
+-- direction in the torso's frame
+local function shoulderShapes(model, side)
+	local ut = model:FindFirstChild("UpperTorso")
+	local ua = model:FindFirstChild(side .. "UpperArm")
+	if not (ut and ua and ut:IsA("BasePart") and ua:IsA("BasePart")) then
+		return 0, 0
+	end
+	local down = -ut.CFrame:VectorToObjectSpace(ua.CFrame.UpVector)
+	local up = 1 + down.Y -- 0 hanging, 1 out to the side, 2 straight up
+	return sstep(0.25, 1.6, up), sstep(0.15, 0.85, -down.Z)
+end
+
 -- desired weights for every piece of one character; marks the pieces whose quantised weights changed
 local function meshWeights(rec, rig, breathing, t)
 	local liveSet = rec.live > 0 and rig and rig.poseAct and TARGETS[rig.poseAct] or nil
@@ -746,12 +1122,25 @@ local function meshWeights(rec, rig, breathing, t)
 			end
 			w.tense = quant(math.clamp(t + 0.5 * rec.strain + 0.6 * jx[2], -0.3, 1))
 		end
-		local s = st.sent
-		if w.flex ~= s.flex or w.breathe ~= s.breathe or w.tense ~= s.tense then
-			st.pending = true
+		if st.hasShoulder then
+			local rL, cL = shoulderShapes(rec.model, "Left")
+			local rR, cR = shoulderShapes(rec.model, "Right")
+			if w.raiseL then
+				w.raiseL, w.reachL = quant(rL), quant(cL)
+			end
+			if w.raiseR then
+				w.raiseR, w.reachR = quant(rR), quant(cR)
+			end
 		end
-		if w.flex ~= 0 or w.breathe ~= 0 or w.tense ~= 0 then
-			any = true
+		local s = st.sent
+		for _, k in ipairs(st.names) do
+			local v = w[k]
+			if v ~= s[k] then
+				st.pending = true
+			end
+			if v ~= 0 then
+				any = true
+			end
 		end
 	end
 	return any
@@ -774,13 +1163,20 @@ local function flushMorphs()
 		cursor += 1
 		if st.pending then
 			local w, s = st.w, st.sent
-			local cost = min(st.cost, (w.flex ~= s.flex and st.nFlex or 0) + (w.breathe ~= s.breathe and st.nBreathe or 0)
-				+ (w.tense ~= s.tense and st.nTense or 0))
+			local cost = 0
+			for _, k in ipairs(st.names) do
+				if w[k] ~= s[k] then
+					cost += st.n[k]
+				end
+			end
+			cost = min(st.cost, cost)
 			if wrote and cost > budget then
 				break
 			end
 			Anatomy.SetMorphs(st.rec.model, SECTION, st.name, w)
-			s.flex, s.breathe, s.tense = w.flex, w.breathe, w.tense
+			for _, k in ipairs(st.names) do
+				s[k] = w[k]
+			end
 			st.pending = false
 			if draining[st] then
 				-- an untracked character's shapes are back at rest: it leaves the round-robin
@@ -961,11 +1357,14 @@ function BodyFX.Update(dt, t, camPos, rigs)
 		rec.awake = not settled
 	end
 	flushMorphs()
+	if #paintJobs > 0 then
+		paintStep()
+	end
 end
 
 -- counters for tools and tests: characters on each path, blend-shape writes, plates, bruises
 function BodyFX.Status()
-	local out = { tracked = 0, mesh = 0, parts = 0, queue = #queue }
+	local out = { tracked = 0, mesh = 0, parts = 0, queue = #queue, paintJobs = #paintJobs }
 	for k, v in pairs(stats) do
 		out[k] = v
 	end

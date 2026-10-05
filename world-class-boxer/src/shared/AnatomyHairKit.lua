@@ -70,6 +70,10 @@ local function norm3(x, y, z)
 	return x / l, y / l, z / l, l
 end
 
+local function acosClamp(v)
+	return math.acos(clamp(v, -1, 1))
+end
+
 local function cross(ax, ay, az, bx, by, bz)
 	return ay * bz - az * by, az * bx - ax * bz, ax * by - ay * bx
 end
@@ -161,11 +165,55 @@ function Kit.White(ix, iy, s)
 			for i = 0, 127 do
 				WT[j * 128 + i + 1] = whiteHash(i, j, 7)
 			end
+			step(128)
 		end
 	end
 	-- the seed picks a (wrapping) offset into the tile
 	local off = ((s or 0) * 40503 + 12345) % 16384
 	return WT[((iy + off // 128) % 128) * 128 + (ix + off) % 128 + 1]
+end
+
+-- cellular (Worley) noise: worley = Kit.Worley(seed); f1, f2, id = worley(x, y, z) -> the distances to the
+-- nearest and second nearest feature point (cell units) and the nearest one's random id in [0, 1). One
+-- jittered point per unit cell (kept in the middle half, so the 2 x 2 x 2 block of cells nearest the sample
+-- holds the near points: 8 cells instead of 27); points are cached per call site (one texture).
+function Kit.Worley(seed)
+	local cache = {}
+	local s = (seed or 0) % 65521
+	local function cellPoint(ix, iy, iz)
+		local key = ((ix % 1024) * 1024 + (iy % 1024)) * 1024 + (iz % 1024)
+		local p = cache[key]
+		if not p then
+			-- the avalanche hash (MeshKit.Hash3 is too regular between neighbouring cells: a visible lattice)
+			local a, b = ix + iz * 7919, iy - iz * 104729
+			p = {
+				ix + 0.25 + 0.5 * whiteHash(a, b, s), iy + 0.25 + 0.5 * whiteHash(a, b, s + 1),
+				iz + 0.25 + 0.5 * whiteHash(a, b, s + 2), whiteHash(a, b, s + 3),
+			}
+			cache[key] = p
+		end
+		return p
+	end
+	return function(x, y, z)
+		local ix, iy, iz = floor(x - 0.5), floor(y - 0.5), floor(z - 0.5)
+		local f1, f2, id = 1e9, 1e9, 0
+		for dz = 0, 1 do
+			for dy = 0, 1 do
+				for dx = 0, 1 do
+					local p = cellPoint(ix + dx, iy + dy, iz + dz)
+					local ex, ey, ez = p[1] - x, p[2] - y, p[3] - z
+					local d = ex * ex + ey * ey + ez * ez
+					if d < f1 then
+						f2 = f1
+						f1, id = d, p[4]
+					elseif d < f2 then
+						f2 = d
+					end
+				end
+			end
+		end
+		return sqrt(f1), sqrt(f2), id
+	end
 end
 
 function Kit.RNoise(x, y, z, f, seed, which)
@@ -463,6 +511,22 @@ function Kit.Hairline(S, kind, growth)
 		end
 		return h
 	end
+	-- the line's height sampled finely over the angle from the front (the window search below)
+	local NH = 256
+	local HT = table.create(NH + 1)
+	for k = 0, NH do
+		HT[k + 1] = height(k / NH * pi)
+	end
+	local function hAt(a)
+		a = abs(a)
+		if a > pi then
+			a = TAU - a
+		end
+		local s = a / pi * NH
+		local k = min(NH - 1, floor(s))
+		local u = s - k
+		return HT[k + 1] + (HT[k + 2] - HT[k + 1]) * u
+	end
 	local function dist(x, y, z)
 		local da = S.around(x, z)
 		local h, slope = keyed(K, da)
@@ -475,7 +539,26 @@ function Kit.Hairline(S, kind, growth)
 		end
 		local r = max(sqrt(x * x + (z - 0.05) * (z - 0.05)), 0.15)
 		local sl = slope / r
-		return (y - h) / sqrt(1 + sl * sl), da, h
+		local dy = y - h
+		local d0 = dy / sqrt(1 + sl * sl)
+		local ay = abs(dy)
+		if ay > 0.03 and abs(sl) > 1.2 then
+			-- where the line is steep (the sideburns, round the ears) the local estimate collapses away from it
+			-- (it would read a groove of "near the hairline" up the side of the head to the crown): there, the
+			-- distance to the line's points in a window round this angle
+			local best = ay
+			for k = 1, 8 do
+				local o = k * 0.05
+				local hx = r * o
+				if hx >= best then
+					break
+				end
+				local e1, e2 = y - hAt(da - o), y - hAt(da + o)
+				best = min(best, sqrt(hx * hx + e1 * e1), sqrt(hx * hx + e2 * e2))
+			end
+			return lerp(d0, dy >= 0 and best or -best, smoothstep(0.03, 0.08, ay)), da, h
+		end
+		return d0, da, h
 	end
 	return dist, height, soft
 end
@@ -501,6 +584,14 @@ function Kit.Cut(S, spec)
 	local dist, height, soft = Kit.Hairline(S, spec.hairline, growth)
 	local fade = spec.fade and Kit.FADES[spec.fade]
 	local fadeKind = spec.fade
+	-- fadeLift: the fade's lines a little higher (dense coily hair hides a low gradient: it is cut higher)
+	local lift = spec.fadeLift or 0
+	if fade and lift ~= 0 then
+		fade = table.clone(fade)
+		fade.side = fade.side and fade.side + lift
+		fade.back = fade.back and fade.back + lift
+		fade.band = fade.band and fade.band * (1 + lift * 6)
+	end
 	local bottom = fade and lerp(fade.bottom or 0, 1, 0.85 * grow) or 1
 	local density = spec.density or 1
 	local region, shaved = spec.region, spec.shaved or 0.2
@@ -552,22 +643,32 @@ function Kit.Cut(S, spec)
 		return c * density, d, fd, da
 	end
 
-	-- shell thickness: the top / side thickness, thinning through the fade and at the hairline edge
+	-- shell offset over the scalp: the top / side thickness, thinning through the fade. No rim anywhere: the
+	-- shell lies under the skin (-SINK: the head's own scalp shows) where the cut leaves bare skin, comes up as
+	-- a stubble-thin layer where the coverage starts (the visible edge is sparse hair over skin, dithered in the
+	-- texture, not a line) and only then thickens, over a band ~3.5 x its thickness wide (a gentle slope
+	-- instead of a ledge or a visor). Returns offset, coverage
+	local edgeW = spec.edge or 0.05
+	local thin = spec.thin or 0.0025
+	local SINK = 0.015
 	local function thick(x, y, z)
 		local c, d, fd, da = cov(x, y, z)
 		local wTop = smoothstep(0.16, 0.4, y)
 		local t = lerp(side, top, wTop)
+		local emerge = spec.emerge or 0.04
 		if region then
 			local r = region(x, y, z, da)
-			t = lerp(0.005 + 0.006 * grow, t, r)
+			t = lerp(thin + 0.004 * grow, t, r)
+			-- a freshly shaved region is the head's own skin (the shell stays under it); stubble grown out
+			-- past ~a quarter coverage comes up as a thin layer
+			emerge = lerp(0.2, emerge, r)
 		end
 		t *= clamp(fd, 0, 1) ^ 0.7
-		t = max(t, 0.005)
-		-- the shell thins toward the hairline (short fine hairs there) and its edge dips just under the skin so
-		-- its rim never shows: the stubble simply ends
-		local e = smoothstep(-0.022, 0.006, d)
-		t *= 0.3 + 0.7 * smoothstep(0.0, spec.edge or 0.07, d)
-		return lerp(-0.004, t, e), c
+		local gc = smoothstep(emerge, emerge + 0.16, c / max(density, 0.2))
+		local gd = smoothstep(0, max(edgeW, 3.5 * t), d)
+		-- under bare skin the shell sinks ~1.5 cm (nominal 0.015): deep enough that the head mesh's own
+		-- facets (its chords cut below the smooth skull field) never leave a gap at the shell's edge
+		return -SINK + (thin + SINK) * gc + max(t - thin, 0) * gc * gd * gd ^ 0.3, c
 	end
 	return { cov = cov, thick = thick, dist = dist, height = height, soft = soft, grow = grow, seed = seed }
 end
@@ -600,29 +701,42 @@ function Kit.Palette(look, htype)
 	local rootK = coil and 0.9 or (htype == "Curly" and 0.84 or 0.78)
 	local tipK = coil and 1.02 or 1.07
 	local pal = { base = base, alt = alt, dye = dye, hl = hl, grey = greyFrac, lum = lum, greyRGB = GREY }
-	-- noGrey: the colour without greying (the cap texture scatters its grey strands itself)
-	function pal.at(rnd, t, x, noGrey)
+	-- where an ombre turns (nominal height): the same line on the cap, every clump, the sheets and the locs,
+	-- lower for shorter hair
+	local L = clamp(num(hair.length, 0.5), 0, 1)
+	local dyeY = -0.05 - 0.25 * (1 - L)
+	pal.dyeY = dyeY
+	-- at(rnd, t, x [, noGrey, y, tipDist, streakMask]) -> r, g, b:
+	--   noGrey: without greying (the cap texture and the clumps draw their grey strands themselves)
+	--   y: the point's nominal height (an ombre is a horizontal gradient at one height on every lock)
+	--   tipDist: studs from the strand's tip (dyed tips are the last few centimetres, on every lock alike)
+	--   streakMask: 0..1, how much of a streak this point carries (a streak is a band of a clump, not all of it)
+	function pal.at(rnd, t, x, noGrey, y, tipDist, streakMask)
 		local c = base
 		local r, g, b = c[1], c[2], c[3]
 		if dye == "Tips" then
-			local k = smoothstep(0.52, 0.72, t)
+			-- the dyed length differs a little from lock to lock, its edge a soft ~6 cm blend
+			local k = tipDist and smoothstep(0.13, 0.03, tipDist * (0.75 + 0.5 * ((rnd * 3.71) % 1))) or smoothstep(0.6, 0.85, t)
 			r, g, b = lerp(r, alt[1], k), lerp(g, alt[2], k), lerp(b, alt[3], k)
 		elseif dye == "Ombre" then
-			local k = smoothstep(0.15, 0.95, t)
+			local k = y and smoothstep(dyeY + 0.12, dyeY - 0.3, y) or smoothstep(0.25, 0.95, t)
 			r, g, b = lerp(r, alt[1], k), lerp(g, alt[2], k), lerp(b, alt[3], k)
 		elseif dye == "Streaks" then
-			if rnd < 0.3 then
-				r, g, b = alt[1], alt[2], alt[3]
+			if rnd < 0.18 then
+				local k = 0.7 * (streakMask or 1)
+				r, g, b = lerp(r, alt[1], k), lerp(g, alt[2], k), lerp(b, alt[3], k)
 			end
 		elseif dye == "Split" then
 			local k = smoothstep(-0.02, 0.02, x or 0)
 			r, g, b = lerp(r, alt[1], k), lerp(g, alt[2], k), lerp(b, alt[3], k)
 		elseif hl and rnd < 0.24 then
-			r, g, b = lerp(r, alt[1], 0.65), lerp(g, alt[2], 0.65), lerp(b, alt[3], 0.65)
+			local k = 0.65 * (streakMask or 1)
+			r, g, b = lerp(r, alt[1], k), lerp(g, alt[2], k), lerp(b, alt[3], k)
 		end
 		if greyFrac > 0 and not noGrey then
-			-- a clump holds many strands, some of them grey: each one greyed by its own share around greyFrac
-			local k = clamp(greyFrac * (0.35 + 1.3 * ((rnd * 7.31) % 1)), 0, 0.9)
+			-- a clump holds many strands, some of them grey: every clump about the same mix (salt and pepper
+			-- reads evenly, not as some white locks among brown ones); light hair shows its grey less
+			local k = clamp(greyFrac * (0.45 + 0.3 * ((rnd * 7.31) % 1)), 0, 0.9) * (1 - 0.3 * smoothstep(0.25, 0.5, lum))
 			r, g, b = lerp(r, GREY[1], k), lerp(g, GREY[2], k), lerp(b, GREY[3], k)
 		end
 		-- per-group variation, darker roots, lighter tips
@@ -1008,7 +1122,8 @@ function Kit.Clump(m, pts, opts)
 			end
 			local v = vertex(m, x, y, z, (k - 1) / sides, t, r, g, b)
 			local nx, ny, nz = norm3(sx * h * c + ux * w * s, sy * h * c + uy * w * s, sz * h * c + uz * w * s)
-			if flat > 0 and s > -0.2 then
+			-- flat: the faces shade like the surface the clump lies on (its up axis); 1 = the whole section
+			if flat > 0 and (s > -0.2 or flat >= 1) then
 				nx, ny, nz = norm3(lerp(nx, ux, flat), lerp(ny, uy, flat), lerp(nz, uz, flat))
 			end
 			local N = m.N
@@ -1134,6 +1249,8 @@ function Kit.Tube(m, pts, opts)
 			PZ[o] = cz + (f[6] * c + f[9] * s) * r
 			RR[o] = r / max(rad, 1e-6)
 		end
+		-- (the section callback per vertex: noise lumps, plait lobes)
+		step(sides * 2)
 	end
 	local first = m.nv + 1
 	local N = m.N
@@ -1260,8 +1377,12 @@ end
 ------------------------------------------------------------------------
 -- A grid over the skull (azimuth x polar angle from the crown) down to just past the hairline, at the cut's
 -- thickness above the scalp. opts: cut (Kit.Cut), cols, rows, color(x, y, z, c) -> r, g, b, extra
--- thickness fn(x, y, z) -> studs (volume shells), reach (studs past the hairline, default 0.022)
--- UVs: u = azimuth (seam at the back centre), v = polar angle / 2.7.
+-- thickness fn(x, y, z, c) -> studs (volume shells), reach (studs past the hairline, default 0.022),
+-- gridNormals (normals of the displaced surface: volumes), smooth (passes, default 3)
+-- The skull's blend creases (the frontal bone meeting the vault) do not show through hair: the scalp radius
+-- under the grid is smoothed (only filling dips, never sinking into the skull) and so are its normals. Quads
+-- that lie wholly under the skin (bare scalp: a skin fade, past the hairline) are left out.
+-- UVs: u = azimuth (seam at the back centre), v = polar angle / 2.75.
 function Kit.Cap(S, m, opts)
 	local cut = opts.cut
 	local cols, rows = opts.cols or 40, opts.rows or 18
@@ -1271,6 +1392,7 @@ function Kit.Cap(S, m, opts)
 	local dist = cut.dist
 	local first = m.nv + 1
 	local N = m.N
+	local cx, cy, cz = S.cx, S.cy, S.cz
 	-- the polar angle where the scalp crosses `reach` outside the hairline, per column (bisection)
 	local function dirOf(az, th)
 		-- az: 0 = back centre (+Z), increasing toward the character's right (+X) seen from above
@@ -1292,38 +1414,137 @@ function Kit.Cap(S, m, opts)
 			else
 				hi = mid
 			end
+			-- a ray march (up to 14 field samples) per iteration
+			step(14)
 		end
 		thMax[c + 1] = lo
 	end
+	if opts.radial then
+		-- a volume's mass spans the hairline's notches (round the ears, the temples): its rows run at the polar
+		-- angles of a dilated, smoothed hairline (a column whose range drops where its neighbours' does not
+		-- leaves long skinny triangles cutting chords through the mass: creases). The part past the true
+		-- hairline sinks under the skin with the cut's thickness and is culled below.
+		local w = max(1, floor(cols / 10))
+		local D = table.create(cols + 1)
+		for c = 0, cols do
+			local m = 0
+			for k = -w, w do
+				local cc = (c + k) % cols
+				m = max(m, thMax[cc + 1])
+			end
+			D[c + 1] = m
+		end
+		for _ = 1, 3 do
+			local T = table.create(cols + 1)
+			for c = 0, cols do
+				local a, b = (c - 1) % cols, (c + 1) % cols
+				T[c + 1] = 0.5 * D[c + 1] + 0.25 * (D[a + 1] + D[b + 1])
+			end
+			D = T
+		end
+		D[cols + 1] = D[1]
+		thMax = D
+	end
 	-- crown pole cluster: a tiny ring first so UVs stay per column
 	local TH0 = 0.035
+	local stride = cols + 1
+	local nG = (rows + 1) * stride
+	-- per grid vertex: ray direction, scalp radius along it, normal, offset, coverage
+	local DX, DY, DZ = table.create(nG), table.create(nG), table.create(nG)
+	local R0, R = table.create(nG), table.create(nG)
+	local NX, NY, NZ = table.create(nG), table.create(nG), table.create(nG)
+	local OFF, CV = table.create(nG), table.create(nG)
+	-- radial: the extra (a volume's depth) goes along the grid ray from the centre, not the scalp normal: a big
+	-- mass over a concave scalp (the temples) cannot fold over itself
+	local EX = opts.radial and table.create(nG, 0) or nil
 	-- warm starts: each column's ray length from the row above (rays converge in two or three steps)
 	local tcol = table.create(cols + 1, 0.5)
 	for r = 0, rows do
 		local f = r / rows
 		for c = 0, cols do
+			local i = r * stride + c + 1
 			local az = c / cols * TAU
 			-- denser rows toward the edge, where the fade and hairline detail is
 			local th = lerp(TH0, thMax[c + 1], 1 - (1 - f) ^ 1.25)
 			local dx, dy, dz = dirOf(az, th)
 			local x, y, z, tr = S.ray(dx, dy, dz, 0, tcol[c + 1])
 			tcol[c + 1] = tr
+			DX[i], DY[i], DZ[i], R0[i], R[i] = dx, dy, dz, tr, tr
+			NX[i], NY[i], NZ[i] = S.normal(x, y, z)
 			local t, cv = cut.thick(x, y, z)
 			if extra then
-				t += extra(x, y, z, cv)
+				local e = extra(x, y, z, cv)
+				if EX then
+					EX[i] = e
+				else
+					t += e
+				end
 			end
-			local nx, ny, nz = S.normal(x, y, z)
-			x, y, z = x + nx * t, y + ny * t, z + nz * t
-			local cr, cg, cb = 1, 1, 1
-			if color then
-				cr, cg, cb = color(x, y, z, cv)
-			end
-			local v = vertex(m, x, y, z, c / cols, th / 2.75, cr, cg, cb)
-			N[v * 3 - 2], N[v * 3 - 1], N[v * 3] = nx, ny, nz
+			OFF[i], CV[i] = t, cv
+			-- a ray, the cut, a normal and the callbacks per vertex
+			step(12)
 		end
-		step(cols * 6)
 	end
-	local stride = cols + 1
+	-- smoothing: radius (dips filled only) and normals, a few Jacobi passes over the grid (columns wrap)
+	local passes = opts.smooth or 6
+	if passes > 0 then
+		local TR, TX, TY, TZ = table.create(nG), table.create(nG), table.create(nG), table.create(nG)
+		for _ = 1, passes do
+			for r = 0, rows do
+				local rp, rn = max(0, r - 1), min(rows, r + 1)
+				for c = 0, cols do
+					local cp, cn = c - 1, c + 1
+					if cp < 0 then
+						cp = cols - 1
+					end
+					if cn > cols then
+						cn = 1
+					end
+					local i = r * stride + c + 1
+					local a, b = r * stride + cp + 1, r * stride + cn + 1
+					local u, d = rp * stride + c + 1, rn * stride + c + 1
+					TR[i] = max(R0[i], 0.5 * R[i] + 0.125 * (R[a] + R[b] + R[u] + R[d]))
+					TX[i] = 2 * NX[i] + NX[a] + NX[b] + NX[u] + NX[d]
+					TY[i] = 2 * NY[i] + NY[a] + NY[b] + NY[u] + NY[d]
+					TZ[i] = 2 * NZ[i] + NZ[a] + NZ[b] + NZ[u] + NZ[d]
+				end
+				step(cols)
+			end
+			for i = 1, nG do
+				R[i] = TR[i]
+				NX[i], NY[i], NZ[i] = norm3(TX[i], TY[i], TZ[i])
+				if i % 64 == 0 then
+					step(64)
+				end
+			end
+			-- the seam column (c = cols) repeats c = 0
+			for r = 0, rows do
+				local i0, i1 = r * stride + 1, r * stride + cols + 1
+				R[i1], NX[i1], NY[i1], NZ[i1] = R[i0], NX[i0], NY[i0], NZ[i0]
+			end
+			step(nG)
+		end
+	end
+	for i = 1, nG do
+		local c = (i - 1) % stride
+		local r = (i - 1 - c) // stride
+		local rr, t = R[i], OFF[i]
+		if EX then
+			rr += EX[i]
+		end
+		local nx, ny, nz = NX[i], NY[i], NZ[i]
+		local x, y, z = cx + DX[i] * rr + nx * t, cy + DY[i] * rr + ny * t, cz + DZ[i] * rr + nz * t
+		local cr, cg, cb = 1, 1, 1
+		if color then
+			cr, cg, cb = color(x, y, z, CV[i])
+		end
+		-- the polar angle back from the ray (UVs follow the scalp grid)
+		local th = acosClamp(DY[i])
+		local v = vertex(m, x, y, z, c / cols, th / 2.75, cr, cg, cb)
+		N[v * 3 - 2], N[v * 3 - 1], N[v * 3] = nx, ny, nz
+		-- (a colour callback and a vertex each)
+		step(3)
+	end
 	if opts.gridNormals then
 		-- normals of the displaced surface itself (volumes): differences across the grid, kept outward
 		local P = m.P
@@ -1357,27 +1578,53 @@ function Kit.Cap(S, m, opts)
 					N[i * 3 - 2], N[i * 3 - 1], N[i * 3] = nx, ny, nz
 				end
 			end
+			step(cols * 2)
 		end
 	end
+	-- a quad whose four corners lie under the skin is never seen: left out
+	local under = opts.under or -0.0025
 	for r = 0, rows - 1 do
 		for c = 0, cols - 1 do
 			local a = first + r * stride + c
 			local b = a + 1
 			local d = a + stride
 			local e = d + 1
-			-- seen from outside: azimuth grows toward +X from the back (clockwise from above), polar angle downward
-			tri(m, a, d, b)
-			tri(m, b, d, e)
+			local ia = r * stride + c + 1
+			local o1, o2, o3, o4 = OFF[ia], OFF[ia + 1], OFF[ia + stride], OFF[ia + stride + 1]
+			if EX then
+				o1, o2, o3, o4 = o1 + EX[ia], o2 + EX[ia + 1], o3 + EX[ia + stride], o4 + EX[ia + stride + 1]
+			end
+			if not (o1 < under and o2 < under and o3 < under and o4 < under) then
+				-- seen from outside: azimuth grows toward +X from the back (clockwise from above), polar angle downward
+				tri(m, a, d, b)
+				tri(m, b, d, e)
+			end
 		end
 	end
 	-- close the crown: one vertex on the pole
-	local px, py, pz = S.ray(0, 1, 0, 0)
+	local px, py, pz, pr = S.ray(0, 1, 0, 0)
 	local t0, c0 = cut.thick(px, py, pz)
 	if extra then
 		t0 += extra(px, py, pz, c0)
 	end
-	local nx, ny, nz = S.normal(px, py, pz)
-	px, py, pz = px + nx * t0, py + ny * t0, pz + nz * t0
+	-- the pole sits on the smoothed first ring's mean radius
+	local rs, nn = 0, 0
+	for c = 0, cols - 1 do
+		rs += R[c + 1]
+		nn += 1
+	end
+	pr = max(pr, rs / max(nn, 1))
+	local nx, ny, nz = 0, 0, 0
+	for c = 0, cols - 1 do
+		nx += NX[c + 1]
+		ny += NY[c + 1]
+		nz += NZ[c + 1]
+	end
+	nx, ny, nz = norm3(nx, ny, nz)
+	if ny <= 0 then
+		nx, ny, nz = 0, 1, 0
+	end
+	px, py, pz = cx, cy + pr + t0, cz
 	local cr, cg, cb = 1, 1, 1
 	if color then
 		cr, cg, cb = color(px, py, pz, c0)
@@ -1389,6 +1636,26 @@ function Kit.Cap(S, m, opts)
 	end
 	step(cols * rows * 2)
 	return first, m.nv, thMax
+end
+
+-- the polar angle (Kit.Cap's parametrisation) where the scalp at azimuth az is `inset` studs inside the cut's
+-- hairline (bisection on the hairline distance; the roots of a sheet that starts at the hairline)
+function Kit.HairlinePolar(S, cut, az, inset)
+	local lo, hi = 0.05, 2.75
+	local t0 = 0.5
+	for _ = 1, 14 do
+		local mid = (lo + hi) * 0.5
+		local st = sin(mid)
+		local x, y, z, t = S.ray(st * sin(az), cos(mid), st * cos(az), 0, t0)
+		t0 = t
+		if cut.dist(x, y, z) > (inset or 0.02) then
+			lo = mid
+		else
+			hi = mid
+		end
+	end
+	step(28)
+	return lo
 end
 
 -- a scalp point from (azimuth, polar) as Kit.Cap parametrises it, at offset off: x, y, z, nx, ny, nz

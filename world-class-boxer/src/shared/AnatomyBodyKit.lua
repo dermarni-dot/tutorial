@@ -9,7 +9,7 @@
 -- * small maths: monotone curves (no overshoot on silhouettes), smoothsteps, falloffs, segment distance
 local Kit = {}
 
-local sqrt, abs, min, max, floor = math.sqrt, math.abs, math.min, math.max, math.floor
+local sqrt, abs, min, max, floor, cos, sin = math.sqrt, math.abs, math.min, math.max, math.floor, math.cos, math.sin
 local pi = math.pi
 
 local function clamp(x, a, b)
@@ -366,60 +366,39 @@ function Kit.Rgb(c)
 	return nil
 end
 
--- concavity of a loft's ring vertices from the grid neighbours (the same meaning and scale as
--- MeshKit.Cavity: > 0 in creases, < 0 on ridges), without the welded-topology pass. Cap vertices get 0.
-function Kit.GridCavity(m, first, rings, stride, sides, scale)
-	local P, N = m.P, m.N
-	local out = table.create(m.nv, 0)
-	local k = scale or 4
-	for i = 1, rings do
-		for j = 0, sides - 1 do
-			local v = first + (i - 1) * stride + j
-			local x, y, z = P[v * 3 - 2], P[v * 3 - 1], P[v * 3]
-			local sx, sy, sz, el, n = 0, 0, 0, 0, 0
-			local function nb(w)
-				local wx, wy, wz = P[w * 3 - 2], P[w * 3 - 1], P[w * 3]
-				sx += wx
-				sy += wy
-				sz += wz
-				el += sqrt((wx - x) ^ 2 + (wy - y) ^ 2 + (wz - z) ^ 2)
-				n += 1
-			end
-			nb(first + (i - 1) * stride + (j + 1) % sides)
-			nb(first + (i - 1) * stride + (j - 1) % sides)
-			if i > 1 then
-				nb(first + (i - 2) * stride + j)
-			end
-			if i < rings then
-				nb(first + i * stride + j)
-			end
-			el /= n
-			if el > 1e-9 then
-				local lx, ly, lz = sx / n - x, sy / n - y, sz / n - z
-				out[v] = clamp((lx * N[v * 3 - 2] + ly * N[v * 3 - 1] + lz * N[v * 3]) / el * k, -1, 1)
-			end
-		end
-	end
-	return out
-end
+------------------------------------------------------------------------
+-- Grid lofts (every body piece): rings with a UV seam column, closed by caps whose rows belong to the same
+-- (row, column) lattice. The lattice is the piece's UV layout (u = column / sides, v = arc length down the
+-- rows) and what its colour texture is sampled over (Kit.GridTexture): one texel per lattice point at any
+-- density, smooth bilinear interpolation, no triangle-shaped colour steps.
+------------------------------------------------------------------------
+local TAU = pi * 2
 
--- a dome cap of its own depth on one end of an open loft (MeshKit.Loft has one capDepth for both ends):
--- the end ring shrunk toward the spine and pushed past the end in `domeRings` steps, then a fan. Same
--- winding rules as MeshKit.Loft's caps, so the piece stays closed and outward facing.
-function Kit.LoftCap(m, MeshKit, info, which, depth, domeRings)
+-- one cap: dome rings (the end ring shrunk toward the spine and pushed past the end) then an apex row (one
+-- vertex per column, its own u: the texture has no pole smear). cs = { depth = studs, rings = dome rings
+-- (0 = a flat fan), shift = { x, y, z } (studs: the apex leans that way, the rings follow by sin), bDepth =
+-- the row parameter the dome spans }. Returns the rows from the ring outward.
+local function gridCap(m, MeshKit, info, which, cs)
 	local rings, sides, stride, h = info.rings, info.sides, info.stride, info.h
 	local f = which == "start" and info.frames[1] or info.frames[rings]
-	local rs = which == "start" and info.ringStart[1] or info.ringStart[rings]
+	local rs = info.ringStart[which == "start" and 1 or rings]
 	local dir = which == "start" and -1 or 1
 	local P = m.P
 	local cx, cy, cz = f[1], f[2], f[3]
 	local tx, ty, tz = f[4], f[5], f[6]
-	local function band(r0, r1, flip)
+	local depth = cs.depth or 0
+	local k = cs.rings or 0
+	local sh = cs.shift
+	local sx, sy, sz = sh and sh[1] or 0, sh and sh[2] or 0, sh and sh[3] or 0
+	local b0 = info.rowB and info.rowB[which == "start" and 1 or rings] or 0
+	local bD = cs.bDepth or 0
+	local out = {}
+	local flip = dir < 0
+	local function band(r0, r1)
 		for j = 0, sides - 1 do
-			local j1 = (j + 1) % sides
-			local a, b = r0 + j, r0 + j1
-			local c, d = r1 + j, r1 + j1
-			if (h > 0) ~= (flip == true) then
+			local a, b = r0 + j, r0 + j + 1
+			local c, d = r1 + j, r1 + j + 1
+			if (h > 0) ~= flip then
 				MeshKit.Tri(m, a, b, c)
 				MeshKit.Tri(m, b, d, c)
 			else
@@ -429,45 +408,533 @@ function Kit.LoftCap(m, MeshKit, info, which, depth, domeRings)
 		end
 	end
 	local last = rs
-	local k = math.max(1, domeRings or 2)
 	for q = 1, k do
 		local th = (pi / 2) * q / (k + 1)
-		local sc, push = math.cos(th), dir * math.sin(th) * depth
+		local sc, sn = cos(th), sin(th)
+		local push = dir * sn * depth
 		local at = m.nv + 1
-		for j = 0, sides - 1 do
+		for j = 0, stride - 1 do
 			local v = rs + j
 			local x, y, z = P[v * 3 - 2], P[v * 3 - 1], P[v * 3]
-			local nvx = cx + tx * push + (x - cx) * sc
-			local nvy = cy + ty * push + (y - cy) * sc
-			local nvz = cz + tz * push + (z - cz) * sc
-			local i = MeshKit.Vertex(m, nvx, nvy, nvz, j / sides, which == "start" and -q * 0.05 or 1 + q * 0.05)
-			local r, g, b = m.C[v * 3 - 2], m.C[v * 3 - 1], m.C[v * 3]
-			MeshKit.SetColor(m, i, r, g, b)
+			MeshKit.Vertex(m, cx + tx * push + (x - cx) * sc + sx * sn, cy + ty * push + (y - cy) * sc + sy * sn,
+				cz + tz * push + (z - cz) * sc + sz * sn, j / sides, 0)
 		end
-		band(last, at, dir < 0)
+		band(last, at)
+		out[#out + 1] = { s = at, n = stride, b = b0 + dir * sn * bD, cap = dir }
 		last = at
 	end
-	local apex = MeshKit.Vertex(m, cx + tx * dir * depth, cy + ty * dir * depth, cz + tz * dir * depth, 0.5, which == "start" and -0.2 or 1.2)
+	local ax, ay, az = cx + tx * dir * depth + sx, cy + ty * dir * depth + sy, cz + tz * dir * depth + sz
+	local apex = m.nv + 1
+	for j = 0, sides - 1 do
+		MeshKit.Vertex(m, ax, ay, az, (j + 0.5) / sides, 0)
+	end
 	local outward = (h > 0) == (dir > 0)
 	for j = 0, sides - 1 do
-		local j1 = (j + 1) % sides
 		if outward then
-			MeshKit.Tri(m, apex, last + j, last + j1)
+			MeshKit.Tri(m, apex + j, last + j, last + j + 1)
 		else
-			MeshKit.Tri(m, apex, last + j1, last + j)
+			MeshKit.Tri(m, apex + j, last + j + 1, last + j)
 		end
 	end
-	return apex
+	out[#out + 1] = { s = apex, n = sides, b = b0 + dir * bD, cap = dir, apex = true }
+	return out
+end
+
+-- spec: MeshKit.Loft's fields (rings, sides, spine, exact, section | radius, sideHint, frontHint, group) +
+--   rowB = { parameter per ring } (bone parameter, torso height, ...), capS / capE = gridCap specs (nil = open)
+-- returns the Loft info + rowB, rows = { { s = first vertex, n = stride (sides on an apex row), b, cap } }
+-- in surface order (start apex .. start dome .. rings .. end dome .. end apex)
+function Kit.GridLoft(m, MeshKit, spec)
+	local ls = table.clone(spec)
+	ls.uvSeam = true
+	ls.capStart, ls.capEnd, ls.capS, ls.capE, ls.rowB = nil, nil, nil, nil, nil
+	local info = MeshKit.Loft(m, ls)
+	info.rowB = spec.rowB
+	local rows = {}
+	local startRows = spec.capS and gridCap(m, MeshKit, info, "start", spec.capS) or {}
+	for q = #startRows, 1, -1 do
+		rows[#rows + 1] = startRows[q]
+	end
+	info.firstRing = #rows + 1
+	for i = 1, info.rings do
+		rows[#rows + 1] = { s = info.ringStart[i], n = info.stride, b = spec.rowB and spec.rowB[i] or (i - 1) / (info.rings - 1), cap = 0, ring = i }
+	end
+	info.lastRing = #rows
+	local endRows = spec.capE and gridCap(m, MeshKit, info, "end", spec.capE) or {}
+	for q = 1, #endRows do
+		rows[#rows + 1] = endRows[q]
+	end
+	info.rows, info.nRows = rows, #rows
+	info.last = m.nv
+	return info
+end
+
+-- vertex of row r at column j (0 .. sides; an apex row has one vertex per column)
+local function rowVertex(row, j)
+	if j >= row.n then
+		j = row.n - 1
+	end
+	return row.s + j
+end
+Kit.RowVertex = rowVertex
+
+-- normals across the seam column and the apex rows: the duplicates share the mean (MeshKit.ComputeNormals
+-- with weld = false gives each copy only its own side's faces)
+function Kit.SeamNormals(m, info)
+	if info.atlas then
+		for _, g in ipairs(info.atlas) do
+			Kit.SeamNormals(m, g)
+		end
+		return
+	end
+	local N = m.N
+	local sides = info.sides
+	for _, row in ipairs(info.rows) do
+		if row.n > sides then
+			local a, b = row.s, row.s + sides
+			local x, y, z = N[a * 3 - 2] + N[b * 3 - 2], N[a * 3 - 1] + N[b * 3 - 1], N[a * 3] + N[b * 3]
+			local l = sqrt(x * x + y * y + z * z)
+			if l > 1e-9 then
+				x, y, z = x / l, y / l, z / l
+				N[a * 3 - 2], N[a * 3 - 1], N[a * 3] = x, y, z
+				N[b * 3 - 2], N[b * 3 - 1], N[b * 3] = x, y, z
+			end
+		else
+			local x, y, z = 0, 0, 0
+			for j = 0, row.n - 1 do
+				local v = row.s + j
+				x, y, z = x + N[v * 3 - 2], y + N[v * 3 - 1], z + N[v * 3]
+			end
+			local l = sqrt(x * x + y * y + z * z)
+			if l > 1e-9 then
+				x, y, z = x / l, y / l, z / l
+				for j = 0, row.n - 1 do
+					local v = row.s + j
+					N[v * 3 - 2], N[v * 3 - 1], N[v * 3] = x, y, z
+				end
+			end
+		end
+	end
+end
+
+-- normals of a finished grid piece (faces, then the seam / apex duplicates)
+function Kit.GridNormals(m, MeshKit, info)
+	MeshKit.ComputeNormals(m, { weld = false })
+	Kit.SeamNormals(m, info)
+end
+
+-- UVs: u = column / sides (apex rows: column centres), v = arc length down the rows (mean over the
+-- columns), inside a half-texel margin; info.rowV keeps each row's v for the texture sampler. rect =
+-- { u0, v0, u1, v1 } places the grid in part of the texture (an atlas of several grids); default all of it.
+function Kit.GridUV(m, info, texH, rect, texW)
+	local P = m.P
+	local sides, rows = info.sides, info.rows
+	local acc = table.create(#rows, 0)
+	for r = 2, #rows do
+		local a, b = rows[r - 1], rows[r]
+		local d = 0
+		for j = 0, sides - 1 do
+			local p, q = rowVertex(a, j), rowVertex(b, j)
+			d += sqrt((P[p * 3 - 2] - P[q * 3 - 2]) ^ 2 + (P[p * 3 - 1] - P[q * 3 - 1]) ^ 2 + (P[p * 3] - P[q * 3]) ^ 2)
+		end
+		acc[r] = acc[r - 1] + d / sides
+	end
+	local total = max(acc[#rows], 1e-6)
+	rect = rect or { 0, 0, 1, 1 }
+	local u0, v0, u1, v1 = rect[1], rect[2], rect[3], rect[4]
+	-- half a texel inside the rect: bilinear filtering never reads the neighbour grid's texels
+	local mv = 0.5 / (texH or 256)
+	local mu = 0.5 / (texW or texH or 256)
+	v0, v1 = v0 + mv, v1 - mv
+	local uA, uB = u0 + mu, u1 - mu
+	info.rect = { u0, rect[2], u1, rect[4] }
+	info.uA, info.uB = uA, uB
+	local rowV = table.create(#rows)
+	for r, row in ipairs(rows) do
+		local v = v0 + (v1 - v0) * acc[r] / total
+		rowV[r] = v
+		for j = 0, row.n - 1 do
+			local i = row.s + j
+			m.U[i * 2] = v
+			local f = row.n > sides and j / sides or (j + 0.5) / sides
+			m.U[i * 2 - 1] = uA + (uB - uA) * f
+		end
+	end
+	info.rowV = rowV
+end
+
+-- the texel -> lattice map of a single-grid piece (stored on the mesh as mesh.texMap; BodyFX paints bruises /
+-- grime into the piece's texture with it: a texel's four lattice vertices and weights, no rasterising):
+-- { w, h, sides, uA, uB, v = { row v }, s = { row's first vertex }, n = { row's vertex count } }
+function Kit.TexMap(info, w, h)
+	local v, st, n = {}, {}, {}
+	for r, row in ipairs(info.rows) do
+		v[r], st[r], n[r] = info.rowV[r], row.s, row.n
+	end
+	return { w = w, h = h, sides = info.sides, uA = info.uA or 0, uB = info.uB or 1, v = v, s = st, n = n }
+end
+
+-- the texture v of a row parameter b (between the ring rows' parameters; caps extrapolate)
+function Kit.GridVOfB(info, bb)
+	local rows, rowV = info.rows, info.rowV
+	local n = #rows
+	if bb <= rows[1].b then
+		return rowV[1]
+	end
+	for r = 2, n do
+		local a, b = rows[r - 1], rows[r]
+		if bb <= b.b then
+			local t = b.b > a.b and (bb - a.b) / (b.b - a.b) or 0
+			return rowV[r - 1] + (rowV[r] - rowV[r - 1]) * t
+		end
+	end
+	return rowV[n]
+end
+
+-- UVs of extra vertices lying on the grid's surface (veins) from their (row parameter, angle)
+function Kit.GridUVAt(m, info, first, last, B, A)
+	local uA, uB = info.uA or 0, info.uB or 1
+	for i = first, last do
+		local a = (A[i] or 0) % TAU
+		m.U[i * 2 - 1] = uA + (uB - uA) * a / TAU
+		m.U[i * 2] = Kit.GridVOfB(info, B[i] or 0)
+	end
+end
+
+-- several grids in one texture: info.atlas = { grid infos } gets horizontal bands of the texture in
+-- proportion to each grid's surface (mean circumference x length)
+function Kit.GridUVAtlas(m, info, texH)
+	local list = info.atlas
+	if not list then
+		Kit.GridUV(m, info, texH)
+		return
+	end
+	local P = m.P
+	local areas, total = {}, 0
+	for k, g in ipairs(list) do
+		local circ, len = 0, 0
+		local rows = g.rows
+		for r = 1, #rows do
+			local row = rows[r]
+			local c = 0
+			for j = 0, g.sides - 1 do
+				local p, q = rowVertex(row, j), rowVertex(row, j + 1)
+				c += sqrt((P[p * 3 - 2] - P[q * 3 - 2]) ^ 2 + (P[p * 3 - 1] - P[q * 3 - 1]) ^ 2 + (P[p * 3] - P[q * 3]) ^ 2)
+			end
+			circ = max(circ, c)
+			if r > 1 then
+				local a = rows[r - 1]
+				local p, q = rowVertex(a, 0), rowVertex(row, 0)
+				len += sqrt((P[p * 3 - 2] - P[q * 3 - 2]) ^ 2 + (P[p * 3 - 1] - P[q * 3 - 1]) ^ 2 + (P[p * 3] - P[q * 3]) ^ 2)
+			end
+		end
+		areas[k] = max(1e-4, circ * len) ^ 0.75 -- small parts get a little more than their share
+		total += areas[k]
+	end
+	-- whole texel rows per band
+	local v = 0
+	local rowsLeft = texH
+	for k, g in ipairs(list) do
+		local n = k == #list and rowsLeft or max(2, floor(texH * areas[k] / total + 0.5))
+		n = min(n, rowsLeft - 2 * (#list - k))
+		Kit.GridUV(m, g, texH, { 0, v / texH, 1, (v + n) / texH })
+		v += n
+		rowsLeft -= n
+	end
+end
+
+-- concavity per vertex from the lattice neighbours (MeshKit.Cavity's meaning and scale: > 0 in creases,
+-- < 0 on ridges) without the welded-topology pass; apex rows get 0, the seam column copies column 0
+function Kit.GridCavity(m, info, scale, out)
+	local P, N = m.P, m.N
+	out = out or table.create(m.nv, 0)
+	if info.atlas then
+		for _, g in ipairs(info.atlas) do
+			Kit.GridCavity(m, g, scale, out)
+		end
+		return out
+	end
+	local k = scale or 4
+	local sides, rows = info.sides, info.rows
+	local nr = #rows
+	for r = 1, nr do
+		local row = rows[r]
+		if row.n > sides then
+			for j = 0, sides - 1 do
+				local v = row.s + j
+				local x, y, z = P[v * 3 - 2], P[v * 3 - 1], P[v * 3]
+				local sx, sy, sz, el, n = 0, 0, 0, 0, 0
+				local function nb(w)
+					local wx, wy, wz = P[w * 3 - 2], P[w * 3 - 1], P[w * 3]
+					sx += wx
+					sy += wy
+					sz += wz
+					el += sqrt((wx - x) ^ 2 + (wy - y) ^ 2 + (wz - z) ^ 2)
+					n += 1
+				end
+				nb(row.s + (j + 1) % sides)
+				nb(row.s + (j - 1) % sides)
+				if r > 1 then
+					nb(rowVertex(rows[r - 1], j))
+				end
+				if r < nr then
+					nb(rowVertex(rows[r + 1], j))
+				end
+				el /= n
+				if el > 1e-9 then
+					local lx, ly, lz = sx / n - x, sy / n - y, sz / n - z
+					out[v] = clamp((lx * N[v * 3 - 2] + ly * N[v * 3 - 1] + lz * N[v * 3]) / el * k, -1, 1)
+				end
+			end
+			out[row.s + sides] = out[row.s]
+		end
+	end
+	return out
+end
+
+-- ambient occlusion as two per-vertex amounts (MeshKit.BakeAO's model, kept apart from the colour so the
+-- vertex colours and the texture can both apply it): dark (creases, down-facing, occluders), light (ridges)
+function Kit.AOAmounts(m, cav, o)
+	local N, P = m.N, m.P
+	local kc, kr, kd = o.cavity or 0.35, o.ridge or 0.08, o.down or 0.12
+	local occ = o.occluders
+	local ko = o.occStrength or 0.5
+	local dark, light = table.create(m.nv, 0), table.create(m.nv, 0)
+	for i = 1, m.nv do
+		local i3 = i * 3
+		local cv = cav[i] or 0
+		local d = kc * max(0, cv) + kd * max(0, -N[i3 - 1])
+		if occ then
+			local x, y, z = P[i3 - 2], P[i3 - 1], P[i3]
+			local nx, ny, nz = N[i3 - 2], N[i3 - 1], N[i3]
+			local acc = 0
+			for _, sp in ipairs(occ) do
+				local vx, vy, vz = sp[1] - x, sp[2] - y, sp[3] - z
+				local dd = sqrt(vx * vx + vy * vy + vz * vz)
+				if dd > 1e-6 then
+					local cosv = (vx * nx + vy * ny + vz * nz) / dd
+					if cosv > 0 then
+						acc += min(1, (sp[4] * sp[4]) / max(dd * dd, sp[4] * sp[4])) * cosv
+					end
+				end
+			end
+			d += ko * min(acc, 1)
+		end
+		dark[i] = clamp(d, 0, 0.85)
+		light[i] = kr * max(0, -cv)
+	end
+	return dark, light
+end
+
+-- one colour through the AO amounts (BakeAO's formula: darkened toward a tinted shadow of itself)
+function Kit.ApplyAO(r, g, b, dark, light, tint)
+	r = r + (r * tint[1] * 2 - r) * dark
+	g = g + (g * tint[2] * 2 - g) * dark
+	b = b + (b * tint[3] * 2 - b) * dark
+	return min(1, r + light * (1 - r)), min(1, g + light * (1 - g)), min(1, b + light * (1 - b))
+end
+
+-- noise tiles for texel painting: an n x n lattice of values in [-1, 1] (hash, deterministic), sampled
+-- bilinearly and wrapping in both directions (cheap per texel; MeshKit.Noise per texel is far slower)
+function Kit.NoiseTile(MeshKit, n, seed)
+	local t = table.create(n * n)
+	for y = 0, n - 1 do
+		for x = 0, n - 1 do
+			t[y * n + x + 1] = MeshKit.Hash3(x, y, 7, seed) * 2 - 1
+		end
+	end
+	return { n = n, v = t }
+end
+
+function Kit.TileAt(tile, x, y)
+	local n, v = tile.n, tile.v
+	local ix, iy = floor(x), floor(y)
+	local fx, fy = x - ix, y - iy
+	fx, fy = fx * fx * (3 - 2 * fx), fy * fy * (3 - 2 * fy)
+	local x0, y0 = ix % n, iy % n
+	local x1, y1 = (x0 + 1) % n, (y0 + 1) % n
+	local a, b = v[y0 * n + x0 + 1], v[y0 * n + x1 + 1]
+	local c, d = v[y1 * n + x0 + 1], v[y1 * n + x1 + 1]
+	local top = a + (b - a) * fx
+	return top + (c + (d - c) * fx - top) * fy
+end
+
+-- the colour texture of a grid piece: for every texel, the lattice cell under it (rows by info.rowV,
+-- columns by u) and a bilinear sample of position, normal, row parameter, column angle and the optional
+-- per-vertex arrays (o.colors = C-like { r, g, b } array, o.dark / o.light), then paint(s) -> r, g, b.
+-- The sample table s is reused (fields x y z nx ny nz b a u v px py r g bl dark light cap). Calls MeshKit.Step
+-- per texel (a client yields between rows). Returns an RGBA8 buffer w * h * 4 (alpha 255).
+function Kit.GridTexture(MeshKit, m, info, w, h, paint, o, buf)
+	o = o or {}
+	buf = buf or buffer.create(w * h * 4)
+	if info.atlas then
+		for k, g in ipairs(info.atlas) do
+			o.grid = k
+			Kit.GridTexture(MeshKit, m, g, w, h, paint, o, buf)
+		end
+		return buf
+	end
+	local P, N = o.P or m.P, o.N or m.N
+	local C, D, L = o.colors, o.dark, o.light
+	-- painters that only read the lattice parameters skip the position / normal interpolation
+	local wantP, wantN = not o.noP, not o.noN
+	local onRow = o.onRow
+	local rows, rowV, sides = info.rows, info.rowV, info.sides
+	local nr = #rows
+	local s = { x = 0, y = 0, z = 0, nx = 0, ny = 1, nz = 0, b = 0, a = 0, u = 0, v = 0, px = 0, py = 0, r = 1, g = 1, bl = 1, dark = 0, light = 0, cap = 0, grid = o.grid or 1 }
+	local r0 = 1
+	local floorF, writeu8 = floor, buffer.writeu8
+	local rect = info.rect or { 0, 0, 1, 1 }
+	local uA, uB = info.uA or 0, info.uB or 1
+	local py0, py1 = floorF(rect[2] * h + 0.5), floorF(rect[4] * h + 0.5) - 1
+	for py = py0, py1 do
+		local v = (py + 0.5) / h
+		while r0 < nr - 1 and rowV[r0 + 1] < v do
+			r0 += 1
+		end
+		local ra, rb = rows[r0], rows[r0 + 1]
+		local va, vb = rowV[r0], rowV[r0 + 1]
+		local t = vb > va and clamp((v - va) / (vb - va), 0, 1) or 0
+		local t1 = 1 - t
+		s.b = ra.b * t1 + rb.b * t
+		s.cap = (t < 0.5) and ra.cap or rb.cap
+		s.v, s.py = v, py
+		if onRow then
+			onRow(s)
+		end
+		for px = 0, w - 1 do
+			local u = (px + 0.5) / w
+			local jf = clamp((u - uA) / (uB - uA), 0, 1) * sides
+			local j = floorF(jf)
+			if j > sides - 1 then
+				j = sides - 1
+			end
+			local f = jf - j
+			local f1 = 1 - f
+			local i1, i2 = rowVertex(ra, j), rowVertex(ra, j + 1)
+			local i3, i4 = rowVertex(rb, j), rowVertex(rb, j + 1)
+			local w1, w2, w3, w4 = f1 * t1, f * t1, f1 * t, f * t
+			local a1, a2, a3, a4 = i1 * 3, i2 * 3, i3 * 3, i4 * 3
+			if wantP then
+				s.x = P[a1 - 2] * w1 + P[a2 - 2] * w2 + P[a3 - 2] * w3 + P[a4 - 2] * w4
+				s.y = P[a1 - 1] * w1 + P[a2 - 1] * w2 + P[a3 - 1] * w3 + P[a4 - 1] * w4
+				s.z = P[a1] * w1 + P[a2] * w2 + P[a3] * w3 + P[a4] * w4
+			end
+			if wantN then
+				local nx = N[a1 - 2] * w1 + N[a2 - 2] * w2 + N[a3 - 2] * w3 + N[a4 - 2] * w4
+				local ny = N[a1 - 1] * w1 + N[a2 - 1] * w2 + N[a3 - 1] * w3 + N[a4 - 1] * w4
+				local nz = N[a1] * w1 + N[a2] * w2 + N[a3] * w3 + N[a4] * w4
+				local nl = sqrt(nx * nx + ny * ny + nz * nz)
+				if nl > 1e-9 then
+					nx, ny, nz = nx / nl, ny / nl, nz / nl
+				end
+				s.nx, s.ny, s.nz = nx, ny, nz
+			end
+			s.a = TAU * jf / sides
+			s.u, s.px = u, px
+			if C then
+				s.r = C[a1 - 2] * w1 + C[a2 - 2] * w2 + C[a3 - 2] * w3 + C[a4 - 2] * w4
+				s.g = C[a1 - 1] * w1 + C[a2 - 1] * w2 + C[a3 - 1] * w3 + C[a4 - 1] * w4
+				s.bl = C[a1] * w1 + C[a2] * w2 + C[a3] * w3 + C[a4] * w4
+			end
+			if D then
+				s.dark = D[i1] * w1 + D[i2] * w2 + D[i3] * w3 + D[i4] * w4
+				s.light = L[i1] * w1 + L[i2] * w2 + L[i3] * w3 + L[i4] * w4
+			end
+			local cr, cg, cb = paint(s)
+			local q = (py * w + px) * 4
+			writeu8(buf, q, floorF(clamp(cr, 0, 1) * 255 + 0.5))
+			writeu8(buf, q + 1, floorF(clamp(cg, 0, 1) * 255 + 0.5))
+			writeu8(buf, q + 2, floorF(clamp(cb, 0, 1) * 255 + 0.5))
+			writeu8(buf, q + 3, 255)
+		end
+		MeshKit.Step(w)
+	end
+	return buf
+end
+
+-- paint helpers shared by every piece painter (vertex colours and texels alike)
+function Kit.Mix(r, g, b, r2, g2, b2, k)
+	if k <= 0 then
+		return r, g, b
+	end
+	return r + (r2 - r) * k, g + (g2 - g) * k, b + (b2 - b) * k
+end
+
+-- grooves darken toward the skin's own shadow (a slight warm lean, never red lines, never grey); crowns lift
+function Kit.SepShade(pc, r, g, b, groove, crown, kG, kC)
+	if groove > 0 then
+		local k = min(pc.kMax, groove * kG * pc.gk)
+		r, g, b = r * (1 - k * 0.3), g * (1 - k * 0.33), b * (1 - k * 0.34)
+	end
+	if crown > 0 then
+		local k = min(0.25, crown * kC * pc.ck)
+		r, g, b = r + (1 - r) * k * 0.55, g + (1 - g) * k * 0.5, b + (1 - b) * k * 0.45
+	end
+	return r, g, b
+end
+
+-- the skin's own variation at a texel (multiplier): blotchy mottling a few centimetres across, a finer
+-- mottle, pores; tiles wrap exactly across a w x h texture
+function Kit.SkinGrain(tiles, px, py, w, h, amp)
+	local blot = Kit.TileAt(tiles.blot, px * 16 / w * 3, py * 16 / h * 3)
+	local fine = Kit.TileAt(tiles.fine, px * 32 / w * 4, py * 32 / h * 4)
+	local pore = Kit.TileAt(tiles.pore, px, py)
+	return 1 + amp * (0.03 * blot + 0.014 * fine + 0.018 * pore * pore * (pore > 0 and 1 or -1))
+end
+
+-- the skin grain of a whole w x h texture: one table per size for every character and piece (a fixed noise:
+-- its texels are only ever read by their own coordinates, so the layouts of different pieces never line up
+-- visibly), made the first time a texture of that size is painted
+local GRAIN, GRAIN_TILES = {}, nil
+function Kit.GrainTable(_pc, w, h)
+	local key = w * 4096 + h
+	local t = GRAIN[key]
+	if t then
+		return t
+	end
+	return Kit.MakeGrain(w, h)
+end
+
+function Kit.MakeGrain(w, h, MeshKit)
+	local key = w * 4096 + h
+	if not GRAIN_TILES then
+		local MK = MeshKit or require(script.Parent:WaitForChild("MeshKit"))
+		GRAIN_TILES = { blot = Kit.NoiseTile(MK, 16, 4111), fine = Kit.NoiseTile(MK, 32, 4123), pore = Kit.NoiseTile(MK, 64, 4137) }
+	end
+	local t = table.create(w * h)
+	for py = 0, h - 1 do
+		for px = 0, w - 1 do
+			t[py * w + px + 1] = Kit.SkinGrain(GRAIN_TILES, px, py, w, h, 1)
+		end
+	end
+	GRAIN[key] = t
+	return t
+end
+
+-- a texture made when it is asked for: { w, h, make = fn() -> RGBA8 buffer }. AnatomyClient calls make() on its
+-- worker thread (an ordinary call: the painter's MeshKit.Step ticks may yield there); tools and tests may also
+-- read .buffer (a metamethod: never read it where the tick can yield). Not kept: a cached generation must
+-- not hold every character's pixels; a rebuild makes them again (deterministic).
+function Kit.LazyTexture(w, h, make)
+	return setmetatable({ w = w, h = h, make = make }, {
+		__index = function(_, k)
+			if k == "buffer" then
+				return make()
+			end
+			return nil
+		end,
+	})
 end
 
 -- a vein: a low, wide ridge lying on the skin (a closed strand with a flattened six-point section whose
 -- base corners sit under the skin), so it reads as a soft raised cord instead of a wire. pts[k] = skin point,
 -- nrm[k] = outward skin direction there; r = the strand's half height scale (studs). The ends taper and dive
 -- under the skin. Returns the first vertex id.
-local STRAND = { { -1, -0.8 }, { -0.62, 0.45 }, { -0.22, 1 }, { 0.22, 1 }, { 0.62, 0.45 }, { 1, -0.8 } }
+local STRAND = { { -1, -0.8 }, { -0.42, 0.85 }, { 0.42, 0.85 }, { 1, -0.8 } }
 -- shading normals per section point (b, n): half way between the section's own normal and the skin's, so
 -- the ridge blends into the skin instead of showing a hard edge
-local STRAND_N = { { 0, 1 }, { -0.34, 0.94 }, { -0.115, 0.993 }, { 0.115, 0.993 }, { 0.34, 0.94 }, { 0, 1 } }
+local STRAND_N = { { 0, 1 }, { -0.25, 0.968 }, { 0.25, 0.968 }, { 0, 1 } }
 -- normalsOut (optional list) receives { vertex, nx, ny, nz } to apply after MeshKit.ComputeNormals
 function Kit.Strand(m, MeshKit, pts, nrm, r, group, normalsOut)
 	local n, ns = #pts, #STRAND

@@ -117,6 +117,31 @@ local function num(v, d)
 	return v
 end
 
+-- the visible neck (nominal): radius r (sideways; front-back r / 0.97), centre z, a straight column from yTop
+-- down to yJoin, a dome above yTop (hTop high, running up into the skull base) and a taper below yJoin (hBot
+-- long, inside the Body's column). r = 0.2625 / 0.2375 x the head's X size: a Body neck column kept inside it
+-- (r - 0.012 studs, AnatomySkull.Neck) is still at least the contract's minimum (0.25 / 0.225 x the head,
+-- ANATOMY_CONTRACTS section 6) for any head wider than 0.96 studs, and the Body's own thinnest column today
+-- (1.08 x that minimum) still wraps it
+function AnatomySkull.NeckParams(female)
+	return { r = female and 0.285 or 0.315, z = 0.03, yTop = -0.36, hTop = 0.26, yJoin = -0.6, hBot = 0.22 }
+end
+
+local function neckSD(N, x, y, z)
+	local R = N.r
+	local ez = (z - N.z) * 0.97
+	local r = sqrt(x * x + ez * ez)
+	if y > N.yTop then
+		local q = (y - N.yTop) / N.hTop * R
+		return sqrt(r * r + q * q) - R
+	elseif y < N.yJoin then
+		local q = (N.yJoin - y) / N.hBot * R
+		return sqrt(r * r + q * q) - R
+	end
+	return r - R
+end
+AnatomySkull.NeckSD = neckSD
+
 function AnatomySkull.Params(look)
 	look = type(look) == "table" and look or {}
 	local rig = type(look.rig) == "table" and look.rig or {}
@@ -145,28 +170,32 @@ function AnatomySkull.Params(look)
 	local a = 0.25 + P.asym
 	P.skew = (hash(11, P.seed) - 0.5) * 0.012 * a -- one parietal side fuller
 	P.tilt = (hash(12, P.seed) - 0.5) * 0.01 * a -- crown leaning a touch to one side
-	-- cranium (nominal: a 1.2 head is 1.18 tall chin to vertex, 0.86 wide, 1.08 deep without the nose)
+	-- cranium (nominal: a 1.2 head is 1.15 tall chin to vertex, 0.76 wide, 0.95 deep glabella to the back:
+	-- the adult proportions, breadth / height ~0.66, length / height ~0.83)
 	local g = female and 0.965 or 1
-	P.cw = (0.415 + 0.022 * sw + 0.012 * sh.fw) * g -- half width (parietal)
+	P.cw = (0.382 + 0.02 * sw + 0.011 * sh.fw) * g -- half width (parietal)
 	P.ch = (0.435 + 0.016 * cr + sh.crown * 0.6) * (female and 0.985 or 1) -- half height of the vault
-	P.cd = (0.49 + 0.022 * sl) * g -- half depth
+	P.cd = (0.455 + 0.02 * sl) * g -- half depth
 	P.cy = 0.15 + 0.006 * cr -- vault centre height
-	P.cz = 0.06 + 0.012 * sl
-	-- frontal bone: forehead fullness / slope (a bigger forehead slider = higher, more upright forehead)
-	P.fw = (0.36 + 0.025 * sh.fw + 0.012 * sw) * g
-	P.fz = -0.105 - 0.008 * fh
+	P.cz = 0.035 + 0.012 * sl
+	-- frontal bone: forehead fullness / slope (a bigger forehead slider = higher, more upright forehead;
+	-- women: a rounder, more upright brow, the frontal bosses)
+	P.fw = (0.34 + 0.023 * sh.fw + 0.011 * sw) * g
+	P.fz = -0.105 - 0.008 * fh - (female and 0.008 or 0)
 	P.fd = 0.345 + 0.008 * fh
 	-- occipital fullness (rounded back of the head)
-	P.ow = (0.33 + 0.015 * sw) * g
-	P.oz = 0.275 + 0.015 * sl + 0.01 * sh.back
-	P.od = 0.3 + 0.01 * sl
+	P.ow = (0.305 + 0.014 * sw) * g
+	P.oz = 0.235 + 0.014 * sl + 0.01 * sh.back
+	P.od = 0.27 + 0.01 * sl
 	-- temporal hollows (a lean adult shows them more; boxers' temples are firm)
 	P.tempD = 0.012 + (female and 0 or 0.004)
 	-- brow ridge share the skull carries (the face adds the rest below the hairline)
-	P.ridge = 0.004 + 0.012 * br * (female and 0.5 or 1)
-	-- neck stub (ANATOMY_CONTRACTS section 6: radius <= 0.2 * head size X, inside the Body's neck column)
-	P.neckR = 0.2 * N - 0.004
-	P.neckZ = 0.035
+	P.ridge = 0.004 + 0.012 * br * (female and 0.3 or 1)
+	-- the neck the Head section shows (AnatomySkull.Neck): a column from under the skull base down to the
+	-- junction just under the neck pivot (y -0.6), then tapering away inside the Body's neck column
+	P.neck = AnatomySkull.NeckParams(female)
+	P.neckR = P.neck.r
+	P.neckZ = P.neck.z
 	-- hairline (natural: Hair styles the line itself): trichion height, temple recession with age
 	local recede = clamp((P.age - 24) / 30, 0, 1) * (female and 0.15 or 0.75)
 	P.hairFront = 0.335 + 0.04 * fh + 0.012 * cr + 0.02 * recede
@@ -186,7 +215,7 @@ function AnatomySkull.Nominal(P)
 	local ow, oz, od = P.ow, P.oz, P.od
 	local skew, tilt = P.skew, P.tilt
 	local tempD, ridge = P.tempD, P.ridge
-	local nr, nz = P.neckR, P.neckZ
+	local neck = P.neck
 	return function(x, y, z)
 		-- a touch of asymmetry: one side of the vault fuller, the crown leaning
 		local xs = x * (1 - skew * (x > 0 and 1 or -1)) - tilt * (y - 0.1)
@@ -195,12 +224,15 @@ function AnatomySkull.Nominal(P)
 		d = smin(d, sdE(xs, y - 0.2, z - fz, fw, 0.37, fd), 0.09)
 		-- occiput
 		d = smin(d, sdE(xs, y - 0.02, z - oz, ow, 0.31, od), 0.11)
-		-- neck stub: the skull base runs into it at the back
-		d = smin(d, sdCapsule(x, y, z, 0, -0.18, nz + 0.03, 0, -0.95, nz, nr, nr), 0.13)
+		-- the neck: the skull base runs into it at the back (its dome top ends at y -0.1; evaluated from well
+		-- above it, so the blend never stops at a height: a cut there would crease the nape)
+		if y < 0.02 then
+			d = smin(d, neckSD(neck, x, y, z), 0.09)
+		end
 		-- the midface under the forehead (generic; the Head section refines the face below the hairline)
 		d = smin(d, sdE(xs, y + 0.1, z + 0.11, 0.32, 0.36, 0.33), 0.07)
 		-- temporal hollows above the zygomatic arch, behind the brow
-		local tx = abs(xs) - 0.47
+		local tx = abs(xs) - 0.43
 		local td = (tx * tx) / 0.0121 + ((y - 0.07) ^ 2) / 0.0169 + ((z + 0.17) ^ 2) / 0.03
 		if td < 1 then
 			local w = 1 - td
@@ -228,6 +260,18 @@ local function wrap(P, fn)
 	return function(x, y, z)
 		return fn(x / kx, y / ky, z / kz) * k
 	end
+end
+
+-- the visible neck in the Head part's space (studs): { r = side radius, rz = front-back half depth, z = centre,
+-- yTop / yJoin (the straight column between them), hTop, hBot }. The Body keeps its neck column inside
+-- r - 0.012 above yJoin (the Head's neck is what shows there); below yJoin the Body's column takes over
+function AnatomySkull.Neck(look)
+	local P = AnatomySkull.Params(look)
+	local N = P.neck
+	return {
+		r = N.r * P.kx, rz = N.r / 0.97 * P.kz, z = N.z * P.kz, yTop = N.yTop * P.ky, yJoin = N.yJoin * P.ky,
+		hTop = N.hTop * P.ky, hBot = N.hBot * P.ky,
+	}
 end
 
 function AnatomySkull.Field(look)

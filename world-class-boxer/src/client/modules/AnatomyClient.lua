@@ -540,11 +540,15 @@ end
 ------------------------------------------------------------------------
 local sliceStart = 0
 local currentJob = nil
+-- true while a texture is read through a metamethod (a generator's lazy .buffer without make): Luau cannot
+-- yield inside __index ("attempt to yield across metamethod/C-call boundary"), so there the tick only checks
+-- for cancellation and that paint runs in one go (give the texture a make() to keep it time-sliced)
+local noYield = false
 local function tick()
 	if currentJob and currentJob.cancelled then
 		error(CANCEL, 0)
 	end
-	if os.clock() - sliceStart > AnatomyClient.Settings.frameBudget then
+	if not noYield and os.clock() - sliceStart > AnatomyClient.Settings.frameBudget then
 		task.wait()
 		sliceStart = os.clock()
 		if currentJob and currentJob.cancelled then
@@ -644,8 +648,39 @@ function makePiece(rec, name, piece, bodyLod)
 	local tex = piece.texture
 	if tex and AnatomyClient.Settings.textures and api.textures then
 		local w, h = tex.w or (tex.size and tex.size[1]) or 256, tex.h or (tex.size and tex.size[2]) or 256
-		local buf = tex.buffer
-		if not buf then
+		local buf
+		local make = rawget(tex, "make")
+		if type(make) == "function" then
+			-- a texture the generator paints on demand: an ordinary call on this worker thread, so the
+			-- painter's MeshKit ticks can yield (reading a metamethod field there could not)
+			local okM, res = pcall(make)
+			if not okM then
+				if isCancel(res) then
+					error(res, 0)
+				end
+				warnOnce("tex" .. name, "texture for " .. name .. " failed:", res)
+			elseif type(res) == "buffer" and buffer.len(res) == w * h * 4 then
+				buf = res
+			end
+		else
+			-- a ready buffer, or one painted behind a metamethod (lazy .buffer): no yields while it is read,
+			-- and a failure only costs the texture (the mesh keeps its vertex colours)
+			noYield = true
+			local okB, res = pcall(function()
+				return tex.buffer
+			end)
+			noYield = false
+			if okB then
+				if type(res) == "buffer" and buffer.len(res) == w * h * 4 then
+					buf = res
+				end
+			elseif isCancel(res) then
+				error(res, 0)
+			else
+				warnOnce("tex" .. name, "texture for " .. name .. " failed:", res)
+			end
+		end
+		if not buf and type(make) ~= "function" and tex.shade then
 			local okR, res = pcall(MeshKit.RasterizeUV, mesh, w, h, tex.shade, { pad = tex.pad })
 			if not okR then
 				if isCancel(res) then

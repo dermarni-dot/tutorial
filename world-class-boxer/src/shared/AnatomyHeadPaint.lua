@@ -36,6 +36,31 @@ local function bump(q2)
 	return w * w * w
 end
 
+-- the nostrils' openings (AnatomyHead's nose field: pockets lying along the underside either side of the
+-- columella): 0 outside, rising to 1 at the middle of the opening
+local function nostrilAt(F, x, y, z)
+	local NN = F.noseInfo and F.noseInfo.nostril
+	if not NN then
+		return 0
+	end
+	local ax = x - NN.dev
+	local s = ax < 0 and -1 or 1
+	local dx, dz = ax * s - NN.x, z - NN.z
+	local lb = dx * NN.c + dz * NN.s
+	local la = -dx * NN.s + dz * NN.c
+	local dy = y - NN.y
+	local up = la * (NN.ts or 0) + dy * (NN.tc or 1)
+	local al = la * (NN.tc or 1) - dy * (NN.ts or 0)
+	if abs(up) > NN.ry * 1.8 then
+		return 0
+	end
+	local q = (lb / (NN.rx * 0.95)) ^ 2 + (al / (NN.rz * 0.9)) ^ 2
+	if q >= 1 then
+		return 0
+	end
+	return bump(q)
+end
+
 ------------------------------------------------------------------------
 -- Noise tiles (fixed: the same on every client; per-look offsets pick a different window)
 ------------------------------------------------------------------------
@@ -79,6 +104,12 @@ local UNDERTONE = {
 	Olive = { -0.014, 0.01, -0.016 },
 }
 
+-- the Body's skin colour (AnatomyBodyKit.Skin: the look's skinRGB, no undertone): the neck takes it
+function Paint.BodySkin(look)
+	local rgb = type(look.skinRGB) == "table" and look.skinRGB or { 206, 150, 108 }
+	return clamp((tonumber(rgb[1]) or 206) / 255, 0, 1), clamp((tonumber(rgb[2]) or 150) / 255, 0, 1), clamp((tonumber(rgb[3]) or 108) / 255, 0, 1)
+end
+
 -- base skin colour (0..1) with the undertone
 function Paint.Skin(look)
 	local rgb = type(look.skinRGB) == "table" and look.skinRGB or { 200, 150, 110 }
@@ -112,6 +143,13 @@ local function hairColor(look, age, beard)
 	return lerp(r, 0.65, grey), lerp(g, 0.635, grey), lerp(bl, 0.62, grey)
 end
 Paint.HairColor = hairColor
+
+-- the brows' colour from the hair's: a little darker; greys and whites kept light and warm (a neutral mid grey
+-- over warm skin reads green or blue)
+local function browColor(hr, hg, hb)
+	local gk = clamp((min(hr, hg, hb) - 0.35) / 0.3, 0, 1)
+	return lerp(hr * 0.82, hr * 0.88 + 0.03, gk), lerp(hg * 0.82, hg * 0.83 + 0.01, gk), lerp(hb * 0.82, hb * 0.78, gk)
+end
 
 -- the beard style the face shows (BuilderHead rules: growth alone gives shadow -> stubble -> short beard)
 -- -> style or nil, shadow only, growth
@@ -153,7 +191,7 @@ function Paint.BrowFrame(F)
 	local x0 = F.female and 0.07 or 0.064
 	local len = 0.212 * st.len
 	local by = F.browY
-	local arch = (0.012 * st.arch + 0.005 * (F.browAngle or 0)) * (F.female and 1.3 or 1)
+	local arch = (0.012 * st.arch + 0.005 * (F.browAngle or 0)) * (F.female and 1.3 or 1) + (F.female and 0.007 or 0)
 	local asym = F.browAsym or { [-1] = 0, [1] = 0 }
 	return function(x, y)
 		local ax = abs(x)
@@ -193,13 +231,15 @@ function Paint.BeardZone(F)
 		end
 		return CL[#CL][2]
 	end
+	local seed = F.seed or 0
 	return function(x, y, z)
 		if z > 0.16 or y > 0.1 then
 			return 0
 		end
 		local ax = abs(x)
-		local line = cheekLine(ax)
-		local w = smoothstep(line + 0.022, line - 0.035, y)
+		-- (the cheek line wanders: nobody's is a ruled curve)
+		local line = cheekLine(ax) + 0.009 * MeshKit.Noise(ax * 22, y * 14, x < 0 and 3.7 or 9.1, seed)
+		local w = smoothstep(line + 0.03, line - 0.05, y)
 		-- the moustache: the upper lip skin between the nostrils' sides
 		local mx = 1 - smoothstep(0.1, 0.135, ax)
 		local my = smoothstep(nB + 0.004, nB - 0.008, y)
@@ -210,15 +250,15 @@ function Paint.BeardZone(F)
 		local dy = y - ml
 		local inLip = (dy < hu + 0.002 and dy > -hl - 0.003) and (1 - smoothstep(0.85, 1.05, ax / mW)) or 0
 		w *= 1 - inLip
-		-- down the front of the neck to the neckline, not round the back
+		-- down the front of the neck to the neckline, not round the back: it ends at the angle of the jaw, under
+		-- the front of the ear (behind it the skin is the neck's)
 		w *= smoothstep(cy - 0.2, cy - 0.12, y)
-		w *= 1 - smoothstep(0.06, 0.15, z)
-		-- the sideburn stays narrow in front of the ear
-		if y > -0.08 then
-			w *= smoothstep(0.34, 0.39, ax) * (1 - smoothstep(0.02, 0.09, z)) + (y < -0.02 and smoothstep(-0.02, -0.08, y) or 0)
-			w = clamp(w, 0, 1)
-		end
-		return w
+		w *= 1 - smoothstep(0.03, 0.1, z)
+		-- the sideburn: up the side of the face only the narrow strip in front of the ear (blended in with
+		-- height: a cut at one height would draw a line across the cheek)
+		local sb = smoothstep(0.34, 0.39, ax) * (1 - smoothstep(0.02, 0.09, z))
+		w *= lerp(1, sb, smoothstep(-0.13, -0.05, y))
+		return clamp(w, 0, 1)
 	end
 end
 
@@ -240,14 +280,17 @@ function Paint.Vertex(m, F, look, first, last)
 	end
 	local mW = F.mouthW
 	-- lips: redder than the skin on light tones, deeper and a touch cooler on deep tones
-	local lipR, lipG, lipB = lerp(sr * 0.85, sr * 0.78, dark), lerp(sg * 0.54, sg * 0.66, dark), lerp(sb * 0.55, sb * 0.78, dark)
+	local lipR, lipG, lipB = lerp(sr * 0.82, sr * 0.74, dark), lerp(sg * 0.62, sg * 0.6, dark), lerp(sb * 0.66, sb * 0.7, dark)
 	local flushK = (1 - 0.7 * dark) * 0.6
 	local P, C = m.P, m.C
 	for i = first or 1, last or m.nv do
 		local x, y, z = P[i * 3 - 2], P[i * 3 - 1], P[i * 3]
 		local r, g, b = C[i * 3 - 2], C[i * 3 - 1], C[i * 3]
 		local ax = abs(x)
-		if z < -0.08 then
+		-- the face's warmth reaches the rest of the head in part (no colour step at the temples / jaw)
+		r, g, b = r * 1.004, g * 0.994, b * 0.993
+		local wF = 1 - smoothstep(-0.14, -0.02, z)
+		if z < -0.02 then
 			-- warmth: malar cheeks, the nose tip and wings, the chin; a little sallower forehead
 			local fl = bump(((ax - 0.22) / 0.12) ^ 2 + ((y - F.eyeY + 0.09) / 0.09) ^ 2) * 0.9
 				+ bump((x / 0.075) ^ 2 + ((y - F.noseTipY + 0.01) / 0.06) ^ 2) * 0.8
@@ -257,7 +300,7 @@ function Paint.Vertex(m, F, look, first, last)
 				r, g, b = r * (1 + 0.25 * k), g * (1 - 0.55 * k), b * (1 - 0.55 * k)
 			end
 			if y > F.browY + 0.03 then
-				local k = smoothstep(F.browY + 0.03, F.browY + 0.12, y) * 0.03
+				local k = smoothstep(F.browY + 0.03, F.browY + 0.12, y) * 0.03 * wF
 				r, g, b = r * (1 + k * 0.3), g * (1 + k * 0.2), b * (1 - k)
 			end
 			-- lips (vermilion), the inner part a little pinker
@@ -280,7 +323,9 @@ function Paint.Vertex(m, F, look, first, last)
 				end
 				if w > 0 then
 					local inner = (1 - smoothstep(0.1, 0.75, abs(dy) / max(0.004, dy >= 0 and hu or hl))) * (0.2 + 0.45 * dark) * (dy < 0 and 1 or 0.6)
-					local lr, lg, lb = lerp(lipR, 0.52, inner), lerp(lipG, 0.28, inner), lerp(lipB, 0.29, inner)
+					-- deep tones: the outer lip deeper, the inner pinker
+					local outer = smoothstep(0.55, 1.0, abs(dy) / max(0.004, dy >= 0 and hu or hl)) * dark * 0.3
+					local lr, lg, lb = lerp(lipR, 0.52, inner) * (1 - outer), lerp(lipG, 0.28, inner) * (1 - outer), lerp(lipB, 0.29, inner) * (1 - outer * 0.8)
 					r, g, b = lerp(r, lr, w * 0.9), lerp(g, lg, w * 0.9), lerp(b, lb, w * 0.9)
 				end
 			end
@@ -291,7 +336,8 @@ function Paint.Vertex(m, F, look, first, last)
 				local ends = smoothstep(-0.15, 0.06, s) * (1 - smoothstep(0.9, 1.1, s))
 				local w = edge * ends * 0.7
 				if w > 0 then
-					r, g, b = lerp(r, hr * 0.85, w), lerp(g, hg * 0.85, w), lerp(b, hb * 0.85, w)
+					local cr, cg, cb = browColor(hr, hg, hb)
+					r, g, b = lerp(r, cr, w), lerp(g, cg, w), lerp(b, cb, w)
 				end
 			end
 			-- around the eyes: a little darker and cooler (more on deep tones); the inner corner pinker
@@ -310,10 +356,10 @@ function Paint.Vertex(m, F, look, first, last)
 				end
 			end
 			-- nostril shadows (the texture sharpens them)
-			local nq = ((ax - F.noseW * 0.4) / (F.noseW * 0.34)) ^ 2 + ((y - F.noseBaseY - 0.005) / 0.012) ^ 2
-			if nq < 1 then
-				local k = bump(nq) * 0.5 * smoothstep(0.15, 0.6, -m.N[i * 3 - 1])
-				r, g, b = r * (1 - k), g * (1 - k), b * (1 - k)
+			local nk = nostrilAt(F, x, y, z)
+			if nk > 0 then
+				local k = nk * 0.6 * smoothstep(0.05, 0.5, -m.N[i * 3 - 1])
+				r, g, b = r * (1 - k), g * (1 - k * 1.08), b * (1 - k * 1.05)
 			end
 		end
 		-- beard shadow (blue-grey from the hair under the skin)
@@ -325,8 +371,8 @@ function Paint.Vertex(m, F, look, first, last)
 			end
 		end
 		C[i * 3 - 2], C[i * 3 - 1], C[i * 3] = r, g, b
+		MeshKit.Step(2)
 	end
-	MeshKit.Step((last or m.nv) - (first or 1))
 	MeshKit.NoiseColor(m, 0.02, 7, F.seed % 9973, first, last)
 end
 
@@ -424,7 +470,8 @@ end
 -- Rasteriser: vertex colours + position into a w x h RGBA8 buffer, shade(px, py, r, g, b, x, y, z) -> r, g, b
 -- per covered texel. Empty texels take their neighbours' colour (pad passes), then the fill colour.
 ------------------------------------------------------------------------
-local function rasterize(m, w, h, shade, pad, fill, Q, grain, simpleTri, pscale, D)
+-- keepEmpty: no padding and no fill (texels no triangle covers keep alpha 0: the caller merges the result)
+local function rasterize(m, w, h, shade, pad, fill, Q, grain, simpleTri, pscale, D, keepEmpty)
 	local buf = buffer.create(w * h * 4)
 	local P, U, C, T = m.P, m.U, m.C, m.T
 	Q = Q or {}
@@ -432,6 +479,7 @@ local function rasterize(m, w, h, shade, pad, fill, Q, grain, simpleTri, pscale,
 	local writeu32 = buffer.writeu32
 	local EPS = -1e-7
 	local KT, gox, goy = grain and grain.KT, grain and grain.ox or 0, grain and grain.oy or 0
+	local lf = grain and grain.lf
 	local gcol, grow = grain and grain.col, grain and grain.row
 	local psx, psy, psz = 1, 1, 1
 	if pscale then
@@ -512,6 +560,9 @@ local function rasterize(m, w, h, shade, pad, fill, Q, grain, simpleTri, pscale,
 						local rowT = ((grow[py + 1] + goy) % TS) * TS + 1
 						for px = lo, hi do
 							local k = KT[rowT + (gcol[px + 1] + gox) % TS]
+							if lf then
+								k *= lf(px, py)
+							end
 							writeu32(buf, o, pack(r * k, g * k, b * k))
 							o += 4
 							r += rX
@@ -543,6 +594,9 @@ local function rasterize(m, w, h, shade, pad, fill, Q, grain, simpleTri, pscale,
 			end
 		end
 		MeshKit.Step(1)
+	end
+	if keepEmpty then
+		return buf
 	end
 	-- pad: empty texels next to filled ones copy them (filtering at UV seams), then the rest get the fill
 	local readu8, readu32 = buffer.readu8, buffer.readu32
@@ -611,14 +665,16 @@ function Paint.Texture(m, F, look, w, h, faceV, pscale, col, row)
 	local sr, sg, sb = Paint.Skin(look)
 	local dark = darkness(sr, sg, sb)
 	local scale = w / 512 -- stroke lengths in texels follow the atlas size
-	local smoothK = clamp(tonumber(f.smooth) or 0.5, 0, 1)
-	local poreK = clamp(tonumber(f.pores) or 0.35, 0, 1)
+	-- women's skin a little finer by default (fewer, shallower pores)
+	local smoothK = clamp(tonumber(f.smooth) or (F.female and 0.7 or 0.5), 0, 1)
+	local poreK = clamp(tonumber(f.pores) or (F.female and 0.2 or 0.35), 0, 1)
 	local grainA = (0.05 + 0.05 * poreK - 0.03 * smoothK) * (1 - 0.35 * dark)
 	local poreA = (0.05 + 0.1 * poreK) * (1 - 0.4 * smoothK)
 	local mottleA = 0.035 + 0.02 * (1 - smoothK)
 	local hr, hg, hb = hairColor(look, F.age, false)
 	local br, bg, bb = hairColor(look, F.age, true)
 	local brow = Paint.BrowFrame(F)
+	local bwR, bwG, bwB = browColor(hr, hg, hb)
 	local beardZone = Paint.BeardZone(F)
 	local style, _, growth = Paint.BeardStyle(look)
 	-- shaved: faint follicles; stubble: denser and darker with growth; grown styles: dense under the beard
@@ -630,6 +686,11 @@ function Paint.Texture(m, F, look, w, h, faceV, pscale, col, row)
 		end
 	end
 	local wr = F.wrinkles
+	-- small maps (medium / low detail): a texel is millimetres wide there, so pores and stubble follicles would be
+	-- specks (acne, pepper); they take their average tone instead
+	local fine = w >= 256
+	-- adults: a faint glabella crease whatever the wrinkle slider
+	local glabK = clamp((F.age - 20) / 25, 0, 1) * (F.female and 0.2 or 0.35)
 	local mW = F.mouthW
 	local seed = F.seed
 	local ox, oy = floor(MeshKit.Hash3(1, 2, 3, seed) * TS), floor(MeshKit.Hash3(4, 5, 6, seed) * TS)
@@ -645,7 +706,14 @@ function Paint.Texture(m, F, look, w, h, faceV, pscale, col, row)
 		end
 		MeshKit.Step(TS * 0.5)
 	end
+	-- a low-frequency value breakup (+-4 %): no skin is one even tone (and it keeps the speculars from
+	-- reading as lacquer)
+	local lfx, lfy = MeshKit.Hash3(2, 9, 4, seed) * 50, MeshKit.Hash3(5, 1, 7, seed) * 50
+	local function lowF(px, py)
+		return 0.96 + 0.08 * smoothAt(px * 0.03 + lfx, py * 0.03 + lfy)
+	end
 	-- the beard zone per vertex (smooth: interpolated across each triangle like a colour)
+	local neckTone = F.neckTone
 	local Q = table.create(m.nv, 0)
 	if stub > 0 then
 		local P = m.P
@@ -653,10 +721,12 @@ function Paint.Texture(m, F, look, w, h, faceV, pscale, col, row)
 			local z = P[i * 3] * psz
 			local y = P[i * 3 - 1] * psy
 			if y < 0.12 and z < 0.17 then
-				Q[i] = beardZone(P[i * 3 - 2] * psx, y, z)
+				local x = P[i * 3 - 2] * psx
+				-- none on the neck (F.neckTone: the Body's skin there, and its column has no stubble)
+				Q[i] = beardZone(x, y, z) * (1 - (neckTone and neckTone(x, y, z) or 0))
+				MeshKit.Step(2)
 			end
 		end
-		MeshKit.Step(m.nv)
 	end
 	-- how much each vertex faces down (nostril openings are on the underside of the nose)
 	local D = table.create(m.nv, 0)
@@ -672,47 +742,83 @@ function Paint.Texture(m, F, look, w, h, faceV, pscale, col, row)
 	local brY0, brY1 = bY - 0.06, bY + 0.06
 	local lipTop = F.mouthY + 0.06
 	local lipBot = F.mouthY - 0.07
+	-- the brows' hair strokes: per texel coverage and direction (sparse), drawn after the raster
+	local BRC, BRX, BRY = {}, {}, {}
+	-- the wrinkle lines of this face (seeded: their number, spacing, reach, bend and depth)
+	local H3 = MeshKit.Hash3
+	local foreLines, crowLines, neckLines = {}, {}, {}
+	do
+		local nL = 3 + ((H3(1, 1, seed) < wr - 0.35) and 1 or 0)
+		local yl = bY + 0.05 + 0.006 * H3(2, 2, seed)
+		for i = 1, nL do
+			foreLines[i] = { yl, 0.16 + 0.07 * H3(i, 3, seed), 0.008 + 0.01 * H3(i, 4, seed), H3(i, 5, seed) * 6.28, (0.65 + 0.35 * H3(i, 6, seed)) * (i == 1 and 1 or 0.85) }
+			yl += 0.024 + 0.01 * H3(i, 7, seed)
+		end
+		for i = 1, 3 do
+			crowLines[i] = { (i - 2) * 0.38 + (H3(i, 8, seed) - 0.5) * 0.2, 0.03 + 0.02 * H3(i, 9, seed), H3(i, 10, seed) * 6.28 }
+		end
+		for i = 1, 2 do
+			neckLines[i] = { chinY - 0.09 - (i - 1) * (0.05 + 0.02 * H3(i, 11, seed)) }
+		end
+	end
 	local function shade(px, py, r, g, b, x, y, z, bz, down)
 		-- grain: per-texel white noise, a few-texel mottling
 		local ti = ((row[py + 1] + oy) % TS) * TS + (col[px + 1] + ox) % TS + 1
 		local n = TILE[ti]
-		local k = KT[ti]
-		if py > faceV or z > -0.05 then
+		-- the breakup by position over the face (the nose's own texture island takes the same tones as the face
+		-- round it), by texel toward the back (where the grain-only texels use it)
+		local lf = lowF(px, py)
+		if z < 0.04 then
+			local l3 = 0.96 + 0.08 * smoothAt(x * 9 + lfx, y * 9 + lfy)
+			lf = l3 + (lf - l3) * smoothstep(-0.1, 0.04, z)
+		end
+		local k = KT[ti] * lf
+		local ax = abs(x)
+		-- the ears' island (below the head's map) and the back of the head: grain only. The nose patch's island
+		-- sits there too: it takes the face's detail
+		if z > 0.04 or (py > faceV and ax > 0.25) then
 			return r * k, g * k, b * k
 		end
-		local ax = abs(x)
-		-- pores: denser and deeper on the nose and the cheeks, none on the lips
+		-- low detail: the eyes are painted (no eyeball pieces), averaged over the texel (F.paintEyesTex)
+		local pe = F.paintEyesTex or F.paintEyes
+		if pe then
+			local er, eg, eb, ea = pe(x, y, z)
+			if er then
+				r, g, b = lerp(r, er, ea), lerp(g, eg, ea), lerp(b, eb, ea)
+				if ea >= 1 then
+					return r, g, b
+				end
+			end
+		end
+		-- pores: denser and deeper on the nose and the cheeks, none on the lips; faded out toward the back
+		-- (no step in the skin's tone at the temples and the jaw)
+		local wFace = 1 - smoothstep(-0.12, 0.02, z)
 		local pz = 0.55
 		if y < nY and y > nbY - 0.01 and ax < 0.1 then
 			pz = 1
 		elseif y < F.eyeY - 0.04 and y > F.mouthY - 0.02 and ax > 0.12 then
 			pz = 0.85
 		end
-		if n < 0.075 * pz then
+		if fine and n < 0.075 * pz * wFace then
 			k -= poreA * pz
 		end
-		-- brow hairs: strokes along each hair's direction (up at the head, outward along the body, down at the tail)
+		-- brows: a quarter-strength underpaint here (the skin between the hairs is shadowed by them); the hairs
+		-- themselves are strokes drawn after the raster (BR*: coverage and direction per texel)
 		if y > brY0 and y < brY1 and z < -0.2 then
-			local s, t, half, dens = brow(x, y)
-			if s and abs(t) < half * 1.5 then
-				local phi = s < 0.25 and lerp(1.25, 0.35, s / 0.25) or (s < 0.7 and lerp(0.35, 0.12, (s - 0.25) / 0.45) or lerp(0.12, -0.3, (s - 0.7) / 0.3))
+			local s2, t, half, dens = brow(x, y)
+			if s2 and abs(t) < half * 1.5 then
+				local phi = s2 < 0.25 and lerp(1.25, 0.35, s2 / 0.25) or (s2 < 0.7 and lerp(0.35, 0.12, (s2 - 0.25) / 0.45) or lerp(0.12, -0.3, (s2 - 0.7) / 0.3))
 				phi += t / half * 0.25 -- the upper hairs lie flatter, fanning
 				local lat = x < 0 and 1 or -1 -- lateral is +px on the character's left (x < 0)
-				local dx, dy = lat * cos(phi), -sin(phi)
-				local a = px * dx + py * dy
-				local c = -px * dy + py * dx
-				local lane = floor(c * 0.9)
-				local off = TILE[(lane % TS) * 3 % (TS * TS) + 1]
-				local seg = floor(a / browLen + off)
-				local hv = TILE[((lane * 7 + seg * 13) % TS) * TS + (seg * 5 + lane) % TS + 1]
-				local frac = a / browLen + off - seg
 				local edge = 1 - smoothstep(half * 0.45, half * 1.45, abs(t))
-				local ends = smoothstep(-0.18, 0.05, s) * (1 - smoothstep(0.88, 1.12, s))
+				local ends = smoothstep(-0.18, 0.05, s2) * (1 - smoothstep(0.88, 1.12, s2))
 				local cover = edge * ends
 				if cover > 0 then
-					local hair = hv < 0.55 * dens * (0.35 + 0.65 * cover) and (1 - 0.6 * frac) or 0
-					local kk = clamp(hair * (0.55 + 0.45 * cover) + cover * 0.22, 0, 0.95)
-					r, g, b = lerp(r, hr * 0.8, kk), lerp(g, hg * 0.8, kk), lerp(b, hb * 0.8, kk)
+					local kk = cover * 0.25
+					r, g, b = lerp(r, bwR, kk), lerp(g, bwG, kk), lerp(b, bwB, kk)
+					local idx = py * w + px
+					BRC[idx] = cover * dens
+					BRX[idx], BRY[idx] = lat * cos(phi), -sin(phi)
 				end
 			end
 		end
@@ -729,6 +835,11 @@ function Paint.Texture(m, F, look, w, h, faceV, pscale, col, row)
 				if dy < -hl * 0.2 and dy > -hl * 0.7 then
 					k += 0.05 * (1 - ax / mW) * (1 - dark * 0.5)
 				end
+				-- the vermilion border: a slightly darker rim where the lip meets the skin
+				local bd = min(abs(dy - hu), abs(dy + hl))
+				if bd < 0.0022 then
+					k *= 1 - 0.07 * (1 - bd / 0.0022) * (1 - smoothstep(0.8, 1.05, ax / mW))
+				end
 				-- the line between the lips, and inside it the mouth (seen when the jaw opens)
 				local lw = 1 - smoothstep(0.7, 1.0, ax / mW)
 				if abs(dy) < 0.0028 * lw then
@@ -741,56 +852,82 @@ function Paint.Texture(m, F, look, w, h, faceV, pscale, col, row)
 			end
 		end
 		-- nostrils: the openings under the tip, either side of the columella
-		if y < nbY + 0.03 and y > nbY - 0.01 and ax < F.noseW then
-			local q = ((ax - F.noseW * 0.4) / (F.noseW * 0.3)) ^ 2 + ((y - nbY - 0.005) / 0.01) ^ 2
-			if q < 1 then
-				k *= 1 - bump(q) * 0.75 * smoothstep(0.15, 0.6, down)
+		if y < nbY + 0.045 and y > nbY - 0.01 and ax < F.noseW * 1.2 then
+			local nk = nostrilAt(F, x, y, z)
+			if nk > 0 then
+				-- the opening: dark, a warm red-brown deep inside
+				local d = smoothstep(0.0, 0.75, nk) * smoothstep(0.0, 0.45, down)
+				k *= 1 - 0.82 * d
+				r, g, b = lerp(r, r * 0.9, d), lerp(g, g * 0.72, d), lerp(b, b * 0.72, d)
 			end
-			-- the alar crease: a soft shadow line round the wing
-			local cx2 = (ax - F.noseW * 0.72) / (F.noseW * 0.45)
-			local cy2 = (y - nbY - 0.022) / 0.034
-			local cr = sqrt(cx2 * cx2 + cy2 * cy2)
-			if cr > 0.8 and cr < 1.25 and cy2 > -0.6 then
-				k *= 1 - 0.12 * bump(((cr - 1.02) / 0.2) ^ 2)
-			end
+			-- (the alar creases are the nose solid's own: its union with the face is crisp there, the AO darkens
+			-- them; a painted ring never lies exactly on them and reads as a drawn arc on the cheek)
 		end
 		-- stubble: follicle dots over the beard zone, denser and darker as it grows
 		if bz > 0.03 then
-			do
+			local kk = (0.22 + 0.3 * (style and growth or 0)) * stub * (1 - 0.55 * dark) * bz
+			if fine then
 				local d = TILE[((py + oy * 3 + 17) % TS) * TS + (px + ox * 5 + 29) % TS + 1]
-				if d < stubDens * bz then
-					local kk = (0.35 + 0.35 * (style and growth or 0)) * stub * (1 - 0.55 * dark) * bz
-					r, g, b = lerp(r, br * 0.65, kk), lerp(g, bg * 0.65, kk), lerp(b, bb * 0.65 + 0.015, kk)
+				if d >= stubDens * bz then
+					kk = 0
 				end
+			else
+				kk *= min(1, stubDens * bz * 1.3)
+			end
+			if kk > 0 then
+				r, g, b = lerp(r, br * 0.65, kk), lerp(g, bg * 0.65, kk), lerp(b, bb * 0.65 + 0.015, kk)
 			end
 		end
-		-- wrinkles: forehead lines, glabella, crow's feet, under the eyes, the neck (age / slider)
+		-- the glabella's frown lines: faint on every adult (the knit morph folds the skin there), deeper with age
+		if ax < 0.03 and y > bY - 0.03 and y < bY + 0.045 then
+			local line = bump(((ax - 0.013) / 0.0035) ^ 2)
+			local hi = bump(((ax - 0.0175) / 0.003) ^ 2)
+			local gk = max(wr, glabK)
+			k += (0.3 * hi - line) * 0.09 * gk * bump(((y - bY - 0.008) / 0.04) ^ 2)
+		end
+		-- wrinkles: a few seeded lines each (forehead arcs, crow's feet, under the eyes, the neck), every line a
+		-- soft shadow with a highlight on its upper side (a fold, not a drawn stripe)
 		if wr > 0.12 then
-			if y > bY + 0.035 and y < bY + 0.18 and ax < 0.26 then
-				local ph = (y - bY - 0.035) * 220 + (smoothAt(x * 30 + 7, 3) - 0.5) * 4
-				local line = smoothstep(0.86, 0.99, cos(ph))
-				k -= line * 0.15 * wr * (1 - smoothstep(0.16, 0.26, ax)) * smoothstep(bY + 0.035, bY + 0.06, y)
+			if y > bY + 0.03 and y < bY + 0.2 and ax < 0.27 then
+				for _, L in ipairs(foreLines) do
+					local yl = L[1] + L[3] * (x / L[2]) ^ 2 + 0.0018 * sin(x * 23 + L[4])
+					local d = y - yl
+					if d > -0.008 and d < 0.012 then
+						local ends = 1 - smoothstep(L[2] * 0.75, L[2], ax)
+						local a = 0.13 * wr * L[5] * ends
+						k += a * (0.5 * bump(((d - 0.0042) / 0.0032) ^ 2) - bump((d / 0.0026) ^ 2))
+					end
+				end
 			end
-			if ax < 0.03 and y > bY - 0.03 and y < bY + 0.045 then
-				local line = bump(((ax - 0.014) / 0.004) ^ 2)
-				k -= line * 0.1 * wr * bump(((y - bY - 0.008) / 0.04) ^ 2)
-			end
+
 			for side = -1, 1, 2 do
 				local e = eyes[side]
 				local dx, dy = (x - e.x) * side, y - e.y
-				if dx > 0.06 and dx < 0.13 and dy > -0.05 and dy < 0.04 then
-					local ang = math.atan2(dy + 0.005, dx - 0.055)
-					local line = smoothstep(0.82, 0.98, cos(ang * 11 + (smoothAt(x * 40, y * 40) - 0.5) * 3))
-					k -= line * 0.17 * wr * (1 - smoothstep(0.09, 0.13, dx)) * smoothstep(0.06, 0.075, dx)
+				if dx > 0.055 and dx < 0.13 and dy > -0.05 and dy < 0.045 then
+					for _, C3 in ipairs(crowLines) do
+						local ca, sa = cos(C3[1]), sin(C3[1])
+						local ux, uy = dx - 0.064, dy - 0.002
+						local along = ux * ca + uy * sa
+						local across = -ux * sa + uy * ca + 0.002 * sin(along * 90 + C3[3])
+						if along > 0 and along < C3[2] then
+							local fade = smoothstep(0, 0.008, along) * (1 - smoothstep(C3[2] * 0.6, C3[2], along))
+							local a = 0.14 * wr * fade
+							k += a * (0.45 * bump(((across - 0.0035) / 0.0028) ^ 2) - bump((across / 0.0022) ^ 2))
+						end
+					end
 				end
 				if abs(dx) < 0.06 and dy < -0.03 and dy > -0.07 then
 					local yl = -0.045 - 0.006 * (dx / 0.06) ^ 2
-					k -= 0.08 * wr * bump(((dy - yl) / 0.006) ^ 2) * (1 - smoothstep(0.03, 0.06, abs(dx)))
+					k -= 0.07 * wr * bump(((dy - yl) / 0.005) ^ 2) * (1 - smoothstep(0.03, 0.06, abs(dx)))
 				end
 			end
-			if y < chinY - 0.06 and y > chinY - 0.24 and z < 0 then
-				local ph = (y - chinY) * 120
-				k -= smoothstep(0.9, 0.99, cos(ph)) * 0.06 * wr
+			if y < chinY - 0.05 and y > chinY - 0.26 and z < 0.02 then
+				local nk = 1 - (neckTone and neckTone(x, y, z) or 0)
+				for _, L in ipairs(neckLines) do
+					local yl = L[1] - 0.02 * (x / 0.2) ^ 2
+					local d = y - yl
+					k -= 0.06 * wr * bump((d / 0.004) ^ 2) * (1 - smoothstep(0.16, 0.24, ax)) * nk
+				end
 			end
 		end
 		-- spots
@@ -828,7 +965,7 @@ function Paint.Texture(m, F, look, w, h, faceV, pscale, col, row)
 	local vMax = faceV / h
 	local function simpleTri(ia, ib, ic)
 		local za, zb, zc = P[ia * 3] * psz, P[ib * 3] * psz, P[ic * 3] * psz
-		if za > -0.04 and zb > -0.04 and zc > -0.04 then
+		if za > 0.05 and zb > 0.05 and zc > 0.05 then
 			return true
 		end
 		local ya, yb, yc = P[ia * 3 - 1] * psy, P[ib * 3 - 1] * psy, P[ic * 3 - 1] * psy
@@ -837,7 +974,48 @@ function Paint.Texture(m, F, look, w, h, faceV, pscale, col, row)
 		end
 		return U[ia * 2] > vMax and U[ib * 2] > vMax and U[ic * 2] > vMax
 	end
-	return rasterize(m, w, h, shade, 2, { sr * 0.9, sg * 0.9, sb * 0.9 }, Q, { KT = KT, ox = ox, oy = oy, col = col, row = row }, simpleTri, pscale, D)
+	local buf = rasterize(m, w, h, shade, 2, { sr * 0.9, sg * 0.9, sb * 0.9 }, Q, { KT = KT, ox = ox, oy = oy, col = col, row = row, lf = lowF }, simpleTri, pscale, D)
+	-- the brow hairs: short strokes (3..6 texels at 384) from random roots along each hair's direction, drawn
+	-- anti-aliased (each step shared between the two texels across the stroke), darker at the root
+	local readu8, writeu8 = buffer.readu8, buffer.writeu8
+	local sc = w / 384
+	local function blend(qx, qy, cr, cg, cb, al)
+		if qx < 0 or qx >= w or qy < 0 or qy >= h or al <= 0.003 then
+			return
+		end
+		local o = (qy * w + qx) * 4
+		writeu8(buf, o, floor(lerp(readu8(buf, o), cr, al) + 0.5))
+		writeu8(buf, o + 1, floor(lerp(readu8(buf, o + 1), cg, al) + 0.5))
+		writeu8(buf, o + 2, floor(lerp(readu8(buf, o + 2), cb, al) + 0.5))
+	end
+	for idx, cov in pairs(BRC) do
+		local px, py = idx % w, idx // w
+		local hv = TILE[((py * 7 + oy + 3) % TS) * TS + (px * 5 + ox + 11) % TS + 1]
+		local Ls = (3 + 3 * TILE[((py * 3 + ox) % TS) * TS + (px * 11 + oy) % TS + 1]) * sc
+		if hv < cov * 0.95 / Ls * 2.2 then
+			local dx, dy = BRX[idx], BRY[idx]
+			local var = 0.85 + 0.3 * TILE[((py * 13 + 5) % TS) * TS + (px * 7 + 9) % TS + 1]
+			local cr, cg, cb = clamp(bwR * var, 0, 1) * 255, clamp(bwG * var, 0, 1) * 255, clamp(bwB * var, 0, 1) * 255
+			local t = 0
+			while t <= Ls do
+				local f = t / Ls
+				local al = (0.7 - 0.45 * f) * min(1, cov * 1.4)
+				local fx, fy = px + dx * t, py + dy * t
+				-- across the stroke: split between the two nearest texels (perpendicular to the direction)
+				local nx2, ny2 = -dy, dx
+				local q = fx * nx2 + fy * ny2
+				local qf = q - floor(q)
+				local bx, by = floor(fx - nx2 * qf + 0.5), floor(fy - ny2 * qf + 0.5)
+				local ax2, ay2 = floor(bx + nx2 + 0.5), floor(by + ny2 + 0.5)
+				blend(bx, by, cr, cg, cb, al * (1 - qf))
+				blend(ax2, ay2, cr, cg, cb, al * qf)
+				t += 0.6
+			end
+			MeshKit.Step(4)
+		end
+		MeshKit.Step(1)
+	end
+	return buf
 end
 
 ------------------------------------------------------------------------
@@ -846,66 +1024,159 @@ end
 -- into the skin instead of ending at a cut edge
 ------------------------------------------------------------------------
 -- mask(x, y, z): the style's coverage at a nominal point (evaluated per texel: smooth edges at any grid size)
-function Paint.BeardTexture(m, Q, headBuf, headW, headH, F, look, w, h, pscale, mask)
+-- inPlace: m is the head itself (same texture): only the triangles the beard touches are shaded, over a copy of
+-- headBuf (the rest of the head's texture is kept as it is)
+function Paint.BeardTexture(m, Q, headBuf, headW, headH, F, look, w, h, pscale, mask, inPlace)
 	local br, bg, bb = hairColor(look, F.age, true)
 	local style, _, growth = Paint.BeardStyle(look)
 	local seed = F.seed + 77
-	local ox, oy = floor(MeshKit.Hash3(7, 8, 9, seed) * TS), floor(MeshKit.Hash3(9, 8, 7, seed) * TS)
-	local L = (5 + 9 * growth) * (w / 256) -- strand length in texels
+	-- strand length in texels (6..14 at 384: longer growth, longer strands; a full beard longer still)
+	local L = (6 + 8 * growth) * (w / 384)
 	if style == "Full Beard" then
-		L *= 1.5
+		L *= 1.25
 	end
+	L = max(L, 3)
 	local grey = clamp((F.age - 38) / 25, 0, 0.6)
-	local readu8 = buffer.readu8
+	local readu8, writeu8 = buffer.readu8, buffer.writeu8
 	local mW = F.mouthW
+	local dk = darkness(br, bg, bb)
+	-- dark hair shows its strands by their sheen
+	local shR, shG, shB = lerp(br, 0.3, 0.22 * dk), lerp(bg, 0.27, 0.22 * dk), lerp(bb, 0.25, 0.22 * dk)
+	-- per texel coverage and growth direction (f32 buffers: no GC traversal, zeroed on creation)
+	local COV = buffer.create(w * h * 4)
+	local DXY = buffer.create(w * h * 8)
+	local readf32, writef32 = buffer.readf32, buffer.writef32
+	-- the covered texels' bounds (the strands' pass walks only those)
+	local bx0, bx1, by0, by1 = w, -1, h, -1
+	-- pass 1 (the rasterizer): the skin under the beard, darkened into the beard's body where it is dense;
+	-- per texel the coverage and the growth direction for the strands
 	local function shade(px, py, r, g, b, x, y, z, cov)
-		-- the skin (and stubble) under the beard: the head texture at the same UV
 		local u, v = (px + 0.5) / w, (py + 0.5) / h
 		local hx, hy = min(headW - 1, floor(u * headW)), min(headH - 1, floor(v * headH))
 		local o = (hy * headW + hx) * 4
 		local sr, sg, sb = readu8(headBuf, o) / 255, readu8(headBuf, o + 1) / 255, readu8(headBuf, o + 2) / 255
-		if mask then
+		if inPlace then
+			-- the head's own triangles are fine round the mouth: the coverage interpolated from its vertices,
+			-- the edge broken up per texel (cheap: no mask evaluation per texel over the whole beard)
+			if cov > 0.005 and cov < 0.995 then
+				local e = 4 * cov * (1 - cov)
+				cov = clamp(cov + (TILE[((py * 3 + 7) % TS) * TS + (px * 5 + 3) % TS + 1] - 0.5) * 0.45 * e, 0, 1)
+			end
+		elseif mask then
 			cov = mask(x, y, z)
 		end
 		if cov <= 0.01 then
 			return sr, sg, sb
 		end
-		-- growth direction (texel space: +py is down the face): down, a little outward on the cheeks, out
-		-- from the philtrum on the moustache
+		-- growth direction (texel space: +py is down the face): down and a little outward along the jaw,
+		-- out from the philtrum on the moustache
 		local lat = x < 0 and 1 or -1
 		local ax = abs(x)
-		local tilt = 0.25 * smoothstep(0.08, 0.3, ax)
+		local tilt = 0.3 * smoothstep(0.06, 0.3, ax)
 		if y > F.mouthLine(clamp(x, -mW, mW)) then
-			tilt = 0.55 * smoothstep(0.005, 0.05, ax)
+			tilt = 0.6 * smoothstep(0.004, 0.05, ax)
 		end
 		local dx, dy = lat * tilt, 1
 		local l = sqrt(dx * dx + dy * dy)
-		dx, dy = dx / l, dy / l
-		local a = px * dx + py * dy
-		local c = -px * dy + py * dx
-		local lane = floor(c)
-		local off = TILE[((lane * 3 + ox) % TS) * TS + (lane * 7 + oy) % TS + 1]
-		local seg = floor(a / L + off)
-		local hv = TILE[((lane * 11 + seg * 5 + oy) % TS) * TS + (seg * 13 + lane + ox) % TS + 1]
-		local frac = a / L + off - seg
-		local dens = clamp(cov * 1.4, 0, 1)
-		-- the beard's own body colour where it is dense, the skin where it thins
-		local baseK = smoothstep(0.15, 0.8, cov)
-		local kb = 0.7 + 0.25 * TILE[((py + oy) % TS) * TS + (px + ox) % TS + 1]
-		local rr, gg, bb2 = lerp(sr, br * kb, baseK), lerp(sg, bg * kb, baseK), lerp(sb, bb * kb, baseK)
-		if hv < 0.25 + 0.6 * dens then
-			-- a strand: darker at the root, lighter toward the tip; a few grey ones with age
-			local tip = 0.75 + 0.55 * frac
-			local hr2, hg2, hb2 = br * tip, bg * tip, bb * tip
-			if hv < 0.25 * grey then
-				hr2, hg2, hb2 = 0.75, 0.74, 0.72
+		local idx = py * w + px
+		writef32(COV, idx * 4, cov)
+		writef32(DXY, idx * 8, dx / l)
+		writef32(DXY, idx * 8 + 4, dy / l)
+		if cov > 0.03 then
+			if px < bx0 then
+				bx0 = px
 			end
-			local kk = clamp(0.35 + 0.6 * dens, 0, 0.95)
-			rr, gg, bb2 = lerp(rr, hr2, kk), lerp(gg, hg2, kk), lerp(bb2, hb2, kk)
+			if px > bx1 then
+				bx1 = px
+			end
+			if py < by0 then
+				by0 = py
+			end
+			if py > by1 then
+				by1 = py
+			end
 		end
-		return rr, gg, bb2
+		local baseK = smoothstep(0.25, 0.9, cov) * 0.8
+		local kb = 0.6 + 0.12 * (1 - dk)
+		return lerp(sr, br * kb, baseK), lerp(sg, bg * kb, baseK), lerp(sb, bb * kb, baseK)
 	end
-	return rasterize(m, w, h, shade, 2, { br * 0.8, bg * 0.8, bb * 0.8 }, Q, nil, nil, pscale)
+	local buf
+	if inPlace then
+		-- the beard's triangles only (any corner covered), merged over a copy of the head's texture
+		local T = m.T
+		local Ts = {}
+		for t = 1, m.nt do
+			local a, b, c = T[t * 3 - 2], T[t * 3 - 1], T[t * 3]
+			if (Q[a] or 0) > 0.001 or (Q[b] or 0) > 0.001 or (Q[c] or 0) > 0.001 then
+				Ts[#Ts + 1], Ts[#Ts + 2], Ts[#Ts + 3] = a, b, c
+			end
+		end
+		local sub = rasterize({ P = m.P, U = m.U, C = m.C, T = Ts, nt = #Ts // 3 }, w, h, shade, 0, nil, Q, nil, nil, pscale, nil, true)
+		buf = buffer.create(w * h * 4)
+		buffer.copy(buf, 0, headBuf, 0, w * h * 4)
+		local readu32, writeu32 = buffer.readu32, buffer.writeu32
+		for y = 0, h - 1 do
+			for o = y * w * 4, y * w * 4 + w * 4 - 4, 4 do
+				local v = readu32(sub, o)
+				if v >= 16777216 then
+					writeu32(buf, o, v)
+				end
+			end
+			MeshKit.Step(w // 8)
+		end
+	else
+		buf = rasterize(m, w, h, shade, 2, { br * 0.8, bg * 0.8, bb * 0.8 }, Q, nil, nil, pscale)
+	end
+	-- pass 2: strands, each a short straight stroke along the growth direction from a random start, its own
+	-- length and shade (+-12 %), lighter toward the tip and thinning out; fewer where the beard thins (the
+	-- skin shows between them). Strokes, not lanes of a grid: no moire where the direction turns
+	-- per-texel random numbers from the noise tile (four decorrelated lookups)
+	local ox, oy = floor(MeshKit.Hash3(7, 8, 9, seed) * TS), floor(MeshKit.Hash3(9, 8, 7, seed) * TS)
+	local function rnd(px, py, k)
+		return TILE[((py * (3 + 2 * k) + px * k + oy + 31 * k) % TS) * TS + (px * (5 + 2 * k) + py * (k + 1) + ox + 17 * k) % TS + 1]
+	end
+	for py = max(0, by0), min(h - 1, by1) do
+		for px = max(0, bx0), min(w - 1, bx1) do
+			local idx = py * w + px
+			local cov = readf32(COV, idx * 4)
+			if cov > 0.03 then
+				local hv = rnd(px, py, 0)
+				local Ls = L * (0.6 + 0.7 * rnd(px, py, 1))
+				local dens = clamp(cov * 1.2, 0, 1)
+				if hv < dens * 1.5 / Ls then
+					local dx, dy = readf32(DXY, idx * 8), readf32(DXY, idx * 8 + 4)
+					local var = 0.88 + 0.24 * rnd(px, py, 2)
+					local isGrey = rnd(px, py, 3) < 0.6 * grey
+					local a0 = 0.55 + 0.4 * dens
+					local t = 0
+					while t <= Ls do
+						local qx, qy = floor(px + dx * t + 0.5), floor(py + dy * t + 0.5)
+						if qx >= 0 and qx < w and qy >= 0 and qy < h then
+							local qi = qy * w + qx
+							local c2 = readf32(COV, qi * 4)
+							if c2 > 0.01 then
+								local f = t / Ls
+								local tip = (0.82 + 0.4 * f) * var
+								local cr, cg, cb = lerp(br, shR, f) * tip, lerp(bg, shG, f) * tip, lerp(bb, shB, f) * tip
+								if isGrey then
+									cr, cg, cb = 0.74 * var, 0.73 * var, 0.71 * var
+								end
+								local al = a0 * (1 - 0.55 * f * f) * smoothstep(0.01, 0.25, c2)
+								local o = qi * 4
+								writeu8(buf, o, floor(lerp(readu8(buf, o), clamp(cr, 0, 1) * 255, al) + 0.5))
+								writeu8(buf, o + 1, floor(lerp(readu8(buf, o + 1), clamp(cg, 0, 1) * 255, al) + 0.5))
+								writeu8(buf, o + 2, floor(lerp(readu8(buf, o + 2), clamp(cb, 0, 1) * 255, al) + 0.5))
+							end
+						end
+						t += 0.7
+					end
+					MeshKit.Step(4 + Ls)
+				end
+			end
+		end
+		MeshKit.Step(w // 16)
+	end
+	return buf
 end
 
 return Paint
