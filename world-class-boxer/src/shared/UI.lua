@@ -731,6 +731,22 @@ function UI.ScaleOf(obj)
 	return root and mounted[root].scale.Scale or 1
 end
 
+-- the design-pixel size of the area an object lays out in (its root's canvas)
+function UI.CanvasSize(obj)
+	local root = obj
+	while root and not mounted[root] do
+		root = root.Parent
+	end
+	local s = root and mounted[root].scale.Scale or 1
+	local screen = root and mounted[root].gui or obj:FindFirstAncestorWhichIsA("LayerCollector")
+	local abs = screen and screen.AbsoluteSize or Vector2.zero
+	if abs.X < 2 or abs.Y < 2 then
+		local cam = workspace.CurrentCamera
+		abs = cam and cam.ViewportSize or Vector2.new(1600, 900)
+	end
+	return Vector2.new(abs.X / s, abs.Y / s)
+end
+
 -- the 3D world softly blurred behind modal windows (ref-counted; GUI stays sharp)
 local backdrop = { n = 0, fx = nil }
 function UI.Backdrop(on)
@@ -795,20 +811,25 @@ function UI.Window(gui, name, w, h, title, opts)
 	-- broadcast accent: a thin gold line glowing along the top edge
 	local accent = UI.Frame(win, { Name = "Accent", Position = UDim2.new(0, 28, 0, 0), Size = UDim2.new(1, -56, 0, 2), BackgroundColor3 = opts.accent or T.gold, ZIndex = z })
 	UI.Gradient(accent, Color3.new(1, 1, 1), 0, NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.2, 0.15), NumberSequenceKeypoint.new(0.8, 0.15), NumberSequenceKeypoint.new(1, 1) }))
+	-- short screens (phones in landscape) get a compact header
+	local short = UI.CanvasSize(gui).Y < 560
 	local top = 16
 	if title then
-		if opts.kicker then
+		local kick = opts.kicker and not short
+		if kick then
 			UI.Text(win, string.upper(opts.kicker), { Name = "Kicker", Font = T.semi, TextSize = 12, TextColor3 = opts.accent or T.gold, Position = UDim2.fromOffset(40, 14), Size = UDim2.new(1, -120, 0, 14), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
 		end
-		local ty = opts.kicker and 26 or 14
-		UI.Frame(win, { Name = "TitleTick", Position = UDim2.fromOffset(24, ty + 7), Size = UDim2.fromOffset(4, 24), BackgroundColor3 = opts.accent or T.gold })
-		UI.Text(win, string.upper(title), { Name = "Title", Face = "display", TextSize = 32, TextColor3 = T.text, Position = UDim2.fromOffset(40, ty), Size = UDim2.new(1, -110, 0, 38),
+		local ty = kick and 26 or (short and 8 or 14)
+		local ts = short and 26 or 32
+		UI.Frame(win, { Name = "TitleTick", Position = UDim2.fromOffset(24, ty + math.floor(ts * 0.22)), Size = UDim2.fromOffset(4, math.floor(ts * 0.75)), BackgroundColor3 = opts.accent or T.gold })
+		UI.Text(win, string.upper(title), { Name = "Title", Face = "display", TextSize = ts, TextColor3 = T.text, Position = UDim2.fromOffset(40, ty), Size = UDim2.new(1, -110, 0, ts + 6),
 			AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
-		top = ty + 52
-		UI.Divider(win, { Position = UDim2.new(0, 16, 0, top - 8), Size = UDim2.new(1, -32, 0, 1) })
+		top = ty + ts + (short and 14 or 20)
+		UI.Divider(win, { Position = UDim2.new(0, 16, 0, top - (short and 6 or 8)), Size = UDim2.new(1, -32, 0, 1) })
 	end
 	if opts.onClose then
-		local close = UI.Button(win, "", { Name = "Close", Size = UDim2.fromOffset(38, 38), Position = UDim2.new(1, -54, 0, 14), BackgroundColor3 = T.panel2, BackgroundTransparency = 0.2 }, function()
+		local cs = short and 32 or 38
+		local close = UI.Button(win, "", { Name = "Close", Size = UDim2.fromOffset(cs, cs), Position = UDim2.new(1, -(cs + 14), 0, short and 8 or 14), BackgroundColor3 = T.panel2, BackgroundTransparency = 0.2 }, function()
 			opts.onClose()
 		end)
 		UI.Icon(close, "close", 14, T.text, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5) })

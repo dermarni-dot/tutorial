@@ -1,5 +1,6 @@
--- ClientMain: wires the client together - HUD, gym prompts, profile updates, results,
--- retirement, the city dressing and the time of day (your energy is your daylight).
+-- ClientMain: wires the client together - main menu at join, the gym HUD (player plate, condition
+-- meters, quick actions), gym prompts, profile updates, fight / sparring results, retirement, the
+-- city dressing and the time of day (your energy is your daylight).
 -- The trophy case is drawn by GymVisuals.Refresh (GymFacility's LocalTrophies).
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -15,12 +16,23 @@ local UI = require(Shared:WaitForChild("UI"))
 local T = UI.Theme
 local Modules = script.Parent:WaitForChild("BoxerClient")
 local State = require(Modules:WaitForChild("State"))
+local Settings = require(Modules:WaitForChild("Settings"))
+Settings.Start(State)
 local GymVisuals = require(Modules:WaitForChild("GymVisuals"))
 local Creator = require(Modules:WaitForChild("Creator"))
 local Hub = require(Modules:WaitForChild("Hub"))
 local Activities = require(Modules:WaitForChild("Activities"))
 local Services = require(Modules:WaitForChild("Services"))
 local Ambience = require(Modules:WaitForChild("Ambience"))
+local Flags = require(Modules:WaitForChild("Flags"))
+-- the title screen is optional too: without it a new player goes straight to the creator
+local okMenu, MainMenu = pcall(function()
+	return require(Modules:WaitForChild("MainMenu", 10))
+end)
+if not (okMenu and type(MainMenu) == "table") then
+	warn("[ClientMain] MainMenu unavailable:", MainMenu)
+	MainMenu = nil
+end
 Ambience.Start()
 -- city dressing (homes, fans, billboards, stores): optional, so a broken city never takes the HUD
 -- and the gym prompts down with it
@@ -37,50 +49,92 @@ local gui = State.gui
 local rec = State.rec
 
 ------------------------------------------------------------------------
--- HUD
+-- HUD: the player plate (top left)
 ------------------------------------------------------------------------
-local hud = UI.Frame(gui, { Name = "HUD", Size = UDim2.new(0, 330, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, Position = UDim2.fromOffset(12, 12), BackgroundColor3 = T.bg, BackgroundTransparency = 0.15, Visible = false })
-UI.Corner(hud, 10)
-UI.Stroke(hud, T.gold, 1)
-UI.Pad(hud, 9)
-UI.List(hud, 2)
-local hudName = UI.Text(hud, "", { Font = T.bold, TextColor3 = T.gold, TextSize = 17, LayoutOrder = 1 })
-local hudTier = UI.Text(hud, "", { TextSize = 13, LayoutOrder = 2 })
-local hudRec = UI.Text(hud, "", { TextSize = 13, LayoutOrder = 3 })
-local bars = UI.Frame(hud, { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 4 })
-UI.List(bars, 2)
+local hud = UI.Frame(gui, { Name = "HUD", Size = UDim2.new(0, 360, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, Position = UDim2.fromOffset(20, 16), Visible = false })
+UI.Glass(hud, { transparency = 0.16 })
+UI.New("UIPadding", { PaddingTop = UDim.new(0, 14), PaddingBottom = UDim.new(0, 14), PaddingLeft = UDim.new(0, 18), PaddingRight = UDim.new(0, 18), Parent = hud })
+UI.List(hud, 6)
+local stripe = UI.Frame(hud, { Name = "Stripe", Size = UDim2.new(1, 0, 0, 3), BackgroundColor3 = T.gold, LayoutOrder = 0 })
+UI.Gradient(stripe, Color3.new(1, 1, 1), 0, NumberSequence.new({ NumberSequenceKeypoint.new(0, 0), NumberSequenceKeypoint.new(0.5, 0.2), NumberSequenceKeypoint.new(1, 1) }))
+local head = UI.Frame(hud, { Name = "Head", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 40), LayoutOrder = 1 })
+local flagHolder = UI.Frame(head, { Name = "FlagHolder", BackgroundTransparency = 1, Size = UDim2.fromOffset(30, 20), Position = UDim2.fromOffset(0, 10) })
+local hudName = UI.Title(head, "", { Name = "Name", TextSize = 28, Position = UDim2.fromOffset(40, 2), Size = UDim2.new(1, -112, 0, 34), TextTruncate = Enum.TextTruncate.AtEnd })
+local ovrBox = UI.Frame(head, { Name = "OVR", AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 0), Size = UDim2.fromOffset(62, 40), BackgroundColor3 = T.ink, BackgroundTransparency = 0.3 })
+UI.Corner(ovrBox, UI.R.md)
+UI.Stroke(ovrBox, T.gold, 1, 0.35)
+local hudOvr = UI.Text(ovrBox, "", { Face = "number", TextSize = 24, TextColor3 = T.gold, Size = UDim2.new(1, 0, 0, 26), Position = UDim2.fromOffset(0, 1), AutomaticSize = Enum.AutomaticSize.None,
+	TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false })
+UI.Text(ovrBox, "OVR", { Font = T.semi, TextSize = 9, TextColor3 = T.sub, Size = UDim2.new(1, 0, 0, 10), Position = UDim2.new(0, 0, 1, -13), AutomaticSize = Enum.AutomaticSize.None,
+	TextXAlignment = Enum.TextXAlignment.Center })
+local hudTier = UI.Text(hud, "", { Name = "Tier", Font = T.semi, TextSize = 12, TextColor3 = T.gold, LayoutOrder = 2, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
+local nums = UI.Frame(hud, { Name = "Numbers", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 52), LayoutOrder = 3 })
+UI.List(nums, 8, true)
+local _, recVal, recCap = UI.Stat(nums, "0-0-0", "RECORD", { Size = UDim2.new(0.5, -4, 1, 0), valueSize = 24, order = 1, scaled = true })
+local _, moneyVal = UI.Stat(nums, "$0", "PURSE", { Size = UDim2.new(0.5, -4, 1, 0), valueSize = 24, order = 2, valueColor = T.gold, scaled = true })
+local bars = UI.Frame(hud, { Name = "Meters", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 4 })
+UI.List(bars, 5)
 local function miniBar(label, color, order)
-	local f = UI.Frame(bars, { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 14), LayoutOrder = order })
-	UI.Text(f, label, { TextSize = 11, TextColor3 = T.sub, Size = UDim2.new(0, 70, 1, 0), AutomaticSize = Enum.AutomaticSize.None })
-	local _, set = UI.Bar(f, { Position = UDim2.new(0, 72, 0, 3), Size = UDim2.new(1, -110, 0, 8) }, color)
-	local val = UI.Text(f, "", { TextSize = 11, Position = UDim2.new(1, -34, 0, 0), Size = UDim2.new(0, 34, 1, 0), TextXAlignment = Enum.TextXAlignment.Right, AutomaticSize = Enum.AutomaticSize.None })
+	local f = UI.Frame(bars, { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 16), LayoutOrder = order })
+	UI.Text(f, label, { Font = T.semi, TextSize = 10, TextColor3 = T.sub, Size = UDim2.new(0, 84, 1, 0), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
+	local _, set = UI.Bar(f, { Position = UDim2.new(0, 86, 0.5, -3), Size = UDim2.new(1, -126, 0, 6) }, color)
+	local val = UI.Text(f, "", { Face = "number", TextSize = 15, Position = UDim2.new(1, -34, 0, 0), Size = UDim2.new(0, 34, 1, 0), TextXAlignment = Enum.TextXAlignment.Right,
+		AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
 	return function(v, c)
 		set(v / 100, c)
 		val.Text = tostring(math.floor(v))
 	end
 end
 local setEnergy = miniBar("ENERGY", T.gold, 1)
-local setHydration = miniBar("HYDRATION", T.blue, 2)
+local setHydration = miniBar("HYDRATION", T.cyan, 2)
 local setNutrition = miniBar("NUTRITION", T.green, 3)
 local setFatigue = miniBar("FATIGUE", T.orange, 4)
-local hudCamp = UI.Text(hud, "", { TextSize = 12, TextColor3 = T.sub, LayoutOrder = 5 })
-local hudWarn = UI.Text(hud, "", { TextSize = 12, TextColor3 = T.red, LayoutOrder = 6, Visible = false })
+local campBox = UI.Frame(hud, { Name = "Camp", Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundColor3 = T.panel2, BackgroundTransparency = 0.4, LayoutOrder = 5 })
+UI.Corner(campBox, UI.R.md)
+UI.New("UIPadding", { PaddingTop = UDim.new(0, 7), PaddingBottom = UDim.new(0, 7), PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 10), Parent = campBox })
+local hudCamp = UI.Text(campBox, "", { Font = T.semi, TextSize = 12, TextColor3 = T.sub })
+local hudWarn = UI.Text(hud, "", { Font = T.semi, TextSize = 12, TextColor3 = T.red, LayoutOrder = 6, Visible = false })
 
-local hudButtons = UI.Frame(gui, { Name = "HudButtons", BackgroundTransparency = 1, Size = UDim2.fromOffset(330, 38), Position = UDim2.fromOffset(12, 12), Visible = false })
+-- quick actions under the plate
+local hudButtons = UI.Frame(gui, { Name = "HudButtons", BackgroundTransparency = 1, Size = UDim2.fromOffset(360, 40), Position = UDim2.fromOffset(20, 16), Visible = false })
 UI.List(hudButtons, 6, true)
-UI.Button(hudButtons, "CAREER HUB [H]", { Size = UDim2.fromOffset(150, 36), BackgroundColor3 = T.gold, TextColor3 = T.bg, TextSize = 14 }, function()
+local function hudButton(text, key, w, color, fn, order)
+	local b = UI.Button(hudButtons, "", { Name = text, Size = UDim2.fromOffset(w, 40), BackgroundColor3 = color or T.panel2, BackgroundTransparency = color and 0 or 0.15, LayoutOrder = order }, fn)
+	local dark = color == T.gold
+	UI.Text(b, text, { Face = "displayMed", TextSize = 17, TextColor3 = dark and T.ink or T.text, Size = UDim2.new(1, key and -26 or 0, 1, 0), AutomaticSize = Enum.AutomaticSize.None,
+		TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false })
+	if key then
+		local cap = UI.Frame(b, { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -8, 0.5, 0), Size = UDim2.fromOffset(20, 20), BackgroundColor3 = dark and T.ink or T.panel, BackgroundTransparency = 0.2 })
+		UI.Corner(cap, 4)
+		UI.Text(cap, key, { Font = T.semi, TextSize = 11, TextColor3 = dark and T.gold or T.sub, Size = UDim2.fromScale(1, 1), AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Center })
+	end
+	return b
+end
+hudButton("MENU", "M", 92, nil, function()
+	if MainMenu then
+		MainMenu.Open()
+	end
+end, 1)
+hudButton("CAREER HUB", "H", 140, T.gold, function()
 	Hub.Toggle()
-end)
-UI.Button(hudButtons, "TRAIN", { Size = UDim2.fromOffset(80, 36), TextSize = 14 }, function()
+end, 2)
+hudButton("TRAIN", nil, 60, nil, function()
 	Hub.Open("Training")
-end)
-UI.Button(hudButtons, "SLEEP", { Size = UDim2.fromOffset(80, 36), TextSize = 14 }, function()
+end, 3)
+hudButton("SLEEP", nil, 56, nil, function()
 	State.open.Sleep()
-end)
-local hint = UI.Text(gui, "Walk up to any gym station and press E (or tap) to train.", { Name = "Hint", TextSize = 13, TextColor3 = T.sub, TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.new(1, 0, 0, 20), Position = UDim2.new(0, 0, 1, -24), TextStrokeTransparency = 0.6, Visible = false, AutomaticSize = Enum.AutomaticSize.None })
+end, 4)
+local hint = UI.Frame(gui, { Name = "Hint", AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -18), Size = UDim2.fromOffset(0, 32), AutomaticSize = Enum.AutomaticSize.X,
+	BackgroundColor3 = T.bg, BackgroundTransparency = 0.25, Visible = false })
+UI.Corner(hint, 16)
+UI.Stroke(hint, Color3.new(1, 1, 1), 1, 0.88)
+local hintText = UI.Text(hint, "Walk up to any gym station and press E (or tap) to train.", { Font = T.semi, TextSize = 13, TextColor3 = T.text, Size = UDim2.new(0, 0, 1, 0),
+	AutomaticSize = Enum.AutomaticSize.X, TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false })
+UI.Pad(hintText, 0, 18)
 
 local function layoutHud()
-	hudButtons.Position = UDim2.new(0, 12, 0, 12 + hud.AbsoluteSize.Y + 8)
+	local s = UI.ScaleOf(hud)
+	hudButtons.Position = UDim2.new(0, 20, 0, 16 + hud.AbsoluteSize.Y / s + 10)
 end
 hud:GetPropertyChangedSignal("AbsoluteSize"):Connect(layoutHud)
 
@@ -106,6 +160,22 @@ end
 ------------------------------------------------------------------------
 local METHOD = { KO = "Knockout", TKO = "Technical Knockout", RTD = "Corner Retirement", UD = "Unanimous Decision", SD = "Split Decision", MD = "Majority Decision", Draw = "Draw", Stopped = "Stopped by the coach" }
 
+-- a two-sided comparison row: value | caption | value, with bars growing toward the middle
+local function versusRow(parent, caption, a, b, fmt, order)
+	local f = UI.Frame(parent, { Name = "Versus", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 30), LayoutOrder = order })
+	local total = math.max(1, (tonumber(a) or 0) + (tonumber(b) or 0))
+	UI.Text(f, fmt and fmt(a) or tostring(a), { Face = "number", TextSize = 22, TextColor3 = T.gold, Size = UDim2.new(0.18, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
+	UI.Text(f, fmt and fmt(b) or tostring(b), { Face = "number", TextSize = 22, TextColor3 = T.red, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 0), Size = UDim2.new(0.18, 0, 1, 0),
+		AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Right, TextWrapped = false })
+	UI.Text(f, caption, { Font = T.semi, TextSize = 11, TextColor3 = T.sub, AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 0), Size = UDim2.new(0.3, 0, 0, 14),
+		AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false })
+	local la = UI.Frame(f, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(0.5, -4, 0, 19), Size = UDim2.new(0.3 * (tonumber(a) or 0) / total, 0, 0, 5), BackgroundColor3 = T.gold })
+	UI.Corner(la, 2)
+	local lb = UI.Frame(f, { Position = UDim2.new(0.5, 4, 0, 19), Size = UDim2.new(0.3 * (tonumber(b) or 0) / total, 0, 0, 5), BackgroundColor3 = T.red })
+	UI.Corner(lb, 2)
+	return f
+end
+
 local function showResult(data)
 	local res = data.result
 	local shade
@@ -115,39 +185,60 @@ local function showResult(data)
 		end
 	end
 	local win, body
-	shade, win, body = UI.Window(gui, "Result", 640, 620, nil, { footer = 56 })
-	local col = res.outcome == "win" and T.gold or (res.outcome == "loss" and T.red or T.sub)
+	shade, win, body = UI.Window(gui, "Result", 760, 700, nil, { footer = 64, accent = res.outcome == "win" and T.gold or (res.outcome == "loss" and T.red or T.sub) })
+	local col = res.outcome == "win" and T.gold or (res.outcome == "loss" and T.red or T.text)
 	local title = res.outcome == "win" and "VICTORY" or (res.outcome == "loss" and "DEFEAT" or "DRAW")
-	body.Position = UDim2.fromOffset(16, 110)
-	body.Size = UDim2.new(1, -32, 1, -176)
-	UI.Text(win, title, { Font = T.bold, TextSize = 50, TextColor3 = col, TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.fromOffset(0, 14), Size = UDim2.new(1, 0, 0, 58), AutomaticSize = Enum.AutomaticSize.None })
-	UI.Text(win, string.format("%s  -  Round %d  vs %s", METHOD[res.method] or res.method, res.round or 0, data.opp or "?"), { TextSize = 17, TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.fromOffset(0, 74), Size = UDim2.new(1, 0, 0, 24), AutomaticSize = Enum.AutomaticSize.None })
-	if res.reason then
-		UI.Line(body, res.reason .. ((data.venue and data.venue ~= "") and ("  -  " .. data.venue) or ""), { TextColor3 = T.sub })
+	body.Position = UDim2.fromOffset(28, 150)
+	body.Size = UDim2.new(1, -56, 1, -222)
+	UI.Kicker(win, (data.venue and data.venue ~= "") and ("FIGHT NIGHT  ·  " .. data.venue) or "FIGHT NIGHT", T.sub, { Position = UDim2.fromOffset(28, 22), Size = UDim2.new(1, -56, 0, 18) })
+	local big = UI.Title(win, title, { TextSize = 84, TextColor3 = col, Position = UDim2.fromOffset(24, 38), Size = UDim2.new(1, -48, 0, 88), TextTransparency = 1 })
+	UI.Tween(big, { TextTransparency = 0 }, UI.Motion.slow)
+	if res.outcome == "win" then
+		UI.Gradient(big, { Color3.fromRGB(255, 240, 190), T.gold, T.goldDeep }, 90)
 	end
-	if res.cards and (res.cards[1][1] + res.cards[1][2]) > 0 then
-		local line = {}
+	UI.Text(win, string.format("%s  ·  ROUND %d  ·  vs %s", string.upper(METHOD[res.method] or tostring(res.method)), res.round or 0, string.upper(data.opp or "?")),
+		{ Font = T.semi, TextSize = 15, TextColor3 = T.text, Position = UDim2.fromOffset(28, 122), Size = UDim2.new(1, -56, 0, 20), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false,
+			TextTruncate = Enum.TextTruncate.AtEnd })
+	if res.reason then
+		UI.Line(body, res.reason, { TextColor3 = T.sub, TextSize = 14 })
+	end
+	-- the three judges
+	if res.cards and res.cards[1] and (res.cards[1][1] + res.cards[1][2]) > 0 then
+		UI.Kicker(body, "SCORECARDS  (YOU - OPPONENT)", T.sub)
+		local row = UI.Frame(body, { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 64) })
+		UI.List(row, 10, true)
 		for j, c in ipairs(res.cards) do
-			table.insert(line, string.format("Judge %d: %d-%d", j, c[1], c[2]))
+			local won = c[1] > c[2]
+			UI.Stat(row, string.format("%d-%d", c[1], c[2]), "JUDGE " .. j, { Size = UDim2.new(1 / #res.cards, -8, 1, 0), order = j, valueSize = 30,
+				valueColor = won and T.gold or (c[1] < c[2] and T.red or T.text), align = Enum.TextXAlignment.Center })
 		end
-		UI.Line(body, "SCORECARDS (you-opponent): " .. table.concat(line, "   "), { Font = T.bold })
 	end
 	if res.landed then
-		UI.Line(body, string.format("Punches landed: %d/%d   Opponent: %d/%d   Knockdowns: %d scored, %d suffered",
-			res.landed, res.thrown or res.landed, res.oppLanded or 0, res.oppThrown or 0, res.kdFor or 0, res.kdAgainst or 0), { TextSize = 15 })
+		UI.Kicker(body, "FIGHT STATS", T.sub)
+		local stats = UI.Card(body, { pad = 16 })
+		versusRow(stats, "PUNCHES LANDED", res.landed or 0, res.oppLanded or 0, nil, 1)
+		versusRow(stats, "PUNCHES THROWN", res.thrown or res.landed or 0, res.oppThrown or 0, nil, 2)
+		local accA = (res.thrown or 0) > 0 and math.floor((res.landed or 0) / res.thrown * 100 + 0.5) or 0
+		local accB = (res.oppThrown or 0) > 0 and math.floor((res.oppLanded or 0) / res.oppThrown * 100 + 0.5) or 0
+		versusRow(stats, "ACCURACY", accA, accB, function(v)
+			return v .. "%"
+		end, 3)
+		versusRow(stats, "KNOCKDOWNS", res.kdFor or 0, res.kdAgainst or 0, nil, 4)
 	end
 	if res.weighIn and res.weighIn.over and res.weighIn.over > 0 then
-		UI.Line(body, string.format("Missed weight by %.1f lbs.", res.weighIn.over), { TextColor3 = T.red, TextSize = 14 })
+		UI.Line(body, string.format("Missed weight by %.1f lbs.", res.weighIn.over), { TextColor3 = T.red, TextSize = 14, Font = T.semi })
 	end
 	if res.simulated then
-		UI.Line(body, "(Simulated fight)", { TextColor3 = T.sub, TextSize = 14 })
+		UI.Line(body, "Simulated fight", { TextColor3 = T.sub, TextSize = 13 })
 	end
-	UI.Line(body, "Earnings: " .. Config.Money(data.earnings or 0), { Font = T.bold, TextColor3 = T.green })
+	local purse = UI.Frame(body, { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 58) })
+	UI.Kicker(purse, "EARNINGS", T.green, { Size = UDim2.new(1, 0, 0, 18) })
+	UI.Title(purse, Config.Money(data.earnings or 0), { TextSize = 38, TextColor3 = T.green, Position = UDim2.fromOffset(0, 16), Size = UDim2.new(1, 0, 0, 42) })
 	for _, n in ipairs(data.notes or {}) do
-		local big = n:find("CHAMPION") or n:find("PRO") or n:find("LEGEND") or n:find("TOP 10") or n:find("Promoted")
-		UI.Line(body, "- " .. n, { TextColor3 = big and T.gold or T.text, Font = big and T.bold or T.font })
+		local bigNote = n:find("CHAMPION") or n:find("PRO") or n:find("LEGEND") or n:find("TOP 10") or n:find("Promoted")
+		UI.Line(body, n, { TextColor3 = bigNote and T.gold or T.text, Font = bigNote and T.semi or T.font, TextSize = 14 })
 	end
-	UI.Button(win, "CONTINUE", { Size = UDim2.new(0, 220, 0, 44), Position = UDim2.new(0.5, -110, 1, -56), BackgroundColor3 = T.gold, TextColor3 = T.bg }, close)
+	UI.Button(win, "CONTINUE", { Size = UDim2.new(0, 260, 0, 48), Position = UDim2.new(0.5, -130, 1, -62), BackgroundColor3 = T.gold }, close)
 end
 State.open.Result = showResult
 
@@ -161,10 +252,14 @@ local function showSparResult(data)
 		end
 	end
 	local win, body
-	shade, win, body = UI.Window(gui, "SparResult", 560, 520, "SPARRING - " .. string.upper(data.intensity or ""), { footer = 56 })
-	UI.Line(body, string.format("Partner: %s   -   %s", data.partner or "?", res.outcome == "win" and "You got the better of it" or (res.outcome == "loss" and "They got the better of it" or "Even session")), { Font = T.semi })
-	UI.Line(body, string.format("Punches landed %d/%d  -  Opponent %d/%d  -  Knockdowns %d/%d", res.landed or 0, res.thrown or 0, res.oppLanded or 0, res.oppThrown or 0, res.kdFor or 0, res.kdAgainst or 0), { TextSize = 14, TextColor3 = T.sub })
-	UI.Line(body, string.format("Session quality %d%%", math.floor((data.quality or 1) / 1.45 * 100)), { TextSize = 14 })
+	shade, win, body = UI.Window(gui, "SparResult", 620, 560, "SPARRING  ·  " .. string.upper(data.intensity or ""), { footer = 60, kicker = "SESSION COMPLETE", accent = T.blue })
+	UI.Line(body, string.format("Partner: %s  ·  %s", data.partner or "?", res.outcome == "win" and "you got the better of it" or (res.outcome == "loss" and "they got the better of it" or "an even session")),
+		{ Font = T.semi, TextSize = 15 })
+	local stats = UI.Card(body, { pad = 16 })
+	versusRow(stats, "PUNCHES LANDED", res.landed or 0, res.oppLanded or 0, nil, 1)
+	versusRow(stats, "PUNCHES THROWN", res.thrown or 0, res.oppThrown or 0, nil, 2)
+	versusRow(stats, "KNOCKDOWNS", res.kdFor or 0, res.kdAgainst or 0, nil, 3)
+	UI.StatRow(body, "SESSION QUALITY", math.floor((data.quality or 1) / 1.45 * 100), 100, T.gold, string.format("%d%%", math.floor((data.quality or 1) / 1.45 * 100)))
 	local parts = {}
 	for _, k in ipairs(Config.StatKeys) do
 		local g = tr.gains and tr.gains[k]
@@ -173,12 +268,12 @@ local function showSparResult(data)
 		end
 	end
 	if #parts > 0 then
-		UI.Line(body, table.concat(parts, "   "), { TextColor3 = T.green, Font = T.semi })
+		UI.Line(body, table.concat(parts, "   "), { TextColor3 = T.green, Font = T.semi, TextSize = 14 })
 	end
 	for _, n in ipairs(tr.notes or {}) do
-		UI.Line(body, n, { TextColor3 = n:find("INJURY") and T.red or T.sub, TextSize = 14 })
+		UI.Line(body, n, { TextColor3 = n:find("INJURY") and T.red or T.sub, TextSize = 13 })
 	end
-	UI.Button(win, "CONTINUE", { Size = UDim2.new(0, 220, 0, 44), Position = UDim2.new(0.5, -110, 1, -56), BackgroundColor3 = T.gold, TextColor3 = T.bg }, close)
+	UI.Button(win, "CONTINUE", { Size = UDim2.new(0, 240, 0, 46), Position = UDim2.new(0.5, -120, 1, -58), BackgroundColor3 = T.gold }, close)
 end
 
 State.FightRemote.OnClientEvent:Connect(function(msg)
@@ -203,16 +298,16 @@ local function showRetired()
 	local P = State.P
 	local shade
 	local win, body
-	shade, win, body = UI.Window(gui, "Retired", 780, 640, (res.legacy.hallOfFame and "HALL OF FAME INDUCTION" or "CAREER OVER"), { footer = 60 })
-	local c = UI.Card(body)
-	UI.Line(c, string.format("%s \"%s\" retires at %d", P.identity.name, P.identity.nickname, P.identity.age), { Font = T.bold, TextSize = 22 })
-	UI.Line(c, string.format("Final record %s  -  Amateur %s", rec(P.record), rec(P.amateurRecord)))
-	UI.Line(c, string.format("World titles won %d  -  Title defenses %d  -  Peak tier: %s", P.titlesWon, P.defenses, P.tierName))
+	shade, win, body = UI.Window(gui, "Retired", 820, 680, (res.legacy.hallOfFame and "HALL OF FAME INDUCTION" or "CAREER OVER"), { footer = 64, kicker = "THE FINAL BELL" })
+	local c = UI.Card(body, { stroke = T.gold })
+	UI.Line(c, string.format("%s \"%s\" retires at %d", P.identity.name, P.identity.nickname, P.identity.age), { Font = T.bold, TextSize = 26 })
+	UI.Line(c, string.format("Final record %s  ·  Amateur %s", rec(P.record), rec(P.amateurRecord)), { TextSize = 15 })
+	UI.Line(c, string.format("World titles won %d  ·  Title defenses %d  ·  Peak tier: %s", P.titlesWon, P.defenses, P.tierName), { TextSize = 15 })
 	if res.legacy.hallOfFame then
-		UI.Line(c, "The boxing world honors you as one of the all-time greats. Welcome to the Hall of Fame.", { TextColor3 = T.gold, Font = T.bold })
+		UI.Line(c, "The boxing world honors you as one of the all-time greats. Welcome to the Hall of Fame.", { TextColor3 = T.gold, Font = T.semi })
 	end
 	Hub.LegacyBody(body, res.legacy, res.pastCareers)
-	UI.Button(win, "START A NEW CAREER", { Size = UDim2.new(0, 280, 0, 46), Position = UDim2.new(0.5, -140, 1, -58), BackgroundColor3 = T.gold, TextColor3 = T.bg }, function()
+	UI.Button(win, "START A NEW CAREER", { Size = UDim2.new(0, 300, 0, 48), Position = UDim2.new(0.5, -150, 1, -62), BackgroundColor3 = T.gold }, function()
 		local r = State.req("NewCareer")
 		if r.ok then
 			shade:Destroy()
@@ -224,6 +319,8 @@ end
 ------------------------------------------------------------------------
 -- Profile updates
 ------------------------------------------------------------------------
+local menuShownOnce = false
+local lastFlag
 local function refresh()
 	local P = State.P
 	if not P or P.loading then
@@ -233,13 +330,22 @@ local function refresh()
 	if not P.created then
 		hud.Visible, hudButtons.Visible, hint.Visible = false, false, false
 		if not Creator.IsOpen() and not gui:FindFirstChild("Retired") then
-			Creator.Open()
+			-- a new player meets the title screen first (NEW CAREER opens the creator)
+			if MainMenu and not menuShownOnce then
+				menuShownOnce = true
+				MainMenu.Open()
+			elseif not (MainMenu and MainMenu.IsOpen()) then
+				Creator.Open()
+			end
 		end
 		return
 	end
 	if P.retired then
 		hud.Visible, hudButtons.Visible, hint.Visible = false, false, false
 		Hub.Close()
+		if MainMenu and MainMenu.IsOpen() then
+			MainMenu.Close()
+		end
 		if not wasRetired or not gui:FindFirstChild("Retired") then
 			wasRetired = true
 			showRetired()
@@ -247,23 +353,42 @@ local function refresh()
 		return
 	end
 	wasRetired = false
+	if not menuShownOnce then
+		menuShownOnce = true
+		if MainMenu and Settings.Get("menuAtStart") and not fight then
+			task.defer(MainMenu.Open)
+		end
+	end
 	local busy = State.busy()
-	local show = not fight and busy ~= "fight" and busy ~= "spar"
+	local show = not fight and busy ~= "fight" and busy ~= "spar" and not State.HudHidden()
 	hud.Visible, hudButtons.Visible = show, show
 	hint.Visible = show and (P.sessions or 0) < 3 and not Activities.Busy()
-	hudName.Text = string.format("%s \"%s\"", P.identity.name, P.identity.nickname)
-	hudTier.Text = string.format("%s  -  %s  -  OVR %d  -  Day %d", P.tierName, P.className, P.overall, P.day)
-	hudRec.Text = string.format("%s  -  %s", P.tier == 1 and ("Amateur " .. rec(P.amateurRecord)) or ("Pro " .. rec(P.record)), Config.Money(P.money))
+	hudName.Text = string.upper(P.identity.name)
+	hudOvr.Text = tostring(P.overall)
+	hudTier.Text = string.format("%s  ·  %s  ·  DAY %d", string.upper(P.className), string.upper(P.tierName), P.day)
+	if lastFlag ~= P.identity.nationality then
+		lastFlag = P.identity.nationality
+		UI.Clear(flagHolder)
+		Flags.Draw(flagHolder, P.identity.nationality, { Size = UDim2.fromOffset(30, 20) })
+	end
+	local r = P.tier == 1 and P.amateurRecord or P.record
+	recVal.Text = string.format("%d-%d-%d", r.w, r.l, r.d)
+	recCap.Text = P.tier == 1 and "AMATEUR RECORD" or string.format("PRO RECORD  ·  %d KO", r.ko)
+	moneyVal.Text = Config.Money(P.money)
 	local c = P.condition
 	setEnergy(c.energy, c.energy < 25 and T.red or T.gold)
-	setHydration(c.hydration, c.hydration < 30 and T.red or T.blue)
+	setHydration(c.hydration, c.hydration < 30 and T.red or T.cyan)
 	setNutrition(c.nutrition, c.nutrition < 30 and T.red or T.green)
 	setFatigue(c.fatigue, c.fatigue > 70 and T.red or (c.fatigue > 40 and T.orange or T.green))
 	if P.camp then
-		hudCamp.Text = P.camp.daysLeft > 0 and string.format("CAMP vs %s: %d day%s left  -  %.1f/%d lbs", P.camp.offer.opp.name, P.camp.daysLeft, P.camp.daysLeft == 1 and "" or "s", P.weight, P.weightLimit)
-			or string.format("FIGHT NIGHT vs %s! Open the Career Hub.", P.camp.offer.opp.name)
+		hudCamp.Text = P.camp.daysLeft > 0 and string.format("FIGHT CAMP vs %s  ·  %d DAY%s  ·  %.1f / %d LBS", string.upper(P.camp.offer.opp.name), P.camp.daysLeft, P.camp.daysLeft == 1 and "" or "S", P.weight, P.weightLimit)
+			or string.format("FIGHT NIGHT vs %s - OPEN THE CAREER HUB", string.upper(P.camp.offer.opp.name))
+		hudCamp.TextColor3 = P.camp.daysLeft > 0 and T.text or T.gold
+		campBox.BackgroundColor3 = T.redDeep
 	else
-		hudCamp.Text = string.format("No fight booked - visit the Fight Board.  %.1f/%d lbs", P.weight, P.weightLimit)
+		hudCamp.Text = string.format("NO FIGHT BOOKED  ·  %.1f / %d LBS", P.weight, P.weightLimit)
+		hudCamp.TextColor3 = T.sub
+		campBox.BackgroundColor3 = T.panel2
 	end
 	local warns = {}
 	for _, inj in ipairs(c.injuries or {}) do
@@ -272,7 +397,7 @@ local function refresh()
 	if c.fatigue > 70 then
 		table.insert(warns, "OVERTRAINED")
 	end
-	hudWarn.Text = table.concat(warns, "  -  ")
+	hudWarn.Text = table.concat(warns, "  ·  ")
 	hudWarn.Visible = #warns > 0
 	task.defer(layoutHud)
 	GymVisuals.Refresh(P) -- also draws the trophy case, career wall and facility tier (GymFacility)
@@ -376,8 +501,13 @@ UserInputService.InputBegan:Connect(function(input, gp)
 	if gp then
 		return
 	end
-	if input.KeyCode == Enum.KeyCode.H and not State.inFight() and not Activities.Busy() then
+	if input.KeyCode == Enum.KeyCode.H and not State.inFight() and not Activities.Busy() and not (MainMenu and MainMenu.IsOpen()) then
 		Hub.Toggle()
+	elseif input.KeyCode == Enum.KeyCode.M and MainMenu and not State.inFight() and not Activities.Busy() then
+		local P = State.P
+		if P and P.created and not P.retired and not Creator.IsOpen() then
+			MainMenu.Toggle()
+		end
 	end
 end)
 
