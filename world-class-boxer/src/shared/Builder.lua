@@ -3,9 +3,13 @@
 -- * Cosmetics / Apply / CreateNPC: build every procedural layer on a character, in order, with
 --   per-folder rebuild caching, detail levels and the CONTRACTS section 4 opts
 -- The layers live in sub-modules that share the part helpers in BuilderKit:
--- * BuilderHead: procedural face, hair, beard, fight damage, sweat shine, sparring headgear
+-- * BuilderHead: procedural face, beard, fight damage, sweat shine, sparring headgear
+-- * BuilderHair: hair styles x hair types, strands, sway joints, hair under headgear / hoods, wet hair
 -- * BuilderBody: skin/trunks/shoe colours, muscles, attire, gloves and wraps, robe, body sweat / bruises
 -- FaceLayout, SetDamage, SetSweat, SetHeadgear, SetHairHidden and SetRobe are forwarded from them.
+-- Every Cosmetics run also publishes LookData (+ LookSig and the Body / Head / Hair section sigs) on the
+-- model, change-only, and SetDamage publishes LookFx: the inputs the client-side anatomy meshes are
+-- generated from (LookData.lua, ANATOMY_CONTRACTS.md).
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
@@ -13,7 +17,9 @@ local Config = require(Shared:WaitForChild("Config"))
 local Looks = require(Shared:WaitForChild("Looks"))
 local Kit = require(script.Parent:WaitForChild("BuilderKit"))
 local Head = require(script.Parent:WaitForChild("BuilderHead"))
+local Hair = require(script.Parent:WaitForChild("BuilderHair"))
 local Body = require(script.Parent:WaitForChild("BuilderBody"))
+local LookData = require(script.Parent:WaitForChild("LookData"))
 
 local Builder = {}
 
@@ -84,11 +90,13 @@ end
 -- returns head-local positions for face features (shared with damage visuals)
 Builder.FaceLayout = Head.FaceLayout -- (head, face)
 
--- dmg = the CONTRACTS section 8 table (every field optional): face damage (Head) + rib bruises (Body)
+-- dmg = the CONTRACTS section 8 table (every field optional): face damage (Head) + rib bruises (Body);
+-- also published as the LookFx attribute for the anatomy meshes (change-only)
 function Builder.SetDamage(model, app, dmg)
 	dmg = type(dmg) == "table" and dmg or {}
 	step("SetDamage", Head.SetDamage, model, app, dmg)
 	step("Body.SetDamage", Body.SetDamage, model, app, dmg)
+	step("LookFx", LookData.PublishFx, model, dmg)
 end
 
 -- level 0..1: skin / hair / beard (Head, writes the Sweat attribute) then muscles / gloves / wraps (Body)
@@ -106,7 +114,7 @@ end
 
 -- region = "hood" | "headgear"
 function Builder.SetHairHidden(model, region, on)
-	step("SetHairHidden", Head.SetHairHidden, model, region, on)
+	step("SetHairHidden", Hair.SetHairHidden, model, region, on)
 end
 
 Builder.SetRobe = Body.SetRobe -- (model, app, on, opts)
@@ -172,7 +180,7 @@ local function headSig(model, app, build, opts, name)
 		math.floor(fat + 0.5), head and head.Size or false, Config.BaldMode, extra)
 end
 
--- Head.Face(model, app, opts, build) / Head.Hair(model, app, opts) / Head.Beard(model, app, opts)
+-- Head.Face(model, app, opts, build) / Hair.Build(model, app, opts) / Head.Beard(model, app, opts)
 local function headStep(model, app, build, opts, name)
 	local key = headSig(model, app, build, opts, name)
 	if Kit.cached(model, name, key) then
@@ -181,12 +189,24 @@ local function headStep(model, app, build, opts, name)
 	local ok
 	if name == "Face" then
 		ok = step("Face", Head.Face, model, app, opts, build)
+	elseif name == "Hair" then
+		ok = step("Hair", Hair.Build, model, app, opts)
 	else
 		ok = step(name, Head[name], model, app, opts)
 	end
 	if ok then
 		Kit.seal(model, name, key)
 	end
+end
+
+------------------------------------------------------------------------
+-- LookData (anatomy meshes): what the clients build each character's meshes from
+------------------------------------------------------------------------
+-- cheap and change-only: the encoded look is compared with the attribute before anything is written
+local function publishLook(model, app, build, opts, sp)
+	sp = sp or Body.Resolve(app, build, opts, model)
+	local look = LookData.FromBuilder(model, app, build, opts, sp, Builder.Scales(app, build, opts))
+	LookData.Publish(model, look)
 end
 
 ------------------------------------------------------------------------
@@ -212,6 +232,8 @@ function Builder.Cosmetics(model, app, build, gear, opts)
 			Builder.SetDamage(model, app, opts.damage)
 		end
 		Builder.SetSweat(model, app, opts.sweat or model:GetAttribute("Sweat") or 0)
+		-- previews (Creator / barber) change the look too: the meshes follow
+		step("LookData", publishLook, model, app, build, opts, nil)
 		return
 	end
 	gear = Body.Gear(gear)
@@ -247,6 +269,7 @@ function Builder.Cosmetics(model, app, build, gear, opts)
 	else
 		-- the face may be cached: reopen eyes an earlier SetDamage swelled shut, then drop the folder
 		step("SetDamage", Head.SetDamage, model, app, {})
+		step("LookFx", LookData.PublishFx, model, nil)
 		look = model:FindFirstChild("BoxerLook")
 		local dmg = look and look:FindFirstChild("Damage")
 		if dmg then
@@ -254,6 +277,8 @@ function Builder.Cosmetics(model, app, build, gear, opts)
 		end
 	end
 	Builder.SetSweat(model, app, opts.sweat or model:GetAttribute("Sweat") or 0)
+	-- last: the rig is final (head swap, rescale) and every attribute above is set
+	step("LookData", publishLook, model, app, build, opts, sp)
 end
 
 -- Apply to a live player character (yields). Re-scales only when the body changed.

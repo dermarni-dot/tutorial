@@ -1091,6 +1091,23 @@ function Config.DetailLevel(opts)
 	return d, Config.Detail[d]
 end
 
+-- Anatomy meshes (EditableMesh characters built on each client from the server's LookData; the round-1
+-- parts stay as the fallback). AnatomyClient reads these; ANATOMY_CONTRACTS.md is the full contract.
+-- tris = triangle budgets per section and level of detail (the generators must stay under them).
+Config.Anatomy = {
+	enabled = true, -- master switch; false = everyone keeps the part-built look
+	maxFull = 6, -- full-detail characters near the camera besides the local player and the fight opponent
+	fullRange = 70, -- studs: full detail inside, medium beyond
+	lodRange = 160, -- studs: no meshes beyond (round-1 parts)
+	frameBudget = 0.0025, -- seconds of mesh generation per frame (time-sliced, never a hitch)
+	textures = true, -- pieces may carry a generated colour texture (EditableImage)
+	tris = {
+		Body = { full = 9000, medium = 4000, low = 1500 },
+		Head = { full = 5000, medium = 2000, low = 700 },
+		Hair = { full = 10000, medium = 4000, low = 1200 },
+	},
+}
+
 -- Expr model attribute values (face rig blend targets on the client)
 Config.Expressions = { "neutral", "confident", "determined", "anger", "fear", "fatigue", "pain", "dazed", "effort", "happy", "ko" }
 

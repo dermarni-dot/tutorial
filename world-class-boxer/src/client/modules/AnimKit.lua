@@ -290,4 +290,92 @@ function AnimKit.breath(phase)
 	return 1 - AnimKit.smooth((x - 0.4) / 0.6)
 end
 
+------------------------------------------------------------------------
+-- Gradient noise (1D Perlin): smooth (C2), deterministic per seed, never repeats like a sum of
+-- sines does. Range about -1..1. No tables, no allocation.
+------------------------------------------------------------------------
+local function grad(i, seed)
+	-- the classic shader hash: fract(sin(n) * 43758.5453) -> -1..1
+	local s = sin(i * 12.9898 + seed * 78.233) * 43758.5453
+	return (s - floor(s)) * 2 - 1
+end
+
+function AnimKit.noise1(x, seed)
+	seed = seed or 0
+	local i = floor(x)
+	local f = x - i
+	local g0, g1 = grad(i, seed), grad(i + 1, seed)
+	-- quintic fade (C2: no visible kinks in velocity)
+	local u = f * f * f * (f * (f * 6 - 15) + 10)
+	return (g0 * f + (g1 * (f - 1) - g0 * f) * u) * 2
+end
+
+-- fractal noise: two octaves, the second a quarter as strong (organic drift with a little texture)
+function AnimKit.fbm(x, seed)
+	return (AnimKit.noise1(x, seed) + 0.35 * AnimKit.noise1(x * 2.13 + 7.1, seed + 19)) / 1.35
+end
+
+-- smooth window: 0 below a, 1 above b (smoothstep), works for a > b too (falling edge)
+function AnimKit.ramp(x, a, b)
+	if a == b then
+		return x >= a and 1 or 0
+	end
+	return AnimKit.smooth((x - a) / (b - a))
+end
+
+-- 0 -> 1 -> 0 between a and b, peaking at the middle (smoothstep up, smoothstep down)
+function AnimKit.bump(x, a, b)
+	if x <= a or x >= b then
+		return 0
+	end
+	local u = (x - a) / (b - a)
+	return u < 0.5 and AnimKit.smooth(u * 2) or AnimKit.smooth(2 - u * 2)
+end
+
+-- quintic smootherstep (zero velocity AND acceleration at both ends)
+function AnimKit.smoother(x)
+	x = clamp(x, 0, 1)
+	return x * x * x * (x * (x * 6 - 15) + 10)
+end
+
+-- accelerating drive that arrives with its highest speed: 0 -> 1, derivative grows with x
+function AnimKit.drive(x, p)
+	x = clamp(x, 0, 1)
+	return x ^ (p or 1.8)
+end
+
+-- cubic Bezier on vectors (p0 .. p3) and its derivative
+function AnimKit.bezier(p0, p1, p2, p3, t)
+	local u = 1 - t
+	return p0 * (u * u * u) + p1 * (3 * u * u * t) + p2 * (3 * u * t * t) + p3 * (t * t * t)
+end
+
+-- scalar spring step toward target with a damping RATIO (1 = critical); returns x, v
+function AnimKit.spring2(x, v, target, freq, zeta, dt)
+	local k = freq * freq
+	return AnimKit.spring(x, v, target, k, 2 * zeta * freq, dt)
+end
+
+-- deterministic 0..1 from (seed, a, b): per-boxer / per-punch choices that are stable
+function AnimKit.rand3(seed, a, b)
+	local s = sin(seed * 12.9898 + (a or 0) * 78.233 + (b or 0) * 37.719) * 43758.5453
+	return s - floor(s)
+end
+
+-- pick an index 1..n by weights {w1, w2, ...} with a 0..1 roll
+function AnimKit.weighted(weights, roll)
+	local total = 0
+	for _, w in ipairs(weights) do
+		total += w
+	end
+	local x = roll * total
+	for i, w in ipairs(weights) do
+		x -= w
+		if x <= 0 then
+			return i
+		end
+	end
+	return #weights
+end
+
 return AnimKit

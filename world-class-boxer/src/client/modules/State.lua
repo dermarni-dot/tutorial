@@ -1,5 +1,7 @@
 -- State: shared client state and helpers (latest profile, server requests, toasts,
 -- the root ScreenGui) plus a tiny registry so the client modules can call each other.
+-- State.gui is the scaled root frame inside the "BoxerUI" ScreenGui (UI.MountRoot): every window
+-- is built in design pixels (1600 x 900 canvas) and scales to phone / tablet / desktop screens.
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -16,13 +18,16 @@ State.Request = Remotes:WaitForChild("Request")
 State.FightRemote = Remotes:WaitForChild("Fight")
 State.ProfileRemote = Remotes:WaitForChild("Profile")
 State.Notify = Remotes:WaitForChild("Notify")
-State.open = {} -- registry: Hub, Creator, Activity, Spar, Barber, Locker, Nutrition, Water, Sleep, Store, Result
+-- registry: Hub, Creator, Activity, Spar, Barber, Locker, Nutrition, Water, Sleep, Store, Result,
+-- Menu (main menu), Rankings, Settings, Career (fighter card)
+State.open = {}
 State.activity = nil -- the running training session (client side)
 
-State.gui = UI.New("ScreenGui", {
-	Name = "BoxerUI", ResetOnSpawn = false, IgnoreGuiInset = false,
+State.screen = UI.New("ScreenGui", {
+	Name = "BoxerUI", ResetOnSpawn = false, IgnoreGuiInset = false, DisplayOrder = 2,
 	ZIndexBehavior = Enum.ZIndexBehavior.Sibling, Parent = player:WaitForChild("PlayerGui"),
 })
+State.gui = UI.MountRoot(State.screen)
 
 local changed = Instance.new("BindableEvent")
 State.Changed = changed.Event
@@ -30,6 +35,13 @@ State.Changed = changed.Event
 function State.SetProfile(p)
 	State.P = p
 	changed:Fire(p)
+end
+
+-- re-run every Changed listener with the current profile (HUD visibility after a menu closes)
+function State.Refresh()
+	if State.P then
+		changed:Fire(State.P)
+	end
 end
 
 function State.req(action, ...)
@@ -95,6 +107,16 @@ end
 function State.HidePrompts(key, on)
 	promptHolds[key] = on and true or nil
 	State.UpdatePrompts()
+end
+
+-- the gym HUD hides while a full-screen screen (main menu, fighter card) is up
+local hudHolds = {}
+function State.HideHud(key, on)
+	hudHolds[key] = on and true or nil
+	State.Refresh()
+end
+function State.HudHidden()
+	return next(hudHolds) ~= nil
 end
 
 -- open windows that should close when another big window opens

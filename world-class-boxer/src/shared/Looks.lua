@@ -69,6 +69,23 @@ Looks.WearSliders = {
 	{ key = "cauliflower", label = "Cauliflower Ear", min = 0, max = 1, v2 = true },
 	{ key = "noseBreak", label = "Broken Nose", min = 0, max = 1, v2 = true },
 }
+-- v3 (anatomy meshes): skull / face sculpt parameters the mesh heads read. A list of their own (not in
+-- FaceSliders) so Looks.Random's legacy and v2 streams never draw them; defaults are neutral.
+Looks.SculptSliders = {
+	{ key = "skullWidth", label = "Skull Width", min = -1, max = 1, v3 = true },
+	{ key = "skullLength", label = "Skull Length", min = -1, max = 1, v3 = true },
+	{ key = "crown", label = "Crown Height", min = -1, max = 1, v3 = true },
+	{ key = "browRidge", label = "Brow Ridge", min = 0, max = 1, v3 = true },
+	{ key = "cheekHeight", label = "Cheekbone Height", min = -1, max = 1, v3 = true },
+	{ key = "jawAngle", label = "Jaw Angle (soft - sharp)", min = 0, max = 1, v3 = true },
+	{ key = "chinProject", label = "Chin Projection", min = -1, max = 1, v3 = true },
+	{ key = "eyeDepth", label = "Eye Depth (deep set)", min = 0, max = 1, v3 = true },
+	{ key = "noseTip", label = "Nose Tip (down - up)", min = -1, max = 1, v3 = true },
+	{ key = "nostrilFlare", label = "Nostril Flare", min = 0, max = 1, v3 = true },
+	{ key = "lipBow", label = "Cupid's Bow", min = 0, max = 1, v3 = true },
+}
+-- nose shapes (face.noseType); noseWidth / noseLength / noseBridge / noseTip still scale within a type
+Looks.NoseTypes = { "Straight", "Roman", "Button", "Snub", "Hawk", "Wide", "Flat", "Nubian", "Greek", "Boxer" }
 Looks.Undertones = { "Neutral", "Warm", "Cool", "Olive" }
 Looks.BrowStyles = { "Natural", "Straight", "Soft Arch", "High Arch", "Thick", "Thin" }
 -- permanent fight scars (app.battle.scars[i].kind)
@@ -104,6 +121,14 @@ Looks.HairSliders = {
 	{ key = "length", label = "Hair Length", min = 0, max = 1 },
 	{ key = "density", label = "Hair Density", min = 0, max = 1 },
 	{ key = "thickness", label = "Hair Thickness", min = 0, max = 1 },
+}
+-- v3 (anatomy meshes): how the strand clumps are built (fine strands .. chunky clumps, flyaways, overall
+-- volume, curl cluster size); a separate list so older UIs and Random's streams are unaffected
+Looks.HairDetailSliders = {
+	{ key = "clump", label = "Strand Clumping (fine - chunky)", min = 0, max = 1 },
+	{ key = "frizz", label = "Frizz / Flyaways", min = 0, max = 1 },
+	{ key = "volume", label = "Volume", min = -1, max = 1 },
+	{ key = "curlSize", label = "Curl Size", min = -1, max = 1 },
 }
 Looks.DyePatterns = { "None", "Tips", "Streaks", "Ombre", "Split" }
 Looks.Hairlines = { "Natural", "Straight", "Widow's Peak", "Receding", "Line-Up" }
@@ -141,7 +166,7 @@ Looks.BodySliders = {
 
 -- every numeric face key (all slider lists), kept in sync automatically
 Looks.FaceKeys = {}
-for _, list in ipairs({ Looks.FaceSliders, Looks.EyeSliders, Looks.SkinSliders, Looks.WearSliders }) do
+for _, list in ipairs({ Looks.FaceSliders, Looks.EyeSliders, Looks.SkinSliders, Looks.WearSliders, Looks.SculptSliders }) do
 	for _, sl in ipairs(list) do
 		table.insert(Looks.FaceKeys, sl.key)
 	end
@@ -176,12 +201,16 @@ function Looks.Defaults(gender)
 			browHeight = 0, browAngle = 0, cheekFull = 0, mouthWidth = 0, chinCleft = 0, earSize = 0, asym = 0, -- v2 defaults are neutral so old saves look unchanged
 			eyeTilt = 0, lidHeavy = 0, wrinkles = 0, pores = 0, cauliflower = 0, noseBreak = 0,
 			undertone = "Neutral", browStyle = "Natural", eyeColor2 = 0, -- 0 = both eyes eyeColor
+			-- v3 sculpt (anatomy meshes): neutral
+			skullWidth = 0, skullLength = 0, crown = 0, browRidge = female and 0.1 or 0.35, cheekHeight = 0, jawAngle = female and 0.3 or 0.55,
+			chinProject = 0, eyeDepth = 0.3, noseTip = 0, nostrilFlare = 0.3, lipBow = female and 0.6 or 0.4, noseType = "Straight",
 		},
 		hair = {
 			style = female and "Ponytail" or "Short Dreads", type = female and "Wavy" or "Coiled",
 			length = 0.5, density = 0.7, thickness = 0.5, growth = 0,
 			color = rgb(Looks.HairColors[1]), hl = false, hcolor = rgb(Looks.HairColors[5]), dye = "None",
 			hairline = "Natural", part = "None",
+			clump = 0.5, frizz = 0.3, volume = 0, curlSize = 0, -- v3 strand clump parameters (anatomy meshes)
 		},
 		beard = { style = "None", growth = 0 }, -- optional beard.color {r,g,b}; missing = hair colour
 		body = { frame = "Athletic", arms = 0, chest = 0, shoulders = 0, waist = 0, legs = 0, neck = 0, physique = "Auto" },
@@ -305,7 +334,7 @@ function Looks.Sanitize(input, old)
 	local f = type(input.face) == "table" and input.face or {}
 	local bf = type(base.face) == "table" and base.face or out.face
 	out.face.shape = pick(f.shape, Looks.FaceShapes, pick(bf.shape, Looks.FaceShapes, "Oval"))
-	for _, list in ipairs({ Looks.FaceSliders, Looks.EyeSliders, Looks.SkinSliders, Looks.WearSliders }) do
+	for _, list in ipairs({ Looks.FaceSliders, Looks.EyeSliders, Looks.SkinSliders, Looks.WearSliders, Looks.SculptSliders }) do
 		for _, sl in ipairs(list) do
 			local fallback = num(bf[sl.key], sl.min, sl.max, out.face[sl.key])
 			local v = num(f[sl.key], sl.min, sl.max, fallback)
@@ -320,6 +349,7 @@ function Looks.Sanitize(input, old)
 	out.face.seed = math.floor(num(f.seed, 1, 1000000, num(bf.seed, 1, 1000000, 7)))
 	out.face.undertone = pick(f.undertone, Looks.Undertones, pick(bf.undertone, Looks.Undertones, out.face.undertone))
 	out.face.browStyle = pick(f.browStyle, Looks.BrowStyles, pick(bf.browStyle, Looks.BrowStyles, out.face.browStyle))
+	out.face.noseType = pick(f.noseType, Looks.NoseTypes, pick(bf.noseType, Looks.NoseTypes, out.face.noseType))
 
 	local h = type(input.hair) == "table" and input.hair or {}
 	local bh = type(base.hair) == "table" and base.hair or out.hair
@@ -327,6 +357,9 @@ function Looks.Sanitize(input, old)
 	out.hair.type = hairType(h.type, hairType(bh.type, out.hair.type))
 	for _, sl in ipairs(Looks.HairSliders) do
 		out.hair[sl.key] = num(h[sl.key], 0, 1, num(bh[sl.key], 0, 1, out.hair[sl.key]))
+	end
+	for _, sl in ipairs(Looks.HairDetailSliders) do
+		out.hair[sl.key] = num(h[sl.key], sl.min, sl.max, num(bh[sl.key], sl.min, sl.max, out.hair[sl.key]))
 	end
 	out.hair.growth = num(bh.growth, 0, 1.5, 0) -- growth only changes over time / at the barber
 	out.hair.color = color(h.color, color(bh.color, out.hair.color))
@@ -588,6 +621,26 @@ function Looks.Random(seed, gender, opts)
 			h.type = ({ "Curly", "Kinky", "Coiled" })[r3:NextInteger(1, 3)]
 		end
 	end
+	-- v3 sculpt + strand traits (anatomy meshes): their own stream, so every older trait is unchanged
+	local r4 = Random.new(seed + 131)
+	for _, s in ipairs(Looks.SculptSliders) do
+		f[s.key] = s.min + (s.max - s.min) * (0.15 + r4:NextNumber() * 0.7)
+	end
+	if female then
+		f.browRidge *= 0.4
+		f.jawAngle *= 0.7
+		f.lipBow = 0.4 + r4:NextNumber() * 0.5
+	end
+	-- boxers' noses: veterans drift toward flat / boxer noses
+	local noses = { "Straight", "Straight", "Roman", "Button", "Snub", "Hawk", "Wide", "Flat", "Nubian", "Greek" }
+	f.noseType = noses[r4:NextInteger(1, #noses)]
+	if (battle.nose or 0) > 0.4 and r4:NextNumber() < 0.6 then
+		f.noseType = "Boxer"
+	end
+	h.clump = 0.25 + r4:NextNumber() * 0.6
+	h.frizz = r4:NextNumber() * 0.6
+	h.volume = -0.4 + r4:NextNumber() * 0.8
+	h.curlSize = -0.6 + r4:NextNumber() * 1.2
 	return app
 end
 
