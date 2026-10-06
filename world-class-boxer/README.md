@@ -72,7 +72,9 @@ no two look alike.
 **How a character is made.**
 1. The server (`src/shared/Builder*.lua`) scales an R15 rig to athletic proportions for the frame and
    physique and builds the round-1 part-built look on it: layered muscle parts, a face rig, hair,
-   beard, gear. This is the fallback, and it carries collisions and animation.
+   beard, gear. This is the fallback, and it carries collisions and animation. The Builder also
+   lowers the Neck joint's pivot below the head (by 0.26 of the head's height for men, 0.22 for
+   women), so the head sits on a visible neck instead of on the trapezius.
 2. It publishes `LookData` (a compact JSON attribute) and a signature per section on the model.
    Meshes do not replicate, so each client generates them itself.
 3. On each client, `AnatomyClient` runs the shared generators (`MeshKit`, `AnatomyBody*`,
@@ -331,7 +333,7 @@ Lighting approximates Roblox's Future lighting, so expect small differences in S
 | `14_closeups_elite_cornrows.jpg` to `17_closeups_female_longhair.jpg` | Face, profile, back of head, torso, gloves and boots close-ups |
 | `18_neck_interface_clay.jpg`, `19_faces_clay.jpg` | Untextured (clay) geometry |
 | `20_medium_detail.jpg` | Medium detail (distant NPCs) |
-| `21_neck_lift_proposal.jpg` | A proposed longer neck (not in the game yet; see Known limitations) |
+| `21_neck_lift.jpg` | The neck before and after the lift: front, profile, the guard, clay and the part-built fallback |
 | `22_mouths_beards_eyes.jpg` | Mouths, beards and eye macros |
 | `23_cast_lead_hook.jpg` | The lead hook landing, from above |
 
@@ -346,9 +348,9 @@ them.
 - The preview renders are not Roblox screenshots. Test the look in Studio with the mesh APIs on.
 - On the most muscular builds, a soft crease still shows where the deltoid meets the torso. Some
   glove angles still read a little like mittens.
-- The neck is short: the R15 Neck joint sits at the base of the head, so the chin rests close to the
-  trapezius, mostly on men. A tested fix (raise the head on the Neck joint by about a quarter of its
-  height, and end the body's neck column under it) is written up, but it is not applied. With it, an
-  overhand's forearm passes through the boxer's own raised head and some lead hooks lose sideways
-  travel. The punch animation needs retuning first.
+- The neck is a plain column. The trapezius does not slope up into it, so from behind it can look
+  like a pipe standing on the shoulders. Women's necks can look a little long in profile.
+- A much shorter boxer cannot always reach a much taller one's chin. When the smallest women punch
+  up at a Balanced man, some overhands and uppercuts land under the chin. In an offline test of 200
+  such punches, 31 missed or broke a quality check, against 30 before the neck was lengthened.
 - On the palest skin tones, the chest highlights can look a little chalkier than the face.

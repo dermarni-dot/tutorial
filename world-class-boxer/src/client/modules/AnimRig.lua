@@ -183,6 +183,12 @@ function AnimRig.computeGeo(rig)
 			local ext = hand and hand.Size.Y * 0.55 or 0.35
 			arm.v0 = f0.Magnitude > 1e-3 and f0 + f0.Unit * ext or V3(0, -0.8, 0) -- elbow frame
 			arm.b = max(0.3, arm.v0.Magnitude)
+			-- the forearm itself (punches keep it off the boxer's own head): the wrist's share of the elbow
+			-- to fist line and a radius for the arm drawn over the (fatter) R15 box
+			arm.fw = f0.Magnitude > 1e-3 and clamp(f0.Magnitude / arm.b, 0.5, 1) or 0.85
+			local fa = el.motor.Part1
+			local fs = fa and fa.Size or V3(0.6, 1, 0.6)
+			arm.rf = clamp(min(fs.X, fs.Z) * 0.24, 0.12, 0.25)
 			-- hinge geometry for solveArm: the hinge axis in the shoulder frame, the bones split into
 			-- their parts along the hinge (kk) and in the bending plane (ap, bp, angles phiU / phiV)
 			arm.hinge = arm.elbowRot.RightVector
@@ -637,6 +643,14 @@ function AnimRig.solveArm(arm, d, nx, ny, nz)
 	end
 	local w = dn * c + side.Unit * sqrt(max(0, 1 - c * c))
 	return pairRotation(V, arm.hinge, dn, w), A(alpha, 0, 0)
+end
+
+-- the elbow and the fist of that solve (shoulder joint frame): for a caller that looks before it places
+-- the arm (a punch keeping its forearm off its own head)
+function AnimRig.armPoints(arm, d, nx, ny, nz)
+	local shT, elT = AnimRig.solveArm(arm, d, nx, ny, nz)
+	local e = shT:VectorToWorldSpace(arm.u0)
+	return e, shT:VectorToWorldSpace(arm.u0 + arm.elbowRot:VectorToWorldSpace(elT * arm.v0))
 end
 
 -- the UpperTorso's world CFrame for a pose (root, waist transforms of this frame)

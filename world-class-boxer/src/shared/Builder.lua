@@ -267,6 +267,30 @@ local function keepHeadScale(model, rec)
 	return fixed
 end
 
+-- the neck: the engine's R15 rig puts the Neck pivot at the base of the head, so the chin sits on the
+-- trapezius. The Head's NeckRigAttachment (and Neck.C1) go lower in head space by a share of the head's
+-- height: the head rides higher on the same torso (HipHeight, the torso and every other joint unchanged) and
+-- the Head mesh's own neck (AnatomySkull.Neck follows rig.joints.Neck C1) runs from the jaw down to the
+-- pivot. Absolute (from the head's size): idempotent across rebuilds, rescales and head swaps.
+local NECK_LIFT = { 0.26, 0.22 } -- x the head's height: men, women
+local function liftHead(model, app)
+	local head = model:FindFirstChild("Head")
+	local na = head and head:FindFirstChild("NeckRigAttachment")
+	if not (head and head:IsA("BasePart") and na and na:IsA("Attachment")) then
+		return
+	end
+	local hy = head.Size.Y
+	local y = -0.5 * hy - NECK_LIFT[app and app.gender == 2 and 2 or 1] * hy
+	local p = na.Position
+	if math.abs(p.Y - y) > 1e-4 then
+		na.Position = Vector3.new(p.X, y, p.Z)
+	end
+	local neck = head:FindFirstChild("Neck")
+	if neck and neck:IsA("Motor6D") and (neck.C1.Position - na.CFrame.Position).Magnitude > 1e-4 then
+		neck.C1 = na.CFrame
+	end
+end
+
 -- Head.Face(model, app, opts, build) / Hair.Build(model, app, opts) / Head.Beard(model, app, opts)
 local function headStep(model, app, build, opts, name)
 	local key = headSig(model, app, build, opts, name)
@@ -303,6 +327,7 @@ local function faceStep(model, app, build, opts)
 		end
 		headStep(model, app, build, opts, "Face")
 	end
+	pcall(liftHead, model, app)
 end
 
 ------------------------------------------------------------------------

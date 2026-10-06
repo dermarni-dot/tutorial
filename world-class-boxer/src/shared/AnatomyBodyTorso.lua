@@ -107,7 +107,7 @@ function Torso.Profiles(sk, P)
 	K = Kit.Curve({
 		{ -0.14, 0.93 }, { 0.02, 0.86 }, { 0.18, 0.88 }, { 0.33, 0.93 }, { 0.48, 0.97 }, { 0.62, 1.0 }, { 0.74, max(1.0, min(1.04, kN * 1.5)) },
 		{ 0.84, max(0.96, min(1.02, kN * 1.42)) }, { 0.92, max(0.85, kN * 1.33) }, { 0.97, max(0.74, kN * 1.22) }, { 1.0, kN * 1.06 },
-		{ 1.05, kN }, { 1.2, kN },
+		{ 1.04, rz * 0.98 / hz }, { 1.2, rz * 0.98 / hz },
 	})
 	-- the shoulders round off toward the deltoids (a squarer section keeps the torso's corner in front of the
 	-- deltoid cap, which then reads as an arm hung beside a box)
@@ -338,7 +338,7 @@ local function torsoField(sk, P, prof, nv)
 		end
 		-- ... up the back of the neck to the skull (one smooth sheet, no step at the neck base)
 		if u > 0.8 and nz > -0.25 then
-			local w = (1 - smooth(0.25, 0.7, fx)) * bell((u - 1.02) / 0.22) * smooth(-0.25, 0.55, nz)
+			local w = (1 - smooth(0.25, 0.7, fx)) * bell((u - 1.02) / 0.22) * smooth(-0.25, 0.55, nz) * (1 - smooth(0.97, 1.0, u))
 			d += trapH * 0.5 * w
 			ch.trap[i] += trapH * 0.5 * w
 		end
@@ -431,7 +431,7 @@ local function torsoField(sk, P, prof, nv)
 			local ez = (z - hnZ) * hnE
 			local room = max(0, hn.r - 0.006 - sqrt(x * x + ez * ez))
 			if d > room then
-				d -= (d - room) * smooth(0.985, 1.0, u) * (1 - smooth(0.35, 0.65, nz))
+				d -= (d - room) * smooth(0.985, 1.0, u)
 			end
 		end
 		-- ... and the trapezius slope (lifted along its upward normal by big traps and fat) meets that neck at
@@ -472,6 +472,13 @@ function Torso.Upper(sk, P, lod, opt)
 	local hn, hc = prof.hn, sk.center and sk.center.Head
 	if hn and hc and tonumber(hn.yTop) then
 		top = clamp(hc[2] + hn.yTop - sk.yN + 0.02, 0.1, 0.3)
+		-- a head lifted off the shoulders (Neck C1 below the head's base) shows its own neck down to the
+		-- pivot: the column only needs to reach a little way into it
+		local hs = sk.size and sk.size.Head
+		local lift = hs and (hc[2] - sk.yN - 0.5 * hs[2]) or 0
+		if lift > 0.02 then
+			top = min(top, 0.12)
+		end
 	end
 	local u1 = 1 + top / H
 	-- ring heights: equal steps along the silhouette's arc (the shoulder tops and the neck base get the rings

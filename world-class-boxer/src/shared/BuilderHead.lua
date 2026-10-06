@@ -1155,7 +1155,17 @@ function Head.SetHeadgear(model, color, on)
 		mk(folder, head, "HGCheek", V3(0.16 * s.X, 0.62 * s.Y, 0.75 * s.Z), hcf * CF(side * 0.52 * s.X, -0.08 * s.Y, 0.05 * s.Z), color, "Ellipsoid", mat)
 	end
 	mk(folder, head, "HGBack", V3(s.X * 1.1, s.Y * 0.7, 0.2 * s.Z), hcf * CF(0, 0.05 * s.Y, 0.55 * s.Z), color, "Ellipsoid", mat)
-	mk(folder, head, "HGStrap", V3(s.X * 0.6, 0.06 * s.Y, 0.3 * s.Z), hcf * CF(0, -0.52 * s.Y, -0.1 * s.Z), darken(color, 0.6), "Block")
+	-- the chin strap: from the foot of each cheek pad along the underside of the jaw to a cup under the
+	-- chin (a strap straight across under the head would hang in front of the neck like a choker)
+	local strapC = darken(color, 0.6)
+	for side = -1, 1, 2 do
+		local a = hcf * V3(side * 0.43 * s.X, -0.32 * s.Y, -0.02 * s.Z)
+		local b = hcf * V3(side * 0.08 * s.X, -0.46 * s.Y, -0.29 * s.Z)
+		local mid = (a + b) * 0.5
+		local out = mid - hcf * V3(0, -0.2 * s.Y, -0.1 * s.Z)
+		mk(folder, head, "HGStrap", V3(0.07 * s.Y, 0.025 * s.Y, (b - a).Magnitude), CFrame.lookAt(mid, b, out.Unit), strapC, "Block")
+	end
+	mk(folder, head, "HGChin", V3(0.24 * s.X, 0.09 * s.Y, 0.16 * s.Z), hcf * CF(0, -0.46 * s.Y, -0.31 * s.Z), strapC, "Ellipsoid", mat)
 end
 
 ------------------------------------------------------------------------

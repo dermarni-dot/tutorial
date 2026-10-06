@@ -890,14 +890,19 @@ end
 -- (angle and radius together: a hook swings, it does not push forward), arriving across (inward) and
 -- fastest at contact; `through` drives it a touch on through the target at contact. Takes and returns
 -- UpperTorso standard units.
-local HOOK_SWING = 0.85
+local HOOK_SWING = 0.9
+local HOOK_KEEP = 0.5
 local function hookPos(rig, p, act, P0, P3, u, eT, armK, inward, body, sc, through)
 	local toR = rig.root.CFrame:Inverse() * punchTorso(rig, p)
 	if not act.h0 then
 		act.h0 = toR * V3(P0.X * sc.X, P0.Y * sc.Y, P0.Z * sc.Z)
+		act.hs0 = toR.Position
 	end
 	local p3 = toR * V3(P3.X * sc.X, P3.Y * sc.Y, P3.Z * sc.Z)
-	local h0 = act.h0
+	-- (where the fist starts from travels with the body - the hips' step and lunge, the dip - though not
+	-- with the chest's turn: a hook thrown with a long step in is not left behind at the shoulder, folding
+	-- the arm up against it before it can chamber)
+	local h0 = act.h0 + (toR.Position - act.hs0)
 	-- (the spine: the arc's centre travels with the body's step and lunge)
 	local px, pz = toR.Position.X, toR.Position.Z
 	-- (a lead hand held across the belly - the shoulder-roll shell - comes up into its chamber over a
@@ -909,7 +914,9 @@ local function hookPos(rig, p, act, P0, P3, u, eT, armK, inward, body, sc, throu
 	local r3, a3 = sqrt(dx * dx + dz * dz), math.atan2(dx, -dz)
 	-- (round a spine close to the target - a crouching swarmer - the angle opens up: the fist still
 	-- sweeps about the same distance across)
-	local sw = clamp(1.4 / max(0.5, r3), HOOK_SWING, 1.1) * (body and 0.75 or 1)
+	-- (a hand coming up from across the belly is still chambering as the sweep begins: it swings out
+	-- further round to still come in from the side)
+	local sw = (clamp(1.4 / max(0.5, r3), HOOK_SWING, 1.1) + 0.15 * across) * (body and 0.75 or 1)
 	local ac = a3 - inward * sw
 	local rc = max(0.6, r3 - 0.15)
 	local c = h0:Lerp(V3(px + sin(ac) * rc, h0.Y + (p3.Y - h0.Y) * (body and 0.5 or 0.85) + (body and -0.05 or 0.05), pz - cos(ac) * rc), ck)
@@ -922,6 +929,18 @@ local function hookPos(rig, p, act, P0, P3, u, eT, armK, inward, body, sc, throu
 	if through > 0 then
 		pr += V3(inward * 0.075, 0, -0.03) * through
 	end
+	-- (and on its way never close by its own shoulder: a hand coming across from the far side of the belly
+	-- would pass in front of the joint, whipping the arm round it faster than it turns - it goes round it
+	-- instead; the landing spot itself is left where it is)
+	local arm = rig.geo[R.ARM_OF[act.hand][3]]
+	if arm and arm.ok and armK < 1 then
+		local sh = toR * arm.c0.Position
+		local v = pr - sh
+		local keep = arm.dMax * HOOK_KEEP * (1 - smooth(armK))
+		if v.Magnitude < keep then
+			pr = sh + (v.Magnitude > 1e-3 and v.Unit or toR.LookVector) * keep
+		end
+	end
 	local lt = toR:PointToObjectSpace(pr)
 	return V3(lt.X / sc.X, lt.Y / sc.Y, lt.Z / sc.Z)
 end
@@ -930,6 +949,68 @@ end
 local POLE_BODY = { hook = { 1, -0.35, 0.3 } }
 local function poleOf(path, body)
 	return (body and POLE_BODY[path]) or POLE[path] or POLE.straight
+end
+
+-- The punching forearm never goes through the boxer's own head. The head sits a neck's length over the
+-- shoulders (measured on the rig: the Neck joint's C0 / C1 and the head's size, through this frame's neck
+-- pose), and a fist going up past it - an overhand from a crouch to a taller man's head - would sweep the
+-- forearm across the face with the elbow where the punch's pole puts it. So the pole turns round the
+-- arm's line, the shortest way, until the forearm (elbow to wrist) clears the head by the forearm's own
+-- radius, or as far from it as the arm can be; the swivel limit below keeps that turn smooth. (Overhands
+-- only: the one punch that goes up past the boxer's own head.)
+local CLEAR_STEPS = 12
+local SIGNS = { 1, -1 }
+local function forearmGap(arm, d, n, H)
+	local e, f = R.armPoints(arm, d, n.X, n.Y, n.Z)
+	local a = e + (f - e) * 0.1
+	local ab = (f - e) * (arm.fw - 0.1)
+	local s = clamp((H - a):Dot(ab) / max(1e-6, ab:Dot(ab)), 0, 1)
+	return (a + ab * s - H).Magnitude
+end
+-- the turn (radians, round the arm's line dn from the pole n) that keeps the forearm off the head; 0 = clear
+local function clearTurn(rig, p, arm, d, dn, n)
+	local g = rig.geo
+	local c0, c1i = g.jc0.Neck, g.jc1i.Neck
+	if not (c0 and c1i and g.headR) then
+		return 0
+	end
+	local H = arm.c0:PointToObjectSpace((c0 * p.Neck * c1i).Position)
+	local need = g.headR + arm.rf
+	local gap0 = forearmGap(arm, d, n, H)
+	if gap0 >= need then
+		return 0
+	end
+	-- (round the line both ways in steps; the first that clears, else the best; then halve back to the edge)
+	local side = dn:Cross(n)
+	local best, bestGap, pass = 0, gap0, nil
+	for i = 1, CLEAR_STEPS do
+		for _, sg in ipairs(SIGNS) do
+			local a = sg * i * PI / CLEAR_STEPS
+			local gap = forearmGap(arm, d, n * cos(a) + side * sin(a), H)
+			if gap >= need then
+				pass = a
+				break
+			elseif gap > bestGap then
+				best, bestGap = a, gap
+			end
+		end
+		if pass then
+			break
+		end
+	end
+	if not pass then
+		return best
+	end
+	local lo = pass - (pass > 0 and 1 or -1) * PI / CLEAR_STEPS
+	for _ = 1, 4 do
+		local mid = (lo + pass) * 0.5
+		if forearmGap(arm, d, n * cos(mid) + side * sin(mid), H) >= need then
+			pass = mid
+		else
+			lo = mid
+		end
+	end
+	return pass
 end
 
 -- Fitting a punch to the range, once, on its first frame (the chest and the punching shoulder are
@@ -943,6 +1024,7 @@ end
 local HOOK_REL = math.rad(40)
 local LUNGE_MAX = 0.5
 local HOOK_REACH, HOOK_LUNGE_MAX, UPPER_LUNGE_MAX = 0.76, 1.1, 1.25
+local OVER_ROOM = 0.6
 -- a straight is fitted so its target sits STRAIGHT_REACH of the arm's full length from the shoulder (the
 -- IK's soft limit lands it with the elbow about 160 degrees open); in close the hips give up to GIVE_MAX
 -- of ground for it
@@ -950,6 +1032,8 @@ local STRAIGHT_REACH = 1.02
 local GIVE_MAX = 0.6
 local STRAIGHT_TURN_MIN = 0.55
 local RISE_MAX = 0.35
+local STRAIGHT_LUNGE_FAR = 0.85
+local RISE_HEEL = 0.1
 local GIVE_MARGIN = 0.15
 local STRAIGHT_THROUGH = 0.3
 -- tan of the steepest a straight's shoulder-to-fist line climbs or drops to the head (10 degrees),
@@ -1017,27 +1101,52 @@ local function fitPunch(rig, p, act, body, near, gain, drop)
 	-- out of reach after the turn: lunge (along the line to the target, in the root's frame)
 	local sx, sz = shoulder(k)
 	local dx, dy, dz = tg.X - sx, tg.Y - (s0.Y - drop), tg.Z - sz
+	-- the body at contact (this punch's turn, lean, dip and step, as evalPunch drives it), laid out exactly:
+	-- the shoulder-to-target vector (root frame) before any lunge
+	local m = prm.mirror
+	local leanX = body and -0.06 or 0
+	local d0 = rig.loco and rig.loco.drop or 0
+	local tw = act.aimTgt.CFrame:PointToWorldSpace(act.aimLocal)
+	local function lay(kt, rise)
+		local rt = CF(prm.side * m * gain, -drop + rise, -prm.fwd * gain) * p.Root * A(0, prm.hip * m * gain * kt, 0)
+		local wt = p.W * A((prm.lean + leanX) * gain, prm.sho * m * gain * kt, prm.roll * m * gain)
+		local utC = R.torsoCF(rig, d0 > 1e-3 and CF(0, -d0, 0) * rt or rt, wt)
+		return rc:VectorToObjectSpace(tw - utC:PointToWorldSpace(arm.c0.Position))
+	end
+	-- the stance legs (AnimLoco's planted foot targets, last frame): how far the hips can still rise over
+	-- them, laid out at contact (< 0 = how far the pelvis would have to sink to keep the feet down)
+	local ft = rig.ftmp
+	local function slack(kt, rise, lunge)
+		if not (ft and ft.L and ft.R) then
+			return 1
+		end
+		lunge = lunge or 0
+		local rt = CF(prm.side * m * gain, 1 - drop + rise, -prm.fwd * gain - lunge) * p.Root * A(0, prm.hip * m * gain * kt, 0)
+		local sl = 1
+		for _, sd in ipairs(R.SIDES) do
+			local tg = ft[sd]
+			-- (the lead foot steps in with a long lunge)
+			if sd == "L" and lunge > 0.2 then
+				tg = V3(tg.X, tg.Y, tg.Z - lunge * 0.9)
+			end
+			sl = min(sl, 1 - R.dropFor(rig, sd, rt, tg, 0.965))
+		end
+		return sl
+	end
 	if prm.path == "straight" then
 		-- a straight lands with the arm straight (STRAIGHT_REACH of its length) at any range: the body at
-		-- contact (this punch's turn, lean, dip and step, as evalPunch drives it) is laid out exactly and the
-		-- hips travel the rest along the line - in, or in too close back, giving up to GIVE_MAX of ground
-		-- (less of the punch's step first) - instead of the elbow folding into a shove. Still too close
-		-- after that: the hips and shoulders turn less into it (down to STRAIGHT_TURN_MIN). To the head the
-		-- fist travels about level (STRAIGHT_PITCH, evalPunch): a chin far above a deep crouch makes the
-		-- legs drive up into the punch (up to RISE_MAX) rather than the arm reach up for it.
-		local m = prm.mirror
-		local leanX = body and -0.06 or 0
-		local d0 = rig.loco and rig.loco.drop or 0
-		local tw = act.aimTgt.CFrame:PointToWorldSpace(act.aimLocal)
+		-- contact is laid out and the hips travel the rest along the line - in, or in too close back, giving
+		-- up to GIVE_MAX of ground (less of the punch's step first) - instead of the elbow folding into a
+		-- shove. Still too close after that: the hips and shoulders turn less into it (down to
+		-- STRAIGHT_TURN_MIN). To the head the fist travels about level (STRAIGHT_PITCH, evalPunch): a chin far
+		-- above a deep crouch makes the legs drive up into the punch (up to RISE_MAX) rather than the arm
+		-- reach up for it.
 		local want = arm.dMax * STRAIGHT_REACH * (prm.reach or 1)
 		-- (a jab gives less: hips going back while it snaps out take the snap out of it)
 		local lo = -prm.fwd * gain - (act.pkind == "jab" and GIVE_MAX * 0.4 or GIVE_MAX)
-		local function lay(kt, rise)
-			local rt = CF(prm.side * m * gain, -drop + rise, -prm.fwd * gain) * p.Root * A(0, prm.hip * m * gain * kt, 0)
-			local wt = p.W * A((prm.lean + leanX) * gain, prm.sho * m * gain * kt, prm.roll * m * gain)
-			local utC = R.torsoCF(rig, d0 > 1e-3 and CF(0, -d0, 0) * rt or rt, wt)
-			return rc:VectorToObjectSpace(tw - utC:PointToWorldSpace(arm.c0.Position))
-		end
+		-- (and a chin too far up and out for the arm - a much taller man's - is stepped in on, up to
+		-- STRAIGHT_LUNGE_FAR: the rear foot follows the lead in, a shuffle, rather than the legs locking out)
+		local hi = body and LUNGE_MAX or STRAIGHT_LUNGE_FAR
 		-- the hip travel that puts the (level-clamped) fist at `want` from the shoulder
 		local function solve(v)
 			local lunge = 0
@@ -1047,7 +1156,7 @@ local function fitPunch(rig, p, act, body, near, gain, drop)
 				local vy = body and v.Y or levelY(v.Y, h)
 				local s2 = v.X * v.X + vy * vy
 				if want * want <= s2 then
-					return LUNGE_MAX
+					return hi
 				end
 				lunge = -v.Z - sqrt(want * want - s2)
 			end
@@ -1056,6 +1165,12 @@ local function fitPunch(rig, p, act, body, near, gain, drop)
 		local v0 = lay(1, 0)
 		-- (a jab is too quick for the legs to drive)
 		local rise = body and 0 or clamp(v0.Y - want * STRAIGHT_PITCH, 0, act.pkind == "jab" and 0 or RISE_MAX)
+		-- (only as far as the stance legs still extend - the rear heel coming up gives a little more,
+		-- RISE_HEEL - past that the pelvis would sink straight back and the fist land short and under:
+		-- the hips travel in for the rest instead, stepping in for a long way)
+		if rise > 0 then
+			rise = clamp(slack(1, 0) + RISE_HEEL, 0, rise)
+		end
 		local kt, lunge = 1, 0
 		for i = 0, 3 do
 			kt = 1 - i * (1 - STRAIGHT_TURN_MIN) / 3
@@ -1065,18 +1180,47 @@ local function fitPunch(rig, p, act, body, near, gain, drop)
 			end
 		end
 		act.rise = rise
+		-- (a lunge the rear leg cannot stretch to - it would sink the pelvis - brings the rear foot in after
+		-- the lead: the shuffle a long one always takes)
+		lunge = clamp(lunge, lo, hi)
+		act.shuffle = lunge > 0.25 and slack(kt, rise, lunge) + RISE_HEEL < 0
 		-- (ground is given a little short of the layout: the stance keeps moving under the punch - a slip
 		-- or a shoulder roll still settling - and a glove that falls short is worse than a softer elbow)
 		if lunge < 0 then
 			lunge = min(0, lunge + GIVE_MARGIN)
 		end
-		return kt, clamp(lunge, lo, LUNGE_MAX)
+		return kt, clamp(lunge, lo, hi)
 	end
-	-- (an uppercut leans back as it rises, an overhand reaches over and down: a little more; a hook lands
-	-- with the elbow bent near square - HOOK_REACH of the arm - so it steps in further for it)
+	-- (an overhand comes down from above and needs its room in front of the face: the hips go in only as
+	-- far as the arm still reaches up to the head from there, never closer than OVER_ROOM of the arm out in
+	-- front of the shoulder - a head out of reach above, a taller man's chin high on its neck, is not chased
+	-- in under; the fist lands lower on it instead of the forearm sweeping across his own face)
+	if prm.path == "over" then
+		local v = lay(1, 0)
+		local reachO = arm.dMax * 0.97 * (prm.reach or 1) - 0.15
+		local hWant = max(sqrt(max(0, reachO * reachO - v.Y * v.Y)), arm.dMax * OVER_ROOM)
+		-- (the lunge drives the hips along -Z: the target's depth that leaves hWant of room)
+		local zWant = sqrt(max(0, hWant * hWant - v.X * v.X))
+		local lunge = clamp(-v.Z - zWant + 0.05, 0, LUNGE_MAX)
+		-- (a head that high above is not thrown at from a dip: the legs come up out of it as far as they
+		-- extend; and the rear foot shuffles in after a lunge it cannot stretch to)
+		act.rise = clamp(min(v.Y - reachO * 0.85, slack(k, 0) + RISE_HEEL), 0, max(drop, 0))
+		act.shuffle = lunge > 0.25 and slack(k, act.rise, lunge) + RISE_HEEL < 0
+		return k, lunge
+	end
+	-- (a chin high above an uppercut - a much taller man's - brings the legs up into it, as far as they
+	-- still extend)
 	local hook = prm.path == "hook"
+	if prm.path == "upper" then
+		local v = lay(k, 0)
+		local reachU = arm.dMax * 0.97 * (prm.reach or 1) - 0.25
+		act.rise = clamp(min(v.Y - reachU * 0.85, slack(k, 0) + RISE_HEEL), 0, RISE_MAX)
+		dy -= act.rise
+	end
+	-- (an uppercut leans back as it rises: a little more; a hook lands with the elbow bent near square -
+	-- HOOK_REACH of the arm - so it steps in further for it)
 	local short = sqrt(dx * dx + dy * dy + dz * dz) - arm.dMax * (hook and HOOK_REACH or 0.97) * (prm.reach or 1)
-		+ (prm.path == "upper" and 0.25 or (prm.path == "over" and 0.15 or 0))
+		+ (prm.path == "upper" and 0.25 or 0)
 	-- (hooks and uppercuts are the close punches: they step in for the range the bigger bodies keep)
 	return k, clamp(short + 0.05, 0, hook and HOOK_LUNGE_MAX or (prm.path == "upper" and UPPER_LUNGE_MAX or LUNGE_MAX))
 end
@@ -1087,6 +1231,14 @@ local RET_SPEED = 9 -- studs/s, the fastest average a fist comes home at
 local SWIVEL_RATE = 14 -- rad/s, the fastest the elbow turns round the arm's line in a punch
 -- the fist's speed at contact the arm's drive is timed for (studs/s), per path
 local VPEAK = { straight = 22, hook = 23, upper = 16, over = 20 }
+-- the steadier drive of a straight with a long way to go (act.pow, 1.5 - 2): a cubic that sets off from a
+-- standstill and still accelerates all the way in, arriving at `pw` times its average speed - unlike
+-- x ^ pw below 2, which jumps to speed on its first frame (the fist pops as the arm sets off)
+local function evenDrive(x, pw)
+	x = clamp(x, 0, 1)
+	local c = 3 - pw
+	return x * x * (c + (1 - c) * x)
+end
 local function evalPunch(p, rig, act, t, near, driveBody)
 	local prm = act.prm
 	local w = act.windup
@@ -1110,7 +1262,7 @@ local function evalPunch(p, rig, act, t, near, driveBody)
 		hipK = smooth(0.8 * (u - prm.tHip) / (1 - prm.tHip)) * LATE
 		shoK = smooth(0.8 * (u - prm.tSho) / (1 - prm.tSho)) * LATE
 		local ta = act.tArm or prm.tArm
-		armK = K.drive((u - ta) / (1 - ta), prm.pow)
+		armK = act.pow and evenDrive((u - ta) / (1 - ta), act.pow) or K.drive((u - ta) / (1 - ta), prm.pow)
 	elseif el < w + hold then
 		armK = 1
 		contact = true
@@ -1127,7 +1279,8 @@ local function evalPunch(p, rig, act, t, near, driveBody)
 		local r = (el - w - hold) / rec
 		retK = r
 		armK = 1
-		hipK = 1 - smooth((r - 0.12) / 0.88)
+		-- (quintic: a long lunge comes back with no lurch as it settles into the stance)
+		hipK = 1 - K.smoother((r - 0.12) / 0.88)
 		shoK = 1 - smooth((r - 0.05) / 0.9)
 	end
 	local pw = (0.8 + 0.4 * clamp(act.power or 0.6, 0, 1.5)) * (0.85 + 0.15 * clamp(num(rig.a.Stam, 1), 0, 1))
@@ -1145,17 +1298,25 @@ local function evalPunch(p, rig, act, t, near, driveBody)
 		local rk = (body and prm.path == "hook") and 0.72 or 1
 		if not act.turnK then
 			act.turnK, act.lunge = fitPunch(rig, p, act, body, near, pw * rk, (prm.dip + dipExtra) * pw)
-			-- a long lunge: the lead foot steps in with it
-			if act.lunge > 0.2 and prm.path ~= "over" and not prm.step and not prm.stepR and L.ready(rig, "L", t) then
-				L.request(rig, "L", 0, -act.lunge * 0.9, w * 0.75, 0.1, w * 1.6, t)
+			-- a long lunge: the lead foot steps in with it (an overhand's too: its lunge up at a taller man's
+			-- head over planted feet would only sink the pelvis)
+			if act.lunge > 0.2 and not prm.step and not prm.stepR then
+				act.leadIn = -act.lunge * 0.9
 				-- (a step in further than the stance can stretch: the rear foot follows - a shuffle in - as
 				-- soon as it is free)
-				if act.lunge > 0.6 then
-					act.followR = -(act.lunge - 0.4) * 0.9
+				if act.lunge > 0.6 or act.shuffle then
+					act.followR = -max(act.lunge - 0.4, act.lunge * 0.5) * 0.9
 				end
 			end
 		end
-		if act.followR and el < w * 0.75 and L.ready(rig, "R", t) then
+		-- (the lead foot steps as soon as it is free - still landing from the last punch's step it goes a
+		-- few frames late, rather than leave the hips to lunge out over planted feet: the rear leg would
+		-- lock straight and the pelvis sink, taking the shoulder down and away from the target)
+		if act.leadIn and el < w * 0.7 and L.ready(rig, "L", t) then
+			L.request(rig, "L", 0, act.leadIn, max(0.1, w * 0.75 - el), 0.1, max(0.1, w * 1.6 - el), t)
+			act.leadIn = nil
+		end
+		if act.followR and not act.leadIn and el < w * 0.75 and L.ready(rig, "R", t) then
 			L.request(rig, "R", 0, act.followR, max(0.1, w * 0.9 - el), 0.08, w * 2, t)
 			act.followR = nil
 		end
@@ -1294,6 +1455,14 @@ local function evalPunch(p, rig, act, t, near, driveBody)
 			local vp = (VPEAK[prm.path] or 20) * ((body and prm.path == "hook") and 1.12 or 1)
 			local need = prm.pow * len / (vp * clamp((arm and arm.ok and arm.dMax or 2.43) / 2.43, 0.8, 1.1))
 			act.tArm = clamp(1 - need / w, max(0.12, prm.tArm - 0.15), 0.8)
+			-- (a straight with a long way to go in its time - the shell's low lead hand up to a chin that sits
+			-- high on its neck - travels at a steadier speed instead of whipping in: driven as hard as the
+			-- others it asks the elbow to lock out faster than the arm turns, and the fist arrives a frame
+			-- after the head it was aimed at has already snapped back)
+			local avail = (1 - act.tArm) * w
+			if prm.path == "straight" and need > avail then
+				act.pow = max(1.5, prm.pow * avail / need)
+			end
 		end
 		local pos
 		local pole = poleOf(prm.path, body)
@@ -1366,6 +1535,20 @@ local function evalPunch(p, rig, act, t, near, driveBody)
 				local dn = d.Unit
 				local n = V3(mx * px, py, pz)
 				n -= dn * n:Dot(dn)
+				-- (off his own head: in with the punch's elbow line; on the way home the turn it landed with
+				-- eases out with the elbow - never searched for again, so it cannot flip sides mid-recovery)
+				if prm.path == "over" and kp > 0.01 and n.Magnitude > 0.15 then
+					local a
+					if retK > 0 then
+						a = (act.clearA or 0) * kp
+					else
+						act.clearA = clearTurn(rig, p, armG, d, dn, n)
+						a = act.clearA * kp
+					end
+					if a ~= 0 then
+						n = n * cos(a) + dn:Cross(n) * sin(a)
+					end
+				end
 				local last, lastT = act.swivN, act.swivT
 				local lp
 				if last then

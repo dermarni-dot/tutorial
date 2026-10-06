@@ -368,6 +368,24 @@ local function sizesOf(model, names)
 end
 local BODY_PARTS = { "UpperTorso", "LowerTorso", "LeftUpperArm", "LeftLowerArm", "LeftUpperLeg", "LeftLowerLeg", "Head" }
 
+-- how far the Builder lifted the head off the shoulders (its Neck pivot below the head's base, Builder
+-- liftHead): read from the rig, so the neck column spans whatever gap there is (0 on an engine rig)
+local function neckLift(model)
+	local head = part(model, "Head")
+	if not head then
+		return 0
+	end
+	local neck = head:FindFirstChild("Neck")
+	local y
+	if neck and neck:IsA("Motor6D") then
+		y = neck.C1.Position.Y
+	else
+		local na = head:FindFirstChild("NeckRigAttachment")
+		y = na and na:IsA("Attachment") and na.Position.Y or nil
+	end
+	return y and math.clamp(-y - 0.5 * head.Size.Y, 0, 0.6) or 0
+end
+
 local function shoeOf(gear)
 	return Catalog.Find(Catalog.Shoes, gear.shoes) or Catalog.Shoes[1]
 end
@@ -433,8 +451,9 @@ local function musclesBuild(model, app, build, opts, sp, gear)
 	local lowCalf = a.shoeStyle == "Low-Top" or shoeOf(gear).style == "trainer"
 	local seed = tonumber(app.face and app.face.seed) or 7
 	-- M4: hull, per-boxer anatomy (seed) and the LT envelope
+	local lift = neckLift(model)
 	local key = Kit.sig("M4", sp.ph.id, sp.detail, sp.female, sp.lv, sp.fat, sp.def, sp.vein, sp.dry, sp.grime, app.skin, smoothSkin,
-		sl, a.trunks, a.trim, lowCalf, sp.outfit, seed, sizesOf(model, BODY_PARTS))
+		sl, a.trunks, a.trim, lowCalf, sp.outfit, seed, sizesOf(model, BODY_PARTS), math.floor(lift * 1000 + 0.5))
 	if Kit.cached(model, "Muscles", key) then
 		-- re-assert the hidden R15 blocks (cheap, change-only) in case anything reset them
 		local f = model.BoxerLook:FindFirstChild("Muscles")
@@ -621,7 +640,8 @@ local function musclesBuild(model, app, build, opts, sp, gear)
 	if ut and head then
 		local s = ut.Size
 		local d = (0.5 + 0.22 * sp.lv.neckSCM + 0.06 * sp.lv.traps + 0.08 * (tonumber(sl.neck) or 0)) * head.Size.X * (sp.female and 0.9 or 1)
-		local neck = mk(folder, ut, "Neck", V3(0.4, d, d), ut.CFrame * CF(0, s.Y * 0.5 + 0.08, 0.02) * ANG(0, 0, RAD(90)), skin, "Cylinder", skinMat)
+		-- (a lifted head: the column grows up by the lift, from the same base on the shoulders)
+		local neck = mk(folder, ut, "Neck", V3(0.4 + lift, d, d), ut.CFrame * CF(0, s.Y * 0.5 + 0.08 + lift * 0.5, 0.02) * ANG(0, 0, RAD(90)), skin, "Cylinder", skinMat)
 		neck:SetAttribute("Base", true)
 		if sp.female and not shirt and not hull then
 			-- sports top with a bare midriff (the upper torso itself is coloured as the top; with the hull
@@ -634,8 +654,8 @@ local function musclesBuild(model, app, build, opts, sp, gear)
 			local lvl = sp.lv.neckSCM
 			local fk = sp.female and 0.7 or 1
 			for side = -1, 1, 2 do
-				local size = V3(0.2 * d * (1 + 0.5 * lvl) * fk, 0.46, 0.22 * d * (1 + 0.5 * lvl) * fk)
-				local cf = ut.CFrame * CF(side * 0.28 * d, s.Y * 0.5 + 0.1, -0.39 * d + 0.02) * ANG(RAD(24), 0, RAD(-16 * side))
+				local size = V3(0.2 * d * (1 + 0.5 * lvl) * fk, 0.46 + lift, 0.22 * d * (1 + 0.5 * lvl) * fk)
+				local cf = ut.CFrame * CF(side * 0.28 * d, s.Y * 0.5 + 0.1 + lift * 0.5, -0.39 * d + 0.02) * ANG(RAD(24), 0, RAD(-16 * side))
 				local p = mk(folder, ut, "NeckSCM", size, cf, skin, "Ellipsoid", skinMat)
 				tagMuscle(p, "neckSCM", side, 1)
 				made["NeckSCM" .. side] = p

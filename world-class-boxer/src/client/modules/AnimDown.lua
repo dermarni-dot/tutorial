@@ -937,6 +937,70 @@ local function holdFeet(rig)
 	fL.heel, fR.heel = 0, 0
 end
 
+-- a man lying flat rests his head on the canvas: the neck lets it down onto it. (The Builder's neck lift
+-- - Builder liftHead, the Neck pivot under the head - holds the head further out from the shoulders than
+-- these poses' neck angles were drawn for: left alone a face-first knockout's face hovers off the canvas.)
+-- Only lying - the chest along the canvas and on it (blended in, no pop as the body lands) - and never
+-- more than HEAD_DOWN_MAX of extra neck bend.
+local HEAD_DOWN_MAX = 0.6
+local UNDER_HEAD = { "LE", "RE", "LW", "RW" }
+local function headDown(rig, p, out, clear)
+	local g = rig.geo
+	local c0, c1i = g.jc0.Neck, g.jc1i.Neck
+	local ut, sw, sh = out.W, g.sz.W, g.sz.Neck
+	if not (c0 and c1i and ut and out.Neck and sw and sh and g.groundY) then
+		return
+	end
+	local lie = smooth((0.5 - abs(ut.UpVector.Y)) / 0.25) * smooth((0.3 - (R.boxLow(ut, sw) - g.groundY)) / 0.2)
+	if lie <= 0.001 then
+		return
+	end
+	local floorY = g.groundY + clear
+	local F = ut * c0
+	local neck0 = p.Neck
+	local total, axisL = 0, nil
+	for _ = 1, 3 do
+		local hc = out.Neck
+		-- (the head's lowest point as the ground solve counts it: between its box and its sphere)
+		local gap = R.boxLow(hc, sh) * 0.6 + (hc.Y - g.headR) * 0.4 - floorY
+		local v = hc.Position - F.Position
+		local ax = v:Cross(V3(0, -1, 0))
+		local h = ax.Magnitude
+		if gap <= 0.005 or h < 0.2 or total >= HEAD_DOWN_MAX then
+			break
+		end
+		axisL = F:VectorToObjectSpace(ax / h)
+		local a = min(gap / h, HEAD_DOWN_MAX - total)
+		-- (and never down onto an arm lying under it: the forearms and fists keep a head's radius away)
+		for _ = 1, 5 do
+			local c = (F * CFrame.fromAxisAngle(axisL, a) * p.Neck * c1i).Position
+			local ok = true
+			for _, k in ipairs(UNDER_HEAD) do
+				local cf = out[k]
+				if cf and (cf.Position - c).Magnitude < g.headR * 1.5 then
+					ok = false
+					break
+				end
+			end
+			if ok then
+				break
+			end
+			a *= 0.5
+		end
+		if a < 0.01 then
+			break
+		end
+		total += a
+		p.Neck = CFrame.fromAxisAngle(axisL, a) * p.Neck
+		out.Neck = F * p.Neck * c1i
+	end
+	if total > 0 and lie < 1 then
+		-- (part way there while the body is still settling onto the canvas)
+		p.Neck = CFrame.fromAxisAngle(axisL, total * lie) * neck0
+		out.Neck = F * p.Neck * c1i
+	end
+end
+
 -- rest the pose on the canvas (unless the feet are planted: the leg IK does that)
 local function onCanvas(rig, p)
 	if rig.plant then
@@ -949,6 +1013,7 @@ local function onCanvas(rig, p)
 	R.liftArms(rig, p, out, 0.04)
 	R.groundSolve(rig, p, out, 0.03)
 	R.liftArms(rig, p, out, 0.04)
+	headDown(rig, p, out, 0.03)
 end
 
 ------------------------------------------------------------------------
