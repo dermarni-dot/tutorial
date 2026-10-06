@@ -96,8 +96,8 @@ local function upperArm(sk, P, side, sx)
 	-- shoulder edge)
 	-- (the top rings sit a little deeper inside the torso's shoulder: the cap's rim stays under the trapezius
 	-- and the torso's rounded shoulder, so no ring-shaped step shows where the two pieces overlap)
-	local rx = Kit.Curve({ { -0.04, 0.15 }, { 0.0, 0.19 }, { 0.05, 0.225 }, { 0.12, 0.252 }, { 0.22, 0.262 }, { 0.35, 0.256 }, { 0.5, 0.25 }, { 0.65, 0.247 }, { 0.75, 0.242 }, { 0.9, 0.232 }, { 0.97, 0.228 }, { 1.0, 0.226 }, { 1.08, 0.214 } })
-	local rz = Kit.Curve({ { -0.04, 0.17 }, { 0.0, 0.205 }, { 0.05, 0.235 }, { 0.12, 0.257 }, { 0.22, 0.268 }, { 0.4, 0.252 }, { 0.6, 0.244 }, { 0.75, 0.236 }, { 0.9, 0.223 }, { 0.97, 0.218 }, { 1.0, 0.216 }, { 1.08, 0.205 } })
+	local rx = Kit.Curve({ { -0.04, 0.13 }, { 0.0, 0.175 }, { 0.05, 0.215 }, { 0.12, 0.248 }, { 0.22, 0.262 }, { 0.35, 0.256 }, { 0.5, 0.25 }, { 0.65, 0.247 }, { 0.75, 0.242 }, { 0.9, 0.232 }, { 0.97, 0.228 }, { 1.0, 0.226 }, { 1.08, 0.214 } })
+	local rz = Kit.Curve({ { -0.04, 0.155 }, { 0.0, 0.195 }, { 0.05, 0.23 }, { 0.12, 0.255 }, { 0.22, 0.268 }, { 0.4, 0.252 }, { 0.6, 0.244 }, { 0.75, 0.236 }, { 0.9, 0.223 }, { 0.97, 0.218 }, { 1.0, 0.216 }, { 1.08, 0.205 } })
 	local delt = (0.05 + 0.09 * lv.sideDelt) * fl * k * dk
 	local bi = (0.04 + 0.11 * lv.biceps) * fl * V.bicepsHeight * k
 	local tri = (0.045 + 0.09 * lv.triceps) * fl * k
@@ -118,7 +118,7 @@ local function upperArm(sk, P, side, sx)
 		{ a = BACK + 0.62, w = 0.72, b0 = 0.12, bp = 0.34, b1 = 0.66, h = tri * 0.85, sharp = 1.1, id = "triceps" },
 		-- the cap's inner rim: the deltoid's origin along the clavicle / acromion / scapular spine reaches in over
 		-- the torso's shoulder edge (the dome leans toward the neck, the torso's corner stays under it)
-		{ a = MED, w = 1.5, b0 = -0.14, bp = -0.03, b1 = 0.16, h = 0.07, id = "bone" },
+		{ a = MED, w = 1.5, b0 = -0.14, bp = -0.03, b1 = 0.16, h = 0.045, id = "bone" },
 		-- elbow: olecranon behind, the epicondyles either side
 		-- (above the pivot: the upper arm's end stays a little inside the forearm's top, so its end dome tucks in
 		-- without a ring)
@@ -139,7 +139,7 @@ local function upperArm(sk, P, side, sx)
 		{ a = BACK + 0.75, w = 0.45, b0 = 0.25, bp = 0.42, b1 = 0.6, h = (0.006 + 0.014 * def) * (0.4 + 0.6 * lv.rearDelt), id = "g" },
 	}
 	-- the top dome leans toward the neck: the deltoid cap rounds over the shoulder and into the trapezius slope
-	return { rx = rx, rz = rz, scale = sx * sz, mus = mus, grooves = grooves, b0 = -0.04, b1 = 1.08, capS = { 0.08, 0 }, capE = { 0.17, 0 }, ringWarp = 1.25, endBend = 0.4,
+	return { rx = rx, rz = rz, scale = sx * sz, mus = mus, grooves = grooves, b0 = -0.04, b1 = 1.08, capS = { 0.05, 0 }, capE = { 0.17, 0 }, ringWarp = 1.25, endBend = 0.4,
 		flexIds = { biceps = 0.35, delt = 0.12, triceps = 0.18, brach = 0.25 } }
 end
 
