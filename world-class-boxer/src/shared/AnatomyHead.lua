@@ -127,7 +127,8 @@ local function layout(look)
 	F.eyeX = 0.16 + 0.014 * fv("eyeDist", 0) + (female and -0.004 or 0)
 	F.eyeY = 0.0 + 0.008 * sh.len
 	F.eyeDepth = fv("eyeDepth", 0.3, 0, 1)
-	F.eyeZ = -0.36 + 0.014 * F.eyeDepth
+	-- (set into the orbit: the brow, the cheek and the lids, not the eyeball, make the profile)
+	F.eyeZ = -0.348 + 0.014 * F.eyeDepth
 	F.eye = {}
 	for side = -1, 1, 2 do
 		F.eye[side] = { x = side * F.eyeX + rnd(1) * 0.004 * asymA * 0.5, y = F.eyeY + side * rnd(2) * 0.007 * asymA, z = F.eyeZ }
@@ -137,7 +138,8 @@ local function layout(look)
 	F.lidHeavy = fv("lidHeavy", 0, 0, 1)
 	-- the eye opening in angles seen from the eyeball centre: canthi azimuths, margin elevations
 	local es, ez = F.eyeShape, F.eyeSize
-	F.aLat = math.rad(79 + 4 * es)
+	-- the lateral canthus wraps the eyeball's side (no white wedge of sclera in profile)
+	F.aLat = math.rad(68 + 4 * es)
 	F.aMed = -math.rad(64 + 3 * es)
 	F.bUp = math.rad(21 + 2.5 * ez - 3 * es) * (1 - 0.2 * F.lidHeavy) -- upper margin at its peak (over the iris top)
 	F.bDn = math.rad(22 + 1.5 * ez - 3 * es) -- lower margin (just over the iris bottom: relaxed, not staring)
@@ -171,7 +173,7 @@ local function layout(look)
 	F.noseDev = rnd(3) * 0.008 * asymA + F.noseBreak * 0.02 * (hash(303, seed) < 0.5 and -1 or 1)
 	-- mouth
 	F.mouthY = F.noseBaseY - 0.104 - 0.012 * sh.len
-	F.mouthW = (0.126 + 0.012 * fv("mouthWidth", 0) + 0.004 * fv("lips", 0)) * (female and 0.93 or 1)
+	F.mouthW = (0.114 + 0.012 * fv("mouthWidth", 0) + 0.004 * fv("lips", 0)) * (female and 0.93 or 1)
 	F.lips = fv("lips", 0) + (female and 0.65 or 0)
 	F.lipBow = fv("lipBow", female and 0.8 or 0.4, 0, 1)
 	F.mouthTilt = rnd(4) * 0.03 * asymA
@@ -193,8 +195,10 @@ local function layout(look)
 			local t2 = max(0, 1 - xr * xr)
 			local hu = (0.028 + 0.007 * lipK) * (t1 ^ 0.7) * (1 + 0.22 * bow * bump(((xr - 0.32) / 0.24) ^ 2) - 0.16 * bow * bump((x / 0.018) ^ 2))
 			local hl = (0.036 + 0.009 * lipK) * (t2 ^ 0.55)
-			local pu = (0.026 + 0.008 * lipK) * t1 ^ 0.55
-			local pl = (0.03 + 0.009 * lipK) * t2 ^ 0.5
+			-- protrusions: modest (the lips stay behind the nose tip -> chin line in profile; the muzzle and the
+			-- teeth do most of the forward curve)
+			local pu = (0.016 + 0.006 * lipK) * t1 ^ 0.55
+			local pl = (0.02 + 0.006 * lipK) * t2 ^ 0.5
 			return hu, hl, pu, pl, t1, t2
 		end
 		F.lipH = function(x)
@@ -206,15 +210,17 @@ local function layout(look)
 	F.chin = fv("chin", 0)
 	F.chinProject = fv("chinProject", 0)
 	F.chinCleft = fv("chinCleft", 0, 0, 1)
-	F.chinY = -0.5 - sh.chinDrop - 0.01 * F.chin + sh.len * 0.5 + (female and 0.026 or 0)
-	F.chinW = (0.085 + 0.016 * F.chin + 0.025 * sh.chinW) * (female and 0.7 or 1)
-	F.jawW = (0.255 + 0.025 * fv("jawWidth", 0) + 0.03 * sh.jaw + rnd(5) * 0.006 * asymA) * (female and 0.8 or 1)
+	-- the face shape is a real difference between people (jaw width up to +-0.04, face length +-0.03, cheekbones
+	-- +-0.02), not a nuance the paint has to carry
+	F.chinY = -0.5 - 0.5 * sh.chinDrop - 0.75 * sh.len - 0.01 * F.chin + (female and 0.026 or 0)
+	F.chinW = (0.085 + 0.016 * F.chin + 0.05 * sh.chinW) * (female and 0.62 or 1)
+	F.jawW = (0.255 + 0.025 * fv("jawWidth", 0) + 0.08 * sh.jaw + rnd(5) * 0.006 * asymA) * (female and 0.74 or 1)
 	F.jawDef = clamp(fv("jawDef", 0.5, 0, 1) * 0.6 + fv("jawAngle", female and 0.15 or 0.55, 0, 1) * 0.4 - 0.25 * sh.round, 0, 1) * (female and 0.45 or 1)
-	F.gonionY = -0.39 + 0.02 * (1 - F.jawDef) + sh.len * 0.3 + (female and 0.015 or 0)
-	-- cheeks
-	F.cheek = fv("cheek", 0) + sh.cheek
+	F.gonionY = -0.39 + 0.02 * (1 - F.jawDef) + sh.len * 0.3 + (female and 0.045 or 0)
+	-- cheeks (women: higher, more prominent cheekbones over the narrower jaw)
+	F.cheek = fv("cheek", 0) + 2 * sh.cheek + (female and 0.3 or 0)
 	F.cheekH = fv("cheekHeight", 0) + (female and 0.2 or 0)
-	F.round = sh.round
+	F.round = sh.round * 1.5
 	-- ears
 	F.earSize = 1 + 0.1 * fv("earSize", 0)
 	F.cauli = max(fv("cauliflower", 0, 0, 1), clamp(num(battle.ears, 0), 0, 1))
@@ -224,6 +230,8 @@ local function layout(look)
 	-- the neck (AnatomySkull.Neck: the skull's own, so the hair rests on it too) and its larynx
 	F.neckR = P.neck.r
 	F.neckZ = P.neck.z
+	-- how much longer than the standard rig's the neck is (the Neck pivot lower in the Head's space)
+	F.neckExtra = max(0, -0.6 - P.neck.yJoin)
 	F.larynx = female and 0.25 or 1
 	return F
 end
@@ -283,10 +291,12 @@ local function lowerFaceSlices(F)
 	local nk = fem and 0.86 or 1
 	local T = {
 		{ F.eyeY - 0.07, 0.335 + 0.008 * F.cheek, -0.41, 3.0 * nk },
-		{ F.noseBaseY - 0.01, lerp(0.31, 0.31 * jw, 0.3), -0.435, 2.85 * nk },
-		{ mY, lerp(0.295, 0.295 * jw, 0.6) * (fem and 0.92 or 1.02), -0.44, 2.9 * nk },
-		{ mY - 0.07, 0.28 * jw * (fem and 0.88 or 1.04), -0.444 - 0.005 * cp, 3.0 * nk },
-		{ cy + 0.03, lerp(0.24, 0.255 * jw, 0.7) * (fem and 0.86 or 1.04), -0.448 - 0.014 * cp, 3.0 * nk },
+		-- women: the cheeks keep the face's width down to the mouth, then it narrows to the jaw (a V over the
+		-- neck, never a cup on it); men: the jaw angle stands out over the neck
+		{ F.noseBaseY - 0.01, fem and 0.31 * lerp(1, jw, 0.15) * 0.97 or lerp(0.31, 0.31 * jw, 0.3), -0.435, 2.85 * nk },
+		{ mY, fem and 0.295 * lerp(1, jw, 0.3) * 0.95 or lerp(0.295, 0.295 * jw, 0.6) * 1.02, -0.44, 2.9 * nk },
+		{ mY - 0.07, 0.28 * (fem and lerp(1, jw, 0.6) * 0.9 or jw * 1.08), -0.444 - 0.005 * cp, 3.0 * nk },
+		{ cy + 0.03, lerp(0.24, 0.255 * jw, 0.7) * (fem and 0.86 or 1.06), -0.448 - 0.014 * cp, 3.0 * nk },
 		{ cy - 0.03, 0.17 * cwk * (fem and 0.92 or 1) + 0.04 * (jw - 1), -0.43 - 0.012 * cp, 3.2 * nk },
 		{ cy - 0.09, 0.1, -0.34, 3.2 * nk },
 	}
@@ -375,16 +385,20 @@ local function neckDetail(F)
 	local fem = F.female
 	local scmR = fem and 0.02 or 0.028
 	local lar = F.larynx
-	-- the sternocleidomastoid's path on the column: from the mastoid (side-back) to the sternal head (front)
+	local ext = F.neckExtra
+	-- the sternocleidomastoid's path on the column: from the mastoid (side-back) to the sternal head (front),
+	-- which sits just under the Neck pivot however long the neck is
 	local scm = {}
 	for i = 0, 4 do
 		local t = i / 4
 		local ph = math.rad(lerp(112, 18, t))
-		local y = lerp(-0.2, -0.86, t)
+		local y = lerp(-0.2, -0.86 - ext, t)
 		local r = R - scmR * 0.6
 		scm[i + 1] = { r * sin(ph), y, zc - r * cos(ph) / 0.97 }
 	end
 	local lz = zc - R / 0.97 + 0.014
+	-- the larynx a third of the way down a longer neck
+	local ly = 0.6 + 0.35 * ext
 	return function(x, y, z)
 		local ax = abs(x)
 		local d = 1
@@ -394,7 +408,7 @@ local function neckDetail(F)
 		end
 		-- the larynx (Adam's apple) under the chin
 		if lar > 0 then
-			d = min(d, sdE(x, y + 0.6, z - lz, 0.028, 0.05, 0.028) + 0.006 * (1 - lar))
+			d = min(d, sdE(x, y + ly, z - lz, 0.028, 0.05, 0.028) + 0.006 * (1 - lar))
 		end
 		return d
 	end
@@ -403,8 +417,12 @@ end
 local function baseField(F)
 	local skull = Skull.Nominal(F.P)
 	local lower = lowerFaceSlices(F)
-	local neckCol, neckP = Skull.NeckSD, F.P.neck
+	local neckCol, neckP = Skull.NeckSD, table.clone(F.P.neck)
+	-- the mesh's column a hair over AnatomySkull.Neck's (the Body keeps its column 0.012 inside that one): the
+	-- grid's chords between columns / rows sag inside the true surface, never down to the Body's column
+	neckP.r += 0.014
 	local neck = neckDetail(F)
+	local yNeckEnd = -0.95 - F.neckExtra
 	return function(x, y, z)
 		local d = skull(x, y, z)
 		local ax = abs(x)
@@ -419,10 +437,12 @@ local function baseField(F)
 				d = lerp(d, lower(x, y, z), w)
 			end
 		end
-		if y < 0 and y > -0.95 then
+		if y < 0 and y > yNeckEnd then
 			-- the neck column (the skull's own; in front the shield replaced the skull's field), a soft angle
 			-- under the jaw, then its muscles and the larynx
-			d = smin(d, neckCol(neckP, x, y, z), 0.06)
+			-- (a crisper angle at the sides: the jaw's lower border stands off the neck in front view, a soft
+			-- fillet under the chin)
+			d = smin(d, neckCol(neckP, x, y, z), 0.06 - 0.025 * smoothstep(0.1, 0.22, ax))
 			d = smin(d, neck(x, y, z), 0.04)
 		end
 		return d
@@ -551,7 +571,7 @@ local function reliefFn(F)
 			-- the muzzle: the teeth push the lips and the skin round them forward (local to the mouth: no ring)
 			local uq = (x / 0.16) ^ 2 + ((my - 0.022) / 0.13) ^ 2
 			if uq < 1 then
-				D += 0.024 * bump(uq)
+				D += 0.012 * bump(uq)
 			end
 			if my > -0.1 and my < (baseY - mY) + 0.01 and ax < mW + 0.07 then
 				local xr = ax / mW -- 0 centre, 1 corner
@@ -561,17 +581,19 @@ local function reliefFn(F)
 					local h = my / max(Hu, 0.003)
 					if h <= 1 and xr < 1 then
 						-- vermilion: curls in at the stomion, bulges, meets the border in front of the skin
+						-- a rounded vermilion (mostly the arc, little flat front)
 						local prof = sqrt(max(0, 1 - ((h - 0.5) / 0.62) ^ 2))
-						D += pu * (0.55 + 0.45 * prof) * (1 - 0.3 * h)
+						D += pu * (0.25 + 0.75 * prof) * (1 - 0.3 * h)
 						-- the tubercle: a soft bead in the middle of the upper lip
 						D += 0.004 * bow * bump((x / 0.035) ^ 2 + ((h - 0.35) / 0.5) ^ 2)
 					else
 						-- skin above the border: the philtrum slopes back up to the subnasale
 						local up = (my - Hu) / max(0.01, (baseY - mY) - Hu)
 						local wide = 1 - smoothstep(0.5, 1.6, xr) -- the upper lip's skin fades out past the corners
-						local skin = (0.028 + 0.008 * lips) * 0.62 * wide
-						-- start from where the vermilion ended (no step at the border), then slope to the subnasale
-						local edge = pu * 0.571
+						local skin = (0.016 + 0.006 * lips) * 0.8 * wide
+						-- start from where the vermilion ended (no step at the border: its profile at h = 1 is
+						-- (0.25 + 0.75 * 0.5913) * 0.7), then slope to the subnasale
+						local edge = pu * 0.4854
 						D += lerp(edge, skin, smoothstep(0, 0.35, up)) * (1 - smoothstep(0, 1, up))
 						-- white roll along the vermilion border
 						D += 0.003 * bump(((my - Hu) / 0.006) ^ 2) * taper
@@ -581,11 +603,12 @@ local function reliefFn(F)
 					if h <= 1 and xr < 1 then
 						local prof = sqrt(max(0, 1 - ((h - 0.45) / 0.6) ^ 2))
 						-- the lower lip's centre sits a little forward of its sides
-						D += pl * (0.45 + 0.55 * prof) + 0.004 * (1 - xr * xr)
+						D += pl * (0.25 + 0.75 * prof) + 0.004 * (1 - xr * xr)
 					else
 						-- below the lower lip: down into the mentolabial sulcus
 						local dn = (-my - Hl) / 0.03
-						D += ((0.032 + 0.009 * lips) * 0.45 + 0.004 * (1 - min(xr, 1) ^ 2)) * (1 - smoothstep(0.5, 1.5, xr)) * (1 - smoothstep(0, 1, dn))
+						-- (from the vermilion's edge: its profile at h = 1 is 0.25 + 0.75 * 0.4)
+						D += ((0.02 + 0.006 * lips) * 0.55 + 0.004 * (1 - min(xr, 1) ^ 2)) * (1 - smoothstep(0.5, 1.5, xr)) * (1 - smoothstep(0, 1, dn))
 					end
 				end
 				-- the oral fissure: a narrow deep groove into the mouth (the lips touch at the front)
@@ -601,6 +624,15 @@ local function reliefFn(F)
 					local c = bump(((ax - colw) / 0.008) ^ 2)
 					local fade = smoothstep(0.25, 0.5, hp) * (1 - smoothstep(0.85, 1.0, hp)) + smoothstep(0.05, 0.3, hp) * (1 - smoothstep(0.3, 0.5, hp))
 					D += (-0.0035 * g + 0.002 * c) * fade
+				end
+				-- the lower lip rests on the lower teeth, behind the upper ones (overbite): the upper lip leads a
+				-- little in profile; fades out into the chin below
+				if my < 0.004 then
+					D -= 0.008 * smoothstep(0.004, -0.012, my) * (1 - smoothstep(-0.05, -0.09, my)) * (1 - smoothstep(0.7, 1.3, xr))
+				end
+				-- the outer lips turn back into the corners (no flat-fronted slab out to the commissure)
+				if xr > 0.6 then
+					D -= 0.01 * smoothstep(0.65, 1.0, xr) * (1 - smoothstep(1.0, 1.35, xr)) * bump((my / 0.032) ^ 2)
 				end
 				-- mouth corners: the lips end tucked into a small hollow (never flush); the modiolus bulge beside it
 				local cq = ((ax - mW) / 0.02) ^ 2 + (my / 0.013) ^ 2
@@ -715,7 +747,7 @@ local function ray(row, th, yT, yB)
 	if row.kind == "top" then
 		return gx * shrink, yT, ZA + gz * shrink, nx * ca, sa, nz * ca
 	end
-	return gx * shrink, yB, ZA + gz * shrink, nx * ca, -sa, nz * ca
+	return gx * shrink, row.y0 or yB, ZA + gz * shrink, nx * ca, -sa, nz * ca
 end
 
 -- outermost crossing of the field along the ray (sphere tracing inward from outside, then secant)
@@ -1172,10 +1204,24 @@ local function rowList(F, q, partial)
 	for i = 1, nBot do
 		rows[#rows + 1] = { kind = "bot", a = math.rad(46) * (i / nBot) ^ 1.05 }
 	end
-	for _, aDeg in ipairs({ 58, 70, 82 }) do
-		rows[#rows + 1] = { kind = "bot", a = math.rad(aDeg) }
+	-- a longer neck (the rig's pivot lower in head space): horizontal rows down the straight column below the
+	-- cap's last row (which meets the column at ~-0.66 .. -0.71), then the closing rows from a lower origin
+	local ext = F.neckExtra or 0
+	local yEnd = yB
+	if ext > 0.005 then
+		yEnd = yB - ext
+		local y0, y1 = -0.76, -0.6 - ext + 0.02
+		if y1 < y0 - 0.02 then
+			local nN = max(1, floor((y0 - y1) / (0.055 / max(q, 0.5)) + 0.5))
+			for i = 0, nN do
+				rows[#rows + 1] = { kind = "band", y = lerp(y0, y1, i / nN), neck = true }
+			end
+		end
 	end
-	return rows, yT, yB
+	for _, aDeg in ipairs({ 58, 70, 82 }) do
+		rows[#rows + 1] = { kind = "bot", a = math.rad(aDeg), y0 = yEnd }
+	end
+	return rows, yT, yB, yEnd
 end
 
 local function rowApproxY(row, yT, yB)
@@ -1184,7 +1230,7 @@ local function rowApproxY(row, yT, yB)
 	elseif row.kind == "top" then
 		return yT + 0.4 * sin(row.a)
 	end
-	return yB - 0.3 * sin(row.a)
+	return (row.y0 or yB) - 0.3 * sin(row.a)
 end
 
 -- the column density round a row (th: the column angle) and its column count
@@ -1196,12 +1242,19 @@ local function rowDensity(F, row, yApprox)
 	local noseW = exp(-((yApprox - mid) / ((F.nasionY - F.noseBaseY) * 0.6)) ^ 4)
 	local faceW = 1
 	local capK = 1
+	-- the deeper chin-cap rows run round the neck column (round everywhere: as many columns at the sides and
+	-- the back as in front, or its sides are long chords the Body's column shows through)
+	local neckK = 0
 	if row.kind == "top" then
 		faceW = cos(row.a) ^ 1.5
 		capK = max(0.55, cos(row.a) ^ 0.7)
 	elseif row.kind == "bot" then
 		faceW = cos(row.a) ^ 1.2
 		capK = 0.5 + 0.5 * cos(row.a)
+		neckK = smoothstep(math.rad(10), math.rad(44), row.a) * (row.y0 and 0.6 or 1)
+		capK = lerp(capK, 1, neckK)
+	elseif row.neck then
+		neckK = 1
 	end
 	-- the back and sides keep a fair share: their silhouette must stay round too
 	return function(th)
@@ -1210,8 +1263,13 @@ local function rowDensity(F, row, yApprox)
 		r += 0.55 * eyeW * exp(-((df - 0.42) / 0.18) ^ 2)
 		r += mouthW * (0.6 * exp(-((df - 0.3) / 0.12) ^ 2) + 0.9 * exp(-(df / 0.16) ^ 2))
 		r += 1.5 * noseW * exp(-(df / 0.12) ^ 2)
+		if neckK > 0 then
+			-- toward the band's own column density (bandColumns): the cap's last rows line up with the neck's
+			-- band rows below them (aligned columns stitch into quads, not a zigzag ring round the neck)
+			r = lerp(r, 0.42 + 0.7 * exp(-(df / 0.9) ^ 2) + 0.45 * exp(-(df / 0.5) ^ 2), neckK)
+		end
 		return r
-	end, faceW, capK
+	end, faceW, capK, neckK
 end
 
 local function cdfOf(rho, N)
@@ -1316,10 +1374,13 @@ local function rowCounts(F, rows, q, yT, yB, N)
 			counts[r] = (row.nose and #C1 or #C0) - 1
 		else
 			-- the caps: the crown's rings keep enough columns that the dome's outline stays round
-			local rho, faceW, capK = rowDensity(F, row, rowApproxY(row, yT, yB))
+			local rho, faceW, capK, neckK = rowDensity(F, row, rowApproxY(row, yT, yB))
 			local _, total = cdfOf(rho, N)
 			local floorN = row.kind == "top" and floor(lerp(12, 30, cos(row.a)) * min(1, q / 0.6) + 0.5) or 10
 			counts[r] = max(floorN, 10, floor(lerp(32, 42, faceW) * q * capK * (total / N) + 0.5))
+			if neckK > 0 then
+				counts[r] = floor(lerp(counts[r], #C0 - 1, neckK) + 0.5)
+			end
 		end
 	end
 	for _ = 1, 2 do
@@ -1705,7 +1766,7 @@ local function headSurface(F, q, lod)
 	local m = MeshKit.New("Head")
 	local field = F.field
 	local relief = F.relief
-	local rows, yT, yB = rowList(F, q, false)
+	local rows, yT, yB, yEnd = rowList(F, q, false)
 	local counts = rowCounts(F, rows, q, yT, yB, 90)
 	local C0, C1, ia, ib = bandColumns(F, q)
 	local CP = table.create(ib - ia + 1)
@@ -1781,9 +1842,9 @@ local function headSurface(F, q, lod)
 		MeshKit.Step(#cols * 4)
 	end
 	do
-		local t = hit(field, 0, yB, ZA, 0, -1, 0, 0.5)
-		local i = MeshKit.Vertex(m, 0, yB - t, ZA, 0.5, HEAD_V)
-		rec(i, 0, yB - t, ZA, 0, -1, 0, 0)
+		local t = hit(field, 0, yEnd, ZA, 0, -1, 0, 0.5)
+		local i = MeshKit.Vertex(m, 0, yEnd - t, ZA, 0.5, HEAD_V)
+		rec(i, 0, yEnd - t, ZA, 0, -1, 0, 0)
 		rowStart[#rows + 1], rowCount[#rows + 1] = i, 1
 	end
 	local function stitch(a0, na, b0, nb)
@@ -2930,6 +2991,118 @@ local function bandNormals(m)
 		MeshKit.Step(32)
 	end
 end
+-- where the eye / mouth patches (the fields' normals) zip into the grid (its rows' own normals): the two
+-- disagree a little all along the zip, and on the side of the face that drew a shading line from the temple
+-- down the cheek to the jaw. A few passes of neighbour averaging over the zip ring and two rings either side
+-- (the nose's zip is bandNormals'; the lids' cover, the lips and the slit keep their normals)
+local function zipNormals(m, F)
+	local G = m.gridRows
+	if not G or not G.patch then
+		return
+	end
+	local gridEnd = G.gridEnd
+	local P, N, T, SW = m.P, m.N, m.T, G.SW
+	local skip = {}
+	local band = G.noseBand
+	if band then
+		for i = band.first, band.last do
+			skip[i] = true
+		end
+		for _, i in ipairs(band.hole or {}) do
+			skip[i] = true
+		end
+		for _, i in ipairs(band.isle or {}) do
+			skip[i] = true
+		end
+	end
+	local mY, mW = F.mouthY, F.mouthW
+	local function frozen(v)
+		if skip[v] or (SW and (SW[v] or 0) > 0) then
+			return true
+		end
+		local x, y = P[v * 3 - 2], P[v * 3 - 1]
+		return abs(x) < mW + 0.025 and abs(y - mY) < 0.045
+	end
+	local isPatch = {}
+	for _, i in ipairs(G.patch) do
+		isPatch[i] = true
+	end
+	local nb = {}
+	local inHead = function(v)
+		return v <= gridEnd or isPatch[v]
+	end
+	for t = 1, m.nt do
+		local a, b, c = T[t * 3 - 2], T[t * 3 - 1], T[t * 3]
+		if inHead(a) and inHead(b) and inHead(c) then
+			for _, e in ipairs({ { a, b, c }, { b, c, a }, { c, a, b } }) do
+				local l = nb[e[1]]
+				if not l then
+					l = {}
+					nb[e[1]] = l
+				end
+				l[e[2]], l[e[3]] = true, true
+			end
+		end
+		if t % 512 == 0 then
+			MeshKit.Step(64)
+		end
+	end
+	-- the zip ring: patch vertices next to grid ones and grid vertices next to patch ones; then two rings out
+	local set = {}
+	for v, l in pairs(nb) do
+		local p = isPatch[v] == true
+		for u in pairs(l) do
+			if (isPatch[u] == true) ~= p then
+				set[v] = 0
+				break
+			end
+		end
+	end
+	for ring = 1, 2 do
+		local add = {}
+		for v, r in pairs(set) do
+			if r == ring - 1 then
+				for u in pairs(nb[v] or {}) do
+					if set[u] == nil then
+						add[u] = ring
+					end
+				end
+			end
+		end
+		for u, r in pairs(add) do
+			set[u] = r
+		end
+	end
+	for v in pairs(set) do
+		if frozen(v) then
+			set[v] = nil
+		end
+	end
+	-- the zip ring itself gets the most smoothing, the outer rings less (no blur spreads far)
+	for pass = 1, 4 do
+		local out = {}
+		for v, r in pairs(set) do
+			if r < pass - 1 or pass <= 2 then
+				local own = 2
+				local sx, sy, sz = N[v * 3 - 2] * own, N[v * 3 - 1] * own, N[v * 3] * own
+				for u in pairs(nb[v]) do
+					sx += N[u * 3 - 2]
+					sy += N[u * 3 - 1]
+					sz += N[u * 3]
+				end
+				local sl = sqrt(sx * sx + sy * sy + sz * sz)
+				if sl > 1e-9 then
+					out[v] = { sx / sl, sy / sl, sz / sl }
+				end
+			end
+		end
+		for v, n in pairs(out) do
+			N[v * 3 - 2], N[v * 3 - 1], N[v * 3] = n[1], n[2], n[3]
+		end
+		MeshKit.Step(32)
+	end
+end
+
 local function seamColours(m)
 	local seams = m.gridRows and m.gridRows.seams
 	local C = m.C
@@ -3373,6 +3546,12 @@ local function eyeTexture(m, F, look, side, w, pscale)
 	end
 	local psx, psy, psz = pscale[1], pscale[2], pscale[3]
 	local noise = MeshKit.Noise
+	-- the whites are never paper white: dimmer on darker skin (the sclera there is greyer / warmer and the
+	-- socket's shade falls on it), and in shadow toward the outer corner under the lids
+	local sk1, sk2, sk3 = Paint.Skin(look)
+	local dkS = Paint.Darkness(sk1, sk2, sk3)
+	local sclK = 1 - 0.13 * dkS
+	local outerK = 0.36 + 0.24 * dkS
 	local function base(px, py, r, g, b, x, y, z)
 		local dx, dy, dz = x - E.x, y - E.y, z - E.z
 		local l = sqrt(dx * dx + dy * dy + dz * dz)
@@ -3407,8 +3586,9 @@ local function eyeTexture(m, F, look, side, w, pscale)
 			return rr, gg, bb
 		end
 		-- sclera: whiter at the front, greyer / pinker toward the corners, faint veins there
-		local k = 1 - 0.06 * smoothstep(0.6, 1.4, ang)
-		local rr, gg, bb = scl[1] * k, scl[2] * k, scl[3] * k
+		local lat = dx * side / l -- + toward the outer corner
+		local k = (1 - 0.06 * smoothstep(0.6, 1.4, ang)) * sclK * (1 - outerK * smoothstep(0.2, 0.78, lat))
+		local rr, gg, bb = scl[1] * k, scl[2] * k * (1 - 0.02 * dkS), scl[3] * k * (1 - 0.05 * dkS)
 		local corner = abs(cos(ph)) * smoothstep(0.8, 1.3, ang)
 		if corner > 0 then
 			local vein = 1 - abs(noise(ph * 9, ang * 7, 4.5, seed + 11))
@@ -3584,7 +3764,9 @@ local function shadeSockets(m, F)
 					local uw = p.uw
 					local fold = uw * math.exp(-o / 0.0055) + (1 - uw) * 0.45 * math.exp(-o / 0.0035)
 					local socket = 1 - smoothstep(0, p.reach, o)
-					local k1 = 1 - S * fold - A * socket
+					-- the outer corner sits under the brow's end and above the cheek: in shade from the side
+					local outerC = smoothstep(0.35, 0.9, p.nx * side) * math.exp(-o / 0.009)
+					local k1 = (1 - S * fold - A * socket) * (1 - lerp(0.14, 0.08, dk) * outerC)
 					local r, g, b = C[vi * 3 - 2] * k1, C[vi * 3 - 1] * k1 * 0.985, C[vi * 3] * k1 * 0.99
 					-- the inner corner: pinker, a little darker
 					local lat = p.nx * side
@@ -4014,7 +4196,10 @@ local function neckToneFn(F)
 	local _, border = lowerFaceSlices(F)
 	local neckCol, neckP = Skull.NeckSD, F.P.neck
 	return function(x, y, z)
-		local below = border(z) - y
+		-- in front: from the jaw's lower border (the change sits in the jaw's shadow); behind the ramus: a slow
+		-- gradient down the nape from under the hairline (no lighter patch with a hard top under the occiput)
+		local back = smoothstep(0.0, 0.12, z)
+		local below = lerp(border(z) - y, -0.3 - y, back)
 		if below <= 0.005 then
 			return 0
 		end
@@ -4022,7 +4207,7 @@ local function neckToneFn(F)
 		if dN >= 0.16 then
 			return 0
 		end
-		return smoothstep(0.005, 0.05, below) * (1 - smoothstep(0.04, 0.16, dN))
+		return smoothstep(0.005, lerp(0.05, 0.11, back), below) * (1 - smoothstep(0.04, 0.16, dN))
 	end
 end
 
@@ -4370,7 +4555,13 @@ function Gen.Generate(look, lod, ctx)
 	local ears = {}
 	for side = -1, 1, 2 do
 		local first = head.nv + 1
-		earMesh(F, side, lod, skin, head, side < 0 and { 0.02, 0.905, 0.24, 0.995 } or { 0.26, 0.905, 0.48, 0.995 })
+		local earSkin = skin
+		if Paint.LightK(sr, sg, sb) > 0 then
+			-- thin skin over cartilage: pale ears read pinker than the face
+			local lk = Paint.LightK(sr, sg, sb)
+			earSkin = { min(1, sr * (1 + 0.03 * lk)), sg * (1 - 0.05 * lk), sb * (1 - 0.05 * lk) }
+		end
+		earMesh(F, side, lod, earSkin, head, side < 0 and { 0.02, 0.905, 0.24, 0.995 } or { 0.26, 0.905, 0.48, 0.995 })
 		ears[#ears + 1] = { side = side, first = first, last = head.nv, centre = (earFrame(F, side, lod)) }
 	end
 	mark("ears+v")
@@ -4379,6 +4570,7 @@ function Gen.Generate(look, lod, ctx)
 	fieldNormals(head, F)
 	seamNormals(head)
 	bandNormals(head)
+	zipNormals(head, F)
 	-- the ears' rim twins: one normal (the helix rolls round smoothly)
 	do
 		local N = head.N
@@ -4449,7 +4641,24 @@ function Gen.Generate(look, lod, ctx)
 		end
 	end
 	mark("paint")
+	-- pale skin: the occluded folds go warm (blood under thin skin), not grey (r +6 %, b -4 % where the bake
+	-- darkens most); the ears' rims redder
+	local lightK = Paint.LightK(sr, sg, sb)
+	local preAO = lightK > 0 and table.clone(head.C) or nil
 	MeshKit.BakeAO(head, { cavity = 0.45, ridge = 0.06, down = 0.1, cavityScale = 5 })
+	if preAO then
+		local C = head.C
+		for i = 1, head.nv do
+			local l0 = preAO[i * 3 - 2] + preAO[i * 3 - 1] + preAO[i * 3]
+			local l1 = C[i * 3 - 2] + C[i * 3 - 1] + C[i * 3]
+			if l0 > 1e-6 and l1 < l0 then
+				local t = clamp((1 - l1 / l0) / 0.2, 0, 1) * lightK
+				C[i * 3 - 2] = min(1, C[i * 3 - 2] * (1 + 0.06 * t))
+				C[i * 3] *= 1 - 0.04 * t
+			end
+		end
+		MeshKit.Step(head.nv // 8)
+	end
 	shadeSockets(head, F)
 	seamColours(head)
 	-- under the jaw and down the neck: toward the Body's skin (its base colour: no undertone, no shadow, no

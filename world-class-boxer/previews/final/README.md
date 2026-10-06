@@ -43,6 +43,9 @@ These are offline renders of complete characters, as the game shows them when th
 | `18_neck_interface_clay.jpg` | Untextured (clay) head mesh alone, then with the UpperTorso: the trapezius rises to the jaw, so almost no neck shows |
 | `19_faces_clay.jpg` | 10 heads untextured (clay) at 3/4: geometry without paint |
 | `20_medium_detail.jpg` | Four boxers at medium detail (what distant NPCs get) |
+| `21_neck_lift_proposal.jpg` | The neck with the head polish fixer's Builder lift and Body column requests applied (`scratchpad/integration2/PF-head.md`), against the current tree |
+| `22_mouths_beards_eyes.jpg` | Polish pass on the head: mouths and beards at 3/4, and eye macros |
+| `23_cast_lead_hook.jpg` | All 15 at the moment the lead hook lands, seen from above: the fist swings round the body into the side of the jaw with the elbow bent (game polish pass) |
 
 The judge's full defect list, with generator file and function and a fix for each, went back to the orchestrator. The main defects these images show:
 
@@ -54,10 +57,56 @@ The judge's full defect list, with generator file and function and a fix for eac
   - some locs stick out sideways at the shoulders
   - cornrows and 360 waves are painted stripes
   - beards look like solid slabs
-- **Animation:** out-boxers stand on tiptoe at 40–58°, and the cross lands with the elbow still bent about 70° and the forearm angled upward.
+- **Animation:** out-boxers stood on tiptoe at 40–58°, and the cross landed with the elbow still bent about 70° and the forearm angled upward. The game polish pass fixed both, and the lead hook now swings round instead of pushing forward. `01`, `02`, `10`–`13` and `23` were re-rendered after that pass, with poses from the current Animator: stance feet at about 15–30°, jab and cross with the elbow 157–168° open at contact, and the forearm level within 15° unless a much shorter boxer is punching up at a taller one's chin.
 
 Working files, which are not part of the repo, are in `/tmp/claude-0/vj/`:
 - `cast.lua`: the cast
 - `lab/scen_vj.lua`: the pose capture
 - `render/specs/vj.lua` and `mk_layout.py`, `mk_show.py`: the sheet layouts
 - `png/`: every full-size sheet
+
+## Body polish re-render
+
+`01`, `07`, `08`, `14`–`17` and `20` were re-rendered from the working tree after the body polish pass, with the same layouts and the same renderer. They now show:
+
+- **Boots and trainers:** about 15.5 % of standing height, with rounded toe boxes and a thicker sole that has a darker side wall. Criss-cross laces run between eyelet rows on a raised tongue, from the boot shaft down onto the instep.
+- **Gloves:** a padded fist that is widest at two thirds of its length, curls into a domed knuckle pad and has a thick attached thumb. Lace-up cuffs have the same criss-cross lacing as the boots.
+- **Trunks:** slimmer A-line legs, and a seat that runs straight into them with no shelf.
+- **Sports top:** a scoop neckline, a racer back and knit ribbing.
+- **Hand wraps:** layered turns over the knuckles, between the fingers and round the thumb.
+- **Medium detail:** trim bands have crisp edges.
+
+The other sheets are unchanged from the judge's set.
+
+## Head polish pass
+
+`03`, `04`, `05`, `19` and `22` were re-rendered after the head polish pass, in the relaxed pose, at full detail, from the working tree.
+
+| Area | Change |
+|---|---|
+| Lips | They sit behind the line from nose tip to chin, have a rounded vermilion, turn back into the corners, and the mouth is narrower |
+| Face shapes | Women: V-shaped faces over a slimmer neck. Men: stronger jaw and face-length variation, with a crisper jaw-to-neck angle |
+| Eyes | Set deeper, with a tighter lateral canthus; the whites are shaded toward the outer corner and on dark skin |
+| Beards | They stop under the jaw, the cheek line is feathered, the hair is clumped with lighter tips, and the chin strap is a band rather than a line |
+| Pale skin | Warmer, with more flush |
+| Nape | The tone runs as a gradient down the nape |
+
+The longer neck needs the Builder and Body requests in `PF-head.md`; see `21`. The final regression pass tried them: the neck rendered as intended, but the animation lab's punch gates then failed (an overhand forearm passes through the boxer's own raised head, and some lead hooks lose lateral travel), so they are not applied yet.
+
+
+## Hair polish pass
+
+`03`–`06`, `13`–`17` and `19` were re-rendered from the working tree after the hair polish pass, with the same layouts and renderer (relaxed pose for the face and hair sheets, the lab poses for `13`).
+
+| Style | Change |
+|---|---|
+| Afro | An egg-shaped mass made of 8–12 broad cluster lobes plus a strong wobble. It rounds down into the scalp over the ears and at the nape, with no brim or shelf. The valleys and underside are darker, the surface is matte, and about 220 coil clusters sit mostly on the silhouette |
+| Locs | Locs that land on the body slide down along it and drop behind (or in front of) the shoulder. They never stick out sideways. Each loc is lumpier, with a slow swell and pinch along its length and a matte frizz texture. HairFX uses the same rule at runtime |
+| Cornrows | The rows run in parallel from the hairline to the nape and end in tapered ends tucked into the scalp, with no star at the back. Each braid has a raised plait: stitches that alternate sides, with grooves between them. Between the rows the scalp is the head's own skin tone with a fine stipple of new growth and thin, clean partings |
+| Box braids | Each section is skin-toned with a soft stipple. There are no dark squares at the roots |
+| Short cuts and fades | A parting is drawn only when the look has one, as a narrow, shadowed gap. Short tufts in the hair's own tone and some thickness noise give the top relief and a broken outline. Curly tops are dense, packed curl clusters |
+| Long hair | Narrow locks in three length layers taper to fine tips. A shadowed inner layer sits behind the gaps, cheek strands are tucked behind the ears, and fine strands run over the front and top |
+| Long curly | Fewer, fuller ringlets. The side sheet is split into crimped locks with a lighter inner face, and it rises out from under the cap, so there is no straight seam |
+| Ponytail | A longer, fuller tail. The hair pulled back to it lies flush with softer streaks |
+| 360 waves | Ripples spiral out from the crown, with S-curved crests broken into sections and a coily stipple. These replace the old concentric bands |
+| Dyes | A light dye keeps the strand texture under it, with stretched contrast instead of a flat colour |

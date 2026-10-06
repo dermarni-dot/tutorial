@@ -123,6 +123,11 @@ local function lum(r, g, b)
 	return 0.299 * r + 0.587 * g + 0.114 * b
 end
 
+-- 0 below a light skin's luminance .. 1 for the palest tones (thin skin: warmer cavities, redder flush)
+function Paint.LightK(r, g, b)
+	return smoothstep(0.68, 0.8, 0.299 * r + 0.587 * g + 0.114 * b)
+end
+
 -- 0 for light skin .. 1 for the deepest tones
 local function darkness(r, g, b)
 	return clamp((0.5 - lum(r, g, b)) / 0.32, 0, 1)
@@ -237,9 +242,11 @@ function Paint.BeardZone(F)
 			return 0
 		end
 		local ax = abs(x)
-		-- (the cheek line wanders: nobody's is a ruled curve)
-		local line = cheekLine(ax) + 0.009 * MeshKit.Noise(ax * 22, y * 14, x < 0 and 3.7 or 9.1, seed)
-		local w = smoothstep(line + 0.03, line - 0.05, y)
+		-- (the cheek line wanders and thins out over a band: nobody's is a ruled curve; the strands growing down
+		-- out of its sparse top break it up further)
+		local line = cheekLine(ax) + 0.014 * MeshKit.Noise(ax * 22, y * 14, x < 0 and 3.7 or 9.1, seed)
+			+ 0.007 * MeshKit.Noise(ax * 70, y * 55, x < 0 and 5.3 or 1.9, seed + 2)
+		local w = smoothstep(line + 0.045, line - 0.065, y)
 		-- the moustache: the upper lip skin between the nostrils' sides
 		local mx = 1 - smoothstep(0.1, 0.135, ax)
 		local my = smoothstep(nB + 0.004, nB - 0.008, y)
@@ -252,7 +259,10 @@ function Paint.BeardZone(F)
 		w *= 1 - inLip
 		-- down the front of the neck to the neckline, not round the back: it ends at the angle of the jaw, under
 		-- the front of the ear (behind it the skin is the neck's)
-		w *= smoothstep(cy - 0.2, cy - 0.12, y)
+		-- (the neckline follows the jaw's underside a little below it: under the chin, then rising to the angle;
+		-- a beard is not a block hanging under the jaw)
+		local yLim = lerp(cy - 0.1, F.gonionY - 0.06, smoothstep(0.04, F.jawW, ax))
+		w *= smoothstep(yLim - 0.035, yLim + 0.015, y)
 		w *= 1 - smoothstep(0.03, 0.1, z)
 		-- the sideburn: up the side of the face only the narrow strip in front of the ear (blended in with
 		-- height: a cut at one height would draw a line across the cheek)
@@ -281,7 +291,11 @@ function Paint.Vertex(m, F, look, first, last)
 	local mW = F.mouthW
 	-- lips: redder than the skin on light tones, deeper and a touch cooler on deep tones
 	local lipR, lipG, lipB = lerp(sr * 0.82, sr * 0.74, dark), lerp(sg * 0.62, sg * 0.6, dark), lerp(sb * 0.66, sb * 0.7, dark)
-	local flushK = (1 - 0.7 * dark) * 0.6
+	-- the palest tones show the blood under thin skin: more flush (cheeks, nose, chin) and rosier lips, never
+	-- chalky
+	local lightK = Paint.LightK(sr, sg, sb)
+	lipR, lipG, lipB = lipR * (1 + 0.04 * lightK), lipG * (1 - 0.07 * lightK), lipB * (1 - 0.04 * lightK)
+	local flushK = (1 - 0.7 * dark) * 0.6 * (1 + 0.7 * lightK)
 	local P, C = m.P, m.C
 	for i = first or 1, last or m.nv do
 		local x, y, z = P[i * 3 - 2], P[i * 3 - 1], P[i * 3]
@@ -1041,7 +1055,8 @@ function Paint.BeardTexture(m, Q, headBuf, headW, headH, F, look, w, h, pscale, 
 	local mW = F.mouthW
 	local dk = darkness(br, bg, bb)
 	-- dark hair shows its strands by their sheen
-	local shR, shG, shB = lerp(br, 0.3, 0.22 * dk), lerp(bg, 0.27, 0.22 * dk), lerp(bb, 0.25, 0.22 * dk)
+	local shR, shG, shB = lerp(br, 0.36, 0.34 * dk), lerp(bg, 0.32, 0.34 * dk), lerp(bb, 0.29, 0.34 * dk)
+	local noise = MeshKit.Noise
 	-- per texel coverage and growth direction (f32 buffers: no GC traversal, zeroed on creation)
 	local COV = buffer.create(w * h * 4)
 	local DXY = buffer.create(w * h * 8)
@@ -1096,9 +1111,13 @@ function Paint.BeardTexture(m, Q, headBuf, headW, headH, F, look, w, h, pscale, 
 				by1 = py
 			end
 		end
-		local baseK = smoothstep(0.25, 0.9, cov) * 0.8
-		local kb = 0.6 + 0.12 * (1 - dk)
-		return lerp(sr, br * kb, baseK), lerp(sg, bg * kb, baseK), lerp(sb, bb * kb, baseK)
+		-- the underpaint (the beard's shadowed depth) only in the dense core: the outer third is strands over
+		-- skin; clumps of hair catch the light unevenly (no flat slab of colour)
+		local baseK = smoothstep(0.4, 1.0, cov) * 0.72
+		local clump = noise(x * 60, y * 75, z * 60, seed + 9) * 0.6 + noise(x * 160, y * 200, z * 160, seed + 13) * 0.4
+		local kb = (0.6 + 0.12 * (1 - dk)) * (0.82 + 0.45 * clump)
+		local lift = 0.05 * dk * clump
+		return lerp(sr, br * kb + lift, baseK), lerp(sg, bg * kb + lift, baseK), lerp(sb, bb * kb + lift * 0.9, baseK)
 	end
 	local buf
 	if inPlace then

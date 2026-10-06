@@ -305,13 +305,25 @@ local function paint(mask, colors, glowWeights)
 	return out, glow
 end
 
+-- once a creation fails (the experience's Image APIs are off, or the editable budget is spent) every
+-- later map draws with frames for a while instead of retrying: a Hub tour would otherwise make dozens of
+-- failing calls at once. Disabled APIs stay off for the session; a spent budget is tried again later.
+local IMAGE_RETRY = 60
+local imagesOffUntil = nil
 local function newImage(W, H)
+	if imagesOffUntil and os.clock() < imagesOffUntil then
+		return nil
+	end
 	local ok, img = pcall(function()
 		return AssetService:CreateEditableImage({ Size = Vector2.new(W, H) })
 	end)
 	if ok and img then
+		imagesOffUntil = nil
 		return img
 	end
+	local msg = (not ok) and tostring(img) or ""
+	local disabled = msg:find("not enabled") or msg:find("not available") or msg:find("permission")
+	imagesOffUntil = disabled and math.huge or os.clock() + IMAGE_RETRY
 	return nil
 end
 

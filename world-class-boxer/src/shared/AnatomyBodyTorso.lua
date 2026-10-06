@@ -560,9 +560,10 @@ function Torso.Upper(sk, P, lod, opt)
 	MeshKit.Displace(m, field)
 	if opt.top then
 		-- the sports top's elastic hem stands a hair proud of the skin (the garment reads as fabric)
+		-- (and the whole garment a few millimetres off the skin: fabric over the body, not paint on it)
 		MeshKit.Displace(m, function(i, x, y, z)
-			local _, hem = Torso.TopMask(sk, x, y, z, 0.35)
-			return 0.01 * hem
+			local w, hem = Torso.TopMask(sk, x, y, z, 0.35)
+			return 0.006 * w + 0.008 * hem
 		end)
 	end
 	Kit.GridNormals(m, MeshKit, info)
@@ -631,7 +632,7 @@ function Torso.Lower(sk, P, lod, prof, opt)
 		if rings >= 10 then
 			list = { bot, bot + 0.014, yH - 0.045, yS, yS + 0.3 * (bandBot - yS), yS + 0.62 * (bandBot - yS), bandBot - 0.03, bandBot - 0.012, bandBot, (bandBot + top) / 2, top }
 		elseif rings >= 8 then
-			list = { bot, bot + 0.014, yS, yS + 0.4 * (bandBot - yS), bandBot - 0.03, bandBot - 0.012, bandBot, (bandBot + top) / 2, top }
+			list = { bot, bot + 0.014, yS, yS + 0.45 * (bandBot - yS), bandBot - 0.012, bandBot, (bandBot + top) / 2, top }
 		else
 			list = { bot, yS, bandBot - 0.012, bandBot, top }
 		end
@@ -720,18 +721,29 @@ function Torso.TopMask(sk, x, y, z, soft)
 	local back = smooth(-0.08, 0.08, z)
 	local function cover(k)
 		local band = smooth(0.375 - 0.035 * k, 0.375 + 0.035 * k, u)
-		local nf = 1 - smooth(0.83 - 0.05 * k, 0.83 + 0.05 * k, u + 0.1 * (1 - smooth(0.0, 0.45, fx)))
-		local nb = 1 - smooth(0.905 - 0.045 * k, 0.905 + 0.045 * k, u)
-		local neckline = nf + (nb - nf) * back
-		-- the straps over the shoulders: a fixed width, k only softens their edges
-		local strap = smooth(0.84 - 0.04 * k, 0.84 + 0.04 * k, u) * (1 - smooth(-0.06 * k, 0.06 * k, abs(fx - 0.52) - 0.19))
-		local armhole = 1 - smooth(0.82 - 0.06 * k, 0.82 + 0.06 * k, fx) * smooth(0.66 - 0.08 * k, 0.66 + 0.08 * k, u)
-		return clamp(band * max(neckline * armhole, strap), 0, 1)
+		-- front: a rounded scoop neckline (deepest at the sternum, rising in a U into the straps); the armhole
+		-- (the straps' outer edge) follows the shoulder's slope, narrow over the top, curving out and down round
+		-- the armpit to the side seam
+		local q = clamp(fx / 0.44, 0, 1)
+		local nl = 0.775 + 0.2 * q * q * (3 - 2 * q) + 0.12 * smooth(0.4, 0.6, fx)
+		local neckline = 1 - smooth(nl - 0.04 * k, nl + 0.04 * k, u)
+		local aF = 0.6 + 0.3 * smooth(0.92, 0.6, u)
+		local front = neckline * (1 - smooth(aF - 0.05 * k, aF + 0.05 * k, fx))
+		-- back: a racer back (the body of the top narrows to the spine between the shoulder blades, the straps
+		-- run from there up and out over the trapezius to meet the front's)
+		local aB = 0.2 + 0.7 * smooth(0.76, 0.56, u)
+		local body = (1 - smooth(aB - 0.05 * k, aB + 0.05 * k, fx)) * (1 - smooth(0.8 - 0.03 * k, 0.8 + 0.03 * k, u))
+		local fc = 0.14 + 0.37 * smooth(0.7, 0.95, u)
+		local strap = (1 - smooth(0.085 - 0.03 * k, 0.085 + 0.03 * k, abs(fx - fc))) * smooth(0.62, 0.7, u)
+		local backC = max(body, strap)
+		return clamp(band * (front + (backC - front) * back), 0, 1)
 	end
 	local w = cover(soft)
 	if w <= 0 then
 		return 0, 0
 	end
+	-- (a full cover inside the border: no partial band of skin along the edges)
+	w = clamp(w * 1.15, 0, 1)
 	-- the hem: inside the cover but near its border (a wider version of the same mask falls off there)
 	local wide = cover(soft + 0.55)
 	return w, clamp(w * (1 - wide) * 2.2, 0, 1)

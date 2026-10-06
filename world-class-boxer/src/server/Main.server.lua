@@ -237,6 +237,28 @@ local function applyLook(player, previewApp, hands, popts)
 	end)
 end
 
+-- how much higher than the classic rig this character's root stands (CityMap's travel targets and the
+-- spawn spots assume the classic 3.2 above the floor; the athletic rigs stand 3.2-4.7): placing a tall
+-- boxer at 3.2 sinks his feet into the floor and the Humanoid springs him up (a visible pop)
+local function standLift(char, assumed)
+	local hum = char and char:FindFirstChildOfClass("Humanoid")
+	local root = char and char:FindFirstChild("HumanoidRootPart")
+	if not (hum and root) or hum.HipHeight <= 0.5 then
+		return 0
+	end
+	return math.clamp(hum.HipHeight + root.Size.Y / 2 + 0.05 - (assumed or 3.2), -0.5, 2.5)
+end
+
+-- move a character to a CFrame made for the classic rig's root height (`assumed` above the floor),
+-- lifted to its own stand height (only ever up when the spot already has slack built in)
+local function placeChar(char, cf, assumed, upOnly)
+	local lift = standLift(char, assumed)
+	if upOnly then
+		lift = math.max(0, lift)
+	end
+	char:PivotTo(cf + V3(0, lift, 0))
+end
+
 local function gymSpawnCFrame()
 	local spawn = workspace:FindFirstChild("Gym") and workspace.Gym:FindFirstChild("GymSpawn")
 	local p = spawn and spawn.Position or V3(0, 1, 60)
@@ -746,7 +768,7 @@ local function runFight(player, profile)
 		return -- PlayerRemoving settled the bout before the leave save
 	end
 	if player.Character then
-		player.Character:PivotTo(gymSpawnCFrame())
+		placeChar(player.Character, gymSpawnCFrame(), 4, true)
 	end
 	res = res or watch.quit
 	local out = settleFight(player, watch, res)
@@ -820,7 +842,7 @@ local function runSpar(player, profile, intensity)
 		return
 	end
 	if player.Character then
-		player.Character:PivotTo(CFrame.new(MapBuilder.RingCenter + V3(rng:NextNumber(-3, 3), 4, 17)))
+		placeChar(player.Character, CFrame.new(MapBuilder.RingCenter + V3(rng:NextNumber(-3, 3), 4, 17)), 4, true)
 	end
 	if res and DataManager.Get(player) == profile then
 		local thrown = res.thrown or 0
@@ -1166,7 +1188,8 @@ function handlers.TravelTo(player, profile, stationId)
 		local base = m:FindFirstChild("Base")
 		target = CFrame.new(base.Position + V3(0, 3.5, 0))
 	end
-	char:PivotTo(target)
+	-- (the stations' exits stand the root about 4.1 above the gym floor)
+	placeChar(char, target, 4.1, true)
 	return { ok = true }
 end
 
@@ -1216,14 +1239,15 @@ function handlers.Sleep(player, profile)
 				return
 			end
 			local cf
+			local assumed, upOnly = 3.2, false
 			if wake == "gym" then
-				cf = gymSpawnCFrame()
+				cf, assumed, upOnly = gymSpawnCFrame(), 4, true
 			else
 				local ok, homeCF = pcall(CityMap.TravelCFrame, player, profile, "home")
 				cf = ok and homeCF or nil
 			end
 			if typeof(cf) == "CFrame" then
-				c:PivotTo(cf)
+				placeChar(c, cf, assumed, upOnly)
 			end
 		end)
 	end
@@ -1242,8 +1266,9 @@ local function travel(player, profile, where, kind)
 		return { ok = false, err = "Your character isn't ready." }
 	end
 	local cf, err
+	local assumed, upOnly = 3.2, false
 	if where == "gym" then
-		cf = gymSpawnCFrame()
+		cf, assumed, upOnly = gymSpawnCFrame(), 4, true
 	else
 		local ok, a, b = pcall(CityMap.TravelCFrame, player, profile, where, kind)
 		if ok then
@@ -1256,7 +1281,7 @@ local function travel(player, profile, where, kind)
 	if typeof(cf) ~= "CFrame" then
 		return { ok = false, err = type(err) == "string" and err or "Can't go there." }
 	end
-	char:PivotTo(cf)
+	placeChar(char, cf, assumed, upOnly)
 	return { ok = true, where = where }
 end
 

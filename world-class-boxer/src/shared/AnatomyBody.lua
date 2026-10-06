@@ -115,6 +115,11 @@ local function paintContext(look, P, seed)
 		aoTint = lum < 0.3 and { 0.44, 0.33, 0.3 } or (fair and { 0.4, 0.33, 0.3 } or { 0.42, 0.3, 0.26 }),
 		clothTint = { 0.4, 0.38, 0.38 },
 	}
+	-- the darkest skin: the lit ridges / muscle crowns cut ~40 % (a strong highlight band on very dark skin read
+	-- as wet rubber)
+	local dk = lerp(0.6, 1, smooth(0.12, 0.25, lum))
+	pc.ao.ridge *= dk
+	pc.ck *= dk
 	return pc
 end
 
@@ -248,8 +253,12 @@ local function trunkSpec(look)
 	return { r = r, g = g, b = b, tr = tr, tg = tg, tb = tb, style = style, hemB = style == "Long" and 1.0 or 0.44 }
 end
 
-local function wearOf(look)
+-- lod: above low detail the trims narrower than the ring spacing (the glove cuff's rolled top, the trunks' hem
+-- band / piping) get a zone of their own (z[4] / z[5] = the whole garment's span), so their edges are ring
+-- pairs: crisp in the vertex colours that carry medium detail
+local function wearOf(look, lod)
 	local wear = { gear = Gear.Read(look), zones = {} }
+	local split = lod ~= "low"
 	if Gen.DrawsTrunks(look) then
 		wear.trunk = trunkSpec(look)
 	end
@@ -261,7 +270,13 @@ local function wearOf(look)
 			if wear.trunk.hemB >= 0.97 then
 				z.UpperLeg = { { -1, 2, "trunk" } }
 			else
-				z.UpperLeg = { { -1, wear.trunk.hemB, "trunk" }, { wear.trunk.hemB, 2, "skin" } }
+				local hemB = wear.trunk.hemB
+				local band = Gear.HEM_BAND[wear.trunk.style]
+				if split and band then
+					z.UpperLeg = { { -1, hemB - band, "trunk", -1, hemB }, { hemB - band, hemB, "trunk", -1, hemB }, { hemB, 2, "skin" } }
+				else
+					z.UpperLeg = { { -1, hemB, "trunk" }, { hemB, 2, "skin" } }
+				end
 			end
 		end
 		-- shins: the long trunks' cuff under the knee, then the boot shaft / sock / trainer collar
@@ -282,7 +297,12 @@ local function wearOf(look)
 		z.LowerLeg = ll
 		-- forearms: the glove's cuff or the wrap at the wrist
 		if g.hands == "gloves" then
-			z.LowerArm = { { -1, g.glove.cuffTop, "skin" }, { g.glove.cuffTop, 2, "glove" } }
+			local top = g.glove.cuffTop
+			if split then
+				z.LowerArm = { { -1, top, "skin" }, { top, top + Gear.CUFF_BAND, "glove", top, 2 }, { top + Gear.CUFF_BAND, 2, "glove", top, 2 } }
+			else
+				z.LowerArm = { { -1, top, "skin" }, { top, 2, "glove" } }
+			end
 		elseif g.hands == "wraps" then
 			z.LowerArm = { { -1, g.wrap.top, "skin" }, { g.wrap.top, 2, "wrap" } }
 		end
@@ -345,10 +365,19 @@ local function utPainter(pc, sk, P, prof, look)
 		end
 		local w, edge = Torso.TopMask(sk, x, y, z, soft)
 		if w <= 0 then
-			return r, g, b
+			return r, g, b, 0
 		end
-		local k = (1 - 0.14 * edge) * (grain or 1)
-		return mix(r, g, b, topR * k, topG * k, topB * k, w)
+		-- the elastic hem a shade darker; the fabric shadowed under the bust where it pulls in to the band
+		local u = (y - yW) / H
+		local fxs = abs(x) / xS
+		local under = bell((u - 0.45) / 0.05) * smooth(0.08, 0.2, fxs) * (1 - smooth(0.55, 0.75, fxs)) * smooth(0.0, -0.2, z) * (P.female and 1 or 0)
+		local k = (1 - 0.3 * edge) * (1 - 0.14 * under) * (grain or 1)
+		if soft < 0.5 then
+			-- (texture only) the knit's fine vertical ribs: reads as fabric, not as tinted skin
+			k *= 1 - 0.05 * (0.5 + 0.5 * math.cos(x * 190))
+		end
+		r, g, b = mix(r, g, b, topR * k, topG * k, topB * k, w)
+		return r, g, b, w
 	end
 	return { base = base, top = top, hasTop = topR ~= nil }
 end
@@ -442,7 +471,7 @@ function Gen.Generate(look, lod, ctx)
 	local seed = (P.V.veinSeed or 1) % 100000
 	local pc = paintContext(look, P, seed)
 	local sr, sg, sb = pc.sr, pc.sg, pc.sb
-	local wear = wearOf(look)
+	local wear = wearOf(look, lod)
 	local trunk = wear.trunk
 	local pieces = {}
 	local morphSets = {}
@@ -464,8 +493,11 @@ function Gen.Generate(look, lod, ctx)
 			r, g, b = sepShade(pc, r, g, b, ch.groove[i], ch.crown[i], 0.75, 0.22)
 			local k = 1 + 0.028 * MeshKit.Noise(x * 2.6, y * 2.6, z * 2.6, seed) + 0.012 * MeshKit.Noise(x * 9, y * 9, z * 9, seed + 7)
 			r, g, b = r * k, g * k, b * k
-			r, g, b = up.top(r, g, b, x, y, z, 1)
-			r, g, b = Kit.ApplyAO(r, g, b, dark[i], light[i], pc.aoTint)
+			local tw
+			r, g, b, tw = up.top(r, g, b, x, y, z, 1)
+			-- (the fabric is smooth: the skin's separations / cavities do not show through it)
+			tw = tw or 0
+			r, g, b = Kit.ApplyAO(r, g, b, dark[i] * (1 - 0.6 * tw), light[i] * (1 - 0.5 * tw), pc.aoTint)
 			C[i * 3 - 2], C[i * 3 - 1], C[i * 3] = r, g, b
 		end
 	end
@@ -508,10 +540,11 @@ function Gen.Generate(look, lod, ctx)
 				end
 				local k = grain[sm.py * tw + sm.px + 1]
 				r, g, b = r * k, g * k, b * k
+				local tcov = 0
 				if up.hasTop then
-					r, g, b = up.top(r, g, b, sm.x, sm.y, sm.z, 0.2, 1 + 0.02 * Kit.TileAt(tiles.pore, sm.px * 0.5, sm.py * 2))
+					r, g, b, tcov = up.top(r, g, b, sm.x, sm.y, sm.z, 0.2, 1 + 0.02 * Kit.TileAt(tiles.pore, sm.px * 0.5, sm.py * 2))
 				end
-				return Kit.ApplyAO(r, g, b, sm.dark, sm.light, pc.aoTint)
+				return Kit.ApplyAO(r, g, b, sm.dark * (1 - 0.6 * tcov), sm.light * (1 - 0.5 * tcov), pc.aoTint)
 			end, { P = ui.P0, N = ui.N0, dark = dark, light = light, noN = true })
 		end }
 	end

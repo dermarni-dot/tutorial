@@ -249,6 +249,11 @@ local function capShader(H, spec)
 	-- probability = the coverage (sparse hairs, not a line)
 	local ditherAll = stubble and 1 or 0
 	local soft = math.max(cut.soft or 0.016, 0.02)
+	-- ao(X, Y, Z) -> 0..1: the volume's own occlusion (the crevices between a mass's clusters, its underside)
+	local aoFn = spec.ao
+	-- a parting: a narrow gap of shadowed scalp between the strands either side (never a skin-tone stripe)
+	local partAt = cut.partAt
+	local gapR, gapG, gapB = scR * 0.5, scG * 0.47, scB * 0.45
 	return function(u, v, r, g, b, a, x, y, z, nx, ny, nz)
 		-- 5-10 us a texel: MeshKit counts the call as 1 unit, these keep its tick on time
 		step(2)
@@ -307,6 +312,8 @@ local function capShader(H, spec)
 		if dk > 0 then
 			cr, cg, cb = lerp(cr, ar, dk), lerp(cg, ag, dk), lerp(cb, ab, dk)
 		end
+		-- a light dye keeps the strand texture under it (stretched contrast, see Kit.Palette)
+		local dyeSt = 1 + 0.5 * dk * (pal.dyeLight or 0)
 		if greyK > 0 then
 			-- salt and pepper: about greyK of the strands grey, the temples and sideburns first (by the late
 			-- forties the sides are grey before the crown)
@@ -326,18 +333,30 @@ local function capShader(H, spec)
 			gk = gk + (1 - gk) * f * 0.45
 			cr, cg, cb = lerp(cr, gr[1], gk), lerp(cg, gr[2], gk), lerp(cb, gr[3], gk)
 		end
-		local k = (0.72 + 0.56 * sgrain) * contrast + (1 - contrast)
+		local k = (0.72 + 0.56 * sgrain * dyeSt - 0.28 * (dyeSt - 1)) * contrast + (1 - contrast)
 		if stubble then
 			-- clipper-short hair: each hair a dark point over the scalp; seen together a cool shadow (the
 			-- hairs under the skin and their dots), not a brown paint
 			k = 0.7 + 0.6 * sgrain
 			cr, cg, cb = cr * 0.75 + 0.012, cg * 0.75 + 0.014, cb * 0.75 + 0.022
 		elseif pattern == "waves" then
-			-- brushed 360 waves: crescent ridges in rings around the crown
+			-- brushed 360 waves: ripples spiralling out from the crown whorl. Each crest an S-curved arc across
+			-- the brush direction (down and out from the crown), broken where the arcs of neighbouring sections
+			-- meet; a crest is lit on its upper side with a shadowed trough under it (the painted relief of a
+			-- ripple), and the whole carries the coily stipple of hair brushed flat
 			local dx, dy, dz = X - wx, Y - wy, Z - wz
 			local dd = sqrt(dx * dx + dy * dy + dz * dz)
-			local w = sin((dd + 0.012 * sin(math.atan2(dx, dz) * 3)) / waveLam * TAU)
-			k *= 1 + 0.22 * w
+			local az0 = atan2(cq, cp)
+			-- a slow spiral (one arm), S-curves along each crest, sections that shift by a part of a ripple
+			local sec = noise3(cos(az0) * 1.6, sin(az0) * 1.6, dd * 2.5, seed + 41)
+			local ph = dd / waveLam + az0 / TAU + 0.28 * sin(az0 * 5 + dd * 9) + 0.45 * sec
+			local fr = ph - floor(ph)
+			-- asymmetric ripple: a quick rise to the crest, a long fall into the trough
+			local w = fr < 0.35 and smoothstep(0, 0.35, fr) or (1 - smoothstep(0.35, 1, fr))
+			local edge = smoothstep(0.08, 0.3, dd)
+			k *= 1 + (0.34 * w - 0.17) * edge * cpole
+			-- the stipple of tight coils brushed flat (finer than the ripples, never in rows)
+			k *= 0.9 + 0.22 * white(ix + 3, iy + 7, seed + 51)
 		elseif coilish then
 			-- coil clusters: lighter coil tops in the middle of each cluster, dark crevices between them, the
 			-- clusters irregular (jittered cells of random size in a domain warped by ~0.1 studs)
@@ -365,12 +384,26 @@ local function capShader(H, spec)
 			-- coverage shows the scalp between clusters first: no crevice darkening where the fade thins
 			q = lerp(0.75, q, smoothstep(0.4, 0.8, c))
 			k = lerp(0.3 + 1.05 * q, 0.6 + 0.6 * q, lightK)
+			if aoFn then
+				k *= aoFn(X, Y, Z)
+			end
 			local lift = dark * q
 			-- dense coils hide the scalp until the coverage is nearly full: the lower fade shows skin
 			m = m ^ 1.6
 			return lerp(scR, cr * k + lift, m), lerp(scG, cg * k + lift * 0.82, m), lerp(scB, cb * k + lift * 0.62, m), 1
 		end
-		return lerp(scR, cr * k, m), lerp(scG, cg * k, m), lerp(scB, cb * k, m), 1
+		if aoFn then
+			k *= aoFn(X, Y, Z)
+		end
+		local orr, og, ob = lerp(scR, cr * k, m), lerp(scG, cg * k, m), lerp(scB, cb * k, m)
+		if partAt then
+			local gp = partAt(X, Y, Z)
+			if gp > 0 then
+				gp *= 0.85
+				orr, og, ob = lerp(orr, gapR, gp), lerp(og, gapG, gp), lerp(ob, gapB, gp)
+			end
+		end
+		return orr, og, ob, 1
 	end
 end
 
@@ -407,6 +440,10 @@ function Parts.Cap(H, spec)
 			local k = smoothstep(0.05, 0.95, c)
 			local dk = split and (x > 0 and 1 or 0) or (dye == "Ombre" and smoothstep(dyeY + 0.12, dyeY - 0.3, y) or tipsK)
 			local r, g, b = lerp(hr, ar, dk), lerp(hg, ag, dk), lerp(hb, ab, dk)
+			if spec.ao then
+				local o = spec.ao(x, y, z)
+				r, g, b = r * o, g * o, b * o
+			end
 			return lerp(scR, r, k), lerp(scG, g, k), lerp(scB, b, k)
 		end,
 	})
@@ -561,7 +598,8 @@ function Parts.ClumpColor(H, rnd, x, layerK, sides, yAt, len, uniform)
 			local gk = (k == g1 or k == g2) and strong or (k == 0 and grey * 0.6 or grey * 0.4)
 			r, g, b = lerp(r, gr[1], gk), lerp(g, gr[2], gk), lerp(b, gr[3], gk)
 		end
-		local sh = (s >= 0 and (0.93 + 0.13 * s) or (0.93 + 0.33 * s)) * layerK
+		-- (a uniform tuft lying on the shell: its underside barely darker - dark undersides read as specks)
+		local sh = (s >= 0 and (0.93 + 0.13 * s) or (0.93 + (uniform and 0.08 or 0.33) * s)) * layerK
 		return r * sh, g * sh, b * sh
 	end
 end
@@ -633,7 +671,8 @@ function Parts.Clumps(H, spec)
 	local out = H.out
 	local sides = spec.sides or L.sides
 	local wK = (0.75 + 0.5 * H.clump) * (0.85 + 0.3 * H.thick)
-	local mat = { material = spec.material or Parts.Material(H.htype), castShadow = true, reflectance = spec.reflectance }
+	-- (castShadow = false: short tufts lying on a shell would speckle it with their shadows)
+	local mat = { material = spec.material or Parts.Material(H.htype), castShadow = spec.castShadow ~= false, reflectance = spec.reflectance }
 	local static = Parts.Piece(H, spec.piece or "HairTop", mat)
 	local made = 0
 	local rng = MeshKit.Rng(H.seed + (spec.seed or 0) + 23)
@@ -825,7 +864,8 @@ end
 -- locks = { w (columns per lock, >= 3), amp (ridge height at length), root (at the roots), pointK } -> the outer
 -- face rises in a rounded ridge per lock with a groove between locks (its normals from the ridged surface:
 -- the locks shade like sculpted hair), each lock longer in its middle (pointed lock ends, an uneven hem), the
--- grooves darker and the crowns lighter, a fine strand streak from column to column
+-- grooves darker and the crowns lighter, a fine strand streak from column to column; layers = { k1, k2, .. }
+-- (a layered cut: every lock's length scaled by one of them)
 function Parts.Curtain(H, spec)
 	local S, L = H.S, H.L
 	local lodK = H.lod == "full" and 1 or (H.lod == "medium" and 0.6 or 0.4)
@@ -856,6 +896,11 @@ function Parts.Curtain(H, spec)
 			lockRnd[lid] = lockRnd[lid] or rng:Next()
 			local jag = locks.jag or 0.07
 			len *= (1 - (locks.pointK or 0.15) * (1 - ridge)) * (1 - jag + 2 * jag * lockRnd[lid])
+			if locks.layers then
+				-- layered cut: each lock ends on one of a few length layers (its own, from its random)
+				local ly = locks.layers
+				len *= ly[1 + floor(((lockRnd[lid] * 7.13) % 1) * #ly)]
+			end
 		end
 		local pts, leftAt = Kit.Grow(S, x, y, z, {
 			len = len, ds = clamp(len / 14, 0.02, 0.05), flow = spec.flow, lift = 0, off = spec.off, stick = spec.stick or 0.95,
@@ -978,7 +1023,9 @@ Parts.SECTIONS = {
 	loc = function(seed)
 		-- lumps every ~0.05-0.08 studs (what ~10-14 rings a stud carry), roots ~30% thinner over the first 0.04
 		return function(t, a, s, r)
-			local lump = 1 + 0.12 * noise3(s * 14, cos(a) * 1.2, sin(a) * 1.2, seed) + 0.05 * noise3(s * 26, cos(a) * 2, sin(a) * 2, seed + 3)
+			-- (and a slow swell / pinch along its length: no two locs the same tube)
+			local lump = 1 + 0.17 * noise3(s * 14, cos(a) * 1.2, sin(a) * 1.2, seed) + 0.06 * noise3(s * 26, cos(a) * 2, sin(a) * 2, seed + 3)
+				+ 0.14 * noise3(s * 4.5, 0.5, 0.5, seed + 7)
 			return r * lump * (0.7 + 0.3 * smoothstep(0, 0.04, s)) * (1 - 0.15 * t)
 		end
 	end,
@@ -1195,22 +1242,27 @@ function Parts.ShortCurls(H, spec)
 	local top = spec.top or 0.02
 	local len0, len1 = spec.len[1], spec.len[2]
 	local flow = Kit.Flow(H.S, "whorl")
-	if coily then
-		return Parts.Curls(H, {
-			n = spec.coilN or 120, seed = 7, accept = spec.accept, flow = flow, lift = 0.8, stick = 0, grav = 0, stiff = 0.7,
-			len = function(r)
-				return lerp(0.025, 0.045, r[9]) * (0.8 + 0.5 * L)
-			end, radius = 0.009, tube = 0.0048, pitch = 2.0, perTurn = 6, off = function()
-				return top * 0.7
-			end,
+	if not coily then
+		-- curly: dense clusters of short curls packed into the top layer (half sunk: the top's relief and its
+		-- broken outline), not a few loose springs lying on a smooth shell
+		local cut = H.cut
+		local layer = function(x, y, z)
+			return H.S.f(x, y, z) - cut.thick(x, y, z)
+		end
+		-- the clusters' rounded tops (flattened domes half sunk into the layer, lit like the coil texture) and
+		-- short curls springing from them (sunk deep, leaning over: curls, not wires)
+		Parts.Lumps(H, { n = spec.lumpN or 300, vol = layer, accept = spec.accept, r = 0.02 * (0.85 + 0.3 * L), flat = 0.6, share = 0.5 })
+		return Parts.CoilHalo(H, {
+			n = spec.curlN or 320, vol = layer, accept = spec.accept, sink = 0.85, radius = 0.016 * (0.85 + 0.3 * L),
+			len = lerp(len0, len1, 0.5) * 0.4, tube = 0.0062, share = spec.share or 0.9, bounce = spec.bounce,
 		})
 	end
 	return Parts.Curls(H, {
-		n = spec.curlN or 130, seed = 7, accept = spec.accept, flow = flow, lift = 0.55, stick = 0.2, grav = 0.1, stiff = 0.55,
+		n = spec.coilN or 120, seed = 7, accept = spec.accept, flow = flow, lift = 0.8, stick = 0, grav = 0, stiff = 0.7,
 		len = function(r)
-			return lerp(len0, len1, r[9]) * 1.1
-		end, radius = 0.019, tube = 0.0075, off = function()
-			return top * 0.6
+			return lerp(0.025, 0.045, r[9]) * (0.8 + 0.5 * L)
+		end, radius = 0.009, tube = 0.0048, pitch = 2.0, perTurn = 6, off = function()
+			return top * 0.7
 		end,
 	})
 end
@@ -1521,12 +1573,16 @@ end
 ------------------------------------------------------------------------
 -- Cornrows
 ------------------------------------------------------------------------
--- rows run from the front hairline straight back over the crown to the nape: great circles round the head's
--- front-back axis (psi = the row's angle about it). Returns the rows' psi list and the coverage region fn.
-function Parts.RowLayout(H, n, parting)
+-- rows run from the front hairline straight back over the crown to the nape: the planes through a front-back
+-- axis `axisDepth` below the cranium centre (psi = a row's angle about it). With the axis deep under the head
+-- (cornrows) the rows stay apart all the way down to the nape (bunching a little there) instead of meeting in
+-- a star where the axis comes out of the scalp. Returns the rows' psi list, the coverage region fn (1 on a row,
+-- 0 on the parting between two rows; parting = the parting's share of a row's width), psiOf and dpsi.
+function Parts.RowLayout(H, n, parting, axisDepth, psiMax)
 	local S = H.S
 	local p0 = 0.5 - (parting or 0.2)
-	local psiMax = 1.25
+	local A = axisDepth or 0.25
+	psiMax = psiMax or 1.25
 	local rows = {}
 	for i = 1, n do
 		rows[i] = -psiMax + 2 * psiMax * (i - 0.5) / n
@@ -1534,76 +1590,168 @@ function Parts.RowLayout(H, n, parting)
 	local dpsi = 2 * psiMax / n
 	local cy = S.cy
 	local function psiOf(x, y)
-		return math.atan2(x, y - cy + 0.25)
+		return math.atan2(x, y - cy + A)
 	end
+	local pw = min(0.05, (parting or 0.2) * 0.5)
 	local region = function(x, y, z, da)
 		local ps = psiOf(x, y)
 		local k = (ps + psiMax) / dpsi - 0.5
 		local f = abs(k - floor(k + 0.5)) -- 0 on a row centre, 0.5 on a parting
-		return 1 - smoothstep(p0 - 0.05, p0 + 0.05, f)
+		return 1 - smoothstep(p0 - pw, p0 + pw, f)
 	end
 	return rows, region, psiOf, dpsi
 end
 
+-- a cornrow's plait seen from above: a stitch every `stitch` studs on alternating sides of the row (the three
+-- strands crossing over), each a rounded bump with a groove between it and the next (the tube's normals come
+-- from its geometry, so the stitches shade). (t, a, s, r) -> radius; a = 0 the row's side, pi/2 its top
+function Parts.CornrowSection(stitch)
+	return function(t, a, s, r)
+		local q = s / (2 * stitch)
+		local ph = (q - floor(q)) * TAU
+		local w = sin(ph)
+		local lobe = abs(w) ^ 0.7
+		-- the bump is on the side the stitch crosses to (cos(a) > 0 on one side), and rises over the top
+		local onSide = max(0, cos(a) * (w >= 0 and 1 or -1))
+		local up = max(0, sin(a))
+		local k = 0.84 + 0.3 * lobe * onSide ^ 1.5 + 0.06 * lobe * up - 0.1 * (1 - lobe) * up
+		-- a braid lying flat on the scalp: wider than it is high
+		return r * k * (1 - 0.3 * up)
+	end
+end
+
 -- the cornrow braids: each row a plait lying on the scalp (half sunk into the shell), from the front hairline
--- back to the nape; hanging tails at the nape when the hair is long. spec: n, r (row radius), period, tail(r)
+-- back to the nape, its ends tapered and tucked into the scalp; hanging tails at the nape when the hair is long.
+-- spec: n, r (row radius), axis (Parts.RowLayout axisDepth), psiMax, stitch (studs a stitch), tail(r)
 function Parts.Cornrows(H, spec)
 	local S, L = H.S, H.L
 	local n = spec.n
-	local rows, region, psiOf = Parts.RowLayout(H, n)
+	local A = spec.axis or 0.25
+	local rows = Parts.RowLayout(H, n, nil, A, spec.psiMax)
 	local cut = H.cut
+	local f = S.f
 	local out, pal = H.out, H.pal
 	local mat = { material = "Plastic", castShadow = true }
 	local static = Parts.Piece(H, "HairTop", mat)
-	local seed = H.seed % 1000
-	local period = spec.period or 0.085
 	local sides = H.lod == "full" and 5 or (H.lod == "medium" and 4 or 3)
-	local cy = S.cy
+	local cy, cz = S.cy, S.cz
 	-- rings per stud from what the budget leaves for the rows (~1.3 studs each, plus the tails)
 	local allow = Parts.Allow(H, { share = spec.tails and 0.7 or 0.95 })
-	local perStud = clamp(allow / (n * 1.3 * sides * 2), 5, (H.lod == "full" and 3.6 or 2) / period)
+	local perStud = clamp(allow / (n * 0.95 * sides * 2), 5, H.lod == "full" and 80 or 40)
+	-- each stitch gets ~3 rings (finer ones would alias into lumps); far away a plain cord
+	local stitch = max(spec.stitch or 0.03, 3 / perStud)
+	local plain = stitch > 0.07
+	local function inHair(x, y, z)
+		return cut.dist(x, y, z) > 0.03 and cut.cov(x, y, z) > 0.05
+	end
 	for i, psi in ipairs(rows) do
-		-- walk the great circle from the front to the back, keeping the stretch inside the hair
-		local pts = {}
-		local started = false
-		for k = 0, 64 do
-			local beta = -1.45 + 2.95 * k / 64 -- front (-z) round over the top to the back (+z)
-			local dx, dy, dz = sin(psi) * cos(beta), cos(psi) * cos(beta), sin(beta)
-			local x, y, z = S.ray(dx, dy + 0.0, dz, 0)
-			local c = cut.cov(x, y, z)
-			if cut.dist(x, y, z) > 0.012 and c > 0.05 then
-				started = true
-				local nx, ny, nz = S.normal(x, y, z)
-				local o = spec.r * 0.55
-				pts[#pts + 1] = { x + nx * o, y + ny * o, z + nz * o }
-			elseif started then
+		-- the row's plane (through the axis): normal (cos psi, -sin psi, 0)
+		local pnx, pny = cos(psi), -sin(psi)
+		-- start where the plane meets the scalp level with the cranium centre's depth: scan in from outside
+		local sx, sy = sin(psi), cos(psi)
+		local tHi, tLo = 2.2, nil
+		for t = 2.2, 0.05, -0.04 do
+			if f(sx * t, cy - A + sy * t, cz) < 0 then
+				tLo = t
 				break
+			end
+			tHi = t
+		end
+		local pts = {}
+		if tLo then
+			for _ = 1, 16 do
+				local mid = (tLo + tHi) * 0.5
+				if f(sx * mid, cy - A + sy * mid, cz) < 0 then
+					tLo = mid
+				else
+					tHi = mid
+				end
+			end
+			local t0 = (tLo + tHi) * 0.5
+			local x0, y0, z0 = sx * t0, cy - A + sy * t0, cz
+			-- follow the curve where the plane cuts the scalp, forward (-z) then backward (+z), while in the hair
+			local function walk(dir)
+				local list = {}
+				local x, y, z = x0, y0, z0
+				local px, py, pz = 0, 0, dir
+				for _ = 1, 140 do
+					local nx, ny, nz = S.normal(x, y, z)
+					local tx, ty, tz = norm3(Kit.cross(pnx, pny, 0, nx, ny, nz))
+					-- (oriented by continuity: under the occiput the curve turns forward again)
+					if tx * px + ty * py + tz * pz < 0 then
+						tx, ty, tz = -tx, -ty, -tz
+					end
+					px, py, pz = tx, ty, tz
+					x, y, z = x + tx * 0.02, y + ty * 0.02, z + tz * 0.02
+					x, y, z = S.onto(x, y, z, 0)
+					-- back into the plane
+					local d = x * pnx + (y - cy + A) * pny
+					x, y = x - pnx * d, y - pny * d
+					if not inHair(x, y, z) then
+						break
+					end
+					list[#list + 1] = { x, y, z }
+					step(8)
+				end
+				return list
+			end
+			local fwd, back = walk(-1), walk(1)
+			for k = #fwd, 1, -1 do
+				pts[#pts + 1] = fwd[k]
+			end
+			if inHair(x0, y0, z0) then
+				pts[#pts + 1] = { x0, y0, z0 }
+			end
+			for k = 1, #back do
+				pts[#pts + 1] = back[k]
 			end
 		end
 		if #pts >= 4 then
 			local plen = Kit.Length(pts)
-			local ringsPer = perStud
-			local rs = Kit.Resample(pts, clamp(floor(plen * ringsPer + 2), 4, 80))
 			local r0 = spec.r * (0.9 + 0.2 * H.thick)
-			local sec = perStud < 2.5 / period and function(t, a, s, r)
-				return r * (0.8 + 0.2 * smoothstep(0, 0.03, s))
-			end or Parts.SECTIONS.braid(seed, period)
+			-- lifted half a radius off the scalp, the last ~0.07 studs at each end sinking into it (tucked)
+			local np = #pts
+			local acc0 = 0
+			for k = 1, np do
+				local p = pts[k]
+				if k > 1 then
+					local q = pts[k - 1]
+					local ddx, ddy, ddz = p[1] - q[1], p[2] - q[2], p[3] - q[3]
+					acc0 += sqrt(ddx * ddx + ddy * ddy + ddz * ddz)
+				end
+				local u = acc0 / max(plen, 1e-4)
+				local tuck = smoothstep(1 - 0.07 / plen, 1, u)
+				local front = 1 - smoothstep(0, 0.06 / plen, u)
+				local nx, ny, nz = S.normal(p[1], p[2], p[3])
+				local o = r0 * 0.45 * (1 - 0.75 * tuck) * (1 - 0.45 * front)
+				p[1], p[2], p[3] = p[1] + nx * o, p[2] + ny * o, p[3] + nz * o
+			end
+			local tl = spec.tail and spec.tail(i) or 0
+			local hasTail = tl > 0.06
+			local rs = Kit.Resample(pts, clamp(floor(plen * perStud + 2), 4, 110))
+			local sec = plain and function(t, a, s2, r)
+				return r * (0.8 + 0.2 * smoothstep(0, 0.03, s2))
+			end or Parts.CornrowSection(stitch)
 			local x0 = rs[1][1]
 			local rnd = (i * 0.618) % 1
+			local endK = 0.07 / plen
 			Kit.Tube(static.mesh, rs, {
 				sides = sides, out = out, rad = r0, tip = "dome", root = "dome",
 				r = function(t, a)
-					return sec(t, a, t * plen, r0)
+					-- tapering into the tucked end (a row with a tail keeps its width into the tail)
+					-- (and starting small at the hairline, where the plait picks up its first hair)
+					local taper = (hasTail and 1 or (1 - 0.55 * smoothstep(1 - endK, 1, t))) * (0.55 + 0.45 * smoothstep(0, 0.06 / plen, t))
+					return sec(t, a, t * plen, r0) * taper
 				end,
 				color = function(t, a, rr)
 					local cr, cg, cb = pal.at(rnd, 0.35 + 0.3 * t, x0, nil, 1, 1)
-					local k = 0.74 + 0.36 * clamp(rr, 0.5, 1.2)
+					-- the grooves between the stitches darker, the stitch crowns lighter
+					local k = 0.62 + 0.5 * clamp(rr, 0.55, 1.15)
 					return cr * k, cg * k, cb * k
 				end,
 			})
 			-- a tail hangs from the nape end of the row
-			local tl = spec.tail and spec.tail(i) or 0
-			if tl > 0.06 then
+			if hasTail then
 				H.tails = H.tails or {}
 				H.tails[#H.tails + 1] = { rs[#rs], rs[#rs - 1], tl, r0, rnd }
 			end

@@ -944,8 +944,8 @@ local function onCanvas(rig, p)
 	end
 	local out = rig.fkOut or {}
 	rig.fkOut = out
-	-- (an arm laid on the canvas no longer props the body: rest it again)
 	R.groundSolve(rig, p, out, 0.03)
+	-- (an arm laid on the canvas no longer props the body: rest it again)
 	R.liftArms(rig, p, out, 0.04)
 	R.groundSolve(rig, p, out, 0.03)
 	R.liftArms(rig, p, out, 0.04)
@@ -1158,6 +1158,12 @@ function AnimDown.getup(p, rig, act, el, t)
 		end
 		rig.plant = true
 		rig.stepDist = 0.3
+		-- (he drives up off the balls of his feet, heels coming down as he straightens: a foot that
+		-- settles into the stance's turn pivots on the ball, it never skids round on its heel - the long
+		-- athletic feet would drag the heel a hand's width)
+		local hk = 0.32 * (1 - smooth(x / 0.85))
+		rig.foot.L.heel = max(rig.foot.L.heel, hk)
+		rig.foot.R.heel = max(rig.foot.R.heel, hk)
 		R.flex(rig, "quads", 0.9 * (1 - x))
 		R.flex(rig, "glutes", 0.8 * (1 - x))
 	end

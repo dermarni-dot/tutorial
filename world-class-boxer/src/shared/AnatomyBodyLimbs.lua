@@ -181,12 +181,16 @@ end
 
 local function upperLeg(sk, P, side, sx)
 	local lv, V, fk, def = P.lv, P.V, min(P.fatK, 1.2), P.defE
+	-- (fat softens the quad / hamstring separations but never erases them: the shapes still read on a heavy
+	-- build, at least 40 % of the lean definition)
+	def = max(def, 0.4 * P.def * (P.female and 0.72 or 1))
 	local fem = P.female
 	local fl = P.pv.flat
 	-- the knee: the thigh tapers into it (no ball where the end dome overlaps the calf)
 	-- (the rings run a little past the knee pivot just under the shin's top, so the thigh's end dome tucks into
 	-- the shin with no ball or ring)
-	local rx = Kit.Curve({ { -0.2, 0.2 }, { -0.1, 0.36 }, { 0.0, 0.47 }, { 0.12, 0.5 }, { 0.3, 0.48 }, { 0.5, 0.445 }, { 0.75, 0.385 }, { 0.9, 0.34 }, { 1.0, 0.3 }, { 1.07, 0.276 } })
+	-- (the knee narrower than the thigh's lower third: no bulging knee on a big frame)
+	local rx = Kit.Curve({ { -0.2, 0.2 }, { -0.1, 0.36 }, { 0.0, 0.47 }, { 0.12, 0.5 }, { 0.3, 0.48 }, { 0.5, 0.445 }, { 0.75, 0.38 }, { 0.9, 0.325 }, { 1.0, 0.288 }, { 1.07, 0.27 } })
 	-- (shallower than the R15 box: a thigh is ~0.8 of the torso's depth)
 	local rz = Kit.Curve({ { -0.2, 0.2 }, { -0.1, 0.33 }, { 0.0, 0.415 }, { 0.12, 0.435 }, { 0.3, 0.425 }, { 0.5, 0.395 }, { 0.75, 0.345 }, { 0.9, 0.31 }, { 1.0, 0.282 }, { 1.07, 0.258 } })
 	local q = (0.03 + 0.1 * lv.quads) * fl
@@ -203,10 +207,10 @@ local function upperLeg(sk, P, side, sx)
 		{ a = FRONT, w = 0.6, b0 = 0.84, bp = 0.97, b1 = 1.06, h = 0.03, id = "bone" },
 		{ a = FRONT + 0.9, w = 0.5, b0 = 0.86, bp = 0.97, b1 = 1.06, h = 0.012, id = "bone" },
 		-- hip / trochanter and the female hip curve (the waist-to-hip line)
-		{ a = LAT, w = 0.9, b0 = -0.08, bp = 0.1, b1 = fem and 0.5 or 0.4, h = 0.025 + (fem and 0.1 or 0) + 0.04 * fk, id = "hip" },
-		-- fat: outer and inner thigh
-		{ a = LAT + 0.2, w = 1.3, b0 = -0.02, bp = 0.25, b1 = 0.7, h = 0.045 * fk + (fem and 0.035 or 0), id = "fat" },
-		{ a = MED, w = 1.2, b0 = -0.02, bp = 0.2, b1 = 0.6, h = 0.05 * fk + (fem and 0.03 or 0), id = "fat" },
+		{ a = LAT, w = 0.9, b0 = -0.08, bp = 0.1, b1 = fem and 0.5 or 0.4, h = 0.025 + (fem and 0.075 or 0) + 0.03 * fk, id = "hip" },
+		-- fat: outer and inner thigh (capped: fat fills the thigh out, it never balloons it sideways)
+		{ a = LAT + 0.2, w = 1.3, b0 = -0.02, bp = 0.25, b1 = 0.7, h = min(0.06, 0.04 * fk + (fem and 0.02 or 0)), id = "fat" },
+		{ a = MED, w = 1.2, b0 = -0.02, bp = 0.2, b1 = 0.6, h = min(0.06, 0.045 * fk + (fem and 0.02 or 0)), id = "fat" },
 	}
 	local grooves = {
 		-- the IT band down the outside, the sartorius line, the quad / hamstring split
@@ -221,6 +225,7 @@ end
 
 local function lowerLeg(sk, P, side, sx)
 	local lv, V, fk, def = P.lv, P.V, min(P.fatK, 1.2), P.defE
+	def = max(def, 0.4 * P.def * (P.female and 0.72 or 1))
 	local fem = P.female
 	local fl = P.pv.flat
 	-- the top a little inside the thigh's end (the parent covers the knee)
@@ -372,17 +377,23 @@ local function setup(sk, P, lod, side, kind, opt)
 	local S = spec.scale
 	local B0, B1 = spec.b0, spec.b1
 	-- the zones span exactly the loft's range (a caller gives the inner edges only; a zone that starts past
-	-- the end, or ends before the start, is dropped)
+	-- the end, or ends before the start, is dropped). z[4] / z[5] = where the whole garment starts / ends when
+	-- it is split into several zones (a trim band gets its own ring pair, so its edge stays crisp in the vertex
+	-- colours at medium detail); the garment's shape uses those, not the zone's own edges
 	local zones = {}
 	for _, z in ipairs(opt.zones or { { B0, B1, "skin" } }) do
 		if z[1] < B1 - 0.03 and z[2] > B0 + 0.03 then
-			zones[#zones + 1] = { max(z[1], B0), min(z[2], B1), z[3] }
+			zones[#zones + 1] = { max(z[1], B0), min(z[2], B1), z[3], z[4] and max(z[4], B0), z[5] and min(z[5], B1) }
 		end
 	end
 	if #zones == 0 then
 		zones[1] = { B0, B1, "skin" }
 	end
 	zones[1][1], zones[#zones][2] = B0, B1
+	for _, z in ipairs(zones) do
+		z[4] = z[4] or z[1]
+		z[5] = z[5] or z[2]
+	end
 	local mus, grooves = spec.mus, spec.grooves
 	local rx, rz = spec.rx, spec.rz
 	local nM = #mus
@@ -408,10 +419,12 @@ local function setup(sk, P, lod, side, kind, opt)
 	local folds = opt.foldPhase or 1.3
 	-- the satin leg's half extents (lateral, front, back) at flare t (0 at the top, 1 at the opening)
 	-- (an A-line from the hip: the sides flare most, the front stays flat, the back carries the seat's fullness)
+	-- (knee-length trunks are cut slimmer: a long leg that loose reads as a balloon)
 	local function trunkDims(t, long)
-		local flare = long and (0.045 * t) or (0.11 * t)
-		return (topEx + topBulge) * S * (1.02 + flare) + 0.022 * S, (topEz + topBulge) * S * (0.97 + flare * 0.3) + 0.016 * S,
-			(topEz + topBulge) * S * (1.03 + flare * 0.5) + 0.024 * S
+		local flare = long and (0.04 * t) or (0.11 * t)
+		local k = long and 0.95 or 1
+		return (topEx + topBulge) * S * (1.02 + flare) * k + 0.022 * S, (topEz + topBulge) * S * (0.97 + flare * 0.3) * k + 0.016 * S,
+			(topEz + topBulge) * S * (1.03 + flare * 0.5) * k + 0.024 * S
 	end
 	-- the skin's radius: base ellipse + bellies - grooves
 	local function skinR(bb, ang, smoothK)
@@ -437,7 +450,7 @@ local function setup(sk, P, lod, side, kind, opt)
 			-- midline, so from the front the two legs read as one garment with a seam between them, not two
 			-- tubes), flaring a little toward the opening, a few soft folds, a slight forward / back swing; above
 			-- the hip it runs inside the trunks' seat (the LowerTorso piece carries the hips)
-			local hemB = z[2]
+			local hemB = z[5]
 			-- (no flare above the hip line: the seat's straight sides meet the legs there)
 			local t = smooth(0.05, max(hemB, 0.15), bb)
 			local c, s = cos(ang), sin(ang)
@@ -454,12 +467,14 @@ local function setup(sk, P, lod, side, kind, opt)
 			local loose = 1 / ((abs(c) / ex) ^ n + (abs(s) / ez) ^ n) ^ (1 / n)
 			if long then
 				-- knee-length trunks hang from the hip and taper toward the knee (never onto the skin)
-				loose *= 1 - 0.16 * smooth(0.15, 1.0, bb)
+				loose *= 1 - 0.18 * smooth(0.15, 1.0, bb)
 			end
 			-- soft folds (none on the medial face, which meets the other leg's)
 			local medK = 1 - win(ang, MED, 0.9)
 			-- drape: a few broad folds hanging from the seat and finer creases toward the opening
-			loose += (0.016 * sin(3 * ang + folds + 2.2 * bb) + 0.01 * sin(7 * ang + 2 * folds + 4 * bb) * t) * S * (0.3 + 0.7 * t) * medK
+			-- (long trunks hang in more, longer folds: a smooth round leg reads as an inflated tube)
+			local fk = long and 1.4 or 1
+			loose += (0.016 * fk * sin(3 * ang + folds + 2.2 * bb) + 0.01 * fk * sin(7 * ang + 2 * folds + 4 * bb) * t) * S * (0.3 + 0.7 * t) * medK
 			loose += 0.015 * S * sin(ang) * t
 			-- the creases where the satin bunches at the inner thigh (diagonal, from the crotch out and down)
 			loose -= 0.008 * S * max(0, sin(9 * (ang - FRONT) + 14 * bb)) ^ 3 * win(ang, MED - 0.55, 0.8) * (1 - smooth(0.12, 0.4, bb))
@@ -475,7 +490,7 @@ local function setup(sk, P, lod, side, kind, opt)
 		elseif kind2 == "boot" then
 			-- leather over the ankle and shin: the leg's shape with most of its relief (the skin above the collar
 			-- stays inside it), a padded collar at the top
-			local top = z[1]
+			local top = z[4]
 			local collar = Kit.bell((bb - (top + 0.035)) / 0.05)
 			-- below the ankle the shaft flares back over the heel counter (one boot, no ledge at the heel) and a
 			-- raised tongue runs down the front under the laces
@@ -484,15 +499,16 @@ local function setup(sk, P, lod, side, kind, opt)
 			return skinR(bb, ang, 0.8) + (0.03 + 0.016 * collar + heel + tongue) * S
 		elseif kind2 == "glove" then
 			-- the glove's cuff: a padded sleeve round the wrist, a little wider toward the hand, a rolled top edge
-			local top = z[1]
+			local top = z[4]
 			local c, s = cos(ang), sin(ang)
 			local ex, ez = (rx(top) * 1.02 + 0.07) * S, (rz(top) * 1.06 + 0.07) * S
 			local r = 1 / sqrt((c / ex) ^ 2 + (s / ez) ^ 2)
 			local roll = Kit.bell((bb - (top + 0.03)) / 0.045)
-			return r * (1 + 0.06 * smooth(top, z[2], bb)) + 0.012 * S * roll
+			return r * (1 + 0.06 * smooth(top, z[5], bb)) + 0.012 * S * roll
 		elseif kind2 == "wrap" then
 			-- cotton wrap: snug, smoothing the tendons, a few layers thick
-			return skinR(bb, ang, 0.3) + 0.016 * S + 0.004 * S * sin(bb * 60)
+			-- (more turns over the wrist itself: a little bulk there)
+			return skinR(bb, ang, 0.3) + (0.016 + 0.012 * smooth(0.84, 1.0, bb)) * S + 0.004 * S * sin(bb * 60)
 		end
 		return skinR(bb, ang)
 	end
@@ -546,7 +562,13 @@ end
 -- legs' trim bands with them)
 function Limbs.TrunkTop(sk, P, side, zones)
 	local c = setup(sk, P, "full", side, "UpperLeg", { zones = zones })
-	local latX, fZ, bZ = c.trunkDims(0, false)
+	local long = false
+	for _, z in ipairs(c.zones) do
+		if z[3] == "trunk" and z[5] >= 0.97 then
+			long = true
+		end
+	end
+	local latX, fZ, bZ = c.trunkDims(0, long)
 	local _, _, cz = c.center(c.zones[1][1])
 	return abs(c.a[1]) + latX, fZ, bZ, latX, cz
 end
@@ -674,7 +696,9 @@ function Limbs.Build(sk, P, lod, side, kind, opt)
 			return radiusAt(Bs[i], ang, ringZone[i])
 		end,
 		capS = { depth = capS[1] * S, rings = res[3], shift = shS, bDepth = capS[1] * S / L },
-		capE = { depth = capE[1] * S, rings = res[4], bDepth = capE[1] * S / L },
+		-- (long trunks end at the knee in an open-looking hem over the shin's cuff: a shallow end, not a round
+		-- pillow bottom)
+		capE = { depth = (zones[#zones][3] == "trunk" and 0.05 or capE[1]) * S, rings = res[4], bDepth = (zones[#zones][3] == "trunk" and 0.05 or capE[1]) * S / L },
 	})
 	-- veins: low, wide ridges lying on the skin (Kit.Strand), following a path in (bone, angle)
 	local veinFirst = m.nv + 1
@@ -721,7 +745,7 @@ function Limbs.Build(sk, P, lod, side, kind, opt)
 	-- the short trunks' hem dips a little at the back (the seat's fabric hangs lower behind): the rings round the
 	-- hem lean back along the bone (the edge's ring pair moves together, so the edge stays crisp)
 	for _, z in ipairs(zones) do
-		if z[3] == "trunk" and z[2] < 0.97 then
+		if z[3] == "trunk" and z[2] < 0.97 and z[2] >= z[5] - 1e-6 then
 			local hemB = z[2]
 			local Pp = m.P
 			for _, row in ipairs(info.rows) do

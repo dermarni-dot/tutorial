@@ -603,7 +603,7 @@ function Rig.BeardMask(F, style)
 		end
 		local e = 4 * w * (1 - w)
 		local n = noise(x * 48, y * 48, z * 48, seed) * 0.7 + noise(x * 130, y * 130, z * 130, seed + 5) * 0.3
-		return clamp(w + 0.32 * n * e, 0, 1)
+		return clamp(w + 0.24 * n * e, 0, 1)
 	end
 end
 function beardMaskBase(F, style)
@@ -650,7 +650,8 @@ function beardMaskBase(F, style)
 		-- along the jaw's lower edge from the sideburn to the chin
 		local ax = abs(x)
 		local yl = lerp(cy - 0.01, F.gonionY - 0.02, smoothstep(0.05, F.jawW, ax))
-		return bump(((y - yl) / 0.03) ^ 2) * (1 - smoothstep(0.02, 0.08, z))
+		-- a band of beard (~2 cm) along the jaw, thinning at both edges: no drawn line along its middle
+		return (1 - smoothstep(0.018, 0.05, abs(y - yl))) * (1 - smoothstep(0.02, 0.08, z))
 	end
 	if style == "Moustache" then
 		return function(x, y, z)

@@ -326,17 +326,19 @@ function FightAI:Think(now)
 	if now < F.busyUntil then
 		return
 	end
+	-- (the engine's spacing is scaled to the pair's rigs: engine.rigK)
+	local rk = engine.rigK or 1
 	-- cut off / escape the corner with a pivot
-	if self.arch.pivot > 0.15 and dist < SPACING.pivot and self.rng:NextNumber() < self.arch.pivot * 0.08 then
+	if self.arch.pivot > 0.15 and dist < SPACING.pivot * rk and self.rng:NextNumber() < self.arch.pivot * 0.08 then
 		engine:Pivot(F, self.circleDir)
 		return
 	end
 	if self.mode == "survive" then
-		if dist < SPACING.clinch and self.rng:NextNumber() < (tier >= 1 and 0.45 or 0.25) and engine:CanClinch(F) then
+		if dist < SPACING.clinch * rk and self.rng:NextNumber() < (tier >= 1 and 0.45 or 0.25) and engine:CanClinch(F) then
 			engine:Clinch(F)
 			return
 		end
-		if dist < SPACING.cover and self.rng:NextNumber() < 0.6 then
+		if dist < SPACING.cover * rk and self.rng:NextNumber() < 0.6 then
 			engine:SetBlock(F, true)
 			self.blockUntil = now + 0.7
 			return

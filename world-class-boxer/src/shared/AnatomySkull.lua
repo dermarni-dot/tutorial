@@ -2,8 +2,9 @@
 -- the head's cranium from this field (its scalp IS the field's zero set; the face may add detail only below
 -- the hairline) and the Hair section lays shells, clumps and strands on it.
 -- Pure and deterministic (no Instances): server, client, luaurun tests and the offline renderer agree.
--- Reads ONLY Hair-section look paths: rig.parts.Head, face.seed, face.shape, face.forehead, face.skullWidth,
--- face.skullLength, face.crown, face.browRidge, face.asym, g, age (so the Hair signature covers it).
+-- Reads ONLY Hair-section look paths: rig.parts.Head, rig.joints.Neck (C1: how long the neck is), face.seed,
+-- face.shape, face.forehead, face.skullWidth, face.skullLength, face.crown, face.browRidge, face.asym, g, age
+-- (so the Hair signature covers it; the Head and Body signatures do too).
 --
 -- AnatomySkull.Field(look)    -> fn(x, y, z) signed distance in studs, Head part space (+X right, +Y up,
 --                                -Z forward), < 0 inside the scalp skin. Close to a true distance near the
@@ -119,12 +120,18 @@ end
 
 -- the visible neck (nominal): radius r (sideways; front-back r / 0.97), centre z, a straight column from yTop
 -- down to yJoin, a dome above yTop (hTop high, running up into the skull base) and a taper below yJoin (hBot
--- long, inside the Body's column). r = 0.2625 / 0.2375 x the head's X size: a Body neck column kept inside it
--- (r - 0.012 studs, AnatomySkull.Neck) is still at least the contract's minimum (0.25 / 0.225 x the head,
--- ANATOMY_CONTRACTS section 6) for any head wider than 0.96 studs, and the Body's own thinnest column today
--- (1.08 x that minimum) still wraps it
-function AnatomySkull.NeckParams(female)
-	return { r = female and 0.285 or 0.315, z = 0.03, yTop = -0.36, hTop = 0.26, yJoin = -0.6, hBot = 0.22 }
+-- long, inside the Body's column). r = 0.2625 / 0.2 x the head's X size (the Body keeps its column inside
+-- r - 0.012 studs, AnatomySkull.Neck, whatever its own minimum). Women's necks are slimmer than the jaw: the
+-- column under a V-shaped face, not a cylinder as wide as it.
+-- yPivot (nominal, optional): the Neck pivot's height in the Head's space (rig.joints.Neck C1). The standard
+-- rig puts it at the head's base (-0.6); a rig that lifts the head off the shoulders (a lower pivot in head
+-- space) lengthens the straight column down to it, so the visible neck runs from the jaw to the shoulders
+function AnatomySkull.NeckParams(female, yPivot)
+	local N = { r = female and 0.24 or 0.315, z = 0.03, yTop = -0.36, hTop = 0.26, yJoin = -0.6, hBot = 0.22 }
+	if type(yPivot) == "number" and yPivot == yPivot and yPivot < -0.6 then
+		N.yJoin = max(yPivot, -1.0)
+	end
+	return N
 end
 
 local function neckSD(N, x, y, z)
@@ -193,7 +200,10 @@ function AnatomySkull.Params(look)
 	P.ridge = 0.004 + 0.012 * br * (female and 0.3 or 1)
 	-- the neck the Head section shows (AnatomySkull.Neck): a column from under the skull base down to the
 	-- junction just under the neck pivot (y -0.6), then tapering away inside the Body's neck column
-	P.neck = AnatomySkull.NeckParams(female)
+	local joints = type(rig.joints) == "table" and rig.joints or {}
+	local nj = type(joints.Neck) == "table" and joints.Neck or {}
+	local pivotY = type(nj.c1) == "table" and tonumber(nj.c1[2]) or nil
+	P.neck = AnatomySkull.NeckParams(female, pivotY and pivotY / P.ky or nil)
 	P.neckR = P.neck.r
 	P.neckZ = P.neck.z
 	-- hairline (natural: Hair styles the line itself): trichion height, temple recession with age

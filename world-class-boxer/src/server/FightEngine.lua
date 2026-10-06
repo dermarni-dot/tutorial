@@ -78,6 +78,44 @@ local function unitOr(v, fallback)
 	return fallback
 end
 
+-- how high a character's root stands above the floor: its own rig's hip height + half the root (the
+-- classic rig's 2 + 1, but the athletic rigs stand 3.2-4.7). Placing at a fixed 3.2 put tall boxers' feet
+-- inside the canvas and the Humanoid sprang them up (a pop, and a jump the Animator read as root motion)
+local function standHeight(hum, root)
+	-- (an R6 rig reports HipHeight 0: its legs hold it at the classic 3)
+	if hum and root and hum.HipHeight > 0.5 then
+		return hum.HipHeight + root.Size.Y / 2 + 0.05
+	end
+	return 3.2
+end
+FightEngine.StandHeight = standHeight
+
+-- the rig's size against the classic R15 the fight spacing was fitted on (FightMotion.RigFactor) and its
+-- standing height (studs, sole to crown; the server sees the rig in its rest pose)
+local function rigSize(model, hum, root)
+	local ut = model and model:FindFirstChild("UpperTorso")
+	local k = 1
+	if ut and ut:IsA("BasePart") and FightMotion and FightMotion.RigFactor then
+		local depth = nil
+		local nv = hum and hum:FindFirstChild("BodyDepthScale")
+		if nv and nv:IsA("NumberValue") then
+			depth = nv.Value
+		elseif hum then
+			local ok, desc = pcall(function()
+				return hum:GetAppliedDescription()
+			end)
+			depth = ok and desc and desc.DepthScale or nil
+		end
+		k = FightMotion.RigFactor(ut.Size.Z, depth)
+	end
+	local head = model and model:FindFirstChild("Head")
+	local height = nil
+	if head and head:IsA("BasePart") and root then
+		height = standHeight(hum, root) + (head.Position.Y + head.Size.Y / 2 - root.Position.Y)
+	end
+	return k, height
+end
+
 -- server attributes are change-only (CONTRACTS ground rules)
 local function setAttr(inst, k, v)
 	if inst and inst:GetAttribute(k) ~= v then
@@ -214,9 +252,11 @@ end
 -- 4.4 studs root to root, and two guards have about a stud of air between them at the AI's usual 3.4-4.4
 -- (FightMotion.Spacing; the client fits each punch to the actual distance)
 function Fight:PunchRange(F, ptype)
+	-- (the reach is the arm's: the athletic rigs' arms are as long as the classic ones, so the base stays;
+	-- the closest distances grow with the bodies - self.sp, the spacing scaled to the pair's rigs)
 	local base = SPACING.base + ((F.data.reach or 70) - 70) * 0.05 + ((F.data.height or 70) - 70) * 0.02
-	-- never shorter than the closest the bodies get (MIN_SEP), so every punch can land up close
-	return math.max(SPACING.min, base * (Config.Punches[ptype] and Config.Punches[ptype].range or 1))
+	-- never shorter than the closest the bodies get (minSep), so every punch can land up close
+	return math.max((self.sp or SPACING).min, base * (Config.Punches[ptype] and Config.Punches[ptype].range or 1))
 end
 
 function Fight:IsHurt(F)
@@ -649,7 +689,7 @@ function Fight:Resolve(F, O, ptype, body, stamPct)
 	if angled then
 		dmg *= 1.1
 	end
-	if dist < SPACING.inside then
+	if dist < (self.sp or SPACING).inside then
 		if P.kind == "hook" or P.kind == "uppercut" then
 			dmg *= F.style.fight.inside
 		else
@@ -980,7 +1020,7 @@ end
 
 function Fight:CanClinch(F)
 	local O = self:Other(F)
-	return self:CanAct(F) and O.state ~= "down" and self:Now() >= F.nextClinch and F.stamina >= 4 and self:Distance(F, O) < SPACING.clinch
+	return self:CanAct(F) and O.state ~= "down" and self:Now() >= F.nextClinch and F.stamina >= 4 and self:Distance(F, O) < (self.sp or SPACING).clinch
 end
 
 function Fight:Clinch(F)
@@ -1101,10 +1141,11 @@ function Fight:SpawnReferee()
 	local center = self.anchors.RingCenter.Position
 	local spot = self.arena:FindFirstChild("RefereeSpot", true)
 	local pos = spot and spot:IsA("BasePart") and spot.Position or (center + Vector3.new(4.5, 0, 0))
-	model:PivotTo(CFrame.lookAt(Vector3.new(pos.X, center.Y + 3.2, pos.Z), Vector3.new(center.X, center.Y + 3.2, center.Z)))
-	model.Parent = self.arena
 	local root = model:FindFirstChild("HumanoidRootPart")
 	local hum = model:FindFirstChildOfClass("Humanoid")
+	local y = center.Y + standHeight(hum, root)
+	model:PivotTo(CFrame.lookAt(Vector3.new(pos.X, y, pos.Z), Vector3.new(center.X, y, center.Z)))
+	model.Parent = self.arena
 	if root then
 		pcall(function()
 			root:SetNetworkOwner(nil)
@@ -1283,7 +1324,8 @@ end
 -- room (studs, centre to centre) a fall that folds forward needs in front of the man going down: the
 -- attacker backs off to it. A face-first timber fall goes diagonally past him (FightMotion), the
 -- others fold onto the hands / knees / into the referee's arms just in front of the feet
-local FALL_ROOM = { face = 5.0, forward = 4.2, standing = 5.0, knee = 3.8, flash = 3.8 }
+-- (FightMotion.FALL_ROOM, scaled by the fallen man's height: F.bodyK)
+local FALL_ROOM = FightMotion and FightMotion.FALL_ROOM or { face = 5.0, forward = 4.2, standing = 5.0, knee = 3.8, flash = 3.8 }
 
 -- walks a fighter's root over the canvas at a walking pace (never a teleport): the Animator senses the
 -- motion and gives him real steps. The speed ramps up and brakes into the spot; a newer glide or a
@@ -1348,7 +1390,7 @@ end
 -- a knockout on the feet: the referee rushes in, gets his arms round the fighter and holds him up. He
 -- stands chest to chest at arm's length (2.4 studs, centre to centre: two torsos plus the arms between
 -- them); the fighter sags forward into him
-local CATCH_DIST = 2.4
+local CATCH_DIST = FightMotion and FightMotion.CATCH_DIST or 2.4
 function Fight:RefCatch(F)
 	local R = self.ref
 	if not (R and R.root and R.model.Parent and F.root) then
@@ -1357,7 +1399,7 @@ function Fight:RefCatch(F)
 	local other = self:Other(F)
 	local toward = other.root and flat(other.root.Position - F.root.Position) or flat(F.root.CFrame.LookVector)
 	local d = unitOr(toward, Vector3.new(1, 0, 0))
-	R.catching = { at = self:ClampToRing(F.root.Position + d * CATCH_DIST), look = F.root.Position, untilT = self:Now() + 6 }
+	R.catching = { at = self:ClampToRing(F.root.Position + d * CATCH_DIST * (F.bodyK or 1)), look = F.root.Position, untilT = self:Now() + 6 }
 	R.nextMove = 0
 	self:RefAct(string.format("catch|%.1f", (FightMotion and FightMotion.CATCH_TIME or 2) + 1.4))
 end
@@ -1424,6 +1466,7 @@ function Fight:Knockdown(F, by, severity, fall, cause)
 	-- step to give the fall its room (a walk the Animator turns into real steps, never a teleport)
 	-- (a knocked-out man does not stop on his hands: a forward knockout goes all the way to the face)
 	local room = FALL_ROOM[(severity == "out" and fall == "forward") and "face" or fall]
+	room = room and room * (F.bodyK or 1)
 	if room and F.root and by.root then
 		local d = flat(F.root.Position - by.root.Position)
 		if d.Magnitude > 0.05 and d.Magnitude < room then
@@ -1677,13 +1720,14 @@ end
 ------------------------------------------------------------------------
 -- Positioning / movement
 ------------------------------------------------------------------------
+
 function Fight:Place(F, pos, lookAt)
 	if not F.root then
 		return
 	end
 	F.glideId = (F.glideId or 0) + 1 -- a placement wins over any walk in progress
 	local target = lookAt or self.anchors.RingCenter.Position
-	local p = Vector3.new(pos.X, pos.Y + 3.2, pos.Z)
+	local p = Vector3.new(pos.X, pos.Y + standHeight(F.hum, F.root), pos.Z)
 	F.model:PivotTo(CFrame.lookAt(p, Vector3.new(target.X, p.Y, target.Z)))
 	F.root.AssemblyLinearVelocity = Vector3.zero
 end
@@ -1696,7 +1740,8 @@ function Fight:ClampToRing(pos)
 end
 
 -- centre-to-centre spacing the bodies need so gloves and torsos never sink into each other
-local MIN_SEP, CLINCH_SEP = SPACING.minSep, 1.9
+-- (self.sp.minSep: FightMotion.Spacing scaled to the pair's rigs; a clinch ties them up closer)
+local CLINCH_SEP = 1.9
 
 function Fight:MoveAI(F, range, circle)
 	if not F.hum or F.state == "down" or F.state == "clinch" or self:IsStumbling(F) then
@@ -1708,6 +1753,7 @@ function Fight:MoveAI(F, range, circle)
 		away = Vector3.new(1, 0, 0)
 	end
 	away = away.Unit
+	local MIN_SEP = (self.sp or SPACING).minSep
 	range = math.max(range, MIN_SEP)
 	local rot = CFrame.Angles(0, circle, 0):VectorToWorldSpace(away)
 	local target = self:ClampToRing(O.root.Position + rot * range)
@@ -1743,7 +1789,7 @@ function Fight:Separate()
 	if not (P.root and O.root) or P.state == "down" or O.state == "down" then
 		return
 	end
-	local minSep = (P.state == "clinch" or O.state == "clinch") and CLINCH_SEP or MIN_SEP
+	local minSep = (P.state == "clinch" or O.state == "clinch") and CLINCH_SEP * (self.rigK or 1) or (self.sp or SPACING).minSep
 	local d = flat(O.root.Position - P.root.Position)
 	local m = d.Magnitude
 	if m >= minSep then
@@ -2535,6 +2581,15 @@ function FightEngine.Run(player, remote, offer, pData, oData, arena, opts)
 	end
 	self.P = makeFighter(pData, char, player)
 	self.O = makeFighter(oData, npc, nil)
+	-- the distances fit the bodies in the ring: athletic rigs carry deeper chests and bigger gloves than the
+	-- classic one the spacing was fitted on, and a taller man needs more room to fall
+	local kP, hP = rigSize(char, self.P.hum, self.P.root)
+	local kO, hO = rigSize(npc, self.O.hum, self.O.root)
+	self.rigK = (kP + kO) / 2
+	self.sp = FightMotion and FightMotion.ScaledSpacing and FightMotion.ScaledSpacing(self.rigK) or SPACING
+	for _, X in ipairs({ { self.P, hP }, { self.O, hO } }) do
+		X[1].bodyK = FightMotion and FightMotion.BodyScale and FightMotion.BodyScale(X[2]) or 1
+	end
 	if pData.injuryCut then
 		self.cutRisk[self.P] = 1.8
 	end

@@ -49,6 +49,37 @@ FightMotion.ROPE_MARGIN = 1.5
 --   cover   a hurt AI covers up when the other man is this close
 FightMotion.Spacing = { base = 4.3, min = 3.4, minSep = 3.25, inside = 3.65, clinch = 4.8, pivot = 3.9, cover = 5.8 }
 
+-- The numbers above were fitted on the classic R15 body (a 2 x 1.6 x 1 UpperTorso at scale 1). Builder's
+-- athletic proportions blend toward Rthro: at the same HumanoidDescription scales the chest is deeper and
+-- the hands (and the gloves on them) bigger, so two guards meet a good half stud sooner. Every distance
+-- grows with the pair's rig factor: the UpperTorso's depth over its DepthScale (1 on the classic rig,
+-- about 1.1-1.2 on the athletic one; the depth alone when the scale is unknown). The arms' joint chain
+-- is the classic length on both rigs, so a punch's reach (`base`) is the same: FightEngine keeps it.
+function FightMotion.RigFactor(utDepth: number, depthScale: number?): number
+	local d = (depthScale and depthScale > 0.2) and depthScale or 1
+	return math.clamp(utDepth / d, 1, 1.35)
+end
+
+-- FightMotion.Spacing for a pair whose mean rig factor is k
+function FightMotion.ScaledSpacing(k: number): { [string]: number }
+	local out = {}
+	for key, v in pairs(FightMotion.Spacing) do
+		out[key] = v * k
+	end
+	return out
+end
+
+-- room (studs, centre to centre) a fall that folds forward needs in front of the man going down: the
+-- attacker backs off to it. Fitted on a classic body about FALL_HEIGHT tall; a taller man needs more
+-- (FightEngine scales it by the fallen man's standing height). The referee catches a man knocked out on
+-- his feet from CATCH_DIST (scaled the same way).
+FightMotion.FALL_ROOM = { face = 5.0, forward = 4.2, standing = 5.0, knee = 3.8, flash = 3.8 }
+FightMotion.FALL_HEIGHT = 5.3
+FightMotion.CATCH_DIST = 2.4
+function FightMotion.BodyScale(height: number?): number
+	return math.clamp((height or FightMotion.FALL_HEIGHT) / FightMotion.FALL_HEIGHT, 1, 1.5)
+end
+
 -- seconds the get-up takes per fall (FightEngine sends it in the getup act; the client stages it:
 -- off the back he rolls to his side, onto hands and knees, one knee, then up; off the ropes he pulls
 -- himself up on them). The eight count and the referee check wait for it.

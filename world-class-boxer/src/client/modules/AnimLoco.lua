@@ -35,6 +35,8 @@ local ZERO = Vector3.zero
 local MOVE_ON, MOVE_OFF = 0.9, 0.45 -- start / stop the gait cycle (hysteresis)
 -- closest the feet may come side by side in footwork (studs between the ankle lines)
 local FOOT_GAP = 0.6
+-- the most a planted fighting foot pitches up onto its ball (rad; a cross's pivot reaches about 0.6)
+local FIGHT_PITCH_MAX = 0.68
 -- the fastest a punch's pivot (rad/s) or heel lift (rad/s of foot pitch) may turn a planted ankle
 local PIVOT_RATE, HEEL_RATE = 9, 8
 -- a foot stays down at least this long before it lifts again (no one-frame touchdowns)
@@ -632,6 +634,7 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 			if u >= 1 then
 				f.swing, f.P, f.yawW, f.lastStep, f.curLift = false, V3(tgt.X, f.home.Y, tgt.Z), landYaw, t, 0
 				f.landT = t
+				f.dropH = nil
 				f.pitchS = f.curPitch
 			else
 				-- horizontal travel: zero speed at lift-off and touchdown (the foot leaves and meets the
@@ -648,7 +651,7 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 				-- u^a (1-u)^b (zero slope at lift-off and touchdown: no knee snap)
 				local a = sk == "walk" and lerp(2, 1.2, lo.run) or 2
 				local b = sk == "walk" and lerp(2, 1.9, lo.run) or 2
-				f.curLift = f.liftH * K.skewBump(u, a, b)
+				f.curLift = f.liftH * K.skewBump(u, a, b) + (f.dropH or 0) * (1 - K.smoother(u))
 				-- foot roll through the swing: toe-off -> level -> landing attitude
 				local landP, mid
 				if sk == "walk" then
@@ -691,6 +694,11 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 			end
 			if t - f.spinT < 0.1 then
 				want += 0.12
+			end
+			-- (a boxer's planted foot never goes past the ball onto the toes: the heel lifts so far and the
+			-- knee and the pelvis take the rest)
+			if not walking then
+				want = min(want, FIGHT_PITCH_MAX)
 			end
 			-- just landed: settle from the landing attitude
 			f.pitchS += (want - f.pitchS) * (1 - exp(-dt * 18))
@@ -843,6 +851,14 @@ function AnimLoco.seedFeet(rig, t)
 			f.swing, f.curLift, f.want = false, 0, false
 			f.pitchS = th
 			f.lastStep = t
+			f.dropH = nil
+			-- a foot the keyed legs left off the canvas (the back foot of a kneel) is not planted in
+			-- the air: it comes down in a short step from where it is, onto its stance spot
+			local up = ankW.Y - groundW - leg.ah
+			if up > 0.1 then
+				startSwing(f, t, clamp(0.12 + up * 0.25, 0.14, 0.3), 0.04, "shuffle")
+				f.dropH = up
+			end
 		end
 	end
 end

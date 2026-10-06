@@ -391,6 +391,7 @@ function Kit.Scalp(look)
 		local d = S.body(x + H, y + H, z + H)
 		return norm3(a - b - c + d, -a - b + c + d, -a + b - c + d)
 	end
+	S.bodyNormal = bodyNormal
 	-- the face: hair may frame it, never hang in front of it (forehead fringes stop above the brows)
 	function S.face(x, y, z)
 		return sdE(x, y + 0.08, z + 0.36, 0.3, 0.42, 0.24)
@@ -621,6 +622,18 @@ function Kit.Cut(S, spec)
 		return lerp(1, lerp(bottom, 1, u * u * (3 - 2 * u)), w)
 	end
 
+	-- a parting's gap at a nominal point: 0 off it .. 1 on its line. A thin line (~0.008 studs, 1-2 texels)
+	-- from the front hairline back over the top, fading out toward the crown, its edges ragged where the
+	-- strands on either side fall over it
+	local function partAt(x, y, z)
+		if not part or y <= 0.3 or z >= 0.22 then
+			return 0
+		end
+		local w = 0.004 + 0.002 * (1 - grow)
+		local pd = abs(x - part * (1 - 0.15 * (z + 0.45))) + 0.0025 * noise3(y * 60, z * 60, 3.1, seed + 17)
+		return (1 - smoothstep(w * 0.5, w, pd)) * smoothstep(0.3, 0.36, y) * (1 - smoothstep(0.12, 0.22, z))
+	end
+
 	-- coverage, the hairline distance and the fade factor at a nominal point
 	local function cov(x, y, z)
 		local d, da, hl = dist(x, y, z)
@@ -634,11 +647,10 @@ function Kit.Cut(S, spec)
 			local r = region(x, y, z, da)
 			c *= lerp(shaved * (1 - 0.4 * (1 - grow)) + 0.5 * grow * shaved, 1, r)
 		end
-		if part and y > 0.3 and z < 0.22 then
-			-- a parting: a thin line of scalp from the front hairline back over the top
-			local w = 0.006 + 0.004 * (1 - grow)
-			local pd = abs(x - part * (1 - 0.15 * (z + 0.45)))
-			c *= lerp(0.35 + 0.5 * grow, 1, smoothstep(w * 0.4, w, pd))
+		if part then
+			-- a parting thins the hair a little along its line (the shell barely dips: no groove); the gap itself
+			-- is drawn by the texture (partAt), narrow and in the shadowed scalp's tone
+			c *= lerp(0.85, 1, 1 - partAt(x, y, z))
 		end
 		return c * density, d, fd, da
 	end
@@ -670,7 +682,7 @@ function Kit.Cut(S, spec)
 		-- facets (its chords cut below the smooth skull field) never leave a gap at the shell's edge
 		return -SINK + (thin + SINK) * gc + max(t - thin, 0) * gc * gd * gd ^ 0.3, c
 	end
-	return { cov = cov, thick = thick, dist = dist, height = height, soft = soft, grow = grow, seed = seed }
+	return { cov = cov, thick = thick, dist = dist, height = height, soft = soft, grow = grow, seed = seed, partAt = part and partAt or nil }
 end
 
 ------------------------------------------------------------------------
@@ -711,16 +723,24 @@ function Kit.Palette(look, htype)
 	--   y: the point's nominal height (an ombre is a horizontal gradient at one height on every lock)
 	--   tipDist: studs from the strand's tip (dyed tips are the last few centimetres, on every lock alike)
 	--   streakMask: 0..1, how much of a streak this point carries (a streak is a band of a clump, not all of it)
+	-- a light dye over darker hair keeps the hair's texture: the dyed share's lock-to-lock and root-to-tip
+	-- variation is stretched (a dye multiplies into the hair, it does not paint a flat colour over it)
+	local altLum = 0.3 * alt[1] + 0.59 * alt[2] + 0.11 * alt[3]
+	local dyeLight = clamp((altLum - lum) * 3, 0, 1)
+	pal.dyeLight = dyeLight
 	function pal.at(rnd, t, x, noGrey, y, tipDist, streakMask)
 		local c = base
 		local r, g, b = c[1], c[2], c[3]
+		local dk = 0
 		if dye == "Tips" then
 			-- the dyed length differs a little from lock to lock, its edge a soft ~6 cm blend
 			local k = tipDist and smoothstep(0.13, 0.03, tipDist * (0.75 + 0.5 * ((rnd * 3.71) % 1))) or smoothstep(0.6, 0.85, t)
 			r, g, b = lerp(r, alt[1], k), lerp(g, alt[2], k), lerp(b, alt[3], k)
+			dk = k
 		elseif dye == "Ombre" then
 			local k = y and smoothstep(dyeY + 0.12, dyeY - 0.3, y) or smoothstep(0.25, 0.95, t)
 			r, g, b = lerp(r, alt[1], k), lerp(g, alt[2], k), lerp(b, alt[3], k)
+			dk = k
 		elseif dye == "Streaks" then
 			if rnd < 0.18 then
 				local k = 0.7 * (streakMask or 1)
@@ -729,6 +749,7 @@ function Kit.Palette(look, htype)
 		elseif dye == "Split" then
 			local k = smoothstep(-0.02, 0.02, x or 0)
 			r, g, b = lerp(r, alt[1], k), lerp(g, alt[2], k), lerp(b, alt[3], k)
+			dk = k
 		elseif hl and rnd < 0.24 then
 			local k = 0.65 * (streakMask or 1)
 			r, g, b = lerp(r, alt[1], k), lerp(g, alt[2], k), lerp(b, alt[3], k)
@@ -741,7 +762,13 @@ function Kit.Palette(look, htype)
 		end
 		-- per-group variation, darker roots, lighter tips
 		local v = 0.9 + 0.2 * ((rnd * 13.7) % 1)
-		local k = v * lerp(rootK, 1, smoothstep(0, 0.4, t)) * lerp(1, tipK, smoothstep(0.5, 1, t))
+		local rk = rootK
+		if dk > 0 then
+			local st = 1 + 1.6 * dk * dyeLight
+			v = 1 + (v - 1) * st
+			rk = 1 - (1 - rk) * st
+		end
+		local k = v * lerp(rk, 1, smoothstep(0, 0.4, t)) * lerp(1, tipK, smoothstep(0.5, 1, t))
 		-- very dark hair is a deep warm brown-black, not a void: lift it so its texture and sheen can read
 		local lift = lum < 0.14 and 0.045 * (1 - lum / 0.14) + 0.01 or 0
 		return clamp(r * k + lift, 0, 1), clamp(g * k + lift * 0.9, 0, 1), clamp(b * k + lift * 0.8, 0, 1)
@@ -897,7 +924,8 @@ function Kit.Grow(S, x, y, z, opts)
 	end
 	local pts = { { x, y, z } }
 	local free = false
-	local leftAt
+	local leftAt, contact
+	local y0 = y
 	local k = (1 - stiff) * 0.55
 	for i = 1, n do
 		local u = i / n
@@ -943,6 +971,34 @@ function Kit.Grow(S, x, y, z, opts)
 		if e < 0 then
 			px, py, pz = px - nx * e, py - ny * e, pz - nz * e
 		end
+		if py < top and grav > 0 and S.body(px, py, pz) < bodyOff then
+			-- resting on the body (shoulders, trapezius, chest, back): the strand slides down the surface under
+			-- gravity (gravity projected onto the tangent plane) instead of being shoved out along the normal - on
+			-- a near-flat shoulder top that shove sent locs out sideways like wires. Over the shoulder it slides
+			-- off to the back (or the front, for a strand already in front of the neck); its sideways travel per
+			-- step stays small
+			local bnx, bny, bnz = S.bodyNormal(px, py, pz)
+			local bz = (z > -0.06 and 1 or -1) * (0.35 + 0.9 * smoothstep(0.4, 0.85, bny))
+			local gd = -bny + bz * bnz
+			local sx, sy, sz = norm3(-bnx * gd, -1 - bny * gd, bz - bnz * gd)
+			if sx ~= 0 or sy ~= 0 or sz ~= 0 then
+				-- a little of the strand's own heading (its stiffness), mostly the slide
+				local hd = dx * bnx + dy * bny + dz * bnz
+				local mx, my, mz = norm3(sx + (dx - bnx * hd) * 0.35 * stiff, sy + (dy - bny * hd) * 0.35 * stiff, sz + (dz - bnz * hd) * 0.35 * stiff)
+				if mx ~= 0 or my ~= 0 or mz ~= 0 then
+					sx, sy, sz = mx, my, mz
+				end
+				-- sideways (away from the body's midline) at most ~0.04 a step
+				local lim = min(0.04, 0.6 * ds)
+				local ax = abs(x + sx * ds) - abs(x)
+				if ax > lim then
+					sx *= lim / ax
+					sx, sy, sz = norm3(sx, min(sy, 0) - 0.15, sz)
+				end
+				px, py, pz = x + sx * ds, y + sy * ds, z + sz * ds
+			end
+			contact = contact or i
+		end
 		if (py < top and S.body(px, py, pz) < bodyOff) or (S.guardFace and py < 0.3 and pz < -0.05) then
 			px, py, pz = S.clear(px, py, pz, o, bodyOff)
 		end
@@ -954,6 +1010,24 @@ function Kit.Grow(S, x, y, z, opts)
 		pts[#pts + 1] = { x, y, z }
 	end
 	step(n * 4)
+	if contact and grav >= 0.5 and #pts > 4 then
+		-- a hanging strand never ends above its root, and one lying across a shoulder ends once it has
+		-- travelled ~0.22 sideways along it (shorter, never a wire sticking out over the arm)
+		local bx0 = abs(pts[contact][1])
+		for i = contact + 1, #pts do
+			local p = pts[i]
+			if abs(p[1]) - bx0 > 0.22 or (i > #pts * 0.5 and p[2] > y0 - 0.02) then
+				local keep = max(i - 1, 4)
+				if keep < #pts then
+					pts = table.move(pts, 1, keep, 1, {})
+					if leftAt and leftAt > keep - 1 then
+						leftAt = nil
+					end
+				end
+				break
+			end
+		end
+	end
 	return pts, leftAt
 end
 
@@ -1147,7 +1221,12 @@ function Kit.Clump(m, pts, opts)
 		end
 		local v = vertex(m, p[1], p[2], p[3], 0.5, 1, r, g, b)
 		local N = m.N
-		N[v * 3 - 2], N[v * 3 - 1], N[v * 3] = f[1], f[2], f[3]
+		-- the point's normal mostly the clump's up axis (along the strand it would shade the whole tip fan
+		-- like a face turned away from the light: a dark arrowhead on every short clump)
+		local ca, sa = cos(twist), sin(twist)
+		local ux, uy, uz = f[7] * ca - f[4] * sa, f[8] * ca - f[5] * sa, f[9] * ca - f[6] * sa
+		local k = max(flat, 0.65)
+		N[v * 3 - 2], N[v * 3 - 1], N[v * 3] = norm3(lerp(f[1], ux, k), lerp(f[2], uy, k), lerp(f[3], uz, k))
 		local r0 = first + (last - 1) * sides
 		for k = 0, sides - 1 do
 			tri(m, r0 + k, v, r0 + (k + 1) % sides)

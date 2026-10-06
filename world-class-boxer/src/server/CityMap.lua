@@ -787,7 +787,9 @@ local function shopInterior(f, d, w, cx, doorX)
 		checkerFloor(fl, Color3.fromRGB(30, 30, 34), Color3.fromRGB(230, 230, 226), 12, 8)
 	end
 	-- facade: piers at both ends, a header above the glass, panes either side of the open door
-	local glassTop = math.min(7.7, RH - 0.6)
+	-- (the opening clears the tallest boxer the Creator allows - 84 in is about 7.6 studs on the athletic
+	-- rig - with room for a stride or a hop, on the sidewalk and on the museum's raised floor alike)
+	local glassTop = math.min(9, RH - 0.8)
 	for _, s in ipairs({ -1, 1 }) do
 		part(f, "ShopPier", V3(2, RH, 0.6), CF(cx + s * (w / 2 - 1), RH / 2, FRONT_Z + 0.3), d.color, mat, { collide = true })
 	end
@@ -865,7 +867,11 @@ local function shop(f, d, rng)
 	-- the prompt: at the counter inside walk-in shops, by the door otherwise
 	if d.action then
 		local at = counterAt or V3(doorX, SW_H + 2.4, FRONT_Z - 1.6)
-		promptPart(f, "ShopPrompt", at, d.actionText or "Enter", d.sign, { Action = d.action, Store = d.sign }, d.signFg)
+		local _, pp = promptPart(f, "ShopPrompt", at, d.actionText or "Enter", d.sign, { Action = d.action, Store = d.sign }, d.signFg)
+		-- (a counter deep in the room still answers from just inside the door)
+		if counterAt then
+			pp.MaxActivationDistance = 12
+		end
 	end
 	-- warm light spilling out of the shop at night
 	local glow = point(emitter(f, CF(cx, 5, FRONT_Z - 1.2)), Color3.fromRGB(255, 214, 160), 16, 0.9)

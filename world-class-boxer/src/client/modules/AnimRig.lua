@@ -51,6 +51,9 @@ AnimRig.num = num
 ------------------------------------------------------------------------
 -- Joints
 ------------------------------------------------------------------------
+-- limb part -> the joint at its far end (resting capsules for the ground solve) and the radius trim
+local CAP_CHILD = { RS = "RE", LS = "LE", RH = "RK", LH = "LK", RK = "RA", LK = "LA" }
+local CAP_PAD = { RS = -0.2, LS = -0.2 }
 local function jointC0(m)
 	if m:IsA("Motor6D") then
 		return m.C0
@@ -221,6 +224,17 @@ function AnimRig.computeGeo(rig)
 	end
 	local hd = g.sz.Neck
 	g.headR = hd and hd.Y * 0.5 or 0.6
+	-- the limbs' resting capsules (part space): the joint into the part, the joint out of it, radius (the
+	-- R15 arm boxes are fatter than the arms drawn over them: lowest()'s PAD)
+	g.armCap = g.armCap or {}
+	for k, child in pairs(CAP_CHILD) do
+		local sz = g.sz[k]
+		if g.jc1i[k] and g.jc0[child] and sz then
+			g.armCap[k] = { g.jc1i[k]:Inverse().Position, g.jc0[child].Position, max(0.15, min(sz.X, sz.Z) * 0.5 + (CAP_PAD[k] or 0)) }
+		else
+			g.armCap[k] = nil
+		end
+	end
 	g.ok = true
 end
 
@@ -255,28 +269,35 @@ AnimRig.boxLow = boxLow
 -- shoulder); forearms and fists are laid on it separately (liftArms)
 local SUPPORT = { "Root", "W", "Neck", "RH", "RK", "RA", "LH", "LK", "LA", "RS", "LS" }
 -- box padding per part: the trunk's muscles and shorts stand a little proud of the R15 boxes, the
--- R15 arm boxes are fatter than the arms drawn over them
-local PAD = { Root = 0.05, W = 0.05, RS = -0.14, LS = -0.14 }
+-- R15 arm boxes are fatter than the arms drawn over them, and a foot box's corners (a heel on the
+-- canvas when he lies on his back) stand off the rounded heel and toe drawn in it - on the athletic
+-- rigs' long feet enough to prop the whole body
+local PAD = { Root = 0.05, W = 0.05, RS = -0.14, LS = -0.14, RA = -0.1, LA = -0.1 }
 -- the lowest point of the body (HRP space) for the pose already in `out` (AnimRig.fk)
-function AnimRig.lowest(rig, out)
+function AnimRig.lowest(rig, out, keys)
 	local g = rig.geo
-	local low = math.huge
-	for _, k in ipairs(SUPPORT) do
+	local low, lowK = math.huge, nil
+	for _, k in ipairs(keys or SUPPORT) do
 		local cf = out[k]
 		if cf then
 			local y
 			if k == "Neck" then
 				-- the head is round: between its box and its sphere
 				y = boxLow(cf, g.sz.Neck) * 0.6 + (cf.Y - g.headR) * 0.4
+			elseif g.armCap and g.armCap[k] then
+				-- a limb rests on its bone, joint to joint, not on its part box: the athletic rigs' arm and
+				-- leg parts run well past their joints and would prop the body off the canvas
+				local c = g.armCap[k]
+				y = min(cf:PointToWorldSpace(c[1]).Y, cf:PointToWorldSpace(c[2]).Y) - c[3]
 			else
 				y = boxLow(cf, g.sz[k], PAD[k])
 			end
 			if y < low then
-				low = y
+				low, lowK = y, k
 			end
 		end
 	end
-	return low
+	return low, lowK
 end
 
 -- the last word for a body on the canvas (after the filters and the spring overlays): if any of it
@@ -458,6 +479,7 @@ function AnimRig.legs(p, depth, stagger, rig)
 	return p
 end
 
+local HEEL_MAX = 0.42
 -- plant both feet (the foot solver runs after the acts): stagger = lead (left) foot forward / rear
 -- back (studs), width = extra stance width, yawL / yawR = toe directions (+ = turned left), heel lifts
 function AnimRig.plant(rig, stagger, width, yawL, yawR, heelL, heelR)
@@ -467,7 +489,9 @@ function AnimRig.plant(rig, stagger, width, yawL, yawR, heelL, heelR)
 	fL.z, fR.z = -stagger * 0.5, stagger * 0.5
 	fL.x, fR.x = width or 0, width or 0
 	fL.yaw, fR.yaw = yawL or 0, yawR or 0
-	fL.heel, fR.heel = heelL or 0, heelR or 0
+	-- (a stance stands on the balls of the feet at most: past HEEL_MAX the long athletic feet read as
+	-- tiptoe; a punch's pivot lifts the heel further on its own)
+	fL.heel, fR.heel = min(heelL or 0, HEEL_MAX), min(heelR or 0, HEEL_MAX)
 end
 
 function AnimRig.seated(p, lean)

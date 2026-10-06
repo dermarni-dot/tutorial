@@ -513,7 +513,7 @@ local function bodyOf(model, head)
 	-- a little clearance over the proxy: the visible body (meshes) is fuller than it
 	local c = 0.035 * k
 	local b = {
-		torso = torso, tcf = CFrame.identity, arms = {},
+		torso = torso, tcf = CFrame.identity, arms = {}, k = k,
 		ex = 0.94 * ts.X / 2 + c, ey = 0.25 * k + c, ez = 0.92 * ts.Z / 2 + c, ecy = ts.Y / 2 - 0.17 * k,
 		bx = 0.88 * ts.X / 2 + c, by = ts.Y / 2 + c, bz = 0.96 * ts.Z / 2 + c, br = 0.2 * k + c,
 	}
@@ -737,6 +737,16 @@ local function collide(rec, e, tip, piv)
 	end
 	if lb > 1e-4 then
 		local k = (dx * bx + dy * by) / lb
+		-- the generator's rule (Kit.Grow): hair on a shoulder slides off it to the back (front, for hair in
+		-- front of the neck), never swings out sideways like a wire. The sideways swing a push may add stays
+		-- under ~0.04 studs of tip travel a step; the rest of the push swings the segment back instead
+		local cap = 0.04 * (rec.body.k or 1) / max(sqrt(lb), 0.05)
+		if abs(k) > cap then
+			local rest = abs(k) - cap
+			k = cap * sgn(k)
+			e.x += tip.Z > -0.06 * (rec.body.k or 1) and -rest or rest
+			e.vx = 0
+		end
 		e.z += k
 		if k > 0 then
 			e.vz = max(e.vz, 0)

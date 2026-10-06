@@ -28,6 +28,11 @@ Gear.RES = {
 	low = { palm = { 3, 6, 0, 0 }, finger = nil, thumb = nil, glove = { 4, 6, 0, 1 }, gthumb = nil, shoe = { 4, 6, 0, 1 } },
 }
 
+-- trim bands that get their own zone (ring pair) on the limb pieces: the glove cuff's rolled top, the trunks'
+-- hem band / piping (bone parameter widths)
+Gear.CUFF_BAND = 0.07
+Gear.HEM_BAND = { Pro = 0.07, Classic = 0.025 }
+
 ------------------------------------------------------------------------
 -- Gear data
 ------------------------------------------------------------------------
@@ -117,32 +122,17 @@ local function edge(x, w, crisp)
 	return smooth(-hw, hw, x)
 end
 
--- laces criss-crossing up the front of a boot / glove cuff: (b, angle) -> 0..1 cover (texels only)
-local function laceCover(bb, ang, b0, b1, center, halfW, pitch)
-	if bb < b0 or bb > b1 then
-		return 0
-	end
-	local da = MeshKit.WrapAngle(ang - center)
-	if abs(da) > halfW then
-		return 0
-	end
-	-- two diagonals per pitch: |da| / halfW against the phase of b
-	local ph = ((bb - b0) / pitch) % 1
-	local x = abs(da) / halfW
-	local d1 = abs(x - ph * 2 % 2)
-	local d2 = abs(x - (1 - ph) * 2 % 2)
-	local d = min(d1, d2)
-	return 1 - smooth(0.12, 0.22, d)
+-- the standing height (sole to the top of the head)
+local function standingHeight(sk)
+	local hd = sk.size.Head
+	local fc, fs = sk.center.RightFoot, sk.size.RightFoot
+	return max(2, sk.center.Head[2] + hd[2] / 2 - (fc[2] - fs[2] / 2))
 end
 
--- the shoe's length from the standing height (sole to the top of the head): a foot is ~15 % of it, a boxing
--- boot a little more; never from the shin (athletic rigs have long shins)
+-- the shoe's length from the standing height: a foot is ~15 % of it, a boxing boot a little more; never from
+-- the shin (athletic rigs have long shins)
 function Gear.FootLength(sk, P)
-	local hd = sk.size.Head
-	local top = sk.center.Head[2] + hd[2] / 2
-	local fc, fs = sk.center.RightFoot, sk.size.RightFoot
-	local H = top - (fc[2] - fs[2] / 2)
-	return clamp(0.155 * H, 0.55, 1.4) * (P.female and 0.96 or 1)
+	return clamp(0.155 * standingHeight(sk), 0.55, 1.4) * (P.female and 0.96 or 1)
 end
 
 -- criss-cross lacing in studs: Y along the lacing (Y0 = the first eyelet row, Y1 = the last), X across from
@@ -297,14 +287,18 @@ function Gear.LimbPainter(pc, sk, P, look, wear, side, kind, info, trunk, Limbs)
 		local r, gg, b = trunk.r, trunk.g, trunk.b
 		local lat = adist(ang, LAT)
 		local st = trunk.style
-		local hemB = z[2]
+		local hemB = z[5]
 		if st == "Striped" then
 			if edge(0.2 - lat, 0.05, crisp) > 0.5 then
 				r, gg, b = trunk.tr, trunk.tg, trunk.tb
 			end
 		elseif st == "Pro" then
-			-- trim hem band at the opening, a trim side panel with one broad white stripe
-			local hem = hemB < 0.97 and edge(bb - (hemB - 0.07), 0.015, crisp) or 0
+			-- trim hem band at the opening, a trim side panel with one broad white stripe (the band is its own
+			-- zone with a ring pair at its edge: per vertex it is a hard switch there, no smear toward the leg)
+			local hem = 0
+			if hemB < 0.97 then
+				hem = crisp and edge(bb - (hemB - Gear.HEM_BAND.Pro), 0.015, true) or (z[1] > hemB - Gear.HEM_BAND.Pro - 1e-3 and 1 or 0)
+			end
 			local panel = edge(0.48 - lat, 0.05, crisp)
 			local w = max(hem, panel)
 			r, gg, b = mix(r, gg, b, trunk.tr, trunk.tg, trunk.tb, w)
@@ -312,11 +306,11 @@ function Gear.LimbPainter(pc, sk, P, look, wear, side, kind, info, trunk, Limbs)
 			r, gg, b = mix(r, gg, b, 0.95, 0.95, 0.95, stripe)
 		elseif st == "Classic" and hemB < 0.97 then
 			-- a narrow trim piping at the opening
-			local hem = edge(bb - (hemB - 0.025), 0.008, crisp)
+			local hem = crisp and edge(bb - (hemB - Gear.HEM_BAND.Classic), 0.008, true) or (z[1] > hemB - Gear.HEM_BAND.Classic - 1e-3 and 1 or 0)
 			r, gg, b = mix(r, gg, b, trunk.tr, trunk.tg, trunk.tb, hem)
 		end
 		-- the hem's folded edge is a shade darker
-		if hemB < 0.97 then
+		if hemB < 0.97 and crisp then
 			local fold = bell((bb - hemB) / 0.02) * 0.12
 			r, gg, b = r * (1 - fold), gg * (1 - fold), b * (1 - fold)
 		end
@@ -327,7 +321,7 @@ function Gear.LimbPainter(pc, sk, P, look, wear, side, kind, info, trunk, Limbs)
 	local function boot(bb, ang, crisp, z)
 		local c = sh.c
 		local r, gg, b = c[1], c[2], c[3]
-		local top = z[1]
+		local top = z[4]
 		local fr = adist(ang, FRONT)
 		-- the padded collar round the top, a shade lighter; the tongue's top at the front
 		local collar = 1 - edge(bb - (top + 0.05), 0.012, crisp)
@@ -366,13 +360,19 @@ function Gear.LimbPainter(pc, sk, P, look, wear, side, kind, info, trunk, Limbs)
 		return c[1] * (1 - rib), c[2] * (1 - rib), c[3] * (1 - rib)
 	end
 	local gl = g.glove
+	local GLOVE_LACE = { lace = { 0.95, 0.95, 0.93 } }
 	local function gloveCuff(bb, ang, crisp, z)
 		local c = gl.c
 		local r, gg, b = c[1], c[2], c[3]
-		local top = z[1]
-		local len = z[2] - top
-		-- the rolled top edge in the trim colour
-		local band = 1 - edge(bb - (top + 0.07), 0.012, crisp)
+		local top = z[4]
+		local len = z[5] - top
+		-- the rolled top edge in the trim colour (its own zone: a hard switch per vertex at its ring pair)
+		local band = crisp and (1 - edge(bb - (top + Gear.CUFF_BAND), 0.012, true)) or (z[2] < top + Gear.CUFF_BAND + 1e-3 and 1 or 0)
+		if not crisp then
+			-- vertex colours (medium / low detail): the cuff's main colour and the trim band only; straps, tape and
+			-- laces are narrower than the rings and would only smear
+			return mix(r, gg, b, gl.trim[1], gl.trim[2], gl.trim[3], band)
+		end
 		r, gg, b = mix(r, gg, b, gl.trim[1], gl.trim[2], gl.trim[3], band)
 		if gl.tape then
 			-- fight night: tape over the strap / laces, signed by the inspector (the plate)
@@ -382,10 +382,9 @@ function Gear.LimbPainter(pc, sk, P, look, wear, side, kind, info, trunk, Limbs)
 		elseif gl.closure == "lace" then
 			-- lace-up: the laces down the palm side
 			if crisp then
-				local lace = laceCover(bb, ang, top + 0.1, z[2] - 0.04, MED, 0.42, 0.13)
-				r, gg, b = mix(r, gg, b, 0.95, 0.95, 0.93, lace)
-				local gap = edge(0.08 - adist(ang, MED), 0.02, true)
-				r, gg, b = mix(r, gg, b, r * 0.7, gg * 0.7, b * 0.7, gap * (1 - band))
+				-- (criss-crossed between two rows of eyelets over a darker tongue, like the boots')
+				local rr = (spec.rx(top) * 1.02 + 0.07) * S
+				r, gg, b = paintLacing(r, gg, b, GLOVE_LACE, bb * L, MeshKit.WrapAngle(ang - MED) * rr, (top + 0.11) * L, (z[5] - 0.05) * L, footL * 0.9, true, (top + 0.08) * L, z[5] * L)
 			else
 				local lace = (1 - smooth(0.2, 0.42, adist(ang, MED))) * smooth(top + 0.08, top + 0.14, bb)
 				r, gg, b = mix(r, gg, b, 0.95, 0.95, 0.93, 0.5 * lace)
@@ -409,13 +408,14 @@ function Gear.LimbPainter(pc, sk, P, look, wear, side, kind, info, trunk, Limbs)
 		local c = wr.c
 		local r, gg, b = c[1], c[2], c[3]
 		if crisp then
-			-- the layers: overlapping diagonal turns, a soft shadow along each edge
-			local ph = (bb * 9 + ang / TAU * 1.0) % 1
-			local layer = smooth(0.0, 0.12, ph) * 0.06
-			r, gg, b = r * (0.96 + layer), gg * (0.96 + layer), b * (0.96 + layer)
+			-- the layers: overlapping diagonal turns, each turn's edge casting a thin shadow on the one under it,
+			-- its fold catching a little light
+			local f = (bb * 9 + ang / TAU * 1.0) % 1
+			local k = 0.93 + 0.07 * smooth(0.0, 0.3, f) - 0.16 * (1 - smooth(0.0, 0.035, f)) + 0.05 * bell((f - 0.06) / 0.04)
+			r, gg, b = r * k, gg * k, b * k
 		end
 		-- two-tone / flag patterns: bands of the second / third colour
-		local t = (bb - z[1]) / max(0.05, z[2] - z[1])
+		local t = (bb - z[4]) / max(0.05, z[5] - z[4])
 		if wr.c2 ~= wr.c and t > 0.35 and t < 0.6 then
 			r, gg, b = wr.c2[1], wr.c2[2], wr.c2[3]
 		elseif wr.c3 ~= wr.c and t > 0.6 and t < 0.75 then
@@ -694,10 +694,18 @@ local function buildHand(m, sk, P, lod, side, fist, Limbs)
 	local wx, wz, S = handSize(sk, P, side, Limbs)
 	local Lf = F.Lf
 	local fem = P.female
-	local lp = 0.42 * Lf * (fem and 0.95 or 1) -- wrist to knuckles
-	local lf = 0.36 * Lf * (fem and 0.95 or 1) -- the middle finger
+	-- the hand's length from the standing height (~11 % of it; the curled fingers read a little shorter),
+	-- the palm ~54 % of it
+	local HL = 0.112 * standingHeight(sk) * (fem and 0.95 or 1)
+	local lp = 0.54 * HL -- wrist to knuckles
+	local lf = 0.46 * HL -- the middle finger
 	local hw = wz * 1.2 -- half width at the knuckles (thumb to little finger)
 	local ht = wx * 0.56 -- half thickness (back to palm)
+	if fist then
+		-- the wrap's layers add bulk over the back of the hand and round the palm
+		hw *= 1.05
+		ht *= 1.16
+	end
 	local rf = hw * 0.225 -- (the four fingers side by side fill the knuckle width: a relaxed hand, not a rake)
 	local atlas = {}
 	local sg = F.sg
@@ -726,8 +734,10 @@ local function buildHand(m, sk, P, lod, side, fist, Limbs)
 			-- (the heel of the hand starts inside the forearm's wrist, round like it (an ellipse a little smaller
 			-- than the forearm's end), and only widens / squares off once it is out of the forearm's blunt end,
 			-- so it comes out of that end at a steep angle: a clean wrist line, no sliver crossings)
-			local ex = lerp(wx * 0.84, ht, smooth(0.0, 0.6, u)) * (1 + 0.18 * bell((u - 0.35) / 0.4))
-			local ez = lerp(wz * 0.88, hw, smooth(0.2, 0.75, u))
+			-- (wrapped: the wrap runs on from the forearm's turns without a step, so the heel of the hand starts
+			-- just outside the forearm's wrap at the wrist and tapers into the wrapped hand)
+			local ex = lerp(fist and (wx + 0.034 * S) or wx * 0.84, ht, smooth(0.0, 0.6, u)) * (1 + 0.18 * bell((u - 0.35) / 0.4))
+			local ez = lerp(fist and (wz + 0.034 * S) or wz * 0.88, hw, smooth(0.2, 0.75, u))
 			local e = 2 / lerp(2.0, 2.4, smooth(0.25, 0.6, u))
 			local x = ex * (c < 0 and -1 or 1) * abs(c) ^ e
 			local f = ez * (s < 0 and -1 or 1) * abs(s) ^ e
@@ -793,13 +803,6 @@ local function buildHand(m, sk, P, lod, side, fist, Limbs)
 		atlas[#atlas + 1] = info
 	end
 	return { atlas = atlas, F = F, lp = lp, lf = lf, hw = hw, ht = ht, rf = rf }
-end
-
--- the standing height (sole to the top of the head)
-local function standingHeight(sk)
-	local hd = sk.size.Head
-	local fc, fs = sk.center.RightFoot, sk.size.RightFoot
-	return max(2, sk.center.Head[2] + hd[2] / 2 - (fc[2] - fs[2] / 2))
 end
 
 -- the glove's shape, shared by the mesh and its landmarks: a padded fist, not a mitten. Length from the
@@ -1050,12 +1053,11 @@ function Gear.Build(sk, P, lod, side, kind, wear, pc, seed)
 								r, gg, b = mix(r, gg, b, stc[1], stc[2], stc[3], st2)
 							end
 						end
-					elseif pip then
-						r, gg, b = mix(r, gg, b, pip[1], pip[2], pip[3], 0.35 * (1 - smooth(0.05, 0.2, ds)))
 					end
-					-- amateur competition gloves: the white target area over the knuckles
-					if gl.target then
-						local ta = (crisp and (adist(ang, LAT) < 1.05 and t > 0.58) and 1 or 0) or (1 - smooth(0.9, 1.2, adist(ang, LAT))) * smooth(0.52, 0.64, t)
+					-- amateur competition gloves: the white target area over the knuckles (texture only: per vertex at
+					-- medium detail it would only smear the glove's colour)
+					if gl.target and crisp then
+						local ta = (adist(ang, LAT) < 1.05 and t > 0.58) and 1 or 0
 						r, gg, b = mix(r, gg, b, 0.95, 0.95, 0.94, ta)
 					end
 					-- wear on the striking surface: scuffs, then cracks
@@ -1104,6 +1106,23 @@ function Gear.Build(sk, P, lod, side, kind, wear, pc, seed)
 		Kit.GridNormals(m, MeshKit, grid)
 		local wr = g.wrap
 		local gi, tB, tA = Gear.GridMaps(m, grid)
+		-- the wrap's cloth at layer phase ph (turns overlapping diagonally): each turn's edge casts a thin
+		-- shadow on the turn under it and its fold catches a little light; gel wraps are darker over the knuckles
+		local function wrapCloth(ph, crisp, gel)
+			local c = wr.c
+			local k = 1
+			if crisp then
+				local f = ph % 1
+				k = 0.93 + 0.07 * smooth(0.0, 0.3, f) - 0.16 * (1 - smooth(0.0, 0.035, f)) + 0.05 * bell((f - 0.06) / 0.04)
+			end
+			if gel then
+				k *= 0.82
+			end
+			if wr.cond < 40 then
+				return mix(c[1] * k, c[2] * k, c[3] * k, 0.59, 0.51, 0.39, 0.3)
+			end
+			return c[1] * k, c[2] * k, c[3] * k
+		end
 		local function hcolor(gidx, t, ang, crisp, tiles, px, py, tw)
 			local r, gg, b = sr, sgr, sb
 			local tag = grid.atlas[gidx] and grid.atlas[gidx].tag or "palm"
@@ -1114,18 +1133,22 @@ function Gear.Build(sk, P, lod, side, kind, wear, pc, seed)
 				local knuck = smooth(0.78, 1.0, t) * back
 				r, gg, b = mix(r, gg, b, sr * 0.92, sgr * 0.74, sb * 0.7, 0.35 * knuck)
 				if fist then
-					-- the wrap: over the palm, the back and the knuckles (the fingers come out of it)
-					local cover = crisp and ((t < 0.97) and 1 or 0) or (1 - smooth(0.9, 1.05, t))
-					local c = wr.c
-					local lay = crisp and (0.96 + 0.06 * smooth(0.0, 0.15, ((t * 5 + ang / TAU) % 1))) or 1
-					local wr2 = (wr.gel and back > 0.6 and t > 0.72) and 0.82 or 1
-					r, gg, b = mix(r, gg, b, c[1] * lay * wr2, c[2] * lay * wr2, c[3] * lay * wr2, cover)
-					-- the X across the back of the hand in the second colour
-					if crisp and wr.c2 ~= wr.c then
-						local x1 = abs(MeshKit.WrapAngle(ang - (t - 0.5) * 1.6)) < 0.1 and back > 0.5
-						local x2 = abs(MeshKit.WrapAngle(ang + (t - 0.5) * 1.6)) < 0.1 and back > 0.5
-						if x1 or x2 then
-							r, gg, b = wr.c2[1], wr.c2[2], wr.c2[3]
+					-- the wrap: over the palm, the back and the knuckles (the domed end included; the fingers come
+					-- out of it), laid in overlapping diagonal turns (a shadow under each turn's edge, a lit fold on
+					-- it), with the X the wrap makes across the back of the hand between the knuckle passes
+					r, gg, b = wrapCloth(t * 5.5 + ang / TAU, crisp, back > 0.6 and t > 0.72 and wr.gel)
+					if crisp and back > 0.45 and t > 0.15 and t < 0.92 then
+						local a1 = abs(MeshKit.WrapAngle(ang - (t - 0.52) * 1.9))
+						local a2 = abs(MeshKit.WrapAngle(ang + (t - 0.52) * 1.9))
+						if a1 < 0.24 or a2 < 0.24 then
+							if wr.c2 ~= wr.c then
+								r, gg, b = wr.c2[1], wr.c2[2], wr.c2[3]
+							else
+								r, gg, b = r * 1.03, gg * 1.03, b * 1.03
+							end
+							-- the strips' edges shaded
+							local e = (1 - smooth(0.0, 0.05, min(abs(a1 - 0.24), abs(a2 - 0.24)))) * 0.22
+							r, gg, b = r * (1 - e), gg * (1 - e), b * (1 - e)
 						end
 					end
 				end
@@ -1138,15 +1161,15 @@ function Gear.Build(sk, P, lod, side, kind, wear, pc, seed)
 				r, gg, b = mix(r, gg, b, min(1, sr * 1.08 + 0.1), min(1, sgr * 1.02 + 0.08), min(1, sb * 1.02 + 0.08), 0.6 * nail)
 				local crease = (bell((t - 0.38) / 0.05) + bell((t - 0.7) / 0.05)) * back
 				r, gg, b = mix(r, gg, b, sr * 0.8, sgr * 0.68, sb * 0.64, 0.3 * crease)
-				-- the wrap covers the root of the fingers on a wrapped hand
-				if fist and tag ~= "thumb" then
-					local cover = crisp and (t < 0.22 and 1 or 0) or (1 - smooth(0.15, 0.3, t))
-					local c = wr.c
-					r, gg, b = mix(r, gg, b, c[1], c[2], c[3], cover)
-				elseif fist then
-					local cover = crisp and (t < 0.3 and 1 or 0) or (1 - smooth(0.2, 0.38, t))
-					local c = wr.c
-					r, gg, b = mix(r, gg, b, c[1], c[2], c[3], cover)
+				-- the wrap runs between the fingers (over their roots, a little further on the back than on the
+				-- palm side) and loops round the base of the thumb
+				if fist then
+					local reach = tag == "thumb" and 0.5 or (0.3 + 0.08 * back)
+					local cover = crisp and (t < reach and 1 or 0) or (1 - smooth(reach - 0.08, reach + 0.08, t))
+					if cover > 0 then
+						local wr2, wg2, wb2 = wrapCloth(t * 4 + ang / TAU * 1.5, crisp, false)
+						r, gg, b = mix(r, gg, b, wr2, wg2, wb2, cover)
+					end
 				end
 			end
 			if crisp then
@@ -1189,20 +1212,24 @@ function Gear.Build(sk, P, lod, side, kind, wear, pc, seed)
 		local c = sh.c
 		local r, gg, b = c[1], c[2], c[3]
 		-- the sole: a darker side wall under a stitched welt line, the tread underneath
-		local sw = crisp and (y < soleTop + 0.002 and 1 or 0) or (1 - smooth(soleTop - 0.01, soleTop + 0.01, y))
+		-- (a texel-soft line: a hard test stair-steps along the curved wall)
+		local sw = crisp and (1 - smooth(soleTop - 0.002, soleTop + 0.006, y)) or (1 - smooth(soleTop - 0.01, soleTop + 0.01, y))
 		if sw > 0 then
 			local k = 0.8 + 0.2 * (1 - smooth(Fd.soleY + 0.004, Fd.soleY + 0.012, y)) -- the bottom lighter than the wall
 			local sr2, sg2, sb2 = soleC[1] * k, soleC[2] * k, soleC[3] * k
 			if trainer then
 				-- rubber outsole under the foam
-				local os = crisp and (y < Fd.soleY + 0.025 and 1 or 0) or (1 - smooth(Fd.soleY + 0.015, Fd.soleY + 0.035, y))
+				local os = crisp and (1 - smooth(Fd.soleY + 0.021, Fd.soleY + 0.029, y)) or (1 - smooth(Fd.soleY + 0.015, Fd.soleY + 0.035, y))
 				sr2, sg2, sb2 = mix(sr2, sg2, sb2, 0.17, 0.17, 0.18, os)
 			elseif crisp then
 				-- a groove round the wall half way up
 				local gv = 1 - smooth(0.002, 0.004, abs(y - (Fd.soleY + Fd.soleH * 0.45)))
 				sr2, sg2, sb2 = sr2 * (1 - 0.3 * gv), sg2 * (1 - 0.3 * gv), sb2 * (1 - 0.3 * gv)
 			end
-			return mix(r, gg, b, sr2, sg2, sb2, sw)
+			if sw >= 0.999 then
+				return sr2, sg2, sb2
+			end
+			r, gg, b = mix(r, gg, b, sr2, sg2, sb2, sw)
 		end
 		if crisp then
 			-- the welt stitching just above the sole
