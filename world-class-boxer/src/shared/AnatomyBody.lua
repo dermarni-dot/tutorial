@@ -354,6 +354,77 @@ local function utPainter(pc, sk, P, prof, look)
 end
 
 ------------------------------------------------------------------------
+-- Shoulder: one smooth shading surface across the deltoid cap and the torso
+------------------------------------------------------------------------
+-- The UpperArm's cap overlaps the UpperTorso's shoulder (two pieces, so the arm can rotate). Where one surface
+-- comes out of the other the shading broke into a ring-shaped crease. Near that line each piece's normals turn
+-- toward the other's (the nearest vertex over there), so the light runs over the shoulder from the chest and
+-- the traps into the deltoid; the silhouette is unchanged. Body space, bind pose (the cap moves little with the
+-- arm near the pivot).
+local function blendShoulderNormals(ut, arm, armB, sk, side)
+	local sg = side == "Right" and 1 or -1
+	local yS = sk.piv[side .. "Shoulder"][2]
+	local UP, UN, AP, AN = ut.P, ut.N, arm.P, arm.N
+	-- the torso's shoulder region (this side), and the arm's cap rows
+	local tIds, aIds = {}, {}
+	for i = 1, ut.nv do
+		if UP[i * 3 - 2] * sg > 0.45 * sk.xS and UP[i * 3 - 1] > yS - 0.45 then
+			tIds[#tIds + 1] = i
+		end
+	end
+	for i = 1, arm.nv do
+		if (armB[i] or 1) < 0.45 then
+			aIds[#aIds + 1] = i
+		end
+	end
+	if #tIds == 0 or #aIds == 0 then
+		return
+	end
+	-- nearest vertex of the other piece, the signed distance off its surface (along its normal) -> weight
+	local function transfer(ids, P, oIds, OP, ON, reach)
+		local out, ws = table.create(#ids * 3, 0), table.create(#ids, 0)
+		for k, i in ipairs(ids) do
+			local px, py, pz = P[i * 3 - 2], P[i * 3 - 1], P[i * 3]
+			local best, bj = math.huge, 0
+			for _, j in ipairs(oIds) do
+				local dx, dy, dz = px - OP[j * 3 - 2], py - OP[j * 3 - 1], pz - OP[j * 3]
+				local d2 = dx * dx + dy * dy + dz * dz
+				if d2 < best then
+					best, bj = d2, j
+				end
+			end
+			local w = 0
+			if best < reach * reach then
+				local qx, qy, qz = ON[bj * 3 - 2], ON[bj * 3 - 1], ON[bj * 3]
+				local s = (px - OP[bj * 3 - 2]) * qx + (py - OP[bj * 3 - 1]) * qy + (pz - OP[bj * 3]) * qz
+				w = (1 - smooth(0.0, 0.07, s)) * (1 - smooth(reach * 0.5, reach, sqrt(best))) * 0.85
+				out[k * 3 - 2], out[k * 3 - 1], out[k * 3] = qx, qy, qz
+			end
+			ws[k] = w
+		end
+		return out, ws
+	end
+	local aT, aW = transfer(aIds, AP, tIds, UP, UN, 0.16)
+	local tT, tW = transfer(tIds, UP, aIds, AP, AN, 0.16)
+	local function apply(ids, N, T, W)
+		for k, i in ipairs(ids) do
+			local w = W[k]
+			if w > 0.01 then
+				local nx = N[i * 3 - 2] + (T[k * 3 - 2] - N[i * 3 - 2]) * w
+				local ny = N[i * 3 - 1] + (T[k * 3 - 1] - N[i * 3 - 1]) * w
+				local nz = N[i * 3] + (T[k * 3] - N[i * 3]) * w
+				local l = sqrt(nx * nx + ny * ny + nz * nz)
+				if l > 1e-6 then
+					N[i * 3 - 2], N[i * 3 - 1], N[i * 3] = nx / l, ny / l, nz / l
+				end
+			end
+		end
+	end
+	apply(aIds, AN, aT, aW)
+	apply(tIds, UN, tT, tW)
+end
+
+------------------------------------------------------------------------
 -- Generate
 ------------------------------------------------------------------------
 function Gen.Generate(look, lod, ctx)
@@ -653,6 +724,9 @@ function Gen.Generate(look, lod, ctx)
 			end
 			local m, info = Limbs.Build(sk, P, lod, side, kind, lopt)
 			local lg = info.grid
+			if kind == "UpperArm" then
+				blendShoulderNormals(ut, m, info.B, sk, side)
+			end
 			-- garment vertices (BodyFX never paints grime / bruises on them)
 			for i = 1, m.nv do
 				local z = info.Z[i]

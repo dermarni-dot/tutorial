@@ -94,8 +94,10 @@ local function upperArm(sk, P, side, sx)
 	-- the top rings are small (the lateral rim stays ~0.1 above the pivot) and the deltoid's outline slopes
 	-- down and out from the cap instead of standing up as a corner; the medial rim reaches in over the torso's
 	-- shoulder edge)
-	local rx = Kit.Curve({ { -0.04, 0.17 }, { 0.0, 0.205 }, { 0.05, 0.235 }, { 0.12, 0.255 }, { 0.22, 0.262 }, { 0.35, 0.256 }, { 0.5, 0.25 }, { 0.65, 0.247 }, { 0.75, 0.242 }, { 0.9, 0.232 }, { 0.97, 0.228 }, { 1.0, 0.226 }, { 1.08, 0.214 } })
-	local rz = Kit.Curve({ { -0.04, 0.19 }, { 0.0, 0.22 }, { 0.05, 0.243 }, { 0.12, 0.26 }, { 0.22, 0.268 }, { 0.4, 0.252 }, { 0.6, 0.244 }, { 0.75, 0.236 }, { 0.9, 0.223 }, { 0.97, 0.218 }, { 1.0, 0.216 }, { 1.08, 0.205 } })
+	-- (the top rings sit a little deeper inside the torso's shoulder: the cap's rim stays under the trapezius
+	-- and the torso's rounded shoulder, so no ring-shaped step shows where the two pieces overlap)
+	local rx = Kit.Curve({ { -0.04, 0.15 }, { 0.0, 0.19 }, { 0.05, 0.225 }, { 0.12, 0.252 }, { 0.22, 0.262 }, { 0.35, 0.256 }, { 0.5, 0.25 }, { 0.65, 0.247 }, { 0.75, 0.242 }, { 0.9, 0.232 }, { 0.97, 0.228 }, { 1.0, 0.226 }, { 1.08, 0.214 } })
+	local rz = Kit.Curve({ { -0.04, 0.17 }, { 0.0, 0.205 }, { 0.05, 0.235 }, { 0.12, 0.257 }, { 0.22, 0.268 }, { 0.4, 0.252 }, { 0.6, 0.244 }, { 0.75, 0.236 }, { 0.9, 0.223 }, { 0.97, 0.218 }, { 1.0, 0.216 }, { 1.08, 0.205 } })
 	local delt = (0.05 + 0.09 * lv.sideDelt) * fl * k * dk
 	local bi = (0.04 + 0.11 * lv.biceps) * fl * V.bicepsHeight * k
 	local tri = (0.045 + 0.09 * lv.triceps) * fl * k
@@ -103,9 +105,11 @@ local function upperArm(sk, P, side, sx)
 	local mus = {
 		-- deltoid: lateral head (the shoulder's roundness, widest a little under the acromion), anterior,
 		-- posterior; all end in the V insertion a third of the way down
-		{ a = LAT, w = 1.3, b0 = -0.02, bp = 0.22, b1 = 0.62, vee = 0.3, h = delt, sharp = 0.9, id = "delt" },
-		{ a = FRONT - 0.3, w = 1.0, b0 = -0.06, bp = 0.16, b1 = 0.56, vee = 0.3, h = (0.032 + 0.075 * lv.frontDelt) * fl * V.deltFront * k * dk, sharp = 0.95, id = "delt" },
-		{ a = BACK + 0.35, w = 1.0, b0 = -0.06, bp = 0.17, b1 = 0.56, vee = 0.3, h = (0.028 + 0.07 * lv.rearDelt) * fl * k * dk, sharp = 0.95, id = "delt" },
+		-- (fullest a quarter of the way down, fading out toward the pivot: the bulge is the deltoid's belly
+		-- hanging off the shoulder, not a ball sitting on top of it)
+		{ a = LAT, w = 1.3, b0 = 0.0, bp = 0.27, b1 = 0.64, vee = 0.3, h = delt, sharp = 0.9, id = "delt" },
+		{ a = FRONT - 0.3, w = 1.0, b0 = -0.02, bp = 0.23, b1 = 0.58, vee = 0.3, h = (0.032 + 0.075 * lv.frontDelt) * fl * V.deltFront * k * dk, sharp = 0.95, id = "delt" },
+		{ a = BACK + 0.35, w = 1.0, b0 = -0.02, bp = 0.24, b1 = 0.58, vee = 0.3, h = (0.028 + 0.07 * lv.rearDelt) * fl * k * dk, sharp = 0.95, id = "delt" },
 		-- biceps (two heads, one peak) and brachialis peeking out laterally
 		{ a = FRONT + 0.05, w = 0.95, b0 = 0.2, bp = peakB, b1 = 0.95, h = bi, sharp = 1.25, id = "biceps" },
 		{ a = FRONT - 0.85, w = 0.6, b0 = 0.42, bp = 0.74, b1 = 0.98, h = (0.012 + 0.04 * lv.biceps) * fl * k, id = "brach" },
@@ -129,6 +133,10 @@ local function upperArm(sk, P, side, sx)
 		{ a = LAT + 0.55, w = 0.38, b0 = 0.3, bp = 0.48, b1 = 0.7, h = (0.008 + 0.018 * def) * (0.4 + lv.sideDelt * 0.6), id = "g" },
 		{ a = BACK, w = 0.6, b0 = 0.62, bp = 0.82, b1 = 0.98, h = (0.006 + 0.016 * def) * lv.triceps, id = "g" },
 		{ a = FRONT - 0.55, w = 0.35, b0 = 0.38, bp = 0.62, b1 = 0.86, h = (0.006 + 0.012 * def) * lv.biceps, id = "g" },
+		-- the front deltoid's border with the pec (the deltopectoral line running up into the chest) and the
+		-- deltoid's back border over the triceps: soft tie-in grooves instead of a ring round the cap
+		{ a = FRONT + 0.75, w = 0.4, b0 = -0.02, bp = 0.2, b1 = 0.42, h = (0.006 + 0.012 * def) * (0.4 + 0.6 * lv.frontDelt), id = "g" },
+		{ a = BACK + 0.75, w = 0.45, b0 = 0.25, bp = 0.42, b1 = 0.6, h = (0.006 + 0.014 * def) * (0.4 + 0.6 * lv.rearDelt), id = "g" },
 	}
 	-- the top dome leans toward the neck: the deltoid cap rounds over the shoulder and into the trapezius slope
 	return { rx = rx, rz = rz, scale = sx * sz, mus = mus, grooves = grooves, b0 = -0.04, b1 = 1.08, capS = { 0.08, 0 }, capE = { 0.17, 0 }, ringWarp = 1.25, endBend = 0.4,
@@ -166,7 +174,9 @@ local function lowerArm(sk, P, side, sx)
 	}
 	-- (a short, blunt end past the wrist: the hand's heel comes out of it at a steep angle, a clean wrist line;
 	-- a long dome would poke out of the thin palm)
-	return { rx = rx, rz = rz, scale = sx * sz, mus = mus, grooves = grooves, b0 = -0.04, b1 = 1.06, capS = { 0.2, 0 }, capE = { 0.1, 0 }, flexIds = { fore = 0.3 } }
+	-- (the dome past the elbow pivot is short, ~0.4 of the forearm's radius there: the olecranon tucked under
+	-- the upper arm's back; a long dome stood out behind the elbow as a knob whenever the arm bent)
+	return { rx = rx, rz = rz, scale = sx * sz, mus = mus, grooves = grooves, b0 = -0.04, b1 = 1.06, capS = { 0.08, 0 }, capE = { 0.1, 0 }, flexIds = { fore = 0.3 } }
 end
 
 local function upperLeg(sk, P, side, sx)
@@ -428,7 +438,8 @@ local function setup(sk, P, lod, side, kind, opt)
 			-- tubes), flaring a little toward the opening, a few soft folds, a slight forward / back swing; above
 			-- the hip it runs inside the trunks' seat (the LowerTorso piece carries the hips)
 			local hemB = z[2]
-			local t = smooth(B0, max(hemB, B0 + 0.1), bb)
+			-- (no flare above the hip line: the seat's straight sides meet the legs there)
+			local t = smooth(0.05, max(hemB, 0.15), bb)
 			local c, s = cos(ang), sin(ang)
 			local long = hemB >= 0.97
 			local latX, fZ, bZ = trunkDims(t, long)

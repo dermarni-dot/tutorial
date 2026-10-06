@@ -82,8 +82,8 @@ function Torso.Profiles(sk, P)
 	if fem then
 		W = Kit.Curve({
 			{ -0.14, 0.72 }, { 0.0, 0.6 * wk }, { 0.12, 0.605 * wk }, { 0.25, 0.66 }, { 0.38, 0.72 * cw }, { 0.5, 0.765 * cw + lat * 0.5 },
-			{ 0.62, 0.795 * cw + lat }, { 0.72, 0.81 * cw + lat * 0.8 }, { 0.8, 0.805 + lat * 0.3 }, { 0.86, 0.79 }, { 0.9, 0.765 },
-			{ 0.93, 0.66 * ts }, { 0.95, max(0.45 * ts, nx * 1.3) }, { 0.965, max(0.34, nx * 1.1) }, { 0.985, nxV },
+			{ 0.62, 0.795 * cw + lat }, { 0.72, 0.81 * cw + lat * 0.8 }, { 0.8, 0.805 + lat * 0.3 }, { 0.86, 0.8 }, { 0.9, 0.785 },
+			{ 0.93, 0.685 * ts }, { 0.95, max(0.45 * ts, nx * 1.3) }, { 0.965, max(0.34, nx * 1.1) }, { 0.985, nxV },
 			{ 1.01, nx }, { 1.2, nx },
 		})
 	else
@@ -94,7 +94,7 @@ function Torso.Profiles(sk, P)
 		W = Kit.Curve({
 			{ -0.14, 0.75 * wk }, { 0.0, 0.69 * wk }, { 0.12, 0.7 * wk }, { 0.25, 0.745 }, { 0.38, 0.795 * cw + lat * 0.3 },
 			{ 0.5, 0.835 * cw + lat * 0.65 }, { 0.62, 0.86 * cw + lat }, { 0.72, 0.875 * cw + lat * 0.9 }, { 0.8, 0.87 + lat * 0.4 },
-			{ 0.86, 0.84 }, { 0.9, 0.8 }, { 0.93, 0.68 * ts }, { 0.95, max(0.47 * ts, nx * 1.3) }, { 0.965, max(0.36, nx * 1.1) },
+			{ 0.86, 0.85 }, { 0.9, 0.825 }, { 0.93, 0.71 * ts }, { 0.95, max(0.47 * ts, nx * 1.3) }, { 0.965, max(0.36, nx * 1.1) },
 			{ 0.985, nxV }, { 1.01, nx }, { 1.2, nx },
 		})
 	end
@@ -592,15 +592,15 @@ function Torso.Lower(sk, P, lod, prof, opt)
 	if legTop then
 		-- the seat hangs from the hips into the legs at exactly their width: never narrower (a leg would step
 		-- out of it) and never wider (a shelf / tutu ledge over the legs' tops)
-		hipW = legTop[1] + 0.008
+		hipW = legTop[1] + 0.012
 	end
 	local waistW = prof.W(0.0) * xS * 1.015 + 0.02 * fk + ease
 	local drop = (yW - yH) -- LowerTorso height
 	-- the bottom: with trunks the seat ends just under the hip pivots, inside the satin legs (they carry the
 	-- trunks from there down, their inner faces meeting on the midline); without, the crotch
-	-- (with the legs' tops given, the seat's sides run on down nearly straight and end inside the satin legs,
-	-- which flare out below them: one surface from the band to the hem, no rounded rim over the legs)
-	local bot = trunks and legTop and (yH - 0.14) or (yH - (trunks and 0.2 or 0.3) * (drop / 0.4) ^ 0.5)
+	-- (with the legs' tops given, the seat's sides run on down straight, a hair outside the satin legs, to a
+	-- tight seam just under the hip line: one surface from the band to the hem, no shelf over the legs)
+	local bot = trunks and legTop and (yH - 0.1) or (yH - (trunks and 0.2 or 0.3) * (drop / 0.4) ^ 0.5)
 	local Fw, Kw = prof.F(0.0) * hz + ease, prof.K(0.0) * hz + ease
 	local hipF, hipK = Fw * 0.97, Kw * 0.96
 	if legTop then
@@ -621,16 +621,17 @@ function Torso.Lower(sk, P, lod, prof, opt)
 			-- (the legs' front / back extents measured from the seat's own centre line)
 			local dz = 0.02 * hz - (legTop[5] or 0.02 * hz)
 			lx, lf, lk = legTop[1], legTop[2] + dz, legTop[3] - dz
+			hipF, hipK = max(hipF, lf + 0.012), max(hipK, lk + 0.012)
 		end
 		local yS = yH + 0.05 -- the seat's full section (above the legs' tops)
-		Wc = Kit.Curve({ { bot, lx - (legTop and 0.014 or 0.035) }, { yH - 0.045, lx - (legTop and 0.003 or 0.02) }, { yS, hipW }, { bandBot - 0.03, sw }, { bandBot - 0.0005, sw - 0.004 }, { bandBot, bw }, { top, bw } })
-		Fc = Kit.Curve({ { bot, lf - 0.03 }, { yH - 0.045, lf - 0.012 }, { yS, hipF }, { bandBot - 0.0005, max(Fw * 0.985, (hipF + Fw) / 2) }, { bandBot, bf }, { top, bf } })
-		Kc = Kit.Curve({ { bot, lk - 0.03 }, { yH - 0.045, lk - 0.012 }, { yS, hipK }, { bandBot - 0.0005, max(Kw * 0.965, (hipK + Kw) / 2) }, { bandBot, bk }, { top, bk } })
+		Wc = Kit.Curve(legTop and { { bot, lx - 0.016 }, { bot + 0.014, lx + 0.011 }, { yH - 0.045, lx + 0.011 }, { yS, hipW }, { bandBot - 0.03, sw }, { bandBot - 0.0005, sw - 0.004 }, { bandBot, bw }, { top, bw } } or { { bot, lx - 0.035 }, { yS, hipW }, { bandBot - 0.03, sw }, { bandBot - 0.0005, sw - 0.004 }, { bandBot, bw }, { top, bw } })
+		Fc = Kit.Curve({ { bot, lf - (legTop and 0.016 or 0.03) }, { legTop and bot + 0.014 or yH - 0.045, legTop and lf + 0.011 or lf - 0.012 }, { yS, hipF }, { bandBot - 0.0005, max(Fw * 0.985, (hipF + Fw) / 2) }, { bandBot, bf }, { top, bf } })
+		Kc = Kit.Curve({ { bot, lk - (legTop and 0.016 or 0.03) }, { legTop and bot + 0.014 or yH - 0.045, legTop and lk + 0.011 or lk - 0.012 }, { yS, hipK }, { bandBot - 0.0005, max(Kw * 0.965, (hipK + Kw) / 2) }, { bandBot, bk }, { top, bk } })
 		local list
 		if rings >= 10 then
-			list = { bot, yH - 0.045, yS, yS + 0.3 * (bandBot - yS), yS + 0.62 * (bandBot - yS), bandBot - 0.03, bandBot - 0.012, bandBot, (bandBot + top) / 2, top }
+			list = { bot, bot + 0.014, yH - 0.045, yS, yS + 0.3 * (bandBot - yS), yS + 0.62 * (bandBot - yS), bandBot - 0.03, bandBot - 0.012, bandBot, (bandBot + top) / 2, top }
 		elseif rings >= 8 then
-			list = { bot, yH - 0.045, yS, yS + 0.4 * (bandBot - yS), bandBot - 0.03, bandBot - 0.012, bandBot, (bandBot + top) / 2, top }
+			list = { bot, bot + 0.014, yS, yS + 0.4 * (bandBot - yS), bandBot - 0.03, bandBot - 0.012, bandBot, (bandBot + top) / 2, top }
 		else
 			list = { bot, yS, bandBot - 0.012, bandBot, top }
 		end
@@ -666,7 +667,7 @@ function Torso.Lower(sk, P, lod, prof, opt)
 			local c, s = cos(a), sin(a)
 			-- with the legs' tops given the seat squares off toward its bottom, like the two satin legs side by
 			-- side it runs into (their front-outer corners stay under it)
-			local e = 2 / (seatSq and lerp(3.4, 2.4, smooth(yH + 0.05, Ys[#Ys] - 0.06, y)) or 2.4)
+			local e = 2 / (seatSq and lerp(4.2, 2.4, smooth(yH + 0.05, Ys[#Ys] - 0.06, y)) or 2.4)
 			local x = Wc(y) * (c < 0 and -1 or 1) * abs(c) ^ e
 			local f = s >= 0 and Fc(y) * s ^ e or -Kc(y) * (-s) ^ e
 			return x, f
@@ -697,7 +698,8 @@ function Torso.Lower(sk, P, lod, prof, opt)
 		if trunks then
 			-- satin drape: soft vertical folds from the band down, deeper toward the legs
 			local a = math.atan2(-z, x)
-			local hang = smooth(bandY - 0.02, yH, y)
+			-- (none on the straight sides over the legs' tops: there the seat sits just outside them)
+			local hang = smooth(bandY - 0.02, yH, y) * (seatSq and smooth(yH - 0.02, yH + 0.08, y) or 1)
 			d += 0.011 * (sin(6 * a + 0.7) + 0.6 * sin(11 * a + 2.1)) * hang
 		end
 		return d
