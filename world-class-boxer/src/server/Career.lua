@@ -714,6 +714,37 @@ function Career.SimFace(damage, kdAgainst, r)
 	return face
 end
 
+-- One judge's 10-point must card: the SAME rule as FightEngine.MustScore (copied, because FightEngine
+-- requires Career). diff = punch differential (positive: the first fighter did the better work), kdA /
+-- kdB = knockdowns each SCORED. The round winner gets 10, the loser 9; a knockdown wins the round for
+-- whoever scored it (equal knockdowns cancel), each net knockdown costs one more point unless the man
+-- who went down dominated the rest of the round. 10-10 only for an even round with no knockdowns; never 9-9.
+local EVEN_ROUND = 0.25
+local DOMINANT_ROUND = 3
+local function mustScore(diff, kdA, kdB)
+	kdA, kdB = tonumber(kdA) or 0, tonumber(kdB) or 0
+	diff = tonumber(diff) or 0
+	local net = kdA - kdB
+	local aWins
+	if net ~= 0 then
+		aWins = net > 0
+	elseif kdA == 0 and math.abs(diff) < EVEN_ROUND then
+		return 10, 10
+	else
+		aWins = diff >= 0
+	end
+	local down = math.abs(net)
+	if down > 0 and (aWins and -diff or diff) >= DOMINANT_ROUND then
+		down -= 1
+	end
+	local loser = math.max(6, 9 - down)
+	if aWins then
+		return 10, loser
+	end
+	return loser, 10
+end
+Career.MustScore = mustScore
+
 function Career.SimFight(profile, offer)
 	local function withFace(res)
 		res.face = Career.SimFace(res.damageTaken, res.kdAgainst)
@@ -751,18 +782,7 @@ function Career.SimFight(profile, offer)
 		end
 		for j = 1, 3 do
 			local diff = pOut - oOut + rng:NextNumber(-3, 3)
-			local a, c = 10, 10
-			if diff > 0.25 then
-				c = 9
-			elseif diff < -0.25 then
-				a = 9
-			end
-			if pKD then
-				c -= 1
-			end
-			if oKD then
-				a -= 1
-			end
+			local a, c = mustScore(diff, pKD and 1 or 0, oKD and 1 or 0)
 			cards[j][1] += a
 			cards[j][2] += c
 		end

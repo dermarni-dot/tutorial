@@ -11,6 +11,23 @@ local Kit = require(script.Parent:WaitForChild("AnatomyBodyKit"))
 
 local Torso = {}
 
+-- the Head section's visible neck (AnatomySkull.Neck, Head-part space); nil when the skull module is missing
+local Skull
+do
+	local ms = script.Parent:FindFirstChild("AnatomySkull")
+	local ok, mod = pcall(function()
+		return ms and require(ms)
+	end)
+	Skull = ok and type(mod) == "table" and type(mod.Neck) == "function" and mod or nil
+end
+local function neckOf(look)
+	if not (Skull and type(look) == "table") then
+		return nil
+	end
+	local ok, hn = pcall(Skull.Neck, look)
+	return ok and type(hn) == "table" and hn or nil
+end
+
 local abs, min, max, sqrt, cos, sin, pi = math.abs, math.min, math.max, math.sqrt, math.cos, math.sin, math.pi
 local clamp, smooth, lerp, bell, bell3, bell2 = Kit.clamp, Kit.smooth, Kit.lerp, Kit.bell, Kit.bell3, Kit.bell2
 local TAU = pi * 2
@@ -37,10 +54,23 @@ function Torso.Profiles(sk, P)
 	local rn = sk.headX * (fem and 0.258 or 0.282) * (1 + 0.12 * lv.neckSCM + 0.05 * lv.traps + 0.08 * P.sl.neck + 0.06 * min(fk, 1)) * P.V.neckW
 	local rMin = sk.headX * (fem and 0.225 or 0.25) * 1.08 -- the contract minimum with room for the notch and the larynx groove
 	rn = max(rn, rMin)
+	-- the Head section's neck shows from under the jaw down to the Neck pivot: this column stays inside it there
+	-- (Head-part space; it is at least the contract minimum: 0.2625 / 0.2375 x head X before the 0.012 margin)
+	local hn = neckOf(P.look)
+	if hn then
+		rn = min(rn, hn.r - 0.012)
+	end
 	-- the R15 torso is shallow for its width: the neck keeps its width but never gets deeper than the chest
 	-- allows (still at least the contract minimum all round)
 	local rz = max(rMin * 1.06, min(rn * 0.97, 0.78 * hz)) -- the front is 0.95 of this: still over the minimum
+	if hn then
+		rz = min(rz, hn.rz - 0.012)
+	end
 	local nx, fN, kN = rn / xS, rz * 0.95 / hz, rz * 1.04 / hz
+	-- under the pivot the column is the visible neck: never thinner than the contract minimum there, even when
+	-- the Head's neck is (a head scaled flatter than it is wide)
+	local vMin = sk.headX * (fem and 0.225 or 0.25)
+	local nxV, fNV = max(nx * 1.02, vMin / xS), max(fN * 1.03, vMin / hz)
 	local wk = (1 + 0.05 * P.sl.waist) * (1 + 0.1 * min(fk, 1.2)) * (1 - 0.05 * (P.pv.taper - 1))
 	local trap = 1 + 0.25 * lv.traps * (fem and 0.6 or 1)
 	-- the lats widen the back under the armpits (the V); the chest slider widens the rib cage
@@ -53,38 +83,42 @@ function Torso.Profiles(sk, P)
 		W = Kit.Curve({
 			{ -0.14, 0.72 }, { 0.0, 0.6 * wk }, { 0.12, 0.605 * wk }, { 0.25, 0.66 }, { 0.38, 0.72 * cw }, { 0.5, 0.765 * cw + lat * 0.5 },
 			{ 0.62, 0.795 * cw + lat }, { 0.72, 0.81 * cw + lat * 0.8 }, { 0.8, 0.805 + lat * 0.3 }, { 0.86, 0.79 }, { 0.9, 0.765 },
-			{ 0.935, 0.72 * ts }, { 0.965, max(0.66 * ts, nx * 1.9) }, { 0.995, max(0.58, nx * 1.68) }, { 1.03, max(0.47, nx * 1.4) },
-			{ 1.07, nx * 1.15 }, { 1.12, nx * 1.03 }, { 1.2, nx },
+			{ 0.93, 0.66 * ts }, { 0.95, max(0.45 * ts, nx * 1.3) }, { 0.965, max(0.34, nx * 1.1) }, { 0.985, nxV },
+			{ 1.01, nx }, { 1.2, nx },
 		})
 	else
 		-- (the torso's top edge meets the deltoid cap at about x 0.9 xS, 0.1 above the shoulder pivot (u ~0.93);
-		-- from there the trapezius rises to the neck)
+		-- from there the trapezius rises to the neck, meeting it a little below the Neck pivot (u ~0.96): the R15
+		-- chin sits only ~0.04 above the pivot, so a trapezius that reaches the neck any higher leaves no neck
+		-- showing between the jaw and the shoulders)
 		W = Kit.Curve({
 			{ -0.14, 0.75 * wk }, { 0.0, 0.69 * wk }, { 0.12, 0.7 * wk }, { 0.25, 0.745 }, { 0.38, 0.795 * cw + lat * 0.3 },
 			{ 0.5, 0.835 * cw + lat * 0.65 }, { 0.62, 0.86 * cw + lat }, { 0.72, 0.875 * cw + lat * 0.9 }, { 0.8, 0.87 + lat * 0.4 },
-			{ 0.86, 0.84 }, { 0.9, 0.8 }, { 0.935, 0.765 * ts }, { 0.965, max(0.7 * ts, nx * 1.95) }, { 0.995, max(0.6 * ts, nx * 1.7) },
-			{ 1.03, max(0.5, nx * 1.42) }, { 1.07, nx * 1.16 }, { 1.12, nx * 1.03 }, { 1.2, nx },
+			{ 0.86, 0.84 }, { 0.9, 0.8 }, { 0.93, 0.68 * ts }, { 0.95, max(0.47 * ts, nx * 1.3) }, { 0.965, max(0.36, nx * 1.1) },
+			{ 0.985, nxV }, { 1.01, nx }, { 1.2, nx },
 		})
 	end
 	-- the tops run down into the neck monotonically: no dip (a crease) where the neck is thick for the torso
 	F = Kit.Curve({
 		{ -0.14, 0.9 }, { 0.0, 0.88 }, { 0.2, 0.9 }, { 0.35, 0.95 }, { 0.5, 0.98 }, { 0.62, 0.98 }, { 0.74, 0.95 }, { 0.84, max(0.87, fN * 1.4) },
-		{ 0.92, max(0.74, fN * 1.27) }, { 0.97, max(0.63, fN * 1.13) }, { 1.02, fN * 1.04 }, { 1.07, fN * 1.01 }, { 1.2, fN },
+		{ 0.9, max(0.76, fN * 1.3) }, { 0.94, max(0.6, fN * 1.12) }, { 0.97, fNV }, { 1.0, fN }, { 1.2, fN },
 	})
 	-- the back: full over the shoulder blades, then the trapezius sheet rising into the neck (a tent, no shelf)
 	K = Kit.Curve({
 		{ -0.14, 0.93 }, { 0.02, 0.86 }, { 0.18, 0.88 }, { 0.33, 0.93 }, { 0.48, 0.97 }, { 0.62, 1.0 }, { 0.74, max(1.0, min(1.04, kN * 1.5)) },
-		{ 0.84, max(0.96, min(1.02, kN * 1.42)) }, { 0.92, max(0.85, kN * 1.33) }, { 0.98, max(0.74, kN * 1.22) }, { 1.03, kN * 1.12 },
-		{ 1.08, kN * 1.04 }, { 1.2, kN },
+		{ 0.84, max(0.96, min(1.02, kN * 1.42)) }, { 0.92, max(0.85, kN * 1.33) }, { 0.97, max(0.74, kN * 1.22) }, { 1.0, kN * 1.06 },
+		{ 1.05, kN }, { 1.2, kN },
 	})
 	-- the shoulders round off toward the deltoids (a squarer section keeps the torso's corner in front of the
 	-- deltoid cap, which then reads as an arm hung beside a box)
 	local nF = Kit.Curve({ { -0.1, 2.2 }, { 0.5, 2.25 }, { 0.7, 2.2 }, { 0.84, 1.95 }, { 0.95, 1.85 }, { 1.06, 2.0 } })
 	-- the upper back rounds into the sides (a squarer section reads as a box from behind)
 	local nB = Kit.Curve({ { -0.1, 2.3 }, { 0.42, 2.3 }, { 0.6, 2.05 }, { 0.84, 1.88 }, { 0.95, 1.85 }, { 1.06, 2.0 } })
-	-- posture: the neck rises a little behind the torso centre (under the skull's base)
-	local zc = Kit.Curve({ { 0.92, 0 }, { 1.05, 0.04 * hz }, { 1.2, 0.08 * hz } })
-	return { W = W, F = F, K = K, nF = nF, nB = nB, zc = zc, rn = rn, rz = rz }
+	-- posture: the neck rises a little behind the torso centre (under the skull's base), never further back than
+	-- the Head's own neck (the column stays inside it above the pivot)
+	local zTop = hn and min(0.08 * hz, hn.z) or 0.08 * hz
+	local zc = Kit.Curve({ { 0.92, 0 }, { 1.05, zTop * 0.5 }, { 1.2, zTop } })
+	return { W = W, F = F, K = K, nF = nF, nB = nB, zc = zc, rn = rn, rz = rz, hn = hn }
 end
 
 ------------------------------------------------------------------------
@@ -158,6 +192,10 @@ local function torsoField(sk, P, prof, nv)
 	local scmTop = { 0.74 * rn, yN + 0.29, zcTop + 0.3 * prof.rz }
 	local scmBot = { 0.15 * rn, yW + 0.975 * H, -0.95 * prof.F(0.975) * hz }
 	local baseDef = 0.25 + 0.75 * def -- separations everyone shows a little of
+	-- the Head's neck in body space (its centre line is the Neck joint's; the ellipse is r wide, rz deep)
+	local hn = prof.hn
+	local hnZ = hn and (hn.z + ((sk.center and sk.center.Head) and sk.center.Head[3] or 0)) or 0
+	local hnE = hn and hn.r / max(1e-3, hn.rz) or 1
 
 	local function field(i, x, y, z, nx, ny, nz, detail)
 		local u = (y - yW) / H
@@ -291,7 +329,8 @@ local function torsoField(sk, P, prof, nv)
 		end
 		-- trapezius: the slope from the neck to the shoulder ------------------------------
 		if u > 0.8 and fx < 1.0 then
-			local w = bell2((fx - 0.38) / 0.6, (u - 0.99) / 0.15) * smooth(-0.6, 0.3, ny + 0.4 * nz)
+			-- (it stops at the Neck pivot: above it the Head's neck shows; the back sheet below still climbs the nape)
+			local w = bell2((fx - 0.38) / 0.6, (u - 0.99) / 0.15) * smooth(-0.6, 0.3, ny + 0.4 * nz) * (1 - smooth(0.995, 1.03, u))
 			local h = trapH * w
 			d += h
 			ch.trap[i] = h
@@ -348,20 +387,23 @@ local function torsoField(sk, P, prof, nv)
 			crown += ridge * 0.8 * (0.3 + 0.7 * lean)
 		end
 		-- neck: sternocleidomastoids (the V to the notch), the notch, the larynx ---------
+		-- (above the Neck pivot the visible neck is the Head's, with its own sternocleidomastoids and larynx: the
+		-- column there is a smooth filler inside it, so nothing pushes outward above u ~1)
 		if u > 0.9 then
+			local below = 1 - smooth(0.99, 1.015, u)
 			local dist, t = Kit.segDist(ax, y, z, scmTop[1], scmTop[2], scmTop[3], scmBot[1], scmBot[2], scmBot[3])
 			local r = 0.085 * rn / 0.35
 			if dist < r * 1.6 then
-				local w = bell(dist / (r * 1.6)) * (0.55 + 0.45 * smooth(0.0, 0.5, t)) * smooth(0.97, 1.0, u)
+				local w = bell(dist / (r * 1.6)) * (0.55 + 0.45 * smooth(0.0, 0.5, t)) * smooth(0.93, 0.97, u) * below
 				d += scmH * w
 				crown += w * 0.4
-				groove += bell((dist - r * 1.1) / (r * 0.5)) * 0.25 * smooth(0.97, 1.02, u)
+				groove += bell((dist - r * 1.1) / (r * 0.5)) * 0.25 * smooth(0.94, 0.98, u) * below
 			end
 			local notch = bell2(ax / (0.15 * rn), (u - 0.985) / 0.03) * front
 			d -= 0.018 * notch
 			groove += notch * 0.8
 			if not fem then
-				local lar = bell2(ax / (0.22 * rn), (y - (yN + 0.12)) / 0.07) * front
+				local lar = bell2(ax / (0.22 * rn), (y - (yN + 0.12)) / 0.07) * front * below
 				d += 0.02 * lar
 				crown += lar * 0.4
 			end
@@ -371,7 +413,8 @@ local function torsoField(sk, P, prof, nv)
 			local b = bell2(fx / 0.8, (u - 0.13) / 0.42) * front
 			local hh = bell((u - 0.06) / 0.24) * smooth(0.55, 0.92, fx) * smooth(-0.6, 0.1, nz)
 			local bk = bell2(fx / 0.9, (u - 0.15) / 0.3) * backF
-			local h = bellyH * b + handleH * hh + 0.035 * fk * bk + 0.025 * fk
+			-- (the overall layer stops at the Neck pivot: above it the visible neck is the Head's)
+			local h = bellyH * b + handleH * hh + 0.035 * fk * bk + 0.025 * fk * (1 - smooth(0.985, 1.01, u))
 			d += h
 			ch.belly[i] = bellyH * b
 		end
@@ -382,6 +425,29 @@ local function torsoField(sk, P, prof, nv)
 		-- comes forward
 		ch.raise[i] = smooth(0.3, 0.78, fx) * smooth(0.74, 0.9, u) * (1 - smooth(1.0, 1.1, u))
 		ch.reach[i] = smooth(0.45, 0.85, fx) * smooth(0.6, 0.82, u) * (1 - smooth(0.98, 1.06, u))
+		-- above the Neck pivot the column is a filler inside the Head's neck (AnatomySkull.Neck): at the front and
+		-- the sides nothing may push it out of that neck, which is the visible one there
+		if hn and d > 0 and u > 0.985 then
+			local ez = (z - hnZ) * hnE
+			local room = max(0, hn.r - 0.006 - sqrt(x * x + ez * ez))
+			if d > room then
+				d -= (d - room) * smooth(0.985, 1.0, u) * (1 - smooth(0.35, 0.65, nz))
+			end
+		end
+		-- ... and the trapezius slope (lifted along its upward normal by big traps and fat) meets that neck at
+		-- the pivot: beside the neck, front and sides, it tops out under a line falling from 0.03 above the
+		-- pivot at the neck (a soft ceiling; the nape sheet behind still climbs to the skull)
+		if hn and d > 0 and ny > 0.25 and u > 0.88 and u < 1.0 then
+			local dz = z + nz * d - hnZ
+			local ex = x + nx * d
+			local e = sqrt(ex * ex + dz * dz * hnE * hnE)
+			local back = smooth(0.3, 0.7, dz / max(e, 1e-3))
+			local cap = (yN + 0.03 - 0.25 * max(0, e - hn.r) - y) / ny
+			if d > cap and back < 1 then
+				local soft = max(0, cap) + 0.008 * (1 - math.exp(-(d - max(0, cap)) / 0.008))
+				d -= (d - min(d, soft)) * (1 - back)
+			end
+		end
 		ch.groove[i] = clamp(groove, 0, 1)
 		ch.crown[i] = clamp(crown, 0, 1)
 		return d
@@ -400,7 +466,14 @@ function Torso.Upper(sk, P, lod, opt)
 	local xS, H, yW, hz = sk.xS, sk.H, sk.yW, sk.hz
 	local W, F, K, nF, nB, zc = prof.W, prof.F, prof.K, prof.nF, prof.nB, prof.zc
 	local u0 = -0.22 / H -- 0.22 studs under the waist pivot (inside the trunks / LowerTorso)
-	local u1 = 1 + 0.3 / H -- neck column 0.3 above the neck pivot (inside the head)
+	-- the neck column runs up inside the Head's neck to where that neck starts to round into the skull base
+	-- (AnatomySkull.Neck yTop), at most 0.3 above the pivot: any higher, its top shows through at the nape
+	local top = 0.3
+	local hn, hc = prof.hn, sk.center and sk.center.Head
+	if hn and hc and tonumber(hn.yTop) then
+		top = clamp(hc[2] + hn.yTop - sk.yN + 0.02, 0.1, 0.3)
+	end
+	local u1 = 1 + top / H
 	-- ring heights: equal steps along the silhouette's arc (the shoulder tops and the neck base get the rings
 	-- their fast change needs), a little denser over the chest and abs
 	local N = 160
@@ -517,13 +590,17 @@ function Torso.Lower(sk, P, lod, prof, opt)
 	-- so a leg never steps out of the seat
 	local legTop = trunks and opt.legTop or nil
 	if legTop then
-		hipW = max(hipW, legTop[1] + 0.008)
+		-- the seat hangs from the hips into the legs at exactly their width: never narrower (a leg would step
+		-- out of it) and never wider (a shelf / tutu ledge over the legs' tops)
+		hipW = legTop[1] + 0.008
 	end
 	local waistW = prof.W(0.0) * xS * 1.015 + 0.02 * fk + ease
 	local drop = (yW - yH) -- LowerTorso height
 	-- the bottom: with trunks the seat ends just under the hip pivots, inside the satin legs (they carry the
 	-- trunks from there down, their inner faces meeting on the midline); without, the crotch
-	local bot = trunks and legTop and (yH - 0.03) or (yH - (trunks and 0.2 or 0.3) * (drop / 0.4) ^ 0.5)
+	-- (with the legs' tops given, the seat's sides run on down nearly straight and end inside the satin legs,
+	-- which flare out below them: one surface from the band to the hem, no rounded rim over the legs)
+	local bot = trunks and legTop and (yH - 0.14) or (yH - (trunks and 0.2 or 0.3) * (drop / 0.4) ^ 0.5)
 	local Fw, Kw = prof.F(0.0) * hz + ease, prof.K(0.0) * hz + ease
 	local hipF, hipK = Fw * 0.97, Kw * 0.96
 	if legTop then
@@ -541,17 +618,19 @@ function Torso.Lower(sk, P, lod, prof, opt)
 		local sw = lerp(hipW, waistW, 0.85)
 		local lx, lf, lk = hipW, hipF, hipK
 		if legTop then
-			lx, lf, lk = legTop[1], legTop[2], legTop[3]
+			-- (the legs' front / back extents measured from the seat's own centre line)
+			local dz = 0.02 * hz - (legTop[5] or 0.02 * hz)
+			lx, lf, lk = legTop[1], legTop[2] + dz, legTop[3] - dz
 		end
 		local yS = yH + 0.05 -- the seat's full section (above the legs' tops)
-		Wc = Kit.Curve({ { bot, lx - 0.035 }, { yS, hipW }, { bandBot - 0.03, sw }, { bandBot - 0.0005, sw - 0.004 }, { bandBot, bw }, { top, bw } })
-		Fc = Kit.Curve({ { bot, lf - 0.03 }, { yS, hipF }, { bandBot - 0.0005, max(Fw * 0.985, (hipF + Fw) / 2) }, { bandBot, bf }, { top, bf } })
-		Kc = Kit.Curve({ { bot, lk - 0.03 }, { yS, hipK }, { bandBot - 0.0005, max(Kw * 0.965, (hipK + Kw) / 2) }, { bandBot, bk }, { top, bk } })
+		Wc = Kit.Curve({ { bot, lx - (legTop and 0.014 or 0.035) }, { yH - 0.045, lx - (legTop and 0.003 or 0.02) }, { yS, hipW }, { bandBot - 0.03, sw }, { bandBot - 0.0005, sw - 0.004 }, { bandBot, bw }, { top, bw } })
+		Fc = Kit.Curve({ { bot, lf - 0.03 }, { yH - 0.045, lf - 0.012 }, { yS, hipF }, { bandBot - 0.0005, max(Fw * 0.985, (hipF + Fw) / 2) }, { bandBot, bf }, { top, bf } })
+		Kc = Kit.Curve({ { bot, lk - 0.03 }, { yH - 0.045, lk - 0.012 }, { yS, hipK }, { bandBot - 0.0005, max(Kw * 0.965, (hipK + Kw) / 2) }, { bandBot, bk }, { top, bk } })
 		local list
 		if rings >= 10 then
-			list = { bot, (bot + yS) / 2, yS, yS + 0.3 * (bandBot - yS), yS + 0.62 * (bandBot - yS), bandBot - 0.03, bandBot - 0.012, bandBot, (bandBot + top) / 2, top }
+			list = { bot, yH - 0.045, yS, yS + 0.3 * (bandBot - yS), yS + 0.62 * (bandBot - yS), bandBot - 0.03, bandBot - 0.012, bandBot, (bandBot + top) / 2, top }
 		elseif rings >= 8 then
-			list = { bot, yS, yS + 0.4 * (bandBot - yS), bandBot - 0.03, bandBot - 0.012, bandBot, (bandBot + top) / 2, top }
+			list = { bot, yH - 0.045, yS, yS + 0.4 * (bandBot - yS), bandBot - 0.03, bandBot - 0.012, bandBot, (bandBot + top) / 2, top }
 		else
 			list = { bot, yS, bandBot - 0.012, bandBot, top }
 		end
@@ -573,6 +652,7 @@ function Torso.Lower(sk, P, lod, prof, opt)
 		spine[i] = { 0, Ys[i], 0.02 * hz }
 	end
 	local m = MeshKit.New("LowerTorso")
+	local seatSq = trunks and legTop ~= nil
 	-- the crotch: with trunks a deeper rounded gusset between the legs (the satin bridges the thighs, no V)
 	local botD = trunks and (legTop and 0.06 or 0.2 * (drop / 0.4) ^ 0.5) or 0.14
 	local info = Kit.GridLoft(m, MeshKit, {
@@ -584,7 +664,9 @@ function Torso.Lower(sk, P, lod, prof, opt)
 			local i = math.floor(t * (rings - 1) + 0.5) + 1
 			local y = Ys[i]
 			local c, s = cos(a), sin(a)
-			local e = 2 / 2.4
+			-- with the legs' tops given the seat squares off toward its bottom, like the two satin legs side by
+			-- side it runs into (their front-outer corners stay under it)
+			local e = 2 / (seatSq and lerp(3.4, 2.4, smooth(yH + 0.05, Ys[#Ys] - 0.06, y)) or 2.4)
 			local x = Wc(y) * (c < 0 and -1 or 1) * abs(c) ^ e
 			local f = s >= 0 and Fc(y) * s ^ e or -Kc(y) * (-s) ^ e
 			return x, f

@@ -391,14 +391,17 @@ local function setup(sk, P, lod, side, kind, opt)
 				topBulge += belly(0.12, TAU * q / 8, mus[k])
 			end
 		end
-		topBulge = topBulge / 8 * 1.5
+		-- (most of the muscle under the satin only fills it out: the leg hangs from the hip, it is not a tube
+		-- inflated round the thigh)
+		topBulge = topBulge / 8 * 0.7
 	end
 	local folds = opt.foldPhase or 1.3
 	-- the satin leg's half extents (lateral, front, back) at flare t (0 at the top, 1 at the opening)
+	-- (an A-line from the hip: the sides flare most, the front stays flat, the back carries the seat's fullness)
 	local function trunkDims(t, long)
-		local flare = long and (0.04 * t) or (0.1 * t)
-		return (topEx + topBulge) * S * (1.07 + flare) + 0.03 * S, (topEz + topBulge) * S * (1.03 + flare * 0.6) + 0.026 * S,
-			(topEz + topBulge) * S * (1.05 + flare * 0.35) + 0.028 * S
+		local flare = long and (0.045 * t) or (0.11 * t)
+		return (topEx + topBulge) * S * (1.02 + flare) + 0.022 * S, (topEz + topBulge) * S * (0.97 + flare * 0.3) + 0.016 * S,
+			(topEz + topBulge) * S * (1.03 + flare * 0.5) + 0.024 * S
 	end
 	-- the skin's radius: base ellipse + bellies - grooves
 	local function skinR(bb, ang, smoothK)
@@ -435,17 +438,20 @@ local function setup(sk, P, lod, side, kind, opt)
 			local ex = c >= 0 and latX or min(latX, medX)
 			local ez = s >= 0 and fZ or bZ
 			-- (squarer toward the medial face: the two legs' fronts meet flush on the midline)
-			local n = c < 0 and 2.4 + 1.2 * (-c) or 2.4
+			-- (the front panel flatter (squarer) than the back)
+			local n = (c < 0 and 2.4 + 1.2 * (-c) or 2.4) + (s > 0 and 0.5 * s or 0)
 			local loose = 1 / ((abs(c) / ex) ^ n + (abs(s) / ez) ^ n) ^ (1 / n)
 			if long then
-				-- knee-length trunks hang straight, narrowing a little toward the knee (never onto the skin)
-				loose *= 1 - 0.1 * smooth(0.25, 1.0, bb)
+				-- knee-length trunks hang from the hip and taper toward the knee (never onto the skin)
+				loose *= 1 - 0.16 * smooth(0.15, 1.0, bb)
 			end
 			-- soft folds (none on the medial face, which meets the other leg's)
 			local medK = 1 - win(ang, MED, 0.9)
 			-- drape: a few broad folds hanging from the seat and finer creases toward the opening
 			loose += (0.016 * sin(3 * ang + folds + 2.2 * bb) + 0.01 * sin(7 * ang + 2 * folds + 4 * bb) * t) * S * (0.3 + 0.7 * t) * medK
 			loose += 0.015 * S * sin(ang) * t
+			-- the creases where the satin bunches at the inner thigh (diagonal, from the crotch out and down)
+			loose -= 0.008 * S * max(0, sin(9 * (ang - FRONT) + 14 * bb)) ^ 3 * win(ang, MED - 0.55, 0.8) * (1 - smooth(0.12, 0.4, bb))
 			-- above the hip the leg is inside the trunks' seat (the LowerTorso piece carries the hips)
 			loose = lerp(skinR(bb, ang) + 0.01 * S, loose, smooth(-0.14, 0.04, bb))
 			return max(skinR(bb, ang, 0.8) + 0.014 * S, loose)
@@ -460,7 +466,11 @@ local function setup(sk, P, lod, side, kind, opt)
 			-- stays inside it), a padded collar at the top
 			local top = z[1]
 			local collar = Kit.bell((bb - (top + 0.035)) / 0.05)
-			return skinR(bb, ang, 0.8) + (0.03 + 0.016 * collar) * S
+			-- below the ankle the shaft flares back over the heel counter (one boot, no ledge at the heel) and a
+			-- raised tongue runs down the front under the laces
+			local heel = 0.035 * smooth(0.92, 1.1, bb) * win(ang, BACK, 1.9)
+			local tongue = 0.007 * win(ang, FRONT, 0.45) * smooth(top + 0.05, top + 0.1, bb)
+			return skinR(bb, ang, 0.8) + (0.03 + 0.016 * collar + heel + tongue) * S
 		elseif kind2 == "glove" then
 			-- the glove's cuff: a padded sleeve round the wrist, a little wider toward the hand, a rolled top edge
 			local top = z[1]
@@ -695,6 +705,27 @@ function Limbs.Build(sk, P, lod, side, kind, opt)
 			-- the two tips
 			veinBA[first + n * per] = veinBA[first]
 			veinBA[first + n * per + 1] = veinBA[first + (n - 1) * per]
+		end
+	end
+	-- the short trunks' hem dips a little at the back (the seat's fabric hangs lower behind): the rings round the
+	-- hem lean back along the bone (the edge's ring pair moves together, so the edge stays crisp)
+	for _, z in ipairs(zones) do
+		if z[3] == "trunk" and z[2] < 0.97 then
+			local hemB = z[2]
+			local Pp = m.P
+			for _, row in ipairs(info.rows) do
+				local w = row.ring and (1 - smooth(0.03, 0.15, abs(row.b - hemB))) or 0
+				if w > 0 then
+					for j = 0, row.n - 1 do
+						local vi = row.s + j
+						local ang = TAU * j / sides
+						local d = 0.03 * w * (0.5 - 0.5 * sin(ang))
+						Pp[vi * 3 - 2] += ux * d
+						Pp[vi * 3 - 1] += uy * d
+						Pp[vi * 3] += uz * d
+					end
+				end
+			end
 		end
 	end
 	Kit.GridNormals(m, MeshKit, info)

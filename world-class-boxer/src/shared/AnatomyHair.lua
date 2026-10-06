@@ -88,6 +88,10 @@ local SHORT = {
 	["360 Waves"] = { top = 0.007, side = 0.005, clumps = false, pattern = "waves", density = 0.9 },
 }
 local FADE_TOP = { low = 0.15, mid = 0.24, high = 0.32, fade = 0.24, taper = 0.12, burst = 0.25 }
+-- how far hair of each type stands off the scalp at the same clipper length: straight hair lies flat, curlier
+-- hair springs up (a coily buzz is a fuller, darker layer than a straight one). It scales the short shells, so a
+-- cut never builds the same geometry for two hair types (also far away, where the shell is all there is)
+local STAND = { Straight = 1, Wavy = 1.1, Curly = 1.22, Kinky = 1.34, Coiled = 1.42 }
 
 local function shortCut(H)
 	local sp = SHORT[H.style]
@@ -96,8 +100,9 @@ local function shortCut(H)
 	local hasTop = sp.clumps ~= false
 	-- under the top clumps the shell is a thin dark under-layer; a clipper cut is the shell alone
 	-- a short cut's top is a volume of hair (its texture and fur on top), the sides fade
-	local top = hasTop and (0.022 + 0.022 * L) or (sp.top + 0.004 * L + 0.01 * grow)
-	local side = sp.side + 0.006 * grow
+	local stand = STAND[H.htype] or 1
+	local top = hasTop and (0.022 + 0.022 * L) * stand or (sp.top + 0.004 * L + 0.01 * grow) * stand
+	local side = (sp.side + 0.006 * grow) * stand
 	local fadeTop = FADE_TOP[sp.fade or ""] or 0.2
 	local coily = COILY[H.htype] and hasTop
 	if coily then
@@ -748,12 +753,14 @@ R["Cornrows"] = function(H)
 	local L = H.len
 	local n = H.lod == "low" and 6 or (H.lod == "medium" and 7 or floor(6 + 4 * H.density + 0.5))
 	local _, region = Parts.RowLayout(H, n)
-	Parts.Cap(H, { top = 0.01, side = 0.008, pattern = "strands", flow = "back", capT = 0.35, material = "Plastic", region = region,
+	-- curlier hair braids into fuller, rounder rows (and stands up more between them)
+	local stand = STAND[H.htype] or 1
+	Parts.Cap(H, { top = 0.01 * stand, side = 0.008 * stand, pattern = "strands", flow = "back", capT = 0.35, material = "Plastic", region = region,
 		shaved = 0.2, density = 1, hairline = H.hairline == "Natural" and "Straight" or H.hairline })
 	local hang = H.len * SHRINK[H.htype] - 0.4
 	-- far away the braided tails are not worth their triangles: the rows alone read as cornrows
 	local tails = hang > 0 and H.lod ~= "low"
-	Parts.Cornrows(H, { n = n, r = 0.027 * (0.85 + 0.3 * H.thick), period = 0.085, tails = tails, tail = function(i)
+	Parts.Cornrows(H, { n = n, r = 0.027 * (0.85 + 0.3 * H.thick) * (0.94 + 0.06 * stand), period = 0.085, tails = tails, tail = function(i)
 		return tails and (0.12 + 0.6 * hang) or 0
 	end })
 	if H.tails then
@@ -1208,7 +1215,8 @@ local function build(look, lod, ctx, style, htype, nScale)
 		local seed = H.seed % 1000
 		-- regrowth on a shaved head: a skin-thin stubble layer (texture only, the scalp's own normals and
 		-- material), sparse enough that the skin shows through as a shadow
-		Parts.Cap(H, { top = 0.0025 + 0.002 * H.grow, side = 0.002 + 0.0015 * H.grow, density = clamp(0.12 + 0.3 * H.grow, 0, 0.42),
+		local stand = STAND[htype] or 1
+		Parts.Cap(H, { top = (0.0025 + 0.002 * H.grow) * stand, side = (0.002 + 0.0015 * H.grow) * stand, density = clamp(0.12 + 0.3 * H.grow, 0, 0.42),
 			pattern = "stubble", flow = "whorl", grain = 0.75, capT = 0.8, edge = 0.05, streak = 0, material = "SmoothPlastic",
 			reflectance = 0, cols = full and 64 or (H.lod == "medium" and 40 or nil), rows = full and 28 or (H.lod == "medium" and 16 or nil) })
 	else

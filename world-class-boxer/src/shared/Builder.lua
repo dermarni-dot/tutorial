@@ -41,6 +41,30 @@ end
 ------------------------------------------------------------------------
 -- Scales / HumanoidDescription
 ------------------------------------------------------------------------
+-- Athletic proportions. The default R15 body is Roblox's "Classic" block: about 4.5 heads tall, the hip
+-- pivot at 38 % of the height. Humanoid scaling blends every part toward Rthro as BodyTypeScale goes to 1
+-- (legs x 1.5, torso x 1.31, arms x 1.34, head x 0.94 tall) and ProportionScale blends Rthro Normal toward
+-- Slender (narrower shoulders and limbs, slightly shorter legs). With the head brought down to a real
+-- head's share a 70-inch boxer stands about 6.5 studs and 7.3 heads, hip pivot at 45 %, shoulders at 81 %,
+-- wrists at 50 % (a real athlete: 7-7.5 heads, about 47 / 82 / 48 %). The meshes and the round-1 parts all
+-- follow the rig the engine builds; HipHeight follows automatically.
+-- Per frame (bone structure, never the trained physique: legs do not grow from bench pressing): lean frames
+-- take the full Rthro length, heavier frames keep a little of the Classic block (shorter legs, a heavier
+-- head and neck) on top of their extra width. Women: a touch of Slender (shoulders narrower than the hips).
+local FRAME_PROPORTIONS = {
+	Lean = { bodyType = 1, head = 0.81 },
+	Athletic = { bodyType = 1, head = 0.82 },
+	Muscular = { bodyType = 0.96, head = 0.83 },
+	["Power Build"] = { bodyType = 0.92, head = 0.84 },
+	["Heavyweight Build"] = { bodyType = 0.87, head = 0.85 },
+}
+Builder.FRAME_PROPORTIONS = FRAME_PROPORTIONS
+-- The R15 boxes are fat for their length (a Classic limb is nearly as wide as it is long, the torso box 2 studs
+-- across with the arms hung outside it): at Rthro length an untouched width still reads as a toy. Every
+-- frame's width and depth are taken down so the shoulders land at about a quarter of the height, the limbs
+-- and the chest at an athlete's thickness; the frame, the physique and training still widen from there.
+local SLIM_W, SLIM_D = 0.77, 0.84
+
 -- opts (optional) carries the physique (Career.LookOpts): archetypes widen / narrow the frame
 function Builder.Scales(app, build, opts)
 	local frame = frameOf(app)
@@ -51,10 +75,14 @@ function Builder.Scales(app, build, opts)
 	local ph = Body.Resolve(app, build, opts).ph
 	local width = frame.width * (1 + 0.12 * upper + 0.05 * (b.shoulders or 0)) * (female and 0.92 or 1) + (ph.width or 0)
 	local depth = frame.depth * (1 + 0.08 * avgDev(build, { "chest" }) + 0.012 * (fat - 14) + 0.04 * (b.chest or 0)) * (female and 0.94 or 1) + (ph.depth or 0)
+	local pr = FRAME_PROPORTIONS[frame.id] or FRAME_PROPORTIONS.Athletic
 	return {
 		height = math.clamp((app.height or 70) / 70, 0.86, 1.2),
-		width = math.clamp(width, 0.75, 1.4),
-		depth = math.clamp(depth, 0.75, 1.4),
+		width = math.clamp(width, 0.75, 1.4) * SLIM_W,
+		depth = math.clamp(depth, 0.75, 1.4) * SLIM_D,
+		bodyType = pr.bodyType,
+		proportion = female and 0.25 or 0,
+		head = pr.head * (female and 0.97 or 1),
 	}
 end
 
@@ -72,16 +100,17 @@ function Builder.Description(app, build, opts)
 	desc.HeightScale = sc.height
 	desc.WidthScale = sc.width
 	desc.DepthScale = sc.depth
-	desc.HeadScale = 1
-	desc.BodyTypeScale = 0
-	desc.ProportionScale = 0
+	desc.HeadScale = sc.head
+	desc.BodyTypeScale = sc.bodyType
+	desc.ProportionScale = sc.proportion
 	return desc
 end
 
--- quantised to 0.01 so training only re-applies the description (which yields) on real changes
+-- quantised to 0.01 so training only re-applies the description (which yields) on real changes; "p2" =
+-- the athletic-proportions rig (characters scaled under the old Classic key re-apply once)
 function Builder.ScaleKey(app, build, opts)
 	local sc = Builder.Scales(app, build, opts)
-	return string.format("%.2f|%.2f|%.2f|%d", sc.height, sc.width, sc.depth, app.gender or 1)
+	return string.format("%.2f|%.2f|%.2f|%d|%.2f|%.2f|%.2f|p2", sc.height, sc.width, sc.depth, app.gender or 1, sc.bodyType, sc.proportion, sc.head)
 end
 
 ------------------------------------------------------------------------
@@ -180,6 +209,64 @@ local function headSig(model, app, build, opts, name)
 		math.floor(fat + 0.5), head and head.Size or false, Config.BaldMode, extra)
 end
 
+-- The head is scaled (HeadScale x the body-type factor), and BuilderHead swaps the default dynamic head (a
+-- MeshPart) for a plain Part of the same size once. Humanoid:ReplaceBodyPartR15 scales the new part "as
+-- normal", so the engine may take that already-scaled size as unscaled and scale it a second time (with the
+-- old Classic HeadScale 1 that was harmless). headRecord / keepHeadScale put back the size, the OriginalSize
+-- record and the attachments the engine gave the original head, and re-aim the neck: the head is scaled
+-- exactly once. A no-op when the swap kept the size (the simulator's ReplaceBodyPartR15 does).
+local function headRecord(model)
+	local head = model:FindFirstChild("Head")
+	if not (head and head:IsA("BasePart")) then
+		return nil
+	end
+	local orig = head:FindFirstChild("OriginalSize")
+	local rec = { part = head, size = head.Size, orig = orig and orig:IsA("Vector3Value") and orig.Value or nil, att = {} }
+	for _, c in ipairs(head:GetChildren()) do
+		if c:IsA("Attachment") then
+			rec.att[c.Name] = c.CFrame
+		end
+	end
+	return rec
+end
+
+-- true when the head had to be corrected (its folders were built on the wrong size: rebuild them)
+local function keepHeadScale(model, rec)
+	local head = model:FindFirstChild("Head")
+	if not (rec and head and head ~= rec.part and head:IsA("BasePart")) then
+		return false
+	end
+	local fixed = false
+	if (head.Size - rec.size).Magnitude > 1e-3 then
+		head.Size = rec.size
+		fixed = true
+	end
+	if rec.orig then
+		local o = head:FindFirstChild("OriginalSize")
+		if not (o and o:IsA("Vector3Value")) then
+			o = Instance.new("Vector3Value")
+			o.Name = "OriginalSize"
+			o.Parent = head
+		end
+		if o.Value ~= rec.orig then
+			o.Value = rec.orig
+		end
+	end
+	for name, cf in pairs(rec.att) do
+		local a = head:FindFirstChild(name)
+		if a and a:IsA("Attachment") and (a.CFrame.Position - cf.Position).Magnitude > 1e-4 then
+			a.CFrame = cf
+			fixed = true
+		end
+	end
+	local neck, na = head:FindFirstChild("Neck"), head:FindFirstChild("NeckRigAttachment")
+	if neck and neck:IsA("Motor6D") and na and na:IsA("Attachment") and (neck.C1.Position - na.CFrame.Position).Magnitude > 1e-4 then
+		neck.C1 = na.CFrame
+		fixed = true
+	end
+	return fixed
+end
+
 -- Head.Face(model, app, opts, build) / Hair.Build(model, app, opts) / Head.Beard(model, app, opts)
 local function headStep(model, app, build, opts, name)
 	local key = headSig(model, app, build, opts, name)
@@ -196,6 +283,25 @@ local function headStep(model, app, build, opts, name)
 	end
 	if ok then
 		Kit.seal(model, name, key)
+	end
+end
+
+-- the Face step (which may swap the head), kept at the engine's head scale; the face is rebuilt once on the
+-- corrected head (its size is in the Face cache key) when the swap changed it
+local function faceStep(model, app, build, opts)
+	-- quiet pcalls: the guard is a safety net, it must never cost a face
+	local okR, rec = pcall(headRecord, model)
+	headStep(model, app, build, opts, "Face")
+	local okK, fixed = pcall(keepHeadScale, model, okR and rec or nil)
+	if okK and fixed then
+		-- the face was sealed under the key taken before the swap (the original head's size, which the corrected
+		-- head has again): drop the seal so the folder really is rebuilt on the corrected head
+		local look = model:FindFirstChild("BoxerLook")
+		local face = look and look:FindFirstChild("Face")
+		if face then
+			face:SetAttribute("Sig", nil)
+		end
+		headStep(model, app, build, opts, "Face")
 	end
 end
 
@@ -240,7 +346,11 @@ function Builder.Cosmetics(model, app, build, gear, opts)
 	if type(opts.only) == "table" then
 		for _, name in ipairs({ "Face", "Hair", "Beard" }) do
 			if opts.only[name] then
-				headStep(model, app, build, opts, name)
+				if name == "Face" then
+					faceStep(model, app, build, opts)
+				else
+					headStep(model, app, build, opts, name)
+				end
 			end
 		end
 		-- a rebuilt face reopens swollen lids and clears the sclera / mouthguard tint: redraw the damage
@@ -265,7 +375,7 @@ function Builder.Cosmetics(model, app, build, gear, opts)
 		Builder.SetHairHidden(model, "hood", false)
 	end
 	step("Colors", Body.Colors, model, app, gear, opts)
-	headStep(model, app, build, opts, "Face")
+	faceStep(model, app, build, opts)
 	headStep(model, app, build, opts, "Hair")
 	headStep(model, app, build, opts, "Beard")
 	local _, env = step("Muscles", Body.Muscles, model, app, build, opts, sp, gear)

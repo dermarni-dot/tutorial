@@ -655,7 +655,9 @@ local function quitResult(player)
 		res.headTaken = math.floor((tonumber(P.headTaken) or 0) * 10) / 10
 		res.bodyTaken = math.floor(100 - (tonumber(P.bodyCap) or 100))
 		if type(P.dmg) == "table" then
-			res.face = table.clone(P.dmg)
+			-- only tonight's damage (as the engine's own result): the walked-in residual heals over the
+			-- suspension, so re-reporting it would bring old marks back fresh and scar an old cut twice
+			res.face = FightEngine.TonightDamage and FightEngine.TonightDamage(P) or table.clone(P.dmg)
 			res.face.age = 0
 			res.noseBroken = P.dmg.nose == true and not P.noseAtStart
 			res.face.nose = res.noseBroken

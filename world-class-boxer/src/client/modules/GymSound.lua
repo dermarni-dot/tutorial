@@ -110,7 +110,9 @@ local P = {
 	drip = { id = SPLASH, group = "GymBed", speed = 2.6, vol = 0.06, spread = 0.2 },
 	grunt = { id = GRUNT, group = "GymBed", speed = 1.0, vol = 0.12, spread = 0.12 },
 	drop = { id = FALL, group = "GymHeavy", speed = 1.6, vol = 0.12, spread = 0.1 },
-	shout = { id = nil, group = "GymBed", speed = 1, vol = 0.5, spread = 0.06, key = "CoachShout" },
+	-- no upload: a barked grunt (Config.SoundFallbacks.CoachShout shaping) so a shout is heard;
+	-- upVol keeps an uploaded CoachShout at its old level
+	shout = { id = GRUNT, group = "GymBed", speed = 1.0, vol = 0.3, upVol = 0.5, spread = 0.1, key = "CoachShout" },
 	-- unshaped: callers give the id / speed / volume themselves (GymVisuals.Sound)
 	raw = { id = THUD, group = "GymBag", speed = 1, vol = 1, spread = 0 },
 }
@@ -180,7 +182,7 @@ function GymSound.Play(name, pos, opts)
 		-- an uploaded asset is already the right sound: play it nearly unshaped
 		local speed = uploaded and (1 + (math.random() - 0.5) * 0.06) or (prof.speed * (1 + (math.random() * 2 - 1) * spread))
 		snd.PlaybackSpeed = math.max(0.1, speed * (opts.speed or 1))
-		snd.Volume = math.clamp(prof.vol * (opts.volume or 1), 0, 3)
+		snd.Volume = math.clamp((uploaded and prof.upVol or prof.vol) * (opts.volume or 1), 0, 3)
 		snd.RollOffMaxDistance = opts.maxDistance or 90
 		snd.SoundGroup = group(prof.group)
 		snd.TimePosition = 0

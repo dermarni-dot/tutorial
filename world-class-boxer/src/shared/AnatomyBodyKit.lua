@@ -344,6 +344,9 @@ function Kit.Params(look, MeshKit, bodyPaths)
 	V.neckW = r(0.96, 1.05)
 	V.trapSlope = r(0.9, 1.12)
 	P.V = V
+	-- the look itself, for shared shapes the Body must agree with (AnatomySkull.Neck: the Head's visible neck;
+	-- it reads rig.parts.Head and g, both Body section inputs)
+	P.look = look
 	return P
 end
 
@@ -727,11 +730,13 @@ function Kit.AOAmounts(m, cav, o)
 end
 
 -- one colour through the AO amounts (BakeAO's formula: darkened toward a tinted shadow of itself)
+-- (ridges lift toward a lighter version of the colour itself, at most x 1.6: toward white the same lift made
+-- the darkest skins 20-40 % lighter than skinRGB, an ashy body under a face and neck painted at skinRGB)
 function Kit.ApplyAO(r, g, b, dark, light, tint)
 	r = r + (r * tint[1] * 2 - r) * dark
 	g = g + (g * tint[2] * 2 - g) * dark
 	b = b + (b * tint[3] * 2 - b) * dark
-	return min(1, r + light * (1 - r)), min(1, g + light * (1 - g)), min(1, b + light * (1 - b))
+	return min(1, r + light * (min(1, r * 1.6) - r)), min(1, g + light * (min(1, g * 1.6) - g)), min(1, b + light * (min(1, b * 1.6) - b))
 end
 
 -- noise tiles for texel painting: an n x n lattice of values in [-1, 1] (hash, deterministic), sampled
@@ -868,8 +873,9 @@ function Kit.SepShade(pc, r, g, b, groove, crown, kG, kC)
 		r, g, b = r * (1 - k * 0.3), g * (1 - k * 0.33), b * (1 - k * 0.34)
 	end
 	if crown > 0 then
+		-- toward a lighter version of the skin itself (see ApplyAO): fair skin unchanged, dark skin keeps its tone
 		local k = min(0.25, crown * kC * pc.ck)
-		r, g, b = r + (1 - r) * k * 0.55, g + (1 - g) * k * 0.5, b + (1 - b) * k * 0.45
+		r, g, b = r + (min(1, r * 1.6) - r) * k * 0.55, g + (min(1, g * 1.6) - g) * k * 0.5, b + (min(1, b * 1.6) - b) * k * 0.45
 	end
 	return r, g, b
 end

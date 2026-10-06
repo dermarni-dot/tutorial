@@ -10,7 +10,7 @@
 --                  camera is in (client ColorCorrectionEffect "ZoneGrade", off during fights)
 --  * the gym's sound: an air-handling bed, people training (treadmill footfalls, plates, ropes,
 --    shadow-boxing), hangar reverb inside the hall, optional uploaded gym music / ambience
---  * coaches who shout instructions (speech bubbles + optional CoachShout upload), react to your
+--  * coaches who shout instructions (speech bubbles + a barked grunt, or a CoachShout upload), react to your
 --    work (Ambience.React) and turn to watch you train (client-local LookAt attribute)
 --  * dust motes hanging in the light and sun shafts through the windows and skylights
 -- Everything is tag / name driven, so pieces streamed in later are picked up too. Movers only update
@@ -651,7 +651,7 @@ local function say(model, text)
 	-- client-local: the Animator opens the coach's mouth (FaceFX.Shout) and, when his arms are free,
 	-- plays the cupped-hand shout gesture in time with the bubble
 	model:SetAttribute("ShoutAt", os.clock())
-	GymSound.Play("shout", head.Position, { volume = 1 }) -- silent unless a CoachShout upload is set
+	GymSound.Play("shout", head.Position, { volume = 1 }) -- a grunt stand-in unless a CoachShout upload is set
 	return true
 end
 

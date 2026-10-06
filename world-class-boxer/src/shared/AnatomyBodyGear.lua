@@ -66,7 +66,7 @@ function Gear.Read(look)
 		tape = gl.tape == true, target = gl.target == true, cond = clamp(num(gl.cond, 100), 0, 100), plate = gl.plate,
 	}
 	-- where the cuff starts on the forearm (bone parameter from the elbow): long laced cuffs reach higher
-	glove.cuffTop = clamp(0.64 - 0.28 * (glove.cuff - 1), 0.5, 0.74)
+	glove.cuffTop = clamp(0.68 - 0.28 * (glove.cuff - 1), 0.54, 0.78)
 	local wr = type(g.wrap) == "table" and g.wrap or {}
 	local wc = rgbOr(wr.c, { 0.94, 0.94, 0.93 })
 	local wrap = { c = wc, c2 = rgbOr(wr.c2, wc), c3 = rgbOr(wr.c3, wc), gel = wr.gel == true, cond = clamp(num(wr.cond, 100), 0, 100), top = 0.82 }
@@ -134,6 +134,95 @@ local function laceCover(bb, ang, b0, b1, center, halfW, pitch)
 	local d = min(d1, d2)
 	return 1 - smooth(0.12, 0.22, d)
 end
+
+-- the shoe's length from the standing height (sole to the top of the head): a foot is ~15 % of it, a boxing
+-- boot a little more; never from the shin (athletic rigs have long shins)
+function Gear.FootLength(sk, P)
+	local hd = sk.size.Head
+	local top = sk.center.Head[2] + hd[2] / 2
+	local fc, fs = sk.center.RightFoot, sk.size.RightFoot
+	local H = top - (fc[2] - fs[2] / 2)
+	return clamp(0.155 * H, 0.55, 1.4) * (P.female and 0.96 or 1)
+end
+
+-- criss-cross lacing in studs: Y along the lacing (Y0 = the first eyelet row, Y1 = the last), X across from
+-- its centre line; eyelets in two rows at +-eyeX, every 'pitch'; laces lw wide run eyelet to eyelet across.
+-- Returns lace cover, the lace's rounded shade (0..1), the eyelet ring, the eyelet hole, and the shadow the
+-- laces cast on the tongue
+local function lacing(Y, X, Y0, Y1, eyeX, pitch, lw)
+	if Y < Y0 - pitch * 0.6 or Y > Y1 + pitch * 0.6 or abs(X) > eyeX * 1.5 then
+		return 0, 0, 0, 0, 0
+	end
+	local n = max(2, floor((Y1 - Y0) / pitch + 0.5) + 1)
+	local p = (Y1 - Y0) / (n - 1)
+	local k0 = clamp(floor((Y - Y0) / p), 0, n - 2)
+	local bestD = math.huge
+	local eye, hole = 0, 0
+	for k = max(0, k0 - 1), min(n - 2, k0 + 1) do
+		local ya, yb = Y0 + k * p, Y0 + (k + 1) * p
+		for q = -1, 1, 2 do
+			-- segment (ya, q*eyeX) -> (yb, -q*eyeX)
+			local ax, ay = q * eyeX, ya
+			local bx, by = -q * eyeX - ax, yb - ay
+			local l2 = bx * bx + by * by
+			local tt = clamp(((X - ax) * bx + (Y - ay) * by) / l2, 0, 1)
+			local dx, dy = X - ax - bx * tt, Y - ay - by * tt
+			local d = sqrt(dx * dx + dy * dy)
+			-- the lace on top alternates per crossing: a touch closer wins ties
+			if (k + (q > 0 and 1 or 0)) % 2 == 0 then
+				d *= 0.97
+			end
+			bestD = min(bestD, d)
+		end
+	end
+	for k = max(0, k0 - 1), min(n - 1, k0 + 2) do
+		local ey = Y0 + k * p
+		for q = -1, 1, 2 do
+			local de = sqrt((X - q * eyeX) ^ 2 + (Y - ey) ^ 2)
+			eye = max(eye, 1 - smooth(lw * 0.75, lw * 1.0, de))
+			hole = max(hole, 1 - smooth(lw * 0.35, lw * 0.5, de))
+		end
+	end
+	local lace = 1 - smooth(lw * 0.42, lw * 0.55, bestD)
+	local shade = 1 - (clamp(bestD / (lw * 0.55), 0, 1)) ^ 2
+	local shadow = (1 - lace) * (1 - smooth(lw * 0.55, lw * 1.3, bestD))
+	return lace, shade, eye, hole, shadow
+end
+Gear.Lacing = lacing
+
+-- the lacing's measurements for a foot length (shared by the shoe and the boot shaft so they line up)
+local function laceDims(FL)
+	return 0.06 * FL, 0.075 * FL, 0.022 * FL -- eyelet half span, pitch, lace width
+end
+
+-- the lacing panel of a boot / shoe over colour (r, g, b): the tongue between the quarters (a shade darker, a
+-- seam either side), eyelets in two rows, criss-cross laces with a rounded shade and a contact shadow.
+-- tongueTo: the tongue runs from the lacing up to Y = tongueTo (nil = past the last eyelet only)
+local function paintLacing(r, g, b, sh, Y, X, Y0, Y1, FL, crisp, tongueFrom, tongueTo)
+	local eyeX, pitch, lw = laceDims(FL)
+	if crisp then
+		local tw = eyeX * 0.74
+		local inY = Y > (tongueFrom or (Y0 - pitch * 0.7)) and Y < (tongueTo or (Y1 + pitch * 0.6))
+		if inY then
+			local inT = 1 - smooth(tw - 0.002, tw + 0.002, abs(X))
+			r, g, b = mix(r, g, b, r * 0.78, g * 0.78, b * 0.78, inT)
+			local seam = 1 - smooth(0.0025, 0.005, abs(abs(X) - tw))
+			r, g, b = mix(r, g, b, r * 0.5, g * 0.5, b * 0.5, seam)
+		end
+		local lace, shade, eye, hole, shadow = lacing(Y, X, Y0, Y1, eyeX, pitch, lw)
+		local k = 1 - 0.4 * shadow
+		r, g, b = r * k, g * k, b * k
+		r, g, b = mix(r, g, b, 0.72, 0.72, 0.74, eye)
+		r, g, b = mix(r, g, b, 0.08, 0.08, 0.08, hole)
+		local lk = 0.72 + 0.28 * shade
+		r, g, b = mix(r, g, b, sh.lace[1] * lk, sh.lace[2] * lk, sh.lace[3] * lk, lace)
+	else
+		local l = (1 - smooth(eyeX * 0.5, eyeX * 1.25, abs(X))) * smooth(Y0 - pitch, Y0, Y) * (1 - smooth(Y1, Y1 + pitch, Y))
+		r, g, b = mix(r, g, b, sh.lace[1], sh.lace[2], sh.lace[3], 0.45 * l)
+	end
+	return r, g, b
+end
+Gear.PaintLacing = paintLacing
 
 function Gear.LimbPainter(pc, sk, P, look, wear, side, kind, info, trunk, Limbs)
 	local spec, zones, L, S = info.spec, info.zones, info.L, info.S
@@ -234,6 +323,7 @@ function Gear.LimbPainter(pc, sk, P, look, wear, side, kind, info, trunk, Limbs)
 		return r, gg, b
 	end
 	local sh = g.shoe
+	local footL = Gear.FootLength(sk, P)
 	local function boot(bb, ang, crisp, z)
 		local c = sh.c
 		local r, gg, b = c[1], c[2], c[3]
@@ -243,18 +333,12 @@ function Gear.LimbPainter(pc, sk, P, look, wear, side, kind, info, trunk, Limbs)
 		local collar = 1 - edge(bb - (top + 0.05), 0.012, crisp)
 		r, gg, b = mix(r, gg, b, min(1, r * 1.15 + 0.03), min(1, gg * 1.15 + 0.03), min(1, b * 1.15 + 0.03), 0.6 * collar)
 		if not sh.trainer then
-			-- the lacing gap down the front, eyelets either side, laces criss-crossing
-			if crisp then
-				local gap = edge(0.2 - fr, 0.02, true)
-				r, gg, b = mix(r, gg, b, r * 0.82, gg * 0.82, b * 0.82, gap * (1 - collar))
-				local eye = (1 - smooth(0.012, 0.02, abs(fr - 0.3))) * (((bb - top) / 0.07) % 1 < 0.45 and 1 or 0) * (bb > top + 0.06 and 1 or 0)
-				r, gg, b = mix(r, gg, b, 0.8, 0.8, 0.82, eye)
-				local lace = laceCover(bb, ang, top + 0.06, 1.05, FRONT, 0.32, 0.14)
-				r, gg, b = mix(r, gg, b, sh.lace[1], sh.lace[2], sh.lace[3], lace)
-			else
-				local lace = (1 - smooth(0.15, 0.32, fr)) * smooth(top + 0.04, top + 0.1, bb)
-				r, gg, b = mix(r, gg, b, sh.lace[1], sh.lace[2], sh.lace[3], 0.55 * lace)
-			end
+			-- the lacing down the front of the shaft (eyelets, criss-cross laces over the tongue), continuing onto
+			-- the shoe's instep with the same spacing (Gear.PaintLacing: one lacing across the two pieces)
+			local da = MeshKit.WrapAngle(ang - FRONT)
+			local bc = clamp(bb, 0, 1.1)
+			local rr = sqrt(spec.rx(clamp(bb, 0, 1)) * spec.rz(clamp(bb, 0, 1))) * S + 0.03 * S
+			r, gg, b = paintLacing(r, gg, b, sh, bc * L, da * rr, (top + 0.08) * L, 1.12 * L, footL, crisp, (top + 0.055) * L, 2 * L)
 			if sh.style == "proBoot" then
 				-- the breathable mesh panel on the outside
 				local panel = edge(0.7 - adist(ang, LAT), 0.08, crisp) * edge(bb - (top + 0.1), 0.02, crisp)
@@ -711,29 +795,79 @@ local function buildHand(m, sk, P, lod, side, fist, Limbs)
 	return { atlas = atlas, F = F, lp = lp, lf = lf, hw = hw, ht = ht, rf = rf }
 end
 
--- the boxing glove: a padded fist on the cuff (the cuff is the forearm piece's glove zone), its thumb
-local function buildGlove(m, sk, P, lod, side, gl, Limbs)
-	local R = Gear.RES[lod] or Gear.RES.full
+-- the standing height (sole to the top of the head)
+local function standingHeight(sk)
+	local hd = sk.size.Head
+	local fc, fs = sk.center.RightFoot, sk.size.RightFoot
+	return max(2, sk.center.Head[2] + hd[2] / 2 - (fc[2] - fs[2] / 2))
+end
+
+-- the glove's shape, shared by the mesh and its landmarks: a padded fist, not a mitten. Length from the
+-- standing height (a 16 oz glove is ~12 % of it from the wrist to the knuckle pad's front); the hand
+-- compartment swells from the cuff to its widest at ~2/3 (about 1.2 x the cuff) and narrows into a rounded
+-- front; the spine curls toward the palm over the last third, so the knuckle pad is a round front face
+-- (the fingers curled inside), finished by a deep dome
+local function gloveShape(sk, P, side, gl, Limbs)
 	local F = handFrame(sk, side)
-	local wx, wz, S, spec = handSize(sk, P, side, Limbs)
+	local _, _, S, spec = handSize(sk, P, side, Limbs)
 	local Lf = F.Lf
 	local ozK = 0.86 + 0.016 * (gl.oz - 8)
 	local fem = P.female and 0.94 or 1
-	local glen = 0.9 * Lf * gl.l * ozK * fem
+	local glen = 0.118 * standingHeight(sk) * gl.l * (0.9 + 0.1 * ozK) * fem
 	-- the cuff's radius at the wrist (AnatomyBodyLimbs' glove zone: the forearm at the cuff's top, flared 6 %)
 	local top = gl.cuffTop
 	local cx, cz = (spec.rx(top) * 1.02 + 0.07) * S * 1.06, (spec.rz(top) * 1.06 + 0.07) * S * 1.06
-	local bx = 0.36 * S * gl.w * ozK * fem -- back-to-palm half size of the hand compartment
-	local bz = 0.37 * S * gl.w * ozK * fem -- thumb-side-to-little-finger half size
+	local bx = max(cx * 1.08, 0.3 * S * gl.w * ozK * fem) -- back-to-palm half size of the fist
+	local bz = max(cz * 1.18, 0.34 * S * gl.w * ozK * fem) -- thumb-side-to-little-finger half size
+	local capD = bx * 1.0
+	-- (the body starts a little up the cuff, just outside it: the cuff's end is inside the glove, and the join is
+	-- the seam ring where the hand compartment is sewn to the cuff, not two surfaces crossing)
+	local s0, s1 = -0.06 * Lf, glen - capD * 0.75
+	local curl = math.rad(48)
+	local function theta(t)
+		local k = smooth(0.5, 1.0, t)
+		return curl * k * k
+	end
+	-- spine point at t (0..1): arc length from s0, the direction turning toward the palm (-lat)
+	local STEPS = 24
+	local pts = { { 0, 0 } }
+	for i = 1, STEPS do
+		local tm = (i - 0.5) / STEPS
+		local th = theta(tm)
+		local ds = (s1 - s0) / STEPS
+		local p = pts[i]
+		pts[i + 1] = { p[1] + cos(th) * ds, p[2] - sin(th) * ds }
+	end
+	local function spineAt(t)
+		local f = clamp(t, 0, 1) * STEPS
+		local i = min(STEPS - 1, floor(f))
+		local w = f - i
+		local a, b = pts[i + 1], pts[i + 2]
+		local da, dl = a[1] + (b[1] - a[1]) * w, a[2] + (b[2] - a[2]) * w
+		-- the fist sits a little toward the back of the hand (the padding is over the knuckles)
+		return at(F, s0 + da, dl + 0.04 * S * smooth(0.2, 0.8, t), 0)
+	end
 	local kk = gl.k
+	local function dims(u)
+		local grow = smooth(0.0, 0.5, u)
+		local ex = lerp(cx * 1.035, bx, grow) * (1 + 0.07 * kk * bell((u - 0.66) / 0.26)) * (1 - 0.1 * smooth(0.82, 1.0, u))
+		local ez = lerp(cz * 1.035, bz, grow) * (1 + 0.04 * bell((u - 0.68) / 0.3)) * (1 - 0.08 * smooth(0.8, 1.0, u))
+		return ex, ez
+	end
+	return { F = F, S = S, glen = glen, bx = bx, bz = bz, cx = cx, cz = cz, capD = capD, spineAt = spineAt, dims = dims, ozK = ozK, fem = fem }
+end
+
+-- the boxing glove: a padded fist on the cuff (the cuff is the forearm piece's glove zone), its thumb
+local function buildGlove(m, sk, P, lod, side, gl, Limbs)
+	local R = Gear.RES[lod] or Gear.RES.full
+	local G = gloveShape(sk, P, side, gl, Limbs)
+	local F, S, bx, bz = G.F, G.S, G.bx, G.bz
 	local gr = R.glove
 	local rows = gr[1]
 	local pts, rowB = {}, {}
 	for i = 1, rows do
 		local t = (i - 1) / (rows - 1)
-		local along = -0.1 * Lf + (glen + 0.1 * Lf) * t
-		-- the fist sits a little toward the back of the hand (the padding is over the knuckles)
-		pts[i] = at(F, along, 0.04 * S * smooth(0.2, 0.8, t), 0)
+		pts[i] = G.spineAt(t)
 		rowB[i] = t
 	end
 	local body = Kit.GridLoft(m, MeshKit, {
@@ -743,69 +877,89 @@ local function buildGlove(m, sk, P, lod, side, gl, Limbs)
 			local i = floor(t * (rows - 1) + 0.5) + 1
 			local u = rowB[i]
 			local c, s = cos(ang), sin(ang)
-			-- inside the cuff at the wrist, the hand compartment, the knuckle padding, rounding to the end
-			local grow = smooth(0.0, 0.42, u)
-			local ex = lerp(cx * 0.92, bx, grow) * (1 + 0.08 * kk * bell((u - 0.72) / 0.3))
-			local ez = lerp(cz * 0.94, bz, grow) * (1 + 0.04 * bell((u - 0.7) / 0.3))
-			-- the back is domed padding, the palm side flatter
-			local e = c >= 0 and 2 / 2.1 or 2 / 2.7
-			local x = ex * (c < 0 and -1 or 1) * abs(c) ^ e * (c < 0 and 0.88 or 1)
-			local f = ez * (s < 0 and -1 or 1) * abs(s) ^ (2 / 2.3)
+			local ex, ez = G.dims(u)
+			-- the back is domed padding, the palm side a little flatter with the grip bar's shallow dent across
+			-- it (one exponent all round: no crease where the back meets the palm)
+			local e = 2 / 2.25
+			local palm = c < 0 and (0.9 - 0.06 * bell((u - 0.62) / 0.12) * (-c)) or 1
+			local x = ex * (c < 0 and -1 or 1) * abs(c) ^ e * palm
+			local f = ez * (s < 0 and -1 or 1) * abs(s) ^ e
 			return x, f
 		end,
 		capS = { depth = 0.02, rings = gr[3], bDepth = 0.02 },
-		capE = { depth = bx * 0.78, rings = gr[4], bDepth = 0.2 },
+		capE = { depth = G.capD, rings = gr[4], bDepth = 0.25 },
 	})
 	body.tag = "glove"
 	local atlas = { body }
 	local tr = R.gthumb
 	if tr then
-		-- the thumb: stitched along the thumb side, its tip tucked to the body
-		local r = 0.12 * S * gl.w * ozK * fem
-		local p0 = at(F, glen * 0.2, -0.08 * bx, bz * 0.62)
-		local p1 = at(F, glen * 0.34, -0.06 * bx, bz * 0.95)
-		local p2 = at(F, glen * 0.55, -0.12 * bx, bz * 1.0)
-		local p3 = at(F, glen * 0.72, -0.25 * bx, bz * 0.82)
-		local info = finger(m, { p0, p1, p2, p3 }, r * 1.05, r * 0.92, tr, { F.lat[1], F.lat[2], F.lat[3] }, { F.fw[1], F.fw[2], F.fw[3] }, "gthumb", nil)
+		-- the thumb: a thick padded roll along the thumb side (sewn on along its length, its root inside the
+		-- fist, its tip tucked against the padding toward the palm)
+		local r = 0.17 * S * gl.w * G.ozK * G.fem
+		local glen = G.glen
+		local function tp(al, l, f)
+			return at(F, al, l, f)
+		end
+		local p0 = tp(glen * 0.08, -0.25 * bx, bz * 0.62)
+		local p1 = tp(glen * 0.26, -0.32 * bx, bz * 0.8)
+		local p2 = tp(glen * 0.46, -0.42 * bx, bz * 0.82)
+		local p3 = tp(glen * 0.62, -0.62 * bx, bz * 0.66)
+		local info = finger(m, { p0, p1, p2, p3 }, r * 1.0, r * 0.86, tr, { F.lat[1], F.lat[2], F.lat[3] }, { F.fw[1], F.fw[2], F.fw[3] }, "gthumb", nil)
 		atlas[#atlas + 1] = info
 	end
-	return { atlas = atlas, F = F, glen = glen, bx = bx, bz = bz }
+	return { atlas = atlas, F = F, glen = G.glen, bx = bx, bz = bz }
 end
 
 ------------------------------------------------------------------------
 -- Feet
 ------------------------------------------------------------------------
 -- boxing boot / trainer: a loft from the heel to the toe with a flat sole; the boot shaft above the ankle is
--- the shin piece's boot zone
-local function buildShoe(m, sk, P, lod, side, sh, Limbs)
+-- the shin piece's boot zone. Sized from the standing height (a shoe is ~15 % of it), not from the shin: longer
+-- athletic shins must not stretch the foot into a flipper. The spine runs along the sole; the section is a
+-- rounded upper over a sole with a vertical side wall; the end domes are lifted to mid height, so the toe box
+-- and the heel are round, not pointed; at the ankle the upper is at least as wide as the shin's shaft (no
+-- step where the shaft meets the shoe); the tongue under the laces is raised a little.
+local function buildShoe(m, sk, P, lod, side, sh, Limbs, llZones)
 	local R = Gear.RES[lod] or Gear.RES.full
 	local sg = side == "Right" and 1 or -1
 	local an = sk.piv[side .. "Ankle"]
 	local fc = sk.center[side .. "Foot"]
 	local fs = sk.size[side .. "Foot"]
 	local soleY = fc[2] - fs[2] / 2
-	local llS = sk.size[side .. "LowerLeg"][1]
-	local spec = Limbs.Specs.LowerLeg(sk, P, side, llS)
-	local ar = spec.rx(1.0) * spec.scale -- ankle half width
-	local k = ar / 0.195
-	local fem = P.female and 0.92 or 1
-	local FL = (0.62 * sk.size[side .. "LowerLeg"][2] + 0.28) * fem
-	local heelZ = an[3] + 0.22 * FL
-	local toeZ = an[3] - 0.78 * FL
-	local ankleH = an[2] - soleY
+	local FL = Gear.FootLength(sk, P)
+	local ankleH = max(0.12, an[2] - soleY)
+	local trainer = sh.trainer
+	local soleH = trainer and 0.085 or 0.06
+	-- the shin's shaft (or bare ankle) round the ankle: the upper there encloses it
+	local opt = { zones = llZones }
+	local function off(ang)
+		local p = Limbs.SurfacePoint(sk, P, side, "LowerLeg", opt, 1.0, ang)
+		return abs(p[1] - an[1]), abs(p[3] - an[3])
+	end
+	local latW = off(LAT)
+	local medW = off(MED)
+	local _, backZ = off(BACK)
+	local shaftW = max(latW, medW) + 0.008
+	-- heel back / toe tip (dome tips): the ankle a quarter of the way from the heel
+	local capS, capE = 0.06 * FL, 0.13 * FL
+	local heelZ = an[3] + max(0.21 * FL, backZ + 0.045) - capS
+	local toeZ = an[3] - 0.75 * FL + capE
+	local span = heelZ - toeZ
+	local uA = (heelZ - an[3]) / span -- the ankle's ring parameter
+	local H = Kit.Curve({ { 0.0, ankleH * 0.86 }, { uA * 0.6, ankleH * 1.0 }, { uA, ankleH * 1.06 }, { uA + 0.12, ankleH * 0.94 }, { 0.5, max(0.27 * FL, soleH + 0.12) },
+		{ 0.72, max(0.2 * FL, soleH + 0.09) }, { 0.88, max(0.165 * FL, soleH + 0.075) }, { 1.0, max(0.14 * FL, soleH + 0.065) } })
+	local Wd = Kit.Curve({ { 0.0, max(0.125 * FL, shaftW * 0.9) }, { uA, max(0.135 * FL, shaftW) }, { uA + 0.14, max(0.15 * FL, shaftW * 0.96) }, { 0.5, 0.16 * FL },
+		{ 0.72, 0.19 * FL }, { 0.88, 0.175 * FL }, { 1.0, 0.135 * FL } })
 	local sr = R.shoe
 	local rows = sr[1]
-	local trainer = sh.trainer
-	local soleH = trainer and 0.1 or 0.045
-	local H = Kit.Curve({ { 0.0, ankleH * 0.82 }, { 0.14, ankleH * 1.04 }, { 0.32, ankleH * 0.98 }, { 0.55, 0.23 * k + soleH * 0.5 }, { 0.76, 0.18 * k + soleH * 0.5 }, { 0.9, 0.15 * k + soleH * 0.4 }, { 1.0, 0.11 * k + soleH * 0.4 } })
-	local Wd = Kit.Curve({ { 0.0, 0.15 * k }, { 0.18, 0.17 * k }, { 0.45, 0.175 * k }, { 0.7, 0.215 * k }, { 0.86, 0.2 * k }, { 1.0, 0.13 * k } })
 	local pts, rowB = {}, {}
 	for i = 1, rows do
 		local t = (i - 1) / (rows - 1)
-		-- the toe springs up a little
-		pts[i] = { an[1] + sg * 0.012 * k * smooth(0.5, 1.0, t), soleY + 0.012 * smooth(0.82, 1.0, t), heelZ + (toeZ - heelZ) * t }
+		-- the toe sits a little toward the big toe (medial) and springs up a hair
+		pts[i] = { an[1] - sg * 0.035 * FL * smooth(0.45, 1.0, t), soleY + 0.01 * smooth(0.8, 1.0, t), heelZ + (toeZ - heelZ) * t }
 		rowB[i] = t
 	end
+	local u0, u1 = uA + 0.1, 0.8 -- the lacing over the instep (the tongue is raised under it)
 	local info = Kit.GridLoft(m, MeshKit, {
 		rings = rows, sides = sr[2], spine = pts, exact = true, sideHint = { sg, 0, 0 }, frontHint = { 0, 1, 0 }, rowB = rowB,
 		section = function(t, ang)
@@ -815,26 +969,32 @@ local function buildShoe(m, sk, P, lod, side, sh, Limbs)
 			local hw = Wd(u)
 			-- the arch: the inner side curves in under the middle of the foot
 			if c < 0 then
-				hw *= 1 - 0.12 * bell((u - 0.45) / 0.2)
+				hw *= 1 - 0.1 * bell((u - 0.45) / 0.2)
 			end
 			local h = H(u)
 			local x, f
 			if s >= -1e-9 then -- (the seam column at 2 pi: sin a hair below 0, same branch as column 0)
-				-- the upper: rounded over the top, fuller at the toe box
-				x = hw * (c < 0 and -1 or 1) * abs(c) ^ (2 / 2.4)
-				f = h * max(s, 0) ^ (2 / 2.2)
+				-- the upper: from the top of the sole's wall, rounded over the top, fuller at the toe box
+				-- (round over the heel and ankle, so the top closes in onto the shaft above it with no ledge; fuller
+				-- and squarer over the forefoot)
+				local ex = lerp(2.0, 2.4, smooth(uA * 0.5, uA + 0.25, u))
+				x = hw * (c < 0 and -1 or 1) * abs(c) ^ (2 / ex)
+				f = soleH + (h - soleH) * max(s, 0) ^ (2 / lerp(2.0, 2.25, smooth(uA * 0.5, uA + 0.25, u)))
+				-- the raised tongue under the laces
+				f += 0.012 * FL * bell((ang - FRONT) / 0.45) * smooth(u0 - 0.05, u0 + 0.05, u) * (1 - smooth(u1 - 0.04, u1 + 0.06, u))
 			else
-				-- the sole: flat underneath, a welt a hair wider than the upper
-				x = hw * 1.04 * (c < 0 and -1 or 1) * abs(c) ^ (2 / 6)
-				f = -0.008 * (-s) ^ 2
+				-- the sole: a near-vertical wall a hair wider than the upper (the welt), flat underneath
+				local q = -s
+				x = hw * 1.045 * (c < 0 and -1 or 1) * abs(c) ^ (2 / 7)
+				f = soleH * max(0, 1 - q / 0.5) ^ 1.5 - 0.006 * q * q
 			end
 			return x, f
 		end,
-		capS = { depth = 0.07 * k, rings = sr[3], bDepth = 0.05 },
-		capE = { depth = 0.1 * k, rings = sr[4], bDepth = 0.06 },
+		capS = { depth = capS, rings = sr[3], bDepth = capS / span, shift = { 0, ankleH * 0.3, 0 } },
+		capE = { depth = capE, rings = sr[4], bDepth = capE / span, shift = { 0, H(1.0) * 0.42, 0 } },
 	})
 	info.tag = "shoe"
-	return { atlas = { info }, soleY = soleY, soleH = soleH, FL = FL, heelZ = heelZ, toeZ = toeZ, H = H, ankleH = ankleH }
+	return { atlas = { info }, soleY = soleY, soleH = soleH, FL = FL, heelZ = heelZ, toeZ = toeZ, H = H, ankleH = ankleH, span = span, uA = uA, u0 = u0, u1 = u1 }
 end
 
 ------------------------------------------------------------------------
@@ -1010,7 +1170,7 @@ function Gear.Build(sk, P, lod, side, kind, wear, pc, seed)
 	end
 	-- foot: boot or trainer
 	local sh = g.shoe
-	local Fd = buildShoe(m, sk, P, lod, side, sh, Limbs)
+	local Fd = buildShoe(m, sk, P, lod, side, sh, Limbs, wear.zones[side .. "LowerLeg"])
 	grid = { atlas = Fd.atlas }
 	Kit.GridNormals(m, MeshKit, grid)
 	local gi, tB, tA = Gear.GridMaps(m, grid)
@@ -1020,41 +1180,54 @@ function Gear.Build(sk, P, lod, side, kind, wear, pc, seed)
 	if trainer then
 		soleC = { 0.93, 0.93, 0.9 } -- foam midsole
 	end
-	local function fcolor(t, ang, y, crisp, tiles, px, py)
+	local FL, span = Fd.FL, Fd.span
+	local an = sk.piv[side .. "Ankle"]
+	local fsg = side == "Right" and 1 or -1
+	local Y0, Y1 = Fd.u0 * span, Fd.u1 * span
+	-- (x, y body space) -> colour; t = the ring parameter (heel 0 .. toe 1), ang = the column angle
+	local function fcolor(t, ang, x, y, crisp, tiles, px, py)
 		local c = sh.c
 		local r, gg, b = c[1], c[2], c[3]
-		local up = adist(ang, FRONT) -- 0 on top of the foot (the loft's front axis is up)
-		-- the sole band (crisp line where the upper meets it)
-		local sw = crisp and (y < soleTop and 1 or 0) or (1 - smooth(soleTop - 0.012, soleTop + 0.012, y))
+		-- the sole: a darker side wall under a stitched welt line, the tread underneath
+		local sw = crisp and (y < soleTop + 0.002 and 1 or 0) or (1 - smooth(soleTop - 0.01, soleTop + 0.01, y))
 		if sw > 0 then
-			r, gg, b = mix(r, gg, b, soleC[1], soleC[2], soleC[3], sw)
+			local k = 0.8 + 0.2 * (1 - smooth(Fd.soleY + 0.004, Fd.soleY + 0.012, y)) -- the bottom lighter than the wall
+			local sr2, sg2, sb2 = soleC[1] * k, soleC[2] * k, soleC[3] * k
 			if trainer then
 				-- rubber outsole under the foam
-				local os = crisp and (y < Fd.soleY + 0.03 and 1 or 0) or (1 - smooth(Fd.soleY + 0.02, Fd.soleY + 0.04, y))
-				r, gg, b = mix(r, gg, b, 0.17, 0.17, 0.18, os)
+				local os = crisp and (y < Fd.soleY + 0.025 and 1 or 0) or (1 - smooth(Fd.soleY + 0.015, Fd.soleY + 0.035, y))
+				sr2, sg2, sb2 = mix(sr2, sg2, sb2, 0.17, 0.17, 0.18, os)
+			elseif crisp then
+				-- a groove round the wall half way up
+				local gv = 1 - smooth(0.002, 0.004, abs(y - (Fd.soleY + Fd.soleH * 0.45)))
+				sr2, sg2, sb2 = sr2 * (1 - 0.3 * gv), sg2 * (1 - 0.3 * gv), sb2 * (1 - 0.3 * gv)
 			end
-			return r, gg, b
+			return mix(r, gg, b, sr2, sg2, sb2, sw)
+		end
+		if crisp then
+			-- the welt stitching just above the sole
+			local st = (1 - smooth(0.002, 0.004, abs(y - (soleTop + 0.008)))) * ((((t * span) / 0.02) % 1 < 0.55) and 1 or 0)
+			r, gg, b = mix(r, gg, b, r * 0.55, gg * 0.55, b * 0.55, st)
 		end
 		if trainer then
 			-- toe cap and heel counter in a lighter overlay, the brand stripe along the outer side
 			local toe = crisp and (t > 0.86 and 1 or 0) or smooth(0.82, 0.9, t)
 			r, gg, b = mix(r, gg, b, sh.accent[1], sh.accent[2], sh.accent[3], 0.3 * toe)
-			local heel = crisp and (t < 0.16 and 1 or 0) or (1 - smooth(0.12, 0.2, t))
+			local heel = 1 - smooth(0.13, crisp and 0.15 or 0.2, t + 0.1 * (y - Fd.soleY) / Fd.ankleH)
 			r, gg, b = mix(r, gg, b, sh.accent[1], sh.accent[2], sh.accent[3], 0.5 * heel)
 			local outer = adist(ang, LAT)
 			local diag = abs(outer - (0.55 + (t - 0.5) * 1.6))
 			local stripe = (crisp and (diag < 0.12 and t > 0.3 and t < 0.75) and 1 or 0) or 0
 			r, gg, b = mix(r, gg, b, sh.accent[1], sh.accent[2], sh.accent[3], stripe)
-		end
-		-- the lacing up the instep
-		if crisp then
-			local lace = laceCover(t, ang, 0.38, 0.84, FRONT, 0.42, 0.11) * (1 - smooth(0.82, 0.86, t))
-			local tongue = (1 - smooth(0.36, 0.44, up)) * smooth(0.34, 0.4, t) * (1 - smooth(0.82, 0.86, t))
-			r, gg, b = mix(r, gg, b, r * 0.85, gg * 0.85, b * 0.85, tongue)
-			r, gg, b = mix(r, gg, b, sh.lace[1], sh.lace[2], sh.lace[3], lace)
 		else
-			local lace = (1 - smooth(0.2, 0.45, up)) * smooth(0.38, 0.45, t) * (1 - smooth(0.78, 0.86, t))
-			r, gg, b = mix(r, gg, b, sh.lace[1], sh.lace[2], sh.lace[3], 0.5 * lace)
+			-- the toe cap's stitched edge
+			local tc = crisp and (1 - smooth(0.004, 0.008, abs(t - 0.84))) * (1 - smooth(0.9, 1.3, adist(ang, FRONT))) or 0
+			r, gg, b = mix(r, gg, b, r * 0.6, gg * 0.6, b * 0.6, tc)
+		end
+		-- the lacing over the instep (continues the shaft's), the tongue up to the ankle (under the shin's shaft)
+		if adist(ang, FRONT) < 1.2 then
+			local X = x - (an[1] - fsg * 0.035 * FL * smooth(0.45, 1.0, t))
+			r, gg, b = paintLacing(r, gg, b, sh, t * span, X, Y0, Y1, FL, crisp, -span, nil)
 		end
 		if sh.style == "eliteBoot" then
 			local heel = crisp and (t < 0.1 and 1 or 0) or (1 - smooth(0.06, 0.14, t))
@@ -1067,13 +1240,13 @@ function Gear.Build(sk, P, lod, side, kind, wear, pc, seed)
 		end
 		return r, gg, b
 	end
+	local fc = sk.center[side .. "Foot"]
 	paint = {
 		vertex = function(i, x, y, z)
-			return fcolor(tB[i], tA[i], y, false)
+			return fcolor(tB[i], tA[i], x, y, false)
 		end,
 		texel = function(s, tiles, tw)
-			local cy = sk.center[side .. "Foot"][2]
-			local r, gg, b = fcolor(s.b, s.a, s.y + cy, true, tiles, s.px, s.py)
+			local r, gg, b = fcolor(s.b, s.a, s.x + fc[1], s.y + fc[2], true, tiles, s.px, s.py)
 			local k = 1 + 0.025 * Kit.TileAt(tiles.fine, s.px * 0.6, s.py * 0.6)
 			return r * k, gg * k, b * k
 		end,
@@ -1116,16 +1289,12 @@ function Gear.Landmarks(sk, P, wear, put, Limbs)
 		if g.hands == "gloves" then
 			local gl = g.glove
 			-- the back of the fist (the glove's lateral side, half way down the padding)
-			local F = handFrame(sk, side)
-			local _, _, S = handSize(sk, P, side, Limbs)
-			local ozK = 0.86 + 0.016 * (gl.oz - 8)
-			local fem = P.female and 0.94 or 1
-			local glen = 0.9 * F.Lf * gl.l * ozK * fem
-			local bx = 0.36 * S * gl.w * ozK * fem
+			local G = gloveShape(sk, P, side, gl, Limbs)
+			local F = G.F
 			local t = 0.55
-			local along = -0.1 * F.Lf + (glen + 0.1 * F.Lf) * t
-			local ex = bx * (1 + 0.08 * gl.k * Kit.bell((t - 0.72) / 0.3))
-			local pos = at(F, along, 0.04 * S * smooth(0.2, 0.8, t) + ex, 0)
+			local ex = G.dims(t)
+			local c = G.spineAt(t)
+			local pos = { c[1] + F.lat[1] * ex, c[2] + F.lat[2] * ex, c[3] + F.lat[3] * ex }
 			spot("GloveLogo" .. L, side .. "Hand", pos, F.lat, { -F.dn[1], -F.dn[2], -F.dn[3] })
 			-- the cuff's front, a little under its rolled top
 			local zones = wear.zones[side .. "LowerArm"]

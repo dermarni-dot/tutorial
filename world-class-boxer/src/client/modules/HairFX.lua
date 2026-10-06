@@ -26,6 +26,11 @@
 -- LOD: every frame under 25 studs, every 2nd frame to 60, frozen (eased back to rest) beyond, skipped off
 -- screen (the motion history is dropped there, so a model coming back on screen gets no false whip). No
 -- per-frame allocation: the pivot frames are built once per piece; CFrame products are the only temporaries.
+-- Round-1 cost (a default Short Dreads head is ~50 joints, two fighters ~100): Part0 / C0 / spring constants
+-- are cached per joint (refreshed twice a second), each chain's anchor is read once per model step, deeper
+-- segments step at half rate, settled joints under a still anchor idle at a lower rate, at most SIM_ROOTS
+-- roots + SIM_DEEP deeper head-hair joints are simulated per model (the rest follow a simulated neighbour /
+-- their parent segment) and sub-0.1 degree changes are not written.
 local CollectionService = game:GetService("CollectionService")
 
 local K = require(script.Parent:WaitForChild("AnimKit"))
@@ -47,7 +52,7 @@ local A = CFrame.Angles
 local CF = CFrame.new
 local I = CFrame.identity
 local V3 = Vector3.new
-local sin, cos, abs, min, max, sqrt, exp = math.sin, math.cos, math.abs, math.min, math.max, math.sqrt, math.exp
+local sin, cos, abs, min, max, sqrt, exp, floor = math.sin, math.cos, math.abs, math.min, math.max, math.sqrt, math.exp, math.floor
 local clamp = math.clamp
 local DOWN = Vector3.new(0, -1, 0)
 
@@ -55,6 +60,10 @@ local NEAR, MID = 25, 60
 local MAXA = 1.15 -- rad: a hair joint never swings further than this
 local FWD = 0.35 -- rad: a mesh hair segment never swings further toward the face than this
 local WET_ROWS = 16 -- texture rows rewritten per frame for the wet look (256 / 128 are multiples)
+local SIM_ROOTS = 16 -- head-hair chain roots simulated per model; the others follow a simulated neighbour
+local SIM_DEEP = 12 -- deeper head-hair segments simulated per model; the others bend with their parent
+local QUIET_ACC, QUIET_ROT = 3, 0.35 -- an anchor this still (studs/s^2, rad/s) lets settled joints idle slower
+local WRITE_EPS = 0.0015 -- rad: a joint whose swing changed less than this keeps last frame's Transform
 local owners = {} -- model -> { joints = {}, strands = {}, head, ... } (round-1 hair)
 local meshes = {} -- model -> { pieces = { list }, byName = {}, head, sweat, ... } (mesh hair)
 
@@ -71,7 +80,9 @@ local function getOwner(model)
 		o = {
 			model = model, joints = {}, strands = {}, head = nil, nextAttr = 0, sweat = 0,
 			hx = 0, hz = 0, hy = 0, lastPos = nil, vel = Vector3.zero, frame = 0, rest = true,
-			kick = 0,
+			kick = 0, tick = 0, dirty = true, fresh = true, nextScan = 0, sweatK = -1,
+			-- the parts chains hang from (head, shoe, hand): read once per step for every joint on them
+			anchors = {}, anchorList = {},
 		}
 		owners[model] = o
 	end
@@ -124,9 +135,120 @@ local function addJoint(m)
 		inHair = m:FindFirstAncestor("Hair") ~= nil,
 		-- its segment is hidden by another mesh (AnatomyClient.IsReplaced, refreshed twice a second)
 		replaced = false,
+		-- cached (refreshed twice a second): the parent part, the static joint offset, spring constants
+		p0 = m.Part0, c0 = m.C0, kk = 0, cc = 0, gain = 0, idle = 0, gw = 0,
+		-- last written swing, last target, update slot (spreads the slower joints over frames)
+		wx = 0, wz = 0, wy = 0, tx = 0, tz = 0, slot = #o.joints % 4,
+		-- nil = simulated; else the joint record this one copies (scaled by followK)
+		leader = nil, followK = 1,
 	}
-	j.anchor = chainAnchor(m)
+	local anchor = chainAnchor(m)
+	j.anchor = anchor
+	if anchor then
+		local a = o.anchors[anchor]
+		if not a then
+			a = { part = anchor, ok = false, cf = I, down = DOWN, pos = nil, vel = Vector3.zero, look = nil, up = nil, quiet = false,
+				tick = -1 }
+			o.anchors[anchor] = a
+			table.insert(o.anchorList, a)
+		end
+		j.arec = a
+	end
 	table.insert(o.joints, j)
+	o.dirty = true
+	o.fresh = true
+end
+
+-- spring constants for a joint at this wetness (cached: they change only with Sweat)
+local function jointConsts(j, sweat)
+	local mass = j.mass * (1 + sweat * 0.8) -- wet hair: heavier, damped
+	local d = j.depth
+	j.kk = (70 + 180 * j.stiff) / mass / (1 + 0.18 * (d - 1))
+	j.cc = K.damping(j.kk, 0.22 + 0.35 * j.stiff + 0.25 * sweat)
+	j.gain = 0.0045 / (0.6 + 0.4 * j.stiff) * min(1.6, 0.7 + 0.2 * d)
+	-- a light idle drift so long hair is never perfectly frozen
+	j.idle = (0.02 + 0.015 * d) * (1 - j.stiff)
+	-- every joint measures the full gravity deviation in its own frame, so the root joint takes most of it and
+	-- deeper joints only add a little curve (otherwise long chains over-rotate)
+	j.gw = (d <= 1 and 0.62 or 0.5 / (d * d)) * (1 - 0.65 * j.stiff)
+end
+
+-- which head-hair joints are simulated: up to SIM_ROOTS roots and SIM_DEEP deeper segments, spread evenly over
+-- the build order (locs are built in sweeps across the head, so a follower's neighbour hangs next to it). A root
+-- that is not simulated copies the previous simulated root; a deeper segment its parent segment, softened.
+-- Boot laces, wrap ends and bounce clusters are few and always simulated.
+local function assignLeaders(o)
+	o.dirty = false
+	local roots, deep, byPart1 = {}, {}, {}
+	for _, j in ipairs(o.joints) do
+		j.leader = nil
+		local p1 = j.m.Part1
+		if p1 then
+			byPart1[p1] = j
+		end
+		if j.hair and not j.bounce then
+			table.insert(j.depth <= 1 and roots or deep, j)
+		end
+	end
+	-- shallower segments first: a depth-2 segment matters more than a tip
+	table.sort(deep, function(a, b)
+		return a.depth < b.depth
+	end)
+	local function spread(list, cap, follow)
+		local n = #list
+		if n <= cap then
+			return
+		end
+		local last
+		for i, j in ipairs(list) do
+			-- i is simulated where the even spacing cap / n passes an integer (the first one always is)
+			if floor((i - 1) * cap / n) ~= floor((i - 2) * cap / n) then
+				last = j
+			else
+				follow(j, last)
+			end
+		end
+	end
+	spread(roots, SIM_ROOTS, function(j, last)
+		j.leader, j.followK = last, 0.9
+	end)
+	spread(deep, SIM_DEEP, function(j)
+		local parent = j.p0 and byPart1[j.p0]
+		if parent and parent ~= j then
+			j.leader, j.followK = parent, 0.35
+		end
+	end)
+end
+
+-- an anchor's frame for this step (one CFrame read for all the joints hanging from it; a chain root's pivot
+-- builds on it) and whether it is still enough that settled joints may idle at a lower rate
+local function anchorStep(a, dt, tick)
+	local part = a.part
+	-- the motion history only holds across consecutive steps
+	if a.tick ~= tick - 1 then
+		a.pos = nil
+	end
+	a.tick = tick
+	if not part.Parent then
+		a.ok = false
+		return
+	end
+	local cf = part.CFrame
+	local pos, look, up = cf.Position, cf.LookVector, cf.UpVector
+	a.ok = true
+	a.cf = cf
+	a.down = -up
+	local quiet = false
+	if a.pos then
+		local vel = (pos - a.pos) / dt
+		local acc = (vel - a.vel).Magnitude / dt
+		a.vel = vel
+		-- small-angle turn rate from how far the look / up axes moved
+		local turn = max((look - a.look).Magnitude, (up - a.up).Magnitude) / dt
+		quiet = acc < QUIET_ACC and turn < QUIET_ROT
+	end
+	a.pos, a.look, a.up = pos, look, up
+	a.quiet = quiet
 end
 
 local function addStrand(b)
@@ -144,7 +266,12 @@ local function addStrand(b)
 		b = b, c0 = type(c0) == "number" and c0 or b.CurveSize0, c1 = type(c1) == "number" and c1 or b.CurveSize1,
 		depth = b:GetAttribute("Depth") or 1, phase = (#o.strands * 2.11) % 6.28, last0 = nil, last1 = nil,
 	})
+	o.fresh = true
 end
+
+-- cumulative counters (diagnostics; read-only for callers): simulated joint steps, follower copies, writes
+local jointStats = { steps = 0, follows = 0, writes = 0 }
+HairFX.JointStats = jointStats
 
 local function restJoint(j)
 	j.x, j.z, j.y, j.vx, j.vz, j.vy = 0, 0, 0, 0, 0, 0
@@ -154,6 +281,28 @@ local function restJoint(j)
 		j.m.Transform = I
 	end
 	j.written = false
+	j.wx, j.wz, j.wy = 0, 0, 0
+end
+
+-- write a joint's swing (skipped when it moved less than WRITE_EPS since the last write)
+local function writeJoint(j)
+	local x, z = j.x, j.z
+	if j.bounce then
+		local y = j.y
+		if j.written and abs(x - j.wx) + abs(z - j.wz) + abs(y - j.wy) * 10 < WRITE_EPS then
+			return
+		end
+		j.wy = y
+		j.m.Transform = CF(z * -0.04, y, x * -0.04) * A(x * 0.25, 0, z * 0.25)
+	else
+		if j.written and abs(x - j.wx) + abs(z - j.wz) < WRITE_EPS then
+			return
+		end
+		j.m.Transform = A(x, 0, z)
+	end
+	j.wx, j.wz = x, z
+	j.written = true
+	jointStats.writes += 1
 end
 
 local function restStrands(o)
@@ -175,14 +324,18 @@ local function relax(o)
 	o.rest = true
 end
 
-local function stepJoint(j, dt, sweat, t)
-	local m = j.m
-	local p0 = m.Part0
+local atan2 = math.atan2
+
+local function stepJoint(j, dt, t)
+	local p0 = j.p0
 	if not p0 then
 		return
 	end
-	-- the joint pivot in world space (its parent segment already carries last frame's swing)
-	local pivot = p0.CFrame * m.C0
+	jointStats.steps += 1
+	-- the joint pivot in world space (its parent segment already carries last frame's swing); a chain root
+	-- hangs from the anchor, whose frame this step already read
+	local a = j.arec
+	local pivot = ((a and a.ok and p0 == a.part) and a.cf or p0.CFrame) * j.c0
 	local pos = pivot.Position
 	local ax, az, ay = 0, 0, 0
 	if j.prevCF then
@@ -206,29 +359,19 @@ local function stepJoint(j, dt, sweat, t)
 		end
 	end
 	j.prevCF = pivot
-	-- gravity bias: how far gravity pulls away from the built shape (built with the anchor upright)
+	-- gravity bias: how far gravity pulls away from the built shape (built with the anchor upright).
+	-- K.gravityAngles inlined (atan2(-z, -y), atan2(x, -y)) for world down and for the anchor's down
 	local gx, gz = 0, 0
-	local anchor = j.anchor
-	if anchor and anchor.Parent then
+	if a and a.ok then
 		local g = pivot:VectorToObjectSpace(DOWN)
-		local gu = pivot:VectorToObjectSpace(-anchor.CFrame.UpVector)
-		local a1, b1 = K.gravityAngles(g.X, g.Y, g.Z)
-		local a2, b2 = K.gravityAngles(gu.X, gu.Y, gu.Z)
-		-- every joint measures the full deviation in its own frame, so the root joint takes most of
-		-- it and deeper joints only add a little curve (otherwise long chains over-rotate)
-		local gw = (j.depth <= 1 and 0.62 or 0.5 / (j.depth * j.depth)) * (1 - 0.65 * j.stiff)
-		gx = clamp(K.wrap(a1 - a2), -1.4, 1.4) * gw
-		gz = clamp(K.wrap(b1 - b2), -1.4, 1.4) * gw
+		local gu = pivot:VectorToObjectSpace(a.down)
+		gx = clamp(K.wrap(atan2(-g.Z, -g.Y) - atan2(-gu.Z, -gu.Y)), -1.4, 1.4) * j.gw
+		gz = clamp(K.wrap(atan2(g.X, -g.Y) - atan2(gu.X, -gu.Y)), -1.4, 1.4) * j.gw
 	end
-	local wet = 1 + sweat * 0.8 -- wet hair: heavier, damped
-	local mass = j.mass * wet
-	local kk = (70 + 180 * j.stiff) / mass / (1 + 0.18 * (j.depth - 1))
-	local cc = K.damping(kk, 0.22 + 0.35 * j.stiff + 0.25 * sweat)
-	local gain = 0.0045 / (0.6 + 0.4 * j.stiff) * min(1.6, 0.7 + 0.2 * j.depth)
-	-- a light idle drift so long hair is never perfectly frozen
-	local idle = (0.02 + 0.015 * j.depth) * (1 - j.stiff)
+	local kk, cc, gain, idle = j.kk, j.cc, j.gain, j.idle
 	local tx = gx + idle * sin(t * 1.6 + j.phase)
 	local tz = gz + idle * 0.7 * sin(t * 1.1 + j.phase * 1.7)
+	j.tx, j.tz = tx, tz
 	j.vx += ax * gain * kk * dt
 	j.vz += az * gain * kk * dt
 	j.x, j.vx = K.spring(j.x, j.vx, tx, kk, cc, dt)
@@ -246,11 +389,13 @@ local function stepJoint(j, dt, sweat, t)
 		j.vy += ay * 0.0016 * kk * dt
 		j.y, j.vy = K.spring(j.y, j.vy, 0, kk * 1.6, cc * 1.2, dt)
 		j.y = clamp(j.y, -0.12, 0.12)
-		m.Transform = CF(j.z * -0.04, j.y, j.x * -0.04) * A(j.x * 0.25, 0, j.z * 0.25)
-	else
-		m.Transform = A(j.x, 0, j.z)
 	end
-	j.written = true
+	writeJoint(j)
+end
+
+-- a settled joint (at its target, barely moving): under a still anchor only its idle drift is left to integrate
+local function settled(j)
+	return abs(j.vx) + abs(j.vz) + abs(j.vy) < 0.08 and abs(j.x - j.tx) + abs(j.z - j.tz) < 0.02
 end
 
 ------------------------------------------------------------------------
@@ -817,22 +962,29 @@ function HairFX.Update(dt, t, camPos, cam)
 			owners[model] = nil
 			continue
 		end
-		-- drop joints / strands whose parts were rebuilt
+		-- drop joints / strands whose parts were rebuilt: twice a second, or at once when new ones arrived (a
+		-- rebuild). Not every frame: that is a property read per joint of every model in the place, near or
+		-- not, and a destroyed joint stepped a moment longer is harmless
 		local js = o.joints
-		for i = #js, 1, -1 do
-			if not js[i].m.Parent then
-				table.remove(js, i)
-			end
-		end
 		local ss = o.strands
-		for i = #ss, 1, -1 do
-			if not ss[i].b.Parent then
-				table.remove(ss, i)
+		if t >= o.nextScan or o.fresh then
+			o.nextScan = t + 0.5
+			o.fresh = false
+			for i = #js, 1, -1 do
+				if not js[i].m.Parent then
+					table.remove(js, i)
+					o.dirty = true
+				end
 			end
-		end
-		if #js == 0 and #ss == 0 then
-			owners[model] = nil
-			continue
+			for i = #ss, 1, -1 do
+				if not ss[i].b.Parent then
+					table.remove(ss, i)
+				end
+			end
+			if #js == 0 and #ss == 0 then
+				owners[model] = nil
+				continue
+			end
 		end
 		-- mesh hair replaces BoxerLook.Hair only: those joints and strands rest (hidden); boot-lace tails, wrap
 		-- ends and the beard are not the Hair section's and keep swinging
@@ -874,27 +1026,71 @@ function HairFX.Update(dt, t, camPos, cam)
 		end
 		local sdt = min(dt * step, 1 / 15)
 		o.rest = false
-		if t >= o.nextAttr then
+		if t >= o.nextAttr or o.dirty then
 			o.nextAttr = t + 0.5
 			local sw = model:GetAttribute("Sweat")
 			o.sweat = type(sw) == "number" and clamp(sw, 0, 1) or 0
-			-- a chain another mesh hides (a mesh beard): at rest while hidden
-			if Anatomy and Anatomy.IsReplaced then
-				for _, j in ipairs(js) do
-					if not j.inHair then
-						local p1 = j.m.Part1
-						local rep = p1 ~= nil and Anatomy.IsReplaced(p1) == true
-						if rep and not j.replaced then
-							restJoint(j)
-						end
-						j.replaced = rep
+			local consts = o.dirty or o.sweat ~= o.sweatK
+			o.sweatK = o.sweat
+			for _, j in ipairs(js) do
+				-- the cached joint data (a rebuilt chain brings new joints; this only catches edits in place)
+				local m = j.m
+				j.p0, j.c0 = m.Part0, m.C0
+				if consts then
+					jointConsts(j, o.sweat)
+				end
+				-- a chain another mesh hides (a mesh beard): at rest while hidden
+				if not j.inHair and Anatomy and Anatomy.IsReplaced then
+					local p1 = m.Part1
+					local rep = p1 ~= nil and Anatomy.IsReplaced(p1) == true
+					if rep and not j.replaced then
+						restJoint(j)
 					end
+					j.replaced = rep
+				end
+			end
+			if o.dirty then
+				assignLeaders(o)
+			end
+			-- forget anchors that went away with their parts
+			local al = o.anchorList
+			for i = #al, 1, -1 do
+				if not al[i].part.Parent then
+					o.anchors[al[i].part] = nil
+					table.remove(al, i)
 				end
 			end
 		end
+		o.tick += 1
+		local tick = o.tick
+		-- deeper segments at half rate; settled joints under a still anchor slower still (never under 15 Hz,
+		-- the LOD step included); followers copy their leader at half rate
+		local slow = step == 1 and 4 or 2
 		for _, j in ipairs(js) do
-			if not (j.replaced or (meshHair and j.inHair)) then
-				stepJoint(j, sdt, o.sweat, t)
+			if j.replaced or (meshHair and j.inHair) then
+				continue
+			end
+			local leader = j.leader
+			if leader then
+				if (tick + j.slot) % 2 == 0 then
+					jointStats.follows += 1
+					j.x, j.z = leader.x * j.followK, leader.z * j.followK
+					writeJoint(j)
+				end
+				continue
+			end
+			-- each anchor is read once per step, by the first joint that needs it (hair resting under a mesh
+			-- costs no read)
+			local a = j.arec
+			if a and a.tick ~= tick then
+				anchorStep(a, sdt, tick)
+			end
+			local rate = j.depth >= 2 and 2 or 1
+			if a and a.quiet and settled(j) then
+				rate = slow
+			end
+			if (tick + j.slot) % rate == 0 then
+				stepJoint(j, sdt * rate, t)
 			end
 		end
 		-- strands (all in BoxerLook.Hair): sway from the head's own motion (head space), only up close
@@ -930,7 +1126,7 @@ end
 
 -- counters for tools and tests: mesh models / moving pieces, round-1 models / joints
 function HairFX.Status()
-	local s = { meshModels = 0, meshPieces = 0, swing = 0, bounce = 0, models = 0, joints = 0 }
+	local s = { meshModels = 0, meshPieces = 0, swing = 0, bounce = 0, models = 0, joints = 0, followers = 0 }
 	for _, rec in pairs(meshes) do
 		s.meshModels += 1
 		for _, e in ipairs(rec.list) do
@@ -947,6 +1143,11 @@ function HairFX.Status()
 	for _, o in pairs(owners) do
 		s.models += 1
 		s.joints += #o.joints
+		for _, j in ipairs(o.joints) do
+			if j.leader then
+				s.followers += 1
+			end
+		end
 	end
 	return s
 end

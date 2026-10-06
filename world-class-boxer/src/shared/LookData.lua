@@ -49,7 +49,8 @@ LookData.SECTION_ORDER = { "Body", "Head", "Hair" }
 -- look.detail (the server's part-built detail level) is deliberately in no section: the meshes' level of
 -- detail is the client's own choice, so a server-side detail change must not regenerate anything.
 LookData.SECTIONS = {
-	Body = { "v", "g", "skin", "skinRGB", "height", "age", "scale", "rig", "body", "build", "attire" },
+	-- face.seed: the per-boxer variation stream of the body (ab rows, pec border, peaks, asymmetry, veins)
+	Body = { "v", "g", "skin", "skinRGB", "height", "age", "scale", "rig", "body", "build", "attire", "face.seed" },
 	Head = {
 		"v", "g", "skin", "skinRGB", "age", "rig.parts.Head", "rig.joints.Neck", "face", "battle", "beard",
 		"hair.color", "body.fat", "body.dry",

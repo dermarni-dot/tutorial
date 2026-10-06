@@ -502,6 +502,12 @@ local function resultBytes(result)
 		if type(m) == "table" and m.nv then
 			n += (m.nv * 12 + m.nt * 3) * 16
 		end
+		-- a texture the generator keeps once made (texture.buffer after make(): the Head's)
+		local tex = piece.texture
+		local buf = type(tex) == "table" and rawget(tex, "buffer")
+		if type(buf) == "buffer" then
+			n += buffer.len(buf)
+		end
 	end
 	return n
 end
@@ -969,6 +975,13 @@ local function runJob(job)
 	end
 	MeshKit.SetTick(nil)
 	currentJob = nil
+	-- the textures made just now (kept by the generator) count toward the cache budget too
+	local ce = cache[key]
+	if ce and ce.result == result then
+		local nb = resultBytes(result)
+		cacheBytes += nb - ce.bytes
+		ce.bytes = nb
+	end
 	-- 3) swap in within this frame: the new MeshParts (welded, parented) replace the old ones, which are
 	-- destroyed right after, so the character never shows a gap or a doubled piece. A rigid transform
 	-- (SetPieceTransform) carries over to the same-named piece. (No MeshPart:ApplyMesh: whether a part
