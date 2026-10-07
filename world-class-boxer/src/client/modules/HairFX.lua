@@ -643,6 +643,15 @@ local function onBuilt(model, section, pieces)
 			entry.seg = tonumber(fx.seg) or 1
 			entry.bounce = fx.kind == "bounce"
 			entry.phase = (#rec.list * 1.618) % 6.28
+			-- every lock its own spring: +-15 % mass and +-0.08 stiffness from its name (deterministic), so locs,
+			-- braids and clumps bounce and settle out of step instead of moving as one sheet
+			local hsh = 0
+			for i = 1, #name do
+				hsh = (hsh * 31 + string.byte(name, i)) % 9973
+			end
+			local jit = (hsh % 101) / 100
+			entry.mass = clamp(entry.mass * (0.85 + 0.3 * jit), 0.3, 3)
+			entry.stiff = clamp(entry.stiff + (((hsh // 101) % 17) / 16 - 0.5) * 0.16, 0, 1)
 			-- keep the motion state across a rebuild of the same piece (LOD flips) so nothing pops
 			local prev = old[name]
 			if prev and prev.fx then
@@ -806,7 +815,7 @@ local function stepPiece(rec, e, dt, t, hcf, g, wx, wz)
 	local gain = 0.004 * (e.seg <= 1 and 1 or 1.4) / (0.6 + 0.4 * stiff)
 	-- inertia: the tip lags the pivot's acceleration; wind and an idle drift
 	local idle = (0.012 + 0.012 * e.seg) * (1 - stiff)
-	local wind = (1 - 0.6 * stiff) / mass * 0.035
+	local wind = (1 - 0.6 * stiff) / mass * (rec.windK or 0.035)
 	local tx = clamp(K.wrap(gx), -1.2, 1.2) * gw + idle * sin(t * 1.4 + e.phase) + wz * wind
 	local tz = clamp(K.wrap(gz), -1.2, 1.2) * gw + idle * 0.7 * sin(t * 0.9 + e.phase * 1.7) + wx * wind
 	e.vx += la.Z * gain * kk * dt
@@ -831,8 +840,27 @@ local function stepPiece(rec, e, dt, t, hcf, g, wx, wz)
 	end
 end
 
+-- outdoors (open sky above the head) the breeze gusts; indoors only a fan's gentle draught. One upward ray
+-- per model every 2 s (characters only, the model itself excluded)
+local skyParams = RaycastParams.new()
+skyParams.FilterType = Enum.RaycastFilterType.Exclude
+local function windScale(rec, t, hcf)
+	if t < (rec.nextSky or 0) then
+		return rec.windK or 0.035
+	end
+	rec.nextSky = t + 2
+	local roofed = false
+	pcall(function()
+		skyParams.FilterDescendantsInstances = { rec.model }
+		roofed = workspace:Raycast(hcf.Position, Vector3.new(0, 60, 0), skyParams) ~= nil
+	end)
+	rec.windK = roofed and 0.03 or 0.075
+	return rec.windK
+end
+
 local function stepMesh(rec, dt, t, hcf)
 	local g = hcf:VectorToObjectSpace(DOWN)
+	windScale(rec, t, hcf)
 	local wx, wz = windAt(t, rec.seed)
 	-- wind in the head's frame (a world-space breeze)
 	local wv = hcf:VectorToObjectSpace(V3(wx, 0, wz))

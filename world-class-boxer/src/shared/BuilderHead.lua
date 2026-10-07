@@ -531,7 +531,9 @@ local function faceBuild(model, app, opts, build)
 	-- jaw (square / wide jaws stand out from the round head) and the jaw angles that make a jawline
 	if jawW > 0.1 then
 		local w = (0.82 + 0.2 * jawW) * s.X
-		add("Jaw", V3(w, 0.3 * s.Y, 0.86 * s.Z), at(0, -0.36 * s.Y, 0.02 * s.Z), skin, jawDef > 0.55 and "Block" or "Ellipsoid")
+		-- always a rounded mass that melts into the head (a box jaw read as a block bolted on); a defined
+		-- jaw is a slightly flatter, lower ellipsoid instead
+		add("Jaw", V3(w, (0.3 - 0.04 * math.max(jawDef - 0.5, 0)) * s.Y, 0.84 * s.Z), at(0, -0.35 * s.Y, 0.03 * s.Z), skin, "Ellipsoid")
 	end
 	if full then
 		local ja = (female and 0.75 or 1) * (0.8 + 0.4 * jawDef)
@@ -543,7 +545,8 @@ local function faceBuild(model, app, opts, build)
 	-- sits on the front of the lower face (lower down it hangs under the head like a second chin)
 	local chinSize = 0.2 + 0.07 * chin
 	local chinY = (-0.385 - 0.025 * chin - chinDrop * 0.5) * s.Y
-	add("Chin", V3(chinSize * (1 - chinNarrow) * s.X, (0.13 + 0.04 * chin + chinDrop) * s.Y, 0.14 * s.Z), at(0, chinY, L.front(0) * 0.9), skin, "Ellipsoid")
+	-- (a long face's drop lengthens the chin only half as much: the full drop hung it under the head)
+	add("Chin", V3(chinSize * 1.1 * (1 - chinNarrow) * s.X, (0.14 + 0.04 * chin + chinDrop * 0.5) * s.Y, 0.18 * s.Z), at(0, chinY + chinDrop * 0.15 * s.Y + 0.01 * s.Y, L.front(0) * 0.9 + 0.045), skin, "Ellipsoid")
 	if chinDrop > 0 then -- long face: extend the lower face
 		add("LowerFace", V3(0.7 * s.X, chinDrop * 2 * s.Y, 0.7 * s.Z), at(0, -0.5 * s.Y, 0), skin, "Ellipsoid")
 	end
@@ -570,15 +573,19 @@ local function faceBuild(model, app, opts, build)
 	if cheek > -0.5 and (full or not fullCheeks) then
 		local bone = 1 + 0.25 * hollow
 		for side = -1, 1, 2 do
-			local x = side * 0.3 * s.X
-			add("Cheekbone", V3(0.22 * s.X * bone, (0.1 + 0.04 * cheek) * s.Y, 0.1 * s.Z),
-				at(x, -0.02 * s.Y, L.front(x) + 0.035 - 0.025 * cheek - 0.008 * hollow), skin, "Ellipsoid")
+			-- a low cap of an ellipsoid sunk into the cheek, kept inside the head's outline (further out it stood
+			-- off the side of the face as a ball): a gentle swell, no disc edge. The slider and the Diamond
+			-- preset reach cheek = 1.7: clamped, so high cheekbones stay a swell
+			local x = side * 0.26 * s.X
+			local ck = clamp(cheek, -0.5, 1)
+			add("Cheekbone", V3(0.2 * s.X * bone, (0.12 + 0.025 * ck) * s.Y, 0.13 * s.Z),
+				at(x, -0.02 * s.Y, L.front(x) + 0.078 - 0.01 * ck - 0.006 * hollow), skin, "Ellipsoid")
 		end
 	end
 	if fullCheeks then
 		for side = -1, 1, 2 do
 			local x = side * 0.33 * s.X
-			add("Cheek", V3(0.26 * s.X, 0.24 * s.Y, 0.16 * s.Z), at(x, -0.2 * s.Y, L.front(x) + 0.05 + 0.03 * (1 - math.min(cheekFat, 1))), skin, "Ellipsoid")
+			add("Cheek", V3(0.28 * s.X, 0.26 * s.Y, 0.22 * s.Z), at(x, -0.2 * s.Y, L.front(x) + 0.08 + 0.03 * (1 - math.min(cheekFat, 1))), skin, "Ellipsoid")
 		end
 	end
 	if hollow > 0.1 and full then
@@ -688,7 +695,7 @@ local function faceBuild(model, app, opts, build)
 		local tilt = side * ((face.browAngle or 0) * rad(9)) + L.browTiltS[side]
 		local blen = 0.21 * s.X * brow.len
 		local bcf = hcf * CF(bx, by, L.front(bx) - 0.012) * ANG(0, 0, tilt)
-		local browPart = rig("Brow" .. roleSide, side, "Brow", V3(blen * 0.46, bt, 0.035 * s.Z), bcf * ANG(0, -side * rad(8), 0), browColor, "Block", FABRIC)
+		local browPart = rig("Brow" .. roleSide, side, "Brow", V3(blen * 0.46, bt, 0.035 * s.Z), bcf * ANG(0, -side * rad(8), 0), browColor, "Ellipsoid", FABRIC)
 		browPart:SetAttribute("Side", side)
 		if full then
 			local ix = bx - side * blen * 0.36
@@ -706,8 +713,10 @@ local function faceBuild(model, app, opts, build)
 	local nB = L.noseB * (1 - 0.25 * noseBreak)
 	local dev = L.noseDev + 0.03 * noseBreak * bend * s.X
 	local noseCol = darken(skin, 0.97)
-	local nose = add("Nose", V3(nW, L.noseLen, nB),
-		at(dev * 0.4, (L.noseTopY + L.noseBottomY) / 2, L.front(0) - nB / 2 + 0.012) * ANG(0, 0, rad(-7 * noseBreak * bend)), noseCol, "Wedge")
+	-- the bridge: a narrow rounded ridge that runs into the forehead (a wedge part read as a block on the
+	-- face); it leans out toward the tip, which the NoseTip mass below carries
+	local nose = add("Nose", V3(nW * 0.62, L.noseLen * 1.08, nB * 0.78),
+		at(dev * 0.4, (L.noseTopY + L.noseBottomY) / 2 + L.noseLen * 0.04, L.front(0) - nB * 0.3 + 0.012) * ANG(rad(-10), 0, rad(-7 * noseBreak * bend)), noseCol, "Ellipsoid")
 	nose:SetAttribute("Base", true)
 	-- at full the tip also spans the alar wings (one wide, flatter part instead of three)
 	add("NoseTip", V3(nW * (full and 1.12 or 0.9), nW * 0.7, nB * (full and 0.66 or 0.7)), at(dev, L.noseBottomY + nW * 0.25, L.front(0) - nB * 0.75), noseCol, "Ellipsoid")
@@ -754,7 +763,7 @@ local function faceBuild(model, app, opts, build)
 	local lower = rig("LowerLip", nil, "LowerLip", V3(mw * 0.92, lowerH, 0.055 * s.Z), m(0, -lowerH * 0.5 - gap, -0.004 - bulge), lerpColor(lipColor, WHITE, 0.03), "Ellipsoid")
 	upper:SetAttribute("BaseSize", upper.Size)
 	lower:SetAttribute("BaseSize", lower.Size)
-	local mline = add("MouthLine", V3(mw * 0.85, 0.008 * s.Y, 0.03 * s.Z), m(0, -gap * 0.5, -0.022), darken(lipColor, 0.45), "Block", SMOOTH, guard and 0.7 or 0)
+	local mline = add("MouthLine", V3(mw * 0.85, 0.008 * s.Y, 0.03 * s.Z), m(0, -gap * 0.5, -0.022), darken(lipColor, 0.45), "Ellipsoid", SMOOTH, guard and 0.7 or 0)
 	mline:SetAttribute("BaseSize", mline.Size)
 	-- a beard covering the mouth pushes the lips out so they show through it. The face does this itself
 	-- (the same rule beardBuild applies from BaseSize) so a face-only rebuild, e.g. after a body fat
@@ -809,7 +818,7 @@ local function faceBuild(model, app, opts, build)
 		local x = rng:NextNumber(0.08, 0.32) * s.X * (rng:NextNumber() < 0.5 and -1 or 1)
 		local y = rng:NextNumber(-0.12, 0.3) * s.Y
 		local a = math.rad(rng:NextNumber(-40, 40))
-		add("Scar", V3(0.016, rng:NextNumber(0.1, 0.2) * s.Y, 0.012), at(x, y, L.front(x) - 0.006) * ANG(0, 0, a), lerpColor(skin, Color3.fromRGB(235, 190, 190), 0.55), "Block")
+		add("Scar", V3(0.016, rng:NextNumber(0.1, 0.2) * s.Y, 0.012), at(x, y, L.front(x) - 0.006) * ANG(0, 0, a), lerpColor(skin, Color3.fromRGB(235, 190, 190), 0.55), "Ellipsoid")
 	end
 	-- acne: inflamed spots on a young face; from the mid twenties (or with heavy acne) what is left are
 	-- pitted scars, slightly darker shallow dents rather than red bumps. Same rng draws either way. An
@@ -860,7 +869,7 @@ local function faceBuild(model, app, opts, build)
 								bp = c
 							end
 						end
-						mk(folder, bp or head, "BrowGap", V3(0.018 * s.X, bt * 1.4, 0.04 * s.Z), hcf * CF(x, L.browY + (L.eyeYS[side] - L.eyeY), L.front(x) - 0.014), skin, "Block")
+						mk(folder, bp or head, "BrowGap", V3(0.018 * s.X, bt * 1.4, 0.04 * s.Z), hcf * CF(x, L.browY + (L.eyeYS[side] - L.eyeY), L.front(x) - 0.014), skin, "Ellipsoid")
 					end
 				end)
 			end
@@ -1050,7 +1059,8 @@ local function beardBuild(model, app, opts)
 	if style == "Stubble" then
 		-- front-biased shell: covers the jaw, chin and upper lip but never the back of the head
 		local t = shadow and 0.9 or (0.8 - 0.12 * g)
-		add("Stubble", V3(s.X * 1.06, s.Y * 0.46, s.Z * 1.0), at(0, -0.3 * s.Y, -0.07 * s.Z), color, "Ellipsoid", SMOOTH, t)
+		-- (top edge kept under the cheekbones: a shell up to the eyes read as a mask)
+		add("Stubble", V3(s.X * 1.05, s.Y * 0.42, s.Z * 0.99), at(0, -0.33 * s.Y, -0.07 * s.Z), color, "Ellipsoid", SMOOTH, t)
 		wantNeck, neckT = true, math.min(0.95, t + 0.05)
 	elseif style == "Goatee" then
 		chinPatch(0.24, 0.2)
@@ -1076,7 +1086,7 @@ local function beardBuild(model, app, opts)
 		moustache()
 	elseif style == "Chin Strap" then
 		for side = -1, 1, 2 do
-			add("Strap", V3(0.06 * s.X, 0.42 * s.Y, 0.5 * s.Z), at(side * 0.46 * s.X, -0.25 * s.Y, -0.05 * s.Z) * ANG(0, 0, math.rad(side * 12)), color, "Block")
+			add("Strap", V3(0.06 * s.X, 0.42 * s.Y, 0.5 * s.Z), at(side * 0.46 * s.X, -0.25 * s.Y, -0.05 * s.Z) * ANG(0, 0, math.rad(side * 12)), color, "Ellipsoid")
 		end
 		add("StrapChin", V3(0.55 * s.X, 0.08 * s.Y, 0.3 * s.Z), at(0, -0.5 * s.Y, L.front(0) * 0.55))
 	elseif style == "Mutton Chops" then
@@ -1086,11 +1096,20 @@ local function beardBuild(model, app, opts)
 		end
 		moustache(0.18, 6)
 	elseif style == "Short Boxed" then
-		add("Beard", V3(s.X * 1.06, s.Y * (0.48 + 0.06 * g), s.Z * 1.02), at(0, -0.3 * s.Y, -0.06 * s.Z))
+		-- a denser core under a sparser, slightly larger edge layer: the outline thins into the skin
+		-- instead of ending in a hard shell rim (the edge layer only when the part cap leaves room)
+		add("Beard", V3(s.X * 1.03, s.Y * (0.42 + 0.06 * g), s.Z * 1.0), at(0, -0.35 * s.Y, -0.06 * s.Z))
+		if not low and fits(2) then
+			add("BeardEdge", V3(s.X * 1.07, s.Y * (0.47 + 0.06 * g), s.Z * 1.03), at(0, -0.33 * s.Y, -0.06 * s.Z), color, "Ellipsoid", mat, 0.55)
+		end
 		moustache()
 		wantSideburns, wantNeck = true, true
 	else -- Full Beard
-		add("Beard", V3(s.X * 1.1, s.Y * (0.58 + 0.16 * g), s.Z * 1.06), at(0, -0.36 * s.Y, -0.06 * s.Z))
+		-- core + sparser edge layer (see Short Boxed); the top stays below the cheekbones
+		add("Beard", V3(s.X * 1.06, s.Y * (0.5 + 0.14 * g), s.Z * 1.04), at(0, -0.41 * s.Y, -0.06 * s.Z))
+		if not low and fits(3) then
+			add("BeardEdge", V3(s.X * 1.1, s.Y * (0.56 + 0.14 * g), s.Z * 1.07), at(0, -0.39 * s.Y, -0.06 * s.Z), color, "Ellipsoid", mat, 0.55)
+		end
 		if not low then
 			add("BeardChin", V3(0.5 * s.X, (0.2 + 0.1 * g) * s.Y, 0.3 * s.Z), at(0, (-0.55 - 0.05 * g) * s.Y, -0.3 * s.Z))
 		end
@@ -1321,7 +1340,7 @@ function Head.SetDamage(model, app, dmg, folderName)
 		if v > 0.05 then
 			local x = side * L.eyeX * (i == 1 and 1 or 0.7)
 			local y = L.browY + (i == 1 and 0.025 or 0.05) * s.Y
-			add("Cut", V3((0.1 + 0.12 * math.min(v, 1)) * s.X, 0.025 * s.Y, 0.02), at(x, y, L.front(x) - 0.02) * ANG(0, 0, math.rad(-side * 15)), Color3.fromRGB(120, 0, 0), "Block")
+			add("Cut", V3((0.1 + 0.12 * math.min(v, 1)) * s.X, 0.025 * s.Y, 0.02), at(x, y, L.front(x) - 0.02) * ANG(0, 0, math.rad(-side * 15)), Color3.fromRGB(120, 0, 0), "Ellipsoid")
 			if v > 0.35 then
 				local p0 = surfPoint(L, x + side * 0.04, y - 0.01 * s.Y, 0.012)
 				local p1 = surfPoint(L, x + side * 0.06, L.browY - (0.08 + 0.2 * math.min(v, 1)) * s.Y, 0.012)

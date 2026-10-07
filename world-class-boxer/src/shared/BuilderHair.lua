@@ -343,9 +343,11 @@ local function chain(H, startLocal, dir, segs, segLen, width, depth, idx, htype,
 		if CURLY[htype] or beads then
 			p = mk(folder, nil, "HairSeg", V3(w * 1.1, segLen, w * 1.1), segCF, color, "Ellipsoid", mat)
 		elseif htype == "Wavy" then
-			p = mk(folder, nil, "HairSeg", V3(w, segLen, depth), segCF * ANG(0, 0, math.rad((i % 2 == 0) and 7 or -7)), color, "Block", mat)
+			-- soft rounded locks (an ellipsoid a little longer than the segment overlaps its neighbours: no
+			-- gaps, no box corners)
+			p = mk(folder, nil, "HairSeg", V3(w * 1.12, segLen * 1.28, depth * 1.15), segCF * ANG(0, 0, math.rad((i % 2 == 0) and 7 or -7)), color, "Ellipsoid", mat)
 		else
-			p = mk(folder, nil, "HairSeg", V3(w, segLen, depth), segCF, color, "Block", mat)
+			p = mk(folder, nil, "HairSeg", V3(w * 1.12, segLen * 1.28, depth * 1.15), segCF, color, "Ellipsoid", mat)
 		end
 		local m = Instance.new("Motor6D")
 		m.Name = "HairJoint"
@@ -536,10 +538,10 @@ local function hairBuild(model, app, opts)
 				local k = x / (0.38 * sx)
 				pts[i + 1] = { x, hlY + 0.06 * s.Y - 0.12 * s.Y * k * k }
 			end
-			surfacePath(H.folder, head, head, Lay, "HairFront", pts, 0.14 * s.Y, 0.035 * s.Z, base, frontTransparency or 0, 0.01, mat)
+			surfacePath(H.folder, head, head, Lay, "HairFront", pts, 0.14 * s.Y, 0.022 * s.Z, base, frontTransparency or 0, 0.006, mat)
 		end
 		if kind == "Widow's Peak" then
-			add("WidowsPeak", V3(0.08 * sx, 0.08 * sx, 0.03 * s.Z), surfCF(Lay, 0, hlY - 0.02 * s.Y, 0.008) * ANG(0, 0, math.rad(45)), base, "Block", mat)
+			add("WidowsPeak", V3(0.08 * sx, 0.08 * sx, 0.03 * s.Z), surfCF(Lay, 0, hlY - 0.02 * s.Y, 0.008) * ANG(0, 0, math.rad(45)), base, "Ellipsoid", mat)
 		elseif kind == "Straight" and H.detail ~= "low" and room(H) >= 2 then
 			surfacePath(H.folder, head, head, Lay, "HairlineEdge", { { -0.28 * sx, hlY - 0.005 * s.Y }, { 0, hlY - 0.012 * s.Y }, { 0.28 * sx, hlY - 0.005 * s.Y } }, 0.045 * s.Y, 0.03 * s.Z, base, 0, 0.01, mat)
 		end
@@ -551,7 +553,7 @@ local function hairBuild(model, app, opts)
 				surfacePath(H.folder, head, head, Lay, "LineUp", {
 					{ 0, y0 }, { side * 0.13 * sx, y0 }, { side * 0.26 * sx, y0 - 0.004 * s.Y }, { side * 0.36 * sx, y0 - 0.13 * s.Y },
 				}, 0.022 * s.Y, 0.02 * s.Z, edge, 0, 0.012)
-				add("Sideburn", V3(0.03 * sx, 0.24 * s.Y, 0.09 * s.Z), at(side * 0.5 * sx, 0.06 * s.Y, -0.1 * s.Z), lerpColor(base, skin, 0.15), "Block", SMOOTH)
+				add("Sideburn", V3(0.03 * sx, 0.24 * s.Y, 0.09 * s.Z), at(side * 0.5 * sx, 0.06 * s.Y, -0.1 * s.Z), lerpColor(base, skin, 0.15), "Ellipsoid", SMOOTH)
 			end
 		end
 		-- a part: a clean shaved line on short cuts, the scalp showing through on longer hair
@@ -647,7 +649,7 @@ local function hairBuild(model, app, opts)
 				local x = rng:NextNumber(-0.3, 0.3) * s.X
 				local z = rng:NextNumber(-0.38, 0.15) * s.Z
 				later(H, "Tuft", V3(0.11 * s.X, (0.1 + 0.06 * L) * s.Y, 0.12 * s.Z), at(x, (0.55 - 0.15 * (z / s.Z + 0.38) * 0.4) * s.Y, z) * ANG(rng:NextNumber(-0.9, -0.4), rng:NextNumber(-0.4, 0.4), rng:NextNumber(-0.3, 0.3)),
-					colorFn(i, 0.3, x), "Wedge", mat)
+					colorFn(i, 0.3, x), "Ellipsoid", mat)
 			end
 			shaved = false
 		else -- Crew Cut
@@ -700,7 +702,8 @@ local function hairBuild(model, app, opts)
 		-- tighter coils shrink more, so the same length makes a denser, rounder shape
 		local htex = CURLY[htype] and htype or "Kinky"
 		local TT = HAIR_TYPES[htex]
-		local size = 1.18 + 0.55 * L * (0.5 + 0.5 * TT.shrink)
+		-- (a little smaller than it was: the part-built afro read as a helmet twice the head's size)
+		local size = 1.12 + 0.46 * L * (0.5 + 0.5 * TT.shrink)
 		local hm = TT.mat
 		local hx, hy, hz = 0.5 * size * s.X, 0.425 * size * s.Y, 0.475 * size * s.Z
 		local cy = 0.3 * s.Y + 0.4 * hy -- the front edge meets the hairline at 0.3 of the head height
@@ -715,7 +718,8 @@ local function hairBuild(model, app, opts)
 			local u = rng:NextNumber(-0.45, 1)
 			local a = rng:NextNumber(0, math.pi * 2)
 			local ring = math.sqrt(1 - u * u)
-			local px, py, pz = math.cos(a) * ring * hx * 0.96, cy + u * hy * 0.96, cz + math.sin(a) * ring * hz * 0.96
+			-- curls sunk into the mass (a low, lumpy outline instead of balls stuck on a sphere)
+			local px, py, pz = math.cos(a) * ring * hx * 0.9, cy + u * hy * 0.9, cz + math.sin(a) * ring * hz * 0.9
 			if not (pz < -0.2 * s.Z and py < 0.34 * s.Y) then
 				local r = (0.15 + 0.05 * thick) * s.X * rng:NextNumber(0.8, 1.25) * (0.7 + 0.3 * TT.radius)
 				later(H, "Curl", V3(r, r, r), at(px, py, pz), colorFn(i, (u + 1) / 2, px), "Ball", hm, nil, pivot)
@@ -727,7 +731,10 @@ local function hairBuild(model, app, opts)
 		local hgt = 0.5 + 0.55 * L * (0.6 + 0.4 * T.shrink)
 		local hm = hairMaterial(CURLY[htype] and htype or "Kinky")
 		local pivot = bouncePivot(H, V3(0, 0.45 * s.Y, 0))
-		add("HighTop", V3(s.X * 0.92, s.Y * hgt, s.Z * 0.92), at(0, (0.45 + hgt / 2) * s.Y, 0.03 * s.Z), base, "Block", hm, nil, pivot)
+		-- a round column (a cylinder standing up, the flat top a high top has) instead of a box, with a
+		-- domed rim so the top edge is not a hard ring
+		add("HighTop", V3(s.Y * hgt, s.X * 0.92, s.Z * 0.92), at(0, (0.45 + hgt / 2) * s.Y, 0.03 * s.Z) * ANG(0, 0, math.rad(90)), base, "Cylinder", hm, nil, pivot)
+		add("HighTopRim", V3(s.X * 0.95, s.Y * 0.16, s.Z * 0.95), at(0, (0.45 + hgt - 0.05) * s.Y, 0.03 * s.Z), base, "Ellipsoid", hm, nil, pivot)
 		add("FadeSides", V3(s.X * 1.02, s.Y * 0.5, s.Z * 1.02), at(0, 0.2 * s.Y, 0.08 * s.Z), lerpColor(base, skin, 0.5 * (1 - 0.7 * grow)), "Ellipsoid", SMOOTH, 0.2)
 		setShell(V3(0, (0.45 + hgt / 2) * s.Y, 0.03 * s.Z), V3(s.X * 0.92, s.Y * hgt, s.Z * 0.92))
 		-- sponge-twist texture across the flat top
@@ -746,7 +753,7 @@ local function hairBuild(model, app, opts)
 		for i = 1, n do
 			local z = (-0.45 + (i - 1) * 0.18) * s.Z
 			local hgt = (0.18 + 0.4 * L * T.shrink) * s.Y * (1 - math.abs(i - n / 2) * 0.06)
-			add("Spike", V3(0.14 * s.X, hgt, 0.2 * s.Z), at(0, 0.5 * s.Y + hgt * 0.4, z), colorFn(i, i / n, 0), CURLY[htype] and "Ellipsoid" or "Block", mat)
+			add("Spike", V3(0.14 * s.X, hgt, 0.2 * s.Z), at(0, 0.5 * s.Y + hgt * 0.4, z), colorFn(i, i / n, 0), "Ellipsoid", mat)
 		end
 		-- strands standing up out of the crest
 		local rng = Random.new(H.seed + 19)
@@ -768,7 +775,7 @@ local function hairBuild(model, app, opts)
 		if H.detail == "full" then
 			for i = 1, 4 do
 				local x = (i - 2.5) * 0.18 * s.X
-				later(H, "Groove", V3(0.02 * s.X, 0.02 * s.Y, 0.7 * s.Z), at(x, 0.56 * s.Y, 0.02 * s.Z), darken(base, 0.6), "Block", SMOOTH)
+				later(H, "Groove", V3(0.02 * s.X, 0.02 * s.Y, 0.7 * s.Z), at(x, 0.56 * s.Y, 0.02 * s.Z), darken(base, 0.6), "Ellipsoid", SMOOTH)
 			end
 		end
 		combLines(H, lod(H, 14, 6, 0), 0.75, 1.5, (0.03 + 0.02 * thick) * s.X)
@@ -798,7 +805,7 @@ local function hairBuild(model, app, opts)
 			local a = rng:NextNumber(0, math.pi * 2)
 			local x, z = math.cos(a) * 0.35 * s.X, math.sin(a) * 0.35 * s.Z
 			later(H, "Tuft", V3(0.12 * s.X, (0.15 + L * 0.2 * T.shrink) * s.Y, 0.12 * s.Z),
-				at(x, 0.52 * s.Y, z) * ANG(rng:NextNumber(-0.7, 0.7), 0, rng:NextNumber(-0.7, 0.7)), colorFn(i, 0.3, x), "Wedge", mat)
+				at(x, 0.52 * s.Y, z) * ANG(rng:NextNumber(-0.7, 0.7), 0, rng:NextNumber(-0.7, 0.7)), colorFn(i, 0.3, x), "Ellipsoid", mat)
 		end
 		flyaways(H, lod(H, 20, 8, 0), 0.5 + 0.4 * L, 0.05, 1.3)
 		hairline(false)
@@ -970,7 +977,7 @@ local function hairBuild(model, app, opts)
 			for i = 1, lod(H, 9, 5, 2) do
 				local a = rng:NextNumber(0, math.pi * 2)
 				local x, z = math.cos(a) * 0.38 * s.X, math.sin(a) * 0.38 * s.Z
-				later(H, "Shag", V3(0.16 * s.X, 0.2 * s.Y, 0.16 * s.Z), at(x, 0.52 * s.Y, z) * ANG(rng:NextNumber(-0.5, 0.5), 0, rng:NextNumber(-0.5, 0.5)), colorFn(i, 0.2, x), "Wedge", mat)
+				later(H, "Shag", V3(0.16 * s.X, 0.2 * s.Y, 0.16 * s.Z), at(x, 0.52 * s.Y, z) * ANG(rng:NextNumber(-0.5, 0.5), 0, rng:NextNumber(-0.5, 0.5)), colorFn(i, 0.2, x), "Ellipsoid", mat)
 			end
 			-- choppy fringe: separate strands that follow the curve of the forehead
 			for i = 1, lod(H, 5, 3, 0) do
@@ -1068,7 +1075,9 @@ function Hair.ApplyHairHidden(model)
 			return true
 		end
 		-- a hood covers the crown, sides and back; a fringe on the face stays visible
-		return hood and p.Y > -0.4 * s.Y and p.Z > -0.36 * s.Z
+		-- (and everything over the top of the head: curls and an afro's front bulge sit forward of that line
+		-- and were left floating over the hidden cap)
+		return hood and p.Y > -0.4 * s.Y and (p.Z > -0.36 * s.Z or p.Y > 0.28 * s.Y)
 	end
 	for _, d in ipairs(hair:GetDescendants()) do
 		if d:IsA("BasePart") then

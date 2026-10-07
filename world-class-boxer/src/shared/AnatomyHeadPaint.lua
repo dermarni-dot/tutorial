@@ -944,6 +944,37 @@ function Paint.Texture(m, F, look, w, h, faceV, pscale, col, row)
 				end
 			end
 		end
+		-- natural highlights (skin is not one matte value): the oilier T-zone, the cheekbone tops, the nose
+		-- bridge and the chin catch a little more light; lifted toward the skin's own lighter tone (k), never white
+		do
+			local hk = 0.045 * bump((x / 0.1) ^ 2 + ((y - bY - 0.085) / 0.065) ^ 2)
+				+ 0.05 * bump((x / 0.022) ^ 2 + ((y - (nY + nbY) * 0.5) / ((nY - nbY) * 0.55)) ^ 2)
+				+ 0.035 * bump((x / 0.07) ^ 2 + ((y - chinY - 0.035) / 0.035) ^ 2)
+			for side = -1, 1, 2 do
+				local e = eyes[side]
+				hk += 0.04 * bump(((x - e.x - side * 0.035) / 0.05) ^ 2 + ((y - e.y + 0.065) / 0.026) ^ 2)
+			end
+			k += hk * (1 - 0.45 * dark) * wFace
+		end
+		-- warm subsurface: where the baked shading darkens the skin (creases, under the brow and the nose, the
+		-- jaw's underside) light scattered in the flesh comes back red, so shadows warm instead of greying
+		do
+			local lr = (r * 0.3 + g * 0.59 + b * 0.11) / max(sr * 0.3 + sg * 0.59 + sb * 0.11, 0.02)
+			if lr < 1 then
+				-- (not where stubble darkened the texel: hair is not shadowed skin)
+				local sk = (1 - lr) * (1 - 0.5 * dark) * (1 - min(bz * 2.5, 1))
+				r, g, b = r * (1 + 0.22 * sk), g * (1 - 0.02 * sk), b * (1 - 0.14 * sk)
+			end
+		end
+		-- small imperfections: faint broken capillaries / redness on the nose wings and the cheeks (seeded,
+		-- sparse, soft: it is what keeps a face from reading as plastic)
+		if fine and y < F.eyeY - 0.03 and y > F.mouthY and ax > 0.03 and ax < 0.2 then
+			local cap = smoothAt((px + ox * 3) * 0.4, (py + oy * 2) * 0.4)
+			if cap > 0.72 then
+				local ck = (cap - 0.72) * 0.35 * (1 - 0.6 * dark) * (1 - smoothK * 0.5)
+				r, g, b = lerp(r, r * 1.08, ck * 4), lerp(g, g * 0.95, ck * 4), lerp(b, b * 0.95, ck * 4)
+			end
+		end
 		-- spots
 		if hasSpots and z < -0.15 then
 			local cx3, cy3 = floor((x - GX0) / CELL), floor((y - GY0) / CELL)

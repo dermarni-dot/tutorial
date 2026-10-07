@@ -772,10 +772,22 @@ local function applySweat(v, sweat)
 	if not part or not part.Parent then
 		return
 	end
-	local r = clamp(sweat * 0.05, 0, 0.08)
+	local r = clamp(sweat * 0.06, 0, 0.08)
 	if math.abs(r - v.refl) > 0.002 then
 		v.refl = r
 		part.Reflectance = r
+	end
+	-- wet skin is glossier: past a light sweat the face takes SmoothPlastic's tighter highlight (dry skin
+	-- stays Plastic, matte); the build's own material comes back when it dries
+	local wet = sweat > 0.35
+	if wet ~= (v.wetMat == true) then
+		if wet then
+			v.dryMat = v.dryMat or part.Material
+			part.Material = Enum.Material.SmoothPlastic
+		elseif v.dryMat then
+			part.Material = v.dryMat
+		end
+		v.wetMat = wet
 	end
 end
 
@@ -992,8 +1004,28 @@ function FaceFX.Update(dt, t, camPos, rigs, budget)
 				ch[c] += (e[c] - ch[c]) * k
 			end
 		end
-		-- breathing through the mouth when spent
 		local stam = type(a.Stam) == "number" and a.Stam or 1
+		-- in a fight (a Guard attribute) the face carries the state of the exchange on top of the server's
+		-- expression: spent (low stamina) sags into fatigue, a boxer who keeps landing (own punches in the last
+		-- 2.5 s) without being hit for 5 s sets a confident half-smile; neither while hurt or down
+		if a.Guard ~= nil and not down then
+			local fat = clamp((0.45 - stam) / 0.35, 0, 1) * 0.65
+			if fat > 0.01 and expr ~= "fatigue" then
+				local e = EXPR.fatigue
+				for c = 1, NCH do
+					ch[c] += (e[c] - ch[c]) * fat
+				end
+			end
+			local conf = (now - rec.effortT < 2.5 and now - rec.painT > 5 and stam > 0.4) and 0.35 or 0
+			rec.confK = (rec.confK or 0) + (conf - (rec.confK or 0)) * clamp(dt * 1.5, 0, 1)
+			if rec.confK > 0.01 and expr ~= "confident" then
+				local e = EXPR.confident
+				for c = 1, NCH do
+					ch[c] += (e[c] - ch[c]) * rec.confK
+				end
+			end
+		end
+		-- breathing through the mouth when spent
 		local breathe = clamp((1 - stam) * 1.3 + effAttr * 0.5 + (rig and rig.breath or 0), 0, 1)
 		rec.breathPhase += dt * (0.25 + 0.45 * breathe)
 		ch[6] += breathe * (0.12 + 0.22 * K.breath(rec.breathPhase))

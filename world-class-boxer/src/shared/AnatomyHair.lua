@@ -60,7 +60,8 @@ local function shortTop(H, spec)
 	if spec.clumps ~= false then
 		Parts.Clumps(H, {
 			n = spec.clumpN or 320, seed = 21, sides = 3, accept = spec.accept or topRegion(0.2, 0.34), flow = flow,
-			lift = 0.08 + 0.15 * (spec.lift or 0.3), stick = 0.88, grav = 0.05, stiff = 0.5, free = 1,
+			-- (lying low on the shell: lifted tufts caught the light edge-on and read as dark chevrons)
+			lift = 0.045 + 0.1 * (spec.lift or 0.3), stick = 0.93, grav = 0.05, stiff = 0.5, free = 1,
 			len = function(r)
 				return lerp(0.04, 0.075, r[9]) * (0.8 + 0.5 * H.len)
 			end, w = 0.016, h = 0.0032, flat = 0.7, off = function(u)
