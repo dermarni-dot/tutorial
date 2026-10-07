@@ -434,9 +434,9 @@ local function buildEliteWing(gym)
 			local l = Instance.new("SpotLight")
 			l.Name = "EliteLight"
 			l.Face = Enum.NormalId.Bottom
-			l.Angle = 120
-			l.Range = 30
-			l.Brightness = 1.6
+			l.Angle = 125
+			l.Range = 40
+			l.Brightness = 2.3
 			l.Color = Color3.fromRGB(228, 238, 255)
 			l.Shadows = false
 			l.Enabled = false
@@ -765,16 +765,21 @@ function MapBuilder.BuildGym()
 	end
 
 	-- lighting tuned for Future lighting (build.py sets Lighting.Technology): the roof blocks
-	-- the sun indoors so the gym's own lamps light it, daylight streams through the windows
+	-- the sun indoors so the gym's own lamps light it, daylight streams through the windows.
+	-- Future lights in linear space, so Ambient is a real fill: (64, 60, 56) was ~4% grey and left
+	-- every surface a lamp missed near black. A warm ~15% fill keeps shadows readable while the
+	-- lamps, windows and CharacterLight still do the shaping (not flat). Soft shadows for the same
+	-- reason. The client's Ambience sets the exposure per place (LightLevels) and the time of day.
 	Lighting.ClockTime = 14
-	Lighting.Brightness = 2.6
-	Lighting.Ambient = Color3.fromRGB(64, 60, 56)
-	Lighting.OutdoorAmbient = Color3.fromRGB(118, 120, 128)
+	Lighting.Brightness = 2.8
+	Lighting.Ambient = Color3.fromRGB(120, 112, 104)
+	Lighting.OutdoorAmbient = Color3.fromRGB(132, 136, 146)
 	Lighting.ExposureCompensation = 0
 	Lighting.GeographicLatitude = 34
 	pcall(function()
 		Lighting.EnvironmentDiffuseScale = 1
-		Lighting.EnvironmentSpecularScale = 0.6
+		Lighting.EnvironmentSpecularScale = 0.5
+		Lighting.ShadowSoftness = 0.4
 	end)
 	local function effect(class, name, props)
 		local e = Lighting:FindFirstChild(name)
@@ -789,16 +794,18 @@ function MapBuilder.BuildGym()
 		return e
 	end
 	-- FightClient finds these by name and switches them off on fight nights
-	effect("ColorCorrectionEffect", "GymGrade", { Brightness = 0.02, Contrast = 0.1, Saturation = 0.08, TintColor = Color3.fromRGB(255, 248, 240) })
-	effect("BloomEffect", "GymBloom", { Intensity = 0.4, Size = 22, Threshold = 1.75 })
-	effect("SunRaysEffect", "GymSunRays", { Intensity = 0.045, Spread = 0.55 })
+	-- a gentle global grade: the zone grades (Ambience) add the per-room look on top, so this one
+	-- stays near neutral (stacked contrast crushed the shadows)
+	effect("ColorCorrectionEffect", "GymGrade", { Brightness = 0.01, Contrast = 0.04, Saturation = 0.06, TintColor = Color3.fromRGB(255, 249, 242) })
+	effect("BloomEffect", "GymBloom", { Intensity = 0.35, Size = 24, Threshold = 1.8 })
+	effect("SunRaysEffect", "GymSunRays", { Intensity = 0.05, Spread = 0.6 })
 	local atm = Lighting:FindFirstChildOfClass("Atmosphere") or Instance.new("Atmosphere")
-	atm.Density = 0.28
+	atm.Density = 0.24
 	atm.Offset = 0.12
-	atm.Color = Color3.fromRGB(205, 196, 182)
-	atm.Decay = Color3.fromRGB(110, 118, 132)
+	atm.Color = Color3.fromRGB(212, 204, 190)
+	atm.Decay = Color3.fromRGB(122, 130, 144)
 	atm.Glare = 0.15
-	atm.Haze = 1.3
+	atm.Haze = 1.0
 	atm.Parent = Lighting
 	pcall(function()
 		local clouds = workspace.Terrain:FindFirstChildOfClass("Clouds") or Instance.new("Clouds")

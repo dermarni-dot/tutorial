@@ -212,7 +212,8 @@ end
 ------------------------------------------------------------------------
 local lampCache
 local TIER_LIGHT = {
-	{ mult = 0.78, tint = rgb(255, 196, 140), amt = 0.35 }, -- tired old tubes: dim and orange
+	-- tired old tubes: orange and a little dimmer (the flicker sells "old"; 0.78 left the hall murky)
+	{ mult = 0.92, tint = rgb(255, 200, 146), amt = 0.3 },
 	{ mult = 1.0, tint = nil, amt = 0 },
 	{ mult = 1.08, tint = rgb(232, 242, 255), amt = 0.3 }, -- crisp daylight LEDs
 	{ mult = 1.14, tint = rgb(255, 228, 182), amt = 0.22 }, -- warm, rich, gold

@@ -25,6 +25,8 @@ local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
+local LightLevels = require(script.Parent:WaitForChild("LightLevels"))
+local CharacterLight = require(script.Parent:WaitForChild("CharacterLight"))
 
 local VenueFX = {}
 local player = Players.LocalPlayer
@@ -45,42 +47,46 @@ local WHITE = rgb(240, 240, 240)
 ------------------------------------------------------------------------
 -- Lighting profiles per venue, plus per-phase offsets (CONTRACTS 11: VenueGrade/Bloom/DOF are ours)
 ------------------------------------------------------------------------
+-- Future lights in linear space: an ambient of (34, 36, 46) is ~1.7% grey, i.e. black. The crowd
+-- now sits in a dim but visible fill, the ring in strong angled key light (setupKeys), and the
+-- grade's contrast stays low so the shadows on a boxer never crush. exposure = base stops.
 local PROFILES = {
 	CommunityCenter = {
-		clock = 19.6, bright = 1.1, ambient = rgb(92, 88, 82), outdoor = rgb(70, 70, 78), exposure = 0.05, diffuse = 0.6, specular = 0.5,
-		density = 0.1, haze = 0.6, atmColor = rgb(200, 190, 170), decay = rgb(120, 110, 100), glare = 0,
-		contrast = 0.06, saturation = -0.1, tint = rgb(250, 248, 236), bloomI = 0.25, bloomS = 20, bloomT = 1.6,
+		clock = 19.6, bright = 1.1, ambient = rgb(122, 116, 106), outdoor = rgb(96, 96, 104), exposure = 0.2, diffuse = 0.6, specular = 0.5,
+		density = 0.1, haze = 0.5, atmColor = rgb(200, 190, 170), decay = rgb(120, 110, 100), glare = 0,
+		contrast = 0.04, saturation = -0.06, tint = rgb(252, 248, 238), bloomI = 0.25, bloomS = 20, bloomT = 1.6, keys = 0.85,
 	},
 	ClubArena = {
-		clock = 21.5, bright = 0.45, ambient = rgb(46, 40, 52), outdoor = rgb(30, 30, 38), exposure = 0.18, diffuse = 0.4, specular = 0.6,
-		density = 0.34, haze = 2.4, atmColor = rgb(130, 110, 140), decay = rgb(70, 50, 80), glare = 0.3,
-		contrast = 0.16, saturation = 0.04, tint = rgb(255, 238, 226), bloomI = 0.55, bloomS = 28, bloomT = 1.2,
+		clock = 21.5, bright = 0.45, ambient = rgb(80, 74, 88), outdoor = rgb(56, 56, 66), exposure = 0.2, diffuse = 0.4, specular = 0.6,
+		density = 0.28, haze = 1.6, atmColor = rgb(130, 110, 140), decay = rgb(70, 50, 80), glare = 0.3,
+		contrast = 0.1, saturation = 0.04, tint = rgb(255, 240, 228), bloomI = 0.5, bloomS = 28, bloomT = 1.4, keys = 1,
 	},
 	Arena = {
-		clock = 21.5, bright = 0.4, ambient = rgb(34, 36, 46), outdoor = rgb(26, 28, 40), exposure = 0.22, diffuse = 0.35, specular = 0.7,
-		density = 0.26, haze = 1.6, atmColor = rgb(110, 116, 140), decay = rgb(60, 64, 90), glare = 0.35,
-		contrast = 0.2, saturation = 0.08, tint = rgb(246, 246, 255), bloomI = 0.6, bloomS = 30, bloomT = 1.15,
+		clock = 21.5, bright = 0.4, ambient = rgb(68, 70, 84), outdoor = rgb(52, 54, 70), exposure = 0.16, diffuse = 0.35, specular = 0.7,
+		density = 0.22, haze = 1.2, atmColor = rgb(110, 116, 140), decay = rgb(60, 64, 90), glare = 0.35,
+		contrast = 0.12, saturation = 0.08, tint = rgb(248, 248, 255), bloomI = 0.5, bloomS = 30, bloomT = 1.4, keys = 1.1,
 	},
 	Stadium = {
-		clock = 21, bright = 1.0, ambient = rgb(40, 42, 56), outdoor = rgb(34, 38, 56), exposure = 0.22, diffuse = 0.4, specular = 0.7,
-		density = 0.2, haze = 1.1, atmColor = rgb(92, 102, 132), decay = rgb(40, 48, 80), glare = 0.4,
-		contrast = 0.22, saturation = 0.1, tint = rgb(236, 242, 255), bloomI = 0.7, bloomS = 32, bloomT = 1.1,
+		clock = 21, bright = 1.0, ambient = rgb(72, 76, 94), outdoor = rgb(66, 72, 96), exposure = 0.16, diffuse = 0.4, specular = 0.7,
+		density = 0.18, haze = 0.9, atmColor = rgb(92, 102, 132), decay = rgb(40, 48, 80), glare = 0.4,
+		contrast = 0.12, saturation = 0.1, tint = rgb(238, 244, 255), bloomI = 0.6, bloomS = 32, bloomT = 1.35, keys = 1.15,
 	},
 	Gym = {
-		clock = 14, bright = 1.8, ambient = rgb(80, 76, 72), outdoor = rgb(100, 96, 92), exposure = -0.05, diffuse = 0.7, specular = 0.5,
-		density = 0.24, haze = 1.2, atmColor = rgb(210, 190, 160), decay = rgb(150, 130, 110), glare = 0.1,
-		contrast = 0.06, saturation = 0.02, tint = rgb(255, 247, 234), bloomI = 0.3, bloomS = 24, bloomT = 1.4, gym = true,
+		clock = 14, bright = 2.8, ambient = rgb(120, 112, 104), outdoor = rgb(132, 136, 146), exposure = 0.15, diffuse = 0.7, specular = 0.5,
+		density = 0.2, haze = 1.0, atmColor = rgb(210, 190, 160), decay = rgb(150, 130, 110), glare = 0.1,
+		contrast = 0.04, saturation = 0.02, tint = rgb(255, 247, 234), bloomI = 0.3, bloomS = 24, bloomT = 1.4, gym = true, keys = 0.8,
 	},
 }
 
+-- ring = the angled ring key lights (setupKeys); entrance keeps the ring dimmer so the walkout reads
 local PHASES = {
-	start = { exposure = 0, contrast = 0, saturation = 0, bloom = 0, house = 0.55, dof = 0, spot = 5, base = 0.3 },
-	entrance = { exposure = -0.28, contrast = 0.1, saturation = 0.05, bloom = 0.25, house = 0.12, dof = 0.3, spot = 8, base = 0.55 },
-	round = { exposure = 0, contrast = 0.02, saturation = 0, bloom = 0, house = 0.25, dof = 0, spot = 5, base = 0.28 },
-	rest = { exposure = 0.08, contrast = -0.02, saturation = 0, bloom = 0.05, house = 0.6, dof = 0, spot = 3, base = 0.35, tint = rgb(255, 238, 215) },
-	win = { exposure = 0.1, contrast = 0.08, saturation = 0.12, bloom = 0.3, house = 1, dof = 0, spot = 8, base = 0.8, tint = rgb(255, 232, 192) },
-	loss = { exposure = -0.12, contrast = 0.12, saturation = -0.3, bloom = 0.05, house = 0.9, dof = 0, spot = 4, base = 0.5, tint = rgb(212, 224, 255) },
-	draw = { exposure = 0, contrast = 0.04, saturation = -0.05, bloom = 0.1, house = 0.9, dof = 0, spot = 6, base = 0.5 },
+	start = { exposure = 0, contrast = 0, saturation = 0, bloom = 0, house = 0.55, dof = 0, spot = 5, base = 0.3, ring = 0.8 },
+	entrance = { exposure = -0.12, contrast = 0.06, saturation = 0.05, bloom = 0.2, house = 0.2, dof = 0.3, spot = 8, base = 0.55, ring = 0.55 },
+	round = { exposure = 0, contrast = 0.02, saturation = 0, bloom = 0, house = 0.32, dof = 0, spot = 3.6, base = 0.28, ring = 1 },
+	rest = { exposure = 0.08, contrast = -0.02, saturation = 0, bloom = 0.05, house = 0.6, dof = 0, spot = 3, base = 0.35, tint = rgb(255, 238, 215), ring = 0.9 },
+	win = { exposure = 0.03, contrast = 0.06, saturation = 0.12, bloom = 0.2, house = 1, dof = 0, spot = 8, base = 0.8, tint = rgb(255, 232, 192), ring = 0.95 },
+	loss = { exposure = -0.04, contrast = 0.06, saturation = -0.25, bloom = 0.05, house = 0.9, dof = 0, spot = 4, base = 0.5, tint = rgb(214, 226, 255), ring = 0.9 },
+	draw = { exposure = 0, contrast = 0.03, saturation = -0.05, bloom = 0.1, house = 0.9, dof = 0, spot = 6, base = 0.5, ring = 1 },
 }
 
 local GYM_EFFECTS = { "GymGrade", "GymBloom", "GymSunRays" }
@@ -358,7 +364,7 @@ local function setupLighting()
 	end)
 	-- current values start from the venue base and ease toward each phase target
 	S.cur = {
-		exposure = Lighting.ExposureCompensation, contrast = 0, saturation = 0, bloomI = 0, house = 0.55, dof = 0, spot = 5,
+		exposure = Lighting.ExposureCompensation, contrast = 0, saturation = 0, bloomI = 0, house = 0.55, dof = 0, spot = 5, ring = 0.8,
 		tint = WHITE, density = atm.Density, haze = atm.Haze,
 	}
 	S.kick = { exposure = 0, contrast = 0, saturation = 0, bloom = 0 }
@@ -370,7 +376,7 @@ local function setPhaseLook(name)
 	S.look = ph
 	S.tgt = {
 		exposure = prof.exposure + ph.exposure, contrast = prof.contrast + ph.contrast, saturation = prof.saturation + ph.saturation,
-		bloomI = prof.bloomI + ph.bloom, house = ph.house, dof = ph.dof, spot = ph.spot,
+		bloomI = prof.bloomI + ph.bloom, house = ph.house, dof = ph.dof, spot = ph.spot, ring = ph.ring or 1,
 		tint = ph.tint and prof.tint:Lerp(ph.tint, 0.85) or prof.tint, density = prof.density, haze = prof.haze,
 	}
 	S.baseExcite = ph.base or 0.3
@@ -385,7 +391,7 @@ local function kick(c, sat, exposure, bloom)
 end
 
 -- module-level so the 30 Hz lighting tick allocates nothing (PLAN constraint 4)
-local LIGHT_KEYS = { "exposure", "contrast", "saturation", "bloomI", "house", "dof", "spot", "density", "haze" }
+local LIGHT_KEYS = { "exposure", "contrast", "saturation", "bloomI", "house", "dof", "spot", "density", "haze", "ring" }
 
 local function updateLighting(dt)
 	local cur, tgt, k = S.cur, S.tgt, S.kick
@@ -402,7 +408,8 @@ local function updateLighting(dt)
 	local fx = math.clamp(fxScale(), 0, 1)
 	-- accessibility: a low ScreenFX flattens the grade toward neutral
 	local g = lerp(0.4, 1, fx)
-	Lighting.ExposureCompensation = cur.exposure + k.exposure
+	-- the player's brightness preference rides on top of every phase (LightLevels)
+	Lighting.ExposureCompensation = cur.exposure + k.exposure + LightLevels.UserExposure()
 	S.grade.Contrast = (cur.contrast + k.contrast) * g
 	S.grade.Saturation = (cur.saturation + k.saturation) * g
 	S.grade.TintColor = Color3.new(1, 1, 1):Lerp(cur.tint, g)
@@ -430,6 +437,11 @@ local function updateLighting(dt)
 	end
 	for _, sg in ipairs(S.bowlGuis) do
 		sg.Brightness = 0.25 + cur.house * 0.6
+	end
+	-- the ring keys swell with the knockdown flash too (kick exposure), so the downed boxer reads
+	local ring = cur.ring + math.max(0, k.exposure) * 1.5
+	for _, key in ipairs(S.keys) do
+		key.light.Brightness = key.base * ring
 	end
 end
 
@@ -676,6 +688,45 @@ local function refreshRayFilter()
 		table.insert(ex, r)
 	end
 	rayParams.FilterDescendantsInstances = ex
+end
+
+-- Ring key lights: four lamps on the diagonals just outside the ropes, ~25 degrees above the
+-- boxers' chests and aimed at the ring centre. Angled, not top-down: they model faces and muscles
+-- (cheekbones, jaw, pecs, delts) where the rig's overhead banks only light the tops of heads. Two
+-- opposite ones are warm keys that cast shadows, the other two are softer cool kickers (the rim on
+-- whoever faces away). The overhead banks keep the canopy look but only the centre one keeps its
+-- shadows, so the Future shadow-light count stays at three.
+local function setupKeys()
+	S.keys = {}
+	local lvl = S.profile.keys or 1
+	local d = S.ringHalf + 5
+	local aim = S.center + V3(0, 4.2, 0)
+	for i, c in ipairs({ { -1, -1 }, { 1, 1 }, { 1, -1 }, { -1, 1 } }) do
+		local key = i <= 2
+		local pos = S.center + V3(c[1] * d, 15, c[2] * d)
+		local p = localPart("RingKey", V3(0.3, 0.3, 0.3), CFrame.lookAt(pos, aim), WHITE, nil, { Transparency = 1 })
+		local l = Instance.new("SpotLight")
+		l.Face = Enum.NormalId.Front
+		l.Angle = 46
+		l.Range = 52
+		l.Shadows = key
+		l.Color = key and rgb(255, 242, 224) or rgb(222, 234, 255)
+		l.Brightness = (key and 4.2 or 2.6) * lvl
+		l.Parent = p
+		table.insert(S.keys, { light = l, base = l.Brightness })
+	end
+	local rig = S.arena:FindFirstChild("LightRig")
+	if rig then
+		for _, lamp in ipairs(rig:GetChildren()) do
+			local sl = lamp.Name == "Lamp" and lamp:FindFirstChildOfClass("SpotLight")
+			if sl then
+				local off = lamp.Position - S.center
+				sl.Shadows = math.abs(off.X) < 1 and math.abs(off.Z) < 1
+				-- the keys now light the boxers; at full power the banks blew the white canvas out
+				sl.Brightness *= 0.55
+			end
+		end
+	end
 end
 
 local function setupSpots()
@@ -1842,13 +1893,15 @@ function VenueFX.Start(arena, info)
 		center = center.Position, ringHalf = arena:GetAttribute("RingHalf") or 11,
 		floorY = floor and (floor.Position.Y + floor.Size.Y / 2) or (center.Position.Y - 4),
 		folder = folder, soundFolder = soundFolder, created = {}, dead = {}, snd = {}, moves = {},
-		excite = 0.3, baseExcite = 0.3, supportBoost = 0, screenPop = 0, spotMode = "ring", house = {}, houseLamps = {}, bowlGuis = {},
+		excite = 0.3, baseExcite = 0.3, supportBoost = 0, screenPop = 0, spotMode = "ring", house = {}, houseLamps = {}, bowlGuis = {}, keys = {},
 		referees = {}, spots = {}, ropes = {}, ties = {}, fans = {}, phones = {}, flashes = {}, confetti = {}, gerbs = {}, fireworks = {},
 		smoke = { Red = {}, Blue = {} }, co2 = { Red = {}, Blue = {} }, cams = {}, sources = {}, corner = {}, stools = {}, watchers = {},
 		tickers = {}, flashFrames = {}, sweeps = {}, chase = { Red = {}, Blue = {} }, archLeds = { Red = {}, Blue = {} }, walkLights = {}, parCans = {},
 		screens = { text = {}, red = {}, blue = {}, round = {}, clock = {}, header = {} }, entrance = { Red = {}, Blue = {} }, round = 1,
 		crowdR = 30, crowdY = 4, punches = 0, bulkParts = {}, bulkCFs = {}, fanIdx = 0,
 	}
+	-- the opponent gets the same camera-aware fill and rim as you (CharacterLight)
+	pcall(CharacterLight.SetExtra, { info.oppModel })
 	local ok, err = pcall(function()
 		setupLighting()
 		setPhaseLook("start")
@@ -1872,7 +1925,7 @@ function VenueFX.Start(arena, info)
 		end
 		-- the optional pieces: any of them may fail without stopping the rest
 		for _, piece in ipairs({
-			{ "ropes", setupRopes }, { "spots", setupSpots }, { "crowd", setupCrowd }, { "bowl", setupBowl }, { "particles", setupParticles },
+			{ "keys", setupKeys }, { "ropes", setupRopes }, { "spots", setupSpots }, { "crowd", setupCrowd }, { "bowl", setupBowl }, { "particles", setupParticles },
 			{ "screens", setupScreens }, { "people", setupPeople }, { "broadcast", setupBroadcast }, { "gym", setupGym },
 		}) do
 			step(piece[1], piece[2])
@@ -2011,7 +2064,7 @@ function VenueFX.Phase(name, data)
 		local target = typeof(data.target) == "Instance" and data.target or (data.who == "you" and S.info.myModel or S.info.oppModel)
 		S.downModel = target
 		S.spotMode = "downed"
-		kick(0.35, -0.4, 0.18, 0.5)
+		kick(0.22, -0.3, 0.16, 0.45)
 		S.excite = 1
 		if data.who ~= "you" then
 			S.supportBoost = 1
@@ -2250,6 +2303,7 @@ function VenueFX.Stop()
 		return
 	end
 	pcall(restoreLighting)
+	pcall(CharacterLight.SetExtra, {})
 	for _, s in pairs(S.snd) do
 		pcall(function()
 			s:Stop()

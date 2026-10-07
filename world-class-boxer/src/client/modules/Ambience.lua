@@ -13,6 +13,9 @@
 --  * coaches who shout instructions (speech bubbles + a barked grunt, or a CoachShout upload), react to your
 --    work (Ambience.React) and turn to watch you train (client-local LookAt attribute)
 --  * dust motes hanging in the light and sun shafts through the windows and skylights
+--  * exposure: outside fights Lighting.ExposureCompensation follows the place the camera is in
+--    (LightLevels zones, a lift at night outdoors) plus the player's brightness preference, and
+--    CharacterLight keeps a fill and rim on your boxer
 -- Everything is tag / name driven, so pieces streamed in later are picked up too. Movers only update
 -- near the camera and at most ~30 times a second; the heavier systems run at 4 Hz or slower.
 local CollectionService = game:GetService("CollectionService")
@@ -25,6 +28,8 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
 local GymSound = require(script.Parent:WaitForChild("GymSound"))
+local LightLevels = require(script.Parent:WaitForChild("LightLevels"))
+local CharacterLight = require(script.Parent:WaitForChild("CharacterLight"))
 
 local Ambience = {}
 
@@ -402,18 +407,20 @@ local player = Players.LocalPlayer
 local tier = 1
 local zones = {}
 -- ColorCorrection targets per profile; the gym's warm grade follows the facility tier
+-- (gentle: brightness is the exposure's job, and contrast here stacks on GymGrade, so a strong one
+-- crushes the shadows; the tint carries the mood)
 local GRADES = {
 	GymWarm = {
-		{ b = -0.025, c = 0.09, s = -0.14, tint = Color3.fromRGB(255, 232, 206) }, -- tired, yellowed
-		{ b = 0, c = 0.05, s = 0, tint = Color3.fromRGB(255, 246, 236) },
-		{ b = 0.012, c = 0.06, s = 0.02, tint = Color3.fromRGB(246, 249, 255) }, -- crisp
-		{ b = 0.02, c = 0.08, s = 0.07, tint = Color3.fromRGB(255, 240, 214) }, -- rich and golden
+		{ b = 0, c = 0.04, s = -0.06, tint = Color3.fromRGB(255, 236, 212) }, -- tired, yellowed
+		{ b = 0, c = 0.03, s = 0, tint = Color3.fromRGB(255, 246, 236) },
+		{ b = 0.01, c = 0.04, s = 0.02, tint = Color3.fromRGB(246, 249, 255) }, -- crisp
+		{ b = 0.01, c = 0.05, s = 0.06, tint = Color3.fromRGB(255, 241, 218) }, -- rich and golden
 	},
-	GymElite = { b = 0.02, c = 0.06, s = -0.03, tint = Color3.fromRGB(236, 244, 255) },
-	Barbershop = { b = 0.01, c = 0.05, s = 0.06, tint = Color3.fromRGB(255, 236, 214) },
-	Apartment = { b = 0, c = 0.03, s = -0.04, tint = Color3.fromRGB(255, 240, 226) },
-	Store = { b = 0.03, c = 0.04, s = 0.03, tint = Color3.fromRGB(246, 250, 255) },
-	Mansion = { b = 0.02, c = 0.08, s = 0.07, tint = Color3.fromRGB(255, 238, 210) },
+	GymElite = { b = 0.01, c = 0.04, s = -0.02, tint = Color3.fromRGB(238, 245, 255) },
+	Barbershop = { b = 0.01, c = 0.04, s = 0.05, tint = Color3.fromRGB(255, 238, 216) },
+	Apartment = { b = 0, c = 0.02, s = -0.03, tint = Color3.fromRGB(255, 241, 228) },
+	Store = { b = 0.02, c = 0.03, s = 0.03, tint = Color3.fromRGB(246, 250, 255) },
+	Mansion = { b = 0.01, c = 0.05, s = 0.06, tint = Color3.fromRGB(255, 239, 212) },
 	Street = { b = 0, c = 0.02, s = 0, tint = Color3.fromRGB(255, 255, 255) },
 }
 local NEUTRAL = { b = 0, c = 0, s = 0, tint = Color3.new(1, 1, 1) }
@@ -480,6 +487,61 @@ local function updateGrade(dt, cam)
 	grade.Contrast = gradeNow.c
 	grade.Saturation = gradeNow.s
 	grade.TintColor = gradeNow.tint
+end
+
+------------------------------------------------------------------------
+-- Exposure: per place (LightLevels), lifted outdoors at night, plus the brightness preference.
+-- Fight nights own it (VenueFX); we pick up from wherever they leave it.
+------------------------------------------------------------------------
+local expoNow
+local function updateExposure(dt, cam)
+	if player:GetAttribute("InFight") == true or workspace:FindFirstChild("VenueFX_Local") then
+		expoNow = nil
+		return
+	end
+	local z = zoneAt(cam)
+	local prof = z and z:GetAttribute("Profile")
+	local target
+	if prof and prof ~= "Street" then
+		target = LightLevels.Zone(prof)
+	else
+		target = nightNow() and LightLevels.NightOutside or LightLevels.Zone("Outside")
+	end
+	target += LightLevels.UserExposure()
+	expoNow = expoNow or Lighting.ExposureCompensation
+	expoNow += (target - expoNow) * math.clamp(dt * 1.5, 0, 1)
+	if math.abs(Lighting.ExposureCompensation - expoNow) > 0.002 then
+		Lighting.ExposureCompensation = expoNow
+	end
+end
+
+------------------------------------------------------------------------
+-- Night sky fill: Roblox keeps OutdoorAmbient the same at midnight as at noon, so the city looked
+-- like an overcast day. After dusk it eases to a cooler, dimmer moonlight; the street lights then
+-- give warm pools against it (the exposure lift above keeps people readable).
+------------------------------------------------------------------------
+local skyDay -- the server's daytime OutdoorAmbient (captured once)
+local NIGHT_OUTDOOR = Color3.fromRGB(96, 106, 136)
+local function nightFactor()
+	local h = Lighting.ClockTime
+	if h >= 19.5 or h < 4.8 then
+		return 1
+	elseif h >= 17.3 then
+		return (h - 17.3) / 2.2
+	elseif h < 7 then
+		return (7 - h) / 2.2
+	end
+	return 0
+end
+local function updateSky()
+	if player:GetAttribute("InFight") == true or workspace:FindFirstChild("VenueFX_Local") then
+		return
+	end
+	skyDay = skyDay or Lighting.OutdoorAmbient
+	local c = skyDay:Lerp(NIGHT_OUTDOOR, math.clamp(nightFactor(), 0, 1))
+	if Lighting.OutdoorAmbient ~= c then
+		Lighting.OutdoorAmbient = c
+	end
 end
 
 ------------------------------------------------------------------------
@@ -750,7 +812,7 @@ local DUST_ZONES = {
 	{ "Recovery", 50, 22, 108, 78 }, { "Services", -108, 22, -50, 78 }, { "Lobby", -45, 4, 45, 78 },
 	{ "Wing", 112, 31, 152, 65, true }, -- 6th field: a clean room (fewer motes)
 }
-local DUST_RATE = { 7, 4.5, 2.2, 2.6 } -- per 6000 square studs, by facility tier (old gyms are dusty)
+local DUST_RATE = { 9, 6, 3.5, 3.5 } -- per 6000 square studs, by facility tier (old gyms are dusty)
 local dust = {}
 
 local function buildDust()
@@ -767,10 +829,12 @@ local function buildDust()
 		pe.Name = "Motes"
 		pe.Enabled = false
 		pe.Color = ColorSequence.new(Color3.fromRGB(255, 244, 222))
+		-- lit by the lamps and the sun shafts (LightInfluence 1), with a little glow of their own so
+		-- they still sparkle in the shaft light Future gives particles
 		pe.LightInfluence = 1
-		pe.LightEmission = 0.35
-		pe.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.04), NumberSequenceKeypoint.new(0.5, 0.08), NumberSequenceKeypoint.new(1, 0.05) })
-		pe.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.2, 0.3), NumberSequenceKeypoint.new(0.8, 0.45), NumberSequenceKeypoint.new(1, 1) })
+		pe.LightEmission = 0.55
+		pe.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.05), NumberSequenceKeypoint.new(0.5, 0.1), NumberSequenceKeypoint.new(1, 0.06) })
+		pe.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.2, 0.25), NumberSequenceKeypoint.new(0.8, 0.4), NumberSequenceKeypoint.new(1, 1) })
 		pe.Lifetime = NumberRange.new(8, 14)
 		pe.Speed = NumberRange.new(0.05, 0.2)
 		pe.SpreadAngle = Vector2.new(180, 180)
@@ -903,7 +967,7 @@ local function updateShafts(cam)
 					pr[1].CFrame = rot
 					pr[2].CFrame = rot + (finish - c)
 				end
-				local a = 1 - 0.13 * strength * math.clamp(into * 1.4, 0.3, 1)
+				local a = 1 - 0.17 * strength * math.clamp(into * 1.4, 0.3, 1)
 				local seq = NumberSequence.new({ NumberSequenceKeypoint.new(0, math.min(1, a)), NumberSequenceKeypoint.new(0.75, math.min(1, a + 0.04)), NumberSequenceKeypoint.new(1, 1) })
 				for _, b in ipairs(e.beams) do
 					b.Transparency = seq
@@ -929,14 +993,15 @@ local function updateShafts(cam)
 				sp.Parent = e.holder
 				e.spot = Instance.new("SpotLight")
 				e.spot.Shadows = false
-				e.spot.Angle = 35
+				e.spot.Angle = 42
 				e.spot.Color = Color3.fromRGB(255, 226, 180)
 				e.spot.Face = Enum.NormalId.Front
 				e.spot.Parent = sp
 			end
 			e.spot.Parent.CFrame = CFrame.lookAt(e.holder.Position, e.holder.Position + s.dir)
 			e.spot.Range = math.min(60, s.len + 6)
-			e.spot.Brightness = 0.55 * strength
+			-- the window's sunlight pool on the floor (and on a boxer standing in it)
+			e.spot.Brightness = 1.4 * strength
 			e.spot.Enabled = true
 		elseif e.spot then
 			e.spot.Enabled = false
@@ -995,6 +1060,14 @@ function Ambience.Start()
 		nightLenses[p] = nil
 	end)
 	updateNight(true)
+	local okC, errC = pcall(CharacterLight.Start)
+	if not okC then
+		warn("[Ambience] CharacterLight:", errC)
+	end
+	-- the brightness preference applies at once, not on the next 4 Hz tick
+	LightLevels.OnChanged(function()
+		pcall(updateExposure, 1, camPos())
+	end)
 	-- optional systems: any of them failing must never stop the fans and clocks
 	for _, fn in ipairs({ startBed, buildDust }) do
 		local ok, err = pcall(fn)
@@ -1037,6 +1110,8 @@ function Ambience.Start()
 			updateTimers(cam)
 			updateNeons(cam)
 			safe(updateGrade, slowStep, cam)
+			safe(updateExposure, slowStep, cam)
+			safe(updateSky)
 			safe(updateReverb, cam)
 			safe(updateRandomNoises, cam, now)
 			safe(updateChatter, cam, now)

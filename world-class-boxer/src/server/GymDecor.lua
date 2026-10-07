@@ -497,13 +497,15 @@ end
 ------------------------------------------------------------------------
 -- 2. Lighting rig (interior)
 ------------------------------------------------------------------------
+-- warm key light from the pendants: a boxer under the grid reads at mid grey (the lamps were tuned
+-- for a much darker hall; Future's falloff over the 19 studs to chest height needs ~2.5)
 local LIGHT = {
-	boxing = { color = Color3.fromRGB(255, 238, 214), brightness = 1.9 },
-	weights = { color = Color3.fromRGB(255, 240, 222), brightness = 1.8 },
-	cardio = { color = Color3.fromRGB(226, 238, 255), brightness = 1.8 },
-	recovery = { color = Color3.fromRGB(255, 226, 192), brightness = 1.35 },
-	services = { color = Color3.fromRGB(255, 228, 196), brightness = 1.5 },
-	lobby = { color = Color3.fromRGB(255, 232, 200), brightness = 1.6 },
+	boxing = { color = Color3.fromRGB(255, 236, 210), brightness = 2.7 },
+	weights = { color = Color3.fromRGB(255, 238, 218), brightness = 2.6 },
+	cardio = { color = Color3.fromRGB(230, 240, 255), brightness = 2.6 },
+	recovery = { color = Color3.fromRGB(255, 226, 192), brightness = 2.1 },
+	services = { color = Color3.fromRGB(255, 228, 196), brightness = 2.3 },
+	lobby = { color = Color3.fromRGB(255, 232, 200), brightness = 2.4 },
 }
 
 local function zoneLight(x, z)
@@ -525,7 +527,8 @@ local function pendant(parent, x, z, y, zone)
 	vcyl(m, "LampReflector", 0.05, 3.3, CF(x, y - 0.27, z), Color3.fromRGB(245, 240, 225), M.SmoothPlastic, { shadow = false })
 	ball(m, "LampBulb", 0.95, CF(x, y - 0.55, z), zone.color, M.Neon, { shadow = false })
 	local src = emitter(m, CF(x, y - 1.2, z))
-	spot(src, Enum.NormalId.Bottom, zone.color, 44, zone.brightness, 115, false)
+	-- a wide cone so neighbouring pools overlap (no dark bands between lamps 30 studs apart)
+	spot(src, Enum.NormalId.Bottom, zone.color, 58, zone.brightness, 130, false)
 	return m
 end
 
@@ -552,7 +555,8 @@ local function buildLights(root)
 		local can = part(f, "RingCan", V3(1.2, 1.2, 1.9), CFrame.lookAt(canPos, rc + V3(0, 3, 0)), C.black, M.Metal, { shadow = false })
 		part(f, "RingCanLens", V3(0.95, 0.95, 0.06), can.CFrame * CF(0, 0, -0.97), Color3.fromRGB(255, 250, 235), M.Neon, { shadow = false })
 		local src = emitter(f, can.CFrame * CF(0, 0, -1.3))
-		spot(src, Enum.NormalId.Front, Color3.fromRGB(255, 246, 228), 46, 2.6, 58, true)
+		-- angled 45 degrees down from the corners: modelling key light on faces and muscles
+		spot(src, Enum.NormalId.Front, Color3.fromRGB(255, 246, 228), 52, 3.4, 62, true)
 	end
 	local banner = part(f, "CanopyBanner", V3(14, 1.6, 0.12), CF(rc + V3(0, y - 1.3, 9.35)), C.red, M.Fabric, { shadow = false })
 	sign(banner, Enum.NormalId.Back, "WCB SPARRING RING", Color3.new(1, 1, 1), nil, 30)

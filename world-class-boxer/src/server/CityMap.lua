@@ -149,7 +149,7 @@ end
 
 -- a light that is always on (interiors are under a roof: Future lighting leaves them dark by day)
 local function roomLight(parent, cf, color, range, brightness)
-	return point(emitter(parent, cf), color or Color3.fromRGB(255, 236, 210), range or 18, brightness or 1.1)
+	return point(emitter(parent, cf), color or Color3.fromRGB(255, 236, 210), (range or 18) * 1.15, (brightness or 1.1) * 1.3)
 end
 
 -- a light that comes on at dusk (Ambience switches every NightLight)
@@ -217,7 +217,8 @@ local function streetLight(parent, base, dir, withLight)
 	local lens = part(m, "LightLens", V3(0.8, 0.08, 1.8), head.CFrame * CF(0, -0.26, 0), LENS_DAY, M.SmoothPlastic, { shadow = false })
 	tag(lens, "NightLens")
 	if withLight then
-		local l = spot(emitter(m, head.CFrame * CF(0, -0.8, 0)), Enum.NormalId.Bottom, Color3.fromRGB(255, 220, 170), 44, 1.7, 120)
+		-- a wide warm pool: after dark these carry the street (people on the sidewalk read clearly)
+		local l = spot(emitter(m, head.CFrame * CF(0, -0.8, 0)), Enum.NormalId.Bottom, Color3.fromRGB(255, 222, 176), 50, 2.4, 130)
 		l.Enabled = false
 		tag(l, "NightLight")
 	end
