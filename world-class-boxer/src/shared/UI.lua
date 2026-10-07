@@ -386,7 +386,7 @@ local function bar(parent, w, h, x, y, rot, color, z)
 	return f
 end
 
--- kind: close, left, right, up, down, check, plus, minus, play, menu, lock, dot, star, bolt
+-- kind: close, left, right, up, down, check, plus, minus, play, menu, lock, dot, star, bolt, reset / undo
 function UI.Icon(parent, kind, size, color, props)
 	size = size or 16
 	color = color or T.text
@@ -440,6 +440,15 @@ function UI.Icon(parent, kind, size, color, props)
 		bar(f, 0.5, th, 0.56, 0.3, 60, color, z)
 		bar(f, 0.5, th, 0.5, 0.5, 0, color, z)
 		bar(f, 0.5, th, 0.44, 0.7, 60, color, z)
+	elseif kind == "reset" or kind == "undo" then
+		-- a ring open at the top left with an arrow head on its end (reset: back to the default; undo)
+		local ring = UI.New("Frame", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.54), Size = UDim2.fromScale(0.74, 0.74), BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = z, Parent = f })
+		UI.Corner(ring, size)
+		local st = UI.New("UIStroke", { Color = color, Thickness = th, Parent = ring })
+		-- the gap: a gradient on the stroke fades its top-left quarter out
+		UI.New("UIGradient", { Rotation = -45, Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.3, 1), NumberSequenceKeypoint.new(0.31, 0), NumberSequenceKeypoint.new(1, 0) }), Parent = st })
+		bar(f, 0.34, th, 0.2, 0.26, 0, color, z)
+		bar(f, 0.34, th, 0.07, 0.2 + 0.13, 90, color, z)
 	else -- dot
 		local d = UI.New("Frame", { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromScale(0.5, 0.5), BackgroundColor3 = color, BorderSizePixel = 0, ZIndex = z, Parent = f })
 		UI.Corner(d, size)
@@ -934,8 +943,9 @@ end
 -- left stick and A presses the selected button. The kit adds the rest: a start selection when a window
 -- opens (or the player picks up a pad while one is open), the selection kept inside the top window (each
 -- UI.Window is a SelectionGroup) and put back near where it was when a re-render destroys it, B = the
--- window's back / close, D-pad left / right (and A) on slider, cycler, toggle and colour rows, and the right
--- stick scrolling the list under the selection. UI.PadStart(button) makes a button its window's start
+-- window's back / close, D-pad left / right (and A) on slider, cycler, toggle and colour rows (held on a
+-- slider: it keeps stepping; X puts a slider back to its default), and the right stick scrolling the list
+-- under the selection. UI.PadStart(button) makes a button its window's start
 -- selection. UI.PadHold(key, true) pauses all of it while a screen with its own navigation is up (the main
 -- menu, a fight).
 local padWindows = {} -- open UI.Window entries, oldest first: { shade, win, back, lastPos }
@@ -1121,9 +1131,11 @@ local function scrollTarget(w)
 	return sf or nil
 end
 
+-- a D-pad held on a selected slider keeps stepping it (bumped to stop)
+local padRepeat = 0
 local function padInput(input)
 	local k = input.KeyCode
-	if k ~= Enum.KeyCode.ButtonB and k ~= Enum.KeyCode.DPadLeft and k ~= Enum.KeyCode.DPadRight and k ~= Enum.KeyCode.ButtonA then
+	if k ~= Enum.KeyCode.ButtonB and k ~= Enum.KeyCode.DPadLeft and k ~= Enum.KeyCode.DPadRight and k ~= Enum.KeyCode.ButtonA and k ~= Enum.KeyCode.ButtonX then
 		return
 	end
 	if UserInputService:GetFocusedTextBox() then
@@ -1137,10 +1149,27 @@ local function padInput(input)
 		end
 		return
 	end
-	-- a selected input row steps (its own buttons are not selectable: D-pad left / right would leave it)
+	-- a selected input row steps (its own buttons are not selectable: D-pad left / right would leave it);
+	-- X puts a selected slider back to its default
 	local sel = GuiService.SelectedObject
-	if sel and sel:GetAttribute("PadRow") then
-		UI.Nudge(sel, k == Enum.KeyCode.ButtonA and 0 or (k == Enum.KeyCode.DPadLeft and -1 or 1))
+	if not (sel and sel:GetAttribute("PadRow")) then
+		return
+	end
+	if k == Enum.KeyCode.ButtonX then
+		UI.ResetRow(sel)
+		return
+	end
+	local dir = k == Enum.KeyCode.ButtonA and 0 or (k == Enum.KeyCode.DPadLeft and -1 or 1)
+	UI.Nudge(sel, dir)
+	if dir ~= 0 and sel:GetAttribute("Slider") then
+		padRepeat += 1
+		local my = padRepeat
+		task.delay(0.4, function()
+			while padRepeat == my and GuiService.SelectedObject == sel and sel.Parent do
+				UI.Nudge(sel, dir)
+				task.wait(0.075)
+			end
+		end)
 	end
 end
 
@@ -1178,6 +1207,11 @@ local function padInit()
 		end
 	end)
 	UserInputService.InputBegan:Connect(padInput)
+	UserInputService.InputEnded:Connect(function(input)
+		if input.KeyCode == Enum.KeyCode.DPadLeft or input.KeyCode == Enum.KeyCode.DPadRight then
+			padRepeat += 1
+		end
+	end)
 	UserInputService.InputChanged:Connect(function(input)
 		if input.KeyCode ~= Enum.KeyCode.Thumbstick2 then
 			return
@@ -1389,26 +1423,69 @@ end
 ------------------------------------------------------------------------
 -- Inputs
 ------------------------------------------------------------------------
--- onPos(screen position) while the pointer is held on target; onEnd() once it is released
+-- a scrolling list held still while a slider is dragged or wheel-adjusted (ref-counted: a drag and a
+-- hover can overlap on one list, and the list gets its own setting back when the last one lets go)
+local scrollHolds = {} -- [ScrollingFrame] = { n = holds, was = ScrollingEnabled before }
+local function holdScroll(sf, on)
+	if not sf then
+		return
+	end
+	local h = scrollHolds[sf]
+	if on then
+		if not h then
+			h = { n = 0, was = sf.ScrollingEnabled }
+			scrollHolds[sf] = h
+			sf.ScrollingEnabled = false
+		end
+		h.n += 1
+	elseif h then
+		h.n -= 1
+		if h.n <= 0 then
+			scrollHolds[sf] = nil
+			if sf.Parent then
+				sf.ScrollingEnabled = h.was
+			end
+		end
+	end
+end
+
+local MB1, TOUCH, MOVE, WHEEL = Enum.UserInputType.MouseButton1, Enum.UserInputType.Touch, Enum.UserInputType.MouseMovement, Enum.UserInputType.MouseWheel
+
+-- onPos(screen position, first) while the pointer that pressed target stays down - anywhere on the screen,
+-- so a drag need not stay on the bar; onEnd() once it is released. A touch drag follows its own finger
+-- only (a second finger on the screen does not yank it), and the scrolling list around target holds
+-- still for the drag (a sideways slide on a phone would otherwise scroll the page).
 local function dragTracker(target, onPos, onEnd)
-	local dragging = false
-	local function update(input)
-		onPos(Vector2.new(input.Position.X, input.Position.Y))
+	local active -- the InputObject that started the drag (the mouse button or the touch)
+	local held -- the ScrollingFrame held still for it
+	local function stop()
+		active = nil
+		if held then
+			holdScroll(held, false)
+			held = nil
+		end
 	end
 	target.InputBegan:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-			dragging = true
-			update(input)
+		local t = input.UserInputType
+		if active == nil and (t == MB1 or t == TOUCH) then
+			active = input
+			held = target:FindFirstAncestorWhichIsA("ScrollingFrame")
+			holdScroll(held, true)
+			onPos(Vector2.new(input.Position.X, input.Position.Y), true)
 		end
 	end)
 	local c1 = UserInputService.InputChanged:Connect(function(input)
-		if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-			update(input)
+		if active == nil then
+			return
+		end
+		local t = input.UserInputType
+		if (t == MOVE and active.UserInputType == MB1) or (t == TOUCH and input == active) then
+			onPos(Vector2.new(input.Position.X, input.Position.Y), false)
 		end
 	end)
 	local c2 = UserInputService.InputEnded:Connect(function(input)
-		if dragging and (input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch) then
-			dragging = false
+		if active ~= nil and (input == active or (input.UserInputType == MB1 and active.UserInputType == MB1)) then
+			stop()
 			if onEnd then
 				onEnd()
 			end
@@ -1417,6 +1494,7 @@ local function dragTracker(target, onPos, onEnd)
 	target.Destroying:Connect(function()
 		c1:Disconnect()
 		c2:Disconnect()
+		stop()
 	end)
 end
 UI.DragTracker = dragTracker
@@ -1431,12 +1509,15 @@ local function inputRow(parent, label, h)
 end
 
 -- input rows (slider, cycler, toggle) by frame: their step function, for keyboard / gamepad focus
--- navigation (UI.Nudge; MainMenu's settings screen)
+-- navigation (UI.Nudge; MainMenu's settings screen), and a slider's back-to-default (UI.ResetRow: X on a
+-- gamepad)
 local inputNudge = {}
+local inputReset = {}
 local function registerNudge(f, fn)
 	inputNudge[f] = fn
 	f.Destroying:Connect(function()
 		inputNudge[f] = nil
+		inputReset[f] = nil
 	end)
 end
 
@@ -1452,38 +1533,110 @@ local function padRow(f, ...)
 	end
 end
 
--- slider row: returns frame, setValue(v). [-] and [+] buttons step it (gamepad selection + A, mouse,
--- touch); dragging the track sets it directly. opts.onRelease: onChange fires when a drag ends
--- instead of on every step of it (a setting that rebuilds the screen it lives on: the UI scale)
+-- a [-] / [+] held down repeats (one hold at a time: any pointer release anywhere stops it)
+local holdTok = 0
+local holdConn
+local function holdStop()
+	holdTok += 1
+end
+local function holdRepeat(row, fn)
+	fn()
+	holdTok += 1
+	local my = holdTok
+	if not holdConn then
+		holdConn = UserInputService.InputEnded:Connect(function(input)
+			if input.UserInputType == MB1 or input.UserInputType == TOUCH then
+				holdStop()
+			end
+		end)
+	end
+	task.delay(0.4, function()
+		while holdTok == my and row.Parent do
+			fn()
+			task.wait(0.07)
+		end
+	end)
+end
+
+-- words for a value: opts.words is fn(v) -> text, or a list spread evenly over the range
+local function wordFor(words, v, a)
+	if type(words) == "function" then
+		return words(v)
+	elseif type(words) == "table" and #words > 0 then
+		return words[math.clamp(math.floor(a * #words) + 1, 1, #words)]
+	end
+	return nil
+end
+
+-- slider row: returns frame, setValue(v). Two lines: the label, the value in plain words (opts.words)
+-- next to its number (fmt) and a reset-to-default button (opts.default; X on a gamepad) on top, then a
+-- big [-] / track / [+] line: tap or click anywhere on the track to jump there, drag from it and keep
+-- dragging anywhere on the screen, the mouse wheel steps it while the pointer rests on it, [-] / [+]
+-- step it (held: repeat) and a notch marks the default. opts.hint = one line under the label.
+-- onChange(v) fires on every change (live preview: callers throttle what it costs); opts.onRelease
+-- delays it to the end of a drag instead (a setting that rebuilds the screen it lives on: the UI scale);
+-- opts.onEnd(v) fires once at the end of every gesture (a drag let go, a step, a reset, a wheel notch).
 function UI.Slider(parent, label, min, max, value, step, onChange, fmt, opts)
 	opts = opts or {}
-	local f = inputRow(parent, label)
+	local hint = opts.hint
+	local hasDefault = type(opts.default) == "number"
+	local f = UI.Frame(parent, { Size = UDim2.new(1, 0, 0, hint and 86 or 70), BackgroundColor3 = T.panel2, BackgroundTransparency = 0.45 })
 	f:SetAttribute("Slider", true)
-	local track = UI.Frame(f, { Name = "Track", Position = UDim2.new(0.36, 40, 0.5, -2), Size = UDim2.new(0.5, -98, 0, 4), BackgroundColor3 = T.ink, BackgroundTransparency = 0.1, Active = true })
-	UI.Corner(track, 2)
-	local fill = UI.Frame(track, { Size = UDim2.fromScale(0, 1), BackgroundColor3 = T.gold })
-	UI.Corner(fill, 2)
+	UI.Corner(f, UI.R.md)
+	local right = hasDefault and 50 or 14
+	UI.Text(f, label, { Name = "Label", Position = UDim2.fromOffset(14, 6), Size = UDim2.new(0.5, -14, 0, 22), TextColor3 = T.text, TextSize = 15, Font = T.semi,
+		AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
+	local valText = UI.Text(f, "", { Name = "Value", Face = "displayMed", AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -right, 0, 4), Size = UDim2.new(0.5, 8 - right, 0, 26),
+		TextXAlignment = Enum.TextXAlignment.Right, TextSize = 18, TextColor3 = T.gold, AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
+	if hint then
+		UI.Text(f, hint, { Name = "Hint", Position = UDim2.fromOffset(14, 28), Size = UDim2.new(1, -28, 0, 16), TextSize = 12, TextColor3 = T.sub,
+			AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
+	end
+	local y0 = hint and 44 or 30
+	local track = UI.Frame(f, { Name = "Track", Position = UDim2.new(0, 62, 0, y0 + 14), Size = UDim2.new(1, -124, 0, 8), BackgroundColor3 = T.ink, BackgroundTransparency = 0.1 })
+	UI.Corner(track, 4)
+	local fill = UI.Frame(track, { Name = "Fill", Size = UDim2.fromScale(0, 1), BackgroundColor3 = T.gold })
+	UI.Corner(fill, 4)
 	UI.Gradient(fill, { T.goldDeep:Lerp(Color3.new(1, 1, 1), 0.2), Color3.new(1, 1, 1) }, 0)
-	local knob = UI.Frame(track, { Size = UDim2.fromOffset(16, 16), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0, 0.5), BackgroundColor3 = T.white })
-	UI.Corner(knob, 8)
-	UI.Stroke(knob, T.gold, 2)
-	local hit = UI.New("TextButton", { Parent = track, Text = "", BackgroundTransparency = 1, Size = UDim2.new(1, 16, 0, 32), Position = UDim2.new(0, -8, 0.5, -16), Selectable = false })
-	-- the value box reaches back to just right of the [+] button: "145 lbs" fits a phone-width row
-	local valText = UI.Text(f, "", { Face = "number", Position = UDim2.new(0.86, -12, 0, 0), Size = UDim2.new(0.14, -2, 1, 0), TextXAlignment = Enum.TextXAlignment.Right, TextSize = 17,
-		AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
+	if hasDefault and max > min then
+		local da = math.clamp((opts.default - min) / (max - min), 0, 1)
+		UI.Frame(track, { Name = "Notch", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(da, 0.5), Size = UDim2.fromOffset(2, 20), BackgroundColor3 = T.text, BackgroundTransparency = 0.35 })
+	end
+	local knob = UI.Frame(track, { Name = "Knob", Size = UDim2.fromOffset(24, 24), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0, 0.5), BackgroundColor3 = T.white })
+	UI.Corner(knob, 12)
+	UI.Stroke(knob, T.gold, 3)
+	-- the hit area: the whole line between [-] and [+] (wider and taller than the bar itself)
+	local hit = UI.New("TextButton", { Name = "Hit", Parent = f, Text = "", AutoButtonColor = false, BackgroundTransparency = 1, BorderSizePixel = 0, Position = UDim2.new(0, 50, 0, y0 - 4),
+		Size = UDim2.new(1, -100, 0, 44), Selectable = false })
 	local cur = value
 	local dragging = false
+	local resetBtn, resetIcon, atDefault
+	local q = step or (max - min) / 200 -- free sliders move in half-percent steps (a drag sends fewer changes)
 	local function show(v)
-		local a = (v - min) / (max - min)
+		local a = max > min and math.clamp((v - min) / (max - min), 0, 1) or 0
 		fill.Size = UDim2.fromScale(a, 1)
 		knob.Position = UDim2.fromScale(a, 0.5)
-		valText.Text = fmt and fmt(v) or (step and step >= 1 and tostring(math.floor(v + 0.5)) or string.format("%d%%", math.floor(a * 100 + 0.5)))
+		local num = fmt and fmt(v) or (step and step >= 1 and tostring(math.floor(v + 0.5)) or string.format("%d%%", math.floor(a * 100 + 0.5)))
+		local word = wordFor(opts.words, v, a)
+		valText.Text = (word and num ~= "") and (word .. "  ·  " .. num) or (word or num)
+		f:SetAttribute("Value", v)
+		local at = resetBtn and math.abs(v - opts.default) < q * 0.5
+		if resetBtn and at ~= atDefault then
+			-- the reset button dims while the value sits on its default
+			atDefault = at
+			resetBtn.BackgroundTransparency = at and 0.75 or 0.2
+			for _, d in ipairs(resetIcon:GetDescendants()) do
+				if d:IsA("Frame") and d.BackgroundTransparency < 1 then
+					d.BackgroundColor3 = at and T.dim or T.text
+				elseif d:IsA("UIStroke") then
+					d.Color = at and T.dim or T.text
+				end
+			end
+		end
 	end
 	local function set(v, fire)
 		v = math.clamp(v, min, max)
-		if step then
-			v = math.floor((v - min) / step + 0.5) * step + min
-		end
+		v = math.clamp(math.floor((v - min) / q + 0.5) * q + min, min, max)
 		if v ~= cur then
 			cur = v
 			show(v)
@@ -1493,6 +1646,11 @@ function UI.Slider(parent, label, min, max, value, step, onChange, fmt, opts)
 		end
 	end
 	local committed = value
+	local function gestureEnd()
+		if opts.onEnd then
+			opts.onEnd(cur)
+		end
+	end
 	dragTracker(hit, function(pos)
 		dragging = true
 		local a = math.clamp((pos.X - track.AbsolutePosition.X) / math.max(1, track.AbsoluteSize.X), 0, 1)
@@ -1503,28 +1661,93 @@ function UI.Slider(parent, label, min, max, value, step, onChange, fmt, opts)
 			committed = cur
 			onChange(cur)
 		end
+		committed = cur
+		gestureEnd()
 	end)
 	local function nudge(d)
+		if d == 0 then
+			return -- (A on the row: a slider has nothing to press)
+		end
 		set(cur + d * (step or (max - min) / 20), true)
 		committed = cur
+		gestureEnd()
 	end
+	local function reset()
+		if hasDefault then
+			set(opts.default, true)
+			committed = cur
+			gestureEnd()
+		end
+	end
+	-- the mouse wheel steps the slider once the pointer has really moved onto its track (not when the
+	-- page scrolls a track under a resting pointer); the list holds still meanwhile
+	local wheelFrom, wheelArmed = nil, false
+	local wheelList
+	local function disarm()
+		wheelFrom = nil
+		if wheelArmed then
+			wheelArmed = false
+			holdScroll(wheelList, false)
+		end
+	end
+	hit.MouseEnter:Connect(function()
+		wheelFrom = UserInputService:GetMouseLocation()
+	end)
+	hit.MouseMoved:Connect(function()
+		if not wheelArmed and wheelFrom and (UserInputService:GetMouseLocation() - wheelFrom).Magnitude > 2 then
+			wheelArmed = true
+			wheelList = f:FindFirstAncestorWhichIsA("ScrollingFrame")
+			holdScroll(wheelList, true)
+		end
+	end)
+	hit.MouseLeave:Connect(disarm)
+	hit.InputChanged:Connect(function(input)
+		if wheelArmed and input.UserInputType == WHEEL and input.Position.Z ~= 0 then
+			nudge(input.Position.Z > 0 and 1 or -1)
+		end
+	end)
+	f.Destroying:Connect(disarm)
 	local steppers = {}
-	for _, spec in ipairs({ { "Minus", -1, UDim2.new(0.36, 0, 0.5, 0), "minus" }, { "Plus", 1, UDim2.new(0.86, -50, 0.5, 0), "plus" } }) do
-		local b = UI.Button(f, "", { Name = spec[1], Size = UDim2.fromOffset(32, 32), AnchorPoint = Vector2.new(0, 0.5), Position = spec[3], BackgroundColor3 = T.panel2, BackgroundTransparency = 0.2 }, function()
-			nudge(spec[2])
+	for _, spec in ipairs({ { "Minus", -1, UDim2.new(0, 10, 0, y0), "minus" }, { "Plus", 1, UDim2.new(1, -46, 0, y0), "plus" } }) do
+		local b = UI.Button(f, "", { Name = spec[1], Size = UDim2.fromOffset(36, 36), Position = spec[3], BackgroundColor3 = T.panel2, BackgroundTransparency = 0.2 })
+		UI.Icon(b, spec[4], 13, T.text, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5) })
+		b.MouseButton1Down:Connect(function()
+			holdRepeat(f, function()
+				nudge(spec[2])
+			end)
 		end)
-		UI.Icon(b, spec[4], 12, T.text, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5) })
+		b.MouseButton1Up:Connect(holdStop)
+		b.MouseLeave:Connect(holdStop)
 		table.insert(steppers, b)
 	end
-	-- (dir 0 = A on the row: a slider has nothing to press)
+	if hasDefault then
+		resetBtn = UI.Button(f, "", { Name = "Reset", Size = UDim2.fromOffset(30, 30), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -12, 0, 2), BackgroundColor3 = T.panel2 }, reset)
+		resetIcon = UI.Icon(resetBtn, "reset", 14, T.text, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5) })
+		table.insert(steppers, resetBtn)
+		inputReset[f] = reset
+	end
 	registerNudge(f, nudge)
-	padRow(f, steppers[1], steppers[2])
+	padRow(f, hit, table.unpack(steppers))
 	show(value)
 	return f, function(v)
 		cur = v
 		committed = v
 		show(v)
 	end
+end
+
+-- puts the slider row that contains obj back to its default (false when obj is in none / it has none)
+function UI.ResetRow(obj)
+	local o = obj
+	while o do
+		local fn = inputReset[o]
+		if fn then
+			fn()
+			return true
+		end
+		o = o.Parent
+	end
+	return false
 end
 
 -- steps the input row that contains obj (a slider's [-] / [+], a cycler, a toggle, or the row itself)
@@ -1634,31 +1857,50 @@ local function toRGB(c)
 end
 UI.ToRGB = toRGB
 
--- swatch row; colors = list of {r,g,b}; onPick(rgb, index)
-function UI.Swatches(parent, label, colors, selected, onPick)
+-- swatch grid; colors = list of {r,g,b}; onPick(rgb, index). The picked swatch wears a gold ring and a
+-- tick; opts.names (one per colour) shows the picked colour's name next to the label, opts.size = the
+-- swatch size (36). Returns frame, refresh(index | nil = none picked: a custom colour)
+function UI.Swatches(parent, label, colors, selected, onPick, opts)
+	opts = opts or {}
+	local size = opts.size or 36
 	local f = UI.Frame(parent, { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundColor3 = T.panel2, BackgroundTransparency = 0.45 })
 	UI.Corner(f, UI.R.md)
 	UI.Pad(f, 10, 14)
 	UI.List(f, 8)
-	UI.Text(f, label, { TextColor3 = T.sub, TextSize = 14, Font = T.semi })
-	local holder = UI.Frame(f, { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y })
-	UI.Grid(holder, 30, 30, 8)
+	local head = UI.Frame(f, { Name = "Head", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 20), LayoutOrder = 0 })
+	UI.Text(head, label, { Name = "Label", Size = UDim2.new(0.6, 0, 1, 0), TextColor3 = T.text, TextSize = 15, Font = T.semi, AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false,
+		TextTruncate = Enum.TextTruncate.AtEnd })
+	local nameText = UI.Text(head, "", { Name = "Value", AnchorPoint = Vector2.new(1, 0), Position = UDim2.fromScale(1, 0), Size = UDim2.new(0.4, 0, 1, 0), Face = "displayMed", TextSize = 17,
+		TextColor3 = T.gold, TextXAlignment = Enum.TextXAlignment.Right, AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
+	local holder = UI.Frame(f, { Name = "Grid", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = 1 })
+	UI.Grid(holder, size, size, 8)
+	holder:FindFirstChildOfClass("UIGridLayout").HorizontalAlignment = Enum.HorizontalAlignment.Left
 	local buttons = {}
 	local function refresh(idx)
 		for i, b in ipairs(buttons) do
+			local on = i == idx
 			local s = b:FindFirstChild("Ring")
 			if s then
-				s.Color = i == idx and T.gold or Color3.new(1, 1, 1)
-				s.Transparency = i == idx and 0 or 0.85
-				s.Thickness = i == idx and 3 or 1
+				s.Color = on and T.gold or Color3.new(1, 1, 1)
+				s.Transparency = on and 0 or 0.85
+				s.Thickness = on and 3 or 1
+			end
+			local tick = b:FindFirstChild("Tick")
+			if tick then
+				tick.Visible = on
 			end
 		end
+		local names = opts.names
+		nameText.Text = idx and names and names[idx] or (idx and "" or "Custom")
 	end
 	for i, col in ipairs(colors) do
-		local b = UI.New("TextButton", { Text = "", AutoButtonColor = false, BorderSizePixel = 0, BackgroundColor3 = toColor(col), LayoutOrder = i, Parent = holder })
-		UI.Corner(b, 15)
+		local c = toColor(col)
+		local b = UI.New("TextButton", { Name = "Swatch" .. i, Text = "", AutoButtonColor = false, BorderSizePixel = 0, BackgroundColor3 = c, LayoutOrder = i, Parent = holder })
+		UI.Corner(b, math.floor(size / 2))
 		UI.New("UIStroke", { Name = "Ring", Color = Color3.new(1, 1, 1), Transparency = 0.85, Thickness = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = b })
-		UI.Hover(b, { radius = 15, amount = 0.8 })
+		local tick = UI.Icon(b, "check", math.floor(size * 0.45), UI.InkOn(c), { Name = "Tick", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5) })
+		tick.Visible = false
+		UI.Hover(b, { radius = math.floor(size / 2), amount = 0.8 })
 		b.MouseButton1Click:Connect(function()
 			refresh(i)
 			if onPick then

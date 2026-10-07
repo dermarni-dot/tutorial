@@ -86,8 +86,38 @@ nutrition, sleep, stores, results, sparring picker) opens with a button already 
 or left stick moves the selection, **A** presses, and **B** closes the window (in the creator it goes
 back a page). The right stick scrolls long lists. On a selected slider, option cycler, toggle or
 colour wheel, D-pad left / right changes the value (**A** flips a toggle, steps a cycler or darkens
-the colour). In the Career Hub, **LB / RB** step through the tabs. The main menu uses the D-pad, **A**
+the colour). Held on a slider, the D-pad keeps stepping it, and **X** puts the slider back to its
+default. In the Career Hub, **LB / RB** step through the tabs. The main menu uses the D-pad, **A**
 to select and **B** to go back.
+
+**Sliders** (creator, barber, settings) work the same everywhere:
+- Each slider shows its value in plain words next to the number ("Wide · +40", "Very long · 90%",
+  "Loud · 85%", "5'10\"").
+- Click or tap anywhere on the bar to jump there. Drag from the bar: the drag keeps following even if
+  the pointer or finger drifts off it, and the list does not scroll meanwhile.
+- **-** and **+** step it. Hold them to keep stepping.
+- With the mouse resting on a bar, the wheel steps it.
+- A notch marks the default, and the round button at the top right puts the slider back on it.
+
+**Character creator.** Seven steps: Name, Face, Skin & Eyes, Hair, Body, Gear and Style.
+- **Moving between steps:** the step bar under the title (click a step to jump to it), **BACK** /
+  **NEXT**, or **LB / RB** on a controller.
+- **Presets first:** each step opens with them. Face presets, skin and eye swatches, hairstyle cards
+  with a little head wearing each style (filtered by Short / Fades / Curly / Locs / Long), body types,
+  gear kits and boxing styles.
+- **Main controls:** the four to six that matter most, each with a one-line hint. **ADVANCED** opens
+  every other slider of that step.
+- **UNDO** (also **Ctrl+Z**, or **Y** on a controller) steps back through the last 20 changes. A whole
+  slider drag counts as one change.
+- **RESET** puts the current step back to its defaults, and **RANDOM** randomises it. On the first
+  step, RANDOM rolls a whole new look.
+- **Colours** are swatch grids, with the picked colour ticked and named. A free colour wheel sits
+  under Advanced.
+- **Camera:** it frames the face on the face, skin and hair steps and the whole body on the others.
+  - Turn: drag the boxer (mouse or finger), use the arrows on the dock, or the right stick.
+  - Zoom: the mouse wheel over the 3D view, the dock's - / +, or **LT / RT**.
+- **Live preview:** every change shows on your boxer. While a slider moves, the preview goes to the
+  server at most four times a second, and once more when you let go.
 
 **Fights**
 

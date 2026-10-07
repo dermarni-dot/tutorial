@@ -1,13 +1,16 @@
--- Creator: the full character creator.
--- Identity (names, age, nationality, walkout song, voice), Face (6 shapes + feature sliders, boxer
--- wear, expression and fight-damage previews), Eyes & Skin (tone, undertone, eye colours incl.
--- heterochromia, brow style, skin detail), Hair (type, grouped styles, hairline, part, length /
--- density / thickness, growth preview, colour wheel, highlights, dye patterns, beard + beard
--- colour), Body (height, weight class, weight, reach, frame, physique, starting / peak preview,
--- six sliders), Gear & Style (trunks, socks, shoes, laces, wraps, mouthguard, robe, gloves) and
--- Fight Style. Every change previews live on your character (server-built), with a turntable
--- camera and a face key light on the head pages.
+-- Creator: the character creator, as seven steps with Back / Next and a step bar (jump to any step).
+-- Each step starts from presets (face presets, skin and eye swatches, a hairstyle grid with little
+-- head drawings, body types, gear kits, boxing styles), then shows its few main controls with plain-word
+-- readouts and one-line hints; an Advanced expander holds every other slider. The title row has UNDO
+-- (also Ctrl+Z / Y on a gamepad; the last 20 changes), RESET (this step back to the defaults) and RANDOM
+-- (this step randomised). Steps: Name (names, age, gender, nationality; voice and walkout song under
+-- Advanced), Face, Skin & Eyes, Hair (style, colour, beard), Body (type, height, division, weight,
+-- reach, build), Gear and Fight Style. Every change previews live on your character (server-built,
+-- sent at most four times a second while a slider moves and once when it is let go); the camera frames
+-- the face on the head steps and the whole body on the others, and turns (drag the 3D view, the dock's
+-- arrows or the right stick) and zooms (mouse wheel over the 3D view, the dock, LT / RT).
 local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
 local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
@@ -16,6 +19,7 @@ local Looks = require(Shared:WaitForChild("Looks"))
 local Catalog = require(Shared:WaitForChild("Catalog"))
 local UI = require(Shared:WaitForChild("UI"))
 local State = require(script.Parent:WaitForChild("State"))
+local LookKit = require(script.Parent:WaitForChild("LookKit"))
 local okFlags, Flags = pcall(function()
 	return require(script.Parent:WaitForChild("Flags", 5))
 end)
@@ -32,7 +36,6 @@ if not okHead then
 end
 
 local Creator = {}
-local player = State.player
 
 local function newState()
 	return {
@@ -43,18 +46,40 @@ local function newState()
 end
 local C = newState()
 local page = "Identity"
-local PAGES = { "Identity", "Face", "Eyes & Skin", "Hair", "Body", "Gear & Style", "Fight Style" }
-local HEAD_PAGES = { Face = true, ["Eyes & Skin"] = true, Hair = true }
+local PAGES = { "Identity", "Face", "Skin & Eyes", "Hair", "Body", "Gear", "Fight Style" }
+local SHORT = { Identity = "NAME", Face = "FACE", ["Skin & Eyes"] = "SKIN", Hair = "HAIR", Body = "BODY", Gear = "GEAR", ["Fight Style"] = "STYLE" }
+local TITLES = { Identity = "Your boxer" }
+local PAGE_HINTS = {
+	Identity = "Name your boxer - the rest can stay as it is. RANDOM on this step rolls a whole new look.",
+	Face = "Start from a face, then tune the main features. Advanced holds every detail.",
+	["Skin & Eyes"] = "Pick a skin tone and eye colour, then adjust the eyes and skin.",
+	Hair = "Tap a style, then a colour. Length, volume and the beard are below.",
+	Body = "Pick a body type and your size. Training shapes the rest of your body.",
+	Gear = "Pick a kit, or set the main colours yourself.",
+	["Fight Style"] = "How you box decides your starting stats.",
+}
+local HEAD_PAGES = { Face = true, ["Skin & Eyes"] = true, Hair = true }
 
 local shade, win, body
 local camConn, previewConn
+local inputConns = {}
 local camYaw = 0
-local camZoom = 0 -- head pages: -1 closer .. 1 wider
+local camZoom = 0 -- -1 closer .. 1 wider (back to 0 when the framing changes between face and body)
+local camHead = false
+local stickX = 0 -- right stick: turns the camera while held
+local turning -- the mouse button / touch turning the camera by dragging the 3D view
+local turnX = 0
 local dirty = false
 local dirtyFull = false -- a change that needs the whole body rebuilt (not just face / hair / beard)
 local lastSent = 0
+local inflight = false
+local SEND_EVERY = 0.25 -- at most four previews a second while a slider moves
 -- preview-only state (never saved)
 local view = { growth = 0, peak = false, expr = "neutral", damage = "None" }
+local advanced = {} -- [page] = the Advanced section is open
+local chosen = { face = "Classic" } -- the face preset / kit last picked (outlined in the grid)
+local hairGroup -- the hairstyle group shown (nil: the current style's own)
+local short = false -- a short screen (phone in landscape): no page hint line
 local keyLight
 
 -- head = the change only touches the face, hair or beard (the server can rebuild just those)
@@ -67,7 +92,89 @@ end
 local function previewHead()
 	preview(true)
 end
+local lastUndoKey -- (Undo below) the control whose gesture is still open
+-- a slider gesture ended (let go, a step, a reset, a wheel notch): the next change is a new undo step
+local function gestureEnd()
+	lastUndoKey = nil
+end
 
+local function deepcopy(t)
+	if type(t) ~= "table" then
+		return t
+	end
+	local o = {}
+	for k, v in pairs(t) do
+		o[k] = deepcopy(v)
+	end
+	return o
+end
+
+------------------------------------------------------------------------
+-- Undo: snapshots of everything but the typed names, taken before each change
+------------------------------------------------------------------------
+local UNDO_MAX = 20
+local undoStack = {}
+local lastUndoAt = 0
+local undoBtn
+local render
+local updatePlate
+
+local function updateUndo()
+	if undoBtn and undoBtn.Parent then
+		local has = #undoStack > 0
+		undoBtn.TextTransparency = has and 0 or 0.55
+		undoBtn:SetAttribute("Steps", #undoStack)
+	end
+end
+
+local SNAP_KEYS = { "age", "nationality", "voice", "music", "weightClass", "weight", "reachDelta", "style", "specialty" }
+-- key: the control being changed; one slider gesture (a drag until it is let go; changes under the same
+-- key in quick succession for controls without a release) is one step back
+local function pushUndo(key)
+	local now = os.clock()
+	if key ~= nil and key == lastUndoKey and now - lastUndoAt < 0.8 then
+		lastUndoAt = now
+		return
+	end
+	lastUndoKey, lastUndoAt = key, now
+	local snap = { look = deepcopy(C.look), face = chosen.face }
+	for _, k in ipairs(SNAP_KEYS) do
+		snap[k] = C[k]
+	end
+	table.insert(undoStack, snap)
+	if #undoStack > UNDO_MAX then
+		table.remove(undoStack, 1)
+	end
+	updateUndo()
+end
+
+local function undo()
+	local snap = table.remove(undoStack)
+	if not snap then
+		return false
+	end
+	C.look = snap.look
+	chosen.face, chosen.kit = snap.face, snap.kit
+	for _, k in ipairs(SNAP_KEYS) do
+		C[k] = snap[k]
+	end
+	lastUndoKey = nil
+	preview()
+	render()
+	return true
+end
+
+-- wraps a control's callback: snapshot first (key: see pushUndo), then the change
+local function edit(key, fn)
+	return function(...)
+		pushUndo(key)
+		fn(...)
+	end
+end
+
+------------------------------------------------------------------------
+-- Previews on the character: expression, fight damage, the Preview tag
+------------------------------------------------------------------------
 -- fight damage previews (CONTRACTS section 8 dmg tables), one per Config.FaceDamage stage
 local DAMAGE_PREVIEW = {
 	None = {},
@@ -117,7 +224,7 @@ local function previewTag(on)
 end
 
 local function hands()
-	return page == "Gear & Style" and "gloves" or "wraps"
+	return page == "Gear" and "gloves" or "wraps"
 end
 
 local function freeze(on)
@@ -150,29 +257,115 @@ local function paletteIndex(palette, c)
 	return nil
 end
 
--- swatches + an optional colour wheel
+local function skinRGB()
+	return Looks.SkinTones[C.look.skin] or Looks.SkinTones[6]
+end
+
+local function defaults()
+	return Looks.Defaults(C.look.gender)
+end
+
+------------------------------------------------------------------------
+-- Building blocks
+------------------------------------------------------------------------
+local function hintLine(text)
+	if short then
+		return nil -- the title and the step bar say enough where every line counts
+	end
+	return UI.Line(body, text, { Name = "PageHint", TextColor3 = T.sub, TextSize = 13 })
+end
+
+-- colour swatches (+ a colour wheel behind "Custom colour" when wheel = true)
 -- head = true: the colour only shows on the head (hair / beard), a partial rebuild is enough
-local function colorField(parent, label, get, set, palette, head)
+local function colorField(parent, label, get, set, palette, names, head, wheelToo, key)
 	local holder = UI.Frame(parent, { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y })
 	UI.List(holder, 4)
 	local _, refresh = UI.Swatches(holder, label, palette, paletteIndex(palette, get()), function(rgb)
+		pushUndo(nil)
 		set(rgb)
 		preview(head)
-	end)
-	local wheel
-	UI.Button(holder, "Custom colour", { Size = UDim2.new(0, 150, 0, 26), TextSize = 13, BackgroundColor3 = T.panel2 }, function()
-		if wheel then
-			wheel:Destroy()
-			wheel = nil
-			return
-		end
-		wheel = UI.ColorWheel(holder, label .. " - colour wheel", get(), function(rgb)
-			set(rgb)
-			refresh(nil)
-			preview(head)
+	end, { names = names })
+	if wheelToo then
+		local wheel
+		UI.Button(holder, "Custom colour", { Name = "CustomColour", Size = UDim2.new(0, 160, 0, 30), TextSize = 13, BackgroundColor3 = T.panel2 }, function()
+			if wheel then
+				wheel:Destroy()
+				wheel = nil
+				return
+			end
+			wheel = UI.ColorWheel(holder, label .. " - colour wheel", get(), function(rgb)
+				pushUndo(key or label)
+				set(rgb)
+				refresh(nil)
+				preview(head)
+			end)
 		end)
-	end)
+	end
 	return holder
+end
+
+-- face keys the body builder reads too (BuilderBody: skin smoothness picks the limb / torso skin
+-- material, the seed varies the muscles); a change to them needs the whole character rebuilt
+local BODY_FACE_KEYS = { smooth = true, seed = true }
+
+-- one look slider (a Looks slider entry): plain words, reset to the gender default, live preview
+local function lookSlider(tbl, key, def, head, withHint)
+	local e = LookKit.Entry(key)
+	if not e then
+		return nil
+	end
+	local opts, num = LookKit.Opts(e, def and def[key], withHint)
+	opts.onEnd = gestureEnd
+	return UI.Slider(body, LookKit.Label(e), e.min, e.max, tbl[key] or (def and def[key]) or 0, e.step, function(v)
+		pushUndo(key)
+		tbl[key] = v
+		preview(head)
+	end, num, opts)
+end
+
+-- sliders for keys of a Looks list, skipping the ones in `skip`
+local function sliderList(list, tbl, def, skip, head)
+	local n = 0
+	for _, s in ipairs(list) do
+		if not (skip and skip[s.key]) then
+			lookSlider(tbl, s.key, def, head == nil and not BODY_FACE_KEYS[s.key] or head)
+			n += 1
+		end
+	end
+	return n
+end
+
+local function setOf(keys)
+	local t = {}
+	for _, k in ipairs(keys) do
+		t[k] = true
+	end
+	return t
+end
+
+-- the Advanced expander; returns true when it is open (the caller then builds the section)
+local function advancedToggle(count)
+	local open = advanced[page] == true
+	local b = UI.Button(body, (open and "HIDE ADVANCED" or "ADVANCED") .. string.format("   (%d more)", count), { Name = "AdvancedToggle", Size = UDim2.new(1, 0, 0, 40), TextSize = 15,
+		BackgroundColor3 = T.panel2, TextColor3 = open and T.gold or T.text }, function()
+		advanced[page] = not open
+		render()
+	end)
+	UI.Icon(b, open and "up" or "down", 12, open and T.gold or T.text, { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -16, 0.5, 0) })
+	return open
+end
+
+-- chips: a grid of text buttons, the picked one in gold
+local function chips(list, picked, cols, onPick, display)
+	local grid = UI.Frame(body, { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y })
+	UI.Grid(grid, UDim2.new(1 / cols, -6, 0, 36), nil, 6)
+	for i, v in ipairs(list) do
+		local on = v == picked
+		UI.Button(grid, display and display(v) or tostring(v), { Name = "Chip_" .. tostring(v), LayoutOrder = i, TextSize = 14, BackgroundColor3 = on and T.gold or T.panel2, TextColor3 = on and T.bg or T.text }, function()
+			onPick(v)
+		end)
+	end
+	return grid
 end
 
 local function startingStats()
@@ -199,7 +392,7 @@ local function modsText(mods)
 end
 
 ------------------------------------------------------------------------
--- Camera: turntable framing the face or the full body
+-- Camera: frames the face on the head steps, the whole body on the others; turns and zooms
 ------------------------------------------------------------------------
 local function camera(on)
 	if camConn then
@@ -218,32 +411,45 @@ local function camera(on)
 		if cam.CameraType ~= Enum.CameraType.Scriptable then
 			cam.CameraType = Enum.CameraType.Scriptable
 		end
+		if stickX ~= 0 then
+			camYaw -= stickX * dt * 2.6
+		end
 		local char, _, root = State.char()
 		local head = char and char:FindFirstChild("Head")
 		if not (root and head) then
 			return
 		end
+		local isHead = HEAD_PAGES[page] == true
+		if isHead ~= camHead then
+			-- the framing changed (face <-> body): start from its own default distance
+			camHead = isHead
+			camZoom = 0
+		end
 		local rot = CFrame.Angles(0, camYaw, 0) * root.CFrame.Rotation
 		local look, right = rot.LookVector, rot.RightVector
 		local goal
-		if HEAD_PAGES[page] then
+		if isHead then
 			local target = head.Position + Vector3.new(0, 0.05, 0)
 			local d = 1 + 0.45 * camZoom
 			goal = CFrame.lookAt(target + (look * 4 + right * 1.5) * d + Vector3.new(0, 0.25, 0), target + right * 1.15 * d)
 		else
 			local target = root.Position + Vector3.new(0, 0.7, 0)
-			goal = CFrame.lookAt(target + look * 10.5 + right * 3.8 + Vector3.new(0, 0.8, 0), target + right * 3.0)
+			local d = 1 + 0.35 * camZoom
+			goal = CFrame.lookAt(target + (look * 10.5 + right * 3.8) * d + Vector3.new(0, 0.8, 0), target + right * 3.0 * d)
 		end
 		cam.CFrame = cam.CFrame:Lerp(goal, math.clamp(dt * 7, 0, 1))
 		-- a soft key light on the face for the head pages (client-only, follows the turntable)
 		if keyLight then
-			local on = HEAD_PAGES[page] == true
-			keyLight.Key.Enabled = on
-			keyLight.Fill.Enabled = on
+			keyLight.Key.Enabled = isHead
+			keyLight.Fill.Enabled = isHead
 			local from = head.Position + look * 2.2 + right * 1.4 + Vector3.new(0, 1.1, 0)
 			keyLight.CFrame = CFrame.lookAt(from, head.Position)
 		end
 	end)
+end
+
+local function zoomBy(d)
+	camZoom = math.clamp(camZoom + d, -1, 1)
 end
 
 local function setKeyLight(on)
@@ -285,10 +491,8 @@ end
 ------------------------------------------------------------------------
 -- Pages
 ------------------------------------------------------------------------
-local render
-local updatePlate
-
 local function pageIdentity()
+	hintLine(PAGE_HINTS.Identity)
 	UI.TextInput(body, "First name", C.first, "e.g. Marcus", 14, function(v)
 		C.first = v
 	end)
@@ -298,272 +502,329 @@ local function pageIdentity()
 	UI.TextInput(body, "Boxing nickname", C.nickname, "e.g. The Hurricane", 20, function(v)
 		C.nickname = v
 	end)
-	UI.Slider(body, "Age", 16, 35, C.age, 1, function(v)
-		C.age = v
-	end)
-	UI.Cycler(body, "Gender", { 1, 2 }, C.look.gender, function(g)
+	UI.Cycler(body, "Gender", { 1, 2 }, C.look.gender, edit(nil, function(g)
 		local keep = { skin = C.look.skin, eye = C.look.face.eyeColor, shape = C.look.face.shape, seed = C.look.face.seed, undertone = C.look.face.undertone }
 		C.look = Looks.Defaults(g)
 		C.look.skin, C.look.face.eyeColor, C.look.face.shape, C.look.face.seed = keep.skin, keep.eye, keep.shape, keep.seed
 		C.look.face.undertone = keep.undertone
+		chosen.face = nil
 		preview()
-	end, function(g)
+	end), function(g)
 		return Config.Genders[g]
 	end)
-	UI.Cycler(body, "Nationality", Config.Nationalities, C.nationality, function(v)
+	UI.Slider(body, "Age", 16, 35, C.age, 1, function(v)
+		pushUndo("age")
+		C.age = v
+	end, function(v)
+		return v .. " yrs"
+	end, {
+		default = 20, hint = LookKit.Hints.age, onEnd = gestureEnd,
+		words = function(v)
+			return v <= 19 and "Prospect" or (v <= 27 and "Prime" or "Veteran")
+		end,
+	})
+	UI.Cycler(body, "Nationality", Config.Nationalities, C.nationality, edit(nil, function(v)
 		C.nationality = v
-	end)
-	local sample
-	UI.Cycler(body, "Voice type", Config.VoiceTypes, C.voice, function(v)
-		C.voice = v
-		sample.Text = "\"" .. string.format(Config.VoiceLines[v][1], "my opponent") .. "\""
-	end)
-	sample = UI.Line(body, "\"" .. string.format(Config.VoiceLines[C.voice][1], "my opponent") .. "\"", { TextColor3 = Color3.fromRGB(255, 170, 170), TextSize = 14 })
-	UI.TextInput(body, "Walkout song (audio ID)", C.music, "Optional Roblox audio ID", 20, function(v)
-		C.music = v:gsub("%D", "")
-	end)
-	UI.Line(body, "Your voice type shapes your press-conference lines and the ring announcer's introduction. The walkout song plays during your ring walk.", { TextColor3 = T.sub, TextSize = 13 })
-	UI.Line(body, "Younger boxers start weaker but develop faster. Veterans start stronger but peak sooner.", { TextColor3 = T.sub, TextSize = 13 })
-end
-
-local function pctFmt(v)
-	return string.format("%+d", math.floor(v * 100 + (v >= 0 and 0.5 or -0.5)))
-end
-
--- face keys the body builder reads too (BuilderBody: skin smoothness picks the limb / torso skin
--- material, the seed varies the muscles); a change to them needs the whole character rebuilt
-local BODY_FACE_KEYS = { smooth = true, seed = true }
-
--- sliders for one Looks slider list (face / eye / skin / wear), head-only previews where possible
-local function sliderList(list, f)
-	for _, s in ipairs(list) do
-		UI.Slider(body, s.label, s.min, s.max, f[s.key] or 0, s.step, function(v)
-			f[s.key] = v
-			preview(not BODY_FACE_KEYS[s.key])
-		end, s.min < 0 and pctFmt or nil)
+	end))
+	if advancedToggle(3) then
+		local sample
+		UI.Cycler(body, "Voice type", Config.VoiceTypes, C.voice, edit(nil, function(v)
+			C.voice = v
+			sample.Text = "\"" .. string.format(Config.VoiceLines[v][1], "my opponent") .. "\""
+		end))
+		sample = UI.Line(body, "\"" .. string.format(Config.VoiceLines[C.voice][1], "my opponent") .. "\"", { TextColor3 = Color3.fromRGB(255, 170, 170), TextSize = 14 })
+		UI.TextInput(body, "Walkout song (audio ID)", C.music, "Optional Roblox audio ID", 20, function(v)
+			C.music = v:gsub("%D", "")
+		end)
+		UI.Line(body, "Your voice type shapes your press-conference lines and the ring announcer's introduction. The walkout song plays during your ring walk.", { TextColor3 = T.sub, TextSize = 13 })
 	end
+end
+
+local FACE_MAIN = { "jawWidth", "chin", "cheek", "noseWidth", "noseLength", "lips" }
+
+local function applyFacePreset(p)
+	local f = C.look.face
+	local def = defaults().face
+	for _, list in ipairs({ Looks.FaceSliders, Looks.SculptSliders or {}, Looks.WearSliders }) do
+		for _, s in ipairs(list) do
+			f[s.key] = def[s.key]
+		end
+	end
+	f.shape = p.shape
+	f.noseType = p.nose or def.noseType
+	for k, v in pairs(p.set) do
+		f[k] = v
+	end
+	chosen.face = p.id
 end
 
 local function pageFace()
 	local f = C.look.face
-	local shapeRow = UI.Frame(body, { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y })
-	UI.Grid(shapeRow, UDim2.new(1 / 3, -6, 0, 34), nil, 6)
-	for i, s in ipairs(Looks.FaceShapes) do
-		UI.Button(shapeRow, s, { LayoutOrder = i, TextSize = 14, BackgroundColor3 = f.shape == s and T.gold or T.panel2, TextColor3 = f.shape == s and T.bg or T.text }, function()
-			f.shape = s
+	local def = defaults().face
+	hintLine(PAGE_HINTS.Face)
+	UI.Header(body, "START FROM A FACE")
+	local items = {}
+	for _, p in ipairs(LookKit.FacePresets) do
+		table.insert(items, { id = p.id, label = p.id, sub = p.desc, preset = p, glyph = function(art)
+			LookKit.FaceGlyph(art, p.shape, skinRGB())
+		end })
+	end
+	LookKit.PresetGrid(body, items, { name = "FacePresets", cols = 4, cellH = 100, picked = chosen.face }, function(it)
+		pushUndo(nil)
+		applyFacePreset(it.preset)
+		previewHead()
+		render()
+	end)
+	UI.Header(body, "MAIN FEATURES")
+	for _, k in ipairs(FACE_MAIN) do
+		lookSlider(f, k, def, true, true)
+	end
+	UI.Cycler(body, "Nose shape", Looks.NoseTypes or { "Straight" }, f.noseType or "Straight", edit(nil, function(v)
+		f.noseType = v
+		previewHead()
+	end))
+	local skip = setOf(FACE_MAIN)
+	local more = #Looks.FaceSliders - #FACE_MAIN + #(Looks.SculptSliders or {}) + #Looks.WearSliders + 3
+	if advancedToggle(more) then
+		UI.Header(body, "FACE SHAPE")
+		chips(Looks.FaceShapes, f.shape, 3, function(sh)
+			pushUndo(nil)
+			f.shape = sh
 			previewHead()
 			render()
 		end)
-	end
-	sliderList(Looks.FaceSliders, f)
-	-- v3 sculpt (organic head meshes): skull, cheekbones, jaw, chin, eyes, nose, lips + the nose shape
-	UI.Header(body, "SCULPT")
-	UI.Cycler(body, "Nose shape", Looks.NoseTypes or { "Straight" }, f.noseType or "Straight", function(v)
-		f.noseType = v
-		previewHead()
-	end)
-	sliderList(Looks.SculptSliders or {}, f)
-	UI.Header(body, "BOXER WEAR")
-	sliderList(Looks.WearSliders, f)
-	UI.Line(body, "Fights add their own wear: deep cuts scar, broken noses bend and swollen ears can turn into cauliflower ears.", { TextColor3 = T.sub, TextSize = 13 })
-	UI.Button(body, "Randomize face", { Size = UDim2.new(0, 200, 0, 34) }, function()
-		-- every face and eye slider and the newer (v2) skin sliders, shape, undertone, brows, both eye
-		-- colours and the skin pattern; the boxer-wear sliders stay the player's own choice
-		local r = Looks.Random(math.random(1, 1000000), C.look.gender)
-		for _, list in ipairs({ Looks.FaceSliders, Looks.EyeSliders, Looks.SculptSliders or {} }) do
-			for _, s in ipairs(list) do
-				f[s.key] = r.face[s.key]
-			end
-		end
-		f.noseType = r.face.noseType or f.noseType
-		for _, s in ipairs(Looks.SkinSliders) do
-			if s.v2 then
-				f[s.key] = r.face[s.key]
-			end
-		end
-		f.shape = r.face.shape
-		f.seed = r.face.seed
-		f.undertone = r.face.undertone
-		f.browStyle = r.face.browStyle
-		f.eyeColor = r.face.eyeColor
-		f.eyeColor2 = r.face.eyeColor2 or 0
-		preview() -- the seed also varies the body
-		render()
-	end)
-	UI.Header(body, "PREVIEW")
-	UI.Cycler(body, "Expression", Config.Expressions, view.expr, function(v)
-		setExpression(v)
-	end, function(v)
-		return v:sub(1, 1):upper() .. v:sub(2)
-	end)
-	if Head then
-		UI.Cycler(body, "Fight damage", DAMAGE_ORDER, view.damage, function(v)
-			view.damage = v
-			applyDamagePreview()
+		UI.Header(body, "MORE FEATURES")
+		sliderList(Looks.FaceSliders, f, def, skip)
+		-- v3 sculpt (organic head meshes): skull, cheekbones, jaw, chin, eyes, nose, lips
+		UI.Header(body, "SCULPT")
+		sliderList(Looks.SculptSliders or {}, f, def)
+		UI.Header(body, "BOXER WEAR")
+		sliderList(Looks.WearSliders, f, def)
+		UI.Line(body, "Fights add their own wear: deep cuts scar, broken noses bend and swollen ears can turn into cauliflower ears.", { TextColor3 = T.sub, TextSize = 13 })
+		UI.Header(body, "PREVIEW")
+		UI.Cycler(body, "Expression", Config.Expressions, view.expr, function(v)
+			setExpression(v)
+		end, function(v)
+			return v:sub(1, 1):upper() .. v:sub(2)
 		end)
+		if Head then
+			UI.Cycler(body, "Fight damage", DAMAGE_ORDER, view.damage, function(v)
+				view.damage = v
+				applyDamagePreview()
+			end)
+		end
+		UI.Line(body, "Previews only: see how your boxer looks mid-fight. Swelling, cuts and bruises heal over the days after a real fight.", { TextColor3 = T.sub, TextSize = 13 })
 	end
-	UI.Line(body, "Previews only: see how your boxer looks mid-fight. Swelling, cuts and bruises heal over the days after a real fight.", { TextColor3 = T.sub, TextSize = 13 })
 end
+
+local EYE_MAIN = { "eyeSize", "eyeShape", "eyeDist" }
+local SKIN_MAIN = { "freckles" }
 
 local function pageEyesSkin()
 	local f = C.look.face
-	local skins = table.clone(Looks.SkinTones)
-	UI.Swatches(body, "Skin tone", skins, C.look.skin, function(_, i)
+	local def = defaults().face
+	hintLine(PAGE_HINTS["Skin & Eyes"])
+	UI.Swatches(body, "Skin tone", Looks.SkinTones, C.look.skin, function(_, i)
+		pushUndo(nil)
 		C.look.skin = i
 		preview()
-	end)
-	UI.Cycler(body, "Skin undertone", Looks.Undertones, f.undertone or "Neutral", function(v)
+	end, { names = LookKit.SkinNames, size = 40 })
+	UI.Cycler(body, "Skin undertone", Looks.Undertones, f.undertone or "Neutral", edit(nil, function(v)
 		f.undertone = v
 		previewHead()
-	end)
+	end))
 	UI.Swatches(body, "Eye colour", Looks.EyeColors, f.eyeColor, function(_, i)
+		pushUndo(nil)
 		f.eyeColor = i
 		previewHead()
-	end)
-	local second = { 0 }
-	for i = 1, #Looks.EyeColors do
-		table.insert(second, i)
-	end
-	UI.Cycler(body, "Right eye (heterochromia)", second, f.eyeColor2 or 0, function(v)
-		f.eyeColor2 = v
-		previewHead()
-	end, function(v)
-		return v == 0 and "Same as left" or (Looks.EyeColorNames[v] or tostring(v))
-	end)
-	UI.Cycler(body, "Eyebrow style", Looks.BrowStyles, f.browStyle or "Natural", function(v)
+	end, { names = Looks.EyeColorNames, size = 40 })
+	UI.Cycler(body, "Eyebrow style", Looks.BrowStyles, f.browStyle or "Natural", edit(nil, function(v)
 		f.browStyle = v
 		previewHead()
-	end)
-	sliderList(Looks.EyeSliders, f)
-	UI.Header(body, "SKIN DETAILS")
-	sliderList(Looks.SkinSliders, f)
-	UI.Line(body, "Skin texture is suggested with a fine-grain finish and scattered pores up close; wrinkles also deepen with age.", { TextColor3 = T.sub, TextSize = 13 })
-	UI.Button(body, "New skin detail pattern", { Size = UDim2.new(0, 230, 0, 32), TextSize = 14 }, function()
-		f.seed = math.random(1, 1000000)
-		preview() -- the seed also varies the body
-	end)
+	end))
+	UI.Header(body, "MAIN FEATURES")
+	for _, k in ipairs(EYE_MAIN) do
+		lookSlider(f, k, def, true, true)
+	end
+	for _, k in ipairs(SKIN_MAIN) do
+		lookSlider(f, k, def, true, true)
+	end
+	local more = #Looks.EyeSliders - #EYE_MAIN + #Looks.SkinSliders - #SKIN_MAIN + 2
+	if advancedToggle(more) then
+		local second = { 0 }
+		for i = 1, #Looks.EyeColors do
+			table.insert(second, i)
+		end
+		UI.Cycler(body, "Right eye (heterochromia)", second, f.eyeColor2 or 0, edit(nil, function(v)
+			f.eyeColor2 = v
+			previewHead()
+		end), function(v)
+			return v == 0 and "Same as left" or (Looks.EyeColorNames[v] or tostring(v))
+		end)
+		sliderList(Looks.EyeSliders, f, def, setOf(EYE_MAIN))
+		UI.Header(body, "SKIN DETAILS")
+		sliderList(Looks.SkinSliders, f, def, setOf(SKIN_MAIN))
+		UI.Line(body, "Skin texture is suggested with a fine-grain finish and scattered pores up close; wrinkles also deepen with age.", { TextColor3 = T.sub, TextSize = 13 })
+		UI.Button(body, "New skin detail pattern", { Name = "NewPattern", Size = UDim2.new(0, 230, 0, 34), TextSize = 14 }, function()
+			pushUndo(nil)
+			f.seed = math.random(1, 1000000)
+			preview() -- the seed also varies the body
+		end)
+	end
 end
+
+local HAIR_MAIN = { "length", "volume" }
 
 local function pageHair()
 	local h = C.look.hair
 	local beard = C.look.beard
+	local def = defaults()
+	hintLine(PAGE_HINTS.Hair)
 	if not Config.BaldMode then
-		UI.Cycler(body, "Hair type", Looks.HairTypeOrder, h.type, function(v)
+		UI.Cycler(body, "Hair type", Looks.HairTypeOrder, h.type, edit(nil, function(v)
 			h.type = v
 			previewHead()
-		end, Looks.HairTypeName)
-		-- grouped style grid (every style appears exactly once)
-		for _, group in ipairs(Looks.HairStyleGroups) do
-			UI.Header(body, group.name:upper())
-			local grid = UI.Frame(body, { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y })
-			UI.Grid(grid, UDim2.new(1 / 3, -6, 0, 30), nil, 6)
-			for i, st in ipairs(group.styles) do
-				UI.Button(grid, st, { LayoutOrder = i, TextSize = 13, BackgroundColor3 = h.style == st and T.gold or T.panel2, TextColor3 = h.style == st and T.bg or T.text }, function()
-					h.style = st
-					previewHead()
-					render()
-				end)
-			end
-		end
-		UI.Header(body, "CUT")
-		UI.Cycler(body, "Hairline", Looks.Hairlines, h.hairline or "Natural", function(v)
-			h.hairline = v
+		end), Looks.HairTypeName)
+		-- the styles as cards with a little head wearing each, one group at a time
+		UI.Header(body, "STYLE")
+		LookKit.HairPicker(body, h, skinRGB(), hairGroup, function(st)
+			pushUndo(nil)
+			h.style = st
 			previewHead()
+			render()
+		end, function(g)
+			hairGroup = g
+			render()
 		end)
-		UI.Cycler(body, "Part", Looks.HairParts, h.part or "None", function(v)
-			h.part = v
-			previewHead()
-		end)
-		for _, s in ipairs(Looks.HairSliders) do
-			UI.Slider(body, s.label, s.min, s.max, h[s.key] or 0.5, nil, function(v)
-				h[s.key] = v
-				previewHead()
-			end)
-		end
-		-- v3 strand detail for the hair meshes: clumping, frizz, volume, curl size
-		for _, s in ipairs(Looks.HairDetailSliders or {}) do
-			UI.Slider(body, s.label, s.min, s.max, h[s.key] or 0, nil, function(v)
-				h[s.key] = v
-				previewHead()
-			end)
-		end
-		UI.Slider(body, "Preview growth", 0, 1.5, view.growth, nil, function(v)
-			view.growth = v
-			previewHead()
-		end, function(v)
-			return v < 0.05 and "Fresh" or string.format("%d days", math.floor(v / (Config.HairGrowthPerDay or 0.02) + 0.5))
-		end)
+		UI.Header(body, "COLOUR")
 		colorField(body, "Hair colour", function()
 			return h.color
 		end, function(rgb)
 			h.color = rgb
-		end, Looks.HairColors, true)
-		UI.Toggle(body, "Highlights", h.hl, function(v)
-			h.hl = v
-			previewHead()
-		end)
-		UI.Cycler(body, "Dye pattern", Looks.DyePatterns, h.dye, function(v)
-			h.dye = v
-			previewHead()
-		end)
-		colorField(body, "Highlight / dye colour", function()
-			return h.hcolor
-		end, function(rgb)
-			h.hcolor = rgb
-		end, Looks.HairColors, true)
+		end, Looks.HairColors, LookKit.HairColorNames, true)
+		UI.Header(body, "LENGTH & VOLUME")
+		for _, k in ipairs(HAIR_MAIN) do
+			lookSlider(h, k, def.hair, true, true)
+		end
 	else
 		UI.Line(body, "Hair is switched off on this server - beards only.", { TextColor3 = T.sub, TextSize = 13 })
 	end
 	if C.look.gender == 1 then
 		UI.Header(body, "BEARD")
-		UI.Cycler(body, "Beard", Looks.BeardStyles, beard.style, function(v)
+		chips(Looks.BeardStyles, beard.style, 3, function(v)
+			pushUndo(nil)
 			beard.style = v
-			previewHead()
-		end)
-		UI.Toggle(body, "Beard matches hair colour", beard.color == nil, function(v)
-			beard.color = (not v) and table.clone(h.color) or nil
 			previewHead()
 			render()
 		end)
-		if beard.color then
-			colorField(body, "Beard colour", function()
-				return beard.color
-			end, function(rgb)
-				beard.color = rgb
-			end, Looks.HairColors, true)
-		end
 	end
-	UI.Line(body, "Hair and beards grow over time - visit the Barber Shop in the gym to restyle, recolour, line up or trim.", { TextColor3 = T.sub, TextSize = 13 })
+	local more = Config.BaldMode and 0 or (#Looks.HairSliders + #(Looks.HairDetailSliders or {}) - #HAIR_MAIN + 7)
+	if C.look.gender == 1 then
+		more += 1
+	end
+	if advancedToggle(more) then
+		if not Config.BaldMode then
+			UI.Header(body, "CUT")
+			UI.Cycler(body, "Hairline", Looks.Hairlines, h.hairline or "Natural", edit(nil, function(v)
+				h.hairline = v
+				previewHead()
+			end))
+			UI.Cycler(body, "Part", Looks.HairParts, h.part or "None", edit(nil, function(v)
+				h.part = v
+				previewHead()
+			end))
+			sliderList(Looks.HairSliders, h, def.hair, setOf(HAIR_MAIN), true)
+			-- v3 strand detail for the hair meshes: clumping, frizz, volume, curl size
+			sliderList(Looks.HairDetailSliders or {}, h, def.hair, setOf(HAIR_MAIN), true)
+			UI.Slider(body, "Preview growth", 0, 1.5, view.growth, nil, function(v)
+				view.growth = v
+				previewHead()
+			end, function(v)
+				return v < 0.05 and "Fresh cut" or string.format("%d days", math.floor(v / (Config.HairGrowthPerDay or 0.02) + 0.5))
+			end, { default = 0, onEnd = gestureEnd })
+			UI.Header(body, "COLOUR EXTRAS")
+			colorField(body, "Hair colour (any colour)", function()
+				return h.color
+			end, function(rgb)
+				h.color = rgb
+			end, Looks.HairColors, LookKit.HairColorNames, true, true, "hairWheel")
+			UI.Toggle(body, "Highlights", h.hl, edit(nil, function(v)
+				h.hl = v
+				previewHead()
+			end))
+			UI.Cycler(body, "Dye pattern", Looks.DyePatterns, h.dye, edit(nil, function(v)
+				h.dye = v
+				previewHead()
+			end))
+			colorField(body, "Highlight / dye colour", function()
+				return h.hcolor
+			end, function(rgb)
+				h.hcolor = rgb
+			end, Looks.HairColors, LookKit.HairColorNames, true, true, "dyeWheel")
+		end
+		if C.look.gender == 1 then
+			UI.Header(body, "BEARD COLOUR")
+			UI.Toggle(body, "Beard matches hair colour", beard.color == nil, edit(nil, function(v)
+				beard.color = (not v) and table.clone(h.color) or nil
+				previewHead()
+				render()
+			end))
+			if beard.color then
+				colorField(body, "Beard colour", function()
+					return beard.color
+				end, function(rgb)
+					beard.color = rgb
+				end, Looks.HairColors, LookKit.HairColorNames, true, true, "beardWheel")
+			end
+		end
+		UI.Line(body, "Hair and beards grow over time - visit the Barber Shop in the gym to restyle, recolour, line up or trim.", { TextColor3 = T.sub, TextSize = 13 })
+	end
 end
+
+local BODY_MAIN = { "shoulders", "arms" }
 
 local function pageBody()
 	local b = C.look.body
-	local frames = idsOf(Config.BodyTypes)
-	local desc
-	UI.Cycler(body, "Body type", frames, b.frame, function(v)
-		b.frame = v
-		local ft = Config.FindById(Config.BodyTypes, v)
-		desc.Text = modsText(ft.mods) .. string.format("   |   muscle potential %d%%", math.floor(ft.potential * 100))
+	local def = defaults()
+	hintLine(PAGE_HINTS.Body)
+	UI.Header(body, "BODY TYPE")
+	local items = {}
+	for _, bt in ipairs(Config.BodyTypes) do
+		table.insert(items, { id = bt.id, label = (bt.id:gsub(" Build$", "")), sub = string.format("%d%% muscle", math.floor(bt.potential * 100 + 0.5)), glyph = function(art)
+			LookKit.BuildGlyph(art, bt.width, skinRGB())
+		end })
+	end
+	LookKit.PresetGrid(body, items, { name = "BodyTypes", cols = 5, cellH = 104, picked = b.frame }, function(it)
+		pushUndo(nil)
+		b.frame = it.id
 		preview()
+		render()
 	end)
-	local ft = Config.FindById(Config.BodyTypes, b.frame)
-	desc = UI.Line(body, modsText(ft.mods) .. string.format("   |   muscle potential %d%%", math.floor(ft.potential * 100)), { TextColor3 = T.sub, TextSize = 13 })
+	local ft = Config.FindById(Config.BodyTypes, b.frame) or Config.BodyTypes[2]
+	UI.Line(body, string.format("%s: %s", ft.id, modsText(ft.mods)), { TextColor3 = T.sub, TextSize = 13 })
+	UI.Header(body, "SIZE")
 	UI.Slider(body, "Height", 60, 84, C.look.height, 1, function(v)
+		pushUndo("height")
 		C.look.height = v
 		preview()
 	end, function(v)
 		return Config.HeightText(v)
-	end)
+	end, {
+		default = def.height, hint = LookKit.Hints.height, onEnd = gestureEnd,
+		words = function(v)
+			return v < 66 and "Short" or (v <= 71 and "Average" or (v <= 76 and "Tall" or "Very tall"))
+		end,
+	})
 	local idx = {}
 	for i = 1, #Config.WeightClasses do
 		idx[i] = i
 	end
-	UI.Cycler(body, "Weight class", idx, C.weightClass, function(v)
+	UI.Cycler(body, "Weight class", idx, C.weightClass, edit(nil, function(v)
 		C.weightClass = v
 		local wc = Config.WeightClasses[v]
 		C.weight = math.clamp(C.weight, wc.min, wc.limit)
 		render()
-	end, function(v)
+	end), function(v)
 		-- a division is known by its limit (the walk-around slider below covers its range); on a narrow
 		-- row the limit takes the second line
 		local wc = Config.WeightClasses[v]
@@ -572,133 +833,132 @@ local function pageBody()
 	local wc = Config.WeightClasses[C.weightClass]
 	C.weight = math.clamp(C.weight, wc.min, wc.limit)
 	UI.Slider(body, "Walk-around weight", wc.min, wc.limit, C.weight, 1, function(v)
+		pushUndo("weight")
 		C.weight = v
 	end, function(v)
 		return v .. " lbs"
-	end)
+	end, {
+		default = math.floor((wc.min + wc.limit) / 2 + 0.5), hint = LookKit.Hints.weight, onEnd = gestureEnd,
+		words = function(v)
+			local a = (v - wc.min) / math.max(1, wc.limit - wc.min)
+			return a < 0.34 and "Light" or (a < 0.67 and "Middle" or "Heavy")
+		end,
+	})
 	UI.Slider(body, "Reach", -3, 6, C.reachDelta, 1, function(v)
+		pushUndo("reach")
 		C.reachDelta = v
 	end, function(v)
 		return (C.look.height + v) .. " in"
-	end)
-	UI.Header(body, "PHYSIQUE")
-	local phDesc
-	local function physiqueText(id)
-		local ph = Config.FindById(Config.Physiques, id)
-		return ph and ph.desc or "Your body follows your training: the gym decides what you become."
-	end
-	UI.Cycler(body, "Physique target", Looks.Physiques, b.physique or "Auto", function(v)
-		b.physique = v
-		phDesc.Text = physiqueText(v)
-		preview()
-	end, function(v)
-		local ph = Config.FindById(Config.Physiques, v)
-		return ph and ph.name or "Auto (from training)"
-	end)
-	phDesc = UI.Line(body, physiqueText(b.physique or "Auto"), { TextColor3 = T.sub, TextSize = 13 })
-	UI.Cycler(body, "Preview body", { false, true }, view.peak, function(v)
-		view.peak = v
-		preview()
-	end, function(v)
-		return v and "Peak (fully trained)" or "Starting (lean amateur)"
-	end)
+	end, {
+		default = 2, hint = LookKit.Hints.reach, onEnd = gestureEnd,
+		words = function(v)
+			return v < 0 and "Short" or (v <= 2 and "Average" or (v <= 4 and "Long" or "Very long"))
+		end,
+	})
 	UI.Header(body, "BUILD")
-	for _, s in ipairs(Looks.BodySliders) do
-		UI.Slider(body, s.label, s.min, s.max, b[s.key] or 0, nil, function(v)
-			b[s.key] = v
+	for _, k in ipairs(BODY_MAIN) do
+		lookSlider(b, k, def.body, false, true)
+	end
+	if advancedToggle(#Looks.BodySliders - #BODY_MAIN + 2) then
+		sliderList(Looks.BodySliders, b, def.body, setOf(BODY_MAIN), false)
+		UI.Header(body, "PHYSIQUE")
+		local phDesc
+		local function physiqueText(id)
+			local ph = Config.FindById(Config.Physiques, id)
+			return ph and ph.desc or "Your body follows your training: the gym decides what you become."
+		end
+		UI.Cycler(body, "Physique target", Looks.Physiques, b.physique or "Auto", edit(nil, function(v)
+			b.physique = v
+			phDesc.Text = physiqueText(v)
+			preview()
+		end), function(v)
+			local ph = Config.FindById(Config.Physiques, v)
+			return ph and ph.name or "Auto (from training)"
+		end)
+		phDesc = UI.Line(body, physiqueText(b.physique or "Auto"), { TextColor3 = T.sub, TextSize = 13 })
+		UI.Cycler(body, "Preview body", { false, true }, view.peak, function(v)
+			view.peak = v
 			preview()
 		end, function(v)
-			return string.format("%+d", math.floor(v * 100 + (v >= 0 and 0.5 or -0.5)))
+			return v and "Peak (fully trained)" or "Starting (lean amateur)"
 		end)
+		UI.Line(body, "Everyone starts lean. Training transforms your body: power work builds chest, shoulders, arms and back; cardio burns fat; balanced training builds an athletic physique.", { TextColor3 = T.sub, TextSize = 13 })
 	end
-	UI.Line(body, "Everyone starts lean. Training transforms your body: power work builds chest, shoulders, arms and back; cardio burns fat; balanced training builds an athletic physique.", { TextColor3 = T.sub, TextSize = 13 })
 end
 
 local function pageGear()
 	local a = C.look.attire
 	local g = C.look.gloves
-	local pal = Looks.Palette
-	UI.Button(body, "Champion kit (black & red)", { Size = UDim2.new(0, 260, 0, 34), TextSize = 14, BackgroundColor3 = T.gold, TextColor3 = T.bg }, function()
-		-- black pro trunks with red waistband, hems and striped side panels; black boxing
-		-- boots with red laces and soles; white socks; red gloves with a white cuff band
-		a.trunks, a.trim, a.trunkStyle = { 20, 20, 20 }, { 200, 25, 30 }, "Pro"
-		a.socks, a.shoes, a.shoeStyle = { 240, 240, 240 }, { 20, 20, 20 }, "High-Top"
-		a.robe, a.robeTrim = { 20, 20, 20 }, { 200, 25, 30 }
-		g.color, g.trim = { 200, 25, 30 }, { 240, 240, 240 }
+	local pal, names = Looks.Palette, LookKit.PaletteNames
+	hintLine(PAGE_HINTS.Gear)
+	UI.Header(body, "KITS")
+	local items = {}
+	for _, kit in ipairs(LookKit.KitPresets) do
+		table.insert(items, { id = kit.id, label = kit.id, sub = kit.desc, kit = kit, glyph = function(art)
+			LookKit.KitGlyph(art, kit)
+		end })
+	end
+	LookKit.PresetGrid(body, items, { name = "Kits", cols = 3, cellH = 100, picked = chosen.kit }, function(it)
+		pushUndo(nil)
+		LookKit.ApplyKit(it.kit, a, g)
+		chosen.kit = it.id
 		preview()
 		render()
 	end)
-	UI.Header(body, "TRUNKS")
-	colorField(body, "Trunks colour", function()
+	UI.Header(body, "MAIN COLOURS")
+	colorField(body, "Trunks", function()
 		return a.trunks
 	end, function(c)
 		a.trunks = c
 		a.robe = c
-	end, pal)
-	colorField(body, "Trim / waistband", function()
-		return a.trim
-	end, function(c)
-		a.trim = c
-	end, pal)
-	UI.Cycler(body, "Trunk style", Catalog.TrunkStyles, a.trunkStyle, function(v)
-		a.trunkStyle = v
-		preview()
-	end)
-	UI.Header(body, "FOOTWEAR")
-	colorField(body, "Socks", function()
-		return a.socks
-	end, function(c)
-		a.socks = c
-	end, pal)
-	colorField(body, "Boxing shoes", function()
-		return a.shoes
-	end, function(c)
-		a.shoes = c
-	end, pal)
-	UI.Cycler(body, "Shoe style", { "Low-Top", "High-Top" }, a.shoeStyle, function(v)
-		a.shoeStyle = v
-		preview()
-	end)
-	colorField(body, "Laces", function()
-		return a.laces
-	end, function(c)
-		a.laces = c
-	end, pal)
-	UI.Header(body, "HANDS & MOUTH")
+	end, pal, names)
 	colorField(body, "Gloves", function()
 		return g.color
 	end, function(c)
 		g.color = c
-	end, pal)
-	colorField(body, "Hand wraps", function()
-		return a.wraps
-	end, function(c)
-		a.wraps = c
-	end, pal)
-	UI.Cycler(body, "Wrap pattern", Looks.WrapPatterns, a.wrapPattern or "Solid", function(v)
-		a.wrapPattern = v
+	end, pal, names)
+	UI.Cycler(body, "Trunk style", Catalog.TrunkStyles, a.trunkStyle, edit(nil, function(v)
+		a.trunkStyle = v
 		preview()
-	end)
-	colorField(body, "Mouthguard", function()
-		return a.mouthguard
-	end, function(c)
-		a.mouthguard = c
-	end, pal)
-	UI.Header(body, "ROBE (walkouts)")
-	colorField(body, "Robe trim", function()
-		return a.robeTrim
-	end, function(c)
-		a.robeTrim = c
-	end, pal)
-	UI.Line(body, "You start with worn, beaten-up gloves. Better gloves (Gear tab) unlock trim, stitching, finishes, logos and name embroidery at the Locker Room.", { TextColor3 = T.sub, TextSize = 13 })
+	end))
+	UI.Cycler(body, "Shoe style", { "Low-Top", "High-Top" }, a.shoeStyle, edit(nil, function(v)
+		a.shoeStyle = v
+		preview()
+	end))
+	if advancedToggle(8) then
+		local function field(label, key)
+			colorField(body, label, function()
+				return a[key]
+			end, function(c)
+				a[key] = c
+			end, pal, names, false, true, key)
+		end
+		UI.Header(body, "TRUNKS & FOOTWEAR")
+		field("Trim / waistband", "trim")
+		field("Socks", "socks")
+		field("Boxing shoes", "shoes")
+		field("Laces", "laces")
+		UI.Header(body, "HANDS & MOUTH")
+		field("Hand wraps", "wraps")
+		UI.Cycler(body, "Wrap pattern", Looks.WrapPatterns, a.wrapPattern or "Solid", edit(nil, function(v)
+			a.wrapPattern = v
+			preview()
+		end))
+		field("Mouthguard", "mouthguard")
+		UI.Header(body, "ROBE (walkouts)")
+		field("Robe trim", "robeTrim")
+		UI.Line(body, "You start with worn, beaten-up gloves. Better gloves (Gear tab) unlock trim, stitching, finishes, logos and name embroidery at the Locker Room.", { TextColor3 = T.sub, TextSize = 13 })
+	end
 end
 
 local function pageStyle()
+	hintLine(PAGE_HINTS["Fight Style"])
 	UI.Header(body, "BOXING STYLE")
 	for _, s in ipairs(Config.Styles) do
 		local selected = C.style == s.id
 		-- the card grows with its description (three lines on a phone-width window)
-		local b = UI.Button(body, "", { Size = UDim2.new(1, 0, 0, 66), AutomaticSize = Enum.AutomaticSize.Y, BackgroundColor3 = selected and T.panel:Lerp(T.gold, 0.16) or T.panel }, function()
+		local b = UI.Button(body, "", { Name = "Style_" .. s.id, Size = UDim2.new(1, 0, 0, 66), AutomaticSize = Enum.AutomaticSize.Y, BackgroundColor3 = selected and T.panel:Lerp(T.gold, 0.16) or T.panel }, function()
+			pushUndo(nil)
 			C.style = s.id
 			render()
 		end)
@@ -712,10 +972,10 @@ local function pageStyle()
 			TextYAlignment = Enum.TextYAlignment.Top })
 	end
 	local specs = idsOf(Config.Specialties)
-	UI.Cycler(body, "Specialty", specs, C.specialty, function(v)
+	UI.Cycler(body, "Specialty", specs, C.specialty, edit(nil, function(v)
 		C.specialty = v
 		render()
-	end)
+	end))
 	local spec = Config.FindById(Config.Specialties, C.specialty)
 	UI.Line(body, "Specialty bonus: " .. modsText(spec.stats) .. " and +25% training gains on those stats.", { TextColor3 = T.sub, TextSize = 13 })
 	UI.Header(body, "STARTING STATS")
@@ -732,54 +992,211 @@ local function pageStyle()
 end
 
 local PAGE_FN = {
-	Identity = pageIdentity, Face = pageFace, ["Eyes & Skin"] = pageEyesSkin, Hair = pageHair,
-	Body = pageBody, ["Gear & Style"] = pageGear, ["Fight Style"] = pageStyle,
+	Identity = pageIdentity, Face = pageFace, ["Skin & Eyes"] = pageEyesSkin, Hair = pageHair,
+	Body = pageBody, Gear = pageGear, ["Fight Style"] = pageStyle,
 }
 
-local tabsFrame, nextBtn, randomBtn
-local lastPage
--- the window is 46% of the canvas (600 at most): under 480 the title and the RANDOM LOOK button
--- collide, so the button takes the tab grid's free eighth cell instead
-local narrowHeader = false
-local function randomLook()
-	local g = C.look.gender
-	C.look = Looks.Random(math.random(1, 1000000), g)
-	C.look.body.frame = "Athletic"
-	-- a player's body follows training, and fight wear is earned (server-only)
-	C.look.body.physique = "Auto"
-	C.look.battle = nil
-	preview()
+------------------------------------------------------------------------
+-- Per-step RANDOM and RESET
+------------------------------------------------------------------------
+local function rng()
+	return Random.new(math.random(1, 1000000))
+end
+
+local RANDOMIZE = {
+	Identity = function()
+		-- the whole look (a player's body follows training, and fight wear is earned: server-only)
+		C.look = Looks.Random(math.random(1, 1000000), C.look.gender)
+		C.look.body.frame = "Athletic"
+		C.look.body.physique = "Auto"
+		C.look.battle = nil
+		chosen.face, chosen.kit = nil, nil
+		return false
+	end,
+	Face = function()
+		local f = C.look.face
+		local r = Looks.Random(math.random(1, 1000000), C.look.gender)
+		for _, list in ipairs({ Looks.FaceSliders, Looks.SculptSliders or {} }) do
+			for _, s in ipairs(list) do
+				f[s.key] = r.face[s.key]
+			end
+		end
+		local R = rng()
+		-- the random look keeps the sculpt neutral: give it some variety of its own
+		for _, s in ipairs(Looks.SculptSliders or {}) do
+			f[s.key] = s.min < 0 and R:NextNumber(-0.5, 0.5) or R:NextNumber(0.1, 0.8)
+		end
+		f.shape = r.face.shape
+		f.noseType = Looks.NoseTypes[R:NextInteger(1, #Looks.NoseTypes)]
+		chosen.face = nil
+		return true
+	end,
+	["Skin & Eyes"] = function()
+		local f = C.look.face
+		local r = Looks.Random(math.random(1, 1000000), C.look.gender)
+		C.look.skin = r.skin
+		for _, list in ipairs({ Looks.EyeSliders, Looks.SkinSliders }) do
+			for _, s in ipairs(list) do
+				f[s.key] = r.face[s.key]
+			end
+		end
+		f.undertone, f.browStyle, f.eyeColor, f.eyeColor2, f.seed = r.face.undertone, r.face.browStyle, r.face.eyeColor, r.face.eyeColor2 or 0, r.face.seed
+		return false
+	end,
+	Hair = function()
+		local r = Looks.Random(math.random(1, 1000000), C.look.gender)
+		r.hair.growth = 0
+		C.look.hair = r.hair
+		if C.look.gender == 1 then
+			r.beard.growth = 0
+			C.look.beard = r.beard
+		end
+		return true
+	end,
+	Body = function()
+		local R = rng()
+		local b = C.look.body
+		b.frame = Config.BodyTypes[R:NextInteger(1, #Config.BodyTypes)].id
+		for _, s in ipairs(Looks.BodySliders) do
+			b[s.key] = math.floor(R:NextNumber(-0.5, 0.5) * 100 + 0.5) / 100
+		end
+		C.look.height = C.look.gender == 2 and R:NextInteger(61, 71) or R:NextInteger(65, 77)
+		local wc = Config.WeightClasses[C.weightClass]
+		C.weight = R:NextInteger(wc.min, wc.limit)
+		C.reachDelta = R:NextInteger(-1, 4)
+		return false
+	end,
+	Gear = function()
+		local R = rng()
+		local pal = Looks.Palette
+		local function pick(not1)
+			local i
+			repeat
+				i = R:NextInteger(1, #pal)
+			until i ~= not1
+			return i, table.clone(pal[i])
+		end
+		local a, g = C.look.attire, C.look.gloves
+		local ti, trunks = pick()
+		local _, trim = pick(ti)
+		a.trunks, a.trim, a.robe, a.robeTrim = trunks, trim, table.clone(trunks), table.clone(trim)
+		a.shoes = R:NextNumber() < 0.5 and table.clone(trunks) or { 20, 20, 20 }
+		a.socks = R:NextNumber() < 0.6 and { 240, 240, 240 } or { 20, 20, 20 }
+		a.laces = table.clone(trim)
+		local _, glove = pick()
+		g.color, g.trim = glove, table.clone(trim)
+		a.trunkStyle = Catalog.TrunkStyles[R:NextInteger(1, #Catalog.TrunkStyles)]
+		a.shoeStyle = R:NextNumber() < 0.5 and "Low-Top" or "High-Top"
+		chosen.kit = nil
+		return false
+	end,
+	["Fight Style"] = function()
+		C.style = Config.Styles[math.random(1, #Config.Styles)].id
+		C.specialty = Config.Specialties[math.random(1, #Config.Specialties)].id
+		return false
+	end,
+}
+
+local RESET = {
+	Identity = function()
+		C.age, C.nationality, C.voice, C.music = 20, "USA", "Calm", ""
+		return false
+	end,
+	Face = function()
+		applyFacePreset(LookKit.FacePresets[1])
+		return true
+	end,
+	["Skin & Eyes"] = function()
+		local f, def = C.look.face, defaults()
+		C.look.skin = def.skin
+		for _, list in ipairs({ Looks.EyeSliders, Looks.SkinSliders }) do
+			for _, s in ipairs(list) do
+				f[s.key] = def.face[s.key]
+			end
+		end
+		f.undertone, f.browStyle, f.eyeColor, f.eyeColor2 = def.face.undertone, def.face.browStyle, def.face.eyeColor, def.face.eyeColor2
+		return false
+	end,
+	Hair = function()
+		local def = defaults()
+		C.look.hair = def.hair
+		C.look.beard = def.beard
+		view.growth = 0
+		return true
+	end,
+	Body = function()
+		local def = defaults()
+		C.look.body = def.body
+		C.look.height = def.height
+		C.weightClass, C.weight, C.reachDelta = 5, 145, 2
+		return false
+	end,
+	Gear = function()
+		local def = defaults()
+		C.look.attire = def.attire
+		C.look.gloves = def.gloves
+		chosen.kit = nil
+		return false
+	end,
+	["Fight Style"] = function()
+		C.style, C.specialty = "BoxerPuncher", "Speed"
+		return false
+	end,
+}
+
+local function stepAction(tbl)
+	local fn = tbl[page]
+	if not fn then
+		return
+	end
+	pushUndo(nil)
+	local headOnly = fn()
+	preview(headOnly)
 	render()
 end
+
+------------------------------------------------------------------------
+-- The window
+------------------------------------------------------------------------
+local tabsFrame, nextBtn, backBtn, progressFill
+local lastPage
+
+local function goTo(name)
+	local wasHands = hands()
+	page = name
+	if hands() ~= wasHands then
+		preview()
+	end
+	render()
+end
+
 function render()
 	if not (shade and shade.Parent) then
 		return
 	end
-	UI.Clear(tabsFrame)
-	if randomBtn then
-		randomBtn.Visible = not narrowHeader
-	end
-	if narrowHeader then
-		local rb = UI.Button(tabsFrame, "RANDOM", { Name = "RandomLook", LayoutOrder = #PAGES + 1, TextSize = 13, BackgroundColor3 = T.panel2, TextColor3 = T.gold }, randomLook)
-		UI.Stroke(rb, T.gold, 1, 0.55)
-	end
-	-- the title runs to the button (wide) or to the window's edge (narrow: no button up there)
-	local title = win and win:FindFirstChild("Title")
-	if title then
-		title.Size = UDim2.new(1, narrowHeader and -56 or -204, 0, title.Size.Y.Offset)
-	end
 	local cur = table.find(PAGES, page) or 1
+	-- title: the step's name (phones, without the kicker line, count the step in the title too)
+	local title = win:FindFirstChild("Title")
+	local kicker = win:FindFirstChild("Kicker")
+	if title then
+		local name = string.upper(TITLES[page] or page)
+		title.Text = kicker and name or string.format("%d/%d  %s", cur, #PAGES, name)
+	end
+	if kicker then
+		kicker.Text = string.format("CREATE YOUR BOXER  ·  STEP %d OF %d", cur, #PAGES)
+	end
+	UI.Clear(tabsFrame:FindFirstChild("Steps"))
+	local steps = tabsFrame:FindFirstChild("Steps")
 	for i, name in ipairs(PAGES) do
 		local done = i < cur
-		UI.Button(tabsFrame, string.format("%d  %s", i, string.upper(name)), { LayoutOrder = i, TextSize = 13, BackgroundColor3 = name == page and T.gold or T.panel2,
+		local b = UI.Button(steps, string.format("%d %s", i, SHORT[name]), { Name = "Step" .. i, LayoutOrder = i, TextSize = 13, BackgroundColor3 = name == page and T.gold or T.panel2,
 			TextColor3 = name == page and T.bg or (done and T.gold or T.text) }, function()
-			local wasHands = hands()
-			page = name
-			if hands() ~= wasHands then
-				preview()
-			end
-			render()
+			goTo(name)
 		end)
+		b:SetAttribute("CreatorStep", i)
+	end
+	if progressFill then
+		progressFill.Size = UDim2.fromScale(cur / #PAGES, 1)
 	end
 	local y = lastPage == page and body.CanvasPosition or Vector2.zero
 	lastPage = page
@@ -794,8 +1211,12 @@ function render()
 		end
 	end)
 	if nextBtn then
-		nextBtn.Text = page == PAGES[#PAGES] and "BEGIN CAREER" or "NEXT"
+		nextBtn.Text = page == PAGES[#PAGES] and "BEGIN CAREER" or ("NEXT:  " .. SHORT[PAGES[cur + 1]])
 	end
+	if backBtn then
+		backBtn.TextTransparency = cur == 1 and 0.55 or 0
+	end
+	updateUndo()
 end
 
 -- the live fighter plate (built in Creator.Open)
@@ -833,6 +1254,85 @@ function updatePlate()
 	end
 end
 
+local function begin()
+	if C.first:gsub("%s", "") == "" or C.last:gsub("%s", "") == "" then
+		State.toast("Give your boxer a first and last name.", T.red)
+		page = "Identity"
+		render()
+		return
+	end
+	nextBtn.Text = "CREATING..."
+	local res = State.req("CreateBoxer", {
+		first = C.first, last = C.last, nickname = C.nickname, age = C.age, nationality = C.nationality,
+		music = C.music, voice = C.voice, weightClass = C.weightClass, weight = C.weight, reachDelta = C.reachDelta,
+		style = C.style, specialty = C.specialty, look = C.look,
+	})
+	if res.ok then
+		Creator.Close()
+		State.toast("Welcome to the fight game! Your amateur career starts now.", T.gold, 5)
+		State.toast("Train at the gym stations, eat and sleep - then book a fight at the FIGHT BOARD (or press H).", T.gold, 7)
+	else
+		nextBtn.Text = "BEGIN CAREER"
+		State.toast(res.err or "Couldn't create your boxer", T.red)
+	end
+end
+
+local function step(d)
+	local i = table.find(PAGES, page) or 1
+	local j = math.clamp(i + d, 1, #PAGES)
+	if j ~= i then
+		goTo(PAGES[j])
+	end
+end
+
+-- keyboard, mouse, touch and gamepad shortcuts while the creator is open
+local function bindInputs()
+	for _, c in ipairs(inputConns) do
+		c:Disconnect()
+	end
+	table.clear(inputConns)
+	local function onTop()
+		-- the creator is open and no other window sits over it
+		local top = UI.PadTop()
+		return shade and shade.Parent and (top == nil or top == win)
+	end
+	table.insert(inputConns, UserInputService.InputBegan:Connect(function(input, gp)
+		if not onTop() then
+			return
+		end
+		local t, k = input.UserInputType, input.KeyCode
+		if not gp and (t == Enum.UserInputType.MouseButton1 or t == Enum.UserInputType.Touch) and turning == nil then
+			-- a press on the 3D view (not on any GUI): drag to turn the boxer
+			turning, turnX = input, input.Position.X
+		elseif k == Enum.KeyCode.ButtonY or (k == Enum.KeyCode.Z and not gp and (UserInputService:IsKeyDown(Enum.KeyCode.LeftControl) or UserInputService:IsKeyDown(Enum.KeyCode.RightControl))) then
+			-- Ctrl+Z / Y: one change back
+			undo()
+		elseif k == Enum.KeyCode.ButtonL1 or k == Enum.KeyCode.ButtonR1 then
+			step(k == Enum.KeyCode.ButtonL1 and -1 or 1)
+		elseif k == Enum.KeyCode.ButtonL2 or k == Enum.KeyCode.ButtonR2 then
+			zoomBy(k == Enum.KeyCode.ButtonL2 and 0.4 or -0.4)
+		end
+	end))
+	table.insert(inputConns, UserInputService.InputChanged:Connect(function(input, gp)
+		local t = input.UserInputType
+		if turning and ((t == Enum.UserInputType.MouseMovement and turning.UserInputType == Enum.UserInputType.MouseButton1) or (t == Enum.UserInputType.Touch and input == turning)) then
+			local x = input.Position.X
+			camYaw -= (x - turnX) * 0.012
+			turnX = x
+		elseif t == Enum.UserInputType.MouseWheel and not gp and onTop() then
+			zoomBy(input.Position.Z > 0 and -0.2 or 0.2)
+		elseif input.KeyCode == Enum.KeyCode.Thumbstick2 then
+			local x = input.Position.X
+			stickX = math.abs(x) > 0.25 and x or 0
+		end
+	end))
+	table.insert(inputConns, UserInputService.InputEnded:Connect(function(input)
+		if turning and (input == turning or (input.UserInputType == Enum.UserInputType.MouseButton1 and turning.UserInputType == Enum.UserInputType.MouseButton1)) then
+			turning = nil
+		end
+	end))
+end
+
 function Creator.Open()
 	if shade and shade.Parent then
 		return
@@ -840,51 +1340,56 @@ function Creator.Open()
 	State.closeAll("Creator")
 	C = newState()
 	page = "Identity"
-	camYaw = 0
+	camYaw, camZoom, stickX, turning = 0, 0, 0, nil
+	table.clear(undoStack)
+	table.clear(advanced)
+	chosen.face, chosen.kit = "Classic", nil
+	hairGroup = nil
+	lastUndoKey = nil
 	-- BACK (and B on a gamepad: the creator cannot be closed, B steps back a page)
 	local function back()
-		local i = table.find(PAGES, page) or 1
-		page = PAGES[math.max(1, i - 1)]
-		preview()
-		render()
+		step(-1)
 	end
-	shade, win, body = UI.Window(State.gui, "Creator", 600, 720, "CREATE YOUR BOXER", { side = "left", noShade = true, footer = 50, onBack = back })
-	tabsFrame = UI.Frame(win, { BackgroundTransparency = 1, Position = UDim2.fromOffset(16, 48), Size = UDim2.new(1, -32, 0, 72) })
-	UI.Grid(tabsFrame, UDim2.new(0.25, -5, 0, 32), nil, 5)
-	body.Position = UDim2.fromOffset(16, 128)
-	body.Size = UDim2.new(1, -32, 1, -190)
-	randomBtn = UI.Button(win, "RANDOM LOOK", { Name = "RandomLook", Size = UDim2.fromOffset(140, 30), Position = UDim2.new(1, -156, 0, 12), TextSize = 13 }, randomLook)
-	narrowHeader = UI.CanvasSize(State.gui).X * 0.46 < 480
-	local nav = UI.Frame(win, { BackgroundTransparency = 1, Position = UDim2.new(0, 16, 1, -54), Size = UDim2.new(1, -32, 0, 42) })
-	UI.Button(nav, "BACK", { Size = UDim2.new(0.3, 0, 1, 0) }, back)
-	nextBtn = UI.Button(nav, "NEXT", { Size = UDim2.new(0.66, 0, 1, 0), Position = UDim2.new(0.34, 0, 0, 0), BackgroundColor3 = T.gold, TextColor3 = T.bg })
+	shade, win, body = UI.Window(State.gui, "Creator", 600, 720, "CREATE YOUR BOXER", { side = "left", noShade = true, footer = 50, onBack = back, kicker = "CREATE YOUR BOXER" })
+	short = UI.CanvasSize(State.gui).Y < 560
+	local top = body.Position.Y.Offset
+	-- title row: UNDO / RESET / RANDOM on the right of the step's name
+	local title = win:FindFirstChild("Title")
+	local bw = short and 66 or 78
+	local tools = UI.Frame(win, { Name = "Tools", BackgroundTransparency = 1, AnchorPoint = Vector2.new(1, 0), Size = UDim2.fromOffset(bw * 3 + 12, 32),
+		Position = UDim2.new(1, -16, 0, title and (title.Position.Y.Offset + math.floor((title.Size.Y.Offset - 32) / 2)) or 12) })
+	UI.List(tools, 6, true, Enum.HorizontalAlignment.Right)
+	undoBtn = UI.Button(tools, "UNDO", { Name = "Undo", Size = UDim2.fromOffset(bw, 32), TextSize = 13, LayoutOrder = 1 }, function()
+		undo()
+	end)
+	UI.Button(tools, "RESET", { Name = "ResetStep", Size = UDim2.fromOffset(bw, 32), TextSize = 13, LayoutOrder = 2 }, function()
+		stepAction(RESET)
+	end)
+	local rb = UI.Button(tools, "RANDOM", { Name = "RandomStep", Size = UDim2.fromOffset(bw, 32), TextSize = 13, LayoutOrder = 3, TextColor3 = T.gold }, function()
+		stepAction(RANDOMIZE)
+	end)
+	UI.Stroke(rb, T.gold, 1, 0.55)
+	if title then
+		title.Size = UDim2.new(1, -(40 + bw * 3 + 12 + 24), 0, title.Size.Y.Offset)
+	end
+	-- the step bar: every step (tap to jump) over a thin progress line
+	tabsFrame = UI.Frame(win, { Name = "StepBar", BackgroundTransparency = 1, Position = UDim2.fromOffset(16, top), Size = UDim2.new(1, -32, 0, 40) })
+	local steps = UI.Frame(tabsFrame, { Name = "Steps", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 34) })
+	UI.Grid(steps, UDim2.new(1 / #PAGES, -4, 0, 34), nil, 4)
+	local line = UI.Frame(tabsFrame, { Name = "Progress", Position = UDim2.new(0, 0, 1, -3), Size = UDim2.new(1, -4, 0, 3), BackgroundColor3 = T.panel2 })
+	UI.Corner(line, 2)
+	progressFill = UI.Frame(line, { Name = "Fill", Size = UDim2.fromScale(1 / #PAGES, 1), BackgroundColor3 = T.gold })
+	UI.Corner(progressFill, 2)
+	body.Position = UDim2.fromOffset(16, top + 48)
+	body.Size = UDim2.new(1, -32, 1, -(top + 48 + 62))
+	local nav = UI.Frame(win, { Name = "Nav", BackgroundTransparency = 1, Position = UDim2.new(0, 16, 1, -54), Size = UDim2.new(1, -32, 0, 42) })
+	backBtn = UI.Button(nav, "BACK", { Name = "BackStep", Size = UDim2.new(0.3, 0, 1, 0) }, back)
+	nextBtn = UI.Button(nav, "NEXT", { Name = "NextStep", Size = UDim2.new(0.66, 0, 1, 0), Position = UDim2.new(0.34, 0, 0, 0), BackgroundColor3 = T.gold, TextColor3 = T.bg })
 	nextBtn.MouseButton1Click:Connect(function()
-		local i = table.find(PAGES, page) or 1
-		if i < #PAGES then
-			page = PAGES[i + 1]
-			preview()
-			render()
-			return
-		end
-		if C.first:gsub("%s", "") == "" or C.last:gsub("%s", "") == "" then
-			State.toast("Give your boxer a first and last name.", T.red)
-			page = "Identity"
-			render()
-			return
-		end
-		nextBtn.Text = "CREATING..."
-		local res = State.req("CreateBoxer", {
-			first = C.first, last = C.last, nickname = C.nickname, age = C.age, nationality = C.nationality,
-			music = C.music, voice = C.voice, weightClass = C.weightClass, weight = C.weight, reachDelta = C.reachDelta,
-			style = C.style, specialty = C.specialty, look = C.look,
-		})
-		if res.ok then
-			Creator.Close()
-			State.toast("Welcome to the fight game! Your amateur career starts now.", T.gold, 5)
-			State.toast("Train at the gym stations, eat and sleep - then book a fight at the FIGHT BOARD (or press H).", T.gold, 7)
+		if page ~= PAGES[#PAGES] then
+			step(1)
 		else
-			nextBtn.Text = "BEGIN CAREER"
-			State.toast(res.err or "Couldn't create your boxer", T.red)
+			begin()
 		end
 	end)
 	-- the live fighter plate over the 3D view: flag, name, nickname, division, style (updates as you type)
@@ -896,8 +1401,24 @@ function Creator.Open()
 	plateName = UI.Text(plate, "", { Face = "display", TextSize = 34, Position = UDim2.fromOffset(64, 24), Size = UDim2.new(1, -80, 0, 42), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
 	plateInfo = UI.Text(plate, "", { Font = T.semi, TextSize = 12, TextColor3 = T.sub, Position = UDim2.fromOffset(18, 76), Size = UDim2.new(1, -36, 0, 24), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
 	table.clear(plateSeen)
-	-- phones: the plate moves to the top-right corner so it never covers the boxer; a narrow window
-	-- moves RANDOM LOOK into the tab grid (re-rendered only when that changes)
+	-- turntable dock (right side of the screen): rotate and zoom, with the device's own shortcuts above it
+	local dock = UI.Frame(shade, { Name = "Turntable", AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -28, 1, -24), Size = UDim2.fromOffset(0, 48), AutomaticSize = Enum.AutomaticSize.X })
+	local camHint = UI.Text(shade, "", { Name = "CameraHint", AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -34, 1, -78), Size = UDim2.fromOffset(440, 16), TextSize = 12, TextColor3 = T.sub,
+		TextXAlignment = Enum.TextXAlignment.Right, AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
+	UI.BindHint(camHint, function(mode)
+		if mode == "gamepad" then
+			local G = UI.Gamepad
+			local function l(k)
+				return G and G.Label(k) or k.Name
+			end
+			return string.format("RIGHT STICK turn  ·  %s / %s zoom  ·  %s / %s step  ·  %s undo  ·  %s reset slider", l(Enum.KeyCode.ButtonL2), l(Enum.KeyCode.ButtonR2), l(Enum.KeyCode.ButtonL1),
+				l(Enum.KeyCode.ButtonR1), l(Enum.KeyCode.ButtonY), l(Enum.KeyCode.ButtonX))
+		elseif mode == "touch" then
+			return "Drag your boxer to turn him"
+		end
+		return "Drag your boxer to turn  ·  wheel to zoom  ·  Ctrl+Z undo"
+	end)
+	-- phones: the plate moves to the top-right corner so it never covers the boxer
 	local function placePlate()
 		if not (plate and plate.Parent) then
 			return
@@ -906,45 +1427,34 @@ function Creator.Open()
 		local small = canvas.Y < 640
 		plate.AnchorPoint = small and Vector2.new(1, 0) or Vector2.new(1, 1)
 		plate.Position = small and UDim2.new(1, -20, 0, 12) or UDim2.new(1, -28, 1, -84)
-		local narrow = canvas.X * 0.46 < 480
-		if narrow ~= narrowHeader then
-			narrowHeader = narrow
-			render()
-		end
+		camHint.Position = small and UDim2.new(1, -34, 1, -78) or UDim2.new(1, -34, 1, -202)
 	end
 	placePlate()
 	if plateConn then
 		plateConn:Disconnect()
 	end
 	plateConn = State.screen:GetPropertyChangedSignal("AbsoluteSize"):Connect(placePlate)
-	-- turntable dock (right side of the screen): rotate and zoom
-	local dock = UI.Frame(shade, { Name = "Turntable", AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -28, 1, -24), Size = UDim2.fromOffset(0, 48), AutomaticSize = Enum.AutomaticSize.X })
 	UI.Glass(dock, { transparency = 0.15, radius = 24 })
 	UI.New("UIPadding", { PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8), Parent = dock })
 	UI.List(dock, 6, true, Enum.HorizontalAlignment.Center)
 	UI.Text(dock, "ROTATE", { Font = T.semi, TextSize = 10, TextColor3 = T.sub, Size = UDim2.fromOffset(50, 48), AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false, LayoutOrder = 0 })
-	local turn = dock
-	local function spin(d)
-		camYaw += d
-	end
 	local held = 0
-	local zoom = dock
 	UI.Frame(dock, { Size = UDim2.fromOffset(1, 26), BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = 0.8, LayoutOrder = 5 })
 	UI.Text(dock, "ZOOM", { Font = T.semi, TextSize = 10, TextColor3 = T.sub, Size = UDim2.fromOffset(40, 48), AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false, LayoutOrder = 6 })
 	for i, z in ipairs({ { "minus", 0.4 }, { "plus", -0.4 } }) do
-		local zb = UI.Button(zoom, "", { Size = UDim2.fromOffset(36, 36), LayoutOrder = 6 + i }, function()
-			camZoom = math.clamp(camZoom + z[2], -1, 1)
+		local zb = UI.Button(dock, "", { Name = z[1] == "minus" and "ZoomOut" or "ZoomIn", Size = UDim2.fromOffset(36, 36), LayoutOrder = 6 + i }, function()
+			zoomBy(z[2])
 		end)
 		zb:FindFirstChildOfClass("UICorner").CornerRadius = UDim.new(0, 18)
 		UI.Icon(zb, z[1], 14, T.text, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5) })
 	end
 	for i, def in ipairs({ { "<", 0.35 }, { "FRONT", 0 }, { ">", -0.35 } }) do
 		local icon = def[1] == "<" and "left" or (def[1] == ">" and "right" or nil)
-		local b = UI.Button(turn, icon and "" or def[1], { Size = UDim2.fromOffset(icon and 36 or 74, 36), TextSize = 14, LayoutOrder = i }, function()
+		local b = UI.Button(dock, icon and "" or def[1], { Name = icon and ("Turn" .. icon) or "Front", Size = UDim2.fromOffset(icon and 36 or 74, 36), TextSize = 14, LayoutOrder = i }, function()
 			if def[2] == 0 then
 				camYaw = 0
 			else
-				spin(def[2])
+				camYaw += def[2]
 			end
 		end)
 		b.MouseButton1Down:Connect(function()
@@ -967,33 +1477,43 @@ function Creator.Open()
 	camera(true)
 	setKeyLight(true)
 	previewTag(true)
+	bindInputs()
 	view.growth, view.peak, view.expr, view.damage = 0, false, "neutral", "None"
 	State.HidePrompts("Creator", true)
 	render()
 	if previewConn then
 		previewConn:Disconnect()
 	end
+	inflight = false
 	previewConn = RunService.Heartbeat:Connect(function(dt)
 		if held ~= 0 then
 			camYaw += held * dt * 4
 		end
 		updatePlate()
-		if dirty and os.clock() - lastSent > 0.28 then
-			local full = dirtyFull
-			dirty, dirtyFull = false, false
-			lastSent = os.clock()
-			-- preview-only options: growth stage, starting / peak body, partial head rebuild
-			local popts = { peak = view.peak, growth = view.growth > 0.02 and view.growth or nil }
-			if not full then
-				popts.only = { Face = true, Hair = true, Beard = true }
-			end
-			task.spawn(function()
-				local r = State.req("PreviewLook", C.look, hands(), popts)
-				if r and r.throttled then
-					dirty = true
-					dirtyFull = dirtyFull or full
+		local now = os.clock()
+		if inflight and now - lastSent > 2 then
+			inflight = false -- a lost reply never blocks the preview for good
+		end
+		if dirty and not inflight then
+			if now - lastSent >= SEND_EVERY then
+				local full = dirtyFull
+				dirty, dirtyFull = false, false
+				lastSent = now
+				inflight = true
+				-- preview-only options: growth stage, starting / peak body, partial head rebuild
+				local popts = { peak = view.peak, growth = view.growth > 0.02 and view.growth or nil }
+				if not full then
+					popts.only = { Face = true, Hair = true, Beard = true }
 				end
-			end)
+				task.spawn(function()
+					local r = State.req("PreviewLook", C.look, hands(), popts)
+					inflight = false
+					if r and r.throttled then
+						dirty = true
+						dirtyFull = dirtyFull or full
+					end
+				end)
+			end
 		end
 		-- a server rebuild replaces the face: draw the damage preview over the new one
 		if view.damage ~= "None" then
@@ -1019,6 +1539,11 @@ function Creator.Close()
 		plateConn:Disconnect()
 		plateConn = nil
 	end
+	for _, c in ipairs(inputConns) do
+		c:Disconnect()
+	end
+	table.clear(inputConns)
+	turning, stickX = nil, 0
 	camera(false)
 	setKeyLight(false)
 	-- drop the preview-only expression, damage and tag

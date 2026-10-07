@@ -1,8 +1,8 @@
 -- Services: the gym's service windows.
---  Barber Shop  - grouped styles, hair types, hairline / line-up, part, recolour / dye / highlights,
---                 beards + beard colour; a fresh cut resets growth (previewed live); prices from
---                 Looks.BarberPrice (the same function the server charges with)
---  Locker Room  - trunks, socks, shoes, laces, wraps + wrap pattern, mouthguard, robe and glove
+--  Barber Shop  - grouped styles as cards with a little head wearing each, hair types, hairline / line-up,
+--                 part, recolour / dye / highlights, beards + beard colour; a fresh cut resets growth
+--                 (previewed live); prices from Looks.BarberPrice (the same function the server charges with)
+--  Locker Room  - kits, trunks, socks, shoes, laces, wraps + wrap pattern, mouthguard, robe and glove
 --                 customization (glove options unlock with better gloves: trim, stitching, finishes,
 --                 metallic, logos, name & nickname embroidery, brand on custom gloves)
 --  Nutrition Bar, water coolers, and Sleep (ends the day with a day transition)
@@ -15,6 +15,7 @@ local Catalog = require(Shared:WaitForChild("Catalog"))
 local Looks = require(Shared:WaitForChild("Looks"))
 local UI = require(Shared:WaitForChild("UI"))
 local State = require(script.Parent:WaitForChild("State"))
+local LookKit = require(script.Parent:WaitForChild("LookKit"))
 local T = UI.Theme
 
 local Services = {}
@@ -226,12 +227,20 @@ local function openSession(section, title, width, onRender, footerFn)
 			s.updateFooter()
 		end
 	end
+	-- the preview goes to the server at most four times a second while a slider moves (one request at a
+	-- time; the last value always follows within a quarter second of the last change)
 	s.conn = RunService.Heartbeat:Connect(function()
-		if s.dirty and os.clock() - s.lastSent > 0.28 then
+		local now = os.clock()
+		if s.inflight and now - s.lastSent > 2 then
+			s.inflight = false
+		end
+		if s.dirty and not s.inflight and now - s.lastSent >= 0.25 then
 			s.dirty = false
-			s.lastSent = os.clock()
+			s.lastSent = now
+			s.inflight = true
 			task.spawn(function()
 				local res = State.req("PreviewLook", s.look, section == "locker" and "gloves" or "wraps", s.popts and s.popts() or nil)
+				s.inflight = false
 				if res and res.throttled and session == s then
 					s.dirty = true
 				end
@@ -251,12 +260,13 @@ end
 local function colorField(s, parent, label, get, set, palette)
 	local holder = UI.Frame(parent, { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y })
 	UI.List(holder, 4)
+	local names = palette == Looks.HairColors and LookKit.HairColorNames or (palette == Looks.Palette and LookKit.PaletteNames or nil)
 	local _, refresh = UI.Swatches(holder, label, palette, paletteIndex(palette, get()), function(rgb)
 		set(rgb)
 		s.preview()
-	end)
+	end, { names = names })
 	local wheel
-	UI.Button(holder, "Custom colour", { Size = UDim2.new(0, 150, 0, 26), TextSize = 13 }, function()
+	UI.Button(holder, "Custom colour", { Name = "CustomColour", Size = UDim2.new(0, 160, 0, 30), TextSize = 13 }, function()
 		if wheel then
 			wheel:Destroy()
 			wheel = nil
@@ -294,18 +304,17 @@ function Services.Barber()
 				h.type = v
 				s.preview()
 			end, Looks.HairTypeName)
-			for _, group in ipairs(Looks.HairStyleGroups) do
-				UI.Header(body, group.name:upper())
-				local grid = UI.Frame(body, { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y })
-				UI.Grid(grid, UDim2.new(1 / 3, -6, 0, 30), nil, 6)
-				for i, st in ipairs(group.styles) do
-					UI.Button(grid, st, { LayoutOrder = i, TextSize = 13, BackgroundColor3 = h.style == st and T.gold or T.panel2, TextColor3 = h.style == st and T.bg or T.text }, function()
-						h.style = st
-						s.preview()
-						s.render()
-					end)
-				end
-			end
+			-- the styles as cards with a little head wearing each (in the hair colour picked below), one
+			-- group at a time
+			UI.Header(body, "STYLE")
+			LookKit.HairPicker(body, h, Looks.SkinTones[s.look.skin] or Looks.SkinTones[6], s.hairGroup, function(st)
+				h.style = st
+				s.preview()
+				s.render()
+			end, function(g)
+				s.hairGroup = g
+				s.render()
+			end)
 			UI.Header(body, "CUT")
 			UI.Cycler(body, "Hairline", Looks.Hairlines, h.hairline or "Natural", function(v)
 				h.hairline = v
@@ -317,18 +326,17 @@ function Services.Barber()
 				h.part = v
 				s.preview()
 			end)
-			for _, sl in ipairs(Looks.HairSliders) do
-				UI.Slider(body, sl.label, sl.min, sl.max, h[sl.key] or 0.5, nil, function(v)
-					h[sl.key] = v
-					s.preview()
-				end)
-			end
-			-- v3 strand detail for the hair meshes (the cut is styled at the barber too; free like length)
-			for _, sl in ipairs(Looks.HairDetailSliders or {}) do
-				UI.Slider(body, sl.label, sl.min, sl.max, h[sl.key] or 0, nil, function(v)
-					h[sl.key] = v
-					s.preview()
-				end)
+			-- length / density / thickness, then the v3 strand detail for the hair meshes (the cut is styled at
+			-- the barber too; free like length): plain words, a reset to the default, live preview
+			local def = Looks.Defaults(s.look.gender).hair
+			for _, list in ipairs({ Looks.HairSliders, Looks.HairDetailSliders or {} }) do
+				for _, sl in ipairs(list) do
+					local sopts, num = LookKit.Opts(sl, def[sl.key], sl.key == "length" or sl.key == "volume")
+					UI.Slider(body, LookKit.Label(sl), sl.min, sl.max, h[sl.key] or def[sl.key] or 0, nil, function(v)
+						h[sl.key] = v
+						s.preview()
+					end, num, sopts)
+				end
 			end
 			UI.Toggle(body, "Fresh cut (resets hair growth)", opts.cut, function(v)
 				opts.cut = v
@@ -416,17 +424,22 @@ function Services.Locker()
 		local pal = Looks.Palette
 		local glove = Catalog.Find(Catalog.Gloves, P.gear.equipped.gloves) or Catalog.Gloves[1]
 		local custom = glove.custom or {}
-		UI.Button(body, "Champion kit (black & red)", { Size = UDim2.new(0, 260, 0, 34), TextSize = 14, BackgroundColor3 = T.gold, TextColor3 = T.bg }, function()
-			-- black pro trunks with red trim and striped side panels, black boxing boots with red
-			-- laces and soles, white socks, red gloves (colour/trim only where the gloves allow it)
-			a.trunks, a.trim, a.trunkStyle = { 20, 20, 20 }, { 200, 25, 30 }, "Pro"
-			a.socks, a.shoes, a.shoeStyle = { 240, 240, 240 }, { 20, 20, 20 }, "High-Top"
-			a.robe, a.robeTrim = { 20, 20, 20 }, { 200, 25, 30 }
-			if custom.color then
-				g.color = { 200, 25, 30 }
+		-- kits: a whole outfit in one tap (glove colour / cuff only where the gloves allow it)
+		UI.Header(body, "KITS")
+		local kits = {}
+		for _, kit in ipairs(LookKit.KitPresets) do
+			table.insert(kits, { id = kit.id, label = kit.id, sub = kit.desc, kit = kit, glyph = function(art)
+				LookKit.KitGlyph(art, kit)
+			end })
+		end
+		LookKit.PresetGrid(body, kits, { name = "Kits", cols = 3, cellH = 100 }, function(it)
+			local color, trim = g.color, g.trim
+			LookKit.ApplyKit(it.kit, a, g)
+			if not custom.color then
+				g.color = color
 			end
-			if custom.trim then
-				g.trim = { 240, 240, 240 }
+			if not custom.trim then
+				g.trim = trim
 			end
 			s.preview()
 			s.render()
