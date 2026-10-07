@@ -64,6 +64,64 @@ Careers are saved with DataStoreService in the store `Config.DataStoreName` (`Wo
 Old saves stay valid. Every new field has a default and is sanitised. Player settings (UI scale,
 volumes, graphics detail, screen FX, camera shake) are saved with the profile.
 
+## Controls
+
+Every on-screen hint follows the device you used last: key caps on keyboard and mouse, the
+controller's own button names on a gamepad (Xbox **A / B / X / Y, LB / RB, LT / RT**, or
+PlayStation **Cross / Circle / Square / Triangle, L1 / R1, L2 / R2**, read from the connected
+controller), and tap hints with the touch pads on a phone or tablet. Picking up another device
+switches them on the spot.
+
+**Around the gym**
+
+| Action | Keyboard | Controller | Touch |
+|---|---|---|---|
+| Move / camera | WASD, mouse | Left stick / right stick | Thumbstick, drag |
+| Use a station or counter | E | X / Square | Tap the prompt |
+| Career Hub | H | D-pad up | CAREER HUB button |
+| Main menu | M | D-pad down | MENU button |
+
+**Menus and windows.** On a controller, every window (Career Hub, creator, barber, locker room,
+nutrition, sleep, stores, results, sparring picker) opens with a button already selected. The D-pad
+or left stick moves the selection, **A** presses, and **B** closes the window (in the creator it goes
+back a page). The right stick scrolls long lists. On a selected slider, option cycler, toggle or
+colour wheel, D-pad left / right changes the value (**A** flips a toggle, steps a cycler or darkens
+the colour). In the Career Hub, **LB / RB** step through the tabs. The main menu uses the D-pad, **A**
+to select and **B** to go back.
+
+**Fights**
+
+| Action | Keyboard | Controller (Xbox / PlayStation) | Touch |
+|---|---|---|---|
+| Jab | 1 / J (or left click) | X / Square | JAB |
+| Cross | 2 / K (or right click) | Y / Triangle | CROSS |
+| Lead hook | 3 / L | B / Circle | HOOK (alternates hands) |
+| Rear hook | 4 / ; | A / Cross | HOOK |
+| Uppercut | 5 / U | RT / R2 | UPPER |
+| Overhand | 6 / O | RB / R1 | - |
+| Body shot (with a punch) | hold Shift | hold LB / L1 | BODY toggle |
+| Block | hold F | hold LT / L2 | hold BLOCK |
+| Slip left / right | Q / E | flick the right stick left / right | drag BLOCK left / right |
+| Roll | C | flick the right stick down | - |
+| Parry | R | D-pad up (or flick the right stick up) | - |
+| Pivot left / right | Z / X | D-pad left / right, or click the right stick (toward the left stick's lean) | - |
+| Clinch | G | D-pad down or click the left stick | CLINCH |
+| Show the controls | hold H | hold View / Share | - |
+| Get up after a knockdown | mash Space | mash A / Cross | tap the panel |
+
+When you are down, every press counts and a press while the marker is in the green zone counts three
+times, on every device. During a fight the left stick still moves your boxer. The controller's
+fight buttons are bound only for the fight: jumping, the camera's right stick and the prompts' X
+button come back when it ends.
+
+**Training minigames.** Each drill's buttons show the key or button that works it. A controller
+uses the fight layout: punches on the face buttons and triggers, slips and rolls as right-stick
+flicks, pivots and parries on the D-pad. The speed bag's left and right hands are **X / Y**. Lifts,
+slams, jumps, pace and breathing are **A** (on the heavy bag the POWER shot is **LT**, because **A**
+is the rear hook). Footwork, the agility ladder and the rope's feet use the D-pad. On roadwork and
+swimming you move with the left stick, and **Y** finishes early. **View / Share** quits a drill. On
+the session report, **A** continues, **X** flexes and **B** closes.
+
 ## Characters
 
 Every boxer is generated from his look (face sculpt, skin, hair, physique, gear) and his training, so
@@ -154,13 +212,13 @@ Everything is procedural, driven on each client by `Animator.client.lua` and the
 
 - **Main menu:** your boxer in his corner of a gym at night, with a drifting camera, light shafts and
   dust. Its items are Continue / New Career, Career, Character, Gym, Rankings, Store and Settings.
-  Press **M** in the world to open it again. It works with keyboard and gamepad.
+  Press **M** (D-pad down on a controller) in the world to open it again. It works with keyboard and gamepad.
 - **Fighter card:** a posed studio portrait of your boxer, with:
   - name, nickname, weight class and nationality flag;
   - record, knockouts and KO ratio;
   - four world-title belt slots and rankings per sanctioning body;
   - physique, style and recent form.
-- **Career Hub (H):** tabs for Career, Training, Body, Stats, Gym, Gear, Coaches, Sponsors, Life,
+- **Career Hub (H, D-pad up):** tabs for Career, Training, Body, Stats, Gym, Gear, Coaches, Sponsors, Life,
   Rankings, Rivals, Shop and Legacy.
 - **Training UI:** a progress bar for every exercise, and an anatomical body map. The map shows the
   muscles an exercise works, the growth each muscle got from a session, and how developed each
@@ -251,10 +309,8 @@ The gym itself has:
 - **Concussion:** builds with head damage. It slows punches and movement, lowers accuracy and
   defence, and blurs and drains the screen. It recovers between rounds and over days. Repeated
   trauma carries over the career.
-- **Controls:** shown on screen (hold **H** in a fight).
-  - Punches: 1/J jab, 2/K cross, 3/L lead hook, 4 rear hook, 5/U uppercut, 6/O overhand. Hold
-    Shift for body shots.
-  - Defence: F block, R parry, Q/E slip, C roll, Z/X pivot, G clinch.
+- **Controls:** shown on screen (hold **H**, or **View / Share** on a controller, in a fight). The
+  full keyboard, controller and touch layouts are in [Controls](#controls).
 - **Fight nights:** weigh-ins, ring walks, a referee, judges' scorecards and a crowd. The venues are
   a community centre, a club arena, the Grand Arena and the National Stadium for title fights. The
   big venues have fight-night lighting, LED screens, broadcast cameras and a walkout stage.

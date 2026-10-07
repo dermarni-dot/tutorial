@@ -26468,6 +26468,197 @@ return FightMotion
       </Item>
       <Item class="ModuleScript" referent="26">
         <Properties>
+          <string name="Name">Gamepad</string>
+          <string name="Source"><![CDATA[-- Gamepad: which device the player is using right now (keyboard and mouse, gamepad or touch), the names
+-- of the controller's buttons for on-screen prompts and a thumbstick flick detector.
+--   Gamepad.Mode()          "keyboard" | "gamepad" | "touch" (follows UserInputService's last input type)
+--   Gamepad.IsPad()         Mode() == "gamepad"
+--   Gamepad.Changed         fires (mode) when the player picks up another device
+--   Gamepad.Brand()         "xbox" | "ps" | "generic" (read from the connected controller's button names)
+--   Gamepad.Label(keyCode)  "X" / "SQUARE" / "RT" / "R2" / "D-PAD UP" / "RS LEFT" ... and keyboard keys
+--                           ("SPACE", "1", "SHIFT") for the hint texts
+--   Gamepad.Short(keyCode)  the same for tight key caps (the D-pad as "D-UP" ...)
+--   Gamepad.IsPadKey(k)     a gamepad KeyCode (buttons, D-pad, thumbsticks)
+--   Gamepad.Flick()         a flick detector: f:Update(x, y, now) returns "L" / "R" / "U" / "D" once per flick
+-- Client-side; the server never needs it (it loads there and stays in "keyboard" mode).
+local UserInputService = game:GetService("UserInputService")
+local K = Enum.KeyCode
+local IT = Enum.UserInputType
+
+local Gamepad = {}
+
+local PAD_TYPES = {
+	[IT.Gamepad1] = true, [IT.Gamepad2] = true, [IT.Gamepad3] = true, [IT.Gamepad4] = true,
+	[IT.Gamepad5] = true, [IT.Gamepad6] = true, [IT.Gamepad7] = true, [IT.Gamepad8] = true,
+}
+-- mouse movement alone does not switch the prompts back to keys: a desk bump while playing on a pad
+-- would flicker every hint on screen (a click or a key press does)
+local KEYBOARD_TYPES = {
+	[IT.Keyboard] = true, [IT.MouseButton1] = true, [IT.MouseButton2] = true, [IT.MouseButton3] = true,
+	[IT.MouseWheel] = true, [IT.TextInput] = true,
+}
+
+local function modeOf(t)
+	if PAD_TYPES[t] then
+		return "gamepad"
+	elseif t == IT.Touch then
+		return "touch"
+	elseif KEYBOARD_TYPES[t] then
+		return "keyboard"
+	end
+	return nil
+end
+
+local function initialMode()
+	local ok, t = pcall(UserInputService.GetLastInputType, UserInputService)
+	local m = ok and modeOf(t) or nil
+	if m then
+		return m
+	end
+	local okPad, pad = pcall(function()
+		return UserInputService.GamepadEnabled
+	end)
+	if UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled then
+		return "touch"
+	elseif okPad and pad and not UserInputService.KeyboardEnabled then
+		return "gamepad" -- a console
+	end
+	return "keyboard"
+end
+
+local mode = initialMode()
+local brand = nil -- resolved on first use, again after a controller connects
+local changed = Instance.new("BindableEvent")
+Gamepad.Changed = changed.Event
+
+function Gamepad.Mode()
+	return mode
+end
+
+function Gamepad.IsPad()
+	return mode == "gamepad"
+end
+
+UserInputService.LastInputTypeChanged:Connect(function(t)
+	local m = modeOf(t)
+	if m and m ~= mode then
+		mode = m
+		changed:Fire(mode)
+	end
+end)
+UserInputService.GamepadConnected:Connect(function()
+	brand = nil
+end)
+
+-- GetStringForKeyCode names the face buttons after the connected controller: "ButtonA" on an Xbox pad,
+-- "ButtonCross" on a PlayStation one
+function Gamepad.Brand()
+	if brand then
+		return brand
+	end
+	local ok, s = pcall(UserInputService.GetStringForKeyCode, UserInputService, K.ButtonA)
+	if ok and type(s) == "string" and s:find("Cross", 1, true) then
+		brand = "ps"
+	elseif ok and s == "ButtonA" then
+		brand = "xbox"
+	else
+		brand = "generic"
+	end
+	return brand
+end
+
+local XBOX = {
+	[K.ButtonA] = "A", [K.ButtonB] = "B", [K.ButtonX] = "X", [K.ButtonY] = "Y",
+	[K.ButtonL1] = "LB", [K.ButtonR1] = "RB", [K.ButtonL2] = "LT", [K.ButtonR2] = "RT",
+	[K.ButtonL3] = "LS CLICK", [K.ButtonR3] = "RS CLICK", [K.ButtonSelect] = "VIEW", [K.ButtonStart] = "MENU",
+	[K.Thumbstick1] = "LS", [K.Thumbstick2] = "RS",
+}
+local PS = {
+	[K.ButtonA] = "CROSS", [K.ButtonB] = "CIRCLE", [K.ButtonX] = "SQUARE", [K.ButtonY] = "TRIANGLE",
+	[K.ButtonL1] = "L1", [K.ButtonR1] = "R1", [K.ButtonL2] = "L2", [K.ButtonR2] = "R2",
+	[K.ButtonL3] = "L3", [K.ButtonR3] = "R3", [K.ButtonSelect] = "SHARE", [K.ButtonStart] = "OPTIONS",
+	[K.Thumbstick1] = "LS", [K.Thumbstick2] = "RS",
+}
+local COMMON = {
+	[K.DPadUp] = "D-PAD UP", [K.DPadDown] = "D-PAD DOWN", [K.DPadLeft] = "D-PAD LEFT", [K.DPadRight] = "D-PAD RIGHT",
+	-- the right-stick flicks (slips, rolls) ride on these KeyCodes in the key maps
+	[K.Thumbstick2Left] = "RS LEFT", [K.Thumbstick2Right] = "RS RIGHT", [K.Thumbstick2Up] = "RS UP", [K.Thumbstick2Down] = "RS DOWN",
+	[K.Thumbstick1Left] = "LS LEFT", [K.Thumbstick1Right] = "LS RIGHT", [K.Thumbstick1Up] = "LS UP", [K.Thumbstick1Down] = "LS DOWN",
+}
+local KEYS = {
+	[K.Space] = "SPACE", [K.LeftShift] = "SHIFT", [K.RightShift] = "SHIFT", [K.Return] = "ENTER", [K.Backspace] = "BACKSPACE",
+	[K.One] = "1", [K.Two] = "2", [K.Three] = "3", [K.Four] = "4", [K.Five] = "5", [K.Six] = "6", [K.Semicolon] = ";",
+	[K.Up] = "UP", [K.Down] = "DOWN", [K.Left] = "LEFT", [K.Right] = "RIGHT",
+}
+
+function Gamepad.Label(k)
+	if typeof(k) ~= "EnumItem" then
+		return ""
+	end
+	local t = (Gamepad.Brand() == "ps" and PS or XBOX)[k] or COMMON[k] or KEYS[k]
+	return t or string.upper(k.Name)
+end
+
+-- a short name for tight key caps (HUD buttons): the D-pad as "D-UP" / "D-DOWN" / ...
+local SHORT = { [K.DPadUp] = "D-UP", [K.DPadDown] = "D-DOWN", [K.DPadLeft] = "D-LEFT", [K.DPadRight] = "D-RIGHT" }
+function Gamepad.Short(k)
+	return SHORT[k] or Gamepad.Label(k)
+end
+
+function Gamepad.IsPadKey(k)
+	if typeof(k) ~= "EnumItem" or k.EnumType ~= Enum.KeyCode then
+		return false
+	end
+	local n = k.Name
+	return n:sub(1, 6) == "Button" or n:sub(1, 4) == "DPad" or n:sub(1, 10) == "Thumbstick"
+end
+
+-- the flick detector: the stick has to travel from near rest (inside INNER) to the edge (OUTER) within
+-- WINDOW seconds of leaving the middle; it fires once, then re-arms when the stick comes back toward the
+-- middle. A slow push or a held stick never repeats. Plain fields only: Update allocates nothing.
+local Flick = {}
+Flick.__index = Flick
+local INNER, OUTER, WINDOW = 0.3, 0.72, 0.3
+
+function Gamepad.Flick()
+	return setmetatable({ armed = true, leftAt = nil }, Flick)
+end
+
+function Flick:Update(x, y, now)
+	x, y = tonumber(x) or 0, tonumber(y) or 0
+	local m = math.sqrt(x * x + y * y)
+	if m < INNER then
+		self.armed = true
+		self.leftAt = nil
+		return nil
+	end
+	if not self.leftAt then
+		self.leftAt = now
+	end
+	if self.armed and m >= OUTER then
+		self.armed = false
+		if now - self.leftAt > WINDOW then
+			return nil
+		end
+		if math.abs(x) >= math.abs(y) then
+			return x < 0 and "L" or "R"
+		end
+		return y < 0 and "D" or "U"
+	end
+	return nil
+end
+
+function Flick:Reset()
+	self.armed = true
+	self.leftAt = nil
+end
+
+return Gamepad
+]]></string>
+        </Properties>
+      </Item>
+      <Item class="ModuleScript" referent="27">
+        <Properties>
           <string name="Name">LookData</string>
           <string name="Source"><![CDATA[-- LookData: the exact inputs the anatomy mesh generators read, published by the server on every
 -- character model so each client can build the same meshes (EditableMeshes do not replicate).
@@ -27166,7 +27357,7 @@ return LookData
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="27">
+      <Item class="ModuleScript" referent="28">
         <Properties>
           <string name="Name">Looks</string>
           <string name="Source"><![CDATA[-- Looks: everything about how a boxer looks (face, hair, body frame, attire, gloves).
@@ -27861,7 +28052,7 @@ return Looks
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="28">
+      <Item class="ModuleScript" referent="29">
         <Properties>
           <string name="Name">MeshKit</string>
           <string name="Source"><![CDATA[-- MeshKit: pure-Luau mesh data and procedural modelling for the anatomy meshes (shared, deterministic).
@@ -30746,7 +30937,7 @@ return MeshKit
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="29">
+      <Item class="ModuleScript" referent="30">
         <Properties>
           <string name="Name">UI</string>
           <string name="Source"><![CDATA[-- UI: the game's design system - "fight night broadcast".
@@ -30759,8 +30950,21 @@ return MeshKit
 -- Built-in fonts only (Font.new on rbxasset families, resolved inside pcall).
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
+local GuiService = game:GetService("GuiService")
+local RunService = game:GetService("RunService")
 
 local UI = {}
+
+-- the input device in use and the controller's button names (Shared.Gamepad); optional: without it
+-- every window simply behaves as on keyboard and mouse
+local Gamepad
+do
+	local ok, m = pcall(function()
+		return require(script.Parent:WaitForChild("Gamepad", 5))
+	end)
+	Gamepad = ok and type(m) == "table" and m or nil
+end
+UI.Gamepad = Gamepad
 
 local function rgb(r, g, b)
 	return Color3.fromRGB(r, g, b)
@@ -31666,10 +31870,326 @@ function UI.Backdrop(on)
 end
 
 ------------------------------------------------------------------------
+-- Gamepad navigation
+------------------------------------------------------------------------
+-- Roblox's own selection (GuiService.SelectedObject) moves between selectable objects with the D-pad /
+-- left stick and A presses the selected button. The kit adds the rest: a start selection when a window
+-- opens (or the player picks up a pad while one is open), the selection kept inside the top window (each
+-- UI.Window is a SelectionGroup) and put back near where it was when a re-render destroys it, B = the
+-- window's back / close, D-pad left / right (and A) on slider, cycler, toggle and colour rows, and the right
+-- stick scrolling the list under the selection. UI.PadStart(button) makes a button its window's start
+-- selection. UI.PadHold(key, true) pauses all of it while a screen with its own navigation is up (the main
+-- menu, a fight).
+local padWindows = {} -- open UI.Window entries, oldest first: { shade, win, back, lastPos }
+local padHolds = {}
+local padStarted = false
+local scrollY, scrollConn, scrollFrame = 0, nil, nil
+
+local function isPad()
+	return Gamepad ~= nil and Gamepad.IsPad()
+end
+UI.IsPad = isPad
+
+-- on screen: every GuiObject up to the ScreenGui visible and the ScreenGui enabled
+local function shown(obj)
+	local o = obj
+	while o do
+		if o:IsA("LayerCollector") then
+			return o.Enabled
+		elseif o:IsA("GuiObject") and not o.Visible then
+			return false
+		end
+		o = o.Parent
+	end
+	return false
+end
+
+local function centre(o)
+	return o.AbsolutePosition + o.AbsoluteSize / 2
+end
+
+local function topWindow()
+	for i = #padWindows, 1, -1 do
+		local w = padWindows[i]
+		if w.shade.Parent and w.win.Parent then
+			return w
+		end
+		-- removed without Destroy: forget it
+		table.remove(padWindows, i)
+	end
+	return nil
+end
+
+-- the top window's panel (nil when none is open): a window's own pad shortcuts act only while it is on top
+function UI.PadTop()
+	local w = topWindow()
+	return w and w.win
+end
+
+local function selectableIn(root)
+	local list = {}
+	for _, d in ipairs(root:GetDescendants()) do
+		if d:IsA("GuiObject") and d.Selectable and (d:IsA("GuiButton") or d:IsA("TextBox") or d:GetAttribute("PadRow")) and d.AbsoluteSize.X > 1 and d.AbsoluteSize.Y > 1
+			and shown(d) then
+			table.insert(list, d)
+		end
+	end
+	return list
+end
+
+-- selects a button inside root: the one nearest `near` (screen px: where the selection was before a
+-- re-render), else the one marked by UI.PadStart, else the first in reading order (a window's close
+-- button last)
+function UI.PadSelect(root, near)
+	if not root then
+		return nil
+	end
+	local list = selectableIn(root)
+	local pick, best
+	if near then
+		for _, o in ipairs(list) do
+			local d = (centre(o) - near).Magnitude
+			if not best or d < best then
+				best, pick = d, o
+			end
+		end
+	end
+	if not pick then
+		for _, o in ipairs(list) do
+			if o:GetAttribute("PadStart") then
+				pick = o
+				break
+			end
+		end
+	end
+	if not pick then
+		for _, o in ipairs(list) do
+			if o.Name ~= "Close" or #list == 1 then
+				local p = o.AbsolutePosition
+				local key = math.floor(p.Y / 8) * 100000 + p.X
+				if not best or key < best then
+					best, pick = key, o
+				end
+			end
+		end
+	end
+	if pick then
+		pcall(function()
+			GuiService.SelectedObject = pick
+		end)
+	end
+	return pick
+end
+
+-- makes sure the top window holds the selection (on a gamepad, nothing held)
+function UI.PadRefresh()
+	if not isPad() or next(padHolds) then
+		return
+	end
+	local w = topWindow()
+	if not w then
+		return
+	end
+	local sel = GuiService.SelectedObject
+	-- (a close button picked only because the content was not built yet gives way to it)
+	if sel and sel:IsDescendantOf(w.win) and shown(sel) and not (sel == w.auto and sel.Name == "Close") then
+		return
+	end
+	w.auto = UI.PadSelect(w.win, w.lastPos)
+end
+
+function UI.PadStart(obj)
+	if obj then
+		obj:SetAttribute("PadStart", true)
+	end
+	return obj
+end
+
+local function clearSelection()
+	if GuiService.SelectedObject ~= nil then
+		pcall(function()
+			GuiService.SelectedObject = nil
+		end)
+	end
+end
+UI.ClearSelection = clearSelection
+
+function UI.PadHold(key, on)
+	local v = on and true or nil
+	if padHolds[key] == v then
+		return
+	end
+	padHolds[key] = v
+	if v then
+		clearSelection()
+	else
+		task.defer(UI.PadRefresh)
+	end
+end
+
+local function scrollStep(dt)
+	local sf = scrollFrame
+	if scrollY == 0 or not (sf and sf.Parent) then
+		if scrollConn then
+			scrollConn:Disconnect()
+			scrollConn = nil
+		end
+		return
+	end
+	local maxY = math.max(0, sf.AbsoluteCanvasSize.Y - sf.AbsoluteWindowSize.Y)
+	local cp = sf.CanvasPosition
+	local y = math.clamp(cp.Y - scrollY * math.min(dt, 0.1) * 900, 0, maxY)
+	if y ~= cp.Y then
+		sf.CanvasPosition = Vector2.new(cp.X, y)
+	end
+end
+
+-- the list the right stick scrolls: the one around the selection, else the window's biggest
+local function scrollTarget(w)
+	local sel = GuiService.SelectedObject
+	local sf = sel and sel:IsDescendantOf(w.win) and sel:FindFirstAncestorWhichIsA("ScrollingFrame")
+	if sf then
+		return sf
+	end
+	local area = 0
+	for _, d in ipairs(w.win:GetDescendants()) do
+		if d:IsA("ScrollingFrame") and d.Visible then
+			local a = d.AbsoluteSize.X * d.AbsoluteSize.Y
+			if a > area then
+				area, sf = a, d
+			end
+		end
+	end
+	return sf or nil
+end
+
+local function padInput(input)
+	local k = input.KeyCode
+	if k ~= Enum.KeyCode.ButtonB and k ~= Enum.KeyCode.DPadLeft and k ~= Enum.KeyCode.DPadRight and k ~= Enum.KeyCode.ButtonA then
+		return
+	end
+	if UserInputService:GetFocusedTextBox() then
+		return
+	end
+	if k == Enum.KeyCode.ButtonB then
+		-- B = back / close (whether or not Roblox's own selection also took it)
+		local w = not next(padHolds) and topWindow()
+		if w and w.back then
+			w.back()
+		end
+		return
+	end
+	-- a selected input row steps (its own buttons are not selectable: D-pad left / right would leave it)
+	local sel = GuiService.SelectedObject
+	if sel and sel:GetAttribute("PadRow") then
+		UI.Nudge(sel, k == Enum.KeyCode.ButtonA and 0 or (k == Enum.KeyCode.DPadLeft and -1 or 1))
+	end
+end
+
+local function padInit()
+	if padStarted or not Gamepad or not RunService:IsClient() then
+		return
+	end
+	padStarted = true
+	Gamepad.Changed:Connect(function(mode)
+		if mode == "gamepad" then
+			UI.PadRefresh()
+		else
+			-- back on mouse / touch: no selection frame left on a window
+			local sel = GuiService.SelectedObject
+			local w = topWindow()
+			if sel and w and sel:IsDescendantOf(w.win) then
+				clearSelection()
+			end
+		end
+	end)
+	GuiService:GetPropertyChangedSignal("SelectedObject"):Connect(function()
+		local w = topWindow()
+		if not w then
+			return
+		end
+		local sel = GuiService.SelectedObject
+		if sel then
+			if sel:IsDescendantOf(w.win) then
+				w.lastPos = centre(sel)
+			end
+		else
+			-- a re-render destroyed it, or B dropped it: select again near where it was once the new
+			-- content exists
+			task.delay(0.05, UI.PadRefresh)
+		end
+	end)
+	UserInputService.InputBegan:Connect(padInput)
+	UserInputService.InputChanged:Connect(function(input)
+		if input.KeyCode ~= Enum.KeyCode.Thumbstick2 then
+			return
+		end
+		local y = input.Position.Y
+		local was = scrollY
+		scrollY = math.abs(y) > 0.25 and y or 0
+		if scrollY ~= 0 and was == 0 and not next(padHolds) then
+			local w = topWindow()
+			scrollFrame = w and scrollTarget(w)
+			if scrollFrame and not scrollConn then
+				scrollConn = RunService.Heartbeat:Connect(scrollStep)
+			end
+		end
+	end)
+end
+
+-- labels whose text depends on the device in use (key caps, "press E" hints): fn(mode) -> text, run now and
+-- again whenever the player switches between keyboard, gamepad and touch; the entry goes with the label
+local hints = {}
+local hintConn
+local function applyHint(label, fn, mode)
+	local ok, t = pcall(fn, mode)
+	if ok and type(t) == "string" and label.Text ~= t then
+		label.Text = t
+	end
+end
+function UI.BindHint(label, fn)
+	if not label then
+		return label
+	end
+	local fresh = hints[label] == nil
+	hints[label] = fn
+	applyHint(label, fn, Gamepad and Gamepad.Mode() or "keyboard")
+	if fresh then
+		label.Destroying:Connect(function()
+			hints[label] = nil
+		end)
+	end
+	if not hintConn and Gamepad then
+		hintConn = Gamepad.Changed:Connect(function(mode)
+			for l, f in pairs(hints) do
+				applyHint(l, f, mode)
+			end
+		end)
+	end
+	return label
+end
+-- the usual hint: kbd text on keyboard, the pad button's name on a gamepad, touch text (or kbd) on touch
+function UI.KeyHint(kbd, padKey, touch)
+	return function(mode)
+		if mode == "gamepad" and Gamepad then
+			return type(padKey) == "string" and padKey or Gamepad.Label(padKey)
+		elseif mode == "touch" and touch then
+			return touch
+		end
+		return kbd
+	end
+end
+-- the device in use ("keyboard" | "gamepad" | "touch")
+function UI.InputMode()
+	return Gamepad and Gamepad.Mode() or "keyboard"
+end
+
+------------------------------------------------------------------------
 -- Windows & cards
 ------------------------------------------------------------------------
 -- returns shade, win, body (scrolling list area) ; opts = { side = "left"|"right", noShade, onClose,
--- scroll = false, footer = px, z, kicker = "SMALL CAPTION ABOVE THE TITLE" }
+-- onBack (gamepad B when it is not onClose), scroll = false, footer = px, z,
+-- kicker = "SMALL CAPTION ABOVE THE TITLE" }
 function UI.Window(gui, name, w, h, title, opts)
 	opts = opts or {}
 	local old = gui:FindFirstChild(name)
@@ -31745,6 +32265,27 @@ function UI.Window(gui, name, w, h, title, opts)
 	-- opening motion: the panel rises and settles
 	local pop = UI.New("UIScale", { Name = "Open", Scale = 0.965, Parent = holder })
 	UI.Tween(pop, { Scale = 1 }, UI.Motion.base)
+	-- gamepad: the window is a selection group (the D-pad stays inside it), B is its back / close
+	-- (opts.onBack, else opts.onClose), and it takes the selection once its content is built
+	pcall(function()
+		win.SelectionGroup = true
+		win.SelectionBehaviorUp = Enum.SelectionBehavior.Stop
+		win.SelectionBehaviorDown = Enum.SelectionBehavior.Stop
+		win.SelectionBehaviorLeft = Enum.SelectionBehavior.Stop
+		win.SelectionBehaviorRight = Enum.SelectionBehavior.Stop
+	end)
+	local entry = { shade = shade, win = win, back = opts.onBack or opts.onClose }
+	table.insert(padWindows, entry)
+	shade.Destroying:Connect(function()
+		local i = table.find(padWindows, entry)
+		if i then
+			table.remove(padWindows, i)
+		end
+		task.defer(UI.PadRefresh)
+	end)
+	padInit()
+	task.defer(UI.PadRefresh)
+	task.delay(0.3, UI.PadRefresh)
 	return shade, win, body
 end
 
@@ -31841,6 +32382,18 @@ local function registerNudge(f, fn)
 	end)
 end
 
+-- gamepad: the whole row is one selectable stop; D-pad left / right steps it (UI.Nudge from the kit's
+-- pad input) instead of moving the selection, so its own small buttons are left out of the selection
+local function padRow(f, ...)
+	f.Selectable = true
+	f:SetAttribute("PadRow", true)
+	f.NextSelectionLeft = f
+	f.NextSelectionRight = f
+	for _, b in ipairs({ ... }) do
+		b.Selectable = false
+	end
+end
+
 -- slider row: returns frame, setValue(v). [-] and [+] buttons step it (gamepad selection + A, mouse,
 -- touch); dragging the track sets it directly. opts.onRelease: onChange fires when a drag ends
 -- instead of on every step of it (a setting that rebuilds the screen it lives on: the UI scale)
@@ -31897,13 +32450,17 @@ function UI.Slider(parent, label, min, max, value, step, onChange, fmt, opts)
 		set(cur + d * (step or (max - min) / 20), true)
 		committed = cur
 	end
+	local steppers = {}
 	for _, spec in ipairs({ { "Minus", -1, UDim2.new(0.36, 0, 0.5, 0), "minus" }, { "Plus", 1, UDim2.new(0.86, -50, 0.5, 0), "plus" } }) do
 		local b = UI.Button(f, "", { Name = spec[1], Size = UDim2.fromOffset(32, 32), AnchorPoint = Vector2.new(0, 0.5), Position = spec[3], BackgroundColor3 = T.panel2, BackgroundTransparency = 0.2 }, function()
 			nudge(spec[2])
 		end)
 		UI.Icon(b, spec[4], 12, T.text, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5) })
+		table.insert(steppers, b)
 	end
+	-- (dir 0 = A on the row: a slider has nothing to press)
 	registerNudge(f, nudge)
+	padRow(f, steppers[1], steppers[2])
 	show(value)
 	return f, function(v)
 		cur = v
@@ -31962,6 +32519,7 @@ function UI.Toggle(parent, label, value, onChange)
 	end
 	sw.MouseButton1Click:Connect(flip)
 	registerNudge(f, flip)
+	padRow(f, sw)
 	show(false)
 	return f
 end
@@ -31993,7 +32551,11 @@ function UI.Cycler(parent, label, list, value, onChange, display)
 		step(1)
 	end)
 	UI.Icon(nextB, "right", 12, T.text, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5) })
-	registerNudge(f, step)
+	-- dir 0 (A on the row) steps forward
+	registerNudge(f, function(d)
+		step(d == 0 and 1 or d)
+	end)
+	padRow(f, prev, nextB)
 	show()
 	return f, function(v)
 		cur = v
@@ -32124,6 +32686,20 @@ function UI.ColorWheel(parent, label, rgbValue, onChange)
 		v = math.clamp((pos.X - track.AbsolutePosition.X) / math.max(1, track.AbsoluteSize.X), 0, 1)
 		render(true)
 	end)
+	-- gamepad: D-pad left / right turns the hue (a washed-out colour takes some saturation so the turn
+	-- shows), A steps the brightness down and wraps back to full
+	registerNudge(f, function(d)
+		if d == 0 then
+			v = v <= 0.3 and 1 or math.max(0.25, v - 0.25)
+		else
+			h = (h + d / 24) % 1
+			if s < 0.15 then
+				s = 0.6
+			end
+		end
+		render(true)
+	end)
+	padRow(f, hitW, hitB)
 	render(false)
 	return f, function(newRgb)
 		h, s, v = toColor(newRgb):ToHSV()
@@ -32241,15 +32817,15 @@ return UI
       </Item>
     </Item>
   </Item>
-  <Item class="ServerScriptService" referent="30">
+  <Item class="ServerScriptService" referent="31">
     <Properties>
       <string name="Name">ServerScriptService</string>
     </Properties>
-    <Item class="Folder" referent="31">
+    <Item class="Folder" referent="32">
       <Properties>
         <string name="Name">BoxerModules</string>
       </Properties>
-      <Item class="ModuleScript" referent="32">
+      <Item class="ModuleScript" referent="33">
         <Properties>
           <string name="Name">Ambient</string>
           <string name="Source"><![CDATA[-- Ambient: gym members, coaches and staff that bring the training complex to life.
@@ -32524,7 +33100,7 @@ return Ambient
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="33">
+      <Item class="ModuleScript" referent="34">
         <Properties>
           <string name="Name">Career</string>
           <string name="Source"><![CDATA[-- Career: character creation, fight offers, camps, economy, titles, promotions,
@@ -33842,7 +34418,7 @@ return Career
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="34">
+      <Item class="ModuleScript" referent="35">
         <Properties>
           <string name="Name">CityMap</string>
           <string name="Source"><![CDATA[-- CityMap: the neighbourhood around the gym, so the world outside feels like a real town.
@@ -36283,7 +36859,7 @@ return CityMap
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="35">
+      <Item class="ModuleScript" referent="36">
         <Properties>
           <string name="Name">DataManager</string>
           <string name="Source"><![CDATA[-- DataManager: loads/saves each player's career with DataStoreService.
@@ -36606,7 +37182,7 @@ return DataManager
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="36">
+      <Item class="ModuleScript" referent="37">
         <Properties>
           <string name="Name">FightAI</string>
           <string name="Source"><![CDATA[-- FightAI: adaptive opponent brain.
@@ -37011,7 +37587,7 @@ return FightAI
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="37">
+      <Item class="ModuleScript" referent="38">
         <Properties>
           <string name="Name">FightEngine</string>
           <string name="Source"><![CDATA[-- FightEngine: server-authoritative real-time boxing.
@@ -39691,7 +40267,7 @@ return FightEngine
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="38">
+      <Item class="ModuleScript" referent="39">
         <Properties>
           <string name="Name">GymDecor</string>
           <string name="Source"><![CDATA[-- GymDecor: everything that turns the training complex from a box into a real boxing gym.
@@ -41195,7 +41771,7 @@ return GymDecor
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="39">
+      <Item class="ModuleScript" referent="40">
         <Properties>
           <string name="Name">MapBuilder</string>
           <string name="Source"><![CDATA[-- MapBuilder: builds the training complex entirely from parts.
@@ -42014,7 +42590,7 @@ return MapBuilder
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="40">
+      <Item class="ModuleScript" referent="41">
         <Properties>
           <string name="Name">Poser</string>
           <string name="Source"><![CDATA[-- Poser: puts a character (player or NPC) at a training spot in the right posture
@@ -42208,7 +42784,7 @@ return Poser
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="41">
+      <Item class="ModuleScript" referent="42">
         <Properties>
           <string name="Name">Training</string>
           <string name="Source"><![CDATA[-- Training: the advanced training system.
@@ -44368,7 +44944,7 @@ return Training
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="42">
+      <Item class="ModuleScript" referent="43">
         <Properties>
           <string name="Name">Venues</string>
           <string name="Source"><![CDATA[-- Venues: fight-night ring system. Builds one template per venue in ServerStorage at boot and
@@ -46608,7 +47184,7 @@ return Venues
 ]]></string>
         </Properties>
       </Item>
-      <Item class="ModuleScript" referent="43">
+      <Item class="ModuleScript" referent="44">
         <Properties>
           <string name="Name">World</string>
           <string name="Source"><![CDATA[-- World: generates and maintains the AI boxing world (270 boxers), rankings for
@@ -46989,7 +47565,7 @@ return World
         </Properties>
       </Item>
     </Item>
-    <Item class="Script" referent="44">
+    <Item class="Script" referent="45">
       <Properties>
         <string name="Name">Main</string>
         <token name="RunContext">0</token>
@@ -48666,15 +49242,15 @@ print("[Boxer] " .. Config.GameName .. " server ready")
       </Properties>
     </Item>
   </Item>
-  <Item class="StarterPlayer" referent="45">
+  <Item class="StarterPlayer" referent="46">
     <Properties>
       <string name="Name">StarterPlayer</string>
     </Properties>
-    <Item class="StarterPlayerScripts" referent="46">
+    <Item class="StarterPlayerScripts" referent="47">
       <Properties>
         <string name="Name">StarterPlayerScripts</string>
       </Properties>
-      <Item class="LocalScript" referent="47">
+      <Item class="LocalScript" referent="48">
         <Properties>
           <string name="Name">Animator</string>
           <string name="Source"><![CDATA[-- Animator: motion-capture-feeling procedural animation for everyone in the game, no animation
@@ -49729,11 +50305,11 @@ end)
 ]]></string>
         </Properties>
       </Item>
-      <Item class="Folder" referent="48">
+      <Item class="Folder" referent="49">
         <Properties>
           <string name="Name">BoxerClient</string>
         </Properties>
-        <Item class="ModuleScript" referent="49">
+        <Item class="ModuleScript" referent="50">
           <Properties>
             <string name="Name">Activities</string>
             <string name="Source"><![CDATA[-- Activities: every training session and its minigame.
@@ -49757,7 +50333,9 @@ end)
 -- While you work the body shows it: Effort / LivePump (client-local attributes the Animator reads),
 -- sweat drips onto the floor when your heart rate is high, the coaches react to great and sloppy
 -- work, and the result screen lists every muscle part that grew, the pump and a FLEX button.
+-- Gamepad: every drill plays on the controller with the fight layout (PAD_OF); VIEW / SHARE quits.
 local Players = game:GetService("Players")
+local GuiService = game:GetService("GuiService")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local TextChatService = game:GetService("TextChatService")
@@ -49777,6 +50355,7 @@ if not okAmbience then
 end
 local T = UI.Theme
 local K = Enum.KeyCode
+local Gamepad = UI.Gamepad -- input device and button names (optional)
 
 local Activities = {}
 local player = Players.LocalPlayer
@@ -49824,6 +50403,43 @@ local DEFENSE_ACTIONS = {
 }
 local KEYNAME = { [K.J] = "J", [K.K] = "K", [K.L] = "L", [K.Four] = "4", [K.U] = "U", [K.O] = "O", [K.Q] = "Q", [K.E] = "E",
 	[K.C] = "C", [K.Z] = "Z", [K.R] = "R", [K.Space] = "SPACE", [K.W] = "W", [K.A] = "A", [K.S] = "S", [K.D] = "D", [K.F] = "F", [K.G] = "G" }
+-- gamepad: the buttons for every keyboard key a drill binds, laid out like the fight controls - X jab,
+-- Y cross, B lead hook, A rear hook, RT uppercut, RB overhand; right-stick flicks slip (left / right) and
+-- roll (down), RS click / D-pad left pivot, D-pad up parry; the D-pad steps (W/A/S/D) and taps the rope
+-- feet. The speed bag's LEFT / RIGHT hands are X / Y like the jab and cross. The flicks ride on the
+-- Thumbstick2Left / Right / Down / Up KeyCodes in ctx.padmap.
+local PAD_OF = {
+	[K.J] = { K.ButtonX }, [K.One] = { K.ButtonX }, [K.F] = { K.ButtonX },
+	[K.K] = { K.ButtonY }, [K.Two] = { K.ButtonY }, [K.G] = { K.ButtonY },
+	[K.L] = { K.ButtonB }, [K.Three] = { K.ButtonB },
+	[K.Four] = { K.ButtonA }, [K.Semicolon] = { K.ButtonA },
+	[K.U] = { K.ButtonR2 }, [K.Five] = { K.ButtonR2 },
+	[K.O] = { K.ButtonR1 }, [K.Six] = { K.ButtonR1 },
+	[K.Q] = { K.Thumbstick2Left }, [K.E] = { K.Thumbstick2Right }, [K.C] = { K.Thumbstick2Down },
+	[K.Z] = { K.ButtonR3, K.DPadLeft }, [K.R] = { K.DPadUp, K.Thumbstick2Up },
+	[K.W] = { K.DPadUp }, [K.Up] = { K.DPadUp }, [K.S] = { K.DPadDown }, [K.Down] = { K.DPadDown },
+	[K.A] = { K.DPadLeft }, [K.Left] = { K.DPadLeft }, [K.D] = { K.DPadRight }, [K.Right] = { K.DPadRight },
+}
+-- SPACE (lift, slam, jump, pace, breathe, continue) takes A, or LT when the drill already gave A a punch
+-- (the heavy bag's POWER shot next to the rear hook)
+local PAD_SPACE = { K.ButtonA, K.ButtonL2 }
+local FLICK_KEY = { L = K.Thumbstick2Left, R = K.Thumbstick2Right, D = K.Thumbstick2Down, U = K.Thumbstick2Up }
+
+-- the drill's instructions name keyboard keys; on a gamepad they name the buttons PAD_OF gives them
+local function padInfo(ctx, text)
+	local L = Gamepad.Label
+	local space = L(ctx.spacePad or K.ButtonA)
+	text = text:gsub("W/A/S/D or arrows", "the D-pad")
+	text = text:gsub("%(W/A/S/D%)", "(D-pad)")
+	text = text:gsub("%(Q/E/C%)", "(right-stick flicks)")
+	text = text:gsub("%(J/K/L%)", "(" .. L(K.ButtonX) .. "/" .. L(K.ButtonY) .. "/" .. L(K.ButtonB) .. ")")
+	text = text:gsub("%(J%)", "(" .. L(K.ButtonX) .. ")")
+	text = text:gsub("%(K%)", "(" .. L(K.ButtonY) .. ")")
+	text = text:gsub("Hold W", "Push the left stick")
+	text = text:gsub("SPACE", space)
+	return text
+end
+
 local LABEL = { jab = "JAB", cross = "CROSS", leadhook = "L.HOOK", rearhook = "R.HOOK", uppercut = "UPPER", overhand = "OVERHAND",
 	slipL = "SLIP L", slipR = "SLIP R", roll = "ROLL", pivotL = "PIVOT", parry = "PARRY",
 	F = "STEP IN", B = "STEP BACK", L = "CIRCLE L", R = "CIRCLE R" }
@@ -49891,7 +50507,7 @@ local function newContext(info)
 	local P = State.P
 	local ctx = {
 		level = info.level or 1, params = info.params or {}, act = info.act, station = info.station,
-		handler = nil, keymap = {}, conns = {}, buttons = {}, cleanups = {},
+		handler = nil, keymap = {}, padmap = {}, conns = {}, buttons = {}, cleanups = {},
 		out = {}, -- drill numbers sent with the result (display / personal bests only)
 		lines = {}, -- the one-line session summary on the result screen
 		tipIndex = math.random(0, 5), mode = "work", resting = false, baseEffort = info.baseEffort,
@@ -49935,6 +50551,13 @@ local function newContext(info)
 	UI.Grid(ctx.inputBar, UDim2.new(1 / 6, -5, 0, 40), nil, 5)
 	ctx.quit = UI.Button(panel, "QUIT", { Size = UDim2.fromOffset(88, 28), Position = UDim2.new(1, -104, 0, 8), BackgroundColor3 = T.red, TextSize = 14 }, function()
 		ctx.cancelled = true
+	end)
+	-- the panel plays on its key maps: none of its buttons take Roblox's UI selection (a selected button
+	-- would also take the A press)
+	ctx.quit.Selectable = false
+	ctx.quitText = "QUIT"
+	UI.BindHint(ctx.quit, function(mode)
+		return mode == "gamepad" and Gamepad and (ctx.quitText .. " · " .. Gamepad.Label(K.ButtonSelect)) or ctx.quitText
 	end)
 
 	-- metrics strip: SET | REP (or CLEAN) | GOOD (rep drills) | QUALITY | TIME | BPM (heart) | KCAL - the
@@ -50210,8 +50833,16 @@ local function newContext(info)
 	-- the HUD plate would sit behind the panel: hide it while the session runs
 	State.HideHud("Activity", true)
 
+	local function infoFor(mode)
+		local text = ctx.infoRaw or ""
+		if mode == "gamepad" and Gamepad then
+			return padInfo(ctx, text)
+		end
+		return text
+	end
 	function ctx.setInfo(text)
-		ctx.info.Text = text
+		ctx.infoRaw = text
+		UI.BindHint(ctx.info, infoFor)
 	end
 	local lastReact = 0
 	-- feedback colours grade the work: gold great, green good, orange sloppy, red a miss
@@ -50368,18 +50999,66 @@ local function newContext(info)
 	function ctx.on(fn)
 		ctx.handler = fn
 	end
+	-- actions: { id, label, keys = { KeyCode... }, pad = { KeyCode... } (optional: else PAD_OF of the keys),
+	-- color }. ctx.keymap / ctx.padmap: KeyCode -> action id (the gamepad's flicks as Thumbstick2* keys)
 	function ctx.bind(actions, cellsPerRow)
 		UI.Clear(ctx.inputBar)
 		local grid = ctx.inputBar:FindFirstChildOfClass("UIGridLayout")
 		grid.CellSize = UDim2.new(1 / (cellsPerRow or math.min(6, #actions)), -5, 0, 40)
 		ctx.keymap = {}
+		ctx.padmap = {}
 		ctx.buttons = {}
-		for i, a in ipairs(actions) do
+		ctx.spacePad = nil
+		local padOf = {}
+		local function givePad(id, pk)
+			if not ctx.padmap[pk] then
+				ctx.padmap[pk] = id
+				table.insert(padOf[id], pk)
+				return true
+			end
+			return false
+		end
+		-- punches and moves first, SPACE takes what is left (A, else LT)
+		for _, a in ipairs(actions) do
+			padOf[a.id] = padOf[a.id] or {}
 			for _, key in ipairs(a.keys or {}) do
 				ctx.keymap[key] = a.id
 			end
+			for _, pk in ipairs(a.pad or {}) do
+				givePad(a.id, pk)
+			end
+			if not a.pad then
+				for _, key in ipairs(a.keys or {}) do
+					for _, pk in ipairs(PAD_OF[key] or {}) do
+						givePad(a.id, pk)
+					end
+				end
+			end
+		end
+		for _, a in ipairs(actions) do
+			if not a.pad and table.find(a.keys or {}, K.Space) then
+				for _, pk in ipairs(PAD_SPACE) do
+					if givePad(a.id, pk) then
+						ctx.spacePad = ctx.spacePad or pk
+						break
+					end
+				end
+			end
+		end
+		for i, a in ipairs(actions) do
 			local keyText = a.keys and a.keys[1] and (KEYNAME[a.keys[1]] or a.keys[1].Name) or ""
-			local b = UI.Button(ctx.inputBar, a.label .. (keyText ~= "" and ("  [" .. keyText .. "]") or ""), { LayoutOrder = i, TextSize = 13, BackgroundColor3 = a.color or T.panel2 })
+			local padKey = padOf[a.id][1]
+			local b = UI.Button(ctx.inputBar, a.label, { LayoutOrder = i, TextSize = 13, BackgroundColor3 = a.color or T.panel2 })
+			b.Selectable = false
+			-- the key in brackets follows the device: the keyboard key, the gamepad button, nothing on touch
+			UI.BindHint(b, function(mode)
+				if mode == "gamepad" and Gamepad then
+					return padKey and (a.label .. "  [" .. Gamepad.Label(padKey) .. "]") or a.label
+				elseif mode == "touch" then
+					return a.label
+				end
+				return a.label .. (keyText ~= "" and ("  [" .. keyText .. "]") or "")
+			end)
 			b.MouseButton1Down:Connect(function()
 				dispatch(a.id, true)
 			end)
@@ -50387,6 +51066,10 @@ local function newContext(info)
 				dispatch(a.id, false)
 			end)
 			ctx.buttons[a.id] = b
+		end
+		-- the instructions may name SPACE: its button can have changed with this map
+		if ctx.infoRaw then
+			UI.BindHint(ctx.info, infoFor)
 		end
 	end
 	function ctx.wait(sec)
@@ -50554,20 +51237,53 @@ local function newContext(info)
 	end
 	-- keys work while the panel is alive
 	table.insert(ctx.conns, UserInputService.InputBegan:Connect(function(input, gp)
+		local k = input.KeyCode
+		if Gamepad and Gamepad.IsPadKey(k) then
+			-- VIEW / SHARE quits (closes the report); a default control binding can mark a pad button
+			-- processed (A is the jump action), so only Roblox's UI selection stops the drill's buttons
+			if k == K.ButtonSelect then
+				ctx.cancelled = true
+				return
+			end
+			if GuiService.SelectedObject ~= nil or UserInputService:GetFocusedTextBox() then
+				return
+			end
+			local id = ctx.padmap and ctx.padmap[k]
+			if id then
+				dispatch(id, true)
+			end
+			return
+		end
 		if gp then
 			return
 		end
-		local id = ctx.keymap[input.KeyCode]
+		local id = ctx.keymap[k]
 		if id then
 			dispatch(id, true)
 		end
 	end))
 	table.insert(ctx.conns, UserInputService.InputEnded:Connect(function(input)
-		local id = ctx.keymap[input.KeyCode]
+		local k = input.KeyCode
+		local id = ctx.keymap[k] or (ctx.padmap and ctx.padmap[k])
 		if id then
 			dispatch(id, false)
 		end
 	end))
+	-- right-stick flicks: slips and rolls (a tap: press and release at once)
+	local flick = Gamepad and Gamepad.Flick()
+	if flick then
+		table.insert(ctx.conns, UserInputService.InputChanged:Connect(function(input)
+			if input.KeyCode ~= K.Thumbstick2 then
+				return
+			end
+			local dir = flick:Update(input.Position.X, input.Position.Y, os.clock())
+			local id = dir and ctx.padmap and ctx.padmap[FLICK_KEY[dir]]
+			if id and GuiService.SelectedObject == nil then
+				dispatch(id, true)
+				dispatch(id, false)
+			end
+		end))
+	end
 	function ctx.destroy()
 		ctx.mode = "done"
 		ctx.handler = nil
@@ -52620,7 +53336,7 @@ end
 
 -- ROADWORK: run the loop through every checkpoint (measured by the server)
 GAMES.course = function(ctx, info)
-	ctx.bind({ { id = "finish", label = "FINISH EARLY", keys = {}, color = T.red } }, 1)
+	ctx.bind({ { id = "finish", label = "FINISH EARLY", keys = {}, pad = { K.ButtonY }, color = T.red } }, 1)
 	ctx.setInfo("Run the loop around the gym through all 8 checkpoints and back to the start arch. Hold W - your stamina sets your pace.")
 	compactPanel(ctx)
 	ctx.header.Text = "ROADWORK" .. DOT .. "8 CHECKPOINTS"
@@ -52700,7 +53416,7 @@ end
 
 -- SWIMMING: swim lengths of the pool (measured by the server)
 GAMES.swim = function(ctx, info)
-	ctx.bind({ { id = "finish", label = "FINISH EARLY", keys = {}, color = T.red } }, 1)
+	ctx.bind({ { id = "finish", label = "FINISH EARLY", keys = {}, pad = { K.ButtonY }, color = T.red } }, 1)
 	local target = info.lengths or 4
 	ctx.setInfo(string.format("Jump in and swim %d lengths: touch the far wall, then come back. Swimming builds stamina and speeds recovery.", target))
 	compactPanel(ctx)
@@ -53227,7 +53943,10 @@ local function showResult(ctx, res, quality)
 		end)
 	end
 	ctx.layout()
-	ctx.quit.Text = "CLOSE"
+	ctx.quitText = "CLOSE"
+	UI.BindHint(ctx.quit, function(mode)
+		return mode == "gamepad" and Gamepad and ("CLOSE · " .. Gamepad.Label(K.ButtonB)) or "CLOSE"
+	end)
 	ctx.quit.BackgroundColor3 = T.panel2
 	-- FLEX: strike the pose that shows the muscles you just pumped (server: handlers.Flex)
 	local flexKind = FLEX_FOR[ctx.act.id] or "flex_most"
@@ -53239,6 +53958,10 @@ local function showResult(ctx, res, quality)
 	ctx.bind(actions, #actions)
 	if ctx.buttons.close then
 		ctx.buttons.close.TextColor3 = T.bg
+	end
+	-- gamepad: B closes the report too (A continues)
+	if not ctx.padmap[K.ButtonB] then
+		ctx.padmap[K.ButtonB] = "close"
 	end
 	local closed = false
 	local t0 = os.clock()
@@ -53336,13 +54059,17 @@ function Activities.Start(actId)
 		return
 	end
 	State.closeAll()
+	-- the drill plays on its own key maps: no window selection while it runs
+	UI.PadHold("Activity", true)
 	local res = State.req("StartActivity", actId)
 	if not res.ok then
+		UI.PadHold("Activity", false)
 		State.toast(res.err or "Can't do that right now", T.red)
 		return
 	end
 	local drill = GAMES[res.minigame]
 	if not drill then
+		UI.PadHold("Activity", false)
 		State.req("CancelActivity")
 		return
 	end
@@ -53404,6 +54131,7 @@ function Activities.Start(actId)
 	ctx.destroy()
 	current = nil
 	State.activity = nil
+	UI.PadHold("Activity", false)
 end
 
 function Activities.Busy()
@@ -53424,7 +54152,7 @@ return Activities
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="50">
+        <Item class="ModuleScript" referent="51">
           <Properties>
             <string name="Name">Ambience</string>
             <string name="Source"><![CDATA[-- Ambience: brings the gym and the town to life on the client.
@@ -54486,7 +55214,7 @@ return Ambience
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="51">
+        <Item class="ModuleScript" referent="52">
           <Properties>
             <string name="Name">AnatomyClient</string>
             <string name="Source"><![CDATA[-- AnatomyClient: organic anatomy meshes on every character, generated on this client from the LookData
@@ -56415,7 +57143,7 @@ return AnatomyClient
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="52">
+        <Item class="ModuleScript" referent="53">
           <Properties>
             <string name="Name">AnimDown</string>
             <string name="Source"><![CDATA[-- AnimDown: knockdowns, knockouts, the count and the get-up.
@@ -57680,7 +58408,7 @@ return AnimDown
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="53">
+        <Item class="ModuleScript" referent="54">
           <Properties>
             <string name="Name">AnimFight</string>
             <string name="Source"><![CDATA[-- AnimFight: everything a boxer does on his feet in the ring.
@@ -59890,7 +60618,7 @@ return AnimFight
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="54">
+        <Item class="ModuleScript" referent="55">
           <Properties>
             <string name="Name">AnimGym</string>
             <string name="Source"><![CDATA[-- AnimGym: training poses that work the right muscles, flex poses, gym life and the people who
@@ -61045,7 +61773,7 @@ return AnimGym
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="55">
+        <Item class="ModuleScript" referent="56">
           <Properties>
             <string name="Name">AnimKit</string>
             <string name="Source"><![CDATA[-- AnimKit: the pure math behind the procedural animation (no Instances, no Roblox services), so it
@@ -61477,7 +62205,7 @@ return AnimKit
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="56">
+        <Item class="ModuleScript" referent="57">
           <Properties>
             <string name="Name">AnimLoco</string>
             <string name="Source"><![CDATA[-- AnimLoco: locomotion and feet for the procedural Animator.
@@ -62356,7 +63084,7 @@ return AnimLoco
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="57">
+        <Item class="ModuleScript" referent="58">
           <Properties>
             <string name="Name">AnimRig</string>
             <string name="Source"><![CDATA[-- AnimRig: rig geometry, inverse kinematics and the pose building blocks shared by the Animator
@@ -63187,7 +63915,7 @@ return AnimRig
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="58">
+        <Item class="ModuleScript" referent="59">
           <Properties>
             <string name="Name">BodyFX</string>
             <string name="Source"><![CDATA[-- BodyFX: muscles that move. Client-only, driven by the Animator every frame.
@@ -64589,7 +65317,7 @@ return BodyFX
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="59">
+        <Item class="ModuleScript" referent="60">
           <Properties>
             <string name="Name">BodyMap</string>
             <string name="Source"><![CDATA[-- BodyMap: an anatomical body map (front + back views), one region per Config.MuscleParts id.
@@ -65333,7 +66061,7 @@ return BodyMap
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="60">
+        <Item class="ModuleScript" referent="61">
           <Properties>
             <string name="Name">CityStores</string>
             <string name="Source"><![CDATA[-- CityStores: the counters of the city's walk-in shops (prompts in CityMap, dispatched through
@@ -65612,7 +66340,7 @@ return CityStores
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="61">
+        <Item class="ModuleScript" referent="62">
           <Properties>
             <string name="Name">CityVisuals</string>
             <string name="Source"><![CDATA[-- CityVisuals: the city reflects YOUR career. Everything here is client-side (workspace.LocalCity
@@ -67268,7 +67996,7 @@ return CityVisuals
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="62">
+        <Item class="ModuleScript" referent="63">
           <Properties>
             <string name="Name">Creator</string>
             <string name="Source"><![CDATA[-- Creator: the full character creator.
@@ -68114,7 +68842,14 @@ function Creator.Open()
 	C = newState()
 	page = "Identity"
 	camYaw = 0
-	shade, win, body = UI.Window(State.gui, "Creator", 600, 720, "CREATE YOUR BOXER", { side = "left", noShade = true, footer = 50 })
+	-- BACK (and B on a gamepad: the creator cannot be closed, B steps back a page)
+	local function back()
+		local i = table.find(PAGES, page) or 1
+		page = PAGES[math.max(1, i - 1)]
+		preview()
+		render()
+	end
+	shade, win, body = UI.Window(State.gui, "Creator", 600, 720, "CREATE YOUR BOXER", { side = "left", noShade = true, footer = 50, onBack = back })
 	tabsFrame = UI.Frame(win, { BackgroundTransparency = 1, Position = UDim2.fromOffset(16, 48), Size = UDim2.new(1, -32, 0, 72) })
 	UI.Grid(tabsFrame, UDim2.new(0.25, -5, 0, 32), nil, 5)
 	body.Position = UDim2.fromOffset(16, 128)
@@ -68122,12 +68857,7 @@ function Creator.Open()
 	randomBtn = UI.Button(win, "RANDOM LOOK", { Name = "RandomLook", Size = UDim2.fromOffset(140, 30), Position = UDim2.new(1, -156, 0, 12), TextSize = 13 }, randomLook)
 	narrowHeader = UI.CanvasSize(State.gui).X * 0.46 < 480
 	local nav = UI.Frame(win, { BackgroundTransparency = 1, Position = UDim2.new(0, 16, 1, -54), Size = UDim2.new(1, -32, 0, 42) })
-	UI.Button(nav, "BACK", { Size = UDim2.new(0.3, 0, 1, 0) }, function()
-		local i = table.find(PAGES, page) or 1
-		page = PAGES[math.max(1, i - 1)]
-		preview()
-		render()
-	end)
+	UI.Button(nav, "BACK", { Size = UDim2.new(0.3, 0, 1, 0) }, back)
 	nextBtn = UI.Button(nav, "NEXT", { Size = UDim2.new(0.66, 0, 1, 0), Position = UDim2.new(0.34, 0, 0, 0), BackgroundColor3 = T.gold, TextColor3 = T.bg })
 	nextBtn.MouseButton1Click:Connect(function()
 		local i = table.find(PAGES, page) or 1
@@ -68327,7 +69057,7 @@ return Creator
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="63">
+        <Item class="ModuleScript" referent="64">
           <Properties>
             <string name="Name">FaceFX</string>
             <string name="Source"><![CDATA[-- FaceFX: a face that is alive. Client-only, driven by the Animator every frame.
@@ -69572,7 +70302,7 @@ return FaceFX
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="64">
+        <Item class="ModuleScript" referent="65">
           <Properties>
             <string name="Name">FighterCard</string>
             <string name="Source"><![CDATA[-- FighterCard: the professional fighter card / tale of the tape for the local boxer.
@@ -70394,7 +71124,7 @@ return FighterCard
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="65">
+        <Item class="ModuleScript" referent="66">
           <Properties>
             <string name="Name">Flags</string>
             <string name="Source"><![CDATA[-- Flags: simplified national flags drawn from frames (no image assets) for every Config.Nationalities
@@ -70729,7 +71459,7 @@ return Flags
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="66">
+        <Item class="ModuleScript" referent="67">
           <Properties>
             <string name="Name">GymFacility</string>
             <string name="Source"><![CDATA[-- GymFacility: what YOUR gym looks like as a whole, drawn on your client only (everyone shares
@@ -72530,7 +73260,7 @@ return GymFacility
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="67">
+        <Item class="ModuleScript" referent="68">
           <Properties>
             <string name="Name">GymMirror</string>
             <string name="Source"><![CDATA[-- GymMirror: a live mirror at the shadow-boxing station. While you are within a few strides of
@@ -72754,7 +73484,7 @@ return GymMirror
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="68">
+        <Item class="ModuleScript" referent="69">
           <Properties>
             <string name="Name">GymSound</string>
             <string name="Source"><![CDATA[-- GymSound: every gym sound effect on the client, played from ONE pool of positional sounds
@@ -72994,7 +73724,7 @@ return GymSound
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="69">
+        <Item class="ModuleScript" referent="70">
           <Properties>
             <string name="Name">GymVisuals</string>
             <string name="Source"><![CDATA[-- GymVisuals: draws YOUR gym's equipment (client side) at every station, matched to
@@ -76485,7 +77215,7 @@ return GymVisuals
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="70">
+        <Item class="ModuleScript" referent="71">
           <Properties>
             <string name="Name">HairFX</string>
             <string name="Source"><![CDATA[-- HairFX: hair that moves like hair. Client-only, driven by the Animator every frame (HairFX.Update) and on
@@ -77669,7 +78399,7 @@ return HairFX
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="71">
+        <Item class="ModuleScript" referent="72">
           <Properties>
             <string name="Name">Hub</string>
             <string name="Source"><![CDATA[-- Hub: the Career Hub window.
@@ -77677,7 +78407,11 @@ return HairFX
 -- activity), Body (physique badge, every muscle, soreness, veins, FLEX), Stats, Gym (facility tier,
 -- upgrade / repair equipment), Gear (gloves, shoes, wraps, mouthguards, robes), Coaches, Sponsors
 -- (deals and offers), Life (home, travel, garage, fame), Rankings, Rivals, Shop, Legacy.
+-- Gamepad: the D-pad moves the selection (UI kit), A presses, B closes, LB / RB (L1 / R1) step through the
+-- tabs.
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local UserInputService = game:GetService("UserInputService")
+local GuiService = game:GetService("GuiService")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
 local Catalog = require(Shared:WaitForChild("Catalog"))
@@ -79319,6 +80053,33 @@ function Hub.Open(which)
 	end)
 	UI.List(content, 10)
 	UI.Pad(content, 2, 4)
+	-- gamepad: the open tab's button is where the selection starts; LB / RB step through the tabs in the
+	-- order the side navigation shows them (while the hub is the top window: not under a scouting card)
+	UI.PadStart(tabButtons[tab])
+	local flat = {}
+	for _, group in ipairs(NAV) do
+		for _, name in ipairs(group[2]) do
+			table.insert(flat, name)
+		end
+	end
+	local myWin = win
+	local padConn = UserInputService.InputBegan:Connect(function(input)
+		local k = input.KeyCode
+		if (k ~= Enum.KeyCode.ButtonL1 and k ~= Enum.KeyCode.ButtonR1) or UI.PadTop() ~= myWin or UserInputService:GetFocusedTextBox() then
+			return
+		end
+		local i = table.find(flat, tab) or 1
+		tab = flat[(i - 1 + (k == Enum.KeyCode.ButtonR1 and 1 or -1)) % #flat + 1]
+		content.CanvasPosition = Vector2.zero
+		Hub.Render()
+		local b = tabButtons[tab]
+		if b and UI.IsPad() then
+			GuiService.SelectedObject = b
+		end
+	end)
+	shade.Destroying:Connect(function()
+		padConn:Disconnect()
+	end)
 	Hub.Render()
 end
 
@@ -79335,7 +80096,7 @@ return Hub
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="72">
+        <Item class="ModuleScript" referent="73">
           <Properties>
             <string name="Name">MainMenu</string>
             <string name="Source"><![CDATA[-- MainMenu: the title screen. Your boxer stands in his corner of a ring in a gym at night (MenuStage: a
@@ -80399,10 +81160,15 @@ end
 local LEFT = { [K.Left] = true, [K.A] = true, [K.DPadLeft] = true }
 local RIGHT = { [K.Right] = true, [K.D] = true, [K.DPadRight] = true }
 local function onInput(input, gp)
-	if gp or not isOpen or closing then
+	if not isOpen or closing then
 		return
 	end
 	local k = input.KeyCode
+	-- a gamepad's buttons can arrive "processed" only because a default control binding saw them (A is
+	-- the jump action); they belong to the menu unless Roblox's own UI selection is driving it
+	if gp and not (UI.Gamepad and UI.Gamepad.IsPadKey(k) and GuiService.SelectedObject == nil) then
+		return
+	end
 	if view == "home" then
 		if k == K.Down or k == K.S or k == K.DPadDown then
 			selectItem(sel % #items + 1)
@@ -80460,6 +81226,8 @@ function MainMenu.Open(which)
 	end
 	isOpen, closing = true, false
 	State.closeAll("Menu")
+	-- the menu navigates itself (D-pad / A / B): no window selection under it
+	UI.PadHold("Menu", true)
 	State.windows.Menu = function()
 		MainMenu.Close()
 	end
@@ -80570,6 +81338,7 @@ function MainMenu.Close(after)
 		settingsFocus, settingsBody, scoutSheet = 0, nil, nil
 		isOpen, closing = false, false
 		view = "home"
+		UI.PadHold("Menu", false)
 		State.HidePrompts("Menu", false)
 		State.HideHud("Menu", false)
 		if after then
@@ -80600,7 +81369,7 @@ return MainMenu
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="73">
+        <Item class="ModuleScript" referent="74">
           <Properties>
             <string name="Name">MenuStage</string>
             <string name="Source"><![CDATA[-- MenuStage: the main menu's set. A closed boxing-gym corner built on this client, far above the map,
@@ -81059,7 +81828,7 @@ return MenuStage
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="74">
+        <Item class="ModuleScript" referent="75">
           <Properties>
             <string name="Name">Services</string>
             <string name="Source"><![CDATA[-- Services: the gym's service windows.
@@ -81833,7 +82602,7 @@ return Services
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="75">
+        <Item class="ModuleScript" referent="76">
           <Properties>
             <string name="Name">Settings</string>
             <string name="Source"><![CDATA[-- Settings: the player's options, applied on this client straight away.
@@ -82100,7 +82869,7 @@ return Settings
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="76">
+        <Item class="ModuleScript" referent="77">
           <Properties>
             <string name="Name">State</string>
             <string name="Source"><![CDATA[-- State: shared client state and helpers (latest profile, server requests, toasts,
@@ -82251,7 +83020,7 @@ return State
 ]]></string>
           </Properties>
         </Item>
-        <Item class="ModuleScript" referent="77">
+        <Item class="ModuleScript" referent="78">
           <Properties>
             <string name="Name">VenueFX</string>
             <string name="Source"><![CDATA[-- VenueFX: client-only fight-night presentation for the player's own venue (stream G).
@@ -84551,7 +85320,7 @@ return VenueFX
           </Properties>
         </Item>
       </Item>
-      <Item class="LocalScript" referent="78">
+      <Item class="LocalScript" referent="79">
         <Properties>
           <string name="Name">ClientMain</string>
           <string name="Source"><![CDATA[-- ClientMain: wires the client together - main menu at join, the gym HUD (player plate, condition
@@ -84683,15 +85452,30 @@ local hudWarn = UI.Text(hud, "", { Font = T.semi, TextSize = 12, TextColor3 = T.
 -- quick actions under the plate
 local hudButtons = UI.Frame(gui, { Name = "HudButtons", BackgroundTransparency = 1, Size = UDim2.fromOffset(360, 40), Position = UDim2.fromOffset(20, 16), Visible = false })
 UI.List(hudButtons, 6, true)
-local function hudButton(text, key, w, color, fn, order)
+-- key: the keyboard key's cap; padKey: the gamepad button shown on the cap instead while a pad is in use
+-- (the button widens to fit the longer name, "D-DOWN")
+local function hudButton(text, key, w, color, fn, order, padKey)
 	local b = UI.Button(hudButtons, "", { Name = text, Size = UDim2.fromOffset(w, 40), BackgroundColor3 = color or T.panel2, BackgroundTransparency = color and 0 or 0.15, LayoutOrder = order }, fn)
 	local dark = color == T.gold
-	UI.Text(b, text, { Face = "displayMed", TextSize = 17, TextColor3 = dark and T.ink or T.text, Size = UDim2.new(1, key and -26 or 0, 1, 0), AutomaticSize = Enum.AutomaticSize.None,
+	local label = UI.Text(b, text, { Face = "displayMed", TextSize = 17, TextColor3 = dark and T.ink or T.text, Size = UDim2.new(1, key and -26 or 0, 1, 0), AutomaticSize = Enum.AutomaticSize.None,
 		TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false })
 	if key then
 		local cap = UI.Frame(b, { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -8, 0.5, 0), Size = UDim2.fromOffset(20, 20), BackgroundColor3 = dark and T.ink or T.panel, BackgroundTransparency = 0.2 })
 		UI.Corner(cap, 4)
-		UI.Text(cap, key, { Font = T.semi, TextSize = 11, TextColor3 = dark and T.gold or T.sub, Size = UDim2.fromScale(1, 1), AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Center })
+		local capText = UI.Text(cap, key, { Font = T.semi, TextSize = 11, TextColor3 = dark and T.gold or T.sub, Size = UDim2.fromScale(1, 1), AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Center })
+		if padKey then
+			UI.BindHint(capText, function(mode)
+				local t = key
+				if mode == "gamepad" and UI.Gamepad then
+					t = UI.Gamepad.Short(padKey)
+				end
+				local capW = math.max(20, 8 + 7 * #t)
+				cap.Size = UDim2.fromOffset(capW, 20)
+				label.Size = UDim2.new(1, -(capW + 6), 1, 0)
+				b.Size = UDim2.fromOffset(w + capW - 20, 40)
+				return t
+			end)
+		end
 	end
 	return b
 end
@@ -84699,10 +85483,10 @@ hudButton("MENU", "M", 92, nil, function()
 	if MainMenu then
 		MainMenu.Open()
 	end
-end, 1)
+end, 1, Enum.KeyCode.DPadDown)
 hudButton("CAREER HUB", "H", 140, T.gold, function()
 	Hub.Toggle()
-end, 2)
+end, 2, Enum.KeyCode.DPadUp)
 hudButton("TRAIN", nil, 60, nil, function()
 	Hub.Open("Training")
 end, 3)
@@ -84717,9 +85501,20 @@ local hintText = UI.Text(hint, "Walk up to any gym station and press E (or tap) 
 	AutomaticSize = Enum.AutomaticSize.X, TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false })
 UI.Pad(hintText, 0, 18)
 
+-- the first-sessions hint names the prompt button of the device in use (ProximityPrompts take E on a
+-- keyboard and X / SQUARE on a gamepad by default)
+local hudCompact = nil
+local function gymHint(mode)
+	if mode == "gamepad" and UI.Gamepad then
+		return string.format("Walk up to any gym station and press %s to train.  %s: Career Hub", UI.Gamepad.Label(Enum.KeyCode.ButtonX), UI.Gamepad.Short(Enum.KeyCode.DPadUp))
+	elseif mode == "touch" or hudCompact then
+		return "Walk up to a gym station and tap (or press E) to train."
+	end
+	return "Walk up to any gym station and press E (or tap) to train."
+end
+
 -- a phone (short canvas): the plate collapses to the name, OVR and one line of condition chips; the
 -- quick actions sit on the bottom edge (above the device's safe area) with the hint above them
-local hudCompact = nil
 local function layoutHud()
 	local s = UI.ScaleOf(hud)
 	local canvas = UI.CanvasSize(gui)
@@ -84732,8 +85527,7 @@ local function layoutHud()
 		bars.Visible = not compact
 		campBox.Visible = not compact
 		condStrip.Visible = compact
-		hintText.Text = compact and "Walk up to a gym station and tap (or press E) to train."
-			or "Walk up to any gym station and press E (or tap) to train."
+		UI.BindHint(hintText, gymHint)
 	end
 	if compact then
 		local bottom = 8
@@ -84873,7 +85667,7 @@ local function showResult(data)
 		local bigNote = n:find("CHAMPION") or n:find("PRO") or n:find("LEGEND") or n:find("TOP 10") or n:find("Promoted")
 		UI.Line(body, n, { TextColor3 = bigNote and T.gold or T.text, Font = bigNote and T.semi or T.font, TextSize = 14 })
 	end
-	UI.Button(win, "CONTINUE", { Size = UDim2.new(0, 260, 0, 48), Position = UDim2.new(0.5, -130, 1, -62), BackgroundColor3 = T.gold }, close)
+	UI.PadStart(UI.Button(win, "CONTINUE", { Size = UDim2.new(0, 260, 0, 48), Position = UDim2.new(0.5, -130, 1, -62), BackgroundColor3 = T.gold }, close))
 end
 State.open.Result = showResult
 
@@ -84914,7 +85708,7 @@ local function showSparResult(data)
 	for _, n in ipairs(tr.notes or {}) do
 		UI.Line(body, n, { TextColor3 = n:find("INJURY") and T.red or T.sub, TextSize = 13 })
 	end
-	UI.Button(win, "CONTINUE", { Size = UDim2.new(0, 240, 0, 46), Position = UDim2.new(0.5, -120, 1, -58), BackgroundColor3 = T.gold }, close)
+	UI.PadStart(UI.Button(win, "CONTINUE", { Size = UDim2.new(0, 240, 0, 46), Position = UDim2.new(0.5, -120, 1, -58), BackgroundColor3 = T.gold }, close))
 end
 
 State.FightRemote.OnClientEvent:Connect(function(msg)
@@ -84948,13 +85742,14 @@ local function showRetired()
 		UI.Line(c, "The boxing world honors you as one of the all-time greats. Welcome to the Hall of Fame.", { TextColor3 = T.gold, Font = T.semi })
 	end
 	Hub.LegacyBody(body, res.legacy, res.pastCareers)
-	UI.Button(win, "START A NEW CAREER", { Size = UDim2.new(0, 300, 0, 48), Position = UDim2.new(0.5, -150, 1, -62), BackgroundColor3 = T.gold }, function()
+	local newCareer = UI.Button(win, "START A NEW CAREER", { Size = UDim2.new(0, 300, 0, 48), Position = UDim2.new(0.5, -150, 1, -62), BackgroundColor3 = T.gold }, function()
 		local r = State.req("NewCareer")
 		if r.ok then
 			shade:Destroy()
 			wasRetired = false
 		end
 	end)
+	UI.PadStart(newCareer)
 end
 
 ------------------------------------------------------------------------
@@ -85152,12 +85947,31 @@ ProximityPromptService.PromptTriggered:Connect(function(prompt)
 end)
 
 UserInputService.InputBegan:Connect(function(input, gp)
+	local k = input.KeyCode
+	-- gamepad: D-pad up = Career Hub, D-pad down = main menu. They only open (B closes): while Roblox's
+	-- UI selection is up the D-pad is navigating a window. (A default control binding can mark a pad
+	-- button processed, so gp alone does not tell for a pad.)
+	if k == Enum.KeyCode.DPadUp or k == Enum.KeyCode.DPadDown then
+		if GuiService.SelectedObject ~= nil or UserInputService:GetFocusedTextBox() or State.inFight() or Activities.Busy() or (MainMenu and MainMenu.IsOpen()) then
+			return
+		end
+		local P = State.P
+		if not (P and P.created and not P.retired) or Creator.IsOpen() then
+			return
+		end
+		if k == Enum.KeyCode.DPadUp then
+			Hub.Open()
+		elseif MainMenu then
+			MainMenu.Open()
+		end
+		return
+	end
 	if gp then
 		return
 	end
-	if input.KeyCode == Enum.KeyCode.H and not State.inFight() and not Activities.Busy() and not (MainMenu and MainMenu.IsOpen()) then
+	if k == Enum.KeyCode.H and not State.inFight() and not Activities.Busy() and not (MainMenu and MainMenu.IsOpen()) then
 		Hub.Toggle()
-	elseif input.KeyCode == Enum.KeyCode.M and MainMenu and not State.inFight() and not Activities.Busy() then
+	elseif k == Enum.KeyCode.M and MainMenu and not State.inFight() and not Activities.Busy() then
 		local P = State.P
 		if P and P.created and not P.retired and not Creator.IsOpen() then
 			MainMenu.Toggle()
@@ -85187,7 +86001,7 @@ end)
 ]]></string>
         </Properties>
       </Item>
-      <Item class="LocalScript" referent="79">
+      <Item class="LocalScript" referent="80">
         <Properties>
           <string name="Name">FightClient</string>
           <string name="Source"><![CDATA[-- FightClient: fight-night presentation and controls (also used for gym sparring).
@@ -85202,7 +86016,13 @@ end)
 -- present; the old built-in venue effects stay as a fallback so a fight always presents.
 -- Controls: 1/J jab, 2/K cross, 3/L lead hook, 4 rear hook, 5/U uppercut, 6/O overhand,
 -- hold SHIFT = to the body, hold F block, R parry, Q/E slip, C roll, Z/X pivot, G clinch.
+-- Gamepad (bound through ContextActionService for the fight, above the default jump / camera bindings):
+-- X jab, Y cross, B lead hook, A rear hook, RT uppercut, RB overhand, hold LB = to the body, hold LT
+-- block, right stick flick left / right slip, down roll, up parry, RS click pivot (toward the left stick,
+-- else left), D-pad left / right pivot, D-pad up parry, D-pad down or LS click clinch, hold VIEW for the
+-- controls; when down, mash A. (PlayStation: SQUARE / TRIANGLE / CIRCLE / CROSS, R2, R1, L1, L2, R3, L3.)
 local Players = game:GetService("Players")
+local ContextActionService = game:GetService("ContextActionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
@@ -85216,6 +86036,8 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
 local UI = require(Shared:WaitForChild("UI"))
 local T = UI.Theme
+local Gamepad = UI.Gamepad -- input device and button names (optional)
+local K = Enum.KeyCode
 local FightRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Fight")
 
 local gui = UI.New("ScreenGui", { Name = "FightUI", ResetOnSpawn = false, IgnoreGuiInset = false, Enabled = false, DisplayOrder = 5, ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
@@ -85861,8 +86683,16 @@ do
 		UI.List(ctlRows[r], 12, true, Enum.HorizontalAlignment.Center)
 	end
 	local ctlItems = {}
-	for i, k in ipairs({ { "1/J", "JAB" }, { "2/K", "CROSS" }, { "3/L", "L.HOOK" }, { "4", "R.HOOK" }, { "5/U", "UPPER" }, { "6/O", "OVERHAND" }, { "SHIFT", "BODY" },
-		{ "F", "BLOCK" }, { "R", "PARRY" }, { "Q/E", "SLIP" }, { "C", "ROLL" }, { "Z/X", "PIVOT" }, { "G", "CLINCH" } }) do
+	-- { keyboard caps, gamepad caps (KeyCodes, or a function for a combined name), action }: the caps
+	-- follow the device in use (the right-stick flicks read "RS LEFT/RIGHT", "RS DOWN")
+	local function padPair(a, b)
+		return function()
+			return Gamepad.Label(a) .. "/" .. Gamepad.Label(b):gsub("^RS ", "")
+		end
+	end
+	for i, k in ipairs({ { "1/J", K.ButtonX, "JAB" }, { "2/K", K.ButtonY, "CROSS" }, { "3/L", K.ButtonB, "L.HOOK" }, { "4", K.ButtonA, "R.HOOK" }, { "5/U", K.ButtonR2, "UPPER" },
+		{ "6/O", K.ButtonR1, "OVERHAND" }, { "SHIFT", K.ButtonL1, "BODY" }, { "F", K.ButtonL2, "BLOCK" }, { "R", K.DPadUp, "PARRY" },
+		{ "Q/E", padPair(K.Thumbstick2Left, K.Thumbstick2Right), "SLIP" }, { "C", K.Thumbstick2Down, "ROLL" }, { "Z/X", K.ButtonR3, "PIVOT" }, { "G", K.DPadDown, "CLINCH" } }) do
 		local f = UI.Frame(ctlRows[1], { BackgroundTransparency = 1, Size = UDim2.fromOffset(0, 24), AutomaticSize = Enum.AutomaticSize.X, LayoutOrder = i })
 		ctlItems[i] = f
 		UI.List(f, 5, true)
@@ -85871,11 +86701,20 @@ do
 		UI.Stroke(cap, Color3.new(1, 1, 1), 1, 0.85)
 		local t = UI.Text(cap, k[1], { Font = T.semi, TextSize = 12, Size = UDim2.new(0, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.X, TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false })
 		UI.Pad(t, 0, 6)
-		UI.Text(f, k[2], { Font = T.semi, TextSize = 12, TextColor3 = Color3.fromRGB(200, 205, 216), Size = UDim2.new(0, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.X, TextWrapped = false, LayoutOrder = 2 })
+		UI.BindHint(t, function(mode)
+			if mode == "gamepad" and Gamepad then
+				return type(k[2]) == "function" and k[2]() or Gamepad.Label(k[2])
+			end
+			return k[1]
+		end)
+		UI.Text(f, k[3], { Font = T.semi, TextSize = 12, TextColor3 = Color3.fromRGB(200, 205, 216), Size = UDim2.new(0, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.X, TextWrapped = false, LayoutOrder = 2 })
 	end
 	-- the reminder once the strip has faded
-	local controlsHint = UI.Chip(hud, "HOLD H  ·  CONTROLS", T.sub, { AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 24, 1, -62), h = 24, TextSize = 13 })
+	local controlsHint, controlsHintText = UI.Chip(hud, "HOLD H  ·  CONTROLS", T.sub, { AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 24, 1, -62), h = 24, TextSize = 13 })
 	controlsHint.Visible = false
+	UI.BindHint(controlsHintText, function(mode)
+		return "HOLD " .. ((mode == "gamepad" and Gamepad) and Gamepad.Label(K.ButtonSelect) or "H") .. "  ·  CONTROLS"
+	end)
 	controlsUntil = 0 -- os.clock() until which the strip shows on its own
 
 	function showBanner(text, color, dur)
@@ -86254,6 +87093,7 @@ do
 
 	local getupBtn = UI.Button(getup, "", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, ZIndex = 28 }, getupPress)
 	getupBtn.Text = ""
+	getupBtn.Selectable = false -- a gamepad mashes A through the fight bindings, not the UI selection
 
 	-- responsive layout: short (phone) canvases get the slim scoreboard and their own sizes for the count
 	-- and the get-up panel, placed so they never overlap (count under the board, get-up under the count)
@@ -86349,6 +87189,7 @@ do
 		local b = UI.New("TextButton", { Name = name, Text = "", AutoButtonColor = false, BorderSizePixel = 0, BackgroundColor3 = T.bg, BackgroundTransparency = 0.35,
 			Size = UDim2.fromOffset(size, size), Position = pos, AnchorPoint = anchor or Vector2.new(0.5, 0.5), Parent = parent })
 		UI.Corner(b, math.floor(size / 2))
+		b.Selectable = false
 		UI.New("UIStroke", { Color = color, Thickness = 2.5, Transparency = 0.15, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = b })
 		UI.Text(b, text, { Face = "displayMed", TextSize = size >= 80 and 20 or 17, TextColor3 = Color3.new(1, 1, 1), Size = UDim2.fromScale(1, 1), AutomaticSize = Enum.AutomaticSize.None,
 			TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = true })
@@ -86375,6 +87216,7 @@ do
 		punchPad("CROSS", "cross", UDim2.fromOffset(152, 210))
 		local bodyBtn = UI.Button(touchPad, "BODY", { Name = "Body", Size = UDim2.fromOffset(120, 40), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.fromOffset(102, 0),
 			BackgroundColor3 = T.bg, BackgroundTransparency = 0.35, TextSize = 16 })
+		bodyBtn.Selectable = false
 		UI.Stroke(bodyBtn, T.orange, 2, 0.15)
 		bodyBtn.MouseButton1Click:Connect(function()
 			F.bodyMod = not F.bodyMod
@@ -86413,13 +87255,17 @@ do
 		controls.Visible = false
 	end
 
-	-- what shows when: the key strip for the first 10 s of the fight, while H is held, or always (the
-	-- ControlHints setting); the touch pads only in a live round and not while you are down (the get-up
-	-- panel takes over); on a phone the commentary ticker leaves the picture during rounds
+	-- what shows when: the key strip for the first 10 s of the fight, while H (VIEW on a pad) is held, or
+	-- always (the ControlHints setting); the touch pads only in a live round and not while you are down
+	-- (the get-up panel takes over); on a phone the commentary ticker leaves the picture during rounds.
+	-- The strip names keys or pad buttons by the device in use; a device with both touch and keys shows the
+	-- pads after a touch and the strip after a key press (Gamepad.Mode)
 	holdH = false
 	function refreshControls()
 		local live = F.active == true and not F.resting and not F.down and not F.paused
-		local keyboard = touchPad == nil
+		local mode = Gamepad and Gamepad.Mode() or "keyboard"
+		local touchUI = touchPad ~= nil and mode ~= "gamepad" and (mode == "touch" or not UserInputService.KeyboardEnabled)
+		local keyboard = not touchUI
 		local show = live and keyboard and (holdH or os.clock() < controlsUntil or player:GetAttribute("ControlHints") == true)
 		if controls.Visible ~= show then
 			controls.Visible = show
@@ -86429,7 +87275,7 @@ do
 			controlsHint.Visible = hint
 		end
 		if touchPad then
-			local pads = live
+			local pads = live and touchUI
 			if touchPad.Visible ~= pads then
 				touchPad.Visible = pads
 				defencePad.Visible = pads
@@ -87447,6 +88293,156 @@ UserInputService.InputEnded:Connect(function(input)
 end)
 
 ------------------------------------------------------------------------
+-- Gamepad: one ContextActionService binding for the whole fight, at High priority so it runs before (and
+-- sinks) the default bindings of the same buttons: A's jump, the right stick's camera turn and RS click's
+-- zoom, X's proximity prompts, VIEW's UI selection. The left stick is left alone (Roblox's movement).
+-- Bound on the fight's start message, unbound in finish(); everything it holds (block, body modifier,
+-- the controls strip) is let go there too, so nothing stays stuck after a fight.
+------------------------------------------------------------------------
+local PAD_ACTION = "BoxerFightPad"
+local PAD_KEYS = {
+	K.ButtonX, K.ButtonY, K.ButtonB, K.ButtonA, K.ButtonR1, K.ButtonR2, K.ButtonL1, K.ButtonL2, K.ButtonR3, K.ButtonL3,
+	K.DPadUp, K.DPadDown, K.DPadLeft, K.DPadRight, K.ButtonSelect, K.Thumbstick2,
+}
+local padPunch = { [K.ButtonX] = "jab", [K.ButtonY] = "cross", [K.ButtonB] = "leadhook", [K.ButtonA] = "rearhook", [K.ButtonR2] = "uppercut", [K.ButtonR1] = "overhand" }
+local pad = { bound = false, body = false, block = false, view = false, leftX = 0, flick = Gamepad and Gamepad.Flick() }
+
+local function padRelease()
+	if pad.block then
+		pad.block = false
+		send({ t = "block", on = false })
+	end
+	pad.body = false
+	if pad.view then
+		pad.view = false
+		holdH = false
+	end
+	if pad.flick then
+		pad.flick:Reset()
+	end
+end
+
+local function padFlick(dir)
+	if not F.active or F.down then
+		return
+	end
+	if dir == "L" or dir == "R" then
+		send({ t = "slip", dir = dir == "L" and -1 or 1 })
+	elseif dir == "D" then
+		send({ t = "roll" })
+	else
+		send({ t = "parry" })
+	end
+end
+
+local function padBegin(k)
+	if k == K.ButtonSelect then
+		pad.view = true
+		holdH = true
+		refreshControls()
+		return
+	end
+	-- held modifiers track the button even between rounds, so a press carried over a bell still counts
+	if k == K.ButtonL1 then
+		pad.body = true
+		return
+	end
+	if F.down then
+		-- the get-up: A mashes exactly like SPACE (the marker in the green zone = a good press)
+		if k == K.ButtonA then
+			getupPress()
+		end
+		return
+	end
+	if not F.active then
+		return
+	end
+	local p = padPunch[k]
+	if p then
+		throwPunch(p, (pad.body or F.bodyMod == true) and p ~= "overhand")
+	elseif k == K.ButtonL2 then
+		pad.block = true
+		send({ t = "block", on = true })
+	elseif k == K.DPadUp then
+		send({ t = "parry" })
+	elseif k == K.DPadLeft or k == K.DPadRight then
+		send({ t = "pivot", dir = k == K.DPadLeft and -1 or 1 })
+	elseif k == K.ButtonR3 then
+		-- toward the side the left stick leans, else to the left (Z)
+		send({ t = "pivot", dir = pad.leftX > 0.35 and 1 or -1 })
+	elseif k == K.DPadDown or k == K.ButtonL3 then
+		send({ t = "clinch" })
+	end
+end
+
+local function padEnd(k)
+	if k == K.ButtonL2 then
+		if pad.block then
+			pad.block = false
+			send({ t = "block", on = false })
+		end
+	elseif k == K.ButtonL1 then
+		pad.body = false
+	elseif k == K.ButtonSelect and pad.view then
+		pad.view = false
+		holdH = false
+		refreshControls()
+	end
+end
+
+local function padAction(_, state, input)
+	local k = input.KeyCode
+	if k == K.Thumbstick2 then
+		if pad.flick then
+			local p = input.Position
+			local dir = pad.flick:Update(p.X, p.Y, os.clock())
+			if dir then
+				padFlick(dir)
+			end
+		end
+	elseif state == Enum.UserInputState.Begin then
+		padBegin(k)
+	elseif state == Enum.UserInputState.End or state == Enum.UserInputState.Cancel then
+		padEnd(k)
+	end
+	return Enum.ContextActionResult.Sink
+end
+
+local function bindPad()
+	if pad.bound then
+		return
+	end
+	local ok = pcall(function()
+		ContextActionService:BindActionAtPriority(PAD_ACTION, padAction, false, Enum.ContextActionPriority.High.Value, table.unpack(PAD_KEYS))
+	end)
+	pad.bound = ok
+	-- the fight HUD is not navigated: no window selection may take the D-pad / A meanwhile
+	UI.PadHold("Fight", true)
+end
+
+local function unbindPad()
+	padRelease()
+	if pad.bound then
+		pad.bound = false
+		pcall(ContextActionService.UnbindAction, ContextActionService, PAD_ACTION)
+	end
+	UI.PadHold("Fight", false)
+end
+
+-- the left stick stays Roblox's movement; its lean only picks the RS-click pivot's side
+UserInputService.InputChanged:Connect(function(input)
+	if pad.bound and input.KeyCode == K.Thumbstick1 then
+		pad.leftX = input.Position.X
+	end
+end)
+-- another device picked up: the strip / pads / get-up title follow it
+if Gamepad then
+	Gamepad.Changed:Connect(function()
+		refreshControls()
+	end)
+end
+
+------------------------------------------------------------------------
 -- Animate script control for the local character during a fight
 ------------------------------------------------------------------------
 local function setAnimate(on)
@@ -87545,6 +88541,7 @@ end
 
 local function finish()
 	lockReset(false)
+	unbindPad()
 	F.active = false
 	F.down = false
 	gui.Enabled = false
@@ -87704,6 +88701,7 @@ function handlers.start(msg)
 	camMode = F.spar and "wide" or "entrance"
 	letterbox(not F.spar)
 	buildTouch()
+	bindPad()
 end
 
 function handlers.entrance(msg)
@@ -88109,9 +89107,17 @@ function handlers.getupStart(msg)
 	F.markerSpeed = 3.2 - ability * 1.2 + conc * 1.5
 	zone.Size = UDim2.fromScale(F.zoneW, 1)
 	setGetup(0)
-	local touch = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
-	getupTitle.Text = msg.severity == "flash" and ("FLASH KNOCKDOWN! SHAKE IT OFF - " .. (touch and "TAP" or "MASH") .. " / HIT THE GREEN")
-		or (touch and "YOU'RE DOWN!  TAP FAST - HIT THE GREEN ZONE" or "YOU'RE DOWN!  MASH SPACE / TAP - HIT THE GREEN ZONE")
+	-- the title names the press of the device in use: SPACE, A / CROSS on a pad, taps on touch
+	local isFlash = msg.severity == "flash"
+	UI.BindHint(getupTitle, function(mode)
+		local touch = mode == "touch" or (UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled and mode ~= "gamepad")
+		if mode == "gamepad" and Gamepad then
+			local a = Gamepad.Label(K.ButtonA)
+			return isFlash and ("FLASH KNOCKDOWN! SHAKE IT OFF - MASH " .. a .. " / HIT THE GREEN") or ("YOU'RE DOWN!  MASH " .. a .. " - HIT THE GREEN ZONE")
+		end
+		return isFlash and ("FLASH KNOCKDOWN! SHAKE IT OFF - " .. (touch and "TAP" or "MASH") .. " / HIT THE GREEN")
+			or (touch and "YOU'RE DOWN!  TAP FAST - HIT THE GREEN ZONE" or "YOU'RE DOWN!  MASH SPACE / TAP - HIT THE GREEN ZONE")
+	end)
 	getupHint.Text = string.format("Get up before 10. Green-zone presses count triple. (needed: %d)", msg.target or 10)
 	getup.Visible = true
 end

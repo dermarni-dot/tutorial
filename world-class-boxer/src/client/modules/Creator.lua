@@ -841,7 +841,14 @@ function Creator.Open()
 	C = newState()
 	page = "Identity"
 	camYaw = 0
-	shade, win, body = UI.Window(State.gui, "Creator", 600, 720, "CREATE YOUR BOXER", { side = "left", noShade = true, footer = 50 })
+	-- BACK (and B on a gamepad: the creator cannot be closed, B steps back a page)
+	local function back()
+		local i = table.find(PAGES, page) or 1
+		page = PAGES[math.max(1, i - 1)]
+		preview()
+		render()
+	end
+	shade, win, body = UI.Window(State.gui, "Creator", 600, 720, "CREATE YOUR BOXER", { side = "left", noShade = true, footer = 50, onBack = back })
 	tabsFrame = UI.Frame(win, { BackgroundTransparency = 1, Position = UDim2.fromOffset(16, 48), Size = UDim2.new(1, -32, 0, 72) })
 	UI.Grid(tabsFrame, UDim2.new(0.25, -5, 0, 32), nil, 5)
 	body.Position = UDim2.fromOffset(16, 128)
@@ -849,12 +856,7 @@ function Creator.Open()
 	randomBtn = UI.Button(win, "RANDOM LOOK", { Name = "RandomLook", Size = UDim2.fromOffset(140, 30), Position = UDim2.new(1, -156, 0, 12), TextSize = 13 }, randomLook)
 	narrowHeader = UI.CanvasSize(State.gui).X * 0.46 < 480
 	local nav = UI.Frame(win, { BackgroundTransparency = 1, Position = UDim2.new(0, 16, 1, -54), Size = UDim2.new(1, -32, 0, 42) })
-	UI.Button(nav, "BACK", { Size = UDim2.new(0.3, 0, 1, 0) }, function()
-		local i = table.find(PAGES, page) or 1
-		page = PAGES[math.max(1, i - 1)]
-		preview()
-		render()
-	end)
+	UI.Button(nav, "BACK", { Size = UDim2.new(0.3, 0, 1, 0) }, back)
 	nextBtn = UI.Button(nav, "NEXT", { Size = UDim2.new(0.66, 0, 1, 0), Position = UDim2.new(0.34, 0, 0, 0), BackgroundColor3 = T.gold, TextColor3 = T.bg })
 	nextBtn.MouseButton1Click:Connect(function()
 		local i = table.find(PAGES, page) or 1

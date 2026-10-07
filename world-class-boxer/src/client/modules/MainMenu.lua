@@ -1059,10 +1059,15 @@ end
 local LEFT = { [K.Left] = true, [K.A] = true, [K.DPadLeft] = true }
 local RIGHT = { [K.Right] = true, [K.D] = true, [K.DPadRight] = true }
 local function onInput(input, gp)
-	if gp or not isOpen or closing then
+	if not isOpen or closing then
 		return
 	end
 	local k = input.KeyCode
+	-- a gamepad's buttons can arrive "processed" only because a default control binding saw them (A is
+	-- the jump action); they belong to the menu unless Roblox's own UI selection is driving it
+	if gp and not (UI.Gamepad and UI.Gamepad.IsPadKey(k) and GuiService.SelectedObject == nil) then
+		return
+	end
 	if view == "home" then
 		if k == K.Down or k == K.S or k == K.DPadDown then
 			selectItem(sel % #items + 1)
@@ -1120,6 +1125,8 @@ function MainMenu.Open(which)
 	end
 	isOpen, closing = true, false
 	State.closeAll("Menu")
+	-- the menu navigates itself (D-pad / A / B): no window selection under it
+	UI.PadHold("Menu", true)
 	State.windows.Menu = function()
 		MainMenu.Close()
 	end
@@ -1230,6 +1237,7 @@ function MainMenu.Close(after)
 		settingsFocus, settingsBody, scoutSheet = 0, nil, nil
 		isOpen, closing = false, false
 		view = "home"
+		UI.PadHold("Menu", false)
 		State.HidePrompts("Menu", false)
 		State.HideHud("Menu", false)
 		if after then

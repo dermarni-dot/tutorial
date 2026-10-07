@@ -10,7 +10,13 @@
 -- present; the old built-in venue effects stay as a fallback so a fight always presents.
 -- Controls: 1/J jab, 2/K cross, 3/L lead hook, 4 rear hook, 5/U uppercut, 6/O overhand,
 -- hold SHIFT = to the body, hold F block, R parry, Q/E slip, C roll, Z/X pivot, G clinch.
+-- Gamepad (bound through ContextActionService for the fight, above the default jump / camera bindings):
+-- X jab, Y cross, B lead hook, A rear hook, RT uppercut, RB overhand, hold LB = to the body, hold LT
+-- block, right stick flick left / right slip, down roll, up parry, RS click pivot (toward the left stick,
+-- else left), D-pad left / right pivot, D-pad up parry, D-pad down or LS click clinch, hold VIEW for the
+-- controls; when down, mash A. (PlayStation: SQUARE / TRIANGLE / CIRCLE / CROSS, R2, R1, L1, L2, R3, L3.)
 local Players = game:GetService("Players")
+local ContextActionService = game:GetService("ContextActionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
@@ -24,6 +30,8 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
 local UI = require(Shared:WaitForChild("UI"))
 local T = UI.Theme
+local Gamepad = UI.Gamepad -- input device and button names (optional)
+local K = Enum.KeyCode
 local FightRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Fight")
 
 local gui = UI.New("ScreenGui", { Name = "FightUI", ResetOnSpawn = false, IgnoreGuiInset = false, Enabled = false, DisplayOrder = 5, ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
@@ -669,8 +677,16 @@ do
 		UI.List(ctlRows[r], 12, true, Enum.HorizontalAlignment.Center)
 	end
 	local ctlItems = {}
-	for i, k in ipairs({ { "1/J", "JAB" }, { "2/K", "CROSS" }, { "3/L", "L.HOOK" }, { "4", "R.HOOK" }, { "5/U", "UPPER" }, { "6/O", "OVERHAND" }, { "SHIFT", "BODY" },
-		{ "F", "BLOCK" }, { "R", "PARRY" }, { "Q/E", "SLIP" }, { "C", "ROLL" }, { "Z/X", "PIVOT" }, { "G", "CLINCH" } }) do
+	-- { keyboard caps, gamepad caps (KeyCodes, or a function for a combined name), action }: the caps
+	-- follow the device in use (the right-stick flicks read "RS LEFT/RIGHT", "RS DOWN")
+	local function padPair(a, b)
+		return function()
+			return Gamepad.Label(a) .. "/" .. Gamepad.Label(b):gsub("^RS ", "")
+		end
+	end
+	for i, k in ipairs({ { "1/J", K.ButtonX, "JAB" }, { "2/K", K.ButtonY, "CROSS" }, { "3/L", K.ButtonB, "L.HOOK" }, { "4", K.ButtonA, "R.HOOK" }, { "5/U", K.ButtonR2, "UPPER" },
+		{ "6/O", K.ButtonR1, "OVERHAND" }, { "SHIFT", K.ButtonL1, "BODY" }, { "F", K.ButtonL2, "BLOCK" }, { "R", K.DPadUp, "PARRY" },
+		{ "Q/E", padPair(K.Thumbstick2Left, K.Thumbstick2Right), "SLIP" }, { "C", K.Thumbstick2Down, "ROLL" }, { "Z/X", K.ButtonR3, "PIVOT" }, { "G", K.DPadDown, "CLINCH" } }) do
 		local f = UI.Frame(ctlRows[1], { BackgroundTransparency = 1, Size = UDim2.fromOffset(0, 24), AutomaticSize = Enum.AutomaticSize.X, LayoutOrder = i })
 		ctlItems[i] = f
 		UI.List(f, 5, true)
@@ -679,11 +695,20 @@ do
 		UI.Stroke(cap, Color3.new(1, 1, 1), 1, 0.85)
 		local t = UI.Text(cap, k[1], { Font = T.semi, TextSize = 12, Size = UDim2.new(0, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.X, TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false })
 		UI.Pad(t, 0, 6)
-		UI.Text(f, k[2], { Font = T.semi, TextSize = 12, TextColor3 = Color3.fromRGB(200, 205, 216), Size = UDim2.new(0, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.X, TextWrapped = false, LayoutOrder = 2 })
+		UI.BindHint(t, function(mode)
+			if mode == "gamepad" and Gamepad then
+				return type(k[2]) == "function" and k[2]() or Gamepad.Label(k[2])
+			end
+			return k[1]
+		end)
+		UI.Text(f, k[3], { Font = T.semi, TextSize = 12, TextColor3 = Color3.fromRGB(200, 205, 216), Size = UDim2.new(0, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.X, TextWrapped = false, LayoutOrder = 2 })
 	end
 	-- the reminder once the strip has faded
-	local controlsHint = UI.Chip(hud, "HOLD H  ·  CONTROLS", T.sub, { AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 24, 1, -62), h = 24, TextSize = 13 })
+	local controlsHint, controlsHintText = UI.Chip(hud, "HOLD H  ·  CONTROLS", T.sub, { AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 24, 1, -62), h = 24, TextSize = 13 })
 	controlsHint.Visible = false
+	UI.BindHint(controlsHintText, function(mode)
+		return "HOLD " .. ((mode == "gamepad" and Gamepad) and Gamepad.Label(K.ButtonSelect) or "H") .. "  ·  CONTROLS"
+	end)
 	controlsUntil = 0 -- os.clock() until which the strip shows on its own
 
 	function showBanner(text, color, dur)
@@ -1062,6 +1087,7 @@ do
 
 	local getupBtn = UI.Button(getup, "", { Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1, ZIndex = 28 }, getupPress)
 	getupBtn.Text = ""
+	getupBtn.Selectable = false -- a gamepad mashes A through the fight bindings, not the UI selection
 
 	-- responsive layout: short (phone) canvases get the slim scoreboard and their own sizes for the count
 	-- and the get-up panel, placed so they never overlap (count under the board, get-up under the count)
@@ -1157,6 +1183,7 @@ do
 		local b = UI.New("TextButton", { Name = name, Text = "", AutoButtonColor = false, BorderSizePixel = 0, BackgroundColor3 = T.bg, BackgroundTransparency = 0.35,
 			Size = UDim2.fromOffset(size, size), Position = pos, AnchorPoint = anchor or Vector2.new(0.5, 0.5), Parent = parent })
 		UI.Corner(b, math.floor(size / 2))
+		b.Selectable = false
 		UI.New("UIStroke", { Color = color, Thickness = 2.5, Transparency = 0.15, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = b })
 		UI.Text(b, text, { Face = "displayMed", TextSize = size >= 80 and 20 or 17, TextColor3 = Color3.new(1, 1, 1), Size = UDim2.fromScale(1, 1), AutomaticSize = Enum.AutomaticSize.None,
 			TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = true })
@@ -1183,6 +1210,7 @@ do
 		punchPad("CROSS", "cross", UDim2.fromOffset(152, 210))
 		local bodyBtn = UI.Button(touchPad, "BODY", { Name = "Body", Size = UDim2.fromOffset(120, 40), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.fromOffset(102, 0),
 			BackgroundColor3 = T.bg, BackgroundTransparency = 0.35, TextSize = 16 })
+		bodyBtn.Selectable = false
 		UI.Stroke(bodyBtn, T.orange, 2, 0.15)
 		bodyBtn.MouseButton1Click:Connect(function()
 			F.bodyMod = not F.bodyMod
@@ -1221,13 +1249,17 @@ do
 		controls.Visible = false
 	end
 
-	-- what shows when: the key strip for the first 10 s of the fight, while H is held, or always (the
-	-- ControlHints setting); the touch pads only in a live round and not while you are down (the get-up
-	-- panel takes over); on a phone the commentary ticker leaves the picture during rounds
+	-- what shows when: the key strip for the first 10 s of the fight, while H (VIEW on a pad) is held, or
+	-- always (the ControlHints setting); the touch pads only in a live round and not while you are down
+	-- (the get-up panel takes over); on a phone the commentary ticker leaves the picture during rounds.
+	-- The strip names keys or pad buttons by the device in use; a device with both touch and keys shows the
+	-- pads after a touch and the strip after a key press (Gamepad.Mode)
 	holdH = false
 	function refreshControls()
 		local live = F.active == true and not F.resting and not F.down and not F.paused
-		local keyboard = touchPad == nil
+		local mode = Gamepad and Gamepad.Mode() or "keyboard"
+		local touchUI = touchPad ~= nil and mode ~= "gamepad" and (mode == "touch" or not UserInputService.KeyboardEnabled)
+		local keyboard = not touchUI
 		local show = live and keyboard and (holdH or os.clock() < controlsUntil or player:GetAttribute("ControlHints") == true)
 		if controls.Visible ~= show then
 			controls.Visible = show
@@ -1237,7 +1269,7 @@ do
 			controlsHint.Visible = hint
 		end
 		if touchPad then
-			local pads = live
+			local pads = live and touchUI
 			if touchPad.Visible ~= pads then
 				touchPad.Visible = pads
 				defencePad.Visible = pads
@@ -2255,6 +2287,156 @@ UserInputService.InputEnded:Connect(function(input)
 end)
 
 ------------------------------------------------------------------------
+-- Gamepad: one ContextActionService binding for the whole fight, at High priority so it runs before (and
+-- sinks) the default bindings of the same buttons: A's jump, the right stick's camera turn and RS click's
+-- zoom, X's proximity prompts, VIEW's UI selection. The left stick is left alone (Roblox's movement).
+-- Bound on the fight's start message, unbound in finish(); everything it holds (block, body modifier,
+-- the controls strip) is let go there too, so nothing stays stuck after a fight.
+------------------------------------------------------------------------
+local PAD_ACTION = "BoxerFightPad"
+local PAD_KEYS = {
+	K.ButtonX, K.ButtonY, K.ButtonB, K.ButtonA, K.ButtonR1, K.ButtonR2, K.ButtonL1, K.ButtonL2, K.ButtonR3, K.ButtonL3,
+	K.DPadUp, K.DPadDown, K.DPadLeft, K.DPadRight, K.ButtonSelect, K.Thumbstick2,
+}
+local padPunch = { [K.ButtonX] = "jab", [K.ButtonY] = "cross", [K.ButtonB] = "leadhook", [K.ButtonA] = "rearhook", [K.ButtonR2] = "uppercut", [K.ButtonR1] = "overhand" }
+local pad = { bound = false, body = false, block = false, view = false, leftX = 0, flick = Gamepad and Gamepad.Flick() }
+
+local function padRelease()
+	if pad.block then
+		pad.block = false
+		send({ t = "block", on = false })
+	end
+	pad.body = false
+	if pad.view then
+		pad.view = false
+		holdH = false
+	end
+	if pad.flick then
+		pad.flick:Reset()
+	end
+end
+
+local function padFlick(dir)
+	if not F.active or F.down then
+		return
+	end
+	if dir == "L" or dir == "R" then
+		send({ t = "slip", dir = dir == "L" and -1 or 1 })
+	elseif dir == "D" then
+		send({ t = "roll" })
+	else
+		send({ t = "parry" })
+	end
+end
+
+local function padBegin(k)
+	if k == K.ButtonSelect then
+		pad.view = true
+		holdH = true
+		refreshControls()
+		return
+	end
+	-- held modifiers track the button even between rounds, so a press carried over a bell still counts
+	if k == K.ButtonL1 then
+		pad.body = true
+		return
+	end
+	if F.down then
+		-- the get-up: A mashes exactly like SPACE (the marker in the green zone = a good press)
+		if k == K.ButtonA then
+			getupPress()
+		end
+		return
+	end
+	if not F.active then
+		return
+	end
+	local p = padPunch[k]
+	if p then
+		throwPunch(p, (pad.body or F.bodyMod == true) and p ~= "overhand")
+	elseif k == K.ButtonL2 then
+		pad.block = true
+		send({ t = "block", on = true })
+	elseif k == K.DPadUp then
+		send({ t = "parry" })
+	elseif k == K.DPadLeft or k == K.DPadRight then
+		send({ t = "pivot", dir = k == K.DPadLeft and -1 or 1 })
+	elseif k == K.ButtonR3 then
+		-- toward the side the left stick leans, else to the left (Z)
+		send({ t = "pivot", dir = pad.leftX > 0.35 and 1 or -1 })
+	elseif k == K.DPadDown or k == K.ButtonL3 then
+		send({ t = "clinch" })
+	end
+end
+
+local function padEnd(k)
+	if k == K.ButtonL2 then
+		if pad.block then
+			pad.block = false
+			send({ t = "block", on = false })
+		end
+	elseif k == K.ButtonL1 then
+		pad.body = false
+	elseif k == K.ButtonSelect and pad.view then
+		pad.view = false
+		holdH = false
+		refreshControls()
+	end
+end
+
+local function padAction(_, state, input)
+	local k = input.KeyCode
+	if k == K.Thumbstick2 then
+		if pad.flick then
+			local p = input.Position
+			local dir = pad.flick:Update(p.X, p.Y, os.clock())
+			if dir then
+				padFlick(dir)
+			end
+		end
+	elseif state == Enum.UserInputState.Begin then
+		padBegin(k)
+	elseif state == Enum.UserInputState.End or state == Enum.UserInputState.Cancel then
+		padEnd(k)
+	end
+	return Enum.ContextActionResult.Sink
+end
+
+local function bindPad()
+	if pad.bound then
+		return
+	end
+	local ok = pcall(function()
+		ContextActionService:BindActionAtPriority(PAD_ACTION, padAction, false, Enum.ContextActionPriority.High.Value, table.unpack(PAD_KEYS))
+	end)
+	pad.bound = ok
+	-- the fight HUD is not navigated: no window selection may take the D-pad / A meanwhile
+	UI.PadHold("Fight", true)
+end
+
+local function unbindPad()
+	padRelease()
+	if pad.bound then
+		pad.bound = false
+		pcall(ContextActionService.UnbindAction, ContextActionService, PAD_ACTION)
+	end
+	UI.PadHold("Fight", false)
+end
+
+-- the left stick stays Roblox's movement; its lean only picks the RS-click pivot's side
+UserInputService.InputChanged:Connect(function(input)
+	if pad.bound and input.KeyCode == K.Thumbstick1 then
+		pad.leftX = input.Position.X
+	end
+end)
+-- another device picked up: the strip / pads / get-up title follow it
+if Gamepad then
+	Gamepad.Changed:Connect(function()
+		refreshControls()
+	end)
+end
+
+------------------------------------------------------------------------
 -- Animate script control for the local character during a fight
 ------------------------------------------------------------------------
 local function setAnimate(on)
@@ -2353,6 +2535,7 @@ end
 
 local function finish()
 	lockReset(false)
+	unbindPad()
 	F.active = false
 	F.down = false
 	gui.Enabled = false
@@ -2512,6 +2695,7 @@ function handlers.start(msg)
 	camMode = F.spar and "wide" or "entrance"
 	letterbox(not F.spar)
 	buildTouch()
+	bindPad()
 end
 
 function handlers.entrance(msg)
@@ -2917,9 +3101,17 @@ function handlers.getupStart(msg)
 	F.markerSpeed = 3.2 - ability * 1.2 + conc * 1.5
 	zone.Size = UDim2.fromScale(F.zoneW, 1)
 	setGetup(0)
-	local touch = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
-	getupTitle.Text = msg.severity == "flash" and ("FLASH KNOCKDOWN! SHAKE IT OFF - " .. (touch and "TAP" or "MASH") .. " / HIT THE GREEN")
-		or (touch and "YOU'RE DOWN!  TAP FAST - HIT THE GREEN ZONE" or "YOU'RE DOWN!  MASH SPACE / TAP - HIT THE GREEN ZONE")
+	-- the title names the press of the device in use: SPACE, A / CROSS on a pad, taps on touch
+	local isFlash = msg.severity == "flash"
+	UI.BindHint(getupTitle, function(mode)
+		local touch = mode == "touch" or (UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled and mode ~= "gamepad")
+		if mode == "gamepad" and Gamepad then
+			local a = Gamepad.Label(K.ButtonA)
+			return isFlash and ("FLASH KNOCKDOWN! SHAKE IT OFF - MASH " .. a .. " / HIT THE GREEN") or ("YOU'RE DOWN!  MASH " .. a .. " - HIT THE GREEN ZONE")
+		end
+		return isFlash and ("FLASH KNOCKDOWN! SHAKE IT OFF - " .. (touch and "TAP" or "MASH") .. " / HIT THE GREEN")
+			or (touch and "YOU'RE DOWN!  TAP FAST - HIT THE GREEN ZONE" or "YOU'RE DOWN!  MASH SPACE / TAP - HIT THE GREEN ZONE")
+	end)
 	getupHint.Text = string.format("Get up before 10. Green-zone presses count triple. (needed: %d)", msg.target or 10)
 	getup.Visible = true
 end

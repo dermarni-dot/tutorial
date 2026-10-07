@@ -127,15 +127,30 @@ local hudWarn = UI.Text(hud, "", { Font = T.semi, TextSize = 12, TextColor3 = T.
 -- quick actions under the plate
 local hudButtons = UI.Frame(gui, { Name = "HudButtons", BackgroundTransparency = 1, Size = UDim2.fromOffset(360, 40), Position = UDim2.fromOffset(20, 16), Visible = false })
 UI.List(hudButtons, 6, true)
-local function hudButton(text, key, w, color, fn, order)
+-- key: the keyboard key's cap; padKey: the gamepad button shown on the cap instead while a pad is in use
+-- (the button widens to fit the longer name, "D-DOWN")
+local function hudButton(text, key, w, color, fn, order, padKey)
 	local b = UI.Button(hudButtons, "", { Name = text, Size = UDim2.fromOffset(w, 40), BackgroundColor3 = color or T.panel2, BackgroundTransparency = color and 0 or 0.15, LayoutOrder = order }, fn)
 	local dark = color == T.gold
-	UI.Text(b, text, { Face = "displayMed", TextSize = 17, TextColor3 = dark and T.ink or T.text, Size = UDim2.new(1, key and -26 or 0, 1, 0), AutomaticSize = Enum.AutomaticSize.None,
+	local label = UI.Text(b, text, { Face = "displayMed", TextSize = 17, TextColor3 = dark and T.ink or T.text, Size = UDim2.new(1, key and -26 or 0, 1, 0), AutomaticSize = Enum.AutomaticSize.None,
 		TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false })
 	if key then
 		local cap = UI.Frame(b, { AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -8, 0.5, 0), Size = UDim2.fromOffset(20, 20), BackgroundColor3 = dark and T.ink or T.panel, BackgroundTransparency = 0.2 })
 		UI.Corner(cap, 4)
-		UI.Text(cap, key, { Font = T.semi, TextSize = 11, TextColor3 = dark and T.gold or T.sub, Size = UDim2.fromScale(1, 1), AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Center })
+		local capText = UI.Text(cap, key, { Font = T.semi, TextSize = 11, TextColor3 = dark and T.gold or T.sub, Size = UDim2.fromScale(1, 1), AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Center })
+		if padKey then
+			UI.BindHint(capText, function(mode)
+				local t = key
+				if mode == "gamepad" and UI.Gamepad then
+					t = UI.Gamepad.Short(padKey)
+				end
+				local capW = math.max(20, 8 + 7 * #t)
+				cap.Size = UDim2.fromOffset(capW, 20)
+				label.Size = UDim2.new(1, -(capW + 6), 1, 0)
+				b.Size = UDim2.fromOffset(w + capW - 20, 40)
+				return t
+			end)
+		end
 	end
 	return b
 end
@@ -143,10 +158,10 @@ hudButton("MENU", "M", 92, nil, function()
 	if MainMenu then
 		MainMenu.Open()
 	end
-end, 1)
+end, 1, Enum.KeyCode.DPadDown)
 hudButton("CAREER HUB", "H", 140, T.gold, function()
 	Hub.Toggle()
-end, 2)
+end, 2, Enum.KeyCode.DPadUp)
 hudButton("TRAIN", nil, 60, nil, function()
 	Hub.Open("Training")
 end, 3)
@@ -161,9 +176,20 @@ local hintText = UI.Text(hint, "Walk up to any gym station and press E (or tap) 
 	AutomaticSize = Enum.AutomaticSize.X, TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false })
 UI.Pad(hintText, 0, 18)
 
+-- the first-sessions hint names the prompt button of the device in use (ProximityPrompts take E on a
+-- keyboard and X / SQUARE on a gamepad by default)
+local hudCompact = nil
+local function gymHint(mode)
+	if mode == "gamepad" and UI.Gamepad then
+		return string.format("Walk up to any gym station and press %s to train.  %s: Career Hub", UI.Gamepad.Label(Enum.KeyCode.ButtonX), UI.Gamepad.Short(Enum.KeyCode.DPadUp))
+	elseif mode == "touch" or hudCompact then
+		return "Walk up to a gym station and tap (or press E) to train."
+	end
+	return "Walk up to any gym station and press E (or tap) to train."
+end
+
 -- a phone (short canvas): the plate collapses to the name, OVR and one line of condition chips; the
 -- quick actions sit on the bottom edge (above the device's safe area) with the hint above them
-local hudCompact = nil
 local function layoutHud()
 	local s = UI.ScaleOf(hud)
 	local canvas = UI.CanvasSize(gui)
@@ -176,8 +202,7 @@ local function layoutHud()
 		bars.Visible = not compact
 		campBox.Visible = not compact
 		condStrip.Visible = compact
-		hintText.Text = compact and "Walk up to a gym station and tap (or press E) to train."
-			or "Walk up to any gym station and press E (or tap) to train."
+		UI.BindHint(hintText, gymHint)
 	end
 	if compact then
 		local bottom = 8
@@ -317,7 +342,7 @@ local function showResult(data)
 		local bigNote = n:find("CHAMPION") or n:find("PRO") or n:find("LEGEND") or n:find("TOP 10") or n:find("Promoted")
 		UI.Line(body, n, { TextColor3 = bigNote and T.gold or T.text, Font = bigNote and T.semi or T.font, TextSize = 14 })
 	end
-	UI.Button(win, "CONTINUE", { Size = UDim2.new(0, 260, 0, 48), Position = UDim2.new(0.5, -130, 1, -62), BackgroundColor3 = T.gold }, close)
+	UI.PadStart(UI.Button(win, "CONTINUE", { Size = UDim2.new(0, 260, 0, 48), Position = UDim2.new(0.5, -130, 1, -62), BackgroundColor3 = T.gold }, close))
 end
 State.open.Result = showResult
 
@@ -358,7 +383,7 @@ local function showSparResult(data)
 	for _, n in ipairs(tr.notes or {}) do
 		UI.Line(body, n, { TextColor3 = n:find("INJURY") and T.red or T.sub, TextSize = 13 })
 	end
-	UI.Button(win, "CONTINUE", { Size = UDim2.new(0, 240, 0, 46), Position = UDim2.new(0.5, -120, 1, -58), BackgroundColor3 = T.gold }, close)
+	UI.PadStart(UI.Button(win, "CONTINUE", { Size = UDim2.new(0, 240, 0, 46), Position = UDim2.new(0.5, -120, 1, -58), BackgroundColor3 = T.gold }, close))
 end
 
 State.FightRemote.OnClientEvent:Connect(function(msg)
@@ -392,13 +417,14 @@ local function showRetired()
 		UI.Line(c, "The boxing world honors you as one of the all-time greats. Welcome to the Hall of Fame.", { TextColor3 = T.gold, Font = T.semi })
 	end
 	Hub.LegacyBody(body, res.legacy, res.pastCareers)
-	UI.Button(win, "START A NEW CAREER", { Size = UDim2.new(0, 300, 0, 48), Position = UDim2.new(0.5, -150, 1, -62), BackgroundColor3 = T.gold }, function()
+	local newCareer = UI.Button(win, "START A NEW CAREER", { Size = UDim2.new(0, 300, 0, 48), Position = UDim2.new(0.5, -150, 1, -62), BackgroundColor3 = T.gold }, function()
 		local r = State.req("NewCareer")
 		if r.ok then
 			shade:Destroy()
 			wasRetired = false
 		end
 	end)
+	UI.PadStart(newCareer)
 end
 
 ------------------------------------------------------------------------
@@ -596,12 +622,31 @@ ProximityPromptService.PromptTriggered:Connect(function(prompt)
 end)
 
 UserInputService.InputBegan:Connect(function(input, gp)
+	local k = input.KeyCode
+	-- gamepad: D-pad up = Career Hub, D-pad down = main menu. They only open (B closes): while Roblox's
+	-- UI selection is up the D-pad is navigating a window. (A default control binding can mark a pad
+	-- button processed, so gp alone does not tell for a pad.)
+	if k == Enum.KeyCode.DPadUp or k == Enum.KeyCode.DPadDown then
+		if GuiService.SelectedObject ~= nil or UserInputService:GetFocusedTextBox() or State.inFight() or Activities.Busy() or (MainMenu and MainMenu.IsOpen()) then
+			return
+		end
+		local P = State.P
+		if not (P and P.created and not P.retired) or Creator.IsOpen() then
+			return
+		end
+		if k == Enum.KeyCode.DPadUp then
+			Hub.Open()
+		elseif MainMenu then
+			MainMenu.Open()
+		end
+		return
+	end
 	if gp then
 		return
 	end
-	if input.KeyCode == Enum.KeyCode.H and not State.inFight() and not Activities.Busy() and not (MainMenu and MainMenu.IsOpen()) then
+	if k == Enum.KeyCode.H and not State.inFight() and not Activities.Busy() and not (MainMenu and MainMenu.IsOpen()) then
 		Hub.Toggle()
-	elseif input.KeyCode == Enum.KeyCode.M and MainMenu and not State.inFight() and not Activities.Busy() then
+	elseif k == Enum.KeyCode.M and MainMenu and not State.inFight() and not Activities.Busy() then
 		local P = State.P
 		if P and P.created and not P.retired and not Creator.IsOpen() then
 			MainMenu.Toggle()

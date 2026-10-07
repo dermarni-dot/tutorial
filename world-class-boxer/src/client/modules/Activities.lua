@@ -19,7 +19,9 @@
 -- While you work the body shows it: Effort / LivePump (client-local attributes the Animator reads),
 -- sweat drips onto the floor when your heart rate is high, the coaches react to great and sloppy
 -- work, and the result screen lists every muscle part that grew, the pump and a FLEX button.
+-- Gamepad: every drill plays on the controller with the fight layout (PAD_OF); VIEW / SHARE quits.
 local Players = game:GetService("Players")
+local GuiService = game:GetService("GuiService")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local TextChatService = game:GetService("TextChatService")
@@ -39,6 +41,7 @@ if not okAmbience then
 end
 local T = UI.Theme
 local K = Enum.KeyCode
+local Gamepad = UI.Gamepad -- input device and button names (optional)
 
 local Activities = {}
 local player = Players.LocalPlayer
@@ -86,6 +89,43 @@ local DEFENSE_ACTIONS = {
 }
 local KEYNAME = { [K.J] = "J", [K.K] = "K", [K.L] = "L", [K.Four] = "4", [K.U] = "U", [K.O] = "O", [K.Q] = "Q", [K.E] = "E",
 	[K.C] = "C", [K.Z] = "Z", [K.R] = "R", [K.Space] = "SPACE", [K.W] = "W", [K.A] = "A", [K.S] = "S", [K.D] = "D", [K.F] = "F", [K.G] = "G" }
+-- gamepad: the buttons for every keyboard key a drill binds, laid out like the fight controls - X jab,
+-- Y cross, B lead hook, A rear hook, RT uppercut, RB overhand; right-stick flicks slip (left / right) and
+-- roll (down), RS click / D-pad left pivot, D-pad up parry; the D-pad steps (W/A/S/D) and taps the rope
+-- feet. The speed bag's LEFT / RIGHT hands are X / Y like the jab and cross. The flicks ride on the
+-- Thumbstick2Left / Right / Down / Up KeyCodes in ctx.padmap.
+local PAD_OF = {
+	[K.J] = { K.ButtonX }, [K.One] = { K.ButtonX }, [K.F] = { K.ButtonX },
+	[K.K] = { K.ButtonY }, [K.Two] = { K.ButtonY }, [K.G] = { K.ButtonY },
+	[K.L] = { K.ButtonB }, [K.Three] = { K.ButtonB },
+	[K.Four] = { K.ButtonA }, [K.Semicolon] = { K.ButtonA },
+	[K.U] = { K.ButtonR2 }, [K.Five] = { K.ButtonR2 },
+	[K.O] = { K.ButtonR1 }, [K.Six] = { K.ButtonR1 },
+	[K.Q] = { K.Thumbstick2Left }, [K.E] = { K.Thumbstick2Right }, [K.C] = { K.Thumbstick2Down },
+	[K.Z] = { K.ButtonR3, K.DPadLeft }, [K.R] = { K.DPadUp, K.Thumbstick2Up },
+	[K.W] = { K.DPadUp }, [K.Up] = { K.DPadUp }, [K.S] = { K.DPadDown }, [K.Down] = { K.DPadDown },
+	[K.A] = { K.DPadLeft }, [K.Left] = { K.DPadLeft }, [K.D] = { K.DPadRight }, [K.Right] = { K.DPadRight },
+}
+-- SPACE (lift, slam, jump, pace, breathe, continue) takes A, or LT when the drill already gave A a punch
+-- (the heavy bag's POWER shot next to the rear hook)
+local PAD_SPACE = { K.ButtonA, K.ButtonL2 }
+local FLICK_KEY = { L = K.Thumbstick2Left, R = K.Thumbstick2Right, D = K.Thumbstick2Down, U = K.Thumbstick2Up }
+
+-- the drill's instructions name keyboard keys; on a gamepad they name the buttons PAD_OF gives them
+local function padInfo(ctx, text)
+	local L = Gamepad.Label
+	local space = L(ctx.spacePad or K.ButtonA)
+	text = text:gsub("W/A/S/D or arrows", "the D-pad")
+	text = text:gsub("%(W/A/S/D%)", "(D-pad)")
+	text = text:gsub("%(Q/E/C%)", "(right-stick flicks)")
+	text = text:gsub("%(J/K/L%)", "(" .. L(K.ButtonX) .. "/" .. L(K.ButtonY) .. "/" .. L(K.ButtonB) .. ")")
+	text = text:gsub("%(J%)", "(" .. L(K.ButtonX) .. ")")
+	text = text:gsub("%(K%)", "(" .. L(K.ButtonY) .. ")")
+	text = text:gsub("Hold W", "Push the left stick")
+	text = text:gsub("SPACE", space)
+	return text
+end
+
 local LABEL = { jab = "JAB", cross = "CROSS", leadhook = "L.HOOK", rearhook = "R.HOOK", uppercut = "UPPER", overhand = "OVERHAND",
 	slipL = "SLIP L", slipR = "SLIP R", roll = "ROLL", pivotL = "PIVOT", parry = "PARRY",
 	F = "STEP IN", B = "STEP BACK", L = "CIRCLE L", R = "CIRCLE R" }
@@ -153,7 +193,7 @@ local function newContext(info)
 	local P = State.P
 	local ctx = {
 		level = info.level or 1, params = info.params or {}, act = info.act, station = info.station,
-		handler = nil, keymap = {}, conns = {}, buttons = {}, cleanups = {},
+		handler = nil, keymap = {}, padmap = {}, conns = {}, buttons = {}, cleanups = {},
 		out = {}, -- drill numbers sent with the result (display / personal bests only)
 		lines = {}, -- the one-line session summary on the result screen
 		tipIndex = math.random(0, 5), mode = "work", resting = false, baseEffort = info.baseEffort,
@@ -197,6 +237,13 @@ local function newContext(info)
 	UI.Grid(ctx.inputBar, UDim2.new(1 / 6, -5, 0, 40), nil, 5)
 	ctx.quit = UI.Button(panel, "QUIT", { Size = UDim2.fromOffset(88, 28), Position = UDim2.new(1, -104, 0, 8), BackgroundColor3 = T.red, TextSize = 14 }, function()
 		ctx.cancelled = true
+	end)
+	-- the panel plays on its key maps: none of its buttons take Roblox's UI selection (a selected button
+	-- would also take the A press)
+	ctx.quit.Selectable = false
+	ctx.quitText = "QUIT"
+	UI.BindHint(ctx.quit, function(mode)
+		return mode == "gamepad" and Gamepad and (ctx.quitText .. " · " .. Gamepad.Label(K.ButtonSelect)) or ctx.quitText
 	end)
 
 	-- metrics strip: SET | REP (or CLEAN) | GOOD (rep drills) | QUALITY | TIME | BPM (heart) | KCAL - the
@@ -472,8 +519,16 @@ local function newContext(info)
 	-- the HUD plate would sit behind the panel: hide it while the session runs
 	State.HideHud("Activity", true)
 
+	local function infoFor(mode)
+		local text = ctx.infoRaw or ""
+		if mode == "gamepad" and Gamepad then
+			return padInfo(ctx, text)
+		end
+		return text
+	end
 	function ctx.setInfo(text)
-		ctx.info.Text = text
+		ctx.infoRaw = text
+		UI.BindHint(ctx.info, infoFor)
 	end
 	local lastReact = 0
 	-- feedback colours grade the work: gold great, green good, orange sloppy, red a miss
@@ -630,18 +685,66 @@ local function newContext(info)
 	function ctx.on(fn)
 		ctx.handler = fn
 	end
+	-- actions: { id, label, keys = { KeyCode... }, pad = { KeyCode... } (optional: else PAD_OF of the keys),
+	-- color }. ctx.keymap / ctx.padmap: KeyCode -> action id (the gamepad's flicks as Thumbstick2* keys)
 	function ctx.bind(actions, cellsPerRow)
 		UI.Clear(ctx.inputBar)
 		local grid = ctx.inputBar:FindFirstChildOfClass("UIGridLayout")
 		grid.CellSize = UDim2.new(1 / (cellsPerRow or math.min(6, #actions)), -5, 0, 40)
 		ctx.keymap = {}
+		ctx.padmap = {}
 		ctx.buttons = {}
-		for i, a in ipairs(actions) do
+		ctx.spacePad = nil
+		local padOf = {}
+		local function givePad(id, pk)
+			if not ctx.padmap[pk] then
+				ctx.padmap[pk] = id
+				table.insert(padOf[id], pk)
+				return true
+			end
+			return false
+		end
+		-- punches and moves first, SPACE takes what is left (A, else LT)
+		for _, a in ipairs(actions) do
+			padOf[a.id] = padOf[a.id] or {}
 			for _, key in ipairs(a.keys or {}) do
 				ctx.keymap[key] = a.id
 			end
+			for _, pk in ipairs(a.pad or {}) do
+				givePad(a.id, pk)
+			end
+			if not a.pad then
+				for _, key in ipairs(a.keys or {}) do
+					for _, pk in ipairs(PAD_OF[key] or {}) do
+						givePad(a.id, pk)
+					end
+				end
+			end
+		end
+		for _, a in ipairs(actions) do
+			if not a.pad and table.find(a.keys or {}, K.Space) then
+				for _, pk in ipairs(PAD_SPACE) do
+					if givePad(a.id, pk) then
+						ctx.spacePad = ctx.spacePad or pk
+						break
+					end
+				end
+			end
+		end
+		for i, a in ipairs(actions) do
 			local keyText = a.keys and a.keys[1] and (KEYNAME[a.keys[1]] or a.keys[1].Name) or ""
-			local b = UI.Button(ctx.inputBar, a.label .. (keyText ~= "" and ("  [" .. keyText .. "]") or ""), { LayoutOrder = i, TextSize = 13, BackgroundColor3 = a.color or T.panel2 })
+			local padKey = padOf[a.id][1]
+			local b = UI.Button(ctx.inputBar, a.label, { LayoutOrder = i, TextSize = 13, BackgroundColor3 = a.color or T.panel2 })
+			b.Selectable = false
+			-- the key in brackets follows the device: the keyboard key, the gamepad button, nothing on touch
+			UI.BindHint(b, function(mode)
+				if mode == "gamepad" and Gamepad then
+					return padKey and (a.label .. "  [" .. Gamepad.Label(padKey) .. "]") or a.label
+				elseif mode == "touch" then
+					return a.label
+				end
+				return a.label .. (keyText ~= "" and ("  [" .. keyText .. "]") or "")
+			end)
 			b.MouseButton1Down:Connect(function()
 				dispatch(a.id, true)
 			end)
@@ -649,6 +752,10 @@ local function newContext(info)
 				dispatch(a.id, false)
 			end)
 			ctx.buttons[a.id] = b
+		end
+		-- the instructions may name SPACE: its button can have changed with this map
+		if ctx.infoRaw then
+			UI.BindHint(ctx.info, infoFor)
 		end
 	end
 	function ctx.wait(sec)
@@ -816,20 +923,53 @@ local function newContext(info)
 	end
 	-- keys work while the panel is alive
 	table.insert(ctx.conns, UserInputService.InputBegan:Connect(function(input, gp)
+		local k = input.KeyCode
+		if Gamepad and Gamepad.IsPadKey(k) then
+			-- VIEW / SHARE quits (closes the report); a default control binding can mark a pad button
+			-- processed (A is the jump action), so only Roblox's UI selection stops the drill's buttons
+			if k == K.ButtonSelect then
+				ctx.cancelled = true
+				return
+			end
+			if GuiService.SelectedObject ~= nil or UserInputService:GetFocusedTextBox() then
+				return
+			end
+			local id = ctx.padmap and ctx.padmap[k]
+			if id then
+				dispatch(id, true)
+			end
+			return
+		end
 		if gp then
 			return
 		end
-		local id = ctx.keymap[input.KeyCode]
+		local id = ctx.keymap[k]
 		if id then
 			dispatch(id, true)
 		end
 	end))
 	table.insert(ctx.conns, UserInputService.InputEnded:Connect(function(input)
-		local id = ctx.keymap[input.KeyCode]
+		local k = input.KeyCode
+		local id = ctx.keymap[k] or (ctx.padmap and ctx.padmap[k])
 		if id then
 			dispatch(id, false)
 		end
 	end))
+	-- right-stick flicks: slips and rolls (a tap: press and release at once)
+	local flick = Gamepad and Gamepad.Flick()
+	if flick then
+		table.insert(ctx.conns, UserInputService.InputChanged:Connect(function(input)
+			if input.KeyCode ~= K.Thumbstick2 then
+				return
+			end
+			local dir = flick:Update(input.Position.X, input.Position.Y, os.clock())
+			local id = dir and ctx.padmap and ctx.padmap[FLICK_KEY[dir]]
+			if id and GuiService.SelectedObject == nil then
+				dispatch(id, true)
+				dispatch(id, false)
+			end
+		end))
+	end
 	function ctx.destroy()
 		ctx.mode = "done"
 		ctx.handler = nil
@@ -2882,7 +3022,7 @@ end
 
 -- ROADWORK: run the loop through every checkpoint (measured by the server)
 GAMES.course = function(ctx, info)
-	ctx.bind({ { id = "finish", label = "FINISH EARLY", keys = {}, color = T.red } }, 1)
+	ctx.bind({ { id = "finish", label = "FINISH EARLY", keys = {}, pad = { K.ButtonY }, color = T.red } }, 1)
 	ctx.setInfo("Run the loop around the gym through all 8 checkpoints and back to the start arch. Hold W - your stamina sets your pace.")
 	compactPanel(ctx)
 	ctx.header.Text = "ROADWORK" .. DOT .. "8 CHECKPOINTS"
@@ -2962,7 +3102,7 @@ end
 
 -- SWIMMING: swim lengths of the pool (measured by the server)
 GAMES.swim = function(ctx, info)
-	ctx.bind({ { id = "finish", label = "FINISH EARLY", keys = {}, color = T.red } }, 1)
+	ctx.bind({ { id = "finish", label = "FINISH EARLY", keys = {}, pad = { K.ButtonY }, color = T.red } }, 1)
 	local target = info.lengths or 4
 	ctx.setInfo(string.format("Jump in and swim %d lengths: touch the far wall, then come back. Swimming builds stamina and speeds recovery.", target))
 	compactPanel(ctx)
@@ -3489,7 +3629,10 @@ local function showResult(ctx, res, quality)
 		end)
 	end
 	ctx.layout()
-	ctx.quit.Text = "CLOSE"
+	ctx.quitText = "CLOSE"
+	UI.BindHint(ctx.quit, function(mode)
+		return mode == "gamepad" and Gamepad and ("CLOSE · " .. Gamepad.Label(K.ButtonB)) or "CLOSE"
+	end)
 	ctx.quit.BackgroundColor3 = T.panel2
 	-- FLEX: strike the pose that shows the muscles you just pumped (server: handlers.Flex)
 	local flexKind = FLEX_FOR[ctx.act.id] or "flex_most"
@@ -3501,6 +3644,10 @@ local function showResult(ctx, res, quality)
 	ctx.bind(actions, #actions)
 	if ctx.buttons.close then
 		ctx.buttons.close.TextColor3 = T.bg
+	end
+	-- gamepad: B closes the report too (A continues)
+	if not ctx.padmap[K.ButtonB] then
+		ctx.padmap[K.ButtonB] = "close"
 	end
 	local closed = false
 	local t0 = os.clock()
@@ -3598,13 +3745,17 @@ function Activities.Start(actId)
 		return
 	end
 	State.closeAll()
+	-- the drill plays on its own key maps: no window selection while it runs
+	UI.PadHold("Activity", true)
 	local res = State.req("StartActivity", actId)
 	if not res.ok then
+		UI.PadHold("Activity", false)
 		State.toast(res.err or "Can't do that right now", T.red)
 		return
 	end
 	local drill = GAMES[res.minigame]
 	if not drill then
+		UI.PadHold("Activity", false)
 		State.req("CancelActivity")
 		return
 	end
@@ -3666,6 +3817,7 @@ function Activities.Start(actId)
 	ctx.destroy()
 	current = nil
 	State.activity = nil
+	UI.PadHold("Activity", false)
 end
 
 function Activities.Busy()

@@ -3,7 +3,11 @@
 -- activity), Body (physique badge, every muscle, soreness, veins, FLEX), Stats, Gym (facility tier,
 -- upgrade / repair equipment), Gear (gloves, shoes, wraps, mouthguards, robes), Coaches, Sponsors
 -- (deals and offers), Life (home, travel, garage, fame), Rankings, Rivals, Shop, Legacy.
+-- Gamepad: the D-pad moves the selection (UI kit), A presses, B closes, LB / RB (L1 / R1) step through the
+-- tabs.
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local UserInputService = game:GetService("UserInputService")
+local GuiService = game:GetService("GuiService")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
 local Catalog = require(Shared:WaitForChild("Catalog"))
@@ -1645,6 +1649,33 @@ function Hub.Open(which)
 	end)
 	UI.List(content, 10)
 	UI.Pad(content, 2, 4)
+	-- gamepad: the open tab's button is where the selection starts; LB / RB step through the tabs in the
+	-- order the side navigation shows them (while the hub is the top window: not under a scouting card)
+	UI.PadStart(tabButtons[tab])
+	local flat = {}
+	for _, group in ipairs(NAV) do
+		for _, name in ipairs(group[2]) do
+			table.insert(flat, name)
+		end
+	end
+	local myWin = win
+	local padConn = UserInputService.InputBegan:Connect(function(input)
+		local k = input.KeyCode
+		if (k ~= Enum.KeyCode.ButtonL1 and k ~= Enum.KeyCode.ButtonR1) or UI.PadTop() ~= myWin or UserInputService:GetFocusedTextBox() then
+			return
+		end
+		local i = table.find(flat, tab) or 1
+		tab = flat[(i - 1 + (k == Enum.KeyCode.ButtonR1 and 1 or -1)) % #flat + 1]
+		content.CanvasPosition = Vector2.zero
+		Hub.Render()
+		local b = tabButtons[tab]
+		if b and UI.IsPad() then
+			GuiService.SelectedObject = b
+		end
+	end)
+	shade.Destroying:Connect(function()
+		padConn:Disconnect()
+	end)
 	Hub.Render()
 end
 

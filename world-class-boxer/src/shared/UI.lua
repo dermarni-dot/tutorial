@@ -8,8 +8,21 @@
 -- Built-in fonts only (Font.new on rbxasset families, resolved inside pcall).
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
+local GuiService = game:GetService("GuiService")
+local RunService = game:GetService("RunService")
 
 local UI = {}
+
+-- the input device in use and the controller's button names (Shared.Gamepad); optional: without it
+-- every window simply behaves as on keyboard and mouse
+local Gamepad
+do
+	local ok, m = pcall(function()
+		return require(script.Parent:WaitForChild("Gamepad", 5))
+	end)
+	Gamepad = ok and type(m) == "table" and m or nil
+end
+UI.Gamepad = Gamepad
 
 local function rgb(r, g, b)
 	return Color3.fromRGB(r, g, b)
@@ -915,10 +928,326 @@ function UI.Backdrop(on)
 end
 
 ------------------------------------------------------------------------
+-- Gamepad navigation
+------------------------------------------------------------------------
+-- Roblox's own selection (GuiService.SelectedObject) moves between selectable objects with the D-pad /
+-- left stick and A presses the selected button. The kit adds the rest: a start selection when a window
+-- opens (or the player picks up a pad while one is open), the selection kept inside the top window (each
+-- UI.Window is a SelectionGroup) and put back near where it was when a re-render destroys it, B = the
+-- window's back / close, D-pad left / right (and A) on slider, cycler, toggle and colour rows, and the right
+-- stick scrolling the list under the selection. UI.PadStart(button) makes a button its window's start
+-- selection. UI.PadHold(key, true) pauses all of it while a screen with its own navigation is up (the main
+-- menu, a fight).
+local padWindows = {} -- open UI.Window entries, oldest first: { shade, win, back, lastPos }
+local padHolds = {}
+local padStarted = false
+local scrollY, scrollConn, scrollFrame = 0, nil, nil
+
+local function isPad()
+	return Gamepad ~= nil and Gamepad.IsPad()
+end
+UI.IsPad = isPad
+
+-- on screen: every GuiObject up to the ScreenGui visible and the ScreenGui enabled
+local function shown(obj)
+	local o = obj
+	while o do
+		if o:IsA("LayerCollector") then
+			return o.Enabled
+		elseif o:IsA("GuiObject") and not o.Visible then
+			return false
+		end
+		o = o.Parent
+	end
+	return false
+end
+
+local function centre(o)
+	return o.AbsolutePosition + o.AbsoluteSize / 2
+end
+
+local function topWindow()
+	for i = #padWindows, 1, -1 do
+		local w = padWindows[i]
+		if w.shade.Parent and w.win.Parent then
+			return w
+		end
+		-- removed without Destroy: forget it
+		table.remove(padWindows, i)
+	end
+	return nil
+end
+
+-- the top window's panel (nil when none is open): a window's own pad shortcuts act only while it is on top
+function UI.PadTop()
+	local w = topWindow()
+	return w and w.win
+end
+
+local function selectableIn(root)
+	local list = {}
+	for _, d in ipairs(root:GetDescendants()) do
+		if d:IsA("GuiObject") and d.Selectable and (d:IsA("GuiButton") or d:IsA("TextBox") or d:GetAttribute("PadRow")) and d.AbsoluteSize.X > 1 and d.AbsoluteSize.Y > 1
+			and shown(d) then
+			table.insert(list, d)
+		end
+	end
+	return list
+end
+
+-- selects a button inside root: the one nearest `near` (screen px: where the selection was before a
+-- re-render), else the one marked by UI.PadStart, else the first in reading order (a window's close
+-- button last)
+function UI.PadSelect(root, near)
+	if not root then
+		return nil
+	end
+	local list = selectableIn(root)
+	local pick, best
+	if near then
+		for _, o in ipairs(list) do
+			local d = (centre(o) - near).Magnitude
+			if not best or d < best then
+				best, pick = d, o
+			end
+		end
+	end
+	if not pick then
+		for _, o in ipairs(list) do
+			if o:GetAttribute("PadStart") then
+				pick = o
+				break
+			end
+		end
+	end
+	if not pick then
+		for _, o in ipairs(list) do
+			if o.Name ~= "Close" or #list == 1 then
+				local p = o.AbsolutePosition
+				local key = math.floor(p.Y / 8) * 100000 + p.X
+				if not best or key < best then
+					best, pick = key, o
+				end
+			end
+		end
+	end
+	if pick then
+		pcall(function()
+			GuiService.SelectedObject = pick
+		end)
+	end
+	return pick
+end
+
+-- makes sure the top window holds the selection (on a gamepad, nothing held)
+function UI.PadRefresh()
+	if not isPad() or next(padHolds) then
+		return
+	end
+	local w = topWindow()
+	if not w then
+		return
+	end
+	local sel = GuiService.SelectedObject
+	-- (a close button picked only because the content was not built yet gives way to it)
+	if sel and sel:IsDescendantOf(w.win) and shown(sel) and not (sel == w.auto and sel.Name == "Close") then
+		return
+	end
+	w.auto = UI.PadSelect(w.win, w.lastPos)
+end
+
+function UI.PadStart(obj)
+	if obj then
+		obj:SetAttribute("PadStart", true)
+	end
+	return obj
+end
+
+local function clearSelection()
+	if GuiService.SelectedObject ~= nil then
+		pcall(function()
+			GuiService.SelectedObject = nil
+		end)
+	end
+end
+UI.ClearSelection = clearSelection
+
+function UI.PadHold(key, on)
+	local v = on and true or nil
+	if padHolds[key] == v then
+		return
+	end
+	padHolds[key] = v
+	if v then
+		clearSelection()
+	else
+		task.defer(UI.PadRefresh)
+	end
+end
+
+local function scrollStep(dt)
+	local sf = scrollFrame
+	if scrollY == 0 or not (sf and sf.Parent) then
+		if scrollConn then
+			scrollConn:Disconnect()
+			scrollConn = nil
+		end
+		return
+	end
+	local maxY = math.max(0, sf.AbsoluteCanvasSize.Y - sf.AbsoluteWindowSize.Y)
+	local cp = sf.CanvasPosition
+	local y = math.clamp(cp.Y - scrollY * math.min(dt, 0.1) * 900, 0, maxY)
+	if y ~= cp.Y then
+		sf.CanvasPosition = Vector2.new(cp.X, y)
+	end
+end
+
+-- the list the right stick scrolls: the one around the selection, else the window's biggest
+local function scrollTarget(w)
+	local sel = GuiService.SelectedObject
+	local sf = sel and sel:IsDescendantOf(w.win) and sel:FindFirstAncestorWhichIsA("ScrollingFrame")
+	if sf then
+		return sf
+	end
+	local area = 0
+	for _, d in ipairs(w.win:GetDescendants()) do
+		if d:IsA("ScrollingFrame") and d.Visible then
+			local a = d.AbsoluteSize.X * d.AbsoluteSize.Y
+			if a > area then
+				area, sf = a, d
+			end
+		end
+	end
+	return sf or nil
+end
+
+local function padInput(input)
+	local k = input.KeyCode
+	if k ~= Enum.KeyCode.ButtonB and k ~= Enum.KeyCode.DPadLeft and k ~= Enum.KeyCode.DPadRight and k ~= Enum.KeyCode.ButtonA then
+		return
+	end
+	if UserInputService:GetFocusedTextBox() then
+		return
+	end
+	if k == Enum.KeyCode.ButtonB then
+		-- B = back / close (whether or not Roblox's own selection also took it)
+		local w = not next(padHolds) and topWindow()
+		if w and w.back then
+			w.back()
+		end
+		return
+	end
+	-- a selected input row steps (its own buttons are not selectable: D-pad left / right would leave it)
+	local sel = GuiService.SelectedObject
+	if sel and sel:GetAttribute("PadRow") then
+		UI.Nudge(sel, k == Enum.KeyCode.ButtonA and 0 or (k == Enum.KeyCode.DPadLeft and -1 or 1))
+	end
+end
+
+local function padInit()
+	if padStarted or not Gamepad or not RunService:IsClient() then
+		return
+	end
+	padStarted = true
+	Gamepad.Changed:Connect(function(mode)
+		if mode == "gamepad" then
+			UI.PadRefresh()
+		else
+			-- back on mouse / touch: no selection frame left on a window
+			local sel = GuiService.SelectedObject
+			local w = topWindow()
+			if sel and w and sel:IsDescendantOf(w.win) then
+				clearSelection()
+			end
+		end
+	end)
+	GuiService:GetPropertyChangedSignal("SelectedObject"):Connect(function()
+		local w = topWindow()
+		if not w then
+			return
+		end
+		local sel = GuiService.SelectedObject
+		if sel then
+			if sel:IsDescendantOf(w.win) then
+				w.lastPos = centre(sel)
+			end
+		else
+			-- a re-render destroyed it, or B dropped it: select again near where it was once the new
+			-- content exists
+			task.delay(0.05, UI.PadRefresh)
+		end
+	end)
+	UserInputService.InputBegan:Connect(padInput)
+	UserInputService.InputChanged:Connect(function(input)
+		if input.KeyCode ~= Enum.KeyCode.Thumbstick2 then
+			return
+		end
+		local y = input.Position.Y
+		local was = scrollY
+		scrollY = math.abs(y) > 0.25 and y or 0
+		if scrollY ~= 0 and was == 0 and not next(padHolds) then
+			local w = topWindow()
+			scrollFrame = w and scrollTarget(w)
+			if scrollFrame and not scrollConn then
+				scrollConn = RunService.Heartbeat:Connect(scrollStep)
+			end
+		end
+	end)
+end
+
+-- labels whose text depends on the device in use (key caps, "press E" hints): fn(mode) -> text, run now and
+-- again whenever the player switches between keyboard, gamepad and touch; the entry goes with the label
+local hints = {}
+local hintConn
+local function applyHint(label, fn, mode)
+	local ok, t = pcall(fn, mode)
+	if ok and type(t) == "string" and label.Text ~= t then
+		label.Text = t
+	end
+end
+function UI.BindHint(label, fn)
+	if not label then
+		return label
+	end
+	local fresh = hints[label] == nil
+	hints[label] = fn
+	applyHint(label, fn, Gamepad and Gamepad.Mode() or "keyboard")
+	if fresh then
+		label.Destroying:Connect(function()
+			hints[label] = nil
+		end)
+	end
+	if not hintConn and Gamepad then
+		hintConn = Gamepad.Changed:Connect(function(mode)
+			for l, f in pairs(hints) do
+				applyHint(l, f, mode)
+			end
+		end)
+	end
+	return label
+end
+-- the usual hint: kbd text on keyboard, the pad button's name on a gamepad, touch text (or kbd) on touch
+function UI.KeyHint(kbd, padKey, touch)
+	return function(mode)
+		if mode == "gamepad" and Gamepad then
+			return type(padKey) == "string" and padKey or Gamepad.Label(padKey)
+		elseif mode == "touch" and touch then
+			return touch
+		end
+		return kbd
+	end
+end
+-- the device in use ("keyboard" | "gamepad" | "touch")
+function UI.InputMode()
+	return Gamepad and Gamepad.Mode() or "keyboard"
+end
+
+------------------------------------------------------------------------
 -- Windows & cards
 ------------------------------------------------------------------------
 -- returns shade, win, body (scrolling list area) ; opts = { side = "left"|"right", noShade, onClose,
--- scroll = false, footer = px, z, kicker = "SMALL CAPTION ABOVE THE TITLE" }
+-- onBack (gamepad B when it is not onClose), scroll = false, footer = px, z,
+-- kicker = "SMALL CAPTION ABOVE THE TITLE" }
 function UI.Window(gui, name, w, h, title, opts)
 	opts = opts or {}
 	local old = gui:FindFirstChild(name)
@@ -994,6 +1323,27 @@ function UI.Window(gui, name, w, h, title, opts)
 	-- opening motion: the panel rises and settles
 	local pop = UI.New("UIScale", { Name = "Open", Scale = 0.965, Parent = holder })
 	UI.Tween(pop, { Scale = 1 }, UI.Motion.base)
+	-- gamepad: the window is a selection group (the D-pad stays inside it), B is its back / close
+	-- (opts.onBack, else opts.onClose), and it takes the selection once its content is built
+	pcall(function()
+		win.SelectionGroup = true
+		win.SelectionBehaviorUp = Enum.SelectionBehavior.Stop
+		win.SelectionBehaviorDown = Enum.SelectionBehavior.Stop
+		win.SelectionBehaviorLeft = Enum.SelectionBehavior.Stop
+		win.SelectionBehaviorRight = Enum.SelectionBehavior.Stop
+	end)
+	local entry = { shade = shade, win = win, back = opts.onBack or opts.onClose }
+	table.insert(padWindows, entry)
+	shade.Destroying:Connect(function()
+		local i = table.find(padWindows, entry)
+		if i then
+			table.remove(padWindows, i)
+		end
+		task.defer(UI.PadRefresh)
+	end)
+	padInit()
+	task.defer(UI.PadRefresh)
+	task.delay(0.3, UI.PadRefresh)
 	return shade, win, body
 end
 
@@ -1090,6 +1440,18 @@ local function registerNudge(f, fn)
 	end)
 end
 
+-- gamepad: the whole row is one selectable stop; D-pad left / right steps it (UI.Nudge from the kit's
+-- pad input) instead of moving the selection, so its own small buttons are left out of the selection
+local function padRow(f, ...)
+	f.Selectable = true
+	f:SetAttribute("PadRow", true)
+	f.NextSelectionLeft = f
+	f.NextSelectionRight = f
+	for _, b in ipairs({ ... }) do
+		b.Selectable = false
+	end
+end
+
 -- slider row: returns frame, setValue(v). [-] and [+] buttons step it (gamepad selection + A, mouse,
 -- touch); dragging the track sets it directly. opts.onRelease: onChange fires when a drag ends
 -- instead of on every step of it (a setting that rebuilds the screen it lives on: the UI scale)
@@ -1146,13 +1508,17 @@ function UI.Slider(parent, label, min, max, value, step, onChange, fmt, opts)
 		set(cur + d * (step or (max - min) / 20), true)
 		committed = cur
 	end
+	local steppers = {}
 	for _, spec in ipairs({ { "Minus", -1, UDim2.new(0.36, 0, 0.5, 0), "minus" }, { "Plus", 1, UDim2.new(0.86, -50, 0.5, 0), "plus" } }) do
 		local b = UI.Button(f, "", { Name = spec[1], Size = UDim2.fromOffset(32, 32), AnchorPoint = Vector2.new(0, 0.5), Position = spec[3], BackgroundColor3 = T.panel2, BackgroundTransparency = 0.2 }, function()
 			nudge(spec[2])
 		end)
 		UI.Icon(b, spec[4], 12, T.text, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5) })
+		table.insert(steppers, b)
 	end
+	-- (dir 0 = A on the row: a slider has nothing to press)
 	registerNudge(f, nudge)
+	padRow(f, steppers[1], steppers[2])
 	show(value)
 	return f, function(v)
 		cur = v
@@ -1211,6 +1577,7 @@ function UI.Toggle(parent, label, value, onChange)
 	end
 	sw.MouseButton1Click:Connect(flip)
 	registerNudge(f, flip)
+	padRow(f, sw)
 	show(false)
 	return f
 end
@@ -1242,7 +1609,11 @@ function UI.Cycler(parent, label, list, value, onChange, display)
 		step(1)
 	end)
 	UI.Icon(nextB, "right", 12, T.text, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5) })
-	registerNudge(f, step)
+	-- dir 0 (A on the row) steps forward
+	registerNudge(f, function(d)
+		step(d == 0 and 1 or d)
+	end)
+	padRow(f, prev, nextB)
 	show()
 	return f, function(v)
 		cur = v
@@ -1373,6 +1744,20 @@ function UI.ColorWheel(parent, label, rgbValue, onChange)
 		v = math.clamp((pos.X - track.AbsolutePosition.X) / math.max(1, track.AbsoluteSize.X), 0, 1)
 		render(true)
 	end)
+	-- gamepad: D-pad left / right turns the hue (a washed-out colour takes some saturation so the turn
+	-- shows), A steps the brightness down and wraps back to full
+	registerNudge(f, function(d)
+		if d == 0 then
+			v = v <= 0.3 and 1 or math.max(0.25, v - 0.25)
+		else
+			h = (h + d / 24) % 1
+			if s < 0.15 then
+				s = 0.6
+			end
+		end
+		render(true)
+	end)
+	padRow(f, hitW, hitB)
 	render(false)
 	return f, function(newRgb)
 		h, s, v = toColor(newRgb):ToHSV()
