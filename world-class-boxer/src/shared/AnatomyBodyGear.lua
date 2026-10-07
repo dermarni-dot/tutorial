@@ -23,9 +23,9 @@ local LAT, FRONT, MED, BACK = 0, pi / 2, pi, 3 * pi / 2
 
 -- resolution per level: palm / finger / thumb / glove / glove thumb / shoe { rings, sides, dome start, dome end }
 Gear.RES = {
-	full = { palm = { 6, 10, 1, 2 }, finger = { 5, 5, 0, 1 }, thumb = { 4, 5, 0, 1 }, glove = { 10, 12, 0, 3 }, gthumb = { 5, 6, 0, 2 }, shoe = { 9, 12, 1, 2 } },
-	medium = { palm = { 5, 8, 1, 2 }, finger = nil, thumb = nil, glove = { 7, 8, 0, 1 }, gthumb = { 3, 5, 0, 1 }, shoe = { 5, 8, 1, 1 } },
-	low = { palm = { 3, 6, 0, 0 }, finger = nil, thumb = nil, glove = { 4, 6, 0, 1 }, gthumb = nil, shoe = { 4, 6, 0, 1 } },
+	full = { palm = { 6, 10, 1, 2 }, finger = { 5, 5, 0, 1 }, thumb = { 4, 5, 0, 1 }, glove = { 11, 12, 0, 2 }, gthumb = { 5, 6, 0, 2 }, shoe = { 9, 12, 1, 2 } },
+	medium = { palm = { 5, 8, 1, 2 }, finger = nil, thumb = nil, glove = { 7, 8, 0, 1 }, gthumb = { 3, 6, 0, 1 }, shoe = { 5, 8, 1, 1 } },
+	low = { palm = { 3, 6, 0, 0 }, finger = nil, thumb = nil, glove = { 4, 8, 0, 1 }, gthumb = nil, shoe = { 4, 6, 0, 1 } },
 }
 
 -- trim bands that get their own zone (ring pair) on the limb pieces: the glove cuff's rolled top, the trunks'
@@ -805,112 +805,117 @@ local function buildHand(m, sk, P, lod, side, fist, Limbs)
 	return { atlas = atlas, F = F, lp = lp, lf = lf, hw = hw, ht = ht, rf = rf }
 end
 
--- the glove's shape, shared by the mesh and its landmarks: a padded fist, not a mitten. Length from the
--- standing height (a 16 oz glove is ~12 % of it from the wrist to the knuckle pad's front); the hand
--- compartment swells from the cuff to its widest at ~2/3 (about 1.2 x the cuff) and narrows into a rounded
--- front; the spine curls toward the palm over the last third, so the knuckle pad is a round front face
--- (the fingers curled inside), finished by a deep dome
+-- the glove's shape, shared by the mesh and its landmarks: a padded fist, not a mitten. Sized from the fist
+-- inside it (the wrapped hand's knuckle width: a 10 oz glove is ~1.35 x as wide, more padding per ounce)
+-- and never narrower than the cuff it is sewn to. Real proportions: as deep (back to palm) as ~0.9 x its
+-- width, the hand compartment ~1.2 x its width from the cuff seam to the front. The outline per ring u (0 at
+-- the cuff seam, 1 where the front dome starts): the back rises fast off the cuff to a broad, flat-ish back
+-- panel, a padded knuckle hump just before the front; the palm side drops to the heel of the hand, then a
+-- crease where the curled fingers' tips tuck in and the finger roll bulging below the knuckles. The spine
+-- runs through the section centres, so the front dome (leaning toward the palm) is the round striking face
+-- over the knuckles and the curled fingers under it. The thumb is its own padded roll along the thumb side,
+-- low (palm half), its tip sewn to the finger roll.
 local function gloveShape(sk, P, side, gl, Limbs)
 	local F = handFrame(sk, side)
-	local _, _, S, spec = handSize(sk, P, side, Limbs)
+	local _, wz, S, spec = handSize(sk, P, side, Limbs)
 	local Lf = F.Lf
-	local ozK = 0.86 + 0.016 * (gl.oz - 8)
-	local fem = P.female and 0.94 or 1
-	local glen = 0.118 * standingHeight(sk) * gl.l * (0.9 + 0.1 * ozK) * fem
+	local fem = P.female and 0.95 or 1
+	-- 10 oz = 1, 16 oz = 1.08, 8 oz = 0.97 (the padding, not the hand, grows with the ounces)
+	local ozK = 0.86 + 0.014 * gl.oz
 	-- the cuff's radius at the wrist (AnatomyBodyLimbs' glove zone: the forearm at the cuff's top, flared 6 %)
 	local top = gl.cuffTop
 	local cx, cz = (spec.rx(top) * 1.02 + 0.07) * S * 1.06, (spec.rz(top) * 1.06 + 0.07) * S * 1.06
-	local bx = max(cx * 1.08, 0.3 * S * gl.w * ozK * fem) -- back-to-palm half size of the fist
-	local bz = max(cz * 1.18, 0.34 * S * gl.w * ozK * fem) -- thumb-side-to-little-finger half size
-	local capD = bx * 1.0
-	-- (the body starts a little up the cuff, just outside it: the cuff's end is inside the glove, and the join is
-	-- the seam ring where the hand compartment is sewn to the cuff, not two surfaces crossing)
-	local s0, s1 = -0.06 * Lf, glen - capD * 0.75
-	local curl = math.rad(48)
-	local function theta(t)
-		local k = smooth(0.5, 1.0, t)
-		return curl * k * k
-	end
-	-- spine point at t (0..1): arc length from s0, the direction turning toward the palm (-lat)
-	local STEPS = 24
-	local pts = { { 0, 0 } }
-	for i = 1, STEPS do
-		local tm = (i - 0.5) / STEPS
-		local th = theta(tm)
-		local ds = (s1 - s0) / STEPS
-		local p = pts[i]
-		pts[i + 1] = { p[1] + cos(th) * ds, p[2] - sin(th) * ds }
-	end
-	local function spineAt(t)
-		local f = clamp(t, 0, 1) * STEPS
-		local i = min(STEPS - 1, floor(f))
-		local w = f - i
-		local a, b = pts[i + 1], pts[i + 2]
-		local da, dl = a[1] + (b[1] - a[1]) * w, a[2] + (b[2] - a[2]) * w
-		-- the fist sits a little toward the back of the hand (the padding is over the knuckles)
-		return at(F, s0 + da, dl + 0.04 * S * smooth(0.2, 0.8, t), 0)
-	end
+	local fist = wz * 1.2 * 1.05 -- half width of the wrapped fist at the knuckles
+	local W = max(cz * 1.14, 1.35 * fist * ozK * fem) * gl.w -- half width (thumb side to little finger)
+	local a0 = -0.06 * Lf -- the seam ring sits a little up the cuff, just outside it
+	local Lc = 2.45 * W * gl.l -- seam to the front of the striking face
+	local capD = 0.6 * W
+	local aE = a0 + Lc - capD
+	local T0, B0, W0 = cx * 1.04, cx * 1.04, cz * 1.04
 	local kk = gl.k
-	local function dims(u)
-		local grow = smooth(0.0, 0.5, u)
-		local ex = lerp(cx * 1.035, bx, grow) * (1 + 0.07 * kk * bell((u - 0.66) / 0.26)) * (1 - 0.1 * smooth(0.82, 1.0, u))
-		local ez = lerp(cz * 1.035, bz, grow) * (1 + 0.04 * bell((u - 0.68) / 0.3)) * (1 - 0.08 * smooth(0.8, 1.0, u))
-		return ex, ez
+	-- back (+lat) and palm (-lat) surface heights from the forearm's axis, and the half width, at u
+	local function outline(u)
+		local top = lerp(T0, 0.86 * W, smooth(0.0, 0.55, u)) + 0.05 * W * kk * bell((u - 0.8) / 0.17) - 0.025 * W * bell((u - 0.5) / 0.1)
+		local bot = lerp(B0, 0.84 * W, smooth(0.0, 0.4, u)) + 0.17 * W * smooth(0.5, 0.92, u) - 0.06 * W * bell((u - 0.55) / 0.07)
+		-- (a teardrop from above: narrow at the wrist, widest across the knuckles)
+		local w = lerp(W0, W, smooth(0.0, 0.7, u)) * (1 + 0.04 * bell((u - 0.8) / 0.2))
+		return top, bot, w
 	end
-	return { F = F, S = S, glen = glen, bx = bx, bz = bz, cx = cx, cz = cz, capD = capD, spineAt = spineAt, dims = dims, ozK = ozK, fem = fem }
+	local function centreAt(u)
+		local top, bot = outline(u)
+		return at(F, a0 + (aE - a0) * u, (top - bot) / 2, 0)
+	end
+	-- section offset (lat, fw) from the centre at u, angle ang (0 = back of the hand, pi/2 = thumb side)
+	local function section(u, ang)
+		local top, bot, w = outline(u)
+		local D = (top + bot) / 2
+		local c, s = cos(ang), sin(ang)
+		-- a boxy back panel (flat across, rounded at the sides), a rounder palm side
+		local e = c >= 0 and 2 / 2.7 or 2 / 2.25
+		local x = D * (c < 0 and -1 or 1) * abs(c) ^ e
+		local f = w * (s < 0 and -1 or 1) * abs(s) ^ e
+		-- under the thumb the body is a little narrower: the thumb stands out along the side, not a mitten
+		if s > 0 and c < 0.2 then
+			f *= 1 - 0.1 * smooth(0.0, 0.25, u) * (1 - smooth(0.6, 0.85, u)) * smooth(0.2, -0.5, c)
+		end
+		return x, f
+	end
+	-- thumb control points (along, lat, fw from the forearm's axis) and radius
+	local function thumbPts()
+		local function tp(u, l, f)
+			local tu, bu = outline(u)
+			return at(F, a0 + (aE - a0) * u, (tu - bu) / 2 + l, f)
+		end
+		local t4, b4 = outline(0.4)
+		local D = (t4 + b4) / 2
+		return {
+			tp(0.06, -0.3 * D, 0.55 * W),
+			tp(0.22, -0.42 * D, 0.82 * W),
+			tp(0.48, -0.5 * D, 0.86 * W),
+			tp(0.72, -0.62 * D, 0.72 * W),
+			tp(0.84, -0.72 * D, 0.5 * W),
+		}, 0.31 * W
+	end
+	return { F = F, S = S, W = W, cx = cx, cz = cz, a0 = a0, aE = aE, capD = capD, outline = outline, centreAt = centreAt, section = section,
+		thumbPts = thumbPts, ozK = ozK, fem = fem }
 end
 
 -- the boxing glove: a padded fist on the cuff (the cuff is the forearm piece's glove zone), its thumb
 local function buildGlove(m, sk, P, lod, side, gl, Limbs)
 	local R = Gear.RES[lod] or Gear.RES.full
 	local G = gloveShape(sk, P, side, gl, Limbs)
-	local F, S, bx, bz = G.F, G.S, G.bx, G.bz
+	local F = G.F
 	local gr = R.glove
 	local rows = gr[1]
 	local pts, rowB = {}, {}
 	for i = 1, rows do
+		-- rings closer together toward the front, where the knuckle hump and the finger roll turn
 		local t = (i - 1) / (rows - 1)
-		pts[i] = G.spineAt(t)
-		rowB[i] = t
+		local u = t * (0.82 + 0.18 * t)
+		pts[i] = G.centreAt(u)
+		rowB[i] = u
 	end
+	local _, botE = G.outline(1)
 	local body = Kit.GridLoft(m, MeshKit, {
 		rings = rows, sides = gr[2], spine = pts, exact = true, sideHint = { F.lat[1], F.lat[2], F.lat[3] }, frontHint = { F.fw[1], F.fw[2], F.fw[3] },
 		rowB = rowB,
 		section = function(t, ang)
 			local i = floor(t * (rows - 1) + 0.5) + 1
-			local u = rowB[i]
-			local c, s = cos(ang), sin(ang)
-			local ex, ez = G.dims(u)
-			-- the back is domed padding, the palm side a little flatter with the grip bar's shallow dent across
-			-- it (one exponent all round: no crease where the back meets the palm)
-			local e = 2 / 2.25
-			local palm = c < 0 and (0.9 - 0.06 * bell((u - 0.62) / 0.12) * (-c)) or 1
-			local x = ex * (c < 0 and -1 or 1) * abs(c) ^ e * palm
-			local f = ez * (s < 0 and -1 or 1) * abs(s) ^ e
-			return x, f
+			return G.section(rowB[i], ang)
 		end,
 		capS = { depth = 0.02, rings = gr[3], bDepth = 0.02 },
-		capE = { depth = G.capD, rings = gr[4], bDepth = 0.25 },
+		-- the front: a deep dome leaning toward the palm (the striking face rolls over into the curled fingers)
+		capE = { depth = G.capD, rings = gr[4], bDepth = 0.25, shift = dirIn(F, 0, -0.3 * botE, 0) },
 	})
 	body.tag = "glove"
 	local atlas = { body }
 	local tr = R.gthumb
 	if tr then
-		-- the thumb: a thick padded roll along the thumb side (sewn on along its length, its root inside the
-		-- fist, its tip tucked against the padding toward the palm)
-		local r = 0.17 * S * gl.w * G.ozK * G.fem
-		local glen = G.glen
-		local function tp(al, l, f)
-			return at(F, al, l, f)
-		end
-		local p0 = tp(glen * 0.08, -0.25 * bx, bz * 0.62)
-		local p1 = tp(glen * 0.26, -0.32 * bx, bz * 0.8)
-		local p2 = tp(glen * 0.46, -0.42 * bx, bz * 0.82)
-		local p3 = tp(glen * 0.62, -0.62 * bx, bz * 0.66)
-		local info = finger(m, { p0, p1, p2, p3 }, r * 1.0, r * 0.86, tr, { F.lat[1], F.lat[2], F.lat[3] }, { F.fw[1], F.fw[2], F.fw[3] }, "gthumb", nil)
+		local tpts, r = G.thumbPts()
+		local info = finger(m, tpts, r * 0.95, r * 0.8, tr, { F.lat[1], F.lat[2], F.lat[3] }, { F.fw[1], F.fw[2], F.fw[3] }, "gthumb", { 0.45 })
 		atlas[#atlas + 1] = info
 	end
-	return { atlas = atlas, F = F, glen = G.glen, bx = bx, bz = bz }
+	return { atlas = atlas, F = F, W = G.W }
 end
 
 ------------------------------------------------------------------------
@@ -1016,9 +1021,10 @@ function Gear.Build(sk, P, lod, side, kind, wear, pc, seed)
 			local G = buildGlove(m, sk, P, lod, side, gl, Limbs)
 			grid = { atlas = G.atlas }
 			Kit.GridNormals(m, MeshKit, grid)
-			local material, refl = "Leather", 0.02
+			-- finishes: leather has a soft sheen, matte none, patent a wet shine, metallic foil
+			local material, refl = "Leather", 0.04
 			if gl.finish == "Matte" then
-				material, refl = "SmoothPlastic", 0
+				material, refl = "Leather", 0
 			elseif gl.finish == "Patent" then
 				material, refl = "SmoothPlastic", 0.22
 			elseif gl.finish == "Metallic" then
@@ -1027,59 +1033,115 @@ function Gear.Build(sk, P, lod, side, kind, wear, pc, seed)
 			local c, palmC, trim = gl.c, gl.palm, gl.trim
 			local pip = gl.piping
 			local stc = gl.stitch
-			local seamA1, seamA2 = FRONT + 0.5, BACK - 0.5
+			-- panels (u = 0 at the cuff seam, 1 where the front dome starts, up to 1.25 at its apex): the back
+			-- panel runs over the knuckles and down the striking face to the finger roll; the palm panel, in the
+			-- palm tone, from the cuff to the crease where the curled fingers' tips meet the palm. The outline
+			-- seams run along both sides (a little toward the palm) and meet under the front, where the dome
+			-- leans to the palm
+			local SIDE = 0.32 -- the side seams' angle past the sides, toward the palm
+			local seamA1, seamA2 = FRONT + SIDE, BACK - SIDE
+			local CREASE = 0.55
+			local function band(d, w, crisp)
+				-- 1 on a line, 0 off it (soft per vertex)
+				if crisp then
+					return 1 - smooth(w * 0.55, w, abs(d))
+				end
+				return 1 - smooth(0, w * 2.2, abs(d))
+			end
 			local function gcolor(gi, t, ang, crisp, tiles, px, py)
 				local r, gg, b = c[1], c[2], c[3]
 				if gi == 1 then
-					-- the palm panel (between the side seams, short of the striking surface) in the palm tone
-					local inPalm = adist(ang, MED) < (MED - seamA1)
-					local pw = (inPalm and t < 0.86) and 1 or 0
-					if not crisp then
-						pw = (1 - smooth(MED - seamA1 - 0.25, MED - seamA1 + 0.25, adist(ang, MED))) * (1 - smooth(0.8, 0.9, t))
+					local dPalm = adist(ang, MED)
+					local side = MED - seamA1 -- the palm panel's half angle
+					-- the palm panel (from the cuff to the finger crease)
+					local pw
+					if crisp then
+						pw = (dPalm < side and t < CREASE) and 1 or 0
+					else
+						pw = (1 - smooth(side - 0.3, side + 0.3, dPalm)) * (1 - smooth(CREASE - 0.08, CREASE + 0.08, t))
 					end
 					r, gg, b = mix(r, gg, b, palmC[1], palmC[2], palmC[3], pw)
-					-- piping and stitching along the seam round the glove's outline
 					local ds = min(adist(ang, seamA1), adist(ang, seamA2))
+					-- padding puffs between the seams: a soft shadow along each seam, the crease and the cuff seam
+					local puff = 0.16 * (1 - smooth(0.0, 0.32, ds)) * smooth(0.04, 0.12, t)
+						+ 0.22 * (1 - smooth(0.0, 0.06, abs(t - CREASE))) * (1 - smooth(side - 0.1, side + 0.2, dPalm))
+						+ 0.12 * (1 - smooth(0.0, 0.07, t))
+					-- the knuckle panel's seam across the back (the striking pad's edge)
+					local kn = (1 - smooth(0.0, 0.05, abs(t - 0.5))) * (1 - smooth(1.0, 1.35, adist(ang, LAT)))
+					puff += 0.1 * kn
 					if crisp then
-						if pip then
-							local p = 1 - smooth(0.035, 0.06, ds)
-							r, gg, b = mix(r, gg, b, pip[1], pip[2], pip[3], p * smooth(0.12, 0.2, t))
-						end
-						if gl.stitchKind ~= "Hidden" then
-							local st = (1 - smooth(0.012, 0.024, abs(ds - 0.11))) * ((((t * 40) % 1) < 0.55) and 1 or 0) * smooth(0.12, 0.2, t)
-							r, gg, b = mix(r, gg, b, stc[1], stc[2], stc[3], st)
-							if gl.stitchKind == "Double" then
-								local st2 = (1 - smooth(0.012, 0.024, abs(ds - 0.19))) * ((((t * 40 + 0.5) % 1) < 0.55) and 1 or 0) * smooth(0.12, 0.2, t)
-								r, gg, b = mix(r, gg, b, stc[1], stc[2], stc[3], st2)
-							end
-						end
+						r, gg, b = r * (1 - puff), gg * (1 - puff), b * (1 - puff)
+					else
+						local k = 1 - 0.5 * puff
+						r, gg, b = r * k, gg * k, b * k
 					end
-					-- amateur competition gloves: the white target area over the knuckles (texture only: per vertex at
-					-- medium detail it would only smear the glove's colour)
-					if gl.target and crisp then
-						local ta = (adist(ang, LAT) < 1.05 and t > 0.58) and 1 or 0
+					-- amateur competition gloves: the white target area over the knuckles and the striking face
+					if gl.target then
+						-- (its edge curves back along the sides: the white wraps the knuckle face, not a band)
+						local dA = adist(ang, LAT)
+						local edgeT = 0.5 + 0.16 * (dA / 1.4) ^ 2
+						local ta = crisp and ((dA < 1.4 and t > edgeT) and 1 or 0) or smooth(edgeT - 0.08, edgeT + 0.08, t) * (1 - smooth(1.2, 1.6, dA))
 						r, gg, b = mix(r, gg, b, 0.95, 0.95, 0.94, ta)
 					end
-					-- wear on the striking surface: scuffs, then cracks
+					-- the seam ring where the hand compartment is sewn to the cuff
+					local ring = crisp and ((t < 0.035) and 1 or 0) or (1 - smooth(0.0, 0.08, t))
+					local rc = pip or darker(c, 0.62)
+					r, gg, b = mix(r, gg, b, rc[1], rc[2], rc[3], ring * (crisp and 1 or 0.6))
+					if crisp then
+						-- piping (a welt in the trim colour) and stitching along the outline seams
+						local along = smooth(0.04, 0.1, t)
+						if pip then
+							r, gg, b = mix(r, gg, b, pip[1], pip[2], pip[3], band(ds, 0.045, true) * along)
+						end
+						if gl.stitchKind ~= "Hidden" then
+							local dash = ((t * 46) % 1) < 0.55 and 1 or 0
+							local st = band(ds - 0.1, 0.022, true) * dash * along
+							r, gg, b = mix(r, gg, b, stc[1], stc[2], stc[3], st)
+							if gl.stitchKind == "Double" then
+								local st2 = band(ds - 0.17, 0.022, true) * (((t * 46 + 0.5) % 1) < 0.55 and 1 or 0) * along
+								r, gg, b = mix(r, gg, b, stc[1], stc[2], stc[3], st2)
+							end
+							-- the knuckle panel's stitched edge across the back
+							local dashA = ((ang * 9) % 1) < 0.55 and 1 or 0
+							r, gg, b = mix(r, gg, b, stc[1], stc[2], stc[3], band(t - 0.5, 0.01, true) * dashA * (1 - smooth(1.0, 1.25, adist(ang, LAT))))
+						end
+					end
+					-- wear on the striking face: scuffs, then cracks
+					local face = smooth(0.62, 0.9, t) * (1 - smooth(0.7, 1.5, adist(ang, LAT)))
 					if gl.cond < 70 then
 						local wk = (70 - gl.cond) / 70
-						local scuff = smooth(0.62, 0.86, t) * (1 - smooth(0.6, 1.4, adist(ang, LAT)))
 						local n = crisp and (0.5 + 0.5 * Kit.TileAt(tiles.fine, px * 0.5, py * 0.5)) or 0.6
-						r, gg, b = mix(r, gg, b, 0.8, 0.77, 0.7, 0.4 * wk * scuff * n)
+						r, gg, b = mix(r, gg, b, 0.8, 0.77, 0.7, 0.4 * wk * face * n)
 						if gl.cond < 40 and crisp then
-							local cr = (1 - smooth(0.0, 0.08, abs(Kit.TileAt(tiles.pore, px * 0.35, py * 0.35)))) * scuff
+							local cr = (1 - smooth(0.0, 0.08, abs(Kit.TileAt(tiles.pore, px * 0.35, py * 0.35)))) * face
 							r, gg, b = mix(r, gg, b, r * 0.45, gg * 0.45, b * 0.45, 0.6 * cr)
 						end
 					end
-					-- a sweat mark spreading from the cuff on old gloves
+					-- a sweat mark spreading from the cuff on old gloves, darkest on the palm
 					if gl.cond < 30 then
-						local sw = (1 - smooth(0.1, 0.45, t)) * 0.3
+						local sw = (1 - smooth(0.05, 0.5, t)) * (0.22 + 0.12 * pw)
 						r, gg, b = r * (1 - sw), gg * (1 - sw), b * (1 - sw)
 					end
 				else
-					-- the thumb: palm tone on its inner half
-					local inner = crisp and (cos(ang) < 0 and 1 or 0) or 0.5 * (1 - cos(ang)) * 0.6
+					-- the thumb: its outer half in the glove colour, the inner half (against the fingers) in the palm
+					-- tone, a welt / stitch line along the seam between them; shaded where it is sewn on
+					local cs = cos(ang)
+					local inner = crisp and (cs < -0.15 and 1 or 0) or smooth(0.3, -0.6, cs)
 					r, gg, b = mix(r, gg, b, palmC[1], palmC[2], palmC[3], inner)
+					local root = 0.14 * (1 - smooth(0.0, 0.25, t)) + 0.1 * smooth(0.8, 1.0, t)
+					r, gg, b = r * (1 - root), gg * (1 - root), b * (1 - root)
+					if crisp then
+						local dsT = abs(cs + 0.15)
+						if pip then
+							r, gg, b = mix(r, gg, b, pip[1], pip[2], pip[3], band(dsT, 0.07, true) * smooth(0.05, 0.15, t))
+						elseif gl.stitchKind ~= "Hidden" then
+							local dash = ((t * 22) % 1) < 0.55 and 1 or 0
+							r, gg, b = mix(r, gg, b, stc[1], stc[2], stc[3], band(dsT - 0.12, 0.04, true) * dash * smooth(0.05, 0.15, t))
+						end
+					end
+					if gl.cond < 30 then
+						r, gg, b = r * 0.85, gg * 0.85, b * 0.85
+					end
 				end
 				return r, gg, b
 			end
@@ -1316,11 +1378,12 @@ function Gear.Landmarks(sk, P, wear, put, Limbs)
 		if g.hands == "gloves" then
 			local gl = g.glove
 			-- the back of the fist (the glove's lateral side, half way down the padding)
+			-- (the flat middle of the back panel, before the knuckle hump: a flat plate sits on it)
 			local G = gloveShape(sk, P, side, gl, Limbs)
 			local F = G.F
-			local t = 0.55
-			local ex = G.dims(t)
-			local c = G.spineAt(t)
+			local t = 0.42
+			local ex = G.section(t, LAT)
+			local c = G.centreAt(t)
 			local pos = { c[1] + F.lat[1] * ex, c[2] + F.lat[2] * ex, c[3] + F.lat[3] * ex }
 			spot("GloveLogo" .. L, side .. "Hand", pos, F.lat, { -F.dn[1], -F.dn[2], -F.dn[3] })
 			-- the cuff's front, a little under its rolled top

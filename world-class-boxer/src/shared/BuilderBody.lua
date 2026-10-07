@@ -1367,9 +1367,10 @@ local function glovesBuild(folder, model, app, gear, opts, sp)
 	if finish == "Metallic" and not (custom.metallic or brand.finish == "Metallic") then
 		finish = "Patent"
 	end
-	local material, refl = LEATHER, 0
+	-- leather has a soft sheen, matte none, patent a wet shine, metallic foil
+	local material, refl = LEATHER, 0.04
 	if finish == "Matte" then
-		material = SMOOTH
+		material, refl = LEATHER, 0
 	elseif finish == "Patent" then
 		material, refl = SMOOTH, 0.22
 	elseif finish == "Metallic" then
@@ -1403,52 +1404,94 @@ local function glovesBuild(folder, model, app, gear, opts, sp)
 	if opts.fightNight then
 		oz = math.min(oz, 10)
 	end
-	local ozK = 0.88 + 0.015 * (oz - 8)
+	local ozK = 0.86 + 0.014 * oz
 	local shape = brand.shape or {}
 	local wK, lK, kK, cK = shape.width or 1, shape.len or 1, shape.knuckle or 1, shape.cuff or 1
 	local wrapC = wrapColors(app, gear)
 	local tape = opts.fightNight == true
+	-- worn leather: the striking face scuffs pale first
+	local faceColor = main
+	if cond < 70 then
+		faceColor = lerpColor(main, Color3.fromRGB(205, 195, 180), 0.3 * (70 - cond) / 70)
+	end
+	if brand.targetArea then
+		faceColor = Color3.fromRGB(245, 245, 245) -- amateur competition glove: white striking face
+	end
+	if cond < 30 then
+		palmColor = darken(palmColor, 0.82) -- sweat soaked into the palm
+	end
 	for _, side in ipairs({ "Left", "Right" }) do
 		local sign = side == "Left" and -1 or 1
 		local hand, la = part(model, side .. "Hand"), part(model, side .. "LowerArm")
+		-- the forearm's round cross-section: the hull cylinder (medium / full), else the R15 block's diagonal
+		local dF = 0.8
+		if la then
+			local s = la.Size
+			dF = lod >= 2 and 0.96 * math.max(s.X, s.Z) or math.sqrt(s.X * s.X + s.Z * s.Z)
+		end
+		local dc = dF * (lod >= 2 and 1.1 or 1.02) -- the cuff: padding round the forearm
 		if hand then
-			local base = math.max(hand.Size.X, hand.Size.Z)
-			local gsize = V3(base * 1.38 * wK, base * 1.52 * lK, base * 1.46 * wK) * ozK
-			local W, L, D = gsize.X, gsize.Y, gsize.Z
-			local gcf = hand.CFrame * CF(0, -hand.Size.Y * 0.2, -0.05)
-			local glove = mk(folder, hand, side == "Left" and "GloveL" or "GloveR", gsize, gcf, main, "Ellipsoid", material)
-			glove.Reflectance = refl
-			wet(glove, "glove", refl)
-			-- bulbous striking surface over the knuckles
-			local knuckle = mk(folder, hand, "KnucklePad", V3(W * 0.84, L * 0.6, D * 0.92) * V3(kK, 1, kK), gcf * CF(sign * W * 0.08, -L * 0.2, 0), main, "Ellipsoid", material)
-			knuckle.Reflectance = refl
-			wet(knuckle, "glove", refl)
-			-- the thumb carries the brand's palm tone (the palm side of the glove)
-			local thumb = mk(folder, hand, "Thumb", V3(W * 0.36, L * 0.48, D * 0.36), gcf * CF(-sign * W * 0.38, L * 0.04, -D * 0.3) * ANG(RAD(-10), 0, RAD(12 * sign)), lerpColor(main, palmColor, 0.6), "Ellipsoid", material)
-			thumb.Reflectance = refl
-			wet(thumb, "glove", refl)
+			-- glove frame: origin at the wrist, x = back of the hand (+) / palm (-), y = down the hand toward
+			-- the knuckles, z = thumb side; a padded fist ~1.3 x the forearm wide, as deep as 0.92 x its
+			-- width, ~1.15 x its width from the wrist to the striking face (a glove, not a ball or a mitten)
+			local hs = hand.Size
+			local base = hand.CFrame * CF(0, hs.Y / 2, 0)
+			local function at(x, y, z)
+				return base * CF(sign * x, -y, -z)
+			end
+			local Wd = dF * 1.3 * ozK * wK * (sp.female and 0.93 or 1)
+			local Dd = Wd * 0.92
+			local Ln = Wd * 1.15 * lK
+			local a0 = -0.12 * Wd
+			local function glovePart(name, size, cf, color, shapeK)
+				local p = mk(folder, hand, name, size, cf, color, shapeK or "Ellipsoid", material)
+				p.Reflectance = refl
+				wet(p, "glove", refl)
+				return p
+			end
+			-- the fist: the main padding from the wrist to the front
+			local mainY = (Ln - a0) * 0.94
+			local mainC = (a0 + Ln) / 2 + 0.02 * Wd
+			local mainX = -0.03 * Dd
+			local glove = glovePart(side == "Left" and "GloveL" or "GloveR", V3(Dd, mainY, Wd * 0.96), at(mainX, mainC, 0), main)
+			-- the wrist: rounds the hand compartment over the cuff's end
+			glovePart("GloveWrist", V3(dc * 1.04, 0.42 * Wd, dc * 1.04), at(0, 0.07 * Wd, 0), main)
+			-- the striking face over the knuckles: the broadest part, a little toward the back of the hand
+			glovePart("KnucklePad", V3(Dd * 0.8 * kK, Ln * 0.52, Wd * 1.0 * kK), at(0.07 * Dd, Ln * 0.7, 0), faceColor)
+			if lod >= 2 then
+				-- the back panel: broad, flat-ish padding from the cuff to the knuckles
+				glovePart("BackPad", V3(Dd * 0.56, Ln * 0.84, Wd * 0.92), at(0.2 * Dd, Ln * 0.42, 0), main)
+				-- the curled fingers rolling under the knuckles, then the palm in the palm tone
+				glovePart("FingerRoll", V3(Dd * 0.56, Ln * 0.42, Wd * 0.88), at(-0.27 * Dd, Ln * 0.66, 0), main)
+				glovePart("Palm", V3(Dd * 0.5, Ln * 0.56, Wd * 0.78), at(-0.24 * Dd, Ln * 0.3, -0.03 * Wd), palmColor)
+			end
+			-- the thumb: a padded roll along the thumb side, palm half, its tip sewn to the finger roll
+			local thumbC = lerpColor(main, palmColor, 0.35)
+			glovePart("Thumb", V3(Wd * 0.33, Ln * 0.62, Wd * 0.33), at(-0.2 * Dd, Ln * 0.38, 0.43 * Wd) * ANG(RAD(10) * sign, 0, 0) * ANG(0, 0, RAD(-8) * sign), thumbC)
+			if lod >= 2 then
+				glovePart("ThumbTip", V3(Wd * 0.26, Ln * 0.26, Wd * 0.26), at(-0.3 * Dd, Ln * 0.66, 0.33 * Wd), thumbC)
+			end
 			if lod >= 3 then
-				-- piping / stitching: flattened discs in the seam plane between back and palm; only their rims
-				-- show, as a welt line and a stitch line round the glove's outline
+				-- piping / stitching: thin discs in the main padding's middle plane, sized to its section there:
+				-- only their rims show, as welt and stitch lines lying on the outline (nothing sticks out)
+				local function ring(name, dx, grow, color)
+					local k = math.sqrt(math.max(0, 1 - (dx / (Dd / 2)) ^ 2))
+					local p = mk(folder, hand, name, V3(0.02, mainY * k * grow, Wd * 0.96 * k * grow), at(mainX + dx, mainC, 0), color, "Ellipsoid", SMOOTH)
+					p:SetAttribute("Seam", true)
+					return p
+				end
 				if piping then
-					mk(folder, hand, "Piping", V3(0.035, L * 1.06, D * 1.04), gcf * CF(-sign * W * 0.05, -L * 0.01, 0), piping, "Ellipsoid", SMOOTH)
+					ring("Piping", 0, 1.012, piping)
 				end
 				if stitch ~= "Hidden" then
-					mk(folder, hand, "StitchRing", V3(0.02, L * 1.035, D * 1.02), gcf * CF(sign * W * 0.03, -L * 0.005, 0), stitchColor, "Ellipsoid", SMOOTH)
+					ring("StitchRing", 0.05 * Dd, 1.006, stitchColor)
+					if stitch == "Double" then
+						ring("StitchRing", -0.05 * Dd, 1.006, stitchColor)
+					end
 				end
-				-- a leather crease at the thumb as the glove breaks in
-				if cond < 70 then
-					mk(folder, hand, "Crease", V3(0.02, L * 0.26, 0.02), gcf * CF(-sign * W * 0.28, L * 0.06, -D * 0.47) * ANG(0, 0, RAD(25 * sign)), darken(main, 0.6), "Block", SMOOTH, 0.45)
-				end
 			end
-			if (stitch == "Double" or (custom.stitching and g.stitching == "Double")) and lod >= 2 then
-				mk(folder, hand, "Stitch", V3(0.03, 0.03, D * 0.72), gcf * CF(sign * W * 0.47, -L * 0.1, 0), stitchColor)
-			end
-			if brand.targetArea and lod >= 2 then
-				-- amateur competition glove: white target area over the knuckles
-				mk(folder, hand, "TargetArea", V3(W * 0.6, L * 0.34, D * 0.78), gcf * CF(sign * W * 0.16, -L * 0.3, 0), Color3.fromRGB(245, 245, 245), "Ellipsoid", SMOOTH)
-			end
-			-- logo on the back of the glove: the player's glyph, else the brand monogram
+			-- logo on the back panel: the player's glyph, else the brand monogram (a small plate on the flat
+			-- middle of the back, so it lies on the leather)
 			local glyph
 			if custom.logo and g.logo and g.logo ~= "None" then
 				glyph = Catalog.LogoGlyphs[g.logo]
@@ -1461,21 +1504,18 @@ local function glovesBuild(folder, model, app, gear, opts, sp)
 				glyph = brand.glyph
 			end
 			if glyph and glyph ~= "" and lod >= 2 then
-				textPatch(folder, hand, "Logo", V3(0.02, L * 0.42, D * 0.55), gcf * CF(sign * (W * 0.5 + 0.012), L * 0.12, 0), glyph, trim,
+				textPatch(folder, hand, "Logo", V3(0.02, Ln * 0.26, Wd * 0.3), at(0.48 * Dd + 0.012, Ln * 0.42, 0), glyph, trim,
 					sign > 0 and Enum.NormalId.Right or Enum.NormalId.Left, brand.font)
 			end
-			-- wear: a scuffed knuckle, torn foam and gym duct tape on beaten-up gloves, a sweat mark
-			if cond < 70 and lod >= 2 then
-				mk(folder, hand, "KnuckleScuff", V3(W * 0.45, L * 0.3, D * 0.62), gcf * CF(sign * W * 0.27, -L * 0.33, 0), lerpColor(main, Color3.fromRGB(205, 195, 180), 0.45), "Ellipsoid", SMOOTH, math.clamp(0.25 + cond / 140, 0.25, 0.75))
-			end
+			-- wear: torn foam on the striking face, gym duct tape round the knuckles, a sweat mark on the palm
 			if cond < 35 and lod >= 2 then
-				mk(folder, hand, "FoamTear", V3(W * 0.18, L * 0.12, D * 0.2), gcf * CF(sign * W * 0.4, -L * 0.34, D * 0.1), Color3.fromRGB(215, 195, 140), "Ellipsoid", Enum.Material.Sand)
+				mk(folder, hand, "FoamTear", V3(Dd * 0.1, Ln * 0.1, Wd * 0.16), at(0.3 * Dd, Ln * 0.94, 0.1 * Wd), Color3.fromRGB(215, 195, 140), "Ellipsoid", Enum.Material.Sand)
 			end
 			if cond < 40 and (gloveDef.id == "Worn" or gloveDef.id == "Cheap") then
-				mk(folder, hand, "DuctTape", V3(W * 0.88, 0.13, D * 0.88), gcf * CF(0, -L * 0.27, 0), Color3.fromRGB(150, 150, 155), "Ellipsoid", FABRIC)
+				mk(folder, hand, "DuctTape", V3(Dd * 0.8 * kK * 1.02, 0.12, Wd * kK * 1.02), at(0.07 * Dd, Ln * 0.7, 0), Color3.fromRGB(150, 150, 155), "Ellipsoid", FABRIC)
 			end
-			if cond < 30 then
-				local sm = mk(folder, hand, "SweatMark", gsize * V3(0.1, 0.45, 0.5), gcf * CF(sign * W * 0.44, -L * 0.2, 0), darken(main, 0.7), "Ellipsoid", material, 0.4)
+			if cond < 30 and lod >= 2 then
+				local sm = mk(folder, hand, "SweatMark", V3(Dd * 0.505, Ln * 0.565, Wd * 0.785), at(-0.24 * Dd, Ln * 0.3, -0.03 * Wd), darken(palmColor, 0.7), "Ellipsoid", material, 0.4)
 				sm:SetAttribute("BaseTransparency", 0.4)
 			end
 			if gloveDef.aura then
@@ -1486,67 +1526,86 @@ local function glovesBuild(folder, model, app, gear, opts, sp)
 		end
 		if la then
 			local s = la.Size
-			local cuffLen = s.Y * 0.45 * cK
-			local cuffCF = la.CFrame * CF(0, -s.Y * 0.5 + cuffLen * 0.5 + s.Y * 0.03, 0)
-			local cuff = mk(folder, la, "Cuff", V3(s.X * 1.12, cuffLen, s.Z * 1.12), cuffCF, main, "Block", material)
+			local cuffLen = s.Y * 0.48 * cK
+			local r = dc / 2
+			-- cylinders along the forearm (a Part cylinder's axis is its X: turned up onto the arm)
+			local wristCF = la.CFrame * CF(0, -s.Y * 0.5, 0)
+			local function band(y, len, grow)
+				return V3(len, dc * grow, dc * grow), wristCF * CF(0, y, 0) * ANG(0, 0, RAD(90))
+			end
+			local function onSurface(y, ang, out)
+				-- a point on the cuff's surface at height y, angle ang (0 = outer side, pi/2 = front), facing out
+				return wristCF * CF(0, y, 0) * CFrame.Angles(0, -ang, 0) * CF(sign * (r + out), 0, 0)
+			end
+			local sz, cf = band(cuffLen / 2, cuffLen, 1)
+			local cuff = mk(folder, la, "Cuff", sz, cf, main, "Cylinder", material)
+			cuff.Reflectance = refl
 			wet(cuff, "glove", refl)
-			mk(folder, la, "CuffTrim", V3(s.X * 1.15, s.Y * 0.13, s.Z * 1.15), cuffCF * CF(0, cuffLen * 0.5 - s.Y * 0.08, 0), trim, "Block", material)
+			-- the rolled trim band at the top
+			sz, cf = band(cuffLen - s.Y * 0.05, s.Y * 0.1, 1.05)
+			wet(mk(folder, la, "CuffTrim", sz, cf, trim, "Cylinder", material), "glove", refl)
 			-- hand wraps peeking out above the cuff
 			if lod >= 3 then
-				mk(folder, la, "WrapPeek", V3(s.X * 1.04, 0.09, s.Z * 1.04), cuffCF * CF(0, cuffLen * 0.5 + 0.03, 0), wrapC, "Block", FABRIC)
+				sz, cf = band(cuffLen + 0.03, 0.08, 0.97)
+				mk(folder, la, "WrapPeek", sz, cf, wrapC, "Cylinder", FABRIC)
 			end
 			local sideFace = sign > 0 and Enum.NormalId.Right or Enum.NormalId.Left
-			local ox = sign * (s.X * 0.56 + 0.012)
 			if tape then
 				-- fight night: laces / strap taped over and signed by the commission inspector
-				mk(folder, la, "Tape", V3(s.X * 1.17, cuffLen * 0.5, s.Z * 1.17), cuffCF * CF(0, -cuffLen * 0.1, 0), Color3.fromRGB(246, 246, 242), "Block", FABRIC)
+				sz, cf = band(cuffLen * 0.42, cuffLen * 0.5, 1.07)
+				mk(folder, la, "Tape", sz, cf, Color3.fromRGB(246, 246, 242), "Cylinder", FABRIC)
 				if cfg.wordmarks then
 					local h = 0
 					for c in tostring(opts.name or "x"):gmatch(".") do
 						h += string.byte(c)
 					end
 					local inspectors = { "R.M.", "J.T.", "D.K.", "L.V.", "A.O." }
-					textPatch(folder, la, "Signature", V3(0.02, cuffLen * 0.36, s.Z * 0.8), cuffCF * CF(sign * (s.X * 0.585 + 0.012), -cuffLen * 0.1, 0),
+					textPatch(folder, la, "Signature", V3(0.02, cuffLen * 0.3, dc * 0.4), onSurface(cuffLen * 0.42, 0, dc * 0.035 + 0.012),
 						inspectors[h % #inspectors + 1] .. " ok", Color3.fromRGB(30, 40, 120), sideFace, "PermanentMarker")
 				end
 			elseif brand.closure == "lace" then
-				-- lace-up: lace panel on the palm side with criss-crossed laces
+				-- lace-up: a lace panel on the palm side with criss-crossed laces, lying on the cuff
 				if lod >= 2 then
-					mk(folder, la, "LacePanel", V3(0.03, cuffLen * 0.9, s.Z * 0.4), cuffCF * CF(-sign * (s.X * 0.56 + 0.008), 0, 0), darken(main, 0.85), "Block", material)
+					mk(folder, la, "LacePanel", V3(0.02, cuffLen * 0.8, dc * 0.24), onSurface(cuffLen * 0.48, math.pi, 0.004), darken(main, 0.8), "Block", material)
 				end
 				if cfg.laces == "full" then
-					for _, rot in ipairs({ 1, -1 }) do
-						mk(folder, la, "GloveLace", V3(0.03, cuffLen * 0.8, 0.035), cuffCF * CF(-sign * (s.X * 0.56 + 0.026), 0, 0) * ANG(rot * RAD(24), 0, 0), Color3.fromRGB(240, 240, 235), "Block", SMOOTH)
+					for k = 0, 2 do
+						for _, rot in ipairs({ 1, -1 }) do
+							mk(folder, la, "GloveLace", V3(0.02, dc * 0.24, 0.03), onSurface(cuffLen * (0.22 + 0.24 * k), math.pi, 0.014) * ANG(rot * RAD(55), 0, 0), Color3.fromRGB(240, 240, 235), "Block", SMOOTH)
+						end
 					end
 				end
 			elseif lod >= 2 then
-				-- velcro: wide hook-and-loop strap round the cuff with a pull tab
-				mk(folder, la, "Strap", V3(s.X * 1.17, cuffLen * 0.42, s.Z * 1.17), cuffCF * CF(0, -cuffLen * 0.05, 0), strapColor, "Block", SMOOTH)
+				-- velcro: a wide hook-and-loop strap round the cuff with a pull tab lying on it
+				sz, cf = band(cuffLen * 0.42, cuffLen * 0.42, 1.05)
+				mk(folder, la, "Strap", sz, cf, strapColor, "Cylinder", SMOOTH)
 				if lod >= 3 then
-					mk(folder, la, "StrapTab", V3(0.05, cuffLen * 0.3, s.Z * 0.3), cuffCF * CF(sign * (s.X * 0.6 + 0.02), -cuffLen * 0.05, s.Z * 0.2), darken(strapColor, 0.7), "Block", SMOOTH)
+					mk(folder, la, "StrapTab", V3(0.02, cuffLen * 0.3, dc * 0.18), onSurface(cuffLen * 0.42, math.pi * 0.7, dc * 0.025 + 0.008), darken(strapColor, 0.7), "Block", SMOOTH)
 				end
 			end
-			-- cuff branding: embroidery (outer side), maker's plate (front), wordmark
+			-- cuff branding: embroidery (outer side), maker's plate (front), wordmark: small plates tangent to the
+			-- round cuff (narrow enough to lie on it)
 			local outerTaken = tape
 			if custom.embroidery then
 				local text = side == "Left" and (g.embName and opts.name or "") or (g.embNick and opts.nick or "")
 				if text ~= "" and not tape then
-					textPatch(folder, la, "Embroidery", V3(0.02, s.Y * 0.3, s.Z * 1.05), cuffCF * CF(ox, 0, 0), text:upper(), trim, sideFace)
+					textPatch(folder, la, "Embroidery", V3(0.02, s.Y * 0.2, dc * 0.38), onSurface(cuffLen * 0.72, 0, 0.012), text:upper(), trim, sideFace)
 					outerTaken = true
 				end
 			end
+			local frontFace = Enum.NormalId.Front
 			if brand.plate and lod >= 2 then
 				local big = brand.beltPlate == true
-				local plateCF = cuffCF * CF(0, cuffLen * 0.05, -s.Z * 0.56 - 0.02)
-				mk(folder, la, big and "BeltPlate" or "Plate", V3(s.X * (big and 0.72 or 0.52), cuffLen * (big and 0.46 or 0.32), 0.04), plateCF, big and GOLD or Color3.fromRGB(200, 200, 205), "Block", Enum.Material.Foil)
+				local plateCF = wristCF * CF(0, cuffLen * 0.55, -r - 0.02)
+				mk(folder, la, big and "BeltPlate" or "Plate", V3(dc * (big and 0.4 or 0.3), cuffLen * (big and 0.4 or 0.28), 0.04), plateCF, big and GOLD or Color3.fromRGB(200, 200, 205), "Block", Enum.Material.Foil)
 				if cfg.wordmarks then
-					textPatch(folder, la, "PlateText", V3(s.X * 0.5, cuffLen * 0.26, 0.02), plateCF * CF(0, 0, -0.032), big and (brand.glyph or "") or initials(opts.name), big and Color3.fromRGB(60, 40, 10) or Color3.fromRGB(30, 30, 34), Enum.NormalId.Front, brand.font)
+					textPatch(folder, la, "PlateText", V3(dc * 0.28, cuffLen * 0.22, 0.02), plateCF * CF(0, 0, -0.032), big and (brand.glyph or "") or initials(opts.name), big and Color3.fromRGB(60, 40, 10) or Color3.fromRGB(30, 30, 34), frontFace, brand.font)
 				end
 			elseif cfg.wordmarks and (brand.wordmark or "") ~= "" and outerTaken then
-				textPatch(folder, la, "Wordmark", V3(s.X * 0.95, cuffLen * 0.26, 0.02), cuffCF * CF(0, cuffLen * 0.12, -s.Z * 0.56 - 0.012), brand.wordmark, rgb(brand.wordColor, contrast(main)), Enum.NormalId.Front, brand.font)
+				textPatch(folder, la, "Wordmark", V3(dc * 0.36, cuffLen * 0.22, 0.02), wristCF * CF(0, cuffLen * 0.72, -r - 0.012), brand.wordmark, rgb(brand.wordColor, contrast(main)), frontFace, brand.font)
 			end
 			if cfg.wordmarks and (brand.wordmark or "") ~= "" and not outerTaken then
-				textPatch(folder, la, "Wordmark", V3(0.02, cuffLen * 0.26, s.Z * 0.95), cuffCF * CF(ox, cuffLen * 0.12, 0), brand.wordmark, rgb(brand.wordColor, contrast(main)), sideFace, brand.font)
+				textPatch(folder, la, "Wordmark", V3(0.02, cuffLen * 0.22, dc * 0.36), onSurface(cuffLen * 0.72, 0, 0.012), brand.wordmark, rgb(brand.wordColor, contrast(main)), sideFace, brand.font)
 			end
 		end
 	end
@@ -1563,12 +1622,21 @@ local function handsBuild(model, app, gear, opts, sp)
 		mode = "bare" -- officials work bare-handed
 	end
 	local a = app.attire or {}
-	local key = Kit.sig("H3", mode, sp.detail, gear.gloves, gear.wraps, q(gear.glovesCond or 100, 5), q(gear.wrapsCond or 100, 10), app.gloves, a.wraps, a.wrapPattern or "", a.trim, a.trunks,
+	local key = Kit.sig("H4", mode, sp.female, sp.detail, gear.gloves, gear.wraps, q(gear.glovesCond or 100, 5), q(gear.wrapsCond or 100, 10), app.gloves, a.wraps, a.wrapPattern or "", a.trim, a.trunks,
 		opts.name or "", opts.nick or "", opts.nat or "", opts.fightNight == true, sizesOf(model, HAND_PARTS))
 	if Kit.cached(model, "Hands", key) then
 		return
 	end
 	local folder = getFolder(model, "Hands")
+	-- the blocky R15 hand sits inside the glove: hidden so its corners never poke through the padding (it
+	-- still carries the wrist joint and the welds); bare hands and wraps show it
+	for _, n in ipairs({ "LeftHand", "RightHand" }) do
+		local h = part(model, n)
+		local t = (mode ~= "wraps" and mode ~= "bare") and 1 or 0
+		if h and h:IsA("BasePart") and h.Transparency ~= t then
+			h.Transparency = t
+		end
+	end
 	if mode == "wraps" then
 		wrapsBuild(folder, model, app, gear, opts, sp)
 	elseif mode ~= "bare" then
