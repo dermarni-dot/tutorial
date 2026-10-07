@@ -14,11 +14,14 @@
 --   nearest within fullRange; medium / low further out; round-1 parts beyond lodRange
 -- * one serial worker, time-sliced (Config.Anatomy.frameBudget per frame through MeshKit's tick), so
 --   building never hitches; cancelled when the model goes away or its look changes again
--- * the Editable API not working at all (not enabled for the experience, unverified creator: the
---   one-time probe fails) disables meshes for the session, restores every character and warns once;
+-- * the Editable API not working (not enabled for the experience, unverified creator, a transient
+--   engine failure: the probe mesh cannot be made) restores every character, warns once and re-probes
+--   in the background with a growing back-off (1 s .. 1 min), so meshes come on as soon as they can;
 --   a creation failing later (the per-device memory budget) only lowers how much is built: a cap on
 --   the estimated Editable memory, the farthest characters back to round-1 parts, a cool-down, and
---   only after repeated failures the session switch-off; a generator error disables that section only
+--   only after repeated failures the same switch-off-and-retry; a generator error disables that section
+-- * AnatomyStatus (started at boot) prints "[AnatomyClient] meshes ON" / "OFF: <reason>" and shows the
+--   local player a small dismissable notice (once per session) while the Editable APIs are refused
 -- Start: AnatomyClient.Start() (idempotent, client only). Any other public call starts it too, so the
 -- first module that touches it (ClientMain, FaceFX, the Creator) brings it up. Settings: SetEnabled(on),
 -- SetDetail("full" | "medium" | "low" | "auto"), the Settings table. FX modules: OnBuilt / OnRestored,
@@ -68,7 +71,13 @@ local registry = {} -- section -> def
 local records = {} -- model -> rec
 local cache = {} -- key -> { result, used }
 local cacheCount = 0
-local api = { state = "unknown", reason = nil, probed = false, textures = true }
+-- state: "unknown" (not probed yet) | "ok" | "disabled" (off for now: retried at retryAt with a growing
+-- back-off, so a transient failure, a memory spike or a setting turned on mid-session recovers by itself)
+local api = { state = "unknown", reason = nil, textures = true, fails = 0, retryAt = 0, texRetryAt = 0, texFails = 0,
+	mpOptions = true }
+-- seconds before the n-th re-probe after the Editable APIs failed (the last step repeats)
+local RETRY_STEPS = { 1, 2, 4, 8, 15, 30, 60 }
+local Status -- the AnatomyStatus module (Output line + on-screen notice), loaded by boot
 local warned = {}
 local listeners = { built = {}, restored = {} }
 local conns = {}
@@ -467,16 +476,26 @@ local function restoreAll(rec, why)
 	end
 end
 
+-- the Editable APIs do not work right now: every character goes back to its part-built look and the
+-- probe is tried again after a back-off (never given up for the session: "Allow Mesh / Image APIs" can be
+-- switched on, a memory spike passes, a flaky first call happens)
 local function disableEditables(reason)
+	api.fails += 1
+	api.retryAt = os.clock() + RETRY_STEPS[math.min(api.fails, #RETRY_STEPS)]
+	api.reason = tostring(reason)
 	if api.state == "disabled" then
 		return
 	end
 	api.state = "disabled"
-	api.reason = tostring(reason)
-	warnOnce("api", "EditableMesh characters are off for this session (" .. api.reason .. "); every character keeps the part-built look.",
-		"Published games need the experience's 'Allow Mesh / Image APIs' setting and an ID-verified creator.")
+	local memory = api.reason:lower():find("budget") or api.reason:lower():find("memory")
+	warnOnce("api", "EditableMesh characters are off for now (" .. api.reason .. "); every character keeps the part-built look. Retrying in the background.",
+		memory and "(Editable memory budget: usually free again within seconds.)"
+			or "Turn on Game Settings > Security > Allow Mesh / Image APIs (published games also need an ID-verified creator).")
 	for _, rec in pairs(records) do
 		restoreAll(rec, "editables disabled")
+	end
+	if Status then
+		pcall(Status.Changed)
 	end
 end
 
@@ -569,10 +588,12 @@ end
 
 -- the Editable pipeline works at all here (once per session): one tiny mesh end to end
 local function probe()
-	if api.probed then
-		return api.state ~= "disabled"
+	if api.state == "ok" then
+		return true
 	end
-	api.probed = true
+	if api.state == "disabled" and os.clock() < api.retryAt then
+		return false
+	end
 	local m = MeshKit.New("probe")
 	MeshKit.Vertex(m, 0, 0, 0)
 	MeshKit.Vertex(m, 0.1, 0, 0)
@@ -588,16 +609,36 @@ local function probe()
 		disableEditables(err)
 		return false
 	end
+	-- with the options first; an engine that rejects an option still gets meshes (options dropped)
 	local ok, mp = pcall(function()
 		return AssetService:CreateMeshPartAsync(Content.fromObject(em), { CollisionFidelity = Enum.CollisionFidelity.Box })
 	end)
+	if not ok or not mp then
+		local ok2, mp2 = pcall(function()
+			return AssetService:CreateMeshPartAsync(Content.fromObject(em))
+		end)
+		if ok2 and mp2 then
+			api.mpOptions = false
+			ok, mp = ok2, mp2
+		end
+	end
 	pcall(em.Destroy, em)
 	if not ok or not mp then
 		disableEditables("CreateMeshPartAsync: " .. tostring(mp))
 		return false
 	end
 	mp:Destroy()
+	local was = api.state
 	api.state = "ok"
+	api.reason = nil
+	api.fails = 0
+	-- a fresh start after an outage: the memory pressure that switched meshes off may be gone
+	pressure.fails = 0
+	pressure.untilT = 0
+	lastEval = 0
+	if was ~= "ok" and Status then
+		pcall(Status.Changed)
+	end
 	return true
 end
 
@@ -652,6 +693,9 @@ function makePiece(rec, name, piece, bodyLod)
 	local img
 	local texBytes = 0
 	local tex = piece.texture
+	if not api.textures and os.clock() >= api.texRetryAt then
+		api.textures = true -- textures failed a while ago: try them again (memory may have been freed)
+	end
 	if tex and AnatomyClient.Settings.textures and api.textures then
 		local w, h = tex.w or (tex.size and tex.size[1]) or 256, tex.h or (tex.size and tex.size[2]) or 256
 		local buf
@@ -703,9 +747,11 @@ function makePiece(rec, name, piece, bodyLod)
 				img = im
 				texBytes = w * h * 4
 			else
-				-- textures are optional: keep the vertex colours, stop asking for images this session
+				-- textures are optional: keep the vertex colours, stop asking for images for a while
 				api.textures = false
-				warnOnce("teximg", "EditableImage textures are off for this session:", err)
+				api.texFails += 1
+				api.texRetryAt = os.clock() + 30 * math.min(api.texFails, 8)
+				warnOnce("teximg", "EditableImage textures are paused (vertex colours meanwhile):", err)
 			end
 		end
 	end
@@ -721,6 +767,9 @@ function makePiece(rec, name, piece, bodyLod)
 		return nil, info, "api"
 	end
 	local okMP, mp = pcall(function()
+		if not api.mpOptions then
+			return AssetService:CreateMeshPartAsync(Content.fromObject(em))
+		end
 		return AssetService:CreateMeshPartAsync(Content.fromObject(em), {
 			CollisionFidelity = Enum.CollisionFidelity.Box, RenderFidelity = Enum.RenderFidelity.Automatic,
 		})
@@ -767,7 +816,9 @@ function makePiece(rec, name, piece, bodyLod)
 			pcall(em.Destroy, em)
 			mp:Destroy()
 			api.textures = false
-			warnOnce("texset", "TextureContent refused (" .. tostring(errT) .. "): textures are off for this session")
+			api.texFails += 1
+			api.texRetryAt = os.clock() + 30 * math.min(api.texFails, 8)
+			warnOnce("texset", "TextureContent refused (" .. tostring(errT) .. "): textures paused, vertex colours meanwhile")
 			return makePiece(rec, name, piece, bodyLod)
 		end
 	end
@@ -864,6 +915,12 @@ end
 -- meshes stay on (with a lower cap), false when they were switched off for the session.
 local function onCreateFailed(err)
 	pressure.fails += 1
+	-- cheapest relief first: no new colour textures for a while (vertex colours only)
+	if api.textures then
+		api.textures = false
+		api.texFails += 1
+		api.texRetryAt = os.clock() + 60 * math.min(api.texFails, 5)
+	end
 	local live = liveCost()
 	if pressure.fails >= MAX_PRESSURE or live <= 0 then
 		disableEditables(err)
@@ -1226,8 +1283,28 @@ local function worker(gen)
 	while workerBusy and gen == workerGen do
 		task.wait()
 	end
+	-- the first probe waits for the game to finish loading (at most 10 s): right at start-up Studio can
+	-- refuse even an empty EditableMesh ("reaching memory budget limits") and a failed probe costs a retry
+	local waitUntil = os.clock() + 10
+	while gen == workerGen and api.state == "unknown" and os.clock() < waitUntil do
+		local okL, loaded = pcall(function()
+			return game:IsLoaded()
+		end)
+		if not okL or loaded then
+			break
+		end
+		task.wait(0.2)
+	end
 	while running and gen == workerGen do
-		local job = (api.state ~= "disabled") and nextJob() or nil
+		-- probe at once (the status line / notice should not wait for the first character) and re-probe
+		-- after the back-off while the APIs are off
+		if api.state ~= "ok" and next(registry) ~= nil and AnatomyClient.Settings.enabled and os.clock() >= api.retryAt then
+			local okP = pcall(probe)
+			if not okP and api.state ~= "disabled" then
+				disableEditables("probe error")
+			end
+		end
+		local job = (api.state == "ok") and nextJob() or nil
 		if not job then
 			task.wait(0.15)
 		else
@@ -1463,6 +1540,14 @@ local function boot()
 		end
 	end
 	findGenerators()
+	-- the visible status (one Output line, and a small notice for the player while meshes are off)
+	local okS, mod = pcall(function()
+		return require(script.Parent:WaitForChild("AnatomyStatus", 5))
+	end)
+	if okS and type(mod) == "table" and mod.Start then
+		Status = mod
+		pcall(mod.Start, AnatomyClient)
+	end
 	if next(registry) == nil then
 		-- nothing to build: register nothing, change nothing (Register() later starts the machinery)
 		log("no generators registered")
@@ -1892,12 +1977,156 @@ function AnatomyClient.Rebuild(model)
 	end
 end
 
+-- "on" | "off" | "pending", reason (nil when on), kind ("api" | "setting" | "generators" | nil): what the
+-- player sees right now and why (AnatomyStatus prints / shows it)
+function AnatomyClient.MeshState()
+	if not started or not running then
+		return "pending", nil, nil
+	end
+	if next(registry) == nil then
+		return "off", "no mesh generators found in ReplicatedStorage.Shared", "generators"
+	end
+	local anyOk = false
+	for _, def in pairs(registry) do
+		if not def.failed then
+			anyOk = true
+		end
+	end
+	if not anyOk then
+		return "off", "every mesh generator failed (see the warnings above)", "generators"
+	end
+	if not AnatomyClient.Settings.enabled then
+		return "off", "switched off (Settings > Graphics or Config.Anatomy.enabled)", "setting"
+	end
+	if api.state == "ok" then
+		return "on", nil, nil
+	elseif api.state == "disabled" then
+		return "off", api.reason or "EditableMesh unavailable", "api"
+	end
+	return "pending", nil, nil
+end
+
+-- where the local player's character is in the pipeline: text, allBuilt (AnatomyStatus prints it; the F8
+-- diagnostic dumps it): no character / no LookData / not tracked / per section queued, building, built
+-- (level, pieces, hidden round-1 parts), generation failed
+local function stageOf(model)
+	local rec = records[model]
+	if not rec then
+		if model:GetAttribute(LookData.ATTR) == nil then
+			return "no LookData attribute on " .. model.Name .. " (server Builder.Cosmetics has not published it yet)", false
+		end
+		return model.Name .. " has LookData but is not tracked", false
+	end
+	if not rec.look then
+		return "LookData on " .. model.Name .. " did not decode", false
+	end
+	local out, all = {}, true
+	local names = {}
+	for section in pairs(registry) do
+		names[#names + 1] = section
+	end
+	table.sort(names)
+	for _, section in ipairs(names) do
+		local def = registry[section]
+		local st = rec.sections[section]
+		local txt
+		if def.failed then
+			txt = "generation failed"
+			all = false
+		elseif st and st.active then
+			local n, hid = 0, 0
+			for _ in pairs(st.pieces) do
+				n += 1
+			end
+			for _, h in pairs(rec.hidden) do
+				if h.sections[section] then
+					hid += 1
+				end
+			end
+			txt = string.format("built %s (%d pieces, %d round-1 parts hidden)", tostring(st.lod), n, hid)
+		elseif st and st.skipped then
+			txt = "kept part-built (generator drew nothing for this look)"
+		elseif st and st.job and not st.job.cancelled then
+			txt = (st.job.running and "building " or "queued ") .. tostring(st.job.lod) .. (st.job.retries and (" (retry " .. st.job.retries .. ")") or "")
+			all = false
+		else
+			txt = rec.lod and "waiting" or "out of range / no level of detail"
+			all = false
+		end
+		out[#out + 1] = section .. ": " .. txt
+	end
+	return table.concat(out, "; "), all
+end
+
+function AnatomyClient.LocalStage()
+	local lp = Players.LocalPlayer
+	local char = lp and lp.Character
+	if not char then
+		return "no character yet", false
+	end
+	if not LookData then
+		return "not started", false
+	end
+	return stageOf(char)
+end
+
+-- a full multi-line report for the Output (AnatomyStatus: F8 in Studio, or AnatomyClient.Settings.debug)
+function AnatomyClient.Diagnose()
+	local L = {}
+	local function add(...)
+		L[#L + 1] = table.concat({ ... }, " ")
+	end
+	local state, reason, kind = AnatomyClient.MeshState()
+	add("[AnatomyClient] diagnostic ---------------------------------------------")
+	add("state:", state, reason and ("(" .. kind .. ": " .. reason .. ")") or "", "| started", tostring(started), "running", tostring(running))
+	add("api:", tostring(api.state), "fails", tostring(api.fails), api.state == "disabled" and string.format("retry in %.1f s", math.max(0, api.retryAt - os.clock())) or "",
+		"| textures", tostring(api.textures), "| meshpart options", tostring(api.mpOptions))
+	local secs = {}
+	for name, def in pairs(registry) do
+		secs[#secs + 1] = name .. "=" .. (def.failed and "FAILED" or "ok") .. "(" .. tostring(def.module or "registered") .. ")"
+	end
+	table.sort(secs)
+	add("generators:", #secs > 0 and table.concat(secs, " ") or "NONE")
+	local S = AnatomyClient.Settings
+	add(string.format("settings: enabled %s maxFull %d fullRange %d lodRange %d frameBudget %.4f textures %s", tostring(S.enabled), S.maxFull, S.fullRange, S.lodRange, S.frameBudget, tostring(S.textures)))
+	local st = AnatomyClient.Status()
+	add(string.format("models %d | built full %d medium %d low %d | queued %d | hidden %d | skipped %d | cache %d (%.1f MB)", st.models, st.built.full, st.built.medium, st.built.low, st.queued, st.hidden, st.skipped, st.cache, st.cacheMB))
+	add(string.format("memory pressure: fails %d cap %s live %d bytes", pressure.fails, pressure.cap < math.huge and tostring(math.floor(pressure.cap)) or "none", st.pressure.live))
+	local stage = AnatomyClient.LocalStage()
+	add("local character:", stage)
+	local lp = Players.LocalPlayer
+	local char = lp and lp.Character
+	local rec = char and records[char]
+	if rec then
+		add("  level", tostring(rec.lod), "dist", string.format("%.1f", rec.dist or -1), "priority", tostring(rec.priority))
+		for section, sst in pairs(rec.sections) do
+			for name, pr in pairs(sst.pieces or {}) do
+				local p = pr.part
+				add(string.format("  %s.%s parent=%s size=%s ltm=%.2f transp=%.2f weld=%s", section, name, p and p.Parent and p.Parent:GetFullName() or "nil",
+					p and tostring(p.Size) or "?", p and p.LocalTransparencyModifier or -1, p and p.Transparency or -1, tostring(pr.weld and pr.weld.Part0 and pr.weld.Part0.Name)))
+			end
+		end
+		local shown = 0
+		for inst, h in pairs(rec.hidden) do
+			if h.kind == "ltm" and inst.Parent and inst.LocalTransparencyModifier < 1 then
+				shown += 1
+			end
+		end
+		add("  hidden round-1 parts currently visible again (should be 0):", tostring(shown))
+	end
+	add("-------------------------------------------------------------------------------")
+	local text = table.concat(L, "\n")
+	print(text)
+	return text
+end
+
 -- counters for tools and tests
 function AnatomyClient.Status()
 	local s = { started = started, running = running, api = api.state, reason = api.reason, textures = api.textures,
 		sections = {}, models = 0, built = { full = 0, medium = 0, low = 0 }, hidden = 0, queued = 0, busy = workerBusy, cache = cacheCount,
 		pressure = { fails = pressure.fails, cap = pressure.cap < math.huge and math.floor(pressure.cap) or nil, live = math.floor(liveCost()) },
-		skipped = 0, cacheMB = math.floor(cacheBytes / 104857.6) / 10 }
+		skipped = 0, cacheMB = math.floor(cacheBytes / 104857.6) / 10, apiFails = api.fails,
+		retryIn = api.state == "disabled" and math.max(0, math.floor((api.retryAt - os.clock()) * 10) / 10) or nil }
 	for name, def in pairs(registry) do
 		s.sections[name] = def.failed and "failed" or "ok"
 	end
