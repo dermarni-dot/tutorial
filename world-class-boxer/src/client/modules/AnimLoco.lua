@@ -209,6 +209,34 @@ function AnimLoco.request(rig, s, ox, oz, dur, lift, hold, t)
 	f.vLift = lift or 0.14
 end
 
+-- a boxer's foot already in the air (a fight step, not a walker's) is sent on to a new body-relative spot
+-- without a jump: the swing's start is re-based so the foot carries on from where it is and lands on the new
+-- spot at the swing's own time. False (nothing changed) when the foot is down, walking, past half its
+-- swing or going the other way: the caller asks for a step instead (request) once it is down
+function AnimLoco.reaim(rig, s, ox, oz, hold, t)
+	local f = rig.foot[s]
+	local root = rig.root
+	if not (f and f.swing and f.fromP and root) or f.stepKind == "walk" then
+		return false
+	end
+	-- (only in the first half of the swing, and only further the way it is already going: a foot turned
+	-- round mid-air, or rushed the last bit, would jerk the leg and the body over it)
+	local e = K.smoother(clamp((t - f.t0) / f.dur, 0, 1))
+	if e > 0.5 or not f.home then
+		return false
+	end
+	local d = root.CFrame:VectorToWorldSpace(V3(ox - f.vox, 0, oz - f.voz))
+	local way = f.home - f.fromP
+	if d.X * way.X + d.Z * way.Z < 0 then
+		return false
+	end
+	f.fromP -= V3(d.X, 0, d.Z) * (e / (1 - e))
+	f.vox, f.voz = ox, oz
+	f.vUntil = t + (hold or 0.3)
+	f.vNow = false
+	return true
+end
+
 -- is a foot free to be asked for a step (on the ground and not just landed)?
 function AnimLoco.ready(rig, s, t)
 	local f = rig.foot[s]
@@ -724,11 +752,14 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 	-- per-foot desired ground point and yaw
 	for _, s in ipairs(SIDES) do
 		local f = rig.foot[s]
-		-- voluntary offset expired: come back home with a step
-		if f.vUntil < t and (f.vox ~= 0 or f.voz ~= 0) then
+		-- voluntary offset expired: come back home with a step. (Not while that foot is in the air: a swing
+		-- aims at the home point every frame, and moving it mid-step would jump the foot; and a long way
+		-- back - a short fighter's big step in - takes a step its size, never a long one flicked in 0.16 s)
+		if f.vUntil < t and (f.vox ~= 0 or f.voz ~= 0) and not f.swing then
+			local d = sqrt(f.vox * f.vox + f.voz * f.voz)
 			f.vox, f.voz = 0, 0
 			f.vNow = true
-			f.vDur = 0.16
+			f.vDur = clamp(0.1 + 0.14 * d, 0.16, 0.3)
 			f.vLift = 0.1
 		end
 		local ox, oz = f.ox + f.vox, f.oz + f.voz

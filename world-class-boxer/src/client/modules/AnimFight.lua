@@ -822,8 +822,14 @@ function AnimFight.startPunch(rig, act, t)
 	rig.bodyAct = act
 	-- step jab / check hook: the feet move with the punch
 	local prm = act.prm
-	if prm.step and L.ready(rig, "L", t) then
-		L.request(rig, "L", 0, -prm.step, act.windup * 0.75, 0.1, act.windup * 1.6, t)
+	if prm.step then
+		-- (a lead foot still in the air - coming home from the last step - is sent on to the step's spot,
+		-- AnimLoco.reaim; one that has just landed steps as soon as it may: evalPunch's lead step)
+		if L.ready(rig, "L", t) then
+			L.request(rig, "L", 0, -prm.step, act.windup * 0.75, 0.1, act.windup * 1.6, t)
+		elseif not L.reaim(rig, "L", 0, -prm.step, act.windup * 1.6, t) then
+			act.leadIn = -prm.step
+		end
 	end
 	if prm.stepR and L.ready(rig, "R", t) then
 		L.request(rig, "R", prm.stepR[1], prm.stepR[2], act.windup * 0.9, 0.12, act.windup * 2.2, t)
@@ -846,6 +852,14 @@ local function punchTorso(rig, p)
 	return R.torsoCF(rig, p.Root, p.W)
 end
 
+-- a much taller target (act.tallK, aimPoint): the climb from the shoulder to the aim, as a share of the arm,
+-- where the reach-up starts / is full; up on the toes (both heels) adds RISE_TOES to the rise, and a
+-- straight may climb up to TALL_PITCH
+local TALL_LO, TALL_HI = 0.45, 0.7
+local RISE_TOES = 0.12
+local TALL_PITCH = math.tan(math.rad(36))
+-- the longest the rear foot follows a punch in (studs)
+local REAR_FOLLOW_MAX = 1.0
 -- aim point in standard UpperTorso units, or nil (nobody in front / far rig)
 local function aimPoint(rig, p, act, body, near)
 	if not near then
@@ -908,6 +922,21 @@ local function aimPoint(rig, p, act, body, near)
 					end
 				elseif prm.path == "upper" then
 					pt -= V3(0, body and 0.1 or 0.32, 0)
+				end
+				-- a much taller man's head (a short fighter at a tall one's chin): how far it sits above what
+				-- this arm reaches level (0 in a level fight, 1 once the climb is 0.7 of the arm). The punch
+				-- goes for the underside of the jaw - the overhand for the jaw, not the temple - and the body
+				-- reaches up for it (fitPunch / evalPunch: up on the toes, a steeper straight)
+				act.tallK = 0
+				local armT = not body and g[R.ARM_OF[act.hand][3]]
+				if armT and armT.ok then
+					local shY = ut:PointToWorldSpace(armT.c0.Position).Y
+					local k = clamp(((pt.Y - shY) / armT.dMax - TALL_LO) / (TALL_HI - TALL_LO), 0, 1)
+					act.tallK = k
+					if k > 0 then
+						local low = prm.path == "straight" and 0.12 or (prm.path == "over" and 0.3 or (prm.path == "upper" and 0.16 or 0.08))
+						pt -= V3(0, tgt.Size.Y * low * k, 0)
+					end
 				end
 			end
 		end
@@ -1112,8 +1141,8 @@ local STRAIGHT_THROUGH = 0.3
 -- on the jaw, not in the throat)
 local STRAIGHT_PITCH = math.tan(math.rad(10))
 local LEVEL_GIVE = 0.25
-local function levelY(vy, h)
-	local lim = h * STRAIGHT_PITCH
+local function levelY(vy, h, pitch)
+	local lim = h * (pitch or STRAIGHT_PITCH)
 	return clamp(clamp(vy, -lim, lim), vy - LEVEL_GIVE, vy + LEVEL_GIVE)
 end
 local function fitPunch(rig, p, act, body, near, gain, drop)
@@ -1213,6 +1242,9 @@ local function fitPunch(rig, p, act, body, near, gain, drop)
 		-- above a deep crouch makes the legs drive up into the punch (up to RISE_MAX) rather than the arm
 		-- reach up for it.
 		local want = arm.dMax * STRAIGHT_REACH * (prm.reach or 1)
+		-- (a much taller man's chin: the straight climbs to it, up to TALL_PITCH)
+		local tallK = act.tallK or 0
+		local pitchT = lerp(STRAIGHT_PITCH, TALL_PITCH, tallK)
 		-- (a jab gives less: hips going back while it snaps out take the snap out of it)
 		local lo = -prm.fwd * gain - (act.pkind == "jab" and GIVE_MAX * 0.4 or GIVE_MAX)
 		-- (and a chin too far up and out for the arm - a much taller man's - is stepped in on, up to
@@ -1224,7 +1256,7 @@ local function fitPunch(rig, p, act, body, near, gain, drop)
 			for _ = 1, 4 do
 				local hz = v.Z + lunge
 				local h = sqrt(v.X * v.X + hz * hz)
-				local vy = body and v.Y or levelY(v.Y, h)
+				local vy = body and v.Y or levelY(v.Y, h, pitchT)
 				local s2 = v.X * v.X + vy * vy
 				if want * want <= s2 then
 					return hi
@@ -1234,13 +1266,14 @@ local function fitPunch(rig, p, act, body, near, gain, drop)
 			return lunge
 		end
 		local v0 = lay(1, 0)
-		-- (a jab is too quick for the legs to drive)
-		local rise = body and 0 or clamp(v0.Y - want * STRAIGHT_PITCH, 0, act.pkind == "jab" and 0 or RISE_MAX)
+		-- (a jab is too quick for the legs to drive - unless it goes up at a much taller man: up on the toes)
+		local rise = body and 0 or clamp(v0.Y - want * pitchT, 0, act.pkind == "jab" and RISE_MAX * tallK or RISE_MAX)
 		-- (only as far as the stance legs still extend - the rear heel coming up gives a little more,
-		-- RISE_HEEL - past that the pelvis would sink straight back and the fist land short and under:
-		-- the hips travel in for the rest instead, stepping in for a long way)
+		-- RISE_HEEL, both heels at a much taller man RISE_TOES - past that the pelvis would sink straight
+		-- back and the fist land short and under: the hips travel in for the rest instead, stepping in for a
+		-- long way)
 		if rise > 0 then
-			rise = clamp(slack(1, 0) + RISE_HEEL, 0, rise)
+			rise = clamp(slack(1, 0) + RISE_HEEL + RISE_TOES * tallK, 0, rise)
 		end
 		local kt, lunge = 1, 0
 		for i = 0, 3 do
@@ -1267,25 +1300,34 @@ local function fitPunch(rig, p, act, body, near, gain, drop)
 	-- front of the shoulder - a head out of reach above, a taller man's chin high on its neck, is not chased
 	-- in under; the fist lands lower on it instead of the forearm sweeping across his own face)
 	if prm.path == "over" then
-		local v = lay(1, 0)
+		local tallK = act.tallK or 0
+		-- (at a much taller man the legs come up first - up on the toes - and the room it needs shrinks:
+		-- the short man's looping overhand comes up and over onto the jaw)
+		local riseT = tallK > 0 and clamp(slack(k, 0) + RISE_HEEL + RISE_TOES, 0, RISE_MAX) * tallK or 0
+		local v = lay(1, riseT)
 		local reachO = arm.dMax * 0.97 * (prm.reach or 1) - 0.15
-		local hWant = max(sqrt(max(0, reachO * reachO - v.Y * v.Y)), arm.dMax * OVER_ROOM)
+		local hWant = max(sqrt(max(0, reachO * reachO - v.Y * v.Y)), arm.dMax * OVER_ROOM * (1 - 0.35 * tallK))
 		-- (the lunge drives the hips along -Z: the target's depth that leaves hWant of room)
 		local zWant = sqrt(max(0, hWant * hWant - v.X * v.X))
 		local lunge = clamp(-v.Z - zWant + 0.05, 0, LUNGE_MAX)
 		-- (a head that high above is not thrown at from a dip: the legs come up out of it as far as they
 		-- extend; and the rear foot shuffles in after a lunge it cannot stretch to)
-		act.rise = clamp(min(v.Y - reachO * 0.85, slack(k, 0) + RISE_HEEL), 0, max(drop, 0))
+		act.rise = max(riseT, clamp(min(v.Y - reachO * 0.85, slack(k, 0) + RISE_HEEL), 0, max(drop, 0)))
 		act.shuffle = lunge > 0.25 and slack(k, act.rise, lunge) + RISE_HEEL < 0
 		return k, lunge
 	end
 	-- (a chin high above an uppercut - a much taller man's - brings the legs up into it, as far as they
 	-- still extend)
 	local hook = prm.path == "hook"
+	local tallK = act.tallK or 0
 	if prm.path == "upper" then
 		local v = lay(k, 0)
 		local reachU = arm.dMax * 0.97 * (prm.reach or 1) - 0.25
-		act.rise = clamp(min(v.Y - reachU * 0.85, slack(k, 0) + RISE_HEEL), 0, RISE_MAX)
+		act.rise = clamp(min(v.Y - reachU * 0.85, slack(k, 0) + RISE_HEEL + RISE_TOES * tallK), 0, RISE_MAX)
+		dy -= act.rise
+	elseif hook and tallK > 0 then
+		-- (a hook up at a much taller man's jaw: up on the toes into it)
+		act.rise = clamp(slack(k, 0) + RISE_HEEL + RISE_TOES, 0, RISE_MAX) * tallK
 		dy -= act.rise
 	end
 	-- (an uppercut leans back as it rises: a little more; a hook lands with the elbow bent near square -
@@ -1326,6 +1368,32 @@ local function evenDrive(x, pw)
 	local c = 3 - pw
 	return x * x * (c + (1 - c) * x)
 end
+-- how far the rear foot has to step in for the hips' travel at contact (the punch's weight transfer and
+-- lunge) to stay within the planted rear leg's reach: 0 when the stance stretches to it
+local function rearFollow(rig, p, act, prm, gain)
+	local ft = rig.ftmp
+	local g = rig.geo
+	if not (ft and ft.R and g.ok and g.R) then
+		return 0
+	end
+	local m = prm.mirror
+	local rt = CF(prm.side * m * gain, -(prm.dip * gain) + (act.rise or 0), -(prm.fwd * gain + (act.lunge or 0))) * p.Root
+	local tg = ft.R
+	if R.dropFor(rig, "R", rt, tg, 0.95) <= 0.02 then
+		return 0
+	end
+	local lo, hi = 0, prm.fwd * gain + (act.lunge or 0) + 0.2
+	for _ = 1, 8 do
+		local mid = (lo + hi) * 0.5
+		if R.dropFor(rig, "R", rt, V3(tg.X, tg.Y, tg.Z - mid), 0.95) > 0.02 then
+			lo = mid
+		else
+			hi = mid
+		end
+	end
+	return hi
+end
+
 local function evalPunch(p, rig, act, t, near, driveBody)
 	local prm = act.prm
 	local w = act.windup
@@ -1414,17 +1482,54 @@ local function evalPunch(p, rig, act, t, near, driveBody)
 					act.followR = -max(act.lunge - 0.4, act.lunge * 0.5) * 0.9
 				end
 			end
+			-- (and never less than the rear leg needs: the hips' whole travel - the punch's own weight
+			-- transfer plus the lunge, a small fighter's long step in at a tall man - must stay within the
+			-- planted rear leg's reach, or the pelvis sinks into a deep squat as the arm goes out)
+			if not prm.stepR then
+				local need = min(rearFollow(rig, p, act, prm, pw * rk), REAR_FOLLOW_MAX)
+				if need > 0.05 and (not act.followR or -act.followR < need) then
+					act.followR = -need
+					if prm.step and not act.leadIn and act.lunge > 0.2 then
+						act.leadIn = -max(prm.step, act.lunge * 0.9)
+					end
+				end
+			end
 		end
 		-- (the lead foot steps as soon as it is free - still landing from the last punch's step it goes a
 		-- few frames late, rather than leave the hips to lunge out over planted feet: the rear leg would
 		-- lock straight and the pelvis sink, taking the shoulder down and away from the target)
-		if act.leadIn and el < w * 0.7 and L.ready(rig, "L", t) then
-			L.request(rig, "L", 0, act.leadIn, max(0.1, w * 0.75 - el), 0.1, max(0.1, w * 1.6 - el), t)
-			act.leadIn = nil
+		local fL = rig.foot.L
+		if act.leadIn and el < w * 0.85 then
+			local hold = max(0.1, w * 1.6 - el)
+			if L.ready(rig, "L", t) then
+				L.request(rig, "L", 0, act.leadIn, max(0.09, w * 0.75 - el), 0.1, hold, t)
+				act.leadOut = -act.leadIn
+				act.leadIn = nil
+			elseif L.reaim(rig, "L", 0, act.leadIn, hold, t) then
+				-- (still in the air from the last step: sent on to this one's spot)
+				act.leadOut = -act.leadIn
+				act.leadIn = nil
+			end
 		end
-		if act.followR and not act.leadIn and el < w * 0.75 and L.ready(rig, "R", t) then
-			L.request(rig, "R", 0, act.followR, max(0.1, w * 0.9 - el), 0.08, w * 2, t)
+		-- (the rear foot goes once the lead is half way: the shuffle in, never both feet off at once for long;
+		-- a long one takes its time, landing just after the punch if it must)
+		-- (a lead foot that cannot step in time - still coming home from the last step - does not hold the rear
+		-- one back: past a third of the drive it shuffles in anyway, or the rear leg locks and the pelvis sinks)
+		local rearGo = not act.leadIn and (not fL.swing or t - fL.t0 > fL.dur * 0.5) or el > w * 0.35
+		if act.followR and rearGo and el < w * 0.75 and L.ready(rig, "R", t) then
+			local d = -act.followR
+			L.request(rig, "R", 0, act.followR, max(0.1, w * 0.9 - el, 0.1 + 0.14 * d), 0.08, w * 2, t)
 			act.followR = nil
+			act.rearOut = d
+		end
+		-- (and home again in the recovery with a step its size: never a long return flicked in 0.16 s)
+		if act.rearOut and retK > 0.3 and L.ready(rig, "R", t) then
+			L.request(rig, "R", 0, 0, clamp(0.12 + 0.14 * act.rearOut, 0.16, 0.28), 0.08, 0.05, t)
+			act.rearOut = nil
+		end
+		if act.leadOut and act.leadOut > 0.5 and retK > 0.1 and L.ready(rig, "L", t) then
+			L.request(rig, "L", 0, 0, clamp(0.12 + 0.14 * act.leadOut, 0.16, 0.3), 0.1, 0.05, t)
+			act.leadOut = nil
 		end
 		rk *= act.turnK
 		-- (the anticipation turns the other way first: the load before the drive)
@@ -1478,6 +1583,14 @@ local function evalPunch(p, rig, act, t, near, driveBody)
 		if prm.heelL and pv ~= "L" then
 			rig.foot.L.heel = max(rig.foot.L.heel, prm.heelL * shoK)
 		end
+		-- (up on the toes at a much taller man: both heels come up with the drive - the rise the fit
+		-- counted on - and down again with the hips)
+		local tk = act.tallK
+		if tk and tk > 0 and (act.rise or 0) > 0 then
+			local up = tk * max(hipK, 0) * 0.45
+			rig.foot.L.heel = max(rig.foot.L.heel, up)
+			rig.foot.R.heel = max(rig.foot.R.heel, up)
+		end
 		if prm.rise then
 			-- the uppercut's leg drive: up onto the balls of the feet as the body rises (the punching
 			-- side's heel highest)
@@ -1505,7 +1618,7 @@ local function evalPunch(p, rig, act, t, near, driveBody)
 			if isBag then
 				P3 = aimed
 			else
-				P3 = prm.path == "over" and P3:Lerp(aimed, 0.9) or aimed
+				P3 = prm.path == "over" and P3:Lerp(aimed, 0.9 + 0.1 * (act.tallK or 0)) or aimed
 			end
 		end
 		-- never further than the arm reaches from this shoulder (the elbow straightens at contact)
@@ -1518,7 +1631,7 @@ local function evalPunch(p, rig, act, t, near, driveBody)
 			local ut = punchTorso(rig, p)
 			local s0 = arm.c0.Position
 			local vW = ut:VectorToWorldSpace(V3(P3.X * sc.X, P3.Y * sc.Y, P3.Z * sc.Z) - s0)
-			local vy = levelY(vW.Y, sqrt(vW.X * vW.X + vW.Z * vW.Z))
+			local vy = levelY(vW.Y, sqrt(vW.X * vW.X + vW.Z * vW.Z), lerp(STRAIGHT_PITCH, TALL_PITCH, act.tallK or 0))
 			if vy ~= vW.Y then
 				local l = ut:VectorToObjectSpace(V3(vW.X, vy, vW.Z)) + s0
 				P3 = V3(l.X / sc.X, l.Y / sc.Y, l.Z / sc.Z)
