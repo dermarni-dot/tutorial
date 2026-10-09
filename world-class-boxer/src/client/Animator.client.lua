@@ -60,6 +60,8 @@ local num = R.num
 local KEYS, LEG_KEYS = R.KEYS, R.LEG_KEYS
 -- the arm joints a punch drives, and the fastest any of them may turn while it does (rad/s)
 local ARM_KEYS = { LS = true, LE = true, LW = true, RS = true, RE = true, RW = true }
+-- a walker's swinging arm joints and where their post-filter transform is kept
+local ARM_OUT = { LS = "lsOut", LE = "leOut", RS = "rsOut", RE = "reOut" }
 local PUNCH_JOINT_RATE = 31
 local TAGS = { "Fighter", "Trainee", "Ambient", "Preview", "Referee" }
 -- player characters walk / run / jump with the procedural gait (false = Roblox's default Animate)
@@ -146,6 +148,10 @@ local function onAttr(rig, name)
 		end
 	elseif name == "Count" then
 		rig.countT = now
+	elseif name == "ScaleKey" then
+		-- the body was rescaled (ApplyDescription): re-measure the legs now (and once more when the
+		-- replicated joints have surely arrived), never plant the feet at the old floor height
+		rig.geoNow = true
 	elseif name == "ShoutAt" then
 		-- Ambience (F) just put a chat bubble over this coach: open the mouth now, and cup a hand by
 		-- it when the arms are free (updateRig)
@@ -198,6 +204,13 @@ local function setup(model)
 	rig.conn = model.AttributeChanged:Connect(function(name)
 		onAttr(rig, name)
 	end)
+	-- (a rescale also moves the floor under the root: re-measure on a HipHeight change too)
+	if rig.hum then
+		rig.hipConn = rig.hum:GetPropertyChangedSignal("HipHeight"):Connect(function()
+			rig.geoNow = true
+		end)
+	end
+	rig.isPlayer = Players:GetPlayerFromCharacter(model) ~= nil
 	R.resolveJoints(rig)
 	R.computeGeo(rig)
 	rigs[model] = rig
@@ -227,6 +240,9 @@ local function teardown(model)
 	end
 	if rig.conn then
 		rig.conn:Disconnect()
+	end
+	if rig.hipConn then
+		rig.hipConn:Disconnect()
 	end
 	-- players keep their pump visible after training; NPC rigs are done
 	if BodyFX and not Players:GetPlayerFromCharacter(model) then
@@ -499,9 +515,10 @@ local function chooseLook(rig, t)
 			rig.watch = o.model
 			return
 		end
-		-- people look at you when you walk past
+		-- people look at you when you walk past (the gym's people: another player's boxer looks where HE
+		-- looks on his own screen, never round at you)
 		local char = player.Character
-		local head = char and char ~= rig.model and char:FindFirstChild("Head")
+		local head = rig.isTagged and char and char ~= rig.model and char:FindFirstChild("Head")
 		if head and (head.Position - pos).Magnitude < 18 then
 			rig.lookPart = head
 		end
@@ -548,6 +565,21 @@ end
 local HST = Enum.HumanoidStateType
 -- states where the default animation is better than anything we would invent
 local SKIP_STATES = { [HST.Climbing] = true, [HST.Swimming] = true, [HST.Dead] = true, [HST.Physics] = true, [HST.Ragdoll] = true }
+-- the shortest Freefall that shows as a fall (s): shorter is a kerb / stair edge, the gait carries on
+local AIR_MIN = 0.14
+local airParams = RaycastParams.new()
+airParams.FilterType = Enum.RaycastFilterType.Exclude
+airParams.RespectCanCollide = true
+
+-- is there ground just under another player's feet? (a ray from the root, a little past the hip height)
+local function groundUnder(rig)
+	local root = rig.root
+	local hum = rig.hum
+	local reach = (hum and hum.HipHeight or 2) + root.Size.Y * 0.5 + 1.2
+	airParams.FilterDescendantsInstances = { rig.model }
+	local ok, hit = pcall(workspace.Raycast, workspace, root.Position, Vector3.new(0, -reach, 0), airParams)
+	return ok and hit ~= nil
+end
 
 local function playerPose(p, rig, t, dt)
 	local hum = rig.hum
@@ -565,8 +597,23 @@ local function playerPose(p, rig, t, dt)
 		return "sit"
 	end
 	local vy = rig.root.AssemblyLinearVelocity.Y
-	local air = st == HST.Freefall or st == HST.Jumping or (not rig.isLocal and abs(vy) > 6)
+	-- (another player's Humanoid state is not reliable here: he is in the air when nothing is under him -
+	-- running up or down stairs is NOT a jump)
+	local air
+	if rig.isLocal then
+		air = st == HST.Freefall or st == HST.Jumping
+	else
+		air = abs(vy) > 6 and not groundUnder(rig)
+	end
 	if air then
+		rig.airT0 = rig.airT0 or t
+		rig.airVy = min(rig.airVy or 0, vy)
+	else
+		rig.airT0 = nil
+	end
+	-- a frame or two of Freefall (a kerb, a stair edge, a part seam) is not a jump: the gait carries on;
+	-- a real jump (Jumping) or a fall that lasts tucks the legs
+	if air and (st == HST.Jumping or t - rig.airT0 >= AIR_MIN or rig.airT) then
 		-- airborne: knees tuck on the way up, legs reach for the ground on the way down
 		rig.airT = rig.airT or t
 		local up = clamp(vy / 25, -1, 1)
@@ -587,10 +634,14 @@ local function playerPose(p, rig, t, dt)
 		return "air"
 	end
 	if rig.airT then
-		-- landing: the knees absorb it
+		-- landing: the knees absorb it, as hard as the fall was (a hop barely, a drop off a ledge fully)
+		local k = clamp((-(rig.airVy or 0) - 4) / 36, 0.15, 1) * clamp((t - rig.airT) / 0.35, 0.3, 1)
 		rig.landT = t
 		rig.airT = nil
-		R.kick(rig, -0.8, 0, 0, -0.6, 0, 0, 0, 0, 1.4, 0, 0.3, 0.3, 0, 0)
+		R.kick(rig, -0.8 * k, 0, 0, -0.6 * k, 0, 0, 0, 0, 1.4 * k, 0, 0.3 * k, 0.3 * k, 0, 0)
+	end
+	if not air then
+		rig.airVy = 0
 	end
 	POSE.idle(p, rig, t, 0, 1, rig.model, dt)
 	return "ground"
@@ -618,8 +669,9 @@ local function updateRig(rig, model, t, dt, lod, rdt)
 		end
 		rig.head = model:FindFirstChild("Head")
 	end
-	if t >= rig.nextGeo and lod >= 2 then
-		rig.nextGeo = t + 2.5
+	if (t >= rig.nextGeo and lod >= 2) or rig.geoNow then
+		rig.nextGeo = rig.geoNow and t + 0.5 or t + 2.5
+		rig.geoNow = false
 		R.computeGeo(rig)
 	end
 	-- (the root moves in real time: sensing uses the real frame time, never the slowed one)
@@ -645,10 +697,22 @@ local function updateRig(rig, model, t, dt, lod, rdt)
 			end
 			guard = Fight.guardPose(p, rig, t, dt)
 			if guard == "walk" then
-				-- the ring walk: robe, swagger, head nods
+				-- the ring walk: an upright, unhurried walk (it strides out rather than breaking into a jog),
+				-- the gloves carried at the waist on half bent arms with half the swing, a swagger of the
+				-- shoulders and a nod in step with the stride (standing: a slow bounce)
+				rig.walkMax = 1.45
 				POSE.idle(p, rig, t, 0, 1, model, dt)
-				p.W = p.W * A(0, 0, 0.04 * sin(t * 3.5))
-				p.Neck = p.Neck * A(0.06 * sin(t * 7), 0, 0)
+				local lo = rig.loco
+				local mv = lo.gaitW
+				p.LE = p.LE:Lerp(A(1.05, 0, 0), 0.85)
+				p.RE = p.RE:Lerp(A(1.05, 0, 0), 0.85)
+				p.LS = p.LS * A(0.1, 0, -0.05)
+				p.RS = p.RS * A(0.1, 0, 0.05)
+				rig.armScale = 0.5
+				-- (the pose is filtered on its way out: the stride's phase a touch ahead)
+				local ph = 2 * PI * (lo.phase - (1 - lo.duty) + 0.06)
+				p.W = p.W * A(0, 0.03 * sin(ph) * mv, 0.035 * math.cos(ph) * mv + 0.03 * sin(t * 3.5) * (1 - mv))
+				p.Neck = p.Neck * A(0.035 * math.cos(2 * ph) * mv + 0.04 * sin(t * 7) * (1 - mv), 0, 0)
 			end
 		end
 		rig.lookW = 0
@@ -859,6 +923,18 @@ local function updateRig(rig, model, t, dt, lod, rdt)
 			rig.nOut = nil
 		end
 	end
+	-- a walker's arm swing, in step with the legs (after the filters, like the pelvis): opposite the legs,
+	-- faded out while a gesture owns the arms
+	local sL, eL, zL, sR, eR, zR = Loco.armOffsets(rig, dt, rig.gesture ~= nil)
+	if sL and joints.LS and joints.LE and joints.RS and joints.RE then
+		rig.armOut = true
+		rig.lsOut = A(sL, 0, zL) * joints.LS.cur
+		rig.leOut = joints.LE.cur * A(eL, 0, 0)
+		rig.rsOut = A(sR, 0, zR) * joints.RS.cur
+		rig.reOut = joints.RE.cur * A(eR, 0, 0)
+	else
+		rig.armOut = false
+	end
 	if plantOn then
 		-- planting starts, or the rig crosses the foot-IK distance: blend the legs over (no pop)
 		local nearLegs = lod >= 2
@@ -877,7 +953,7 @@ local function updateRig(rig, model, t, dt, lod, rdt)
 			rootT = Loco.feet(rig, p, rootT, t, dt, true)
 			rig.rootOut = rootT
 		else
-			Loco.farLegs(p, rig, rootT, dt)
+			Loco.farLegs(p, rig, rootT, t, dt)
 			rig.foot.L.P, rig.foot.R.P = nil, nil
 		end
 		-- blend into the IK legs when planting starts (get-up, leaving a seat)
@@ -912,6 +988,8 @@ local function updateRig(rig, model, t, dt, lod, rdt)
 				v = rig.wOut
 			elseif k == "Neck" and rig.nOut then
 				v = rig.nOut
+			elseif rig.armOut and ARM_OUT[k] then
+				v = rig[ARM_OUT[k]]
 			end
 			if springs then
 				v = R.springOut(rig, k, v)
@@ -1004,6 +1082,9 @@ RunService.PreSimulation:Connect(function(dt)
 			if rig.conn then
 				rig.conn:Disconnect()
 			end
+			if rig.hipConn then
+				rig.hipConn:Disconnect()
+			end
 			rigs[model] = nil
 			continue
 		end
@@ -1034,6 +1115,17 @@ RunService.PreSimulation:Connect(function(dt)
 		end
 		rig.frameSkip += 1
 		if rig.frameSkip < step then
+			-- (a player character's own Animate tracks write the joints every frame: a skipped frame holds
+			-- our last pose instead of flashing Roblox's walk between ours)
+			if rig.isPlayer and rig.outT and not rig.released then
+				local out = rig.outT
+				for k, j in pairs(rig.joints) do
+					local v = out[k]
+					if v and j.motor.Parent then
+						j.motor.Transform = v
+					end
+				end
+			end
 			continue
 		end
 		rig.frameSkip = 0

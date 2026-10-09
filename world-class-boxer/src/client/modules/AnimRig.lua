@@ -436,6 +436,9 @@ function AnimRig.clearPose(rig)
 	rig.guardL, rig.guardR = nil, nil
 	rig.gaitKind = nil
 	rig.armSwing = 0
+	-- (a pose may scale the walker's arm swing - gloves carried on a ring walk - or let him stride out
+	-- further before he breaks into a jog; both per frame)
+	rig.armScale, rig.walkMax = 1, nil
 end
 
 -- muscle contraction for BodyFX: side -1 left, 1 right, nil both
@@ -537,8 +540,10 @@ function AnimRig.ankleOf(leg, P, F, th)
 end
 
 -- two-bone leg IK: ankle target (HRP space) -> hip / knee / ankle Transforms; the foot keeps its
--- yaw (relative to the root) and pitch whatever the leg does; `knee` turns the knee in / out
-function AnimRig.solveLeg(rig, p, s, rootT, targetHRP, footYaw, pitch, knee)
+-- yaw (relative to the root) and pitch whatever the leg does; `knee` turns the knee in / out;
+-- `soft` = the soft-reach band as a share of the leg (default 0.06: a fighter's knee never locks; a
+-- walker's is narrow so the leg straightens at heel strike and in mid-stance)
+function AnimRig.solveLeg(rig, p, s, rootT, targetHRP, footYaw, pitch, knee, soft)
 	local g = rig.geo
 	local leg = g[s]
 	local hipFrame = g.rootC0 * rootT * g.rootC1inv * leg.hipC0
@@ -551,9 +556,9 @@ function AnimRig.solveLeg(rig, p, s, rootT, targetHRP, footYaw, pitch, knee)
 	-- soft reach: the knee eases straight instead of snapping when a foot is stretched out
 	local full = (leg.l1 + leg.l2) * 0.999
 	local dm = d.Magnitude
-	local soft = K.softReach(dm, full, full * 0.06)
-	if soft < dm and dm > 1e-6 then
-		d = d * (soft / dm)
+	local sr = K.softReach(dm, full, full * (soft or 0.06))
+	if sr < dm and dm > 1e-6 then
+		d = d * (sr / dm)
 	end
 	local hp, roll, flexK = K.legIK(d.X, d.Y, d.Z, leg.l1, leg.l2)
 	-- the knee tracks over the toes: twist the leg about the hip -> ankle line
@@ -589,6 +594,38 @@ function AnimRig.dropFor(rig, s, rootT, targetHRP, slack)
 	local need = sqrt(reach * reach - h2)
 	local dy = hip.Y - targetHRP.Y
 	return max(0, dy - need)
+end
+
+-- the hip -> ankle distance, as a share of the leg (l1 + l2), that leaves the knee bent by `knee`
+-- (rad) once solveLeg's soft reach (band `soft`) has pulled it in: the pelvis height that gives a
+-- walker's stance leg exactly the knee the gait wants (inside the band the soft curve is inverted,
+-- so the IK lands on that knee instead of a few degrees more)
+function AnimRig.slackFor(leg, knee, soft)
+	local l1, l2 = leg.l1, leg.l2
+	local d = sqrt(l1 * l1 + l2 * l2 + 2 * l1 * l2 * cos(knee)) / (l1 + l2)
+	local band = 0.999 * soft
+	local start = 0.999 - band
+	if d <= start or band <= 0 then
+		return d
+	end
+	-- softReach(x) = start + band * (1 - exp(-(x - start) / band)) = d  ->  x
+	return start - band * math.log(1 - min(0.995, (d - start) / band))
+end
+
+-- signed dropFor: how far the pelvis must come down (> 0) or may rise (< 0) for the foot at
+-- targetHRP to sit at exactly `slack` of the leg's length; a foot out of reach at any height asks
+-- for `far` (the caller clamps)
+function AnimRig.needFor(rig, s, rootT, targetHRP, slack, far)
+	local g = rig.geo
+	local leg = g[s]
+	local hip = (g.rootC0 * rootT * g.rootC1inv * leg.hipC0).Position
+	local reach = (leg.l1 + leg.l2) * slack
+	local dx, dz = targetHRP.X - hip.X, targetHRP.Z - hip.Z
+	local h2 = dx * dx + dz * dz
+	if h2 >= reach * reach then
+		return far
+	end
+	return hip.Y - targetHRP.Y - sqrt(reach * reach - h2)
 end
 
 ------------------------------------------------------------------------
