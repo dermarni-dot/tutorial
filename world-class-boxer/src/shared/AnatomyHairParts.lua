@@ -429,7 +429,7 @@ local function capShader(H, spec)
 		end
 		local orr, og, ob = lerp(scR, cr * k, m), lerp(scG, cg * k, m), lerp(scB, cb * k, m)
 		if partAt then
-			local gp = partAt(X, Y, Z)
+			local gp = partAt(X, Y, Z, tx)
 			if gp > 0 then
 				gp *= 0.85
 				orr, og, ob = lerp(orr, gapR, gp), lerp(og, gapG, gp), lerp(ob, gapB, gp)
@@ -450,6 +450,9 @@ function Parts.Cap(H, spec)
 		fadeLift = spec.fadeLift, thin = spec.thin, emerge = spec.emerge,
 		-- (a volume's dilated grid has no hairline row: its shell sinks over a longer run)
 		sinkW = spec.sinkW or (spec.radial and 0.07 or 0.03),
+		-- the cap texture's texel across a parting over the top of the head (capShader's texW at ~45 degrees
+		-- from the crown): the parting's thinning of the coverage is drawn at what the texture holds
+		partTx = H.L.tex and 0.56 * TAU / H.L.tex * 0.75 or nil,
 	})
 	local L = H.L
 	local name = spec.name or "HairCap"
@@ -1026,12 +1029,14 @@ function Parts.Curtain(H, spec)
 			end
 		end
 	end
-	-- split (studs): neighbouring columns that drift further apart than that (a short lock beside a long one at
-	-- the hem, strands parted by the shoulders and the back) part for the rest of their length - no stretched
-	-- quad bridging them as a flat panel; the lock ends hang free
+	-- split (studs, at spec.cols columns): neighbouring columns that drift further apart than that (a short lock
+	-- beside a long one at the hem, strands parted by the shoulders and the back) part for the rest of their
+	-- length - no stretched quad bridging them as a flat panel; the lock ends hang free. Fewer columns (a lower
+	-- detail) start further apart: the distance scales with their spacing, or every column pair would part
 	local linked
 	if spec.split then
-		local split2 = spec.split * spec.split
+		local sp = spec.split * (spec.cols or 22) / cols
+		local split2 = sp * sp
 		local splitAt = {}
 		for c = 1, cols - 1 do
 			local at = rings + 1
@@ -1322,7 +1327,8 @@ end
 -- spec: n, accept, len(r) (the arc), radius (ringlet radius), tube (strand radius), flow, lift, off(u), grav,
 -- hang = { prefix } (long ringlets swing), perTurn, piece, bounce (piece name for a bouncing cluster group),
 -- ply (coils per clump, wound round one another), inside (a volume's SDF the roots lie in) with hangLen(r) (how
--- far the clump hangs past where it comes out of it)
+-- far the clump hangs past where it comes out of it) and shell (the field of the mass's visible surface,
+-- Parts.Volume's second result: the clump is built from where it comes out of that)
 function Parts.Curls(H, spec)
 	local S, L = H.S, H.L
 	local count = max(3, floor((spec.n or 60) * L.k * (0.6 + 0.6 * H.density) * (H.nScale or 1) + 0.5))
@@ -1373,6 +1379,52 @@ function Parts.Curls(H, spec)
 			step(#pts * 4)
 			if not ie then
 				continue
+			end
+			if spec.shell then
+				-- spec.shell: the field of the mass's visible surface, which near its hairline lies well inside
+				-- vol: the clump comes out where it leaves that (bisection: inside at the root, outside past
+				-- vol). One with little of the mass over its root is not built: it hung from the bare nape
+				-- under the mass's edge
+				local sh = spec.shell
+				step(160)
+				if sh(x, y, z) > -0.06 then
+					continue
+				end
+				local p = pts[ie]
+				if sh(p[1], p[2], p[3]) > 0 then
+					local lo, hi = 1, ie
+					while hi - lo > 1 do
+						local mid = (lo + hi) // 2
+						local q = pts[mid]
+						if sh(q[1], q[2], q[3]) > 0 then
+							hi = mid
+						else
+							lo = mid
+						end
+						-- (a ray and the shell's depth search: ~160 field samples)
+						step(160)
+					end
+					ie = hi
+				end
+				-- where it crosses the shell on its last step in (three halvings): its first step out of the scalp
+				-- rises straight to its depth under the surface, so a clump kept from that step's start spent
+				-- its turns inside the mass - it starts 0.04 inside the crossing instead
+				local a, b = pts[ie - 1], pts[ie]
+				local lo, hi = 0, 1
+				for _ = 1, 3 do
+					local m = (lo + hi) * 0.5
+					if sh(lerp(a[1], b[1], m), lerp(a[2], b[2], m), lerp(a[3], b[3], m)) > 0 then
+						hi = m
+					else
+						lo = m
+					end
+				end
+				step(640)
+				local seg = sqrt((b[1] - a[1]) ^ 2 + (b[2] - a[2]) ^ 2 + (b[3] - a[3]) ^ 2)
+				local f0 = (lo + hi) * 0.5 - 0.04 / max(seg, 1e-4)
+				if f0 > 0 then
+					pts[ie - 1] = { lerp(a[1], b[1], f0), lerp(a[2], b[2], f0), lerp(a[3], b[3], f0) }
+				end
 			end
 			local i0, run = ie, 0
 			while i0 > 1 and run < 0.04 do
@@ -1564,7 +1616,22 @@ function Parts.Volume(H, spec)
 		cutDist = cut0.dist
 	end
 	piece = Parts.Cap(H, t)
-	return piece
+	-- second result (radial volumes): the visible shell as a field - how far (x, y, z) lies outside it along the
+	-- ray from the head's centre. Near its hairline the shell rolls off well inside vol, so what hangs out of
+	-- the mass has to come out of this surface, not vol's (cut at vol's it started in the air under the mass)
+	if not spec.radial then
+		return piece
+	end
+	local cut = H.cut
+	return piece, function(x, y, z)
+		local dx, dy, dz = x - S.cx, y - S.cy, z - S.cz
+		local l = sqrt(dx * dx + dy * dy + dz * dz)
+		if l < 1e-4 then
+			return -1
+		end
+		local sx, sy, sz, tr = S.ray(dx / l, dy / l, dz / l, 0, clamp(l, 0.05, 2.5))
+		return l - tr - cut.thick(sx, sy, sz) - t.extra(sx, sy, sz)
+	end
 end
 
 -- coil clusters: groups of 3-5 short springy coils standing half out of a volume's surface (sunk by half their

@@ -623,17 +623,26 @@ function Kit.Cut(S, spec)
 		return lerp(1, lerp(bottom, 1, u * u * (3 - 2 * u)), w)
 	end
 
-	-- a parting's gap at a nominal point: 0 off it .. 1 on its line. A thin line (~0.008 studs, 1-2 texels)
-	-- from the front hairline back over the top, fading out toward the crown, its edges ragged where the
-	-- strands on either side fall over it
-	local function partAt(x, y, z)
+	-- a parting's gap at a nominal point: 0 off it .. 1 on its line. A thin line (~0.005 studs) from the front
+	-- hairline back over the top, fading out toward the crown, its edges ragged where the strands on either
+	-- side fall over it. tx: the texel size where a texture draws it (nominal studs). The line is then
+	-- anti-aliased like the hairline: blended over at least ~1.3 texels and lighter for it (by the square root
+	-- of the widening: a little bolder than its own darkness spread out, or it faded away), its ragged edge
+	-- only as fine as the texture holds - narrower than a texel and sampled at texel centres it broke into a
+	-- chain of dots
+	local function partAt(x, y, z, tx)
 		if not part or y <= 0.3 or z >= 0.22 then
 			return 0
 		end
 		local w = 0.004 + 0.002 * (1 - grow)
-		local pd = abs(x - part * (1 - 0.15 * (z + 0.45))) + 0.0025 * noise3(y * 60, z * 60, 3.1, seed + 17)
-		return (1 - smoothstep(w * 0.5, w, pd)) * smoothstep(0.3, 0.36, y) * (1 - smoothstep(0.12, 0.22, z))
+		local wA = max(w, 1.3 * (tx or 0))
+		local rag = 1 - smoothstep(0.1, 0.25, 60 * (tx or 0))
+		local pd = abs(x - part * (1 - 0.15 * (z + 0.45))) + (rag > 0 and 0.0025 * rag * noise3(y * 60, z * 60, 3.1, seed + 17) or 0)
+		return sqrt(w / wA) * (1 - smoothstep(wA * 0.5, wA, pd)) * smoothstep(0.3, 0.36, y) * (1 - smoothstep(0.12, 0.22, z))
 	end
+	-- the texel size of the texture the coverage is drawn into (spec.partTx, nominal studs; nil: geometry only):
+	-- the parting's thinning below is part of the coverage the texture shows, anti-aliased the same way
+	local partTx = spec.partTx
 
 	-- the coverage without the hairline's own edge (the fade, the region, the parting, the density): what the
 	-- hair would be at this point were the hairline not there. Returns rest, fade factor
@@ -647,7 +656,7 @@ function Kit.Cut(S, spec)
 		if part then
 			-- a parting thins the hair a little along its line (the shell barely dips: no groove); the gap itself
 			-- is drawn by the texture (partAt), narrow and in the shadowed scalp's tone
-			c *= lerp(0.85, 1, 1 - partAt(x, y, z))
+			c *= lerp(0.85, 1, 1 - partAt(x, y, z, partTx))
 		end
 		return c * density, fd
 	end
