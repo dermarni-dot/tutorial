@@ -1578,6 +1578,8 @@ function Kit.Cap(S, m, opts)
 	-- radial: the extra (a volume's depth) goes along the grid ray from the centre, not the scalp normal: a big
 	-- mass over a concave scalp (the temples) cannot fold over itself
 	local EX = opts.radial and table.create(nG, 0) or nil
+	-- radial: the hairline distance per grid vertex (the shell is clipped along the line, see below)
+	local HD = opts.radial and table.create(nG, 0) or nil
 	-- warm starts: each column's ray length from the row above (rays converge in two or three steps)
 	local tcol = table.create(cols + 1, 0.5)
 	for r = 0, rows do
@@ -1614,6 +1616,9 @@ function Kit.Cap(S, m, opts)
 				end
 			end
 			OFF[i], CV[i] = t, cv
+			if HD then
+				HD[i] = dist(x, y, z)
+			end
 			-- a ray, the cut, a normal and the callbacks per vertex
 			step(12)
 		end
@@ -1656,6 +1661,16 @@ function Kit.Cap(S, m, opts)
 				R[i1], NX[i1], NY[i1], NZ[i1] = R[i0], NX[i0], NY[i0], NZ[i0]
 			end
 			step(nG)
+		end
+		if opts.radial then
+			-- a volume's dilated grid reaches well past its hairline (the temples, round the ears), where the
+			-- shell is meant to lie under the skin: there it keeps the scalp's own radius (filled over the
+			-- temples' hollow it stood above the skin, a row of pale facets along the hairline)
+			for i = 1, nG do
+				if OFF[i] < -0.002 and (not EX or EX[i] <= 0) then
+					R[i] = R0[i]
+				end
+			end
 		end
 	end
 	for i = 1, nG do
@@ -1716,6 +1731,89 @@ function Kit.Cap(S, m, opts)
 	end
 	-- a quad whose four corners lie under the skin is never seen: left out
 	local under = opts.under or -0.0025
+	-- A volume's dilated grid cannot carry hairline rows: its triangles are clipped along the hairline instead
+	-- (half its softness past it), the cut edge's vertices there, a little under the skin. Left whole, the
+	-- quads straddling the line lay nearly in the skin for ~0.07 past it, poking through the head mesh's facets
+	-- as a band of pale scalp-toned teeth along the temples and the forehead
+	local tri3 = tri
+	if HD then
+		local U, C = m.U, m.C
+		local clipAt = -0.5 * (cut.soft or 0.016)
+		local edgeV = {}
+		local tws = 0.5
+		-- the vertex where the line crosses the grid edge between grid vertices ia and ib (shared)
+		local function edgeVertex(ia, ib)
+			local key = ia < ib and ia * nG + ib or ib * nG + ia
+			local v = edgeV[key]
+			if v then
+				return v
+			end
+			-- the crossing along the edge: bisected on the hairline distance itself (the line's notches are not
+			-- linear between two grid vertices: a straight guess left slivers of skin or of shell along it)
+			local ins = HD[ia] >= clipAt
+			local lo, hi = 0, 1
+			local x, y, z
+			for _ = 1, 7 do
+				local mid = (lo + hi) * 0.5
+				local dx, dy, dz = norm3(lerp(DX[ia], DX[ib], mid), lerp(DY[ia], DY[ib], mid), lerp(DZ[ia], DZ[ib], mid))
+				local tr
+				x, y, z, tr = S.ray(dx, dy, dz, 0, tws)
+				tws = tr
+				if (dist(x, y, z) >= clipAt) == ins then
+					lo = mid
+				else
+					hi = mid
+				end
+			end
+			local t = (lo + hi) * 0.5
+			local dx, dy, dz = norm3(lerp(DX[ia], DX[ib], t), lerp(DY[ia], DY[ib], t), lerp(DZ[ia], DZ[ib], t))
+			x, y, z = S.ray(dx, dy, dz, 0, tws)
+			local nx, ny, nz = S.normal(x, y, z)
+			x, y, z = x - nx * 0.005, y - ny * 0.005, z - nz * 0.005
+			local va, vb = first + ia - 1, first + ib - 1
+			v = vertex(m, x, y, z, lerp(U[va * 2 - 1], U[vb * 2 - 1], t), lerp(U[va * 2], U[vb * 2], t),
+				lerp(C[va * 3 - 2], C[vb * 3 - 2], t), lerp(C[va * 3 - 1], C[vb * 3 - 1], t), lerp(C[va * 3], C[vb * 3], t))
+			local ex, ey, ez = norm3(lerp(N[va * 3 - 2], N[vb * 3 - 2], t), lerp(N[va * 3 - 1], N[vb * 3 - 1], t), lerp(N[va * 3], N[vb * 3], t))
+			if ex == 0 and ey == 0 and ez == 0 then
+				ex, ey, ez = nx, ny, nz
+			end
+			N[v * 3 - 2], N[v * 3 - 1], N[v * 3] = ex, ey, ez
+			edgeV[key] = v
+			-- (eight ray marches, seven hairline distances and a normal)
+			step(150)
+			return v
+		end
+		-- (grid indices i1..i3 in the triangle's winding order)
+		tri3 = function(_, a, b, c, i1, i2, i3)
+			local in1, in2, in3 = HD[i1] >= clipAt, HD[i2] >= clipAt, HD[i3] >= clipAt
+			if in1 and in2 and in3 then
+				tri(m, a, b, c)
+				return
+			elseif not (in1 or in2 or in3) then
+				return
+			end
+			-- rotate so the lone vertex (the one inside, or the one outside) comes first, winding kept
+			local V, I = { a, b, c }, { i1, i2, i3 }
+			local ins = { in1, in2, in3 }
+			local nIn = (in1 and 1 or 0) + (in2 and 1 or 0) + (in3 and 1 or 0)
+			local k = 1
+			for j = 1, 3 do
+				if ins[j] == (nIn == 1) then
+					k = j
+				end
+			end
+			local va, vb, vc = V[k], V[k % 3 + 1], V[(k + 1) % 3 + 1]
+			local ga, gb, gc = I[k], I[k % 3 + 1], I[(k + 1) % 3 + 1]
+			local pab, pac = edgeVertex(ga, gb), edgeVertex(ga, gc)
+			if nIn == 1 then
+				tri(m, va, pab, pac)
+			else
+				-- a outside, b and c inside: the quad b, c, pac, pab
+				tri(m, pab, vb, vc)
+				tri(m, pab, vc, pac)
+			end
+		end
+	end
 	for r = 0, rows - 1 do
 		for c = 0, cols - 1 do
 			local a = first + r * stride + c
@@ -1729,8 +1827,8 @@ function Kit.Cap(S, m, opts)
 			end
 			if not (o1 < under and o2 < under and o3 < under and o4 < under) then
 				-- seen from outside: azimuth grows toward +X from the back (clockwise from above), polar angle downward
-				tri(m, a, d, b)
-				tri(m, b, d, e)
+				tri3(m, a, d, b, ia, ia + stride, ia + 1)
+				tri3(m, b, d, e, ia + 1, ia + stride, ia + stride + 1)
 			end
 		end
 	end

@@ -151,7 +151,7 @@ local function capShader(H, spec)
 	-- aliasing into moire rings ("wood grain"). A per-texel white noise carries the finest grain: random
 	-- speckle has no lattice to alias.
 	local F00, F0, F1, F2 = 9 / grain, 22 / grain, 55 / grain, 120 / grain
-	local TEX = spec.texSize or H.L.tex or 256
+	local TEX = H.L.tex or 256
 	local texH, texW = 0.56 * 2.75 / TEX, 0.56 * TAU / TEX
 	-- value noise shows its lattice (a honeycomb of blobs) well before the Nyquist limit: fade an octave out
 	-- from 0.1 cycles per texel, gone at 0.25
@@ -484,12 +484,9 @@ function Parts.Cap(H, spec)
 	})
 	if L.tex then
 		-- pad: the texels round the cap's UV islands (culled shaved quads leave big empty areas) take the edge
-		-- colours, so filtering and the far mip levels never pull in black
-		-- (spec.tex: a short cut's shell at full detail is the whole style, its hairline seen close in the
-		-- creator and the fighter card: a finer texture there, a texel ~0.007 studs at the line)
-		local tex = (spec.tex and L.tex >= 256) and spec.tex or L.tex
-		spec.texSize = tex
-		piece.texture = { w = tex, h = tex, shade = capShader(H, spec), pad = tex >= 256 and 10 or 6 }
+		-- colours, so filtering and the far mip levels never pull in black. (256 at full detail: the hairline is
+		-- the shader's anti-aliased edge, smooth at that size; a 512 cap cost 4-7x the paint time and 1 MB a head)
+		piece.texture = { w = L.tex, h = L.tex, shade = capShader(H, spec), pad = L.tex >= 256 and 10 or 6 }
 	end
 	return piece
 end
@@ -792,8 +789,9 @@ end
 -- one side of a sheet over a grid of points G[c][i] (c across, i along the strands), columns c0..c1 (every
 -- `stride`-th, the last always), rings i0..i1: side = 1 the outer face at +d along the sheet's normal, -1 the
 -- inner face at -d; lift(c, i) -> extra outward offset of the outer face (locks: ridges and grooves; normals
--- from the lifted surface so they shade); colour(c, t, y, side) -> r, g, b; tFn(i) -> t (0 root .. 1 tip)
-local function sheetSide(m, G, c0, c1, i0, i1, d, out, colour, tFn, side, stride, lift)
+-- from the lifted surface so they shade); colour(c, t, y, side) -> r, g, b; tFn(i) -> t (0 root .. 1 tip);
+-- linked(cA, cB, i) -> false where the columns cA..cB have parted between rings i and i + 1 (no quad there)
+local function sheetSide(m, G, c0, c1, i0, i1, d, out, colour, tFn, side, stride, lift, linked)
 	local N = m.N
 	local vertex, tri = MeshKit.Vertex, MeshKit.Tri
 	stride = stride or 1
@@ -832,7 +830,9 @@ local function sheetSide(m, G, c0, c1, i0, i1, d, out, colour, tFn, side, stride
 		for i = i0, i1 do
 			local p = G[c][i]
 			local nx, ny, nz = baseNormal(c, i)
-			local off = d * side + ((side > 0 and lift) and lift(c, i) or 0)
+			-- (the lift bulges the outer face out and, given an inner lift, the inner face in: a lock with a
+			-- lens cross-section, not a ribbon)
+			local off = d * side + (lift and lift(c, i) or 0) * side
 			local o = (k - 1) * nrow + (i - i0) + 1
 			PX[o], PY[o], PZ[o] = p[1] + nx * off, p[2] + ny * off, p[3] + nz * off
 			BN[o] = { nx, ny, nz }
@@ -870,6 +870,9 @@ local function sheetSide(m, G, c0, c1, i0, i1, d, out, colour, tFn, side, stride
 	local P = m.P
 	for c = 0, ncol - 2 do
 		for i = 0, nrow - 2 do
+			if linked and not linked(cl[c + 1], cl[c + 2], i0 + i) then
+				continue
+			end
 			local a = first + c * nrow + i
 			local b = a + 1
 			local e = a + nrow
@@ -896,9 +899,9 @@ local function sheetSide(m, G, c0, c1, i0, i1, d, out, colour, tFn, side, stride
 end
 
 -- a two-sided sheet (outer face lifted by `lift`, the inner one every `innerStride`-th column)
-local function sheet(m, G, c0, c1, i0, i1, d, out, colour, tFn, lift, innerStride)
-	sheetSide(m, G, c0, c1, i0, i1, d, out, colour, tFn, 1, 1, lift)
-	sheetSide(m, G, c0, c1, i0, i1, d, out, colour, tFn, -1, innerStride or 1, nil)
+local function sheet(m, G, c0, c1, i0, i1, d, out, colour, tFn, lift, innerStride, innerLift, linked)
+	sheetSide(m, G, c0, c1, i0, i1, d, out, colour, tFn, 1, 1, lift, linked)
+	sheetSide(m, G, c0, c1, i0, i1, d, out, colour, tFn, -1, innerStride or 1, innerLift, linked)
 end
 
 -- Curtain: the continuous mass of long hair (nothing shows through between the clumps): columns of strands
@@ -910,7 +913,9 @@ end
 -- face rises in a rounded ridge per lock with a groove between locks (its normals from the ridged surface:
 -- the locks shade like sculpted hair), each lock longer in its middle (pointed lock ends, an uneven hem), the
 -- grooves darker and the crowns lighter, a fine strand streak from column to column; layers = { k1, k2, .. }
--- (a layered cut: every lock's length scaled by one of them)
+-- (a layered cut: every lock's length scaled by one of them), round (a semicircular bundle across each lock, its
+-- grooves darker), inner (the inner face bulges too: a lens-shaped lock); split (studs: columns drifting further
+-- apart than that part from there on)
 function Parts.Curtain(H, spec)
 	local S, L = H.S, H.L
 	local lodK = H.lod == "full" and 1 or (H.lod == "medium" and 0.6 or 0.4)
@@ -925,6 +930,11 @@ function Parts.Curtain(H, spec)
 	local function ridgeOf(c)
 		if not locks then
 			return 1
+		end
+		if locks.round then
+			-- (a rounded bundle: a semicircle across the lock, its crest column in the middle)
+			local u = 2 * ((c - 1) % lw) / lw - 1
+			return math.sqrt(max(0, 1 - u * u))
 		end
 		return sin(pi * (((c - 1) % lw) / lw)) ^ 0.8
 	end
@@ -989,18 +999,60 @@ function Parts.Curtain(H, spec)
 		local k
 		if side and side < 0 then
 			k = innerShade * (0.9 + 0.2 * inf.rnd)
+			if locks and locks.inner then
+				-- (a lens-shaped lock: its inner face's grooves dark too)
+				k *= lerp(0.72, 1.06, inf.ridge ^ 0.7)
+			end
 		else
 			-- crowns lighter, grooves darker; a fine streak from column to column
-			k = shade * (locks and lerp(0.7, 1.07, inf.ridge) or 1) * (1 - streakK + 2 * streakK * inf.rnd) * (c % 2 == 0 and 1.03 or 0.97)
+			k = shade * (locks and (locks.round and lerp(0.56, 1.07, inf.ridge ^ 0.7) or lerp(0.7, 1.07, inf.ridge)) or 1)
+				* (1 - streakK + 2 * streakK * inf.rnd) * (c % 2 == 0 and 1.03 or 0.97)
 		end
 		return r * k, g * k, b * k
 	end
-	local lift
+	local lift, innerLift
 	if locks then
 		local amp, root = locks.amp or 0.012, locks.root or 0.002
 		lift = function(c, i)
 			local t = (i - 1) / (rings - 1)
 			return info[c].ridge * (root + (amp - root) * smoothstep(0.05, 0.45, t))
+		end
+		if locks.inner then
+			-- the inner face bulges too (locks.inner of the outer ridge): a lock is a bundle with a lens
+			-- cross-section, its grooves open on both faces
+			local inner = locks.inner
+			innerLift = function(c, i)
+				return lift(c, i) * inner
+			end
+		end
+	end
+	-- split (studs): neighbouring columns that drift further apart than that (a short lock beside a long one at
+	-- the hem, strands parted by the shoulders and the back) part for the rest of their length - no stretched
+	-- quad bridging them as a flat panel; the lock ends hang free
+	local linked
+	if spec.split then
+		local split2 = spec.split * spec.split
+		local splitAt = {}
+		for c = 1, cols - 1 do
+			local at = rings + 1
+			local A, B = G[c], G[c + 1]
+			for i = 2, rings do
+				local a, b = A[i], B[i]
+				local dx, dy, dz = a[1] - b[1], a[2] - b[2], a[3] - b[3]
+				if dx * dx + dy * dy + dz * dz > split2 then
+					at = i
+					break
+				end
+			end
+			splitAt[c] = at
+		end
+		linked = function(cA, cB, i)
+			for c = cA, cB - 1 do
+				if i + 1 >= splitAt[c] then
+					return false
+				end
+			end
+			return true
 		end
 	end
 	local innerStride = spec.innerStride or 1
@@ -1028,13 +1080,13 @@ function Parts.Curtain(H, spec)
 			table.sort(lefts)
 			local cut = clamp(lefts[floor(#lefts / 2) + 1], 0.1, 0.8)
 			local ki = clamp(floor(cut * (rings - 1) + 1.5), 2, rings - 2)
-			sheet(static.mesh, G, c, cEnd, 1, ki + 1, d, out, colour, tF, lift, innerStride)
+			sheet(static.mesh, G, c, cEnd, 1, ki + 1, d, out, colour, tF, lift, innerStride, innerLift, linked)
 			if L.segs >= 2 and rings - ki >= 5 then
 				local mid = ki + floor((rings - ki) / 2)
 				local p1, s1 = Parts.GroupPiece(H, spec.hang.prefix or "HairClump", g, 1, mat)
 				local p2, s2 = Parts.GroupPiece(H, spec.hang.prefix or "HairClump", g, 2, mat)
-				sheet(p1.mesh, G, c, cEnd, ki, mid + 1, d * 0.9, out, colour, tF, lift, innerStride)
-				sheet(p2.mesh, G, c, cEnd, mid, rings, d * 0.85, out, colour, tF, lift, innerStride)
+				sheet(p1.mesh, G, c, cEnd, ki, mid + 1, d * 0.9, out, colour, tF, lift, innerStride, innerLift, linked)
+				sheet(p2.mesh, G, c, cEnd, mid, rings, d * 0.85, out, colour, tF, lift, innerStride, innerLift, linked)
 				for k = c, cEnd do
 					local q0, q1, q2 = G[k][ki], G[k][mid], G[k][rings]
 					acc(s1.piv, q0[1], q0[2], q0[3])
@@ -1044,7 +1096,7 @@ function Parts.Curtain(H, spec)
 				end
 			else
 				local p1, s1 = Parts.GroupPiece(H, spec.hang.prefix or "HairClump", g, 1, mat)
-				sheet(p1.mesh, G, c, cEnd, ki, rings, d * 0.9, out, colour, tF, lift, innerStride)
+				sheet(p1.mesh, G, c, cEnd, ki, rings, d * 0.9, out, colour, tF, lift, innerStride, innerLift, linked)
 				for k = c, cEnd do
 					local q0, q2 = G[k][ki], G[k][rings]
 					acc(s1.piv, q0[1], q0[2], q0[3])
@@ -1052,7 +1104,7 @@ function Parts.Curtain(H, spec)
 				end
 			end
 		else
-			sheet(static.mesh, G, c, cEnd, 1, rings, d, out, colour, tF, lift, innerStride)
+			sheet(static.mesh, G, c, cEnd, 1, rings, d, out, colour, tF, lift, innerStride, innerLift, linked)
 		end
 		c = c1 + 1
 	end
@@ -1094,14 +1146,31 @@ Parts.SECTIONS = {
 }
 
 -- Round strands (locs, braids, twists). spec: n, accept, len(r), r (base radius), section (Parts.SECTIONS key),
--- period (braids / twists: studs per crossing), flow, lift, stick, grav, stiff, free, off(u, r), hang = { prefix },
--- dir(r) -> initial direction, seed, tip ("dome" | "point"), ringsPer (rings per stud), shade, sides, bend
+-- period (braids / twists: studs per crossing), flow, flowFor(r) (a root's own flow, or nil for flow), lift, stick,
+-- grav, stiff, free, off(u, r, r0, len), hang = { prefix }, dir(r) -> initial direction, seed, tip ("dome" |
+-- "point"), ringsPer (rings per stud), ringsGlued (rings per stud over the run lying on the scalp, when it
+-- differs), sinkRoot (the root that many radii under the scalp), shade, sides, hangSides (the swinging segments'
+-- sides, when fewer), bend, hangLen(r) (the strand's length is its run over the scalp - grown once to find where
+-- it leaves it, len(r) then only has to reach that far - plus this), order(r) (roots built in increasing order:
+-- the ones a triangle budget may leave out last), roots (a ready root list in Parts.Roots' format instead)
 function Parts.Tubes(H, spec)
 	local S, L = H.S, H.L
 	local count = max(spec.minN or 3, floor((spec.n or 30) * (spec.lodK and spec.lodK[H.lod] or L.k) * (0.6 + 0.6 * H.density) * (H.nScale or 1) + 0.5))
-	local roots = Parts.Roots(H, count, spec.accept or function(_, _, _, _, c)
+	local roots = spec.roots or Parts.Roots(H, count, spec.accept or function(_, _, _, _, c)
 		return smoothstep(0.4, 0.8, c)
 	end, (spec.seed or 0) + H.seed + 31, spec.rootJitter, spec.rootsEven)
+	if spec.order then
+		local key = {}
+		for _, r in ipairs(roots) do
+			key[r] = spec.order(r)
+		end
+		table.sort(roots, function(a, b)
+			if key[a] ~= key[b] then
+				return key[a] < key[b]
+			end
+			return a[9] < b[9]
+		end)
+	end
 	local out, pal = H.out, H.pal
 	local sides = spec.sides or L.tubeSides
 	local mat = { material = spec.material or "Plastic", castShadow = true }
@@ -1126,19 +1195,35 @@ function Parts.Tubes(H, spec)
 			-- thick and thin locs (log-normal-ish: most near the mean, a few much thicker or thinner)
 			r0 *= math.exp(spec.rVar * 1.15 * (rng:Next() + rng:Next() + rng:Next() - 1.5))
 		end
-		local pts, leftAt = Kit.Grow(S, x, y, z, {
-			len = len, ds = clamp(len / 14, 0.015, 0.05), flow = spec.flow, lift = spec.lift or 0,
+		local gopts = {
+			len = len, ds = clamp(len / 14, 0.015, 0.05), flow = spec.flowFor and spec.flowFor(r) or spec.flow, lift = spec.lift or 0,
 			off = function(u)
-				return spec.off and spec.off(u, r, r0) or (r0 * 0.9 + 0.008)
+				return spec.off and spec.off(u, r, r0, len) or (r0 * 0.9 + 0.008)
 			end, stick = spec.stick or 0.7, grav = spec.grav or 1, stiff = spec.stiff or 0.4, free = spec.free,
 			bodyOff = (spec.bodyOff or 0.02) + r0, dir = spec.dir and spec.dir(r) or nil,
 			jitter = spec.jitter and { amp = spec.jitter.amp, freq = spec.jitter.freq, seed = H.seed + 7 } or nil,
-		})
+		}
+		local pts, leftAt = Kit.Grow(S, x, y, z, gopts)
+		if spec.hangLen then
+			-- a braid rooted at the front hairline runs over the whole skull before it hangs, one at the nape
+			-- hangs at once: the same hanging length below wherever each leaves the scalp
+			local run = Kit.Length(leftAt and table.move(pts, 1, leftAt, 1, {}) or pts)
+			len = run + spec.hangLen(r)
+			gopts.len, gopts.ds = len, clamp(len / 14, 0.015, 0.05)
+			pts, leftAt = Kit.Grow(S, x, y, z, gopts)
+		end
 		if spec.bend then
 			pts = spec.bend(pts, r)
 		end
+		if spec.sinkRoot and #pts >= 3 then
+			-- the root under the skin (sinkRoot x the radius): the strand comes out of the scalp, no open end
+			-- standing on it
+			local p, k = pts[1], spec.sinkRoot * r0
+			pts[1] = { p[1] - r[4] * k, p[2] - r[5] * k, p[3] - r[6] * k }
+		end
 		local plen = Kit.Length(pts)
 		local ringsPer = (spec.ringsPer or 22) * L.rings
+		local ringsGlued = spec.ringsGlued and spec.ringsGlued * L.rings
 		if kind == "plain" then
 			-- far away: the silhouette of more strands beats the smoothness of each
 			ringsPer = 4.5
@@ -1152,7 +1237,28 @@ function Parts.Tubes(H, spec)
 			ringsPer = max(ringsPer, 2.2 / period)
 		end
 		local rings = clamp(floor(plen * ringsPer + 2.5), 3, spec.maxRings or 60)
-		local rs = Kit.Resample(pts, rings)
+		local rs
+		local leftFrac = leftAt and (leftAt - 1) / (#pts - 1)
+		if ringsGlued and kind ~= "plain" and (not leftAt or leftAt > #pts - 2) then
+			-- lying on the scalp (all but its last step)
+			rs = Kit.Resample(pts, clamp(floor(plen * ringsGlued + 2.5), 3, spec.maxRings or 60))
+		elseif ringsGlued and leftAt and leftAt >= 3 and kind ~= "plain" then
+			-- a thin cord glued over the skull needs rings enough to bend with it (ringsGlued a stud there),
+			-- the hanging part fewer: resampled in two runs meeting where the strand leaves the scalp
+			local A = table.move(pts, 1, leftAt, 1, {})
+			local B = table.move(pts, leftAt, #pts, 1, {})
+			local la, lb = Kit.Length(A), Kit.Length(B)
+			local na = clamp(floor(la * ringsGlued + 1.5), 2, 40)
+			local nb = clamp(floor(lb * ringsPer + 1.5), 2, spec.maxRings or 60)
+			rs = Kit.Resample(A, na)
+			local rb = Kit.Resample(B, nb)
+			for i = 2, nb do
+				rs[#rs + 1] = rb[i]
+			end
+			leftFrac = (na - 1) / (#rs - 1)
+		else
+			rs = Kit.Resample(pts, rings)
+		end
 		if spec.wave and H.lod ~= "low" then
 			-- a gentle S-bend down the length (never ruler-straight)
 			rs = Kit.Wave(rs, out, spec.wave.amp * (0.6 + 0.8 * rnd), spec.wave.lam * (0.8 + 0.4 * rng:Next()), rnd * TAU, spec.wave.rise or 0.15)
@@ -1191,11 +1297,11 @@ function Parts.Tubes(H, spec)
 			return cr * k, cg * k, cb * k
 		end
 		local g = spec.hang and leftAt and Parts.GroupKey(H, x, z, da)
-		Parts.Emit(H, static, rs, leftAt and (leftAt - 1) / (#pts - 1), g, spec.hang and spec.hang.prefix or "HairLoc", mat,
+		Parts.Emit(H, static, rs, leftFrac, g, spec.hang and spec.hang.prefix or "HairLoc", mat,
 			function(mesh, pts2, ta, tb, openTip, thin)
 				local span = tb - ta
 				Kit.Tube(mesh, pts2, {
-					sides = sides, out = out, rad = r0, tip = openTip and "open" or (spec.tip or "dome"),
+					sides = (ta > 0 and spec.hangSides) or sides, out = out, rad = r0, tip = openTip and "open" or (spec.tip or "dome"),
 					r = function(t, a)
 						local tt = ta + t * span
 						return sec(tt, a, tt * plen + phase, r0) * ((thin and t < 0.05) and 0.94 or 1)
@@ -1214,7 +1320,9 @@ end
 ------------------------------------------------------------------------
 -- curl clusters (curly hair): each root grows a short arc, a ringlet spirals round it; neighbours cluster.
 -- spec: n, accept, len(r) (the arc), radius (ringlet radius), tube (strand radius), flow, lift, off(u), grav,
--- hang = { prefix } (long ringlets swing), perTurn, piece, bounce (piece name for a bouncing cluster group)
+-- hang = { prefix } (long ringlets swing), perTurn, piece, bounce (piece name for a bouncing cluster group),
+-- ply (coils per clump, wound round one another), inside (a volume's SDF the roots lie in) with hangLen(r) (how
+-- far the clump hangs past where it comes out of it)
 function Parts.Curls(H, spec)
 	local S, L = H.S, H.L
 	local count = max(3, floor((spec.n or 60) * L.k * (0.6 + 0.6 * H.density) * (H.nScale or 1) + 0.5))
@@ -1236,13 +1344,47 @@ function Parts.Curls(H, spec)
 		local len = spec.len(r)
 		local rad = (spec.radius or 0.02) * cs * (0.8 + 0.4 * rng:Next())
 		local tube = (spec.tube or 0.0075) * (0.85 + 0.3 * H.thick)
-		local pts, leftAt = Kit.Grow(S, x, y, z, {
+		local gopts = {
 			len = len, ds = clamp(len / 8, 0.01, 0.04), flow = spec.flow, lift = spec.lift or 0.5,
 			off = function(u)
 				return (spec.off and spec.off(u, r) or 0.02) + rad
 			end, stick = spec.stick or 0.3, grav = spec.grav or 0.2, stiff = spec.stiff or 0.5, free = spec.free,
 			bodyOff = 0.03 + rad, jitter = { amp = 0.3, freq = 8, seed = H.seed + 3 },
-		})
+		}
+		local pts, leftAt = Kit.Grow(S, x, y, z, gopts)
+		if spec.inside then
+			-- a clump rooted inside a volume (spec.inside, its SDF) is grown through it to where it comes out,
+			-- then hangLen(r) further; only its last ~0.04 inside is built (the rest is never seen)
+			local vol = spec.inside
+			local function exitAt(p)
+				for i = 2, #p do
+					if vol(p[i][1], p[i][2], p[i][3]) > 0 then
+						return i
+					end
+				end
+				return nil
+			end
+			local ie = exitAt(pts)
+			len = Kit.Length(ie and table.move(pts, 1, ie, 1, {}) or pts) + spec.hangLen(r)
+			gopts.len, gopts.ds = len, clamp(len / 8, 0.01, 0.04)
+			pts, leftAt = Kit.Grow(S, x, y, z, gopts)
+			ie = exitAt(pts)
+			-- (a step of the field search per point)
+			step(#pts * 4)
+			if not ie then
+				continue
+			end
+			local i0, run = ie, 0
+			while i0 > 1 and run < 0.04 do
+				local p, q = pts[i0], pts[i0 - 1]
+				run += math.sqrt((p[1] - q[1]) ^ 2 + (p[2] - q[2]) ^ 2 + (p[3] - q[3]) ^ 2)
+				i0 -= 1
+			end
+			if i0 > 1 then
+				pts = table.move(pts, i0, #pts, 1, {})
+				leftAt = leftAt and max(1, leftAt - i0 + 1) or nil
+			end
+		end
 		if spec.bend then
 			pts = spec.bend(pts, r)
 		end
@@ -1250,17 +1392,7 @@ function Parts.Curls(H, spec)
 		local plen = Kit.Length(rs)
 		-- a ringlet: about one turn per 2.4 radii of length, tighter for tighter curls
 		local turns = clamp(plen / (rad * (spec.pitch or 2.5)), 0.8, spec.maxTurns or 9)
-		local hp = Kit.Helix(rs, out, function(t)
-			return rad * (0.75 + 0.25 * smoothstep(0, 0.2, t)) * (1 - 0.2 * t)
-		end, turns, rnd * TAU, perTurn)
 		local static = Parts.Piece(H, spec.piece or "HairTop", mat)
-		local yAt = Parts.YAt(hp)
-		local col = function(t, a, rr)
-			local cr, cg, cb = pal.at(rnd, 0.25 + 0.75 * t, x, nil, yAt(t), (1 - t) * plen)
-			-- the outside of each loop catches light, the inside of the cluster is shadowed
-			local k = (0.8 + 0.3 * smoothstep(-0.6, 0.9, sin(a))) * (0.82 + 0.25 * t)
-			return cr * k, cg * k, cb * k
-		end
 		local g = spec.hang and leftAt and Parts.GroupKey(H, x, z, da)
 		local target = static
 		if spec.bounce and not g then
@@ -1268,20 +1400,42 @@ function Parts.Curls(H, spec)
 			H.bounce = H.bounce or {}
 			H.bounce[target.mesh.name] = true
 		end
-		Parts.Emit(H, target, hp, leftAt and (leftAt - 1) / (#pts - 1), g, spec.hang and spec.hang.prefix or "HairCurl", mat,
-			function(mesh, pts2, ta, tb, openTip, thin)
-				local span = tb - ta
-				Kit.Tube(mesh, pts2, {
-					sides = sides, out = out, rad = tube, tip = openTip and "open" or "point",
-					r = function(t)
-						local tt = ta + t * span
-						return tube * (0.75 + 0.25 * smoothstep(0, 0.1, tt)) * (1 - 0.55 * smoothstep(0.7, 1, tt))
-					end,
-					color = function(t, a, rr)
-						return col(ta + t * span, a, rr)
-					end,
-				})
-			end)
+		-- ply: a clump of that many coils wound round one another (each its own radius and phase, the
+		-- same turns: they twist together without crossing), not a single spring
+		local ply = spec.ply or 1
+		for k = 1, ply do
+			local radK, phK = rad, rnd * TAU
+			if ply > 1 then
+				radK *= 0.8 + 0.4 * rng:Next()
+				phK += TAU * (k - 1) / ply + rng:Range(-0.35, 0.35)
+			end
+			local hp = Kit.Helix(rs, out, function(t)
+				return radK * (0.75 + 0.25 * smoothstep(0, 0.2, t)) * (1 - 0.2 * t)
+			end, turns, phK, perTurn)
+			local yAt = Parts.YAt(hp)
+			-- (the coils of one clump a little apart in tone)
+			local kk = ply > 1 and (0.88 + 0.24 * rng:Next()) or 1
+			local col = function(t, a, rr)
+				local cr, cg, cb = pal.at(rnd, 0.25 + 0.75 * t, x, nil, yAt(t), (1 - t) * plen)
+				-- the outside of each loop catches light, the inside of the cluster is shadowed
+				local k2 = (0.8 + 0.3 * smoothstep(-0.6, 0.9, sin(a))) * (0.82 + 0.25 * t) * kk
+				return cr * k2, cg * k2, cb * k2
+			end
+			Parts.Emit(H, target, hp, leftAt and (leftAt - 1) / (#pts - 1), g, spec.hang and spec.hang.prefix or "HairCurl", mat,
+				function(mesh, pts2, ta, tb, openTip, thin)
+					local span = tb - ta
+					Kit.Tube(mesh, pts2, {
+						sides = sides, out = out, rad = tube, tip = openTip and "open" or "point",
+						r = function(t)
+							local tt = ta + t * span
+							return tube * (0.75 + 0.25 * smoothstep(0, 0.1, tt)) * (1 - 0.55 * smoothstep(0.7, 1, tt))
+						end,
+						color = function(t, a, rr)
+							return col(ta + t * span, a, rr)
+						end,
+					})
+				end)
+		end
 	end
 	return #roots
 end
@@ -1390,6 +1544,11 @@ function Parts.Volume(H, spec)
 		local dist, da = cutDist(x, y, z)
 		-- the volume rises from the hairline; over the forehead it rises more slowly (no brim over the eyes)
 		local e = lerp(frontEdge, edge, smoothstep(0.3, 1.6, da or 1))
+		if spec.edgeDepth then
+			-- a deep mass rolls off toward its hairline at a slope (its run edgeDepth x its depth), never
+			-- a wall of hair standing on the forehead and the temples
+			e = max(e, spec.edgeDepth * d)
+		end
 		local k = smoothstep(-0.004, e, dist) ^ 1.3
 		-- clusters: broad lumps the grid can carry
 		local b = amp * (0.7 * Kit.RNoise(x, y, z, f1, seed, 1) + 0.3 * Kit.RNoise(x, y, z, f2, seed + 1, 2))
