@@ -45,8 +45,11 @@ Limbs.SEAT_RIM = 0.08
 Limbs.SEAT_DOME = 0.45
 Limbs.DOME_TILT = math.rad(30)
 Limbs.DOME_RINGS = { full = { 0.06, 0.3, 0.62 }, medium = { 0.15, 0.55 }, low = { 0.4 } }
--- (the stretch of the arc over which the section's corners round off: the whole way up, an ellipse at the apex)
-Limbs.DOME_ROUND = { 0, 1 }
+-- (the stretch of the arc over which the section's corners round off, an ellipse from there to the apex: early,
+-- so its first ring's medial corners already sit well inside the seat, which follows a turning hip less and
+-- less up from the rim (AnatomyBodyTorso.HipShapes): kept square there, the corner stood out of a stance's
+-- turned thigh as a bright tab)
+Limbs.DOME_ROUND = { 0, 0.2 }
 -- the dome at h studs above the rim (H its height): the radius factor on the leg's section, and how far up it
 -- is (0 .. 1)
 local function domeAt(h, H)

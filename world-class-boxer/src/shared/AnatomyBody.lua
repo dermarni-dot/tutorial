@@ -15,9 +15,11 @@
 --   crisp garment edges and trims, skin mottling and pores (Kit.GridTexture, made lazily on the client)
 -- * motion hooks (full detail): blend shapes flex (every limb and torso piece), breathe (UpperTorso,
 --   LowerTorso), tense (UpperTorso), raiseL / raiseR / reachL / reachR (UpperTorso: the shoulder girdle lifts /
---   comes forward when the arm goes up; BodyFX drives them from the shoulder angle), all inside each
---   piece's box (the box rule); landmarks NeckBase, ChestCenter, NippleL/R, Navel, ShoulderTopL/R, ArmpitL/R,
---   ElbowL/R, WristL/R, HipL/R, KneeL/R, AnkleL/R (+ the trunks / glove / boot lettering spots)
+--   comes forward when the arm goes up; BodyFX drives them from the shoulder angle), hipLxx .. hipRzz (the
+--   trunks' seat skinned to the hips: BodyFX sets them from each thigh's rotation, AnatomyBodyTorso.HipShapes),
+--   all inside each piece's box (the box rule; the seat's padded for the hips' swing); landmarks NeckBase,
+--   ChestCenter, NippleL/R, Navel, ShoulderTopL/R, ArmpitL/R, ElbowL/R, WristL/R, HipL/R, KneeL/R, AnkleL/R
+--   (+ the trunks / glove / boot lettering spots)
 -- * levels of detail full / medium / low inside Config.Anatomy.tris.Body (9000 / 4000 / 1500)
 local Shared = script.Parent
 local MeshKit = require(Shared:WaitForChild("MeshKit"))
@@ -169,6 +171,47 @@ local function addMorph(m, name, ids, dxs, dys, dzs)
 		end
 	end
 	return n
+end
+
+-- grow a piece's box to 'reach' ({ x0, y0, z0, x1, y1, z1 }, the piece's space) where its blend shapes take
+-- vertices past it: one speck of a triangle (0.2 mm, a real triangle, so the engine's bounds count it like
+-- MeshKit.Bounds does) a hair past each face that must move, on the box's middle for the other two axes, the
+-- sides' level with the box's top (for the seat: under the crotch between the thighs, beside the waistband's
+-- top edge, away from the surface over the legs); colour, UV and normal from vertex 'like'. (Tools that read
+-- the piece's vertices as its surface skip triangles this small.)
+local PAD_SPECK, PAD_OVER = 2e-4, 0.004
+local function padBox(m, reach, like)
+	local b = { MeshKit.Bounds(m) }
+	local P, U, C = m.P, m.U, m.C
+	for axis = 1, 3 do
+		for side = 0, 1 do
+			local k = axis + side * 3
+			local past = side == 0 and reach[k] < b[k] - 1e-6 or side == 1 and reach[k] > b[k] + 1e-6
+			if past then
+				local p = { (b[1] + b[4]) / 2, b[5], (b[3] + b[6]) / 2 }
+				p[axis] = reach[k] + (side == 0 and -PAD_OVER or PAD_OVER)
+				local n = { 0, 0, 0 }
+				n[axis] = side == 0 and -1 or 1
+				-- (two offsets across the face: the speck lies in it)
+				local u, w = axis % 3 + 1, (axis + 1) % 3 + 1
+				local first = m.nv + 1
+				for q = 0, 2 do
+					local v = { p[1], p[2], p[3] }
+					v[u] += q == 1 and PAD_SPECK or 0
+					v[w] += q == 2 and PAD_SPECK or 0
+					local i = MeshKit.Vertex(m, v[1], v[2], v[3], U[like * 2 - 1], U[like * 2], C[like * 3 - 2], C[like * 3 - 1], C[like * 3])
+					MeshKit.SetNormal(m, i, n[1], n[2], n[3])
+				end
+				-- (wound to face out of the box)
+				if side == 0 then
+					MeshKit.Tri(m, first, first + 2, first + 1)
+				else
+					MeshKit.Tri(m, first, first + 1, first + 2)
+				end
+			end
+		end
+	end
+	return m
 end
 
 ------------------------------------------------------------------------
@@ -774,6 +817,16 @@ function Gen.Generate(look, lod, ctx)
 			end
 		end
 		morphSets.LowerTorso = { flex = { ids, dx, dy, dz }, breathe = { bids, bx, by, bz } }
+		if li.rim then
+			-- the seat follows the satin legs' tops through the hips' swing (Torso.HipShapes); its rim lies on the
+			-- box's bottom face, where AnatomyClient would pin it, so the box is padded to everything the shapes
+			-- reach
+			local hips, reach = Torso.HipShapes(sk, lt, li)
+			for name, set in pairs(hips) do
+				morphSets.LowerTorso[name] = set
+			end
+			padBox(lt, reach, li.rim.s)
+		end
 	end
 	pieces.LowerTorso = { mesh = lt, material = trunk and "SmoothPlastic" or "Plastic", reflectance = trunk and 0.03 or 0 }
 

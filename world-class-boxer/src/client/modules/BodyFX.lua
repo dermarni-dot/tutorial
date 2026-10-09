@@ -11,7 +11,8 @@
 --  * anatomy meshes (AnatomyClient built the "Body" section): the pieces' blend shapes are driven
 --    instead of part scales: flex (contraction + pump + jiggle), breathe (rig.breath / breathPhase),
 --    tense (core bracing, body-shot jiggle, Strain), raiseL / raiseR / reachL / reachR (the shoulder
---    girdle following the upper arm's angle). Writes are low rate and budgeted (MORPH_BUDGET vertex writes
+--    girdle following the upper arm's angle), hipLxx .. hipRzz (the trunks' seat skinned to each hip: the
+--    thigh's rotation in the pelvis's frame). Writes are low rate and budgeted (MORPH_BUDGET vertex writes
 --    per frame across every character, round-robin, only when a weight changes by a 0.1 step). Sweat shows
 --    as the pieces' Reflectance; rib bruises (LookFx ribsL / ribsR) and road grime (LookFx grime / the Grime
 --    attribute) are painted into the pieces: their vertex colours, or their colour textures (a few
@@ -107,6 +108,19 @@ local PIECES = {
 }
 -- the blend shapes BodyFX drives (a piece has the ones its mesh carries)
 local SHAPES = { "flex", "breathe", "tense", "raiseL", "raiseR", "reachL", "reachR" }
+-- the trunks' seat's hip shapes (AnatomyBodyTorso.HipShapes): per side the nine entries of the thigh's rotation
+-- in the pelvis's frame, row-major (HIP_NAMES[side][a * 3 + b - 3] = "hip" .. side .. a .. b)
+local HIP_NAMES = {}
+for _, s in ipairs({ "L", "R" }) do
+	local list = {}
+	for _, a in ipairs({ "x", "y", "z" }) do
+		for _, b in ipairs({ "x", "y", "z" }) do
+			list[#list + 1] = "hip" .. s .. a .. b
+			SHAPES[#SHAPES + 1] = "hip" .. s .. a .. b
+		end
+	end
+	HIP_NAMES[s] = list
+end
 -- vertex writes per frame, every character together: FaceFX writes about 1000 more (one Head SetMorphs per
 -- frame), and the contract caps every FX module together at 2000 (ANATOMY_CONTRACTS section 11)
 local MORPH_BUDGET = 1000
@@ -118,6 +132,12 @@ local BREATH_RANGE = 30 -- studs: breathing only this close (it rewrites the che
 
 local function quant(x)
 	return floor(x / MORPH_STEP + 0.5) * MORPH_STEP
+end
+-- the seat's hip shapes in finer steps (a 0.1 step of a rotation entry is ~6 degrees of thigh swing: the
+-- seat's rim stepped off the satin leg's rim ring by centimetres; at this step by a few millimetres)
+local HIP_STEP = 0.0125
+local function quantHip(x)
+	return floor(x / HIP_STEP + 0.5) * HIP_STEP
 end
 
 local stats = { morphWrites = 0, vertexWrites = 0, plates = 0, bruises = 0, grime = 0, texJobs = 0, texWrites = 0, texels = 0, sweat = 0, maxFrame = 0 }
@@ -731,6 +751,7 @@ local function meshState(rec, view)
 				rec = rec, name = name, kind = info[1], side = info[2], region = info[3],
 				hasFlex = morphs.flex ~= nil, hasBreathe = morphs.breathe ~= nil, hasTense = morphs.tense ~= nil,
 				hasShoulder = morphs.raiseL ~= nil or morphs.raiseR ~= nil or morphs.reachL ~= nil or morphs.reachR ~= nil,
+				hasHip = morphs.hipLxx ~= nil or morphs.hipRxx ~= nil,
 				names = names, n = n, cost = morphCost(pv.mesh), w = w, sent = sent, pending = false,
 			}
 		end
@@ -1080,6 +1101,25 @@ local function shoulderShapes(model, side)
 	return sstep(0.25, 1.6, up), sstep(0.15, 0.85, -down.Z)
 end
 
+-- the trunks' seat is skinned to each hip (AnatomyBodyTorso.HipShapes): the weights are the thigh's rotation in
+-- the pelvis's frame less the identity (its axes there are the matrix's columns; at rest the thigh's frame is
+-- the pelvis's)
+local function hipShapes(model, side, list, w)
+	local lt = model:FindFirstChild("LowerTorso")
+	local ul = model:FindFirstChild(side .. "UpperLeg")
+	if not (lt and ul and lt:IsA("BasePart") and ul:IsA("BasePart")) then
+		for _, k in ipairs(list) do
+			w[k] = 0
+		end
+		return
+	end
+	local lc, uc = lt.CFrame, ul.CFrame
+	local cx, cy, cz = lc:VectorToObjectSpace(uc.RightVector), lc:VectorToObjectSpace(uc.UpVector), -lc:VectorToObjectSpace(uc.LookVector)
+	w[list[1]], w[list[2]], w[list[3]] = quantHip(cx.X - 1), quantHip(cy.X), quantHip(cz.X)
+	w[list[4]], w[list[5]], w[list[6]] = quantHip(cx.Y), quantHip(cy.Y - 1), quantHip(cz.Y)
+	w[list[7]], w[list[8]], w[list[9]] = quantHip(cx.Z), quantHip(cy.Z), quantHip(cz.Z - 1)
+end
+
 -- desired weights for every piece of one character; marks the pieces whose quantised weights changed
 local function meshWeights(rec, rig, breathing, t)
 	local liveSet = rec.live > 0 and rig and rig.poseAct and TARGETS[rig.poseAct] or nil
@@ -1130,6 +1170,14 @@ local function meshWeights(rec, rig, breathing, t)
 			end
 			if w.raiseR then
 				w.raiseR, w.reachR = quant(rR), quant(cR)
+			end
+		end
+		if st.hasHip then
+			if w.hipLxx then
+				hipShapes(rec.model, "Left", HIP_NAMES.L, w)
+			end
+			if w.hipRxx then
+				hipShapes(rec.model, "Right", HIP_NAMES.R, w)
 			end
 		end
 		local s = st.sent

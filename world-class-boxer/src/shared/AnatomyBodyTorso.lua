@@ -844,6 +844,109 @@ function Torso.Lower(sk, P, lod, prof, opt)
 end
 Torso.BAND_TOP = 0.035 -- waistband top edge above the waist pivot (studs)
 
+-- hip correctives for the trunks' seat (full detail, blend shapes: ANATOMY_CONTRACTS section 11). The satin legs
+-- are rigid with the thighs and the seat with the pelvis, so a hip that flexed, extended, spread or turned swung
+-- each leg's top out of the seat (the lead leg's front, the rear leg's back: a flat-cut tube top with a square
+-- corner) or down from under the seat's rim. The seat over each leg is skinned to that hip instead: a vertex
+-- goes to p + k (R - I) (p - hip), R the thigh's rotation in the pelvis's frame, k its share (all of it at the
+-- rim, so the rim stays on the leg's rim ring a hair outside it, none from just under the waistband up).
+-- Linear in R's nine entries, so nine shapes per side, "hip" .. side .. a .. b (a, b = x / y / z): the vertex
+-- moves along a by k times its offset from the hip along b; weight R[a][b] - (a == b and 1 or 0). BodyFX sets
+-- them from the thigh's axes; any rotation, flexion and spread and turn together, comes out exact
+Torso.HIP_AXES = { "x", "y", "z" }
+-- (the share of the leg's motion the seat takes, by height (0 at the rim, 1 under the waistband): all of it at
+-- the rim, then evenly less: the rows over the front of a flexing hip (the back of an extending one) bunch toward
+-- the band without crossing (an ease at either end steepened the middle, and the rows there folded over in a
+-- stride); the leg's dome leans in faster than the seat lags behind it)
+function Torso.HipFade(t)
+	return 1 - clamp(t, 0, 1)
+end
+
+-- the hip motions the seat's box must hold (degrees, the thigh turned about the pelvis's x (extension .. flexion),
+-- y (the leg's turn) and z (spread / cross) axes; the range's corners and middles: every shape at +-1 bounds
+-- the rest)
+local HIP_RANGE = { x = { -45, 0, 75 }, y = { -40, 40 }, z = { -40, 0, 40 } }
+local hipRots
+local function hipRotations()
+	if not hipRots then
+		hipRots = {}
+		for _, ax in ipairs(HIP_RANGE.x) do
+			for _, ay in ipairs(HIP_RANGE.y) do
+				for _, az in ipairs(HIP_RANGE.z) do
+					local cx, sx = cos(math.rad(ax)), sin(math.rad(ax))
+					local cy, sy = cos(math.rad(ay)), sin(math.rad(ay))
+					local cz, sz = cos(math.rad(az)), sin(math.rad(az))
+					-- R = Rx * Ry * Rz (CFrame.Angles), rows
+					hipRots[#hipRots + 1] = {
+						cy * cz, -cy * sz, sy,
+						cx * sz + sx * sy * cz, cx * cz - sx * sy * sz, -sx * cy,
+						sx * sz - cx * sy * cz, sx * cz + cx * sy * sz, cx * cy,
+					}
+				end
+			end
+		end
+	end
+	return hipRots
+end
+-- sk: the skeleton, m: the LowerTorso mesh (body space, final shape), info: Torso.Lower's. Returns the shapes
+-- ({ [name] = { ids, dx, dy, dz } }) and the box the seat's vertices reach (x0, y0, z0, x1, y1, z1, body
+-- space): every shape at weight +-1 (AnatomyClient clamps into the box; the generator's box rule checks +1)
+-- and the hips turned through HIP_RANGE
+function Torso.HipShapes(sk, m, info)
+	local P = m.P
+	local y0 = info.bot
+	local y1 = (info.bandBot or info.top) - 0.03
+	local sets = {}
+	local r = { MeshKit.Bounds(m) }
+	local rx0, ry0, rz0, rx1, ry1, rz1 = r[1], r[2], r[3], r[4], r[5], r[6]
+	local rots = hipRotations()
+	local AX = Torso.HIP_AXES
+	for _, side in ipairs({ "Right", "Left" }) do
+		local sg = side == "Right" and 1 or -1
+		local hp = sk.piv[side .. "Hip"]
+		local S = side == "Right" and "R" or "L"
+		-- (shape a * 3 + b - 3: the vertex moves along axis a by k times its offset along axis b)
+		local sh = {}
+		for q = 1, 9 do
+			sh[q] = { {}, {}, {}, {} }
+		end
+		for i = 1, m.nv do
+			local x, y, z = P[i * 3 - 2], P[i * 3 - 1], P[i * 3]
+			-- (this leg's half of the seat, its medial corner a few millimetres from the midline included; the
+			-- midline (the bridge between the legs, the cap's centre) goes half way with each. A hand-over
+			-- widening up the seat mixed the corner columns and tilted the broad faces beside them over)
+			local k = Torso.HipFade((y - y0) / (y1 - y0)) * smooth(-0.001, 0.001, x * sg)
+			if k > 1e-3 then
+				local qx, qy, qz = (x - hp[1]) * k, (y - hp[2]) * k, (z - hp[3]) * k
+				local n = #sh[1][1] + 1
+				for a = 1, 3 do
+					for b = 1, 3 do
+						local e = sh[a * 3 + b - 3]
+						local q = b == 1 and qx or (b == 2 and qy or qz)
+						e[1][n], e[2][n], e[3][n], e[4][n] = i, a == 1 and q or 0, a == 2 and q or 0, a == 3 and q or 0
+					end
+				end
+				-- (each shape alone at +-1 moves the vertex along its axis by up to the largest offset)
+				local qm = max(abs(qx), abs(qy), abs(qz))
+				rx0, rx1, ry0, ry1, rz0, rz1 = min(rx0, x - qm), max(rx1, x + qm), min(ry0, y - qm), max(ry1, y + qm), min(rz0, z - qm), max(rz1, z + qm)
+				for _, R in ipairs(rots) do
+					local px = x + R[1] * qx + R[2] * qy + R[3] * qz - qx
+					local py = y + R[4] * qx + R[5] * qy + R[6] * qz - qy
+					local pz = z + R[7] * qx + R[8] * qy + R[9] * qz - qz
+					rx0, rx1, ry0, ry1, rz0, rz1 = min(rx0, px), max(rx1, px), min(ry0, py), max(ry1, py), min(rz0, pz), max(rz1, pz)
+				end
+			end
+			MeshKit.Step(k > 1e-3 and 4 or 1)
+		end
+		for a = 1, 3 do
+			for b = 1, 3 do
+				sets["hip" .. S .. AX[a] .. AX[b]] = sh[a * 3 + b - 3]
+			end
+		end
+	end
+	return sets, { rx0, ry0, rz0, rx1, ry1, rz1 }
+end
+
 -- the female sports top over the chest (the R15 UpperTorso was the top in round 1): band under the bust,
 -- scoop neckline in front, racer back behind, wide straps. Returns the cover (0..1) and the hem band (0..1:
 -- the elastic edge just inside the border, a smooth bump a few texels wide). soft scales every edge's width
