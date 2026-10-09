@@ -645,8 +645,10 @@ local function tapeCell(parent, caption, value, order, accent)
 	UI.Corner(f, UI.R.md)
 	UI.Text(f, string.upper(caption), { Font = T.semi, TextSize = 11, TextColor3 = T.sub, Position = UDim2.fromOffset(12, 6), Size = UDim2.new(1, -24, 0, 14),
 		AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
-	UI.Text(f, tostring(value), { Face = "displayMed", TextSize = 21, TextColor3 = accent or T.text, Position = UDim2.fromOffset(12, 21), Size = UDim2.new(1, -24, 0, 26),
-		AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
+	-- a long value ("Counter Puncher" in a narrow cell) steps down a few sizes rather than being cut
+	local v = UI.Text(f, tostring(value), { Face = "displayMed", TextSize = 21, TextColor3 = accent or T.text, Position = UDim2.fromOffset(12, 21), Size = UDim2.new(1, -24, 0, 26),
+		AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextScaled = true })
+	UI.New("UITextSizeConstraint", { MaxTextSize = 21, MinTextSize = 15, Parent = v })
 	return f
 end
 
@@ -758,9 +760,9 @@ function FighterCard.Full(parent, P, opts)
 	end
 	-- tale of the tape
 	UI.Kicker(info, "TALE OF THE TAPE", T.sub, { order = 4 })
-	-- four cells a row; two when the info column is narrow (a small phone: "Boxer-Puncher" and
-	-- "POPULARITY" need the room)
-	local tapeCols = tight and 2 or 4
+	-- four cells a row; two when a quarter of the info column cannot hold a value such as
+	-- "Boxer-Puncher" or "Beginner Lean" at full size (a phone, and a tablet's 994-wide card)
+	local tapeCols = (tight or (infoW - 6) / 4 - 8 - 24 < 128) and 2 or 4
 	local tapeRows = math.ceil(8 / tapeCols)
 	local grid = UI.Frame(info, { Name = "Tape", BackgroundTransparency = 1, Size = UDim2.new(1, -6, 0, tapeRows * 54 + (tapeRows - 1) * 8), LayoutOrder = 5 })
 	UI.Grid(grid, UDim2.new(1 / tapeCols, -8, 0, 54), nil, 8)

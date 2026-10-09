@@ -10,6 +10,7 @@ local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local GuiService = game:GetService("GuiService")
 local RunService = game:GetService("RunService")
+local TextService = game:GetService("TextService")
 
 local UI = {}
 
@@ -287,6 +288,44 @@ local FLOOR_LIMIT = 22 -- design sizes from here up are never below the floor (s
 function UI.TextFloor(scale)
 	scale = tonumber(scale) or 1
 	return math.ceil(UI.MinTextPx / math.max(scale, 0.1) - 1e-6)
+end
+
+-- the width (px) a line of body text (Gotham) takes at `size`: never less than a broad 0.6 em per
+-- character (TextService's metrics can differ from the font face a label really draws with), so a
+-- layout chosen with it keeps its captions whole
+function UI.TextWidth(text, size, font)
+	text = tostring(text or "")
+	local w = (utf8.len(text) or #text) * size * 0.6
+	local ok, v = pcall(function()
+		return TextService:GetTextSize(text, size, font or T.font, Vector2.new(10000, 10000))
+	end)
+	return math.ceil(ok and typeof(v) == "Vector2" and math.max(w, v.X) or w)
+end
+
+-- columns for a grid of picture cards (LookKit preset grids: a caption over an optional small second
+-- line, item.sub) in a list `width` design px wide under obj's root, cards 6 px apart: up to `want`,
+-- as many as keep every second line whole at the root's readability floor. Where even three columns
+-- cannot hold them (the smallest phones) the cards drop the second lines (items are edited) and keep
+-- three columns of captions.
+function UI.CardColumns(obj, items, width, want)
+	local size = math.max(11, UI.TextFloor(UI.ScaleOf(obj)))
+	local function fit(minCell)
+		return math.clamp(math.floor((width + 6) / (minCell + 6)), 1, want)
+	end
+	local need = 104 -- a caption ("Baby Face", "Red Corner") at its own floor
+	for _, it in ipairs(items) do
+		if it.sub then
+			need = math.max(need, UI.TextWidth(it.sub, size) + 8)
+		end
+	end
+	local cols = fit(need)
+	if cols < math.min(3, want) then
+		for _, it in ipairs(items) do
+			it.sub = nil
+		end
+		cols = math.max(fit(104), math.min(3, want))
+	end
+	return cols
 end
 
 local function floorText(obj, floor)
@@ -1620,17 +1659,20 @@ function UI.Slider(parent, label, min, max, value, step, onChange, fmt, opts)
 	opts = opts or {}
 	local hint = opts.hint
 	local hasDefault = type(opts.default) == "number"
-	-- touch: the [-] / [+] and the reset button grow to a fingertip and both lines grow around them
-	-- (the label line is centred on the reset button, the stepper line on the [-] / [+])
+	-- touch: the [-] / [+] and the reset button grow to a fingertip; the finger-sized reset button moves
+	-- down onto the stepper line, right of [+] (on the label line it would reach into the [+] below it,
+	-- and the label line stays as low as on a desktop)
 	local minHit = UI.MinHit(parent)
 	local bs = math.max(36, minHit)
 	local rs = hasDefault and math.max(30, minHit) or 30
-	local lc = hasDefault and rs > 30 and math.floor(2 + rs / 2) or 17 -- the label line's centre
-	local y0 = math.floor(lc + (hint and 27 or 13)) -- the stepper line's top
+	local resetLow = hasDefault and rs > 30
+	local lc = 17 -- the label line's centre
+	local y0 = lc + (hint and 27 or 13) -- the stepper line's top
 	local f = UI.Frame(parent, { Size = UDim2.new(1, 0, 0, y0 + bs + 4), BackgroundColor3 = T.panel2, BackgroundTransparency = 0.45 })
 	f:SetAttribute("Slider", true)
 	UI.Corner(f, UI.R.md)
-	local right = hasDefault and rs + 20 or 14
+	local right = (hasDefault and not resetLow) and rs + 20 or 14
+	local side = resetLow and rs + 8 or 0 -- room right of [+] for the reset button on the stepper line
 	UI.Text(f, label, { Name = "Label", Position = UDim2.fromOffset(14, lc - 11), Size = UDim2.new(0.5, -14, 0, 22), TextColor3 = T.text, TextSize = 15, Font = T.semi,
 		AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
 	local valText = UI.Text(f, "", { Name = "Value", Face = "displayMed", AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -right, 0, lc - 13), Size = UDim2.new(0.5, 8 - right, 0, 26),
@@ -1639,7 +1681,7 @@ function UI.Slider(parent, label, min, max, value, step, onChange, fmt, opts)
 		UI.Text(f, hint, { Name = "Hint", Position = UDim2.fromOffset(14, lc + 11), Size = UDim2.new(1, -28, 0, 16), TextSize = 12, TextColor3 = T.sub,
 			AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
 	end
-	local track = UI.Frame(f, { Name = "Track", Position = UDim2.new(0, bs + 26, 0, y0 + math.floor(bs / 2) - 4), Size = UDim2.new(1, -(2 * bs + 52), 0, 8), BackgroundColor3 = T.ink, BackgroundTransparency = 0.1 })
+	local track = UI.Frame(f, { Name = "Track", Position = UDim2.new(0, bs + 26, 0, y0 + math.floor(bs / 2) - 4), Size = UDim2.new(1, -(2 * bs + 52 + side), 0, 8), BackgroundColor3 = T.ink, BackgroundTransparency = 0.1 })
 	UI.Corner(track, 4)
 	local fill = UI.Frame(track, { Name = "Fill", Size = UDim2.fromScale(0, 1), BackgroundColor3 = T.gold })
 	UI.Corner(fill, 4)
@@ -1653,7 +1695,7 @@ function UI.Slider(parent, label, min, max, value, step, onChange, fmt, opts)
 	UI.Stroke(knob, T.gold, 3)
 	-- the hit area: the whole line between [-] and [+] (wider and taller than the bar itself)
 	local hit = UI.New("TextButton", { Name = "Hit", Parent = f, Text = "", AutoButtonColor = false, BackgroundTransparency = 1, BorderSizePixel = 0, Position = UDim2.new(0, bs + 14, 0, y0 - 4),
-		Size = UDim2.new(1, -(2 * bs + 28), 0, bs + 8), Selectable = false })
+		Size = UDim2.new(1, -(2 * bs + 28 + side), 0, bs + 8), Selectable = false })
 	local cur = value
 	local dragging = false
 	local resetBtn, resetIcon, atDefault
@@ -1754,7 +1796,7 @@ function UI.Slider(parent, label, min, max, value, step, onChange, fmt, opts)
 	end)
 	f.Destroying:Connect(disarm)
 	local steppers = {}
-	for _, spec in ipairs({ { "Minus", -1, UDim2.new(0, 10, 0, y0), "minus" }, { "Plus", 1, UDim2.new(1, -(bs + 10), 0, y0), "plus" } }) do
+	for _, spec in ipairs({ { "Minus", -1, UDim2.new(0, 10, 0, y0), "minus" }, { "Plus", 1, UDim2.new(1, -(bs + 10 + side), 0, y0), "plus" } }) do
 		local b = UI.Button(f, "", { Name = spec[1], Size = UDim2.fromOffset(bs, bs), Position = spec[3], BackgroundColor3 = T.panel2, BackgroundTransparency = 0.2 })
 		UI.Icon(b, spec[4], math.floor(13 + (bs - 36) * 0.2), T.text, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5) })
 		b.MouseButton1Down:Connect(function()
@@ -1767,7 +1809,8 @@ function UI.Slider(parent, label, min, max, value, step, onChange, fmt, opts)
 		table.insert(steppers, b)
 	end
 	if hasDefault then
-		resetBtn = UI.Button(f, "", { Name = "Reset", Size = UDim2.fromOffset(rs, rs), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -12, 0, 2), BackgroundColor3 = T.panel2 }, reset)
+		resetBtn = UI.Button(f, "", { Name = "Reset", Size = UDim2.fromOffset(rs, rs), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, resetLow and -10 or -12, 0, resetLow and y0 or 2),
+			BackgroundColor3 = T.panel2 }, reset)
 		resetIcon = UI.Icon(resetBtn, "reset", math.floor(14 + (rs - 30) * 0.2), T.text, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5) })
 		table.insert(steppers, resetBtn)
 		inputReset[f] = reset
@@ -2088,10 +2131,22 @@ function UI.TextInput(parent, label, value, placeholder, maxLen, onChange)
 	return f, box
 end
 
+-- the height of a tab bar drawn `design` px high: finger-high on touch (the buttons sit 3 px above the
+-- underline); a caller that places its content under the bar sizes the bar and the content with it
+function UI.TabsHeight(parent, design)
+	return math.max(design or 38, UI.MinHit(parent) + 3)
+end
+
 -- horizontal tab bar with a sliding underline; returns frame and select(name)
 function UI.Tabs(parent, names, current, onSelect, props)
-	local bar = UI.Frame(parent, props or { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, math.max(38, UI.MinHit(parent) + 3)) })
+	local bar = UI.Frame(parent, props or { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, UI.TabsHeight(parent)) })
 	bar.BackgroundTransparency = 1
+	-- a caller's own fixed-height bar grows to a fingertip too when a list lays it out (the list moves
+	-- what follows); one with content placed under it by hand keeps its size (see UI.TabsHeight)
+	local s = bar.Size
+	if props and s.Y.Scale == 0 and parent:FindFirstChildOfClass("UIListLayout") then
+		bar.Size = UDim2.new(s.X.Scale, s.X.Offset, 0, UI.TabsHeight(parent, s.Y.Offset))
+	end
 	local holder = UI.Frame(bar, { Name = "Buttons", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 1, -3) })
 	UI.List(holder, 4, true)
 	UI.Frame(bar, { Name = "Track", AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), Size = UDim2.new(1, 0, 0, 1), BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = 0.88 })

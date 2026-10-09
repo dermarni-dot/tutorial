@@ -162,25 +162,29 @@ local function openSession(section, title, width, onRender, footerFn)
 		State.toast(r.err or "Not available right now", T.red)
 		return nil
 	end
-	local s = { section = section, look = deepcopy(P.appearance), dirty = false, lastSent = 0 }
+	local s = { section = section, look = deepcopy(P.appearance), dirty = false, lastSent = 0, width = width }
 	session = s
 	State.windows.Custom = function()
 		closeSession(false)
 	end
-	s.shade, s.win, s.body = UI.Window(State.gui, "Custom", width, 720, title, { side = "left", noShade = true, footer = 56, onClose = function()
+	-- touch: the footer buttons (PAY & SAVE / CANCEL) and the turntable arrows are finger-sized
+	local minHit = UI.MinHit(State.gui)
+	local fh = math.max(44, minHit)
+	s.shade, s.win, s.body = UI.Window(State.gui, "Custom", width, 720, title, { side = "left", noShade = true, footer = fh + 12, onClose = function()
 		closeSession(false)
 	end })
-	s.footer = UI.Frame(s.win, { BackgroundTransparency = 1, Position = UDim2.new(0, 16, 1, -56), Size = UDim2.new(1, -32, 0, 44) })
+	s.footer = UI.Frame(s.win, { BackgroundTransparency = 1, Position = UDim2.new(0, 16, 1, -(fh + 12)), Size = UDim2.new(1, -32, 0, fh) })
 	-- turntable buttons
-	local turn = UI.Frame(s.shade, { Name = "Turntable", AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -28, 1, -24), Size = UDim2.fromOffset(0, 48), AutomaticSize = Enum.AutomaticSize.X })
-	UI.Glass(turn, { transparency = 0.15, radius = 24 })
+	local tb = math.max(36, minHit)
+	local turn = UI.Frame(s.shade, { Name = "Turntable", AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -28, 1, -24), Size = UDim2.fromOffset(0, tb + 12), AutomaticSize = Enum.AutomaticSize.X })
+	UI.Glass(turn, { transparency = 0.15, radius = math.floor((tb + 12) / 2) })
 	UI.New("UIPadding", { PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8), Parent = turn })
 	UI.List(turn, 6, true, Enum.HorizontalAlignment.Center)
-	UI.Text(turn, "ROTATE", { Font = T.semi, TextSize = 10, TextColor3 = T.sub, Size = UDim2.fromOffset(50, 48), AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false, LayoutOrder = 0 })
+	UI.Text(turn, "ROTATE", { Font = T.semi, TextSize = 10, TextColor3 = T.sub, Size = UDim2.fromOffset(50, tb + 12), AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false, LayoutOrder = 0 })
 	for i, d in ipairs({ { "<", 1 }, { ">", -1 } }) do
-		local b = UI.Button(turn, "", { Size = UDim2.fromOffset(36, 36), LayoutOrder = i })
-		b:FindFirstChildOfClass("UICorner").CornerRadius = UDim.new(0, 18)
-		UI.Icon(b, d[1] == "<" and "left" or "right", 14, T.text, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5) })
+		local b = UI.Button(turn, "", { Size = UDim2.fromOffset(tb, tb), LayoutOrder = i })
+		b:FindFirstChildOfClass("UICorner").CornerRadius = UDim.new(0, math.floor(tb / 2))
+		UI.Icon(b, d[1] == "<" and "left" or "right", math.floor(14 + (tb - 36) * 0.2), T.text, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5) })
 		b.MouseButton1Down:Connect(function()
 			if session then
 				session.spin = d[2]
@@ -432,7 +436,10 @@ function Services.Locker()
 				LookKit.KitGlyph(art, kit)
 			end })
 		end
-		LookKit.PresetGrid(body, kits, { name = "Kits", cols = 3, cellH = 100 }, function(it)
+		-- three columns, the colour line under each name kept whole at the readability floor (on the
+		-- smallest phones the names alone: UI.CardColumns)
+		local cols = UI.CardColumns(body, kits, math.min(s.width, 0.46 * UI.CanvasSize(State.gui).X) - 48, 3)
+		LookKit.PresetGrid(body, kits, { name = "Kits", cols = cols, cellH = 100 }, function(it)
 			local color, trim = g.color, g.trim
 			LookKit.ApplyKit(it.kit, a, g)
 			if not custom.color then
@@ -762,7 +769,7 @@ function Services.Sleep()
 	if P.camp then
 		UI.Line(body, string.format("Fight camp: %d day(s) left before fight night.", P.camp.daysLeft), { TextColor3 = T.gold, TextSize = 14 })
 	end
-	UI.Button(body, "SLEEP  ·  END THE DAY", { Size = UDim2.new(1, -8, 0, 44), BackgroundColor3 = T.gold, TextColor3 = T.bg }, function()
+	UI.Button(body, "SLEEP  ·  END THE DAY", { Size = UDim2.new(1, -8, 0, math.max(44, UI.MinHit(body))), BackgroundColor3 = T.gold, TextColor3 = T.bg }, function()
 		close()
 		local r = State.req("Sleep")
 		if r.ok then

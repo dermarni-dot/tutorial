@@ -559,11 +559,11 @@ local function applyFacePreset(p)
 	chosen.face = p.id
 end
 
--- preset grids: fewer columns on a narrow window (phones) so the tile captions ("80% muscle" at the
--- readability floor) keep their room; n on the 600-wide desktop window
-local function gridCols(n)
-	local bodyW = math.min(600, 0.46 * UI.CanvasSize(State.gui).X) - 32
-	return math.min(n, math.max(3, math.floor(bodyW / 112)))
+-- preset grids: up to n columns, fewer on a narrow window (phones, tablets) so every card's second
+-- line ("80% muscle", "High cheekbones" at the readability floor) keeps its room (UI.CardColumns);
+-- the body list is the window (0.46 of the canvas, at most 600) less its 16 px margins and 4 px padding
+local function gridCols(n, items)
+	return UI.CardColumns(State.gui, items, math.min(600, 0.46 * UI.CanvasSize(State.gui).X) - 40, n)
 end
 
 local function pageFace()
@@ -577,7 +577,7 @@ local function pageFace()
 			LookKit.FaceGlyph(art, p.shape, skinRGB())
 		end })
 	end
-	LookKit.PresetGrid(body, items, { name = "FacePresets", cols = gridCols(4), cellH = 100, picked = chosen.face }, function(it)
+	LookKit.PresetGrid(body, items, { name = "FacePresets", cols = gridCols(4, items), cellH = 100, picked = chosen.face }, function(it)
 		pushUndo(nil)
 		applyFacePreset(it.preset)
 		previewHead()
@@ -802,7 +802,7 @@ local function pageBody()
 			LookKit.BuildGlyph(art, bt.width, skinRGB())
 		end })
 	end
-	LookKit.PresetGrid(body, items, { name = "BodyTypes", cols = gridCols(5), cellH = 104, picked = b.frame }, function(it)
+	LookKit.PresetGrid(body, items, { name = "BodyTypes", cols = gridCols(5, items), cellH = 104, picked = b.frame }, function(it)
 		pushUndo(nil)
 		b.frame = it.id
 		preview()
@@ -906,7 +906,7 @@ local function pageGear()
 			LookKit.KitGlyph(art, kit)
 		end })
 	end
-	LookKit.PresetGrid(body, items, { name = "Kits", cols = gridCols(3), cellH = 100, picked = chosen.kit }, function(it)
+	LookKit.PresetGrid(body, items, { name = "Kits", cols = gridCols(3, items), cellH = 100, picked = chosen.kit }, function(it)
 		pushUndo(nil)
 		LookKit.ApplyKit(it.kit, a, g)
 		chosen.kit = it.id
@@ -1167,6 +1167,8 @@ end
 -- The window
 ------------------------------------------------------------------------
 local tabsFrame, nextBtn, backBtn, progressFill
+local stepsFrame, titleLabel, stepKicker
+local stepMenu = false -- short screens: the step bar is a menu that drops from the step's name
 local lastPage
 
 local function goTo(name)
@@ -1178,30 +1180,51 @@ local function goTo(name)
 	render()
 end
 
+-- short screens: opens / closes the step menu (the step bar itself on taller screens: always shown)
+local function showSteps(on)
+	if not (stepMenu and tabsFrame) then
+		return
+	end
+	tabsFrame.Visible = on
+	local chevron = win and win:FindFirstChild("StepPick")
+	chevron = chevron and chevron:FindFirstChild("Chevron")
+	if chevron then
+		chevron.Rotation = on and 180 or 0
+	end
+	if on and UI.InputMode() == "gamepad" then
+		UI.PadSelect(stepsFrame)
+	end
+end
+
 function render()
 	if not (shade and shade.Parent) then
 		return
 	end
 	local cur = table.find(PAGES, page) or 1
-	-- title: the step's name (phones, without the kicker line, count the step in the title too)
-	local title = win:FindFirstChild("Title")
+	-- title: the step's name (a window with neither kicker line counts the step in the title too)
 	local kicker = win:FindFirstChild("Kicker")
-	if title then
+	if titleLabel then
 		local name = string.upper(TITLES[page] or page)
-		title.Text = (kicker or narrow) and name or string.format("%d/%d  %s", cur, #PAGES, name)
+		titleLabel.Text = (kicker or narrow or stepKicker) and name or string.format("%d/%d  %s", cur, #PAGES, name)
 	end
 	if kicker then
 		kicker.Text = string.format("CREATE YOUR BOXER  ·  STEP %d OF %d", cur, #PAGES)
 	end
-	UI.Clear(tabsFrame:FindFirstChild("Steps"))
-	local steps = tabsFrame:FindFirstChild("Steps")
+	if stepKicker then
+		stepKicker.Text = string.format("STEP %d OF %d", cur, #PAGES)
+	end
+	UI.Clear(stepsFrame)
 	for i, name in ipairs(PAGES) do
 		local done = i < cur
-		local b = UI.Button(steps, string.format("%d %s", i, SHORT[name]), { Name = "Step" .. i, LayoutOrder = i, TextSize = 13, BackgroundColor3 = name == page and T.gold or T.panel2,
+		local b = UI.Button(stepsFrame, string.format("%d %s", i, SHORT[name]), { Name = "Step" .. i, LayoutOrder = i, TextSize = stepMenu and 15 or 13, BackgroundColor3 = name == page and T.gold or T.panel2,
 			TextColor3 = name == page and T.bg or (done and T.gold or T.text) }, function()
+			showSteps(false)
 			goTo(name)
 		end)
 		b:SetAttribute("CreatorStep", i)
+		if name == page then
+			UI.PadStart(b)
+		end
 	end
 	if progressFill then
 		progressFill.Size = UDim2.fromScale(cur / #PAGES, 1)
@@ -1356,6 +1379,10 @@ function Creator.Open()
 	lastUndoKey = nil
 	-- BACK (and B on a gamepad: the creator cannot be closed, B steps back a page)
 	local function back()
+		if stepMenu and tabsFrame and tabsFrame.Visible then
+			showSteps(false) -- B / Backspace first closes the step menu
+			return
+		end
 		step(-1)
 	end
 	shade, win, body = UI.Window(State.gui, "Creator", 600, 720, "CREATE YOUR BOXER", { side = "left", noShade = true, footer = 50, onBack = back, kicker = "CREATE YOUR BOXER" })
@@ -1391,21 +1418,74 @@ function Creator.Open()
 		stepAction(RANDOMIZE)
 	end)
 	UI.Stroke(rb, T.gold, 1, 0.55)
+	titleLabel = title
+	stepKicker = nil
 	if title then
 		title.Size = UDim2.new(1, -(40 + bw * 3 + 12 + 24), 0, title.Size.Y.Offset)
 	end
-	-- the step bar: every step (tap to jump) over a thin progress line
 	local sh = math.max(34, minHit)
-	tabsFrame = UI.Frame(win, { Name = "StepBar", BackgroundTransparency = 1, Position = UDim2.fromOffset(16, top), Size = UDim2.new(1, -32, 0, sh + 6) })
-	local steps = UI.Frame(tabsFrame, { Name = "Steps", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, sh) })
-	UI.Grid(steps, UDim2.new(1 / #PAGES, -4, 0, sh), nil, 4)
-	local line = UI.Frame(tabsFrame, { Name = "Progress", Position = UDim2.new(0, 0, 1, -3), Size = UDim2.new(1, -4, 0, 3), BackgroundColor3 = T.panel2 })
+	local line
+	stepMenu = short
+	if stepMenu then
+		-- short screens (phones): the step bar folds into a menu that drops from the step's name, so
+		-- the body keeps the 77 px a finger-high bar would take; the step's name becomes the menu
+		-- button ("STEP 2 OF 7" over it, a chevron) and a thin progress line runs under the header
+		local rowH = math.max(bh, 44)
+		local pick = UI.Button(win, "", { Name = "StepPick", Position = UDim2.fromOffset(12, toolsY), Size = UDim2.new(1, -(12 + bw * 3 + 12 + 16 + 8), 0, rowH),
+			BackgroundColor3 = T.panel2, BackgroundTransparency = 0.6 }, function()
+			showSteps(not tabsFrame.Visible)
+		end)
+		local tick = win:FindFirstChild("TitleTick")
+		if tick then
+			tick.Parent = pick
+			tick.Position = UDim2.new(0, 10, 0.5, -10)
+			tick.Size = UDim2.fromOffset(4, 20)
+		end
+		stepKicker = UI.Text(pick, "", { Name = "StepKicker", Font = T.semi, TextSize = 11, TextColor3 = T.gold, Position = UDim2.new(0, 22, 0.5, -19), Size = UDim2.new(1, -52, 0, 15),
+			AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
+		if title then
+			title.Parent = pick
+			title.Position = UDim2.new(0, 22, 0.5, -5)
+			title.Size = UDim2.new(1, -52, 0, 24)
+			UI.SetTextSize(title, 22)
+		end
+		UI.Icon(pick, "down", 14, T.text, { Name = "Chevron", AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -12, 0.5, 0) })
+		top = math.max(top, toolsY + rowH + 10)
+		local divider = win:FindFirstChild("Divider")
+		if divider then
+			divider.Visible = false -- (the window's header line: the progress line takes its place)
+		end
+		line = UI.Frame(win, { Name = "Progress", Position = UDim2.fromOffset(16, top - 5), Size = UDim2.new(1, -32, 0, 3), BackgroundColor3 = T.panel2 })
+		-- the menu: two columns of finger-high steps over a dimmed body (a tap beside them closes it)
+		local rows = math.ceil(#PAGES / 2)
+		tabsFrame = UI.New("TextButton", { Name = "StepBar", Parent = win, Text = "", AutoButtonColor = false, Visible = false, ZIndex = 5, BorderSizePixel = 0, Selectable = false,
+			BackgroundColor3 = T.ink, BackgroundTransparency = 0.35, Position = UDim2.fromOffset(0, top), Size = UDim2.new(1, 0, 1, -top) })
+		UI.Corner(tabsFrame, UI.R.xl)
+		tabsFrame.MouseButton1Click:Connect(function()
+			showSteps(false)
+		end)
+		local card = UI.Frame(tabsFrame, { Name = "Card", Position = UDim2.fromOffset(12, 2), Size = UDim2.new(1, -24, 0, rows * (sh + 6) + 18), ZIndex = 5 })
+		UI.Glass(card, { transparency = 0.04, radius = UI.R.lg })
+		stepsFrame = UI.Frame(card, { Name = "Steps", BackgroundTransparency = 1, Position = UDim2.fromOffset(12, 12), Size = UDim2.new(1, -24, 1, -18), ZIndex = 5 })
+		UI.Grid(stepsFrame, UDim2.new(0.5, -6, 0, sh), nil, 6)
+	else
+		local divider = win:FindFirstChild("Divider")
+		if divider and bh > 32 then
+			divider.Position = UDim2.fromOffset(16, top - 5) -- (under the finger-sized tools, not through them)
+		end
+		-- the step bar: every step (tap to jump) over a thin progress line
+		tabsFrame = UI.Frame(win, { Name = "StepBar", BackgroundTransparency = 1, Position = UDim2.fromOffset(16, top), Size = UDim2.new(1, -32, 0, sh + 6) })
+		stepsFrame = UI.Frame(tabsFrame, { Name = "Steps", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, sh) })
+		UI.Grid(stepsFrame, UDim2.new(1 / #PAGES, -4, 0, sh), nil, 4)
+		line = UI.Frame(tabsFrame, { Name = "Progress", Position = UDim2.new(0, 0, 1, -3), Size = UDim2.new(1, -4, 0, 3), BackgroundColor3 = T.panel2 })
+		top += sh + 14
+	end
 	UI.Corner(line, 2)
 	progressFill = UI.Frame(line, { Name = "Fill", Size = UDim2.fromScale(1 / #PAGES, 1), BackgroundColor3 = T.gold })
 	UI.Corner(progressFill, 2)
 	local nh = math.max(42, minHit)
-	body.Position = UDim2.fromOffset(16, top + sh + 14)
-	body.Size = UDim2.new(1, -32, 1, -(top + sh + 14 + nh + 20))
+	body.Position = UDim2.fromOffset(16, top)
+	body.Size = UDim2.new(1, -32, 1, -(top + nh + 20))
 	local nav = UI.Frame(win, { Name = "Nav", BackgroundTransparency = 1, Position = UDim2.new(0, 16, 1, -(nh + 12)), Size = UDim2.new(1, -32, 0, nh) })
 	backBtn = UI.Button(nav, "BACK", { Name = "BackStep", Size = UDim2.new(0.3, 0, 1, 0) }, back)
 	nextBtn = UI.Button(nav, "NEXT", { Name = "NextStep", Size = UDim2.new(0.66, 0, 1, 0), Position = UDim2.new(0.34, 0, 0, 0), BackgroundColor3 = T.gold, TextColor3 = T.bg })
@@ -1430,8 +1510,14 @@ function Creator.Open()
 	UI.New("UITextSizeConstraint", { MaxTextSize = 12, MinTextSize = 10, Parent = plateInfo })
 	table.clear(plateSeen)
 	-- turntable dock (right side of the screen): rotate and zoom, with the device's own shortcuts above it
-	local dock = UI.Frame(shade, { Name = "Turntable", AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -28, 1, -24), Size = UDim2.fromOffset(0, 48), AutomaticSize = Enum.AutomaticSize.X })
-	local camHint = UI.Text(shade, "", { Name = "CameraHint", AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -34, 1, -78), Size = UDim2.fromOffset(440, 16), TextSize = 12, TextColor3 = T.sub,
+	-- touch: its buttons are finger-sized (the plate and the camera hint stack above the taller dock);
+	-- where the room right of the window is short of the full dock (the smallest phones) the ROTATE /
+	-- ZOOM words go and the arrows speak for themselves
+	local db = math.max(36, minHit)
+	local dockH = db + 12
+	local dockWords = 4 * db + 74 + 50 + 40 + 1 + 7 * 6 + 16 <= canvas.X * 0.54 - 24 - 28 - 12
+	local dock = UI.Frame(shade, { Name = "Turntable", AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -28, 1, -24), Size = UDim2.fromOffset(0, dockH), AutomaticSize = Enum.AutomaticSize.X })
+	local camHint = UI.Text(shade, "", { Name = "CameraHint", AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -34, 1, -(30 + dockH)), Size = UDim2.fromOffset(440, 16), TextSize = 12, TextColor3 = T.sub,
 		TextXAlignment = Enum.TextXAlignment.Right, AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
 	UI.BindHint(camHint, function(mode)
 		if mode == "gamepad" then
@@ -1455,33 +1541,38 @@ function Creator.Open()
 		local cv = UI.CanvasSize(plate)
 		local small = cv.Y < 640
 		plate.AnchorPoint = small and Vector2.new(1, 0) or Vector2.new(1, 1)
-		plate.Position = small and UDim2.new(1, -20, 0, 12) or UDim2.new(1, -28, 1, -84)
+		plate.Position = small and UDim2.new(1, -20, 0, 12) or UDim2.new(1, -28, 1, -(36 + dockH))
 		local free = cv.X - (0.46 * cv.X + 24) - 40
 		plate.Size = UDim2.fromOffset(small and math.clamp(math.floor(free), 240, 480) or 440, 120)
-		camHint.Position = small and UDim2.new(1, -34, 1, -78) or UDim2.new(1, -34, 1, -210)
+		camHint.Position = small and UDim2.new(1, -34, 1, -(30 + dockH)) or UDim2.new(1, -34, 1, -(162 + dockH))
 	end
 	placePlate()
 	if plateConn then
 		plateConn:Disconnect()
 	end
 	plateConn = State.screen:GetPropertyChangedSignal("AbsoluteSize"):Connect(placePlate)
-	UI.Glass(dock, { transparency = 0.15, radius = 24 })
+	UI.Glass(dock, { transparency = 0.15, radius = math.floor(dockH / 2) })
 	UI.New("UIPadding", { PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8), Parent = dock })
 	UI.List(dock, 6, true, Enum.HorizontalAlignment.Center)
-	UI.Text(dock, "ROTATE", { Font = T.semi, TextSize = 10, TextColor3 = T.sub, Size = UDim2.fromOffset(50, 48), AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false, LayoutOrder = 0 })
+	if dockWords then
+		UI.Text(dock, "ROTATE", { Font = T.semi, TextSize = 10, TextColor3 = T.sub, Size = UDim2.fromOffset(50, dockH), AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false, LayoutOrder = 0 })
+	end
 	local held = 0
-	UI.Frame(dock, { Size = UDim2.fromOffset(1, 26), BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = 0.8, LayoutOrder = 5 })
-	UI.Text(dock, "ZOOM", { Font = T.semi, TextSize = 10, TextColor3 = T.sub, Size = UDim2.fromOffset(40, 48), AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false, LayoutOrder = 6 })
+	UI.Frame(dock, { Size = UDim2.fromOffset(1, math.floor(dockH * 0.55)), BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = 0.8, LayoutOrder = 5 })
+	if dockWords then
+		UI.Text(dock, "ZOOM", { Font = T.semi, TextSize = 10, TextColor3 = T.sub, Size = UDim2.fromOffset(40, dockH), AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false, LayoutOrder = 6 })
+	end
+	local iconSize = math.floor(14 + (db - 36) * 0.2)
 	for i, z in ipairs({ { "minus", 0.4 }, { "plus", -0.4 } }) do
-		local zb = UI.Button(dock, "", { Name = z[1] == "minus" and "ZoomOut" or "ZoomIn", Size = UDim2.fromOffset(36, 36), LayoutOrder = 6 + i }, function()
+		local zb = UI.Button(dock, "", { Name = z[1] == "minus" and "ZoomOut" or "ZoomIn", Size = UDim2.fromOffset(db, db), LayoutOrder = 6 + i }, function()
 			zoomBy(z[2])
 		end)
-		zb:FindFirstChildOfClass("UICorner").CornerRadius = UDim.new(0, 18)
-		UI.Icon(zb, z[1], 14, T.text, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5) })
+		zb:FindFirstChildOfClass("UICorner").CornerRadius = UDim.new(0, math.floor(db / 2))
+		UI.Icon(zb, z[1], iconSize, T.text, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5) })
 	end
 	for i, def in ipairs({ { "<", 0.35 }, { "FRONT", 0 }, { ">", -0.35 } }) do
 		local icon = def[1] == "<" and "left" or (def[1] == ">" and "right" or nil)
-		local b = UI.Button(dock, icon and "" or def[1], { Name = icon and ("Turn" .. icon) or "Front", Size = UDim2.fromOffset(icon and 36 or 74, 36), TextSize = 14, LayoutOrder = i }, function()
+		local b = UI.Button(dock, icon and "" or def[1], { Name = icon and ("Turn" .. icon) or "Front", Size = UDim2.fromOffset(icon and db or 74, db), TextSize = 14, LayoutOrder = i }, function()
 			if def[2] == 0 then
 				camYaw = 0
 			else
@@ -1499,9 +1590,9 @@ function Creator.Open()
 		b.MouseLeave:Connect(function()
 			held = 0
 		end)
-		b:FindFirstChildOfClass("UICorner").CornerRadius = UDim.new(0, 18)
+		b:FindFirstChildOfClass("UICorner").CornerRadius = UDim.new(0, math.floor(db / 2))
 		if icon then
-			UI.Icon(b, icon, 14, T.text, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5) })
+			UI.Icon(b, icon, iconSize, T.text, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5) })
 		end
 	end
 	freeze(true)
