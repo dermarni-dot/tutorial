@@ -981,7 +981,8 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 			if oP and (fight or walking) then
 				local lt = rootCF:PointToObjectSpace(tgt)
 				local lo2 = rootCF:PointToObjectSpace(oP)
-				local gap = walking and WALK_GAP or FOOT_GAP * (kind == "stagger" and 0.6 or 1)
+				-- (sideways a little more: the side shuffle's closing foot never brushes the other)
+				local gap = walking and (WALK_GAP + 0.12 * lo.side) or FOOT_GAP * (kind == "stagger" and 0.6 or 1)
 				if s == "L" and lt.X > lo2.X - gap then
 					lt = V3(lo2.X - gap, lt.Y, lt.Z)
 					tgt = rootCF:PointToWorldSpace(lt)
