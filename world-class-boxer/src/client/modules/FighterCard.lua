@@ -823,8 +823,9 @@ function FighterCard.Compact(parent, P, opts)
 	UI.List(strip, 8, true)
 	local rankText, champ = FighterCard.BestRank(P)
 	-- (the line above the name already says amateur / pro: "RECORD" fits the narrow tile on a phone)
+	local widths = { 0.27, 0.16, 0.17, 0.34 } -- the record tile holds its caption at the phone's text floor
 	for i, n in ipairs({ { ri.text, "RECORD" }, { tostring(ri.ko), "KOS" }, { tostring(P.overall or 0), "OVR" }, { rankText, "RANKING" } }) do
-		UI.Stat(strip, n[1], n[2], { Size = UDim2.new(i == 4 and 0.34 or 0.2, -8, 1, 0), valueSize = 26, order = i, scaled = true,
+		UI.Stat(strip, n[1], n[2], { Size = UDim2.new(widths[i], -8, 1, 0), valueSize = 26, order = i, scaled = true,
 			valueColor = (i == 4 and champ) and T.gold or ((i == 2 and ri.ko > 0) and T.red or ((i == 4 and rankText == "UNRANKED") and T.sub or T.text)) })
 	end
 	return card
