@@ -22,6 +22,17 @@ do
 	end
 end
 
+-- special moves (Moves.lua), nil-safe if the module is missing
+local Moves
+do
+	local mm = ReplicatedStorage.Shared:FindFirstChild("Moves")
+	local ok, mod = false, nil
+	if mm then
+		ok, mod = pcall(require, mm)
+	end
+	Moves = (ok and type(mod) == "table") and mod or nil
+end
+
 local FightAI = {}
 FightAI.__index = FightAI
 
@@ -344,6 +355,9 @@ function FightAI:Think(now)
 			return
 		end
 	end
+	if self:TrySpecial(now, dist) then
+		return
+	end
 	if now < F.counterUntil and self:Fits("jab", dist) then
 		local p = "jab"
 		if self:Fits("leadhook", dist) and self.rng:NextNumber() < 0.5 then
@@ -375,6 +389,65 @@ function FightAI:Think(now)
 			self.blockUntil = now + 0.5
 		end
 	end
+end
+
+-- Special moves (the engine's Fight:Special, the fighter's unlocked set F.moves): each has a situation it
+-- is for. Counters (shell, pull, step back) answer a punch that is on its way or the counter window; the
+-- check hook meets a man walking in; the liver shot goes under a high guard or at a worn body; the gazelle
+-- closes from long range; the rush is pressure; the overhand goes over a shell; the lead uppercut opens a
+-- tight guard. At most one every few seconds, more from an aggressive or finishing fighter.
+local SPECIAL_RANGE = { gazelle = "cross", stepback = "jab", peekaboo = "cross" } -- the range the move needs (else its own punch's)
+function FightAI:TrySpecial(now, dist)
+	local F, O, engine = self.F, self.O, self.engine
+	if not Moves or now < (self.nextSpecial or 0) or F.stamina < F.maxStam * 0.3 then
+		return false
+	end
+	local pool, total = {}, 0
+	local function add(id, w)
+		local M = F.moves and F.moves[id] and Moves.Data[id]
+		if not M or w <= 0 or now < F.nextSpecial or F.stamina < M.stam * 1.3 then
+			return
+		end
+		local range = engine:PunchRange(F, SPECIAL_RANGE[id] or M.punch[1], M.range)
+		if dist > range + 0.3 then
+			return
+		end
+		table.insert(pool, { id, w })
+		total += w
+	end
+	local coming = O.state == "punching" and now < O.busyUntil
+	local counterWin = now < F.counterUntil
+	local blocking = O.blocking or self:Intel().blockRatio > 0.4
+	local finishing = self.mode == "finish" or self.mode == "pressure"
+	add("phillyshell", (coming and 0.6 or 0) + (counterWin and 0.4 or 0))
+	add("pullcounter", (coming and 0.6 or 0) + (counterWin and 0.4 or 0))
+	add("stepback", (coming and 0.5 or 0) + (self.mode == "survive" and 0.4 or 0))
+	add("checkhook", (coming and 0.5 or 0) + (engine:IsHurt(O) and 0.2 or 0))
+	add("livershot", (blocking and 0.5 or 0.15) + (O.body < 60 and 0.4 or 0))
+	add("gazelle", (dist > engine:PunchRange(F, "jab") and 0.5 or 0.05) + (finishing and 0.2 or 0))
+	add("peekaboo", (finishing and 0.6 or 0.15))
+	add("overhand", (blocking and 0.55 or 0.1) + (finishing and 0.25 or 0))
+	add("leaduppercut", (blocking and 0.35 or 0.1) + (now < O.rollUntil and 0.6 or 0))
+	if total <= 0 then
+		return false
+	end
+	-- a tentative fighter keeps its specials for the right moment; an aggressive one throws them freely
+	local eager = 0.22 + self:Aggression() * 0.3 + (coming and 0.3 or 0)
+	if self.rng:NextNumber() > eager then
+		self.nextSpecial = now + 0.6
+		return false
+	end
+	local pick = self.rng:NextNumber() * total
+	for _, o in ipairs(pool) do
+		pick -= o[2]
+		if pick <= 0 then
+			self.nextSpecial = now + 2.5 + self.rng:NextNumber() * 2.5
+			self.queue = {}
+			engine:Special(F, o[1])
+			return true
+		end
+	end
+	return false
 end
 
 -- corner advice for the PLAYER about this opponent (elite corner sees deeper)

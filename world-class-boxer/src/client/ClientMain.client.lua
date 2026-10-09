@@ -647,6 +647,11 @@ end)
 
 UserInputService.InputBegan:Connect(function(input, gp)
 	local k = input.KeyCode
+	-- the Moves & Controls window is open: a press there is a binding being captured or its own navigation,
+	-- not a hotkey (a capture sinks the key through ContextActionService too; this is the belt to those braces)
+	if State.windows.Controls then
+		return
+	end
 	-- gamepad: D-pad up = Career Hub, D-pad down = main menu. They only open (B closes): while Roblox's
 	-- UI selection is up the D-pad is navigating a window. (A default control binding can mark a pad
 	-- button processed, so gp alone does not tell for a pad.)

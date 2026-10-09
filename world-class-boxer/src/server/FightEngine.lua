@@ -27,6 +27,15 @@ do
 		FightMotion = ok and mod or nil
 	end
 end
+-- special moves (Moves.lua: data + unlocks), nil-safe if the module is missing
+local Moves
+do
+	local mm = Shared:FindFirstChild("Moves")
+	if mm then
+		local ok, mod = pcall(require, mm)
+		Moves = ok and mod or nil
+	end
+end
 local FightAI = require(script.Parent.FightAI)
 local Career = require(script.Parent.Career)
 -- fight spacing (FightMotion.Spacing; the round-1 numbers if that module is missing)
@@ -217,6 +226,17 @@ local function makeFighter(data, model, player)
 		tally = { landed = 0, power = 0, body = 0, thrown = 0, kd = 0, clinches = 0 },
 		totals = { landed = 0, thrown = 0, power = 0, body = 0 },
 		punchesUsed = { jab = 0, cross = 0, leadhook = 0, rearhook = 0, uppercut = 0, overhand = 0 },
+		-- special moves: the unlocked set (Main computes the player's from the profile; an AI boxer gets its
+		-- style's), the running move, its set-up's evade window and its cooldown
+		moves = type(data.moves) == "table" and data.moves or (Moves and player == nil and Moves.ForAI(data)) or {},
+		special = nil, specialToken = 0, nextSpecial = 0, shellUntil = 0, shellKind = nil, shellHit = false, specialsUsed = 0,
+		lungeUntil = 0, lungeVel = nil,
+		-- console aim assist level from the saved settings (0 off, 1 low, 2 high); the device the server holds
+		-- the fighter on ("kbd" until a rate-limited device message says pad), when it switched, how often it
+		-- switched lately, when the last input of each device arrived and when the server last saw the
+		-- analog stick in Humanoid.MoveDirection (Fight:AssistBonus)
+		assist = math.clamp(math.floor(tonumber(data.assist) or 0), 0, 2), padAt = -10, kbdAt = -10, assistNext = 0,
+		device = "kbd", deviceAt = -10, deviceSwitches = 0, deviceWindow = -100, assistLockUntil = 0, analogAt = -100, moveSeen = false,
 	}
 	-- what the fighter walked in with, so the result reports only what happened in THIS fight
 	-- (an old, healing broken nose or half-closed cut must not be "news" that restarts the healing clock)
@@ -264,12 +284,14 @@ end
 -- Ranges fit the rigs: with these shoulders and arms a jab lands with the arm nearly straight at about
 -- 4.4 studs root to root, and two guards have about a stud of air between them at the AI's usual 3.4-4.4
 -- (FightMotion.Spacing; the client fits each punch to the actual distance)
-function Fight:PunchRange(F, ptype)
+-- mul (optional) = a special move's range multiplier (Moves.Data.range): applied BEFORE the floor, so a short
+-- move (liver shot 0.95, lead uppercut 0.9) still reaches a man standing as close as the bodies allow
+function Fight:PunchRange(F, ptype, mul)
 	-- (the reach is the arm's: the athletic rigs' arms are as long as the classic ones, so the base stays;
 	-- the closest distances grow with the bodies - self.sp, the spacing scaled to the pair's rigs)
 	local base = SPACING.base + ((F.data.reach or 70) - 70) * 0.05 + ((F.data.height or 70) - 70) * 0.02
 	-- never shorter than the closest the bodies get (minSep), so every punch can land up close
-	return math.max((self.sp or SPACING).min, base * (Config.Punches[ptype] and Config.Punches[ptype].range or 1))
+	return math.max((self.sp or SPACING).min, base * (Config.Punches[ptype] and Config.Punches[ptype].range or 1) * (mul or 1))
 end
 
 function Fight:IsHurt(F)
@@ -497,13 +519,100 @@ function Fight:CanAct(F)
 	return not self.finished and self.live and not self.paused and F.state ~= "down" and F.state ~= "clinch"
 end
 
-function Fight:Punch(F, ptype, body)
+-- the wind-up multiplier of this fighter right now: hand speed, class, fatigue, and a dazed or concussed
+-- fighter is a beat slow on everything
+local function punchSpeed(F, stamPct)
+	local s = F.data.stats
+	local speedMul = (1.25 - s.PunchSpeed / 200) * (stamPct < 0.3 and 1.25 or 1)
+	speedMul /= (1.08 - (F.data.class - 1) * 0.02) * F.speedMul
+	return speedMul * (1 + CONC.tierWindup * F.tier) * (1 + CONC.windup * F.conc)
+end
+
+-- Console aim assist: a small hit-chance forgiveness (Low 2 / High 4 points) for punches thrown from a
+-- gamepad. The level comes from the SAVED settings (never from a message). The device is the one the
+-- SERVER holds the fighter on: it starts as the keyboard, a `device` message moves it, switches are
+-- rate-limited (ASSIST.switches in ASSIST.switchWindow seconds; more lock the help for the rest of the
+-- window) and a switch to the pad arms the help only ASSIST.arm seconds later. On top of that every input
+-- is tagged with its device: any keyboard / mouse / touch input in the last ASSIST.kbdOff seconds switches
+-- the help off, and the punch itself has to be a pad one. Last, the one thing the server can SEE: the
+-- character's Humanoid.MoveDirection replicates from the client, and a thumbstick gives fractional
+-- magnitudes where a keyboard gives exactly 0 or 1 (Fight:SampleDevice). Once the server has seen this
+-- fighter move at all in the fight, the help needs an analog magnitude within ASSIST.analog seconds, so a
+-- keyboard client claiming the pad gets nothing. The bonus is capped (never lifts a punch past
+-- ASSIST.cap) and counts for at most ASSIST.perRound punches a round.
+local ASSIST_BONUS = { 0, 0.02, 0.04 }
+local ASSIST = { arm = 2, kbdOff = 5, padFresh = 1.5, analog = 10, switches = 3, switchWindow = 30, cap = 0.85, perRound = 25 }
+function Fight:AssistBonus(F)
+	if not F.isPlayer or F.assist <= 0 or F.device ~= "pad" then
+		return 0
+	end
+	local now = self:Now()
+	if now < F.assistLockUntil or now - F.deviceAt < ASSIST.arm then
+		return 0
+	end
+	if now - F.kbdAt < ASSIST.kbdOff or now - F.padAt > ASSIST.padFresh then
+		return 0
+	end
+	if F.moveSeen and now - F.analogAt > ASSIST.analog then
+		return 0
+	end
+	if (F.assistCount or 0) >= ASSIST.perRound then
+		return 0
+	end
+	F.assistCount = (F.assistCount or 0) + 1
+	return ASSIST_BONUS[F.assist + 1] or 0
+end
+FightEngine.ASSIST = ASSIST
+
+-- the client's device changed (FightEngine.Input `device`): rate-limited, and it only ever LOWERS the help
+-- at once (a switch to the keyboard is immediate, a switch to the pad arms later)
+function Fight:SetDevice(F, pad)
+	local dev = pad and "pad" or "kbd"
+	if dev == F.device then
+		return
+	end
+	local now = self:Now()
+	if now - F.deviceWindow > ASSIST.switchWindow then
+		F.deviceWindow = now
+		F.deviceSwitches = 0
+	end
+	F.deviceSwitches += 1
+	if F.deviceSwitches > ASSIST.switches then
+		-- flapping between devices: no help until the window is over
+		F.assistLockUntil = F.deviceWindow + ASSIST.switchWindow
+	end
+	F.device = dev
+	F.deviceAt = now
+	if dev == "kbd" then
+		F.kbdAt = now
+	end
+end
+
+-- once a frame: what the replicated MoveDirection says about the device (a stick gives in-between magnitudes)
+function Fight:SampleDevice(F, now)
+	local hum = F.hum
+	if not (F.isPlayer and hum) then
+		return
+	end
+	local m = hum.MoveDirection.Magnitude
+	if m > 0.02 then
+		F.moveSeen = true
+		if m < 0.96 then
+			F.analogAt = now
+		end
+	end
+end
+
+-- counter = a counter jab / cross (Q + click, E + right click): the punch comes straight out of the slip
+-- (the slip's recovery does not hold it) and counts as a counter when it catches the other man punching
+function Fight:Punch(F, ptype, body, counter)
 	local P = Config.Punches[ptype]
 	if not P or not self:CanAct(F) then
 		return
 	end
 	local now = self:Now()
-	if now < F.busyUntil then
+	local outOfSlip = counter == true and now - (F.slipAt or -10) < 0.6 and F.state ~= "punching"
+	if now < F.busyUntil and not outOfSlip then
 		return
 	end
 	local O = self:Other(F)
@@ -515,11 +624,7 @@ function Fight:Punch(F, ptype, body)
 	end
 	local s = F.data.stats
 	local stamPct = F.stamina / F.maxStam
-	local speedMul = (1.25 - s.PunchSpeed / 200) * (stamPct < 0.3 and 1.25 or 1)
-	speedMul /= (1.08 - (F.data.class - 1) * 0.02) * F.speedMul
-	-- a dazed or concussed fighter is a beat slow on everything
-	speedMul *= (1 + CONC.tierWindup * F.tier) * (1 + CONC.windup * F.conc)
-	local windup = P.windup * speedMul
+	local windup = P.windup * punchSpeed(F, stamPct)
 	if now - F.lastPunch < 0.7 then
 		F.combo += 1
 		windup *= 0.88
@@ -531,7 +636,9 @@ function Fight:Punch(F, ptype, body)
 	F.stamina = math.max(0, F.stamina - cost)
 	F.blocking = false
 	F.state = "punching"
+	F.special = nil -- a plain punch replaces whatever special was still being thrown
 	F.busyUntil = now + windup + windup * 0.9
+	F.assistNext = self:AssistBonus(F)
 	local hand = P.hand
 	if ptype == "uppercut" then
 		hand = (F.hand == "R" and F.combo > 1) and "L" or "R"
@@ -545,15 +652,133 @@ function Fight:Punch(F, ptype, body)
 		O.ai:OnOppPunch(ptype, body, windup)
 	end
 	local fightId = self.id
+	local opts = outOfSlip and { counterPunch = true } or nil
 	task.delay(windup, function()
 		if self.id == fightId and not self.finished then
-			self:Resolve(F, O, ptype, body, stamPct)
+			self:Resolve(F, O, ptype, body, stamPct, opts)
 		end
 	end)
 end
 
+-- the root travel of a special's set-up (a leap in, two steps back): the NPC glides on the server, the
+-- player's client drives its own character from the 'lunge' message (as it does a stumble)
+function Fight:Lunge(F, dist, dur)
+	local O = self:Other(F)
+	if not (F.root and O.root) then
+		return
+	end
+	local toward = flat(O.root.Position - F.root.Position)
+	local dir = unitOr(toward, flat(F.root.CFrame.LookVector))
+	if dist < 0 then
+		dir, dist = -dir, -dist
+	else
+		-- never into the other man: stop a body's width short
+		dist = math.max(0, math.min(dist, toward.Magnitude - (self.sp or SPACING).minSep))
+	end
+	if dist < 0.1 then
+		return
+	end
+	local now = self:Now()
+	F.lungeUntil = now + dur
+	F.lungeVel = dir * (dist / dur)
+	self:Send({ t = "lunge", who = self:Who(F), dir = { x = dir.X, z = dir.Z }, dur = dur, speed = dist / dur })
+end
+
+-- A special move (Moves.Data): a set-up (FightMotion.Specials[id].pre: shoulder roll, pull, step back, leap,
+-- bob and weave) and one or two ordinary punches landed on the FightMotion.SpecialHits schedule through
+-- Resolve, with the move's multipliers. The set-up of a counter move is an evade window (shell); a leap
+-- or a step moves the root. A medium-or-worse hit taken cancels the punches not yet thrown.
+function Fight:Special(F, id)
+	local sid = Moves and Moves.Id(id)
+	local M = sid and Moves.Data[sid]
+	if not M or not self:CanAct(F) or not F.moves[sid] then
+		return
+	end
+	local now = self:Now()
+	if now < F.busyUntil or now < F.nextSpecial or F.stamina < M.stam then
+		return
+	end
+	local O = self:Other(F)
+	if O.state == "down" then
+		return
+	end
+	local first = Config.Punches[M.punch[1]]
+	local stamPct = F.stamina / F.maxStam
+	local windup = first.windup * punchSpeed(F, stamPct)
+	local hits = FightMotion and FightMotion.SpecialHits and FightMotion.SpecialHits(sid, windup) or {}
+	local pre = 0.25
+	if FightMotion and FightMotion.Specials and FightMotion.Specials[sid] then
+		pre = FightMotion.Specials[sid].pre
+	end
+	if #hits == 0 then
+		hits = { pre + windup } -- no FightMotion: a plain punch after the set-up
+	end
+	local last = hits[#hits]
+	F.stamina = math.max(0, F.stamina - M.stam * (1.2 - F.data.stats.Endurance / 250))
+	F.blocking = false
+	F.state = "punching"
+	F.combo = 1
+	F.lastPunch = now
+	-- the recovery of the last punch (the check hook's long pivot-out animates on its own; the next act
+	-- simply replaces it)
+	F.busyUntil = now + last + windup * 0.9
+	F.nextSpecial = now + M.cooldown
+	F.assistNext = self:AssistBonus(F)
+	F.hand = M.hand
+	F.specialToken += 1
+	local token = F.specialToken
+	F.special = { id = sid, token = token }
+	F.specialsUsed += 1
+	if M.shell then
+		F.shellUntil = now + pre + 0.12
+		F.shellKind = M.shell
+		F.shellText = M.shellText
+		F.shellHit = false
+	end
+	if M.lunge and M.lunge ~= 0 then
+		self:Lunge(F, M.lunge, math.max(0.2, pre))
+	end
+	self:SetAct(F, string.format("special|%s|%s|%.2f|%.2f", sid, M.hand, windup, M.power or 1))
+	F.tally.thrown += #hits
+	F.totals.thrown += #hits
+	self:Send({ t = "special", who = self:Who(F), id = sid, name = M.name })
+	if O.ai then
+		for i, at in ipairs(hits) do
+			O.ai:OnOppPunch(M.punch[i] or M.punch[1], M.body == true, at)
+		end
+	end
+	local fightId = self.id
+	for i, at in ipairs(hits) do
+		local kind = M.punch[i] or M.punch[1]
+		task.delay(at, function()
+			if self.id == fightId and not self.finished and F.special and F.special.token == token then
+				-- the second punch of a rush is the other hand
+				F.hand = (i % 2 == 0) and (M.hand == "L" and "R" or "L") or M.hand
+				F.punchesUsed[kind] = (F.punchesUsed[kind] or 0) + 1
+				self:Resolve(F, O, kind, M.body == true, stamPct, M)
+				if i == #hits and F.special and F.special.token == token then
+					F.special = nil
+				end
+			end
+		end)
+	end
+end
+
 function Fight:Evaded(F, O, ptype, body, now)
 	local kind = Config.Punches[ptype].kind
+	-- a special's set-up: the shoulder roll and the weave take head shots (not uppercuts), the pull takes
+	-- straights, the step back takes everything; what it makes miss turns the move's punch into a counter
+	if now < O.shellUntil then
+		local k = O.shellKind
+		if k == "all" or (not body and ((k == "straight" and kind == "straight") or (k == "head" and kind ~= "uppercut"))) then
+			O.shellUntil = 0
+			O.shellHit = true
+			O.counterUntil = now + 0.9
+			self:Send({ t = "defense", who = self:Who(O), move = O.shellText or "SLIPPED" })
+			self:Comment(O.data.name .. " makes him miss and the counter is coming!")
+			return true
+		end
+	end
 	if now < O.parryUntil and kind == "straight" and not body then
 		O.parryUntil = 0
 		O.counterUntil = now + 0.7
@@ -673,7 +898,9 @@ local function fallFor(ptype, body, severity)
 	return "back"
 end
 
-function Fight:Resolve(F, O, ptype, body, stamPct)
+-- sp (optional) = the special move this punch belongs to (Moves.Data: range / hit / dmg / kd multipliers,
+-- its counter and liver rules) or { counterPunch = true } for a counter jab / cross out of a slip
+function Fight:Resolve(F, O, ptype, body, stamPct, sp)
 	if F.state == "down" or O.state == "down" or F.state == "clinch" or O.state == "clinch" or not self.live then
 		return
 	end
@@ -681,7 +908,8 @@ function Fight:Resolve(F, O, ptype, body, stamPct)
 	local s, os_ = F.data.stats, O.data.stats
 	local now = self:Now()
 	local dist = self:Distance(F, O)
-	if dist > self:PunchRange(F, ptype) then
+	sp = sp or {}
+	if dist > self:PunchRange(F, ptype, sp.range) then
 		self:Miss(F, O, ptype, "short")
 		return
 	end
@@ -716,6 +944,17 @@ function Fight:Resolve(F, O, ptype, body, stamPct)
 		chance += 0.15
 		F.angleUntil = 0
 	end
+	-- the check hook pivots out after the hook: an angle for the next punch and a moment off his line
+	if sp.pivotOut then
+		F.angleUntil = now + 1.2
+		F.pivotEvadeUntil = now + 0.3 * self:DefenseMul(F)
+	end
+	chance += (sp.hit or 0)
+	if (F.assistNext or 0) > 0 then
+		-- the console forgiveness never lifts a punch past the cap (and never lowers one that is already above it)
+		chance = math.max(chance, math.min(chance + F.assistNext, ASSIST.cap))
+	end
+	F.assistNext = 0
 	-- concussion and daze cost accuracy
 	chance *= (1 - CONC.hitChance * F.conc) * (1 - CONC.tierHitChance * F.tier)
 	chance = math.clamp(chance * vision, 0.15, 0.95)
@@ -753,11 +992,17 @@ function Fight:Resolve(F, O, ptype, body, stamPct)
 	if F.combo >= 2 then
 		dmg *= 1 + (F.style.fight.combo - 1) * 0.5
 	end
+	dmg *= sp.dmg or 1
 	local counter = false
 	if now < F.counterUntil then
 		counter = true
 		dmg *= 1.2 * F.style.fight.counter * (0.85 + s.Countering / 300)
 		F.counterUntil = 0
+	elseif O.state == "punching" and (sp.counter or sp.counterPunch or sp.pivotOut) then
+		-- a counter move (shell, pull, step back, check hook, a jab or cross out of a slip) that catches him
+		-- punching is a counter in its own right
+		counter = true
+		dmg *= 1.15 * (0.85 + s.Countering / 300)
 	elseif O.state == "punching" then
 		dmg *= 1.1
 	end
@@ -773,7 +1018,7 @@ function Fight:Resolve(F, O, ptype, body, stamPct)
 
 	-- block (the overhand comes over the top of the guard)
 	if O.blocking and not body then
-		local through = P.overGuard or 0
+		local through = sp.overGuard or P.overGuard or 0
 		local arms = 1.3 - 0.3 * math.clamp(O.stamina / O.maxStam, 0, 1)
 		-- tired arms and a dazed, loose guard let more through
 		local chip = dmg * math.clamp(0.28 - os_.Blocking / 400, 0.04, 0.25) * arms * (1 + 0.35 * O.tier)
@@ -823,9 +1068,10 @@ function Fight:Resolve(F, O, ptype, body, stamPct)
 		self:CheckTier(O)
 		if O.body <= 0 or (O.body < 25 and bd >= 5 * self.damageScale and self.rng:NextNumber() < 0.22) then
 			kd, severity = true, "normal"
-		elseif ptype == "leadhook" and F.hand == "L" and O.body < 60 and self.allowKD
-			and self.rng:NextNumber() < 0.12 * (1.2 - os_.Endurance / 100) * math.clamp(bd / (5 * self.damageScale), 0.5, 1.5) then
-			-- the liver sits under the right ribs: a left hook there drops people a beat AFTER it lands
+		elseif ptype == "leadhook" and F.hand == "L" and O.body < (sp.liver and 85 or 60) and self.allowKD
+			and self.rng:NextNumber() < (sp.liver and 0.4 or 0.12) * (1.2 - os_.Endurance / 100) * math.clamp(bd / (5 * self.damageScale), 0.5, 1.5) then
+			-- the liver sits under the right ribs: a left hook there drops people a beat AFTER it lands (the
+			-- liver-shot special is aimed at it and folds a man who is nowhere near done)
 			liver = true
 		end
 		fall = "knee"
@@ -854,6 +1100,7 @@ function Fight:Resolve(F, O, ptype, body, stamPct)
 				power = s.Power, clean = clean, kdTotal = O.kdTotal, conc = O.conc, healthCap = O.healthCap,
 				trauma = O.data.trauma, composure = O.data.mental.Composure,
 			})
+			p *= sp.kd or 1
 			if self.rng:NextNumber() < p then
 				kd = true
 				severity = (flash and tierBefore == 0) and "flash" or nil
@@ -879,9 +1126,16 @@ function Fight:Resolve(F, O, ptype, body, stamPct)
 	else
 		self:SetAct(O, string.format("hit|%s|%s|%.2f|%s", ptype, heavy and "heavy" or (counter and "counter" or "head"), sev, F.hand or "R"))
 	end
+	-- a medium-or-worse shot cancels the special the other man was still throwing (the Animator drops it too)
+	if O.special and sev >= 0.35 then
+		O.special = nil
+		O.shellUntil = 0
+		O.busyUntil = math.min(O.busyUntil, now + 0.3)
+	end
 	self:Send({
 		t = "hit", who = self:Who(F), punch = ptype, body = body, dmg = math.floor(dmg * 10) / 10, counter = counter, heavy = heavy,
 		hand = F.hand, sev = math.floor(sev * 100) / 100, bleed = (O.dmg.cut > 0.35 or O.dmg.cut2 > 0.35 or O.dmg.noseBleed > 0.4),
+		special = sp.id, kind = P.kind,
 	})
 	if heavy then
 		local name = Config.PunchNames[ptype]
@@ -1026,16 +1280,18 @@ function Fight:Slip(F, dir)
 	local now = self:Now()
 	F.slipUntil = now + (0.26 + F.data.stats.Reflexes * 0.003 + F.data.stats.HeadMovement * 0.002) * self:DefenseMul(F)
 	F.busyUntil = now + 0.42
+	F.slipAt = now -- a counter jab / cross may come straight out of this slip (Punch)
 	self:SetAct(F, "slip|" .. (dir == -1 and "L" or "R"))
 end
 
-function Fight:Roll(F)
-	if not defenseReady(self, F, 5) then
+-- quick = the quick dodge (Shift + Space): a shorter window, a quicker recovery, cheaper
+function Fight:Roll(F, quick)
+	if not defenseReady(self, F, quick and 3 or 5) then
 		return
 	end
 	local now = self:Now()
-	F.rollUntil = now + (0.3 + F.data.stats.HeadMovement * 0.003) * self:DefenseMul(F)
-	F.busyUntil = now + 0.55
+	F.rollUntil = now + ((quick and 0.2 or 0.3) + F.data.stats.HeadMovement * 0.003) * self:DefenseMul(F)
+	F.busyUntil = now + (quick and 0.36 or 0.55)
 	self:SetAct(F, "roll")
 end
 
@@ -1952,6 +2208,11 @@ function Fight:UpdateMovement(F, dt)
 		end
 	end
 	if F.root then
+		-- a special's leap / step back (NPCs; the player's client drives its own)
+		if now < F.lungeUntil and F.lungeVel and not F.isPlayer and F.state ~= "down" then
+			local p = F.root.Position
+			F.model:PivotTo(F.root.CFrame + (self:ClampToRing(p + F.lungeVel * dt) - p))
+		end
 		if stumbling and F.stumbleVel and not F.isPlayer and F.state ~= "down" then
 			local p = F.root.Position
 			local want = p + F.stumbleVel * dt
@@ -1979,6 +2240,7 @@ end
 function Fight:Update(dt)
 	local now = self:Now()
 	for _, F in ipairs({ self.P, self.O }) do
+		self:SampleDevice(F, now)
 		if F.state == "punching" and now >= F.busyUntil then
 			F.state = F.blocking and "blocking" or "idle"
 		end
@@ -2446,6 +2708,19 @@ function Fight:ReleaseCorners()
 	-- UpdateMovement sets each fighter's real speed from the next frame on
 end
 
+-- a fighter's unlocked special moves as an ordered list of ids (Moves.List order)
+local function movesList(F)
+	local out = {}
+	if Moves then
+		for _, id in ipairs(Moves.List) do
+			if F.moves[id] then
+				table.insert(out, id)
+			end
+		end
+	end
+	return out
+end
+
 local function femaleOf(F)
 	return type(F.data.app) == "table" and F.data.app.gender == 2
 end
@@ -2480,6 +2755,8 @@ function Fight:Run()
 			refModel = self.ref and self.ref.model, allowKD = self.allowKD, pvp = self.pvp,
 			tape = { you = tapeOf(V), opp = tapeOf(X) },
 			talk = V == P and offer.talk or "", myLine = V == P and offer.myLine or "",
+			-- the special moves this viewer may throw (ids) and the aim-assist level the server will honour
+			moves = movesList(V), assist = V.assist,
 		}
 	end)
 	-- the Animator only drives tagged models: tag now so the ring walk / warm-up (Guard "walkout") is animated
@@ -2534,6 +2811,7 @@ function Fight:Run()
 		self.live = true
 		self.paused = false
 		self.resumedAt = self:Now()
+		P.assistCount, O.assistCount = 0, 0
 		self:ReleaseCorners()
 		local remaining = self.roundSeconds
 		self.roundEnd = self:Now() + remaining
@@ -2892,14 +3170,29 @@ function FightEngine.Input(player, msg)
 		return
 	end
 	local t = msg.t
+	if t == "device" then
+		fight:SetDevice(F, msg.pad == true)
+		return
+	end
+	-- which device the input came from (the client tags gamepad inputs): the aim assist reads it; a pad
+	-- tag only counts while the server holds the fighter on the pad (Fight:SetDevice)
+	if t ~= "mash" then
+		if msg.pad == true and F.device == "pad" then
+			F.padAt = now
+		else
+			F.kbdAt = now
+		end
+	end
 	if t == "punch" and Config.Punches[msg.p] then
-		fight:Punch(F, msg.p, msg.body == true)
+		fight:Punch(F, msg.p, msg.body == true, msg.counter == true)
+	elseif t == "special" then
+		fight:Special(F, msg.id)
 	elseif t == "block" then
 		fight:SetBlock(F, msg.on == true)
 	elseif t == "slip" then
 		fight:Slip(F, msg.dir == -1 and -1 or 1)
 	elseif t == "roll" then
-		fight:Roll(F)
+		fight:Roll(F, msg.quick == true)
 	elseif t == "parry" then
 		fight:Parry(F)
 	elseif t == "pivot" then

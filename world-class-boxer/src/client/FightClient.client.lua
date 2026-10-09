@@ -8,16 +8,21 @@
 -- cuts. Knockdowns: skill-based get-up (timing marker + mashing), mandatory eight count, referee
 -- check, out-cold ragdoll. Venue dressing / lighting / crowd come from VenueFX (stream G) when it is
 -- present; the old built-in venue effects stay as a fallback so a fight always presents.
--- Controls: 1/J jab, 2/K cross, 3/L lead hook, 4 rear hook, 5/U uppercut, 6/O overhand,
--- SHIFT = to the body, F block, R parry, Q/E slip, C roll, Z/X pivot, G clinch, H the controls.
--- Block, body and the controls legend are TAP TOGGLES on every device (tap: on, tap again: off); a
--- press held longer than Tog.HOLD still works as a hold (released when you let go). A punch drops a
--- tapped guard (as the server does) and spends a tapped body modifier.
+-- Controls come from the control map (Shared.Keymap: the defaults, and the player's custom map through
+-- Settings.Keymap()). Keyboard defaults: left click jab, right click cross, F lead hook, R rear hook, T
+-- uppercut, G body hook, middle click overhand, C = to the body, B block, V parry, Q / E slip, Space dodge,
+-- Shift + Space quick dodge, double-tap A / D pivot, Ctrl clinch, Q + click counter jab, E + right click
+-- counter cross, 1-9 the special moves, H the controls strip, Tab the Moves & Controls menu, Shift sprints
+-- outside the ring. Block, body and the controls legend are TAP TOGGLES on every device (tap: on, tap
+-- again: off); a press held longer than Tog.HOLD still works as a hold (released when you let go). A punch
+-- drops a tapped guard (as the server does) and spends a tapped body modifier.
 -- Gamepad (bound through ContextActionService for the fight, above the default jump / camera bindings):
--- X jab, Y cross, B lead hook, A rear hook, RT uppercut, RB overhand, LB = to the body, LT
--- block (both tap toggles), right stick flick left / right slip, down roll, up parry, RS click pivot (toward the left stick,
--- else left), D-pad left / right pivot, D-pad up parry, D-pad down or LS click clinch, VIEW for the
--- controls; when down, mash A. (PlayStation: SQUARE / TRIANGLE / CIRCLE / CROSS, R2, R1, L1, L2, R3, L3.)
+-- X jab, Y cross, B lead hook, A rear hook, RT uppercut, RB overhand (tap) and the special-move modifier
+-- (hold RB + a button), LB = to the body, LT block (both tap toggles), right stick flick left / right slip,
+-- down roll, up parry, flick then X / Y counter jab / cross, LT + A quick dodge, D-pad left / right pivot,
+-- D-pad up parry, D-pad down or LS click clinch, VIEW the controls strip (hold it for the menu); when
+-- down, mash A. Aim assist (Settings, gamepad only) reads the left stick relative to the opponent;
+-- vibration on hits (Gamepad.Rumble); the fight camera frames both fighters and the right stick nudges it.
 local Players = game:GetService("Players")
 local ContextActionService = game:GetService("ContextActionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -34,6 +39,8 @@ local Config = require(Shared:WaitForChild("Config"))
 local UI = require(Shared:WaitForChild("UI"))
 local T = UI.Theme
 local Gamepad = UI.Gamepad -- input device and button names (optional)
+local Keymap = require(Shared:WaitForChild("Keymap")) -- the control map (actions, defaults, labels)
+local Moves = require(Shared:WaitForChild("Moves")) -- the special moves (names, hands, cooldowns)
 local K = Enum.KeyCode
 local FightRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Fight")
 
@@ -246,12 +253,52 @@ end
 local hud = UI.MountRoot(gui, "HUDRoot")
 -- everything the rest of the script uses from the HUD (built in the block below, which keeps its
 -- own helpers local: the script stays well under Luau's 200-locals-per-function limit)
-local compactHud, tierColor, rampColor, stamColor, setBar, ZONE_IDLE, L, R, addKD, clock, roundText, timeText, crowdMeter
+local compactHud, tierColor, rampColor, stamColor, setBar, ZONE_IDLE, L, R, addKD, clock, roundText, timeText, crowdMeter, layoutClockTop
 local updateCrowd, bug, setBug, angleTag, bannerBand, flash, defFlash, crowdStrip, flashbulbs, crowdMoment, crowdPulse
 local controls, controlsUntil, showBanner, showFlash, setTicker, markers, hitMarker, zoneFlash, overlay, overlayBegin
 local overlayShow, ovHead, ovVersus, ovRow, ovNote, ovQuote, ovScore, ovRounds, ovCondition, countBox, countKicker, countKickerText
 local countNum, countWho, openCount, showCount, hideCount, getup, getupTitle, setGetup, zone, marker, getupHint, getupPress
-local refreshControls, layoutHud, throwPunch, pickHook, buildTouch, holdH
+local refreshControls, layoutHud, throwPunch, pickHook, buildTouch, holdH, throwSpecial, setTouchSpecials, openMoves
+-- the control map in use (Settings.Keymap() once the BoxerClient modules are up; the defaults before), the
+-- strip's key-cap labels (repainted when the map changes) and the BoxerClient modules resolved lazily
+-- (Settings, ControlsMenu; every require guarded)
+local KM = { caps = {}, modules = {} }
+function KM.module(name)
+	local m = KM.modules[name]
+	if m ~= nil then
+		return m or nil
+	end
+	local ok, mod = pcall(function()
+		local folder = script.Parent:FindFirstChild("BoxerClient")
+		local inst = folder and folder:FindFirstChild(name)
+		return inst and require(inst)
+	end)
+	if ok and type(mod) == "table" then
+		KM.modules[name] = mod
+		return mod
+	end
+	return nil
+end
+function KM.now()
+	local Settings = KM.module("Settings")
+	if Settings and type(Settings.Keymap) == "function" then
+		local ok, m = pcall(Settings.Keymap)
+		if ok and type(m) == "table" then
+			return m
+		end
+	end
+	return Keymap.Resolve(nil)
+end
+-- KM.capText(ids, mode) -> a cap's text (set by the HUD block)
+function KM.refresh()
+	local mode = Gamepad and Gamepad.Mode() or "keyboard"
+	for _, c in ipairs(KM.caps) do
+		local ok, text = pcall(KM.capText, c.ids, mode)
+		if ok and type(text) == "string" and c.label.Text ~= text then
+			c.label.Text = text
+		end
+	end
+end
 do
 	local GuiService = game:GetService("GuiService")
 	compactHud = false -- layoutHud keeps it current
@@ -548,6 +595,15 @@ do
 	UI.Pad(liveText, 0, 5)
 	roundText = UI.Text(clockTop, "ROUND 1", { Face = "displayMed", TextSize = 18, TextColor3 = T.ink, TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.fromOffset(44, 0),
 		Size = UDim2.new(1, -48, 1, 0), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
+	-- the round text starts where the SPAR / LIVE tag ends (a phone's text floor makes the tag wider than its
+	-- 44 px slot, and "SPAR" over "ROUND 1 / 1" read as one word)
+	function layoutClockTop()
+		local tagW = liveTag.AbsoluteSize.X / math.max(0.01, UI.ScaleOf(clockTop))
+		local x = math.max(compactHud and 38 or 44, tagW + 10)
+		roundText.Position = UDim2.fromOffset(x, 0)
+		roundText.Size = UDim2.new(1, -(x + 4), 1, 0)
+	end
+	liveTag:GetPropertyChangedSignal("AbsoluteSize"):Connect(layoutClockTop)
 	timeText = UI.Text(clock, "1:00", { Face = "number", TextSize = 50, TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.new(1, 0, 0, 56), Position = UDim2.fromOffset(0, 32),
 		AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
 	-- the crowd: a two-sided meter (red fills left when they are behind you, blue right when they back
@@ -601,6 +657,7 @@ do
 		bug.BackgroundColor3 = color
 		liveText.Text = short
 		liveTag.BackgroundColor3 = color
+		layoutClockTop()
 	end
 
 	angleTag = UI.Chip(hud, "ANGLE  +ACCURACY", T.gold, { solid = true, AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 184), h = 26, TextSize = 13 })
@@ -725,33 +782,43 @@ do
 		UI.List(ctlRows[r], 12, true, Enum.HorizontalAlignment.Center)
 	end
 	local ctlItems = {}
-	-- { keyboard caps, gamepad caps (KeyCodes, or a function for a combined name), action }: the caps
-	-- follow the device in use (the right-stick flicks read "RS LEFT/RIGHT", "RS DOWN")
-	local function padPair(a, b)
-		return function()
-			return Gamepad.Label(a) .. "/" .. Gamepad.Label(b):gsub("^RS ", "")
+	-- { action id(s), caption }: the caps read the control map for the device in use (the right-stick
+	-- flicks read "RS LEFT/RIGHT", "RS DOWN"); KM.refresh repaints them when the map changes
+	local function capText(ids, mode)
+		local map = KM.now()
+		local device = (mode == "gamepad" and Gamepad) and "pad" or "kbd"
+		local parts = {}
+		for _, id in ipairs(ids) do
+			local t = Keymap.ActionText(map, id, device, Gamepad)
+			if device == "kbd" then
+				t = t:match("^(.-) / ") or t -- the primary key only: the strip is tight
+			end
+			if #parts > 0 and t:sub(1, 3) == "RS " and parts[1]:sub(1, 3) == "RS " then
+				t = t:sub(4)
+			end
+			table.insert(parts, t)
 		end
+		return table.concat(parts, "/")
 	end
-	for i, k in ipairs({ { "1/J", K.ButtonX, "JAB" }, { "2/K", K.ButtonY, "CROSS" }, { "3/L", K.ButtonB, "L.HOOK" }, { "4", K.ButtonA, "R.HOOK" }, { "5/U", K.ButtonR2, "UPPER" },
-		{ "6/O", K.ButtonR1, "OVERHAND" }, { "SHIFT", K.ButtonL1, "BODY" }, { "F", K.ButtonL2, "BLOCK" }, { "R", K.DPadUp, "PARRY" },
-		{ "Q/E", padPair(K.Thumbstick2Left, K.Thumbstick2Right), "SLIP" }, { "C", K.Thumbstick2Down, "ROLL" }, { "Z/X", K.ButtonR3, "PIVOT" }, { "G", K.DPadDown, "CLINCH" } }) do
+	KM.capText = capText
+	for i, k in ipairs({ { { "jab" }, "JAB" }, { { "cross" }, "CROSS" }, { { "leadhook" }, "L.HOOK" }, { { "rearhook" }, "R.HOOK" }, { { "uppercut" }, "UPPER" },
+		{ { "overhand" }, "OVERHAND" }, { { "body" }, "BODY" }, { { "block" }, "BLOCK" }, { { "parry" }, "PARRY" },
+		{ { "slipL", "slipR" }, "SLIP" }, { { "dodge" }, "DODGE" }, { { "pivotL", "pivotR" }, "PIVOT" }, { { "clinch" }, "CLINCH" }, { { "moveslist" }, "MOVES" } }) do
 		local f = UI.Frame(ctlRows[1], { BackgroundTransparency = 1, Size = UDim2.fromOffset(0, 24), AutomaticSize = Enum.AutomaticSize.X, LayoutOrder = i })
 		ctlItems[i] = f
 		UI.List(f, 5, true)
 		local cap = UI.Frame(f, { Size = UDim2.fromOffset(0, 20), AutomaticSize = Enum.AutomaticSize.X, BackgroundColor3 = T.panel2, BackgroundTransparency = 0, LayoutOrder = 1 })
 		UI.Corner(cap, 4)
 		UI.Stroke(cap, Color3.new(1, 1, 1), 1, 0.85)
-		local t = UI.Text(cap, k[1], { Font = T.semi, TextSize = 12, Size = UDim2.new(0, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.X, TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false })
+		local t = UI.Text(cap, "", { Font = T.semi, TextSize = 12, Size = UDim2.new(0, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.X, TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false })
 		UI.Pad(t, 0, 6)
 		UI.BindHint(t, function(mode)
-			if mode == "gamepad" and Gamepad then
-				return type(k[2]) == "function" and k[2]() or Gamepad.Label(k[2])
-			end
-			return k[1]
+			return capText(k[1], mode)
 		end)
-		UI.Text(f, k[3], { Font = T.semi, TextSize = 12, TextColor3 = Color3.fromRGB(200, 205, 216), Size = UDim2.new(0, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.X, TextWrapped = false, LayoutOrder = 2 })
+		table.insert(KM.caps, { label = t, ids = k[1] })
+		UI.Text(f, k[2], { Font = T.semi, TextSize = 12, TextColor3 = Color3.fromRGB(200, 205, 216), Size = UDim2.new(0, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.X, TextWrapped = false, LayoutOrder = 2 })
 		-- the toggles light their key cap while on
-		local togName = (k[3] == "BODY" and "body") or (k[3] == "BLOCK" and "block") or nil
+		local togName = (k[2] == "BODY" and "body") or (k[2] == "BLOCK" and "block") or nil
 		if togName then
 			cap.Name = "Cap_" .. togName
 			table.insert(Tog.views, function(name, on)
@@ -1188,8 +1255,7 @@ do
 		-- needs the corner
 		bug.Visible = bug:GetAttribute("On") == true and not clock.Visible and not (compact and overlay.Visible)
 		liveTag.Size = UDim2.fromOffset(0, compact and 16 or 20)
-		roundText.Position = UDim2.fromOffset(compact and 38 or 44, 0)
-		roundText.Size = UDim2.new(1, compact and -40 or -48, 1, 0)
+		layoutClockTop()
 		angleTag.Position = UDim2.new(0.5, 0, 0, below + (compact and 8 or 32))
 		-- the crowd strip sits under the angle tag's line (both can show at once)
 		crowdStrip.Position = UDim2.new(0.5, 0, 0, below + (compact and 40 or 66))
@@ -1249,6 +1315,28 @@ do
 		return b
 	end
 
+	local touchSpecials
+	-- list = the unlocked special ids (Moves.List order); each pad throws its move
+	function setTouchSpecials(list)
+		if not touchSpecials then
+			return
+		end
+		UI.Clear(touchSpecials)
+		for i, id in ipairs(list or {}) do
+			local a = Keymap.ById["special_" .. id]
+			local b = roundPad(touchSpecials, "Special_" .. id, a and a.touch or id:upper(), T.gold, 50, UDim2.fromOffset(0, 0), Vector2.new(0, 0))
+			b.Position = UDim2.fromOffset(0, 0)
+			b.LayoutOrder = i
+			local lbl = b:FindFirstChildOfClass("TextLabel")
+			if lbl then
+				UI.SetTextSize(lbl, 11)
+			end
+			b.MouseButton1Down:Connect(function()
+				throwSpecial(id)
+			end)
+		end
+	end
+
 	function buildTouch()
 		if touchPad or not UserInputService.TouchEnabled then
 			return
@@ -1267,6 +1355,11 @@ do
 		punchPad("UPPER", "uppercut", UDim2.fromOffset(152, 106))
 		punchPad("JAB", "jab", UDim2.fromOffset(52, 210))
 		punchPad("CROSS", "cross", UDim2.fromOffset(152, 210))
+		-- the unlocked special moves: a row of small pads above the cluster (setTouchSpecials fills it
+		-- from the fight's start message), right-aligned so a short list hugs the punches
+		touchSpecials = UI.Frame(touchPad, { Name = "Specials", BackgroundTransparency = 1, AnchorPoint = Vector2.new(1, 1), Position = UDim2.fromOffset(204, -8),
+			Size = UDim2.fromOffset(0, 50), AutomaticSize = Enum.AutomaticSize.X })
+		UI.List(touchSpecials, 6, true, Enum.HorizontalAlignment.Right)
 		local bodyBtn = UI.Button(touchPad, "BODY", { Name = "Body", Size = UDim2.fromOffset(120, 40), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.fromOffset(102, 0),
 			BackgroundColor3 = T.bg, BackgroundTransparency = 0.35, TextSize = 16 })
 		bodyBtn.Selectable = false
@@ -1648,6 +1741,108 @@ end
 ------------------------------------------------------------------------
 -- Ragdoll for the local character on an out-cold KO (the client owns its physics)
 ------------------------------------------------------------------------
+------------------------------------------------------------------------
+-- Impact: the flash at the point of contact (a pooled emitter + light per hit part), the impact sound
+-- layered by punch kind with its pitch and volume varied (never the same sound twice in a row), the
+-- camera shake scaled by the punch's power, and the controller rumble
+------------------------------------------------------------------------
+local Impact = { TEX = "rbxasset://textures/particles/sparkles_main.dds", fx = {}, last = { id = nil, speed = 0 } } -- fx: part -> { att, emitter, light }
+function Impact.flash(model, partName, strength, counter)
+	local part = model and model:FindFirstChild(partName)
+	if not part or fxScale() <= 0 then
+		return
+	end
+	local fx = Impact.fx[part]
+	if not (fx and fx.att.Parent) then
+		local att = Instance.new("Attachment")
+		att.Name = "FightImpactAtt"
+		att.Parent = part
+		local e = Instance.new("ParticleEmitter")
+		e.Name = "ImpactFlash"
+		e.Texture = Impact.TEX
+		e.Rate = 0
+		e.Lifetime = NumberRange.new(0.1, 0.18)
+		e.Speed = NumberRange.new(0, 0)
+		e.LightEmission = 1
+		e.LightInfluence = 0
+		e.Rotation = NumberRange.new(0, 360)
+		e.RotSpeed = NumberRange.new(-200, 200)
+		e.Color = ColorSequence.new(Color3.new(1, 1, 1), Color3.fromRGB(255, 214, 150))
+		e.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.1), NumberSequenceKeypoint.new(0.5, 0.35), NumberSequenceKeypoint.new(1, 1) })
+		e.Parent = att
+		local light = Instance.new("PointLight")
+		light.Name = "ImpactLight"
+		light.Brightness = 0
+		light.Range = 7
+		light.Color = Color3.fromRGB(255, 236, 200)
+		light.Parent = att
+		fx = { att = att, emitter = e, light = light }
+		Impact.fx[part] = fx
+	end
+	strength = math.clamp(strength or 0.5, 0.2, 1.6)
+	local size = 1.1 + strength * 1.6
+	fx.emitter.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, size), NumberSequenceKeypoint.new(1, size * 0.4) })
+	fx.emitter:Emit(counter and 3 or (strength > 0.9 and 2 or 1))
+	fx.light.Brightness = 1.5 + strength * 2.5
+	TweenService:Create(fx.light, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Brightness = 0 }):Play()
+end
+
+function Impact.clear()
+	for _, fx in pairs(Impact.fx) do
+		if fx.att then
+			fx.att:Destroy()
+		end
+	end
+	table.clear(Impact.fx)
+end
+
+-- the last impact sound: a repeat of the same id at nearly the same pitch is pushed apart
+function Impact.sfx(id, speed, volume)
+	local last = Impact.last
+	if id == last.id and math.abs(speed - last.speed) < 0.07 then
+		speed += (speed >= last.speed) and 0.09 or -0.09
+	end
+	last.id, last.speed = id, speed
+	sfx(id, speed, volume)
+end
+
+-- the impact of a landed punch: a base thud pitched by kind (straights snap high, hooks slap, uppercuts and
+-- overhands thump), a second layer under hooks / power shots / body shots, a third crack on the heavy ones
+function Impact.sound(msg, sev)
+	local kind = msg.kind or (Config.Punches[msg.punch] and Config.Punches[msg.punch].kind) or "straight"
+	local vol = math.clamp(0.35 + sev * 0.5, 0.35, 1)
+	local r = math.random()
+	if msg.body then
+		Impact.sfx(soundId("BodyShot", "Thud"), 0.72 + r * 0.22 - (msg.heavy and 0.1 or 0), vol)
+		sfx(BUILTIN.Grunt or "rbxasset://sounds/uuhhh.mp3", 0.75 + math.random() * 0.2, 0.18 + sev * 0.2)
+	elseif kind == "straight" then
+		Impact.sfx(soundId("PunchImpact", "Thud"), 1.45 + r * 0.3 - (msg.heavy and 0.25 or 0), vol * 0.9)
+	elseif kind == "hook" then
+		Impact.sfx(soundId("PunchImpact", "Thud"), 1.05 + r * 0.25 - (msg.heavy and 0.15 or 0), vol)
+		sfx(BUILTIN.SwordHit or "rbxasset://sounds/swordhit.wav", 0.7 + math.random() * 0.25, 0.1 + sev * 0.12)
+	else
+		-- uppercut / overhand: a low thump with a slap on top
+		Impact.sfx(soundId("PunchImpact", "Thud"), 0.85 + r * 0.2, vol)
+		sfx(BUILTIN.SwordHit or "rbxasset://sounds/swordhit.wav", 0.5 + math.random() * 0.2, 0.12 + sev * 0.15)
+	end
+	if msg.heavy or msg.counter then
+		sfx(BUILTIN.Thud or "rbxasset://sounds/action_jump_land.mp3", 0.42 + math.random() * 0.12, 0.3 + sev * 0.2)
+	end
+end
+
+-- the controller rumble (Gamepad.Rumble: a no-op off a gamepad or with vibration off)
+function Impact.rumble(large, small, dur)
+	if Gamepad and Gamepad.Rumble then
+		pcall(Gamepad.Rumble, large, small, dur)
+	end
+end
+
+-- how much a punch kind rocks the camera (the punch's damage against a cross)
+function Impact.power(ptype)
+	local P = Config.Punches[ptype]
+	return math.clamp(((P and P.dmg) or 6.5) / 6.5, 0.55, 1.6)
+end
+
 local STUMBLE_STEP = "FightStumble" -- RenderStep binding that drives the player's stagger (handlers.stumble)
 local ragdoll
 local function setRagdoll(on)
@@ -2197,6 +2392,10 @@ local function updateFX(dt, now)
 	return tier, conc, fx
 end
 
+-- the gamepad state (the input code below): the sticks, the fight binding, the camera nudge
+local pad = { bound = false, leftX = 0, leftY = 0, rightX = 0, rightY = 0, nudgeX = 0, nudgeY = 0, flick = Gamepad and Gamepad.Flick() }
+local padOn -- () -> the fight pad binding is live and the player is on a gamepad (set with the input code)
+local sendDevice -- () -> tells the server the device the fight runs on (set with the input code)
 local function startCamera()
 	local cam = workspace.CurrentCamera
 	cam.CameraType = Enum.CameraType.Scriptable
@@ -2268,12 +2467,16 @@ local function startCamera()
 			local mid = (me.Position + opp.Position) / 2 + Vector3.new(0, 1.2, 0)
 			-- high 3/4 view from behind your shoulder; pick the side nearer the ring centre
 			local center = F.center or mid
-			-- a 3/4 angle (about 40 degrees off the fight line) keeps both fighters readable instead of stacked
-			local function camPos(side)
-				return me.Position - dir * 6.6 + right * (side * 5.8) + Vector3.new(0, 5.4, 0)
-			end
 			local function flatDist(a, b)
 				return Vector3.new(a.X - b.X, 0, a.Z - b.Z).Magnitude
+			end
+			-- auto-framing: the camera backs off as the fighters separate so both stay in the picture
+			local sep = flatDist(me.Position, opp.Position)
+			local back = 6.6 + math.clamp((sep - 4.5) * 0.4, 0, 3)
+			local up = 5.4 + math.clamp((sep - 4.5) * 0.15, 0, 1.2)
+			-- a 3/4 angle (about 40 degrees off the fight line) keeps both fighters readable instead of stacked
+			local function camPos(side)
+				return me.Position - dir * back + right * (side * 5.8) + Vector3.new(0, up, 0)
 			end
 			F.camSide = F.camSide or 1
 			local pos = camPos(F.camSide)
@@ -2282,7 +2485,18 @@ local function startCamera()
 				F.camSide = -F.camSide
 				pos = other
 			end
+			-- gamepad: the right stick nudges the view round the pair and up / down; it eases back when let go
+			local onPad = padOn()
+			local nx, ny = onPad and pad.rightX or 0, onPad and pad.rightY or 0
+			pad.nudgeX += (nx - pad.nudgeX) * math.clamp(dt * 5, 0, 1)
+			pad.nudgeY += (ny - pad.nudgeY) * math.clamp(dt * 5, 0, 1)
+			if math.abs(pad.nudgeX) > 0.01 or math.abs(pad.nudgeY) > 0.01 then
+				local rel = pos - mid
+				rel = CFrame.Angles(0, -pad.nudgeX * 0.55, 0):VectorToWorldSpace(rel)
+				pos = mid + rel + Vector3.new(0, pad.nudgeY * 1.8, 0)
+			end
 			goal = CFrame.lookAt(pos, mid)
+			F.camPad = onPad
 		end
 		if goal then
 			-- drunk camera: a slow, sick sway that grows with the head tier and concussion
@@ -2299,7 +2513,8 @@ local function startCamera()
 			elseif F.broadcastUntil and now < F.broadcastUntil then
 				cam.CFrame = goal + sh
 			else
-				cam.CFrame = cam.CFrame:Lerp(goal, math.clamp(dt * 8, 0, 1)) + sh
+				-- a pad's camera eases a touch more (no mouse to re-aim: the stick nudges a smooth view)
+				cam.CFrame = cam.CFrame:Lerp(goal, math.clamp(dt * (F.camPad and 6 or 8), 0, 1)) + sh
 			end
 		end
 		cam.FieldOfView = math.clamp((baseFov or 70) + FX.fovKick * fx * kick, 40, 100)
@@ -2337,18 +2552,37 @@ local function startCamera()
 end
 
 ------------------------------------------------------------------------
--- Input (with local punch prediction: the Animator starts the punch on the key press)
+-- Input: one dispatcher for keyboard + mouse, gamepad and the right-stick flicks, driven by the control
+-- map (Keymap defaults + the player's custom map through Settings.Keymap()). A binding is a key, a chord
+-- ("hold A, press B"; on a pad the first half may be a flick, which counts as held for 0.4 s) or a double
+-- tap. Chords win over double taps, double taps over plain presses. A key that is both a plain punch and
+-- a chord's modifier (RB: overhand, RB + X: check hook) throws its punch on RELEASE when no chord used it.
+-- Local punch prediction: the Animator starts the punch on the key press (PredAct).
 ------------------------------------------------------------------------
-local keyPunch = {
-	[Enum.KeyCode.One] = "jab", [Enum.KeyCode.J] = "jab",
-	[Enum.KeyCode.Two] = "cross", [Enum.KeyCode.K] = "cross",
-	[Enum.KeyCode.Three] = "leadhook", [Enum.KeyCode.L] = "leadhook",
-	[Enum.KeyCode.Four] = "rearhook", [Enum.KeyCode.Semicolon] = "rearhook",
-	[Enum.KeyCode.Five] = "uppercut", [Enum.KeyCode.U] = "uppercut",
-	[Enum.KeyCode.Six] = "overhand", [Enum.KeyCode.O] = "overhand",
-}
-
+local bindPad, unbindPad, setSprint -- (the input block below; the fight's start / finish use them)
+-- (one function: its locals get their own registers, so the script stays under Luau's 200 per function)
+local function setupInput()
+local GuiService = game:GetService("GuiService")
 local pred = { id = 0, busyUntil = 0, lastAt = 0, hand = "R" }
+local ASSIST_STEP = "FightAssistMove" -- RenderStep binding: the left stick read relative to the opponent (aim assist)
+local SPRINT_MUL = 1.55
+local sprint = { on = false, base = 16 }
+local Ctl = { map = nil, lk = nil, held = {}, pressedAt = {}, lastTap = {}, flickAt = {}, deferred = {}, chordUsed = {}, keyAction = {} }
+padOn = function()
+	return pad.bound and Gamepad ~= nil and Gamepad.IsPad()
+end
+
+-- the device a fight input is sent from (the server's aim assist only honours gamepad inputs)
+-- the device the fight runs on, for the server (FightEngine `device`: rate-limited there, arms the aim
+-- assist only after a while on the pad, drops it at once on the keyboard)
+sendDevice = function()
+	send({ t = "device", pad = (Gamepad ~= nil and Gamepad.IsPad()) or false })
+end
+
+local function padFlag()
+	return (Gamepad and Gamepad.IsPad()) and true or nil
+end
+
 -- the touch HOOK pad throws the hook with the hand that did not just punch (a rear hook after a jab
 -- or a lead hook, a lead hook after a cross); the lead hook when you have been still for a moment
 pickHook = function()
@@ -2357,11 +2591,30 @@ pickHook = function()
 	end
 	return pred.hand == "L" and "rearhook" or "leadhook"
 end
-throwPunch = function(p, body)
+
+-- a punch can go out: the server's CanAct also refuses in a clinch, while down, in the corner or on the
+-- ring walk, and nobody may punch a man on the canvas: the Guard attributes it replicates already say so
+local function canPredict(char)
+	local now = os.clock()
+	if not char or not F.active or F.down or F.paused or now < (F.stumbleUntil or 0) or now < pred.busyUntil then
+		return false
+	end
+	local g = char:GetAttribute("Guard")
+	return not (g == "clinch" or g == "down" or g == "rest" or g == "walkout" or (F.opp and F.opp:GetAttribute("Guard") == "down"))
+end
+
+-- the predicted wind-up (the server's, roughly: fatigue and daze slow it)
+local function predWindup(base)
+	local stam = F.me and F.me.max and F.me.stam / math.max(1, F.me.max) or 1
+	return base * (stam < 0.3 and 1.25 or 1) * (1 + 0.08 * ((F.me and F.me.tier) or 0))
+end
+
+-- counter = a counter jab / cross out of a slip (Q + click): the server lets it through the slip's recovery
+throwPunch = function(p, body, counter)
 	if F.countdown then
 		return -- held in the corner until BOX! (the server refuses it anyway)
 	end
-	send({ t = "punch", p = p, body = body })
+	send({ t = "punch", p = p, body = body, counter = counter or nil, pad = padFlag() })
 	-- the server drops the guard for a punch: a tapped guard drops with it; a held one comes back up
 	-- once the punch is out. A tapped body modifier is spent on this punch.
 	if Tog.on.block then
@@ -2381,18 +2634,12 @@ throwPunch = function(p, body)
 	local P = Config.Punches[p]
 	local char = player.Character
 	local now = os.clock()
-	-- only predict what the server will almost surely accept (not down / stumbling / mid-punch)
-	if not P or not char or not F.active or F.down or F.paused or now < (F.stumbleUntil or 0) or now < pred.busyUntil then
+	-- only predict what the server will almost surely accept (not down / stumbling / mid-punch); a
+	-- counter punch comes out of the slip's recovery, which the local busy clock counts
+	if not P or not (canPredict(char) or (counter and char and F.active and not F.down and now < pred.busyUntil and now - pred.lastAt > 0.2)) then
 		return
 	end
-	-- the server's CanAct also refuses in a clinch, while down, in the corner or on the ring walk, and nobody
-	-- may punch a man on the canvas: the Guard attributes it replicates already say so
-	local g = char:GetAttribute("Guard")
-	if g == "clinch" or g == "down" or g == "rest" or g == "walkout" or (F.opp and F.opp:GetAttribute("Guard") == "down") then
-		return
-	end
-	local stam = F.me and F.me.max and F.me.stam / math.max(1, F.me.max) or 1
-	local windup = P.windup * (stam < 0.3 and 1.25 or 1) * (1 + 0.08 * ((F.me and F.me.tier) or 0))
+	local windup = predWindup(P.windup)
 	local hand = P.hand
 	if p == "uppercut" then
 		hand = (pred.hand == "R" and now - pred.lastAt < 0.7) and "L" or "R"
@@ -2405,73 +2652,411 @@ throwPunch = function(p, body)
 	char:SetAttribute("PredActId", pred.id)
 end
 
-UserInputService.InputBegan:Connect(function(input, gp)
-	if not F.active and not F.down then
+-- a special move (Moves.lua): sent only when the server said it is unlocked (the fight's start message);
+-- predicted like a punch with the special act (the Animator matches the server's echo by id + hand)
+throwSpecial = function(id)
+	if F.countdown or not F.active then
 		return
 	end
-	-- SHIFT before the gameProcessed check: shift-lock may claim the key, the body toggle must still see it
-	if input.KeyCode == Enum.KeyCode.LeftShift or input.KeyCode == Enum.KeyCode.RightShift then
-		Tog.press("body")
+	local sid = Moves.Id(id) or id
+	if not (F.moves and F.moves[sid]) then
+		showFlash(flash, "LOCKED - SEE MOVES & CONTROLS", T.sub, 0.8)
 		return
 	end
-	if gp then
+	send({ t = "special", id = sid, pad = padFlag() })
+	if Tog.on.block and not Tog.held("block") then
+		Tog.set("block", false, true)
+	end
+	local M = Moves.Data[sid]
+	local char = player.Character
+	local now = os.clock()
+	if not M or not canPredict(char) or now < (pred.specialAt or -10) + (M.cooldown or 1.5) then
 		return
 	end
-	if input.KeyCode == Enum.KeyCode.H then
+	local P = Config.Punches[M.punch[1]] or Config.Punches.cross
+	local windup = predWindup(P.windup)
+	pred.hand = M.hand
+	pred.lastAt = now
+	pred.specialAt = now
+	pred.busyUntil = now + windup * 2.2 + 0.3
+	pred.id += 1
+	char:SetAttribute("PredAct", string.format("special|%s|%s|%.2f|%.2f", sid, M.hand, windup, M.power or 1))
+	char:SetAttribute("PredActId", pred.id)
+end
+
+-- the Moves & Controls menu (BoxerClient.ControlsMenu), over the fight: the fight goes on (no pause on a
+-- server fight), the pad binding is let go while it is open so its buttons navigate the menu
+openMoves = function()
+	local CM = KM.module("ControlsMenu")
+	if not CM or CM.IsOpen() then
+		return
+	end
+	local wasBound = pad.bound
+	if wasBound then
+		pcall(ContextActionService.UnbindAction, ContextActionService, "BoxerFightPad")
+		pad.bound = false
+		Tog.reset()
+	end
+	UI.PadHold("Fight", false)
+	local ok = pcall(CM.Open, {
+		onClose = function()
+			if F.active or gui.Enabled then
+				UI.PadHold("Fight", true)
+				if wasBound and not pad.bound then
+					bindPad()
+				end
+			end
+			KM.refresh()
+		end,
+	})
+	if not ok then
+		UI.PadHold("Fight", true)
+		if wasBound then
+			bindPad()
+		end
+	end
+end
+
+------------------------------------------------------------------------
+-- Sprint (Shift, LS click): outside the ring only, on the player's own Humanoid (client-owned physics).
+-- Put back exactly when let go, and never over a speed the server set meanwhile.
+------------------------------------------------------------------------
+setSprint = function(on)
+	local char = player.Character
+	local hum = char and char:FindFirstChildOfClass("Humanoid")
+	if not hum then
+		sprint.on = false
+		return
+	end
+	if on then
+		if sprint.on or F.active or gui.Enabled or player:GetAttribute("InFight") == true or player:GetAttribute("Busy") ~= nil then
+			return
+		end
+		if hum.WalkSpeed <= 0 then
+			return
+		end
+		sprint.on = true
+		sprint.base = hum.WalkSpeed
+		hum.WalkSpeed = sprint.base * SPRINT_MUL
+	elseif sprint.on then
+		sprint.on = false
+		if math.abs(hum.WalkSpeed - sprint.base * SPRINT_MUL) < 0.01 then
+			hum.WalkSpeed = sprint.base
+		end
+	end
+end
+
+------------------------------------------------------------------------
+-- Aim assist (gamepad only; Settings > Controls): the left stick is read RELATIVE TO THE OPPONENT, so
+-- pushing up always closes the distance and sideways always circles him; the facing itself is the
+-- server's (AlignOrientation). The server adds its own small hit-chance forgiveness from the SAVED
+-- level for inputs tagged as gamepad. Low = relative movement; High = the same plus a gentle pull that
+-- keeps you squared up while you circle.
+------------------------------------------------------------------------
+local function assistLevel()
+	local v = player:GetAttribute("AimAssist")
+	return v == "High" and 2 or (v == "Low" and 1 or 0)
+end
+
+local function stopAssistMove()
+	pcall(RunService.UnbindFromRenderStep, RunService, ASSIST_STEP)
+	pad.assistMoving = false
+end
+
+local function assistMoveStep()
+	local hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+	local me, opp = getRoot(player.Character), getRoot(F.opp)
+	local level = assistLevel()
+	if not (hum and me and opp and F.active and not F.down and level > 0 and Gamepad and Gamepad.IsPad()) then
+		if pad.assistMoving then
+			pad.assistMoving = false
+			if hum then
+				hum:Move(Vector3.zero)
+			end
+		end
+		return
+	end
+	if os.clock() < math.max(F.stumbleUntil or 0, F.lungeUntil or 0) then
+		return -- a stagger / lunge drives the character
+	end
+	local x, y = pad.leftX, pad.leftY
+	if x * x + y * y < 0.04 then
+		if pad.assistMoving then
+			pad.assistMoving = false
+			hum:Move(Vector3.zero)
+		end
+		return
+	end
+	local dir = Vector3.new(opp.Position.X - me.Position.X, 0, opp.Position.Z - me.Position.Z)
+	if dir.Magnitude < 0.05 then
+		return
+	end
+	dir = dir.Unit
+	local right = dir:Cross(Vector3.yAxis)
+	local move = dir * y + right * x
+	if level >= 2 then
+		-- high: circling drifts a little toward the fight line, so you never walk off at an angle
+		move += dir * math.abs(x) * 0.25
+	end
+	if move.Magnitude > 1 then
+		move = move.Unit
+	end
+	pad.assistMoving = true
+	hum:Move(move, false)
+end
+
+local function startAssistMove()
+	stopAssistMove()
+	-- bound right after the default ControlModule's own Move (Input priority) so this write wins
+	pcall(RunService.BindToRenderStep, RunService, ASSIST_STEP, Enum.RenderPriority.Input.Value + 1, assistMoveStep)
+end
+
+------------------------------------------------------------------------
+-- The dispatcher
+------------------------------------------------------------------------
+local TOGGLE_ACTIONS = { block = "block", body = "body", legend = "legend" }
+local SEND_ACTIONS = {
+	slipL = { t = "slip", dir = -1 }, slipR = { t = "slip", dir = 1 }, dodge = { t = "roll" }, quickdodge = { t = "roll", quick = true },
+	parry = { t = "parry" }, pivotL = { t = "pivot", dir = -1 }, pivotR = { t = "pivot", dir = 1 }, clinch = { t = "clinch" },
+}
+
+local function addBinding(dev, b, id)
+	local last, mod, double = Keymap.Trigger(b)
+	if not last then
+		return
+	end
+	if mod then
+		dev.chord[last] = dev.chord[last] or {}
+		table.insert(dev.chord[last], { mod = mod, id = id })
+		dev.modOf[mod] = true
+	elseif double then
+		dev.double[last] = id
+	else
+		dev.plain[last] = id
+	end
+end
+
+-- in the ring a flick up doubles as D-pad up (the parry), the LS click as D-pad down (the clinch) and the RS
+-- click as D-pad left (the pivot, as the old map had it): the flicks share the stick with the slips and the
+-- roll, and the sprint has no use between the ropes. Only while the map gives the alias key nothing of its
+-- own (the sprint does not count); never outside a fight.
+local PAD_ALIAS = { Thumbstick2Up = "DPadUp", ButtonL3 = "DPadDown", ButtonR3 = "DPadLeft" }
+
+-- the lookup tables of the map in use (rebuilt when Settings hands out a new map)
+local function lookup()
+	local map = KM.now()
+	if Ctl.lk and Ctl.map == map then
+		return Ctl.lk
+	end
+	local lk = { kbd = { plain = {}, chord = {}, double = {}, modOf = {}, alias = {} }, pad = { plain = {}, chord = {}, double = {}, modOf = {}, alias = {} } }
+	for _, a in ipairs(Keymap.Actions) do
+		if not a.fixed then
+			for _, b in ipairs(map.kbd[a.id] or {}) do
+				addBinding(lk.kbd, b, a.id)
+			end
+			local pb = map.pad[a.id]
+			if pb and not a.padFixed then
+				addBinding(lk.pad, pb, a.id)
+			end
+		end
+	end
+	for from, to in pairs(PAD_ALIAS) do
+		local own = lk.pad.plain[from]
+		if (own == nil or own == "sprint") and not lk.pad.chord[from] and not lk.pad.double[from] and lk.pad.plain[to] then
+			lk.pad.alias[from] = lk.pad.plain[to]
+		end
+	end
+	Ctl.map, Ctl.lk = map, lk
+	KM.refresh()
+	return lk
+end
+
+-- what an action does (device = "kbd" | "pad")
+local function act(id)
+	local A = Keymap.ById[id]
+	if not A then
+		return
+	end
+	if id == "legend" then
 		Tog.press("legend")
 		return
+	elseif id == "moveslist" then
+		openMoves()
+		return
+	elseif id == "sprint" then
+		setSprint(true)
+		return
+	elseif id == "body" then
+		Tog.press("body") -- armed even between rounds, so a tap carried over a bell still counts
+		return
+	elseif id == "block" then
+		Tog.press("block")
+		return
 	end
-	if F.down and (input.KeyCode == Enum.KeyCode.Space or input.UserInputType == Enum.UserInputType.MouseButton1) then
+	if not F.active or F.countdown or F.down then
+		return
+	end
+	if A.section == "punch" then
+		if id == "bodyhook" then
+			throwPunch(pickHook(), true)
+		else
+			throwPunch(id, Tog.on.body and id ~= "overhand")
+		end
+	elseif id == "counterjab" then
+		throwPunch("jab", Tog.on.body, true)
+	elseif id == "countercross" then
+		throwPunch("cross", Tog.on.body, true)
+	elseif A.special then
+		throwSpecial(A.special)
+	elseif SEND_ACTIONS[id] then
+		local m = table.clone(SEND_ACTIONS[id])
+		m.pad = padFlag()
+		send(m)
+	end
+end
+
+local function fire(id, keyName)
+	Ctl.keyAction[keyName] = id
+	act(id)
+end
+
+local function isHeld(mod, now)
+	if Ctl.held[mod] then
+		return true
+	end
+	local at = Ctl.flickAt[mod]
+	return at ~= nil and now - at < 0.4
+end
+
+-- a key went down (name = KeyCode name or MouseButton1 / 2 / 3 / a flick's KeyCode name)
+local function onPress(name, device)
+	local lk = lookup()[device]
+	local now = os.clock()
+	Ctl.held[name] = true
+	Ctl.pressedAt[name] = now
+	Ctl.keyAction[name] = nil
+	local chords = lk.chord[name]
+	if chords then
+		for _, c in ipairs(chords) do
+			if isHeld(c.mod, now) then
+				Ctl.chordUsed[c.mod] = true
+				Ctl.deferred[c.mod] = nil
+				fire(c.id, name)
+				return
+			end
+		end
+	end
+	local d = lk.double[name]
+	if d and now - (Ctl.lastTap[name] or -10) < 0.3 then
+		Ctl.lastTap[name] = -10
+		fire(d, name)
+		return
+	end
+	Ctl.lastTap[name] = now
+	local p = lk.alias[name] or lk.plain[name] -- (onPress only runs in a fight: the ring aliases apply)
+	if p then
+		local A = Keymap.ById[p]
+		if lk.modOf[name] and A and A.section == "punch" then
+			-- a modifier's own punch waits for the release: a chord may still claim the key
+			Ctl.deferred[name] = p
+			Ctl.chordUsed[name] = nil
+		else
+			fire(p, name)
+		end
+	end
+end
+
+local function onRelease(name)
+	local now = os.clock()
+	Ctl.held[name] = nil
+	local p = Ctl.deferred[name]
+	Ctl.deferred[name] = nil
+	if p and not Ctl.chordUsed[name] and now - (Ctl.pressedAt[name] or 0) < 0.35 then
+		fire(p, name)
+	end
+	Ctl.chordUsed[name] = nil
+	local id = Ctl.keyAction[name]
+	Ctl.keyAction[name] = nil
+	if not id then
+		return
+	end
+	if TOGGLE_ACTIONS[id] then
+		Tog.release(TOGGLE_ACTIONS[id])
+	elseif id == "sprint" then
+		setSprint(false)
+	end
+end
+
+-- the name a key / mouse button goes by in the map
+local function inputName(input)
+	local it = input.UserInputType
+	if it == Enum.UserInputType.MouseButton1 then
+		return "MouseButton1", "kbd"
+	elseif it == Enum.UserInputType.MouseButton2 then
+		return "MouseButton2", "kbd"
+	elseif it == Enum.UserInputType.MouseButton3 then
+		return "MouseButton3", "kbd"
+	end
+	local k = input.KeyCode
+	if k.Value == 0 then
+		return nil -- no key (a mouse move, a touch): KeyCode 0 is Unknown / None depending on the API version
+	end
+	if Gamepad and Gamepad.IsPadKey(k) then
+		return k.Name, "pad"
+	end
+	return k.Name, "kbd"
+end
+
+local function menuOpen()
+	local CM = KM.modules.ControlsMenu
+	return CM and CM.IsOpen() or false
+end
+
+UserInputService.InputBegan:Connect(function(input, gp)
+	local name, device = inputName(input)
+	if not name then
+		return
+	end
+	-- the sprint and the menu work in the world too; everything else needs the fight
+	if device == "pad" and pad.bound then
+		return -- the fight's ContextActionService binding handles the pad
+	end
+	if menuOpen() or UserInputService:GetFocusedTextBox() then
+		return
+	end
+	-- SHIFT before the gameProcessed check: shift-lock may claim the key, the chords must still see it held
+	Ctl.held[name] = true
+	if gp and not (device == "pad" and GuiService.SelectedObject == nil) then
+		return
+	end
+	if not F.active and not F.down then
+		local lk = lookup()[device]
+		local p = lk.plain[name]
+		if p == "sprint" then
+			fire("sprint", name)
+		elseif p == "moveslist" and not gui.Enabled and not UserInputService:GetFocusedTextBox() then
+			fire("moveslist", name)
+		end
+		return
+	end
+	if F.down and (name == "Space" or name == "MouseButton1" or name == "ButtonA") then
 		getupPress()
 		return
 	end
-	if not F.active or F.countdown then
-		return
-	end
-	local body = Tog.on.body
-	local p = keyPunch[input.KeyCode]
-	if input.UserInputType == Enum.UserInputType.MouseButton1 then
-		p = "jab"
-	elseif input.UserInputType == Enum.UserInputType.MouseButton2 then
-		p = "cross"
-	end
-	local k = input.KeyCode
-	if p then
-		throwPunch(p, body and p ~= "overhand")
-	elseif k == Enum.KeyCode.F then
-		Tog.press("block")
-	elseif k == Enum.KeyCode.R then
-		send({ t = "parry" })
-	elseif k == Enum.KeyCode.Q then
-		send({ t = "slip", dir = -1 })
-	elseif k == Enum.KeyCode.E then
-		send({ t = "slip", dir = 1 })
-	elseif k == Enum.KeyCode.C then
-		send({ t = "roll" })
-	elseif k == Enum.KeyCode.Z then
-		send({ t = "pivot", dir = -1 })
-	elseif k == Enum.KeyCode.X then
-		send({ t = "pivot", dir = 1 })
-	elseif k == Enum.KeyCode.G then
-		send({ t = "clinch" })
-	end
+	onPress(name, device)
 end)
 
 UserInputService.InputEnded:Connect(function(input)
-	local k = input.KeyCode
-	if k == Enum.KeyCode.F then
-		Tog.release("block")
-	elseif k == Enum.KeyCode.LeftShift or k == Enum.KeyCode.RightShift then
-		Tog.release("body")
-	elseif k == Enum.KeyCode.H then
-		Tog.release("legend")
+	local name, device = inputName(input)
+	if name then
+		onRelease(name)
 	end
 end)
 
 -- what each toggle does: the guard goes to the server (only in a live round), the legend shows the strip
 Tog.effects.block = function(on)
 	if F.active and not F.countdown then
-		send({ t = "block", on = on })
+		send({ t = "block", on = on, pad = padFlag() })
 	end
 end
 Tog.effects.legend = function(on)
@@ -2482,46 +3067,53 @@ end
 ------------------------------------------------------------------------
 -- Gamepad: one ContextActionService binding for the whole fight, at High priority so it runs before (and
 -- sinks) the default bindings of the same buttons: A's jump, the right stick's camera turn and RS click's
--- zoom, X's proximity prompts, VIEW's UI selection. The left stick is left alone (Roblox's movement).
--- Bound on the fight's start message, unbound in finish(); everything it holds (block, body modifier,
--- the controls strip) is let go there too, so nothing stays stuck after a fight.
+-- zoom, X's proximity prompts, VIEW's UI selection. The left stick is left alone (Roblox's movement)
+-- unless the aim assist re-reads it. Bound on the fight's start message, unbound in finish(); everything
+-- it holds (block, body modifier, the controls strip) is let go there too, so nothing stays stuck.
 ------------------------------------------------------------------------
 local PAD_ACTION = "BoxerFightPad"
 local PAD_KEYS = {
 	K.ButtonX, K.ButtonY, K.ButtonB, K.ButtonA, K.ButtonR1, K.ButtonR2, K.ButtonL1, K.ButtonL2, K.ButtonR3, K.ButtonL3,
 	K.DPadUp, K.DPadDown, K.DPadLeft, K.DPadRight, K.ButtonSelect, K.Thumbstick2,
 }
-local padPunch = { [K.ButtonX] = "jab", [K.ButtonY] = "cross", [K.ButtonB] = "leadhook", [K.ButtonA] = "rearhook", [K.ButtonR2] = "uppercut", [K.ButtonR1] = "overhand" }
-local pad = { bound = false, leftX = 0, flick = Gamepad and Gamepad.Flick() }
+local FLICK_KEY = { L = "Thumbstick2Left", R = "Thumbstick2Right", U = "Thumbstick2Up", D = "Thumbstick2Down" }
 
 local function padRelease()
 	Tog.reset()
 	if pad.flick then
 		pad.flick:Reset()
 	end
+	table.clear(Ctl.held)
+	table.clear(Ctl.deferred)
 end
 
 local function padFlick(dir)
 	if not F.active or F.down then
 		return
 	end
-	if dir == "L" or dir == "R" then
-		send({ t = "slip", dir = dir == "L" and -1 or 1 })
-	elseif dir == "D" then
-		send({ t = "roll" })
-	else
-		send({ t = "parry" })
-	end
+	local name = FLICK_KEY[dir]
+	Ctl.flickAt[name] = os.clock()
+	onPress(name, "pad")
+	Ctl.held[name] = nil
 end
 
 local function padBegin(k)
+	local name = k.Name
 	if k == K.ButtonSelect then
+		-- VIEW: a tap toggles the strip; held for a second it opens the Moves & Controls menu
+		Ctl.held[name] = true
+		Ctl.pressedAt[name] = os.clock()
 		Tog.press("legend")
-		return
-	end
-	-- the body modifier is armed even between rounds, so a tap carried over a bell still counts
-	if k == K.ButtonL1 then
-		Tog.press("body")
+		Ctl.keyAction[name] = "legend"
+		local at = Ctl.pressedAt[name]
+		task.delay(0.8, function()
+			if Ctl.held[name] and Ctl.pressedAt[name] == at and pad.bound then
+				Ctl.keyAction[name] = nil
+				Tog.pressedAt.legend = nil
+				Tog.set("legend", false)
+				openMoves()
+			end
+		end)
 		return
 	end
 	if F.down then
@@ -2531,41 +3123,19 @@ local function padBegin(k)
 		end
 		return
 	end
-	if not F.active or F.countdown then
-		return
-	end
-	local p = padPunch[k]
-	if p then
-		throwPunch(p, Tog.on.body and p ~= "overhand")
-	elseif k == K.ButtonL2 then
-		Tog.press("block")
-	elseif k == K.DPadUp then
-		send({ t = "parry" })
-	elseif k == K.DPadLeft or k == K.DPadRight then
-		send({ t = "pivot", dir = k == K.DPadLeft and -1 or 1 })
-	elseif k == K.ButtonR3 then
-		-- toward the side the left stick leans, else to the left (Z)
-		send({ t = "pivot", dir = pad.leftX > 0.35 and 1 or -1 })
-	elseif k == K.DPadDown or k == K.ButtonL3 then
-		send({ t = "clinch" })
-	end
+	onPress(name, "pad")
 end
 
 local function padEnd(k)
-	if k == K.ButtonL2 then
-		Tog.release("block")
-	elseif k == K.ButtonL1 then
-		Tog.release("body")
-	elseif k == K.ButtonSelect then
-		Tog.release("legend")
-	end
+	onRelease(k.Name)
 end
 
 local function padAction(_, state, input)
 	local k = input.KeyCode
 	if k == K.Thumbstick2 then
+		local p = input.Position
+		pad.rightX, pad.rightY = p.X, p.Y
 		if pad.flick then
-			local p = input.Position
 			local dir = pad.flick:Update(p.X, p.Y, os.clock())
 			if dir then
 				padFlick(dir)
@@ -2579,7 +3149,7 @@ local function padAction(_, state, input)
 	return Enum.ContextActionResult.Sink
 end
 
-local function bindPad()
+bindPad = function()
 	if pad.bound then
 		return
 	end
@@ -2589,29 +3159,42 @@ local function bindPad()
 	pad.bound = ok
 	-- the fight HUD is not navigated: no window selection may take the D-pad / A meanwhile
 	UI.PadHold("Fight", true)
+	startAssistMove()
 end
 
-local function unbindPad()
+unbindPad = function()
 	padRelease()
 	if pad.bound then
 		pad.bound = false
 		pcall(ContextActionService.UnbindAction, ContextActionService, PAD_ACTION)
 	end
 	UI.PadHold("Fight", false)
+	stopAssistMove()
+	pad.rightX, pad.rightY, pad.nudgeX, pad.nudgeY = 0, 0, 0, 0
 end
 
--- the left stick stays Roblox's movement; its lean only picks the RS-click pivot's side
+-- the left stick stays Roblox's movement (the aim assist re-reads it); its lean also picks the RS-click
+-- pivot's side (ButtonR3 is the "pivot toward the lean" button when it is bound to a pivot)
 UserInputService.InputChanged:Connect(function(input)
-	if pad.bound and input.KeyCode == K.Thumbstick1 then
-		pad.leftX = input.Position.X
+	if input.KeyCode == K.Thumbstick1 then
+		pad.leftX, pad.leftY = input.Position.X, input.Position.Y
 	end
 end)
--- another device picked up: the strip / pads / get-up title follow it
+-- another device picked up: the strip / pads / get-up title follow it, and the server is told (the aim
+-- assist is tied to the device the server holds the fighter on)
 if Gamepad then
-	Gamepad.Changed:Connect(function()
+	Gamepad.Changed:Connect(function(mode)
 		refreshControls()
+		if mode ~= "gamepad" then
+			Gamepad.Rumble(0, 0, 0)
+		end
+		if F.active or F.countdown then
+			sendDevice()
+		end
 	end)
 end
+end -- setupInput
+setupInput()
 
 ------------------------------------------------------------------------
 -- Animate script control for the local character during a fight
@@ -2698,17 +3281,42 @@ end
 
 -- Career fights: leaving after the opening bell counts as a loss (RTD) on the server, so the reset
 -- button is switched off for the bout and back on in finish(). Spars keep it (a reset only ends them).
--- SetCore can fail while the CoreScripts are still registering: then the button simply stays as it was.
+-- SetCore fails while the CoreScripts are still registering the callback (the first bout right after a
+-- join): the lock is then retried once a second, up to ten times, while the fight wants it.
 local resetLocked = false
+local resetWant = false
+local resetTry = 0
 local function lockReset(on)
+	resetWant = on
 	if on == resetLocked then
 		return
 	end
 	local ok = pcall(StarterGui.SetCore, StarterGui, "ResetButtonCallback", not on)
-	if ok or not on then
-		resetLocked = on and ok
+	if ok then
+		resetLocked = on
+		resetTry = 0
+	elseif on then
+		resetTry += 1
+		if resetTry <= 10 then
+			task.delay(1, function()
+				if resetWant and not resetLocked then
+					lockReset(true)
+				end
+			end)
+		end
+	else
+		resetLocked = false
 	end
 end
+-- the callback is registered once at start too (the usual pattern), so the first bout's lock holds
+task.spawn(function()
+	for _ = 1, 6 do
+		if pcall(StarterGui.SetCore, StarterGui, "ResetButtonCallback", true) then
+			return
+		end
+		task.wait(2)
+	end
+end)
 
 local function finish()
 	lockReset(false)
@@ -2735,6 +3343,13 @@ local function finish()
 	F.koTrack = nil
 	F.broadcastUntil = nil
 	pcall(RunService.UnbindFromRenderStep, RunService, STUMBLE_STEP)
+	pcall(RunService.UnbindFromRenderStep, RunService, "FightLunge")
+	F.lungeUntil = 0
+	Impact.clear()
+	Impact.last.id = nil
+	if Gamepad and Gamepad.Rumble then
+		pcall(Gamepad.Rumble, 0, 0, 0)
+	end
 	if camConn then
 		camConn:Disconnect()
 		camConn = nil
@@ -2797,11 +3412,22 @@ local handlers = {}
 
 function handlers.start(msg)
 	F = { active = false, mash = 0, target = 10, arena = msg.arena, opp = msg.oppModel, ref = msg.refModel, rounds = msg.rounds, tape = msg.tape, kind = msg.kind,
-		spar = msg.spar, venue = msg.venue, venueName = msg.venueName, weighIn = msg.weighIn, notes = msg.notes, talk = msg.talk, myLine = msg.myLine }
+		spar = msg.spar, venue = msg.venue, venueName = msg.venueName, weighIn = msg.weighIn, notes = msg.notes, talk = msg.talk, myLine = msg.myLine,
+		moves = {}, moveList = {}, assist = tonumber(msg.assist) or 0 }
+	-- the special moves the server will accept from this fighter (Moves.List order)
+	for _, id in ipairs(type(msg.moves) == "table" and msg.moves or {}) do
+		if type(id) == "string" then
+			F.moves[id] = true
+			table.insert(F.moveList, id)
+		end
+	end
+	setSprint(false)
+	KM.refresh()
 	player:SetAttribute("InFight", true)
 	gui.Enabled = true
 	fxGui.Enabled = true
 	lockReset(not F.spar)
+	sendDevice()
 	L.frame.Visible, R.frame.Visible, clock.Visible, controls.Visible = false, false, false, false
 	setChip(L, nil)
 	setChip(R, nil)
@@ -2883,6 +3509,7 @@ function handlers.start(msg)
 	camMode = F.spar and "wide" or "entrance"
 	letterbox(not F.spar)
 	buildTouch()
+	setTouchSpecials(F.moveList)
 	bindPad()
 end
 
@@ -3078,36 +3705,38 @@ function handlers.hit(msg)
 	local attacker = mine and player.Character or F.opp
 	local sev = msg.sev or (msg.heavy and 1 or 0.4)
 	local fx = fxScale()
-	if msg.body then
-		sfx(soundId("BodyShot", "Thud"), 0.95 + math.random() * 0.1 - (msg.heavy and 0.15 or 0), math.clamp(0.4 + sev * 0.45, 0.35, 1))
-	else
-		sfx(soundId("PunchImpact", "Thud"), 1.2 + math.random() * 0.15 - (msg.heavy and 0.25 or 0), math.clamp(0.35 + sev * 0.5, 0.35, 1))
-	end
-	if msg.heavy then
-		sfx(BUILTIN.SwordHit or "rbxasset://sounds/swordhit.wav", 0.45 + math.random() * 0.1, 0.25)
-	end
-	-- spray flies off the far side of the target, along the punch
+	local power = Impact.power(msg.punch) * (msg.special and 1.15 or 1)
+	local big = msg.heavy == true or msg.counter == true
+	Impact.sound(msg, sev * (msg.special and 1.1 or 1))
+	-- spray flies off the far side of the target, along the punch (more of it off a power shot or a
+	-- counter), and the contact point flashes
 	local tr, ar = getRoot(target), getRoot(attacker)
 	if tr and ar then
 		local dir = tr.Position - ar.Position
 		dir = Vector3.new(dir.X, 0.35, dir.Z)
 		if dir.Magnitude > 0.05 then
-			spray(target, msg.body and "UpperTorso" or "Head", dir.Unit, sev, msg.bleed == true and not msg.body)
+			spray(target, msg.body and "UpperTorso" or "Head", dir.Unit, sev * (big and 1.5 or 1) * (0.7 + power * 0.3), msg.bleed == true and not msg.body)
 		end
 	end
+	Impact.flash(target, msg.body and "UpperTorso" or "Head", sev * (big and 1.4 or 0.9) * power, msg.counter == true)
 	vfx("Hit", { target = target, heavy = msg.heavy == true, dmg = msg.dmg, punch = msg.punch })
 	if msg.heavy then
 		cheer(0.5)
 	end
 	if mine then
+		-- landing it: a kick that grows with the punch (a jab barely moves the picture, an overhand rocks it)
+		FX.shake = math.max(FX.shake, (0.04 + sev * 0.12) * power * (big and 1.5 or 1))
+		Impact.rumble(big and 0.35 or 0.1, 0.2 + sev * 0.35, 0.08 + sev * 0.08)
 		if msg.heavy then
 			FX.hitStop = os.clock() + 0.06
 			flashFrame(whiteFlash, 1 - 0.18 * fx, 0.15)
 		end
 	else
-		-- taking it: the picture lurches toward the side the punch came from, blurs and flashes red
-		FX.shake = math.max(FX.shake, 0.25 + sev * 0.45)
+		-- taking it: the picture lurches toward the side the punch came from, blurs and flashes red,
+		-- the pad thumps
+		FX.shake = math.max(FX.shake, (0.18 + sev * 0.4) * power)
 		FX.rollVel += (msg.hand == "L" and 1 or -1) * (msg.body and 0.15 or 0.6) * sev
+		Impact.rumble(0.35 + sev * 0.6, 0.15 + sev * 0.3, 0.12 + sev * 0.22)
 		if msg.heavy then
 			FX.hitBlur = math.max(FX.hitBlur, 4 + sev * 7)
 			FX.fovKick = -6 * sev
@@ -3125,7 +3754,11 @@ function handlers.hit(msg)
 	end
 	crowdMeter.lean = math.clamp(crowdMeter.lean + (mine and 1 or -1) * (0.03 + sev * 0.07), -1, 1)
 	local name = PUNCH_NAME[msg.punch] or tostring(msg.punch):upper()
-	local big = msg.heavy == true or msg.counter == true
+	if msg.special then
+		local M = Moves.Data[msg.special]
+		name = M and M.short or tostring(msg.special):upper()
+		big = true
+	end
 	if mine then
 		-- one marker over the opponent for every punch you land: the punch's name, gold and bigger
 		-- (with COUNTER in front) for the ones that matter; no second line in the middle of the screen
@@ -3139,11 +3772,53 @@ function handlers.hit(msg)
 end
 
 function handlers.blocked(msg)
-	sfx(BUILTIN.Thud or "rbxasset://sounds/action_jump_land.mp3", 1.9, 0.25)
+	Impact.sfx(BUILTIN.Thud or "rbxasset://sounds/action_jump_land.mp3", 1.75 + math.random() * 0.3, 0.22 + math.random() * 0.08)
 	if msg.who == "you" then
 		showFlash(flash, "BLOCKED", T.blue, 0.5)
 		FX.shake = math.max(FX.shake, 0.08)
+		Impact.rumble(0.08, 0.2, 0.07)
+	else
+		-- his gloves took yours: a light buzz
+		Impact.rumble(0.12, 0.1, 0.07)
 	end
+end
+
+-- a special move going out: its name, and the pad rumbles on the launch of the big ones
+function handlers.special(msg)
+	local M = Moves.Data[msg.id]
+	local name = (M and M.short) or msg.name or tostring(msg.id):upper()
+	if msg.who == "you" then
+		showFlash(defFlash, name .. "!", T.gold, 0.7)
+		Impact.rumble(0, 0.25, 0.06)
+	else
+		showFlash(defFlash, "HE GOES FOR THE " .. name .. "!", T.sub, 0.7)
+	end
+end
+
+-- a special's set-up moves the root (a leap in, two steps back): the server glides its NPC, the player's
+-- own character is client-owned, so this client pushes it (like a stumble, Humanoid:Move from RenderStep)
+local LUNGE_STEP = "FightLunge"
+function handlers.lunge(msg)
+	if msg.who ~= "you" then
+		return
+	end
+	local dir = Vector3.new(msg.dir and msg.dir.x or 0, 0, msg.dir and msg.dir.z or 0)
+	local hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+	if not (hum and dir.Magnitude > 0.05) then
+		return
+	end
+	local dur = tonumber(msg.dur) or 0.3
+	F.lungeUntil = os.clock() + dur
+	local unit = dir.Unit
+	pcall(RunService.UnbindFromRenderStep, RunService, LUNGE_STEP)
+	RunService:BindToRenderStep(LUNGE_STEP, Enum.RenderPriority.Input.Value + 2, function()
+		if os.clock() > (F.lungeUntil or 0) or not hum.Parent or F.down then
+			pcall(RunService.UnbindFromRenderStep, RunService, LUNGE_STEP)
+			hum:Move(Vector3.zero)
+			return
+		end
+		hum:Move(unit, false)
+	end)
 end
 
 local DEF_TEXT = { SLIPPED = "SLIPPED", ["ROLLED UNDER"] = "ROLLED UNDER", PARRIED = "PARRIED", PIVOT = "PIVOTED OFF" }
@@ -3211,6 +3886,7 @@ function handlers.stumble(msg)
 		F.stumbleUntil = os.clock() + dur
 		FX.rollVel += (math.random() < 0.5 and -1 or 1) * 0.5 * (msg.sev or 0.5)
 		FX.shake = math.max(FX.shake, 0.3)
+		Impact.rumble(0.5, 0.1, 0.25)
 		local hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
 		if hum and dir.Magnitude > 0.05 then
 			local unit = dir.Unit
@@ -3249,8 +3925,9 @@ function handlers.kd(msg)
 	if msg.severity == "out" and target then
 		F.koTrack, F.koTrackFrom = target, os.clock()
 	end
-	sfx(BUILTIN.Falling or "rbxasset://sounds/action_falling.ogg", 0.7, 1)
-	sfx(BUILTIN.Thud or "rbxasset://sounds/action_jump_land.mp3", 0.5, 0.9)
+	sfx(BUILTIN.Falling or "rbxasset://sounds/action_falling.ogg", 0.65 + math.random() * 0.1, 1)
+	Impact.sfx(BUILTIN.Thud or "rbxasset://sounds/action_jump_land.mp3", 0.45 + math.random() * 0.1, 0.9)
+	Impact.rumble(1, 1, mine and 0.7 or 0.45)
 	phase("kd", { who = msg.who, target = target, severity = msg.severity })
 	cheer(1.6)
 	FX.shake = 1

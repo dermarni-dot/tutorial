@@ -61,8 +61,8 @@ Careers are saved with DataStoreService in the store `Config.DataStoreName` (`Wo
   player sees "Couldn't reach Roblox's save servers. Retrying..." and nothing can overwrite the real
   career. After about two minutes of failures, the player is kicked with a clear message.
 
-Old saves stay valid. Every new field has a default and is sanitised. Player settings (UI scale,
-volumes, graphics detail, screen FX, camera shake) are saved with the profile.
+Old saves stay valid. Every new field has a default and is sanitised. Player settings (UI scale, volumes, graphics detail, screen
+FX, camera shake, the custom control map, aim assist and vibration) are saved with the profile.
 
 ## Controls
 
@@ -121,25 +121,51 @@ to select and **B** to go back.
 - **Live preview:** every change shows on your boxer. While a slider moves, the preview goes to the
   server at most four times a second, and once more when you let go.
 
-**Fights**
+**Fights.** The default map (every key and button below can be changed in **Moves & Controls**):
 
-| Action | Keyboard | Controller (Xbox / PlayStation) | Touch |
+| Action | Keyboard & mouse | Controller (Xbox / PlayStation) | Touch |
 |---|---|---|---|
-| Jab | 1 / J (or left click) | X / Square | JAB |
-| Cross | 2 / K (or right click) | Y / Triangle | CROSS |
-| Lead hook | 3 / L | B / Circle | HOOK (alternates hands) |
-| Rear hook | 4 / ; | A / Cross | HOOK |
-| Uppercut | 5 / U | RT / R2 | UPPER |
-| Overhand | 6 / O | RB / R1 | - |
-| Body shot (arms the next punch) | tap Shift | tap LB / L1 | tap BODY |
-| Block (guard up / down) | tap F | tap LT / L2 | tap BLOCK |
+| Move | WASD | Left stick | Thumbstick |
+| Sprint (outside the ring) | hold Shift | click the left stick | - |
+| Jab | Left click (or J) | X / Square | JAB |
+| Cross | Right click (or K) | Y / Triangle | CROSS |
+| Lead hook | F (or L) | B / Circle | HOOK (alternates hands) |
+| Rear hook | R (or ;) | A / Cross | HOOK |
+| Uppercut | T (or U) | RT / R2 | UPPER |
+| Overhand | Middle click (or O) | tap RB / R1 | - |
+| Body hook | G | LB + B / L1 + Circle | BODY, then HOOK |
+| Body shot (arms the next punch) | tap C | tap LB / L1 | tap BODY |
+| Block (guard up / down) | tap B | tap LT / L2 | tap BLOCK |
 | Slip left / right | Q / E | flick the right stick left / right | drag BLOCK left / right |
-| Roll | C | flick the right stick down | - |
-| Parry | R | D-pad up (or flick the right stick up) | - |
-| Pivot left / right | Z / X | D-pad left / right, or click the right stick (toward the left stick's lean) | - |
-| Clinch | G | D-pad down or click the left stick | CLINCH |
-| Show / hide the controls | tap H | tap View / Share | - |
+| Dodge (roll under) | Space | flick the right stick down | - |
+| Quick dodge | Shift + Space | LT + A / L2 + Cross | - |
+| Parry | V | D-pad up (or flick the right stick up) | - |
+| Pivot left / right | double-tap A / D (or Z / X) | D-pad left / right | - |
+| Counter jab | hold Q + left click | flick left, then X / Square | - |
+| Counter cross | hold E + right click | flick right, then Y / Triangle | - |
+| Clinch | Ctrl | D-pad down or click the left stick | CLINCH |
+| Special moves | 1 - 9 (in the menu's order) | hold RB / R1 + a button (below) | the gold pads above the punches |
+| Show / hide the controls strip | tap H | tap View / Share | - |
+| Moves & Controls menu | Tab | hold View / Share | - |
 | Get up after a knockdown | mash Space | mash A / Cross | tap the panel |
+
+How the conflicts with the old map were resolved: the body modifier moved from Shift to **C** (Shift is the
+sprint and the quick-dodge chord), block from F to **B**, parry from R to **V**, roll from C to **Space**
+(the dodge), the overhand from 6 / O to the **middle mouse button** (O still works), the pivots from Z / X
+to a **double tap of A / D** (Z / X still work), and the number row **1 - 9** now throws the special moves
+(the old letter alternates J / K / L / ; / U / O stay as second keys). The fight camera is the broadcast
+one, so the mouse buttons never turn the camera in a fight: left and right click are free to punch.
+
+**Chords and double taps.** A chord is "hold the first key, press the second" (Shift + Space, Q + click).
+On a pad a right-stick flick counts as held for half a second, so "flick left, then X" is the counter jab.
+In the ring a flick **up** doubles as D-pad up (the parry), the **left-stick click** as D-pad down (the
+clinch) and the **right-stick click** as D-pad left (the pivot), whatever those are bound to, unless you
+give the flick or the click a binding of its own (the sprint does not count: it has no use between the
+ropes). RB / R1 is both the overhand (tapped on its own) and the special-move modifier (held while another
+button is pressed): RB + X check hook, RB + Y pull counter, RB + B liver shot, RB + A overhand right,
+RB + RT lead uppercut, RB + LT Philly shell counter, RB + LB step-back counter, RB + D-pad up gazelle
+punch, RB + D-pad down peek-a-boo rush. A double tap is two presses of one key within a third of a
+second; a plain press of A or D still walks.
 
 **Tap, don't hold.** Block, the body-shot modifier and the controls legend are toggles on every
 device: a tap turns them on, the next tap turns them off. A press held longer than about a third of
@@ -147,6 +173,78 @@ a second still works as a hold and lets go when you release. Throwing a punch dr
 (you cannot punch through your own gloves) and spends a tapped body modifier. The fight HUD lights
 what is on: the **GUARD UP** and **BODY SHOT ARMED** chips above the ticker, the BLOCK / BODY key
 caps and the touch pads.
+
+**Moves & Controls menu** (main menu > CONTROLS, Settings > Controls, the Career Hub's CONTROLS button,
+**Tab** in a fight, hold **View / Share** on a pad, or `State.open.Controls()` from any screen; while it
+is open the game's own hotkeys H / P / M and the pad's D-pad shortcuts are off, so any of them can be
+bound). Four tabs, all mouse, touch and
+controller navigable (D-pad / left stick moves, A presses, B closes, the right stick scrolls):
+- **Moves:** Basic, Punches, Advanced and Special sections. Every move shows its key cap, button or
+  touch pad for the device you pick (it starts on the one you are using, and follows a device
+  change), what it does and when to use it. Special moves say LOCKED / UNLOCKED and how they unlock.
+- **Keyboard / Controller:** rebind any action. Click (or select and press A on) a key cap, then press
+  the new key or button; hold one key and press another for a chord, tap a key twice for a double
+  tap, flick the right stick for a flick. Backspace clears a keyboard slot, Escape / B cancels. A key
+  another action already uses is **swapped** over (that action takes the old key), so no two actions
+  share a key; a conflicting map loaded from an older save is shown in red with the other action
+  named. Two slots per action on the keyboard, one on the pad; a per-row reset and RESET ALL TO
+  DEFAULTS. Movement, the get-up mash and the hold-to-open are fixed.
+- **Console:** aim assist (Off / Low / High), controller vibration on / off and strength, a test
+  rumble. The same three settings sit in Settings > Controls.
+
+The custom map is saved with the profile (`settings.ui.keymap`, through the same `SaveSettings`
+request as every setting) and the server sanitizes it with `Keymap.Sanitize`: only known actions,
+only valid keys for that device, at most two keyboard bindings and one pad binding each, nothing
+reserved (Escape, the function keys, a plain press of W / A / S / D). Aim assist and the vibration
+settings go through the same allow-list.
+
+**Special moves** (`src/shared/Moves.lua`). Nine signature moves, each a real set-up followed by one or
+two ordinary punches landed on the animation's own schedule (`FightMotion.SpecialHits`), so every
+head and body reaction plays as for any punch. A move unlocks by **style and career tier** (its home
+styles get it early, everyone a few tiers later) **or by a training milestone** (sessions on one
+exercise); nothing new is saved, the set is worked out from the profile each time, so old saves just
+work. The AI uses them too (its style's moves once it is good enough), each in the situation it is
+for. A medium-or-worse shot taken cancels the punches you have not thrown yet.
+
+| Move | Home styles (tier) | Anyone from | Or train | What it does |
+|---|---|---|---|---|
+| Check hook | Out-boxer, Counter puncher (Local Pro) | International Contender | 10 Agility Ladder | Lead hook as he steps in, then a pivot out: a counter when it catches him punching, an angle for the next shot |
+| Philly shell counter | Counter puncher, Boxer-puncher (Regional Champion) | Top 10 Ranked | 12 Shadow Boxing | Shoulder roll (head shots slide off for a third of a second), then the cross; what it rolls makes the cross a counter |
+| Pull counter | Counter puncher, Out-boxer (Regional Champion) | Top 10 Ranked | 10 Double-End Bag | Lean back out of a straight punch, land the right hand as he resets |
+| Liver shot | Swarmer, Slugger (Local Pro) | International Contender | 12 Heavy Bag | Dipping left hook under the elbow; a clean one folds a man a beat later even when his body is far from done |
+| Gazelle punch | Slugger, Swarmer (National Champion) | Title Challenger | 10 Jump Rope | Leaping lead hook from outside jab range (the root leaps 1.2 studs): long reach, big power, easy to see coming |
+| Peek-a-boo rush | Swarmer (National Champion) | Title Challenger | 15 Mitt Work | Bob and weave in (slipping head shots), then a left and a right hook on arrival |
+| Step-back counter | Out-boxer, Boxer-puncher (Regional Champion) | Top 10 Ranked | 10 Treadmill | Two steps back (everything misses), the cross reaches further as he follows |
+| Overhand right | Slugger, Boxer-puncher (Amateur) | National Champion | 8 Heavy Bag | The slugger's looping right over the guard: two thirds lands through a block |
+| Lead uppercut | Boxer-puncher, Swarmer (Local Pro) | International Contender | 10 Speed Bag | A short left uppercut with no wind-up to see; lands bigger on a rolling head |
+
+Each move has its own stamina cost, accuracy and damage multipliers, knockdown-odds multiplier and a
+cooldown (1.4 - 2.6 s) on the server; the act strings are `special|<id>|<hand>|<windup>|<power>`.
+
+**Console.** *Aim assist* (gamepad only): the left stick is read relative to the opponent, so pushing
+up always closes the distance and sideways always circles him (High also keeps you squared up while
+you circle); the facing itself is the server's. The server adds a small hit-chance forgiveness (Low
++2 points, High +4) to punches thrown from a pad. The level is read from the **saved** setting, never
+from a message, and the device is the one the **server** holds you on: it starts as the keyboard, a
+device message moves it (switches are rate-limited: more than three in half a minute lock the help
+for the rest of it) and a switch to the pad arms the help only two seconds later; any keyboard, mouse
+or touch input switches it off for five seconds, and once the server has seen your character move at
+all it also wants the thumbstick's fractional magnitudes in the replicated `Humanoid.MoveDirection`
+within the last ten seconds (a keyboard only ever gives 0 or 1), so a keyboard client tagging its
+punches as pad input gets nothing. The help never lifts a punch past 85 % and counts for at most 25
+punches a round. *Vibration*: hits taken (scaled by how hard), hits landed (a
+short tick, more on power shots and counters), blocked shots (a buzz), stumbles and knockdowns (both
+motors), through `HapticService` with a strength slider; every call is guarded. *Fight camera*: it
+backs off as the fighters separate so both stay in frame, eases a touch more on a pad, and the right
+stick nudges it round the pair and up or down (a flick of the same stick is still a slip, roll or parry).
+
+**Impact.** Camera shake scales with the punch's power (a jab barely moves the picture, an overhand
+rocks it; power shots and counters you land kick it too) and with the Settings shake slider. Impact
+sounds are layered by punch kind (straights snap high, hooks slap, uppercuts and overhands thump, body
+shots thud with a grunt, heavy shots and counters add a low crack) with pitch and volume varied every
+time; the same sound at nearly the same pitch is never played twice in a row. Sweat (and blood) sprays
+off the far side of the head or body, more off power shots and counters, and the point of contact
+flashes (bigger for power shots, a triple burst for counters).
 
 **Every round starts in the corners.** Both boxers are put in their own corners and held there (no
 steps, no punches: the server refuses every fight input) while a big **3 · 2 · 1 · BOX!** counts in,
@@ -276,7 +374,8 @@ Everything is procedural, driven on each client by `Animator.client.lua` and the
 
   Phones get a compact strip and touch pads.
 - **Settings:** UI scale, music and SFX volume, screen effects (blur, colour drain, flashes), camera
-  shake, graphics detail, main menu at start, and the fight control strip.
+  shake, graphics detail, main menu at start, the fight control strip, and under Controls the Moves &
+  Controls window (remapping), aim assist and controller vibration.
 
 ## Training and physique
 
@@ -338,6 +437,14 @@ is worth a little less than a win, and you have to throw punches to get anything
 
 ## Fights and the KO model
 
+**Getting into the ring.** A booked fight is fought LIVE from the Career Hub (early, with a confirm step,
+or on fight night) or SIMULATED. Simulating needs a camp behind it: at least one camp day slept through
+(a fresh offer cannot be simulated on the spot) and no more than one simulation a minute, so the purse
+cannot be farmed by booking and simulating in a loop. The `Request` remote itself is rate-limited per
+player (12 calls a second, bursts of 24; beyond that `{ throttled = true }`), a rejected action sends no
+profile summary back, and look previews outside the creator / barber / locker are refused (full
+rebuilds at most twice a second, head-only previews five times).
+
 - **Three health pools:** HEAD, BODY and STAMINA. Head punches cost head HP by type: the jab least,
   then the cross, then hooks, then the uppercut and overhand, the most. Body shots drain body HP and
   stamina.
@@ -362,8 +469,9 @@ is worth a little less than a win, and you have to throw punches to get anything
 - **Concussion:** builds with head damage. It slows punches and movement, lowers accuracy and
   defence, and blurs and drains the screen. It recovers between rounds and over days. Repeated
   trauma carries over the career.
-- **Controls:** shown on screen (tap **H**, or **View / Share** on a controller, in a fight). The
-  full keyboard, controller and touch layouts are in [Controls](#controls).
+- **Controls:** shown on screen (tap **H**, or **View / Share** on a controller, in a fight); the
+  full Moves & Controls menu on **Tab** (hold **View / Share**). The keyboard, controller and touch
+  layouts, remapping, the special moves and the console options are in [Controls](#controls).
 - **Fight nights:** weigh-ins, ring walks, a referee, judges' scorecards and a crowd. The venues are
   a community centre, a club arena, the Grand Arena and the National Stadium for title fights. The
   big venues have fight-night lighting, LED screens, broadcast cameras and a walkout stage.

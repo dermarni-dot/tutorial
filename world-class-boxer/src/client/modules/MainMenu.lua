@@ -8,7 +8,8 @@
 --   GYM         walk into the gym (TravelPlace "gym")
 --   RANKINGS    world rankings by weight class and sanctioning body (GetRankings / GetBoxer)
 --   STORE       the Career Hub shop
---   SETTINGS    UI scale, screen effects, camera shake, music / sound, graphics detail (Settings)
+--   CONTROLS    the Moves & Controls window: every move with its keys / buttons, remapping, console options
+--   SETTINGS    UI scale, screen effects, camera shake, music / sound, graphics detail, controls (Settings)
 -- Shown at join (Settings.menuAtStart) and from the HUD (MENU, key M). Keyboard / gamepad: up / down,
 -- Enter / A to select, Backspace / B to go back.
 local Players = game:GetService("Players")
@@ -26,6 +27,7 @@ local Settings = require(Modules:WaitForChild("Settings"))
 local Flags = require(Modules:WaitForChild("Flags"))
 local FighterCard = require(Modules:WaitForChild("FighterCard"))
 local MenuStage = require(Modules:WaitForChild("MenuStage"))
+local ControlsMenu = require(Modules:WaitForChild("ControlsMenu"))
 local T = UI.Theme
 local K = Enum.KeyCode
 
@@ -335,8 +337,19 @@ local ITEMS = {
 	{ id = "gym", label = "GYM", desc = "Walk into the gym and train", need = "created" },
 	{ id = "rankings", label = "RANKINGS", desc = "World rankings by division and sanctioning body", need = "created" },
 	{ id = "store", label = "STORE", desc = "Gear, homes, cars and upgrades", need = "created" },
-	{ id = "settings", label = "SETTINGS", desc = "Display, effects, audio and graphics" },
+	{ id = "controls", label = "CONTROLS", desc = "Every move with its keys and buttons, remapping, console options" },
+	{ id = "settings", label = "SETTINGS", desc = "Display, effects, audio, graphics and controls" },
 }
+
+-- the Moves & Controls window over the menu: the menu's own pad navigation steps aside while it is open
+local function openControls(tabName)
+	UI.PadHold("Menu", false)
+	ControlsMenu.Open({ tab = tabName, onClose = function()
+		if isOpen and not closing then
+			UI.PadHold("Menu", true)
+		end
+	end })
+end
 
 local function created()
 	local P = State.P
@@ -579,11 +592,11 @@ local function screenCareer(layer)
 		Position = small and UDim2.new(1, -40, 0, 66) or UDim2.new(1, -72, 1, -28), Size = UDim2.fromOffset(760, small and 40 or 46) })
 	UI.List(actions, 10, true, Enum.HorizontalAlignment.Right)
 	local bh = small and 38 or 44
-	UI.Button(actions, "CAREER HUB", { Size = UDim2.fromOffset(small and 150 or 200, bh), BackgroundColor3 = T.gold, LayoutOrder = 3 }, function()
+	UI.PadStart(UI.Button(actions, "CAREER HUB", { Size = UDim2.fromOffset(small and 150 or 200, bh), BackgroundColor3 = T.gold, LayoutOrder = 3 }, function()
 		MainMenu.Close(function()
 			State.open.Hub("Career")
 		end)
-	end)
+	end))
 	UI.Button(actions, "PHYSIQUE", { Size = UDim2.fromOffset(small and 120 or 160, bh), LayoutOrder = 2 }, function()
 		MainMenu.Close(function()
 			State.open.Hub("Body")
@@ -620,6 +633,9 @@ local function screenCharacter(layer)
 		local b = UI.Button(grid, "", { Name = "Tile", LayoutOrder = i, BackgroundColor3 = T.bg, BackgroundTransparency = 0.15 }, function()
 			MainMenu.Close(t[3])
 		end)
+		if i == 1 then
+			UI.PadStart(b)
+		end
 		local accent = UI.Frame(b, { Size = UDim2.new(0, 4, 1, -28), Position = UDim2.fromOffset(0, 14), BackgroundColor3 = i % 2 == 1 and T.gold or T.red })
 		UI.Corner(accent, 2)
 		UI.Text(b, string.format("%02d", i), { Face = "number", TextSize = 16, TextColor3 = T.dim, Position = UDim2.fromOffset(22, small and 12 or 20), Size = UDim2.fromOffset(40, 18),
@@ -940,6 +956,31 @@ local function screenSettings(layer)
 		Settings.Set("controlHints", on)
 	end)
 	add(hintsRow, nudge(hintsRow, true))
+	header("CONTROLS")
+	local movesBtn = UI.Button(body, "MOVES & CONTROLS  ·  REMAP KEYS AND BUTTONS", { Size = UDim2.fromOffset(420, 40) }, function()
+		openControls("moves")
+	end)
+	add(movesBtn, function(dir)
+		if dir == 0 then
+			openControls("moves")
+		end
+	end)
+	add(UI.Text(body, "Every move with its key, button and touch pad, what it does and how it unlocks; rebind anything on the keyboard or the controller.", { TextSize = 13, TextColor3 = T.sub }))
+	local assistRow = UI.Cycler(body, "Aim assist (controller only)", Settings.AimAssists, v.aimAssist, function(x)
+		Settings.Set("aimAssist", x)
+	end)
+	add(assistRow, nudge(assistRow))
+	add(UI.Text(body, "The left stick is read relative to the opponent and punches from a pad get a small accuracy forgiveness (Low 3 points, High 6; the server applies it, never to a keyboard).", { TextSize = 13, TextColor3 = T.sub }))
+	local vibRow = UI.Toggle(body, "Controller vibration", v.vibration, function(on)
+		Settings.Set("vibration", on)
+	end)
+	add(vibRow, nudge(vibRow, true))
+	local vibStrength = UI.Slider(body, "Vibration strength", 0, 1, v.vibrationStrength, 0.05, function(x)
+		Settings.Set("vibrationStrength", x)
+	end, pct, { default = D.vibrationStrength, words = function(x)
+		return x < 0.01 and "Off" or (x < 0.4 and "Light" or (x < 0.8 and "Medium" or "Strong"))
+	end })
+	add(vibStrength, nudge(vibStrength))
 	local function reset()
 		for k, def in pairs(Settings.Defaults) do
 			Settings.Set(k, def)
@@ -997,6 +1038,22 @@ local function buildHome()
 	buildHints(home)
 end
 
+-- CAREER / CHARACTER / RANKINGS on a pad: the home list and the settings rows navigate themselves (onInput),
+-- the other screens are ordinary buttons, so Roblox's own selection drives them: the screen layer is a
+-- SelectionGroup and gets a start selection (UI.PadStart marks the primary button; else the first in
+-- reading order) once its content has a size. B puts the selection down and goes home in one press.
+local function padSelectScreen()
+	if not (UI.IsPad and UI.IsPad()) or view == "home" or view == "settings" then
+		return
+	end
+	local layer = layers.screen
+	task.defer(function()
+		if isOpen and not closing and layer and layer.Parent and layer.Visible and not ControlsMenu.IsOpen() then
+			UI.PadSelect(layer)
+		end
+	end)
+end
+
 function show(name, instant)
 	if not (gui and gui.Parent) then
 		return
@@ -1004,6 +1061,7 @@ function show(name, instant)
 	local from = view
 	view = name
 	if name == "home" then
+		UI.ClearSelection()
 		layers.screen.Visible = false
 		UI.Clear(layers.screen)
 		layers.home.Visible = true
@@ -1029,6 +1087,7 @@ function show(name, instant)
 				warn("[MainMenu] " .. name .. ": " .. tostring(err))
 			end
 		end
+		padSelectScreen()
 	end
 	if instant or from == name then
 		swap()
@@ -1065,6 +1124,8 @@ function activate(it)
 		MainMenu.Close(function()
 			State.open.Hub("Shop")
 		end)
+	elseif it.id == "controls" then
+		openControls("moves")
 	else
 		show(it.id)
 	end
@@ -1073,13 +1134,27 @@ end
 local LEFT = { [K.Left] = true, [K.A] = true, [K.DPadLeft] = true }
 local RIGHT = { [K.Right] = true, [K.D] = true, [K.DPadRight] = true }
 local function onInput(input, gp)
-	if not isOpen or closing then
+	if not isOpen or closing or ControlsMenu.IsOpen() then
 		return
 	end
 	local k = input.KeyCode
+	-- B on a screen goes home whether or not Roblox's selection is up (it drops the selection on the same
+	-- press, so the first B would otherwise only do that)
+	if k == K.ButtonB and view ~= "home" and view ~= "settings" then
+		UI.ClearSelection()
+		if not closeScout() then
+			show("home")
+		end
+		return
+	end
 	-- a gamepad's buttons can arrive "processed" only because a default control binding saw them (A is
 	-- the jump action); they belong to the menu unless Roblox's own UI selection is driving it
 	if gp and not (UI.Gamepad and UI.Gamepad.IsPadKey(k) and GuiService.SelectedObject == nil) then
+		return
+	end
+	-- a D-pad press on a screen with nothing selected (the pad was picked up here): take the selection
+	if UI.Gamepad and UI.Gamepad.IsPadKey(k) and view ~= "home" and view ~= "settings" and GuiService.SelectedObject == nil then
+		padSelectScreen()
 		return
 	end
 	if view == "home" then
@@ -1152,7 +1227,7 @@ function MainMenu.Open(which)
 	measure()
 	layers.backdrop = UI.Frame(root, { Name = "Backdrop", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1) })
 	layers.home = UI.Frame(root, { Name = "Home", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1) })
-	layers.screen = UI.Frame(root, { Name = "Screen", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Visible = false })
+	layers.screen = UI.Frame(root, { Name = "Screen", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Visible = false, SelectionGroup = true })
 	layers.wipe = UI.Frame(root, { Name = "Wipe", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), ZIndex = 20 })
 	-- fade up from black
 	local black = UI.Frame(root, { Name = "Fade", BackgroundColor3 = Color3.new(0, 0, 0), Size = UDim2.fromScale(1, 1), ZIndex = 30 })
@@ -1251,6 +1326,7 @@ function MainMenu.Close(after)
 		settingsFocus, settingsBody, scoutSheet = 0, nil, nil
 		isOpen, closing = false, false
 		view = "home"
+		UI.ClearSelection()
 		UI.PadHold("Menu", false)
 		State.HidePrompts("Menu", false)
 		State.HideHud("Menu", false)

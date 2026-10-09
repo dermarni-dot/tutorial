@@ -9,6 +9,8 @@
 --   Gamepad.Short(keyCode)  the same for tight key caps (the D-pad as "D-UP" ...)
 --   Gamepad.IsPadKey(k)     a gamepad KeyCode (buttons, D-pad, thumbsticks)
 --   Gamepad.Flick()         a flick detector: f:Update(x, y, now) returns "L" / "R" / "U" / "D" once per flick
+--   Gamepad.Rumble(large, small, dur)  controller vibration through HapticService (0..1 each motor, dur s),
+--                           scaled by Gamepad.SetVibration(k) (0 = off; the Settings toggle / strength)
 -- Client-side; the server never needs it (it loads there and stays in "keyboard" mode).
 local UserInputService = game:GetService("UserInputService")
 local K = Enum.KeyCode
@@ -117,6 +119,8 @@ local COMMON = {
 local KEYS = {
 	[K.Space] = "SPACE", [K.LeftShift] = "SHIFT", [K.RightShift] = "SHIFT", [K.Return] = "ENTER", [K.Backspace] = "BACKSPACE",
 	[K.One] = "1", [K.Two] = "2", [K.Three] = "3", [K.Four] = "4", [K.Five] = "5", [K.Six] = "6", [K.Semicolon] = ";",
+	[K.Seven] = "7", [K.Eight] = "8", [K.Nine] = "9", [K.Zero] = "0", [K.Tab] = "TAB", [K.LeftControl] = "CTRL", [K.RightControl] = "CTRL",
+	[K.LeftAlt] = "ALT", [K.RightAlt] = "ALT", [K.Comma] = ",", [K.Period] = ".", [K.CapsLock] = "CAPS",
 	[K.Up] = "UP", [K.Down] = "DOWN", [K.Left] = "LEFT", [K.Right] = "RIGHT",
 }
 
@@ -180,6 +184,62 @@ end
 function Flick:Reset()
 	self.armed = true
 	self.leftAt = nil
+end
+
+------------------------------------------------------------------------
+-- Vibration (HapticService): every call is guarded, a controller without motors is a silent no-op.
+-- Pulses overlap sanely: a stronger pulse replaces a weaker one, each motor idles once its own pulse ends.
+------------------------------------------------------------------------
+local vibration = 1
+local rumble = { token = 0 }
+local HapticService
+function Gamepad.SetVibration(k)
+	vibration = math.clamp(tonumber(k) or 0, 0, 1)
+	if vibration <= 0 then
+		Gamepad.Rumble(0, 0, 0)
+	end
+end
+
+function Gamepad.Vibration()
+	return vibration
+end
+
+local function motor(name, k)
+	if not HapticService then
+		local ok, svc = pcall(game.GetService, game, "HapticService")
+		HapticService = ok and svc or false
+	end
+	if not HapticService then
+		return false
+	end
+	local ok = pcall(HapticService.SetMotor, HapticService, IT.Gamepad1, Enum.VibrationMotor[name], k)
+	return ok
+end
+
+-- large / small = 0..1 motor strengths, dur = seconds (default 0.15); returns true when a call went through
+function Gamepad.Rumble(large, small, dur)
+	large = math.clamp((tonumber(large) or 0) * vibration, 0, 1)
+	small = math.clamp((tonumber(small) or 0) * vibration, 0, 1)
+	if large <= 0 and small <= 0 then
+		rumble.token += 1
+		motor("Large", 0)
+		motor("Small", 0)
+		return false
+	end
+	if mode ~= "gamepad" then
+		return false
+	end
+	local ok = motor("Large", large)
+	motor("Small", small)
+	rumble.token += 1
+	local token = rumble.token
+	task.delay(dur or 0.15, function()
+		if rumble.token == token then
+			motor("Large", 0)
+			motor("Small", 0)
+		end
+	end)
+	return ok
 end
 
 return Gamepad

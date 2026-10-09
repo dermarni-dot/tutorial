@@ -25,6 +25,35 @@ local Poser = require(Modules.Poser)
 local Ambient = require(Modules.Ambient)
 local CityMap = require(Modules.CityMap) -- same instance MapBuilder built the city with (travel targets, home interiors)
 local PvP = require(Modules.PvP)
+-- controls job: special moves (unlocks per style / tier / training) and the control map's sanitizer; both
+-- optional (nil-safe) so an older Shared folder still boots
+local Moves, Keymap
+do
+	local mm = Shared:FindFirstChild("Moves")
+	local ok, mod = false, nil
+	if mm then
+		ok, mod = pcall(require, mm)
+	end
+	Moves = (ok and type(mod) == "table") and mod or nil
+	local km = Shared:FindFirstChild("Keymap")
+	ok, mod = false, nil
+	if km then
+		ok, mod = pcall(require, km)
+	end
+	Keymap = (ok and type(mod) == "table") and mod or nil
+end
+local ASSIST_LEVEL = { Off = 0, Low = 1, High = 2 }
+-- what a fighter's data carries into FightEngine.Run from the profile: the unlocked special moves and the
+-- aim-assist level the server will honour (read from the SAVED settings so a client cannot claim it)
+local function fightExtras(profile, data)
+	if type(data) ~= "table" then
+		return data
+	end
+	data.moves = Moves and Moves.Unlocked(Moves.Info(profile)) or {}
+	local ui = type(profile.settings) == "table" and type(profile.settings.ui) == "table" and profile.settings.ui or {}
+	data.assist = ASSIST_LEVEL[ui.aimAssist] or 0
+	return data
+end
 
 pcall(function()
 	StarterPlayer.LoadCharacterAppearance = false
@@ -70,6 +99,35 @@ end
 local PROP_FOR = { bench = "bench", deadlift = "deadlift", squat = "squat", curl = "curl", rope = "rope", row = "row", medball = "medball" }
 -- shortest believable time for each minigame (anything faster is treated as a sloppy session)
 local MIN_TIME = { combo = 9, rhythm = 9, reaction = 9, mitts = 9, shadow = 9, reps = 9, pace = 11, ladder = 7, rope = 9, hold = 5, medball = 9 }
+-- What the server can see of a drill: its clock and its presses (ActivityInput: the client fires one
+-- per key / button press a drill accepted; counted at most every PRESS_GAP s). The client's score is
+-- trusted only as far as the session lasted PRESS_FLOOR.t seconds and carried PRESS_FLOOR.n presses -
+-- about 60% of the least an honest, perfect run takes - so a forged score can never beat an honest
+-- perfect session: an idle client is capped at the quality of a session with no work in it, and a
+-- macro has to put in the real time and the real presses.
+local PRESS_GAP = 0.09
+local PRESS_FLOOR = {
+	combo = { t = 30, n = 30 }, rhythm = { t = 18, n = 24 }, reaction = { t = 18, n = 12 }, mitts = { t = 18, n = 18 }, shadow = { t = 20, n = 14 },
+	reps = { t = 16, n = 8 }, medball = { t = 18, n = 12 }, pace = { t = 22, n = 8 }, ladder = { t = 14, n = 10 }, rope = { t = 15, n = 18 }, hold = { t = 22, n = 4 },
+}
+-- roadwork / swim: the shortest believable session (under it: sloppy, never a record) and the share of
+-- the par time a run must take before any pace bonus counts
+local COURSE_MIN = { course = 30, swim = 10 }
+local PACE_MIN_SHARE = 0.5
+local ActivityInput = Instance.new("RemoteEvent")
+ActivityInput.Name = "ActivityInput"
+ActivityInput.Parent = remotes
+ActivityInput.OnServerEvent:Connect(function(player, token)
+	local s = sessions[player]
+	if not s or s.token ~= token then
+		return
+	end
+	local now = os.clock()
+	if now - (s.lastPress or 0) >= PRESS_GAP then
+		s.lastPress = now
+		s.presses += 1
+	end
+end)
 local SPAR_SCALE = { Light = 0.7, Medium = 1.0, Hard = 1.35 }
 local SPAR_RISK = { Light = 0, Medium = 0.01, Hard = 0.035 }
 local SPAR_RANGE = { Light = { -12, -4 }, Medium = { -5, 3 }, Hard = { 0, 8 } }
@@ -424,7 +482,7 @@ local function startActivity(player, profile, actId)
 		return { ok = false, err = "Your character isn't ready." }
 	end
 	local level = Training.StationLevel(profile, act.station)
-	local s = { token = HttpService:GenerateGUID(false), act = act, start = os.clock(), kind = act.minigame, station = act.station, level = level }
+	local s = { token = HttpService:GenerateGUID(false), act = act, start = os.clock(), kind = act.minigame, station = act.station, level = level, presses = 0 }
 	local def = STATION[act.station]
 	if def then
 		local m = stationModel(def.id)
@@ -470,6 +528,16 @@ local function startActivity(player, profile, actId)
 		s.cps = trackCheckpoints()
 		s.cp = 1
 		hum.WalkSpeed = math.floor(18 + profile.stats.Stamina * 0.06)
+		-- the course as the server will measure it: the root's believable steps add up to s.dist, so a
+		-- checkpoint only counts for a runner who covered the ground to it
+		local len, from = 0, root.Position
+		for _, cp in ipairs(s.cps) do
+			len += flatDist(from, cp)
+			from = cp
+		end
+		-- a checkpoint triggers 11 studs out, so an honest lap runs a little short of the straight legs
+		s.courseLen = math.max(50, len * 0.8)
+		s.dist, s.warps, s.lastPos, s.lastAt, s.speedCap = 0, 0, root.Position, os.clock(), hum.WalkSpeed
 	elseif act.minigame == "swim" then
 		local m = stationModel("pool")
 		local base = m and m:FindFirstChild("Base")
@@ -484,6 +552,9 @@ local function startActivity(player, profile, actId)
 			s.nextEnd = flatDist(root.Position, a) < flatDist(root.Position, b) and "B" or "A"
 		end
 		hum.WalkSpeed = math.floor(16 + profile.stats.Stamina * 0.04)
+		-- a pool end triggers 13 studs out: a length as the server measures it is that much shorter
+		s.courseLen = math.max(30, (a and b) and (flatDist(a, b) - 26) * s.target or 0)
+		s.dist, s.warps, s.lastPos, s.lastAt, s.speedCap = 0, 0, root.Position, os.clock(), hum.WalkSpeed
 	end
 	sessions[player] = s
 	setBusy(player, "activity")
@@ -508,34 +579,41 @@ local function finishActivity(player, profile, token, score, stats)
 	if quality ~= quality then
 		quality = 0.8
 	end
-	quality = math.clamp(quality, 0.4, 1.5)
+	-- the client's own formula tops out at 1.45 (0.5 + 0.95): anything above is forged
+	quality = math.clamp(quality, 0.4, 1.45)
 	local tooFast = false
 	local opts = {}
-	if s.kind == "course" then
-		local done = math.clamp((s.cp - 1) / math.max(1, #s.cps), 0, 1)
+	local watch = { t = math.floor(elapsed * 10 + 0.5) / 10, n = s.presses or 0, dist = s.dist, warps = s.warps }
+	if s.kind == "course" or s.kind == "swim" then
+		-- the ground covered counts as much as the checkpoints passed: a teleport reaches the arch
+		-- with no distance behind it
+		local done = s.kind == "course" and (s.cp - 1) / math.max(1, #s.cps) or s.lengths / s.target
+		done = math.clamp(math.min(done, (s.dist or 0) / (s.courseLen or 1)), 0, 1)
 		if done < 0.25 then
 			endSession(player)
-			return { ok = false, err = "You barely left the start line - session cancelled." }
+			return { ok = false, err = s.kind == "course" and "You barely left the start line - session cancelled." or "Swim at least one length - session cancelled." }
 		end
-		local par = 1260 / 20
-		local pace = s.doneAt and (par / math.max(1, s.doneAt - s.start)) or 0.8
-		quality = math.clamp(0.55 + pace * 0.55, 0.5, 1.4)
+		local par = s.kind == "course" and 1260 / 20 or s.target * 56 / 15
+		local pace = 0.8
+		if s.doneAt and s.doneAt - s.start >= par * PACE_MIN_SHARE then
+			pace = par / math.max(1, s.doneAt - s.start)
+		end
+		quality = s.kind == "course" and math.clamp(0.55 + pace * 0.55, 0.5, 1.4) or math.clamp(0.55 + pace * 0.5, 0.5, 1.35)
 		opts.scale = done
 		opts.energyScale = done
-	elseif s.kind == "swim" then
-		local done = math.clamp(s.lengths / s.target, 0, 1)
-		if done < 0.25 then
-			endSession(player)
-			return { ok = false, err = "Swim at least one length - session cancelled." }
+		if elapsed < COURSE_MIN[s.kind] then
+			quality = 0.4
+			tooFast = true
 		end
-		local par = s.target * 56 / 15
-		local pace = s.doneAt and (par / math.max(1, s.doneAt - s.start)) or 0.8
-		quality = math.clamp(0.55 + pace * 0.5, 0.5, 1.35)
-		opts.scale = done
-		opts.energyScale = done
 	elseif elapsed < (MIN_TIME[s.kind] or 6) then
 		quality = 0.4
 		tooFast = true -- counts as a sloppy session, but never as a record
+	else
+		local floor = PRESS_FLOOR[s.kind]
+		if floor then
+			local seen = math.min(1, elapsed / floor.t) * math.min(1, (s.presses or 0) / floor.n)
+			quality = math.min(quality, 0.5 + 0.95 * seen)
+		end
 	end
 	local result
 	if act.recovery then
@@ -572,7 +650,38 @@ local function finishActivity(player, profile, token, score, stats)
 		end
 	end
 	task.spawn(DataManager.Save, player)
-	return { ok = true, result = result, quality = quality, act = act.id, record = record }
+	return { ok = true, result = result, quality = quality, act = act.id, record = record, watch = watch }
+end
+
+-- one frame of a runner / swimmer: a believable step (the humanoid's speed with a sprint margin, at
+-- least 3 studs for a replication burst) adds to the distance covered; a longer one is a teleport,
+-- which earns no distance and no checkpoint on that frame. The running second is checked too: more
+-- ground in it than the speed allows (a speed hack: small steps, too many of them) is taken back
+local function plausibleStep(s, root)
+	local now = os.clock()
+	local pos = root.Position
+	local last, lastAt = s.lastPos, s.lastAt
+	s.lastPos, s.lastAt = pos, now
+	if not last then
+		s.secAt, s.secDist = now, 0
+		return true
+	end
+	local cap = s.speedCap or 24
+	local moved = flatDist(pos, last)
+	if moved > math.max(3, cap * 1.6 * math.max(1 / 240, now - (lastAt or now)) + 1) then
+		s.warps += 1
+		return false
+	end
+	s.dist += moved
+	s.secDist = (s.secDist or 0) + moved
+	if now - (s.secAt or now) >= 1 then
+		if s.secDist > cap * 1.7 + 4 then
+			s.dist -= s.secDist
+			s.warps += 1
+		end
+		s.secAt, s.secDist = now, 0
+	end
+	return true
 end
 
 -- roadwork checkpoints and swim lengths are measured on the server
@@ -581,6 +690,9 @@ RunService.Heartbeat:Connect(function()
 		if s.kind == "course" or s.kind == "swim" then
 			local char = player.Character
 			local root = char and char:FindFirstChild("HumanoidRootPart")
+			if root and not plausibleStep(s, root) then
+				root = nil
+			end
 			if root then
 				if s.kind == "course" and s.cp <= #s.cps then
 					if flatDist(root.Position, s.cps[s.cp]) < 11 then
@@ -757,6 +869,7 @@ local function runFight(player, profile)
 			FightEngine.Abort(player)
 		end)
 	end
+	fightExtras(profile, pData)
 	local ok, res = pcall(FightEngine.Run, player, remote, offer, pData, oData, arena)
 	if not ok then
 		warn("[Boxer] fight crashed:", res)
@@ -834,6 +947,7 @@ local function runSpar(player, profile, intensity)
 			FightEngine.Abort(player)
 		end)
 	end
+	fightExtras(profile, pData)
 	local ok, res = pcall(FightEngine.Run, player, FightRemote, offer, pData, oData, arena, { spar = intensity })
 	if not ok then
 		warn("[Boxer] sparring crashed:", res)
@@ -1008,6 +1122,8 @@ local function runPvP(w)
 		ringLevel = math.max(profA.gym and profA.gym.levels and profA.gym.levels.ring or 1, profB.gym and profB.gym.levels and profB.gym.levels.ring or 1),
 	})
 	local pData, oData = pvpFighterData(profA, ranked), pvpFighterData(profB, ranked)
+	fightExtras(profA, pData)
+	fightExtras(profB, oData)
 	local offer = {
 		kind = ranked and string.format("PvP Ranked Bout - %d rounds", w.rounds) or "PvP Sparring", rounds = ranked and w.rounds or 2,
 		venue = ranked and "ClubArena" or "Gym", venueName = ranked and "City Club - PvP Night" or "Sparring Ring", talk = "", stakes = {}, playerStakes = {},
@@ -1278,8 +1394,12 @@ function handlers.PreviewLook(player, profile, look, hands, popts)
 	if not creating and not section then
 		return { ok = false }
 	end
+	-- a full rebuild (every body part, ~800 instances replicated to everyone) at most twice a second; a
+	-- head-only preview (the Creator's face / hair sliders) five times. The client coalesces a throttled
+	-- call into its next one, so the final state always arrives.
 	local now = os.clock()
-	if lastPreview[player] and now - lastPreview[player] < 0.2 then
+	local headOnly = type(popts) == "table" and type(popts.only) == "table"
+	if lastPreview[player] and now - lastPreview[player] < (headOnly and 0.2 or 0.5) then
 		return { ok = false, throttled = true }
 	end
 	lastPreview[player] = now
@@ -1358,6 +1478,11 @@ function handlers.AcceptOffer(player, profile, index)
 	return { ok = ok, err = err }
 end
 
+-- SIMULATE FIGHT pays the purse without a round boxed, so it needs a camp behind it: at least one camp
+-- day slept through (a fresh offer cannot be simulated on the spot) and no more than one simulation a
+-- minute per player. Fighting LIVE early stays as it is (the Hub's confirm step; the fight is real).
+local SIM_COOLDOWN = 60
+local lastSim = {}
 function handlers.StartFight(player, profile, mode)
 	if not profile.camp then
 		return { ok = false, err = "No fight booked." }
@@ -1366,7 +1491,18 @@ function handlers.StartFight(player, profile, mode)
 		return { ok = false, err = "Finish what you're doing first." }
 	end
 	if mode == "sim" then
-		local offer = profile.camp.offer
+		local camp = profile.camp
+		local total = tonumber(camp.daysTotal) or 0
+		local left = tonumber(camp.daysLeft) or 0
+		if total > 0 and left >= total then
+			return { ok = false, err = "Put in at least one camp day (train, eat, sleep) before simulating the fight." }
+		end
+		local now = os.clock()
+		if lastSim[player] and now - lastSim[player] < SIM_COOLDOWN then
+			return { ok = false, err = string.format("One simulated fight a minute: %d s to go.", math.ceil(SIM_COOLDOWN - (now - lastSim[player]))) }
+		end
+		lastSim[player] = now
+		local offer = camp.offer
 		local res = Career.SimFight(profile, offer)
 		local out = Career.ApplyResult(profile, res)
 		applyLook(player)
@@ -1686,7 +1822,10 @@ end
 -- the fight's control strip (same ranges as Settings.Sanitize on the client; unknown keys dropped)
 local UI_SETTING_RANGES = { uiScale = { 0.8, 1.25 }, screenFx = { 0, 1.5 }, shake = { 0, 1.5 }, music = { 0, 1 }, sfx = { 0, 1 }, brightness = { 0.5, 1.6 } }
 local UI_DETAILS = { Auto = true, High = true, Medium = true, Low = true }
-local UI_FLAGS = { "menuAtStart", "controlHints" }
+local UI_FLAGS = { "menuAtStart", "controlHints", "vibration" }
+-- controls job: console settings (aim assist level, vibration strength) and the custom control map
+-- (Keymap.Sanitize keeps only known actions with valid bindings for their device)
+local UI_ASSIST = { Off = true, Low = true, High = true }
 function handlers.SaveSettings(player, profile, t)
 	if type(t) ~= "table" then
 		return { ok = false, err = "Bad settings" }
@@ -1704,6 +1843,19 @@ function handlers.SaveSettings(player, profile, t)
 	for _, k in ipairs(UI_FLAGS) do
 		if type(t[k]) == "boolean" then
 			clean[k] = t[k]
+		end
+	end
+	if type(t.aimAssist) == "string" and UI_ASSIST[t.aimAssist] then
+		clean.aimAssist = t.aimAssist
+	end
+	local vib = tonumber(t.vibrationStrength)
+	if vib and vib == vib then
+		clean.vibrationStrength = math.floor(math.clamp(vib, 0, 1) * 100 + 0.5) / 100
+	end
+	if Keymap and type(t.keymap) == "table" then
+		local km = Keymap.Sanitize(t.keymap)
+		if next(km.kbd) or next(km.pad) then
+			clean.keymap = km
 		end
 	end
 	if type(profile.settings) ~= "table" then
@@ -1866,7 +2018,31 @@ local NO_PUSH = { SaveSettings = true }
 -- allowed in the ring too: the Settings screen opens mid-fight and its save is never retried
 local IN_RING = { SaveSettings = true }
 
+-- per-player rate limit on the whole remote: a token bucket (RATE.perSecond refilled, RATE.burst deep).
+-- A legit client never gets near it (the Creator's previews are 4 / s, everything else is a click);
+-- a looping exploit client gets { throttled = true } and costs the server nothing but this table
+local RATE = { perSecond = 12, burst = 24 }
+local buckets = {}
+local function rateOk(player)
+	local now = os.clock()
+	local b = buckets[player]
+	if not b then
+		b = { tokens = RATE.burst, at = now }
+		buckets[player] = b
+	end
+	b.tokens = math.min(RATE.burst, b.tokens + (now - b.at) * RATE.perSecond)
+	b.at = now
+	if b.tokens < 1 then
+		return false
+	end
+	b.tokens -= 1
+	return true
+end
+
 Request.OnServerInvoke = function(player, action, ...)
+	if not rateOk(player) then
+		return { ok = false, throttled = true, err = "Slow down." }
+	end
 	local profile = DataManager.Get(player)
 	if not profile then
 		return { ok = false, err = "Loading..." }
@@ -1890,7 +2066,9 @@ Request.OnServerInvoke = function(player, action, ...)
 		warn("[Boxer] handler error", action, res)
 		return { ok = false, err = "Server error" }
 	end
-	if not READ_ONLY[action] and not NO_PUSH[action] then
+	-- a rejected action changed nothing: no summary to build and send for it
+	local rejected = type(res) == "table" and res.ok == false
+	if not READ_ONLY[action] and not NO_PUSH[action] and not rejected then
 		task.defer(push, player)
 	end
 	return res
@@ -1985,6 +2163,8 @@ Players.PlayerRemoving:Connect(function(player)
 	customizing[player] = nil
 	lookState[player] = nil
 	lastPreview[player] = nil
+	lastSim[player] = nil
+	buckets[player] = nil
 	sweatState[player] = nil
 	for id, p in pairs(occupied) do
 		if p == player then
