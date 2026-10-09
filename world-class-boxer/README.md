@@ -401,16 +401,23 @@ Everything is procedural, driven on each client by `Animator.client.lua` and the
 - **Career Hub (H, D-pad up):** tabs for Career, Training, Body, Stats, Gym, Gear, Coaches, Sponsors, Life,
   Rankings, Rivals, Shop and Legacy.
 - **Training UI:** every exercise runs with a session progress bar and a metrics strip (set, reps,
-  good reps, quality, time, heart rate, calories) next to a "muscles worked" card: an anatomical
-  body map lit by `Config.ExerciseTargets`. The report that follows shows the grade, every muscle
-  that grew (its level before, the growth now, tonight's share, the gain), every stat that rose
-  (old -> new), the pump / soreness / sweat / veins / fat chips and the body map re-lit by the
-  growth. On top of it: a **+XP toast** that counts up (training levels, level-ups), and a column of
-  **gain popups** (one per stat and per muscle part, old -> new) that slide in one after another.
-  On a phone the report fills the screen, so the toast shrinks into the top-right corner and the
-  popups become one row of chips in the band above the report (stats first, "+N more" when they do
-  not all fit; the report lists every one). FLEX strikes a pose; MUSCLES opens the Muscle
-  Progression screen on the parts that just grew.
+  good reps, quality, time, heart rate, calories; the set, rep, good-rep, quality and time tiles each
+  carry a fill bar) next to a "muscles worked" card: an anatomical body map lit by
+  `Config.ExerciseTargets`. A phone too narrow for the card gets a strip over the panel instead (a
+  small map and the muscles' names). The report that follows shows the grade, every muscle that grew
+  (its level before, the growth now, tonight's share, the gain), every stat that rose (old -> new),
+  the pump / soreness / sweat / veins / fat chips and the body map re-lit by the growth (on a phone,
+  beside the grade). It stays up until CONTINUE / CLOSE (B). On top of it: a **+XP toast** that
+  counts up (training levels, level-ups), and a column of **gain popups** (one per stat and per
+  muscle part, old -> new) that slide in one after another. Where a column would run into the panel
+  (a phone, a 1024 tablet) the toast shrinks into the top-right corner and the popups become one row
+  of chips in the band above the report (stats first, "+N more" when they do not all fit; the
+  report lists every one). FLEX strikes a pose; MUSCLES opens the Muscle Progression screen on the
+  parts that just grew. On touch every drill and report button is a fingertip high (44 px), and the
+  instructions name the drill's own buttons and the thumbstick instead of keyboard keys. Names are
+  never cut at the readability floor: the Hub's exercise cards list the stats they build strongest
+  first and end in "+N more" where the card is narrow (the smallest phones take one column of
+  cards), and the gain chips, the growth names and the cost chip are sized to their text.
 - **Muscle Progression screen** (`MuscleScreen.lua`, Hub Body tab "3D MUSCLE VIEW", the "3D" button
   of every group row, or MUSCLES on a training report): a rotating 3D figure (a frozen copy of
   your character in a ViewportFrame, meshes included) with tabs for Arms, Chest, Core, Legs,
@@ -419,7 +426,10 @@ Everything is procedural, driven on each client by `Animator.client.lua` and the
   every sub-muscle, soreness, the week's change and a **growth-over-time graph** from the daily
   history the server keeps (`profile.muscleHist`, one row per career day, capped at 90, served by
   `GetMuscleHistory`). Drag with the mouse or a finger to turn the figure, or use the right stick;
-  LB / RB step the groups, B closes; left alone it turns by itself.
+  LB / RB step the groups, B (Backspace) closes; left alone it turns by itself. Picking Back turns
+  the figure round (Chest and Core turn it back to the front), and those one-sided groups sway
+  around their side instead of spinning away. Closing it returns to the Hub's Body tab; another
+  window opening over it (a drill, a store, the menu) closes it without bringing the Hub back.
 - **Fight HUD:** a broadcast-style scoreboard showing:
   - separate HEAD, BODY and STAMINA bars, with permanent-damage caps;
   - status chips (DAZED, IN DANGER, OUT ON HIS FEET);
@@ -467,27 +477,35 @@ under Interface; the daily group history behind the screen's graph is `profile.m
 of the seven groups per career day, logged by `Training.Perform` / `Sleep` / `PassDays` / `Migrate`,
 capped at 90 rows, dropped when corrupt, served by `GetMuscleHistory`; no DataVersion bump).
 
-**What the server trusts.** `FinishActivity` no longer takes the client's score at face value:
-the client fires `Remotes.ActivityInput` once per press a drill accepted, the server counts them
-(at most every 0.09 s) against its own clock, and the score is capped at
-`0.5 + 0.95 * min(1, elapsed / t) * min(1, presses / n)` with `t` / `n` per minigame
-(`PRESS_FLOOR` in Main.server.lua, about 60% of an honest perfect run) and at the client formula's
-own maximum of 1.45. An idle client that waits out a drill and claims 1.5 gets a 0.5 session; a
-macro has to put in the real time and presses to equal an honest perfect session, never beat it.
-Roadwork and swimming are measured on the server frame by frame: a root that jumps more than the
-humanoid's speed allows (or covers more ground in a second than it could) earns no distance, a
-checkpoint only counts for a runner who covered the ground to it (`done = min(checkpoints,
-distance / course)`), any pace bonus needs at least half the par time, and a session under 30 s
-(swim 20 s) is sloppy. `Training.Migrate` also repairs the career counters (records, titles,
-defenses, quality wins, sessions, gear condition, belts, regional, identity strings) so one corrupt
-save value can never block the join.
+**What the server trusts.** The session quality is the server's own number; the client's score is
+ignored. `StartActivity` draws the whole drill on the server (`Training.DrillPlan`: every combination,
+lift zone, cue, beat, rope cue and time limit) and sends that plan to the client, which plays exactly
+it. The client sends every input its drill takes through `Remotes.ActivityInput` (`id, down, t` on the
+drill clock, and an `@` marker when a segment starts). `FinishActivity` replays the stream through the
+same judges (`ReplicatedStorage.Shared.DrillScore`, shared code: the drill the player sees and the
+server's replay cannot disagree) and sets `quality = 0.5 + 0.95 * score`. Inputs must arrive as they
+happen: one stamped ahead of the server's clock, more than 6 s behind it, or 3.5 s further behind than
+the session's quickest input is dropped, so a stream written after the fact counts for nothing. Presses
+with no drill behind them (no markers, the wrong keys, the wrong moments) score nothing, mashing costs
+points (a stray beat, a jump between rope passes), and a reaction faster than 0.1 s counts as jumping
+the cue: only playing the drill, in real time, earns a grade. Roadwork and swimming are measured on the
+server frame by frame. A step longer than a sprint can explain is a teleport, and more ground over 3 s
+than the humanoid's speed (+15%) covers is a speed hack; either earns nothing and holds the next
+checkpoint back for a second. Only a new closest approach to the next checkpoint (or pool end) counts
+as ground covered, and a checkpoint needs 70% of its leg run that way: circling at the start or running
+back and forth adds nothing. Par is the course at the humanoid's own speed, the pace bonus stops at
+1.05 x par, and a run (or swim) quicker than 0.75 x par is sloppy. `Training.Migrate` also repairs the
+career counters (records, titles, defenses, quality wins, sessions, gear condition, belts, regional,
+identity strings) so one corrupt save value can never block the join.
 
 **Drills and the control map.** Mitt work, the heavy bag, the double-end bag, shadow boxing and the
 speed bag prompt and listen for the fight's own bindings (`Settings.Keymap()` through
 `Keymap.Keys` / `Keymap.ActionText`): a custom map, mouse buttons and the pad's buttons and
-right-stick flicks included; a drill's instructions carry `{jab}`-style tokens that read as the key,
-button or touch name in use. MOVES & CONTROLS on the Hub's Training tab opens the moves list and
-control map (`State.open.Controls`).
+right-stick flicks included; a drill's instructions carry `{jab}`-style tokens that read as the key
+or button in use (on touch: the drill's own button). A drill's button names only the plain keys it
+listens for (a chord or a double tap such as the pivot's `2x A` cannot reach a drill). MOVES &
+CONTROLS on the Hub's Training tab opens the moves list and control map; closing it brings the
+Training tab back.
 
 ## Gyms
 

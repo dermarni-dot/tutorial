@@ -31,6 +31,8 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
 local Catalog = require(Shared:WaitForChild("Catalog"))
 local UI = require(Shared:WaitForChild("UI"))
+-- the drills' judges: the same code scores the session on the server from this client's inputs
+local DrillScore = require(Shared:WaitForChild("DrillScore"))
 local State = require(script.Parent:WaitForChild("State"))
 local GymVisuals = require(script.Parent:WaitForChild("GymVisuals"))
 local BodyMap = require(script.Parent:WaitForChild("BodyMap"))
@@ -74,6 +76,53 @@ local SIDE_W = 212 -- the "muscles worked" card beside the panel
 local STAGE_Y = 92
 local STAGE_H = 120
 local STUD_M = 0.28 -- metres per stud (roadwork distance)
+
+-- names ({ text, rich }) as whole lines that fit `width` x `height` design px at obj's readability
+-- floor: a name is never split or cut ("UPPER / CHEST +2.30"); what has no room ends as "+N MORE"
+local NAME_SEP = "  ·  "
+local function capsW(text, px)
+	-- capitals run ~0.8 em in the bold face ("KNOCKOUT POWER" 10.5 em), wider than the kit's 0.6 em
+	-- floor for body text: count them (digits ~0.64, spaces and marks ~0.34)
+	local _, caps = string.gsub(text, "%u", "")
+	local _, digits = string.gsub(text, "%d", "")
+	local rest = (utf8.len(text) or #text) - caps - digits
+	return math.max(UI.TextWidth(text, px, T.semi), math.ceil(px * (caps * 0.8 + digits * 0.64 + rest * 0.34)))
+end
+local function packNames(obj, names, size, width, height)
+	local px = math.max(size, UI.TextFloor(UI.ScaleOf(obj)))
+	local maxLines = math.max(1, math.floor(height / (px * 1.1)))
+	local function fit(s)
+		return capsW(s, px) <= width
+	end
+	for n = #names, 1, -1 do
+		local lines, plain, rich = {}, nil, nil
+		for i = 1, n do
+			local it = names[i]
+			if plain and fit(plain .. NAME_SEP .. it.text) then
+				plain, rich = plain .. NAME_SEP .. it.text, rich .. NAME_SEP .. (it.rich or it.text)
+			else
+				if rich then
+					table.insert(lines, rich)
+				end
+				plain, rich = it.text, it.rich or it.text
+			end
+		end
+		if n < #names then
+			local more = string.format("+%d MORE", #names - n)
+			if fit(plain .. NAME_SEP .. more) then
+				rich ..= NAME_SEP .. more
+			else
+				table.insert(lines, rich)
+				rich = more
+			end
+		end
+		table.insert(lines, rich)
+		if #lines <= maxLines or n == 1 then
+			return table.concat(lines, "\n")
+		end
+	end
+	return ""
+end
 -- how hard each drill works you even between presses (heart-rate effort floor, 0..1)
 local BASE_EFFORT = { combo = 0.45, rhythm = 0.3, reaction = 0.5, mitts = 0.55, shadow = 0.45, ladder = 0.45, rope = 0.45, medball = 0.5 }
 -- the pose to strike when you press FLEX after a session (Config.Pump.poses), by exercise
@@ -146,6 +195,28 @@ local function padInfo(ctx, text)
 	return text
 end
 
+-- on touch the instructions name the drill's own buttons (the bound action's label; `say` when the
+-- label is not a word for a sentence) and the thumbstick, never a keyboard key
+local function touchInfo(ctx, text)
+	local space = ctx.spaceSay and ("the " .. ctx.spaceSay .. " button") or "the button"
+	text = text:gsub(" %(SPACE%)", "")
+	text = text:gsub("SPACE %(or [%w ]+%)", space)
+	text = text:gsub("SPACE", space)
+	text = text:gsub("W/A/S/D or arrows", "the direction buttons")
+	text = text:gsub(" %(W/A/S/D%)", "")
+	text = text:gsub("Hold W", "Push the thumbstick forward")
+	text = text:gsub(" %(%u/%u/%u%)", "")
+	text = text:gsub(" %(%u%)", "")
+	-- "LEFT (LEFT)": a token that came out as the word before it
+	text = text:gsub("([%u][%u%.]*) %(([%u][%u%. ]*)%)", function(a, b)
+		if a == b then
+			return a
+		end
+		return nil
+	end)
+	return text
+end
+
 -- the resolved control map, or nil when the modules are not there
 local function controlMap()
 	if not (Keymap and Settings) then
@@ -159,10 +230,36 @@ end
 local FALLBACK_KEY = { jab = "J", cross = "K", leadhook = "L", rearhook = "4", uppercut = "U", overhand = "O", slipL = "Q", slipR = "E", dodge = "C", parry = "R", pivotL = "Z" }
 local FALLBACK_PAD = { jab = K.ButtonX, cross = K.ButtonY, leadhook = K.ButtonB, rearhook = K.ButtonA, uppercut = K.ButtonR2, overhand = K.ButtonR1,
 	slipL = K.Thumbstick2Left, slipR = K.Thumbstick2Right, dodge = K.Thumbstick2Down, parry = K.DPadUp, pivotL = K.DPadLeft }
+-- the names of an action's plain keyboard bindings ("J / LMB"): the keys a drill really listens for
+-- (Keymap.Keys skips chords and double taps, which a drill cannot take); first = the main one only
+local function plainKeyText(map, ids, first)
+	local names = {}
+	for _, id in ipairs(type(ids) == "table" and ids or { ids }) do
+		local ok, list = pcall(Keymap.Keys, map, id, "kbd")
+		for _, k in ipairs(ok and list or {}) do
+			local okN, n = pcall(Keymap.KeyName, k.Name)
+			n = okN and n or k.Name
+			if not table.find(names, n) then
+				table.insert(names, n)
+			end
+		end
+	end
+	if first then
+		return names[1]
+	end
+	return #names > 0 and table.concat(names, " / ") or nil
+end
 local function keyText(id, mode)
-	local dev = mode == "gamepad" and "pad" or (mode == "touch" and "touch" or "kbd")
+	local dev = mode == "gamepad" and "pad" or "kbd"
 	local map = controlMap()
 	if map then
+		if dev == "kbd" then
+			-- (an instruction names the main key: "({jab}/{cross})" reads "(LMB/RMB)"; the buttons list them all)
+			local t = plainKeyText(map, id, true)
+			if t then
+				return t
+			end
+		end
 		local ok, t = pcall(Keymap.ActionText, map, id, dev, Gamepad)
 		if ok and type(t) == "string" and t ~= "-" then
 			return t
@@ -173,19 +270,20 @@ local function keyText(id, mode)
 	end
 	return FALLBACK_KEY[id] or string.upper(id)
 end
--- the drill's input stream: one fire per press a drill accepted (the server counts them against the
--- session's clock to cap the score it is sent - see Main.server.lua PRESS_FLOOR)
-local pressRemote
-local function sendPress(ctx)
+-- the drill's input stream: every input a drill takes (id, down, t on the drill clock) and "@" when a
+-- segment starts. The server replays it through DrillScore on its own copy of the plan: that is the
+-- session's quality (Main.server.lua ActivityInput / finishActivity).
+local inputRemote
+local function sendInput(ctx, id, down, t)
 	if ctx.mode == "done" or not current then
 		return
 	end
-	if pressRemote == nil then
+	if inputRemote == nil then
 		local r = State.Remotes and State.Remotes:FindFirstChild("ActivityInput")
-		pressRemote = (r and r:IsA("RemoteEvent")) and r or false
+		inputRemote = (r and r:IsA("RemoteEvent")) and r or false
 	end
-	if pressRemote then
-		pressRemote:FireServer(current.token)
+	if inputRemote then
+		inputRemote:FireServer(current.token, id, down, t)
 	end
 end
 -- an action with a map id (or a list of them) gets the control map's keys: the keyboard's plain
@@ -197,7 +295,7 @@ local function resolveAction(a)
 		return a
 	end
 	local ids = type(a.map) == "table" and a.map or { a.map }
-	local keys, pad, texts = {}, {}, {}
+	local keys, pad = {}, {}
 	for _, id in ipairs(ids) do
 		local ok, list = pcall(Keymap.Keys, map, id, "kbd")
 		for _, k in ipairs(ok and list or {}) do
@@ -207,15 +305,12 @@ local function resolveAction(a)
 		for _, k in ipairs(ok and list or {}) do
 			table.insert(pad, k)
 		end
-		local okT, t = pcall(Keymap.ActionText, map, id, "kbd", Gamepad)
-		if okT and type(t) == "string" and t ~= "-" then
-			table.insert(texts, t)
-		end
 	end
 	local r = table.clone(a)
 	if #keys > 0 then
 		r.keys = keys
-		r.keyText = table.concat(texts, " / ")
+		-- the button names only the keys bound here (a "2x A" double tap never reaches a drill)
+		r.keyText = plainKeyText(map, ids)
 	end
 	if #pad > 0 then
 		r.pad = pad
@@ -270,26 +365,14 @@ local function gradeColor(id)
 	return Color3.fromRGB(g.rgb[1], g.rgb[2], g.rgb[3])
 end
 
-local function pickDistinct(list, n)
-	local copy = table.clone(list)
-	for i = #copy, 2, -1 do
-		local j = math.random(1, i)
-		copy[i], copy[j] = copy[j], copy[i]
-	end
-	local out = {}
-	for i = 1, math.min(n, #copy) do
-		out[i] = copy[i]
-	end
-	return out
-end
-
 ------------------------------------------------------------------------
 -- Session context (UI + input + heart rate + local animation helpers)
 ------------------------------------------------------------------------
 local function newContext(info)
 	local P = State.P
 	local ctx = {
-		level = info.level or 1, params = info.params or {}, act = info.act, station = info.station,
+		level = info.level or 1, params = info.params or {}, act = info.act, station = info.station, plan = info.plan or { segs = {} },
+		segI = 0, judges = {}, results = {}, clock0 = os.clock(),
 		handler = nil, keymap = {}, padmap = {}, conns = {}, buttons = {}, cleanups = {},
 		out = {}, -- drill numbers sent with the result (display / personal bests only)
 		lines = {}, -- the one-line session summary on the result screen
@@ -324,21 +407,39 @@ local function newContext(info)
 	-- the drill's own live numbers (heart rate, calories and the set live on the metrics strip)
 	ctx.live = UI.Text(panel, "", { Font = T.semi, TextSize = 13, RichText = true, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -112, 0, 4), Size = UDim2.new(0.58, -116, 0, 32), TextColor3 = T.text, TextXAlignment = Enum.TextXAlignment.Right, TextYAlignment = Enum.TextYAlignment.Center, TextScaled = true, TextWrapped = false, AutomaticSize = Enum.AutomaticSize.None })
 	UI.New("UITextSizeConstraint", { MaxTextSize = 13, MinTextSize = 8, Parent = ctx.live })
+	-- touch: the panel's buttons are a fingertip high (UI.MinHit), the input cells and QUIT included
+	ctx.cellH = math.max(40, UI.MinHit(panel))
+	local quitH = math.max(28, UI.MinHit(panel))
+	-- a finger-high QUIT takes the end of the instruction lines: they get a line more of height, and
+	-- everything under them moves down with it
+	local topExtra = quitH > 28 and 18 or 0
+	ctx.stageY = STAGE_Y + topExtra
+	ctx.panelBase = PANEL_H + topExtra
+	ctx.panelH = ctx.panelBase
+	panel.Size = UDim2.new(0.96, 0, 0, ctx.panelH)
+	ctx.panelMax.MaxSize = Vector2.new(PANEL_W, ctx.panelH)
 	-- (two lines; a longer instruction ends in "..." instead of running into the round header)
-	ctx.info = UI.Text(panel, "", { TextSize = 13, TextColor3 = T.sub, Position = UDim2.fromOffset(16, 36), Size = UDim2.new(1, -32, 0, 30), AutomaticSize = Enum.AutomaticSize.None, TextTruncate = Enum.TextTruncate.AtEnd })
+	ctx.info = UI.Text(panel, "", { TextSize = 13, TextColor3 = T.sub, Position = UDim2.fromOffset(16, 36), Size = UDim2.new(1, quitH > 28 and -136 or -32, 0, 30 + topExtra), AutomaticSize = Enum.AutomaticSize.None, TextTruncate = Enum.TextTruncate.AtEnd })
 	-- ROUND / SET header and the session progress
-	ctx.header = UI.Text(panel, "", { Face = "displayMed", TextSize = 15, TextColor3 = T.gold, Position = UDim2.fromOffset(16, 66), Size = UDim2.new(1, -32, 0, 16), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
-	local progBg, setProg = UI.Bar(panel, { Position = UDim2.new(0, 16, 0, 84), Size = UDim2.new(1, -32, 0, 4) }, T.gold)
+	ctx.header = UI.Text(panel, "", { Face = "displayMed", TextSize = 15, TextColor3 = T.gold, Position = UDim2.fromOffset(16, 66 + topExtra), Size = UDim2.new(1, -32, 0, 16), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
+	local progBg, setBar = UI.Bar(panel, { Position = UDim2.new(0, 16, 0, 84 + topExtra), Size = UDim2.new(1, -32, 0, 4) }, T.gold)
 	progBg.BackgroundColor3 = T.ink
+	-- the session's progress: the bar under the header and the TIME tile's fill
+	local function setProg(f)
+		setBar(f)
+		if ctx.fillTile then
+			ctx.fillTile("time", f)
+		end
+	end
 	ctx.setProgress = setProg
 	setProg(0)
-	ctx.stage = UI.Frame(panel, { Name = "Stage", Position = UDim2.new(0, 14, 0, STAGE_Y), Size = UDim2.new(1, -28, 0, STAGE_H), BackgroundColor3 = Color3.fromRGB(8, 9, 13), ClipsDescendants = true })
+	ctx.stage = UI.Frame(panel, { Name = "Stage", Position = UDim2.new(0, 14, 0, ctx.stageY), Size = UDim2.new(1, -28, 0, STAGE_H), BackgroundColor3 = Color3.fromRGB(8, 9, 13), ClipsDescendants = true })
 	UI.Corner(ctx.stage, 8)
 	UI.Stroke(ctx.stage, Color3.new(1, 1, 1), 1, 0.9)
-	ctx.flash = UI.Text(panel, "", { Face = "display", TextSize = 30, TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.new(1, -28, 0, 34), Position = UDim2.new(0, 14, 0, STAGE_Y + 84), ZIndex = 5, AutomaticSize = Enum.AutomaticSize.None, TextStrokeTransparency = 0.4 })
-	ctx.inputBar = UI.Frame(panel, { BackgroundTransparency = 1, Position = UDim2.new(0, 14, 0, STAGE_Y + STAGE_H + 6), Size = UDim2.new(1, -28, 0, 88) })
-	UI.Grid(ctx.inputBar, UDim2.new(1 / 6, -5, 0, 40), nil, 5)
-	ctx.quit = UI.Button(panel, "QUIT", { Size = UDim2.fromOffset(88, 28), Position = UDim2.new(1, -104, 0, 8), BackgroundColor3 = T.red, TextSize = 14 }, function()
+	ctx.flash = UI.Text(panel, "", { Face = "display", TextSize = 30, TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.new(1, -28, 0, 34), Position = UDim2.new(0, 14, 0, ctx.stageY + 84), ZIndex = 5, AutomaticSize = Enum.AutomaticSize.None, TextStrokeTransparency = 0.4 })
+	ctx.inputBar = UI.Frame(panel, { BackgroundTransparency = 1, Position = UDim2.new(0, 14, 0, ctx.stageY + STAGE_H + 6), Size = UDim2.new(1, -28, 0, 88) })
+	UI.Grid(ctx.inputBar, UDim2.new(1 / 6, -5, 0, ctx.cellH), nil, 5)
+	ctx.quit = UI.Button(panel, "QUIT", { Size = UDim2.fromOffset(88, quitH), Position = UDim2.new(1, -104, 0, 8), BackgroundColor3 = T.red, TextSize = 14 }, function()
 		ctx.cancelled = true
 	end)
 	-- the panel plays on its key maps: none of its buttons take Roblox's UI selection (a selected button
@@ -357,23 +458,33 @@ local function newContext(info)
 	local metrics = UI.Frame(panel, { Name = "Metrics", BackgroundTransparency = 1, AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 0, 0, -8), Size = UDim2.new(1, 0, 0, 56) })
 	ctx.metrics = metrics
 	ctx.metricsGrid = UI.New("UIGridLayout", { CellSize = UDim2.new(1 / 6, -5, 1, 0), CellPadding = UDim2.fromOffset(6, 6), SortOrder = Enum.SortOrder.LayoutOrder, Parent = metrics })
-	local function tile(key, caption, order)
+	-- every progress tile carries a thin fill bar: the set / round, the rep, the good reps, the quality
+	-- and the time through the session (bpm and kcal are readouts)
+	local function tile(key, caption, order, barColor)
 		local f = UI.Frame(metrics, { Name = key, LayoutOrder = order })
 		UI.Glass(f, { transparency = 0.12, radius = UI.R.md })
 		local cap = UI.Text(f, caption, { Font = T.semi, TextSize = 11, TextColor3 = T.sub, Position = UDim2.fromOffset(10, 5), Size = UDim2.new(1, -20, 0, 14), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
 		local val = UI.Text(f, "-", { Face = "number", TextSize = 24, Position = UDim2.fromOffset(10, 19), Size = UDim2.new(1, -20, 0, 30), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
 		ctx.tiles[key] = { frame = f, cap = cap, val = val }
+		if barColor then
+			local bg = UI.Frame(f, { Name = "Bar", Position = UDim2.new(0, 10, 1, -8), Size = UDim2.new(1, -20, 0, 3), BackgroundColor3 = T.ink })
+			UI.Corner(bg, 2)
+			ctx.tiles[key].fill = UI.Frame(bg, { Name = "Fill", Size = UDim2.fromScale(0, 1), BackgroundColor3 = barColor })
+			UI.Corner(ctx.tiles[key].fill, 2)
+		end
 		return ctx.tiles[key]
 	end
-	tile("set", "SESSION", 1)
-	tile("reps", "CLEAN", 2)
-	tile("good", "GOOD", 3).frame.Visible = false
-	local qTile = tile("quality", "QUALITY", 4)
-	local qBar = UI.Frame(qTile.frame, { Position = UDim2.new(0, 10, 1, -8), Size = UDim2.new(1, -20, 0, 3), BackgroundColor3 = T.ink })
-	UI.Corner(qBar, 2)
-	qTile.fill = UI.Frame(qBar, { Size = UDim2.fromScale(0, 1), BackgroundColor3 = T.gold })
-	UI.Corner(qTile.fill, 2)
-	tile("time", "TIME", 5)
+	function ctx.fillTile(key, f)
+		local t = ctx.tiles[key]
+		if t and t.fill then
+			t.fill.Size = UDim2.fromScale(math.clamp(tonumber(f) or 0, 0, 1), 1)
+		end
+	end
+	tile("set", "SESSION", 1, T.blue)
+	tile("reps", "CLEAN", 2, T.green)
+	tile("good", "GOOD", 3, T.green).frame.Visible = false
+	tile("quality", "QUALITY", 4, T.gold)
+	tile("time", "TIME", 5, T.sub)
 	tile("hr", "BPM", 6)
 	tile("kcal", "KCAL", 7)
 	ctx.tileCount = 6
@@ -383,11 +494,15 @@ local function newContext(info)
 			tl.reps.cap.Text = "REP"
 			tl.reps.val.Text = string.format("%d/%d", ctx.repOf[1], ctx.repOf[2])
 			tl.good.val.Text = tostring(ctx.repOf[3] or 0)
+			ctx.fillTile("reps", ctx.repOf[1] / math.max(1, ctx.repOf[2]))
+			ctx.fillTile("good", (ctx.repOf[3] or 0) / math.max(1, ctx.repOf[2]))
 		elseif ctx.reps then
 			tl.reps.cap.Text = "REPS"
 			tl.reps.val.Text = tostring(ctx.reps)
 		else
 			tl.reps.val.Text = tostring(ctx.clean)
+			-- clean work against everything graded so far
+			ctx.fillTile("reps", ctx.qN > 0 and ctx.clean / ctx.qN or 0)
 		end
 		if ctx.qN > 0 then
 			local q = ctx.qSum / ctx.qN
@@ -449,13 +564,14 @@ local function newContext(info)
 	-- every lit region by its short name, the strongest in white (wraps; the map and the list match)
 	function ctx.sideNames(list, strongColor)
 		UI.Clear(ctx.sideList)
-		local bits = {}
+		local names = {}
 		for _, e in ipairs(list) do
 			local name = string.upper(BodyMap.Short(e.id))
-			table.insert(bits, e.w >= 0.75 and string.format('<font color="#%s">%s</font>', (strongColor or T.text):ToHex(), name) or name)
+			table.insert(names, { text = name, rich = e.w >= 0.75 and string.format('<font color="#%s">%s</font>', (strongColor or T.text):ToHex(), name) or nil })
 		end
-		UI.Text(ctx.sideList, table.concat(bits, "  ·  "), { Font = T.semi, TextSize = 12, TextColor3 = T.sub, RichText = true, Size = UDim2.fromScale(1, 1), AutomaticSize = Enum.AutomaticSize.None,
-			TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top })
+		local box = ctx.sideList.Size
+		UI.Text(ctx.sideList, packNames(ctx.sideList, names, 12, SIDE_W - 28, box.Y.Offset), { Font = T.semi, TextSize = 12, TextColor3 = T.sub, RichText = true, Size = UDim2.fromScale(1, 1),
+			AutomaticSize = Enum.AutomaticSize.None, TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top })
 	end
 	-- rows: { name, value text, fraction, color } (recovery: what the session restores)
 	function ctx.sideRows(rows)
@@ -510,7 +626,44 @@ local function newContext(info)
 			end
 			return a.id < b.id
 		end)
+		ctx.workList = list
 		ctx.sideNames(list, T.red)
+	end
+	-- a phone has no room for the card beside the panel: a strip over the panel names what the exercise
+	-- works, with a small map (ctx.layout shows it when the card is hidden; the report hides it)
+	do
+		local works = UI.Frame(panel, { Name = "WorksStrip", AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, 0, 0, -6), Size = UDim2.new(1, 0, 0, 44), Visible = false })
+		UI.Glass(works, { transparency = 0.1, radius = UI.R.md })
+		local okMini, mini = pcall(BodyMap.new, works, { Size = UDim2.fromOffset(28, 40), Position = UDim2.fromOffset(8, 2), views = "front", labels = false, glow = false })
+		local bits = {}
+		if recovery then
+			if okMini and mini then
+				local all = {}
+				for _, p in ipairs(Config.MuscleParts) do
+					all[p.id] = 0.5
+				end
+				mini:SetTargets(all, T.cyan, 1)
+			end
+			table.insert(bits, string.format('<font color="#%s">RECOVERY</font>', T.cyan:ToHex()))
+			if recovery.fatigue then
+				table.insert(bits, string.format("FATIGUE %+d", recovery.fatigue))
+			end
+			if recovery.energy then
+				table.insert(bits, string.format("ENERGY %+d", recovery.energy))
+			end
+		else
+			if okMini and mini then
+				mini:SetTargets(targets, T.red)
+			end
+			table.insert(bits, string.format('<font color="#%s">WORKS</font>', T.red:ToHex()))
+			for _, e in ipairs(ctx.workList or {}) do
+				local name = string.upper(BodyMap.Short(e.id))
+				table.insert(bits, e.w >= 0.75 and string.format('<font color="#%s">%s</font>', T.text:ToHex(), name) or name)
+			end
+		end
+		UI.Text(works, table.concat(bits, "  ·  "), { Name = "Names", Font = T.semi, TextSize = 13, TextColor3 = T.sub, RichText = true, Position = UDim2.fromOffset(okMini and 44 or 12, 0), Size = UDim2.new(1, okMini and -52 or -24, 1, 0),
+			AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd, TextYAlignment = Enum.TextYAlignment.Center })
+		ctx.works = works
 	end
 	-- energy and fatigue: now, with what the session will cost striped on top
 	-- fromBottom: the caption's distance from the card's bottom edge (the card grows on the result screen)
@@ -579,13 +732,21 @@ local function newContext(info)
 			metrics.Size = UDim2.new(0, colW, 1, 0)
 			ctx.metricsGrid.CellSize = UDim2.new(1, 0, 1 / n, -math.ceil(6 * (n - 1) / n))
 			for _, t in pairs(ctx.tiles) do
-				-- one line per tile: caption left, number right
-				t.cap.Position, t.cap.Size = UDim2.new(0, 10, 0.5, -8), UDim2.new(0.62, -10, 0, 16)
-				t.val.Position, t.val.Size = UDim2.new(0.62, 0, 0.5, -14), UDim2.new(0.38, -10, 0, 28)
+				-- one line per tile: caption left, number right (a wide number like "100%" scales down
+				-- into its slot instead of running over the caption)
+				t.cap.Position, t.cap.Size = UDim2.new(0, 10, 0.5, -8), UDim2.new(0.55, -10, 0, 16)
+				t.val.Position, t.val.Size = UDim2.new(0.55, 0, 0.5, -14), UDim2.new(0.45, -10, 0, 28)
 				t.val.TextXAlignment = Enum.TextXAlignment.Right
+				t.val.TextScaled = true
+				if not t.valFit then
+					t.valFit = UI.New("UITextSizeConstraint", { MaxTextSize = 24, MinTextSize = 12, Parent = t.val })
+				end
 			end
 			local room = panelLeft - 10 - colW - 10 - margin
 			side.Visible = room >= SIDE_W
+			if ctx.works then
+				ctx.works.Visible = not side.Visible and not ctx.sizeResult
+			end
 			side.AnchorPoint = Vector2.new(1, 1)
 			side.Position = UDim2.new(0, -(10 + colW + 10), 1, 0)
 			camFrame.fx = 0.5
@@ -599,8 +760,12 @@ local function newContext(info)
 				t.cap.Position, t.cap.Size = UDim2.fromOffset(10, 5), UDim2.new(1, -20, 0, 14)
 				t.val.Position, t.val.Size = UDim2.fromOffset(10, 19), UDim2.new(1, -20, 0, 30)
 				t.val.TextXAlignment = Enum.TextXAlignment.Left
+				t.val.TextScaled = false
 			end
 			side.Visible = true
+			if ctx.works then
+				ctx.works.Visible = false
+			end
 			side.AnchorPoint = Vector2.new(0, 1)
 			side.Position = UDim2.new(0, margin - panelLeft, 1, 0)
 			-- the athlete in the middle of the space between the card and the panel
@@ -624,10 +789,16 @@ local function newContext(info)
 
 	local function infoFor(mode)
 		local text = (ctx.infoRaw or ""):gsub("{(%w+)}", function(id)
+			-- touch: the drill's own button for that fight action (its LEFT / SLIP LEFT / ROLL ...)
+			if mode == "touch" then
+				return ctx.labelOf and ctx.labelOf[id] or string.upper(LABEL[id] or id)
+			end
 			return keyText(id, mode)
 		end)
 		if mode == "gamepad" and Gamepad then
 			return padInfo(ctx, text)
+		elseif mode == "touch" then
+			return touchInfo(ctx, text)
 		end
 		return text
 	end
@@ -784,12 +955,53 @@ local function newContext(info)
 				return
 			end
 			ctx.pulse()
-			sendPress(ctx)
 		end
-		h(id, down)
+		local t = ctx.now()
+		sendInput(ctx, id, down, t)
+		h(id, down, t)
 	end
 	function ctx.on(fn)
 		ctx.handler = fn
+	end
+	-- the drill clock (what the inputs are stamped with)
+	function ctx.now()
+		return os.clock() - ctx.clock0
+	end
+	-- the next segment of the plan starts now: its judge (DrillScore) and the plan's numbers for it.
+	-- The "@" marker tells the server's replay where the segment begins.
+	function ctx.begin()
+		ctx.segI += 1
+		local seg = ctx.plan.segs[ctx.segI]
+		local t = ctx.now()
+		sendInput(ctx, "@", true, t)
+		local j = seg and DrillScore.Judge(seg, t)
+		ctx.judges[ctx.segI] = j
+		ctx.segAt = t
+		return j, seg, t
+	end
+	-- the plan's next segment (to show it before it starts: a cue's lead-in, a rep's zone)
+	function ctx.peek()
+		return ctx.plan.segs[ctx.segI + 1] or {}
+	end
+	-- a segment over: its result goes into the session score
+	function ctx.close(j)
+		for i, jj in pairs(ctx.judges) do
+			if jj == j then
+				j.finish(ctx.now())
+				ctx.results[i] = j.result()
+				ctx.judges[i] = nil
+			end
+		end
+		return j and j.result()
+	end
+	-- the session's 0..1 score, exactly as the server will replay it
+	function ctx.score()
+		for i, j in pairs(ctx.judges) do
+			j.finish(ctx.now())
+			ctx.results[i] = j.result()
+			ctx.judges[i] = nil
+		end
+		return DrillScore.Aggregate(ctx.plan, ctx.results)
 	end
 	-- actions: { id, label, keys = { KeyCode... }, pad = { KeyCode... } (optional: else PAD_OF of the keys),
 	-- color }. ctx.keymap / ctx.padmap: KeyCode -> action id (the gamepad's flicks as Thumbstick2* keys)
@@ -801,11 +1013,33 @@ local function newContext(info)
 		actions = resolved
 		UI.Clear(ctx.inputBar)
 		local grid = ctx.inputBar:FindFirstChildOfClass("UIGridLayout")
-		grid.CellSize = UDim2.new(1 / (cellsPerRow or math.min(6, #actions)), -5, 0, 40)
+		local per = cellsPerRow or math.min(6, #actions)
+		grid.CellSize = UDim2.new(1 / math.max(1, per), -5, 0, ctx.cellH)
+		-- the bar holds every row at the cells' height; the drill panel grows to it (a phone's
+		-- finger-high cells in two rows)
+		local rows = math.max(1, math.ceil(#actions / math.max(1, per)))
+		local barH = rows * ctx.cellH + (rows - 1) * 5
+		ctx.inputBar.Size = UDim2.new(1, -28, 0, math.max(88, barH))
+		ctx.panelH = math.max(ctx.panelBase, ctx.stageY + STAGE_H + 6 + barH + 10)
+		if not ctx.sizeResult and not ctx.compactRun then
+			panel.Size = UDim2.new(0.96, 0, 0, ctx.panelH)
+			ctx.panelMax.MaxSize = Vector2.new(PANEL_W, ctx.panelH)
+		end
 		ctx.keymap = {}
 		ctx.padmap = {}
 		ctx.buttons = {}
 		ctx.spacePad = nil
+		-- touch instructions: the button that stands for each fight action, and the SPACE action's word
+		ctx.labelOf = {}
+		ctx.spaceSay = nil
+		for _, a in ipairs(actions) do
+			for _, m in ipairs(type(a.map) == "table" and a.map or { a.map or a.id }) do
+				ctx.labelOf[m] = ctx.labelOf[m] or a.label
+			end
+			if table.find(a.keys or {}, K.Space) and not ctx.spaceSay then
+				ctx.spaceSay = a.say or a.label
+			end
+		end
 		local padOf = {}
 		local function givePad(id, pk)
 			if not ctx.padmap[pk] then
@@ -882,7 +1116,7 @@ local function newContext(info)
 
 	-- rounds, rests and progress
 	local function overlay(transparency)
-		local o = UI.Frame(panel, { Name = "Overlay", Position = UDim2.new(0, 14, 0, STAGE_Y), Size = UDim2.new(1, -28, 0, STAGE_H), BackgroundColor3 = Color3.fromRGB(12, 14, 20), BackgroundTransparency = transparency or 0, ZIndex = 8 })
+		local o = UI.Frame(panel, { Name = "Overlay", Position = UDim2.new(0, 14, 0, ctx.stageY), Size = UDim2.new(1, -28, 0, STAGE_H), BackgroundColor3 = Color3.fromRGB(12, 14, 20), BackgroundTransparency = transparency or 0, ZIndex = 8 })
 		UI.Corner(o, 8)
 		UI.Stroke(o, T.gold, 1, 0.7)
 		return o
@@ -905,6 +1139,7 @@ local function newContext(info)
 		ctx.header.Text = name or ctx.act.name:upper()
 		ctx.tiles.set.cap.Text = string.upper(kind)
 		ctx.tiles.set.val.Text = n > 1 and string.format("%d/%d", i, n) or "1/1"
+		ctx.fillTile("set", i / math.max(1, n))
 		ctx.refreshLive()
 		sec = sec or (i == 1 and 1.4 or 1.0)
 		if sec <= 0 then
@@ -1162,16 +1397,18 @@ end
 
 -- the full-height panel (course / swim shrink it while running)
 local function compactPanel(ctx)
-	ctx.panel.Size = UDim2.new(0.96, 0, 0, 196)
+	ctx.compactRun = true
+	ctx.panel.Size = UDim2.new(0.96, 0, 0, math.max(196, ctx.stageY + 54 + ctx.cellH + 10))
 	ctx.stage.Size = UDim2.new(1, -28, 0, 48)
-	ctx.flash.Position = UDim2.new(0, 14, 0, STAGE_Y + 8)
-	ctx.inputBar.Position = UDim2.new(0, 14, 0, STAGE_Y + 54)
+	ctx.flash.Position = UDim2.new(0, 14, 0, ctx.stageY + 8)
+	ctx.inputBar.Position = UDim2.new(0, 14, 0, ctx.stageY + 54)
 end
 local function fullPanel(ctx)
-	ctx.panel.Size = UDim2.new(0.96, 0, 0, PANEL_H)
+	ctx.compactRun = nil
+	ctx.panel.Size = UDim2.new(0.96, 0, 0, ctx.panelH or PANEL_H)
 	ctx.stage.Size = UDim2.new(1, -28, 0, STAGE_H)
-	ctx.flash.Position = UDim2.new(0, 14, 0, STAGE_Y + 84)
-	ctx.inputBar.Position = UDim2.new(0, 14, 0, STAGE_Y + STAGE_H + 6)
+	ctx.flash.Position = UDim2.new(0, 14, 0, ctx.stageY + 84)
+	ctx.inputBar.Position = UDim2.new(0, 14, 0, ctx.stageY + STAGE_H + 6)
 end
 
 ------------------------------------------------------------------------
@@ -1180,24 +1417,7 @@ end
 local GAMES = {}
 
 -- HEAVY BAG -------------------------------------------------------------
-local function comboPool(lv)
-	local pool = { { "jab", "cross" }, { "jab", "jab", "cross" }, { "jab", "cross", "leadhook" } }
-	if lv >= 2 then
-		table.insert(pool, { "jab", "cross", "leadhook", "cross" })
-		table.insert(pool, { "cross", "leadhook", "cross" })
-	end
-	if lv >= 3 then
-		table.insert(pool, { "jab", "uppercut", "leadhook" })
-		table.insert(pool, { "leadhook", "rearhook", "leadhook" })
-		table.insert(pool, { "jab", "cross", "leadhook*", "cross" })
-	end
-	if lv >= 4 then
-		table.insert(pool, { "jab", "cross", "leadhook", "rearhook", "uppercut" })
-		table.insert(pool, { "jab", "overhand", "leadhook*" })
-		table.insert(pool, { "leadhook*", "leadhook", "cross", "uppercut" })
-	end
-	return pool
-end
+-- (the drills play the server's plan, Training.DrillPlan; the judges are DrillScore's)
 
 -- estimated punch force: grows with the Power stat and the bag level (roughly 350..1500 lbs)
 local function punchLbs(ctx, ptype, quality)
@@ -1217,11 +1437,55 @@ local function bagScreen(ctx, text)
 	end
 end
 
+-- a judge's segment plays until it closes (an answer, the end of its window); false when cancelled.
+-- onFrame(now) draws the stage each frame.
+local function playSegment(ctx, j, onFrame)
+	while not j.closed do
+		if ctx.cancelled then
+			return false
+		end
+		local now = ctx.now()
+		j.advance(now)
+		if onFrame then
+			onFrame(now)
+		end
+		if j.closed then
+			break
+		end
+		RunService.Heartbeat:Wait()
+	end
+	return not ctx.cancelled
+end
+
+-- the chips of a sequence follow its judge: green when thrown, red for a moment on a wrong press
+local function seqChips(j, chips, hit)
+	local at = hit.idx
+	if hit.ok then
+		chips[at].BackgroundColor3 = T.green
+		if chips[at + 1] then
+			chips[at + 1].BackgroundColor3 = T.gold
+		end
+	else
+		chips[at].BackgroundColor3 = T.red
+		task.delay(0.15, function()
+			if j.idx == at and chips[at] then
+				chips[at].BackgroundColor3 = T.gold
+			end
+		end)
+	end
+end
+
 -- 3 rounds: combinations, power shots on a power meter, a 6-second speed burst
 GAMES.combo = function(ctx)
-	local lv = ctx.level
-	local pool = comboPool(lv)
 	local punches, maxLbs = 0, 0
+	local combos, shots = 0, 0
+	for _, seg in ipairs(ctx.plan.segs) do
+		if seg.j == "seq" then
+			combos += 1
+		elseif seg.j == "needle" then
+			shots += 1
+		end
+	end
 
 	-- ROUND 1: COMBINATIONS
 	ctx.bind(PUNCH_ACTIONS)
@@ -1229,29 +1493,28 @@ GAMES.combo = function(ctx)
 	if not ctx.round(1, 3, "COMBINATIONS") then
 		return nil
 	end
-	local combos, total, good, speed, clean = 4, 0, 0, 0, 0
+	local clean = 0
 	for r = 1, combos do
 		UI.Clear(ctx.stage)
-		local combo = pool[math.random(1, #pool)]
+		local seg = ctx.peek()
 		local labels = {}
-		for i, c in ipairs(combo) do
-			local name = c:gsub("%*", "")
-			labels[i] = (LABEL[name] or name) .. (c:find("%*") and " (body)" or "")
+		for i, name in ipairs(seg.ids or {}) do
+			labels[i] = (LABEL[name] or name) .. ((seg.body and seg.body[i]) and " (body)" or "")
 		end
 		local chips = chipRow(ctx, labels, 34, false, 100)
 		local setTime = timeBar(ctx, 14)
-		local limit = 1.3 + #combo * 0.55 - lv * 0.05
-		local idx, wrong, start = 1, 0, os.clock()
+		local limit = seg.limit or 3
 		chips[1].BackgroundColor3 = T.gold
-		ctx.on(function(id, down)
-			if not down or idx > #combo then
+		local j, _, start = ctx.begin()
+		ctx.on(function(id, down, t)
+			local hit = j.input(id, down, t)
+			if not hit then
 				return
 			end
-			local want = combo[idx]:gsub("%*", "")
-			local body = combo[idx]:find("%*") ~= nil
-			if id == want then
+			seqChips(j, chips, hit)
+			if hit.ok then
 				local pw = POWER[id] * (0.85 + math.random() * 0.3)
-				local zone = body and "body" or "head"
+				local zone = (seg.body and seg.body[hit.idx]) and "body" or "head"
 				local windup, hand = ctx.punch(id, zone, pw)
 				local lbs = punchLbs(ctx, id, 0.5 + math.random() * 0.35)
 				maxLbs = math.max(maxLbs, lbs)
@@ -1259,44 +1522,25 @@ GAMES.combo = function(ctx)
 					ctx.impact(pw, hand == "L" and -1 or 1, id, zone)
 				end)
 				punches += 1
-				chips[idx].BackgroundColor3 = T.green
-				idx += 1
-				if chips[idx] then
-					chips[idx].BackgroundColor3 = T.gold
-				end
 				if ctx.smart then
 					ctx.feedback(fmtInt(lbs) .. " lbs", Color3.fromRGB(80, 200, 255))
 				end
-			else
-				wrong += 1
-				local at = idx
-				chips[at].BackgroundColor3 = T.red
-				task.delay(0.15, function()
-					if idx == at and chips[at] then
-						chips[at].BackgroundColor3 = T.gold
-					end
-				end)
 			end
 		end)
-		while idx <= #combo and os.clock() - start < limit do
-			if ctx.cancelled then
-				return nil
-			end
-			local el = os.clock() - start
+		local okPlay = playSegment(ctx, j, function(now)
+			local el = now - start
 			setTime(1 - el / limit)
-			ctx.progress((r - 1 + el / limit) / combos)
-			RunService.Heartbeat:Wait()
-		end
+			ctx.progress((r - 1 + math.min(1, el / limit)) / combos)
+		end)
 		ctx.on(nil)
-		local done = idx - 1
-		total += #combo
-		good += math.max(0, done - wrong * 0.5)
-		local frac = done == #combo and math.max(0, 1 - (os.clock() - start) / limit) or 0
-		speed += frac
-		if done == #combo and wrong == 0 then
+		if not okPlay then
+			return nil
+		end
+		local res = ctx.close(j)
+		if res.complete and res.wrong == 0 then
 			clean += 1
-			ctx.feedback(frac > 0.45 and "PERFECT!" or "CLEAN!", T.gold)
-		elseif done == #combo then
+			ctx.feedback(res.frac > 0.45 and "PERFECT!" or "CLEAN!", T.gold)
+		elseif res.complete then
 			ctx.feedback("SLOPPY", T.orange)
 		else
 			ctx.feedback("TOO SLOW", T.red)
@@ -1308,7 +1552,6 @@ GAMES.combo = function(ctx)
 			return nil
 		end
 	end
-	local comboScore = math.clamp(0.7 * good / math.max(1, total) + 0.3 * speed / combos / 0.6, 0, 1)
 	if not ctx.rest(3, "ROUND 1 DONE", string.format("%d/%d clean combinations%s%d punches", clean, combos, DOT, punches)) then
 		return nil
 	end
@@ -1322,63 +1565,51 @@ GAMES.combo = function(ctx)
 	if not ctx.round(2, 3, "POWER SHOTS") then
 		return nil
 	end
-	local shots = lv >= 3 and 4 or 3
-	local powerSum = 0
 	for s = 1, shots do
 		UI.Clear(ctx.stage)
+		local seg = ctx.peek()
 		UI.Text(ctx.stage, string.format("SHOT %d/%d", s, shots), { Font = T.bold, TextSize = 15, TextColor3 = T.sub, Position = UDim2.fromOffset(10, 8), Size = UDim2.new(0.5, -10, 0, 20), AutomaticSize = Enum.AutomaticSize.None })
 		local bestText = UI.Text(ctx.stage, maxLbs > 0 and ("BEST " .. fmtInt(maxLbs) .. " lbs") or "", { Font = T.bold, TextSize = 15, TextColor3 = T.gold, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -10, 0, 8), Size = UDim2.new(0.5, -10, 0, 20), TextXAlignment = Enum.TextXAlignment.Right, AutomaticSize = Enum.AutomaticSize.None })
 		local meter = UI.Frame(ctx.stage, { Position = UDim2.new(0, 10, 0, 38), Size = UDim2.new(1, -20, 0, 28), BackgroundColor3 = Color3.fromRGB(30, 30, 38) })
 		UI.Corner(meter, 6)
-		local w = math.max(0.04, 0.065 - lv * 0.004)
-		local c = 0.66 + math.random() * 0.18
+		local w, c, dur = seg.w or 0.05, seg.c or 0.75, seg.dur or 4.5
 		UI.Frame(meter, { Position = UDim2.fromScale(c - w * 2.5, 0), Size = UDim2.fromScale(w * 5, 1), BackgroundColor3 = T.green, BackgroundTransparency = 0.55 })
 		UI.Frame(meter, { Position = UDim2.fromScale(c - w, 0), Size = UDim2.fromScale(w * 2, 1), BackgroundColor3 = T.gold })
 		local needle = UI.Frame(meter, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0, 0.5), Size = UDim2.new(0, 5, 1, 14), BackgroundColor3 = Color3.new(1, 1, 1), ZIndex = 3 })
 		UI.Text(ctx.stage, "LIGHT", { Font = T.semi, TextSize = 11, TextColor3 = T.sub, Position = UDim2.fromOffset(10, 70), Size = UDim2.fromOffset(80, 14), AutomaticSize = Enum.AutomaticSize.None })
 		UI.Text(ctx.stage, "KNOCKOUT", { Font = T.semi, TextSize = 11, TextColor3 = T.sub, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -10, 0, 70), Size = UDim2.fromOffset(80, 14), TextXAlignment = Enum.TextXAlignment.Right, AutomaticSize = Enum.AutomaticSize.None })
-		local sweep = 0.9 + lv * 0.08 + s * 0.05 -- needle sweeps per second
-		local t0 = os.clock()
+		local j, _, t0 = ctx.begin()
 		local thrown
-		local pos = 0
-		ctx.on(function(id, down)
-			if not down or thrown then
-				return
-			end
-			local ptype = id == "power" and "cross" or id
-			if WINDUP[ptype] then
-				thrown = { ptype = ptype, pos = pos }
+		ctx.on(function(id, down, t)
+			-- the needle is judged where it is at the press, not at the last frame
+			local hit = j.input(id, down, t)
+			if hit then
+				thrown = hit
+				needle.Position = UDim2.fromScale(hit.pos, 0.5)
 			end
 		end)
-		while not thrown and os.clock() - t0 < 4.5 do
-			if ctx.cancelled then
-				return nil
+		local okPlay = playSegment(ctx, j, function(now)
+			local el = now - t0
+			if not thrown then
+				needle.Position = UDim2.fromScale(DrillScore.NeedlePos(el, seg.sweep or 1), 0.5)
 			end
-			local u = ((os.clock() - t0) * sweep) % 2
-			pos = u < 1 and u or 2 - u
-			needle.Position = UDim2.fromScale(pos, 0.5)
-			ctx.progress((s - 1 + math.min(1, (os.clock() - t0) / 4.5)) / shots)
-			RunService.Heartbeat:Wait()
-		end
+			ctx.progress((s - 1 + math.min(1, el / dur)) / shots)
+		end)
 		ctx.on(nil)
+		if not okPlay then
+			return nil
+		end
+		ctx.close(j)
 		if thrown then
-			local d = math.abs(thrown.pos - c)
-			local timing
-			if d <= w then
-				timing = 1 - 0.2 * d / w
-			elseif d <= 2.5 * w then
-				timing = 0.8 - 0.5 * (d - w) / (1.5 * w)
-			else
-				timing = math.max(0, 0.3 - (d - 2.5 * w) * 1.5)
-			end
-			local lbs = punchLbs(ctx, thrown.ptype, timing)
+			local ptype = thrown.id == "power" and "cross" or thrown.id
+			local d, timing = thrown.d, thrown.timing
+			local lbs = punchLbs(ctx, ptype, timing)
 			maxLbs = math.max(maxLbs, lbs)
-			powerSum += timing
 			punches += 1
-			local imp = math.min(1.5, 0.5 + timing * (0.6 + 0.4 * POWER[thrown.ptype] / 1.25))
-			local windup, hand = ctx.punch(thrown.ptype, "head", imp)
+			local imp = math.min(1.5, 0.5 + timing * (0.6 + 0.4 * POWER[ptype] / 1.25))
+			local windup, hand = ctx.punch(ptype, "head", imp)
 			task.delay(windup, function()
-				ctx.impact(imp, hand == "L" and -1 or 1, thrown.ptype, "head")
+				ctx.impact(imp, hand == "L" and -1 or 1, ptype, "head")
 			end)
 			bagScreen(ctx, string.format("POWER\n%s lbs\nBEST %s", fmtInt(lbs), fmtInt(maxLbs)))
 			local verdict, col
@@ -1403,7 +1634,6 @@ GAMES.combo = function(ctx)
 			return nil
 		end
 	end
-	local powerScore = math.clamp(powerSum / shots, 0, 1)
 	if not ctx.rest(3, "ROUND 2 DONE", string.format("Max power %s lbs", fmtInt(maxLbs))) then
 		return nil
 	end
@@ -1415,21 +1645,22 @@ GAMES.combo = function(ctx)
 		return nil
 	end
 	UI.Clear(ctx.stage)
-	local burst = 6
 	local setTime = timeBar(ctx, 10, T.gold)
 	local countText = UI.Text(ctx.stage, "0", { Font = T.bold, TextSize = 44, TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.fromOffset(0, 22), Size = UDim2.new(1, 0, 0, 48), AutomaticSize = Enum.AutomaticSize.None })
 	local rateText = UI.Text(ctx.stage, "punches", { Font = T.semi, TextSize = 14, TextColor3 = T.sub, TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.fromOffset(0, 70), Size = UDim2.new(1, 0, 0, 18), AutomaticSize = Enum.AutomaticSize.None })
-	local count, lastHand = 0, nil
-	ctx.on(function(id, down)
-		if not down then
+	local j, seg, t0 = ctx.begin()
+	local burst, target = seg and seg.dur or 6, seg and seg.target or 5
+	local count = 0
+	ctx.on(function(id, down, t)
+		local hit = j and j.input(id, down, t)
+		if not hit then
 			return
 		end
-		if id == lastHand then
+		if not hit.alt then
 			ctx.feedback("ALTERNATE!", T.orange)
 			return
 		end
-		lastHand = id
-		count += 1
+		count = hit.count
 		punches += 1
 		local ptype = id == "L" and "jab" or "cross"
 		local windup, hand = ctx.punch(ptype, "head", 0.4)
@@ -1437,27 +1668,21 @@ GAMES.combo = function(ctx)
 			ctx.impact(0.3 + math.random() * 0.15, hand == "L" and -1 or 1, ptype, "head")
 		end)
 	end)
-	local t0 = os.clock()
-	while true do
-		if ctx.cancelled then
-			return nil
-		end
-		local el = os.clock() - t0
-		if el >= burst then
-			break
-		end
+	local okPlay = j and playSegment(ctx, j, function(now)
+		local el = now - t0
 		local rate = count / math.max(0.75, el)
 		countText.Text = tostring(count)
 		rateText.Text = string.format("%.1f punches / sec", rate)
 		setTime(1 - el / burst)
 		ctx.progress(el / burst)
 		ctx.stats(string.format("%d punches%s%.1f / sec", count, DOT, rate))
-		RunService.Heartbeat:Wait()
-	end
+	end)
 	ctx.on(nil)
+	if not okPlay then
+		return nil
+	end
+	ctx.close(j)
 	local pps = count / burst
-	local target = 4.4 + lv * 0.2
-	local speedScore = math.clamp(pps / target, 0, 1)
 	countText.Text = tostring(count)
 	rateText.Text = string.format("%.1f punches / sec", pps)
 	setTime(0)
@@ -1472,78 +1697,77 @@ GAMES.combo = function(ctx)
 	if not ctx.wait(0.8) then
 		return nil
 	end
-	return math.clamp(0.5 * comboScore + 0.25 * powerScore + 0.25 * speedScore, 0, 1)
+	return ctx.score()
 end
 
 -- SPEED BAG -------------------------------------------------------------
-local function rhythmLanes(pattern, count, lv)
-	local lanes = {}
-	if pattern == "alt" then
-		for i = 1, count do
-			local lane = (i % 2 == 1) and "L" or "R"
-			if lv >= 3 and i % 7 == 0 then
-				lane = lanes[i - 1] or lane -- a double now and then on the better bags
-			end
-			lanes[i] = lane
-		end
-	else
-		local hand = "L"
-		while #lanes < count do
-			local g = (pattern == "mixed" and math.random() < 0.45) and 3 or 2
-			for _ = 1, g do
-				if #lanes < count then
-					table.insert(lanes, hand)
-				end
-			end
-			hand = hand == "L" and "R" or "L"
+-- beats on two lanes slide to the gold line: the note frames of a notes judge (rhythm, twists)
+local function noteFrames(ctx, j, lineX)
+	UI.Frame(ctx.stage, { Position = UDim2.new(0, lineX - 2, 0, 6), Size = UDim2.new(0, 4, 1, -46), BackgroundColor3 = T.gold })
+	local frames = {}
+	for i, n in ipairs(j.notes) do
+		local f = UI.Frame(ctx.stage, { Size = UDim2.fromOffset(26, 26), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0, -100, 0, n.lane == "L" and 30 or 62), BackgroundColor3 = n.lane == "L" and T.blue or T.red })
+		UI.Corner(f, 13)
+		UI.Text(f, n.lane, { Font = T.bold, TextSize = 13, TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.fromScale(1, 1), AutomaticSize = Enum.AutomaticSize.None })
+		frames[i] = f
+	end
+	return frames
+end
+-- slide the open notes; true while any is still open
+local function moveNotes(j, frames, lineX, now, pxPerSec)
+	local alive = false
+	for i, n in ipairs(j.notes) do
+		if n.judged then
+			frames[i].Visible = false
+		else
+			alive = true
+			frames[i].Position = UDim2.new(0, lineX + (n.t - now) * pxPerSec, 0, n.lane == "L" and 30 or 62)
 		end
 	end
-	return lanes
+	return alive
 end
 
 -- 2 rounds: alternating rhythm, then faster doubles (and triplets on the better bags)
 GAMES.rhythm = function(ctx)
 	local lv = ctx.level
-	local baseBpm = ({ 112, 140, 168, 196 })[lv] or 140
 	ctx.bind({ { id = "L", label = "LEFT", keys = { K.J, K.F }, map = "jab", color = T.blue }, { id = "R", label = "RIGHT", keys = { K.K, K.G }, map = "cross", color = T.red } }, 2)
-	local rounds = {
-		{ name = "ALTERNATING RHYTHM", bpm = baseBpm, pattern = "alt" },
-		{ name = lv >= 3 and "DOUBLES & TRIPLETS" or "DOUBLES", bpm = math.floor(baseBpm * 1.15 + 0.5), pattern = lv >= 3 and "mixed" or "doubles" },
-	}
-	local scoreSum, hitsAll, notesAll, bestStreak, bestHpm = 0, 0, 0, 0, 0
+	local rounds = ctx.plan.segs
+	local hitsAll, notesAll, bestStreak, bestHpm = 0, 0, 0, 0
 	for ri, rd in ipairs(rounds) do
-		local interval = 60 / rd.bpm
-		local count = math.clamp(math.floor(10 / interval), 16, 40)
-		ctx.setInfo(ri == 1 and string.format("Hit LEFT ({jab}) and RIGHT ({cross}) as each beat crosses the gold line. %d BPM - better bags rebound faster.", rd.bpm)
-			or string.format("Same hand two%s times in a row now, at %d BPM. Stay loose and keep the rhythm.", lv >= 3 and " or three" or "", rd.bpm))
-		if not ctx.round(ri, #rounds, string.format("%s%s%d BPM", rd.name, DOT, rd.bpm)) then
+		local bpm = rd.bpm or 140
+		ctx.setInfo(ri == 1 and string.format("Hit LEFT ({jab}) and RIGHT ({cross}) as each beat crosses the gold line. %d BPM - better bags rebound faster.", bpm)
+			or string.format("Same hand two%s times in a row now, at %d BPM. Stay loose and keep the rhythm.", lv >= 3 and " or three" or "", bpm))
+		if not ctx.round(ri, #rounds, string.format("%s%s%d BPM", rd.name or "RHYTHM", DOT, bpm)) then
 			return nil
 		end
 		UI.Clear(ctx.stage)
 		local lineX = 70
-		UI.Frame(ctx.stage, { Position = UDim2.new(0, lineX - 2, 0, 6), Size = UDim2.new(0, 4, 1, -46), BackgroundColor3 = T.gold })
-		local lanes = rhythmLanes(rd.pattern, count, lv)
-		local notes = {}
-		local start = os.clock() + 1.2
-		for i = 1, count do
-			local lane = lanes[i]
-			local f = UI.Frame(ctx.stage, { Size = UDim2.fromOffset(26, 26), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0, -100, 0, lane == "L" and 30 or 62), BackgroundColor3 = lane == "L" and T.blue or T.red })
-			UI.Corner(f, 13)
-			UI.Text(f, lane, { Font = T.bold, TextSize = 13, TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.fromScale(1, 1), AutomaticSize = Enum.AutomaticSize.None })
-			notes[i] = { t = start + (i - 1) * interval, lane = lane, f = f, judged = false }
-		end
-		local perfect, goodN, streak, hits = 0, 0, 0, 0
-		local function judge(n, dt)
-			n.judged = true
-			n.f.Visible = false
-			local a = math.abs(dt)
-			if a < 0.06 then
-				perfect += 1
+		local j, seg, M = ctx.begin()
+		local frames = noteFrames(ctx, j, lineX)
+		local count = #seg.lanes
+		local start = M + seg.lead
+		local streak, hits = 0, 0
+		ctx.on(function(id, down, t)
+			if not down then
+				return
+			end
+			ctx.impact(ri == 1 and 0.8 or 0.9, id == "L" and -1 or 1)
+			local hit = j.input(id, down, t)
+			if hit and hit.stray then
+				-- a punch with no beat to hit (mashing costs points)
+				streak = 0
+				ctx.feedback("OFF BEAT", T.orange)
+				return
+			end
+			if not (hit and hit.grade) then
+				return
+			end
+			frames[hit.note].Visible = false
+			if hit.grade == "perfect" then
 				hits += 1
 				streak += 1
 				ctx.feedback("PERFECT x" .. streak, T.gold)
-			elseif a < 0.13 then
-				goodN += 1
+			elseif hit.grade == "good" then
 				hits += 1
 				streak += 1
 				ctx.feedback("GOOD", T.green)
@@ -1553,62 +1777,35 @@ GAMES.rhythm = function(ctx)
 			end
 			bestStreak = math.max(bestStreak, streak)
 			ctx.speed(1 + math.min(streak, 20) * 0.04)
-		end
-		ctx.on(function(id, down)
-			if not down then
-				return
-			end
-			local now = os.clock()
-			ctx.impact(ri == 1 and 0.8 or 0.9, id == "L" and -1 or 1)
-			local best, bestDt
-			for _, n in ipairs(notes) do
-				if not n.judged and n.lane == id then
-					local dt = now - n.t
-					if math.abs(dt) < 0.22 and (not best or math.abs(dt) < math.abs(bestDt)) then
-						best, bestDt = n, dt
-					end
-				end
-			end
-			if best then
-				judge(best, bestDt)
-			end
 		end)
 		local pxPerSec = 260
 		while true do
 			if ctx.cancelled then
+				ctx.on(nil)
 				return nil
 			end
-			local now = os.clock()
-			local alive = false
-			for _, n in ipairs(notes) do
-				if not n.judged then
-					alive = true
-					local x = lineX + (n.t - now) * pxPerSec
-					n.f.Position = UDim2.new(0, x, 0, n.lane == "L" and 30 or 62)
-					if now - n.t > 0.22 then
-						n.judged = true
-						n.f.Visible = false
-						streak = 0
-						ctx.feedback("MISS", T.red)
-					end
-				end
+			local now = ctx.now()
+			for _ in ipairs(j.advance(now) or {}) do
+				streak = 0
+				ctx.feedback("MISS", T.red)
 			end
+			local alive = moveNotes(j, frames, lineX, now, pxPerSec)
 			local el = now - start
-			ctx.progress(el / (count * interval))
+			ctx.progress(el / (count * seg.interval))
 			ctx.stats(string.format("%d hits/min%sstreak %d (best %d)", el > 1 and math.floor(hits / el * 60) or 0, DOT, streak, bestStreak))
-			if not alive then
+			if not alive or j.closed then
 				break
 			end
 			RunService.Heartbeat:Wait()
 		end
 		ctx.on(nil)
 		ctx.speed(1)
-		bestHpm = math.max(bestHpm, hits / math.max(1, os.clock() - start) * 60)
-		scoreSum += (perfect + goodN * 0.65) / count
-		hitsAll += hits
-		notesAll += count
+		local res = ctx.close(j)
+		bestHpm = math.max(bestHpm, hits / math.max(1, ctx.now() - start) * 60)
+		hitsAll += res.hits
+		notesAll += res.count
 		if ri < #rounds then
-			if not ctx.rest(3, "ROUND 1 DONE", string.format("%d/%d on the beat%sbest streak %d", hits, count, DOT, bestStreak)) then
+			if not ctx.rest(3, "ROUND 1 DONE", string.format("%d/%d on the beat%sbest streak %d", res.hits, res.count, DOT, bestStreak)) then
 				return nil
 			end
 		end
@@ -1620,7 +1817,7 @@ GAMES.rhythm = function(ctx)
 	ctx.note(string.format("%d hits/min", math.floor(bestHpm + 0.5)))
 	ctx.note(string.format("Best streak %d", bestStreak))
 	ctx.note(string.format("%d%% on the beat", acc))
-	return math.clamp(scoreSum / #rounds, 0, 1)
+	return ctx.score()
 end
 
 -- DOUBLE-END BAG --------------------------------------------------------
@@ -1644,7 +1841,16 @@ end
 -- 2 rounds: react (punch / slip / roll on cue), then slip & counter (defend, then punch straight back)
 GAMES.reaction = function(ctx)
 	local lv = ctx.level
-	local window = ({ 0.95, 0.8, 0.68, 0.56 })[lv] or 0.8
+	local cues, cues2 = 0, 0
+	local window = 0.8
+	for _, seg in ipairs(ctx.plan.segs) do
+		if seg.j == "cue" then
+			cues += 1
+			window = seg.window or window
+		elseif seg.j == "counter" then
+			cues2 += 1
+		end
+	end
 	local actions = { { id = "punch", label = "PUNCH", keys = { K.J, K.K }, map = { "jab", "cross" } }, { id = "slipL", label = "SLIP L", keys = { K.Q }, map = "slipL" },
 		{ id = "slipR", label = "SLIP R", keys = { K.E }, map = "slipR" } }
 	if lv >= 2 then
@@ -1655,64 +1861,60 @@ GAMES.reaction = function(ctx)
 	local function avgMs()
 		return reactN > 0 and math.floor(reactSum / reactN * 1000 + 0.5) or 0
 	end
+	local function react(id)
+		if id == "punch" then
+			bagPunch(ctx)
+		else
+			defenseMove(ctx, id)
+		end
+	end
 
 	-- ROUND 1: REACT
 	ctx.setInfo(string.format("PUNCH when the bag comes into range, SLIP or ROLL when it swings back at you. Reaction window %.2fs.", window))
 	if not ctx.round(1, 2, "REACT") then
 		return nil
 	end
-	local cues, score, hits = 8, 0, 0
+	local hits = 0
 	for i = 1, cues do
 		UI.Clear(ctx.stage)
-		if not ctx.wait(0.45 + math.random() * 0.9) then
+		local seg = ctx.peek()
+		if not ctx.wait(seg.delay or 0.8) then
 			return nil
 		end
-		local options = { "punch", "punch", "slipL", "slipR" }
-		if lv >= 2 then
-			table.insert(options, "roll")
-		end
-		local cue = options[math.random(1, #options)]
+		local cue = seg.want
 		local text = cue == "punch" and "PUNCH!" or DEF_TEXT[cue]
-		local f = chip(ctx.stage, text, 0, 260, cue == "punch" and T.green or T.orange)
+		local f = chip(ctx.stage, text or "?", 0, 260, cue == "punch" and T.green or T.orange)
 		f.Position = UDim2.new(0.5, -130, 0.5, -34)
 		if cue ~= "punch" then
 			ctx.impact(-0.7, 0) -- the bag springs back toward you
 		end
-		local shown = os.clock()
-		local answered, correct = false, false
-		ctx.on(function(id, down)
-			if not down or answered then
-				return
-			end
-			answered = true
-			correct = id == cue
-			if id == "punch" then
-				bagPunch(ctx)
-			else
-				defenseMove(ctx, id)
+		local j = ctx.begin()
+		ctx.on(function(id, down, t)
+			if j.input(id, down, t) then
+				react(id)
 			end
 		end)
-		while not answered and os.clock() - shown < window do
-			if ctx.cancelled then
-				return nil
-			end
-			RunService.Heartbeat:Wait()
-		end
+		local okPlay = playSegment(ctx, j)
 		ctx.on(nil)
-		local rt = os.clock() - shown
-		if answered and correct and rt <= window then
-			score += 1 - 0.4 * (rt / window)
+		if not okPlay then
+			return nil
+		end
+		local r = ctx.close(j)
+		if r.correct then
 			hits += 1
-			reactSum += rt
+			reactSum += r.rt
 			reactN += 1
 			f.BackgroundColor3 = T.green
-			ctx.feedback(string.format("%d ms", math.floor(rt * 1000)), T.green)
-		elseif not answered and cue ~= "punch" then
+			ctx.feedback(string.format("%d ms", math.floor(r.rt * 1000)), T.green)
+		elseif r.early then
+			f.BackgroundColor3 = T.red
+			ctx.feedback("TOO EARLY", T.red)
+		elseif not r.answered and cue ~= "punch" then
 			f.BackgroundColor3 = T.red
 			ctx.feedback("CLIPPED!", T.red)
 		else
 			f.BackgroundColor3 = T.red
-			ctx.feedback(answered and "WRONG MOVE" or "TOO SLOW", T.red)
+			ctx.feedback(r.answered and "WRONG MOVE" or "TOO SLOW", T.red)
 		end
 		ctx.stats(string.format("%d/%d%savg %d ms", hits, i, DOT, avgMs()))
 		ctx.progress(i / cues)
@@ -1720,7 +1922,6 @@ GAMES.reaction = function(ctx)
 			return nil
 		end
 	end
-	local r1 = math.clamp(score / cues / 0.85, 0, 1)
 	if not ctx.rest(3, "ROUND 1 DONE", string.format("%d/%d reactions%savg %d ms", hits, cues, DOT, avgMs())) then
 		return nil
 	end
@@ -1730,85 +1931,60 @@ GAMES.reaction = function(ctx)
 	if not ctx.round(2, 2, "SLIP & COUNTER") then
 		return nil
 	end
-	local cues2, score2, counters = 5, 0, 0
-	local counterWindow = window * 0.9 + 0.2
+	local counters = 0
 	for i = 1, cues2 do
 		UI.Clear(ctx.stage)
-		if not ctx.wait(0.5 + math.random() * 0.7) then
+		local seg = ctx.peek()
+		if not ctx.wait(seg.delay or 0.8) then
 			return nil
 		end
-		local defs = { "slipL", "slipR" }
-		if lv >= 2 then
-			table.insert(defs, "roll")
-		end
-		local want = defs[math.random(1, #defs)]
+		local want = seg.want
 		local cw = math.min(190, math.floor((stageWidth(ctx) - 60) / 2))
-		local c1 = chip(ctx.stage, DEF_TEXT[want], 0, cw, T.orange)
+		local c1 = chip(ctx.stage, DEF_TEXT[want] or "?", 0, cw, T.orange)
 		c1.Position = UDim2.new(0.5, -cw - 24, 0.5, -34)
 		UI.Text(ctx.stage, ">", { Font = T.bold, TextSize = 20, TextColor3 = T.sub, TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.new(0.5, -24, 0.5, -34), Size = UDim2.fromOffset(48, 40), AutomaticSize = Enum.AutomaticSize.None })
 		local c2 = chip(ctx.stage, "COUNTER!", 0, cw, T.panel2)
 		c2.Position = UDim2.new(0.5, 24, 0.5, -34)
 		ctx.impact(-0.7, 0)
-		local step, shown, shown2 = 1, os.clock(), 0
-		local failed, rt = false, nil
-		ctx.on(function(id, down)
-			if not down or failed or step > 2 then
+		local j = ctx.begin()
+		ctx.on(function(id, down, t)
+			local a = j.input(id, down, t)
+			if not a then
 				return
 			end
-			if step == 1 then
-				if id == "punch" then
-					bagPunch(ctx)
-				else
-					defenseMove(ctx, id)
-				end
-				if id == want then
-					step = 2
-					shown2 = os.clock()
-					c1.BackgroundColor3 = T.green
-					c2.BackgroundColor3 = T.gold
-				else
-					failed = true
-					c1.BackgroundColor3 = T.red
-				end
-			elseif id == "punch" then
-				bagPunch(ctx)
-				rt = os.clock() - shown2
-				step = 3
+			react(id)
+			if a.step == 2 and a.ok then
+				c1.BackgroundColor3 = T.green
+				c2.BackgroundColor3 = T.gold
+			elseif a.step == 3 then
 				c2.BackgroundColor3 = T.green
+			elseif a.step == 1 then
+				c1.BackgroundColor3 = T.red
 			else
-				defenseMove(ctx, id)
-				failed = true
 				c2.BackgroundColor3 = T.red
 			end
 		end)
-		while not failed and step <= 2 do
-			if ctx.cancelled then
-				return nil
-			end
-			local now = os.clock()
-			if (step == 1 and now - shown > window) or (step == 2 and now - shown2 > counterWindow) then
-				break
-			end
-			RunService.Heartbeat:Wait()
-		end
+		local okPlay = playSegment(ctx, j)
 		ctx.on(nil)
-		if step == 3 and rt then
+		if not okPlay then
+			return nil
+		end
+		local r = ctx.close(j)
+		if r.step == 3 and r.rt then
 			counters += 1
-			reactSum += rt
+			reactSum += r.rt
 			reactN += 1
-			score2 += 0.6 + 0.4 * math.clamp(1 - rt / counterWindow, 0, 1)
-			ctx.feedback(string.format("COUNTER!  %d ms", math.floor(rt * 1000)), T.gold)
-		elseif step == 2 then
-			score2 += 0.3
-			if not failed then
+			ctx.feedback(string.format("COUNTER!  %d ms", math.floor(r.rt * 1000)), T.gold)
+		elseif r.step == 2 then
+			if not r.failed then
 				c2.BackgroundColor3 = T.red
 			end
-			ctx.feedback(failed and "THROW THE COUNTER" or "NO COUNTER", T.orange)
+			ctx.feedback(r.failed and "THROW THE COUNTER" or "NO COUNTER", T.orange)
 		else
-			if not failed then
+			if not r.failed then
 				c1.BackgroundColor3 = T.red
 			end
-			ctx.feedback(failed and "WRONG MOVE" or "CLIPPED!", T.red)
+			ctx.feedback(r.failed and "WRONG MOVE" or "CLIPPED!", T.red)
 		end
 		ctx.stats(string.format("Counters %d/%d%savg %d ms", counters, i, DOT, avgMs()))
 		ctx.progress(i / cues2)
@@ -1816,14 +1992,13 @@ GAMES.reaction = function(ctx)
 			return nil
 		end
 	end
-	local r2 = math.clamp(score2 / cues2 / 0.9, 0, 1)
-	local acc = math.floor((hits + counters) / (cues + cues2) * 100 + 0.5)
+	local acc = math.floor((hits + counters) / math.max(1, cues + cues2) * 100 + 0.5)
 	ctx.put("accuracy", acc)
 	ctx.put("counters", counters)
 	ctx.note(string.format("Avg reaction %d ms", avgMs()))
 	ctx.note(string.format("%d/%d reactions", hits, cues))
 	ctx.note(string.format("%d/%d counters", counters, cues2))
-	return math.clamp(0.55 * r1 + 0.45 * r2, 0, 1)
+	return ctx.score()
 end
 
 -- MITT WORK -------------------------------------------------------------
@@ -1833,15 +2008,6 @@ GAMES.mitts = function(ctx)
 	local members = workspace:FindFirstChild("GymMembers")
 	local coach = members and members:FindFirstChild("Coach Benny")
 	local coachName = Catalog.Stations.mitts.levels[math.clamp(lv, 1, 5)].name
-	local list = {}
-	for _, c in ipairs(Config.MittCombos) do
-		if c.tier <= lv then
-			-- favour combos near your coach's level
-			for _ = 1, (c.tier >= lv - 1) and 2 or 1 do
-				table.insert(list, c)
-			end
-		end
-	end
 	local function say(text)
 		local head = coach and coach:FindFirstChild("Head")
 		if head then
@@ -1854,8 +2020,9 @@ GAMES.mitts = function(ctx)
 		return t[math.random(1, #t)]
 	end
 	ctx.bind(actionList(PUNCH_ACTIONS, DEFENSE_ACTIONS))
-	local perRound, rounds = 4, 2
-	local score, clean, thrown = 0, 0, 0
+	local rounds = 2
+	local perRound = math.max(1, math.ceil(#ctx.plan.segs / rounds))
+	local clean, thrown = 0, 0
 	for rd = 1, rounds do
 		ctx.setInfo(rd == 1 and (coachName .. " calls the combo - throw it back exactly. Higher-level coaches call harder combos, faster.")
 			or "Same drill, faster calls. Snap every combination back before the bar runs out.")
@@ -1864,87 +2031,73 @@ GAMES.mitts = function(ctx)
 		end
 		for r = 1, perRound do
 			UI.Clear(ctx.stage)
-			local c = list[math.random(1, #list)]
-			UI.Text(ctx.stage, "COACH: \"" .. c.name .. "!\"", { Font = T.bold, TextSize = 18, TextColor3 = T.gold, Position = UDim2.fromOffset(10, 4), Size = UDim2.new(1, -20, 0, 24), AutomaticSize = Enum.AutomaticSize.None })
-			say(c.name .. "!")
+			local seg = ctx.peek()
+			local keys = seg.ids or {}
+			UI.Text(ctx.stage, "COACH: \"" .. tostring(seg.name) .. "!\"", { Font = T.bold, TextSize = 18, TextColor3 = T.gold, Position = UDim2.fromOffset(10, 4), Size = UDim2.new(1, -20, 0, 24), AutomaticSize = Enum.AutomaticSize.None })
+			say(tostring(seg.name) .. "!")
 			local labels = {}
-			for i, k in ipairs(c.keys) do
+			for i, k in ipairs(keys) do
 				labels[i] = LABEL[k] or k
 			end
 			local chips = chipRow(ctx, labels, 40, false, 92)
-			local limit = math.max(1.6, 1.4 + #c.keys * 0.55 - lv * 0.12) * (rd == 2 and 0.85 or 1)
+			local limit = seg.limit or 3
 			local setTime = timeBar(ctx, 30)
-			local idx, wrong, start = 1, 0, os.clock()
 			chips[1].BackgroundColor3 = T.gold
-			ctx.on(function(id, down)
-				if not down or idx > #c.keys then
+			local j, _, start = ctx.begin()
+			ctx.on(function(id, down, t)
+				local hit = j.input(id, down, t)
+				if not hit then
 					return
 				end
-				if id == c.keys[idx] then
-					local mittSide = "R"
-					if WINDUP[id] then
-						local _, hand = ctx.punch(id)
-						mittSide = hand
-					elseif id == "slipL" or id == "slipR" then
-						ctx.move("slip", id == "slipL" and "L" or "R")
-						mittSide = "D"
-					elseif id == "roll" then
-						ctx.move("roll", "L")
-						mittSide = "D"
-					elseif id == "pivotL" then
-						ctx.move("pivot", "L")
-						mittSide = "D"
-					elseif id == "parry" then
-						ctx.move("parry", "R")
-						mittSide = "L"
-					end
-					if coach then
-						coach:SetAttribute("MittCall", mittSide)
-						coach:SetAttribute("MittCallT", os.clock())
-						local h = coach:FindFirstChild("Head")
-						if h and mittSide ~= "D" then
-							task.delay(WINDUP[id] or 0.2, function()
-								GymVisuals.Sound(h.Position, 1.6 + math.random() * 0.15, 0.4)
-							end)
-						end
-					end
-					thrown += 1
-					chips[idx].BackgroundColor3 = T.green
-					idx += 1
-					if chips[idx] then
-						chips[idx].BackgroundColor3 = T.gold
-					end
-				else
-					wrong += 1
-					local at = idx
-					chips[at].BackgroundColor3 = T.red
-					task.delay(0.15, function()
-						if idx == at and chips[at] then
-							chips[at].BackgroundColor3 = T.gold
-						end
-					end)
+				seqChips(j, chips, hit)
+				if not hit.ok then
+					return
 				end
+				local mittSide = "R"
+				if WINDUP[id] then
+					local _, hand = ctx.punch(id)
+					mittSide = hand
+				elseif id == "slipL" or id == "slipR" then
+					ctx.move("slip", id == "slipL" and "L" or "R")
+					mittSide = "D"
+				elseif id == "roll" then
+					ctx.move("roll", "L")
+					mittSide = "D"
+				elseif id == "pivotL" then
+					ctx.move("pivot", "L")
+					mittSide = "D"
+				elseif id == "parry" then
+					ctx.move("parry", "R")
+					mittSide = "L"
+				end
+				if coach then
+					coach:SetAttribute("MittCall", mittSide)
+					coach:SetAttribute("MittCallT", os.clock())
+					local h = coach:FindFirstChild("Head")
+					if h and mittSide ~= "D" then
+						task.delay(WINDUP[id] or 0.2, function()
+							GymVisuals.Sound(h.Position, 1.6 + math.random() * 0.15, 0.4)
+						end)
+					end
+				end
+				thrown += 1
 			end)
-			while idx <= #c.keys and os.clock() - start < limit do
-				if ctx.cancelled then
-					return nil
-				end
-				local el = os.clock() - start
+			local okPlay = playSegment(ctx, j, function(now)
+				local el = now - start
 				setTime(1 - el / limit)
-				ctx.progress((r - 1 + el / limit) / perRound)
-				RunService.Heartbeat:Wait()
-			end
+				ctx.progress((r - 1 + math.min(1, el / limit)) / perRound)
+			end)
 			ctx.on(nil)
-			local done = idx - 1
-			local part = math.max(0, done - wrong * 0.5) / #c.keys
-			local fast = done == #c.keys and math.max(0, 1 - (os.clock() - start) / limit) or 0
-			score += math.min(1.15, part * 0.8 + fast * 0.35)
-			if done == #c.keys and wrong == 0 then
+			if not okPlay then
+				return nil
+			end
+			local res = ctx.close(j)
+			if res.complete and res.wrong == 0 then
 				clean += 1
 				local line = pick(Config.MittPraise)
 				ctx.feedback(line, T.gold)
 				say(line)
-			elseif done == #c.keys then
+			elseif res.complete then
 				local line = pick(Config.MittCritique.sloppy)
 				ctx.feedback(line, T.orange)
 				say(line)
@@ -1973,7 +2126,7 @@ GAMES.mitts = function(ctx)
 	ctx.put("punches", thrown)
 	ctx.note(string.format("%d/%d clean combos", clean, perRound * rounds))
 	ctx.note(string.format("%d shots & moves", thrown))
-	return math.clamp(score / (perRound * rounds), 0, 1)
+	return ctx.score()
 end
 
 -- SHADOW BOXING ---------------------------------------------------------
@@ -1984,6 +2137,10 @@ local SHADOW_PROMPTS = {
 	{ id = "roll", text = "ROLL", keys = { K.C }, map = "dodge" }, { id = "jab", text = "JAB", keys = { K.J }, map = "jab" }, { id = "cross", text = "CROSS", keys = { K.K }, map = "cross" },
 	{ id = "leadhook", text = "HOOK", keys = { K.L }, map = "leadhook" },
 }
+local SHADOW_TEXT = {}
+for _, p in ipairs(SHADOW_PROMPTS) do
+	SHADOW_TEXT[p.id] = p.text
+end
 local SHADOW_LABEL = { F = "STEP IN", B = "STEP BACK", L = "CIRCLE L", R = "CIRCLE R", slipL = "SLIP L", slipR = "SLIP R", roll = "ROLL", jab = "JAB", cross = "CROSS", leadhook = "HOOK" }
 
 local function shadowMove(ctx, id)
@@ -2001,7 +2158,6 @@ end
 -- 2 rounds: single moves on cue, then flow chains of mixed moves
 GAMES.shadow = function(ctx)
 	local lv = ctx.level
-	local window = ({ 1.25, 1.0, 0.8 })[lv] or 1.0
 	local actions = {}
 	for _, p in ipairs(SHADOW_PROMPTS) do
 		table.insert(actions, { id = p.id, label = (p.text:gsub("CIRCLE ", ""):gsub("STEP ", "")), keys = p.keys, map = p.map })
@@ -2012,46 +2168,48 @@ GAMES.shadow = function(ctx)
 			GymVisuals.SetDisplay("mirror", text)
 		end
 	end
+	local n, chains = 0, 0
+	for _, seg in ipairs(ctx.plan.segs) do
+		if seg.j == "cue" then
+			n += 1
+		else
+			chains += 1
+		end
+	end
 
 	-- ROUND 1: MOVES
 	ctx.setInfo("Footwork (W/A/S/D), head movement ({slipL}/{slipR}/{dodge}) and punches ({jab}/{cross}/{leadhook}): follow the prompts in the mirror.")
 	if not ctx.round(1, 2, "MOVES") then
 		return nil
 	end
-	local n, score, movesHit = 8, 0, 0
+	local score, movesHit = 0, 0
 	for i = 1, n do
 		UI.Clear(ctx.stage)
-		if not ctx.wait(0.15 + math.random() * 0.3) then
+		local seg = ctx.peek()
+		if not ctx.wait(seg.delay or 0.3) then
 			return nil
 		end
-		local p = SHADOW_PROMPTS[math.random(1, #SHADOW_PROMPTS)]
-		local f = chip(ctx.stage, p.text, 0, 240, T.panel2)
+		local f = chip(ctx.stage, SHADOW_TEXT[seg.want] or "?", 0, 240, T.panel2)
 		f.Position = UDim2.new(0.5, -120, 0.5, -34)
-		local shown = os.clock()
-		local answered, ok = false, false
-		ctx.on(function(id, down)
-			if not down or answered then
-				return
+		local j = ctx.begin()
+		ctx.on(function(id, down, t)
+			if j.input(id, down, t) then
+				shadowMove(ctx, id)
 			end
-			answered = true
-			ok = id == p.id
-			shadowMove(ctx, id)
 		end)
-		while not answered and os.clock() - shown < window do
-			if ctx.cancelled then
-				return nil
-			end
-			RunService.Heartbeat:Wait()
-		end
+		local okPlay = playSegment(ctx, j)
 		ctx.on(nil)
-		local rt = os.clock() - shown
-		if ok then
-			score += 1 - 0.35 * rt / window
+		if not okPlay then
+			return nil
+		end
+		local r = ctx.close(j)
+		if r.correct then
+			score += 1 - 0.35 * r.rt / seg.window
 			movesHit += 1
 			f.BackgroundColor3 = T.green
 		else
 			f.BackgroundColor3 = T.red
-			ctx.feedback(answered and "WRONG MOVE" or "TOO SLOW", T.red)
+			ctx.feedback(r.early and "TOO EARLY" or (r.answered and "WRONG MOVE" or "TOO SLOW"), T.red)
 		end
 		local form = math.floor(score / i * 100)
 		mirror(string.format("FORM %d%%", form))
@@ -2061,7 +2219,6 @@ GAMES.shadow = function(ctx)
 			return nil
 		end
 	end
-	local r1 = math.clamp(score / n / 0.85, 0, 1)
 	if not ctx.rest(3, "ROUND 1 DONE", string.format("%d/%d moves on cue", movesHit, n)) then
 		return nil
 	end
@@ -2071,84 +2228,60 @@ GAMES.shadow = function(ctx)
 	if not ctx.round(2, 2, "FLOW") then
 		return nil
 	end
-	local chains = 3
-	local flows = pickDistinct(Config.ShadowFlows, chains)
 	local score2, flowsClean = 0, 0
-	for ci = 1, #flows do
+	for ci = 1, chains do
 		UI.Clear(ctx.stage)
-		local flow = flows[ci]
-		local len = lv <= 1 and 3 or (lv == 2 and (math.random() < 0.5 and 3 or 4) or 4)
-		local seq = {}
-		for k = 1, math.min(len, #flow) do
-			seq[k] = flow[k]
-		end
+		local seg = ctx.peek()
+		local seq = seg.ids or {}
 		local labels = {}
 		for k, id in ipairs(seq) do
 			labels[k] = SHADOW_LABEL[id] or id
 		end
 		local chips = chipRow(ctx, labels, 36, true, 110)
 		local setTime = timeBar(ctx, 14)
-		local limit = 1.4 + #seq * 0.75 - (lv - 1) * 0.2
-		local idx, wrong, start = 1, 0, os.clock()
+		local limit = seg.limit or 3
 		chips[1].BackgroundColor3 = T.gold
-		ctx.on(function(id, down)
-			if not down or idx > #seq then
-				return
-			end
-			shadowMove(ctx, id)
-			if id == seq[idx] then
-				chips[idx].BackgroundColor3 = T.green
-				idx += 1
-				if chips[idx] then
-					chips[idx].BackgroundColor3 = T.gold
-				end
-			else
-				wrong += 1
-				local at = idx
-				chips[at].BackgroundColor3 = T.red
-				task.delay(0.15, function()
-					if idx == at and chips[at] then
-						chips[at].BackgroundColor3 = T.gold
-					end
-				end)
+		local j, _, start = ctx.begin()
+		ctx.on(function(id, down, t)
+			local hit = j.input(id, down, t)
+			if hit then
+				shadowMove(ctx, id)
+				seqChips(j, chips, hit)
 			end
 		end)
-		while idx <= #seq and os.clock() - start < limit do
-			if ctx.cancelled then
-				return nil
-			end
-			local el = os.clock() - start
+		local okPlay = playSegment(ctx, j, function(now)
+			local el = now - start
 			setTime(1 - el / limit)
-			ctx.progress((ci - 1 + el / limit) / #flows)
-			RunService.Heartbeat:Wait()
-		end
+			ctx.progress((ci - 1 + math.min(1, el / limit)) / chains)
+		end)
 		ctx.on(nil)
-		local done = idx - 1
-		local part = math.max(0, done - wrong * 0.5) / #seq
-		local fast = done == #seq and math.max(0, 1 - (os.clock() - start) / limit) or 0
-		score2 += math.min(1, part * 0.8 + fast * 0.4)
-		if done == #seq and wrong == 0 then
+		if not okPlay then
+			return nil
+		end
+		local res = ctx.close(j)
+		score2 += DrillScore.SeqScore(res, 0.8, 0.4, 1)
+		if res.complete and res.wrong == 0 then
 			flowsClean += 1
-			ctx.feedback(fast > 0.4 and "FLOWING!" or "SMOOTH", T.gold)
-		elseif done == #seq then
+			ctx.feedback(res.frac > 0.4 and "FLOWING!" or "SMOOTH", T.gold)
+		elseif res.complete then
 			ctx.feedback("CHOPPY", T.orange)
 		else
 			ctx.feedback("LOST THE FLOW", T.red)
 		end
-		mirror(string.format("FLOW %d/%d\nFORM %d%%", ci, #flows, math.floor(score2 / ci * 100)))
-		ctx.stats(string.format("Flow %d/%d%s%d clean", ci, #flows, DOT, flowsClean))
-		ctx.progress(ci / #flows)
+		mirror(string.format("FLOW %d/%d\nFORM %d%%", ci, chains, math.floor(score2 / ci * 100)))
+		ctx.stats(string.format("Flow %d/%d%s%d clean", ci, chains, DOT, flowsClean))
+		ctx.progress(ci / chains)
 		if not ctx.wait(0.7) then
 			return nil
 		end
 	end
-	local r2 = math.clamp(score2 / math.max(1, #flows), 0, 1)
-	local acc = math.floor((movesHit / n * 0.5 + r2 * 0.5) * 100 + 0.5)
+	local r2 = math.clamp(score2 / math.max(1, chains), 0, 1)
+	local acc = math.floor((movesHit / math.max(1, n) * 0.5 + r2 * 0.5) * 100 + 0.5)
 	ctx.put("accuracy", acc)
 	ctx.put("cleanFlows", flowsClean)
 	ctx.note(string.format("%d/%d moves", movesHit, n))
-	ctx.note(string.format("%d/%d clean flows", flowsClean, #flows))
-	return math.clamp(0.5 * r1 + 0.5 * r2, 0, 1)
+	ctx.note(string.format("%d/%d clean flows", flowsClean, chains))
+	return ctx.score()
 end
 
 -- STRENGTH --------------------------------------------------------------
@@ -2175,45 +2308,56 @@ local function liftLoad(ctx)
 	return load, string.format(def.each and "%d lbs each" or "%d lbs", load), def.name, false
 end
 
--- Hold-type drills (lifts, slams, breathing) take TAPS too: a quick tap starts the hold and the next
--- tap ends it; a press held longer than TAP_HOLD still works as a plain hold (released on let-go).
-local TAP_HOLD = 0.35
-local function tapHold(onChange)
-	local st = { on = false, at = nil }
-	local function set(v)
-		st.on = v
-		onChange(v)
+-- one lift / slam on the plan's zone (DrillScore lift judge: hold-type drills take TAPS too - a quick
+-- tap starts the hold and the next tap ends it; a press held longer still works as a plain hold).
+-- Waits for the press, raises the bar until the release (or the top), returns the result or nil.
+local function liftRep(ctx, zone, fill, intensity)
+	local seg = ctx.peek()
+	zone.Position = UDim2.fromScale(seg.lo or 0.6, 0)
+	zone.Size = UDim2.fromScale(seg.width or 0.2, 1)
+	ctx.intensity = intensity[1]
+	local j = ctx.begin()
+	if not j then
+		return nil
 	end
-	local function handler(_, down)
-		if down then
-			if st.on then
-				st.at = nil
-				set(false)
-			else
-				st.at = os.clock()
-				set(true)
-			end
-		else
-			if st.at and os.clock() - st.at >= TAP_HOLD and st.on then
-				set(false)
-			end
-			st.at = nil
+	ctx.on(function(id, down, t)
+		j.input(id, down, t)
+	end)
+	local working = false
+	while not j.closed do
+		if ctx.cancelled then
+			ctx.on(nil)
+			return nil
 		end
+		if j.holdStart and not working then
+			working = true
+			ctx.intensity = intensity[2]
+		end
+		local f = j.advance(ctx.now())
+		fill.Size = UDim2.fromScale(f, 1)
+		ctx.drive(f)
+		if j.closed then
+			break
+		end
+		RunService.Heartbeat:Wait()
 	end
-	function st.reset()
-		st.on = false
-		st.at = nil
-	end
-	return handler, st
+	ctx.on(nil)
+	local res = ctx.close(j)
+	fill.Size = UDim2.fromScale(res.f, 1)
+	ctx.drive(res.f)
+	return res
 end
 
 -- 2 sets x 5 reps: hold to lift, release in the green zone (set 2 is tighter); a spotter saves failed reps
 GAMES.reps = function(ctx)
-	local lv = ctx.level
 	local load, loadText, exName, bodyweight = liftLoad(ctx)
 	exName = exName or ctx.act.name:upper()
-	local sets, reps = 2, 5
-	ctx.bind({ { id = "lift", label = "TAP / HOLD: LIFT", keys = { K.Space }, color = T.blue } }, 1)
+	local sets, reps = 0, 0
+	for _, seg in ipairs(ctx.plan.segs) do
+		sets = math.max(sets, seg.set or 1)
+		reps = math.max(reps, seg.rep or 1)
+	end
+	ctx.bind({ { id = "lift", label = "TAP / HOLD: LIFT", say = "LIFT", keys = { K.Space }, color = T.blue } }, 1)
 	ctx.setInfo("Tap SPACE (or the button) to drive the weight up and tap again inside the green zone (holding and releasing works too). Overshoot and you fail the rep. Set 2 is tighter.")
 	UI.Clear(ctx.stage)
 	local barBg = UI.Frame(ctx.stage, { Position = UDim2.new(0, 20, 0, 18), Size = UDim2.new(1, -40, 0, 34), BackgroundColor3 = Color3.fromRGB(40, 20, 20) })
@@ -2223,79 +2367,44 @@ GAMES.reps = function(ctx)
 	local fill = UI.Frame(barBg, { BackgroundColor3 = T.gold, BackgroundTransparency = 0.25, Size = UDim2.fromScale(0, 1) })
 	UI.Corner(fill, 6)
 	UI.Text(ctx.stage, loadText or "", { Font = T.bold, TextColor3 = T.gold, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -20, 0, 56), Size = UDim2.new(0.4, 0, 0, 24), TextXAlignment = Enum.TextXAlignment.Right, AutomaticSize = Enum.AutomaticSize.None })
-	local holding = false
-	local tapHandler, tapState = tapHold(function(v)
-		holding = v
-	end)
-	ctx.on(tapHandler)
 	local P = State.P
 	local fatigue = P and P.condition and P.condition.fatigue or 0
-	local total, goodReps, fails, lastRpe = 0, 0, 0, 6
+	local goodReps, fails, lastRpe = 0, 0, 6
 	local function rpeText(v)
 		return "RPE " .. (v % 1 == 0 and tostring(math.floor(v)) or string.format("%.1f", v))
 	end
+	local LIFT_EFFORT = { 0.3, 0.85 }
 	for set = 1, sets do
 		if not ctx.round(set, sets, exName, "SET") then
 			return nil
 		end
-		holding = false
-		tapState.reset()
 		local setGood, setFails = 0, 0
 		ctx.setRep(1, reps, 0)
 		ctx.stats(nil)
 		for r = 1, reps do
-			local width = math.max(0.08, (0.24 - r * 0.012 + lv * 0.01) * (set == 2 and 0.78 or 1))
-			local lo = math.clamp(0.58 + math.random() * 0.2, 0.5, 0.95 - width)
-			zone.Position = UDim2.fromScale(lo, 0)
-			zone.Size = UDim2.fromScale(width, 1)
 			ctx.setRep(r, reps, setGood)
-			local f = 0
-			local speed = (0.55 + r * 0.03) * (set == 2 and 1.08 or 1)
 			ctx.attr("RepCount", (set - 1) * reps + r)
-			ctx.intensity = 0.3
-			-- wait for the press
-			while not holding do
-				if ctx.cancelled then
-					return nil
-				end
-				RunService.Heartbeat:Wait()
+			local res = liftRep(ctx, zone, fill, LIFT_EFFORT)
+			if not res then
+				return nil
 			end
-			ctx.intensity = 0.85
-			local failed = false
-			while holding do
-				if ctx.cancelled then
-					return nil
-				end
-				f = math.min(1, f + RunService.Heartbeat:Wait() * speed)
-				fill.Size = UDim2.fromScale(f, 1)
-				ctx.drive(f)
-				if f >= 1 then
-					failed = true
-					break
-				end
-			end
-			local result
-			if failed then
-				result = 0
+			local f = res.f
+			if res.failed then
 				fails += 1
 				setFails += 1
 				ctx.feedback("SPOTTER: I got you!", T.orange)
-			elseif f >= lo and f <= lo + width then
-				local center = math.abs(f - (lo + width / 2)) / (width / 2)
-				result = center < 0.35 and 1 or 0.85
+			elseif res.verdict == "perfect" or res.verdict == "good" then
 				goodReps += 1
 				setGood += 1
 				-- the worked muscles fill up rep by rep (BodyFX reads LivePump; CONTRACTS s.7)
-				ctx.pump(center < 0.35 and 0.1 or 0.07)
-				ctx.feedback(center < 0.35 and "PERFECT REP" or "GOOD REP", center < 0.35 and T.gold or T.green)
+				ctx.pump(res.verdict == "perfect" and 0.1 or 0.07)
+				ctx.feedback(res.verdict == "perfect" and "PERFECT REP" or "GOOD REP", res.verdict == "perfect" and T.gold or T.green)
 			else
-				result = f < lo and 0.45 or 0.3
-				if f < lo then
+				if res.verdict == "short" then
 					ctx.pump(0.03) -- a half rep still moves blood, just less
 				end
-				ctx.feedback(f < lo and "HALF REP" or "LOST CONTROL", T.orange)
+				ctx.feedback(res.verdict == "short" and "HALF REP" or "LOST CONTROL", T.orange)
 			end
-			total += result
 			-- lower the weight
 			ctx.intensity = 0.5
 			local t0 = os.clock()
@@ -2310,8 +2419,6 @@ GAMES.reps = function(ctx)
 			end
 			ctx.drive(0)
 			fill.Size = UDim2.fromScale(0, 1)
-			holding = false
-			tapState.reset()
 			ctx.setRep(r, reps, setGood)
 			ctx.stats(setFails > 0 and string.format("%d spotted", setFails) or nil)
 			ctx.progress(r / reps)
@@ -2348,7 +2455,7 @@ GAMES.reps = function(ctx)
 	if not ctx.wait(0.6) then
 		return nil
 	end
-	return math.clamp(total / (sets * reps), 0, 1)
+	return ctx.score()
 end
 
 -- MEDICINE BALL ---------------------------------------------------------
@@ -2357,11 +2464,16 @@ end
 -- LEFT / RIGHT on the beat (TwistSide drives the Animator's rotation). Abs and obliques get the
 -- live pump with every clean rep.
 GAMES.medball = function(ctx)
-	local lv = ctx.level
 	local load, loadText = liftLoad(ctx)
 	loadText = loadText or "MED BALL"
+	local slams = 0
+	for _, seg in ipairs(ctx.plan.segs) do
+		if seg.j == "lift" then
+			slams += 1
+		end
+	end
 	-- SET 1: SLAMS
-	ctx.bind({ { id = "lift", label = "TAP: RAISE  /  TAP: SLAM", keys = { K.Space }, color = T.gold } }, 1)
+	ctx.bind({ { id = "lift", label = "TAP: RAISE  /  TAP: SLAM", say = "SLAM", keys = { K.Space }, color = T.gold } }, 1)
 	if ctx.buttons.lift then
 		ctx.buttons.lift.TextColor3 = T.bg
 	end
@@ -2377,57 +2489,25 @@ GAMES.medball = function(ctx)
 	UI.Corner(zone, 6)
 	local fill = UI.Frame(barBg, { BackgroundColor3 = T.gold, BackgroundTransparency = 0.25, Size = UDim2.fromScale(0, 1) })
 	UI.Corner(fill, 6)
-	local holding = false
-	local tapHandler, tapState = tapHold(function(v)
-		holding = v
-	end)
-	ctx.on(tapHandler)
-	local slams = 5 + math.min(lv, 3)
-	local slamScore, cleanSlams = 0, 0
+	local cleanSlams = 0
+	local SLAM_EFFORT = { 0.35, 0.9 }
 	for r = 1, slams do
-		local width = math.max(0.1, 0.22 - r * 0.008 + lv * 0.012)
-		local lo = math.clamp(0.62 + math.random() * 0.16, 0.5, 0.96 - width)
-		zone.Position = UDim2.fromScale(lo, 0)
-		zone.Size = UDim2.fromScale(width, 1)
 		ctx.setRep(r, slams, cleanSlams)
 		ctx.attr("RepCount", r)
-		ctx.intensity = 0.35
-		while not holding do
-			if ctx.cancelled then
-				return nil
-			end
-			RunService.Heartbeat:Wait()
+		local res = liftRep(ctx, zone, fill, SLAM_EFFORT)
+		if not res then
+			return nil
 		end
-		ctx.intensity = 0.9
-		local f, over = 0, false
-		local speed = 0.85 + r * 0.03 + lv * 0.05
-		while holding do
-			if ctx.cancelled then
-				return nil
-			end
-			f = math.min(1, f + RunService.Heartbeat:Wait() * speed)
-			fill.Size = UDim2.fromScale(f, 1)
-			ctx.drive(f) -- PoseDrive: the ball rises overhead
-			if f >= 1 then
-				over = true
-				break
-			end
-		end
-		local q
-		if over then
-			q = 0.35
+		local f = res.f
+		if res.failed then
 			ctx.feedback("OVERREACHED - BRACE!", T.orange)
-		elseif f >= lo and f <= lo + width then
-			local center = math.abs(f - (lo + width / 2)) / (width / 2)
-			q = center < 0.35 and 1 or 0.85
+		elseif res.verdict == "perfect" or res.verdict == "good" then
 			cleanSlams += 1
-			ctx.feedback(center < 0.35 and "MONSTER SLAM!" or "GOOD SLAM", center < 0.35 and T.gold or T.green)
+			ctx.feedback(res.verdict == "perfect" and "MONSTER SLAM!" or "GOOD SLAM", res.verdict == "perfect" and T.gold or T.green)
 			ctx.pump(0.08)
 		else
-			q = f < lo and 0.45 or 0.4
-			ctx.feedback(f < lo and "ALL ARMS - GET IT OVERHEAD" or "LOST THE BRACE", T.orange)
+			ctx.feedback(res.verdict == "short" and "ALL ARMS - GET IT OVERHEAD" or "LOST THE BRACE", T.orange)
 		end
-		slamScore += q
 		-- the slam: drive down fast, the ball hits the pad
 		local t0 = os.clock()
 		while os.clock() - t0 < 0.22 do
@@ -2438,10 +2518,8 @@ GAMES.medball = function(ctx)
 			RunService.Heartbeat:Wait()
 		end
 		ctx.drive(0)
-		ctx.impact(0.6 + q * 0.7, 0, "slam", "body")
+		ctx.impact(0.6 + res.q * 0.7, 0, "slam", "body")
 		fill.Size = UDim2.fromScale(0, 1)
-		holding = false
-		tapState.reset()
 		ctx.setRep(r, slams, cleanSlams)
 		ctx.progress(r / slams)
 		if not ctx.wait(0.35) then
@@ -2457,91 +2535,75 @@ GAMES.medball = function(ctx)
 
 	-- SET 2: RUSSIAN TWISTS on a metronome
 	ctx.bind({ { id = "L", label = "TWIST LEFT", keys = { K.Q, K.A, K.J }, color = T.blue }, { id = "R", label = "TWIST RIGHT", keys = { K.E, K.D, K.K }, color = T.red } }, 2)
-	local bpm = ({ 64, 76, 88, 100 })[math.clamp(lv, 1, 4)]
+	local bpm = ctx.peek().bpm or 76
 	ctx.setInfo(string.format("Feet up, chest proud: touch the ball down LEFT and RIGHT on every beat (%d BPM). Rotate from the ribs - this is your body-shot armour.", bpm))
 	if not ctx.round(2, 2, "RUSSIAN TWISTS" .. DOT .. bpm .. " BPM", "SET") then
 		return nil
 	end
 	ctx.clearRep()
 	UI.Clear(ctx.stage)
-	local interval = 60 / bpm
-	local count = 14 + math.min(lv, 4) * 2
 	local lineX = 70
-	UI.Frame(ctx.stage, { Position = UDim2.new(0, lineX - 2, 0, 6), Size = UDim2.new(0, 4, 1, -46), BackgroundColor3 = T.gold })
-	local notes = {}
-	local start = os.clock() + 1.2
-	for i = 1, count do
-		local lane = (i % 2 == 1) and "L" or "R"
-		local f = UI.Frame(ctx.stage, { Size = UDim2.fromOffset(26, 26), AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0, -100, 0, lane == "L" and 30 or 62), BackgroundColor3 = lane == "L" and T.blue or T.red })
-		UI.Corner(f, 13)
-		UI.Text(f, lane, { Font = T.bold, TextSize = 13, TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.fromScale(1, 1), AutomaticSize = Enum.AutomaticSize.None })
-		notes[i] = { t = start + (i - 1) * interval, lane = lane, f = f, judged = false }
+	local j, seg, M = ctx.begin()
+	if not j then
+		return nil
 	end
+	local frames = noteFrames(ctx, j, lineX)
+	local count = #seg.lanes
+	local start = M + seg.lead
 	local onBeat, streak, bestStreak = 0, 0, 0
 	ctx.intensity = 0.6
-	ctx.on(function(id, down)
+	ctx.on(function(id, down, t)
 		if not down then
 			return
 		end
 		ctx.attr("TwistSide", id == "L" and -1 or 1)
-		local now = os.clock()
-		local best, bestDt
-		for _, n in ipairs(notes) do
-			if not n.judged and n.lane == id then
-				local dt = now - n.t
-				if math.abs(dt) < 0.25 and (not best or math.abs(dt) < math.abs(bestDt)) then
-					best, bestDt = n, dt
-				end
-			end
+		local hit = j.input(id, down, t)
+		if hit and hit.stray then
+			streak = 0
+			ctx.feedback("OFF BEAT", T.orange)
+			return
 		end
-		if best then
-			best.judged = true
-			best.f.Visible = false
-			if math.abs(bestDt) < 0.12 then
-				onBeat += 1
-				streak += 1
-				bestStreak = math.max(bestStreak, streak)
-				ctx.feedback(streak >= 6 and ("ON FIRE x" .. streak) or "TOUCH", streak >= 6 and T.gold or T.green)
-				ctx.impact(-0.2, id == "L" and -1 or 1) -- the ball taps the floor
-				if streak % 4 == 0 then
-					ctx.pump(0.05)
-				end
-			else
-				streak = 0
-				ctx.feedback("OFF BEAT", T.orange)
+		if not (hit and hit.grade) then
+			return
+		end
+		frames[hit.note].Visible = false
+		if hit.grade == "perfect" then
+			onBeat += 1
+			streak += 1
+			bestStreak = math.max(bestStreak, streak)
+			ctx.feedback(streak >= 6 and ("ON FIRE x" .. streak) or "TOUCH", streak >= 6 and T.gold or T.green)
+			ctx.impact(-0.2, id == "L" and -1 or 1) -- the ball taps the floor
+			if streak % 4 == 0 then
+				ctx.pump(0.05)
 			end
+		else
+			streak = 0
+			ctx.feedback("OFF BEAT", T.orange)
 		end
 	end)
 	local pxPerSec = 220
 	while true do
 		if ctx.cancelled then
+			ctx.on(nil)
 			return nil
 		end
-		local now = os.clock()
-		local alive = false
-		for _, n in ipairs(notes) do
-			if not n.judged then
-				alive = true
-				n.f.Position = UDim2.new(0, lineX + (n.t - now) * pxPerSec, 0, n.lane == "L" and 30 or 62)
-				if now - n.t > 0.25 then
-					n.judged = true
-					n.f.Visible = false
-					streak = 0
-					ctx.feedback("MISSED", T.red)
-				end
-			end
+		local now = ctx.now()
+		for _ in ipairs(j.advance(now) or {}) do
+			streak = 0
+			ctx.feedback("MISSED", T.red)
 		end
-		ctx.progress((now - start) / (count * interval))
+		local alive = moveNotes(j, frames, lineX, now, pxPerSec)
+		ctx.progress((now - start) / (count * seg.interval))
 		ctx.stats(string.format("%d/%d on the beat%sstreak %d", onBeat, count, DOT, streak))
-		if not alive then
+		if not alive or j.closed then
 			break
 		end
 		RunService.Heartbeat:Wait()
 	end
 	ctx.on(nil)
+	ctx.close(j)
 	ctx.intensity = nil
 	ctx.attr("TwistSide", 0)
-	local twistScore = onBeat / count
 	ctx.put("load", load or 0)
 	ctx.put("cleanSlams", cleanSlams)
 	ctx.put("twists", onBeat)
@@ -2551,7 +2613,7 @@ GAMES.medball = function(ctx)
 	if not ctx.wait(0.6) then
 		return nil
 	end
-	return math.clamp(0.55 * slamScore / slams + 0.45 * twistScore, 0, 1)
+	return ctx.score()
 end
 
 -- CARDIO MACHINES -------------------------------------------------------
@@ -2561,10 +2623,10 @@ local INCLINE = { 1.0, 2.0, 0.5, 4.0 } -- treadmill incline per interval
 GAMES.pace = function(ctx)
 	local lv = ctx.level
 	local id = ctx.act.id
-	local duration = 28
+	local seg = ctx.peek()
+	local phases = seg.phases or { { 0.3, 0.5, "WARM-UP" } }
 	ctx.bind({ { id = "push", label = "PUSH PACE", keys = { K.Space }, color = T.blue } }, 1)
 	ctx.setInfo("Tap SPACE to speed up. Keep the marker inside the green zone through every interval: warm-up, sprint, recover, all out.")
-	local phases = { { 0.3, 0.5, "WARM-UP" }, { 0.6, 0.82, "SPRINT!" }, { 0.35, 0.55, "RECOVER" }, { 0.66, 0.88, "ALL OUT!" } }
 	if not ctx.round(1, #phases, phases[1][3], "INTERVAL") then
 		return nil
 	end
@@ -2576,43 +2638,43 @@ GAMES.pace = function(ctx)
 	local marker = UI.Frame(barBg, { BackgroundColor3 = Color3.new(1, 1, 1), Size = UDim2.new(0, 6, 1, 10), Position = UDim2.new(0, 0, 0, -5) })
 	local metrics = UI.Text(ctx.stage, "", { Font = T.semi, TextSize = 15, TextColor3 = Color3.fromRGB(120, 220, 255), Position = UDim2.fromOffset(20, 50), Size = UDim2.new(1, -40, 0, 22), AutomaticSize = Enum.AutomaticSize.None })
 	local status = UI.Text(ctx.stage, "", { Font = T.bold, Position = UDim2.fromOffset(20, 76), Size = UDim2.new(1, -40, 0, 24), AutomaticSize = Enum.AutomaticSize.None })
-	local v = 0.2
-	ctx.on(function(_, down)
-		if down then
-			v = math.min(1, v + 0.085)
-		end
+	-- the pace judge: each press speeds up, the pace drains; the time in the zone is the score
+	local j, _, start = ctx.begin()
+	if not j then
+		return nil
+	end
+	local duration = seg.duration or 28
+	ctx.on(function(i, down, t)
+		j.input(i, down, t)
 	end)
-	local inZone, start, last = 0, os.clock(), os.clock()
+	local last = ctx.now()
 	local miles, meters, topSpeed, maxWatts, maxSpm, rpmSum, rpmTime = 0, 0, 0, 0, 0, 0, 0
 	local phaseIdx, sinceScreen = 1, 1
 	local screen = ""
 	while true do
 		if ctx.cancelled then
+			ctx.on(nil)
 			return nil
 		end
-		local now = os.clock()
+		local now = ctx.now()
 		local dt = now - last
 		last = now
 		local el = now - start
+		local v = j.advance(now)
 		if el >= duration then
 			break
 		end
-		local pi = math.min(#phases, math.floor(el / (duration / #phases)) + 1)
+		local pi = j.phaseOf(now)
 		if pi ~= phaseIdx then
 			phaseIdx = pi
 			ctx.round(pi, #phases, phases[pi][3], "INTERVAL", 0)
 		end
 		local ph = phases[pi]
-		local shrink = (lv - 1) * 0.02
-		local lo, hi = ph[1] + shrink, ph[2] - shrink
+		local lo, hi = ph[1], ph[2]
 		zone.Position = UDim2.fromScale(lo, 0)
 		zone.Size = UDim2.fromScale(hi - lo, 1)
-		v = math.max(0, v - dt * 0.2)
 		marker.Position = UDim2.new(v, -3, 0, -5)
 		local ok = v >= lo and v <= hi
-		if ok then
-			inZone += dt
-		end
 		ctx.intensity = 0.25 + v * 0.75
 		ctx.speed(0.5 + v * 1.6)
 		-- machine readouts
@@ -2652,9 +2714,11 @@ GAMES.pace = function(ctx)
 		ctx.setProgress(el / duration)
 		RunService.Heartbeat:Wait()
 	end
+	ctx.on(nil)
+	local res = ctx.close(j)
 	ctx.intensity = nil
 	ctx.speed(1)
-	local zonePct = math.floor(inZone / duration * 100 + 0.5)
+	local zonePct = math.floor(res.inZone / duration * 100 + 0.5)
 	if id == "Bike" then
 		local avgRpm = rpmTime > 0 and rpmSum / rpmTime or 0
 		ctx.put("maxWatts", math.floor(maxWatts))
@@ -2677,7 +2741,7 @@ GAMES.pace = function(ctx)
 	end
 	ctx.put("inZone", zonePct)
 	ctx.note(string.format("%d%% in zone", zonePct))
-	return math.clamp(inZone / duration / 0.85, 0, 1)
+	return ctx.score()
 end
 
 -- AGILITY LADDER --------------------------------------------------------
@@ -2689,128 +2753,121 @@ local LADDER_PAD = { F = 1, L = 3, B = 4, R = 2 } -- reaction pods: forward, rig
 
 -- named footwork drills (smart reaction lights at the top level: a lit drill, then random lights)
 GAMES.ladder = function(ctx)
-	local lv = ctx.level
 	local dirById = {}
 	for _, d in ipairs(LADDER_DIRS) do
 		dirById[d.id] = d
 	end
 	ctx.bind(LADDER_DIRS, 4)
-	local smart = lv >= 4
+	local drills = ctx.plan.segs
+	local smart = drills[1] ~= nil and drills[1].j == "lights"
 	ctx.onDestroy(function()
 		GymVisuals.Light("ladder", 0)
 	end)
-	local available = {}
-	for _, d in ipairs(Config.LadderDrills) do
-		if d.lv <= lv then
-			table.insert(available, d)
-		end
-	end
-	local drills
-	if smart then
-		local tpl = available[math.random(1, #available)]
-		local steps = {}
-		while #steps < 12 do
-			for _, s in ipairs(tpl.steps) do
-				if #steps < 12 then
-					table.insert(steps, s)
-				end
-			end
-		end
-		local rnd = {}
-		for i = 1, 12 do
-			rnd[i] = LADDER_DIRS[math.random(1, 4)].id
-		end
-		drills = { { name = tpl.name .. " (LIGHTS)", steps = steps }, { name = "RANDOM REACTION", steps = rnd } }
-	else
-		drills = pickDistinct(available, 4)
-	end
 	ctx.setInfo(smart and "SMART LIGHTS: step toward each pad as it lights up (W/A/S/D or arrows), as fast as you can."
 		or "Run each named footwork drill in order (W/A/S/D or arrows). Speed and accuracy count.")
-	local score, total, completed, correct, stepTime = 0, 0, 0, 0, 0
+	local completed, correct, stepTime = 0, 0, 0
 	for p, drill in ipairs(drills) do
 		if not ctx.round(p, #drills, drill.name, "DRILL") then
 			return nil
 		end
 		UI.Clear(ctx.stage)
 		local seq = {}
-		for i, s in ipairs(drill.steps) do
+		for i, s in ipairs(drill.ids or {}) do
 			seq[i] = dirById[s] or LADDER_DIRS[1]
 		end
 		local len = #seq
 		local chips = {}
 		if not smart then
-			local w = math.max(24, math.min(44, math.floor((stageWidth(ctx) - 20) / len) - 4))
+			local w = math.max(24, math.min(44, math.floor((stageWidth(ctx) - 20) / math.max(1, len)) - 4))
 			for i, d in ipairs(seq) do
 				chips[i] = chip(ctx.stage, d.arrow, 10 + (i - 1) * (w + 4), w)
 			end
-			chips[1].BackgroundColor3 = T.gold
+			if chips[1] then
+				chips[1].BackgroundColor3 = T.gold
+			end
 		end
-		local idx, start = 1, os.clock()
-		local limit = smart and 14 or (len * 0.55 + 1)
-		local lightAt, lit, nextLight = os.clock(), false, os.clock() + 0.2
+		local j, _, start = ctx.begin()
+		if not j then
+			return nil
+		end
 		local lightChip
 		local function lightUp()
-			local d = seq[idx]
+			local d = seq[j.idx]
+			if not d then
+				return
+			end
 			if lightChip then
 				lightChip:Destroy()
 			end
 			lightChip = chip(ctx.stage, d.arrow .. "  " .. d.label, 0, 160, T.blue)
 			lightChip.Position = UDim2.new(0.5, -80, 0.5, -34)
 			GymVisuals.Light("ladder", LADDER_PAD[d.id], Color3.fromRGB(60, 200, 255))
-			lightAt = os.clock()
-			lit = true
 		end
-		ctx.on(function(id, down)
-			if not down or idx > len or (smart and not lit) then
+		ctx.on(function(id, down, t)
+			if not down then
 				return
 			end
-			total += 1
+			-- a pad due to light lights first (the judge does the same at this moment)
+			if smart and j.advance(t) then
+				lightUp()
+			end
+			local at = j.idx
+			local hit = j.input(id, down, t)
+			if not hit then
+				return
+			end
 			ctx.move("step", id)
 			ctx.speed(1.3)
-			if id == seq[idx].id then
+			if hit.ok then
 				correct += 1
-				score += smart and math.max(0.3, 1 - (os.clock() - lightAt) / 1.2) or 1
-				if chips[idx] then
-					chips[idx].BackgroundColor3 = T.green
+				if chips[at] then
+					chips[at].BackgroundColor3 = T.green
 				end
-				idx += 1
-				if chips[idx] then
-					chips[idx].BackgroundColor3 = T.gold
+				if chips[at + 1] then
+					chips[at + 1].BackgroundColor3 = T.gold
 				end
 				if smart then
-					lit = false
 					GymVisuals.Light("ladder", 0)
 					if lightChip then
 						lightChip:Destroy()
 						lightChip = nil
 					end
-					nextLight = os.clock() + 0.12 + math.random() * 0.2
 				end
 			else
-				if chips[idx] then
-					chips[idx].BackgroundColor3 = T.red
+				if chips[at] then
+					chips[at].BackgroundColor3 = T.red
 				end
-				ctx.feedback("WRONG FOOT", T.red)
+				ctx.feedback(hit.early and "TOO EARLY" or "WRONG FOOT", T.red)
 			end
 		end)
-		while idx <= len and os.clock() - start < limit do
+		local okPlay = true
+		while not j.closed do
 			if ctx.cancelled then
-				return nil
+				okPlay = false
+				break
 			end
-			if smart and not lit and os.clock() >= nextLight then
+			local now = ctx.now()
+			if j.advance(now) and smart then
 				lightUp()
 			end
-			local el = os.clock() - start
-			ctx.progress((idx - 1) / len)
-			ctx.stats(string.format("Step %d/%d%s%.1f steps/s", math.min(idx, len), len, DOT, (idx - 1) / math.max(0.5, el)))
+			if j.closed then
+				break
+			end
+			local el = now - start
+			ctx.progress((j.idx - 1) / math.max(1, len))
+			ctx.stats(string.format("Step %d/%d%s%.1f steps/s", math.min(j.idx, len), len, DOT, (j.idx - 1) / math.max(0.5, el)))
 			RunService.Heartbeat:Wait()
 		end
 		ctx.on(nil)
 		ctx.speed(1)
 		GymVisuals.Light("ladder", 0)
-		local el = os.clock() - start
+		if not okPlay then
+			return nil
+		end
+		local res = ctx.close(j)
+		local el = res.time or drill.limit or 0
 		stepTime += el
-		if idx > len then
+		if res.complete then
 			completed += 1
 			ctx.feedback(string.format("%.1fs", el), T.gold)
 		else
@@ -2831,7 +2888,7 @@ GAMES.ladder = function(ctx)
 	ctx.put("drills", completed)
 	ctx.note(string.format("%d/%d drills completed", completed, #drills))
 	ctx.note(string.format("%.1f steps/s", sps))
-	return math.clamp(score / math.max(1, total), 0, 1) * (0.5 + 0.5 * completed / #drills)
+	return ctx.score()
 end
 
 -- JUMP ROPE -------------------------------------------------------------
@@ -2852,17 +2909,7 @@ GAMES.rope = function(ctx)
 		table.insert(actions, { id = "footR", label = "RIGHT FOOT", keys = { K.D } })
 	end
 	ctx.bind(actions, #actions)
-	local phases = { { name = "BASIC BOUNCE", mode = "jump" } }
-	if feet then
-		table.insert(phases, { name = "BOXER SKIP", mode = "feet" })
-	end
-	if doubles then
-		table.insert(phases, { name = "DOUBLE UNDERS", mode = "doubles" })
-	end
-	if #phases == 1 then
-		table.insert(phases, { name = "SPEED SKIP", mode = "speed" })
-	end
-	local perPhase = #phases >= 3 and { 12, 10, 10 } or { 14, 14 }
+	local phases = ctx.plan.segs
 	UI.Clear(ctx.stage)
 	local R = 44
 	local ring = UI.Frame(ctx.stage, { Size = UDim2.fromOffset(R * 2, R * 2), Position = UDim2.new(0, 30, 0.5, -R - 12), BackgroundTransparency = 1 })
@@ -2874,116 +2921,84 @@ GAMES.rope = function(ctx)
 	local cueText = UI.Text(ctx.stage, "", { Font = T.bold, TextSize = 22, Position = UDim2.new(0, R * 2 + 60, 0, 20), Size = UDim2.new(1, -(R * 2 + 70), 0, 30), AutomaticSize = Enum.AutomaticSize.None })
 	local countText = UI.Text(ctx.stage, "", { TextSize = 15, Position = UDim2.new(0, R * 2 + 60, 0, 52), Size = UDim2.new(1, -(R * 2 + 70), 0, 22), AutomaticSize = Enum.AutomaticSize.None, TextColor3 = T.sub })
 	local totalJumps = 0
-	for i = 1, #phases do
-		totalJumps += perPhase[i] or 10
+	for _, ph in ipairs(phases) do
+		totalJumps += ph.jumps or 10
 	end
 	local clean, attempts, streak, bestStreak, doublesDone = 0, 0, 0, 0, 0
-	local pressed = {}
-	ctx.on(function(id, down)
-		if down then
-			table.insert(pressed, { id = id, t = os.clock() })
+	local function showCue(cue)
+		cueText.Text = cue == "double" and "DOUBLE UNDER!" or (cue == "footL" and "LEFT FOOT (A)" or (cue == "footR" and "RIGHT FOOT (D)" or "JUMP"))
+		cueText.TextColor3 = cue == "jump" and T.text or T.gold
+	end
+	-- the rope judge (DrillScore) times every pass; this shows what it judged
+	local j, jumps, done = nil, 0, 0
+	local function judged(list)
+		for _, jd in ipairs(list or {}) do
+			done += 1
+			attempts += 1
+			if jd.clean then
+				clean += 1
+				streak += 1
+				bestStreak = math.max(bestStreak, streak)
+				if jd.cue == "double" then
+					doublesDone += 1
+				end
+				ctx.move("jump", "L")
+				local _, _, root = State.char()
+				if root then
+					GymVisuals.Sound(root.Position - Vector3.new(0, 3, 0), 2 + math.random() * 0.3, 0.2, "rbxasset://sounds/action_footsteps_plastic.mp3")
+				end
+				ctx.attr("RopeFoot", jd.cue == "footL" and "L" or (jd.cue == "footR" and "R" or nil))
+				ctx.feedback(jd.cue == "double" and "DOUBLE!" or (streak >= 5 and ("CLEAN x" .. streak) or "CLEAN"), T.green)
+			else
+				streak = 0
+				ctx.feedback((jd.count == 0 and not jd.early) and "TRIPPED!" or "MISTIMED!", T.red)
+			end
+			countText.Text = string.format("Clean %d / %d%sstreak %d", clean, attempts, DOT, streak)
+			ctx.stats(string.format("Clean %d/%d%sstreak %d (best %d)", clean, attempts, DOT, streak, bestStreak))
+			ctx.progress(done / math.max(1, jumps))
+			if j then
+				showCue(j.cue)
+			end
+		end
+	end
+	ctx.on(function(id, down, t)
+		if j and down then
+			judged(j.input(id, down, t))
 		end
 	end)
 	for phI, ph in ipairs(phases) do
-		ctx.setInfo(ROPE_INFO[ph.mode])
+		ctx.setInfo(ROPE_INFO[ph.mode] or ROPE_INFO.jump)
 		ctx.attr("RopeSpin", 0)
 		cueText.Text = ""
 		if not ctx.round(phI, #phases, ph.name, "PHASE") then
 			return nil
 		end
-		local jumps = perPhase[phI] or 10
-		local done = 0
-		local phase = math.pi -- rope starts overhead
-		local omega = ph.mode == "speed" and 7.8 or 6.5
-		local cue, need = "jump", 1
-		local footNext = math.random() < 0.5 and "footL" or "footR"
-		local function newCue()
-			cue, need = "jump", 1
-			if ph.mode == "doubles" and math.random() < 0.5 then
-				cue, need = "double", 2
-			elseif ph.mode == "feet" then
-				cue = footNext
-				if math.random() < 0.8 then
-					footNext = footNext == "footL" and "footR" or "footL"
-				end
-			end
-			cueText.Text = cue == "double" and "DOUBLE UNDER!" or (cue == "footL" and "LEFT FOOT (A)" or (cue == "footR" and "RIGHT FOOT (D)" or "JUMP"))
-			cueText.TextColor3 = cue == "jump" and T.text or T.gold
+		jumps, done = ph.jumps or 10, 0
+		j = ctx.begin()
+		if not j then
+			return nil
 		end
-		newCue()
-		pressed = {}
-		local judgeAt, passCue, passNeed, passTime = nil, "jump", 1, 0 -- judge just after the rope passes so slightly late presses count
-		local last = os.clock()
-		local tripped = 0
-		while done < jumps do
+		showCue(j.cue)
+		while not j.closed do
 			if ctx.cancelled then
 				return nil
 			end
-			local now = os.clock()
-			local dt = now - last
-			last = now
-			if now < tripped then
-				pressed = {}
-				RunService.Heartbeat:Wait()
-				continue
+			local now = ctx.now()
+			judged(j.advance(now))
+			local a = j.angle(now)
+			if now >= j.tripped then
+				ctx.attr("RopeSpin", a)
 			end
-			local w = omega * (cue == "double" and 1.9 or 1)
-			local prev = phase
-			phase += dt * w
-			ctx.attr("RopeSpin", phase)
-			ctx.intensity = math.clamp(0.45 + (omega - 6) * 0.07 + (cue == "double" and 0.1 or 0), 0, 1)
-			local a = phase % (2 * math.pi)
+			ctx.intensity = math.clamp(0.45 + (j.omega - 6) * 0.07 + (j.cue == "double" and 0.1 or 0), 0, 1)
+			a %= 2 * math.pi
 			dot.Position = UDim2.fromOffset(R + math.sin(a) * R, R + math.cos(a) * R)
-			-- the rope passes the feet at multiples of 2*pi
-			if not judgeAt and math.floor(prev / (2 * math.pi)) ~= math.floor(phase / (2 * math.pi)) then
-				judgeAt = now + 0.1
-				passCue, passNeed, passTime = cue, need, now
-			end
-			if judgeAt and now >= judgeAt then
-				judgeAt = nil
-				done += 1
-				attempts += 1
-				local count, good = 0, true
-				for _, p in ipairs(pressed) do
-					if p.t >= passTime - 0.32 and p.t <= passTime + 0.1 then
-						count += 1
-						if passCue == "jump" or passCue == "double" then
-							good = good and p.id == "jump"
-						else
-							good = good and p.id == passCue
-						end
-					end
-				end
-				pressed = {}
-				if count >= passNeed and good then
-					clean += 1
-					streak += 1
-					bestStreak = math.max(bestStreak, streak)
-					if passCue == "double" then
-						doublesDone += 1
-					end
-					ctx.move("jump", "L")
-					local _, _, root = State.char()
-					if root then
-						GymVisuals.Sound(root.Position - Vector3.new(0, 3, 0), 2 + math.random() * 0.3, 0.2, "rbxasset://sounds/action_footsteps_plastic.mp3")
-					end
-					ctx.attr("RopeFoot", passCue == "footL" and "L" or (passCue == "footR" and "R" or nil))
-					ctx.feedback(passCue == "double" and "DOUBLE!" or (streak >= 5 and ("CLEAN x" .. streak) or "CLEAN"), T.green)
-					omega = math.min(11.5, omega + 0.12)
-				else
-					streak = 0
-					ctx.feedback(count == 0 and "TRIPPED!" or "MISTIMED!", T.red)
-					tripped = now + 0.8
-					omega = math.max(6, omega - 0.6)
-					phase = math.pi
-				end
-				countText.Text = string.format("Clean %d / %d%sstreak %d", clean, attempts, DOT, streak)
-				ctx.stats(string.format("Clean %d/%d%sstreak %d (best %d)", clean, attempts, DOT, streak, bestStreak))
-				ctx.progress(done / jumps)
-				newCue()
+			if j.closed then
+				break
 			end
 			RunService.Heartbeat:Wait()
 		end
+		ctx.close(j)
+		j = nil
 		ctx.intensity = nil
 		if phI < #phases then
 			ctx.attr("RopeSpin", 0)
@@ -2993,6 +3008,7 @@ GAMES.rope = function(ctx)
 			end
 		end
 	end
+	ctx.on(nil)
 	ctx.put("cleanJumps", clean)
 	ctx.put("bestStreak", bestStreak)
 	if doubles then
@@ -3003,7 +3019,7 @@ GAMES.rope = function(ctx)
 	if doubles then
 		ctx.note(string.format("%d double unders", doublesDone))
 	end
-	return math.clamp(clean / math.max(1, totalJumps), 0, 1)
+	return ctx.score()
 end
 
 -- RECOVERY --------------------------------------------------------------
@@ -3023,7 +3039,8 @@ GAMES.hold = function(ctx)
 	local lv = ctx.level
 	local P = State.P
 	ctx.setInfo(HOLD_INFO[act.id] or "Breathe with the circle: tap to inhale, tap again to exhale (or hold and release).")
-	local breaths, inhale, exhale = 5, 2.6, 2.6
+	local seg = ctx.peek()
+	local breaths, inhale, exhale = seg.breaths or 5, seg.inhale or 2.6, seg.exhale or 2.6
 	local cycle = inhale + exhale
 	local duration = breaths * cycle
 	local fatigue = P and P.condition and P.condition.fatigue or 30
@@ -3066,23 +3083,24 @@ GAMES.hold = function(ctx)
 		local _, set = UI.Bar(ctx.stage, { Position = UDim2.new(0, 140, 0, 80), Size = UDim2.new(1, -160, 0, 8) }, act.id == "Massage" and T.orange or T.green)
 		setMeter = set
 	end
-	local holding = false
-	local tapHandler, tapState = tapHold(function(v)
-		holding = v
+	-- the breath judge (DrillScore): tap or hold on through the inhale, off through the exhale
+	local j, _, start = ctx.begin()
+	if not j then
+		return nil
+	end
+	ctx.on(function(id, down, t)
+		j.input(id, down, t)
 	end)
-	ctx.on(tapHandler)
-	local sync, total = 0, 0
-	local start, last = os.clock(), os.clock()
 	local breathIdx = 1
 	local syncF, prog, waterLost, tension, recovered = 0, 0, 0, tensionStart, 0
 	while true do
 		if ctx.cancelled then
+			ctx.on(nil)
 			return nil
 		end
-		local now = os.clock()
-		local dt = now - last
-		last = now
+		local now = ctx.now()
 		local el = now - start
+		j.advance(now)
 		if el >= duration then
 			break
 		end
@@ -3097,11 +3115,7 @@ GAMES.hold = function(ctx)
 		local size = 30 + 70 * k
 		circle.Size = UDim2.fromOffset(size, size)
 		label.Text = inPhase and "INHALE... (tap / hold)" or "EXHALE... (tap / release)"
-		total += dt
-		if holding == inPhase then
-			sync += dt
-		end
-		syncF = sync / math.max(0.01, total)
+		syncF = j.sync / math.max(0.01, el)
 		prog = el / duration
 		-- what this recovery is doing for you
 		if act.id == "IceBath" then
@@ -3135,6 +3149,9 @@ GAMES.hold = function(ctx)
 		ctx.setProgress(prog)
 		RunService.Heartbeat:Wait()
 	end
+	ctx.on(nil)
+	local res = ctx.close(j)
+	syncF = math.clamp(res.sync / math.max(0.01, duration), 0, 1)
 	local syncPct = math.floor(syncF * 100 + 0.5)
 	ctx.put("sync", syncPct)
 	ctx.note(string.format("Breathing sync %d%%", syncPct))
@@ -3149,7 +3166,7 @@ GAMES.hold = function(ctx)
 	elseif act.id == "Chamber" then
 		ctx.note(string.format("Cell recovery %d%%", math.floor(60 + 40 * syncF)))
 	end
-	return math.clamp(sync / math.max(0.01, total), 0, 1)
+	return ctx.score()
 end
 
 -- ROADWORK & SWIM -------------------------------------------------------
@@ -3578,15 +3595,21 @@ end
 
 -- the +XP toast (top centre, above every window): the number counts up over a second with an
 -- ease-out so the last digits settle slowly, the level bar fills behind it, a level-up flashes gold
+-- the report's gains go in the band above it (a row of chips, the +XP card top-right) on a phone and
+-- wherever a popup column beside the growth card would run into the panel (a 1024 tablet at 0.9)
+local function gainsInBand(canvas)
+	return canvas.Y < 640 or (canvas.X - 16 - PANEL_W) < (24 + SIDE_W + 16 + 280 + 8)
+end
+
 local function xpToast(r0)
 	local xp = tonumber(r0.xp)
 	if not xp or xp <= 0 then
 		return nil
 	end
 	local lv = type(r0.level) == "table" and r0.level or nil
-	-- a phone (the same compact test as ctx.layout) has only a thin band above the report: a smaller
-	-- card tucked into the top-right corner, where the gains strip (top-left) and the panel are not
-	local small = UI.CanvasSize(State.gui).Y < 640
+	-- in the band: a smaller card tucked into the top-right corner, where the gains strip (top-left)
+	-- and the panel are not
+	local small = gainsInBand(UI.CanvasSize(State.gui))
 	local numSize = small and 26 or 34
 	local shown = small and UDim2.new(1, -24, 0, 8) or UDim2.new(0.5, 0, 0, 18)
 	local hidden = small and UDim2.new(1, -24, 0, -96) or UDim2.new(0.5, 0, 0, -96)
@@ -3687,10 +3710,11 @@ local function gainPopups(ctx, r0, grown)
 	-- fills the screen below a thin band, so the gains become one row of chips in that band, left of
 	-- the +XP toast, as many as fit in the width (stats first; the report keeps every one)
 	local canvas = UI.CanvasSize(State.gui)
-	local compact = canvas.Y < 640
+	local compact = gainsInBand(canvas)
 	-- narrower chips on the smallest phones (667 wide: three fit beside the toast instead of two)
 	local CHIP_W, GAP = (compact and canvas.X < 760) and 118 or 136, 6
-	local col, host, rowSize, shown
+	local NUMS_W = 72 + 84 + 6 -- a column row: the gain (72 from the right), the numbers (84), a gap
+	local col, host, rowSize, shown, labelPx, labelW
 	if compact then
 		-- a strip this short shows the biggest stat and the biggest muscle first, then the rest in turns
 		local stats, muscles, mixed = {}, {}, {}
@@ -3707,17 +3731,35 @@ local function gainPopups(ctx, r0, grown)
 		end
 		items = mixed
 		local stripW = math.max(CHIP_W, math.floor(canvas.X - 24 - 16 - 220 - 24))
-		local fit = math.max(1, math.floor((stripW + GAP) / (CHIP_W + GAP)))
-		-- the last slot goes to the "+N more" note when not everything fits
-		shown = #items <= fit and #items or math.max(1, fit - 1)
+		-- a chip is as wide as its name at the text floor ("KNOCKOUT POWER" whole), as many as fit; the
+		-- last slot goes to the "+N more" note when not everything fits
+		local px = math.max(11, UI.TextFloor(UI.ScaleOf(State.gui)))
+		local moreW = capsW("+99 more in", px) + 6
+		local used = 0
+		shown = 0
+		for i, it in ipairs(items) do
+			it.chipW = math.min(stripW, math.max(CHIP_W, capsW(it.label, px) + 16))
+			if i > 1 and used + it.chipW + (i < #items and moreW + GAP or 0) > stripW then
+				break
+			end
+			used += it.chipW + GAP
+			shown = i
+		end
 		col = UI.Frame(State.gui, { Name = "Gains", Position = UDim2.fromOffset(24, 8), Size = UDim2.fromOffset(stripW, 52), BackgroundTransparency = 1, ZIndex = 20 })
 		UI.Kicker(col, "SESSION GAINS", T.green, { Size = UDim2.new(1, 0, 0, 16) })
 		host = UI.Frame(col, { Name = "Row", Position = UDim2.fromOffset(0, 20), Size = UDim2.new(1, 0, 0, 32), BackgroundTransparency = 1, ZIndex = 20 })
 		UI.List(host, GAP, true)
-		rowSize = UDim2.fromOffset(CHIP_W, 32)
+		rowSize = UDim2.fromOffset(moreW, 32)
 	else
 		local x = (ctx.side and ctx.side.Visible) and (24 + SIDE_W + 16) or 24
-		col = UI.Frame(State.gui, { Name = "Gains", Position = UDim2.fromOffset(x, 24), Size = UDim2.fromOffset(280, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1, ZIndex = 20 })
+		-- the column is wide enough for the longest name at the text floor beside its numbers
+		labelPx = math.max(13, UI.TextFloor(UI.ScaleOf(State.gui)))
+		local colW = 300
+		for i = 1, math.min(#items, POPUP_MAX) do
+			colW = math.max(colW, capsW(items[i].label, labelPx) + 12 + NUMS_W)
+		end
+		labelW = colW - 12 - NUMS_W
+		col = UI.Frame(State.gui, { Name = "Gains", Position = UDim2.fromOffset(x, 24), Size = UDim2.fromOffset(colW, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1, ZIndex = 20 })
 		UI.List(col, 6)
 		UI.Kicker(col, "SESSION GAINS", T.green, { order = 0 })
 		host = col
@@ -3733,7 +3775,7 @@ local function gainPopups(ctx, r0, grown)
 			if not host.Parent then
 				return
 			end
-			local row = UI.Frame(host, { Name = it.kind == "stat" and "StatGain" or "MuscleGain", BackgroundTransparency = 1, Size = rowSize, LayoutOrder = i, ZIndex = 20 })
+			local row = UI.Frame(host, { Name = it.kind == "stat" and "StatGain" or "MuscleGain", BackgroundTransparency = 1, Size = compact and UDim2.fromOffset(it.chipW, 32) or rowSize, LayoutOrder = i, ZIndex = 20 })
 			row:SetAttribute("Key", it.key)
 			row:SetAttribute("Old", math.floor(it.old * 100 + 0.5) / 100)
 			row:SetAttribute("New", math.floor(it.new * 100 + 0.5) / 100)
@@ -3743,7 +3785,8 @@ local function gainPopups(ctx, r0, grown)
 			card.BackgroundTransparency = 1
 			UI.Frame(card, { Position = UDim2.fromOffset(0, 8), Size = UDim2.new(0, 3, 1, -16), BackgroundColor3 = it.color, ZIndex = 21 })
 			local label = it.label
-			if it.group and it.group ~= "" and not compact then
+			-- the muscle's group beside it where both fit whole ("PECS chest")
+			if it.group and it.group ~= "" and not compact and capsW(it.label .. " " .. it.group, labelPx) <= labelW then
 				label = string.format('%s <font color="#%s" size="11">%s</font>', it.label, T.sub:ToHex(), it.group)
 			end
 			local numbers = string.format("%.1f > %.1f", it.old, it.new)
@@ -3756,9 +3799,9 @@ local function gainPopups(ctx, r0, grown)
 				UI.Text(card, gain, { Face = "number", TextSize = 12, TextColor3 = it.color, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -6, 0, 16), Size = UDim2.fromOffset(52, 14), AutomaticSize = Enum.AutomaticSize.None,
 					TextXAlignment = Enum.TextXAlignment.Right, TextWrapped = false, ZIndex = 21 })
 			else
-				UI.Text(card, label, { Font = T.semi, TextSize = 13, RichText = true, Position = UDim2.fromOffset(12, 0), Size = UDim2.new(0.4, -12, 1, 0), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false,
+				UI.Text(card, label, { Font = T.semi, TextSize = 13, RichText = true, Position = UDim2.fromOffset(12, 0), Size = UDim2.new(1, -(12 + NUMS_W), 1, 0), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false,
 					TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 21 })
-				UI.Text(card, numbers, { Face = "number", TextSize = 15, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -72, 0, 0), Size = UDim2.new(0.6, -76, 1, 0), AutomaticSize = Enum.AutomaticSize.None,
+				UI.Text(card, numbers, { Face = "number", TextSize = 15, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -72, 0, 0), Size = UDim2.new(0, 84, 1, 0), AutomaticSize = Enum.AutomaticSize.None,
 					TextXAlignment = Enum.TextXAlignment.Right, TextWrapped = false, ZIndex = 21 })
 				UI.Text(card, gain, { Face = "number", TextSize = 15, TextColor3 = it.color, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -10, 0, 0), Size = UDim2.fromOffset(60, 36), AutomaticSize = Enum.AutomaticSize.None,
 					TextXAlignment = Enum.TextXAlignment.Right, TextWrapped = false, ZIndex = 21 })
@@ -3825,20 +3868,27 @@ local function showResult(ctx, res, quality)
 	if type(rec.sessions) == "number" and rec.sessions > 0 then
 		table.insert(parts, string.format("%d session%s", rec.sessions, rec.sessions == 1 and "" or "s"))
 	end
-	ctx.info.Text = table.concat(parts, DOT)
+	-- the record line takes the drill instructions' place (and keeps it when the device changes: the
+	-- drill's hint would be bound again by ctx.bind below)
+	ctx.infoRaw = nil
+	local recText = table.concat(parts, DOT)
+	UI.BindHint(ctx.info, function()
+		return recText
+	end)
 	-- the report gets room: on a wide screen the panel grows upward (the metrics strip rides on top).
 	-- ctx.layout calls this again when the screen changes (a window resized, a phone turned), so the
 	-- panel never runs off the top of a smaller screen
 	function ctx.sizeResult()
 		local cv = UI.CanvasSize(ctx.panel)
 		local small = cv.Y < 640
-		local h = small and math.min(PANEL_H, math.floor(cv.Y - 16)) or math.floor(math.clamp(cv.Y - 230, PANEL_H, 560))
+		-- (a phone: up to the thin band the SESSION GAINS strip and the +XP card use)
+		local h = small and math.floor(math.clamp(cv.Y - 88, math.min(PANEL_H, cv.Y - 16), 560)) or math.floor(math.clamp(cv.Y - 230, PANEL_H, 560))
 		if ctx.panelMax then
 			ctx.panelMax.MaxSize = Vector2.new(PANEL_W, h)
 		end
 		ctx.panel.Size = UDim2.new(0.96, 0, 0, h)
-		ctx.stage.Size = UDim2.new(1, -28, 0, h - STAGE_Y - 58)
-		ctx.inputBar.Position = UDim2.new(0, 14, 0, h - 50)
+		ctx.stage.Size = UDim2.new(1, -28, 0, h - ctx.stageY - ctx.cellH - 18)
+		ctx.inputBar.Position = UDim2.new(0, 14, 0, h - ctx.cellH - 10)
 		return h, small, cv
 	end
 	local H, compact, canvas = ctx.sizeResult()
@@ -3851,8 +3901,32 @@ local function showResult(ctx, res, quality)
 		order += 1
 		return order
 	end
-	-- 1. the grade, the record and the coach
+	local grown = {}
+	if type(r0.parts) == "table" then
+		for id, g in pairs(r0.parts) do
+			g = tonumber(g)
+			if g and g > 0.005 then
+				table.insert(grown, { id = id, g = g })
+			end
+		end
+		table.sort(grown, function(a, b)
+			return a.g > b.g
+		end)
+	end
+	-- 1. the grade, the record and the coach (a phone without the growth card beside the panel: the
+	-- growth body map sits between the grade and the coach)
 	local top = UI.Frame(list, { Name = "Top", BackgroundTransparency = 1, Size = UDim2.new(1, -8, 0, 96), LayoutOrder = nextOrder() })
+	local topMapW = (#grown > 0 and not (ctx.side and ctx.side.Visible)) and 104 or 0
+	if topMapW > 0 then
+		local okMap, gmap = pcall(BodyMap.new, top, { Size = UDim2.fromOffset(topMapW - 8, 96), Position = UDim2.fromOffset(104, 0), labels = false, glow = false })
+		if okMap and gmap then
+			gmap.frame.Name = "GrowthMap"
+			gmap:SetGrowth(r0.parts, T.green)
+			gmap:Pulse(2)
+		else
+			topMapW = 0
+		end
+	end
 	local badge = UI.Frame(top, { Name = "Grade", Size = UDim2.fromOffset(92, 96), BackgroundColor3 = UI.Shade(gcol, -0.72) })
 	UI.Corner(badge, 10)
 	UI.Stroke(badge, gcol, 2, 0.1)
@@ -3860,7 +3934,7 @@ local function showResult(ctx, res, quality)
 	local letter = UI.Text(badge, grade, { Face = "display", TextSize = 30, TextColor3 = gcol, TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.fromOffset(0, 4), Size = UDim2.new(1, 0, 0, 70), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
 	TweenService:Create(letter, TweenInfo.new(0.45, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { TextSize = 64 }):Play()
 	UI.Text(badge, string.format("%d%%", Config.QualityPct(quality)), { Face = "number", TextSize = 16, TextColor3 = T.text, TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.new(0, 0, 1, -24), Size = UDim2.new(1, 0, 0, 20), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
-	local right = UI.Frame(top, { BackgroundTransparency = 1, Position = UDim2.fromOffset(104, 0), Size = UDim2.new(1, -104, 1, 0) })
+	local right = UI.Frame(top, { BackgroundTransparency = 1, Position = UDim2.fromOffset(104 + topMapW, 0), Size = UDim2.new(1, -(104 + topMapW), 1, 0) })
 	UI.List(right, 6)
 	local headline, hcol
 	if rec.newBest then
@@ -3880,18 +3954,6 @@ local function showResult(ctx, res, quality)
 		AutomaticSize = Enum.AutomaticSize.None, TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Center, TextTruncate = Enum.TextTruncate.AtEnd })
 	-- 2. muscle growth: every part that grew - the level before (its colour), the growth now (green),
 	-- tonight's share once you sleep (pale green), your frame's potential (gold tick) and the gain
-	local grown = {}
-	if type(r0.parts) == "table" then
-		for id, g in pairs(r0.parts) do
-			g = tonumber(g)
-			if g and g > 0.005 then
-				table.insert(grown, { id = id, g = g })
-			end
-		end
-		table.sort(grown, function(a, b)
-			return a.g > b.g
-		end)
-	end
 	if #grown > 0 then
 		UI.Kicker(list, "MUSCLE GROWTH", T.green, { order = nextOrder(), TextSize = 13 })
 		local now = (Config.MuscleGrowth and Config.MuscleGrowth.immediate) or 0.65
@@ -3904,8 +3966,8 @@ local function showResult(ctx, res, quality)
 			row:SetAttribute("Gain", math.floor(e.g * 100 + 0.5) / 100)
 			local grp = Config.MuscleNames[Config.MusclePartGroup[e.id] or ""] or ""
 			UI.Text(row, string.upper(BodyMap.Short(e.id)) .. (grp ~= "" and string.format('  <font color="#%s" size="11">%s</font>', T.sub:ToHex(), string.upper(grp)) or ""),
-				{ Font = T.semi, TextSize = 14, RichText = true, Size = UDim2.new(0, 120, 1, 0), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
-			UI.LevelBar(row, { Position = UDim2.new(0, 126, 0.5, -5), Size = UDim2.new(1, -126 - 132, 0, 10) },
+				{ Font = T.semi, TextSize = 14, RichText = true, Size = UDim2.new(0.3, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
+			UI.LevelBar(row, { Position = UDim2.new(0.3, 6, 0.5, -5), Size = UDim2.new(0.7, -6 - 132, 0, 10) },
 				{ gain = { before, before + e.g * now }, pending = before + e.g, cap = cap, color = BodyMap.DevColor(before / cap) })
 			UI.Text(row, string.format("+%.2f", e.g), { Face = "number", TextSize = 18, TextColor3 = T.green, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -62, 0, 0), Size = UDim2.fromOffset(64, 24),
 				AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Right, TextWrapped = false })
@@ -3982,8 +4044,9 @@ local function showResult(ctx, res, quality)
 				if ctx.map then
 					ctx.map.frame:Destroy()
 				end
-				-- the names list: three lines, five when many parts grew
-				local listH = #grown > 5 and 78 or 50
+				-- the names list: three lines, five when more than two parts grew (whole names with
+				-- their gains take a line or two each)
+				local listH = #grown > 2 and 78 or 50
 				local okMap, map = pcall(BodyMap.new, ctx.side, { Size = UDim2.fromOffset(SIDE_W - 28, math.max(176, H - 120 - listH)), Position = UDim2.fromOffset(14, 30) })
 				ctx.map = okMap and map or nil
 				ctx.sideList.Position = UDim2.new(0, 14, 1, -(78 + listH))
@@ -3994,13 +4057,13 @@ local function showResult(ctx, res, quality)
 				ctx.map:Pulse(2)
 			end
 			-- the names under the figure carry their gains (exactly which muscles grew, and by how much)
-			local bits = {}
+			local names = {}
 			for _, e in ipairs(grown) do
-				table.insert(bits, string.format("%s +%.2f", string.upper(BodyMap.Short(e.id)), e.g))
+				table.insert(names, { text = string.format("%s +%.2f", string.upper(BodyMap.Short(e.id)), e.g) })
 			end
 			UI.Clear(ctx.sideList)
-			UI.Text(ctx.sideList, table.concat(bits, "  ·  "), { Name = "GrowthNames", Font = T.semi, TextSize = 12, TextColor3 = T.green, Size = UDim2.fromScale(1, 1), AutomaticSize = Enum.AutomaticSize.None,
-				TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top, TextTruncate = Enum.TextTruncate.AtEnd })
+			UI.Text(ctx.sideList, packNames(ctx.sideList, names, 12, SIDE_W - 28, ctx.sideList.Size.Y.Offset), { Name = "GrowthNames", Font = T.semi, TextSize = 12, TextColor3 = T.green, Size = UDim2.fromScale(1, 1),
+				AutomaticSize = Enum.AutomaticSize.None, TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top })
 		end
 		-- energy / fatigue after the session (the server's numbers once the profile arrives)
 		local c0 = ctx.cond0 or {}
@@ -4059,8 +4122,8 @@ local function showResult(ctx, res, quality)
 		end
 		if id == "flex" then
 			if os.clock() - lastFlex > 3.5 then
+				-- (the report stays up by itself now: CONTINUE right after a flex closes it)
 				lastFlex = os.clock()
-				t0 = os.clock() + 2.6 -- keep the results up while you hold the pose
 				ctx.feedback("FLEX!", Color3.fromRGB(255, 160, 70))
 				task.spawn(function()
 					local ok, out = pcall(State.req, "Flex", flexKind)
@@ -4074,7 +4137,8 @@ local function showResult(ctx, res, quality)
 		closed = true
 	end)
 	ctx.cancelled = false
-	while not closed and not ctx.cancelled and os.clock() - t0 < 15 do
+	-- the report stays until CONTINUE / CLOSE (B): a phone player scrolls it at their own pace
+	while not closed and not ctx.cancelled and ctx.panel.Parent do
 		RunService.Heartbeat:Wait()
 	end
 	return wantMuscle
@@ -4162,7 +4226,7 @@ function Activities.Start(actId)
 	end
 	current = { token = res.token, act = act }
 	State.activity = current
-	local ctx = newContext({ act = act, level = res.level, params = res.params, station = act.station, baseEffort = BASE_EFFORT[res.minigame] })
+	local ctx = newContext({ act = act, level = res.level, params = res.params, plan = res.plan, station = act.station, baseEffort = BASE_EFFORT[res.minigame] })
 	current.ctx = ctx
 	local camConn
 	if res.pose then
@@ -4170,6 +4234,7 @@ function Activities.Start(actId)
 		camConn = stationCamera(res.pose)
 	end
 	local muscleAfter -- the MUSCLES button on the report: open the muscle screen on these parts once the panel is gone
+	ctx.clock0 = os.clock() -- the drill clock starts with the drill
 	local ok, perf = pcall(drill, ctx, res)
 	ctx.on(nil)
 	ctx.intensity = nil
@@ -4186,8 +4251,9 @@ function Activities.Start(actId)
 		State.req("CancelActivity")
 		State.toast(act.name .. " cancelled - no energy used.", T.sub)
 	else
-		ctx.mode = "done"
+		-- (the server measures the quality itself from the inputs; this number is only the client's view)
 		local quality = 0.5 + math.clamp(perf, 0, 1) * 0.95
+		ctx.mode = "done"
 		local fin = State.req("FinishActivity", res.token, quality, ctx.out)
 		if fin.ok then
 			if camConn then

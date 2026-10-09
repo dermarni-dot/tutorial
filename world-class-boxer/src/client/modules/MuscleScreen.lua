@@ -89,6 +89,11 @@ local R15 = { HumanoidRootPart = true, Head = true, UpperTorso = true, LowerTors
 local FOV = 26
 local AUTO_SPIN = 0.45 -- rad/s when nobody touches the figure
 local IDLE_BEFORE_SPIN = 2.2
+-- the groups that sit on one side of the body: picking one turns the figure to show it (yaw 0 = the
+-- front faces the camera), and left alone it sways around that side instead of spinning away
+local FACING = { chest = 0, core = 0, back = math.pi }
+local TURN_SPEED = 4 -- rad/s
+local SWAY = 0.7 -- rad either side of the facing when idle
 
 ------------------------------------------------------------------------
 -- The figure: a frozen copy of the character (the cloning rules of FighterCard's portrait, without
@@ -504,7 +509,9 @@ function MuscleScreen.IsOpen()
 	return screen ~= nil and screen.shade.Parent ~= nil
 end
 
-function MuscleScreen.Close()
+-- silent: another window is taking over (State.closeAll from its opener) - the "back" target (the
+-- Hub) must not reopen over it. Only the player's own close (X, B, Backspace) goes back.
+function MuscleScreen.Close(silent)
 	local s = screen
 	if not s then
 		return
@@ -518,9 +525,12 @@ function MuscleScreen.Close()
 		s.shade:Destroy()
 	end
 	State.HideHud("Muscle", false)
-	if s.back then
+	if s.back and silent ~= true then
 		task.defer(s.back)
 	end
+end
+local function closeSilently()
+	MuscleScreen.Close(true)
 end
 
 -- opts: growth = { [partId] = gain } (the session just finished: those parts are marked), group = the
@@ -531,16 +541,21 @@ function MuscleScreen.Open(opts)
 	if not (P and P.created) or State.inFight() then
 		return
 	end
-	MuscleScreen.Close()
+	MuscleScreen.Close(true)
 	State.closeAll("Muscle")
 	-- modal like the hub: the HUD plate would peek out from behind the window
 	State.HideHud("Muscle", true)
 	local s = { conns = {}, growth = type(opts.growth) == "table" and opts.growth or nil, back = opts.back, yaw = 0, pitch = 0.12, idle = 0, stick = 0, keys = 0, history = nil }
+	if opts.group == "back" then
+		s.yaw = math.pi -- opened on the back: start behind the figure
+	end
 	screen = s
 	local compact = UI.CanvasSize(State.gui).Y < 640
-	local shade, win, body = UI.Window(State.gui, "Muscle", 1180, 720, "MUSCLE PROGRESSION", { onClose = MuscleScreen.Close, scroll = false, kicker = "BODY  ·  GROWTH OVER TIME" })
+	local shade, win, body = UI.Window(State.gui, "Muscle", 1180, 720, "MUSCLE PROGRESSION", { onClose = function()
+		MuscleScreen.Close(false)
+	end, scroll = false, kicker = "BODY  ·  GROWTH OVER TIME" })
 	s.shade, s.win = shade, win
-	State.windows.Muscle = MuscleScreen.Close
+	State.windows.Muscle = closeSilently
 	-- which group opens: asked for, else the one that grew most this session, else the arms
 	local current = groupDef(opts.group or "arms")
 	if not opts.group and s.growth then
@@ -603,15 +618,16 @@ function MuscleScreen.Open(opts)
 	-- the caption over the figure: the lit group, and how to turn it
 	local cap = UI.Text(stage, "", { Name = "Caption", Face = "displayMed", TextSize = 20, TextColor3 = T.text, Position = UDim2.fromOffset(16, 12), Size = UDim2.new(1, -32, 0, 24), AutomaticSize = Enum.AutomaticSize.None,
 		TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 3 })
-	local hint = UI.Text(stage, "", { Name = "Hint", Font = T.semi, TextSize = 12, TextColor3 = T.sub, AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 16, 1, -10), Size = UDim2.new(1, -32, 0, 16),
-		AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 3 })
+	-- (two lines from the bottom up: the keyboard hint wraps on a small window instead of losing its end)
+	local hint = UI.Text(stage, "", { Name = "Hint", Font = T.semi, TextSize = 12, TextColor3 = T.sub, AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 16, 1, -10), Size = UDim2.new(1, -32, 0, 34),
+		AutomaticSize = Enum.AutomaticSize.None, TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Bottom, ZIndex = 3 })
 	UI.BindHint(hint, function(mode)
 		if mode == "gamepad" then
 			return string.format("%s TURN   ·   %s / %s GROUP   ·   %s BACK", Gamepad.Label(K.Thumbstick2), Gamepad.Label(K.ButtonL1), Gamepad.Label(K.ButtonR1), Gamepad.Label(K.ButtonB))
 		elseif mode == "touch" then
 			return "DRAG TO TURN THE FIGURE"
 		end
-		return "DRAG TO TURN  ·  ARROW KEYS TURN  ·  ESC CLOSES"
+		return "DRAG TO TURN  ·  ARROW KEYS TURN  ·  BACKSPACE CLOSES"
 	end)
 
 	function s.updateCamera()
@@ -635,7 +651,7 @@ function MuscleScreen.Open(opts)
 	UI.Pad(panel, 2, 6)
 	local tabBar, pickTab = UI.Tabs(panel, GROUP_NAMES, current.name, function(name)
 		s.setGroup(groupDef(name))
-	end, { BackgroundTransparency = 1, Size = UDim2.new(1, -8, 0, 38), LayoutOrder = 1 })
+	end, { BackgroundTransparency = 1, Size = UDim2.new(1, -8, 0, UI.TabsHeight(panel, 38)), LayoutOrder = 1 })
 	s.pickTab = pickTab
 	s.tabBar = tabBar
 	-- seven tabs across a phone: smaller caps on one line ("SHOULDERS" wrapped at 667 wide)
@@ -788,6 +804,14 @@ function MuscleScreen.Open(opts)
 		end
 		cap.Text = string.upper(def.name) .. "  ·  LIT"
 		cap.TextColor3 = def.color
+		-- a group on one side of the body: turn the figure to it (the shortest way round) when that
+		-- side is not facing the camera
+		local face = FACING[def.id]
+		if face and math.cos(s.yaw - face) < 0.5 then
+			s.turnTo = s.yaw + ((face - s.yaw + math.pi) % (2 * math.pi) - math.pi)
+		end
+		s.idle = 0
+		s.swayFrom = nil
 		s.render()
 	end
 	-- step the groups (LB / RB)
@@ -871,13 +895,34 @@ function MuscleScreen.Open(opts)
 		end
 		t += dt
 		local turn = s.stick * 2.4 + s.keys * 1.8
-		if turn ~= 0 then
+		if turn ~= 0 or dragging then
+			-- the player's hands on it: no auto turn
+			s.turnTo, s.swayFrom = nil, nil
 			s.yaw += turn * dt
 			s.idle = 0
-		elseif not dragging then
+		elseif s.turnTo then
+			local d = s.turnTo - s.yaw
+			local step = TURN_SPEED * dt
+			if math.abs(d) <= step then
+				s.yaw, s.turnTo = s.turnTo, nil
+			else
+				s.yaw += step * math.sign(d)
+			end
+			s.idle = 0
+		else
 			s.idle += dt
 			if s.idle > IDLE_BEFORE_SPIN then
-				s.yaw += AUTO_SPIN * dt
+				local face = FACING[s.group.id]
+				if face then
+					-- a one-sided group sways around its side (the shells stay in view)
+					if not s.swayFrom then
+						s.swayFrom = { yaw = s.yaw, t = s.idle }
+					end
+					local k = s.idle - s.swayFrom.t
+					s.yaw = s.swayFrom.yaw + SWAY * math.sin(k * AUTO_SPIN / SWAY)
+				else
+					s.yaw += AUTO_SPIN * dt
+				end
 			end
 		end
 		s.updateCamera()

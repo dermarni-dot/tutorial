@@ -1996,6 +1996,236 @@ function Training.MinigameParams(profile, act)
 	return p
 end
 
+-- The drill as the server draws it (DrillScore judges it): every combination, zone, cue, beat and
+-- time limit, segment by segment. The client plays exactly this plan and the server replays the
+-- client's inputs against its own copy, so the session quality never comes from the client.
+-- (The numbers are the drills' own: Activities.lua draws nothing that changes a score.)
+function Training.DrillPlan(act, lv, params)
+	local r = Random.new()
+	local function pick(list)
+		return list[r:NextInteger(1, #list)]
+	end
+	local function shuffled(list, n)
+		local copy = table.clone(list)
+		for i = #copy, 2, -1 do
+			local j = r:NextInteger(1, i)
+			copy[i], copy[j] = copy[j], copy[i]
+		end
+		local out = {}
+		for i = 1, math.min(n, #copy) do
+			out[i] = copy[i]
+		end
+		return out
+	end
+	local kind = act.minigame
+	local segs = {}
+	local plan = { kind = kind, segs = segs }
+	lv = math.max(1, math.floor(tonumber(lv) or 1))
+	params = type(params) == "table" and params or {}
+	if kind == "combo" then
+		local pool = { { "jab", "cross" }, { "jab", "jab", "cross" }, { "jab", "cross", "leadhook" } }
+		if lv >= 2 then
+			table.insert(pool, { "jab", "cross", "leadhook", "cross" })
+			table.insert(pool, { "cross", "leadhook", "cross" })
+		end
+		if lv >= 3 then
+			table.insert(pool, { "jab", "uppercut", "leadhook" })
+			table.insert(pool, { "leadhook", "rearhook", "leadhook" })
+			table.insert(pool, { "jab", "cross", "leadhook*", "cross" })
+		end
+		if lv >= 4 then
+			table.insert(pool, { "jab", "cross", "leadhook", "rearhook", "uppercut" })
+			table.insert(pool, { "jab", "overhand", "leadhook*" })
+			table.insert(pool, { "leadhook*", "leadhook", "cross", "uppercut" })
+		end
+		for _ = 1, 4 do
+			local combo = pick(pool)
+			local ids, body = {}, {}
+			for i, c in ipairs(combo) do
+				ids[i] = (c:gsub("%*", ""))
+				body[i] = c:find("%*") ~= nil
+			end
+			table.insert(segs, { j = "seq", ids = ids, body = body, limit = 1.3 + #combo * 0.55 - lv * 0.05 })
+		end
+		local shots = lv >= 3 and 4 or 3
+		for s = 1, shots do
+			table.insert(segs, { j = "needle", c = 0.66 + r:NextNumber() * 0.18, w = math.max(0.04, 0.065 - lv * 0.004), sweep = 0.9 + lv * 0.08 + s * 0.05, dur = 4.5 })
+		end
+		table.insert(segs, { j = "burst", dur = 6, target = 4.4 + lv * 0.2 })
+	elseif kind == "rhythm" then
+		local baseBpm = ({ 112, 140, 168, 196 })[lv] or 140
+		local rounds = { { name = "ALTERNATING RHYTHM", bpm = baseBpm, pattern = "alt" },
+			{ name = lv >= 3 and "DOUBLES & TRIPLETS" or "DOUBLES", bpm = math.floor(baseBpm * 1.15 + 0.5), pattern = lv >= 3 and "mixed" or "doubles" } }
+		for _, rd in ipairs(rounds) do
+			local interval = 60 / rd.bpm
+			local count = math.clamp(math.floor(10 / interval), 16, 40)
+			local lanes = {}
+			if rd.pattern == "alt" then
+				for i = 1, count do
+					local lane = (i % 2 == 1) and "L" or "R"
+					if lv >= 3 and i % 7 == 0 then
+						lane = lanes[i - 1] or lane -- a double now and then on the better bags
+					end
+					lanes[i] = lane
+				end
+			else
+				local hand = "L"
+				while #lanes < count do
+					local g = (rd.pattern == "mixed" and r:NextNumber() < 0.45) and 3 or 2
+					for _ = 1, g do
+						if #lanes < count then
+							table.insert(lanes, hand)
+						end
+					end
+					hand = hand == "L" and "R" or "L"
+				end
+			end
+			table.insert(segs, { j = "notes", name = rd.name, bpm = rd.bpm, lanes = lanes, interval = interval, lead = 1.2, hitW = 0.22, perfectW = 0.06, goodW = 0.13 })
+		end
+	elseif kind == "reaction" then
+		local window = ({ 0.95, 0.8, 0.68, 0.56 })[lv] or 0.8
+		local options = { "punch", "punch", "slipL", "slipR" }
+		local defs = { "slipL", "slipR" }
+		if lv >= 2 then
+			table.insert(options, "roll")
+			table.insert(defs, "roll")
+		end
+		for _ = 1, 8 do
+			table.insert(segs, { j = "cue", want = pick(options), window = window, delay = 0.45 + r:NextNumber() * 0.9 })
+		end
+		for _ = 1, 5 do
+			table.insert(segs, { j = "counter", want = pick(defs), window = window, cw = window * 0.9 + 0.2, delay = 0.5 + r:NextNumber() * 0.7 })
+		end
+	elseif kind == "mitts" then
+		local list = {}
+		for _, c in ipairs(Config.MittCombos) do
+			if c.tier <= lv then
+				-- favour combos near your coach's level
+				for _ = 1, (c.tier >= lv - 1) and 2 or 1 do
+					table.insert(list, c)
+				end
+			end
+		end
+		for rd = 1, 2 do
+			for _ = 1, 4 do
+				local c = pick(list)
+				table.insert(segs, { j = "seq", g = rd, name = c.name, ids = table.clone(c.keys), limit = math.max(1.6, 1.4 + #c.keys * 0.55 - lv * 0.12) * (rd == 2 and 0.85 or 1) })
+			end
+		end
+	elseif kind == "shadow" then
+		local window = ({ 1.25, 1.0, 0.8 })[lv] or 1.0
+		local prompts = { "F", "B", "L", "R", "slipL", "slipR", "roll", "jab", "cross", "leadhook" }
+		for _ = 1, 8 do
+			table.insert(segs, { j = "cue", want = pick(prompts), window = window, delay = 0.15 + r:NextNumber() * 0.3 })
+		end
+		for _, flow in ipairs(shuffled(Config.ShadowFlows, 3)) do
+			local len = lv <= 1 and 3 or (lv == 2 and (r:NextNumber() < 0.5 and 3 or 4) or 4)
+			local seq = {}
+			for k = 1, math.min(len, #flow) do
+				seq[k] = flow[k]
+			end
+			table.insert(segs, { j = "seq", ids = seq, limit = 1.4 + #seq * 0.75 - (lv - 1) * 0.2 })
+		end
+	elseif kind == "reps" then
+		for set = 1, 2 do
+			for rep = 1, 5 do
+				local width = math.max(0.08, (0.24 - rep * 0.012 + lv * 0.01) * (set == 2 and 0.78 or 1))
+				local lo = math.clamp(0.58 + r:NextNumber() * 0.2, 0.5, 0.95 - width)
+				table.insert(segs, { j = "lift", mode = "rep", set = set, rep = rep, lo = lo, width = width, speed = (0.55 + rep * 0.03) * (set == 2 and 1.08 or 1) })
+			end
+		end
+	elseif kind == "medball" then
+		local slams = 5 + math.min(lv, 3)
+		for rep = 1, slams do
+			local width = math.max(0.1, 0.22 - rep * 0.008 + lv * 0.012)
+			local lo = math.clamp(0.62 + r:NextNumber() * 0.16, 0.5, 0.96 - width)
+			table.insert(segs, { j = "lift", mode = "slam", rep = rep, lo = lo, width = width, speed = 0.85 + rep * 0.03 + lv * 0.05 })
+		end
+		local bpm = ({ 64, 76, 88, 100 })[math.clamp(lv, 1, 4)]
+		local lanes = {}
+		for i = 1, 14 + math.min(lv, 4) * 2 do
+			lanes[i] = (i % 2 == 1) and "L" or "R"
+		end
+		table.insert(segs, { j = "notes", bpm = bpm, lanes = lanes, interval = 60 / bpm, lead = 1.2, hitW = 0.25, perfectW = 0.12 })
+	elseif kind == "pace" then
+		local shrink = (lv - 1) * 0.02
+		local phases = {}
+		for i, ph in ipairs({ { 0.3, 0.5, "WARM-UP" }, { 0.6, 0.82, "SPRINT!" }, { 0.35, 0.55, "RECOVER" }, { 0.66, 0.88, "ALL OUT!" } }) do
+			phases[i] = { ph[1] + shrink, ph[2] - shrink, ph[3] }
+		end
+		table.insert(segs, { j = "pace", duration = 28, phases = phases, v0 = 0.2, kick = 0.085, decay = 0.2 })
+	elseif kind == "ladder" then
+		local available = {}
+		for _, d in ipairs(Config.LadderDrills) do
+			if d.lv <= lv then
+				table.insert(available, d)
+			end
+		end
+		local dirs = { "F", "L", "B", "R" }
+		if lv >= 4 then
+			-- smart reaction lights: a named drill lit pad by pad, then random lights
+			local tpl = pick(available)
+			local steps, rnd = {}, {}
+			while #steps < 12 do
+				for _, s in ipairs(tpl.steps) do
+					if #steps < 12 then
+						table.insert(steps, s)
+					end
+				end
+			end
+			for i = 1, 12 do
+				rnd[i] = pick(dirs)
+			end
+			for i, ids in ipairs({ steps, rnd }) do
+				local delays = {}
+				for k = 1, #ids do
+					delays[k] = 0.12 + r:NextNumber() * 0.2
+				end
+				table.insert(segs, { j = "lights", name = i == 1 and (tpl.name .. " (LIGHTS)") or "RANDOM REACTION", ids = ids, delays = delays, limit = 14, first = 0.2 })
+			end
+		else
+			for _, d in ipairs(shuffled(available, 4)) do
+				table.insert(segs, { j = "seq", name = d.name, ids = table.clone(d.steps), limit = #d.steps * 0.55 + 1 })
+			end
+		end
+	elseif kind == "rope" then
+		local phases = { { name = "BASIC BOUNCE", mode = "jump" } }
+		if params.footwork then
+			table.insert(phases, { name = "BOXER SKIP", mode = "feet" })
+		end
+		if params.doubleUnders then
+			table.insert(phases, { name = "DOUBLE UNDERS", mode = "doubles" })
+		end
+		if #phases == 1 then
+			table.insert(phases, { name = "SPEED SKIP", mode = "speed" })
+		end
+		local perPhase = #phases >= 3 and { 12, 10, 10 } or { 14, 14 }
+		for i, ph in ipairs(phases) do
+			local jumps = perPhase[i] or 10
+			local cues = {}
+			local footNext = r:NextNumber() < 0.5 and "footL" or "footR"
+			for k = 1, jumps + 1 do
+				local cue = "jump"
+				if ph.mode == "doubles" and r:NextNumber() < 0.5 then
+					cue = "double"
+				elseif ph.mode == "feet" then
+					cue = footNext
+					if r:NextNumber() < 0.8 then
+						footNext = footNext == "footL" and "footR" or "footL"
+					end
+				end
+				cues[k] = cue
+			end
+			table.insert(segs, { j = "rope", name = ph.name, mode = ph.mode, jumps = jumps, omega = ph.mode == "speed" and 7.8 or 6.5, cues = cues })
+		end
+	elseif kind == "hold" then
+		table.insert(segs, { j = "breath", breaths = 5, inhale = 2.6, exhale = 2.6 })
+	else
+		return nil
+	end
+	return plan
+end
+
 ------------------------------------------------------------------------
 -- Save migration (DataManager.Load). Never bump Config.DataVersion: a mismatch wipes careers.
 ------------------------------------------------------------------------

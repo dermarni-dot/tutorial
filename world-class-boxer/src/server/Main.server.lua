@@ -14,6 +14,7 @@ local Config = require(Shared.Config)
 local Catalog = require(Shared.Catalog)
 local Looks = require(Shared.Looks)
 local Builder = require(Shared.Builder)
+local DrillScore = require(Shared.DrillScore)
 local DataManager = require(Modules.DataManager)
 local World = require(Modules.World)
 local Training = require(Modules.Training)
@@ -99,32 +100,39 @@ end
 local PROP_FOR = { bench = "bench", deadlift = "deadlift", squat = "squat", curl = "curl", rope = "rope", row = "row", medball = "medball" }
 -- shortest believable time for each minigame (anything faster is treated as a sloppy session)
 local MIN_TIME = { combo = 9, rhythm = 9, reaction = 9, mitts = 9, shadow = 9, reps = 9, pace = 11, ladder = 7, rope = 9, hold = 5, medball = 9 }
--- What the server can see of a drill: its clock and its presses (ActivityInput: the client fires one
--- per key / button press a drill accepted; counted at most every PRESS_GAP s). The client's score is
--- trusted only as far as the session lasted PRESS_FLOOR.t seconds and carried PRESS_FLOOR.n presses -
--- about 60% of the least an honest, perfect run takes - so a forged score can never beat an honest
--- perfect session: an idle client is capped at the quality of a session with no work in it, and a
--- macro has to put in the real time and the real presses.
-local PRESS_GAP = 0.09
-local PRESS_FLOOR = {
-	combo = { t = 30, n = 30 }, rhythm = { t = 18, n = 24 }, reaction = { t = 18, n = 12 }, mitts = { t = 18, n = 18 }, shadow = { t = 20, n = 14 },
-	reps = { t = 16, n = 8 }, medball = { t = 18, n = 12 }, pace = { t = 22, n = 8 }, ladder = { t = 14, n = 10 }, rope = { t = 15, n = 18 }, hold = { t = 22, n = 4 },
-}
--- roadwork / swim: the shortest believable session (under it: sloppy, never a record) and the share of
--- the par time a run must take before any pace bonus counts
-local COURSE_MIN = { course = 30, swim = 10 }
-local PACE_MIN_SHARE = 0.5
+-- The drill's quality is the server's: StartActivity draws the drill (Training.DrillPlan) and the client
+-- sends every input its drill takes (ActivityInput: id, down, t on the drill clock; "@" when a segment
+-- starts). FinishActivity replays that stream through DrillScore against the server's own plan - the
+-- client's score is ignored. Inputs must come in as they happen: one stamped ahead of the server's
+-- clock, more than DRILL_MAX_LAG s behind it, or DRILL_LAG_SPREAD s further behind than the session's
+-- quickest, is dropped (a stream made up afterwards counts for nothing).
+local DRILL_MAX_LAG, DRILL_LAG_SPREAD = 6, 3.5
+-- roadwork / swim: a run quicker than this share of par is sloppy (never a record), the pace bonus
+-- stops at PACE_CAP (par is the humanoid's own speed over the course), and the ground covered over
+-- SPEED_WINDOW s may not beat that speed (+15%)
+local COURSE_MIN_SHARE, PACE_CAP, SPEED_WINDOW = 0.75, 1.05, 3
 local ActivityInput = Instance.new("RemoteEvent")
 ActivityInput.Name = "ActivityInput"
 ActivityInput.Parent = remotes
-ActivityInput.OnServerEvent:Connect(function(player, token)
+ActivityInput.OnServerEvent:Connect(function(player, token, id, down, t)
 	local s = sessions[player]
-	if not s or s.token ~= token then
+	if not s or s.token ~= token or not s.events then
 		return
 	end
-	local now = os.clock()
-	if now - (s.lastPress or 0) >= PRESS_GAP then
-		s.lastPress = now
+	if type(id) ~= "string" or #id > 16 or type(t) ~= "number" or t ~= t or t < 0 or t > 3600 then
+		return
+	end
+	local ev = s.events
+	local lag = (os.clock() - s.start) - t
+	local lagMin = math.min(s.lagMin or lag, lag)
+	local last = ev[#ev]
+	if #ev >= DrillScore.MAX_EVENTS or lag < -0.25 or lag > DRILL_MAX_LAG or lag - lagMin > DRILL_LAG_SPREAD or (last and t < last.t) then
+		s.dropped += 1
+		return
+	end
+	s.lagMin = lagMin
+	table.insert(ev, { id = id, down = down == true, t = t })
+	if down == true and id ~= "@" then
 		s.presses += 1
 	end
 end)
@@ -482,7 +490,13 @@ local function startActivity(player, profile, actId)
 		return { ok = false, err = "Your character isn't ready." }
 	end
 	local level = Training.StationLevel(profile, act.station)
-	local s = { token = HttpService:GenerateGUID(false), act = act, start = os.clock(), kind = act.minigame, station = act.station, level = level, presses = 0 }
+	local params = Training.MinigameParams(profile, act)
+	local s = { token = HttpService:GenerateGUID(false), act = act, start = os.clock(), kind = act.minigame, station = act.station, level = level, presses = 0, dropped = 0 }
+	if act.minigame ~= "course" and act.minigame ~= "swim" then
+		-- the drill as the server draws it: the client plays it, FinishActivity replays the inputs on it
+		s.plan = Training.DrillPlan(act, level, params)
+		s.events = {}
+	end
 	local def = STATION[act.station]
 	if def then
 		local m = stationModel(def.id)
@@ -528,16 +542,16 @@ local function startActivity(player, profile, actId)
 		s.cps = trackCheckpoints()
 		s.cp = 1
 		hum.WalkSpeed = math.floor(18 + profile.stats.Stamina * 0.06)
-		-- the course as the server will measure it: the root's believable steps add up to s.dist, so a
-		-- checkpoint only counts for a runner who covered the ground to it
+		-- the course as the server measures it (plausibleStep / approach): only believable ground covered
+		-- toward the next checkpoint counts, and a checkpoint needs most of its leg run
 		local len, from = 0, root.Position
 		for _, cp in ipairs(s.cps) do
 			len += flatDist(from, cp)
 			from = cp
 		end
-		-- a checkpoint triggers 11 studs out, so an honest lap runs a little short of the straight legs
-		s.courseLen = math.max(50, len * 0.8)
-		s.dist, s.warps, s.lastPos, s.lastAt, s.speedCap = 0, 0, root.Position, os.clock(), hum.WalkSpeed
+		-- a checkpoint triggers 11 studs out: the shortest honest lap cuts about 22 studs at each one
+		s.courseLen = math.max(50, len - 22 * #s.cps)
+		s.dist, s.warps, s.lastPos, s.lastAt, s.speedCap, s.win, s.winDist = 0, 0, root.Position, os.clock(), hum.WalkSpeed, {}, 0
 	elseif act.minigame == "swim" then
 		local m = stationModel("pool")
 		local base = m and m:FindFirstChild("Base")
@@ -552,9 +566,9 @@ local function startActivity(player, profile, actId)
 			s.nextEnd = flatDist(root.Position, a) < flatDist(root.Position, b) and "B" or "A"
 		end
 		hum.WalkSpeed = math.floor(16 + profile.stats.Stamina * 0.04)
-		-- a pool end triggers 13 studs out: a length as the server measures it is that much shorter
-		s.courseLen = math.max(30, (a and b) and (flatDist(a, b) - 26) * s.target or 0)
-		s.dist, s.warps, s.lastPos, s.lastAt, s.speedCap = 0, 0, root.Position, os.clock(), hum.WalkSpeed
+		-- a pool end triggers 4.5 studs out: the shortest honest length is that much short at each end
+		s.courseLen = math.max(30, (a and b) and (flatDist(a, b) - 9) * s.target or 0)
+		s.dist, s.warps, s.lastPos, s.lastAt, s.speedCap, s.win, s.winDist = 0, 0, root.Position, os.clock(), hum.WalkSpeed, {}, 0
 	end
 	sessions[player] = s
 	setBusy(player, "activity")
@@ -562,7 +576,7 @@ local function startActivity(player, profile, actId)
 		char:SetAttribute("Expr", "effort") -- the Animator's face strains through the set (cleared in endSession)
 	end
 	return {
-		ok = true, token = s.token, minigame = act.minigame, params = Training.MinigameParams(profile, act), level = level,
+		ok = true, token = s.token, minigame = act.minigame, params = params, level = level, plan = s.plan,
 		pose = s.pose, act = act.id, energy = Training.EnergyCost(profile, act), cps = s.cps and #s.cps or nil, lengths = s.target,
 	}
 end
@@ -575,45 +589,40 @@ local function finishActivity(player, profile, token, score, stats)
 	end
 	local act = s.act
 	local elapsed = os.clock() - s.start
-	local quality = tonumber(score) or 0.8
-	if quality ~= quality then
-		quality = 0.8
-	end
-	-- the client's own formula tops out at 1.45 (0.5 + 0.95): anything above is forged
-	quality = math.clamp(quality, 0.4, 1.45)
+	-- `score` (the client's own number) is never used: the server measures the session
+	local quality = 0.5
 	local tooFast = false
 	local opts = {}
-	local watch = { t = math.floor(elapsed * 10 + 0.5) / 10, n = s.presses or 0, dist = s.dist, warps = s.warps }
+	local watch = { t = math.floor(elapsed * 10 + 0.5) / 10, n = s.presses or 0, dist = s.dist and math.floor(s.dist + 0.5), warps = s.warps, claimed = tonumber(score) }
 	if s.kind == "course" or s.kind == "swim" then
-		-- the ground covered counts as much as the checkpoints passed: a teleport reaches the arch
-		-- with no distance behind it
+		-- the ground covered counts as much as the checkpoints passed (a checkpoint already needs most of
+		-- its leg run, see approach)
 		local done = s.kind == "course" and (s.cp - 1) / math.max(1, #s.cps) or s.lengths / s.target
-		done = math.clamp(math.min(done, (s.dist or 0) / (s.courseLen or 1)), 0, 1)
+		done = math.clamp(math.min(done, (s.dist or 0) / (0.85 * (s.courseLen or 1))), 0, 1)
 		if done < 0.25 then
 			endSession(player)
 			return { ok = false, err = s.kind == "course" and "You barely left the start line - session cancelled." or "Swim at least one length - session cancelled." }
 		end
-		local par = s.kind == "course" and 1260 / 20 or s.target * 56 / 15
-		local pace = 0.8
-		if s.doneAt and s.doneAt - s.start >= par * PACE_MIN_SHARE then
-			pace = par / math.max(1, s.doneAt - s.start)
-		end
+		-- par: the course at the humanoid's own speed; nobody beats it by more than the speed allows
+		local par = (s.courseLen or 50) / math.max(1, s.speedCap or 16)
+		local pace = s.doneAt and math.min(PACE_CAP, par / math.max(1, s.doneAt - s.start)) or 0.8
 		quality = s.kind == "course" and math.clamp(0.55 + pace * 0.55, 0.5, 1.4) or math.clamp(0.55 + pace * 0.5, 0.5, 1.35)
 		opts.scale = done
 		opts.energyScale = done
-		if elapsed < COURSE_MIN[s.kind] then
+		watch.par = math.floor(par * 10 + 0.5) / 10
+		if elapsed < COURSE_MIN_SHARE * par * done then
 			quality = 0.4
 			tooFast = true
 		end
 	elseif elapsed < (MIN_TIME[s.kind] or 6) then
 		quality = 0.4
 		tooFast = true -- counts as a sloppy session, but never as a record
-	else
-		local floor = PRESS_FLOOR[s.kind]
-		if floor then
-			local seen = math.min(1, elapsed / floor.t) * math.min(1, (s.presses or 0) / floor.n)
-			quality = math.min(quality, 0.5 + 0.95 * seen)
-		end
+	elseif s.plan then
+		-- the drill clock when the client handed the session in (its inputs reach us lagMin behind it)
+		local perf = DrillScore.Replay(s.plan, s.events, elapsed - (s.lagMin or 0))
+		quality = 0.5 + 0.95 * perf
+		watch.perf = math.floor(perf * 1000 + 0.5) / 1000
+		watch.events, watch.dropped = #s.events, s.dropped
 	end
 	local result
 	if act.recovery then
@@ -653,35 +662,69 @@ local function finishActivity(player, profile, token, score, stats)
 	return { ok = true, result = result, quality = quality, act = act.id, record = record, watch = watch }
 end
 
--- one frame of a runner / swimmer: a believable step (the humanoid's speed with a sprint margin, at
--- least 3 studs for a replication burst) adds to the distance covered; a longer one is a teleport,
--- which earns no distance and no checkpoint on that frame. The running second is checked too: more
--- ground in it than the speed allows (a speed hack: small steps, too many of them) is taken back
+-- one frame of a runner / swimmer: is the step believable? A step longer than a sprint (and a
+-- replication burst) can explain is a teleport; more ground over the last SPEED_WINDOW s than the
+-- humanoid's speed (+15%) covers is a speed hack. Either earns nothing on that frame and holds the
+-- next checkpoint back for a second (s.warpAt).
 local function plausibleStep(s, root)
 	local now = os.clock()
 	local pos = root.Position
 	local last, lastAt = s.lastPos, s.lastAt
 	s.lastPos, s.lastAt = pos, now
 	if not last then
-		s.secAt, s.secDist = now, 0
 		return true
 	end
 	local cap = s.speedCap or 24
 	local moved = flatDist(pos, last)
 	if moved > math.max(3, cap * 1.6 * math.max(1 / 240, now - (lastAt or now)) + 1) then
 		s.warps += 1
+		s.warpAt = now
 		return false
 	end
-	s.dist += moved
-	s.secDist = (s.secDist or 0) + moved
-	if now - (s.secAt or now) >= 1 then
-		if s.secDist > cap * 1.7 + 4 then
-			s.dist -= s.secDist
-			s.warps += 1
+	-- the window: { time, moved } pairs from s.winHead on (compacted now and then)
+	local win = s.win
+	table.insert(win, now)
+	table.insert(win, moved)
+	s.winDist += moved
+	local head = s.winHead or 1
+	while head < #win and now - win[head] > SPEED_WINDOW do
+		s.winDist -= win[head + 1]
+		head += 2
+	end
+	if head > 200 then
+		s.win = table.move(win, head, #win, 1, {})
+		head = 1
+	end
+	s.winHead = head
+	local span = math.max(1.5, now - s.win[head])
+	if s.winDist > (cap * 1.15 + 2) * span + 3 then
+		if now - (s.warpAt or -math.huge) >= 1 then
+			s.warps += 1 -- a stretch of too-fast running counts once a second
 		end
-		s.secAt, s.secDist = now, 0
+		s.warpAt = now
+		return false
 	end
 	return true
+end
+
+-- the ground covered toward the current target: only a new closest approach counts, and only on a
+-- believable frame (circling, running back and forth or a teleport add nothing). d = the distance to it.
+local function approach(s, d, ok)
+	if not s.minD then
+		s.minD, s.legD0, s.legRun = d, d, 0
+		return
+	end
+	if d < s.minD then
+		if ok then
+			s.legRun += s.minD - d
+			s.dist += s.minD - d
+		end
+		s.minD = d
+	end
+end
+-- a target reached inside `radius` counts once most of its leg was run and nothing warped for a second
+local function legDone(s, radius, now)
+	return s.legRun >= 0.7 * math.max(0, s.legD0 - radius) and now - (s.warpAt or -math.huge) >= 1
 end
 
 -- roadwork checkpoints and swim lengths are measured on the server (the notifications carry the
@@ -692,27 +735,31 @@ RunService.Heartbeat:Connect(function()
 		if s.kind == "course" or s.kind == "swim" then
 			local char = player.Character
 			local root = char and char:FindFirstChild("HumanoidRootPart")
-			if root and not plausibleStep(s, root) then
-				root = nil
-			end
 			if root then
+				local ok = plausibleStep(s, root)
+				local now = os.clock()
 				if s.kind == "course" and s.cp <= #s.cps then
-					if flatDist(root.Position, s.cps[s.cp]) < 11 then
+					local d = flatDist(root.Position, s.cps[s.cp])
+					approach(s, d, ok)
+					if d < 11 and ok and legDone(s, 11, now) then
 						s.cp += 1
+						s.minD = nil
 						Notify:FireClient(player, { t = "checkpoint", n = s.cp - 1, total = #s.cps, token = s.token })
 						if s.cp > #s.cps then
-							s.doneAt = os.clock()
+							s.doneAt = now
 						end
 					end
 				elseif s.kind == "swim" and s.endA and s.lengths < s.target then
-					local inWater = root.Position.Y < 1.2
 					local target = s.nextEnd == "A" and s.endA or s.endB
-					if inWater and math.abs(root.Position.X - target.X) < 4.5 and math.abs(root.Position.Z - target.Z) < 13 then
+					approach(s, flatDist(root.Position, target), ok)
+					local inWater = root.Position.Y < 1.2
+					if inWater and ok and math.abs(root.Position.X - target.X) < 4.5 and math.abs(root.Position.Z - target.Z) < 13 and legDone(s, 13, now) then
 						s.lengths += 1
 						s.nextEnd = s.nextEnd == "A" and "B" or "A"
+						s.minD = nil
 						Notify:FireClient(player, { t = "length", n = s.lengths, total = s.target, token = s.token })
 						if s.lengths >= s.target then
-							s.doneAt = os.clock()
+							s.doneAt = now
 						end
 					end
 				end
