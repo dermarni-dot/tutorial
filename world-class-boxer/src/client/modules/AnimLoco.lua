@@ -363,9 +363,12 @@ function AnimLoco.armSwing(p, rig, k)
 	local ph = 2 * PI * (lo.armPhase - lerp(0.035, 0.015, run))
 	local c = cos(ph)
 	local ce = cos(ph - lerp(0.55, 0.3, run))
-	-- (no two people swing their arms alike: one arm a little bigger, per seed)
-	local seed = rig.seed or 0
-	local asym = (K.rand3(seed, 5.1, 2.7) - 0.5) * 0.18
+	-- (no two people swing their arms alike: one arm a little bigger, per seed; hashed once per rig)
+	local asym = lo.swingAsym
+	if not asym then
+		asym = (K.rand3(rig.seed or 0, 5.1, 2.7) - 0.5) * 0.18
+		lo.swingAsym = asym
+	end
 	-- (the swing grows with the pace: a stroll's arms hang quiet, a jog's pump, a sprint's drive)
 	local amp = lerp(0.22 + 0.04 * v, 0.5 + 0.01 * v, run)
 	local out = 0.07 + 0.12 * R.bulkOf(rig)
