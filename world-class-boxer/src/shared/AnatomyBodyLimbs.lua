@@ -29,6 +29,10 @@ Limbs.RES = {
 	medium = { UpperArm = { 9, 12, 1, 1 }, LowerArm = { 8, 12, 1, 1 }, UpperLeg = { 9, 12, 1, 1 }, LowerLeg = { 8, 12, 1, 1 } },
 	low = { UpperArm = { 5, 8, 0, 0 }, LowerArm = { 4, 8, 0, 0 }, UpperLeg = { 5, 8, 0, 0 }, LowerLeg = { 4, 8, 0, 0 } },
 }
+-- the trunks' seat (LowerTorso) ends this far under the hip pivots: its open rim lies on the satin legs' own
+-- rings a hair outside them (Torso.Lower follows TrunkTop's ring), and above the rim the legs taper in fast,
+-- hidden inside the seat. One garment from the band to the hem: no step, no crease, no crossing surfaces
+Limbs.SEAT_RIM = 0.08
 
 -- angular window (raised cosine) and its belly along the bone
 local function win(a, c, w)
@@ -383,7 +387,7 @@ local function setup(sk, P, lod, side, kind, opt)
 	local zones = {}
 	for _, z in ipairs(opt.zones or { { B0, B1, "skin" } }) do
 		if z[1] < B1 - 0.03 and z[2] > B0 + 0.03 then
-			zones[#zones + 1] = { max(z[1], B0), min(z[2], B1), z[3], z[4] and max(z[4], B0), z[5] and min(z[5], B1) }
+			zones[#zones + 1] = { max(z[1], B0), min(z[2], B1), z[3], z[4] and max(z[4], B0), z[5] and min(z[5], B1), z[6] }
 		end
 	end
 	if #zones == 0 then
@@ -426,6 +430,10 @@ local function setup(sk, P, lod, side, kind, opt)
 		return (topEx + topBulge) * S * (1.02 + flare) * k + 0.022 * S, (topEz + topBulge) * S * (0.97 + flare * 0.3) * k + 0.016 * S,
 			(topEz + topBulge) * S * (1.03 + flare * 0.5) * k + 0.024 * S
 	end
+	local sg = side == "Right" and 1 or -1
+	-- the body x of the ring frame's lateral and front axes (the frame tilts with the splayed bone: a medial
+	-- limit set in the frame's own x would let the two satin legs cross the midline)
+	local fsx, _, _, ffx = limbFrameFn(ux, uy, uz, sg)
 	-- the skin's radius: base ellipse + bellies - grooves
 	local function skinR(bb, ang, smoothK)
 		local ex, ez = rx(bb) * S, rz(bb) * S
@@ -440,7 +448,8 @@ local function setup(sk, P, lod, side, kind, opt)
 		end
 		return r + relief * (smoothK or 1)
 	end
-	local function radiusAt(bb, ang, z)
+	-- (full: the satin's section above the hip line too, without the taper into the seat: the seat matches it)
+	local function radiusAt(bb, ang, z, full)
 		z = z or zoneAt(zones, bb)
 		local kind2 = z[3]
 		if kind2 == "skin" then
@@ -456,14 +465,20 @@ local function setup(sk, P, lod, side, kind, opt)
 			local c, s = cos(ang), sin(ang)
 			local long = hemB >= 0.97
 			local latX, fZ, bZ = trunkDims(t, long)
-			-- the medial face: on the body's midline (a hair short of it, so the legs' faces touch, not cross)
+			-- the medial face: on the body's midline (a hair short of it, so the legs' faces touch, not cross),
+			-- measured in body space along the frame's lateral axis
 			local px = a[1] + ux * L * bb
-			local medX = max(0.05, abs(px) - 0.006)
+			local midX = abs(px) - 0.003
+			local medX = max(0.05, midX / max(0.5, fsx * sg))
 			local ex = c >= 0 and latX or min(latX, medX)
 			local ez = s >= 0 and fZ or bZ
 			-- (squarer toward the medial face: the two legs' fronts meet flush on the midline)
 			-- (the front panel flatter (squarer) than the back)
-			local n = (c < 0 and 2.4 + 1.2 * (-c) or 2.4) + (s > 0 and 0.5 * s or 0)
+			-- (the medial corners nearly square: with round corners the two legs' fronts and backs fell away
+			-- from each other toward the midline, a wide dark V at the crotch instead of one front panel with a
+			-- seam; at the ring's own 45-degree vertex the corner now stops a hair short of square, so the two
+			-- legs' fronts and backs read as one panel each, joined by a thin seam line)
+			local n = (c < 0 and 2.4 + 1.2 * (-c) + 24 * (-c) * abs(s) or 3.0) + (s > 0 and 0.5 * s or 0)
 			local loose = 1 / ((abs(c) / ex) ^ n + (abs(s) / ez) ^ n) ^ (1 / n)
 			if long then
 				-- knee-length trunks hang from the hip and taper toward the knee (never onto the skin)
@@ -473,14 +488,32 @@ local function setup(sk, P, lod, side, kind, opt)
 			local medK = 1 - win(ang, MED, 0.9)
 			-- drape: a few broad folds hanging from the seat and finer creases toward the opening
 			-- (long trunks hang in more, longer folds: a smooth round leg reads as an inflated tube)
+			-- (none at the top under the seat's rim, where the seat follows this ring: the other leg's folds
+			-- differ (its phase, the dominant side's bulk), and a fold there stood out of the seat)
 			local fk = long and 1.4 or 1
-			loose += (0.016 * fk * sin(3 * ang + folds + 2.2 * bb) + 0.01 * fk * sin(7 * ang + 2 * folds + 4 * bb) * t) * S * (0.3 + 0.7 * t) * medK
+			local rimB = Limbs.SEAT_RIM / L
+			local topK = smooth(rimB + 0.01, rimB + 0.14, bb)
+			loose += (0.016 * fk * sin(3 * ang + folds + 2.2 * bb) + 0.01 * fk * sin(7 * ang + 2 * folds + 4 * bb) * t) * S * (0.3 + 0.7 * t) * medK * topK
 			loose += 0.015 * S * sin(ang) * t
 			-- the creases where the satin bunches at the inner thigh (diagonal, from the crotch out and down)
-			loose -= 0.008 * S * max(0, sin(9 * (ang - FRONT) + 14 * bb)) ^ 3 * win(ang, MED - 0.55, 0.8) * (1 - smooth(0.12, 0.4, bb))
-			-- above the hip the leg is inside the trunks' seat (the LowerTorso piece carries the hips)
-			loose = lerp(skinR(bb, ang) + 0.01 * S, loose, smooth(-0.14, 0.04, bb))
-			return max(skinR(bb, ang, 0.8) + 0.014 * S, loose)
+			loose -= 0.008 * S * max(0, sin(9 * (ang - FRONT) + 14 * bb)) ^ 3 * win(ang, MED - 0.55, 0.8) * topK * (1 - smooth(0.12, 0.4, bb))
+			local r = max(skinR(bb, ang, 0.8) + 0.014 * S, loose)
+			-- above the seat's rim the leg is inside the trunks' seat (the LowerTorso piece carries the hips):
+			-- full size down to the rim, where the seat's rim lies on this ring a hair outside it (no step, no
+			-- crossing), then from just above the rim it tapers in fast to well inside the seat, and higher up
+			-- to well inside the thigh's skin (never seen: the seat narrows fast toward the waist)
+			-- (the whole surface tapers, the muscle bulging through the satin too, or that stood out of the seat)
+			-- (the rim is a ring of the leg (a zone edge, AnatomyBody.wearOf): the taper starts just above it)
+			if not full then
+				r -= 0.06 * S * smooth(rimB - 0.005 / L, rimB - 0.08 / L, bb)
+				r = lerp(skinR(bb, ang) * 0.85, r, smooth(-0.13, -0.03, bb))
+			end
+			-- nothing past the midline, whatever the thigh's own bulk there (the ring direction's body x)
+			local dirX = (fsx * c + ffx * s) * sg
+			if dirX < -1e-3 then
+				r = min(r, midX / -dirX)
+			end
+			return r
 		elseif kind2 == "trunkcuff" then
 			-- (full relief: the calf right under the cuff never stands out past its hem)
 			return skinR(bb, ang) + 0.03 * S
@@ -517,7 +550,6 @@ local function setup(sk, P, lod, side, kind, opt)
 	-- out from the shoulder pivot while the forearm hangs straight: tubes meeting at that kink show a ragged
 	-- seam). x offset only: a cubic, zero (and flat) where it starts, zero at the pivot with the end tangent
 	-- along the forearm; past the pivot it continues along that tangent.
-	local sg = side == "Right" and 1 or -1
 	local endA, endS0, endSpan = nil, 0, 1
 	if spec.endBend and kind == "UpperArm" then
 		local w, e = sk.piv[side .. "Wrist"], sk.piv[side .. "Elbow"]
@@ -559,8 +591,11 @@ end
 -- the satin trunk leg's top (the LowerTorso seat matches it so the leg never steps out of the seat): body-space
 -- x of the leg's outer side, its front and back extents (z), for the thigh built with these zones
 -- (also its lateral half-width and the z of its centre line there: the seat's side trim lines up with the
--- legs' trim bands with them)
-function Limbs.TrunkTop(sk, P, side, zones)
+-- legs' trim bands with them; the leg's ring sides at that detail: the seat's corners follow its chords; the
+-- leg's ring through a body height in a ring direction, as the radius and the body-space centre it is measured
+-- from: the seat's section over the legs is that ring; and how far under the hip pivots the seat's rim lies
+-- on it (Limbs.SEAT_RIM))
+function Limbs.TrunkTop(sk, P, side, zones, lod)
 	local c = setup(sk, P, "full", side, "UpperLeg", { zones = zones })
 	local long = false
 	for _, z in ipairs(c.zones) do
@@ -570,7 +605,22 @@ function Limbs.TrunkTop(sk, P, side, zones)
 	end
 	local latX, fZ, bZ = c.trunkDims(0, long)
 	local _, _, cz = c.center(c.zones[1][1])
-	return abs(c.a[1]) + latX, fZ, bZ, latX, cz
+	local sg = side == "Right" and 1 or -1
+	local sx, sy, sz, fx, fy, fz = limbFrameFn(c.ux, c.uy, c.uz, sg)
+	local uyL = c.uy * c.L
+	return abs(c.a[1]) + latX, fZ, bZ, latX, cz, (Limbs.RES[lod] or Limbs.RES.full).UpperLeg[2], function(y, ang)
+		-- the rings tilt with the splayed bone: the ring point at body height y lies on the ring whose own
+		-- height there, at its radius, is y (one refinement of the bone parameter), and its centre is the bone's
+		-- at that ring less the frame's lean (so centre + radius along body x / z is the point)
+		local cs, sn = cos(ang), sin(ang)
+		local ty = sy * cs + fy * sn
+		local bb = (y - c.a[2]) / uyL
+		local r = c.radiusAt(bb, ang, nil, true)
+		bb = (y - c.a[2] - ty * r) / uyL
+		r = c.radiusAt(bb, ang, nil, true)
+		local px, _, pz = c.center(bb)
+		return r, px + (sx * cs + fx * sn) * r - sg * r * cs, pz + (sz * cs + fz * sn) * r + r * sn
+	end, Limbs.SEAT_RIM
 end
 
 -- the lateral / front directions of a limb's loft frames (MeshKit.Loft with sideHint = the lateral side,
@@ -764,6 +814,21 @@ function Limbs.Build(sk, P, lod, side, kind, opt)
 		end
 	end
 	Kit.GridNormals(m, MeshKit, info)
+	-- the ring the trunks' seat's rim lies on takes the normals of the ring just under it (the pair's other
+	-- ring): its own faces above taper in fast inside the seat, and averaged with them it shaded as a bright
+	-- line right under the seat
+	local rimRow
+	for i = 1, rings - 1 do
+		if ringZone[i][6] == "rim" and ringZone[i + 1] ~= ringZone[i] then
+			rimRow = info.rows[info.firstRing + i - 1]
+			local below = info.rows[info.firstRing + i]
+			local N = m.N
+			for j = 0, rimRow.n - 1 do
+				local v, w = rimRow.s + j, below.s + j
+				N[v * 3 - 2], N[v * 3 - 1], N[v * 3] = N[w * 3 - 2], N[w * 3 - 1], N[w * 3]
+			end
+		end
+	end
 	for _, e in ipairs(veinN) do
 		MeshKit.SetNormal(m, e[1], e[2], e[3], e[4])
 	end
@@ -826,6 +891,8 @@ function Limbs.Build(sk, P, lod, side, kind, opt)
 			Av[vi] = ang
 			Zv[vi] = z[3]
 		end
+		-- (a client slicing the build by frame budget yields here: these rows were one unbroken stretch)
+		MeshKit.Step(row.n)
 	end
 	-- veins pop out a little on a flex / pump: radially away from the bone; they carry the skin's (b, angle)
 	if veinFirst <= nv then
@@ -848,7 +915,7 @@ function Limbs.Build(sk, P, lod, side, kind, opt)
 	end
 	return m, { kind = kind, side = side, L = L, a = a, ax = { ux, uy, uz }, grid = info, rings = rings, sides = sides, crown = crown,
 		groove = groove, flex = flex, dir = dirs, B = Bv, A = Av, Z = Zv, spec = spec, S = S, zones = zones, veinFirst = veinFirst,
-		radiusAt = radiusAt, veins = opt.veins }
+		radiusAt = radiusAt, veins = opt.veins, rimRow = rimRow }
 end
 
 return Limbs

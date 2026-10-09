@@ -33,8 +33,9 @@ local Gen = {}
 Gen.Section = "Body"
 Gen.LODs = { full = true, medium = true, low = true }
 -- colour texture sizes at full detail (none below: at medium / low range vertex colours carry the look)
--- (limbs: 96 texels round x 128 along; the torso 192 x 192: ~0.7 cm a texel, crisp separations and trims)
-Gen.TEXTURE = { UpperTorso = 192, LowerTorso = 128, limb = 128, limbW = 96, hand = 128, foot = 128 }
+-- (limbs: 96 texels round x 128 along; the torso 192 x 192: ~0.7 cm a texel, crisp separations and trims;
+-- 256 under a sports top, whose painted borders cross the texel grid diagonally)
+Gen.TEXTURE = { UpperTorso = 192, UpperTorsoTop = 256, LowerTorso = 128, limb = 128, limbW = 96, hand = 128, foot = 128 }
 
 local abs, min, max, sqrt, floor = math.abs, math.min, math.max, math.sqrt, math.floor
 local clamp, smooth, lerp, bell = Kit.clamp, Kit.smooth, Kit.lerp, Kit.bell
@@ -256,7 +257,10 @@ end
 -- lod: above low detail the trims narrower than the ring spacing (the glove cuff's rolled top, the trunks' hem
 -- band / piping) get a zone of their own (z[4] / z[5] = the whole garment's span), so their edges are ring
 -- pairs: crisp in the vertex colours that carry medium detail
-local function wearOf(look, lod)
+-- (sk: the satin legs get a zone edge, so a ring, exactly where the trunks' seat's rim lies on them
+-- (Limbs.SEAT_RIM under the hip pivots, as a thigh bone parameter): the seat's rim then sits on a ring of the
+-- leg, never on a chord between two rings)
+local function wearOf(look, lod, sk)
 	local wear = { gear = Gear.Read(look), zones = {} }
 	local split = lod ~= "low"
 	if Gen.DrawsTrunks(look) then
@@ -267,15 +271,24 @@ local function wearOf(look, lod)
 		local z = {}
 		-- thighs: the satin leg down to the hem
 		if wear.trunk then
-			if wear.trunk.hemB >= 0.97 then
+			local hemB = wear.trunk.hemB
+			local band = Gear.HEM_BAND[wear.trunk.style]
+			local whole = hemB >= 0.97 and 2 or hemB
+			if hemB >= 0.97 then
 				z.UpperLeg = { { -1, 2, "trunk" } }
+			elseif split and band then
+				z.UpperLeg = { { -1, hemB - band, "trunk", -1, hemB }, { hemB - band, hemB, "trunk", -1, hemB }, { hemB, 2, "skin" } }
 			else
-				local hemB = wear.trunk.hemB
-				local band = Gear.HEM_BAND[wear.trunk.style]
-				if split and band then
-					z.UpperLeg = { { -1, hemB - band, "trunk", -1, hemB }, { hemB - band, hemB, "trunk", -1, hemB }, { hemB, 2, "skin" } }
-				else
-					z.UpperLeg = { { -1, hemB, "trunk" }, { hemB, 2, "skin" } }
+				z.UpperLeg = { { -1, hemB, "trunk" }, { hemB, 2, "skin" } }
+			end
+			if sk then
+				local hp, kp = sk.piv[side .. "Hip"], sk.piv[side .. "Knee"]
+				local legL = max(0.3, sqrt((kp[1] - hp[1]) ^ 2 + (kp[2] - hp[2]) ^ 2 + (kp[3] - hp[3]) ^ 2))
+				local rimB = Limbs.SEAT_RIM / legL
+				local first = z.UpperLeg[1]
+				if rimB < first[2] - 0.05 then
+					table.insert(z.UpperLeg, 1, { -1, rimB, "trunk", -1, whole, "rim" })
+					first[1], first[4], first[5] = rimB, -1, whole
 				end
 			end
 		end
@@ -358,7 +371,7 @@ local function utPainter(pc, sk, P, prof, look)
 		return r, g, b
 	end
 	-- the sports top over the skin (soft = edge width in u: the vertex colours need a soft edge, texels a crisp
-	-- one with a stitched hem line)
+	-- one with a stitched hem line, still a few texels wide so the filter never shows stair steps)
 	local function top(r, g, b, x, y, z, soft, grain)
 		if not topR then
 			return r, g, b
@@ -371,10 +384,11 @@ local function utPainter(pc, sk, P, prof, look)
 		local u = (y - yW) / H
 		local fxs = abs(x) / xS
 		local under = bell((u - 0.45) / 0.05) * smooth(0.08, 0.2, fxs) * (1 - smooth(0.55, 0.75, fxs)) * smooth(0.0, -0.2, z) * (P.female and 1 or 0)
-		local k = (1 - 0.3 * edge) * (1 - 0.14 * under) * (grain or 1)
-		if soft < 0.5 then
-			-- (texture only) the knit's fine vertical ribs: reads as fabric, not as tinted skin
-			k *= 1 - 0.05 * (0.5 + 0.5 * math.cos(x * 190))
+		local k = (1 - 0.16 * edge) * (1 - 0.14 * under) * (grain or 1)
+		if soft < 0.8 then
+			-- (texture only) the knit's vertical ribs: reads as fabric, not as tinted skin (several texels per
+			-- rib: finer ones beat against the texel grid, a moire that chopped every border into dots)
+			k *= 1 - 0.04 * (0.5 + 0.5 * math.cos(x * 80))
 		end
 		r, g, b = mix(r, g, b, topR * k, topG * k, topB * k, w)
 		return r, g, b, w
@@ -471,7 +485,7 @@ function Gen.Generate(look, lod, ctx)
 	local seed = (P.V.veinSeed or 1) % 100000
 	local pc = paintContext(look, P, seed)
 	local sr, sg, sb = pc.sr, pc.sg, pc.sb
-	local wear = wearOf(look, lod)
+	local wear = wearOf(look, lod, sk)
 	local trunk = wear.trunk
 	local pieces = {}
 	local morphSets = {}
@@ -499,15 +513,19 @@ function Gen.Generate(look, lod, ctx)
 			tw = tw or 0
 			r, g, b = Kit.ApplyAO(r, g, b, dark[i] * (1 - 0.6 * tw), light[i] * (1 - 0.5 * tw), pc.aoTint)
 			C[i * 3 - 2], C[i * 3 - 1], C[i * 3] = r, g, b
+			MeshKit.Step()
 		end
 	end
-	Kit.GridUV(ut, grid, Gen.TEXTURE.UpperTorso)
+	-- (a sports top gets the larger torso texture: its painted borders run diagonally across the texel grid,
+	-- and at 192 their stair steps read as a string of dots along every strap)
+	local utTex = up.hasTop and Gen.TEXTURE.UpperTorsoTop or Gen.TEXTURE.UpperTorso
+	Kit.GridUV(ut, grid, utTex)
 	if full then
-		ut.texMap = Kit.TexMap(grid, Gen.TEXTURE.UpperTorso, Gen.TEXTURE.UpperTorso)
+		ut.texMap = Kit.TexMap(grid, utTex, utTex)
 	end
 	if full then
 		local field, ch = ui.field, ui.ch
-		local tw = Gen.TEXTURE.UpperTorso
+		local tw = utTex
 		textures.UpperTorso = { w = tw, h = tw, build = function()
 			local tiles = texNoise(pc)
 			local grain = Kit.GrainTable(pc, tw, tw)
@@ -542,7 +560,7 @@ function Gen.Generate(look, lod, ctx)
 				r, g, b = r * k, g * k, b * k
 				local tcov = 0
 				if up.hasTop then
-					r, g, b, tcov = up.top(r, g, b, sm.x, sm.y, sm.z, 0.2, 1 + 0.02 * Kit.TileAt(tiles.pore, sm.px * 0.5, sm.py * 2))
+					r, g, b, tcov = up.top(r, g, b, sm.x, sm.y, sm.z, 0.6, 1 + 0.02 * Kit.TileAt(tiles.pore, sm.px * 0.5, sm.py * 2))
 				end
 				return Kit.ApplyAO(r, g, b, sm.dark * (1 - 0.6 * tcov), sm.light * (1 - 0.5 * tcov), pc.aoTint)
 			end, { P = ui.P0, N = ui.N0, dark = dark, light = light, noN = true })
@@ -563,6 +581,7 @@ function Gen.Generate(look, lod, ctx)
 		local raiseH = 0.17 * sk.H / 1.6
 		local reachD = 0.07 * sk.hz / 0.55
 		for i = 1, ut.nv do
+			MeshKit.Step()
 			local nx, ny, nz = N[i * 3 - 2], N[i * 3 - 1], N[i * 3]
 			local fade = tuck and smooth(tuck + 0.01, tuck + 0.12, (UP[i * 3 - 1] - sk.yW) / sk.H) or 1
 			local f = (ch.pec[i] * 0.2 + ch.lat[i] * 0.2 + ch.trap[i] * 0.16 + ch.abs[i] * 0.3 + ch.obl[i] * 0.12) * fade
@@ -609,10 +628,20 @@ function Gen.Generate(look, lod, ctx)
 	pieces.UpperTorso = { mesh = ut, material = "Plastic" }
 
 	-- LowerTorso (the trunks' seat) ----------------------------------------------------------
-	local legTop = trunk and { Limbs.TrunkTop(sk, P, "Right", wear.zones.RightUpperLeg) } or nil
+	local legTop = trunk and { Limbs.TrunkTop(sk, P, "Right", wear.zones.RightUpperLeg, lod) } or nil
+	if legTop then
+		-- (the seat's left half follows the left leg's own ring: the dominant side's thigh is a little fuller)
+		legTop[9] = select(7, Limbs.TrunkTop(sk, P, "Left", wear.zones.LeftUpperLeg, lod))
+	end
 	local lt, li = Torso.Lower(sk, P, lod, prof, { trunks = trunk ~= nil, female = P.female, legTop = legTop })
 	local lgrid = li.loft
 	local lcav = Kit.GridCavity(lt, lgrid)
+	if li.rim then
+		-- the seat's open rim lies on the satin legs: no crease / ridge shade from the flat cap inside them
+		for j = 0, li.rim.n - 1 do
+			lcav[li.rim.s + j] = 0
+		end
+	end
 	local ltPaint
 	local ltAO, ltTint
 	if trunk then
@@ -682,6 +711,14 @@ function Gen.Generate(look, lod, ctx)
 		end
 	end
 	local ldark, llight = Kit.AOAmounts(lt, lcav, ltAO)
+	if li.rim then
+		-- the ridge lift fades out down the seat to nothing at its rim, and the satin legs' fades in again
+		-- under it (below): the two pieces' lattices differ, so their lifts did, a shade step along the join
+		local Pp = lt.P
+		for i = 1, lt.nv do
+			llight[i] *= smooth(li.bot, li.seatTop, Pp[i * 3 - 1])
+		end
+	end
 	do
 		local C, Pp, N = lt.C, lt.P, lt.N
 		for i = 1, lt.nv do
@@ -691,6 +728,7 @@ function Gen.Generate(look, lod, ctx)
 				r, g, b = sepShade(pc, r, g, b, 0, li.crown[i], 0.6, 0.2)
 			end
 			C[i * 3 - 2], C[i * 3 - 1], C[i * 3] = Kit.ApplyAO(r, g, b, ldark[i], llight[i], ltTint)
+			MeshKit.Step()
 		end
 	end
 	Kit.GridUV(lt, lgrid, Gen.TEXTURE.LowerTorso)
@@ -770,12 +808,26 @@ function Gen.Generate(look, lod, ctx)
 			local paint = Gear.LimbPainter(pc, sk, P, look, wear, side, kind, info, trunk, Limbs)
 			local isCloth = kind == "UpperLeg" and trunk ~= nil
 			local lcav2 = Kit.GridCavity(m, lg)
+			if info.rimRow then
+				-- the ring the trunks' seat's rim lies on: no crease shade from the leg's taper inside the seat
+				for j = 0, info.rimRow.n - 1 do
+					lcav2[info.rimRow.s + j] = 0
+				end
+			end
 			local d2, l2 = Kit.AOAmounts(m, lcav2, pc.ao)
+			if info.rimRow then
+				-- (the ridge lift fades in from the seat's rim down, as the seat's fades out above it)
+				local rimB = Limbs.SEAT_RIM / info.L
+				for i = 1, m.nv do
+					l2[i] *= smooth(rimB, rimB + 0.15 / info.L, info.B[i])
+				end
+			end
 			local C, Pp, N = m.C, m.P, m.N
 			local B, A = info.B, info.A
 			for i = 1, m.nv do
 				local r, g, b = paint.color(B[i], A[i], Pp[i * 3 - 2], Pp[i * 3 - 1], Pp[i * 3], N[i * 3 - 2], N[i * 3 - 1], N[i * 3], info.groove[i], info.crown[i], false, i)
 				C[i * 3 - 2], C[i * 3 - 1], C[i * 3] = Kit.ApplyAO(r, g, b, d2[i] * paint.aoK(B[i]), l2[i], paint.tint(B[i]))
+				MeshKit.Step()
 			end
 			Kit.GridUV(m, lg, Gen.TEXTURE.limb, nil, Gen.TEXTURE.limbW)
 			if full then
@@ -818,6 +870,7 @@ function Gen.Generate(look, lod, ctx)
 			for i = 1, m.nv do
 				local r, g, b = paint.vertex(i, Pp[i * 3 - 2], Pp[i * 3 - 1], Pp[i * 3], N[i * 3 - 2], N[i * 3 - 1], N[i * 3])
 				C[i * 3 - 2], C[i * 3 - 1], C[i * 3] = Kit.ApplyAO(r, g, b, d2[i], l2[i], paint.tint)
+				MeshKit.Step()
 			end
 			Kit.GridUVAtlas(m, info.grid, Gen.TEXTURE[kind == "Hand" and "hand" or "foot"])
 			if full then
@@ -878,7 +931,7 @@ function Gen.Landmarks(look)
 	local P = Kit.Params(look, MeshKit, bodyPaths())
 	local prof = Torso.Profiles(sk, P)
 	local field = Torso.Field(sk, P, prof, 1)
-	return toPart(sk, landmarksBody(sk, P, prof, field, wearOf(look)))
+	return toPart(sk, landmarksBody(sk, P, prof, field, wearOf(look, nil, sk)))
 end
 
 return Gen

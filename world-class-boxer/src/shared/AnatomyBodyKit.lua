@@ -83,6 +83,21 @@ end
 
 -- monotone cubic Hermite through knots { {x, y}, ... } (x ascending; Fritsch-Carlson): silhouettes never
 -- overshoot between control points. Flat outside the knot range.
+-- the tick of whichever MeshKit the lofts are given (Kit never requires it itself): the per-vertex passes
+-- below yield through it like the lofts and painters do, so a client slicing a build by frame budget never
+-- runs one of them in a single unbroken stretch
+local tickStep = nil
+local function remember(MeshKit)
+	if MeshKit and not tickStep then
+		tickStep = MeshKit.Step
+	end
+end
+local function step(n)
+	if tickStep then
+		tickStep(n)
+	end
+end
+
 function Kit.Curve(knots)
 	local n = #knots
 	local xs, ys, ms, d = table.create(n), table.create(n), table.create(n), table.create(n)
@@ -448,6 +463,7 @@ end
 -- returns the Loft info + rowB, rows = { { s = first vertex, n = stride (sides on an apex row), b, cap } }
 -- in surface order (start apex .. start dome .. rings .. end dome .. end apex)
 function Kit.GridLoft(m, MeshKit, spec)
+	remember(MeshKit)
 	local ls = table.clone(spec)
 	ls.uvSeam = true
 	ls.capStart, ls.capEnd, ls.capS, ls.capE, ls.rowB = nil, nil, nil, nil, nil
@@ -522,6 +538,7 @@ end
 
 -- normals of a finished grid piece (faces, then the seam / apex duplicates)
 function Kit.GridNormals(m, MeshKit, info)
+	remember(MeshKit)
 	MeshKit.ComputeNormals(m, { weld = false })
 	Kit.SeamNormals(m, info)
 end
@@ -541,6 +558,7 @@ function Kit.GridUV(m, info, texH, rect, texW)
 			d += sqrt((P[p * 3 - 2] - P[q * 3 - 2]) ^ 2 + (P[p * 3 - 1] - P[q * 3 - 1]) ^ 2 + (P[p * 3] - P[q * 3]) ^ 2)
 		end
 		acc[r] = acc[r - 1] + d / sides
+		step(sides)
 	end
 	local total = max(acc[#rows], 1e-6)
 	rect = rect or { 0, 0, 1, 1 }
@@ -562,6 +580,7 @@ function Kit.GridUV(m, info, texH, rect, texW)
 			local f = row.n > sides and j / sides or (j + 0.5) / sides
 			m.U[i * 2 - 1] = uA + (uB - uA) * f
 		end
+		step(row.n)
 	end
 	info.rowV = rowV
 end
@@ -690,6 +709,7 @@ function Kit.GridCavity(m, info, scale, out)
 				end
 			end
 			out[row.s + sides] = out[row.s]
+			step(sides)
 		end
 	end
 	return out
@@ -725,6 +745,7 @@ function Kit.AOAmounts(m, cav, o)
 		end
 		dark[i] = clamp(d, 0, 0.85)
 		light[i] = kr * max(0, -cv)
+		step(1)
 	end
 	return dark, light
 end
@@ -742,11 +763,13 @@ end
 -- noise tiles for texel painting: an n x n lattice of values in [-1, 1] (hash, deterministic), sampled
 -- bilinearly and wrapping in both directions (cheap per texel; MeshKit.Noise per texel is far slower)
 function Kit.NoiseTile(MeshKit, n, seed)
+	remember(MeshKit)
 	local t = table.create(n * n)
 	for y = 0, n - 1 do
 		for x = 0, n - 1 do
 			t[y * n + x + 1] = MeshKit.Hash3(x, y, 7, seed) * 2 - 1
 		end
+		MeshKit.Step(n)
 	end
 	return { n = n, v = t }
 end
@@ -770,6 +793,7 @@ end
 -- The sample table s is reused (fields x y z nx ny nz b a u v px py r g bl dark light cap). Calls MeshKit.Step
 -- per texel (a client yields between rows). Returns an RGBA8 buffer w * h * 4 (alpha 255).
 function Kit.GridTexture(MeshKit, m, info, w, h, paint, o, buf)
+	remember(MeshKit)
 	o = o or {}
 	buf = buf or buffer.create(w * h * 4)
 	if info.atlas then
@@ -909,10 +933,12 @@ function Kit.MakeGrain(w, h, MeshKit)
 		GRAIN_TILES = { blot = Kit.NoiseTile(MK, 16, 4111), fine = Kit.NoiseTile(MK, 32, 4123), pore = Kit.NoiseTile(MK, 64, 4137) }
 	end
 	local t = table.create(w * h)
+	-- (the first texture of a size in a session stalled 10-35 ms here before the painter's first tick)
 	for py = 0, h - 1 do
 		for px = 0, w - 1 do
 			t[py * w + px + 1] = Kit.SkinGrain(GRAIN_TILES, px, py, w, h, 1)
 		end
+		step(w)
 	end
 	GRAIN[key] = t
 	return t
@@ -920,13 +946,24 @@ end
 
 -- a texture made when it is asked for: { w, h, make = fn() -> RGBA8 buffer }. AnatomyClient calls make() on its
 -- worker thread (an ordinary call: the painter's MeshKit.Step ticks may yield there); tools and tests may also
--- read .buffer (a metamethod: never read it where the tick can yield). Not kept: a cached generation must
--- not hold every character's pixels; a rebuild makes them again (deterministic).
-function Kit.LazyTexture(w, h, make)
-	return setmetatable({ w = w, h = h, make = make }, {
+-- read .buffer (a metamethod: never read it where the tick can yield). The buffer is kept once made (rawset
+-- .buffer, as the Head's is): a cached generation reused by a rebuild or an LOD switch does not paint again
+-- (the 14 textures of a full body were half a second of CPU, more than the meshes), and AnatomyClient's cache
+-- counts the kept bytes (resultBytes) toward its memory cap, evicting whole generations as before.
+function Kit.LazyTexture(w, h, build)
+	local tex = { w = w, h = h }
+	tex.make = function()
+		local buf = rawget(tex, "buffer")
+		if buf == nil then
+			buf = build()
+			rawset(tex, "buffer", buf)
+		end
+		return buf
+	end
+	return setmetatable(tex, {
 		__index = function(_, k)
 			if k == "buffer" then
-				return make()
+				return tex.make()
 			end
 			return nil
 		end,

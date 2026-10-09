@@ -32,9 +32,11 @@ local abs, min, max, sqrt, cos, sin, pi = math.abs, math.min, math.max, math.sqr
 local clamp, smooth, lerp, bell, bell3, bell2 = Kit.clamp, Kit.smooth, Kit.lerp, Kit.bell, Kit.bell3, Kit.bell2
 local TAU = pi * 2
 
+-- (ltSides = twice the satin legs' sides less four at every level (Limbs.RES UpperLeg): the trunks' seat then
+-- puts a vertex on every leg vertex round each leg, so its rim lies on the legs' rim ring exactly)
 Torso.RES = {
 	full = { rings = 29, sides = 32, ltRings = 12, ltSides = 28, dome = 1, ltDome = 2, warp = 0.32 },
-	medium = { rings = 21, sides = 24, ltRings = 8, ltSides = 16, dome = 1, ltDome = 1, warp = 0.28 },
+	medium = { rings = 21, sides = 24, ltRings = 7, ltSides = 20, dome = 1, ltDome = 1, warp = 0.28 },
 	low = { rings = 12, sides = 12, ltRings = 5, ltSides = 12, dome = 1, ltDome = 1, warp = 0.2 },
 }
 
@@ -566,11 +568,12 @@ function Torso.Upper(sk, P, lod, opt)
 	end
 	MeshKit.Displace(m, field)
 	if opt.top then
-		-- the sports top's elastic hem stands a hair proud of the skin (the garment reads as fabric)
-		-- (and the whole garment a few millimetres off the skin: fabric over the body, not paint on it)
+		-- the sports top a few millimetres off the skin: fabric over the body, not paint on it (the step at
+		-- its border eases over a lattice cell or two; a hem ridge narrower than the lattice caught some
+		-- vertices and missed others, a string of beads along every diagonal border: the hem is painted)
 		MeshKit.Displace(m, function(i, x, y, z)
-			local w, hem = Torso.TopMask(sk, x, y, z, 0.35)
-			return 0.006 * w + 0.008 * hem
+			local w = Torso.TopMask(sk, x, y, z, 1)
+			return 0.007 * w
 		end)
 	end
 	Kit.GridNormals(m, MeshKit, info)
@@ -600,24 +603,31 @@ function Torso.Lower(sk, P, lod, prof, opt)
 	if legTop then
 		-- the seat hangs from the hips into the legs at exactly their width: never narrower (a leg would step
 		-- out of it) and never wider (a shelf / tutu ledge over the legs' tops)
-		hipW = legTop[1] + 0.012
+		hipW = legTop[1] + 0.002
 	end
 	local waistW = prof.W(0.0) * xS * 1.015 + 0.02 * fk + ease
 	local drop = (yW - yH) -- LowerTorso height
-	-- the bottom: with trunks the seat ends just under the hip pivots, inside the satin legs (they carry the
+	-- the bottom: with trunks the seat ends just under the hip pivots on the satin legs (they carry the
 	-- trunks from there down, their inner faces meeting on the midline); without, the crotch
-	-- (with the legs' tops given, the seat's sides run on down straight, a hair outside the satin legs, to a
-	-- tight seam just under the hip line: one surface from the band to the hem, no shelf over the legs)
-	local bot = trunks and legTop and (yH - 0.1) or (yH - (trunks and 0.2 or 0.3) * (drop / 0.4) ^ 0.5)
+	-- (with the legs' tops given, the seat's section over the legs is the legs' own rings a hair outside them
+	-- down to its open rim (Limbs.SEAT_RIM under the hip pivots), closed by a flat cap inside the legs; above
+	-- the rim the legs taper in fast, hidden inside. One surface from the band to the hem: no step at the rim,
+	-- no curl under it, no surfaces crossing at a shallow angle. A seat a hair outside the legs that curled
+	-- under at its rim read as a skirt over two tubes: the down-facing curl took the baked 'down' shade, a
+	-- dark line right under the hip on every character; a seat running on down inside the legs showed the
+	-- shallow crossing as a crease and a shelf wherever its own shape left the legs' rings)
+	local rim = legTop and legTop[8] or 0.1
+	local bot = trunks and legTop and (yH - rim) or (yH - (trunks and 0.2 or 0.3) * (drop / 0.4) ^ 0.5)
 	local Fw, Kw = prof.F(0.0) * hz + ease, prof.K(0.0) * hz + ease
 	local hipF, hipK = Fw * 0.97, Kw * 0.96
 	if legTop then
-		hipF, hipK = max(hipF, legTop[2] + 0.008), max(hipK, legTop[3] + 0.008)
+		hipF, hipK = max(hipF, legTop[2] + 0.002), max(hipK, legTop[3] + 0.002)
 	end
 	local top, bandBot = yW + 0.015, nil
 	local Wc, Fc, Kc
 	local Ys
 	local rings = R.ltRings
+	local yS = yH + 0.05 -- the seat's full section (above the legs' tops)
 	if trunks then
 		-- the band: the waist's own section plus the elastic's thickness, a lip over the seat below it
 		top = yW + Torso.BAND_TOP
@@ -629,17 +639,20 @@ function Torso.Lower(sk, P, lod, prof, opt)
 			-- (the legs' front / back extents measured from the seat's own centre line)
 			local dz = 0.02 * hz - (legTop[5] or 0.02 * hz)
 			lx, lf, lk = legTop[1], legTop[2] + dz, legTop[3] - dz
-			hipF, hipK = max(hipF, lf + 0.012), max(hipK, lk + 0.012)
+			hipF, hipK = max(hipF, lf + 0.002), max(hipK, lk + 0.002)
 		end
-		local yS = yH + 0.05 -- the seat's full section (above the legs' tops)
-		Wc = Kit.Curve(legTop and { { bot, lx - 0.016 }, { bot + 0.014, lx + 0.011 }, { yH - 0.045, lx + 0.011 }, { yS, hipW }, { bandBot - 0.03, sw }, { bandBot - 0.0005, sw - 0.004 }, { bandBot, bw }, { top, bw } } or { { bot, lx - 0.035 }, { yS, hipW }, { bandBot - 0.03, sw }, { bandBot - 0.0005, sw - 0.004 }, { bandBot, bw }, { top, bw } })
-		Fc = Kit.Curve({ { bot, lf - (legTop and 0.016 or 0.03) }, { legTop and bot + 0.014 or yH - 0.045, legTop and lf + 0.011 or lf - 0.012 }, { yS, hipF }, { bandBot - 0.0005, max(Fw * 0.985, (hipF + Fw) / 2) }, { bandBot, bf }, { top, bf } })
-		Kc = Kit.Curve({ { bot, lk - (legTop and 0.016 or 0.03) }, { legTop and bot + 0.014 or yH - 0.045, legTop and lk + 0.011 or lk - 0.012 }, { yS, hipK }, { bandBot - 0.0005, max(Kw * 0.965, (hipK + Kw) / 2) }, { bandBot, bk }, { top, bk } })
+		-- (with the legs' tops given the curves only shape the seat above yS: over the legs it follows their rings)
+		Wc = Kit.Curve(legTop and { { bot, lx }, { yS, hipW }, { bandBot - 0.03, sw }, { bandBot - 0.0005, sw - 0.004 }, { bandBot, bw }, { top, bw } } or { { bot, lx - 0.035 }, { yS, hipW }, { bandBot - 0.03, sw }, { bandBot - 0.0005, sw - 0.004 }, { bandBot, bw }, { top, bw } })
+		Fc = Kit.Curve(legTop and { { bot, lf }, { yS, hipF }, { bandBot - 0.0005, max(Fw * 0.985, (hipF + Fw) / 2) }, { bandBot, bf }, { top, bf } } or { { bot, lf - 0.03 }, { yH - 0.045, lf - 0.012 }, { yS, hipF }, { bandBot - 0.0005, max(Fw * 0.985, (hipF + Fw) / 2) }, { bandBot, bf }, { top, bf } })
+		Kc = Kit.Curve(legTop and { { bot, lk }, { yS, hipK }, { bandBot - 0.0005, max(Kw * 0.965, (hipK + Kw) / 2) }, { bandBot, bk }, { top, bk } } or { { bot, lk - 0.03 }, { yH - 0.045, lk - 0.012 }, { yS, hipK }, { bandBot - 0.0005, max(Kw * 0.965, (hipK + Kw) / 2) }, { bandBot, bk }, { top, bk } })
 		local list
 		if rings >= 10 then
-			list = { bot, bot + 0.014, yH - 0.045, yS, yS + 0.3 * (bandBot - yS), yS + 0.62 * (bandBot - yS), bandBot - 0.03, bandBot - 0.012, bandBot, (bandBot + top) / 2, top }
-		elseif rings >= 8 then
-			list = { bot, bot + 0.014, yS, yS + 0.45 * (bandBot - yS), bandBot - 0.012, bandBot, (bandBot + top) / 2, top }
+			list = { bot, lerp(bot, yS, 0.35), lerp(bot, yS, 0.7), yS, yS + 0.3 * (bandBot - yS), yS + 0.62 * (bandBot - yS), bandBot - 0.03, bandBot - 0.012, bandBot, (bandBot + top) / 2, top }
+		elseif rings >= 7 then
+			list = { bot, (bot + yS) / 2, yS, yS + 0.45 * (bandBot - yS), bandBot - 0.012, bandBot, top }
+			if rings >= 8 then
+				table.insert(list, #list, (bandBot + top) / 2)
+			end
 		else
 			list = { bot, yS, bandBot - 0.012, bandBot, top }
 		end
@@ -662,22 +675,95 @@ function Torso.Lower(sk, P, lod, prof, opt)
 	end
 	local m = MeshKit.New("LowerTorso")
 	local seatSq = trunks and legTop ~= nil
-	-- the crotch: with trunks a deeper rounded gusset between the legs (the satin bridges the thighs, no V)
-	local botD = trunks and (legTop and 0.06 or 0.2 * (drop / 0.4) ^ 0.5) or 0.14
+	-- the satin legs' ring sides and each leg's ring by body height and ring angle (radius and the body-space
+	-- centre it is measured from; the left leg's own: the dominant side's thigh is a little fuller)
+	local legSides, legR, legRL = seatSq and legTop[6] or 0, seatSq and legTop[7] or nil, seatSq and (legTop[9] or legTop[7]) or nil
+	local spineZ = 0.02 * hz
+	-- the seat's vertices are the legs' own ring vertices when the side counts match (below: every leg
+	-- vertex but its medial face's, plus one on the midline where the two legs' fronts / backs meet): a satin
+	-- leg is a coarse polygon (Limbs.RES sides), and a seat vertex anywhere else on the smooth curve stood out
+	-- between the leg's vertices, or let a leg's corner vertex out
+	local aligned = seatSq and R.ltSides == 2 * (legSides - 2)
+	-- how far outside the legs' rings the seat runs over them: a hair (a seat chord across an unaligned leg
+	-- vertex needs a little more, its sagitta)
+	local off = aligned and 0.002 or 0.006
+	local yTop = Ys[#Ys]
+	-- the crotch: with trunks a deeper rounded gusset between the legs (the satin bridges the thighs, no V);
+	-- on the legs' rings a flat cap inside the legs (a dome under the rim showed as a dark curl)
+	local botD = trunks and (legTop and 0 or 0.2 * (drop / 0.4) ^ 0.5) or 0.14
+	-- the seat's section over the satin legs at body height y, ring angle a: the two legs' own sections at that
+	-- height side by side (their exact radius by angle round each leg's bone, off further out) with a flat
+	-- bridge between them, the gusset. A superellipse of its own never fitted the legs: squarer than them it
+	-- stood out past their corners, rounder their corners stood out of it, and the thigh's muscle bulging
+	-- through the satin made every leg a little different anyway
+	local function legSection(y, a)
+		local a0 = a % TAU
+		local n = legSides
+		local step = TAU / n
+		if aligned then
+			-- seat vertex j -> a leg and its own ring angle: round the right leg from its lateral line forward to
+			-- its front medial corner (the last vertex before its medial face), a vertex on the midline at that
+			-- corner's depth (where the two legs' fronts meet), round the left leg (its own angle, mirrored) from
+			-- its front corner to its back corner, the midline again, and round the right leg's back to its
+			-- lateral line: twice the leg's sides less four vertices, the medial faces' own left out (hidden
+			-- between the legs: a midline vertex at one of them notched the seat's front and back)
+			local j = math.floor(a0 / (TAU / R.ltSides) + 0.5) % R.ltSides
+			local half = n / 2 - 1
+			local sd, la, mid
+			if j < half then
+				sd, la = 1, j * step
+			elseif j == half then
+				sd, la, mid = 1, (half - 1) * step, true
+			elseif j < 3 * n / 2 - 3 then
+				sd, la = -1, (2 * half - j) * step
+			elseif j == 3 * n / 2 - 3 then
+				sd, la, mid = -1, (1 - half) * step, true
+			else
+				sd, la = 1, (j - 3 * n / 2 + 3 - half) * step
+			end
+			local r, cx2, cz2 = (sd < 0 and legRL or legR)(y, la)
+			r += off
+			local a2 = sd < 0 and pi - la or la
+			local x = mid and 0 or abs(cx2) * sd + r * cos(a2)
+			return x, spineZ - cz2 + r * sin(a2)
+		end
+		-- (other side counts: the seat's vertices stay evenly spaced on the legs' chords, a bridge between the
+		-- legs from each one's last lateral vertex to the middle, a hair proud of their fronts)
+		local c0 = 0.5
+		local function pt(a2)
+			local c2, s2 = cos(a2), sin(a2)
+			local g = smooth(-c0, c0, c2) * 2 - 1
+			-- (the left leg's ring, mirrored, on the left; the bridge runs between the legs' centres)
+			local r, cx2, cz2 = (c2 < 0 and legRL or legR)(y, c2 < 0 and pi - a2 or a2)
+			r += off + 0.004 * (1 - abs(g))
+			return abs(cx2) * g + r * c2, spineZ - cz2 + r * s2
+		end
+		local j = math.floor(a0 / step)
+		local x0, f0 = pt(j * step)
+		local x1, f1 = pt((j + 1) * step)
+		local w = (a0 - j * step) / step
+		return x0 + (x1 - x0) * w, f0 + (f1 - f0) * w
+	end
 	local info = Kit.GridLoft(m, MeshKit, {
 		rings = rings, sides = R.ltSides, spine = spine, exact = true, rowB = Ys,
-		capS = { depth = botD, rings = R.ltDome, bDepth = botD },
+		capS = { depth = botD, rings = seatSq and 0 or R.ltDome, bDepth = botD },
 		-- with trunks the top is the waistband's lip: a flat cap inside the torso
 		capE = trunks and { depth = 0, rings = 0, bDepth = 0 } or { depth = 0.14, rings = R.ltDome, bDepth = 0.14 },
 		section = function(t, a)
 			local i = math.floor(t * (rings - 1) + 0.5) + 1
 			local y = Ys[i]
 			local c, s = cos(a), sin(a)
-			-- with the legs' tops given the seat squares off toward its bottom, like the two satin legs side by
-			-- side it runs into (their front-outer corners stay under it)
-			local e = 2 / (seatSq and lerp(4.2, 2.4, smooth(yH + 0.05, Ys[#Ys] - 0.06, y)) or 2.4)
+			local e = 2 / 2.4
 			local x = Wc(y) * (c < 0 and -1 or 1) * abs(c) ^ e
 			local f = s >= 0 and Fc(y) * s ^ e or -Kc(y) * (-s) ^ e
+			if seatSq and legR then
+				-- over the legs their own sections; up toward the band blending into the waist's own
+				local k = smooth(yS, yTop - 0.06, y)
+				if k < 1 then
+					local lx2, lf2 = legSection(y, a)
+					x, f = lerp(lx2, x, k), lerp(lf2, f, k)
+				end
+			end
 			return x, f
 		end,
 	})
@@ -693,8 +779,11 @@ function Torso.Lower(sk, P, lod, prof, opt)
 		end
 		local ax = abs(x)
 		local d = 0
+		-- (the seat over the legs' tops is the legs' own rings: no sculpt there (a glute or fold pushed out stood
+		-- proud of the satin legs, a dent let a leg out); every brush eases out over the hip line instead)
+		local lowK = seatSq and smooth(yS, yS + 0.08, y) or 1
 		-- glutes: two rounded masses behind the hips, fullest a little under the hip pivots
-		local g = bell3((ax - 0.62 * xH - 0.05) / (0.58 * hipW), (y - (yH - 0.02)) / 0.36, 0) * smooth(-0.1, 0.5, nz) * (trunks and (1 - smooth(yH + 0.05, bandY - 0.03, y)) or 1)
+		local g = bell3((ax - 0.62 * xH - 0.05) / (0.58 * hipW), (y - (yH - 0.02)) / 0.36, 0) * smooth(-0.1, 0.5, nz) * (trunks and (1 - smooth(yH + 0.05, bandY - 0.03, y)) or 1) * lowK
 		-- (under the satin a softer push: a full seat reads as an inflated diaper)
 		d += gH * g * (trunks and 0.22 or 1)
 		glute[i] = gH * g
@@ -706,21 +795,52 @@ function Torso.Lower(sk, P, lod, prof, opt)
 		if trunks then
 			-- satin drape: soft vertical folds from the band down, deeper toward the legs
 			local a = math.atan2(-z, x)
-			-- (none on the straight sides over the legs' tops: there the seat sits just outside them)
-			local hang = smooth(bandY - 0.02, yH, y) * (seatSq and smooth(yH - 0.02, yH + 0.08, y) or 1)
+			local hang = smooth(bandY - 0.02, yH, y)
 			d += 0.011 * (sin(6 * a + 0.7) + 0.6 * sin(11 * a + 2.1)) * hang
 		end
-		return d
+		return d * lowK
 	end)
 	Kit.GridNormals(m, MeshKit, info)
-	return m, { crown = crown, glute = glute, hipW = hipW, bot = bot, top = top, bandBot = bandBot, loft = info }
+	if seatSq then
+		-- the rim's normals lean as the satin legs' do just under it: their horizontal direction is the rim's
+		-- own (its faces alone: averaged with the flat cap's inside the legs they tipped down, and the rim
+		-- shaded as a fold line on the legs it lies on), their tilt the slope of the legs' section on down from
+		-- the rim (the leg's own normal there averages its ring pair's short band with the chord to the next
+		-- ring below); the seat's faces above the rim alone gave the thigh's widening above its fullest, a
+		-- crease in the shading along the join at the sides
+		local N = m.N
+		local rimRow = info.rows[info.firstRing]
+		local sides = R.ltSides
+		for j = 0, rimRow.n - 1 do
+			local v = rimRow.s + j
+			local a = TAU * (j % sides) / sides
+			local x0, f0 = legSection(bot, a)
+			local x1, f1 = legSection(bot - 0.012, a)
+			local x2, f2 = legSection(bot - 0.09, a)
+			local nx, nz = N[v * 3 - 2], N[v * 3]
+			local hl = sqrt(nx * nx + nz * nz)
+			if hl > 1e-6 then
+				nx, nz = nx / hl, nz / hl
+				-- outward growth of the section along this normal going down (f is toward -z)
+				local s1 = ((x1 - x0) * nx - (f1 - f0) * nz) / 0.012
+				local s2 = ((x2 - x1) * nx - (f2 - f1) * nz) / 0.078
+				local sl = 0.5 * (s1 + s2)
+				local ny = sl / sqrt(1 + sl * sl)
+				local hs = sqrt(max(0, 1 - ny * ny))
+				N[v * 3 - 2], N[v * 3 - 1], N[v * 3] = nx * hs, ny, nz * hs
+			end
+		end
+	end
+	return m, { crown = crown, glute = glute, hipW = hipW, bot = bot, top = top, bandBot = bandBot, loft = info, rim = seatSq and info.rows[info.firstRing] or nil, seatTop = yS }
 end
 Torso.BAND_TOP = 0.035 -- waistband top edge above the waist pivot (studs)
 
 -- the female sports top over the chest (the R15 UpperTorso was the top in round 1): band under the bust,
 -- scoop neckline in front, racer back behind, wide straps. Returns the cover (0..1) and the hem band (0..1:
--- the elastic edge just inside the border). soft scales every edge's width (1 = the vertex colours' soft
--- edge, ~0.2 = a crisp edge about a texel wide: sharp, without stair steps)
+-- the elastic edge just inside the border, a smooth bump a few texels wide). soft scales every edge's width
+-- (1 = the vertex colours' soft edge, ~0.6 = a crisp edge on the 192 texture, still two to three texels wide
+-- round the torso: an edge one texel wide, with a one-texel hem line, came out of the bilinear filter as
+-- stair steps and dots along every diagonal border)
 function Torso.TopMask(sk, x, y, z, soft)
 	local u = (y - sk.yW) / sk.H
 	local fx = abs(x) / sk.xS
@@ -751,9 +871,11 @@ function Torso.TopMask(sk, x, y, z, soft)
 	end
 	-- (a full cover inside the border: no partial band of skin along the edges)
 	w = clamp(w * 1.15, 0, 1)
-	-- the hem: inside the cover but near its border (a wider version of the same mask falls off there)
-	local wide = cover(soft + 0.55)
-	return w, clamp(w * (1 - wide) * 2.2, 0, 1)
+	-- the hem: a bump just inside the border, read off a wide version of the same mask (it falls from 1 to 0
+	-- across the border over several texels: the bump sits where it is still mostly on), so the line is as
+	-- wide and as smooth as that falloff whatever the border's direction
+	local wide = cover(max(soft, 0.6) + 1.0)
+	return w, bell((wide - 0.72) / 0.28) * w
 end
 
 -- the waistband's front (body space, the same numbers Torso.Lower builds it from): centre of the band's
