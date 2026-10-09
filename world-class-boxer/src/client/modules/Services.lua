@@ -266,7 +266,7 @@ local function colorField(s, parent, label, get, set, palette)
 		s.preview()
 	end, { names = names })
 	local wheel
-	UI.Button(holder, "Custom colour", { Name = "CustomColour", Size = UDim2.new(0, 160, 0, 30), TextSize = 13 }, function()
+	UI.Button(holder, "Custom colour", { Name = "CustomColour", Size = UDim2.new(0, 160, 0, math.max(30, UI.MinHit(holder))), TextSize = 13 }, function()
 		if wheel then
 			wheel:Destroy()
 			wheel = nil
@@ -652,7 +652,7 @@ local function renderNutrition(body)
 			add(string.format("+%d%% muscle growth today", meal.muscleBuff * 100), T.purple)
 		end
 		UI.Line(row, table.concat(fx, "   ·   "), { TextSize = 13, TextColor3 = T.sub, RichText = true })
-		UI.Button(row, locked and "NEEDS NUTRITIONIST" or (meal.id == "Water" and "DRINK" or "BUY & EAT"), { Size = UDim2.new(0, 190, 0, 32), TextSize = 14,
+		UI.Button(row, locked and "NEEDS NUTRITIONIST" or (meal.id == "Water" and "DRINK" or "BUY & EAT"), { Size = UDim2.new(0, 190, 0, math.max(32, UI.MinHit(row))), TextSize = 14,
 			BackgroundColor3 = locked and T.panel2 or T.gold, TextColor3 = locked and T.sub or T.bg }, function()
 			if locked then
 				return

@@ -80,6 +80,7 @@ local advanced = {} -- [page] = the Advanced section is open
 local chosen = { face = "Classic" } -- the face preset / kit last picked (outlined in the grid)
 local hairGroup -- the hairstyle group shown (nil: the current style's own)
 local short = false -- a short screen (phone in landscape): no page hint line
+local narrow = false -- a narrow window (the smallest phones): no step prefix in the title
 local keyLight
 
 -- head = the change only touches the face, hair or beard (the server can rebuild just those)
@@ -287,7 +288,7 @@ local function colorField(parent, label, get, set, palette, names, head, wheelTo
 	end, { names = names })
 	if wheelToo then
 		local wheel
-		UI.Button(holder, "Custom colour", { Name = "CustomColour", Size = UDim2.new(0, 160, 0, 30), TextSize = 13, BackgroundColor3 = T.panel2 }, function()
+		UI.Button(holder, "Custom colour", { Name = "CustomColour", Size = UDim2.new(0, 160, 0, math.max(30, UI.MinHit(holder))), TextSize = 13, BackgroundColor3 = T.panel2 }, function()
 			if wheel then
 				wheel:Destroy()
 				wheel = nil
@@ -558,6 +559,13 @@ local function applyFacePreset(p)
 	chosen.face = p.id
 end
 
+-- preset grids: fewer columns on a narrow window (phones) so the tile captions ("80% muscle" at the
+-- readability floor) keep their room; n on the 600-wide desktop window
+local function gridCols(n)
+	local bodyW = math.min(600, 0.46 * UI.CanvasSize(State.gui).X) - 32
+	return math.min(n, math.max(3, math.floor(bodyW / 112)))
+end
+
 local function pageFace()
 	local f = C.look.face
 	local def = defaults().face
@@ -569,7 +577,7 @@ local function pageFace()
 			LookKit.FaceGlyph(art, p.shape, skinRGB())
 		end })
 	end
-	LookKit.PresetGrid(body, items, { name = "FacePresets", cols = 4, cellH = 100, picked = chosen.face }, function(it)
+	LookKit.PresetGrid(body, items, { name = "FacePresets", cols = gridCols(4), cellH = 100, picked = chosen.face }, function(it)
 		pushUndo(nil)
 		applyFacePreset(it.preset)
 		previewHead()
@@ -794,7 +802,7 @@ local function pageBody()
 			LookKit.BuildGlyph(art, bt.width, skinRGB())
 		end })
 	end
-	LookKit.PresetGrid(body, items, { name = "BodyTypes", cols = 5, cellH = 104, picked = b.frame }, function(it)
+	LookKit.PresetGrid(body, items, { name = "BodyTypes", cols = gridCols(5), cellH = 104, picked = b.frame }, function(it)
 		pushUndo(nil)
 		b.frame = it.id
 		preview()
@@ -898,7 +906,7 @@ local function pageGear()
 			LookKit.KitGlyph(art, kit)
 		end })
 	end
-	LookKit.PresetGrid(body, items, { name = "Kits", cols = 3, cellH = 100, picked = chosen.kit }, function(it)
+	LookKit.PresetGrid(body, items, { name = "Kits", cols = gridCols(3), cellH = 100, picked = chosen.kit }, function(it)
 		pushUndo(nil)
 		LookKit.ApplyKit(it.kit, a, g)
 		chosen.kit = it.id
@@ -1180,7 +1188,7 @@ function render()
 	local kicker = win:FindFirstChild("Kicker")
 	if title then
 		local name = string.upper(TITLES[page] or page)
-		title.Text = kicker and name or string.format("%d/%d  %s", cur, #PAGES, name)
+		title.Text = (kicker or narrow) and name or string.format("%d/%d  %s", cur, #PAGES, name)
 	end
 	if kicker then
 		kicker.Text = string.format("CREATE YOUR BOXER  ·  STEP %d OF %d", cur, #PAGES)
@@ -1351,21 +1359,35 @@ function Creator.Open()
 		step(-1)
 	end
 	shade, win, body = UI.Window(State.gui, "Creator", 600, 720, "CREATE YOUR BOXER", { side = "left", noShade = true, footer = 50, onBack = back, kicker = "CREATE YOUR BOXER" })
-	short = UI.CanvasSize(State.gui).Y < 560
+	local canvas = UI.CanvasSize(State.gui)
+	short = canvas.Y < 560
+	-- a narrow window (the smallest phones: 0.46 of the canvas is under 420 design px) keeps the step's
+	-- name readable with slimmer tool buttons and no "1/7" prefix (the step bar counts the steps)
+	narrow = canvas.X * 0.46 < 420
 	local top = body.Position.Y.Offset
+	-- touch: the tool buttons, the step bar and BACK / NEXT grow to a fingertip and the rows around them
+	local minHit = UI.MinHit(win)
 	-- title row: UNDO / RESET / RANDOM on the right of the step's name
 	local title = win:FindFirstChild("Title")
-	local bw = short and 66 or 78
-	local tools = UI.Frame(win, { Name = "Tools", BackgroundTransparency = 1, AnchorPoint = Vector2.new(1, 0), Size = UDim2.fromOffset(bw * 3 + 12, 32),
-		Position = UDim2.new(1, -16, 0, title and (title.Position.Y.Offset + math.floor((title.Size.Y.Offset - 32) / 2)) or 12) })
+	local bw = narrow and 56 or (short and 66 or 78)
+	local bh = math.max(32, minHit)
+	local toolsY = title and (title.Position.Y.Offset + math.floor((title.Size.Y.Offset - bh) / 2)) or 12
+	if bh > 32 then
+		-- taller buttons start under the kicker line (a tablet) or near the top edge (a phone)
+		local kicker = win:FindFirstChild("Kicker")
+		toolsY = math.max(kicker and (kicker.Position.Y.Offset + kicker.Size.Y.Offset + 4) or 4, toolsY)
+		top = math.max(top, toolsY + bh + 8)
+	end
+	local tools = UI.Frame(win, { Name = "Tools", BackgroundTransparency = 1, AnchorPoint = Vector2.new(1, 0), Size = UDim2.fromOffset(bw * 3 + 12, bh), Position = UDim2.new(1, -16, 0, toolsY) })
 	UI.List(tools, 6, true, Enum.HorizontalAlignment.Right)
-	undoBtn = UI.Button(tools, "UNDO", { Name = "Undo", Size = UDim2.fromOffset(bw, 32), TextSize = 13, LayoutOrder = 1 }, function()
+	local tts = narrow and 12 or 13
+	undoBtn = UI.Button(tools, "UNDO", { Name = "Undo", Size = UDim2.fromOffset(bw, bh), TextSize = tts, LayoutOrder = 1 }, function()
 		undo()
 	end)
-	UI.Button(tools, "RESET", { Name = "ResetStep", Size = UDim2.fromOffset(bw, 32), TextSize = 13, LayoutOrder = 2 }, function()
+	UI.Button(tools, "RESET", { Name = "ResetStep", Size = UDim2.fromOffset(bw, bh), TextSize = tts, LayoutOrder = 2 }, function()
 		stepAction(RESET)
 	end)
-	local rb = UI.Button(tools, "RANDOM", { Name = "RandomStep", Size = UDim2.fromOffset(bw, 32), TextSize = 13, LayoutOrder = 3, TextColor3 = T.gold }, function()
+	local rb = UI.Button(tools, "RANDOM", { Name = "RandomStep", Size = UDim2.fromOffset(bw, bh), TextSize = tts, LayoutOrder = 3, TextColor3 = T.gold }, function()
 		stepAction(RANDOMIZE)
 	end)
 	UI.Stroke(rb, T.gold, 1, 0.55)
@@ -1373,16 +1395,18 @@ function Creator.Open()
 		title.Size = UDim2.new(1, -(40 + bw * 3 + 12 + 24), 0, title.Size.Y.Offset)
 	end
 	-- the step bar: every step (tap to jump) over a thin progress line
-	tabsFrame = UI.Frame(win, { Name = "StepBar", BackgroundTransparency = 1, Position = UDim2.fromOffset(16, top), Size = UDim2.new(1, -32, 0, 40) })
-	local steps = UI.Frame(tabsFrame, { Name = "Steps", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 34) })
-	UI.Grid(steps, UDim2.new(1 / #PAGES, -4, 0, 34), nil, 4)
+	local sh = math.max(34, minHit)
+	tabsFrame = UI.Frame(win, { Name = "StepBar", BackgroundTransparency = 1, Position = UDim2.fromOffset(16, top), Size = UDim2.new(1, -32, 0, sh + 6) })
+	local steps = UI.Frame(tabsFrame, { Name = "Steps", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, sh) })
+	UI.Grid(steps, UDim2.new(1 / #PAGES, -4, 0, sh), nil, 4)
 	local line = UI.Frame(tabsFrame, { Name = "Progress", Position = UDim2.new(0, 0, 1, -3), Size = UDim2.new(1, -4, 0, 3), BackgroundColor3 = T.panel2 })
 	UI.Corner(line, 2)
 	progressFill = UI.Frame(line, { Name = "Fill", Size = UDim2.fromScale(1 / #PAGES, 1), BackgroundColor3 = T.gold })
 	UI.Corner(progressFill, 2)
-	body.Position = UDim2.fromOffset(16, top + 48)
-	body.Size = UDim2.new(1, -32, 1, -(top + 48 + 62))
-	local nav = UI.Frame(win, { Name = "Nav", BackgroundTransparency = 1, Position = UDim2.new(0, 16, 1, -54), Size = UDim2.new(1, -32, 0, 42) })
+	local nh = math.max(42, minHit)
+	body.Position = UDim2.fromOffset(16, top + sh + 14)
+	body.Size = UDim2.new(1, -32, 1, -(top + sh + 14 + nh + 20))
+	local nav = UI.Frame(win, { Name = "Nav", BackgroundTransparency = 1, Position = UDim2.new(0, 16, 1, -(nh + 12)), Size = UDim2.new(1, -32, 0, nh) })
 	backBtn = UI.Button(nav, "BACK", { Name = "BackStep", Size = UDim2.new(0.3, 0, 1, 0) }, back)
 	nextBtn = UI.Button(nav, "NEXT", { Name = "NextStep", Size = UDim2.new(0.66, 0, 1, 0), Position = UDim2.new(0.34, 0, 0, 0), BackgroundColor3 = T.gold, TextColor3 = T.bg })
 	nextBtn.MouseButton1Click:Connect(function()
@@ -1393,13 +1417,17 @@ function Creator.Open()
 		end
 	end)
 	-- the live fighter plate over the 3D view: flag, name, nickname, division, style (updates as you type)
-	plate = UI.Frame(shade, { Name = "FighterPlate", AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -28, 1, -84), Size = UDim2.fromOffset(440, 112) })
+	plate = UI.Frame(shade, { Name = "FighterPlate", AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -28, 1, -84), Size = UDim2.fromOffset(440, 120) })
 	UI.Glass(plate, { transparency = 0.12, radius = UI.R.lg })
 	UI.Frame(plate, { Name = "Accent", Size = UDim2.new(0, 4, 1, -20), Position = UDim2.fromOffset(0, 10), BackgroundColor3 = T.gold })
 	plateFlag = UI.Frame(plate, { Name = "Flag", BackgroundTransparency = 1, Position = UDim2.fromOffset(18, 16), Size = UDim2.fromOffset(36, 24) })
 	plateNick = UI.Text(plate, "", { Font = T.semi, TextSize = 12, TextColor3 = T.gold, Position = UDim2.fromOffset(64, 12), Size = UDim2.new(1, -80, 0, 14), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
 	plateName = UI.Text(plate, "", { Face = "display", TextSize = 34, Position = UDim2.fromOffset(64, 24), Size = UDim2.new(1, -80, 0, 42), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
-	plateInfo = UI.Text(plate, "", { Font = T.semi, TextSize = 12, TextColor3 = T.sub, Position = UDim2.fromOffset(18, 76), Size = UDim2.new(1, -36, 0, 24), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
+	-- the info line fits its box: it takes a second line on a narrow plate rather than being cut (the
+	-- box holds two lines of the readability floor)
+	plateInfo = UI.Text(plate, "", { Font = T.semi, TextSize = 12, TextColor3 = T.sub, Position = UDim2.fromOffset(18, 72), Size = UDim2.new(1, -36, 0, 36), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = true, TextScaled = true,
+		TextYAlignment = Enum.TextYAlignment.Top })
+	UI.New("UITextSizeConstraint", { MaxTextSize = 12, MinTextSize = 10, Parent = plateInfo })
 	table.clear(plateSeen)
 	-- turntable dock (right side of the screen): rotate and zoom, with the device's own shortcuts above it
 	local dock = UI.Frame(shade, { Name = "Turntable", AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -28, 1, -24), Size = UDim2.fromOffset(0, 48), AutomaticSize = Enum.AutomaticSize.X })
@@ -1418,16 +1446,19 @@ function Creator.Open()
 		end
 		return "Drag your boxer to turn  ·  wheel to zoom  ·  Ctrl+Z undo"
 	end)
-	-- phones: the plate moves to the top-right corner so it never covers the boxer
+	-- phones: the plate moves to the top-right corner so it never covers the boxer, and takes no more
+	-- than the room right of the window (the window is 0.46 of the canvas plus its 24 px margin)
 	local function placePlate()
 		if not (plate and plate.Parent) then
 			return
 		end
-		local canvas = UI.CanvasSize(plate)
-		local small = canvas.Y < 640
+		local cv = UI.CanvasSize(plate)
+		local small = cv.Y < 640
 		plate.AnchorPoint = small and Vector2.new(1, 0) or Vector2.new(1, 1)
 		plate.Position = small and UDim2.new(1, -20, 0, 12) or UDim2.new(1, -28, 1, -84)
-		camHint.Position = small and UDim2.new(1, -34, 1, -78) or UDim2.new(1, -34, 1, -202)
+		local free = cv.X - (0.46 * cv.X + 24) - 40
+		plate.Size = UDim2.fromOffset(small and math.clamp(math.floor(free), 240, 480) or 440, 120)
+		camHint.Position = small and UDim2.new(1, -34, 1, -78) or UDim2.new(1, -34, 1, -210)
 	end
 	placePlate()
 	if plateConn then

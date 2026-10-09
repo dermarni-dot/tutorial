@@ -81,7 +81,7 @@ local function renderMenu(body, menu)
 			local c = UI.Card(body)
 			UI.Line(c, string.format("%s  -  %s", it.name, meal.price > 0 and money(meal.price) or "free"), { Font = T.bold })
 			UI.Line(c, mealFx(meal), { TextSize = 13, TextColor3 = T.sub })
-			UI.Button(c, locked and "NEEDS NUTRITIONIST" or "BUY", { Size = UDim2.new(0, 170, 0, 30), TextSize = 14, BackgroundColor3 = locked and T.panel2 or T.gold, TextColor3 = locked and T.sub or T.bg }, function()
+			UI.Button(c, locked and "NEEDS NUTRITIONIST" or "BUY", { Size = UDim2.new(0, 170, 0, math.max(30, UI.MinHit(c))), TextSize = 14, BackgroundColor3 = locked and T.panel2 or T.gold, TextColor3 = locked and T.sub or T.bg }, function()
 				if locked then
 					return
 				end
@@ -131,7 +131,7 @@ local function proShop()
 	local P = State.P
 	local body = openWindow("WCB PRO SHOP", 600, 620)
 	UI.Line(body, "Every brand on the wall. Your gloves, boots and wraps change your stats and how you look in the ring.", { TextSize = 13, TextColor3 = T.sub })
-	UI.Button(body, "SHOP GLOVES, BOOTS & WRAPS", { Size = UDim2.new(0, 300, 0, 38), BackgroundColor3 = T.gold, TextColor3 = T.bg }, function()
+	UI.Button(body, "SHOP GLOVES, BOOTS & WRAPS", { Size = UDim2.new(0, 300, 0, math.max(38, UI.MinHit(body))), BackgroundColor3 = T.gold, TextColor3 = T.bg }, function()
 		hub("Gear")
 	end)
 	local eq = P.gear and P.gear.equipped or {}
@@ -162,7 +162,7 @@ local function motors()
 			local c = UI.Card(body, { stroke = owned and T.gold or nil })
 			UI.Line(c, item.name, { Font = T.bold })
 			UI.Line(c, item.desc, { TextSize = 13, TextColor3 = T.sub })
-			UI.Button(c, owned and "IN YOUR GARAGE" or money(item.price), { Size = UDim2.new(0, 200, 0, 32), TextSize = 14,
+			UI.Button(c, owned and "IN YOUR GARAGE" or money(item.price), { Size = UDim2.new(0, 200, 0, math.max(32, UI.MinHit(c))), TextSize = 14,
 				BackgroundColor3 = owned and T.panel2 or (P.money >= item.price and T.gold or Color3.fromRGB(70, 40, 40)), TextColor3 = owned and T.text or T.bg }, function()
 				if owned then
 					return
@@ -187,7 +187,7 @@ local function museum()
 	UI.Line(c, lg.hof and "INDUCTED: " .. P.identity.name:upper() or "YOUR EXHIBIT", { Font = T.bold, TextColor3 = T.gold, TextSize = 18 })
 	UI.Line(c, string.format("Legacy %d  -  all-time rank #%d  -  Hall of Fame needs %d", lg.score or 0, lg.goatRank or 0, Config.HallOfFameScore), { TextSize = 14 })
 	UI.Line(c, (P.titlesWon or 0) > 0 and "Your title belts have a case in the great room." or "Win a world title and the museum gives you a case next to the legends.", { TextSize = 13, TextColor3 = T.sub })
-	UI.Button(c, "FULL LEGACY", { Size = UDim2.new(0, 200, 0, 34), BackgroundColor3 = T.gold, TextColor3 = T.bg }, function()
+	UI.Button(c, "FULL LEGACY", { Size = UDim2.new(0, 200, 0, math.max(34, UI.MinHit(c))), BackgroundColor3 = T.gold, TextColor3 = T.bg }, function()
 		hub("Legacy")
 	end)
 	UI.Header(body, "THE LEGENDS")
@@ -237,10 +237,10 @@ local function eliteCenter()
 		end
 	end
 	UI.Line(body, string.format("Your facility: %s (%d%%)", tostring(gt.name or "Beginner Gym"), math.floor(frac * 100)), { Font = T.semi })
-	UI.Button(body, "FACILITY & EQUIPMENT", { Size = UDim2.new(0, 260, 0, 36), BackgroundColor3 = T.gold, TextColor3 = T.bg }, function()
+	UI.Button(body, "FACILITY & EQUIPMENT", { Size = UDim2.new(0, 260, 0, math.max(36, UI.MinHit(body))), BackgroundColor3 = T.gold, TextColor3 = T.bg }, function()
 		hub("Gym")
 	end)
-	UI.Button(body, "TRAINING", { Size = UDim2.new(0, 260, 0, 36) }, function()
+	UI.Button(body, "TRAINING", { Size = UDim2.new(0, 260, 0, math.max(36, UI.MinHit(body))) }, function()
 		hub("Training")
 	end)
 end

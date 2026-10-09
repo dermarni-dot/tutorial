@@ -723,28 +723,44 @@ function FighterCard.Full(parent, P, opts)
 	UI.Kicker(info, ri.pro and ("PROFESSIONAL BOXER  ·  " .. string.upper(P.className or "") .. " DIVISION") or ("AMATEUR BOXER  ·  " .. string.upper(P.className or "")), T.gold, { order = 1 })
 	nameBlock(info, P, small and 48 or 68, 2)
 	-- the headline numbers: record, knockouts, KO ratio, ranking (a dash / UNRANKED until they mean something)
-	local strip = UI.Frame(info, { Name = "Numbers", BackgroundTransparency = 1, Size = UDim2.new(1, -6, 0, small and 64 or 84), LayoutOrder = 3 })
-	UI.List(strip, 10, true)
+	local cardW = (opts.Size and opts.Size.X.Offset > 0) and opts.Size.X.Offset or 1240
+	local infoW = cardW - photoW - (small and 20 or 36)
+	-- a scaled-down screen draws its captions at the readability floor (15 design px on a phone): the
+	-- tiles were sized for 11, so they take the short captions (the kicker above already says amateur /
+	-- pro), and a narrow info column (a small phone) puts the ranking on a row of its own
+	local terse = small or UI.ScaleOf(parent) < 1
+	local tight = infoW < 520
+	local rowH = small and 60 or 84
+	local strip = UI.Frame(info, { Name = "Numbers", BackgroundTransparency = 1, Size = UDim2.new(1, -6, 0, tight and (rowH * 2 + 8) or rowH), LayoutOrder = 3 })
 	local rankText, champ, rankCaption = FighterCard.BestRank(P)
-	-- a phone's tiles are narrow: short captions (the kicker above already says amateur / pro)
-	if small then
+	if terse then
 		rankCaption = rankCaption:gsub("^AMATEUR  ·  ", ""):gsub("TO TURN PRO", "TO GO PRO")
 	end
 	local numbers = {
-		{ ri.text, small and "RECORD" or (ri.pro and "PRO RECORD" or "AMATEUR RECORD"), T.text, 0.22 },
-		{ tostring(ri.ko), small and "KOS" or "KNOCKOUTS", ri.ko > 0 and T.red or nil, 0.17 },
-		{ FighterCard.KOText(ri), small and "KO %" or "KO RATIO", ri.koPct and T.text or T.dim, 0.17 },
-		{ rankText, rankCaption, champ and T.gold or (rankText == "UNRANKED" and T.sub or T.text), 0.44 },
+		{ ri.text, terse and "RECORD" or (ri.pro and "PRO RECORD" or "AMATEUR RECORD"), T.text, tight and 0.38 or 0.22 },
+		{ tostring(ri.ko), terse and "KOS" or "KNOCKOUTS", ri.ko > 0 and T.red or nil, tight and 0.31 or 0.17 },
+		{ FighterCard.KOText(ri), terse and "KO %" or "KO RATIO", ri.koPct and T.text or T.dim, tight and 0.31 or 0.17 },
+		{ rankText, rankCaption, champ and T.gold or (rankText == "UNRANKED" and T.sub or T.text), tight and 1 or 0.44 },
 	}
+	local rows = { strip }
+	if tight then
+		UI.List(strip, 8)
+		for r = 1, 2 do
+			rows[r] = UI.Frame(strip, { Name = "Row" .. r, BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, rowH), LayoutOrder = r })
+			UI.List(rows[r], 10, true)
+		end
+	else
+		UI.List(strip, 10, true)
+	end
 	for i, n in ipairs(numbers) do
-		UI.Stat(strip, n[1], n[2], { Size = UDim2.new(n[4], -8, 1, 0), valueColor = n[3], valueSize = small and 28 or 38, order = i, scaled = true })
+		local row = rows[(tight and i == 4) and 2 or 1]
+		UI.Stat(row, n[1], n[2], { Size = UDim2.new(n[4], n[4] < 1 and -8 or -2, 1, 0), valueColor = n[3], valueSize = small and 28 or 38, order = i, scaled = true })
 	end
 	-- tale of the tape
 	UI.Kicker(info, "TALE OF THE TAPE", T.sub, { order = 4 })
 	-- four cells a row; two when the info column is narrow (a small phone: "Boxer-Puncher" and
 	-- "POPULARITY" need the room)
-	local cardW = (opts.Size and opts.Size.X.Offset > 0) and opts.Size.X.Offset or 1240
-	local tapeCols = (cardW - photoW - (small and 20 or 36)) < 520 and 2 or 4
+	local tapeCols = tight and 2 or 4
 	local tapeRows = math.ceil(8 / tapeCols)
 	local grid = UI.Frame(info, { Name = "Tape", BackgroundTransparency = 1, Size = UDim2.new(1, -6, 0, tapeRows * 54 + (tapeRows - 1) * 8), LayoutOrder = 5 })
 	UI.Grid(grid, UDim2.new(1 / tapeCols, -8, 0, 54), nil, 8)
@@ -806,7 +822,8 @@ function FighterCard.Compact(parent, P, opts)
 	local strip = UI.Frame(card, { BackgroundTransparency = 1, Position = UDim2.new(0, x, 1, -66), Size = UDim2.new(1, -(x + 16), 0, 54) })
 	UI.List(strip, 8, true)
 	local rankText, champ = FighterCard.BestRank(P)
-	for i, n in ipairs({ { ri.text, ri.pro and "RECORD" or "AMATEUR" }, { tostring(ri.ko), "KOS" }, { tostring(P.overall or 0), "OVR" }, { rankText, "RANKING" } }) do
+	-- (the line above the name already says amateur / pro: "RECORD" fits the narrow tile on a phone)
+	for i, n in ipairs({ { ri.text, "RECORD" }, { tostring(ri.ko), "KOS" }, { tostring(P.overall or 0), "OVR" }, { rankText, "RANKING" } }) do
 		UI.Stat(strip, n[1], n[2], { Size = UDim2.new(i == 4 and 0.34 or 0.2, -8, 1, 0), valueSize = 26, order = i, scaled = true,
 			valueColor = (i == 4 and champ) and T.gold or ((i == 2 and ri.ko > 0) and T.red or ((i == 4 and rankText == "UNRANKED") and T.sub or T.text)) })
 	end

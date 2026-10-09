@@ -810,18 +810,38 @@ end
 ------------------------------------------------------------------------
 -- Responsive scaling
 ------------------------------------------------------------------------
--- design canvas = 1600 x 900; phones (short landscape screens) keep text readable with a higher floor
+-- design canvas = 1600 x 900; phones (short landscape screens) keep text readable with a higher floor,
+-- and a tablet (a touch screen taller than a phone: 1024 x 768 would otherwise land on the 0.7 floor
+-- and draw smaller than a phone) on 0.9 so its controls stay finger-sized; the 0.7 floor is for small
+-- desktop windows with a mouse
 UI.DesignSize = Vector2.new(1600, 900)
 UI.UserScale = 1
+local function touchScreen()
+	return UserInputService.TouchEnabled == true
+end
+UI.IsTouch = touchScreen
 function UI.ScaleFor(w, h, userScale)
 	w, h = tonumber(w) or 1600, tonumber(h) or 900
 	if w <= 0 or h <= 0 then
 		return 1
 	end
 	local s = math.min(w / UI.DesignSize.X, h / UI.DesignSize.Y)
-	local floor = h <= 480 and 0.78 or 0.7
+	local floor = h <= 480 and 0.78 or (touchScreen() and 0.9 or 0.7)
 	s = math.clamp(s, floor, 1.45)
 	return s * math.clamp(tonumber(userScale) or 1, 0.75, 1.3)
+end
+
+-- touch: a fingertip needs about UI.TouchPx screen pixels, so a control drawn smaller than this many
+-- design pixels (under obj's root: 57 on a 0.78 phone, 49 on a 0.9 tablet) grows to it; 0 with a mouse,
+-- where the kit keeps its desktop sizes. The kit's own controls (window close, cycler arrows, slider
+-- steppers, swatches, toggle rows, text boxes, tabs) apply it; screens with their own small buttons
+-- take math.max(design, UI.MinHit(parent)).
+UI.TouchPx = 44
+function UI.MinHit(obj)
+	if not touchScreen() then
+		return 0
+	end
+	return math.ceil(UI.TouchPx / (obj and UI.ScaleOf(obj) or 1))
 end
 
 local function applyScale(root, info)
@@ -1135,16 +1155,20 @@ end
 local padRepeat = 0
 local function padInput(input)
 	local k = input.KeyCode
-	if k ~= Enum.KeyCode.ButtonB and k ~= Enum.KeyCode.DPadLeft and k ~= Enum.KeyCode.DPadRight and k ~= Enum.KeyCode.ButtonA and k ~= Enum.KeyCode.ButtonX then
+	-- the keyboard's back keys (Escape is Roblox's own menu on most clients; Backspace is the one the
+	-- title screen advertises)
+	local kbBack = k == Enum.KeyCode.Backspace or k == Enum.KeyCode.Escape
+	if not kbBack and k ~= Enum.KeyCode.ButtonB and k ~= Enum.KeyCode.DPadLeft and k ~= Enum.KeyCode.DPadRight and k ~= Enum.KeyCode.ButtonA and k ~= Enum.KeyCode.ButtonX then
 		return
 	end
 	if UserInputService:GetFocusedTextBox() then
 		return
 	end
-	if k == Enum.KeyCode.ButtonB then
-		-- B = back / close (whether or not Roblox's own selection also took it)
+	if k == Enum.KeyCode.ButtonB or kbBack then
+		-- B / Backspace = back / close of the top window (whether or not Roblox's own selection also took
+		-- B); a key only acts on a window that is on screen (one hidden under a full-screen menu waits)
 		local w = not next(padHolds) and topWindow()
-		if w and w.back then
+		if w and w.back and (not kbBack or shown(w.win)) then
 			w.back()
 		end
 		return
@@ -1174,22 +1198,24 @@ local function padInput(input)
 end
 
 local function padInit()
-	if padStarted or not Gamepad or not RunService:IsClient() then
+	if padStarted or not RunService:IsClient() then
 		return
 	end
 	padStarted = true
-	Gamepad.Changed:Connect(function(mode)
-		if mode == "gamepad" then
-			UI.PadRefresh()
-		else
-			-- back on mouse / touch: no selection frame left on a window
-			local sel = GuiService.SelectedObject
-			local w = topWindow()
-			if sel and w and sel:IsDescendantOf(w.win) then
-				clearSelection()
+	if Gamepad then
+		Gamepad.Changed:Connect(function(mode)
+			if mode == "gamepad" then
+				UI.PadRefresh()
+			else
+				-- back on mouse / touch: no selection frame left on a window
+				local sel = GuiService.SelectedObject
+				local w = topWindow()
+				if sel and w and sel:IsDescendantOf(w.win) then
+					clearSelection()
+				end
 			end
-		end
-	end)
+		end)
+	end
 	GuiService:GetPropertyChangedSignal("SelectedObject"):Connect(function()
 		local w = topWindow()
 		if not w then
@@ -1300,16 +1326,19 @@ function UI.Window(gui, name, w, h, title, opts)
 			UI.Backdrop(false)
 		end)
 	end
+	-- short screens (phones in landscape) get a compact header and a window up to the screen's edges
+	local short = UI.CanvasSize(gui).Y < 560
+	local hy = short and UDim.new(1, -16) or UDim.new(0.92, 0)
 	-- holder = the window's geometry; shadow layers and the panel live inside it
-	local holder = UI.Frame(shade, { Name = "Holder", BackgroundTransparency = 1, Size = UDim2.new(0.96, 0, 0.92, 0), ZIndex = z })
+	local holder = UI.Frame(shade, { Name = "Holder", BackgroundTransparency = 1, Size = UDim2.new(UDim.new(0.96, 0), hy), ZIndex = z })
 	if opts.side == "left" then
 		holder.AnchorPoint = Vector2.new(0, 0.5)
 		holder.Position = UDim2.new(0, 24, 0.5, 0)
-		holder.Size = UDim2.new(0.46, 0, 0.92, 0)
+		holder.Size = UDim2.new(UDim.new(0.46, 0), hy)
 	elseif opts.side == "right" then
 		holder.AnchorPoint = Vector2.new(1, 0.5)
 		holder.Position = UDim2.new(1, -24, 0.5, 0)
-		holder.Size = UDim2.new(0.42, 0, 0.92, 0)
+		holder.Size = UDim2.new(UDim.new(0.42, 0), hy)
 	else
 		holder.AnchorPoint = Vector2.new(0.5, 0.5)
 		holder.Position = UDim2.fromScale(0.5, 0.5)
@@ -1322,9 +1351,18 @@ function UI.Window(gui, name, w, h, title, opts)
 	-- broadcast accent: a thin gold line glowing along the top edge
 	local accent = UI.Frame(win, { Name = "Accent", Position = UDim2.new(0, 28, 0, 0), Size = UDim2.new(1, -56, 0, 2), BackgroundColor3 = opts.accent or T.gold, ZIndex = z })
 	UI.Gradient(accent, Color3.new(1, 1, 1), 0, NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.2, 0.15), NumberSequenceKeypoint.new(0.8, 0.15), NumberSequenceKeypoint.new(1, 1) }))
-	-- short screens (phones in landscape) get a compact header
-	local short = UI.CanvasSize(gui).Y < 560
 	local top = 16
+	-- the close button: finger-sized on touch (then it sits nearer the top edge and the header grows
+	-- around it)
+	local cs, cy
+	if opts.onClose then
+		local design = short and 32 or 38
+		cs = math.max(design, UI.MinHit(gui))
+		cy = short and 8 or 14
+		if cs > design then
+			cy = short and 4 or 8
+		end
+	end
 	if title then
 		local kick = opts.kicker and not short
 		if kick then
@@ -1333,17 +1371,19 @@ function UI.Window(gui, name, w, h, title, opts)
 		local ty = kick and 26 or (short and 8 or 14)
 		local ts = short and 26 or 32
 		UI.Frame(win, { Name = "TitleTick", Position = UDim2.fromOffset(24, ty + math.floor(ts * 0.22)), Size = UDim2.fromOffset(4, math.floor(ts * 0.75)), BackgroundColor3 = opts.accent or T.gold })
-		UI.Text(win, string.upper(title), { Name = "Title", Face = "display", TextSize = ts, TextColor3 = T.text, Position = UDim2.fromOffset(40, ty), Size = UDim2.new(1, -110, 0, ts + 6),
+		UI.Text(win, string.upper(title), { Name = "Title", Face = "display", TextSize = ts, TextColor3 = T.text, Position = UDim2.fromOffset(40, ty), Size = UDim2.new(1, -math.max(110, 40 + (cs or 0) + 24), 0, ts + 6),
 			AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
 		top = ty + ts + (short and 14 or 20)
+		if cs then
+			top = math.max(top, cy + cs + (short and 8 or 12))
+		end
 		UI.Divider(win, { Position = UDim2.new(0, 16, 0, top - (short and 6 or 8)), Size = UDim2.new(1, -32, 0, 1) })
 	end
-	if opts.onClose then
-		local cs = short and 32 or 38
-		local close = UI.Button(win, "", { Name = "Close", Size = UDim2.fromOffset(cs, cs), Position = UDim2.new(1, -(cs + 14), 0, short and 8 or 14), BackgroundColor3 = T.panel2, BackgroundTransparency = 0.2 }, function()
+	if cs then
+		local close = UI.Button(win, "", { Name = "Close", Size = UDim2.fromOffset(cs, cs), Position = UDim2.new(1, -(cs + 14), 0, cy), BackgroundColor3 = T.panel2, BackgroundTransparency = 0.2 }, function()
 			opts.onClose()
 		end)
-		UI.Icon(close, "close", 14, T.text, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5) })
+		UI.Icon(close, "close", cs >= 48 and 17 or 14, T.text, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5) })
 	end
 	local body
 	local bottom = opts.footer and (opts.footer + 8) or 16
@@ -1580,20 +1620,26 @@ function UI.Slider(parent, label, min, max, value, step, onChange, fmt, opts)
 	opts = opts or {}
 	local hint = opts.hint
 	local hasDefault = type(opts.default) == "number"
-	local f = UI.Frame(parent, { Size = UDim2.new(1, 0, 0, hint and 86 or 70), BackgroundColor3 = T.panel2, BackgroundTransparency = 0.45 })
+	-- touch: the [-] / [+] and the reset button grow to a fingertip and both lines grow around them
+	-- (the label line is centred on the reset button, the stepper line on the [-] / [+])
+	local minHit = UI.MinHit(parent)
+	local bs = math.max(36, minHit)
+	local rs = hasDefault and math.max(30, minHit) or 30
+	local lc = hasDefault and rs > 30 and math.floor(2 + rs / 2) or 17 -- the label line's centre
+	local y0 = math.floor(lc + (hint and 27 or 13)) -- the stepper line's top
+	local f = UI.Frame(parent, { Size = UDim2.new(1, 0, 0, y0 + bs + 4), BackgroundColor3 = T.panel2, BackgroundTransparency = 0.45 })
 	f:SetAttribute("Slider", true)
 	UI.Corner(f, UI.R.md)
-	local right = hasDefault and 50 or 14
-	UI.Text(f, label, { Name = "Label", Position = UDim2.fromOffset(14, 6), Size = UDim2.new(0.5, -14, 0, 22), TextColor3 = T.text, TextSize = 15, Font = T.semi,
+	local right = hasDefault and rs + 20 or 14
+	UI.Text(f, label, { Name = "Label", Position = UDim2.fromOffset(14, lc - 11), Size = UDim2.new(0.5, -14, 0, 22), TextColor3 = T.text, TextSize = 15, Font = T.semi,
 		AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
-	local valText = UI.Text(f, "", { Name = "Value", Face = "displayMed", AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -right, 0, 4), Size = UDim2.new(0.5, 8 - right, 0, 26),
+	local valText = UI.Text(f, "", { Name = "Value", Face = "displayMed", AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -right, 0, lc - 13), Size = UDim2.new(0.5, 8 - right, 0, 26),
 		TextXAlignment = Enum.TextXAlignment.Right, TextSize = 18, TextColor3 = T.gold, AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
 	if hint then
-		UI.Text(f, hint, { Name = "Hint", Position = UDim2.fromOffset(14, 28), Size = UDim2.new(1, -28, 0, 16), TextSize = 12, TextColor3 = T.sub,
+		UI.Text(f, hint, { Name = "Hint", Position = UDim2.fromOffset(14, lc + 11), Size = UDim2.new(1, -28, 0, 16), TextSize = 12, TextColor3 = T.sub,
 			AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
 	end
-	local y0 = hint and 44 or 30
-	local track = UI.Frame(f, { Name = "Track", Position = UDim2.new(0, 62, 0, y0 + 14), Size = UDim2.new(1, -124, 0, 8), BackgroundColor3 = T.ink, BackgroundTransparency = 0.1 })
+	local track = UI.Frame(f, { Name = "Track", Position = UDim2.new(0, bs + 26, 0, y0 + math.floor(bs / 2) - 4), Size = UDim2.new(1, -(2 * bs + 52), 0, 8), BackgroundColor3 = T.ink, BackgroundTransparency = 0.1 })
 	UI.Corner(track, 4)
 	local fill = UI.Frame(track, { Name = "Fill", Size = UDim2.fromScale(0, 1), BackgroundColor3 = T.gold })
 	UI.Corner(fill, 4)
@@ -1606,8 +1652,8 @@ function UI.Slider(parent, label, min, max, value, step, onChange, fmt, opts)
 	UI.Corner(knob, 12)
 	UI.Stroke(knob, T.gold, 3)
 	-- the hit area: the whole line between [-] and [+] (wider and taller than the bar itself)
-	local hit = UI.New("TextButton", { Name = "Hit", Parent = f, Text = "", AutoButtonColor = false, BackgroundTransparency = 1, BorderSizePixel = 0, Position = UDim2.new(0, 50, 0, y0 - 4),
-		Size = UDim2.new(1, -100, 0, 44), Selectable = false })
+	local hit = UI.New("TextButton", { Name = "Hit", Parent = f, Text = "", AutoButtonColor = false, BackgroundTransparency = 1, BorderSizePixel = 0, Position = UDim2.new(0, bs + 14, 0, y0 - 4),
+		Size = UDim2.new(1, -(2 * bs + 28), 0, bs + 8), Selectable = false })
 	local cur = value
 	local dragging = false
 	local resetBtn, resetIcon, atDefault
@@ -1708,9 +1754,9 @@ function UI.Slider(parent, label, min, max, value, step, onChange, fmt, opts)
 	end)
 	f.Destroying:Connect(disarm)
 	local steppers = {}
-	for _, spec in ipairs({ { "Minus", -1, UDim2.new(0, 10, 0, y0), "minus" }, { "Plus", 1, UDim2.new(1, -46, 0, y0), "plus" } }) do
-		local b = UI.Button(f, "", { Name = spec[1], Size = UDim2.fromOffset(36, 36), Position = spec[3], BackgroundColor3 = T.panel2, BackgroundTransparency = 0.2 })
-		UI.Icon(b, spec[4], 13, T.text, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5) })
+	for _, spec in ipairs({ { "Minus", -1, UDim2.new(0, 10, 0, y0), "minus" }, { "Plus", 1, UDim2.new(1, -(bs + 10), 0, y0), "plus" } }) do
+		local b = UI.Button(f, "", { Name = spec[1], Size = UDim2.fromOffset(bs, bs), Position = spec[3], BackgroundColor3 = T.panel2, BackgroundTransparency = 0.2 })
+		UI.Icon(b, spec[4], math.floor(13 + (bs - 36) * 0.2), T.text, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5) })
 		b.MouseButton1Down:Connect(function()
 			holdRepeat(f, function()
 				nudge(spec[2])
@@ -1721,8 +1767,8 @@ function UI.Slider(parent, label, min, max, value, step, onChange, fmt, opts)
 		table.insert(steppers, b)
 	end
 	if hasDefault then
-		resetBtn = UI.Button(f, "", { Name = "Reset", Size = UDim2.fromOffset(30, 30), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -12, 0, 2), BackgroundColor3 = T.panel2 }, reset)
-		resetIcon = UI.Icon(resetBtn, "reset", 14, T.text, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5) })
+		resetBtn = UI.Button(f, "", { Name = "Reset", Size = UDim2.fromOffset(rs, rs), AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -12, 0, 2), BackgroundColor3 = T.panel2 }, reset)
+		resetIcon = UI.Icon(resetBtn, "reset", math.floor(14 + (rs - 30) * 0.2), T.text, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5) })
 		table.insert(steppers, resetBtn)
 		inputReset[f] = reset
 	end
@@ -1767,7 +1813,8 @@ end
 
 -- on/off toggle row: a pill switch that slides
 function UI.Toggle(parent, label, value, onChange)
-	local f = inputRow(parent, label)
+	-- the whole row flips it (a fingertip lands on the label as often as on the pill): a finger-high row
+	local f = inputRow(parent, label, math.max(44, UI.MinHit(parent)))
 	f.Label.Size = UDim2.new(1, -90, 1, 0)
 	local state = value and true or false
 	local sw = UI.New("TextButton", { Name = "Switch", Text = "", AutoButtonColor = false, BorderSizePixel = 0, Size = UDim2.fromOffset(50, 26), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -14, 0.5, 0),
@@ -1799,18 +1846,22 @@ function UI.Toggle(parent, label, value, onChange)
 		end
 	end
 	sw.MouseButton1Click:Connect(flip)
+	local hit = UI.New("TextButton", { Name = "Hit", Parent = f, Text = "", AutoButtonColor = false, BackgroundTransparency = 1, BorderSizePixel = 0, Size = UDim2.fromScale(1, 1), Selectable = false })
+	hit.MouseButton1Click:Connect(flip)
 	registerNudge(f, flip)
-	padRow(f, sw)
+	padRow(f, sw, hit)
 	show(false)
 	return f
 end
 
 -- "< value >" cycler over a list; display(v) formats the value
 function UI.Cycler(parent, label, list, value, onChange, display)
-	local f = inputRow(parent, label)
+	-- the arrows: 32 with a mouse, finger-sized on touch (the row grows around them)
+	local bs = math.max(32, UI.MinHit(parent))
+	local f = inputRow(parent, label, math.max(44, bs + 8))
 	local cur = value
 	-- a long value on a narrow row takes a second line before it is cut ("Welterweight (136-147)")
-	local val = UI.Text(f, "", { Name = "Value", Position = UDim2.new(0.36, 40, 0, 0), Size = UDim2.new(0.64, -94, 1, 0), Font = T.semi, TextSize = 15, TextXAlignment = Enum.TextXAlignment.Center,
+	local val = UI.Text(f, "", { Name = "Value", Position = UDim2.new(0.36, bs + 8, 0, 0), Size = UDim2.new(0.64, -(2 * bs + 30), 1, 0), Font = T.semi, TextSize = 15, TextXAlignment = Enum.TextXAlignment.Center,
 		AutomaticSize = Enum.AutomaticSize.None, TextWrapped = true, TextTruncate = Enum.TextTruncate.AtEnd, LineHeight = 0.95 })
 	local function show()
 		val.Text = display and display(cur) or tostring(cur)
@@ -1824,14 +1875,15 @@ function UI.Cycler(parent, label, list, value, onChange, display)
 			onChange(cur)
 		end
 	end
-	local prev = UI.Button(f, "", { Name = "Prev", Size = UDim2.fromOffset(32, 32), Position = UDim2.new(0.36, 0, 0.5, -16) }, function()
+	local ic = math.floor(12 + (bs - 32) * 0.2)
+	local prev = UI.Button(f, "", { Name = "Prev", Size = UDim2.fromOffset(bs, bs), Position = UDim2.new(0.36, 0, 0.5, -math.floor(bs / 2)) }, function()
 		step(-1)
 	end)
-	UI.Icon(prev, "left", 12, T.text, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5) })
-	local nextB = UI.Button(f, "", { Name = "Next", Size = UDim2.fromOffset(32, 32), Position = UDim2.new(1, -46, 0.5, -16) }, function()
+	UI.Icon(prev, "left", ic, T.text, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5) })
+	local nextB = UI.Button(f, "", { Name = "Next", Size = UDim2.fromOffset(bs, bs), Position = UDim2.new(1, -(bs + 14), 0.5, -math.floor(bs / 2)) }, function()
 		step(1)
 	end)
-	UI.Icon(nextB, "right", 12, T.text, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5) })
+	UI.Icon(nextB, "right", ic, T.text, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5) })
 	-- dir 0 (A on the row) steps forward
 	registerNudge(f, function(d)
 		step(d == 0 and 1 or d)
@@ -1862,7 +1914,7 @@ UI.ToRGB = toRGB
 -- swatch size (36). Returns frame, refresh(index | nil = none picked: a custom colour)
 function UI.Swatches(parent, label, colors, selected, onPick, opts)
 	opts = opts or {}
-	local size = opts.size or 36
+	local size = math.max(opts.size or 36, UI.MinHit(parent))
 	local f = UI.Frame(parent, { Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundColor3 = T.panel2, BackgroundTransparency = 0.45 })
 	UI.Corner(f, UI.R.md)
 	UI.Pad(f, 10, 14)
@@ -2008,10 +2060,11 @@ function UI.ColorWheel(parent, label, rgbValue, onChange)
 end
 
 function UI.TextInput(parent, label, value, placeholder, maxLen, onChange)
-	local f = inputRow(parent, label, 48)
+	local bh = math.max(34, UI.MinHit(parent)) -- the box: finger-high on touch
+	local f = inputRow(parent, label, bh + 14)
 	local box = UI.New("TextBox", {
 		Parent = f, Text = value or "", PlaceholderText = placeholder or "", ClearTextOnFocus = false,
-		Position = UDim2.new(0.36, 0, 0.5, -17), Size = UDim2.new(0.64, -14, 0, 34), BackgroundColor3 = T.ink, BackgroundTransparency = 0.2, BorderSizePixel = 0,
+		Position = UDim2.new(0.36, 0, 0.5, -math.floor(bh / 2)), Size = UDim2.new(0.64, -14, 0, bh), BackgroundColor3 = T.ink, BackgroundTransparency = 0.2, BorderSizePixel = 0,
 		TextColor3 = T.text, PlaceholderColor3 = T.dim, Font = T.font, TextSize = 15, TextXAlignment = Enum.TextXAlignment.Left,
 	})
 	UI.SetTextSize(box, 15)
@@ -2037,7 +2090,7 @@ end
 
 -- horizontal tab bar with a sliding underline; returns frame and select(name)
 function UI.Tabs(parent, names, current, onSelect, props)
-	local bar = UI.Frame(parent, props or { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 38) })
+	local bar = UI.Frame(parent, props or { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, math.max(38, UI.MinHit(parent) + 3)) })
 	bar.BackgroundTransparency = 1
 	local holder = UI.Frame(bar, { Name = "Buttons", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 1, -3) })
 	UI.List(holder, 4, true)
