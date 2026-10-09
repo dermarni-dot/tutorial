@@ -259,40 +259,44 @@ local function faceMorphFns(F)
 		end
 		return side * 0.012 * p, 0, -0.008 * p
 	end
-	-- fight swelling (FaceFX drives these from the damage state)
+	-- fight swelling (FaceFX drives these from the damage state). Sized to read at the fight camera / HUD
+	-- portrait distance: a swollen socket or cheek is a haematoma of ~0.05 studs (7% of the head's width), not a
+	-- few mm. The socket skin itself stays put (AddFaceMorphs' keep ring), so each puff is a dome AROUND it.
 	for s = -1, 1, 2 do
 		local tag = s < 0 and "L" or "R"
 		local e = E[s]
 		fns["swellEye" .. tag] = function(x, y, z)
-			local q = ((x - e.x) / 0.11) ^ 2 + ((y - (e.y + 0.008)) / 0.095) ^ 2
+			local q = ((x - e.x) / 0.14) ^ 2 + ((y - (e.y + 0.008)) / 0.12) ^ 2
 			if q >= 1 then
 				return nil
 			end
-			-- puffs the lid folds, brow and cheek round the orbit; fades in gently away from the rim (a steep
-			-- ramp would show as a band: blend shapes keep the generated normals)
+			-- puffs the lid folds, brow and cheek round the orbit: full just outside the rim, easing out to the
+			-- ellipse (a bump peaking at the eye's centre would leave the moving ring at a third of its height);
+			-- fades in gently from the rim (a steep ramp would show as a band: blend shapes keep the normals)
 			local d3 = sqrt((x - e.x) ^ 2 + (y - e.y) ^ 2 + (z - e.z) ^ 2)
-			local w = bump(q) * smoothstep(F.eyeR + 0.006, F.eyeR + 0.03, d3)
+			local w = (1 - smoothstep(0.2, 1, q)) * smoothstep(F.eyeR + 0.006, F.eyeR + 0.03, d3)
 			if y > e.y then
 				-- the brow-lid fold sags over the lid
-				return s * 0.003 * w, -0.015 * w * smoothstep(e.y, e.y + 0.03, y) + 0.002 * w, -0.015 * w
+				local fold = smoothstep(e.y, e.y + 0.02, y)
+				return s * 0.006 * w, -0.02 * w * fold + 0.004 * w, -0.05 * w * fold - 0.02 * w * (1 - fold)
 			end
 			-- the lower lid's bag rises
-			return s * 0.003 * w, 0.01 * w * smoothstep(e.y - 0.07, e.y - 0.02, y), -0.012 * w
+			return s * 0.006 * w, 0.02 * w * smoothstep(e.y - 0.08, e.y - 0.03, y), -0.04 * w
 		end
 		fns["swellCheek" .. tag] = function(x, y, z)
-			local q = ((x - s * 0.25) / 0.1) ^ 2 + ((y - (eyeY - 0.085)) / 0.08) ^ 2
+			local q = ((x - s * 0.25) / 0.13) ^ 2 + ((y - (eyeY - 0.085)) / 0.1) ^ 2
 			if q >= 1 then
 				return nil
 			end
 			local w = bump(q)
-			return s * 0.008 * w, 0, -0.016 * w
+			return s * 0.02 * w, 0, -0.05 * w
 		end
 		fns["swellBrow" .. tag] = function(x, y, z)
-			local q = ((x - s * 0.12) / 0.07) ^ 2 + ((y - (browY + 0.09)) / 0.06) ^ 2
+			local q = ((x - s * 0.12) / 0.1) ^ 2 + ((y - (browY + 0.09)) / 0.08) ^ 2
 			if q >= 1 then
 				return nil
 			end
-			return 0, 0, -0.018 * bump(q)
+			return 0, 0, -0.05 * bump(q)
 		end
 	end
 	fns.swellLip = function(x, y, z)
@@ -301,7 +305,7 @@ local function faceMorphFns(F)
 			return nil
 		end
 		local w = bump(q)
-		return 0, -0.004 * w, -0.01 * w
+		return 0, -0.01 * w, -0.025 * w
 	end
 	fns.swellNose = function(x, y, z)
 		local q = (x / 0.08) ^ 2 + ((y - (nas + nb) * 0.5) / 0.13) ^ 2
@@ -309,7 +313,7 @@ local function faceMorphFns(F)
 			return nil
 		end
 		local w = bump(q)
-		return x * 0.15 * w, 0, -0.004 * w
+		return x * 0.4 * w, 0, -0.012 * w
 	end
 	return fns
 end
@@ -353,9 +357,9 @@ local function morphBands(F)
 		snarl = { mY - 0.02, nb + 0.06 }, wide = { mY - 0.07, mY + 0.06 }, asym = { mY - 0.07, eY - 0.02 },
 		browUp = { eY + 0.02, bY + 0.1 }, browIn = { bY - 0.05, bY + 0.05 }, knit = { bY - 0.05, bY + 0.05 },
 		lid = { eY + 0.02, eY + 0.08 }, squint = { eY - 0.09, eY + 0.04 }, breathe = { nb - 0.02, nb + 0.06 },
-		puff = { mY - 0.06, mY + 0.1 }, swellEyeL = { eY - 0.08, eY + 0.1 }, swellEyeR = { eY - 0.08, eY + 0.1 },
-		swellCheekL = { eY - 0.17, eY }, swellCheekR = { eY - 0.17, eY }, swellBrowL = { bY + 0.03, bY + 0.15 },
-		swellBrowR = { bY + 0.03, bY + 0.15 }, swellLip = { mY - 0.05, mY + 0.01 }, swellNose = { nb - 0.01, F.nasionY + 0.02 },
+		puff = { mY - 0.06, mY + 0.1 }, swellEyeL = { eY - 0.12, eY + 0.14 }, swellEyeR = { eY - 0.12, eY + 0.14 },
+		swellCheekL = { eY - 0.19, eY + 0.02 }, swellCheekR = { eY - 0.19, eY + 0.02 }, swellBrowL = { bY + 0.01, bY + 0.17 },
+		swellBrowR = { bY + 0.01, bY + 0.17 }, swellLip = { mY - 0.05, mY + 0.01 }, swellNose = { nb - 0.01, F.nasionY + 0.02 },
 	}
 end
 

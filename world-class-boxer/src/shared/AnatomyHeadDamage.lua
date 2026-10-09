@@ -42,13 +42,16 @@ function Damage.Swell(dmg, tier)
 	tier = tonumber(tier) or 0
 	local swell = {}
 	local closing, red = {}, {}
+	-- heavy / severe (tier 3+) must read as "large" / "extreme" swelling: the fight engine caps the fields at 1,
+	-- so the puffs get a push past full weight there
+	local heavy = tier >= 3 and 1.2 or 1
 	for s = -1, 1, 2 do
 		local tag = s < 0 and "L" or "R"
 		local ev = n01(dmg, s < 0 and "leftEye" or "rightEye")
 		local ck = n01(dmg, s < 0 and "cheekL" or "cheekR")
 		local ear = n01(dmg, s < 0 and "earL" or "earR")
-		swell["swellEye" .. tag] = clamp(ev * 0.9, 0, 1.2)
-		swell["swellCheek" .. tag] = clamp(ck * 0.85, 0, 1.2)
+		swell["swellEye" .. tag] = clamp(ev * 0.9 * heavy, 0, 1.2)
+		swell["swellCheek" .. tag] = clamp(ck * 0.85 * heavy, 0, 1.2)
 		swell["swellEar" .. tag] = clamp(ear, 0, 1.2)
 		closing[s] = clamp((ev - 0.3) / 0.7, 0, 1)
 		red[s] = clamp(ev * 0.5 + (tier >= 4 and 0.35 or 0) + n01(dmg, "redness") * 0.15, 0, 0.8)

@@ -807,14 +807,18 @@ local function meshUpdate(model, rec, v, ch, blinkC, lidC, gaze, near, now, a, b
 	local closing = v.closing or NO_CLOSING
 	for s = -1, 1, 2 do
 		local c = max(lidC[s], blinkC)
+		-- a swollen socket (swellEye puffs the skin round the eye forward) carries its closed lid forward with
+		-- it, about half the fold's rise, so the lid is not buried in the puff
+		local push = 0
 		if closing[s] > 0 then
 			c = max(c, 0.35 + 0.65 * closing[s])
+			push = 0.4 * v.eyeR * (v.swell[s < 0 and "swellEyeL" or "swellEyeR"] or 0) * closing[s]
 		end
 		c = clamp(c, -0.35, 1)
 		local name = s < 0 and "LidL" or "LidR"
 		local p, ax = v.pivot[s], v.axis[s]
 		if v.pieces[name] and p then
-			setPiece(model, v, name, CF(p) * CFrame.fromAxisAngle(ax, -s * c * LID_SHUT) * CF(-p))
+			setPiece(model, v, name, CF(0, 0, -push) * CF(p) * CFrame.fromAxisAngle(ax, -s * c * LID_SHUT) * CF(-p))
 		end
 	end
 	if v.pieces.LidUpper and v.pivot[-1] and v.pivot[1] then
