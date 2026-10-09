@@ -21,13 +21,103 @@ local REBUILD_GAP = 1.5 -- seconds between re-copies when the character was rebu
 local getMirror
 local started = false
 local disabled = false
-local st = {} -- active state: mirror, sg, vp, cam, char, pairs = { {orig, copy} }, builtAt
+local st = {} -- active state: mirror, sg, vp, cam, char, pairs = { {orig, copy, hidden} }, builtAt
 
 local function teardown()
 	if st.sg then
 		st.sg:Destroy()
 	end
 	st = {}
+end
+
+-- AnatomyClient (the organic EditableMesh characters), required lazily: nil without the module
+local anatomy
+local anatomyLoaded = false
+local function anatomyClient()
+	if not anatomyLoaded then
+		anatomyLoaded = true
+		local m = script.Parent:FindFirstChild("AnatomyClient")
+		local ok, ac = false, nil
+		if m then
+			ok, ac = pcall(require, m)
+		end
+		anatomy = (ok and type(ac) == "table") and ac or nil
+	end
+	return anatomy
+end
+
+-- every anatomy rebuild destroys the old EditableMeshes, so a copy made before it draws nothing:
+-- the mirror re-copies (st.dirty) after a rebuild / restore of YOUR character, like FighterCard
+local anatomyHooked = false
+local function hookAnatomy()
+	if anatomyHooked then
+		return
+	end
+	anatomyHooked = true
+	task.spawn(function()
+		local ac = anatomyClient()
+		if not ac then
+			return
+		end
+		for _, sig in ipairs({ ac.OnBuilt, ac.OnRestored }) do
+			if type(sig) == "table" and type(sig.Connect) == "function" then
+				pcall(function()
+					sig:Connect(function(model)
+						if model == player.Character and st.char == model then
+							st.dirty = true
+						end
+					end)
+				end)
+			end
+		end
+	end)
+end
+
+-- does a copied anatomy MeshPart still show its mesh? Its geometry is an EditableMesh referenced
+-- through MeshContent (Content.fromObject): a copy that lost the reference would draw nothing
+local function meshCarried(mp)
+	local ok, has = pcall(function()
+		local c = mp.MeshContent
+		return c ~= nil and c.Object ~= nil
+	end)
+	return ok and has == true
+end
+
+-- the copied anatomy meshes (clone.Anatomy): kept when every piece still carries its mesh, else
+-- removed so the reflection falls back to the round-1 parts (true = the organic look is in the copy)
+local function keepMeshes(clone)
+	local folder = clone:FindFirstChild("Anatomy")
+	if not folder then
+		return false
+	end
+	local n = 0
+	for _, d in ipairs(folder:GetDescendants()) do
+		if d:IsA("MeshPart") then
+			if not meshCarried(d) then
+				folder:Destroy()
+				return false
+			end
+			n += 1
+		end
+	end
+	if n == 0 then
+		folder:Destroy()
+		return false
+	end
+	return true
+end
+
+-- is this original hidden by the anatomy meshes (a round-1 part a mesh replaced, or a mesh piece tucked
+-- under headgear / a hood)? Clone never carries LocalTransparencyModifier (it is not saved), so the
+-- copy must be told; the camera's own first-person fade is not a reason (a mirror still shows you)
+local function hiddenByMeshes(orig, pieces, isReplaced)
+	if isReplaced then
+		local ok, r = pcall(isReplaced, orig)
+		if ok and r == true then
+			return true
+		end
+	end
+	return pieces ~= nil and orig:IsA("MeshPart") and orig.LocalTransparencyModifier >= 0.99 and orig:IsDescendantOf(pieces)
 end
 
 -- copy the character once; pairs map every original BasePart to its copy
@@ -57,6 +147,12 @@ local function copyCharacter(char, parent)
 		end
 	end
 	stripTags(clone)
+	-- what the meshes hide on the live character stays hidden in the glass when the meshes came
+	-- along; without them the round-1 parts show (the same rule as FighterCard's photos)
+	local meshes = keepMeshes(clone)
+	local ac = anatomyClient()
+	local isReplaced = meshes and ac and ac.IsReplaced or nil
+	local pieces = meshes and char:FindFirstChild("Anatomy") or nil
 	local pairsOut = {}
 	for _, d in ipairs(clone:GetDescendants()) do
 		stripTags(d)
@@ -70,7 +166,24 @@ local function copyCharacter(char, parent)
 			d.CanCollide = false
 			local orig = list[d:GetAttribute("MirrorId") or -1]
 			if orig then
-				table.insert(pairsOut, { orig, d })
+				local hidden = meshes and hiddenByMeshes(orig, pieces, isReplaced) or false
+				if hidden then
+					d.Transparency = 1
+				end
+				table.insert(pairsOut, { orig, d, hidden })
+			end
+		elseif (d:IsA("SurfaceGui") or d:IsA("BillboardGui")) and d:GetAttribute("AnatomyHid") == true then
+			-- Enabled is copied: false while the live meshes hide the gui; back on without them
+			d.Enabled = not meshes
+			d:SetAttribute("AnatomyHid", nil)
+		elseif d:IsA("Decal") and meshes and isReplaced then
+			-- a decal draws even on a transparent part: hide it with the part (or itself) it was replaced on
+			local origPart = d.Parent and list[d.Parent:GetAttribute("MirrorId") or -1]
+			local origDecal = origPart and origPart:FindFirstChild(d.Name)
+			local okP, rp = pcall(isReplaced, origPart)
+			local okD, rd = pcall(isReplaced, origDecal)
+			if (okP and rp == true) or (okD and rd == true) then
+				d.Transparency = 1
 			end
 		end
 	end
@@ -161,7 +274,8 @@ local function update()
 		local orig, copy = pr[1], pr[2]
 		if orig.Parent then
 			copy.CFrame = reflect(orig.CFrame, c, n)
-			copy.Transparency = orig.Transparency -- (a mirror still shows you in first person)
+			-- (a mirror still shows you in first person; only what the meshes replaced stays hidden)
+			copy.Transparency = pr[3] and 1 or orig.Transparency
 		else
 			dirty = true
 			copy.Transparency = 1
@@ -182,6 +296,7 @@ function GymMirror.Start(getter)
 		return
 	end
 	started = true
+	hookAnatomy()
 	local acc = 0
 	RunService.RenderStepped:Connect(function(dt)
 		if disabled then

@@ -10,6 +10,8 @@
 --                    tracking cameras, glass partitions, staff
 --  * World Champion  gold trim, champion banners, a media backdrop with a camera crew, a red
 --                    carpet, fans behind barriers at the door (more with popularity), title photos
+--                    and the Champion's Lounge: a mezzanine deck over the east lobby (stairs, bar,
+--                    glass balustrades over the ring) - the facility grows a level
 -- Always: the career wall next to the Fight Board (your real fights), the trophy case with the
 -- titles you actually won, the "YOURS" plates under the belts you hold and the sparring ring
 -- (rope Beams with sag and physics, corner pads, apron, steps) matched to your ring level.
@@ -27,11 +29,31 @@ local GymSound = require(script.Parent:WaitForChild("GymSound"))
 local GymFacility = {}
 local player = Players.LocalPlayer
 
+-- sibling modules required lazily (a missing one only costs its feature): FighterCard (the posed
+-- character copies for the title photos), CityVisuals (its fan crowd outside the door), AnatomyClient
+local optionalCache = {}
+local function optional(name)
+	local c = optionalCache[name]
+	if c == nil then
+		local m = script.Parent:FindFirstChild(name)
+		local ok, mod = false, nil
+		if m then
+			ok, mod = pcall(require, m)
+		end
+		c = (ok and type(mod) == "table") and mod or false
+		optionalCache[name] = c
+	end
+	return c or nil
+end
+
 local V3 = Vector3.new
 local CF = CFrame.new
 local ANG = CFrame.Angles
 local RAD = math.rad
 local M = Enum.Material
+-- the lobby stands on the hall's plain floor (MapBuilder Floor: 0.4 thick at y 0.2), not on a zone
+-- floor (top 0.5): everything placed in the lobby sits on this
+local LOBBY_Y = 0.4
 
 local function rgb(r, g, b)
 	return Color3.fromRGB(r, g, b)
@@ -465,18 +487,39 @@ local function buildDressing(m, idx, P)
 		end
 		return
 	end
-	-- Intermediate and up: sponsor banners, LED strips, a round timer in the weight room
+	-- Intermediate and up: sponsor banners, LED strips, a round timer in the weight room. The
+	-- banners are the sponsors you actually signed (summary P.sponsors.deals, slot order), topped
+	-- up from the catalog (local brands below Elite) when fewer than four deals are running
 	local sponsors = Catalog.Sponsors or {}
-	local pool = {}
-	for _, sp in ipairs(sponsors) do
-		if (idx >= 3) or sp.scope == "Local" then
+	local pool, seen = {}, {}
+	local deals = type(P.sponsors) == "table" and type(P.sponsors.deals) == "table" and P.sponsors.deals or {}
+	for _, slot in ipairs(Catalog.SponsorSlots or {}) do
+		local d = deals[slot]
+		local sp = type(d) == "table" and d.id and Catalog.Sponsor(d.id)
+		if sp and not seen[sp.id] then
+			seen[sp.id] = true
 			table.insert(pool, sp)
 		end
 	end
 	local spots = { CF(-15, 23.5, -20), CF(15, 23.5, -20), CF(-80, 23.5, -20), CF(80, 23.5, -20) }
+	local signed = #pool
+	local extra = {}
+	for _, sp in ipairs(sponsors) do
+		if ((idx >= 3) or sp.scope == "Local") and not seen[sp.id] then
+			table.insert(extra, sp)
+		end
+	end
+	for i = 1, #spots - signed do
+		local sp = extra[(i + idx) % math.max(1, #extra) + 1]
+		if sp then
+			table.insert(pool, sp)
+		end
+	end
 	for i, cf in ipairs(spots) do
-		local sp = pool[(i + idx) % math.max(1, #pool) + 1]
-		sponsorBanner(m, cf, sp)
+		local sp = pool[(i - 1) % math.max(1, #pool) + 1]
+		if sp then
+			sponsorBanner(m, cf, sp)
+		end
 	end
 	local ledColor = ({ nil, rgb(255, 236, 200), rgb(150, 210, 255), GOLD })[idx] or rgb(255, 236, 200)
 	for _, seg in ipairs({ { -44, -8 }, { 8, 44 } }) do
@@ -489,7 +532,8 @@ local function buildDressing(m, idx, P)
 	roundTimer(m, CF(-108.3, 12, -30) * ANG(0, RAD(-90), 0), 7)
 	if idx >= 3 then
 		-- cool LED on top of the dividers, analytics screens fed by your training records
-		for _, d in ipairs({ { V3(0.25, 0.08, 60), CF(-50, 9.45, -48) }, { V3(40, 0.08, 0.25), CF(-88, 9.45, 20) }, { V3(40, 0.08, 0.25), CF(88, 9.45, 20) } }) do
+		-- (the recovery divider at x 88 already carries GymDecor's teal strip, y 9.4..9.6: on top of it)
+		for _, d in ipairs({ { V3(0.25, 0.08, 60), CF(-50, 9.45, -48) }, { V3(40, 0.08, 0.25), CF(-88, 9.45, 20) }, { V3(40, 0.08, 0.25), CF(88, 9.64, 20) } }) do
 			part(m, "DividerLED", d[1], d[2], rgb(140, 205, 255), M.Neon, { shadow = false })
 		end
 		GymFacility.AnalyticsScreen(m, (onWall(m, "AnalyticsScreen", "N", 30, 14.8, 12, 4, DARK, M.SmoothPlastic, { depth = 0.2 }, 0.12)), Enum.NormalId.Front, P, "PERFORMANCE ANALYTICS")
@@ -931,7 +975,7 @@ local function buildCareer(m, P, idx)
 	local hist = type(P.history) == "table" and P.history or {}
 	local style = idx <= 1 and "paper" or (idx >= 4 and "gold" or "print")
 	for i, x in ipairs({ -13.5, 13.5 }) do
-		local base = CF(x, 0.5, 32.2) * ANG(0, RAD(180), 0) -- faces +Z: towards the spawn and the door
+		local base = CF(x, LOBBY_Y, 32.2) * ANG(0, RAD(180), 0) -- faces +Z: towards the spawn and the door
 		local board = part(m, idx <= 1 and "Corkboard" or "CareerPanel", V3(8, 8.6, 0.3), base * CF(0, 5.4, 0), idx <= 1 and rgb(170, 125, 80) or rgb(22, 22, 28), idx <= 1 and M.Fabric or M.SmoothPlastic, { collide = true })
 		part(m, "PanelFrame", V3(8.4, 9, 0.24), base * CF(0, 5.4, 0.04), idx >= 4 and GOLD or (idx <= 1 and rgb(110, 80, 50) or BLACK), idx >= 4 and M.Metal or M.Wood)
 		for _, sx in ipairs({ -3.4, 3.4 }) do
@@ -1068,7 +1112,49 @@ local function stripTags(inst)
 	end
 end
 
+-- every anatomy (re)build of YOUR character makes new meshes and destroys the old ones, so a photo
+-- taken before it would show nothing where the meshes were: the wall is re-shot after a build
+local anatomyBuilds = 0
+local anatomyHooked = false
+local reshootPhotos -- defined with Refresh (needs the last profile)
+local function hookAnatomy()
+	if anatomyHooked then
+		return
+	end
+	anatomyHooked = true
+	task.spawn(function()
+		local ac = optional("AnatomyClient")
+		if not ac then
+			return
+		end
+		for _, sig in ipairs({ ac.OnBuilt, ac.OnRestored }) do
+			if type(sig) == "table" and type(sig.Connect) == "function" then
+				pcall(function()
+					sig:Connect(function(model)
+						if model == player.Character then
+							anatomyBuilds += 1
+							reshootPhotos()
+						end
+					end)
+				end)
+			end
+		end
+	end)
+end
+
 local function photoClone(char)
+	-- the posed portrait copy FighterCard builds for the fighter card: tags stripped (nothing
+	-- animates it), the round-1 parts the anatomy meshes replaced hidden, only meshes that still
+	-- draw kept, everything anchored
+	local fc = optional("FighterCard")
+	if fc and type(fc.Snapshot) == "function" then
+		local ok, clone = pcall(fc.Snapshot, char)
+		if ok and clone then
+			return clone
+		end
+	end
+	-- without FighterCard: a plain frozen copy in the round-1 look (the copied meshes belong to
+	-- the live character, and LocalTransparencyModifier - how the meshes hide parts - is not cloned)
 	local ok, clone = pcall(function()
 		local was = char.Archivable
 		char.Archivable = true
@@ -1078,6 +1164,10 @@ local function photoClone(char)
 	end)
 	if not ok or not clone then
 		return nil
+	end
+	local meshes = clone:FindFirstChild("Anatomy")
+	if meshes then
+		meshes:Destroy()
 	end
 	-- Clone copies CollectionService tags. A photo must stay frozen, so strip them all: otherwise
 	-- FaceFX (FaceRig), HairFX (HairSway/HairStrand), BodyFX (Vein), the Animator and
@@ -1090,6 +1180,10 @@ local function photoClone(char)
 			d:Destroy()
 		elseif d:IsA("BasePart") then
 			d.Anchored = true
+			d.LocalTransparencyModifier = 0
+		elseif d:IsA("SurfaceGui") and d:GetAttribute("AnatomyHid") == true then
+			d.Enabled = true
+			d:SetAttribute("AnatomyHid", nil)
 		end
 	end
 	local hum = clone:FindFirstChildOfClass("Humanoid")
@@ -1107,7 +1201,7 @@ local function buildPhotos(m, P, idx)
 		return
 	end
 	local champ = idx >= 4
-	local base = CF(36, 0.5, 40) * ANG(0, RAD(180), 0) -- faces +Z (the entrance)
+	local base = CF(36, LOBBY_Y, 40) * ANG(0, RAD(180), 0) -- faces +Z (the entrance)
 	part(m, "ChampWall", V3(14, 9, 0.4), base * CF(0, 5, 0), champ and rgb(16, 16, 20) or rgb(60, 44, 34), champ and M.SmoothPlastic or M.WoodPlanks, { collide = true })
 	part(m, "ChampWallCap", V3(14.4, 0.3, 0.7), base * CF(0, 9.6, 0), champ and GOLD or rgb(110, 80, 50), champ and M.Metal or M.Wood)
 	local head = part(m, "ChampWallTitle", V3(10, 0.9, 0.1), base * CF(0, 8.6, -0.26), Color3.new(), M.SmoothPlastic, { transparency = 1 })
@@ -1196,8 +1290,10 @@ local function buildChampion(m, P, idx)
 	local strip = part(m, "CanopyChampion", V3(16, 1.8, 0.12), CF(0, 17.6, -59.35), rgb(18, 14, 10), M.Fabric, { shadow = false })
 	sign(strip, Enum.NormalId.Front, "TRAINING CAMP OF " .. name, GOLD, nil, 30)
 	sign(strip, Enum.NormalId.Back, "TRAINING CAMP OF " .. name, GOLD, nil, 30)
-	-- media backdrop: step-and-repeat wall, softboxes, a TV camera on a tripod, a small podium
-	local mb = CF(-19, 0.5, 36) * ANG(0, RAD(180), 0)
+	-- media backdrop: step-and-repeat wall, softboxes, a TV camera on a tripod, a small podium. It
+	-- stands west of the career wall (its left panel ends at x -17.5) and short of the lounge rug
+	-- (x -44..-28 from z 44.5), so neither the FIGHT HISTORY board nor the lounge is covered
+	local mb = CF(-27, LOBBY_Y, 36) * ANG(0, RAD(180), 0)
 	local wall = part(m, "MediaBackdrop", V3(14, 8, 0.3), mb * CF(0, 4.3, 0), WHITE, M.SmoothPlastic, { collide = true })
 	local sg = gui(wall, Enum.NormalId.Front, 20, 0.6)
 	frame(sg, { Size = UDim2.fromScale(1, 1), BackgroundColor3 = rgb(245, 245, 248) })
@@ -1215,13 +1311,13 @@ local function buildChampion(m, P, idx)
 		cell.TextScaled = true
 	end
 	for _, sx in ipairs({ -5.5, 5.5 }) do
-		local st = mb * CF(sx, 0, -6)
+		local st = mb * CF(sx, 0, -5)
 		part(m, "LightStand", V3(0.14, 6, 0.14), st * CF(0, 3, 0), BLACK, M.Metal)
 		local box = part(m, "Softbox", V3(2.2, 2.2, 0.8), CFrame.lookAt((st * CF(0, 6.4, 0)).Position, (mb * CF(0, 3.5, 0)).Position), BLACK, M.Fabric)
 		local diff = part(m, "SoftboxFront", V3(2.0, 2.0, 0.05), box.CFrame * CF(0, 0, -0.42), WHITE, M.Neon, { shadow = false })
 		spot(diff, Enum.NormalId.Front, rgb(255, 245, 235), 14, 0.8, 70)
 	end
-	local tri = mb * CF(0, 0, -12)
+	local tri = mb * CF(0, 0, -7.5)
 	for k = 0, 2 do
 		local a = k * RAD(120)
 		rod(m, "TripodLeg", (tri * CF(math.cos(a) * 1.0, 0, math.sin(a) * 1.0)).Position, (tri * CF(0, 4.2, 0)).Position, 0.12, BLACK, M.Metal)
@@ -1236,8 +1332,9 @@ local function buildChampion(m, P, idx)
 	for k = 0, 1 do
 		rod(m, "Mic", (mb * CF(-0.3 + k * 0.6, 3.6, -2.0)).Position, (mb * CF(-0.2 + k * 0.4, 4.3, -2.6)).Position, 0.1, BLACK, M.Metal)
 	end
-	-- red carpet from the door to the Fight Board (raised over the spawn pad)
-	for _, seg in ipairs({ { 66.5, 78.4, 0.525 }, { 55, 65, 1.03 }, { 37, 54.5, 0.525 } }) do
+	-- red carpet from the door to the Fight Board (raised over the spawn pad, and over the door mat
+	-- at z 74.6..78.6, which tops at 0.46)
+	for _, seg in ipairs({ { 74.7, 78.4, 0.485 }, { 66.5, 74.5, LOBBY_Y + 0.025 }, { 55, 65, 1.03 }, { 37, 54.5, LOBBY_Y + 0.025 } }) do
 		local mid, len = (seg[1] + seg[2]) / 2, seg[2] - seg[1]
 		part(m, "RedCarpet", V3(6, 0.04, len), CF(0, seg[3], mid), rgb(150, 18, 26), M.Fabric, { shadow = false })
 		for _, sx in ipairs({ -3.05, 3.05 }) do
@@ -1246,7 +1343,7 @@ local function buildChampion(m, P, idx)
 	end
 	for _, z in ipairs({ 70, 75 }) do
 		for _, sx in ipairs({ -4.2, 4.2 }) do
-			local s = CF(sx, 0.5, z)
+			local s = CF(sx, LOBBY_Y, z)
 			vcyl(m, "StanchionBase", 0.1, 0.8, s, GOLD, M.Metal)
 			vcyl(m, "Stanchion", 2.7, 0.15, s, GOLD, M.Metal)
 		end
@@ -1255,23 +1352,33 @@ local function buildChampion(m, P, idx)
 		rod(m, "VelvetRope", V3(sx, 3.0, 70), V3(sx, 2.5, 72.5), 0.14, rgb(150, 20, 30), M.Fabric)
 		rod(m, "VelvetRope", V3(sx, 2.5, 72.5), V3(sx, 3.0, 75), 0.14, rgb(150, 20, 30), M.Fabric)
 	end
-	-- fans behind barriers outside the door: more of them the more famous you are
+	-- fans behind barriers outside the door: more of them the more famous you are. CityVisuals
+	-- already gathers its articulated fans (signs, autographs) at the door sites FanGymW / FanGymE
+	-- (x +-13, z 93..107) for any popularity: then this builds only the barrier line in front of
+	-- them, and its own block fans stand in only when that crowd is empty (one crowd, one style)
 	local pop = tonumber(P.popularity) or 0
 	local count = math.clamp(math.floor(pop * 0.4), 8, 40)
+	local cityFans = 0
+	local cv = optional("CityVisuals")
+	if cv and type(cv.FanCount) == "function" then
+		local ok, n = pcall(cv.FanCount, P)
+		cityFans = ok and tonumber(n) or 0
+	end
+	local bx = cityFans > 0 and 10.6 or 6.5 -- the barriers stand right in front of whichever crowd
 	for _, sx in ipairs({ -1, 1 }) do
 		for k = 0, 5 do
 			local z = 91 + k * 3
-			part(m, "Barrier", V3(0.2, 0.18, 2.9), CF(sx * 6.5, 3.1, z), CHROME, M.Metal)
-			part(m, "Barrier", V3(0.2, 0.18, 2.9), CF(sx * 6.5, 1.0, z), CHROME, M.Metal)
+			part(m, "Barrier", V3(0.2, 0.18, 2.9), CF(sx * bx, 3.1, z), CHROME, M.Metal)
+			part(m, "Barrier", V3(0.2, 0.18, 2.9), CF(sx * bx, 1.0, z), CHROME, M.Metal)
 			for _, dz in ipairs({ -1.3, 1.3 }) do
-				part(m, "BarrierLeg", V3(0.14, 3.0, 0.14), CF(sx * 6.5, 1.65, z + dz), CHROME, M.Metal)
+				part(m, "BarrierLeg", V3(0.14, 3.0, 0.14), CF(sx * bx, 1.65, z + dz), CHROME, M.Metal)
 			end
 		end
 	end
 	local rng = Random.new(4242)
 	local shirts = { RED, rgb(240, 200, 40), WHITE, rgb(30, 30, 34), BLUE, rgb(40, 150, 70) }
 	local skins = { rgb(240, 200, 170), rgb(200, 150, 110), rgb(150, 100, 70), rgb(100, 66, 44) }
-	for i = 1, count do
+	for i = 1, (cityFans > 0 and 0 or count) do
 		local sx = i % 2 == 0 and 1 or -1
 		local row = math.floor((i - 1) / 24)
 		local z = 90.5 + ((i * 7) % 24) * 0.75
@@ -1300,6 +1407,119 @@ local function buildChampion(m, P, idx)
 		part(m, "PressCamera", V3(0.6, 0.45, 0.5), pcf * CF(0, 3.1, -0.65), DARK, M.SmoothPlastic)
 		local flash = part(m, "CameraFlash", V3(0.35, 0.2, 0.05), pcf * CF(0, 3.45, -0.75), WHITE, M.Neon, { shadow = false, transparency = 0.2 })
 		CollectionService:AddTag(flash, "NeonFlicker")
+	end
+end
+
+------------------------------------------------------------------------
+-- 6b. World Champion: the Champion's Lounge, a mezzanine deck over the east side of the lobby.
+-- The facility grows a level: a steel-column deck (x 20..46, z 38..78, floor at 12.3) with a
+-- ramp of stairs up from the career wall, glass balustrades looking over the lobby and the
+-- ring, a bar, sofas, trophy plinths and a lounge screen. Local parts collide for YOUR character
+-- (the client simulates its own), so you can walk up; other players see their own tier
+------------------------------------------------------------------------
+local DECK_Y = 12.3 -- the deck's floor (its slab is 0.6 thick under it)
+local function buildGallery(m, P, idx)
+	if idx < 4 then
+		return
+	end
+	local name = (P.identity and P.identity.name or "THE CHAMP"):upper()
+	local carpet = rgb(26, 22, 30)
+	local x0, x1, z0, z1 = 20, 46, 38, 78
+	local cx, cz = (x0 + x1) / 2, (z0 + z1) / 2
+	part(m, "GalleryDeck", V3(x1 - x0, 0.6, z1 - z0), CF(cx, DECK_Y - 0.3, cz), carpet, M.Fabric, { collide = true })
+	-- fascias with the lounge's name, read from the lobby floor, a gold band under each
+	local fw = part(m, "GalleryFascia", V3(0.3, 1.1, z1 - z0), CF(x0 - 0.15, DECK_Y - 0.55, cz), DARK, M.SmoothPlastic)
+	sign(fw, Enum.NormalId.Left, "CHAMPION'S LOUNGE  -  " .. name, GOLD, DARK, 30)
+	part(m, "FasciaTrim", V3(0.34, 0.16, z1 - z0), CF(x0 - 0.15, DECK_Y - 1.18, cz), GOLD, M.Metal, { shadow = false })
+	local fn = part(m, "GalleryFascia", V3(x1 - x0 + 0.3, 1.1, 0.3), CF(cx, DECK_Y - 0.55, z0 - 0.15), DARK, M.SmoothPlastic)
+	sign(fn, Enum.NormalId.Front, "CHAMPION'S LOUNGE", GOLD, DARK, 30)
+	part(m, "FasciaTrim", V3(x1 - x0 + 0.3, 0.16, 0.34), CF(cx, DECK_Y - 1.18, z0 - 0.15), GOLD, M.Metal, { shadow = false })
+	-- steel columns (clear of the vending machines at x 37..45.3, z 76..78)
+	for _, c in ipairs({ { x0 + 0.4, z0 + 0.4 }, { x1 - 0.4, z0 + 0.4 }, { x0 + 0.4, z1 - 0.4 }, { x1 - 0.4, z1 - 0.4 }, { x0 + 0.4, 60 }, { x1 - 0.4, 60 } }) do
+		part(m, "GalleryColumn", V3(0.8, DECK_Y - 0.6 - LOBBY_Y, 0.8), CF(c[1], (DECK_Y - 0.6 + LOBBY_Y) / 2, c[2]), rgb(40, 40, 46), M.Metal, { collide = true })
+		part(m, "GalleryColumnTrim", V3(1.0, 0.3, 1.0), CF(c[1], DECK_Y - 0.8, c[2]), GOLD, M.Metal)
+	end
+	-- downlights under the deck: the champions wall and the reception stay lit beneath it
+	for _, pos in ipairs({ V3(27, DECK_Y - 0.65, 48), V3(40, DECK_Y - 0.65, 48), V3(28, DECK_Y - 0.65, 66), V3(41, DECK_Y - 0.65, 70) }) do
+		local d = part(m, "DeckDownlight", V3(1.2, 0.08, 1.2), CF(pos), rgb(255, 240, 215), M.Neon, { shadow = false })
+		point(d, rgb(255, 236, 205), 16, 0.9)
+	end
+	-- the stairs: a ramp up the deck's west side (x 16..20, from z 40 at the floor to z 58 at the
+	-- deck) with gold nosings; a WedgePart's slope faces its Front, so the high end is at +Z
+	local rise, run = DECK_Y - LOBBY_Y, 18
+	local ramp = part(m, "GalleryRamp", V3(4, rise, run), CF(x0 - 2, LOBBY_Y + rise / 2, 40 + run / 2), rgb(58, 58, 64), M.Metal, { wedge = true, collide = true })
+	ramp.CanQuery = true
+	-- a gold stringer along the slope on both sides (reads as a staircase from the lobby floor)
+	for _, sx in ipairs({ -2.02, 2.02 }) do
+		rod(m, "RampStringer", V3(x0 - 2 + sx, LOBBY_Y + 0.3, 40), V3(x0 - 2 + sx, DECK_Y + 0.3, 40 + run), 0.16, GOLD, M.Metal)
+	end
+	local steps = 12
+	for i = 1, steps do
+		local t = i / steps
+		part(m, "GalleryTread", V3(4, 0.08, 0.3), CF(x0 - 2, LOBBY_Y + rise * t + 0.04, 40 + run * t - 0.15), GOLD, M.Metal, { shadow = false })
+	end
+	part(m, "GalleryLanding", V3(3.7, 0.6, 2), CF(x0 - 2.15, DECK_Y - 0.3, 59), carpet, M.Fabric, { collide = true })
+	part(m, "RampSide", V3(0.3, 1.0, run + 0.2), CF(x0 - 4.15, LOBBY_Y + 0.5, 40 + run / 2), rgb(40, 40, 46), M.Metal)
+	local function rail(x)
+		rod(m, "StairRail", V3(x, LOBBY_Y + 2.9, 40), V3(x, DECK_Y + 2.9, 58), 0.12, GOLD, M.Metal)
+		for k = 0, 6 do
+			local t = k / 6
+			rod(m, "StairPost", V3(x, LOBBY_Y + rise * t + 0.05, 40 + run * t), V3(x, LOBBY_Y + rise * t + 2.9, 40 + run * t), 0.1, GOLD, M.Metal)
+		end
+	end
+	rail(x0 - 4.05)
+	rail(x0 - 0.05)
+	-- glass balustrades: west edge (with the opening where the stairs arrive), north and east
+	local railY = DECK_Y - 0.5 -- glassWall stands its pane 0.5 above the points it is given
+	glassWall(m, V3(x0 + 0.15, railY, z0), V3(x0 + 0.15, railY, 57.6), 2.6, true)
+	glassWall(m, V3(x0 + 0.15, railY, 60.4), V3(x0 + 0.15, railY, z1), 2.6, true)
+	glassWall(m, V3(x0, railY, z0 + 0.15), V3(x1, railY, z0 + 0.15), 2.6, true)
+	glassWall(m, V3(x1 - 0.15, railY, z0), V3(x1 - 0.15, railY, z1), 2.6, true)
+	-- trophy plinths along the north rail, looking down on the fight board and the ring
+	for i, x in ipairs({ 26, 33, 40 }) do
+		local base = CF(x, DECK_Y, z0 + 2.6)
+		part(m, "GalleryPlinth", V3(1.6, 1.8, 1.6), base * CF(0, 0.9, 0), rgb(18, 16, 20), M.Marble, { collide = true })
+		trophyCup(m, base * CF(0, 1.8, 0), ({ 0.9, 1.1, 0.9 })[i], i == 2 and GOLD or rgb(205, 210, 220))
+	end
+	-- lounge: two sofas facing each other over a low table
+	for _, s in ipairs({ { 46, 1 }, { 58, -1 } }) do
+		local scf = CF(27, DECK_Y, s[1]) * ANG(0, s[2] > 0 and 0 or RAD(180), 0)
+		-- (no two faces of the sofa coplanar: the back is wider and proud, the arms outside the seat)
+		part(m, "LoungeSeat", V3(7, 1.1, 2.6), scf * CF(0, 0.55, 0), rgb(60, 36, 32), M.Leather, { collide = true })
+		part(m, "LoungeBack", V3(7.2, 1.6, 0.7), scf * CF(0, 1.4, 1.0), rgb(60, 36, 32), M.Leather, { collide = true })
+		for _, ax in ipairs({ -3.8, 3.8 }) do
+			part(m, "LoungeArm", V3(0.6, 1.6, 2.8), scf * CF(ax, 0.8, 0.05), rgb(50, 30, 26), M.Leather)
+		end
+	end
+	part(m, "LoungeTable", V3(4, 0.3, 2), CF(27, DECK_Y + 1.2, 52), rgb(18, 16, 20), M.Marble, { collide = true })
+	part(m, "LoungeTableBase", V3(0.6, 1.05, 0.6), CF(27, DECK_Y + 0.525, 52), GOLD, M.Metal)
+	part(m, "LoungeRug", V3(10, 0.04, 8), CF(27, DECK_Y + 0.02, 52), rgb(120, 28, 34), M.Fabric, { shadow = false })
+	-- the bar along the east rail
+	local bar = CF(43.2, DECK_Y, 66)
+	part(m, "GalleryBar", V3(2.2, 3.4, 14), bar * CF(0, 1.7, 0), rgb(18, 16, 20), M.Wood, { collide = true })
+	part(m, "GalleryBarTop", V3(2.8, 0.25, 14.4), bar * CF(0, 3.52, 0), rgb(225, 225, 228), M.Marble)
+	part(m, "GalleryBarLight", V3(0.08, 0.1, 13.6), bar * CF(-1.3, 0.6, 0), GOLD, M.Neon, { shadow = false })
+	for k = 0, 3 do
+		local st = bar * CF(-2.6, 0, -5.4 + k * 3.6)
+		vcyl(m, "BarStool", 2.3, 0.25, st, CHROME, M.Metal)
+		vcyl(m, "BarStoolSeat", 0.3, 1.3, st * CF(0, 2.3, 0), rgb(60, 36, 32), M.Leather, { collide = true })
+	end
+	for k = 0, 5 do
+		vcyl(m, "BarBottle", 1.1, 0.3, bar * CF(0.6 - (k % 2) * 0.5, 3.65, -5 + k * 2), ({ rgb(40, 120, 60), rgb(200, 150, 40), rgb(60, 60, 170) })[k % 3 + 1], M.Glass, { transparency = 0.25 })
+	end
+	-- the lounge screen on the south wall (under the windows, which start at y 17)
+	local scr = part(m, "LoungeScreen", V3(11, 4.6, 0.3), CF(cx, DECK_Y + 3.6, z1 + 1.0), BLACK, M.SmoothPlastic)
+	local sg = gui(scr, Enum.NormalId.Front, 24, 0)
+	frame(sg, { Size = UDim2.fromScale(1, 1), BackgroundColor3 = rgb(10, 10, 14) })
+	label(sg, "CHAMPION'S LOUNGE", { TextColor3 = GOLD, Font = Enum.Font.GothamBold, Size = UDim2.fromScale(0.9, 0.22), Position = UDim2.fromScale(0.05, 0.06) })
+	label(sg, name, { TextColor3 = WHITE, Size = UDim2.fromScale(0.9, 0.36), Position = UDim2.fromScale(0.05, 0.3) })
+	local rec = P.record or {}
+	label(sg, string.format("%d-%d-%d  |  %d KO", rec.w or 0, rec.l or 0, rec.d or 0, rec.ko or 0), { TextColor3 = GOLD, Font = Enum.Font.GothamBold, Size = UDim2.fromScale(0.9, 0.2), Position = UDim2.fromScale(0.05, 0.7) })
+	-- two floor lamps light the deck itself
+	for _, pos in ipairs({ V3(22.5, DECK_Y, 41), V3(44, DECK_Y, 76) }) do
+		vcyl(m, "GalleryLampPost", 5.2, 0.14, CF(pos), GOLD, M.Metal)
+		local bulb = part(m, "GalleryLampShade", V3(1.4, 0.9, 1.4), CF(pos + V3(0, 5.5, 0)), rgb(255, 236, 200), M.Neon, { shadow = false, ellipsoid = true })
+		point(bulb, rgb(255, 232, 196), 18, 0.9)
 	end
 end
 
@@ -1530,7 +1750,7 @@ end
 local CREW = {
 	{ src = "Chef Ana", name = "Dr. Ines Vale", role = "Sports Scientist", at = V3(124.5, 0, 35), look = V3(124.5, 0, 38), minTier = 3, prop = "tablet" },
 	{ src = "Kim Park", name = "Tomas Reed", role = "Physiotherapist", at = V3(131.4, 0, 58), look = V3(125, 0, 60.5), minTier = 3 },
-	{ src = "Coach Benny", name = "Lou Marsh", role = "Camera Operator", at = V3(-19, 0, 49.6), look = V3(-19, 0, 36), minTier = 4 },
+	{ src = "Coach Benny", name = "Lou Marsh", role = "Camera Operator", at = V3(-27, 0, 45.4), look = V3(-27, 0, 36), minTier = 4 },
 }
 
 -- The source NPCs spawn one by one on the server (with yields), so on a fresh join they may not
@@ -1559,9 +1779,24 @@ local function buildCrew(m, idx)
 					return c
 				end)
 				if ok and clone then
+					-- the copied anatomy meshes belong to the source member (their EditableMeshes die with
+					-- its next rebuild) and AnatomyClient builds the clone its own from its LookData once it
+					-- is tagged Ambient below: the copy starts in the round-1 look with nothing hidden
+					-- (LocalTransparencyModifier is not cloned; Enabled is), like MenuStage's stage copies
+					for _, name in ipairs({ "Anatomy", "BodyFXText" }) do
+						local folder = clone:FindFirstChild(name)
+						if folder then
+							folder:Destroy()
+						end
+					end
 					for _, d in ipairs(clone:GetDescendants()) do
 						if d:IsA("Script") or d:IsA("LocalScript") then
 							d:Destroy()
+						elseif d:IsA("BasePart") or d:IsA("Decal") then
+							d.LocalTransparencyModifier = 0
+						elseif (d:IsA("SurfaceGui") or d:IsA("BillboardGui")) and d:GetAttribute("AnatomyHid") == true then
+							d.Enabled = true
+							d:SetAttribute("AnatomyHid", nil)
 						end
 					end
 					local look = clone:FindFirstChild("BoxerLook")
@@ -1708,6 +1943,42 @@ local function eliteNeeds(P, frac)
 end
 
 local root -- LocalGym/Facility
+local lastRefresh -- { P, idx, titleKey } of the last Refresh (the photos re-shoot from it)
+
+-- the sponsor deals running (summary slot -> deal), oldest slot order
+local function dealsKey(P)
+	local deals = type(P.sponsors) == "table" and type(P.sponsors.deals) == "table" and P.sponsors.deals or {}
+	local ids = {}
+	for _, slot in ipairs(Catalog.SponsorSlots or {}) do
+		local d = deals[slot]
+		table.insert(ids, type(d) == "table" and tostring(d.id) or "-")
+	end
+	return table.concat(ids, ",")
+end
+
+-- the title photos' key: the titles, the champion dressing and the anatomy build count (a rebuild
+-- destroys the meshes the frozen copies referenced)
+local function photoKey(titleKey, idx)
+	return string.format("%s|%s|%d", titleKey, idx >= 4 and "c" or "", anatomyBuilds)
+end
+
+-- re-shoot the champions wall after an anatomy rebuild of your character (debounced: a rebuild
+-- fires once per section)
+local reshootPending = false
+reshootPhotos = function()
+	if reshootPending then
+		return
+	end
+	reshootPending = true
+	task.delay(1.5, function()
+		reshootPending = false
+		local last = lastRefresh
+		if root and root.Parent and last then
+			rebuild(root, "TitlePhotos", photoKey(last.titleKey, last.idx), buildPhotos, last.P, last.idx)
+		end
+	end)
+end
+
 function GymFacility.Refresh(P, localGym, info)
 	if not (P and localGym and info) then
 		return
@@ -1719,7 +1990,7 @@ function GymFacility.Refresh(P, localGym, info)
 	end
 	pcall(applyLamps, idx)
 	pcall(restyleRacks, idx)
-	rebuild(root, "TierDressing", tostring(idx), buildDressing, idx, P)
+	rebuild(root, "TierDressing", tostring(idx) .. (idx >= 2 and ("|" .. dealsKey(P)) or ""), buildDressing, idx, P)
 	local wingNeeds = idx < 3 and eliteNeeds(P, info.frac) or nil
 	local needKey = wingNeeds and wingNeeds[1] or ""
 	rebuild(root, "EliteWingLocal", string.format("%d|%d|%s", idx, idx < 3 and math.floor((info.frac or 0) * 100) or 0, needKey), buildWing, idx, P, info.frac, wingNeeds)
@@ -1736,8 +2007,12 @@ function GymFacility.Refresh(P, localGym, info)
 	end
 	local titleKey = table.concat(tkeys, ",") .. "|" .. (P.identity and tostring(P.identity.nickname) or "")
 	rebuild(root, "LocalTrophies", titleKey, buildTrophies, P)
-	rebuild(root, "TitlePhotos", titleKey .. "|" .. (idx >= 4 and "c" or ""), buildPhotos, P, idx)
+	lastRefresh = { P = P, idx = idx, titleKey = titleKey }
+	hookAnatomy()
+	rebuild(root, "TitlePhotos", photoKey(titleKey, idx), buildPhotos, P, idx)
 	rebuild(root, "ChampionDressing", string.format("%d|%d|%s", idx, math.floor((tonumber(P.popularity) or 0) / 10), titleKey), buildChampion, P, idx)
+	local rec = P.record or {}
+	rebuild(root, "ChampionGallery", idx >= 4 and string.format("%d|%s|%d-%d-%d-%d", idx, P.identity and tostring(P.identity.name) or "", rec.w or 0, rec.l or 0, rec.d or 0, rec.ko or 0) or "", buildGallery, P, idx)
 	rebuild(root, "RingUpgrades", string.format("%d|%d", info.ringLevel or 1, idx), buildRing, info.ringLevel or 1, idx)
 	rebuild(root, "Crew", tostring(math.min(idx, 4)), buildCrew, idx)
 	pcall(updateScreens, P)

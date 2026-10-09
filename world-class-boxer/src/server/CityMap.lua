@@ -267,22 +267,19 @@ local function roundTree(parent, pos, h, rng)
 	blob(parent, "Canopy", V3(h * 0.55, h * 0.5, h * 0.55), CF(pos + V3(h * 0.18, h * 0.95, h * 0.1)), Color3.fromRGB(62, 128, 60), M.Grass)
 end
 
--- window grid on one face (some windows lit); rows/cols fill the band y0..y1 of a face faceH tall
+-- window grid on one face (some windows lit); rows/cols fill the band y0..y1 of a face faceH tall.
+-- Only the spec is stored here (attributes on the part): the window Frames are drawn by the client
+-- (CityVisuals.windowGrids) for the faces within a few hundred studs of its camera, so the ~2,000
+-- Frames of the skyline and the shop fronts never replicate and never all exist at once
 local function windowGrid(p, face, faceH, y0, y1, rows, cols, rng, litChance)
-	local sg = gui(p, face, 4, 0.15, 1200)
-	local top = 1 - y1 / faceH
-	local spanH = (y1 - y0) / faceH
-	for r = 0, rows - 1 do
-		for c = 0, cols - 1 do
-			local lit = rng:NextNumber() < (litChance or 0.35)
-			frame(sg, {
-				Size = UDim2.fromScale(0.62 / cols, spanH / rows * 0.6),
-				Position = UDim2.fromScale((c + 0.19) / cols, top + (r + 0.2) / rows * spanH),
-				BackgroundColor3 = lit and Color3.fromRGB(255, 214 + rng:NextInteger(0, 30), 140 + rng:NextInteger(0, 40)) or Color3.fromRGB(34, 44, 58),
-			})
-		end
-	end
-	return sg
+	p:SetAttribute("WinFace", face.Name)
+	p:SetAttribute("WinTop", 1 - y1 / faceH)
+	p:SetAttribute("WinSpan", (y1 - y0) / faceH)
+	p:SetAttribute("WinRows", rows)
+	p:SetAttribute("WinCols", cols)
+	p:SetAttribute("WinLit", litChance or 0.35)
+	p:SetAttribute("WinSeed", rng:NextInteger(1, 1000000))
+	return p
 end
 
 -- picnic table (top along local X)
@@ -568,9 +565,10 @@ INTERIOR.proshop = function(f, d, c)
 	-- pegboard wall of gloves in every brand's colours, brand banners hanging from the ceiling
 	local peg = part(f, "Pegboard", V3(c.x1 - c.x0 - 6, 6, 0.2), CF(c.cx, y + 4.2, zBack - 0.15), Color3.fromRGB(196, 170, 130), M.Wood)
 	local psg = gui(peg, Enum.NormalId.Front, 10, 1, 80)
-	for r = 0, 5 do
-		for k = 0, 15 do
-			frame(psg, { Size = UDim2.fromScale(0.012, 0.03), Position = UDim2.fromScale(0.03 + k * 0.062, 0.08 + r * 0.16), BackgroundColor3 = Color3.fromRGB(90, 70, 50) })
+	-- (a hole every other row / column reads as pegboard from the aisle for a third of the Frames)
+	for r = 0, 3 do
+		for k = 0, 7 do
+			frame(psg, { Size = UDim2.fromScale(0.014, 0.035), Position = UDim2.fromScale(0.04 + k * 0.125 + (r % 2) * 0.06, 0.1 + r * 0.24), BackgroundColor3 = Color3.fromRGB(90, 70, 50) })
 		end
 	end
 	local brands = {}
@@ -641,7 +639,7 @@ INTERIOR.diner = function(f, d, c)
 	end
 	label(msg, table.concat(lines, "\n"), { TextColor3 = Color3.fromRGB(240, 240, 235), Font = Enum.Font.GothamBold, Size = UDim2.fromScale(0.9, 0.7), Position = UDim2.fromScale(0.05, 0.27) })
 	for k = 0, 2 do
-		local bz = c.z0 + 2.2 + k * 3.6
+		local bz = c.z0 + 2.2 + k * 4.2 -- a booth is 3.7 deep back to back
 		local bx = c.x1 - 3.2
 		part(f, "BoothTable", V3(3.4, 0.25, 1.8), CF(bx, y + 2.6, bz), Color3.fromRGB(230, 230, 232), M.Marble)
 		part(f, "BoothLeg", V3(0.3, 2.5, 0.3), CF(bx, y + 1.25, bz), C.steelLight, M.Metal)
@@ -777,15 +775,16 @@ local function shopInterior(f, d, w, cx, doorX)
 	local floorTop = d.columns and 0.8 or SW_H
 	local mat = d.mat or M.SmoothPlastic
 	for _, s in ipairs({ -1, 1 }) do
-		part(f, "ShopSideWall", V3(1, RH, RD), CF(cx + s * (w / 2 - 0.5), RH / 2, FRONT_Z + RD / 2), d.color, mat, { collide = true })
+		-- behind the 0.6-deep piers (a side wall's front face on a pier's face shimmers)
+		part(f, "ShopSideWall", V3(1, RH, RD - 0.6), CF(cx + s * (w / 2 - 0.5), RH / 2, FRONT_Z + 0.6 + (RD - 0.6) / 2), d.color, mat, { collide = true })
 	end
 	local floorMat = ({ diner = M.SmoothPlastic, barber = M.SmoothPlastic, museum = M.Marble, motors = M.Marble, supplements = M.Rubber })[d.interior] or M.WoodPlanks
 	local floorCol = ({ museum = Color3.fromRGB(226, 222, 214), motors = Color3.fromRGB(40, 40, 46), supplements = Color3.fromRGB(34, 34, 38) })[d.interior] or Color3.fromRGB(150, 110, 72)
 	local fl = part(f, "ShopFloor", V3(w - 2, floorTop, RD), CF(cx, floorTop / 2, FRONT_Z + RD / 2), floorCol, floorMat, { collide = true })
 	if d.interior == "diner" then
-		checkerFloor(fl, Color3.fromRGB(24, 24, 26), Color3.fromRGB(236, 236, 230), 18, 8)
+		checkerFloor(fl, Color3.fromRGB(24, 24, 26), Color3.fromRGB(236, 236, 230), 12, 6)
 	elseif d.interior == "barber" then
-		checkerFloor(fl, Color3.fromRGB(30, 30, 34), Color3.fromRGB(230, 230, 226), 12, 8)
+		checkerFloor(fl, Color3.fromRGB(30, 30, 34), Color3.fromRGB(230, 230, 226), 8, 6)
 	end
 	-- facade: piers at both ends, a header above the glass, panes either side of the open door
 	-- (the opening clears the tallest boxer the Creator allows - 84 in is about 7.6 studs on the athletic
@@ -906,15 +905,16 @@ local function shop(f, d, rng)
 		end
 	end
 	if d.columns then
-		part(f, "MuseumSteps", V3(w - 6, 0.8, 3.6), CF(cx, 0.4, FRONT_Z - 1.8), Color3.fromRGB(200, 196, 186), M.Limestone, { collide = true })
+		-- (steps and columns stay north of z 185: the south pedestrian lane walks z 184.2..185.0)
+		part(f, "MuseumSteps", V3(w - 6, 0.3, 2.0), CF(cx, SW_H + 0.15, FRONT_Z - 1.0), Color3.fromRGB(200, 196, 186), M.Limestone, { collide = true })
 		for k = 0, 3 do
-			vcyl(f, "MuseumColumn", 11.7, 1.4, CF(d.x0 + 6 + k * (w - 12) / 3, 0.8, FRONT_Z - 2.6), Color3.fromRGB(235, 228, 210), M.Limestone, { collide = true })
+			vcyl(f, "MuseumColumn", 11.7, 1.4, CF(d.x0 + 6 + k * (w - 12) / 3, 0.8, FRONT_Z - 1.3), Color3.fromRGB(235, 228, 210), M.Limestone, { collide = true })
 		end
 		part(f, "Pediment", V3(w - 4, 1.4, 3.8), CF(cx, 13.2, FRONT_Z - 1.8), Color3.fromRGB(235, 228, 210), M.Limestone)
 	end
 	if d.poleSign then
 		local px = d.x0 + 3
-		part(f, "PoleSignPost", V3(0.6, 24, 0.6), CF(px, 12, FRONT_Z - 2.5), POLE, M.Metal, { collide = true })
+		part(f, "PoleSignPost", V3(0.6, 24 - SW_H, 0.6), CF(px, SW_H + (24 - SW_H) / 2, FRONT_Z - 1.6), POLE, M.Metal, { collide = true })
 		local ps = part(f, "PoleSign", V3(1, 9, 3.6), CF(px, 20, FRONT_Z - 2.5), Color3.fromRGB(16, 20, 40), M.SmoothPlastic)
 		local txt = table.concat(string.split(d.poleSign, ""), "\n")
 		GymDecor.Sign(ps, Enum.NormalId.Left, txt, d.signFg, Color3.fromRGB(16, 20, 40), 20)
@@ -1188,6 +1188,7 @@ local function house(f, center, front, rng, i)
 		elseif kind == 4 then -- a heavy bag under the carport: the neighbourhood's next prospect
 			part(f, "YardBagFrame", V3(0.3, 7, 0.3), base * CF(W / 2 + 1.5, 3.5, D / 2 - 1), C.steel, M.Metal)
 			part(f, "YardBagArm", V3(2.2, 0.3, 0.3), base * CF(W / 2 + 2.5, 6.9, D / 2 - 1), C.steel, M.Metal)
+			part(f, "BagChain", V3(0.15, 1.05, 0.15), base * CF(W / 2 + 3.4, 6.225, D / 2 - 1), C.steelLight, M.Metal)
 			cyl(f, "YardBag", 3.4, 1.5, base * CF(W / 2 + 3.4, 4.0, D / 2 - 1) * ANG(0, 0, RAD(90)), Color3.fromRGB(120, 26, 30), M.Leather)
 		elseif kind == 5 then -- lawn sign cheering on the local fighter (CityVisuals writes your name on it)
 			part(f, "LawnSignStake", V3(0.12, 2.2, 0.12), base * CF(W * 0.32, 1.1, -D / 2 - 5), C.wood, M.Wood)
@@ -1758,6 +1759,7 @@ local function buildCamp(root)
 		part(f, "BagFramePost", V3(0.6, 9, 0.6), bagCF * CF(x, 4.5, 0), Color3.fromRGB(100, 70, 44), M.Wood, { collide = true })
 	end
 	part(f, "BagFrameBeam", V3(6, 0.6, 0.6), bagCF * CF(0, 9, 0), Color3.fromRGB(100, 70, 44), M.Wood)
+	part(f, "BagChain", V3(0.15, 1.7, 0.15), bagCF * CF(0, 7.85, 0), C.steelLight, M.Metal) -- beam underside 8.7, bag top 7.0
 	vcyl(f, "CampBag", 4.4, 1.9, bagCF * CF(0, 2.6, 0), Color3.fromRGB(110, 70, 40), M.Leather, { collide = true })
 	local fire = CF(CAMP + V3(0, 0, -2))
 	for k = 0, 2 do

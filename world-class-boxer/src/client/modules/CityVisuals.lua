@@ -278,6 +278,7 @@ local function apartmentDressing(f, P)
 			-- rooftop training: a bag under a frame, against the skyline
 			part(f, "RoofBagFrame", V3(0.4, 8, 0.4), roof * CF(-14, 4, 4), DARK, M.Metal)
 			part(f, "RoofBagArm", V3(3, 0.4, 0.4), roof * CF(-12.8, 7.8, 4), DARK, M.Metal)
+			part(f, "BagChain", V3(0.15, 1.0, 0.15), roof * CF(-11.6, 7.1, 4), Color3.fromRGB(150, 153, 160), M.Metal)
 			cyl(f, "RoofBag", 4, 1.8, roof * CF(-11.6, 4.6, 4) * ANG(0, 0, RAD(90)), Color3.fromRGB(150, 24, 30), M.Leather)
 		end
 	end
@@ -378,7 +379,7 @@ local function houseBuild(f, P, base)
 		local pc = base * CF(-3, 0, 17)
 		part(f, "PoolDeck", V3(16, 0.3, 10), pc * CF(0, 0.15, 0), Color3.fromRGB(170, 130, 90), M.WoodPlanks, { collide = true })
 		part(f, "PoolWater", V3(11, 0.25, 6), pc * CF(-1.5, 0.32, 0), Color3.fromRGB(60, 170, 220), M.Glass, { transparency = 0.15, reflect = 0.2 })
-		part(f, "Lounger", V3(2, 0.5, 5), pc * CF(6, 0.8, 0), WHITE, M.Fabric)
+		part(f, "Lounger", V3(2, 0.5, 5), pc * CF(6, 0.55, 0), WHITE, M.Fabric) -- on the 0.3 deck
 	end
 end
 
@@ -1361,6 +1362,95 @@ end
 -- The loop
 ------------------------------------------------------------------------
 local NEAR = 180
+------------------------------------------------------------------------
+-- Window grids: CityMap stores only the spec of each window grid as attributes (WinFace, WinTop,
+-- WinSpan, WinRows, WinCols, WinLit, WinSeed) on the skyline towers and the Main Street upper
+-- floors. The Frames are drawn here for the faces within WIN_RANGE of the camera and dropped
+-- again further out, so nothing replicates and only the nearby part of the ~2,000 windows exists
+------------------------------------------------------------------------
+local WIN_RANGE = 460
+local WIN_DROP = 540 -- hysteresis: built inside the range, destroyed beyond this
+local WIN_MAX = 48 -- grids alive at once (nearest first)
+local winParts = {} -- every part carrying a window spec
+local winLive = {} -- part -> SurfaceGui
+local winScanAt = 0
+local winOrder = {} -- reused every pass (no per-pass allocation beyond the sort)
+
+local function scanWindowParts()
+	table.clear(winParts)
+	local c = cityRoot()
+	if not c then
+		return
+	end
+	for _, d in ipairs(c:GetDescendants()) do
+		if d:IsA("BasePart") and d:GetAttribute("WinRows") then
+			table.insert(winParts, d)
+		end
+	end
+end
+
+local function buildWindowGrid(p)
+	local rows, cols = tonumber(p:GetAttribute("WinRows")) or 1, tonumber(p:GetAttribute("WinCols")) or 1
+	local top, spanH = tonumber(p:GetAttribute("WinTop")) or 0, tonumber(p:GetAttribute("WinSpan")) or 1
+	local lit = tonumber(p:GetAttribute("WinLit")) or 0.35
+	local rng = Random.new(tonumber(p:GetAttribute("WinSeed")) or 1)
+	local okFace, face = pcall(function()
+		return Enum.NormalId[p:GetAttribute("WinFace") or "Front"]
+	end)
+	local sg = gui(p, okFace and face or Enum.NormalId.Front, 4, 0.15, WIN_DROP + 60)
+	sg.Name = "Windows"
+	for r = 0, rows - 1 do
+		for c = 0, cols - 1 do
+			local on = rng:NextNumber() < lit
+			frame(sg, {
+				Size = UDim2.fromScale(0.62 / cols, spanH / rows * 0.6),
+				Position = UDim2.fromScale((c + 0.19) / cols, top + (r + 0.2) / rows * spanH),
+				BackgroundColor3 = on and Color3.fromRGB(255, 214 + rng:NextInteger(0, 30), 140 + rng:NextInteger(0, 40)) or Color3.fromRGB(34, 44, 58),
+			})
+		end
+	end
+	return sg
+end
+
+local function updateWindowGrids(camPos, now)
+	if #winParts == 0 or now >= winScanAt then
+		winScanAt = now + 15 -- the city streams in after the client starts; a cheap rescan
+		scanWindowParts()
+	end
+	table.clear(winOrder)
+	for _, p in ipairs(winParts) do
+		if p.Parent then
+			local d = (p.Position - camPos).Magnitude
+			local sg = winLive[p]
+			if sg and (d > WIN_DROP or not sg.Parent) then
+				sg:Destroy()
+				winLive[p] = nil
+			elseif not sg and d < WIN_RANGE then
+				table.insert(winOrder, p)
+			end
+		elseif winLive[p] then
+			winLive[p]:Destroy()
+			winLive[p] = nil
+		end
+	end
+	local alive = 0
+	for _ in pairs(winLive) do
+		alive += 1
+	end
+	if #winOrder > 0 and alive < WIN_MAX then
+		table.sort(winOrder, function(a, b)
+			return (a.Position - camPos).Magnitude < (b.Position - camPos).Magnitude
+		end)
+		for _, p in ipairs(winOrder) do
+			if alive >= WIN_MAX then
+				break
+			end
+			winLive[p] = buildWindowGrid(p)
+			alive += 1
+		end
+	end
+end
+
 local acc, slowAcc, tagAcc = 0, 0, 0
 local clock = 0
 
@@ -1527,6 +1617,7 @@ local function step(dt)
 	if tagAcc >= 1 then
 		tagAcc = 0
 		pcall(updateTags)
+		pcall(updateWindowGrids, cam.CFrame.Position, os.clock())
 	end
 end
 

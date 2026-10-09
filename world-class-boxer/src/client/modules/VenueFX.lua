@@ -998,9 +998,12 @@ local function setupBowl()
 		local rows = tonumber(slab:GetAttribute("CrowdRows"))
 		if sg and rows then
 			local fill = (tonumber(slab:GetAttribute("Fill")) or 0.85) * share
+			-- the upper bowl prints 110 heads per row; a stand's printed row (Venues PHYSICAL_ROWS) says
+			-- how many seats it has, so its heads come out seat-sized
+			local cols = tonumber(slab:GetAttribute("CrowdCols")) or 110
 			for i = 0, rows - 1 do
-				local parts = table.create(110)
-				for j = 1, 110 do
+				local parts = table.create(cols)
+				for j = 1, cols do
 					if rng:NextNumber() < fill then
 						local sh = SHIRTS[rng:NextInteger(1, #SHIRTS)]
 						local kk = 0.5 + rng:NextNumber() * 0.5

@@ -362,6 +362,8 @@ local function buildEliteWing(gym)
 	local clad = Color3.fromRGB(46, 48, 54)
 	local floorC = Color3.fromRGB(196, 198, 204)
 	deco(f, "EliteFloor", V3(x2 - x1, 0.5, z2 - z1), CF(cx, 0.25, cz), floorC, Enum.Material.Marble)
+	-- the doorway itself (the wall's 2-stud thickness: the hall floor ends at x 110, the wing's at x1)
+	deco(f, "Threshold", V3(x1 - 110, 0.5, E.door[2] - E.door[1]), CF((x1 + 110) / 2, 0.25, (E.door[1] + E.door[2]) / 2), floorC, Enum.Material.Marble)
 	-- tall windows: two on the east face, two on the south face, all glass named WindowGlass so the
 	-- client's sun shafts find them like the hall's windows
 	local wy0, wy1, ww = 3, 15, 9
@@ -688,7 +690,8 @@ function MapBuilder.BuildGym()
 	pb:SetAttribute("Station", "pool")
 	buildAction(poolStation, "PromptPart", "Swim Laps", "Swimming Pool", V3(-PW / 2 - 4, 0.5, PZ), { Activity = "Swimming", Station = "pool" }, Color3.fromRGB(150, 220, 255))
 	for _, x in ipairs({ -20, 0, 20 }) do
-		lamp(gym, V3(x, 21, PZ), 40, 0.7, Color3.fromRGB(220, 240, 255))
+		-- flush under the pool roof (its underside is y 22)
+		lamp(gym, V3(x, 21.8, PZ), 40, 0.7, Color3.fromRGB(220, 240, 255))
 	end
 
 	-- outdoor roadwork loop with checkpoints
@@ -704,6 +707,11 @@ function MapBuilder.BuildGym()
 		deco(track, "RoadLine", V3(0.4, 0.32, len - 6), CFrame.lookAt(mid + V3(0, 0.16, 0), b + V3(0, 0.16, 0)), Color3.fromRGB(240, 220, 120), nil, { CanCollide = false })
 	end
 	deco(track, "EntrancePath", V3(10, 0.3, 36), CF(0, 0.15, 97), Color3.fromRGB(150, 140, 130), Enum.Material.Concrete)
+	-- either side of the path, the doorway's width (x -10..10) between the hall floor (z 80) and the
+	-- sidewalk (z 81.1) was bare ground: concrete it, flush with the path
+	for _, x in ipairs({ -7.5, 7.5 }) do
+		deco(track, "EntranceThreshold", V3(5, 0.3, 1.2), CF(x, 0.15, 80.6), Color3.fromRGB(150, 140, 130), Enum.Material.Concrete)
+	end
 	local cps = Instance.new("Folder")
 	cps.Name = "TrackCheckpoints"
 	cps.Parent = gym

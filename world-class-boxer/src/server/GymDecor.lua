@@ -561,13 +561,13 @@ local function buildLights(root)
 	local banner = part(f, "CanopyBanner", V3(14, 1.6, 0.12), CF(rc + V3(0, y - 1.3, 9.35)), C.red, M.Fabric, { shadow = false })
 	sign(banner, Enum.NormalId.Back, "WCB SPARRING RING", Color3.new(1, 1, 1), nil, 30)
 	sign(banner, Enum.NormalId.Front, "WCB SPARRING RING", Color3.new(1, 1, 1), nil, 30)
-	-- cardio: cool LED strip along the top of the divider + blue wash
-	part(f, "LEDStrip", V3(0.3, 0.2, 60), CF(50, 9.1, -48), Color3.fromRGB(60, 150, 255), M.Neon, { shadow = false })
+	-- cardio: cool LED strip along the top of the divider + blue wash (the DividerCap tops at 9.4)
+	part(f, "LEDStrip", V3(0.3, 0.2, 60), CF(50, 9.5, -48), Color3.fromRGB(60, 150, 255), M.Neon, { shadow = false })
 	for _, z in ipairs({ -63, -33 }) do
 		point(emitter(f, CF(52.5, 8.6, z)), Color3.fromRGB(80, 150, 255), 18, 0.7)
 	end
 	-- recovery: soft teal glow along the divider top
-	part(f, "LEDStrip", V3(40, 0.2, 0.3), CF(88, 9.1, 20), Color3.fromRGB(90, 220, 200), M.Neon, { shadow = false })
+	part(f, "LEDStrip", V3(40, 0.2, 0.3), CF(88, 9.5, 20), Color3.fromRGB(90, 220, 200), M.Neon, { shadow = false })
 	for _, x in ipairs({ 78, 98 }) do
 		point(emitter(f, CF(x, 8.6, 22.5)), Color3.fromRGB(110, 230, 210), 16, 0.6)
 	end
@@ -600,7 +600,8 @@ local function buildLobby(root)
 	-- reception desk (L-shaped) with a monitor, keyboard, bell and sign-in sheet
 	part(f, "DeskFront", V3(11.8, 3.6, 2.4), CF(27.9, 2.2, 70.2), C.woodDark, M.Wood, { collide = true })
 	part(f, "DeskReturn", V3(2.4, 3.6, 8.4), CF(35.0, 2.2, 67.2), C.woodDark, M.Wood, { collide = true })
-	part(f, "DeskTop", V3(12.3, 0.3, 2.8), CF(27.9, 4.15, 70.2), Color3.fromRGB(225, 225, 228), M.Marble)
+	-- (the front top ends where the return's top begins: coplanar marble would shimmer)
+	part(f, "DeskTop", V3(11.85, 0.3, 2.8), CF(27.675, 4.15, 70.2), Color3.fromRGB(225, 225, 228), M.Marble)
 	part(f, "DeskTopReturn", V3(2.8, 0.3, 8.8), CF(35.0, 4.15, 67.2), Color3.fromRGB(225, 225, 228), M.Marble)
 	part(f, "DeskStripe", V3(11.8, 0.35, 0.08), CF(27.9, 3.2, 68.97), C.red, M.SmoothPlastic)
 	local deskLogo = part(f, "DeskLogo", V3(8, 1.3, 0.06), CF(27.9, 1.9, 68.97), Color3.new(), M.SmoothPlastic, { transparency = 1 })

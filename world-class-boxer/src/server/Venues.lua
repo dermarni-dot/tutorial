@@ -411,10 +411,19 @@ end
 ------------------------------------------------------------------------
 -- Crowd
 ------------------------------------------------------------------------
+-- rows with real fans (what the ringside / walkout cameras read: bodies, hair, arms VenueFX throws
+-- up). Every row behind is a printed row: one slab per seating block whose ring-facing surface
+-- gets RichText "heads" from VenueFX.setupBowl on the fighting client, like the upper bowl. A
+-- Stadium clone carries ~550 crowd parts that way instead of ~3,200, an Arena ~400 instead of ~1,200
+local PHYSICAL_ROWS = 3
+
 local function buildCrowd(arena, spec, rng)
 	local crowd = Instance.new("Folder")
 	crowd.Name = "Crowd"
 	crowd.Parent = arena
+	local prints = arena:FindFirstChild("Bowl") or Instance.new("Folder")
+	prints.Name = "Bowl"
+	prints.Parent = arena
 	-- body sizes and hair come from their own stream so the seating draws stay as they were
 	local vary = Random.new(spec.half * 977 + spec.tier * 31 + spec.rows)
 	for side = 0, 3 do
@@ -438,10 +447,23 @@ local function buildCrowd(arena, spec, rng)
 					deco(arena, "Stand", V3(b.w, h + 0.5, spec.rowGap), rot * CF(b.x, (h + 0.5) / 2, dist + spec.rowGap / 2), stepColor, M.Concrete)
 				end
 				if spec.seats then
-					prop(arena, "SeatRow", V3(b.w, 1.2, 0.35), rot * CF(b.x, h + 0.5 + 0.9, dist + spec.rowGap / 2 + 0.8), spec.seats, M.Fabric, { CastShadow = false })
+					-- the seat-back strip stands on the stand (top h + 0.5); the ringside row on the floor
+					local seatY = h > 0 and (h + 0.5 + 0.6) or 0.6
+					prop(arena, "SeatRow", V3(b.w, 1.2, 0.35), rot * CF(b.x, seatY, dist + spec.rowGap / 2 + 0.8), spec.seats, M.Fabric, { CastShadow = false })
+				end
+				if row >= PHYSICAL_ROWS then
+					-- the printed row: the slab's Front face (towards the ring) gets the heads client-side
+					local seatCol = spec.seats or rgb(30, 30, 36)
+					local slab = prop(prints, "RowPrint", V3(b.w, 3.0, 0.8), rot * CF(b.x, h + 0.5 + 1.5, dist + spec.rowGap / 2), seatCol:Lerp(BLACK, 0.5), M.Fabric, { CastShadow = false })
+					local sg = gui(slab, FACE.Front, 4, 1, 1)
+					sg.Name = "CrowdPrint"
+					frame(sg, { Name = "Seats", Size = UDim2.fromScale(1, 1), BackgroundColor3 = seatCol:Lerp(Color3.new(), 0.35) })
+					slab:SetAttribute("CrowdRows", 1)
+					slab:SetAttribute("CrowdCols", math.max(4, math.floor(b.w / 2.4)))
+					slab:SetAttribute("Fill", spec.fill)
 				end
 			end
-			local seats = math.floor((dist * 2) / 3.2)
+			local seats = row < PHYSICAL_ROWS and math.floor((dist * 2) / 3.2) or -1
 			for i = 0, seats do
 				local x = -dist + i * 3.2
 				local aisle = (side == 0 or side == 2) and math.abs(x) < 5
@@ -491,7 +513,7 @@ local function buildBowl(arena, spec, rng)
 	local slopeLen = math.sqrt(dR * dR + dy * dy)
 	local width = R0 + R1
 	local nRows = math.clamp(math.floor(slopeLen / 2.6), 10, 26)
-	local bowl = Instance.new("Folder")
+	local bowl = arena:FindFirstChild("Bowl") or Instance.new("Folder") -- (buildCrowd's printed rows share it)
 	bowl.Name = "Bowl"
 	bowl.Parent = arena
 	for side = 0, 3 do
@@ -1211,8 +1233,9 @@ local function buildScreens(arena, spec, kind)
 		for _, x in ipairs({ -1, 1 }) do
 			local big = deco(arena, "BigScreen", V3(1, 30, 52), CF(x * (S / 2 - 6), y, 0), rgb(10, 10, 12), M.Metal, { CastShadow = false })
 			screenGui(big, x < 0 and FACE.Right or FACE.Left, 9, "WORLD TITLE FIGHT")
+			-- the legs stand under the panel (its bottom edge is y - 15) and into the bowl's top tier
 			for _, z in ipairs({ -18, 18 }) do
-				rod(arena, "ScreenLeg", V3(x * (S / 2 - 5), y - 15, z), V3(x * (S / 2 - 5), y - 24, z), 0.8, rgb(40, 40, 46), M.Metal)
+				rod(arena, "ScreenLeg", V3(x * (S / 2 - 6), y - 14.5, z), V3(x * (S / 2 - 6), y - 26, z), 0.8, rgb(40, 40, 46), M.Metal)
 			end
 		end
 	end
@@ -1290,7 +1313,7 @@ local function buildWalkways(arena, spec, kind)
 			end
 			local header = deco(arena, "ArchHeader", V3(10.8, 2.2, 1.6), CF(0, 14.1, z * zE), rgb(18, 18, 22), M.Metal, { CanCollide = false })
 			sign(header, z < 0 and FACE.Back or FACE.Front, corner == "Red" and "RED CORNER" or "BLUE CORNER", rgb(18, 18, 22), col, 16)
-			local screen = deco(arena, "EntranceScreen", V3(18, 9, 0.6), CF(0, 19.5, z * (S / 2 - 3.6)), rgb(10, 10, 12), M.Metal)
+			local screen = deco(arena, "EntranceScreen", V3(18, 9, 0.6), CF(0, 18.5, z * (S / 2 - 3.6)), rgb(10, 10, 12), M.Metal) -- on the tunnel (top y 14)
 			screen:SetAttribute("Corner", corner)
 			local sg = gui(screen, z < 0 and FACE.Back or FACE.Front, 16, 0, 1.6)
 			sg.Name = "Screen"
