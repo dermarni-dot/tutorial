@@ -11,7 +11,8 @@
 --   EditableImage colour texture, then hide what the section replaces (LocalTransparencyModifier);
 --   a rebuild builds the new MeshParts first and swaps them in within one frame (no flicker)
 -- * level of detail: full for the local player, the fight opponent and the Config.Anatomy.maxFull
---   nearest within fullRange; medium / low further out; round-1 parts beyond lodRange
+--   nearest within fullRange; medium / low further out; round-1 parts beyond lodRange; NPCs only once
+--   the player's profile is in (until then the camera is not where the game will put it)
 -- * one serial worker, time-sliced (Config.Anatomy.frameBudget per frame through MeshKit's tick), so
 --   building never hitches; cancelled when the model goes away or its look changes again
 -- * the Editable API not working (not enabled for the experience, unverified creator, a transient
@@ -50,6 +51,7 @@ AnatomyClient.Settings = {
 	cacheMB = 32, -- ... and at most this much Lua memory of mesh data (estimate) in that cache
 	promoteHold = 1.5, -- seconds a model must want a higher level of detail before it is rebuilt
 	demoteHold = 12, -- ... and a lower one (or out of range): lowering only saves memory, so it waits
+	profileWait = 20, -- seconds NPC meshes wait at most for the player's profile (see npcsAllowed)
 	debug = false,
 }
 
@@ -86,6 +88,10 @@ local workerGen = 0 -- a Stop() + Start() never leaves two workers running
 local lastEval = 0
 local localHidden = false
 local userSet = {} -- Settings keys SetDetail forced (Config.Anatomy does not overwrite them at boot)
+-- the client State module (its P is the player's profile): nil while it loads, false when there is none
+local GameState = nil
+local bootAt = nil
+local npcsIn = false -- latched by npcsAllowed
 -- Editable memory pressure: the budget per device is not documented, so a creation failure after a
 -- working probe sets a cap on the estimated live Editable bytes (85 % of what was alive then), sheds
 -- the lowest-priority characters to fit and pauses building for a few seconds. MAX_PRESSURE failures
@@ -1135,6 +1141,25 @@ local function isOpponent(model)
 	return lp ~= nil and lp:GetAttribute("InFight") == true and CollectionService:HasTag(model, "Fighter") and lp.Character ~= model
 end
 
+-- NPC meshes wait for the player's profile: until it arrives the camera still sits at the gym spawn,
+-- and what the profile opens first (the main menu / creator stage 1400 studs up, or the gym itself)
+-- decides what is in range. Without the wait a slow DataStore read (a session lock, a slow store) had
+-- every gym member built under the menu, torn down demoteHold later and built again in the gym. A read
+-- the server is retrying (loadRetry) keeps the player watching the gym for a long while: build then.
+-- No State module (a test place): nothing to wait for; profileWait caps the wait in any case.
+local function npcsAllowed()
+	if npcsIn then
+		return true
+	end
+	local P = GameState and GameState.P
+	if GameState == false or (type(P) == "table" and (not P.loading or P.loadRetry))
+		or (bootAt and os.clock() - bootAt >= AnatomyClient.Settings.profileWait) then
+		npcsIn = true
+		log("profile in: NPC meshes allowed")
+	end
+	return npcsIn
+end
+
 -- decide every model's level of detail and queue the sections that need (re)building
 local function evaluate()
 	if api.state == "disabled" or not running or next(registry) == nil then
@@ -1171,11 +1196,9 @@ local function evaluate()
 	-- full slots only fill up to maxFull; the distance bands get +-12% margins around the current level
 	local want = {}
 	local fullKept = 0
-	-- main menu / creator open (MainMenu sets the attribute): the camera is on the menu stage, so the gym
-	-- crowd is out of range whatever the first frames before the profile arrived said
-	local menu = lp ~= nil and lp:GetAttribute("MenuOpen") == true
+	local npcs = npcsAllowed()
 	for _, rec in ipairs(list) do
-		if not S.enabled or (menu and rec.priority > 1) then
+		if not S.enabled or (not npcs and rec.priority > 1) then
 			want[rec] = false
 		elseif rec.priority <= 1 then
 			want[rec] = "full"
@@ -1248,9 +1271,8 @@ local function evaluate()
 			local up = rec.lod == nil or (wanted ~= nil and LOD_RANK[wanted] > LOD_RANK[rec.lod])
 			local hold = up and S.promoteHold or S.demoteHold
 			-- a first decision is immediate for the local character, the fight opponent and previews (their
-			-- meshes must show at once); an NPC's first level waits promoteHold like any promotion: the first
-			-- evaluation runs before the main menu moves the camera 1400 studs up, and without the hold every
-			-- gym member was built during the menu, torn down 12 s later and rebuilt on entering the gym
+			-- meshes must show at once); an NPC's first level waits promoteHold like any promotion, which
+			-- also covers the frame between the profile arriving (npcsAllowed) and the menu moving the camera
 			if forced[rec] or (rec.lod == nil and rec.priority <= 1) or now - rec.pendingAt >= hold then
 				rec.lod = wanted
 				rec.pendingLod = nil
@@ -1585,6 +1607,19 @@ local function boot()
 	if next(registry) == nil then
 		-- nothing to build: register nothing, change nothing (Register() later starts the machinery)
 		log("no generators registered")
+	end
+	-- the profile gate for NPC meshes (npcsAllowed); State yields for the remotes, so its own thread
+	bootAt = bootAt or os.clock()
+	if GameState == nil then
+		local sm = script.Parent:FindFirstChild("State")
+		if sm and sm:IsA("ModuleScript") then
+			task.spawn(function()
+				local okSt, st = pcall(require, sm)
+				GameState = okSt and type(st) == "table" and st or false
+			end)
+		else
+			GameState = false
+		end
 	end
 	running = true
 	table.insert(conns, RunService.Heartbeat:Connect(heartbeat))
@@ -2122,7 +2157,8 @@ function AnatomyClient.Diagnose()
 	table.sort(secs)
 	add("generators:", #secs > 0 and table.concat(secs, " ") or "NONE")
 	local S = AnatomyClient.Settings
-	add(string.format("settings: enabled %s maxFull %d fullRange %d lodRange %d frameBudget %.4f textures %s", tostring(S.enabled), S.maxFull, S.fullRange, S.lodRange, S.frameBudget, tostring(S.textures)))
+	add(string.format("settings: enabled %s maxFull %d fullRange %d lodRange %d frameBudget %.4f textures %s | NPCs %s", tostring(S.enabled), S.maxFull, S.fullRange, S.lodRange, S.frameBudget, tostring(S.textures),
+		npcsIn and "allowed" or "waiting for the profile"))
 	local st = AnatomyClient.Status()
 	add(string.format("models %d | built full %d medium %d low %d | queued %d | hidden %d | skipped %d | cache %d (%.1f MB)", st.models, st.built.full, st.built.medium, st.built.low, st.queued, st.hidden, st.skipped, st.cache, st.cacheMB))
 	add(string.format("memory pressure: fails %d cap %s live %d bytes", pressure.fails, pressure.cap < math.huge and tostring(math.floor(pressure.cap)) or "none", st.pressure.live))
@@ -2160,7 +2196,8 @@ function AnatomyClient.Status()
 		sections = {}, models = 0, built = { full = 0, medium = 0, low = 0 }, hidden = 0, queued = 0, busy = workerBusy, cache = cacheCount,
 		pressure = { fails = pressure.fails, cap = pressure.cap < math.huge and math.floor(pressure.cap) or nil, live = math.floor(liveCost()) },
 		skipped = 0, cacheMB = math.floor(cacheBytes / 104857.6) / 10, apiFails = api.fails,
-		retryIn = api.state == "disabled" and math.max(0, math.floor((api.retryAt - os.clock()) * 10) / 10) or nil }
+		retryIn = api.state == "disabled" and math.max(0, math.floor((api.retryAt - os.clock()) * 10) / 10) or nil,
+		npcsWaiting = not npcsIn }
 	for name, def in pairs(registry) do
 		s.sections[name] = def.failed and "failed" or "ok"
 	end

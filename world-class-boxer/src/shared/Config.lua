@@ -1196,9 +1196,10 @@ Config.Anatomy = {
 	lodRange = 160, -- studs: no meshes beyond (round-1 parts)
 	frameBudget = 0.0025, -- seconds of mesh generation per frame (time-sliced, never a hitch)
 	textures = true, -- pieces may carry a generated colour texture (EditableImage)
-	-- server NPCs at medium detail (gym members, officials) keep only the hull of their part-built muscle
-	-- layer: the Body meshes replace it on every client that has Editable meshes, the hull alone is the
-	-- rounded fallback silhouette (~100 instances less per NPC to replicate and walk)
+	-- server NPCs at medium detail (gym members, officials) keep a light part-built muscle layer: the hull
+	-- plus the chest, shoulder caps, biceps, traps (and abs when defined) - the Body meshes replace it on
+	-- every client that has Editable meshes; that much still reads as a boxer on one without them
+	-- (Builder hullOnly: ~18 domes, ~55 instances less per NPC to replicate and walk)
 	npcHullOnly = true,
 	tris = {
 		Body = { full = 9000, medium = 4000, low = 1500 },

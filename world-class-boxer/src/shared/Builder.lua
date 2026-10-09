@@ -364,20 +364,28 @@ end
 -- fightNight, sponsorTrunks / sponsorRobe ({ text, fg, bg }), dry, outfit ("referee"|"cornerman"),
 -- only ({ Face, Hair, Beard }), previewGrowth. gear = { gloves, glovesCond, wraps, wrapsCond, shoes,
 -- shoesCond, mouthguard, robe } (missing ids default to the starter kit).
--- An NPC marked HullOnly (CreateNPC, medium detail with the anatomy meshes on) drops the tagged muscle
--- domes of its Muscles folder (part + weld + SpecialMesh each) and keeps the hull, neck, fat and the
--- female bust (the shape under the sports top): the Body meshes replace the whole layer on every capable
--- client, and the hull alone still reads as a rounded body on a client without them. The folder's
--- envelope attributes (what Attire fits) stay. Change-only: a cached (sealed) folder was trimmed when
--- it was built.
-local function hullOnly(model)
+-- An NPC marked HullOnly (CreateNPC, medium detail with the anatomy meshes on) keeps a light muscle layer:
+-- the hull, neck, fat and the mass domes that make the part-built body read as a boxer on a client
+-- without the meshes (chest / bust, shoulder caps, biceps, traps, and the abs where the definition shows
+-- them; the neck SCMs too, though only full detail builds them); the other tagged domes go (part + weld
+-- + SpecialMesh each: obliques, lats, glutes, front / rear delts, triceps, forearms, quads, calves). The
+-- Body meshes replace the whole layer on every capable client, except on the officials: a referee or
+-- cornerman keeps his part-built body everywhere (AnatomyBody skips outfits), so everyone sees this layer
+-- under his shirt. The folder's envelope attributes (what Attire fits) stay. Change-only: a cached
+-- (sealed) folder was trimmed when it was built.
+local HULL_KEEP = { pecs = true, sideDelt = true, biceps = true, traps = true, neckSCM = true }
+local HULL_ABS_DEF = 0.45 -- the abs fade in with definition (BuilderBody): fainter than this, they go too
+
+local function hullOnly(model, sp)
 	local look = model:FindFirstChild("BoxerLook")
 	local f = look and look:FindFirstChild("Muscles")
-	if not (f and f:GetAttribute("Hull") == true) then
-		return -- low detail has no hull: its few domes are all the body it has
+	if not (f and f:GetAttribute("Hull") == true) or (sp ~= nil and sp.detail == "full") then
+		return -- low detail has no hull (its few domes are all the body it has); full keeps every dome
 	end
+	local abs = sp ~= nil and (sp.def or 0) >= HULL_ABS_DEF
 	for _, p in ipairs(f:GetChildren()) do
-		if p:IsA("BasePart") and p:GetAttribute("Layer") ~= nil and p.Name ~= "Bust" then
+		local id = p:GetAttribute("Part")
+		if p:IsA("BasePart") and p:GetAttribute("Layer") ~= nil and not (HULL_KEEP[id] or (abs and id == "abs")) then
 			p:Destroy()
 		end
 	end
@@ -424,7 +432,7 @@ function Builder.Cosmetics(model, app, build, gear, opts)
 	headStep(model, app, build, opts, "Beard")
 	local _, env = step("Muscles", Body.Muscles, model, app, build, opts, sp, gear)
 	if model:GetAttribute("HullOnly") == true then
-		step("HullOnly", hullOnly, model)
+		step("HullOnly", hullOnly, model, sp)
 	end
 	step("Attire", Body.Attire, model, app, opts, gear, sp, type(env) == "table" and env or nil)
 	step("Hands", Body.Hands, model, app, gear, opts, sp)
