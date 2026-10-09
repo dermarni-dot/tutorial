@@ -28,11 +28,11 @@ local renderId = 0
 local function stale(body, id)
 	return id ~= renderId or not body.Parent
 end
-local TABS = { "Career", "Training", "Body", "Stats", "Gym", "Gear", "Coaches", "Sponsors", "Life", "Rankings", "Rivals", "Shop", "Legacy" }
+local TABS = { "Career", "Training", "Body", "Stats", "Gym", "Gear", "Coaches", "Sponsors", "Life", "Rankings", "Rivals", "PvP", "Shop", "Legacy" }
 Hub.Tabs = TABS -- every tab (the side navigation groups them in NAV)
 -- the side navigation, grouped like a sports game's career menu
 local NAV = {
-	{ "CAREER", { "Career", "Rankings", "Rivals", "Legacy" } },
+	{ "CAREER", { "Career", "Rankings", "Rivals", "PvP", "Legacy" } },
 	{ "TRAINING", { "Training", "Body", "Stats", "Gym", "Coaches" } },
 	{ "LIFE", { "Gear", "Sponsors", "Life", "Shop" } },
 }
@@ -1117,6 +1117,19 @@ local dropConfirm = nil
 
 local function payLine(d)
 	return string.format("%s per fight  +%s win  +%s KO", money(d.perFight or 0), money(d.winBonus or 0), money(d.koBonus or 0))
+end
+
+-- PvP: the record / rating, Find Match and the boxers in the server (the PvP module draws it)
+R.PvP = function(body)
+	local ok, PvPClient = pcall(require, script.Parent:WaitForChild("PvP", 5))
+	if ok and type(PvPClient) == "table" and PvPClient.RenderInto then
+		local id = renderId
+		PvPClient.RenderInto(body, function()
+			return stale(body, id) -- another tab took over while the list loaded
+		end)
+	else
+		UI.Line(body, "PvP is unavailable right now.", { TextColor3 = T.sub })
+	end
 end
 
 R.Sponsors = function(body, P)

@@ -80,6 +80,8 @@ switches them on the spot.
 | Use a station or counter | E | X / Square | Tap the prompt |
 | Career Hub | H | D-pad up | CAREER HUB button |
 | Main menu | M | D-pad down | MENU button |
+| PvP panel | P | D-pad right | PVP button |
+| Challenge another boxer | T (near him) | Y / Triangle (near him) | Tap the prompt |
 
 **Menus and windows.** On a controller, every window (Career Hub, creator, barber, locker room,
 nutrition, sleep, stores, results, sparring picker) opens with a button already selected. The D-pad
@@ -129,15 +131,28 @@ to select and **B** to go back.
 | Rear hook | 4 / ; | A / Cross | HOOK |
 | Uppercut | 5 / U | RT / R2 | UPPER |
 | Overhand | 6 / O | RB / R1 | - |
-| Body shot (with a punch) | hold Shift | hold LB / L1 | BODY toggle |
-| Block | hold F | hold LT / L2 | hold BLOCK |
+| Body shot (arms the next punch) | tap Shift | tap LB / L1 | tap BODY |
+| Block (guard up / down) | tap F | tap LT / L2 | tap BLOCK |
 | Slip left / right | Q / E | flick the right stick left / right | drag BLOCK left / right |
 | Roll | C | flick the right stick down | - |
 | Parry | R | D-pad up (or flick the right stick up) | - |
 | Pivot left / right | Z / X | D-pad left / right, or click the right stick (toward the left stick's lean) | - |
 | Clinch | G | D-pad down or click the left stick | CLINCH |
-| Show the controls | hold H | hold View / Share | - |
+| Show / hide the controls | tap H | tap View / Share | - |
 | Get up after a knockdown | mash Space | mash A / Cross | tap the panel |
+
+**Tap, don't hold.** Block, the body-shot modifier and the controls legend are toggles on every
+device: a tap turns them on, the next tap turns them off. A press held longer than about a third of
+a second still works as a hold and lets go when you release. Throwing a punch drops a tapped guard
+(you cannot punch through your own gloves) and spends a tapped body modifier. The fight HUD lights
+what is on: the **GUARD UP** and **BODY SHOT ARMED** chips above the ticker, the BLOCK / BODY key
+caps and the touch pads.
+
+**Every round starts in the corners.** Both boxers are put in their own corners and held there (no
+steps, no punches: the server refuses every fight input) while a big **3 · 2 · 1 · BOX!** counts in,
+one tick a number and the bell on BOX!. Movement and punches come back exactly on BOX!. The training
+drills that used to need a hold (lifts, medicine-ball slams, recovery breathing) take a tap to start
+and a tap to finish too.
 
 When you are down, every press counts and a press while the marker is in the green zone counts three
 times, on every device. During a fight the left stick still moves your boxer. The controller's
@@ -313,6 +328,14 @@ The gym itself has:
 - posters, trophies and mirrors;
 - sun shafts, dust and sweat puddles.
 
+**Sparring** (the ring's picker: Light, Medium, Hard) is a real session, not a drill. The partner is
+picked near your level (Light a little below you, Medium around you, Hard above you) and works at a
+gym pace, throwing a lot more than a fight-night opponent would, so a session can be won, lost (on
+the coach's card, or stopped by the coach) or drawn. Light and Medium have no knockdowns: the coach
+calls time instead, and in Medium one such call ends the session. Hard allows knockdowns and the
+coach stops it after a count you do not pass. Every result still trains you; a loss or a stoppage
+is worth a little less than a win, and you have to throw punches to get anything at all.
+
 ## Fights and the KO model
 
 - **Three health pools:** HEAD, BODY and STAMINA. Head punches cost head HP by type: the jab least,
@@ -339,11 +362,70 @@ The gym itself has:
 - **Concussion:** builds with head damage. It slows punches and movement, lowers accuracy and
   defence, and blurs and drains the screen. It recovers between rounds and over days. Repeated
   trauma carries over the career.
-- **Controls:** shown on screen (hold **H**, or **View / Share** on a controller, in a fight). The
+- **Controls:** shown on screen (tap **H**, or **View / Share** on a controller, in a fight). The
   full keyboard, controller and touch layouts are in [Controls](#controls).
 - **Fight nights:** weigh-ins, ring walks, a referee, judges' scorecards and a crowd. The venues are
   a community centre, a club arena, the Grand Arena and the National Stadium for title fights. The
   big venues have fight-night lighting, LED screens, broadcast cameras and a walkout stage.
+
+## PvP: player vs player
+
+Two players in the same server can box each other with their own boxers: the same engine, punches,
+knockdowns, referee, judges and HUD as a career fight, with the stats of each player's profile.
+
+**Starting a bout.**
+- **Challenge:** walk up to another boxer and press **T** (**Y** on a pad, tap on touch), or open the
+  PvP panel (**P**, **D-pad right**, the **PVP** button or the Career Hub's **PvP** tab) and pick a
+  boxer from the list. Choose **Sparring** or a **Ranked Bout** of 3 or 6 rounds.
+- The other player gets a popup for 20 seconds: **ACCEPT** / **DECLINE** (keys **Y** / **N**, pad **A** /
+  **B**, or the buttons). You can't challenge someone who is training, in the ring, at the barber, in
+  a queue or already asked; one challenge at a time, at most one every 4 seconds, and a declined
+  challenger waits 30 seconds before asking the same player again.
+- **Find Match** (in the PvP panel) queues you for a ranked 3-round bout. It pairs the two closest
+  PvP ratings; the accepted gap starts at 150 and widens every second, and after 30 seconds anybody
+  in the queue is a match.
+- Both players see a **MATCH FOUND** screen (both boxers, records and ratings) for 4 seconds, then
+  they are taken to their own arena (the City Club for ranked bouts, the sparring ring for spars) and
+  brought back to the gym afterwards.
+
+**Sparring vs ranked.**
+| | Sparring | Ranked bout |
+|---|---|---|
+| Rounds | 2 x 45 s | 3 or 6 x 60 s |
+| Damage | lighter (x0.5), headgear | full |
+| Knockdowns | none: the coach calls time | yes, KO / TKO / decision |
+| Record | none (counted as a spar) | PvP record W-L-D, KOs, rating |
+| Reward | - | small purse ($400 win / $200 draw / $100 loss) and a little fame |
+| Face marks | a light carry-over | like a career fight |
+
+**What PvP never touches:** the career record, training camps and booked fights, injuries,
+concussion trauma and suspensions. Only the normal face-damage carry-over follows you home. The
+fight's training gains are not awarded either (spar the gym's partners for those).
+
+**Rating.** Every profile gets a PvP rating (Elo, starting at 1000, K 40 for the first 10 ranked
+bouts and 28 after) and a rank name (Rookie, Contender, Prospect, Veteran, Elite, Champion). Ranked
+results move both ratings by the same amount in opposite directions.
+
+**Farming protection.** The same two players can't start another ranked bout for 90 seconds. Within
+24 hours, the second ranked bout against the same opponent pays half (rating and rewards), the third
+a quarter, and from the fourth on nothing. The server keeps the last opponents per profile (at most
+20) for this.
+
+**Leaving, resetting, dying.** In a ranked bout after the first bell, the player who leaves the
+game, resets or dies loses by forfeit (method "Forfeit"); the other player wins and both records are
+saved (the leaver's before his leave save). Before the first bell, or in a spar, the bout is just
+called off. The reset button is locked during ranked bouts, like career fights.
+
+**Security.** The clients only send inputs. Damage, knockdowns, scoring and results are decided by
+the server; every fight message is rate-limited (30 a second per player, get-up presses 15 a
+second), the target of a challenge is looked up on the server by UserId, and both players are
+checked again (free, alive, not training) when a challenge is accepted and when the match starts.
+
+**Saves.** PvP data lives in `profile.pvp` (`rating, peak, w, l, d, ko, koLoss, bouts, spars,
+recent`). Old saves have none; it is created on the first PvP bout and every read is nil-safe.
+`DataVersion` is unchanged.
+
+**Spectating** is not built in: the arenas are private instances far from the gym.
 
 ## Career and city
 

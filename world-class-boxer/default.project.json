@@ -51,6 +51,9 @@
         "Poser": {
           "$path": "src/server/Poser.lua"
         },
+        "PvP": {
+          "$path": "src/server/PvP.lua"
+        },
         "Training": {
           "$path": "src/server/Training.lua"
         },

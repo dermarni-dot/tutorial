@@ -56,10 +56,15 @@ local KO = Config.KO
 local CONC = Config.Concussion
 local FACE = Config.FaceDamage
 
+-- work = how busy the gym partner is (FightAI multiplies its punch rate; a fight-night opponent is 1)
+-- and range = how close he stays (a share of his normal distance). A sparring partner's job is to give
+-- you rounds: at the old fight-night pace he threw ~5 punches in a Light round and never won a spar.
 local SPAR = {
-	Light = { rounds = 1, damage = 0.3, allowKD = false },
-	Medium = { rounds = 2, damage = 0.55, allowKD = false },
-	Hard = { rounds = 3, damage = 0.85, allowKD = true },
+	Light = { rounds = 1, damage = 0.3, allowKD = false, work = 2.0, range = 0.86 },
+	Medium = { rounds = 2, damage = 0.55, allowKD = false, work = 2.4, range = 0.84 },
+	Hard = { rounds = 3, damage = 0.85, allowKD = true, work = 2.2, range = 0.82 },
+	-- PvP sparring between two players: headgear, lighter shots, no knockdowns (the coach calls time)
+	PvP = { rounds = 2, damage = 0.5, allowKD = false },
 }
 FightEngine.SparSettings = SPAR
 
@@ -241,6 +246,14 @@ function Fight:Now()
 	return os.clock()
 end
 
+-- a pause in the flow that ends early when the fight is over (a PvP forfeit during the rest minute)
+function Fight:Wait(t)
+	local t0 = os.clock()
+	while os.clock() - t0 < t and not self.finished and not self.aborted do
+		task.wait(math.min(0.25, t))
+	end
+end
+
 function Fight:Distance(A, B)
 	if not (A.root and B.root) then
 		return 99
@@ -294,9 +307,48 @@ end
 ------------------------------------------------------------------------
 -- Messaging & visuals
 ------------------------------------------------------------------------
+-- Every message is written from the red corner's (P's) point of view: who = "you" means P. A PvP bout
+-- has a second player in the blue corner (O); his copy gets "you" / "opp" swapped, so each client sees
+-- the fight from its own side. Messages whose content differs per side (state, start, rest, final, the
+-- cut call) are built per viewer with SendEach / SendTo.
+local FLIP = { you = "opp", opp = "you" }
+
+-- the fighters that have a client watching (P always in a career fight / spar, O too in PvP)
+function Fight:Viewers()
+	local out = {}
+	for _, F in ipairs({ self.P, self.O }) do
+		if F and F.player and not F.gone then
+			table.insert(out, F)
+		end
+	end
+	return out
+end
+
+function Fight:SendTo(V, msg)
+	local plr = V and V.player
+	if plr and plr.Parent and not V.gone then
+		self.remote:FireClient(plr, msg)
+	end
+end
+
 function Fight:Send(msg)
-	if self.player and self.player.Parent then
-		self.remote:FireClient(self.player, msg)
+	for _, V in ipairs(self:Viewers()) do
+		local m = msg
+		if V ~= self.P and type(msg.who) == "string" and FLIP[msg.who] then
+			m = table.clone(msg)
+			m.who = FLIP[msg.who]
+		end
+		self:SendTo(V, m)
+	end
+end
+
+-- fn(V) -> the message for viewer V (or nil to send nothing)
+function Fight:SendEach(fn)
+	for _, V in ipairs(self:Viewers()) do
+		local m = fn(V)
+		if m then
+			self:SendTo(V, m)
+		end
 	end
 end
 
@@ -583,7 +635,9 @@ function Fight:FaceHit(O, F, ptype, hd, hdRef)
 			d.cut = math.min(1.2, d.cut + gash)
 			d.cutSide = side
 		end
-		self:Send({ t = "announce", text = (O == self.P and "You're" or O.data.name .. " is") .. " CUT!" })
+		self:SendEach(function(V)
+			return { t = "announce", text = (O == V and "You're" or O.data.name .. " is") .. " CUT!" }
+		end)
 		self:Comment("There's blood! " .. O.data.name .. " is cut over the eye!", true)
 	end
 	self:RefreshDamage(O)
@@ -871,7 +925,7 @@ function Fight:Resolve(F, O, ptype, body, stamPct)
 			O.balance = 100
 			self:CheckTier(O)
 			self:Send({ t = "announce", text = "COACH: \"Time! Take a breather.\"" })
-			if self.spar == "Medium" then
+			if self.spar == "Medium" or self.spar == "PvP" then
 				self:End(F, "Stopped", "Coach stops the sparring session")
 			else
 				O.hurtUntil = now + 2
@@ -1447,7 +1501,7 @@ function Fight:Knockdown(F, by, severity, fall, cause)
 		-- belt and braces for FightClient's ragdoll (it disables the Neck motor): a neckless death would
 		-- fire Main's Died -> Abort before End records the KO. Replicates ahead of the kd message.
 		F.hum.RequiresNeck = false
-		self.neckOff = true
+		F.neckOff = true
 	end
 	-- anim = true: the knockout is animated on every client (FightClient skips its physics ragdoll)
 	local animKO = severity == "out" and FightMotion ~= nil and FightMotion.ANIMATED_KO == true
@@ -1575,7 +1629,8 @@ function Fight:Count(F)
 	end
 	target = math.max(4, math.floor(target))
 	if F.isPlayer then
-		self:Send({ t = "getupStart", target = target, ability = ability, severity = sev })
+		-- only the man on the canvas gets the get-up panel (in PvP the other client just sees the count)
+		self:SendTo(F, { t = "getupStart", target = target, ability = ability, severity = sev })
 	end
 	for n = 1, 10 do
 		task.wait(0.85)
@@ -1994,8 +2049,10 @@ function Fight:Update(dt)
 			self.O.ai:Think(now)
 		end
 	end
-	if self.P.blocking then
-		self.P.blockTime = (self.P.blockTime or 0) + dt
+	for _, F in ipairs({ self.P, self.O }) do
+		if F.blocking then
+			F.blockTime = (F.blockTime or 0) + dt
+		end
 	end
 	self:UpdateReferee(now)
 	-- model attributes at 5 Hz (quantized, change-only)
@@ -2008,17 +2065,20 @@ function Fight:Update(dt)
 	self.sendAcc = (self.sendAcc or 0) + dt
 	if self.sendAcc >= 0.1 then
 		self.sendAcc = 0
-		local P, O = self.P, self.O
-		self:Send({
-			t = "state",
-			time = math.max(0, math.ceil(self.roundEnd - now)),
-			me = { hp = P.health, cap = P.healthCap, body = P.body, bodyCap = P.bodyCap, stam = P.stamina, max = P.maxStam, stamCap = P.stamCap,
-				hurt = self:IsHurt(P), angle = now < P.angleUntil, tier = P.tier, conc = P.conc, bal = P.balance,
-				-- swollen eyes: FightClient darkens that side of the screen (CONTRACTS 8: P.dmg 0..1)
-				eyeL = quant(P.dmg.leftEye, 0.05), eyeR = quant(P.dmg.rightEye, 0.05) },
-			opp = { hp = O.health, cap = O.healthCap, body = O.body, bodyCap = O.bodyCap, stam = O.stamina, max = O.maxStam, stamCap = O.stamCap,
-				hurt = self:IsHurt(O), tier = O.tier, conc = O.conc },
-		})
+		local time = math.max(0, math.ceil(self.roundEnd - now))
+		self:SendEach(function(P)
+			local O = self:Other(P)
+			return {
+				t = "state",
+				time = time,
+				me = { hp = P.health, cap = P.healthCap, body = P.body, bodyCap = P.bodyCap, stam = P.stamina, max = P.maxStam, stamCap = P.stamCap,
+					hurt = self:IsHurt(P), angle = now < P.angleUntil, tier = P.tier, conc = P.conc, bal = P.balance,
+					-- swollen eyes: FightClient darkens that side of the screen (CONTRACTS 8: P.dmg 0..1)
+					eyeL = quant(P.dmg.leftEye, 0.05), eyeR = quant(P.dmg.rightEye, 0.05) },
+				opp = { hp = O.health, cap = O.healthCap, body = O.body, bodyCap = O.bodyCap, stam = O.stamina, max = O.maxStam, stamCap = O.stamCap,
+					hurt = self:IsHurt(O), tier = O.tier, conc = O.conc },
+			}
+		end)
 	end
 end
 
@@ -2091,8 +2151,9 @@ function Fight:EstimateLead(F)
 	return lead
 end
 
-function Fight:CornerAdvice()
-	local P, O = self.P, self.O
+function Fight:CornerAdvice(P)
+	P = P or self.P
+	local O = self:Other(P)
 	local tips = {}
 	if self.spar then
 		table.insert(tips, "Good work. Keep your hands up and work on your timing.")
@@ -2129,6 +2190,9 @@ function Fight:CornerAdvice()
 		table.insert(tips, "ELITE COACH: " .. (O.ai:Weakness() or "Stay focused."))
 	elseif #tips == 0 then
 		table.insert(tips, "Good round. Jab, move, parry (R) their straight shots and counter.")
+	end
+	if O.isPlayer and P.isPlayer and #tips < 2 then
+		table.insert(tips, "He's a real fighter, not a script: watch what he does after he throws, and make him pay.")
 	end
 	if P.blockTime and P.blockTime > 15 then
 		table.insert(tips, "Don't just shell up - slip (Q/E) or roll (C) and counter!")
@@ -2259,8 +2323,24 @@ function Fight:DoctorCheck()
 		end
 	end
 	local O = self.O
-	if not self.spar and (O.healthCap < 40 or O.conc > 0.8) and self:EstimateLead(O) < -2 and self.rng:NextNumber() < 0.3 then
+	if not self.spar and not O.isPlayer and (O.healthCap < 40 or O.conc > 0.8) and self:EstimateLead(O) < -2 and self.rng:NextNumber() < 0.3 then
 		self:End(self.P, "RTD", "Opponent's corner retires them")
+	end
+end
+
+-- one fighter's ring walk: his own client walks a player (and plays his music / intro); everybody else
+-- gets the "opp" walkout shot; an NPC is walked by the server
+function Fight:WalkOut(W, steps, pyro)
+	self:SendEach(function(V)
+		if V == W then
+			return { t = "entrance", phase = "you", music = W.data.music, target = steps, pyro = pyro,
+				intro = Config.AnnouncerIntro[W.data.voice or "Calm"] or Config.AnnouncerIntro.Calm }
+		end
+		return { t = "entrance", phase = "opp", pyro = pyro }
+	end)
+	if not W.isPlayer and W.hum then
+		W.hum.WalkSpeed = 8
+		W.hum:MoveTo(steps)
 	end
 end
 
@@ -2278,14 +2358,14 @@ function Fight:Entrance()
 		self:SyncAttrs(F)
 	end
 	task.wait(0.5)
-	self:Send({ t = "entrance", phase = "opp", pyro = isStadium })
 	self:Comment("Making the walk now... " .. O.data.name .. "!", true)
-	O.hum.WalkSpeed = 8
-	O.hum:MoveTo(self.anchors.BlueSteps.Position)
+	self:WalkOut(O, self.anchors.BlueSteps.Position, isStadium)
 	task.wait(isStadium and 6 or 4.5)
+	if self.aborted then
+		return
+	end
 	self:Place(O, self.anchors.BlueCorner.Position)
-	self:Send({ t = "entrance", phase = "you", music = P.data.music, target = self.anchors.RedSteps.Position, pyro = isStadium,
-		intro = Config.AnnouncerIntro[P.data.voice or "Calm"] or Config.AnnouncerIntro.Calm })
+	self:WalkOut(P, self.anchors.RedSteps.Position, isStadium)
 	task.wait(isStadium and 7 or 5.5)
 	if self.aborted then
 		return
@@ -2293,6 +2373,77 @@ function Fight:Entrance()
 	self:Place(P, self.anchors.RedCorner.Position)
 	pcall(Builder.SetRobe, P.model, P.data.app, false)
 	pcall(Builder.SetRobe, O.model, O.data.app, false)
+end
+
+-- Before every round: both fighters stand in their own corners, held there (no steps, no punches - the
+-- fight is not live, so the engine refuses every input), while the clients count 3 - 2 - 1 - BOX!. The
+-- server owns the timing: one "countdown" message per beat, n = 0 is the bell. Movement comes back on GO.
+local COUNT_BEAT = 0.8
+FightEngine.COUNT_BEAT = COUNT_BEAT
+function Fight:HoldCorners()
+	local red, blue = self.anchors.RedCorner.Position, self.anchors.BlueCorner.Position
+	for _, X in ipairs({ { self.P, red, blue }, { self.O, blue, red } }) do
+		local F = X[1]
+		if F.root and F.model and F.model.Parent then
+			local p = F.root.Position
+			local want = X[2]
+			-- re-place only when he is not already there (a quiet corner stays quiet)
+			if flat(p - want).Magnitude > 1.2 or not F.cornerHeld then
+				self:Place(F, want, X[3])
+			end
+			F.cornerHeld = true
+			if F.align then
+				local dir = flat(X[3] - want)
+				if dir.Magnitude > 0.05 then
+					F.align.CFrame = CFrame.lookAt(Vector3.zero, dir.Unit)
+				end
+			end
+		end
+		if F.hum and F.hum.Parent then
+			F.hum.WalkSpeed = 0
+			if not F.isPlayer then
+				F.aiTarget = nil
+				F.hum:MoveTo(F.root and F.root.Position or Vector3.zero)
+			end
+		end
+		F.blocking = false
+		if F.state ~= "down" then
+			F.state = "idle"
+		end
+	end
+end
+
+function Fight:Countdown()
+	self.live = false
+	self.inCountdown = true
+	for _, F in ipairs({ self.P, self.O }) do
+		F.cornerHeld = false
+	end
+	self:HoldCorners()
+	task.wait(0.6)
+	for n = 3, 0, -1 do
+		if self.finished or self.aborted then
+			break
+		end
+		self:HoldCorners()
+		self:Send({ t = "countdown", n = n, round = self.round })
+		if n > 0 then
+			-- hold the corners through the beat (a client that ignores WalkSpeed 0 is put back)
+			local t0 = self:Now()
+			while self:Now() - t0 < COUNT_BEAT and not self.finished and not self.aborted do
+				task.wait(0.1)
+				self:HoldCorners()
+			end
+		end
+	end
+	self.inCountdown = false
+end
+
+function Fight:ReleaseCorners()
+	for _, F in ipairs({ self.P, self.O }) do
+		F.cornerHeld = false
+	end
+	-- UpdateMovement sets each fighter's real speed from the next frame on
 end
 
 local function femaleOf(F)
@@ -2308,18 +2459,29 @@ function Fight:Run()
 		self:SyncAttrs(F)
 	end
 	self:SpawnReferee()
-	self:Send({
-		t = "start", rounds = self.rounds, kind = offer.kind, stakes = offer.stakes or {}, playerStakes = offer.playerStakes or {},
-		arena = self.arena, oppModel = O.model, venue = self.venue, venueName = offer.venueName or "", spar = self.spar,
-		weighIn = P.data.mods and P.data.mods.weighIn, notes = P.data.mods and P.data.mods.notes,
-		refModel = self.ref and self.ref.model, allowKD = self.allowKD,
-		tape = {
-			you = { name = P.data.name, nick = P.data.nick, nat = P.data.nat, record = P.data.record, height = P.data.height, reach = P.data.reach, style = P.style.name, overall = Config.Overall(P.data.stats), female = femaleOf(P) },
-			opp = { name = O.data.name, nick = O.data.nick, nat = O.data.nat, record = O.data.record, height = O.data.height, reach = O.data.reach, style = O.style.name, overall = Config.Overall(O.data.stats),
-				archetype = (Config.FindById(Config.Archetypes, O.data.archetype) or {}).name, female = femaleOf(O) },
-		},
-		talk = offer.talk, myLine = offer.myLine,
-	})
+	local function tapeOf(F)
+		local t = { name = F.data.name, nick = F.data.nick, nat = F.data.nat, record = F.data.record, height = F.data.height, reach = F.data.reach, style = F.style.name,
+			overall = Config.Overall(F.data.stats), female = femaleOf(F) }
+		if F.isPlayer then
+			-- PvP: the HUD names the Roblox account behind the boxer (and the record is the PvP one)
+			t.player = self.pvp and F.player and ("@" .. F.player.Name) or nil
+			t.rating = self.pvp and F.data.pvpRating or nil
+		else
+			t.archetype = (Config.FindById(Config.Archetypes, F.data.archetype) or {}).name
+		end
+		return t
+	end
+	self:SendEach(function(V)
+		local X = self:Other(V)
+		return {
+			t = "start", rounds = self.rounds, kind = offer.kind, stakes = offer.stakes or {}, playerStakes = offer.playerStakes or {},
+			arena = self.arena, oppModel = X.model, venue = self.venue, venueName = offer.venueName or "", spar = self.spar,
+			weighIn = V.data.mods and V.data.mods.weighIn, notes = V.data.mods and V.data.mods.notes,
+			refModel = self.ref and self.ref.model, allowKD = self.allowKD, pvp = self.pvp,
+			tape = { you = tapeOf(V), opp = tapeOf(X) },
+			talk = V == P and offer.talk or "", myLine = V == P and offer.myLine or "",
+		}
+	end)
 	-- the Animator only drives tagged models: tag now so the ring walk / warm-up (Guard "walkout") is animated
 	-- (E's integration request; the later AddTag calls are harmless no-ops)
 	CollectionService:AddTag(P.model, "Fighter")
@@ -2340,7 +2502,7 @@ function Fight:Run()
 	CollectionService:AddTag(O.model, "Fighter")
 	if not self.spar then
 		self:Send({ t = "tape" })
-		task.wait(5)
+		self:Wait(5)
 	end
 
 	for r = 1, self.rounds do
@@ -2364,10 +2526,15 @@ function Fight:Run()
 		elseif r == self.rounds then
 			self:Comment("Final round! Everything on the line!", true)
 		end
-		task.wait(2)
+		-- both men wait in their own corners for the bell, then 3 - 2 - 1 - BOX!
+		self:Countdown()
+		if self.finished or self.aborted then
+			break
+		end
 		self.live = true
 		self.paused = false
 		self.resumedAt = self:Now()
+		self:ReleaseCorners()
 		local remaining = self.roundSeconds
 		self.roundEnd = self:Now() + remaining
 		while remaining > 0 and not self.finished and not self.aborted do
@@ -2396,13 +2563,18 @@ function Fight:Run()
 				avgP += self.cards[j][1]
 				avgO += self.cards[j][2]
 			end
-			self:Send({
-				t = "rest", n = r, advice = self:CornerAdvice(), card = rc[1],
-				unofficial = { math.floor(avgP / 3 + 0.5), math.floor(avgO / 3 + 0.5) },
-				stats = { landed = P.totals.landed, thrown = P.totals.thrown, oppLanded = O.totals.landed, oppThrown = O.totals.thrown },
-				seconds = Config.RestSeconds, cond = self:ConditionReport(P),
-			})
-			task.wait(self.spar and 4 or Config.RestSeconds)
+			local uP, uO = math.floor(avgP / 3 + 0.5), math.floor(avgO / 3 + 0.5)
+			self:SendEach(function(V)
+				local X = self:Other(V)
+				local red = V == P -- the cards are kept red corner first
+				return {
+					t = "rest", n = r, advice = self:CornerAdvice(V), card = red and rc[1] or { rc[1][2], rc[1][1] },
+					unofficial = red and { uP, uO } or { uO, uP },
+					stats = { landed = V.totals.landed, thrown = V.totals.thrown, oppLanded = X.totals.landed, oppThrown = X.totals.thrown },
+					seconds = Config.RestSeconds, cond = self:ConditionReport(V),
+				}
+			end)
+			self:Wait(self.spar and 4 or Config.RestSeconds)
 		end
 	end
 	if self.aborted then
@@ -2427,27 +2599,55 @@ function Fight:Run()
 		self:UpdateGuard(F)
 		self:SyncAttrs(F)
 	end
-	res.cards = self.cards
+	-- the red corner's result is the one Run returns; a PvP bout also keeps the blue corner's (self.results)
+	self.results = { [P] = self:ResultFor(P, res), [O] = self:ResultFor(O, res) }
+	return self.results[P]
+end
+
+-- the result from fighter F's side. base is the red corner's { outcome, method, reason, round }.
+function Fight:ResultFor(F, base)
+	local O = self:Other(F)
+	local red = F == self.P
+	local res = { method = base.method, reason = base.reason, round = base.round }
+	local FLIP_OUT = { win = "loss", loss = "win" }
+	res.outcome = red and base.outcome or (FLIP_OUT[base.outcome] or base.outcome)
+	if red then
+		res.cards = self.cards
+	else
+		res.cards = {}
+		for j, c in ipairs(self.cards) do
+			res.cards[j] = { c[2], c[1] }
+		end
+	end
 	res.kdFor = O.kdTotal
-	res.kdAgainst = P.kdTotal
-	res.landed, res.thrown = P.totals.landed, P.totals.thrown
+	res.kdAgainst = F.kdTotal
+	res.landed, res.thrown = F.totals.landed, F.totals.thrown
 	res.oppLanded, res.oppThrown = O.totals.landed, O.totals.thrown
-	res.punches = P.punchesUsed
-	res.damageDealt, res.damageTaken = P.damageDealt, P.damageTaken
-	res.weighIn = P.data.mods and P.data.mods.weighIn
+	res.punches = F.punchesUsed
+	res.damageDealt, res.damageTaken = F.damageDealt, F.damageTaken
+	res.weighIn = F.data.mods and F.data.mods.weighIn
 	-- a cut counts when it was opened (or ripped open further) tonight, not when an old one merely shows
-	local cutNow = math.max(P.dmg.cut, P.dmg.cut2)
-	res.cutTaken = cutNow > 0.3 and cutNow > (P.cutAtStart or 0) + 0.1
+	local cutNow = math.max(F.dmg.cut, F.dmg.cut2)
+	res.cutTaken = cutNow > 0.3 and cutNow > (F.cutAtStart or 0) + 0.1
 	-- persistence hand-off (CONTRACTS section 8): Career / Training carry these into the profile
-	res.face = tonightDamage(P)
+	res.face = tonightDamage(F)
 	res.oppFace = tonightDamage(O)
-	res.concPeak = math.floor(P.concPeak * 100) / 100
-	res.noseBroken = P.dmg.nose == true and not P.noseAtStart
+	res.concPeak = math.floor(F.concPeak * 100) / 100
+	res.noseBroken = F.dmg.nose == true and not F.noseAtStart
 	-- the profile residual already carries an old break (AddFaceDamage never clears it): only a fresh one is news
 	res.face.nose = res.noseBroken
-	res.knockdowns = self.knockdowns
-	res.bodyTaken = math.floor(100 - P.bodyCap)
-	res.headTaken = math.floor(P.headTaken * 10) / 10 -- Training.AddTrauma prefers this over damageTaken
+	if red then
+		res.knockdowns = self.knockdowns
+	else
+		res.knockdowns = {}
+		for i, k in ipairs(self.knockdowns) do
+			local c = table.clone(k)
+			c.who = FLIP[k.who] or k.who
+			res.knockdowns[i] = c
+		end
+	end
+	res.bodyTaken = math.floor(100 - F.bodyCap)
+	res.headTaken = math.floor(F.headTaken * 10) / 10 -- Training.AddTrauma prefers this over damageTaken
 	return res
 end
 
@@ -2469,8 +2669,23 @@ function Fight:Cleanup()
 			F.alignAtt:Destroy()
 		end
 	end
-	local P = self.P
-	if P.hum and self.neckOff then
+	for _, P in ipairs({ self.P, self.O }) do
+		if P.isPlayer then
+			self:RestorePlayer(P)
+		end
+	end
+	if self.ref and self.ref.noclip then
+		self.ref.noclip:Disconnect()
+		self.ref.noclip = nil
+	end
+	if self.arena then
+		self.arena:Destroy()
+	end
+end
+
+-- a player's own character after the fight: movement, jump, the neck, robe / headgear / fight damage off
+function Fight:RestorePlayer(P)
+	if P.hum and P.neckOff then
 		-- FightClient re-enables the rig 2.2 s after "final"; Cleanup runs 3 s after it, so wait a little longer
 		-- before the neck is required again (a slow client would otherwise die on the spot)
 		local hum = P.hum
@@ -2501,18 +2716,14 @@ function Fight:Cleanup()
 		end
 		pcall(Builder.SetSweat, P.model, P.data.app, 0)
 	end
-	if self.ref and self.ref.noclip then
-		self.ref.noclip:Disconnect()
-		self.ref.noclip = nil
-	end
-	if self.arena then
-		self.arena:Destroy()
-	end
 end
 
 ------------------------------------------------------------------------
 -- Entry point (yields until the fight ends). Returns result or nil if aborted.
--- opts: { spar = "Light"|"Medium"|"Hard" }
+-- opts: { spar = "Light"|"Medium"|"Hard"|"PvP", oppPlayer = Player (PvP: the blue corner is that player's
+-- own character, driven by his inputs), rounds = n (PvP ranked: 3 or 6) }
+-- Returns the red corner's result (nil if aborted) and the results table { [fighter] = res } whose
+-- fighters carry .player, so a PvP caller can pick each side's result.
 ------------------------------------------------------------------------
 local fightCounter = 0
 function FightEngine.Run(player, remote, offer, pData, oData, arena, opts)
@@ -2525,10 +2736,14 @@ function FightEngine.Run(player, remote, offer, pData, oData, arena, opts)
 	self.offer = offer
 	self.spar = opts.spar
 	local sp = opts.spar and SPAR[opts.spar]
-	self.rounds = sp and sp.rounds or offer.rounds
+	local oppPlayer = typeof(opts.oppPlayer) == "Instance" and opts.oppPlayer:IsA("Player") and opts.oppPlayer or nil
+	self.pvp = oppPlayer ~= nil
+	self.rounds = (oppPlayer and tonumber(opts.rounds)) or (sp and sp.rounds) or offer.rounds
 	self.roundSeconds = sp and Config.SparRoundSeconds or Config.RoundSeconds
 	self.damageScale = sp and sp.damage or 1
 	self.allowKD = (not sp) or sp.allowKD
+	self.aiWork = sp and sp.work or 1
+	self.aiRange = sp and sp.range or 1
 	self.venue = opts.spar and "Gym" or (offer.venue or "Arena")
 	self.round = 0
 	self.rng = Random.new()
@@ -2553,15 +2768,28 @@ function FightEngine.Run(player, remote, offer, pData, oData, arena, opts)
 	npcOpts.fightNight = not self.spar -- taped, inspector-signed, compact fight gloves (spars keep bag gloves)
 	npcOpts.age = npcOpts.age or oData.age
 	npcOpts.damage = type(oData.face) == "table" and oData.face or nil
-	local npc = Builder.CreateNPC(oData.app, oData.build, oData.gear, oData.name, npcOpts)
-	if not npc then
-		arena:Destroy()
-		return nil
-	end
-	npc.Parent = arena
-	local npcRoot = npc:FindFirstChild("HumanoidRootPart")
-	if npcRoot then
-		npcRoot:SetNetworkOwner(nil)
+	local npc
+	if oppPlayer then
+		-- PvP: the blue corner is the other player's own character (client-owned physics, like the red one)
+		npc = oppPlayer.Character
+		if not (npc and npc:FindFirstChild("HumanoidRootPart")) then
+			arena:Destroy()
+			return nil
+		end
+		local oOpts = table.clone(oData.lookOpts or {})
+		oOpts.hands, oOpts.mouthguard, oOpts.fightNight, oOpts.detail = "gloves", true, not self.spar, "full"
+		Builder.Cosmetics(npc, oData.app, oData.build, oData.gear, oOpts)
+	else
+		npc = Builder.CreateNPC(oData.app, oData.build, oData.gear, oData.name, npcOpts)
+		if not npc then
+			arena:Destroy()
+			return nil
+		end
+		npc.Parent = arena
+		local npcRoot = npc:FindFirstChild("HumanoidRootPart")
+		if npcRoot then
+			npcRoot:SetNetworkOwner(nil)
+		end
 	end
 	local char = player.Character
 	if not char then
@@ -2580,7 +2808,7 @@ function FightEngine.Run(player, remote, offer, pData, oData, arena, opts)
 		Builder.SetHeadgear(npc, Color3.fromRGB(170, 25, 30), true)
 	end
 	self.P = makeFighter(pData, char, player)
-	self.O = makeFighter(oData, npc, nil)
+	self.O = makeFighter(oData, npc, oppPlayer)
 	-- the distances fit the bodies in the ring: athletic rigs carry deeper chests and bigger gloves than the
 	-- classic one the spacing was fitted on, and a taller man needs more room to fall
 	local kP, hP = rigSize(char, self.P.hum, self.P.root)
@@ -2593,14 +2821,22 @@ function FightEngine.Run(player, remote, offer, pData, oData, arena, opts)
 	if pData.injuryCut then
 		self.cutRisk[self.P] = 1.8
 	end
+	if oppPlayer and oData.injuryCut then
+		self.cutRisk[self.O] = 1.8
+	end
 	-- the residual damage is drawn from the first punch on (Cosmetics drew opts.damage, keep it in step)
 	for _, F in ipairs({ self.P, self.O }) do
 		if Config.FaceDamageScore(F.dmg) > 0 or F.dmg.ribsL > 0 or F.dmg.ribsR > 0 then
 			self:RefreshDamage(F, true)
 		end
 	end
-	self.O.ai = FightAI.new(self.O, self.P, self)
+	if not oppPlayer then
+		self.O.ai = FightAI.new(self.O, self.P, self)
+	end
 	FightEngine.Active[player] = self
+	if oppPlayer then
+		FightEngine.Active[oppPlayer] = self
+	end
 
 	local ok, res = pcall(function()
 		return self:Run()
@@ -2610,12 +2846,29 @@ function FightEngine.Run(player, remote, offer, pData, oData, arena, opts)
 		res = nil
 	end
 	if res then
-		self:Send({ t = "final", result = res, oppName = oData.name, spar = self.spar })
+		self:SendEach(function(V)
+			return { t = "final", result = self.results and self.results[V] or res, oppName = self:Other(V).data.name, spar = self.spar, pvp = self.pvp }
+		end)
 		task.wait(3)
 	end
 	self:Cleanup()
-	FightEngine.Active[player] = nil
-	return res
+	if FightEngine.Active[player] == self then
+		FightEngine.Active[player] = nil
+	end
+	if oppPlayer and FightEngine.Active[oppPlayer] == self then
+		FightEngine.Active[oppPlayer] = nil
+	end
+	return res, self.results
+end
+
+-- the fighter a player controls in his fight (P, or O in a PvP bout)
+function Fight:FighterOf(player)
+	if self.P and self.P.player == player then
+		return self.P
+	elseif self.O and self.O.player == player then
+		return self.O
+	end
+	return nil
 end
 
 -- player input from the client
@@ -2624,7 +2877,20 @@ function FightEngine.Input(player, msg)
 	if not fight or type(msg) ~= "table" then
 		return
 	end
-	local F = fight.P
+	local F = fight:FighterOf(player)
+	if not F or F.gone then
+		return
+	end
+	-- flood guard: a client may send at most 30 fight messages a second (the mash has its own 15/s cap)
+	local now = fight:Now()
+	if now - (F.inWindow or 0) >= 1 then
+		F.inWindow = now
+		F.inCount = 0
+	end
+	F.inCount = (F.inCount or 0) + 1
+	if F.inCount > 30 then
+		return
+	end
 	local t = msg.t
 	if t == "punch" and Config.Punches[msg.p] then
 		fight:Punch(F, msg.p, msg.body == true)
@@ -2669,6 +2935,30 @@ function FightEngine.Abort(player)
 		fight.aborted = true
 		fight.finished = true
 	end
+end
+
+-- PvP: a player walks out of a bout that is under way (left the game, reset, died). After the first bell
+-- that is a loss ("Forfeit") and the fight ends with a result for the other corner; before it (or in a
+-- spar, when ranked = false) the bout is simply called off. Returns "forfeit" | "aborted" | nil.
+function FightEngine.Forfeit(player, ranked)
+	local fight = FightEngine.Active[player]
+	if not fight then
+		return nil
+	end
+	local F = fight:FighterOf(player)
+	if not F then
+		return nil
+	end
+	F.gone = true
+	if ranked and not fight.aborted and (fight.round or 0) >= 1 then
+		if not fight.finished then
+			fight:End(fight:Other(F), "Forfeit", (F.data.name or "The opponent") .. " left the ring")
+		end
+		return "forfeit"
+	end
+	fight.aborted = true
+	fight.finished = true
+	return "aborted"
 end
 
 return FightEngine

@@ -230,7 +230,7 @@ function FightAI:Range()
 	elseif self.mode == "cruise" then
 		return jab * math.max(self.baseRange, 0.94)
 	end
-	return jab * self.baseRange
+	return jab * self.baseRange * (self.engine.aiRange or 1)
 end
 
 function FightAI:Fits(ptype, dist)
@@ -365,7 +365,8 @@ function FightAI:Think(now)
 	end
 	local aggr = self:Aggression()
 	if self:Fits("jab", dist) then
-		if self.rng:NextNumber() < aggr * 0.13 + self.jabRate * 0.07 then
+		-- (engine.aiWork: a gym sparring partner works harder than the fight-night pace)
+		if self.rng:NextNumber() < (aggr * 0.13 + self.jabRate * 0.07) * (engine.aiWork or 1) then
 			self.queue = self:BuildCombo()
 			local first = table.remove(self.queue, 1)
 			engine:Punch(F, first.p, first.body)

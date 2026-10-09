@@ -24,6 +24,7 @@ local Venues = require(Modules.Venues)
 local Poser = require(Modules.Poser)
 local Ambient = require(Modules.Ambient)
 local CityMap = require(Modules.CityMap) -- same instance MapBuilder built the city with (travel targets, home interiors)
+local PvP = require(Modules.PvP)
 
 pcall(function()
 	StarterPlayer.LoadCharacterAppearance = false
@@ -44,6 +45,10 @@ ProfileRemote.Parent = remotes
 local Notify = Instance.new("RemoteEvent")
 Notify.Name = "Notify"
 Notify.Parent = remotes
+-- PvP pushes (challenge popups, match found, queue state); requests go through Request like everything else
+local PvPRemote = Instance.new("RemoteEvent")
+PvPRemote.Name = "PvP"
+PvPRemote.Parent = remotes
 remotes.Parent = ReplicatedStorage
 
 MapBuilder.BuildGym()
@@ -117,6 +122,8 @@ local function summary(player)
 	local s = Career.Summary(profile, DataManager.CanSave(player))
 	s.busy = busy[player]
 	s.studio = RunService:IsStudio()
+	-- PvP record / rating (read-only view; profile.pvp is created lazily by the first PvP bout)
+	s.pvp = PvP.View(profile)
 	-- R-ui: always a table (Settings.Supported() checks it); ui = the saved values, or nil before the first save
 	s.settings = type(s.settings) == "table" and s.settings or {}
 	if type(profile.settings) == "table" and type(profile.settings.ui) == "table" then
@@ -127,7 +134,7 @@ end
 
 -- fame on the Player (CONTRACTS section 7; CityVisuals / GymVisuals / venues read other players' values).
 -- SetAttribute with an unchanged value fires nothing, so this is cheap on every push.
-local FAME_ATTRS = { "Tier", "Fame", "Belts", "Nick", "GymTier" }
+local FAME_ATTRS = { "Tier", "Fame", "Belts", "Nick", "GymTier", "PvPRating" }
 local function publishFame(player)
 	local profile = DataManager.Get(player)
 	if not (profile and profile.created) or profile.retired then
@@ -141,6 +148,7 @@ local function publishFame(player)
 	player:SetAttribute("Belts", table.concat(Career.PlayerBelts(profile), ","))
 	player:SetAttribute("Nick", tostring(profile.identity and profile.identity.nickname or ""))
 	player:SetAttribute("GymTier", gymTierOf(profile))
+	player:SetAttribute("PvPRating", PvP.View(profile).rating)
 end
 
 local function push(player)
@@ -847,7 +855,9 @@ local function runSpar(player, profile, intensity)
 	if res and DataManager.Get(player) == profile then
 		local thrown = res.thrown or 0
 		local acc = thrown > 0 and (res.landed or 0) / thrown or 0
-		local q = 0.55 + acc * 0.7 + (res.outcome == "win" and 0.15 or 0) - ((res.kdAgainst or 0) > 0 and 0.1 or 0)
+		-- the result counts: a win is worth more, a loss (and being stopped) less - a loss still trains you
+		local outcomeQ = (res.outcome == "win" and 0.15) or (res.outcome == "loss" and (res.method == "Stopped" and -0.15 or -0.08)) or 0
+		local q = 0.55 + acc * 0.7 + outcomeQ - ((res.kdAgainst or 0) > 0 and 0.1 or 0)
 		q += math.clamp(((res.damageDealt or 0) - (res.damageTaken or 0)) / 80, -0.15, 0.15)
 		if thrown < 6 then
 			q = 0.4 -- you have to actually spar
@@ -883,6 +893,288 @@ local function runSpar(player, profile, intensity)
 	end
 	applyLook(player)
 	push(player)
+end
+
+------------------------------------------------------------------------
+-- PvP (player vs player): challenges, the Find Match queue, the bout itself (PvP.lua keeps the records)
+------------------------------------------------------------------------
+-- pvpWatch[player] = the bout (or the match-found countdown) both players share:
+-- { a, b, mode, rounds, ranked, profA, profB, settled, outs = { [player] = rating out }, cancelled }
+local pvpWatch = {}
+
+-- can this player take a PvP bout right now? (also used for the target of a challenge)
+local function pvpCanFight(player)
+	local profile = DataManager.Get(player)
+	if not (profile and profile.created) then
+		return false, "no boxer yet"
+	end
+	if profile.retired then
+		return false, "retired"
+	end
+	local b = busy[player]
+	if b then
+		return false, (b == "fight" or b == "spar" or b == "pvp") and "in the ring" or (b == "activity" and "training" or "busy")
+	end
+	if customizing[player] then
+		return false, "in the " .. tostring(customizing[player])
+	end
+	if pvpWatch[player] or FightEngine.Active[player] or player:GetAttribute("InFight") == true then
+		return false, "in a fight"
+	end
+	local char = player.Character
+	local hum = char and char:FindFirstChildOfClass("Humanoid")
+	if not (char and char:FindFirstChild("HumanoidRootPart") and hum and hum.Health > 0) then
+		return false, "not ready"
+	end
+	return true
+end
+
+local function pvpDescribe(player)
+	local profile = DataManager.Get(player)
+	if not (profile and profile.created) then
+		return {}
+	end
+	local v = PvP.View(profile)
+	return {
+		boxer = profile.identity and profile.identity.name or player.DisplayName,
+		record = string.format("%d-%d-%d", v.w, v.l, v.d), rating = v.rating, rank = v.rank,
+	}
+end
+
+-- the result of a PvP bout from one player's side, from the engine's state (a leaver's forfeit, or the
+-- real result if it was already announced)
+local function pvpResultOf(fight, player)
+	local F = fight and fight.FighterOf and fight:FighterOf(player)
+	if not F then
+		return nil
+	end
+	if fight.results and fight.results[F] then
+		return fight.results[F]
+	end
+	if fight.finished and fight.winner and not fight.aborted then
+		return { outcome = fight.winner == F and "win" or "loss", method = fight.method, reason = fight.reason, round = fight.endRound or fight.round }
+	end
+	return nil
+end
+
+-- records / rating exactly once (the bout thread and PlayerRemoving can both get here)
+local function settlePvP(w, resA)
+	if w.settled or not resA then
+		return
+	end
+	if DataManager.Get(w.a) ~= w.profA or DataManager.Get(w.b) ~= w.profB then
+		-- a profile was swapped (new career) under the bout: nothing sane to record
+		w.settled = true
+		return
+	end
+	w.settled = true
+	if w.ranked then
+		local ok, outA, outB = pcall(PvP.ApplyRanked, w.profA, w.a.UserId, w.profB, w.b.UserId, resA)
+		if ok then
+			w.outs = { [w.a] = outA, [w.b] = outB }
+		else
+			warn("[Boxer] PvP record:", outA)
+		end
+	else
+		PvP.ApplySpar(w.profA)
+		PvP.ApplySpar(w.profB)
+	end
+end
+
+local function pvpFighterData(profile, ranked)
+	local d = Career.FighterFromProfile(profile)
+	if d.mods and d.mods.weighIn then
+		-- no weigh-in between players
+		d.mods.staminaMul = math.clamp((d.mods.staminaMul or 1) + d.mods.weighIn.penalty, 0.5, 1.1)
+		d.mods.weighIn = nil
+	end
+	d.record = PvP.Record(profile)
+	d.pvpRating = PvP.View(profile).rating
+	if not ranked then
+		d.lookOpts = d.lookOpts or {}
+		d.lookOpts.robe = "None"
+	end
+	return d
+end
+
+local function runPvP(w)
+	local a, b = w.a, w.b
+	local ranked = w.ranked
+	local profA, profB = w.profA, w.profB
+	local popularity = math.max(tonumber(profA.popularity) or 0, tonumber(profB.popularity) or 0)
+	local arena = Venues.New(ranked and "ClubArena" or "Gym", {
+		kind = ranked and "PvP Ranked" or "Sparring", popularity = ranked and math.max(30, popularity) or popularity,
+		supporters = 0.5, gymTier = math.max(gymTierOf(profA), gymTierOf(profB)),
+		ringLevel = math.max(profA.gym and profA.gym.levels and profA.gym.levels.ring or 1, profB.gym and profB.gym.levels and profB.gym.levels.ring or 1),
+	})
+	local pData, oData = pvpFighterData(profA, ranked), pvpFighterData(profB, ranked)
+	local offer = {
+		kind = ranked and string.format("PvP Ranked Bout - %d rounds", w.rounds) or "PvP Sparring", rounds = ranked and w.rounds or 2,
+		venue = ranked and "ClubArena" or "Gym", venueName = ranked and "City Club - PvP Night" or "Sparring Ring", talk = "", stakes = {}, playerStakes = {},
+	}
+	local conns = {}
+	for _, p in ipairs({ a, b }) do
+		local hum = p.Character and p.Character:FindFirstChildOfClass("Humanoid")
+		if hum then
+			table.insert(conns, hum.Died:Connect(function()
+				-- a reset or a death mid-bout: a ranked forfeit after the first bell, else the bout is called off
+				w.leaver = w.leaver or p
+				FightEngine.Forfeit(p, ranked)
+			end))
+		end
+	end
+	local ok, resA, results = pcall(FightEngine.Run, a, FightRemote, offer, pData, oData, arena, { oppPlayer = b, rounds = ranked and w.rounds or nil, spar = (not ranked) and "PvP" or nil })
+	if not ok then
+		warn("[Boxer] PvP bout crashed:", resA)
+		resA, results = nil, nil
+		if arena.Parent then
+			arena:Destroy()
+		end
+	end
+	for _, c in ipairs(conns) do
+		c:Disconnect()
+	end
+	local resB
+	if type(results) == "table" then
+		for F, r in pairs(results) do
+			if type(F) == "table" and F.player == b then
+				resB = r
+			end
+		end
+	end
+	if resA then
+		settlePvP(w, resA)
+	end
+	for _, p in ipairs({ a, b }) do
+		if pvpWatch[p] == w then
+			pvpWatch[p] = nil
+		end
+		if busy[p] == "fight" or busy[p] == "pvp" then
+			setBusy(p, nil)
+		end
+	end
+	for _, p in ipairs({ a, b }) do
+		if p.Parent then
+			local other = p == a and b or a
+			local res = p == a and resA or resB
+			local profile = p == a and profA or profB
+			if p.Character then
+				if ranked then
+					placeChar(p.Character, gymSpawnCFrame(), 4, true)
+				else
+					placeChar(p.Character, CFrame.new(MapBuilder.RingCenter + V3(rng:NextNumber(-3, 3), 4, 17 + (p == a and 0 or 3))), 4, true)
+				end
+			end
+			if res and DataManager.Get(p) == profile then
+				-- marks follow you home like any fight (ranked) or sparring session; no injuries, camps or career record
+				if type(res.face) == "table" and type(Training.AddFaceDamage) == "function" then
+					local carry = ranked and (Config.FaceDamage and Config.FaceDamage.postFightCarry or 1) or (Config.FaceDamage and Config.FaceDamage.sparCarry or 0.5)
+					local okFace, errFace = pcall(Training.AddFaceDamage, profile, res.face, carry)
+					if not okFace then
+						warn("[Boxer] PvP face damage:", errFace)
+					end
+				end
+				local out = w.outs and w.outs[p] or nil
+				FightRemote:FireClient(p, {
+					t = "pvpResult", result = res, ranked = ranked, rounds = offer.rounds, opp = (p == a and oData or pData).name, oppPlayer = other.DisplayName,
+					rating = out and math.floor(out.rating + 0.5) or nil, delta = out and out.delta or nil, money = out and out.money or 0,
+					notes = out and out.notes or {}, pvp = PvP.View(profile),
+				})
+				task.spawn(DataManager.Save, p, ranked)
+			else
+				FightRemote:FireClient(p, { t = "pvpResult", aborted = true, ranked = ranked, oppPlayer = other.DisplayName,
+					why = (w.leaver and w.leaver ~= p) and (other.DisplayName .. " left the bout") or "The bout was called off" })
+			end
+			applyLook(p)
+			push(p)
+		end
+	end
+end
+
+-- a challenge was accepted or the queue paired two players: "match found" for both, then the bout
+local MATCH_INTRO = 4
+local function startPvPMatch(a, b, mode, rounds)
+	for _, p in ipairs({ a, b }) do
+		local ok = pvpCanFight(p)
+		if not ok then
+			for _, q in ipairs({ a, b }) do
+				PvPRemote:FireClient(q, { t = "matchCancel", why = (q == p and "You" or p.DisplayName) .. " can't fight right now." })
+			end
+			return
+		end
+	end
+	local ranked = mode == "ranked"
+	local w = { a = a, b = b, mode = mode, ranked = ranked, rounds = ranked and (rounds == 6 and 6 or 3) or 2, profA = DataManager.Get(a), profB = DataManager.Get(b) }
+	for _, p in ipairs({ a, b }) do
+		pvpWatch[p] = w
+		endSession(p)
+		setBusy(p, "pvp")
+		PvP.LeaveQueue(p)
+		local other = p == a and b or a
+		local info = pvpDescribe(other)
+		PvPRemote:FireClient(p, { t = "match", mode = mode, rounds = w.rounds, seconds = MATCH_INTRO, corner = p == a and "red" or "blue",
+			oppName = other.DisplayName, oppUser = other.Name, oppBoxer = info.boxer, oppRecord = info.record, oppRating = info.rating, oppRank = info.rank,
+			me = pvpDescribe(p) })
+		push(p)
+	end
+	task.wait(MATCH_INTRO)
+	local why
+	for _, p in ipairs({ a, b }) do
+		local char = p.Character
+		local hum = char and char:FindFirstChildOfClass("Humanoid")
+		if w.cancelled or not p.Parent or not (char and char:FindFirstChild("HumanoidRootPart") and hum and hum.Health > 0) or DataManager.Get(p) ~= (p == a and w.profA or w.profB) then
+			why = why or ((p.Parent and p.DisplayName or "Your opponent") .. " isn't ready - match cancelled.")
+		end
+	end
+	if why then
+		for _, p in ipairs({ a, b }) do
+			if pvpWatch[p] == w then
+				pvpWatch[p] = nil
+			end
+			if busy[p] == "pvp" then
+				setBusy(p, nil)
+			end
+			if p.Parent then
+				PvPRemote:FireClient(p, { t = "matchCancel", why = why })
+				push(p)
+			end
+		end
+		return
+	end
+	for _, p in ipairs({ a, b }) do
+		setBusy(p, "fight")
+		push(p)
+	end
+	runPvP(w)
+end
+
+PvP.Init({
+	canFight = pvpCanFight,
+	describe = pvpDescribe,
+	send = function(player, msg)
+		PvPRemote:FireClient(player, msg)
+	end,
+	startMatch = startPvPMatch,
+})
+PvP.Start()
+
+-- a player leaves the server during a PvP bout or the match-found countdown
+local function pvpOnLeave(player)
+	PvP.Remove(player)
+	local w = pvpWatch[player]
+	if not w then
+		return
+	end
+	w.leaver = w.leaver or player
+	w.cancelled = true -- (only matters before the bout started)
+	local fight = FightEngine.Active[player]
+	if fight then
+		local how = FightEngine.Forfeit(player, w.ranked and not shuttingDown)
+		if how == "forfeit" and w.ranked then
+			-- settle now, before this player's leave save; the other side gets his result when the bout ends
+			settlePvP(w, pvpResultOf(fight, w.a))
+		end
+	end
 end
 
 ------------------------------------------------------------------------
@@ -1392,7 +1684,7 @@ end
 
 -- R-ui Settings screen: UI scale, screen FX, camera shake, music / sfx volume, graphics detail, menu at start,
 -- the fight's control strip (same ranges as Settings.Sanitize on the client; unknown keys dropped)
-local UI_SETTING_RANGES = { uiScale = { 0.8, 1.25 }, screenFx = { 0, 1.5 }, shake = { 0, 1.5 }, music = { 0, 1 }, sfx = { 0, 1 } }
+local UI_SETTING_RANGES = { uiScale = { 0.8, 1.25 }, screenFx = { 0, 1.5 }, shake = { 0, 1.5 }, music = { 0, 1 }, sfx = { 0, 1 }, brightness = { 0.5, 1.6 } }
 local UI_DETAILS = { Auto = true, High = true, Medium = true, Low = true }
 local UI_FLAGS = { "menuAtStart", "controlHints" }
 function handlers.SaveSettings(player, profile, t)
@@ -1501,6 +1793,62 @@ function handlers.NewCareer(player, profile)
 	return { ok = true }
 end
 
+-- PvP requests (PvP.lua validates and rate-limits; the target is a Player found by UserId, never trusted)
+local function playerById(id)
+	id = tonumber(id)
+	return id and Players:GetPlayerByUserId(id) or nil
+end
+
+function handlers.PvPChallenge(player, profile, targetId, mode, rounds)
+	local target = playerById(targetId)
+	if not target then
+		return { ok = false, err = "That player isn't here." }
+	end
+	return PvP.Challenge(player, target, mode == "ranked" and "ranked" or "spar", rounds)
+end
+
+function handlers.PvPRespond(player, profile, id, accept)
+	return PvP.Respond(player, id, accept == true)
+end
+
+function handlers.PvPCancel(player)
+	return PvP.Cancel(player)
+end
+
+function handlers.PvPQueue(player, profile, join)
+	if join == true then
+		return PvP.JoinQueue(player, PvP.View(profile).rating)
+	end
+	PvP.LeaveQueue(player, "left")
+	return { ok = true }
+end
+
+-- the PvP panel: your record and every other boxer in the server with his rating and whether he can fight
+function handlers.GetPvP(player, profile)
+	local list = {}
+	for _, p in ipairs(Players:GetPlayers()) do
+		if p ~= player then
+			local prof = DataManager.Get(p)
+			if prof and prof.created and not prof.retired then
+				local v = PvP.View(prof)
+				local ok, why = pvpCanFight(p)
+				if ok and (PvP.Pending(p) or PvP.InQueue(p)) then
+					ok, why = false, "busy"
+				end
+				table.insert(list, {
+					userId = p.UserId, name = p.Name, displayName = p.DisplayName, boxer = prof.identity and prof.identity.name or p.DisplayName,
+					rating = v.rating, rank = v.rank, record = string.format("%d-%d-%d", v.w, v.l, v.d), available = ok, why = why,
+					rematch = math.ceil(PvP.RematchLeft(player, p)),
+				})
+			end
+		end
+	end
+	table.sort(list, function(x, y)
+		return x.rating > y.rating
+	end)
+	return { ok = true, me = PvP.View(profile), players = list, queued = PvP.InQueue(player), queueSize = PvP.QueueSize() }
+end
+
 function handlers.DebugMoney(player, profile)
 	if not RunService:IsStudio() then
 		return { ok = false }
@@ -1510,8 +1858,9 @@ function handlers.DebugMoney(player, profile)
 end
 
 local PRE_CREATE = { GetProfile = true, CreateBoxer = true, NewCareer = true, PreviewLook = true, GetLegacy = true, SaveSettings = true }
-local READ_ONLY = { GetProfile = true, GetRankings = true, GetBoxer = true, PreviewLook = true, GetOffers = true, GetRivals = true, GetLegacy = true }
-local DURING_ACTIVITY = { FinishActivity = true, CancelActivity = true, Eat = true, SaveSettings = true }
+local READ_ONLY = { GetProfile = true, GetRankings = true, GetBoxer = true, PreviewLook = true, GetOffers = true, GetRivals = true, GetLegacy = true, GetPvP = true }
+-- (PvPQueue / PvPCancel / PvPRespond may be sent mid-drill: leaving the queue, cancelling, declining)
+local DURING_ACTIVITY = { FinishActivity = true, CancelActivity = true, Eat = true, SaveSettings = true, PvPQueue = true, PvPCancel = true, PvPRespond = true }
 -- actions that change nothing the summary shows: no push afterwards (R-ui)
 local NO_PUSH = { SaveSettings = true }
 -- allowed in the ring too: the Settings screen opens mid-fight and its save is never retried
@@ -1530,7 +1879,7 @@ Request.OnServerInvoke = function(player, action, ...)
 		return { ok = false, err = "Create your boxer first." }
 	end
 	local b = busy[player]
-	if (b == "fight" or b == "spar") and not READ_ONLY[action] and not IN_RING[action] then
+	if (b == "fight" or b == "spar" or b == "pvp") and not READ_ONLY[action] and not IN_RING[action] then
 		return { ok = false, err = "You're in the ring!" }
 	end
 	if b == "activity" and not READ_ONLY[action] and not DURING_ACTIVITY[action] then
@@ -1619,7 +1968,15 @@ Players.PlayerRemoving:Connect(function(player)
 			warn("[Boxer] fight settle on leave:", err)
 		end
 	end
-	FightEngine.Abort(player)
+	-- a PvP bout goes on for the other corner (a forfeit) or is called off by pvpOnLeave itself
+	local inPvP = pvpWatch[player] ~= nil
+	local okPvP, errPvP = pcall(pvpOnLeave, player)
+	if not okPvP then
+		warn("[Boxer] PvP leave:", errPvP)
+	end
+	if not inPvP then
+		FightEngine.Abort(player)
+	end
 	endSession(player, true)
 	busy[player] = nil
 	if customizing[player] == "barber" then

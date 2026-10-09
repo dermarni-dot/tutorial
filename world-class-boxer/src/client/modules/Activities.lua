@@ -2062,14 +2062,46 @@ local function liftLoad(ctx)
 	return load, string.format(def.each and "%d lbs each" or "%d lbs", load), def.name, false
 end
 
+-- Hold-type drills (lifts, slams, breathing) take TAPS too: a quick tap starts the hold and the next
+-- tap ends it; a press held longer than TAP_HOLD still works as a plain hold (released on let-go).
+local TAP_HOLD = 0.35
+local function tapHold(onChange)
+	local st = { on = false, at = nil }
+	local function set(v)
+		st.on = v
+		onChange(v)
+	end
+	local function handler(_, down)
+		if down then
+			if st.on then
+				st.at = nil
+				set(false)
+			else
+				st.at = os.clock()
+				set(true)
+			end
+		else
+			if st.at and os.clock() - st.at >= TAP_HOLD and st.on then
+				set(false)
+			end
+			st.at = nil
+		end
+	end
+	function st.reset()
+		st.on = false
+		st.at = nil
+	end
+	return handler, st
+end
+
 -- 2 sets x 5 reps: hold to lift, release in the green zone (set 2 is tighter); a spotter saves failed reps
 GAMES.reps = function(ctx)
 	local lv = ctx.level
 	local load, loadText, exName, bodyweight = liftLoad(ctx)
 	exName = exName or ctx.act.name:upper()
 	local sets, reps = 2, 5
-	ctx.bind({ { id = "lift", label = "HOLD TO LIFT", keys = { K.Space }, color = T.blue } }, 1)
-	ctx.setInfo("Hold SPACE (or the button) to drive the weight up and release inside the green zone. Overshoot and you fail the rep. Set 2 is tighter.")
+	ctx.bind({ { id = "lift", label = "TAP / HOLD: LIFT", keys = { K.Space }, color = T.blue } }, 1)
+	ctx.setInfo("Tap SPACE (or the button) to drive the weight up and tap again inside the green zone (holding and releasing works too). Overshoot and you fail the rep. Set 2 is tighter.")
 	UI.Clear(ctx.stage)
 	local barBg = UI.Frame(ctx.stage, { Position = UDim2.new(0, 20, 0, 18), Size = UDim2.new(1, -40, 0, 34), BackgroundColor3 = Color3.fromRGB(40, 20, 20) })
 	UI.Corner(barBg, 6)
@@ -2079,9 +2111,10 @@ GAMES.reps = function(ctx)
 	UI.Corner(fill, 6)
 	UI.Text(ctx.stage, loadText or "", { Font = T.bold, TextColor3 = T.gold, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -20, 0, 56), Size = UDim2.new(0.4, 0, 0, 24), TextXAlignment = Enum.TextXAlignment.Right, AutomaticSize = Enum.AutomaticSize.None })
 	local holding = false
-	ctx.on(function(_, down)
-		holding = down
+	local tapHandler, tapState = tapHold(function(v)
+		holding = v
 	end)
+	ctx.on(tapHandler)
 	local P = State.P
 	local fatigue = P and P.condition and P.condition.fatigue or 0
 	local total, goodReps, fails, lastRpe = 0, 0, 0, 6
@@ -2093,6 +2126,7 @@ GAMES.reps = function(ctx)
 			return nil
 		end
 		holding = false
+		tapState.reset()
 		local setGood, setFails = 0, 0
 		ctx.setRep(1, reps, 0)
 		ctx.stats(nil)
@@ -2164,6 +2198,7 @@ GAMES.reps = function(ctx)
 			ctx.drive(0)
 			fill.Size = UDim2.fromScale(0, 1)
 			holding = false
+			tapState.reset()
 			ctx.setRep(r, reps, setGood)
 			ctx.stats(setFails > 0 and string.format("%d spotted", setFails) or nil)
 			ctx.progress(r / reps)
@@ -2213,11 +2248,11 @@ GAMES.medball = function(ctx)
 	local load, loadText = liftLoad(ctx)
 	loadText = loadText or "MED BALL"
 	-- SET 1: SLAMS
-	ctx.bind({ { id = "lift", label = "HOLD: RAISE  /  RELEASE: SLAM", keys = { K.Space }, color = T.gold } }, 1)
+	ctx.bind({ { id = "lift", label = "TAP: RAISE  /  TAP: SLAM", keys = { K.Space }, color = T.gold } }, 1)
 	if ctx.buttons.lift then
 		ctx.buttons.lift.TextColor3 = T.bg
 	end
-	ctx.setInfo("Hold SPACE to drive the ball overhead, release inside the green zone to SLAM it. Brace your core - power comes from the trunk, not the arms.")
+	ctx.setInfo("Tap SPACE to drive the ball overhead, tap again inside the green zone to SLAM it (or hold and release). Brace your core - power comes from the trunk, not the arms.")
 	if not ctx.round(1, 2, "SLAMS" .. DOT .. loadText, "SET") then
 		return nil
 	end
@@ -2230,9 +2265,10 @@ GAMES.medball = function(ctx)
 	local fill = UI.Frame(barBg, { BackgroundColor3 = T.gold, BackgroundTransparency = 0.25, Size = UDim2.fromScale(0, 1) })
 	UI.Corner(fill, 6)
 	local holding = false
-	ctx.on(function(_, down)
-		holding = down
+	local tapHandler, tapState = tapHold(function(v)
+		holding = v
 	end)
+	ctx.on(tapHandler)
 	local slams = 5 + math.min(lv, 3)
 	local slamScore, cleanSlams = 0, 0
 	for r = 1, slams do
@@ -2292,6 +2328,7 @@ GAMES.medball = function(ctx)
 		ctx.impact(0.6 + q * 0.7, 0, "slam", "body")
 		fill.Size = UDim2.fromScale(0, 1)
 		holding = false
+		tapState.reset()
 		ctx.setRep(r, slams, cleanSlams)
 		ctx.progress(r / slams)
 		if not ctx.wait(0.35) then
@@ -2858,9 +2895,9 @@ end
 
 -- RECOVERY --------------------------------------------------------------
 local HOLD_INFO = {
-	IceBath = "Cold water constricts the blood vessels and flushes soreness. Hold to inhale, release to exhale - slow and calm.",
-	Stretch = "Long exhales let the muscles release. Hold to inhale, release to exhale and sink into each stretch.",
-	Massage = "Relax into the table. Hold to inhale, release to exhale while the tension melts away.",
+	IceBath = "Cold water constricts the blood vessels and flushes soreness. Tap to inhale, tap again to exhale (or hold and release) - slow and calm.",
+	Stretch = "Long exhales let the muscles release. Tap to inhale, tap again to exhale (or hold and release) and sink into each stretch.",
+	Massage = "Relax into the table. Tap to inhale, tap again to exhale (or hold and release) while the tension melts away.",
 	Chamber = "Elite recovery tech - oxygen, compression and cold. Breathe with the circle.",
 	Sauna = "Sweat out water weight before a weigh-in - rehydrate afterwards! Breathe with the circle.",
 }
@@ -2868,11 +2905,11 @@ local MASSAGE_FOCUS = { "BACK & SHOULDERS", "LEGS", "FOREARMS", "NECK", "LOWER B
 
 -- guided breathing - hold while the circle grows, release while it shrinks - plus what the session does for you
 GAMES.hold = function(ctx)
-	ctx.bind({ { id = "breathe", label = "HOLD TO INHALE", keys = { K.Space }, color = T.blue } }, 1)
+	ctx.bind({ { id = "breathe", label = "TAP: INHALE / EXHALE", keys = { K.Space }, color = T.blue } }, 1)
 	local act = ctx.act
 	local lv = ctx.level
 	local P = State.P
-	ctx.setInfo(HOLD_INFO[act.id] or "Breathe with the circle: hold to inhale, release to exhale.")
+	ctx.setInfo(HOLD_INFO[act.id] or "Breathe with the circle: tap to inhale, tap again to exhale (or hold and release).")
 	local breaths, inhale, exhale = 5, 2.6, 2.6
 	local cycle = inhale + exhale
 	local duration = breaths * cycle
@@ -2917,9 +2954,10 @@ GAMES.hold = function(ctx)
 		setMeter = set
 	end
 	local holding = false
-	ctx.on(function(_, down)
-		holding = down
+	local tapHandler, tapState = tapHold(function(v)
+		holding = v
 	end)
+	ctx.on(tapHandler)
 	local sync, total = 0, 0
 	local start, last = os.clock(), os.clock()
 	local breathIdx = 1
@@ -2945,7 +2983,7 @@ GAMES.hold = function(ctx)
 		local k = inPhase and (c / inhale) or (1 - (c - inhale) / exhale)
 		local size = 30 + 70 * k
 		circle.Size = UDim2.fromOffset(size, size)
-		label.Text = inPhase and "INHALE... (hold)" or "EXHALE... (release)"
+		label.Text = inPhase and "INHALE... (tap / hold)" or "EXHALE... (tap / release)"
 		total += dt
 		if holding == inPhase then
 			sync += dt

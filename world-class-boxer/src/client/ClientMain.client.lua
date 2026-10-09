@@ -56,6 +56,19 @@ if okAnatomy and type(AnatomyClient) == "table" then
 else
 	warn("[ClientMain] AnatomyClient unavailable:", AnatomyClient)
 end
+-- PvP (challenges, Find Match, the PvP record): optional like the city, a failure never takes the HUD down
+local okPvP, PvPClient = pcall(function()
+	return require(Modules:WaitForChild("PvP", 10))
+end)
+if okPvP and type(PvPClient) == "table" then
+	local okStart, errStart = pcall(PvPClient.Start)
+	if not okStart then
+		warn("[ClientMain] PvP start:", errStart)
+	end
+else
+	warn("[ClientMain] PvP unavailable:", PvPClient)
+	PvPClient = nil
+end
 local gui = State.gui
 local rec = State.rec
 
@@ -168,6 +181,11 @@ end, 3)
 hudButton("SLEEP", nil, 56, nil, function()
 	State.open.Sleep()
 end, 4)
+if PvPClient then
+	hudButton("PVP", "P", 72, T.red, function()
+		PvPClient.Toggle()
+	end, 5, Enum.KeyCode.DPadRight)
+end
 local hint = UI.Frame(gui, { Name = "Hint", AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -18), Size = UDim2.fromOffset(0, 32), AutomaticSize = Enum.AutomaticSize.X,
 	BackgroundColor3 = T.bg, BackgroundTransparency = 0.25, Visible = false })
 UI.Corner(hint, 16)
@@ -363,8 +381,14 @@ local function showSparResult(data)
 	shade.Destroying:Connect(function()
 		State.HideHud("SparResult", false)
 	end)
+	-- the session's verdict first: a spar can be won, lost (on the coach's card or stopped) or even
+	local verdict = res.outcome == "win" and "YOU WON THE SESSION" or (res.outcome == "loss" and (res.method == "Stopped" and "STOPPED BY THE COACH" or "YOU LOST THE SESSION") or "AN EVEN SESSION")
+	UI.Line(body, verdict, { Name = "Verdict", Font = T.bold, TextSize = 22, TextColor3 = res.outcome == "win" and T.gold or (res.outcome == "loss" and T.red or T.blue) })
 	UI.Line(body, string.format("Partner: %s  ·  %s", data.partner or "?", res.outcome == "win" and "you got the better of it" or (res.outcome == "loss" and "they got the better of it" or "an even session")),
 		{ Font = T.semi, TextSize = 15 })
+	if res.reason and res.reason ~= "Session complete" then
+		UI.Line(body, tostring(res.reason), { TextColor3 = T.sub, TextSize = 13 })
+	end
 	local stats = UI.Card(body, { pad = 16 })
 	versusRow(stats, "PUNCHES LANDED", res.landed or 0, res.oppLanded or 0, nil, 1)
 	versusRow(stats, "PUNCHES THROWN", res.thrown or 0, res.oppThrown or 0, nil, 2)
@@ -626,7 +650,7 @@ UserInputService.InputBegan:Connect(function(input, gp)
 	-- gamepad: D-pad up = Career Hub, D-pad down = main menu. They only open (B closes): while Roblox's
 	-- UI selection is up the D-pad is navigating a window. (A default control binding can mark a pad
 	-- button processed, so gp alone does not tell for a pad.)
-	if k == Enum.KeyCode.DPadUp or k == Enum.KeyCode.DPadDown then
+	if k == Enum.KeyCode.DPadUp or k == Enum.KeyCode.DPadDown or (k == Enum.KeyCode.DPadRight and PvPClient) then
 		if GuiService.SelectedObject ~= nil or UserInputService:GetFocusedTextBox() or State.inFight() or Activities.Busy() or (MainMenu and MainMenu.IsOpen()) then
 			return
 		end
@@ -636,6 +660,8 @@ UserInputService.InputBegan:Connect(function(input, gp)
 		end
 		if k == Enum.KeyCode.DPadUp then
 			Hub.Open()
+		elseif k == Enum.KeyCode.DPadRight then
+			PvPClient.Open()
 		elseif MainMenu then
 			MainMenu.Open()
 		end
@@ -646,6 +672,11 @@ UserInputService.InputBegan:Connect(function(input, gp)
 	end
 	if k == Enum.KeyCode.H and not State.inFight() and not Activities.Busy() and not (MainMenu and MainMenu.IsOpen()) then
 		Hub.Toggle()
+	elseif k == Enum.KeyCode.P and PvPClient and not State.inFight() and not Activities.Busy() and not (MainMenu and MainMenu.IsOpen()) then
+		local P = State.P
+		if P and P.created and not P.retired and not Creator.IsOpen() then
+			PvPClient.Toggle()
+		end
 	elseif k == Enum.KeyCode.M and MainMenu and not State.inFight() and not Activities.Busy() then
 		local P = State.P
 		if P and P.created and not P.retired and not Creator.IsOpen() then

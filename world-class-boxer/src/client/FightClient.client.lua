@@ -9,11 +9,14 @@
 -- check, out-cold ragdoll. Venue dressing / lighting / crowd come from VenueFX (stream G) when it is
 -- present; the old built-in venue effects stay as a fallback so a fight always presents.
 -- Controls: 1/J jab, 2/K cross, 3/L lead hook, 4 rear hook, 5/U uppercut, 6/O overhand,
--- hold SHIFT = to the body, hold F block, R parry, Q/E slip, C roll, Z/X pivot, G clinch.
+-- SHIFT = to the body, F block, R parry, Q/E slip, C roll, Z/X pivot, G clinch, H the controls.
+-- Block, body and the controls legend are TAP TOGGLES on every device (tap: on, tap again: off); a
+-- press held longer than Tog.HOLD still works as a hold (released when you let go). A punch drops a
+-- tapped guard (as the server does) and spends a tapped body modifier.
 -- Gamepad (bound through ContextActionService for the fight, above the default jump / camera bindings):
--- X jab, Y cross, B lead hook, A rear hook, RT uppercut, RB overhand, hold LB = to the body, hold LT
--- block, right stick flick left / right slip, down roll, up parry, RS click pivot (toward the left stick,
--- else left), D-pad left / right pivot, D-pad up parry, D-pad down or LS click clinch, hold VIEW for the
+-- X jab, Y cross, B lead hook, A rear hook, RT uppercut, RB overhand, LB = to the body, LT
+-- block (both tap toggles), right stick flick left / right slip, down roll, up parry, RS click pivot (toward the left stick,
+-- else left), D-pad left / right pivot, D-pad up parry, D-pad down or LS click clinch, VIEW for the
 -- controls; when down, mash A. (PlayStation: SQUARE / TRIANGLE / CIRCLE / CROSS, R2, R1, L1, L2, R3, L3.)
 local Players = game:GetService("Players")
 local ContextActionService = game:GetService("ContextActionService")
@@ -44,6 +47,51 @@ local savedLighting
 
 local function send(msg)
 	FightRemote:FireServer(msg)
+end
+
+-- Tap toggles (block / body / legend): one state for keyboard, gamepad and touch. A quick press flips
+-- the state; a press held longer than HOLD acts as a hold and lets go on release. Tog.views are HUD
+-- painters called with (name, on) whenever a state changes (touch pads, key caps, the stance chips).
+local Tog = { on = { block = false, body = false, legend = false }, pressedAt = {}, HOLD = 0.35, views = {}, effects = {} }
+function Tog.set(name, v, quiet)
+	v = v == true
+	local was = Tog.on[name]
+	Tog.on[name] = v
+	local fx = Tog.effects[name]
+	if fx and not quiet then
+		fx(v, was)
+	end
+	for _, view in ipairs(Tog.views) do
+		pcall(view, name, v)
+	end
+end
+function Tog.press(name)
+	if Tog.on[name] then
+		Tog.pressedAt[name] = nil
+		Tog.set(name, false)
+	else
+		Tog.pressedAt[name] = os.clock()
+		Tog.set(name, true)
+	end
+end
+function Tog.release(name)
+	local t = Tog.pressedAt[name]
+	Tog.pressedAt[name] = nil
+	if t and os.clock() - t >= Tog.HOLD and Tog.on[name] then
+		Tog.set(name, false)
+	end
+end
+function Tog.held(name)
+	return Tog.pressedAt[name] ~= nil
+end
+-- everything off (fight over, round over, knocked down); quiet = the server already dropped the guard
+function Tog.reset(quiet)
+	for name, v in pairs(Tog.on) do
+		Tog.pressedAt[name] = nil
+		if v then
+			Tog.set(name, false, quiet and name == "block")
+		end
+	end
 end
 
 -- accessibility scale for blur / shake / flashes / colour (0 disables them)
@@ -702,12 +750,23 @@ do
 			return k[1]
 		end)
 		UI.Text(f, k[3], { Font = T.semi, TextSize = 12, TextColor3 = Color3.fromRGB(200, 205, 216), Size = UDim2.new(0, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.X, TextWrapped = false, LayoutOrder = 2 })
+		-- the toggles light their key cap while on
+		local togName = (k[3] == "BODY" and "body") or (k[3] == "BLOCK" and "block") or nil
+		if togName then
+			cap.Name = "Cap_" .. togName
+			table.insert(Tog.views, function(name, on)
+				if name == togName then
+					cap.BackgroundColor3 = on and (togName == "block" and T.blue or T.orange) or T.panel2
+					t.TextColor3 = on and T.ink or Color3.new(1, 1, 1)
+				end
+			end)
+		end
 	end
 	-- the reminder once the strip has faded
-	local controlsHint, controlsHintText = UI.Chip(hud, "HOLD H  ·  CONTROLS", T.sub, { AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 24, 1, -62), h = 24, TextSize = 13 })
+	local controlsHint, controlsHintText = UI.Chip(hud, "H  ·  CONTROLS", T.sub, { AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 24, 1, -62), h = 24, TextSize = 13 })
 	controlsHint.Visible = false
 	UI.BindHint(controlsHintText, function(mode)
-		return "HOLD " .. ((mode == "gamepad" and Gamepad) and Gamepad.Label(K.ButtonSelect) or "H") .. "  ·  CONTROLS"
+		return "TAP " .. ((mode == "gamepad" and Gamepad) and Gamepad.Label(K.ButtonSelect) or "H") .. "  ·  CONTROLS"
 	end)
 	controlsUntil = 0 -- os.clock() until which the strip shows on its own
 
@@ -1178,7 +1237,7 @@ do
 
 	-- touch controls (phones / tablets): a 2 x 2 punch cluster at the bottom right (HOOK / UPPER over JAB /
 	-- CROSS) with a BODY toggle over it, and the defence on the left edge above the thumbstick: BLOCK
-	-- (hold; drag left / right on it to slip) and CLINCH. Big, semi-transparent round pads (64 pt and up).
+	-- (tap toggle; drag left / right on it to slip) and CLINCH. Big, semi-transparent round pads (64 pt and up).
 	local function roundPad(parent, name, text, color, size, pos, anchor)
 		local b = UI.New("TextButton", { Name = name, Text = "", AutoButtonColor = false, BorderSizePixel = 0, BackgroundColor3 = T.bg, BackgroundTransparency = 0.35,
 			Size = UDim2.fromOffset(size, size), Position = pos, AnchorPoint = anchor or Vector2.new(0.5, 0.5), Parent = parent })
@@ -1200,7 +1259,7 @@ do
 			local b = roundPad(touchPad, "Punch" .. text, text, T.red, P, pos)
 			b.MouseButton1Down:Connect(function()
 				local kind = p == "hook" and pickHook() or p
-				throwPunch(kind, F.bodyMod == true and kind ~= "overhand")
+				throwPunch(kind, Tog.on.body and kind ~= "overhand")
 			end)
 			return b
 		end
@@ -1212,23 +1271,40 @@ do
 			BackgroundColor3 = T.bg, BackgroundTransparency = 0.35, TextSize = 16 })
 		bodyBtn.Selectable = false
 		UI.Stroke(bodyBtn, T.orange, 2, 0.15)
-		bodyBtn.MouseButton1Click:Connect(function()
-			F.bodyMod = not F.bodyMod
-			bodyBtn.BackgroundColor3 = F.bodyMod and T.orange or T.bg
-			bodyBtn.TextColor3 = F.bodyMod and T.ink or T.text
-			showFlash(flash, F.bodyMod and "BODY SHOTS" or "HEAD SHOTS", T.gold)
+		-- a tap arms the next punch to the body (lit orange); it clears after that punch or on a second tap
+		bodyBtn.MouseButton1Down:Connect(function()
+			Tog.press("body")
+			showFlash(flash, Tog.on.body and "NEXT PUNCH: BODY" or "HEAD SHOTS", T.gold)
+		end)
+		bodyBtn.MouseButton1Up:Connect(function()
+			Tog.release("body")
+		end)
+		table.insert(Tog.views, function(name, on)
+			if name == "body" then
+				bodyBtn.BackgroundColor3 = on and T.orange or T.bg
+				bodyBtn.BackgroundTransparency = on and 0 or 0.35
+				bodyBtn.TextColor3 = on and T.ink or T.text
+			end
 		end)
 		defencePad = UI.Frame(hud, { Name = "DefencePad", BackgroundTransparency = 1, Size = UDim2.fromOffset(110, 214), AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 14, 0.56, 0) })
 		local clinch = roundPad(defencePad, "Clinch", "CLINCH", T.green, 76, UDim2.fromOffset(55, 38))
 		clinch.MouseButton1Down:Connect(function()
 			send({ t = "clinch" })
 		end)
+		-- BLOCK: tap to raise the guard, tap again to drop it (a long press still blocks while held);
+		-- drag left / right on it to slip
 		local block = roundPad(defencePad, "Block", "BLOCK\n< SLIP >", T.blue, 104, UDim2.fromOffset(55, 158))
+		table.insert(Tog.views, function(name, on)
+			if name == "block" then
+				block.BackgroundColor3 = on and T.blue or T.bg
+				block.BackgroundTransparency = on and 0.1 or 0.35
+			end
+		end)
 		local startX, slipped, holding = nil, false, false
 		block.InputBegan:Connect(function(input)
 			if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
 				startX, slipped, holding = input.Position.X, false, true
-				send({ t = "block", on = true })
+				Tog.press("block")
 			end
 		end)
 		block.InputChanged:Connect(function(input)
@@ -1236,6 +1312,9 @@ do
 				local dx = input.Position.X - startX
 				if math.abs(dx) > 36 * UI.ScaleOf(hud) then
 					slipped = true
+					-- the slip drops the guard on the server: the toggle follows
+					Tog.pressedAt.block = nil
+					Tog.set("block", false, true)
 					send({ t = "slip", dir = dx < 0 and -1 or 1 })
 				end
 			end
@@ -1243,7 +1322,7 @@ do
 		block.InputEnded:Connect(function(input)
 			if holding and (input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1) then
 				holding = false
-				send({ t = "block", on = false })
+				Tog.release("block")
 			end
 		end)
 		controls.Visible = false
@@ -1256,7 +1335,7 @@ do
 	-- pads after a touch and the strip after a key press (Gamepad.Mode)
 	holdH = false
 	function refreshControls()
-		local live = F.active == true and not F.resting and not F.down and not F.paused
+		local live = F.active == true and not F.resting and not F.down and not F.paused and not F.countdown
 		local mode = Gamepad and Gamepad.Mode() or "keyboard"
 		local touchUI = touchPad ~= nil and mode ~= "gamepad" and (mode == "touch" or not UserInputService.KeyboardEnabled)
 		local keyboard = not touchUI
@@ -1283,6 +1362,83 @@ do
 
 end
 
+
+------------------------------------------------------------------------
+-- Round countdown (3 - 2 - 1 - BOX!) and the stance chips (GUARD UP / BODY), on the HUD root so they
+-- scale with the phone / tablet / desktop layouts. The server sends one "countdown" beat per number.
+------------------------------------------------------------------------
+local Countdown = {}
+do
+	local holder = UI.Frame(hud, { Name = "Countdown", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.42), Size = UDim2.fromOffset(600, 260),
+		BackgroundTransparency = 1, Visible = false, ZIndex = 30 })
+	local scale = UI.New("UIScale", { Parent = holder })
+	local num = UI.Text(holder, "", { Name = "Number", Face = "display", TextSize = 200, TextColor3 = Color3.new(1, 1, 1), TextStrokeTransparency = 0.3,
+		TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.fromScale(1, 1), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, ZIndex = 31 })
+	local sub = UI.Text(holder, "", { Name = "Sub", Font = T.semi, TextSize = 22, TextColor3 = T.sub, TextXAlignment = Enum.TextXAlignment.Center,
+		AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 1, -6), Size = UDim2.new(1, 0, 0, 28), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, ZIndex = 31 })
+	Countdown.holder, Countdown.label = holder, num
+	local seq = 0
+	function Countdown.Show(n, round)
+		seq += 1
+		local id = seq
+		holder.Visible = true
+		local go = n <= 0
+		num.Text = go and (F.spar and "FIGHT!" or "BOX!") or tostring(n)
+		num.TextColor3 = go and T.gold or Color3.new(1, 1, 1)
+		sub.Text = go and "" or ((round and round > 0) and ("ROUND " .. round .. "  ·  IN YOUR CORNER") or "IN YOUR CORNER")
+		num.TextTransparency = 0
+		-- punch in: big and fast, then settle (GO hits harder and fades out)
+		scale.Scale = go and 2.2 or 1.8
+		UI.Tween(scale, { Scale = go and 1.15 or 1 }, TweenInfo.new(go and 0.3 or 0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out))
+		if go then
+			local bell = Config.SoundSpec and Config.SoundSpec("RingBell")
+			if bell and bell.id then
+				sfx(bell.id, bell.speed or 1, math.clamp(bell.volume or 0.8, 0.2, 1))
+			else
+				local ping = BUILTIN.Ping or "rbxasset://sounds/electronicpingshort.wav"
+				for i = 0, 1 do
+					task.delay(i * 0.22, function()
+						if gui.Enabled then
+							sfx(ping, 0.6, 0.75)
+						end
+					end)
+				end
+			end
+		else
+			sfx(BUILTIN.Click or "rbxasset://sounds/clickfast.wav", 0.8 + (3 - n) * 0.12, 0.7)
+		end
+		task.delay(go and 0.75 or 0.62, function()
+			if seq == id then
+				UI.Tween(num, { TextTransparency = 1 }, 0.18)
+				task.delay(0.2, function()
+					if seq == id then
+						holder.Visible = false
+					end
+				end)
+			end
+		end)
+	end
+	function Countdown.Hide()
+		seq += 1
+		holder.Visible = false
+	end
+
+	-- stance chips: what is toggled on right now, always visible in a live round (on every device)
+	local chips = UI.Frame(hud, { Name = "StanceChips", AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -110), Size = UDim2.fromOffset(0, 30),
+		AutomaticSize = Enum.AutomaticSize.X, BackgroundTransparency = 1, ZIndex = 12 })
+	UI.List(chips, 8, true, Enum.HorizontalAlignment.Center)
+	local guardChip = UI.Chip(chips, "GUARD UP", T.blue, { order = 1, h = 30, TextSize = 15 })
+	local bodyChip = UI.Chip(chips, "BODY SHOT ARMED", T.orange, { order = 2, h = 30, TextSize = 15 })
+	guardChip.Name, bodyChip.Name = "GuardChip", "BodyChip"
+	guardChip.Visible, bodyChip.Visible = false, false
+	table.insert(Tog.views, function(name, on)
+		if name == "block" then
+			guardChip.Visible = on
+		elseif name == "body" then
+			bodyChip.Visible = on
+		end
+	end)
+end
 ------------------------------------------------------------------------
 ------------------------------------------------------------------------
 -- Screen FX layer (below the HUD): flashes, vignette, letterbox, blackout
@@ -1571,10 +1727,12 @@ end
 ------------------------------------------------------------------------
 local VENUE_LIGHT = {
 	Stadium = { ClockTime = 21, Brightness = 1.2, Ambient = Color3.fromRGB(50, 50, 60), OutdoorAmbient = Color3.fromRGB(40, 40, 55), Exposure = 0.2 },
-	Arena = { ClockTime = 21, Brightness = 0.6, Ambient = Color3.fromRGB(38, 38, 46), OutdoorAmbient = Color3.fromRGB(30, 30, 40), Exposure = 0.3 },
-	ClubArena = { ClockTime = 21, Brightness = 0.6, Ambient = Color3.fromRGB(46, 44, 50), OutdoorAmbient = Color3.fromRGB(35, 35, 42), Exposure = 0.25 },
-	CommunityCenter = { ClockTime = 19, Brightness = 1, Ambient = Color3.fromRGB(80, 80, 86), OutdoorAmbient = Color3.fromRGB(70, 70, 80), Exposure = 0 },
-	Gym = { ClockTime = 14, Brightness = 0.9, Ambient = Color3.fromRGB(78, 78, 86), OutdoorAmbient = Color3.fromRGB(95, 95, 105), Exposure = -0.1 },
+	-- (brighter ambients than the first cut: the faces stayed readable in the dark arenas only with the
+	-- VenueFX rig; this fallback has to carry them on its own)
+	Arena = { ClockTime = 21, Brightness = 0.6, Ambient = Color3.fromRGB(70, 70, 84), OutdoorAmbient = Color3.fromRGB(56, 56, 70), Exposure = 0.3 },
+	ClubArena = { ClockTime = 21, Brightness = 0.6, Ambient = Color3.fromRGB(70, 70, 84), OutdoorAmbient = Color3.fromRGB(58, 56, 68), Exposure = 0.25 },
+	CommunityCenter = { ClockTime = 19, Brightness = 1, Ambient = Color3.fromRGB(96, 94, 96), OutdoorAmbient = Color3.fromRGB(84, 84, 92), Exposure = 0 },
+	Gym = { ClockTime = 14, Brightness = 0.9, Ambient = Color3.fromRGB(120, 112, 104), OutdoorAmbient = Color3.fromRGB(118, 114, 112), Exposure = -0.1 },
 }
 
 -- the gym's outdoor look (sun rays, warm grade, bloom, hazy atmosphere) is switched off for
@@ -2200,7 +2358,26 @@ pickHook = function()
 	return pred.hand == "L" and "rearhook" or "leadhook"
 end
 throwPunch = function(p, body)
+	if F.countdown then
+		return -- held in the corner until BOX! (the server refuses it anyway)
+	end
 	send({ t = "punch", p = p, body = body })
+	-- the server drops the guard for a punch: a tapped guard drops with it; a held one comes back up
+	-- once the punch is out. A tapped body modifier is spent on this punch.
+	if Tog.on.block then
+		if Tog.held("block") then
+			task.delay(0.45, function()
+				if Tog.on.block and Tog.held("block") and F.active then
+					send({ t = "block", on = true })
+				end
+			end)
+		else
+			Tog.set("block", false, true)
+		end
+	end
+	if Tog.on.body and not Tog.held("body") then
+		Tog.set("body", false)
+	end
 	local P = Config.Punches[p]
 	local char = player.Character
 	local now = os.clock()
@@ -2232,22 +2409,26 @@ UserInputService.InputBegan:Connect(function(input, gp)
 	if not F.active and not F.down then
 		return
 	end
+	-- SHIFT before the gameProcessed check: shift-lock may claim the key, the body toggle must still see it
+	if input.KeyCode == Enum.KeyCode.LeftShift or input.KeyCode == Enum.KeyCode.RightShift then
+		Tog.press("body")
+		return
+	end
 	if gp then
 		return
 	end
 	if input.KeyCode == Enum.KeyCode.H then
-		holdH = true
-		refreshControls()
+		Tog.press("legend")
 		return
 	end
 	if F.down and (input.KeyCode == Enum.KeyCode.Space or input.UserInputType == Enum.UserInputType.MouseButton1) then
 		getupPress()
 		return
 	end
-	if not F.active then
+	if not F.active or F.countdown then
 		return
 	end
-	local body = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) or UserInputService:IsKeyDown(Enum.KeyCode.RightShift) or F.bodyMod == true
+	local body = Tog.on.body
 	local p = keyPunch[input.KeyCode]
 	if input.UserInputType == Enum.UserInputType.MouseButton1 then
 		p = "jab"
@@ -2258,7 +2439,7 @@ UserInputService.InputBegan:Connect(function(input, gp)
 	if p then
 		throwPunch(p, body and p ~= "overhand")
 	elseif k == Enum.KeyCode.F then
-		send({ t = "block", on = true })
+		Tog.press("block")
 	elseif k == Enum.KeyCode.R then
 		send({ t = "parry" })
 	elseif k == Enum.KeyCode.Q then
@@ -2277,14 +2458,26 @@ UserInputService.InputBegan:Connect(function(input, gp)
 end)
 
 UserInputService.InputEnded:Connect(function(input)
-	if F.active and input.KeyCode == Enum.KeyCode.F then
-		send({ t = "block", on = false })
-	end
-	if input.KeyCode == Enum.KeyCode.H and holdH then
-		holdH = false
-		refreshControls()
+	local k = input.KeyCode
+	if k == Enum.KeyCode.F then
+		Tog.release("block")
+	elseif k == Enum.KeyCode.LeftShift or k == Enum.KeyCode.RightShift then
+		Tog.release("body")
+	elseif k == Enum.KeyCode.H then
+		Tog.release("legend")
 	end
 end)
+
+-- what each toggle does: the guard goes to the server (only in a live round), the legend shows the strip
+Tog.effects.block = function(on)
+	if F.active and not F.countdown then
+		send({ t = "block", on = on })
+	end
+end
+Tog.effects.legend = function(on)
+	holdH = on
+	refreshControls()
+end
 
 ------------------------------------------------------------------------
 -- Gamepad: one ContextActionService binding for the whole fight, at High priority so it runs before (and
@@ -2299,18 +2492,10 @@ local PAD_KEYS = {
 	K.DPadUp, K.DPadDown, K.DPadLeft, K.DPadRight, K.ButtonSelect, K.Thumbstick2,
 }
 local padPunch = { [K.ButtonX] = "jab", [K.ButtonY] = "cross", [K.ButtonB] = "leadhook", [K.ButtonA] = "rearhook", [K.ButtonR2] = "uppercut", [K.ButtonR1] = "overhand" }
-local pad = { bound = false, body = false, block = false, view = false, leftX = 0, flick = Gamepad and Gamepad.Flick() }
+local pad = { bound = false, leftX = 0, flick = Gamepad and Gamepad.Flick() }
 
 local function padRelease()
-	if pad.block then
-		pad.block = false
-		send({ t = "block", on = false })
-	end
-	pad.body = false
-	if pad.view then
-		pad.view = false
-		holdH = false
-	end
+	Tog.reset()
 	if pad.flick then
 		pad.flick:Reset()
 	end
@@ -2331,14 +2516,12 @@ end
 
 local function padBegin(k)
 	if k == K.ButtonSelect then
-		pad.view = true
-		holdH = true
-		refreshControls()
+		Tog.press("legend")
 		return
 	end
-	-- held modifiers track the button even between rounds, so a press carried over a bell still counts
+	-- the body modifier is armed even between rounds, so a tap carried over a bell still counts
 	if k == K.ButtonL1 then
-		pad.body = true
+		Tog.press("body")
 		return
 	end
 	if F.down then
@@ -2348,15 +2531,14 @@ local function padBegin(k)
 		end
 		return
 	end
-	if not F.active then
+	if not F.active or F.countdown then
 		return
 	end
 	local p = padPunch[k]
 	if p then
-		throwPunch(p, (pad.body or F.bodyMod == true) and p ~= "overhand")
+		throwPunch(p, Tog.on.body and p ~= "overhand")
 	elseif k == K.ButtonL2 then
-		pad.block = true
-		send({ t = "block", on = true })
+		Tog.press("block")
 	elseif k == K.DPadUp then
 		send({ t = "parry" })
 	elseif k == K.DPadLeft or k == K.DPadRight then
@@ -2371,16 +2553,11 @@ end
 
 local function padEnd(k)
 	if k == K.ButtonL2 then
-		if pad.block then
-			pad.block = false
-			send({ t = "block", on = false })
-		end
+		Tog.release("block")
 	elseif k == K.ButtonL1 then
-		pad.body = false
-	elseif k == K.ButtonSelect and pad.view then
-		pad.view = false
-		holdH = false
-		refreshControls()
+		Tog.release("body")
+	elseif k == K.ButtonSelect then
+		Tog.release("legend")
 	end
 end
 
@@ -2536,6 +2713,8 @@ end
 local function finish()
 	lockReset(false)
 	unbindPad()
+	Countdown.Hide()
+	F.countdown = false
 	F.active = false
 	F.down = false
 	gui.Enabled = false
@@ -2636,6 +2815,10 @@ function handlers.start(msg)
 		local panel, t = pair[1], pair[2]
 		local r = t.record or {}
 		panel.sub.Text = string.format("%d-%d-%d  ·  %d KO%s", r.w or 0, r.l or 0, r.d or 0, r.ko or 0, (t.nick and t.nick ~= "") and ('  ·  "' .. string.upper(t.nick) .. '"') or "")
+		if type(t.player) == "string" then
+			-- PvP: the Roblox account behind the boxer, and his PvP rating
+			panel.sub.Text = t.player .. (t.rating and ("  ·  " .. tostring(t.rating)) or "") .. "  ·  " .. string.format("%d-%d-%d", r.w or 0, r.l or 0, r.d or 0)
+		end
 		UI.Clear(panel.flag)
 		local fl = getFlags()
 		if fl and t.nat then
@@ -2662,9 +2845,14 @@ function handlers.start(msg)
 			table.insert(stakes, s)
 		end
 	end
+	F.pvp = msg.pvp == true
+	local oppTag = type(msg.tape.opp.player) == "string" and (" (" .. msg.tape.opp.player .. ")") or ""
 	if F.spar then
 		setBug("SPARRING  ·  " .. string.upper(F.spar), T.blue, "SPAR")
-		F.stakesText = string.format("SPARRING (%s) vs %s", string.upper(F.spar), msg.tape.opp.name)
+		F.stakesText = string.format("SPARRING (%s) vs %s%s", string.upper(F.spar), msg.tape.opp.name, oppTag)
+	elseif F.pvp then
+		setBug("PVP  ·  RANKED", T.gold, "PVP")
+		F.stakesText = string.format("%s vs %s%s", string.upper(msg.kind or "PVP RANKED BOUT"), msg.tape.opp.name, oppTag)
 	else
 		setBug("LIVE  ·  WCB SPORTS", T.red, "LIVE")
 		F.stakesText = #stakes > 0 and (table.concat(stakes, " - ") .. " WORLD TITLE" .. (#stakes > 1 and "S" or "") .. " ON THE LINE") or msg.kind:upper()
@@ -2810,6 +2998,16 @@ function handlers.round(msg)
 	overlay.Visible = false
 	F.overlayBuild = nil
 	F.resting = false
+	-- held in the corner until the countdown's BOX! (failsafe: never stuck if a beat is lost)
+	F.countdown = true
+	local fight = F
+	task.delay(8, function()
+		if F == fight and F.countdown then
+			F.countdown = false
+			refreshControls()
+		end
+	end)
+	Tog.reset(true)
 	setAnimate(false)
 	F.active = true
 	F.paused = false
@@ -2826,7 +3024,7 @@ function handlers.round(msg)
 	roundText.Text = string.format("ROUND %d / %d", msg.n, msg.total)
 	timeText.Text = fmtTime(F.spar and Config.SparRoundSeconds or Config.RoundSeconds)
 	timeText.TextColor3 = T.text
-	showBanner("ROUND " .. msg.n, T.gold, 1.8)
+	showBanner("ROUND " .. msg.n, T.gold, 0.55) -- short: the corner countdown (3 - 2 - 1 - BOX!) follows in its place
 	phase("round", { n = msg.n })
 	if not venueOn then
 		sfx(BUILTIN.Ping or "rbxasset://sounds/electronicpingshort.wav", 0.55, 0.6)
@@ -3075,6 +3273,7 @@ function handlers.kd(msg)
 	end
 	screens(msg.severity == "out" and "KNOCKOUT!" or "KNOCKDOWN!")
 	if mine then
+		Tog.reset(true)
 		F.down = true
 		F.mash = 0
 		F.downAt = os.clock()
@@ -3164,6 +3363,7 @@ end
 
 function handlers.bell(msg)
 	F.active = false
+	Tog.reset(true) -- the server drops the guard in the corner
 	refreshControls()
 	showBanner("DING DING DING", T.gold, 1.5)
 	setTicker("End of round " .. msg.n)
@@ -3269,6 +3469,24 @@ end
 
 function handlers.result()
 	finish()
+end
+
+function handlers.pvpResult()
+	finish()
+end
+
+-- the round countdown: n = 3, 2, 1, then 0 = BOX! (movement and punches come back exactly then)
+function handlers.countdown(msg)
+	local n = tonumber(msg.n) or 0
+	Countdown.Show(n, msg.round)
+	if n <= 0 then
+		F.countdown = false
+		F.active = true
+		refreshControls()
+		cheer(0.6)
+	else
+		F.countdown = true
+	end
 end
 
 function handlers.sparResult()
