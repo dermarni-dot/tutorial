@@ -6,6 +6,7 @@
 --   sfx         0 .. 1       every other sound (all other SoundGroups: gym, fight mix)
 --   detail      Auto | High | Medium | Low   graphics detail (AnatomyClient.Settings: full-detail count,
 --                                           ranges, build budget, textures; client attribute GfxDetail)
+--   brightness  0.5 .. 1.6   overall exposure (player attribute Brightness, read by LightLevels)
 --   menuAtStart bool         open the main menu when you join
 --   controlHints bool        keep the fight's key-cap strip on screen (otherwise it fades after round 1)
 -- Saved with the profile through the "SaveSettings" request (R-ui integration request for Main). The
@@ -21,9 +22,9 @@ local UI = require(Shared:WaitForChild("UI"))
 local Settings = {}
 local player = Players.LocalPlayer
 
-Settings.Defaults = { uiScale = 1, screenFx = 1, shake = 1, music = 0.8, sfx = 1, detail = "Auto", menuAtStart = true, controlHints = false }
+Settings.Defaults = { uiScale = 1, screenFx = 1, shake = 1, music = 0.8, sfx = 1, brightness = 1, detail = "Auto", menuAtStart = true, controlHints = false }
 Settings.Details = { "Auto", "High", "Medium", "Low" }
-local RANGES = { uiScale = { 0.8, 1.25 }, screenFx = { 0, 1.5 }, shake = { 0, 1.5 }, music = { 0, 1 }, sfx = { 0, 1 } }
+local RANGES = { uiScale = { 0.8, 1.25 }, screenFx = { 0, 1.5 }, shake = { 0, 1.5 }, music = { 0, 1 }, sfx = { 0, 1 }, brightness = { 0.5, 1.6 } }
 
 -- pure: a clean settings table from anything (saved data, client input); unknown keys dropped
 function Settings.Sanitize(t)
@@ -198,6 +199,7 @@ function Settings.Apply()
 	Config.ScreenFX = v.screenFx -- read every frame by FightClient / VenueFX
 	player:SetAttribute("CamShake", v.shake) -- client-local: FightClient / training / menu cameras
 	player:SetAttribute("ControlHints", v.controlHints == true) -- FightClient: keep the key strip up
+	player:SetAttribute("Brightness", v.brightness) -- client-local: LightLevels exposure
 	Settings.ApplyAudio()
 	Settings.ApplyDetail()
 end
