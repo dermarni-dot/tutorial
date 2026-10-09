@@ -172,13 +172,13 @@ local function defAbove(x)
 end
 local SPEC = {
 	-- chest: sternal mass + clavicular head (upper chest shelf), tilted up toward the armpit
-	{ n = "PecSternal", id = "pecs", on = "UT", L = 1, lod = 1, mirror = true, sex = "m", ax = "F", u = 0.24, v = 0.12, a = 0.4, b = 0.3, ga = 0.06, gb = 0.05, t = 0.5, p0 = 0.012, p1 = 0.17, r = { 0, 0, 10 } },
+	{ n = "PecSternal", id = "pecs", on = "UT", L = 1, lod = 1, mirror = true, sex = "m", ax = "F", u = 0.24, v = 0.12, a = 0.4, b = 0.3, ga = 0.06, gb = 0.05, t = 0.5, p0 = 0.012, p1 = 0.11, r = { 0, 0, 10 } },
 	{ n = "PecClavicular", id = "upperChest", on = "UT", L = 2, lod = 2, mirror = true, sex = "m", ax = "F", u = 0.22, v = 0.33, a = 0.36, b = 0.15, ga = 0.04, gb = 0.03, t = 0.35, p0 = 0.008, p1 = 0.11, r = { 0, 0, 5 } },
 	{ n = "Bust", id = "pecs", on = "UT", L = 1, lod = 1, mirror = true, sex = "f", ax = "F", u = 0.23, v = 0.14, a = 0.42, b = 0.32, t = 0.5, p0 = 0.1, p1 = 0.04, r = { 0, 0, 6 } },
 	-- abdominals: three rows that fade in with definition, the lower abs and an 8-pack row when shredded
-	{ n = "Ab", id = "abs", on = "UT", L = 1, lod = 1, mirror = true, sex = "m", ax = "F", u = 0.105, v = -0.05, a = 0.17, b = 0.125, t = 0.2, p0 = 0.006, p1 = 0.05, fade = true, cond = defAbove(0.12), col = "peak" },
-	{ n = "Ab", id = "abs", on = "UT", L = 1, lod = 1, mirror = true, ax = "F", u = 0.105, v = -0.2, a = 0.16, b = 0.125, t = 0.2, p0 = 0.006, p1 = 0.05, fade = true, cond = defAbove(0.12), col = "peak" },
-	{ n = "Ab", id = "abs", on = "UT", L = 1, lod = 1, mirror = true, ax = "F", u = 0.105, v = -0.34, a = 0.155, b = 0.12, t = 0.2, p0 = 0.006, p1 = 0.05, fade = true, cond = defAbove(0.12), col = "peak" },
+	{ n = "Ab", id = "abs", on = "UT", L = 1, lod = 1, mirror = true, sex = "m", ax = "F", u = 0.105, v = -0.05, a = 0.19, b = 0.135, t = 0.2, p0 = 0.006, p1 = 0.05, fade = true, cond = defAbove(0.12), col = "peak" },
+	{ n = "Ab", id = "abs", on = "UT", L = 1, lod = 1, mirror = true, ax = "F", u = 0.105, v = -0.2, a = 0.18, b = 0.135, t = 0.2, p0 = 0.006, p1 = 0.05, fade = true, cond = defAbove(0.12), col = "peak" },
+	{ n = "Ab", id = "abs", on = "UT", L = 1, lod = 1, mirror = true, ax = "F", u = 0.105, v = -0.34, a = 0.17, b = 0.13, t = 0.2, p0 = 0.006, p1 = 0.05, fade = true, cond = defAbove(0.12), col = "peak" },
 	{ n = "LowerAbs", id = "lowerAbs", on = "UT", L = 1, lod = 3, ax = "F", u = 0, v = -0.45, a = 0.26, b = 0.13, ga = 0.03, t = 0.25, p0 = 0.006, p1 = 0.05 },
 	{ n = "AbRow4", id = "lowerAbs", on = "UT", L = 2, lod = 3, mirror = true, ax = "F", u = 0.1, v = -0.46, a = 0.14, b = 0.09, t = 0.2, p0 = 0.008, p1 = 0.045, fade = true, col = "peak",
 		cond = function(sp)
@@ -194,29 +194,29 @@ local SPEC = {
 	{ n = "SerratusFinger", id = "serratus", on = "UT", L = 2, lod = 3, mirror = true, sex = "m", ax = "F", u = 0.44, v = -0.06, a = 0.115, b = 0.055, t = 0.2, p0 = 0.008, p1 = 0.04, r = { 0, 0, 22 }, cond = defAbove(0.35), col = "peak" },
 	-- back: lats flare out the sides (V-taper), upper back (rhomboids / teres), erectors, upper traps
 	{ n = "Lat", id = "lats", on = "UT", L = 1, lod = 1, mirror = true, ax = "O", u = 0.1, v = 0.05, a = 0.72, b = 0.6, gb = 0.06, t = 0.25, p0 = 0.0, p1 = 0.06, r = { 0, 0, -8 } },
-	{ n = "UpperBack", id = "upperBack", on = "UT", L = 1, lod = 3, mirror = true, ax = "B", u = 0.22, v = 0.25, a = 0.36, b = 0.38, ga = 0.04, t = 0.4, p0 = 0.008, p1 = 0.13 },
+	{ n = "UpperBack", id = "upperBack", on = "UT", L = 1, lod = 3, mirror = true, ax = "B", u = 0.22, v = 0.25, a = 0.36, b = 0.38, ga = 0.04, t = 0.4, p0 = 0.008, p1 = 0.11 },
 	{ n = "Erector", id = "lowerBack", on = "UT", L = 1, lod = 3, mirror = true, ax = "B", u = 0.09, v = -0.42, a = 0.13, b = 0.48, t = 0.3, p0 = 0.008, p1 = 0.09 },
 	{ n = "Trap", id = "traps", on = "UT", L = 1, lod = 1, mirror = true, ax = "T", u = 0.22, v = 0.08, a = 0.38, b = 0.62, ga = 0.04, t = 0.3, p0 = 0.01, p1 = 0.1, r = { 0, 0, -16 } },
 	-- glutes push the trunks out at the back
-	{ n = "Glute", id = "glutes", on = "LT", L = 1, lod = 2, mirror = true, ax = "B", u = 0.25, v = -1.2, a = 0.42, b = 2.4, ga = 0.03, t = 0.55, p0 = 0.03, p1 = 0.17, col = "trunks" },
+	{ n = "Glute", id = "glutes", on = "LT", L = 1, lod = 2, mirror = true, ax = "B", u = 0.25, v = -1.2, a = 0.42, b = 2.4, ga = 0.03, t = 0.55, p0 = 0.03, p1 = 0.08, col = "trunks" },
 	-- shoulders: three delt heads capping the arm
-	{ n = "DeltSide", id = "sideDelt", on = "UA", L = 1, lod = 1, ax = "O", u = 0, v = 0.27, a = 0.92, b = 0.56, ga = 0.06, gb = 0.04, t = 0.6, p0 = 0.015, p1 = 0.2 },
+	{ n = "DeltSide", id = "sideDelt", on = "UA", L = 1, lod = 1, ax = "O", u = 0, v = 0.27, a = 0.92, b = 0.56, ga = 0.06, gb = 0.04, t = 0.6, p0 = 0.015, p1 = 0.13 },
 	{ n = "DeltFront", id = "frontDelt", on = "UA", L = 1, lod = 1, ax = "F", u = 0.1, v = 0.29, a = 0.72, b = 0.5, ga = 0.05, t = 0.5, p0 = 0.015, p1 = 0.15, r = { -8, 0, 0 } },
 	{ n = "DeltRear", id = "rearDelt", on = "UA", L = 1, lod = 2, ax = "B", u = 0.1, v = 0.29, a = 0.7, b = 0.46, t = 0.5, p0 = 0.012, p1 = 0.12 },
 	-- arms: biceps mass + peak, triceps long + lateral head (the horseshoe)
-	{ n = "Biceps", id = "biceps", on = "UA", L = 1, lod = 1, ax = "F", u = -0.02, v = -0.08, a = 0.64, b = 0.56, ga = 0.06, gb = 0.03, t = 0.5, p0 = 0.012, p1 = 0.2 },
-	{ n = "BicepPeak", id = "biceps", on = "UA", L = 2, lod = 3, ax = "F", u = -0.06, v = -0.06, a = 0.4, b = 0.28, t = 0.35, p0 = 0.015, p1 = 0.26, col = "peak" },
-	{ n = "Triceps", id = "triceps", on = "UA", L = 1, lod = 1, ax = "B", u = -0.06, v = 0.0, a = 0.62, b = 0.64, t = 0.5, p0 = 0.012, p1 = 0.19 },
-	{ n = "TricepLateral", id = "triceps", on = "UA", L = 2, lod = 3, ax = "B", u = 0.24, v = 0.1, a = 0.36, b = 0.42, t = 0.35, p0 = 0.015, p1 = 0.2 },
+	{ n = "Biceps", id = "biceps", on = "UA", L = 1, lod = 1, ax = "F", u = -0.02, v = -0.08, a = 0.64, b = 0.56, ga = 0.06, gb = 0.03, t = 0.5, p0 = 0.012, p1 = 0.13 },
+	{ n = "BicepPeak", id = "biceps", on = "UA", L = 2, lod = 3, ax = "F", u = -0.06, v = -0.06, a = 0.4, b = 0.28, t = 0.35, p0 = 0.015, p1 = 0.12, col = "peak" },
+	{ n = "Triceps", id = "triceps", on = "UA", L = 1, lod = 1, ax = "B", u = -0.06, v = 0.0, a = 0.62, b = 0.64, t = 0.5, p0 = 0.012, p1 = 0.13 },
+	{ n = "TricepLateral", id = "triceps", on = "UA", L = 2, lod = 3, ax = "B", u = 0.24, v = 0.1, a = 0.36, b = 0.42, t = 0.35, p0 = 0.015, p1 = 0.12 },
 	-- forearms: flexor mass and the brachioradialis along the top
 	{ n = "ForearmFlexor", id = "forearms", on = "LA", L = 1, lod = 1, ax = "F", u = -0.05, v = 0.2, a = 0.78, b = 0.62, t = 0.5, p0 = 0.015, p1 = 0.15 },
 	{ n = "Brachioradialis", id = "forearms", on = "LA", L = 2, lod = 2, ax = "O", u = -0.12, v = 0.27, a = 0.6, b = 0.56, t = 0.45, p0 = 0.015, p1 = 0.14 },
 	-- legs: quad mass, teardrop (VMO) above the knee, hamstrings (the trunks cover the outer sweep)
-	{ n = "Quad", id = "quads", on = "UL", L = 1, lod = 1, ax = "F", u = 0.04, v = -0.02, a = 0.84, b = 0.8, ga = 0.05, t = 0.5, p0 = 0.015, p1 = 0.2 },
-	{ n = "Teardrop", id = "quads", on = "UL", L = 2, lod = 2, ax = "F", u = -0.22, v = -0.35, a = 0.42, b = 0.28, t = 0.4, p0 = 0.015, p1 = 0.17, col = "peak" },
-	{ n = "Hamstring", id = "hamstrings", on = "UL", L = 1, lod = 3, ax = "B", u = 0, v = -0.08, a = 0.8, b = 0.8, t = 0.5, p0 = 0.012, p1 = 0.17 },
+	{ n = "Quad", id = "quads", on = "UL", L = 1, lod = 1, ax = "F", u = 0.04, v = -0.02, a = 0.84, b = 0.8, ga = 0.05, t = 0.5, p0 = 0.015, p1 = 0.11 },
+	{ n = "Teardrop", id = "quads", on = "UL", L = 2, lod = 2, ax = "F", u = -0.22, v = -0.35, a = 0.42, b = 0.28, t = 0.4, p0 = 0.015, p1 = 0.12, col = "peak" },
+	{ n = "Hamstring", id = "hamstrings", on = "UL", L = 1, lod = 3, ax = "B", u = 0, v = -0.08, a = 0.8, b = 0.8, t = 0.5, p0 = 0.012, p1 = 0.12 },
 	-- calves: the two gastrocnemius heads; placed above a boot shaft (tall boots) or lower (low tops)
-	{ n = "CalfMedial", id = "calves", on = "LL", L = 1, lod = 1, ax = "B", u = -0.14, v = 0.25, vLow = 0.15, a = 0.55, b = 0.42, bLow = 0.5, t = 0.5, p0 = 0.015, p1 = 0.2 },
+	{ n = "CalfMedial", id = "calves", on = "LL", L = 1, lod = 1, ax = "B", u = -0.14, v = 0.25, vLow = 0.15, a = 0.55, b = 0.42, bLow = 0.5, t = 0.5, p0 = 0.015, p1 = 0.13 },
 	{ n = "CalfLateral", id = "calves", on = "LL", L = 2, lod = 2, ax = "B", u = 0.16, v = 0.28, vLow = 0.18, a = 0.44, b = 0.34, bLow = 0.42, t = 0.45, p0 = 0.012, p1 = 0.15 },
 }
 
@@ -238,27 +238,31 @@ end
 local ANCHOR = { UT = "UpperTorso", LT = "LowerTorso", UA = "UpperArm", LA = "LowerArm", UL = "UpperLeg", LL = "LowerLeg" }
 local LIMB = { UA = true, LA = true, UL = true, LL = true }
 
--- ellipsoid frame on a face of the anchor (see SPEC). lvl = development, k = { soft, flat, elong }
+-- ellipsoid frame on a face of the anchor (see SPEC). lvl = development, k = { soft, flat, elong, dome }
+-- dome (muscles): flatter and wider, and the ellipsoid is thicker along the normal so that only a low,
+-- wide dome breaks the skin (the steep sides stay buried in the limb) instead of a bump sitting on it
 local function place(anchor, side, m, lvl, k)
 	local s = anchor.Size
-	local a = (m.a + (m.ga or 0) * lvl) * k.soft
-	local b = (m.b + (m.gb or 0) * lvl) * k.soft * k.elong
-	local pr = ((m.p0 or m.p or 0) + (m.p1 or 0) * lvl) * k.flat
+	local wide = k.dome and 1.12 or 1
+	local thick = k.dome and 1.5 or 1
+	local a = (m.a + (m.ga or 0) * lvl) * k.soft * wide
+	local b = (m.b + (m.gb or 0) * lvl) * k.soft * k.elong * wide
+	local pr = ((m.p0 or m.p or 0) + (m.p1 or 0) * lvl) * k.flat * (k.dome and 0.55 or 1)
 	local ax = m.ax
 	local sg = side == 0 and 1 or side
 	local pos, size
 	if ax == "F" or ax == "B" then
 		local n = ax == "F" and -1 or 1
-		local t = m.t * s.Z
+		local t = m.t * s.Z * thick
 		pos = V3(side * m.u * s.X, m.v * s.Y, n * (s.Z / 2 + pr * s.Z - t / 2))
 		size = V3(a * s.X, b * s.Y, t)
 	elseif ax == "O" or ax == "I" then
 		local n = (ax == "O" and 1 or -1) * sg
-		local t = m.t * s.X
+		local t = m.t * s.X * thick
 		pos = V3(n * (s.X / 2 + pr * s.X - t / 2), m.v * s.Y, m.u * s.Z)
 		size = V3(t, b * s.Y, a * s.Z)
 	else
-		local t = m.t * s.Y
+		local t = m.t * s.Y * thick
 		pos = V3(side * m.u * s.X, s.Y / 2 + pr * s.Y - t / 2, m.v * s.Z)
 		size = V3(a * s.X, t, b * s.Z)
 	end
@@ -450,10 +454,20 @@ local function musclesBuild(model, app, build, opts, sp, gear)
 	local shirt, trousers = outfitColors(app, sp.outfit)
 	local lowCalf = a.shoeStyle == "Low-Top" or shoeOf(gear).style == "trainer"
 	local seed = tonumber(app.face and app.face.seed) or 7
-	-- M4: hull, per-boxer anatomy (seed) and the LT envelope
+	-- the glove cuff's top on the forearm (leg heights from the centre; handsBuild's cuffLen + trim band):
+	-- the forearm muscles start above it so no bulge lips out from under the cuff
+	local cuffTop = -1
+	if (opts.hands or "gloves") == "gloves" and not shirt then
+		local gloveDef = Catalog.Find(Catalog.Gloves, gear.gloves) or Catalog.Gloves[1]
+		local gBrand = Catalog.GearBrand("gloves", gloveDef.id, app.gloves and app.gloves.brand)
+		cuffTop = q(-0.5 + 0.48 * ((gBrand.shape or {}).cuff or 1) + 0.05, 0.01)
+	end
+	-- the trunk leg opening (attireBuild's low): thigh muscles stay below it, as whole domes above the knee
+	local trunkHem = trousers and 1 or (a.trunkStyle == "Long" and -0.5 or -0.2)
+	-- M5: hull, per-boxer anatomy (seed), the LT envelope, low domes clipped to the cuff / trunk hem
 	local lift = neckLift(model)
-	local key = Kit.sig("M4", sp.ph.id, sp.detail, sp.female, sp.lv, sp.fat, sp.def, sp.vein, sp.dry, sp.grime, app.skin, smoothSkin,
-		sl, a.trunks, a.trim, lowCalf, sp.outfit, seed, sizesOf(model, BODY_PARTS), math.floor(lift * 1000 + 0.5))
+	local key = Kit.sig("M5", sp.ph.id, sp.detail, sp.female, sp.lv, sp.fat, sp.def, sp.vein, sp.dry, sp.grime, app.skin, smoothSkin,
+		sl, a.trunks, a.trim, lowCalf, sp.outfit, seed, sizesOf(model, BODY_PARTS), math.floor(lift * 1000 + 0.5), cuffTop, trunkHem)
 	if Kit.cached(model, "Muscles", key) then
 		-- re-assert the hidden R15 blocks (cheap, change-only) in case anything reset them
 		local f = model.BoxerLook:FindFirstChild("Muscles")
@@ -471,9 +485,10 @@ local function musclesBuild(model, app, build, opts, sp, gear)
 		soft = 1 + BF.softK * fatK * (ph.soft or 1), -- fat rounds muscles out...
 		flat = pv.flat * (1 - 0.25 * fatK), -- ...and hides their shape
 		elong = pv.elong,
+		dome = true, -- low wide domes (place)
 	}
-	local peakColor = lerpColor(skin, WHITE, 0.025 + 0.03 * def)
-	local shadows = cfg.shadows and ph.shadows
+	-- peaks are only a touch lighter than the skin: they blend into the mass instead of edging it
+	local peakColor = lerpColor(skin, WHITE, (0.025 + 0.03 * def) * 0.5)
 	local made, recs, env = {}, {}, {}
 	for _, fam in ipairs(ENV_FAMS) do
 		env[fam] = { x = 1, zf = 1, zb = 1, y = 1 }
@@ -495,6 +510,14 @@ local function musclesBuild(model, app, build, opts, sp, gear)
 			e.y = math.max(e.y, (pos.Y + size.Y / 2) / (s.Y / 2))
 			e.zf = math.max(e.zf, (size.Z / 2 - pos.Z) / (s.Z / 2))
 			e.zb = math.max(e.zb, (size.Z / 2 + pos.Z) / (s.Z / 2))
+		end
+		-- the glutes hang down into the thigh (the lower torso and the legs share a Z centre): the trunk
+		-- leg shells are sized from the thigh envelope, so the glutes join it or they poke out the back
+		if on == "LT" and ax == "B" then
+			local ul = anchorFor("UL", side)
+			if ul then
+				env.UL.zb = math.max(env.UL.zb, (size.Z / 2 + pos.Z) / (ul.Size.Z / 2))
+			end
 		end
 	end
 	-- colour / material of an overlay: shirts and trousers drape over the muscles, the female sports
@@ -613,23 +636,59 @@ local function musclesBuild(model, app, build, opts, sp, gear)
 					mm.p1 = (mm.p1 or 0) * j.kp
 					local kk = k
 					if m.id == "lats" then
-						kk = { soft = k.soft, flat = k.flat * pv.taper, elong = k.elong }
+						kk = { soft = k.soft, flat = k.flat * pv.taper, elong = k.elong, dome = true }
 					end
-					local cf, size, pos = place(anchor, side, mm, lvl, kk)
-					local color, mat, cloth = dress(m.on, pos, anchor, m.col)
-					local trans
-					if m.fade then
-						trans = math.clamp(1 - def * 0.88, 0.12, 0.95)
+					-- clothing: a shirt / the trousers / the sports top drape over the muscles (dress), so the
+					-- fine layer is skipped under them and the mass layer only lifts the cloth a little. The
+					-- bust and the glutes ARE the garment's shape, so they keep their own protrusion.
+					local _, _, cloth = dress(m.on, V3(side * mm.u * anchor.Size.X, mm.v * anchor.Size.Y, 0), anchor, m.col)
+					local keep = true
+					if cloth and m.L == 2 then
+						keep = false
+					elseif cloth and m.n ~= "Bust" and m.col ~= "trunks" then
+						mm.p1 = math.min(mm.p1, (sp.female and m.on == "UT") and 0.03 or 0.04)
+						mm.p0 = math.min(mm.p0 or 0, 0.006)
 					end
-					local p = mk(folder, anchor, m.n, size, cf, color, "Ellipsoid", mat, trans)
-					tagMuscle(p, m.id, side, m.L)
-					if cloth then
-						p:SetAttribute("Cloth", true)
+					-- the thigh muscles sit below the trunk hem as whole domes above the knee (no bulge cut off
+					-- by the hem); the forearm muscles start above the glove cuff (no lip over the cuff's top)
+					local bK = kk.soft * kk.elong * 1.12 -- place's growth of b (dome)
+					local bEff = (mm.b + (mm.gb or 0) * lvl) * bK
+					local bottom, top = mm.v - bEff / 2, mm.v + bEff / 2
+					if m.on == "UL" and trunkHem < 1 then
+						top = math.min(top, trunkHem - 0.06)
+					elseif m.on == "LA" and cuffTop > -1 then
+						bottom = math.max(bottom, cuffTop + 0.03)
+						top = math.min(top, 0.52)
 					end
-					if shadows and m.L == 1 and m.lod == 1 and not cloth then
-						p.CastShadow = true -- elite champions: real self-shadowing separation
+					if top - bottom < 0.1 then
+						keep = false
+					elseif top - bottom < bEff then
+						-- a clipped dome keeps the slope of the whole one: its protrusion shrinks with the
+						-- length it lost, so a short thigh dome is a low swell above the knee, not a ridge
+						local kc = math.max((top - bottom) / bEff, 0.5)
+						mm.v = (top + bottom) / 2
+						mm.b = (top - bottom) / bK - (mm.gb or 0) * lvl
+						mm.p1 *= kc
+						mm.p0 = (mm.p0 or 0) * kc
 					end
-					record(m.n, side, m.on, anchor, m.ax, p, pos, size)
+					if keep then
+						local cf, size, pos = place(anchor, side, mm, lvl, kk)
+						local color, mat
+						color, mat, cloth = dress(m.on, pos, anchor, m.col)
+						local trans
+						if m.fade then
+							trans = math.clamp(1 - def * 0.88, 0.12, 0.95)
+						elseif m.L == 2 then
+							trans = 0.25 -- peaks / heads blend into the mass under them
+						end
+						local p = mk(folder, anchor, m.n, size, cf, color, "Ellipsoid", mat, trans)
+						tagMuscle(p, m.id, side, m.L)
+						if cloth then
+							p:SetAttribute("Cloth", true)
+						end
+						-- (no CastShadow on any muscle, elite included: shadow edges read as bumps)
+						record(m.n, side, m.on, anchor, m.ax, p, pos, size)
+					end
 				end
 			end
 		end
@@ -673,7 +732,7 @@ local function musclesBuild(model, app, build, opts, sp, gear)
 
 	-- 3) separation grooves (full detail, lean): stronger on elite / lean physiques, fade with fat
 	if cfg.grooves and def > 0.3 and not shirt then
-		local alpha = math.clamp(1 - 0.55 * def * pv.groove, 0.3, 0.95)
+		local alpha = math.clamp(1 - 0.55 * def * pv.groove, 0.5, 0.95)
 		local gcol = darken(skin, 0.74)
 		for _, g0 in ipairs(GROOVES) do
 			local g = g0
@@ -702,8 +761,8 @@ local function musclesBuild(model, app, build, opts, sp, gear)
 	end
 
 	-- 4) fat layers: love handles, soft chest, arm fat, belly (physique bellyAt), hip shape slider
-	local function fatPart(name, anchor, side, m, kk, color, mat)
-		local cf, size, pos = place(anchor, side, m, kk, { soft = 1, flat = 1, elong = 1 })
+	local function fatPart(name, anchor, side, m, kk, color, mat, dome)
+		local cf, size, pos = place(anchor, side, m, kk, { soft = 1, flat = 1, elong = 1, dome = dome })
 		local p = mk(folder, anchor, name, size, cf, color or skin, "Ellipsoid", mat or skinMat)
 		p:SetAttribute("Fat", true)
 		return p, pos, size
@@ -734,9 +793,10 @@ local function musclesBuild(model, app, build, opts, sp, gear)
 		local bellyAt = ph.bellyAt or BF.bellyAt
 		if fat >= bellyAt then
 			local kk = math.clamp((fat - bellyAt) / 8, 0, 1)
-			local m = { ax = "F", u = 0, v = -0.36, a = 0.78, b = 0.56, t = 0.6, p0 = 0.03, p1 = 0.32 }
-			local c, mat = fatColor("UT", V3(0, -0.36 * s.Y, 0), ut)
-			local _, pos, size = fatPart("Belly", ut, 0, m, kk, c, mat)
+			-- (the dome frame: a wide low swell over the whole lower front, not a ball on the waistband)
+			local m = { ax = "F", u = 0, v = -0.34, a = 0.78, b = 0.6, t = 0.6, p0 = 0.04, p1 = 0.4 }
+			local c, mat = fatColor("UT", V3(0, -0.34 * s.Y, 0), ut)
+			local _, pos, size = fatPart("Belly", ut, 0, m, kk, c, mat, true)
 			env.UT.zf = math.max(env.UT.zf, (size.Z / 2 - pos.Z) / (s.Z / 2))
 		end
 	end
