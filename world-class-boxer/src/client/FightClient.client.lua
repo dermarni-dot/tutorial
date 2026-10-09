@@ -2868,11 +2868,16 @@ throwSpecial = function(id)
 	end
 	local P = Config.Punches[M.punch[1]] or Config.Punches.cross
 	local windup = predWindup(P.windup)
+	-- busy until the server's own clock for the move lets go (FightEngine Fight:Special: the last
+	-- contact + 0.9 wind-up), so no punch or special is shown that the server would drop as too soon.
+	-- (+ 0.1 s: the server's wind-up also counts the hand-speed stat, up to ~10% slower than this guess;
+	-- a press inside the margin is still sent, and the server's echo animates it if it goes)
+	local hits = require(Shared:WaitForChild("FightMotion")).SpecialHits(sid, windup)
 	pred.hand = M.hand
 	pred.lastAt = now
 	pred.specialAt = now
 	pred.specialId = sid
-	pred.busyUntil = now + windup * 2.2 + 0.3
+	pred.busyUntil = now + (hits[#hits] or (windup + 0.3)) + windup * 0.9 + 0.1
 	F.specialReady = now + (M.cooldown or 1.5)
 	KM.paintSpecials()
 	pred.id += 1

@@ -344,7 +344,7 @@ FightMotion.Specials = {
 	gazelle = { pre = 0.3, hand = "L", zone = "head", punches = { { kind = "leadhook" } }, move = 1.2, label = "Gazelle punch" },
 	peekaboo = { pre = 0.7, hand = "L", zone = "head", punches = { { kind = "leadhook" }, { kind = "rearhook", hand = "R", after = 0.85, wk = 0.9 } }, move = 1.5, label = "Peek-a-boo rush" },
 	stepback = { pre = 0.26, hand = "R", zone = "head", punches = { { kind = "cross" } }, move = -0.8, label = "Step-back counter" },
-	overhand = { pre = 0.12, hand = "R", zone = "head", punches = { { kind = "overhand" } }, move = 0, label = "Overhand right" },
+	overhand = { pre = 0.12, hand = "R", zone = "head", punches = { { kind = "overhand" } }, move = 0, label = "Loaded overhand" },
 	leaduppercut = { pre = 0.12, hand = "L", zone = "head", punches = { { kind = "uppercut" } }, move = 0, label = "Lead uppercut" },
 } :: { [string]: Special }
 -- (older names of the same moves, accepted everywhere an id is)

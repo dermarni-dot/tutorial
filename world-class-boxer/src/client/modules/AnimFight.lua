@@ -1887,18 +1887,47 @@ function AnimFight.startSpecial(rig, id, hand, windup, power, t)
 	if (hand == "L" or hand == "R") and hand ~= def.hand then
 		sd = -1
 	end
+	local w = clamp(tonumber(windup) or 0.25, 0.08, 0.9)
+	-- (the move is over once its last punch has come home: FightMotion.SpecialDuration, the length the
+	-- server plans with)
+	local dur
+	if FightMotion.SpecialDuration then
+		dur = FightMotion.SpecialDuration(id, w)
+	else
+		local last = def.punches[#def.punches]
+		dur = def.pre + (last.after or 0) * w + w * (last.wk or 1) * 2.4 + (id == "checkhook" and 1.1 or 0)
+	end
 	rig.special = {
-		id = id, def = def, anim = anim, t0 = t, sd = sd, w = clamp(tonumber(windup) or 0.25, 0.08, 0.9),
+		id = id, def = def, anim = anim, t0 = t, sd = sd, w = w, dur = dur,
 		power = clamp(tonumber(power) or 0.9, 0, 1.5), fired = 0, stepped = 0,
 	}
 	return true
 end
+
+-- the move is called off: the server refused the special this client predicted, the bell went, the fight
+-- ended, a clinch. Nothing more is stepped or thrown (a punch already out finishes as a punch) and the
+-- set-up blends back to the guard over SPECIAL_FADE seconds instead of snapping
+local SPECIAL_FADE = 0.18
+function AnimFight.endSpecial(rig, t)
+	local sp = rig.special
+	if sp and not sp.endAt then
+		sp.endAt = t
+	end
+end
+
+-- the guards a special plays under (FightEngine:UpdateGuard): anything else - rest on the stool, the
+-- final bell's win / lose, a clinch, the walkout - ends it. (nil = a rig outside a fight: the lab, a preview)
+local SPECIAL_GUARDS = { stance = true, block = true, hurt = true, dazed = true }
 
 -- per frame (guard up, before the punch layers): the set-up overlay, its steps, and the punches on time
 function AnimFight.specialTick(p, rig, t)
 	local sp = rig.special
 	if not sp then
 		return
+	end
+	local g = rig.a.Guard
+	if g ~= nil and not SPECIAL_GUARDS[g] and not sp.endAt then
+		sp.endAt = t
 	end
 	local def, anim, w, sd = sp.def, sp.anim, sp.w, sp.sd
 	local el = t - sp.t0
@@ -1910,11 +1939,21 @@ function AnimFight.specialTick(p, rig, t)
 	else
 		k = 1 - smooth((el - pre) / (w * 0.7))
 	end
+	-- called off: only the fade back to the guard is left (no more steps or punches)
+	local live, fade = sp.endAt == nil, 1
+	if not live then
+		fade = 1 - smooth((t - sp.endAt) / SPECIAL_FADE)
+		if fade <= 0 then
+			rig.special = nil
+			return
+		end
+		k *= fade
+	end
 	if anim.setup and k > 0 then
 		anim.setup(p, rig, sp, k, el / max(pre, 1e-3), sd)
 	end
 	-- the set-up's footwork (body-space steps, mirrored for the other hand)
-	local steps = anim.steps
+	local steps = live and anim.steps
 	while steps and steps[sp.stepped + 1] and el >= steps[sp.stepped + 1][1] do
 		local st = steps[sp.stepped + 1]
 		sp.stepped += 1
@@ -1927,13 +1966,13 @@ function AnimFight.specialTick(p, rig, t)
 		end
 	end
 	local fol = sp.follow
-	if fol and t >= fol.at and L.ready(rig, fol.s, t) then
+	if live and fol and t >= fol.at and L.ready(rig, fol.s, t) then
 		sp.follow = nil
 		L.request(rig, fol.s, 0, fol.oz, 0.16, 0.12, fol.hold, t)
 	end
 	-- the punches
 	local pl = def.punches
-	local nxt = pl[sp.fired + 1]
+	local nxt = live and pl[sp.fired + 1]
 	if nxt and el >= pre + (nxt.after or 0) * w then
 		sp.fired += 1
 		local kind = nxt.kind
@@ -1957,7 +1996,7 @@ function AnimFight.specialTick(p, rig, t)
 	-- round behind him; he comes back square over the next half second (the server may turn the root)
 	if def.punches[1] and sp.id == "checkhook" and sp.fired >= 1 then
 		local tc = sp.lastStart + sp.lastW
-		local a = 0.45 * smooth((t - tc + 0.04) / 0.32) * (1 - smooth((t - tc - 0.55) / 0.5)) * sd
+		local a = 0.45 * smooth((t - tc + 0.04) / 0.32) * (1 - smooth((t - tc - 0.55) / 0.5)) * sd * fade
 		if a ~= 0 then
 			local lf = sd > 0 and rig.foot.L or rig.foot.R
 			-- (round the lead foot: the hips swing about it)
@@ -1965,7 +2004,7 @@ function AnimFight.specialTick(p, rig, t)
 			p.Root = CF(c) * A(0, a, 0) * CF(-c) * p.Root
 			lf.pivot += a
 			lf.heel = max(lf.heel, 0.45 * abs(a) / 0.45)
-			if not sp.swung and t >= tc - 0.02 then
+			if live and not sp.swung and t >= tc - 0.02 then
 				sp.swung = true
 				local rs = sd > 0 and "R" or "L"
 				if L.ready(rig, rs, t) then
@@ -1974,16 +2013,7 @@ function AnimFight.specialTick(p, rig, t)
 			end
 		end
 	end
-	-- (the move is over once its last punch has come home: FightMotion.SpecialDuration, the length the
-	-- server plans with)
-	local endT
-	if FightMotion.SpecialDuration then
-		endT = FightMotion.SpecialDuration(sp.id, w)
-	else
-		local last = pl[#pl]
-		endT = pre + (last.after or 0) * w + w * (last.wk or 1) * 2.4 + (sp.id == "checkhook" and 1.1 or 0)
-	end
-	if el > endT then
+	if el > sp.dur then
 		rig.special = nil
 	end
 end
@@ -2056,7 +2086,7 @@ function AnimFight.react(rig, kind, ptype, flag, sev, t, hand)
 	rig.hitSev = sev
 	-- (a blow that rocks him stops a special move he has not finished throwing)
 	if rig.special and kind ~= "blockhit" and sev >= 0.35 then
-		rig.special = nil
+		AnimFight.endSpecial(rig, t)
 	end
 	local FX = R.FX
 	-- severity tier: heavy / counter shots count a tier up

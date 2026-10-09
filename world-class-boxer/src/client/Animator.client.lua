@@ -175,7 +175,7 @@ local function setup(model)
 		root = model:FindFirstChild("HumanoidRootPart"), head = model:FindFirstChild("Head"),
 		hum = model:FindFirstChildOfClass("Humanoid"),
 		lastActId = model:GetAttribute("ActId"), predId = model:GetAttribute("PredActId"),
-		act = nil, autoAct = nil, pending = nil, predKind = nil, predHand = nil, predT = -10,
+		act = nil, autoAct = nil, pending = nil, predKind = nil, predHand = nil, predT = -10, predDur = 0,
 		sx = table.create(R.NSPR, 0), sv = table.create(R.NSPR, 0),
 		plant = false, stepDist = 0.45, stepTime = 1, liftK = 1,
 		cxL = {}, cxR = {}, poseAct = nil, exprHint = nil, breath = 0,
@@ -243,6 +243,25 @@ onAct = function(rig, s, now, predicted)
 	if not k then
 		return
 	end
+	if k == "cancel" then
+		-- FightClient: the server refused the special this client predicted ("cancel|special|<id>", a
+		-- predicted act): the move the key press started is called off and blends back to the guard
+		local sp = rig.special
+		if predicted and f2 == "special" and sp and sp.pred and (f3 == "" or f3 == sp.pred) then
+			Fight.endSpecial(rig, now)
+			if rig.predKind == "special" then
+				rig.predKind = nil
+			end
+		end
+		return
+	end
+	-- the local fighter's special already started on the key press: its server echo (same id) is dropped
+	-- for as long as that move lasts, however late the echo comes (a laggy connection), so the set-up is
+	-- never rewound; the move may have ended meanwhile (a hit, the bell) and must not start again
+	if not predicted and k == "special" and rig.predKind == "special" and f2 == rig.predHand and now - rig.predT < rig.predDur then
+		rig.predKind = nil
+		return
+	end
 	-- the local fighter's punch already started on the key press: skip the server echo
 	if not predicted and rig.predKind == k and now - rig.predT < 0.25 and (f2 == "" or f2 == rig.predHand) then
 		rig.predKind = nil
@@ -263,11 +282,12 @@ onAct = function(rig, s, now, predicted)
 	elseif k == "special" then
 		-- a special move (special|<id>|<hand>|<windup>|<power>): AnimFight plays its set-up and throws its
 		-- punches on the FightMotion.Specials schedule; unknown ids are ignored
-		-- (a predicted special is matched to its server echo by its id)
-		if predicted then
-			rig.predKind, rig.predHand, rig.predT = k, f2, now
+		-- (a predicted special is matched to its server echo by its id, for as long as the move lasts)
+		local ok = Fight.startSpecial(rig, f2, f3, f4, f5, now)
+		if predicted and ok then
+			rig.predKind, rig.predHand, rig.predT, rig.predDur = k, f2, now, rig.special.dur
+			rig.special.pred = f2 -- (what a "cancel" names)
 		end
-		Fight.startSpecial(rig, f2, f3, f4, f5, now)
 		return
 	elseif k == "hit" or k == "hitbody" or k == "blockhit" then
 		act.sev = clamp(tonumber(f4) or 0.5, 0, 1.5)
@@ -955,7 +975,10 @@ if DRIVE_PLAYERS then
 end
 
 local cam = workspace.CurrentCamera
-local warned = {}
+-- one warning per rig and error (keyed by the rig table, weak: a rig dropped from `rigs` - its model gone,
+-- torn down, or a respawn that makes a new rig for the same model - takes its memo with it, and a new
+-- rig reports its own failures)
+local warned = setmetatable({}, { __mode = "k" })
 local fxWarned = {}
 
 local function fxStep(name, fn, ...)
@@ -1028,9 +1051,17 @@ RunService.PreSimulation:Connect(function(dt)
 		local lod = (dist < NEAR and onScreen) and 3 or (dist < MID and 2 or 1)
 		updated += 1
 		local ok, err = pcall(updateRig, rig, model, rig.clock, sdt, lod, rdt)
-		if not ok and not warned[model] then
-			warned[model] = true
-			warn("[Animator] " .. model.Name .. ": " .. tostring(err))
+		if not ok then
+			-- (a different error on the same rig is reported too: at most 3 per rig, never every frame)
+			local w = warned[rig]
+			err = tostring(err)
+			if not w or (w.n < 3 and w.last ~= err) then
+				w = w or { n = 0 }
+				w.n += 1
+				w.last = err
+				warned[rig] = w
+				warn("[Animator] " .. model.Name .. ": " .. err)
+			end
 		end
 	end
 	if FaceFX then
