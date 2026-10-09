@@ -500,15 +500,17 @@ function Kit.Hairline(S, kind, growth)
 		soft = 0.02
 	end
 	local seed = S.seed
-	local w1, w2 = seed % 7, seed % 11
+	-- the line's wander: a smooth noise of the position (two sines of the angle gave it regular scallops
+	-- and a cusp at the front centre, where the angle mirrors); the height table below (the window search
+	-- at the steep sideburns) keeps the bare keys
+	local function wander(x, y, z)
+		return wobble * (0.0045 * noise3(x * 6, y * 6, z * 6, seed + 3) + 0.0025 * noise3(x * 15, y * 4, z * 15, seed + 4))
+	end
 	local function height(da)
 		local h = keyed(K, da)
 		if peak > 0 then
-			local v = max(0, 1 - da / 0.24)
-			h -= peak * v * v
-		end
-		if wobble > 0 then
-			h += wobble * (0.006 * sin(da * 9 + w1) + 0.004 * sin(da * 23 + w2))
+			-- (a rounded point: 1 - da / 0.24 squared had a cusp at the centre, a V cut with a ruler)
+			h -= peak * (1 - smoothstep(0, 0.24, da))
 		end
 		return h
 	end
@@ -532,11 +534,10 @@ function Kit.Hairline(S, kind, growth)
 		local da = S.around(x, z)
 		local h, slope = keyed(K, da)
 		if peak > 0 then
-			local v = max(0, 1 - da / 0.24)
-			h -= peak * v * v
+			h -= peak * (1 - smoothstep(0, 0.24, da))
 		end
 		if wobble > 0 then
-			h += wobble * (0.006 * sin(da * 9 + w1) + 0.004 * sin(da * 23 + w2))
+			h += wander(x, y, z)
 		end
 		local r = max(sqrt(x * x + (z - 0.05) * (z - 0.05)), 0.15)
 		local sl = slope / r
@@ -634,15 +635,11 @@ function Kit.Cut(S, spec)
 		return (1 - smoothstep(w * 0.5, w, pd)) * smoothstep(0.3, 0.36, y) * (1 - smoothstep(0.12, 0.22, z))
 	end
 
-	-- coverage, the hairline distance and the fade factor at a nominal point
-	local function cov(x, y, z)
-		local d, da, hl = dist(x, y, z)
-		local c = smoothstep(-soft * 0.6, soft, d)
-		if c <= 0 then
-			return 0, d, 0, da
-		end
+	-- the coverage without the hairline's own edge (the fade, the region, the parting, the density): what the
+	-- hair would be at this point were the hairline not there. Returns rest, fade factor
+	local function rest(x, y, z, da, hl)
 		local fd = fadeAt(x, y, z, da, hl)
-		c *= fd
+		local c = fd
 		if region then
 			local r = region(x, y, z, da)
 			c *= lerp(shaved * (1 - 0.4 * (1 - grow)) + 0.5 * grow * shaved, 1, r)
@@ -652,7 +649,19 @@ function Kit.Cut(S, spec)
 			-- is drawn by the texture (partAt), narrow and in the shadowed scalp's tone
 			c *= lerp(0.85, 1, 1 - partAt(x, y, z))
 		end
-		return c * density, d, fd, da
+		return c * density, fd
+	end
+
+	-- coverage, the hairline distance, the fade factor, the angle from the front, the line's height and the
+	-- coverage without the hairline edge (nil past it) at a nominal point
+	local function cov(x, y, z)
+		local d, da, hl = dist(x, y, z)
+		local c = smoothstep(-soft * 0.6, soft, d)
+		if c <= 0 then
+			return 0, d, 0, da, hl, nil
+		end
+		local r, fd = rest(x, y, z, da, hl)
+		return c * r, d, fd, da, hl, r
 	end
 
 	-- shell offset over the scalp: the top / side thickness, thinning through the fade. No rim anywhere: the
@@ -663,6 +672,12 @@ function Kit.Cut(S, spec)
 	local edgeW = spec.edge or 0.05
 	local thin = spec.thin or 0.0025
 	local SINK = 0.015
+	-- sinkW: the shell dips under the skin gradually, over that many studs outside the hairline, instead of
+	-- dropping to -SINK across the hairline's own width (a soft edge is a fraction of the shell grid's spacing,
+	-- so the drop happened between one vertex and the next and the shell's visible edge was the zigzag of
+	-- those triangles crossing the skin). It is at the skin at the line, 0.002 under it, and crosses out where
+	-- the hair starts: a smooth curve
+	local sinkW = spec.sinkW or 0
 	local function thick(x, y, z)
 		local c, d, fd, da = cov(x, y, z)
 		local wTop = smoothstep(0.16, 0.4, y)
@@ -680,9 +695,17 @@ function Kit.Cut(S, spec)
 		local gd = smoothstep(0, max(edgeW, 3.5 * t), d)
 		-- under bare skin the shell sinks ~1.5 cm (nominal 0.015): deep enough that the head mesh's own
 		-- facets (its chords cut below the smooth skull field) never leave a gap at the shell's edge
-		return -SINK + (thin + SINK) * gc + max(t - thin, 0) * gc * gd * gd ^ 0.3, c
+		local o = -SINK + (thin + SINK) * gc + max(t - thin, 0) * gc * gd * gd ^ 0.3
+		if sinkW > 0 and d < soft * 2 then
+			-- (down quickly at first: just past the line the shell is already well under the head mesh's facets)
+			local under = -0.003 - (SINK - 0.003) * (1 - smoothstep(-sinkW, 0, d)) ^ 0.5
+			if under > o then
+				o = under
+			end
+		end
+		return o, c
 	end
-	return { cov = cov, thick = thick, dist = dist, height = height, soft = soft, grow = grow, seed = seed, partAt = part and partAt or nil }
+	return { cov = cov, rest = rest, thick = thick, dist = dist, height = height, soft = soft, grow = grow, seed = seed, partAt = part and partAt or nil }
 end
 
 ------------------------------------------------------------------------
@@ -1480,15 +1503,15 @@ function Kit.Cap(S, m, opts)
 	end
 	local thMax = table.create(cols + 1)
 	local tw = 0.5
-	for c = 0, cols do
-		local az = c / cols * TAU
-		local lo, hi = 0.3, 2.75
+	-- the largest polar angle (from lo0) where the scalp is still more than `target` inside the hairline
+	local function polarAt(az, target, lo0, hi0)
+		local lo, hi = lo0, hi0
 		for _ = 1, 11 do
 			local mid = (lo + hi) * 0.5
 			local dx, dy, dz = dirOf(az, mid)
 			local x, y, z, t = S.ray(dx, dy, dz, 0, tw)
 			tw = t
-			if dist(x, y, z) > -reach then
+			if dist(x, y, z) > target then
 				lo = mid
 			else
 				hi = mid
@@ -1496,7 +1519,26 @@ function Kit.Cap(S, m, opts)
 			-- a ray march (up to 14 field samples) per iteration
 			step(14)
 		end
-		thMax[c + 1] = lo
+		return lo
+	end
+	for c = 0, cols do
+		thMax[c + 1] = polarAt(c / cols * TAU, -reach, 0.3, 2.75)
+	end
+	-- the two rows before the last lie on the hairline itself and a little inside it (every column crosses
+	-- the line at a grid row): the shell's edge is the hairline's own curve, not the zigzag of quads that
+	-- happen to straddle it. A volume's dilated grid (radial) cannot follow the notches: it sinks gradually
+	local thLine, thIn = nil, nil
+	if not opts.radial and rows >= 6 then
+		thLine, thIn = table.create(cols + 1), table.create(cols + 1)
+		local inset = opts.inset or 0.045
+		for c = 0, cols do
+			local az = c / cols * TAU
+			local tm = thMax[c + 1]
+			local ti = polarAt(az, inset, 0.3, tm)
+			local tl = polarAt(az, 0, ti, tm)
+			thIn[c + 1] = min(ti, tm - 0.02)
+			thLine[c + 1] = clamp(tl, thIn[c + 1] + 0.006, tm - 0.004)
+		end
 	end
 	if opts.radial then
 		-- a volume's mass spans the hairline's notches (round the ears, the temples): its rows run at the polar
@@ -1544,7 +1586,19 @@ function Kit.Cap(S, m, opts)
 			local i = r * stride + c + 1
 			local az = c / cols * TAU
 			-- denser rows toward the edge, where the fade and hairline detail is
-			local th = lerp(TH0, thMax[c + 1], 1 - (1 - f) ^ 1.25)
+			local th
+			if thLine then
+				if r == rows then
+					th = thMax[c + 1]
+				elseif r == rows - 1 then
+					th = thLine[c + 1]
+				else
+					local f2 = r / (rows - 2)
+					th = lerp(TH0, thIn[c + 1], 1 - (1 - f2) ^ 1.25)
+				end
+			else
+				th = lerp(TH0, thMax[c + 1], 1 - (1 - f) ^ 1.25)
+			end
 			local dx, dy, dz = dirOf(az, th)
 			local x, y, z, tr = S.ray(dx, dy, dz, 0, tcol[c + 1])
 			tcol[c + 1] = tr

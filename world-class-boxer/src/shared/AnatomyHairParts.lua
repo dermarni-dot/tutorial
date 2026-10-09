@@ -151,7 +151,7 @@ local function capShader(H, spec)
 	-- aliasing into moire rings ("wood grain"). A per-texel white noise carries the finest grain: random
 	-- speckle has no lattice to alias.
 	local F00, F0, F1, F2 = 9 / grain, 22 / grain, 55 / grain, 120 / grain
-	local TEX = H.L.tex or 256
+	local TEX = spec.texSize or H.L.tex or 256
 	local texH, texW = 0.56 * 2.75 / TEX, 0.56 * TAU / TEX
 	-- value noise shows its lattice (a honeycomb of blobs) well before the Nyquist limit: fade an octave out
 	-- from 0.1 cycles per texel, gone at 0.25
@@ -245,10 +245,16 @@ local function capShader(H, spec)
 	local cellF = (pattern == "coil" and 30 or 22) / grain
 	local worley = coilish and Kit.Worley(H.seed % 9973 + 5) or nil
 	local worley2 = coilish and Kit.Worley(H.seed % 9973 + 11) or nil
-	-- clipper stubble and the hairline edge are drawn hair by hair: each texel is hair or skin with
-	-- probability = the coverage (sparse hairs, not a line)
-	local ditherAll = stubble and 1 or 0
-	local soft = math.max(cut.soft or 0.016, 0.02)
+	-- clipper stubble is drawn hair by hair: each texel is hair or skin with probability = the coverage
+	-- (sparse hairs, not a paint). The hairline itself is an anti-aliased edge: blended over ~1.3 texels
+	-- however sharp the cut (a per-texel dither there was a sawtooth of 0.01-0.02 stud teeth along every
+	-- hairline), wandering by a hair's width along the line (a line-up barely), with a few short hairs
+	-- scattered ahead of it over a natural edge's softness
+	local ditherAll = stubble and 0.35 or 0
+	local soft = cut.soft or 0.016
+	local wobA = min(0.005, soft * 0.4)
+	local strayW = soft * 2.5
+	local cutRest = cut.rest
 	-- ao(X, Y, Z) -> 0..1: the volume's own occlusion (the crevices between a mass's clusters, its underside)
 	local aoFn = spec.ao
 	-- a parting: a narrow gap of shadowed scalp between the strands either side (never a skin-tone stripe)
@@ -258,12 +264,38 @@ local function capShader(H, spec)
 		-- 5-10 us a texel: MeshKit counts the call as 1 unit, these keep its tick on time
 		step(2)
 		local X, Y, Z = x / kx, y / ky, z / kz
-		local c, d = cut.cov(X, Y, Z)
+		local c, d, _, da, hl, rest = cut.cov(X, Y, Z)
+		local tx = max(texH, texW * sin(v * 2.75))
+		local ix, iy = floor(u * TEX), floor(v * TEX)
+		-- the hairline: the edge's own blend (over the cut's softness, at least ~1.3 texels), the line wandering
+		-- a little; the stray hairs ahead of it are single texels at a falling density
+		local edgeK = 1
+		if d < soft * 2 then
+			if d < -strayW - wobA then
+				return scR, scG, scB, 1
+			end
+			local wob = wobA * noise3(X * 14, Y * 14, Z * 14, seed + 29)
+			local eW = max(soft * 0.9, 1.3 * tx)
+			local de = d + wob
+			edgeK = smoothstep(-eW, eW, de)
+			if de < 0 and not stubble then
+				local p = 0.25 * (1 - smoothstep(0, strayW, -de))
+				if p > 0 and white(ix, iy, seed + 29) < p then
+					edgeK = max(edgeK, 0.8)
+				end
+			end
+			if edgeK <= 0.002 then
+				return scR, scG, scB, 1
+			end
+			if not rest then
+				rest = cutRest(X, Y, Z, da, hl)
+			end
+			-- (the body of the hair at its own coverage, the edge blended over it)
+			c = rest
+		end
 		if c <= 0.002 then
 			return scR, scG, scB, 1
 		end
-		local tx = max(texH, texW * sin(v * 2.75))
-		local ix, iy = floor(u * TEX), floor(v * TEX)
 		-- the strand coordinates here (streaks, grey strands, dye streaks)
 		local cp, cq, cw, cpole = coords(X, Y, Z)
 		local wn = white(ix, iy, seed) - 0.5
@@ -291,12 +323,12 @@ local function capShader(H, spec)
 		-- coverage as a smooth blend with the grain breaking up its middle (a fade is a gradient); clipper
 		-- stubble and the hairline band dithered hair by hair
 		local m = clamp(c + (sgrain - 0.5) * (stubble and 0.5 or 0.9) * c * (1 - c) * 2, 0, 1)
-		local dith = max(ditherAll * 0.35, 1 - smoothstep(soft * 0.6, soft * 1.8, d))
-		if dith > 0 then
+		if ditherAll > 0 then
 			-- a texel holds a few hairs: its share scatters around the coverage (no hard salt and pepper)
 			local h = white(ix, iy, seed + 29)
-			m = lerp(m, smoothstep(h - 0.35, h + 0.35, c), dith)
+			m = lerp(m, smoothstep(h - 0.35, h + 0.35, c), ditherAll)
 		end
+		m *= edgeK
 		local cr, cg, cb = hr, hg, hb
 		local dk = 0
 		if split then
@@ -416,6 +448,8 @@ function Parts.Cap(H, spec)
 		hairline = spec.hairline or H.hairline, growth = H.growth, fade = spec.fade, top = spec.top, side = spec.side,
 		density = spec.density, region = spec.region, shaved = spec.shaved, part = spec.part, edge = spec.edge,
 		fadeLift = spec.fadeLift, thin = spec.thin, emerge = spec.emerge,
+		-- (a volume's dilated grid has no hairline row: its shell sinks over a longer run)
+		sinkW = spec.sinkW or (spec.radial and 0.07 or 0.03),
 	})
 	local L = H.L
 	local name = spec.name or "HairCap"
@@ -436,6 +470,7 @@ function Parts.Cap(H, spec)
 	local rows = spec.rows or L.rows
 	Kit.Cap(S, piece.mesh, {
 		cut = H.cut, cols = cols, rows = rows, extra = spec.extra, reach = spec.reach, gridNormals = spec.gridNormals, radial = spec.radial,
+		inset = spec.inset,
 		color = function(x, y, z, c)
 			local k = smoothstep(0.05, 0.95, c)
 			local dk = split and (x > 0 and 1 or 0) or (dye == "Ombre" and smoothstep(dyeY + 0.12, dyeY - 0.3, y) or tipsK)
@@ -450,7 +485,11 @@ function Parts.Cap(H, spec)
 	if L.tex then
 		-- pad: the texels round the cap's UV islands (culled shaved quads leave big empty areas) take the edge
 		-- colours, so filtering and the far mip levels never pull in black
-		piece.texture = { w = L.tex, h = L.tex, shade = capShader(H, spec), pad = L.tex >= 256 and 10 or 6 }
+		-- (spec.tex: a short cut's shell at full detail is the whole style, its hairline seen close in the
+		-- creator and the fighter card: a finer texture there, a texel ~0.007 studs at the line)
+		local tex = (spec.tex and L.tex >= 256) and spec.tex or L.tex
+		spec.texSize = tex
+		piece.texture = { w = tex, h = tex, shade = capShader(H, spec), pad = tex >= 256 and 10 or 6 }
 	end
 	return piece
 end
@@ -459,8 +498,10 @@ end
 -- Roots
 ------------------------------------------------------------------------
 -- about n root points spread evenly over the scalp (a jittered golden-angle lattice), each kept with
--- probability accept(x, y, z, da, cov) (0..1). Returns { { x, y, z, nx, ny, nz, da, cov, rnd } }.
-function Parts.Roots(H, n, accept, seed, jit)
+-- probability accept(x, y, z, da, cov) (0..1), or, with `even`, kept wherever accept >= 0.5 (an even spread
+-- over the accepted region: braids on their rows, never a bare patch where the dice fell).
+-- Returns { { x, y, z, nx, ny, nz, da, cov, rnd } }.
+function Parts.Roots(H, n, accept, seed, jit, even)
 	local S, cut = H.S, H.cut
 	local rng = MeshKit.Rng(seed or H.seed + 1)
 	-- jit: how far each point strays from its lattice place (1 = even spacing; more = uneven, clustered)
@@ -489,7 +530,11 @@ function Parts.Roots(H, n, accept, seed, jit)
 		local jx, jy = rng:Range(-0.3, 0.3) * jit, rng:Range(-0.35, 0.35) * jit
 		local x, y, z, nx, ny, nz, da, c = point(M, i, jx, jy)
 		local p = clamp(accept(x, y, z, da, c), 0, 1)
-		if p > 0 and rng:Next() < p then
+		if even then
+			if p >= 0.5 then
+				out[#out + 1] = { x, y, z, nx, ny, nz, da, c, rng:Next() }
+			end
+		elseif p > 0 and rng:Next() < p then
 			out[#out + 1] = { x, y, z, nx, ny, nz, da, c, rng:Next() }
 		end
 		step(6)
@@ -1019,14 +1064,15 @@ end
 ------------------------------------------------------------------------
 -- section functions: (t, a, s, r) -> radius, with s = arc length along the strand (studs), r = base radius
 Parts.SECTIONS = {
-	-- locs: matted, lumpy, a little flattened, thinner at the root
-	loc = function(seed)
-		-- lumps every ~0.05-0.08 studs (what ~10-14 rings a stud carry), roots ~30% thinner over the first 0.04
+	-- locs: matted, lumpy, a little flattened, thinner at the root, tapering into a frayed, pointed end
+	loc = function(seed, _, ringsPer)
+		-- the lumps at what the rings can carry (>= 2.5 rings a lump: finer ones averaged out to a smooth
+		-- tube, the clay sausage), a slow swell / pinch along its length: no two locs the same tube
+		local lf = min(6, (ringsPer or 13) / 2.6)
 		return function(t, a, s, r)
-			-- (and a slow swell / pinch along its length: no two locs the same tube)
-			local lump = 1 + 0.17 * noise3(s * 14, cos(a) * 1.2, sin(a) * 1.2, seed) + 0.06 * noise3(s * 26, cos(a) * 2, sin(a) * 2, seed + 3)
-				+ 0.14 * noise3(s * 4.5, 0.5, 0.5, seed + 7)
-			return r * lump * (0.7 + 0.3 * smoothstep(0, 0.04, s)) * (1 - 0.15 * t)
+			local lump = 1 + 0.2 * noise3(s * lf, cos(a) * 1.2, sin(a) * 1.2, seed) + 0.07 * noise3(s * lf * 1.9, cos(a) * 2, sin(a) * 2, seed + 3)
+				+ 0.14 * noise3(s * 2.2, 0.5, 0.5, seed + 7)
+			return r * lump * (0.7 + 0.3 * smoothstep(0, 0.04, s)) * (1 - 0.1 * t) * (1 - 0.55 * smoothstep(0.82, 1, t))
 		end
 	end,
 	-- three-strand braid: the union of three woven strands (alternating lobes, tight and neat)
@@ -1039,8 +1085,10 @@ Parts.SECTIONS = {
 	-- two-strand twist: a rope
 	twist = function(seed, period)
 		return function(t, a, s, r)
-			local taper = 1 - 0.3 * smoothstep(0.7, 1, t)
-			return Kit.Rope(a, s / period, r * 0.45 * taper, r * 0.58 * taper) * (0.8 + 0.2 * smoothstep(0, 0.04, s))
+			-- (the two strands unravel into a thinner, frayed end)
+			local taper = (1 - 0.3 * smoothstep(0.7, 1, t)) * (1 - 0.4 * smoothstep(0.88, 1, t))
+			local swell = 1 + 0.08 * noise3(s * 3, 0.5, 0.5, seed + 5)
+			return Kit.Rope(a, s / period, r * 0.45 * taper, r * 0.58 * taper) * (0.8 + 0.2 * smoothstep(0, 0.04, s)) * swell
 		end
 	end,
 }
@@ -1053,7 +1101,7 @@ function Parts.Tubes(H, spec)
 	local count = max(spec.minN or 3, floor((spec.n or 30) * (spec.lodK and spec.lodK[H.lod] or L.k) * (0.6 + 0.6 * H.density) * (H.nScale or 1) + 0.5))
 	local roots = Parts.Roots(H, count, spec.accept or function(_, _, _, _, c)
 		return smoothstep(0.4, 0.8, c)
-	end, (spec.seed or 0) + H.seed + 31, spec.rootJitter)
+	end, (spec.seed or 0) + H.seed + 31, spec.rootJitter, spec.rootsEven)
 	local out, pal = H.out, H.pal
 	local sides = spec.sides or L.tubeSides
 	local mat = { material = spec.material or "Plastic", castShadow = true }
@@ -1081,7 +1129,7 @@ function Parts.Tubes(H, spec)
 		local pts, leftAt = Kit.Grow(S, x, y, z, {
 			len = len, ds = clamp(len / 14, 0.015, 0.05), flow = spec.flow, lift = spec.lift or 0,
 			off = function(u)
-				return spec.off and spec.off(u, r) or (r0 * 0.9 + 0.008)
+				return spec.off and spec.off(u, r, r0) or (r0 * 0.9 + 0.008)
 			end, stick = spec.stick or 0.7, grav = spec.grav or 1, stiff = spec.stiff or 0.4, free = spec.free,
 			bodyOff = (spec.bodyOff or 0.02) + r0, dir = spec.dir and spec.dir(r) or nil,
 			jitter = spec.jitter and { amp = spec.jitter.amp, freq = spec.jitter.freq, seed = H.seed + 7 } or nil,
@@ -1115,7 +1163,7 @@ function Parts.Tubes(H, spec)
 				return rr * (0.8 + 0.2 * smoothstep(0, 0.05, s2)) * (1 - 0.2 * t)
 			end
 		elseif kind == "loc" then
-			sec = Parts.SECTIONS.loc(seed + floor(rnd * 997))
+			sec = Parts.SECTIONS.loc(seed + floor(rnd * 997), nil, ringsPer)
 		elseif kind == "boxbraid" then
 			sec = function(t, a, s2, rr)
 				-- thinner where it leaves its square parting, tapering into the sealed end
@@ -1130,8 +1178,12 @@ function Parts.Tubes(H, spec)
 		local frizz = spec.frizz or 0
 		local function colour(t, a, rr)
 			local cr, cg, cb = pal.at(rnd, t, x, nil, yAt(t), (1 - t) * plen)
-			-- crevices between lumps / braid lobes darker, the outer face lighter
+			-- crevices between lumps / braid lobes darker, the outer face lighter (a loc's pinches darker still:
+			-- its segments read even where the rings smooth them)
 			local k = shade * (0.78 + 0.32 * clamp(rr, 0.5, 1.25) - 0.08 * (1 - sin(a)) * 0.5)
+			if kind == "loc" then
+				k *= 0.86 + 0.24 * clamp(rr, 0.6, 1.2)
+			end
 			if frizz > 0 then
 				-- matted, frizzy surface: a light fuzz of uneven tone along and round the loc
 				k *= 1 + frizz * noise3(t * plen * 30, cos(a) * 1.5, sin(a) * 1.5, seed + floor(rnd * 97))
@@ -1361,7 +1413,7 @@ end
 -- as wires floating off it). spec: n (coils at full), vol (the volume SDF they sit in), accept, radius, tube,
 -- len, bounce(r) -> piece name, share / tris (budget)
 function Parts.CoilHalo(H, spec)
-	local S, L = H.S, H.L
+	local S, L, cut = H.S, H.L, H.cut
 	if H.lod == "low" then
 		return 0
 	end
@@ -1402,12 +1454,21 @@ function Parts.CoilHalo(H, spec)
 			local qx, qy, qz = S.onto(px, py, pz, 0)
 			local mx, my, mz = S.normal(qx, qy, qz)
 			local rad = rad0 * (0.75 + 0.5 * rng:Next())
+			-- (a coil that strays off its cluster's root past the hairline or into a fade sat on bare skin: a
+			-- detached squiggle on the nape)
+			local cq = cut.cov(qx, qy, qz)
+			if cq < 0.55 then
+				continue
+			end
 			local d = spec.vol and depthIn(spec.vol, qx, qy, qz, mx, my, mz, 0.7) or 0.02
 			-- sunk into the surface (half its radius by default): a bump of the coil clusters, not a wire on top
 			local sunk = d - rad * (spec.sink or 0.5)
 			local bx, by, bz = qx + mx * sunk, qy + my * sunk, qz + mz * sunk
 			local len = (spec.len or 0.026) * (0.7 + 0.6 * rng:Next()) * (0.85 + 0.3 * H.len)
-			local dx, dy, dz = norm3(mx + rng:Range(-0.35, 0.35), my + rng:Range(-0.25, 0.3), mz + rng:Range(-0.35, 0.35))
+			-- leaning over (spec.lean: how far from the normal toward the surface): a curl lying in its cluster, not
+			-- a spring standing off it
+			local lean = spec.lean or 0.35
+			local dx, dy, dz = norm3(mx + rng:Range(-lean, lean), my + rng:Range(-lean * 0.7, lean * 0.85), mz + rng:Range(-lean, lean))
 			local base = {}
 			for i = 0, 3 do
 				local u = i / 3
@@ -1706,7 +1767,9 @@ function Parts.Cornrows(H, spec)
 				pts[#pts + 1] = back[k]
 			end
 		end
-		if #pts >= 4 then
+		-- (an outer row that starts just inside the hair's side edge and leaves it after a few steps is no row:
+		-- built, it was a dark stub on the shaved temple above the ear)
+		if #pts >= 4 and Kit.Length(pts) > 0.3 then
 			local plen = Kit.Length(pts)
 			local r0 = spec.r * (0.9 + 0.2 * H.thick)
 			-- lifted half a radius off the scalp, the last ~0.07 studs at each end sinking into it (tucked)
