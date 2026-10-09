@@ -324,4 +324,68 @@ function FightMotion.ChooseFall(info: FallInfo): FallChoice
 	return choice
 end
 
+------------------------------------------------------------------------
+-- Special moves: the act "special|<id>|<hand>|<windup>|<power>" (hand and power optional). The Animator
+-- plays the set-up (pre seconds: a shoulder roll, a pull back, a bob and weave, a crouch...) and then
+-- throws the punch(es) listed here, each with the act's windup (a follow-up punch starts `after` x windup
+-- into the first and is thrown with `wk` x windup). A hand other than the default mirrors the move
+-- (a southpaw's check hook is thrown with the right hand). The server lands each punch at
+-- FightMotion.SpecialHits(id, windup)[i] seconds after it sets the act.
+------------------------------------------------------------------------
+export type SpecialPunch = { kind: string, hand: string?, after: number?, wk: number? }
+export type Special = { pre: number, hand: string, zone: string, punches: { SpecialPunch }, move: number?, label: string }
+-- (move = how far the root should travel forward over the set-up for the move to read fully, studs;
+-- negative = back. The Animator steps the feet in place; the server may move the root.)
+FightMotion.Specials = {
+	checkhook = { pre = 0.06, hand = "L", zone = "head", punches = { { kind = "leadhook" } }, move = 0, label = "Check hook" },
+	phillyshell = { pre = 0.3, hand = "R", zone = "head", punches = { { kind = "cross" } }, move = 0, label = "Philly shell counter" },
+	pullcounter = { pre = 0.28, hand = "R", zone = "head", punches = { { kind = "cross" } }, move = 0, label = "Pull counter" },
+	livershot = { pre = 0.14, hand = "L", zone = "body", punches = { { kind = "leadhook" } }, move = 0, label = "Liver shot" },
+	gazelle = { pre = 0.3, hand = "L", zone = "head", punches = { { kind = "leadhook" } }, move = 1.2, label = "Gazelle punch" },
+	peekaboo = { pre = 0.7, hand = "L", zone = "head", punches = { { kind = "leadhook" }, { kind = "rearhook", hand = "R", after = 0.85, wk = 0.9 } }, move = 1.5, label = "Peek-a-boo rush" },
+	stepback = { pre = 0.26, hand = "R", zone = "head", punches = { { kind = "cross" } }, move = -0.8, label = "Step-back counter" },
+	overhand = { pre = 0.12, hand = "R", zone = "head", punches = { { kind = "overhand" } }, move = 0, label = "Overhand right" },
+	leaduppercut = { pre = 0.12, hand = "L", zone = "head", punches = { { kind = "uppercut" } }, move = 0, label = "Lead uppercut" },
+} :: { [string]: Special }
+-- (older names of the same moves, accepted everywhere an id is)
+FightMotion.SpecialAlias = { phillycounter = "phillyshell", overhandright = "overhand" } :: { [string]: string }
+
+-- the canonical id of a special (aliases resolved), or nil for an unknown one
+function FightMotion.SpecialId(id: string?): string?
+	if type(id) ~= "string" then
+		return nil
+	end
+	id = FightMotion.SpecialAlias[id] or id
+	return FightMotion.Specials[id] and id or nil
+end
+
+-- the whole move's length (s after the act starts): the last punch's contact plus its recovery
+-- (the Animator drops the move then; the server should refuse the next act until about then)
+function FightMotion.SpecialDuration(id: string, windup: number): number
+	local sid = FightMotion.SpecialId(id)
+	if not sid then
+		return 0
+	end
+	local sp = FightMotion.Specials[sid]
+	windup = math.clamp(windup, 0.08, 0.9)
+	local last = sp.punches[#sp.punches]
+	return sp.pre + (last.after or 0) * windup + windup * (last.wk or 1) * 2.4 + (sid == "checkhook" and 1.1 or 0)
+end
+
+-- the contact times (s after the act starts) of a special's punches, in order; {} for an unknown id
+function FightMotion.SpecialHits(id: string, windup: number): { number }
+	local sid = FightMotion.SpecialId(id)
+	local out = {}
+	if not sid then
+		return out
+	end
+	local sp = FightMotion.Specials[sid]
+	windup = math.clamp(windup, 0.08, 0.9)
+	for _, pu in ipairs(sp.punches) do
+		local start = sp.pre + (pu.after or 0) * windup
+		table.insert(out, start + windup * (pu.wk or 1))
+	end
+	return out
+end
+
 return FightMotion

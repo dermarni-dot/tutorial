@@ -260,6 +260,15 @@ onAct = function(rig, s, now, predicted)
 		end
 		Fight.startPunch(rig, act, now)
 		return
+	elseif k == "special" then
+		-- a special move (special|<id>|<hand>|<windup>|<power>): AnimFight plays its set-up and throws its
+		-- punches on the FightMotion.Specials schedule; unknown ids are ignored
+		-- (a predicted special is matched to its server echo by its id)
+		if predicted then
+			rig.predKind, rig.predHand, rig.predT = k, f2, now
+		end
+		Fight.startSpecial(rig, f2, f3, f4, f5, now)
+		return
 	elseif k == "hit" or k == "hitbody" or k == "blockhit" then
 		act.sev = clamp(tonumber(f4) or 0.5, 0, 1.5)
 		act.dur = k == "blockhit" and 0.4 or 0.5 + 0.25 * act.sev
@@ -744,7 +753,10 @@ local function updateRig(rig, model, t, dt, lod, rdt)
 	Gym.runPending(rig, t)
 	if guard ~= "down" then
 		Fight.reactionTick(p, rig, t)
+		Fight.specialTick(p, rig, t)
 		Fight.punches(p, rig, t, near)
+	else
+		rig.special = nil
 	end
 	if rig.autoAct and not applyAct(p, rig, rig.autoAct, t) then
 		rig.autoAct = nil
@@ -797,7 +809,7 @@ local function updateRig(rig, model, t, dt, lod, rdt)
 	end
 	-- the gait's pelvis / shoulder motion and momentum, in step with the feet (after the filters)
 	if joints.Root then
-		local rx, ry, yawP, rollP, pitchP, wYaw, wPitch, wRoll, nYaw = Loco.bodyOffsets(rig, dt, t)
+		local rx, ry, yawP, rollP, pitchP, wYaw, wPitch, wRoll, nYaw, nPitch, nRoll = Loco.bodyOffsets(rig, dt, t)
 		local lo = rig.loco
 		local jo = lo.jumpOff
 		local jy = lo.jumpYaw
@@ -821,8 +833,8 @@ local function updateRig(rig, model, t, dt, lod, rdt)
 		else
 			rig.wOut = nil
 		end
-		if joints.Neck and nYaw ~= 0 then
-			rig.nOut = joints.Neck.cur * A(0, nYaw, 0)
+		if joints.Neck and (nYaw ~= 0 or nPitch ~= 0 or nRoll ~= 0) then
+			rig.nOut = joints.Neck.cur * A(nPitch, nYaw, nRoll)
 		else
 			rig.nOut = nil
 		end

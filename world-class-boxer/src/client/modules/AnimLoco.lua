@@ -68,6 +68,7 @@ function AnimLoco.init(rig)
 		offL = 0, offR = 0.5, swL = 0.4, swR = 0.4,
 		leanP = 0, leanPV = 0, leanR = 0, leanRV = 0, inP = 0, inPV = 0, drop = 0,
 		gaitW = 0, armPhase = 0, stride = 0, run = 0, jumpOff = nil, jumpYaw = 0,
+		turnL = 0, headP = 0, headPV = 0, headR = 0, headRV = 0,
 	}
 end
 
@@ -209,6 +210,8 @@ local function updateGait(rig, t, dt)
 	local dir = lo.lv.Magnitude > 1e-3 and lo.lv.Unit or V3(0, 0, -1)
 	if kind == "walk" then
 		local T, duty, run = walkParams(v, legLen)
+		-- (no two strides alike: the cadence drifts a few per cent, per walker)
+		T *= 1 + 0.035 * K.noise1(t * 0.55 + (rig.seed or 0) % 97, 3.3)
 		lo.T, lo.duty, lo.run = T, duty, run
 		lo.offL, lo.offR = 0, 0.5
 		lo.swL, lo.swR = 1 - duty, 1 - duty
@@ -234,7 +237,7 @@ local function updateGait(rig, t, dt)
 		end
 		-- step length per cycle grows with speed; the cycle shortens to a floor, then the steps grow
 		-- and the second foot leaves before the first lands (a gallop)
-		local S = clamp(0.3 + 0.19 * v, 0.45, 2.8)
+		local S = clamp((0.3 + 0.19 * v) * (rig.strideK or 1), 0.4, 2.8)
 		lo.T = clamp(S / max(v, 0.1), 0.25, 0.5)
 		lo.run = smooth((v - 6.5) / 4)
 		local sw = lerp(0.36, 0.44, lo.run)
@@ -304,21 +307,21 @@ function AnimLoco.bodyOffsets(rig, dt, t)
 			local legL = rig.geo.ok and rig.geo.legLen or 2.4
 			rootY = (lerp(bobA * c2, -bobA * c2 + bobA * 0.6, run) - 0.07 * legL * run) * w
 			-- sway over the stance leg
-			rootX = -lerp(0.07, 0.025, run) * amp * cos(2 * PI * (ph - midL)) * w
+			rootX = -lerp(0.075, 0.035, run) * amp * cos(2 * PI * (ph - midL)) * w
 			-- pelvis rotation (the swing leg's hip goes forward), shoulders counter-rotate
 			local c1 = cos(2 * PI * (ph - landL))
 			local pyA = lerp(0.09, 0.14, run) * amp
 			yawP = -pyA * c1 * w
 			wYaw = pyA * 1.7 * c1 * w
-			-- the swing side's hip drops a little (pelvic obliquity)
-			rollP += -lerp(0.04, 0.025, run) * cos(2 * PI * (ph - midL)) * w
+			-- the swing side's hip drops (pelvic obliquity: ~4 degrees, the stance hip takes the weight)
+			rollP += -lerp(0.065, 0.055, run) * cos(2 * PI * (ph - midL)) * w
 			-- the head stays level and on its line
 			nYaw = -(yawP + wYaw) * 0.85
 			lo.armPhase = ph - landL
 		else
 			-- footwork: a small rise on the push-off, settle on the landing; quicker / bouncier at speed
 			local up = sin(2 * PI * ph)
-			rootY = (0.035 + 0.02 * lo.run) * up * w * amp
+			rootY = (0.035 + 0.02 * lo.run) * up * w * amp * (rig.bobK or 1)
 			lo.armPhase = ph
 		end
 	end
@@ -329,7 +332,22 @@ function AnimLoco.bodyOffsets(rig, dt, t)
 			rootY -= 0.07 * K.attackDecay(el, 0.12, 0.45) * min(1, lo.stride / 1.2)
 		end
 	end
-	return rootX, rootY, yawP, rollP, pitchP, wYaw, wPitch, wRoll, nYaw
+	-- turning: the head leads into the turn, the chest follows, the hips lag behind (the feet step round
+	-- after them) - never the whole body turning as one block on the root
+	-- (only on his feet: a fall, a seat or keyed legs own the whole body)
+	local yr = kind and clamp(lo.yawRate, -4, 4) or 0
+	lo.turnL += (yr - lo.turnL) * (1 - exp(-dt * 10))
+	local tl = lo.turnL
+	nYaw += clamp(0.17 * tl, -0.5, 0.5)
+	wYaw += clamp(0.1 * tl, -0.3, 0.3)
+	yawP += clamp(-0.05 * tl, -0.15, 0.15)
+	-- the head keeps the eyes level: it counters the trunk's pitch and roll on a soft spring, so it trails
+	-- the body's bob and sway a beat late (overlapping action) instead of riding it rigidly
+	local tP = kind and -(pitchP + wPitch) * 0.5 or 0
+	local tR = kind and -(rollP + wRoll) * 0.65 or 0
+	lo.headP, lo.headPV = K.spring2(lo.headP, lo.headPV, tP, 7, 0.55, dt)
+	lo.headR, lo.headRV = K.spring2(lo.headR, lo.headRV, tR, 7, 0.5, dt)
+	return rootX, rootY, yawP, rollP, pitchP, wYaw, wPitch, wRoll, nYaw, lo.headP, lo.headR
 end
 
 -- arm swing for walking / running (outside the ring): writes the shoulders / elbows; k = blend
@@ -340,8 +358,16 @@ function AnimLoco.armSwing(p, rig, k)
 	end
 	local run = lo.run
 	local v = lo.speed
-	local c = cos(2 * PI * lo.armPhase)
-	local amp = lerp(0.32 + 0.03 * v, 0.5 + 0.01 * v, run)
+	-- (the arms trail the legs a little - they are swung by the trunk, not driven - and each forearm trails
+	-- its upper arm again: overlapping action, never the whole arm swinging as one stiff pendulum)
+	local ph = 2 * PI * (lo.armPhase - lerp(0.035, 0.015, run))
+	local c = cos(ph)
+	local ce = cos(ph - lerp(0.55, 0.3, run))
+	-- (no two people swing their arms alike: one arm a little bigger, per seed)
+	local seed = rig.seed or 0
+	local asym = (K.rand3(seed, 5.1, 2.7) - 0.5) * 0.18
+	-- (the swing grows with the pace: a stroll's arms hang quiet, a jog's pump, a sprint's drive)
+	local amp = lerp(0.22 + 0.04 * v, 0.5 + 0.01 * v, run)
 	local out = 0.07 + 0.12 * R.bulkOf(rig)
 	local el = lerp(0.3, 1.45, run)
 	-- runners drive the elbows back past the hip: the swing is centred a little behind
@@ -350,16 +376,17 @@ function AnimLoco.armSwing(p, rig, k)
 	-- the elbows back hard (the hand passes well behind the hip, the upper arm towards level)
 	local sprint = smooth((v - 12) / 8) * run
 	local back = 1 + 0.75 * sprint
-	local l = -amp * c
-	local r = amp * c
+	local l = -amp * (1 + asym) * c
+	local r = amp * (1 - asym) * c
 	l = l < 0 and l * back or l
 	r = r < 0 and r * back or r
+	local le, re = -amp * ce, amp * ce
 	-- the elbow closes as the hand comes forward (and across a touch), opens on the back swing
 	local inL, inR = max(0, l) * 0.15 * run, max(0, r) * 0.15 * run
 	p.LS = p.LS:Lerp(A(base + l, 0, -out + inL), k)
 	p.RS = p.RS:Lerp(A(base + r, 0, out - inR), k)
-	p.LE = p.LE:Lerp(A(el + max(0, l) * 0.4 - max(0, -l) * 0.35 * run, 0, 0), k)
-	p.RE = p.RE:Lerp(A(el + max(0, r) * 0.4 - max(0, -r) * 0.35 * run, 0, 0), k)
+	p.LE = p.LE:Lerp(A(el + max(0, le) * 0.45 - max(0, -le) * 0.35 * run, 0, 0), k)
+	p.RE = p.RE:Lerp(A(el + max(0, re) * 0.45 - max(0, -re) * 0.35 * run, 0, 0), k)
 end
 
 ------------------------------------------------------------------------

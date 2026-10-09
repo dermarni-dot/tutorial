@@ -416,7 +416,7 @@ function AnimRig.clearPose(rig)
 	p.rate = nil
 	p.override = false
 	rig.plant = false
-	rig.stepDist, rig.stepTime, rig.liftK = 0.45, 1, 1
+	rig.stepDist, rig.stepTime, rig.liftK, rig.strideK, rig.bobK = 0.45, 1, 1, 1, 1
 	for _, s in ipairs(SIDES) do
 		local f = rig.foot[s]
 		f.x, f.z, f.yaw, f.heel, f.lift, f.knee, f.pivot, f.free = 0, 0, 0, 0, 0, 0, 0, false

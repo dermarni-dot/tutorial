@@ -18,6 +18,14 @@ local L = require(script.Parent:WaitForChild("AnimLoco"))
 
 local AnimFight = {}
 
+-- (the special moves' timing is shared with the server: FightMotion.Specials / SpecialHits)
+local okFM, FightMotion = pcall(function()
+	return require(game:GetService("ReplicatedStorage"):WaitForChild("Shared"):WaitForChild("FightMotion"))
+end)
+if not okFM or type(FightMotion) ~= "table" then
+	FightMotion = {}
+end
+
 local A = CFrame.Angles
 local CF = CFrame.new
 local I = CFrame.identity
@@ -49,28 +57,28 @@ local STYLE = {
 		depth = 0.3, stagger = 1.45, wk = 0.82, yawL = -0.22, yawR = -0.78, heel = 0.14, hip = -0.3, wyaw = -0.08,
 		lean = -0.05, tuck = -0.15, leadT = { -0.42, 0.95, -1.12 }, rearT = { 0.38, 1.05, -0.68 },
 		bounce = { 0.075, 1.75, 0.1 }, shift = { 0.1, 0.34 }, head = { 0.08, 0.55, 0, 0.05 },
-		hands = { 0.12, 0.05, 0.6 }, feet = { 0.9, 0.14, 0 }, roll = 0, fidget = { 4, 7 },
+		hands = { 0.12, 0.05, 0.6 }, feet = { 0.9, 0.14, 0 }, roll = 0, fidget = { 4, 7 }, gait = { 1, 1, 0.6 },
 		likes = { tap = 1, roll = 1, feint = 2, pump = 1, neck = 1, adjust = 1 },
 	},
 	OutBoxer = {
 		depth = 0.2, stagger = 1.6, wk = 0.8, yawL = -0.15, yawR = -0.85, heel = 0.14, hip = -0.4, wyaw = -0.1,
 		lean = 0.0, tuck = -0.08, leadT = { -0.5, 0.18, -1.5 }, rearT = { 0.36, 1.0, -0.72 },
-		bounce = { 0.1, 2.25, 0.08 }, shift = { 0.05, 0.45 }, head = { 0.05, 0.8, 0, 0.05 },
-		hands = { 0.3, 0.08, 0.9 }, feet = { 1.9, 0.2, 0 }, roll = 0, fidget = { 3, 6 },
+		bounce = { 0.21, 2.35, 0.14 }, shift = { 0.05, 0.45 }, head = { 0.06, 0.8, 0, 0.06 },
+		hands = { 0.3, 0.13, 1.0 }, feet = { 2.4, 0.22, 0 }, roll = 0, fidget = { 3, 6 }, rock = { 0.07, 0.02 }, gait = { 0.85, 1.35, 0.7 },
 		likes = { pump = 3, feint = 2, shake = 1, bounce2 = 2, tap = 1 },
 	},
 	Swarmer = {
 		depth = 0.5, stagger = 1.25, wk = 0.9, yawL = -0.3, yawR = -0.6, heel = 0.12, hip = -0.18, wyaw = -0.04,
 		lean = -0.24, tuck = -0.32, leadT = { -0.25, 1.32, -0.94 }, rearT = { 0.27, 1.3, -0.88 },
-		bounce = { 0.035, 1.6, 0.06 }, shift = { 0.06, 0.4 }, head = { 0.07, 0.7, 0.26, 0.05 },
-		hands = { 0.06, 0.04, 0.8 }, feet = { 1.1, 0.16, 1 }, roll = 0, fidget = { 3, 6 }, elbows = -0.12,
+		bounce = { 0.045, 1.6, 0.08 }, shift = { 0.06, 0.4 }, head = { 0.07, 0.7, 0.26, 0.05 },
+		hands = { 0.06, 0.05, 0.8 }, feet = { 1.3, 0.16, 1 }, roll = 0, fidget = { 3, 6 }, elbows = -0.12, rock = { 0.02, 0.06 }, gait = { 0.78, 0.9, 0.55 },
 		likes = { tap = 3, feint = 1, neck = 1, adjust = 1 },
 	},
 	Slugger = {
 		depth = 0.45, stagger = 1.5, wk = 0.92, yawL = -0.25, yawR = -0.8, heel = 0.05, hip = -0.3, wyaw = -0.06,
 		lean = -0.08, tuck = -0.2, leadT = { -0.44, 0.92, -1.08 }, rearT = { 0.5, 1.25, -0.5 },
-		bounce = { 0.075, 1.35, 0.05 }, shift = { 0.21, 0.42 }, head = { 0.12, 0.7, 0, 0.06 },
-		hands = { 0.05, 0.07, 0.45 }, feet = { 0.45, 0.14, 0 }, roll = 0.7, fidget = { 3, 6 },
+		bounce = { 0.065, 1.15, 0.035 }, shift = { 0.25, 0.32 }, head = { 0.14, 0.65, 0, 0.07 },
+		hands = { 0.05, 0.08, 0.4 }, feet = { 0.45, 0.14, 0 }, roll = 0.8, fidget = { 3, 6 }, sink = 0.5, gait = { 1.2, 1.45, 0.45 },
 		likes = { roll = 3, tap = 2, neck = 2, breath = 2, adjust = 1 },
 	},
 	CounterPuncher = {
@@ -78,7 +86,7 @@ local STYLE = {
 		lean = -0.03, tuck = -0.24, leadT = { -0.05, 0.12, -0.88 }, rearT = { 0.32, 1.15, -0.62 },
 		bounce = { 0.045, 1.4, 0.06 }, shift = { 0.07, 0.3 }, head = { 0.09, 0.85, 0, 0.09 },
 		hands = { 0.05, 0.05, 0.5 }, feet = { 0.6, 0.12, 0 }, roll = 1, fidget = { 4, 7 },
-		micro = { 0.5, 1.1, 0.2 }, raise = 0.12,
+		micro = { 0.5, 1.1, 0.2 }, raise = 0.12, gait = { 0.95, 0.8, 0.55 },
 		likes = { roll = 2, feint = 2, neck = 1, adjust = 1 },
 	},
 }
@@ -189,19 +197,24 @@ local function gloveRoom(rig, p, gl, gr, dt)
 			local over = 0
 			local away = Vector3.zero
 			local dy = 0
+			-- (away from both of his gloves at once, each by how deep it sits: sliding off one must not
+			-- push it into the other)
 			for _, os in ipairs(R.SIDES) do
 				local theirs = gc["o" .. os]
 				if theirs and theirs.Parent and not (opp.pun and opp.pun[os]) then
 					local d = c - theirs.Position
 					local o = rm + gloveRadius(theirs) - d.Magnitude
-					if o > over and d.Magnitude > 1e-3 then
-						over = o
-						away = tcf:VectorToObjectSpace(d.Unit)
-						dy = d.Y
+					if o > 0 and d.Magnitude > 1e-3 then
+						away += tcf:VectorToObjectSpace(d.Unit) * o
+						if o > over then
+							over = o
+							dy = d.Y
+						end
 					end
 				end
 			end
-			if over > 0 then
+			if over > 0 and away.Magnitude > 1e-3 then
+				away = away.Unit
 				-- (they slide off each other, away from his glove - but never towards its own head: that
 				-- part of the way is taken out, so a glove pushed straight back slides off to the side or
 				-- under instead)
@@ -228,7 +241,10 @@ local function gloveRoom(rig, p, gl, gr, dt)
 				if away.Magnitude < 0.2 then
 					away = V3(0, under and -1 or 1, 0)
 				end
-				want = away.Unit * min(over, GLOVE_GIVE)
+				-- (jammed in close - two crouching swarmers with their heads a stud and a half apart - the
+				-- gloves give further: the lower one tucks right down to the chest, the higher one rides over)
+				local give = GLOVE_GIVE + 0.9 * smooth((over - 0.3) / 0.5)
+				want = away.Unit * min(over, give)
 			end
 		end
 		local cur = room[s]:Lerp(want, k)
@@ -258,17 +274,32 @@ function AnimFight.stance(p, rig, t, dt)
 	local tempo = P.tempo * (0.8 + 0.2 * stam)
 	-- the bounce on the balls of the feet: slower, lower and flatter-footed when tired or heavy
 	local bH, bF, bHeel = st.bounce[1], st.bounce[2], st.bounce[3]
-	rig.bouncePhase += dt * bF * tempo
+	-- (the rhythm drifts - a little quicker, a little slower, a bigger bounce now and then - so no two
+	-- seconds of the stance repeat)
+	local drift = noise(t * 0.23 + 5, ns + 21)
+	rig.bouncePhase += dt * bF * tempo * (1 + 0.12 * drift)
 	local bp = rig.bouncePhase
-	local bw = (0.35 + 0.65 * stam) * (1 - 0.6 * mv) * amp
+	local bw = (0.35 + 0.65 * stam) * (1 - 0.6 * mv) * amp * (1 + 0.25 * noise(t * 0.31 + 2, ns + 22))
 	-- not a pure sine: quick push up, softer landing (a real bounce spends longer low)
 	local b01 = 0.5 - 0.5 * cos(2 * PI * bp)
 	local bounce = (b01 ^ 1.6) * bH * bw
-	-- layered life: weight shift (front / back and side to side), sway, breathing
-	local sh = st.shift[1] * amp
+	-- layered life: weight shift (front / back and side to side), sway, breathing; a punch's own weight
+	-- transfer takes over from the idle shifting while it is out (eased: no pop when it starts)
+	rig.punW = (rig.punW or 0) + (((rig.pun.L or rig.pun.R) and 1 or 0) - (rig.punW or 0)) * (1 - exp(-dt * 10))
+	local quiet = 1 - 0.85 * rig.punW
+	local sh = st.shift[1] * amp * quiet
 	local sf = st.shift[2] * tempo
 	local wx = wander(t, sf, ns) * sh
 	local wz = (wander(t, sf * 0.8, ns + 1) * 0.6 + P.weight * 0.25) * sh
+	-- the rhythm's weight transfer: the out-boxer rocks from foot to foot on alternate bounces, the
+	-- swarmer rocks in and out (pressure: always inching forward), in step with the bounce
+	local rk = st.rock
+	if rk then
+		-- (quieter while a punch is out: the punch's own weight shift takes over)
+		local rw = (1 - 0.7 * mv) * amp * quiet
+		wx += sin(PI * bp) * rk[1] * rw
+		wz += -sin(2 * PI * bp - 0.6) * rk[2] * rw
+	end
 	-- breathing: faster and deeper as the tank empties, the shoulders heave
 	rig.breathPhase += dt * (0.27 + 0.6 * tired) * (P.tempo * 0.5 + 0.5)
 	local br = K.breath(rig.breathPhase) * (0.016 + 0.055 * tired)
@@ -289,11 +320,25 @@ function AnimFight.stance(p, rig, t, dt)
 	-- the counter puncher's shoulder roll (Philly shell rhythm)
 	local sroll = st.roll * 0.07 * sin(t * 1.3 * tempo + ns) * amp
 	local depth = st.depth * P.stance + 0.08 * tired + 0.05 * gut
+	-- a heavy man settles into each weight shift: the knees give as the weight comes over a leg
+	if st.sink then
+		depth += st.sink * abs(wx) * (1 - 0.6 * mv) * quiet
+	end
+	-- jammed inside (the other man's hips under 4.3 studs): the crouch straightens a touch and the gloves
+	-- tuck in to the cheekbones - a tight shell, not two guards fighting for the same air
+	local jam = 0
+	local opp = rig.oppRig
+	if opp and opp.root and opp.root.Parent and rig.root then
+		local dd = opp.root.Position - rig.root.Position
+		jam = clamp((4.3 - sqrt(dd.X * dd.X + dd.Z * dd.Z)) / 0.9, 0, 1)
+	end
+	rig.jam = jam
+	local lean = st.lean * (1 - 0.5 * jam)
 	-- hips: bladed, leaning into the direction of travel (AnimLoco adds momentum after the filters)
 	local lv = lo.lv
 	p.Root = CF(wx + wvx + slip * 0.6, -(depth + wvd) + bounce, wz)
-		* A(st.lean * 0.3 + P.lean * 0.3 + lv.Z * 0.008, st.hip, -lv.X * 0.008 - (wx + wvx) * 0.35)
-	p.W = A(st.lean + P.lean - 0.14 * gut + br - 0.02 * mv, st.wyaw + sroll * 0.5 + hx * 0.4, (wvx + slip) * 0.45 + sroll + hx * 0.3 - (st.raise or 0))
+		* A(lean * 0.3 + P.lean * 0.3 + lv.Z * 0.008, st.hip, -lv.X * 0.008 - (wx + wvx) * 0.35)
+	p.W = A(lean + P.lean - 0.14 * gut + br - 0.02 * mv, st.wyaw + sroll * 0.5 + hx * 0.4, (wvx + slip) * 0.45 + sroll + hx * 0.3 - (st.raise or 0))
 	p.Neck = A(st.tuck + P.chin - br * 0.5 + 0.08 * gut + hy, -(st.hip + st.wyaw) * 0.85 - hx * 0.6, -(wvx + slip) * 0.35 - sroll + hx * 0.4 + (st.raise or 0) * 0.8)
 	-- the counter puncher's head never stops: small discrete slips and dips every second or so
 	AnimFight.microSlips(p, rig, st, t, mv)
@@ -304,12 +349,17 @@ function AnimFight.stance(p, rig, t, dt)
 	local hf = hl[3] * tempo
 	local sinkY, sinkZ = 0.45 * tired - br * 0.4, 0.2 * tired
 	local gl, gr = rig.gl, rig.gr
+	-- (inside, a glove held out long - the out-boxer's pawing lead - comes back to the cheekbone: sinkZ is a
+	-- tired drift forward, the jam the other way. Only by the room it has: a guard already at the face, a
+	-- crouching swarmer's, stays where it is - pulled back further it would sit inside his own head)
+	local tuckL = min(0.22, max(0, -lt[3] - 1.05) * 0.6) * jam
+	local tuckR = min(0.22, max(0, -rt[3] - 1.05) * 0.6) * jam
 	gl[1] = lt[1] + P.guardX * -1 + noise(t * hf + 31, ns + 5) * hl[2] * life
-	gl[2] = lt[2] + P.guardY - sinkY + noise(t * hf * 1.2 + 37, ns + 6) * hl[2] * life + bounce * 0.6
-	gl[3] = lt[3] + sinkZ + noise(t * hf * 0.9 + 41, ns + 7) * hl[2] * life * 0.6
+	gl[2] = lt[2] + P.guardY - sinkY + tuckL * 0.35 + noise(t * hf * 1.2 + 37, ns + 6) * hl[2] * life + bounce * 0.6
+	gl[3] = lt[3] + sinkZ + tuckL + noise(t * hf * 0.9 + 41, ns + 7) * hl[2] * life * 0.6
 	gr[1] = rt[1] + P.guardX + sroll * 0.5 + noise(t * hf * 1.1 + 43, ns + 8) * hl[2] * life * 0.7
-	gr[2] = rt[2] + P.guardY - sinkY - 0.25 * gut + noise(t * hf * 0.95 + 47, ns + 9) * hl[2] * life * 0.7 + bounce * 0.5
-	gr[3] = rt[3] + sinkZ + noise(t * hf + 53, ns + 10) * hl[2] * life * 0.4
+	gr[2] = rt[2] + P.guardY - sinkY - 0.25 * gut + tuckR * 0.35 + noise(t * hf * 0.95 + 47, ns + 9) * hl[2] * life * 0.7 + bounce * 0.5
+	gr[3] = rt[3] + sinkZ + tuckR + noise(t * hf + 53, ns + 10) * hl[2] * life * 0.4
 	-- the out-boxer's pawing lead: measured little extensions ("range finding")
 	if hl[1] > 0.08 and mv < 0.6 then
 		local pw = noise(t * 0.9 * tempo + 61, ns + 11)
@@ -344,7 +394,12 @@ function AnimFight.stance(p, rig, t, dt)
 	-- (light on the balls of the feet, not on tiptoe: the rear heel a touch higher; AnimRig.plant caps both)
 	plant(rig, st.stagger * P.stance, width, st.yawL, st.yawR, st.heel * 0.7 + up, st.heel * 1.1 + up)
 	rig.stepDist = 0.3 -- boxers reset their feet constantly
-	rig.liftK = 0.6 -- and keep them close to the canvas
+	-- the style's footwork: the out-boxer's quick light steps, the slugger's long heavy ones (a deeper
+	-- landing), the swarmer's short choppy pressure steps; all keep the feet close to the canvas
+	local gt = st.gait
+	rig.liftK = gt and gt[3] or 0.6
+	rig.strideK = gt and gt[1] or 1
+	rig.bobK = gt and gt[2] or 1
 	-- restless feet / pressure steps while standing (the gait takes over when moving)
 	AnimFight.restlessFeet(rig, st, t, mv)
 	-- legs shaking after a heavy shot
@@ -352,6 +407,8 @@ function AnimFight.stance(p, rig, t, dt)
 		local k = (rig.shakeUntil - t) / 1.2
 		local s = clamp(k, 0, 1) * rig.shakeAmt
 		p.Root = CF(sin(t * 31) * 0.025 * s, -0.08 * s - abs(sin(t * 23)) * 0.04 * s, 0) * p.Root * A(0, 0, sin(t * 17) * 0.05 * s)
+		-- (and the balance goes: the trunk sways over the legs, slow and uneven)
+		p.W = p.W * A(0.05 * s * sin(t * 4.3 + 1), 0, 0.1 * s * noise(t * 2.6, P.ns + 90))
 		rig.foot.L.knee += sin(t * 27) * 0.18 * s
 		rig.foot.R.knee += sin(t * 29 + 1) * 0.18 * s
 	end
@@ -599,7 +656,7 @@ end
 -- the fist's shape; reach = share of the full extension; wrist = corkscrew; low = aim lower
 local PUNCH = {
 	jab = { hand = "L", path = "straight", hip = -0.08, sho = -0.28, fwd = 0.2, side = -0.03, dip = 0.03, lean = -0.05, roll = 0.07,
-		load = 0.12, aHip = 0.02, aSho = 0.02, aDip = 0, aLean = 0, tHip = 0, tSho = 0.08, tArm = 0.2, pow = 1.9, rec = 0.92,
+		load = 0.12, aHip = 0.02, aSho = 0.02, aDip = 0, aLean = 0, tHip = 0, tSho = 0.08, tArm = 0.2, pow = 1.9, rec = 0.82, follow = 0.4,
 		heelL = 0.14, wrist = 1.25, rise = 0.05, reach = 1, nx = 0.06,
 		variants = {
 			{ w = 3, name = "snap" },
@@ -607,8 +664,8 @@ local PUNCH = {
 			{ w = 1.4, name = "paw", reach = 0.82, sho = -0.12, hip = -0.03, rec = 0.72, pow = 1.25, low = 0.18 },
 			{ w = 1.4, name = "long", lean = -0.13, fwd = 0.26, sho = -0.3, dip = 0.08, reach = 1.06 },
 		} },
-	cross = { hand = "R", path = "straight", hip = 0.52, sho = 0.42, fwd = 0.36, side = -0.08, dip = 0.07, lean = -0.12, roll = -0.1,
-		load = 0.22, aHip = 0.07, aSho = 0.05, aDip = 0.03, aLean = 0.03, tHip = 0, tSho = 0.16, tArm = 0.3, pow = 2.1, rec = 1.0,
+	cross = { hand = "R", path = "straight", hip = 0.52, sho = 0.42, fwd = 0.36, side = -0.14, dip = 0.08, lean = -0.12, roll = -0.1,
+		load = 0.22, aHip = 0.07, aSho = 0.05, aDip = 0.03, aLean = 0.03, tHip = 0, tSho = 0.22, tArm = 0.3, pow = 2.1, rec = 1.05, follow = 1,
 		pivot = "R", pivotAmt = 0.62, heelR = 0.55, kneeR = 0.25, wrist = 1.2, rise = 0.04, reach = 1, nx = -0.1,
 		variants = {
 			{ w = 3, name = "standard" },
@@ -621,7 +678,7 @@ local PUNCH = {
 	-- hooks: the whole body turns (hips, then shoulders past them) on the pivoting lead / rear foot, the
 	-- weight goes onto that leg; the arm comes late and fast
 	leadhook = { hand = "L", path = "hook", hip = -0.6, sho = -0.45, fwd = 0.08, side = 0.16, dip = 0.12, lean = -0.04, roll = 0.16,
-		load = 0.3, aHip = 0.3, aSho = 0.22, aDip = 0.06, aLean = 0, tHip = 0.12, tSho = 0.2, tArm = 0.38, pow = 2.6, rec = 1.0,
+		load = 0.3, aHip = 0.25, aSho = 0.18, aDip = 0.08, aLean = 0, tHip = 0.12, tSho = 0.3, tArm = 0.38, pow = 2.6, rec = 1.1, follow = 1.4, hipLead = 0,
 		elbowT = 0.05, pivot = "L", pivotAmt = 1.0, heelL = 0.6, kneeL = 0.35, wrist = 0.15, arc = 0.6, reach = 0.97, nx = 0.08,
 		variants = {
 			{ w = 3, name = "tight", arc = 0.45 },
@@ -629,7 +686,7 @@ local PUNCH = {
 			{ w = 1.0, name = "check", hip = -0.62, sho = -0.42, aHip = 0.18, aSho = 0.12, stepR = { 0.45, 0.3 } },
 		} },
 	rearhook = { hand = "R", path = "hook", hip = 0.66, sho = 0.5, fwd = 0.12, side = -0.16, dip = 0.12, lean = -0.04, roll = -0.16,
-		load = 0.26, aHip = 0.16, aSho = 0.1, aDip = 0.05, aLean = 0, tHip = 0.06, tSho = 0.16, tArm = 0.4, pow = 2.3, rec = 1.0,
+		load = 0.26, aHip = 0.16, aSho = 0.1, aDip = 0.05, aLean = 0, tHip = 0.04, tSho = 0.26, tArm = 0.4, pow = 2.3, rec = 1.15, follow = 1.2,
 		elbowT = 0.05, pivot = "R", pivotAmt = 1.05, heelR = 0.65, kneeR = 0.35, wrist = -0.15, arc = 0.6, reach = 0.97, nx = -0.1,
 		variants = {
 			{ w = 3, name = "tight", arc = 0.45 },
@@ -638,7 +695,7 @@ local PUNCH = {
 	-- the uppercut: a real dip (the knees load), then the legs drive the hips up into the punch onto the
 	-- ball of the rear foot
 	uppercut = { hand = "R", path = "upper", hip = 0.32, sho = 0.2, fwd = 0.1, side = -0.04, dip = -0.12, lean = 0.06, roll = -0.06,
-		load = 0.36, aHip = 0.08, aSho = 0.05, aDip = 0.75, aLean = -0.06, tHip = 0.1, tSho = 0.24, tArm = 0.4, pow = 2.4, rec = 1.0,
+		load = 0.36, aHip = 0.08, aSho = 0.05, aDip = 0.75, aLean = -0.06, tHip = 0.1, tSho = 0.3, tArm = 0.4, pow = 2.4, rec = 1.15, follow = 1.2,
 		pivot = "R", pivotAmt = 0.45, heelR = 0.6, kneeR = 0.22, rise = true, wrist = 0, reach = 0.94, nx = -0.05,
 		variants = {
 			{ w = 2, name = "short", aDip = 0.62, dip = -0.1 },
@@ -647,7 +704,7 @@ local PUNCH = {
 	-- the overhand: down and off the line in the load (under the jab), then the rear shoulder rolls up
 	-- and over and the fist comes down on top, the weight going down and forward through it
 	overhand = { hand = "R", path = "over", hip = 0.5, sho = 0.44, fwd = 0.34, side = -0.34, dip = 0.12, lean = -0.14, roll = -0.24,
-		load = 0.3, aHip = 0.08, aSho = 0.04, aDip = 0.2, aLean = 0.05, tHip = 0, tSho = 0.14, tArm = 0.38, pow = 2.4, rec = 1.05,
+		load = 0.3, aHip = 0.08, aSho = 0.04, aDip = 0.2, aLean = 0.05, tHip = 0, tSho = 0.22, tArm = 0.38, pow = 2.4, rec = 1.3, follow = 0.45,
 		pivot = "R", pivotAmt = 0.6, heelR = 0.6, kneeR = 0.3, wrist = 1.0, reach = 1, nx = -0.34,
 		variants = {
 			{ w = 2, name = "looping" },
@@ -700,9 +757,18 @@ local function pickVariant(rig, def, kind, comboPos)
 end
 
 -- merged parameters for one punch (allocates once per punch, never per frame)
-local function punchParams(rig, kind, comboPos)
+local function punchParams(rig, kind, comboPos, force, over)
 	local def = PUNCH[kind] or PUNCH.cross
-	local v = pickVariant(rig, def, kind, comboPos)
+	local v
+	if force and def.variants then
+		-- (a special move asks for its variant by name)
+		for _, cand in ipairs(def.variants) do
+			if cand.name == force then
+				v = cand
+			end
+		end
+	end
+	v = v or pickVariant(rig, def, kind, comboPos)
 	local prm = table.clone(def)
 	prm.variants = nil
 	if v then
@@ -710,6 +776,11 @@ local function punchParams(rig, kind, comboPos)
 			if k ~= "w" then
 				prm[k] = val
 			end
+		end
+	end
+	if over then
+		for k, val in pairs(over) do
+			prm[k] = val
 		end
 	end
 	-- a little life in every repetition: never the same punch twice
@@ -738,7 +809,7 @@ function AnimFight.startPunch(rig, act, t)
 		kind = hand == "L" and "leadhook" or "rearhook"
 	end
 	act.pkind = kind
-	act.prm = punchParams(rig, kind, comboPos)
+	act.prm = punchParams(rig, kind, comboPos, act.variant, act.over)
 	if kind == "uppercut" then
 		act.prm.mirror = hand == "L" and -1 or 1
 	else
@@ -927,7 +998,7 @@ local function hookPos(rig, p, act, P0, P3, u, eT, armK, inward, body, sc, throu
 	local an, r = a0 + da * armK, r0 + (r3 - r0) * armK
 	local pr = V3(px + sin(an) * r, c.Y + (p3.Y - c.Y) * armK, pz - cos(an) * r)
 	if through > 0 then
-		pr += V3(inward * 0.075, 0, -0.03) * through
+		pr += V3(inward * 0.16, 0, -0.03) * through
 	end
 	-- (and on its way never close by its own shoulder: a hand coming across from the far side of the belly
 	-- would pass in front of the joint, whipping the arm round it faster than it turns - it goes round it
@@ -1226,7 +1297,23 @@ local function fitPunch(rig, p, act, body, near, gain, drop)
 end
 
 -- evaluate one punch layer; returns false when finished
-local LATE = 1 / smooth(0.8)
+-- the hips have finished their turn this long before contact (s): they brake and the trunk whips on
+-- past them, the shoulders' top speed comes ~40-60 ms after the hips'
+local HIP_LEAD = 0.06
+-- the most the shoulders turn on past contact (share of the punch's turn; PUNCH.follow scales it)
+local FOLLOW_MAX = 0.12
+-- (over this long past contact, s: the trunk brakes, it does not stop dead on the target)
+local FOLLOW_T = 0.09
+-- the shoulders' drive: a whip, not a smoothstep - slow out of the stretch, the top speed late (two
+-- thirds of the way in), still over half of it at contact, where the hold brakes it (a quartic ease:
+-- velocity ~ x^2 (1 - x)); a smoothstep turned the chest at one steady speed through the middle of a
+-- long drive
+local function whipK(x)
+	x = clamp(x, 0, 1)
+	return x * x * x * (4 - 3 * x)
+end
+local SHO_CUT = 0.9
+local SHO_NORM = 1 / whipK(SHO_CUT)
 local RET_SPEED = 9 -- studs/s, the fastest average a fist comes home at
 local SWIVEL_RATE = 14 -- rad/s, the fastest the elbow turns round the arm's line in a punch
 -- the fist's speed at contact the arm's drive is timed for (studs/s), per path
@@ -1246,7 +1333,9 @@ local function evalPunch(p, rig, act, t, near, driveBody)
 	local hold = 0.045
 	-- (the recovery: the punch's own time, or longer for a long way home - a fist never flies back
 	-- faster than RET_SPEED on average; set at contact, act.recDur)
-	local rec = act.recDur or w * prm.rec
+	-- (power shots take longer to come home: the body has further to unwind)
+	local recK = 0.85 + 0.3 * clamp(act.power or 0.6, 0, 1.5)
+	local rec = act.recDur or w * prm.rec * recK
 	if el >= w + hold + rec then
 		return false
 	end
@@ -1255,17 +1344,32 @@ local function evalPunch(p, rig, act, t, near, driveBody)
 	local mirror = prm.mirror
 	local anti, hipK, shoK, armK, retK = 0, 1, 1, 0, 0
 	local contact = false
+	-- (the shoulders' follow-through past contact: how far they carry on turning, a share of the turn)
+	local ov = act.follow or 0
 	if el < w then
 		anti = K.bump(u, 0, prm.load * 2)
-		-- hips, then shoulders, then the arm: the trunk is still turning at contact (~2/3 of its top
-		-- speed) while the arm accelerates all the way into the target
-		hipK = smooth(0.8 * (u - prm.tHip) / (1 - prm.tHip)) * LATE
-		shoK = smooth(0.8 * (u - prm.tSho) / (1 - prm.tSho)) * LATE
+		-- the kinetic chain: the hips turn first and have braked HIP_LEAD before contact (handing the
+		-- turn on to the trunk), the shoulders peak after them and are still turning at contact (~2/3 of
+		-- their top speed), the arm accelerates all the way into the target
+		local th = prm.tHip * w
+		hipK = smooth((el - th) / max(0.04, w - min(prm.hipLead or HIP_LEAD, w * 0.3) - th))
+		shoK = whipK(SHO_CUT * (u - prm.tSho) / (1 - prm.tSho)) * SHO_NORM
 		local ta = act.tArm or prm.tArm
 		armK = act.pow and evenDrive((u - ta) / (1 - ta), act.pow) or K.drive((u - ta) / (1 - ta), prm.pow)
+		-- the shoulders' turn speed at contact (shoK per second) carries them on through it
+		if not act.follow then
+			act.follow = 0
+		end
+		act.shoV = 12 * SHO_CUT * SHO_CUT * (1 - SHO_CUT) * SHO_NORM * SHO_CUT / max(0.05, (1 - prm.tSho) * w)
 	elseif el < w + hold then
 		armK = 1
 		contact = true
+		-- (follow-through: the shoulders brake to a stop over the contact hold instead of dead on the
+		-- target; bigger punches carry further)
+		local v0 = act.shoV or 0
+		ov = min(FOLLOW_MAX * (prm.follow or 1), v0 * FOLLOW_T * 0.5)
+		act.follow = ov
+		shoK = 1 + ov * (1 - (1 - (el - w) / FOLLOW_T) ^ 2)
 		if not act.impacted then
 			act.impacted = true
 			local BodyFX = R.FX.BodyFX
@@ -1281,7 +1385,9 @@ local function evalPunch(p, rig, act, t, near, driveBody)
 		armK = 1
 		-- (quintic: a long lunge comes back with no lurch as it settles into the stance)
 		hipK = 1 - K.smoother((r - 0.12) / 0.88)
-		shoK = 1 - smooth((r - 0.05) / 0.9)
+		-- (the shoulders finish their follow-through, braking over FOLLOW_T past contact, then come back)
+		local x = min(1, (el - w) / FOLLOW_T)
+		shoK = (1 + ov * (1 - (1 - x) ^ 2)) * (1 - smooth((r - 0.12) / 0.88))
 	end
 	local pw = (0.8 + 0.4 * clamp(act.power or 0.6, 0, 1.5)) * (0.85 + 0.15 * clamp(num(rig.a.Stam, 1), 0, 1))
 	local body = act.zone == "body"
@@ -1323,10 +1429,29 @@ local function evalPunch(p, rig, act, t, near, driveBody)
 		rk *= act.turnK
 		-- (the anticipation turns the other way first: the load before the drive)
 		local hD, sD = prm.hip * mirror, prm.sho * mirror
-		local hip = hD * pw * rk * hipK + bf.hip * fh - prm.aHip * (hD >= 0 and 1 or -1) * anti
-		local sho = sD * pw * rk * shoK + bf.sho * fs - prm.aSho * (sD >= 0 and 1 or -1) * anti
-		local lean = (prm.lean + leanExtra) * pw * shoK + bf.lean * fs + prm.aLean * anti
-		local roll = (prm.roll * mirror * pw + (body and prm.path == "hook" and (L_ and 0.12 or -0.12) or 0)) * shoK + bf.roll * fs
+		-- (a harder punch loads more: the counter-turn and the knees' dip grow with its power)
+		-- (the hips come out of it first)
+		-- (and the load has unwound by the time the trunk is at full speed: its unwinding never pads
+		-- the drive's middle out into one steady sweep)
+		local la = (el < w and K.bump(u, 0, min(prm.load * 1.7, 0.4)) or 0) * (0.75 + 0.5 * clamp(act.power or 0.6, 0, 1.5))
+		-- (the knees' dip and the lean keep the wide, gentle bump: a dip that unwound as sharply as the
+		-- counter-turn would whip the whole body - and the fist with it - up out of the load: a visible
+		-- pop, and the knee past 35 rad/s on a deep uppercut)
+		local hip = hD * pw * rk * hipK + bf.hip * fh - prm.aHip * (hD >= 0 and 1 or -1) * la
+		-- (shoK is the shoulders' turn in the world; the waist carries what the hips have not: early in the
+		-- drive the hips are ahead and the shoulders stay back - the stretch across the trunk - then the
+		-- trunk whips past them, so the chest's top turning speed comes after the pelvis's)
+		local shoR = shoK
+		if el < w and abs(sD) > 0.05 then
+			shoR = clamp(((hD + sD) * shoK - hD * hipK) / sD, -0.6, 1.5)
+		end
+		-- (the shoulders' load unwinds a beat after the hips': the hips lead out of the counter-turn too)
+		local laS = el < w and K.bump(u, 0, min(prm.load * 2 + 0.12, 0.5)) * (0.75 + 0.5 * clamp(act.power or 0.6, 0, 1.5)) or 0
+		local sho = sD * pw * rk * shoR + bf.sho * fs - prm.aSho * (sD >= 0 and 1 or -1) * laS
+		-- (the follow-through is the trunk's turn only: lean and roll stop at contact)
+		local shoC = min(shoK, 1)
+		local lean = (prm.lean + leanExtra) * pw * shoC + bf.lean * fs + prm.aLean * anti
+		local roll = (prm.roll * mirror * pw + (body and prm.path == "hook" and (L_ and 0.12 or -0.12) or 0)) * shoC + bf.roll * fs
 		local fwd = (prm.fwd * pw + act.lunge) * hipK + bf.fwd * fh
 		local side = prm.side * mirror * pw * hipK + bf.side * fh
 		local dip = (prm.dip + dipExtra) * pw * hipK + bf.dip * fh + prm.aDip * anti - (act.rise or 0) * hipK
@@ -1500,7 +1625,7 @@ local function evalPunch(p, rig, act, t, near, driveBody)
 			act.hitPos = pos
 			if contact then
 				local home = (pos - Pg) * sc
-				act.recDur = max(w * prm.rec, home.Magnitude / RET_SPEED)
+				act.recDur = max(w * prm.rec * recK, home.Magnitude / RET_SPEED)
 			end
 			-- the elbow's line through the punch follows time, not the accelerating fist (a hook's
 			-- elbow comes up with the hips, before the arm whips round: the shoulder never has to
@@ -1644,12 +1769,223 @@ function AnimFight.punches(p, rig, t, near)
 				local k = act and (act.armT or 0) * 0.85 or 0
 				if k > 0.02 then
 					local sx = h == "R" and 1 or -1
-					guardArm(rig, p, h, sx * 0.3, 1.04 - (rig.guardSink or 0) * 0.5, -0.74, k)
+					guardArm(rig, p, h, sx * 0.3, 1.04 - (rig.guardSink or 0) * 0.5, -0.8, k)
 				end
 			end
 		end
 	end
 	return any
+end
+
+------------------------------------------------------------------------
+-- Special moves: "special|<id>|<hand>|<windup>|<power>" (FightMotion.Specials: the set-up time and the
+-- punches). Each plays a set-up overlay - a shoulder roll, a pull back, a bob and weave, a crouch, a step
+-- back - then throws its punch(es) through the normal punch layers (forced variant + overrides), with the
+-- set-up's body position as the load the punch unwinds from. A blow that rocks him (medium or worse)
+-- cancels whatever has not been thrown yet.
+------------------------------------------------------------------------
+local MIRROR_KIND = { jab = "cross", cross = "jab", leadhook = "rearhook", rearhook = "leadhook" }
+-- per move: the forced variant, parameter overrides for the punch, and the set-up / follow-up overlay
+--   setup(p, rig, sp, k, x, sd): k = the set-up's weight (in, held, then unwound by the punch), x = 0..1
+--   through the set-up (> 1 after), sd = 1 for the default hand, -1 mirrored
+local SPECIAL_ANIM = {
+	-- a lead hook as he comes in, pivoting on the lead foot: the rear foot swings round behind and he
+	-- ends turned off the line
+	checkhook = { variant = "check", over = { hip = -0.66, sho = -0.46, aHip = 0.12 } },
+	-- Philly shell: the lead shoulder rolls up and the body turns away over the rear leg, then the cross
+	-- comes back over the top from there
+	phillyshell = { variant = "counter", over = { fwd = 0.3, aHip = 0, aSho = 0, load = 0.1 },
+		setup = function(p, rig, sp, k, x, sd)
+			p.Root = CF(0.1 * k * sd, -0.1 * k, 0.14 * k) * p.Root * A(0, -0.22 * k * sd, 0)
+			p.W = p.W * A(0.05 * k, -0.3 * k * sd, 0.16 * k * sd)
+			p.Neck = p.Neck * A(-0.12 * k, 0.3 * k * sd, -0.1 * k * sd)
+			guardArm(rig, p, sd > 0 and "L" or "R", -0.05 * sd, 0.2, -0.75, k * 0.85, nil, 0.3)
+			flex(rig, "obliques", k * 0.6)
+		end },
+	-- pull counter: the head and the weight go back over the rear foot out of range, then forward with
+	-- the cross
+	pullcounter = { variant = "long", over = { fwd = 0.5, aHip = 0.02, aSho = 0.02, aLean = 0, load = 0.1 },
+		setup = function(p, rig, sp, k, x, sd)
+			p.Root = CF(0.06 * k * sd, -0.08 * k, 0.32 * k) * p.Root * A(0, -0.1 * k * sd, 0)
+			p.W = p.W * A(0.2 * k, -0.08 * k * sd, 0)
+			p.Neck = p.Neck * A(-0.14 * k, 0.06 * k * sd, 0)
+			rig.foot[sd > 0 and "L" or "R"].heel += 0.15 * k
+		end },
+	-- the liver shot: a level change down and to the lead side, then the lead hook digs up into the body
+	livershot = { variant = "tight", over = { dip = 0.2, side = 0.24, roll = 0.24, aDip = 0.18 },
+		setup = function(p, rig, sp, k, x, sd)
+			p.Root = CF(-0.16 * k * sd, -0.26 * k, -0.06 * k) * p.Root
+			p.W = p.W * A(-0.12 * k, 0, -0.16 * k * sd)
+			p.Neck = p.Neck * A(0.1 * k, 0, 0.08 * k * sd)
+		end },
+	-- the gazelle punch: a deep crouch, then the legs spring him forward and up into a leaping lead hook
+	gazelle = { variant = "wide", over = { fwd = 0.55, dip = -0.12, lean = -0.12, aDip = 0, aHip = 0.12, aSho = 0.08, load = 0.12 },
+		setup = function(p, rig, sp, k, x, sd)
+			p.Root = CF(0.04 * k * sd, -0.42 * k, 0.1 * k) * p.Root
+			p.W = p.W * A(-0.22 * k, 0.06 * k * sd, 0)
+			p.Neck = p.Neck * A(0.16 * k, 0, 0)
+			flex(rig, "quads", k)
+			flex(rig, "glutes", k * 0.7)
+		end,
+		onPunch = function(rig, sp, i, w, t, sd)
+			-- the spring: the lead foot leaps in, the rear foot follows
+			local lead, rear = sd > 0 and "L" or "R", sd > 0 and "R" or "L"
+			L.request(rig, lead, 0, -0.95, w * 0.7, 0.22, w * 2.4, t)
+			sp.follow = { at = t + w * 0.45, s = rear, oz = -0.7, hold = w * 2.2 }
+		end },
+	-- the peek-a-boo rush: two bob-and-weave U's under the guard, inching in, then lead hook - rear hook
+	peekaboo = { variant = "tight", over = { load = 0.18 },
+		setup = function(p, rig, sp, k, x, sd)
+			if x < 1 then
+				local u = x * 2
+				local f = u - floor(u)
+				local dir = (floor(u) % 2 == 0 and 1 or -1) * sd
+				local s = sin(PI * f) * k
+				local c = cos(PI * f)
+				p.Root = CF(-c * 0.34 * s * dir, -0.44 * s, -0.12 * k) * p.Root * A(0, 0, c * 0.08 * s * dir)
+				p.W = p.W * A(-0.24 * s, 0, c * 0.36 * s * dir)
+				p.Neck = p.Neck * A(-0.1 * s, 0, -c * 0.14 * s * dir)
+				flex(rig, "quads", s * 0.7)
+			else
+				p.Root = CF(0, 0, -0.12 * k) * p.Root
+			end
+		end,
+		steps = { { 0.04, "L", 0, -0.3, 0.16 }, { 0.2, "R", 0, -0.24, 0.15 }, { 0.38, "L", 0, -0.3, 0.16 }, { 0.54, "R", 0, -0.24, 0.15 } } },
+	-- step-back counter: back out of range on the rear foot, then the cross as he falls in
+	stepback = { variant = "counter", over = { fwd = 0.42, load = 0.1, aLean = 0 },
+		setup = function(p, rig, sp, k, x, sd)
+			p.Root = CF(0, -0.06 * k, 0.16 * k) * p.Root * A(0, -0.08 * k * sd, 0)
+			p.W = p.W * A(0.1 * k, -0.06 * k * sd, 0)
+		end,
+		steps = { { 0, "R", 0, 0.42, 0.15 }, { 0.09, "L", 0, 0.34, 0.15 } } },
+	-- the overhand right: off the line to the lead side under the jab, then the loop over the top
+	overhand = { variant = "looping", over = { dip = 0.16, side = -0.4, roll = -0.3, aDip = 0.24 },
+		setup = function(p, rig, sp, k, x, sd)
+			p.Root = CF(-0.14 * k * sd, -0.16 * k, 0) * p.Root
+			p.W = p.W * A(-0.06 * k, 0.08 * k * sd, -0.12 * k * sd)
+		end },
+	-- the lead uppercut: a dip over the lead knee, then the legs drive it up
+	leaduppercut = { variant = "dipping", over = {},
+		setup = function(p, rig, sp, k, x, sd)
+			p.Root = CF(-0.1 * k * sd, -0.22 * k, -0.04 * k) * p.Root
+			p.W = p.W * A(-0.08 * k, -0.06 * k * sd, -0.1 * k * sd)
+		end },
+}
+AnimFight.SPECIAL_ANIM = SPECIAL_ANIM
+
+function AnimFight.startSpecial(rig, id, hand, windup, power, t)
+	local defs = FightMotion.Specials
+	if FightMotion.SpecialId then
+		id = FightMotion.SpecialId(id)
+	end
+	local def = id and defs and defs[id]
+	local anim = id and SPECIAL_ANIM[id]
+	if not (def and anim) then
+		return false
+	end
+	local sd = 1
+	if (hand == "L" or hand == "R") and hand ~= def.hand then
+		sd = -1
+	end
+	rig.special = {
+		id = id, def = def, anim = anim, t0 = t, sd = sd, w = clamp(tonumber(windup) or 0.25, 0.08, 0.9),
+		power = clamp(tonumber(power) or 0.9, 0, 1.5), fired = 0, stepped = 0,
+	}
+	return true
+end
+
+-- per frame (guard up, before the punch layers): the set-up overlay, its steps, and the punches on time
+function AnimFight.specialTick(p, rig, t)
+	local sp = rig.special
+	if not sp then
+		return
+	end
+	local def, anim, w, sd = sp.def, sp.anim, sp.w, sp.sd
+	local el = t - sp.t0
+	local pre = def.pre
+	-- the set-up's weight: in over its first part, held, then unwound by the first punch's drive
+	local k
+	if el < pre then
+		k = smooth(el / max(0.06, min(0.16, pre * 0.5)))
+	else
+		k = 1 - smooth((el - pre) / (w * 0.7))
+	end
+	if anim.setup and k > 0 then
+		anim.setup(p, rig, sp, k, el / max(pre, 1e-3), sd)
+	end
+	-- the set-up's footwork (body-space steps, mirrored for the other hand)
+	local steps = anim.steps
+	while steps and steps[sp.stepped + 1] and el >= steps[sp.stepped + 1][1] do
+		local st = steps[sp.stepped + 1]
+		sp.stepped += 1
+		local s = st[2]
+		if sd < 0 then
+			s = s == "L" and "R" or "L"
+		end
+		if L.ready(rig, s, t) then
+			L.request(rig, s, st[3] * sd, st[4], st[5], 0.1, max(0.25, pre - st[1] + w), t)
+		end
+	end
+	local fol = sp.follow
+	if fol and t >= fol.at and L.ready(rig, fol.s, t) then
+		sp.follow = nil
+		L.request(rig, fol.s, 0, fol.oz, 0.16, 0.12, fol.hold, t)
+	end
+	-- the punches
+	local pl = def.punches
+	local nxt = pl[sp.fired + 1]
+	if nxt and el >= pre + (nxt.after or 0) * w then
+		sp.fired += 1
+		local kind = nxt.kind
+		local hand = nxt.hand or def.hand
+		if sd < 0 then
+			hand = hand == "L" and "R" or "L"
+			kind = MIRROR_KIND[kind] or kind
+		end
+		local pw = w * (nxt.wk or 1)
+		local act = {
+			kind = kind, hand = hand, zone = def.zone, windup = pw, power = sp.power, start = t, dur = pw * 2.05 + 0.045,
+			f2 = hand, variant = sp.fired == 1 and anim.variant or nil, over = sp.fired == 1 and anim.over or nil,
+		}
+		AnimFight.startPunch(rig, act, t)
+		if anim.onPunch then
+			anim.onPunch(rig, sp, sp.fired, pw, t, sd)
+		end
+		sp.lastStart, sp.lastW = t, pw
+	end
+	-- the check hook's pivot: after contact he turns on the ball of the lead foot, the rear foot swinging
+	-- round behind him; he comes back square over the next half second (the server may turn the root)
+	if def.punches[1] and sp.id == "checkhook" and sp.fired >= 1 then
+		local tc = sp.lastStart + sp.lastW
+		local a = 0.45 * smooth((t - tc + 0.04) / 0.32) * (1 - smooth((t - tc - 0.55) / 0.5)) * sd
+		if a ~= 0 then
+			local lf = sd > 0 and rig.foot.L or rig.foot.R
+			-- (round the lead foot: the hips swing about it)
+			local c = V3(-0.45 * sd, 0, -0.7)
+			p.Root = CF(c) * A(0, a, 0) * CF(-c) * p.Root
+			lf.pivot += a
+			lf.heel = max(lf.heel, 0.45 * abs(a) / 0.45)
+			if not sp.swung and t >= tc - 0.02 then
+				sp.swung = true
+				local rs = sd > 0 and "R" or "L"
+				if L.ready(rig, rs, t) then
+					L.request(rig, rs, -0.55 * sd, -0.4, 0.2, 0.14, 0.75, t)
+				end
+			end
+		end
+	end
+	-- (the move is over once its last punch has come home: FightMotion.SpecialDuration, the length the
+	-- server plans with)
+	local endT
+	if FightMotion.SpecialDuration then
+		endT = FightMotion.SpecialDuration(sp.id, w)
+	else
+		local last = pl[#pl]
+		endT = pre + (last.after or 0) * w + w * (last.wk or 1) * 2.4 + (sp.id == "checkhook" and 1.1 or 0)
+	end
+	if el > endT then
+		rig.special = nil
+	end
 end
 
 ------------------------------------------------------------------------
@@ -1676,9 +2012,9 @@ CHEST.hook = CHEST.rearhook
 -- frame, so a light snap reads as about 8-9 rad/s frame to frame, a medium one 12-13)
 local TIER = {
 	{ neck = 13, chest = 1.8, back = 0.6, drop = 0.15, arms = 0 },
-	{ neck = 19, chest = 3.2, back = 1.2, drop = 0.4, arms = 0.6 },
-	{ neck = 24, chest = 5.0, back = 2.1, drop = 0.9, arms = 1.4 },
-	{ neck = 29, chest = 6.0, back = 2.5, drop = 1.5, arms = 2.0 },
+	{ neck = 19, chest = 3.4, back = 1.6, drop = 0.45, arms = 0.7 },
+	{ neck = 24, chest = 5.4, back = 2.6, drop = 1.15, arms = 1.5 },
+	{ neck = 29, chest = 6.6, back = 3.0, drop = 1.7, arms = 2.2 },
 }
 -- severity range of each tier (the size grows a little within a tier)
 local TIER_LO = { 0, 0.35, 0.75, 1.1 }
@@ -1718,6 +2054,10 @@ function AnimFight.react(rig, kind, ptype, flag, sev, t, hand)
 	sev = clamp(sev or 0.5, 0, 1.5)
 	rig.hitT = t
 	rig.hitSev = sev
+	-- (a blow that rocks him stops a special move he has not finished throwing)
+	if rig.special and kind ~= "blockhit" and sev >= 0.35 then
+		rig.special = nil
+	end
 	local FX = R.FX
 	-- severity tier: heavy / counter shots count a tier up
 	local tier = sev < 0.35 and 1 or (sev < 0.75 and 2 or (sev < 1.1 and 3 or 4))
@@ -1750,7 +2090,12 @@ function AnimFight.react(rig, kind, ptype, flag, sev, t, hand)
 			cd[1] * c, cd[2] * c * (straight and rs or 1), cd[3] * c * (straight and rs or 1),
 			push[2] * T.back * m, push[1] * T.back * m, T.drop * m, 0, T.arms * m, T.arms * m, T.arms * 0.75 * m, T.arms * 0.75 * m)
 		if tier >= 2 then
-			catchStep(rig, push[1], push[2], 0.2 + 0.25 * sev, t, 0.4 + 0.3 * sev)
+			-- (a medium shot is a visible stumble: a real step to catch the weight, not a shuffle)
+			catchStep(rig, push[1], push[2], 0.28 + 0.32 * sev, t, 0.4 + 0.3 * sev)
+		end
+		if tier >= 4 then
+			-- critical: out on his feet for a moment (the daze overlay, whatever the server's Daze says)
+			rig.critUntil = t + 1.2 + 0.5 * sev
 		end
 		if tier >= 3 then
 			rig.shakeUntil = t + 0.8 + 0.6 * sev
@@ -1777,7 +2122,7 @@ function AnimFight.react(rig, kind, ptype, flag, sev, t, hand)
 		local side = flag == "L" and -1 or 1
 		local liver = side == 1 and (ptype == "leadhook" or ptype == "hook" or ptype == "uppercut")
 		local m = (0.45 + sev) * (liver and 1.45 or 1) * (1 + 0.15 * daze)
-		kick(rig, -1.2 * m, 0.4 * side * m, 0, -3.2 * m, 0.5 * side * m, -2.0 * side * m, 0.5 * m, 0.3 * side * m, 1.7 * m, 0,
+		kick(rig, -1.2 * m, 0.4 * side * m, 0, -4.0 * m, 0.5 * side * m, -2.2 * side * m, 0.5 * m, 0.3 * side * m, 2.0 * m, 0,
 			side < 0 and 0.6 * m or 0, side > 0 and 0.6 * m or 0, 0, 0)
 		if tier >= 2 then
 			catchStep(rig, 0.3 * side, 0.8, 0.15 + 0.2 * sev, t, 0.5)
@@ -1785,6 +2130,11 @@ function AnimFight.react(rig, kind, ptype, flag, sev, t, hand)
 		if liver then
 			rig.liverT = t
 			rig.liverSev = sev
+		else
+			-- (any body shot that lands folds him a moment: the wind goes out of him)
+			rig.foldT = t
+			rig.foldSev = sev
+			rig.foldSide = side
 		end
 		if FX.FaceFX then
 			FX.FaceFX.Hit(model, sev * 0.8 + (liver and 0.3 or 0))
@@ -1812,6 +2162,21 @@ function AnimFight.reactionTick(p, rig, t)
 	if ps and t >= ps.at then
 		rig.pendStep = nil
 		catchStep(rig, ps.px, ps.pz, ps.size, t, 0.6)
+	end
+	local ft = rig.foldT
+	if ft then
+		local el = t - ft
+		if el > 0.75 then
+			rig.foldT = nil
+		else
+			local k = K.attackDecay(el, 0.1, 0.75) * clamp(rig.foldSev or 0.5, 0.2, 1.2)
+			local sd = rig.foldSide or 1
+			p.Root = CF(0, -0.1 * k, 0.04 * k) * p.Root
+			p.W = p.W * A(-0.22 * k, 0, -0.08 * k * sd)
+			p.Neck = p.Neck * A(0.1 * k, 0, 0)
+			flex(rig, "abs", k)
+			rig.exprHint = "pain"
+		end
 	end
 	local lt = rig.liverT
 	if lt then
@@ -2194,8 +2559,11 @@ function AnimFight.guardPose(p, rig, t, dt)
 		p.RE = A(1.6, 0, 0)
 	else
 		AnimFight.stance(p, rig, t, dt)
-		if guard == "dazed" or daze > 0 or conc >= 0.3 then
-			AnimFight.daze(p, rig, t, dt, max(daze, guard == "dazed" and 1 or 0), conc)
+		-- (a critical shot leaves him out on his feet for a moment even before the server dazes him)
+		local crit = rig.critUntil and rig.critUntil - t or 0
+		local cd = crit > 0 and min(1, crit / 0.6) * 1.4 or 0
+		if guard == "dazed" or daze > 0 or conc >= 0.3 or cd > 0 then
+			AnimFight.daze(p, rig, t, dt, max(daze, guard == "dazed" and 1 or 0, cd), conc)
 		end
 	end
 	return guard
