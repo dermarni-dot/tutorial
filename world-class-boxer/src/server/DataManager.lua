@@ -23,6 +23,11 @@
 -- goes minutes without a save (Main's autosave skips busy players: a pro fight runs up to ~13 minutes); the
 -- leave save and the shutdown saves clear it, and so does a server whose player left before playing the
 -- career it read (gave up on the loading screen), so the next server never waits for a lock nobody uses.
+-- The leave save is the session's last write: once it is under way no other save of the player is sent (a
+-- write retry, the 15 s retry of a failed save, a late Save from Main; the leave save stores the same
+-- profile). A save sent before it but served during or after it never takes the lock back: it leaves the lock
+-- as it is while the leave is under way, clears it once the session here is over, and stores nothing once the
+-- next server has taken the career (a save counter moved under that server would get its first save refused).
 -- Should a newer save still land after this server read the career (the previous server's write stuck for
 -- longer than the wait), the refused save re-reads the stored copy and the player plays on from it (only
 -- what was done here since the join is lost) rather than being kicked; the kick stays as the last resort. A
@@ -338,8 +343,10 @@ local function refresh(player)
 	end
 end
 
--- one UpdateAsync with retries; returns true when the career is safely stored
-local function write(player, data)
+-- one UpdateAsync with retries; returns true when the career is safely stored. `leaving` marks the leave
+-- save: the only write that hands the lock over (with the shutdown saves) and the only one still retried
+-- once the leave is under way.
+local function write(player, data, leaving)
 	local key = keyOf(player)
 	local userId = player.UserId
 	local conflict = false
@@ -349,10 +356,12 @@ local function write(player, data)
 		local base = seqOf[player] or 0
 		local mine = session[player]
 		local stamped = nil
+		local moved = false
 		local ok, err = pcall(function()
 			store:UpdateAsync(key, function(old)
 				local stored = seqField(old)
 				local ours = mine ~= nil and type(old) == "table" and old.saveSession == mine
+				moved = false
 				if stored > base and not ours then
 					-- another server wrote a newer copy after ours was read: never roll it back
 					conflict = true
@@ -360,19 +369,37 @@ local function write(player, data)
 					return nil
 				end
 				conflict = false
+				-- a save of a session that is ending here (the leave save is under way, or over) other than
+				-- the leave save itself: the leave save stores this same profile and hands the lock over
+				local ending = not leaving and (releasing[userId] or not canSave[player])
+				if ending and type(old) == "table" and heldElsewhere(old.lock, os.time()) then
+					-- the next server already took the career over: a save counter moved under it now would
+					-- get its first save refused
+					moved = true
+					stamped = nil
+					return nil
+				end
 				stamped = stored + 1
 				data.saveSeq = stamped
 				data.saveSession = mine
 				-- the lock travels with every save (a fresh stamp says this server is still playing the
-				-- career); the leave save and the shutdown saves hand it over to the next server
-				if releasing[userId] or closing then
+				-- career); the leave save and the shutdown saves hand it over to the next server, and a write
+				-- that lands once the session here is over (forget cleared canSave) never takes it back. One
+				-- served while the leave is under way leaves the lock as it is: the leave save clears it
+				-- (if that already landed the lock stays clear, if not the next server keeps waiting for it).
+				if leaving or closing or not canSave[player] then
 					data.lock = nil
+				elseif releasing[userId] then
+					data.lock = type(old) == "table" and old.lock or nil
 				else
 					data.lock = { job = SERVER_ID, at = os.time() }
 				end
 				return data
 			end)
 		end)
+		if moved then
+			return false
+		end
 		if ok then
 			if not conflict and stamped then
 				seqOf[player] = math.max(seqOf[player] or 0, stamped)
@@ -403,17 +430,23 @@ local function write(player, data)
 		task.wait(wait)
 		-- the copy may have been dropped during the wait (another save was refused and the refresh installed
 		-- the newer stored copy with its own counter): a retry would store the discarded table over it as the
-		-- next save. Save() marks the player dirty, and its retry saves the profile played now.
-		if DataManager.Profiles[player] ~= data or not canSave[player] then
+		-- next save. Save() marks the player dirty, and its retry saves the profile played now. Once the
+		-- leave is under way only the leave save retries (it stores this same profile, and a retry sent
+		-- after it would land after it).
+		if DataManager.Profiles[player] ~= data or not canSave[player] or (releasing[userId] and not leaving) then
 			break
 		end
 	end
 	return false
 end
 
-function DataManager.Save(player, force)
+local function save(player, force, leaving)
 	local data = DataManager.Profiles[player]
 	if not data or not store or not canSave[player] then
+		return false
+	end
+	if releasing[player.UserId] and not leaving then
+		-- the leave save is under way and stores this same profile; a write sent now would land after it
 		return false
 	end
 	local now = os.clock()
@@ -431,7 +464,7 @@ function DataManager.Save(player, force)
 		return false
 	end
 	lastSave[player] = now
-	local ok = write(player, data)
+	local ok = write(player, data, leaving)
 	if ok then
 		dirty[player] = nil
 	elseif canSave[player] then
@@ -448,6 +481,10 @@ function DataManager.Save(player, force)
 		end
 	end
 	return ok
+end
+
+function DataManager.Save(player, force)
+	return save(player, force, false)
 end
 
 local function forget(player)
@@ -478,7 +515,7 @@ function DataManager.Release(player)
 	checkSize(player, DataManager.Profiles[player])
 	-- the last save of the session: keep retrying (a transient error must not lose the session)
 	local t0 = os.clock()
-	while not DataManager.Save(player, true) and canSave[player] and os.clock() - t0 < RELEASE_BUDGET do
+	while not save(player, true, true) and canSave[player] and os.clock() - t0 < RELEASE_BUDGET do
 		task.wait(2)
 	end
 	forget(player)
