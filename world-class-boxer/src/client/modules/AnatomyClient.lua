@@ -181,6 +181,9 @@ local function hideInst(rec, inst, section)
 		h = { kind = kind, sections = {}, n = 0 }
 		if kind == "ltm" then
 			h.orig = inst.LocalTransparencyModifier
+			if rec.sentinel == nil and inst:IsA("BasePart") then
+				rec.sentinel = inst -- reassertLocal reads this one part instead of all of them
+			end
 		else
 			-- Enabled is a saved property (a Clone of the character copies it, LocalTransparencyModifier is not):
 			-- a gui this client hid carries AnatomyHid, so a copy made meanwhile knows its real state is "on"
@@ -203,6 +206,9 @@ local function unhideSection(rec, section)
 			h.n -= 1
 			if h.n <= 0 then
 				rec.hidden[inst] = nil
+				if rec.sentinel == inst then
+					rec.sentinel = nil
+				end
 				pcall(function()
 					if h.kind == "ltm" then
 						inst.LocalTransparencyModifier = (type(h.orig) == "number" and h.orig < 1) and h.orig or 0
@@ -328,23 +334,41 @@ local function onDescendantAdded(rec, inst)
 end
 
 -- the local character's parts get their LocalTransparencyModifier rewritten by the camera's
--- TransparencyController whenever parts are added: re-assert after the camera every frame
+-- TransparencyController whenever parts are added or the camera nears first person: re-assert after
+-- the camera every frame. That controller writes every cached character part in one loop, so one
+-- hidden part (rec.sentinel) answers for all ~200 of them: a single read per frame, the full pass
+-- only when it was reset (or the sentinel is gone and a new one must be picked)
 local function reassertLocal()
 	local char = Players.LocalPlayer and Players.LocalPlayer.Character
 	local rec = char and records[char]
 	if not rec then
 		return
 	end
+	local s = rec.sentinel
+	if s and s.Parent ~= nil and s.LocalTransparencyModifier >= 1 then
+		return
+	end
+	rec.sentinel = nil
 	for inst, h in pairs(rec.hidden) do
-		if h.kind == "ltm" and inst.LocalTransparencyModifier < 1 then
-			inst.LocalTransparencyModifier = 1
+		if h.kind == "ltm" then
+			if inst.LocalTransparencyModifier < 1 then
+				inst.LocalTransparencyModifier = 1
+			end
+			if rec.sentinel == nil and inst.Parent ~= nil and inst:IsA("BasePart") then
+				rec.sentinel = inst
+			end
 		end
 	end
 	for part in pairs(rec.covered) do
 		if part.Parent == nil then
 			rec.covered[part] = nil
-		elseif part.LocalTransparencyModifier < 1 then
-			part.LocalTransparencyModifier = 1
+		else
+			if part.LocalTransparencyModifier < 1 then
+				part.LocalTransparencyModifier = 1
+			end
+			if rec.sentinel == nil then
+				rec.sentinel = part
+			end
 		end
 	end
 end
@@ -1147,8 +1171,11 @@ local function evaluate()
 	-- full slots only fill up to maxFull; the distance bands get +-12% margins around the current level
 	local want = {}
 	local fullKept = 0
+	-- main menu / creator open (MainMenu sets the attribute): the camera is on the menu stage, so the gym
+	-- crowd is out of range whatever the first frames before the profile arrived said
+	local menu = lp ~= nil and lp:GetAttribute("MenuOpen") == true
 	for _, rec in ipairs(list) do
-		if not S.enabled then
+		if not S.enabled or (menu and rec.priority > 1) then
 			want[rec] = false
 		elseif rec.priority <= 1 then
 			want[rec] = "full"
@@ -1220,7 +1247,11 @@ local function evaluate()
 			end
 			local up = rec.lod == nil or (wanted ~= nil and LOD_RANK[wanted] > LOD_RANK[rec.lod])
 			local hold = up and S.promoteHold or S.demoteHold
-			if rec.lod == nil or forced[rec] or now - rec.pendingAt >= hold then
+			-- a first decision is immediate for the local character, the fight opponent and previews (their
+			-- meshes must show at once); an NPC's first level waits promoteHold like any promotion: the first
+			-- evaluation runs before the main menu moves the camera 1400 studs up, and without the hold every
+			-- gym member was built during the menu, torn down 12 s later and rebuilt on entering the gym
+			if forced[rec] or (rec.lod == nil and rec.priority <= 1) or now - rec.pendingAt >= hold then
 				rec.lod = wanted
 				rec.pendingLod = nil
 				if forced[rec] then
@@ -1429,6 +1460,9 @@ local function maintain()
 		for inst in pairs(rec.hidden) do
 			if inst.Parent == nil then
 				rec.hidden[inst] = nil
+				if rec.sentinel == inst then
+					rec.sentinel = nil
+				end
 			end
 		end
 		for section, st in pairs(rec.sections) do

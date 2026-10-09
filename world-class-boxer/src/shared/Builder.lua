@@ -364,6 +364,25 @@ end
 -- fightNight, sponsorTrunks / sponsorRobe ({ text, fg, bg }), dry, outfit ("referee"|"cornerman"),
 -- only ({ Face, Hair, Beard }), previewGrowth. gear = { gloves, glovesCond, wraps, wrapsCond, shoes,
 -- shoesCond, mouthguard, robe } (missing ids default to the starter kit).
+-- An NPC marked HullOnly (CreateNPC, medium detail with the anatomy meshes on) drops the tagged muscle
+-- domes of its Muscles folder (part + weld + SpecialMesh each) and keeps the hull, neck, fat and the
+-- female bust (the shape under the sports top): the Body meshes replace the whole layer on every capable
+-- client, and the hull alone still reads as a rounded body on a client without them. The folder's
+-- envelope attributes (what Attire fits) stay. Change-only: a cached (sealed) folder was trimmed when
+-- it was built.
+local function hullOnly(model)
+	local look = model:FindFirstChild("BoxerLook")
+	local f = look and look:FindFirstChild("Muscles")
+	if not (f and f:GetAttribute("Hull") == true) then
+		return -- low detail has no hull: its few domes are all the body it has
+	end
+	for _, p in ipairs(f:GetChildren()) do
+		if p:IsA("BasePart") and p:GetAttribute("Layer") ~= nil and p.Name ~= "Bust" then
+			p:Destroy()
+		end
+	end
+end
+
 function Builder.Cosmetics(model, app, build, gear, opts)
 	opts = opts or {}
 	app = app or Looks.Defaults(1)
@@ -404,6 +423,9 @@ function Builder.Cosmetics(model, app, build, gear, opts)
 	headStep(model, app, build, opts, "Hair")
 	headStep(model, app, build, opts, "Beard")
 	local _, env = step("Muscles", Body.Muscles, model, app, build, opts, sp, gear)
+	if model:GetAttribute("HullOnly") == true then
+		step("HullOnly", hullOnly, model)
+	end
 	step("Attire", Body.Attire, model, app, opts, gear, sp, type(env) == "table" and env or nil)
 	step("Hands", Body.Hands, model, app, gear, opts, sp)
 	-- body attributes the client reads (stance, veins, LOD); change-only
@@ -471,6 +493,11 @@ function Builder.CreateNPC(app, build, gear, displayName, opts)
 	if hum then
 		hum.DisplayName = displayName or "Boxer"
 		hum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+	end
+	-- gym members / officials: hull-only muscle layer (see hullOnly); players and opponents are full
+	local anatomy = Config.Anatomy
+	if anatomy and anatomy.enabled and anatomy.npcHullOnly and Config.DetailLevel(opts) == "medium" then
+		model:SetAttribute("HullOnly", true)
 	end
 	Builder.Cosmetics(model, app, build, gear, opts)
 	return model
