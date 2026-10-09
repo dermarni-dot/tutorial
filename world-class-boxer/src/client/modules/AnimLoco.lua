@@ -186,6 +186,9 @@ function AnimLoco.sense(rig, dt)
 	lo.speed = vel.Magnitude
 	-- (vertical: a walker on a ramp or stairs; clamped so a teleport-sized hop never spikes it)
 	lo.vy += (clamp(d.Y / dt, -40, 40) - lo.vy) * (1 - exp(-dt * 8))
+	if abs(lo.vy) > 0.5 then
+		lo.vyT = rig.clock or 0
+	end
 	local dyaw = K.wrap(yaw - lo.yaw)
 	lo.yawRate += (dyaw / dt - lo.yawRate) * (1 - exp(-dt * 12))
 	lo.pos, lo.yaw = p, yaw
@@ -992,10 +995,19 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 			-- the spot moves with the body), and the slope along the foot
 			local gy = f.home.Y
 			if walking then
-				if (u >= 0.5 and f.gRay < f.t0 + f.dur * 0.5) or f.gRay < f.t0 then
+				-- (rays only where they can matter: a rig near the camera - a player's character, anyone
+				-- within 25 studs, or anyone whose root went up or down in the last second and a half;
+				-- elsewhere the root's floor will do)
+				local probe = (rig.lod or 3) >= 3
+					and (rig.isPlayer or (rig.camDist or 0) < 25 or t - (lo.vyT or -10) < 1.5)
+				if f.gRay < f.t0 or (probe and u >= 0.5 and f.gRay < f.t0 + f.dur * 0.5) then
 					f.gRay = t
-					local y, sl = groundAt(rig, tgt, f.home.Y, fwdOf(landYaw))
-					f.gY, f.landSlope = y, sl or 0
+					if probe then
+						local y, sl = groundAt(rig, tgt, f.home.Y, fwdOf(landYaw))
+						f.gY, f.landSlope = y, sl or 0
+					else
+						f.gY, f.landSlope = nil, 0
+					end
 				end
 				gy = f.gY or gy
 			end
@@ -1128,6 +1140,7 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 		targets[s .. "yaw"] = K.wrap(yawW - trueYaw)
 		targets[s .. "pitch"] = pitch
 		if walking then
+			local hipP = (g.rootC0 * rootT * g.rootC1inv * leg.hipC0).Position
 			-- the stance leg's knee by design (heel strike nearly straight, loading flex, locked by mid-stance;
 			-- a runner softly bent); from mid-stance on the leg is let go (slack ~1: the heel rises, the
 			-- other leg carries the pelvis), so a trailing foot never holds the pelvis down by its knee
@@ -1139,7 +1152,7 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 				else
 					slack = R.slackFor(leg, standKnee, WALK_SOFT)
 				end
-				local need = R.needFor(rig, s, rootT, tgt, slack, WALK_DROP + 0.3)
+				local need = R.needFor(rig, s, rootT, tgt, slack, WALK_DROP + 0.3, hipP)
 				f.needPrev = f.needDrop or need
 				f.needDrop = need
 				-- (a runner's deepest mid-stance need this stance)
@@ -1152,7 +1165,7 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 				f.needLoad = need
 				if moving and f.sigma and f.sigma < 0.16 and run < 0.5 then
 					local lr = stanceKnee(0.16, run, lo.vh, prof)
-					f.needLoad = max(need, R.needFor(rig, s, rootT, tgt, R.slackFor(leg, lr, WALK_SOFT), WALK_DROP + 0.3))
+					f.needLoad = max(need, R.needFor(rig, s, rootT, tgt, R.slackFor(leg, lr, WALK_SOFT), WALK_DROP + 0.3, hipP))
 				end
 				-- (the pelvis spring trails a moving target by about PELVIS_LEAD: it is aimed at this foot's
 				-- need that far ahead - the body moved on over the planted foot, the stance further along - so a
@@ -1169,7 +1182,7 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 					-- (the ankle where the foot's roll will have it then)
 					local pa = stancePitch(sa, run, back) - (f.slopeP or 0)
 					local aa = trueCF:PointToObjectSpace(R.ankleOf(leg, P, fwdOf(yawW), pa) + V3(0, f.lift, 0))
-					ahead = R.needFor(rig, s, rootT, aa - lo.lv * lead, sl, WALK_DROP + 0.3)
+					ahead = R.needFor(rig, s, rootT, aa - lo.lv * lead, sl, WALK_DROP + 0.3, hipP)
 				end
 				f.ahead = ahead
 				wNeed = max(wNeed or -1e9, ahead)
@@ -1184,7 +1197,7 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 					local lt = trueCF:PointToObjectSpace(V3(la.X, la.Y + f.lift, la.Z))
 					local kn = moving and stanceKnee(0, run, lo.vh, prof) or standKnee
 					-- (a landing spot far out of reach - a hard turn, a lunge - never drags the pelvis down for it)
-					f.landNeed = min(0.22, R.needFor(rig, s, rootT, lt, R.slackFor(leg, kn, WALK_SOFT), WALK_DROP + 0.3))
+					f.landNeed = min(0.22, R.needFor(rig, s, rootT, lt, R.slackFor(leg, kn, WALK_SOFT), WALK_DROP + 0.3, hipP))
 					f.landWgt = smooth((u - 0.6) / 0.4)
 					wCap = max(wCap, WALK_DROP + clamp(f.home.Y - f.landRel.Y, 0, 0.9))
 				else

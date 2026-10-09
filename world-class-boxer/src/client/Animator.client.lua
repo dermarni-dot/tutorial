@@ -1103,6 +1103,7 @@ RunService.PreSimulation:Connect(function(dt)
 		if dist > CULL then
 			continue
 		end
+		rig.camDist = dist
 		local onScreen = true
 		if cam and dist > 8 then
 			local _, vis = cam:WorldToViewportPoint(pos)

@@ -615,10 +615,11 @@ end
 -- signed dropFor: how far the pelvis must come down (> 0) or may rise (< 0) for the foot at
 -- targetHRP to sit at exactly `slack` of the leg's length; a foot out of reach at any height asks
 -- for `far` (the caller clamps)
-function AnimRig.needFor(rig, s, rootT, targetHRP, slack, far)
+function AnimRig.needFor(rig, s, rootT, targetHRP, slack, far, hip)
 	local g = rig.geo
 	local leg = g[s]
-	local hip = (g.rootC0 * rootT * g.rootC1inv * leg.hipC0).Position
+	-- (`hip`: the hip joint's position when the caller has it already - several needs a frame per leg)
+	hip = hip or (g.rootC0 * rootT * g.rootC1inv * leg.hipC0).Position
 	local reach = (leg.l1 + leg.l2) * slack
 	local dx, dz = targetHRP.X - hip.X, targetHRP.Z - hip.Z
 	local h2 = dx * dx + dz * dz
