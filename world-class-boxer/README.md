@@ -363,9 +363,26 @@ Everything is procedural, driven on each client by `Animator.client.lua` and the
   - physique, style and recent form.
 - **Career Hub (H, D-pad up):** tabs for Career, Training, Body, Stats, Gym, Gear, Coaches, Sponsors, Life,
   Rankings, Rivals, Shop and Legacy.
-- **Training UI:** a progress bar for every exercise, and an anatomical body map. The map shows the
-  muscles an exercise works, the growth each muscle got from a session, and how developed each
-  muscle is.
+- **Training UI:** every exercise runs with a session progress bar and a metrics strip (set, reps,
+  good reps, quality, time, heart rate, calories) next to a "muscles worked" card: an anatomical
+  body map lit by `Config.ExerciseTargets`. The report that follows shows the grade, every muscle
+  that grew (its level before, the growth now, tonight's share, the gain), every stat that rose
+  (old -> new), the pump / soreness / sweat / veins / fat chips and the body map re-lit by the
+  growth. On top of it: a **+XP toast** that counts up (training levels, level-ups), and a column of
+  **gain popups** (one per stat and per muscle part, old -> new) that slide in one after another.
+  On a phone the report fills the screen, so the toast shrinks into the top-right corner and the
+  popups become one row of chips in the band above the report (stats first, "+N more" when they do
+  not all fit; the report lists every one). FLEX strikes a pose; MUSCLES opens the Muscle
+  Progression screen on the parts that just grew.
+- **Muscle Progression screen** (`MuscleScreen.lua`, Hub Body tab "3D MUSCLE VIEW", the "3D" button
+  of every group row, or MUSCLES on a training report): a rotating 3D figure (a frozen copy of
+  your character in a ViewportFrame, meshes included) with tabs for Arms, Chest, Core, Legs,
+  Shoulders, Back and Neck. The picked group lights up on the figure (neon shells over the region,
+  the round-1 muscle overlays tint) and the panel shows its level against your frame's potential,
+  every sub-muscle, soreness, the week's change and a **growth-over-time graph** from the daily
+  history the server keeps (`profile.muscleHist`, one row per career day, capped at 90, served by
+  `GetMuscleHistory`). Drag with the mouse or a finger to turn the figure, or use the right stick;
+  LB / RB step the groups, B closes; left alone it turns by itself.
 - **Fight HUD:** a broadcast-style scoreboard showing:
   - separate HEAD, BODY and STAMINA bars, with permanent-damage caps;
   - status chips (DAZED, IN DANGER, OUT ON HIS FEET);
@@ -404,6 +421,36 @@ trained body is classified into a physique, which sets the visible shape:
 - Elite Champion
 
 Training also uses energy, hydration, nutrition and fatigue. Graded minigames reward good technique.
+Every session also pays **training XP** (`profile.xp`, `Training.XPInfo`): a base for showing up
+plus the session's stat and muscle gains, scaled by the grade. Level n needs 150 x n^2 XP in total.
+XP is a progress counter for the result screen and never feeds the fight math.
+
+The report's XP toast, gain popups, growth rows and the Muscle Progression screen are described
+under Interface; the daily group history behind the screen's graph is `profile.muscleHist` (one row
+of the seven groups per career day, logged by `Training.Perform` / `Sleep` / `PassDays` / `Migrate`,
+capped at 90 rows, dropped when corrupt, served by `GetMuscleHistory`; no DataVersion bump).
+
+**What the server trusts.** `FinishActivity` no longer takes the client's score at face value:
+the client fires `Remotes.ActivityInput` once per press a drill accepted, the server counts them
+(at most every 0.09 s) against its own clock, and the score is capped at
+`0.5 + 0.95 * min(1, elapsed / t) * min(1, presses / n)` with `t` / `n` per minigame
+(`PRESS_FLOOR` in Main.server.lua, about 60% of an honest perfect run) and at the client formula's
+own maximum of 1.45. An idle client that waits out a drill and claims 1.5 gets a 0.5 session; a
+macro has to put in the real time and presses to equal an honest perfect session, never beat it.
+Roadwork and swimming are measured on the server frame by frame: a root that jumps more than the
+humanoid's speed allows (or covers more ground in a second than it could) earns no distance, a
+checkpoint only counts for a runner who covered the ground to it (`done = min(checkpoints,
+distance / course)`), any pace bonus needs at least half the par time, and a session under 30 s
+(swim 20 s) is sloppy. `Training.Migrate` also repairs the career counters (records, titles,
+defenses, quality wins, sessions, gear condition, belts, regional, identity strings) so one corrupt
+save value can never block the join.
+
+**Drills and the control map.** Mitt work, the heavy bag, the double-end bag, shadow boxing and the
+speed bag prompt and listen for the fight's own bindings (`Settings.Keymap()` through
+`Keymap.Keys` / `Keymap.ActionText`): a custom map, mouse buttons and the pad's buttons and
+right-stick flicks included; a drill's instructions carry `{jab}`-style tokens that read as the key,
+button or touch name in use. MOVES & CONTROLS on the Hub's Training tab opens the moves list and
+control map (`State.open.Controls`).
 
 ## Gyms
 

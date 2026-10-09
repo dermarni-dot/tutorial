@@ -684,7 +684,9 @@ local function plausibleStep(s, root)
 	return true
 end
 
--- roadwork checkpoints and swim lengths are measured on the server
+-- roadwork checkpoints and swim lengths are measured on the server (the notifications carry the
+-- session token: Roblox queues client events fired before a listener connects, so a drill must be
+-- able to tell its own checkpoints from an earlier session's)
 RunService.Heartbeat:Connect(function()
 	for player, s in pairs(sessions) do
 		if s.kind == "course" or s.kind == "swim" then
@@ -697,7 +699,7 @@ RunService.Heartbeat:Connect(function()
 				if s.kind == "course" and s.cp <= #s.cps then
 					if flatDist(root.Position, s.cps[s.cp]) < 11 then
 						s.cp += 1
-						Notify:FireClient(player, { t = "checkpoint", n = s.cp - 1, total = #s.cps })
+						Notify:FireClient(player, { t = "checkpoint", n = s.cp - 1, total = #s.cps, token = s.token })
 						if s.cp > #s.cps then
 							s.doneAt = os.clock()
 						end
@@ -708,7 +710,7 @@ RunService.Heartbeat:Connect(function()
 					if inWater and math.abs(root.Position.X - target.X) < 4.5 and math.abs(root.Position.Z - target.Z) < 13 then
 						s.lengths += 1
 						s.nextEnd = s.nextEnd == "A" and "B" or "A"
-						Notify:FireClient(player, { t = "length", n = s.lengths, total = s.target })
+						Notify:FireClient(player, { t = "length", n = s.lengths, total = s.target, token = s.token })
 						if s.lengths >= s.target then
 							s.doneAt = os.clock()
 						end
@@ -2009,8 +2011,17 @@ function handlers.DebugMoney(player, profile)
 	return { ok = true }
 end
 
+-- Muscle Progression screen (client MuscleScreen): the per-day group history and the training XP.
+-- Neither is in the summary (a 90-row list on every push would be waste): fetched when the screen opens
+function handlers.GetMuscleHistory(player, profile)
+	local ok, hist = pcall(Training.MuscleHistory, profile)
+	local xp = tonumber(profile.xp) or 0
+	local okLv, level = pcall(Training.XPInfo, xp)
+	return { ok = true, history = ok and hist or {}, xp = xp, level = okLv and level or nil, day = profile.day }
+end
+
 local PRE_CREATE = { GetProfile = true, CreateBoxer = true, NewCareer = true, PreviewLook = true, GetLegacy = true, SaveSettings = true }
-local READ_ONLY = { GetProfile = true, GetRankings = true, GetBoxer = true, PreviewLook = true, GetOffers = true, GetRivals = true, GetLegacy = true, GetPvP = true }
+local READ_ONLY = { GetProfile = true, GetRankings = true, GetBoxer = true, PreviewLook = true, GetOffers = true, GetRivals = true, GetLegacy = true, GetPvP = true, GetMuscleHistory = true }
 -- (PvPQueue / PvPCancel / PvPRespond may be sent mid-drill: leaving the queue, cancelling, declining)
 local DURING_ACTIVITY = { FinishActivity = true, CancelActivity = true, Eat = true, SaveSettings = true, PvPQueue = true, PvPCancel = true, PvPRespond = true }
 -- actions that change nothing the summary shows: no push afterwards (R-ui)

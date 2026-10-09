@@ -787,6 +787,70 @@ function Training.ApplyPump(character, result)
 	return ok and err == true
 end
 
+------------------------------------------------------------------------
+-- Training XP and the muscle history (the Muscle Progression screen)
+------------------------------------------------------------------------
+-- XP is a feel-good counter for the session toasts: it never feeds the fight math. Level n needs
+-- XP_LEVEL * n^2 in total, so the early levels come fast and a veteran still sees one now and then.
+local XP_LEVEL = 150
+function Training.XPInfo(xp)
+	xp = math.max(0, math.floor(finite(xp, 0)))
+	local level = math.floor(math.sqrt(xp / XP_LEVEL)) + 1
+	local from = XP_LEVEL * (level - 1) ^ 2
+	local to = XP_LEVEL * level ^ 2
+	return { level = level, xp = xp, into = xp - from, need = to - from }
+end
+
+-- one snapshot of the seven groups per career day (profile.muscleHist, capped, created lazily; an
+-- old save starts logging the day it loads). Career.Summary does not carry it: Main serves it on
+-- request (GetMuscleHistory) when the screen opens.
+local HISTORY_MAX = 90
+local function logMuscleHistory(profile)
+	local body = profile.body
+	if type(body) ~= "table" then
+		return
+	end
+	local hist = profile.muscleHist
+	if type(hist) ~= "table" then
+		hist = {}
+		profile.muscleHist = hist
+	end
+	local day = math.floor(finite(profile.day, 1))
+	local entry = { d = day }
+	for _, g in ipairs(Config.MuscleKeys) do
+		entry[g] = math.floor(finite(body[g], 0) * 10 + 0.5) / 10
+	end
+	local last = hist[#hist]
+	if type(last) == "table" and last.d == day then
+		hist[#hist] = entry
+	else
+		table.insert(hist, entry)
+	end
+	while #hist > HISTORY_MAX do
+		table.remove(hist, 1)
+	end
+end
+Training.LogMuscleHistory = logMuscleHistory
+
+-- the history as a clean list for the client: { { d = day, chest = v, ... }, ... } oldest first
+function Training.MuscleHistory(profile)
+	local out = {}
+	local hist = type(profile) == "table" and profile.muscleHist or nil
+	if type(hist) ~= "table" then
+		return out
+	end
+	for _, e in ipairs(hist) do
+		if type(e) == "table" and type(e.d) == "number" and e.d == e.d then
+			local row = { d = math.floor(e.d) }
+			for _, g in ipairs(Config.MuscleKeys) do
+				row[g] = r2(finite(e[g], 0))
+			end
+			table.insert(out, row)
+		end
+	end
+	return out
+end
+
 -- Apply a completed training session. quality 0.5..1.5 from the minigame.
 function Training.Perform(profile, act, quality, opts)
 	opts = opts or {}
@@ -865,6 +929,19 @@ function Training.Perform(profile, act, quality, opts)
 	if profile.camp then
 		table.insert(profile.camp.log, act.name)
 	end
+	-- training XP (the result screen's toast): the session's stat and muscle gains plus a base for
+	-- showing up, scaled by the grade
+	local statTotal = 0
+	for _, g in pairs(result.gains) do
+		statTotal += math.max(0, finite(g, 0))
+	end
+	local xp = math.floor((18 + statTotal * 45 + finite(grown.total, 0) * 24) * quality * math.min(scale, 1.5) + 0.5)
+	local before = Training.XPInfo(profile.xp)
+	profile.xp = before.xp + xp
+	local after = Training.XPInfo(profile.xp)
+	result.xp, result.xpTotal, result.level = xp, after.xp, after
+	result.levelUp = after.level > before.level
+	logMuscleHistory(profile)
 	return result
 end
 
@@ -1587,6 +1664,7 @@ function Training.Sleep(profile)
 	c.water = 0
 	c.buffs = {}
 	c.flexible = false
+	logMuscleHistory(profile) -- the new day's starting point (after tonight's growth)
 	local result = { quality = q, notes = notes, day = profile.day, grew = grew, growth = total }
 	if profile.camp then
 		profile.camp.daysLeft = math.max(0, profile.camp.daysLeft - 1)
@@ -1635,6 +1713,7 @@ function Training.PassDays(profile, days)
 	-- the fight just happened: popularity decay counts from the end of the suspension
 	profile.lastFightDay = profile.day
 	Config.SyncGroups(profile.body)
+	logMuscleHistory(profile)
 	return notes
 end
 
@@ -1991,6 +2070,17 @@ function Training.Migrate(profile)
 	-- identity / numbers the math depends on
 	local identity = tableIn(profile, "identity")
 	identity.age = math.floor(clamp(finite(identity.age, 22), 16, 70))
+	-- the names Career.Summary formats (a non-string errored the join's push)
+	for _, k in ipairs({ "first", "last", "name", "nickname", "nationality" }) do
+		if type(identity[k]) ~= "string" then
+			identity[k] = nil
+		end
+	end
+	identity.first = identity.first or "Boxer"
+	identity.last = identity.last or ""
+	identity.name = identity.name or (identity.first .. " " .. identity.last)
+	identity.nickname = identity.nickname or ""
+	identity.nationality = identity.nationality or "USA"
 	local physical = tableIn(profile, "physical")
 	physical.weightClass = math.floor(clamp(finite(physical.weightClass, 5), 1, #Config.WeightClasses))
 	physical.baseWeight = finite(physical.baseWeight, Config.WeightClasses[physical.weightClass].limit)
@@ -2001,9 +2091,27 @@ function Training.Migrate(profile)
 	-- derived from the (now finite) stats: a NaN overall saves as null and the client formats it
 	profile.overall = Config.Overall(stats)
 	local mental = tableIn(profile, "mental")
+	for k in pairs(mental) do
+		if not table.find(Config.MentalKeys, k) then
+			mental[k] = nil -- a stray entry (Career.Summary rounds every value)
+		end
+	end
 	for _, k in ipairs(Config.MentalKeys) do
 		numIn(mental, k, 0, 100, 50)
 	end
+	-- belts and regional titles: one boolean per org / level
+	local belts = tableIn(profile, "belts")
+	for k in pairs(belts) do
+		if not table.find(Config.Orgs, k) then
+			belts[k] = nil
+		end
+	end
+	for _, org in ipairs(Config.Orgs) do
+		belts[org] = belts[org] == true
+	end
+	local regional = tableIn(profile, "regional")
+	regional.regional = regional.regional == true
+	regional.national = regional.national == true
 	numIn(profile, "day", 1, 1e7, 1)
 	numIn(profile, "ageDays", 0, 365, 0)
 	numIn(profile, "popularity", 0, 100, 1)
@@ -2114,6 +2222,11 @@ function Training.Migrate(profile)
 	-- gym: every station (the medicine ball is new) with the level / condition a new career gets
 	local gym = tableIn(profile, "gym", Training.NewGym())
 	local levels, cond = tableIn(gym, "levels"), tableIn(gym, "cond")
+	for id in pairs(cond) do
+		if not Catalog.Stations[id] then
+			cond[id] = nil -- a stray entry (Career.Summary rounds every value)
+		end
+	end
 	for id, st in pairs(Catalog.Stations) do
 		if levels[id] == nil then
 			levels[id] = st.levels[1].cost > 0 and 0 or 1
@@ -2148,6 +2261,32 @@ function Training.Migrate(profile)
 	for _, spec in ipairs(Catalog.CoachSpecialties) do
 		coaches[spec.id] = math.floor(clamp(finite(coaches[spec.id], 0), 0, #Catalog.CoachTiers))
 	end
+	-- career counters Career.Summary / legacyParts multiply (a wrong type there errored the join's
+	-- push, leaving the player on the loading screen): both records and every tally, whole and finite
+	for _, k in ipairs({ "record", "amateurRecord" }) do
+		local rec = tableIn(profile, k)
+		for _, f in ipairs({ "w", "l", "d", "ko" }) do
+			rec[f] = math.floor(numIn(rec, f, 0, 1e6, 0))
+		end
+	end
+	for _, k in ipairs({ "titlesWon", "defenses", "undisputedReigns", "qualityWins", "knockdownsScored", "sessions", "tierWins" }) do
+		profile[k] = math.floor(numIn(profile, k, 0, 1e6, 0))
+	end
+	-- gear condition values: Career.Summary floors each one; a non-finite entry is dropped (the gear
+	-- then reads as new), the rest clamped to 0..100
+	for key, v in pairs(gear.cond) do
+		if type(key) ~= "string" or finite(v, nil) == nil then
+			gear.cond[key] = nil
+		else
+			gear.cond[key] = clamp(v, 0, 100)
+		end
+	end
+	-- training XP and the muscle history (both created lazily; a corrupt history is dropped)
+	numIn(profile, "xp", 0, 1e9, 0)
+	if type(profile.muscleHist) ~= "table" then
+		profile.muscleHist = nil
+	end
+	logMuscleHistory(profile)
 	return profile
 end
 

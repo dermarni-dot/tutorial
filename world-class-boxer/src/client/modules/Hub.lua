@@ -15,6 +15,11 @@ local UI = require(Shared:WaitForChild("UI"))
 local State = require(script.Parent:WaitForChild("State"))
 local FighterCard = require(script.Parent:WaitForChild("FighterCard"))
 local BodyMap = require(script.Parent:WaitForChild("BodyMap"))
+-- the Muscle Progression screen (3D figure, groups, growth graphs); registers State.open.Muscle
+local okMuscle, MuscleScreen = pcall(require, script.Parent:WaitForChild("MuscleScreen"))
+if not okMuscle then
+	MuscleScreen = nil
+end
 local Flags = require(script.Parent:WaitForChild("Flags"))
 local T = UI.Theme
 local rec = State.rec
@@ -171,11 +176,21 @@ local function showBoxer(id)
 	local function close()
 		if s then
 			s:Destroy()
+			s = nil
 		end
+		if State.windows.BoxerCard == close then
+			State.windows.BoxerCard = nil
+		end
+	end
+	-- one card at a time, and a window every other opener closes (State.closeAll): walking to the
+	-- barber or a store with a card up used to open that window underneath it
+	if State.windows.BoxerCard then
+		pcall(State.windows.BoxerCard)
 	end
 	local _, _, body
 	s, _, body = UI.Window(State.gui, "BoxerCard", 560, 640, b.name, { onClose = close, z = 20, kicker = "SCOUTING REPORT", accent = T.red })
 	s.ZIndex = 20
+	State.windows.BoxerCard = close
 	local top = UI.Frame(body, { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 26) })
 	Flags.Draw(top, b.nat, { Size = UDim2.fromOffset(33, 22) })
 	UI.Text(top, string.format("\"%s\"  ·  %s  ·  Age %d", b.nick, b.nat, b.age), { Font = T.semi, TextColor3 = T.gold, TextSize = 14, Position = UDim2.fromOffset(44, 0),
@@ -565,7 +580,18 @@ R.Training = function(body, P)
 	local c = P.condition
 	local compact = compactHub()
 	local card = UI.Card(body)
-	UI.Kicker(card, string.format("CONDITION  ·  DAY %d", P.day), T.gold)
+	-- the card's header: the kicker, and the moves list / control map (ControlsMenu) on the right -
+	-- what the drills and the ring run on
+	local head = UI.Frame(card, { Name = "Head", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 28) })
+	UI.Kicker(head, string.format("CONDITION  ·  DAY %d", P.day), T.gold, { Size = UDim2.new(1, -196, 1, 0) })
+	if State.open.Controls then
+		local mc = UI.Button(head, "MOVES & CONTROLS", { Name = "MovesControls", AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 0), Size = UDim2.fromOffset(compact and 150 or 180, 28),
+			BackgroundColor3 = T.panel2, TextSize = 13 }, function()
+			Hub.Close()
+			State.open.Controls()
+		end)
+		UI.Stroke(mc, T.gold, 1, 0.5)
+	end
 	if compact then
 		-- a phone: the condition as one line of chips, so the exercise cards start above the fold
 		local chips = UI.Frame(card, { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 26) })
@@ -732,6 +758,19 @@ local function startExercise(a)
 	end
 end
 
+-- the Muscle Progression screen takes the hub's place; closing it brings the Body tab back
+local function openMuscleScreen(group)
+	if not (MuscleScreen and MuscleScreen.Open) then
+		return
+	end
+	Hub.Close()
+	MuscleScreen.Open({ group = group, back = function()
+		if not State.inFight() then
+			Hub.Open("Body")
+		end
+	end })
+end
+
 R.Body = function(body, P)
 	local compact = compactHub()
 	local cap, frameDef = frameCap(P)
@@ -788,6 +827,13 @@ R.Body = function(body, P)
 			end)
 		end
 	end
+	-- the 3D muscle view: the figure to turn, every group lit, growth over time
+	if MuscleScreen then
+		local b = UI.Button(info, "3D MUSCLE VIEW  ·  GROWTH OVER TIME", { Name = "MuscleView", Size = UDim2.new(1, 0, 0, 36), LayoutOrder = 9, BackgroundColor3 = T.panel2, TextSize = 14 }, function()
+			openMuscleScreen(nil)
+		end)
+		UI.Stroke(b, T.gold, 1, 0.5)
+	end
 	-- the archetype ladder: where this build sits among the physiques the game recognises
 	local row = UI.Frame(c, { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 26) })
 	UI.List(row, 6, true)
@@ -819,7 +865,8 @@ R.Body = function(body, P)
 	UI.Line(m, string.format("Bars fill toward 100; the gold tick is your frame's potential (%d). Soreness shows in orange.", math.floor(cap + 0.5)), { TextColor3 = T.sub, TextSize = 13 })
 	local function levelRow(parent, label, v, h, strong, labelColor)
 		local f = UI.Frame(parent, { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, h) })
-		UI.Text(f, label, { Font = strong and T.semi or T.font, TextSize = strong and 14 or 13, TextColor3 = labelColor or (strong and T.text or T.sub), Size = UDim2.new(0.34, 0, 1, 0),
+		-- a group row leaves room for its "3D" button before the bar
+		UI.Text(f, label, { Font = strong and T.semi or T.font, TextSize = strong and 14 or 13, TextColor3 = labelColor or (strong and T.text or T.sub), Size = UDim2.new(0.34, (strong and MuscleScreen) and -44 or 0, 1, 0),
 			AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
 		UI.LevelBar(f, { Position = UDim2.new(0.34, 0, 0.5, strong and -5 or -3), Size = UDim2.new(0.52, 0, 0, strong and 10 or 6) }, { value = v, cap = cap, color = BodyMap.DevColor(v / cap) })
 		UI.Text(f, string.format("%.1f", v), { Face = "number", TextSize = strong and 16 or 14, Position = UDim2.new(0.86, 0, 0, 0), Size = UDim2.new(0.14, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.None,
@@ -829,7 +876,13 @@ R.Body = function(body, P)
 	for _, k in ipairs(Config.MuscleKeys) do
 		local sv = tonumber(sore[k]) or 0
 		local gname = Config.MuscleNames[k]:upper() .. (sv >= 0.1 and string.format("  ·  SORE %d%%", math.floor(sv * 100)) or "")
-		levelRow(m, gname, tonumber(P.body[k]) or 0, 26, true, sv >= 0.4 and T.orange or nil)
+		local groupRow = levelRow(m, gname, tonumber(P.body[k]) or 0, 26, true, sv >= 0.4 and T.orange or nil)
+		if MuscleScreen then
+			-- the group's own page of the muscle screen (its figure lit, its growth graph)
+			UI.Button(groupRow, "3D", { Name = "View_" .. k, Size = UDim2.fromOffset(34, 22), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(0.33, 0, 0.5, 0), BackgroundColor3 = T.panel2, TextSize = 12 }, function()
+				openMuscleScreen(k)
+			end)
+		end
 		for _, part in ipairs(Config.MuscleGroupParts[k] or {}) do
 			levelRow(m, "      " .. BodyMap.Short(part.id), dev[part.id] or 0, 20, false)
 		end
@@ -894,13 +947,15 @@ local function facilityCard(body, P)
 		UI.Line(c, gt.desc, { TextSize = 13 })
 	end
 	UI.Line(c, string.format("Muscle growth x%.2f from the facility", tonumber(gt.growth) or 1), { TextSize = 13, TextColor3 = T.green })
-	-- tier ladder
-	local row = UI.Row(c, 28)
+	-- tier ladder: the four tiers share the card's width (fixed 170 px chips ran off a phone's card)
+	local row = UI.Frame(c, { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 26) })
+	UI.Grid(row, UDim2.new(1 / #Config.GymTiers, -6, 0, 26), nil, 6)
 	for i, t in ipairs(Config.GymTiers) do
 		local cur = i == gt.index
 		local reached = i <= (gt.index or 1)
-		local chip = UI.Text(row, t.name, { Size = UDim2.fromOffset(170, 24), AutomaticSize = Enum.AutomaticSize.None, TextSize = 12, Font = cur and T.bold or T.font,
-			TextXAlignment = Enum.TextXAlignment.Center, BackgroundTransparency = 0, BackgroundColor3 = cur and T.gold or (reached and Color3.fromRGB(60, 50, 20) or T.panel2), TextColor3 = cur and T.bg or (reached and T.gold or T.sub) })
+		local chip = UI.Text(row, t.name, { LayoutOrder = i, AutomaticSize = Enum.AutomaticSize.None, TextSize = 11, Font = cur and T.bold or T.font, TextWrapped = false, TextScaled = false,
+			TextTruncate = Enum.TextTruncate.AtEnd, TextXAlignment = Enum.TextXAlignment.Center, BackgroundTransparency = 0,
+			BackgroundColor3 = cur and T.gold or (reached and Color3.fromRGB(60, 50, 20) or T.panel2), TextColor3 = cur and T.bg or (reached and T.gold or T.sub) })
 		UI.Corner(chip, 6)
 	end
 	if gt.nextName then

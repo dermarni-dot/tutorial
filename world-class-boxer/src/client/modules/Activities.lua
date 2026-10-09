@@ -34,6 +34,8 @@ local UI = require(Shared:WaitForChild("UI"))
 local State = require(script.Parent:WaitForChild("State"))
 local GymVisuals = require(script.Parent:WaitForChild("GymVisuals"))
 local BodyMap = require(script.Parent:WaitForChild("BodyMap"))
+-- the Muscle Progression screen (registers State.open.Muscle: the report's MUSCLES button)
+pcall(require, script.Parent:WaitForChild("MuscleScreen"))
 -- coach reactions are a nice-to-have: the drills run without them
 local okAmbience, Ambience = pcall(require, script.Parent:WaitForChild("Ambience"))
 if not okAmbience then
@@ -41,6 +43,23 @@ if not okAmbience then
 end
 local T = UI.Theme
 local K = Enum.KeyCode
+-- the fight's control map (Settings.Keymap + Keymap.Keys / ActionText): a drill prompts and listens
+-- for the keys the ring uses, a custom map included. Without the modules the drills keep their own lists.
+local Keymap, Settings
+do
+	local km = Shared:FindFirstChild("Keymap")
+	local ok, m = false, nil
+	if km then
+		ok, m = pcall(require, km)
+	end
+	Keymap = (ok and type(m) == "table" and type(m.Keys) == "function") and m or nil
+	local sm = script.Parent:FindFirstChild("Settings")
+	ok, m = false, nil
+	if sm then
+		ok, m = pcall(require, sm)
+	end
+	Settings = (ok and type(m) == "table" and type(m.Keymap) == "function") and m or nil
+end
 local Gamepad = UI.Gamepad -- input device and button names (optional)
 
 local Activities = {}
@@ -72,20 +91,21 @@ local WINDUP = { jab = 0.16, cross = 0.22, leadhook = 0.24, rearhook = 0.26, upp
 local HAND = { jab = "L", cross = "R", leadhook = "L", rearhook = "R", uppercut = "R", overhand = "R" }
 local POWER = { jab = 0.55, cross = 0.9, leadhook = 0.95, rearhook = 1.05, uppercut = 1.0, overhand = 1.25 }
 
+-- map = the fight action whose bindings the drill uses (resolveAction); keys / pad = the fallback
 local PUNCH_ACTIONS = {
-	{ id = "jab", label = "JAB", keys = { K.J, K.One } },
-	{ id = "cross", label = "CROSS", keys = { K.K, K.Two } },
-	{ id = "leadhook", label = "L.HOOK", keys = { K.L, K.Three } },
-	{ id = "rearhook", label = "R.HOOK", keys = { K.Four, K.Semicolon } },
-	{ id = "uppercut", label = "UPPER", keys = { K.U, K.Five } },
-	{ id = "overhand", label = "OVERHAND", keys = { K.O, K.Six } },
+	{ id = "jab", label = "JAB", keys = { K.J, K.One }, map = "jab" },
+	{ id = "cross", label = "CROSS", keys = { K.K, K.Two }, map = "cross" },
+	{ id = "leadhook", label = "L.HOOK", keys = { K.L, K.Three }, map = "leadhook" },
+	{ id = "rearhook", label = "R.HOOK", keys = { K.Four, K.Semicolon }, map = "rearhook" },
+	{ id = "uppercut", label = "UPPER", keys = { K.U, K.Five }, map = "uppercut" },
+	{ id = "overhand", label = "OVERHAND", keys = { K.O, K.Six }, map = "overhand" },
 }
 local DEFENSE_ACTIONS = {
-	{ id = "slipL", label = "SLIP L", keys = { K.Q } },
-	{ id = "slipR", label = "SLIP R", keys = { K.E } },
-	{ id = "roll", label = "ROLL", keys = { K.C } },
-	{ id = "pivotL", label = "PIVOT", keys = { K.Z } },
-	{ id = "parry", label = "PARRY", keys = { K.R } },
+	{ id = "slipL", label = "SLIP L", keys = { K.Q }, map = "slipL" },
+	{ id = "slipR", label = "SLIP R", keys = { K.E }, map = "slipR" },
+	{ id = "roll", label = "ROLL", keys = { K.C }, map = "dodge" },
+	{ id = "pivotL", label = "PIVOT", keys = { K.Z }, map = "pivotL" },
+	{ id = "parry", label = "PARRY", keys = { K.R }, map = "parry" },
 }
 local KEYNAME = { [K.J] = "J", [K.K] = "K", [K.L] = "L", [K.Four] = "4", [K.U] = "U", [K.O] = "O", [K.Q] = "Q", [K.E] = "E",
 	[K.C] = "C", [K.Z] = "Z", [K.R] = "R", [K.Space] = "SPACE", [K.W] = "W", [K.A] = "A", [K.S] = "S", [K.D] = "D", [K.F] = "F", [K.G] = "G" }
@@ -124,6 +144,83 @@ local function padInfo(ctx, text)
 	text = text:gsub("Hold W", "Push the left stick")
 	text = text:gsub("SPACE", space)
 	return text
+end
+
+-- the resolved control map, or nil when the modules are not there
+local function controlMap()
+	if not (Keymap and Settings) then
+		return nil
+	end
+	local ok, map = pcall(Settings.Keymap)
+	return (ok and type(map) == "table") and map or nil
+end
+-- the prompt name of a fight action on a device ("LMB / J", "X", "RS left"); a drill's instructions
+-- carry {jab}-style tokens that infoFor expands for the device in use. The defaults when unmapped.
+local FALLBACK_KEY = { jab = "J", cross = "K", leadhook = "L", rearhook = "4", uppercut = "U", overhand = "O", slipL = "Q", slipR = "E", dodge = "C", parry = "R", pivotL = "Z" }
+local FALLBACK_PAD = { jab = K.ButtonX, cross = K.ButtonY, leadhook = K.ButtonB, rearhook = K.ButtonA, uppercut = K.ButtonR2, overhand = K.ButtonR1,
+	slipL = K.Thumbstick2Left, slipR = K.Thumbstick2Right, dodge = K.Thumbstick2Down, parry = K.DPadUp, pivotL = K.DPadLeft }
+local function keyText(id, mode)
+	local dev = mode == "gamepad" and "pad" or (mode == "touch" and "touch" or "kbd")
+	local map = controlMap()
+	if map then
+		local ok, t = pcall(Keymap.ActionText, map, id, dev, Gamepad)
+		if ok and type(t) == "string" and t ~= "-" then
+			return t
+		end
+	end
+	if dev == "pad" and FALLBACK_PAD[id] and Gamepad then
+		return Gamepad.Label(FALLBACK_PAD[id])
+	end
+	return FALLBACK_KEY[id] or string.upper(id)
+end
+-- the drill's input stream: one fire per press a drill accepted (the server counts them against the
+-- session's clock to cap the score it is sent - see Main.server.lua PRESS_FLOOR)
+local pressRemote
+local function sendPress(ctx)
+	if ctx.mode == "done" or not current then
+		return
+	end
+	if pressRemote == nil then
+		local r = State.Remotes and State.Remotes:FindFirstChild("ActivityInput")
+		pressRemote = (r and r:IsA("RemoteEvent")) and r or false
+	end
+	if pressRemote then
+		pressRemote:FireServer(current.token)
+	end
+end
+-- an action with a map id (or a list of them) gets the control map's keys: the keyboard's plain
+-- bindings, the pad's button or right-stick flick and the prompt text; its own lists stay as the
+-- fallback for an action left unbound on purpose. The constant tables are never changed.
+local function resolveAction(a)
+	local map = a.map and controlMap()
+	if not map then
+		return a
+	end
+	local ids = type(a.map) == "table" and a.map or { a.map }
+	local keys, pad, texts = {}, {}, {}
+	for _, id in ipairs(ids) do
+		local ok, list = pcall(Keymap.Keys, map, id, "kbd")
+		for _, k in ipairs(ok and list or {}) do
+			table.insert(keys, k)
+		end
+		ok, list = pcall(Keymap.Keys, map, id, "pad")
+		for _, k in ipairs(ok and list or {}) do
+			table.insert(pad, k)
+		end
+		local okT, t = pcall(Keymap.ActionText, map, id, "kbd", Gamepad)
+		if okT and type(t) == "string" and t ~= "-" then
+			table.insert(texts, t)
+		end
+	end
+	local r = table.clone(a)
+	if #keys > 0 then
+		r.keys = keys
+		r.keyText = table.concat(texts, " / ")
+	end
+	if #pad > 0 then
+		r.pad = pad
+	end
+	return r
 end
 
 local LABEL = { jab = "JAB", cross = "CROSS", leadhook = "L.HOOK", rearhook = "R.HOOK", uppercut = "UPPER", overhand = "OVERHAND",
@@ -199,6 +296,11 @@ local function newContext(info)
 		tipIndex = math.random(0, 5), mode = "work", resting = false, baseEffort = info.baseEffort,
 	}
 	ctx.smart = ctx.params.smart == true
+	-- the stats before the session: the result's popups show old -> new
+	ctx.stats0 = {}
+	for _, k in ipairs(Config.StatKeys) do
+		ctx.stats0[k] = tonumber(P and P.stats and P.stats[k]) or 0
+	end
 	ctx.body0 = {}
 	for _, part in ipairs(Config.MuscleParts) do
 		ctx.body0[part.id] = tonumber(P and P.body and (Config.PartValue and Config.PartValue(P.body, part.id) or P.body[part.id])) or 0
@@ -222,7 +324,8 @@ local function newContext(info)
 	-- the drill's own live numbers (heart rate, calories and the set live on the metrics strip)
 	ctx.live = UI.Text(panel, "", { Font = T.semi, TextSize = 13, RichText = true, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -112, 0, 4), Size = UDim2.new(0.58, -116, 0, 32), TextColor3 = T.text, TextXAlignment = Enum.TextXAlignment.Right, TextYAlignment = Enum.TextYAlignment.Center, TextScaled = true, TextWrapped = false, AutomaticSize = Enum.AutomaticSize.None })
 	UI.New("UITextSizeConstraint", { MaxTextSize = 13, MinTextSize = 8, Parent = ctx.live })
-	ctx.info = UI.Text(panel, "", { TextSize = 13, TextColor3 = T.sub, Position = UDim2.fromOffset(16, 36), Size = UDim2.new(1, -32, 0, 30), AutomaticSize = Enum.AutomaticSize.None })
+	-- (two lines; a longer instruction ends in "..." instead of running into the round header)
+	ctx.info = UI.Text(panel, "", { TextSize = 13, TextColor3 = T.sub, Position = UDim2.fromOffset(16, 36), Size = UDim2.new(1, -32, 0, 30), AutomaticSize = Enum.AutomaticSize.None, TextTruncate = Enum.TextTruncate.AtEnd })
 	-- ROUND / SET header and the session progress
 	ctx.header = UI.Text(panel, "", { Face = "displayMed", TextSize = 15, TextColor3 = T.gold, Position = UDim2.fromOffset(16, 66), Size = UDim2.new(1, -32, 0, 16), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
 	local progBg, setProg = UI.Bar(panel, { Position = UDim2.new(0, 16, 0, 84), Size = UDim2.new(1, -32, 0, 4) }, T.gold)
@@ -520,7 +623,9 @@ local function newContext(info)
 	State.HideHud("Activity", true)
 
 	local function infoFor(mode)
-		local text = ctx.infoRaw or ""
+		local text = (ctx.infoRaw or ""):gsub("{(%w+)}", function(id)
+			return keyText(id, mode)
+		end)
 		if mode == "gamepad" and Gamepad then
 			return padInfo(ctx, text)
 		end
@@ -679,6 +784,7 @@ local function newContext(info)
 				return
 			end
 			ctx.pulse()
+			sendPress(ctx)
 		end
 		h(id, down)
 	end
@@ -688,6 +794,11 @@ local function newContext(info)
 	-- actions: { id, label, keys = { KeyCode... }, pad = { KeyCode... } (optional: else PAD_OF of the keys),
 	-- color }. ctx.keymap / ctx.padmap: KeyCode -> action id (the gamepad's flicks as Thumbstick2* keys)
 	function ctx.bind(actions, cellsPerRow)
+		local resolved = {}
+		for i, a in ipairs(actions) do
+			resolved[i] = resolveAction(a)
+		end
+		actions = resolved
 		UI.Clear(ctx.inputBar)
 		local grid = ctx.inputBar:FindFirstChildOfClass("UIGridLayout")
 		grid.CellSize = UDim2.new(1 / (cellsPerRow or math.min(6, #actions)), -5, 0, 40)
@@ -732,7 +843,7 @@ local function newContext(info)
 			end
 		end
 		for i, a in ipairs(actions) do
-			local keyText = a.keys and a.keys[1] and (KEYNAME[a.keys[1]] or a.keys[1].Name) or ""
+			local keyText = a.keyText or (a.keys and a.keys[1] and (KEYNAME[a.keys[1]] or a.keys[1].Name)) or ""
 			local padKey = padOf[a.id][1]
 			local b = UI.Button(ctx.inputBar, a.label, { LayoutOrder = i, TextSize = 13, BackgroundColor3 = a.color or T.panel2 })
 			b.Selectable = false
@@ -943,14 +1054,15 @@ local function newContext(info)
 		if gp then
 			return
 		end
-		local id = ctx.keymap[k]
+		-- a mouse button binding (the default jab / cross) is keyed by its UserInputType
+		local id = ctx.keymap[k] or ctx.keymap[input.UserInputType]
 		if id then
 			dispatch(id, true)
 		end
 	end))
 	table.insert(ctx.conns, UserInputService.InputEnded:Connect(function(input)
 		local k = input.KeyCode
-		local id = ctx.keymap[k] or (ctx.padmap and ctx.padmap[k])
+		local id = ctx.keymap[k] or ctx.keymap[input.UserInputType] or (ctx.padmap and ctx.padmap[k])
 		if id then
 			dispatch(id, false)
 		end
@@ -1297,8 +1409,8 @@ GAMES.combo = function(ctx)
 	end
 
 	-- ROUND 3: SPEED BURST - alternate hands as fast as possible
-	ctx.bind({ { id = "L", label = "LEFT", keys = { K.J, K.F, K.One }, color = T.blue }, { id = "R", label = "RIGHT", keys = { K.K, K.G, K.Two }, color = T.red } }, 2)
-	ctx.setInfo("Alternate LEFT (J) and RIGHT (K) as fast as you can for 6 seconds. Only alternating punches count!")
+	ctx.bind({ { id = "L", label = "LEFT", keys = { K.J, K.F, K.One }, map = "jab", color = T.blue }, { id = "R", label = "RIGHT", keys = { K.K, K.G, K.Two }, map = "cross", color = T.red } }, 2)
+	ctx.setInfo("Alternate LEFT ({jab}) and RIGHT ({cross}) as fast as you can for 6 seconds. Only alternating punches count!")
 	if not ctx.round(3, 3, "SPEED BURST") then
 		return nil
 	end
@@ -1393,7 +1505,7 @@ end
 GAMES.rhythm = function(ctx)
 	local lv = ctx.level
 	local baseBpm = ({ 112, 140, 168, 196 })[lv] or 140
-	ctx.bind({ { id = "L", label = "LEFT", keys = { K.J, K.F }, color = T.blue }, { id = "R", label = "RIGHT", keys = { K.K, K.G }, color = T.red } }, 2)
+	ctx.bind({ { id = "L", label = "LEFT", keys = { K.J, K.F }, map = "jab", color = T.blue }, { id = "R", label = "RIGHT", keys = { K.K, K.G }, map = "cross", color = T.red } }, 2)
 	local rounds = {
 		{ name = "ALTERNATING RHYTHM", bpm = baseBpm, pattern = "alt" },
 		{ name = lv >= 3 and "DOUBLES & TRIPLETS" or "DOUBLES", bpm = math.floor(baseBpm * 1.15 + 0.5), pattern = lv >= 3 and "mixed" or "doubles" },
@@ -1402,7 +1514,7 @@ GAMES.rhythm = function(ctx)
 	for ri, rd in ipairs(rounds) do
 		local interval = 60 / rd.bpm
 		local count = math.clamp(math.floor(10 / interval), 16, 40)
-		ctx.setInfo(ri == 1 and string.format("Hit LEFT (J) and RIGHT (K) as each beat crosses the gold line. %d BPM - better bags rebound faster.", rd.bpm)
+		ctx.setInfo(ri == 1 and string.format("Hit LEFT ({jab}) and RIGHT ({cross}) as each beat crosses the gold line. %d BPM - better bags rebound faster.", rd.bpm)
 			or string.format("Same hand two%s times in a row now, at %d BPM. Stay loose and keep the rhythm.", lv >= 3 and " or three" or "", rd.bpm))
 		if not ctx.round(ri, #rounds, string.format("%s%s%d BPM", rd.name, DOT, rd.bpm)) then
 			return nil
@@ -1533,9 +1645,10 @@ end
 GAMES.reaction = function(ctx)
 	local lv = ctx.level
 	local window = ({ 0.95, 0.8, 0.68, 0.56 })[lv] or 0.8
-	local actions = { { id = "punch", label = "PUNCH", keys = { K.J, K.K } }, { id = "slipL", label = "SLIP L", keys = { K.Q } }, { id = "slipR", label = "SLIP R", keys = { K.E } } }
+	local actions = { { id = "punch", label = "PUNCH", keys = { K.J, K.K }, map = { "jab", "cross" } }, { id = "slipL", label = "SLIP L", keys = { K.Q }, map = "slipL" },
+		{ id = "slipR", label = "SLIP R", keys = { K.E }, map = "slipR" } }
 	if lv >= 2 then
-		table.insert(actions, { id = "roll", label = "ROLL", keys = { K.C } })
+		table.insert(actions, { id = "roll", label = "ROLL", keys = { K.C }, map = "dodge" })
 	end
 	ctx.bind(actions, #actions)
 	local reactSum, reactN = 0, 0
@@ -1867,9 +1980,9 @@ end
 local SHADOW_PROMPTS = {
 	{ id = "F", text = "STEP IN", keys = { K.W, K.Up } }, { id = "B", text = "STEP BACK", keys = { K.S, K.Down } },
 	{ id = "L", text = "CIRCLE LEFT", keys = { K.A, K.Left } }, { id = "R", text = "CIRCLE RIGHT", keys = { K.D, K.Right } },
-	{ id = "slipL", text = "SLIP LEFT", keys = { K.Q } }, { id = "slipR", text = "SLIP RIGHT", keys = { K.E } },
-	{ id = "roll", text = "ROLL", keys = { K.C } }, { id = "jab", text = "JAB", keys = { K.J } }, { id = "cross", text = "CROSS", keys = { K.K } },
-	{ id = "leadhook", text = "HOOK", keys = { K.L } },
+	{ id = "slipL", text = "SLIP LEFT", keys = { K.Q }, map = "slipL" }, { id = "slipR", text = "SLIP RIGHT", keys = { K.E }, map = "slipR" },
+	{ id = "roll", text = "ROLL", keys = { K.C }, map = "dodge" }, { id = "jab", text = "JAB", keys = { K.J }, map = "jab" }, { id = "cross", text = "CROSS", keys = { K.K }, map = "cross" },
+	{ id = "leadhook", text = "HOOK", keys = { K.L }, map = "leadhook" },
 }
 local SHADOW_LABEL = { F = "STEP IN", B = "STEP BACK", L = "CIRCLE L", R = "CIRCLE R", slipL = "SLIP L", slipR = "SLIP R", roll = "ROLL", jab = "JAB", cross = "CROSS", leadhook = "HOOK" }
 
@@ -1891,7 +2004,7 @@ GAMES.shadow = function(ctx)
 	local window = ({ 1.25, 1.0, 0.8 })[lv] or 1.0
 	local actions = {}
 	for _, p in ipairs(SHADOW_PROMPTS) do
-		table.insert(actions, { id = p.id, label = (p.text:gsub("CIRCLE ", ""):gsub("STEP ", "")), keys = p.keys })
+		table.insert(actions, { id = p.id, label = (p.text:gsub("CIRCLE ", ""):gsub("STEP ", "")), keys = p.keys, map = p.map })
 	end
 	ctx.bind(actions, 5)
 	local function mirror(text)
@@ -1901,7 +2014,7 @@ GAMES.shadow = function(ctx)
 	end
 
 	-- ROUND 1: MOVES
-	ctx.setInfo("Footwork (W/A/S/D), head movement (Q/E/C) and punches (J/K/L): follow the prompts in the mirror.")
+	ctx.setInfo("Footwork (W/A/S/D), head movement ({slipL}/{slipR}/{dodge}) and punches ({jab}/{cross}/{leadhook}): follow the prompts in the mirror.")
 	if not ctx.round(1, 2, "MOVES") then
 		return nil
 	end
@@ -3089,7 +3202,7 @@ GAMES.course = function(ctx, info)
 	end
 	place()
 	table.insert(ctx.conns, State.Notify.OnClientEvent:Connect(function(msg)
-		if type(msg) == "table" and msg.t == "checkpoint" then
+		if type(msg) == "table" and msg.t == "checkpoint" and (msg.token == nil or msg.token == info.token) then
 			reached = msg.n
 			ctx.feedback("CHECKPOINT " .. msg.n .. "/" .. msg.total, T.gold)
 			ctx.setProgress(msg.n / msg.total)
@@ -3152,7 +3265,7 @@ GAMES.swim = function(ctx, info)
 	local bestLength
 	local start, last = os.clock(), os.clock()
 	table.insert(ctx.conns, State.Notify.OnClientEvent:Connect(function(msg)
-		if type(msg) == "table" and msg.t == "length" then
+		if type(msg) == "table" and msg.t == "length" and (msg.token == nil or msg.token == info.token) then
 			local now = os.clock()
 			local split = now - (lastLengthAt or start)
 			lastLengthAt = now
@@ -3463,6 +3576,219 @@ local function chipFlow(parent, list, order, width)
 	return rows
 end
 
+-- the +XP toast (top centre, above every window): the number counts up over a second with an
+-- ease-out so the last digits settle slowly, the level bar fills behind it, a level-up flashes gold
+local function xpToast(r0)
+	local xp = tonumber(r0.xp)
+	if not xp or xp <= 0 then
+		return nil
+	end
+	local lv = type(r0.level) == "table" and r0.level or nil
+	-- a phone (the same compact test as ctx.layout) has only a thin band above the report: a smaller
+	-- card tucked into the top-right corner, where the gains strip (top-left) and the panel are not
+	local small = UI.CanvasSize(State.gui).Y < 640
+	local numSize = small and 26 or 34
+	local shown = small and UDim2.new(1, -24, 0, 8) or UDim2.new(0.5, 0, 0, 18)
+	local hidden = small and UDim2.new(1, -24, 0, -96) or UDim2.new(0.5, 0, 0, -96)
+	local card = UI.Frame(State.toastRoot, { Name = "XPToast", AnchorPoint = small and Vector2.new(1, 0) or Vector2.new(0.5, 0), Position = hidden, Size = small and UDim2.fromOffset(220, 56) or UDim2.fromOffset(300, 84), BackgroundColor3 = T.bg, ZIndex = 60 })
+	card:SetAttribute("XP", xp)
+	UI.Glass(card, { transparency = 0.04, radius = UI.R.lg })
+	UI.Stroke(card, T.gold, 1.5, 0.3)
+	local num = UI.Text(card, "+0 XP", { Name = "Number", Face = "number", TextSize = numSize, TextColor3 = T.gold, Position = UDim2.fromOffset(16, small and 3 or 6), Size = UDim2.new(1, -32, 0, small and 30 or 40), AutomaticSize = Enum.AutomaticSize.None,
+		TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false, ZIndex = 61 })
+	local caption = lv and string.format("TRAINING XP  ·  LEVEL %d  ·  %d / %d", lv.level or 1, lv.into or 0, lv.need or 1) or "TRAINING XP"
+	local sub = UI.Text(card, caption, { Name = "Caption", Font = T.semi, TextSize = small and 10 or 12, TextColor3 = T.sub, Position = UDim2.fromOffset(16, small and 32 or 48), Size = UDim2.new(1, -32, 0, 14), AutomaticSize = Enum.AutomaticSize.None,
+		TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false, ZIndex = 61 })
+	local barBg = UI.Frame(card, { Position = UDim2.new(0, 16, 1, small and -8 or -12), Size = UDim2.new(1, -32, 0, small and 3 or 4), BackgroundColor3 = T.ink, ZIndex = 61 })
+	UI.Corner(barBg, 2)
+	local fill = UI.Frame(barBg, { Size = UDim2.fromScale(0, 1), BackgroundColor3 = T.gold, ZIndex = 62 })
+	UI.Corner(fill, 2)
+	UI.Tween(card, { Position = shown }, UI.Motion.base)
+	-- the count-up: 1.1 s, cubic ease-out
+	local from = lv and math.max(0, (lv.into or 0) - xp) or 0
+	local need = lv and math.max(1, lv.need or 1) or 1
+	local t0 = os.clock()
+	local conn
+	conn = RunService.Heartbeat:Connect(function()
+		if not card.Parent then
+			conn:Disconnect()
+			return
+		end
+		local k = math.clamp((os.clock() - t0) / 1.1, 0, 1)
+		local e = 1 - (1 - k) ^ 3
+		num.Text = string.format("+%d XP", math.floor(xp * e + 0.5))
+		if lv then
+			-- a level-up wraps the bar: it runs to full, then fills again from zero
+			local into = from + xp * e
+			if r0.levelUp and into >= need then
+				into = lv.into or 0
+				fill.Size = UDim2.fromScale(math.clamp(into / need, 0, 1), 1)
+			else
+				fill.Size = UDim2.fromScale(math.clamp(into / need, 0, 1), 1)
+			end
+		end
+		if k >= 1 then
+			conn:Disconnect()
+			if r0.levelUp and lv then
+				sub.Text = string.format("LEVEL UP!  ·  TRAINING LEVEL %d", lv.level or 1)
+				sub.TextColor3 = T.gold
+				num.TextSize = numSize + 6
+				TweenService:Create(num, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { TextSize = numSize }):Play()
+			else
+				TweenService:Create(num, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { TextSize = numSize + 4 }):Play()
+				task.delay(0.25, function()
+					if num.Parent then
+						UI.Tween(num, { TextSize = numSize }, UI.Motion.base)
+					end
+				end)
+			end
+			pcall(function()
+				local snd = Instance.new("Sound")
+				snd.SoundId = Config.BuiltinSounds and Config.BuiltinSounds.ping or "rbxasset://sounds/electronicpingshort.wav"
+				snd.Volume = 0.35
+				snd.Parent = card
+				snd:Play()
+			end)
+		end
+	end)
+	task.delay(4.6, function()
+		if card.Parent then
+			UI.Tween(card, { Position = hidden }, UI.Motion.base)
+			task.wait(0.35)
+			card:Destroy()
+		end
+	end)
+	return card
+end
+
+-- the gain popups (top left, where nothing else sits during a session): one card per stat that rose
+-- (old -> new) and per muscle part that grew (+gain, level), sliding in one after another and
+-- fading after a while; the result panel keeps the full lists
+local POPUP_MAX = 12
+local function gainPopups(ctx, r0, grown)
+	local items = {}
+	for _, k in ipairs(Config.StatKeys) do
+		local g = tonumber(type(r0.gains) == "table" and r0.gains[k])
+		if g and g > 0.001 then
+			local old = ctx.stats0 and ctx.stats0[k] or 0
+			table.insert(items, { kind = "stat", key = k, label = string.upper(Config.StatNames[k] or k), old = old, new = old + g, g = g, color = T.green })
+		end
+	end
+	for _, e in ipairs(grown) do
+		local before = ctx.body0 and ctx.body0[e.id] or 0
+		table.insert(items, { kind = "muscle", key = e.id, label = string.upper(BodyMap.Short(e.id)), old = before, new = before + e.g, g = e.g, color = T.orange,
+			group = string.upper(Config.MuscleNames[Config.MusclePartGroup[e.id] or ""] or "") })
+	end
+	if #items == 0 then
+		return nil
+	end
+	-- wide screens: a column beside the body map card (which grows tall on the report), else in the
+	-- top-left corner. Phones (the compact test of ctx.layout) have no room for a column: the report
+	-- fills the screen below a thin band, so the gains become one row of chips in that band, left of
+	-- the +XP toast, as many as fit in the width (stats first; the report keeps every one)
+	local canvas = UI.CanvasSize(State.gui)
+	local compact = canvas.Y < 640
+	-- narrower chips on the smallest phones (667 wide: three fit beside the toast instead of two)
+	local CHIP_W, GAP = (compact and canvas.X < 760) and 118 or 136, 6
+	local col, host, rowSize, shown
+	if compact then
+		-- a strip this short shows the biggest stat and the biggest muscle first, then the rest in turns
+		local stats, muscles, mixed = {}, {}, {}
+		for _, it in ipairs(items) do
+			table.insert(it.kind == "stat" and stats or muscles, it)
+		end
+		for i = 1, math.max(#stats, #muscles) do
+			if stats[i] then
+				table.insert(mixed, stats[i])
+			end
+			if muscles[i] then
+				table.insert(mixed, muscles[i])
+			end
+		end
+		items = mixed
+		local stripW = math.max(CHIP_W, math.floor(canvas.X - 24 - 16 - 220 - 24))
+		local fit = math.max(1, math.floor((stripW + GAP) / (CHIP_W + GAP)))
+		-- the last slot goes to the "+N more" note when not everything fits
+		shown = #items <= fit and #items or math.max(1, fit - 1)
+		col = UI.Frame(State.gui, { Name = "Gains", Position = UDim2.fromOffset(24, 8), Size = UDim2.fromOffset(stripW, 52), BackgroundTransparency = 1, ZIndex = 20 })
+		UI.Kicker(col, "SESSION GAINS", T.green, { Size = UDim2.new(1, 0, 0, 16) })
+		host = UI.Frame(col, { Name = "Row", Position = UDim2.fromOffset(0, 20), Size = UDim2.new(1, 0, 0, 32), BackgroundTransparency = 1, ZIndex = 20 })
+		UI.List(host, GAP, true)
+		rowSize = UDim2.fromOffset(CHIP_W, 32)
+	else
+		local x = (ctx.side and ctx.side.Visible) and (24 + SIDE_W + 16) or 24
+		col = UI.Frame(State.gui, { Name = "Gains", Position = UDim2.fromOffset(x, 24), Size = UDim2.fromOffset(280, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1, ZIndex = 20 })
+		UI.List(col, 6)
+		UI.Kicker(col, "SESSION GAINS", T.green, { order = 0 })
+		host = col
+		rowSize = UDim2.new(1, 0, 0, 36)
+		shown = math.min(#items, POPUP_MAX)
+	end
+	ctx.onDestroy(function()
+		col:Destroy()
+	end)
+	for i = 1, shown do
+		local it = items[i]
+		task.delay(0.14 * i, function()
+			if not host.Parent then
+				return
+			end
+			local row = UI.Frame(host, { Name = it.kind == "stat" and "StatGain" or "MuscleGain", BackgroundTransparency = 1, Size = rowSize, LayoutOrder = i, ZIndex = 20 })
+			row:SetAttribute("Key", it.key)
+			row:SetAttribute("Old", math.floor(it.old * 100 + 0.5) / 100)
+			row:SetAttribute("New", math.floor(it.new * 100 + 0.5) / 100)
+			row:SetAttribute("Gain", math.floor(it.g * 100 + 0.5) / 100)
+			local card = UI.Frame(row, { Name = "Card", Size = UDim2.fromScale(1, 1), Position = UDim2.fromOffset(-40, 0), BackgroundColor3 = T.bg, BackgroundTransparency = 1, ZIndex = 20 })
+			UI.Glass(card, { transparency = 0.08, radius = compact and UI.R.sm or UI.R.md })
+			card.BackgroundTransparency = 1
+			UI.Frame(card, { Position = UDim2.fromOffset(0, 8), Size = UDim2.new(0, 3, 1, -16), BackgroundColor3 = it.color, ZIndex = 21 })
+			local label = it.label
+			if it.group and it.group ~= "" and not compact then
+				label = string.format('%s <font color="#%s" size="11">%s</font>', it.label, T.sub:ToHex(), it.group)
+			end
+			local numbers = string.format("%.1f > %.1f", it.old, it.new)
+			local gain = string.format("+%.2f", it.g)
+			if compact then
+				-- a chip: the name over the numbers, the gain in the corner
+				UI.Text(card, label, { Font = T.semi, TextSize = 11, Position = UDim2.fromOffset(9, 2), Size = UDim2.new(1, -14, 0, 13), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false,
+					TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 21 })
+				UI.Text(card, numbers, { Face = "number", TextSize = 12, Position = UDim2.fromOffset(9, 16), Size = UDim2.new(1, -64, 0, 14), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, ZIndex = 21 })
+				UI.Text(card, gain, { Face = "number", TextSize = 12, TextColor3 = it.color, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -6, 0, 16), Size = UDim2.fromOffset(52, 14), AutomaticSize = Enum.AutomaticSize.None,
+					TextXAlignment = Enum.TextXAlignment.Right, TextWrapped = false, ZIndex = 21 })
+			else
+				UI.Text(card, label, { Font = T.semi, TextSize = 13, RichText = true, Position = UDim2.fromOffset(12, 0), Size = UDim2.new(0.4, -12, 1, 0), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false,
+					TextTruncate = Enum.TextTruncate.AtEnd, ZIndex = 21 })
+				UI.Text(card, numbers, { Face = "number", TextSize = 15, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -72, 0, 0), Size = UDim2.new(0.6, -76, 1, 0), AutomaticSize = Enum.AutomaticSize.None,
+					TextXAlignment = Enum.TextXAlignment.Right, TextWrapped = false, ZIndex = 21 })
+				UI.Text(card, gain, { Face = "number", TextSize = 15, TextColor3 = it.color, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -10, 0, 0), Size = UDim2.fromOffset(60, 36), AutomaticSize = Enum.AutomaticSize.None,
+					TextXAlignment = Enum.TextXAlignment.Right, TextWrapped = false, ZIndex = 21 })
+			end
+			UI.Tween(card, { Position = UDim2.fromOffset(0, 0), BackgroundTransparency = 0.08 }, UI.Motion.base)
+		end)
+	end
+	if #items > shown then
+		task.delay(0.14 * (shown + 1), function()
+			if host.Parent then
+				UI.Text(host, string.format(compact and "+%d more in\nthe report" or "+ %d more in the report", #items - shown), { Font = T.semi, TextSize = compact and 11 or 12, TextColor3 = T.sub,
+					Size = compact and rowSize or UDim2.new(1, 0, 0, 16), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = compact, LayoutOrder = shown + 1, ZIndex = 20 })
+			end
+		end)
+	end
+	task.delay(10, function()
+		if col.Parent then
+			for _, r in ipairs(host:GetChildren()) do
+				local c = r:FindFirstChild("Card")
+				if c then
+					UI.Tween(c, { Position = UDim2.fromOffset(-40, 0), BackgroundTransparency = 1 }, UI.Motion.base)
+				end
+			end
+			task.wait(0.4)
+			col:Destroy()
+		end
+	end)
+	return col
+end
+
 local function showResult(ctx, res, quality)
 	ctx.mode = "done" -- freeze the heart-rate readout
 	ctx.resting = false
@@ -3570,14 +3896,15 @@ local function showResult(ctx, res, quality)
 		UI.Kicker(list, "MUSCLE GROWTH", T.green, { order = nextOrder(), TextSize = 13 })
 		local now = (Config.MuscleGrowth and Config.MuscleGrowth.immediate) or 0.65
 		local cap = ctx.cap or 100
-		for i, e in ipairs(grown) do
-			if i > 6 then
-				UI.Text(list, string.format("+ %d more", #grown - 6), { Font = T.semi, TextSize = 14, TextColor3 = T.sub, Size = UDim2.new(1, 0, 0, 18), AutomaticSize = Enum.AutomaticSize.None, LayoutOrder = nextOrder() })
-				break
-			end
+		-- every part that grew (the list scrolls): the name, its group, the bar and the gain
+		for _, e in ipairs(grown) do
 			local before = ctx.body0 and ctx.body0[e.id] or 0
 			local row = UI.Frame(list, { Name = "Grow", BackgroundTransparency = 1, Size = UDim2.new(1, -8, 0, 24), LayoutOrder = nextOrder() })
-			UI.Text(row, string.upper(BodyMap.Short(e.id)), { Font = T.semi, TextSize = 14, Size = UDim2.new(0, 120, 1, 0), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
+			row:SetAttribute("Part", e.id)
+			row:SetAttribute("Gain", math.floor(e.g * 100 + 0.5) / 100)
+			local grp = Config.MuscleNames[Config.MusclePartGroup[e.id] or ""] or ""
+			UI.Text(row, string.upper(BodyMap.Short(e.id)) .. (grp ~= "" and string.format('  <font color="#%s" size="11">%s</font>', T.sub:ToHex(), string.upper(grp)) or ""),
+				{ Font = T.semi, TextSize = 14, RichText = true, Size = UDim2.new(0, 120, 1, 0), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
 			UI.LevelBar(row, { Position = UDim2.new(0, 126, 0.5, -5), Size = UDim2.new(1, -126 - 132, 0, 10) },
 				{ gain = { before, before + e.g * now }, pending = before + e.g, cap = cap, color = BodyMap.DevColor(before / cap) })
 			UI.Text(row, string.format("+%.2f", e.g), { Face = "number", TextSize = 18, TextColor3 = T.green, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -62, 0, 0), Size = UDim2.fromOffset(64, 24),
@@ -3588,16 +3915,30 @@ local function showResult(ctx, res, quality)
 		UI.Text(list, string.format("Green lands now; the pale stretch grows overnight if you sleep and eat well. Gold tick: your frame's potential (%d).", math.floor(cap + 0.5)),
 			{ TextSize = 13, TextColor3 = T.sub, Size = UDim2.new(1, -8, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = nextOrder() })
 	end
-	-- 3. stat gains as chips
-	local statChips = {}
+	-- 3. stat increases: every stat that rose, old -> new (the popups say the same; this stays)
+	local statRows = {}
 	if type(r0.gains) == "table" then
 		for _, k in ipairs(Config.StatKeys) do
 			local g = tonumber(r0.gains[k])
 			if g and g > 0.001 then
-				table.insert(statChips, { string.format("+%.2f %s", g, string.upper(Config.StatNames[k] or k)), T.green })
+				table.insert(statRows, { key = k, g = g, old = ctx.stats0 and ctx.stats0[k] or 0 })
 			end
 		end
 	end
+	if #statRows > 0 then
+		UI.Kicker(list, "STAT INCREASES", T.green, { order = nextOrder(), TextSize = 13 })
+		for _, e in ipairs(statRows) do
+			local row = UI.Frame(list, { Name = "StatRow", BackgroundTransparency = 1, Size = UDim2.new(1, -8, 0, 22), LayoutOrder = nextOrder() })
+			row:SetAttribute("Stat", e.key)
+			UI.Text(row, string.upper(Config.StatNames[e.key] or e.key), { Font = T.semi, TextSize = 14, Size = UDim2.new(0, 150, 1, 0), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
+			UI.LevelBar(row, { Position = UDim2.new(0, 156, 0.5, -4), Size = UDim2.new(1, -156 - 214, 0, 8) }, { gain = { e.old, e.old + e.g }, color = T.line })
+			UI.Text(row, string.format("%.1f > %.1f", e.old, e.old + e.g), { Face = "number", TextSize = 16, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -66, 0, 0), Size = UDim2.fromOffset(140, 22),
+				AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Right, TextWrapped = false })
+			UI.Text(row, string.format("+%.2f", e.g), { Face = "number", TextSize = 16, TextColor3 = T.green, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 0), Size = UDim2.fromOffset(60, 22),
+				AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Right, TextWrapped = false })
+		end
+	end
+	local statChips = {}
 	if type(rec.newStats) == "table" and type(rec.bests) == "table" then
 		for _, key in ipairs(rec.newStats) do
 			local v = rec.bests[key]
@@ -3607,9 +3948,12 @@ local function showResult(ctx, res, quality)
 		end
 	end
 	if #statChips > 0 then
-		UI.Kicker(list, "STATS", T.green, { order = nextOrder(), TextSize = 13 })
+		UI.Kicker(list, "RECORDS", T.gold, { order = nextOrder(), TextSize = 13 })
 		chipFlow(list, statChips, nextOrder(), listW)
 	end
+	-- the toasts and popups: +XP counting up, every stat and muscle that rose
+	pcall(xpToast, r0)
+	pcall(gainPopups, ctx, r0, grown)
 	-- 4. the body: pump, soreness, sweat, veins, fat, fatigue
 	local sc = statusChips(res)
 	if #sc > 0 then
@@ -3648,8 +3992,15 @@ local function showResult(ctx, res, quality)
 			if ctx.map then
 				ctx.map:SetGrowth(r0.parts, T.green)
 				ctx.map:Pulse(2)
-				ctx.sideNames(ctx.map:Lit(), T.green)
 			end
+			-- the names under the figure carry their gains (exactly which muscles grew, and by how much)
+			local bits = {}
+			for _, e in ipairs(grown) do
+				table.insert(bits, string.format("%s +%.2f", string.upper(BodyMap.Short(e.id)), e.g))
+			end
+			UI.Clear(ctx.sideList)
+			UI.Text(ctx.sideList, table.concat(bits, "  ·  "), { Name = "GrowthNames", Font = T.semi, TextSize = 12, TextColor3 = T.green, Size = UDim2.fromScale(1, 1), AutomaticSize = Enum.AutomaticSize.None,
+				TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Top, TextTruncate = Enum.TextTruncate.AtEnd })
 		end
 		-- energy / fatigue after the session (the server's numbers once the profile arrives)
 		local c0 = ctx.cond0 or {}
@@ -3679,6 +4030,12 @@ local function showResult(ctx, res, quality)
 	if canFlex then
 		table.insert(actions, { id = "flex", label = "FLEX", keys = { K.F }, color = Color3.fromRGB(255, 140, 60) })
 	end
+	-- MUSCLES: the Muscle Progression screen (3D figure, the groups, growth over time) opens on the
+	-- parts this session grew
+	local wantMuscle = false
+	if #grown > 0 and State.open.Muscle then
+		table.insert(actions, { id = "muscles", label = "MUSCLES", keys = { K.M }, pad = { K.ButtonY }, color = T.panel2 })
+	end
 	ctx.bind(actions, #actions)
 	if ctx.buttons.close then
 		ctx.buttons.close.TextColor3 = T.bg
@@ -3693,6 +4050,11 @@ local function showResult(ctx, res, quality)
 	ctx.on(function(id, down)
 		-- a key still being mashed from the drill (SPACE) mustn't skip the results instantly
 		if not down or os.clock() - t0 <= 0.8 then
+			return
+		end
+		if id == "muscles" then
+			wantMuscle = true
+			closed = true
 			return
 		end
 		if id == "flex" then
@@ -3715,6 +4077,7 @@ local function showResult(ctx, res, quality)
 	while not closed and not ctx.cancelled and os.clock() - t0 < 15 do
 		RunService.Heartbeat:Wait()
 	end
+	return wantMuscle
 end
 
 ------------------------------------------------------------------------
@@ -3806,6 +4169,7 @@ function Activities.Start(actId)
 		task.wait(0.15) -- let the server place the character
 		camConn = stationCamera(res.pose)
 	end
+	local muscleAfter -- the MUSCLES button on the report: open the muscle screen on these parts once the panel is gone
 	local ok, perf = pcall(drill, ctx, res)
 	ctx.on(nil)
 	ctx.intensity = nil
@@ -3840,7 +4204,9 @@ function Activities.Start(actId)
 			-- the reveal: the camera turns to face the athlete for the report
 			task.wait(0.2) -- the server lets go of the station pose
 			camConn = revealCamera()
-			showResult(ctx, fin, fin.quality or quality)
+			if showResult(ctx, fin, fin.quality or quality) then
+				muscleAfter = type(fin.result) == "table" and fin.result.parts or {}
+			end
 		else
 			State.toast(fin.err or "Session didn't count.", T.red)
 		end
@@ -3856,6 +4222,9 @@ function Activities.Start(actId)
 	current = nil
 	State.activity = nil
 	UI.PadHold("Activity", false)
+	if muscleAfter and State.open.Muscle then
+		task.defer(State.open.Muscle, { growth = muscleAfter })
+	end
 end
 
 function Activities.Busy()
