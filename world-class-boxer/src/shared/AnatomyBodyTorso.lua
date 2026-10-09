@@ -702,26 +702,35 @@ function Torso.Lower(sk, P, lod, prof, opt)
 		local step = TAU / n
 		if aligned then
 			-- seat vertex j -> a leg and its own ring angle: round the right leg from its lateral line forward to
-			-- its front medial corner (the last vertex before its medial face), a vertex on the midline at that
-			-- corner's depth (where the two legs' fronts meet), round the left leg (its own angle, mirrored) from
-			-- its front corner to its back corner, the midline again, and round the right leg's back to its
-			-- lateral line: twice the leg's sides less four vertices, the medial faces' own left out (hidden
-			-- between the legs: a midline vertex at one of them notched the seat's front and back)
+			-- the last vertex before its medial face, a vertex on the midline at the depth of the leg's front
+			-- medial corner (a leg vertex is turned onto it, Limbs sectionAngle: the one before the medial face at
+			-- medium detail, the one before that at full; where the two legs' fronts meet), round the left leg (its
+			-- own angle, mirrored) from its front to its back, the midline again, and round the right leg's back to
+			-- its lateral line: twice the leg's sides less four vertices, the medial face's left out (hidden
+			-- between the legs: a midline vertex at a medial face notched the seat's front and back; a bridge at
+			-- the depth of a vertex short of the corner stood proud of the legs' corners, a dark wedge under it at
+			-- the top of the seam)
 			local j = math.floor(a0 / (TAU / R.ltSides) + 0.5) % R.ltSides
 			local half = n / 2 - 1
 			local sd, la, mid
 			if j < half then
 				sd, la = 1, j * step
 			elseif j == half then
-				sd, la, mid = 1, (half - 1) * step, true
+				sd, la, mid = 1, half * step, true
 			elseif j < 3 * n / 2 - 3 then
 				sd, la = -1, (2 * half - j) * step
 			elseif j == 3 * n / 2 - 3 then
-				sd, la, mid = -1, (1 - half) * step, true
+				sd, la, mid = -1, -half * step, true
 			else
 				sd, la = 1, (j - 3 * n / 2 + 3 - half) * step
 			end
-			local r, cx2, cz2 = (sd < 0 and legRL or legR)(y, la)
+			local legAt = sd < 0 and legRL or legR
+			local r, cx2, cz2, corner = legAt(y, la)
+			if mid and not corner then
+				-- (the leg's corner vertex is the one a step further from its medial line)
+				la -= (la > 0 and 1 or -1) * step
+				r, cx2, cz2 = legAt(y, la)
+			end
 			r += off
 			local a2 = sd < 0 and pi - la or la
 			local x = mid and 0 or abs(cx2) * sd + r * cos(a2)
