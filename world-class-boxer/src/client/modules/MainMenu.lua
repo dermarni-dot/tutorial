@@ -76,7 +76,10 @@ local function holdControls(hum)
 		return
 	end
 	scene.hum = hum
-	scene.walk, scene.jump = hum.WalkSpeed, hum.JumpHeight
+	-- a sprint running (FightClient: Shift / L3) publishes the walk under it: the menu gives back the walk, not
+	-- the sprint (the sprint itself ends on this write)
+	local base = tonumber(hum:GetAttribute("SprintBase"))
+	scene.walk, scene.jump = (base and base > 0) and base or hum.WalkSpeed, hum.JumpHeight
 	hum.WalkSpeed, hum.JumpHeight = 0, 0
 end
 
@@ -360,9 +363,19 @@ local activate -- forward
 local show -- forward
 local openScout -- forward
 
+local MENU_TOP_SMALL = 192 -- design y of the item list on a compact canvas (under the logo and tagline)
 local function itemMetrics()
 	local small = compact()
-	return small and 36 or 54, small and 2 or 4, small and 24 or 36
+	local h, pad = small and 36 or 54, small and 2 or 4
+	if small and #items > 0 then
+		-- the shortest phones (667 x 375: a 481 design px canvas) fit every row above the bottom edge: the
+		-- rows give up a few px rather than push the last item (SETTINGS) off the screen
+		local avail = canvasH - MENU_TOP_SMALL - 8
+		if #items * (h + pad) > avail then
+			h = math.max(28, math.floor(avail / #items) - pad)
+		end
+	end
+	return h, pad, small and 24 or 36
 end
 
 local function selectItem(i, instant)
@@ -392,7 +405,6 @@ local function selectItem(i, instant)
 end
 
 local function buildMenu(layer)
-	local h, pad, size = itemMetrics()
 	local small = compact()
 	local isNew = not created()
 	items = {}
@@ -407,7 +419,8 @@ local function buildMenu(layer)
 			table.insert(items, copy)
 		end
 	end
-	local top = small and 192 or 372
+	local h, pad, size = itemMetrics() -- (after the list: a phone fits the rows to the canvas)
+	local top = small and MENU_TOP_SMALL or 372
 	local menu = UI.Frame(layer, { Name = "Menu", BackgroundTransparency = 1, Position = UDim2.fromOffset(small and 52 or 68, top), Size = UDim2.fromOffset(520, #items * (h + pad)) })
 	local list = UI.Frame(menu, { Name = "Items", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1) })
 	UI.List(list, pad)
@@ -970,7 +983,7 @@ local function screenSettings(layer)
 		Settings.Set("aimAssist", x)
 	end)
 	add(assistRow, nudge(assistRow))
-	add(UI.Text(body, "The left stick is read relative to the opponent and punches from a pad get a small accuracy forgiveness (Low 3 points, High 6; the server applies it, never to a keyboard).", { TextSize = 13, TextColor3 = T.sub }))
+	add(UI.Text(body, "The left stick is read relative to the opponent and punches from a pad get a small accuracy forgiveness (Low 2 points, High 4; the server applies it, never to a keyboard).", { TextSize = 13, TextColor3 = T.sub }))
 	local vibRow = UI.Toggle(body, "Controller vibration", v.vibration, function(on)
 		Settings.Set("vibration", on)
 	end)
@@ -981,10 +994,15 @@ local function screenSettings(layer)
 		return x < 0.01 and "Off" or (x < 0.4 and "Light" or (x < 0.8 and "Medium" or "Strong"))
 	end })
 	add(vibStrength, nudge(vibStrength))
+	-- the display / audio / console options; the key map is not on this screen and keeps its own reset in
+	-- Moves & Controls (RESET ALL)
 	local function reset()
 		for k, def in pairs(Settings.Defaults) do
-			Settings.Set(k, def)
+			if k ~= "keymap" then
+				Settings.Set(k, def)
+			end
 		end
+		State.toast("Settings back to the defaults. Your controls are kept (Moves & Controls has their reset).", T.gold)
 		show("settings", true)
 	end
 	local resetBtn = UI.Button(body, "RESET TO DEFAULTS", { Size = UDim2.fromOffset(240, 40) }, reset)

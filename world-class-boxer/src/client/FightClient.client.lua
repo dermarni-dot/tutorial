@@ -12,17 +12,19 @@
 -- Settings.Keymap()). Keyboard defaults: left click jab, right click cross, F lead hook, R rear hook, T
 -- uppercut, G body hook, middle click overhand, C = to the body, B block, V parry, Q / E slip, Space dodge,
 -- Shift + Space quick dodge, double-tap A / D pivot, Ctrl clinch, Q + click counter jab, E + right click
--- counter cross, 1-9 the special moves, H the controls strip, Tab the Moves & Controls menu, Shift sprints
--- outside the ring. Block, body and the controls legend are TAP TOGGLES on every device (tap: on, tap
--- again: off); a press held longer than Tog.HOLD still works as a hold (released when you let go). A punch
--- drops a tapped guard (as the server does) and spends a tapped body modifier.
+-- counter cross, 1-9 the special moves, H the controls strip, Tab (or `) the Moves & Controls menu (the
+-- fight hides Roblox's player list, which owns Tab), Shift sprints (in the ring: the server's quicker
+-- footwork). Block, body and the controls legend are TAP TOGGLES on every device (tap: on, tap again:
+-- off); a press held longer than Tog.HOLD still works as a hold (released when you let go). A punch drops
+-- a tapped guard (as the server does) and spends a tapped body modifier. The menu pauses a solo fight.
 -- Gamepad (bound through ContextActionService for the fight, above the default jump / camera bindings):
--- X jab, Y cross, B lead hook, A rear hook, RT uppercut, RB overhand (tap) and the special-move modifier
--- (hold RB + a button), LB = to the body, LT block (both tap toggles), right stick flick left / right slip,
--- down roll, up parry, flick then X / Y counter jab / cross, LT + A quick dodge, D-pad left / right pivot,
--- D-pad up parry, D-pad down or LS click clinch, VIEW the controls strip (hold it for the menu); when
--- down, mash A. Aim assist (Settings, gamepad only) reads the left stick relative to the opponent;
--- vibration on hits (Gamepad.Rumble); the fight camera frames both fighters and the right stick nudges it.
+-- X jab, Y cross, B lead hook, A rear hook, RT uppercut, RB overhand (tap: it goes on the release) and the
+-- special-move modifier (hold RB + a button), LB = to the body, LT block (both tap toggles), right stick
+-- flick left / right slip, down roll, up parry, flick then X / Y counter jab / cross, RS click quick dodge,
+-- D-pad left / right pivot, D-pad up parry, D-pad down or LS click clinch, VIEW the controls strip (hold
+-- it for the menu); when down, mash A. Aim assist (Settings, gamepad only) reads the left stick relative
+-- to the opponent; vibration on hits (Gamepad.Rumble); the fight camera frames both fighters and the right
+-- stick nudges it. Touch: see buildTouch (pads and swipes for every move, MOVES for the menu).
 local Players = game:GetService("Players")
 local ContextActionService = game:GetService("ContextActionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -292,10 +294,12 @@ end
 -- KM.capText(ids, mode) -> a cap's text (set by the HUD block)
 function KM.refresh()
 	local mode = Gamepad and Gamepad.Mode() or "keyboard"
-	for _, c in ipairs(KM.caps) do
-		local ok, text = pcall(KM.capText, c.ids, mode)
-		if ok and type(text) == "string" and c.label.Text ~= text then
-			c.label.Text = text
+	for _, list in ipairs({ KM.caps, KM.specialCaps or {} }) do
+		for _, c in ipairs(list) do
+			local ok, text = pcall(KM.capText, c.ids, mode)
+			if ok and type(text) == "string" and c.label.Text ~= text then
+				c.label.Text = text
+			end
 		end
 	end
 end
@@ -777,7 +781,7 @@ do
 	UI.New("UIPadding", { PaddingLeft = UDim.new(0, 12), PaddingRight = UDim.new(0, 14), PaddingTop = UDim.new(0, 4), PaddingBottom = UDim.new(0, 4), Parent = controls })
 	UI.List(controls, 2, false, Enum.HorizontalAlignment.Center)
 	local ctlRows = {}
-	for r = 1, 2 do
+	for r = 1, 3 do
 		ctlRows[r] = UI.Frame(controls, { Name = "Row" .. r, BackgroundTransparency = 1, Size = UDim2.fromOffset(0, 24), AutomaticSize = Enum.AutomaticSize.X, LayoutOrder = r })
 		UI.List(ctlRows[r], 12, true, Enum.HorizontalAlignment.Center)
 	end
@@ -828,6 +832,39 @@ do
 				end
 			end)
 		end
+	end
+	-- the third row: the special moves this fighter has unlocked, with their key / chord on the device in use
+	-- (from the fight's start message; KM.refresh repaints these caps too, KM.paintSpecials dims them while
+	-- a special is not ready)
+	KM.specialCaps = {}
+	function KM.buildSpecialStrip(list)
+		UI.Clear(ctlRows[3])
+		table.clear(KM.specialCaps)
+		local mode = Gamepad and Gamepad.Mode() or "keyboard"
+		for i, id in ipairs(list or {}) do
+			local a = Keymap.ById["special_" .. id]
+			if a then
+				local f = UI.Frame(ctlRows[3], { Name = "StripSpecial_" .. id, BackgroundTransparency = 1, Size = UDim2.fromOffset(0, 24), AutomaticSize = Enum.AutomaticSize.X, LayoutOrder = i })
+				UI.List(f, 5, true)
+				local cap = UI.Frame(f, { Size = UDim2.fromOffset(0, 20), AutomaticSize = Enum.AutomaticSize.X, BackgroundColor3 = T.panel2, BackgroundTransparency = 0, LayoutOrder = 1 })
+				UI.Corner(cap, 4)
+				local stroke = UI.New("UIStroke", { Color = T.gold, Thickness = 1, Transparency = 0.3, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = cap })
+				local t = UI.Text(cap, capText({ a.id }, mode), { Font = T.semi, TextSize = 12, Size = UDim2.new(0, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.X,
+					TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false })
+				UI.Pad(t, 0, 6)
+				UI.BindHint(t, function(m)
+					return capText({ a.id }, m)
+				end)
+				table.insert(KM.specialCaps, { label = t, ids = { a.id } })
+				local name = UI.Text(f, a.touch or id:upper(), { Font = T.semi, TextSize = 12, TextColor3 = T.gold, Size = UDim2.new(0, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.X,
+					TextWrapped = false, LayoutOrder = 2 })
+				-- the strip's caps share the touch pads' readiness painter
+				local e = KM.specialPads[id] or {}
+				e.stripLabel, e.stripStroke = name, stroke
+				KM.specialPads[id] = e
+			end
+		end
+		ctlRows[3].Visible = #list > 0
 	end
 	-- the reminder once the strip has faded
 	local controlsHint, controlsHintText = UI.Chip(hud, "H  ·  CONTROLS", T.sub, { AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 24, 1, -62), h = 24, TextSize = 13 })
@@ -1251,6 +1288,7 @@ do
 			item.Parent = (compact and i > 7) and ctlRows[2] or ctlRows[1]
 		end
 		ctlRows[2].Visible = compact
+		ctlRows[3].Visible = #ctlRows[3]:GetChildren() > 1
 		-- the corner bug outside rounds (in rounds the clock carries the LIVE tag); a phone's scorecard
 		-- needs the corner
 		bug.Visible = bug:GetAttribute("On") == true and not clock.Visible and not (compact and overlay.Visible)
@@ -1302,8 +1340,12 @@ do
 	-- pickHook decides which hand a HOOK tap throws (the one that did not just punch)
 
 	-- touch controls (phones / tablets): a 2 x 2 punch cluster at the bottom right (HOOK / UPPER over JAB /
-	-- CROSS) with a BODY toggle over it, and the defence on the left edge above the thumbstick: BLOCK
-	-- (tap toggle; drag left / right on it to slip) and CLINCH. Big, semi-transparent round pads (64 pt and up).
+	-- CROSS) with OVERHAND and a BODY toggle over it, the unlocked special moves in a grid left of it, and
+	-- the defence on the left edge above the thumbstick: BLOCK (tap toggle; swipe left / right on it to slip,
+	-- down to roll under, up to parry, hold it and swipe down for the quick dodge) and CLINCH (tap; swipe
+	-- left / right to pivot). A slip followed by JAB / CROSS within half a second is the counter jab / cross.
+	-- MOVES (top left) opens the Moves & Controls menu. Big, semi-transparent round pads (64 pt and up);
+	-- every target is at least a fingertip (UI.MinHit) on screen.
 	local function roundPad(parent, name, text, color, size, pos, anchor)
 		local b = UI.New("TextButton", { Name = name, Text = "", AutoButtonColor = false, BorderSizePixel = 0, BackgroundColor3 = T.bg, BackgroundTransparency = 0.35,
 			Size = UDim2.fromOffset(size, size), Position = pos, AnchorPoint = anchor or Vector2.new(0.5, 0.5), Parent = parent })
@@ -1315,28 +1357,126 @@ do
 		return b
 	end
 
+	-- a touch on a pad: swipes are read off the start point; onSwipe(dir, heldFor) fires once per touch for a
+	-- swipe ("L" / "R" / "U" / "D"), onTap(swiped) on the release. The finger is followed through the global
+	-- input events too (a swipe can leave the pad before it is long enough, and its release still counts)
+	local function swipePad(b, onBegin, onSwipe, onTap)
+		local cur
+		local function isPress(input)
+			return input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1
+		end
+		local function finish()
+			local c = cur
+			cur = nil
+			if c and onTap then
+				onTap(c.swiped)
+			end
+		end
+		local function moved(input)
+			local c = cur
+			if not c or c.swiped then
+				return
+			end
+			-- the touch's own InputObject, or the mouse moving while the button that began it is down
+			local mine = input == c.input or (c.input.UserInputType == Enum.UserInputType.MouseButton1 and input.UserInputType == Enum.UserInputType.MouseMovement)
+			if not mine then
+				return
+			end
+			local dx, dy = input.Position.X - c.x, input.Position.Y - c.y
+			local th = 36 * UI.ScaleOf(hud)
+			if math.abs(dx) > th or math.abs(dy) > th then
+				c.swiped = true
+				local dir = math.abs(dx) >= math.abs(dy) and (dx < 0 and "L" or "R") or (dy > 0 and "D" or "U")
+				onSwipe(dir, os.clock() - c.at)
+			end
+		end
+		b.InputBegan:Connect(function(input)
+			if isPress(input) then
+				cur = { input = input, x = input.Position.X, y = input.Position.Y, at = os.clock(), swiped = false }
+				if onBegin then
+					onBegin()
+				end
+			end
+		end)
+		b.InputChanged:Connect(moved)
+		UserInputService.InputChanged:Connect(moved)
+		-- (the pad's own release of that kind of press ends it: a mouse button's InputObject need not be the
+		-- same one that began it; anywhere else only the touch's own InputObject does)
+		b.InputEnded:Connect(function(input)
+			if cur and isPress(input) and (input == cur.input or input.UserInputType == cur.input.UserInputType) then
+				finish()
+			end
+		end)
+		UserInputService.InputEnded:Connect(function(input)
+			if cur and input == cur.input then
+				finish()
+			end
+		end)
+	end
+
+	-- the unlocked special moves (setTouchSpecials, from the fight's start message): a grid of gold pads left
+	-- of the punch cluster, up to three a row, filled from the bottom right so a short list hugs the punches.
+	-- KM.paintSpecials dims a pad while the shared cooldown runs or the gas is not there for it
 	local touchSpecials
-	-- list = the unlocked special ids (Moves.List order); each pad throws its move
+	KM.specialPads = {}
 	function setTouchSpecials(list)
+		table.clear(KM.specialPads)
 		if not touchSpecials then
 			return
 		end
 		UI.Clear(touchSpecials)
-		for i, id in ipairs(list or {}) do
+		list = list or {}
+		local cell = math.max(50, UI.MinHit(touchPad))
+		local gap = 6
+		local cols = math.min(3, #list)
+		local rows = math.ceil(#list / math.max(1, cols))
+		touchSpecials.Size = UDim2.fromOffset(cols * cell + math.max(0, cols - 1) * gap, rows * cell + math.max(0, rows - 1) * gap)
+		for i, id in ipairs(list) do
 			local a = Keymap.ById["special_" .. id]
-			local b = roundPad(touchSpecials, "Special_" .. id, a and a.touch or id:upper(), T.gold, 50, UDim2.fromOffset(0, 0), Vector2.new(0, 0))
-			b.Position = UDim2.fromOffset(0, 0)
+			-- rows from the bottom up; inside a row the moves read left to right, the row hugging the punches
+			local row = math.floor((i - 1) / cols)
+			local inRow = math.min(cols, #list - row * cols)
+			local col = inRow - 1 - (i - 1) % cols
+			local b = roundPad(touchSpecials, "Special_" .. id, a and a.touch or id:upper(), T.gold, cell, UDim2.new(1, -col * (cell + gap), 1, -row * (cell + gap)), Vector2.new(1, 1))
 			b.LayoutOrder = i
 			local lbl = b:FindFirstChildOfClass("TextLabel")
 			if lbl then
-				UI.SetTextSize(lbl, 11)
+				-- one line, never broken inside a word (the touch names are short: CHECK, SHELL, L.UPPER)
+				lbl.TextWrapped = false
+				UI.SetTextSize(lbl, 13)
 			end
 			b.MouseButton1Down:Connect(function()
 				throwSpecial(id)
 			end)
+			KM.specialPads[id] = { pad = b, label = lbl, stroke = b:FindFirstChildOfClass("UIStroke") }
+		end
+		KM.paintSpecials()
+	end
+
+	-- the specials' readiness on the touch pads and the strip's caps: the shared cooldown and the gas each needs
+	function KM.paintSpecials()
+		local now = os.clock()
+		local stam = F.me and tonumber(F.me.stam)
+		for id, v in pairs(KM.specialPads) do
+			local M = Moves.Data[id]
+			local ready = M ~= nil and now >= (F.specialReady or 0) and not (stam and stam < M.stam)
+			if v.pad then
+				v.pad.BackgroundTransparency = ready and 0.35 or 0.7
+				if v.stroke then
+					v.stroke.Color = ready and T.gold or T.dim
+				end
+			end
+			if v.label then
+				v.label.TextTransparency = ready and 0 or 0.5
+			end
+			if v.stripLabel then
+				v.stripLabel.TextColor3 = ready and T.gold or T.dim
+				v.stripStroke.Color = ready and T.gold or T.dim
+			end
 		end
 	end
 
+	local movesPad
 	function buildTouch()
 		if touchPad or not UserInputService.TouchEnabled then
 			return
@@ -1347,7 +1487,12 @@ do
 			local b = roundPad(touchPad, "Punch" .. text, text, T.red, P, pos)
 			b.MouseButton1Down:Connect(function()
 				local kind = p == "hook" and pickHook() or p
-				throwPunch(kind, Tog.on.body and kind ~= "overhand")
+				-- straight out of a slip on the BLOCK pad: the counter jab / cross
+				local counter = (kind == "jab" or kind == "cross") and os.clock() - (KM.touchSlipAt or -10) < 0.5
+				if counter then
+					KM.touchSlipAt = -10
+				end
+				throwPunch(kind, Tog.on.body and kind ~= "overhand", counter or nil)
 			end)
 			return b
 		end
@@ -1355,12 +1500,17 @@ do
 		punchPad("UPPER", "uppercut", UDim2.fromOffset(152, 106))
 		punchPad("JAB", "jab", UDim2.fromOffset(52, 210))
 		punchPad("CROSS", "cross", UDim2.fromOffset(152, 210))
-		-- the unlocked special moves: a row of small pads above the cluster (setTouchSpecials fills it
-		-- from the fight's start message), right-aligned so a short list hugs the punches
-		touchSpecials = UI.Frame(touchPad, { Name = "Specials", BackgroundTransparency = 1, AnchorPoint = Vector2.new(1, 1), Position = UDim2.fromOffset(204, -8),
-			Size = UDim2.fromOffset(0, 50), AutomaticSize = Enum.AutomaticSize.X })
-		UI.List(touchSpecials, 6, true, Enum.HorizontalAlignment.Right)
-		local bodyBtn = UI.Button(touchPad, "BODY", { Name = "Body", Size = UDim2.fromOffset(120, 40), AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.fromOffset(102, 0),
+		touchSpecials = UI.Frame(touchPad, { Name = "Specials", BackgroundTransparency = 1, AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(0, -10, 1, 0), Size = UDim2.fromOffset(0, 0) })
+		-- the top row: OVERHAND and the BODY toggle, a fingertip tall
+		local rowH = math.max(40, UI.MinHit(touchPad))
+		local overBtn = UI.Button(touchPad, "OVERHAND", { Name = "Overhand", Size = UDim2.fromOffset(98, rowH), AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromOffset(0, 56),
+			BackgroundColor3 = T.bg, BackgroundTransparency = 0.35, TextSize = 15 })
+		overBtn.Selectable = false
+		UI.Stroke(overBtn, T.red, 2, 0.15)
+		overBtn.MouseButton1Down:Connect(function()
+			throwPunch("overhand", false)
+		end)
+		local bodyBtn = UI.Button(touchPad, "BODY", { Name = "Body", Size = UDim2.fromOffset(98, rowH), AnchorPoint = Vector2.new(1, 1), Position = UDim2.fromOffset(204, 56),
 			BackgroundColor3 = T.bg, BackgroundTransparency = 0.35, TextSize = 16 })
 		bodyBtn.Selectable = false
 		UI.Stroke(bodyBtn, T.orange, 2, 0.15)
@@ -1380,43 +1530,59 @@ do
 			end
 		end)
 		defencePad = UI.Frame(hud, { Name = "DefencePad", BackgroundTransparency = 1, Size = UDim2.fromOffset(110, 214), AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 14, 0.56, 0) })
-		local clinch = roundPad(defencePad, "Clinch", "CLINCH", T.green, 76, UDim2.fromOffset(55, 38))
-		clinch.MouseButton1Down:Connect(function()
-			send({ t = "clinch" })
+		-- CLINCH: a tap ties him up (on the release, so a swipe can be a pivot instead)
+		local clinch = roundPad(defencePad, "Clinch", "CLINCH\n< PIVOT >", T.green, 76, UDim2.fromOffset(55, 38))
+		UI.SetTextSize(clinch:FindFirstChildOfClass("TextLabel"), 15)
+		swipePad(clinch, nil, function(dir)
+			if dir == "L" or dir == "R" then
+				send({ t = "pivot", dir = dir == "L" and -1 or 1 })
+			end
+		end, function(swiped)
+			if not swiped then
+				send({ t = "clinch" })
+			end
 		end)
-		-- BLOCK: tap to raise the guard, tap again to drop it (a long press still blocks while held);
-		-- drag left / right on it to slip
+		-- BLOCK: tap to raise the guard, tap again to drop it (a long press still blocks while held); swipes are
+		-- the head movement
 		local block = roundPad(defencePad, "Block", "BLOCK\n< SLIP >", T.blue, 104, UDim2.fromOffset(55, 158))
+		for _, h in ipairs({ { "PARRY", 0, -60 }, { "ROLL", 0, 60 } }) do
+			UI.Text(block, h[1], { Name = "Hint" .. h[1], Font = T.semi, TextSize = 12, TextColor3 = T.sub, AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, h[2], 0.5, h[3]),
+				Size = UDim2.fromOffset(80, 16), AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false })
+		end
 		table.insert(Tog.views, function(name, on)
 			if name == "block" then
 				block.BackgroundColor3 = on and T.blue or T.bg
 				block.BackgroundTransparency = on and 0.1 or 0.35
 			end
 		end)
-		local startX, slipped, holding = nil, false, false
-		block.InputBegan:Connect(function(input)
-			if input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1 then
-				startX, slipped, holding = input.Position.X, false, true
-				Tog.press("block")
+		swipePad(block, function()
+			Tog.press("block")
+		end, function(dir, heldFor)
+			-- a swipe is a defence move, not a guard tap: the guard the press raised goes down again (told to
+			-- the server too, in case the move is refused there)
+			Tog.pressedAt.block = nil
+			Tog.set("block", false)
+			if dir == "L" or dir == "R" then
+				KM.touchSlipAt = os.clock()
+				send({ t = "slip", dir = dir == "L" and -1 or 1 })
+			elseif dir == "D" then
+				-- held first (the guard was up as a hold): the quick dodge, else the full roll
+				send({ t = "roll", quick = heldFor >= Tog.HOLD or nil })
+			else
+				send({ t = "parry" })
 			end
-		end)
-		block.InputChanged:Connect(function(input)
-			if holding and not slipped and startX and (input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseMovement) then
-				local dx = input.Position.X - startX
-				if math.abs(dx) > 36 * UI.ScaleOf(hud) then
-					slipped = true
-					-- the slip drops the guard on the server: the toggle follows
-					Tog.pressedAt.block = nil
-					Tog.set("block", false, true)
-					send({ t = "slip", dir = dx < 0 and -1 or 1 })
-				end
-			end
-		end)
-		block.InputEnded:Connect(function(input)
-			if holding and (input.UserInputType == Enum.UserInputType.Touch or input.UserInputType == Enum.UserInputType.MouseButton1) then
-				holding = false
+		end, function(swiped)
+			if not swiped then
 				Tog.release("block")
 			end
+		end)
+		-- MOVES: the Moves & Controls menu (it pauses a solo fight), under the left board, right of CLINCH
+		movesPad = UI.Button(hud, "MOVES", { Name = "MovesPad", Size = UDim2.fromOffset(96, math.max(40, UI.MinHit(hud))), Position = UDim2.fromOffset(132, hudTop + 8),
+			BackgroundColor3 = T.bg, BackgroundTransparency = 0.35, TextSize = 15, Visible = false })
+		movesPad.Selectable = false
+		UI.Stroke(movesPad, T.gold, 2, 0.2)
+		movesPad.MouseButton1Down:Connect(function()
+			openMoves()
 		end)
 		controls.Visible = false
 	end
@@ -1428,7 +1594,7 @@ do
 	-- pads after a touch and the strip after a key press (Gamepad.Mode)
 	holdH = false
 	function refreshControls()
-		local live = F.active == true and not F.resting and not F.down and not F.paused and not F.countdown
+		local live = F.active == true and not F.resting and not F.down and not F.paused and not F.countdown and not F.menuPaused
 		local mode = Gamepad and Gamepad.Mode() or "keyboard"
 		local touchUI = touchPad ~= nil and mode ~= "gamepad" and (mode == "touch" or not UserInputService.KeyboardEnabled)
 		local keyboard = not touchUI
@@ -1446,8 +1612,14 @@ do
 				touchPad.Visible = pads
 				defencePad.Visible = pads
 			end
+			-- the menu pad: whenever the fight HUD is up on touch (between rounds too), not while down
+			local mp = touchUI and gui.Enabled and not F.down and not F.menuPaused
+			movesPad.Visible = mp
+			movesPad.Position = UDim2.fromOffset(132, hudTop + 8)
 		end
-		local tick = not (compactHud and F.active == true and not F.resting)
+		-- the commentary leaves the picture during rounds on a phone, and wherever the touch pads are up
+		-- (the punch cluster sits on the ticker's corner on a tablet)
+		local tick = not ((compactHud or (touchPad ~= nil and touchPad.Visible)) and F.active == true and not F.resting)
 		if ticker.Visible ~= tick then
 			ticker.Visible = tick
 		end
@@ -1531,6 +1703,14 @@ do
 			bodyChip.Visible = on
 		end
 	end)
+
+	-- the round held by the Moves & Controls menu (handlers.pause)
+	local pausedChip = UI.Chip(hud, "ROUND PAUSED  ·  MOVES & CONTROLS", T.gold, { solid = true, AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.3), h = 30, TextSize = 15 })
+	pausedChip.Name = "PausedChip"
+	pausedChip.Visible = false
+	function KM.showPaused(on)
+		pausedChip.Visible = on == true
+	end
 end
 ------------------------------------------------------------------------
 ------------------------------------------------------------------------
@@ -2596,7 +2776,7 @@ end
 -- ring walk, and nobody may punch a man on the canvas: the Guard attributes it replicates already say so
 local function canPredict(char)
 	local now = os.clock()
-	if not char or not F.active or F.down or F.paused or now < (F.stumbleUntil or 0) or now < pred.busyUntil then
+	if not char or not F.active or F.down or F.paused or F.menuPaused or now < (F.stumbleUntil or 0) or now < pred.busyUntil then
 		return false
 	end
 	local g = char:GetAttribute("Guard")
@@ -2621,7 +2801,8 @@ throwPunch = function(p, body, counter)
 		if Tog.held("block") then
 			task.delay(0.45, function()
 				if Tog.on.block and Tog.held("block") and F.active then
-					send({ t = "block", on = true })
+					-- tagged like every input: an untagged message is a keyboard press to the server (aim assist)
+					send({ t = "block", on = true, pad = padFlag() })
 				end
 			end)
 		else
@@ -2653,7 +2834,9 @@ throwPunch = function(p, body, counter)
 end
 
 -- a special move (Moves.lua): sent only when the server said it is unlocked (the fight's start message);
--- predicted like a punch with the special act (the Animator matches the server's echo by id + hand)
+-- predicted like a punch with the special act (the Animator matches the server's echo by id + hand). All
+-- specials share one cooldown (F.specialReady: set on the throw, corrected by the server's echo and its
+-- refusals) and each needs its gas: a press the server would refuse says so on the HUD and sends nothing
 throwSpecial = function(id)
 	if F.countdown or not F.active then
 		return
@@ -2663,14 +2846,24 @@ throwSpecial = function(id)
 		showFlash(flash, "LOCKED - SEE MOVES & CONTROLS", T.sub, 0.8)
 		return
 	end
+	local M = Moves.Data[sid]
+	local now = os.clock()
+	local wait = (F.specialReady or 0) - now
+	if M and wait > 0.05 then
+		showFlash(flash, string.format("SPECIAL READY IN %.1fs", wait), T.sub, 0.6)
+		return
+	end
+	local stam = F.me and tonumber(F.me.stam)
+	if M and stam and stam < M.stam then
+		showFlash(flash, "NO GAS FOR THE " .. (M.short or sid:upper()), T.orange, 0.7)
+		return
+	end
 	send({ t = "special", id = sid, pad = padFlag() })
 	if Tog.on.block and not Tog.held("block") then
 		Tog.set("block", false, true)
 	end
-	local M = Moves.Data[sid]
 	local char = player.Character
-	local now = os.clock()
-	if not M or not canPredict(char) or now < (pred.specialAt or -10) + (M.cooldown or 1.5) then
+	if not M or not canPredict(char) then
 		return
 	end
 	local P = Config.Punches[M.punch[1]] or Config.Punches.cross
@@ -2678,28 +2871,62 @@ throwSpecial = function(id)
 	pred.hand = M.hand
 	pred.lastAt = now
 	pred.specialAt = now
+	pred.specialId = sid
 	pred.busyUntil = now + windup * 2.2 + 0.3
+	F.specialReady = now + (M.cooldown or 1.5)
+	KM.paintSpecials()
 	pred.id += 1
 	char:SetAttribute("PredAct", string.format("special|%s|%s|%.2f|%.2f", sid, M.hand, windup, M.power or 1))
 	char:SetAttribute("PredActId", pred.id)
 end
 
--- the Moves & Controls menu (BoxerClient.ControlsMenu), over the fight: the fight goes on (no pause on a
--- server fight), the pad binding is let go while it is open so its buttons navigate the menu
+-- the server refused a special this client predicted (handlers.refused): the local busy clock lets go and
+-- the Animator is told to drop the move it started on the key press ("cancel|special|<id>", a predicted
+-- act; an Animator without it ignores the unknown act)
+KM.cancelSpecial = function(id)
+	local char = player.Character
+	if not char or pred.specialId ~= id or os.clock() - (pred.specialAt or -10) > 2.5 then
+		return
+	end
+	pred.specialId = nil
+	pred.busyUntil = 0
+	pred.id += 1
+	char:SetAttribute("PredAct", "cancel|special|" .. id)
+	char:SetAttribute("PredActId", pred.id)
+end
+
+-- the Moves & Controls menu (BoxerClient.ControlsMenu), over the fight. A career fight or a spar PAUSES
+-- while it is open (the server stops the round at the next quiet moment: `pause`, handlers.pause); a PvP
+-- bout goes on and the window says so. The pad binding is let go while it is open so its buttons navigate
+-- the menu; anything held (guard, body, sprint) is let go too
 openMoves = function()
 	local CM = KM.module("ControlsMenu")
-	if not CM or CM.IsOpen() then
+	if not CM or CM.IsOpen() or (CM.RecentlyClosed and CM.RecentlyClosed()) then
 		return
+	end
+	local inFight = gui.Enabled
+	if inFight and F.down then
+		return -- (not during a count: the get-up needs the keys)
 	end
 	local wasBound = pad.bound
 	if wasBound then
 		pcall(ContextActionService.UnbindAction, ContextActionService, "BoxerFightPad")
 		pad.bound = false
+	end
+	if inFight then
 		Tog.reset()
+		setSprint(false)
+		if not F.pvp then
+			send({ t = "pause", on = true })
+		end
 	end
 	UI.PadHold("Fight", false)
 	local ok = pcall(CM.Open, {
+		kicker = inFight and (F.pvp and "PVP: THE FIGHT GOES ON" or "ROUND PAUSED") or nil,
 		onClose = function()
+			if inFight then
+				send({ t = "pause", on = false })
+			end
 			if F.active or gui.Enabled then
 				UI.PadHold("Fight", true)
 				if wasBound and not pad.bound then
@@ -2710,6 +2937,9 @@ openMoves = function()
 		end,
 	})
 	if not ok then
+		if inFight then
+			send({ t = "pause", on = false })
+		end
 		UI.PadHold("Fight", true)
 		if wasBound then
 			bindPad()
@@ -2718,14 +2948,28 @@ openMoves = function()
 end
 
 ------------------------------------------------------------------------
--- Sprint (Shift, LS click): outside the ring only, on the player's own Humanoid (client-owned physics).
--- Put back exactly when let go, and never over a speed the server set meanwhile.
+-- Sprint (Shift, LS click) outside the ring: on the player's own Humanoid (client-owned physics). Put back
+-- exactly when let go, and never over a speed something else set meanwhile: any other write while it runs
+-- (the main menu's hold, the server) ends the sprint there and then. The base speed is published as the
+-- Humanoid's local SprintBase attribute, so a hold that saves the speed (MainMenu) saves the walk, not the
+-- sprint. In the ring Shift is the server's quicker footwork instead (ringSprint, FightEngine `sprint`).
 ------------------------------------------------------------------------
+local function endSprint(hum)
+	sprint.on = false
+	if sprint.conn then
+		sprint.conn:Disconnect()
+		sprint.conn = nil
+	end
+	if hum then
+		hum:SetAttribute("SprintBase", nil)
+	end
+end
+
 setSprint = function(on)
 	local char = player.Character
 	local hum = char and char:FindFirstChildOfClass("Humanoid")
 	if not hum then
-		sprint.on = false
+		endSprint(nil)
 		return
 	end
 	if on then
@@ -2737,13 +2981,34 @@ setSprint = function(on)
 		end
 		sprint.on = true
 		sprint.base = hum.WalkSpeed
+		sprint.writing = true
+		hum:SetAttribute("SprintBase", sprint.base)
 		hum.WalkSpeed = sprint.base * SPRINT_MUL
+		sprint.writing = false
+		sprint.conn = hum:GetPropertyChangedSignal("WalkSpeed"):Connect(function()
+			if sprint.on and not sprint.writing and math.abs(hum.WalkSpeed - sprint.base * SPRINT_MUL) >= 0.01 then
+				endSprint(hum)
+			end
+		end)
 	elseif sprint.on then
-		sprint.on = false
-		if math.abs(hum.WalkSpeed - sprint.base * SPRINT_MUL) < 0.01 then
+		local mine = math.abs(hum.WalkSpeed - sprint.base * SPRINT_MUL) < 0.01
+		endSprint(hum)
+		if mine then
 			hum.WalkSpeed = sprint.base
 		end
 	end
+end
+
+-- Shift in the ring: the server speeds the footwork up while it is held (and charges stamina for it)
+local function ringSprint(on)
+	if (sprint.ring == true) == on then
+		return
+	end
+	sprint.ring = on
+	send({ t = "sprint", on = on, pad = padFlag() })
+end
+KM.dropRingSprint = function()
+	sprint.ring = false -- (the fight is over: the server's flag went with it)
 end
 
 ------------------------------------------------------------------------
@@ -2837,9 +3102,10 @@ local function addBinding(dev, b, id)
 end
 
 -- in the ring a flick up doubles as D-pad up (the parry), the LS click as D-pad down (the clinch) and the RS
--- click as D-pad left (the pivot, as the old map had it): the flicks share the stick with the slips and the
--- roll, and the sprint has no use between the ropes. Only while the map gives the alias key nothing of its
--- own (the sprint does not count); never outside a fight.
+-- click as D-pad left (the pivot, as the old map had it; the default map now gives RS click the quick dodge,
+-- which wins): the flicks share the stick with the slips and the roll. Only while the map gives the alias
+-- key nothing of its own (the sprint does not count: a pad's ring sprint gives way to the clinch); never
+-- outside a fight.
 local PAD_ALIAS = { Thumbstick2Up = "DPadUp", ButtonL3 = "DPadDown", ButtonR3 = "DPadLeft" }
 
 -- the lookup tables of the map in use (rebuilt when Settings hands out a new map)
@@ -2884,7 +3150,11 @@ local function act(id)
 		openMoves()
 		return
 	elseif id == "sprint" then
-		setSprint(true)
+		if gui.Enabled then
+			ringSprint(true)
+		else
+			setSprint(true)
+		end
 		return
 	elseif id == "body" then
 		Tog.press("body") -- armed even between rounds, so a tap carried over a bell still counts
@@ -2984,6 +3254,7 @@ local function onRelease(name)
 		Tog.release(TOGGLE_ACTIONS[id])
 	elseif id == "sprint" then
 		setSprint(false)
+		ringSprint(false)
 	end
 end
 
@@ -3012,6 +3283,10 @@ local function menuOpen()
 	return CM and CM.IsOpen() or false
 end
 
+-- keys Roblox claims that the fight takes back: Tab (the player list, hidden for the fight: KM.listOff) and
+-- Shift (shift-lock may claim it; the ring sprint and the Shift + Space chord still need it)
+local RING_KEYS = { Tab = "list", LeftShift = true, RightShift = true }
+
 UserInputService.InputBegan:Connect(function(input, gp)
 	local name, device = inputName(input)
 	if not name then
@@ -3026,16 +3301,22 @@ UserInputService.InputBegan:Connect(function(input, gp)
 	end
 	-- SHIFT before the gameProcessed check: shift-lock may claim the key, the chords must still see it held
 	Ctl.held[name] = true
-	if gp and not (device == "pad" and GuiService.SelectedObject == nil) then
+	local ringKey = gui.Enabled and RING_KEYS[name] ~= nil and (RING_KEYS[name] ~= "list" or KM.listOff == true)
+	if gp and not (device == "pad" and GuiService.SelectedObject == nil) and not ringKey then
 		return
 	end
 	if not F.active and not F.down then
 		local lk = lookup()[device]
 		local p = lk.plain[name]
-		if p == "sprint" then
+		if p == "sprint" and not gui.Enabled then
 			fire("sprint", name)
-		elseif p == "moveslist" and not gui.Enabled and not UserInputService:GetFocusedTextBox() then
-			fire("moveslist", name)
+		elseif p == "moveslist" then
+			-- in the world too (the backquote key; Tab there is Roblox's player list), but not over the main
+			-- menu (it has its own CONTROLS) or in the middle of a drill
+			local MM = KM.module("MainMenu")
+			if gui.Enabled or not (player:GetAttribute("Busy") ~= nil or (MM and MM.IsOpen and MM.IsOpen())) then
+				fire("moveslist", name)
+			end
 		end
 		return
 	end
@@ -3099,18 +3380,18 @@ end
 
 local function padBegin(k)
 	local name = k.Name
-	if k == K.ButtonSelect then
-		-- VIEW: a tap toggles the strip; held for a second it opens the Moves & Controls menu
-		Ctl.held[name] = true
-		Ctl.pressedAt[name] = os.clock()
-		Tog.press("legend")
-		Ctl.keyAction[name] = "legend"
+	if k == K.ButtonSelect and not F.down then
+		-- VIEW: held for a second it always opens the Moves & Controls menu; the press itself does what the
+		-- map gives VIEW (the controls strip by default, any action the player bound to it otherwise)
+		onPress(name, "pad")
 		local at = Ctl.pressedAt[name]
 		task.delay(0.8, function()
 			if Ctl.held[name] and Ctl.pressedAt[name] == at and pad.bound then
+				if Ctl.keyAction[name] == "legend" then
+					Tog.pressedAt.legend = nil
+					Tog.set("legend", false)
+				end
 				Ctl.keyAction[name] = nil
-				Tog.pressedAt.legend = nil
-				Tog.set("legend", false)
 				openMoves()
 			end
 		end)
@@ -3308,6 +3589,21 @@ local function lockReset(on)
 		resetLocked = false
 	end
 end
+-- Roblox's player list owns Tab (it toggles the list and sinks the key). A fight hides the list, which hands
+-- Tab to the Moves & Controls menu, and puts it back as it was at the end (the game has its own rankings)
+function KM.setPlayerList(on)
+	if not on then
+		if KM.listOff then
+			return
+		end
+		local okGet, was = pcall(StarterGui.GetCoreGuiEnabled, StarterGui, Enum.CoreGuiType.PlayerList)
+		KM.listWas = not okGet or was ~= false
+		KM.listOff = pcall(StarterGui.SetCoreGuiEnabled, StarterGui, Enum.CoreGuiType.PlayerList, false)
+	elseif KM.listOff then
+		KM.listOff = false
+		pcall(StarterGui.SetCoreGuiEnabled, StarterGui, Enum.CoreGuiType.PlayerList, KM.listWas ~= false)
+	end
+end
 -- the callback is registered once at start too (the usual pattern), so the first bout's lock holds
 task.spawn(function()
 	for _ = 1, 6 do
@@ -3320,6 +3616,9 @@ end)
 
 local function finish()
 	lockReset(false)
+	KM.setPlayerList(true)
+	KM.dropRingSprint()
+	KM.showPaused(false)
 	unbindPad()
 	Countdown.Hide()
 	F.countdown = false
@@ -3422,11 +3721,13 @@ function handlers.start(msg)
 		end
 	end
 	setSprint(false)
+	KM.dropRingSprint()
 	KM.refresh()
 	player:SetAttribute("InFight", true)
 	gui.Enabled = true
 	fxGui.Enabled = true
 	lockReset(not F.spar)
+	KM.setPlayerList(false)
 	sendDevice()
 	L.frame.Visible, R.frame.Visible, clock.Visible, controls.Visible = false, false, false, false
 	setChip(L, nil)
@@ -3510,6 +3811,7 @@ function handlers.start(msg)
 	letterbox(not F.spar)
 	buildTouch()
 	setTouchSpecials(F.moveList)
+	KM.buildSpecialStrip(F.moveList)
 	bindPad()
 end
 
@@ -3635,6 +3937,7 @@ function handlers.round(msg)
 		end
 	end)
 	Tog.reset(true)
+	KM.dropRingSprint() -- (the server lets a held Shift go at the bell too)
 	setAnimate(false)
 	F.active = true
 	F.paused = false
@@ -3696,6 +3999,7 @@ function handlers.state(msg)
 		L.bal.BackgroundColor3 = b < 0.3 and T.red or (b < 0.55 and T.gold or Color3.fromRGB(200, 200, 210))
 	end
 	angleTag.Visible = msg.me.angle == true
+	KM.paintSpecials()
 	vfx("State", msg)
 end
 
@@ -3790,8 +4094,41 @@ function handlers.special(msg)
 	if msg.who == "you" then
 		showFlash(defFlash, name .. "!", T.gold, 0.7)
 		Impact.rumble(0, 0.25, 0.06)
+		-- the shared cooldown runs from the server's go (a special this client did not predict counts too)
+		F.specialReady = math.max(F.specialReady or 0, os.clock() + ((M and M.cooldown) or 1.5) - 0.1)
+		KM.paintSpecials()
 	else
 		showFlash(defFlash, "HE GOES FOR THE " .. name .. "!", T.sub, 0.7)
+	end
+end
+
+-- the server did not throw a special this client asked for: why, on the HUD, and the local prediction (if
+-- one started) is called off
+-- (a field, not a local: the script's main chunk is at Luau's 200-locals limit)
+KM.REFUSED = { cooldown = "SPECIAL NOT READY", stamina = "NO GAS FOR THE %s", busy = "TOO SOON AFTER THE LAST PUNCH", locked = "LOCKED - SEE MOVES & CONTROLS" }
+function handlers.refused(msg)
+	if msg.what ~= "special" then
+		return
+	end
+	local M = Moves.Data[msg.id]
+	local now = os.clock()
+	F.specialReady = msg.why == "cooldown" and now + math.clamp(tonumber(msg.wait) or 0, 0, 5) or now
+	KM.cancelSpecial(msg.id)
+	KM.paintSpecials()
+	local text = KM.REFUSED[msg.why]
+	if text then
+		showFlash(flash, string.format(text, M and M.short or tostring(msg.id):upper()), msg.why == "stamina" and T.orange or T.sub, 0.7)
+	end
+end
+
+-- the Moves & Controls menu holds the round (FightEngine `pause`: on once the round stops, off when it goes
+-- on: the window closed, or it stayed open past the cap)
+function handlers.pause(msg)
+	F.menuPaused = msg.on == true
+	KM.showPaused(F.menuPaused)
+	refreshControls()
+	if not F.menuPaused and msg.why == "cap" then
+		showFlash(flash, "THE ROUND IS BACK ON", T.gold, 1.4)
 	end
 end
 

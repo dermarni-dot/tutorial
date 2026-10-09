@@ -15,7 +15,7 @@ local Keymap = {}
 local MOUSE = { MouseButton1 = "LMB", MouseButton2 = "RMB", MouseButton3 = "MMB" }
 local KEY_NAMES = {
 	LeftControl = "CTRL", RightControl = "CTRL", LeftShift = "SHIFT", RightShift = "SHIFT", LeftAlt = "ALT", RightAlt = "ALT",
-	Space = "SPACE", Tab = "TAB", Return = "ENTER", Backspace = "BACKSPACE", Semicolon = ";", Comma = ",", Period = ".", Slash = "/",
+	Space = "SPACE", Tab = "TAB", Backquote = "`", Return = "ENTER", Backspace = "BACKSPACE", Semicolon = ";", Comma = ",", Period = ".", Slash = "/",
 	Quote = "'", LeftBracket = "[", RightBracket = "]", Minus = "-", Equals = "=", BackSlash = "\\",
 	One = "1", Two = "2", Three = "3", Four = "4", Five = "5", Six = "6", Seven = "7", Eight = "8", Nine = "9", Zero = "0",
 	Up = "UP", Down = "DOWN", Left = "LEFT", Right = "RIGHT", CapsLock = "CAPS",
@@ -37,7 +37,8 @@ Keymap.Actions = {
 	{ id = "move", label = "Move", section = "basic", fixed = true, kbd = { "W/A/S/D" }, pad = "Thumbstick1", touch = "Thumbstick",
 		desc = "Step around the ring. Backing off costs nothing; walking in wins the inside." },
 	{ id = "sprint", label = "Sprint", section = "basic", kbd = { "LeftShift" }, pad = "ButtonL3", touch = "-",
-		desc = "Hold to run around the gym and the city (not in the ring)." },
+		desc = "Hold to run around the gym and the city. In the ring it is quicker footwork: cut him off or get off the ropes.",
+		how = "In the ring it costs stamina while you move and does nothing while you punch or block. On a pad L3 is the clinch in the ring." },
 	{ id = "block", label = "Block (guard up / down)", section = "basic", kbd = { "B" }, pad = "ButtonL2", touch = "BLOCK",
 		desc = "Tap to raise the guard, tap again to drop it. A long press blocks while held. Punching drops a tapped guard.",
 		how = "Blocks eat most of a head shot. Body shots still get through and the overhand comes over the top." },
@@ -48,9 +49,12 @@ Keymap.Actions = {
 		desc = "Tie him up when you are hurt: a breather, a little head HP back, the legs come back.",
 		how = "Only up close, and not more than once every six seconds." },
 	{ id = "legend", label = "Controls strip", section = "basic", kbd = { "H" }, pad = "ButtonSelect", touch = "-",
-		desc = "Tap to show or hide the key strip during a round." },
-	{ id = "moveslist", label = "Moves & controls menu", section = "basic", kbd = { "Tab" }, pad = "ButtonSelect(hold)", touch = "-", padFixed = true,
-		desc = "This menu. On a pad hold VIEW / SHARE for a second." },
+		desc = "Tap to show or hide the key strip during a round (it lists your unlocked special moves too)." },
+	-- (Tab is Roblox's player list outside a fight: the fight hides that list and takes Tab; the backquote
+	-- key works everywhere)
+	{ id = "moveslist", label = "Moves & controls menu", section = "basic", kbd = { "Tab", "Backquote" }, pad = "ButtonSelect(hold)", touch = "MOVES", padFixed = true,
+		desc = "This menu. It pauses a career fight or a spar while it is open (a PvP bout goes on). On a pad hold VIEW / SHARE for a second; on touch the MOVES pad.",
+		how = "Tab works in a fight (outside one it is Roblox's player list); ` (the key under Esc) works everywhere." },
 	{ id = "getup", label = "Get up after a knockdown", section = "basic", fixed = true, kbd = { "Space" }, pad = "ButtonA", touch = "Tap the panel",
 		desc = "Mash it. A press while the marker is in the green zone counts three times." },
 	-- PUNCH
@@ -64,29 +68,30 @@ Keymap.Actions = {
 		desc = "The big right hook. Slower, heavier, takes the legs.", how = "Inside range only." },
 	{ id = "uppercut", label = "Uppercut", section = "punch", kbd = { "T", "U" }, pad = "ButtonR2", touch = "UPPER",
 		desc = "Leg drive under the chin. The hardest head shot in the book.", how = "Catches a man who ducks or rolls: it lands bigger on a rolling head." },
-	{ id = "overhand", label = "Overhand", section = "punch", kbd = { "MouseButton3", "O" }, pad = "ButtonR1", touch = "-",
-		desc = "A looping right over the top of the guard. Slow, half of it goes through a block.", how = "Throw it when he shells up or is too tired to move." },
+	{ id = "overhand", label = "Overhand", section = "punch", kbd = { "MouseButton3", "O" }, pad = "ButtonR1", touch = "OVERHAND",
+		desc = "A looping right over the top of the guard. Slow, half of it goes through a block (the Loaded overhand special is the bigger one).",
+		how = "Throw it when he shells up or is too tired to move. On a pad it goes when you let go of RB: RB held with another button is a special move." },
 	{ id = "bodyhook", label = "Body hook", section = "punch", kbd = { "G" }, pad = "ButtonL1+ButtonB", touch = "BODY, then HOOK",
 		desc = "A hook to the ribs. Drains stamina and bruises the body (the liver is under the right ribs).", how = "Under a high guard, or when he is gassed." },
 	-- ADVANCED
-	{ id = "slipL", label = "Slip left", section = "advanced", kbd = { "Q" }, pad = "Thumbstick2Left", touch = "Drag BLOCK left",
+	{ id = "slipL", label = "Slip left", section = "advanced", kbd = { "Q" }, pad = "Thumbstick2Left", touch = "Swipe BLOCK left",
 		desc = "Move the head off the line to the left. Straight punches miss; so do half the hooks.", how = "Slip, then fire: everything you land for a moment counts as a counter." },
-	{ id = "slipR", label = "Slip right", section = "advanced", kbd = { "E" }, pad = "Thumbstick2Right", touch = "Drag BLOCK right",
+	{ id = "slipR", label = "Slip right", section = "advanced", kbd = { "E" }, pad = "Thumbstick2Right", touch = "Swipe BLOCK right",
 		desc = "The same to the right." },
-	{ id = "dodge", label = "Dodge (roll under)", section = "advanced", kbd = { "Space" }, pad = "Thumbstick2Down", touch = "-",
+	{ id = "dodge", label = "Dodge (roll under)", section = "advanced", kbd = { "Space" }, pad = "Thumbstick2Down", touch = "Swipe BLOCK down",
 		desc = "Duck and roll under hooks and overhands.", how = "Never roll into an uppercut." },
-	{ id = "quickdodge", label = "Quick dodge", section = "advanced", kbd = { "LeftShift+Space" }, pad = "ButtonL2+ButtonA", touch = "-",
+	{ id = "quickdodge", label = "Quick dodge", section = "advanced", kbd = { "LeftShift+Space" }, pad = "ButtonR3", touch = "Hold BLOCK, swipe down",
 		desc = "A short, snappy roll: a smaller window but you are back on your feet sooner.", how = "For reading one punch, not a flurry." },
-	{ id = "parry", label = "Parry", section = "advanced", kbd = { "V" }, pad = "DPadUp", touch = "-",
+	{ id = "parry", label = "Parry", section = "advanced", kbd = { "V" }, pad = "DPadUp", touch = "Swipe BLOCK up",
 		desc = "Catch a straight punch with the glove and fire back: a short window with a big counter.", how = "Time it on the jab or the cross." },
-	{ id = "pivotL", label = "Pivot left", section = "advanced", kbd = { "2xA", "Z" }, pad = "DPadLeft", touch = "-",
+	{ id = "pivotL", label = "Pivot left", section = "advanced", kbd = { "2xA", "Z" }, pad = "DPadLeft", touch = "Swipe CLINCH left",
 		desc = "Double-tap A: step off at an angle to the left. The next punch lands at an angle (harder, more accurate).", how = "Off the ropes, or to make a swarmer reset." },
-	{ id = "pivotR", label = "Pivot right", section = "advanced", kbd = { "2xD", "X" }, pad = "DPadRight", touch = "-",
+	{ id = "pivotR", label = "Pivot right", section = "advanced", kbd = { "2xD", "X" }, pad = "DPadRight", touch = "Swipe CLINCH right",
 		desc = "Double-tap D: the same to the right." },
-	{ id = "counterjab", label = "Counter jab", section = "advanced", kbd = { "Q+MouseButton1" }, pad = "Thumbstick2Left+ButtonX", touch = "-",
+	{ id = "counterjab", label = "Counter jab", section = "advanced", kbd = { "Q+MouseButton1" }, pad = "Thumbstick2Left+ButtonX", touch = "Swipe BLOCK, then JAB",
 		desc = "Slip left and jab as one move: hold Q (slip) and click. The jab comes out of the slip and counts as a counter when it catches him punching.",
-		how = "On a pad: flick the right stick left, then X within half a second." },
-	{ id = "countercross", label = "Counter cross", section = "advanced", kbd = { "E+MouseButton2" }, pad = "Thumbstick2Right+ButtonY", touch = "-",
+		how = "On a pad: flick the right stick left, then X within half a second. On touch: a slip on the BLOCK pad, then JAB within half a second." },
+	{ id = "countercross", label = "Counter cross", section = "advanced", kbd = { "E+MouseButton2" }, pad = "Thumbstick2Right+ButtonY", touch = "Swipe BLOCK, then CROSS",
 		desc = "Slip right and fire the cross over his jab: hold E and right-click.", how = "On a pad: flick right, then Y." },
 	-- SPECIAL (Moves.lua: unlocked per style, career tier and training)
 	{ id = "special_checkhook", special = "checkhook", label = "Check hook", section = "special", kbd = { "One" }, pad = "ButtonR1+ButtonX", touch = "CHECK" },
@@ -96,7 +101,7 @@ Keymap.Actions = {
 	{ id = "special_gazelle", special = "gazelle", label = "Gazelle punch", section = "special", kbd = { "Five" }, pad = "ButtonR1+DPadUp", touch = "GAZELLE" },
 	{ id = "special_peekaboo", special = "peekaboo", label = "Peek-a-boo rush", section = "special", kbd = { "Six" }, pad = "ButtonR1+DPadDown", touch = "RUSH" },
 	{ id = "special_stepback", special = "stepback", label = "Step-back counter", section = "special", kbd = { "Seven" }, pad = "ButtonR1+ButtonL1", touch = "STEP" },
-	{ id = "special_overhand", special = "overhand", label = "Overhand right", section = "special", kbd = { "Eight" }, pad = "ButtonR1+ButtonA", touch = "OVERHAND" },
+	{ id = "special_overhand", special = "overhand", label = "Loaded overhand", section = "special", kbd = { "Eight" }, pad = "ButtonR1+ButtonA", touch = "LOADED" },
 	{ id = "special_leaduppercut", special = "leaduppercut", label = "Lead uppercut", section = "special", kbd = { "Nine" }, pad = "ButtonR1+ButtonR2", touch = "L.UPPER" },
 }
 Keymap.Sections = {
@@ -116,15 +121,33 @@ local function isPadKeyName(n)
 end
 Keymap.IsPadKeyName = isPadKeyName
 
-local keyCache = {}
+-- the KeyCode names, built once from the enum (the server runs this on client data: nothing the client
+-- sends may grow a cache, so a name outside the enum is never stored); a per-name lookup that caches
+-- only real keys is the fallback where the enum cannot be listed
+local keySet
 local function keyExists(n)
-	if keyCache[n] == nil then
-		local ok, k = pcall(function()
-			return Enum.KeyCode[n]
+	if not keySet then
+		keySet = {}
+		pcall(function()
+			for _, k in ipairs(Enum.KeyCode:GetEnumItems()) do
+				keySet[k.Name] = true
+			end
 		end)
-		keyCache[n] = ok and k ~= nil
 	end
-	return keyCache[n]
+	if keySet[n] then
+		return true
+	end
+	if next(keySet) ~= nil then
+		return false
+	end
+	local ok, k = pcall(function()
+		return Enum.KeyCode[n]
+	end)
+	if ok and k ~= nil then
+		keySet[n] = true
+		return true
+	end
+	return false
 end
 
 -- a binding's parts: { keys = { "Q", "MouseButton1" }, double = false } (nil for a malformed one)
@@ -211,8 +234,11 @@ function Keymap.Sanitize(t)
 			local list = type(kbd) == "table" and kbd[a.id] or nil
 			if type(list) == "table" then
 				local clean = {}
-				for _, b in ipairs(list) do
-					if #clean >= 2 then
+				-- only the first eight entries are read (the menu saves two): the server's cost never grows
+				-- with what a client sends
+				for i = 1, 8 do
+					local b = list[i]
+					if b == nil or #clean >= 2 then
 						break
 					end
 					if type(b) == "string" and Keymap.Valid(b, "kbd") and not table.find(clean, b) then

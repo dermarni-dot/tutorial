@@ -40,6 +40,14 @@ local function padLabel(k, fallback)
 	return fallback
 end
 
+-- how to do something on the device in use: the pad's button, the keyboard key, or the touch words
+local function howTo(k, key, touchText)
+	if UI.InputMode() == "touch" then
+		return touchText
+	end
+	return "press " .. padLabel(k, key)
+end
+
 ------------------------------------------------------------------------
 -- Sending a challenge
 ------------------------------------------------------------------------
@@ -232,7 +240,8 @@ local function showChallenge(msg)
 	task.spawn(function()
 		while popup == shade and shade.Parent do
 			local left = math.max(0, math.ceil(untilT - os.clock()))
-			timer.Text = string.format("%d s to answer  ·  %s accept  ·  %s decline", left, padLabel(Enum.KeyCode.ButtonA, "Y"), padLabel(Enum.KeyCode.ButtonB, "N"))
+			timer.Text = UI.InputMode() == "touch" and string.format("%d s to answer", left)
+				or string.format("%d s to answer  ·  %s accept  ·  %s decline", left, padLabel(Enum.KeyCode.ButtonA, "Y"), padLabel(Enum.KeyCode.ButtonB, "N"))
 			if left <= 0 then
 				closePopup()
 				break
@@ -387,7 +396,7 @@ function PvP.RenderInto(body, isStale)
 		end)
 	end
 	UI.Line(body, PvP.state.queued and string.format("In the queue (%d waiting). The rating gap widens the longer you wait; after 30 s anybody is a match.", data.queueSize or 1)
-		or "Find Match pairs you with a boxer near your PvP rating. Or walk up to a boxer and press " .. padLabel(Enum.KeyCode.ButtonY, "T") .. " to challenge him.",
+		or "Find Match pairs you with a boxer near your PvP rating. Or walk up to a boxer and " .. howTo(Enum.KeyCode.ButtonY, "T", "tap the CHALLENGE prompt over him") .. " to challenge him.",
 		{ TextColor3 = T.sub, TextSize = 13 })
 	UI.Header(body, "Boxers in this server")
 	if #(data.players or {}) == 0 then

@@ -562,6 +562,63 @@ local function refresh()
 end
 
 State.Changed:Connect(refresh)
+
+-- New special moves: the unlocked set (Moves.Unlocked of the summary) is compared with the last one this
+-- session saw, so a move that comes with a promotion, a training milestone or a fight result is announced
+-- with its key / chord for the device in use (held back to after the fight when it comes during one). The
+-- first profile of the session only sets the baseline.
+do
+	local okMoves, Moves = pcall(function()
+		return require(Shared:WaitForChild("Moves"))
+	end)
+	local okKeys, Keymap = pcall(function()
+		return require(Shared:WaitForChild("Keymap"))
+	end)
+	local known, pending = nil, {}
+	local function announce()
+		if State.inFight() or #pending == 0 then
+			return
+		end
+		local mode = UI.Gamepad and UI.Gamepad.Mode() or "keyboard"
+		local device = mode == "gamepad" and "pad" or (mode == "touch" and "touch" or "kbd")
+		if #pending > 2 then
+			-- a big promotion unlocks several at once: one notice, not a column of them
+			local names = {}
+			for _, id in ipairs(pending) do
+				table.insert(names, string.upper(Moves.Data[id] and Moves.Data[id].name or id))
+			end
+			State.toast(string.format("%d NEW SPECIAL MOVES: %s. Moves & Controls has their keys.", #pending, table.concat(names, ", ")), T.gold, 9)
+		else
+			for _, id in ipairs(pending) do
+				local M = Moves.Data[id]
+				local key = device == "touch" and "its gold pad in a fight" or (okKeys and Keymap.ActionText(Settings.Keymap(), "special_" .. id, device, UI.Gamepad) or "")
+				State.toast(string.format("NEW SPECIAL MOVE: %s (%s). Moves & Controls has the details.", string.upper(M and M.name or id), key), T.gold, 8)
+			end
+		end
+		table.clear(pending)
+	end
+	if okMoves and type(Moves) == "table" then
+		State.Changed:Connect(function(P)
+			if type(P) ~= "table" or not P.created then
+				return
+			end
+			local now = Moves.Unlocked(Moves.Info(P))
+			if known then
+				for _, id in ipairs(Moves.List) do
+					if now[id] and not known[id] and not table.find(pending, id) then
+						table.insert(pending, id)
+					end
+				end
+			end
+			known = now
+			announce()
+		end)
+		player:GetAttributeChangedSignal("InFight"):Connect(function()
+			task.delay(1.5, announce)
+		end)
+	end
+end
+
 State.ProfileRemote.OnClientEvent:Connect(function(data)
 	State.SetProfile(data)
 end)

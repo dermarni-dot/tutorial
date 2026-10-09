@@ -126,27 +126,27 @@ to select and **B** to go back.
 | Action | Keyboard & mouse | Controller (Xbox / PlayStation) | Touch |
 |---|---|---|---|
 | Move | WASD | Left stick | Thumbstick |
-| Sprint (outside the ring) | hold Shift | click the left stick | - |
+| Sprint (in the ring: quicker footwork) | hold Shift | click the left stick (outside the ring) | - |
 | Jab | Left click (or J) | X / Square | JAB |
 | Cross | Right click (or K) | Y / Triangle | CROSS |
 | Lead hook | F (or L) | B / Circle | HOOK (alternates hands) |
 | Rear hook | R (or ;) | A / Cross | HOOK |
 | Uppercut | T (or U) | RT / R2 | UPPER |
-| Overhand | Middle click (or O) | tap RB / R1 | - |
+| Overhand | Middle click (or O) | tap RB / R1 (it goes on the release) | OVERHAND |
 | Body hook | G | LB + B / L1 + Circle | BODY, then HOOK |
 | Body shot (arms the next punch) | tap C | tap LB / L1 | tap BODY |
 | Block (guard up / down) | tap B | tap LT / L2 | tap BLOCK |
-| Slip left / right | Q / E | flick the right stick left / right | drag BLOCK left / right |
-| Dodge (roll under) | Space | flick the right stick down | - |
-| Quick dodge | Shift + Space | LT + A / L2 + Cross | - |
-| Parry | V | D-pad up (or flick the right stick up) | - |
-| Pivot left / right | double-tap A / D (or Z / X) | D-pad left / right | - |
-| Counter jab | hold Q + left click | flick left, then X / Square | - |
-| Counter cross | hold E + right click | flick right, then Y / Triangle | - |
-| Clinch | Ctrl | D-pad down or click the left stick | CLINCH |
-| Special moves | 1 - 9 (in the menu's order) | hold RB / R1 + a button (below) | the gold pads above the punches |
+| Slip left / right | Q / E | flick the right stick left / right | swipe BLOCK left / right |
+| Dodge (roll under) | Space | flick the right stick down | swipe BLOCK down |
+| Quick dodge | Shift + Space | click the right stick (R3) | hold BLOCK, then swipe down |
+| Parry | V | D-pad up (or flick the right stick up) | swipe BLOCK up |
+| Pivot left / right | double-tap A / D (or Z / X) | D-pad left / right | swipe CLINCH left / right |
+| Counter jab | hold Q + left click | flick left, then X / Square | a slip on BLOCK, then JAB within half a second |
+| Counter cross | hold E + right click | flick right, then Y / Triangle | a slip on BLOCK, then CROSS within half a second |
+| Clinch | Ctrl | D-pad down or click the left stick | tap CLINCH |
+| Special moves | 1 - 9 (in the menu's order) | hold RB / R1 + a button (below) | the gold pads left of the punches |
 | Show / hide the controls strip | tap H | tap View / Share | - |
-| Moves & Controls menu | Tab | hold View / Share | - |
+| Moves & Controls menu (pauses a solo fight) | Tab in a fight, ` (under Esc) anywhere | hold View / Share | MOVES (top left) |
 | Get up after a knockdown | mash Space | mash A / Cross | tap the panel |
 
 How the conflicts with the old map were resolved: the body modifier moved from Shift to **C** (Shift is the
@@ -155,17 +155,36 @@ sprint and the quick-dodge chord), block from F to **B**, parry from R to **V**,
 to a **double tap of A / D** (Z / X still work), and the number row **1 - 9** now throws the special moves
 (the old letter alternates J / K / L / ; / U / O stay as second keys). The fight camera is the broadcast
 one, so the mouse buttons never turn the camera in a fight: left and right click are free to punch.
+**Tab** is Roblox's player list everywhere else (the list takes the key and swallows it), so a fight
+hides the player list for its duration and takes Tab for the Moves & Controls menu; the backquote key
+**`** opens the menu anywhere, in the ring or out of it. **Shift** sprints in the gym and the city; in the
+ring it is quicker footwork while held (to cut him off or get off the ropes): the server speeds your
+feet up by a third, not while you punch or block, and charges stamina for every second you move with it
+(none comes back meanwhile; it stops when you are down to your last 15 %). On a pad the left-stick
+click stays the clinch in the ring.
 
 **Chords and double taps.** A chord is "hold the first key, press the second" (Shift + Space, Q + click).
 On a pad a right-stick flick counts as held for half a second, so "flick left, then X" is the counter jab.
-In the ring a flick **up** doubles as D-pad up (the parry), the **left-stick click** as D-pad down (the
-clinch) and the **right-stick click** as D-pad left (the pivot), whatever those are bound to, unless you
-give the flick or the click a binding of its own (the sprint does not count: it has no use between the
-ropes). RB / R1 is both the overhand (tapped on its own) and the special-move modifier (held while another
-button is pressed): RB + X check hook, RB + Y pull counter, RB + B liver shot, RB + A overhand right,
-RB + RT lead uppercut, RB + LT Philly shell counter, RB + LB step-back counter, RB + D-pad up gazelle
-punch, RB + D-pad down peek-a-boo rush. A double tap is two presses of one key within a third of a
-second; a plain press of A or D still walks.
+In the ring a flick **up** doubles as D-pad up (the parry) and the **left-stick click** as D-pad down (the
+clinch), whatever those are bound to, unless you give the flick or the click a binding of its own (the
+sprint does not count). The **right-stick click** is the quick dodge (it used to double as the pivot; an
+unbound R3 still does), which leaves **LT + A** free: a held guard throws the rear hook like any other
+punch. RB / R1 is both the overhand (tapped on its own: it goes when you let go, so a chord can still
+claim RB) and the special-move modifier (held while another button is pressed): RB + X check hook,
+RB + Y pull counter, RB + B liver shot, RB + A loaded overhand, RB + RT lead uppercut, RB + LT Philly shell
+counter, RB + LB step-back counter, RB + D-pad up gazelle punch, RB + D-pad down peek-a-boo rush. **View /
+Share** does what the map gives it (the controls strip by default; bind it to anything) and held for a
+second always opens the menu. A double tap is two presses of one key within a third of a second; a
+plain press of A or D still walks.
+
+**Touch.** The punch cluster sits bottom right (HOOK / UPPER over JAB / CROSS, OVERHAND and BODY on top),
+the unlocked special moves in a grid of gold pads left of it (up to three a row, never up into the
+scoreboard), BLOCK and CLINCH on the left edge above the thumbstick and MOVES under the left board.
+Every pad is at least a fingertip (44 px) on screen. The head movement is in swipes, so nothing needs
+more pads: **BLOCK** taps raise / drop the guard, a swipe left / right slips, down rolls under, up
+parries, and holding it a moment before swiping down is the quick dodge; **CLINCH** taps tie him up and a
+swipe left / right pivots; a slip followed by **JAB** or **CROSS** within half a second is the counter
+jab / cross. The commentary ticker leaves the picture while the pads are up.
 
 **Tap, don't hold.** Block, the body-shot modifier and the controls legend are toggles on every
 device: a tap turns them on, the next tap turns them off. A press held longer than about a third of
@@ -175,9 +194,14 @@ what is on: the **GUARD UP** and **BODY SHOT ARMED** chips above the ticker, the
 caps and the touch pads.
 
 **Moves & Controls menu** (main menu > CONTROLS, Settings > Controls, the Career Hub's CONTROLS button,
-**Tab** in a fight, hold **View / Share** on a pad, or `State.open.Controls()` from any screen; while it
-is open the game's own hotkeys H / P / M and the pad's D-pad shortcuts are off, so any of them can be
-bound). Four tabs, all mouse, touch and
+**`** anywhere, **Tab** in a fight, hold **View / Share** on a pad, the **MOVES** pad on touch, or
+`State.open.Controls()` from any screen; the same key closes it again; while it is open the game's own
+hotkeys H / P / M and the pad's D-pad shortcuts are off, so any of them can be bound). **It pauses a career
+fight or a spar:** the server stops the round at the next quiet moment (nobody mid-punch, nobody down) and
+everything waits (the clock, the AI, stamina and every recovery: it is for reading, not a breather;
+ROUND PAUSED shows on the HUD and the window) until the window closes, or for at most a minute with it
+open; a new pause needs three seconds of boxing after the last one. A **PvP** bout never pauses (the
+window says THE FIGHT GOES ON). Four tabs, all mouse, touch and
 controller navigable (D-pad / left stick moves, A presses, B closes, the right stick scrolls):
 - **Moves:** Basic, Punches, Advanced and Special sections. Every move shows its key cap, button or
   touch pad for the device you pick (it starts on the one you are using, and follows a device
@@ -188,14 +212,18 @@ controller navigable (D-pad / left stick moves, A presses, B closes, the right s
   another action already uses is **swapped** over (that action takes the old key), so no two actions
   share a key; a conflicting map loaded from an older save is shown in red with the other action
   named. Two slots per action on the keyboard, one on the pad; a per-row reset and RESET ALL TO
-  DEFAULTS. Movement, the get-up mash and the hold-to-open are fixed.
+  DEFAULTS (a rebind or a row reset keeps the list where it was, and on a pad the selection on the
+  same cap). Movement, the get-up mash and the hold-to-open are fixed. Settings > RESET TO DEFAULTS
+  resets the options only and keeps your key map.
 - **Console:** aim assist (Off / Low / High), controller vibration on / off and strength, a test
   rumble. The same three settings sit in Settings > Controls.
 
 The custom map is saved with the profile (`settings.ui.keymap`, through the same `SaveSettings`
 request as every setting) and the server sanitizes it with `Keymap.Sanitize`: only known actions,
 only valid keys for that device, at most two keyboard bindings and one pad binding each, nothing
-reserved (Escape, the function keys, a plain press of W / A / S / D). Aim assist and the vibration
+reserved (Escape, the function keys, a plain press of W / A / S / D). Its cost never depends on what a
+client sends: only the first eight entries of an action's list are read, and key names are checked
+against the KeyCode enum read once (nothing a client sends is cached). Aim assist and the vibration
 settings go through the same allow-list.
 
 **Special moves** (`src/shared/Moves.lua`). Nine signature moves, each a real set-up followed by one or
@@ -203,8 +231,16 @@ two ordinary punches landed on the animation's own schedule (`FightMotion.Specia
 head and body reaction plays as for any punch. A move unlocks by **style and career tier** (its home
 styles get it early, everyone a few tiers later) **or by a training milestone** (sessions on one
 exercise); nothing new is saved, the set is worked out from the profile each time, so old saves just
-work. The AI uses them too (its style's moves once it is good enough), each in the situation it is
-for. A medium-or-worse shot taken cancels the punches you have not thrown yet.
+work. A move newly unlocked by a promotion, a training milestone or a fight result is announced (NEW
+SPECIAL MOVE, with its key or chord; after the fight when it comes during one). In a fight the key strip
+(**H** / **View**) has a row of your unlocked specials with their keys, and the touch pads are gold.
+All specials share one cooldown and each needs its stamina: a press inside the cooldown says SPECIAL
+READY IN 0.8s, one without the gas NO GAS FOR THE LIVER SHOT (the touch pads and the strip dim
+meanwhile), and nothing is sent; if the server still refuses one (it decides), it says why and the
+move you started is called off. The AI uses them too (its style's moves once it is past the amateurs),
+each in the situation it is for; a gym partner keeps them for the harder sessions (none in a Light
+spar, fewer in a Medium or Hard one than on fight night). A medium-or-worse shot taken cancels the
+punches you have not thrown yet.
 
 | Move | Home styles (tier) | Anyone from | Or train | What it does |
 |---|---|---|---|---|
@@ -215,11 +251,12 @@ for. A medium-or-worse shot taken cancels the punches you have not thrown yet.
 | Gazelle punch | Slugger, Swarmer (National Champion) | Title Challenger | 10 Jump Rope | Leaping lead hook from outside jab range (the root leaps 1.2 studs): long reach, big power, easy to see coming |
 | Peek-a-boo rush | Swarmer (National Champion) | Title Challenger | 15 Mitt Work | Bob and weave in (slipping head shots), then a left and a right hook on arrival |
 | Step-back counter | Out-boxer, Boxer-puncher (Regional Champion) | Top 10 Ranked | 10 Treadmill | Two steps back (everything misses), the cross reaches further as he follows |
-| Overhand right | Slugger, Boxer-puncher (Amateur) | National Champion | 8 Heavy Bag | The slugger's looping right over the guard: two thirds lands through a block |
+| Loaded overhand | Slugger, Boxer-puncher (Amateur) | National Champion | 8 Heavy Bag | The slugger's big one: a dip loads the back leg, then the overhand with the whole body behind it; two thirds lands through a block (the everyday overhand: half), harder knockdown odds |
 | Lead uppercut | Boxer-puncher, Swarmer (Local Pro) | International Contender | 10 Speed Bag | A short left uppercut with no wind-up to see; lands bigger on a rolling head |
 
 Each move has its own stamina cost, accuracy and damage multipliers, knockdown-odds multiplier and a
-cooldown (1.4 - 2.6 s) on the server; the act strings are `special|<id>|<hand>|<windup>|<power>`.
+cooldown (1.4 - 2.6 s) on the server; the act strings are `special|<id>|<hand>|<windup>|<power>`. Only
+the counter jab / cross come out of a slip's recovery (once per slip), whatever a client claims.
 
 **Console.** *Aim assist* (gamepad only): the left stick is read relative to the opponent, so pushing
 up always closes the distance and sideways always circles him (High also keeps you squared up while
@@ -517,8 +554,9 @@ rebuilds at most twice a second, head-only previews five times).
   defence, and blurs and drains the screen. It recovers between rounds and over days. Repeated
   trauma carries over the career.
 - **Controls:** shown on screen (tap **H**, or **View / Share** on a controller, in a fight); the
-  full Moves & Controls menu on **Tab** (hold **View / Share**). The keyboard, controller and touch
-  layouts, remapping, the special moves and the console options are in [Controls](#controls).
+  full Moves & Controls menu on **Tab** (hold **View / Share**, the **MOVES** pad on touch), which
+  pauses a career fight or a spar. The keyboard, controller and touch layouts, remapping, the special
+  moves and the console options are in [Controls](#controls).
 - **Fight nights:** weigh-ins, ring walks, a referee, judges' scorecards and a crowd. The venues are
   a community centre, a club arena, the Grand Arena and the National Stadium for title fights. The
   big venues have fight-night lighting, LED screens, broadcast cameras and a walkout stage.
@@ -529,7 +567,7 @@ Two players in the same server can box each other with their own boxers: the sam
 knockdowns, referee, judges and HUD as a career fight, with the stats of each player's profile.
 
 **Starting a bout.**
-- **Challenge:** walk up to another boxer and press **T** (**Y** on a pad, tap on touch), or open the
+- **Challenge:** walk up to another boxer and press **T** (**Y** on a pad, tap the CHALLENGE prompt on touch), or open the
   PvP panel (**P**, **D-pad right**, the **PVP** button or the Career Hub's **PvP** tab) and pick a
   boxer from the list. Choose **Sparring** or a **Ranked Bout** of 3 or 6 rounds.
 - The other player gets a popup for 20 seconds: **ACCEPT** / **DECLINE** (keys **Y** / **N**, pad **A** /

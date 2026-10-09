@@ -397,9 +397,13 @@ end
 -- closes from long range; the rush is pressure; the overhand goes over a shell; the lead uppercut opens a
 -- tight guard. At most one every few seconds, more from an aggressive or finishing fighter.
 local SPECIAL_RANGE = { gazelle = "cross", stepback = "jab", peekaboo = "cross" } -- the range the move needs (else its own punch's)
+-- a gym partner keeps his tricks for the harder sessions: none in a Light spar, fewer and further apart in
+-- a Medium or Hard one (fight night = 1); the punch pacing of the spar (SPAR.work) never adds to these
+local SPAR_SPECIALS = { Light = 0, Medium = 0.4, Hard = 0.7 }
 function FightAI:TrySpecial(now, dist)
 	local F, O, engine = self.F, self.O, self.engine
-	if not Moves or now < (self.nextSpecial or 0) or F.stamina < F.maxStam * 0.3 then
+	local sparMul = engine.spar and (SPAR_SPECIALS[engine.spar] or 1) or 1
+	if not Moves or sparMul <= 0 or now < (self.nextSpecial or 0) or F.stamina < F.maxStam * 0.3 then
 		return false
 	end
 	local pool, total = {}, 0
@@ -432,7 +436,7 @@ function FightAI:TrySpecial(now, dist)
 		return false
 	end
 	-- a tentative fighter keeps its specials for the right moment; an aggressive one throws them freely
-	local eager = 0.22 + self:Aggression() * 0.3 + (coming and 0.3 or 0)
+	local eager = (0.22 + self:Aggression() * 0.3 + (coming and 0.3 or 0)) * sparMul
 	if self.rng:NextNumber() > eager then
 		self.nextSpecial = now + 0.6
 		return false
@@ -441,7 +445,7 @@ function FightAI:TrySpecial(now, dist)
 	for _, o in ipairs(pool) do
 		pick -= o[2]
 		if pick <= 0 then
-			self.nextSpecial = now + 2.5 + self.rng:NextNumber() * 2.5
+			self.nextSpecial = now + (2.5 + self.rng:NextNumber() * 2.5) / sparMul
 			self.queue = {}
 			engine:Special(F, o[1])
 			return true

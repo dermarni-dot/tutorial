@@ -73,11 +73,11 @@ Moves.Data = {
 		how = "Everything misses while you step; the cross reaches further than usual. The ropes stop it: use it from the middle of the ring.",
 	},
 	overhand = {
-		id = "overhand", name = "Overhand right", short = "OVERHAND RIGHT", punch = { "overhand" }, hand = "R", body = false,
+		id = "overhand", name = "Loaded overhand", short = "LOADED OVERHAND", punch = { "overhand" }, hand = "R", body = false,
 		stam = 10, dmg = 1.2, hit = -0.02, range = 1.0, kd = 1.2, power = 1.2, cooldown = 2.0, overGuard = 0.65,
 		styles = { "Slugger", "BoxerPuncher" }, tier = 1, anyTier = 4, training = { activity = "HeavyBag", sessions = 8 },
-		desc = "The slugger's overhand: a looping right with the whole body behind it, over the top of the guard.",
-		how = "On a man who shells up or stands still. Two thirds of it lands through a block.",
+		desc = "The slugger's big one: a dip to the right loads the back leg, then the overhand comes with the whole body behind it. Not the everyday overhand (Punches): heavier, and it drops men more often.",
+		how = "On a man who shells up or stands still: two thirds of it lands through a block (the plain overhand gets half through).",
 	},
 	leaduppercut = {
 		id = "leaduppercut", name = "Lead uppercut", short = "LEAD UPPERCUT", punch = { "uppercut" }, hand = "L", body = false,
@@ -174,7 +174,10 @@ function Moves.Info(P)
 	if type(P) ~= "table" then
 		return info
 	end
-	info.style = type(P.style) == "string" and P.style or nil
+	-- the profile holds the style's id; the client's summary has its NAME in `style` and the id in `styleId`
+	local st = (type(P.styleId) == "string" and P.styleId) or (type(P.style) == "string" and P.style) or nil
+	local style = st and Config.FindById(Config.Styles, st) -- (finds a style by its id or its name)
+	info.style = style and style.id or st
 	local tier = tonumber(P.tier)
 	info.tier = (tier and tier == tier) and math.clamp(math.floor(tier), 1, #Config.Tiers) or 1
 	local records = type(P.records) == "table" and P.records or {}
@@ -188,7 +191,8 @@ function Moves.Info(P)
 end
 
 -- an AI boxer's moves: its style's home moves once it is good enough (an overall of 55 is a Local Pro,
--- 65 Regional, 75 Top 10, 85 a champion), and every move at the top
+-- 65 Regional, 75 Top 10, 85 a champion), and every move at the top. Amateurs (tier 1) keep it simple:
+-- no special moves, even the ones a style gets from tier 1 (the player's own unlocks are unaffected)
 function Moves.ForAI(data)
 	if type(data) ~= "table" then
 		return {}
@@ -197,6 +201,9 @@ function Moves.ForAI(data)
 	if not tier then
 		local ov = type(data.stats) == "table" and Config.Overall(data.stats) or 50
 		tier = ov >= 85 and 8 or (ov >= 75 and 6 or (ov >= 65 and 4 or (ov >= 55 and 2 or 1)))
+	end
+	if tier <= 1 then
+		return {}
 	end
 	return Moves.Unlocked({ style = data.style, tier = tier, sessions = {} })
 end

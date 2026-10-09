@@ -603,6 +603,76 @@ function Fight:SampleDevice(F, now)
 	end
 end
 
+-- The Moves & Controls menu stops a SOLO fight (career, sparring; never a PvP bout): the client asks
+-- (`pause`) while the window is open. The round stops at the next quiet moment (nobody mid-punch or
+-- down, no count running), and then everything waits: the clock, the AI, stamina and every recovery
+-- (Update's rdt), and the timers still running are carried over the pause. It resumes when the window
+-- closes, or after MENU_PAUSE.cap seconds with it still open; a new pause needs MENU_PAUSE.gap seconds
+-- of boxing after the last one.
+local MENU_PAUSE = { cap = 60, gap = 3 }
+FightEngine.MENU_PAUSE = MENU_PAUSE
+local CARRY = { "hurtUntil", "stumbleUntil", "clinchUntil", "counterUntil", "angleUntil", "nextClinch", "nextSpecial", "nextPivot", "slipUntil",
+	"rollUntil", "parryUntil", "pivotEvadeUntil", "shellUntil", "lungeUntil", "busyUntil" }
+function Fight:MenuPause(F, on)
+	if self.pvp or not F.isPlayer or self.finished then
+		return
+	end
+	if on then
+		F.menuAt = F.menuAt or self:Now()
+	else
+		F.menuAt = nil
+	end
+end
+
+-- once a frame in a live round: start / end the menu's hold (the knockdown count has its own, kdHold)
+function Fight:UpdateMenuHold(now)
+	local P = self.P
+	local want = P.menuAt ~= nil and now - P.menuAt < MENU_PAUSE.cap
+	local pending = false
+	if want and not self.menuHold then
+		local quiet = not self.kdHold and P.state ~= "punching" and P.state ~= "down" and self.O.state ~= "punching" and self.O.state ~= "down"
+		if now - (self.menuEndAt or -100) < MENU_PAUSE.gap then
+			want = false
+		elseif not quiet then
+			-- the AI starts nothing new meanwhile, so the quiet moment comes
+			want, pending = false, true
+		end
+	end
+	self.menuPending = pending
+	if want == (self.menuHold == true) then
+		return
+	end
+	self.menuHold = want
+	self.paused = self.kdHold == true or want
+	if want then
+		self.menuStartAt = now
+	else
+		local dur = now - (self.menuStartAt or now)
+		for _, F in ipairs({ self.P, self.O }) do
+			for _, k in ipairs(CARRY) do
+				if type(F[k]) == "number" and F[k] > (self.menuStartAt or now) then
+					F[k] += dur
+				end
+			end
+			F.lastHitAt += dur
+			F.lastBodyHitAt += dur
+		end
+		self.menuEndAt = now
+		self.resumedAt = now
+	end
+	self:SendTo(P, { t = "pause", on = want, why = (not want and P.menuAt ~= nil) and "cap" or nil, cap = MENU_PAUSE.cap })
+end
+
+-- Shift in the ring (FightEngine.Input `sprint`, held): quicker feet to cut him off or get off the ropes.
+-- Not while punching or behind the guard, it drains stamina while he moves and stops when he is gassed.
+local SPRINT = { mul = 1.3, drain = 7, floor = 0.15 }
+function Fight:SetSprint(F, on)
+	F.sprintOn = on == true and F.isPlayer
+end
+function Fight:Sprinting(F)
+	return F.sprintOn == true and F.hum ~= nil and F.state ~= "punching" and not F.blocking and F.stamina > F.maxStam * SPRINT.floor
+end
+
 -- counter = a counter jab / cross (Q + click, E + right click): the punch comes straight out of the slip
 -- (the slip's recovery does not hold it) and counts as a counter when it catches the other man punching
 function Fight:Punch(F, ptype, body, counter)
@@ -611,9 +681,13 @@ function Fight:Punch(F, ptype, body, counter)
 		return
 	end
 	local now = self:Now()
-	local outOfSlip = counter == true and now - (F.slipAt or -10) < 0.6 and F.state ~= "punching"
+	-- only the straight counters (jab / cross, all the keymap sends) skip the slip's recovery, once per slip
+	local outOfSlip = counter == true and (ptype == "jab" or ptype == "cross") and now - (F.slipAt or -10) < 0.6 and F.state ~= "punching"
 	if now < F.busyUntil and not outOfSlip then
 		return
+	end
+	if outOfSlip then
+		F.slipAt = -10
 	end
 	local O = self:Other(F)
 	if O.state == "down" then
@@ -691,17 +765,20 @@ end
 function Fight:Special(F, id)
 	local sid = Moves and Moves.Id(id)
 	local M = sid and Moves.Data[sid]
-	if not M or not self:CanAct(F) or not F.moves[sid] then
+	if not M or not self:CanAct(F) then
 		return
 	end
 	local now = self:Now()
-	if now < F.busyUntil or now < F.nextSpecial or F.stamina < M.stam then
+	-- a player is told why a special did not go (the HUD says so and the local prediction is called off)
+	local why = (not F.moves[sid] and "locked") or (now < F.nextSpecial and "cooldown") or (F.stamina < M.stam and "stamina")
+		or (now < F.busyUntil and "busy") or (self:Other(F).state == "down" and "down") or nil
+	if why then
+		if F.isPlayer then
+			self:SendTo(F, { t = "refused", what = "special", id = sid, why = why, wait = math.max(0, math.max(F.nextSpecial, F.busyUntil) - now) })
+		end
 		return
 	end
 	local O = self:Other(F)
-	if O.state == "down" then
-		return
-	end
 	local first = Config.Punches[M.punch[1]]
 	local stamPct = F.stamina / F.maxStam
 	local windup = first.windup * punchSpeed(F, stamPct)
@@ -901,7 +978,7 @@ end
 -- sp (optional) = the special move this punch belongs to (Moves.Data: range / hit / dmg / kd multipliers,
 -- its counter and liver rules) or { counterPunch = true } for a counter jab / cross out of a slip
 function Fight:Resolve(F, O, ptype, body, stamPct, sp)
-	if F.state == "down" or O.state == "down" or F.state == "clinch" or O.state == "clinch" or not self.live then
+	if F.state == "down" or O.state == "down" or F.state == "clinch" or O.state == "clinch" or not self.live or self.menuHold then
 		return
 	end
 	local P = Config.Punches[ptype]
@@ -1743,6 +1820,7 @@ function Fight:Knockdown(F, by, severity, fall, cause)
 	fall = choice.pose
 	F.koKind = choice.ko
 	table.insert(self.knockdowns, { who = self:Who(F), severity = severity, fall = fall, round = self.round, cause = cause })
+	self.kdHold = true
 	self.paused = true
 	-- DownPose (+ DownDir / DownDist / KOKind) before Guard = "down" so the Animator picks the right
 	-- fall on the first frame
@@ -1986,7 +2064,8 @@ function Fight:GetUp(F, n)
 	task.wait(0.6)
 	if self.id == id and not self.finished then
 		self:Send({ t = "announce", text = "BOX!" })
-		self.paused = false
+		self.kdHold = false
+		self.paused = self.menuHold == true -- (the Moves & Controls menu may still hold the round)
 		self.resumedAt = self:Now()
 	end
 end
@@ -2182,6 +2261,9 @@ function Fight:UpdateMovement(F, dt)
 			if F.stamina < F.maxStam * 0.25 then
 				speed *= 0.8
 			end
+			if self:Sprinting(F) then
+				speed *= SPRINT.mul
+			end
 			-- dazed legs and a concussion slow every step
 			speed *= (1 - CONC.tierSpeed * F.tier) * (1 - CONC.speed * F.conc)
 			-- an NPC paces itself to arrive about when the AI next decides: continuous footwork instead
@@ -2239,6 +2321,9 @@ end
 ------------------------------------------------------------------------
 function Fight:Update(dt)
 	local now = self:Now()
+	-- while the Moves & Controls menu holds the round nobody recovers: no stamina, no clearing head, no legs
+	-- coming back (the menu is for reading, not a free breather)
+	local rdt = self.menuHold and 0 or dt
 	for _, F in ipairs({ self.P, self.O }) do
 		self:SampleDevice(F, now)
 		if F.state == "punching" and now >= F.busyUntil then
@@ -2264,24 +2349,27 @@ function Fight:Update(dt)
 		if F.dmg.nose then
 			regen *= 0.85
 		end
-		if F.stamina < F.stamCap then
-			F.stamina = math.min(F.stamCap, F.stamina + regen * dt)
+		-- Shift in the ring: quicker feet cost stamina while he moves (none comes back meanwhile)
+		if self:Sprinting(F) and F.hum.MoveDirection.Magnitude > 0.1 then
+			F.stamina = math.max(0, F.stamina - SPRINT.drain * rdt)
+		elseif F.stamina < F.stamCap then
+			F.stamina = math.min(F.stamCap, F.stamina + regen * rdt)
 		end
 		if F.state ~= "down" then
 			if now - F.lastHitAt > STUN_QUIET and F.stun > 0 then
 				-- a badly hurt fighter clears his head more slowly
-				self:ClearStun(F, (STUN_CLEAR + s.Recovery * STUN_CLEAR_PER_RECOVERY) * (1 - 0.4 * F.tier) * dt)
+				self:ClearStun(F, (STUN_CLEAR + s.Recovery * STUN_CLEAR_PER_RECOVERY) * (1 - 0.4 * F.tier) * rdt)
 			end
 			if now - F.lastBodyHitAt > 3 then
-				F.body = math.min(F.bodyCap, F.body + 0.12 * dt)
+				F.body = math.min(F.bodyCap, F.body + 0.12 * rdt)
 			end
 			-- the legs come back with footwork; slower while dazed
-			F.balance = math.min(100, F.balance + (18 + s.Footwork * 0.15) * (1 - 0.25 * F.tier) * dt)
+			F.balance = math.min(100, F.balance + (18 + s.Footwork * 0.15) * (1 - 0.25 * F.tier) * rdt)
 		end
 		-- concussion clears slowly (Recovery helps); the peak is what follows the fighter home
-		F.conc = math.max(0, F.conc - (CONC.decay + s.Recovery * CONC.decayPerRecovery) * dt)
+		F.conc = math.max(0, F.conc - (CONC.decay + s.Recovery * CONC.decayPerRecovery) * rdt)
 		local strainFloor = (F.state == "clinch" and 0.8) or ((self:IsHurt(F) or F.tier >= 2) and 0.5) or 0
-		F.strain = math.max(strainFloor, F.strain - dt * 0.5)
+		F.strain = math.max(strainFloor, F.strain - rdt * 0.5)
 		if F.tier ~= Config.HeadTier(F.health) then
 			self:CheckTier(F)
 		end
@@ -2307,7 +2395,7 @@ function Fight:Update(dt)
 	end
 	if self.O.ai then
 		self.O.ai:Observe(dt)
-		if self.live and not self.paused then
+		if self.live and not self.paused and not self.menuPending then
 			self.O.ai:Think(now)
 		end
 	end
@@ -2797,6 +2885,8 @@ function Fight:Run()
 			O.ai:UpdateMode()
 		end
 		self:SetSweat(math.min(1, (r - 1) / math.max(1, self.rounds - 1) * 1.1 + 0.1))
+		-- (a Shift held over the bell is let go here and on the client's `round`: a fresh press for the new round)
+		P.sprintOn, O.sprintOn = false, false
 		self:Send({ t = "round", n = r, total = self.rounds })
 		if r == 1 then
 			self:Comment(self.spar and "Sparring session starts. Work on your craft." or "Here we go! Round one!", true)
@@ -2809,7 +2899,7 @@ function Fight:Run()
 			break
 		end
 		self.live = true
-		self.paused = false
+		self.paused, self.kdHold, self.menuHold = false, false, false
 		self.resumedAt = self:Now()
 		P.assistCount, O.assistCount = 0, 0
 		self:ReleaseCorners()
@@ -2817,6 +2907,7 @@ function Fight:Run()
 		self.roundEnd = self:Now() + remaining
 		while remaining > 0 and not self.finished and not self.aborted do
 			local dt = RunService.Heartbeat:Wait()
+			self:UpdateMenuHold(self:Now())
 			if self.paused then
 				self.roundEnd += dt
 			else
@@ -2825,6 +2916,11 @@ function Fight:Run()
 			self:Update(dt)
 		end
 		self.live = false
+		if self.menuHold then
+			-- (the fight ended under the menu's hold: a forfeit, a disconnect)
+			self.menuHold, self.paused = false, false
+			self:SendTo(P, { t = "pause", on = false })
+		end
 		if self.finished or self.aborted then
 			break
 		end
@@ -3173,6 +3269,10 @@ function FightEngine.Input(player, msg)
 	if t == "device" then
 		fight:SetDevice(F, msg.pad == true)
 		return
+	elseif t == "pause" then
+		-- (not a fight input: the Moves & Controls window opened / closed)
+		fight:MenuPause(F, msg.on == true)
+		return
 	end
 	-- which device the input came from (the client tags gamepad inputs): the aim assist reads it; a pad
 	-- tag only counts while the server holds the fighter on the pad (Fight:SetDevice)
@@ -3199,6 +3299,8 @@ function FightEngine.Input(player, msg)
 		fight:Pivot(F, msg.dir == -1 and -1 or 1)
 	elseif t == "clinch" then
 		fight:Clinch(F)
+	elseif t == "sprint" then
+		fight:SetSprint(F, msg.on == true)
 	elseif t == "mash" then
 		if F.state == "down" then
 			local now = fight:Now()

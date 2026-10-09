@@ -1,5 +1,7 @@
 -- ControlsMenu: the Moves & Controls window. Opened from the main menu (CONTROLS, or Settings > Controls),
--- the Career Hub (State.open.Controls) and a fight (Tab, or hold VIEW on a pad).
+-- the Career Hub (State.open.Controls), anywhere with the backquote key, and a fight (Tab or `, hold VIEW
+-- on a pad, the MOVES pad on touch; a career fight or a spar pauses while it is open). The menu's own key
+-- closes it again.
 --   MOVES       Basic, Punches, Advanced and Special moves with the key / button / touch glyph of the device
 --               shown (a cycler picks the device; it starts on the one in use), what each move does and when
 --               to use it; special moves say whether they are unlocked and how to unlock them (Moves.lua)
@@ -33,6 +35,7 @@ local player = Players.LocalPlayer
 
 local gui, root, content, tabs, setTab
 local isOpen = false
+local openedAt, closedAt = 0, -10 -- (the press that opened / closed the window must not close / open it again)
 local onCloseFn
 local conns = {}
 local tab = "moves"
@@ -230,7 +233,7 @@ local function assign(id, dev, slot, b)
 	if swapped then
 		State.toast(string.format("%s now has %s's old key.", labelOf(swapped), labelOf(id)), T.gold)
 	end
-	setTab(tab)
+	setTab(tab, { id = id, slot = slot })
 end
 
 local function commit(b)
@@ -428,7 +431,13 @@ local function remapTab(dev)
 				UI.List(caps, 6, true, Enum.HorizontalAlignment.Right)
 				local slots = dev == "kbd" and 2 or 1
 				for slot = 1, slots do
-					local b = dev == "kbd" and (m.kbd[a.id] or {})[slot] or m.pad[a.id]
+					-- (not `dev == "kbd" and x or y`: an empty keyboard slot must read "-", not the pad's button)
+					local b
+					if dev == "kbd" then
+						b = (m.kbd[a.id] or {})[slot]
+					else
+						b = m.pad[a.id]
+					end
 					local text = b and Keymap.Label(b, Gamepad) or "-"
 					local btn = UI.Button(caps, text, { Name = "Cap" .. slot, Size = UDim2.fromOffset(0, 30), AutomaticSize = Enum.AutomaticSize.X, TextSize = 12, LayoutOrder = slot,
 						BackgroundColor3 = T.panel2 })
@@ -452,7 +461,7 @@ local function remapTab(dev)
 						new.pad[a.id] = def.pad[a.id]
 					end
 					Settings.Set("keymap", Keymap.Diff(new))
-					setTab(tab)
+					setTab(tab, { id = a.id, slot = "Reset" })
 				end)
 				UI.Icon(reset, "reset", 12, T.text, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5) })
 			end
@@ -478,7 +487,7 @@ local function consoleTab()
 		return f
 	end
 	add(UI.Header(content, "Aim assist (controller)").Parent)
-	add(UI.Text(content, "On a gamepad the left stick is read relative to the opponent: up closes the distance, sideways circles him. The server adds a small accuracy forgiveness to punches thrown from a pad (Low 3 points, High 6). It never applies to a keyboard or touch.", { TextSize = 13, TextColor3 = T.sub }))
+	add(UI.Text(content, "On a gamepad the left stick is read relative to the opponent: up closes the distance, sideways circles him. The server adds a small accuracy forgiveness to punches thrown from a pad (Low 2 points, High 4). It never applies to a keyboard or touch.", { TextSize = 13, TextColor3 = T.sub }))
 	local assistRow = UI.Cycler(content, "Aim assist", Settings.AimAssists, v.aimAssist, function(x)
 		Settings.Set("aimAssist", x)
 	end)
@@ -514,11 +523,14 @@ local TABS = { "Moves", "Keyboard", "Controller", "Console" }
 local TAB_ID = { Moves = "moves", Keyboard = "kbd", Controller = "pad", Console = "console" }
 local TAB_NAME = { moves = "Moves", kbd = "Keyboard", pad = "Controller", console = "Console" }
 
-function setTab(name)
+-- keep = { id, slot } after a rebind / a row reset on the same tab: the list keeps its scroll position and
+-- a pad keeps the selection on that action's cap (a rebuild otherwise starts at the top)
+function setTab(name, keep)
 	if not (content and content.Parent) then
 		return
 	end
 	endCapture()
+	local scroll = (keep and name == tab) and content.CanvasPosition or Vector2.zero
 	tab = name
 	UI.Clear(content)
 	content.CanvasPosition = Vector2.zero
@@ -540,10 +552,35 @@ function setTab(name)
 		tabs(TAB_NAME[name] or "Moves")
 	end
 	task.defer(UI.PadRefresh)
+	if keep then
+		-- the rebuilt list lays out (and its automatic canvas grows) before the old position can be held
+		content.CanvasPosition = scroll
+		local list = content
+		task.defer(function()
+			if not list.Parent then
+				return
+			end
+			list.CanvasPosition = scroll
+			local row = list:FindFirstChild("Row_" .. tostring(keep.id))
+			local caps = row and row:FindFirstChildWhichIsA("Frame")
+			local cap = caps and caps:FindFirstChild(type(keep.slot) == "number" and ("Cap" .. keep.slot) or tostring(keep.slot))
+			if cap and Gamepad and Gamepad.IsPad() then
+				pcall(function()
+					GuiService.SelectedObject = cap
+				end)
+			end
+		end)
+	end
 end
 
 function ControlsMenu.IsOpen()
 	return isOpen
+end
+
+-- closed a moment ago by its own key: the other listeners of that very key press must not open it again
+-- (the order Roblox runs the InputBegan handlers in is not fixed)
+function ControlsMenu.RecentlyClosed()
+	return os.clock() - closedAt < 0.25
 end
 
 -- opts = { tab = "moves" | "kbd" | "pad" | "console", onClose = fn }
@@ -556,6 +593,7 @@ function ControlsMenu.Open(opts)
 		return
 	end
 	isOpen = true
+	openedAt = os.clock()
 	onCloseFn = opts.onClose
 	device = (Gamepad and Gamepad.Mode()) or "keyboard"
 	if device == "touch" and not UserInputService.TouchEnabled then
@@ -565,13 +603,18 @@ function ControlsMenu.Open(opts)
 		Parent = player:WaitForChild("PlayerGui") })
 	root = UI.MountRoot(gui)
 	local short = UI.CanvasSize(gui).Y < 560
-	local _, _, body = UI.Window(root, "ControlsMenu", 1100, 760, "Moves & Controls", { kicker = "HOW TO FIGHT", onClose = ControlsMenu.Close, scroll = false, z = 12 })
+	-- (opts.kicker: a fight says whether the round waits for you; a phone's window has no kicker line, so
+	-- there the note goes into the title)
+	local title = (opts.kicker and short) and ("Moves & Controls  ·  " .. opts.kicker) or "Moves & Controls"
+	local _, _, body = UI.Window(root, "ControlsMenu", 1100, 760, title, { kicker = opts.kicker or "HOW TO FIGHT", onClose = ControlsMenu.Close, scroll = false, z = 12 })
+	-- the tab bar: a fingertip tall on touch (UI.TabsHeight), the list placed under it by hand
+	local barH = UI.TabsHeight(body, short and 32 or 38)
 	local bar
 	bar, tabs = UI.Tabs(body, TABS, TAB_NAME[opts.tab or tab] or "Moves", function(name)
 		setTab(TAB_ID[name] or "moves")
-	end, { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, short and 32 or 38) })
+	end, { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, barH) })
 	bar.LayoutOrder = 1
-	content = UI.Scroll(body, { Name = "Content", Position = UDim2.fromOffset(0, (short and 32 or 38) + 8), Size = UDim2.new(1, 0, 1, -((short and 32 or 38) + 8)) })
+	content = UI.Scroll(body, { Name = "Content", Position = UDim2.fromOffset(0, barH + 8), Size = UDim2.new(1, 0, 1, -(barH + 8)) })
 	UI.List(content, 8)
 	UI.Pad(content, 2, 6)
 	State.windows.Controls = ControlsMenu.Close
@@ -582,8 +625,12 @@ function ControlsMenu.Open(opts)
 			end
 			return
 		end
-		-- Tab / the legend key close it again from the keyboard; B closes through the window's pad handling
-		if not gp and (input.KeyCode == K.Escape) then
+		-- Escape and the menu's own key (Tab / ` by default) close it again from the keyboard; B closes through
+		-- the window's pad handling. (Tab arrives "processed" while Roblox's player list holds it: the fight
+		-- hides that list, so a Tab is taken here either way)
+		local k = input.KeyCode
+		local ownKey = k ~= K.Escape and os.clock() - openedAt > 0.2 and table.find(Keymap.Keys(map(), "moveslist", "kbd"), k) ~= nil and (not gp or k == K.Tab)
+		if (not gp and k == K.Escape) or ownKey then
 			ControlsMenu.Close()
 		end
 	end))
@@ -621,6 +668,7 @@ function ControlsMenu.Close()
 		return
 	end
 	isOpen = false
+	closedAt = os.clock()
 	endCapture()
 	State.windows.Controls = nil
 	for _, c in ipairs(conns) do
