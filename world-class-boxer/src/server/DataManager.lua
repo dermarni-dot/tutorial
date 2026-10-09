@@ -12,6 +12,17 @@
 -- refuses to write instead of rolling the career back. The counter this server holds only moves after a
 -- write is confirmed, and each write is stamped with this session's id (saveSession) so overlapping saves
 -- of one session never refuse each other. Failed writes are retried with backoff.
+--
+-- Session lock: the stored value also carries `lock = { job, at }`, the server playing the career and the
+-- time of its last save. The load is an UpdateAsync that takes the lock in the same step it reads, and it
+-- leaves the value untouched while another server's lock is fresh: a player who hops servers while the
+-- previous server is still retrying their leave save waits on the loading screen (polling) until that save
+-- lands (the leave save clears the lock) instead of playing a copy that would later be refused. A lock that
+-- never clears (the previous server died) is taken over after LOCK_WAIT, and one older than LOCK_TTL is dead
+-- and ignored outright. Every save refreshes the lock; the leave save and the shutdown saves clear it.
+-- Should a newer save still land after this server read the career (the previous server's write stuck for
+-- longer than the wait), the refused save re-reads the stored copy and the player plays on from it (only
+-- what was done here since the join is lost) rather than being kicked; the kick stays as the last resort.
 local DataStoreService = game:GetService("DataStoreService")
 local HttpService = game:GetService("HttpService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -24,6 +35,9 @@ DataManager.Profiles = {}
 DataManager.StoreAvailable = true
 -- set by Main: called (in its own thread) when a load that failed at join finally succeeds
 DataManager.OnLoaded = nil
+-- optional, set by Main: called instead of OnLoaded when a refused save replaced the profile with the
+-- newer stored copy (push the new state and tell the player); falls back to OnLoaded
+DataManager.OnRefreshed = nil
 local lastSave = {}
 local pending = {}
 local canSave = {} -- player -> true once the stored career was read (or found empty)
@@ -32,13 +46,22 @@ local seqOf = {} -- player -> save counter of the copy this server holds (only r
 local session = {} -- player -> id stamped on this server's writes (overlapping saves of one session never conflict)
 local dirty = {} -- player -> true after a failed write (the next autosave must not be skipped)
 local releasing = {} -- userId -> true while the leave save is in flight (a quick rejoin waits for it)
+local joinedAt = {} -- player -> os.clock() of the join (how long a load may wait for another server's lock)
+local closing = false -- true once the server is shutting down (the shutdown saves hand the careers over)
 
 local LOAD_TRIES = 3 -- quick attempts during the join
 local RETRY_DELAYS = { 5, 10, 15, 20, 30, 40 } -- background re-reads before giving up (2 minutes)
 local SAVE_BACKOFF = { 1, 2, 4 } -- waits between write attempts (4 attempts)
 local RELEASE_BUDGET = 20 -- seconds a leave save keeps retrying
+local LOCK_TTL = 180 -- s: a lock last refreshed longer ago belongs to a dead server (the autosave is every 120 s)
+local LOCK_WAIT = RELEASE_BUDGET + 10 -- s a join waits for another server's fresh lock (its leave save, retries included)
+local LOCK_POLL = 3 -- s between the polls of a held lock
+local SIZE_WARN = 3 * 1024 * 1024 -- bytes: a career this big is heading for the 4 MB DataStore limit
 local LOAD_FAIL_KICK = "We couldn't load your saved career (Roblox's data servers are not responding). Nothing was lost - please rejoin in a minute."
 local CONFLICT_KICK = "Your career was saved from another server. Please rejoin to continue with the latest save."
+
+-- this server's name in the locks (Studio and the test runner have no JobId)
+local SERVER_ID = type(game.JobId) == "string" and game.JobId ~= "" and game.JobId or HttpService:GenerateGUID(false)
 
 local store
 do
@@ -59,6 +82,12 @@ end
 
 local function seqField(data)
 	return type(data) == "table" and tonumber(data.saveSeq) or 0
+end
+
+-- is this lock another live server's? (our own lock is simply re-taken: a quick rejoin here, or a leave save
+-- that never landed)
+local function heldElsewhere(lock, now)
+	return type(lock) == "table" and lock.job ~= SERVER_ID and now - (tonumber(lock.at) or 0) < LOCK_TTL
 end
 
 function DataManager.Blank(pastCareers)
@@ -87,18 +116,47 @@ local function prepare(data)
 	return data
 end
 
-local function read(player, tries)
-	local ok, result
+-- one read that takes the session lock in the same UpdateAsync: returns ok, stored value, locked.
+-- Another server's fresh lock leaves the value untouched (locked = true) unless `steal` is set; nothing
+-- stored yet is left as nothing (the first save creates the record, lock included).
+local function read(player, tries, steal)
+	local key = keyOf(player)
+	local ok, err
 	for attempt = 1, tries do
-		ok, result = pcall(function()
-			return store:GetAsync(keyOf(player))
+		local raw, held = nil, false
+		ok, err = pcall(function()
+			store:UpdateAsync(key, function(old)
+				-- the transform may run more than once: it only reads `old` and sets the locals
+				raw, held = old, false
+				if type(old) ~= "table" then
+					return nil
+				end
+				local now = os.time()
+				if not steal and heldElsewhere(old.lock, now) then
+					held = true
+					return nil
+				end
+				old.lock = { job = SERVER_ID, at = now }
+				return old
+			end)
 		end)
-		if ok or attempt == tries then
-			break
+		if ok then
+			return true, raw, held
 		end
-		task.wait(attempt)
+		if attempt < tries then
+			task.wait(attempt)
+		end
 	end
-	return ok, result
+	return false, err, false
+end
+
+-- rough size of the stored value (the DataStore limit is 4 MB): checked at the two quiet moments of a
+-- session so a career that keeps growing is noticed long before its saves start failing
+local function checkSize(player, data)
+	local ok, encoded = pcall(HttpService.JSONEncode, HttpService, data)
+	if ok and #encoded > SIZE_WARN then
+		warn(string.format("[Boxer] Career of %s is %.1f MB (DataStore limit 4 MB)", player.Name, #encoded / 1048576))
+	end
 end
 
 local function install(player, raw)
@@ -107,8 +165,16 @@ local function install(player, raw)
 	session[player] = HttpService:GenerateGUID(false)
 	canSave[player] = true
 	loadFailed[player] = nil
+	-- the load wrote the lock: the next plain save keeps the DataStore's 6 s per-key write spacing
+	lastSave[player] = type(raw) == "table" and os.clock() or nil
 	DataManager.Profiles[player] = data
+	checkSize(player, data)
 	return data
+end
+
+-- how long this player has been waiting for the career since the join
+local function waited(player)
+	return os.clock() - (joinedAt[player] or os.clock())
 end
 
 -- the join-time read failed: keep the player profile-less and try again until it works or we give up
@@ -118,11 +184,11 @@ local function retryLoad(player)
 		if not (player.Parent and loadFailed[player]) then
 			return
 		end
-		local ok, result = read(player, 1)
+		local ok, result, locked = read(player, 1, waited(player) >= LOCK_WAIT)
 		if not player.Parent then
 			return
 		end
-		if ok then
+		if ok and not locked then
 			install(player, result)
 			print("[Boxer] Career loaded after a retry for", player.Name)
 			if DataManager.OnLoaded then
@@ -130,14 +196,26 @@ local function retryLoad(player)
 			end
 			return
 		end
-		warn("[Boxer] Load retry failed:", result)
+		warn("[Boxer] Load retry failed:", locked and "another server still holds the career" or result)
 	end
 	if player.Parent and loadFailed[player] then
 		player:Kick(LOAD_FAIL_KICK)
 	end
 end
 
+-- read with the lock, waiting while another server still holds the career (polling until its leave save
+-- clears the lock, then taking the lock over after LOCK_WAIT); returns ok, stored value
+local function acquire(player)
+	local ok, result, locked = read(player, LOAD_TRIES)
+	while ok and locked and player.Parent do
+		task.wait(LOCK_POLL)
+		ok, result, locked = read(player, 1, waited(player) >= LOCK_WAIT)
+	end
+	return ok, result
+end
+
 function DataManager.Load(player)
+	joinedAt[player] = os.clock()
 	-- a quick rejoin on this server: let the leave save land first so the newest career is read
 	local t0 = os.clock()
 	while releasing[player.UserId] and os.clock() - t0 < RELEASE_BUDGET + 10 do
@@ -151,7 +229,7 @@ function DataManager.Load(player)
 		end
 		return data
 	end
-	local ok, result = read(player, LOAD_TRIES)
+	local ok, result = acquire(player)
 	if not player.Parent then
 		return nil
 	end
@@ -190,9 +268,30 @@ function DataManager.Set(player, profile)
 	DataManager.Profiles[player] = profile
 end
 
+-- a save was refused because the stored career moved on after this server read it (the previous server's
+-- leave save landed late): play on from the newer copy, which must not be rolled back; only what was done
+-- here since the join is lost. The kick remains for when the re-read fails too.
+local function refresh(player, stale)
+	local ok, result = acquire(player)
+	if not player.Parent or DataManager.Profiles[player] ~= stale or canSave[player] then
+		return
+	end
+	if ok then
+		install(player, result)
+		warn("[Boxer] Career refreshed from a newer save for", player.Name)
+		local hook = DataManager.OnRefreshed or DataManager.OnLoaded
+		if hook then
+			task.spawn(hook, player)
+		end
+	elseif not RunService:IsStudio() then
+		player:Kick(CONFLICT_KICK)
+	end
+end
+
 -- one UpdateAsync with retries; returns true when the career is safely stored
 local function write(player, data)
 	local key = keyOf(player)
+	local userId = player.UserId
 	local conflict = false
 	for attempt = 1, #SAVE_BACKOFF + 1 do
 		-- seqOf only moves after a write is confirmed: a transform that ran but was not committed (the call
@@ -214,6 +313,13 @@ local function write(player, data)
 				stamped = stored + 1
 				data.saveSeq = stamped
 				data.saveSession = mine
+				-- the lock travels with every save (a fresh stamp says this server is still playing the
+				-- career); the leave save and the shutdown saves hand it over to the next server
+				if releasing[userId] or closing then
+					data.lock = nil
+				else
+					data.lock = { job = SERVER_ID, at = os.time() }
+				end
 				return data
 			end)
 		end)
@@ -224,8 +330,8 @@ local function write(player, data)
 			if conflict then
 				warn("[Boxer] Save refused: a newer save exists for", player.Name)
 				canSave[player] = nil
-				if player.Parent and not releasing[player.UserId] and not RunService:IsStudio() then
-					player:Kick(CONFLICT_KICK)
+				if player.Parent and not releasing[userId] and not closing then
+					task.spawn(refresh, player, data)
 				end
 				return false
 			end
@@ -288,6 +394,7 @@ local function forget(player)
 	seqOf[player] = nil
 	session[player] = nil
 	dirty[player] = nil
+	joinedAt[player] = nil
 end
 
 function DataManager.Release(player)
@@ -297,6 +404,7 @@ function DataManager.Release(player)
 		return
 	end
 	releasing[userId] = true
+	checkSize(player, DataManager.Profiles[player])
 	-- the last save of the session: keep retrying (a transient error must not lose the session)
 	local t0 = os.clock()
 	while not DataManager.Save(player, true) and canSave[player] and os.clock() - t0 < RELEASE_BUDGET do
@@ -313,5 +421,13 @@ function DataManager.WaitForReleases(timeout)
 		task.wait(0.25)
 	end
 end
+
+-- the shutdown saves (Main's BindToClose saves everyone before the leave saves) already hand the careers
+-- over: every write from now on clears the lock, so a player who lands on the next server never waits
+pcall(function()
+	game:BindToClose(function()
+		closing = true
+	end)
+end)
 
 return DataManager

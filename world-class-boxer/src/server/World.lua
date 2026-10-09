@@ -333,6 +333,7 @@ function World.SimulateCycle(profile, rng)
 			end
 			if b.age >= 38 and #b.belts == 0 and b.heat < 30 and rng:NextNumber() < 0.3 then
 				b.retired = true
+				b.retiredDay = profile.day -- the newest retired rivals are the ones Prune keeps
 				local nb = newBoxer(world, rng, ci, rng:NextNumber(28, 45), nil, 18, 22)
 				world.boxers[nb.id] = nb
 				table.insert(ids, nb.id)
@@ -346,6 +347,103 @@ function World.SimulateCycle(profile, rng)
 			end
 		end
 	end
+	World.Prune(profile)
+end
+
+-- retired boxers the player never met are dropped at once; retired rivals (anyone the player fought) stay
+-- while they are among the newest RETIRED_RIVALS of them, so the rivals list keeps a career's worth of
+-- old foes without the world growing by one boxer per fight
+local RETIRED_RIVALS = 40
+
+local function idNumber(id)
+	return tonumber(string.match(tostring(id), "%d+")) or 0
+end
+
+-- the retired boxers the career still points at, or the newest retired rivals, stay; the rest leave the
+-- saved world (every retirement adds a replacement, so without this profile.world grew ~0.8 KB per
+-- retirement for the whole career, toward the 4 MB DataStore limit). Nil-safe for old saves; the class
+-- id lists are rewritten to match. Returns how many boxers were removed.
+function World.Prune(profile)
+	local world = type(profile) == "table" and profile.world
+	if type(world) ~= "table" or type(world.boxers) ~= "table" or type(world.classes) ~= "table" then
+		return 0
+	end
+	local keep = {}
+	local function mark(id)
+		if id ~= nil then
+			keep[id] = true
+		end
+	end
+	local function markAll(list, field)
+		if type(list) ~= "table" then
+			return
+		end
+		for _, e in pairs(list) do
+			if not field then
+				mark(e)
+			elseif type(e) == "table" then
+				mark(e[field])
+			end
+		end
+	end
+	-- the fight history (the client opens their cards), the camp opponent and the open offers
+	markAll(profile.history, "oppId")
+	markAll(profile.offers, "oppId")
+	if type(profile.camp) == "table" and type(profile.camp.offer) == "table" then
+		mark(profile.camp.offer.oppId)
+	end
+	-- belt holders of every kind (a champion never retires, but a save is never trusted on that)
+	if type(world.regional) == "table" then
+		for _, holders in pairs(world.regional) do
+			markAll(holders)
+		end
+	end
+	if type(world.champions) == "table" then
+		for _, byClass in pairs(world.champions) do
+			markAll(byClass)
+		end
+	end
+	local rivals = {}
+	for id, b in pairs(world.boxers) do
+		if type(b) == "table" and b.retired and not keep[id] then
+			local h = type(b.h2h) == "table" and ((b.h2h.w or 0) + (b.h2h.l or 0) + (b.h2h.d or 0)) or 0
+			if h > 0 then
+				table.insert(rivals, b)
+			end
+		end
+	end
+	if #rivals > RETIRED_RIVALS then
+		-- newest retirements first; saves from before retiredDay existed fall back to the newest ids
+		table.sort(rivals, function(x, y)
+			local dx, dy = tonumber(x.retiredDay) or 0, tonumber(y.retiredDay) or 0
+			if dx ~= dy then
+				return dx > dy
+			end
+			return idNumber(x.id) > idNumber(y.id)
+		end)
+	end
+	for i = 1, math.min(#rivals, RETIRED_RIVALS) do
+		mark(rivals[i].id)
+	end
+	local removed = 0
+	for id, b in pairs(world.boxers) do
+		if type(b) == "table" and b.retired and not keep[id] then
+			world.boxers[id] = nil
+			removed += 1
+		end
+	end
+	if removed > 0 then
+		for ci, ids in pairs(world.classes) do
+			local kept = {}
+			for _, id in ipairs(ids) do
+				if world.boxers[id] then
+					table.insert(kept, id)
+				end
+			end
+			world.classes[ci] = kept
+		end
+	end
+	return removed
 end
 
 function World.Pick(profile, ci, minOv, maxOv, exclude, rng)
