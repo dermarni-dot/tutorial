@@ -269,10 +269,14 @@ end
 
 -- window grid on one face (some windows lit); rows/cols fill the band y0..y1 of a face faceH tall.
 -- Only the spec is stored here (attributes on the part): the window Frames are drawn by the client
--- (CityVisuals.windowGrids) for the faces within a few hundred studs of its camera, so the ~2,000
--- Frames of the skyline and the shop fronts never replicate and never all exist at once
-local function windowGrid(p, face, faceH, y0, y1, rows, cols, rng, litChance)
+-- (CityVisuals.windowGrids) for the faces within its draw range (WinRange; the client's default,
+-- a few hundred studs, when nil), so the ~2,000 Frames of the skyline and the shop fronts never
+-- replicate
+local function windowGrid(p, face, faceH, y0, y1, rows, cols, rng, litChance, range)
 	p:SetAttribute("WinFace", face.Name)
+	if range then
+		p:SetAttribute("WinRange", range)
+	end
 	p:SetAttribute("WinTop", 1 - y1 / faceH)
 	p:SetAttribute("WinSpan", (y1 - y0) / faceH)
 	p:SetAttribute("WinRows", rows)
@@ -1808,7 +1812,9 @@ local function buildSkyline(root)
 		local tone = rng:NextInteger(0, 3)
 		local color = ({ Color3.fromRGB(70, 78, 92), Color3.fromRGB(110, 112, 120), Color3.fromRGB(56, 70, 90), Color3.fromRGB(150, 140, 126) })[tone + 1]
 		local body = part(f, "Tower", V3(w, h, d), cf, color, tone == 2 and M.Glass or M.Concrete, { reflect = tone == 2 and 0.15 or 0 })
-		windowGrid(body, Enum.NormalId.Front, h, 4, h - 3, math.floor(h / 10), math.max(3, math.floor(w / 6)), rng, 0.3)
+		-- (drawn at any range: every tower faces the centre, so the faces you see are the ones across
+		-- the ring, 500..1,000 studs away)
+		windowGrid(body, Enum.NormalId.Front, h, 4, h - 3, math.floor(h / 10), math.max(3, math.floor(w / 6)), rng, 0.3, 1200)
 		part(f, "TowerCap", V3(w * 0.6, 3, d * 0.6), cf * CF(0, h / 2 + 1.5, 0), color:Lerp(Color3.new(0, 0, 0), 0.2), M.Concrete)
 		if h > 110 then
 			part(f, "Antenna", V3(0.6, 18, 0.6), cf * CF(0, h / 2 + 12, 0), C.steelLight, M.Metal)

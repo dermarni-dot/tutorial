@@ -107,17 +107,27 @@ local function keepMeshes(clone)
 	return true
 end
 
--- is this original hidden by the anatomy meshes (a round-1 part a mesh replaced, or a mesh piece tucked
--- under headgear / a hood)? Clone never carries LocalTransparencyModifier (it is not saved), so the
--- copy must be told; the camera's own first-person fade is not a reason (a mirror still shows you)
-local function hiddenByMeshes(orig, pieces, isReplaced)
-	if isReplaced then
-		local ok, r = pcall(isReplaced, orig)
-		if ok and r == true then
-			return true
-		end
+-- is this original a round-1 part an anatomy mesh replaced (hidden on the live character)?
+local function replacedByMesh(orig, isReplaced)
+	if not isReplaced then
+		return false
 	end
-	return pieces ~= nil and orig:IsA("MeshPart") and orig.LocalTransparencyModifier >= 0.99 and orig:IsDescendantOf(pieces)
+	local ok, r = pcall(isReplaced, orig)
+	return ok and r == true
+end
+
+-- the camera's own fade (first person / close zoom): Roblox's TransparencyController writes
+-- LocalTransparencyModifier on every part of the character, the HumanoidRootPart included, which no
+-- anatomy rule ever hides; the camera within 2 studs of its focus is the same state seen from it.
+-- While it lasts an anatomy piece's LocalTransparencyModifier says nothing about headgear / a hood
+-- covering it (every piece reads 1), and a mirror still shows you
+local function cameraFading(char)
+	local root = char and char:FindFirstChild("HumanoidRootPart")
+	if root and root:IsA("BasePart") and root.LocalTransparencyModifier > 0 then
+		return true
+	end
+	local cam = workspace.CurrentCamera
+	return cam ~= nil and cam.CameraType ~= Enum.CameraType.Scriptable and (cam.Focus.Position - cam.CFrame.Position).Magnitude < 2
 end
 
 -- copy the character once; pairs map every original BasePart to its copy
@@ -153,6 +163,7 @@ local function copyCharacter(char, parent)
 	local ac = anatomyClient()
 	local isReplaced = meshes and ac and ac.IsReplaced or nil
 	local pieces = meshes and char:FindFirstChild("Anatomy") or nil
+	local fade = cameraFading(char)
 	local pairsOut = {}
 	for _, d in ipairs(clone:GetDescendants()) do
 		stripTags(d)
@@ -166,11 +177,14 @@ local function copyCharacter(char, parent)
 			d.CanCollide = false
 			local orig = list[d:GetAttribute("MirrorId") or -1]
 			if orig then
-				local hidden = meshes and hiddenByMeshes(orig, pieces, isReplaced) or false
-				if hidden then
+				-- { orig, copy, replaced (fixed per copy), anatomy piece, covered (read live in update) }
+				local replaced = replacedByMesh(orig, isReplaced)
+				local piece = pieces ~= nil and orig:IsA("MeshPart") and orig:IsDescendantOf(pieces)
+				local covered = piece and not fade and orig.LocalTransparencyModifier >= 0.99
+				if replaced or covered then
 					d.Transparency = 1
 				end
-				table.insert(pairsOut, { orig, d, hidden })
+				table.insert(pairsOut, { orig, d, replaced, piece, covered })
 			end
 		elseif (d:IsA("SurfaceGui") or d:IsA("BillboardGui")) and d:GetAttribute("AnatomyHid") == true then
 			-- Enabled is copied: false while the live meshes hide the gui; back on without them
@@ -270,12 +284,17 @@ local function update()
 	end
 	local n, c = st.n, st.c
 	local dirty = false
+	local fade = cameraFading(st.char)
 	for _, pr in ipairs(st.pairs) do
 		local orig, copy = pr[1], pr[2]
 		if orig.Parent then
 			copy.CFrame = reflect(orig.CFrame, c, n)
-			-- (a mirror still shows you in first person; only what the meshes replaced stays hidden)
-			copy.Transparency = pr[3] and 1 or orig.Transparency
+			-- (a mirror still shows you in first person) a mesh piece under headgear / a hood stays
+			-- hidden: read live, except during the camera's fade, which keeps the last state seen
+			if pr[4] and not fade then
+				pr[5] = orig.LocalTransparencyModifier >= 0.99
+			end
+			copy.Transparency = (pr[3] or pr[5]) and 1 or orig.Transparency
 		else
 			dirty = true
 			copy.Transparency = 1

@@ -1364,20 +1364,24 @@ end
 local NEAR = 180
 ------------------------------------------------------------------------
 -- Window grids: CityMap stores only the spec of each window grid as attributes (WinFace, WinTop,
--- WinSpan, WinRows, WinCols, WinLit, WinSeed) on the skyline towers and the Main Street upper
--- floors. The Frames are drawn here for the faces within WIN_RANGE of the camera and dropped
--- again further out, so nothing replicates and only the nearby part of the ~2,000 windows exists
+-- WinSpan, WinRows, WinCols, WinLit, WinSeed, WinRange) on the skyline towers and the Main Street
+-- upper floors. The Frames are drawn here for the faces within their range of the camera (WinRange,
+-- else WIN_RANGE) and dropped again further out, so nothing replicates. The skyline towers carry a
+-- range past the whole map: they all face the centre, so the faces you see are across the ring
 ------------------------------------------------------------------------
-local WIN_RANGE = 460
-local WIN_DROP = 540 -- hysteresis: built inside the range, destroyed beyond this
+local WIN_RANGE = 460 -- the Main Street shop fronts
+local WIN_HYST = 80 -- hysteresis: built inside the range, destroyed beyond range + this
 local WIN_MAX = 48 -- grids alive at once (nearest first)
+local WIN_STEP = 8 -- grids built per pass (the first pass would otherwise make ~1,700 Frames at once)
 local winParts = {} -- every part carrying a window spec
+local winRange = {} -- part -> its draw range
 local winLive = {} -- part -> SurfaceGui
 local winScanAt = 0
 local winOrder = {} -- reused every pass (no per-pass allocation beyond the sort)
 
 local function scanWindowParts()
 	table.clear(winParts)
+	table.clear(winRange)
 	local c = cityRoot()
 	if not c then
 		return
@@ -1385,6 +1389,7 @@ local function scanWindowParts()
 	for _, d in ipairs(c:GetDescendants()) do
 		if d:IsA("BasePart") and d:GetAttribute("WinRows") then
 			table.insert(winParts, d)
+			winRange[d] = tonumber(d:GetAttribute("WinRange")) or WIN_RANGE
 		end
 	end
 end
@@ -1397,7 +1402,7 @@ local function buildWindowGrid(p)
 	local okFace, face = pcall(function()
 		return Enum.NormalId[p:GetAttribute("WinFace") or "Front"]
 	end)
-	local sg = gui(p, okFace and face or Enum.NormalId.Front, 4, 0.15, WIN_DROP + 60)
+	local sg = gui(p, okFace and face or Enum.NormalId.Front, 4, 0.15, (winRange[p] or WIN_RANGE) + WIN_HYST + 60)
 	sg.Name = "Windows"
 	for r = 0, rows - 1 do
 		for c = 0, cols - 1 do
@@ -1421,11 +1426,12 @@ local function updateWindowGrids(camPos, now)
 	for _, p in ipairs(winParts) do
 		if p.Parent then
 			local d = (p.Position - camPos).Magnitude
+			local range = winRange[p] or WIN_RANGE
 			local sg = winLive[p]
-			if sg and (d > WIN_DROP or not sg.Parent) then
+			if sg and (d > range + WIN_HYST or not sg.Parent) then
 				sg:Destroy()
 				winLive[p] = nil
-			elseif not sg and d < WIN_RANGE then
+			elseif not sg and d < range then
 				table.insert(winOrder, p)
 			end
 		elseif winLive[p] then
@@ -1441,8 +1447,8 @@ local function updateWindowGrids(camPos, now)
 		table.sort(winOrder, function(a, b)
 			return (a.Position - camPos).Magnitude < (b.Position - camPos).Magnitude
 		end)
-		for _, p in ipairs(winOrder) do
-			if alive >= WIN_MAX then
+		for i, p in ipairs(winOrder) do
+			if alive >= WIN_MAX or i > WIN_STEP then
 				break
 			end
 			winLive[p] = buildWindowGrid(p)

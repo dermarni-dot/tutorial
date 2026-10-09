@@ -10,8 +10,8 @@
 --                    tracking cameras, glass partitions, staff
 --  * World Champion  gold trim, champion banners, a media backdrop with a camera crew, a red
 --                    carpet, fans behind barriers at the door (more with popularity), title photos
---                    and the Champion's Lounge: a mezzanine deck over the east lobby (stairs, bar,
---                    glass balustrades over the ring) - the facility grows a level
+--                    and the Champion's Lounge: the gate up to the mezzanine over the east lobby
+--                    opens for you and its deck becomes your lounge (bar, sofas, trophies, screen)
 -- Always: the career wall next to the Fight Board (your real fights), the trophy case with the
 -- titles you actually won, the "YOURS" plates under the belts you hold and the sparring ring
 -- (rope Beams with sag and physics, corner pads, apron, steps) matched to your ring level.
@@ -650,6 +650,56 @@ local function setGate(open)
 				if l:IsA("Light") then
 					l.Enabled = open
 				end
+			end
+		end
+	end
+end
+
+-- the Champion's Lounge mezzanine is server-built for everyone (MapBuilder.buildMezzanine): for a
+-- World Champion facility the glass gate at its stair foot swings open for you (locally, like the
+-- Elite doors: other players' clients keep it shut for their own characters) and its chrome trim
+-- turns gold; below that tier the gate stays shut
+local loungeState -- "open" | "locked"
+local loungeSwing = {} -- leaf -> NumberValue its swing tweens
+local function setLoungeGate(open)
+	local g = gym()
+	local mezz = g and g:FindFirstChild("Mezzanine")
+	if not mezz then
+		return
+	end
+	local state = open and "open" or "locked"
+	if loungeState == state then
+		return
+	end
+	loungeState = state
+	for _, p in ipairs(mezz:GetChildren()) do
+		if p:IsA("BasePart") then
+			if p.Name == "LoungeGate" then
+				local home = p:GetAttribute("HomeCF")
+				if typeof(home) ~= "CFrame" then
+					home = p.CFrame
+					p:SetAttribute("HomeCF", home)
+				end
+				local s = p:GetAttribute("Side") or 1
+				local v = loungeSwing[p]
+				if not v then
+					-- hinged on its outer edge (the west post / the stair wall), the leaf swings out
+					-- towards the lobby; a CFrame tween would slide the hinge, so the angle is tweened
+					local hinge = CF(s * p.Size.X / 2, 0, 0)
+					v = Instance.new("NumberValue")
+					v.Changed:Connect(function(a)
+						if p.Parent then
+							p.CFrame = home * hinge * ANG(0, a, 0) * hinge:Inverse()
+						end
+					end)
+					loungeSwing[p] = v
+				end
+				p.CanCollide = not open
+				TweenService:Create(v, TweenInfo.new(open and 1.6 or 0.8, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut), { Value = open and -s * RAD(88) or 0 }):Play()
+			elseif p.Name == "LoungeGateBlock" then
+				p.CanCollide = not open
+			elseif p:GetAttribute("LoungeTrim") == true then
+				p.Color = open and GOLD or CHROME
 			end
 		end
 	end
@@ -1364,8 +1414,11 @@ local function buildChampion(m, P, idx)
 		local ok, n = pcall(cv.FanCount, P)
 		cityFans = ok and tonumber(n) or 0
 	end
-	local bx = cityFans > 0 and 10.6 or 6.5 -- the barriers stand right in front of whichever crowd
+	-- the barriers stand right in front of whichever crowd; on the east side CityVisuals' paparazzi
+	-- (bodies x 9.85..11.15 at z 95 and 105, a World Champion is always tier 8+) are the front of
+	-- it, so that line runs just west of them
 	for _, sx in ipairs({ -1, 1 }) do
+		local bx = cityFans > 0 and (sx > 0 and 9.4 or 10.6) or 6.5
 		for k = 0, 5 do
 			local z = 91 + k * 3
 			part(m, "Barrier", V3(0.2, 0.18, 2.9), CF(sx * bx, 3.1, z), CHROME, M.Metal)
@@ -1411,79 +1464,62 @@ local function buildChampion(m, P, idx)
 end
 
 ------------------------------------------------------------------------
--- 6b. World Champion: the Champion's Lounge, a mezzanine deck over the east side of the lobby.
--- The facility grows a level: a steel-column deck (x 20..46, z 38..78, floor at 12.3) with a
--- ramp of stairs up from the career wall, glass balustrades looking over the lobby and the
--- ring, a bar, sofas, trophy plinths and a lounge screen. Local parts collide for YOUR character
--- (the client simulates its own), so you can walk up; other players see their own tier
+-- 6b. World Champion: the Champion's Lounge. The server builds the mezzanine over the east lobby
+-- for everyone (MapBuilder.buildMezzanine: deck, columns, stair, glass rails, a gate at the stair
+-- foot), so every client collides with the same deck; for a World Champion facility the gate opens
+-- for you (setLoungeGate) and this dresses the deck as the lounge: carpet, the lounge's name on the
+-- fascias, trophy plinths, sofas, a bar and a screen with your record. Read from the server's
+-- deck, so the two always agree
 ------------------------------------------------------------------------
-local DECK_Y = 12.3 -- the deck's floor (its slab is 0.6 thick under it)
+local function loungeDeck()
+	local g = gym()
+	local mezz = g and g:FindFirstChild("Mezzanine")
+	local deck = mezz and mezz:FindFirstChild("MezzDeck")
+	return deck and deck:IsA("BasePart") and deck or nil
+end
+
 local function buildGallery(m, P, idx)
-	if idx < 4 then
+	local deck = loungeDeck()
+	if idx < 4 or not deck then
 		return
 	end
 	local name = (P.identity and P.identity.name or "THE CHAMP"):upper()
-	local carpet = rgb(26, 22, 30)
-	local x0, x1, z0, z1 = 20, 46, 38, 78
-	local cx, cz = (x0 + x1) / 2, (z0 + z1) / 2
-	part(m, "GalleryDeck", V3(x1 - x0, 0.6, z1 - z0), CF(cx, DECK_Y - 0.3, cz), carpet, M.Fabric, { collide = true })
-	-- fascias with the lounge's name, read from the lobby floor, a gold band under each
-	local fw = part(m, "GalleryFascia", V3(0.3, 1.1, z1 - z0), CF(x0 - 0.15, DECK_Y - 0.55, cz), DARK, M.SmoothPlastic)
-	sign(fw, Enum.NormalId.Left, "CHAMPION'S LOUNGE  -  " .. name, GOLD, DARK, 30)
-	part(m, "FasciaTrim", V3(0.34, 0.16, z1 - z0), CF(x0 - 0.15, DECK_Y - 1.18, cz), GOLD, M.Metal, { shadow = false })
-	local fn = part(m, "GalleryFascia", V3(x1 - x0 + 0.3, 1.1, 0.3), CF(cx, DECK_Y - 0.55, z0 - 0.15), DARK, M.SmoothPlastic)
-	sign(fn, Enum.NormalId.Front, "CHAMPION'S LOUNGE", GOLD, DARK, 30)
-	part(m, "FasciaTrim", V3(x1 - x0 + 0.3, 0.16, 0.34), CF(cx, DECK_Y - 1.18, z0 - 0.15), GOLD, M.Metal, { shadow = false })
-	-- steel columns (clear of the vending machines at x 37..45.3, z 76..78)
-	for _, c in ipairs({ { x0 + 0.4, z0 + 0.4 }, { x1 - 0.4, z0 + 0.4 }, { x0 + 0.4, z1 - 0.4 }, { x1 - 0.4, z1 - 0.4 }, { x0 + 0.4, 60 }, { x1 - 0.4, 60 } }) do
-		part(m, "GalleryColumn", V3(0.8, DECK_Y - 0.6 - LOBBY_Y, 0.8), CF(c[1], (DECK_Y - 0.6 + LOBBY_Y) / 2, c[2]), rgb(40, 40, 46), M.Metal, { collide = true })
-		part(m, "GalleryColumnTrim", V3(1.0, 0.3, 1.0), CF(c[1], DECK_Y - 0.8, c[2]), GOLD, M.Metal)
-	end
-	-- downlights under the deck: the champions wall and the reception stay lit beneath it
-	for _, pos in ipairs({ V3(27, DECK_Y - 0.65, 48), V3(40, DECK_Y - 0.65, 48), V3(28, DECK_Y - 0.65, 66), V3(41, DECK_Y - 0.65, 70) }) do
-		local d = part(m, "DeckDownlight", V3(1.2, 0.08, 1.2), CF(pos), rgb(255, 240, 215), M.Neon, { shadow = false })
-		point(d, rgb(255, 236, 205), 16, 0.9)
-	end
-	-- the stairs: a ramp up the deck's west side (x 16..20, from z 40 at the floor to z 58 at the
-	-- deck) with gold nosings; a WedgePart's slope faces its Front, so the high end is at +Z
-	local rise, run = DECK_Y - LOBBY_Y, 18
-	local ramp = part(m, "GalleryRamp", V3(4, rise, run), CF(x0 - 2, LOBBY_Y + rise / 2, 40 + run / 2), rgb(58, 58, 64), M.Metal, { wedge = true, collide = true })
-	ramp.CanQuery = true
-	-- a gold stringer along the slope on both sides (reads as a staircase from the lobby floor)
-	for _, sx in ipairs({ -2.02, 2.02 }) do
-		rod(m, "RampStringer", V3(x0 - 2 + sx, LOBBY_Y + 0.3, 40), V3(x0 - 2 + sx, DECK_Y + 0.3, 40 + run), 0.16, GOLD, M.Metal)
-	end
-	local steps = 12
-	for i = 1, steps do
-		local t = i / steps
-		part(m, "GalleryTread", V3(4, 0.08, 0.3), CF(x0 - 2, LOBBY_Y + rise * t + 0.04, 40 + run * t - 0.15), GOLD, M.Metal, { shadow = false })
-	end
-	part(m, "GalleryLanding", V3(3.7, 0.6, 2), CF(x0 - 2.15, DECK_Y - 0.3, 59), carpet, M.Fabric, { collide = true })
-	part(m, "RampSide", V3(0.3, 1.0, run + 0.2), CF(x0 - 4.15, LOBBY_Y + 0.5, 40 + run / 2), rgb(40, 40, 46), M.Metal)
-	local function rail(x)
-		rod(m, "StairRail", V3(x, LOBBY_Y + 2.9, 40), V3(x, DECK_Y + 2.9, 58), 0.12, GOLD, M.Metal)
-		for k = 0, 6 do
-			local t = k / 6
-			rod(m, "StairPost", V3(x, LOBBY_Y + rise * t + 0.05, 40 + run * t), V3(x, LOBBY_Y + rise * t + 2.9, 40 + run * t), 0.1, GOLD, M.Metal)
+	local half = deck.Size / 2
+	local x0, x1, z0, z1 = deck.Position.X - half.X, deck.Position.X + half.X, deck.Position.Z - half.Z, deck.Position.Z + half.Z
+	local DECK_Y = deck.Position.Y + half.Y -- the deck's floor
+	local FLOOR = DECK_Y + 0.04 -- the carpet's top: everything below stands on it
+	local cx = (x0 + x1) / 2
+	-- carpet inside the rails' shoes (they stand 0.3 in from the edges)
+	part(m, "LoungeCarpet", V3(x1 - x0 - 0.6, 0.04, z1 - z0 - 0.32), CF(cx, DECK_Y + 0.02, (z0 + 0.3 + z1 - 0.02) / 2), rgb(26, 22, 30), M.Fabric, { shadow = false })
+	-- the lounge's name on the steel fascias the lobby looks up at (north face, and the west face
+	-- south of the landing), on thin panels just proud of them
+	local mezz = deck.Parent
+	for _, f in ipairs(mezz:GetChildren()) do
+		if f.Name == "MezzFascia" and f:IsA("BasePart") then
+			local sz = f.Size
+			local cf, size, face
+			if sz.X > sz.Z then
+				if f.Position.Z < deck.Position.Z then -- the north fascia faces -Z
+					cf, size, face = f.CFrame * CF(0, 0, -sz.Z / 2 - 0.03), V3(sz.X - 1, sz.Y - 0.2, 0.04), Enum.NormalId.Front
+				end
+			elseif f.Position.X < deck.Position.X and sz.Z > 8 then -- the west one south of the landing
+				cf, size, face = f.CFrame * CF(-sz.X / 2 - 0.03, 0, 0), V3(0.04, sz.Y - 0.2, sz.Z - 1), Enum.NormalId.Left
+			end
+			if cf then
+				local panel = part(m, "LoungeFasciaSign", size, cf, DARK, M.SmoothPlastic, { shadow = false })
+				sign(panel, face, size.X > 20 and ("CHAMPION'S LOUNGE  -  " .. name) or "CHAMPION'S LOUNGE", GOLD, DARK, 30)
+			end
 		end
 	end
-	rail(x0 - 4.05)
-	rail(x0 - 0.05)
-	-- glass balustrades: west edge (with the opening where the stairs arrive), north and east
-	local railY = DECK_Y - 0.5 -- glassWall stands its pane 0.5 above the points it is given
-	glassWall(m, V3(x0 + 0.15, railY, z0), V3(x0 + 0.15, railY, 57.6), 2.6, true)
-	glassWall(m, V3(x0 + 0.15, railY, 60.4), V3(x0 + 0.15, railY, z1), 2.6, true)
-	glassWall(m, V3(x0, railY, z0 + 0.15), V3(x1, railY, z0 + 0.15), 2.6, true)
-	glassWall(m, V3(x1 - 0.15, railY, z0), V3(x1 - 0.15, railY, z1), 2.6, true)
 	-- trophy plinths along the north rail, looking down on the fight board and the ring
 	for i, x in ipairs({ 26, 33, 40 }) do
-		local base = CF(x, DECK_Y, z0 + 2.6)
+		local base = CF(x, FLOOR, z0 + 2.6)
 		part(m, "GalleryPlinth", V3(1.6, 1.8, 1.6), base * CF(0, 0.9, 0), rgb(18, 16, 20), M.Marble, { collide = true })
 		trophyCup(m, base * CF(0, 1.8, 0), ({ 0.9, 1.1, 0.9 })[i], i == 2 and GOLD or rgb(205, 210, 220))
 	end
 	-- lounge: two sofas facing each other over a low table
 	for _, s in ipairs({ { 46, 1 }, { 58, -1 } }) do
-		local scf = CF(27, DECK_Y, s[1]) * ANG(0, s[2] > 0 and 0 or RAD(180), 0)
+		local scf = CF(27, FLOOR, s[1]) * ANG(0, s[2] > 0 and 0 or RAD(180), 0)
 		-- (no two faces of the sofa coplanar: the back is wider and proud, the arms outside the seat)
 		part(m, "LoungeSeat", V3(7, 1.1, 2.6), scf * CF(0, 0.55, 0), rgb(60, 36, 32), M.Leather, { collide = true })
 		part(m, "LoungeBack", V3(7.2, 1.6, 0.7), scf * CF(0, 1.4, 1.0), rgb(60, 36, 32), M.Leather, { collide = true })
@@ -1491,11 +1527,11 @@ local function buildGallery(m, P, idx)
 			part(m, "LoungeArm", V3(0.6, 1.6, 2.8), scf * CF(ax, 0.8, 0.05), rgb(50, 30, 26), M.Leather)
 		end
 	end
-	part(m, "LoungeTable", V3(4, 0.3, 2), CF(27, DECK_Y + 1.2, 52), rgb(18, 16, 20), M.Marble, { collide = true })
-	part(m, "LoungeTableBase", V3(0.6, 1.05, 0.6), CF(27, DECK_Y + 0.525, 52), GOLD, M.Metal)
-	part(m, "LoungeRug", V3(10, 0.04, 8), CF(27, DECK_Y + 0.02, 52), rgb(120, 28, 34), M.Fabric, { shadow = false })
+	part(m, "LoungeTable", V3(4, 0.3, 2), CF(27, FLOOR + 1.2, 52), rgb(18, 16, 20), M.Marble, { collide = true })
+	part(m, "LoungeTableBase", V3(0.6, 1.05, 0.6), CF(27, FLOOR + 0.525, 52), GOLD, M.Metal)
+	part(m, "LoungeRug", V3(10, 0.03, 8), CF(27, FLOOR + 0.015, 52), rgb(120, 28, 34), M.Fabric, { shadow = false })
 	-- the bar along the east rail
-	local bar = CF(43.2, DECK_Y, 66)
+	local bar = CF(x1 - 3.3, FLOOR, 66)
 	part(m, "GalleryBar", V3(2.2, 3.4, 14), bar * CF(0, 1.7, 0), rgb(18, 16, 20), M.Wood, { collide = true })
 	part(m, "GalleryBarTop", V3(2.8, 0.25, 14.4), bar * CF(0, 3.52, 0), rgb(225, 225, 228), M.Marble)
 	part(m, "GalleryBarLight", V3(0.08, 0.1, 13.6), bar * CF(-1.3, 0.6, 0), GOLD, M.Neon, { shadow = false })
@@ -1507,16 +1543,17 @@ local function buildGallery(m, P, idx)
 	for k = 0, 5 do
 		vcyl(m, "BarBottle", 1.1, 0.3, bar * CF(0.6 - (k % 2) * 0.5, 3.65, -5 + k * 2), ({ rgb(40, 120, 60), rgb(200, 150, 40), rgb(60, 60, 170) })[k % 3 + 1], M.Glass, { transparency = 0.25 })
 	end
-	-- the lounge screen on the south wall (under the windows, which start at y 17)
-	local scr = part(m, "LoungeScreen", V3(11, 4.6, 0.3), CF(cx, DECK_Y + 3.6, z1 + 1.0), BLACK, M.SmoothPlastic)
+	-- the lounge screen on the south wall, in the clear stretch east of the lobby banner (x <= 35)
+	-- and under the window sill (y 16.6): x 36.5..44.5, y 12.8..16.4
+	local scr = part(m, "LoungeScreen", V3(8, 3.6, 0.3), CF(40.5, DECK_Y + 2.3, z1 - 0.2), BLACK, M.SmoothPlastic)
 	local sg = gui(scr, Enum.NormalId.Front, 24, 0)
 	frame(sg, { Size = UDim2.fromScale(1, 1), BackgroundColor3 = rgb(10, 10, 14) })
 	label(sg, "CHAMPION'S LOUNGE", { TextColor3 = GOLD, Font = Enum.Font.GothamBold, Size = UDim2.fromScale(0.9, 0.22), Position = UDim2.fromScale(0.05, 0.06) })
 	label(sg, name, { TextColor3 = WHITE, Size = UDim2.fromScale(0.9, 0.36), Position = UDim2.fromScale(0.05, 0.3) })
 	local rec = P.record or {}
 	label(sg, string.format("%d-%d-%d  |  %d KO", rec.w or 0, rec.l or 0, rec.d or 0, rec.ko or 0), { TextColor3 = GOLD, Font = Enum.Font.GothamBold, Size = UDim2.fromScale(0.9, 0.2), Position = UDim2.fromScale(0.05, 0.7) })
-	-- two floor lamps light the deck itself
-	for _, pos in ipairs({ V3(22.5, DECK_Y, 41), V3(44, DECK_Y, 76) }) do
+	-- two floor lamps light the deck itself (the east one beside the screen, not in front of it)
+	for _, pos in ipairs({ V3(x0 + 2.5, FLOOR, z0 + 3), V3(x1 - 1.5, FLOOR, z1 - 4.5) }) do
 		vcyl(m, "GalleryLampPost", 5.2, 0.14, CF(pos), GOLD, M.Metal)
 		local bulb = part(m, "GalleryLampShade", V3(1.4, 0.9, 1.4), CF(pos + V3(0, 5.5, 0)), rgb(255, 236, 200), M.Neon, { shadow = false, ellipsoid = true })
 		point(bulb, rgb(255, 232, 196), 18, 0.9)
@@ -1750,7 +1787,7 @@ end
 local CREW = {
 	{ src = "Chef Ana", name = "Dr. Ines Vale", role = "Sports Scientist", at = V3(124.5, 0, 35), look = V3(124.5, 0, 38), minTier = 3, prop = "tablet" },
 	{ src = "Kim Park", name = "Tomas Reed", role = "Physiotherapist", at = V3(131.4, 0, 58), look = V3(125, 0, 60.5), minTier = 3 },
-	{ src = "Coach Benny", name = "Lou Marsh", role = "Camera Operator", at = V3(-27, 0, 45.4), look = V3(-27, 0, 36), minTier = 4 },
+	{ src = "Coach Benny", name = "Lou Marsh", role = "Camera Operator", at = V3(-27, 0, 46.6), look = V3(-27, 0, 36), minTier = 4 }, -- (his hands at the TV camera's back, z 44.7)
 }
 
 -- The source NPCs spawn one by one on the server (with yields), so on a fresh join they may not
@@ -2012,7 +2049,9 @@ function GymFacility.Refresh(P, localGym, info)
 	rebuild(root, "TitlePhotos", photoKey(titleKey, idx), buildPhotos, P, idx)
 	rebuild(root, "ChampionDressing", string.format("%d|%d|%s", idx, math.floor((tonumber(P.popularity) or 0) / 10), titleKey), buildChampion, P, idx)
 	local rec = P.record or {}
-	rebuild(root, "ChampionGallery", idx >= 4 and string.format("%d|%s|%d-%d-%d-%d", idx, P.identity and tostring(P.identity.name) or "", rec.w or 0, rec.l or 0, rec.d or 0, rec.ko or 0) or "", buildGallery, P, idx)
+	-- (keyed on the server's deck too: it may replicate after the first refresh)
+	rebuild(root, "ChampionGallery", idx >= 4 and string.format("%d|%s|%d-%d-%d-%d|%s", idx, P.identity and tostring(P.identity.name) or "", rec.w or 0, rec.l or 0, rec.d or 0, rec.ko or 0, loungeDeck() and "deck" or "") or "", buildGallery, P, idx)
+	pcall(setLoungeGate, idx >= 4)
 	rebuild(root, "RingUpgrades", string.format("%d|%d", info.ringLevel or 1, idx), buildRing, info.ringLevel or 1, idx)
 	rebuild(root, "Crew", tostring(math.min(idx, 4)), buildCrew, idx)
 	pcall(updateScreens, P)

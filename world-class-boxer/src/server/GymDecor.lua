@@ -729,8 +729,7 @@ local function buildLobby(root)
 	for _, p in ipairs({ V3(-13.5, 0.4, 76.5), V3(13.5, 0.4, 76.5), V3(-43.5, 0.4, 59.5), V3(-28.5, 0.4, 59.5), V3(44, 0.4, 66) }) do
 		plant(f, p, 1)
 	end
-	-- a round timer above the Fight Board area so the whole lobby hears the bell
-	GymDecor.RoundTimer(f, CF(28, 14.4, 78.5), 7, false, true)
+	-- (the lobby's round timer hangs under the lounge mezzanine's west edge: MapBuilder.buildMezzanine)
 end
 
 ------------------------------------------------------------------------

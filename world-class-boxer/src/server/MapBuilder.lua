@@ -138,6 +138,15 @@ MapBuilder.EliteWing = { x1 = 111, x2 = 153, z1 = 30, z2 = 66, h = 20, door = { 
 -- members' hanging bags (server rigs the client swings when members / players hit them)
 MapBuilder.MemberBags = { V3(-36, 0, -30), V3(-24, 0, -30) }
 
+-- Champion's Lounge mezzanine over the east lobby: a deck (x1..x2, z1..z2, floor at y) on steel
+-- columns, reached by a stair along its west edge (centre line stairX, foot at z foot, `risers`
+-- equal risers up to the deck over treads `going` deep, then a landing). The server builds it so
+-- every client collides with the same deck and stairs (nobody stands on air on someone else's
+-- screen); the glass gate at the stair foot opens (locally, like the Elite wing doors) for a World
+-- Champion facility, and the client dresses the deck as the lounge (GymFacility.buildGallery).
+-- The stair foot is south of the lobby water cooler (x 17..19, z 39..41).
+MapBuilder.Mezzanine = { x1 = 20, x2 = 46.5, z1 = 38, z2 = 79, y = 12.3, stairX = 18, stairW = 4, foot = 45, risers = 18, going = 1 }
+
 ------------------------------------------------------------------------
 -- Gym building
 ------------------------------------------------------------------------
@@ -448,6 +457,153 @@ local function buildEliteWing(gym)
 	return f
 end
 
+-- the Champion's Lounge structure (MapBuilder.Mezzanine). Parts with the LoungeTrim attribute are the
+-- chrome a World Champion's client turns gold; the LoungeGate leaves and the LoungeGateBlock above
+-- them are what that client swings open / lets its character through
+local function buildMezzanine(gym)
+	local Z = MapBuilder.Mezzanine
+	local f = Instance.new("Folder")
+	f.Name = "Mezzanine"
+	f.Parent = gym
+	local x1, x2, z1, z2, y = Z.x1, Z.x2, Z.z1, Z.z2, Z.y
+	local floorY = 0.4 -- the hall floor's top
+	local steel = Color3.fromRGB(40, 40, 46)
+	local chrome = Color3.fromRGB(215, 218, 225)
+	local glassC = Color3.fromRGB(200, 225, 240)
+	local hidden = { Transparency = 1, CastShadow = false }
+	local loose = { CanCollide = false, CanQuery = false, CanTouch = false }
+	local function trim(p)
+		p:SetAttribute("LoungeTrim", true)
+		return p
+	end
+	local function rod(name, a, b, d, color)
+		local dir = b - a
+		local up = math.abs(dir.Unit.Y) > 0.98 and Vector3.xAxis or Vector3.yAxis
+		local p = deco(f, name, V3(dir.Magnitude, d, d), CFrame.lookAt((a + b) / 2, b, up) * CFrame.Angles(0, math.rad(90), 0), color, Enum.Material.Metal, loose)
+		p.Shape = Enum.PartType.Cylinder
+		return p
+	end
+	-- a glass balustrade standing on the deck between two points (pane, chrome cap and shoe, posts at
+	-- most ~6 studs apart); the pane collides, so nobody walks off the edge
+	local function balustrade(a, b, h)
+		local mid, len = (a + b) / 2, (b - a).Magnitude
+		local cf = CFrame.lookAt(mid + V3(0, h / 2, 0), mid + V3(0, h / 2, 0) + (b - a).Unit:Cross(Vector3.yAxis))
+		deco(f, "MezzGlass", V3(len, h, 0.12), cf, glassC, Enum.Material.Glass, { Transparency = 0.72, CastShadow = false })
+		trim(deco(f, "MezzRailTop", V3(len, 0.18, 0.22), cf * CF(0, h / 2 + 0.09, 0), chrome, Enum.Material.Metal, loose))
+		trim(deco(f, "MezzRailShoe", V3(len, 0.25, 0.26), cf * CF(0, -h / 2 + 0.125, 0), chrome, Enum.Material.Metal, loose))
+		local n = math.max(1, math.ceil(len / 6))
+		for k = 0, n do
+			local x = math.clamp(-len / 2 + len * k / n, -len / 2 + 0.1, len / 2 - 0.1)
+			deco(f, "MezzRailPost", V3(0.2, h, 0.2), cf * CF(x, 0, 0), steel, Enum.Material.Metal, loose)
+		end
+	end
+	local cx = (x1 + x2) / 2
+	local sx, sw, foot, n, d = Z.stairX, Z.stairW, Z.foot, Z.risers, Z.going
+	local r = (y - floorY) / n
+	local stairTop = foot + (n - 1) * d -- the landing starts here
+	local landingEnd = stairTop + 4
+	local gz = foot - 0.6 -- the gate's plane, in front of the first riser
+	-- the deck: a 0.6 slab whose south end meets the hall wall's inner face (z 79)
+	deco(f, "MezzDeck", V3(x2 - x1, 0.6, z2 - 0.02 - z1), CF(cx, y - 0.3, (z1 + z2 - 0.02) / 2), Color3.fromRGB(52, 52, 58), Enum.Material.Rubber)
+	-- steel edge beams (fascias) on the faces seen from the lobby, a chrome band under each; on the
+	-- west edge the stair and the landing take their place
+	for _, seg in ipairs({ { z1, foot }, { landingEnd, z2 } }) do
+		local len = seg[2] - seg[1]
+		deco(f, "MezzFascia", V3(0.3, 1.1, len), CF(x1 - 0.15, y - 0.55, seg[1] + len / 2), steel, Enum.Material.Metal)
+		trim(deco(f, "MezzFasciaBand", V3(0.34, 0.16, len), CF(x1 - 0.15, y - 1.18, seg[1] + len / 2), chrome, Enum.Material.Metal, loose))
+	end
+	deco(f, "MezzFascia", V3(x2 - x1 + 0.6, 1.1, 0.3), CF(cx, y - 0.55, z1 - 0.15), steel, Enum.Material.Metal)
+	trim(deco(f, "MezzFasciaBand", V3(x2 - x1 + 0.64, 0.16, 0.34), CF(cx, y - 1.18, z1 - 0.15), chrome, Enum.Material.Metal, loose))
+	deco(f, "MezzFascia", V3(0.3, 1.1, z2 - z1), CF(x2 + 0.15, y - 0.55, (z1 + z2) / 2), steel, Enum.Material.Metal)
+	trim(deco(f, "MezzFasciaBand", V3(0.34, 0.16, z2 - z1 - 0.02), CF(x2 + 0.15, y - 1.18, (z1 + z2) / 2 + 0.01), chrome, Enum.Material.Metal, loose))
+	-- columns at the corners and mid east edge (base, shaft, cap stacked, clear of the fascias; the
+	-- east ones clear the vending machines, which end at x 45.3); the stair wall carries the west edge
+	for _, c in ipairs({ { x1 + 0.6, z1 + 0.6 }, { x2 - 0.6, z1 + 0.6 }, { x2 - 0.6, 60 }, { x2 - 0.6, z2 - 1.4 }, { x1 + 0.6, z2 - 1.4 } }) do
+		deco(f, "MezzColumnBase", V3(1.1, 0.3, 1.1), CF(c[1], floorY + 0.15, c[2]), steel, Enum.Material.Metal, loose)
+		deco(f, "MezzColumn", V3(0.8, y - 0.9 - floorY - 0.3, 0.8), CF(c[1], (y - 0.9 + floorY + 0.3) / 2, c[2]), steel, Enum.Material.Metal)
+		trim(deco(f, "MezzColumnCap", V3(1.0, 0.3, 1.0), CF(c[1], y - 0.75, c[2]), chrome, Enum.Material.Metal, loose))
+	end
+	-- downlights under the deck: the champions wall, the reception and the vending corner stay lit
+	for _, p in ipairs({ V3(27, y - 0.64, 48), V3(40, y - 0.64, 48), V3(28, y - 0.64, 66), V3(41, y - 0.64, 70) }) do
+		local dl = deco(f, "MezzDownlight", V3(1.2, 0.08, 1.2), CF(p), Color3.fromRGB(255, 240, 215), Enum.Material.Neon, { CanCollide = false, CanQuery = false, CastShadow = false })
+		local l = Instance.new("PointLight")
+		l.Color = Color3.fromRGB(255, 236, 205)
+		l.Range = 16
+		l.Brightness = 0.9
+		l.Shadows = false
+		l.Parent = dl
+	end
+
+	-- the stair (x sx +- sw/2) climbs along a wall under the deck edge, from the gate to the end of
+	-- the landing (the wall's north end is the gate's east jamb)
+	deco(f, "StairWall", V3(0.3, y - 0.6 - floorY, landingEnd - gz + 0.15), CF(x1 + 0.15, (y - 0.6 + floorY) / 2, (gz - 0.15 + landingEnd) / 2), DIVIDER, Enum.Material.Brick)
+	-- what you walk on: one invisible wedge whose slope runs through the middle of every tread, so a
+	-- foot is never more than half a riser off the visible step (the steps themselves do not collide)
+	local run = n * d
+	deco(f, "StairRamp", V3(sw, y - floorY, run), CF(sx, (y + floorY) / 2, foot - d / 2 + run / 2), steel, nil, { Class = "WedgePart", Transparency = 1, CastShadow = false })
+	for i = 1, n - 1 do
+		local top = floorY + i * r
+		deco(f, "StairStep", V3(sw - 0.1, top - floorY, d), CF(sx, (top + floorY) / 2, foot + (i - 0.5) * d), Color3.fromRGB(58, 58, 64), Enum.Material.Concrete, loose)
+		trim(deco(f, "StairNosing", V3(sw - 0.1, 0.06, 0.14), CF(sx, top + 0.03, foot + (i - 1) * d + 0.07), chrome, Enum.Material.Metal, loose))
+	end
+	deco(f, "StairLanding", V3(sw, 0.6, landingEnd - stairTop), CF(sx, y - 0.3, (stairTop + landingEnd) / 2), Color3.fromRGB(52, 52, 58), Enum.Material.Rubber)
+	deco(f, "LandingPost", V3(0.5, y - 0.6 - floorY, 0.5), CF(sx - sw / 2 + 0.3, (y - 0.6 + floorY) / 2, landingEnd - 0.3), steel, Enum.Material.Metal)
+	-- the open (west) side: posts on the treads, a chrome handrail and a mid rail parallel to the
+	-- nosings, meeting the landing's glass at its height
+	local rx = sx - sw / 2 + 0.12
+	local function railAt(z, h)
+		return V3(rx, floorY + r + (z - foot) * r / d + h, z)
+	end
+	trim(rod("StairHandrail", railAt(foot, 2.7), railAt(stairTop, 2.7), 0.16, chrome))
+	rod("StairMidRail", railAt(foot, 1.35), railAt(stairTop, 1.35), 0.1, steel)
+	for _, j in ipairs({ 1, 5, 9, 13, n - 1 }) do
+		local zc = foot + (j - 0.5) * d
+		rod("StairPost", V3(rx, floorY + j * r, zc), railAt(zc, 2.7), 0.12, steel)
+	end
+	-- the landing's open sides, then the deck's: the west edge (open where the landing arrives),
+	-- north and east (the side rails start behind the north one: no doubled corner)
+	balustrade(V3(sx - sw / 2 + 0.15, y, stairTop), V3(sx - sw / 2 + 0.15, y, landingEnd - 0.3), 2.6)
+	balustrade(V3(sx - sw / 2, y, landingEnd - 0.15), V3(x1, y, landingEnd - 0.15), 2.6)
+	balustrade(V3(x1 + 0.15, y, z1 + 0.35), V3(x1 + 0.15, y, stairTop), 2.6)
+	balustrade(V3(x1 + 0.15, y, landingEnd), V3(x1 + 0.15, y, z2), 2.6)
+	balustrade(V3(x1, y, z1 + 0.15), V3(x2, y, z1 + 0.15), 2.6)
+	balustrade(V3(x2 - 0.15, y, z1 + 0.35), V3(x2 - 0.15, y, z2), 2.6)
+
+	-- the gate at the stair foot: two glass leaves under a lit header, hinged on the west post and on
+	-- the stair wall. Closed for everyone; a World Champion's client swings them open and lets its
+	-- character through the block above them (the leaves stop a jump from the floor, the block one
+	-- from the top of the water cooler in front)
+	local gx0, gx1 = sx - sw / 2 - 0.3, x1
+	deco(f, "GatePost", V3(0.3, 9.2 - floorY, 0.3), CF(gx0 + 0.15, (9.2 + floorY) / 2, gz), steel, Enum.Material.Metal)
+	local header = deco(f, "GateHeader", V3(gx1 - gx0, 1.0, 0.3), CF((gx0 + gx1) / 2, 8.7, gz), steel, Enum.Material.Metal)
+	sign(header, Enum.NormalId.Front, "CHAMPION'S LOUNGE\nWORLD CHAMPIONS ONLY", steel, Color3.fromRGB(255, 200, 40))
+	local leafW = (gx1 - gx0 - 0.3) / 2 - 0.02
+	for _, s in ipairs({ -1, 1 }) do
+		local leaf = deco(f, "LoungeGate", V3(leafW, 8.2 - floorY - 0.05, 0.16), CF((gx0 + 0.3 + gx1) / 2 + s * (leafW / 2 + 0.01), (8.2 + floorY + 0.05) / 2, gz), glassC, Enum.Material.Glass, { Transparency = 0.45, CastShadow = false })
+		leaf:SetAttribute("Side", s)
+	end
+	deco(f, "LoungeGateBlock", V3(gx1 - gx0, 14 - 9.2, 0.3), CF((gx0 + gx1) / 2, (14 + 9.2) / 2, gz), Color3.new(), nil, hidden)
+	-- invisible guards: the stair's open side (no hopping on from the floor, no falling off), and above
+	-- the deck's north and west rails (the tall props north of it: career wall, belt case). Fully
+	-- transparent, so they never pull the camera in
+	deco(f, "LoungeGuard", V3(0.1, y + 3.6 - floorY, landingEnd - gz), CF(sx - sw / 2 - 0.4, (y + 3.6 + floorY) / 2, (gz + landingEnd) / 2), Color3.new(), nil, hidden)
+	local gy0, gy1 = y + 2.8, 23.5
+	deco(f, "LoungeGuard", V3(x2 - x1, gy1 - gy0, 0.1), CF(cx, (gy0 + gy1) / 2, z1 + 0.15), Color3.new(), nil, hidden)
+	for _, seg in ipairs({ { z1, stairTop }, { landingEnd, z2 } }) do
+		deco(f, "LoungeGuard", V3(0.1, gy1 - gy0, seg[2] - seg[1]), CF(x1 + 0.15, (gy0 + gy1) / 2, (seg[1] + seg[2]) / 2), Color3.new(), nil, hidden)
+	end
+
+	-- the lobby's round timer hangs under the west edge south of the landing, facing the lobby (on
+	-- the south wall it stood behind the deck), on two hangers from the slab
+	local tcf = CF(x1 + 0.6, 9.3, (landingEnd + z2) / 2 - 1.5) * CFrame.Angles(0, math.rad(90), 0)
+	GymDecor.RoundTimer(f, tcf, 7, false, true)
+	for _, s in ipairs({ -2.9, 2.9 }) do
+		local top = (tcf * CF(s, 7 * 0.36 / 2, 0)).Position
+		deco(f, "TimerHanger", V3(0.08, y - 0.6 - top.Y, 0.08), CF(top.X, (top.Y + y - 0.6) / 2, top.Z), Color3.fromRGB(24, 24, 28), Enum.Material.Metal, loose)
+	end
+	return f
+end
+
 -- invisible boxes tagged LightZone: the client grades the picture for the zone the camera is in
 local function lightZone(parent, name, size, cf, profile)
 	local p = deco(parent, name, size, cf, Color3.new(), nil, { Transparency = 1, CanCollide = false, CanQuery = false, CanTouch = false, CastShadow = false })
@@ -595,6 +751,11 @@ function MapBuilder.BuildGym()
 	if not okWing then
 		warn("[Boxer] elite wing failed: " .. tostring(wingErr))
 	end
+	-- the Champion's Lounge mezzanine over the east lobby
+	local okMezz, mezzErr = pcall(buildMezzanine, gym)
+	if not okMezz then
+		warn("[Boxer] lounge mezzanine failed: " .. tostring(mezzErr))
+	end
 	-- colour-grade zones the client reads (Ambience): the warm main hall and the cool elite wing
 	local W = MapBuilder.EliteWing
 	lightZone(gym, "LightZoneGym", V3(X2 - X1, H, Z2 - Z1), CF(0, H / 2, 0), "GymWarm")
@@ -644,10 +805,13 @@ function MapBuilder.BuildGym()
 		deco(gym, "Pillow", V3(2.6, 0.5, 1.6), CF(x, 2, 70), Color3.fromRGB(250, 250, 255), Enum.Material.Fabric)
 	end
 	buildAction(gym, "SleepPrompt", "Sleep (End Day)", "Bunk Room", V3(-93, 0, 58), { Action = "Sleep" }, Color3.fromRGB(170, 170, 255))
-	for _, pos in ipairs({ V3(18, 0, 40), V3(104, 0, 4), V3(-104, 0, -4) }) do
+	-- { cooler, side you drink from }: the lobby one is served from its north side, away from the
+	-- lounge stair whose gate stands 3 studs south of it
+	for _, c in ipairs({ { V3(18, 0, 40), V3(0, 0, -2.5) }, { V3(104, 0, 4), V3(0, 0, 2.5) }, { V3(-104, 0, -4), V3(0, 0, 2.5) } }) do
+		local pos = c[1]
 		deco(gym, "Cooler", V3(2, 4, 2), CF(pos + V3(0, 2, 0)), Color3.fromRGB(230, 230, 235))
 		deco(gym, "Jug", V3(1.6, 2, 1.6), CF(pos + V3(0, 5, 0)), Color3.fromRGB(120, 190, 255), Enum.Material.Glass, { Transparency = 0.3 })
-		buildAction(gym, "WaterPrompt", "Drink Water", "Water cooler", pos + V3(0, 0, 2.5), { Action = "Water" }, Color3.fromRGB(120, 190, 255))
+		buildAction(gym, "WaterPrompt", "Drink Water", "Water cooler", pos + c[2], { Action = "Water" }, Color3.fromRGB(120, 190, 255))
 	end
 
 	-- pool annex (north) with real water
