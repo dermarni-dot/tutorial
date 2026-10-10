@@ -615,8 +615,10 @@ local function buildLobby(root)
 	ball(f, "DeskBell", 0.45, CF(30.6, 4.5, 69.6), C.gold, M.Metal)
 	part(f, "Clipboard", V3(0.8, 0.05, 1.1), CF(23.4, 4.33, 69.6), Color3.fromRGB(150, 110, 70), M.Wood)
 	part(f, "SignInSheet", V3(0.7, 0.03, 0.95), CF(23.4, 4.37, 69.6), C.white, M.SmoothPlastic)
-	local welcome = onWall(f, "WelcomeSign", "S", 28, 9.5, 15, 3.2, 0.25, Color3.fromRGB(18, 18, 22), M.SmoothPlastic)
-	sign(welcome, Enum.NormalId.Front, "WELCOME TO WORLD CLASS BOXING", C.gold, Color3.fromRGB(18, 18, 22), 30)
+	-- (on two lines, between the deck's west edge and the reception's return: from the spawn side
+	-- the stair landing's post stands in front of the wall east of x ~33)
+	local welcome = onWall(f, "WelcomeSign", "S", 26.6, 9.5, 12, 3.2, 0.25, Color3.fromRGB(18, 18, 22), M.SmoothPlastic)
+	sign(welcome, Enum.NormalId.Front, "WELCOME TO\nWORLD CLASS BOXING", C.gold, Color3.fromRGB(18, 18, 22), 30)
 
 	-- lounge: rug, two couches, coffee table and a TV
 	part(f, "Rug", V3(16, 0.04, 13), CF(-36, 0.42, 51), Color3.fromRGB(120, 28, 34), M.Fabric)
