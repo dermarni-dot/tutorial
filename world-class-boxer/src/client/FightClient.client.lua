@@ -3222,13 +3222,17 @@ if UserInputService.TouchEnabled then
 	-- left of the jump button, level with its centre and a little smaller (screen px measured from the
 	-- bottom-right corner, turned into the root's design px): Roblox's own button when it is there, else
 	-- where the default touch controls put it (70 px at 95 / 90 from the corner on a small screen, 120 px at
-	-- 170 / 210 on a bigger one)
+	-- 170 / 210 on a bigger one). Run by the poll below while the pad shows: it writes only what changed (the
+	-- jump button can appear after the pad, the screen can turn)
 	function KM.placeRun()
 		local fromRight, centreUp, jump
 		local tg = runGui.Parent and runGui.Parent:FindFirstChild("TouchGui")
 		local jb = tg and tg:FindFirstChild("JumpButton", true)
 		if jb and jb:IsA("GuiObject") and jb.AbsoluteSize.X > 8 then
-			local corner = tg.AbsolutePosition + tg.AbsoluteSize
+			-- (the corner from the full-screen frame the button sits in: the same coordinates as the button,
+			-- whatever the touch gui's inset setting)
+			local frame = jb.Parent:IsA("GuiObject") and jb.Parent or tg
+			local corner = frame.AbsolutePosition + frame.AbsoluteSize
 			fromRight = corner.X - jb.AbsolutePosition.X
 			centreUp = corner.Y - (jb.AbsolutePosition.Y + jb.AbsoluteSize.Y / 2)
 			jump = jb.AbsoluteSize.X
@@ -3241,9 +3245,15 @@ if UserInputService.TouchEnabled then
 			end
 		end
 		local sc = math.max(UI.ScaleOf(runPad), 0.05)
-		local px = math.clamp(jump * 0.8, UI.TouchPx + 4, 96)
-		runPad.Size = UDim2.fromOffset(math.floor(px / sc + 0.5), math.floor(px / sc + 0.5))
-		runPad.Position = UDim2.new(1, -math.floor((fromRight + 12) / sc + 0.5), 1, -math.floor(centreUp / sc + 0.5))
+		local side = math.floor(math.clamp(jump * 0.8, UI.TouchPx + 4, 96) / sc + 0.5)
+		local x, y = -math.floor((fromRight + 12) / sc + 0.5), -math.floor(centreUp / sc + 0.5)
+		if runPad.Size.X.Offset ~= side then
+			runPad.Size = UDim2.fromOffset(side, side)
+		end
+		local pos = runPad.Position
+		if pos.X.Offset ~= x or pos.Y.Offset ~= y then
+			runPad.Position = UDim2.new(1, x, 1, y)
+		end
 	end
 	runPad.MouseButton1Down:Connect(function()
 		if sprint.on then
@@ -3258,7 +3268,6 @@ if UserInputService.TouchEnabled then
 	-- a light poll (4 a second) keeps the pad's visibility and the stand-still end in step with everything that
 	-- can change them: the device, the fight, a drill, the menus, a respawn, the screen size
 	task.spawn(function()
-		local placedFor = nil
 		while runGui.Parent do
 			local mode = Gamepad and Gamepad.Mode() or "touch"
 			local char = player.Character
@@ -3269,8 +3278,7 @@ if UserInputService.TouchEnabled then
 				local MM, CM = KM.module("MainMenu"), KM.modules.ControlsMenu
 				show = not ((MM and MM.IsOpen and MM.IsOpen()) or (CM and CM.IsOpen()))
 			end
-			if show and placedFor ~= runGui.AbsoluteSize then
-				placedFor = runGui.AbsoluteSize
+			if show then
 				KM.placeRun()
 			end
 			if runPad.Visible ~= show then
