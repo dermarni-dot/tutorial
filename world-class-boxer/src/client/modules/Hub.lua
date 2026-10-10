@@ -1062,10 +1062,20 @@ local function facilityCard(body, P)
 	for i, t in ipairs(Config.GymTiers) do
 		local cur = i == gt.index
 		local reached = i <= (gt.index or 1)
-		local chip = UI.Text(row, t.name, { LayoutOrder = i, AutomaticSize = Enum.AutomaticSize.None, TextSize = 11, Font = cur and T.bold or T.font, TextWrapped = false, TextScaled = false,
+		local font = cur and T.bold or T.font
+		local chip = UI.Text(row, t.name, { LayoutOrder = i, AutomaticSize = Enum.AutomaticSize.None, TextSize = 11, Font = font, TextWrapped = false, TextScaled = false,
 			TextTruncate = Enum.TextTruncate.AtEnd, TextXAlignment = Enum.TextXAlignment.Center, BackgroundTransparency = 0,
 			BackgroundColor3 = cur and T.gold or (reached and Color3.fromRGB(60, 50, 20) or T.panel2), TextColor3 = cur and T.bg or (reached and T.gold or T.sub) })
 		UI.Corner(chip, 6)
+		-- the full name where it fits whole at the text floor, else the short one ("Elite", not "Elite Training Cent...")
+		local short = (t.name:gsub(" Gym$", ""):gsub(" Training Center$", ""):gsub(" Facility$", ""))
+		local function refit()
+			local rootW = State.gui.AbsoluteSize.X
+			local w = rootW > 1 and chip.AbsoluteSize.X / rootW * UI.CanvasSize(State.gui).X or 0
+			chip.Text = (w <= 0 or fits(chip, t.name, 11, w - 8, font)) and t.name or short
+		end
+		refit()
+		chip:GetPropertyChangedSignal("AbsoluteSize"):Connect(refit)
 	end
 	if gt.nextName then
 		UI.Line(c, "NEXT: " .. gt.nextName, { Font = T.semi, TextSize = 14 })
