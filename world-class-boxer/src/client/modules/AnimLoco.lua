@@ -1851,10 +1851,11 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 						f.pushOn, f.pushT0, f.pushOff = true, t, (f.kAct or kp) - kp
 					end
 					kp += f.pushOff * (1 - smooth((t - f.pushT0) / 0.1))
-					-- (and like a weight-bearing knee, it changes its rate only so fast: kneeGovern)
+					-- (and like a weight-bearing knee, it changes its rate only so fast: kneeGovern; a pushing knee
+					-- already bending keeps bending - it never stops dead or springs back in a frame)
 					if f.kAct and run < 0.5 then
 						local kv, ka = f.kVel or 0, KNEE_ACC * dt
-						kp = clamp(kp, f.kAct + (min(kv, 0) - ka) * dt, f.kAct + (max(kv, 0) + ka) * dt)
+						kp = clamp(kp, f.kAct + (kv - ka) * dt, f.kAct + (max(kv, 0) + ka) * dt)
 					end
 					local want = R.slackFor(leg, kp, soft) * L2
 					-- (the last moment of the push may stand the shoe on its tip: it is gone the next frame)
