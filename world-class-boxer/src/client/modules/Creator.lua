@@ -1523,7 +1523,15 @@ function Creator.Open()
 	-- ZOOM words go and the arrows speak for themselves
 	local db = math.max(36, minHit)
 	local dockH = db + 12
-	local dockWords = 4 * db + 74 + 50 + 40 + 1 + 7 * 6 + 16 <= canvas.X * 0.54 - 24 - 28 - 12
+	-- the words' boxes hold them at the size they really draw (the readability floor: 16 design px on a
+	-- small desktop window, where a fixed 50 px box let ROTATE run into the turn button)
+	local sv = State.screen.AbsoluteSize
+	local wordPx = math.max(10, UI.TextFloor((sv.X > 1 and canvas.X > 1) and sv.X / canvas.X or UI.ScaleOf(win)))
+	local function wordW(w, min)
+		return math.max(min, math.ceil(math.max(UI.TextWidth(w, wordPx, T.semi), wordPx * 0.75 * #w)) + 8)
+	end
+	local rotW, zoomW = wordW("ROTATE", 50), wordW("ZOOM", 40)
+	local dockWords = 4 * db + 74 + rotW + zoomW + 1 + 7 * 6 + 16 <= canvas.X * 0.54 - 24 - 28 - 12
 	local dock = UI.Frame(shade, { Name = "Turntable", AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -28, 1, -24), Size = UDim2.fromOffset(0, dockH), AutomaticSize = Enum.AutomaticSize.X })
 	-- the camera hint keeps to the room right of the window (placePlate sizes it): its parts go on one
 	-- line where they fit, else on two balanced lines (a phone with a gamepad), never under the window.
@@ -1590,12 +1598,12 @@ function Creator.Open()
 	UI.New("UIPadding", { PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8), Parent = dock })
 	UI.List(dock, 6, true, Enum.HorizontalAlignment.Center)
 	if dockWords then
-		UI.Text(dock, "ROTATE", { Font = T.semi, TextSize = 10, TextColor3 = T.sub, Size = UDim2.fromOffset(50, dockH), AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false, LayoutOrder = 0 })
+		UI.Text(dock, "ROTATE", { Font = T.semi, TextSize = 10, TextColor3 = T.sub, Size = UDim2.fromOffset(rotW, dockH), AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false, LayoutOrder = 0 })
 	end
 	local held = 0
 	UI.Frame(dock, { Size = UDim2.fromOffset(1, math.floor(dockH * 0.55)), BackgroundColor3 = Color3.new(1, 1, 1), BackgroundTransparency = 0.8, LayoutOrder = 5 })
 	if dockWords then
-		UI.Text(dock, "ZOOM", { Font = T.semi, TextSize = 10, TextColor3 = T.sub, Size = UDim2.fromOffset(40, dockH), AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false, LayoutOrder = 6 })
+		UI.Text(dock, "ZOOM", { Font = T.semi, TextSize = 10, TextColor3 = T.sub, Size = UDim2.fromOffset(zoomW, dockH), AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false, LayoutOrder = 6 })
 	end
 	local iconSize = math.floor(14 + (db - 36) * 0.2)
 	for i, z in ipairs({ { "minus", 0.4 }, { "plus", -0.4 } }) do
