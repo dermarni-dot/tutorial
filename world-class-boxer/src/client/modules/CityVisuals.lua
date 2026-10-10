@@ -1394,6 +1394,47 @@ local function scanWindowParts()
 	end
 end
 
+-- A window row is one Frame per run of up to WIN_BAND windows, not one per window: its UIGradient
+-- cuts it into the windows (Transparency: clear in the gaps, so the facade shows through) and
+-- colours each one (lit or dark). Same windows, same colours (same random draw) as one Frame per
+-- window, in about a third of the instances (a 5-window run needs 18 transparency keypoints;
+-- Roblox allows 20)
+local WIN_BAND = 5
+local WIN_EDGE = 1e-3 -- the width of a window's edge in the gradient (sharp)
+local WIN_DARK = Color3.fromRGB(34, 44, 58)
+local winTK, winCK = {}, {} -- reused keypoint lists
+
+local function windowBand(sg, rowY, rowH, cols, c0, c1, colours)
+	local left, right = (c0 + 0.19) / cols, (c1 + 0.81) / cols
+	local f = frame(sg, { Size = UDim2.fromScale(right - left, rowH), Position = UDim2.fromScale(left, rowY), BackgroundColor3 = colours[c0] })
+	if c1 == c0 then
+		return f
+	end
+	f.BackgroundColor3 = Color3.new(1, 1, 1) -- the gradient's colours multiply it
+	table.clear(winTK)
+	table.clear(winCK)
+	local w = right - left
+	for c = c0, c1 do
+		local a = c == c0 and 0 or ((c + 0.19) / cols - left) / w
+		local b = c == c1 and 1 or ((c + 0.81) / cols - left) / w
+		if c > c0 then
+			table.insert(winTK, NumberSequenceKeypoint.new(a - WIN_EDGE, 1))
+		end
+		table.insert(winTK, NumberSequenceKeypoint.new(a, 0))
+		table.insert(winTK, NumberSequenceKeypoint.new(b, 0))
+		if c < c1 then
+			table.insert(winTK, NumberSequenceKeypoint.new(b + WIN_EDGE, 1))
+		end
+		table.insert(winCK, ColorSequenceKeypoint.new(a, colours[c]))
+		table.insert(winCK, ColorSequenceKeypoint.new(b, colours[c]))
+	end
+	local g = Instance.new("UIGradient")
+	g.Color = ColorSequence.new(winCK)
+	g.Transparency = NumberSequence.new(winTK)
+	g.Parent = f
+	return f
+end
+
 local function buildWindowGrid(p)
 	local rows, cols = tonumber(p:GetAttribute("WinRows")) or 1, tonumber(p:GetAttribute("WinCols")) or 1
 	local top, spanH = tonumber(p:GetAttribute("WinTop")) or 0, tonumber(p:GetAttribute("WinSpan")) or 1
@@ -1404,14 +1445,18 @@ local function buildWindowGrid(p)
 	end)
 	local sg = gui(p, okFace and face or Enum.NormalId.Front, 4, 0.15, (winRange[p] or WIN_RANGE) + WIN_HYST + 60)
 	sg.Name = "Windows"
+	local colours = {}
 	for r = 0, rows - 1 do
+		-- (the draw order is the old per-window one: the same windows light up)
 		for c = 0, cols - 1 do
-			local on = rng:NextNumber() < lit
-			frame(sg, {
-				Size = UDim2.fromScale(0.62 / cols, spanH / rows * 0.6),
-				Position = UDim2.fromScale((c + 0.19) / cols, top + (r + 0.2) / rows * spanH),
-				BackgroundColor3 = on and Color3.fromRGB(255, 214 + rng:NextInteger(0, 30), 140 + rng:NextInteger(0, 40)) or Color3.fromRGB(34, 44, 58),
-			})
+			colours[c] = rng:NextNumber() < lit and Color3.fromRGB(255, 214 + rng:NextInteger(0, 30), 140 + rng:NextInteger(0, 40)) or WIN_DARK
+		end
+		local bands = math.ceil(cols / WIN_BAND)
+		for b = 0, bands - 1 do
+			-- runs of even length (6 windows: 3 + 3, not 5 + 1)
+			local c0 = math.floor(b * cols / bands)
+			local c1 = math.floor((b + 1) * cols / bands) - 1
+			windowBand(sg, top + (r + 0.2) / rows * spanH, spanH / rows * 0.6, cols, c0, c1, colours)
 		end
 	end
 	return sg

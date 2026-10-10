@@ -517,8 +517,10 @@ local function buildMezzanine(gym)
 	deco(f, "MezzFascia", V3(0.3, 1.1, z2 - z1), CF(x2 + 0.15, y - 0.55, (z1 + z2) / 2), steel, Enum.Material.Metal)
 	trim(deco(f, "MezzFasciaBand", V3(0.34, 0.16, z2 - z1 - 0.02), CF(x2 + 0.15, y - 1.18, (z1 + z2) / 2 + 0.01), chrome, Enum.Material.Metal, loose))
 	-- columns at the corners and mid east edge (base, shaft, cap stacked, clear of the fascias; the
-	-- east ones clear the vending machines, which end at x 45.3); the stair wall carries the west edge
-	for _, c in ipairs({ { x1 + 0.6, z1 + 0.6 }, { x2 - 0.6, z1 + 0.6 }, { x2 - 0.6, 60 }, { x2 - 0.6, z2 - 1.4 }, { x1 + 0.6, z2 - 1.4 } }) do
+	-- east ones clear the vending machines, which end at x 45.3); the stair wall carries the west edge,
+	-- and south of the landing the hall wall does (no south-west column: it stood in front of the
+	-- welcome sign as seen from the spawn)
+	for _, c in ipairs({ { x1 + 0.6, z1 + 0.6 }, { x2 - 0.6, z1 + 0.6 }, { x2 - 0.6, 60 }, { x2 - 0.6, z2 - 1.4 } }) do
 		deco(f, "MezzColumnBase", V3(1.1, 0.3, 1.1), CF(c[1], floorY + 0.15, c[2]), steel, Enum.Material.Metal, loose)
 		deco(f, "MezzColumn", V3(0.8, y - 0.9 - floorY - 0.3, 0.8), CF(c[1], (y - 0.9 + floorY + 0.3) / 2, c[2]), steel, Enum.Material.Metal)
 		trim(deco(f, "MezzColumnCap", V3(1.0, 0.3, 1.0), CF(c[1], y - 0.75, c[2]), chrome, Enum.Material.Metal, loose))
@@ -582,25 +584,27 @@ local function buildMezzanine(gym)
 		local leaf = deco(f, "LoungeGate", V3(leafW, 8.2 - floorY - 0.05, 0.16), CF((gx0 + 0.3 + gx1) / 2 + s * (leafW / 2 + 0.01), (8.2 + floorY + 0.05) / 2, gz), glassC, Enum.Material.Glass, { Transparency = 0.45, CastShadow = false })
 		leaf:SetAttribute("Side", s)
 	end
-	deco(f, "LoungeGateBlock", V3(gx1 - gx0, 14 - 9.2, 0.3), CF((gx0 + gx1) / 2, (14 + 9.2) / 2, gz), Color3.new(), nil, hidden)
-	-- invisible guards: the stair's open side (no hopping on from the floor, no falling off), and above
-	-- the deck's north and west rails (the tall props north of it: career wall, belt case). Fully
-	-- transparent, so they never pull the camera in
-	deco(f, "LoungeGuard", V3(0.1, y + 3.6 - floorY, landingEnd - gz), CF(sx - sw / 2 - 0.4, (y + 3.6 + floorY) / 2, (gz + landingEnd) / 2), Color3.new(), nil, hidden)
-	local gy0, gy1 = y + 2.8, 23.5
-	deco(f, "LoungeGuard", V3(x2 - x1, gy1 - gy0, 0.1), CF(cx, (gy0 + gy1) / 2, z1 + 0.15), Color3.new(), nil, hidden)
-	for _, seg in ipairs({ { z1, stairTop }, { landingEnd, z2 } }) do
-		deco(f, "LoungeGuard", V3(0.1, gy1 - gy0, seg[2] - seg[1]), CF(x1 + 0.15, (gy0 + gy1) / 2, (seg[1] + seg[2]) / 2), Color3.new(), nil, hidden)
+	-- invisible guards seal the lounge to the hall's ceiling, so no jump gets a character in from the
+	-- lobby, whatever it stands on (the water cooler's jug, a prop, another player's head): over the
+	-- gate (the block above the leaves), along the stair's open side and the landing's south rail, and
+	-- round the deck's open edges from the outer face of the fascias to the inner face of the glass
+	-- (no ledge left outside the glass to stand on). Fully transparent, so they never pull the camera in
+	local roof = gym:FindFirstChild("Roof")
+	local ceil = roof and roof:IsA("BasePart") and roof.Position.Y - roof.Size.Y / 2 or 30
+	local function guard(name, xa, xb, ya, yb, za, zb)
+		return deco(f, name, V3(xb - xa, yb - ya, zb - za), CF((xa + xb) / 2, (ya + yb) / 2, (za + zb) / 2), Color3.new(), nil, hidden)
 	end
-
-	-- the lobby's round timer hangs under the west edge south of the landing, facing the lobby (on
-	-- the south wall it stood behind the deck), on two hangers from the slab
-	local tcf = CF(x1 + 0.6, 9.3, (landingEnd + z2) / 2 - 1.5) * CFrame.Angles(0, math.rad(90), 0)
-	GymDecor.RoundTimer(f, tcf, 7, false, true)
-	for _, s in ipairs({ -2.9, 2.9 }) do
-		local top = (tcf * CF(s, 7 * 0.36 / 2, 0)).Position
-		deco(f, "TimerHanger", V3(0.08, y - 0.6 - top.Y, 0.08), CF(top.X, (top.Y + y - 0.6) / 2, top.Z), Color3.fromRGB(24, 24, 28), Enum.Material.Metal, loose)
-	end
+	local glassIn = 0.21 -- the glass panes' inner faces stand this far in from the deck's edges
+	guard("LoungeGateBlock", gx0, x1 + glassIn, 9.2, ceil, gz - 0.15, gz + 0.15)
+	local sideX = sx - sw / 2 - 0.4
+	guard("LoungeGuard", sideX - 0.05, sideX + 0.05, floorY, ceil, gz, landingEnd)
+	guard("LoungeGuard", sideX - 0.05, x1, y, ceil, landingEnd - glassIn, landingEnd)
+	guard("LoungeGuard", x1 - 0.3, x2 + 0.3, y, ceil, z1 - 0.3, z1 + glassIn)
+	guard("LoungeGuard", x1 - 0.3, x1 + glassIn, y, ceil, z1, gz - 0.15)
+	guard("LoungeGuard", x1 - 0.3, x1 + glassIn, y, ceil, landingEnd, z2 - 0.02)
+	guard("LoungeGuard", x2 - glassIn, x2 + 0.3, y, ceil, z1, z2 - 0.02)
+	-- (between the stair and the deck, inside the gate: above the glass, as before)
+	guard("LoungeGuard", x1 + 0.1, x1 + 0.2, y + 2.8, ceil, gz + 0.15, stairTop)
 	return f
 end
 

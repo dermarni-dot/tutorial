@@ -729,7 +729,11 @@ local function buildLobby(root)
 	for _, p in ipairs({ V3(-13.5, 0.4, 76.5), V3(13.5, 0.4, 76.5), V3(-43.5, 0.4, 59.5), V3(-28.5, 0.4, 59.5), V3(44, 0.4, 66) }) do
 		plant(f, p, 1)
 	end
-	-- (the lobby's round timer hangs under the lounge mezzanine's west edge: MapBuilder.buildMezzanine)
+	-- the lobby's round timer: on the south wall between the entrance and the lounge mezzanine,
+	-- level with the welcome sign. Nothing stands in front of it, and it stands in front of nothing
+	-- (under the deck's west edge it hid the welcome sign from the spawn; behind the deck the slab
+	-- hid it from the lobby)
+	GymDecor.RoundTimer(f, CF(wallPoint("S", 15, 9.5, 0.45)), 7, false, true)
 end
 
 ------------------------------------------------------------------------

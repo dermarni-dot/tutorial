@@ -268,10 +268,10 @@ local function roundTree(parent, pos, h, rng)
 end
 
 -- window grid on one face (some windows lit); rows/cols fill the band y0..y1 of a face faceH tall.
--- Only the spec is stored here (attributes on the part): the window Frames are drawn by the client
--- (CityVisuals.windowGrids) for the faces within its draw range (WinRange; the client's default,
--- a few hundred studs, when nil), so the ~2,000 Frames of the skyline and the shop fronts never
--- replicate
+-- Only the spec is stored here (attributes on the part): the windows are drawn by the client
+-- (CityVisuals.windowGrids: a Frame per row, cut into windows by a gradient) for the faces within
+-- its draw range (WinRange; the client's default, a few hundred studs, when nil), so none of the
+-- skyline's and the shop fronts' window instances replicate
 local function windowGrid(p, face, faceH, y0, y1, rows, cols, rng, litChance, range)
 	p:SetAttribute("WinFace", face.Name)
 	if range then
