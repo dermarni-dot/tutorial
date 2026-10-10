@@ -1,0 +1,477 @@
+-- FightAI: adaptive opponent brain.
+-- * archetypes: Aggressive Pressure Fighter, Fast Counter Puncher, Technical Genius,
+--   Knockout Artist, Defensive Specialist (different defense habits and punch choices)
+-- * reacts to incoming punches with blocks, slips, rolls, parries and pivots
+-- * anticipates the player's favourite punches (learned from previous fights)
+-- * exploits weaknesses (shelling up -> body shots, gassed -> pressure)
+-- * switches game plan with the scorecards; protects itself when hurt
+-- * reads the head-HP tiers and concussion (F.tier / F.conc): goes for the finish when the other man
+--   is dazed, holds / covers / freezes when it is dazed itself, and reacts slower when concussed
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
+-- fight spacing (FightMotion.Spacing, R-anim; the round-1 numbers if that module is missing)
+local SPACING = { pivot = 3.2, clinch = 4.2, cover = 5 }
+do
+	local fm = ReplicatedStorage.Shared:FindFirstChild("FightMotion")
+	local ok, mod = false, nil
+	if fm then
+		ok, mod = pcall(require, fm)
+	end
+	if ok and type(mod) == "table" and mod.Spacing then
+		SPACING = { pivot = mod.Spacing.pivot, clinch = mod.Spacing.clinch - 0.2, cover = mod.Spacing.cover }
+	end
+end
+
+-- special moves (Moves.lua), nil-safe if the module is missing
+local Moves
+do
+	local mm = ReplicatedStorage.Shared:FindFirstChild("Moves")
+	local ok, mod = false, nil
+	if mm then
+		ok, mod = pcall(require, mm)
+	end
+	Moves = (ok and type(mod) == "table") and mod or nil
+end
+
+local FightAI = {}
+FightAI.__index = FightAI
+
+local DEFAULT_ARCH = { aggr = 0, block = 0.3, slip = 0.25, roll = 0.2, parry = 0.1, pivot = 0.1, body = 0.1, overhand = 0.05, adapt = 1 }
+
+function FightAI.new(F, O, engine)
+	local style = Config.FindById(Config.Styles, F.data.style) or Config.Styles[4]
+	local arch = Config.FindById(Config.Archetypes, F.data.archetype)
+	local self = setmetatable({}, FightAI)
+	self.F, self.O, self.engine = F, O, engine
+	self.rng = Random.new()
+	self.style = style
+	self.arch = arch and arch.ai or DEFAULT_ARCH
+	self.baseRange = style.ai.range
+	self.baseAggr = style.ai.aggression + ((F.data.mental.Aggression or 50) - 50) / 200 + self.arch.aggr
+	self.jabRate = style.ai.jabRate
+	self.comboMax = style.fight.combo >= 1.2 and 4 or 3
+	self.queue = {}
+	self.nextThink = 0
+	self.nextMove = 0
+	self.circleDir = self.rng:NextNumber() < 0.5 and -1 or 1
+	self.mode = "plan"
+	self.nextMode = 0
+	self.freezeUntil = 0
+	self.bodyBias = 0.2
+	self.blockUntil = 0
+	local learned = F.data.learned or {}
+	local total = 0
+	for _, v in pairs(learned) do
+		total += v
+	end
+	self.anticipate = {}
+	for k, v in pairs(learned) do
+		self.anticipate[k] = total > 0 and v / total or 0
+	end
+	self.obs = { blockTime = 0, time = 0, punches = {}, body = 0, slips = 0 }
+	return self
+end
+
+function FightAI:Observe(dt)
+	self.obs.time += dt
+	if self.O.blocking then
+		self.obs.blockTime += dt
+	end
+end
+
+function FightAI:Intel()
+	local o = self.obs
+	local fav, favN = nil, 0
+	for k, v in pairs(o.punches) do
+		if v > favN then
+			fav, favN = k, v
+		end
+	end
+	return { blockRatio = o.time > 0 and o.blockTime / o.time or 0, favorite = fav, slips = o.slips }
+end
+
+-- called by the engine when the opponent starts a punch at us
+function FightAI:OnOppPunch(ptype, body, windup)
+	local F, engine = self.F, self.engine
+	self.obs.punches[ptype] = (self.obs.punches[ptype] or 0) + 1
+	if body then
+		self.obs.body += 1
+	end
+	if F.state == "down" or F.state == "clinch" or engine:Now() < F.busyUntil then
+		return
+	end
+	local s = F.data.stats
+	local chance = (s.Reflexes * 0.5 + s.RingIQ * 0.3 + s.HeadMovement * 0.2) / 100 * 0.62
+	chance += (self.anticipate[ptype] or 0) * 0.3
+	local total = 0
+	for _, v in pairs(self.obs.punches) do
+		total += v
+	end
+	chance += ((self.obs.punches[ptype] or 0) / math.max(1, total)) * 0.12 * self.arch.adapt
+	if F.stamina < F.maxStam * 0.25 then
+		chance *= 0.6
+	end
+	if engine:IsHurt(F) then
+		chance += 0.12
+	end
+	-- dazed / concussed: sees it late and cannot always do anything about it
+	local tier, conc = F.tier or 0, F.conc or 0
+	local C = Config.Concussion
+	chance *= (1 - C.aiDefense * conc) * (1 - C.tierDefense * tier)
+	if engine:IsStumbling(F) or engine:Now() < self.freezeUntil then
+		return
+	end
+	chance = math.clamp(chance, 0.05, 0.8)
+	if self.rng:NextNumber() > chance then
+		return
+	end
+	local react = math.max(0.06, 0.26 - s.Reflexes * 0.0018) + C.aiReact * conc + 0.04 * tier
+	if react >= windup then
+		return
+	end
+	local kind = Config.Punches[ptype].kind
+	-- choose a defense that suits the punch and this fighter's habits
+	local a = self.arch
+	local options = {}
+	local function add(move, w)
+		if w > 0 then
+			table.insert(options, { move, w })
+		end
+	end
+	add("block", a.block + (body and 0.3 or 0))
+	if not body then
+		if kind == "straight" then
+			add("slip", a.slip)
+			add("parry", a.parry)
+			add("pivot", a.pivot * 0.6)
+		elseif kind == "hook" or kind == "overhand" then
+			add("roll", a.roll)
+			add("slip", a.slip * 0.4)
+		end
+	end
+	local totalW = 0
+	for _, o in ipairs(options) do
+		totalW += o[2]
+	end
+	local pick = self.rng:NextNumber() * totalW
+	local move = "block"
+	for _, o in ipairs(options) do
+		pick -= o[2]
+		if pick <= 0 then
+			move = o[1]
+			break
+		end
+	end
+	task.delay(react, function()
+		if F.state == "down" or engine.finished then
+			return
+		end
+		if move == "slip" then
+			engine:Slip(F, self.rng:NextNumber() < 0.5 and -1 or 1)
+		elseif move == "roll" then
+			engine:Roll(F)
+		elseif move == "parry" then
+			engine:Parry(F)
+		elseif move == "pivot" then
+			engine:Pivot(F, self.rng:NextNumber() < 0.5 and -1 or 1)
+		else
+			engine:SetBlock(F, true)
+			self.blockUntil = engine:Now() + 0.55
+		end
+	end)
+end
+
+-- game plan; the engine also calls this whenever either fighter's head tier changes
+function FightAI:UpdateMode()
+	local engine, F, O = self.engine, self.F, self.O
+	local lead = engine:EstimateLead(F)
+	local r, total = engine.round, engine.rounds
+	local myTier, oTier = F.tier or 0, O.tier or 0
+	self.nextMode = engine:Now() + 1.5
+	if engine:IsHurt(F) or F.health < 30 or myTier >= 1 then
+		self.mode = "survive"
+	elseif oTier >= 1 or (O.conc or 0) > 0.4 then
+		-- killer instinct: the other man is dazed, go and end it
+		self.mode = "finish"
+	elseif (r > total / 2 and lead < 0) or engine:IsHurt(O) or O.health < 35 then
+		self.mode = "pressure"
+	elseif r >= total - 1 and lead >= 2 then
+		self.mode = "cruise"
+	else
+		self.mode = "plan"
+	end
+	local intel = self:Intel()
+	self.bodyBias = 0.12 + self.arch.body + intel.blockRatio * 0.55 * self.arch.adapt
+	if self.mode == "finish" then
+		self.bodyBias *= 0.3 -- head hunting
+	end
+	self.exploitGassed = O.stamina < O.maxStam * 0.3
+end
+
+function FightAI:Aggression()
+	local a = self.baseAggr
+	if self.mode == "pressure" then
+		a += 0.3
+	elseif self.mode == "finish" then
+		a += 0.45
+	elseif self.mode == "cruise" then
+		a -= 0.2
+	elseif self.mode == "survive" then
+		a -= 0.45
+	end
+	if self.exploitGassed then
+		a += 0.2
+	end
+	if self.F.stamina < self.F.maxStam * 0.3 then
+		a -= 0.25
+	end
+	a += (self.F.data.mental.Confidence - 50) / 250
+	return math.clamp(a, 0.05, 0.95)
+end
+
+-- preferred distance, as a share of this fighter's jab range
+function FightAI:Range()
+	local jab = self.engine:PunchRange(self.F, "jab")
+	if self.mode == "survive" then
+		return jab * 1.9
+	elseif self.mode == "pressure" then
+		return jab * math.min(self.baseRange, 0.74)
+	elseif self.mode == "finish" then
+		return jab * 0.7
+	elseif self.mode == "cruise" then
+		return jab * math.max(self.baseRange, 0.94)
+	end
+	return jab * self.baseRange * (self.engine.aiRange or 1)
+end
+
+function FightAI:Fits(ptype, dist)
+	return dist <= self.engine:PunchRange(self.F, ptype) + 0.25
+end
+
+function FightAI:BuildCombo()
+	local n = 1
+	local aggr = self:Aggression()
+	if self.rng:NextNumber() < aggr then
+		local extra = (self.engine:IsHurt(self.O) or self.mode == "finish") and 1 or 0
+		n = self.rng:NextInteger(2, self.comboMax + extra)
+	end
+	local finish = self.mode == "finish" and 0.2 or 0
+	n = math.max(1, math.min(n, math.floor(self.F.stamina / 6)))
+	local dist = self.engine:Distance(self.F, self.O)
+	local list = {}
+	for i = 1, n do
+		local p = "jab"
+		local roll = self.rng:NextNumber()
+		if not (i == 1 and roll < self.jabRate + (self.mode == "cruise" and 0.25 or 0)) then
+			local pool, total = {}, 0
+			for _, opt in ipairs({
+				{ "cross", 0.4 }, { "leadhook", 0.25 + finish }, { "rearhook", 0.18 + finish }, { "uppercut", 0.15 + finish },
+				{ "overhand", 0.03 + self.arch.overhand + finish }, { "jab", 0.12 },
+			}) do
+				if self:Fits(opt[1], dist) then
+					table.insert(pool, opt)
+					total += opt[2]
+				end
+			end
+			local pick = self.rng:NextNumber() * total
+			for _, opt in ipairs(pool) do
+				pick -= opt[2]
+				if pick <= 0 then
+					p = opt[1]
+					break
+				end
+			end
+		end
+		local body = p ~= "overhand" and self.rng:NextNumber() < self.bodyBias
+		table.insert(list, { p = p, body = body })
+	end
+	return list
+end
+
+function FightAI:Think(now)
+	local F, O, engine = self.F, self.O, self.engine
+	if now < self.nextThink then
+		return
+	end
+	self.nextThink = now + 0.32 - F.data.stats.RingIQ * 0.0018
+	if F.state == "down" or F.state == "clinch" or O.state == "down" then
+		self.queue = {}
+		return
+	end
+	if now >= self.nextMode then
+		self:UpdateMode()
+	end
+	local tier = F.tier or 0
+	-- a dazed fighter sometimes just freezes for a moment (and gets hit): ~15% per second per tier
+	if now < self.freezeUntil or engine:IsStumbling(F) then
+		return
+	end
+	if tier >= 1 and self.rng:NextNumber() < 0.15 * tier * 0.32 then
+		self.freezeUntil = now + 0.4
+		self.queue = {}
+		return
+	end
+	local dist = engine:Distance(F, O)
+	if now >= self.nextMove then
+		self.nextMove = now + 0.35
+		if self.rng:NextNumber() < 0.08 then
+			self.circleDir = -self.circleDir
+		end
+		local circle = self.circleDir * (self.style.id == "OutBoxer" and 0.45 or 0.22)
+		if tier >= 1 then
+			-- hurt: circle away hard toward open space (the ring centre), never along the ropes
+			local c = engine.anchors and engine.anchors.RingCenter
+			if c and F.root and O.root then
+				local toC = c.Position - F.root.Position
+				local fromO = F.root.Position - O.root.Position
+				local cross = fromO.X * toC.Z - fromO.Z * toC.X
+				self.circleDir = cross >= 0 and -1 or 1
+			end
+			circle = self.circleDir * 0.6
+		end
+		engine:MoveAI(F, self:Range(), circle)
+	end
+	if F.blocking and now >= self.blockUntil then
+		engine:SetBlock(F, false)
+	end
+	if now < F.busyUntil then
+		return
+	end
+	-- (the engine's spacing is scaled to the pair's rigs: engine.rigK)
+	local rk = engine.rigK or 1
+	-- cut off / escape the corner with a pivot
+	if self.arch.pivot > 0.15 and dist < SPACING.pivot * rk and self.rng:NextNumber() < self.arch.pivot * 0.08 then
+		engine:Pivot(F, self.circleDir)
+		return
+	end
+	if self.mode == "survive" then
+		if dist < SPACING.clinch * rk and self.rng:NextNumber() < (tier >= 1 and 0.45 or 0.25) and engine:CanClinch(F) then
+			engine:Clinch(F)
+			return
+		end
+		if dist < SPACING.cover * rk and self.rng:NextNumber() < 0.6 then
+			engine:SetBlock(F, true)
+			self.blockUntil = now + 0.7
+			return
+		end
+	end
+	if self:TrySpecial(now, dist) then
+		return
+	end
+	if now < F.counterUntil and self:Fits("jab", dist) then
+		local p = "jab"
+		if self:Fits("leadhook", dist) and self.rng:NextNumber() < 0.5 then
+			p = self.rng:NextNumber() < 0.5 and "leadhook" or "rearhook"
+		elseif self:Fits("cross", dist) then
+			p = (self.arch.overhand > 0.2 and self.rng:NextNumber() < 0.3) and "overhand" or "cross"
+		end
+		engine:Punch(F, p, false)
+		return
+	end
+	if #self.queue > 0 then
+		local nxt = table.remove(self.queue, 1)
+		if dist <= engine:PunchRange(F, nxt.p) + 0.4 then
+			engine:Punch(F, nxt.p, nxt.body)
+		else
+			self.queue = {}
+		end
+		return
+	end
+	local aggr = self:Aggression()
+	if self:Fits("jab", dist) then
+		-- (engine.aiWork: a gym sparring partner works harder than the fight-night pace)
+		if self.rng:NextNumber() < (aggr * 0.13 + self.jabRate * 0.07) * (engine.aiWork or 1) then
+			self.queue = self:BuildCombo()
+			local first = table.remove(self.queue, 1)
+			engine:Punch(F, first.p, first.body)
+		elseif self.rng:NextNumber() < (1 - aggr) * 0.3 * (0.6 + self.arch.block) then
+			engine:SetBlock(F, true)
+			self.blockUntil = now + 0.5
+		end
+	end
+end
+
+-- Special moves (the engine's Fight:Special, the fighter's unlocked set F.moves): each has a situation it
+-- is for. Counters (shell, pull, step back) answer a punch that is on its way or the counter window; the
+-- check hook meets a man walking in; the liver shot goes under a high guard or at a worn body; the gazelle
+-- closes from long range; the rush is pressure; the overhand goes over a shell; the lead uppercut opens a
+-- tight guard. At most one every few seconds, more from an aggressive or finishing fighter.
+local SPECIAL_RANGE = { gazelle = "cross", stepback = "jab", peekaboo = "cross" } -- the range the move needs (else its own punch's)
+-- a gym partner keeps his tricks for the harder sessions: none in a Light spar, fewer and further apart in
+-- a Medium or Hard one (fight night = 1); the punch pacing of the spar (SPAR.work) never adds to these
+local SPAR_SPECIALS = { Light = 0, Medium = 0.4, Hard = 0.7 }
+function FightAI:TrySpecial(now, dist)
+	local F, O, engine = self.F, self.O, self.engine
+	local sparMul = engine.spar and (SPAR_SPECIALS[engine.spar] or 1) or 1
+	if not Moves or sparMul <= 0 or now < (self.nextSpecial or 0) or F.stamina < F.maxStam * 0.3 then
+		return false
+	end
+	local pool, total = {}, 0
+	local function add(id, w)
+		local M = F.moves and F.moves[id] and Moves.Data[id]
+		if not M or w <= 0 or now < F.nextSpecial or F.stamina < M.stam * 1.3 then
+			return
+		end
+		local range = engine:PunchRange(F, SPECIAL_RANGE[id] or M.punch[1], M.range)
+		if dist > range + 0.3 then
+			return
+		end
+		table.insert(pool, { id, w })
+		total += w
+	end
+	local coming = O.state == "punching" and now < O.busyUntil
+	local counterWin = now < F.counterUntil
+	local blocking = O.blocking or self:Intel().blockRatio > 0.4
+	local finishing = self.mode == "finish" or self.mode == "pressure"
+	add("phillyshell", (coming and 0.6 or 0) + (counterWin and 0.4 or 0))
+	add("pullcounter", (coming and 0.6 or 0) + (counterWin and 0.4 or 0))
+	add("stepback", (coming and 0.5 or 0) + (self.mode == "survive" and 0.4 or 0))
+	add("checkhook", (coming and 0.5 or 0) + (engine:IsHurt(O) and 0.2 or 0))
+	add("livershot", (blocking and 0.5 or 0.15) + (O.body < 60 and 0.4 or 0))
+	add("gazelle", (dist > engine:PunchRange(F, "jab") and 0.5 or 0.05) + (finishing and 0.2 or 0))
+	add("peekaboo", (finishing and 0.6 or 0.15))
+	add("overhand", (blocking and 0.55 or 0.1) + (finishing and 0.25 or 0))
+	add("leaduppercut", (blocking and 0.35 or 0.1) + (now < O.rollUntil and 0.6 or 0))
+	if total <= 0 then
+		return false
+	end
+	-- a tentative fighter keeps its specials for the right moment; an aggressive one throws them freely
+	local eager = (0.22 + self:Aggression() * 0.3 + (coming and 0.3 or 0)) * sparMul
+	if self.rng:NextNumber() > eager then
+		self.nextSpecial = now + 0.6
+		return false
+	end
+	local pick = self.rng:NextNumber() * total
+	for _, o in ipairs(pool) do
+		pick -= o[2]
+		if pick <= 0 then
+			self.nextSpecial = now + (2.5 + self.rng:NextNumber() * 2.5) / sparMul
+			self.queue = {}
+			engine:Special(F, o[1])
+			return true
+		end
+	end
+	return false
+end
+
+-- corner advice for the PLAYER about this opponent (elite corner sees deeper)
+function FightAI:Weakness()
+	local s = self.F.data.stats
+	local lowest, lowV = nil, 999
+	for _, k in ipairs({ "Blocking", "HeadMovement", "Chin", "Stamina", "Footwork", "Reflexes" }) do
+		if s[k] < lowV then
+			lowest, lowV = k, s[k]
+		end
+	end
+	local tips = {
+		Blocking = "Their guard is leaky - straight punches are getting through. Double up the jab and cross!",
+		HeadMovement = "Their head stays on the centre line. Throw power shots up top!",
+		Chin = "That chin is suspect. Land one clean hook and they're going down!",
+		Stamina = "Their gas tank is weak. Go to the body and make them carry it late!",
+		Footwork = "They're flat-footed. Pivot off the ropes and make them reset!",
+		Reflexes = "They're slow to react. Feint, then fire the overhand!",
+	}
+	return tips[lowest]
+end
+
+return FightAI
