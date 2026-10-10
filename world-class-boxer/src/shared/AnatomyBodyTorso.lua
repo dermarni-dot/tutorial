@@ -856,8 +856,32 @@ end
 -- rim, so the rim stays on the leg's rim ring a hair outside it, none from just under the waistband up).
 -- Linear in R's nine entries, so nine shapes per side, "hip" .. side .. a .. b (a, b = x / y / z): the vertex
 -- moves along a by k times its offset from the hip along b; weight R[a][b] - (a == b and 1 or 0). BodyFX sets
--- them from the thigh's axes; any rotation, flexion and spread and turn together, comes out exact
+-- them from the thigh's axes; any rotation, flexion and spread and turn together, comes out exact at the rim.
+-- Between the rim and the band that is the chord from p to R p, not the arc: a share k of a turn through th
+-- should turn the vertex through k th about the hip. Past ~45 degrees the chord cuts in toward the hip (a
+-- stool's or a knockdown sit's 85 - 100 degrees: the seat's back sank through the satin leg's top, so the seat
+-- had to stop following there and the leg's top stood out of it). The arc less the chord is
+-- (sin k th - k sin th) [n] q + ((1 - cos k th) - k (1 - cos th)) [n]^2 q (n the axis, [n] its cross product
+-- matrix, q = p - hip): both vanish at k = 0 and 1, and k (1 - k) times a fitted factor (Torso.HipBend)
+-- matches them to a millimetre. So nine more shapes per side, "hip" .. side .. "q" .. a .. b: the vertex moves
+-- along a by k (1 - k) times its offset along b; weight cs [n][a][b] + cc ([n]^2)[a][b]
 Torso.HIP_AXES = { "x", "y", "z" }
+-- Gauss-Legendre (8 points) over k in [0, 1]
+local GL_X = { -0.9602898565, -0.7966664774, -0.5255324099, -0.1834346425, 0.1834346425, 0.5255324099, 0.7966664774, 0.9602898565 }
+local GL_W = { 0.1012285363, 0.2223810345, 0.3137066459, 0.3626837834, 0.3626837834, 0.3137066459, 0.2223810345, 0.1012285363 }
+-- the bend shapes' factors for a turn through th (radians): least squares of the arc less the chord by
+-- k (1 - k) (the integral of (k (1 - k))^2 over [0, 1] is 1 / 30)
+function Torso.HipBend(th)
+	local s1, c1 = sin(th), 1 - cos(th)
+	local a, b = 0, 0
+	for i = 1, 8 do
+		local k = 0.5 + 0.5 * GL_X[i]
+		local g = 0.5 * GL_W[i] * k * (1 - k)
+		a += g * (sin(k * th) - k * s1)
+		b += g * ((1 - cos(k * th)) - k * c1)
+	end
+	return 30 * a, 30 * b
+end
 -- (the share of the leg's motion the seat takes, by height (0 at the rim, 1 under the waistband): all of it at
 -- the rim, then evenly less: the rows over the front of a flexing hip (the back of an extending one) bunch toward
 -- the band without crossing (an ease at either end steepened the middle, and the rows there folded over in a
@@ -868,9 +892,31 @@ end
 
 -- the hip motions the seat's box must hold (degrees, the thigh turned about the pelvis's x (extension .. flexion),
 -- y (the leg's turn) and z (spread / cross) axes; the range's corners and middles: every shape at +-1 bounds
--- the rest)
-local HIP_RANGE = { x = { -45, 0, 75 }, y = { -40, 40 }, z = { -40, 0, 40 } }
+-- the rest). BodyFX eases a turn past 95 degrees toward 110 (the corner stool, a knockdown sit, a kneel: 85 -
+-- 100)
+local HIP_RANGE = { x = { -45, 0, 75, 110 }, y = { -40, 40 }, z = { -40, 0, 40 } }
 local hipRots
+-- the bend shapes' nine weights (row-major) for a rotation R (rows, 9 entries): cs [n] + cc [n]^2, n its axis
+-- (BodyFX uses the same, from the thigh's axes)
+function Torso.HipBendWeights(R, out)
+	out = out or table.create(9, 0)
+	local th = math.acos(clamp((R[1] + R[5] + R[9] - 1) / 2, -1, 1))
+	local nx, ny, nz = R[8] - R[6], R[3] - R[7], R[4] - R[2]
+	local l = sqrt(nx * nx + ny * ny + nz * nz)
+	if l < 1e-6 or th < 1e-4 then
+		for i = 1, 9 do
+			out[i] = 0
+		end
+		return out
+	end
+	nx, ny, nz = nx / l, ny / l, nz / l
+	local cs, cc = Torso.HipBend(th)
+	-- [n] = { 0, -nz, ny ; nz, 0, -nx ; -ny, nx, 0 }, [n]^2 = n n^T - I
+	out[1], out[2], out[3] = cc * (nx * nx - 1), -cs * nz + cc * nx * ny, cs * ny + cc * nx * nz
+	out[4], out[5], out[6] = cs * nz + cc * nx * ny, cc * (ny * ny - 1), -cs * nx + cc * ny * nz
+	out[7], out[8], out[9] = -cs * ny + cc * nx * nz, cs * nx + cc * ny * nz, cc * (nz * nz - 1)
+	return out
+end
 local function hipRotations()
 	if not hipRots then
 		hipRots = {}
@@ -880,12 +926,14 @@ local function hipRotations()
 					local cx, sx = cos(math.rad(ax)), sin(math.rad(ax))
 					local cy, sy = cos(math.rad(ay)), sin(math.rad(ay))
 					local cz, sz = cos(math.rad(az)), sin(math.rad(az))
-					-- R = Rx * Ry * Rz (CFrame.Angles), rows
-					hipRots[#hipRots + 1] = {
+					-- R = Rx * Ry * Rz (CFrame.Angles), rows; then the bend shapes' weights for it (BodyFX's)
+					local R = {
 						cy * cz, -cy * sz, sy,
 						cx * sz + sx * sy * cz, cx * cz - sx * sy * sz, -sx * cy,
 						sx * sz - cx * sy * cz, sx * cz + cx * sy * sz, cx * cy,
 					}
+					R.bend = Torso.HipBendWeights(R)
+					hipRots[#hipRots + 1] = R
 				end
 			end
 		end
@@ -909,42 +957,55 @@ function Torso.HipShapes(sk, m, info)
 		local sg = side == "Right" and 1 or -1
 		local hp = sk.piv[side .. "Hip"]
 		local S = side == "Right" and "R" or "L"
-		-- (shape a * 3 + b - 3: the vertex moves along axis a by k times its offset along axis b)
-		local sh = {}
+		-- (shape a * 3 + b - 3: the vertex moves along axis a by k times its offset along axis b; bend shape the
+		-- same by k (1 - kf), kf the row's share before the midline's halving)
+		local sh, bs = {}, {}
 		for q = 1, 9 do
 			sh[q] = { {}, {}, {}, {} }
+			bs[q] = { {}, {}, {}, {} }
 		end
 		for i = 1, m.nv do
 			local x, y, z = P[i * 3 - 2], P[i * 3 - 1], P[i * 3]
 			-- (this leg's half of the seat, its medial corner a few millimetres from the midline included; the
 			-- midline (the bridge between the legs, the cap's centre) goes half way with each. A hand-over
 			-- widening up the seat mixed the corner columns and tilted the broad faces beside them over)
-			local k = Torso.HipFade((y - y0) / (y1 - y0)) * smooth(-0.001, 0.001, x * sg)
+			local kf = Torso.HipFade((y - y0) / (y1 - y0))
+			local k = kf * smooth(-0.001, 0.001, x * sg)
 			if k > 1e-3 then
 				local qx, qy, qz = (x - hp[1]) * k, (y - hp[2]) * k, (z - hp[3]) * k
+				-- (the bend by the row's own share kf: a midline vertex is half of each leg's row, not a row half way
+				-- up: by k (1 - k) it bent as one, a spike hanging between the legs in a sit)
+				local g = 1 - kf
+				local bx, by, bz = qx * g, qy * g, qz * g
 				local n = #sh[1][1] + 1
 				for a = 1, 3 do
 					for b = 1, 3 do
 						local e = sh[a * 3 + b - 3]
 						local q = b == 1 and qx or (b == 2 and qy or qz)
 						e[1][n], e[2][n], e[3][n], e[4][n] = i, a == 1 and q or 0, a == 2 and q or 0, a == 3 and q or 0
+						e = bs[a * 3 + b - 3]
+						q = b == 1 and bx or (b == 2 and by or bz)
+						e[1][n], e[2][n], e[3][n], e[4][n] = i, a == 1 and q or 0, a == 2 and q or 0, a == 3 and q or 0
 					end
 				end
-				-- (each shape alone at +-1 moves the vertex along its axis by up to the largest offset)
+				-- (each shape alone at +-1 moves the vertex along its axis by up to the largest offset; a bend shape
+				-- by less)
 				local qm = max(abs(qx), abs(qy), abs(qz))
 				rx0, rx1, ry0, ry1, rz0, rz1 = min(rx0, x - qm), max(rx1, x + qm), min(ry0, y - qm), max(ry1, y + qm), min(rz0, z - qm), max(rz1, z + qm)
 				for _, R in ipairs(rots) do
-					local px = x + R[1] * qx + R[2] * qy + R[3] * qz - qx
-					local py = y + R[4] * qx + R[5] * qy + R[6] * qz - qy
-					local pz = z + R[7] * qx + R[8] * qy + R[9] * qz - qz
+					local B = R.bend
+					local px = x + R[1] * qx + R[2] * qy + R[3] * qz - qx + B[1] * bx + B[2] * by + B[3] * bz
+					local py = y + R[4] * qx + R[5] * qy + R[6] * qz - qy + B[4] * bx + B[5] * by + B[6] * bz
+					local pz = z + R[7] * qx + R[8] * qy + R[9] * qz - qz + B[7] * bx + B[8] * by + B[9] * bz
 					rx0, rx1, ry0, ry1, rz0, rz1 = min(rx0, px), max(rx1, px), min(ry0, py), max(ry1, py), min(rz0, pz), max(rz1, pz)
 				end
 			end
-			MeshKit.Step(k > 1e-3 and 4 or 1)
+			MeshKit.Step(k > 1e-3 and 6 or 1)
 		end
 		for a = 1, 3 do
 			for b = 1, 3 do
 				sets["hip" .. S .. AX[a] .. AX[b]] = sh[a * 3 + b - 3]
+				sets["hip" .. S .. "q" .. AX[a] .. AX[b]] = bs[a * 3 + b - 3]
 			end
 		end
 	end

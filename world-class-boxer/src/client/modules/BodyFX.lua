@@ -12,7 +12,8 @@
 --    instead of part scales: flex (contraction + pump + jiggle), breathe (rig.breath / breathPhase),
 --    tense (core bracing, body-shot jiggle, Strain), raiseL / raiseR / reachL / reachR (the shoulder
 --    girdle following the upper arm's angle), hipLxx .. hipRzz (the trunks' seat skinned to each hip: the
---    thigh's rotation in the pelvis's frame). Writes are low rate and budgeted (MORPH_BUDGET vertex writes
+--    thigh's rotation in the pelvis's frame) and hipLqxx .. hipRqzz (its rows bent on the arc past 30 degrees).
+--    Writes are low rate and budgeted (MORPH_BUDGET vertex writes
 --    per frame across every character, round-robin, only when a weight changes by a 0.1 step). Sweat shows
 --    as the pieces' Reflectance; rib bruises (LookFx ribsL / ribsR) and road grime (LookFx grime / the Grime
 --    attribute) are painted into the pieces: their vertex colours, or their colour textures (a few
@@ -51,6 +52,18 @@ do
 		ok, mod = pcall(require, m)
 	end
 	LookData = ok and type(mod) == "table" and mod or nil
+end
+
+-- (the trunks' seat's bend shapes' weights: AnatomyBodyTorso.HipBendWeights, the generator's own)
+local Torso
+do
+	local shared = ReplicatedStorage:FindFirstChild("Shared")
+	local m = shared and shared:FindFirstChild("AnatomyBodyTorso")
+	local ok, mod = false, nil
+	if m then
+		ok, mod = pcall(require, m)
+	end
+	Torso = ok and type(mod) == "table" and type(mod.HipBendWeights) == "function" and mod or nil
 end
 
 local BodyFX = {}
@@ -109,14 +122,17 @@ local PIECES = {
 -- the blend shapes BodyFX drives (a piece has the ones its mesh carries)
 local SHAPES = { "flex", "breathe", "tense", "raiseL", "raiseR", "reachL", "reachR" }
 -- the trunks' seat's hip shapes (AnatomyBodyTorso.HipShapes): per side the nine entries of the thigh's rotation
--- in the pelvis's frame, row-major (HIP_NAMES[side][a * 3 + b - 3] = "hip" .. side .. a .. b)
+-- in the pelvis's frame, row-major (HIP_NAMES[side][a * 3 + b - 3] = "hip" .. side .. a .. b), then the nine
+-- bend shapes' ("hip" .. side .. "q" .. a .. b: the arc the seat's rows turn on, not the chord)
 local HIP_NAMES = {}
 for _, s in ipairs({ "L", "R" }) do
 	local list = {}
-	for _, a in ipairs({ "x", "y", "z" }) do
-		for _, b in ipairs({ "x", "y", "z" }) do
-			list[#list + 1] = "hip" .. s .. a .. b
-			SHAPES[#SHAPES + 1] = "hip" .. s .. a .. b
+	for _, q in ipairs({ "", "q" }) do
+		for _, a in ipairs({ "x", "y", "z" }) do
+			for _, b in ipairs({ "x", "y", "z" }) do
+				list[#list + 1] = "hip" .. s .. q .. a .. b
+				SHAPES[#SHAPES + 1] = "hip" .. s .. q .. a .. b
+			end
 		end
 	end
 	HIP_NAMES[s] = list
@@ -139,11 +155,17 @@ local HIP_STEP = 0.0125
 local function quantHip(x)
 	return floor(x / HIP_STEP + 0.5) * HIP_STEP
 end
--- how far the seat follows a hip's turn: all of it up to HIP_KNEE, then easing toward HIP_MAX. A thigh swung on
--- (a knockdown sit, a kneel, the corner stool: 85 - 100 degrees) took the seat's rim round the hip with it while
--- the rows above it lagged on the chord: the seat sank through the back of the satin leg's top in jagged patches,
--- and its unmoved normals shaded what still covered it dark. Past the cap the leg's top turns on inside the seat
-local HIP_KNEE, HIP_MAX = math.rad(45), math.rad(60)
+-- how far the seat follows a hip's turn: all of it up to HIP_KNEE, then easing toward HIP_MAX (the seat's box
+-- holds 110 degrees: AnatomyBodyTorso HIP_RANGE). The corner stool, a knockdown sit, a kneel swing a thigh 85 -
+-- 100 degrees: with the bend shapes the seat's rows turn on the arc about the hip with it (on the chord they
+-- had cut in toward the hip, through the back of the satin leg's top, and the seat stopped following at 60:
+-- the leg's top stood a lid out of it). Without them (no Torso module) the old 45 -> 60 cap
+local HIP_KNEE, HIP_MAX = math.rad(95), math.rad(110)
+local HIP_KNEE0, HIP_MAX0 = math.rad(45), math.rad(60)
+-- (the bend shapes only past this turn: under it the arc and the chord part by a millimetre or two, and the
+-- nine more shapes' writes are not worth it; eased in over HIP_BEND_EASE)
+local HIP_BEND0, HIP_BEND_EASE = math.rad(30), math.rad(10)
+local bendR, bendW = table.create(9, 0), table.create(9, 0)
 
 local stats = { morphWrites = 0, vertexWrites = 0, plates = 0, bruises = 0, grime = 0, texJobs = 0, texWrites = 0, texels = 0, sweat = 0, maxFrame = 0 }
 local tracked = {} -- model -> rec
@@ -1108,13 +1130,16 @@ end
 
 -- the trunks' seat is skinned to each hip (AnatomyBodyTorso.HipShapes): the weights are the thigh's rotation in
 -- the pelvis's frame less the identity (its axes there are the matrix's columns; at rest the thigh's frame is
--- the pelvis's), its angle capped (HIP_KNEE / HIP_MAX)
+-- the pelvis's), its angle capped (HIP_KNEE / HIP_MAX), and the bend shapes' (AnatomyBodyTorso.HipBendWeights)
 local function hipShapes(model, side, list, w)
 	local lt = model:FindFirstChild("LowerTorso")
 	local ul = model:FindFirstChild(side .. "UpperLeg")
 	if not (lt and ul and lt:IsA("BasePart") and ul:IsA("BasePart")) then
+		-- (only the shapes this seat carries: a seat without the bend shapes keeps the old cap)
 		for _, k in ipairs(list) do
-			w[k] = 0
+			if w[k] ~= nil then
+				w[k] = 0
+			end
 		end
 		return
 	end
@@ -1125,13 +1150,16 @@ local function hipShapes(model, side, list, w)
 	local yx, yy, yz = cx.Y, cy.Y, cz.Y
 	local zx, zy, zz = cx.Z, cy.Z, cz.Z
 	local th = math.acos(math.clamp((xx + yy + zz - 1) / 2, -1, 1))
-	if th > HIP_KNEE then
-		-- the same axis, the angle eased toward HIP_MAX (Rodrigues)
+	local bend = Torso ~= nil and list[10] ~= nil and w[list[10]] ~= nil
+	local knee, top = bend and HIP_KNEE or HIP_KNEE0, bend and HIP_MAX or HIP_MAX0
+	if th > knee then
+		-- the same axis, the angle eased toward the top (Rodrigues)
 		local nx, ny, nz = zy - yz, xz - zx, yx - xy
 		local l = math.sqrt(nx * nx + ny * ny + nz * nz)
 		if l > 1e-6 then
 			nx, ny, nz = nx / l, ny / l, nz / l
-			local a = HIP_KNEE + (HIP_MAX - HIP_KNEE) * math.tanh((th - HIP_KNEE) / (HIP_MAX - HIP_KNEE))
+			local a = knee + (top - knee) * math.tanh((th - knee) / (top - knee))
+			th = a
 			local c, s = math.cos(a), math.sin(a)
 			local t = 1 - c
 			xx, xy, xz = c + t * nx * nx, t * nx * ny - s * nz, t * nx * nz + s * ny
@@ -1142,6 +1170,18 @@ local function hipShapes(model, side, list, w)
 	w[list[1]], w[list[2]], w[list[3]] = quantHip(xx - 1), quantHip(xy), quantHip(xz)
 	w[list[4]], w[list[5]], w[list[6]] = quantHip(yx), quantHip(yy - 1), quantHip(yz)
 	w[list[7]], w[list[8]], w[list[9]] = quantHip(zx), quantHip(zy), quantHip(zz - 1)
+	if bend then
+		local e = th <= HIP_BEND0 and 0 or math.min(1, (th - HIP_BEND0) / HIP_BEND_EASE)
+		if e > 0 then
+			bendR[1], bendR[2], bendR[3] = xx, xy, xz
+			bendR[4], bendR[5], bendR[6] = yx, yy, yz
+			bendR[7], bendR[8], bendR[9] = zx, zy, zz
+			Torso.HipBendWeights(bendR, bendW)
+		end
+		for i = 1, 9 do
+			w[list[9 + i]] = e > 0 and quantHip(bendW[i] * e) or 0
+		end
+	end
 end
 
 -- desired weights for every piece of one character; marks the pieces whose quantised weights changed
