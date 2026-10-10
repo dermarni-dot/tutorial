@@ -16,6 +16,13 @@
 --    on the ground (ramps; stairs: on one tread, off the risers), toe-first backward steps, no crossed
 --    feet when strafing, quiet arms sideways, pivot steps with a foot down in a hard turn, and a
 --    personality per character (seed, body, style) so a crowd never walks in step
+--  * a walker's swing is the ankle's own planned path, carried on from the push-off's last frame (the knee still
+--    folding, the hip already flexing: no kick back, no foot hanging behind, no whip through), with the knee by
+--    design (~60 a third of the way, opening evenly onto the heel strike) and the pelvis brought to where that
+--    knee lands the heel; a weight-bearing knee never jumps (kneeGovern); one foot is always down at a walk, in a
+--    turn and pulling up out of a run (a step that cannot wait hurries the foot in the air down first); the first
+--    steps from rest are no longer than the pace's own; pulling up out of a run takes braking steps to where he
+--    comes to rest; a diagonal turns the pelvis and legs toward the way he goes (the chest kept facing)
 --  * boxing footwork inside the ring (step-drag shuffle where the
 --    foot on the side of travel moves first and the other follows, a gallop at speed, the feet never
 --    cross or touch), a short irregular stagger when dazed or stumbling
@@ -145,7 +152,7 @@ function AnimLoco.sense(rig, dt)
 	lo.teleported = false
 	if lo.pos == nil or (p - lo.pos).Magnitude > 6 then
 		lo.pos, lo.yaw = p, yaw
-		lo.vel, lo.acc, lo.yawRate, lo.speed = ZERO, ZERO, 0, 0
+		lo.vel, lo.acc, lo.accF, lo.rawV, lo.yawRate, lo.speed = ZERO, ZERO, ZERO, nil, 0, 0
 		lo.lv, lo.la = ZERO, ZERO
 		lo.jumpOff, lo.jumpYaw = nil, 0
 		lo.teleported = true
@@ -189,6 +196,10 @@ function AnimLoco.sense(rig, dt)
 	local vel = lo.vel + (raw - lo.vel) * k
 	local acc = (vel - lo.vel) / dt
 	lo.acc = lo.acc + (acc - lo.acc) * (1 - exp(-dt * 9))
+	-- (and a quicker one, from the raw velocity: pulling up is seen within a frame or two)
+	local ar = (raw - (lo.rawV or raw)) / dt
+	lo.rawV = raw
+	lo.accF = (lo.accF or ZERO) + (ar - (lo.accF or ZERO)) * (1 - exp(-dt * 25))
 	lo.vel = vel
 	lo.speed = vel.Magnitude
 	-- (vertical: a walker on a ramp or stairs; clamped so a teleport-sized hop never spikes it)
@@ -375,10 +386,11 @@ local function stancePitch(sigma, run, back)
 	return roll + rise
 end
 
--- the knee a pushing foot's leg is given (rad): a walker's straight leg bends into the toe-off (~40 deg), a
--- runner's extends from mid-stance to a soft 20 at the toe-off
+-- the knee a pushing foot's leg is given (rad): a walker's straight leg bends into the toe-off (~40 deg), quicker
+-- and quicker - still folding at ~350 deg/s as the toes leave, the swing carries that on - a runner's extends from
+-- mid-stance to a soft 20 at the toe-off
 local function pushKnee(sigma, run)
-	return lerp(lerp(5, 40, smooth((sigma - 0.78) / 0.22)), lerp(38, 22, smooth((sigma - 0.45) / 0.55)), run) * RAD
+	return lerp(5 + 35 * clamp((sigma - 0.65) / 0.35, 0, 1) ^ 1.7, lerp(38, 22, smooth((sigma - 0.45) / 0.55)), run) * RAD
 end
 
 -- the gait's per-frame phase / parameters (call once per frame before the feet)
@@ -407,10 +419,23 @@ local function updateGait(rig, t, dt)
 		lo.moveT = t
 	end
 	lo.gaitW += ((lo.moving and 1 or 0) - lo.gaitW) * (1 - exp(-dt * 7))
+	-- braking (a walker / runner pulling up): the deceleration along the way he was going, 0..1 from about a third of
+	-- g at the rig's scale; a hard stop out of a run steps down to a walk at once (no flight while he brakes)
+	if kind == "walk" then
+		local hv = v > 0.3 and lo.vel / v or lo.brakeDir or ZERO
+		lo.brakeDir = hv
+		local af = lo.accF or lo.acc
+		lo.brake = clamp((-(af.X * hv.X + af.Z * hv.Z) - 14) / 22, 0, 1)
+	else
+		lo.brake = 0
+	end
+	if not lo.moving or kind ~= "walk" then
+		lo.legYaw = (lo.legYaw or 0) * exp(-dt * 6)
+	end
 	if not lo.moving then
 		if kind == "walk" then
 			lo.runMode = false
-			lo.run += (0 - lo.run) * (1 - exp(-dt * 4))
+			lo.run += (0 - lo.run) * (1 - exp(-dt * 12))
 		end
 		return
 	end
@@ -422,11 +447,20 @@ local function updateGait(rig, t, dt)
 		local Ls = soleLeg(g)
 		local kL = sqrt(LREF / Ls)
 		local vh = v * VH * kL
-		-- forward / backward / sideways: the arms' swing and the backward step follow it
-		local fz = v > 0.3 and -lo.lv.Z / v or 1
+		-- a diagonal (the body kept facing - Shift Lock, first person - while he goes off at an angle): the pelvis and
+		-- the legs turn toward the way he goes, up to ~43 deg, the chest stays (bodyOffsets): he walks the diagonal
+		-- forward (or backward), not a crab's side shuffle; from ~70 deg off it is a side step
+		local al = v > 0.3 and atan2(lo.lv.X, -lo.lv.Z) or 0
+		local be = abs(al) > PI / 2 and al - (al > 0 and PI or -PI) or al
+		local lyT = clamp(be, -0.75, 0.75) * (1 - smooth((abs(be) - 0.95) / 0.4))
+		lo.legYaw = (lo.legYaw or 0) + (lyT - (lo.legYaw or 0)) * (1 - exp(-dt * 6))
+		-- forward / backward / sideways (in the legs' frame): the arms' swing and the backward step follow it
+		local cy, sy = cos(lo.legYaw), sin(lo.legYaw)
+		local lx, lz = lo.lv.X * cy + lo.lv.Z * sy, lo.lv.Z * cy - lo.lv.X * sy
+		local fz = v > 0.3 and -lz / v or 1
 		lo.fwd += (fz - lo.fwd) * (1 - exp(-dt * 8))
 		lo.back = smooth((-lo.fwd - 0.25) / 0.45)
-		local fx = v > 0.3 and abs(lo.lv.X) / v or 0
+		local fx = v > 0.3 and abs(lx) / v or 0
 		lo.side += (fx - lo.side) * (1 - exp(-dt * 8))
 		-- walk or run: people switch at about Froude 0.5; hysteresis so a speed near it never flickers
 		-- (a ring walk may stride out further before it breaks into a jog: rig.walkMax)
@@ -442,7 +476,10 @@ local function updateGait(rig, t, dt)
 				lo.runMode = vh > (RUN_ON + RUN_OFF) * 0.5 * wm
 			end
 		end
-		lo.run += ((lo.runMode and 1 or 0) - lo.run) * (1 - exp(-dt * 7))
+		if lo.brake > 0.3 then
+			lo.runMode, lo.bandT = false, 0
+		end
+		lo.run += ((lo.runMode and 1 or 0) - lo.run) * (1 - exp(-dt * (7 + 20 * lo.brake)))
 		-- a hard turn at speed (a reversal): quick pivot steps with a foot always down, not a flying lunge
 		local tk = clamp((abs(lo.yawRate) * v - 30) / 50, 0, 1)
 		lo.turnK = max(tk, (lo.turnK or 0) - dt * 3)
@@ -558,6 +595,10 @@ function AnimLoco.bodyOffsets(rig, dt, t)
 			wYaw = pyA * lerp(1.45, 1.7, run) * c1 * w
 			-- the swing side's hip drops (pelvic obliquity: ~4 degrees, the stance hip takes the weight)
 			rollP += -lerp(0.065, 0.05, run) * prof.pelvis * cos(2 * PI * (ph - midL)) * w
+			-- (a diagonal: the pelvis turned toward the way he goes, the chest kept facing)
+			local ly = lo.legYaw or 0
+			yawP -= ly
+			wYaw += ly
 			-- the head stays level and on its line
 			nYaw = -(yawP + wYaw) * 0.85
 			lo.armPhase = ph - landL
@@ -605,7 +646,9 @@ end
 ------------------------------------------------------------------------
 local function armShape(lo, prof)
 	local vh = lo.vh or 0
-	local run = lo.run
+	-- (the arms change between a walker's and a runner's carriage at their own pace: a run pulled up into a walk
+	-- in a few frames never throws them)
+	local run = lo.armRun or lo.run
 	local swing = prof.swing
 	local cw, aw = -(5 + 2 * vh), 4 + 8.5 * vh
 	local ebw, efw = 6 + 4 * vh, 12 + 12 * vh
@@ -634,7 +677,8 @@ function AnimLoco.armSwing(p, rig, k)
 	-- arms hang close: out just enough for big lats / arms to clear the hips (a runner's elbows tucked in by
 	-- his ribs)
 	local b = R.bulkOf(rig)
-	local out = lerp(0.02 + 0.09 * b, 0.01 + 0.05 * b, lo.run) + prof.out
+	-- (a heavy man's hang out round his lats only a little: at a walk his hands pass by his thighs, not out in space)
+	local out = lerp(0.015 + 0.045 * b, 0.01 + 0.05 * b, lo.run) + prof.out
 	p.LS = p.LS:Lerp(A(c, 0, -out), k)
 	p.RS = p.RS:Lerp(A(c, 0, out), k)
 	p.LE = p.LE:Lerp(A(em, 0, 0), k)
@@ -650,7 +694,9 @@ function AnimLoco.armOffsets(rig, dt, hold)
 	local want = hold and 0 or (rig.armSwing or 0) * (rig.armScale or 1)
 	lo.armW += (want - lo.armW) * (1 - exp(-dt * 10))
 	local w = lo.armW
+	lo.armRun = (lo.armRun or lo.run) + (lo.run - (lo.armRun or lo.run)) * (1 - exp(-dt * 6))
 	if w < 0.005 then
+		lo.pSL, lo.pSR, lo.pEL, lo.pER = nil, nil, nil, nil
 		return nil
 	end
 	local prof = profileOf(rig)
@@ -662,16 +708,31 @@ function AnimLoco.armOffsets(rig, dt, hold)
 	local cs = cos(ph)
 	-- (the forearm trails the upper arm: overlapping action)
 	local ce = cos(ph - lerp(0.35, 0.22, lo.run))
+	-- pulling up and stopping - and walking backward - the gait's clock does not say where the legs are: the arms go
+	-- with the feet themselves (the left arm back as the left foot is ahead), always against the legs
+	local sk = max(lo.brake or 0, 1 - lo.gaitW, lo.back or 0)
+	lo.armStop = (lo.armStop or 0) + (sk - (lo.armStop or 0)) * (1 - exp(-dt * 12))
+	if lo.armStop > 0.01 and rig.foot.L.P and rig.foot.R.P then
+		local rc = rig.root.CFrame
+		local fL, fR = rig.foot.L, rig.foot.R
+		local zL = rc:PointToObjectSpace(fL.swing and fL.cur or fL.P).Z
+		local zR = rc:PointToObjectSpace(fR.swing and fR.cur or fR.P).Z
+		local cf = clamp((zR - zL) / max(1, 0.45 * (lo.stride or 2)), -1, 1)
+		cs = lerp(cs, cf, lo.armStop)
+		ce = lerp(ce, cf, lo.armStop)
+	end
 	-- (no two people swing alike: one arm a little bigger, per seed; hashed once per rig)
 	local asym = lo.swingAsym
 	if not asym then
 		asym = (K.rand3(rig.seed or 0, 5.1, 2.7) - 0.5) * 0.18
 		lo.swingAsym = asym
 	end
-	-- (sideways the arms swing a little still, fore-aft and out with the side step)
+	-- (walking backward they swing nearly as much, still against the legs - the leg behind, the same arm in
+	-- front: led by the feet, below; sideways a little still, fore-aft and out with the side step)
 	local sideK = lo.side * (1 - lo.run)
-	local sA = a * max(fw, 0.25 * sideK) * w
-	local eA = (ef - eb) * 0.5 * max(fw, 0.25 * sideK) * w
+	local dirA = (fw >= 0 and fw or -0.75 * fw) + 0.2 * sideK * (1 - abs(fw))
+	local sA = a * dirA * w
+	local eA = (ef - eb) * 0.5 * dirA * w
 	local sL = -sA * (1 + asym) * cs
 	local sR = sA * (1 - asym) * cs
 	local eL = -eA * ce
@@ -682,8 +743,18 @@ function AnimLoco.armOffsets(rig, dt, hold)
 	local b = R.bulkOf(rig)
 	local inK = (0.35 + 0.15 * b) * lo.run
 	local tw = (0.28 + 0.5 * b) * lo.run * w * max(0, fw)
-	local yL, yR = -tw * max(0, -cs), tw * max(0, cs)
+	-- (a bulky walker's arms turned in a little all through the swing: the forearms hang by the thighs)
+	local twW = 0.16 * b * (1 - lo.run) * w
+	local yL, yR = -tw * max(0, -cs) - twW, tw * max(0, cs) + twW
 	local sway = 0.07 * sideK * w * cs
+	-- (and never faster than ~650 deg/s: a hard turn, a pull-up or a gait change eases the swing over instead of
+	-- flinging an arm)
+	local m = 11.5 * dt
+	sL = (lo.pSL or sL) + clamp(sL - (lo.pSL or sL), -m, m)
+	sR = (lo.pSR or sR) + clamp(sR - (lo.pSR or sR), -m, m)
+	eL = (lo.pEL or eL) + clamp(eL - (lo.pEL or eL), -m, m)
+	eR = (lo.pER or eR) + clamp(eR - (lo.pER or eR), -m, m)
+	lo.pSL, lo.pSR, lo.pEL, lo.pER = sL, sR, eL, eR
 	return sL, eL, inK * max(0, sL) + sway, sR, eR, -inK * max(0, sR) + sway, yL, yR
 end
 
@@ -722,6 +793,125 @@ local function startSwing(f, t, dur, liftH, kind)
 	f.stepKind = kind
 	f.want = false
 	f.gY, f.gRay, f.gShift, f.fromSl = nil, -10, 0, f.slopeP or 0
+	-- (a walker's swing is planned from the push-off's last frame when its ankle is first wanted: rebaseSwing)
+	f.planNew = true
+	f.pushOn = false
+end
+
+-- a walker's swing (walk pace) is planned as the ankle's own path, carried on from the push-off's last frame:
+-- where the ankle was, the speed the toe roll gave it and the knee still folding at its own rate (no frame where
+-- the leg straightens back, no foot hanging behind), on to the heel strike with the knee by design
+-- (f.aP0 / aV0 / aT0: the ankle's world position, velocity and time the plan starts from; k0 / kv0: the knee and
+-- its rate per unit of the plan; kDone: the knee's peak is behind it - a plan re-based late in the swing)
+local function rebaseSwing(f, t, kDone)
+	if not (f.ankW and f.ankT and t - f.ankT < 0.1) then
+		f.plan = false
+		return
+	end
+	local D = max(1 / 60, f.t0 + f.dur - f.ankT)
+	f.aP0, f.aT0 = f.ankW, f.ankT
+	-- (never faster than it could travel the whole step in the time left: a frame's spike is not carried on)
+	local v = f.ankV or ZERO
+	local vm = v.Magnitude
+	local cap = 3 + 2 * ((f.tgtW or f.ankW) - f.ankW).Magnitude / D
+	f.aV0 = vm > cap and v * (cap / vm) or v
+	f.k0 = f.kAct or 0.4
+	f.kv0 = clamp(f.kVel or 0, -12, 12) * D
+	f.kDone = kDone
+	f.plan = true
+end
+
+-- a swing hurried (or its end moved) to land rem seconds from now, carrying on from where it is: the swing's
+-- progress u stays, a planned one re-based from the ankle as it is (past its knee's peak: it opens from there)
+local function retime(f, t, rem)
+	local u0 = clamp((t - f.t0) / f.dur, 0, 0.95)
+	f.dur = max(1 / 60, rem) / (1 - u0)
+	f.t0 = t - u0 * f.dur
+	if f.plan then
+		rebaseSwing(f, t, u0 > 0.3)
+	end
+end
+
+-- the swing's knee by design (rad) at u (0 = the plan's start .. 1 = heel strike): from the knee the push-off left,
+-- still folding at its own rate, on to the peak (kpk) a third of the way, then opening evenly to the heel strike's
+-- nearly straight knee (kEnd) a little before the touchdown; a plan re-based past its peak opens from where it is
+local function swingKnee(f, u, kpk, kEnd)
+	local sp, se = 0.3, 0.9
+	if f.kDone then
+		sp, kpk = 0, f.k0
+	end
+	if u < sp then
+		local x = u / sp
+		local k0 = f.k0
+		-- (a tangent that never overshoots the peak)
+		local m = clamp(f.kv0 * sp, 0, 3 * max(0, kpk - k0))
+		local x2 = x * x
+		local x3 = x2 * x
+		return k0 * (2 * x3 - 3 * x2 + 1) + m * (x3 - 2 * x2 + x) + kpk * (3 * x2 - 2 * x3)
+	elseif u < se then
+		local x = (u - sp) / (se - sp)
+		if f.kDone then
+			-- (re-based while opening: carries on at the rate it had)
+			local m = clamp(f.kv0 * se, min(0, 3 * (kEnd - kpk)), 0)
+			local x2 = x * x
+			local x3 = x2 * x
+			return kpk * (2 * x3 - 3 * x2 + 1) + m * (x3 - 2 * x2 + x) + kEnd * (3 * x2 - 2 * x3)
+		end
+		return lerp(kpk, kEnd, smooth(x))
+	end
+	return kEnd
+end
+
+-- the planned ankle this frame, as the path alone has it (the root's space): a Hermite from the start's position
+-- and velocity to the landing ankle A1 (world; arriving at rest); the leg's length the designed knee wants is kept
+-- in f.planD for liftPlan
+local function planAnkle(rig, f, s, t, trueCF, rootT, hipP, A1, soft, kpk, kEnd)
+	local lo = rig.loco
+	local leg = rig.geo[s]
+	local D = max(1 / 60, f.t0 + f.dur - f.aT0)
+	local u = clamp((t - f.aT0) / D, 0, 1)
+	local u2 = u * u
+	local u3 = u2 * u
+	-- (the path's own height carries no speed up and comes down to the landing ankle's by mid-swing: the knee's
+	-- design lifts the foot; the path only keeps the shoe - as it is pitched now - a little off the floor, and lands it)
+	local v0 = f.aV0
+	local P = f.aP0 * (2 * u3 - 3 * u2 + 1) + V3(v0.X, 0, v0.Z) * (D * (u3 - 2 * u2 + u)) + A1 * (3 * u2 - 2 * u3)
+	local yb = A1.Y + (f.aP0.Y - A1.Y) * (1 - smooth(u / 0.5))
+	local gY = lerp(f.fromP.Y, f.tgtW.Y, smooth(u))
+	local yf = gY + R.ankleOf(leg, ZERO, fwdOf(f.curYaw or 0), f.curPitch or 0).Y + 0.05 * K.skewBump(u, 1.2, 1.6)
+	P = V3(P.X, max(yb, yf), P.Z)
+	-- (a quick step - hurried, or a short one - folds the knee less)
+	kpk = max(f.k0 or 0, kpk * clamp(D / 0.3, 0.45, 1))
+	f.planD = R.slackFor(leg, swingKnee(f, u, kpk, kEnd), soft) * (leg.l1 + leg.l2)
+	f.planU, f.planT = u, t
+	local Ph = trueCF:PointToObjectSpace(P)
+	-- (from mid-swing the pelvis is brought to where the designed knee puts the foot on its path: the knee opens
+	-- onto the heel strike as designed, never bent by a pelvis too low or locked by one too high - f.planNeed)
+	f.planNeed = u > 0.45 and R.needFor(rig, s, rootT, Ph, f.planD / (leg.l1 + leg.l2), WALK_DROP + 0.3, hipP) or nil
+	return Ph
+end
+
+-- the planned ankle raised where the designed knee (f.planD) puts it higher under the hip as it is (hipP, the
+-- root's space; called again once the pelvis's drop is final - near straight a centimetre of pelvis is many
+-- degrees of knee): the knee folds on behind the body, then opens as the foot reaches forward; a foot the plan
+-- has out of reach for that knee is brought in a little (it lands a frame late rather than the knee slamming
+-- straight on it)
+local function liftPlan(f, Ph, hipP)
+	local d, u = f.planD, f.planU
+	local dx, dz = Ph.X - hipP.X, Ph.Z - hipP.Z
+	local h2 = dx * dx + dz * dz
+	local hm = d * 0.995
+	if h2 > hm * hm then
+		local k = hm / sqrt(h2)
+		dx, dz, h2 = dx * k, dz * k, hm * hm
+	end
+	local y = Ph.Y
+	local e = hipP.Y - sqrt(d * d - h2) - y
+	-- (a smooth max: no kink in the leg's motion where the knee's height takes over; exact at the start and the
+	-- touchdown)
+	local k = 0.06 * min(1, u / 0.25) * (1 - smooth((u - 0.8) / 0.15))
+	y += 0.5 * (e + sqrt(e * e + k * k))
+	return V3(hipP.X + dx, y, hipP.Z + dz)
 end
 
 -- the floor under a walker's landing spot: a ray straight down (ramps, stairs, kerbs). Returns the
@@ -798,6 +988,45 @@ local function footGround(rig, leg, pos, floorY, F)
 	return y2, sl2 or 0, sh
 end
 
+-- a walker's weight-bearing knee never jumps: near straight a millimetre of the pelvis is degrees of knee, so at a
+-- heel strike (the leg suddenly carrying the body over it) or a change of support the pelvis gives way - or holds
+-- up - only as fast as the knee may change its rate (KNEE_ACC rad/s^2): the knee bends into the loading over a few
+-- frames instead of in one. Returns the drop x kept inside what every such knee allows
+local KNEE_ACC = 200
+local function kneeGovern(rig, rootT, targets, x, far, t, dt)
+	local g = rig.geo
+	local lo, hi = -1e9, 1e9
+	local a = KNEE_ACC * dt
+	for _, s in ipairs(SIDES) do
+		local f = rig.foot[s]
+		local tgt = targets[s]
+		-- (a foot taking the weight: the heel strike's loading)
+		if not f.swing and not f.push and f.kAct and f.ankT and tgt and t - f.landT < 0.25 then
+			local leg = g[s]
+			local hipP = (g.rootC0 * rootT * g.rootC1inv * leg.hipC0).Position
+			local kv = f.kVel or 0
+			-- (it may always slow down: the bound only keeps it from setting off, or speeding up, in a jolt - never
+			-- forces it on)
+			local kHi = f.kAct + (max(kv, 0) + a) * dt
+			local kLo = f.kAct + (min(kv, 0) - a) * dt
+			local nHi = R.needFor(rig, s, rootT, tgt, R.slackFor(leg, clamp(kHi, 0, 2.5), WALK_SOFT), far, hipP)
+			if nHi < far - 1e-3 then
+				hi = min(hi, nHi)
+			end
+			if kLo > 0.02 then
+				local nLo = R.needFor(rig, s, rootT, tgt, R.slackFor(leg, min(kLo, 2.5), WALK_SOFT), far, hipP)
+				if nLo < far - 1e-3 then
+					lo = max(lo, nLo)
+				end
+			end
+		end
+	end
+	if lo > hi then
+		return x
+	end
+	return clamp(x, lo, hi)
+end
+
 -- how far a planted foot's ankle, the foot rolled to pitch th, is from the hip (the root's space)
 local function ankleDist(leg, P, F, lift, rootCF, hip, th, sl)
 	return (rootCF:PointToObjectSpace(R.ankleOf(leg, P, F, th, sl) + V3(0, lift, 0)) - hip).Magnitude
@@ -836,7 +1065,9 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 	-- line running), not under the hip joints like pillars (sideways the side step keeps them apart)
 	local kx = 1
 	if walking then
-		kx = 1 - (1 - clamp(lerp(lerp(0.42, 0.27, run), 0.85, lo.side) * prof.width, 0.2, 1)) * lo.gaitW
+		-- (pulling up, the braking steps already land at the width he will stand at: no shuffle sideways after)
+		-- (a big man runs on a wider track: his thick thighs pass, not through each other)
+		kx = 1 - (1 - clamp(lerp(lerp(0.42, 0.27 + 0.12 * R.bulkOf(rig), run), 0.85, lo.side) * prof.width, 0.2, 1)) * lo.gaitW * (1 - (lo.brake or 0))
 	end
 	-- per-foot desired ground point and yaw
 	for _, s in ipairs(SIDES) do
@@ -852,8 +1083,12 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 			f.vLift = 0.1
 		end
 		local ox, oz = f.ox + f.vox, f.oz + f.voz
-		f.home = homeOf(rig, s, rootCF, ox, oz, kx)
-		f.homeYaw = rootYaw + f.yaw + (walking and (s == "L" and prof.toe or -prof.toe) or 0)
+		-- (a walker's legs in their own frame: turned toward a diagonal's way - updateGait's legYaw)
+		local ly = walking and lo.legYaw or 0
+		local legCF = ly ~= 0 and rootCF * A(0, -ly, 0) or rootCF
+		rig.legCF = legCF
+		f.home = homeOf(rig, s, legCF, ox, oz, kx)
+		f.homeYaw = rootYaw - ly + f.yaw + (walking and (s == "L" and prof.toe or -prof.toe) or 0)
 		if not lock or f.free or not f.P or lo.teleported then
 			f.P, f.yawW, f.swing, f.curLift = f.home, f.homeYaw, false, 0
 			f.pitchS = f.heel
@@ -881,8 +1116,10 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 					-- the other foot must be down (or about to land) unless running / galloping - and in a hard
 					-- turn: one foot stays on the floor and pivots while the other steps round
 					local hard = (lo.turnK or 0) > 0.3
-					-- (never at a walk: one foot is always down - the lift waits for the other to land)
-					local overlap = (lo.run > 0.3 and not hard) or (o.swing and o.t0 + o.dur - t < 0.035)
+					-- (never at a walk - nor pulling up out of a run: one foot is always down, the lift waits for the
+					-- other to land)
+					local wr = walking and ((lo.run < 0.5 and back < 0.5 and lo.side < 0.6) or (lo.brake or 0) > 0.3)
+					local overlap = (lo.run > 0.3 and not hard and not wr) or (o.swing and o.t0 + o.dur - t < (wr and 0.005 or 0.035))
 					if not o.swing or overlap then
 						local liftH
 						if walking then
@@ -917,7 +1154,7 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 			local err = sqrt(dx * dx + dz * dz)
 			local yerr = abs(K.wrap(f.yawW - f.homeYaw))
 			local leg = g[s]
-			local hip = rootCF:PointToWorldSpace(leg.hip0)
+			local hip = (walking and rig.legCF or rootCF):PointToWorldSpace(leg.hip0)
 			local hx, hz = f.P.X - hip.X, f.P.Z - hip.Z
 			local reach = sqrt(hx * hx + hz * hz)
 			-- (a walker's foot left so far behind that it would hold the pelvis well under where the other
@@ -962,7 +1199,10 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 					f.spinT = t
 					yerr = abs(K.wrap(f.yawW - f.homeYaw))
 				end
-				local limit = moving and (walking and 0.9 * lo.stride + 0.6 or rig.stepDist + 0.6 * lo.stride) or rig.stepDist
+				-- (a walker just pulled up stands a moment as his braking steps left him - a little staggered - before
+				-- he squares his feet)
+				local limit = moving and (walking and 0.9 * lo.stride + 0.6 or rig.stepDist + 0.6 * lo.stride)
+					or rig.stepDist * ((walking and t - lo.stopT < 1.2) and 1.7 or 1)
 				if err > limit or yerr > 0.65 then
 					if s == "L" then
 						needL = err + yerr
@@ -993,8 +1233,25 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 		-- (in a hard turn only a foot about to be dragged goes while the other is in the air: one foot pivots on the
 		-- floor)
 		local hardTurn = (lo.turnK or 0) > 0.5
-		if not f.swing and (not o.swing or urgent or (not hardTurn and (t - o.t0) > o.dur * 0.55)) and t - f.lastStep >= MIN_STANCE then
+		-- (a walker - or a runner pulling up - never has both feet in the air: a step that cannot wait hurries the
+		-- foot in the air down first, then goes)
+		local free = not o.swing or urgent or (not hardTurn and (t - o.t0) > o.dur * 0.55)
+		if walking and o.swing and ((run < 0.5 and back < 0.5 and lo.side < 0.6) or (lo.brake or 0) > 0.3) then
+			local orem = o.t0 + o.dur - t
+			-- (only a foot the body has already left out of reach even on its toes goes at once: never dragged)
+			free = orem < 0.005 or (f.reachShort or 0) > 0.04
+			-- (sooner pulling up: the foot waiting is being left behind fast)
+			local hurry = (lo.brake or 0) > 0.3 and 0.04 or 0.07
+			if not free and urgent and orem > hurry then
+				retime(o, t, hurry)
+			end
+		end
+		if not f.swing and free and t - f.lastStep >= MIN_STANCE then
 			local dur = f.vNow and f.vDur or clamp(0.24 - speed * 0.015, 0.12, 0.24) * rig.stepTime
+			if walking and not moving and t - lo.stopT < 1 then
+				-- (the step that brings a foot beside the other as a walker comes to rest: a short one)
+				dur = min(dur, 0.17)
+			end
 			local liftH = f.vNow and f.vLift or clamp(0.1 + speed * 0.012, 0.08, 0.3) * rig.liftK
 			local sk = f.vNow and "req" or (urgent and "reach" or "fix")
 			if urgent and moving and kind then
@@ -1056,9 +1313,26 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 				local rem = f.t0 + f.dur - t
 				local cap = (o.swing or o.push) and 0.06 or 0.15
 				if rem > cap and (not o.swing or rem <= o.t0 + o.dur - t) then
-					local u0 = clamp((t - f.t0) / f.dur, 0, 0.95)
-					f.dur = cap / (1 - u0)
-					f.t0 = t - u0 * f.dur
+					retime(f, t, cap)
+				end
+			end
+			-- (a walker's step never runs on past its pace: a start from rest - the first swing timed at the first
+			-- frame's crawl - or a turn's long step is hurried to at most 1.2 of the swing the pace now has; a foot in
+			-- the air when he stops, or pulls up hard out of a run, comes down in a short step)
+			if walking and f.stepKind == "walk" then
+				local rem = f.t0 + f.dur - t
+				local u0 = clamp((t - f.t0) / f.dur, 0, 0.95)
+				local cap = 1e9
+				if not moving or (lo.brake or 0) > 0.3 then
+					-- (a runner's foot in the air as he pulls up lands at once when the other one has to go; the last
+					-- one comes through beside it in a quick step)
+					cap = ((o.push and moving and t - o.landT > 0.12) or (o.swing and moving and rem <= o.t0 + o.dur - t)) and 0.07 or 0.2
+				elseif run < 0.5 and back < 0.5 and lo.side < 0.6 then
+					-- (the first steps from rest: no longer than the pace's own swing)
+					cap = (t - lo.moveT < 0.8 and 1 or 1.2) * (1 - lo.duty) * lo.T * (1 - u0)
+				end
+				if rem > cap + 0.01 then
+					retime(f, t, cap)
 				end
 			end
 			local u = (t - f.t0) / f.dur
@@ -1071,7 +1345,7 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 					-- walkers plant the heel a little ahead of the hip (about 0.4 of the contact) and push
 					-- off further behind it; runners land closer under the body
 					-- (a hard turn's pivot steps land under the body)
-					lead = lo.duty * lo.stride * lerp(0.4, 0.17, lo.run) * (1 - (lo.turnK or 0))
+					lead = lo.duty * lo.stride * lerp(0.36, 0.17, lo.run) * (1 - (lo.turnK or 0))
 				elseif sk == "stagger" then
 					lead = lo.stride * 0.25
 				else
@@ -1085,6 +1359,17 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 				acc = acc * (30 / am)
 			end
 			local tgt = f.home + vel * remain + V3(acc.X, 0, acc.Z) * (0.5 * remain * remain) + d * lead
+			-- (pulling up: a braking step lands where he will come to rest - ahead of the pelvis as it touches down, under
+			-- it once he has stopped: the feet end side by side, no shuffle after)
+			-- (never further ahead of where the pelvis will be at the touchdown than a braking step's ~25 cm)
+			local brk = walking and moving and lo.brake or 0
+			if brk > 0 and lo.brakeDir then
+				local bd = lo.brakeDir
+				local af = lo.accF or lo.acc
+				local dec = max(20, -(af.X * bd.X + af.Z * bd.Z))
+				local reach = max(0, speed * remain - 0.5 * dec * remain * remain) + 0.32 * soleLeg(g)
+				tgt = tgt:Lerp(f.home + bd * min(speed * speed / (2 * dec), reach), brk)
+			end
 			-- footwork: the feet never come closer side by side than FOOT_GAP (no crossing, no clipping);
 			-- a walker's feet keep WALK_GAP (strafing never scissors the legs)
 			local oP = o.swing and o.cur or o.P
@@ -1093,16 +1378,17 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 				oP = nil
 			end
 			if oP and (fight or walking) then
-				local lt = rootCF:PointToObjectSpace(tgt)
-				local lo2 = rootCF:PointToObjectSpace(oP)
+				local lcf = rig.legCF or rootCF
+				local lt = lcf:PointToObjectSpace(tgt)
+				local lo2 = lcf:PointToObjectSpace(oP)
 				-- (sideways a little more: the side shuffle's closing foot never brushes the other)
 				local gap = walking and lerp(WALK_GAP * lerp(1, 0.65, lo.run), 0.47, lo.side) or FOOT_GAP * (kind == "stagger" and 0.6 or 1)
 				if s == "L" and lt.X > lo2.X - gap then
 					lt = V3(lo2.X - gap, lt.Y, lt.Z)
-					tgt = rootCF:PointToWorldSpace(lt)
+					tgt = lcf:PointToWorldSpace(lt)
 				elseif s == "R" and lt.X < lo2.X + gap then
 					lt = V3(lo2.X + gap, lt.Y, lt.Z)
-					tgt = rootCF:PointToWorldSpace(lt)
+					tgt = lcf:PointToWorldSpace(lt)
 				end
 			end
 			local landYaw = f.homeYaw
@@ -1129,6 +1415,8 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 					tgt += fwdOf(landYaw) * f.gShift
 				end
 			end
+			-- (where a planned swing's ankle is headed: planAnkle)
+			f.tgtW = V3(tgt.X, gy, tgt.Z)
 			-- the touchdown spot as seen from where the body is now (for the pelvis height)
 			f.landRel = tgt - vel * remain - V3(acc.X, 0, acc.Z) * (0.5 * remain * remain)
 			f.landRel = V3(f.landRel.X, gy, f.landRel.Z)
@@ -1278,7 +1566,24 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 		end
 		f.tSl = sl
 		local ank = R.ankleOf(leg, P, F, pitch, sl) + V3(0, lift + f.lift, 0)
-		if f.swing and f.fromP and f.liftPitch then
+		-- a walker's swing at a walk: the ankle's planned path (rebaseSwing / planAnkle / liftPlan), from the push-off's last frame
+		if f.planNew then
+			f.planNew = false
+			f.plan = false
+			if walking and f.swing and f.stepKind == "walk" and run < 0.5 and back < 0.5 then
+				rebaseSwing(f, t, false)
+			end
+		end
+		local planned = walking and f.swing and f.plan and f.stepKind == "walk" and f.tgtW ~= nil
+		if planned then
+			-- (the swing's peak knee: ~60 at the town walk, less slow / backward / sideways / in a hard turn's pivot step)
+			local kpk = lerp(lerp((50 + 6 * clamp(lo.vh or 1, 0, 2.2)) * RAD, 35 * RAD, max(back, lo.side)), 28 * RAD, lo.turnK or 0)
+			local A1 = R.ankleOf(leg, f.tgtW, fwdOf(f.landYaw or yawW), f.landPitch or 0, f.gY and f.landSlope or 0)
+			local hipP = (g.rootC0 * rootT * g.rootC1inv * leg.hipC0).Position
+			f.planPh = planAnkle(rig, f, s, t, trueCF, rootT, hipP, A1, lo.softK, kpk, stanceKnee(0, 0, lo.vh or 0, prof))
+			-- (the pelvis's drop predicted from its speed; liftPlan runs again with the final one)
+			ank = trueCF:PointToWorldSpace(liftPlan(f, f.planPh, hipP - V3(0, lo.drop + (lo.dropV or 0) * dt, 0)))
+		elseif f.swing and f.fromP and f.liftPitch then
 			-- a foot that left rolled up onto its toes does not drop back onto its heel as it unrolls in the air:
 			-- the ankle keeps the height the roll gave it while the swing lifts it, and the reach ahead fades into
 			-- the step (no straight leg sliding back behind the body after the toe-off)
@@ -1294,7 +1599,7 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 		targets[s .. "pitch"] = pitch
 		if walking then
 			local hipP = (g.rootC0 * rootT * g.rootC1inv * leg.hipC0).Position
-			if f.swing and moving and f.stepKind == "walk" then
+			if f.swing and moving and f.stepKind == "walk" and not planned then
 				-- just off the toes the knee keeps folding: a foot the body leaves behind faster than the swing
 				-- lifts it rises behind him (the heel comes up) instead of the leg trailing straight
 				local u = (t - f.t0) / f.dur
@@ -1359,13 +1664,17 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 			else
 				f.needDrop, f.needPrev = nil, nil
 				local u = (t - f.t0) / f.dur
-				if u > 0.6 and f.landRel then
+				if u > (run < 0.5 and 0.3 or 0.6) and f.landRel then
 					local la = R.ankleOf(leg, f.landRel, fwdOf(f.landYaw), f.landPitch or 0, f.gY and f.landSlope or 0)
 					local lt = trueCF:PointToObjectSpace(V3(la.X, la.Y + f.lift, la.Z))
 					local kn = moving and stanceKnee(0, run, lo.vh, prof) or standKnee
 					-- (a landing spot far out of reach - a hard turn, a lunge - never drags the pelvis down for it)
 					f.landNeed = min(0.22, R.needFor(rig, s, rootT, lt, R.slackFor(leg, kn, WALK_SOFT), WALK_DROP + 0.3, hipP))
-					f.landWgt = smooth((u - 0.6) / 0.4)
+					f.landWgt = run < 0.5 and smooth((u - 0.3) / 0.5) or smooth((u - 0.6) / 0.4)
+					if planned then
+						f.landNeed = min(0.26, f.planNeed or -1)
+						f.landWgt = smooth((u - 0.45) / 0.25)
+					end
 					wCap = max(wCap, WALK_DROP + clamp(f.home.Y - f.landRel.Y, 0, 0.9))
 					-- (a runner touches down at the height his landing leg wants: the bounce's base)
 					if run > 0.01 then
@@ -1406,10 +1715,12 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 		-- ground as it comes down)
 		local base = wNeed or 0
 		local tgtD = base
+		lo.landW = 0
 		for _, s in ipairs(SIDES) do
 			local f = rig.foot[s]
 			if f.swing and (f.landWgt or 0) > 0 then
 				tgtD = max(tgtD, lerp(base, f.landNeed, f.landWgt))
+				lo.landW = max(lo.landW, f.landWgt)
 			end
 		end
 		-- (each weight-bearing foot's excess: how far under the other one's wish it would hold the pelvis)
@@ -1428,7 +1739,8 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 		-- a V that turns round in one frame - nor a jolt when he stops and his knees unlock)
 		local v0 = lo.dropV or 0
 		local x0 = lo.drop
-		local x, v = K.spring2(x0, v0, drop, drop > x0 and 28 or 26, 1, dt)
+		-- (stiffer down into a heel strike: the pelvis is where the landing leg reaches as the heel meets the floor)
+		local x, v = K.spring2(x0, v0, drop, drop > x0 and lerp(28, 48, lo.landW * (1 - run)) or 26, 1, dt)
 		v = clamp(v, -DROP_RATE * 1.6, DROP_RATE * 1.6)
 		-- (as the trailing foot toes off, a walker's body coming down is caught by the leading leg over a
 		-- moment - its upward acceleration bounded, about a third of g - so the bottom of each step is round)
@@ -1485,6 +1797,15 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 			x += (min(wFloor, moving and wCap or 0.75) - x) * (1 - exp(-dt * lerp(35, 160, lo.side)))
 			v = max(v, 0)
 		end
+		-- (a walker's: a runner's landing is his own spring)
+		local xg = (run < 0.5 and back < 0.5) and clamp(kneeGovern(rig, rootT, targets, x, WALK_DROP + 0.3, t, dt), -WALK_RAISE, moving and wCap or 0.75) or x
+		-- (never so high that a weight-bearing foot is left hovering)
+		if wFloor and xg < x then
+			xg = max(xg, min(x, wFloor))
+		end
+		if xg ~= x then
+			x, v = xg, (xg - lo.drop) / dt
+		end
 		lo.drop, lo.dropV = x, v
 	else
 		lo.dropV = 0
@@ -1509,7 +1830,9 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 		for _, s in ipairs(SIDES) do
 			local f = rig.foot[s]
 			f.reachShort = 0
-			if not f.swing and f.tP then
+			if f.swing and f.planT == t and f.planPh then
+				targets[s] = liftPlan(f, f.planPh, (g.rootC0 * rootT * g.rootC1inv * g[s].hipC0).Position)
+			elseif not f.swing and f.tP then
 				local leg = g[s]
 				local L2 = leg.l1 + leg.l2
 				local hip = (g.rootC0 * rootT * g.rootC1inv * leg.hipC0).Position
@@ -1519,9 +1842,22 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 				local dMax = R.slackFor(leg, 0, soft) * L2
 				if f.push and moving and f.sigma then
 					-- (bisection: behind the hip the ankle comes closer as the heel rises)
-					local want = R.slackFor(leg, pushKnee(f.sigma, run), soft) * L2
+					-- (the push takes over from the knee the leg has: eased onto the design over a tenth of a second)
+					local kp = pushKnee(f.sigma, run)
+					if not f.pushOn then
+						f.pushOn, f.pushT0, f.pushOff = true, t, (f.kAct or kp) - kp
+					end
+					kp += f.pushOff * (1 - smooth((t - f.pushT0) / 0.1))
+					-- (and like a weight-bearing knee, it changes its rate only so fast: kneeGovern)
+					if f.kAct and run < 0.5 then
+						local kv, ka = f.kVel or 0, KNEE_ACC * dt
+						kp = clamp(kp, f.kAct + (min(kv, 0) - ka) * dt, f.kAct + (max(kv, 0) + ka) * dt)
+					end
+					local want = R.slackFor(leg, kp, soft) * L2
 					-- (the last moment of the push may stand the shoe on its tip: it is gone the next frame)
-					local a, b = max(0, f.pitchLo or 0), PUSH_MAX + 0.25 * smooth((f.sigma - 0.85) / 0.15)
+					-- (the stance's own heel rise is the least it rolls to - taken up at a heel's pace, never in a frame)
+					local a = max(0, min(f.pitchLo or 0, (f.pitchF or cur) + 6 * dt))
+					local b = PUSH_MAX + 0.25 * smooth((f.sigma - 0.85) / 0.15)
 					if ankleDist(leg, P, F, lf, trueCF, hip, a, sl) <= want then
 						th = a
 					elseif ankleDist(leg, P, F, lf, trueCF, hip, b, sl) >= want then
@@ -1540,6 +1876,7 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 					local p0 = f.pitchF or cur
 					th = clamp(th, p0 - PUSH_RATE * dt, p0 + PUSH_RATE * dt)
 				else
+					f.pushOn = false
 					local d0 = ankleDist(leg, P, F, lf, trueCF, hip, cur, sl)
 					if d0 > dMax then
 						-- (roll the way that brings the ankle in, at most a third of a radian)
@@ -1571,7 +1908,16 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 				f.reachShort = max(0, ankleDist(leg, P, F, lf, trueCF, hip, th, sl) - dMax)
 				-- (a runner's push the pelvis has already left behind: the foot leaves now - this frame is the toe-off -
 				-- rather than a frame hanging in the air before its window opens)
-				if f.reachShort > 0.005 and f.push and moving and run > 0.5 then
+				-- (pulling up: not while the other is in the air - it is hurried down first)
+				local oth = rig.foot[s == "L" and "R" or "L"]
+				-- (pulling up, a walker's too, once even its toes are out of reach: it is never dragged)
+				local brk = (lo.brake or 0) > 0.3
+				local goes = f.reachShort > 0.005 and f.push and moving and (run > 0.5 or (brk and f.reachShort > 0.04))
+				local hold = goes and brk and oth.swing and f.reachShort <= 0.04
+				if hold and oth.t0 + oth.dur - t > 0.04 then
+					retime(oth, t, 0.04)
+				end
+				if goes and not hold then
 					local off = s == "L" and lo.offL or lo.offR
 					local sw = s == "L" and lo.swL or lo.swR
 					local x = (lo.phase - off) % 1
@@ -1585,7 +1931,21 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 	end
 	for _, s in ipairs(SIDES) do
 		local f = rig.foot[s]
-		R.solveLeg(rig, p, s, rootT, targets[s], targets[s .. "yaw"], targets[s .. "pitch"], f.kneeS, soft)
+		local kf = R.solveLeg(rig, p, s, rootT, targets[s], targets[s .. "yaw"], targets[s .. "pitch"], f.kneeS, soft)
+		if walking then
+			-- (the ankle and the knee as they are, frame to frame: a swing is planned on from them)
+			local A = trueCF:PointToWorldSpace(targets[s])
+			local dtA = t - (f.ankT or -1)
+			if f.ankW and dtA > 0 and dtA < 0.1 then
+				f.ankV = (f.ankV or ZERO):Lerp((A - f.ankW) / dtA, 0.7)
+				f.kVel = lerp(f.kVel or 0, (kf - (f.kAct or kf)) / dtA, 0.7)
+			else
+				f.ankV, f.kVel = ZERO, 0
+			end
+			f.ankW, f.ankT, f.kAct = A, t, kf
+		else
+			f.ankT = nil
+		end
 	end
 	return rootT
 end
