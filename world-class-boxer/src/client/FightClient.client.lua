@@ -27,8 +27,6 @@
 -- down, mash A. Aim assist (Settings, gamepad only) reads the left stick relative to the opponent;
 -- vibration on hits (Gamepad.Rumble); the fight camera frames both fighters and the right stick nudges it.
 -- Touch: see buildTouch (pads and swipes for every move, MOVES for the menu, SPRINT a toggle).
-local Players = game:GetService("Players")
-local ContextActionService = game:GetService("ContextActionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
@@ -37,7 +35,7 @@ local SoundService = game:GetService("SoundService")
 local Lighting = game:GetService("Lighting")
 local StarterGui = game:GetService("StarterGui")
 
-local player = Players.LocalPlayer
+local player = game:GetService("Players").LocalPlayer
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
 local UI = require(Shared:WaitForChild("UI"))
@@ -51,6 +49,9 @@ local FightRemote = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Figh
 local gui = UI.New("ScreenGui", { Name = "FightUI", ResetOnSpawn = false, IgnoreGuiInset = false, Enabled = false, DisplayOrder = 5, ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
 	Parent = player:WaitForChild("PlayerGui") })
 
+-- (Luau allows 200 locals per function and this chunk is close to it: new state goes in a table (F, KM, Tog,
+-- FX...) or inside a function, never in a new top-level local; tools/compile_all in the verification list
+-- measures the room left)
 local F = {} -- current fight state
 local camConn, fxConn
 local music
@@ -1842,18 +1843,20 @@ for i, v in ipairs({ { UDim2.fromScale(0, 0), 0 }, { UDim2.fromScale(0.5, 0), 18
 	eyeShade[i] = { frame = fr, grad = grad }
 end
 -- cinematic letterbox for walkouts, the tape, knockdowns and the final bell
-local boxTop = UI.Frame(fxGui, { Size = UDim2.fromScale(1, 0), BackgroundColor3 = Color3.new(0, 0, 0), ZIndex = 6 })
-local boxBottom = UI.Frame(fxGui, { Size = UDim2.fromScale(1, 0), AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), BackgroundColor3 = Color3.new(0, 0, 0), ZIndex = 6 })
-local letterboxOn = false
+local Letterbox = {
+	on = false,
+	top = UI.Frame(fxGui, { Size = UDim2.fromScale(1, 0), BackgroundColor3 = Color3.new(0, 0, 0), ZIndex = 6 }),
+	bottom = UI.Frame(fxGui, { Size = UDim2.fromScale(1, 0), AnchorPoint = Vector2.new(0, 1), Position = UDim2.fromScale(0, 1), BackgroundColor3 = Color3.new(0, 0, 0), ZIndex = 6 }),
+}
 local function letterbox(on)
-	if letterboxOn == on then
+	if Letterbox.on == on then
 		return
 	end
-	letterboxOn = on
+	Letterbox.on = on
 	local h = on and 0.1 or 0
 	local ti = TweenInfo.new(0.6, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-	TweenService:Create(boxTop, ti, { Size = UDim2.fromScale(1, h) }):Play()
-	TweenService:Create(boxBottom, ti, { Size = UDim2.fromScale(1, h) }):Play()
+	TweenService:Create(Letterbox.top, ti, { Size = UDim2.fromScale(1, h) }):Play()
+	TweenService:Create(Letterbox.bottom, ti, { Size = UDim2.fromScale(1, h) }):Play()
 end
 
 local function flashFrame(frame, from, dur)
@@ -2263,14 +2266,12 @@ local function restoreLighting()
 	end
 end
 
-local crowd = {}
-local spots = {}
-local tallies = {}
-local excitement = 0.2
-local sweeping = 0
+-- the house: fans that bob with the excitement, the spotlights (sweeping the crowd for a while at big moments)
+-- and the camera tally lights
+local Crowd = { fans = {}, spots = {}, tallies = {}, excitement = 0.2, sweeping = 0 }
 
 local function startVenueFx(arena)
-	crowd, spots, tallies = {}, {}, {}
+	Crowd.fans, Crowd.spots, Crowd.tallies = {}, {}, {}
 	if not arena then
 		return
 	end
@@ -2279,7 +2280,7 @@ local function startVenueFx(arena)
 		for _, fan in ipairs(folder:GetChildren()) do
 			if fan:IsA("BasePart") then
 				local head = fan:FindFirstChild("Head")
-				table.insert(crowd, { fan = fan, head = head, base = fan.CFrame, hbase = head and head.CFrame, phase = math.random() * 6.28, speed = 6 + math.random() * 4 })
+				table.insert(Crowd.fans, { fan = fan, head = head, base = fan.CFrame, hbase = head and head.CFrame, phase = math.random() * 6.28, speed = 6 + math.random() * 4 })
 			end
 		end
 	end
@@ -2287,13 +2288,13 @@ local function startVenueFx(arena)
 	if sf then
 		for i, s in ipairs(sf:GetChildren()) do
 			if s:IsA("BasePart") then
-				table.insert(spots, { p = s, base = s.Position, phase = i })
+				table.insert(Crowd.spots, { p = s, base = s.Position, phase = i })
 			end
 		end
 	end
 	for _, d in ipairs(arena:GetDescendants()) do
 		if d.Name == "TallyLight" and d:IsA("BasePart") then
-			table.insert(tallies, d)
+			table.insert(Crowd.tallies, d)
 		end
 	end
 	if fxConn then
@@ -2302,13 +2303,13 @@ local function startVenueFx(arena)
 	local frame = 0
 	local center = F.center or Vector3.zero
 	fxConn = RunService.Heartbeat:Connect(function(dt)
-		excitement = math.max(0.15, excitement - dt * 0.35)
-		sweeping = math.max(0, sweeping - dt)
+		Crowd.excitement = math.max(0.15, Crowd.excitement - dt * 0.35)
+		Crowd.sweeping = math.max(0, Crowd.sweeping - dt)
 		frame += 1
 		local t = os.clock()
 		if frame % 2 == 0 then
-			for _, c in ipairs(crowd) do
-				local up = math.max(0, math.sin(t * c.speed + c.phase)) * excitement * 1.2
+			for _, c in ipairs(Crowd.fans) do
+				local up = math.max(0, math.sin(t * c.speed + c.phase)) * Crowd.excitement * 1.2
 				local off = CFrame.new(0, up, 0)
 				c.fan.CFrame = c.base * off
 				if c.head then
@@ -2317,9 +2318,9 @@ local function startVenueFx(arena)
 			end
 		end
 		-- spotlights: sweep the crowd at big moments, otherwise lock onto the ring
-		for _, s in ipairs(spots) do
+		for _, s in ipairs(Crowd.spots) do
 			local target
-			if sweeping > 0 then
+			if Crowd.sweeping > 0 then
 				local a = t * 1.3 + s.phase * 1.1
 				target = center + Vector3.new(math.cos(a) * 45, 0, math.sin(a * 0.8) * 45)
 			else
@@ -2327,7 +2328,7 @@ local function startVenueFx(arena)
 			end
 			s.p.CFrame = CFrame.lookAt(s.base, target)
 		end
-		for _, tl in ipairs(tallies) do
+		for _, tl in ipairs(Crowd.tallies) do
 			tl.Transparency = (math.floor(t * 2) % 2 == 0) and 0 or 0.7
 		end
 	end)
@@ -2373,7 +2374,7 @@ local function cheer(amount)
 		vfx("Cheer", math.clamp(amount / 1.6, 0, 1))
 		return
 	end
-	excitement = math.min(1.6, excitement + amount)
+	Crowd.excitement = math.min(1.6, Crowd.excitement + amount)
 end
 
 local function screens(text)
@@ -2417,7 +2418,7 @@ local function pyro(side)
 			end
 		end
 	end
-	sweeping = 4
+	Crowd.sweeping = 4
 end
 
 local function phase(name, data)
@@ -2676,8 +2677,8 @@ end
 
 -- the gamepad state (the input code below): the sticks, the fight binding, the camera nudge
 local pad = { bound = false, leftX = 0, leftY = 0, rightX = 0, rightY = 0, nudgeX = 0, nudgeY = 0, flick = Gamepad and Gamepad.Flick() }
-local padOn -- () -> the fight pad binding is live and the player is on a gamepad (set with the input code)
-local sendDevice -- () -> tells the server the device the fight runs on (set with the input code)
+-- KM.padOn() -> the fight pad binding is live and the player is on a gamepad (set with the input code)
+-- KM.sendDevice() -> tells the server the device the fight runs on (set with the input code)
 local function startCamera()
 	local cam = workspace.CurrentCamera
 	cam.CameraType = Enum.CameraType.Scriptable
@@ -2768,7 +2769,7 @@ local function startCamera()
 				pos = other
 			end
 			-- gamepad: the right stick nudges the view round the pair and up / down; it eases back when let go
-			local onPad = padOn()
+			local onPad = KM.padOn()
 			local nx, ny = onPad and pad.rightX or 0, onPad and pad.rightY or 0
 			pad.nudgeX += (nx - pad.nudgeX) * math.clamp(dt * 5, 0, 1)
 			pad.nudgeY += (ny - pad.nudgeY) * math.clamp(dt * 5, 0, 1)
@@ -2841,25 +2842,28 @@ end
 -- a chord's modifier (RB: overhand, RB + X: check hook) throws its punch on RELEASE when no chord used it.
 -- Local punch prediction: the Animator starts the punch on the key press (PredAct).
 ------------------------------------------------------------------------
-local bindPad, unbindPad, setSprint -- (the input block below; the fight's start / finish use them)
--- (one function: its locals get their own registers, so the script stays under Luau's 200 per function)
+-- (one function: its locals get their own registers, so the script stays under Luau's 200 per function;
+-- what the fight's start / finish use is handed out in KM: bindPad, unbindPad, setSprint, padOn, sendDevice)
 local function setupInput()
 local GuiService = game:GetService("GuiService")
+local ContextActionService = game:GetService("ContextActionService")
+local bindPad, unbindPad, setSprint
 local pred = { id = 0, busyUntil = 0, lastAt = 0, hand = "R" }
 local ASSIST_STEP = "FightAssistMove" -- RenderStep binding: the left stick read relative to the opponent (aim assist)
 local SPRINT_MUL = 1.55
 local sprint = { on = false, base = Config.TownWalkSpeed, speed = Config.TownRunSpeed }
 local Ctl = { map = nil, lk = nil, held = {}, pressedAt = {}, lastTap = {}, flickAt = {}, deferred = {}, chordUsed = {}, keyAction = {} }
-padOn = function()
+function KM.padOn()
 	return pad.bound and Gamepad ~= nil and Gamepad.IsPad()
 end
 
 -- the device a fight input is sent from (the server's aim assist only honours gamepad inputs)
 -- the device the fight runs on, for the server (FightEngine `device`: rate-limited there, arms the aim
 -- assist only after a while on the pad, drops it at once on the keyboard)
-sendDevice = function()
+local function sendDevice()
 	send({ t = "device", pad = (Gamepad ~= nil and Gamepad.IsPad()) or false })
 end
+KM.sendDevice = sendDevice
 
 local function padFlag()
 	return (Gamepad and Gamepad.IsPad()) and true or nil
@@ -3646,6 +3650,7 @@ if Gamepad then
 		end
 	end)
 end
+KM.bindPad, KM.unbindPad, KM.setSprint = bindPad, unbindPad, setSprint
 end -- setupInput
 setupInput()
 
@@ -3736,29 +3741,27 @@ end
 -- button is switched off for the bout and back on in finish(). Spars keep it (a reset only ends them).
 -- SetCore fails while the CoreScripts are still registering the callback (the first bout right after a
 -- join): the lock is then retried once a second, up to ten times, while the fight wants it.
-local resetLocked = false
-local resetWant = false
-local resetTry = 0
+local ResetLock = { locked = false, want = false, tries = 0 }
 local function lockReset(on)
-	resetWant = on
-	if on == resetLocked then
+	ResetLock.want = on
+	if on == ResetLock.locked then
 		return
 	end
 	local ok = pcall(StarterGui.SetCore, StarterGui, "ResetButtonCallback", not on)
 	if ok then
-		resetLocked = on
-		resetTry = 0
+		ResetLock.locked = on
+		ResetLock.tries = 0
 	elseif on then
-		resetTry += 1
-		if resetTry <= 10 then
+		ResetLock.tries += 1
+		if ResetLock.tries <= 10 then
 			task.delay(1, function()
-				if resetWant and not resetLocked then
+				if ResetLock.want and not ResetLock.locked then
 					lockReset(true)
 				end
 			end)
 		end
 	else
-		resetLocked = false
+		ResetLock.locked = false
 	end
 end
 -- Roblox's player list owns Tab (it toggles the list and sinks the key). A fight hides the list, which hands
@@ -3791,7 +3794,7 @@ local function finish()
 	KM.setPlayerList(true)
 	KM.dropRingSprint()
 	KM.showPaused(false)
-	unbindPad()
+	KM.unbindPad()
 	Countdown.Hide()
 	F.countdown = false
 	F.active = false
@@ -3892,7 +3895,7 @@ function handlers.start(msg)
 			table.insert(F.moveList, id)
 		end
 	end
-	setSprint(false)
+	KM.setSprint(false)
 	KM.dropRingSprint()
 	KM.refresh()
 	player:SetAttribute("InFight", true)
@@ -3900,7 +3903,7 @@ function handlers.start(msg)
 	fxGui.Enabled = true
 	lockReset(not F.spar)
 	KM.setPlayerList(false)
-	sendDevice()
+	KM.sendDevice()
 	L.frame.Visible, R.frame.Visible, clock.Visible, controls.Visible = false, false, false, false
 	setChip(L, nil)
 	setChip(R, nil)
@@ -3984,7 +3987,7 @@ function handlers.start(msg)
 	buildTouch()
 	setTouchSpecials(F.moveList)
 	KM.buildSpecialStrip(F.moveList)
-	bindPad()
+	KM.bindPad()
 end
 
 function handlers.entrance(msg)
@@ -4440,7 +4443,7 @@ function handlers.kd(msg)
 	phase("kd", { who = msg.who, target = target, severity = msg.severity })
 	cheer(1.6)
 	FX.shake = 1
-	sweeping = 3
+	Crowd.sweeping = 3
 	camMode = "wide"
 	letterbox(true)
 	local oppName = F.tape and F.tape.opp.name:upper() or "HE"
@@ -4635,7 +4638,7 @@ function handlers.final(msg)
 		text = "THE JUDGES' DECISION..."
 	end
 	camMode = "wide"
-	sweeping = 4
+	Crowd.sweeping = 4
 	letterbox(true)
 	hideCount()
 	overlay.Visible = false
