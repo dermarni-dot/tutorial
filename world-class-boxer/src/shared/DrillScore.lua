@@ -9,6 +9,8 @@
 --   j.input(id, down, t)  an input; returns what happened (the client's feedback) or nil
 --   j.advance(t)          the clock moved on (notes missed, a lift that went too far, rope passes)
 --   j.finish(t)           the segment is over at t (whatever was not done by then is not done)
+--   j.endsAt()            when the segment was over for the player (the client moves on then), nil
+--                         while that still depends on inputs to come
 --   j.result()            the segment's numbers; DrillScore.Aggregate turns them into the 0..1 score
 -- No Roblox services: it loads on both sides and in plain Luau tests.
 local DrillScore = {}
@@ -20,6 +22,31 @@ DrillScore.TAP_HOLD = TAP_HOLD
 DrillScore.RT_FLOOR = RT_FLOOR
 -- the most inputs one session keeps (an honest drill sends a few hundred at most)
 DrillScore.MAX_EVENTS = 1200
+-- the drill's pacing: what the client waits between one segment's end and the next one's start (the
+-- round banners, the rests, the beat after each combination / rep). Activities.lua waits exactly these,
+-- Training.DrillPlan writes each segment's sum into seg.gap and the replay holds the stream to it.
+DrillScore.WAIT = {
+	intro = 1.4, -- the first round's banner (ctx.round)
+	round = 1.0, -- a later round's / set's banner
+	rest = 3, -- the breather between rounds and sets (ctx.rest)
+	restLong = 3.5, -- the mitt coach's breather
+	restShort = 2.5, -- the rope's and the ladder's breather
+	combo = 0.7, -- after a heavy bag combination
+	shot = 1.0, -- after a power shot
+	react = 0.35, -- after a double-end cue
+	counter = 0.45, -- after a slip & counter
+	mitt = 0.75, -- after a called mitt combination
+	move = 0.3, -- after a shadow boxing cue
+	flow = 0.7, -- after a shadow boxing flow
+	lower = 0.55, -- lowering the weight after a rep
+	rerack = 0.25, -- the beat before the next rep
+	slam = 0.22, -- the ball driven down after a slam
+	catch = 0.35, -- the catch off the bounce
+	ladder = 0.6, -- after a ladder drill
+}
+-- an "@" may come this much before the plan's pacing allows (clock rounding); earlier, the segment
+-- starts at the allowed time and what the client did before it counts for nothing
+DrillScore.GAP_SLACK = 0.05
 -- the punches a power shot takes (POWER = a cross)
 local NEEDLE_IDS = { power = true, jab = true, cross = true, leadhook = true, rearhook = true, uppercut = true, overhand = true }
 
@@ -76,6 +103,9 @@ J.seq = function(seg, M)
 		local frac = (done == n and s.doneAt) and math.max(0, 1 - (s.doneAt - M) / seg.limit) or 0
 		return { done = done, n = n, wrong = s.wrong, presses = s.presses, frac = frac, complete = done == n, time = s.doneAt and (s.doneAt - M) or nil }
 	end
+	function s.endsAt()
+		return s.doneAt or endT
+	end
 	return s
 end
 
@@ -110,6 +140,9 @@ J.cue = function(seg, M)
 	function s.result()
 		return { answered = s.answered == true, correct = s.correct == true, early = s.early == true, rt = s.rt }
 	end
+	function s.endsAt()
+		return M + (s.answered and s.rt or seg.window)
+	end
 	return s
 end
 
@@ -132,6 +165,7 @@ J.counter = function(seg, M)
 			end
 			s.failed = true
 			s.closed = true
+			s.endT = t
 			return { step = 1, ok = false, id = id, early = id == seg.want }
 		end
 		if t - s.shown2 >= seg.cw then
@@ -139,6 +173,7 @@ J.counter = function(seg, M)
 			return nil
 		end
 		s.closed = true
+		s.endT = t
 		if id == "punch" then
 			s.rt = t - s.shown2
 			s.step = 3
@@ -158,6 +193,9 @@ J.counter = function(seg, M)
 	end
 	function s.result()
 		return { step = s.step, failed = s.failed == true, rt = s.rt }
+	end
+	function s.endsAt()
+		return s.endT or (s.step == 2 and s.shown2 + seg.cw) or (M + seg.window)
 	end
 	return s
 end
@@ -188,6 +226,7 @@ J.needle = function(seg, M)
 			timing = math.max(0, 0.3 - (d - 2.5 * w) * 1.5)
 		end
 		s.thrown = { id = id, pos = pos, d = d, timing = timing }
+		s.thrownAt = t
 		return s.thrown
 	end
 	function s.advance(t)
@@ -201,6 +240,9 @@ J.needle = function(seg, M)
 	end
 	function s.result()
 		return { thrown = s.thrown ~= nil, timing = s.thrown and s.thrown.timing or 0, d = s.thrown and s.thrown.d }
+	end
+	function s.endsAt()
+		return s.thrownAt or (M + seg.dur)
 	end
 	return s
 end
@@ -238,6 +280,9 @@ J.burst = function(seg, M)
 	function s.result()
 		return { count = s.count }
 	end
+	function s.endsAt()
+		return M + seg.dur
+	end
 	return s
 end
 
@@ -273,6 +318,7 @@ J.notes = function(seg, M)
 			return { id = id }
 		end
 		notes[best].judged = true
+		notes[best].at = t
 		local a = math.abs(bestDt)
 		local grade
 		if a < seg.perfectW then
@@ -293,6 +339,7 @@ J.notes = function(seg, M)
 		for i, n in ipairs(notes) do
 			if not n.judged and t - n.t > seg.hitW then
 				n.judged = true
+				n.at = n.t + seg.hitW
 				s.missed += 1
 				missed = missed or {}
 				table.insert(missed, i)
@@ -309,6 +356,14 @@ J.notes = function(seg, M)
 	end
 	function s.result()
 		return { perfect = s.perfect, good = s.good, off = s.off, stray = s.stray, count = #notes, hits = s.perfect + s.good }
+	end
+	-- the client moves on once every note is played or gone by
+	function s.endsAt()
+		local e = M
+		for _, n in ipairs(notes) do
+			e = math.max(e, n.at or (n.t + seg.hitW))
+		end
+		return e
 	end
 	return s
 end
@@ -399,6 +454,10 @@ J.lift = function(seg, M)
 		end
 		return { pressed = pressed, f = f, failed = s.failed == true, q = q, verdict = verdict }
 	end
+	-- (a rep waits for its press: nobody knows its end before that)
+	function s.endsAt()
+		return s.endT or (s.holdStart and s.holdStart + 1 / seg.speed) or nil
+	end
 	return s
 end
 
@@ -462,6 +521,9 @@ J.pace = function(seg, M)
 	function s.result()
 		return { inZone = s.inZone, duration = dur }
 	end
+	function s.endsAt()
+		return M + dur
+	end
 	return s
 end
 
@@ -507,6 +569,9 @@ J.breath = function(seg, M)
 	end
 	function s.result()
 		return { sync = s.sync, duration = dur }
+	end
+	function s.endsAt()
+		return M + dur
 	end
 	return s
 end
@@ -629,6 +694,10 @@ J.rope = function(seg, M)
 	function s.result()
 		return { clean = s.clean, done = s.done, doubles = s.doubles, jumps = seg.jumps }
 	end
+	-- the last jump judged (s.tau moves to each judgement)
+	function s.endsAt()
+		return s.done >= seg.jumps and s.tau or nil
+	end
 	return s
 end
 
@@ -687,6 +756,9 @@ J.lights = function(seg, M)
 	end
 	function s.result()
 		return { score = s.score, total = s.total, correct = s.correct, complete = s.idx > n, n = n, time = s.doneAt and (s.doneAt - M) or seg.limit }
+	end
+	function s.endsAt()
+		return s.doneAt or (M + seg.limit)
 	end
 	return s
 end
@@ -860,37 +932,90 @@ function DrillScore.Aggregate(plan, results)
 end
 
 -- the server's replay: the recorded stream (in time order; "@" starts the next segment) through the
--- plan's judges up to tEnd (the drill clock when the session was handed in). Returns the score and
--- the results.
+-- plan's judges up to tEnd (the drill clock when the session was handed in). The plan's pacing holds:
+-- segment i starts no sooner than seg.gap after segment i - 1 was over (the drill's start for the
+-- first) - an earlier "@" starts it at that moment instead, so a stream that skips the rounds' banners,
+-- the rests or the cues' lead-ins finds its inputs before the segment began (they count for nothing).
+-- Returns the score, the results and the pacing ({ late = segments started early, lost = their seconds }).
 function DrillScore.Replay(plan, events, tEnd)
+	local pacing = { late = 0, lost = 0 }
 	if type(plan) ~= "table" or type(plan.segs) ~= "table" then
-		return 0, {}
+		return 0, {}, pacing
 	end
 	local results, i, judge = {}, 0, nil
+	-- the segment is over at t: when it ended for the player (never later than t, the next marker)
 	local function close(t)
-		if judge then
-			judge.finish(t)
-			results[i] = judge.result()
-			judge = nil
+		if not judge then
+			return t
 		end
+		judge.finish(t)
+		results[i] = judge.result()
+		local e = judge.endsAt()
+		judge = nil
+		return (type(e) == "number" and e == e) and math.min(e, t) or t
 	end
+	local over = 0
 	for _, e in ipairs(events or {}) do
 		if e.t > tEnd then
 			break
 		end
 		if e.id == "@" then
-			close(e.t)
+			if i > 0 then
+				over = close(e.t)
+			end
 			i += 1
-			if not plan.segs[i] then
+			local seg = plan.segs[i]
+			if not seg then
 				break
 			end
-			judge = DrillScore.Judge(plan.segs[i], e.t)
+			local gap = tonumber(seg.gap) or 0
+			local M = e.t
+			local allowed = over + gap - DrillScore.GAP_SLACK
+			if M < allowed then
+				pacing.late += 1
+				pacing.lost += allowed - M
+				M = allowed
+			end
+			judge = DrillScore.Judge(seg, M)
 		elseif judge then
 			judge.input(e.id, e.down, e.t)
 		end
 	end
 	close(tEnd)
-	return DrillScore.Aggregate(plan, results), results
+	return DrillScore.Aggregate(plan, results), results, pacing
+end
+
+-- the least time the plan takes played perfectly: every gap plus each segment's shortest honest length
+-- (Main.server.lua: a session handed in under 80% of it is too quick to count)
+function DrillScore.MinTime(plan)
+	local total = 0
+	for _, seg in ipairs(type(plan) == "table" and type(plan.segs) == "table" and plan.segs or {}) do
+		total += tonumber(seg.gap) or 0
+		local j = seg.j
+		if j == "cue" then
+			total += RT_FLOOR
+		elseif j == "counter" then
+			total += 2 * RT_FLOOR
+		elseif j == "burst" then
+			total += seg.dur
+		elseif j == "notes" then
+			total += math.max(0, seg.lead + (#seg.lanes - 1) * seg.interval - seg.hitW)
+		elseif j == "lift" then
+			total += seg.lo / seg.speed
+		elseif j == "pace" then
+			total += seg.duration
+		elseif j == "breath" then
+			total += seg.breaths * (seg.inhale + seg.exhale)
+		elseif j == "rope" then
+			total += seg.jumps * TWO_PI / (11.5 * 1.9) -- the rope's top speed, every pass a double under
+		elseif j == "lights" then
+			total += seg.first + #seg.ids * RT_FLOOR
+			for k = 1, #seg.ids - 1 do
+				total += seg.delays[k] or 0
+			end
+		end
+	end
+	return total
 end
 
 return DrillScore

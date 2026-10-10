@@ -519,13 +519,26 @@ happen: one stamped ahead of the server's clock, more than 6 s behind it, or 3.5
 the session's quickest input is dropped, so a stream written after the fact counts for nothing. Presses
 with no drill behind them (no markers, the wrong keys, the wrong moments) score nothing, mashing costs
 points (a stray beat, a jump between rope passes), and a reaction faster than 0.1 s counts as jumping
-the cue: only playing the drill, in real time, earns a grade. Roadwork and swimming are measured on the
+the cue. The replay also holds the stream to the drill's own pacing: every segment of the plan carries
+its `gap`, the time the client waits between the previous segment's end and its start (the round
+banners, the rests between rounds and sets, the beat after each combination or rep, a cue's lead-in;
+`DrillScore.WAIT`, the same numbers `Activities.lua` waits). A segment the stream starts sooner is
+started at the allowed moment instead, so whatever was pressed before it counts for nothing, and a
+session handed in under 80% of the plan's quickest honest play (`plan.minTime`) is a sloppy session
+that never counts as a record. A client that keeps the pacing and plays perfectly saves only its
+reaction times: a perfect bot finishes the bench in 25 s (an honest perfect run takes 29 s), while one
+that skips the banners and rests scores nothing. Roadwork and swimming are measured on the
 server frame by frame. A step longer than a sprint can explain is a teleport, and more ground over 3 s
 than the humanoid's speed (+15%) covers is a speed hack; either earns nothing and holds the next
 checkpoint back for a second. Only a new closest approach to the next checkpoint (or pool end) counts
 as ground covered, and a checkpoint needs 70% of its leg run that way: circling at the start or running
-back and forth adds nothing. Par is the course at the humanoid's own speed, the pace bonus stops at
-1.05 x par, and a run (or swim) quicker than 0.75 x par is sloppy. `Training.Migrate` also repairs the
+back and forth adds nothing. Par is the course at the humanoid's own speed (the shortest line, each
+checkpoint taken at the edge of its 11-stud trigger), the pace (par / time) stops at 1.05, and a run
+(or swim) quicker than 0.75 x par is sloppy. Nobody runs par itself: the grade is
+`0.5 + 0.95 * (pace - 0.45) / 0.42` (clamped), so a clean line at full speed (pace ~0.85) is an S, a
+decent run (~0.76) an A and a wandering one (~0.65) a C. Stamina sets the speed (and so the time a
+session takes), not the grade; a session ended early is graded on the ground covered at that speed,
+no better than a B. `Training.Migrate` also repairs the
 career counters (records, titles, defenses, quality wins, sessions, gear condition, belts, regional,
 identity strings) so one corrupt save value can never block the join.
 

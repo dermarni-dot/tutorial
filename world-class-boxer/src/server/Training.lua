@@ -9,6 +9,7 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
 local Catalog = require(Shared:WaitForChild("Catalog"))
 local Looks = require(Shared:WaitForChild("Looks"))
+local DrillScore = require(Shared:WaitForChild("DrillScore"))
 
 local Training = {}
 local rng = Random.new()
@@ -2000,6 +2001,8 @@ end
 -- time limit, segment by segment. The client plays exactly this plan and the server replays the
 -- client's inputs against its own copy, so the session quality never comes from the client.
 -- (The numbers are the drills' own: Activities.lua draws nothing that changes a score.)
+-- Each segment's gap is the pacing the client plays it with (DrillScore.WAIT: the round banners, the
+-- rests, the beat after each combination or rep, a cue's lead-in): the replay starts no segment sooner.
 function Training.DrillPlan(act, lv, params)
 	local r = Random.new()
 	local function pick(list)
@@ -2020,6 +2023,7 @@ function Training.DrillPlan(act, lv, params)
 	local kind = act.minigame
 	local segs = {}
 	local plan = { kind = kind, segs = segs }
+	local W = DrillScore.WAIT
 	lv = math.max(1, math.floor(tonumber(lv) or 1))
 	params = type(params) == "table" and params or {}
 	if kind == "combo" then
@@ -2038,25 +2042,26 @@ function Training.DrillPlan(act, lv, params)
 			table.insert(pool, { "jab", "overhand", "leadhook*" })
 			table.insert(pool, { "leadhook*", "leadhook", "cross", "uppercut" })
 		end
-		for _ = 1, 4 do
+		for k = 1, 4 do
 			local combo = pick(pool)
 			local ids, body = {}, {}
 			for i, c in ipairs(combo) do
 				ids[i] = (c:gsub("%*", ""))
 				body[i] = c:find("%*") ~= nil
 			end
-			table.insert(segs, { j = "seq", ids = ids, body = body, limit = 1.3 + #combo * 0.55 - lv * 0.05 })
+			table.insert(segs, { j = "seq", ids = ids, body = body, limit = 1.3 + #combo * 0.55 - lv * 0.05, gap = k == 1 and W.intro or W.combo })
 		end
 		local shots = lv >= 3 and 4 or 3
 		for s = 1, shots do
-			table.insert(segs, { j = "needle", c = 0.66 + r:NextNumber() * 0.18, w = math.max(0.04, 0.065 - lv * 0.004), sweep = 0.9 + lv * 0.08 + s * 0.05, dur = 4.5 })
+			table.insert(segs, { j = "needle", c = 0.66 + r:NextNumber() * 0.18, w = math.max(0.04, 0.065 - lv * 0.004), sweep = 0.9 + lv * 0.08 + s * 0.05, dur = 4.5,
+				gap = s == 1 and (W.combo + W.rest + W.round) or W.shot })
 		end
-		table.insert(segs, { j = "burst", dur = 6, target = 4.4 + lv * 0.2 })
+		table.insert(segs, { j = "burst", dur = 6, target = 4.4 + lv * 0.2, gap = W.shot + W.rest + W.round })
 	elseif kind == "rhythm" then
 		local baseBpm = ({ 112, 140, 168, 196 })[lv] or 140
 		local rounds = { { name = "ALTERNATING RHYTHM", bpm = baseBpm, pattern = "alt" },
 			{ name = lv >= 3 and "DOUBLES & TRIPLETS" or "DOUBLES", bpm = math.floor(baseBpm * 1.15 + 0.5), pattern = lv >= 3 and "mixed" or "doubles" } }
-		for _, rd in ipairs(rounds) do
+		for ri, rd in ipairs(rounds) do
 			local interval = 60 / rd.bpm
 			local count = math.clamp(math.floor(10 / interval), 16, 40)
 			local lanes = {}
@@ -2080,7 +2085,8 @@ function Training.DrillPlan(act, lv, params)
 					hand = hand == "L" and "R" or "L"
 				end
 			end
-			table.insert(segs, { j = "notes", name = rd.name, bpm = rd.bpm, lanes = lanes, interval = interval, lead = 1.2, hitW = 0.22, perfectW = 0.06, goodW = 0.13 })
+			table.insert(segs, { j = "notes", name = rd.name, bpm = rd.bpm, lanes = lanes, interval = interval, lead = 1.2, hitW = 0.22, perfectW = 0.06, goodW = 0.13,
+				gap = ri == 1 and W.intro or (W.rest + W.round) })
 		end
 	elseif kind == "reaction" then
 		local window = ({ 0.95, 0.8, 0.68, 0.56 })[lv] or 0.8
@@ -2090,11 +2096,14 @@ function Training.DrillPlan(act, lv, params)
 			table.insert(options, "roll")
 			table.insert(defs, "roll")
 		end
-		for _ = 1, 8 do
-			table.insert(segs, { j = "cue", want = pick(options), window = window, delay = 0.45 + r:NextNumber() * 0.9 })
+		for k = 1, 8 do
+			local delay = 0.45 + r:NextNumber() * 0.9
+			table.insert(segs, { j = "cue", want = pick(options), window = window, delay = delay, gap = (k == 1 and W.intro or W.react) + delay })
 		end
-		for _ = 1, 5 do
-			table.insert(segs, { j = "counter", want = pick(defs), window = window, cw = window * 0.9 + 0.2, delay = 0.5 + r:NextNumber() * 0.7 })
+		for k = 1, 5 do
+			local delay = 0.5 + r:NextNumber() * 0.7
+			table.insert(segs, { j = "counter", want = pick(defs), window = window, cw = window * 0.9 + 0.2, delay = delay,
+				gap = (k == 1 and (W.react + W.rest + W.round) or W.counter) + delay })
 		end
 	elseif kind == "mitts" then
 		local list = {}
@@ -2107,31 +2116,34 @@ function Training.DrillPlan(act, lv, params)
 			end
 		end
 		for rd = 1, 2 do
-			for _ = 1, 4 do
+			for k = 1, 4 do
 				local c = pick(list)
-				table.insert(segs, { j = "seq", g = rd, name = c.name, ids = table.clone(c.keys), limit = math.max(1.6, 1.4 + #c.keys * 0.55 - lv * 0.12) * (rd == 2 and 0.85 or 1) })
+				local gap = k > 1 and W.mitt or (rd == 1 and W.intro or (W.mitt + W.restLong + W.round))
+				table.insert(segs, { j = "seq", g = rd, name = c.name, ids = table.clone(c.keys), limit = math.max(1.6, 1.4 + #c.keys * 0.55 - lv * 0.12) * (rd == 2 and 0.85 or 1), gap = gap })
 			end
 		end
 	elseif kind == "shadow" then
 		local window = ({ 1.25, 1.0, 0.8 })[lv] or 1.0
 		local prompts = { "F", "B", "L", "R", "slipL", "slipR", "roll", "jab", "cross", "leadhook" }
-		for _ = 1, 8 do
-			table.insert(segs, { j = "cue", want = pick(prompts), window = window, delay = 0.15 + r:NextNumber() * 0.3 })
+		for k = 1, 8 do
+			local delay = 0.15 + r:NextNumber() * 0.3
+			table.insert(segs, { j = "cue", want = pick(prompts), window = window, delay = delay, gap = (k == 1 and W.intro or W.move) + delay })
 		end
-		for _, flow in ipairs(shuffled(Config.ShadowFlows, 3)) do
+		for fi, flow in ipairs(shuffled(Config.ShadowFlows, 3)) do
 			local len = lv <= 1 and 3 or (lv == 2 and (r:NextNumber() < 0.5 and 3 or 4) or 4)
 			local seq = {}
 			for k = 1, math.min(len, #flow) do
 				seq[k] = flow[k]
 			end
-			table.insert(segs, { j = "seq", ids = seq, limit = 1.4 + #seq * 0.75 - (lv - 1) * 0.2 })
+			table.insert(segs, { j = "seq", ids = seq, limit = 1.4 + #seq * 0.75 - (lv - 1) * 0.2, gap = fi == 1 and (W.move + W.rest + W.round) or W.flow })
 		end
 	elseif kind == "reps" then
 		for set = 1, 2 do
 			for rep = 1, 5 do
 				local width = math.max(0.08, (0.24 - rep * 0.012 + lv * 0.01) * (set == 2 and 0.78 or 1))
 				local lo = math.clamp(0.58 + r:NextNumber() * 0.2, 0.5, 0.95 - width)
-				table.insert(segs, { j = "lift", mode = "rep", set = set, rep = rep, lo = lo, width = width, speed = (0.55 + rep * 0.03) * (set == 2 and 1.08 or 1) })
+				local gap = rep > 1 and (W.lower + W.rerack) or (set == 1 and W.intro or (W.lower + W.rerack + W.rest + W.round))
+				table.insert(segs, { j = "lift", mode = "rep", set = set, rep = rep, lo = lo, width = width, speed = (0.55 + rep * 0.03) * (set == 2 and 1.08 or 1), gap = gap })
 			end
 		end
 	elseif kind == "medball" then
@@ -2139,21 +2151,21 @@ function Training.DrillPlan(act, lv, params)
 		for rep = 1, slams do
 			local width = math.max(0.1, 0.22 - rep * 0.008 + lv * 0.012)
 			local lo = math.clamp(0.62 + r:NextNumber() * 0.16, 0.5, 0.96 - width)
-			table.insert(segs, { j = "lift", mode = "slam", rep = rep, lo = lo, width = width, speed = 0.85 + rep * 0.03 + lv * 0.05 })
+			table.insert(segs, { j = "lift", mode = "slam", rep = rep, lo = lo, width = width, speed = 0.85 + rep * 0.03 + lv * 0.05, gap = rep == 1 and W.intro or (W.slam + W.catch) })
 		end
 		local bpm = ({ 64, 76, 88, 100 })[math.clamp(lv, 1, 4)]
 		local lanes = {}
 		for i = 1, 14 + math.min(lv, 4) * 2 do
 			lanes[i] = (i % 2 == 1) and "L" or "R"
 		end
-		table.insert(segs, { j = "notes", bpm = bpm, lanes = lanes, interval = 60 / bpm, lead = 1.2, hitW = 0.25, perfectW = 0.12 })
+		table.insert(segs, { j = "notes", bpm = bpm, lanes = lanes, interval = 60 / bpm, lead = 1.2, hitW = 0.25, perfectW = 0.12, gap = W.slam + W.catch + W.rest + W.round })
 	elseif kind == "pace" then
 		local shrink = (lv - 1) * 0.02
 		local phases = {}
 		for i, ph in ipairs({ { 0.3, 0.5, "WARM-UP" }, { 0.6, 0.82, "SPRINT!" }, { 0.35, 0.55, "RECOVER" }, { 0.66, 0.88, "ALL OUT!" } }) do
 			phases[i] = { ph[1] + shrink, ph[2] - shrink, ph[3] }
 		end
-		table.insert(segs, { j = "pace", duration = 28, phases = phases, v0 = 0.2, kick = 0.085, decay = 0.2 })
+		table.insert(segs, { j = "pace", duration = 28, phases = phases, v0 = 0.2, kick = 0.085, decay = 0.2, gap = W.intro })
 	elseif kind == "ladder" then
 		local available = {}
 		for _, d in ipairs(Config.LadderDrills) do
@@ -2181,11 +2193,14 @@ function Training.DrillPlan(act, lv, params)
 				for k = 1, #ids do
 					delays[k] = 0.12 + r:NextNumber() * 0.2
 				end
-				table.insert(segs, { j = "lights", name = i == 1 and (tpl.name .. " (LIGHTS)") or "RANDOM REACTION", ids = ids, delays = delays, limit = 14, first = 0.2 })
+				table.insert(segs, { j = "lights", name = i == 1 and (tpl.name .. " (LIGHTS)") or "RANDOM REACTION", ids = ids, delays = delays, limit = 14, first = 0.2,
+					gap = i == 1 and W.intro or (W.ladder + W.rest + W.round) })
 			end
 		else
-			for _, d in ipairs(shuffled(available, 4)) do
-				table.insert(segs, { j = "seq", name = d.name, ids = table.clone(d.steps), limit = #d.steps * 0.55 + 1 })
+			-- (a breather after the second drill)
+			for p, d in ipairs(shuffled(available, 4)) do
+				local gap = p == 1 and W.intro or (W.ladder + (p == 3 and W.restShort or 0) + W.round)
+				table.insert(segs, { j = "seq", name = d.name, ids = table.clone(d.steps), limit = #d.steps * 0.55 + 1, gap = gap })
 			end
 		end
 	elseif kind == "rope" then
@@ -2216,13 +2231,15 @@ function Training.DrillPlan(act, lv, params)
 				end
 				cues[k] = cue
 			end
-			table.insert(segs, { j = "rope", name = ph.name, mode = ph.mode, jumps = jumps, omega = ph.mode == "speed" and 7.8 or 6.5, cues = cues })
+			table.insert(segs, { j = "rope", name = ph.name, mode = ph.mode, jumps = jumps, omega = ph.mode == "speed" and 7.8 or 6.5, cues = cues, gap = i == 1 and W.intro or (W.restShort + W.round) })
 		end
 	elseif kind == "hold" then
-		table.insert(segs, { j = "breath", breaths = 5, inhale = 2.6, exhale = 2.6 })
+		table.insert(segs, { j = "breath", breaths = 5, inhale = 2.6, exhale = 2.6, gap = W.intro })
 	else
 		return nil
 	end
+	-- the quickest the drill can honestly be played (FinishActivity: a session well under it is too quick)
+	plan.minTime = math.floor(DrillScore.MinTime(plan) * 10) / 10
 	return plan
 end
 

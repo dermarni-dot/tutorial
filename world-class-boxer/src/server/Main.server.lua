@@ -98,19 +98,25 @@ for _, def in ipairs(MapBuilder.StationDefs) do
 	STATION[def.id] = def
 end
 local PROP_FOR = { bench = "bench", deadlift = "deadlift", squat = "squat", curl = "curl", rope = "rope", row = "row", medball = "medball" }
--- shortest believable time for each minigame (anything faster is treated as a sloppy session)
-local MIN_TIME = { combo = 9, rhythm = 9, reaction = 9, mitts = 9, shadow = 9, reps = 9, pace = 11, ladder = 7, rope = 9, hold = 5, medball = 9 }
 -- The drill's quality is the server's: StartActivity draws the drill (Training.DrillPlan) and the client
 -- sends every input its drill takes (ActivityInput: id, down, t on the drill clock; "@" when a segment
 -- starts). FinishActivity replays that stream through DrillScore against the server's own plan - the
 -- client's score is ignored. Inputs must come in as they happen: one stamped ahead of the server's
 -- clock, more than DRILL_MAX_LAG s behind it, or DRILL_LAG_SPREAD s further behind than the session's
--- quickest, is dropped (a stream made up afterwards counts for nothing).
+-- quickest, is dropped (a stream made up afterwards counts for nothing). The replay holds the stream
+-- to the plan's own pacing (seg.gap: banners, rests, lead-ins): a segment started early starts late.
 local DRILL_MAX_LAG, DRILL_LAG_SPREAD = 6, 3.5
+-- a drill handed in quicker than this share of the plan's quickest honest play (plan.minTime) is a
+-- sloppy session that never counts as a record
+local DRILL_MIN_SHARE = 0.8
 -- roadwork / swim: a run quicker than this share of par is sloppy (never a record), the pace bonus
 -- stops at PACE_CAP (par is the humanoid's own speed over the course), and the ground covered over
 -- SPEED_WINDOW s may not beat that speed (+15%)
 local COURSE_MIN_SHARE, PACE_CAP, SPEED_WINDOW = 0.75, 1.05, 3
+-- the grade from the pace (par / time): D at PACE_D and below, S from about PACE_S. Nobody runs par
+-- itself (the start, the turns, a wall touched, a checkpoint passed close): a clean line at full speed
+-- is ~0.85, a decent run ~0.75 (A), a wandering one ~0.65 (C)
+local PACE_D, PACE_S = 0.45, 0.87
 local ActivityInput = Instance.new("RemoteEvent")
 ActivityInput.Name = "ActivityInput"
 ActivityInput.Parent = remotes
@@ -603,10 +609,13 @@ local function finishActivity(player, profile, token, score, stats)
 			endSession(player)
 			return { ok = false, err = s.kind == "course" and "You barely left the start line - session cancelled." or "Swim at least one length - session cancelled." }
 		end
-		-- par: the course at the humanoid's own speed; nobody beats it by more than the speed allows
-		local par = (s.courseLen or 50) / math.max(1, s.speedCap or 16)
-		local pace = s.doneAt and math.min(PACE_CAP, par / math.max(1, s.doneAt - s.start)) or 0.8
-		quality = s.kind == "course" and math.clamp(0.55 + pace * 0.55, 0.5, 1.4) or math.clamp(0.55 + pace * 0.5, 0.5, 1.35)
+		-- par: the course at the humanoid's own speed; nobody beats it by more than the speed allows (a
+		-- session ended early: the ground covered at that speed, graded no better than a B)
+		local speed = math.max(1, s.speedCap or 16)
+		local par = (s.courseLen or 50) / speed
+		local pace = s.doneAt and math.min(PACE_CAP, par / math.max(1, s.doneAt - s.start)) or math.min(0.7, (s.dist or 0) / speed / math.max(1, elapsed))
+		quality = 0.5 + 0.95 * math.clamp((pace - PACE_D) / (PACE_S - PACE_D), 0, 1)
+		watch.pace = math.floor(pace * 1000 + 0.5) / 1000
 		opts.scale = done
 		opts.energyScale = done
 		watch.par = math.floor(par * 10 + 0.5) / 10
@@ -614,15 +623,18 @@ local function finishActivity(player, profile, token, score, stats)
 			quality = 0.4
 			tooFast = true
 		end
-	elseif elapsed < (MIN_TIME[s.kind] or 6) then
+	elseif elapsed < math.max(5, DRILL_MIN_SHARE * (s.plan and tonumber(s.plan.minTime) or 0)) then
 		quality = 0.4
 		tooFast = true -- counts as a sloppy session, but never as a record
+		watch.minTime = s.plan and s.plan.minTime
 	elseif s.plan then
 		-- the drill clock when the client handed the session in (its inputs reach us lagMin behind it)
-		local perf = DrillScore.Replay(s.plan, s.events, elapsed - (s.lagMin or 0))
+		local perf, _, pacing = DrillScore.Replay(s.plan, s.events, elapsed - (s.lagMin or 0))
 		quality = 0.5 + 0.95 * perf
 		watch.perf = math.floor(perf * 1000 + 0.5) / 1000
 		watch.events, watch.dropped = #s.events, s.dropped
+		-- segments the stream started before the plan's pacing allowed (an honest client: 0)
+		watch.late, watch.lost = pacing.late, math.floor(pacing.lost * 100 + 0.5) / 100
 	end
 	local result
 	if act.recovery then

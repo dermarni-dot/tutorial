@@ -33,6 +33,8 @@ local Catalog = require(Shared:WaitForChild("Catalog"))
 local UI = require(Shared:WaitForChild("UI"))
 -- the drills' judges: the same code scores the session on the server from this client's inputs
 local DrillScore = require(Shared:WaitForChild("DrillScore"))
+-- the pacing between a drill's segments: the server's replay holds the stream to the same numbers
+local WAIT = DrillScore.WAIT
 local State = require(script.Parent:WaitForChild("State"))
 local GymVisuals = require(script.Parent:WaitForChild("GymVisuals"))
 local BodyMap = require(script.Parent:WaitForChild("BodyMap"))
@@ -1141,7 +1143,7 @@ local function newContext(info)
 		ctx.tiles.set.val.Text = n > 1 and string.format("%d/%d", i, n) or "1/1"
 		ctx.fillTile("set", i / math.max(1, n))
 		ctx.refreshLive()
-		sec = sec or (i == 1 and 1.4 or 1.0)
+		sec = sec or (i == 1 and WAIT.intro or WAIT.round)
 		if sec <= 0 then
 			return not ctx.cancelled
 		end
@@ -1548,11 +1550,11 @@ GAMES.combo = function(ctx)
 		ctx.stats(string.format("Combo %d/%d%s%d clean%s%d punches", r, combos, DOT, clean, DOT, punches))
 		ctx.progress(r / combos)
 		bagScreen(ctx, string.format("COMBO %d/%d\n%d CLEAN", r, combos, clean))
-		if not ctx.wait(0.7) then
+		if not ctx.wait(WAIT.combo) then
 			return nil
 		end
 	end
-	if not ctx.rest(3, "ROUND 1 DONE", string.format("%d/%d clean combinations%s%d punches", clean, combos, DOT, punches)) then
+	if not ctx.rest(WAIT.rest, "ROUND 1 DONE", string.format("%d/%d clean combinations%s%d punches", clean, combos, DOT, punches)) then
 		return nil
 	end
 
@@ -1630,11 +1632,11 @@ GAMES.combo = function(ctx)
 		end
 		ctx.stats(string.format("Shot %d/%d%sMax %s lbs", s, shots, DOT, fmtInt(maxLbs)))
 		ctx.progress(s / shots)
-		if not ctx.wait(1.0) then
+		if not ctx.wait(WAIT.shot) then
 			return nil
 		end
 	end
-	if not ctx.rest(3, "ROUND 2 DONE", string.format("Max power %s lbs", fmtInt(maxLbs))) then
+	if not ctx.rest(WAIT.rest, "ROUND 2 DONE", string.format("Max power %s lbs", fmtInt(maxLbs))) then
 		return nil
 	end
 
@@ -1805,7 +1807,7 @@ GAMES.rhythm = function(ctx)
 		hitsAll += res.hits
 		notesAll += res.count
 		if ri < #rounds then
-			if not ctx.rest(3, "ROUND 1 DONE", string.format("%d/%d on the beat%sbest streak %d", res.hits, res.count, DOT, bestStreak)) then
+			if not ctx.rest(WAIT.rest, "ROUND 1 DONE", string.format("%d/%d on the beat%sbest streak %d", res.hits, res.count, DOT, bestStreak)) then
 				return nil
 			end
 		end
@@ -1918,11 +1920,11 @@ GAMES.reaction = function(ctx)
 		end
 		ctx.stats(string.format("%d/%d%savg %d ms", hits, i, DOT, avgMs()))
 		ctx.progress(i / cues)
-		if not ctx.wait(0.35) then
+		if not ctx.wait(WAIT.react) then
 			return nil
 		end
 	end
-	if not ctx.rest(3, "ROUND 1 DONE", string.format("%d/%d reactions%savg %d ms", hits, cues, DOT, avgMs())) then
+	if not ctx.rest(WAIT.rest, "ROUND 1 DONE", string.format("%d/%d reactions%savg %d ms", hits, cues, DOT, avgMs())) then
 		return nil
 	end
 
@@ -1988,7 +1990,7 @@ GAMES.reaction = function(ctx)
 		end
 		ctx.stats(string.format("Counters %d/%d%savg %d ms", counters, i, DOT, avgMs()))
 		ctx.progress(i / cues2)
-		if not ctx.wait(0.45) then
+		if not ctx.wait(WAIT.counter) then
 			return nil
 		end
 	end
@@ -2108,7 +2110,7 @@ GAMES.mitts = function(ctx)
 			end
 			ctx.stats(string.format("Combo %d/%d%s%d clean", (rd - 1) * perRound + r, perRound * rounds, DOT, clean))
 			ctx.progress(r / perRound)
-			if not ctx.wait(0.75) then
+			if not ctx.wait(WAIT.mitt) then
 				return nil
 			end
 		end
@@ -2117,7 +2119,7 @@ GAMES.mitts = function(ctx)
 			if tip then
 				say(tip)
 			end
-			if not ctx.rest(3.5, "ROUND 1 DONE", string.format("%d/%d clean combos", clean, perRound), tip) then
+			if not ctx.rest(WAIT.restLong, "ROUND 1 DONE", string.format("%d/%d clean combos", clean, perRound), tip) then
 				return nil
 			end
 		end
@@ -2215,11 +2217,11 @@ GAMES.shadow = function(ctx)
 		mirror(string.format("FORM %d%%", form))
 		ctx.stats(string.format("Move %d/%d%sform %d%%", i, n, DOT, form))
 		ctx.progress(i / n)
-		if not ctx.wait(0.3) then
+		if not ctx.wait(WAIT.move) then
 			return nil
 		end
 	end
-	if not ctx.rest(3, "ROUND 1 DONE", string.format("%d/%d moves on cue", movesHit, n)) then
+	if not ctx.rest(WAIT.rest, "ROUND 1 DONE", string.format("%d/%d moves on cue", movesHit, n)) then
 		return nil
 	end
 
@@ -2271,7 +2273,7 @@ GAMES.shadow = function(ctx)
 		mirror(string.format("FLOW %d/%d\nFORM %d%%", ci, chains, math.floor(score2 / ci * 100)))
 		ctx.stats(string.format("Flow %d/%d%s%d clean", ci, chains, DOT, flowsClean))
 		ctx.progress(ci / chains)
-		if not ctx.wait(0.7) then
+		if not ctx.wait(WAIT.flow) then
 			return nil
 		end
 	end
@@ -2408,11 +2410,11 @@ GAMES.reps = function(ctx)
 			-- lower the weight
 			ctx.intensity = 0.5
 			local t0 = os.clock()
-			while os.clock() - t0 < 0.55 do
+			while os.clock() - t0 < WAIT.lower do
 				if ctx.cancelled then
 					return nil
 				end
-				local k = (os.clock() - t0) / 0.55
+				local k = (os.clock() - t0) / WAIT.lower
 				ctx.drive(f * (1 - k))
 				fill.Size = UDim2.fromScale(f * (1 - k), 1)
 				RunService.Heartbeat:Wait()
@@ -2422,7 +2424,7 @@ GAMES.reps = function(ctx)
 			ctx.setRep(r, reps, setGood)
 			ctx.stats(setFails > 0 and string.format("%d spotted", setFails) or nil)
 			ctx.progress(r / reps)
-			if not ctx.wait(0.25) then
+			if not ctx.wait(WAIT.rerack) then
 				return nil
 			end
 		end
@@ -2433,7 +2435,7 @@ GAMES.reps = function(ctx)
 		ctx.intensity = nil
 		if set < sets then
 			local left = math.max(0, math.floor(10 - rpe))
-			if not ctx.rest(3, string.format("SET %d DONE%s%s", set, DOT, rpeText(rpe)), string.format("%d/%d good reps%s%s", setGood, reps, DOT, left > 0 and (left .. " more in the tank") or "nothing left in the tank")) then
+			if not ctx.rest(WAIT.rest, string.format("SET %d DONE%s%s", set, DOT, rpeText(rpe)), string.format("%d/%d good reps%s%s", setGood, reps, DOT, left > 0 and (left .. " more in the tank") or "nothing left in the tank")) then
 				return nil
 			end
 		else
@@ -2510,11 +2512,11 @@ GAMES.medball = function(ctx)
 		end
 		-- the slam: drive down fast, the ball hits the pad
 		local t0 = os.clock()
-		while os.clock() - t0 < 0.22 do
+		while os.clock() - t0 < WAIT.slam do
 			if ctx.cancelled then
 				return nil
 			end
-			ctx.drive(f * (1 - (os.clock() - t0) / 0.22))
+			ctx.drive(f * (1 - (os.clock() - t0) / WAIT.slam))
 			RunService.Heartbeat:Wait()
 		end
 		ctx.drive(0)
@@ -2522,14 +2524,14 @@ GAMES.medball = function(ctx)
 		fill.Size = UDim2.fromScale(0, 1)
 		ctx.setRep(r, slams, cleanSlams)
 		ctx.progress(r / slams)
-		if not ctx.wait(0.35) then
+		if not ctx.wait(WAIT.catch) then
 			return nil
 		end
 		-- catch it off the bounce
 		ctx.impact(-0.3, 0)
 	end
 	ctx.intensity = nil
-	if not ctx.rest(3, "SLAMS DONE", string.format("%d/%d clean slams", cleanSlams, slams)) then
+	if not ctx.rest(WAIT.rest, "SLAMS DONE", string.format("%d/%d clean slams", cleanSlams, slams)) then
 		return nil
 	end
 
@@ -2874,11 +2876,11 @@ GAMES.ladder = function(ctx)
 			ctx.feedback("OUT OF TIME", T.red)
 		end
 		ctx.progress(1)
-		if not ctx.wait(0.6) then
+		if not ctx.wait(WAIT.ladder) then
 			return nil
 		end
 		if p < #drills and ((smart and p == 1) or (not smart and p == 2)) then
-			if not ctx.rest(smart and 3 or 2.5, string.format("DRILL %d DONE", p), string.format("%d/%d drills completed", completed, p)) then
+			if not ctx.rest(smart and WAIT.rest or WAIT.restShort, string.format("DRILL %d DONE", p), string.format("%d/%d drills completed", completed, p)) then
 				return nil
 			end
 		end
@@ -3003,7 +3005,7 @@ GAMES.rope = function(ctx)
 		if phI < #phases then
 			ctx.attr("RopeSpin", 0)
 			ctx.attr("RopeFoot", nil)
-			if not ctx.rest(2.5, ph.name .. " DONE", string.format("%d/%d clean%sbest streak %d", clean, attempts, DOT, bestStreak)) then
+			if not ctx.rest(WAIT.restShort, ph.name .. " DONE", string.format("%d/%d clean%sbest streak %d", clean, attempts, DOT, bestStreak)) then
 				return nil
 			end
 		end
