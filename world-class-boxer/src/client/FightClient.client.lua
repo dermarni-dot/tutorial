@@ -4706,7 +4706,8 @@ end)
 -- the town pace is a walk (Config.TownWalkSpeed). A window that froze the player and gives him back the old
 -- default 16 when it closes (the barber, the creator, the services) leaves him walking, not running: a moment
 -- after any write of 16, if nothing else owns the speed (a sprint, a fight, an activity), the walk is put back
-do
+-- (inside a function: this chunk is at Luau's 200-local limit)
+task.spawn(function()
 	local function watchPace(char)
 		local hum = char:WaitForChild("Humanoid", 10)
 		if not hum then
@@ -4726,6 +4727,6 @@ do
 	end
 	player.CharacterAdded:Connect(watchPace)
 	if player.Character then
-		task.spawn(watchPace, player.Character)
+		watchPace(player.Character)
 	end
-end
+end)
