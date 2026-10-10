@@ -665,7 +665,10 @@ end
 
 POSE.stretch = function(p, rig, t, d, w, model, dt)
 	local phase = floor((t + rig.phase) / 4) % 3
-	local k = smooth(min(1, ((t + rig.phase) % 4) / 0.8))
+	-- each stretch eases in over 0.8 s and back out over its last 0.8 s, so the next one starts from the
+	-- plain stance (no snap between them: the quad stretch's lifted foot dropped to the floor in one frame)
+	local x = (t + rig.phase) % 4
+	local k = smooth(x / 0.8) * (1 - smooth((x - 3.2) / 0.8))
 	stand(p, rig, t, dt, 0.5, 0)
 	if phase == 0 then
 		-- arm across the chest

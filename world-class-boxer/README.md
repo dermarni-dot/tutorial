@@ -391,6 +391,9 @@ Everything is procedural, driven on each client by `Animator.client.lua` and the
 - **Get-ups:** staged for each kind of fall.
 - **Gym poses:** every exercise and flex has its own pose, and coaches, cornermen and members train
   around you.
+- **Crowds:** distant and off-screen figures update less often. A background figure that stands still
+  and moves slowly updates at half rate from 45 studs and at a sixth of the rate off screen. Walkers,
+  punches in flight, fighters and your own boxer are never slowed this way.
 
 ## Interface
 

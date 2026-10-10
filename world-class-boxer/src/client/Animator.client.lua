@@ -67,6 +67,7 @@ local TAGS = { "Fighter", "Trainee", "Ambient", "Preview", "Referee" }
 -- player characters walk / run / jump with the procedural gait (false = Roblox's default Animate)
 local DRIVE_PLAYERS = true
 local rigs = {}
+local nextSlot = 0 -- (the last rig's turn in the reduced-rate frame cycle: setup)
 Gym.init(rigs)
 R.rigs = rigs -- read-only handle for tools / tests (the animation lab inspects foot states)
 local POSE = Gym.POSE
@@ -189,7 +190,7 @@ local function setup(model)
 		guardT = 0, prevGuard = nil, poseT = 0, countT = 0,
 		breathPhase = 0, nextAuto = 0, autoId = 0, sbCount = 0, combo = nil, comboI = 0,
 		gesture = nil, nextGesture = 3, watch = nil, watchAct = nil,
-		lastT = os.clock(), clock = 0, timeScale = 1, nextGeo = 0, nextResolve = 0, frameSkip = 0, impactT = -10,
+		lastT = os.clock(), clock = 0, timeScale = 1, nextGeo = 0, nextResolve = 0, frameSkip = 0, slot = 0, impactT = -10,
 		koTilt = (seed % 7) / 7 - 0.5, partner = nil, nextPartner = 0, curlCycle = 0, lod = 3,
 		guardL = nil, guardR = nil, guardSink = 0, gl = { 0, 0, 0 }, gr = { 0, 0, 0 },
 	}
@@ -213,6 +214,10 @@ local function setup(model)
 	rig.isPlayer = Players:GetPlayerFromCharacter(model) ~= nil
 	R.resolveJoints(rig)
 	R.computeGeo(rig)
+	-- (its turn when it is a still figure drawn at a reduced rate: a crowd that streamed in together spreads
+	-- evenly over the frames instead of updating all on one - an even cost, not a spike every other frame)
+	nextSlot += 1
+	rig.slot = nextSlot
 	rigs[model] = rig
 	if BodyFX then
 		BodyFX.Track(model)
@@ -1070,8 +1075,10 @@ end
 -- cost of the per-frame update (rigs + FX), readable by profilers / tests: R.stats
 local stats = { frames = 0, total = 0, max = 0, rigs = 0 }
 R.stats = stats
+local frameNo = 0
 RunService.PreSimulation:Connect(function(dt)
 	local t = os.clock()
+	frameNo += 1
 	dt = min(dt, 0.1)
 	cam = workspace.CurrentCamera
 	local camPos = cam and cam.CFrame.Position or Vector3.zero
@@ -1115,7 +1122,29 @@ RunService.PreSimulation:Connect(function(dt)
 			step = max(step, 4)
 		end
 		rig.frameSkip += 1
-		if rig.frameSkip < step then
+		local skip = rig.frameSkip < step
+		if not skip then
+			rig.frameSkip = 0
+		end
+		-- A background figure that stands its ground and moves slowly - between combinations at the bag,
+		-- curling, skipping, stretching, watching from the apron - is drawn at half rate past the near band
+		-- (under a tenth of the screen's height there: its motion reads the same, the gym's crowd costs a
+		-- quarter less) and at a sixth off screen (only its shadow or a limb at the frame's edge can show).
+		-- Never a walker (its root glides on every frame: planted feet re-solved on every other one shuffle
+		-- with it, 3x the slide), never a punch, slip or step in flight or the treadmill run (a fast limb
+		-- moves twice as far between two updates), never a fighter or your own character. The figures slowed
+		-- here take turns by their slot (an even cost, never the whole crowd on one frame); every other rig
+		-- keeps the cadence above
+		if not rig.isFighter and not rig.isLocal then
+			local lo, pun = rig.loco, rig.pun
+			if lo.speed < 0.5 and abs(lo.yawRate) < 0.5 and not (pun.L or pun.R or rig.act or rig.autoAct) and rig.a.Pose ~= "run" then
+				local slow = onScreen and (dist > NEAR and 2 or 1) or 6
+				if slow > step then
+					skip = (frameNo + rig.slot) % slow ~= 0
+				end
+			end
+		end
+		if skip then
 			-- (a player character's own Animate tracks write the joints every frame: a skipped frame holds
 			-- our last pose instead of flashing Roblox's walk between ours)
 			if rig.isPlayer and rig.outT and not rig.released then
@@ -1129,7 +1158,6 @@ RunService.PreSimulation:Connect(function(dt)
 			end
 			continue
 		end
-		rig.frameSkip = 0
 		local rdt = clamp(t - rig.lastT, 1 / 240, 0.25)
 		rig.lastT = t
 		-- the rig's own clock: a knockout plays its key moment in slow motion (a real-time envelope that
