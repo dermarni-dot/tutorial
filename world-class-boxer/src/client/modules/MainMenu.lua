@@ -88,7 +88,7 @@ local function releaseControls(s)
 	if hum and hum.Parent then
 		-- only undo our own hold (a server change made meanwhile stands)
 		if hum.WalkSpeed == 0 then
-			hum.WalkSpeed = (s.walk and s.walk > 0) and s.walk or 16
+			hum.WalkSpeed = (s.walk and s.walk > 0) and s.walk or Config.TownWalkSpeed
 		end
 		if hum.JumpHeight == 0 then
 			hum.JumpHeight = (s.jump and s.jump > 0) and s.jump or 7.2

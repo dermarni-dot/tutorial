@@ -2848,7 +2848,7 @@ local GuiService = game:GetService("GuiService")
 local pred = { id = 0, busyUntil = 0, lastAt = 0, hand = "R" }
 local ASSIST_STEP = "FightAssistMove" -- RenderStep binding: the left stick read relative to the opponent (aim assist)
 local SPRINT_MUL = 1.55
-local sprint = { on = false, base = 16 }
+local sprint = { on = false, base = Config.TownWalkSpeed, speed = Config.TownRunSpeed }
 local Ctl = { map = nil, lk = nil, held = {}, pressedAt = {}, lastTap = {}, flickAt = {}, deferred = {}, chordUsed = {}, keyAction = {} }
 padOn = function()
 	return pad.bound and Gamepad ~= nil and Gamepad.IsPad()
@@ -3058,11 +3058,13 @@ openMoves = function()
 end
 
 ------------------------------------------------------------------------
--- Sprint (Shift, LS click) outside the ring: on the player's own Humanoid (client-owned physics). Put back
--- exactly when let go, and never over a speed something else set meanwhile: any other write while it runs
--- (the main menu's hold, the server) ends the sprint there and then. The base speed is published as the
--- Humanoid's local SprintBase attribute, so a hold that saves the speed (MainMenu) saves the walk, not the
--- sprint. In the ring Shift is the server's quicker footwork instead (ringSprint, FightEngine `sprint`).
+-- Sprint (Shift, LS click) outside the ring: on the player's own Humanoid (client-owned physics). The town
+-- pace is a walk (Config.TownWalkSpeed); the sprint is the run (Config.TownRunSpeed, or half as fast again
+-- as a faster base). Put back exactly when let go, and never over a speed something else set meanwhile: any
+-- other write while it runs (the main menu's hold, the server) ends the sprint there and then. The base speed
+-- is published as the Humanoid's local SprintBase attribute, so a hold that saves the speed (MainMenu) saves
+-- the walk, not the sprint. In the ring Shift is the server's quicker footwork instead (ringSprint,
+-- FightEngine `sprint`).
 ------------------------------------------------------------------------
 local function endSprint(hum)
 	sprint.on = false
@@ -3091,17 +3093,18 @@ setSprint = function(on)
 		end
 		sprint.on = true
 		sprint.base = hum.WalkSpeed
+		sprint.speed = math.max(sprint.base * SPRINT_MUL, Config.TownRunSpeed)
 		sprint.writing = true
 		hum:SetAttribute("SprintBase", sprint.base)
-		hum.WalkSpeed = sprint.base * SPRINT_MUL
+		hum.WalkSpeed = sprint.speed
 		sprint.writing = false
 		sprint.conn = hum:GetPropertyChangedSignal("WalkSpeed"):Connect(function()
-			if sprint.on and not sprint.writing and math.abs(hum.WalkSpeed - sprint.base * SPRINT_MUL) >= 0.01 then
+			if sprint.on and not sprint.writing and math.abs(hum.WalkSpeed - sprint.speed) >= 0.01 then
 				endSprint(hum)
 			end
 		end)
 	elseif sprint.on then
-		local mine = math.abs(hum.WalkSpeed - sprint.base * SPRINT_MUL) < 0.01
+		local mine = math.abs(hum.WalkSpeed - sprint.speed) < 0.01
 		endSprint(hum)
 		if mine then
 			hum.WalkSpeed = sprint.base
@@ -4699,3 +4702,30 @@ player.CharacterAdded:Connect(function()
 		finish()
 	end
 end)
+
+-- the town pace is a walk (Config.TownWalkSpeed). A window that froze the player and gives him back the old
+-- default 16 when it closes (the barber, the creator, the services) leaves him walking, not running: a moment
+-- after any write of 16, if nothing else owns the speed (a sprint, a fight, an activity), the walk is put back
+do
+	local function watchPace(char)
+		local hum = char:WaitForChild("Humanoid", 10)
+		if not hum then
+			return
+		end
+		hum:GetPropertyChangedSignal("WalkSpeed"):Connect(function()
+			if hum.WalkSpeed ~= 16 then
+				return
+			end
+			task.delay(0.25, function()
+				if hum.Parent and hum.WalkSpeed == 16 and hum:GetAttribute("SprintBase") == nil and not F.active
+					and player:GetAttribute("InFight") ~= true and player:GetAttribute("Busy") == nil then
+					hum.WalkSpeed = Config.TownWalkSpeed
+				end
+			end)
+		end)
+	end
+	player.CharacterAdded:Connect(watchPace)
+	if player.Character then
+		task.spawn(watchPace, player.Character)
+	end
+end

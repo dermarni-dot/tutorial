@@ -66,6 +66,9 @@
       }
     },
     "StarterPlayer": {
+      "$properties": {
+        "CharacterWalkSpeed": 6.5
+      },
       "StarterPlayerScripts": {
         "Animator": {
           "$path": "src/client/Animator.client.lua"

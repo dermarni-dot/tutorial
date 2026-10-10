@@ -2,8 +2,9 @@
 -- and its motion modules (AnimLoco, AnimFight, AnimDown, AnimGym).
 --  * joints: R15 Motor6D or AnimationConstraint joints, resolved and re-resolved by name
 --  * bind-pose geometry in HumanoidRootPart space (legs, feet contact points, arms, torso)
---  * two-bone leg IK with an exact foot roll model (the heel lifts about the ball, the toes lift
---    about the heel, so the contact point never slides), exact arm IK for any rest geometry
+--  * two-bone leg IK with an exact foot roll model (the foot rolls over its sole: the organic shoe's
+--    toe spring and heel, or the box's edges, so the contact never slides or sinks; on slopes too),
+--    exact arm IK for any rest geometry
 --  * pose table helpers (clear, plant the feet, muscle contraction hints, simple keyed legs)
 --  * reaction springs (head / torso / hips / knees / arms) kicked by impulses
 -- Everything works on the rig table the Animator keeps per character; nothing here allocates
@@ -47,6 +48,43 @@ local function num(v, default)
 	return type(v) == "number" and v or default
 end
 AnimRig.num = num
+
+-- the organic shoe a foot rolls over when the meshes draw it (AnatomyBodyGear buildShoe): its length is
+-- 15.5 % of the standing height (Gear.FootLength; a woman's 4 % less), and the side profile of its sole
+-- (the lower convex hull measured off the lean, heavy and female meshes, the same for all three in shoe
+-- lengths) runs flat from 0.15 behind the ankle to 0.43 ahead of it, then the toe spring curls up to the tip
+-- at 0.75: { distance along the foot from the ankle, height above the sole }. A rigid shoe cannot bend at the
+-- ball like a foot: rolled about any point behind the toe spring its front would sink into the floor
+local SHOE_TOE = { { 0.428, 0 }, { 0.525, 0.003 }, { 0.625, 0.0101 }, { 0.691, 0.0466 }, { 0.736, 0.0744 }, { 0.751, 0.086 } }
+local SHOE_HEEL = { { 0.15, 0 }, { 0.193, 0.0678 }, { 0.21, 0.0994 } }
+-- (the mesh sole's underside sits this far below the R15 foot box)
+local SHOE_SINK = 0.006
+
+-- a sole profile -> the roll table the foot model uses: per point its distance, height, the pitch from
+-- which it is the pivot (the hull edge before it lies on the floor) and where on the floor it touches
+-- (the foot ROLLS over the profile: no slip, the contact moves on along it)
+local function rollTable(out, pts, scale)
+	local g = 0
+	for i, q in ipairs(pts) do
+		local f, u = q[1] * scale, q[2] * scale
+		local e = out[i] or {}
+		out[i] = e
+		if i == 1 then
+			g = f
+			e[3] = 0
+		else
+			local pf, pu = out[i - 1][1], out[i - 1][2]
+			g += sqrt((f - pf) ^ 2 + (u - pu) ^ 2)
+			e[3] = atan2(u - pu, f - pf)
+		end
+		e[1], e[2], e[4] = f, u, g
+	end
+	for i = #pts + 1, #out do
+		out[i] = nil
+	end
+	return out
+end
+local BOX_PT = { { 0, 0 } }
 
 ------------------------------------------------------------------------
 -- Joints
@@ -116,6 +154,10 @@ function AnimRig.computeGeo(rig)
 	g.waistC1inv = jointC1(J.W.motor):Inverse()
 	local lt0 = rootC0 * rootC1inv
 	local lowest = math.huge
+	-- the organic shoes are on (the meshes draw the feet): the feet roll over the shoe's real sole
+	local look = rig.model:FindFirstChild("Anatomy")
+	local meshFeet = look ~= nil and (look:FindFirstChild("AnatomyRightFoot") ~= nil or look:FindFirstChild("AnatomyLeftFoot") ~= nil)
+	g.meshFeet = meshFeet
 	for _, s in ipairs(SIDES) do
 		local hipM, kneeM, ankleM = J[s .. "H"].motor, J[s .. "K"].motor, J[s .. "A"].motor
 		local leg = g[s] or {}
@@ -138,21 +180,48 @@ function AnimRig.computeGeo(rig)
 		local footCF = ankleCF * ankleC1:Inverse()
 		local sole = footCF.Position.Y - fs.Y / 2
 		lowest = min(lowest, sole)
-		-- contact points of the foot (R15 foot: -Z = toes): the ball just behind the toes, the heel
-		-- at the back edge; distances along the foot from the ankle joint
+		-- without the organic shoes (the R15 box and the round-1 shoe parts) the foot rolls as it always
+		-- has: the heel lifts about the ball just behind the toes, the toes about the back edge (R15 foot:
+		-- -Z = toes); distances along the foot from the ankle joint
 		local fwd = footCF.LookVector
-		local ball = footCF:PointToWorldSpace(V3(0, -fs.Y / 2, -fs.Z * 0.28))
-		local heel = footCF:PointToWorldSpace(V3(0, -fs.Y / 2, fs.Z * 0.45))
 		local ank = ankleCF.Position
-		leg.bz = max(0.12, (ball - ank):Dot(fwd))
-		leg.hz = max(0.08, (ank - heel):Dot(fwd))
+		leg.boxToe = max(0.12, (footCF:PointToWorldSpace(V3(0, -fs.Y / 2, -fs.Z * 0.28)) - ank):Dot(fwd))
+		leg.boxHeel = max(0.08, (ank - footCF:PointToWorldSpace(V3(0, -fs.Y / 2, fs.Z * 0.45))):Dot(fwd))
+		-- (the sole's ends: a walker keeps them off stair risers)
+		leg.toeX = max(0.15, (footCF:PointToWorldSpace(V3(0, -fs.Y / 2, -fs.Z * 0.5)) - ank):Dot(fwd))
+		leg.heelX = max(0.1, (ank - footCF:PointToWorldSpace(V3(0, -fs.Y / 2, fs.Z * 0.5))):Dot(fwd))
 		leg.soleY = sole
-		leg.ball = leg.bz -- legacy name
 	end
 	g.groundY = lowest
+	-- the standing height (sole to the top of the head, at rest): the organic shoe's length
+	local FL
+	if meshFeet then
+		local H = 2.25 * ((g.rootY or rootC0.Position.Y) - lowest)
+		if J.Neck then
+			local head = lt0 * g.waistC0 * g.waistC1inv * jointC0(J.Neck.motor) * jointC1(J.Neck.motor):Inverse()
+			local hp = J.Neck.motor.Part1
+			H = head.Position.Y + (hp and hp.Size.Y or 1.2) / 2 - lowest
+		end
+		FL = clamp(0.155 * H, 0.55, 1.4) * (rig.a and rig.a.Female == true and 0.96 or 1)
+	end
 	for _, s in ipairs(SIDES) do
 		local leg = g[s]
-		leg.ah = max(0.1, leg.ankle0.Y - lowest) -- ankle height above the sole (flat foot)
+		-- ankle height above the sole (flat foot), and the sole profile the foot rolls over
+		leg.ah = max(0.1, leg.ankle0.Y - lowest) + (FL and SHOE_SINK or 0)
+		if FL then
+			leg.toe = rollTable(leg.toe or {}, SHOE_TOE, FL)
+			leg.heel = rollTable(leg.heel or {}, SHOE_HEEL, FL)
+			leg.toeX, leg.heelX = 0.8 * FL, 0.22 * FL
+		else
+			leg.toe = rollTable(leg.toe or {}, BOX_PT, 1)
+			leg.toe[1][1], leg.toe[1][4] = leg.boxToe, leg.boxToe
+			leg.heel = rollTable(leg.heel or {}, BOX_PT, 1)
+			leg.heel[1][1], leg.heel[1][4] = leg.boxHeel, leg.boxHeel
+		end
+		-- (spins and pivots turn the foot about the front of its flat contact: the ball)
+		leg.bz = leg.toe[1][1]
+		leg.hz = leg.heel[1][1]
+		leg.ball = leg.bz -- legacy name
 	end
 	g.rootY = rootC0.Position.Y
 	g.floorH = g.rootY - g.groundY -- height of the root joint above the floor when standing
@@ -525,18 +594,35 @@ end
 
 ------------------------------------------------------------------------
 -- Feet: exact roll model. P = the ground point under the ankle when the foot is flat, F = the
--- foot's forward (horizontal unit), th = pitch (+ heel up about the ball, - toes up about the heel).
--- Returns the ankle joint position that keeps the pivot point exactly where it is.
+-- foot's forward (horizontal unit), th = pitch (+ heel up, - toes up). The foot rolls over its sole's
+-- profile (leg.toe / leg.heel: the shoe's toe spring, or the box's edge): the pivot is the profile point
+-- on the floor at this pitch, touching where rolling put it (no slip, never below the floor). sl = the
+-- floor's slope along F (+ uphill; P on it): the foot rolls over the slope's plane.
+-- Returns the ankle joint position.
 ------------------------------------------------------------------------
 local UP = Vector3.yAxis
-function AnimRig.ankleOf(leg, P, F, th)
-	local ah, bz, hz = leg.ah, leg.bz, leg.hz
-	if th >= 0 then
-		local s, c = sin(th), cos(th)
-		return P + F * (bz - bz * c + ah * s) + UP * (bz * s + ah * c)
+function AnimRig.ankleOf(leg, P, F, th, sl)
+	sl = sl or 0
+	th += sl
+	local tab, dir = leg.toe, 1
+	if th < 0 then
+		tab, dir, th = leg.heel, -1, -th
 	end
-	local s, c = sin(-th), cos(-th)
-	return P + F * (-hz + hz * c - ah * s) + UP * (hz * s + ah * c)
+	local n = #tab
+	local i = 1
+	while i < n and th >= tab[i + 1][3] do
+		i += 1
+	end
+	local q = tab[i]
+	local f, u = q[1], q[2] - leg.ah
+	local s, c = sin(th), cos(th)
+	local b, a = dir * (q[4] - f * c - u * s), f * s - u * c
+	if sl == 0 then
+		return P + F * b + UP * a
+	end
+	-- (along and off the slope)
+	local ss, cs = sin(sl), cos(sl)
+	return P + F * (b * cs - a * ss) + UP * (b * ss + a * cs)
 end
 
 -- two-bone leg IK: ankle target (HRP space) -> hip / knee / ankle Transforms; the foot keeps its
@@ -608,8 +694,10 @@ function AnimRig.slackFor(leg, knee, soft)
 	if d <= start or band <= 0 then
 		return d
 	end
-	-- softReach(x) = start + band * (1 - exp(-(x - start) / band)) = d  ->  x
-	return start - band * math.log(1 - min(0.995, (d - start) / band))
+	-- softReach(x) = start + band * (1 - exp(-(x - start) / band)) = d  ->  x (a knee straighter than the soft
+	-- curve can give is taken to 80 % of the band: the leg about as straight as it goes, the target barely
+	-- past where the soft curve leaves the foot - a planted foot never hovers for a straighter knee)
+	return start - band * math.log(1 - min(0.8, (d - start) / band))
 end
 
 -- signed dropFor: how far the pelvis must come down (> 0) or may rise (< 0) for the foot at

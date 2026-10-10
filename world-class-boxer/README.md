@@ -126,7 +126,7 @@ to select and **B** to go back.
 | Action | Keyboard & mouse | Controller (Xbox / PlayStation) | Touch |
 |---|---|---|---|
 | Move | WASD | Left stick | Thumbstick |
-| Sprint (in the ring: quicker footwork) | hold Shift | click the left stick (L3): until the stick is back in the centre | SPRINT (in the ring; a toggle) |
+| Run (in the ring: quicker footwork) | hold Shift | click the left stick (L3): until the stick is back in the centre | SPRINT (in the ring; a toggle) |
 | Jab | Left click (or J) | X / Square | JAB |
 | Cross | Right click (or K) | Y / Triangle | CROSS |
 | Lead hook | F (or L) | B / Circle | HOOK (alternates hands) |
@@ -157,7 +157,8 @@ to a **double tap of A / D** (Z / X still work), and the number row **1 - 9** no
 one, so the mouse buttons never turn the camera in a fight: left and right click are free to punch.
 **Tab** is Roblox's player list everywhere else (the list takes the key and swallows it), so a fight
 hides the player list for its duration and takes Tab for the Moves & Controls menu; the backquote key
-**`** opens the menu anywhere, in the ring or out of it. **Shift** sprints in the gym and the city; in the
+**`** opens the menu anywhere, in the ring or out of it. Around the gym and the city you walk (6.5 studs/s, a
+brisk 1.7 m/s at the boxer's scale; `Config.TownWalkSpeed`) and **Shift** runs (16, `Config.TownRunSpeed`); in the
 ring it is quicker footwork while held (to cut him off or get off the ropes): the server speeds your
 feet up by a third, not while you punch or block, and charges stamina for every second you move with it
 (none comes back meanwhile; it stops when you are down to your last 15 %). On a pad a click of the left
@@ -377,8 +378,13 @@ Everything is procedural, driven on each client by `Animator.client.lua` and the
   persona keeps two boxers of one style from moving alike. The styles are Out-boxer, Swarmer,
   Slugger, Counter puncher and Boxer-puncher.
 - **Footwork:** feet plant in the world and never slide. Inside the ring: step-drag shuffles,
-  pivots, backpedalling and side steps. Outside it: walk, jog, run and sprint gaits with heel-toe
-  roll.
+  pivots, backpedalling and side steps. Outside it: walk, jog, run and sprint gaits picked by the
+  speed alone (the town walk always walks, the Shift run always runs). The shoes roll over their real
+  soles (heel strike, toe spring, never into the floor); a walker pushes off up onto the toes with the
+  knee bending, a runner falls freely through the flight and sinks into a bent knee on each landing, the
+  arms swing close to the body (a runner's from beside the hip to the chest, elbows near 90), the feet
+  land close to one line, sharp reversals pivot on a planted foot. On ramps the shoe lies along the
+  slope; on stairs each shoe lands on one tread, clear of the risers.
 - **Punches:** kinetic chains (legs, hips, shoulders, fist), aimed at the opponent's chin or body:
   - jab: fast and snappy;
   - cross: hip turn and full extension;

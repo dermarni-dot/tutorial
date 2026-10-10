@@ -930,12 +930,12 @@ local function updateRig(rig, model, t, dt, lod, rdt)
 	end
 	-- a walker's arm swing, in step with the legs (after the filters, like the pelvis): opposite the legs,
 	-- faded out while a gesture owns the arms
-	local sL, eL, zL, sR, eR, zR = Loco.armOffsets(rig, dt, rig.gesture ~= nil)
+	local sL, eL, zL, sR, eR, zR, yL, yR = Loco.armOffsets(rig, dt, rig.gesture ~= nil)
 	if sL and joints.LS and joints.LE and joints.RS and joints.RE then
 		rig.armOut = true
-		rig.lsOut = A(sL, 0, zL) * joints.LS.cur
+		rig.lsOut = A(sL, yL, zL) * joints.LS.cur
 		rig.leOut = joints.LE.cur * A(eL, 0, 0)
-		rig.rsOut = A(sR, 0, zR) * joints.RS.cur
+		rig.rsOut = A(sR, yR, zR) * joints.RS.cur
 		rig.reOut = joints.RE.cur * A(eR, 0, 0)
 	else
 		rig.armOut = false

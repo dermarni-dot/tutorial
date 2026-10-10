@@ -3071,7 +3071,7 @@ function Fight:RestorePlayer(P)
 	end
 	if P.hum then
 		P.hum.AutoRotate = true
-		P.hum.WalkSpeed = 16
+		P.hum.WalkSpeed = Config.TownWalkSpeed
 		P.hum.JumpHeight = 7.2
 	end
 	if P.model and P.model.Parent then

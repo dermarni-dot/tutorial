@@ -7,6 +7,10 @@ Config.DataVersion = 2
 Config.RoundSeconds = 60 -- real-time length of one fight round
 Config.RestSeconds = 7 -- between rounds
 Config.SparRoundSeconds = 45
+-- moving about the gym and the city (studs/s): the town pace is a WALK (6.5 = a brisk 1.7 m/s at the boxer's
+-- scale; the Animator's walk -> run switch sits above it for every body), Shift / L3 / SPRINT runs
+Config.TownWalkSpeed = 6.5
+Config.TownRunSpeed = 16
 Config.StatCap = 99
 Config.WorldPerClass = 30 -- AI boxers per weight class (9 classes = 270 boxers)
 Config.GainScale = 1.35 -- global training gain multiplier

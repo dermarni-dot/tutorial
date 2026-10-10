@@ -437,7 +437,7 @@ local function endSession(player, keepPosition)
 		root.Anchored = false
 	end
 	if hum then
-		hum.WalkSpeed = 16
+		hum.WalkSpeed = Config.TownWalkSpeed
 		hum.AutoRotate = true
 		hum.UseJumpPower = false
 		hum.JumpHeight = 7.2
@@ -1612,7 +1612,7 @@ function handlers.Flex(player, profile, kind)
 			CollectionService:RemoveTag(char, "Trainee")
 			char:SetAttribute("Pose", nil)
 			if hum.Parent then
-				hum.WalkSpeed = speed > 0 and speed or 16
+				hum.WalkSpeed = speed > 0 and speed or Config.TownWalkSpeed
 			end
 		end
 		push(player)
@@ -2143,6 +2143,8 @@ local function onCharacter(player, char)
 	endSession(player, true)
 	local hum = char:WaitForChild("Humanoid", 10)
 	if hum then
+		-- the town pace is a walk (StarterPlayer's CharacterWalkSpeed says so too); Shift runs (FightClient)
+		hum.WalkSpeed = Config.TownWalkSpeed
 		hum.Died:Connect(function()
 			if sessions[player] then
 				endSession(player, true)
