@@ -631,7 +631,7 @@ function Torso.Lower(sk, P, lod, prof, opt)
 	if trunks then
 		-- the band: the waist's own section plus the elastic's thickness, a lip over the seat below it
 		top = yW + Torso.BAND_TOP
-		bandBot = yW - 0.17 * (drop / 0.4) ^ 0.5
+		bandBot = Torso.BandBottom(sk)
 		local bw, bf, bk = waistW + 0.01, Fw + 0.012, Kw + 0.012
 		local sw = lerp(hipW, waistW, 0.85)
 		local lx, lf, lk = hipW, hipF, hipK
@@ -843,6 +843,10 @@ function Torso.Lower(sk, P, lod, prof, opt)
 	return m, { crown = crown, glute = glute, hipW = hipW, bot = bot, top = top, bandBot = bandBot, loft = info, rim = seatSq and info.rows[info.firstRing] or nil, seatTop = yS }
 end
 Torso.BAND_TOP = 0.035 -- waistband top edge above the waist pivot (studs)
+-- the waistband's lower edge (body height): the satin seat hangs from it
+function Torso.BandBottom(sk)
+	return sk.yW - 0.17 * ((sk.yW - sk.yH) / 0.4) ^ 0.5
+end
 
 -- hip correctives for the trunks' seat (full detail, blend shapes: ANATOMY_CONTRACTS section 11). The satin legs
 -- are rigid with the thighs and the seat with the pelvis, so a hip that flexed, extended, spread or turned swung
@@ -993,10 +997,9 @@ end
 -- the waistband's front (body space, the same numbers Torso.Lower builds it from): centre of the band's
 -- front at mid height, the band's top edge, and a point half way to the side on the band's surface
 function Torso.BandFront(sk, P, prof)
-	local yW, yH, hz = sk.yW, sk.yH, sk.hz
-	local drop = yW - yH
+	local yW, hz = sk.yW, sk.hz
 	local top = yW + Torso.BAND_TOP
-	local bandBot = yW - 0.17 * (drop / 0.4) ^ 0.5
+	local bandBot = Torso.BandBottom(sk)
 	local ease = 0.03
 	local waistW = prof.W(0.0) * sk.xS * 1.015 + 0.02 * min(P.fatK, 1.2) + ease
 	local bw, bf = waistW + 0.01, prof.F(0.0) * hz + ease + 0.012

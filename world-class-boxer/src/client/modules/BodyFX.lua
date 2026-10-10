@@ -139,6 +139,11 @@ local HIP_STEP = 0.0125
 local function quantHip(x)
 	return floor(x / HIP_STEP + 0.5) * HIP_STEP
 end
+-- how far the seat follows a hip's turn: all of it up to HIP_KNEE, then easing toward HIP_MAX. A thigh swung on
+-- (a knockdown sit, a kneel, the corner stool: 85 - 100 degrees) took the seat's rim round the hip with it while
+-- the rows above it lagged on the chord: the seat sank through the back of the satin leg's top in jagged patches,
+-- and its unmoved normals shaded what still covered it dark. Past the cap the leg's top turns on inside the seat
+local HIP_KNEE, HIP_MAX = math.rad(45), math.rad(60)
 
 local stats = { morphWrites = 0, vertexWrites = 0, plates = 0, bruises = 0, grime = 0, texJobs = 0, texWrites = 0, texels = 0, sweat = 0, maxFrame = 0 }
 local tracked = {} -- model -> rec
@@ -1103,7 +1108,7 @@ end
 
 -- the trunks' seat is skinned to each hip (AnatomyBodyTorso.HipShapes): the weights are the thigh's rotation in
 -- the pelvis's frame less the identity (its axes there are the matrix's columns; at rest the thigh's frame is
--- the pelvis's)
+-- the pelvis's), its angle capped (HIP_KNEE / HIP_MAX)
 local function hipShapes(model, side, list, w)
 	local lt = model:FindFirstChild("LowerTorso")
 	local ul = model:FindFirstChild(side .. "UpperLeg")
@@ -1115,9 +1120,28 @@ local function hipShapes(model, side, list, w)
 	end
 	local lc, uc = lt.CFrame, ul.CFrame
 	local cx, cy, cz = lc:VectorToObjectSpace(uc.RightVector), lc:VectorToObjectSpace(uc.UpVector), -lc:VectorToObjectSpace(uc.LookVector)
-	w[list[1]], w[list[2]], w[list[3]] = quantHip(cx.X - 1), quantHip(cy.X), quantHip(cz.X)
-	w[list[4]], w[list[5]], w[list[6]] = quantHip(cx.Y), quantHip(cy.Y - 1), quantHip(cz.Y)
-	w[list[7]], w[list[8]], w[list[9]] = quantHip(cx.Z), quantHip(cy.Z), quantHip(cz.Z - 1)
+	-- (R's rows: R[a][b] is column b's component a)
+	local xx, xy, xz = cx.X, cy.X, cz.X
+	local yx, yy, yz = cx.Y, cy.Y, cz.Y
+	local zx, zy, zz = cx.Z, cy.Z, cz.Z
+	local th = math.acos(math.clamp((xx + yy + zz - 1) / 2, -1, 1))
+	if th > HIP_KNEE then
+		-- the same axis, the angle eased toward HIP_MAX (Rodrigues)
+		local nx, ny, nz = zy - yz, xz - zx, yx - xy
+		local l = math.sqrt(nx * nx + ny * ny + nz * nz)
+		if l > 1e-6 then
+			nx, ny, nz = nx / l, ny / l, nz / l
+			local a = HIP_KNEE + (HIP_MAX - HIP_KNEE) * math.tanh((th - HIP_KNEE) / (HIP_MAX - HIP_KNEE))
+			local c, s = math.cos(a), math.sin(a)
+			local t = 1 - c
+			xx, xy, xz = c + t * nx * nx, t * nx * ny - s * nz, t * nx * nz + s * ny
+			yx, yy, yz = t * nx * ny + s * nz, c + t * ny * ny, t * ny * nz - s * nx
+			zx, zy, zz = t * nx * nz - s * ny, t * ny * nz + s * nx, c + t * nz * nz
+		end
+	end
+	w[list[1]], w[list[2]], w[list[3]] = quantHip(xx - 1), quantHip(xy), quantHip(xz)
+	w[list[4]], w[list[5]], w[list[6]] = quantHip(yx), quantHip(yy - 1), quantHip(yz)
+	w[list[7]], w[list[8]], w[list[9]] = quantHip(zx), quantHip(zy), quantHip(zz - 1)
 end
 
 -- desired weights for every piece of one character; marks the pieces whose quantised weights changed

@@ -372,8 +372,9 @@ end
 ------------------------------------------------------------------------
 -- Piece painters
 ------------------------------------------------------------------------
--- UpperTorso: skin with regional variation, nipples / navel, separations, the female sports top
-local function utPainter(pc, sk, P, prof, look)
+-- UpperTorso: skin with regional variation, nipples / navel, separations, the female sports top; under the
+-- trunks the satin's colour
+local function utPainter(pc, sk, P, prof, look, trunk)
 	local sr, sg, sb = pc.sr, pc.sg, pc.sb
 	local yW, H, xS = sk.yW, sk.H, sk.xS
 	local spots = {}
@@ -436,7 +437,19 @@ local function utPainter(pc, sk, P, prof, look)
 		r, g, b = mix(r, g, b, topR * k, topG * k, topB * k, w)
 		return r, g, b, w
 	end
-	return { base = base, top = top, hasTop = topR ~= nil }
+	-- the torso's skin inside the trunks' seat (it runs on down into the seat from inside the waistband) is never
+	-- seen at rest; it is the satin's colour, the change hidden inside the band. A hip flexed past ~35 degrees
+	-- takes the seat's front over that leg up toward the band (AnatomyBodyTorso.HipShapes): its rows fold there and
+	-- the fold dipped behind this skin, a dark / skin-coloured slit under the band at the top of the crotch seam
+	-- (a stride, a sprint, a deep stance). In the satin's colour it reads as the fold it is
+	local underY = trunk and Torso.BandBottom(sk) + 0.04 or -math.huge
+	local function under(r, g, b, y)
+		if y >= underY then
+			return r, g, b
+		end
+		return mix(r, g, b, trunk.r, trunk.g, trunk.b, 1 - smooth(underY - 0.03, underY, y))
+	end
+	return { base = base, top = top, under = under, hasTop = topR ~= nil }
 end
 
 ------------------------------------------------------------------------
@@ -538,7 +551,7 @@ function Gen.Generate(look, lod, ctx)
 	local ut, ui = Torso.Upper(sk, P, lod, { trunks = trunk ~= nil, top = clothOf(look, "UpperTorso") ~= nil })
 	local prof = ui.prof
 	local grid = ui.loft
-	local up = utPainter(pc, sk, P, prof, look)
+	local up = utPainter(pc, sk, P, prof, look, trunk)
 	local cav = Kit.GridCavity(ut, grid)
 	local dark, light = Kit.AOAmounts(ut, cav, pc.ao)
 	do
@@ -554,6 +567,7 @@ function Gen.Generate(look, lod, ctx)
 			r, g, b, tw = up.top(r, g, b, x, y, z, 1)
 			-- (the fabric is smooth: the skin's separations / cavities do not show through it)
 			tw = tw or 0
+			r, g, b = up.under(r, g, b, y)
 			r, g, b = Kit.ApplyAO(r, g, b, dark[i] * (1 - 0.6 * tw), light[i] * (1 - 0.5 * tw), pc.aoTint)
 			C[i * 3 - 2], C[i * 3 - 1], C[i * 3] = r, g, b
 			MeshKit.Step()
@@ -605,6 +619,7 @@ function Gen.Generate(look, lod, ctx)
 				if up.hasTop then
 					r, g, b, tcov = up.top(r, g, b, sm.x, sm.y, sm.z, 0.6, 1 + 0.02 * Kit.TileAt(tiles.pore, sm.px * 0.5, sm.py * 2))
 				end
+				r, g, b = up.under(r, g, b, sm.y)
 				return Kit.ApplyAO(r, g, b, sm.dark * (1 - 0.6 * tcov), sm.light * (1 - 0.5 * tcov), pc.aoTint)
 			end, { P = ui.P0, N = ui.N0, dark = dark, light = light, noN = true })
 		end }
