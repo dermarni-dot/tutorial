@@ -701,6 +701,8 @@ function AnimLoco.armOffsets(rig, dt, hold)
 	end
 	local prof = profileOf(rig)
 	local _, a, eb, ef = armShape(lo, prof)
+	-- (a hard turn's pivot steps: the arms swing in close, never thrown wide by the body turning under them)
+	a *= 1 - 0.45 * (lo.turnK or 0)
 	local fw = lo.fwd
 	-- (the arm is furthest back when the same side's thigh is furthest forward: at a walker's heel strike;
 	-- a runner's thigh drives through earlier, two thirds into the swing)
@@ -1066,8 +1068,9 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 	local kx = 1
 	if walking then
 		-- (pulling up, the braking steps already land at the width he will stand at: no shuffle sideways after)
-		-- (a big man runs on a wider track: his thick thighs pass, not through each other)
-		kx = 1 - (1 - clamp(lerp(lerp(0.42, 0.27 + 0.12 * R.bulkOf(rig), run), 0.85, lo.side) * prof.width, 0.2, 1)) * lo.gaitW * (1 - (lo.brake or 0))
+		-- (a big man walks and runs on a wider track: his thick thighs pass, not through each other)
+		local bk = clamp((R.bulkOf(rig) - 0.4) / 0.6, 0, 1)
+		kx = 1 - (1 - clamp(lerp(lerp(0.42 + 0.17 * bk, 0.27 + 0.36 * bk, run), 0.85, lo.side) * prof.width, 0.2, 1)) * lo.gaitW * (1 - (lo.brake or 0))
 	end
 	-- per-foot desired ground point and yaw
 	for _, s in ipairs(SIDES) do

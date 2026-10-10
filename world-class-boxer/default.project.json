@@ -67,7 +67,8 @@
     },
     "StarterPlayer": {
       "$properties": {
-        "CharacterWalkSpeed": 6.5
+        "CharacterWalkSpeed": 6.5,
+        "EnableMouseLockOption": false
       },
       "StarterPlayerScripts": {
         "Animator": {
