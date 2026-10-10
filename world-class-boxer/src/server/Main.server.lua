@@ -2169,6 +2169,15 @@ DataManager.OnLoaded = function(player)
 	end
 end
 
+-- a refused save found a newer copy of the career saved on another server, and the player plays on from it
+-- (what was done here since the join is replaced): show it, dress the character, and say why it changed
+DataManager.OnRefreshed = function(player)
+	DataManager.OnLoaded(player)
+	if player.Parent then
+		Notify:FireClient(player, { t = "toast", text = "Your career was updated from another server." })
+	end
+end
+
 local function onPlayer(player)
 	player.CharacterAdded:Connect(function(char)
 		onCharacter(player, char)

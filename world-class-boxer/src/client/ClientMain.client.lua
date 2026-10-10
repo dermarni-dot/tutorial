@@ -420,6 +420,13 @@ State.FightRemote.OnClientEvent:Connect(function(msg)
 	end
 end)
 
+-- plain server notices on State.Notify (Activities listens there too, for its drill checkpoints)
+State.Notify.OnClientEvent:Connect(function(msg)
+	if type(msg) == "table" and msg.t == "toast" and type(msg.text) == "string" then
+		State.toast(msg.text, T.gold, 8)
+	end
+end)
+
 ------------------------------------------------------------------------
 -- Retirement
 ------------------------------------------------------------------------
