@@ -126,13 +126,13 @@ to select and **B** to go back.
 | Action | Keyboard & mouse | Controller (Xbox / PlayStation) | Touch |
 |---|---|---|---|
 | Move | WASD | Left stick | Thumbstick |
-| Sprint (in the ring: quicker footwork) | hold Shift | click the left stick (outside the ring) | - |
+| Sprint (in the ring: quicker footwork) | hold Shift | hold the left-stick click (L3) | SPRINT (in the ring; a toggle) |
 | Jab | Left click (or J) | X / Square | JAB |
 | Cross | Right click (or K) | Y / Triangle | CROSS |
 | Lead hook | F (or L) | B / Circle | HOOK (alternates hands) |
 | Rear hook | R (or ;) | A / Cross | HOOK |
 | Uppercut | T (or U) | RT / R2 | UPPER |
-| Overhand | Middle click (or O) | tap RB / R1 (it goes on the release) | OVERHAND |
+| Overhand | Middle click (or O) | tap RB / R1 (on the press; once you own a special move, on the release: RB held + a button is a special) | OVERHAND |
 | Body hook | G | LB + B / L1 + Circle | BODY, then HOOK |
 | Body shot (arms the next punch) | tap C | tap LB / L1 | tap BODY |
 | Block (guard up / down) | tap B | tap LT / L2 | tap BLOCK |
@@ -143,7 +143,7 @@ to select and **B** to go back.
 | Pivot left / right | double-tap A / D (or Z / X) | D-pad left / right | swipe CLINCH left / right |
 | Counter jab | hold Q + left click | flick left, then X / Square | a slip on BLOCK, then JAB within half a second |
 | Counter cross | hold E + right click | flick right, then Y / Triangle | a slip on BLOCK, then CROSS within half a second |
-| Clinch | Ctrl | D-pad down or click the left stick | tap CLINCH |
+| Clinch | Ctrl | D-pad down | tap CLINCH |
 | Special moves | 1 - 9 (in the menu's order) | hold RB / R1 + a button (below) | the gold pads left of the punches |
 | Show / hide the controls strip | tap H | tap View / Share | - |
 | Moves & Controls menu (pauses a solo fight) | Tab in a fight, ` (under Esc) anywhere | hold View / Share | MOVES (top left) |
@@ -160,26 +160,29 @@ hides the player list for its duration and takes Tab for the Moves & Controls me
 **`** opens the menu anywhere, in the ring or out of it. **Shift** sprints in the gym and the city; in the
 ring it is quicker footwork while held (to cut him off or get off the ropes): the server speeds your
 feet up by a third, not while you punch or block, and charges stamina for every second you move with it
-(none comes back meanwhile; it stops when you are down to your last 15 %). On a pad the left-stick
-click stays the clinch in the ring.
+(none comes back meanwhile; it stops when you are down to your last 15 %). On a pad holding the
+left-stick click (L3) does the same, and on touch the **SPRINT** pad (top left, next to MOVES) turns it on
+and off (the bell, a knockdown or the menu turns it off). Every device has it, so a PvP bout is even.
 
 **Chords and double taps.** A chord is "hold the first key, press the second" (Shift + Space, Q + click).
 On a pad a right-stick flick counts as held for half a second, so "flick left, then X" is the counter jab.
-In the ring a flick **up** doubles as D-pad up (the parry) and the **left-stick click** as D-pad down (the
-clinch), whatever those are bound to, unless you give the flick or the click a binding of its own (the
-sprint does not count). The **right-stick click** is the quick dodge (it used to double as the pivot; an
-unbound R3 still does), which leaves **LT + A** free: a held guard throws the rear hook like any other
-punch. RB / R1 is both the overhand (tapped on its own: it goes when you let go, so a chord can still
-claim RB) and the special-move modifier (held while another button is pressed): RB + X check hook,
-RB + Y pull counter, RB + B liver shot, RB + A loaded overhand, RB + RT lead uppercut, RB + LT Philly shell
-counter, RB + LB step-back counter, RB + D-pad up gazelle punch, RB + D-pad down peek-a-boo rush. **View /
-Share** does what the map gives it (the controls strip by default; bind it to anything) and held for a
+In the ring a flick **up** doubles as D-pad up (the parry), whatever that is bound to, unless you give the
+flick a binding of its own; the **left-stick click** is the sprint (the ring's quicker footwork) and only
+doubles as D-pad down (the clinch) when you bind the sprint elsewhere. The **right-stick click** is the
+quick dodge (it used to double as the pivot; an unbound R3 still does), which leaves **LT + A** free: a
+held guard throws the rear hook like any other punch. RB / R1 is both the overhand (tapped on its own)
+and the special-move modifier (held while another button is pressed). Until you own a special move the
+overhand goes on the press; from then on it goes when you let go of RB, so a chord can still claim the
+button: RB + X check hook, RB + Y pull counter, RB + B liver shot, RB + A loaded overhand, RB + RT lead
+uppercut, RB + LT Philly shell counter, RB + LB step-back counter, RB + D-pad up gazelle punch, RB + D-pad
+down peek-a-boo rush (a chord for a move you do not own yet says LOCKED). **View / Share** does what the map gives it (the controls strip by default; bind it to anything) and held for a
 second always opens the menu. A double tap is two presses of one key within a third of a second; a
 plain press of A or D still walks.
 
 **Touch.** The punch cluster sits bottom right (HOOK / UPPER over JAB / CROSS, OVERHAND and BODY on top),
 the unlocked special moves in a grid of gold pads left of it (up to three a row, never up into the
-scoreboard), BLOCK and CLINCH on the left edge above the thumbstick and MOVES under the left board.
+scoreboard), BLOCK and CLINCH on the left edge above the thumbstick, and MOVES and the SPRINT toggle
+under the left board.
 Every pad is at least a fingertip (44 px) on screen. The head movement is in swipes, so nothing needs
 more pads: **BLOCK** taps raise / drop the guard, a swipe left / right slips, down rolls under, up
 parries, and holding it a moment before swiping down is the quick dodge; **CLINCH** taps tie him up and a
@@ -612,6 +615,11 @@ knockdowns, referee, judges and HUD as a career fight, with the stats of each pl
 **What PvP never touches:** the career record, training camps and booked fights, injuries,
 concussion trauma and suspensions. Only the normal face-damage carry-over follows you home. The
 fight's training gains are not awarded either (spar the gym's partners for those).
+
+**Controls.** The fight's own (see Controls), the same on every device: touch players get every move
+too (swipes on BLOCK / CLINCH for the head movement and the pivots, the OVERHAND pad, the SPRINT toggle
+for the ring's quicker footwork). The Moves & Controls menu opens in a PvP bout but never pauses it
+(THE FIGHT GOES ON), and the console aim assist only ever helps punches the server holds as pad input.
 
 **Rating.** Every profile gets a PvP rating (Elo, starting at 1000, K 40 for the first 10 ranked
 bouts and 28 after) and a rank name (Rookie, Contender, Prospect, Veteran, Elite, Champion). Ranked

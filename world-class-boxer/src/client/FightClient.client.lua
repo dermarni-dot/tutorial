@@ -18,13 +18,14 @@
 -- off); a press held longer than Tog.HOLD still works as a hold (released when you let go). A punch drops
 -- a tapped guard (as the server does) and spends a tapped body modifier. The menu pauses a solo fight.
 -- Gamepad (bound through ContextActionService for the fight, above the default jump / camera bindings):
--- X jab, Y cross, B lead hook, A rear hook, RT uppercut, RB overhand (tap: it goes on the release) and the
--- special-move modifier (hold RB + a button), LB = to the body, LT block (both tap toggles), right stick
--- flick left / right slip, down roll, up parry, flick then X / Y counter jab / cross, RS click quick dodge,
--- D-pad left / right pivot, D-pad up parry, D-pad down or LS click clinch, VIEW the controls strip (hold
--- it for the menu); when down, mash A. Aim assist (Settings, gamepad only) reads the left stick relative
--- to the opponent; vibration on hits (Gamepad.Rumble); the fight camera frames both fighters and the right
--- stick nudges it. Touch: see buildTouch (pads and swipes for every move, MOVES for the menu).
+-- X jab, Y cross, B lead hook, A rear hook, RT uppercut, RB overhand (on the press; on the release once a
+-- special can be chorded on RB) and the special-move modifier (hold RB + a button), LB = to the body, LT
+-- block (both tap toggles), right stick flick left / right slip, down roll, up parry, flick then X / Y
+-- counter jab / cross, RS click quick dodge, D-pad left / right pivot, D-pad up parry, D-pad down clinch,
+-- L3 held sprint (quicker footwork in the ring), VIEW the controls strip (hold it for the menu); when
+-- down, mash A. Aim assist (Settings, gamepad only) reads the left stick relative to the opponent;
+-- vibration on hits (Gamepad.Rumble); the fight camera frames both fighters and the right stick nudges it.
+-- Touch: see buildTouch (pads and swipes for every move, MOVES for the menu, SPRINT a toggle).
 local Players = game:GetService("Players")
 local ContextActionService = game:GetService("ContextActionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -1584,7 +1585,30 @@ do
 		movesPad.MouseButton1Down:Connect(function()
 			openMoves()
 		end)
+		-- SPRINT: the ring's quicker footwork (Shift held on a keyboard, L3 held on a pad), a toggle here since
+		-- there is no key to hold: lit while on, off again at the bell (KM.paintSprint)
+		KM.sprintPad = UI.Button(hud, "SPRINT", { Name = "SprintPad", Size = UDim2.fromOffset(96, math.max(40, UI.MinHit(hud))), Position = UDim2.fromOffset(236, hudTop + 8),
+			BackgroundColor3 = T.bg, BackgroundTransparency = 0.35, TextSize = 15, Visible = false })
+		KM.sprintPad.Selectable = false
+		UI.Stroke(KM.sprintPad, T.cyan, 2, 0.2)
+		KM.sprintPad.MouseButton1Down:Connect(function()
+			if KM.ringSprint then
+				local on = not KM.ringSprintOn()
+				KM.touchSprint = on
+				KM.ringSprint(on)
+			end
+		end)
 		controls.Visible = false
+	end
+
+	-- the touch SPRINT toggle's look follows the ring sprint (ringSprint / KM.dropRingSprint)
+	function KM.paintSprint(on)
+		local b = KM.sprintPad
+		if b then
+			b.BackgroundColor3 = on and T.cyan or T.bg
+			b.BackgroundTransparency = on and 0 or 0.35
+			b.TextColor3 = on and T.ink or T.text
+		end
 	end
 
 	-- what shows when: the key strip for the first 10 s of the fight, while H (VIEW on a pad) is held, or
@@ -1616,6 +1640,16 @@ do
 			local mp = touchUI and gui.Enabled and not F.down and not F.menuPaused
 			movesPad.Visible = mp
 			movesPad.Position = UDim2.fromOffset(132, hudTop + 8)
+			-- the sprint toggle with the pads (live rounds only); the pads leaving the picture (a knockdown, the
+			-- bell, a key pressed on a tablet) let a sprint the toggle started go, as a released key would
+			KM.sprintPad.Visible = pads
+			KM.sprintPad.Position = UDim2.fromOffset(236, hudTop + 8)
+			if not pads and KM.touchSprint then
+				KM.touchSprint = false
+				if KM.ringSprint then
+					KM.ringSprint(false)
+				end
+			end
 		end
 		-- the commentary leaves the picture during rounds on a phone, and wherever the touch pads are up
 		-- (the punch cluster sits on the ticker's corner on a tablet)
@@ -2921,6 +2955,9 @@ openMoves = function()
 	if inFight then
 		Tog.reset()
 		setSprint(false)
+		if KM.ringSprint then
+			KM.ringSprint(false) -- (the touch toggle too: the menu lets everything go)
+		end
 		if not F.pvp then
 			send({ t = "pause", on = true })
 		end
@@ -3011,9 +3048,16 @@ local function ringSprint(on)
 	end
 	sprint.ring = on
 	send({ t = "sprint", on = on, pad = padFlag() })
+	KM.paintSprint(on)
+end
+KM.ringSprint = ringSprint -- (the touch SPRINT toggle, built before this)
+KM.ringSprintOn = function()
+	return sprint.ring == true
 end
 KM.dropRingSprint = function()
-	sprint.ring = false -- (the fight is over: the server's flag went with it)
+	sprint.ring = false -- (the fight is over, or a bell: the server's flag went with it)
+	KM.touchSprint = false
+	KM.paintSprint(false)
 end
 
 ------------------------------------------------------------------------
@@ -3098,7 +3142,8 @@ local function addBinding(dev, b, id)
 	if mod then
 		dev.chord[last] = dev.chord[last] or {}
 		table.insert(dev.chord[last], { mod = mod, id = id })
-		dev.modOf[mod] = true
+		dev.modOf[mod] = dev.modOf[mod] or {}
+		table.insert(dev.modOf[mod], id) -- (the actions this key is the modifier of)
 	elseif double then
 		dev.double[last] = id
 	else
@@ -3109,8 +3154,8 @@ end
 -- in the ring a flick up doubles as D-pad up (the parry), the LS click as D-pad down (the clinch) and the RS
 -- click as D-pad left (the pivot, as the old map had it; the default map now gives RS click the quick dodge,
 -- which wins): the flicks share the stick with the slips and the roll. Only while the map gives the alias
--- key nothing of its own (the sprint does not count: a pad's ring sprint gives way to the clinch); never
--- outside a fight.
+-- key nothing of its own (the default map's L3 is the sprint, which is the ring's quicker footwork too, as
+-- Shift is on a keyboard: so L3 only clinches when the sprint is bound elsewhere); never outside a fight.
 local PAD_ALIAS = { Thumbstick2Up = "DPadUp", ButtonL3 = "DPadDown", ButtonR3 = "DPadLeft" }
 
 -- the lookup tables of the map in use (rebuilt when Settings hands out a new map)
@@ -3133,7 +3178,7 @@ local function lookup()
 	end
 	for from, to in pairs(PAD_ALIAS) do
 		local own = lk.pad.plain[from]
-		if (own == nil or own == "sprint") and not lk.pad.chord[from] and not lk.pad.double[from] and lk.pad.plain[to] then
+		if own == nil and not lk.pad.chord[from] and not lk.pad.double[from] and lk.pad.plain[to] then
 			lk.pad.alias[from] = lk.pad.plain[to]
 		end
 	end
@@ -3195,6 +3240,17 @@ local function fire(id, keyName)
 	act(id)
 end
 
+-- can any of a modifier's chords do something in this fight? (a special only once it is unlocked)
+function KM.chordLive(ids)
+	for _, id in ipairs(ids) do
+		local A = Keymap.ById[id]
+		if A and (not A.special or (F.moves and F.moves[A.special])) then
+			return true
+		end
+	end
+	return false
+end
+
 local function isHeld(mod, now)
 	if Ctl.held[mod] then
 		return true
@@ -3231,8 +3287,10 @@ local function onPress(name, device)
 	local p = lk.alias[name] or lk.plain[name] -- (onPress only runs in a fight: the ring aliases apply)
 	if p then
 		local A = Keymap.ById[p]
-		if lk.modOf[name] and A and A.section == "punch" then
-			-- a modifier's own punch waits for the release: a chord may still claim the key
+		if lk.modOf[name] and A and A.section == "punch" and KM.chordLive(lk.modOf[name]) then
+			-- a modifier's own punch waits for the release while a chord may still claim the key (RB: the
+			-- overhand, and the special moves held on it); with none of those chords usable in this fight
+			-- (no special unlocked yet) it goes on the press like any punch
 			Ctl.deferred[name] = p
 			Ctl.chordUsed[name] = nil
 		else

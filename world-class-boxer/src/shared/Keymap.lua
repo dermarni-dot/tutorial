@@ -36,9 +36,9 @@ Keymap.Actions = {
 	-- BASIC
 	{ id = "move", label = "Move", section = "basic", fixed = true, kbd = { "W/A/S/D" }, pad = "Thumbstick1", touch = "Thumbstick",
 		desc = "Step around the ring. Backing off costs nothing; walking in wins the inside." },
-	{ id = "sprint", label = "Sprint", section = "basic", kbd = { "LeftShift" }, pad = "ButtonL3", touch = "-",
+	{ id = "sprint", label = "Sprint", section = "basic", kbd = { "LeftShift" }, pad = "ButtonL3", touch = "SPRINT (ring)",
 		desc = "Hold to run around the gym and the city. In the ring it is quicker footwork: cut him off or get off the ropes.",
-		how = "In the ring it costs stamina while you move and does nothing while you punch or block. On a pad L3 is the clinch in the ring." },
+		how = "In the ring it costs stamina while you move and does nothing while you punch or block. On touch the SPRINT pad turns it on and off (in the ring)." },
 	{ id = "block", label = "Block (guard up / down)", section = "basic", kbd = { "B" }, pad = "ButtonL2", touch = "BLOCK",
 		desc = "Tap to raise the guard, tap again to drop it. A long press blocks while held. Punching drops a tapped guard.",
 		how = "Blocks eat most of a head shot. Body shots still get through and the overhand comes over the top." },
@@ -70,7 +70,7 @@ Keymap.Actions = {
 		desc = "Leg drive under the chin. The hardest head shot in the book.", how = "Catches a man who ducks or rolls: it lands bigger on a rolling head." },
 	{ id = "overhand", label = "Overhand", section = "punch", kbd = { "MouseButton3", "O" }, pad = "ButtonR1", touch = "OVERHAND",
 		desc = "A looping right over the top of the guard. Slow, half of it goes through a block (the Loaded overhand special is the bigger one).",
-		how = "Throw it when he shells up or is too tired to move. On a pad it goes when you let go of RB: RB held with another button is a special move." },
+		how = "Throw it when he shells up or is too tired to move. On a pad, once you own a special move it goes when you let go of RB (RB held with another button is a special); until then it goes on the press." },
 	{ id = "bodyhook", label = "Body hook", section = "punch", kbd = { "G" }, pad = "ButtonL1+ButtonB", touch = "BODY, then HOOK",
 		desc = "A hook to the ribs. Drains stamina and bruises the body (the liver is under the right ribs).", how = "Under a high guard, or when he is gassed." },
 	-- ADVANCED
