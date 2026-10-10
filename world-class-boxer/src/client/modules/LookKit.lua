@@ -345,8 +345,10 @@ function LookKit.HairPicker(parent, h, skinRGB, group, onPick, onGroup)
 	local own = LookKit.GroupOf(h.style)
 	group = group or own
 	local groups = Looks.HairStyleGroups
-	local tabs = UI.Frame(parent, { Name = "HairGroups", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 36) })
-	UI.Grid(tabs, UDim2.new(1 / #groups, -6, 0, 36), nil, 6)
+	-- touch: the chips grow to a fingertip (UI.MinHit: 57 design px on a 0.78 phone, 49 on a 0.9 tablet)
+	local th = math.max(36, UI.MinHit(parent))
+	local tabs = UI.Frame(parent, { Name = "HairGroups", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, th) })
+	UI.Grid(tabs, UDim2.new(1 / #groups, -6, 0, th), nil, 6)
 	local shown
 	for i, g in ipairs(groups) do
 		local on = g.name == group
