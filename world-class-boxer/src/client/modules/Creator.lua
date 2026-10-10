@@ -1525,21 +1525,40 @@ function Creator.Open()
 	local dockH = db + 12
 	local dockWords = 4 * db + 74 + 50 + 40 + 1 + 7 * 6 + 16 <= canvas.X * 0.54 - 24 - 28 - 12
 	local dock = UI.Frame(shade, { Name = "Turntable", AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -28, 1, -24), Size = UDim2.fromOffset(0, dockH), AutomaticSize = Enum.AutomaticSize.X })
-	local camHint = UI.Text(shade, "", { Name = "CameraHint", AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -34, 1, -(30 + dockH)), Size = UDim2.fromOffset(440, 16), TextSize = 12, TextColor3 = T.sub,
-		TextXAlignment = Enum.TextXAlignment.Right, AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
-	UI.BindHint(camHint, function(mode)
+	-- the camera hint keeps to the room right of the window (placePlate sizes it): its parts go on one
+	-- line where they fit, else on two balanced lines (a phone with a gamepad), never under the window.
+	-- Bottom-aligned in a two-line box, so a single line sits just above the dock.
+	local camHint = UI.Text(shade, "", { Name = "CameraHint", AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -34, 1, -(30 + dockH)), Size = UDim2.fromOffset(440, 32), TextSize = 12, TextColor3 = T.sub,
+		TextXAlignment = Enum.TextXAlignment.Right, TextYAlignment = Enum.TextYAlignment.Bottom, AutomaticSize = Enum.AutomaticSize.None, TextWrapped = true })
+	local hintRoom, hintPx = 440, 12
+	local function hintLines(parts)
+		local one = table.concat(parts, "  ·  ")
+		if #parts < 2 or UI.TextWidth(one, hintPx) <= hintRoom then
+			return one
+		end
+		local best, bestW
+		for k = 1, #parts - 1 do
+			local a, b = table.concat(parts, "  ·  ", 1, k), table.concat(parts, "  ·  ", k + 1)
+			local w = math.max(UI.TextWidth(a, hintPx), UI.TextWidth(b, hintPx))
+			if not bestW or w < bestW then
+				best, bestW = a .. "\n" .. b, w
+			end
+		end
+		return best
+	end
+	local function camHintText(mode)
 		if mode == "gamepad" then
 			local G = UI.Gamepad
 			local function l(k)
 				return G and G.Label(k) or k.Name
 			end
-			return string.format("RIGHT STICK turn  ·  %s / %s zoom  ·  %s / %s step  ·  %s undo  ·  %s reset slider", l(Enum.KeyCode.ButtonL2), l(Enum.KeyCode.ButtonR2), l(Enum.KeyCode.ButtonL1),
-				l(Enum.KeyCode.ButtonR1), l(Enum.KeyCode.ButtonY), l(Enum.KeyCode.ButtonX))
+			return hintLines({ "RIGHT STICK turn", l(Enum.KeyCode.ButtonL2) .. " / " .. l(Enum.KeyCode.ButtonR2) .. " zoom", l(Enum.KeyCode.ButtonL1) .. " / " .. l(Enum.KeyCode.ButtonR1) .. " step",
+				l(Enum.KeyCode.ButtonY) .. " undo", l(Enum.KeyCode.ButtonX) .. " reset slider" })
 		elseif mode == "touch" then
 			return "Drag your boxer to turn him"
 		end
-		return "Drag your boxer to turn  ·  wheel to zoom  ·  Ctrl+Z undo"
-	end)
+		return hintLines({ "Drag your boxer to turn", "wheel to zoom", "Ctrl+Z undo" })
+	end
 	-- phones: the plate moves to the top-right corner so it never covers the boxer, and takes no more
 	-- than the room right of the window (the window is 0.46 of the canvas plus its 24 px margin)
 	local function placePlate()
@@ -1553,6 +1572,14 @@ function Creator.Open()
 		local free = cv.X - (0.46 * cv.X + 24) - 40
 		plate.Size = UDim2.fromOffset(small and math.clamp(math.floor(free), 240, 480) or 440, 120)
 		camHint.Position = small and UDim2.new(1, -34, 1, -(30 + dockH)) or UDim2.new(1, -34, 1, -(162 + dockH))
+		-- the hint's room: right of the window (0.46 of the canvas, 300..600 wide, 24 px in) less a 16 px
+		-- gap and its own 34 px margin, measured at the size it really draws (the readability floor)
+		local abs = State.screen.AbsoluteSize
+		local s = (abs.X > 1 and cv.X > 1) and abs.X / cv.X or UI.ScaleOf(plate)
+		hintPx = math.max(12, UI.TextFloor(s))
+		hintRoom = math.max(160, math.floor(cv.X - (24 + math.clamp(0.46 * cv.X, 300, 600)) - 16 - 34))
+		camHint.Size = UDim2.fromOffset(hintRoom, 2 * math.ceil(hintPx * 1.3))
+		UI.BindHint(camHint, camHintText) -- (re-applied: the line break follows the room)
 	end
 	placePlate()
 	if plateConn then
