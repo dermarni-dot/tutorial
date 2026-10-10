@@ -960,11 +960,18 @@ R.Body = function(body, P)
 	-- a group row's "3D" button: finger-sized on touch (the row grows to it)
 	local viewH = hit(m, 22)
 	local viewW = math.max(34, viewH)
-	local function levelRow(parent, label, v, h, strong, labelColor)
+	-- sub: a second line under the label (a finger-high group row: the soreness under the name, where
+	-- one line beside the "3D" button would cut it at a phone's text floor)
+	local function levelRow(parent, label, v, h, strong, labelColor, sub)
 		local f = UI.Frame(parent, { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, h) })
 		-- a group row leaves room for its "3D" button before the bar
-		UI.Text(f, label, { Font = strong and T.semi or T.font, TextSize = strong and 14 or 13, TextColor3 = labelColor or (strong and T.text or T.sub), Size = UDim2.new(0.34, (strong and MuscleScreen) and -(viewW + 10) or 0, 1, 0),
-			AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
+		local labelW = (strong and MuscleScreen) and -(viewW + 10) or 0
+		UI.Text(f, label, { Font = strong and T.semi or T.font, TextSize = strong and 14 or 13, TextColor3 = labelColor or (strong and T.text or T.sub), Size = UDim2.new(0.34, labelW, sub and 0.5 or 1, 0),
+			AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd, TextYAlignment = sub and Enum.TextYAlignment.Bottom or nil })
+		if sub then
+			UI.Text(f, sub, { Name = "Sub", Font = T.semi, TextSize = 12, TextColor3 = labelColor or T.orange, Position = UDim2.new(0, 0, 0.5, 2), Size = UDim2.new(0.34, labelW, 0.5, -2),
+				AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd, TextYAlignment = Enum.TextYAlignment.Top })
+		end
 		UI.LevelBar(f, { Position = UDim2.new(0.34, 0, 0.5, strong and -5 or -3), Size = UDim2.new(0.52, 0, 0, strong and 10 or 6) }, { value = v, cap = cap, color = BodyMap.DevColor(v / cap) })
 		UI.Text(f, string.format("%.1f", v), { Face = "number", TextSize = strong and 16 or 14, Position = UDim2.new(0.86, 0, 0, 0), Size = UDim2.new(0.14, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.None,
 			TextXAlignment = Enum.TextXAlignment.Right, TextWrapped = false })
@@ -972,8 +979,12 @@ R.Body = function(body, P)
 	end
 	for _, k in ipairs(Config.MuscleKeys) do
 		local sv = tonumber(sore[k]) or 0
-		local gname = Config.MuscleNames[k]:upper() .. (sv >= 0.1 and string.format("  ·  SORE %d%%", math.floor(sv * 100)) or "")
-		local groupRow = levelRow(m, gname, tonumber(P.body[k]) or 0, MuscleScreen and math.max(26, viewH + 4) or 26, true, sv >= 0.4 and T.orange or nil)
+		local soreText = sv >= 0.1 and string.format("SORE %d%%", math.floor(sv * 100)) or nil
+		local rowH = MuscleScreen and math.max(26, viewH + 4) or 26
+		-- a finger-high row has room for two lines: the soreness goes under the name
+		local twoLines = soreText ~= nil and rowH >= 40
+		local gname = Config.MuscleNames[k]:upper() .. ((soreText and not twoLines) and ("  ·  " .. soreText) or "")
+		local groupRow = levelRow(m, gname, tonumber(P.body[k]) or 0, rowH, true, sv >= 0.4 and T.orange or nil, twoLines and soreText or nil)
 		if MuscleScreen then
 			-- the group's own page of the muscle screen (its figure lit, its growth graph)
 			UI.Button(groupRow, "3D", { Name = "View_" .. k, Size = UDim2.fromOffset(viewW, viewH), AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(0.33, 0, 0.5, 0), BackgroundColor3 = T.panel2, TextSize = 12 }, function()

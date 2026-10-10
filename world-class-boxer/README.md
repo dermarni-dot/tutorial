@@ -438,19 +438,24 @@ Everything is procedural, driven on each client by `Animator.client.lua` and the
   small map and the muscles' names). The report that follows shows the grade, every muscle that grew
   (its level before, the growth now, tonight's share, the gain), every stat that rose (old -> new),
   the pump / soreness / sweat / veins / fat chips and the body map re-lit by the growth (on a phone,
-  beside the grade). It stays up until CONTINUE / CLOSE (B). On top of it: a **+XP toast** that
-  counts up (training levels, level-ups), and a column of **gain popups** (one per stat and per
+  beside the grade; the header steps up under the record line so the first growth rows show without
+  scrolling). It stays up until CONTINUE / CLOSE (B), or until a window opens over it or a bout takes
+  the player (a PvP match found from the queue closes it and gives the camera back). On top of it:
+  a **+XP toast** that counts up (training levels, level-ups), and a column of **gain popups** (one per stat and per
   muscle part, old -> new) that slide in one after another. Where a column would run into the panel
-  (a phone, a 1024 tablet) the toast shrinks into the top-right corner and the popups become one row
+  (a phone, a 1024 tablet) the toast shrinks into the top-right corner (a shorter caption, the card
+  sized to it at the text floor) and the popups become one row
   of chips in the band above the report (stats first, "+N more" when they do not all fit; the
   report lists every one). FLEX strikes a pose; MUSCLES opens the Muscle Progression screen on the
   parts that just grew. On touch every drill and report button is a fingertip high (44 px), and the
-  instructions name the drill's own buttons and the thumbstick instead of keyboard keys. Names are
+  instructions name the drill's own buttons and the thumbstick instead of keyboard keys (the rope's
+  called foot reads A / D on a keyboard, the D-pad on a controller and the button on touch). Names are
   never cut at the readability floor: the Hub's exercise cards list the stats they build strongest
   first and end in "+N more" where the card is narrow (the smallest phones take one column of
   cards), and the gain chips, the growth names and the cost chip are sized to their text.
 - **Muscle Progression screen** (`MuscleScreen.lua`, Hub Body tab "3D MUSCLE VIEW", the "3D" button
-  of every group row, or MUSCLES on a training report): a rotating 3D figure (a frozen copy of
+  of every group row - finger-high on touch, with a sore group's soreness on its own line under the
+  name - or MUSCLES on a training report): a rotating 3D figure (a frozen copy of
   your character in a ViewportFrame, meshes included) with tabs for Arms, Chest, Core, Legs,
   Shoulders, Back and Neck. The picked group lights up on the figure (neon shells over the region,
   the round-1 muscle overlays tint) and the panel shows its level against your frame's potential,

@@ -209,6 +209,7 @@ local function touchInfo(ctx, text)
 	text = text:gsub("Hold W", "Push the thumbstick forward")
 	text = text:gsub(" %(%u/%u/%u%)", "")
 	text = text:gsub(" %(%u%)", "")
+	text = text:gsub(" %(%)", "")
 	-- "LEFT (LEFT)": a token that came out as the word before it
 	text = text:gsub("([%u][%u%.]*) %(([%u][%u%. ]*)%)", function(a, b)
 		if a == b then
@@ -426,6 +427,8 @@ local function newContext(info)
 	ctx.header = UI.Text(panel, "", { Face = "displayMed", TextSize = 15, TextColor3 = T.gold, Position = UDim2.fromOffset(16, 66 + topExtra), Size = UDim2.new(1, -32, 0, 16), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
 	local progBg, setBar = UI.Bar(panel, { Position = UDim2.new(0, 16, 0, 84 + topExtra), Size = UDim2.new(1, -32, 0, 4) }, T.gold)
 	progBg.BackgroundColor3 = T.ink
+	-- (the result report re-lays the header out on a phone: ctx.sizeResult)
+	ctx.progBg, ctx.quitW, ctx.topExtra = progBg, quitH > 28 and -136 or -32, topExtra
 	-- the session's progress: the bar under the header and the TIME tile's fill
 	local function setProg(f)
 		setBar(f)
@@ -791,6 +794,10 @@ local function newContext(info)
 
 	local function infoFor(mode)
 		local text = (ctx.infoRaw or ""):gsub("{(%w+)}", function(id)
+			-- a drill's own action (the rope's feet): its key, its pad button, nothing on touch
+			if ctx.ownKey and ctx.ownKey[id] then
+				return ctx.ownKeyText(id, mode) or ""
+			end
 			-- touch: the drill's own button for that fight action (its LEFT / SLIP LEFT / ROLL ...)
 			if mode == "touch" then
 				return ctx.labelOf and ctx.labelOf[id] or string.upper(LABEL[id] or id)
@@ -1078,9 +1085,13 @@ local function newContext(info)
 				end
 			end
 		end
+		ctx.ownKey = {}
 		for i, a in ipairs(actions) do
 			local keyText = a.keyText or (a.keys and a.keys[1] and (KEYNAME[a.keys[1]] or a.keys[1].Name)) or ""
 			local padKey = padOf[a.id][1]
+			if not a.map then
+				ctx.ownKey[a.id] = { kbd = keyText, pad = padKey }
+			end
 			local b = UI.Button(ctx.inputBar, a.label, { LayoutOrder = i, TextSize = 13, BackgroundColor3 = a.color or T.panel2 })
 			b.Selectable = false
 			-- the key in brackets follows the device: the keyboard key, the gamepad button, nothing on touch
@@ -1104,6 +1115,17 @@ local function newContext(info)
 		if ctx.infoRaw then
 			UI.BindHint(ctx.info, infoFor)
 		end
+	end
+	-- the key a drill's own action is on for this device ("A", the pad button), nil on touch (the
+	-- button is named instead); short = the pad's short form for a tight line ("D-LEFT")
+	function ctx.ownKeyText(id, mode, short)
+		local k = ctx.ownKey and ctx.ownKey[id]
+		if not k or mode == "touch" then
+			return nil
+		elseif mode == "gamepad" then
+			return (k.pad and Gamepad) and (short and Gamepad.Short or Gamepad.Label)(k.pad) or nil
+		end
+		return k.kbd ~= "" and k.kbd or nil
 	end
 	function ctx.wait(sec)
 		local t0 = os.clock()
@@ -2896,7 +2918,7 @@ end
 -- JUMP ROPE -------------------------------------------------------------
 local ROPE_INFO = {
 	jump = "Press SPACE (or JUMP) as the rope reaches your feet - the bottom of the circle.",
-	feet = "BOXER SKIP: land on the called foot - LEFT (A) or RIGHT (D) - as the rope passes your feet.",
+	feet = "BOXER SKIP: land on the called foot - LEFT ({footL}) or RIGHT ({footR}) - as the rope passes your feet.",
 	doubles = "DOUBLE UNDER = two quick presses while the rope spins twice. Plain jumps in between.",
 	speed = "The rope spins faster now. Same timing - quick, light feet.",
 }
@@ -2927,8 +2949,18 @@ GAMES.rope = function(ctx)
 		totalJumps += ph.jumps or 10
 	end
 	local clean, attempts, streak, bestStreak, doublesDone = 0, 0, 0, 0, 0
+	-- the called foot names its key on this device (A / D, the D-pad on a gamepad, the button on touch)
+	local cueNow
+	local function cueLine(mode)
+		if cueNow == "footL" or cueNow == "footR" then
+			local key = ctx.ownKeyText(cueNow, mode, true)
+			return (cueNow == "footL" and "LEFT FOOT" or "RIGHT FOOT") .. (key and (" (" .. key .. ")") or "")
+		end
+		return cueNow == "double" and "DOUBLE UNDER!" or (cueNow and "JUMP" or "")
+	end
 	local function showCue(cue)
-		cueText.Text = cue == "double" and "DOUBLE UNDER!" or (cue == "footL" and "LEFT FOOT (A)" or (cue == "footR" and "RIGHT FOOT (D)" or "JUMP"))
+		cueNow = cue
+		UI.BindHint(cueText, cueLine)
 		cueText.TextColor3 = cue == "jump" and T.text or T.gold
 	end
 	-- the rope judge (DrillScore) times every pass; this shows what it judged
@@ -2971,7 +3003,7 @@ GAMES.rope = function(ctx)
 	for phI, ph in ipairs(phases) do
 		ctx.setInfo(ROPE_INFO[ph.mode] or ROPE_INFO.jump)
 		ctx.attr("RopeSpin", 0)
-		cueText.Text = ""
+		showCue(nil)
 		if not ctx.round(phI, #phases, ph.name, "PHASE") then
 			return nil
 		end
@@ -3621,8 +3653,16 @@ local function xpToast(r0)
 	UI.Stroke(card, T.gold, 1.5, 0.3)
 	local num = UI.Text(card, "+0 XP", { Name = "Number", Face = "number", TextSize = numSize, TextColor3 = T.gold, Position = UDim2.fromOffset(16, small and 3 or 6), Size = UDim2.new(1, -32, 0, small and 30 or 40), AutomaticSize = Enum.AutomaticSize.None,
 		TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false, ZIndex = 61 })
-	local caption = lv and string.format("TRAINING XP  ·  LEVEL %d  ·  %d / %d", lv.level or 1, lv.into or 0, lv.need or 1) or "TRAINING XP"
-	local sub = UI.Text(card, caption, { Name = "Caption", Font = T.semi, TextSize = small and 10 or 12, TextColor3 = T.sub, Position = UDim2.fromOffset(16, small and 32 or 48), Size = UDim2.new(1, -32, 0, 14), AutomaticSize = Enum.AutomaticSize.None,
+	-- (the band's small card says it shorter, and grows to its caption at the readability floor)
+	local caption = lv and string.format(small and "LEVEL %d  ·  %d / %d XP" or "TRAINING XP  ·  LEVEL %d  ·  %d / %d", lv.level or 1, lv.into or 0, lv.need or 1) or "TRAINING XP"
+	local upText = lv and string.format(small and "LEVEL UP!  ·  LEVEL %d" or "LEVEL UP!  ·  TRAINING LEVEL %d", lv.level or 1) or caption
+	local capSize = small and 10 or 12
+	local px = math.max(capSize, UI.TextFloor(UI.ScaleOf(card)))
+	local capH = math.max(14, math.ceil(px * 1.2))
+	if small then
+		card.Size = UDim2.fromOffset(math.max(220, math.max(capsW(caption, px), capsW(upText, px)) + 36), 42 + capH)
+	end
+	local sub = UI.Text(card, caption, { Name = "Caption", Font = T.semi, TextSize = capSize, TextColor3 = T.sub, Position = UDim2.fromOffset(16, small and 32 or 48), Size = UDim2.new(1, -32, 0, capH), AutomaticSize = Enum.AutomaticSize.None,
 		TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false, ZIndex = 61 })
 	local barBg = UI.Frame(card, { Position = UDim2.new(0, 16, 1, small and -8 or -12), Size = UDim2.new(1, -32, 0, small and 3 or 4), BackgroundColor3 = T.ink, ZIndex = 61 })
 	UI.Corner(barBg, 2)
@@ -3655,7 +3695,7 @@ local function xpToast(r0)
 		if k >= 1 then
 			conn:Disconnect()
 			if r0.levelUp and lv then
-				sub.Text = string.format("LEVEL UP!  ·  TRAINING LEVEL %d", lv.level or 1)
+				sub.Text = upText
 				sub.TextColor3 = T.gold
 				num.TextSize = numSize + 6
 				TweenService:Create(num, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { TextSize = numSize }):Play()
@@ -3834,6 +3874,12 @@ local function gainPopups(ctx, r0, grown)
 	return col
 end
 
+-- a bout (or sparring) has the player: the report and the reveal camera give way to the ring
+local function inRing()
+	local b = State.busy()
+	return State.inFight() or b == "fight" or b == "spar" or b == "pvp"
+end
+
 local function showResult(ctx, res, quality)
 	ctx.mode = "done" -- freeze the heart-rate readout
 	ctx.resting = false
@@ -3889,14 +3935,24 @@ local function showResult(ctx, res, quality)
 			ctx.panelMax.MaxSize = Vector2.new(PANEL_W, h)
 		end
 		ctx.panel.Size = UDim2.new(0.96, 0, 0, h)
-		ctx.stage.Size = UDim2.new(1, -28, 0, h - ctx.stageY - ctx.cellH - 18)
+		-- a phone: the record line keeps to one line, the SESSION COMPLETE header moves up under it and
+		-- the (full) progress bar goes, so the list shows a growth row without scrolling
+		local top = small and math.min(ctx.stageY, 80) or ctx.stageY
+		ctx.info.Size = UDim2.new(1, ctx.quitW or -32, 0, small and 22 or 30 + (ctx.topExtra or 0))
+		ctx.header.Position = UDim2.fromOffset(16, small and 60 or 66 + (ctx.topExtra or 0))
+		ctx.header.Size = UDim2.new(1, small and (ctx.quitW or -32) or -32, 0, 16)
+		if ctx.progBg then
+			ctx.progBg.Visible = not small
+		end
+		ctx.stage.Position = UDim2.new(0, 14, 0, top)
+		ctx.stage.Size = UDim2.new(1, -28, 0, h - top - ctx.cellH - 18)
 		ctx.inputBar.Position = UDim2.new(0, 14, 0, h - ctx.cellH - 10)
 		return h, small, cv
 	end
 	local H, compact, canvas = ctx.sizeResult()
 	ctx.stage.BackgroundTransparency = 1
 	local list = UI.Scroll(ctx.stage, { Position = UDim2.fromOffset(0, 0), Size = UDim2.fromScale(1, 1) })
-	UI.List(list, 8)
+	UI.List(list, compact and 4 or 8)
 	local listW = math.min(PANEL_W, canvas.X * 0.96) - 28 - 16
 	local order = 0
 	local function nextOrder()
@@ -3917,10 +3973,12 @@ local function showResult(ctx, res, quality)
 	end
 	-- 1. the grade, the record and the coach (a phone without the growth card beside the panel: the
 	-- growth body map sits between the grade and the coach)
-	local top = UI.Frame(list, { Name = "Top", BackgroundTransparency = 1, Size = UDim2.new(1, -8, 0, 96), LayoutOrder = nextOrder() })
+	-- (a phone: a shorter block, so the first growth rows show under it)
+	local topH = compact and 80 or 96
+	local top = UI.Frame(list, { Name = "Top", BackgroundTransparency = 1, Size = UDim2.new(1, -8, 0, topH), LayoutOrder = nextOrder() })
 	local topMapW = (#grown > 0 and not (ctx.side and ctx.side.Visible)) and 104 or 0
 	if topMapW > 0 then
-		local okMap, gmap = pcall(BodyMap.new, top, { Size = UDim2.fromOffset(topMapW - 8, 96), Position = UDim2.fromOffset(104, 0), labels = false, glow = false })
+		local okMap, gmap = pcall(BodyMap.new, top, { Size = UDim2.fromOffset(topMapW - 8, topH), Position = UDim2.fromOffset(104, 0), labels = false, glow = false })
 		if okMap and gmap then
 			gmap.frame.Name = "GrowthMap"
 			gmap:SetGrowth(r0.parts, T.green)
@@ -3929,12 +3987,12 @@ local function showResult(ctx, res, quality)
 			topMapW = 0
 		end
 	end
-	local badge = UI.Frame(top, { Name = "Grade", Size = UDim2.fromOffset(92, 96), BackgroundColor3 = UI.Shade(gcol, -0.72) })
+	local badge = UI.Frame(top, { Name = "Grade", Size = UDim2.fromOffset(92, topH), BackgroundColor3 = UI.Shade(gcol, -0.72) })
 	UI.Corner(badge, 10)
 	UI.Stroke(badge, gcol, 2, 0.1)
 	UI.Gradient(badge, { Color3.new(1, 1, 1), Color3.fromRGB(150, 150, 150) }, 90)
-	local letter = UI.Text(badge, grade, { Face = "display", TextSize = 30, TextColor3 = gcol, TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.fromOffset(0, 4), Size = UDim2.new(1, 0, 0, 70), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
-	TweenService:Create(letter, TweenInfo.new(0.45, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { TextSize = 64 }):Play()
+	local letter = UI.Text(badge, grade, { Face = "display", TextSize = 30, TextColor3 = gcol, TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.fromOffset(0, 4), Size = UDim2.new(1, 0, 0, topH - 26), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
+	TweenService:Create(letter, TweenInfo.new(0.45, Enum.EasingStyle.Back, Enum.EasingDirection.Out), { TextSize = compact and 54 or 64 }):Play()
 	UI.Text(badge, string.format("%d%%", Config.QualityPct(quality)), { Face = "number", TextSize = 16, TextColor3 = T.text, TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.new(0, 0, 1, -24), Size = UDim2.new(1, 0, 0, 20), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
 	local right = UI.Frame(top, { BackgroundTransparency = 1, Position = UDim2.fromOffset(104 + topMapW, 0), Size = UDim2.new(1, -(104 + topMapW), 1, 0) })
 	UI.List(right, 6)
@@ -3949,7 +4007,7 @@ local function showResult(ctx, res, quality)
 	if headline then
 		UI.Text(right, headline, { Face = "displayMed", TextSize = 18, TextColor3 = hcol, Size = UDim2.new(1, 0, 0, 22), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd, LayoutOrder = 1 })
 	end
-	local quote = UI.Frame(right, { Name = "Coach", BackgroundColor3 = T.panel2, BackgroundTransparency = 0.35, Size = UDim2.new(1, 0, 0, headline and 62 or 92), LayoutOrder = 2 })
+	local quote = UI.Frame(right, { Name = "Coach", BackgroundColor3 = T.panel2, BackgroundTransparency = 0.35, Size = UDim2.new(1, 0, 0, headline and topH - 34 or topH - 4), LayoutOrder = 2 })
 	UI.Corner(quote, UI.R.md)
 	UI.Frame(quote, { Size = UDim2.new(0, 3, 1, -12), Position = UDim2.fromOffset(0, 6), BackgroundColor3 = gcol })
 	UI.Text(quote, string.format('"%s"  <font color="#%s">- COACH</font>', coachRemark(ctx.act.id, grade), T.sub:ToHex()), { RichText = true, Font = T.semi, TextSize = 14, Position = UDim2.fromOffset(14, 6), Size = UDim2.new(1, -24, 1, -12),
@@ -4139,11 +4197,21 @@ local function showResult(ctx, res, quality)
 		closed = true
 	end)
 	ctx.cancelled = false
-	-- the report stays until CONTINUE / CLOSE (B): a phone player scrolls it at their own pace
-	while not closed and not ctx.cancelled and ctx.panel.Parent do
+	-- the report stays until CONTINUE / CLOSE (B): a phone player scrolls it at their own pace. It is
+	-- not in the player's way, though: a window opening over it (State.closeAll - a PvP match found,
+	-- the bout starting) closes it, and so does the ring itself (a queued player is free once the
+	-- session is handed in)
+	local function closer()
+		closed = true
+	end
+	State.windows.ActivityReport = closer
+	while not closed and not ctx.cancelled and ctx.panel.Parent and not inRing() do
 		RunService.Heartbeat:Wait()
 	end
-	return wantMuscle
+	if State.windows.ActivityReport == closer then
+		State.windows.ActivityReport = nil
+	end
+	return wantMuscle and not inRing()
 end
 
 ------------------------------------------------------------------------
@@ -4281,11 +4349,14 @@ function Activities.Start(actId)
 	end
 	if camConn then
 		camConn:Disconnect()
-		if camKick.baseFov then
+		if camKick.baseFov and not inRing() then
 			workspace.CurrentCamera.FieldOfView = camKick.baseFov
 		end
 	end
-	workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
+	-- (the fight camera owns the view once a bout has the player)
+	if not inRing() then
+		workspace.CurrentCamera.CameraType = Enum.CameraType.Custom
+	end
 	ctx.destroy()
 	current = nil
 	State.activity = nil
