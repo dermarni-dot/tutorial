@@ -304,6 +304,9 @@ function KM.refresh()
 			end
 		end
 	end
+	if KM.packStrip then
+		KM.packStrip() -- (new key names, new widths)
+	end
 end
 do
 	local GuiService = game:GetService("GuiService")
@@ -515,9 +518,12 @@ do
 		}
 		if left then
 			-- the player's own legs: below a third, the next big shot (or a whiffed hook) staggers you
-			local balHolder = UI.Frame(icons, { BackgroundTransparency = 1, Size = UDim2.fromOffset(176, 20), LayoutOrder = 9 })
-			UI.Text(balHolder, "BALANCE", { Font = T.semi, TextSize = 13, TextColor3 = T.sub, Size = UDim2.fromOffset(70, 20), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
-			local bg = UI.Frame(balHolder, { Position = UDim2.new(0, 74, 0.5, -2), Size = UDim2.new(1, -74, 0, 5), BackgroundColor3 = T.ink })
+			-- (label then bar in a row: the label takes what its text needs, so a raised text-size floor on a small
+			-- screen never runs it under the bar)
+			local balHolder = UI.Frame(icons, { BackgroundTransparency = 1, Size = UDim2.fromOffset(0, 20), AutomaticSize = Enum.AutomaticSize.X, LayoutOrder = 9 })
+			UI.List(balHolder, 6, true)
+			UI.Text(balHolder, "BALANCE", { Font = T.semi, TextSize = 13, TextColor3 = T.sub, Size = UDim2.fromOffset(0, 20), AutomaticSize = Enum.AutomaticSize.X, TextWrapped = false, LayoutOrder = 1 })
+			local bg = UI.Frame(balHolder, { Size = UDim2.fromOffset(102, 5), BackgroundColor3 = T.ink, LayoutOrder = 2 })
 			UI.Corner(bg, 2)
 			p.bal = UI.Frame(bg, { Size = UDim2.fromScale(1, 1), BackgroundColor3 = Color3.fromRGB(200, 200, 210) })
 			UI.Corner(p.bal, 2)
@@ -777,17 +783,19 @@ do
 		AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
 	-- control hints (key caps) above the ticker: shown for the first seconds of the fight, then while H is
 	-- held (or always, with the setting); touch players get the pads instead
-	-- one row on a wide screen, two (punches / defence) on a short one
+	-- packed to the screen's width (KM.packStrip): one row on a wide screen, more on a narrow one
 	controls = UI.Frame(hud, { Name = "Controls", AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -62), Size = UDim2.fromOffset(0, 0), AutomaticSize = Enum.AutomaticSize.XY })
 	UI.Glass(controls, { transparency = 0.35, radius = 16 })
 	UI.New("UIPadding", { PaddingLeft = UDim.new(0, 12), PaddingRight = UDim.new(0, 14), PaddingTop = UDim.new(0, 4), PaddingBottom = UDim.new(0, 4), Parent = controls })
 	UI.List(controls, 2, false, Enum.HorizontalAlignment.Center)
+	-- Row1 / Row2 / Row2b: the moves (as many rows as the width needs); Row3 / Row4: the special moves
 	local ctlRows = {}
-	for r = 1, 3 do
-		ctlRows[r] = UI.Frame(controls, { Name = "Row" .. r, BackgroundTransparency = 1, Size = UDim2.fromOffset(0, 24), AutomaticSize = Enum.AutomaticSize.X, LayoutOrder = r })
+	for r, def in ipairs({ { "Row1", 1 }, { "Row2", 2 }, { "Row3", 4 }, { "Row2b", 3 }, { "Row4", 5 } }) do
+		ctlRows[r] = UI.Frame(controls, { Name = def[1], BackgroundTransparency = 1, Size = UDim2.fromOffset(0, 24), AutomaticSize = Enum.AutomaticSize.X, LayoutOrder = def[2] })
 		UI.List(ctlRows[r], 12, true, Enum.HorizontalAlignment.Center)
 	end
-	local ctlItems = {}
+	local mainRows, specRows = { ctlRows[1], ctlRows[2], ctlRows[4] }, { ctlRows[3], ctlRows[5] }
+	local ctlItems, ctlSpec = {}, {}
 	-- { action id(s), caption }: the caps read the control map for the device in use (the right-stick
 	-- flicks read "RS LEFT/RIGHT", "RS DOWN"); KM.refresh repaints them when the map changes
 	local function capText(ids, mode)
@@ -811,7 +819,7 @@ do
 		{ { "overhand" }, "OVERHAND" }, { { "body" }, "BODY" }, { { "block" }, "BLOCK" }, { { "parry" }, "PARRY" },
 		{ { "slipL", "slipR" }, "SLIP" }, { { "dodge" }, "DODGE" }, { { "pivotL", "pivotR" }, "PIVOT" }, { { "clinch" }, "CLINCH" }, { { "moveslist" }, "MOVES" } }) do
 		local f = UI.Frame(ctlRows[1], { BackgroundTransparency = 1, Size = UDim2.fromOffset(0, 24), AutomaticSize = Enum.AutomaticSize.X, LayoutOrder = i })
-		ctlItems[i] = f
+		ctlItems[i], ctlSpec[i] = f, k
 		UI.List(f, 5, true)
 		local cap = UI.Frame(f, { Size = UDim2.fromOffset(0, 20), AutomaticSize = Enum.AutomaticSize.X, BackgroundColor3 = T.panel2, BackgroundTransparency = 0, LayoutOrder = 1 })
 		UI.Corner(cap, 4)
@@ -839,9 +847,12 @@ do
 	-- (from the fight's start message; KM.refresh repaints these caps too, KM.paintSpecials dims them while
 	-- a special is not ready)
 	KM.specialCaps = {}
+	local stripSpecials = {} -- { frame, action, caption } in the strip's order
 	function KM.buildSpecialStrip(list)
 		UI.Clear(ctlRows[3])
+		UI.Clear(ctlRows[5])
 		table.clear(KM.specialCaps)
+		table.clear(stripSpecials)
 		local mode = Gamepad and Gamepad.Mode() or "keyboard"
 		for i, id in ipairs(list or {}) do
 			local a = Keymap.ById["special_" .. id]
@@ -860,13 +871,66 @@ do
 				table.insert(KM.specialCaps, { label = t, ids = { a.id } })
 				local name = UI.Text(f, a.touch or id:upper(), { Font = T.semi, TextSize = 12, TextColor3 = T.gold, Size = UDim2.new(0, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.X,
 					TextWrapped = false, LayoutOrder = 2 })
+				table.insert(stripSpecials, { f, a.id, a.touch or id:upper() })
 				-- the strip's caps share the touch pads' readiness painter
 				local e = KM.specialPads[id] or {}
 				e.stripLabel, e.stripStroke = name, stroke
 				KM.specialPads[id] = e
 			end
 		end
-		ctlRows[3].Visible = #list > 0
+		KM.packStrip()
+	end
+
+	-- the strip's rows packed to the canvas width: a phone or a 1024 screen cannot take the whole map on one
+	-- line (a pad's captions are the longest). The moves fill up to three rows, the special moves two.
+	-- Widths are estimated from the text at the size it really draws (12 px, or the root's readability floor
+	-- on a small screen; bold capitals run about 0.7 em a character, TextService's width where it says more)
+	-- plus the cap's padding and the gaps, so nothing waits for a layout pass; run on a canvas, map, device
+	-- or special-list change
+	local stripSize = 12
+	local function stripW(cap, caption)
+		local est = (#cap + #caption) * stripSize * 0.7
+		return math.max(est, UI.TextWidth(cap, stripSize, T.semi) + UI.TextWidth(caption, stripSize, T.semi)) + 17
+	end
+	local function pack(rows, entries, avail)
+		local row, used = 1, 0
+		for _, e in ipairs(entries) do
+			local w = e.w
+			if used > 0 and used + 12 + w > avail and row < #rows then
+				row += 1
+				used = 0
+			end
+			used += (used > 0 and 12 or 0) + w
+			if e.frame.Parent ~= rows[row] then
+				e.frame.Parent = rows[row]
+			end
+		end
+		for r, f in ipairs(rows) do
+			f.Visible = #entries > 0 and r <= row
+		end
+	end
+	-- the HUD's scale from its canvas (on a resize the root's UIScale may not have caught up yet)
+	local function freshScale(canvas)
+		local vp = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize
+		return (vp and vp.X > 1 and canvas.X > 1) and vp.X / canvas.X or UI.ScaleOf(hud)
+	end
+	function KM.packStrip()
+		local canvas = UI.CanvasSize(hud)
+		local avail = math.max(300, canvas.X - 48) -- (a margin each side, the strip's own padding)
+		stripSize = math.max(12, UI.TextFloor(freshScale(canvas)))
+		local mode = Gamepad and Gamepad.Mode() or "keyboard"
+		local entries = {}
+		for i, f in ipairs(ctlItems) do
+			table.insert(entries, { frame = f, w = stripW(capText(ctlSpec[i][1], mode), ctlSpec[i][2]) })
+		end
+		pack(mainRows, entries, avail)
+		entries = {}
+		for _, e in ipairs(stripSpecials) do
+			if e[1].Parent then
+				table.insert(entries, { frame = e[1], w = stripW(capText({ e[2] }, mode), e[3]) })
+			end
+		end
+		pack(specRows, entries, avail)
 	end
 	-- the reminder once the strip has faded
 	local controlsHint, controlsHintText = UI.Chip(hud, "H  ·  CONTROLS", T.sub, { AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 24, 1, -62), h = 24, TextSize = 13 })
@@ -1285,12 +1349,15 @@ do
 		crowdLabel.Visible = not compact
 		local below = (compact and 6 or 10) + bh
 		hudTop = below
-		-- the key strip: punches over defence on a short screen
-		for i, item in ipairs(ctlItems) do
-			item.Parent = (compact and i > 7) and ctlRows[2] or ctlRows[1]
-		end
-		ctlRows[2].Visible = compact
-		ctlRows[3].Visible = #ctlRows[3]:GetChildren() > 1
+		-- the key strip: its rows fit the width
+		KM.packStrip()
+		-- the ticker's red tag fits its word at the size it really draws (the readability floor on a small
+		-- screen makes it wider than the design's 140; bold capitals run about 0.75 em)
+		local tagSize = math.max(13, UI.TextFloor(freshScale(canvas)))
+		local tagW = math.max(140, 26 + math.max(UI.TextWidth("COMMENTARY", tagSize, T.semi), 10 * tagSize * 0.75) + 12)
+		tickerTag.Size = UDim2.new(0, tagW, 1, 0)
+		tickerText.Position = UDim2.fromOffset(tagW + 14, 0)
+		tickerText.Size = UDim2.new(1, -(tagW + 28), 1, 0)
 		-- the corner bug outside rounds (in rounds the clock carries the LIVE tag); a phone's scorecard
 		-- needs the corner
 		bug.Visible = bug:GetAttribute("On") == true and not clock.Visible and not (compact and overlay.Visible)
@@ -3566,6 +3633,7 @@ end)
 -- assist is tied to the device the server holds the fighter on)
 if Gamepad then
 	Gamepad.Changed:Connect(function(mode)
+		KM.packStrip() -- (a pad's captions are longer)
 		refreshControls()
 		if mode ~= "gamepad" then
 			Gamepad.Rumble(0, 0, 0)

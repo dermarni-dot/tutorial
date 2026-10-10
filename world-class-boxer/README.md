@@ -176,8 +176,9 @@ and the special-move modifier (held while another button is pressed). Until you 
 overhand goes on the press; from then on it goes when you let go of RB, so a chord can still claim the
 button: RB + X check hook, RB + Y pull counter, RB + B liver shot, RB + A loaded overhand, RB + RT lead
 uppercut, RB + LT Philly shell counter, RB + LB step-back counter, RB + D-pad up gazelle punch, RB + D-pad
-down peek-a-boo rush (a chord for a move you do not own yet says LOCKED). **View / Share** does what the map gives it (the controls strip by default; bind it to anything) and held for a
-second always opens the menu. A double tap is two presses of one key within a third of a second; a
+down peek-a-boo rush (a chord for a move you do not own yet says LOCKED). **View / Share** does what the
+map gives it (the controls strip by default; bind it to anything) and held for a second always opens the
+menu. A double tap is two presses of one key within a third of a second; a
 plain press of A or D still walks.
 
 **Touch.** The punch cluster sits bottom right (HOOK / UPPER over JAB / CROSS, OVERHAND and BODY on top),
@@ -237,7 +238,9 @@ styles get it early, everyone a few tiers later) **or by a training milestone** 
 exercise); nothing new is saved, the set is worked out from the profile each time, so old saves just
 work. A move newly unlocked by a promotion, a training milestone or a fight result is announced (NEW
 SPECIAL MOVE, with its key or chord; after the fight when it comes during one). In a fight the key strip
-(**H** / **View**) has a row of your unlocked specials with their keys, and the touch pads are gold.
+(**H** / **View**) has a row of your unlocked specials with their keys (the strip packs itself to the
+screen: one line of moves on a wide screen, two or three on a tablet or a phone, where a pad's button
+names are the longest), and the touch pads are gold.
 All specials share one cooldown and each needs its stamina: a press inside the cooldown says SPECIAL
 READY IN 0.8s, one without the gas NO GAS FOR THE LIVER SHOT (the touch pads and the strip dim
 meanwhile), and nothing is sent; if the server still refuses one (it decides), it says why and the
