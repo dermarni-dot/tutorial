@@ -22,7 +22,8 @@
 -- special can be chorded on RB) and the special-move modifier (hold RB + a button), LB = to the body, LT
 -- block (both tap toggles), right stick flick left / right slip, down roll, up parry, flick then X / Y
 -- counter jab / cross, RS click quick dodge, D-pad left / right pivot, D-pad up parry, D-pad down clinch,
--- L3 held sprint (quicker footwork in the ring), VIEW the controls strip (hold it for the menu); when
+-- L3 sprint (a click: it runs until the stick is back in the centre; quicker footwork in the ring), VIEW
+-- the controls strip (hold it for the menu); when
 -- down, mash A. Aim assist (Settings, gamepad only) reads the left stick relative to the opponent;
 -- vibration on hits (Gamepad.Rumble); the fight camera frames both fighters and the right stick nudges it.
 -- Touch: see buildTouch (pads and swipes for every move, MOVES for the menu, SPRINT a toggle).
@@ -1585,8 +1586,8 @@ do
 		movesPad.MouseButton1Down:Connect(function()
 			openMoves()
 		end)
-		-- SPRINT: the ring's quicker footwork (Shift held on a keyboard, L3 held on a pad), a toggle here since
-		-- there is no key to hold: lit while on, off again at the bell (KM.paintSprint)
+		-- SPRINT: the ring's quicker footwork (Shift held on a keyboard, an L3 click on a pad), a toggle here
+		-- since there is no key to hold: lit while on, off again at the bell (KM.paintSprint)
 		KM.sprintPad = UI.Button(hud, "SPRINT", { Name = "SprintPad", Size = UDim2.fromOffset(96, math.max(40, UI.MinHit(hud))), Position = UDim2.fromOffset(236, hudTop + 8),
 			BackgroundColor3 = T.bg, BackgroundTransparency = 0.35, TextSize = 15, Visible = false })
 		KM.sprintPad.Selectable = false
@@ -3054,6 +3055,30 @@ KM.ringSprint = ringSprint -- (the touch SPRINT toggle, built before this)
 KM.ringSprintOn = function()
 	return sprint.ring == true
 end
+-- a pad's clicked sprint ends once the left stick has been back in the centre for a moment (a quick pass
+-- through the centre to change direction does not count)
+function KM.padSprintStick()
+	if not (sprint.padClick and (sprint.on or sprint.ring)) then
+		return
+	end
+	if pad.leftX * pad.leftX + pad.leftY * pad.leftY >= 0.04 then
+		sprint.centredAt = nil
+		return
+	end
+	if sprint.centredAt then
+		return
+	end
+	local at = os.clock()
+	sprint.centredAt = at
+	task.delay(0.3, function()
+		if sprint.centredAt == at and sprint.padClick then
+			sprint.padClick = false
+			sprint.centredAt = nil
+			setSprint(false)
+			ringSprint(false)
+		end
+	end)
+end
 KM.dropRingSprint = function()
 	sprint.ring = false -- (the fight is over, or a bell: the server's flag went with it)
 	KM.touchSprint = false
@@ -3200,6 +3225,17 @@ local function act(id)
 		openMoves()
 		return
 	elseif id == "sprint" then
+		-- on a pad it is a click, as on most console games: L3 starts it, the left stick back in the centre (or
+		-- a second click) ends it (KM.padSprintStick); a key is held (onRelease ends it)
+		local padClick = Ctl.device == "pad"
+		if padClick and (sprint.on or sprint.ring) then
+			sprint.padClick = false
+			setSprint(false)
+			ringSprint(false)
+			return
+		end
+		sprint.padClick = padClick
+		sprint.centredAt = nil
 		if gui.Enabled then
 			ringSprint(true)
 		else
@@ -3237,6 +3273,7 @@ end
 
 local function fire(id, keyName)
 	Ctl.keyAction[keyName] = id
+	Ctl.device = Keymap.IsPadKeyName(keyName) and "pad" or "kbd"
 	act(id)
 end
 
@@ -3315,7 +3352,7 @@ local function onRelease(name)
 	end
 	if TOGGLE_ACTIONS[id] then
 		Tog.release(TOGGLE_ACTIONS[id])
-	elseif id == "sprint" then
+	elseif id == "sprint" and not sprint.padClick then
 		setSprint(false)
 		ringSprint(false)
 	end
@@ -3522,6 +3559,7 @@ end
 UserInputService.InputChanged:Connect(function(input)
 	if input.KeyCode == K.Thumbstick1 then
 		pad.leftX, pad.leftY = input.Position.X, input.Position.Y
+		KM.padSprintStick()
 	end
 end)
 -- another device picked up: the strip / pads / get-up title follow it, and the server is told (the aim

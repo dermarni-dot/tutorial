@@ -126,7 +126,7 @@ to select and **B** to go back.
 | Action | Keyboard & mouse | Controller (Xbox / PlayStation) | Touch |
 |---|---|---|---|
 | Move | WASD | Left stick | Thumbstick |
-| Sprint (in the ring: quicker footwork) | hold Shift | hold the left-stick click (L3) | SPRINT (in the ring; a toggle) |
+| Sprint (in the ring: quicker footwork) | hold Shift | click the left stick (L3): until the stick is back in the centre | SPRINT (in the ring; a toggle) |
 | Jab | Left click (or J) | X / Square | JAB |
 | Cross | Right click (or K) | Y / Triangle | CROSS |
 | Lead hook | F (or L) | B / Circle | HOOK (alternates hands) |
@@ -160,9 +160,10 @@ hides the player list for its duration and takes Tab for the Moves & Controls me
 **`** opens the menu anywhere, in the ring or out of it. **Shift** sprints in the gym and the city; in the
 ring it is quicker footwork while held (to cut him off or get off the ropes): the server speeds your
 feet up by a third, not while you punch or block, and charges stamina for every second you move with it
-(none comes back meanwhile; it stops when you are down to your last 15 %). On a pad holding the
-left-stick click (L3) does the same, and on touch the **SPRINT** pad (top left, next to MOVES) turns it on
-and off (the bell, a knockdown or the menu turns it off). Every device has it, so a PvP bout is even.
+(none comes back meanwhile; it stops when you are down to your last 15 %). On a pad a click of the left
+stick (L3) does the same, in the ring and out of it, until the stick is back in the centre or you click
+again; on touch the **SPRINT** pad (top left, next to MOVES) turns it on and off (the bell, a knockdown or
+the menu turns it off). Every device has it, so a PvP bout is even.
 
 **Chords and double taps.** A chord is "hold the first key, press the second" (Shift + Space, Q + click).
 On a pad a right-stick flick counts as held for half a second, so "flick left, then X" is the counter jab.

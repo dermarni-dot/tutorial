@@ -38,7 +38,7 @@ Keymap.Actions = {
 		desc = "Step around the ring. Backing off costs nothing; walking in wins the inside." },
 	{ id = "sprint", label = "Sprint", section = "basic", kbd = { "LeftShift" }, pad = "ButtonL3", touch = "SPRINT (ring)",
 		desc = "Hold to run around the gym and the city. In the ring it is quicker footwork: cut him off or get off the ropes.",
-		how = "In the ring it costs stamina while you move and does nothing while you punch or block. On touch the SPRINT pad turns it on and off (in the ring)." },
+		how = "In the ring it costs stamina while you move and does nothing while you punch or block. On a pad click the left stick: it runs until the stick is back in the centre (or a second click). On touch the SPRINT pad turns it on and off (in the ring)." },
 	{ id = "block", label = "Block (guard up / down)", section = "basic", kbd = { "B" }, pad = "ButtonL2", touch = "BLOCK",
 		desc = "Tap to raise the guard, tap again to drop it. A long press blocks while held. Punching drops a tapped guard.",
 		how = "Blocks eat most of a head shot. Body shots still get through and the overhand comes over the top." },
