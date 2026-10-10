@@ -603,6 +603,17 @@ local function buildMezzanine(gym)
 	guard("LoungeGuard", x1 - 0.3, x1 + glassIn, y, ceil, z1, gz - 0.15)
 	guard("LoungeGuard", x1 - 0.3, x1 + glassIn, y, ceil, landingEnd, z2 - 0.02)
 	guard("LoungeGuard", x2 - glassIn, x2 + 0.3, y, ceil, z1, z2 - 0.02)
+	-- where an edge guard runs into a south-wall window, the opening is a recess behind the deck's end
+	-- (the glass stands in the middle of the 2-stud wall, 0.9 behind its inner face, over a sill that
+	-- runs on both sides of the guard): a plug carries the guard back to the glass, so nobody slides
+	-- round its end along the sill from the lobby corner
+	for _, a in ipairs(MapBuilder.Windows.S) do
+		for _, gx in ipairs({ { x1 - 0.3, x1 + glassIn }, { x2 - glassIn, x2 + 0.3 } }) do
+			if a - WIN_W / 2 < gx[2] and a + WIN_W / 2 > gx[1] then
+				guard("LoungeGuard", gx[1], gx[2], WIN_Y0, WIN_Y1, z2 - 0.02, z2 + 0.89)
+			end
+		end
+	end
 	-- (between the stair and the deck, inside the gate: above the glass, as before)
 	guard("LoungeGuard", x1 + 0.1, x1 + 0.2, y + 2.8, ceil, gz + 0.15, stairTop)
 	return f
