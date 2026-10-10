@@ -60,6 +60,21 @@ Careers are saved with DataStoreService in the store `Config.DataStoreName` (`Wo
 - **Failed load:** if a DataStore read fails when a player joins, the server keeps retrying. The
   player sees "Couldn't reach Roblox's save servers. Retrying..." and nothing can overwrite the real
   career. After about two minutes of failures, the player is kicked with a clear message.
+- **One server at a time:** the saved career carries a session lock (which server is playing it and
+  when that server last saved). A player who hops to another server while the old one is still
+  writing the leave save waits on the loading screen until it lands (at most about 30 seconds: the
+  lock of a server that died is taken over after that, and one older than 3 minutes is ignored).
+  Every save refreshes the lock, a heartbeat keeps it fresh through long fights without saves, and
+  the leave save, the shutdown saves and a player who gives up on the loading screen hand it back.
+  The leave save is the session's last write. Every save also carries a save counter, so an older
+  copy never overwrites a newer one: if a newer save from another server still lands, the next save
+  here is refused and the player plays on from that newer copy, with a toast "Your career was
+  updated from another server." The progress made on this server since the join is replaced by
+  that copy, and the newer save is never rolled back. If that re-read fails as well, the player is
+  asked to rejoin.
+- **Saved world size:** retired AI boxers are pruned from the saved world. The game keeps those the
+  career still refers to (fight history, offers, belt holders) and the 40 most recently retired
+  rivals the player fought, so a long career's save stays small.
 
 Old saves stay valid. Every new field has a default and is sanitised. Player settings (UI scale, volumes, graphics detail, screen
 FX, camera shake, the custom control map, aim assist and vibration) are saved with the profile.
