@@ -948,7 +948,21 @@ local function braids(H, box)
 	-- the parted scalp: the head's own skin with a fine stipple of new growth, a little denser in each section
 	-- round its braid's root (soft and skin-toned: no dark squares), thin clean partings between sections
 	local dens = 0.42 + 0.15 * H.grow
-	Parts.Cap(H, { top = 0.005, side = 0.004, pattern = "stubble", flow = "back", capT = 0.6, material = "Plastic", grain = 0.6, streak = 0,
+	local capTop, capSide = 0.005, 0.004
+	if box and H.lod ~= "full" then
+		-- (further away the sections' stipple, the thin partings and the braids' square bases blur into the hair's
+		-- colour: kept skin-toned, the scalp between the fewer braids medium / low detail keeps read as a bald
+		-- head with strings over it. At low detail the shell also stands clear of the head's own facets: a
+		-- skin-thin one on an 18 x 8 grid sank under them between its vertices and the bare head showed)
+		dens = lerp(dens, 1, H.lod == "low" and 0.8 or 0.45)
+		if H.lod == "low" then
+			-- (an even shell: the partings are far under a pixel there, and on the coarse grid the vertex colours
+			-- smeared them into skin-coloured blotches)
+			capTop, capSide = 0.016, 0.014
+			boxRegion = nil
+		end
+	end
+	Parts.Cap(H, { top = capTop, side = capSide, pattern = "stubble", flow = "back", capT = 0.6, material = "Plastic", grain = 0.6, streak = 0,
 		region = boxRegion, shaved = 0.45, density = dens,
 		-- (a skin-thin stubble cap: its grid only follows the skull - a coarser one leaves triangles for braids)
 		cols = (box and H.lod == "full") and 40 or nil, rows = (box and H.lod == "full") and 18 or nil })
