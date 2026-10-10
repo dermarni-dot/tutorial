@@ -609,12 +609,34 @@ do
 	roundText = UI.Text(clockTop, "ROUND 1", { Face = "displayMed", TextSize = 18, TextColor3 = T.ink, TextXAlignment = Enum.TextXAlignment.Center, Position = UDim2.fromOffset(44, 0),
 		Size = UDim2.new(1, -48, 1, 0), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
 	-- the round text starts where the SPAR / LIVE tag ends (a phone's text floor makes the tag wider than its
-	-- 44 px slot, and "SPAR" over "ROUND 1 / 1" read as one word)
+	-- 44 px slot, and "SPAR" over "ROUND 1 / 1" read as one word). Where "ROUND 1 / 3" does not fit the room
+	-- left at the size it really draws (a phone's clock: the floor raises it), it reads "RD 1 / 3", "RD 1/3",
+	-- then "1/3": Oswald SemiBold runs about 0.45 em a character, TextService's width where it says more
+	KM.round = { n = 1, total = nil }
+	function KM.roundFits(text, size, room)
+		local w = #text * size * 0.47
+		local ok, v = pcall(function()
+			return game:GetService("TextService"):GetTextSize(text, size, Enum.Font.Oswald, Vector2.new(10000, 10000))
+		end)
+		return math.max(w, (ok and typeof(v) == "Vector2") and v.X * 1.05 or 0) <= room
+	end
 	function layoutClockTop()
 		local tagW = liveTag.AbsoluteSize.X / math.max(0.01, UI.ScaleOf(clockTop))
 		local x = math.max(compactHud and 38 or 44, tagW + 10)
 		roundText.Position = UDim2.fromOffset(x, 0)
 		roundText.Size = UDim2.new(1, -(x + 4), 1, 0)
+		local r = KM.round
+		local tail = r.total and string.format("%d / %d", r.n, r.total) or tostring(r.n)
+		local room = clock.Size.X.Offset - x - 8
+		local text = "ROUND " .. tail
+		if not KM.roundFits(text, roundText.TextSize, room) then
+			local short = r.total and string.format("%d/%d", r.n, r.total) or tail
+			text = KM.roundFits("RD " .. tail, roundText.TextSize, room) and ("RD " .. tail)
+				or (KM.roundFits("RD " .. short, roundText.TextSize, room) and ("RD " .. short) or short)
+		end
+		if roundText.Text ~= text then
+			roundText.Text = text
+		end
 	end
 	liveTag:GetPropertyChangedSignal("AbsoluteSize"):Connect(layoutClockTop)
 	timeText = UI.Text(clock, "1:00", { Face = "number", TextSize = 50, TextXAlignment = Enum.TextXAlignment.Center, Size = UDim2.new(1, 0, 0, 56), Position = UDim2.fromOffset(0, 32),
@@ -818,7 +840,8 @@ do
 	KM.capText = capText
 	for i, k in ipairs({ { { "jab" }, "JAB" }, { { "cross" }, "CROSS" }, { { "leadhook" }, "L.HOOK" }, { { "rearhook" }, "R.HOOK" }, { { "uppercut" }, "UPPER" },
 		{ { "overhand" }, "OVERHAND" }, { { "body" }, "BODY" }, { { "block" }, "BLOCK" }, { { "parry" }, "PARRY" },
-		{ { "slipL", "slipR" }, "SLIP" }, { { "dodge" }, "DODGE" }, { { "pivotL", "pivotR" }, "PIVOT" }, { { "clinch" }, "CLINCH" }, { { "moveslist" }, "MOVES" } }) do
+		{ { "slipL", "slipR" }, "SLIP" }, { { "dodge" }, "DODGE" }, { { "pivotL", "pivotR" }, "PIVOT" }, { { "sprint" }, "SPRINT" }, { { "clinch" }, "CLINCH" },
+		{ { "moveslist" }, "MOVES" } }) do
 		local f = UI.Frame(ctlRows[1], { BackgroundTransparency = 1, Size = UDim2.fromOffset(0, 24), AutomaticSize = Enum.AutomaticSize.X, LayoutOrder = i })
 		ctlItems[i], ctlSpec[i] = f, k
 		UI.List(f, 5, true)
@@ -842,6 +865,9 @@ do
 					t.TextColor3 = on and T.ink or Color3.new(1, 1, 1)
 				end
 			end)
+		elseif k[2] == "SPRINT" then
+			cap.Name = "Cap_sprint"
+			KM.sprintCap = { cap = cap, label = t } -- (lit while the ring sprint is on: KM.paintSprint)
 		end
 	end
 	-- the third row: the special moves this fighter has unlocked, with their key / chord on the device in use
@@ -1677,6 +1703,11 @@ do
 			b.BackgroundColor3 = on and T.cyan or T.bg
 			b.BackgroundTransparency = on and 0 or 0.35
 			b.TextColor3 = on and T.ink or T.text
+		end
+		local c = KM.sprintCap
+		if c then
+			c.cap.BackgroundColor3 = on and T.cyan or T.panel2
+			c.label.TextColor3 = on and T.ink or Color3.new(1, 1, 1)
 		end
 	end
 
@@ -3068,10 +3099,14 @@ end
 -- other write while it runs (the main menu's hold, the server) ends the sprint there and then. The base speed
 -- is published as the Humanoid's local SprintBase attribute, so a hold that saves the speed (MainMenu) saves
 -- the walk, not the sprint. In the ring Shift is the server's quicker footwork instead (ringSprint,
--- FightEngine `sprint`).
+-- FightEngine `sprint`). Touch has the RUN pad for it (below).
 ------------------------------------------------------------------------
 local function endSprint(hum)
 	sprint.on = false
+	sprint.touch = false
+	if KM.paintRun then
+		KM.paintRun(false)
+	end
 	if sprint.conn then
 		sprint.conn:Disconnect()
 		sprint.conn = nil
@@ -3102,6 +3137,9 @@ setSprint = function(on)
 		hum:SetAttribute("SprintBase", sprint.base)
 		hum.WalkSpeed = sprint.speed
 		sprint.writing = false
+		if KM.paintRun then
+			KM.paintRun(true)
+		end
 		sprint.conn = hum:GetPropertyChangedSignal("WalkSpeed"):Connect(function()
 			if sprint.on and not sprint.writing and math.abs(hum.WalkSpeed - sprint.speed) >= 0.01 then
 				endSprint(hum)
@@ -3157,6 +3195,103 @@ KM.dropRingSprint = function()
 	sprint.ring = false -- (the fight is over, or a bell: the server's flag went with it)
 	KM.touchSprint = false
 	KM.paintSprint(false)
+end
+
+-- RUN (touch, out of the ring): a phone or a tablet has no Shift and no stick to click, so a round pad left of
+-- Roblox's jump button turns the same run on and off (setSprint). It shows on a touch screen whenever the
+-- boxer is free to walk (no fight, drill, main menu or Moves & Controls menu; a window covers it, it sits
+-- under them) and lights while he runs. Like the pad's click, the run ends once he has stood still for a
+-- moment after running (or on a second tap); a fight, a drill or the menu taking the speed ends it as for
+-- every run. Its state lives in sprint / KM: FightClient's main chunk is at Luau's local limit.
+if UserInputService.TouchEnabled then
+	local runGui = UI.New("ScreenGui", { Name = "TownRunUI", ResetOnSpawn = false, IgnoreGuiInset = false, DisplayOrder = 1, ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+		Parent = player:WaitForChild("PlayerGui") })
+	local root = UI.MountRoot(runGui, "RunRoot")
+	local runPad = UI.New("TextButton", { Name = "RunPad", Text = "", AutoButtonColor = false, BorderSizePixel = 0, BackgroundColor3 = T.bg, BackgroundTransparency = 0.35,
+		AnchorPoint = Vector2.new(1, 0.5), Size = UDim2.fromOffset(64, 64), Visible = false, Selectable = false, Parent = root })
+	UI.New("UICorner", { CornerRadius = UDim.new(0.5, 0), Parent = runPad })
+	UI.New("UIStroke", { Color = T.cyan, Thickness = 2.5, Transparency = 0.15, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = runPad })
+	local label = UI.Text(runPad, "RUN", { Face = "displayMed", TextSize = 17, TextColor3 = Color3.new(1, 1, 1), Size = UDim2.fromScale(1, 1), AutomaticSize = Enum.AutomaticSize.None,
+		TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false })
+	sprint.runPad = runPad
+	function KM.paintRun(on)
+		runPad.BackgroundColor3 = on and T.cyan or T.bg
+		runPad.BackgroundTransparency = on and 0 or 0.35
+		label.TextColor3 = on and T.ink or Color3.new(1, 1, 1)
+	end
+	-- left of the jump button, level with its centre and a little smaller (screen px measured from the
+	-- bottom-right corner, turned into the root's design px): Roblox's own button when it is there, else
+	-- where the default touch controls put it (70 px at 95 / 90 from the corner on a small screen, 120 px at
+	-- 170 / 210 on a bigger one)
+	function KM.placeRun()
+		local fromRight, centreUp, jump
+		local tg = runGui.Parent and runGui.Parent:FindFirstChild("TouchGui")
+		local jb = tg and tg:FindFirstChild("JumpButton", true)
+		if jb and jb:IsA("GuiObject") and jb.AbsoluteSize.X > 8 then
+			local corner = tg.AbsolutePosition + tg.AbsoluteSize
+			fromRight = corner.X - jb.AbsolutePosition.X
+			centreUp = corner.Y - (jb.AbsolutePosition.Y + jb.AbsoluteSize.Y / 2)
+			jump = jb.AbsoluteSize.X
+		else
+			local vp = runGui.AbsoluteSize
+			if math.min(vp.X, vp.Y) <= 500 then
+				fromRight, centreUp, jump = 95, 55, 70
+			else
+				fromRight, centreUp, jump = 170, 150, 120
+			end
+		end
+		local sc = math.max(UI.ScaleOf(runPad), 0.05)
+		local px = math.clamp(jump * 0.8, UI.TouchPx + 4, 96)
+		runPad.Size = UDim2.fromOffset(math.floor(px / sc + 0.5), math.floor(px / sc + 0.5))
+		runPad.Position = UDim2.new(1, -math.floor((fromRight + 12) / sc + 0.5), 1, -math.floor(centreUp / sc + 0.5))
+	end
+	runPad.MouseButton1Down:Connect(function()
+		if sprint.on then
+			setSprint(false)
+			return
+		end
+		setSprint(true)
+		if sprint.on then
+			sprint.touch, sprint.moved, sprint.stillAt = true, false, nil
+		end
+	end)
+	-- a light poll (4 a second) keeps the pad's visibility and the stand-still end in step with everything that
+	-- can change them: the device, the fight, a drill, the menus, a respawn, the screen size
+	task.spawn(function()
+		local placedFor = nil
+		while runGui.Parent do
+			local mode = Gamepad and Gamepad.Mode() or "touch"
+			local char = player.Character
+			local hum = char and char:FindFirstChildOfClass("Humanoid")
+			local show = hum ~= nil and hum.Health > 0 and hum.WalkSpeed > 0 and (mode == "touch" or (mode ~= "gamepad" and not UserInputService.KeyboardEnabled))
+				and not F.active and not gui.Enabled and player:GetAttribute("InFight") ~= true and player:GetAttribute("Busy") == nil
+			if show then
+				local MM, CM = KM.module("MainMenu"), KM.modules.ControlsMenu
+				show = not ((MM and MM.IsOpen and MM.IsOpen()) or (CM and CM.IsOpen()))
+			end
+			if show and placedFor ~= runGui.AbsoluteSize then
+				placedFor = runGui.AbsoluteSize
+				KM.placeRun()
+			end
+			if runPad.Visible ~= show then
+				runPad.Visible = show
+			end
+			if sprint.on and sprint.touch then
+				if not show then
+					setSprint(false) -- (the pad left the picture: a run it started goes with it)
+				elseif hum.MoveDirection.Magnitude > 0.05 then
+					sprint.moved, sprint.stillAt = true, nil
+				elseif sprint.moved then
+					local now = os.clock()
+					sprint.stillAt = sprint.stillAt or now
+					if now - sprint.stillAt >= 0.45 then
+						setSprint(false)
+					end
+				end
+			end
+			task.wait(0.25)
+		end
+	end)
 end
 
 ------------------------------------------------------------------------
@@ -4126,7 +4261,8 @@ function handlers.round(msg)
 	end
 	hideCount()
 	layoutHud()
-	roundText.Text = string.format("ROUND %d / %d", msg.n, msg.total)
+	KM.round.n, KM.round.total = msg.n, msg.total
+	layoutClockTop() -- (the round's words: "ROUND 2 / 3", or shorter where the clock is narrow)
 	timeText.Text = fmtTime(F.spar and Config.SparRoundSeconds or Config.RoundSeconds)
 	timeText.TextColor3 = T.text
 	showBanner("ROUND " .. msg.n, T.gold, 0.55) -- short: the corner countdown (3 - 2 - 1 - BOX!) follows in its place

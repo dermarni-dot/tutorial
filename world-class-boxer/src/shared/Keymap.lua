@@ -36,9 +36,9 @@ Keymap.Actions = {
 	-- BASIC
 	{ id = "move", label = "Move", section = "basic", fixed = true, kbd = { "W/A/S/D" }, pad = "Thumbstick1", touch = "Thumbstick",
 		desc = "Step around the ring. Backing off costs nothing; walking in wins the inside." },
-	{ id = "sprint", label = "Sprint", section = "basic", kbd = { "LeftShift" }, pad = "ButtonL3", touch = "SPRINT (ring)",
-		desc = "Hold to run around the gym and the city. In the ring it is quicker footwork: cut him off or get off the ropes.",
-		how = "In the ring it costs stamina while you move and does nothing while you punch or block. On a pad click the left stick: it runs until the stick is back in the centre (or a second click). On touch the SPRINT pad turns it on and off (in the ring)." },
+	{ id = "sprint", label = "Sprint", section = "basic", kbd = { "LeftShift" }, pad = "ButtonL3", touch = "RUN / SPRINT (ring)",
+		desc = "Run around the gym and the city. In the ring it is quicker footwork: cut him off or get off the ropes.",
+		how = "In the ring it costs stamina while you move and does nothing while you punch or block. On a keyboard hold it. On a pad click the left stick: it runs until the stick is back in the centre (or a second click). On touch the RUN pad left of the jump button runs until you stand still (or a second tap); in the ring the SPRINT pad turns it on and off." },
 	{ id = "block", label = "Block (guard up / down)", section = "basic", kbd = { "B" }, pad = "ButtonL2", touch = "BLOCK",
 		desc = "Tap to raise the guard, tap again to drop it. A long press blocks while held. Punching drops a tapped guard.",
 		how = "Blocks eat most of a head shot. Body shots still get through and the overhand comes over the top." },

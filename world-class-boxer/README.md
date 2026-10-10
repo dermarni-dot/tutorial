@@ -92,6 +92,7 @@ switches them on the spot.
 | Action | Keyboard | Controller | Touch |
 |---|---|---|---|
 | Move / camera | WASD, mouse | Left stick / right stick | Thumbstick, drag |
+| Run | hold Shift | click the left stick (L3): until the stick is back in the centre | RUN (left of the jump button): until you stand still |
 | Use a station or counter | E | X / Square | Tap the prompt |
 | Career Hub | H | D-pad up | CAREER HUB button |
 | Main menu | M | D-pad down | MENU button |
@@ -141,7 +142,7 @@ to select and **B** to go back.
 | Action | Keyboard & mouse | Controller (Xbox / PlayStation) | Touch |
 |---|---|---|---|
 | Move | WASD | Left stick | Thumbstick |
-| Run (in the ring: quicker footwork) | hold Shift | click the left stick (L3): until the stick is back in the centre | SPRINT (in the ring; a toggle) |
+| Run (in the ring: quicker footwork) | hold Shift | click the left stick (L3): until the stick is back in the centre | SPRINT (top left in the ring; a toggle) |
 | Jab | Left click (or J) | X / Square | JAB |
 | Cross | Right click (or K) | Y / Triangle | CROSS |
 | Lead hook | F (or L) | B / Circle | HOOK (alternates hands) |
@@ -178,8 +179,12 @@ ring it is quicker footwork while held (to cut him off or get off the ropes): th
 feet up by a third, not while you punch or block, and charges stamina for every second you move with it
 (none comes back meanwhile; it stops when you are down to your last 15 %). On a pad a click of the left
 stick (L3) does the same, in the ring and out of it, until the stick is back in the centre or you click
-again; on touch the **SPRINT** pad (top left, next to MOVES) turns it on and off (the bell, a knockdown or
-the menu turns it off). Every device has it, so a PvP bout is even.
+again. On touch the round **RUN** pad left of the jump button runs you round the gym and the city (lit while
+on; it stops once you stand still after running, or on a second tap; it is not there in a fight, a drill or
+the menus), and in the ring the **SPRINT** pad (top left, next to MOVES) turns the quicker footwork on and
+off (the bell, a knockdown or the menu turns it off). Every device has both, so touch players cross the
+town as fast as anyone and a PvP bout is even. The key strip shows the sprint's key or button too (SPRINT,
+lit while it is on).
 
 **Chords and double taps.** A chord is "hold the first key, press the second" (Shift + Space, Q + click).
 On a pad a right-stick flick counts as held for half a second, so "flick left, then X" is the counter jab.
