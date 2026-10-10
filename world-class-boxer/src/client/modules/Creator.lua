@@ -1171,15 +1171,6 @@ local stepsFrame, titleLabel, stepKicker
 local stepMenu = false -- short screens: the step bar is a menu that drops from the step's name
 local lastPage
 
-local function goTo(name)
-	local wasHands = hands()
-	page = name
-	if hands() ~= wasHands then
-		preview()
-	end
-	render()
-end
-
 -- short screens: opens / closes the step menu (the step bar itself on taller screens: always shown)
 local function showSteps(on)
 	if not (stepMenu and tabsFrame) then
@@ -1194,6 +1185,18 @@ local function showSteps(on)
 	if on and UI.InputMode() == "gamepad" then
 		UI.PadSelect(stepsFrame)
 	end
+end
+
+-- every way to another step (a pick in the step menu, NEXT / BACK, RB / LB) closes the step menu: no
+-- stale menu over the new page
+local function goTo(name)
+	showSteps(false)
+	local wasHands = hands()
+	page = name
+	if hands() ~= wasHands then
+		preview()
+	end
+	render()
 end
 
 function render()
@@ -1218,7 +1221,6 @@ function render()
 		local done = i < cur
 		local b = UI.Button(stepsFrame, string.format("%d %s", i, SHORT[name]), { Name = "Step" .. i, LayoutOrder = i, TextSize = stepMenu and 15 or 13, BackgroundColor3 = name == page and T.gold or T.panel2,
 			TextColor3 = name == page and T.bg or (done and T.gold or T.text) }, function()
-			showSteps(false)
 			goTo(name)
 		end)
 		b:SetAttribute("CreatorStep", i)
@@ -1288,8 +1290,7 @@ end
 local function begin()
 	if C.first:gsub("%s", "") == "" or C.last:gsub("%s", "") == "" then
 		State.toast("Give your boxer a first and last name.", T.red)
-		page = "Identity"
-		render()
+		goTo("Identity")
 		return
 	end
 	nextBtn.Text = "CREATING..."
@@ -1466,6 +1467,13 @@ function Creator.Open()
 		end)
 		local card = UI.Frame(tabsFrame, { Name = "Card", Position = UDim2.fromOffset(12, 2), Size = UDim2.new(1, -24, 0, rows * (sh + 6) + 18), ZIndex = 5 })
 		UI.Glass(card, { transparency = 0.04, radius = UI.R.lg })
+		-- the open menu holds the gamepad selection: the D-pad never leaves it for BACK or the controls
+		-- under the dim layer (A picks a step, B closes the menu; hidden, the card has nothing to select)
+		card.SelectionGroup = true
+		card.SelectionBehaviorUp = Enum.SelectionBehavior.Stop
+		card.SelectionBehaviorDown = Enum.SelectionBehavior.Stop
+		card.SelectionBehaviorLeft = Enum.SelectionBehavior.Stop
+		card.SelectionBehaviorRight = Enum.SelectionBehavior.Stop
 		stepsFrame = UI.Frame(card, { Name = "Steps", BackgroundTransparency = 1, Position = UDim2.fromOffset(12, 12), Size = UDim2.new(1, -24, 1, -18), ZIndex = 5 })
 		UI.Grid(stepsFrame, UDim2.new(0.5, -6, 0, sh), nil, 6)
 	else
