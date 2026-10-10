@@ -372,9 +372,25 @@ end
 ------------------------------------------------------------------------
 -- Piece painters
 ------------------------------------------------------------------------
--- UpperTorso: skin with regional variation, nipples / navel, separations, the female sports top; under the
--- trunks the satin's colour
-local function utPainter(pc, sk, P, prof, look, trunk)
+-- the waist turns the fight reaches and a little past them (the Waist joint's CFrame.Angles(x, y, z): a lean
+-- back to 0.55 rad with some twist, a forward bend to 0.8, side bends to 0.6 with the fight's own forward lean
+-- and twist (t 96.6 s of the probed fight: -0.16, -0.28, -0.6), the slip and duck mixes): each one's second row,
+-- how high it lifts a point by its offset from the waist pivot (utPainter's satin keeps under the band's top
+-- edge through all of them)
+local WAIST_TURNS = {}
+for _, a in ipairs({
+	{ 0.55, 0, 0 }, { 0.55, 0.2, 0 }, { 0.55, -0.2, 0 }, { 0.4, 0, 0.3 }, { 0.4, 0, -0.3 },
+	{ -0.8, 0, 0 }, { -0.5, 0.3, 0.3 }, { -0.5, -0.3, -0.3 }, { -0.5, 0.3, -0.3 }, { -0.5, -0.3, 0.3 },
+	{ -0.16, -0.28, -0.6 }, { -0.16, 0.28, 0.6 }, { 0, 0, 0.6 }, { 0, 0, -0.6 },
+	{ 0.15, 0.35, 0.35 }, { 0.15, -0.35, -0.35 }, { 0, 0.7, -0.2 }, { 0, -0.7, 0.2 },
+}) do
+	local cx, sx, cy, sy, cz, sz = math.cos(a[1]), math.sin(a[1]), math.cos(a[2]), math.sin(a[2]), math.cos(a[3]), math.sin(a[3])
+	-- (CFrame.Angles = Rx * Ry * Rz: its second row)
+	WAIST_TURNS[#WAIST_TURNS + 1] = { cx * sz + sx * sy * cz, cx * cz - sx * sy * sz, -sx * cy }
+end
+-- UpperTorso: skin with regional variation, nipples / navel, separations, the female sports top; inside the
+-- trunks' seat over the crotch the satin's colour (sat: full detail with trunks, the torso's lowest ring)
+local function utPainter(pc, sk, P, prof, look, sat)
 	local sr, sg, sb = pc.sr, pc.sg, pc.sb
 	local yW, H, xS = sk.yW, sk.H, sk.xS
 	local spots = {}
@@ -437,17 +453,41 @@ local function utPainter(pc, sk, P, prof, look, trunk)
 		r, g, b = mix(r, g, b, topR * k, topG * k, topB * k, w)
 		return r, g, b, w
 	end
-	-- the torso's skin inside the trunks' seat (it runs on down into the seat from inside the waistband) is never
-	-- seen at rest; it is the satin's colour, the change hidden inside the band. A hip flexed past ~35 degrees
-	-- takes the seat's front over that leg up toward the band (AnatomyBodyTorso.HipShapes): its rows fold there and
-	-- the fold dipped behind this skin, a dark / skin-coloured slit under the band at the top of the crotch seam
-	-- (a stride, a sprint, a deep stance). In the satin's colour it reads as the fold it is
-	local underY = trunk and Torso.BandBottom(sk) + 0.04 or -math.huge
-	local function under(r, g, b, y)
-		if y >= underY then
+	-- the torso's skin runs on down inside the trunks' seat (a waist bend never opens a gap at the band). A hip
+	-- flexed past ~35 degrees takes the seat's front over that leg up and in (AnatomyBodyTorso.HipShapes, full
+	-- detail only): its rows fold there and the fold dipped behind this skin, a skin-coloured slit at the top of
+	-- the crotch seam (a stride, a sprint, a deep stance). Where only that fold shows it, the skin is the satin's
+	-- colour, so it reads as the fold it is: the front, below the shapes' top (sat.hy, where the seat stops
+	-- moving), in from the flanks. Nowhere a waist turn lifts it over the band: a forward bend raises the back,
+	-- a side bend the flank, a lean back the belly's sides over the band's top edge, the skin they show there
+	-- is bare skin (all of it under the band in the satin's colour made a satin lens there; the bounds are
+	-- probed against the fight's own waist turns and the hip poses). sat.hw / sat.hf: the lowest ring's half
+	-- width / front depth. And nothing that one of those turns (WAIST_TURNS) lifts to within a centimetre of
+	-- the band's top edge: a deep belly leaning back carried the top of the satin over the band. (A lean back
+	-- still pushes the lower belly out through the band's front, as it did the bare skin: keeping the satin clear
+	-- of that too took it off most of the fold's slit)
+	local function under(r, g, b, x, y, z)
+		if not sat or y > sat.hy + 0.02 or z > -0.2 * sat.hf then
 			return r, g, b
 		end
-		return mix(r, g, b, trunk.r, trunk.g, trunk.b, 1 - smooth(underY - 0.03, underY, y))
+		local fx = abs(x) / sat.hw
+		local y0 = sat.hy - 0.005 - 0.015 * smooth(0.45, 0.7, fx)
+		local w = (1 - smooth(y0, y0 + 0.025, y)) * (1 - smooth(0.7, 0.82, fx)) * (1 - smooth(-0.45, -0.2, z / sat.hf))
+		if w <= 0 then
+			return r, g, b
+		end
+		local pv = sat.pv
+		local qx, qy, qz = x - pv[1], y - pv[2], z - pv[3]
+		local rise = -math.huge
+		for _, R in ipairs(WAIST_TURNS) do
+			rise = max(rise, R[1] * qx + R[2] * qy + R[3] * qz)
+		end
+		-- (over the band's top edge: none from a centimetre under it)
+		w *= 1 - smooth(-0.035, -0.01, rise + pv[2] - sat.top)
+		if w <= 0 then
+			return r, g, b
+		end
+		return mix(r, g, b, sat.r, sat.g, sat.b, w)
 	end
 	return { base = base, top = top, under = under, hasTop = topR ~= nil }
 end
@@ -551,7 +591,21 @@ function Gen.Generate(look, lod, ctx)
 	local ut, ui = Torso.Upper(sk, P, lod, { trunks = trunk ~= nil, top = clothOf(look, "UpperTorso") ~= nil })
 	local prof = ui.prof
 	local grid = ui.loft
-	local up = utPainter(pc, sk, P, prof, look, trunk)
+	local sat
+	if trunk and full then
+		-- (the satin under the seat's fold: the torso's lowest ring, 0.22 under the waist pivot, measured)
+		local hw, hf, yr = 0, 0, sk.yW - 0.22
+		local Pp = ut.P
+		for i = 1, ut.nv do
+			if abs(Pp[i * 3 - 1] - yr) < 0.012 then
+				hw, hf = max(hw, abs(Pp[i * 3 - 2])), max(hf, -Pp[i * 3])
+			end
+		end
+		if hw > 0.05 and hf > 0.05 then
+			sat = { r = trunk.r, g = trunk.g, b = trunk.b, hw = hw, hf = hf, hy = Torso.BandBottom(sk) - 0.03, pv = sk.piv.Waist, top = sk.yW + Torso.BAND_TOP }
+		end
+	end
+	local up = utPainter(pc, sk, P, prof, look, sat)
 	local cav = Kit.GridCavity(ut, grid)
 	local dark, light = Kit.AOAmounts(ut, cav, pc.ao)
 	do
@@ -567,7 +621,7 @@ function Gen.Generate(look, lod, ctx)
 			r, g, b, tw = up.top(r, g, b, x, y, z, 1)
 			-- (the fabric is smooth: the skin's separations / cavities do not show through it)
 			tw = tw or 0
-			r, g, b = up.under(r, g, b, y)
+			r, g, b = up.under(r, g, b, x, y, z)
 			r, g, b = Kit.ApplyAO(r, g, b, dark[i] * (1 - 0.6 * tw), light[i] * (1 - 0.5 * tw), pc.aoTint)
 			C[i * 3 - 2], C[i * 3 - 1], C[i * 3] = r, g, b
 			MeshKit.Step()
@@ -619,7 +673,7 @@ function Gen.Generate(look, lod, ctx)
 				if up.hasTop then
 					r, g, b, tcov = up.top(r, g, b, sm.x, sm.y, sm.z, 0.6, 1 + 0.02 * Kit.TileAt(tiles.pore, sm.px * 0.5, sm.py * 2))
 				end
-				r, g, b = up.under(r, g, b, sm.y)
+				r, g, b = up.under(r, g, b, sm.x, sm.y, sm.z)
 				return Kit.ApplyAO(r, g, b, sm.dark * (1 - 0.6 * tcov), sm.light * (1 - 0.5 * tcov), pc.aoTint)
 			end, { P = ui.P0, N = ui.N0, dark = dark, light = light, noN = true })
 		end }
