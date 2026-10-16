@@ -16,7 +16,7 @@
 -- * you, your opponent and previews come first: a section of theirs that still shows its round-1 parts is
 --   built at low detail first (a tenth of the work, at High's frame budget, ahead of any other build) and
 --   then at full, the face before the body; they get every colour texture at every Graphics level (on Low
---   the body's and hair's as a texture pass once the NPCs are built)
+--   the body's and hair's as a texture pass: your first one once the NPCs are built, the others at once)
 -- * one serial worker, time-sliced (Config.Anatomy.frameBudget per frame through MeshKit's tick), so
 --   building never hitches; cancelled when the model goes away or its look changes again
 -- * the Editable API not working (not enabled for the experience, unverified creator, a transient
@@ -1061,8 +1061,9 @@ end
 -- colour textures for a section's pieces right now (the Graphics level's textures / textureSections, and the
 -- API not paused). textureSections thins out NPCs only: with rec, you, your opponent and previews (priority
 -- 0 / 1) get every texture at every level (two characters: the shoe laces, trunk trims, skin and hair detail).
--- Their builds paint the level's sections (rec = nil: quick) and a texture pass behind every other build
--- adds the rest (evaluate's retex): on Low the body's and hair's take ~2 s of CPU a character
+-- Their builds paint the level's sections (rec = nil: quick) and a texture pass adds the rest (evaluate's
+-- retex; with their other builds, only your very first one waits behind the NPCs): on Low the body's and
+-- hair's take ~2 s of CPU a character
 local function texturesFor(section, rec)
 	local S = AnatomyClient.Settings
 	local secs = S.textureSections
@@ -1229,6 +1230,7 @@ local function runJob(job)
 	st.pieces = pieces
 	st.sig, st.lod, st.active, st.skipped = job.sig, lod, true, nil
 	st.tex = job.tex
+	st.texOnce = st.texOnce or job.tex -- (it has shown its textures: the texture pass after a rebuild hurries)
 	st.rules = rulesFor(def, look, lod, result)
 	st.landmarks = landmarksOf(result, section)
 	st.builtAt = os.clock()
@@ -1461,8 +1463,10 @@ local function evaluate()
 					end
 					-- a lower level for a section that is built and current (out of the full-detail slots, a lower
 					-- Graphics level): it only saves memory and triangles, so it waits behind every other build; so
-					-- does a texture pass
-					local down = retex or (st ~= nil and st.active == true and st.sig == sig and LOD_RANK[st.lod] ~= nil and LOD_RANK[want] < LOD_RANK[st.lod])
+					-- does a texture pass, except your opponent's (or a preview's) and one that gives you back textures
+					-- a rebuild took off (your gear at the bell, a Creator edit): those go with their other builds
+					local hurry = retex and (rec.priority == 1 or (rec.priority == 0 and st.texOnce))
+					local down = (retex and not hurry) or (st ~= nil and st.active == true and st.sig == sig and LOD_RANK[st.lod] ~= nil and LOD_RANK[want] < LOD_RANK[st.lod])
 					rec.sections[section] = st or { pieces = {} }
 					rec.sections[section].job = { rec = rec, section = section, lod = lod, sig = sig, look = rec.look, queued = now, down = down, retex = retex }
 				end
