@@ -9,8 +9,12 @@
 --    a group's lower segment ("b") hangs from the upper one (chain composition) and lags it
 --  * bounce (afros, coily volumes, curls, short locs, mohawks, puffs): a vertical spring (compress / spring
 --    back) plus a small tilt, driven by vertical / lateral acceleration and impulses
---  * swinging tips stay out of the body: capsules over the trapezius / deltoids (neck base to each upper arm)
---    and the chest / back push a segment back about its pivot (guard poses, neck turns, punches)
+--  * swinging hair stays out of the body: with the organic body (AnatomyClient's Body section) a few sample
+--    points of each segment (its outermost vertices along and across it) are tested against radial maps of the
+--    upper torso, upper arms, forearms and gloves made from their own meshes, and a hit swings the segment about
+--    its pivot (the smallest swing that clears it). A part-built body: the tips against a proxy of its boxes
+--  * hair rests on the canvas: near the floor (knockdowns, get-ups) each segment's lowest point keeps above it,
+--    curl and coil clusters lift off it a little
 --  * wet hair (the model's Sweat attribute): heavier and more damped, darker and a touch shinier. Vertex
 --    coloured pieces darken through MeshPart.Color; a textured piece (the cap) through its own texture (a
 --    part's Color does not tint a texture): its original pixels are read once and each wetness step rewrites
@@ -85,6 +89,7 @@ local QUIET_ACC, QUIET_ROT = 3, 0.35 -- an anchor this still (studs/s^2, rad/s) 
 local WRITE_EPS = 0.0015 -- rad: a joint whose swing changed less than this keeps last frame's Transform
 local owners = {} -- model -> { joints = {}, strands = {}, head, ... } (round-1 hair)
 local meshes = {} -- model -> { pieces = { list }, byName = {}, head, sweat, ... } (mesh hair)
+local bodies = {} -- model -> { shapes = { list } } (the organic body's radial maps)
 
 ------------------------------------------------------------------------
 -- Round-1 hair (part-built fallback)
@@ -628,114 +633,11 @@ local function bodyFrame(rec, hcf)
 	end
 end
 
--- (re)read the moving pieces of a model's built hair (OnBuilt hands us the pieces)
-local function onBuilt(model, section, pieces)
-	if section ~= "Hair" then
-		return
-	end
-	local rec = meshes[model]
-	local old = rec and rec.byName or {}
-	rec = { model = model, list = {}, byName = {}, head = model:FindFirstChild("Head"), sweat = 0, nextAttr = 0, frame = 0,
-		rest = true, wetApplied = -1, seed = (#model.Name * 1.37) % 6.28, gap = true }
-	rec.body = bodyOf(model, rec.head)
-	for name, pr in pairs(type(pieces) == "table" and pieces or {}) do
-		local mesh = pr.mesh
-		local fx = mesh and mesh.hairfx
-		local part = pr.part
-		local entry = {
-			name = name, part = part, baseRefl = part and part.Reflectance or 0, fx = fx,
-			-- a textured piece (the image AnatomyClient made for it): wetness darkens the texture itself
-			image = pr.image, textured = pr.image ~= nil,
-			-- spring state: swing angles (x about the head's X, z about its Z) / bounce height y
-			x = 0, z = 0, y = 0, vx = 0, vz = 0, vy = 0, prevPos = nil, prevVel = Vector3.zero, written = false,
-			cf = I,
-		}
-		if fx and type(fx.pivot) == "table" then
-			entry.pivot = V3(fx.pivot[1], fx.pivot[2], fx.pivot[3])
-			local tp = type(fx.tip) == "table" and fx.tip or fx.pivot
-			entry.tip = V3(tp[1], tp[2], tp[3])
-			entry.len = (entry.tip - entry.pivot).Magnitude
-			-- the swing about the pivot is CF(p) * rotation * CF(-p): the two constant frames are built once
-			entry.pcf, entry.pinv = CF(entry.pivot), CF(-entry.pivot)
-			entry.stiff = clamp(tonumber(fx.stiff) or 0.3, 0, 1)
-			entry.mass = clamp(tonumber(fx.mass) or 1, 0.3, 3)
-			entry.seg = tonumber(fx.seg) or 1
-			entry.bounce = fx.kind == "bounce"
-			entry.phase = (#rec.list * 1.618) % 6.28
-			-- every lock its own spring: +-15 % mass and +-0.08 stiffness from its name (deterministic), so locs,
-			-- braids and clumps bounce and settle out of step instead of moving as one sheet
-			local hsh = 0
-			for i = 1, #name do
-				hsh = (hsh * 31 + string.byte(name, i)) % 9973
-			end
-			local jit = (hsh % 101) / 100
-			entry.mass = clamp(entry.mass * (0.85 + 0.3 * jit), 0.3, 3)
-			entry.stiff = clamp(entry.stiff + (((hsh // 101) % 17) / 16 - 0.5) * 0.16, 0, 1)
-			-- keep the motion state across a rebuild of the same piece (LOD flips) so nothing pops
-			local prev = old[name]
-			if prev and prev.fx then
-				entry.x, entry.z, entry.y, entry.vx, entry.vz, entry.vy = prev.x, prev.z, prev.y, prev.vx, prev.vz, prev.vy
-			end
-		end
-		table.insert(rec.list, entry)
-		rec.byName[name] = entry
-	end
-	-- parents (a chain's lower segment hangs from its upper one), then a stable order: parents first
-	for _, e in ipairs(rec.list) do
-		if e.fx and e.fx.parent then
-			e.parent = rec.byName[e.fx.parent]
-		end
-	end
-	table.sort(rec.list, function(a, b)
-		local sa, sb = a.seg or 0, b.seg or 0
-		if sa ~= sb then
-			return sa < sb
-		end
-		return a.name < b.name
-	end)
-	-- the body contact each swinging piece's tip already has as built (the bind pose)
-	local b = rec.body
-	if b and b.bind then
-		for _, e in ipairs(rec.list) do
-			if e.tip and not e.bounce then
-				e.depth0 = bodyDepth(b, e.tip, true)
-			end
-		end
-	end
-	meshes[model] = rec
-	rec.sweat = model:GetAttribute("Sweat")
-	rec.sweat = type(rec.sweat) == "number" and clamp(rec.sweat, 0, 1) or 0
-	local q = math.floor(rec.sweat * 4 + 0.5) / 4
-	if q > 0 then
-		setWet(rec, q)
-	end
-end
-
-local function onRestored(model, section)
-	if section == "Hair" then
-		meshes[model] = nil
-	end
-end
-
-local function relaxMesh(rec)
-	for _, e in ipairs(rec.list) do
-		e.x, e.z, e.y, e.vx, e.vz, e.vy = 0, 0, 0, 0, 0, 0
-		e.prevPos = nil
-		e.prevVel = Vector3.zero
-		if e.written and Anatomy then
-			Anatomy.SetPieceTransform(rec.model, "Hair", e.name, I)
-		end
-		e.written = false
-		e.cf = I
-	end
-	rec.rest = true
-end
-
 -- keep a swinging segment's tip (head space) out of the body: rotate it about its pivot, small-angle
 -- (Angles(+x) moves a tip by X x r, Angles(0, 0, +z) by Z x r; r = the pivot-to-tip arm), and stop the
 -- motion into the body. True when it moved the segment.
 -- how often the body pushed hair out, and the deepest push (diagnostics; read-only for callers)
-local colStats = { pushes = 0, deepest = 0 }
+local colStats = { pushes = 0, deepest = 0, ground = 0 }
 HairFX.CollisionStats = colStats
 
 local function collide(rec, e, tip, piv)
@@ -785,6 +687,667 @@ local function collide(rec, e, tip, piv)
 	return true
 end
 
+------------------------------------------------------------------------
+-- The organic body and the canvas
+------------------------------------------------------------------------
+-- The body from its own meshes (AnatomyClient OnBuilt "Body"): the upper torso and each arm part as a radial
+-- map from the mesh's centre, a cube map of n x n cells a face, each holding how far the mesh reaches in that
+-- direction and its outward normal there (the furthest of the vertices, triangle centres and edge midpoints that
+-- fall in it). Checked against the heavyweight's and the lean woman's real meshes: no point more than half a
+-- centimetre inside the mesh falls outside its map, which is a centimetre or two fuller than the mesh (BODY_PAD
+-- covers what the blend shapes - pump, flex, breathing - add). The R15 boxes miss most of it: the heavyweight's
+-- chest stands 0.3 studs out of its box, the trapezius and neck column well above it.
+local BODY_PARTS = { UpperTorso = 10, LeftUpperArm = 6, RightUpperArm = 6, LeftLowerArm = 6, RightLowerArm = 6, LeftHand = 5,
+	RightHand = 5 }
+local BODY_PAD = 0.012
+local MAXPUSH = 0.3 -- rad: the most one push swings a segment (a deep contact clears over a few frames, no pop)
+local GROUND_CLEAR = 0.012 -- studs: hair lies on the canvas this far above it
+local CONTACT_DRAG = 0.7 -- what is left of a pushed segment's swing speed (friction on the body / canvas)
+local UP = Vector3.new(0, 1, 0)
+
+-- the cube-map cell (1-based) of the direction (x, y, z)
+local function cubeCell(x, y, z, n)
+	local ax, ay, az = abs(x), abs(y), abs(z)
+	local face, m, u, w
+	if ax >= ay and ax >= az then
+		face, m, u, w = x < 0 and 1 or 0, ax, y, z
+	elseif ay >= az then
+		face, m, u, w = y < 0 and 3 or 2, ay, x, z
+	else
+		face, m, u, w = z < 0 and 5 or 4, az, x, y
+	end
+	if m < 1e-9 then
+		return 1
+	end
+	local iu = min(n - 1, floor((u / m + 1) * 0.5 * n))
+	local iw = min(n - 1, floor((w / m + 1) * 0.5 * n))
+	return face * n * n + iu * n + iw + 1
+end
+
+-- a mesh's radial map (its own part's space), or nil
+local function radialMap(mesh, n)
+	local P, T, nv, nt = mesh.P, mesh.T, mesh.nv or 0, mesh.nt or 0
+	if type(P) ~= "table" or type(T) ~= "table" or nv < 4 or nt < 4 then
+		return nil
+	end
+	local x0, y0, z0, x1, y1, z1 = math.huge, math.huge, math.huge, -math.huge, -math.huge, -math.huge
+	for i = 1, nv do
+		local x, y, z = P[i * 3 - 2], P[i * 3 - 1], P[i * 3]
+		x0, x1, y0, y1, z0, z1 = min(x0, x), max(x1, x), min(y0, y), max(y1, y), min(z0, z), max(z1, z)
+	end
+	local cx, cy, cz = (x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2
+	local cells = 6 * n * n
+	local R, NX, NY, NZ = table.create(cells, 0), table.create(cells, 0), table.create(cells, 0), table.create(cells, 0)
+	local function add(x, y, z, fx, fy, fz)
+		local dx, dy, dz = x - cx, y - cy, z - cz
+		local i = cubeCell(dx, dy, dz, n)
+		local r = sqrt(dx * dx + dy * dy + dz * dz)
+		if r > R[i] then
+			-- (outward whatever the winding: the outermost surface faces away from the centre)
+			local s = (fx * dx + fy * dy + fz * dz) < 0 and -1 or 1
+			R[i], NX[i], NY[i], NZ[i] = r, fx * s, fy * s, fz * s
+		end
+	end
+	-- (each vertex once, with the normal of the first triangle that has it)
+	local seen = table.create(nv, false)
+	local function vert(v, fx, fy, fz)
+		local i = v // 3
+		if not seen[i] then
+			seen[i] = true
+			add(P[v - 2], P[v - 1], P[v], fx, fy, fz)
+		end
+	end
+	for t = 1, nt do
+		local a, b, c = T[t * 3 - 2] * 3, T[t * 3 - 1] * 3, T[t * 3] * 3
+		local ax, ay, az = P[a - 2], P[a - 1], P[a]
+		local bx, by, bz = P[b - 2], P[b - 1], P[b]
+		local qx, qy, qz = P[c - 2], P[c - 1], P[c]
+		if ax and bx and qx then
+			local ux, uy, uz = bx - ax, by - ay, bz - az
+			local vx, vy, vz = qx - ax, qy - ay, qz - az
+			local fx, fy, fz = uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx
+			local fl = sqrt(fx * fx + fy * fy + fz * fz)
+			if fl > 1e-9 then
+				fx, fy, fz = fx / fl, fy / fl, fz / fl
+				vert(a, fx, fy, fz)
+				vert(b, fx, fy, fz)
+				vert(c, fx, fy, fz)
+				add((ax + bx + qx) / 3, (ay + by + qy) / 3, (az + bz + qz) / 3, fx, fy, fz)
+				add((ax + bx) / 2, (ay + by) / 2, (az + bz) / 2, fx, fy, fz)
+				add((bx + qx) / 2, (by + qy) / 2, (bz + qz) / 2, fx, fy, fz)
+				add((qx + ax) / 2, (qy + ay) / 2, (qz + az) / 2, fx, fy, fz)
+			end
+		end
+	end
+	-- a cell nothing fell in (a sparse patch) takes the furthest of its face neighbours, facing straight out
+	local rmax = 0
+	for i = 1, cells do
+		rmax = max(rmax, R[i])
+	end
+	if rmax <= 0 then
+		return nil
+	end
+	local n2 = n * n
+	for i = 1, cells do
+		if R[i] <= 0 then
+			local f, k = (i - 1) // n2, (i - 1) % n2
+			local iu, iw = k // n, k % n
+			local r = 0
+			for du = -1, 1 do
+				for dw = -1, 1 do
+					local u, w = iu + du, iw + dw
+					if u >= 0 and u < n and w >= 0 and w < n then
+						r = max(r, R[f * n2 + u * n + w + 1])
+					end
+				end
+			end
+			-- the cell's centre direction
+			local cu, cw = (iu + 0.5) / n * 2 - 1, (iw + 0.5) / n * 2 - 1
+			local s = (f % 2 == 1) and -1 or 1
+			local ax = f // 2
+			local dx, dy, dz
+			if ax == 0 then
+				dx, dy, dz = s, cu, cw
+			elseif ax == 1 then
+				dx, dy, dz = cu, s, cw
+			else
+				dx, dy, dz = cu, cw, s
+			end
+			local l = sqrt(dx * dx + dy * dy + dz * dz)
+			R[i], NX[i], NY[i], NZ[i] = r > 0 and r or rmax, dx / l, dy / l, dz / l
+		end
+		R[i] += BODY_PAD
+	end
+	rmax += BODY_PAD
+	return {
+		n = n, cx = cx, cy = cy, cz = cz, R = R, NX = NX, NY = NY, NZ = NZ, rmax = rmax, r2max = rmax * rmax,
+		-- this step's frame in head space as numbers (setFrame): position, rotation, the map's centre
+		x = 0, y = 0, z = 0, r00 = 1, r01 = 0, r02 = 0, r10 = 0, r11 = 1, r12 = 0, r20 = 0, r21 = 0, r22 = 1, hx = 0, hy = 0, hz = 0,
+	}
+end
+
+-- a shape's part frame in head space for this step (numbers: no CFrame per tested point)
+local function setFrame(s, cf)
+	local x, y, z, r00, r01, r02, r10, r11, r12, r20, r21, r22 = cf:GetComponents()
+	s.x, s.y, s.z = x, y, z
+	s.r00, s.r01, s.r02, s.r10, s.r11, s.r12, s.r20, s.r21, s.r22 = r00, r01, r02, r10, r11, r12, r20, r21, r22
+	local cx, cy, cz = s.cx, s.cy, s.cz
+	s.hx = r00 * cx + r01 * cy + r02 * cz + x
+	s.hy = r10 * cx + r11 * cy + r12 * cz + y
+	s.hz = r20 * cx + r21 * cy + r22 * cz + z
+end
+
+-- how deep a head-space point is inside a shape (0 = outside) and the surface normal there (the shape's part
+-- space). Reach and normal blend between the face's four nearest cells, so a contact sliding over the body
+-- moves smoothly (no step from one cell's reach to the next, which made lying hair flicker), and the depth is
+-- measured along the normal (a radial depth overstates contacts struck at a slant)
+local function shapeDepth(s, px, py, pz)
+	local dx, dy, dz = px - s.x, py - s.y, pz - s.z
+	local qx = s.r00 * dx + s.r10 * dy + s.r20 * dz - s.cx
+	local qy = s.r01 * dx + s.r11 * dy + s.r21 * dz - s.cy
+	local qz = s.r02 * dx + s.r12 * dy + s.r22 * dz - s.cz
+	local d2 = qx * qx + qy * qy + qz * qz
+	if d2 >= s.r2max then
+		return 0
+	end
+	local ax, ay, az = abs(qx), abs(qy), abs(qz)
+	local face, m, u, w
+	if ax >= ay and ax >= az then
+		face, m, u, w = qx < 0 and 1 or 0, ax, qy, qz
+	elseif ay >= az then
+		face, m, u, w = qy < 0 and 3 or 2, ay, qx, qz
+	else
+		face, m, u, w = qz < 0 and 5 or 4, az, qx, qy
+	end
+	if m < 1e-9 then
+		return 0
+	end
+	local n = s.n
+	local fu = clamp((u / m + 1) * 0.5 * n - 0.5, 0, n - 1.0001)
+	local fw = clamp((w / m + 1) * 0.5 * n - 0.5, 0, n - 1.0001)
+	local iu, iw = floor(fu), floor(fw)
+	local tu, tw = fu - iu, fw - iw
+	local i00 = face * n * n + iu * n + iw + 1
+	local i10, i01, i11 = i00 + n, i00 + 1, i00 + n + 1
+	local k00, k10, k01, k11 = (1 - tu) * (1 - tw), tu * (1 - tw), (1 - tu) * tw, tu * tw
+	local R = s.R
+	local r = R[i00] * k00 + R[i10] * k10 + R[i01] * k01 + R[i11] * k11
+	if d2 >= r * r then
+		return 0
+	end
+	local NX, NY, NZ = s.NX, s.NY, s.NZ
+	local nx = NX[i00] * k00 + NX[i10] * k10 + NX[i01] * k01 + NX[i11] * k11
+	local ny = NY[i00] * k00 + NY[i10] * k10 + NY[i01] * k01 + NY[i11] * k11
+	local nz = NZ[i00] * k00 + NZ[i10] * k10 + NZ[i01] * k01 + NZ[i11] * k11
+	local d = sqrt(d2)
+	local nl = sqrt(nx * nx + ny * ny + nz * nz)
+	if nl < 1e-3 then
+		-- (the cells' normals cancel out: straight out from the centre)
+		if d < 1e-6 then
+			return 0
+		end
+		nx, ny, nz, nl = qx, qy, qz, d
+	end
+	nx, ny, nz = nx / nl, ny / nl, nz / nl
+	local k = d > 1e-6 and (qx * nx + qy * ny + qz * nz) / d or 1
+	return (r - d) * max(k, 0.3), nx, ny, nz
+end
+
+-- the Body section was (re)built: radial maps of the parts long hair can meet
+-- (a few milliseconds a part: one part a frame, and a newer build of the same body wins)
+local bodyBuilds = {}
+local function onBodyBuilt(model, pieces)
+	local gen = (bodyBuilds[model] or 0) + 1
+	bodyBuilds[model] = gen
+	local shapes = {}
+	for name, pr in pairs(type(pieces) == "table" and pieces or {}) do
+		local n = BODY_PARTS[name]
+		local part = n and model:FindFirstChild(type(pr.attach) == "string" and pr.attach or name)
+		if part and part:IsA("BasePart") and type(pr.mesh) == "table" then
+			local s = radialMap(pr.mesh, n)
+			if s then
+				s.name, s.part = name, part
+				table.insert(shapes, s)
+			end
+			task.wait()
+			if bodyBuilds[model] ~= gen or not model.Parent then
+				return false
+			end
+		end
+	end
+	bodies[model] = #shapes > 0 and { shapes = shapes } or nil
+	return true
+end
+
+-- a swinging piece's sample points (its rest mesh, head space): the outermost vertices across it (both ways
+-- along the head's X made square to it, and along the axis square to both) in four slabs from pivot to tip,
+-- plus the vertex furthest along it (the body test); and its support vertices, the furthest along 26
+-- directions (where it touches a plane however it is turned: the canvas)
+local SLAB = { 0.35, 0.6, 0.85 }
+local function samplePiece(e, mesh)
+	local P, nv = mesh and mesh.P, mesh and mesh.nv or 0
+	if type(P) ~= "table" or nv < 1 or not e.pivot then
+		return
+	end
+	local pv = e.pivot
+	local px, py, pz = pv.X, pv.Y, pv.Z
+	local ax, ay, az = 0, -1, 0
+	if e.len > 1e-4 then
+		local a = (e.tip - pv) / e.len
+		ax, ay, az = a.X, a.Y, a.Z
+	end
+	-- across: the head's X square to the axis (its Z for a piece lying along X)
+	local ux, uy, uz = 1 - ax * ax, -ax * ay, -ax * az
+	local ul = sqrt(ux * ux + uy * uy + uz * uz)
+	if ul < 0.3 then
+		ux, uy, uz = -az * ax, -az * ay, 1 - az * az
+		ul = sqrt(ux * ux + uy * uy + uz * uz)
+	end
+	ux, uy, uz = ux / ul, uy / ul, uz / ul
+	local vx, vy, vz = ay * uz - az * uy, az * ux - ax * uz, ax * uy - ay * ux
+	local len = max(e.len, 0.05)
+	-- [slab * 4 + k] = best value / vertex (k: +u, -u, +v, -v), [17] = furthest along the axis
+	local bv, bi = table.create(17, -math.huge), table.create(17, 0)
+	-- supports: 13 axes, each both ways
+	local smin, smax, imin, imax = table.create(13, math.huge), table.create(13, -math.huge), table.create(13, 0), table.create(13, 0)
+	local function ext(k, d, i)
+		if d < smin[k] then
+			smin[k], imin[k] = d, i
+		end
+		if d > smax[k] then
+			smax[k], imax[k] = d, i
+		end
+	end
+	local rad2 = 0
+	for i = 1, nv do
+		local x, y, z = P[i * 3 - 2], P[i * 3 - 1], P[i * 3]
+		local dx, dy, dz = x - px, y - py, z - pz
+		rad2 = max(rad2, dx * dx + dy * dy + dz * dz)
+		local t = (dx * ax + dy * ay + dz * az) / len
+		local s = t < SLAB[1] and 0 or (t < SLAB[2] and 1 or (t < SLAB[3] and 2 or 3))
+		local u = dx * ux + dy * uy + dz * uz
+		local v = dx * vx + dy * vy + dz * vz
+		local o = s * 4
+		if u > bv[o + 1] then
+			bv[o + 1], bi[o + 1] = u, i
+		end
+		if -u > bv[o + 2] then
+			bv[o + 2], bi[o + 2] = -u, i
+		end
+		if v > bv[o + 3] then
+			bv[o + 3], bi[o + 3] = v, i
+		end
+		if -v > bv[o + 4] then
+			bv[o + 4], bi[o + 4] = -v, i
+		end
+		if t > bv[17] then
+			bv[17], bi[17] = t, i
+		end
+		-- (the 13 axes: x, y, z, the six face diagonals, the four body diagonals)
+		ext(1, x, i)
+		ext(2, y, i)
+		ext(3, z, i)
+		ext(4, x + y, i)
+		ext(5, x - y, i)
+		ext(6, y + z, i)
+		ext(7, y - z, i)
+		ext(8, x + z, i)
+		ext(9, x - z, i)
+		ext(10, x + y + z, i)
+		ext(11, x + y - z, i)
+		ext(12, x - y + z, i)
+		ext(13, -x + y + z, i)
+	end
+	e.rad = sqrt(rad2)
+	-- (its bounding sphere: the body test's first, cheap check)
+	local bx, by, bz = smax[1] - smin[1], smax[2] - smin[2], smax[3] - smin[3]
+	e.cen = V3((smax[1] + smin[1]) / 2, (smax[2] + smin[2]) / 2, (smax[3] + smin[3]) / 2)
+	e.crad = 0.5 * sqrt(bx * bx + by * by + bz * bz)
+	local smp, seen = {}, {}
+	for k = 1, 17 do
+		local i = bi[k]
+		if i > 0 and not seen[i] then
+			seen[i] = true
+			table.insert(smp, P[i * 3 - 2])
+			table.insert(smp, P[i * 3 - 1])
+			table.insert(smp, P[i * 3])
+		end
+	end
+	e.smp, e.ns, e.d0 = smp, #smp // 3, table.create(#smp // 3, 0)
+	local sup = {}
+	seen = {}
+	for _, list in ipairs({ imin, imax }) do
+		for k = 1, 13 do
+			local i = list[k]
+			if i > 0 and not seen[i] then
+				seen[i] = true
+				table.insert(sup, P[i * 3 - 2])
+				table.insert(sup, P[i * 3 - 1])
+				table.insert(sup, P[i * 3])
+			end
+		end
+	end
+	e.sup = sup
+end
+
+-- the contact each sample point already has with the body as built (the bind pose): what the hair touches
+-- there is not a collision (the generator lays hair on the body's shoulders and back)
+local function bindDepths(rec)
+	local mb = bodies[rec.model]
+	rec.boundTo = mb
+	local head = rec.head
+	local neck = head and head:FindFirstChild("Neck")
+	if not (mb and rec.swings and neck and neck:IsA("Motor6D")) then
+		return
+	end
+	-- each part's bind frame in head space: the torso is Neck.C1 * Neck.C0^-1, a limb its parent's * C0 * C1^-1
+	local binds = {}
+	local function bindOf(part, depth)
+		if binds[part] then
+			return binds[part]
+		end
+		if part == neck.Part0 then
+			binds[part] = neck.C1 * neck.C0:Inverse()
+			return binds[part]
+		end
+		if depth > 4 then
+			return nil
+		end
+		for _, m in ipairs(part:GetChildren()) do
+			if m:IsA("Motor6D") and m.Part1 == part and m.Part0 then
+				local up = bindOf(m.Part0, depth + 1)
+				if up then
+					binds[part] = up * m.C0 * m.C1:Inverse()
+				end
+				return binds[part]
+			end
+		end
+		return nil
+	end
+	for _, s in ipairs(mb.shapes) do
+		s.bind = s.part.Parent and bindOf(s.part, 0) or nil
+	end
+	for _, e in ipairs(rec.list) do
+		local smp = e.smp
+		if smp and not e.bounce then
+			for i = 1, e.ns do
+				e.d0[i] = 0
+			end
+			for _, s in ipairs(mb.shapes) do
+				if s.bind then
+					setFrame(s, s.bind)
+					for i = 1, e.ns do
+						local d = shapeDepth(s, smp[i * 3 - 2], smp[i * 3 - 1], smp[i * 3])
+						if d > e.d0[i] then
+							e.d0[i] = d
+						end
+					end
+				end
+			end
+		end
+	end
+end
+
+-- swing a segment about its pivot so that one of its points (head space, as posed now) moves `depth` along the
+-- unit direction n (head space): the smallest swing of its two angles that does it (their columns in the
+-- parent's frame: d(point)/dx = X x r, d(point)/dz = (Rx(x) Z) x r, r = pivot to point). Motion into the
+-- obstacle stops. free = false (the body): the generator's rule (Kit.Grow) - hair on a shoulder slides off it to
+-- the back (front, for hair in front of the neck), never swings out sideways like a wire. True when it moved.
+local function swingPush(rec, e, parentCF, px, py, pz, depth, nx, ny, nz, free)
+	local piv = parentCF:PointToWorldSpace(e.pivot)
+	local r = parentCF:VectorToObjectSpace(V3(px, py, pz) - piv)
+	local n = parentCF:VectorToObjectSpace(V3(nx, ny, nz))
+	local rx, ry, rz = r.X, r.Y, r.Z
+	local sx, cx = sin(e.x), cos(e.x)
+	local ay, az = -rz, ry
+	local bx, by, bz = -sx * rz - cx * ry, cx * rx, sx * rx
+	local gx = ay * n.Y + az * n.Z
+	local gz = bx * n.X + by * n.Y + bz * n.Z
+	local g2 = gx * gx + gz * gz
+	-- (a point on the pivot, or a push the swing cannot make: along the lever)
+	if g2 < 1e-4 or g2 < 0.01 * (rx * rx + ry * ry + rz * rz) then
+		return false
+	end
+	local dx, dz = depth * gx / g2, depth * gz / g2
+	if not free then
+		local k = rec.k or 1
+		local lb = sqrt(bx * bx + by * by + bz * bz)
+		local cap = 0.04 * k / max(lb, 0.05)
+		if abs(dz) > cap then
+			local rest = abs(dz) - cap
+			dz = cap * sgn(dz)
+			dx += pz > -0.06 * k and -rest or rest
+		end
+	end
+	local m = sqrt(dx * dx + dz * dz)
+	if m > MAXPUSH then
+		dx, dz = dx * MAXPUSH / m, dz * MAXPUSH / m
+	end
+	e.x += dx
+	e.z += dz
+	if dx > 0 then
+		e.vx = max(e.vx, 0)
+	elseif dx < 0 then
+		e.vx = min(e.vx, 0)
+	end
+	if dz > 0 then
+		e.vz = max(e.vz, 0)
+	elseif dz < 0 then
+		e.vz = min(e.vz, 0)
+	end
+	-- and some friction along it: hair resting on a shoulder or the canvas does not skate over it
+	e.vx *= CONTACT_DRAG
+	e.vz *= CONTACT_DRAG
+	e.cf = parentCF * e.pcf * A(e.x, 0, e.z) * e.pinv
+	colStats.pushes += 1
+	if depth > colStats.deepest then
+		colStats.deepest = depth
+	end
+	return true
+end
+
+-- the deepest of a segment's sample points in the organic body this step (beyond its bind contact), pushed out:
+-- how deep it was (0: clear)
+local function meshCollide(rec, e, parentCF, shapes)
+	local smp, cen = e.smp, e.cen
+	if not (smp and cen) then
+		return 0
+	end
+	local x, y, z, r00, r01, r02, r10, r11, r12, r20, r21, r22 = e.cf:GetComponents()
+	local cx, cy, cz = cen.X, cen.Y, cen.Z
+	local pcx = r00 * cx + r01 * cy + r02 * cz + x
+	local pcy = r10 * cx + r11 * cy + r12 * cz + y
+	local pcz = r20 * cx + r21 * cy + r22 * cz + z
+	local best, bs, bpx, bpy, bpz, bnx, bny, bnz = 0.004, nil, 0, 0, 0, 0, 0, 0
+	local d0 = e.d0
+	for _, s in ipairs(shapes) do
+		-- (the piece's bounding sphere against the shape's)
+		local gx, gy, gz = pcx - s.hx, pcy - s.hy, pcz - s.hz
+		local rr = e.crad + s.rmax
+		if s.live and gx * gx + gy * gy + gz * gz < rr * rr then
+			for i = 1, e.ns do
+				local sx, sy, sz = smp[i * 3 - 2], smp[i * 3 - 1], smp[i * 3]
+				local px = r00 * sx + r01 * sy + r02 * sz + x
+				local py = r10 * sx + r11 * sy + r12 * sz + y
+				local pz = r20 * sx + r21 * sy + r22 * sz + z
+				local d, nx, ny, nz = shapeDepth(s, px, py, pz)
+				d -= d0[i]
+				if d > best then
+					best, bs, bpx, bpy, bpz, bnx, bny, bnz = d, s, px, py, pz, nx, ny, nz
+				end
+			end
+		end
+	end
+	if not bs then
+		return 0
+	end
+	-- the surface normal into head space
+	local hx = bs.r00 * bnx + bs.r01 * bny + bs.r02 * bnz
+	local hy = bs.r10 * bnx + bs.r11 * bny + bs.r12 * bnz
+	local hz = bs.r20 * bnx + bs.r21 * bny + bs.r22 * bnz
+	return swingPush(rec, e, parentCF, bpx, bpy, bpz, best, hx, hy, hz, false) and best or 0
+end
+
+-- how far a piece's lowest support vertex is under the canvas this step (rec.gn = up in head space, rec.gh =
+-- the canvas' height in head space), and that vertex (head space), or 0
+local function underCanvas(rec, e)
+	local sup = e.sup
+	if not sup then
+		return 0
+	end
+	local n = rec.gn
+	local nx, ny, nz = n.X, n.Y, n.Z
+	local x, y, z, r00, r01, r02, r10, r11, r12, r20, r21, r22 = e.cf:GetComponents()
+	local low, lx, ly, lz = math.huge, 0, 0, 0
+	for i = 1, #sup, 3 do
+		local sx, sy, sz = sup[i], sup[i + 1], sup[i + 2]
+		local px = r00 * sx + r01 * sy + r02 * sz + x
+		local py = r10 * sx + r11 * sy + r12 * sz + y
+		local pz = r20 * sx + r21 * sy + r22 * sz + z
+		local h = px * nx + py * ny + pz * nz
+		if h < low then
+			low, lx, ly, lz = h, px, py, pz
+		end
+	end
+	return rec.gh - low, lx, ly, lz
+end
+
+-- a swinging segment near the canvas swings up onto it (its pivot's reach first: most segments are clear)
+local function groundSwing(rec, e, parentCF)
+	local pv = parentCF:PointToWorldSpace(e.pivot)
+	if pv:Dot(rec.gn) - (e.rad or 0) > rec.gh then
+		return false
+	end
+	local depth, lx, ly, lz = underCanvas(rec, e)
+	if depth <= 0.002 then
+		return false
+	end
+	local n = rec.gn
+	colStats.ground += 1
+	return swingPush(rec, e, parentCF, lx, ly, lz, depth, n.X, n.Y, n.Z, true)
+end
+
+-- (re)read the moving pieces of a model's built hair (OnBuilt hands us the pieces)
+local function onBuilt(model, section, pieces)
+	if section == "Body" then
+		if onBodyBuilt(model, pieces) and meshes[model] then
+			bindDepths(meshes[model])
+		end
+		return
+	end
+	if section ~= "Hair" then
+		return
+	end
+	local rec = meshes[model]
+	local old = rec and rec.byName or {}
+	rec = { model = model, list = {}, byName = {}, head = model:FindFirstChild("Head"), sweat = 0, nextAttr = 0, frame = 0,
+		rest = true, wetApplied = -1, seed = (#model.Name * 1.37) % 6.28, gap = true, reach = 0 }
+	rec.body = bodyOf(model, rec.head)
+	rec.k = rec.head and rec.head.Size.Y / 1.2 or 1
+	for name, pr in pairs(type(pieces) == "table" and pieces or {}) do
+		local mesh = pr.mesh
+		local fx = mesh and mesh.hairfx
+		local part = pr.part
+		local entry = {
+			name = name, part = part, baseRefl = part and part.Reflectance or 0, fx = fx,
+			-- a textured piece (the image AnatomyClient made for it): wetness darkens the texture itself
+			image = pr.image, textured = pr.image ~= nil,
+			-- spring state: swing angles (x about the head's X, z about its Z) / bounce height y
+			x = 0, z = 0, y = 0, vx = 0, vz = 0, vy = 0, prevPos = nil, prevVel = Vector3.zero, written = false,
+			cf = I,
+		}
+		if fx and type(fx.pivot) == "table" then
+			entry.pivot = V3(fx.pivot[1], fx.pivot[2], fx.pivot[3])
+			local tp = type(fx.tip) == "table" and fx.tip or fx.pivot
+			entry.tip = V3(tp[1], tp[2], tp[3])
+			entry.len = (entry.tip - entry.pivot).Magnitude
+			-- the swing about the pivot is CF(p) * rotation * CF(-p): the two constant frames are built once
+			entry.pcf, entry.pinv = CF(entry.pivot), CF(-entry.pivot)
+			entry.stiff = clamp(tonumber(fx.stiff) or 0.3, 0, 1)
+			entry.mass = clamp(tonumber(fx.mass) or 1, 0.3, 3)
+			entry.seg = tonumber(fx.seg) or 1
+			entry.bounce = fx.kind == "bounce"
+			entry.phase = (#rec.list * 1.618) % 6.28
+			entry.slot = #rec.list % 2
+			-- every lock its own spring: +-15 % mass and +-0.08 stiffness from its name (deterministic), so locs,
+			-- braids and clumps bounce and settle out of step instead of moving as one sheet
+			local hsh = 0
+			for i = 1, #name do
+				hsh = (hsh * 31 + string.byte(name, i)) % 9973
+			end
+			local jit = (hsh % 101) / 100
+			entry.mass = clamp(entry.mass * (0.85 + 0.3 * jit), 0.3, 3)
+			entry.stiff = clamp(entry.stiff + (((hsh // 101) % 17) / 16 - 0.5) * 0.16, 0, 1)
+			-- keep the motion state across a rebuild of the same piece (LOD flips) so nothing pops
+			local prev = old[name]
+			if prev and prev.fx then
+				entry.x, entry.z, entry.y, entry.vx, entry.vz, entry.vy = prev.x, prev.z, prev.y, prev.vx, prev.vz, prev.vy
+			end
+			-- what the body and the canvas test (and how far from the head the piece can reach: the canvas test
+			-- only runs for a head that low)
+			samplePiece(entry, mesh)
+			rec.reach = max(rec.reach, entry.pivot.Magnitude + (entry.rad or entry.len))
+			-- (hair without a swinging piece - short cuts, curls - never needs the body's frames)
+			rec.swings = rec.swings or (not entry.bounce and entry.smp ~= nil)
+		end
+		table.insert(rec.list, entry)
+		rec.byName[name] = entry
+	end
+	-- parents (a chain's lower segment hangs from its upper one), then a stable order: parents first
+	for _, e in ipairs(rec.list) do
+		if e.fx and e.fx.parent then
+			e.parent = rec.byName[e.fx.parent]
+		end
+	end
+	table.sort(rec.list, function(a, b)
+		local sa, sb = a.seg or 0, b.seg or 0
+		if sa ~= sb then
+			return sa < sb
+		end
+		return a.name < b.name
+	end)
+	-- the body contact each swinging piece's tip already has as built (the bind pose)
+	local b = rec.body
+	if b and b.bind then
+		for _, e in ipairs(rec.list) do
+			if e.tip and not e.bounce then
+				e.depth0 = bodyDepth(b, e.tip, true)
+			end
+		end
+	end
+	meshes[model] = rec
+	bindDepths(rec)
+	rec.sweat = model:GetAttribute("Sweat")
+	rec.sweat = type(rec.sweat) == "number" and clamp(rec.sweat, 0, 1) or 0
+	local q = math.floor(rec.sweat * 4 + 0.5) / 4
+	if q > 0 then
+		setWet(rec, q)
+	end
+end
+
+local function onRestored(model, section)
+	if section == "Hair" then
+		meshes[model] = nil
+	elseif section == "Body" then
+		bodies[model] = nil
+		bodyBuilds[model] = (bodyBuilds[model] or 0) + 1
+	end
+end
+
+local function relaxMesh(rec)
+	for _, e in ipairs(rec.list) do
+		e.x, e.z, e.y, e.vx, e.vz, e.vy = 0, 0, 0, 0, 0, 0
+		e.prevPos = nil
+		e.prevVel = Vector3.zero
+		if e.written and Anatomy then
+			Anatomy.SetPieceTransform(rec.model, "Hair", e.name, I)
+		end
+		e.written = false
+		e.cf = I
+	end
+	rec.rest = true
+end
+
 -- one moving piece: forcing from its pivot's acceleration (head space), gravity bias, wind, idle; spring
 local function stepPiece(rec, e, dt, t, hcf, g, wx, wz)
 	local fx = e.fx
@@ -824,6 +1387,13 @@ local function stepPiece(rec, e, dt, t, hcf, g, wx, wz)
 		e.x = clamp(e.x, -0.1, 0.1)
 		e.z = clamp(e.z, -0.1, 0.1)
 		e.cf = CF(0, e.y, 0) * e.pcf * A(e.x, 0, e.z) * e.pinv
+		-- on the canvas a cluster gives a little (it lifts off it, a few centimetres at most) instead of sinking in
+		if rec.gnd then
+			local depth = underCanvas(rec, e)
+			if depth > 0.002 then
+				e.cf = CF(rec.gn * min(depth, 0.06 * (rec.k or 1))) * e.cf
+			end
+		end
 		return
 	end
 	-- swing: gravity bias first (the hair keeps hanging down when the head tilts), weaker for stiff hair
@@ -853,9 +1423,24 @@ local function stepPiece(rec, e, dt, t, hcf, g, wx, wz)
 	end
 	-- the lower segment swings about its own pivot inside its parent's motion
 	e.cf = parentCF * e.pcf * A(e.x, 0, e.z) * e.pinv
-	-- the tip where this swing puts it (head space): out of the shoulders, chest and back
-	if rec.body and collide(rec, e, e.cf:PointToWorldSpace(e.tip), parentCF:PointToWorldSpace(e.pivot)) then
+	-- out of the body: the organic body's maps (a second pass when the first pushed: the push can bring another
+	-- point in), else the tip against the part-built body's proxy
+	-- (a segment clear of it last time is tested every second step, half the segments on each; a resting contact
+	-- - the spring's few millimetres a step into a shoulder - needs no second look)
+	local mb = rec.mb
+	if mb and (e.hit or (rec.frame + e.slot) % 2 == 0) then
+		local d = meshCollide(rec, e, parentCF, mb.shapes)
+		e.hit = d > 0
+		if d > 0.01 then
+			meshCollide(rec, e, parentCF, mb.shapes)
+		end
+	elseif rec.body and collide(rec, e, e.cf:PointToWorldSpace(e.tip), parentCF:PointToWorldSpace(e.pivot)) then
 		e.cf = parentCF * e.pcf * A(e.x, 0, e.z) * e.pinv
+	end
+	-- then onto the canvas: last, because hair pressed between the body and the canvas is hidden there, hair
+	-- through the canvas is not
+	if rec.gnd and groundSwing(rec, e, parentCF) then
+		groundSwing(rec, e, parentCF)
 	end
 end
 
@@ -899,6 +1484,36 @@ local function stepMesh(rec, dt, t, hcf)
 	local wv = hcf:VectorToObjectSpace(V3(wx, 0, wz))
 	if rec.body then
 		bodyFrame(rec, hcf)
+	end
+	-- the organic body in the head's frame this step (its maps' bind contact measured again after a rebuild).
+	-- Inside the level's near distance only (High 25 studs, Medium 20, Low 15; your own hair and the fighters' at
+	-- High's at every level): further out the tips keep to the part-built proxy, a few centimetres being a pixel.
+	-- Only for hair that swings (rec.swings)
+	local mb = bodies[rec.model]
+	if mb and rec.boundTo ~= mb then
+		bindDepths(rec)
+	end
+	if not (rec.near and rec.swings) then
+		mb = nil
+	end
+	rec.mb = mb
+	if mb then
+		for _, s in ipairs(mb.shapes) do
+			local part = s.part
+			s.live = part.Parent ~= nil
+			if s.live then
+				setFrame(s, hcf:ToObjectSpace(part.CFrame))
+			end
+		end
+	end
+	-- the canvas, when the head is low enough for the hair to reach it (knockdowns, get-ups, floor work): its
+	-- height and up in head space
+	rec.gnd = false
+	local fy = rec.floorY
+	if fy and hcf.Y - fy < rec.reach + 0.3 then
+		rec.gnd = true
+		rec.gn = hcf:VectorToObjectSpace(UP)
+		rec.gh = fy + GROUND_CLEAR - hcf.Y
 	end
 	for _, e in ipairs(rec.list) do
 		if e.fx then
@@ -971,8 +1586,27 @@ local function farByRoot(rigs, model, t, L)
 	local cd = rig and rig.camT == t and rig.camDist
 	return (cd and cd > L.mid + 5) and cd or false
 end
+-- the canvas under a model (world Y): the Animator measured where its soles stand in its root's space (the root
+-- stays upright whatever the body does on the canvas); nil without a rig
+local function floorOf(rigs, model)
+	local rig = rigs and rigs[model]
+	local g = rig and rig.geo
+	local root = rig and rig.root
+	if not (g and g.ok and type(g.groundY) == "number" and root and root.Parent) then
+		return nil
+	end
+	return root.Position.Y + g.groundY
+end
 function HairFX.Update(dt, t, camPos, cam, rigs)
 	frame += 1
+	-- the body maps of models that went away (a bald model has no hair record to drop them with), now and then
+	if frame % 120 == 0 then
+		for model in pairs(bodies) do
+			if not model.Parent then
+				bodies[model], bodyBuilds[model] = nil, nil
+			end
+		end
+	end
 	-- mesh hair
 	for model, rec in pairs(meshes) do
 		if not model.Parent then
@@ -1009,6 +1643,7 @@ function HairFX.Update(dt, t, camPos, cam, rigs)
 			continue
 		end
 		local stepN = dist < L.near and 1 or 2
+		rec.near = stepN == 1
 		rec.frame += 1
 		if rec.frame % stepN ~= 0 then
 			continue
@@ -1043,6 +1678,7 @@ function HairFX.Update(dt, t, camPos, cam, rigs)
 			end
 			rec.wetBusy = busy
 		end
+		rec.floorY = floorOf(rigs, model)
 		stepMesh(rec, sdt, t, head.CFrame)
 	end
 	-- round-1 hair
