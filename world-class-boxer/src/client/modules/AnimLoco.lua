@@ -71,6 +71,8 @@ local WALK_DROP, DROP_RATE = 0.38, 4
 -- WALK_GAP = the closest two walking feet come side by side (no scissoring when strafing); WALK_RELEASE /
 -- WALK_CATCH: as a foot toes off, the pelvis coming down is caught by the other leg over a moment
 local WALK_RAISE, WALK_SOFT, WALK_EXCESS, WALK_GAP, WALK_RELEASE, WALK_CATCH = 0.1, 0.0025, 0.06, 0.32, 0.12, 22
+-- the least the swinging ankle passes to the side of the planted one in a hard turn's pivot steps (studs)
+local TURN_GAP = 0.55
 -- real gait scaled to the rig: LREF = hip joint to sole of the reference 1.80 m boxer (studs); VH turns
 -- studs/s into the m/s of a 0.9 m human leg at the same Froude number (so human numbers apply)
 local LREF, VH = 3.06, 0.2793
@@ -635,6 +637,14 @@ function AnimLoco.bodyOffsets(rig, dt, t)
 	nYaw += clamp(0.17 * tl, -0.5, 0.5)
 	wYaw += clamp(0.1 * tl, -0.3, 0.3)
 	yawP += clamp(-0.05 * tl, -0.15, 0.15)
+	-- (a hard turn at speed - a reversal: the hips lag well behind the shoulders and the legs untwist from the
+	-- planted foot as he pivots, instead of the pelvis spinning round over it and crossing the thighs)
+	local tk = walking and lo.turnK or 0
+	if tk > 0 then
+		local lag = clamp(-0.06 * lo.yawRate, -0.6, 0.6) * tk
+		yawP += lag
+		wYaw -= lag
+	end
 	-- the head keeps the eyes level: it counters the trunk's pitch and roll on a soft spring, so it trails
 	-- the body's bob and sway a beat late (overlapping action) instead of riding it rigidly
 	local tP = kind and -(pitchP + wPitch) * 0.5 or 0
@@ -1609,6 +1619,24 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 			local F0 = fwdOf(f.fromYaw)
 			local D = R.ankleOf(leg, f.fromP, F0, f.liftPitch, sl) - R.ankleOf(leg, f.fromP, F0, pitch, sl)
 			ank += V3(D.X * (1 - K.smoother(u)), max(0, D.Y) * (1 - smooth(u / 0.5)), D.Z * (1 - K.smoother(u)))
+		end
+		-- a turn's steps: the foot in the air goes round the planted one, never across it (the thighs would pass
+		-- through each other): its ankle keeps TURN_GAP (scaled to the man) to the side of the planted foot, in the
+		-- legs' frame, while the turn lasts - a hard turn's pivot steps, and a walk or run that curves
+		local tk = walking and f.swing and max(lo.turnK or 0, clamp((abs(lo.yawRate) * lo.speed - 8) / 12, 0, 1)) or 0
+		if tk > 0 then
+			local o = rig.foot[s == "L" and "R" or "L"]
+			-- (the other foot planted, or in the air too: a run's flight as the reversal starts)
+			local oP = o.swing and o.tP or (o.visP or o.P)
+			if oP then
+				local lcf = rig.legCF or rootCF
+				local a, b = lcf:PointToObjectSpace(ank), lcf:PointToObjectSpace(oP)
+				local sx = s == "L" and -1 or 1
+				local over = TURN_GAP * (g.utScale and g.utScale.X or 1) * smooth(tk / 0.4) - sx * (a.X - b.X)
+				if over > 0 then
+					ank = lcf:PointToWorldSpace(V3(a.X + sx * over, a.Y, a.Z))
+				end
+			end
 		end
 		-- into the TRUE root's space (the IK and rootT live there)
 		local tgt = trueCF:PointToObjectSpace(ank)
