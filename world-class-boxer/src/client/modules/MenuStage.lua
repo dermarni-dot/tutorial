@@ -10,7 +10,23 @@
 -- MenuStage.Build() -> stage; MenuStage.Place(stage, char) -> clone; MenuStage.Step(stage, t) every
 -- frame (swinging bags and lamp, breathing rim light); MenuStage.Shot(stage, view, t) -> camera CFrame,
 -- field of view, focus distance; MenuStage.Destroy(stage).
+-- Graphics (Perf) - the set is not one of WorldLOD's roots, so it follows the level itself, live:
+--   High    every light as designed: the key, both lamps and the window cast shadows, dust at full rate
+--   Medium  shadows from the key and the lamp over the boxer only (WorldLOD keeps two casters too),
+--           dust at about half rate, signs at 3/4 resolution
+--   Low     no light shadows (as in the gym), no dust, signs at half resolution
 local CollectionService = game:GetService("CollectionService")
+
+-- Perf is the core module; without it the level passed to Build stands
+local Perf
+do
+	local m = script.Parent:FindFirstChild("Perf")
+	local ok, mod = false, nil
+	if m then
+		ok, mod = pcall(require, m)
+	end
+	Perf = (ok and type(mod) == "table") and mod or nil
+end
 
 local MenuStage = {}
 -- the set's floor point under the boxer's feet (well above anything the map builds)
@@ -30,6 +46,11 @@ local GYM_Y = -3.6 -- the gym floor outside the ring (apron height below the can
 local ROPE_X, ROPE_BACK, ROPE_FRONT = 10, -6, 14 -- rope lines: x = +-ROPE_X, z = ROPE_BACK .. ROPE_FRONT
 local ROPE_H = { 4.5, 3.5, 2.5, 1.5 } -- above the canvas, top rope first
 local ROPE_COLORS = { rgb(196, 30, 40), rgb(232, 232, 236), rgb(30, 70, 170), rgb(196, 30, 40) }
+local LEVELS = { Low = 1, Medium = 2, High = 3 }
+local LEVEL_NAMES = { "Low", "Medium", "High" }
+local SIGN_PPS = 30 -- sign resolution at High (pixels per stud)
+local SIGN_RES = { 0.5, 0.75, 1 } -- per level (the signs' layouts are all scale: TextScaled, full size)
+local DUST_RATE = { 0, 4, 7 } -- per level (0: the emitter is off)
 
 local function part(st, name, size, cf, color, material, props)
 	local p = Instance.new("Part")
@@ -62,12 +83,12 @@ local function rod(st, name, a, b, d, color, material)
 end
 
 -- a sign / poster: one TextLabel (lines split by \n) on the part's front face (or face)
-local function sign(p, text, fg, bg, bgT, font, face)
+local function sign(st, p, text, fg, bg, bgT, font, face)
 	local sg = Instance.new("SurfaceGui")
 	sg.Name = "Sign"
 	sg.Face = face or Enum.NormalId.Front
 	sg.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
-	sg.PixelsPerStud = 30
+	sg.PixelsPerStud = SIGN_PPS * (SIGN_RES[st.level] or 1)
 	sg.LightInfluence = 1
 	local t = Instance.new("TextLabel")
 	t.Size = UDim2.fromScale(1, 1)
@@ -80,6 +101,7 @@ local function sign(p, text, fg, bg, bgT, font, face)
 	t.Font = font or Enum.Font.Oswald
 	t.Parent = sg
 	sg.Parent = p
+	table.insert(st.signs, sg)
 	return sg
 end
 
@@ -102,7 +124,7 @@ local function buildRing(st)
 	canvas.CastShadow = false
 	-- the ring logo printed on the canvas in front of the boxer (worn, low contrast)
 	local logo = part(st, "CanvasLogo", V3(9, 0.02, 3.4), CF(0, CANVAS_Y + 0.011, 7), rgb(150, 30, 36), Enum.Material.Fabric, { Transparency = 0.5, CastShadow = false })
-	sign(logo, "WCB", rgb(232, 210, 160), nil, 1, Enum.Font.Oswald, Enum.NormalId.Top)
+	sign(st, logo, "WCB", rgb(232, 210, 160), nil, 1, Enum.Font.Oswald, Enum.NormalId.Top)
 	-- corner posts + pads: your red corner behind-left, the neutral white one behind-right
 	local corners = {
 		{ -ROPE_X, ROPE_BACK, rgb(176, 22, 32) }, { ROPE_X, ROPE_BACK, rgb(226, 226, 230) },
@@ -164,9 +186,9 @@ local function buildGym(st)
 	-- (a sign's front face is its -Z side: turned around, it faces the room)
 	local facing = A(0, PI, 0)
 	local banner = part(st, "Banner", V3(30, 4.4, 0.2), CF(-6, floorY + 19.5, -29.85) * facing, rgb(120, 18, 26), Enum.Material.Fabric)
-	sign(banner, "WORLD CLASS BOXING CLUB", rgb(244, 200, 90), nil, 1)
+	sign(st, banner, "WORLD CLASS BOXING CLUB", rgb(244, 200, 90), nil, 1)
 	local motto = part(st, "Motto", V3(22, 1.4, 0.2), CF(-6, floorY + 16.4, -29.85) * facing, rgb(20, 18, 18), Enum.Material.Fabric)
-	sign(motto, "EST. 1987  -  DISCIPLINE BEATS TALENT", rgb(210, 200, 180), nil, 1)
+	sign(st, motto, "EST. 1987  -  DISCIPLINE BEATS TALENT", rgb(210, 200, 180), nil, 1)
 	-- old fight posters, faded, on the back wall and the left wall
 	local posters = {
 		{ CF(-21, floorY + 8.5, -29.85) * facing, "FRIDAY NIGHT\nFIGHTS\nRIVERA vs KOVAC", rgb(214, 196, 150), rgb(120, 24, 24) },
@@ -176,7 +198,7 @@ local function buildGym(st)
 	}
 	for i, ps in ipairs(posters) do
 		local p = part(st, "Poster" .. i, V3(4.6, 6.4, 0.08), ps[1], ps[3], Enum.Material.Fabric)
-		sign(p, ps[2], ps[4], nil, 1, Enum.Font.Oswald)
+		sign(st, p, ps[2], ps[4], nil, 1, Enum.Font.Oswald)
 		part(st, "PosterFrame" .. i, V3(5, 6.8, 0.06), ps[1] * CF(0, 0, 0.04), rgb(24, 20, 18), Enum.Material.Wood)
 	end
 	-- a high window (cold daylight) on the back wall with a shaft of light falling into the gym
@@ -206,23 +228,22 @@ local function buildGym(st)
 	shaft.Segments = 6
 	shaft.Parent = win
 	st.shaft = shaft
-	light(win, "SpotLight", { Face = Enum.NormalId.Front, Angle = 60, Range = 34, Brightness = 1.6, Color = rgb(190, 210, 255), Shadows = true })
-	-- dust drifting in the window light (skipped on low detail)
-	if st.detail ~= "Low" then
-		local dustAt = Instance.new("Attachment")
-		dustAt.Name = "Dust"
-		dustAt.Parent = win
-		dustAt.WorldPosition = (st.base * CF(wx - 1.5, floorY + 8, -21)).Position
-		light(dustAt, "ParticleEmitter", {
-			Rate = 7, Lifetime = NumberRange.new(6, 10), Speed = NumberRange.new(0.15, 0.4), SpreadAngle = Vector2.new(180, 180),
-			Size = NumberSequence.new(0.07), LightEmission = 1, Color = ColorSequence.new(rgb(255, 240, 214)),
-			Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.3, 0.45), NumberSequenceKeypoint.new(1, 1) }),
-			Acceleration = V3(0, 0.03, 0), Shape = Enum.ParticleEmitterShape.Box, ShapeStyle = Enum.ParticleEmitterShapeStyle.Volume,
-		})
-		pcall(function()
-			dustAt.ParticleEmitter.Shape = Enum.ParticleEmitterShape.Box
-		end)
-	end
+	local winLight = light(win, "SpotLight", { Face = Enum.NormalId.Front, Angle = 60, Range = 34, Brightness = 1.6, Color = rgb(190, 210, 255), Shadows = true })
+	table.insert(st.casters, { light = winLight, from = 3 })
+	-- dust drifting in the window light (off on Low, MenuStage.SetLevel)
+	local dustAt = Instance.new("Attachment")
+	dustAt.Name = "Dust"
+	dustAt.Parent = win
+	dustAt.WorldPosition = (st.base * CF(wx - 1.5, floorY + 8, -21)).Position
+	st.dust = light(dustAt, "ParticleEmitter", {
+		Rate = DUST_RATE[3], Lifetime = NumberRange.new(6, 10), Speed = NumberRange.new(0.15, 0.4), SpreadAngle = Vector2.new(180, 180),
+		Size = NumberSequence.new(0.07), LightEmission = 1, Color = ColorSequence.new(rgb(255, 240, 214)),
+		Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.3, 0.45), NumberSequenceKeypoint.new(1, 1) }),
+		Acceleration = V3(0, 0.03, 0), Shape = Enum.ParticleEmitterShape.Box, ShapeStyle = Enum.ParticleEmitterShapeStyle.Volume,
+	})
+	pcall(function()
+		st.dust.Shape = Enum.ParticleEmitterShape.Box
+	end)
 	-- heavy bags on chains (they swing a little: MenuStage.Step)
 	st.bags = {}
 	for i, b in ipairs({ { -19, -15, rgb(122, 22, 28), 0 }, { -25, -3, rgb(28, 28, 32), 1.7 }, { 21, -19, rgb(122, 22, 28), 3.1 } }) do
@@ -252,6 +273,8 @@ local function buildLamps(st)
 		local shade = part(st, "LampShade", V3(1.4, 2.6, 2.6), CF(at) * A(0, 0, PI / 2), rgb(40, 58, 50), Enum.Material.Metal, { Shape = Enum.PartType.Cylinder })
 		local bulb = part(st, "LampBulb", V3(0.8, 0.8, 0.8), CF(at - V3(0, 0.6, 0)), rgb(255, 226, 170), Enum.Material.Neon, { Shape = Enum.PartType.Ball, CastShadow = false })
 		local spot = light(bulb, "SpotLight", { Face = Enum.NormalId.Bottom, Angle = 74, Range = 24, Brightness = 2.4, Color = rgb(255, 212, 158), Shadows = true })
+		-- the first lamp hangs over the boxer: its shadow pool stays on Medium
+		table.insert(st.casters, { light = spot, from = i == 1 and 2 or 3 })
 		table.insert(st.lamps, { top = top, len = (top - at).Magnitude, cord = cord, shade = shade, bulb = bulb, spot = spot, phase = i * 1.9 })
 	end
 end
@@ -265,6 +288,7 @@ local function buildLights(st)
 	local chest = V3(0, 4, 0)
 	local key = rig("KeyLight", V3(-6, 10, 9), chest)
 	st.key = light(key, "SpotLight", { Face = Enum.NormalId.Front, Angle = 46, Range = 26, Brightness = 2.6, Color = rgb(255, 230, 204), Shadows = true })
+	table.insert(st.casters, { light = st.key, from = 2 })
 	local rim = rig("RimLight", V3(5, 10.5, -7), chest + V3(0, 1, 0))
 	st.rim = light(rim, "SpotLight", { Face = Enum.NormalId.Front, Angle = 50, Range = 22, Brightness = 4.4, Color = rgb(255, 190, 110) })
 	local rim2 = rig("RimLight2", V3(-7, 9, -6), chest + V3(0, 1, 0))
@@ -273,16 +297,46 @@ local function buildLights(st)
 	light(fill, "PointLight", { Range = 13, Brightness = 0.45, Color = rgb(170, 196, 255) })
 end
 
--- builds the set; detail = Settings graphics detail ("Low" skips the dust)
+-- the set at a Graphics level (1 Low .. 3 High): which lights cast shadows, the dust, the signs' resolution
+function MenuStage.SetLevel(st, level)
+	level = math.clamp(math.floor(tonumber(level) or 3), 1, 3)
+	st.level = level
+	st.detail = LEVEL_NAMES[level]
+	for _, c in ipairs(st.casters) do
+		c.light.Shadows = level >= c.from
+	end
+	if st.dust then
+		st.dust.Rate = DUST_RATE[level]
+		st.dust.Enabled = DUST_RATE[level] > 0
+	end
+	local pps = SIGN_PPS * SIGN_RES[level]
+	for _, sg in ipairs(st.signs) do
+		if sg.PixelsPerStud ~= pps then
+			sg.PixelsPerStud = pps
+		end
+	end
+end
+
+-- builds the set; detail = the Graphics level's name ("Low" | "Medium" | "High"; Perf's level when
+-- omitted). The set then follows Perf.Changed until MenuStage.Destroy
 function MenuStage.Build(detail)
 	local folder = Instance.new("Folder")
 	folder.Name = "MenuStage"
-	local st = { folder = folder, base = CF(MenuStage.Origin), detail = detail, clone = nil }
+	local level = LEVELS[detail] or (Perf and Perf.Level()) or 3
+	local st = { folder = folder, base = CF(MenuStage.Origin), detail = detail, level = level, clone = nil, casters = {}, signs = {} }
 	st.mark = st.base * A(0, PI, 0) -- the boxer's feet, facing +Z (the lens side)
 	buildRing(st)
 	buildGym(st)
 	buildLamps(st)
 	buildLights(st)
+	MenuStage.SetLevel(st, level)
+	if Perf and Perf.Changed then
+		st.perfConn = Perf.Changed:Connect(function(l)
+			if st.folder then
+				MenuStage.SetLevel(st, l)
+			end
+		end)
+	end
 	folder.Parent = workspace
 	return st
 end
@@ -441,6 +495,10 @@ function MenuStage.Shot(st, view, t, shake)
 end
 
 function MenuStage.Destroy(st)
+	if st and st.perfConn then
+		st.perfConn:Disconnect()
+		st.perfConn = nil
+	end
 	if st and st.folder then
 		st.folder:Destroy()
 		st.folder = nil
