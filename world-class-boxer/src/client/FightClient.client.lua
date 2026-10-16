@@ -466,6 +466,37 @@ do
 	local boardMax = UI.New("UISizeConstraint", { MaxSize = Vector2.new(1380, 140), Parent = board })
 	local BOARD_H, BOARD_H_COMPACT = 140, 70
 
+	-- the name row: the name runs from its flag to the tags at the row's inner end (KD tags, then the status
+	-- chip), whatever they hold. A fixed reserve let KD + CONCUSSED run over the surname on a phone's strip.
+	function KM.fitName(p)
+		if not p.nameX then
+			return -- (laid out by layoutPanel)
+		end
+		-- screen px per design px: the panel's measured height over its design height (what the screen
+		-- really draws, whatever scales sit above it)
+		local k = p.frame.AbsoluteSize.Y / p.boardH
+		if k < 0.05 then
+			k = math.max(UI.ScaleOf(p.tags), 0.05)
+		end
+		local tw = p.tags.AbsoluteSize.X / k
+		local reserve = p.tagEdge + (tw > 1 and tw + 8 or 0)
+		p.name.Size = UDim2.new(1, -(p.nameX + reserve), 0, p.nameH)
+	end
+
+	-- the slim strip stacks the knockdowns in one tag ("KD x2"); the full board shows one tag per knockdown
+	function KM.stackKD(p)
+		for _, c in ipairs(p.kd:GetChildren()) do
+			local i = c:IsA("GuiObject") and tonumber(c.Name:match("^KD(%d+)$"))
+			if i then
+				c.Visible = not compactHud or i == 1
+				local t = c:FindFirstChildWhichIsA("TextLabel")
+				if t then
+					t.Text = (compactHud and i == 1 and p.kdCount > 1) and ("KD x" .. p.kdCount) or "KD"
+				end
+			end
+		end
+	end
+
 	local function fighterPanel(side)
 		local left = side == "L"
 		local accent = left and T.red or T.blue
@@ -517,6 +548,12 @@ do
 			health = health, head = head, body = body, stam = stam, pools = pools, icons = icons, zones = zoneMap(f, side),
 			cut = statusIcon(icons, "Cut", T.red, 1), swell = statusIcon(icons, "Swelling", T.purple, 2), ribs = statusIcon(icons, "Ribs", T.orange, 3),
 		}
+		-- the name gives way to whatever the tags hold (KD tags, the status chip)
+		local function fit()
+			KM.fitName(p)
+		end
+		tags:GetPropertyChangedSignal("AbsoluteSize"):Connect(fit)
+		f:GetPropertyChangedSignal("AbsoluteSize"):Connect(fit)
 		if left then
 			-- the player's own legs: below a third, the next big shot (or a whiffed hook) staggers you
 			-- (label then bar in a row: the label takes what its text needs, so a raised text-size floor on a small
@@ -544,7 +581,8 @@ do
 		p.tags.AnchorPoint = inner
 		if compact then
 			p.flag.Position, p.flag.Size = at(12, 8), UDim2.fromOffset(24, 16)
-			p.name.Position, p.name.Size = at(42, 3), UDim2.new(1, -(42 + 124), 0, 26)
+			p.name.Position = at(42, 3)
+			p.nameX, p.nameH, p.tagEdge, p.boardH = 42, 26, 8, BOARD_H_COMPACT
 			UI.SetTextSize(p.name, 21)
 			p.tags.Position = left and UDim2.new(1, -8, 0, 5) or UDim2.fromOffset(8, 5)
 			p.sub.Visible = false
@@ -563,7 +601,8 @@ do
 		else
 			local x0 = 72 -- the figure column on the outer side
 			p.flag.Position, p.flag.Size = at(16, 12), UDim2.fromOffset(30, 20)
-			p.name.Position, p.name.Size = at(54, 5), UDim2.new(1, -(54 + 150), 0, 32)
+			p.name.Position = at(54, 5)
+			p.nameX, p.nameH, p.tagEdge, p.boardH = 54, 32, 12, BOARD_H
 			UI.SetTextSize(p.name, 26)
 			p.tags.Position = left and UDim2.new(1, -12, 0, 10) or UDim2.fromOffset(12, 10)
 			p.sub.Visible = true
@@ -581,6 +620,8 @@ do
 			p.zones.frame.Visible = true
 			p.zones.frame.Position = at(14, 42)
 		end
+		KM.stackKD(p)
+		KM.fitName(p)
 	end
 
 	-- one red "KD" tag per knockdown, at the inner end of the name row
@@ -591,6 +632,7 @@ do
 		local t = UI.Text(c, "KD", { Font = T.semi, TextSize = 13, TextColor3 = Color3.new(1, 1, 1), Size = UDim2.new(0, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.X,
 			TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false })
 		UI.Pad(t, 0, 6)
+		KM.stackKD(panel)
 	end
 
 	-- center: the round and the clock (the network's LIVE tag sits in the clock's top band, inside the
@@ -3928,8 +3970,8 @@ local function chipFor(s, hurt, female)
 	return nil
 end
 
--- the slim phone strip has less room at the end of the name row
-local SHORT_CHIP = { ["IN DANGER"] = "DANGER", ["OUT ON HIS FEET"] = "OUT ON FEET", ["OUT ON HER FEET"] = "OUT ON FEET" }
+-- the slim phone strip has less room at the end of the name row (the name gives way to the chip: KM.fitName)
+local SHORT_CHIP = { ["IN DANGER"] = "DANGER", ["OUT ON HIS FEET"] = "OUT ON FEET", ["OUT ON HER FEET"] = "OUT ON FEET", ["CONCUSSED"] = "CONC.", ["BODY HURT"] = "BODY" }
 local function setChip(panel, text, color)
 	if text and compactHud then
 		text = SHORT_CHIP[text] or text
