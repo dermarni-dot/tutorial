@@ -720,8 +720,9 @@ One graphics level drives every client system, so phones and low-end PCs can dro
 machine keeps the full look.
 
 **The setting.** Settings > **Graphics detail**: Auto, High, Medium or Low. On Auto the row shows the
-level Auto picked ("Auto: Medium"), and the line under it reads the level in force and the live frame
-rate ("Running at Medium · 58 FPS"). The choice is saved with the profile.
+level Auto picked ("Auto: Medium"). The line under it reads the level in force and the live frame rate,
+then what to do at that level ("Running at Medium · 58 FPS. If the game stutters, pick Low ..."; on Low it
+says what Low leaves out, on Auto that Auto steps by itself). The choice is saved with the profile.
 
 **Perf** (`src/client/modules/Perf.lua`) turns the choice into a level from 1 to 3. Every system reads
 it the same way: `Perf.Level()`, `Perf.Pick(low, medium, high)`, `Perf.Changed` (fired with the new
@@ -731,27 +732,40 @@ like this:
 | | Auto |
 |---|---|
 | Start | High on desktops and consoles. Medium on touch devices: a phone (short side under 500 px) never climbs above Medium, a tablet can reach High |
-| Step down | one level after 6 s under 40 FPS, 4 s under 25 FPS, or one 2-second window under 15 FPS |
-| Step up | one level after 20 s of smooth frames at 57+ FPS, never above where the device started. Not within 60 s of a step down; that wait doubles (up to 8 minutes) each time a climb has to be undone |
-| Not judged | the join (until 3 s after the game has loaded), single frames over 0.25 s (loading, a big build, the app in the background), windows made mostly of such hitches, an unfocused window, the main menu's set being built |
+| Step down | one level after 6 s under 40 FPS, 4 s under 25 FPS, or one 2-second window under 15 FPS. A device crawling under 4 FPS (window after window of nothing but quarter-second frames) steps down after three such windows |
+| A cap is not a slow device | slow frames held back by a frame-rate cap (Roblox's own 30 FPS setting, a phone's battery saver) keep the level. Auto reads them as a cap when they come evenly paced and the frame's work would fit a 50 FPS frame: the scripts' span from PreRender to the end of Heartbeat, and the render thread's CPU and GPU time (`Stats.RenderCPUFrameTime` / `RenderGPUFrameTime`). Settings then says the device caps the frame rate (`Perf.Capped()`). Where the render times read 0, the scripts' span alone keeps Auto at Medium or above |
+| Step up | one level after 20 s of smooth frames at 57+ FPS, never above where the device started. Not within 60 s of a step down; that wait doubles (up to 8 minutes) each time a climb has to be undone. After two undone climbs to a level, Auto stops trying it until the scene changes (the camera moves more than 1,000 studs: the gym, an arena, the city, the menu) or Auto is picked again |
+| Not judged | the join (until 3 s after the game has loaded), single frames over 0.25 s (loading, a big build, the app in the background) and windows made mostly of them (unless three come in a row: a crawl), an unfocused window, the main menu's set being built, the boosted first builds of your boxer's and your opponent's meshes |
 | After a step | 6 s for the systems to shed or take on their work before the next judgement |
-
-Auto reads the frame rate only, so a frame-rate cap (Roblox's own 30 FPS setting, a phone's battery
-saver) looks like a slow device and Auto settles lower. Pick a level by hand to keep more detail.
+| Other settings | a change to any other setting re-applies Graphics without moving Auto's level |
 
 **What the levels change.** High is the full look. Medium and Low only take work away; they keep every
-character, every piece of UI and all gameplay information.
+character, every piece of UI and all gameplay information. Your own boxer and your opponent keep High's
+animation, face, hair and muscle distances at every level, and their meshes are built first.
 
 | System | Medium | Low |
 |---|---|---|
-| Mesh characters (AnatomyClient presets) | 4 full-detail characters, full detail to 50 studs, meshes to 120, 2 ms of build time per frame | 1 full-detail character, 30 / 80 studs, 1.5 ms per frame, no colour textures (vertex colours) |
-| Main menu | 20 dust motes | 10 dust motes, no depth of field, no dust in the set |
+| Mesh characters (`AnatomyClient.DETAIL`) | 4 full-detail characters, full detail to 50 studs, low-detail meshes to 160, 2 ms of build time a frame, every colour texture | 1 full-detail character, 30 / 140 studs, 1.5 ms a frame. NPCs paint only the face's texture (hair and body in vertex colours); you, your opponent and previews keep every texture |
+| Character animation (Animator LOD bands) | full detail to 30 studs; every 2nd frame past 60, every 3rd past 90, none past 150; still background figures at half rate from 15 studs | 25 / 60 / 80 / 140 studs; still figures every 3rd frame |
+| Faces (FaceFX) | full face to 26 studs, blinks to 45, blend shapes at 10 Hz | 18 / 32 studs, 8 Hz, damage painting 0.8 ms a frame (1.5) |
+| Hair (HairFX) | full rate to 20 studs, half rate to 45; swinging hair tested against the body's own meshes to 20 (a simpler proxy beyond) | 15 / 30 studs; the mesh test to 15 |
+| Muscles (BodyFX) | flex to 35 studs, breathing to 22, full-rate blend shapes to 15; the correctives (seat, shoulders, belly fold) to 70 | 25 / 14 / 10 studs; correctives to 50 |
+| Character lights (CharacterLight) | fill and rim light | fill light only |
+| Full-screen effects (LightLevels) | no depth of field | no depth of field, bloom or sun rays (colour grades, blur and atmosphere stay at every level) |
+| Fights (FightClient) | sweat / blood spray x0.75, 8 blood drops on the canvas, ropes in front of the camera checked every 0.1 s | no impact lights, spray x0.5, 4 drops, no blur pulse on a heavy shot taken, ropes every 0.16 s, the built-in crowd at 15 Hz |
+| Arenas (VenueFX) | 2 key-light shadows, spot rays at 7 Hz, crowd bob budget 280 / 150 parts a tick | 1 key-light shadow, spot rays at 4 Hz, crowd budget 160 / 0, printed impostor rows behind the front row |
+| Training screens (BodyMap, MuscleScreen) | muscle map painted at 1 image px per design px; the muscle viewer's shells breathe at 20 Hz | 0.75 px without the glow layer; shells hold still, the figure turns at 30 Hz |
+| Main menu (MainMenu, MenuStage) | 20 dust motes; the set: 2 of its 4 light shadows, dust at about half rate, signs at 3/4 resolution | 10 motes; the set: no light shadows, no dust, signs at half resolution |
 | Gym and city lights (WorldLOD) | shadows only from the lights marked ShadowKeep; small accent lights past 90 studs and mid lights past 220 off | no light shadows; accent lights off; mid lights past 110 and big fills past 170 off; parts under 4 studs cast no shadow |
 | Signs (SurfaceGui / BillboardGui) | drawn to 3/4 of their distance at 3/4 resolution | half distance, half resolution (scale-only layouts, so nothing moves) |
-| Particles and effects | continuous particles at 55%, and none beyond 260 studs; gym dust x0.55; sun shafts drawn to 130 studs with 3 bounce lights (170 and 6 at High); sweat puddles halved | particles at 25%, and none beyond 150 studs; no gym dust, sun shafts or sweat puddles |
-| Gym / city motion | mirror at 24 Hz, Main Street crowd x0.75 | mirror at 15 Hz, crowd x0.5, the street at 20 Hz |
-| Arenas (VenueFX) | crowd bob budget 280 / 150, 2 key-light shadows, spot rays at 7 Hz | printed impostor rows for the back of the crowd, 1 key-light shadow, spot rays at 4 Hz |
+| Particles and gym effects (WorldLOD, Ambience, GymVisuals) | continuous particles at 55%, none beyond 260 studs; gym dust x0.55; sun shafts drawn to 130 studs with 3 bounce lights (170 and 6 at High); 4 sweat puddles, gone at 45 studs | particles at 25%, none beyond 150 studs; no gym dust, sun shafts or sweat puddles |
+| Gym motion (GymMirror, GymVisuals, Ambience) | mirror at 24 Hz; equipment moves within 120 studs, fans and timers within 130 | mirror at 15 Hz; 90 / 100 studs |
+| City (CityVisuals) | Main Street crowd x0.75, 36 window grids, fans / pedestrians / cars move within 140 / 170 / 210 studs | crowd x0.5, 24 grids, 100 / 120 / 160 studs, the street at 20 Hz |
 
+High is the full look: AnatomyClient's own defaults on Auto (`Config.Anatomy`: 6 full-detail characters,
+70 / 160 studs, 2.5 ms a frame) and its "full" preset when High is picked by name (10, 90 / 200 studs,
+4 ms); animation bands 45 / 110 / 170 / 230; faces 34 / 60 studs at 14 Hz; hair 25 / 60; muscles 45 / 30 /
+20, correctives to 100; 3 arena key shadows, spot rays at 12 Hz, crowd budget 420 / 300; mirror at 30 Hz.
 High also gains two savings nobody can see: the gym and city lights far beyond any view switch off
 (an arena fight is 5,700 studs from the gym, whose 170 lights used to stay on through every bout), and
 the gym's ambience loops pause while the camera is that far away.
@@ -762,6 +776,11 @@ the gym's ambience loops pause while the camera is that far away.
   them at once if a fight ever comes first).
 - Map and venue parts have CanTouch off (nothing listens to `.Touched`), and the posed gym NPCs skip
   the Humanoid state machine.
+- Gym members' part bodies are built at low detail when the clients draw them with meshes anyway
+  (decided once at boot by a probe EditableMesh on the server): 10,703 -> 9,108 instances and
+  2,788 -> 2,180 parts replicated to every join. Without the Editable APIs they stay at medium detail.
+- Fighters slide by their root (one assembly move instead of `Model:PivotTo` of ~270 parts), and the
+  10 Hz fight state message is a 42-byte buffer (64 B on the wire, was ~387 B).
 - **StreamingEnabled is off**, and `default.project.json` now says so for Workspace, so a `rojo serve`
   into a new Studio place (where it defaults on) cannot turn it on. Measured in the simulator: at
   Roblox's default 1024-stud radius streaming withholds only the training camp (127 parts, about 2%),
@@ -774,7 +793,9 @@ the gym's ambience loops pause while the camera is that far away.
   `RequestStreamAroundAsync` before the start message, and is left for later.
 
 **Measured** (headless simulator, client Lua on a desktop CPU; a mid-range phone runs Lua about 3x
-slower, a low-end one about 5x; GPU work is not simulated):
+slower, a low-end one about 5x; GPU work is not simulated). This first table was measured when the
+levels came in, before the per-system work above, so its Medium and Low rows show only the presets
+and lights of that time:
 
 | At the tier-1 gym floor, after the meshes are built | Low | Medium | High (picked by name) |
 |---|---|---|---|
@@ -785,17 +806,21 @@ slower, a low-end one about 5x; GPU work is not simulated):
 | Parts casting shadows (before) | 3,104 (5,587) | 5,577 (5,590) | 5,655 (5,655) |
 | Client Lua per frame, ms (before) | 6.5 (7.0) | 7.0 (7.2) | 7.1 (7.1) |
 
-| Elsewhere | Before | After |
+| Measured since | Before | After |
 |---|---|---|
-| A phone (844 x 390) on Auto at the gym: mesh preset | desktop (6 full-detail characters, 70 / 160 studs, 2.5 ms a frame) | Medium (4, 50 / 120 studs, 2 ms) |
+| A phone (844 x 390) on Auto at the gym: mesh preset | desktop (6 full-detail characters, 70 / 160 studs, 2.5 ms a frame) | Medium (4, 50 / 120 studs at the time, 2 ms) |
 | ... time until the meshes are built / Editable memory / live Editables | 134 s / 21.3 MB / 535 | 60 s / 12.1 MB / 281 |
 | ... client Lua per frame once built | 11.9 ms (the builder still busy) | 9.6 ms |
+| The gym floor's animation at Medium (Animator, Lua + engine ms a frame) | 3.23 | 2.33 |
+| Blend shapes, a career fight's round 2 (AnatomyClient, Lua / engine ms a frame) | Low 1.16 / 1.84, High 1.15 / 1.75 | Low 0.91 / 1.51, High 0.86 / 1.41 |
+| The Body tab's rebuild (training UI) | 355 ms | High 71, Medium 82, Low 17 ms |
+| Your opponent's round-1 head at a spar's start (Low / High) | 16.0 / 13.5 s | 0.5 / 0.5 s |
 | Main menu dust loop per frame, Low / Medium / High | 0.17 / 0.16 / 0.17 ms | 0.07 / 0.11 / 0.17 ms |
+| Main menu set's shadow-casting lights, Low / Medium / High | 4 / 4 / 4 | 0 / 2 / 4 |
 | Peak Editable memory through creation, a tour, training and a spar (Low / Medium / High) | | 15.6 / 45.5 / 71.3 MB |
 | Server script start to its first yield | 0.36 s | 0.20 s |
 
-The character animation (about 5.5 ms of the gym's 7 ms) does not change with the level yet, and the
-GPU savings (lights, shadows, particles, signs, depth of field) are not in these numbers.
+The GPU savings (lights, shadows, particles, signs, depth of field) are not in these numbers.
 
 ## Adding sounds
 
