@@ -1563,7 +1563,7 @@ function Creator.Open()
 			return hintLines({ "RIGHT STICK turn", l(Enum.KeyCode.ButtonL2) .. " / " .. l(Enum.KeyCode.ButtonR2) .. " zoom", l(Enum.KeyCode.ButtonL1) .. " / " .. l(Enum.KeyCode.ButtonR1) .. " step",
 				l(Enum.KeyCode.ButtonY) .. " undo", l(Enum.KeyCode.ButtonX) .. " reset slider" })
 		elseif mode == "touch" then
-			return "Drag your boxer to turn him"
+			return "Drag your boxer to turn"
 		end
 		return hintLines({ "Drag your boxer to turn", "wheel to zoom", "Ctrl+Z undo" })
 	end
