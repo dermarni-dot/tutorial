@@ -82,7 +82,7 @@ PvPRemote.Parent = remotes
 remotes.Parent = ReplicatedStorage
 
 MapBuilder.BuildGym()
-Venues.BuildTemplates()
+-- (the fight venues' templates are built a moment after the first join is under way: the end of this script)
 task.spawn(Ambient.Start)
 
 local V3 = Vector3.new
@@ -2213,6 +2213,16 @@ Players.PlayerAdded:Connect(onPlayer)
 for _, player in ipairs(Players:GetPlayers()) do
 	task.spawn(onPlayer, player)
 end
+
+-- the fight venues' templates (8.6k instances in ServerStorage, about a fifth of the boot's Lua) are built
+-- off the boot's critical path: the first player's profile load is already in flight when they start,
+-- and the gym room's sparring athletes (spawned in their own thread) are long in place before anyone can
+-- spar. A fight that came first would have built them in Venues.New already.
+task.delay(3, function()
+	if not game:GetService("ServerStorage"):FindFirstChild("Venue_Arena") then
+		Venues.BuildTemplates()
+	end
+end)
 
 Players.PlayerRemoving:Connect(function(player)
 	-- leaving a career bout: record it (the real result if it was already announced, else a forfeit

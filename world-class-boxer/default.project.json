@@ -8,6 +8,11 @@
         "Technology": "Future"
       }
     },
+    "Workspace": {
+      "$properties": {
+        "StreamingEnabled": false
+      }
+    },
     "MaterialService": {
       "$properties": {
         "Use2022Materials": true

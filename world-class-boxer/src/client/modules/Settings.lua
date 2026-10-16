@@ -219,7 +219,14 @@ end
 
 local saveToken = 0
 local State
+-- true once the server's copy has been applied, or once the player changed something here after the
+-- profile arrived without one: from then on this session's values win (a push carrying the previous
+-- save, sent before this change's own save landed, never puts back a value just changed)
+local loaded = false
 function Settings.Set(k, value)
+	if Settings.Supported() then
+		loaded = true
+	end
 	local t = table.clone(Settings.Values)
 	t[k] = value
 	Settings.Values = Settings.Sanitize(t)
@@ -243,7 +250,6 @@ function Settings.Supported()
 end
 
 -- the server's copy (P.settings.ui once Main stores it); local edits this session win
-local loaded = false
 function Settings.Load(P)
 	if loaded or type(P) ~= "table" then
 		return
