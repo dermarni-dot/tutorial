@@ -120,6 +120,29 @@ function AnimFight.setup(rig)
 	rig.pendStep = nil
 end
 
+-- a glove held on his own flank (the liver clutch), in standard UpperTorso units: on the torso's outline - the
+-- organic mesh's when it is on (a little narrower than its widest, the shoulders), the box's otherwise - at `ang`
+-- radians round from the front towards that side, the glove's radius out from it
+local function flankSpot(rig, side, ang)
+	local g = rig.geo
+	local sc = g.utScale or V3(1, 1, 1)
+	local m = g.mesh and g.mesh.W
+	local cx, cz, hx, hz
+	if m then
+		cx, cz, hx, hz = m.cf.Position.X, m.cf.Position.Z, m.size.X * 0.5 * 0.85, m.size.Z * 0.5
+	else
+		local us = g.utSize or V3(2, 1.6, 1)
+		cx, cz, hx, hz = 0, 0, us.X * 0.5, us.Z * 0.5
+	end
+	local sx = side == "L" and -1 or 1
+	local sa, ca = sin(ang), cos(ang)
+	local n = V3(sx * sa / hx, 0, -ca / hz).Unit
+	local r = g["fistR" .. side] or 0.35
+	local x = cx + sx * hx * sa + n.X * r
+	local z = cz - hz * ca + n.Z * r
+	return x / sc.X, z / sc.Z
+end
+
 ------------------------------------------------------------------------
 -- Fidgets: short overlays on the guard (glove tap, shoulder roll, neck roll, feint, lead-hand pump,
 -- shake out, big breath, double bounce, glove adjust)
@@ -154,10 +177,59 @@ end
 -- guard), and so is a hand that is punching.
 ------------------------------------------------------------------------
 local GLOVE_GIVE = 0.55
+local GLOVE_NAMES = { "GloveL", "GloveR" }
 local function gloveRadius(part)
 	local s = part.Size
 	return (s.X + s.Y + s.Z) / 6
 end
+-- A guard glove never sits inside its own man's face: the glove (a sphere of its radius round the hand's spot)
+-- is kept off the head (a sphere round the head's centre, through this frame's neck) - moved straight forward,
+-- out in front of the face, which is where a high guard rests - and the two gloves off each other (pushed apart
+-- sideways). Glove spots in standard UpperTorso units, changed in place.
+local FACE_GIVE = 0.9 -- (the glove's share of its radius kept off: a padded glove pressed to the cheek)
+local function faceRoom(rig, p, gl, gr)
+	local g = rig.geo
+	local sc = g.utScale
+	if not (g.ok and sc and g.jc0 and g.jc0.Neck and g.jc1i.Neck and g.headR) then
+		return
+	end
+	local hcf = g.jc0.Neck * p.Neck * g.jc1i.Neck
+	local H = hcf.Position
+	-- (the face's front: the organic head reaches further forward than the R15 head's sphere - nose, brow, jaw)
+	local headR = g.headR
+	local hm = g.mesh and g.mesh.Neck
+	if hm then
+		headR = max(headR, hm.size.Z * 0.5 - hm.cf.Position.Z)
+	end
+	local rL, rR = (g.fistRL or 0.35) * FACE_GIVE, (g.fistRR or 0.35) * FACE_GIVE
+	-- (two gloves side by side: apart in X, each its share)
+	local dx = (gr[1] - gl[1]) * sc.X
+	local dy = (gr[2] - gl[2]) * sc.Y
+	local dz = (gr[3] - gl[3]) * sc.Z
+	local lat = dy * dy + dz * dz
+	local need = rL + rR
+	if lat < need * need then
+		local wantX = sqrt(need * need - lat)
+		if dx < wantX then
+			local sh = (wantX - max(dx, -wantX)) * 0.5 / sc.X
+			gl[1] -= sh
+			gr[1] += sh
+		end
+	end
+	for i = 1, 2 do
+		local gv, r = i == 1 and gl or gr, i == 1 and rL or rR
+		local R2 = (headR + r) ^ 2
+		local x, y = gv[1] * sc.X - H.X, gv[2] * sc.Y - H.Y
+		local l2 = x * x + y * y
+		if l2 < R2 then
+			local zMax = (H.Z - sqrt(R2 - l2)) / sc.Z
+			if gv[3] > zMax then
+				gv[3] = zMax
+			end
+		end
+	end
+end
+
 local function gloveRoom(rig, p, gl, gr, dt)
 	local room = rig.gloveRoom
 	if not room then
@@ -165,7 +237,7 @@ local function gloveRoom(rig, p, gl, gr, dt)
 		rig.gloveRoom = room
 	end
 	local opp = rig.oppRig
-	local ok = opp ~= nil and opp.model ~= nil and opp.model.Parent ~= nil and rig.lod >= 3 and rig.geo.ok
+	local ok = opp ~= nil and opp.model ~= nil and opp.model.Parent ~= nil and rig.lod >= 2 and rig.geo.ok
 	local gc = rig.gloveCache
 	if ok and (not gc or gc.opp ~= opp.model or (not (gc.L and gc.oL) and os.clock() > gc.retry)) then
 		local m, om = rig.model, opp.model
@@ -371,6 +443,7 @@ function AnimFight.stance(p, rig, t, dt)
 	end
 	-- fidgets
 	AnimFight.fidgets(p, rig, st, t, gl, gr)
+	faceRoom(rig, p, gl, gr)
 	gloveRoom(rig, p, gl, gr, dt)
 	rig.guardL, rig.guardR = gl, gr
 	rig.guardSink = sinkY
@@ -516,14 +589,15 @@ function AnimFight.fidgets(p, rig, st, t, gl, gr)
 		gl[3] -= 0.45 * k
 		gl[2] += 0.08 * k
 	elseif kind == "shake" then
-		-- shake out the arms: hands drop and shake, then back up
+		-- shake out the arms: hands drop out to the sides and shake, then back up (never back into the chest: on
+		-- a deep chest a dropped glove pulled in sinks into it)
 		local k = e
 		gl[2] -= 0.55 * k
 		gr[2] -= 0.55 * k
-		gl[1] -= 0.25 * k
-		gr[1] += 0.25 * k
-		gl[3] += 0.3 * k
-		gr[3] += 0.3 * k
+		gl[1] -= 0.4 * k
+		gr[1] += 0.4 * k
+		gl[3] -= 0.05 * k
+		gr[3] -= 0.05 * k
 		gl[2] += sin(el * 34) * 0.06 * k
 		gr[2] += sin(el * 31 + 1) * 0.06 * k
 		p.Neck = p.Neck * A(0, sin(el * 9) * 0.08 * k, 0)
@@ -860,6 +934,55 @@ local RISE_TOES = 0.12
 local TALL_PITCH = math.tan(math.rad(36))
 -- the longest the rear foot follows a punch in (studs)
 local REAR_FOLLOW_MAX = 1.0
+-- the man's torso seen from above, as an ellipse in his UpperTorso's own space (studs): centre x, z and half
+-- width / depth - the organic mesh's bounds when it is on (AnimRig.computeGeo: his rig's geo.mesh, else the piece
+-- itself; a little narrower than its widest, the shoulders), the R15 box's otherwise
+local function torsoShape(rig, tgt)
+	local opp = rig.oppRig
+	local m = opp and opp.geo and opp.geo.mesh and opp.model == tgt.Parent and opp.geo.mesh.W
+	local cpos, size
+	if m then
+		cpos, size = m.cf.Position, m.size
+	else
+		local look = tgt.Parent and tgt.Parent:FindFirstChild("Anatomy")
+		local mp = look and look:FindFirstChild("Anatomy" .. tgt.Name)
+		local weld = mp and mp:FindFirstChild("AnatomyWeld")
+		if weld and weld:IsA("Weld") and weld.Part0 == tgt and mp:IsA("BasePart") then
+			cpos, size = (weld.C0 * weld.C1:Inverse()).Position, mp.Size
+		end
+	end
+	if size then
+		return cpos.X, cpos.Z, size.X * 0.45, size.Z * 0.5
+	end
+	return 0, 0, tgt.Size.X * 0.5, tgt.Size.Z * 0.55
+end
+
+-- a body shot's spot (world): where the glove - this hand's glove, a sphere round the hand - rests on his torso
+-- coming in along `dir` (world, horizontal, from him towards the puncher, turned round to his flank for a hook):
+-- the ellipse's surface that way, out along its normal by the glove's radius
+local function bodySpot(rig, tgt, dir, hand, act)
+	local cx, cz, hx, hz = torsoShape(rig, tgt)
+	if act then
+		-- (the outline the fist is kept out of while it is out: keepOut)
+		local gr = (rig.geo["fistR" .. hand] or 0.3) * 0.9
+		act.keepE, act.keepTgt = { cx, cz, hx + gr, hz + gr, tgt.Size.Y * 0.6 }, tgt
+	end
+	local d = tgt.CFrame:VectorToObjectSpace(dir)
+	local dx, dz = d.X, d.Z
+	local dm = sqrt(dx * dx + dz * dz)
+	if dm < 1e-4 then
+		return nil
+	end
+	dx, dz = dx / dm, dz / dm
+	local r = 1 / sqrt((dx / hx) ^ 2 + (dz / hz) ^ 2)
+	local sx, sz = cx + dx * r, cz + dz * r
+	local nx, nz = sx - cx, sz - cz
+	nx, nz = nx / (hx * hx), nz / (hz * hz)
+	local nm = sqrt(nx * nx + nz * nz)
+	local gr = max(0.25, (rig.geo["fistR" .. hand] or 0.3) * 0.85)
+	return tgt.CFrame:PointToWorldSpace(V3(sx + nx / nm * gr, 0, sz + nz / nm * gr))
+end
+
 -- aim point in standard UpperTorso units, or nil (nobody in front / far rig)
 local function aimPoint(rig, p, act, body, near)
 	if not near then
@@ -877,7 +1000,7 @@ local function aimPoint(rig, p, act, body, near)
 	-- follows the target if it moves but never jumps while the body turns under the punch
 	if act.aimTgt ~= tgt then
 		act.aimTgt = tgt
-		act.aimLocal = nil
+		act.aimLocal, act.keepE, act.keepTgt = nil, nil, nil
 		local prm = act.prm
 		local pt
 		if isBag then
@@ -889,10 +1012,16 @@ local function aimPoint(rig, p, act, body, near)
 			local c = tgt.Position
 			local dx, dz = shW.X - c.X, shW.Z - c.Z
 			local dm = sqrt(dx * dx + dz * dz)
-			local r = min(tgt.Size.Y, tgt.Size.Z) * 0.5 + 0.4
+			-- (the glove - not the hand inside it - meets the leather: the bag's radius and the glove's)
+			local r = min(tgt.Size.Y, tgt.Size.Z) * 0.5 + (g["fistR" .. act.hand] or 0.35) + 0.05
 			if dm > r then
 				pt = V3(c.X + dx / dm * r, hY, c.Z + dz / dm * r)
 			end
+			-- (and kept out of it all the way: a punch reaches out at least a share of the arm, more than a man
+			-- standing in close has to the leather - keepOut, round the bag's axis, its whole hanging length)
+			local len = tgt.Parent and tgt.Parent:GetAttribute("BagLen")
+			local rr = min(tgt.Size.Y, tgt.Size.Z) * 0.5 + (g["fistR" .. act.hand] or 0.35) * 0.9
+			act.keepE, act.keepTgt = { 0, 0, rr, rr, (type(len) == "number" and len or tgt.Size.X) * 0.5 + 0.2, true }, tgt
 		else
 			-- the target's surface facing us (gloves touch, they do not sink into heads)
 			local c = tgt.Position
@@ -901,9 +1030,11 @@ local function aimPoint(rig, p, act, body, near)
 			local dist = toMe.Magnitude
 			if dist >= 0.1 then
 				toMe /= dist
-				local depth = body and tgt.Size.Z * 0.5 + 0.25 or tgt.Size.Z * 0.45 + 0.22
+				local depth = tgt.Size.Z * 0.45 + 0.22
 				if body then
-					pt = c + toMe * depth - V3(0, tgt.Size.Y * 0.18, 0)
+					-- (a body shot rests the glove on his torso - the organic one where it stands proud of the box - not
+					-- the hand on the box's face with the glove sunk in)
+					pt = (bodySpot(rig, tgt, toMe, act.hand, act) or c + toMe * (tgt.Size.Z * 0.5 + 0.25)) - V3(0, tgt.Size.Y * 0.18, 0)
 				else
 					-- (straight punches go for the chin, not the middle of the face: the fist meets the jaw at
 					-- the puncher's own shoulder height, the arm level)
@@ -915,7 +1046,10 @@ local function aimPoint(rig, p, act, body, near)
 					local side = ut.RightVector * (act.hand == "L" and -1 or 1)
 					side = V3(side.X, 0, side.Z).Unit
 					if body then
-						pt = c + toMe * (tgt.Size.Z * 0.5 + 0.12) + side * (tgt.Size.X * 0.32 + 0.2) - V3(0, tgt.Size.Y * 0.2, 0)
+						-- (into the flank: the torso's outline about 55 degrees round from the front, on the side the fist comes from)
+						local fl = (toMe * 0.57 + side * 0.82).Unit
+						pt = (bodySpot(rig, tgt, fl, act.hand, act) or c + toMe * (tgt.Size.Z * 0.5 + 0.12) + side * (tgt.Size.X * 0.32 + 0.2))
+							- V3(0, tgt.Size.Y * 0.2, 0)
 					else
 						-- (the fist's centre beside the jaw: the glove meets the side of the face from outside)
 						pt = c + toMe * (tgt.Size.Z * 0.25) + side * (tgt.Size.X * 0.6 + 0.35) - V3(0, tgt.Size.Y * 0.15, 0)
@@ -936,6 +1070,24 @@ local function aimPoint(rig, p, act, body, near)
 					if k > 0 then
 						local low = prm.path == "straight" and 0.12 or (prm.path == "over" and 0.3 or (prm.path == "upper" and 0.16 or 0.08))
 						pt -= V3(0, tgt.Size.Y * low * k, 0)
+					end
+				end
+				-- a man covering up (Guard "block"): the punch lands on the front of his guard, the glove nearest the
+				-- spot it was going for, and stops there - gloves touching, not one through the other into his head
+				local opp = rig.oppRig
+				if not body and opp and opp.a and opp.a.Guard == "block" and opp.model == tgt.Parent then
+					local best, bd
+					for _, gn in ipairs(GLOVE_NAMES) do
+						local gp = opp.model:FindFirstChild(gn, true)
+						if gp and gp:IsA("BasePart") then
+							local dd = (gp.Position - pt).Magnitude
+							if not bd or dd < bd then
+								best, bd = gp, dd
+							end
+						end
+					end
+					if best then
+						pt = best.Position + toMe * (gloveRadius(best) + (g["fistR" .. act.hand] or 0.35) * 0.9)
 					end
 				end
 			end
@@ -1394,6 +1546,55 @@ local function rearFollow(rig, p, act, prm, gain)
 	return hi
 end
 
+-- A body shot's glove never stays inside the torso it hits, whatever its path or his: a hook's arc sweeping in
+-- across the flank, an uppercut rising into the belly, the shoulders' follow-through, and above all the man
+-- himself folding forward onto it as the shot lands (a liver shot doubles him over). While the punch is out its
+-- spot (standard UpperTorso units, the frame `ut`) is kept outside his torso's outline grown by the glove's radius
+-- (bodySpot: act.keepE) - in his torso's own frame as it is now, moved straight out from his middle, at its own
+-- height: the glove rests on him, it never sinks in. (A punch at a bag keeps out of the bag the same way:
+-- aimPoint.) The push is soft - it starts a little outside the outline and fades out above and below the torso -
+-- so a glove gliding along it never jerks.
+-- (softness of the push, as a share of the outline's radius, and the height over which it fades out at the top
+-- and bottom of the torso / bag, studs)
+local KEEP_SOFT, KEEP_FADE = 0.08, 0.3
+-- (on the way home: a wider, gentler push - a man folding onto the glove eases it aside instead of shoving it -
+-- and how quickly it lets go, 1/s)
+local KEEP_SOFT_HOME, KEEP_FOLLOW = 0.3, 18
+-- (how far a body shot's glove first backs off him on the way home, standard UpperTorso units)
+local BODY_BACKOFF = 0.7
+local function keepOut(act, pos, sc, ut, soft)
+	soft = soft or KEEP_SOFT
+	local tgt, e = act.keepTgt, act.keepE
+	if not (e and tgt and tgt.Parent) then
+		return pos
+	end
+	local w = ut:PointToWorldSpace(V3(pos.X * sc.X, pos.Y * sc.Y, pos.Z * sc.Z))
+	-- the spot's height along the outline's axis and its offset out from the axis: a bag's is its part's axis,
+	-- however it swings; a torso's is its up axis
+	local cf = tgt.CFrame
+	local ax = e[6] and cf.RightVector or cf.UpVector
+	local c = cf:PointToWorldSpace(V3(e[1], 0, e[2]))
+	local d = w - c
+	local along = d:Dot(ax)
+	local fade = clamp((e[5] - abs(along)) / KEEP_FADE, 0, 1)
+	if fade <= 0 then
+		return pos
+	end
+	local rad = d - ax * along
+	-- (its normalised radius: 1 on the outline; an ellipse round a torso, a circle round a bag)
+	local rx, rz = cf.RightVector, cf.LookVector
+	local q = e[6] and rad.Magnitude / e[3] or sqrt((rad:Dot(rx) / e[3]) ^ 2 + (rad:Dot(rz) / e[4]) ^ 2)
+	if q < 1e-4 or q > 1 + 6 * soft then
+		return pos
+	end
+	-- a soft floor at the outline (softplus): far out it leaves the spot be, inside it holds it just outside, and
+	-- between it bends smoothly - no kink in the glove's path as it meets the outline
+	local f = 1 + soft * math.log(1 + exp((q - 1) / soft))
+	local k = 1 + (f / q - 1) * fade * fade * (3 - 2 * fade)
+	local lp = ut:PointToObjectSpace(c + ax * along + rad * k)
+	return V3(lp.X / sc.X, lp.Y / sc.Y, lp.Z / sc.Z)
+end
+
 local function evalPunch(p, rig, act, t, near, driveBody)
 	local prm = act.prm
 	local w = act.windup
@@ -1718,7 +1919,30 @@ local function evalPunch(p, rig, act, t, near, driveBody)
 			-- (a fist that landed high or level with the face - an overhand over a deep crouch - first
 			-- comes forward and down, clear of the head; a straight one just starts home)
 			local c1 = V3(hit.X, min(hit.Y, Pg.Y + 0.35), min(hit.Z, Pg.Z - 0.65))
-			pos = K.bezier(hit, c1, c2, Pg, k)
+			-- (a hook to the body first comes back off him the way it went in, straight out from his middle: the line
+			-- home would cut through him as the shoulders unwind; straights and uppercuts just come straight back)
+			local ut = punchTorso(rig, p)
+			local kt, ke = act.keepTgt, act.keepE
+			if body and prm.path == "hook" and kt and ke and not ke[6] and kt.Parent then
+				local cu = ut:PointToObjectSpace(kt.CFrame:PointToWorldSpace(V3(ke[1], 0, ke[2])))
+				local d = V3(hit.X - cu.X / sc.X, 0, hit.Z - cu.Z / sc.Z)
+				if d.Magnitude > 1e-3 then
+					-- (never back past his own chest's front: the forearm would fold into it)
+					c1 = hit + d.Unit * BODY_BACKOFF
+					c1 = V3(c1.X, c1.Y, min(c1.Z, max(hit.Z, Pg.Z) + 0.35))
+				end
+			end
+			-- (on the way home the push out of his torso widens and softens, takes hold at once - a man folding over
+			-- onto the glove never swallows it - but lets go softly, on a short spring: one snapping back from the shot
+			-- does not jerk the glove after him)
+			local raw = K.bezier(hit, c1, c2, Pg, k)
+			local off = keepOut(act, raw, sc, ut, KEEP_SOFT + (KEEP_SOFT_HOME - KEEP_SOFT) * smooth(min(1, retK / 0.3))) - raw
+			local o = act.keepO
+			if o and off.Magnitude < o.Magnitude then
+				off = o + (off - o) * (1 - exp(-max(0, t - (act.keepT or t)) * KEEP_FOLLOW))
+			end
+			act.keepO, act.keepT = off, t
+			pos = raw + act.keepO
 			-- the elbow settles back to the guard more slowly than the fist comes home
 			kp = 1 - smooth(retK)
 		else
@@ -1735,6 +1959,9 @@ local function evalPunch(p, rig, act, t, near, driveBody)
 					end
 				end
 			end
+			local kept = keepOut(act, pos, sc, punchTorso(rig, p))
+			act.keepO, act.keepT = kept - pos, t
+			pos = kept
 			act.hitPos = pos
 			if contact then
 				local home = (pos - Pg) * sc
@@ -2333,7 +2560,8 @@ function AnimFight.reactionTick(p, rig, t)
 			p.W = p.W * A(-0.3 * k, 0.1 * k, -0.18 * k)
 			p.Neck = p.Neck * A(0.15 * k, 0, 0)
 			if rig.gr then
-				guardArm(rig, p, "R", 0.45, 0.25, -0.45, k)
+				local fx, fz = flankSpot(rig, "R", 0.95)
+				guardArm(rig, p, "R", fx, 0.25, fz, k)
 			end
 			rig.exprHint = "pain"
 		end
@@ -2556,6 +2784,19 @@ local function findStool(rig)
 	return best
 end
 
+-- the cover-up guards' glove spots (the block, the hurt man's shell): kept per rig, filled in place
+local function coverSpots(rig, xl, xr, y, z)
+	local c = rig.cover
+	if not c then
+		c = { {}, {} }
+		rig.cover = c
+	end
+	local l, r = c[1], c[2]
+	l[1], l[2], l[3] = xl, y, z
+	r[1], r[2], r[3] = xr, y, z
+	return l, r
+end
+
 function AnimFight.guardPose(p, rig, t, dt)
 	local a = rig.a
 	local guard = a.Guard or "stance"
@@ -2571,10 +2812,12 @@ function AnimFight.guardPose(p, rig, t, dt)
 		p.LE = A(2.4, 0, 0)
 		p.RS = A(1.85, 0, -0.5)
 		p.RE = A(2.4, 0, 0)
-		guardArm(rig, p, "L", -0.32, 1.32, -0.72, 1, 0.6)
-		guardArm(rig, p, "R", 0.32, 1.32, -0.72, 1, 0.6)
 		p.W = p.W * A(-0.12, 0, 0)
 		p.Neck = p.Neck * A(-0.15, 0, 0)
+		local bl, br = coverSpots(rig, -0.32, 0.32, 1.32, -0.72)
+		faceRoom(rig, p, bl, br)
+		guardArm(rig, p, "L", bl[1], bl[2], bl[3], 1, 0.6)
+		guardArm(rig, p, "R", br[1], br[2], br[3], 1, 0.6)
 		flex(rig, "forearms", 0.6)
 		flex(rig, "abs", 0.5)
 		flex(rig, "frontDelt", 0.4)
@@ -2603,9 +2846,11 @@ function AnimFight.guardPose(p, rig, t, dt)
 		p.LE = p.LE:Lerp(A(2.3, 0, 0), 0.6)
 		p.RS = p.RS:Lerp(A(1.5, 0, -0.45), 0.6)
 		p.RE = p.RE:Lerp(A(2.3, 0, 0), 0.6)
-		guardArm(rig, p, "L", -0.3, 1.12, -0.78, 0.8, 0.4)
-		guardArm(rig, p, "R", 0.3, 1.12, -0.78, 0.8, 0.4)
 		p.Neck = p.Neck * A(-0.12, 0, 0.1 * noise(t * 2.2, rig.persona.ns + 82))
+		local hl, hr = coverSpots(rig, -0.3, 0.3, 1.12, -0.78)
+		faceRoom(rig, p, hl, hr)
+		guardArm(rig, p, "L", hl[1], hl[2], hl[3], 0.8, 0.4)
+		guardArm(rig, p, "R", hr[1], hr[2], hr[3], 0.8, 0.4)
 		AnimFight.daze(p, rig, t, dt, max(daze, 1), conc)
 	elseif guard == "walkout" then
 		if rig.loco.gaitW > 0.2 or rig.loco.speed > 1.2 then
