@@ -1006,9 +1006,9 @@ end
 -- server's walk into the corner, without knowing where it is: the whole pose comes forward (on the canvas)
 -- until his back, pelvis and head - with the hair a little past it - rest against the nearest face instead of
 -- going through it. Probes: the joint whose part, the radius round the part's centre (the organic mesh's
--- half-depth when it is on)
+-- half-depth when it is on; the upper arms' thickness)
 local CORNER_PARTS = { Post = true, Pad = true }
-local CORNER_PROBES = { { "W", 0.15 }, { "Root", 0.12 }, { "Neck", 0.22 } }
+local CORNER_PROBES = { { "W", 0.15 }, { "Root", 0.12 }, { "Neck", 0.22 }, { "RS", 0.06 }, { "LS", 0.06 } }
 local function cornerObstacles(rig, d)
 	if d.obst then
 		return d.obst
@@ -1052,6 +1052,10 @@ local function clearCorner(rig, p, d)
 				local r
 				if k == "Neck" then
 					r = g.headR + pr[2]
+				elseif k == "RS" or k == "LS" then
+					-- (the upper arms, thrown out along the ropes either side of the post)
+					local sz = g.sz[k]
+					r = (sz and min(sz.X, sz.Z) * 0.5 or 0.3) + pr[2]
 				else
 					local m = g.mesh and g.mesh[k]
 					local sz = m and m.size or g.sz[k]

@@ -375,8 +375,10 @@ local SUPPORT = { "Root", "W", "Neck", "RH", "RK", "RA", "LH", "LK", "LA", "RS",
 -- canvas when he lies on his back) stand off the rounded heel and toe drawn in it - on the athletic
 -- rigs' long feet enough to prop the whole body
 local PAD = { Root = 0.05, W = 0.05, RS = -0.14, LS = -0.14, RA = -0.1, LA = -0.1 }
--- an organic piece's lowest point: this share of its bounding box's, the rest its inscribed ellipsoid's
-local MESH_BOX = 0.55
+-- an organic piece's lowest point: this share of its bounding box's, the rest its inscribed ellipsoid's (fitted to
+-- the meshes' real lowest vertex through every knockdown and get-up in the clip lab: the shoe is boxy; the hips
+-- and seat are round and the seat's corrective morphs pull the trunks in, so the ellipsoid alone never sinks them)
+local MESH_BOX = { Root = 0, W = 0.45, RA = 0.55, LA = 0.55 }
 -- the lowest point of the body (HRP space) for the pose already in `out` (AnimRig.fk)
 function AnimRig.lowest(rig, out, keys)
 	local g = rig.geo
@@ -397,7 +399,8 @@ function AnimRig.lowest(rig, out, keys)
 				local bx, by, bz = abs(c.XVector.Y) * h.X, abs(c.YVector.Y) * h.Y, abs(c.ZVector.Y) * h.Z
 				local box = bx + by + bz
 				local ell = sqrt(bx * bx + by * by + bz * bz)
-				y = c.Y - (box * MESH_BOX + ell * (1 - MESH_BOX))
+				local bk = MESH_BOX[k] or 0.5
+				y = c.Y - (box * bk + ell * (1 - bk))
 			elseif g.armCap and g.armCap[k] then
 				-- a limb rests on its bone, joint to joint, not on its part box: the athletic rigs' arm and
 				-- leg parts run well past their joints and would prop the body off the canvas
