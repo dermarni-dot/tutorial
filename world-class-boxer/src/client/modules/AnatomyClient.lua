@@ -13,6 +13,10 @@
 -- * level of detail: full for the local player, the fight opponent and the Config.Anatomy.maxFull
 --   nearest within fullRange; medium / low further out; round-1 parts beyond lodRange; NPCs only once
 --   the player's profile is in (until then the camera is not where the game will put it)
+-- * you, your opponent and previews come first: a section of theirs that still shows its round-1 parts is
+--   built at low detail first (a tenth of the work, at High's frame budget, ahead of any other build) and
+--   then at full, the face before the body; they get every colour texture at every Graphics level (on Low
+--   the body's and hair's as a texture pass once the NPCs are built)
 -- * one serial worker, time-sliced (Config.Anatomy.frameBudget per frame through MeshKit's tick), so
 --   building never hitches; cancelled when the model goes away or its look changes again
 -- * the Editable API not working (not enabled for the experience, unverified creator, a transient
@@ -47,7 +51,7 @@ AnatomyClient.Settings = {
 	lodRange = 160, -- studs; beyond: round-1 parts only
 	frameBudget = 0.0025, -- seconds of work per frame
 	textures = true, -- EditableImage colour textures for pieces that ask for one
-	textureSections = false, -- false = every section may have textures; or a set: only these (Low: { Head = true })
+	textureSections = false, -- false = every section may have textures; or a set: only these for NPCs (Low: { Head = true })
 	hullRange = math.huge, -- studs: a part-built NPC past this shows only its hull and mass domes (Medium / Low)
 	meshCentered = true, -- a MeshPart made from an EditableMesh is centred on the mesh's bounding box
 	flipV = false, -- flip texture v if textures show upside down
@@ -64,6 +68,11 @@ local DEFAULTS = table.clone(AnatomyClient.Settings)
 
 local TRACK_TAGS = { "Anatomy", "Fighter", "Trainee", "Ambient", "Referee", "Preview" }
 local SECTION_ORDER = { Body = 1, Head = 2, Hair = 3 }
+-- you, your opponent and previews: the face first (what the player looks at in a fight or the Creator)
+local FOCUS_ORDER = { Head = 1, Body = 2, Hair = 3 }
+-- seconds of work per frame for a first look at you / your opponent / a preview (High's frameBudget at every
+-- level: the low-detail pass is short, and a round-1 head on the opponent is the worst thing a fight can show)
+local FIRST_BUDGET = 0.004
 local GENERATORS = { AnatomyBody = "Body", AnatomyHead = "Head", AnatomyHair = "Hair" }
 local LOD_RANK = { full = 3, medium = 2, low = 1 }
 -- raised through MeshKit's tick to abandon a build (printable: it shows up in logs as a caught error)
@@ -75,6 +84,7 @@ local Shared, MeshKit, LookData, Config
 local AssetService
 local registry = {} -- section -> def
 local records = {} -- model -> rec
+local focus = {} -- the records evaluate last ranked priority 0 / 1: you, your opponent, previews
 local cache = {} -- key -> { result, used }
 local cacheCount = 0
 -- state: "unknown" (not probed yet) | "ok" | "disabled" (off for now: retried at retryAt with a growing
@@ -640,18 +650,56 @@ end
 -- Building one section of one model (inside the worker thread)
 ------------------------------------------------------------------------
 local sliceStart = 0
+local sliceBudget = 0.0025 -- this job's seconds of work per frame (runJob: the level's frameBudget or FIRST_BUDGET)
+local holdAt = 0 -- (a boosted job keeps Auto from judging its frames: holdPerf)
 local currentJob = nil
 -- true while a texture is read through a metamethod (a generator's lazy .buffer without make): Luau cannot
 -- yield inside __index ("attempt to yield across metamethod/C-call boundary"), so there the tick only checks
 -- for cancellation and that paint runs in one go (give the texture a make() to keep it time-sliced)
 local noYield = false
+-- you / your opponent / a preview whose section still shows its round-1 parts (nothing built, nothing skipped)
+local function isFirst(rec, st)
+	return (rec.priority or 2) <= 1 and not (st and (st.active or st.skipped))
+end
+-- such a first build is queued and may run now: any other job gives way at its next slice (a rebuild of your
+-- own gear at the bell must not keep the opponent's round-1 head on for its whole length)
+local function firstWaiting()
+	for _, rec in ipairs(focus) do
+		if not rec.dead then
+			for _, st in pairs(rec.sections) do
+				local job = st.job
+				-- (one that failed and waits for a retry does not keep stopping the others)
+				if job and not job.cancelled and not job.running and not job.down and not job.retries and isFirst(rec, st) then
+					return true
+				end
+			end
+		end
+	end
+	return false
+end
+-- a job over the level's budget (FIRST_BUDGET) holds Auto's judgement: those frames are a short build, not
+-- the device's frame rate (Perf.Hold covers the 2 s window they fall in)
+local function holdPerf()
+	local now = os.clock()
+	if now >= holdAt and Perf and Perf.Hold then
+		holdAt = now + 0.5
+		pcall(Perf.Hold, 2.5)
+	end
+end
 local function tick()
 	if currentJob and currentJob.cancelled then
 		error(CANCEL, 0)
 	end
-	if not noYield and os.clock() - sliceStart > AnatomyClient.Settings.frameBudget then
+	if not noYield and os.clock() - sliceStart > sliceBudget then
+		if sliceBudget > AnatomyClient.Settings.frameBudget then
+			holdPerf()
+		end
 		task.wait()
 		sliceStart = os.clock()
+		if currentJob and not currentJob.first and firstWaiting() then
+			-- (cancelled: evaluate queues it again, its generation stays cached)
+			currentJob.cancelled = true
+		end
 		if currentJob and currentJob.cancelled then
 			error(CANCEL, 0)
 		end
@@ -749,9 +797,10 @@ local function sectionFailed(section, err)
 	end
 end
 
--- MeshPart for one piece (not parented yet); returns piece record or nil, err, fatal
+-- MeshPart for one piece (not parented yet); returns piece record or nil, err, fatal. wantTex: the job paints
+-- colour textures (texturesFor when it started)
 local makePiece
-function makePiece(rec, name, piece, bodyLod, section)
+function makePiece(rec, name, piece, bodyLod, section, wantTex)
 	local model = rec.model
 	local attachName = piece.attach or name
 	local attach = resolveAttach(model, attachName)
@@ -772,9 +821,7 @@ function makePiece(rec, name, piece, bodyLod, section)
 	if not api.textures and os.clock() >= api.texRetryAt then
 		api.textures = true -- textures failed a while ago: try them again (memory may have been freed)
 	end
-	local S = AnatomyClient.Settings
-	local secs = S.textureSections
-	if tex and S.textures and api.textures and not (type(secs) == "table" and not secs[section]) then
+	if tex and wantTex and api.textures then
 		local w, h = tex.w or (tex.size and tex.size[1]) or 256, tex.h or (tex.size and tex.size[2]) or 256
 		local buf
 		local make = rawget(tex, "make")
@@ -897,7 +944,7 @@ function makePiece(rec, name, piece, bodyLod, section)
 			api.texFails += 1
 			api.texRetryAt = os.clock() + 30 * math.min(api.texFails, 8)
 			warnOnce("texset", "TextureContent refused (" .. tostring(errT) .. "): textures paused, vertex colours meanwhile")
-			return makePiece(rec, name, piece, bodyLod, section)
+			return makePiece(rec, name, piece, bodyLod, section, wantTex)
 		end
 	end
 	-- a MeshPart is centred on its mesh's bounding box: the weld puts that centre where it sits in the
@@ -1012,11 +1059,14 @@ local function onCreateFailed(err)
 end
 
 -- colour textures for a section's pieces right now (the Graphics level's textures / textureSections, and the
--- API not paused)
-local function texturesFor(section)
+-- API not paused). textureSections thins out NPCs only: with rec, you, your opponent and previews (priority
+-- 0 / 1) get every texture at every level (two characters: the shoe laces, trunk trims, skin and hair detail).
+-- Their builds paint the level's sections (rec = nil: quick) and a texture pass behind every other build
+-- adds the rest (evaluate's retex): on Low the body's and hair's take ~2 s of CPU a character
+local function texturesFor(section, rec)
 	local S = AnatomyClient.Settings
 	local secs = S.textureSections
-	return S.textures == true and api.textures and not (type(secs) == "table" and not secs[section])
+	return S.textures == true and api.textures and (type(secs) ~= "table" or secs[section] == true or (rec ~= nil and rec.priority <= 1))
 end
 
 local function runJob(job)
@@ -1036,7 +1086,16 @@ local function runJob(job)
 		return
 	end
 	local t0 = os.clock()
-	job.tex = texturesFor(section)
+	local S = AnatomyClient.Settings
+	local st0 = rec.sections[section]
+	-- the level's textures; all of yours / your opponent's in their texture pass (every build of theirs stays
+	-- quick: a Creator edit on Low shows in a second, its body texture follows)
+	job.tex = texturesFor(section, job.retex and rec or nil)
+	job.first = isFirst(rec, st0)
+	-- High's slice for a first look at you / your opponent / a preview, and for their face's step up from that
+	-- low-detail pass (the face is what the player looks at); else the level's
+	local faceUp = rec.priority <= 1 and section == "Head" and st0 ~= nil and st0.active and LOD_RANK[st0.lod] ~= nil and LOD_RANK[lod] > LOD_RANK[st0.lod]
+	sliceBudget = (job.first or faceUp) and math.max(S.frameBudget, FIRST_BUDGET) or S.frameBudget
 	sliceStart = os.clock()
 	currentJob = job
 	MeshKit.SetTick(tick)
@@ -1087,7 +1146,7 @@ local function runJob(job)
 	end
 	table.sort(names)
 	for _, name in ipairs(names) do
-		local okP, pr, err, kind = pcall(makePiece, rec, name, result.pieces[name], lod, section)
+		local okP, pr, err, kind = pcall(makePiece, rec, name, result.pieces[name], lod, section, job.tex)
 		if not okP then
 			abandon()
 			if isCancel(pr) then
@@ -1249,6 +1308,7 @@ local function evaluate()
 	local camPos = cam and cam.CFrame.Position or Vector3.zero
 	local lp = Players.LocalPlayer
 	local list = {}
+	table.clear(focus)
 	for model, rec in pairs(records) do
 		if rec.look and not rec.dead then
 			local pos = rootPos(model)
@@ -1261,6 +1321,9 @@ local function evaluate()
 				rec.priority = 2
 			end
 			list[#list + 1] = rec
+			if rec.priority <= 1 then
+				focus[#focus + 1] = rec
+			end
 		end
 	end
 	table.sort(list, function(a, b)
@@ -1381,26 +1444,35 @@ local function evaluate()
 				local fresh = st and (st.active or st.skipped) and st.sig == sig and st.lod == want
 				-- built without colour textures that the level now wants (a Graphics level climbed back up): built
 				-- again, behind every other build (a level that wants fewer textures keeps what is built)
-				local retex = fresh and st.active and not st.tex and texturesFor(section)
+				local retex = fresh and st.active and not st.tex and texturesFor(section, rec)
 				if retex then
 					fresh = false
 				end
-				if not fresh and not (busy and st.job.sig == sig and st.job.lod == want) then
+				-- you / your opponent / a preview showing round-1 parts here: low detail first (Head ~50 ms with its
+				-- face texture against ~500 at full, Body ~15 against ~800), full right after as an ordinary
+				-- rebuild; not when the full result is already generated (cached) or the section has no low level
+				local lod = want
+				if want ~= "low" and isFirst(rec, st) and not (def.lods and not def.lods.low) and cache[section .. "|" .. tostring(sig) .. "|" .. want] == nil then
+					lod = "low"
+				end
+				if not fresh and not (busy and st.job.sig == sig and st.job.lod == lod) then
 					if busy then
 						st.job.cancelled = true
 					end
 					-- a lower level for a section that is built and current (out of the full-detail slots, a lower
-					-- Graphics level): it only saves memory and triangles, so it waits behind every other build
+					-- Graphics level): it only saves memory and triangles, so it waits behind every other build; so
+					-- does a texture pass
 					local down = retex or (st ~= nil and st.active == true and st.sig == sig and LOD_RANK[st.lod] ~= nil and LOD_RANK[want] < LOD_RANK[st.lod])
 					rec.sections[section] = st or { pieces = {} }
-					rec.sections[section].job = { rec = rec, section = section, lod = want, sig = sig, look = rec.look, queued = now, down = down }
+					rec.sections[section].job = { rec = rec, section = section, lod = lod, sig = sig, look = rec.look, queued = now, down = down, retex = retex }
 				end
 			end
 		end
 	end
 end
 
--- next job: best priority, then nearest, then section order
+-- next job: you, your opponent and previews first (a section still showing round-1 parts before any rebuild, the
+-- face before the body, you before the opponent), then NPCs by distance and section order, lowering a level last
 local function nextJob()
 	if os.clock() < pressure.untilT then
 		return nil
@@ -1411,7 +1483,12 @@ local function nextJob()
 			for section, st in pairs(rec.sections) do
 				local job = st.job
 				if job and not job.cancelled and not job.running and os.clock() - (job.retryAt or -10) >= 2 then
-					local k = (job.down and 3 or rec.priority or 2) * 1e6 + math.min(rec.dist or 1e5, 99999) * 10 + (SECTION_ORDER[section] or 5)
+					local k
+					if not job.down and (rec.priority or 2) <= 1 then
+						k = (isFirst(rec, st) and 0 or 1e6) + (FOCUS_ORDER[section] or 5) * 1e5 + rec.priority * 1e4 + math.min(rec.dist or 999, 999) * 10
+					else
+						k = (job.down and 3e6 or 2e6) + math.min(rec.dist or 1e5, 99999) * 10 + (SECTION_ORDER[section] or 5)
+					end
 					if not bestKey or k < bestKey then
 						best, bestKey = job, k
 					end
@@ -1847,10 +1924,11 @@ end
 -- preset from the Graphics level itself (Perf, see followPerf): Low -> low, Medium -> medium, High on
 -- Auto -> Config.Anatomy's values, High picked by name -> full. A SetDetail call with a preset name
 -- (tools, tests) takes over until SetDetail("auto").
---   textures / textureSections: Low paints the Head section's textures only - the face's paint, brows and
---     beard live in them (a 64-pixel one at low detail, ~20 ms to paint); the hair and body keep the vertex
---     colours their textures are rasterised from (the hair's strand texture is a second of CPU per
---     full-detail character). High and Medium paint every texture
+--   textures / textureSections: Low paints the Head section's textures only on NPCs - the face's paint, brows
+--     and beard live in them (a 64-pixel one at low detail, ~20 ms to paint); their hair and body keep the
+--     vertex colours their textures are rasterised from (the hair's strand texture is a second of CPU per
+--     full-detail character). You, your opponent and previews keep every texture (texturesFor); High and
+--     Medium paint every texture
 --   promoteHold: how long a character must want a higher level before it is rebuilt (a camera swinging
 --     between training stations does not start a full-detail build for every face it passes)
 --   lodRange: Medium and Low keep low-detail meshes out to 160 / 140 studs (the gym's far end): a far
@@ -2367,7 +2445,7 @@ function AnatomyClient.Diagnose()
 	add("generators:", #secs > 0 and table.concat(secs, " ") or "NONE")
 	local S = AnatomyClient.Settings
 	add(string.format("settings: enabled %s maxFull %d fullRange %d lodRange %d frameBudget %.4f textures %s%s | NPCs %s", tostring(S.enabled), S.maxFull, S.fullRange, S.lodRange, S.frameBudget, tostring(S.textures),
-		type(S.textureSections) == "table" and " (Head only)" or "", npcsIn and "allowed" or "waiting for the profile"))
+		type(S.textureSections) == "table" and " (Head only on NPCs)" or "", npcsIn and "allowed" or "waiting for the profile"))
 	add(string.format("detail preset: %s (%s) | far hull past %s studs", activePreset, (not manualDetail and Perf ~= nil) and "follows the Graphics level" or "set by hand",
 		S.hullRange < math.huge and tostring(S.hullRange) or "never"))
 	local st = AnatomyClient.Status()
