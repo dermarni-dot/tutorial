@@ -162,8 +162,11 @@ local function motors()
 			local c = UI.Card(body, { stroke = owned and T.gold or nil })
 			UI.Line(c, item.name, { Font = T.bold })
 			UI.Line(c, item.desc, { TextSize = 13, TextColor3 = T.sub })
+			-- dark text only on the gold (affordable) face: on the dark red of a car you cannot afford yet and on
+			-- the garage's panel it would vanish (1.5:1), so those read in the light text colour
+			local affordable = not owned and P.money >= item.price
 			UI.Button(c, owned and "IN YOUR GARAGE" or money(item.price), { Size = UDim2.new(0, 200, 0, math.max(32, UI.MinHit(c))), TextSize = 14,
-				BackgroundColor3 = owned and T.panel2 or (P.money >= item.price and T.gold or Color3.fromRGB(70, 40, 40)), TextColor3 = owned and T.text or T.bg }, function()
+				BackgroundColor3 = owned and T.panel2 or (affordable and T.gold or Color3.fromRGB(70, 40, 40)), TextColor3 = affordable and T.bg or T.text }, function()
 				if owned then
 					return
 				end
