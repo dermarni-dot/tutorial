@@ -176,6 +176,13 @@ local function spawnMember(folder, def)
 		hum.WalkSpeed = def.speed or 8
 	else
 		Poser.Place(npc, at.X, at.Z, yaw, { floor = def.floor or 0.5, stand = (spot and spot.stand) or def.stand, seat = (spot and spot.seat) or def.seat, lie = def.lie })
+		-- an anchored puppet (the clients' Animator poses it): no falling / landing / getting-up
+		-- states for the server to evaluate every step
+		if hum then
+			pcall(function()
+				hum.EvaluateStateMachine = false
+			end)
+		end
 	end
 	if def.props then
 		Poser.AttachProps(npc, def.props, 2)

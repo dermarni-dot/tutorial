@@ -646,9 +646,15 @@ local function setGate(open)
 			TweenService:Create(p, TweenInfo.new(open and 1.4 or 0.6, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut), { CFrame = target, Transparency = open and 0.7 or 0.45 }):Play()
 		elseif p:IsA("BasePart") and p.Name == "EliteLightPanel" then
 			p.Material = open and M.Neon or M.SmoothPlastic
+			local lod = optional("WorldLOD")
 			for _, l in ipairs(p:GetChildren()) do
 				if l:IsA("Light") then
-					l.Enabled = open
+					-- (through WorldLOD: its distance culling keeps the switch)
+					if lod then
+						lod.SetLight(l, open)
+					else
+						l.Enabled = open
+					end
 				end
 			end
 		end
@@ -2078,10 +2084,16 @@ RunService.Heartbeat:Connect(function(dt)
 	local cam = workspace.CurrentCamera
 	local cp = cam and cam.CFrame.Position or Vector3.zero
 	local t = os.clock()
-	if (cp - ringCenter).Magnitude < 110 then
+	-- the Graphics level shortens how far away the ropes sway and the door fans bob
+	local lod = optional("WorldLOD")
+	local ropeNear, fanNear = 110, 170
+	if lod then
+		ropeNear, fanNear = lod.Pick(60, 90, 110), lod.Pick(90, 130, 170)
+	end
+	if (cp - ringCenter).Magnitude < ropeNear then
 		updateRopes(step, t)
 	end
-	if fanAcc >= 0.1 and #fans > 0 and (cp - V3(0, 0, 98)).Magnitude < 170 then
+	if fanAcc >= 0.1 and #fans > 0 and (cp - V3(0, 0, 98)).Magnitude < fanNear then
 		fanAcc = 0
 		local bp, bc = fanBulkP, fanBulkC
 		for _, f in ipairs(fans) do

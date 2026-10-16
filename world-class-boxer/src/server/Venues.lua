@@ -63,6 +63,8 @@ local BLACK = rgb(14, 14, 18)
 local function part(parent, props)
 	local p = Instance.new("Part")
 	p.Anchored = true
+	-- nothing in the game listens for touches: a venue part that reports none costs the physics less
+	p.CanTouch = false
 	p.TopSurface = Enum.SurfaceType.Smooth
 	p.BottomSurface = Enum.SurfaceType.Smooth
 	for k, v in pairs(props) do

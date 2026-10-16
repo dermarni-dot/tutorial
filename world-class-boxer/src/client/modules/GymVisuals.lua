@@ -38,6 +38,23 @@ local function optional(name)
 	return mod
 end
 
+-- the Graphics level for the world (Perf): lights, signs, particles and shadow casters of the gym and
+-- city, plus the multipliers used below (burst sizes, motion range, sweat puddles)
+local WorldLOD = optional("WorldLOD")
+if WorldLOD then
+	pcall(WorldLOD.Start)
+end
+local function fxScale()
+	return WorldLOD and WorldLOD.FX() or 1
+end
+local function lodPick(low, medium, high)
+	return WorldLOD and WorldLOD.Pick(low, medium, high) or high
+end
+-- a burst of n particles scaled to the level (at least one when n > 0)
+local function burst(n)
+	return n > 0 and math.max(1, math.floor(n * fxScale() + 0.5)) or 0
+end
+
 -- built-in Roblox sounds (no uploaded assets needed); played through GymSound's pool
 local THUD = "rbxasset://sounds/action_jump_land.mp3"
 function GymVisuals.Sound(pos, speed, volume, id)
@@ -602,10 +619,10 @@ local function hitPendulum(d, power, side, ptype, zone, opts)
 			-- the emitters fire out of the attachment's +Z (NormalId.Back): turn them to the hit face
 			fx.att.WorldCFrame = face < 0 and CF(hitPos) * CFrame.Angles(0, math.pi, 0) or CF(hitPos)
 			if fx.dust then
-				fx.dust:Emit(math.floor(2 + p * 5))
+				fx.dust:Emit(burst(math.floor(2 + p * 5)))
 			end
 			if fx.spray and (opts and opts.sweat or 0) > 0.25 then
-				fx.spray:Emit(math.floor(1 + p * 3 * (opts.sweat or 0)))
+				fx.spray:Emit(burst(math.floor(1 + p * 3 * (opts.sweat or 0))))
 			end
 		end)
 	end
@@ -2886,7 +2903,7 @@ local function reveal(m, O, title, levelDef)
 	conf.RotSpeed = NumberRange.new(-300, 300)
 	conf.LightEmission = 0.4
 	conf.Parent = holder
-	conf:Emit(60)
+	conf:Emit(burst(60))
 	local bb = Instance.new("BillboardGui")
 	bb.Size = UDim2.fromOffset(300, 70)
 	bb.StudsOffset = V3(0, 1.5, 0)
@@ -3171,7 +3188,7 @@ function GymVisuals.Impact(id, power, side, ptype, zone, opts)
 			GymSound.Play("ballcatch", pos, { volume = 0.4, speed = 0.8 })
 			if d.puff then
 				pcall(function()
-					d.puff:Emit(math.floor(4 + power * 8))
+					d.puff:Emit(burst(math.floor(4 + power * 8)))
 				end)
 			end
 			if d.led then
@@ -3191,6 +3208,8 @@ end
 -- sweat dripping onto the floor at a station: a small wet patch that evaporates over ~90 s
 local SWEAT_CAP = 8
 local sweatPatches = {} -- station id -> { parts (FIFO) }
+-- Graphics level: Low draws no puddles, Medium half as many that dry twice as fast
+local SWEAT_LOD = { { cap = 0 }, { cap = 4, fade = 45 }, { cap = SWEAT_CAP, fade = 90 } }
 function GymVisuals.SweatDrop(id)
 	local gym = workspace:FindFirstChild("Gym")
 	local m = gym and gym:FindFirstChild("Station_" .. tostring(id))
@@ -3204,9 +3223,13 @@ function GymVisuals.SweatDrop(id)
 		f.Name = "Sweat"
 		f.Parent = folder
 	end
+	local lod = SWEAT_LOD[lodPick(1, 2, 3)]
+	if lod.cap <= 0 then
+		return
+	end
 	local list = sweatPatches[id] or {}
 	sweatPatches[id] = list
-	while #list >= SWEAT_CAP do
+	while #list >= lod.cap do
 		local oldest = table.remove(list, 1)
 		if oldest and oldest.Parent then
 			oldest:Destroy()
@@ -3217,8 +3240,8 @@ function GymVisuals.SweatDrop(id)
 	local size = 0.4 + math.random() * 0.5
 	local p = part(f, "SweatDrop", V3(size, 0.02, size * (0.7 + math.random() * 0.5)), CF(pos) * ANG(0, math.random() * math.pi, 0), rgb(150, 170, 185), M.Glass, { ellipsoid = true, shadow = false, transparency = 0.55, reflect = 0.25 })
 	table.insert(list, p)
-	TweenService:Create(p, TweenInfo.new(90, Enum.EasingStyle.Linear), { Transparency = 1 }):Play()
-	Debris:AddItem(p, 91)
+	TweenService:Create(p, TweenInfo.new(lod.fade, Enum.EasingStyle.Linear), { Transparency = 1 }):Play()
+	Debris:AddItem(p, lod.fade + 1)
 end
 
 function GymVisuals.SetDisplay(id, text)
@@ -3348,7 +3371,7 @@ local function cord(cp, a, b, w)
 	cp.CFrame = CFrame.lookAt((a + b) / 2, b, upFor(b - a)) * CFrame.Angles(math.pi / 2, 0, 0)
 end
 
-local MOTION_NEAR = 150 -- equipment further from the camera than this freezes
+local MOTION_NEAR = 150 -- equipment further from the camera than this freezes (High; Low 90, Medium 120)
 local FAR_GYM = 420 -- the whole local gym is unparented beyond this (fight venues, the far city)
 local bulkP, bulkC = {}, {}
 local hideAcc = 0
@@ -3373,6 +3396,7 @@ RunService.RenderStepped:Connect(function(dt)
 	dt = math.min(dt, 0.05)
 	local t = os.clock()
 	local cam = camPos()
+	local near = lodPick(90, 120, MOTION_NEAR)
 	-- perf: stop drawing the whole local gym while the camera is far away (fight venues sit at
 	-- x/z 4000+, the city edges ~400 studs out); it comes back the moment you return
 	hideAcc += dt
@@ -3394,7 +3418,7 @@ RunService.RenderStepped:Connect(function(dt)
 			if d.member then
 				if not (d.model and d.model.Parent) then
 					dynamics[id] = nil
-				elseif d.kind == "pendulum" and (d.home - cam).Magnitude <= MOTION_NEAR then
+				elseif d.kind == "pendulum" and (d.home - cam).Magnitude <= near then
 					stepPendulum(d, dt, t, bulkP, bulkC)
 				end
 			end
@@ -3413,7 +3437,7 @@ RunService.RenderStepped:Connect(function(dt)
 		if typeof(anchor) == "CFrame" then
 			anchor = anchor.Position
 		end
-		if typeof(anchor) == "Vector3" and (anchor - cam).Magnitude > MOTION_NEAR then
+		if typeof(anchor) == "Vector3" and (anchor - cam).Magnitude > near then
 			continue
 		end
 		local inUse = d.station and d.station:GetAttribute("InUse") == true

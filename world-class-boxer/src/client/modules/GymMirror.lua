@@ -15,7 +15,19 @@ local GymMirror = {}
 local player = Players.LocalPlayer
 
 local RANGE = 18 -- studs from the glass
-local RATE = 1 / 30
+local RATE = 1 / 30 -- High; the Graphics level slows the copy down (Medium 24 Hz, Low 15 Hz)
+local LOD_RATE = { 1 / 15, 1 / 24, RATE }
+
+-- the Graphics level (Perf), optional
+local Perf
+do
+	local m = script.Parent:FindFirstChild("Perf")
+	local ok, mod = false, nil
+	if m then
+		ok, mod = pcall(require, m)
+	end
+	Perf = (ok and type(mod) == "table") and mod or nil
+end
 local REBUILD_GAP = 1.5 -- seconds between re-copies when the character was rebuilt
 
 local getMirror
@@ -322,7 +334,7 @@ function GymMirror.Start(getter)
 			return
 		end
 		acc += dt
-		if acc < RATE then
+		if acc < (Perf and LOD_RATE[Perf.Level()] or RATE) then
 			return
 		end
 		acc = 0

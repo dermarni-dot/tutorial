@@ -555,8 +555,12 @@ local function buildLights(root)
 		local can = part(f, "RingCan", V3(1.2, 1.2, 1.9), CFrame.lookAt(canPos, rc + V3(0, 3, 0)), C.black, M.Metal, { shadow = false })
 		part(f, "RingCanLens", V3(0.95, 0.95, 0.06), can.CFrame * CF(0, 0, -0.97), Color3.fromRGB(255, 250, 235), M.Neon, { shadow = false })
 		local src = emitter(f, can.CFrame * CF(0, 0, -1.3))
-		-- angled 45 degrees down from the corners: modelling key light on faces and muscles
-		spot(src, Enum.NormalId.Front, Color3.fromRGB(255, 246, 228), 52, 3.4, 62, true)
+		-- angled 45 degrees down from the corners: modelling key light on faces and muscles. Graphics
+		-- Medium keeps the shadows of the two cans on one diagonal (ShadowKeep, client WorldLOD)
+		local l = spot(src, Enum.NormalId.Front, Color3.fromRGB(255, 246, 228), 52, 3.4, 62, true)
+		if c[1] == c[2] then
+			l:SetAttribute("ShadowKeep", true)
+		end
 	end
 	local banner = part(f, "CanopyBanner", V3(14, 1.6, 0.12), CF(rc + V3(0, y - 1.3, 9.35)), C.red, M.Fabric, { shadow = false })
 	sign(banner, Enum.NormalId.Back, "WCB SPARRING RING", Color3.new(1, 1, 1), nil, 30)

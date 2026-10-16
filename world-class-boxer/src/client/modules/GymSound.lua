@@ -171,6 +171,11 @@ function GymSound.Play(name, pos, opts)
 	if not id then
 		return nil -- optional voice line with no upload: stay silent
 	end
+	-- out of earshot (past the roll-off from the camera, where the listener is): no voice taken
+	local cam = workspace.CurrentCamera
+	if cam and (cam.CFrame.Position - pos).Magnitude > (opts.maxDistance or 90) + 10 then
+		return nil
+	end
 	local uploaded = prof.key and id ~= prof.id
 	local e = voice()
 	local ok = pcall(function()

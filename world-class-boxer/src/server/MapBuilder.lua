@@ -20,6 +20,8 @@ local CF = CFrame.new
 local function part(parent, props)
 	local p = Instance.new(props.Class or "Part")
 	p.Anchored = true
+	-- nothing in the game listens for touches: a map part that reports none costs the physics less
+	p.CanTouch = false
 	p.TopSurface = Enum.SurfaceType.Smooth
 	p.BottomSurface = Enum.SurfaceType.Smooth
 	for k, v in pairs(props) do

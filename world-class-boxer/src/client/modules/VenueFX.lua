@@ -27,6 +27,29 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
 local LightLevels = require(script.Parent:WaitForChild("LightLevels"))
 local CharacterLight = require(script.Parent:WaitForChild("CharacterLight"))
+-- the Graphics level (WorldLOD over Perf; optional: without it everything runs at the High look).
+-- Low: printed impostors for the crowd's back physical rows, only the front rows bob, one shadowed key
+-- light, a quarter of the particles, slower spot-pool rays. Medium in between. High = the full show.
+local WorldLOD
+do
+	local m = script.Parent:FindFirstChild("WorldLOD")
+	local ok, mod = false, nil
+	if m then
+		ok, mod = pcall(require, m)
+	end
+	WorldLOD = (ok and type(mod) == "table") and mod or nil
+end
+local function lodPick(low, medium, high)
+	return WorldLOD and WorldLOD.Pick(low, medium, high) or high
+end
+-- particle counts / rates for the level (at least one particle for a burst that asked for some)
+local function lodCount(n)
+	local k = WorldLOD and WorldLOD.FX() or 1
+	return n > 0 and math.max(1, math.floor(n * k + 0.5)) or 0
+end
+local function lodRate(r)
+	return r * (WorldLOD and WorldLOD.FX() or 1)
+end
 
 local VenueFX = {}
 local player = Players.LocalPlayer
@@ -696,6 +719,20 @@ end
 -- opposite ones are warm keys that cast shadows, the other two are softer cool kickers (the rim on
 -- whoever faces away). The overhead banks keep the canopy look but only the centre one keeps its
 -- shadows, so the Future shadow-light count stays at three.
+-- shadow-casting lights per level: High the two warm keys + the centre bank (3), Medium the two keys,
+-- Low the first key only (the boxers keep a modelling shadow; everything else is fill)
+local function applyKeyShadows()
+	local allow = lodPick(1, 2, 3)
+	for i, k in ipairs(S.keys) do
+		if k.shadow ~= nil then
+			k.light.Shadows = k.shadow and i <= allow
+		end
+	end
+	if S.rigShadow and S.rigShadow.Parent then
+		S.rigShadow.Shadows = allow >= 3
+	end
+end
+
 local function setupKeys()
 	S.keys = {}
 	local lvl = S.profile.keys or 1
@@ -713,7 +750,7 @@ local function setupKeys()
 		l.Color = key and rgb(255, 242, 224) or rgb(222, 234, 255)
 		l.Brightness = (key and 4.2 or 2.6) * lvl
 		l.Parent = p
-		table.insert(S.keys, { light = l, base = l.Brightness })
+		table.insert(S.keys, { light = l, base = l.Brightness, shadow = key })
 	end
 	local rig = S.arena:FindFirstChild("LightRig")
 	if rig then
@@ -722,11 +759,15 @@ local function setupKeys()
 			if sl then
 				local off = lamp.Position - S.center
 				sl.Shadows = math.abs(off.X) < 1 and math.abs(off.Z) < 1
+				if sl.Shadows then
+					S.rigShadow = sl
+				end
 				-- the keys now light the boxers; at full power the banks blew the white canvas out
 				sl.Brightness *= 0.55
 			end
 		end
 	end
+	applyKeyShadows()
 end
 
 local function setupSpots()
@@ -822,7 +863,8 @@ local function updateSpots(dt, now)
 			s.light.Brightness = bright
 		end
 		if now >= s.nextRay then
-			s.nextRay = now + 0.08
+			-- (the pool's floor point: Low / Medium look it up less often)
+			s.nextRay = now + lodPick(0.25, 0.15, 0.08)
 			local res = workspace:Raycast(s.base, dir.Unit * math.min(140, dir.Magnitude + 8), rayParams)
 			if res then
 				s.hit, s.hitN = res.Position, res.Normal
@@ -852,8 +894,8 @@ end
 -- fan that leaves the view (or both budgets) is put back at rest once (no one frozen mid-jump).
 -- No distance cut: at 1080p / 70 deg a stud is still ~7 px at 110 studs, and an excited bob is 1-1.5
 -- studs, so the far rows of a wide shot visibly jump too.
-local CROWD_BUDGET = 420 -- full-rate parts per 30 Hz tick
-local CROWD_SLOW_BUDGET = 300 -- reduced-rate parts per tick once CROWD_BUDGET is spent
+local CROWD_BUDGET = 420 -- full-rate parts per 30 Hz tick (High; Medium 280, Low 160)
+local CROWD_SLOW_BUDGET = 300 -- reduced-rate parts per tick once CROWD_BUDGET is spent (Medium 150, Low 0)
 local CROWD_EDGE = 3 -- studs of slack around the view cone (a fan's size)
 
 local function setupCrowd()
@@ -919,6 +961,7 @@ local function updateCrowd(dt, now)
 	local ex = S.excite
 	local parts, cfs = S.bulkParts, S.bulkCFs
 	local k, moved, slow = 0, 0, 0
+	local budget, slowBudget = lodPick(160, 280, CROWD_BUDGET), lodPick(0, 150, CROWD_SLOW_BUDGET)
 	-- half the crowd per tick: at 30 Hz each fan still moves 15 times a second. The slow lane takes
 	-- every other one of this tick's fans in turn (fanTick 0..3), so each of them moves every 4th tick
 	S.fanTick = ((S.fanTick or 0) + 1) % 4
@@ -929,15 +972,18 @@ local function updateCrowd(dt, now)
 		local d = e.pos - camPos
 		local along = d:Dot(look)
 		local show, hold = false, false
+		if e.printed then
+			along = -math.huge -- drawn by its printed row (Low): stays seated
+		end
 		if along > -CROWD_EDGE then
 			local reach = math.max(along, 0) * tanD + CROWD_EDGE
 			if d:Dot(d) - along * along <= reach * reach then
-				if moved + e.n <= CROWD_BUDGET then
+				if moved + e.n <= budget then
 					show = true
 					moved += e.n
 				elseif math.floor((i - 1) / 2) % 2 ~= slowTurn then
 					hold = e.live -- in view, not its slow-lane turn: keep the last pose
-				elseif slow + e.n <= CROWD_SLOW_BUDGET then
+				elseif slow + e.n <= slowBudget then
 					show = true
 					slow += e.n
 				end
@@ -1031,6 +1077,117 @@ local function setupBowl()
 	end
 end
 
+-- Graphics Low: the physical rows behind the front row become printed rows like the ones behind
+-- them (each seated fan a flat shirt + head silhouette in his own colours, on a clear row-sized sign
+-- at his seat), and the fans themselves are hidden locally. Supporters holding a sign and the VIP
+-- seats stay real. Medium / High put the real fans back.
+local SEAT = 3.2 -- Venues' physical seat pitch
+local function applyImpostors()
+	local want = lodPick(true, false, false)
+	if want == (S.impostors ~= nil) then
+		return
+	end
+	local parts, cfs = {}, {}
+	local k = 0
+	if not want then
+		for _, g in ipairs(S.impostors) do
+			pcall(function()
+				g:Destroy()
+			end)
+		end
+		S.impostors = nil
+		for _, e in ipairs(S.fans) do
+			if e.printed then
+				e.printed = false
+				e.fan.LocalTransparencyModifier = 0
+				for _, c in ipairs(e.kids) do
+					c.p.LocalTransparencyModifier = 0
+				end
+			end
+		end
+		return
+	end
+	S.impostors = {}
+	-- rows grouped by side (the fans of a row share their orientation) and row number
+	local groups = {}
+	for _, e in ipairs(S.fans) do
+		local row = e.fan:GetAttribute("Row")
+		if type(row) == "number" and row >= 1 and not e.fan:GetAttribute("VIP") and not e.fan:FindFirstChild("FanSign") then
+			local look = e.base.LookVector
+			local side = math.abs(look.X) > math.abs(look.Z) and (look.X > 0 and 1 or 2) or (look.Z > 0 and 3 or 4)
+			local key = side * 100 + row
+			local g = groups[key]
+			if not g then
+				g = { ref = e.base - e.base.Position, list = {} }
+				groups[key] = g
+			end
+			table.insert(g.list, e)
+		end
+	end
+	for _, g in pairs(groups) do
+		local ref = g.ref
+		local minX, maxX, sy, sz = math.huge, -math.huge, 0, 0
+		for _, e in ipairs(g.list) do
+			local lp = ref:PointToObjectSpace(e.pos)
+			minX = math.min(minX, lp.X)
+			maxX = math.max(maxX, lp.X)
+			sy += lp.Y
+			sz += lp.Z
+		end
+		local n = #g.list
+		local cols = math.max(1, math.floor((maxX - minX) / SEAT + 0.5) + 1)
+		local width = cols * SEAT
+		local mid = ref * CF((minX + maxX) / 2, sy / n + 0.45, sz / n)
+		local slab = localPart("CrowdImpostor", V3(width, 2.9, 0.2), mid, WHITE, nil, { Transparency = 1 })
+		local sg = Instance.new("SurfaceGui")
+		sg.Name = "CrowdPrint"
+		sg.Face = Enum.NormalId.Front
+		sg.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
+		sg.PixelsPerStud = 8
+		sg.LightInfluence = 0
+		sg.MaxDistance = 420
+		for _, e in ipairs(g.list) do
+			local lp = ref:PointToObjectSpace(e.pos)
+			-- the slab faces the ring (its Front is the fans' look direction): seen from the ring,
+			-- +X of the fans' frame runs right to left
+			local c = cols - 1 - math.clamp(math.floor((lp.X - minX) / SEAT + 0.5), 0, cols - 1)
+			local head = e.fan:FindFirstChild("Head")
+			local torso = Instance.new("Frame")
+			torso.BorderSizePixel = 0
+			torso.BackgroundColor3 = e.fan.Color
+			torso.AnchorPoint = Vector2.new(0.5, 1)
+			torso.Position = UDim2.fromScale((c + 0.5) / cols, 1)
+			torso.Size = UDim2.fromScale(0.5 / cols, 0.58)
+			torso.Parent = sg
+			local dot = Instance.new("Frame")
+			dot.BorderSizePixel = 0
+			dot.BackgroundColor3 = head and head.Color or e.fan.Color
+			dot.AnchorPoint = Vector2.new(0.5, 1)
+			dot.Position = UDim2.fromScale((c + 0.5) / cols, 0.44)
+			dot.Size = UDim2.fromScale(0.36 / cols, 0.4)
+			local round = Instance.new("UICorner")
+			round.CornerRadius = UDim.new(0.5, 0)
+			round.Parent = dot
+			dot.Parent = sg
+			e.printed = true
+			-- back in the seat, then hidden (the printed dot stands in for him)
+			k = homeFan(e, parts, cfs, k)
+			e.live = false
+			e.fan.LocalTransparencyModifier = 1
+			for _, c2 in ipairs(e.kids) do
+				c2.p.LocalTransparencyModifier = 1
+			end
+		end
+		sg.Parent = slab
+		table.insert(S.impostors, slab)
+	end
+	if k > 0 then
+		pcall(function()
+			workspace:BulkMoveTo(parts, cfs, Enum.BulkMoveMode.FireCFrameChanged)
+		end)
+	end
+end
+
 ------------------------------------------------------------------------
 -- Particles: phone lights, camera flashes, smoke, CO2, confetti, gerbs, fireworks, dust
 ------------------------------------------------------------------------
@@ -1114,6 +1271,7 @@ local function setupParticles()
 			local light = Instance.new("PointLight")
 			light.Range = 60
 			light.Brightness = 0
+			light.Enabled = false
 			light.Parent = p
 			table.insert(S.fireworks, {
 				light = light,
@@ -1164,7 +1322,7 @@ end
 local function phones(rate)
 	local ground = S.groundShare or 1
 	for _, pe in ipairs(S.phones) do
-		pe.Rate = rate * (pe.Parent and pe.Parent.Name == "BowlTier" and 2.2 or ground)
+		pe.Rate = lodRate(rate * (pe.Parent and pe.Parent.Name == "BowlTier" and 2.2 or ground))
 	end
 end
 
@@ -1177,7 +1335,7 @@ local function flashBurst(n)
 	local ground = S.groundShare or 1
 	for _, pe in ipairs(S.flashes) do
 		-- per volume: a fractional expected count, rounded at random so small volumes still flash sometimes
-		local want = n * (pe.Parent and pe.Parent.Name == "BowlTier" and 1.6 or ground) * fx
+		local want = lodRate(n * (pe.Parent and pe.Parent.Name == "BowlTier" and 1.6 or ground) * fx)
 		local k = math.floor(want + math.random())
 		if k > 0 then
 			pe:Emit(k)
@@ -1192,13 +1350,13 @@ end
 
 local function confettiBurst()
 	for _, pe in ipairs(S.confetti) do
-		pe:Emit(140)
+		pe:Emit(lodCount(140))
 	end
 end
 
 local function gerbs(dur)
 	for _, pe in ipairs(S.gerbs) do
-		pe.Rate = 160
+		pe.Rate = lodRate(160)
 	end
 	local sess = S
 	task.delay(dur, function()
@@ -1224,12 +1382,15 @@ local function fireworks(bursts)
 			local f = S.fireworks[math.random(1, #S.fireworks)]
 			local col = palette[math.random(1, #palette)]
 			f.pe.Color = ColorSequence.new(col, col:Lerp(WHITE, 0.5))
-			f.pe:Emit(80)
+			f.pe:Emit(lodCount(80))
 			f.light.Color = col
 			f.light.Brightness = 6 * math.min(1, fxScale())
+			f.light.Enabled = true
 			task.delay(0.25, function()
 				if f.light.Parent then
+					-- (off between bursts: a dark light still costs the renderer)
 					f.light.Brightness = 0
+					f.light.Enabled = false
 				end
 			end)
 		end)
@@ -1239,13 +1400,13 @@ end
 local function walkoutFX(corner, burst)
 	for _, pe in ipairs(S.smoke[corner] or {}) do
 		if burst then
-			pe:Emit(28)
+			pe:Emit(lodCount(28))
 		end
-		pe.Rate = 8
+		pe.Rate = lodRate(8)
 	end
 	if burst then
 		for _, pe in ipairs(S.co2[corner] or {}) do
-			pe:Emit(90)
+			pe:Emit(lodCount(90))
 		end
 	end
 	local sess = S
@@ -1442,7 +1603,9 @@ local function updateScreens(dt, now)
 		local active = S.walkCorner == corner or S.chaseAll
 		local tr = active and (0.05 + 0.25 * (0.5 + 0.5 * math.sin(now * 9))) or 0.55
 		for _, p in ipairs(leds) do
-			p.Transparency = tr
+			if p.Transparency ~= tr then
+				p.Transparency = tr
+			end
 		end
 	end
 end
@@ -1749,7 +1912,7 @@ local function setupGym()
 			local len = (stop - start).Magnitude
 			local shaft = localPart("DustShaft", V3(d.Size.Z * 0.8, d.Size.Y * 0.6, len), CFrame.lookAt((start + stop) / 2, stop), WHITE, nil, { Transparency = 1 })
 			emitter(shaft, {
-				Name = "Dust", Texture = SMOKE_TEX, Rate = 7, Lifetime = NumberRange.new(6, 10), Speed = NumberRange.new(0.05, 0.2), SpreadAngle = Vector2.new(180, 180),
+				Name = "Dust", Texture = SMOKE_TEX, Rate = lodRate(7), Lifetime = NumberRange.new(6, 10), Speed = NumberRange.new(0.05, 0.2), SpreadAngle = Vector2.new(180, 180),
 				Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.07), NumberSequenceKeypoint.new(1, 0.05) }), Acceleration = V3(0, -0.02, 0),
 				Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.3, 0.35), NumberSequenceKeypoint.new(1, 1) }),
 				LightEmission = 0.6, Color = ColorSequence.new(rgb(255, 236, 200)), RotSpeed = NumberRange.new(-30, 30),
@@ -1930,8 +2093,13 @@ function VenueFX.Start(arena, info)
 		for _, piece in ipairs({
 			{ "keys", setupKeys }, { "ropes", setupRopes }, { "spots", setupSpots }, { "crowd", setupCrowd }, { "bowl", setupBowl }, { "particles", setupParticles },
 			{ "screens", setupScreens }, { "people", setupPeople }, { "broadcast", setupBroadcast }, { "gym", setupGym },
+			{ "impostors", applyImpostors },
 		}) do
 			step(piece[1], piece[2])
+		end
+		-- the arena's signs and shadow casters follow the Graphics level (its lights and effects are ours)
+		if WorldLOD then
+			pcall(WorldLOD.Watch, arena, { lights = false, emitters = false })
 		end
 		-- audio: crowd bed and reactions from uploads or Config's shaped built-in stand-ins; music and
 		-- the announcer only with uploads; the bell has a built-in stand-in
@@ -2020,7 +2188,7 @@ function VenueFX.Phase(name, data)
 		task.delay(data.who == "you" and 5 or 4, function()
 			if S == sess and S.walkCorner == corner then
 				for _, pe in ipairs(S.co2[corner] or {}) do
-					pe:Emit(60)
+					pe:Emit(lodCount(60))
 				end
 				flashBurst(20)
 			end
@@ -2307,6 +2475,9 @@ function VenueFX.Stop()
 	end
 	pcall(restoreLighting)
 	pcall(CharacterLight.SetExtra, {})
+	if WorldLOD then
+		pcall(WorldLOD.Unwatch, S.arena)
+	end
 	for _, s in pairs(S.snd) do
 		pcall(function()
 			s:Stop()
@@ -2338,6 +2509,16 @@ function VenueFX.Stop()
 		S.soundFolder:Destroy()
 	end)
 	S = nil
+end
+
+-- a Graphics level change mid-fight: shadows, printed rows
+if WorldLOD then
+	WorldLOD.OnChanged(function()
+		if S then
+			step("keys", applyKeyShadows)
+			step("impostors", applyImpostors)
+		end
+	end)
 end
 
 -- a respawn mid-fight must never leave the venue grade on the gym

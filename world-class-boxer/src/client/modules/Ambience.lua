@@ -30,11 +30,33 @@ local Config = require(Shared:WaitForChild("Config"))
 local GymSound = require(script.Parent:WaitForChild("GymSound"))
 local LightLevels = require(script.Parent:WaitForChild("LightLevels"))
 local CharacterLight = require(script.Parent:WaitForChild("CharacterLight"))
+-- the Graphics level for the world (optional: without it everything runs at the High look)
+local WorldLOD
+do
+	local m = script.Parent:FindFirstChild("WorldLOD")
+	local ok, mod = false, nil
+	if m then
+		ok, mod = pcall(require, m)
+	end
+	WorldLOD = (ok and type(mod) == "table") and mod or nil
+end
+local function lodPick(low, medium, high)
+	return WorldLOD and WorldLOD.Pick(low, medium, high) or high
+end
+-- a light switched at runtime goes through WorldLOD, so its distance culling never fights the switch
+local function switchLight(l, on)
+	if WorldLOD then
+		WorldLOD.SetLight(l, on)
+	elseif l.Enabled ~= on then
+		l.Enabled = on
+	end
+end
 
 local Ambience = {}
 
-local NEAR = 160 -- studs: fans, timers and tickers further away than this stay still
+local NEAR = 160 -- studs: fans, timers and tickers further away than this stay still (Low 100, Medium 130)
 local FLICKER_NEAR = 420
+local nearNow = NEAR -- NEAR for the current Graphics level (set every tick)
 local ROUND, REST = 180, 60
 local LENS_DAY = Color3.fromRGB(200, 200, 196)
 local LENS_NIGHT = Color3.fromRGB(255, 236, 200)
@@ -84,7 +106,7 @@ local function updateFans(dt, cam)
 	for m, e in pairs(fans) do
 		if not m.Parent then
 			fans[m] = nil
-		elseif (e.hub0.Position - cam).Magnitude < NEAR then
+		elseif (e.hub0.Position - cam).Magnitude < nearNow then
 			e.angle = (e.angle + (m:GetAttribute("Speed") or 6) * dt) % (math.pi * 2)
 			local hubCF = e.hub0 * CFrame.Angles(e.angle, 0, 0)
 			for i, p in ipairs(e.parts) do
@@ -171,7 +193,7 @@ local function updateTimers(cam)
 	for m, e in pairs(timers) do
 		if not m.Parent then
 			timers[m] = nil
-		elseif (e.pos - cam).Magnitude < NEAR then
+		elseif (e.pos - cam).Magnitude < nearNow then
 			for _, l in ipairs(e.phases) do
 				l.Text = phase
 			end
@@ -236,7 +258,7 @@ local function updateTickers(dt, cam)
 	for screen, e in pairs(tickers) do
 		if not screen.Parent then
 			tickers[screen] = nil
-		elseif (screen.Position - cam).Magnitude < NEAR then
+		elseif (screen.Position - cam).Magnitude < nearNow then
 			local w = e.frame.AbsoluteSize.X
 			local tw = e.text.TextBounds.X
 			if w > 0 and tw > 0 then
@@ -285,7 +307,8 @@ local function addNeon(inst)
 	end
 	local lightOn = {}
 	for i, l in ipairs(lights) do
-		lightOn[i] = l.Enabled
+		-- (the owner's state, even while the light is culled for distance)
+		lightOn[i] = WorldLOD and WorldLOD.Wanted(l) or l.Enabled
 	end
 	neons[inst] = { parts = parts, base = base, lights = lights, lightOn = lightOn, pos = parts[1].Position, nextAt = os.clock() + 2 + math.random() * 10, busy = false }
 end
@@ -298,7 +321,7 @@ local function restoreNeon(e)
 	end
 	for i, l in ipairs(e.lights) do
 		if l.Parent then
-			l.Enabled = e.lightOn[i]
+			switchLight(l, e.lightOn[i])
 		end
 	end
 end
@@ -328,7 +351,7 @@ local function flicker(e)
 			end
 			for i, l in ipairs(e.lights) do
 				if l.Parent then
-					l.Enabled = (not off) and e.lightOn[i]
+					switchLight(l, (not off) and e.lightOn[i])
 				end
 			end
 			task.wait(0.04 + math.random() * 0.09)
@@ -367,7 +390,7 @@ end
 
 local function applyLight(l, on)
 	if l:IsA("Light") then
-		l.Enabled = on
+		switchLight(l, on)
 	end
 end
 
@@ -621,6 +644,28 @@ local function startBed()
 	end
 end
 
+-- the bed loops pause while the camera is far from the gym (a fight venue, the far city): out of
+-- earshot anyway, and a playing Sound keeps a voice busy in the mixer
+local BED_FAR = 600
+local bedPaused = false
+local function updateBed(cam)
+	local far = Vector3.new(cam.X, 0, cam.Z).Magnitude > BED_FAR
+	if far == bedPaused then
+		return
+	end
+	bedPaused = far
+	for _, p in ipairs(bedParts) do
+		local snd = p.Parent and p:FindFirstChildOfClass("Sound")
+		if snd then
+			if far then
+				snd:Pause()
+			else
+				snd:Resume()
+			end
+		end
+	end
+end
+
 -- members' training noises, timed to what they are visibly doing
 local MEMBER_SOUNDS = {
 	["Leon Price"] = { name = "footfall", every = 0.38, vol = 0.7 }, -- treadmill strides
@@ -851,12 +896,18 @@ local function buildDust()
 end
 
 local function updateDust(cam)
+	-- Graphics level: no motes on Low, about half as many on Medium
+	local scale = lodPick(0, 0.55, 1)
 	for _, e in ipairs(dust) do
-		local near = (Vector3.new(e.center.X, cam.Y, e.center.Z) - cam).Magnitude < 90 + math.max(e.part.Size.X, e.part.Size.Z) / 2
-		e.pe.Enabled = near
+		local near = scale > 0 and (Vector3.new(e.center.X, cam.Y, e.center.Z) - cam).Magnitude < 90 + math.max(e.part.Size.X, e.part.Size.Z) / 2
+		if e.pe.Enabled ~= near then
+			e.pe.Enabled = near
+		end
 		if near then
-			local rate = (DUST_RATE[tier] or 4) * e.area / 6000 * (e.clean and 0.4 or 1)
-			e.pe.Rate = rate
+			local rate = (DUST_RATE[tier] or 4) * e.area / 6000 * (e.clean and 0.4 or 1) * scale
+			if e.pe.Rate ~= rate then
+				e.pe.Rate = rate
+			end
 		end
 	end
 end
@@ -936,7 +987,10 @@ local function updateShafts(cam)
 		return
 	end
 	local h = Lighting.ClockTime
-	local day = h > 6.8 and h < 18.6 and sun.Y > 0.06
+	-- Graphics level: no shafts on Low; Medium draws them a little less far, with 3 bounce lights
+	local range = lodPick(0, 130, 170)
+	local bounces = lodPick(0, 3, 6)
+	local day = range > 0 and h > 6.8 and h < 18.6 and sun.Y > 0.06
 	-- strongest around midday, gone at dusk
 	local strength = day and math.clamp(math.min(h - 6.8, 18.6 - h) / 2.5, 0, 1) or 0
 	local spotsLeft = {}
@@ -946,7 +1000,7 @@ local function updateShafts(cam)
 			shafts[glass] = nil
 		else
 			local into = -sun:Dot(e.inward)
-			local visible = day and into > 0.12 and (glass.Position - cam).Magnitude < 170
+			local visible = day and into > 0.12 and (glass.Position - cam).Magnitude < range
 			for _, b in ipairs(e.beams) do
 				b.Enabled = visible
 			end
@@ -982,7 +1036,7 @@ local function updateShafts(cam)
 	end)
 	for i, s in ipairs(spotsLeft) do
 		local e = s.e
-		if i <= 6 then
+		if i <= bounces then
 			if not e.spot then
 				-- the light sits in its own little part, aimed down the shaft
 				local sp = Instance.new("Part")
@@ -1087,6 +1141,13 @@ function Ambience.Start()
 		updateNight(false)
 		shaftsDirty = true
 	end)
+	if WorldLOD then
+		pcall(WorldLOD.Start)
+		-- a Graphics level change re-places the shafts at once
+		WorldLOD.OnChanged(function()
+			shaftsDirty = true
+		end)
+	end
 
 	local acc, slowAcc, shaftAcc = 0, 0, 0
 	RunService.Heartbeat:Connect(function(dt)
@@ -1099,6 +1160,7 @@ function Ambience.Start()
 		local step = math.min(acc, 0.1)
 		acc = 0
 		local cam = camPos()
+		nearNow = lodPick(100, 130, NEAR)
 		updateFans(step, cam)
 		updateTickers(step, cam)
 		-- (at 30 Hz so treadmill strides and rope ticks keep their real cadence)
@@ -1117,6 +1179,7 @@ function Ambience.Start()
 			safe(updateChatter, cam, now)
 			safe(updateLookAt)
 			safe(updateDust, cam)
+			safe(updateBed, cam)
 		end
 		-- shafts follow the sun: on a time-of-day change (at most 5x a second while ClientMain tweens
 		-- the clock), and every few seconds for the camera cull

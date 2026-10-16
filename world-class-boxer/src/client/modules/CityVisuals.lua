@@ -32,6 +32,26 @@ local CityStores = require(script.Parent:WaitForChild("CityStores"))
 local CityVisuals = {}
 
 local player = Players.LocalPlayer
+-- the Graphics level for the world (optional: without it everything runs at the High look)
+local WorldLOD
+do
+	local m = script.Parent:FindFirstChild("WorldLOD")
+	local ok, mod = false, nil
+	if m then
+		ok, mod = pcall(require, m)
+	end
+	WorldLOD = (ok and type(mod) == "table") and mod or nil
+end
+local function lodPick(low, medium, high)
+	return WorldLOD and WorldLOD.Pick(low, medium, high) or high
+end
+local function switchLight(l, on)
+	if WorldLOD then
+		WorldLOD.SetLight(l, on)
+	elseif l.Enabled ~= on then
+		l.Enabled = on
+	end
+end
 local V3 = Vector3.new
 local CF = CFrame.new
 local ANG = CFrame.Angles
@@ -904,7 +924,7 @@ local function setEliteOpen(open)
 				end
 			end
 		elseif d:IsA("SpotLight") and d.Name == "EliteCenterLight" then
-			d.Enabled = open
+			switchLight(d, open)
 		elseif d:IsA("TextLabel") and d.Name == "SignText" then
 			d.TextColor3 = open and Color3.fromRGB(150, 220, 255) or Color3.fromRGB(120, 128, 140)
 		end
@@ -1279,6 +1299,8 @@ end
 
 local function updateStreetLife(P)
 	local count = math.clamp(10 + math.floor((P.popularity or 0) / 15), 10, 16)
+	-- Graphics level: half the pedestrians on Low, three quarters on Medium (rebuilt on a change)
+	count = math.max(4, math.floor(count * lodPick(0.5, 0.75, 1) + 0.5))
 	group("StreetLife", tostring(count), function(f)
 		buildStreetLife(f, count)
 	end)
@@ -1445,6 +1467,7 @@ local function buildWindowGrid(p)
 	end)
 	local sg = gui(p, okFace and face or Enum.NormalId.Front, 4, 0.15, (winRange[p] or WIN_RANGE) + WIN_HYST + 60)
 	sg.Name = "Windows"
+	sg:SetAttribute("LodFixedDist", true) -- the grid's own range culls it (WorldLOD only lowers its resolution)
 	local colours = {}
 	for r = 0, rows - 1 do
 		-- (the draw order is the old per-window one: the same windows light up)
@@ -1488,12 +1511,14 @@ local function updateWindowGrids(camPos, now)
 	for _ in pairs(winLive) do
 		alive += 1
 	end
-	if #winOrder > 0 and alive < WIN_MAX then
+	-- Graphics level: fewer window grids alive at once (nearest first, so the skyline keeps its closest)
+	local winMax = lodPick(24, 36, WIN_MAX)
+	if #winOrder > 0 and alive < winMax then
 		table.sort(winOrder, function(a, b)
 			return (a.Position - camPos).Magnitude < (b.Position - camPos).Magnitude
 		end)
 		for i, p in ipairs(winOrder) do
-			if alive >= WIN_MAX or i > WIN_STEP then
+			if alive >= winMax or i > WIN_STEP then
 				break
 			end
 			winLive[p] = buildWindowGrid(p)
@@ -1523,10 +1548,12 @@ end
 
 local function animate(dt, camPos, rootPos)
 	clock += dt
+	-- Graphics level: how far away fans, pedestrians and cars still move
+	local fanNear, pedNear, carNear = lodPick(100, 140, NEAR), lodPick(120, 170, 220), lodPick(160, 210, 260)
 	-- fans: bob, cheer and turn towards you when you are close; signs sway (the whole figure moves
 	-- as one, so arms stay on the shoulders and hands on the sign)
 	for _, e in ipairs(fans) do
-		if e.torso.Parent and (e.base.Position - camPos).Magnitude < NEAR then
+		if e.torso.Parent and (e.base.Position - camPos).Magnitude < fanNear then
 			local near = rootPos and (e.base.Position - rootPos).Magnitude or 999
 			local excite = near < 26 and 1 or 0.25
 			local hop = math.abs(math.sin(clock * e.rate + e.phase)) * 0.35 * excite
@@ -1555,10 +1582,12 @@ local function animate(dt, camPos, rootPos)
 			if close and math.random() < 0.08 then
 				fl.t = 0.08
 				fl.part.Transparency = 0
-				fl.light.Enabled = true
+				switchLight(fl.light, true)
 			else
-				fl.part.Transparency = 1
-				fl.light.Enabled = false
+				if fl.part.Transparency ~= 1 then
+					fl.part.Transparency = 1
+					switchLight(fl.light, false)
+				end
 			end
 		end
 	end
@@ -1570,7 +1599,7 @@ local function animate(dt, camPos, rootPos)
 				e.dir = -e.dir
 				e.x = math.clamp(e.x, -318, 318)
 			end
-			if math.abs(e.x - camPos.X) < 220 then
+			if math.abs(e.x - camPos.X) < pedNear then
 				posePed(e, math.sin(clock * e.speed * 1.6 + e.phase) * 0.5, bulkSet)
 			end
 		end
@@ -1605,7 +1634,7 @@ local function animate(dt, camPos, rootPos)
 					c.x += STREET_SPAN
 				end
 			end
-			if math.abs(c.x - camPos.X) < 260 then
+			if math.abs(c.x - camPos.X) < carNear then
 				poseCar(c, bulkSet)
 			end
 		end
@@ -1617,7 +1646,8 @@ local function step(dt)
 	acc += dt
 	slowAcc += dt
 	tagAcc += dt
-	if acc < 1 / 30 then
+	-- (Low animates the street at 20 Hz)
+	if acc < lodPick(1 / 20, 1 / 30, 1 / 30) then
 		return
 	end
 	local frameDt = acc
@@ -1683,6 +1713,15 @@ function CityVisuals.Start()
 		return
 	end
 	started = true
+	if WorldLOD then
+		pcall(WorldLOD.Start)
+		-- a Graphics level change re-sizes Main Street's crowd
+		WorldLOD.OnChanged(function()
+			if lastP then
+				pcall(updateStreetLife, lastP)
+			end
+		end)
+	end
 	RunService.Heartbeat:Connect(function(dt)
 		local ok, err = pcall(step, dt)
 		if not ok and not CityVisuals.warned then
