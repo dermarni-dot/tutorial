@@ -95,7 +95,8 @@ POSE.heavybag = function(p, rig, t, d, w, model, dt)
 	-- ease in / out (a couple of shuffle steps, not a teleport)
 	local s = (rig.stepIn or 0) + (want - (rig.stepIn or 0)) * (1 - exp(-dt * 3))
 	rig.stepIn = s
-	if s > 0.01 then
+	-- (in towards the bag, or a touch back from it: Animator's bagWant)
+	if abs(s) > 0.01 then
 		rig.foot.L.z -= s
 		rig.foot.R.z -= s
 		p.Root = CF(0, 0, -s) * p.Root
@@ -185,6 +186,18 @@ POSE.deadlift = function(p, rig, t, d, w, model, dt)
 	return p
 end
 
+-- the squat's grip (standard UpperTorso units out from the middle): a fist's width outside the shoulders - the
+-- organic torso's own width when it is on - never narrower than the old 1.3
+local function squatGrip(rig)
+	local g = rig.geo
+	local m = g.mesh and g.mesh.W
+	local sc = g.utScale
+	if not (m and sc) then
+		return 1.45
+	end
+	return clamp((m.size.X * 0.5 + (g.fistRR or 0.35)) / sc.X, 1.3, 1.75)
+end
+
 POSE.squat = function(p, rig, t, d, w, model, dt)
 	-- brace, sit back between the heels (knees track over the toes), hips drive out of the hole
 	-- first and the chest follows
@@ -201,8 +214,11 @@ POSE.squat = function(p, rig, t, d, w, model, dt)
 	-- hands on the bar Poser puts behind the neck (UpperTorso y 0.42 * Size.Y = 0.67 guard units,
 	-- z +0.62 * Size.Z): fists just under the bar axis; the authored arms above stay the fallback for
 	-- far rigs / rigs without arm geometry
-	guardArm(rig, p, "R", 1.3, 0.62, 0.62, 1, -0.3, 0.3, -1)
-	guardArm(rig, p, "L", -1.3, 0.62, 0.62, 1, -0.3, 0.3, -1)
+	-- (a grip outside the shoulders and the elbows out behind the bar: elbows down and in pin the forearms
+	-- into the traps)
+	local gx = squatGrip(rig)
+	guardArm(rig, p, "R", gx, 0.62, 0.62, 1, -0.3, 0.75, -0.55)
+	guardArm(rig, p, "L", -gx, 0.62, 0.62, 1, -0.3, 0.75, -0.55)
 	plant(rig, 0, 0.22, 0.35, -0.35, 0, 0)
 	flexAct(rig, "Squat", 0.3 + 0.7 * sin(PI * clamp(d * 1.1, 0, 1)))
 	flex(rig, "abs", 0.6)
@@ -221,11 +237,16 @@ POSE.curl = function(p, rig, t, d, w, model, dt)
 		local right = rep % 2 == 0
 		local S, E, Wr = right and "RS" or "LS", right and "RE" or "LE", right and "RW" or "LW"
 		local side = right and 1 or -1
-		-- elbow pinned at the side: just clear of the hip, wider with bulk (+Z right = outward)
-		local tuck = 0.02 + 0.08 * bulkOf(rig)
+		-- elbow pinned at the side: just clear of the hip, wider with bulk (+Z right = outward); at the bottom of
+		-- the rep the arm hangs a little out so the bell sits beside the thigh, not in the hip
+		local tuck = 0.02 + 0.08 * bulkOf(rig) + 0.28 * (1 - d) ^ 2
 		p[S] = A(0.1 + 0.28 * d * d, 0, right and tuck or -tuck)
 		p[E] = A(lerp(0.15, 2.35, d), 0, 0)
 		p[Wr] = A(-0.2 * d, side * -lerp(0, 0.85, d), 0)
+		-- (the other arm waits with its bell hanging beside the thigh, a little out from the body - in at the hip
+		-- the dumbbell sinks into the trunks)
+		local iS = right and "LS" or "RS"
+		p[iS] = A(0, 0, -side * (0.26 + 0.08 * bulkOf(rig))) * p[iS]
 		if eff > 0.7 then
 			-- cheating the last reps: a hip swing gets the bell moving
 			p.W = p.W * A(0.14 * (eff - 0.7) / 0.3 * sin(PI * d), 0, 0)
@@ -249,7 +270,7 @@ POSE.curl = function(p, rig, t, d, w, model, dt)
 		flex(rig, "upperChest", 0.3)
 	else
 		-- lateral raise: soft elbows, lead with the elbows to shoulder height
-		local ab = lerp(0.12, 1.5, d)
+		local ab = lerp(0.3, 1.5, d)
 		p.RS = A(0.12, 0, ab)
 		p.LS = A(0.12, 0, -ab)
 		p.RE = A(0.28, 0, 0)
@@ -304,6 +325,28 @@ local function palmsIn(p)
 	end
 end
 
+-- seated on the floor with the legs out in front (keyed angles): the thighs come up, a step at a time, until the
+-- lowest point of the shoes - the organic shoe's own, AnimRig.lowest - rests on the floor instead of under it
+local FEET = { "RA", "LA" }
+local function heelsOnFloor(rig, p)
+	local g = rig.geo
+	if not (g.ok and g.jc0 and g.jc0.Root and rig.lod >= 2) then
+		return
+	end
+	local out = rig.fkOut or {}
+	rig.fkOut = out
+	for _ = 1, 5 do
+		R.fk(rig, p, out)
+		local dy = g.groundY - R.lowest(rig, out, FEET)
+		if dy <= 0.01 then
+			break
+		end
+		local a = min(0.3, dy * 0.8 + 0.02)
+		p.LH = A(a, 0, 0) * p.LH
+		p.RH = A(a, 0, 0) * p.RH
+	end
+end
+
 -- medicine ball: SLAM sets (reach overhead on the toes, hinge and drive it into the floor) and
 -- seated RUSSIAN TWISTS (TwistSide = -1 / +1 from Activities); remote viewers alternate sets
 POSE.medball = function(p, rig, t, d, w, model, dt)
@@ -343,6 +386,7 @@ POSE.medball = function(p, rig, t, d, w, model, dt)
 		p.RH = A(1.55, 0, 0.08)
 		p.RK = A(-1.4, 0, 0)
 		p.RA = A(0.3, 0, 0)
+		heelsOnFloor(rig, p)
 		flexAct(rig, "MedBall", 0.5 + 0.5 * abs(x))
 		flex(rig, "obliques", 0.6 + 0.4 * max(0, x), 1)
 		flex(rig, "obliques", 0.6 + 0.4 * max(0, -x), -1)
@@ -353,18 +397,21 @@ POSE.medball = function(p, rig, t, d, w, model, dt)
 	rig.twistX = 0
 	local up = clamp(d, 0, 1)
 	local h = 1 - up
-	local hinge = 0.85 * h
-	p.Root = CF(0, -0.85 * h ^ 1.3, 0.3 * h) * A(-hinge, 0, 0)
-	p.W = A(-0.15 * h + 0.1 * up, 0, 0)
+	-- (the bow is shared by the hips and the back: a pelvis pitched as far as the whole trunk, dropped as low,
+	-- leaves the planted feet above the hip joints' reach - the leg IK then pushes the shoes under the floor)
+	local hinge = 0.52 * h
+	p.Root = CF(0, -0.6 * h ^ 1.3, 0.22 * h) * A(-hinge, 0, 0)
+	p.W = A(-0.45 * h + 0.1 * up, 0, 0)
 	p.Neck = A(0.3 * h, 0, 0)
-	p.RS = A(lerp(hinge + 0.55, 2.95, up), 0, -0.3)
-	p.LS = A(lerp(hinge + 0.55, 2.95, up), 0, 0.3)
+	p.RS = A(lerp(hinge + 0.85, 2.95, up), 0, -0.3)
+	p.LS = A(lerp(hinge + 0.85, 2.95, up), 0, 0.3)
 	p.RE = A(lerp(0.3, 0.35, up), 0, 0)
 	p.LE = A(lerp(0.3, 0.35, up), 0, 0)
 	-- the ball travels overhead -> into the floor in front of the feet (UpperTorso space, which is
-	-- hinged forward at the bottom), bulging forward on the way down; hands one ball-width apart
-	local by = lerp(-0.75, 2.5, up)
-	local bz = lerp(-1.05, -0.3, up) - 0.45 * sin(PI * up)
+	-- bowed forward at the bottom: its -Y points back at the thighs, so the bottom is reached along its -Z, out
+	-- in front of the knees), bulging forward on the way down; hands one ball-width apart
+	local by = lerp(-0.1, 2.5, up)
+	local bz = lerp(-1.7, -0.3, up) - 0.45 * sin(PI * up)
 	local okR = guardArm(rig, p, "R", MEDBALL_HALF, by, bz, 1, -0.1, 1, 0)
 	local okL = guardArm(rig, p, "L", -MEDBALL_HALF, by, bz, 1, -0.1, 1, 0)
 	if okR and okL then
@@ -589,8 +636,9 @@ POSE.ladder = function(p, rig, t, d, w, model, dt)
 	p.RK = p.RK * A(-0.9 * max(0, sin(x)), 0, 0)
 	p.LH = p.LH * A(0.55 * max(0, -sin(x)), 0, 0)
 	p.LK = p.LK * A(-0.9 * max(0, -sin(x)), 0, 0)
-	p.RA = p.RA * A(-0.3, 0, 0)
-	p.LA = p.LA * A(-0.3, 0, 0)
+	-- (toes pointed only on the foot in the air: a pointed foot on the floor puts the shoe's toe through it)
+	p.RA = p.RA * A(-0.3 * max(0, sin(x)), 0, 0)
+	p.LA = p.LA * A(-0.3 * max(0, -sin(x)), 0, 0)
 	flex(rig, "calves", 0.7)
 	rig.breath = 0.6
 	return p
