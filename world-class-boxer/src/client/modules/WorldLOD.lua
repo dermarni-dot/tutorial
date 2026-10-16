@@ -6,10 +6,10 @@
 --           ~5,700 studs from the gym, whose 90-200 lights otherwise stay on through the whole fight)
 --   Medium  shadows only from lights marked ShadowKeep (two of the ring's four cans); small accent
 --           lights (range < 16) beyond 90 studs and mid lights beyond 220 off; signs drawn out to 3/4
---           of their distance at 3/4 resolution; continuous particles at 55%
+--           of their distance at 3/4 resolution; continuous particles at 55% (none beyond 260 studs)
 --   Low     no light shadows; accent lights off; mid lights beyond 110 and big fills beyond 170 off;
---           signs drawn out to half their distance at half resolution; particles at 25%; small parts
---           (under 4 studs) cast no shadow
+--           signs drawn out to half their distance at half resolution; particles at 25% (none beyond
+--           150 studs); small parts (under 4 studs) cast no shadow
 -- Resolution only drops on signs whose layout is all scale (sizes, positions, TextScaled), so nothing
 -- moves or overflows. Owners that switch a light at runtime (night lights, flickering neon, gates)
 -- call WorldLOD.SetLight so the culling never fights them. Work is spread over frames: a level change
@@ -37,6 +37,7 @@ local CULL = {
 	{ FAR, FAR, FAR },
 }
 local FX = { 0.25, 0.55, 1 } -- continuous particle rate multiplier
+local EMIT_FAR = { 150, 260, math.huge } -- continuous emitters further than this from the camera stop
 local SIGN_DIST = { 0.5, 0.75, 1 } -- SurfaceGui / BillboardGui MaxDistance multiplier
 local SIGN_SIZE = { 25, 40 } -- an unlimited sign's distance per stud of its face's size (Low, Medium)
 local SIGN_RES = { 0.5, 0.75, 1 } -- PixelsPerStud multiplier (scale-only layouts)
@@ -179,8 +180,11 @@ local function applyGui(g, e)
 	end
 end
 
+local emitterList = {} -- for the distance sweep
+local emitFar = {} -- emitter -> true while it is beyond EMIT_FAR
+
 local function applyEmitter(pe, base)
-	local r = base * (FX[level] or 1)
+	local r = emitFar[pe] and 0 or base * (FX[level] or 1)
 	if pe.Rate ~= r then
 		pe.Rate = r
 	end
@@ -249,6 +253,9 @@ local function visit(inst)
 			end
 			base = inst.Rate
 			emitters[inst] = base
+			if base > 0 then
+				table.insert(emitterList, inst)
+			end
 		end
 		if base > 0 then
 			applyEmitter(inst, base)
@@ -377,6 +384,7 @@ end
 -- the per-frame worker: queued registrations first, then a slice of the light sweep
 ------------------------------------------------------------------------
 local sweepIdx = 0
+local emitIdx = 0
 -- lights visited per frame: ~200 lights come round every ~0.3 s on Low / Medium (the culling there
 -- is within 90-220 studs); High only switches lights beyond any view, so ~1 s is plenty
 local SWEEP_PER_FRAME = { 12, 12, 4 }
@@ -443,7 +451,12 @@ local function purge()
 	end
 	for pe in pairs(emitters) do
 		if pe.Parent == nil then
-			emitters[pe] = nil
+			emitters[pe], emitFar[pe] = nil, nil
+		end
+	end
+	for i = #emitterList, 1, -1 do
+		if emitterList[i].Parent == nil then
+			table.remove(emitterList, i)
 		end
 	end
 	for p in pairs(shadowOff) do
@@ -486,6 +499,26 @@ local function step(dt)
 		for _ = 1, math.min(SWEEP_PER_FRAME[level] or 4, count) do
 			sweepIdx = sweepIdx % count + 1
 			sweepLight(lightList[sweepIdx], camPos)
+		end
+	end
+	-- continuous emitters (a few dozen): two a frame, stopped beyond EMIT_FAR on Low / Medium
+	local ne = #emitterList
+	if ne > 0 then
+		local cam = workspace.CurrentCamera
+		local camPos = cam and cam.CFrame.Position or Vector3.zero
+		local far = EMIT_FAR[level] or math.huge
+		for _ = 1, math.min(2, ne) do
+			emitIdx = emitIdx % ne + 1
+			local pe = emitterList[emitIdx]
+			local holder = pe.Parent
+			local pos = holder and (holder:IsA("BasePart") and holder.Position or (holder:IsA("Attachment") and holder.WorldPosition))
+			if pos then
+				local isFar = (pos - camPos).Magnitude > far or nil
+				if isFar ~= emitFar[pe] then
+					emitFar[pe] = isFar
+					applyEmitter(pe, emitters[pe] or 0)
+				end
+			end
 		end
 	end
 	purgeAcc += dt

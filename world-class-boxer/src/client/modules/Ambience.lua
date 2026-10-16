@@ -308,7 +308,11 @@ local function addNeon(inst)
 	local lightOn = {}
 	for i, l in ipairs(lights) do
 		-- (the owner's state, even while the light is culled for distance)
-		lightOn[i] = WorldLOD and WorldLOD.Wanted(l) or l.Enabled
+		if WorldLOD then
+			lightOn[i] = WorldLOD.Wanted(l)
+		else
+			lightOn[i] = l.Enabled
+		end
 	end
 	neons[inst] = { parts = parts, base = base, lights = lights, lightOn = lightOn, pos = parts[1].Position, nextAt = os.clock() + 2 + math.random() * 10, busy = false }
 end

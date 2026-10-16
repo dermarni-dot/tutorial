@@ -1144,7 +1144,7 @@ local function applyImpostors()
 		sg.Face = Enum.NormalId.Front
 		sg.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
 		sg.PixelsPerStud = 8
-		sg.LightInfluence = 0
+		sg.LightInfluence = 1 -- lit like the fans it stands in for (the rows sit inside the ring lights)
 		sg.MaxDistance = 420
 		for _, e in ipairs(g.list) do
 			local lp = ref:PointToObjectSpace(e.pos)
@@ -1157,14 +1157,14 @@ local function applyImpostors()
 			torso.BackgroundColor3 = e.fan.Color
 			torso.AnchorPoint = Vector2.new(0.5, 1)
 			torso.Position = UDim2.fromScale((c + 0.5) / cols, 1)
-			torso.Size = UDim2.fromScale(0.5 / cols, 0.58)
+			torso.Size = UDim2.fromScale(0.52 / cols, 0.6)
 			torso.Parent = sg
 			local dot = Instance.new("Frame")
 			dot.BorderSizePixel = 0
 			dot.BackgroundColor3 = head and head.Color or e.fan.Color
 			dot.AnchorPoint = Vector2.new(0.5, 1)
 			dot.Position = UDim2.fromScale((c + 0.5) / cols, 0.44)
-			dot.Size = UDim2.fromScale(0.36 / cols, 0.4)
+			dot.Size = UDim2.fromScale(0.4 / cols, 0.44)
 			local round = Instance.new("UICorner")
 			round.CornerRadius = UDim.new(0.5, 0)
 			round.Parent = dot
