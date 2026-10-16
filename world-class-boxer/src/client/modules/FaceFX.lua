@@ -482,7 +482,9 @@ local function buildView(model)
 	-- textures: only where the generator made one and this client shows them
 	local texOn = false
 	pcall(function()
-		texOn = Anatomy.Settings.textures ~= false and Anatomy.Status().textures ~= false
+		local S = Anatomy.Settings
+		-- (Medium paints textures on full-detail pieces only: AnatomyClient texturesFullOnly)
+		texOn = S.textures ~= false and not (S.texturesFullOnly and v.lod ~= "full") and Anatomy.Status().textures ~= false
 	end)
 	local tex = texOn and TEXTURED[v.lod] or {}
 	-- (AnatomyClient may hand the image out directly; else it is the part's TextureContent object)

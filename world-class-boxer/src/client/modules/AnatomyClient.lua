@@ -36,6 +36,8 @@ local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local AnatomyClient = {}
+-- the module picks its detail preset from the Graphics level itself (Settings leaves SetDetail alone)
+AnatomyClient.FollowsPerf = true
 
 -- defaults; Start() overlays Config.Anatomy, then whatever a caller set here before Start wins
 AnatomyClient.Settings = {
@@ -45,6 +47,8 @@ AnatomyClient.Settings = {
 	lodRange = 160, -- studs; beyond: round-1 parts only
 	frameBudget = 0.0025, -- seconds of work per frame
 	textures = true, -- EditableImage colour textures for pieces that ask for one
+	texturesFullOnly = false, -- ... only on full-detail pieces (Medium: the far ones keep their vertex colours)
+	hullRange = math.huge, -- studs: a part-built NPC past this shows only its hull and mass domes (Medium / Low)
 	meshCentered = true, -- a MeshPart made from an EditableMesh is centred on the mesh's bounding box
 	flipV = false, -- flip texture v if textures show upside down
 	cacheSize = 24, -- generated sections kept for re-use (NPCs walking back into range, LOD flips)
@@ -80,6 +84,9 @@ local api = { state = "unknown", reason = nil, textures = true, fails = 0, retry
 -- seconds before the n-th re-probe after the Editable APIs failed (the last step repeats)
 local RETRY_STEPS = { 1, 2, 4, 8, 15, 30, 60 }
 local Status -- the AnatomyStatus module (Output line + on-screen notice), loaded by boot
+local Perf -- the Graphics level (BoxerClient.Perf, loaded by boot; absent in a test place: Config.Anatomy stays)
+local followPerf -- (the detail presets section)
+local hullTrims -- (the far hull, after onDescendantAdded)
 local warned = {}
 local listeners = { built = {}, restored = {} }
 local conns = {}
@@ -335,6 +342,45 @@ local function onDescendantAdded(rec, inst)
 	if h and (inst:IsA("Decal") or (h.guis and (inst:IsA("SurfaceGui") or inst:IsA("BillboardGui")))) then
 		for section in pairs(h.sections) do
 			hideInst(rec, inst, section)
+		end
+	end
+	if rec.hull and hullTrims(inst, folder) then
+		hideInst(rec, inst, "Hull")
+	end
+end
+
+-- Far hull (Medium / Low, Settings.hullRange): an NPC far away that shows its part-built body (no Body
+-- mesh: past the mesh range, or a device without the Editable APIs, where every character is part-built)
+-- keeps the hull and the mass domes that carry the silhouette - the server's HullOnly gym members' set:
+-- chest, shoulder caps, biceps, traps, neck, abs - and drops the small domes (forearms, triceps, delt
+-- fronts / backs, lats, obliques, glutes, quads, calves: 20-odd parts each), the veins and the face's sweat
+-- sheen, locally (LocalTransparencyModifier) and only while it stays that far
+local HULL_KEEP = { pecs = true, sideDelt = true, biceps = true, traps = true, neckSCM = true, abs = true }
+function hullTrims(inst, folder)
+	if folder == "Muscles" then
+		if inst:IsA("Beam") then
+			return CollectionService:HasTag(inst, "Vein")
+		end
+		return inst:IsA("BasePart") and inst:GetAttribute("Layer") ~= nil and not HULL_KEEP[inst:GetAttribute("Part")]
+	end
+	return folder == "FaceSweat" and inst:IsA("BasePart")
+end
+
+local function setHull(rec, on)
+	rec.hull = on or nil
+	if not on then
+		unhideSection(rec, "Hull")
+		return
+	end
+	local look = rec.model:FindFirstChild("BoxerLook")
+	for _, name in ipairs({ "Muscles", "FaceSweat" }) do
+		local f = look and look:FindFirstChild(name)
+		if f then
+			for _, d in ipairs(f:GetDescendants()) do
+				if hullTrims(d, name) then
+					hideInst(rec, d, "Hull")
+				end
+			end
 		end
 	end
 end
@@ -726,7 +772,8 @@ function makePiece(rec, name, piece, bodyLod)
 	if not api.textures and os.clock() >= api.texRetryAt then
 		api.textures = true -- textures failed a while ago: try them again (memory may have been freed)
 	end
-	if tex and AnatomyClient.Settings.textures and api.textures then
+	local S = AnatomyClient.Settings
+	if tex and S.textures and api.textures and (bodyLod == "full" or not S.texturesFullOnly) then
 		local w, h = tex.w or (tex.size and tex.size[1]) or 256, tex.h or (tex.size and tex.size[2]) or 256
 		local buf
 		local make = rawget(tex, "make")
@@ -963,6 +1010,13 @@ local function onCreateFailed(err)
 	return true
 end
 
+-- colour textures for pieces built at this level of detail right now (the Graphics level's textures /
+-- texturesFullOnly, and the API not paused)
+local function texturesFor(lod)
+	local S = AnatomyClient.Settings
+	return S.textures == true and api.textures and (lod == "full" or not S.texturesFullOnly)
+end
+
 local function runJob(job)
 	local rec, section, lod = job.rec, job.section, job.lod
 	local def = registry[section]
@@ -980,6 +1034,7 @@ local function runJob(job)
 		return
 	end
 	local t0 = os.clock()
+	job.tex = texturesFor(lod)
 	sliceStart = os.clock()
 	currentJob = job
 	MeshKit.SetTick(tick)
@@ -1112,6 +1167,7 @@ local function runJob(job)
 	unhideSection(rec, section)
 	st.pieces = pieces
 	st.sig, st.lod, st.active, st.skipped = job.sig, lod, true, nil
+	st.tex = job.tex
 	st.rules = rulesFor(def, look, lod, result)
 	st.landmarks = landmarksOf(result, section)
 	st.builtAt = os.clock()
@@ -1158,6 +1214,27 @@ local function npcsAllowed()
 		log("profile in: NPC meshes allowed")
 	end
 	return npcsIn
+end
+
+-- the far hull for every tracked NPC (also while the Editable APIs are off: evaluate does nothing then)
+local function hullPass()
+	local range = AnatomyClient.Settings.hullRange
+	local cam = workspace.CurrentCamera
+	local camPos = cam and cam.CFrame.Position or Vector3.zero
+	local lp = Players.LocalPlayer
+	for model, rec in pairs(records) do
+		local want = false
+		if range < math.huge and not rec.dead and (lp == nil or model ~= lp.Character) then
+			local body = rec.sections.Body
+			if not (body and body.active) and not CollectionService:HasTag(model, "Preview") and not isOpponent(model) then
+				local pos = rootPos(model)
+				want = pos ~= nil and (pos - camPos).Magnitude > range * (rec.hull and 0.9 or 1)
+			end
+		end
+		if want ~= (rec.hull == true) then
+			setHull(rec, want)
+		end
+	end
 end
 
 -- decide every model's level of detail and queue the sections that need (re)building
@@ -1270,6 +1347,9 @@ local function evaluate()
 			end
 			local up = rec.lod == nil or (wanted ~= nil and LOD_RANK[wanted] > LOD_RANK[rec.lod])
 			local hold = up and S.promoteHold or S.demoteHold
+			if up and rec.lod == nil then
+				hold = math.min(hold, DEFAULTS.promoteHold) -- (a first mesh never waits longer than at High)
+			end
 			-- a first decision is immediate for the local character, the fight opponent and previews (their
 			-- meshes must show at once); an NPC's first level waits promoteHold like any promotion, which
 			-- also covers the frame between the profile arriving (npcsAllowed) and the menu moving the camera
@@ -1297,12 +1377,21 @@ local function evaluate()
 				local sig = rec.sigs[section]
 				local busy = st and st.job and not st.job.cancelled
 				local fresh = st and (st.active or st.skipped) and st.sig == sig and st.lod == want
+				-- built without colour textures that the level now wants (a Graphics level climbed back up): built
+				-- again, behind every other build (a level that wants fewer textures keeps what is built)
+				local retex = fresh and st.active and not st.tex and texturesFor(want)
+				if retex then
+					fresh = false
+				end
 				if not fresh and not (busy and st.job.sig == sig and st.job.lod == want) then
 					if busy then
 						st.job.cancelled = true
 					end
+					-- a lower level for a section that is built and current (out of the full-detail slots, a lower
+					-- Graphics level): it only saves memory and triangles, so it waits behind every other build
+					local down = retex or (st ~= nil and st.active == true and st.sig == sig and LOD_RANK[st.lod] ~= nil and LOD_RANK[want] < LOD_RANK[st.lod])
 					rec.sections[section] = st or { pieces = {} }
-					rec.sections[section].job = { rec = rec, section = section, lod = want, sig = sig, look = rec.look, queued = now }
+					rec.sections[section].job = { rec = rec, section = section, lod = want, sig = sig, look = rec.look, queued = now, down = down }
 				end
 			end
 		end
@@ -1320,7 +1409,7 @@ local function nextJob()
 			for section, st in pairs(rec.sections) do
 				local job = st.job
 				if job and not job.cancelled and not job.running and os.clock() - (job.retryAt or -10) >= 2 then
-					local k = (rec.priority or 2) * 1e6 + math.min(rec.dist or 1e5, 99999) * 10 + (SECTION_ORDER[section] or 5)
+					local k = (job.down and 3 or rec.priority or 2) * 1e6 + math.min(rec.dist or 1e5, 99999) * 10 + (SECTION_ORDER[section] or 5)
 					if not bestKey or k < bestKey then
 						best, bestKey = job, k
 					end
@@ -1477,8 +1566,11 @@ end
 -- welds whose attach part was replaced (head swap, respawned limb): re-attach to the new part; pieces
 -- something else destroyed: give the section back to the round-1 parts (and rebuild it); hidden
 -- round-1 instances that were destroyed (Builder rebuilds its folders) are forgotten
-local function maintain()
-	for model, rec in pairs(records) do
+-- One record at a time, a few per frame (heartbeat): every record is checked about twice a second, as
+-- before, without the old burst of a .Parent read for every hidden part of every character in one frame
+-- (~4,600 at the gym)
+local function maintainRec(model, rec)
+	do
 		for inst in pairs(rec.hidden) do
 			if inst.Parent == nil then
 				rec.hidden[inst] = nil
@@ -1520,17 +1612,47 @@ local function maintain()
 	end
 end
 
+local maintainKey = nil -- the record maintainSome checked last
+local recordCount = 0
+local function maintainSome(n)
+	if maintainKey ~= nil and records[maintainKey] == nil then
+		maintainKey = nil -- (that record went away: next() needs a key still in the table)
+	end
+	for _ = 1, n do
+		local model, rec = next(records, maintainKey)
+		maintainKey = model
+		if model == nil then
+			return
+		end
+		maintainRec(model, rec)
+	end
+end
+
 local function heartbeat()
+	-- every record about every 30 frames (half a second at 60 FPS)
+	local ok0, err0 = pcall(maintainSome, math.max(1, math.ceil(recordCount / 30)))
+	if not ok0 then
+		maintainKey = nil
+		warnOnce("maintain", "maintain error:", err0)
+	end
 	local now = os.clock()
 	if now - lastEval < 0.5 then
 		return
 	end
 	lastEval = now
+	local n = 0
+	for _ in pairs(records) do
+		n += 1
+	end
+	recordCount = n
 	local ok, err = pcall(evaluate)
 	if not ok then
 		warnOnce("eval", "scheduler error:", err)
 	end
-	pcall(maintain)
+	local okH, errH = pcall(hullPass)
+	if not okH then
+		warnOnce("hull", "far hull error:", errH)
+	end
 end
 
 ------------------------------------------------------------------------
@@ -1593,6 +1715,25 @@ local function boot()
 	for k, v in pairs(cfg) do
 		if DEFAULTS[k] ~= nil and not userSet[k] and AnatomyClient.Settings[k] == DEFAULTS[k] then
 			AnatomyClient.Settings[k] = v
+		end
+	end
+	-- the Graphics level picks the detail preset and keeps following it: Auto's steps (Perf.Changed) and the
+	-- player's choice (High on Auto and High picked by name are different presets at the same level)
+	local pm = script.Parent:FindFirstChild("Perf")
+	if pm and pm:IsA("ModuleScript") then
+		local okP, mod = pcall(require, pm)
+		if okP and type(mod) == "table" and type(mod.Level) == "function" then
+			Perf = mod
+			if mod.Changed then
+				table.insert(conns, mod.Changed:Connect(followPerf))
+			end
+			local lp = Players.LocalPlayer
+			if lp then
+				table.insert(conns, lp:GetAttributeChangedSignal("GfxDetail"):Connect(function()
+					task.defer(followPerf) -- after Perf has re-read the choice
+				end))
+			end
+			followPerf()
 		end
 	end
 	findGenerators()
@@ -1700,15 +1841,27 @@ end
 
 -- graphics detail presets: SetDetail("full" | "medium" | "low") writes these knobs; "auto" (or anything
 -- else) puts back Config.Anatomy's values. Takes effect on the next evaluation (a fraction of a second);
--- pieces keep the texture choice they were built with until they are rebuilt.
+-- pieces keep the texture choice they were built with until they are rebuilt. The module picks the
+-- preset from the Graphics level itself (Perf, see followPerf): Low -> low, Medium -> medium, High on
+-- Auto -> Config.Anatomy's values, High picked by name -> full. A SetDetail call with a preset name
+-- (tools, tests) takes over until SetDetail("auto").
+--   textures / texturesFullOnly: Medium paints colour textures for full-detail pieces only (the medium /
+--     low ones, 50+ studs away, keep the vertex colours the textures are rasterised from: half a medium
+--     character's build time is its head and hair textures); Low paints none
+--   promoteHold: how long a character must want a higher level before it is rebuilt (a camera swinging
+--     between training stations does not start a full-detail build for every face it passes)
+--   lodRange: Medium and Low keep low-detail meshes out to 160 / 140 studs (the gym's far end): a far
+--     part-built character puts ~85 parts on screen, its low-detail meshes ~6 (and ~0.2 MB, a tenth of a
+--     second to build); hullRange: the far hull above for whoever is still part-built past it
 AnatomyClient.DETAIL = {
-	full = { maxFull = 10, fullRange = 90, lodRange = 200, frameBudget = 0.004, textures = true },
-	medium = { maxFull = 4, fullRange = 50, lodRange = 120, frameBudget = 0.002, textures = true },
-	low = { maxFull = 1, fullRange = 30, lodRange = 80, frameBudget = 0.0015, textures = false },
+	full = { maxFull = 10, fullRange = 90, lodRange = 200, frameBudget = 0.004, textures = true, texturesFullOnly = false, promoteHold = 1.5, hullRange = math.huge },
+	medium = { maxFull = 4, fullRange = 50, lodRange = 160, frameBudget = 0.002, textures = true, texturesFullOnly = true, promoteHold = 3, hullRange = 90 },
+	low = { maxFull = 1, fullRange = 30, lodRange = 140, frameBudget = 0.0015, textures = false, texturesFullOnly = true, promoteHold = 4, hullRange = 45 },
 }
-function AnatomyClient.SetDetail(level)
-	ensureStarted()
+local activePreset = "auto" -- the preset the knobs hold now
+local function writePreset(level)
 	local preset = AnatomyClient.DETAIL[level]
+	activePreset = preset and level or "auto"
 	local S = AnatomyClient.Settings
 	for k in pairs(AnatomyClient.DETAIL.full) do
 		local v
@@ -1727,7 +1880,52 @@ function AnatomyClient.SetDetail(level)
 		userSet[k] = preset ~= nil or nil
 	end
 	lastEval = 0
+	return preset ~= nil
+end
+
+-- the Graphics level (Perf) picks the preset; a level change only rewrites the knobs: what was built stays
+-- until evaluate decides otherwise (a demotion waits demoteHold and then queues behind every other build,
+-- nextJob), so stepping down never starts a storm of rebuilds on a device that is already struggling
+local manualDetail = false -- SetDetail chose a preset by hand: Perf no longer decides
+local perfPreset = nil -- the preset the Graphics level last picked
+function followPerf()
+	if manualDetail or not Perf then
+		return
+	end
+	local okL, l = pcall(Perf.Level)
+	l = okL and tonumber(l) or 3
+	local want
+	if l <= 1 then
+		want = "low"
+	elseif l == 2 then
+		want = "medium"
+	else
+		local okA, auto = pcall(function()
+			return Perf.Auto == nil or Perf.Auto()
+		end)
+		want = (okA and auto == false) and "full" or "auto"
+	end
+	if want ~= perfPreset then
+		perfPreset = want
+		writePreset(want)
+		log("graphics level", l, "-> preset", want)
+	end
+end
+
+function AnatomyClient.SetDetail(level)
+	ensureStarted()
+	manualDetail = AnatomyClient.DETAIL[level] ~= nil
+	writePreset(level)
+	if not manualDetail then
+		perfPreset = nil
+		followPerf()
+	end
 	return true
+end
+
+-- the preset the module runs now ("full" | "medium" | "low" | "auto"), and whether it follows the Graphics level
+function AnatomyClient.Detail()
+	return activePreset, not manualDetail and Perf ~= nil
 end
 
 ------------------------------------------------------------------------
@@ -1956,41 +2154,49 @@ function AnatomyClient.SetMorphs(model, section, piece, weights)
 		return true
 	end
 	-- only the vertices of the blend shapes whose weight moved are rewritten (all of them after offsets
-	-- were written elsewhere)
+	-- were written elsewhere). The offsets are running sums: a call adds (new - old weight) x delta for the
+	-- shapes that moved instead of summing every shape again (a body piece carries ~50 shapes, a call moves a
+	-- few); rebuilt from scratch with every full write and every 256th call (no drift)
 	local all = pr.morphDirty == true
 	pr.morphDirty = nil
+	ms.calls = (ms.calls or 0) + 1
+	if ms.calls % 256 == 0 then
+		all = true
+	end
 	ms.stamp += 1
 	local stamp, mark = ms.stamp, ms.mark
+	local ox, oy, oz, slot = ms.ox, ms.oy, ms.oz, ms.slot
+	if all then
+		for k = 1, #ms.ids do
+			ox[k], oy[k], oz[k] = 0, 0, 0
+		end
+	end
 	for name, mo in pairs(morphs) do
 		local w0, w1 = ms.last[name], weights[name]
 		w0 = type(w0) == "number" and w0 or 0
 		w1 = type(w1) == "number" and w1 or 0
-		if (all or w0 ~= w1) and mo.ids then
-			for _, i in ipairs(mo.ids) do
-				local sl = ms.slot[i]
-				if sl then
+		local ids = mo.ids
+		if ids and (all or w0 ~= w1) then
+			local d = mo.d
+			local dw = all and w1 or (w1 - w0)
+			if d and dw ~= 0 then
+				for k, i in ipairs(ids) do
+					local sl = slot[i]
+					ox[sl] += d[k * 3 - 2] * dw
+					oy[sl] += d[k * 3 - 1] * dw
+					oz[sl] += d[k * 3] * dw
 					mark[sl] = stamp
+				end
+			else
+				for _, i in ipairs(ids) do
+					mark[slot[i]] = stamp
 				end
 			end
 		end
 	end
 	table.clear(ms.last)
-	local ox, oy, oz, slot = ms.ox, ms.oy, ms.oz, ms.slot
-	for k = 1, #ms.ids do
-		ox[k], oy[k], oz[k] = 0, 0, 0
-	end
 	for name, w in pairs(weights) do
 		ms.last[name] = w
-		local mo = morphs[name]
-		if mo and type(w) == "number" and w ~= 0 and mo.ids and mo.d then
-			local d = mo.d
-			for k, i in ipairs(mo.ids) do
-				local sl = slot[i]
-				ox[sl] += d[k * 3 - 2] * w
-				oy[sl] += d[k * 3 - 1] * w
-				oz[sl] += d[k * 3] * w
-			end
-		end
 	end
 	local vid, em = pr.info.vid, pr.em
 	local pin = pinsOf(pr)
@@ -2157,8 +2363,10 @@ function AnatomyClient.Diagnose()
 	table.sort(secs)
 	add("generators:", #secs > 0 and table.concat(secs, " ") or "NONE")
 	local S = AnatomyClient.Settings
-	add(string.format("settings: enabled %s maxFull %d fullRange %d lodRange %d frameBudget %.4f textures %s | NPCs %s", tostring(S.enabled), S.maxFull, S.fullRange, S.lodRange, S.frameBudget, tostring(S.textures),
-		npcsIn and "allowed" or "waiting for the profile"))
+	add(string.format("settings: enabled %s maxFull %d fullRange %d lodRange %d frameBudget %.4f textures %s%s | NPCs %s", tostring(S.enabled), S.maxFull, S.fullRange, S.lodRange, S.frameBudget, tostring(S.textures),
+		S.texturesFullOnly and " (full detail only)" or "", npcsIn and "allowed" or "waiting for the profile"))
+	add(string.format("detail preset: %s (%s) | far hull past %s studs", activePreset, (not manualDetail and Perf ~= nil) and "follows the Graphics level" or "set by hand",
+		S.hullRange < math.huge and tostring(S.hullRange) or "never"))
 	local st = AnatomyClient.Status()
 	add(string.format("models %d | built full %d medium %d low %d | queued %d | hidden %d | skipped %d | cache %d (%.1f MB)", st.models, st.built.full, st.built.medium, st.built.low, st.queued, st.hidden, st.skipped, st.cache, st.cacheMB))
 	add(string.format("memory pressure: fails %d cap %s live %d bytes", pressure.fails, pressure.cap < math.huge and tostring(math.floor(pressure.cap)) or "none", st.pressure.live))
@@ -2197,7 +2405,7 @@ function AnatomyClient.Status()
 		pressure = { fails = pressure.fails, cap = pressure.cap < math.huge and math.floor(pressure.cap) or nil, live = math.floor(liveCost()) },
 		skipped = 0, cacheMB = math.floor(cacheBytes / 104857.6) / 10, apiFails = api.fails,
 		retryIn = api.state == "disabled" and math.max(0, math.floor((api.retryAt - os.clock()) * 10) / 10) or nil,
-		npcsWaiting = not npcsIn }
+		npcsWaiting = not npcsIn, preset = activePreset }
 	for name, def in pairs(registry) do
 		s.sections[name] = def.failed and "failed" or "ok"
 	end
@@ -2205,6 +2413,9 @@ function AnatomyClient.Status()
 		s.models += 1
 		for _ in pairs(rec.hidden) do
 			s.hidden += 1
+		end
+		if rec.hull then
+			s.hulls = (s.hulls or 0) + 1
 		end
 		for _, st in pairs(rec.sections) do
 			if st.active and st.lod then
