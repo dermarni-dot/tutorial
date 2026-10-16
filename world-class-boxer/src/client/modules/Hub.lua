@@ -1327,7 +1327,7 @@ R.Sponsors = function(body, P)
 				act(confirming and "CONFIRM: END DEAL" or "END DEAL", confirming and T.red or T.panel2, function()
 					if not confirming then
 						dropConfirm = slot
-						Hub.Render()
+						Hub.RenderNow()
 						return
 					end
 					dropConfirm = nil
@@ -1433,7 +1433,7 @@ R.Life = function(body, P)
 	end
 	table.insert(list, act("HOMES & UPGRADES", T.panel2, function()
 		tab = "Shop"
-		Hub.Render()
+		Hub.RenderNow()
 	end, 190))
 	buttons(hc, list, 34)
 	if home then
@@ -1524,20 +1524,20 @@ R.Rankings = function(body, P)
 	local top = UI.Row(body, navH + 2)
 	local prev = UI.Button(top, "", { Size = UDim2.fromOffset(navH, navH) }, function()
 		rankClass = math.max(1, rankClass - 1)
-		Hub.Render()
+		Hub.RenderNow()
 	end)
 	UI.Icon(prev, "left", 12, T.text, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5) })
 	UI.Text(top, string.upper(Config.WeightClasses[rankClass].name), { Face = "display", TextSize = 24, Size = UDim2.fromOffset(190, 38), TextXAlignment = Enum.TextXAlignment.Center,
 		AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false })
 	local nextB = UI.Button(top, "", { Size = UDim2.fromOffset(navH, navH) }, function()
 		rankClass = math.min(#Config.WeightClasses, rankClass + 1)
-		Hub.Render()
+		Hub.RenderNow()
 	end)
 	UI.Icon(nextB, "right", 12, T.text, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5) })
 	for _, org in ipairs(Config.Orgs) do
 		UI.Button(top, org, { Size = UDim2.fromOffset(72, navH), BackgroundColor3 = org == rankOrg and T.gold or T.panel2 }, function()
 			rankOrg = org
-			Hub.Render()
+			Hub.RenderNow()
 		end)
 	end
 	local myId = renderId
@@ -1725,7 +1725,7 @@ local function styleTab(name, b)
 	end
 end
 
--- rebuilds the open tab now (Hub.Render asks for it: coalesced)
+-- rebuilds the open tab now: the hub's own clicks and pad steps (the selection moves on what they drew)
 Hub.Renders = 0 -- how many times a tab was rebuilt (diagnostics)
 function Hub.RenderNow()
 	local P = State.P
@@ -1750,28 +1750,18 @@ function Hub.RenderNow()
 	end)
 end
 
--- a tab rebuild: hundreds of GUI objects, and the Body tab paints its body map. An action usually asks
--- twice (its own Render after the reply and the profile push it causes, a few frames apart), so requests
--- are coalesced: the first rebuild runs at the end of the frame, a second within RENDER_GAP waits for the
--- gap and then shows the newest profile once
-local RENDER_GAP = 0.2
-local renderQueued, lastRender = false, -math.huge
+-- a rebuild from outside (ClientMain on every profile push): hundreds of GUI objects, and the Body tab paints
+-- its body map. The pushes a frame brings are one rebuild at the end of that frame, with the newest profile
+local renderQueued = false
 function Hub.Render()
 	if renderQueued then
 		return
 	end
 	renderQueued = true
-	local function go()
+	task.defer(function()
 		renderQueued = false
-		lastRender = os.clock()
 		Hub.RenderNow()
-	end
-	local wait = lastRender + RENDER_GAP - os.clock()
-	if wait > 0 then
-		task.delay(wait, go)
-	else
-		task.defer(go)
-	end
+	end)
 end
 
 function Hub.Close()
@@ -1796,7 +1786,7 @@ function Hub.Open(which)
 		tab = which
 	end
 	if Hub.IsOpen() then
-		Hub.Render()
+		Hub.RenderNow()
 		return
 	end
 	State.closeAll("Hub")
@@ -1838,7 +1828,7 @@ function Hub.Open(which)
 			b.MouseButton1Click:Connect(function()
 				tab = name
 				content.CanvasPosition = Vector2.zero
-				Hub.Render()
+				Hub.RenderNow()
 			end)
 			tabButtons[name] = b
 		end
@@ -1883,7 +1873,7 @@ function Hub.Open(which)
 		local i = table.find(flat, tab) or 1
 		tab = flat[(i - 1 + (k == Enum.KeyCode.ButtonR1 and 1 or -1)) % #flat + 1]
 		content.CanvasPosition = Vector2.zero
-		Hub.Render()
+		Hub.RenderNow()
 		local b = tabButtons[tab]
 		if b and UI.IsPad() then
 			GuiService.SelectedObject = b
@@ -1892,7 +1882,7 @@ function Hub.Open(which)
 	shade.Destroying:Connect(function()
 		padConn:Disconnect()
 	end)
-	Hub.Render()
+	Hub.RenderNow()
 end
 
 function Hub.Toggle()

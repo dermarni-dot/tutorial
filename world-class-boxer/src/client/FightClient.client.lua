@@ -1738,12 +1738,20 @@ do
 			end
 			-- the menu pad: whenever the fight HUD is up on touch (between rounds too), not while down
 			local mp = touchUI and gui.Enabled and not F.down and not F.menuPaused
-			movesPad.Visible = mp
-			movesPad.Position = UDim2.fromOffset(132, hudTop + 8)
+			if movesPad.Visible ~= mp then
+				movesPad.Visible = mp
+			end
+			-- (this runs every frame on a touch screen: the pads move only when the HUD's top does)
+			if KM.padsTop ~= hudTop then
+				KM.padsTop = hudTop
+				movesPad.Position = UDim2.fromOffset(132, hudTop + 8)
+				KM.sprintPad.Position = UDim2.fromOffset(236, hudTop + 8)
+			end
 			-- the sprint toggle with the pads (live rounds only); the pads leaving the picture (a knockdown, the
 			-- bell, a key pressed on a tablet) let a sprint the toggle started go, as a released key would
-			KM.sprintPad.Visible = pads
-			KM.sprintPad.Position = UDim2.fromOffset(236, hudTop + 8)
+			if KM.sprintPad.Visible ~= pads then
+				KM.sprintPad.Visible = pads
+			end
 			if not pads and KM.touchSprint then
 				KM.touchSprint = false
 				if KM.ringSprint then
