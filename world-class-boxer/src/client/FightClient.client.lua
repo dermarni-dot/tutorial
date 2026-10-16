@@ -1936,6 +1936,41 @@ end
 
 -- transient FX state (decays every frame)
 local FX = { shake = 0, hitBlur = 0, fovKick = 0, roll = 0, rollVel = 0, hitStop = 0, grade = 0, heartAt = 0, downBlur = 0, vig = -1, vigTier = -1, eyeL = -1, eyeR = -1 }
+-- per Graphics level (BoxerClient.Perf: 1 Low, 2 Medium, 3 High): what the fight's own effects cost. Every
+-- level keeps what tells the player something - the impact flash on every landed punch, the concussion
+-- blur / colour drain / vignette / swollen-eye shade, the red flash, the camera kick, the HUD - and the
+-- lower ones drop the extras: the light each impact flashes (light = false), part of the sweat / blood
+-- spray (spray), blood drops left on the canvas (blood), the blur pulse on a heavy shot taken (hitBlur;
+-- the red flash and the lurch stay), how often ropes in front of the camera are checked (fade, seconds)
+-- and how often the built-in crowd bobs (crowdEvery, frames; VenueFX runs its own crowd)
+FX.LEVELS = {
+	{ light = false, spray = 0.5, blood = 4, hitBlur = false, fade = 0.16, crowdEvery = 4 },
+	{ light = true, spray = 0.75, blood = 8, hitBlur = true, fade = 0.1, crowdEvery = 2 },
+	{ light = true, spray = 1, blood = 12, hitBlur = true, fade = 0.08, crowdEvery = 2 },
+}
+FX.lv = FX.LEVELS[3]
+task.spawn(function()
+	-- (in the background: the fight UI never waits on it; High until it answers)
+	local folder = script.Parent:FindFirstChild("BoxerClient") or script.Parent:WaitForChild("BoxerClient", 10)
+	local m = folder and (folder:FindFirstChild("Perf") or folder:WaitForChild("Perf", 10))
+	local ok, Perf = false, nil
+	if m then
+		ok, Perf = pcall(require, m)
+	end
+	if ok and type(Perf) == "table" and Perf.Level and Perf.Changed then
+		FX.pick = function()
+			FX.lv = FX.LEVELS[math.clamp(tonumber(Perf.Level()) or 3, 1, 3)]
+			-- a step down mid-fight: the canvas sheds the blood drops over the new cap at once
+			local blood = workspace:FindFirstChild("FightBlood")
+			local drops = blood and blood:GetChildren() or {}
+			for i = 1, #drops - FX.lv.blood do
+				drops[i]:Destroy()
+			end
+		end
+		FX.pick()
+		Perf.Changed:Connect(FX.pick)
+	end
+end)
 
 -- how dark a swollen eye's side of the screen gets: nothing until the lid starts to close (0.45),
 -- nearly black when it is shut (CONTRACTS 8: face damage 0..1), scaled by Config.ScreenFX
@@ -1991,7 +2026,7 @@ end
 
 local bloodFolder
 local function bloodDrop(model)
-	if not F.arena or #(bloodFolder and bloodFolder:GetChildren() or {}) >= 12 then
+	if not F.arena or #(bloodFolder and bloodFolder:GetChildren() or {}) >= FX.lv.blood then
 		return
 	end
 	local root = model and model:FindFirstChild("HumanoidRootPart")
@@ -2043,11 +2078,12 @@ local function spray(model, partName, dir, amount, bleed)
 	-- point the attachment's up axis along the punch so EmissionDirection Top sprays off the far side
 	att.WorldCFrame = CFrame.lookAt(pos, pos + dir) * CFrame.Angles(-math.pi / 2, 0, 0)
 	local wet = (model:GetAttribute("Sweat") or 0.3) + 0.25
+	local share = FX.lv.spray
 	if sweat then
-		sweat:Emit(math.floor(4 + amount * 10 * wet))
+		sweat:Emit(math.floor((4 + amount * 10 * wet) * share))
 	end
 	if bleed and blood then
-		blood:Emit(math.floor(2 + amount * 6))
+		blood:Emit(math.max(1, math.floor((2 + amount * 6) * share)))
 		if math.random() < 0.35 + amount * 0.3 then
 			bloodDrop(model)
 		end
@@ -2086,21 +2122,30 @@ function Impact.flash(model, partName, strength, counter)
 		e.Color = ColorSequence.new(Color3.new(1, 1, 1), Color3.fromRGB(255, 214, 150))
 		e.Transparency = NumberSequence.new({ NumberSequenceKeypoint.new(0, 0.1), NumberSequenceKeypoint.new(0.5, 0.35), NumberSequenceKeypoint.new(1, 1) })
 		e.Parent = att
+		fx = { att = att, emitter = e }
+		Impact.fx[part] = fx
+	end
+	-- the light the flash throws on the faces (High / Medium; the level can change mid-fight)
+	if FX.lv.light and not fx.light then
 		local light = Instance.new("PointLight")
 		light.Name = "ImpactLight"
 		light.Brightness = 0
 		light.Range = 7
 		light.Color = Color3.fromRGB(255, 236, 200)
-		light.Parent = att
-		fx = { att = att, emitter = e, light = light }
-		Impact.fx[part] = fx
+		light.Parent = fx.att
+		fx.light = light
+	elseif fx.light and not FX.lv.light then
+		fx.light:Destroy()
+		fx.light = nil
 	end
 	strength = math.clamp(strength or 0.5, 0.2, 1.6)
 	local size = 1.1 + strength * 1.6
 	fx.emitter.Size = NumberSequence.new({ NumberSequenceKeypoint.new(0, size), NumberSequenceKeypoint.new(1, size * 0.4) })
 	fx.emitter:Emit(counter and 3 or (strength > 0.9 and 2 or 1))
-	fx.light.Brightness = 1.5 + strength * 2.5
-	TweenService:Create(fx.light, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Brightness = 0 }):Play()
+	if fx.light then
+		fx.light.Brightness = 1.5 + strength * 2.5
+		TweenService:Create(fx.light, TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Brightness = 0 }):Play()
+	end
 end
 
 function Impact.clear()
@@ -2338,7 +2383,7 @@ local function startVenueFx(arena)
 		Crowd.sweeping = math.max(0, Crowd.sweeping - dt)
 		frame += 1
 		local t = os.clock()
-		if frame % 2 == 0 then
+		if frame % FX.lv.crowdEvery == 0 then
 			for _, c in ipairs(Crowd.fans) do
 				local up = math.max(0, math.sin(t * c.speed + c.phase)) * Crowd.excitement * 1.2
 				local off = CFrame.new(0, up, 0)
@@ -2524,7 +2569,11 @@ local function collectRingParts()
 	end
 	for _, d in ipairs(F.arena:GetDescendants()) do
 		if d:IsA("BasePart") and FADE_NAMES[d.Name] then
-			table.insert(ringParts, d)
+			-- what the per-check test needs from the part, read once: ropes run along their length (Z),
+			-- Cylinder parts (turnbuckles) along X, posts and pads stand upright (Y)
+			local axis = d.Name == "Rope" and "Z" or (d.Name == "Turnbuckle" and "X" or "Y")
+			local half = (axis == "Z" and d.Size.Z or (axis == "X" and d.Size.X or d.Size.Y)) / 2
+			table.insert(ringParts, { p = d, axis = axis, half = half, thr = d.Name == "Rope" and 1.9 or 1.6 })
 		end
 	end
 end
@@ -2560,19 +2609,15 @@ local function updateOccluders(camPos, targets)
 		return
 	end
 	table.clear(fadeHit)
-	for _, p in ipairs(ringParts) do
+	for _, e in ipairs(ringParts) do
+		local p = e.p
 		if p.Parent then
-			-- ropes run along their length (Z); posts and pads stand upright (Y)
-			local axis, half, thr
-			if p.Name == "Rope" then
-				axis, half, thr = p.CFrame.LookVector, p.Size.Z / 2, 1.9
-			elseif p.Name == "Turnbuckle" then
-				-- Cylinder parts run along their X axis
-				axis, half, thr = p.CFrame.RightVector, p.Size.X / 2, 1.6
-			else
-				axis, half, thr = p.CFrame.UpVector, p.Size.Y / 2, 1.6
-			end
-			local a, b = p.Position - axis * half, p.Position + axis * half
+			-- (one CFrame read a part: a rope can sway, its size and kind do not change)
+			local cf = p.CFrame
+			local axis = e.axis == "Z" and cf.LookVector or (e.axis == "X" and cf.RightVector or cf.UpVector)
+			local half, thr = e.half, e.thr
+			local pos = cf.Position
+			local a, b = pos - axis * half, pos + axis * half
 			for _, target in ipairs(targets) do
 				local d, s = segSegDist(camPos, target, a, b)
 				if d < thr and s < 0.93 then
@@ -2598,6 +2643,20 @@ local function updateOccluders(camPos, targets)
 	end
 end
 
+-- one HUD panel's danger pulse: the head and health bars at danger (keeping their value colour), stamina
+-- red when the tank is nearly empty (a function, not a table per frame)
+function FX.pulse(panel, t, now)
+	if t >= 2 then
+		local p = math.sin(now * (t >= 3 and 9 or 5)) * 0.5 + 0.5
+		panel.head.fill.BackgroundColor3 = rampColor(panel.head.v):Lerp(WHITE, p * 0.4)
+		panel.health.fill.BackgroundColor3 = rampColor(panel.health.v):Lerp(WHITE, p * 0.3)
+	end
+	if panel.stam.v < 0.25 and F.active then
+		local p = math.sin(now * 7) * 0.5 + 0.5
+		panel.stam.fill.BackgroundColor3 = T.red:Lerp(WHITE, p * 0.45)
+	end
+end
+
 -- per-frame screen FX from the latest state (tier, concussion) plus the transient kicks
 local function updateFX(dt, now)
 	local fx = fxScale()
@@ -2610,23 +2669,38 @@ local function updateFX(dt, now)
 	FX.rollVel += (-FX.roll * 60 - FX.rollVel * 9) * dt
 	FX.roll += FX.rollVel * dt
 	local eyeL, eyeR = math.clamp(tonumber(me.eyeL) or 0, 0, 1), math.clamp(tonumber(me.eyeR) or 0, 0, 1)
+	-- (each post effect is a full-screen pass: it is switched off while it would change nothing, on every
+	-- level - a fight without concussion never pays for either)
 	if blurFx then
 		-- a closing eye also smears the whole picture a little (Roblox blur is full-screen)
 		local eyeBlur = math.max(0, math.max(eyeL, eyeR) - 0.6) * 4
-		local size = (Config.Concussion.blurPerTier * tier + Config.Concussion.blurPerConc * conc + FX.hitBlur + FX.downBlur + eyeBlur) * fx
-		blurFx.Size = math.clamp(size, 0, 24)
+		local size = math.clamp((Config.Concussion.blurPerTier * tier + Config.Concussion.blurPerConc * conc + FX.hitBlur + FX.downBlur + eyeBlur) * fx, 0, 24)
+		local on = size > 0.01
+		if blurFx.Enabled ~= on then
+			blurFx.Enabled = on
+		end
+		if on then
+			blurFx.Size = size
+		end
 	end
 	if gradeFx then
 		local C = Config.Concussion
-		gradeFx.Saturation = math.clamp(-(C.desatPerTier * tier + C.desatPerConc * conc) * fx - FX.grade * 0.3 * fx, -1, 0)
-		gradeFx.Contrast = 0.04 * tier * fx
-		gradeFx.Brightness = -0.06 * FX.grade * fx
-		if tier >= 3 then
-			-- out on your feet: the picture pulses red with the heartbeat
-			local pulse = (math.sin(now * 6) * 0.5 + 0.5) * 0.25 * fx
-			gradeFx.TintColor = Color3.new(1, 1 - pulse, 1 - pulse)
-		elseif gradeFx.TintColor ~= WHITE then
-			gradeFx.TintColor = WHITE
+		local sat = math.clamp(-(C.desatPerTier * tier + C.desatPerConc * conc) * fx - FX.grade * 0.3 * fx, -1, 0)
+		local con, bri = 0.04 * tier * fx, -0.06 * FX.grade * fx
+		local tint = tier >= 3 and fx > 0
+		local on = tint or math.abs(sat) > 0.001 or math.abs(con) > 0.001 or math.abs(bri) > 0.001
+		if gradeFx.Enabled ~= on then
+			gradeFx.Enabled = on
+		end
+		if on then
+			gradeFx.Saturation, gradeFx.Contrast, gradeFx.Brightness = sat, con, bri
+			if tint then
+				-- out on your feet: the picture pulses red with the heartbeat
+				local pulse = (math.sin(now * 6) * 0.5 + 0.5) * 0.25 * fx
+				gradeFx.TintColor = Color3.new(1, 1 - pulse, 1 - pulse)
+			elseif gradeFx.TintColor ~= WHITE then
+				gradeFx.TintColor = WHITE
+			end
 		end
 	end
 	local C = Config.Concussion
@@ -2675,21 +2749,10 @@ local function updateFX(dt, now)
 			end
 		end)
 	end
-	-- the HUD head and health bars pulse at danger (keeping their value colour), stamina pulses red
-	-- when the tank is nearly empty
+	-- the HUD head and health bars pulse at danger, stamina when the tank is nearly empty
 	local ot = F.opp and F.oppState and F.oppState.tier or 0
-	for _, pt in ipairs({ { L, tier }, { R, ot } }) do
-		local panel, t = pt[1], pt[2]
-		if t >= 2 then
-			local p = math.sin(now * (t >= 3 and 9 or 5)) * 0.5 + 0.5
-			panel.head.fill.BackgroundColor3 = rampColor(panel.head.v):Lerp(WHITE, p * 0.4)
-			panel.health.fill.BackgroundColor3 = rampColor(panel.health.v):Lerp(WHITE, p * 0.3)
-		end
-		if panel.stam.v < 0.25 and F.active then
-			local p = math.sin(now * 7) * 0.5 + 0.5
-			panel.stam.fill.BackgroundColor3 = T.red:Lerp(WHITE, p * 0.45)
-		end
-	end
+	FX.pulse(L, tier, now)
+	FX.pulse(R, ot, now)
 	crowdMeter.level = math.max(0.15, crowdMeter.level - dt * 0.035)
 	-- a long quiet spell in a round: the crowd gets restless (one strip, rate-limited with the others)
 	if F.active and not F.resting and not F.down and crowdMeter.level < 0.25 then
@@ -2720,6 +2783,9 @@ local function startCamera()
 	collectRingParts()
 	local t0 = os.clock()
 	local targets = {}
+	local function flatDist(a, b)
+		return Vector3.new(a.X - b.X, 0, a.Z - b.Z).Magnitude
+	end
 	camConn = RunService.RenderStepped:Connect(function(dt)
 		cam = workspace.CurrentCamera
 		if cam.CameraType ~= Enum.CameraType.Scriptable then
@@ -2734,7 +2800,7 @@ local function startCamera()
 		end
 		FX.shake = math.max(0, FX.shake - dt * 3)
 		local kick = shakeScale()
-		local sh = Vector3.new(math.random() - 0.5, math.random() - 0.5, 0) * FX.shake * fx * kick
+		local sh = FX.shake > 0 and Vector3.new(math.random() - 0.5, math.random() - 0.5, 0) * FX.shake * fx * kick or Vector3.zero
 		local goal
 		local koModel = F.koTrack
 		if koModel then
@@ -2781,20 +2847,15 @@ local function startCamera()
 			local mid = (me.Position + opp.Position) / 2 + Vector3.new(0, 1.2, 0)
 			-- high 3/4 view from behind your shoulder; pick the side nearer the ring centre
 			local center = F.center or mid
-			local function flatDist(a, b)
-				return Vector3.new(a.X - b.X, 0, a.Z - b.Z).Magnitude
-			end
 			-- auto-framing: the camera backs off as the fighters separate so both stay in the picture
 			local sep = flatDist(me.Position, opp.Position)
 			local back = 6.6 + math.clamp((sep - 4.5) * 0.4, 0, 3)
 			local up = 5.4 + math.clamp((sep - 4.5) * 0.15, 0, 1.2)
 			-- a 3/4 angle (about 40 degrees off the fight line) keeps both fighters readable instead of stacked
-			local function camPos(side)
-				return me.Position - dir * back + right * (side * 5.8) + Vector3.new(0, up, 0)
-			end
 			F.camSide = F.camSide or 1
-			local pos = camPos(F.camSide)
-			local other = camPos(-F.camSide)
+			local behind = me.Position - dir * back
+			local pos = behind + right * (F.camSide * 5.8) + Vector3.new(0, up, 0)
+			local other = behind + right * (-F.camSide * 5.8) + Vector3.new(0, up, 0)
 			if flatDist(other, center) + 3 < flatDist(pos, center) then
 				F.camSide = -F.camSide
 				pos = other
@@ -2833,7 +2894,7 @@ local function startCamera()
 		end
 		cam.FieldOfView = math.clamp((baseFov or 70) + FX.fovKick * fx * kick, 40, 100)
 		fadeClock += dt
-		if fadeClock > 0.08 then
+		if fadeClock > FX.lv.fade then
 			fadeClock = 0
 			table.clear(targets)
 			targets[1] = me.Position + Vector3.new(0, 1.5, 0)
@@ -3320,6 +3381,9 @@ local function stopAssistMove()
 end
 
 local function assistMoveStep()
+	if not pad.assistMoving and not (F.active and not F.down and Gamepad and Gamepad.IsPad()) then
+		return -- (off a gamepad: nothing to look up, every frame of the fight)
+	end
 	local hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
 	local me, opp = getRoot(player.Character), getRoot(F.opp)
 	local level = assistLevel()
@@ -4003,8 +4067,11 @@ local function finish()
 		char:SetAttribute("PredAct", nil)
 		char:SetAttribute("PredActId", nil)
 	end
-	for k in pairs(FX) do
-		FX[k] = 0
+	-- the transient numbers start from rest (FX also holds the level table and its helpers: kept)
+	for k, v in pairs(FX) do
+		if type(v) == "number" then
+			FX[k] = 0
+		end
 	end
 	FX.vig, FX.vigTier = -1, -1
 	FX.eyeL, FX.eyeR = -1, -1
@@ -4290,6 +4357,29 @@ local function overallOf(s)
 end
 
 function handlers.state(msg)
+	local b = msg.b
+	if type(b) == "buffer" and buffer.len(b) >= 42 then
+		-- the packed 10 Hz message (FightEngine:PackState keeps this layout): u16 x100 bars, x1000
+		-- concussion, u8 tiers / flags / eyes
+		local function side(o, tierAt, flagAt)
+			local s = {}
+			for i, name in ipairs({ "hp", "cap", "body", "bodyCap", "stam", "max", "stamCap" }) do
+				s[name] = buffer.readu16(b, o + (i - 1) * 2) / 100
+			end
+			s.conc = buffer.readu16(b, o + 14) / 1000
+			s.tier = buffer.readu8(b, tierAt)
+			s.hurt = buffer.readu8(b, flagAt) % 2 == 1
+			return s
+		end
+		local me, opp = side(2, 20, 21), side(24, 40, 41)
+		me.bal = buffer.readu16(b, 18) / 100
+		me.angle = buffer.readu8(b, 21) >= 2
+		me.eyeL, me.eyeR = buffer.readu8(b, 22) / 100, buffer.readu8(b, 23) / 100
+		msg = { t = "state", time = buffer.readu16(b, 0), me = me, opp = opp }
+	end
+	if type(msg.me) ~= "table" or type(msg.opp) ~= "table" then
+		return
+	end
 	timeText.Text = fmtTime(msg.time)
 	timeText.TextColor3 = (msg.time or 99) <= 10 and T.red or T.text
 	F.me, F.oppState = msg.me, msg.opp
@@ -4361,7 +4451,9 @@ function handlers.hit(msg)
 		FX.rollVel += (msg.hand == "L" and 1 or -1) * (msg.body and 0.15 or 0.6) * sev
 		Impact.rumble(0.35 + sev * 0.6, 0.15 + sev * 0.3, 0.12 + sev * 0.22)
 		if msg.heavy then
-			FX.hitBlur = math.max(FX.hitBlur, 4 + sev * 7)
+			if FX.lv.hitBlur then
+				FX.hitBlur = math.max(FX.hitBlur, 4 + sev * 7)
+			end
 			FX.fovKick = -6 * sev
 			flashFrame(redFlash, 1 - math.clamp(0.25 + sev * 0.25, 0, 0.6) * fx, 0.35)
 		end

@@ -145,6 +145,12 @@ local function quant(v, step)
 	return math.floor(v / step + 0.5) * step
 end
 
+-- slides a fighter by `delta` studs: the root's CFrame carries the whole welded rig (one assembly move),
+-- where Model:PivotTo walks the ~270-part model and moves every part (60% of a spar's server Lua)
+local function shift(F, delta)
+	F.root.CFrame += delta
+end
+
 local function newDamage(seed, mul)
 	local d = { cutSide = 1, cutSide2 = -1, nose = false, age = 0 }
 	for _, k in ipairs(DMG_FIELDS) do
@@ -1733,13 +1739,13 @@ function Fight:Glide(F, goal, speed, onArrive)
 			v = math.min(speed, v + acc * dt, math.sqrt(2 * acc * m))
 			local step = math.max(v, 0.8) * dt
 			if m <= step then
-				F.model:PivotTo(F.root.CFrame + d)
+				shift(F, d)
 				if onArrive then
 					onArrive()
 				end
 				break
 			end
-			F.model:PivotTo(F.root.CFrame + d * (step / m))
+			shift(F, d * (step / m))
 		end
 	end)
 end
@@ -2198,7 +2204,7 @@ function Fight:Separate()
 		local X, v = mv[1], mv[2]
 		local p = X.root.Position
 		local goal = self:ClampToRing(p + v * share)
-		X.model:PivotTo(X.root.CFrame + (goal - p))
+		shift(X, goal - p)
 	end
 end
 
@@ -2228,7 +2234,14 @@ function Fight:UpdateMovement(F, dt)
 	if F.align and F.root and O.root then
 		local dir = flat(O.root.Position - F.root.Position)
 		if dir.Magnitude > 0.05 then
-			F.align.CFrame = CFrame.lookAt(Vector3.zero, dir.Unit)
+			-- a new facing only once it turns by more than about a degree: the goal replicates to every
+			-- client on each change, and physics jitter alone changed it nearly every frame
+			dir = dir.Unit
+			local last = F.alignDir
+			if not last or last:Dot(dir) < 0.99985 then
+				F.alignDir = dir
+				F.align.CFrame = CFrame.lookAt(Vector3.zero, dir)
+			end
 		end
 		F.align.Enabled = F.state ~= "down"
 	end
@@ -2293,7 +2306,7 @@ function Fight:UpdateMovement(F, dt)
 		-- a special's leap / step back (NPCs; the player's client drives its own)
 		if now < F.lungeUntil and F.lungeVel and not F.isPlayer and F.state ~= "down" then
 			local p = F.root.Position
-			F.model:PivotTo(F.root.CFrame + (self:ClampToRing(p + F.lungeVel * dt) - p))
+			shift(F, self:ClampToRing(p + F.lungeVel * dt) - p)
 		end
 		if stumbling and F.stumbleVel and not F.isPlayer and F.state ~= "down" then
 			local p = F.root.Position
@@ -2306,16 +2319,58 @@ function Fight:UpdateMovement(F, dt)
 			else
 				F.stumbleVel *= math.max(0, 1 - dt * 3.5)
 			end
-			F.model:PivotTo(F.root.CFrame + (goal - p))
+			shift(F, goal - p)
 		end
 		local p = F.root.Position
 		local clamped = self:ClampToRing(p)
 		if (clamped - p).Magnitude > 0.5 then
-			F.model:PivotTo(F.root.CFrame + (clamped - p))
+			shift(F, clamped - p)
 		end
 	end
 end
 
+------------------------------------------------------------------------
+-- The 10 Hz state message, packed: 42 bytes in a buffer where the keyed table cost about 370 on the wire
+-- (every key name, every number a double). FightClient (handlers.state) unpacks it into the same time /
+-- me / opp fields; the two must keep this layout. Bars are 0.01 HP / stamina steps, concussion 0.001:
+-- finer than any bar or readout shows.
+--   0 time u16 | me: 2 hp, 4 cap, 6 body, 8 bodyCap, 10 stam, 12 max, 14 stamCap (x100 u16), 16 conc (x1000),
+--   18 bal (x100), 20 tier u8, 21 flags u8 (1 hurt, 2 angle), 22 eyeL, 23 eyeR (x100 u8)
+--   opp: 24 hp, 26 cap, 28 body, 30 bodyCap, 32 stam, 34 max, 36 stamCap (x100), 38 conc (x1000), 40 tier, 41 flags (1 hurt)
+------------------------------------------------------------------------
+local STATE_BYTES = 42
+local function put16(b, o, v, scale)
+	v = tonumber(v) or 0
+	buffer.writeu16(b, o, math.clamp(math.floor(v * scale + 0.5), 0, 65535))
+end
+function Fight:PackState(P, O, time, now)
+	local b = buffer.create(STATE_BYTES)
+	buffer.writeu16(b, 0, math.clamp(time, 0, 65535))
+	for side, X in ipairs({ P, O }) do
+		local o = side == 1 and 2 or 24
+		local vals = { X.health, X.healthCap, X.body, X.bodyCap, X.stamina, X.maxStam, X.stamCap }
+		for i = 1, 7 do
+			put16(b, o + (i - 1) * 2, vals[i], 100)
+		end
+		put16(b, o + 14, X.conc, 1000)
+		local flags = self:IsHurt(X) and 1 or 0
+		if side == 1 then
+			put16(b, 18, X.balance, 100)
+			buffer.writeu8(b, 20, math.clamp(X.tier or 0, 0, 255))
+			if now < X.angleUntil then
+				flags += 2
+			end
+			buffer.writeu8(b, 21, flags)
+			-- swollen eyes: FightClient darkens that side of the screen (CONTRACTS 8: P.dmg 0..1)
+			buffer.writeu8(b, 22, math.clamp(math.floor(quant(X.dmg.leftEye, 0.05) * 100 + 0.5), 0, 100))
+			buffer.writeu8(b, 23, math.clamp(math.floor(quant(X.dmg.rightEye, 0.05) * 100 + 0.5), 0, 100))
+		else
+			buffer.writeu8(b, 40, math.clamp(X.tier or 0, 0, 255))
+			buffer.writeu8(b, 41, flags)
+		end
+	end
+	return b
+end
 ------------------------------------------------------------------------
 -- Per-frame update
 ------------------------------------------------------------------------
@@ -2324,7 +2379,7 @@ function Fight:Update(dt)
 	-- while the Moves & Controls menu holds the round nobody recovers: no stamina, no clearing head, no legs
 	-- coming back (the menu is for reading, not a free breather)
 	local rdt = self.menuHold and 0 or dt
-	for _, F in ipairs({ self.P, self.O }) do
+	for _, F in ipairs(self.pair or { self.P, self.O }) do
 		self:SampleDevice(F, now)
 		if F.state == "punching" and now >= F.busyUntil then
 			F.state = F.blocking and "blocking" or "idle"
@@ -2399,7 +2454,7 @@ function Fight:Update(dt)
 			self.O.ai:Think(now)
 		end
 	end
-	for _, F in ipairs({ self.P, self.O }) do
+	for _, F in ipairs(self.pair or { self.P, self.O }) do
 		if F.blocking then
 			F.blockTime = (F.blockTime or 0) + dt
 		end
@@ -2417,17 +2472,7 @@ function Fight:Update(dt)
 		self.sendAcc = 0
 		local time = math.max(0, math.ceil(self.roundEnd - now))
 		self:SendEach(function(P)
-			local O = self:Other(P)
-			return {
-				t = "state",
-				time = time,
-				me = { hp = P.health, cap = P.healthCap, body = P.body, bodyCap = P.bodyCap, stam = P.stamina, max = P.maxStam, stamCap = P.stamCap,
-					hurt = self:IsHurt(P), angle = now < P.angleUntil, tier = P.tier, conc = P.conc, bal = P.balance,
-					-- swollen eyes: FightClient darkens that side of the screen (CONTRACTS 8: P.dmg 0..1)
-					eyeL = quant(P.dmg.leftEye, 0.05), eyeR = quant(P.dmg.rightEye, 0.05) },
-				opp = { hp = O.health, cap = O.healthCap, body = O.body, bodyCap = O.bodyCap, stam = O.stamina, max = O.maxStam, stamCap = O.stamCap,
-					hurt = self:IsHurt(O), tier = O.tier, conc = O.conc },
-			}
+			return { t = "state", b = self:PackState(P, self:Other(P), time, now) }
 		end)
 	end
 end
@@ -2746,6 +2791,7 @@ function Fight:HoldCorners()
 				local dir = flat(X[3] - want)
 				if dir.Magnitude > 0.05 then
 					F.align.CFrame = CFrame.lookAt(Vector3.zero, dir.Unit)
+					F.alignDir = nil -- UpdateMovement writes its next facing whatever it is
 				end
 			end
 		end
@@ -3183,6 +3229,7 @@ function FightEngine.Run(player, remote, offer, pData, oData, arena, opts)
 	end
 	self.P = makeFighter(pData, char, player)
 	self.O = makeFighter(oData, npc, oppPlayer)
+	self.pair = { self.P, self.O } -- the per-frame loops walk this (no new table every frame)
 	-- the distances fit the bodies in the ring: athletic rigs carry deeper chests and bigger gloves than the
 	-- classic one the spacing was fitted on, and a taller man needs more room to fall
 	local kP, hP = rigSize(char, self.P.hum, self.P.root)
