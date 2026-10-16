@@ -4,9 +4,11 @@
 -- the mitt coach puts his pads up, the barber starts cutting, the masseuse works.
 local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local AssetService = game:GetService("AssetService")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Looks = require(Shared:WaitForChild("Looks"))
 local Builder = require(Shared:WaitForChild("Builder"))
+local Config = require(Shared:WaitForChild("Config"))
 local Poser = require(script.Parent.Poser)
 local okDecor, GymDecor = pcall(require, script.Parent.GymDecor)
 
@@ -120,6 +122,32 @@ local function yawTo(from, to)
 	return math.atan2(-d.X, -d.Z)
 end
 
+-- The part-built detail of a member whose def names none. Where the Editable APIs work, every client
+-- draws the members with its own meshes (AnatomyClient builds them from LookData, the same at any part
+-- detail) and hides the part body: built at low detail it is ~1,600 instances and ~600 parts fewer
+-- for the 25 members, off every join and every client's memory, and only shows past the mesh range
+-- (the track's far side) or on a device that runs out of Editable memory. Where they do not work
+-- (the experience setting off, an unverified creator) the part body is what everyone sees all the
+-- time: medium keeps its hull and mass domes (low is the bare R15 blocks with a few domes).
+-- The server's own EditableMesh is the probe; decided once, before the first member is built.
+local defaultDetail
+local function memberDetail()
+	if defaultDetail == nil then
+		defaultDetail = "medium"
+		local anatomy = Config.Anatomy
+		if anatomy and anatomy.enabled then
+			local ok, em = pcall(function()
+				return AssetService:CreateEditableMesh()
+			end)
+			if ok and em then
+				defaultDetail = "low"
+				pcall(em.Destroy, em)
+			end
+		end
+	end
+	return defaultDetail
+end
+
 local function spawnMember(folder, def)
 	local app = Looks.Random(def.seed, def.gender or 1, { age = def.age or 26, class = 5 })
 	if def.age and def.age > 50 then
@@ -135,7 +163,7 @@ local function spawnMember(folder, def)
 	local gear = { gloves = "Competition", glovesCond = 70, wraps = "OldWraps", wrapsCond = 80, shoes = def.coach and "Sneakers" or nil, shoesCond = 70 }
 	local npc = Builder.CreateNPC(app, build, gear, def.name, {
 		hands = def.hands or "wraps", name = def.name, nick = "", waistText = "",
-		detail = def.detail or "medium", physique = physique, age = def.age or 26, sweat = def.sweat,
+		detail = def.detail or memberDetail(), physique = physique, age = def.age or 26, sweat = def.sweat,
 	})
 	if not npc then
 		return nil
