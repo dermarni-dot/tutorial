@@ -17,7 +17,8 @@
 --   LowerTorso), tense (UpperTorso), raiseL / raiseR / reachL / reachR (UpperTorso: the shoulder girdle lifts /
 --   comes forward when the arm goes up; BodyFX drives them from the shoulder angle), hipLxx .. hipRzz (the
 --   trunks' seat skinned to the hips: BodyFX sets them from each thigh's rotation, AnatomyBodyTorso.HipShapes;
---   the seat keeps them at medium detail),
+--   the seat keeps them at medium detail), foldL / foldR (UpperTorso: the belly lifts off a thigh folded up
+--   against it, AnatomyBodyTorso.FoldShapes),
 --   all inside each piece's box (the box rule; the seat's padded for the hips' swing); landmarks NeckBase,
 --   ChestCenter, NippleL/R, Navel, ShoulderTopL/R, ArmpitL/R, ElbowL/R, WristL/R, HipL/R, KneeL/R, AnkleL/R
 --   (+ the trunks / glove / boot lettering spots)
@@ -982,6 +983,17 @@ function Gen.Generate(look, lod, ctx)
 			end
 			local _ = isCloth
 			pieces[name] = { mesh = m, material = paint.material, reflectance = paint.reflectance or 0 }
+		end
+	end
+
+	-- the belly folds over the thighs (Torso.FoldShapes: the built thighs' own surfaces, garments included)
+	if full and morphSets.UpperTorso then
+		local probe = {}
+		for _, side in ipairs(SIDES) do
+			probe[side] = Limbs.Probe(sk, P, side, "UpperLeg", { zones = wear.zones[side .. "UpperLeg"] })
+		end
+		for name, set in pairs(Torso.FoldShapes(sk, ut, grid, probe, trunk ~= nil)) do
+			morphSets.UpperTorso[name] = set
 		end
 	end
 

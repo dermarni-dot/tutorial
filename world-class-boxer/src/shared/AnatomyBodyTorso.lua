@@ -1012,6 +1012,148 @@ function Torso.HipShapes(sk, m, info)
 	return sets, { rx0, ry0, rz0, rx1, ry1, rz1 }
 end
 
+-- the belly fold over each thigh (full detail, blend shapes foldL / foldR: ANATOMY_CONTRACTS section 11). The
+-- thigh is rigid and the belly too, so a hip folded past ~60 degrees against the torso (the rower's catch, the
+-- bike, a deadlift's or a squat's bottom, a sprint's knee drive) put the thigh's top into the lower belly, by up
+-- to 15 cm on a heavyweight. Each side's shape lifts the belly off that thigh the way a belly rolls up over a
+-- raised knee: every belly vertex the thigh would reach, swung through FOLD_POSES (and a little spread), rises
+-- along one direction (up, back a little, out a little) as far as the deepest of those poses needs at the
+-- shape's weight there; the lift spreads to the neighbours and never falls off faster than FOLD_SLOPE up a
+-- column, so no ring passes the one above it (radial pushes out of the thigh, each vertex its own way, crumpled
+-- the belly's edge). BodyFX weights it by Torso.FoldWeight(the thigh's flexion against the torso); sized by each
+-- body's own belly and thigh (small on a lean boxer, the belly rolled up over the thighs on a heavyweight)
+Torso.FOLD = { from = math.rad(40), to = math.rad(120) }
+function Torso.FoldWeight(th)
+	return clamp((th - Torso.FOLD.from) / (Torso.FOLD.to - Torso.FOLD.from), 0, 1)
+end
+local FOLD_POSES = { 60, 80, 100, 120 } -- degrees of flexion the shape is fitted to
+local FOLD_SPREAD = { 0, 25 } -- and the thigh turned out this far (a squat's knees, the bike)
+local FOLD_GAP = 0.012 -- studs between the belly and the thigh at every fitted pose
+local FOLD_MAX = 0.35 -- the most a vertex moves (studs)
+local FOLD_SLOPE = 0.6 -- how fast the lift may fall off up a column (studs per stud of height)
+-- sk: the skeleton, ut: the UpperTorso mesh (body space, final shape), grid: its loft (Kit.GridLoft), probe:
+-- { Right = fn, Left = fn } (Limbs.Probe of each built thigh). Returns { foldR = { ids, dx, dy, dz }, foldL = ... }
+-- (sides without contact left out)
+function Torso.FoldShapes(sk, ut, grid, probe, trunks)
+	local P = ut.P
+	local x0, y0, z0, x1, y1, z1 = MeshKit.Bounds(ut)
+	-- (with trunks the band covers the waist: the torso under its top edge is hidden in the seat and stays)
+	local yLo = trunks and sk.yW + Torso.BAND_TOP - 0.02 or sk.yW - 0.25
+	local yHi = sk.yW + 0.55 * sk.H
+	-- (a thigh folding forward reaches the front of the belly and its flanks, never the back)
+	local zBack = 0.4 * sk.hz
+	local poses = {}
+	for _, deg in ipairs(FOLD_POSES) do
+		local th = math.rad(deg)
+		for _, spread in ipairs(FOLD_SPREAD) do
+			poses[#poses + 1] = { cos(th), sin(th), Torso.FoldWeight(th), math.rad(spread) }
+		end
+	end
+	-- the rings, bottom to top (each a row of sides vertices; a row one longer repeats its first at the seam)
+	local rows, sides = {}, grid.sides
+	for r = grid.firstRing, grid.lastRing do
+		rows[#rows + 1] = grid.rows[r]
+	end
+	local nr = #rows
+	local out = {}
+	for _, side in ipairs({ "Right", "Left" }) do
+		local fn = probe[side]
+		local hp = sk.piv[side .. "Hip"]
+		local sg = side == "Right" and 1 or -1
+		local ux, uy, uz = sg * 0.1, 0.35, 1
+		local ul = sqrt(ux * ux + uy * uy + uz * uz)
+		ux, uy, uz = ux / ul, uy / ul, uz / ul
+		-- the lift each vertex needs (studs along u), by ring and column
+		local need = table.create(nr)
+		local any = false
+		for r = 1, nr do
+			local row = rows[r]
+			local lift = table.create(sides, 0)
+			need[r] = lift
+			for j = 0, sides - 1 do
+				local i = row.s + j
+				local x, y, z = P[i * 3 - 2], P[i * 3 - 1], P[i * 3]
+				if y > yLo and y < yHi and z < zBack and x * sg > -0.15 then
+					local sv = 0
+					for _, pz in ipairs(poses) do
+						local ct, st, w = pz[1], pz[2], pz[3]
+						-- the thigh posed about the hip: flexed about x (down -> forward, -z), then turned out about y
+						local cp, sp = cos(-sg * pz[4]), sin(-sg * pz[4])
+						for _ = 1, 3 do
+							-- (where the vertex is at this weight; into the thigh's rest frame: undo the turn, then
+							-- the flexion)
+							local px, py, qz = x + w * sv * ux - hp[1], y + w * sv * uy - hp[2], z + w * sv * uz - hp[3]
+							local qx = px * cp - qz * sp
+							qz = px * sp + qz * cp
+							local qy = py * ct + qz * st
+							qz = -py * st + qz * ct
+							local d, nx, ny, nz = fn(qx + hp[1], qy + hp[2], qz + hp[3])
+							if d <= -FOLD_GAP then
+								break
+							end
+							-- (how much rising along u takes it out: the thigh's outward direction posed, against u)
+							local ry, rz = ny * ct - nz * st, ny * st + nz * ct
+							local rx = nx * cp + rz * sp
+							rz = -nx * sp + rz * cp
+							local along = max(0.3, rx * ux + ry * uy + rz * uz)
+							sv = min(FOLD_MAX, sv + (d + FOLD_GAP) / (w * along))
+						end
+					end
+					lift[j + 1] = sv
+					any = any or sv > 0
+				end
+			end
+			MeshKit.Step(sides)
+		end
+		if any then
+			-- the falloff: each ring and column shares its neighbours' lift (a few vertices out), keeping its own
+			-- need; then up every column the lift falls off no faster than FOLD_SLOPE
+			local cur, nxt = {}, {}
+			for r = 1, nr do
+				cur[r], nxt[r] = table.clone(need[r]), table.create(sides, 0)
+			end
+			for _ = 1, 4 do
+				for r = 1, nr do
+					local a, b, c = cur[r], cur[max(1, r - 1)], cur[min(nr, r + 1)]
+					local o, nd = nxt[r], need[r]
+					for j = 1, sides do
+						local l, rr = a[(j - 2) % sides + 1], a[j % sides + 1]
+						o[j] = max(nd[j], (a[j] * 2 + l + rr + b[j] + c[j]) / 6)
+					end
+				end
+				cur, nxt = nxt, cur
+			end
+			for r = 2, nr do
+				local row, below = rows[r], rows[r - 1]
+				for j = 1, sides do
+					local dy = P[(row.s + j - 1) * 3 - 1] - P[(below.s + j - 1) * 3 - 1]
+					cur[r][j] = max(cur[r][j], cur[r - 1][j] - FOLD_SLOPE * max(0, dy))
+				end
+			end
+			local ids, ox, oy, oz = {}, {}, {}, {}
+			for r = 1, nr do
+				local row = rows[r]
+				for j = 0, row.n - 1 do
+					local sv = cur[r][j % sides + 1]
+					if sv > 1e-4 then
+						local i = row.s + j
+						local x, y, z = P[i * 3 - 2], P[i * 3 - 1], P[i * 3]
+						-- (inside the piece's box: the box rule)
+						ids[#ids + 1] = i
+						ox[#ids] = clamp(x + ux * sv, x0, x1) - x
+						oy[#ids] = clamp(y + uy * sv, y0, y1) - y
+						oz[#ids] = clamp(z + uz * sv, z0, z1) - z
+					end
+				end
+			end
+			if #ids > 0 then
+				out["fold" .. (side == "Right" and "R" or "L")] = { ids, ox, oy, oz }
+			end
+		end
+	end
+	return out
+end
+
 -- the female sports top over the chest (the R15 UpperTorso was the top in round 1): band under the bust,
 -- scoop neckline in front, racer back behind, wide straps. Returns the cover (0..1) and the hem band (0..1:
 -- the elastic edge just inside the border, a smooth bump a few texels wide). soft scales every edge's width

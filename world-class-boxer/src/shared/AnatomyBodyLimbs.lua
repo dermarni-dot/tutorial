@@ -768,6 +768,51 @@ function Limbs.SurfaceFrame(sk, P, side, kind, opt, bb, ang)
 	return { px + nx * r, py + ny * r, pz + nz * r }, { nx, ny, nz }, { tx / tl, ty / tl, tz / tl }
 end
 
+-- the surface Build makes with the same options (garments included) as a probe: for a body-space point, how
+-- deep it lies inside the limb (the radius at its bone parameter and ring angle less its distance from the centre
+-- line; negative outside, -1 past the loft's ends or well clear of it) and the outward radial direction there
+-- (the torso's belly fold, Torso.FoldShapes)
+function Limbs.Probe(sk, P, side, kind, opt)
+	local c = setup(sk, P, "full", side, kind, opt)
+	local a, L = c.a, c.L
+	local ux, uy, uz = c.ux, c.uy, c.uz
+	local b0, b1 = c.zones[1][1], c.zones[#c.zones][2]
+	local center, frameAt, radiusAt = c.center, c.frameAt, c.radiusAt
+	-- (the widest the section gets, and a margin for the centre line's bend: a point further than that from the
+	-- straight bone is outside without the full lookup)
+	local rMax = 0
+	for i = 0, 8 do
+		local bb = b0 + (b1 - b0) * i / 8
+		for k = 0, 11 do
+			rMax = max(rMax, radiusAt(bb, TAU * k / 12))
+		end
+	end
+	rMax = rMax * 1.15 + 0.05
+	return function(x, y, z)
+		local ox, oy, oz = x - a[1], y - a[2], z - a[3]
+		local t = ox * ux + oy * uy + oz * uz
+		local bb = t / L
+		if bb < b0 or bb > b1 then
+			return -1, 0, 0, 0
+		end
+		ox, oy, oz = ox - ux * t, oy - uy * t, oz - uz * t
+		local far = ox * ox + oy * oy + oz * oz
+		if far > rMax * rMax then
+			return -1, 0, 0, 0
+		end
+		local px, py, pz = center(bb)
+		local sx, sy, sz, fx, fy, fz = frameAt(bb)
+		local dx, dy, dz = x - px, y - py, z - pz
+		local s, f = dx * sx + dy * sy + dz * sz, dx * fx + dy * fy + dz * fz
+		local d = sqrt(s * s + f * f)
+		if d < 1e-6 then
+			s, f, d = 1, 0, 1e-6
+		end
+		local cs, sn = s / d, f / d
+		return radiusAt(bb, math.atan2(f, s)) - d, sx * cs + fx * sn, sy * cs + fy * sn, sz * cs + fz * sn
+	end
+end
+
 -- ring parameters: every zone gets rings in proportion to its length (at least two), a zone edge is a ring
 -- pair EDGE studs apart (the garment's edge, then what is under it). A satin leg's dome over the seat's rim
 -- (dome: its rings' heights above the rim, studs) has its own rings, the rim the last

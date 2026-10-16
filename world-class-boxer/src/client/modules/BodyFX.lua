@@ -12,7 +12,8 @@
 --    instead of part scales: flex (contraction + pump + jiggle), breathe (rig.breath / breathPhase),
 --    tense (core bracing, body-shot jiggle, Strain), raiseL / raiseR / reachL / reachR (the shoulder
 --    girdle following the upper arm's angle), hipLxx .. hipRzz (the trunks' seat skinned to each hip: the
---    thigh's rotation in the pelvis's frame) and hipLqxx .. hipRqzz (its rows bent on the arc past 30 degrees).
+--    thigh's rotation in the pelvis's frame), hipLqxx .. hipRqzz (its rows bent on the arc past 30 degrees) and
+--    foldL / foldR (the belly lifting off a thigh folded up against it: the thigh's flexion against the torso).
 --    Writes are low rate and budgeted (MORPH_BUDGET vertex writes
 --    per frame across every character, round-robin, only when a weight changes by a 0.1 step). Sweat shows
 --    as the pieces' Reflectance; rib bruises (LookFx ribsL / ribsR) and road grime (LookFx grime / the Grime
@@ -121,7 +122,7 @@ local PIECES = {
 	LeftLowerLeg = { "LowerLeg", -1, 4 }, RightLowerLeg = { "LowerLeg", 1, 4 },
 }
 -- the blend shapes BodyFX drives (a piece has the ones its mesh carries)
-local SHAPES = { "flex", "breathe", "tense", "raiseL", "raiseR", "reachL", "reachR" }
+local SHAPES = { "flex", "breathe", "tense", "raiseL", "raiseR", "reachL", "reachR", "foldL", "foldR" }
 -- the trunks' seat's hip shapes (AnatomyBodyTorso.HipShapes): per side the nine entries of the thigh's rotation
 -- in the pelvis's frame, row-major (HIP_NAMES[side][a * 3 + b - 3] = "hip" .. side .. a .. b), then the nine
 -- bend shapes' ("hip" .. side .. "q" .. a .. b: the arc the seat's rows turn on, not the chord)
@@ -149,9 +150,9 @@ local BREATH_RANGE = 30 -- studs: breathing only this close (it rewrites the che
 -- per Graphics level (BoxerClient.Perf: 1 Low, 2 Medium, 3 High): muscles animate inside near, breathe inside
 -- breath, take blend shapes at the full rate inside close (half beyond); your own body and the fighters' keep
 -- High's distances at every level. The corrective shapes (the trunks' seat on the thighs, the shoulders on the
--- upper arms) are the shape, not the look: past near they keep following the joints at the far rate out to fix
--- (the full-detail range and a little more; a medium-detail body carries the seat's only; a sitting gym member
--- at 40 studs on Medium had the satin legs' tops 12 cm out of a flat seat)
+-- upper arms, the belly's folds over the thighs) are the shape, not the look: past near they keep following the
+-- joints at the far rate out to fix (the full-detail range and a little more; a medium-detail body carries the
+-- seat's only; a sitting gym member at 40 studs on Medium had the satin legs' tops 12 cm out of a flat seat)
 local LEVELS = { { near = 25, breath = 14, close = 10, fix = 50 }, { near = 35, breath = 22, close = 15, fix = 70 }, { near = NEAR, breath = BREATH_RANGE, close = 20, fix = 100 } }
 local HIGH = LEVELS[3]
 local lv = HIGH
@@ -804,9 +805,10 @@ local function meshState(rec, view)
 				hasFlex = morphs.flex ~= nil, hasBreathe = morphs.breathe ~= nil, hasTense = morphs.tense ~= nil,
 				hasShoulder = morphs.raiseL ~= nil or morphs.raiseR ~= nil or morphs.reachL ~= nil or morphs.reachR ~= nil,
 				hasHip = morphs.hipLxx ~= nil or morphs.hipRxx ~= nil,
+				hasFold = (morphs.foldL ~= nil or morphs.foldR ~= nil) and Torso ~= nil and Torso.FoldWeight ~= nil,
 				names = names, n = n, cost = morphCost(pv.mesh), w = w, sent = sent, pending = false,
 			}
-			rec.fix = rec.fix or st[name].hasShoulder or st[name].hasHip
+			rec.fix = rec.fix or st[name].hasShoulder or st[name].hasHip or st[name].hasFold
 		end
 	end
 	return st
@@ -1210,6 +1212,20 @@ local function hipShapes(model, side, list, w)
 	end
 end
 
+-- the belly's fold over a thigh (AnatomyBodyTorso.FoldShapes): weighted by the thigh's flexion against the torso
+-- (its down direction swung from the torso's down toward its front), the generator's own ramp
+-- (in steps of FOLD_STEP: under a centimetre at the fold's deepest, a quarter of the writes of the seat's step)
+local FOLD_STEP = 0.025
+local function foldShape(model, side)
+	local ut = model:FindFirstChild("UpperTorso")
+	local ul = model:FindFirstChild(side .. "UpperLeg")
+	if not (ut and ul and ut:IsA("BasePart") and ul:IsA("BasePart")) then
+		return 0
+	end
+	local up = ut.CFrame:VectorToObjectSpace(ul.CFrame.UpVector)
+	return floor(Torso.FoldWeight(math.atan2(up.Z, up.Y)) / FOLD_STEP + 0.5) * FOLD_STEP
+end
+
 -- desired weights for every piece of one character; marks the pieces whose quantised weights changed. still: past
 -- the muscles' range (flex / breathe / tense at rest, only the corrective shapes follow the joints)
 local function meshWeights(rec, rig, breathing, t, still)
@@ -1264,6 +1280,14 @@ local function meshWeights(rec, rig, breathing, t, still)
 			end
 			if w.raiseR then
 				w.raiseR, w.reachR = quant(rR), quant(cR)
+			end
+		end
+		if st.hasFold then
+			if w.foldL then
+				w.foldL = foldShape(rec.model, "Left")
+			end
+			if w.foldR then
+				w.foldR = foldShape(rec.model, "Right")
 			end
 		end
 		if st.hasHip then
