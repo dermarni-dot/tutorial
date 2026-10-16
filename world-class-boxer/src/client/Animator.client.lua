@@ -466,6 +466,9 @@ end
 -- (MapBuilder: model tagged MemberBag, part "MemberBag"); flat distance from the root under 6 studs
 local BAG_RANGE = 6
 local BAG_RANGE_IN = 1.55 -- root to bag surface at the working range (studs, scaled by the torso)
+-- how far the chest stays from the bag (and a glove): most of the arm - a punch reaches out at least ~0.68 of it
+-- (AnimFight: a nearer target is met in front of it), and its body drive carries the shoulder in a little more
+local BAG_REACH = 0.85
 local function findBag(rig, pos)
 	local function flat(part)
 		local d = part.Position - pos
@@ -563,13 +566,30 @@ local function chooseLook(rig, t)
 			local r = min(bag.Size.Y, bag.Size.Z) * 0.5
 			local g = rig.geo
 			local sc = g.utScale
-			-- (never so close that the guard rests in the bag: the foremost guard glove stays a glove's radius off it)
-			local inR = BAG_RANGE_IN * clamp(sc and sc.Y or 1, 0.7, 1.4)
-			local gl, gr = rig.guardL, rig.guardR
-			if gl and gr and sc then
-				inR = max(inR, -min(gl[3], gr[3]) * sc.Z + max(g.fistRL or 0.4, g.fistRR or 0.4) + 0.1)
+			local want = clamp(-lp.Z - r - BAG_RANGE_IN * clamp(sc and sc.Y or 1, 0.7, 1.4), 0, 1.1)
+			-- never so close that the guard rests in the bag, nor that the punches - which always reach out at
+			-- least a share of the arm - land inside it: between punches, from where the gloves and the chest
+			-- really are, the step is trimmed (back past the station's spot if need be) until the foremost guard
+			-- glove's front stays off the bag and the chest is an arm's punching reach from it
+			local ut = rig.model:FindFirstChild("UpperTorso")
+			local arm = g.armL
+			if ut and arm and arm.ok and not (rig.pun and (rig.pun.L or rig.pun.R)) then
+				local c = bag.Position
+				local function gap(part, extra)
+					if not part then
+						return math.huge
+					end
+					local d = part.Position - c
+					return sqrt(d.X * d.X + d.Z * d.Z) - r - extra
+				end
+				local fr = max(g.fistRL or 0.4, g.fistRR or 0.4)
+				local need = min(gap(rig.model:FindFirstChild("LeftHand"), fr * 1.2 + 0.1), gap(rig.model:FindFirstChild("RightHand"), fr * 1.2 + 0.1),
+					gap(ut, fr + arm.dMax * BAG_REACH))
+				if need < math.huge then
+					want = min(want, (rig.stepIn or 0) + need)
+				end
 			end
-			local want = clamp(-lp.Z - r - inR, 0, 1.1)
+			want = clamp(want, -0.8, 1.1)
 			rig.bagWant = rig.bagWant and (rig.bagWant + (want - rig.bagWant) * 0.3) or want
 		else
 			rig.bagWant = nil
