@@ -2181,7 +2181,9 @@ end
 ------------------------------------------------------------------------
 local toastHolder
 local toastAvoid = {} -- GuiObjects the toast column keeps clear of (UI.ToastAvoid)
-local TOAST_W, TOAST_MIN_W = 400, 300 -- the column's width; narrower than the minimum it moves down instead
+-- the column's width, and the narrowest it gets beside a frame (the room right of the phone HUD plate is
+-- 359 on a 667 x 375 phone, 232 on a 568 x 320 one); with less room it moves under the frame instead
+local TOAST_W, TOAST_MIN_W = 400, 220
 local TOAST_RIGHT, TOAST_TOP, TOAST_BOTTOM, TOAST_GAP = 24, 76, 84, 12
 
 local function onScreen(o)
