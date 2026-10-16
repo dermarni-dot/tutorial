@@ -1001,6 +1001,91 @@ local function headDown(rig, p, out, clear)
 	end
 end
 
+-- The corner: the post (and a cover pad) he is backed into, found once per fall (parts named Post / Pad within a
+-- few studs; the pillow pads are soft dressing). The corner poses push his root back towards it on top of the
+-- server's walk into the corner, without knowing where it is: the whole pose comes forward (on the canvas)
+-- until his back, pelvis and head - with the hair a little past it - rest against the nearest face instead of
+-- going through it. Probes: the joint whose part, the radius round the part's centre (the organic mesh's
+-- half-depth when it is on)
+local CORNER_PARTS = { Post = true, Pad = true }
+local CORNER_PROBES = { { "W", 0.15 }, { "Root", 0.12 }, { "Neck", 0.22 } }
+local function cornerObstacles(rig, d)
+	if d.obst then
+		return d.obst
+	end
+	local list = {}
+	d.obst = list
+	local root = rig.root
+	if not root then
+		return list
+	end
+	local params = OverlapParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.FilterDescendantsInstances = { rig.model }
+	local ok, parts = pcall(workspace.GetPartBoundsInRadius, workspace, root.Position, 6, params)
+	if ok and parts then
+		for _, part in ipairs(parts) do
+			if CORNER_PARTS[part.Name] then
+				table.insert(list, part)
+			end
+		end
+	end
+	return list
+end
+
+local function clearCorner(rig, p, d)
+	local obst = cornerObstacles(rig, d)
+	local g = rig.geo
+	if #obst == 0 or not (g.ok and g.jc0 and g.jc0.Root) or not rig.root then
+		return
+	end
+	local out = rig.fkOut or {}
+	rig.fkOut = out
+	local rootCF = rig.root.CFrame
+	for _ = 1, 2 do
+		R.fk(rig, p, out)
+		local need, dir = 0, nil
+		for _, pr in ipairs(CORNER_PROBES) do
+			local k = pr[1]
+			local cf = out[k]
+			if cf then
+				local r
+				if k == "Neck" then
+					r = g.headR + pr[2]
+				else
+					local m = g.mesh and g.mesh[k]
+					local sz = m and m.size or g.sz[k]
+					r = (sz and sz.Z * 0.5 or 0.5) + (m and abs(m.cf.Position.Z) or 0) + pr[2]
+				end
+				local w = rootCF:PointToWorldSpace(cf.Position)
+				for _, part in ipairs(obst) do
+					if part.Parent then
+						-- (the horizontal distance from the part's box: the post stands from the canvas to above his head)
+						local lp = part.CFrame:PointToObjectSpace(w)
+						local h = part.Size * 0.5
+						local q = V3(clamp(lp.X, -h.X, h.X), clamp(lp.Y, -h.Y, h.Y), clamp(lp.Z, -h.Z, h.Z))
+						local dv = part.CFrame:VectorToWorldSpace(lp - q)
+						dv = V3(dv.X, 0, dv.Z)
+						local dm = dv.Magnitude
+						if dm < 1e-3 then
+							dv = w - part.Position
+							dv = V3(dv.X, 0, dv.Z)
+							dm = 0
+						end
+						if r - dm > need and dv.Magnitude > 1e-3 then
+							need, dir = r - dm, dv.Unit
+						end
+					end
+				end
+			end
+		end
+		if need < 0.005 or not dir then
+			break
+		end
+		p.Root = CF(rootCF:VectorToObjectSpace(dir * need)) * p.Root
+	end
+end
+
 -- rest the pose on the canvas (unless the feet are planted: the leg IK does that)
 local function onCanvas(rig, p)
 	if rig.plant then
@@ -1174,6 +1259,9 @@ function AnimDown.pose(p, rig, t, dt)
 		end
 		rig.exprHint = "dazed"
 	end
+	if d.pose == "corner" then
+		clearCorner(rig, p, d)
+	end
 	onCanvas(rig, p)
 	return true
 end
@@ -1206,6 +1294,9 @@ function AnimDown.getup(p, rig, act, el, t)
 	if u < standAt then
 		rig.plant = false
 		timeline(p, rig, act.d, act.keys, u, t, act.from, 1, nil, act.yaw)
+		if act.fall == "corner" then
+			clearCorner(rig, p, act.d)
+		end
 		onCanvas(rig, p)
 		for _, k in ipairs(KEYS) do
 			act.last[k] = p[k]

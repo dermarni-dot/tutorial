@@ -92,6 +92,10 @@ local BOX_PT = { { 0, 0 } }
 -- limb part -> the joint at its far end (resting capsules for the ground solve) and the radius trim
 local CAP_CHILD = { RS = "RE", LS = "LE", RH = "RK", LH = "LK", RK = "RA", LK = "LA" }
 local CAP_PAD = { RS = -0.2, LS = -0.2 }
+-- the organic pieces AnatomyClient welds over the R15 parts that the boxes misjudge: the shoe (longer than the
+-- foot box), the hips and trunks seat and the chest (proud of their boxes), the face (in front of the head's
+-- sphere: a guard's gloves); by the joint that drives the part
+local MESH_OF = { Root = "LowerTorso", W = "UpperTorso", RA = "RightFoot", LA = "LeftFoot", Neck = "Head" }
 local function jointC0(m)
 	if m:IsA("Motor6D") then
 		return m.C0
@@ -304,6 +308,24 @@ function AnimRig.computeGeo(rig)
 	end
 	local hd = g.sz.Neck
 	g.headR = hd and hd.Y * 0.5 or 0.6
+	-- the organic meshes' bounds in their R15 part's own space (Anatomy.Anatomy<Part>, from the weld that holds
+	-- it: centre frame and size), for what the boxes miss - the shoe's sole on the canvas, the seat and the chest
+	-- (lowest; the corner and the punches' aim read them too); none for the part-built look
+	local folder = rig.model:FindFirstChild("Anatomy")
+	g.mesh = g.mesh or {}
+	for k, pn in pairs(MESH_OF) do
+		local mp = folder and folder:FindFirstChild("Anatomy" .. pn)
+		local weld = mp and mp:FindFirstChild("AnatomyWeld")
+		local part = J[k] and J[k].motor.Part1
+		if weld and weld:IsA("Weld") and part and weld.Part0 == part and mp:IsA("BasePart") then
+			local m = g.mesh[k] or {}
+			m.cf = weld.C0 * weld.C1:Inverse()
+			m.size = mp.Size
+			g.mesh[k] = m
+		else
+			g.mesh[k] = nil
+		end
+	end
 	-- the limbs' resting capsules (part space): the joint into the part, the joint out of it, radius (the
 	-- R15 arm boxes are fatter than the arms drawn over them: lowest()'s PAD)
 	g.armCap = g.armCap or {}
@@ -353,6 +375,8 @@ local SUPPORT = { "Root", "W", "Neck", "RH", "RK", "RA", "LH", "LK", "LA", "RS",
 -- canvas when he lies on his back) stand off the rounded heel and toe drawn in it - on the athletic
 -- rigs' long feet enough to prop the whole body
 local PAD = { Root = 0.05, W = 0.05, RS = -0.14, LS = -0.14, RA = -0.1, LA = -0.1 }
+-- an organic piece's lowest point: this share of its bounding box's, the rest its inscribed ellipsoid's
+local MESH_BOX = 0.55
 -- the lowest point of the body (HRP space) for the pose already in `out` (AnimRig.fk)
 function AnimRig.lowest(rig, out, keys)
 	local g = rig.geo
@@ -364,6 +388,16 @@ function AnimRig.lowest(rig, out, keys)
 			if k == "Neck" then
 				-- the head is round: between its box and its sphere
 				y = boxLow(cf, g.sz.Neck) * 0.6 + (cf.Y - g.headR) * 0.4
+			elseif g.mesh and g.mesh[k] then
+				-- an organic piece rests on its own mesh: the shoe's toe and heel past the foot box, the seat and hips
+				-- past the pelvis box (between its bounding box and the ellipsoid inside it: rounded, not a brick)
+				local m = g.mesh[k]
+				local c = cf * m.cf
+				local h = m.size * 0.5
+				local bx, by, bz = abs(c.XVector.Y) * h.X, abs(c.YVector.Y) * h.Y, abs(c.ZVector.Y) * h.Z
+				local box = bx + by + bz
+				local ell = sqrt(bx * bx + by * by + bz * bz)
+				y = c.Y - (box * MESH_BOX + ell * (1 - MESH_BOX))
 			elseif g.armCap and g.armCap[k] then
 				-- a limb rests on its bone, joint to joint, not on its part box: the athletic rigs' arm and
 				-- leg parts run well past their joints and would prop the body off the canvas
