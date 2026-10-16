@@ -151,8 +151,9 @@ local BREATH_RANGE = 30 -- studs: breathing only this close (it rewrites the che
 -- breath, take blend shapes at the full rate inside close (half beyond); your own body and the fighters' keep
 -- High's distances at every level. The corrective shapes (the trunks' seat on the thighs, the shoulders on the
 -- upper arms, the belly's folds over the thighs) are the shape, not the look: past near they keep following the
--- joints at the far rate out to fix (the full-detail range and a little more; a medium-detail body carries the
--- seat's only; a sitting gym member at 40 studs on Medium had the satin legs' tops 12 cm out of a flat seat)
+-- joints out to fix (the full-detail range and a little more; a medium-detail body carries the seat's only; a
+-- sitting gym member at 40 studs on Medium had the satin legs' tops 12 cm out of a flat seat), at the far rate
+-- at every level (at 6 / 4 Hz a treadmill runner's seat lagged its thighs into a worse clip than none)
 local LEVELS = { { near = 25, breath = 14, close = 10, fix = 50 }, { near = 35, breath = 22, close = 15, fix = 70 }, { near = NEAR, breath = BREATH_RANGE, close = 20, fix = 100 } }
 local HIGH = LEVELS[3]
 local lv = HIGH
@@ -177,8 +178,11 @@ end
 -- the seat's hip shapes in finer steps (a 0.1 step of a rotation entry is ~6 degrees of thigh swing: the
 -- seat's rim stepped off the satin leg's rim ring by centimetres; at this step by a few millimetres)
 local HIP_STEP = 0.0125
+-- (past the muscles' range twice the step: a centimetre at the seat's rim at 35+ studs, half the writes of a
+-- slow sway)
+local hipStep = HIP_STEP
 local function quantHip(x)
-	return floor(x / HIP_STEP + 0.5) * HIP_STEP
+	return floor(x / hipStep + 0.5) * hipStep
 end
 -- how far the seat follows a hip's turn: all of it up to HIP_KNEE, then easing toward HIP_MAX (the seat's box
 -- holds 110 degrees: AnatomyBodyTorso HIP_RANGE). The corner stool, a knockdown sit, a kneel swing a thigh 85 -
@@ -1398,11 +1402,22 @@ function BodyFX.Update(dt, t, camPos, rigs)
 				rec.awake = false
 			end
 			if rec.mesh and rec.fix and dist < lvl.fix then
-				-- the muscles rest; the seat and the shoulders keep following the joints (at the far rate: two
-				-- CFrame reads a side, a write only when a joint turned a step)
+				-- the muscles rest; the seat, the shoulders and the belly keep following the joints (two CFrame
+				-- reads a side, a write only when a joint turned a step); off screen they wait where they are (in a
+				-- busy gym half the far members are behind the camera)
 				if t >= rec.nextMorph then
 					rec.nextMorph = t + MORPH_RATE * 2
-					rec.meshAwake = meshWeights(rec, rig, false, t, true)
+					local root = rig and rig.root or model:FindFirstChild("HumanoidRootPart")
+					local cam = workspace.CurrentCamera
+					local vis = true
+					if root and cam then
+						vis = select(2, cam:WorldToViewportPoint(root.Position))
+					end
+					if vis then
+						hipStep = HIP_STEP * 2
+						rec.meshAwake = meshWeights(rec, rig, false, t, true)
+						hipStep = HIP_STEP
+					end
 				end
 			elseif rec.meshAwake then
 				relaxMesh(rec)
