@@ -167,6 +167,11 @@ function AnimRig.computeGeo(rig)
 		leg.kneeC0 = jointC0(kneeM)
 		leg.kneeC1inv = jointC1(kneeM):Inverse()
 		leg.ankleC0 = jointC0(ankleM)
+		-- the constant links of the leg's chain, multiplied once here instead of every solve (solveLeg, the hip's
+		-- frame for every planted-foot need: about 400 CFrames a frame at the gym)
+		leg.rootHip = rootC1inv * leg.hipC0
+		leg.hipKnee = leg.hipC1inv * leg.kneeC0
+		leg.kneeAnkle = leg.kneeC1inv * leg.ankleC0
 		local ankleC1 = jointC1(ankleM)
 		leg.ankleC1rot = ankleC1.Rotation
 		leg.l1 = max(0.3, (leg.hipC1inv * leg.kneeC0).Position.Magnitude)
@@ -632,7 +637,7 @@ end
 function AnimRig.solveLeg(rig, p, s, rootT, targetHRP, footYaw, pitch, knee, soft)
 	local g = rig.geo
 	local leg = g[s]
-	local hipFrame = g.rootC0 * rootT * g.rootC1inv * leg.hipC0
+	local hipFrame = g.rootC0 * rootT * leg.rootHip
 	local d = hipFrame:PointToObjectSpace(targetHRP)
 	-- a foot target level with or above the hip (extreme poses) would flip the leg: keep it below
 	local floorY = -0.3 * (leg.l1 + leg.l2)
@@ -656,7 +661,7 @@ function AnimRig.solveLeg(rig, p, s, rootT, targetHRP, footYaw, pitch, knee, sof
 	end
 	local kneeT = A(-flexK, 0, 0)
 	-- the foot stays at its planted yaw and pitch, whatever the leg does
-	local chain = (hipFrame * hipT * leg.hipC1inv * leg.kneeC0 * kneeT * leg.kneeC1inv * leg.ankleC0).Rotation
+	local chain = (hipFrame * hipT * leg.hipKnee * kneeT * leg.kneeAnkle).Rotation
 	local want = A(0, footYaw, 0) * A(-pitch, 0, 0) * leg.footRest
 	local keys = LEG_OF[s]
 	p[keys[1]] = hipT
@@ -670,7 +675,7 @@ end
 function AnimRig.dropFor(rig, s, rootT, targetHRP, slack)
 	local g = rig.geo
 	local leg = g[s]
-	local hip = (g.rootC0 * rootT * g.rootC1inv * leg.hipC0).Position
+	local hip = (g.rootC0 * rootT * leg.rootHip).Position
 	local reach = (leg.l1 + leg.l2) * (slack or 0.965)
 	local dx, dz = targetHRP.X - hip.X, targetHRP.Z - hip.Z
 	local h2 = dx * dx + dz * dz
@@ -707,7 +712,7 @@ function AnimRig.needFor(rig, s, rootT, targetHRP, slack, far, hip)
 	local g = rig.geo
 	local leg = g[s]
 	-- (`hip`: the hip joint's position when the caller has it already - several needs a frame per leg)
-	hip = hip or (g.rootC0 * rootT * g.rootC1inv * leg.hipC0).Position
+	hip = hip or (g.rootC0 * rootT * leg.rootHip).Position
 	local reach = (leg.l1 + leg.l2) * slack
 	local dx, dz = targetHRP.X - hip.X, targetHRP.Z - hip.Z
 	local h2 = dx * dx + dz * dz

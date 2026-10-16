@@ -1005,7 +1005,7 @@ local function kneeGovern(rig, rootT, targets, x, far, t, dt)
 		-- (a foot taking the weight: the heel strike's loading)
 		if not f.swing and not f.push and f.kAct and f.ankT and tgt and t - f.landT < 0.25 then
 			local leg = g[s]
-			local hipP = (g.rootC0 * rootT * g.rootC1inv * leg.hipC0).Position
+			local hipP = (g.rootC0 * rootT * leg.rootHip).Position
 			local kv = f.kVel or 0
 			-- (it may always slow down: the bound only keeps it from setting off, or speeding up, in a jolt - never
 			-- forces it on)
@@ -1582,7 +1582,7 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 			-- (the swing's peak knee: ~60 at the town walk, less slow / backward / sideways / in a hard turn's pivot step)
 			local kpk = lerp(lerp((50 + 6 * clamp(lo.vh or 1, 0, 2.2)) * RAD, 35 * RAD, max(back, lo.side)), 28 * RAD, lo.turnK or 0)
 			local A1 = R.ankleOf(leg, f.tgtW, fwdOf(f.landYaw or yawW), f.landPitch or 0, f.gY and f.landSlope or 0)
-			local hipP = (g.rootC0 * rootT * g.rootC1inv * leg.hipC0).Position
+			local hipP = (g.rootC0 * rootT * leg.rootHip).Position
 			f.planPh = planAnkle(rig, f, s, t, trueCF, rootT, hipP, A1, lo.softK, kpk, stanceKnee(0, 0, lo.vh or 0, prof))
 			-- (the pelvis's drop predicted from its speed; liftPlan runs again with the final one)
 			ank = trueCF:PointToWorldSpace(liftPlan(f, f.planPh, hipP - V3(0, lo.drop + (lo.dropV or 0) * dt, 0)))
@@ -1601,7 +1601,7 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 		targets[s .. "yaw"] = K.wrap(yawW - trueYaw)
 		targets[s .. "pitch"] = pitch
 		if walking then
-			local hipP = (g.rootC0 * rootT * g.rootC1inv * leg.hipC0).Position
+			local hipP = (g.rootC0 * rootT * leg.rootHip).Position
 			if f.swing and moving and f.stepKind == "walk" and not planned then
 				-- just off the toes the knee keeps folding: a foot the body leaves behind faster than the swing
 				-- lifts it rises behind him (the heel comes up) instead of the leg trailing straight
@@ -1834,11 +1834,11 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 			local f = rig.foot[s]
 			f.reachShort = 0
 			if f.swing and f.planT == t and f.planPh then
-				targets[s] = liftPlan(f, f.planPh, (g.rootC0 * rootT * g.rootC1inv * g[s].hipC0).Position)
+				targets[s] = liftPlan(f, f.planPh, (g.rootC0 * rootT * g[s].rootHip).Position)
 			elseif not f.swing and f.tP then
 				local leg = g[s]
 				local L2 = leg.l1 + leg.l2
-				local hip = (g.rootC0 * rootT * g.rootC1inv * leg.hipC0).Position
+				local hip = (g.rootC0 * rootT * leg.rootHip).Position
 				local P, F, lf, sl = f.tP, f.tF, f.lift, f.tSl or 0
 				local cur = f.pitchS
 				local th = cur

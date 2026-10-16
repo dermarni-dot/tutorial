@@ -73,8 +73,30 @@ R.rigs = rigs -- read-only handle for tools / tests (the animation lab inspects 
 local POSE = Gym.POSE
 local PUNCHES = Gym.PUNCHES
 
--- LOD bands (studs from the camera)
-local NEAR, MID, FAR, CULL = 45, 110, 170, 230
+-- LOD bands (studs from the camera) per Graphics level (BoxerClient.Perf: 1 Low, 2 Medium, 3 High). High is
+-- the full look; your own character and the fighters use High's bands at every level. Past near: no
+-- punch / gaze detail and the far legs; past mid / far: every 2nd / 3rd frame; past cull: not animated.
+-- off = the frame step off screen; still = the step for a still background figure on screen past near,
+-- stillOff = off screen (see the main loop)
+local BANDS = {
+	{ near = 25, mid = 60, far = 100, cull = 140, off = 6, still = 3, stillOff = 8 },
+	{ near = 35, mid = 85, far = 130, cull = 180, off = 5, still = 2, stillOff = 6 },
+	{ near = 45, mid = 110, far = 170, cull = 230, off = 4, still = 2, stillOff = 6 },
+}
+local HIGH = BANDS[3]
+local band = HIGH
+do
+	local ok, Perf = pcall(function()
+		return require(Modules:FindFirstChild("Perf"))
+	end)
+	if ok and type(Perf) == "table" and Perf.Level and Perf.Changed then
+		local function pick()
+			band = BANDS[math.clamp(tonumber(Perf.Level()) or 3, 1, 3)]
+		end
+		pick()
+		Perf.Changed:Connect(pick)
+	end
+end
 
 -- which exercise (Config.ExerciseTargets / Activities id) a pose works: BodyFX contraction + LivePump
 local POSE_ACT = {
@@ -1107,19 +1129,21 @@ RunService.PreSimulation:Connect(function(dt)
 		rig.isLocal = model == localChar
 		local pos = root.Position
 		local dist = (pos - camPos).Magnitude
-		if dist > CULL then
+		-- (camDist for every rig, culled or not: the FX modules below cull by it without reading the parts again)
+		rig.camDist, rig.camT = dist, t
+		local b = (rig.isFighter or rig.isLocal) and HIGH or band
+		if dist > b.cull then
 			continue
 		end
-		rig.camDist = dist
 		local onScreen = true
 		if cam and dist > 8 then
 			local _, vis = cam:WorldToViewportPoint(pos)
 			onScreen = vis
 		end
 		-- far and off-screen rigs update less often (time steps stay correct: dt is per rig)
-		local step = dist > FAR and 3 or (dist > MID and 2 or 1)
+		local step = dist > b.far and 3 or (dist > b.mid and 2 or 1)
 		if not onScreen then
-			step = max(step, 4)
+			step = max(step, b.off)
 		end
 		rig.frameSkip += 1
 		local skip = rig.frameSkip < step
@@ -1138,7 +1162,7 @@ RunService.PreSimulation:Connect(function(dt)
 		if not rig.isFighter and not rig.isLocal then
 			local lo, pun = rig.loco, rig.pun
 			if lo.speed < 0.5 and abs(lo.yawRate) < 0.5 and not (pun.L or pun.R or rig.act or rig.autoAct) and rig.a.Pose ~= "run" then
-				local slow = onScreen and (dist > NEAR and 2 or 1) or 6
+				local slow = onScreen and (dist > b.near and b.still or 1) or b.stillOff
 				if slow > step then
 					skip = (frameNo + rig.slot) % slow ~= 0
 				end
@@ -1169,7 +1193,7 @@ RunService.PreSimulation:Connect(function(dt)
 		rig.timeScale = ts
 		local sdt = rdt * ts
 		rig.clock += sdt
-		local lod = (dist < NEAR and onScreen) and 3 or (dist < MID and 2 or 1)
+		local lod = (dist < b.near and onScreen) and 3 or (dist < b.mid and 2 or 1)
 		updated += 1
 		local ok, err = pcall(updateRig, rig, model, rig.clock, sdt, lod, rdt)
 		if not ok then
@@ -1192,7 +1216,7 @@ RunService.PreSimulation:Connect(function(dt)
 		fxStep("BodyFX", BodyFX.Update, dt, t, camPos, rigs)
 	end
 	if HairFX then
-		fxStep("HairFX", HairFX.Update, dt, t, camPos, cam)
+		fxStep("HairFX", HairFX.Update, dt, t, camPos, cam, rigs)
 	end
 	local cost = os.clock() - t
 	stats.rigs = updated
