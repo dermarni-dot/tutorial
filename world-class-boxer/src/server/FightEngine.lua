@@ -1439,8 +1439,47 @@ function Fight:Clinch(F)
 	F.balance = math.min(100, F.balance + 25)
 	F.hurtUntil = math.min(F.hurtUntil, now + 0.6)
 	self:CheckTier(F)
+	self:TieUp()
 	self:Send({ t = "announce", text = self.spar and "COACH: \"Break! Let go, work your way out.\"" or "CLINCH! The referee steps in..." })
 	self:Comment(F.data.name .. " ties up. Smart veteran move.")
+end
+
+-- the tie-up: a clinch starts from anywhere inside the clinch range (out to 4.8 x the rig factor, with
+-- arms that only wrap at close quarters) or, pinned on the ropes or between two players, from inside the
+-- chests. The pair closes to (or opens out to) the clinch distance over a short slide: the AI side moves,
+-- two players meet halfway (neither can walk while they hold), and a player pinned against an AI on the
+-- ropes gives back what the ropes do not let the AI take.
+function Fight:TieUp()
+	local P, O = self.P, self.O
+	if not (P.root and O.root) then
+		return
+	end
+	local want = self:ClinchSep()
+	local d = flat(O.root.Position - P.root.Position)
+	local m = d.Magnitude
+	if math.abs(m - want) < 0.1 then
+		return
+	end
+	local dir = m > 0.05 and d.Unit or flat(P.root.CFrame.LookVector).Unit
+	if P.isPlayer and O.isPlayer then
+		-- each takes half: P along -dir when opening out (m < want), along +dir when closing in
+		local half = (m - want) / 2
+		self:Glide(P, self:ClampToRing(P.root.Position + dir * half), 10)
+		self:Glide(O, self:ClampToRing(O.root.Position - dir * half), 10)
+		return
+	end
+	local mover, still = O, P
+	if not P.isPlayer and O.isPlayer then
+		mover, still = P, O
+	end
+	local away = mover == O and dir or -dir -- from the still man to the mover
+	local goal = self:ClampToRing(still.root.Position + away * want)
+	self:Glide(mover, goal, 10)
+	-- the ropes stop the mover short of the distance: the still man gives back the rest
+	local short = want - flat(goal - still.root.Position).Magnitude
+	if short > 0.1 then
+		self:Glide(still, self:ClampToRing(still.root.Position - away * short), 10)
+	end
 end
 
 ------------------------------------------------------------------------
@@ -2136,8 +2175,24 @@ function Fight:ClampToRing(pos)
 end
 
 -- centre-to-centre spacing the bodies need so gloves and torsos never sink into each other
--- (self.sp.minSep: FightMotion.Spacing scaled to the pair's rigs; a clinch ties them up closer)
-local CLINCH_SEP = 1.9
+-- (self.sp.minSep: FightMotion.Spacing scaled to the pair's rigs). In a clinch AnimFight's tie-up steps
+-- each man 0.38 in and leans him onto the other, so the roots stay this far apart for the two chests to
+-- meet without sinking in: CLINCH_SEP x the pair's rig factor, and more for deep chests (a heavyweight's
+-- pecs and belly stand well proud of the classic torso the rig factor measures): CLINCH_CHEST +
+-- CLINCH_DEPTH x the two UpperTorsos' depths. Lab clinch sweep, torso into torso: 1.9 x (the old value)
+-- 11-18 cm; 3.0 x clears the lean, female and power bodies against a balanced partner, 3.25 x the
+-- heavyweight; heavy against heavy needs 4.15 studs (3.7 x), power against heavy 3.85.
+local CLINCH_SEP, CLINCH_CHEST, CLINCH_DEPTH = 3.25, 1.55, 1.03
+
+function Fight:ClinchSep()
+	local sep = CLINCH_SEP * (self.rigK or 1)
+	local a = self.P.model and self.P.model:FindFirstChild("UpperTorso")
+	local b = self.O.model and self.O.model:FindFirstChild("UpperTorso")
+	if a and b and a:IsA("BasePart") and b:IsA("BasePart") then
+		sep = math.max(sep, CLINCH_CHEST + CLINCH_DEPTH * (a.Size.Z + b.Size.Z))
+	end
+	return sep
+end
 
 function Fight:MoveAI(F, range, circle)
 	if not F.hum or F.state == "down" or F.state == "clinch" or self:IsStumbling(F) then
@@ -2185,7 +2240,7 @@ function Fight:Separate()
 	if not (P.root and O.root) or P.state == "down" or O.state == "down" then
 		return
 	end
-	local minSep = (P.state == "clinch" or O.state == "clinch") and CLINCH_SEP * (self.rigK or 1) or (self.sp or SPACING).minSep
+	local minSep = (P.state == "clinch" or O.state == "clinch") and self:ClinchSep() or (self.sp or SPACING).minSep
 	local d = flat(O.root.Position - P.root.Position)
 	local m = d.Magnitude
 	if m >= minSep then
