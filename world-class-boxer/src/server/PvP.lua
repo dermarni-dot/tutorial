@@ -116,6 +116,34 @@ function PvP.Record(profile)
 	return { w = v.w, l = v.l, d = v.d, ko = v.ko }
 end
 
+-- a boxer as the challenge, match and result cards show him (Main's describe hook): his PvP numbers and
+-- his career's (overall rating, style, tier). Config is found the first time there is a game to look in.
+local Config
+function PvP.Describe(profile, player)
+	if type(profile) ~= "table" then
+		return {}
+	end
+	if Config == nil then
+		local ok, mod = pcall(function()
+			return require(game:GetService("ReplicatedStorage"):WaitForChild("Shared"):WaitForChild("Config"))
+		end)
+		Config = ok and mod or false
+	end
+	local v = PvP.View(profile)
+	local out = {
+		boxer = type(profile.identity) == "table" and profile.identity.name or (player and player.DisplayName) or nil,
+		record = string.format("%d-%d-%d", v.w, v.l, v.d), rating = v.rating, rank = v.rank,
+		ovr = tonumber(profile.overall) and math.floor(profile.overall + 0.5) or nil,
+	}
+	if Config then
+		local style = Config.FindById(Config.Styles, profile.style)
+		local tier = Config.Tiers[tonumber(profile.tier) or 0]
+		out.style = style and style.name or nil
+		out.tier = tier and tier.name or nil
+	end
+	return out
+end
+
 ------------------------------------------------------------------------
 -- Rating & rewards (pure: unit-testable)
 ------------------------------------------------------------------------
@@ -232,8 +260,9 @@ function PvP.ApplyRanked(profA, uidA, profB, uidB, resA, now)
 		if fame > 0 then
 			profile.popularity = math.min(100, (tonumber(profile.popularity) or 0) + fame)
 		end
+		-- (the rating's move is ratingBefore / rating / delta: the result card shows it on your side, so
+		-- the notes carry only what it does not)
 		local notes = {}
-		table.insert(notes, string.format("PvP rating %d -> %d (%s%d)", math.floor(before + 0.5), math.floor(p.rating + 0.5), delta >= 0 and "+" or "", delta))
 		if factor < 1 then
 			table.insert(notes, factor > 0 and string.format("Rematch today: rewards x%.2f", factor) or "Too many bouts with this opponent today: no rating or rewards")
 		end
@@ -326,10 +355,11 @@ function PvP.Challenge(from, target, mode, rounds)
 	challenges[id] = c
 	outgoing[from] = id
 	lastChallengeAt[from] = now
-	-- the ask carries the challenger's boxer, record and rating (the client shows them on the popup)
+	-- the ask carries the challenger's boxer, record and rating, and (PvP.Describe) his overall, style and
+	-- career tier: the client shows them head to head on the popup
 	local info = hooks.describe and hooks.describe(from) or {}
 	send(target, { t = "challenge", id = id, from = from.UserId, fromName = from.DisplayName, fromUser = from.Name, mode = mode, rounds = rounds,
-		timeout = PvP.CHALLENGE_TIMEOUT, boxer = info.boxer, record = info.record, rating = info.rating, rank = info.rank })
+		timeout = PvP.CHALLENGE_TIMEOUT, boxer = info.boxer, record = info.record, rating = info.rating, rank = info.rank, ovr = info.ovr, style = info.style, tier = info.tier })
 	task.delay(PvP.CHALLENGE_TIMEOUT + 0.5, function()
 		if challenges[id] == c then
 			clearChallenge(id)

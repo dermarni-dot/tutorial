@@ -49,6 +49,122 @@ local function howTo(k, key, touchText)
 end
 
 ------------------------------------------------------------------------
+-- Head to head: the two boxers side by side on the challenge, match and result cards
+------------------------------------------------------------------------
+-- what we know of a boxer: the server's description (boxer, record, rating, rank; ovr / style / tier
+-- when it sends them), the fame attributes every client sees on his Player (career tier, PvP rating)
+-- and, for you, your own profile
+local function boxerInfo(desc, plr, you)
+	desc = type(desc) == "table" and desc or {}
+	local P = you and State.P or {}
+	local v = type(P.pvp) == "table" and P.pvp or {}
+	local info = { boxer = desc.boxer, record = desc.record, rating = tonumber(desc.rating), rank = desc.rank, ovr = tonumber(desc.ovr), style = desc.style,
+		tier = desc.tier, you = you == true }
+	if you then
+		info.boxer = info.boxer or (type(P.identity) == "table" and P.identity.name or nil)
+		info.ovr = info.ovr or tonumber(P.overall)
+		info.style = info.style or P.style
+		info.tier = info.tier or P.tierName
+		info.record = info.record or string.format("%d-%d-%d", v.w or 0, v.l or 0, v.d or 0)
+		info.rating = info.rating or tonumber(v.rating)
+		info.rank = info.rank or v.rank
+	end
+	if plr then
+		info.user = "@" .. plr.Name
+		info.boxer = info.boxer or plr.DisplayName
+		info.rating = info.rating or tonumber(plr:GetAttribute("PvPRating"))
+		local t = Config.Tiers[tonumber(plr:GetAttribute("Tier")) or 0]
+		info.tier = info.tier or (t and t.name or nil)
+	end
+	return info
+end
+
+-- head to head: the two names (corner colours, VS between) over a tale of the tape, value | what | value.
+-- info.newRating + info.delta make the rating row the result's (new rating, +/-); `bout` rows ({ what, a, b })
+-- come first (the result card's night in numbers).
+local function versusRow(parent, a, colorA, b, colorB, order, bout)
+	local box = UI.Frame(parent, { Name = "Versus", BackgroundColor3 = T.panel, BackgroundTransparency = 0.1, Size = UDim2.new(1, -8, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
+		LayoutOrder = order or 0 })
+	UI.Corner(box, UI.R.lg)
+	UI.Pad(box, 12)
+	UI.List(box, 2)
+	local names = UI.Frame(box, { Name = "Names", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 48), LayoutOrder = 1 })
+	for _, side in ipairs({ { a, colorA, 0 }, { b, colorB, 1 } }) do
+		local info, color, x = side[1], side[2], side[3]
+		local align = x == 1 and Enum.TextXAlignment.Right or Enum.TextXAlignment.Left
+		UI.Text(names, string.upper(tostring(info.boxer or "?")), { Name = x == 1 and "NameB" or "NameA", Face = "displayMed", TextSize = 22, TextColor3 = color, AnchorPoint = Vector2.new(x, 0),
+			Position = UDim2.fromScale(x, 0), Size = UDim2.new(0.5, -30, 0, 26), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd, TextXAlignment = align })
+		UI.Text(names, (info.user or "") .. (info.you and "  (you)" or ""), { TextColor3 = T.sub, TextSize = 13, AnchorPoint = Vector2.new(x, 0), Position = UDim2.new(x, 0, 0, 28),
+			Size = UDim2.new(0.5, -30, 0, 16), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd, TextXAlignment = align })
+	end
+	UI.Text(names, "VS", { Name = "VS", Face = "display", TextSize = 24, TextColor3 = T.gold, AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 6),
+		Size = UDim2.fromOffset(48, 30), AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Center, TextWrapped = false })
+	UI.Divider(box, { order = 2 })
+	local n = 0
+	local function row(what, va, vb, colA)
+		if va == nil and vb == nil then
+			return
+		end
+		n += 1
+		local r = UI.Frame(box, { Name = "Tape" .. n, BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 24), LayoutOrder = 2 + n })
+		for _, c in ipairs({ { va, 0, Enum.TextXAlignment.Left, colA }, { vb, 1, Enum.TextXAlignment.Right } }) do
+			UI.Text(r, tostring(c[1] or "-"), { Font = T.semi, TextSize = 16, TextColor3 = c[4] or T.text, AnchorPoint = Vector2.new(c[2], 0), Position = UDim2.fromScale(c[2], 0),
+				Size = UDim2.new(0.37, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd, TextXAlignment = c[3] })
+		end
+		UI.Text(r, what, { Font = T.semi, TextSize = 11, TextColor3 = T.sub, AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.fromScale(0.5, 0), Size = UDim2.new(0.26, 0, 1, 0),
+			AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd, TextXAlignment = Enum.TextXAlignment.Center })
+	end
+	local function rating(info)
+		local r = info.newRating or info.rating
+		if not r then
+			return nil
+		end
+		local text = tostring(math.floor(r + 0.5))
+		if info.newRating then
+			local d = tonumber(info.delta) or 0
+			text = string.format("%s  (%s%d)", text, d >= 0 and "+" or "", d)
+		end
+		return text
+	end
+	for _, r in ipairs(bout or {}) do
+		row(r[1], r[2], r[3])
+	end
+	-- the overall ratings compare or neither shows (a server that does not describe the other man's)
+	if a.ovr and b.ovr then
+		row("OVERALL", math.floor(a.ovr + 0.5), math.floor(b.ovr + 0.5))
+	end
+	row("PVP RECORD", a.record, b.record)
+	row("PVP RATING", rating(a), rating(b), a.newRating and ((tonumber(a.delta) or 0) >= 0 and T.green or T.red) or nil)
+	row("PVP RANK", a.rank, b.rank)
+	row("STYLE", a.style, b.style)
+	row("CAREER", a.tier, b.tier)
+	return box
+end
+
+-- a window as tall as what it holds (UI.Window's height is the most it may take; past that the body
+-- scrolls). The body list's content is measured in screen pixels: a 100 px probe gives the scale.
+local function fitHeight(win, body, maxH)
+	local holder = win.Parent
+	local sc = holder and holder:FindFirstChildOfClass("UISizeConstraint")
+	local list = body:FindFirstChildOfClass("UIListLayout")
+	if not (sc and list) then
+		return
+	end
+	local probe = UI.Frame(win, { Name = "Measure", BackgroundTransparency = 1, Size = UDim2.fromOffset(100, 100), Visible = false })
+	local function fit()
+		local k = probe.AbsoluteSize.Y / 100
+		if k <= 0.01 or not sc.Parent then
+			return
+		end
+		local h = math.ceil(list.AbsoluteContentSize.Y / k + 24 - body.Size.Y.Offset)
+		sc.MaxSize = Vector2.new(sc.MaxSize.X, math.clamp(h, sc.MinSize.Y, maxH))
+	end
+	list:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(fit)
+	probe:GetPropertyChangedSignal("AbsoluteSize"):Connect(fit)
+	fit()
+end
+
+------------------------------------------------------------------------
 -- Sending a challenge
 ------------------------------------------------------------------------
 function PvP.Challenge(userId, mode, rounds)
@@ -87,28 +203,43 @@ function PvP.OpenChooser(target)
 			shade:Destroy()
 		end
 	end
-	shade, win, body = UI.Window(State.gui, "PvPChoose", 560, 420, "CHALLENGE " .. string.upper(target.DisplayName), { onClose = close, kicker = "PLAYER VS PLAYER", accent = T.red })
+	shade, win, body = UI.Window(State.gui, "PvPChoose", 640, 560, "CHALLENGE " .. string.upper(target.DisplayName), { onClose = close, kicker = "PLAYER VS PLAYER", accent = T.red })
 	chooser = shade
 	State.windows.PvPChoose = close
-	local rating = target:GetAttribute("PvPRating")
-	UI.Line(body, string.format("@%s  ·  PvP rating %s", target.Name, rating and tostring(rating) or "-"), { TextColor3 = T.sub, TextSize = 14 })
+	-- you against him: what every client knows of him (his PvP rating, career tier) at once, then his boxer
+	-- and his PvP numbers as the server lists them
+	local vs = versusRow(body, boxerInfo(nil, player, true), T.red, boxerInfo(nil, target), T.blue, 1)
+	task.spawn(function()
+		local data = State.req("GetPvP")
+		if not (data and data.ok and vs.Parent and chooser == shade) then
+			return
+		end
+		for _, p in ipairs(data.players or {}) do
+			if p.userId == target.UserId then
+				vs:Destroy()
+				vs = versusRow(body, boxerInfo(nil, player, true), T.red, boxerInfo(p, target), T.blue, 1)
+				break
+			end
+		end
+	end)
 	local function pick(mode, rounds)
 		close()
 		task.spawn(PvP.Challenge, target.UserId, mode, rounds)
 	end
-	local spar = UI.Button(body, "SPARRING  -  headgear, no record", { Size = UDim2.new(1, -8, 0, 46), BackgroundColor3 = T.blue }, function()
+	local spar = UI.Button(body, "SPARRING  -  headgear, no record", { Size = UDim2.new(1, -8, 0, 46), BackgroundColor3 = T.blue, LayoutOrder = 2 }, function()
 		pick("spar")
 	end)
 	spar.Name = "Spar"
 	UI.PadStart(spar)
-	local r3 = UI.Button(body, "RANKED BOUT  -  3 ROUNDS", { Name = "Ranked3", Size = UDim2.new(1, -8, 0, 46), BackgroundColor3 = T.red }, function()
+	local r3 = UI.Button(body, "RANKED BOUT  -  3 ROUNDS", { Name = "Ranked3", Size = UDim2.new(1, -8, 0, 46), BackgroundColor3 = T.red, LayoutOrder = 3 }, function()
 		pick("ranked", 3)
 	end)
-	local r6 = UI.Button(body, "RANKED BOUT  -  6 ROUNDS", { Name = "Ranked6", Size = UDim2.new(1, -8, 0, 46), BackgroundColor3 = T.red }, function()
+	local r6 = UI.Button(body, "RANKED BOUT  -  6 ROUNDS", { Name = "Ranked6", Size = UDim2.new(1, -8, 0, 46), BackgroundColor3 = T.red, LayoutOrder = 4 }, function()
 		pick("ranked", 6)
 	end)
 	r3.Name, r6.Name = "Ranked3", "Ranked6"
-	UI.Line(body, "Ranked bouts count on your PvP record and rating and pay a small purse. Your career record, camp and injuries are never affected.", { TextColor3 = T.sub, TextSize = 13 })
+	UI.Line(body, "Ranked bouts count on your PvP record and rating and pay a small purse. Your career record, camp and injuries are never affected.", { TextColor3 = T.sub, TextSize = 13, LayoutOrder = 5 })
+	fitHeight(win, body, 560)
 	return shade
 end
 
@@ -216,19 +347,23 @@ local function showChallenge(msg)
 	closePopup()
 	PvP.state.incoming = msg
 	local shade, win, body
-	shade, win, body = UI.Window(State.gui, "PvPChallenge", 600, 400, (msg.fromName or "A boxer") .. " CHALLENGES YOU", {
+	shade, win, body = UI.Window(State.gui, "PvPChallenge", 640, 520, (msg.fromName or "A boxer") .. " CHALLENGES YOU", {
 		kicker = "PLAYER VS PLAYER  ·  " .. modeText(msg.mode, msg.rounds), accent = T.red, footer = 64, z = 40,
 		onClose = function()
 			respond(false)
 		end,
 	})
 	popup = shade
-	UI.Line(body, string.format("@%s  ·  %s", tostring(msg.fromUser or ""), tostring(msg.boxer or "")), { Font = T.semi, TextSize = 16 })
-	UI.Line(body, string.format("PvP %s  ·  rating %s  ·  %s", tostring(msg.record or "0-0-0"), tostring(msg.rating or "-"), tostring(msg.rank or "")), { TextColor3 = T.sub, TextSize = 14 })
+	-- him (the challenger's corner) against you
+	local from = Players:GetPlayerByUserId(tonumber(msg.from) or 0)
+	local them = boxerInfo(msg, from)
+	them.user = them.user or ("@" .. tostring(msg.fromUser or ""))
+	versusRow(body, them, T.red, boxerInfo(nil, player, true), T.blue, 1)
 	UI.Line(body, msg.mode == "ranked" and "A ranked bout counts on your PvP record and rating. Your career is never affected."
-		or "Sparring: headgear on, lighter shots, nothing on any record.", { TextColor3 = T.sub, TextSize = 13 })
-	local timer = UI.Line(body, "", { Font = T.semi, TextSize = 14, TextColor3 = T.gold })
+		or "Sparring: headgear on, lighter shots, nothing on any record.", { TextColor3 = T.sub, TextSize = 13, LayoutOrder = 2 })
+	local timer = UI.Line(body, "", { Font = T.semi, TextSize = 14, TextColor3 = T.gold, LayoutOrder = 3 })
 	timer.Name = "Timer"
+	fitHeight(win, body, 520)
 	local accept = UI.Button(win, "ACCEPT", { Name = "Accept", Size = UDim2.new(0.5, -30, 0, 48), Position = UDim2.new(0, 20, 1, -60), BackgroundColor3 = T.green }, function()
 		respond(true)
 	end)
@@ -263,22 +398,19 @@ local function showMatch(msg)
 	end
 	local shade, win, body = UI.Window(State.gui, "PvPMatch", 720, 420, "MATCH FOUND", { kicker = modeText(msg.mode, msg.rounds), accent = T.gold, z = 45 })
 	matchShade = shade
-	local me = msg.me or {}
-	local row = UI.Row(body, 120)
-	local function side(name, user, boxer, rating, record, color)
-		local c = UI.Frame(row, { BackgroundColor3 = T.panel, BackgroundTransparency = 0.1, Size = UDim2.new(0.5, -6, 1, 0) })
-		UI.Corner(c, UI.R.lg)
-		UI.Stroke(c, color, 1.5, 0.3)
-		UI.Pad(c, 12)
-		UI.List(c, 4)
-		UI.Text(c, string.upper(tostring(boxer or name)), { Face = "displayMed", TextSize = 24, TextColor3 = color, Size = UDim2.new(1, 0, 0, 28), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
-		UI.Line(c, user, { TextColor3 = T.sub, TextSize = 14 })
-		UI.Line(c, string.format("PvP %s  ·  rating %s", tostring(record or "0-0-0"), tostring(rating or "-")), { TextSize = 14 })
-	end
-	side(player.DisplayName, "@" .. player.Name .. "  (you)", me.boxer, me.rating, me.record, msg.corner == "red" and T.red or T.blue)
-	side(msg.oppName, "@" .. tostring(msg.oppUser or ""), msg.oppBoxer, msg.oppRating, msg.oppRecord, msg.corner == "red" and T.blue or T.red)
-	local count = UI.Line(body, "", { Face = "display", TextSize = 34, TextColor3 = T.gold, TextXAlignment = Enum.TextXAlignment.Center })
+	-- you in your corner's colour against him; kept for the result card (the bout's head to head)
+	local myColor, oppColor = msg.corner == "red" and T.red or T.blue, msg.corner == "red" and T.blue or T.red
+	local oppPlr = Players:FindFirstChild(tostring(msg.oppUser or ""))
+	local opp = boxerInfo(type(msg.opp) == "table" and msg.opp or { boxer = msg.oppBoxer, record = msg.oppRecord, rating = msg.oppRating, rank = msg.oppRank },
+		oppPlr and oppPlr:IsA("Player") and oppPlr or nil)
+	opp.boxer = opp.boxer or msg.oppName
+	opp.user = opp.user or ("@" .. tostring(msg.oppUser or ""))
+	local me = boxerInfo(msg.me, player, true)
+	PvP.state.match = { me = me, opp = opp, myColor = myColor, oppColor = oppColor, oppName = msg.oppName }
+	versusRow(body, me, myColor, opp, oppColor, 1)
+	local count = UI.Line(body, "", { Face = "display", TextSize = 34, TextColor3 = T.gold, TextXAlignment = Enum.TextXAlignment.Center, LayoutOrder = 2 })
 	count.Name = "Count"
+	fitHeight(win, body, 420)
 	local t0 = os.clock()
 	local secs = tonumber(msg.seconds) or 4
 	task.spawn(function()
@@ -321,24 +453,57 @@ local function showResult(msg)
 		kicker = (msg.ranked and "PVP RANKED BOUT" or "PVP SPARRING") .. "  ·  vs " .. tostring(msg.oppPlayer or ""), accent = color, footer = 64, onClose = close,
 	})
 	State.windows.PvPResult = close
-	UI.Line(body, string.format("%s  (%s)", tostring(msg.opp or "?"), tostring(msg.oppPlayer or "")), { Font = T.semi, TextSize = 16 })
-	if res.reason then
-		UI.Line(body, tostring(res.reason) .. (res.round and ("  ·  round " .. res.round) or ""), { TextColor3 = T.sub, TextSize = 14 })
+	-- the bout's head to head (the match card's), your new rating and record on your side
+	local m = PvP.state.match
+	PvP.state.match = nil
+	if not (m and (m.oppName == msg.oppPlayer or m.opp.boxer == msg.opp)) then
+		m = { me = boxerInfo(nil, player, true), opp = { boxer = msg.opp, user = msg.oppPlayer }, myColor = T.red, oppColor = T.blue }
 	end
-	local c = UI.Card(body, { pad = 14 })
-	UI.Line(c, string.format("Landed %d / %d  ·  opponent %d / %d", res.landed or 0, res.thrown or 0, res.oppLanded or 0, res.oppThrown or 0), { TextSize = 14 })
-	UI.Line(c, string.format("Knockdowns: %d scored, %d taken", res.kdFor or 0, res.kdAgainst or 0), { TextSize = 14 })
+	local me, opp = table.clone(m.me), table.clone(m.opp)
+	local v = type(msg.pvp) == "table" and msg.pvp or {}
 	if msg.ranked then
-		local v = msg.pvp or {}
-		UI.Line(body, string.format("PvP rating %s (%s%s)", tostring(msg.rating or v.rating or "-"), (msg.delta or 0) >= 0 and "+" or "", tostring(msg.delta or 0)),
-			{ Font = T.semi, TextSize = 18, TextColor3 = (msg.delta or 0) >= 0 and T.green or T.red })
-		UI.Line(body, string.format("PvP record %d-%d-%d (%d KO)  ·  purse %s", v.w or 0, v.l or 0, v.d or 0, v.ko or 0, Config.Money(msg.money or 0)), { TextSize = 14 })
+		me.record = string.format("%d-%d-%d", v.w or 0, v.l or 0, v.d or 0)
+		-- his record moved the other way (his new rating is his own business: only yours is known here)
+		local w, l, d = tostring(opp.record or ""):match("^(%d+)-(%d+)-(%d+)$")
+		if w then
+			w, l, d = tonumber(w), tonumber(l), tonumber(d)
+			if res.outcome == "win" then
+				l += 1
+			elseif res.outcome == "loss" then
+				w += 1
+			else
+				d += 1
+			end
+			opp.record = string.format("%d-%d-%d", w, l, d)
+		end
+		if tonumber(msg.rating) then
+			me.newRating, me.delta = tonumber(msg.rating), tonumber(msg.delta) or 0
+		end
+	end
+	-- the night in numbers on top of the tape
+	local function landed(l, t)
+		l, t = l or 0, t or 0
+		return t > 0 and string.format("%d/%d  (%d%%)", l, t, math.floor(l / t * 100 + 0.5)) or string.format("%d/%d", l, t)
+	end
+	if res.reason then
+		UI.Line(body, tostring(res.reason) .. (res.round and ("  ·  round " .. res.round) or ""), { Font = T.semi, TextSize = 16, LayoutOrder = 1 })
+	end
+	versusRow(body, me, m.myColor, opp, m.oppColor, 2, {
+		{ "LANDED", landed(res.landed, res.thrown), landed(res.oppLanded, res.oppThrown) },
+		{ "KNOCKDOWNS", res.kdFor or 0, res.kdAgainst or 0 },
+	})
+	if msg.ranked then
+		UI.Line(body, string.format("Purse %s  ·  %d KO on your PvP record", Config.Money(msg.money or 0), v.ko or 0), { TextColor3 = T.sub, TextSize = 14, LayoutOrder = 3 })
 	else
-		UI.Line(body, "Sparring: nothing on any record. Good work.", { TextColor3 = T.sub, TextSize = 14 })
+		UI.Line(body, "Sparring: nothing on any record. Good work.", { TextColor3 = T.sub, TextSize = 14, LayoutOrder = 3 })
 	end
-	for _, n in ipairs(msg.notes or {}) do
-		UI.Line(body, tostring(n), { TextColor3 = T.sub, TextSize = 13 })
+	for i, n in ipairs(msg.notes or {}) do
+		-- (the rating is on your card: an older server's "PvP rating a -> b" note is not repeated)
+		if not tostring(n):find("^PvP rating") then
+			UI.Line(body, tostring(n), { TextColor3 = T.sub, TextSize = 13, LayoutOrder = 4 + i })
+		end
 	end
+	fitHeight(win, body, 560)
 	UI.PadStart(UI.Button(win, "CONTINUE", { Name = "Continue", Size = UDim2.new(0, 240, 0, 46), Position = UDim2.new(0.5, -120, 1, -58), BackgroundColor3 = T.gold }, close))
 end
 
