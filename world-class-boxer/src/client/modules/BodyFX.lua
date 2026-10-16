@@ -145,6 +145,26 @@ local MORPH_STEP = 0.1 -- weights move in these steps (a flex step is a millimet
 local MORPH_RATE = 1 / 20 -- per character: blend shapes at most this often (near), half as often far
 local BREATH_RATE = 1 / 10 -- breathing (slow, tiny) at most this often
 local BREATH_RANGE = 30 -- studs: breathing only this close (it rewrites the chest continuously)
+-- per Graphics level (BoxerClient.Perf: 1 Low, 2 Medium, 3 High): muscles animate inside near, breathe inside
+-- breath, take blend shapes at the full rate inside close (half beyond); your own body and the fighters' keep
+-- High's distances at every level
+local LEVELS = { { near = 25, breath = 14, close = 10 }, { near = 35, breath = 22, close = 15 }, { near = NEAR, breath = BREATH_RANGE, close = 20 } }
+local HIGH = LEVELS[3]
+local lv = HIGH
+do
+	local m = script.Parent:FindFirstChild("Perf")
+	local ok, Perf = false, nil
+	if m then
+		ok, Perf = pcall(require, m)
+	end
+	if ok and type(Perf) == "table" and Perf.Level and Perf.Changed then
+		local function pick()
+			lv = LEVELS[math.clamp(tonumber(Perf.Level()) or 3, 1, 3)]
+		end
+		pick()
+		Perf.Changed:Connect(pick)
+	end
+end
 
 local function quant(x)
 	return floor(x / MORPH_STEP + 0.5) * MORPH_STEP
@@ -1322,16 +1342,22 @@ function BodyFX.Update(dt, t, camPos, rigs)
 			queueDirty = true
 			continue
 		end
-		local root = model:FindFirstChild("HumanoidRootPart")
-		if not root then
-			continue
+		-- the root's distance: the Animator measured it this frame for its rigs (no second read of the part)
+		local rig = rigs and rigs[model]
+		local dist = rig and rig.camT == t and rig.camDist
+		if not dist then
+			local root = model:FindFirstChild("HumanoidRootPart")
+			if not root then
+				continue
+			end
+			dist = (root.Position - camPos).Magnitude
 		end
 		if t >= rec.nextAttr then
 			rec.nextAttr = t + 0.2
 			readAttrs(rec, now)
 		end
-		local dist = (root.Position - camPos).Magnitude
-		local far = dist > NEAR
+		local lvl = (rig and (rig.isFighter or rig.isLocal)) and HIGH or lv
+		local far = dist > lvl.near
 		if far then
 			if rec.awake then
 				restore(rec)
@@ -1347,7 +1373,6 @@ function BodyFX.Update(dt, t, camPos, rigs)
 			rec.nextScan = t + 0.5
 			scan(rec)
 		end
-		local rig = rigs and rigs[model]
 		local cxL = rig and rig.cxL
 		local cxR = rig and rig.cxR
 		-- jiggle springs
@@ -1365,10 +1390,10 @@ function BodyFX.Update(dt, t, camPos, rigs)
 		if rec.mesh then
 			-- anatomy meshes: blend shapes (the round-1 muscle parts and veins are hidden under them)
 			local anyC = smoothContraction(rec, cxL, cxR, upRate, downRate)
-			local breathing = dist < BREATH_RANGE and rig ~= nil
+			local breathing = dist < lvl.breath and rig ~= nil
 			local active = anyC or jig or rec.pump > 0.005 or rec.live > 0.005 or rec.strain > 0.02 or breathing
 			if (active or rec.meshAwake) and t >= rec.nextMorph then
-				rec.nextMorph = t + (dist < 20 and MORPH_RATE or MORPH_RATE * 2)
+				rec.nextMorph = t + (dist < lvl.close and MORPH_RATE or MORPH_RATE * 2)
 				rec.meshAwake = meshWeights(rec, rig, breathing, t)
 			end
 			continue

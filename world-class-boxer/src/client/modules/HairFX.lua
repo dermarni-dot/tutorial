@@ -57,6 +57,25 @@ local clamp = math.clamp
 local DOWN = Vector3.new(0, -1, 0)
 
 local NEAR, MID = 25, 60
+-- per Graphics level (BoxerClient.Perf: 1 Low, 2 Medium, 3 High): hair moves at full rate inside near, at half
+-- rate up to mid, rests beyond; your own hair and the fighters' keep High's at every level
+local LEVELS = { { near = 15, mid = 30 }, { near = 20, mid = 45 }, { near = NEAR, mid = MID } }
+local HIGH = LEVELS[3]
+local lv = HIGH
+do
+	local m = script.Parent:FindFirstChild("Perf")
+	local ok, Perf = false, nil
+	if m then
+		ok, Perf = pcall(require, m)
+	end
+	if ok and type(Perf) == "table" and Perf.Level and Perf.Changed then
+		local function pick()
+			lv = LEVELS[math.clamp(tonumber(Perf.Level()) or 3, 1, 3)]
+		end
+		pick()
+		Perf.Changed:Connect(pick)
+	end
+end
 local MAXA = 1.15 -- rad: a hair joint never swings further than this
 local FWD = 0.35 -- rad: a mesh hair segment never swings further toward the face than this
 local WET_ROWS = 16 -- texture rows rewritten per frame for the wet look (256 / 128 are multiples)
@@ -841,14 +860,28 @@ local function stepPiece(rec, e, dt, t, hcf, g, wx, wz)
 end
 
 -- outdoors (open sky above the head) the breeze gusts; indoors only a fan's gentle draught. One upward ray
--- per model every 2 s (characters only, the model itself excluded)
+-- per model every 2 s while it moves (characters only, the model itself excluded)
 local skyParams = RaycastParams.new()
 skyParams.FilterType = Enum.RaycastFilterType.Exclude
+local skyCount = 0
 local function windScale(rec, t, hcf)
 	if t < (rec.nextSky or 0) then
 		return rec.windK or 0.035
 	end
-	rec.nextSky = t + 2
+	-- (every model at its own phase: models that came in together never cast their rays on one frame again)
+	if not rec.skyK then
+		skyCount += 1
+		rec.skyK = (skyCount * 0.618034) % 1
+		rec.nextSky = t + 2 * rec.skyK
+	else
+		rec.nextSky = t + 2
+	end
+	-- (a model still within a couple of studs of its last ray is under the same roof, or the same sky)
+	local pos = hcf.Position
+	if rec.windK and rec.skyPos and (pos - rec.skyPos).Magnitude < 2 then
+		return rec.windK
+	end
+	rec.skyPos = pos
 	local roofed = false
 	pcall(function()
 		skyParams.FilterDescendantsInstances = { rec.model }
@@ -926,7 +959,19 @@ function HairFX.Impulse(model, x, z, amount)
 end
 
 local frame = 0
-function HairFX.Update(dt, t, camPos, cam)
+-- rigs = the Animator's rig table (rig.isFighter / rig.isLocal pick High's distances), may be nil
+local function levelOf(rigs, model)
+	local rig = rigs and rigs[model]
+	return (rig and (rig.isFighter or rig.isLocal)) and HIGH or lv
+end
+-- the root's distance when it is clearly past mid (the Animator measured it this frame; the head is within a few
+-- studs of the root), else false: a far model's head is not read at all
+local function farByRoot(rigs, model, t, L)
+	local rig = rigs and rigs[model]
+	local cd = rig and rig.camT == t and rig.camDist
+	return (cd and cd > L.mid + 5) and cd or false
+end
+function HairFX.Update(dt, t, camPos, cam, rigs)
 	frame += 1
 	-- mesh hair
 	for model, rec in pairs(meshes) do
@@ -942,22 +987,28 @@ function HairFX.Update(dt, t, camPos, cam)
 				continue
 			end
 		end
-		local hp = head.Position
-		local dist = (hp - camPos).Magnitude
+		local L = levelOf(rigs, model)
+		local far = farByRoot(rigs, model, t, L)
+		local hp = (not far) and head.Position
+		local dist = far or (hp - camPos).Magnitude
+		if dist > L.mid then
+			if not rec.rest then
+				relaxMesh(rec)
+			end
+			rec.gap = true
+			continue
+		end
 		local onScreen = true
 		if cam and dist > 6 then
 			local _, vis = cam:WorldToViewportPoint(hp)
 			onScreen = vis
 		end
-		if dist > MID or not onScreen then
-			if not rec.rest and dist > MID then
-				relaxMesh(rec)
-			end
+		if not onScreen then
 			-- paused: the pivots' motion history is stale when it comes back (no false whip then)
 			rec.gap = true
 			continue
 		end
-		local stepN = dist < NEAR and 1 or 2
+		local stepN = dist < L.near and 1 or 2
 		rec.frame += 1
 		if rec.frame % stepN ~= 0 then
 			continue
@@ -1044,20 +1095,25 @@ function HairFX.Update(dt, t, camPos, cam)
 				continue
 			end
 		end
-		local hp = head.Position
-		local dist = (hp - camPos).Magnitude
+		local L = levelOf(rigs, model)
+		local far = farByRoot(rigs, model, t, L)
+		local hp = (not far) and head.Position
+		local dist = far or (hp - camPos).Magnitude
+		if dist > L.mid then
+			if not o.rest then
+				relax(o)
+			end
+			continue
+		end
 		local onScreen = true
 		if cam and dist > 6 then
 			local _, vis = cam:WorldToViewportPoint(hp)
 			onScreen = vis
 		end
-		if dist > MID or not onScreen then
-			if not o.rest and dist > MID then
-				relax(o)
-			end
+		if not onScreen then
 			continue
 		end
-		local step = dist < NEAR and 1 or 2
+		local step = dist < L.near and 1 or 2
 		o.frame += 1
 		if o.frame % step ~= 0 then
 			continue
@@ -1132,7 +1188,7 @@ function HairFX.Update(dt, t, camPos, cam)
 			end
 		end
 		-- strands (all in BoxerLook.Hair): sway from the head's own motion (head space), only up close
-		if #ss > 0 and dist < NEAR and not meshHair then
+		if #ss > 0 and dist < L.near and not meshHair then
 			local hv = Vector3.zero
 			if o.lastPos then
 				hv = head.CFrame:VectorToObjectSpace((hp - o.lastPos) / sdt)

@@ -77,6 +77,26 @@ local clamp = math.clamp
 local NEAR = 34 -- full face animation inside this distance
 local MID = 60 -- blinking only up to here
 local player = Players.LocalPlayer
+-- per Graphics level (BoxerClient.Perf: 1 Low, 2 Medium, 3 High): the distances above and the head's blend-shape
+-- rate shrink on the lower levels (a face 30+ studs away on a phone is a dozen pixels: its blinks do not read);
+-- your own face and the fighters' keep High's at every level
+local LEVELS = { { near = 18, mid = 32, hz = 8 }, { near = 26, mid = 45, hz = 10 }, { near = NEAR, mid = MID, hz = 14 } }
+local HIGH = LEVELS[3]
+local lv = HIGH
+do
+	local m = script.Parent:FindFirstChild("Perf")
+	local ok, Perf = false, nil
+	if m then
+		ok, Perf = pcall(require, m)
+	end
+	if ok and type(Perf) == "table" and Perf.Level and Perf.Changed then
+		local function pick()
+			lv = LEVELS[math.clamp(tonumber(Perf.Level()) or 3, 1, 3)]
+		end
+		pick()
+		Perf.Changed:Connect(pick)
+	end
+end
 
 ------------------------------------------------------------------------
 -- Expression channels
@@ -403,7 +423,7 @@ end
 ------------------------------------------------------------------------
 local JAW_OPEN = math.rad(13) -- AnatomyHeadRig.JAW_OPEN: MouthLower's turn and the `open` morph at 1
 local LID_SHUT = math.rad(48) -- the upper lid's turn that meets the lower lid
-local MORPH_HZ = 14
+local MORPH_HZ = 14 -- (High's; LEVELS above)
 local V2 = Vector2.new
 local readu8, writeu8 = buffer.readu8, buffer.writeu8
 
@@ -888,7 +908,7 @@ local function meshUpdate(model, rec, v, ch, blinkC, lidC, gaze, near, now, a, b
 	if same then
 		return
 	end
-	v.nextMorph = now + 1 / MORPH_HZ
+	v.nextMorph = now + 1 / (v.hz or MORPH_HZ)
 	morphFrameUsed = morphFrame
 	Anatomy.SetMorphs(model, "Head", "Head", w)
 	if v.pieces.Beard then
@@ -937,8 +957,13 @@ function FaceFX.Update(dt, t, camPos, rigs, budget)
 		if not mv and not next(rec.roles) and not next(rec.blink) then
 			continue
 		end
-		local dist = (head.Position - camPos).Magnitude
-		if dist > MID then
+		local rig = rigs and rigs[model]
+		local lvl = (model == player.Character or (rig and rig.isFighter)) and HIGH or lv
+		-- clearly out of range by the root's distance (the Animator measured it this frame; the head is within a
+		-- few studs of the root): the head's position is not read at all
+		local cd = rig and rig.camT == t and rig.camDist
+		local dist = (cd and cd > lvl.mid + 5) and cd or (head.Position - camPos).Magnitude
+		if dist > lvl.mid then
 			if rec.active then
 				reset(rec)
 			end
@@ -951,8 +976,10 @@ function FaceFX.Update(dt, t, camPos, rigs, budget)
 			rec.active = true
 		end
 		local a = rec.a
-		local rig = rigs and rigs[model]
-		local near = dist < NEAR
+		local near = dist < lvl.near
+		if mv then
+			mv.hz = lvl.hz
+		end
 
 		-- target expression
 		local expr = a.Expr
