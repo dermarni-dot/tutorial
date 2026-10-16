@@ -2180,11 +2180,83 @@ end
 -- Toast notifications (top right, slide in, accent bar in the message colour)
 ------------------------------------------------------------------------
 local toastHolder
+local toastAvoid = {} -- GuiObjects the toast column keeps clear of (UI.ToastAvoid)
+local TOAST_W, TOAST_MIN_W = 400, 300 -- the column's width; narrower than the minimum it moves down instead
+local TOAST_RIGHT, TOAST_TOP, TOAST_BOTTOM, TOAST_GAP = 24, 76, 84, 12
+
+local function onScreen(o)
+	while o do
+		if o:IsA("LayerCollector") then
+			return o.Enabled
+		end
+		if o:IsA("GuiObject") and not o.Visible then
+			return false
+		end
+		o = o.Parent
+	end
+	return false
+end
+
+-- the column hangs TOAST_W wide under the top-right corner unless a registered frame on screen reaches
+-- into it (the gym HUD plate is 440 wide on a phone's 855 px canvas: the welcome toasts sat on its
+-- condition chips): then it takes the room right of that frame, or starts under it where that room is
+-- narrower than TOAST_MIN_W. Toasts already up reflow with it (they fill the column's width)
+local function placeToasts()
+	local holder = toastHolder
+	if not (holder and holder.Parent) then
+		return
+	end
+	local cv = UI.CanvasSize(holder)
+	-- screen pixels -> the column's design pixels, measured on its own root (the root fills the screen):
+	-- this carries the UI scale and the screen's inset alike
+	local root = holder.Parent
+	local origin, rootSize = root.AbsolutePosition, root.AbsoluteSize
+	local k = rootSize.X > 1 and cv.X / rootSize.X or 1 / UI.ScaleOf(holder)
+	local w, top = TOAST_W, TOAST_TOP
+	for obj in pairs(toastAvoid) do
+		if obj.Parent and onScreen(obj) then
+			local p, size = (obj.AbsolutePosition - origin) * k, obj.AbsoluteSize * k
+			local right, bottom = p.X + size.X + TOAST_GAP, p.Y + size.Y + TOAST_GAP
+			if size.X > 0 and bottom > top and right > cv.X - TOAST_RIGHT - w then
+				local room = cv.X - TOAST_RIGHT - right
+				if room >= TOAST_MIN_W then
+					w = math.min(w, room)
+				else
+					top = math.max(top, bottom)
+				end
+			end
+		end
+	end
+	holder.Size = UDim2.new(0, w, 1, -(top + TOAST_BOTTOM))
+	holder.Position = UDim2.new(1, -TOAST_RIGHT, 0, top)
+end
+
+-- keep the toast column clear of obj while it is on screen (a HUD plate in the top corners); follows its
+-- size, position and visibility
+function UI.ToastAvoid(obj)
+	if toastAvoid[obj] or not (obj and obj:IsA("GuiObject")) then
+		return
+	end
+	toastAvoid[obj] = true
+	for _, prop in ipairs({ "Visible", "AbsoluteSize", "AbsolutePosition" }) do
+		obj:GetPropertyChangedSignal(prop):Connect(placeToasts)
+	end
+	obj.Destroying:Connect(function()
+		toastAvoid[obj] = nil
+		placeToasts()
+	end)
+	placeToasts()
+end
+
 function UI.Toast(gui, text, color, duration)
 	if not toastHolder or not toastHolder.Parent then
-		toastHolder = UI.Frame(gui, { Name = "Toasts", BackgroundTransparency = 1, AnchorPoint = Vector2.new(1, 0), Size = UDim2.new(0, 400, 1, -160), Position = UDim2.new(1, -24, 0, 76), ZIndex = 50 })
+		toastHolder = UI.Frame(gui, { Name = "Toasts", BackgroundTransparency = 1, AnchorPoint = Vector2.new(1, 0), Size = UDim2.new(0, TOAST_W, 1, -(TOAST_TOP + TOAST_BOTTOM)),
+			Position = UDim2.new(1, -TOAST_RIGHT, 0, TOAST_TOP), ZIndex = 50 })
 		UI.List(toastHolder, 8, false, Enum.HorizontalAlignment.Right)
+		-- a new canvas (rotation, window resize) moves the column with it
+		gui:GetPropertyChangedSignal("AbsoluteSize"):Connect(placeToasts)
 	end
+	placeToasts()
 	color = color or T.gold
 	local f = UI.Frame(toastHolder, { Name = "Toast", Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1, ZIndex = 50 })
 	local card = UI.Frame(f, { Name = "Card", Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, Position = UDim2.fromOffset(60, 0), BackgroundColor3 = T.bg, BackgroundTransparency = 1, ZIndex = 50 })

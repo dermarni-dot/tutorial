@@ -35,6 +35,17 @@ State.toastScreen = UI.New("ScreenGui", {
 	ZIndexBehavior = Enum.ZIndexBehavior.Sibling, Parent = player:WaitForChild("PlayerGui"),
 })
 State.toastRoot = UI.MountRoot(State.toastScreen)
+-- toasts keep clear of the gym HUD plate (ClientMain builds it on State.gui as "HUD"): on a phone the
+-- compact plate is 440 wide and the toast column would cover its condition chips
+local function toastAvoidHud(c)
+	if c.Name == "HUD" then
+		UI.ToastAvoid(c)
+	end
+end
+State.gui.ChildAdded:Connect(toastAvoidHud)
+for _, c in ipairs(State.gui:GetChildren()) do
+	toastAvoidHud(c)
+end
 
 local changed = Instance.new("BindableEvent")
 State.Changed = changed.Event
