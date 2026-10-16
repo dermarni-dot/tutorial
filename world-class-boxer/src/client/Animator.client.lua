@@ -74,13 +74,13 @@ local POSE = Gym.POSE
 local PUNCHES = Gym.PUNCHES
 
 -- LOD bands (studs from the camera) per Graphics level (BoxerClient.Perf: 1 Low, 2 Medium, 3 High). High is
--- the full look; your own character and the fighters use High's bands at every level. Past near: no
--- punch / gaze detail and the far legs; past mid / far: every 2nd / 3rd frame; past cull: not animated.
--- off = the frame step off screen; still = the step for a still background figure on screen past near,
--- stillOff = off screen (see the main loop)
+-- the full look; your own character and the fighters use High's bands at every level. Past near: no gaze
+-- detail and the far legs (a punch still finds its target up to mid); past mid / far: every 2nd / 3rd frame;
+-- past cull: not animated. off = the frame step off screen; still = the step for a still background figure on
+-- screen from stillFrom (near when not given) out, stillOff = off screen (see the main loop)
 local BANDS = {
-	{ near = 25, mid = 60, far = 100, cull = 140, off = 6, still = 3, stillOff = 8 },
-	{ near = 35, mid = 85, far = 130, cull = 180, off = 5, still = 2, stillOff = 6 },
+	{ near = 25, mid = 60, far = 80, cull = 140, off = 6, still = 3, stillOff = 8 },
+	{ near = 30, mid = 60, far = 90, cull = 150, off = 6, still = 2, stillOff = 8, stillFrom = 15 },
 	{ near = 45, mid = 110, far = 170, cull = 230, off = 4, still = 2, stillOff = 6 },
 }
 local HIGH = BANDS[3]
@@ -185,6 +185,46 @@ local function onAttr(rig, name)
 	end
 end
 
+-- AnatomyClient puts the organic shoes on (or takes them off) when it builds a body: the feet's roll profile
+-- and ankle height are re-measured at once (computeGeo: g.meshFeet), never up to 2.5 s of the box foot's toe
+-- rolling under the longer shoe at a walk's start
+local function feetChanged(rig, child)
+	local n = child.Name
+	if n == "AnatomyRightFoot" or n == "AnatomyLeftFoot" then
+		rig.geoNow = true
+	end
+end
+
+local function watchAnatomy(rig, folder)
+	if rig.anatConns then
+		for _, c in ipairs(rig.anatConns) do
+			c:Disconnect()
+		end
+	end
+	rig.anatConns = {
+		folder.ChildAdded:Connect(function(c)
+			feetChanged(rig, c)
+		end),
+		folder.ChildRemoved:Connect(function(c)
+			feetChanged(rig, c)
+		end),
+	}
+	rig.geoNow = true
+end
+
+local function dropConns(rig)
+	for _, k in ipairs({ "conn", "hipConn", "childConn" }) do
+		if rig[k] then
+			rig[k]:Disconnect()
+			rig[k] = nil
+		end
+	end
+	for _, c in ipairs(rig.anatConns or {}) do
+		c:Disconnect()
+	end
+	rig.anatConns = nil
+end
+
 local function setup(model)
 	if not model:IsA("Model") then
 		return
@@ -233,6 +273,15 @@ local function setup(model)
 			rig.geoNow = true
 		end)
 	end
+	rig.childConn = model.ChildAdded:Connect(function(c)
+		if c.Name == "Anatomy" and c:IsA("Folder") then
+			watchAnatomy(rig, c)
+		end
+	end)
+	local af = model:FindFirstChild("Anatomy")
+	if af and af:IsA("Folder") then
+		watchAnatomy(rig, af)
+	end
 	rig.isPlayer = Players:GetPlayerFromCharacter(model) ~= nil
 	R.resolveJoints(rig)
 	R.computeGeo(rig)
@@ -265,12 +314,7 @@ local function teardown(model)
 		rig.rope.a0:Destroy()
 		rig.rope.a1:Destroy()
 	end
-	if rig.conn then
-		rig.conn:Disconnect()
-	end
-	if rig.hipConn then
-		rig.hipConn:Disconnect()
-	end
+	dropConns(rig)
 	-- players keep their pump visible after training; NPC rigs are done
 	if BodyFX and not Players:GetPlayerFromCharacter(model) then
 		BodyFX.Untrack(model)
@@ -517,8 +561,15 @@ local function chooseLook(rig, t)
 			-- drag the stance around
 			local lp = rig.root.CFrame:PointToObjectSpace(bag.Position)
 			local r = min(bag.Size.Y, bag.Size.Z) * 0.5
-			local sc = rig.geo.utScale
-			local want = clamp(-lp.Z - r - BAG_RANGE_IN * clamp(sc and sc.Y or 1, 0.7, 1.4), 0, 1.1)
+			local g = rig.geo
+			local sc = g.utScale
+			-- (never so close that the guard rests in the bag: the foremost guard glove stays a glove's radius off it)
+			local inR = BAG_RANGE_IN * clamp(sc and sc.Y or 1, 0.7, 1.4)
+			local gl, gr = rig.guardL, rig.guardR
+			if gl and gr and sc then
+				inR = max(inR, -min(gl[3], gr[3]) * sc.Z + max(g.fistRL or 0.4, g.fistRR or 0.4) + 0.1)
+			end
+			local want = clamp(-lp.Z - r - inR, 0, 1.1)
 			rig.bagWant = rig.bagWant and (rig.bagWant + (want - rig.bagWant) * 0.3) or want
 		else
 			rig.bagWant = nil
@@ -860,7 +911,9 @@ local function updateRig(rig, model, t, dt, lod, rdt)
 	if springs then
 		R.applySpringsPre(rig, p)
 	end
-	local near = lod >= 3
+	-- (a punch aims at its target - the man, the bag - in the middle band too: past near the generic path brings a
+	-- big man's forearm back through his own chest, and only the rigs punching pay for it)
+	local near = lod >= 2
 	Gym.runPending(rig, t)
 	if guard ~= "down" then
 		Fight.reactionTick(p, rig, t)
@@ -1108,12 +1161,7 @@ RunService.PreSimulation:Connect(function(dt)
 	local updated = 0
 	for model, rig in pairs(rigs) do
 		if not model.Parent then
-			if rig.conn then
-				rig.conn:Disconnect()
-			end
-			if rig.hipConn then
-				rig.hipConn:Disconnect()
-			end
+			dropConns(rig)
 			rigs[model] = nil
 			continue
 		end
@@ -1153,7 +1201,8 @@ RunService.PreSimulation:Connect(function(dt)
 		-- A background figure that stands its ground and moves slowly - between combinations at the bag,
 		-- curling, skipping, stretching, watching from the apron - is drawn at half rate past the near band
 		-- (under a tenth of the screen's height there: its motion reads the same, the gym's crowd costs a
-		-- quarter less) and at a sixth off screen (only its shadow or a limb at the frame's edge can show).
+		-- quarter less; Medium - every phone on Auto - from stillFrom, 15 studs, on) and at a sixth / an eighth
+		-- off screen (only its shadow or a limb at the frame's edge can show).
 		-- Never a walker (its root glides on every frame: planted feet re-solved on every other one shuffle
 		-- with it, 3x the slide), never a punch, slip or step in flight or the treadmill run (a fast limb
 		-- moves twice as far between two updates), never a fighter or your own character. The figures slowed
@@ -1162,7 +1211,7 @@ RunService.PreSimulation:Connect(function(dt)
 		if not rig.isFighter and not rig.isLocal then
 			local lo, pun = rig.loco, rig.pun
 			if lo.speed < 0.5 and abs(lo.yawRate) < 0.5 and not (pun.L or pun.R or rig.act or rig.autoAct) and rig.a.Pose ~= "run" then
-				local slow = onScreen and (dist > b.near and b.still or 1) or b.stillOff
+				local slow = onScreen and (dist > (b.stillFrom or b.near) and b.still or 1) or b.stillOff
 				if slow > step then
 					skip = (frameNo + rig.slot) % slow ~= 0
 				end
