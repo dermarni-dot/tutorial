@@ -1018,7 +1018,8 @@ R.Body = function(body, P)
 	for _, line in ipairs(exerciseGuide()) do
 		UI.Line(g, line, { TextSize = 13, TextColor3 = T.sub })
 	end
-	UI.Line(body, "Every session grows the muscles it works; most of the growth lands overnight if you sleep and eat well. Muscles you neglect for a week start to fade. Muscle adds punching power and weight; fat costs stamina and makes weight harder to make. Bulk up and you may need to move up a division.", { TextColor3 = T.sub, TextSize = 13 })
+	UI.Line(body, string.format("Every session grows the muscles it works: %d%% of the growth at once, the rest overnight if you sleep and eat well. Muscles you neglect for a week start to fade. Muscle adds punching power and weight; fat costs stamina and makes weight harder to make. Bulk up and you may need to move up a division.",
+		math.floor(BodyMap.GrowthSplit(1) * 100 + 0.5)), { TextColor3 = T.sub, TextSize = 13 })
 end
 
 R.Stats = function(body, P)

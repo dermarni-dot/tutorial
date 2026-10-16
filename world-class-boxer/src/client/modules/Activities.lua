@@ -3880,9 +3880,11 @@ local function gainPopups(ctx, r0, grown)
 			table.insert(items, { kind = "stat", key = k, label = string.upper(Config.StatNames[k] or k), old = old, new = old + g, g = g, color = T.green })
 		end
 	end
+	-- a muscle: the level now and the gain now (the report adds tonight's share; BodyMap.GrowthSplit)
 	for _, e in ipairs(grown) do
 		local before = ctx.body0 and ctx.body0[e.id] or 0
-		table.insert(items, { kind = "muscle", key = e.id, label = string.upper(BodyMap.Short(e.id)), old = before, new = before + e.g, g = e.g, color = T.orange,
+		local now, tonight = BodyMap.GrowthSplit(e.g)
+		table.insert(items, { kind = "muscle", key = e.id, label = string.upper(BodyMap.Short(e.id)), old = before, new = before + now, g = now, tonight = tonight, color = T.orange,
 			group = string.upper(Config.MuscleNames[Config.MusclePartGroup[e.id] or ""] or "") })
 	end
 	if #items == 0 then
@@ -3963,6 +3965,9 @@ local function gainPopups(ctx, r0, grown)
 			row:SetAttribute("Old", math.floor(it.old * 100 + 0.5) / 100)
 			row:SetAttribute("New", math.floor(it.new * 100 + 0.5) / 100)
 			row:SetAttribute("Gain", math.floor(it.g * 100 + 0.5) / 100)
+			if it.tonight then
+				row:SetAttribute("Tonight", math.floor(it.tonight * 100 + 0.5) / 100)
+			end
 			local card = UI.Frame(row, { Name = "Card", Size = UDim2.fromScale(1, 1), Position = UDim2.fromOffset(-40, 0), BackgroundColor3 = T.bg, BackgroundTransparency = 1, ZIndex = 20 })
 			UI.Glass(card, { transparency = 0.08, radius = compact and UI.R.sm or UI.R.md })
 			card.BackgroundTransparency = 1
@@ -4154,28 +4159,30 @@ local function showResult(ctx, res, quality)
 	UI.Text(quote, string.format('"%s"  <font color="#%s">- COACH</font>', coachRemark(ctx.act.id, grade), T.sub:ToHex()), { RichText = true, Font = T.semi, TextSize = 14, Position = UDim2.fromOffset(14, 6), Size = UDim2.new(1, -24, 1, -12),
 		AutomaticSize = Enum.AutomaticSize.None, TextWrapped = true, TextYAlignment = Enum.TextYAlignment.Center, TextTruncate = Enum.TextTruncate.AtEnd })
 	-- 2. muscle growth: every part that grew - the level before (its colour), the growth now (green),
-	-- tonight's share once you sleep (pale green), your frame's potential (gold tick) and the gain
+	-- tonight's share once you sleep (pale green), your frame's potential (gold tick); in numbers the
+	-- gain now, tonight's and the level now (the one the Muscle screen and the Body tab show)
 	if #grown > 0 then
 		UI.Kicker(list, "MUSCLE GROWTH", T.green, { order = nextOrder(), TextSize = 13 })
-		local now = (Config.MuscleGrowth and Config.MuscleGrowth.immediate) or 0.65
 		local cap = ctx.cap or 100
-		-- every part that grew (the list scrolls): the name, its group, the bar and the gain
+		BodyMap.GrowthColumns(list, nextOrder(), UDim2.new(1, -8, 0, 16))
+		-- every part that grew (the list scrolls): the name, its group, the bar and the numbers
 		for _, e in ipairs(grown) do
 			local before = ctx.body0 and ctx.body0[e.id] or 0
+			local now, tonight = BodyMap.GrowthSplit(e.g)
 			local row = UI.Frame(list, { Name = "Grow", BackgroundTransparency = 1, Size = UDim2.new(1, -8, 0, 24), LayoutOrder = nextOrder() })
 			row:SetAttribute("Part", e.id)
 			row:SetAttribute("Gain", math.floor(e.g * 100 + 0.5) / 100)
+			row:SetAttribute("Now", math.floor(now * 100 + 0.5) / 100)
+			row:SetAttribute("Tonight", math.floor(tonight * 100 + 0.5) / 100)
+			row:SetAttribute("Level", math.floor((before + now) * 100 + 0.5) / 100)
 			local grp = Config.MuscleNames[Config.MusclePartGroup[e.id] or ""] or ""
 			UI.Text(row, string.upper(BodyMap.Short(e.id)) .. (grp ~= "" and string.format('  <font color="#%s" size="11">%s</font>', T.sub:ToHex(), string.upper(grp)) or ""),
 				{ Font = T.semi, TextSize = 14, RichText = true, Size = UDim2.new(0.3, 0, 1, 0), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
-			UI.LevelBar(row, { Position = UDim2.new(0.3, 6, 0.5, -5), Size = UDim2.new(0.7, -6 - 132, 0, 10) },
-				{ gain = { before, before + e.g * now }, pending = before + e.g, cap = cap, color = BodyMap.DevColor(before / cap) })
-			UI.Text(row, string.format("+%.2f", e.g), { Face = "number", TextSize = 18, TextColor3 = T.green, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -62, 0, 0), Size = UDim2.fromOffset(64, 24),
-				AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Right, TextWrapped = false })
-			UI.Text(row, string.format("%.1f", before + e.g), { Face = "number", TextSize = 15, TextColor3 = T.sub, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 2), Size = UDim2.fromOffset(56, 22),
-				AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Right, TextWrapped = false })
+			UI.LevelBar(row, { Position = UDim2.new(0.3, 6, 0.5, -5), Size = UDim2.new(0.7, -6 - BodyMap.GROW_COLS_W, 0, 10) },
+				{ gain = { before, before + now }, pending = before + e.g, cap = cap, color = BodyMap.DevColor(before / cap) })
+			BodyMap.GrowthNumbers(row, now, tonight, before + now)
 		end
-		UI.Text(list, string.format("Green lands now; the pale stretch grows overnight if you sleep and eat well. Gold tick: your frame's potential (%d).", math.floor(cap + 0.5)),
+		UI.Text(list, string.format("Green grew now (LEVEL is where the muscle stands now); the pale part grows tonight if you sleep and eat well. Gold tick: your frame's potential (%d).", math.floor(cap + 0.5)),
 			{ TextSize = 13, TextColor3 = T.sub, Size = UDim2.new(1, -8, 0, 0), AutomaticSize = Enum.AutomaticSize.Y, LayoutOrder = nextOrder() })
 	end
 	-- 3. stat increases: every stat that rose, old -> new (the popups say the same; this stays)
@@ -4257,10 +4264,11 @@ local function showResult(ctx, res, quality)
 				ctx.map:SetGrowth(r0.parts, T.green)
 				ctx.map:Pulse(2)
 			end
-			-- the names under the figure carry their gains (exactly which muscles grew, and by how much)
+			-- the names under the figure carry their gains (exactly which muscles grew, and by how much:
+			-- the gain now, as everywhere else; tonight's share is in the report)
 			local names = {}
 			for _, e in ipairs(grown) do
-				table.insert(names, { text = string.format("%s +%.2f", string.upper(BodyMap.Short(e.id)), e.g) })
+				table.insert(names, { text = string.format("%s +%.2f", string.upper(BodyMap.Short(e.id)), (BodyMap.GrowthSplit(e.g))) })
 			end
 			UI.Clear(ctx.sideList)
 			UI.Text(ctx.sideList, packNames(ctx.sideList, names, 12, SIDE_W - 28, ctx.sideList.Size.Y.Offset), { Name = "GrowthNames", Font = T.semi, TextSize = 12, TextColor3 = T.green, Size = UDim2.fromScale(1, 1),

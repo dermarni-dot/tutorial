@@ -12,6 +12,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local AssetService = game:GetService("AssetService")
 local UI = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("UI"))
+local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
 local T = UI.Theme
 
 local BodyMap = {}
@@ -46,6 +47,38 @@ function BodyMap.DevColor(f)
 		end
 	end
 	return DEV_STOPS[#DEV_STOPS][2]
+end
+
+-- A session's growth of one muscle, split the way the server applies it (Config.MuscleGrowth.immediate
+-- of it lands at once, the rest overnight when you sleep and eat): returns now, tonight. Every screen
+-- that shows a session's growth (the gain popups, the report, the Muscle screen) shows the gain now,
+-- tonight's and the level now, so one gain reads the same everywhere.
+function BodyMap.GrowthSplit(g)
+	g = tonumber(g) or 0
+	local share = math.clamp(tonumber(Config.MuscleGrowth and Config.MuscleGrowth.immediate) or 0.65, 0, 1)
+	return g * share, g * (1 - share)
+end
+-- the numbers at a growth row's right end, right to left: { caption, right inset, width, colour,
+-- text transparency } (tonight's pale like the bar's pale stretch); a bar beside them ends
+-- GROW_COLS_W from the row's right edge
+local GROW_COLS = { { "LEVEL", 0, 46, T.sub, 0 }, { "TONIGHT", 50, 60, T.green, 0.35 }, { "NOW", 114, 58, T.green, 0 } }
+BodyMap.GROW_COLS_W = 180
+-- their captions over the rows
+function BodyMap.GrowthColumns(parent, order, size)
+	local head = UI.Frame(parent, { Name = "GrowCols", BackgroundTransparency = 1, Size = size, LayoutOrder = order })
+	for _, c in ipairs(GROW_COLS) do
+		UI.Text(head, c[1], { Face = "displayMed", TextSize = 12, TextColor3 = c[4], TextTransparency = c[5], AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -c[2], 0, 0),
+			Size = UDim2.new(0, c[3], 1, 0), AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Right, TextWrapped = false })
+	end
+	return head
+end
+-- a row's numbers: the gain now, tonight's, the level now
+function BodyMap.GrowthNumbers(row, now, tonight, level)
+	local texts = { string.format("%.1f", level), string.format("+%.2f", tonight), string.format("+%.2f", now) }
+	for i, c in ipairs(GROW_COLS) do
+		UI.Text(row, texts[i], { Name = c[1], Face = "number", TextSize = i == 3 and 18 or 15, TextColor3 = i == 1 and T.text or c[4], TextTransparency = c[5], AnchorPoint = Vector2.new(1, 0),
+			Position = UDim2.new(1, -c[2], 0, 0), Size = UDim2.new(0, c[3], 1, 0), AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Right, TextWrapped = false })
+	end
 end
 
 -- silhouette pieces: { x, y, w, h, rot } in view fractions (x of width, y of height)

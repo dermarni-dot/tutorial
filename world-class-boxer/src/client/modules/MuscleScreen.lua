@@ -691,7 +691,9 @@ function MuscleScreen.Open(opts)
 	local graphHolder = UI.Frame(graphCard, { Name = "Graph", Size = UDim2.new(1, 0, 0, compact and 120 or 150), BackgroundColor3 = T.ink, BackgroundTransparency = 0.35, ClipsDescendants = true })
 	UI.Corner(graphHolder, UI.R.md)
 	local graphNote = UI.Line(graphCard, "", { TextSize = 12, TextColor3 = T.sub })
-	UI.Line(panel, "Every session grows the muscles it works; most of it lands overnight. A group logged once a day; muscles you neglect for a week fade.", { TextSize = 12, TextColor3 = T.dim, LayoutOrder = 6 })
+	local nowShare = BodyMap.GrowthSplit(1)
+	UI.Line(panel, string.format("Every session grows the muscles it works: %d%% at once, the rest overnight if you sleep and eat well. A group logged once a day; muscles you neglect for a week fade.",
+		math.floor(nowShare * 100 + 0.5)), { TextSize = 12, TextColor3 = T.dim, LayoutOrder = 6 })
 
 	function s.redrawGraph()
 		if not (graphHolder.Parent and screen == s) then
@@ -756,20 +758,33 @@ function MuscleScreen.Open(opts)
 		end
 		UI.Chip(chips, string.format("%d%% OF POTENTIAL", math.floor(math.clamp(lv / potential, 0, 1) * 100 + 0.5)), BodyMap.DevColor(lv / potential), { order = 3, h = 26, TextSize = 12 })
 		UI.Kicker(parts, g.name .. "  ·  EVERY MUSCLE", g.color)
-		for _, part in ipairs(Config.MuscleGroupParts[g.id] or {}) do
+		-- a muscle that grew this session reads as on the session report: the gain now, tonight's share
+		-- (the bar's pale stretch) and the level now (BodyMap.GrowthSplit / GrowthNumbers)
+		local list = Config.MuscleGroupParts[g.id] or {}
+		local grew = false
+		for _, part in ipairs(list) do
+			grew = grew or (s.growth and (tonumber(s.growth[part.id]) or 0) > 0.005) or false
+		end
+		if grew then
+			BodyMap.GrowthColumns(parts, 0, UDim2.new(1, 0, 0, 14))
+		end
+		for _, part in ipairs(list) do
 			local v = partLevel(P1, part.id)
 			local gain = s.growth and tonumber(s.growth[part.id]) or 0
 			local row = UI.Frame(parts, { Name = "Part", BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 24) })
 			UI.Text(row, string.upper(BodyMap.Short(part.id)), { Font = T.semi, TextSize = 14, TextColor3 = gain > 0.005 and T.green or T.text, Size = UDim2.new(0, 124, 1, 0), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = false, TextTruncate = Enum.TextTruncate.AtEnd })
 			if gain > 0.005 then
-				UI.LevelBar(row, { Position = UDim2.new(0, 130, 0.5, -5), Size = UDim2.new(1, -130 - 118, 0, 10) }, { gain = { v - gain, v }, cap = potential, color = BodyMap.DevColor(v / potential) })
-				UI.Text(row, string.format("+%.2f", gain), { Face = "number", TextSize = 15, TextColor3 = T.green, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -54, 0, 2), Size = UDim2.fromOffset(60, 20),
-					AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Right, TextWrapped = false })
+				local now, tonight = BodyMap.GrowthSplit(gain)
+				row:SetAttribute("Now", math.floor(now * 100 + 0.5) / 100)
+				row:SetAttribute("Tonight", math.floor(tonight * 100 + 0.5) / 100)
+				UI.LevelBar(row, { Position = UDim2.new(0, 130, 0.5, -5), Size = UDim2.new(1, -130 - BodyMap.GROW_COLS_W, 0, 10) },
+					{ gain = { v - now, v }, pending = v + tonight, cap = potential, color = BodyMap.DevColor((v - now) / potential) })
+				BodyMap.GrowthNumbers(row, now, tonight, v)
 			else
-				UI.LevelBar(row, { Position = UDim2.new(0, 130, 0.5, -5), Size = UDim2.new(1, -130 - 118, 0, 10) }, { value = v, cap = potential, color = BodyMap.DevColor(v / potential) })
+				UI.LevelBar(row, { Position = UDim2.new(0, 130, 0.5, -5), Size = UDim2.new(1, -130 - (grew and BodyMap.GROW_COLS_W or 118), 0, 10) }, { value = v, cap = potential, color = BodyMap.DevColor(v / potential) })
+				UI.Text(row, fmt1(v), { Face = "number", TextSize = 16, TextColor3 = T.text, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 1), Size = UDim2.fromOffset(46, 22),
+					AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Right, TextWrapped = false })
 			end
-			UI.Text(row, fmt1(v), { Face = "number", TextSize = 16, TextColor3 = T.text, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 1), Size = UDim2.fromOffset(50, 22),
-				AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Right, TextWrapped = false })
 		end
 		s.redrawGraph()
 	end
@@ -777,11 +792,14 @@ function MuscleScreen.Open(opts)
 	-- the session's growth, every part that grew with its gain (opened from the training result)
 	if growthCard then
 		UI.Kicker(growthCard, "GROWTH THIS SESSION", T.green)
-		local list = {}
+		-- (the gain now, as the report's NOW column; tonight's share is the line under the chips)
+		local list, tonight = {}, 0
 		for id, g in pairs(s.growth) do
 			g = tonumber(g)
 			if g and g > 0.005 and Config.MusclePartGroup[id] then
-				table.insert(list, { id = id, g = g })
+				local now, later = BodyMap.GrowthSplit(g)
+				table.insert(list, { id = id, g = now })
+				tonight += later
 			end
 		end
 		table.sort(list, function(a, b)
@@ -806,6 +824,8 @@ function MuscleScreen.Open(opts)
 		end
 		if #list == 0 then
 			UI.Line(growthCard, "Nothing grew this time.", { TextSize = 13, TextColor3 = T.sub })
+		else
+			UI.Line(growthCard, string.format("Grown now. Tonight adds +%.2f more across these muscles (the pale end of each bar) if you sleep and eat well.", tonight), { TextSize = 13, TextColor3 = T.sub })
 		end
 	end
 
