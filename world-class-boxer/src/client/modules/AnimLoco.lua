@@ -78,6 +78,11 @@ local LREF, VH = 3.06, 0.2793
 -- pace held inside it settles on the nearer gait within RUN_SETTLE s (the gait is a function of the speed:
 -- never a jog stuck on after a sprint)
 local RUN_ON, RUN_OFF, RUN_SETTLE = 2.12, 1.98, 0.35
+-- pulling up out of a run: the fastest the run -> walk blend may move while he still moves (per second: the
+-- handover takes about a sixth of a second, never a frame or two - the pelvis, the head and the knees would
+-- pop), and how quickly the braking follows the deceleration (1/s: from the frame's raw deceleration it would
+-- switch the braking steps on in a single frame)
+local RUN_BLEND_MAX, BRAKE_RATE = 6, 12
 -- gravity in the rig's studs (9.81 m/s^2 at the gait's Froude scale: VH and LREF): a runner's flight falls at it
 local GRAV = 8.829 / (VH * VH * LREF)
 -- a pushing foot (AnimLoco.feet): the most it rolls up onto the toes (rad), and how fast
@@ -425,7 +430,8 @@ local function updateGait(rig, t, dt)
 		local hv = v > 0.3 and lo.vel / v or lo.brakeDir or ZERO
 		lo.brakeDir = hv
 		local af = lo.accF or lo.acc
-		lo.brake = clamp((-(af.X * hv.X + af.Z * hv.Z) - 14) / 22, 0, 1)
+		local bw = clamp((-(af.X * hv.X + af.Z * hv.Z) - 14) / 22, 0, 1)
+		lo.brake = (lo.brake or 0) + (bw - (lo.brake or 0)) * (1 - exp(-dt * BRAKE_RATE))
 	else
 		lo.brake = 0
 	end
@@ -479,7 +485,11 @@ local function updateGait(rig, t, dt)
 		if lo.brake > 0.3 then
 			lo.runMode, lo.bandT = false, 0
 		end
-		lo.run += ((lo.runMode and 1 or 0) - lo.run) * (1 - exp(-dt * (7 + 20 * lo.brake)))
+		local dRun = ((lo.runMode and 1 or 0) - lo.run) * (1 - exp(-dt * (7 + 20 * lo.brake)))
+		if lo.moving then
+			dRun = clamp(dRun, -RUN_BLEND_MAX * dt, RUN_BLEND_MAX * dt)
+		end
+		lo.run += dRun
 		-- a hard turn at speed (a reversal): quick pivot steps with a foot always down, not a flying lunge
 		local tk = clamp((abs(lo.yawRate) * v - 30) / 50, 0, 1)
 		lo.turnK = max(tk, (lo.turnK or 0) - dt * 3)
@@ -1330,6 +1340,11 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 					-- (a runner's foot in the air as he pulls up lands at once when the other one has to go; the last
 					-- one comes through beside it in a quick step)
 					cap = ((o.push and moving and t - o.landT > 0.12) or (o.swing and moving and rem <= o.t0 + o.dur - t)) and 0.07 or 0.2
+					if moving then
+						-- (pulling up: never cut shorter than the walk's own swing at this pace - it shortens as the braking
+						-- steps take over, so the swing hurries smoothly instead of snapping down in 0.07 s)
+						cap = max(cap, (1 - lo.duty) * lo.T * (1 - u0))
+					end
 				elseif run < 0.5 and back < 0.5 and lo.side < 0.6 then
 					-- (the first steps from rest: no longer than the pace's own swing)
 					cap = (t - lo.moveT < 0.8 and 1 or 1.2) * (1 - lo.duty) * lo.T * (1 - u0)
