@@ -24,6 +24,7 @@ local UI = require(Shared:WaitForChild("UI"))
 local Modules = script.Parent
 local State = require(Modules:WaitForChild("State"))
 local Settings = require(Modules:WaitForChild("Settings"))
+local Perf = require(Modules:WaitForChild("Perf"))
 local Flags = require(Modules:WaitForChild("Flags"))
 local FighterCard = require(Modules:WaitForChild("FighterCard"))
 local MenuStage = require(Modules:WaitForChild("MenuStage"))
@@ -136,12 +137,28 @@ local function sceneStart()
 		return
 	end
 	cam.CameraType = Enum.CameraType.Scriptable
-	-- post: shallow depth of field, a warm contrasty grade, soft bloom, a blur for the sub screens
-	scene.fx.dof = light(cam, "DepthOfFieldEffect", { Name = "MenuDOF", FarIntensity = 0.42, NearIntensity = 0, FocusDistance = 9, InFocusRadius = 5 })
+	-- post: shallow depth of field, a warm contrasty grade, soft bloom, a blur for the sub screens. Low
+	-- graphics drops the depth of field (the costliest of the four on a phone's GPU; the set is dark
+	-- behind the boxer anyway)
+	local function dof()
+		local want = Perf.AtLeast(Perf.MEDIUM)
+		if want and not scene.fx.dof then
+			scene.fx.dof = light(cam, "DepthOfFieldEffect", { Name = "MenuDOF", FarIntensity = 0.42, NearIntensity = 0, FocusDistance = 9, InFocusRadius = 5 })
+		elseif not want and scene.fx.dof then
+			scene.fx.dof:Destroy()
+			scene.fx.dof = nil
+		end
+	end
+	dof()
+	track(Perf.Changed:Connect(function()
+		if scene and scene.fx then
+			dof()
+		end
+	end))
 	scene.fx.grade = light(cam, "ColorCorrectionEffect", { Name = "MenuGrade", Contrast = 0.14, Saturation = -0.06, Brightness = -0.02, TintColor = Color3.fromRGB(255, 244, 232) })
 	scene.fx.bloom = light(cam, "BloomEffect", { Name = "MenuBloom", Intensity = 0.55, Size = 28, Threshold = 1.4 })
 	scene.fx.blur = light(cam, "BlurEffect", { Name = "MenuBlur", Size = 0 })
-	scene.stage = MenuStage.Build(Settings.Get("detail"))
+	scene.stage = MenuStage.Build(Perf.Name()) -- the resolved level ("Low" leaves out the dust)
 	stageBoxer()
 	-- the first frame sits on the shot (no swoop down from the gym)
 	local cf, fov = MenuStage.Shot(scene.stage, view, 0, Settings.Get("shake") or 1)
@@ -234,7 +251,8 @@ local function buildBackdrop(layer)
 	local leak = UI.Frame(layer, { Name = "LightLeak", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.68, 0.3), Size = UDim2.fromScale(0.22, 1.6), Rotation = 24,
 		BackgroundColor3 = Color3.fromRGB(255, 206, 140) })
 	UI.Gradient(leak, Color3.new(1, 1, 1), 0, NumberSequence.new({ NumberSequenceKeypoint.new(0, 1), NumberSequenceKeypoint.new(0.5, 0.86), NumberSequenceKeypoint.new(1, 1) }))
-	-- dust motes floating up through the light
+	-- dust motes floating up through the light (34 at High, 20 at Medium, 10 at Low: the rest hide and stop
+	-- moving, and a change of level shows / hides them live)
 	local dust = UI.Frame(layer, { Name = "Dust", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1) })
 	local motes = {}
 	local rng = Random.new(7)
@@ -245,10 +263,20 @@ local function buildBackdrop(layer)
 		UI.Corner(m, 4)
 		motes[i] = { f = m, x = m.Position.X.Scale, y = m.Position.Y.Scale, v = rng:NextNumber(0.006, 0.02), ph = rng:NextNumber(0, 6.28), amp = rng:NextNumber(0.004, 0.015) }
 	end
+	local shown = 0
+	local function showMotes()
+		shown = Perf.Pick(10, 20, #motes)
+		for i, mo in ipairs(motes) do
+			mo.f.Visible = i <= shown
+		end
+	end
+	showMotes()
+	track(Perf.Changed:Connect(showMotes))
 	local t0 = os.clock()
 	track(RunService.RenderStepped:Connect(function(dt)
 		local t = os.clock() - t0
-		for _, mo in ipairs(motes) do
+		for i = 1, shown do
+			local mo = motes[i]
 			mo.y -= mo.v * dt
 			if mo.y < -0.02 then
 				mo.y = 1.02
@@ -931,12 +959,30 @@ local function screenSettings(layer)
 		return x < 0.95 and "Smaller" or (x <= 1.05 and "Normal" or "Larger")
 	end })
 	add(scaleRow, nudge(scaleRow))
-	local detailRow = UI.Cycler(body, "Graphics detail", Settings.Details, v.detail, function(x)
+	-- Graphics: Auto shows the level it picked; the line under it reads the level in force and the live
+	-- frame rate (Perf), refreshed twice a second while this screen is up
+	local detailRow, showDetail = UI.Cycler(body, "Graphics detail", Settings.Details, v.detail, function(x)
 		Settings.Set("detail", x)
 	end, function(x)
-		return x == "Auto" and "Auto (by distance and device)" or x
+		return x == "Auto" and ("Auto: " .. Perf.Name()) or x
 	end)
 	add(detailRow, nudge(detailRow))
+	local gfxNote = UI.Text(body, "", { Name = "GraphicsNow", TextSize = 13, TextColor3 = T.sub })
+	add(gfxNote)
+	task.spawn(function()
+		local shownLevel = Perf.Level()
+		while gfxNote.Parent do
+			local lv = Perf.Level()
+			if lv ~= shownLevel then
+				shownLevel = lv
+				showDetail(Settings.Values.detail)
+			end
+			local auto = Settings.Values.detail == "Auto"
+			gfxNote.Text = string.format("Running at %s  ·  %d FPS%s. If the game stutters, pick a lower level: Low draws fewer detailed characters, lights and effects.",
+				Perf.Name(lv), math.floor(Perf.Fps() + 0.5), auto and " (Auto follows your device and the frame rate)" or "")
+			task.wait(0.5)
+		end
+	end)
 	local brightRow = UI.Slider(body, "Brightness", 0.5, 1.6, v.brightness, 0.05, function(x)
 		Settings.Set("brightness", x)
 	end, pct, { default = D.brightness, words = amount })
@@ -1261,6 +1307,7 @@ function MainMenu.Open(which)
 	if which and which ~= "home" then
 		show(which, true)
 	end
+	Perf.Hold(3) -- building the set and the clone is a hitch, not the frame rate
 	sceneStart()
 	track(RunService.RenderStepped:Connect(sceneStep))
 	track(UserInputService.InputBegan:Connect(onInput))

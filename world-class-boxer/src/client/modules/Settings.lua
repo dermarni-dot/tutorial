@@ -4,9 +4,10 @@
 --   shake       0 .. 1.5     camera shake and kicks (FightClient, training camera, main menu)
 --   music       0 .. 1       music volume (SoundService.MusicMix: every Sound named *Music*, walkout music)
 --   sfx         0 .. 1       every other sound (all other SoundGroups: gym, fight mix)
---   detail      Auto | High | Medium | Low   graphics detail (AnatomyClient.Settings: full-detail count,
---                                           ranges, build budget, textures; client attribute GfxDetail;
---                                           Perf resolves it, Auto included, to GfxLevel 1..3)
+--   detail      Auto | High | Medium | Low   graphics detail: client attribute GfxDetail, which Perf resolves
+--                                           (Auto included) to the level 1..3 every system reads
+--                                           (Perf.Level / Perf.Changed / attribute GfxLevel); AnatomyClient's
+--                                           presets follow that level (applyAnatomy)
 --   brightness  0.5 .. 1.6   overall exposure (player attribute Brightness, read by LightLevels)
 --   menuAtStart bool         open the main menu when you join
 --   controlHints bool        keep the fight's key-cap strip on screen (otherwise it fades after round 1)
@@ -175,47 +176,29 @@ local function anatomyModule()
 	return anatomy or nil
 end
 
--- AnatomyClient's public Settings table (mesh rework): how many characters get full-detail meshes,
--- how far away, how much build time per frame and whether colour textures are made. "Auto" puts
--- back whatever the module had before this menu first changed it.
-local DETAIL_KNOBS = {
-	High = { maxFull = 10, fullRange = 90, lodRange = 200, frameBudget = 0.004, textures = true },
-	Medium = { maxFull = 4, fullRange = 50, lodRange = 120, frameBudget = 0.002, textures = true },
-	Low = { maxFull = 1, fullRange = 30, lodRange = 80, frameBudget = 0.0015, textures = false },
-}
-local anatomyBase -- the module's own values, captured the first time a level is forced
-function Settings.ApplyDetail()
-	local d = Settings.Values.detail
-	player:SetAttribute("GfxDetail", d) -- client-local: any visual module may read it
+-- AnatomyClient (the mesh characters) follows the level Perf resolves, Auto included: Low and Medium are
+-- its "low" / "medium" presets (fewer full-detail characters, shorter ranges, a smaller build budget, no
+-- colour textures at Low); High is its own defaults (Config.Anatomy) on Auto and its "full" preset when
+-- High is picked by name. Re-applied whenever Perf changes level (Auto stepping with the frame rate).
+-- A module that follows Perf on its own (AnatomyClient.FollowsPerf) is left alone.
+local appliedAnatomy -- the preset last handed to AnatomyClient.SetDetail
+local function applyAnatomy()
 	local ac = anatomyModule()
-	if not ac then
+	if not (ac and type(ac.SetDetail) == "function") or ac.FollowsPerf then
 		return
 	end
-	-- a dedicated setter wins if the module ever exposes one (names checked, every call guarded)
-	local level = ({ High = "full", Medium = "medium", Low = "low" })[d]
-	for _, fn in ipairs({ "SetDetail", "SetQuality", "SetBudget" }) do
-		if type(ac[fn]) == "function" then
-			pcall(ac[fn], level or "auto")
-			return
-		end
+	local want = Settings.Values.detail == "High" and "full" or Perf.Pick("low", "medium", "auto")
+	if want ~= appliedAnatomy then
+		appliedAnatomy = want
+		pcall(ac.SetDetail, want)
 	end
-	local cfg = type(ac.Settings) == "table" and ac.Settings or nil
-	if not cfg then
-		return
-	end
-	local knobs = DETAIL_KNOBS[d]
-	if knobs and not anatomyBase then
-		anatomyBase = {}
-		for k in pairs(DETAIL_KNOBS.High) do
-			anatomyBase[k] = cfg[k]
-		end
-	end
-	knobs = knobs or anatomyBase
-	for k, v in pairs(knobs or {}) do
-		if cfg[k] ~= nil and type(cfg[k]) == type(v) then
-			cfg[k] = v
-		end
-	end
+end
+Perf.Changed:Connect(applyAnatomy)
+
+function Settings.ApplyDetail()
+	player:SetAttribute("GfxDetail", Settings.Values.detail) -- client-local: Perf resolves it to GfxLevel
+	Perf.Refresh() -- now: attribute signals may run deferred, and the rest of Apply reads the level
+	applyAnatomy()
 end
 
 function Settings.Apply()
