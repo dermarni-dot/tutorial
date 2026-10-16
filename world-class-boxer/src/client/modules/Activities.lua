@@ -881,17 +881,36 @@ local function newContext(info)
 	function ctx.pulse(n)
 		activity = math.min(6, activity + 0.25 * (n or 1))
 	end
+	-- (each label is written only when its text changes: a Text write re-lays the label out)
+	local shown = {}
+	local function show(label, text)
+		if shown[label] ~= text then
+			shown[label] = text
+			label.Text = text
+		end
+	end
 	function ctx.refreshLive()
 		local hr = math.floor(ctx.hr + 0.5)
 		local f = hr / ctx.maxHR
 		local tl = ctx.tiles
-		tl.hr.val.Text = tostring(hr)
-		tl.hr.val.TextColor3 = f >= 0.9 and T.red or (f >= 0.8 and T.orange or (f >= 0.65 and T.green or T.text))
-		tl.kcal.val.Text = tostring(math.floor(ctx.kcal + 0.5))
-		if ctx.mode ~= "done" then
-			tl.time.val.Text = clock(os.clock() - ctx.t0)
+		if shown.hr ~= hr then
+			shown.hr = hr
+			tl.hr.val.Text = tostring(hr)
+			tl.hr.val.TextColor3 = f >= 0.9 and T.red or (f >= 0.8 and T.orange or (f >= 0.65 and T.green or T.text))
 		end
-		ctx.live.Text = ctx.statsText or ""
+		local kcal = math.floor(ctx.kcal + 0.5)
+		if shown.kcal ~= kcal then
+			shown.kcal = kcal
+			tl.kcal.val.Text = tostring(kcal)
+		end
+		if ctx.mode ~= "done" then
+			local secs = math.floor(os.clock() - ctx.t0 + 0.5)
+			if shown.secs ~= secs then
+				shown.secs = secs
+				tl.time.val.Text = clock(secs)
+			end
+		end
+		show(ctx.live, ctx.statsText or "")
 	end
 	-- the drill's live numbers (second line of the live readout)
 	function ctx.stats(text)
@@ -1257,13 +1276,18 @@ local function newContext(info)
 			c:SetAttribute("ActId", (c:GetAttribute("ActId") or 0) + 1)
 		end
 	end
+	-- (the pose attributes fire the Animator's listeners on every change: a value it already has is not
+	-- written again, and the pace drills' speed moves in 0.02 steps instead of a new float every frame)
 	function ctx.drive(d)
-		if char then
+		if char and d ~= ctx.poseDrive then
+			ctx.poseDrive = d
 			char:SetAttribute("PoseDrive", d)
 		end
 	end
 	function ctx.speed(w)
-		if char then
+		w = math.floor(w * 50 + 0.5) / 50
+		if char and w ~= ctx.poseSpeed then
+			ctx.poseSpeed = w
 			char:SetAttribute("PoseSpeed", w)
 		end
 	end
@@ -1737,15 +1761,32 @@ local function noteFrames(ctx, j, lineX)
 	end
 	return frames
 end
--- slide the open notes; true while any is still open
+-- slide the open notes; true while any is still open. A note still beyond the stage's right edge (the
+-- stage clips) is parked there once instead of moved every frame, and a judged one is hidden once
+local NOTE_FAR = PANEL_W + 40
 local function moveNotes(j, frames, lineX, now, pxPerSec)
 	local alive = false
+	local state = frames.state
+	if not state then
+		state = {}
+		frames.state = state
+	end
 	for i, n in ipairs(j.notes) do
 		if n.judged then
-			frames[i].Visible = false
+			if state[i] ~= "hidden" then
+				state[i] = "hidden"
+				frames[i].Visible = false
+			end
 		else
 			alive = true
-			frames[i].Position = UDim2.new(0, lineX + (n.t - now) * pxPerSec, 0, n.lane == "L" and 30 or 62)
+			local x = lineX + (n.t - now) * pxPerSec
+			if x < NOTE_FAR then
+				state[i] = nil
+				frames[i].Position = UDim2.new(0, x, 0, n.lane == "L" and 30 or 62)
+			elseif state[i] ~= "parked" then
+				state[i] = "parked"
+				frames[i].Position = UDim2.new(0, NOTE_FAR, 0, n.lane == "L" and 30 or 62)
+			end
 		end
 	end
 	return alive
@@ -2675,6 +2716,10 @@ GAMES.pace = function(ctx)
 	local miles, meters, topSpeed, maxWatts, maxSpm, rpmSum, rpmTime = 0, 0, 0, 0, 0, 0, 0
 	local phaseIdx, sinceScreen = 1, 1
 	local screen = ""
+	-- the readouts are text: they are rewritten about 15 times a second (and at once when the marker
+	-- crosses into or out of the zone); the marker itself moves every frame
+	local textAt, lastOk = -math.huge, nil
+	local zoneOf = nil
 	while true do
 		if ctx.cancelled then
 			ctx.on(nil)
@@ -2695,42 +2740,54 @@ GAMES.pace = function(ctx)
 		end
 		local ph = phases[pi]
 		local lo, hi = ph[1], ph[2]
-		zone.Position = UDim2.fromScale(lo, 0)
-		zone.Size = UDim2.fromScale(hi - lo, 1)
+		if zoneOf ~= pi then
+			zoneOf = pi
+			zone.Position = UDim2.fromScale(lo, 0)
+			zone.Size = UDim2.fromScale(hi - lo, 1)
+		end
 		marker.Position = UDim2.new(v, -3, 0, -5)
 		local ok = v >= lo and v <= hi
 		ctx.intensity = 0.25 + v * 0.75
 		ctx.speed(0.5 + v * 1.6)
-		-- machine readouts
-		local readout
+		-- machine readouts (the totals add up every frame, the text is written at the readout rate)
+		local rpm, split, spm, mph
 		if id == "Bike" then
-			local rpm = 50 + v * 70
+			rpm = 50 + v * 70
 			local watts = 0.022 * rpm * rpm * (0.9 + 0.12 * lv)
 			maxWatts = math.max(maxWatts, watts)
 			rpmSum += rpm * dt
 			rpmTime += dt
-			readout = string.format("%d RPM%s%d W", math.floor(rpm), DOT, math.floor(watts))
-			screen = string.format("RPM %d\n%d WATTS", math.floor(rpm), math.floor(watts))
 		elseif id == "Rower" then
-			local split = 165 - v * 70 -- seconds per 500 m
-			local spm = 18 + v * 18
+			split = 165 - v * 70 -- seconds per 500 m
+			spm = 18 + v * 18
 			meters += 500 / split * dt * TIME_SCALE
 			maxSpm = math.max(maxSpm, spm)
-			readout = string.format("%s /500m%s%d spm%s%d m", clock(split), DOT, math.floor(spm), DOT, math.floor(meters))
-			screen = string.format("%s /500\n%d SPM\n%d m", clock(split), math.floor(spm), math.floor(meters))
 		else
-			local mph = 3 + v * 10
-			local incline = INCLINE[pi] + (lv >= 3 and 2 or 0)
+			mph = 3 + v * 10
 			miles += mph / 3600 * dt * TIME_SCALE
 			topSpeed = math.max(topSpeed, mph)
-			readout = string.format("%.1f mph%s%.1f%% incline%s%.2f mi", mph, DOT, incline, DOT, miles)
-			screen = string.format("%.1f MPH\nINCLINE %.1f%%\n%.2f mi", mph, incline, miles)
 		end
-		metrics.Text = readout
-		status.Text = string.format("%s   %s   %.1fs left", ph[3], ok and "IN ZONE" or (v < lo and "FASTER!" or "EASE OFF"), duration - el)
-		status.TextColor3 = ok and T.green or T.orange
-		ctx.stats(readout)
 		sinceScreen += dt
+		if now - textAt >= 0.066 or ok ~= lastOk or sinceScreen >= 0.25 then
+			textAt, lastOk = now, ok
+			local readout
+			if id == "Bike" then
+				local watts = 0.022 * rpm * rpm * (0.9 + 0.12 * lv)
+				readout = string.format("%d RPM%s%d W", math.floor(rpm), DOT, math.floor(watts))
+				screen = string.format("RPM %d\n%d WATTS", math.floor(rpm), math.floor(watts))
+			elseif id == "Rower" then
+				readout = string.format("%s /500m%s%d spm%s%d m", clock(split), DOT, math.floor(spm), DOT, math.floor(meters))
+				screen = string.format("%s /500\n%d SPM\n%d m", clock(split), math.floor(spm), math.floor(meters))
+			else
+				local incline = INCLINE[pi] + (lv >= 3 and 2 or 0)
+				readout = string.format("%.1f mph%s%.1f%% incline%s%.2f mi", mph, DOT, incline, DOT, miles)
+				screen = string.format("%.1f MPH\nINCLINE %.1f%%\n%.2f mi", mph, incline, miles)
+			end
+			metrics.Text = readout
+			status.Text = string.format("%s   %s   %.1fs left", ph[3], ok and "IN ZONE" or (v < lo and "FASTER!" or "EASE OFF"), duration - el)
+			status.TextColor3 = ok and T.green or T.orange
+			ctx.stats(readout)
+		end
 		if sinceScreen >= 0.25 then
 			sinceScreen = 0
 			GymVisuals.SetDisplay(ctx.station, screen)
@@ -3418,6 +3475,9 @@ local function stationCamera(pose)
 	local base = root.CFrame
 	local baseFov = cam.FieldOfView
 	camKick.baseFov = baseFov
+	-- the station view only depends on the spot, the screen and the lens: it is worked out again only
+	-- when one of those changes, and once the camera has settled on it nothing is written
+	local goal, goalVp, goalFov, goalFx = nil, nil, nil, nil
 	return RunService.RenderStepped:Connect(function(dt)
 		cam = workspace.CurrentCamera
 		if cam.CameraType ~= Enum.CameraType.Scriptable then
@@ -3427,22 +3487,33 @@ local function stationCamera(pose)
 		if not r then
 			return
 		end
-		local p = base.Position
-		local look, right = base.LookVector, base.RightVector
-		local goal
-		-- the activity panel covers the bottom of the screen, so the camera aims a little low:
-		-- that lifts the athlete into the clear upper part of the view (feet included)
-		if LOW[pose] then
-			goal = CFrame.lookAt(p + right * 7.5 + look * 1.5 + Vector3.new(0, 5, 0), p + look * 0.5 - Vector3.new(0, 1.4, 0))
-		elseif SIDE[pose] then
-			local lift = pose == "pullup" and 1.2 or 0
-			goal = CFrame.lookAt(p + right * 10 + look * 2.5 + Vector3.new(0, 2.2 + lift, 0), p + look * 0.6 + Vector3.new(0, lift - 1.7, 0))
-		else
-			-- over the right shoulder, looking at the equipment
-			goal = CFrame.lookAt(p + right * 3.8 - look * 6 + Vector3.new(0, 3.2, 0), p + look * 2.6 + Vector3.new(0, 0.1, 0))
+		local vp, fov = cam.ViewportSize, cam.FieldOfView
+		if not goal or vp ~= goalVp or fov ~= goalFov or camFrame.fx ~= goalFx then
+			goalVp, goalFov, goalFx = vp, fov, camFrame.fx
+			local p = base.Position
+			local look, right = base.LookVector, base.RightVector
+			-- the activity panel covers the bottom of the screen, so the camera aims a little low:
+			-- that lifts the athlete into the clear upper part of the view (feet included)
+			if LOW[pose] then
+				goal = CFrame.lookAt(p + right * 7.5 + look * 1.5 + Vector3.new(0, 5, 0), p + look * 0.5 - Vector3.new(0, 1.4, 0))
+			elseif SIDE[pose] then
+				local lift = pose == "pullup" and 1.2 or 0
+				goal = CFrame.lookAt(p + right * 10 + look * 2.5 + Vector3.new(0, 2.2 + lift, 0), p + look * 0.6 + Vector3.new(0, lift - 1.7, 0))
+			else
+				-- over the right shoulder, looking at the equipment
+				goal = CFrame.lookAt(p + right * 3.8 - look * 6 + Vector3.new(0, 3.2, 0), p + look * 2.6 + Vector3.new(0, 0.1, 0))
+			end
+			goal = frameShift(cam, goal, (goal.Position - p).Magnitude)
 		end
-		goal = frameShift(cam, goal, (goal.Position - p).Magnitude)
-		cam.CFrame = cam.CFrame:Lerp(goal, math.clamp(dt * 6, 0, 1))
+		local cur = cam.CFrame
+		if cur ~= goal then
+			local nxt = cur:Lerp(goal, math.clamp(dt * 6, 0, 1))
+			-- (within a ten-thousandth of a stud: on it)
+			if (nxt.Position - goal.Position).Magnitude < 1e-4 and nxt.LookVector:Dot(goal.LookVector) > 0.99999999 and nxt.UpVector:Dot(goal.UpVector) > 0.99999999 then
+				nxt = goal
+			end
+			cam.CFrame = nxt
+		end
 		-- heavy shots kick the camera: a quick decaying shake plus a small FOV punch
 		local el = os.clock() - camKick.t
 		if el < 0.45 and camKick.amp > 0 then

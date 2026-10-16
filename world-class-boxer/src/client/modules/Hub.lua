@@ -27,8 +27,8 @@ local rec = State.rec
 local Hub = {}
 local shade, win, content
 local tab = "Career"
--- every Hub.Render bumps it; a tab that waited on the server stops when it is stale (closed, re-rendered or
--- rebuilt for another screen size meanwhile), so no rows land in a destroyed or newer list
+-- every tab rebuild (Hub.RenderNow) bumps it; a tab that waited on the server stops when it is stale (closed,
+-- re-rendered or rebuilt for another screen size meanwhile), so no rows land in a destroyed or newer list
 local renderId = 0
 local function stale(body, id)
 	return id ~= renderId or not body.Parent
@@ -403,9 +403,9 @@ R.Career = function(body, P)
 				end
 				buttons(c, {
 					act("ACCEPT FIGHT", T.gold, function()
-						if result(State.req("AcceptOffer", i), "Fight signed! Training camp begins.") then
-							Hub.Render()
-						end
+						-- (the signed fight's profile push redraws the tab: a Render here drew the old profile
+						-- first, one rebuild too many)
+						result(State.req("AcceptOffer", i), "Fight signed! Training camp begins.")
 					end, 180),
 					act("SCOUT", T.panel2, function()
 						showBoxer(o.oppId)
@@ -1725,11 +1725,14 @@ local function styleTab(name, b)
 	end
 end
 
-function Hub.Render()
+-- rebuilds the open tab now (Hub.Render asks for it: coalesced)
+Hub.Renders = 0 -- how many times a tab was rebuilt (diagnostics)
+function Hub.RenderNow()
 	local P = State.P
 	if not (shade and shade.Parent and P and P.created) then
 		return
 	end
+	Hub.Renders += 1
 	for name, b in pairs(tabButtons) do
 		styleTab(name, b)
 	end
@@ -1745,6 +1748,30 @@ function Hub.Render()
 			content.CanvasPosition = y
 		end
 	end)
+end
+
+-- a tab rebuild: hundreds of GUI objects, and the Body tab paints its body map. An action usually asks
+-- twice (its own Render after the reply and the profile push it causes, a few frames apart), so requests
+-- are coalesced: the first rebuild runs at the end of the frame, a second within RENDER_GAP waits for the
+-- gap and then shows the newest profile once
+local RENDER_GAP = 0.2
+local renderQueued, lastRender = false, -math.huge
+function Hub.Render()
+	if renderQueued then
+		return
+	end
+	renderQueued = true
+	local function go()
+		renderQueued = false
+		lastRender = os.clock()
+		Hub.RenderNow()
+	end
+	local wait = lastRender + RENDER_GAP - os.clock()
+	if wait > 0 then
+		task.delay(wait, go)
+	else
+		task.defer(go)
+	end
 end
 
 function Hub.Close()

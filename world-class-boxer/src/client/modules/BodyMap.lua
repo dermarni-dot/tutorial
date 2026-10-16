@@ -116,6 +116,26 @@ BodyMap.Parts = ALL_IDS
 local DENSITY = 1.25 -- image pixels per design pixel (crisp at 1080p)
 local MAX_SIDE = 1024
 local masks = {} -- [key] = mask
+-- per Graphics level (BoxerClient.Perf: 1 Low, 2 Medium, 3 High), for maps built from then on: image pixels
+-- per design pixel and the pulse layer. High keeps 1.25 and the glow; Medium paints at 1.0 (64% of the
+-- pixels); Low at 0.75 (36%) without the glow image (the lit muscles keep their colours; the breathing
+-- pulse is what goes) - a quarter of the paint time and the editable-image memory
+local LEVELS = { { density = 0.75, glow = false }, { density = 1, glow = true }, { density = DENSITY, glow = true } }
+local lv = LEVELS[3]
+do
+	local m = script.Parent:FindFirstChild("Perf")
+	local ok, Perf = false, nil
+	if m then
+		ok, Perf = pcall(require, m)
+	end
+	if ok and type(Perf) == "table" and Perf.Level and Perf.Changed then
+		local function pick()
+			lv = LEVELS[math.clamp(tonumber(Perf.Level()) or 3, 1, 3)]
+		end
+		pick()
+		Perf.Changed:Connect(pick)
+	end
+end
 
 local function smin(a, b, k)
 	local h = math.clamp(0.5 + 0.5 * (b - a) / k, 0, 1)
@@ -247,18 +267,49 @@ function computeMask(W, H, views, breathe)
 	-- the body's coverage (1 px anti-aliasing) and a soft rim light along the outline
 	local body = buffer.create(n)
 	local rim = buffer.create(n)
-	for i = 0, n - 1 do
-		local d = buffer.readf32(dist, i * 4)
-		buffer.writeu8(body, i, math.floor(math.clamp(0.5 - d, 0, 1) * 255 + 0.5))
-		if d < 0 and d > -2.5 then
-			buffer.writeu8(rim, i, math.floor((1 - (-d / 2.5)) * 255 + 0.5))
+	-- (in slices, so a big figure's last pass is not one long frame either)
+	for c0 = 0, n - 1, 32768 do
+		for i = c0, math.min(n - 1, c0 + 32767) do
+			local d = buffer.readf32(dist, i * 4)
+			buffer.writeu8(body, i, math.floor(math.clamp(0.5 - d, 0, 1) * 255 + 0.5))
+			if d < 0 and d > -2.5 then
+				buffer.writeu8(rim, i, math.floor((1 - (-d / 2.5)) * 255 + 0.5))
+			end
 		end
+		breathe()
 	end
 	return { W = W, H = H, body = body, rim = rim, regionId = regionId, regionCov = regionCov, shade = shade, regions = regions }
 end
 
+-- the first and last body pixel of every row ({ x0, x1, x0, x1, ... }; x0 > x1 = an empty row), kept on
+-- the mask: a paint walks only the figure, not the empty canvas around it
+local function rowSpans(mask)
+	local spans = mask.spans
+	if spans then
+		return spans
+	end
+	local W, H, body = mask.W, mask.H, mask.body
+	spans = table.create(H * 2, 0)
+	for y = 0, H - 1 do
+		local row = y * W
+		local x0, x1 = W, -1
+		for x = 0, W - 1 do
+			if buffer.readu8(body, row + x) > 0 then
+				if x < x0 then
+					x0 = x
+				end
+				x1 = x
+			end
+		end
+		spans[y * 2 + 1], spans[y * 2 + 2] = x0, x1
+	end
+	mask.spans = spans
+	return spans
+end
+
 -- paints the mask into a pixel buffer: colors[part] = Color3 (nil = idle muscle), glow = weights for
--- the pulse layer (nil: no glow buffer)
+-- the pulse layer (nil: no glow buffer). Row by row over the figure's span, one 32-bit write a pixel
+-- (the same pixels as a per-byte pass over the whole canvas, in about half the time)
 local function paint(mask, colors, glowWeights)
 	local W, H = mask.W, mask.H
 	local n = W * H
@@ -273,33 +324,34 @@ local function paint(mask, colors, glowWeights)
 	end
 	local sr, sg, sb = SKIN.R * 255, SKIN.G * 255, SKIN.B * 255
 	local body, rim, rid, rcov, shade = mask.body, mask.rim, mask.regionId, mask.regionCov, mask.shade
-	for i = 0, n - 1 do
-		local a = buffer.readu8(body, i)
-		if a > 0 then
-			local y = i // W
+	local spans = rowSpans(mask)
+	local floor, clamp = math.floor, math.clamp
+	for y = 0, H - 1 do
+		local x0, x1 = spans[y * 2 + 1], spans[y * 2 + 2]
+		if x0 <= x1 then
 			-- the skin: a touch lighter at the top, a rim light at the outline
-			local lift = 1.08 - 0.16 * (y / H) + buffer.readu8(rim, i) / 255 * 0.35
-			local r, g, b = sr * lift, sg * lift, sb * lift
-			local idx = buffer.readu8(rid, i)
-			if idx > 0 then
-				local k = buffer.readu8(rcov, i) / 255
-				local s = buffer.readu8(shade, i) / 255 * 1.25
-				r = r + (rr[idx] * s - r) * k
-				g = g + (gg[idx] * s - g) * k
-				b = b + (bb[idx] * s - b) * k
-				if glow and ww[idx] > 0.01 then
-					local o = i * 4
-					buffer.writeu8(glow, o, 255)
-					buffer.writeu8(glow, o + 1, 255)
-					buffer.writeu8(glow, o + 2, 255)
-					buffer.writeu8(glow, o + 3, math.floor(math.clamp(ww[idx] * k, 0, 1) * a * 0.9))
+			local top = 1.08 - 0.16 * (y / H)
+			local row = y * W
+			for i = row + x0, row + x1 do
+				local a = buffer.readu8(body, i)
+				if a > 0 then
+					local lift = top + buffer.readu8(rim, i) / 255 * 0.35
+					local r, g, b = sr * lift, sg * lift, sb * lift
+					local idx = buffer.readu8(rid, i)
+					if idx > 0 then
+						local k = buffer.readu8(rcov, i) / 255
+						local s = buffer.readu8(shade, i) / 255 * 1.25
+						r = r + (rr[idx] * s - r) * k
+						g = g + (gg[idx] * s - g) * k
+						b = b + (bb[idx] * s - b) * k
+						if glow and ww[idx] > 0.01 then
+							-- white, alpha = the weight
+							buffer.writeu32(glow, i * 4, 16777215 + floor(clamp(ww[idx] * k, 0, 1) * a * 0.9) * 16777216)
+						end
+					end
+					buffer.writeu32(out, i * 4, clamp(floor(r + 0.5), 0, 255) + clamp(floor(g + 0.5), 0, 255) * 256 + clamp(floor(b + 0.5), 0, 255) * 65536 + a * 16777216)
 				end
 			end
-			local o = i * 4
-			buffer.writeu8(out, o, math.clamp(math.floor(r + 0.5), 0, 255))
-			buffer.writeu8(out, o + 1, math.clamp(math.floor(g + 0.5), 0, 255))
-			buffer.writeu8(out, o + 2, math.clamp(math.floor(b + 0.5), 0, 255))
-			buffer.writeu8(out, o + 3, a)
 		end
 	end
 	return out, glow
@@ -408,12 +460,13 @@ function BodyMap.new(parent, opts)
 	local fig = UI.New("Frame", { Name = "Figure", BackgroundTransparency = 1, Size = UDim2.fromOffset(W, figH), Parent = frame })
 	self.fig = fig
 	-- the painted figure (its mask builds over a few frames the first time a size is used), or frames
-	local iw, ih = math.min(MAX_SIDE, math.ceil(W * DENSITY)), math.min(MAX_SIDE, math.ceil(figH * DENSITY))
+	local density = lv.density
+	local iw, ih = math.min(MAX_SIDE, math.ceil(W * density)), math.min(MAX_SIDE, math.ceil(figH * density))
 	local img = (not opts.frames) and newImage(iw, ih) or nil
 	local label = img and imageLabel(fig, "Paint", img, 1) or nil
 	if label then
 		self.image, self.paintLabel = img, label
-		local glowImg = opts.glow ~= false and newImage(iw, ih) or nil
+		local glowImg = opts.glow ~= false and lv.glow and newImage(iw, ih) or nil
 		local gl = glowImg and imageLabel(fig, "Glow", glowImg, 2) or nil
 		if gl then
 			gl.ImageTransparency = 1
@@ -515,9 +568,35 @@ local function colorSig(mask, colors)
 	return table.concat(t)
 end
 
--- writes the current colours (painted mode; waits for the mask)
+-- writes the current colours (painted mode; waits for the mask). Deferred to the end of the frame: the
+-- calls a map gets while it is built (the mask arriving, new(), SetDevelopment / SetTargets) are one paint,
+-- and colours it already shows are not painted again
 function BodyMap:Paint()
-	if not (self.image and self.mask) then
+	if not (self.image and self.mask) or self.paintQueued then
+		return
+	end
+	self.paintQueued = true
+	task.defer(function()
+		self.paintQueued = false
+		self:_paintNow()
+	end)
+end
+
+local function weightSig(weights)
+	local t = {}
+	for _, id in ipairs(ALL_IDS) do
+		local k = weights and weights[id]
+		t[#t + 1] = (k and k > 0.01) and tostring(k) or "-"
+	end
+	return table.concat(t, ",")
+end
+
+function BodyMap:_paintNow()
+	if not (self.image and self.mask and self.frame.Parent) then
+		return
+	end
+	local sig = colorSig(self.mask, self.colors) .. (self.glowImage and ("|" .. weightSig(self.weights)) or "")
+	if sig == self.paintedSig then
 		return
 	end
 	local ok, err = pcall(function()
@@ -525,7 +604,6 @@ function BodyMap:Paint()
 		if self.glowImage then
 			out, glow = paint(self.mask, self.colors, self.weights)
 		else
-			local sig = colorSig(self.mask, self.colors)
 			out = paintCache[sig]
 			if not out then
 				out = paint(self.mask, self.colors, nil)
@@ -543,7 +621,9 @@ function BodyMap:Paint()
 			self.glowImage:WritePixelsBuffer(Vector2.zero, size, glow)
 		end
 	end)
-	if not ok then
+	if ok then
+		self.paintedSig = sig
+	else
 		warn("[BodyMap] paint failed:", err)
 	end
 end

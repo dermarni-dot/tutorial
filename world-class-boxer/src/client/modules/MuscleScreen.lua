@@ -94,6 +94,26 @@ local IDLE_BEFORE_SPIN = 2.2
 local FACING = { chest = 0, core = 0, back = math.pi }
 local TURN_SPEED = 4 -- rad/s
 local SWAY = 0.7 -- rad either side of the facing when idle
+-- per Graphics level (BoxerClient.Perf: 1 Low, 2 Medium, 3 High): the viewport draws the whole figure again
+-- whenever its camera or a shell changes. High: the turn and the shells' breathing every frame. Medium: the
+-- breathing at 20 Hz. Low: shells steady (still lit), the figure's own turn at 30 Hz (a hand on it: every
+-- frame). On every level an unchanged view is not written (nothing to redraw while it stands still)
+local LEVELS = { { spinEvery = 2, pulseEvery = 0 }, { spinEvery = 1, pulseEvery = 3 }, { spinEvery = 1, pulseEvery = 1 } }
+local lv = LEVELS[3]
+do
+	local m = script.Parent:FindFirstChild("Perf")
+	local ok, Perf = false, nil
+	if m then
+		ok, Perf = pcall(require, m)
+	end
+	if ok and type(Perf) == "table" and Perf.Level and Perf.Changed then
+		local function pick()
+			lv = LEVELS[math.clamp(tonumber(Perf.Level()) or 3, 1, 3)]
+		end
+		pick()
+		Perf.Changed:Connect(pick)
+	end
+end
 
 ------------------------------------------------------------------------
 -- The figure: a frozen copy of the character (the cloning rules of FighterCard's portrait, without
@@ -889,11 +909,13 @@ function MuscleScreen.Open(opts)
 	end))
 	-- per frame: the stick / keys turn the figure, the shells breathe, and after a pause it spins alone
 	local t = 0
+	local frame, drawnYaw, drawnPulse, drawnGroup = 0, nil, nil, nil
 	table.insert(s.conns, RunService.RenderStepped:Connect(function(dt)
 		if not figure then
 			return
 		end
 		t += dt
+		frame += 1
 		local turn = s.stick * 2.4 + s.keys * 1.8
 		if turn ~= 0 or dragging then
 			-- the player's hands on it: no auto turn
@@ -925,10 +947,19 @@ function MuscleScreen.Open(opts)
 				end
 			end
 		end
-		s.updateCamera()
-		local pulse = 0.46 + 0.14 * math.sin(t * 3)
-		for _, p in ipairs(s.shells[s.group.id] or {}) do
-			p.Transparency = pulse
+		if s.yaw ~= drawnYaw and (frame % lv.spinEvery == 0 or turn ~= 0 or dragging) then
+			drawnYaw = s.yaw
+			s.updateCamera()
+		end
+		local pulse = 0.46
+		if lv.pulseEvery > 0 then
+			pulse = (frame % lv.pulseEvery == 0 or not drawnPulse) and 0.46 + 0.14 * math.sin(t * 3) or drawnPulse
+		end
+		if pulse ~= drawnPulse or s.group ~= drawnGroup then
+			drawnPulse, drawnGroup = pulse, s.group
+			for _, p in ipairs(s.shells[s.group.id] or {}) do
+				p.Transparency = pulse
+			end
 		end
 	end))
 end
