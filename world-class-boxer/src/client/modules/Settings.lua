@@ -5,7 +5,8 @@
 --   music       0 .. 1       music volume (SoundService.MusicMix: every Sound named *Music*, walkout music)
 --   sfx         0 .. 1       every other sound (all other SoundGroups: gym, fight mix)
 --   detail      Auto | High | Medium | Low   graphics detail (AnatomyClient.Settings: full-detail count,
---                                           ranges, build budget, textures; client attribute GfxDetail)
+--                                           ranges, build budget, textures; client attribute GfxDetail;
+--                                           Perf resolves it, Auto included, to GfxLevel 1..3)
 --   brightness  0.5 .. 1.6   overall exposure (player attribute Brightness, read by LightLevels)
 --   menuAtStart bool         open the main menu when you join
 --   controlHints bool        keep the fight's key-cap strip on screen (otherwise it fades after round 1)
@@ -24,6 +25,9 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
 local UI = require(Shared:WaitForChild("UI"))
 local Keymap = require(Shared:WaitForChild("Keymap"))
+-- Perf turns the Graphics choice (GfxDetail) into the level every system reads (GfxLevel); requiring it
+-- here starts it with the rest of the settings
+local Perf = require(script.Parent:WaitForChild("Perf"))
 
 local Settings = {}
 local player = Players.LocalPlayer
