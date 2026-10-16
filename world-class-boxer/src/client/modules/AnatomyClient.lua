@@ -47,7 +47,7 @@ AnatomyClient.Settings = {
 	lodRange = 160, -- studs; beyond: round-1 parts only
 	frameBudget = 0.0025, -- seconds of work per frame
 	textures = true, -- EditableImage colour textures for pieces that ask for one
-	texturesFullOnly = false, -- ... only on full-detail pieces (Medium: the far ones keep their vertex colours)
+	textureSections = false, -- false = every section may have textures; or a set: only these (Low: { Head = true })
 	hullRange = math.huge, -- studs: a part-built NPC past this shows only its hull and mass domes (Medium / Low)
 	meshCentered = true, -- a MeshPart made from an EditableMesh is centred on the mesh's bounding box
 	flipV = false, -- flip texture v if textures show upside down
@@ -751,7 +751,7 @@ end
 
 -- MeshPart for one piece (not parented yet); returns piece record or nil, err, fatal
 local makePiece
-function makePiece(rec, name, piece, bodyLod)
+function makePiece(rec, name, piece, bodyLod, section)
 	local model = rec.model
 	local attachName = piece.attach or name
 	local attach = resolveAttach(model, attachName)
@@ -773,7 +773,8 @@ function makePiece(rec, name, piece, bodyLod)
 		api.textures = true -- textures failed a while ago: try them again (memory may have been freed)
 	end
 	local S = AnatomyClient.Settings
-	if tex and S.textures and api.textures and (bodyLod == "full" or not S.texturesFullOnly) then
+	local secs = S.textureSections
+	if tex and S.textures and api.textures and not (type(secs) == "table" and not secs[section]) then
 		local w, h = tex.w or (tex.size and tex.size[1]) or 256, tex.h or (tex.size and tex.size[2]) or 256
 		local buf
 		local make = rawget(tex, "make")
@@ -896,7 +897,7 @@ function makePiece(rec, name, piece, bodyLod)
 			api.texFails += 1
 			api.texRetryAt = os.clock() + 30 * math.min(api.texFails, 8)
 			warnOnce("texset", "TextureContent refused (" .. tostring(errT) .. "): textures paused, vertex colours meanwhile")
-			return makePiece(rec, name, piece, bodyLod)
+			return makePiece(rec, name, piece, bodyLod, section)
 		end
 	end
 	-- a MeshPart is centred on its mesh's bounding box: the weld puts that centre where it sits in the
@@ -1010,11 +1011,12 @@ local function onCreateFailed(err)
 	return true
 end
 
--- colour textures for pieces built at this level of detail right now (the Graphics level's textures /
--- texturesFullOnly, and the API not paused)
-local function texturesFor(lod)
+-- colour textures for a section's pieces right now (the Graphics level's textures / textureSections, and the
+-- API not paused)
+local function texturesFor(section)
 	local S = AnatomyClient.Settings
-	return S.textures == true and api.textures and (lod == "full" or not S.texturesFullOnly)
+	local secs = S.textureSections
+	return S.textures == true and api.textures and not (type(secs) == "table" and not secs[section])
 end
 
 local function runJob(job)
@@ -1034,7 +1036,7 @@ local function runJob(job)
 		return
 	end
 	local t0 = os.clock()
-	job.tex = texturesFor(lod)
+	job.tex = texturesFor(section)
 	sliceStart = os.clock()
 	currentJob = job
 	MeshKit.SetTick(tick)
@@ -1085,7 +1087,7 @@ local function runJob(job)
 	end
 	table.sort(names)
 	for _, name in ipairs(names) do
-		local okP, pr, err, kind = pcall(makePiece, rec, name, result.pieces[name], lod)
+		local okP, pr, err, kind = pcall(makePiece, rec, name, result.pieces[name], lod, section)
 		if not okP then
 			abandon()
 			if isCancel(pr) then
@@ -1379,7 +1381,7 @@ local function evaluate()
 				local fresh = st and (st.active or st.skipped) and st.sig == sig and st.lod == want
 				-- built without colour textures that the level now wants (a Graphics level climbed back up): built
 				-- again, behind every other build (a level that wants fewer textures keeps what is built)
-				local retex = fresh and st.active and not st.tex and texturesFor(want)
+				local retex = fresh and st.active and not st.tex and texturesFor(section)
 				if retex then
 					fresh = false
 				end
@@ -1845,18 +1847,19 @@ end
 -- preset from the Graphics level itself (Perf, see followPerf): Low -> low, Medium -> medium, High on
 -- Auto -> Config.Anatomy's values, High picked by name -> full. A SetDetail call with a preset name
 -- (tools, tests) takes over until SetDetail("auto").
---   textures / texturesFullOnly: Medium paints colour textures for full-detail pieces only (the medium /
---     low ones, 50+ studs away, keep the vertex colours the textures are rasterised from: half a medium
---     character's build time is its head and hair textures); Low paints none
+--   textures / textureSections: Low paints the Head section's textures only - the face's paint, brows and
+--     beard live in them (a 64-pixel one at low detail, ~20 ms to paint); the hair and body keep the vertex
+--     colours their textures are rasterised from (the hair's strand texture is a second of CPU per
+--     full-detail character). High and Medium paint every texture
 --   promoteHold: how long a character must want a higher level before it is rebuilt (a camera swinging
 --     between training stations does not start a full-detail build for every face it passes)
 --   lodRange: Medium and Low keep low-detail meshes out to 160 / 140 studs (the gym's far end): a far
 --     part-built character puts ~85 parts on screen, its low-detail meshes ~6 (and ~0.2 MB, a tenth of a
 --     second to build); hullRange: the far hull above for whoever is still part-built past it
 AnatomyClient.DETAIL = {
-	full = { maxFull = 10, fullRange = 90, lodRange = 200, frameBudget = 0.004, textures = true, texturesFullOnly = false, promoteHold = 1.5, hullRange = math.huge },
-	medium = { maxFull = 4, fullRange = 50, lodRange = 160, frameBudget = 0.002, textures = true, texturesFullOnly = true, promoteHold = 3, hullRange = 90 },
-	low = { maxFull = 1, fullRange = 30, lodRange = 140, frameBudget = 0.0015, textures = false, texturesFullOnly = true, promoteHold = 4, hullRange = 45 },
+	full = { maxFull = 10, fullRange = 90, lodRange = 200, frameBudget = 0.004, textures = true, textureSections = false, promoteHold = 1.5, hullRange = math.huge },
+	medium = { maxFull = 4, fullRange = 50, lodRange = 160, frameBudget = 0.002, textures = true, textureSections = false, promoteHold = 3, hullRange = 90 },
+	low = { maxFull = 1, fullRange = 30, lodRange = 140, frameBudget = 0.0015, textures = true, textureSections = { Head = true }, promoteHold = 4, hullRange = 45 },
 }
 local activePreset = "auto" -- the preset the knobs hold now
 local function writePreset(level)
@@ -2364,7 +2367,7 @@ function AnatomyClient.Diagnose()
 	add("generators:", #secs > 0 and table.concat(secs, " ") or "NONE")
 	local S = AnatomyClient.Settings
 	add(string.format("settings: enabled %s maxFull %d fullRange %d lodRange %d frameBudget %.4f textures %s%s | NPCs %s", tostring(S.enabled), S.maxFull, S.fullRange, S.lodRange, S.frameBudget, tostring(S.textures),
-		S.texturesFullOnly and " (full detail only)" or "", npcsIn and "allowed" or "waiting for the profile"))
+		type(S.textureSections) == "table" and " (Head only)" or "", npcsIn and "allowed" or "waiting for the profile"))
 	add(string.format("detail preset: %s (%s) | far hull past %s studs", activePreset, (not manualDetail and Perf ~= nil) and "follows the Graphics level" or "set by hand",
 		S.hullRange < math.huge and tostring(S.hullRange) or "never"))
 	local st = AnatomyClient.Status()

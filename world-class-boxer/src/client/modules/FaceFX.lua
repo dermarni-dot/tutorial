@@ -80,7 +80,8 @@ local player = Players.LocalPlayer
 -- per Graphics level (BoxerClient.Perf: 1 Low, 2 Medium, 3 High): the distances above and the head's blend-shape
 -- rate shrink on the lower levels (a face 30+ studs away on a phone is a dozen pixels: its blinks do not read);
 -- your own face and the fighters' keep High's at every level
-local LEVELS = { { near = 18, mid = 32, hz = 8 }, { near = 26, mid = 45, hz = 10 }, { near = NEAR, mid = MID, hz = 14 } }
+-- paint = the damage painting's CPU per frame (all heads together; a texture repaint takes a few more frames on Low)
+local LEVELS = { { near = 18, mid = 32, hz = 8, paint = 0.0008 }, { near = 26, mid = 45, hz = 10, paint = 0.0015 }, { near = NEAR, mid = MID, hz = 14, paint = 0.0015 } }
 local HIGH = LEVELS[3]
 local lv = HIGH
 do
@@ -503,8 +504,9 @@ local function buildView(model)
 	local texOn = false
 	pcall(function()
 		local S = Anatomy.Settings
-		-- (Medium paints textures on full-detail pieces only: AnatomyClient texturesFullOnly)
-		texOn = S.textures ~= false and not (S.texturesFullOnly and v.lod ~= "full") and Anatomy.Status().textures ~= false
+		-- (a level may paint some sections' textures only: AnatomyClient textureSections)
+		local secs = S.textureSections
+		texOn = S.textures ~= false and not (type(secs) == "table" and not secs.Head) and Anatomy.Status().textures ~= false
 	end)
 	local tex = texOn and TEXTURED[v.lod] or {}
 	-- (AnatomyClient may hand the image out directly; else it is the part's TextureContent object)
@@ -923,7 +925,7 @@ end
 function FaceFX.Update(dt, t, camPos, rigs, budget)
 	local rescans = 0
 	morphFrame += 1
-	paintLeft = PAINT_BUDGET
+	paintLeft = lv.paint or PAINT_BUDGET
 	for model, rec in pairs(faces) do
 		if not model.Parent then
 			dropRec(model)
