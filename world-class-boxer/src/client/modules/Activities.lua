@@ -509,8 +509,15 @@ local function newContext(info)
 			-- clean work against everything graded so far
 			ctx.fillTile("reps", ctx.qN > 0 and ctx.clean / ctx.qN or 0)
 		end
-		if ctx.qN > 0 then
-			local q = ctx.qSum / ctx.qN
+		-- a unit still in progress (a cardio interval, a breath) counts by the share of it done so far,
+		-- so QUALITY moves from the first second instead of waiting for the first unit to end
+		local n, sum, part = ctx.qN, ctx.qSum, ctx.partial
+		if part and part.w > 0 then
+			n += part.w
+			sum += part.g * part.w
+		end
+		if n > 0 then
+			local q = sum / n
 			tl.quality.val.Text = string.format("%d%%", math.floor(q * 100 + 0.5))
 			local col = q >= 0.85 and T.gold or (q >= 0.65 and T.green or (q >= 0.45 and T.orange or T.red))
 			tl.quality.val.TextColor3 = col
@@ -818,22 +825,38 @@ local function newContext(info)
 	local lastReact = 0
 	-- feedback colours grade the work: gold great, green good, orange sloppy, red a miss
 	local GRADE_OF = { [T.gold] = 1, [T.green] = 0.8, [T.orange] = 0.45, [T.red] = 0 }
-	function ctx.feedback(text, color)
+	-- one graded piece of work on the strip (0..1, on the colours' scale above): QUALITY averages them,
+	-- CLEAN counts the good ones (0.8 and up). Drills measured as they go (a cardio interval's time in
+	-- the zone, a breath in sync) grade each unit with its own number
+	function ctx.grade(score)
+		ctx.partial = nil
+		if ctx.mode == "done" then
+			return
+		end
+		ctx.qN += 1
+		ctx.qSum += score
+		if score >= 0.8 then
+			ctx.clean += 1
+		end
+		ctx.updateMetrics()
+	end
+	-- the colour a 0..1 grade flashes in (the reverse of GRADE_OF)
+	function ctx.gradeColor(g)
+		return g >= 0.95 and T.gold or (g >= 0.8 and T.green or (g >= 0.45 and T.orange or T.red))
+	end
+	-- score: the grade when it is not the colour's own (a measured unit)
+	function ctx.feedback(text, color, score)
 		ctx.flash.Text = text
 		ctx.flash.TextColor3 = color or T.text
-		local score
-		for c, v in pairs(GRADE_OF) do
-			if color == c then
-				score = v
+		if score == nil then
+			for c, v in pairs(GRADE_OF) do
+				if color == c then
+					score = v
+				end
 			end
 		end
-		if score and ctx.mode ~= "done" then
-			ctx.qN += 1
-			ctx.qSum += score
-			if score >= 0.8 then
-				ctx.clean += 1
-			end
-			ctx.updateMetrics()
+		if score then
+			ctx.grade(score)
 		end
 		local id = os.clock()
 		ctx.flashId = id
@@ -2703,6 +2726,9 @@ GAMES.pace = function(ctx)
 	local marker = UI.Frame(barBg, { BackgroundColor3 = Color3.new(1, 1, 1), Size = UDim2.new(0, 6, 1, 10), Position = UDim2.new(0, 0, 0, -5) })
 	local metrics = UI.Text(ctx.stage, "", { Font = T.semi, TextSize = 15, TextColor3 = Color3.fromRGB(120, 220, 255), Position = UDim2.fromOffset(20, 50), Size = UDim2.new(1, -40, 0, 22), AutomaticSize = Enum.AutomaticSize.None })
 	local status = UI.Text(ctx.stage, "", { Font = T.bold, Position = UDim2.fromOffset(20, 76), Size = UDim2.new(1, -40, 0, 24), AutomaticSize = Enum.AutomaticSize.None })
+	-- the last interval's verdict (its time in the zone) at the readout line's right end for a moment
+	local verdict = UI.Text(ctx.stage, "", { Font = T.bold, TextSize = 15, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -20, 0, 50), Size = UDim2.new(0.45, 0, 0, 22),
+		AutomaticSize = Enum.AutomaticSize.None, TextXAlignment = Enum.TextXAlignment.Right, TextWrapped = false })
 	-- the pace judge: each press speeds up, the pace drains; the time in the zone is the score
 	local j, _, start = ctx.begin()
 	if not j then
@@ -2716,6 +2742,20 @@ GAMES.pace = function(ctx)
 	local miles, meters, topSpeed, maxWatts, maxSpm, rpmSum, rpmTime = 0, 0, 0, 0, 0, 0, 0
 	local phaseIdx, sinceScreen = 1, 1
 	local screen = ""
+	-- the strip grades each interval by its time in the zone (on the session's scale: DrillScore.PACE_FULL
+	-- of it in the zone is full marks): CLEAN counts the intervals held, QUALITY averages them with the
+	-- interval in progress counting by the share run so far
+	local len = duration / #phases
+	local zoneAt, partial, verdictAt = 0, { g = 0, w = 0 }, -math.huge
+	local function gradeInterval(pi)
+		local share = math.clamp((j.inZone - zoneAt) / len, 0, 1)
+		local g = math.clamp(share / DrillScore.PACE_FULL, 0, 1)
+		zoneAt = j.inZone
+		ctx.grade(g)
+		verdict.Text = string.format("%s %d%% IN ZONE", (string.gsub(phases[pi][3], "!", "")), math.floor(share * 100 + 0.5))
+		verdict.TextColor3 = ctx.gradeColor(g)
+		verdictAt = ctx.now()
+	end
 	-- the readouts are text: they are rewritten about 15 times a second (and at once when the marker
 	-- crosses into or out of the zone); the marker itself moves every frame
 	local textAt, lastOk = -math.huge, nil
@@ -2735,6 +2775,7 @@ GAMES.pace = function(ctx)
 		end
 		local pi = j.phaseOf(now)
 		if pi ~= phaseIdx then
+			gradeInterval(phaseIdx)
 			phaseIdx = pi
 			ctx.round(pi, #phases, phases[pi][3], "INTERVAL", 0)
 		end
@@ -2791,12 +2832,23 @@ GAMES.pace = function(ctx)
 		if sinceScreen >= 0.25 then
 			sinceScreen = 0
 			GymVisuals.SetDisplay(ctx.station, screen)
+			if verdictAt > -math.huge and now - verdictAt > 3 then
+				verdictAt = -math.huge
+				verdict.Text = ""
+			end
+			-- the interval so far on the strip (a few times a second is plenty for a percentage)
+			local into = el - (phaseIdx - 1) * len
+			partial.w = math.clamp(into / len, 0, 1)
+			partial.g = into > 0 and math.clamp((j.inZone - zoneAt) / into / DrillScore.PACE_FULL, 0, 1) or 0
+			ctx.partial = partial
+			ctx.updateMetrics()
 		end
 		ctx.setProgress(el / duration)
 		RunService.Heartbeat:Wait()
 	end
 	ctx.on(nil)
 	local res = ctx.close(j)
+	gradeInterval(phaseIdx)
 	ctx.intensity = nil
 	ctx.speed(1)
 	local zonePct = math.floor(res.inZone / duration * 100 + 0.5)
@@ -3184,6 +3236,14 @@ GAMES.hold = function(ctx)
 	end)
 	local breathIdx = 1
 	local syncF, prog, waterLost, tension, recovered = 0, 0, 0, tensionStart, 0
+	-- the strip grades each breath by its time in sync with the circle: CLEAN counts the breaths
+	-- followed, QUALITY averages them (the breath in progress by its share so far)
+	local syncAt, partial, partialAt = 0, { g = 0, w = 0 }, -math.huge
+	local function gradeBreath()
+		local g = math.clamp((j.sync - syncAt) / cycle, 0, 1)
+		syncAt = j.sync
+		ctx.grade(g)
+	end
 	while true do
 		if ctx.cancelled then
 			ctx.on(nil)
@@ -3197,8 +3257,17 @@ GAMES.hold = function(ctx)
 		end
 		local b = math.min(breaths, math.floor(el / cycle) + 1)
 		if b ~= breathIdx then
+			gradeBreath()
 			breathIdx = b
 			ctx.round(b, breaths, breathName(b), "BREATH", 0)
+		end
+		if now - partialAt >= 0.25 then
+			partialAt = now
+			local into = el - (breathIdx - 1) * cycle
+			partial.w = math.clamp(into / cycle, 0, 1)
+			partial.g = into > 0 and math.clamp((j.sync - syncAt) / into, 0, 1) or 0
+			ctx.partial = partial
+			ctx.updateMetrics()
 		end
 		local c = el % cycle
 		local inPhase = c < inhale
@@ -3242,6 +3311,7 @@ GAMES.hold = function(ctx)
 	end
 	ctx.on(nil)
 	local res = ctx.close(j)
+	gradeBreath()
 	syncF = math.clamp(res.sync / math.max(0.01, duration), 0, 1)
 	local syncPct = math.floor(syncF * 100 + 0.5)
 	ctx.put("sync", syncPct)

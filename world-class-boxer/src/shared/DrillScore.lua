@@ -881,9 +881,12 @@ AGG.medball = function(plan, res)
 	end
 	return 0.55 * slam / math.max(1, slams) + 0.45 * twist
 end
+-- this share of the cardio session spent in the zone is full marks (Activities grades each interval
+-- on the same scale for the live QUALITY tile)
+DrillScore.PACE_FULL = 0.85
 AGG.pace = function(plan, res)
 	local r, seg = res[1], plan.segs[1]
-	return r and clamp(r.inZone / seg.duration / 0.85, 0, 1) or 0
+	return r and clamp(r.inZone / seg.duration / DrillScore.PACE_FULL, 0, 1) or 0
 end
 AGG.ladder = function(plan, res)
 	local score, total, completed = 0, 0, 0
