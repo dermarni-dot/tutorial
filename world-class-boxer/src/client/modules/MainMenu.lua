@@ -466,7 +466,9 @@ local function buildMenu(layer)
 		local desc = UI.Text(b, it.locked and "Create your boxer first" or it.desc, { Name = "Desc", Font = T.font, TextSize = small and 11 or 13, TextColor3 = T.sub, Position = UDim2.fromOffset(small and 210 or 270, 0),
 			Size = UDim2.fromOffset(240, h), AutomaticSize = Enum.AutomaticSize.None, TextWrapped = true, Visible = false })
 		if it.locked then
-			UI.Icon(b, "lock", small and 12 or 14, T.dim, { AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, small and 176 or 228, 0.5, 0) })
+			-- the lock rides on the title: a selected title slides 14 px right (keys, pad or hover select
+			-- locked items too), and a lock fixed to the row landed on its last letters (CHARACTER's R)
+			UI.Icon(title, "lock", small and 12 or 14, T.dim, { AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, small and 128 or 184, 0.5, 0) })
 		end
 		itemFrames[i] = { button = b, title = title, index = index, glow = glow, desc = desc }
 		b.MouseEnter:Connect(function()
