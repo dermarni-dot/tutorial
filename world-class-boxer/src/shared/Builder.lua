@@ -508,6 +508,13 @@ function Builder.CreateNPC(app, build, gear, displayName, opts)
 		model:SetAttribute("HullOnly", true)
 	end
 	Builder.Cosmetics(model, app, build, gear, opts)
+	-- nothing in the game listens for touches: an NPC's parts that report none cost the physics less (the
+	-- built layers' parts already have it off; this is the R15 body itself)
+	for _, d in ipairs(model:GetDescendants()) do
+		if d:IsA("BasePart") then
+			d.CanTouch = false
+		end
+	end
 	return model
 end
 
