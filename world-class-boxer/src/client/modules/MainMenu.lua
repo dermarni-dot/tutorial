@@ -971,6 +971,22 @@ local function screenSettings(layer)
 	add(detailRow, nudge(detailRow))
 	local gfxNote = UI.Text(body, "", { Name = "GraphicsNow", TextSize = 13, TextColor3 = T.sub })
 	add(gfxNote)
+	-- what to do about it at the level in force: Low is already the lowest, and Auto moves by itself
+	local function gfxAdvice(lv, auto)
+		if auto then
+			if Perf.Capped() then
+				return "Your device caps the frame rate, and the game has time to spare: Auto keeps the detail."
+			end
+			return lv <= 1 and "Auto is at its lowest level: if the game still stutters, close other apps."
+				or "Auto follows your device and the frame rate: it lowers the detail by itself when frames slow down."
+		end
+		if lv <= 1 then
+			return "The lowest level: fewer detailed bodies near you, simpler textures on the crowd, fewer lights, shadows and effects."
+		elseif lv == 2 then
+			return "If the game stutters, pick Low: fewer detailed bodies, lights and effects."
+		end
+		return "Full detail. If the game stutters, pick Medium or Auto."
+	end
 	task.spawn(function()
 		local shownLevel = Perf.Level()
 		while gfxNote.Parent do
@@ -980,8 +996,7 @@ local function screenSettings(layer)
 				showDetail(Settings.Values.detail)
 			end
 			local auto = Settings.Values.detail == "Auto"
-			gfxNote.Text = string.format("Running at %s  ·  %d FPS%s. If the game stutters, pick a lower level: Low draws fewer detailed characters, lights and effects.",
-				Perf.Name(lv), math.floor(Perf.Fps() + 0.5), auto and " (Auto follows your device and the frame rate)" or "")
+			gfxNote.Text = string.format("Running at %s  ·  %d FPS. %s", Perf.Name(lv), math.floor(Perf.Fps() + 0.5), gfxAdvice(lv, auto))
 			task.wait(0.5)
 		end
 	end)

@@ -6,8 +6,8 @@
 --   sfx         0 .. 1       every other sound (all other SoundGroups: gym, fight mix)
 --   detail      Auto | High | Medium | Low   graphics detail: client attribute GfxDetail, which Perf resolves
 --                                           (Auto included) to the level 1..3 every system reads
---                                           (Perf.Level / Perf.Changed / attribute GfxLevel); AnatomyClient's
---                                           presets follow that level (applyAnatomy)
+--                                           (Perf.Level / Perf.Changed / attribute GfxLevel); AnatomyClient
+--                                           picks its mesh presets from that level itself
 --   brightness  0.5 .. 1.6   overall exposure (player attribute Brightness, read by LightLevels)
 --   menuAtStart bool         open the main menu when you join
 --   controlHints bool        keep the fight's key-cap strip on screen (otherwise it fades after round 1)
@@ -176,11 +176,11 @@ local function anatomyModule()
 	return anatomy or nil
 end
 
--- AnatomyClient (the mesh characters) follows the level Perf resolves, Auto included: Low and Medium are
--- its "low" / "medium" presets (fewer full-detail characters, shorter ranges, a smaller build budget, no
--- colour textures at Low); High is its own defaults (Config.Anatomy) on Auto and its "full" preset when
--- High is picked by name. Re-applied whenever Perf changes level (Auto stepping with the frame rate).
--- A module that follows Perf on its own (AnatomyClient.FollowsPerf) is left alone.
+-- AnatomyClient (the mesh characters) follows the level Perf resolves on its own (AnatomyClient.FollowsPerf:
+-- the presets in AnatomyClient.DETAIL - Low and Medium its "low" / "medium" ones, fewer full-detail
+-- characters, shorter ranges, a smaller build budget, face-only textures on NPCs at Low; High its defaults
+-- (Config.Anatomy) on Auto and its "full" preset when High is picked by name), so this leaves it alone.
+-- It only drives a copy without FollowsPerf, with the same mapping, re-applied whenever Perf changes level.
 local appliedAnatomy -- the preset last handed to AnatomyClient.SetDetail
 local function applyAnatomy()
 	local ac = anatomyModule()
