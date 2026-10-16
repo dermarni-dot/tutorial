@@ -2195,6 +2195,10 @@ end
 -- SetMorphs sums weight * delta over the named morphs and writes every vertex any morph touches (those
 -- whose morphs are all at 0 go back to the generated position). Skips the write when the weights did
 -- not change. Cost ~ the touched vertices: call at a low rate (10-20 Hz) and only for near characters.
+-- A vertex whose sum moved less than MORPH_EPS since it was last written keeps what the mesh holds (a
+-- breath's or an easing weight's tail moves most of a face by hundredths of a millimetre): fewer engine
+-- writes, and none at all for a mesh nothing visibly moved on
+local MORPH_EPS = 2e-4 -- studs (0.06 mm)
 function AnatomyClient.SetMorphs(model, section, piece, weights)
 	ensureStarted()
 	local pr = pieceRec(model, section, piece)
@@ -2204,18 +2208,25 @@ function AnatomyClient.SetMorphs(model, section, piece, weights)
 	end
 	local ms = pr.morphState
 	if not ms then
-		-- union of every morph's vertices, a slot per vertex, and reusable accumulators
-		local slot, ids = {}, {}
-		for _, mo in pairs(morphs) do
-			for _, i in ipairs(mo.ids or {}) do
+		-- union of every morph's vertices, a slot per vertex, each morph's slots, reusable accumulators, the
+		-- offsets the mesh holds (wx / wy / wz) and this call's touched slots
+		local slot, ids, slots = {}, {}, {}
+		for name, mo in pairs(morphs) do
+			local list = mo.ids or {}
+			local sl = table.create(#list, 0)
+			for k, i in ipairs(list) do
 				if not slot[i] then
 					ids[#ids + 1] = i
 					slot[i] = #ids
 				end
+				sl[k] = slot[i]
 			end
+			slots[name] = sl
 		end
-		ms = { slot = slot, ids = ids, ox = table.create(#ids, 0), oy = table.create(#ids, 0), oz = table.create(#ids, 0), last = {},
-			mark = table.create(#ids, 0), stamp = 0 }
+		local n = #ids
+		ms = { ids = ids, slots = slots, ox = table.create(n, 0), oy = table.create(n, 0), oz = table.create(n, 0),
+			wx = table.create(n, 0), wy = table.create(n, 0), wz = table.create(n, 0), last = {}, mark = table.create(n, 0),
+			touched = table.create(n, 0), stamp = 0 }
 		pr.morphState = ms
 	end
 	local same = true
@@ -2245,8 +2256,8 @@ function AnatomyClient.SetMorphs(model, section, piece, weights)
 		all = true
 	end
 	ms.stamp += 1
-	local stamp, mark = ms.stamp, ms.mark
-	local ox, oy, oz, slot = ms.ox, ms.oy, ms.oz, ms.slot
+	local stamp, mark, touched, nt = ms.stamp, ms.mark, ms.touched, 0
+	local ox, oy, oz = ms.ox, ms.oy, ms.oz
 	if all then
 		for k = 1, #ms.ids do
 			ox[k], oy[k], oz[k] = 0, 0, 0
@@ -2256,21 +2267,21 @@ function AnatomyClient.SetMorphs(model, section, piece, weights)
 		local w0, w1 = ms.last[name], weights[name]
 		w0 = type(w0) == "number" and w0 or 0
 		w1 = type(w1) == "number" and w1 or 0
-		local ids = mo.ids
-		if ids and (all or w0 ~= w1) then
+		local sl = ms.slots[name]
+		if sl and (all or w0 ~= w1) then
 			local d = mo.d
 			local dw = all and w1 or (w1 - w0)
-			if d and dw ~= 0 then
-				for k, i in ipairs(ids) do
-					local sl = slot[i]
-					ox[sl] += d[k * 3 - 2] * dw
-					oy[sl] += d[k * 3 - 1] * dw
-					oz[sl] += d[k * 3] * dw
-					mark[sl] = stamp
+			for k = 1, #sl do
+				local s = sl[k]
+				if d and dw ~= 0 then
+					ox[s] += d[k * 3 - 2] * dw
+					oy[s] += d[k * 3 - 1] * dw
+					oz[s] += d[k * 3] * dw
 				end
-			else
-				for _, i in ipairs(ids) do
-					mark[slot[i]] = stamp
+				if mark[s] ~= stamp then
+					mark[s] = stamp
+					nt += 1
+					touched[nt] = s
 				end
 			end
 		end
@@ -2279,13 +2290,35 @@ function AnatomyClient.SetMorphs(model, section, piece, weights)
 	for name, w in pairs(weights) do
 		ms.last[name] = w
 	end
+	-- the write: each touched vertex at its generated position plus its offset, kept in the box (boxed, inline)
 	local vid, em = pr.info.vid, pr.em
 	local pin = pinsOf(pr)
+	local px, py, pz = pin.x, pin.y, pin.z
+	local P, b = pr.mesh.P, pr.bounds
+	local ids, wx, wy, wz = ms.ids, ms.wx, ms.wy, ms.wz
+	local clamp, abs = math.clamp, math.abs
 	return (pcall(function()
-		for k, i in ipairs(ms.ids) do
-			local id = vid[i]
-			if id and mark[k] == stamp then
-				em:SetPosition(id, boxed(pr, pin, i, ox[k], oy[k], oz[k]))
+		for t = 1, nt do
+			local s = touched[t]
+			local x, y, z = ox[s], oy[s], oz[s]
+			-- (a full write puts every vertex where its sum says: the mesh may hold SetVertexOffsets' instead)
+			if all or abs(x - wx[s]) > MORPH_EPS or abs(y - wy[s]) > MORPH_EPS or abs(z - wz[s]) > MORPH_EPS then
+				local i = ids[s]
+				local id = vid[i]
+				if id then
+					wx[s], wy[s], wz[s] = x, y, z
+					local gx, gy, gz = P[i * 3 - 2], P[i * 3 - 1], P[i * 3]
+					if not px[i] then
+						gx = clamp(gx + x, b[1], b[4])
+					end
+					if not py[i] then
+						gy = clamp(gy + y, b[2], b[5])
+					end
+					if not pz[i] then
+						gz = clamp(gz + z, b[3], b[6])
+					end
+					em:SetPosition(id, Vector3.new(gx, gy, gz))
+				end
 			end
 		end
 	end))
