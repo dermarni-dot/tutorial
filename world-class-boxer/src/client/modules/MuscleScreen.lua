@@ -40,6 +40,8 @@ local GROUPS = {
 	{ id = "back", name = "Back", color = Color3.fromRGB(110, 150, 255) },
 	{ id = "neck", name = "Neck", color = Color3.fromRGB(214, 140, 255) },
 }
+-- a tab caption too wide for its tab on a small phone at the text floor: the group's short name
+local TAB_SHORT = { SHOULDERS = "DELTS" }
 local GROUP_NAMES = {}
 for _, g in ipairs(GROUPS) do
 	table.insert(GROUP_NAMES, g.name)
@@ -674,13 +676,26 @@ function MuscleScreen.Open(opts)
 	end, { BackgroundTransparency = 1, Size = UDim2.new(1, -8, 0, UI.TabsHeight(panel, 38)), LayoutOrder = 1 })
 	s.pickTab = pickTab
 	s.tabBar = tabBar
-	-- seven tabs across a phone: smaller caps on one line ("SHOULDERS" wrapped at 667 wide)
+	-- seven tabs across a phone: smaller caps on one line ("SHOULDERS" wrapped at 667 wide), never under
+	-- the readability floor (UI.SetTextSize: 15 design px on a 667 x 375 phone); a caption wider than its
+	-- tab at that size takes its short name. Each tab is named after its group (LB / RB select it by name)
 	local tabButtons = tabBar:FindFirstChild("Buttons")
 	for _, b in ipairs(tabButtons and tabButtons:GetChildren() or {}) do
 		if b:IsA("TextButton") then
-			b.TextSize = compact and 11 or 13
+			UI.SetTextSize(b, compact and 11 or 13)
 			b.TextWrapped = false
 			b.TextTruncate = Enum.TextTruncate.AtEnd
+			local long = b.Text
+			b.Name = long
+			local short = TAB_SHORT[long]
+			if short then
+				local function fit()
+					local w = b.AbsoluteSize.X / UI.ScaleOf(b)
+					b.Text = (w > 4 and UI.TextWidth(long, b.TextSize) > w - 6) and short or long
+				end
+				fit()
+				table.insert(s.conns, b:GetPropertyChangedSignal("AbsoluteSize"):Connect(fit))
+			end
 		end
 	end
 	local head = UI.Card(panel, { order = 2 })
