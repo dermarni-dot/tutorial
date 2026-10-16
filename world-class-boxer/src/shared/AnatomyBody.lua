@@ -16,7 +16,8 @@
 -- * motion hooks (full detail): blend shapes flex (every limb and torso piece), breathe (UpperTorso,
 --   LowerTorso), tense (UpperTorso), raiseL / raiseR / reachL / reachR (UpperTorso: the shoulder girdle lifts /
 --   comes forward when the arm goes up; BodyFX drives them from the shoulder angle), hipLxx .. hipRzz (the
---   trunks' seat skinned to the hips: BodyFX sets them from each thigh's rotation, AnatomyBodyTorso.HipShapes),
+--   trunks' seat skinned to the hips: BodyFX sets them from each thigh's rotation, AnatomyBodyTorso.HipShapes;
+--   the seat keeps them at medium detail),
 --   all inside each piece's box (the box rule; the seat's padded for the hips' swing); landmarks NeckBase,
 --   ChestCenter, NippleL/R, Navel, ShoulderTopL/R, ArmpitL/R, ElbowL/R, WristL/R, HipL/R, KneeL/R, AnkleL/R
 --   (+ the trunks / glove / boot lettering spots)
@@ -886,16 +887,19 @@ function Gen.Generate(look, lod, ctx)
 			end
 		end
 		morphSets.LowerTorso = { flex = { ids, dx, dy, dz }, breathe = { bids, bx, by, bz } }
-		if li.rim then
-			-- the seat follows the satin legs' tops through the hips' swing (Torso.HipShapes); its rim lies on the
-			-- box's bottom face, where AnatomyClient would pin it, so the box is padded to everything the shapes
-			-- reach
-			local hips, reach = Torso.HipShapes(sk, lt, li)
-			for name, set in pairs(hips) do
-				morphSets.LowerTorso[name] = set
-			end
-			padBox(lt, reach, li.rim.s)
+	end
+	if li.rim and lod ~= "low" then
+		-- the seat follows the satin legs' tops through the hips' swing (Torso.HipShapes); its rim lies on the
+		-- box's bottom face, where AnatomyClient would pin it, so the box is padded to everything the shapes
+		-- reach. Medium detail too (its only blend shapes): without them a sitting / squatting far member's
+		-- satin legs stood out of a flat seat by 9 - 12 cm
+		local hips, reach = Torso.HipShapes(sk, lt, li)
+		local set = morphSets.LowerTorso or {}
+		for name, e in pairs(hips) do
+			set[name] = e
 		end
+		morphSets.LowerTorso = set
+		padBox(lt, reach, li.rim.s)
 	end
 	pieces.LowerTorso = { mesh = lt, material = trunk and "SmoothPlastic" or "Plastic", reflectance = trunk and 0.03 or 0 }
 
@@ -1030,12 +1034,13 @@ function Gen.Generate(look, lod, ctx)
 		local c = sk.center[name] or { 0, 0, 0 }
 		MeshKit.Transform(piece.mesh, MeshKit.MatTranslate(-c[1], -c[2], -c[3]))
 	end
-	if full then
-		for name, set in pairs(morphSets) do
-			for mname, e in pairs(set) do
-				addMorph(pieces[name].mesh, mname, e[1], e[2], e[3], e[4])
-			end
+	-- (medium detail: the seat's hip shapes only)
+	for name, set in pairs(morphSets) do
+		for mname, e in pairs(set) do
+			addMorph(pieces[name].mesh, mname, e[1], e[2], e[3], e[4])
 		end
+	end
+	if full then
 		-- colour textures, made the first time AnatomyClient (or a tool) reads them
 		for name, t in pairs(textures) do
 			pieces[name].texture = Kit.LazyTexture(t.w, t.h, t.build)

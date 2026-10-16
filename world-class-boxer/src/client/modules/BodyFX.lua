@@ -111,6 +111,7 @@ local FLEX_OF = {
 	LowerLeg = { calves = 1 },
 }
 local TENSE_OF = { abs = 1, lowerAbs = 1, obliques = 0.8, serratus = 0.4 }
+local EMPTY = {}
 -- piece -> { kind, side (-1 left, 1 right, 0 both), jiggle region }
 local PIECES = {
 	UpperTorso = { "UpperTorso", 0, 1 }, LowerTorso = { "LowerTorso", 0, 2 },
@@ -147,8 +148,11 @@ local BREATH_RATE = 1 / 10 -- breathing (slow, tiny) at most this often
 local BREATH_RANGE = 30 -- studs: breathing only this close (it rewrites the chest continuously)
 -- per Graphics level (BoxerClient.Perf: 1 Low, 2 Medium, 3 High): muscles animate inside near, breathe inside
 -- breath, take blend shapes at the full rate inside close (half beyond); your own body and the fighters' keep
--- High's distances at every level
-local LEVELS = { { near = 25, breath = 14, close = 10 }, { near = 35, breath = 22, close = 15 }, { near = NEAR, breath = BREATH_RANGE, close = 20 } }
+-- High's distances at every level. The corrective shapes (the trunks' seat on the thighs, the shoulders on the
+-- upper arms) are the shape, not the look: past near they keep following the joints at the far rate out to fix
+-- (the full-detail range and a little more; a medium-detail body carries the seat's only; a sitting gym member
+-- at 40 studs on Medium had the satin legs' tops 12 cm out of a flat seat)
+local LEVELS = { { near = 25, breath = 14, close = 10, fix = 50 }, { near = 35, breath = 22, close = 15, fix = 70 }, { near = NEAR, breath = BREATH_RANGE, close = 20, fix = 100 } }
 local HIGH = LEVELS[3]
 local lv = HIGH
 do
@@ -776,9 +780,10 @@ local function morphCost(mesh)
 	return n
 end
 
--- per piece: what its mesh can do and what was written last
+-- per piece: what its mesh can do and what was written last (rec.fix: some piece carries corrective shapes)
 local function meshState(rec, view)
 	local st = {}
+	rec.fix = false
 	for name, pv in pairs(view) do
 		local info = PIECES[name]
 		local morphs = pv.mesh and pv.mesh.morphs
@@ -801,6 +806,7 @@ local function meshState(rec, view)
 				hasHip = morphs.hipLxx ~= nil or morphs.hipRxx ~= nil,
 				names = names, n = n, cost = morphCost(pv.mesh), w = w, sent = sent, pending = false,
 			}
+			rec.fix = rec.fix or st[name].hasShoulder or st[name].hasHip
 		end
 	end
 	return st
@@ -1204,8 +1210,9 @@ local function hipShapes(model, side, list, w)
 	end
 end
 
--- desired weights for every piece of one character; marks the pieces whose quantised weights changed
-local function meshWeights(rec, rig, breathing, t)
+-- desired weights for every piece of one character; marks the pieces whose quantised weights changed. still: past
+-- the muscles' range (flex / breathe / tense at rest, only the corrective shapes follow the joints)
+local function meshWeights(rec, rig, breathing, t, still)
 	local liveSet = rec.live > 0 and rig and rig.poseAct and TARGETS[rig.poseAct] or nil
 	local jx = rec.jx
 	if not (breathing and rig) then
@@ -1220,7 +1227,7 @@ local function meshWeights(rec, rig, breathing, t)
 	for _, st in pairs(rec.mesh) do
 		local share = FLEX_OF[st.kind]
 		local c, p = 0, 0
-		for id, k in pairs(share) do
+		for id, k in pairs(still and EMPTY or share) do
 			local v
 			if st.side < 0 then
 				v = rec.cL[id] or 0
@@ -1234,17 +1241,20 @@ local function meshWeights(rec, rig, breathing, t)
 		end
 		local w = st.w
 		if st.hasFlex then
-			w.flex = quant(math.clamp(c + 0.6 * p + 0.45 * jx[st.region], -0.3, 1))
+			w.flex = still and 0 or quant(math.clamp(c + 0.6 * p + 0.45 * jx[st.region], -0.3, 1))
 		end
 		if st.hasBreathe then
 			w.breathe = quant(breath)
 		end
 		if st.hasTense then
 			local t = 0
-			for id, k in pairs(TENSE_OF) do
-				t = max(t, max(rec.cL[id] or 0, rec.cR[id] or 0) * k)
+			if not still then
+				for id, k in pairs(TENSE_OF) do
+					t = max(t, max(rec.cL[id] or 0, rec.cR[id] or 0) * k)
+				end
+				t = quant(math.clamp(t + 0.5 * rec.strain + 0.6 * jx[2], -0.3, 1))
 			end
-			w.tense = quant(math.clamp(t + 0.5 * rec.strain + 0.6 * jx[2], -0.3, 1))
+			w.tense = t
 		end
 		if st.hasShoulder then
 			local rL, cL = shoulderShapes(rec.model, "Left")
@@ -1363,7 +1373,14 @@ function BodyFX.Update(dt, t, camPos, rigs)
 				restore(rec)
 				rec.awake = false
 			end
-			if rec.meshAwake then
+			if rec.mesh and rec.fix and dist < lvl.fix then
+				-- the muscles rest; the seat and the shoulders keep following the joints (at the far rate: two
+				-- CFrame reads a side, a write only when a joint turned a step)
+				if t >= rec.nextMorph then
+					rec.nextMorph = t + MORPH_RATE * 2
+					rec.meshAwake = meshWeights(rec, rig, false, t, true)
+				end
+			elseif rec.meshAwake then
 				relaxMesh(rec)
 				rec.meshAwake = false
 			end
