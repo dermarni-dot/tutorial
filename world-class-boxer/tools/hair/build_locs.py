@@ -1100,7 +1100,10 @@ def heading_hanging(back_front=1.7, side=0.1):
         out = np.array([p[0], 0.0, 0.0])
         down = DOWN + np.array([0, 0, 1.0]) * (0.25 + 0.5 * float(smooth(0.3, -0.1, z))) \
             + unit(out) * side * float(smooth(0.15, 0.35, abs(p[0])))
-        v = unit(down) * (1 - wf) + unit(target - p) * wf * back_front
+        # off the face: straight back over the top, fanning out a little with |x| (parallel rows that do not
+        # converge on one point, which left a wedge of bare scalp behind the crown)
+        back = unit(np.array([0.3 * p[0], 0.25 * float(smooth(0.3, -0.2, z)), 1.0]))
+        v = unit(down) * (1 - wf) + back * wf * back_front
         if abs(p[0]) > 0.2 and p[1] < 0.2 and p[2] < 0.06:
             v = np.array([0.0, 0.55, 1.0])  # sideburns and temples: up and back over the ear
         elif in_ear_zone(p, 0.04) or (abs(p[0]) > 0.2 and p[1] < 0.24 and p[2] < 0.26):
@@ -1142,22 +1145,23 @@ def guard_short(p, rad):
 STYLES = {
     "dreadlocks": dict(
         entry=dict(styles=["Dreadlocks"], types=None, cap={"cut": "full", "density": 0.45}, capTile="shortcoil"),
-        kind="hang", spacing=0.155, fill=18, min_gap=0.014, margin=0.03, seed=101, R=0.036, rvar=0.2, M=32,
-        step=0.03, hang_len=1.05, side_short=0.25, L_max=2.25, sides=6, base_ds=0.36, base_scalp=0.22, min_ds=0.09, end_ds=0.06,
+        kind="hang", spacing=0.165, fill=16, min_gap=0.014, margin=0.03, seed=101, R=0.036, rvar=0.2, M=32,
+        step=0.03, hang_len=1.05, side_short=0.25, L_max=2.25, sides=6, base_ds=0.36, base_scalp=0.25, min_ds=0.09, end_ds=0.06,
         bend_k=1.0, root_k=0.5, edge_root_k=0.3, lift=0.2, crown_lift=0.045, rot_deg=20,
         layer=0.024, repel=0.72, fins=1, chains=7, segs=2, stiff=0.35, mass=(1.5, 1.15), hang_split=0.5,
+        edge_root=(0.55, 0.05, 0.25),
         prefix="HairLoc", chain="Loc", lobes=None, halo=dict(k=1.9, root_k=2.6, step=0.34), lump=0.12,
         tip_r=(0.55, 0.9), tip_k=0.9, dome=1, back_front=1.8, splay=0.24, wave=(0.012, 0.35), body_off=0.07,
-        short_top=0.14, sideburn_ys=(0.15, 0.08),
+        short_top=0.14, sideburn_ys=(0.17,),
         cov_dirs=("top", "back", "back34r", "back34l", "topback", "lowback")),
     "twists": dict(
         entry=dict(styles=["Twists"], types=None, cap={"cut": "full", "density": 0.45}, capTile="shortcoil"),
-        kind="hang", spacing=0.175, fill=16, min_gap=0.014, margin=0.03, seed=303, R=0.044, rvar=0.14, M=24,
+        kind="hang", spacing=0.19, fill=12, min_gap=0.014, margin=0.03, seed=303, R=0.044, rvar=0.14, M=24,
         step=0.025, root_k=0.5, edge_root_k=0.3, crown_lift=0.03, rot_deg=15,
         repel=0.72, fins=1, L_max=1.3, hang_len=0.4, side_short=0.2, sides=6, base_ds=0.064, min_ds=0.055,
         end_ds=0.05, bend_k=0.4, lift=0.3,
         layer=0.02, chains=8, segs=1, stiff=0.4, mass=(1.3,), hang_split=None, prefix="HairTwist", chain="Twist",
-        lobes="twist", halo=dict(k=1.8, root_k=2.4, step=0.24), lump=0.04, tip_r=0.42, tip_k=1.0, dome=2,
+        lobes="twist", halo=dict(k=1.8, root_k=2.4, step=0.24), lump=0.04, tip_r=0.42, tip_k=1.0, dome=1,
         back_front=1.8, splay=0.14, wave=(0.008, 0.4), body_off=0.07, short_top=0.1, sideburn_ys=(0.15, 0.08),
         cov_dirs=("top", "back", "back34r", "back34l", "topback", "lowback")),
     "short_dreads": dict(
@@ -1305,7 +1309,8 @@ def build_guides_hanging(cfg, ref, log):
             f = base_heading(p, n)
             return unit(f * math.cos(rot) + np.cross(n, f) * math.sin(rot))
         # the hairline row's roots taper more and over a shorter run (seen end-on from the front)
-        rk, rl = ((cfg.get("edge_root_k", 0.45), 0.065) if r.get("edge")
+        er = cfg.get("edge_root", (cfg.get("edge_root_k", 0.45), 0.065, 0.3))
+        rk, rl = ((er[0], er[1]) if r.get("edge")
                   else (cfg.get("root_k", ROOT_K), root_len))
         # crown volume: locs from the top rise off the scalp over the first ~30% of their run on it
         crown = float(smooth(0.3, 0.5, sp[1])) * (0.0 if r.get("edge") else 1.0)
@@ -1935,7 +1940,7 @@ def build_style(key, cfg, ref, coll, log):
         lc["vps"] = vps
         build_tube(tubes, li, D, S, s_r, radius, lc.get("sides", cfg["sides"]), strip, vps, v0, inward,
                    lobes=cfg["lobes"], seg_of=seg_of, tip_k=cfg.get("tip_k", 0.9), dome=cfg.get("dome", 1),
-                   root_k_apex=0.3 if lc["root"].get("edge") else 0.6)
+                   root_k_apex=cfg.get("edge_root", (0, 0, 0.3))[2] if lc["root"].get("edge") else 0.6)
         hc = cfg["halo"]
         if lc.get("halo", True):
             build_halo(halos, li, D, S, radius, L, vps, inward, seg_of=seg_of, root_k=hc["root_k"], k=hc["k"],

@@ -538,14 +538,14 @@ LAYERS = [
          tip_var=0.05, wmax=(0.15, 0.17), overlap=1.75, shade=0.97, phase=0.0, rel=(0.03, 0.0), root="hairline",
          fmax=0.3),
     # the dense scalp layer (hides the scalp; the painted cap under it)
-    dict(name="scalp", n=16, off=(0.029, 0.031), strips={"dense": 1.0}, margin=0.016, tip=-1.3, tip_var=0.05,
+    dict(name="scalp", n=13, off=(0.029, 0.031), strips={"dense": 1.0}, margin=0.016, tip=-1.3, tip_var=0.05,
          wmax=(0.2, 0.17), overlap=1.9, shade=0.9, phase=0.0, rel=(0.0, -0.13)),
     # the volume: every layer higher, the sides fuller than the top
-    dict(name="inner", n=15, off=(0.05, 0.068), strips={"dense": 0.85, "medium": 0.15}, margin=0.024, tip=-1.4,
+    dict(name="inner", n=13, off=(0.056, 0.066), strips={"dense": 0.85, "medium": 0.15}, margin=0.024, tip=-1.4,
          tip_var=0.06, wmax=(0.2, 0.17), overlap=1.7, shade=0.95, phase=0.37, lift0=0.0, ramp=0.2, rel=(0.05, -0.05)),
-    dict(name="main", n=15, off=(0.072, 0.098), strips={"dense": 0.75, "medium": 0.25}, margin=0.03, tip=-1.48,
+    dict(name="main", n=15, off=(0.082, 0.094), strips={"dense": 0.75, "medium": 0.25}, margin=0.03, tip=-1.48,
          tip_var=0.07, wmax=(0.2, 0.17), overlap=1.6, shade=0.985, phase=0.71, lift0=0.0, ramp=0.26, rel=(0.09, 0.03)),
-    dict(name="outer", n=13, off=(0.094, 0.124), strips={"dense": 0.45, "medium": 0.4, "wispy": 0.15}, margin=0.036,
+    dict(name="outer", n=13, off=(0.106, 0.118), strips={"dense": 0.45, "medium": 0.4, "wispy": 0.15}, margin=0.036,
          tip=-1.46, tip_var=0.1, wmax=(0.19, 0.16), overlap=1.35, shade=1.0, phase=0.19, lift0=0.0, ramp=0.32, rel=(0.12, 0.08)),
 ]
 LAYER = {L["name"]: L for L in LAYERS}
@@ -650,6 +650,9 @@ def scalp_path(f, side, layer, vol, rng, n=48):
     o_top, o_side = layer["off"]
     yk = smooth(0.14, 0.5, P[:, 1])
     tgt = (o_side + (o_top - o_side) * yk) * vol
+    # the sides gather in toward the ear (the hair tucks behind it): no shelf over the ear, a rounded silhouette
+    sideness = smooth(0.55, 0.9, np.abs(P[:, 0]) / np.maximum(np.linalg.norm((P - C)[:, [0, 2]], axis=1), 1e-6))
+    tgt = tgt * (1 - 0.5 * smooth(0.3, 0.06, P[:, 1]) * sideness)
     # the deeper layers rise out of the parting from the scalp; the upper ones lie over them already lifted (a
     # narrow parting groove under a smooth dome, not a ridge either side of the parting)
     k0 = layer.get("lift0", 0.0)
@@ -1005,7 +1008,7 @@ def card_rows(st, cfg):
     ang = np.arccos(np.clip((Tn[1:] * Tn[:-1]).sum(1), -1, 1))
     kap = np.concatenate([[0], ang / np.maximum(np.diff(S), 1e-6)])
     kap = np.convolve(kap, np.ones(7) / 7, mode="same")
-    hmin_hang, hmax_hang = (0.085, 0.1) if cfg["wavy"] else (0.06, 0.15)
+    hmin_hang, hmax_hang = (0.075, 0.095) if cfg["wavy"] else (0.08, 0.16)
     sr = root_len(L)
     rows = [0.0, sr]
     s = sr

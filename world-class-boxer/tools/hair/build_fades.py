@@ -27,9 +27,14 @@ cards are swept along Bezier guide curves (one curve object, evaluated by Blende
 (forward and to one side on top, down the back, down and forward on the sides; the crew's front brushed up),
 lifted 20-35 deg off the scalp and clipped to the style's smooth outer envelope.
 
-The painted cap's crown (cap style.json "pole"): below ~40 deg from the crown the tile is sampled by a planar
-projection (no 8-spoke star from the polar UV's wedges); the runtime change is fades_paintcap_pole.diff
-(HairAssetKit.PaintCap's pole argument, HK.CapPole), tested by fades_test_pole.luau, mirrored by paint_cap here.
+The painted cap's crown (cap style.json "pole"): below ~35-62 deg from the crown the tile is sampled by a planar
+projection (no spokes from the polar UV's wedges; HairAssetKit.PaintCap's pole argument, HK.CapPole), mirrored by
+paint_cap here.
+
+The cap follows the inner of two surfaces: CAP_OFF above the skull table, except where the table stands off the
+game's head mesh (behind the ears / the nape corners, up to ~0.025): there CAP_OFF above the head mesh (and the
+fitted female head mesh), blended (CapBase.allow). Round the ears it ends on a smooth rounded-box contour (border
+vertices snapped onto it), and the shell stack closes up onto the cap toward its own footprint's border.
 """
 import argparse
 import json
@@ -1425,6 +1430,7 @@ def main():
     ap.add_argument("--views", default="")
     ap.add_argument("--tint", default="")
     ap.add_argument("--no-compare", action="store_true", help="renders: skip the fade-heights comparison sheets")
+    ap.add_argument("--sheets", default="", help="renders: per-style sheets only for these keys (default: all built)")
     args = ap.parse_args(sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else sys.argv[1:])
     only = set(filter(None, args.only.split(",")))
     t0 = time.time()
@@ -1476,7 +1482,10 @@ def main():
     tints = args.tint.split(",") if args.tint else ["black", "darkbrown", "blonde"]
     views = args.views.split(",") if args.views else ["34", "side", "back", "close", "top34", "top"]
     res, samples = ((300, 360), 16) if args.quick else ((520, 620), 48)
+    sheet_keys = set(filter(None, args.sheets.split(",")))
     for n, (e, pieces) in enumerate(built):
+        if sheet_keys and e["key"] not in sheet_keys:
+            continue
         tint = tints[n % len(tints)]
         paths = render_style(ref, e, pieces, capP, tint, views, res=res, samples=samples)
         out = os.path.join(FAM_DIR, f"sheet_{e['key']}.jpg")
