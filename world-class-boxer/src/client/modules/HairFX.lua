@@ -62,9 +62,15 @@ local DOWN = Vector3.new(0, -1, 0)
 
 local NEAR, MID = 25, 60
 -- per Graphics level (BoxerClient.Perf: 1 Low, 2 Medium, 3 High): hair moves at full rate inside near, at half
--- rate up to mid, rests beyond; your own hair and the fighters' keep High's at every level
+-- rate up to mid, rests beyond; your own hair keeps High's at every level, the opponent's High's distances (FIGHT)
 local LEVELS = { { near = 15, mid = 30 }, { near = 20, mid = 45 }, { near = NEAR, mid = MID } }
 local HIGH = LEVELS[3]
+-- the opponent's hair (the other fighter): High's distances at every level; below High it steps every second
+-- frame at any distance (a fight is where a phone needs its frames), but keeps the body collision inside near
+local FIGHT = {}
+for i, L in ipairs(LEVELS) do
+	FIGHT[L] = i < 3 and { near = NEAR, mid = MID, half = true } or HIGH
+end
 local lv = HIGH
 do
 	local m = script.Parent:FindFirstChild("Perf")
@@ -700,6 +706,17 @@ end
 local BODY_PARTS = { UpperTorso = 10, LeftUpperArm = 6, RightUpperArm = 6, LeftLowerArm = 6, RightLowerArm = 6, LeftHand = 5,
 	RightHand = 5 }
 local BODY_PAD = 0.012
+-- a map's build runs in slices of about the mesh builds' frame budget (AnatomyClient.Settings.frameBudget): the
+-- full-detail torso took 5-7 ms in one frame, a dropped frame on a phone
+local BODY_SLICE = 0.002
+local mapStats = { builds = 0, slices = 0, maxSlice = 0 } -- (HairFX.MapStats: the maps' cost, seconds)
+HairFX.MapStats = mapStats
+local function noteSlice(dt)
+	mapStats.slices += 1
+	if dt > mapStats.maxSlice then
+		mapStats.maxSlice = dt
+	end
+end
 local MAXPUSH = 0.3 -- rad: the most one push swings a segment (a deep contact clears over a few frames, no pop)
 local GROUND_CLEAR = 0.012 -- studs: hair lies on the canvas this far above it
 local CONTACT_DRAG = 0.7 -- what is left of a pushed segment's swing speed (friction on the body / canvas)
@@ -725,11 +742,13 @@ local function cubeCell(x, y, z, n)
 end
 
 -- a mesh's radial map (its own part's space), or nil
-local function radialMap(mesh, n)
+-- live() false = the build was called off (yields between slices: the caller runs in its own thread)
+local function radialMap(mesh, n, live)
 	local P, T, nv, nt = mesh.P, mesh.T, mesh.nv or 0, mesh.nt or 0
 	if type(P) ~= "table" or type(T) ~= "table" or nv < 4 or nt < 4 then
 		return nil
 	end
+	local t0 = os.clock()
 	local x0, y0, z0, x1, y1, z1 = math.huge, math.huge, math.huge, -math.huge, -math.huge, -math.huge
 	for i = 1, nv do
 		local x, y, z = P[i * 3 - 2], P[i * 3 - 1], P[i * 3]
@@ -757,7 +776,18 @@ local function radialMap(mesh, n)
 			add(P[v - 2], P[v - 1], P[v], fx, fy, fz)
 		end
 	end
+	local slice = Anatomy and Anatomy.Settings and tonumber(Anatomy.Settings.frameBudget) or BODY_SLICE
+	local deadline = t0 + slice
 	for t = 1, nt do
+		if t % 128 == 0 and os.clock() > deadline then
+			noteSlice(os.clock() - t0)
+			task.wait()
+			if live and not live() then
+				return nil
+			end
+			t0 = os.clock()
+			deadline = t0 + slice
+		end
 		local a, b, c = T[t * 3 - 2] * 3, T[t * 3 - 1] * 3, T[t * 3] * 3
 		local ax, ay, az = P[a - 2], P[a - 1], P[a]
 		local bx, by, bz = P[b - 2], P[b - 1], P[b]
@@ -819,6 +849,7 @@ local function radialMap(mesh, n)
 		R[i] += BODY_PAD
 	end
 	rmax += BODY_PAD
+	noteSlice(os.clock() - t0)
 	return {
 		n = n, cx = cx, cy = cy, cz = cz, R = R, NX = NX, NY = NY, NZ = NZ, rmax = rmax, r2max = rmax * rmax,
 		-- this step's frame in head space as numbers (setFrame): position, rotation, the map's centre
@@ -893,18 +924,24 @@ local function shapeDepth(s, px, py, pz)
 	return (r - d) * max(k, 0.3), nx, ny, nz
 end
 
--- the Body section was (re)built: radial maps of the parts long hair can meet
--- (a few milliseconds a part: one part a frame, and a newer build of the same body wins)
+-- radial maps of the parts long hair can meet, from a built Body section's pieces. Built on first use (stepMesh:
+-- swinging hair inside the near distance), so a body without swinging hair near the camera - most of the cast,
+-- the menu boxer, previews - never pays for them; in slices (BODY_SLICE) and one part a frame, and a newer
+-- build of the same body wins
 local bodyBuilds = {}
+local bodyPending = {} -- model -> the pieces of its last Body build, not mapped yet
 local function onBodyBuilt(model, pieces)
 	local gen = (bodyBuilds[model] or 0) + 1
 	bodyBuilds[model] = gen
+	local function live()
+		return bodyBuilds[model] == gen and model.Parent ~= nil
+	end
 	local shapes = {}
 	for name, pr in pairs(type(pieces) == "table" and pieces or {}) do
 		local n = BODY_PARTS[name]
 		local part = n and model:FindFirstChild(type(pr.attach) == "string" and pr.attach or name)
 		if part and part:IsA("BasePart") and type(pr.mesh) == "table" then
-			local s = radialMap(pr.mesh, n)
+			local s = radialMap(pr.mesh, n, live)
 			if s then
 				s.name, s.part = name, part
 				table.insert(shapes, s)
@@ -916,6 +953,7 @@ local function onBodyBuilt(model, pieces)
 		end
 	end
 	bodies[model] = #shapes > 0 and { shapes = shapes } or nil
+	mapStats.builds += 1
 	return true
 end
 
@@ -1230,9 +1268,10 @@ end
 -- (re)read the moving pieces of a model's built hair (OnBuilt hands us the pieces)
 local function onBuilt(model, section, pieces)
 	if section == "Body" then
-		if onBodyBuilt(model, pieces) and meshes[model] then
-			bindDepths(meshes[model])
-		end
+		-- (mapped when swinging hair first needs it; a map build of the old body still running is called off,
+		-- the old maps serve until the new ones are in)
+		bodyPending[model] = pieces
+		bodyBuilds[model] = (bodyBuilds[model] or 0) + 1
 		return
 	end
 	if section ~= "Hair" then
@@ -1240,7 +1279,7 @@ local function onBuilt(model, section, pieces)
 	end
 	local rec = meshes[model]
 	local old = rec and rec.byName or {}
-	rec = { model = model, list = {}, byName = {}, head = model:FindFirstChild("Head"), sweat = 0, nextAttr = 0, frame = 0,
+	rec = { model = model, list = {}, byName = {}, head = model:FindFirstChild("Head"), sweat = 0, nextAttr = 0, frame = 0, steps = 0,
 		rest = true, wetApplied = -1, seed = (#model.Name * 1.37) % 6.28, gap = true, reach = 0 }
 	rec.body = bodyOf(model, rec.head)
 	rec.k = rec.head and rec.head.Size.Y / 1.2 or 1
@@ -1329,7 +1368,7 @@ local function onRestored(model, section)
 	if section == "Hair" then
 		meshes[model] = nil
 	elseif section == "Body" then
-		bodies[model] = nil
+		bodies[model], bodyPending[model] = nil, nil
 		bodyBuilds[model] = (bodyBuilds[model] or 0) + 1
 	end
 end
@@ -1425,10 +1464,11 @@ local function stepPiece(rec, e, dt, t, hcf, g, wx, wz)
 	e.cf = parentCF * e.pcf * A(e.x, 0, e.z) * e.pinv
 	-- out of the body: the organic body's maps (a second pass when the first pushed: the push can bring another
 	-- point in), else the tip against the part-built body's proxy
-	-- (a segment clear of it last time is tested every second step, half the segments on each; a resting contact
-	-- - the spring's few millimetres a step into a shoulder - needs no second look)
+	-- (a segment clear of it last time is tested every second step, half the segments on each - every step for
+	-- hair stepped at the half rate, so as often a second; a resting contact - the spring's few millimetres a step
+	-- into a shoulder - needs no second look)
 	local mb = rec.mb
-	if mb and (e.hit or (rec.frame + e.slot) % 2 == 0) then
+	if mb and (e.hit or rec.halfRate or (rec.steps + e.slot) % 2 == 0) then
 		local d = meshCollide(rec, e, parentCF, mb.shapes)
 		e.hit = d > 0
 		if d > 0.01 then
@@ -1488,7 +1528,12 @@ local function stepMesh(rec, dt, t, hcf)
 	-- the organic body in the head's frame this step (its maps' bind contact measured again after a rebuild).
 	-- Inside the level's near distance only (High 25 studs, Medium 20, Low 15; your own hair and the fighters' at
 	-- High's at every level): further out the tips keep to the part-built proxy, a few centimetres being a pixel.
-	-- Only for hair that swings (rec.swings)
+	-- Only for hair that swings (rec.swings); the maps are made here the first time they are needed
+	local pend = bodyPending[rec.model]
+	if pend and rec.near and rec.swings then
+		bodyPending[rec.model] = nil
+		task.spawn(onBodyBuilt, rec.model, pend)
+	end
 	local mb = bodies[rec.model]
 	if mb and rec.boundTo ~= mb then
 		bindDepths(rec)
@@ -1574,10 +1619,13 @@ function HairFX.Impulse(model, x, z, amount)
 end
 
 local frame = 0
--- rigs = the Animator's rig table (rig.isFighter / rig.isLocal pick High's distances), may be nil
+-- rigs = the Animator's rig table (rig.isLocal: High; rig.isFighter: FIGHT), may be nil
 local function levelOf(rigs, model)
 	local rig = rigs and rigs[model]
-	return (rig and (rig.isFighter or rig.isLocal)) and HIGH or lv
+	if rig and rig.isLocal then
+		return HIGH
+	end
+	return (rig and rig.isFighter) and FIGHT[lv] or lv
 end
 -- the root's distance when it is clearly past mid (the Animator measured it this frame; the head is within a few
 -- studs of the root), else false: a far model's head is not read at all
@@ -1604,6 +1652,11 @@ function HairFX.Update(dt, t, camPos, cam, rigs)
 		for model in pairs(bodies) do
 			if not model.Parent then
 				bodies[model], bodyBuilds[model] = nil, nil
+			end
+		end
+		for model in pairs(bodyPending) do
+			if not model.Parent then
+				bodyPending[model], bodyBuilds[model] = nil, nil
 			end
 		end
 	end
@@ -1642,12 +1695,16 @@ function HairFX.Update(dt, t, camPos, cam, rigs)
 			rec.gap = true
 			continue
 		end
-		local stepN = dist < L.near and 1 or 2
-		rec.near = stepN == 1
+		local stepN = (dist < L.near and not L.half) and 1 or 2
+		-- (by distance, not by step: the opponent's hair on a half-rate level keeps the body collision up close)
+		rec.near = dist < L.near
 		rec.frame += 1
 		if rec.frame % stepN ~= 0 then
 			continue
 		end
+		-- (the steps taken, for the body test's alternation: rec.frame is always even on a step at the half rate)
+		rec.steps += 1
+		rec.halfRate = stepN > 1
 		local sdt = min(dt * stepN, 1 / 15)
 		rec.rest = false
 		if rec.gap then
@@ -1749,7 +1806,7 @@ function HairFX.Update(dt, t, camPos, cam, rigs)
 		if not onScreen then
 			continue
 		end
-		local step = dist < L.near and 1 or 2
+		local step = (dist < L.near and not L.half) and 1 or 2
 		o.frame += 1
 		if o.frame % step ~= 0 then
 			continue
@@ -1856,9 +1913,22 @@ end
 
 -- counters for tools and tests: mesh models / moving pieces, round-1 models / joints
 function HairFX.Status()
-	local s = { meshModels = 0, meshPieces = 0, swing = 0, bounce = 0, models = 0, joints = 0, followers = 0 }
+	local s = { meshModels = 0, meshPieces = 0, swing = 0, bounce = 0, models = 0, joints = 0, followers = 0, bodyMaps = 0,
+		bodyPending = 0, swingNear = 0, swingMapped = 0 }
+	for _ in pairs(bodies) do
+		s.bodyMaps += 1
+	end
+	for _ in pairs(bodyPending) do
+		s.bodyPending += 1
+	end
 	for _, rec in pairs(meshes) do
 		s.meshModels += 1
+		if rec.swings and rec.near then
+			s.swingNear += 1
+			if bodies[rec.model] then
+				s.swingMapped += 1
+			end
+		end
 		for _, e in ipairs(rec.list) do
 			if e.fx then
 				s.meshPieces += 1
