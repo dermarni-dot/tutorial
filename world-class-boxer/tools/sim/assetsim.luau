@@ -54,8 +54,8 @@ AssetSim.Content = {
 }
 
 local function idOf(content)
-	local u = type(content) == "table" and (content.uri or content.Uri) or tostring(content)
-	return tonumber(tostring(u):match("(%d+)%s*$"))
+	local u = type(content) == "table" and (content.uri or content.Uri) or (type(content) == "string" and content) or nil
+	return u and tonumber(tostring(u):match("^rbxassetid://(%d+)%s*$")) or nil
 end
 AssetSim.IdOf = idOf
 

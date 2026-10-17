@@ -66,3 +66,50 @@ P = `{p, n, uv, c, a?, t, nv, nt, landmarks, material?, doubleSided?, castShadow
 hideUnder?, hairfx?, texture? {file, w, h}}` (flat arrays as MeshKit.Export: `t` 1-based, CCW from outside;
 uv v down; a piece with a texture is drawn with it, not its vertex colours); `<id>_<piece>.rgba` raw RGBA8,
 rows top to bottom; `index.json {looks: [{id, file, style, type, g, look, hairPieces, hairVerts, hairTris}]}`.
+
+## Asset hair: after scenes and the end-to-end client test
+
+The asset hair (`tools/hair` outputs, `tools/hair/CONTRACT.md`) through the REAL client code, offline. Both
+scripts first (re)write a local manifest with fake ids when it is missing or older than any
+`tools/hair/out/*/style.json` or texture: `python3 tools/hair/publish.py --local` ->
+`/tmp/claude-0/HairAssetData_local.lua` + `HairAssetData_local.ids.json` (fake id -> `.mesh` / `.png`); pass
+`--no-regen` to keep it, `--manifest PATH` for another one.
+
+```sh
+lune run tools/sim/after_scene.luau [--before DIR] [--out DIR] [--only id,id] [--lod full] [--npc]
+cd tools/hair && /opt/bpyenv/bin/python previews.py after <out> <render dir> highfade_k afro_k
+lune run tools/sim/test_hairassets_e2e.luau      # ~20 s, exits non-zero on a failure
+```
+
+- `meshv2.luau`: `MeshV2.Read(path)` / `Decode(str)` reads a Roblox `.mesh` version 2.00 (12-byte header,
+  36 / 40-byte vertices: position, normal, uv, int8 tangent, [rgba]; 3 x u32 faces) into
+  `{P, N, U, C, A, T (1-based), nv, nt, bbox = {cx, cy, cz, sx, sy, sz}}`.
+- `assetsim.luau`: a fake AssetService serving the local outputs: `CreateEditableImageAsync(rbxassetid)` -> an
+  EditableImage-like object with the PNG's pixels (decoded once by `tools/hair/png2rgba.py` with
+  `/opt/bpyenv/bin/python`, cached in `tools/sim/out/rgba/`), `CreateEditableImage`, `CreateMeshPartAsync` (a
+  part stub remembering its mesh id; `MeshOf(id)` reads the `.mesh`), `CreateEditableMesh` (a recorder).
+  Failure injection: `sim.fail.mesh[id]` / `sim.fail.image[id] = "error"`, `sim.nilImage`, `sim.onCall(kind, id)`.
+  `AssetSim.Placed(mesh, size, centre)`: where the engine draws an uploaded mesh on a part of that Size welded
+  at centre (recentred on the mesh's bbox, scaled to Size per axis). `AssetSim.UseManifest(H, path)` points
+  `Shared.HairAssetData` at the manifest.
+- `after_scene.luau`: for every look of a before set (same look table) runs `HairAssets.For` and
+  `HairAssets.Build` (HK.Select, HK.Place, CapGrid / PaintCap, Tint, image sharing: the real code) and writes
+  each built piece where the engine would draw it (`Placed`) with its tinted EditableImage as `.rgba`; the head
+  is the before scene's. Same format as the before set plus `entry`, `fallback`, per piece `material`,
+  `alpha = true`, `mesh`, `size`, `centre`. A look without a usable entry (or whose build fails) gets the
+  before scene's generated hair, `fallback = true` in the index. Prints per look: entry, pieces, tris, image
+  sizes, CPU ms of paint (CapGrid + PaintCap) / tint (Colors + Tint) / the whole build; warns when the manifest's
+  bbox or nt disagrees with the `.mesh` file (stale manifest).
+- `fakeengine.luau`: Instances with a hierarchy, attributes and firing signals, tags, a stepped Heartbeat, a
+  camera and a local player without a character.
+- `test_hairassets_e2e.luau`: starts AnatomyClient for real (boot, tracking by tag, the Heartbeat scheduler,
+  the worker, runJob -> assetHair -> HairAssets.Build, the generated fallback through AnatomyHair + makePiece,
+  attachPiece, Stop) on models carrying LookData (High Fade, Afro x2 sharing a tint, Dreadlocks, Long Hair, a
+  Preview afro, a style with no entry). Checks every asset piece is welded to Head at HK.Place's centre with
+  its Size, sits around the head, is textured, and that GetPieces gives HairFX points / hairfx; then a look
+  change mid-build (cancel, the new look built), the model destroyed mid-build, a mesh 404 (generated hair, id
+  failed for the session), every id 0 (generated hair, no image loaded) and CreateEditableImage returning nil
+  (textures paused, generated hair), with no part / EditableMesh / EditableImage leaked after each, and
+  nothing left after Stop. Simulated: the engine (welds as records, calls answer at once). Body / Head are
+  registered as empty generators and Perf / State / AnatomyStatus left out; not covered: rendering, the
+  engine's memory budget, real asset permissions, network latency.

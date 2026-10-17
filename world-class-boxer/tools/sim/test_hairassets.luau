@@ -300,8 +300,27 @@ do
 	local flat = HK.Colors(pal, h, true)
 	local out = HK.Tint(src, w, h, 1, flat, false)
 	local r, g, b = pal.at(0.5, 0.5, -1)
-	check("flat multiply r", buffer.readu8(out, 0) == math.floor(200 * r + 0.5), buffer.readu8(out, 0))
-	check("flat multiply g/b", buffer.readu8(out, 1) == math.floor(200 * g + 0.5) and buffer.readu8(out, 2) == math.floor(200 * b + 0.5))
+	-- the multiply plus the dark-colour contrast lift (0.16 (1 - lum)^2 of the texel's offset from 140)
+	local lum = 0.3 * r + 0.59 * g + 0.11 * b
+	local d = 0.16 * (1 - math.min(1, lum)) ^ 2 * (200 - 140)
+	local function q(x)
+		return math.max(0, math.min(255, math.floor(200 * x + d + 0.5)))
+	end
+	check("flat multiply r", buffer.readu8(out, 0) == q(r), buffer.readu8(out, 0))
+	check("flat multiply g/b", buffer.readu8(out, 1) == q(g) and buffer.readu8(out, 2) == q(b))
+	do -- black hair keeps strand contrast: texels 60 and 220 stay well apart
+		local s2 = buffer.create(2 * 4 * 4)
+		for i = 0, 3 do
+			local v = (i % 2 == 0) and 60 or 220
+			buffer.writeu8(s2, i * 4, v)
+			buffer.writeu8(s2, i * 4 + 1, v)
+			buffer.writeu8(s2, i * 4 + 2, v)
+			buffer.writeu8(s2, i * 4 + 3, 255)
+		end
+		local blk = HK.Colors(HK.Palette(look(1, { color = { 22, 19, 17 }, dye = "None" }), "Kinky"), 2, true)
+		local o2 = HK.Tint(s2, 2, 2, 1, blk, false)
+		check("black keeps contrast", buffer.readu8(o2, 4) - buffer.readu8(o2, 0) >= 20, buffer.readu8(o2, 4) - buffer.readu8(o2, 0))
+	end
 	check("alpha kept", buffer.readu8(out, 3) == 255 and buffer.readu8(out, 7) == 0)
 	-- root darker than tip along v
 	local cols = HK.Colors(pal, h, false, 1)

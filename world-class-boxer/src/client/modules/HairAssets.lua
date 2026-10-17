@@ -312,7 +312,9 @@ end
 -- the cap texture of this boxer: the entry's cap tile (HK.CapTile: its capTile, else short / shortcoil by hair
 -- type) tinted with the root colour, alpha = the style's coverage. The HairCap and every tex "cap" piece (the
 -- fades' shells and fur, on the cap's UV) share it
-local function capImage(entry, look, htype, pal, lod, S, fit, shared, ctx)
+-- shell (HK.CapShellOf: spec, key): a fur shell's sparser variant at half the size; memo (per build) keeps the
+-- coverage grid for the variants
+local function capImage(entry, look, htype, pal, lod, S, fit, shared, ctx, shell, shellKey, memo)
 	local tileKey = HK.CapTile(Data, entry, htype)
 	local tex = Data.textures and Data.textures[tileKey]
 	local id = tex and HK.Id(tex.id)
@@ -320,8 +322,11 @@ local function capImage(entry, look, htype, pal, lod, S, fit, shared, ctx)
 		return nil, "texture " .. tileKey .. " has no id", "asset", nil
 	end
 	local size = wantSize("cap", lod)
+	if shell then
+		size = math.max(64, size // 2)
+	end
 	local skey = shared
-			and table.concat({ "cap", tostring(ctx.sig), entry.key or "?", tileKey, id, lod, size, flipV() and "f" or "" }, "|")
+			and table.concat({ "cap", tostring(ctx.sig), entry.key or "?", tileKey, id, lod, size, flipV() and "f" or "", shellKey or "" }, "|")
 		or nil
 	if skey and tints[skey] then
 		return tints[skey]
@@ -331,11 +336,17 @@ local function capImage(entry, look, htype, pal, lod, S, fit, shared, ctx)
 		return nil, err, kind, id
 	end
 	local cap = Data.cap or {}
-	local cov, S2, sharp = HK.CapCoverage(look, lod, entry.cap, S)
-	local gw, gh = HK.GridSize(sharp)
-	local grid = HK.CapGrid(S2, cov, pal, tonumber(cap.thetaMax) or 2.2, gw, gh, fit)
-	local tile = type(cap.tile) == "table" and cap.tile or { 8, 4 }
-	local buf = HK.PaintCap(grid, src.buf, src.w, src.h, tonumber(tile[1]) or 8, tonumber(tile[2]) or 4, size, flipV(), tonumber(tex.gain))
+	local grid = memo and memo.grid
+	if not grid then
+		local cov, S2, sharp = HK.CapCoverage(look, lod, entry.cap, S)
+		local gw, gh = HK.GridSize(sharp)
+		grid = HK.CapGrid(S2, cov, pal, tonumber(cap.thetaMax) or 2.2, gw, gh, fit)
+		if memo then
+			memo.grid = grid
+		end
+	end
+	local nu, nv = HK.CapRepeat(Data, entry)
+	local buf = HK.PaintCap(grid, src.buf, src.w, src.h, nu, nv, size, flipV(), tonumber(tex.gain), nil, shell)
 	local img, ierr = newImage(size, size, buf)
 	if not img then
 		return nil, ierr, "tex", nil
@@ -446,12 +457,28 @@ local function buildInner(model, entry, look, lod, ctx, made, releases)
 		releases[#releases + 1] = acquire(hd)
 	end
 	if placed.HairCap or HK.NeedsCapImage(entry) then
-		local hd, err, kind, id = capImage(entry, look, htype, pal, lod, S, fit, shared, ctx)
+		local memo = {}
+		local hd, err, kind, id = capImage(entry, look, htype, pal, lod, S, fit, shared, ctx, nil, nil, memo)
 		if not hd then
 			return nil, "cap texture: " .. tostring(err), kind, id
 		end
 		images.__cap = hd
 		releases[#releases + 1] = acquire(hd)
+		-- the fur shells' sparser variants (one per distinct capShell), in key order
+		local shells = HK.CapShells(entry)
+		local skeys = {}
+		for k in pairs(shells) do
+			skeys[#skeys + 1] = k
+		end
+		table.sort(skeys)
+		for _, k in ipairs(skeys) do
+			local hs, errS, kindS, idS = capImage(entry, look, htype, pal, lod, S, fit, shared, ctx, shells[k], k, memo)
+			if not hs then
+				return nil, "cap shell texture: " .. tostring(errS), kindS, idS
+			end
+			images["__cap:" .. k] = hs
+			releases[#releases + 1] = acquire(hs)
+		end
 	end
 	-- 2) the meshes, in name order
 	local names = {}
@@ -469,7 +496,13 @@ local function buildInner(model, entry, look, lod, ctx, made, releases)
 		if not mp then
 			return nil, name .. ": " .. tostring(err), kind, id
 		end
-		local hd = (isCap or ap.tex == "cap") and images.__cap or images[ap.tex]
+		local hd
+		if isCap or ap.tex == "cap" then
+			local _, sk = HK.CapShellOf(ap)
+			hd = (sk and images["__cap:" .. sk]) or images.__cap
+		else
+			hd = images[ap.tex]
+		end
 		local img, textured = nil, false
 		local cost = 0
 		local rel
@@ -612,6 +645,10 @@ function HairAssets.Cost(look, lod, wantTex, priority)
 	if HK.NeedsCapImage(entry) then
 		local sz = wantSize("cap", lod)
 		n += sz * sz * 4
+		local half = math.max(64, sz // 2)
+		for _ in pairs(HK.CapShells(entry)) do
+			n += half * half * 4
+		end
 	end
 	return n
 end

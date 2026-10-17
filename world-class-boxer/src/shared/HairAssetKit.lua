@@ -124,6 +124,46 @@ function HK.TexturesOf(data, entry, htype)
 	return out
 end
 
+-- a tex "cap" piece's fur-shell variant of the painted cap: its capShell { rank = 0..1, cov = 0..1 } (nil: the
+-- cap image itself) and the key its image is shared under within a build
+function HK.CapShellOf(piece)
+	local s = type(piece) == "table" and piece.tex == "cap" and piece.capShell or nil
+	if type(s) ~= "table" then
+		return nil
+	end
+	local r, c = clamp(tonumber(s.rank) or 0, 0, 0.98), clamp(tonumber(s.cov) or 0, 0, 0.95)
+	if r <= 0 and c <= 0 then
+		return nil
+	end
+	return { rank = r, cov = c }, string.format("%.3f/%.3f", r, c)
+end
+
+-- the distinct shell variants an entry's pieces ask for: key -> spec
+function HK.CapShells(entry)
+	local out = {}
+	for _, p in pairs(type(entry) == "table" and type(entry.pieces) == "table" and entry.pieces or {}) do
+		local s, key = HK.CapShellOf(p)
+		if s then
+			out[key] = s
+		end
+	end
+	return out
+end
+
+-- the tile's repeats over the cap for this entry: its capTileRepeat ({ 1, 1 }: a whole-cap texture such as
+-- the waves), else data.cap.tile, else 8 x 4
+function HK.CapRepeat(data, entry)
+	local t = type(entry) == "table" and entry.capTileRepeat or nil
+	if type(t) ~= "table" then
+		local cap = type(data) == "table" and data.cap or nil
+		t = type(cap) == "table" and cap.tile or nil
+	end
+	if type(t) ~= "table" then
+		return 8, 4
+	end
+	return math.max(1, floor(tonumber(t[1]) or 8)), math.max(1, floor(tonumber(t[2]) or 4))
+end
+
 -- every mesh and texture id the entry needs (on hair type htype: the cap's tile) is uploaded; the entry draws
 -- something (pieces or a cap)
 function HK.Usable(data, entry, htype)
@@ -563,9 +603,16 @@ end
 -- alpha = tileA * g (g = 1 at c = 1, 0 at c = 0, rising with c). fadeK (default CAP_FADE_K) <= 0: tileA * c.
 -- flipV writes the rows bottom-up. (MeshKit's step units are ~1-5 us: a texel here is ~0.6 us, so 22 units every
 -- 64 texels)
-function HK.PaintCap(grid, tile, tw, th, nu, nv, size, flipV, gain, fadeK)
+function HK.PaintCap(grid, tile, tw, th, nu, nv, size, flipV, gain, fadeK, shell)
 	gain = gain or 1
 	local K = tonumber(fadeK) or HK.CAP_FADE_K
+	-- a fur shell's variant (HK.CapShellOf): coverage below shell.cov counts as none (outer shells give way first
+	-- down a fade: shorter hair), and only the tile's texels ranked above shell.rank stay (sparser outward: tips)
+	local sCov = shell and clamp(tonumber(shell.cov) or 0, 0, 0.95) or 0
+	local sRank = shell and clamp(tonumber(shell.rank) or 0, 0, 0.98) or 0
+	if sRank > 0 and K <= 0 then
+		K = HK.CAP_FADE_K
+	end
 	local rank = K > 0 and HK.TileRank(tile, tw, th) or nil
 	local invK = K > 0 and 1 / K or 0
 	local readf32 = buffer.readf32
@@ -616,6 +663,9 @@ function HK.PaintCap(grid, tile, tw, th, nu, nv, size, flipV, gain, fadeK)
 		for i = 1, size do
 			local q0, q1, fu = gi0[i], gi1[i], gfu[i]
 			local c = rc[q0] + (rc[q1] - rc[q0]) * fu
+			if sCov > 0 then
+				c = (c - sCov) / (1 - sCov)
+			end
 			local r = rr[q0] + (rr[q1] - rr[q0]) * fu
 			local g = rg[q0] + (rg[q1] - rg[q0]) * fu
 			local b = rb[q0] + (rb[q1] - rb[q0]) * fu
@@ -632,11 +682,16 @@ function HK.PaintCap(grid, tile, tw, th, nu, nv, size, flipV, gain, fadeK)
 				local keep
 				if not rank then
 					keep = c
-				elseif c >= 1 then
+				elseif c >= 1 and sRank <= 0 then
 					keep = 1
 				else
 					local rk = readf32(rank, a00) * w00 + readf32(rank, a10) * w10 + readf32(rank, a01) * w01 + readf32(rank, a11) * w11
-					local q = (rk - ((1 - c) * (1 + invK) - invK)) * K
+					-- (the shell's floor: the higher of the fade's threshold and its own rank)
+					local t = c >= 1 and -invK or ((1 - c) * (1 + invK) - invK)
+					if sRank > 0 and sRank > t then
+						t = sRank
+					end
+					local q = (rk - t) * K
 					if q <= 0 then
 						keep = 0
 					elseif q >= 1 then
@@ -722,6 +777,16 @@ function HK.Tint(src, sw, sh, f, colors, flipV, gain)
 		mr[1], mg[1], mb[1] = colors.r * inv, colors.g * inv, colors.b * inv
 	end
 	local ainv = 1 / (f * f)
+	-- dark colours keep their strand detail: a plain multiply flattens black hair to a 4/255 ripple, so
+	-- each band adds back a little of the texture's own contrast, more the darker the colour (lift)
+	local lift = table.create(nb, 0)
+	local function setLift(bi)
+		local lum = (0.3 * mr[bi] + 0.59 * mg[bi] + 0.11 * mb[bi]) / inv
+		lift[bi] = 0.16 * (1 - min(1, lum)) ^ 2 * ainv
+	end
+	if flat then
+		setLift(1)
+	end
 	for j = 0, h - 1 do
 		local orow = flipV and (h - 1 - j) or j
 		if not flat then
@@ -729,6 +794,7 @@ function HK.Tint(src, sw, sh, f, colors, flipV, gain)
 			for bi = 1, bands do
 				local col = cols[bi]
 				mr[bi], mg[bi], mb[bi] = col[crow + 1] * inv, col[crow + 2] * inv, col[crow + 3] * inv
+				setLift(bi)
 			end
 		end
 		local o = orow * w * 4
@@ -752,7 +818,10 @@ function HK.Tint(src, sw, sh, f, colors, flipV, gain)
 				a *= ainv
 			end
 			local bi = bandOf[i]
-			writeu32(out, o, min(255, floor(r * mr[bi] + 0.5)) + min(255, floor(g * mg[bi] + 0.5)) * 256 + min(255, floor(b * mb[bi] + 0.5)) * 65536
+			local d = lift[bi] * (r - 140 / ainv)
+			writeu32(out, o, max(0, min(255, floor(r * mr[bi] + d + 0.5)))
+				+ max(0, min(255, floor(g * mg[bi] + d + 0.5))) * 256
+				+ max(0, min(255, floor(b * mb[bi] + d + 0.5))) * 65536
 				+ min(255, floor(a + 0.5)) * 16777216)
 			o += 4
 			n64 += 1

@@ -37,7 +37,7 @@ LOCAL_ID0 = 9000000000
 # (roots at v = 0, tips at v = 1), crop included
 TILE_TEXTURES = {"short", "shortcoil", "waves"}
 # entry-level style.json fields carried into the manifest
-ENTRY_FIELDS = ("styles", "types", "cap", "capTile")
+ENTRY_FIELDS = ("styles", "types", "cap", "capTile", "capTileRepeat")
 # the cap entry's fields carried into data.cap (besides its one piece's mesh, bbox, points, nt, material, ...)
 CAP_FIELDS = ("thetaMax", "tile", "tiles")
 

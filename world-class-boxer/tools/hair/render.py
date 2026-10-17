@@ -137,10 +137,11 @@ class Scene:
                 m.blend_method = "HASHED"
         nt.links.new(base, bs.inputs["Base Color"])
         if kind == "hair":
-            bs.inputs["Roughness"].default_value = 0.42
-            bs.inputs["Specular IOR Level"].default_value = 0.45
+            # matte, like the game's Plastic / Fabric hair (a glossy setting reads as wet plastic)
+            bs.inputs["Roughness"].default_value = 0.74
+            bs.inputs["Specular IOR Level"].default_value = 0.22
             try:
-                bs.inputs["Anisotropic"].default_value = 0.6
+                bs.inputs["Anisotropic"].default_value = 0.3
             except KeyError:
                 pass
             bs.inputs["Coat Weight"].default_value = 0.0

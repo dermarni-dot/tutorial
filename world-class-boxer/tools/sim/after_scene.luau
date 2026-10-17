@@ -222,6 +222,10 @@ for _, L in ipairs(index.looks) do
 			for i = 1, 6 do
 				dev = math.max(dev, math.abs(bb[i] - mb[i]))
 			end
+			if tonumber(ap.nt) and ap.nt ~= m.nt then
+				problems[#problems + 1] = string.format("%s/%s: manifest nt %d, %s has %d (stale manifest: re-run without --no-regen)", L.id, name,
+					ap.nt, m.file:match("[^/]+/[^/]+$"), m.nt)
+			end
 			if dev > 2e-4 then
 				problems[#problems + 1] = string.format("%s/%s: manifest bbox differs from %s by %.4f (stale manifest or mesh)", L.id, name,
 					m.file:match("[^/]+/[^/]+$"), dev)
