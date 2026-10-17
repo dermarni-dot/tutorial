@@ -10,31 +10,35 @@ Writes tools/hair/textures/hair_braid.png + hair_cornrow.png (braids_tex.py), to
 style.json), tools/hair/blend/<key>.blend and self-check render sheets (default: the family's scratchpad folder).
 
 How it is built (game nominal head space, numerically; CONTRACT.md):
-* Partings. The scalp inside the natural hairline is split into rings of constant distance from the hairline,
-  the first ON the hairline (inset 0.013 + 0.4 r) from the centre front round the temples, the sideburns, over and
-  behind the ears to the nape; each ring is cut into boxes, alternate rings offset by half a box (brick lay).
-  One braid roots in every box. HairBase: a square patch of short hair per box (strands running toward its braid,
-  darker edges) lying flat at 0.025; the skin lines between the patches (the low-density cap) are the partings.
-* Guides (traced on the skull table). Over the top the braids run straight back (round the X axis); at the
-  sides back and down, held above the ear (centre >= ear top + 0.025 + r) until behind it, then down behind it;
-  braids rooted in front of the ear run straight down past its front edge. Every root starts tangent to the
-  scalp along that flow, flat (flatten 0.6), at 40 % radius growing to full over the first 0.08-0.11.
-* Stacking: braids are laid inner ring first; one that runs over a braid already laid rises just enough to
-  ride over it (mathutils KD tree), ramped, and never more than r + 0.03 above the skull over its first 0.25.
-* Hanging: each braid falls from where the skull turns under as a gravity rope (its direction bends toward
-  straight down), resting 0.02-0.03 off the head mesh, the ears, both torsos (the female one through the inverse
-  of the female skull fit) and the Kit.Scalp body proxy (BVH trees + the proxy SDF), and on the braids laid
-  before it: it only moves outward over them, sideways at most half a radius; then smoothed.
-* Geometry: the guides are kept as Blender curve objects; each is swept into a flattened tube: thick braids get
-  a real plait silhouette (alternating lobes on the two edges, pinched between, rings every quarter period), the
-  texture once round (front half left->right, mirrored at the back) with its lobe period locked to the geometry.
-  A Shrinkwrap modifier ("outside" mode, vertex group) against the head mesh guarantees the clearance and AO is
-  baked into the vertex colours with BVH ray casts.
+* Parting grid. Lanes are the scalp's sections by planes through one axis under the head (0, -1.6, z): spaced
+  spec.lane apart over the crown, the lowest passing over the ear, each clipped to the natural hairline (inset
+  0.012) and the grown ears. Planes of one fan never cross, so braids running down their own lane are parallel
+  and never cross. Brick lay: lane k carries rows of k's parity, row i at s = s_first + i box from the lane's
+  hairline end, so a box is two lanes wide and a lane's roots are two boxes apart. Roots low on the back
+  centre are left out (the braids from above cover it). A candidate whose pinned span would touch an accepted
+  braid's pinned span (lanes converge at the temples and nape) is moved back along its lane or dropped.
+  Sideburn braids (in front of the ears) hang straight down.
+* Heights: every braid's first s_pin (0.34 thick, 0.19 thin) lies flat on the scalp, centre at clearance +
+  half thickness, no stacking; after that, back rows laid first, a braid that runs over one already laid rises,
+  ramped, to lie on it. Roots taper into a small flat knot closing onto the scalp, pointing back along the lane.
+* Hanging: each braid falls from where the skull turns under as a gravity rope resting 0.02-0.03 off the head,
+  ears, both torsos and the Kit.Scalp body proxy, layered over the braids laid before it, and drawn toward an
+  evenly spread target azimuth round the back (so they hang side by side instead of piling up). Sideburn
+  braids are never pushed out sideways (no hook over the shoulder).
+* Geometry: guides are kept as Blender curve objects; each braid is swept into a flattened tube: thick braids
+  get a plait silhouette (alternating lobes, notch 28 % of the radius, a random phase per braid locked to the
+  texture's lobes), u once round (mirrored at the back). A Shrinkwrap modifier ("outside" mode, vertex group)
+  against the head mesh guarantees the clearance and AO is baked into the vertex colours with BVH ray casts.
+* HairBase: one rounded-square pad of short hair per grid box (two lanes x one box, from the neighbouring
+  lanes' centre lines) lying flat at 0.024, feathered at its border, so thin skin lines between pads are the
+  partings; baby-hair cards over the front hairline.
 * Cornrows: rows in planes through an axis deep under the head, clipped to the hairline; each an arched ribbon
-  (texture "cornrow": alpha 0 at the row edges), thin where it feeds in at the hairline with crisp baby hairs
-  over its start, narrowing and tucked just above the nape hairline.
-* Pieces: HairTop (all the scalp parts), HairBase (partings), and the hanging parts as swing chains by azimuth
-  round the neck (chain BraidNN: HairBraidNN upper, HairBraidNNb lower, parent / pivot / tip, length "hang").
+  (texture "cornrow": alpha 0 at the row edges), fading in at the hairline under denser baby hairs, ending in
+  a rounded tuck just above the nape hairline.
+* Pieces: HairTop (all the scalp parts), HairBase (partings), one single-segment swing chain per side for the
+  sideburn braids, and up to 6 back chains of contiguous azimuth (chain BraidNN: HairBraidNN upper,
+  HairBraidNNb lower, parent / pivot / tip, length "hang"); asserts that no piece's pivots (nor its tips) spread
+  more than 0.35 in x or z and that sideburn chains stay on one side.
 """
 import argparse
 import json
@@ -393,16 +397,15 @@ class BraidSpec:
 
 # box: parting size along the flow (same-lane roots are 2 boxes apart: brick lay); lane: lane spacing over the
 # crown (a box is 2 lanes wide); s_pin: the length of every braid pinned flat to the scalp
-BRAIDS = BraidSpec(key="braids", box=0.26, front_y_end=-0.74, lane=0.104, r=0.047, length_y=(-0.75, -0.85), flatten=0.8,
-                   root_flat=0.5, sides=6, lobes=True, amp=0.28, back_groups=6, n_front=1, stiff=0.45, mass=1.3,
-                   seed=11, root_len=0.04, slope=0.5, s_pin=0.34, ride=0.75, grav_back=0.0, hang_need=0.65, hang_side=1.5, fan_deg=40, lane_ymin=0.2, root_ymin=0.05)
-BOX = BraidSpec(key="box_braids", box=0.13, front_y_end=-9.0, lane=0.064, r=0.0205, length_y=(-1.6, -1.74), flatten=0.84,
-                root_flat=0.55, sides=4, lobes=False, amp=0.0, back_groups=5, n_front=3, stiff=0.4, mass=1.2,
-                seed=23, root_len=0.025, slope=0.5, s_pin=0.19, ride=0.75, grav_back=0.1, hang_need=0.8, hang_side=1.0, fan_deg=80, lane_ymin=0.17, root_ymin=-0.05)
+BRAIDS = BraidSpec(key="braids", box=0.26, front_y_end=-0.74, lane=0.1, r=0.044, length_y=(-0.75, -0.85), flatten=0.8,
+                   root_flat=0.4, root_w=0.5, sides=6, lobes=True, amp=0.28, back_groups=6, n_front=1, stiff=0.45, mass=1.3,
+                   seed=11, root_len=0.045, slope=0.5, s_pin=0.34, ride=0.75, grav_back=0.0, hang_need=0.65, hang_side=1.5, fan_deg=40, lane_ymin=0.1, root_ymin=0.05)
+BOX = BraidSpec(key="box_braids", box=0.14, front_y_end=-0.78, lane=0.07, r=0.0205, length_y=(-1.6, -1.74), flatten=0.84,
+                root_flat=0.45, root_w=0.4, sides=4, lobes=False, amp=0.0, back_groups=6, n_front=3, stiff=0.4, mass=1.2,
+                seed=23, root_len=0.035, slope=0.5, s_pin=0.19, ride=0.75, grav_back=0.0, hang_need=0.7, hang_side=1.5, fan_deg=45, lane_ymin=0.1, root_ymin=-0.05)
 FAN_A = 1.6  # the parting lanes are the scalp's sections by planes through the line (0, -FAN_A, z)
 DOWN = np.array([0, -1.0, 0])
-DEBUG = bool(os.environ.get("BRAIDS_DEBUG"))
-CHAIN_SPREAD = 0.35  # no swing chain's joint points may spread more than this in x or z
+CHAIN_SPREAD = 0.35  # no swing piece's pivot points (nor its tip points) may spread more than this in x or z
 
 
 class Braid:
@@ -521,7 +524,7 @@ def profile(spec, s, r, L):
     """(across radius, flatten) at arc length s: the root is a small flat knot (55 % radius, flatter) reaching
     the full braid over root_len; the tip tapers over the last 0.1"""
     k = float(smooth(0.0, spec.root_len, s))
-    w = r * (0.55 + 0.45 * k) * (1 - 0.45 * float(smooth(L - 0.1, L, s)))
+    w = r * (spec.root_w + (1 - spec.root_w) * k) * (1 - 0.45 * float(smooth(L - 0.1, L, s)))
     fl = spec.root_flat * (1 - k) + spec.flatten * k
     return w, fl
 
@@ -556,7 +559,7 @@ def layout_braids(spec, rng):
     lanes converge: the temples, the nape) is moved back along its lane by a quarter box (twice at most) or
     dropped, so no braid has to stack over another inside its pinned span."""
     lanes = fan_lanes(spec)
-    s_first = 0.013 + 0.6 * spec.r
+    s_first = 0.013 + 0.3 * spec.r
     cands = []
     for k in sorted(lanes):
         ln = lanes[k]
@@ -649,7 +652,7 @@ def stack_scalp(braids, spec):
         prof = [profile(spec, s, b.r, L_guess) for s in S]
         w = np.array([x[0] for x in prof])
         t = np.array([x[0] * x[1] for x in prof])
-        base = CLEAR + 0.004 + t
+        base = CLEAR + 0.004 + t + (0.006 if b.cls == "front" else 0.0)  # (sideburns: the female fit is wider)
         req = base.copy()
         if kd is not None:
             wmax = max(LW)
@@ -874,8 +877,8 @@ def braid_rings(spec, b):
     s_mid = s_leave + (L - s_leave) * 0.48
     if spec.lobes:
         per = math.pi * b.r
-        a = np.arange(0, s_leave, per / 4)
-        bb = np.arange(s_leave, L, per / 3)
+        a = np.arange(0, s_leave, per / 3.5)
+        bb = np.arange(s_leave, L, per / 2.6)
         ss = np.concatenate([a, bb, [L]])
         ss = np.unique(np.round(ss, 6))
         if L - ss[-2] < per / 8:
@@ -888,7 +891,7 @@ def braid_rings(spec, b):
         ss[cut1] = s_mid
         cut = [cut0, cut1]
     else:
-        a = adaptive_s(P, 0, s_leave, 0.04, 0.13, ang=math.radians(10))
+        a = adaptive_s(P, 0, s_leave, 0.045, 0.16, ang=math.radians(12))
         a = np.unique(np.concatenate([a, [min(spec.root_len, s_leave * 0.5)]]))
         bb = adaptive_s(P, s_leave, s_mid, 0.05, 0.42, ang=math.radians(14))
         c = adaptive_s(P, s_mid, L, 0.05, 0.42, ang=math.radians(14))
@@ -1136,8 +1139,7 @@ def chain_groups(braids, joints, n_back):
 
     def spread(i, j):
         if (i, j) not in cost:
-            pts = [p for bi in order[i:j] for p in joints[bi]]
-            cost[(i, j)] = _spread(pts)
+            cost[(i, j)] = max(_spread([joints[bi][q] for bi in order[i:j]]) for q in range(3))
         return cost[(i, j)]
     INF = 9.0
     best = [[INF] * (n + 1) for _ in range(G + 1)]
@@ -1203,9 +1205,9 @@ def make_pieces(spec, lanes, braids):
     for nm in sorted(segs):
         p = segs[nm]
         j = jn[nm]
-        sp = _spread(j["piv"] + j["tip"])
+        sp = max(_spread(j["piv"]), _spread(j["tip"]))  # (the braids' pivots together, their tips together)
         spreads[nm] = round(sp, 3)
-        assert DEBUG or sp <= CHAIN_SPREAD, f"{spec.key}: chain piece {nm} joint points spread {sp:.3f} > {CHAIN_SPREAD}"
+        assert sp <= CHAIN_SPREAD, f"{spec.key}: chain piece {nm} joint points spread {sp:.3f} > {CHAIN_SPREAD}"
         if "front" in jn[nm[:11]]["side"]:
             xs = np.array(j["piv"] + j["tip"])[:, 0]
             assert xs.min() > 0.05 or xs.max() < -0.05, f"{spec.key}: sideburn chain {nm} crosses the midline"
@@ -1618,6 +1620,7 @@ def build_cornrows(spec, colliders):
         S = arclen(P)
         L = S[-1]
         ss = adaptive_s(P, 0, L, 0.014, 0.03, ang=math.radians(5))
+        ss = np.unique(np.concatenate([ss, [0.02], L - np.array([0.03, 0.015, 0.006])]))
         Pc = at_s(P, S, ss)
         guides.append(Pc)
         ids = []
@@ -1630,7 +1633,10 @@ def build_cornrows(spec, colliders):
             side = unit(np.cross(t, nn))
             w = spec["width"] * min(1.0, (p[1] + A) / (0.32 + A)) ** 1.5
             w *= 0.35 + 0.65 * float(smooth(0.0, 0.07, s))
-            w *= 1.0 - 0.7 * float(smooth(L - 0.09, L, s))
+            # the nape tuck: a rounded end (half a disc of radius RE), not a point
+            RE = 0.04
+            w *= max(0.22, math.sqrt(max(0.0, 1 - (max(0.0, s - (L - RE)) / RE) ** 2)))
+            fade = s < 0.019  # the row's first ring: all its u on the strip's transparent edge (fades in)
             ridge = spec["ridge"] * (w / spec["width"])
             row = []
             for c in range(k):
@@ -1640,6 +1646,8 @@ def build_cornrows(spec, colliders):
                 nrm = unit(n2 + side * cc * 0.85)
                 occ = 0.62 + 0.38 * arch
                 uu = ROW[0] + 0.004 + (ROW[1] - ROW[0] - 0.008) * (c / (k - 1))
+                if fade:
+                    uu = ROW[0] + 0.004 if c < (k - 1) / 2 else (ROW[1] - 0.004 if c > (k - 1) / 2 else ROW[0] + 0.004)
                 row.append(top.vert(pp, nrm, (uu, (s + v0) / spec["v_tile"]), (occ, occ, occ)))
             ids.append(row)
         for j in range(len(ids) - 1):
@@ -1654,10 +1662,10 @@ def build_cornrows(spec, colliders):
         t0 = unit(t0 - nn * np.dot(t0, nn))
         side = unit(np.cross(t0, nn))
         w0 = spec["width"] * min(1.0, (P[0][1] + A) / (0.32 + A)) ** 1.5
-        for kk in (-1, 1):
-            ang = kk * rng.uniform(0.25, 0.45)
+        for kk in (-1.5, -0.5, 0.5, 1.5):
+            ang = kk * rng.uniform(0.18, 0.3)
             dirn = unit(-t0 * math.cos(ang) + side * math.sin(ang))  # root -> tip: forward and a little out
-            base = q0 + t0 * 0.02 + side * kk * w0 * 0.12
+            base = q0 + t0 * rng.uniform(0.018, 0.026) + side * kk * w0 * 0.1
             pts_c, ups = [], []
             for tt in np.linspace(0, 1, 4):
                 p = base + dirn * 0.028 * tt
@@ -1674,9 +1682,9 @@ def build_cornrows(spec, colliders):
 
 # ------------------------------------------------------------------------------------------- styles / main
 STYLES = {
-    "braids": dict(kind="braids", spec=BRAIDS, head="f",
+    "braids": dict(kind="braids", spec=BRAIDS, head="f", views=["34", "side", "back", "close", "top34", "top", "sideclose"],
                    entry=dict(styles=["Braids"], types=None, cap={"cut": "full", "density": 0.15})),
-    "box_braids": dict(kind="braids", spec=BOX, head="f",
+    "box_braids": dict(kind="braids", spec=BOX, head="f", views=["34", "side", "back", "close", "top34", "top"],
                        entry=dict(styles=["Box Braids"], types=None, cap={"cut": "full", "density": 0.15})),
     "cornrows": dict(kind="cornrows", spec=CORN, head="m",
                      entry=dict(styles=["Cornrows"], types=None, cap={"cut": "full", "density": 0.15})),
@@ -1803,7 +1811,7 @@ def main():
         report[key] = rep
         print(json.dumps({k: v for k, v in rep.items() if k != "pieces"}))
         if args.render:
-            views = args.views.split(",") if args.views else ["34", "side", "back", "close", "top34"]
+            views = args.views.split(",") if args.views else st.get("views", ["34", "side", "back", "close", "top34"])
             looks_all = {
                 "f": [("f", "darkbrown", "deep", views), ("f", "blonde", "light", ["34"]),
                       ("f", "black", "mid", views)],

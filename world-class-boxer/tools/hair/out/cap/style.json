@@ -6,6 +6,12 @@
   8,
   4
  ],
+ "pole": {
+  "theta0": 0.43633,
+  "theta1": 0.69813,
+  "su": 0.42199,
+  "sv": 0.64577
+ },
  "tiles": {
   "default": "short",
   "Curly": "shortcoil",

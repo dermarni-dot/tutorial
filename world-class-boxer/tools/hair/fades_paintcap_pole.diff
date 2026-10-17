@@ -1,0 +1,105 @@
+diff -ru a/src/client/modules/HairAssets.lua b/src/client/modules/HairAssets.lua
+--- a/src/client/modules/HairAssets.lua	2026-10-17 11:27:16.460894812 +0000
++++ b/src/client/modules/HairAssets.lua	2026-10-17 11:27:42.505039582 +0000
+@@ -346,7 +346,8 @@
+ 		end
+ 	end
+ 	local nu, nv = HK.CapRepeat(Data, entry)
+-	local buf = HK.PaintCap(grid, src.buf, src.w, src.h, nu, nv, size, flipV(), tonumber(tex.gain), nil, shell)
++	local buf = HK.PaintCap(grid, src.buf, src.w, src.h, nu, nv, size, flipV(), tonumber(tex.gain), nil, shell,
++		HK.CapPole(Data, entry))
+ 	local img, ierr = newImage(size, size, buf)
+ 	if not img then
+ 		return nil, ierr, "tex", nil
+diff -ru a/src/shared/HairAssetKit.lua b/src/shared/HairAssetKit.lua
+--- a/src/shared/HairAssetKit.lua	2026-10-17 11:27:16.456870497 +0000
++++ b/src/shared/HairAssetKit.lua	2026-10-17 11:27:42.504759221 +0000
+@@ -150,6 +150,23 @@
+ 	return out
+ end
+ 
++-- the crown's planar sampling for this entry's cap (out/cap/style.json pole = { theta0, theta1, su, sv }):
++-- nil for a whole-cap image (capTileRepeat { 1, 1 }) or when the cap data has none. See PaintCap
++function HK.CapPole(data, entry)
++	local nu = HK.CapRepeat(data, entry)
++	local cap = type(data) == "table" and data.cap or nil
++	local p = type(cap) == "table" and cap.pole or nil
++	if nu <= 1 or type(p) ~= "table" then
++		return nil
++	end
++	local t0, t1 = tonumber(p.theta0), tonumber(p.theta1)
++	local su, sv = tonumber(p.su), tonumber(p.sv)
++	if not (t0 and t1 and su and sv) or t1 <= t0 or su <= 0 or sv <= 0 then
++		return nil
++	end
++	return { theta0 = t0, theta1 = t1, su = su, sv = sv, thetaMax = tonumber(cap.thetaMax) or 2.2 }
++end
++
+ -- the tile's repeats over the cap for this entry: its capTileRepeat ({ 1, 1 }: a whole-cap texture such as
+ -- the waves), else data.cap.tile, else 8 x 4
+ function HK.CapRepeat(data, entry)
+@@ -601,9 +618,13 @@
+ -- strands and coils (each texel is either kept at its own alpha or gone, over a 1 / k wide rank window) instead
+ -- of turning every hair uniformly translucent: g = smoothstep(clamp((rank - t) * k)), t = (1 - c)(1 + 1/k) - 1/k,
+ -- alpha = tileA * g (g = 1 at c = 1, 0 at c = 0, rising with c). fadeK (default CAP_FADE_K) <= 0: tileA * c.
+--- flipV writes the rows bottom-up. (MeshKit's step units are ~1-5 us: a texel here is ~0.6 us, so 22 units every
++-- flipV writes the rows bottom-up. pole (HK.CapPole): round the crown (theta < pole.theta1) the tile is sampled
++-- by a planar (azimuthal-equidistant) projection, (X, Z) = theta (sin az, cos az), one tile per (su, sv), and
++-- crossfaded (smoothstep, theta0 .. theta1) into the polar sampling: the polar UV squeezes the nu repeats into
++-- wedges at the pole (an nu-spoke star from above), the planar one keeps the tile's own size there.
++-- (MeshKit's step units are ~1-5 us: a texel here is ~0.6 us, so 22 units every
+ -- 64 texels)
+-function HK.PaintCap(grid, tile, tw, th, nu, nv, size, flipV, gain, fadeK, shell)
++function HK.PaintCap(grid, tile, tw, th, nu, nv, size, flipV, gain, fadeK, shell, pole)
+ 	gain = gain or 1
+ 	local K = tonumber(fadeK) or HK.CAP_FADE_K
+ 	-- a fur shell's variant (HK.CapShellOf): coverage below shell.cov counts as none (outer shells give way first
+@@ -660,6 +681,13 @@
+ 		local fy = tv - ty0
+ 		local ro0, ro1 = ty0 * tw * 4, ((ty0 + 1) % th) * tw * 4
+ 		local o = row * size * 4
++		-- the crown's planar sample weight on this row (0: polar only)
++		local theta = pole and v * pole.thetaMax or 0
++		local wp = 0
++		if pole and theta < pole.theta1 then
++			local q = clamp((theta - pole.theta0) / (pole.theta1 - pole.theta0), 0, 1)
++			wp = 1 - q * q * (3 - 2 * q)
++		end
+ 		for i = 1, size do
+ 			local q0, q1, fu = gi0[i], gi1[i], gfu[i]
+ 			local c = rc[q0] + (rc[q1] - rc[q0]) * fu
+@@ -679,6 +707,23 @@
+ 				local a00, a10, a01, a11 = ro0 + x0, ro0 + x1, ro1 + x0, ro1 + x1
+ 				local grey = (readu8(tile, a00) * w00 + readu8(tile, a10) * w10 + readu8(tile, a01) * w01 + readu8(tile, a11) * w11) * gain
+ 				local al = readu8(tile, a00 + 3) * w00 + readu8(tile, a10 + 3) * w10 + readu8(tile, a01 + 3) * w01 + readu8(tile, a11 + 3) * w11
++				-- the crown: the planar sample, blended in (its rank too, below)
++				local p00, p10, p01, p11, q00, q10, q01, q11
++				if wp > 0 then
++					local az = (i - 0.5) / size * TAU
++					local pu = (theta * sin(az) / pole.su * tw - 0.5) % tw
++					local pv = (theta * cos(az) / pole.sv * th - 0.5) % th
++					local px0, py0 = floor(pu), floor(pv)
++					local pfx, pfy = pu - px0, pv - py0
++					local px1, py1 = (px0 + 1) % tw, (py0 + 1) % th
++					q00, q10, q01, q11 = (1 - pfx) * (1 - pfy), pfx * (1 - pfy), (1 - pfx) * pfy, pfx * pfy
++					p00, p10 = (py0 * tw + px0) * 4, (py0 * tw + px1) * 4
++					p01, p11 = (py1 * tw + px0) * 4, (py1 * tw + px1) * 4
++					local g2 = (readu8(tile, p00) * q00 + readu8(tile, p10) * q10 + readu8(tile, p01) * q01 + readu8(tile, p11) * q11) * gain
++					local a2 = readu8(tile, p00 + 3) * q00 + readu8(tile, p10 + 3) * q10 + readu8(tile, p01 + 3) * q01 + readu8(tile, p11 + 3) * q11
++					grey += (g2 - grey) * wp
++					al += (a2 - al) * wp
++				end
+ 				local keep
+ 				if not rank then
+ 					keep = c
+@@ -686,6 +731,10 @@
+ 					keep = 1
+ 				else
+ 					local rk = readf32(rank, a00) * w00 + readf32(rank, a10) * w10 + readf32(rank, a01) * w01 + readf32(rank, a11) * w11
++					if wp > 0 then
++						local r2 = readf32(rank, p00) * q00 + readf32(rank, p10) * q10 + readf32(rank, p01) * q01 + readf32(rank, p11) * q11
++						rk += (r2 - rk) * wp
++					end
+ 					-- (the shell's floor: the higher of the fade's threshold and its own rank)
+ 					local t = c >= 1 and -invK or ((1 - c) * (1 + invK) - invK)
+ 					if sRank > 0 and sRank > t then

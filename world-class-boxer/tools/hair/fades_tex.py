@@ -2,7 +2,7 @@
 
 * short      128 x 256 tile (tileable): 1-4 mm hairs lying along +v (away from the crown on the cap's polar UV)
 * shortcoil  128 x 256 tile (tileable): tiny tight coils, randomly turned, evenly packed (no dark clumps)
-* waves      1024 x 1024 whole-cap image (capTileRepeat {1, 1}): 360 waves, ~15 ridges crown -> nape, a calm whorl
+* waves      1024 x 1024 whole-cap image (capTileRepeat {1, 1}): 360 waves, ~23 ridges crown -> nape, tighter toward the hairline, in shallow chevrons, a calm whorl
              at the crown, every ridge its own phase / amplitude (no u-periodic star)
 * crop       512 x 512, 4 tuft strips, root (v 0) to tip (v 1), alpha fading in at the root
 
@@ -112,23 +112,32 @@ def save_tex(path, L, A, lo=0.25, hi=1.0):
     return path
 
 
-def rank_dither(A, seed, lo=0.84, hi=0.99, blur=0.6):
+def blue_noise(h, w, seed, sigma=1.3, iters=2):
+    """tileable blue-ish noise ranked uniform in (0, 1): white noise high-passed (minus its wrapped gaussian blur)
+    twice, so neighbouring texels are anti-correlated (no clumps above ~2 texels: an even speckle when thresholded)"""
+    rng = np.random.default_rng(seed)
+    n = rng.random((h, w))
+    r = int(math.ceil(sigma * 3))
+    k = np.array([math.exp(-0.5 * (i / sigma) ** 2) for i in range(-r, r + 1)])
+    k /= k.sum()
+    for _ in range(iters):
+        b = sum(kk * np.roll(n, i - r, 0) for i, kk in enumerate(k))
+        b = sum(kk * np.roll(b, i - r, 1) for i, kk in enumerate(k))
+        n = n - b
+        o = np.empty(h * w)
+        o[np.argsort(n.ravel(), kind="stable")] = (np.arange(h * w) + 0.5) / (h * w)
+        n = o.reshape(h, w)
+    return n
+
+
+def rank_dither(A, seed, lo=0.9, hi=1.0, sigma=1.3):
     """Decorrelate the tile's alpha rank from its low-frequency structure. The game's PaintCap thins a fade (and
     a < 1 density such as the Buzz Cut's 0.62) by thresholding each texel's (alpha, grey) rank: if the dense
     texels all saturate, the grey's slow lock-to-lock variation decides the order and the cap thins in blotches.
-    A fine, uniform-rank noise (~1-2 texels: ~0.5 mm on the scalp) scales the alpha so the thinning is an even
-    stubble speckle; the gaps between strands (low alpha) still go first."""
+    A blue-noise rank (anti-correlated neighbours: ~0.5 mm speckle on the scalp, never clumps) scales the alpha a
+    little, so the thinning is an even stubble speckle; the gaps between strands (low alpha) still go first."""
     h, w = A.shape
-    rng = np.random.default_rng(seed)
-    n = rng.random((h, w))
-    if blur > 0:
-        k = np.array([math.exp(-0.5 * (i / blur) ** 2) for i in (-2, -1, 0, 1, 2)])
-        k /= k.sum()
-        n = sum(kk * np.roll(n, i - 2, 0) for i, kk in enumerate(k))
-        n = sum(kk * np.roll(n, i - 2, 1) for i, kk in enumerate(k))
-    r = np.empty(h * w)
-    r[np.argsort(n.ravel(), kind="stable")] = (np.arange(h * w) + 0.5) / (h * w)
-    return A * (lo + (hi - lo) * r.reshape(h, w))
+    return A * (lo + (hi - lo) * blue_noise(h, w, seed, sigma))
 
 
 # canvas for one cap tile: 1024 x 1024 px ~ 0.33 x 0.29 studs (px ~ 0.0003 studs ~ 0.06 mm), filtered 8 x 4
@@ -156,19 +165,19 @@ def tex_short(seed=21):
     flow = _wrap_noise(seed + 1)
     lockn = _wrap_noise(seed + 3, fmax=6)
     # undercoat
-    for _ in range(9000):
+    for _ in range(14000):
         x, y = rng.uniform(0, W), rng.uniform(0, W)
         ang = math.pi / 2 + 0.2 * flow(x, y) + rng.normal(0, 0.28)
         L = rng.uniform(1.0, 2.2) * MM
         g = rng.uniform(0.5, 0.64)
         cv.strand([x, x + math.cos(ang) * L], [y, y + math.sin(ang) * L], [2.0, 1.6], [g - 0.06, g],
-                  [0.85, 0.65])
+                  [0.9, 0.75])
     # the coat: hairs in locks (a lock = a few hairs sharing a root area and direction)
     nlocks = 4200
     for _ in range(nlocks):
         cx, cy = rng.uniform(0, W), rng.uniform(0, W)
         ang0 = math.pi / 2 + 0.2 * flow(cx, cy) + rng.normal(0, 0.12)
-        base = 0.86 + 0.14 * lockn(cx, cy) + rng.normal(0, 0.05)
+        base = 0.86 + 0.04 * lockn(cx, cy) + rng.normal(0, 0.06)  # (no lock-scale blotches)
         for _ in range(int(rng.integers(2, 6))):
             x, y = cx + rng.normal(0, 2.2), cy + rng.normal(0, 2.2)
             ang = ang0 + rng.normal(0, 0.07)
@@ -183,8 +192,13 @@ def tex_short(seed=21):
             op = np.clip(0.95 - 0.5 * t ** 2.5, 0, 1)
             cv.strand(xs, ys, wid, lum, op)
     L, A = cv.down(8, 4)
-    A = np.clip(0.06 + A * 1.08, 0, 1.0)
-    return L, rank_dither(A, seed + 9)
+    # a dense, even coat: mean alpha ~0.88 (the scalp barely shows at full coverage), the variation only at strand
+    # scale (the gaps between hairs a little lower, never low-frequency patches)
+    A = np.clip(0.4 + A * 0.74, 0, 1.0)
+    # (compressed toward opaque so the blue-noise rank, not the strands' own clumping, orders the thinning: at the
+    # Buzz Cut's 0.62 density the stubble is an even speckle; mean alpha ~0.88)
+    A = np.clip(0.72 + 0.28 * A, 0, 1.0)
+    return L, rank_dither(A, seed + 9, lo=0.82, hi=1.0)
 
 
 def tex_shortcoil(seed=61):
@@ -195,7 +209,7 @@ def tex_shortcoil(seed=61):
     cv = Canvas(W, W, tile=True, base_lum=0.6)
     rng = np.random.default_rng(seed)
     # dense fine frizz underneath
-    for _ in range(6000):
+    for _ in range(9000):
         x, y = rng.uniform(0, W), rng.uniform(0, W)
         r = rng.uniform(0.5, 1.0) * MM
         t = np.linspace(0, rng.uniform(1.0, 1.7) * TAU, 9)
@@ -231,13 +245,15 @@ def tex_shortcoil(seed=61):
         lum = np.clip((0.52 + 0.36 * front ** 1.5 + 0.12 * up) * rng.uniform(0.92, 1.06), 0.3, 1.0)
         cv.strand(xs, ys, np.full(m, rng.uniform(2.6, 3.4)), lum, np.full(m, 0.95))
     L, A = cv.down(8, 4)
-    A = np.clip(0.06 + A * 1.04, 0, 1.0)
-    return L, rank_dither(A, seed + 9, lo=0.86, blur=1.0)
+    A = np.clip(0.34 + A * 0.76, 0, 1.0)
+    A = np.clip(0.7 + 0.3 * A, 0, 1.0)
+    return L, rank_dither(A, seed + 9, lo=0.82, hi=1.0, sigma=1.6)
 
 
 # ---------------------------------------------------------------------------------------- 360 waves
 WAVES_SIZE = 1024
-WAVES_V0 = 0.056  # ridge spacing in v (theta / thetaMax): ~1.6 cm on the scalp, ~15 ridges crown -> nape
+WAVES_N = 23  # ridges from the calm crown to the cap's edge (the nape)
+WAVES_TIGHT = 1.4  # how much tighter the pitch is at the hairline than next to the crown (1 + this)
 WAVES_CALM = 0.12  # v below this: the crown's whorl (no ridges)
 
 
@@ -265,9 +281,19 @@ def tex_waves(theta_max, seed=71, size=WAVES_SIZE):
         for k in range(1, n + 1):
             out += amp / k ** 0.9 * r.uniform(0.3, 1.0) * np.cos(TAU * k * u + r.uniform(0, TAU))
         return out
-    # ridge phase: rings of v, drifting round the head (low harmonics), a little per-ridge noise
-    drift = harmonics(4, 0.4, seed + 1) + harmonics(9, 0.1, seed + 2)
-    phase = (v - WAVES_CALM) / WAVES_V0 + drift * calm
+    # ridge phase: rings of v whose pitch tightens away from the crown (broad ripples near the crown, tight ones at
+    # the sides and the nape: the brush lays the hair flatter and the waves closer there), WAVES_N ridges in all;
+    # drifting round the head (low harmonics) and bent into shallow chevrons (a triangle wave in u whose phase
+    # drifts with v and differs side to side), a little per-ridge noise
+    vv = np.linspace(0, 1, 2049)
+    pitch = 1.0 / (1.0 + WAVES_TIGHT * np.clip((vv - WAVES_CALM) / (1 - WAVES_CALM), 0, 1) ** 1.2)
+    F = np.concatenate([[0], np.cumsum(np.diff(vv) / pitch[1:])])
+    F = (F - np.interp(WAVES_CALM, vv, F))
+    F = F / np.interp(1.0, vv, F) * WAVES_N
+    drift = harmonics(4, 0.45, seed + 1) + harmonics(9, 0.12, seed + 2)
+    cph = 13.0 * u + 1.7 * v + 0.6 * harmonics(3, 1.0, seed + 5)
+    chev = 0.32 * (2 * np.abs(cph - np.floor(cph) - 0.5) - 0.5) * np.clip((v - WAVES_CALM) / 0.25, 0, 1)
+    phase = np.interp(v, vv, F) + (drift + chev) * calm
     ridge = np.floor(phase)
     # per-ridge amplitude and extra phase (by ridge index, varying round the head)
     amp = np.ones_like(u)
@@ -279,11 +305,12 @@ def tex_waves(theta_max, seed=71, size=WAVES_SIZE):
         a = 0.75 + 0.25 * np.cos(TAU * rr.integers(1, 4) * u + rr.uniform(0, TAU)) + rr.normal(0, 0.05)
         amp = np.where(m, a, amp)
     amp = amp * calm
-    f = phase - ridge  # 0..1 inside a ridge: crest at ~0.35
+    f = phase - ridge  # 0..1 inside a ridge: crest at ~0.4
     # height profile: a rounded crest, a long trough (asymmetric, like brushed waves)
-    h = np.where(f < 0.35, np.sin(f / 0.35 * math.pi / 2), np.cos((f - 0.35) / 0.65 * math.pi / 2) ** 1.6)
+    h = np.where(f < 0.4, np.clip(np.sin(f / 0.4 * math.pi / 2), 0, 1) ** 1.3,
+                 np.clip(np.cos((f - 0.4) / 0.6 * math.pi / 2), 0, 1) ** 1.3)
     dh = np.gradient(h, axis=0)  # along v (rows)
-    lit = np.clip(-dh * 18, -1, 1)  # crown-facing slope lit (rows grow away from the crown)
+    lit = np.clip(-dh * 14, -1, 1)  # crown-facing slope lit (rows grow away from the crown)
     # hair direction: +v, snaking with the ripple (lateral u offset ~ the slope); round the crown a swirl
     swirl = (1 - calm) * 0.9
     ang = np.pi / 2 + amp * 0.38 * np.cos(TAU * f) + swirl
@@ -306,8 +333,8 @@ def tex_waves(theta_max, seed=71, size=WAVES_SIZE):
     lic = acc / wsum
     lic = (lic - lic.mean()) / (lic.std() + 1e-9)
     strands = np.clip(0.5 + 0.22 * lic, 0, 1)
-    lum = 0.74 + 0.2 * lit * amp + 0.12 * (h - 0.5) * amp + 0.18 * (strands - 0.5)
-    lum = lum - 0.16 * amp * np.clip(-lit, 0, 1)  # the trough's soft shadow
+    lum = 0.74 + 0.11 * lit * amp + 0.08 * (h - 0.5) * amp + 0.18 * (strands - 0.5)
+    lum = lum - 0.06 * amp * np.clip(-lit, 0, 1)  # the trough's soft shadow
     A = np.clip(0.9 + 0.14 * (strands - 0.5) - 0.05 * np.clip(-lit, 0, 1) * amp, 0, 0.98)
     return lum, A
 

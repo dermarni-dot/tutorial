@@ -1084,23 +1084,24 @@ STYLES = {
     "dreadlocks": dict(
         entry=dict(styles=["Dreadlocks"], types=None, cap={"cut": "full", "density": 0.45}, capTile="shortcoil"),
         kind="hang", spacing=0.14, fill=20, margin=0.03, seed=101, R=0.036, rvar=0.2, M=32, step=0.03,
-        hang_len=1.05, side_short=0.25, L_max=2.25, sides=5, base_ds=0.2, min_ds=0.07, end_ds=0.045, bend_k=0.6,
-        root_cap=False, lift=0.2,
+        hang_len=1.05, side_short=0.25, L_max=2.25, sides=5, base_ds=0.22, min_ds=0.075, end_ds=0.045, bend_k=0.65,
+        root_cap=False, root_k=0.6, edge_root_k=0.7, lift=0.2,
         layer=0.022, repel=0.72, fins=1, chains=7, segs=2, stiff=0.35, mass=(1.5, 1.15), hang_split=0.5,
-        prefix="HairLoc", chain="Loc", lobes=None, halo=dict(k=2.2, root_k=3.0, step=0.28), lump=0.12,
+        prefix="HairLoc", chain="Loc", lobes=None, halo=dict(k=2.2, root_k=3.0, step=0.32), lump=0.12,
         blunt_frac=0.6, back_front=1.8, splay=0.24, wave=(0.012, 0.35), body_off=0.07, short_top=0.14,
         sideburn_ys=(0.15, 0.08)),
     "twists": dict(
         entry=dict(styles=["Twists"], types=None, cap={"cut": "full", "density": 0.45}, capTile="shortcoil"),
-        kind="hang", spacing=0.158, fill=10, margin=0.03, seed=303, R=0.041, rvar=0.14, M=24, step=0.025,
-        repel=0.72, fins=1, L_max=1.35, hang_len=0.4, side_short=0.2, sides=4, base_ds=0.058, min_ds=0.05,
-        end_ds=0.045, bend_k=0.4, root_cap=False, lift=0.3,
+        kind="hang", spacing=0.175, fill=16, margin=0.03, seed=303, R=0.044, rvar=0.14, M=24, step=0.025,
+        root_k=0.8, edge_root_k=0.85,
+        repel=0.72, fins=1, L_max=1.35, hang_len=0.4, side_short=0.2, sides=5, base_ds=0.064, min_ds=0.055,
+        end_ds=0.05, bend_k=0.4, root_cap=False, lift=0.3,
         layer=0.02, chains=8, segs=1, stiff=0.4, mass=(1.3,), hang_split=None, prefix="HairTwist", chain="Twist",
-        lobes="twist", halo=dict(k=2.0, root_k=2.8, step=0.16), lump=0.05, blunt_frac=0.0, back_front=1.8,
+        lobes="twist", halo=dict(k=2.0, root_k=2.8, step=0.2), lump=0.05, blunt_frac=0.0, back_front=1.8,
         splay=0.14, wave=(0.008, 0.4), body_off=0.07, short_top=0.1, sideburn_ys=(0.15, 0.08)),
     "short_dreads": dict(
         entry=dict(styles=["Short Dreads"], types=None, cap={"cut": "full", "density": 0.6}, capTile="shortcoil"),
-        kind="short", spacing=0.12, fill=40, v_len=0.8, margin=0.028, seed=202, R=0.039, rvar=0.22, M=12,
+        kind="short", spacing=0.12, fill=40, v_len=1.2, margin=0.028, seed=202, R=0.039, rvar=0.22, M=12,
         sides=5, base_ds=0.11, min_ds=0.045, end_ds=0.055, bend_k=0.36, root_cap=False, clusters=6, stiff=0.75, mass=1.3, lobes=None,
         halo=dict(k=2.2, root_k=3.0, step=0.08), lump=0.08, blunt_frac=0.75, fins=1,
         sideburn_ys=(0.15, 0.08, 0.01)),
@@ -1200,7 +1201,8 @@ def build_guides_hanging(cfg, ref, log):
             hl_ *= 0.5
 
         # the hairline row's roots taper more and over a shorter run (seen end-on from the front)
-        rk, rl = (0.45, 0.035) if r.get("edge") else (ROOT_K, root_len)
+        rk, rl = ((cfg.get("edge_root_k", 0.45), 0.035) if r.get("edge")
+                  else (cfg.get("root_k", ROOT_K), root_len))
 
         def offs0(s, R=R, rk=rk, rl=rl):
             return CLEAR_MIN + 0.006 + R * (rk + (1 - rk) * float(smooth(0, rl, s)) ** 0.8)
@@ -1242,7 +1244,9 @@ def build_guides_hanging(cfg, ref, log):
         rad[i] = lc["R"] * (rk + (1 - rk) * smooth(0, rl, s) ** 0.8)
         off[i] = CLEAR_MIN + 0.006 + rad[i] + lc["layer"] * smooth(0.03, 0.2, s)
         # the styled part keeps its shape (combed back off the face), the hanging part follows gravity
-        wsh[i] = 0.08 * (1 - smooth(lc["scalp_len"] - 0.06, lc["scalp_len"] + 0.12, s))
+        # (the hairline row firmly: it is combed back, it must not slide forward over the forehead)
+        k_sh = 0.3 if lc["root"].get("edge") else 0.08
+        wsh[i] = k_sh * (1 - smooth(lc["scalp_len"] - 0.06, lc["scalp_len"] + 0.12, s))
     # bending: a loc turns from its root onto the scalp within a few centimetres, then hangs nearly straight
     bend = np.zeros((N, M))
     for i, lc in enumerate(locs):

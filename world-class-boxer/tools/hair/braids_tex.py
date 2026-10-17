@@ -293,7 +293,7 @@ def tex_pad(w, h, seed=61, patches=4):
         v = (yy + 0.5) / ph * 2 - 1
         q = 8.0  # superellipse: a rounded square
         rr = (np.abs(u) ** q + np.abs(v) ** q) ** (1 / q)
-        mask = 1 - _smooth(0.86, 0.98, rr)
+        mask = 1 - _smooth(0.93, 0.995, rr)
         base = 0.6 + 0.12 * _pnoise(ph, w, 3, 24, seed + 40 + k).clip(-1.5, 1.5)
         lum[k * ph:(k + 1) * ph] = np.where(a > 0.05, 0.5 * l + 0.5 * base, base)
         alp[k * ph:(k + 1) * ph] = np.clip((0.8 + 0.2 * a) * mask, 0, 1)
