@@ -95,6 +95,9 @@ local api = { state = "unknown", reason = nil, textures = true, fails = 0, retry
 local RETRY_STEPS = { 1, 2, 4, 8, 15, 30, 60 }
 local Status -- the AnatomyStatus module (Output line + on-screen notice), loaded by boot
 local Perf -- the Graphics level (BoxerClient.Perf, loaded by boot; absent in a test place: Config.Anatomy stays)
+-- the uploaded hair cards (HairAssets, loaded by boot; absent or failing: the generated hair only)
+local HairAssets
+local assetOff = false -- the asset loader faulted this session (runJob generates every Hair section)
 local followPerf -- (the detail presets section)
 local hullTrims -- (the far hull, after onDescendantAdded)
 local warned = {}
@@ -523,7 +526,11 @@ local function destroyPiece(p)
 	if p.em then
 		pcall(p.em.Destroy, p.em)
 	end
-	if p.img then
+	if p.release then
+		-- an asset hair piece: its texture is refcounted (shared between characters, or between its pieces)
+		pcall(p.release)
+		p.release = nil
+	elseif p.img then
 		pcall(p.img.Destroy, p.img)
 	end
 	p.part, p.em, p.img = nil, nil, nil
@@ -1005,9 +1012,14 @@ local function landmarksOf(result, section)
 	return out
 end
 
--- estimated Editable bytes alive right now (every built piece on every model)
+-- estimated Editable bytes alive right now (every built piece on every model; the asset hair's shared tinted
+-- images once)
 local function liveCost()
 	local total = 0
+	if HairAssets then
+		local ok, n = pcall(HairAssets.SharedBytes)
+		total += ok and n or 0
+	end
 	for _, rec in pairs(records) do
 		for _, st in pairs(rec.sections) do
 			for _, pr in pairs(st.pieces or {}) do
@@ -1070,37 +1082,11 @@ local function texturesFor(section, rec)
 	return S.textures == true and api.textures and (type(secs) ~= "table" or secs[section] == true or (rec ~= nil and rec.priority <= 1))
 end
 
-local function runJob(job)
-	local rec, section, lod = job.rec, job.section, job.lod
-	local def = registry[section]
-	if not def or def.failed or api.state == "disabled" then
-		return
-	end
-	if not probe() then
-		return
-	end
+-- steps 1-2 of runJob for a generated section: the generation (or the cached one) and its MeshParts, unparented.
+-- Returns made, result; nil when the job ends here (cancelled, failed: handled, the section restored or retried)
+local function generateSection(job, def, look, lod)
+	local rec, section = job.rec, job.section
 	local model = rec.model
-	-- the look this job was queued with: the generation is cached under job.sig, so it must come from
-	-- exactly that look even if a newer one arrived meanwhile (the newer one gets its own job)
-	local look = job.look
-	if not look or not model.Parent then
-		return
-	end
-	local t0 = os.clock()
-	local S = AnatomyClient.Settings
-	local st0 = rec.sections[section]
-	-- the level's textures; all of yours / your opponent's in their texture pass (every build of theirs stays
-	-- quick: a Creator edit on Low shows in a second, its body texture follows)
-	job.tex = texturesFor(section, job.retex and rec or nil)
-	job.first = isFirst(rec, st0)
-	-- High's slice for a first look at you / your opponent / a preview, and for their face's step up from that
-	-- low-detail pass (the face is what the player looks at); else the level's
-	local faceUp = rec.priority <= 1 and section == "Head" and st0 ~= nil and st0.active and LOD_RANK[st0.lod] ~= nil and LOD_RANK[lod] > LOD_RANK[st0.lod]
-	sliceBudget = (job.first or faceUp) and math.max(S.frameBudget, FIRST_BUDGET) or S.frameBudget
-	sliceStart = os.clock()
-	currentJob = job
-	MeshKit.SetTick(tick)
-	-- 1) generate (or reuse)
 	local key = section .. "|" .. tostring(job.sig) .. "|" .. lod
 	local result = cacheGet(key)
 	if not result then
@@ -1132,7 +1118,7 @@ local function runJob(job)
 		end
 		cachePut(key, result)
 	end
-	-- 2) MeshParts (unparented until every piece exists)
+	-- MeshParts (unparented until every piece exists)
 	local made = {}
 	local function abandon()
 		for _, pr in pairs(made) do
@@ -1185,6 +1171,121 @@ local function runJob(job)
 		local nb = resultBytes(result)
 		cacheBytes += nb - ce.bytes
 		ce.bytes = nb
+	end
+	return made, result
+end
+
+-- the Hair section from the uploaded assets (HairAssets.Build): made, result; nil = none for this look or it
+-- failed to load (the caller generates, in the same job); status "stop" = the job ends here (cancelled; the
+-- device's Editable memory is full: onCreateFailed's cap and retry; no Head yet: a retry). An asset failure is
+-- never kind "gen" (that would switch the generated hair off) nor "api" (memory pressure) unless loading an
+-- image hit the memory budget; an image that cannot be made pauses textures, as makePiece's does
+local function assetHair(rec, look, lod, job)
+	local okF, entry = pcall(HairAssets.For, look, lod, job.tex)
+	if not okF or not entry then
+		return nil
+	end
+	local ctx = {
+		priority = rec.priority, sig = job.sig, mpOptions = api.mpOptions,
+		-- after every yield: a fresh time slice, and the job may have been cancelled meanwhile
+		resume = function(obj)
+			sliceStart = os.clock()
+			if currentJob and currentJob.cancelled then
+				if obj then
+					pcall(obj.Destroy, obj)
+				end
+				error(CANCEL, 0)
+			end
+		end,
+	}
+	local ok, made, res, kind = pcall(HairAssets.Build, rec.model, entry, look, lod, ctx)
+	if not ok then
+		if isCancel(made) then
+			return nil, nil, "stop"
+		end
+		-- a fault in the loader itself: asset hair off for the session, the generated hair from now on
+		assetOff = true
+		warnOnce("assetfault", "asset hair failed; generated hair from now on:", made)
+		return nil
+	end
+	if not made then
+		if kind == "api" then
+			if onCreateFailed(res) then
+				job.retry = true
+			end
+			return nil, nil, "stop"
+		elseif kind == "skip" then
+			log("skip", rec.model.Name, "Hair", res)
+			job.retry = true
+			return nil, nil, "stop"
+		elseif kind == "tex" then
+			-- an EditableImage could not be made (as in makePiece: textures pause a while, vertex colours meanwhile)
+			api.textures = false
+			api.texFails += 1
+			api.texRetryAt = os.clock() + 30 * math.min(api.texFails, 8)
+			warnOnce("teximg", "EditableImage textures are paused (vertex colours meanwhile):", res)
+		end
+		log("asset hair failed", rec.model.Name, res)
+		return nil
+	end
+	return made, res
+end
+
+local function runJob(job)
+	local rec, section, lod = job.rec, job.section, job.lod
+	local def = registry[section]
+	if not def or def.failed or api.state == "disabled" then
+		return
+	end
+	if not probe() then
+		return
+	end
+	local model = rec.model
+	-- the look this job was queued with: the generation is cached under job.sig, so it must come from
+	-- exactly that look even if a newer one arrived meanwhile (the newer one gets its own job)
+	local look = job.look
+	if not look or not model.Parent then
+		return
+	end
+	local t0 = os.clock()
+	local S = AnatomyClient.Settings
+	local st0 = rec.sections[section]
+	-- the level's textures; all of yours / your opponent's in their texture pass (every build of theirs stays
+	-- quick: a Creator edit on Low shows in a second, its body texture follows)
+	job.tex = texturesFor(section, job.retex and rec or nil)
+	job.first = isFirst(rec, st0)
+	-- High's slice for a first look at you / your opponent / a preview, and for their face's step up from that
+	-- low-detail pass (the face is what the player looks at); else the level's
+	local faceUp = rec.priority <= 1 and section == "Head" and st0 ~= nil and st0.active and LOD_RANK[st0.lod] ~= nil and LOD_RANK[lod] > LOD_RANK[st0.lod]
+	sliceBudget = (job.first or faceUp) and math.max(S.frameBudget, FIRST_BUDGET) or S.frameBudget
+	sliceStart = os.clock()
+	currentJob = job
+	MeshKit.SetTick(tick)
+	-- 1) asset hair (HairAssets: uploaded hair cards fitted to this boxer) when the look has a complete entry;
+	-- anything of it failing to load marks its id and this same job generates instead (the fallback)
+	local made, result
+	if section == "Hair" and HairAssets and not assetOff then
+		local status
+		made, result, status = assetHair(rec, look, lod, job)
+		if status == "stop" then
+			MeshKit.SetTick(nil)
+			currentJob = nil
+			return
+		end
+	end
+	if not made then
+		-- 2) generate (or reuse) and make the MeshParts
+		made, result = generateSection(job, def, look, lod)
+		if not made then
+			return
+		end
+	end
+	MeshKit.SetTick(nil)
+	currentJob = nil
+	local function abandon()
+		for _, pr in pairs(made) do
+			destroyPiece(pr)
+		end
 	end
 	-- 3) swap in within this frame: the new MeshParts (welded, parented) replace the old ones, which are
 	-- destroyed right after, so the character never shows a gap or a doubled piece. A rigid transform
@@ -1820,6 +1921,16 @@ local function boot()
 		end
 	end
 	findGenerators()
+	-- the uploaded hair cards (optional: without the module, or when it fails to load, Hair is generated)
+	local hm = script.Parent:FindFirstChild("HairAssets")
+	if hm and hm:IsA("ModuleScript") then
+		local okH, mod = pcall(require, hm)
+		if okH and type(mod) == "table" and type(mod.Build) == "function" then
+			HairAssets = mod
+		elseif not okH then
+			warnOnce("reqHairAssets", "HairAssets failed to load (generated hair only):", mod)
+		end
+	end
 	-- the visible status (one Output line, and a small notice for the player while meshes are off)
 	local okS, mod = pcall(function()
 		return require(script.Parent:WaitForChild("AnatomyStatus", 5))
@@ -2035,7 +2146,9 @@ function AnatomyClient.GetPieces(model, section)
 	local out = {}
 	for name, pr in pairs(st.pieces) do
 		-- image: the piece's EditableImage colour texture (nil when it has none): FX modules paint into it
-		out[name] = { part = pr.part, attach = pr.attach, mesh = pr.mesh, groups = pr.mesh.groups, lod = pr.lod, image = pr.img }
+		-- textured: the part shows a texture (an asset hair piece may have one without its image: a shared one)
+		out[name] = { part = pr.part, attach = pr.attach, mesh = pr.mesh, groups = pr.mesh.groups, lod = pr.lod, image = pr.img,
+			textured = pr.img ~= nil or pr.textured == true, asset = pr.asset == true }
 	end
 	return out
 end
@@ -2488,6 +2601,14 @@ function AnatomyClient.Diagnose()
 	local st = AnatomyClient.Status()
 	add(string.format("models %d | built full %d medium %d low %d | queued %d | hidden %d | skipped %d | cache %d (%.1f MB)", st.models, st.built.full, st.built.medium, st.built.low, st.queued, st.hidden, st.skipped, st.cache, st.cacheMB))
 	add(string.format("memory pressure: fails %d cap %s live %d bytes", pressure.fails, pressure.cap < math.huge and tostring(math.floor(pressure.cap)) or "none", st.pressure.live))
+	local ah = st.assetHair
+	if ah then
+		add(string.format("asset hair: %s | entries %d usable %d | built %d failed builds %d | tinted images shared %d (%.1f MB) private %d | failed ids %s",
+			ah.off and "OFF (loader fault)" or (ah.enabled and "on" or "off (Config.HairAssets.enabled)"), ah.entries, ah.usable, ah.built,
+			ah.failedBuilds, ah.sharedTints, ah.sharedBytes / 1048576, ah.privateTints, #ah.failedIds > 0 and table.concat(ah.failedIds, ",") or "none"))
+	else
+		add("asset hair: module not loaded (generated hair only)")
+	end
 	local stage = AnatomyClient.LocalStage()
 	add("local character:", stage)
 	local lp = Players.LocalPlayer
@@ -2524,6 +2645,13 @@ function AnatomyClient.Status()
 		skipped = 0, cacheMB = math.floor(cacheBytes / 104857.6) / 10, apiFails = api.fails,
 		retryIn = api.state == "disabled" and math.max(0, math.floor((api.retryAt - os.clock()) * 10) / 10) or nil,
 		npcsWaiting = not npcsIn, preset = activePreset }
+	if HairAssets then
+		local okA, ah = pcall(HairAssets.Stats)
+		if okA and type(ah) == "table" then
+			ah.off = assetOff
+			s.assetHair = ah
+		end
+	end
 	for name, def in pairs(registry) do
 		s.sections[name] = def.failed and "failed" or "ok"
 	end

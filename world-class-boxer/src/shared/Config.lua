@@ -1212,6 +1212,32 @@ Config.Anatomy = {
 	},
 }
 
+-- Asset hair: hair-card meshes modelled in Blender (tools/hair) and uploaded as Mesh + Image assets, loaded
+-- on each client and fitted to every boxer's skull (client HairAssets; tools/hair/CONTRACT.md). A look whose
+-- style has no complete entry, or whose assets fail to load, gets the generated hair as before (AnatomyHair
+-- meshes, else the round-1 BuilderHair parts): nothing breaks when an id is missing.
+--
+-- FOR THE OWNER: the ids are not here. They live in src/shared/HairAssetData.lua, which
+-- tools/hair/publish.py writes after uploading the meshes and textures with Open Cloud (every id 0 = that
+-- style keeps the generated hair). The assets belong to the group the key uploads to, and group-owned
+-- assets load ONLY in an experience owned by that same group: publish the place under the group (File >
+-- Publish to Roblox As... > the group), or every boxer quietly keeps the generated hair (the Output warns
+-- once per asset). The place also needs Game Settings > Security > Allow Mesh / Image APIs (the tint is an
+-- EditableImage). To turn asset hair off, set enabled = false; to drop one style, re-publish without it or
+-- set its ids to 0 in HairAssetData.lua.
+Config.HairAssets = {
+	enabled = true,
+	flipV = nil, -- nil = HairAssetData.flipV; true / false overrides it (textures upside down on the cards)
+	-- tinted card textures per level of detail (never larger than the upload), and the per-boxer cap texture
+	textureSize = { full = 1024, medium = 512, low = 256 },
+	capSize = { full = 1024, medium = 512, low = 256 },
+	-- NPCs of one hair colour share their tinted images (you, your opponent and previews keep their own)
+	shareTints = true,
+	-- a card's alpha cut-out shows through only on a part that is itself a little transparent (verify in
+	-- Studio: 0 = opaque cards, the part's colour where the texture is clear)
+	alphaTransparency = 0.02,
+}
+
 -- Expr model attribute values (face rig blend targets on the client)
 Config.Expressions = { "neutral", "confident", "determined", "anger", "fear", "fatigue", "pain", "dazed", "effort", "happy", "ko" }
 

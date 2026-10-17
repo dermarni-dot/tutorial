@@ -1692,5 +1692,47 @@ function Gen.Landmarks(look)
 	return out
 end
 
+-- the style and hair type a look draws (what Generate builds): style (an id with a recipe, or "Bald"), htype
+-- (the type the recipe draws: straight / wavy hair on the curly-only cuts reads "Curly"), route ("longCurly" for
+-- curly Long Hair, "shortCurly" for curly Messy Hair, else nil). The asset hair picks its entry by these, so a
+-- look never gets an asset modelled for another recipe
+function Gen.Resolve(look)
+	look = type(look) == "table" and look or {}
+	local style, htype = resolve(look)
+	local route
+	if CURLY[htype] and style == "Long Hair" then
+		route = "longCurly"
+	elseif CURLY[htype] and style == "Messy Hair" then
+		route = "shortCurly"
+	elseif (style == "Short Curly" or style == "Curly Top" or style == "Long Curly") and not CURLY[htype] then
+		htype = "Curly"
+	end
+	return style, htype, route
+end
+
+-- the cut the style's scalp shell is made with (Kit.Cut: cov(x, y, z) -> coverage 0..1 at a nominal scalp point,
+-- dist, height, ...) and the scalp S, without building anything: the recipe runs up to its Parts.Cap call (only
+-- cheap set-up comes before it) and stops there. nil for Bald or a recipe without a shell. The asset hair's cap
+-- texture is painted from it, so every fade height, hairline type, line-up and growth stage is the game's own
+function Gen.CapCut(look, lod)
+	look = type(look) == "table" and look or {}
+	if lod ~= "full" and lod ~= "medium" and lod ~= "low" then
+		lod = "full"
+	end
+	local style, htype = resolve(look)
+	if style == "Bald" then
+		return nil
+	end
+	local H = Parts.Context(look, lod, nil, style, htype)
+	H.capOnly = true
+	local ok, err = pcall(recipeFor(style, htype), H)
+	if ok then
+		return nil -- (the recipe has no shell)
+	elseif err ~= Parts.CAP_ONLY then
+		error(err, 0) -- a cancellation from the builder's tick (or a real fault): the caller's
+	end
+	return H.cut, H.S
+end
+
 Gen._R = R
 return Gen

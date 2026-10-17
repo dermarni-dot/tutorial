@@ -1290,7 +1290,9 @@ local function onBuilt(model, section, pieces)
 		local entry = {
 			name = name, part = part, baseRefl = part and part.Reflectance or 0, fx = fx,
 			-- a textured piece (the image AnatomyClient made for it): wetness darkens the texture itself
-			image = pr.image, textured = pr.image ~= nil,
+			-- (an asset hair piece sharing its image with other characters has none to rewrite, but its part shows a
+			-- texture: Color would do nothing there)
+			image = pr.image, textured = pr.image ~= nil or pr.textured == true,
 			-- spring state: swing angles (x about the head's X, z about its Z) / bounce height y
 			x = 0, z = 0, y = 0, vx = 0, vz = 0, vy = 0, prevPos = nil, prevVel = Vector3.zero, written = false,
 			cf = I,

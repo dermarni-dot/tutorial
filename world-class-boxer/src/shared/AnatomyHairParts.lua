@@ -41,6 +41,8 @@ Parts.LOD = {
 	low = { cols = 18, rows = 8, tex = nil, sides = 3, k = 0.12, rings = 0.4, groups = 0, segs = 0, strands = false, tubeSides = 4 },
 }
 Parts.MAXPIECES = { full = 16, medium = 6, low = 2 }
+-- raised by Parts.Cap once the cut exists when H.capOnly is set (AnatomyHair.CapCut stops the recipe there)
+Parts.CAP_ONLY = "[AnatomyHair: cap cut captured]"
 Parts.BUDGET = { full = 10000, medium = 4000, low = 1200 }
 
 ------------------------------------------------------------------------
@@ -454,6 +456,10 @@ function Parts.Cap(H, spec)
 		-- from the crown): the parting's thinning of the coverage is drawn at what the texture holds
 		partTx = H.L.tex and 0.56 * TAU / H.L.tex * 0.75 or nil,
 	})
+	if H.capOnly then
+		-- AnatomyHair.CapCut: only the cut was wanted (the asset hair paints its own cap from it)
+		error(Parts.CAP_ONLY, 0)
+	end
 	local L = H.L
 	local name = spec.name or "HairCap"
 	local piece = Parts.Piece(H, name, {
