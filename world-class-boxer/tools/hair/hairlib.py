@@ -305,9 +305,39 @@ class Piece:
 
 
 # ----------------------------------------------------------------------------------- .mesh writer
+def front_faces(piece):
+    """Triangles wound so the front face (counter-clockwise, the side Roblox draws) agrees with the
+    outward shading normals. A triangle that appears twice (a two-sided card's reversed copy) is
+    kept as it is; every other one is flipped when its geometric normal points against the mean of
+    its vertices' normals. card() / tube() used to wind inward, and builders work around that in
+    different ways, so the writer settles it for every family."""
+    P = np.asarray(piece.P, dtype=np.float64)
+    N = np.asarray(piece.N, dtype=np.float64)
+    T = np.asarray(piece.T, dtype=np.int64)
+    if len(T) == 0:
+        return []
+    # pair copies by position, not index: a builder may duplicate the vertices of the back side
+    Q = np.round(P / 1e-5).astype(np.int64)
+    tkey = [tuple(sorted(tuple(Q[v]) for v in t)) for t in T]
+    keys = {}
+    for i, k in enumerate(tkey):
+        keys.setdefault(k, []).append(i)
+    g = np.cross(P[T[:, 1]] - P[T[:, 0]], P[T[:, 2]] - P[T[:, 0]])
+    s = N[T[:, 0]] + N[T[:, 1]] + N[T[:, 2]]
+    out = []
+    for i, t in enumerate(T):
+        a, b, c = (int(x) for x in t)
+        if len(keys[tkey[i]]) == 1 and float(np.dot(g[i], s[i])) < 0:
+            out.append((a, c, b))
+        else:
+            out.append((a, b, c))
+    return out
+
+
 def write_mesh_v2(path, piece):
     """Roblox mesh format 2.00: header, then per vertex position, normal, uv, tangent (int8 x4),
     colour (uint8 RGBA), then faces (uint32 x3). UVs as the game uses them (0,0 top-left)."""
+    piece.T = front_faces(piece)
     nv, nt = piece.nv, piece.nt
     assert nv > 0 and nt > 0, piece.name
     out = bytearray(b"version 2.00\n")
