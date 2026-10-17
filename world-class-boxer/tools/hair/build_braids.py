@@ -19,18 +19,21 @@ How it is built (game nominal head space, numerically; CONTRACT.md):
 * Guides. Every braid's guide is traced over the scalp along a combing field (straight back over the top,
   back over the ears and down behind them), rising as it travels (braids from the front lie over the ones
   rooted behind them), until the skull turns under (the occiput, behind the ears); from there it hangs.
-* Hang. All the braids are relaxed together by a position-based simulation in Blender's mathutils: gravity,
-  stiff segments with bending resistance, the scalp part glued to its traced path, collisions against the game
-  head mesh (ears included) and the male torso and the female torso (through the inverse of the female skull
-  fit) via BVH trees, the Kit.Scalp body proxy (neck capsule, trapezius, torso box), and braid-braid contact
-  through a KD tree. So braids rest on the shoulders and the upper back, side by side, without passing through
-  the body or each other.
-* Geometry. The relaxed guides become Blender curve objects (kept in the .blend), resampled by curvature and
-  swept with bmesh into slightly flattened tubes (6 sides for the thick braids, 4 for box braids): the flat face
-  against the scalp, a flared knot at the root, a tapered sealed tip, the plait texture wrapped twice round
-  (u, the strip covers half the circumference) and tiled by arc length (v, square texels). A Shrinkwrap
-  modifier (outside-surface mode) against the game head mesh then guarantees the clearance, and ambient
-  occlusion is baked into the vertex colours by BVH ray casts against all the hair, the head and the torso.
+* Drape (Blender mathutils: BVH trees of the game head mesh and both torsos, a KD tree of the braids). On the
+  scalp, where two braids cross the one that has come further from its root rides over the other, braids side
+  by side are pushed apart over the scalp, all kept 0.02+ above the head mesh and the skull table and clear of
+  the ears (a braid that would cross an ear is left out). Where a braid leaves the head it bends to vertical
+  and falls, sliding out / back past the neck, the shoulders and the back (the male torso, the female torso
+  through the inverse of the female skull fit, and the Kit.Scalp body proxy: neck capsule, trapezius, torso
+  box) without returning inward under a bulge it passed, as a stiff braid would not; hanging braids are then
+  pushed apart sideways / back (the one nearer the body stays) and the guides smoothed.
+* Geometry. The guides are kept as Blender curve objects in the .blend; they are resampled by curvature and
+  swept into slightly flattened tubes (6 sides for the thick braids, 4 for box braids): the flat face against
+  the scalp, a flat flared knot at the root, a tapered sealed tip, the plait texture wrapped twice round (u, the
+  strip covers half the circumference) and tiled by arc length (v, square texels). A Shrinkwrap modifier
+  ("outside" mode, limited by a vertex group to the vertices that need it, away from the ears) against the
+  game head mesh guarantees the clearance, and ambient occlusion is baked into the vertex colours by BVH ray
+  casts against all the hair, the head and the torso.
 * Cornrows: rows lie in planes through an axis deep under the head (parallel front to back, the outer ones
   over the ears and behind them), clipped to the hairline; each row is a ribbon with an arched cross-section
   (the plait's crown), narrow where it starts at the hairline, full in the middle, narrowing into the nape where
@@ -395,9 +398,9 @@ class BraidSpec:
 BRAIDS = BraidSpec("braids", box=0.235, r=0.05, length_y=(-1.12, -1.3), count_hint=24, sides=6, flatten=0.82,
                    seed=11, lift=0.025, groups=6, stiff=0.45, mass=1.3, root_flare=1.3, end_jitter=0.06,
                    hang_ds=0.035)
-BOX = BraidSpec("box_braids", box=0.12, r=0.022, length_y=(-1.62, -1.74), count_hint=90, sides=4, flatten=0.85,
+BOX = BraidSpec("box_braids", box=0.13, r=0.022, length_y=(-1.62, -1.74), count_hint=90, sides=4, flatten=0.85,
                 seed=23, lift=0.012, groups=7, stiff=0.4, mass=1.2, root_flare=1.35, end_jitter=0.05,
-                hang_ds=0.04, ds_top=(0.035, 0.1), ds_hang=0.26)
+                hang_ds=0.04, ds_top=(0.04, 0.12), ds_hang=0.3)
 
 
 def root_shape(spec, s, r=None):
@@ -489,7 +492,7 @@ def point_clear(p, r, colliders, th=None, level=False):
     y0 = p[1]
     for _ in range(6):
         moved = False
-        q, hit = head.push(p, (th if th is not None else r) + CLEAR + 0.002)
+        q, hit = head.push(p, (th if th is not None else r) + CLEAR + 0.005)
         if hit:
             p, moved = q, True
         for tc in colliders["torsos"]:
@@ -511,7 +514,7 @@ def point_clear(p, r, colliders, th=None, level=False):
         th_, az_ = SK.angles(p - C)
         if th_ < SK.th[-1] - 0.02:
             hh = SK.height(p)
-            need = (th if th is not None else r) + 0.021
+            need = (th if th is not None else r) + 0.026
             if hh < need:
                 p, moved = p + unit(p - C) * (need - hh), True
         if level and moved:
@@ -607,8 +610,8 @@ def drape(strands, colliders, spec, label=""):
         while p[1] > s.y_end:
             t = (y_top - p[1])
             q = p + np.array([0, -ds, 0])
-            q[0] += amp * ds * 1.5 * math.cos(ph + t * fr) * min(1.0, t * 2)
-            q[2] += amp * ds * 0.8 * math.cos(ph2 + t * fr * 0.7) * min(1.0, t * 2)
+            q[0] += amp * ds * 1.0 * math.cos(ph + t * fr) * min(1.0, t * 2)
+            q[2] += amp * ds * 0.5 * math.cos(ph2 + t * fr * 0.7) * min(1.0, t * 2)
             p = point_clear(q, s.r, colliders, level=True)
             hang.append(p.copy())
         s.hang = np.array(hang)
@@ -655,7 +658,7 @@ def drape(strands, colliders, spec, label=""):
             k += n
     for s in strands:
         h = s.hang
-        for _ in range(8):
+        for _ in range(14):
             h[1:-1] = h[1:-1] * 0.5 + (h[:-2] + h[2:]) * 0.25
         for i in range(1, len(h)):
             h[i] = point_clear(h[i], s.r, colliders)
@@ -1363,9 +1366,9 @@ def build_cornrows(spec, colliders, coll):
         end = Pc[-1]
         d = unit(Pc[-1] - Pc[-3])
         Lt = rng.uniform(*spec["tail"])
-        tail = [end.copy()]
-        p = end.copy()
         r = spec["tail_r"] * (spec["width"] * min(1.0, (end[1] + A) / (0.32 + A)) ** 1.5) / spec["width"] * 1.2
+        p = point_clear(end.copy(), r, colliders)
+        tail = [p.copy()]
         while float(np.sum(np.linalg.norm(np.diff(np.array(tail), axis=0), axis=1))) < Lt if len(tail) > 1 else True:
             d = unit(d + np.array([-0.3 * math.copysign(1, p[0]), -1.0, 0.1]) * 0.45)
             p = point_clear(p + d * 0.02, r, colliders)
@@ -1512,11 +1515,11 @@ def main():
         if args.render:
             looks_all = {
                 "f": [("f", "darkbrown", "deep", ["34", "side", "back", "close", "top34"]),
-                      ("f", "blonde", "light", ["34", "side", "back", "close", "top34"]),
+                      ("f", "blonde", "light", ["34", "close"] if args.looks < 3 else ["34", "side", "back", "close", "top34"]),
                       ("f", "black", "mid", ["34", "side", "back", "close", "top34"])],
                 "m": [("m", "black", "deep", ["34", "side", "back", "close", "top34"]),
-                      ("m", "darkbrown", "mid", ["34", "side", "back", "close", "top34"]),
-                      ("m", "blonde", "light", ["34", "side", "back", "close", "top34"])],
+                      ("m", "blonde", "light", ["34", "close"] if args.looks < 3 else ["34", "side", "back", "close", "top34"]),
+                      ("m", "darkbrown", "mid", ["34", "side", "back", "close", "top34"])],
             }[st["head"]][: max(1, args.looks)]
             cap = (st["entry"]["cap"]["density"], "Natural")
             sheet = render_style(key, pieces, cap, os.path.join(args.render, "renders"), args.samples, looks_all,

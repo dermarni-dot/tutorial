@@ -977,9 +977,9 @@ def guard_short(p, rad):
     """short locs: nothing over the forehead below the hairline, nothing down over the temples in front of the
     ears"""
     hy = float(hairline_y(p)[0])
-    if p[2] < -0.12 and p[1] < hy + 0.015 + rad * 0.5:
+    if p[2] < -0.12 and p[1] < hy + 0.012 + rad * 1.2:
         p = p.copy()
-        p[1] = hy + 0.015 + rad * 0.5
+        p[1] = hy + 0.012 + rad * 1.2
     if p[2] < 0.06 and abs(p[0]) > 0.2 and p[1] < 0.2:
         p = p.copy()
         p[1] = 0.2
@@ -991,8 +991,8 @@ STYLES = {
         entry=dict(styles=["Dreadlocks"], types=None, cap={"cut": "full", "density": 0.35}),
         kind="hang", spacing=0.16, margin=0.03, seed=101, R=0.038, rvar=0.16, M=30, step=0.03,
         tip_y=(-0.95, -1.42), side_short=0.15, L_max=2.3, sides=6, base_ds=0.14, min_ds=0.035, lift=0.2,
-        layer=0.02, repel=0.72, fins=1, chains=7, segs=2, stiff=0.35, mass=(1.5, 1.15), hang_split=0.5, prefix="HairLoc",
-        chain="Loc", lobes=None, halo=dict(k=2.2, root_k=3.0, step=0.12), lump=0.12, blunt_frac=0.65,
+        layer=0.02, repel=0.72, fins=1, chains=7, segs=2, stiff=0.35, mass=(1.5, 1.15), hang_split=0.5,
+        prefix="HairLoc", chain="Loc", lobes=None, halo=dict(k=2.2, root_k=3.0, step=0.12), lump=0.12, blunt_frac=0.65,
         back_front=1.8),
     "twists": dict(
         entry=dict(styles=["Twists"], types=None, cap={"cut": "full", "density": 0.35}),
@@ -1091,7 +1091,9 @@ def build_guides_short(cfg, ref, log):
         n = r["n"]
         R = cfg["R"] * float(np.clip(1 + cfg["rvar"] * rng.normal(), 0.75, 1.3))
         top = float(smooth(0.25, 0.55, sp[1]))
-        front = float(smooth(-0.15, -0.4, sp[2]))
+        # the hairline row stands up; the rows behind it fall forward over the front of the scalp (stopped above
+        # the hairline by the guard)
+        front = float(smooth(-0.15, -0.4, sp[2])) * (1.0 if r.get("edge") else 0.0)
         # longer on top and at the crown, shorter at the front edge, the sides and the nape; uneven
         L = (0.17 + 0.17 * top) * (0.75 + 0.5 * r["rnd"]) * (1 - 0.3 * front)
         L *= 1 - 0.25 * float(smooth(0.3, 0.05, sp[1]))  # sides / nape
@@ -1256,6 +1258,12 @@ def enforce_clearance(P, N, ref, minh):
         if r is not None and r[2] < minh:
             q = r[0] + r[1] * (minh + 0.0005)
         q = skull_push(q, minh + 0.0005)
+        q = ear_push(q, 0.004)
+        if q[2] < -0.2 and abs(q[0]) < 0.32 and q[1] > -0.4:  # nothing on the forehead below the hairline
+            hy = float(hairline_y(q)[0]) - 0.003
+            if q[1] < hy:
+                q = q.copy()
+                q[1] = hy
         if not np.allclose(q, P[i]):
             P[i] = q
             moved += 1
@@ -1721,7 +1729,7 @@ def render_style(key, cfg, pieces, outdir, samples, looks, res=(520, 620), fit_f
         sc.add_piece(cap, texture=cap_tex, tint=tint, offset=off, scale=scl)
         for p in pieces:
             q = single_sided(p)
-            dbg = os.environ.get("LOCS_DEBUG", "")
+            dbg = os.environ.get("LOCS_DEBUG", "")  # debug renders: nocol, nofins, notex
             if "nocol" in dbg:
                 q.C = [(1.0, 1.0, 1.0, 1.0)] * len(q.C)
             if "nofins" in dbg:

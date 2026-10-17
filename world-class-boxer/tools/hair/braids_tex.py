@@ -148,13 +148,13 @@ def tex_plait(w, h, seed=41):
     yy, xx = np.mgrid[0:h, 0:w].astype(np.float64)
     u = (xx + 0.5) / w
     fine = _pnoise(h, w, 1.6, 9, seed + 5)  # hair-level grain along v
-    crown = hgt ** 0.8
+    crown = hgt ** 0.9
     lum = (0.30 + 0.70 * crown) * (0.5 + 0.5 * fib) * tone * (1 + 0.04 * fine)
-    lum *= 0.45 + 0.55 * _pblur(crease, 1.5, 1.5)
+    lum *= 0.62 + 0.38 * _pblur(crease, 2.0, 2.0)
     # where the lobes come round the tube's sides (the strip's u edges) they sit in the shadow of the
     # stacked side lobes: a soft darkening, not a hard seam
     side = np.minimum(u, 1 - u)
-    lum *= 0.80 + 0.20 * _smooth(0.0, 0.16, side)
+    lum *= 0.88 + 0.12 * _smooth(0.0, 0.16, side)
     # deep creases where a lobe tucks under: ambient occlusion from the neighbour's height
     occl = _pblur(hgt, 3, 3)
     lum *= 0.82 + 0.18 * np.clip(occl / 0.6, 0, 1)
