@@ -1092,12 +1092,12 @@ STYLES = {
         sideburn_ys=(0.15, 0.08)),
     "twists": dict(
         entry=dict(styles=["Twists"], types=None, cap={"cut": "full", "density": 0.45}, capTile="shortcoil"),
-        kind="hang", spacing=0.175, fill=16, margin=0.03, seed=303, R=0.044, rvar=0.14, M=24, step=0.025,
-        root_k=0.8, edge_root_k=0.85,
+        kind="hang", spacing=0.175, fill=13, margin=0.03, seed=303, R=0.044, rvar=0.14, M=24, step=0.025,
+        root_k=0.8, edge_root_k=0.68, edge_cap=False,
         repel=0.72, fins=1, L_max=1.35, hang_len=0.4, side_short=0.2, sides=5, base_ds=0.064, min_ds=0.055,
         end_ds=0.05, bend_k=0.4, root_cap=False, lift=0.3,
         layer=0.02, chains=8, segs=1, stiff=0.4, mass=(1.3,), hang_split=None, prefix="HairTwist", chain="Twist",
-        lobes="twist", halo=dict(k=2.0, root_k=2.8, step=0.2), lump=0.05, blunt_frac=0.0, back_front=1.8,
+        lobes="twist", halo=dict(k=2.0, root_k=2.8, step=0.24), lump=0.05, blunt_frac=0.0, back_front=1.8,
         splay=0.14, wave=(0.008, 0.4), body_off=0.07, short_top=0.1, sideburn_ys=(0.15, 0.08)),
     "short_dreads": dict(
         entry=dict(styles=["Short Dreads"], types=None, cap={"cut": "full", "density": 0.6}, capTile="shortcoil"),
@@ -1672,7 +1672,7 @@ def build_style(key, cfg, ref, coll, log):
         vps = max(L, Lref) / (1 - v0 - 0.012)
         build_tube(tubes, li, D, S, s_r, radius, cfg["sides"], strip, vps, v0, inward, lobes=cfg["lobes"],
                    seg_of=seg_of, tip_k=0.55 if blunt else 1.6,
-                   root_cap=cfg.get("root_cap", True) or bool(lc["root"].get("edge")))
+                   root_cap=cfg.get("root_cap", True) or (bool(lc["root"].get("edge")) and cfg.get("edge_cap", True)))
         hc = cfg["halo"]
         build_halo(halos, li, D, S, radius, L, vps, inward, seg_of=seg_of, root_k=hc["root_k"], k=hc["k"],
                    step=hc["step"], rnd=rng.random(), fins=cfg.get("fins", 2))
@@ -1800,10 +1800,11 @@ def make_pieces(key, cfg, locs, ref, tubes, Pt, Nt, col_t, halos, Ph, Nh, col_h)
             if not mem:
                 continue
             pA = np.mean([at_s(lc["D"], lc["S"], np.array([lc["sA"]]))[0] for lc in mem], axis=0)
-            # the chain's tip: where its locs end (the mean of the lower half of the end points, so HairFX's
-            # length and body tests reach the real ends, not a point above them)
+            # the chain's tip: where its locs end, as low as the lowest end (x, z: the mean of the lower half of
+            # the end points), so HairFX's length and body tests reach the real ends, not a point above them
             ends = sorted((lc["D"][-1] for lc in mem), key=lambda q: q[1])
             pE = np.mean(ends[:max(1, (len(ends) + 1) // 2)], axis=0)
+            pE[1] = float(ends[0][1])
             n1 = f"{cfg['prefix']}{g + 1:02d}"
             n2 = n1 + "b"
             if cfg["segs"] > 1:

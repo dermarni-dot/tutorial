@@ -1697,10 +1697,11 @@ def render_style(key, pieces, outdir, samples, looks, views, res=(520, 620), tex
             if "nocol" in dbg:
                 q.C = [(1.0, 1.0, 1.0, 1.0)] * len(q.C)
             ob = sc.add_piece(q, texture=None if "notex" in dbg else tex, tint=tint, offset=off, scale=scl)
-            # ray-traced card-on-card shadows ON by default (the stricter test: every card edge that is too hard
-            # would draw a shadow line on the layer under it); LONG_DEBUG=noshadow turns them off (the pieces
-            # ship with castShadow = false, so in game the baked vertex occlusion is all the self-shadowing)
-            if "noshadow" in dbg:
+            # the pieces ship with castShadow = false (in the game's shadow map a card is its whole opaque quad), so
+            # the game-faithful preview has no hair-on-hair ray-traced shadows: the baked vertex occlusion is all
+            # the self-shadowing, as in game. LONG_DEBUG=shadow turns them on (the stress test: what castShadow =
+            # true would do)
+            if "shadow" not in dbg:
                 ob.visible_shadow = False
             bs = ob.data.materials[0].node_tree.nodes["Principled BSDF"]
             for k, v in MATTE.items():

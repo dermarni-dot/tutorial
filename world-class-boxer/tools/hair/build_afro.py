@@ -357,7 +357,7 @@ STYLES = {
         cover="high", line="hightop", shape="hightop", prefix="HairTop",
         layers=[(0.0, 0.2, 0, "TILE_D", 0.5), (0.38, 0.2, 0, "TILE_D", 0.6), (0.65, 0.2, 0, "TILE_D", 0.7),
                 (0.82, 0.2, 0, "TILE_S", 0.82), (0.92, 0.2, 0, "TILE_S", 0.9), (1.0, 0.2, 0, "TILE_S", 0.97)],
-        band=[(0, (0.0, 0.1, 1.6, "CLOUD_A", 0.55)), (1, (0.38, 0.1, 1.3, "CLOUD_A", 0.65))],
+        band=[(0, (0.0, 0.09, 1.5, "CLOUD_A", 0.62))],
         fins=dict(n=340, cell=FIN_T, length=(0.05, 0.075), width=(0.04, 0.05), sink=0.022),
         lumps=(0.03, 0.025), span=(0.06, 0.1, 0.1, 0.1), notes="high top column over a high fade"),
 }

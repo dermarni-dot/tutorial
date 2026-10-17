@@ -531,7 +531,8 @@ def profile(cb, spec):
     wall = spec.get("side", 0.032)
     if shape == "burst":
         # the back keeps its length: the burst's half-circle round each ear is the only fade
-        wall = wall + (spec.get("back", wall) - wall) * sstep(0.05, 0.3, z)
+        # (not down the lower nape behind the ears, where the skull table stands ~0.025 off the head mesh)
+        wall = wall + (spec.get("back", wall) - wall) * sstep(0.05, 0.3, z) * sstep(-0.16, 0.04, y)
     if shape == "crew":
         top = T * (1 - sstep(-0.38, 0.25, z)) + spec["crown"] * sstep(-0.38, 0.25, z)
         H = top * sstep(0.3, 0.8, ny)  # the parietal ridge: sides and back cap-only (clippered short)
@@ -913,7 +914,7 @@ FAMILY = [
     ("fade_mid", ["Fade", "Mid Fade"], "mid", dict(shape="fade", top=0.088, side=0.03)),
     ("fade_high", ["High Fade"], "high", dict(shape="fade", top=0.094, side=0.024)),
     ("fade_taper", ["Taper Fade"], "taper", dict(shape="taper", side=0.04, top=0.084)),
-    ("fade_burst", ["Burst Fade"], "burst", dict(shape="burst", side=0.03, back=0.052, top=0.088)),
+    ("fade_burst", ["Burst Fade"], "burst", dict(shape="burst", side=0.03, back=0.046, top=0.088)),
     # the crew: brushed up at the front, flat toward the crown, sides and back cap-only below the parietal ridge,
     # the sides and back tapered (capFade "fade": the runtime paints its cap with Kit.FADES.fade's coverage, a
     # gradient from the ear top / nape up to y 0.21 / 0.08 that leaves 12 % at the hairline: clippered, not skin)
