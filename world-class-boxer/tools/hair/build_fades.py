@@ -33,8 +33,12 @@ paint_cap here.
 
 The cap follows the inner of two surfaces: CAP_OFF above the skull table, except where the table stands off the
 game's head mesh (behind the ears / the nape corners, up to ~0.025): there CAP_OFF above the head mesh (and the
-fitted female head mesh), blended (CapBase.allow). Round the ears it ends on a smooth rounded-box contour (border
-vertices snapped onto it), and the shell stack closes up onto the cap toward its own footprint's border.
+fitted female head mesh), blended (CapBase.allow). Round the ears it ends on a smooth contour (the ear AABB + EAR_PAD,
+corners rounded by EAR_RAD; border vertices snapped onto it), inside the barber's ear line (EAR_LINE: the proposed
+runtime coverage rule, cap style.json "earLine", entries "capEarLine"), so the cap and every shell end where the
+painted coverage is already 0. Each shell keeps only the triangles where its own painted variant has alpha (plus a
+ring), its height a smooth distance field to the fade's 0.45 coverage line. The buzz / waves fur sits FUR_OFF over
+the cap's own grid. Every piece carries hideUnder (HIDE_UNDER).
 """
 import argparse
 import json
@@ -450,14 +454,27 @@ class CapBase:
         D = np.array([Skull.direction(th[i], az[i]) for i in range(n)])  # radial unit
         R = np.array([sk.radius(th[i], az[i]) for i in range(n)])
         # hair region: above the lowest hairline of any kind, dilated by 0.03 studs over the surface
-        ins = np.array([ref.inside(S[i], 0.0) for i in range(n)])
-        dist = np.full(n, 9.0)
-        Si = S[ins]
-        for k in range(0, n, 512):
-            blk = S[k:k + 512]
-            dd = np.sqrt(((blk[:, None, :] - Si[None, :, :]) ** 2).sum(-1)).min(1)
-            dist[k:k + 512] = dd
-        dist[ins] = 0.0
+        # (the hair region sampled on a fine 1 x 1.5 deg grid, not this grid's own vertices: the margin is measured
+        # from the region's true edge. Inside = above the lowest hairline of any kind, or any coverage at all in the
+        # game's Kit.Cut grids (their bilinear edge reaches a little past the polylines): the painted alpha never
+        # reaches the cap's edge)
+        from mathutils import Vector
+        from mathutils.kdtree import KDTree
+        fth, faz = np.meshgrid(np.radians(np.arange(1.0, 150.0, 1.0)), np.radians(np.arange(0.0, 360.0, 1.5)),
+                               indexing="ij")
+        fth, faz = fth.ravel(), faz.ravel()
+        FP = ref.scalp_points(fth, faz)
+        fda = np.arctan2(np.abs(FP[:, 0]), -(FP[:, 2] - 0.05))
+        fin = FP[:, 1] > np.interp(fda, ref.hl_da, ref.hl_min)
+        cmax = np.max(np.stack([np.clip(ref.grid_at(g, fth, faz), 0, 1) for g in ref.cov.values()]), axis=0)
+        fin |= cmax > 0.002
+        Si = FP[fin]
+        kdi = KDTree(len(Si))
+        for k, p in enumerate(Si):
+            kdi.insert(Vector(tuple(p)), k)
+        kdi.balance()
+        dist = np.array([kdi.find(Vector(tuple(p)))[2] for p in S])
+        dist[np.array([ref.inside(S[i], 0.0) for i in range(n)])] = 0.0
         ok = dist < margin
         # the ears: a rounded box (the ear AABB padded 0.012, rounded by that pad) cut out of the cap. Triangles with
         # at least one vertex outside it are kept and their inside vertices are snapped onto its smooth contour
@@ -659,9 +676,10 @@ def profile(cb, spec):
     * the cut's shape H: the top's length on the crown and the top (by the scalp normal's up component: so the
       side walls carry only the shorter wall length, no mushroom overhang), the wall length on the sides above the
       fade (the burst keeps a longer back, the crew none: sides cap-only), a slight dome;
-    * the fade g: a smoothstep of the cut's own coverage (Kit.Cut grid for its kind, lightly blurred), so the
-      volume grows over the whole fade band, from the skin up to the fade top, with the painted cap;
-    * the hairline taper e: down to the cap over HL_TAPER inside the natural hairline (front, temples, nape)."""
+    * the fade g: a smoothstep of the distance (KD tree, fine grid) to where the painted coverage (Kit.Cut grid x
+      the ear line) drops below 0.45, eased over fade_ramp: a smooth edge independent of the shell grid;
+    * the hairline taper e: down to the cap over HL_TAPER inside the natural hairline (front, temples; wider at the
+      nape, nape_ramp) and over 0.06 outside the ear line (EAR_LINE)."""
     kind = spec["kind"]
     S, N = cb.S, cb.N
     x, y, z = S[:, 0], S[:, 1], S[:, 2]
@@ -729,7 +747,8 @@ def shell_footprint(cb, spec):
         for i in np.unique(cb.keepT.ravel()):
             bad[i] = cb.head.signed(Pc[i]) < CLEAR - 0.0005
         cb._bad = bad
-    T = cb.keepT[~cb._bad[cb.keepT].any(axis=1)]
+    # (the fur lies FUR_OFF over the cap, which is clear by construction: the same footprint as the cap)
+    T = cb.keepT if spec["shape"] == "fur" else cb.keepT[~cb._bad[cb.keepT].any(axis=1)]
     if kind == "none":
         return T
     cs, cbl = cb.cov_sharp[kind], cb.cov[kind]
@@ -764,7 +783,9 @@ def build_shells(cb, spec, name, n, ts, tufts=0.006, lean=0.9, seed=5):
     tsmax = max(1e-6, float(ts.max()))
     # the outermost shell (plus its clumps) must clear the head mesh too: where it would run into an ear, no
     # shell at all (the same footprint for every shell of the stack: no edge between them)
-    dmax = shell_heights(ts, n, n) + tufts
+    # (the clumps' displacement scales with the hair's height: none where the stack has closed up, by the ears)
+    dmax = (shell_heights(ts, n, n) + tufts * np.clip(ts / tsmax, 0, 1) + 0.001 if spec["shape"] != "fur"
+            else np.full(len(Pc), FUR_OFF + 0.001))
     bad = np.zeros(len(Pc), bool)
     for i in np.unique(T0.ravel()):
         q = Pc[i] + cb.Dn[i] * dmax[i]
@@ -772,7 +793,8 @@ def build_shells(cb, spec, name, n, ts, tufts=0.006, lean=0.9, seed=5):
         if not bad[i] and cb.fit is not None and len(cb.fit) > 3 and cb.fit[3] is not None:
             # (and clear of the fitted female head: behind the ear the outer shells run along the ear's back)
             bad[i] = cb.fit[3].signed(q * cb.fit[0] + np.array([0, 0, cb.fit[1]])) < CLEAR + 0.0005
-    T0 = T0[~bad[T0].any(axis=1)]
+    if spec["shape"] != "fur":
+        T0 = T0[~bad[T0].any(axis=1)]
     # the stack closes up onto the cap toward its own footprint's border (round the ears, where the coarse shell
     # grid's footprint is cut): no stepped shelf edge where the painted coverage is still full there
     from collections import Counter
@@ -960,7 +982,7 @@ def build_crop(cb, spec, t_full, t_shell, seed=11, name="HairCrop"):
         lo, hi = spec.get("card_len", (0.04, 0.066))
         L = (lo + (hi - lo) * tfrac ** 1.5) * rng.uniform(0.85, 1.1)
         # lift off the scalp: 20-35 deg (the crew's front brushed up: up to ~50 deg at the hairline)
-        lift = math.radians(rng.uniform(8, 15))  # (lying combed, not standing: no edge-on slivers)
+        lift = math.radians(rng.uniform(6, 12))  # (lying combed, not standing: no edge-on slivers)
         fr = 0.0
         if crew:
             fr = smoothstep(0.08, 0.0, float(cb.dist_hl[i])) * smoothstep(-0.15, -0.32, p[2])
@@ -971,7 +993,7 @@ def build_crop(cb, spec, t_full, t_shell, seed=11, name="HairCrop"):
                 flow /= np.linalg.norm(flow) + 1e-9
         if caesar:
             lift = math.radians(rng.uniform(8, 16))
-        root_h = CAP_OFF + rng.uniform(0.5, 0.85) * ts0  # (the root's alpha fade-in lies under the top shell)
+        root_h = CAP_OFF + rng.uniform(0.3, 0.8) * ts0  # (the root's alpha fade-in lies under the top shell)
         # march over the scalp along the flow
         qs = [p.copy()]
         q = p.copy()
@@ -1042,7 +1064,7 @@ def build_crop(cb, spec, t_full, t_shell, seed=11, name="HairCrop"):
             th, az = Skull.angles(x - sk.c)
             ups.append(sk.normal(max(th, 0.03), az))
         # (fewer, wider clumps that overlap: one combed mass; the fringe's roots wide, tucked under the shells)
-        w0 = rng.uniform(0.018, 0.028) if not guides[g][2] else rng.uniform(0.026, 0.038)
+        w0 = rng.uniform(0.014, 0.022) if not guides[g][2] else rng.uniform(0.026, 0.038)
         taper = 0.08 if guides[g][2] else 0.3  # (the fringe is cut blunt: nearly as wide at its tip)
         npt = len(pts)
         widths = [w0 * (1.0 - taper * (i / (npt - 1)) ** 1.5) for i in range(npt)]
@@ -1054,7 +1076,9 @@ def build_crop(cb, spec, t_full, t_shell, seed=11, name="HairCrop"):
             s = int(rng.integers(1, CROP_STRIPS))  # (tops: pointed tufts only; the blunt strip made light flecks)
         # occlusion: dark at the root (inside the shells), the tips no brighter than the outer shell's own tone
         # (one tone root to tip, the top shell's own value: no darker root half seen from above, no light flecks)
-        base = tipv = rng.uniform(0.76, 0.84)
+        # (the composite tone of the shell stack under them, not the top shell's own vertex value: brighter cards
+        # read as pale flakes on the shells)
+        base = tipv = rng.uniform(0.6, 0.7)
         if guides[g][2]:
             base = rng.uniform(0.45, 0.55)  # (the fringe's roots sink into the shells' shade)
         # (a mix of facings: flat tufts read from above, turned ones from the side, so no view sees only card
@@ -1159,7 +1183,7 @@ def entries():
         if spec["shape"] == "fur":
             out.append(dict(base, key=key, styles=styles, types=None, cards=0, material="Plastic"))
             continue
-        out.append(dict(base, key=key, styles=styles, types=STRAIGHT, cards=850 if spec["shape"] != "caesar" else 650,
+        out.append(dict(base, key=key, styles=styles, types=STRAIGHT, cards=1000 if spec["shape"] != "caesar" else 750,
                         material="SmoothPlastic"))
         out.append(dict(base, key=key + "_c", styles=styles, types=CURLY, cards=0, scale=CURLY_SCALE,
                         material="Plastic"))
@@ -1209,6 +1233,44 @@ class Clearance:
                 r["skull_m_narrow_where_mesh_agrees"] = min(r.get("skull_m_narrow_where_mesh_agrees", 9.0),
                                                             float(hn[agree].min()))
         return {k: round(float(v), 4) for k, v in r.items()}
+
+
+def merge_ids(P, tol=2e-5):
+    """an id per vertex, equal for vertices within tol of each other (the u seam's twins, the pole fan)"""
+    from mathutils import Vector
+    from mathutils.kdtree import KDTree
+    kd = KDTree(len(P))
+    for i, p in enumerate(P):
+        kd.insert(Vector(tuple(p)), i)
+    kd.balance()
+    pid = np.arange(len(P))
+    for i, p in enumerate(P):
+        pid[i] = min(j for _, j, _ in kd.find_range(Vector(tuple(p)), tol))
+    return pid
+
+
+def edge_coverage(ref, piece, kind):
+    """{max, p99}: the painted coverage (Kit.Cut x the ear line, remapped by the piece's capShell cov floor) at the
+    piece's open-border vertices, ignoring the u = 0 / 1 seam's twins and the crown's pole fan (they are no border)"""
+    from collections import Counter
+    P = np.asarray(piece.P)
+    pid = merge_ids(P)
+    ec = Counter()
+    for t in piece.T:
+        for a, b in ((t[0], t[1]), (t[1], t[2]), (t[2], t[0])):
+            if pid[a] != pid[b]:
+                ec[(min(pid[a], pid[b]), max(pid[a], pid[b]))] += 1
+    bp = {i for e_, c_ in ec.items() if c_ == 1 for i in e_}
+    idx = [i for i in range(len(P)) if pid[i] in bp]
+    if not idx:
+        return {"max": 0.0, "p99": 0.0, "n": 0}
+    sk = ref.sk
+    ang = np.array([Skull.angles(P[i] - sk.c) for i in idx])
+    c = ref.cov_at(kind, ang[:, 0], ang[:, 1])
+    sc = float((piece.meta.get("capShell") or {}).get("cov", 0.0))
+    if sc > 0:
+        c = np.clip((c - sc) / (1 - sc), 0, 1)
+    return {"max": round(float(c.max()), 3), "p99": round(float(np.percentile(c, 99)), 3), "n": len(idx)}
 
 
 def bvh_of(piece):
@@ -1402,6 +1464,39 @@ def matte(ob):
         pass
 
 
+def roblox_normals(ob, piece):
+    """Preview-only: shade a double-sided card piece with its own vertex normals on both sides, as Roblox does
+    (each side is its own triangle carrying the piece's outward normal). Cycles flips the shading normal of a
+    face seen from behind, so a card's underside would render dark (dark dashes all over a crop top that the game
+    never shows): the normal is fed to the BSDF from a colour attribute instead, transformed object -> world."""
+    me = ob.data
+    N = np.asarray(piece.N, np.float64)
+    at = me.color_attributes.new(name="Nrm", type="FLOAT_COLOR", domain="CORNER")
+    at = me.color_attributes["Nrm"]
+    for poly in me.polygons:
+        for li, vi in zip(poly.loop_indices, poly.vertices):
+            n = N[vi] * 0.5 + 0.5
+            at.data[li].color = (float(n[0]), float(n[1]), float(n[2]), 1.0)
+    m = ob.data.materials[0]
+    nt = m.node_tree
+    an = nt.nodes.new("ShaderNodeAttribute")
+    an.attribute_name = "Nrm"
+    vm = nt.nodes.new("ShaderNodeVectorMath")
+    vm.operation = "MULTIPLY_ADD"
+    vm.inputs[1].default_value = (2.0, 2.0, 2.0)
+    vm.inputs[2].default_value = (-1.0, -1.0, -1.0)
+    nt.links.new(an.outputs["Vector"], vm.inputs[0])
+    vt = nt.nodes.new("ShaderNodeVectorTransform")
+    vt.vector_type = "NORMAL"
+    vt.convert_from = "OBJECT"
+    vt.convert_to = "WORLD"
+    nt.links.new(vm.outputs[0], vt.inputs[0])
+    nz = nt.nodes.new("ShaderNodeVectorMath")
+    nz.operation = "NORMALIZE"
+    nt.links.new(vt.outputs[0], nz.inputs[0])
+    nt.links.new(nz.outputs[0], nt.nodes["Principled BSDF"].inputs["Normal"])
+
+
 VIEW_TOP = (0, 86, 1.05)  # straight down on the crown
 
 
@@ -1438,6 +1533,8 @@ def render_style(ref, e, pieces, capP, tint_name, views, res=(520, 620), samples
                 tex = os.path.join(TEX, f"hair_{p.tex}.png")
             ob = sc.add_piece(p, texture=tex, tint=tint)
             matte(ob)
+            if p.tex != "cap":
+                roblox_normals(ob, p)
             if not p.meta.get("castShadow", getattr(p, "castShadow", True)):
                 ob.visible_shadow = False  # (the game's castShadow = false: no card shadows on the shells)
         vname = view if isinstance(view, str) else "view"
@@ -1515,6 +1612,10 @@ def build_entry(e, cbs, capP, head, clr, cb=None):
     checks["separation"] = sep  # (everywhere: the stack closes up where the hair is short, by design)
     checks["separation_tall"] = sep_tall  # (where the hair's height gives the shells >= 0.0045 nominal spacing)
     checks["seam"] = {p.name: seam_check(p) for p in pieces if p.tex == "cap"}
+    # every cap-textured piece's open border (the cap's too, for this style's coverage): the largest painted
+    # coverage of its own variant there (0: the edge lies where its image is fully transparent, no cut edge)
+    kindc = e.get("capFade") or e["kind"]
+    checks["edge_cov"] = {p.name: edge_coverage(cbs.ref, p, kindc) for p in [capP] + pieces if p.tex == "cap"}
     entry = {"styles": e["styles"], "types": e["types"], "cap": {"cut": "style", "density": 1},
              "family": "fades", "checks": checks}
     for k in ("capTile", "capTileRepeat", "capFade"):
