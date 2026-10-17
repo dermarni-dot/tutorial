@@ -1460,6 +1460,9 @@ function Fight:TieUp()
 	if math.abs(m - want) < 0.1 then
 		return
 	end
+	-- (Separate leaves the opening out to the slide meanwhile: its clinch floor would jump a deep-chested
+	-- pair apart in one frame, up to 0.57 studs, and the feet would skate)
+	self.tieUntil = self:Now() + 0.5
 	local dir = m > 0.05 and d.Unit or flat(P.root.CFrame.LookVector).Unit
 	if P.isPlayer and O.isPlayer then
 		-- each takes half: P along -dir when opening out (m < want), along +dir when closing in
@@ -2240,9 +2243,17 @@ function Fight:Separate()
 	if not (P.root and O.root) or P.state == "down" or O.state == "down" then
 		return
 	end
-	local minSep = (P.state == "clinch" or O.state == "clinch") and self:ClinchSep() or (self.sp or SPACING).minSep
+	local minSep = (self.sp or SPACING).minSep
 	local d = flat(O.root.Position - P.root.Position)
 	local m = d.Magnitude
+	if P.state == "clinch" or O.state == "clinch" then
+		-- the clinch distance; while the tie-up slides the pair there, no closer than they are (or the minimum)
+		local cs = self:ClinchSep()
+		if self.tieUntil and self:Now() < self.tieUntil then
+			cs = math.min(cs, math.max(m, minSep))
+		end
+		minSep = cs
+	end
 	if m >= minSep then
 		return
 	end
