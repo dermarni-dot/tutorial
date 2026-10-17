@@ -9,34 +9,42 @@ Writes tools/hair/textures/hair_loc.png, tools/hair/out/<key>/ (meshes + style.j
 tools/hair/blend/<key>.blend; with --render, Cycles self-check renders and a sheet per style.
 
 How the hair is built (game nominal head space, numerically; see CONTRACT.md):
-* Roots: box-parted sections over the default skull: a row along the natural hairline, 2-3 finer locs down each
-  sideburn, then brick-laid rings round a pole (the vertex; for Short Dreads the crown whorl, with a tight ring of
-  small locs round it and sections a little smaller on top than down the sides). A coverage pass then adds locs
-  where the scalp would still show from straight above (largest gap first), so the cap (cut "full", low density)
-  shows scalp only in the partings between roots.
-* Guides: hanging locs (Dreadlocks, Twists) are laid along the scalp from their roots (the style's flow: swept
-  back off the face, sideburns up and back over the ears, the sides behind the ears) and relaxed by a
-  position-based simulation: gravity, inextensible segments, bending stiffness, shape memory of the styled part,
-  collisions against the game's head mesh and the torso mesh with a body offset (BVH nearest-point queries,
-  Blender mathutils), the ear boxes, a face guard, and loc-to-loc repulsion (locs that travel further over the
-  scalp lie in higher layers, so the head of locs has volume); then a slight S-wave and a settle. Short Dreads
-  grow from the whorl flow: out from the whorl with a slight swirl, +/-25 degrees of smooth noise plus each loc's
-  own angle, lifted ~0.4-0.7 off the scalp for their first third, then gravity wins (crown locs arc up and over,
-  side / back locs fall against the head), kept within ~1.25 x the head's width and off the face and ears.
+* Roots: box-parted sections over the default skull: a row along the natural hairline (jittered along and
+  across it), sideburn locs, then brick-laid rings round a pole (the vertex; for Short Dreads the crown whorl,
+  with a tight ring of small locs round it, and extra rows of fine short locs at the temples and over the ears).
+  Coverage passes then add locs where the scalp still shows - from the scalp normal and from the top, back,
+  back-34, low-back, side and front view directions - largest gap first, once on the grown guides and once more
+  on the relaxed ones, so the cap (cut "full", low density) shows scalp only in the partings between roots.
+* Guides: hanging locs (Dreadlocks, Twists) are laid along the scalp from their roots (the style's flow: straight
+  back off the face, each section turned +/-15-20 degrees of its own so neighbours cross, a little lift at the
+  crown for volume, sideburns up and back, over the ears back above them) and relaxed by a position-based
+  simulation: gravity, inextensible segments, bending stiffness, shape memory of the styled part, collisions
+  against the game's head mesh and the torso mesh with a body offset (BVH nearest-point queries, Blender
+  mathutils), the ear boxes, a face guard, and loc-to-loc repulsion; then a slight S-wave and a settle.
+  Short Dreads grow from the whorl flow (a spiral round the whorl, radial further out, +/-25 degrees of smooth
+  noise plus each loc's own angle): off the scalp, a soft S of their own (the heading turns about the scalp
+  normal one way then the other), drooping under gravity and lying down onto the head, the hairline row rising
+  and lying back over the next row; kept within ~1.25 x the head's width and off the face and ears.
   The relaxed guides are kept in the .blend as curve objects.
-* Locs: round tubes (5-6 sides; Twists 4 sides whose rhombic section turns with the twist) along the guides: a
-  short root cone growing out of the scalp, lumpy, slightly irregular ring to ring, blunt or tapered at the tip;
-  u wraps once round the loc inside the texture's opaque core, v runs from the root (0) toward the tip at one
-  texel density per style, every tip at v <= 1 (the game tints root to tip). Twists carry two helical grooves in
-  the geometry that line up with the lobes of the twist strip. The tubes are one Blender mesh (seams welded, UVs
-  per corner) with Displace modifiers (Clouds bulges and lumps, weighted off at the roots); the evaluated mesh
-  comes back as the game pieces. A frizz ribbon (two-sided card of the transparent frizz strip, wider at the
-  root) twists round every loc as a second Blender mesh.
+* Locs: closed tubes along the guides (Short Dreads 7 sides, 6 at the back, 5 on the fine side locs; Dreadlocks
+  and Twists 6, 8 on the front hairline row): a root cone growing out of the scalp, closed toward it, lumpy and
+  slightly irregular ring to ring, tapering at the tip into a rounded cap (no open ring anywhere). v runs from
+  0 at the root to ~1 at the tip of every loc (the game's root-to-tip tints and Tips / Ombre dyes); u wraps once
+  round each tube over one or both of the loc core's two identical u-periods (whichever keeps the texture about
+  as dense round the loc as along it), twists over the twist core. Twists carry two strand lobes in the geometry
+  (a ring every quarter turn) lined up with the twist strip's grooves. The tubes are one Blender mesh (seams
+  welded, UVs per corner) with Displace modifiers (Clouds bulges and lumps, weighted off at the roots); the
+  evaluated mesh comes back as the game pieces. A frizz fin (two-sided card of the transparent frizz strip)
+  twists round each loc as a second Blender mesh.
 * Clearance: every vertex is checked against the head mesh (BVH) and kept at least CLEAR_MIN above it (and the
-  skull table, also at the female fit), hanging locs at least 0.045 off the torso; soft occlusion is baked into
-  the vertex colours with BVH ray casts (locs, head and torso), darker near the scalp and between locs.
-* Pieces: static HairTop (roots and the parts lying on the scalp) and swinging chains (hairfx "swing", two
-  segments for Dreadlocks, one for Twists, length "hang"); Short Dreads: HairTop plus bouncing crown clusters.
+  skull table, also through the female fit), hanging locs at least 0.045 off the torso; soft occlusion is baked
+  into the vertex colours with BVH ray casts (locs, head and torso), darker near the scalp and between locs.
+* Pieces: static HairTop and swinging chains (hairfx "swing", two segments for Dreadlocks, one for Twists,
+  length "hang"). A chain's locs are cut exactly on planes normal to the chain's axis: plane A through its lowest
+  leaving point (everything above stays in HairTop, so nothing that lies on the scalp swings) and, for
+  Dreadlocks, plane B half way down; the pivots are the means of the cut points (every break lies on its
+  joint's plane) and the ring interval just below a cut is also emitted into the piece above as a sleeve, so a
+  swinging lower piece does not open a gap. Short Dreads: HairTop plus bouncing crown clusters.
   Triangles of every piece are emitted from the innermost loc outward, tubes before frizz.
 """
 import argparse
@@ -524,6 +532,9 @@ def ear_push(p, grow):
                 cands.append((hi2[0] - p[0], 0, hi2[0]))
             else:
                 cands.append((p[0] - lo2[0], 0, lo2[0]))
+            # near the top of the box: over the ear (up), not out beside it
+            if hi2[1] - p[1] < 0.07:
+                cands[0] = (cands[0][0] * 0.4, cands[0][1], cands[0][2])
             d, ax, val = min(cands)
             p = p.copy()
             p[ax] = val
@@ -1042,7 +1053,10 @@ def build_tube(mb, loc_i, D, S, s_rings, radius, sides, strip, vps, v0, inward, 
     # root: a short cone into the scalp (no open ring anywhere)
     t0 = fr[0][0]
     r0_ = float(radius(s_rings[0]))
-    wc = mb.wv(C_[0] - t0 * r0_ * root_k_apex, loc_i, 0.0)
+    # the apex points into the scalp (between back along the loc and toward the head's centre): the closed
+    # root faces the scalp, it does not end in a point seen end-on
+    into = unit(unit(C - C_[0]) * 0.7 - t0 * 0.3)
+    wc = mb.wv(C_[0] + into * r0_ * root_k_apex, loc_i, 0.0)
     gc = mb.gv(wc, (u0 + u1) / 2, v0)
     for k in range(sides):
         mb.face((gc, rings[0][k + 1], rings[0][k]), (loc_i, segs[0] if segs else 0))
@@ -1102,12 +1116,12 @@ def heading_hanging(back_front=1.7, side=0.1):
             + unit(out) * side * float(smooth(0.15, 0.35, abs(p[0])))
         # off the face: straight back over the top, fanning out a little with |x| (parallel rows that do not
         # converge on one point, which left a wedge of bare scalp behind the crown)
-        back = unit(np.array([0.3 * p[0], 0.25 * float(smooth(0.3, -0.2, z)), 1.0]))
+        back = unit(np.array([0.15 * p[0], 0.25 * float(smooth(0.3, -0.2, z)), 1.0]))
         v = unit(down) * (1 - wf) + back * wf * back_front
         if abs(p[0]) > 0.2 and p[1] < 0.2 and p[2] < 0.06:
             v = np.array([0.0, 0.55, 1.0])  # sideburns and temples: up and back over the ear
         elif in_ear_zone(p, 0.04) or (abs(p[0]) > 0.2 and p[1] < 0.24 and p[2] < 0.26):
-            v = np.array([0.0, -0.15, 1.0])
+            v = np.array([0.0, 0.12, 1.0])  # back above the ear (never across it), dropping behind it
         return tproj(v, n)
     return f
 
@@ -1145,8 +1159,8 @@ def guard_short(p, rad):
 STYLES = {
     "dreadlocks": dict(
         entry=dict(styles=["Dreadlocks"], types=None, cap={"cut": "full", "density": 0.45}, capTile="shortcoil"),
-        kind="hang", spacing=0.165, fill=16, min_gap=0.014, margin=0.03, seed=101, R=0.036, rvar=0.2, M=32,
-        step=0.03, hang_len=1.05, side_short=0.25, L_max=2.25, sides=6, base_ds=0.36, base_scalp=0.25, min_ds=0.09, end_ds=0.06,
+        kind="hang", spacing=0.16, fill=12, fill2=14, min_gap=0.014, margin=0.03, seed=101, R=0.036, rvar=0.2, M=32,
+        step=0.03, hang_len=1.05, side_short=0.25, L_max=2.25, sides=6, base_ds=0.42, base_scalp=0.25, min_ds=0.09, end_ds=0.06,
         bend_k=1.0, root_k=0.5, edge_root_k=0.3, lift=0.2, crown_lift=0.045, rot_deg=20,
         layer=0.024, repel=0.72, fins=1, chains=7, segs=2, stiff=0.35, mass=(1.5, 1.15), hang_split=0.5,
         edge_root=(0.55, 0.05, 0.25),
@@ -1156,7 +1170,7 @@ STYLES = {
         cov_dirs=("top", "back", "back34r", "back34l", "topback", "lowback")),
     "twists": dict(
         entry=dict(styles=["Twists"], types=None, cap={"cut": "full", "density": 0.45}, capTile="shortcoil"),
-        kind="hang", spacing=0.19, fill=12, min_gap=0.014, margin=0.03, seed=303, R=0.044, rvar=0.14, M=24,
+        kind="hang", spacing=0.19, fill=8, fill2=10, min_gap=0.014, margin=0.03, seed=303, R=0.044, rvar=0.14, M=24,
         step=0.025, root_k=0.5, edge_root_k=0.3, crown_lift=0.03, rot_deg=15,
         repel=0.72, fins=1, L_max=1.3, hang_len=0.4, side_short=0.2, sides=6, base_ds=0.064, min_ds=0.055,
         end_ds=0.05, bend_k=0.4, lift=0.3,
@@ -1286,6 +1300,9 @@ def build_guides_hanging(cfg, ref, log):
     root_len = 0.05
 
     def make(r, rot=None, head_fn=None):
+        q = r["p"]
+        if abs(q[0]) > 0.28 and q[1] < 0.13 and q[2] < 0.07 and not r.get("sideburn"):
+            return None  # low on the sideburn, in front of the ear: a hanging loc from here would cross the ear
         R = cfg["R"] * float(np.clip(1 + cfg["rvar"] * rng.normal(), 0.72, 1.35))
         if r.get("edge"):
             R *= float(rng.uniform(0.6, 0.85))  # the hairline row: finer locs, uneven
@@ -1331,9 +1348,13 @@ def build_guides_hanging(cfg, ref, log):
         L = min(cfg["L_max"], sl + hl_)
         D, S = densify(P, 2)
         P = at_s(D, S, np.linspace(0, min(L, S[-1]), max(8, int(L / cfg["step"]) + 1)))
-        return dict(root=r, R=R, P=P, scalp_len=sl, layer=layer, root_len=rl, root_k=rk, bump=bump)
+        # the front hairline row is seen close up: rounder sections
+        sides = cfg["sides"] + 2 if (r.get("edge") and sp[2] < -0.1) else cfg["sides"]
+        return dict(root=r, R=R, P=P, scalp_len=sl, layer=layer, root_len=rl, root_k=rk, bump=bump, sides=sides)
     for r in roots:
-        locs.append(make(r))
+        lc = make(r)
+        if lc is not None:
+            locs.append(lc)
     # two crown locs lying over the centre-back parting, crossing it from either side
     for sgn in (-1, 1):
         th, az = 0.55, (-sgn * 0.22) % TAU
@@ -1352,6 +1373,20 @@ def build_guides_hanging(cfg, ref, log):
         return make(r)
     fill_gaps(locs, grow_at, cfg.get("fill", 0), cfg.get("min_gap", 0.014), log, dirs=cfg.get("cov_dirs", ()))
     log(f"  {len(locs)} locs from box-parted roots ({sum(1 for lc in locs if lc['root'].get('sideburn'))} sideburn)")
+    relax_hanging(cfg, ref, locs, log)
+    # a second coverage pass on the relaxed locs (from the view directions as well): new locs where the scalp
+    # still shows, then all of them relaxed again together
+    if cfg.get("fill2"):
+        n1 = len(locs)
+        fill_gaps(locs, grow_at, cfg["fill2"], cfg.get("min_gap", 0.014), log, dirs=cfg.get("cov_dirs", ()))
+        for lc in locs[n1:]:
+            lc["G"] = lc["P"]
+        log(f"  second pass: +{len(locs) - n1} locs, relaxing all again")
+        relax_hanging(cfg, ref, locs, log)
+    return locs
+
+
+def relax_hanging(cfg, ref, locs, log):
     M = cfg["M"]
     N = len(locs)
     X = np.zeros((N, M, 3))
@@ -1399,7 +1434,6 @@ def build_guides_hanging(cfg, ref, log):
     log(f"  relaxed {N} guides in {time.time() - t:.1f}s")
     for i, lc in enumerate(locs):
         lc["G"] = sim.X[i].copy()
-    return locs
 
 
 WHORL_TH, WHORL_AZ = 0.34, 0.25  # the crown whorl: behind the vertex, a little to the right

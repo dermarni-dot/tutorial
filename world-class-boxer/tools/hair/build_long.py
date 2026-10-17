@@ -235,17 +235,17 @@ def make_texture(path, size=TEX_SIZE, seed=1101, report=False):
     specs = {
         # dense clump: the bulk of every layer; opaque nearly edge to edge, strands breaking out at the edges and tips
         "dense": dict(n_strands=int(sw * 0.75), spread=None, n_clumps=8, width_px=2.6, clump_k=0.55, fill=0.9,
-                      len_min=0.55, clump_lo=0.75, stray=0.03, shade_lo=0.7, edge=0.11, tip_spread=0.3, root_dark=0.14),
+                      len_min=0.8, clump_lo=0.88, stray=0.03, shade_lo=0.7, edge=0.11, tip_spread=0.3, root_dark=0.14),
         # medium: a lighter lock (gaps between clumps; the layer under it shows through)
-        "medium": dict(n_strands=int(sw * 0.42), spread=0.7, n_clumps=6, width_px=2.4, clump_k=0.7, fill=0.45,
-                       len_min=0.45, clump_lo=0.65, root_soft=0.11, stray=0.05, shade_lo=0.6, edge=0.13,
+        "medium": dict(n_strands=int(sw * 0.42), spread=0.7, n_clumps=6, width_px=2.4, clump_k=0.7, fill=0.5,
+                       len_min=0.65, clump_lo=0.8, root_soft=0.11, stray=0.05, shade_lo=0.6, edge=0.13,
                        tip_spread=0.32, root_dark=0.14),
         # wispy flyaways: a few loose strands, staggered lengths
         "wispy": dict(n_strands=int(sw * 0.14), n_clumps=4, width_px=2.0, clump_k=0.35, fill=0.0, len_min=0.3,
                       stray=0.35, shade_lo=0.65, edge=0.12, tip_spread=0.5, root_dark=0.05),
         # wavy: dense clumps on broad S-waves (2.5 waves root to tip), crests lighter
         "wavy": dict(n_strands=int(sw * 0.7), spread=None, n_clumps=7, width_px=2.6, clump_k=0.6, fill=0.85,
-                     len_min=0.55, clump_lo=0.75, wave_amp=0.06, wave_per=2.5, stray=0.04, shade_lo=0.65, edge=0.12,
+                     len_min=0.8, clump_lo=0.88, wave_amp=0.06, wave_per=2.5, stray=0.04, shade_lo=0.65, edge=0.12,
                      tip_spread=0.3, root_dark=0.14),
     }
     lum = np.zeros((H, W), np.float32)
@@ -534,21 +534,22 @@ def theta_at(az, f_ok, lo=0.02, hi=2.55):
 # rel: release heights (behind the ear, back centre) where the strands leave the head.
 LAYERS = [
     # the hairline layer: rooted along the front hairline (centre to the temple), swept back over the top of the ear
-    dict(name="edge", n=10, off=(0.03, 0.032), strips={"dense": 0.55, "medium": 0.45}, margin=0.007, tip=-1.3,
+    dict(name="edge", n=8, off=(0.03, 0.032), strips={"dense": 0.55, "medium": 0.45}, margin=0.007, tip=-1.3,
          tip_var=0.05, wmax=(0.15, 0.17), overlap=1.75, shade=0.97, phase=0.0, rel=(0.03, 0.0), root="hairline",
          fmax=0.3),
     # the dense scalp layer (hides the scalp; the painted cap under it)
-    dict(name="scalp", n=13, off=(0.029, 0.031), strips={"dense": 1.0}, margin=0.016, tip=-1.3, tip_var=0.05,
-         wmax=(0.2, 0.17), overlap=1.9, shade=0.9, phase=0.0, rel=(0.0, -0.13)),
+    dict(name="scalp", n=12, off=(0.029, 0.031), strips={"dense": 1.0}, margin=0.016, tip=-1.3, tip_var=0.05,
+         wmax=(0.2, 0.17), overlap=1.9, shade=0.93, phase=0.0, rel=(0.0, -0.13)),
     # the volume: every layer higher, the sides fuller than the top
     dict(name="inner", n=13, off=(0.056, 0.066), strips={"dense": 0.85, "medium": 0.15}, margin=0.024, tip=-1.4,
-         tip_var=0.06, wmax=(0.2, 0.17), overlap=1.7, shade=0.95, phase=0.37, lift0=0.0, ramp=0.2, rel=(0.05, -0.05)),
-    dict(name="main", n=15, off=(0.082, 0.094), strips={"dense": 0.75, "medium": 0.25}, margin=0.03, tip=-1.48,
+         tip_var=0.06, wmax=(0.2, 0.17), overlap=1.7, shade=0.965, phase=0.37, lift0=0.0, ramp=0.2, rel=(0.05, -0.05)),
+    dict(name="main", n=13, off=(0.082, 0.094), strips={"dense": 0.75, "medium": 0.25}, margin=0.03, tip=-1.48,
          tip_var=0.07, wmax=(0.2, 0.17), overlap=1.6, shade=0.985, phase=0.71, lift0=0.0, ramp=0.26, rel=(0.09, 0.03)),
-    dict(name="outer", n=13, off=(0.106, 0.118), strips={"dense": 0.45, "medium": 0.4, "wispy": 0.15}, margin=0.036,
-         tip=-1.46, tip_var=0.1, wmax=(0.19, 0.16), overlap=1.35, shade=1.0, phase=0.19, lift0=0.0, ramp=0.32, rel=(0.12, 0.08)),
+    dict(name="outer", n=12, off=(0.106, 0.118), strips={"dense": 0.45, "medium": 0.4, "wispy": 0.15}, margin=0.036,
+         tip=-1.46, tip_var=0.1, wmax=(0.19, 0.17), overlap=1.55, shade=1.0, phase=0.19, lift0=0.0, ramp=0.32, rel=(0.12, 0.08)),
 ]
 LAYER = {L["name"]: L for L in LAYERS}
+THREE_COL = ("inner", "main", "outer")  # layers whose cards get a middle column over the head (no shingle steps)
 FLYAWAYS = dict(n=4, strip="wispy", w=(0.03, 0.045), len=(0.16, 0.3), shade=1.0)
 
 STYLES = {
@@ -560,7 +561,7 @@ STYLES = {
 
 PSI_FRONT = 1.125  # part angle (from +Y toward the face) just inside the front hairline
 PSI_BACK = -0.32  # the part's back end, behind the crown
-PART_X = 0.007  # the subtle centre parting: roots this far either side of x = 0 (the cap shows as scalp between)
+PART_X = 0.003  # the subtle centre parting: roots this far either side of x = 0 (the cap shows as scalp between)
 AZ_EAR = 56.0  # the frontmost release azimuth (degrees from the back): just behind the ear
 LOCK_AZ = 41.0  # strands released further forward than this (just behind the ear) drape forward over the shoulder
 ANCHOR_Y = {"back": -0.14, "side": -0.2}  # hanging chains start here (their pivot height)
@@ -653,6 +654,10 @@ def scalp_path(f, side, layer, vol, rng, n=48):
     # the sides gather in toward the ear (the hair tucks behind it): no shelf over the ear, a rounded silhouette
     sideness = smooth(0.55, 0.9, np.abs(P[:, 0]) / np.maximum(np.linalg.norm((P - C)[:, [0, 2]], axis=1), 1e-6))
     tgt = tgt * (1 - 0.5 * smooth(0.3, 0.06, P[:, 1]) * sideness)
+    if layer.get("root") != "hairline":
+        # the frontmost strands (the lower edge of every layer, over the temple and the ear) lie lower: the layers
+        # thin out into the temple instead of ending in stacked shelves
+        tgt = base + (tgt - base) * (0.3 + 0.7 * smooth(0.0, 0.3, f))
     # the deeper layers rise out of the parting from the scalp; the upper ones lie over them already lifted (a
     # narrow parting groove under a smooth dome, not a ridge either side of the parting)
     k0 = layer.get("lift0", 0.0)
@@ -822,6 +827,10 @@ class Sim:
             spread = (~lock) & (y < -0.55)
             ks = np.where(spread, 0.012 * smooth(-0.55, -1.1, y), 0.0)
             self.X[:, :, 0] += ks * (self.sx[:, None] - self.X[:, :, 0])
+            # ... and slides back off the top of the shoulder over the shoulder blades (falls down the back, not along
+            # the shoulder top)
+            kb = np.where(spread, 0.02 * smooth(-0.78, -0.98, y), 0.0)
+            self.X[:, :, 2] += kb * np.maximum(0.0, 0.7 - self.X[:, :, 2])
             self.X[:, 0] = self.X0[:, 0]
             self.constraints()
             if it % 2 == 0 or it > iters - 10:
@@ -853,7 +862,7 @@ def hang_strands(strands, refs, cfg, log, M=30):
     body = np.zeros(N)
     for i, st in enumerate(strands):
         Q = st.scalp[-1]
-        L = (Q[1] - st.tip_y) * 1.15 + (0.35 if st.lock else 0.05)
+        L = (Q[1] - st.tip_y) * 1.35 + (0.3 if st.lock else 0.05)
         seg[i] = L / (M - 1)
         off[i] = st.off[-1]
         body[i] = st.body_off
@@ -878,7 +887,7 @@ def hang_strands(strands, refs, cfg, log, M=30):
                 sim.tx[i] = 0.36 + 0.24 * g + rs.uniform(-0.025, 0.025)
                 sim.tz[i] = -0.28 + 0.14 * g + rs.uniform(-0.04, 0.04)
     # the back curtain's hem target x: the release x spread out (x 0.33 behind the ear -> ~0.42 at the hem)
-    sim.sx = np.array([st.scalp[-1][0] * 1.3 for st in strands])
+    sim.sx = np.array([st.scalp[-1][0] * 1.12 for st in strands])
     t0 = time.time()
     Xs = sim.run(130)
     Xs = chain_smooth(Xs, 2, 0.3)
@@ -1008,16 +1017,21 @@ def card_rows(st, cfg):
     ang = np.arccos(np.clip((Tn[1:] * Tn[:-1]).sum(1), -1, 1))
     kap = np.concatenate([[0], ang / np.maximum(np.diff(S), 1e-6)])
     kap = np.convolve(kap, np.ones(7) / 7, mode="same")
-    hmin_hang, hmax_hang = (0.075, 0.095) if cfg["wavy"] else (0.08, 0.16)
+    hmin_hang, hmax_hang = (0.085, 0.105) if cfg["wavy"] else (0.08, 0.16)
     sr = root_len(L)
     rows = [0.0, sr]
     s = sr
     while s < L - 1e-6:
         k = float(np.interp(s, S, kap))
-        hmin, hmax = (0.055, 0.1) if s < st.s_rel else (hmin_hang, hmax_hang)
-        h = float(np.clip(0.22 / max(k, 1e-6), hmin, hmax))
+        if s < st.s_rel:
+            hmin, hmax, kk = 0.075, 0.14, 0.3
+        elif st.layer in ("edge", "scalp"):  # (hidden under the others down the hanging part)
+            hmin, hmax, kk = hmin_hang * 1.4, hmax_hang * 1.3, 0.22
+        else:
+            hmin, hmax, kk = hmin_hang, hmax_hang, 0.22
+        h = float(np.clip(kk / max(k, 1e-6), hmin, hmax))
         if s < 0.1:
-            h = min(h, 0.04)
+            h = min(h, 0.05)
         s = min(L, s + h)
         if L - s < 0.02:
             s = L
@@ -1102,6 +1116,14 @@ class Card:
                 oe = np.maximum(oe, 0.0225)
                 _d, _r, th, az = polar(Pe, C)
                 E[sc] = C + unit(Pe - C) * (skull_radius_v(SK, th, az) + oe)[:, None]
+        # the middle column: on the layer's shell over the scalp (the guide point), else halfway between the edges
+        self.mid = (self.left + self.right) / 2
+        self.k3 = np.zeros(n, dtype=bool)
+        if st.layer in THREE_COL and sc.any():
+            self.mid[sc] = P[sc]
+            # the middle column wherever the card lies on the head (and one row past it, into the hanging part)
+            last = int(np.nonzero(sc)[0].max())
+            self.k3[:min(n, last + 2)] = True
         # shading normals: outward from the head (one soft volume over the scalp), a little of the card's own
         # facing down the hanging part (the locks catch the light separately there)
         kf = 0.3 * b
@@ -1180,7 +1202,7 @@ def assign_widths(cards, log):
     log(f"  card widths {ws.min():.3f} .. {ws.max():.3f} (median {np.median(ws):.3f})")
 
 
-def hairline_strands(cfg, rng, spacing=0.02, length=(0.03, 0.12)):
+def hairline_strands(cfg, rng, spacing=0.025, length=(0.03, 0.12)):
     """a ring of short sparse wispy cards rooted on the natural hairline (front, temples, down toward the
     sideburns), lying flat in the growth direction (back and away from the parting at the front, back and down
     over the temples), roots jittered across the line: the hairline is fine hair growing out of the scalp at an
@@ -1215,10 +1237,10 @@ def hairline_strands(cfg, rng, spacing=0.02, length=(0.03, 0.12)):
         p = scalp_of((SK.point(th, az) + inward * jit)[None])[0]
         P = [p]
         ln = rng.uniform(*length)
-        nst = 4
+        nst = 3
         for _i in range(nst):
             nrm = unit(p - C)
-            kk = smooth(0.0, 2.5, _i)
+            kk = smooth(0.0, 2.0, _i)
             dd = unit(inward * (1 - kk) * 0.6 + d0 * (0.4 + 0.6 * kk))
             d = unit(dd - nrm * float(np.dot(dd, nrm)))
             q = scalp_of((p + d * ln / nst)[None])[0]
@@ -1267,7 +1289,7 @@ def flyaway_strands(strands, cfg, rng):
 
 # =========================================================================================== Blender meshes
 def card_mesh(cards, name, coll, displace=0.022, seed=0):
-    """all cards of a layer as one Blender mesh (two vertices per row, per-corner UVs and colours, a "hang"
+    """all cards of a layer as one Blender mesh (three vertices per row: left, middle, right, per-corner UVs and colours, a "hang"
     vertex group) with a Displace modifier (Clouds) breaking the hanging part into clumps; returns the object
     and per-card vertex index bases"""
     V, F, UV, Wg = [], [], [], []
@@ -1275,16 +1297,15 @@ def card_mesh(cards, name, coll, displace=0.022, seed=0):
     for cd in cards:
         base = len(V)
         bases.append(base)
+        um = (cd.u[0] + cd.u[1]) / 2
         for i in range(cd.n):
-            V.append(tuple(cd.left[i]))
-            V.append(tuple(cd.right[i]))
-            UV.append((cd.u[0], 1.0 - cd.v[i]))
-            UV.append((cd.u[1], 1.0 - cd.v[i]))
-            Wg += [cd.hangw[i], cd.hangw[i]]
+            V += [tuple(cd.left[i]), tuple(cd.mid[i]), tuple(cd.right[i])]
+            UV += [(cd.u[0], 1.0 - cd.v[i]), (um, 1.0 - cd.v[i]), (cd.u[1], 1.0 - cd.v[i])]
+            Wg += [cd.hangw[i]] * 3
         for i in range(cd.n - 1):
-            a, b = base + 2 * i, base + 2 * i + 1
-            c, d = base + 2 * i + 3, base + 2 * i + 2
-            F.append((a, b, c, d))
+            r0, r1 = base + 3 * i, base + 3 * i + 3
+            F.append((r0, r0 + 1, r1 + 1, r1))
+            F.append((r0 + 1, r0 + 2, r1 + 2, r1 + 1))
     me = bpy.data.meshes.new(name)
     me.from_pydata(V, [], F)
     me.update()
@@ -1496,44 +1517,44 @@ def build_style(key, cfg, refs, coll, log):
         ob.data.materials.append(mat)
         P = evaluated_positions(ob)
         for cd, base in zip(cl, bases):
-            Pc = P[base:base + 2 * cd.n]
-            cd.left, cd.right = Pc[0::2].copy(), Pc[1::2].copy()
+            Pc = P[base:base + 3 * cd.n]
+            cd.left, cd.mid, cd.right = Pc[0::3].copy(), Pc[1::3].copy(), Pc[2::3].copy()
             metas.append(cd)
     # clearance (one pass over every vertex)
-    V = np.vstack([np.stack([cd.left, cd.right], 1).reshape(-1, 3) for cd in metas])
+    V = np.vstack([np.stack([cd.left, cd.mid, cd.right], 1).reshape(-1, 3) for cd in metas])
     for _ in range(3):
         V = enforce_clearance(V, refs, None)
     k = 0
     for cd in metas:
-        Pc = V[k:k + 2 * cd.n]
-        cd.left, cd.right = Pc[0::2].copy(), Pc[1::2].copy()
-        k += 2 * cd.n
+        Pc = V[k:k + 3 * cd.n]
+        cd.left, cd.mid, cd.right = Pc[0::3].copy(), Pc[1::3].copy(), Pc[2::3].copy()
+        k += 3 * cd.n
     # occlusion
     tris = []
     k = 0
     NO = []
     for cd in metas:
         for i in range(cd.n - 1):
-            a, b, c, d = k + 2 * i, k + 2 * i + 1, k + 2 * i + 3, k + 2 * i + 2
-            tris += [(a, b, c), (a, c, d)]
-        NO.append(np.repeat(cd.nout, 2, axis=0))
-        k += 2 * cd.n
+            r0, r1 = k + 3 * i, k + 3 * i + 3
+            tris += [(r0, r0 + 1, r1 + 1), (r0, r1 + 1, r1), (r0 + 1, r0 + 2, r1 + 2), (r0 + 1, r1 + 2, r1 + 1)]
+        NO.append(np.repeat(cd.nout, 3, axis=0))
+        k += 3 * cd.n
     NO = np.vstack(NO)
     t0 = time.time()
     ao = bake_ao(V, NO, tris, refs)
-    ao = smooth_field(V, ao, 0.045)  # spatially smooth: no card reads as its own lighter / darker rectangle
+    ao = smooth_field(V, ao, 0.075)  # spatially smooth: no card reads as its own lighter / darker rectangle
     log(f"  occlusion {len(V)} verts: {time.time() - t0:.1f}s")
     k = 0
     for cd in metas:
-        a = ao[k:k + 2 * cd.n].reshape(-1, 2).mean(1)
+        a = ao[k:k + 3 * cd.n].reshape(-1, 3).mean(1)
         shade = cd.st.shade or (LAYERS[cd.st.li]["shade"] if cd.st.li < len(LAYERS) else FLYAWAYS["shade"])
-        cd.col = np.clip((0.62 + 0.38 * a) * shade * cd.rootk, 0.45, 1.0)
+        cd.col = np.clip((0.68 + 0.32 * a) * shade * cd.rootk, 0.5, 1.0)
         if cd.st.layer == "hairline":
             cd.col = np.maximum(cd.col, 0.93)  # the hairline ring lies in the open (no dark rim round the face)
         elif cd.st.layer == "edge":
             # the hairline layer's roots: no dark brim along the hairline
             cd.col = np.maximum(cd.col, 0.8 + 0.12 * smooth(0.0, 0.15, cd.s))
-        k += 2 * cd.n
+        k += 3 * cd.n
     # pieces: innermost layer first, front to back within a layer
     pieces = {}
     seg_rows = {}
@@ -1557,12 +1578,24 @@ def build_style(key, cfg, refs, coll, log):
                     rgb = LAYER_DEBUG_COL[min(cd.st.li, len(LAYER_DEBUG_COL) - 1)]
                 a = p.vert(cd.left[i] + dl, cd.N[i], (cd.u[0], cd.v[i]), (*rgb, 1.0))
                 b = p.vert(cd.right[i] + dl, cd.N[i], (cd.u[1], cd.v[i]), (*rgb, 1.0))
-                ids.append((a, b))
+                m = None
+                if cd.k3[i]:  # a middle column: the card follows the curve of the head across its width
+                    m = p.vert(cd.mid[i] + dl, cd.N[i], ((cd.u[0] + cd.u[1]) / 2, cd.v[i]), (*rgb, 1.0))
+                ids.append((a, m, b))
             for i in range(len(ids) - 1):
-                a, b = ids[i]
-                d, c = ids[i + 1]
-                # the outward-facing pair first (its geometric normal agrees with the shading normal), then its twin
-                p.T += [(a, c, d), (a, b, c), (a, d, c), (a, c, b)]
+                a, m0, b = ids[i]
+                d, m1, c = ids[i + 1]
+                # every face and its reversed twin (two-sided); the writer orients them by the shading normals
+                if m0 is not None and m1 is not None:
+                    fs = [(a, m0, m1), (a, m1, d), (m0, b, c), (m0, c, m1)]
+                elif m0 is not None:
+                    fs = [(a, m0, d), (m0, c, d), (m0, b, c)]
+                elif m1 is not None:
+                    fs = [(a, b, m1), (a, m1, d), (b, c, m1)]
+                else:
+                    fs = [(a, b, c), (a, c, d)]
+                for t in fs:
+                    p.T += [t, (t[0], t[2], t[1])]
         pieces[nm] = (p, seg_rows[nm])
     out = []
     for nm, (p, segs) in pieces.items():
