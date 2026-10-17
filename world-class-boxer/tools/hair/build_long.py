@@ -29,8 +29,17 @@ How the hair is built (game nominal head space, numerically; see CONTRACT.md):
   head mesh and the skull table (also at the female fit and 0.965x narrow). Soft occlusion is baked into
   the vertex colours with BVH ray casts (hair, head, torso) times a per-layer shade.
 * Pieces: static HairTop (everything over the head) and swinging chains split from the same cards: the back
-  curtain in 4 chains and a side lock each side (seg 1 below the anchor, seg 2 'b' from the shoulders down),
-  hairfx swing, length "hang", hideUnder hood. Triangles of every piece are emitted innermost layer first.
+  curtain in 4 chains and a face-framing side lock each side (seg 1 below the anchor, pivot at its top; seg 2
+  'b' from the shoulders down, overlapping seg 1 by SEG_OVERLAP and tucked under it), hairfx swing, length
+  "hang", hideUnder hood (HairTop too), castShadow false (a card's game shadow is its whole quad). Triangles of
+  every piece are emitted innermost layer first.
+* Shape (v2, after review): layer heights (top, side) rising to ~0.12 over the crown and ~0.08 at the sides
+  (Wavy x1.2), the upper layers lying over a narrow parting groove; front strands leave the head in front of the
+  ear as broad forward-facing face-framing locks resting on the upper chest; the rest go over the top of the ear
+  and behind it; the hanging guides drape onto the upper back / shoulders (drawn to the nearest torso surface,
+  resting 0.013-0.03 above it); a ring of short cards rooted on the hairline; root alpha fade in the texture.
+* Clearance is enforced and asserted (>= 0.022) against the male head (with and without ears), the female head
+  through the runtime fit (forward) and carried back into nominal space (inverse), and both skull tables.
 """
 import argparse
 import json
@@ -275,7 +284,7 @@ SKF = hl.Skull(SKF_PATH) if os.path.exists(SKF_PATH) else None
 EARS = [(np.array(SKD["ears"][s]["min"]), np.array(SKD["ears"][s]["max"])) for s in ("left", "right")]
 FIT0 = dict(W=0.383, T=0.591, Fz=-0.460, Bz=0.520)  # HairAssetData fit0 (the default male skull)
 CLEAR_MIN = 0.0225  # every vertex over the head at least this far above the head meshes (both sexes, with ears) and the skull tables
-EAR_CLEAR = 0.022
+EAR_CLEAR = 0.0225
 AXIS_Z = 0.04  # the neck / body's vertical axis (x = 0, z = AXIS_Z)
 
 
@@ -972,7 +981,7 @@ def card_rows(st, cfg):
     ang = np.arccos(np.clip((Tn[1:] * Tn[:-1]).sum(1), -1, 1))
     kap = np.concatenate([[0], ang / np.maximum(np.diff(S), 1e-6)])
     kap = np.convolve(kap, np.ones(7) / 7, mode="same")
-    hmin_hang, hmax_hang = (0.098, 0.112) if cfg["wavy"] else (0.05, 0.14)
+    hmin_hang, hmax_hang = (0.118, 0.13) if cfg["wavy"] else (0.05, 0.14)
     sr = root_len(L)
     rows = [0.0, sr]
     s = sr
@@ -1625,7 +1634,7 @@ LOOKS = {
     "m_darkblonde": ("m", "darkblonde", "mid"),
     "m_black": ("m", "black", "deep"),
 }
-VIEWS = ["34", "side", "back", "close", "top34"]
+VIEWS = ["front", "34", "side", "back", "close", "top34"]
 
 
 def cap_standin(density, outdir):

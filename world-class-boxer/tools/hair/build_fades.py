@@ -14,15 +14,22 @@ Writes
 and, with --render, self-check renders + sheets in the scratchpad (FAM_DIR).
 
 Geometry is built in Blender. The cap and the fur shells are polar grids laid on the skull's radial table and
-pushed clear of the game's head mesh with a mathutils BVHTree; each shell is the cap's own surface lifted along
-the skull ray by its height (so shells never come closer than SHELL_SEP to the layer under them), spans the
-cap's whole footprint wherever the style can have any coverage (its edges lie where the painted cap is already
-transparent: no edge line), and gets clump unevenness from a Displace modifier (Clouds) read back through the
-depsgraph. The shells thin outward in the game: each names a capShell { rank, cov } variant of the painted cap
-(HairAssetKit.PaintCap: only the tile's higher-ranked texels, and coverage below cov counts as none, so outer
-shells give way first down a fade and at the hairline). The crop-top cards are swept along Bezier guide curves
-(one curve object, evaluated by Blender) that follow the comb flow over the scalp; their tips follow the style's
-own top profile (the fades' shelf at FADE_TOP, the crew's front lift, the Caesar's straight fringe).
+pushed clear of the game's head mesh with a mathutils BVHTree. Each shell is the cap's own surface lifted along
+the scalp normal by a height proportional to the style's hair height there (shell_heights), so the stack grows
+with the fade's coverage over the whole fade band, comes down to the cap within HL_TAPER of the natural hairline
+and round the ears, and never stands off the scalp as a ledge; where the hair is tall the shells are >= 0.0045
+apart. The height profile (profile) is the cut's shape (top length where the scalp faces up, a wall length on the
+sides, the weight line at each fade's FADE_TOP or the burst's arc round the ear) x the fade's coverage x the
+hairline / ear taper. Clump unevenness comes from a Displace modifier (Clouds) read back through the depsgraph.
+The shells thin outward in the game: each names a capShell { rank, cov } variant of the painted cap
+(HairAssetKit.PaintCap: only the tile's higher-ranked texels; coverage below cov counts as none). The crop-top
+cards are swept along Bezier guide curves (one curve object, evaluated by Blender) that follow a combed flow field
+(forward and to one side on top, down the back, down and forward on the sides; the crew's front brushed up),
+lifted 20-35 deg off the scalp and clipped to the style's smooth outer envelope.
+
+The painted cap's crown (cap style.json "pole"): below ~40 deg from the crown the tile is sampled by a planar
+projection (no 8-spoke star from the polar UV's wedges); the runtime change is fades_paintcap_pole.diff
+(HairAssetKit.PaintCap's pole argument, HK.CapPole), tested by fades_test_pole.luau, mirrored by paint_cap here.
 """
 import argparse
 import json
@@ -509,6 +516,12 @@ def profile(cb, spec):
     shape = spec["shape"]
     T = spec["top"]
     e = sstep(0.0, HL_TAPER, cb.dist_hl) ** 0.8
+    # and down to the cap round the ears (the stack slopes in behind and above each ear, never cut off there)
+    de = np.full(len(S), 9.0)
+    for lo, hi in cb.ref.ears:
+        dd = np.linalg.norm(np.maximum(np.maximum(lo - S, S - hi), 0.0), axis=1)
+        de = np.minimum(de, dd)
+    e = e * sstep(0.015, 0.075, de)
     c = np.clip(cb.covr[spec.get("capFade") or kind], 0, 1)
     g = sstep(0.02, 1.0, c) ** 0.9
     up = sstep(0.12, 0.72, ny)
