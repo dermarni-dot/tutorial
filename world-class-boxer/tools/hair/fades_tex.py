@@ -202,9 +202,9 @@ def tex_short(seed=21):
 
 
 def tex_shortcoil(seed=61):
-    """Tiny tight coils (Curly / Kinky / Coiled short hair): ~2-3.5 mm loops, each coil a few turns of a hair
-    seen from above at a random tilt and turn, packed evenly with a blue-noise-ish jitter (no clusters, no dark
-    blotches). Each loop is lit on its crown-facing side; the gaps are a soft mid tone, not black."""
+    """Tiny tight coils (Curly / Kinky / Coiled short hair): ~3-5 mm coils, each a filled spiral of a hair seen
+    from above at a random tilt and turn (the turns touch: a packed sponge-curl blob, dark core, soft highlight on
+    its near / crown-facing rim), packed evenly with a blue-noise-ish jitter (no clusters, no dark blotches)."""
     W = TILE_CANVAS
     cv = Canvas(W, W, tile=True, base_lum=0.6)
     rng = np.random.default_rng(seed)
@@ -229,21 +229,25 @@ def tex_shortcoil(seed=61):
         r = rng.uniform(1.4, 2.4) * MM
         squash = rng.uniform(0.55, 1.0)  # tilt of the coil's axis toward the viewer
         rot = rng.uniform(0, TAU)
-        turns = rng.uniform(1.6, 2.6)
-        m = int(12 * turns)
+        # a filled coil: a spiral from the coil's rim in to ~30 % of its radius, wide enough that the turns touch
+        # (a packed blob, not a thin outline): the rim lit on its near / crown-facing side, the core dark
+        turns = rng.uniform(2.4, 3.4)
+        m = int(14 * turns)
         t = np.linspace(0, turns * TAU, m)
         a0 = rng.uniform(0, TAU)
-        along = (t / (turns * TAU) - 0.5) * r * rng.uniform(0.6, 1.4)
-        lx = np.cos(a0 + t) * r
-        ly = np.sin(a0 + t) * r * squash + along
+        rho = r * (1.0 - 0.7 * t / (turns * TAU))
+        lx = np.cos(a0 + t) * rho
+        ly = np.sin(a0 + t) * rho * squash
         cr, sr = math.cos(rot), math.sin(rot)
         xs = x + lx * cr - ly * sr
         ys = y + lx * sr + ly * cr
-        # lit on the near (upper) part of each turn, a little on the crown-facing side
         front = 0.5 + 0.5 * np.sin(a0 + t)
         up = 0.5 - 0.5 * np.clip((ys - y) / (r * 1.5), -1, 1)
-        lum = np.clip((0.52 + 0.36 * front ** 1.5 + 0.12 * up) * rng.uniform(0.92, 1.06), 0.3, 1.0)
-        cv.strand(xs, ys, np.full(m, rng.uniform(2.6, 3.4)), lum, np.full(m, 0.95))
+        core = rho / r
+        lum = (0.47 + 0.26 * front ** 1.5 + 0.08 * up) * (0.7 + 0.3 * core) * rng.uniform(0.92, 1.06)
+        lum = np.clip(lum, 0.3, 0.86)  # (the rim highlights ~15 % lower than the old outlines)
+        wid = np.maximum(3.0, 0.24 * r * (0.7 + 0.3 * core)) * rng.uniform(0.9, 1.1)
+        cv.strand(xs, ys, wid, lum, np.full(m, 0.95))
     L, A = cv.down(8, 4)
     A = np.clip(0.34 + A * 0.76, 0, 1.0)
     A = np.clip(0.7 + 0.3 * A, 0, 1.0)
