@@ -28,11 +28,12 @@ through the same transform (Roblox recentres an uploaded mesh on its bounding bo
 |---|---|---|
 | `straight` | dense 0-.25, medium .25-.5, wispy .5-.75, wavy .75-1 | long hair, crop tops |
 | `coily` | tight 0-.5, loose .5-1 | afro, high top, curly |
-| `braid` | plait 0-.5, loc .5-1 (tileable in v) | braids, box braids, locs, twists |
+| `braid` | plait strips (see build_braids.py) | braids, box braids, cornrow tails |
+| `loc` | loc 0-.375 (core .031-.344, two u-periods), twist .375-.75 (core .406-.719), frizz .75-1; v root to tip, NOT tiled | dreadlocks, short dreads, twists |
 | `cornrow` | row 0-.75 (tileable in v), baby hairs .75-1 | cornrows |
 | `short` | tile 0-1 (tileable both ways) | the scalp cap for straight / wavy hair |
 | `shortcoil` | tile (tileable) | the scalp cap for curly / kinky / coiled hair |
-| `waves` | tile (tileable) | the scalp cap for 360 Waves (`capTile = "waves"`) |
+| `waves` | one whole-cap image on the polar UV (not tileable) | the scalp cap for 360 Waves (`capTile = "waves"`, `capTileRepeat = {1, 1}`) |
 | `crop` | 4 tuft strips, root to tip | crop tops on straight / wavy fades |
 | `cap` | (not uploaded) | the boxer's painted cap image: pieces in the cap's polar UV (fur shells) |
 
@@ -53,7 +54,9 @@ fade / hairline / growth coverage the generated HairCap uses, `Kit.Cut(...).cov`
 texel's scalp point). So every fade height, hairline kind, line-up and growth stage comes from the
 game's own rules. The fade thins the tile's strands by rank (thresholded) rather than making them
 uniformly translucent. `out/cap/style.json` carries `thetaMax`, `tile` and `tiles`; pieces with
-`tex = "cap"` (fur shells) share the painted image.
+`tex = "cap"` (fur shells) share the painted image; a shell's `capShell = {rank, cov}` paints it a
+sparser variant (its strands give way first as coverage drops). `pole = {theta0, theta1, su, sv}` makes
+the crown sample the tile from a flat projection (no 8-fold star where the polar repeats meet).
 
 ## Style entry (`out/<key>/style.json`, then the manifest)
 
@@ -61,6 +64,9 @@ uniformly translucent. `out/cap/style.json` carries `thetaMax`, `tile` and `tile
 { key, styles = ["Afro", ...],           -- Looks.HairStyles ids this entry draws
   types = ["Kinky", "Coiled"] | null,    -- hair types it is for (null: every type)
   cap = { cut = "style" | "full" | "none", density = 0..1 },  -- how the scalp cap is painted
+  capTile = "waves" | ...,               -- optional: the cap's tile texture (default by hair type)
+  capTileRepeat = { nu, nv },            -- optional: the tile's repeats ({1, 1}: a whole-cap image)
+  capFade = "fade" | ...,                -- optional: a Kit.FADES gradient on a natural hairline
   pieces = { Name = {
       mesh_file, tex,                    -- texture key (above)
       bbox = [cx, cy, cz, sx, sy, sz],   -- nominal

@@ -577,20 +577,20 @@ def theta_at(az, f_ok, lo=0.02, hi=2.55):
 # rel: release heights (behind the ear, back centre) where the strands leave the head.
 LAYERS = [
     # the hairline layer: rooted along the front hairline (centre to the temple), swept back over the top of the ear
-    dict(name="edge", n=8, off=(0.03, 0.032), gap=0.07, strips={"dense": 0.55, "medium": 0.45}, margin=0.007, tip=-0.72,
+    dict(name="edge", n=8, off=(0.03, 0.032), gap=0.08, strips={"dense": 0.55, "medium": 0.45}, margin=0.007, tip=-0.72,
          tip_var=0.05, wmax=(0.15, 0.17), overlap=1.75, shade=0.97, phase=0.0, rel=(0.03, 0.0), root="hairline",
          fmax=0.3),
     # the dense scalp layer (hides the scalp; the painted cap under it)
-    dict(name="scalp", n=12, off=(0.029, 0.031), gap=0.06, strips={"dense": 1.0}, margin=0.016, tip=-1.3, tip_var=0.05,
+    dict(name="scalp", n=12, off=(0.029, 0.031), gap=0.08, strips={"dense": 1.0}, margin=0.016, tip=-1.3, tip_var=0.05,
          wmax=(0.2, 0.17), overlap=1.9, shade=0.93, phase=0.0, rel=(0.0, -0.13)),
     # the volume: every layer higher, the sides fuller than the top
-    dict(name="inner", n=13, off=(0.076, 0.09), gap=0.09, strips={"dense": 0.85, "medium": 0.15}, margin=0.024, tip=-1.4,
+    dict(name="inner", n=13, off=(0.076, 0.09), gap=0.12, strips={"dense": 0.85, "medium": 0.15}, margin=0.024, tip=-1.4,
          tip_var=0.06, wmax=(0.2, 0.17), overlap=1.7, shade=0.965, phase=0.37, lift0=0.0, ramp=0.2, rel=(0.05, -0.05)),
-    dict(name="main", n=13, off=(0.114, 0.13), gap=0.12, strips={"dense": 0.75, "medium": 0.25}, margin=0.03,
-         tip=-1.48, tip_var=0.07, wmax=(0.2, 0.18), overlap=1.6, shade=0.985, phase=0.71, lift0=0.0, ramp=0.3,
+    dict(name="main", n=13, off=(0.114, 0.13), gap=0.16, strips={"dense": 0.75, "medium": 0.25}, margin=0.03,
+         tip=-1.48, tip_var=0.07, wmax=(0.2, 0.18), overlap=1.6, shade=0.985, phase=0.71, lift0=0.22, ramp=0.3,
          rel=(0.09, 0.03)),
-    dict(name="outer", n=12, off=(0.15, 0.165), gap=0.155, strips={"dense": 0.5, "medium": 0.5}, margin=0.036,
-         tip=-1.46, tip_var=0.08, wmax=(0.19, 0.18), overlap=1.55, shade=1.0, phase=0.19, lift0=0.0, ramp=0.36,
+    dict(name="outer", n=12, off=(0.15, 0.165), gap=0.2, strips={"dense": 0.5, "medium": 0.5}, margin=0.036,
+         tip=-1.46, tip_var=0.08, wmax=(0.19, 0.18), overlap=1.55, shade=1.0, phase=0.19, lift0=0.25, ramp=0.36,
          rel=(0.12, 0.08)),
 ]
 LAYER = {L["name"]: L for L in LAYERS}
@@ -709,13 +709,13 @@ def scalp_path(f, side, layer, vol, rng, n=48):
     if layer.get("root") != "hairline":
         # the frontmost strands (the lower edge of every layer, over the temple and the ear) lie lower: the layers
         # thin out into the temple instead of ending in stacked shelves
-        tgt = base + (tgt - base) * (0.45 + 0.55 * smooth(0.0, 0.55, f))
+        tgt = base + (tgt - base) * (0.62 + 0.38 * smooth(0.0, 0.55, f))
     # the deeper layers rise out of the parting from the scalp; the upper ones lie over them already lifted (a
     # narrow parting groove under a smooth dome, not a ridge either side of the parting)
     k0 = layer.get("lift0", 0.0)
     if layer.get("root") != "hairline":
         # behind the end of the parting the roots cross the centre line already lifted (no groove to the crown)
-        k0 = max(k0, 0.75 * float(smooth(PSI_PART_END, PSI_PART_END - 0.3, psi)))
+        k0 = max(k0, 0.4 * float(smooth(PSI_PART_END, PSI_PART_END - 0.3, psi)))
     # (from the scalp at the parting: an upper layer starting lifted shows its root edge end-on along the part)
     ramp = np.minimum(k0 + (1 - k0) * smooth(0.0, layer.get("ramp", 0.2), s), smooth(0.0, HL_RAMP[layer["name"]], ed))
     off = base + (tgt - base) * ramp
@@ -774,7 +774,9 @@ def make_strands(cfg, log):
                     strip = "wispy"  # a few loose outer cards, at the back only (never over the front 120 degrees)
                 if cfg["wavy"] and strip in ("dense", "medium") and li >= 2 and rng.random() < 0.85:
                     strip = "wavy"
-                rk = 1.0 if L.get("root") == "hairline" else 0.86
+                psi = PSI_FRONT + (PSI_BACK - PSI_FRONT) * f
+                # (no darker roots where they cross over the crown: they show edge-on against the sky there)
+                rk = 1.0 if (L.get("root") == "hairline" or psi < PSI_PART_END + 0.1) else 0.86
                 out.append(Strand(side=side, f=f, layer=L["name"], li=li, scalp=P, off=off, tip_y=tip, lock=lock,
                                   strip=strip, mirror=bool(rng.random() < 0.5), v0=float(rng.uniform(0, 0.02)),
                                   seed=int(rng.integers(1 << 30)), wave_ph=float(f * 2.2 + li * 0.5 + rng.normal(0, 0.25)),
@@ -902,7 +904,7 @@ def drape_path(st, body, phi, tx):
     rA = float(body_r(yA, phi)) + st.gap
     A = np.array([rA * math.sin(phi), yA, rA * math.cos(phi)])
     if st.lock:
-        A[0] = math.copysign(min(abs(A[0]), 0.47), A[0])
+        A[0] = math.copysign(min(abs(A[0]), 0.53), A[0])
     # release -> the cone (leaving the head along the strand's own direction, turning down)
     seg1 = bezier(Q, Q + TQ * 0.09 + np.array([0, -0.03, 0]), A + np.array([0, 0.13, 0]), A, 16)
     pts = list(seg1)
@@ -1049,9 +1051,9 @@ def finish_guides(strands, refs, cfg, log):
             Q = st.scalp[-1]
             sector = int(math.floor(math.degrees(math.atan2(Q[0], Q[2] - AXIS_Z)) / 22.0)) + (100 if st.lock else 0)
             cr = np.random.default_rng(abs(sector) * 7919 + cfg["seed"] * 31 + (1 if sector < 0 else 0))
-            c_amp, c_per, c_ph = cr.uniform(0.8, 1.25), cr.uniform(0.34, 0.42), cr.uniform(0, TAU)
+            c_amp, c_per, c_ph = cr.uniform(0.8, 1.2), cr.uniform(0.48, 0.58), cr.uniform(0, TAU)
             sh = s - st.s_rel
-            amp = 0.042 * c_amp * smooth(-0.06, 0.25, sh) * (0.7 + 0.5 * smooth(0.0, 1.0, sh))
+            amp = 0.038 * c_amp * smooth(-0.06, 0.25, sh) * (0.7 + 0.5 * smooth(0.0, 1.0, sh))
             amp = amp * (1 + 0.1 * math.sin(st.seed % 97))
             if st.layer in ("main", "outer"):
                 # a low wave already on the head from the ear line down (the side silhouette shows it)
@@ -1108,7 +1110,7 @@ def card_rows(st, cfg, rng=None):
     ang = np.arccos(np.clip((Tn[1:] * Tn[:-1]).sum(1), -1, 1))
     kap = np.concatenate([[0], ang / np.maximum(np.diff(S), 1e-6)])
     kap = np.convolve(kap, np.ones(7) / 7, mode="same")
-    hmin_hang, hmax_hang = (0.095, 0.115) if cfg["wavy"] else (0.1, 0.2)
+    hmin_hang, hmax_hang = (0.11, 0.14) if cfg["wavy"] else (0.1, 0.2)
     # the volume layers' cards start at staggered points along their strands (no row of card ends lined up
     # along the parting)
     s0 = 0.0
@@ -1121,8 +1123,10 @@ def card_rows(st, cfg, rng=None):
     while s < L - 1e-6:
         k = float(np.interp(s, S, kap))
         if s < st.s_rel and st.layer == "outer":
-            # over the head: a row every <= 0.042 of arc (a smooth silhouette over the crown, no stair steps)
-            hmin, hmax, kk = 0.03, 0.042, 0.3
+            # over the head: a row every <= 0.04 of arc over the crown and the top (a smooth silhouette, no
+            # stair steps), 0.06 down the sides
+            yy = float(np.interp(s, S, D[:, 1]))
+            hmin, hmax, kk = 0.03, (0.04 if yy > 0.22 else 0.06), 0.3
         elif s < st.s_rel and st.layer == "main":
             hmin, hmax, kk = 0.045, 0.07, 0.3  # (under the outer layer)
         elif s < st.s_rel:
