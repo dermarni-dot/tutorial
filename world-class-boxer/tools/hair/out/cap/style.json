@@ -17,7 +17,7 @@
   "head_m": 0.0205,
   "skull_f_fit": 0.0203,
   "head_f_fit": 0.02,
-  "skull_m_narrow_nofit": 0.0195
+  "skull_m_narrow_fit": 0.0195
  },
  "notes": "shared scalp cap: polar UV u = az / 2pi (az 0 at the back, toward +X), v = theta / thetaMax",
  "key": "cap",

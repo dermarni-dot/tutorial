@@ -307,12 +307,15 @@ def tex_crop(w=512, h=512, seed=81, ss=2):
     sw = W / CROP_STRIPS
     for s in range(CROP_STRIPS):
         x0 = s * sw
-        npts = 2 + s % 3
+        blunt = s == 0  # strip 0: a blunt-cut tuft (hairs side by side, ending together near v 1: a fringe)
+        npts = 3 + s % 3
         tips = [x0 + sw * (0.22 + 0.56 * (i + rng.uniform(0.25, 0.75)) / npts) for i in range(npts)]
-        for _ in range(150 + 20 * s):
+        for _ in range(170 + 20 * s):
             rx = x0 + sw * (0.5 + 0.4 * rng.uniform(-1, 1) * abs(rng.uniform(-1, 1)) ** 0.3)
             tx = tips[rng.integers(npts)] + rng.normal(0, sw * 0.035)
-            L = H * rng.uniform(0.55, 0.97)
+            if blunt:
+                tx = rx + rng.normal(0, sw * 0.03)
+            L = H * (rng.uniform(0.86, 0.95) if blunt else rng.uniform(0.55, 0.97))
             m = 10
             t = np.linspace(0, 1, m)
             pull = t ** 1.3
@@ -320,7 +323,11 @@ def tex_crop(w=512, h=512, seed=81, ss=2):
             ys = H * rng.uniform(0.0, 0.06) + t * L
             lum = np.clip(rng.uniform(0.88, 1.05) * (0.66 + 0.36 * t ** 0.7), 0.3, 1.0)
             wid = np.maximum(0.8, (3.2 - 2.2 * t ** 1.2)) * rng.uniform(0.8, 1.2)
-            op = 0.85 * np.clip(np.minimum(t / 0.3, 1) ** 1.6 * (1 - np.maximum(0, t - 0.72) / 0.28 * 0.9), 0, 1)
+            if blunt:
+                op = 0.85 * np.clip(np.minimum(t / 0.3, 1) ** 1.6 * (1 - np.maximum(0, t - 0.9) / 0.1 * 0.4), 0, 1)
+                wid = np.maximum(1.2, 2.8 - 0.8 * t)
+            else:
+                op = 0.85 * np.clip(np.minimum(t / 0.3, 1) ** 1.6 * (1 - np.maximum(0, t - 0.72) / 0.28 * 0.9), 0, 1)
             cv.strand(xs, ys, wid, lum, op * rng.uniform(0.8, 1.0))
     L, A = cv.down(ss)
     hh, ww = A.shape

@@ -1,0 +1,263 @@
+{
+ "cap": {
+  "tris": 6657,
+  "clearance": {
+   "skull_m": 0.02,
+   "head_m": 0.0205,
+   "skull_f_fit": 0.0203,
+   "head_f_fit": 0.02,
+   "skull_m_narrow_fit": 0.0195
+  }
+ },
+ "fade_mid": {
+  "tris": 13945,
+  "pieces": {
+   "HairTop1": [
+    1637,
+    {
+     "rank": 0.0,
+     "cov": 0.4
+    }
+   ],
+   "HairTop2": [
+    1637,
+    {
+     "rank": 0.3,
+     "cov": 0.55
+    }
+   ],
+   "HairTop3": [
+    1637,
+    {
+     "rank": 0.3,
+     "cov": 0.55
+    }
+   ],
+   "HairTop4": [
+    1637,
+    {
+     "rank": 0.55,
+     "cov": 0.7
+    }
+   ],
+   "HairTop5": [
+    1637,
+    {
+     "rank": 0.75,
+     "cov": 0.82
+    }
+   ],
+   "HairCrop": [
+    5760,
+    null
+   ]
+  },
+  "clearance": {
+   "skull_m": 0.0279,
+   "head_m": 0.0238,
+   "skull_f_fit": 0.0279,
+   "head_f_fit": 0.0236,
+   "skull_m_narrow_fit": 0.0273
+  },
+  "separation": [
+   0.0052,
+   0.0032,
+   0.0032,
+   0.0032,
+   0.0032
+  ],
+  "seam": {
+   "HairTop1": {
+    "u0": 34,
+    "u1": 33,
+    "unmatched": 1
+   },
+   "HairTop2": {
+    "u0": 34,
+    "u1": 33,
+    "unmatched": 1
+   },
+   "HairTop3": {
+    "u0": 34,
+    "u1": 33,
+    "unmatched": 1
+   },
+   "HairTop4": {
+    "u0": 34,
+    "u1": 33,
+    "unmatched": 1
+   },
+   "HairTop5": {
+    "u0": 34,
+    "u1": 33,
+    "unmatched": 1
+   }
+  }
+ },
+ "fade_mid_c": {
+  "tris": 11438,
+  "pieces": {
+   "HairTop1": [
+    1634,
+    {
+     "rank": 0.0,
+     "cov": 0.4
+    }
+   ],
+   "HairTop2": [
+    1634,
+    {
+     "rank": 0.0,
+     "cov": 0.4
+    }
+   ],
+   "HairTop3": [
+    1634,
+    {
+     "rank": 0.3,
+     "cov": 0.55
+    }
+   ],
+   "HairTop4": [
+    1634,
+    {
+     "rank": 0.3,
+     "cov": 0.55
+    }
+   ],
+   "HairTop5": [
+    1634,
+    {
+     "rank": 0.55,
+     "cov": 0.7
+    }
+   ],
+   "HairTop6": [
+    1634,
+    {
+     "rank": 0.55,
+     "cov": 0.7
+    }
+   ],
+   "HairTop7": [
+    1634,
+    {
+     "rank": 0.75,
+     "cov": 0.82
+    }
+   ]
+  },
+  "clearance": {
+   "skull_m": 0.0279,
+   "head_m": 0.0238,
+   "skull_f_fit": 0.0279,
+   "head_f_fit": 0.0236,
+   "skull_m_narrow_fit": 0.0273
+  },
+  "separation": [
+   0.0052,
+   0.0032,
+   0.0032,
+   0.0032,
+   0.0032,
+   0.0032,
+   0.0033
+  ],
+  "seam": {
+   "HairTop1": {
+    "u0": 34,
+    "u1": 33,
+    "unmatched": 1
+   },
+   "HairTop2": {
+    "u0": 34,
+    "u1": 33,
+    "unmatched": 1
+   },
+   "HairTop3": {
+    "u0": 34,
+    "u1": 33,
+    "unmatched": 1
+   },
+   "HairTop4": {
+    "u0": 34,
+    "u1": 33,
+    "unmatched": 1
+   },
+   "HairTop5": {
+    "u0": 34,
+    "u1": 33,
+    "unmatched": 1
+   },
+   "HairTop6": {
+    "u0": 34,
+    "u1": 33,
+    "unmatched": 1
+   },
+   "HairTop7": {
+    "u0": 34,
+    "u1": 33,
+    "unmatched": 1
+   }
+  }
+ },
+ "caesar": {
+  "tris": 11379,
+  "pieces": {
+   "HairTop1": [
+    1633,
+    {
+     "rank": 0.0,
+     "cov": 0.4
+    }
+   ],
+   "HairTop2": [
+    1633,
+    {
+     "rank": 0.3,
+     "cov": 0.55
+    }
+   ],
+   "HairTop3": [
+    1633,
+    {
+     "rank": 0.75,
+     "cov": 0.82
+    }
+   ],
+   "HairCrop": [
+    6480,
+    null
+   ]
+  },
+  "clearance": {
+   "skull_m": 0.0245,
+   "head_m": 0.0251,
+   "skull_f_fit": 0.0241,
+   "head_f_fit": 0.0261,
+   "skull_m_narrow_fit": 0.0244
+  },
+  "separation": [
+   0.0055,
+   0.0032,
+   0.0032
+  ],
+  "seam": {
+   "HairTop1": {
+    "u0": 34,
+    "u1": 33,
+    "unmatched": 1
+   },
+   "HairTop2": {
+    "u0": 34,
+    "u1": 33,
+    "unmatched": 1
+   },
+   "HairTop3": {
+    "u0": 34,
+    "u1": 33,
+    "unmatched": 1
+   }
+  }
+ }
+}

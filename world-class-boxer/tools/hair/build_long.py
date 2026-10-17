@@ -173,13 +173,15 @@ def _strip(w, h, seed, n_strands, n_clumps, width_px, clump_k, fill, len_min, wa
             # crests catch the light: brighten where the strand runs straight down
             slope = np.gradient(xs) if len(xs) > 2 else np.zeros_like(xs)
             shade = shade * (0.9 + 0.18 * np.exp(-(slope * 3.0) ** 2))
-        op = rng.uniform(0.8, 1.0) * np.clip(tip / 0.45, 0, 1) ** 0.8 * np.clip((ys - y0) / (0.02 * h), 0.25, 1)
+        op = rng.uniform(0.65, 1.0) * np.clip(tip / 0.45, 0, 1) ** 0.8 * np.clip((ys - y0) / (0.02 * h), 0.25, 1)
         cv.strand(ys, xs, wid, shade, op, 0, w)
     lum, alp = cv.lum, cv.alp
     if fill > 0:
         # the deeper hair under the strands: a darker blurred body, strongest in the clump cores
         body = _blur(alp, w * 0.02)
-        body = np.clip(body * 1.25, 0, 1) ** 2 * fill
+        uu = (np.arange(w) + 0.5) / w
+        core = np.exp(-((uu - 0.5) / 0.2) ** 2)[None, :]
+        body = np.clip(body * 1.25, 0, 1) ** 2 * fill * core
         bl = 0.42 + 0.25 * _blur(lum, w * 0.02) / np.maximum(_blur(alp, w * 0.02), 1e-3)
         lum = lum * alp + bl * body * (1 - alp)
         alp = alp + body * (1 - alp)
@@ -211,22 +213,22 @@ def _bleed(lum, alp, passes=6):
     return out
 
 
-def make_texture(path, size=TEX_SIZE, seed=1101):
+def make_texture(path, size=TEX_SIZE, seed=1101, report=False):
     ss = 2  # drawn at 2x, box-filtered down
     W, H = size * ss, size * ss
     sw = W // 4
     specs = {
         # dense clump: the bulk of every layer; nearly opaque inside, strands breaking out at the edges and tips
-        "dense": dict(n_strands=int(sw * 2.1), n_clumps=7, width_px=2.6, clump_k=0.8, fill=0.85, len_min=0.55, clump_lo=0.72,
+        "dense": dict(n_strands=int(sw * 0.5), spread=0.42, n_clumps=7, width_px=2.6, clump_k=0.8, fill=0.85, len_min=0.55, clump_lo=0.72,
                       stray=0.03, shade_lo=0.62, edge=0.10, tip_spread=0.3),
         # medium: a lighter lock (gaps between clumps; the layer under it shows through)
-        "medium": dict(n_strands=int(sw * 1.15), n_clumps=6, width_px=2.4, clump_k=0.85, fill=0.35, len_min=0.45, clump_lo=0.65, root_soft=0.11,
+        "medium": dict(n_strands=int(sw * 0.3), spread=0.45, n_clumps=6, width_px=2.4, clump_k=0.85, fill=0.35, len_min=0.45, clump_lo=0.65, root_soft=0.11,
                        stray=0.05, shade_lo=0.5, edge=0.12, tip_spread=0.32),
         # wispy flyaways: a few loose strands, staggered lengths
-        "wispy": dict(n_strands=int(sw * 0.22), n_clumps=4, width_px=2.0, clump_k=0.35, fill=0.0, len_min=0.3,
+        "wispy": dict(n_strands=int(sw * 0.12), n_clumps=4, width_px=2.0, clump_k=0.35, fill=0.0, len_min=0.3,
                       stray=0.35, shade_lo=0.6, edge=0.14, tip_spread=0.5),
         # wavy: dense clumps on broad S-waves (2.5 waves root to tip), crests lighter
-        "wavy": dict(n_strands=int(sw * 1.9), n_clumps=6, width_px=2.6, clump_k=0.75, fill=0.7, len_min=0.55, clump_lo=0.75,
+        "wavy": dict(n_strands=int(sw * 0.48), spread=0.42, n_clumps=6, width_px=2.6, clump_k=0.75, fill=0.7, len_min=0.55, clump_lo=0.75,
                      wave_amp=0.075, wave_per=2.5, stray=0.04, shade_lo=0.55, edge=0.13, tip_spread=0.3),
     }
     lum = np.zeros((H, W), np.float32)
@@ -243,6 +245,11 @@ def make_texture(path, size=TEX_SIZE, seed=1101):
     l = np.clip(0.25 + 0.75 * np.clip(l, 0, 1), 0.25, 1.0)
     g = (l * 255 + 0.5).astype(np.uint8)
     A = (np.clip(a, 0, 1) * 255 + 0.5).astype(np.uint8)
+    if report:
+        q = size // 4
+        for i, name in enumerate(specs):
+            prof = a[int(size * 0.3):int(size * 0.6), i * q:(i + 1) * q].mean(0)
+            print(name, " ".join(f"{x:.2f}" for x in prof[::16]))
     os.makedirs(os.path.dirname(path), exist_ok=True)
     Image.fromarray(np.dstack([g, g, g, A]), "RGBA").save(path, optimize=True)
     return path
@@ -477,11 +484,11 @@ LAYERS = [
          w=(0.05, 0.085, 0.1), shade=0.97, phase=0.0, rel=(0.03, 0.0), root="hairline", fmax=0.22),
     dict(name="scalp", n=15, off=0.025, strips={"dense": 1.0}, margin=0.06, tip=-1.12, tip_var=0.05,
          w=(0.065, 0.14, 0.12), shade=0.93, phase=0.0, rel=(0.0, -0.12)),
-    dict(name="inner", n=14, off=0.033, strips={"dense": 0.85, "medium": 0.15}, margin=0.055, tip=-1.30,
+    dict(name="inner", n=14, off=0.037, strips={"dense": 0.85, "medium": 0.15}, margin=0.055, tip=-1.30,
          tip_var=0.06, w=(0.065, 0.13, 0.125), shade=0.96, phase=0.37, rel=(0.025, -0.02)),
-    dict(name="main", n=14, off=0.041, strips={"dense": 0.7, "medium": 0.3}, margin=0.05, tip=-1.42,
+    dict(name="main", n=14, off=0.05, strips={"dense": 0.7, "medium": 0.3}, margin=0.05, tip=-1.42,
          tip_var=0.07, w=(0.06, 0.125, 0.125), shade=0.98, phase=0.71, rel=(0.04, 0.06)),
-    dict(name="outer", n=11, off=0.05, strips={"dense": 0.4, "medium": 0.6}, margin=0.05, tip=-1.36,
+    dict(name="outer", n=11, off=0.063, strips={"dense": 0.4, "medium": 0.6}, margin=0.05, tip=-1.36,
          tip_var=0.12, w=(0.055, 0.11, 0.11), shade=1.0, phase=0.19, rel=(0.05, 0.1)),
 ]
 FLYAWAYS = dict(n=7, off=0.072, strip="wispy", w=(0.03, 0.05), len=(0.2, 0.4), shade=1.0)
@@ -494,7 +501,7 @@ STYLES = {
 }
 
 PSI_FRONT = 1.125  # part angle (from +Y toward the face) just inside the front hairline
-PSI_BACK = -0.62  # the part's back end, behind the crown
+PSI_BACK = -0.32  # the part's back end, behind the crown
 PART_X = 0.006  # the subtle centre parting: roots this far either side of x = 0
 F_SIDE = 0.24  # strands with f below this fall forward as the side locks
 ANCHOR_Y = {"back": -0.14, "side": -0.22}  # hanging chains start here (their pivot height)
@@ -572,7 +579,7 @@ def scalp_path(f, side, layer, vol, rng, n=48):
     s = np.concatenate([[0], np.cumsum(np.linalg.norm(np.diff(P, axis=0), axis=1))])
     ed = edge_dist(P)
     base = 0.0225
-    tgt = layer["off"] * vol * (1 + 0.4 * smooth(0.30, 0.56, P[:, 1]))
+    tgt = layer["off"] * vol * (1 + 0.55 * smooth(0.25, 0.56, P[:, 1]))
     ramp = np.minimum(smooth(0.0, 0.12, s), smooth(0.0, 0.11, ed))
     off = base + (tgt - base) * ramp
     Pn = C + unit(P - C) * (np.linalg.norm(P - C, axis=1) + off)[:, None]
@@ -839,12 +846,12 @@ def card_rows(st, cfg):
     ang = np.arccos(np.clip((Tn[1:] * Tn[:-1]).sum(1), -1, 1))
     kap = np.concatenate([[0], ang / np.maximum(np.diff(S), 1e-6)])
     kap = np.convolve(kap, np.ones(7) / 7, mode="same")
-    hmin_hang, hmax_hang = (0.048, 0.06) if cfg["wavy"] else (0.035, 0.13)
+    hmin_hang, hmax_hang = (0.075, 0.085) if cfg["wavy"] else (0.035, 0.13)
     rows = [0.0]
     s = 0.0
     while s < L - 1e-6:
         k = float(np.interp(s, S, kap))
-        hmin, hmax = (0.035, 0.075) if s < st.s_rel else (hmin_hang, hmax_hang)
+        hmin, hmax = (0.045, 0.085) if s < st.s_rel else (hmin_hang, hmax_hang)
         h = float(np.clip(0.22 / max(k, 1e-6), hmin, hmax))
         if s < 0.1:
             h = min(h, 0.04)
@@ -897,6 +904,8 @@ class Card:
         w0, w1, w2 = st.w
         w = w0 + (w1 - w0) * smooth(0.0, 0.22, s)
         if not st.fly:
+            if st.lock:
+                w2 = w2 * 1.3  # the side locks: fuller clumps over the front of the shoulder
             w = w + (w2 - w1) * smooth(st.s_rel - 0.1, st.s_rel + 0.3, s)
         w = w * (1 - 0.25 * smooth(L * 0.7, L, s)) * rng.uniform(0.92, 1.08)
         hw = w * 0.5
@@ -917,7 +926,10 @@ class Card:
                 oe = np.maximum(oe, 0.0225)
                 _d, _r, th, az = polar(Pe, C)
                 E[sc] = C + unit(Pe - C) * (skull_radius_v(SK, th, az) + oe)[:, None]
-        self.N = unit(face * 0.55 + nout * 0.45)
+        # shading normals: outward from the head (one soft volume over the scalp), a little of the card's own
+        # facing down the hanging part (the locks catch the light separately there)
+        kf = 0.3 * b
+        self.N = unit(face * kf[:, None] + nout * (1 - kf)[:, None])
         self.nout = nout
         u0, u1 = STRIPS[st.strip]
         if st.mirror:
@@ -1109,27 +1121,35 @@ def enforce_clearance(P, refs, hang_mask):
     """every vertex over the head CLEAR_MIN above the male head mesh, both skull tables (female through the fit)
     and the female head (through the fit); out of the ear boxes; hanging vertices off both torsos"""
     P = P.copy()
+    # nothing on the forehead below the hairline
+    fr = (P[:, 2] < -0.2) & (np.abs(P[:, 0]) < 0.3) & (P[:, 1] > -0.4)
+    if fr.any():
+        hy = hairline_y(P[fr]) - 0.003
+        Q = P[fr]
+        Q[:, 1] = np.maximum(Q[:, 1], hy)
+        P[fr] = Q
     over = P[:, 1] > -0.42
     P[over] = skull_push_v(P[over], CLEAR_MIN + 0.0005)
     ref_m, ref_f = refs
     sc = np.array([FIT_F["ax"], FIT_F["ay"], FIT_F["az"]])
-    for i in np.nonzero(P[:, 1] > -1.15)[0]:
+    for i in range(len(P)):
         p = P[i]
-        r = signed(ref_m.head, p, CLEAR_MIN + 0.03)
+        r = signed(ref_m.head, p, CLEAR_MIN + 0.03) if p[1] > -1.15 else None
         if r is not None and r[2] < CLEAR_MIN:
             p = r[0] + r[1] * (CLEAR_MIN + 0.0005)
         q = apply_fit(p, FIT_F)
-        r = signed(ref_f.head, q, CLEAR_MIN + 0.03)
+        r = signed(ref_f.head, q, CLEAR_MIN + 0.03) if p[1] > -1.15 else None
         if r is not None and r[2] < CLEAR_MIN:
             q2 = r[0] + r[1] * (CLEAR_MIN + 0.0005)
             p = p + (q2 - q) / sc
         if -0.35 < p[1] < 0.15 and abs(p[0]) > 0.2:
             p = ear_push(p, EAR_CLEAR)
         if p[1] < -0.45:
-            for ref in refs:
-                r = signed(ref.torso, p, 0.04)
-                if r is not None and r[2] < 0.012:
-                    p = r[0] + r[1] * 0.0125
+            for _k in range(4):
+                for ref in refs:
+                    r = signed(ref.torso, p, 0.3)
+                    if r is not None and r[2] < 0.012:
+                        p = r[0] + r[1] * 0.0135
         P[i] = p
     return P
 
@@ -1208,7 +1228,8 @@ def build_style(key, cfg, refs, coll, log):
             metas.append(cd)
     # clearance (one pass over every vertex)
     V = np.vstack([np.stack([cd.left, cd.right], 1).reshape(-1, 3) for cd in metas])
-    V = enforce_clearance(V, refs, None)
+    for _ in range(3):
+        V = enforce_clearance(V, refs, None)
     k = 0
     for cd in metas:
         Pc = V[k:k + 2 * cd.n]
