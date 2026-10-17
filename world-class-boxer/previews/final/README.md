@@ -4,6 +4,8 @@ These are offline renders of complete characters, as the game shows them when th
 
 Every sheet was re-rendered after the neck lift (see [Neck lift](#neck-lift) at the end), so all of them show the current neck and punches. The sections in between record what each earlier pass changed.
 
+The folder also holds every other pass's previews: animation filmstrips, the review renders of bodies, hair, the interface and the world, the character creator, the training screens, lighting, and the Graphics level comparisons of the optimization pass. [Every image in this folder](#every-image-in-this-folder) at the end lists all of them, one row per file.
+
 ## How they were made
 
 - **Rig and meshes.** Every boxer was built with the real `Builder.CreateNPC` in a copy of the simulator, which builds the scaled R15 rig. The generators were run on the boxer's `LookData`, and the renderer is a copy of `render2` (three.js, studio lighting that approximates Roblox Future).
@@ -148,3 +150,291 @@ Working files for the review fixes, which are not part of the repo, are in `/tmp
 - `vlab/lab/out/vj_*.joints.json`: the pose captures
 - `vrb.sh`, `vsheet.sh` and `vlay/`: render batches and layouts
 - `hg.sh`: the headgear renders
+
+## Graphics levels
+
+The optimization pass made every client system follow one Graphics level (Settings > Graphics detail: Auto, High, Medium, Low; see Performance in the main README). The `perf_*` images compare the levels:
+
+- **Characters** (`perf_characters_low_vs_high.jpg`, the character renderer): your boxer and your opponent keep full detail and every colour texture at every level. Gym NPCs on Low are low-detail meshes; before the pass they had no colour textures at all, which took the beard and brows off every face, so Low now paints the face texture on them.
+- **Scenes** (`perf_gym_levels.jpg`, `perf_stadium_levels.jpg`, `perf_city_night_levels.jpg`, simulator scene renders): High after the pass looks like High before it; Low drops shadows, spot-ray rate, crowd density and window grids.
+- **Interface** (`perf_fight_hud_low_vs_high.jpg`, `perf_fight_hud_phone_low_vs_high.jpg`, `perf_settings_graphics_note.jpg`, offline GUI renders): the HUD is the same at every level, and the Settings note says what each level does.
+
+## Every image in this folder
+
+### Graphics levels (optimization pass)
+
+Offline GUI and scene renders from the simulator, plus the character renderer. GPU effects (shadows, bloom, depth of field) are approximated.
+
+| File | Shows |
+|---|---|
+| `perf_characters_low_vs_high.jpg` | Mesh characters by Graphics level: High (full detail, every texture: your boxer and your opponent at every level), an NPC on Low before the optimization pass (low detail, no textures: no beard, no brows) and on Low now (low detail with the face texture) |
+| `perf_city_night_levels.jpg` | Main Street at night: before (High), after at High, after at Low (thinner crowd, fewer window grids) |
+| `perf_fight_hud_low_vs_high.jpg` | The fight HUD at Low and High on a desktop: identical (Low drops effects, never information) |
+| `perf_fight_hud_phone_low_vs_high.jpg` | The same on a phone, with the touch pads |
+| `perf_gym_levels.jpg` | The tier-4 gym floor: before the optimization pass (High), after at High, after at Low |
+| `perf_settings_graphics_note.jpg` | The Settings Graphics note at Low, Medium, High, Auto and Auto on a frame-rate-capped device |
+| `perf_stadium_levels.jpg` | The National Stadium in a round: before (High), after at High, after at Low (one key-light shadow, slower spot rays, printed impostor rows) |
+
+### Animation
+
+Filmstrips from the animation lab (the real client Animator on lab rigs or the mesh bodies).
+
+| File | Shows |
+|---|---|
+| `anim_footwork_OutBoxer_after.jpg` | Ring footwork filmstrip, OutBoxer style, after the animation pass |
+| `anim_footwork_OutBoxer_before.jpg` | Ring footwork filmstrip, OutBoxer style, before the animation pass |
+| `anim_footwork_Slugger_after.jpg` | Ring footwork filmstrip, Slugger style, after the animation pass |
+| `anim_footwork_Slugger_before.jpg` | Ring footwork filmstrip, Slugger style, before the animation pass |
+| `anim_footwork_Swarmer_after.jpg` | Ring footwork filmstrip, Swarmer style, after the animation pass |
+| `anim_footwork_Swarmer_before.jpg` | Ring footwork filmstrip, Swarmer style, before the animation pass |
+| `anim_knockdowns_after.jpg` | Knockdown filmstrips: flash, forward, side, ropes, corner and their get-ups |
+| `anim_knockouts_after.jpg` | Knockout filmstrips: timber fall, delayed KO, referee catch, face-first and backward collapses |
+| `anim_punches_BoxerPuncher_after.jpg` | Punch filmstrips (BoxerPuncher), after the kinetic-chain punches |
+| `anim_punches_BoxerPuncher_before.jpg` | Punch filmstrips (BoxerPuncher), before the kinetic-chain punches |
+| `anim_reactions_after.jpg` | Hit reactions by tier (light, medium, heavy, critical), after the animation pass |
+| `anim_reactions_before.jpg` | Hit reactions by tier (light, medium, heavy, critical), before the animation pass |
+| `anim_specials_a_after.jpg` | Special moves, sheet A |
+| `anim_specials_b_after.jpg` | Special moves, sheet B |
+| `anim_walk_after_female_34.jpg` | Walking overhaul, after: the female lab rig, 3/4 view |
+| `anim_walk_after_female_side.jpg` | Walking overhaul, after: the female lab rig, side view |
+| `anim_walk_after_heavy_34.jpg` | Walking overhaul, after: the heavy lab rig, 3/4 view |
+| `anim_walk_after_heavy_side.jpg` | Walking overhaul, after: the heavy lab rig, side view |
+| `anim_walk_after_lean_34.jpg` | Walking overhaul, after: the lean lab rig, 3/4 view |
+| `anim_walk_after_lean_side.jpg` | Walking overhaul, after: the lean lab rig, side view |
+| `anim_walk_after_mesh_female_front.jpg` | Walking overhaul, after: the female mesh body from the front (walk, jog, run, sprint, starts, stops, turns) |
+| `anim_walk_after_mesh_female_side.jpg` | Walking overhaul, after: the female mesh body from the side (walk, jog, run, sprint, starts, stops, turns) |
+| `anim_walk_after_mesh_heavy_front.jpg` | Walking overhaul, after: the heavy mesh body from the front (walk, jog, run, sprint, starts, stops, turns) |
+| `anim_walk_after_mesh_heavy_side.jpg` | Walking overhaul, after: the heavy mesh body from the side (walk, jog, run, sprint, starts, stops, turns) |
+| `anim_walk_after_mesh_lean_front.jpg` | Walking overhaul, after: the lean mesh body from the front (walk, jog, run, sprint, starts, stops, turns) |
+| `anim_walk_after_mesh_lean_side.jpg` | Walking overhaul, after: the lean mesh body from the side (walk, jog, run, sprint, starts, stops, turns) |
+| `anim_walk_before_female_34.jpg` | Walking overhaul, before: the female lab rig, 3/4 view |
+| `anim_walk_before_female_side.jpg` | Walking overhaul, before: the female lab rig, side view |
+| `anim_walk_before_heavy_34.jpg` | Walking overhaul, before: the heavy lab rig, 3/4 view |
+| `anim_walk_before_heavy_side.jpg` | Walking overhaul, before: the heavy lab rig, side view |
+| `anim_walk_before_lean_34.jpg` | Walking overhaul, before: the lean lab rig, 3/4 view |
+| `anim_walk_before_lean_side.jpg` | Walking overhaul, before: the lean lab rig, side view |
+| `anim_walk_before_mesh_female_front.jpg` | Walking overhaul, before: the female mesh body from the front (walk, jog, run, sprint, starts, stops, turns) |
+| `anim_walk_before_mesh_female_side.jpg` | Walking overhaul, before: the female mesh body from the side (walk, jog, run, sprint, starts, stops, turns) |
+| `anim_walk_before_mesh_heavy_front.jpg` | Walking overhaul, before: the heavy mesh body from the front (walk, jog, run, sprint, starts, stops, turns) |
+| `anim_walk_before_mesh_heavy_side.jpg` | Walking overhaul, before: the heavy mesh body from the side (walk, jog, run, sprint, starts, stops, turns) |
+| `anim_walk_before_mesh_lean_front.jpg` | Walking overhaul, before: the lean mesh body from the front (walk, jog, run, sprint, starts, stops, turns) |
+| `anim_walk_before_mesh_lean_side.jpg` | Walking overhaul, before: the lean mesh body from the side (walk, jog, run, sprint, starts, stops, turns) |
+| `anim_walker_after.jpg` | A background walker's gait, after the gait-life pass |
+| `anim_walker_before.jpg` | A background walker's gait, before the gait-life pass |
+
+### Characters: faces, fallback, gloves
+
+| File | Shows |
+|---|---|
+| `face_after.jpg` | Faces, after the faces / skin pass |
+| `face_before.jpg` | Faces, before the faces / skin pass |
+| `face_gear_after.jpg` | Faces with headgear and gear, after the faces / skin pass |
+| `face_gear_before.jpg` | Faces with headgear and gear, before the faces / skin pass |
+| `fallback_after.jpg` | The part-built fallback, after its softer pass |
+| `fallback_before.jpg` | The part-built fallback, before its softer pass |
+| `fallback_body_beginner.jpg` | The part-built fallback body, beginner physique (smooth, integrated muscle domes) |
+| `fallback_body_elite.jpg` | The part-built fallback body, elite physique (smooth, integrated muscle domes) |
+| `fallback_body_female.jpg` | The part-built fallback body, female physique (smooth, integrated muscle domes) |
+| `fallback_body_heavyweight.jpg` | The part-built fallback body, heavyweight physique (smooth, integrated muscle domes) |
+| `fallback_body_lean.jpg` | The part-built fallback body, lean physique (smooth, integrated muscle domes) |
+| `fallback_body_power.jpg` | The part-built fallback body, power physique (smooth, integrated muscle domes) |
+| `gloves_closeup_mesh.jpg` | Mesh gloves close up |
+| `gloves_fallback_parts.jpg` | Part-built gloves |
+| `gloves_guard_punch_comp.jpg` | Gloves in the guard and at a punch |
+
+### Body review renders
+
+| File | Shows |
+|---|---|
+| `council_body_beginner.jpg` | Body review render: beginner physique |
+| `council_body_elite.jpg` | Body review render: elite physique |
+| `council_body_female_lean.jpg` | Body review render: female lean physique |
+| `council_body_heavy.jpg` | Body review render: heavy physique |
+| `council_body_lean.jpg` | Body review render: lean physique |
+| `council_body_power.jpg` | Body review render: power physique |
+| `council_body_satin_waist.jpg` | Trunks: the satin under the seat with the waist bent (before / after) |
+| `council_body_trunks.jpg` | Trunks as one garment |
+| `council_body_trunks_hipcap.jpg` | Trunks seat at the hip cap |
+| `council_body_trunks_posed.jpg` | Trunks in posed sits, kneels and strides |
+| `council_body_trunks_sit.jpg` | Trunks seat in a sit |
+
+### Hair review renders
+
+Suffixes: `_f` / `_m` female / male, `_k` / `_s` kinky / straight hair type.
+
+| File | Shows |
+|---|---|
+| `council_hair_afro_k.jpg` | Hair review round 1: afro kinky hair |
+| `council_hair_afro_k_close.jpg` | Hair review round 1: afro kinky hair, close up |
+| `council_hair_blue_split.jpg` | Hair review round 1: blue split dye |
+| `council_hair_boxbraids_f.jpg` | Hair review round 1: box braids female |
+| `council_hair_braids.jpg` | Hair review round 1: braids |
+| `council_hair_braids_close.jpg` | Hair review round 1: braids, close up |
+| `council_hair_cornrows.jpg` | Hair review round 1: cornrows |
+| `council_hair_cornrows_close.jpg` | Hair review round 1: cornrows, close up |
+| `council_hair_curlytop.jpg` | Hair review round 1: curly top |
+| `council_hair_dreads.jpg` | Hair review round 1: dreadlocks |
+| `council_hair_dreads_close.jpg` | Hair review round 1: dreadlocks, close up |
+| `council_hair_fade_k.jpg` | Hair review round 1: fade kinky hair |
+| `council_hair_fade_k_close.jpg` | Hair review round 1: fade kinky hair, close up |
+| `council_hair_fade_s.jpg` | Hair review round 1: fade straight hair |
+| `council_hair_long_f.jpg` | Hair review round 1: long hair female |
+| `council_hair_longcurly_f.jpg` | Hair review round 1: long curly female |
+| `council_hair_longcurly_m.jpg` | Hair review round 1: long curly male |
+| `council_hair_longcurly_m_close.jpg` | Hair review round 1: long curly male, close up |
+| `council_hair_mohawk.jpg` | Hair review round 1: mohawk |
+| `council_hair_pony_f.jpg` | Hair review round 1: ponytail female |
+| `council_hair_r2_blue_split.jpg` | Hair review round 2: blue split dye |
+| `council_hair_r2_boxbraids_f.jpg` | Hair review round 2: box braids female |
+| `council_hair_r2_boxbraids_f_close.jpg` | Hair review round 2: box braids female, close up |
+| `council_hair_r2_boxbraids_m_close.jpg` | Hair review round 2: box braids male, close up |
+| `council_hair_r2_buzz_s_close.jpg` | Hair review round 2: buzz cut straight hair, close up |
+| `council_hair_r2_fade_k_close.jpg` | Hair review round 2: fade kinky hair, close up |
+| `council_hair_r2_long_f.jpg` | Hair review round 2: long hair female |
+| `council_hair_r2_long_s_m.jpg` | Hair review round 2: long hair straight hair male |
+| `council_hair_r2_longcurly_k.jpg` | Hair review round 2: long curly kinky hair |
+| `council_hair_r2_longcurly_m.jpg` | Hair review round 2: long curly male |
+| `council_hair_r2_longcurly_m_close.jpg` | Hair review round 2: long curly male, close up |
+| `council_hair_r2_volume_edges.jpg` | Hair review round 2: volume edges |
+| `council_hair_r3_blue_split_low.jpg` | Hair review round 3: blue split dye (low detail) |
+| `council_hair_r3_boxbraids_f.jpg` | Hair review round 3: box braids female |
+| `council_hair_r3_boxbraids_f_low.jpg` | Hair review round 3: box braids female (low detail) |
+| `council_hair_r3_boxbraids_m.jpg` | Hair review round 3: box braids male |
+| `council_hair_r3_boxbraids_m_low.jpg` | Hair review round 3: box braids male (low detail) |
+| `council_hair_r3_boxbraids_m_medium.jpg` | Hair review round 3: box braids male (medium detail) |
+| `council_hair_r3_long_f_low.jpg` | Hair review round 3: long hair female (low detail) |
+| `council_hair_r3_long_s_m_low.jpg` | Hair review round 3: long hair straight hair male (low detail) |
+| `council_hair_r3_longcurly_k.jpg` | Hair review round 3: long curly kinky hair |
+| `council_hair_r3_longcurly_m.jpg` | Hair review round 3: long curly male |
+| `council_hair_r3_longcurly_m_medium.jpg` | Hair review round 3: long curly male (medium detail) |
+| `council_hair_r3_longcurly_m_under.jpg` | Hair review round 3: long curly male from below |
+| `council_hair_r3_part_crew.jpg` | Hair review round 3: parting: crew cut |
+| `council_hair_r3_part_fade_k.jpg` | Hair review round 3: parting: fade kinky hair |
+| `council_hair_r4_boxbraids_low.jpg` | Hair review round 4: box braids (low detail) |
+| `council_hair_shortcurly.jpg` | Hair review round 1: short curly |
+| `council_hair_shortdreads.jpg` | Hair review round 1: short dreads |
+| `council_hair_twists.jpg` | Hair review round 1: twists |
+| `council_hair_waves.jpg` | Hair review round 1: 360 waves |
+
+### Interface review renders
+
+| File | Shows |
+|---|---|
+| `council_ui_after_1024_barber.jpg` | UI review pass 1, after: barber on a 1024 x 768 tablet |
+| `council_ui_after_1024_creator.jpg` | UI review pass 1, after: creator on a 1024 x 768 tablet |
+| `council_ui_after_1024_hub.jpg` | UI review pass 1, after: Career Hub on a 1024 x 768 tablet |
+| `council_ui_after_1920_career.jpg` | UI review pass 1, after: career on a 1920 x 1080 desktop |
+| `council_ui_after_1920_creator.jpg` | UI review pass 1, after: creator on a 1920 x 1080 desktop |
+| `council_ui_after_667_career.jpg` | UI review pass 1, after: career on a 667 x 375 phone |
+| `council_ui_after_667_creator.jpg` | UI review pass 1, after: creator on a 667 x 375 phone |
+| `council_ui_after_667_hub.jpg` | UI review pass 1, after: Career Hub on a 667 x 375 phone |
+| `council_ui_after_844_barber.jpg` | UI review pass 1, after: barber on an 844 x 390 phone |
+| `council_ui_after_844_creator.jpg` | UI review pass 1, after: creator on an 844 x 390 phone |
+| `council_ui_after_844_settings.jpg` | UI review pass 1, after: settings on an 844 x 390 phone |
+| `council_ui_before_1024_barber.jpg` | UI review pass 1, before: barber on a 1024 x 768 tablet |
+| `council_ui_before_1024_creator.jpg` | UI review pass 1, before: creator on a 1024 x 768 tablet |
+| `council_ui_before_1024_hub.jpg` | UI review pass 1, before: Career Hub on a 1024 x 768 tablet |
+| `council_ui_before_1920_career.jpg` | UI review pass 1, before: career on a 1920 x 1080 desktop |
+| `council_ui_before_1920_creator.jpg` | UI review pass 1, before: creator on a 1920 x 1080 desktop |
+| `council_ui_before_667_career.jpg` | UI review pass 1, before: career on a 667 x 375 phone |
+| `council_ui_before_667_creator.jpg` | UI review pass 1, before: creator on a 667 x 375 phone |
+| `council_ui_before_667_hub.jpg` | UI review pass 1, before: Career Hub on a 667 x 375 phone |
+| `council_ui_before_844_barber.jpg` | UI review pass 1, before: barber on an 844 x 390 phone |
+| `council_ui_before_844_creator.jpg` | UI review pass 1, before: creator on an 844 x 390 phone |
+| `council_ui_before_844_settings.jpg` | UI review pass 1, before: settings on an 844 x 390 phone |
+| `council_ui_pass2_after_1024_career.jpg` | UI review pass 2, after: career on a 1024 x 768 tablet |
+| `council_ui_pass2_after_1024_face.jpg` | UI review pass 2, after: creator face step on a 1024 x 768 tablet |
+| `council_ui_pass2_after_667_creator.jpg` | UI review pass 2, after: creator on a 667 x 375 phone |
+| `council_ui_pass2_after_667_locker.jpg` | UI review pass 2, after: locker room on a 667 x 375 phone |
+| `council_ui_pass2_after_667_sliders.jpg` | UI review pass 2, after: sliders on a 667 x 375 phone |
+| `council_ui_pass2_after_667_stepmenu.jpg` | UI review pass 2, after: step menu on a 667 x 375 phone |
+| `council_ui_pass2_after_844_barber.jpg` | UI review pass 2, after: barber on an 844 x 390 phone |
+| `council_ui_pass2_after_844_face.jpg` | UI review pass 2, after: creator face step on an 844 x 390 phone |
+| `council_ui_pass2_after_844_settings.jpg` | UI review pass 2, after: settings on an 844 x 390 phone |
+| `council_ui_pass2_before_1024_career.jpg` | UI review pass 2, before: career on a 1024 x 768 tablet |
+| `council_ui_pass2_before_1024_face.jpg` | UI review pass 2, before: creator face step on a 1024 x 768 tablet |
+| `council_ui_pass2_before_667_creator.jpg` | UI review pass 2, before: creator on a 667 x 375 phone |
+| `council_ui_pass2_before_667_locker.jpg` | UI review pass 2, before: locker room on a 667 x 375 phone |
+| `council_ui_pass2_before_667_sliders.jpg` | UI review pass 2, before: sliders on a 667 x 375 phone |
+| `council_ui_pass2_before_844_barber.jpg` | UI review pass 2, before: barber on an 844 x 390 phone |
+| `council_ui_pass2_before_844_face.jpg` | UI review pass 2, before: creator face step on an 844 x 390 phone |
+| `council_ui_pass2_before_844_settings.jpg` | UI review pass 2, before: settings on an 844 x 390 phone |
+| `council_ui_pass3_after_1024_career.jpg` | UI review pass 3, after: career on a 1024 x 768 tablet |
+| `council_ui_pass3_after_1024_career_longest.jpg` | UI review pass 3, after: career (longest names) on a 1024 x 768 tablet |
+| `council_ui_pass3_after_667_hair.jpg` | UI review pass 3, after: creator hair step on a 667 x 375 phone |
+| `council_ui_pass3_after_844_barber.jpg` | UI review pass 3, after: barber on an 844 x 390 phone |
+| `council_ui_pass3_after_844_stepmenu_pad.jpg` | UI review pass 3, after: step menu gamepad on an 844 x 390 phone |
+| `council_ui_pass3_before_1024_career.jpg` | UI review pass 3, before: career on a 1024 x 768 tablet |
+| `council_ui_pass3_before_667_hair.jpg` | UI review pass 3, before: creator hair step on a 667 x 375 phone |
+| `council_ui_pass3_before_844_barber.jpg` | UI review pass 3, before: barber on an 844 x 390 phone |
+| `council_ui_pass3_before_844_stepmenu_pad.jpg` | UI review pass 3, before: step menu gamepad on an 844 x 390 phone |
+| `council_ui_pass4_after_1024_dock.jpg` | UI review pass 4, after: creator dock on a 1024 x 768 tablet |
+| `council_ui_pass4_after_667_kb_dock.jpg` | UI review pass 4, after: keyboard creator dock on a 667 x 375 phone |
+| `council_ui_pass4_after_667_pad_camhint.jpg` | UI review pass 4, after: gamepad camera hint on a 667 x 375 phone |
+| `council_ui_pass4_after_844_pad_camhint.jpg` | UI review pass 4, after: gamepad camera hint on an 844 x 390 phone |
+| `council_ui_pass4_before_1024_dock.jpg` | UI review pass 4, before: creator dock on a 1024 x 768 tablet |
+| `council_ui_pass4_before_667_pad_camhint.jpg` | UI review pass 4, before: gamepad camera hint on a 667 x 375 phone |
+| `council_ui_pass4_before_844_pad_camhint.jpg` | UI review pass 4, before: gamepad camera hint on an 844 x 390 phone |
+
+### Character creator
+
+| File | Shows |
+|---|---|
+| `creator_before_face.jpg` | Character creator before its rework: face |
+| `creator_before_phone_face.jpg` | Character creator before its rework: phone face |
+| `creator_body.jpg` | Character creator: body |
+| `creator_face.jpg` | Character creator: face |
+| `creator_face_advanced.jpg` | Character creator: face advanced |
+| `creator_gear.jpg` | Character creator: gear |
+| `creator_hair.jpg` | Character creator: hair |
+| `creator_phone_body_advanced.jpg` | Character creator: phone body advanced |
+| `creator_phone_hair.jpg` | Character creator: phone hair |
+| `creator_skin_eyes.jpg` | Character creator: skin eyes |
+
+### Training screens
+
+| File | Shows |
+|---|---|
+| `training_drill_1920x1080.jpg` | Training UI: drill at 1920 x 1080 |
+| `training_drill_667x375.jpg` | Training UI: drill at 667 x 375 |
+| `training_drill_844x390.jpg` | Training UI: drill at 844 x 390 |
+| `training_hub_body_1920x1080.jpg` | Training UI: hub body at 1920 x 1080 |
+| `training_hub_gym_667x375.jpg` | Training UI: hub gym at 667 x 375 |
+| `training_hub_training_1920x1080.jpg` | Training UI: hub training at 1920 x 1080 |
+| `training_hub_training_844x390.jpg` | Training UI: hub training at 844 x 390 |
+| `training_hub_training_cards_667x375.jpg` | Training UI: hub training cards at 667 x 375 |
+| `training_muscle_1920x1080.jpg` | Training UI: muscle at 1920 x 1080 |
+| `training_muscle_844x390.jpg` | Training UI: muscle at 844 x 390 |
+| `training_muscle_history_1024x768.jpg` | Training UI: muscle history at 1024 x 768 |
+| `training_muscle_history_1920x1080.jpg` | Training UI: muscle history at 1920 x 1080 |
+| `training_muscle_history_667x375.jpg` | Training UI: muscle history at 667 x 375 |
+| `training_result_1024x768.jpg` | Training UI: result at 1024 x 768 |
+| `training_result_1920x1080.jpg` | Training UI: result at 1920 x 1080 |
+| `training_result_667x375.jpg` | Training UI: result at 667 x 375 |
+| `training_result_844x390.jpg` | Training UI: result at 844 x 390 |
+
+### World and lighting
+
+| File | Shows |
+|---|---|
+| `council_world_arena_crowd.jpg` | World review: arena crowd |
+| `council_world_champion_lounge.jpg` | World review: champion lounge |
+| `council_world_champion_lounge_from_lobby.jpg` | World review: champion lounge from lobby |
+| `council_world_door_one_crowd.jpg` | World review: door one crowd |
+| `council_world_lobby_media_set.jpg` | World review: lobby media set |
+| `council_world_museum_front.jpg` | World review: museum front |
+| `council_world_stadium_crowd.jpg` | World review: stadium crowd |
+| `lighting_arena_round.jpg` | Lighting: arena round |
+| `lighting_arena_walkout.jpg` | Lighting: arena walkout |
+| `lighting_city_day.jpg` | Lighting: city day |
+| `lighting_city_night.jpg` | Lighting: city night |
+| `lighting_club_arena.jpg` | Lighting: club arena |
+| `lighting_community_center.jpg` | Lighting: community center |
+| `lighting_gym_boxing_floor.jpg` | Lighting: gym boxing floor |
+| `lighting_gym_lobby.jpg` | Lighting: gym lobby |
+| `lighting_gym_night.jpg` | Lighting: gym night |
+| `lighting_gym_ring.jpg` | Lighting: gym ring |
+| `lighting_gym_weights.jpg` | Lighting: gym weights |
+| `lighting_menu.jpg` | Lighting: menu |
+| `lighting_sparring_room.jpg` | Lighting: sparring room |
+| `lighting_stadium_round.jpg` | Lighting: stadium round |

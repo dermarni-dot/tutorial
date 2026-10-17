@@ -349,8 +349,10 @@ no two look alike.
    to the rig, and hides the parts they replace only once the replacement exists.
 
 **Levels of detail.** The local player, the fight opponent and the nearest few characters (default 6
-within 70 studs) get full detail. Others get medium or low. Beyond 160 studs characters stay
-part-built. Mesh builds are cached by signature, so identical NPCs share work.
+within 70 studs; fewer and nearer on Medium and Low, see [Performance](#performance)) get full detail.
+Others get medium or low. Beyond 160 studs characters stay part-built. Your boxer and your opponent
+come first: a section of theirs still showing round-1 parts is built at low detail at once, then at
+full detail, face first. Mesh builds are cached by signature, so identical NPCs share work.
 
 **Body.** One continuous skin over a real ribcage, with:
 - chest: upper and lower pecs, serratus;
@@ -385,8 +387,10 @@ include fades from skin to high (as gradients), crops, curly tops, afros made of
 waves, twists, cornrows, box braids, dreadlocks, long hair, ponytails and wolf cuts. Hair follows the
 skull in layered clumps and strands, with sliders for volume, curl size, frizz, density and length.
 Dyes come as tips, streaks, ombre or split. Hair and beards grow a little every in-game day. HairFX
-swings long hair, locs and braids, bounces curly volumes, keeps tips out of the shoulders and makes
-sweaty hair heavier and darker.
+swings long hair, locs and braids and bounces curly volumes. Up close, swinging hair is tested
+against the body's own meshes (radial maps of the upper torso, arms and gloves, made the first time
+swinging hair comes that near), so it lies on the shoulders and back instead of sinking in; hair that
+reaches the canvas in a knockdown rests on it. Sweaty hair turns heavier and darker.
 
 **Damage and condition.** Sweat, grime, bruises, swelling, cuts, a black eye, a bloody nose and a
 split lip show on the meshes. Face damage persists after a fight (stages: fresh, light, moderate,
@@ -415,7 +419,8 @@ Everything is procedural, driven on each client by `Animator.client.lua` and the
 - **Defence:** slips, rolls, parries, pivots, the shell and clinches.
 - **Hit reactions:** light head snaps, medium stumbles, heavy leg wobbles and critical buckles, each
   directional.
-- **Knockdowns:** flash, forward, side, on the ropes and in the corner.
+- **Knockdowns:** flash, forward, side, on the ropes and in the corner (the back comes to rest against
+  the post and its turnbuckle pads).
 - **Knockouts:** one-punch timber falls, delayed KOs, standing KOs held up by the referee, face-first
   and backward collapses. KOs play in slow motion.
 - **Get-ups:** staged for each kind of fall.
@@ -442,7 +447,9 @@ Everything is procedural, driven on each client by `Animator.client.lua` and the
   carry a fill bar) next to a "muscles worked" card: an anatomical body map lit by
   `Config.ExerciseTargets`. A phone too narrow for the card gets a strip over the panel instead (a
   small map and the muscles' names). The report that follows shows the grade, every muscle that grew
-  (its level before, the growth now, tonight's share, the gain), every stat that rose (old -> new),
+  (under NOW / TONIGHT / LEVEL: the 65% of the gain that lands at once, the rest that lands when you
+  sleep, and the muscle's level now; the gain popups, the report's side card and the Muscle
+  Progression screen show the same split), every stat that rose (old -> new),
   the pump / soreness / sweat / veins / fat chips and the body map re-lit by the growth (on a phone,
   beside the grade; the header steps up under the record line so the first growth rows show without
   scrolling). It stays up until CONTINUE / CLOSE (B), or until a window opens over it or a bout takes
@@ -623,6 +630,9 @@ rebuilds at most twice a second, head-only previews five times).
     count.
   - Three knockdowns in a round is a TKO. The referee and the ringside doctor can also stop a
     fight.
+- **Clinch:** a tie-up from close range holds both men for a moment, then the referee (the coach in a
+  spar) breaks it. The pair slides to a clinch distance sized to both chests, so a heavyweight's deep
+  chest holds them further apart.
 - **Concussion:** builds with head damage. It slows punches and movement, lowers accuracy and
   defence, and blurs and drains the screen. It recovers between rounds and over days. Repeated
   trauma carries over the career.
@@ -740,8 +750,10 @@ like this:
 | Other settings | a change to any other setting re-applies Graphics without moving Auto's level |
 
 **What the levels change.** High is the full look. Medium and Low only take work away; they keep every
-character, every piece of UI and all gameplay information. Your own boxer and your opponent keep High's
-animation, face, hair and muscle distances at every level, and their meshes are built first.
+character, every piece of UI and all gameplay information. Your own boxer keeps High's animation, face,
+hair and muscle settings at every level. Your opponent keeps High's distances too; below High his face
+changes expression at the level's rate (8 / 10 Hz) and his hair moves every second frame (still tested
+against his body). Both are built first.
 
 | System | Medium | Low |
 |---|---|---|
@@ -749,6 +761,7 @@ animation, face, hair and muscle distances at every level, and their meshes are 
 | Character animation (Animator LOD bands) | full detail to 30 studs; every 2nd frame past 60, every 3rd past 90, none past 150; still background figures at half rate from 15 studs | 25 / 60 / 80 / 140 studs; still figures every 3rd frame |
 | Faces (FaceFX) | full face to 26 studs, blinks to 45, blend shapes at 10 Hz | 18 / 32 studs, 8 Hz, damage painting 0.8 ms a frame (1.5) |
 | Hair (HairFX) | full rate to 20 studs, half rate to 45; swinging hair tested against the body's own meshes to 20 (a simpler proxy beyond) | 15 / 30 studs; the mesh test to 15 |
+| Hair's body maps (HairFX, every level) | made only for a body whose hair swings, the first time it comes inside the mesh-test distance, one part a frame in slices of the level's mesh build budget (2 ms) | the same, 1.5 ms slices |
 | Muscles (BodyFX) | flex to 35 studs, breathing to 22, full-rate blend shapes to 15; the correctives (seat, shoulders, belly fold) to 70 | 25 / 14 / 10 studs; correctives to 50 |
 | Character lights (CharacterLight) | fill and rim light | fill light only |
 | Full-screen effects (LightLevels) | no depth of field | no depth of field, bloom or sun rays (colour grades, blur and atmosphere stay at every level) |
@@ -819,6 +832,8 @@ and lights of that time:
 | Main menu set's shadow-casting lights, Low / Medium / High | 4 / 4 / 4 | 0 / 2 / 4 |
 | Peak Editable memory through creation, a tour, training and a spar (Low / Medium / High) | | 15.6 / 45.5 / 71.3 MB |
 | Server script start to its first yield | 0.36 s | 0.20 s |
+| Hair's body maps built in the gym at Low (a tour up to all 25 members) | one for every Body build (62 in the full scenario, single parts of 5-7 ms in one frame) | 1, for the one member whose hair swings, in slices |
+| The opponent's face blend shapes on Low / Medium | 14 Hz | 8 / 10 Hz |
 
 The GPU savings (lights, shadows, particles, signs, depth of field) are not in these numbers.
 
@@ -865,7 +880,9 @@ a warning.
 Offline renders of the real generators and Builder, made outside Roblox with a three.js renderer.
 Lighting approximates Roblox's Future lighting, so expect small differences in Studio.
 
-**`previews/final/`** shows the current characters. Its `README.md` explains how they were made.
+**`previews/final/`** shows the current characters, and holds every later pass's previews too. Its
+`README.md` explains how they were made and lists every image in the folder (animation filmstrips,
+review renders, interface and training screens, lighting, Graphics level comparisons).
 
 | File | Shows |
 |---|---|
@@ -883,6 +900,9 @@ Lighting approximates Roblox's Future lighting, so expect small differences in S
 | `21_neck_lift.jpg` | The neck before and after the lift: front, profile, the guard, clay and the part-built fallback |
 | `22_mouths_beards_eyes.jpg` | Mouths, beards and eye macros |
 | `23_cast_lead_hook.jpg` | The lead hook landing, from above |
+| `perf_characters_low_vs_high.jpg` | Graphics levels: your boxer at High (the same at every level) and a gym NPC on Low before and after the optimization pass |
+| `perf_gym_levels.jpg`, `perf_stadium_levels.jpg`, `perf_city_night_levels.jpg` | The gym, the stadium and Main Street before the optimization pass, after at High and after at Low |
+| `perf_fight_hud_low_vs_high.jpg`, `perf_fight_hud_phone_low_vs_high.jpg`, `perf_settings_graphics_note.jpg` | The fight HUD at Low and High (identical), and the Settings Graphics note at each level |
 
 **`previews/rework/`** has the round-2 working renders, one folder per area: `R-anim`, `R-body`,
 `R-hair`, `R-head`, `R-ui` and `integration-A`.
@@ -901,3 +921,19 @@ them.
   up at a Balanced man, some overhands and uppercuts land under the chin. In an offline test of 200
   such punches, 31 missed or broke a quality check, against 30 before the neck was lengthened.
 - On the palest skin tones, the chest highlights can look a little chalkier than the face.
+- **Clinch arms and heads.** The tie-up holds the chests apart, but its arms are fixed angles: the
+  forearms and gloves sink up to about 17 cm into the partner's chest for the whole hold, and both
+  men turn the head the same way, so the foreheads press into each other. Fighters keep High's detail
+  at every Graphics level, so phones show it too. The fix is an arm aim at the partner's shoulder and
+  upper back from the live distance, and a sideways offset so the heads pass (AnimFight's clinch
+  guard).
+- **Head-hook specials up close** (check hook, peek-a-boo, gazelle punch) put the lead glove into the
+  opponent's chest for a frame or two (8-11 cm). The torso keep-out that cleared the body punches
+  only runs for body-targeted punches.
+- **Gym guard entry.** Going from the lie-up pose into the training guard, the lead forearm crosses
+  the chest and its elbow sinks into the pec for about 4 frames.
+- **Hair against ring parts.** Hair is tested against its own body and the canvas, not the ring:
+  heavy locs can dip into a cover corner pad for a moment as the back lands against it.
+- **Measured, not felt.** The Graphics levels' numbers come from the headless simulator on a desktop
+  CPU (client Lua; a phone runs Lua 3-5 times slower). GPU work (shadows, lights, particles, depth of
+  field) is not simulated, and the levels have not been timed on a real phone.
