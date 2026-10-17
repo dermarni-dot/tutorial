@@ -618,7 +618,7 @@ def build_afro(style, head, coll):
 
     def crease(p, li):  # the valleys between the curl clusters (the Voronoi cells' borders) are darker
         f1 = tvor.evaluate(tuple(float(x) for x in p))[3]
-        return 1 - (0.32 if li > 0 else 0.15) * float(smooth(0.35, 0.85, f1))
+        return 1 - (0.2 if li > 0 else 0.1) * float(smooth(0.35, 0.85, f1))
 
     # layer plan: (layer, count, length, width, rows, lift, strip, ao, double, min_edge)
     st_in = TIGHT
@@ -817,6 +817,7 @@ def save_blend(key, pieces, coll_guides, tex_path, path):
     bpy.context.scene.collection.objects.link(hob)
     hob.parent = root
     os.makedirs(os.path.dirname(path), exist_ok=True)
+    bpy.context.preferences.filepaths.save_version = 0  # no .blend1 backups
     bpy.ops.wm.save_as_mainfile(filepath=path, compress=True)
 
 
