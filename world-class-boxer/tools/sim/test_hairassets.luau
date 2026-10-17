@@ -790,7 +790,14 @@ do
 			byKey[e.key] = e
 		end
 		check("waves360 carries capTile", byKey.waves360 and byKey.waves360.capTile == "waves")
-		check("afro pieces Fabric", byKey.afro and byKey.afro.pieces.HairAfroEdge.material == "Fabric")
+		check("afro pieces Fabric", byKey.afro and (function()
+			for _, p in pairs(byKey.afro.pieces) do
+				if p.material ~= "Fabric" then
+					return false
+				end
+			end
+			return next(byKey.afro.pieces) ~= nil
+		end)())
 		check("every id resolves to a file", (function()
 			for _, e in ipairs(real.entries) do
 				for _, p in pairs(e.pieces) do
@@ -867,6 +874,20 @@ do
 			check(key .. ": volume pieces stay out of the head", worstIn > -0.01, worstIn)
 		end
 	end
+end
+
+------------------------------------------------------------------------
+-- capFade: a crew cut's tapered sides on a natural hairline
+------------------------------------------------------------------------
+do
+	local lk = look(1, { style = "Crew Cut", type = "Straight" })
+	local full, S = HK.CapCoverage(lk, "full", { cut = "style" })
+	local taper = HK.CapCoverage(lk, "full", { cut = "style" }, S, "fade")
+	local x, y, z = S.ray(1, 0, 0.3, 0) -- low on the side, above and behind the ear
+	local tx, ty, tz = S.ray(0, 1, 0, 0) -- the top
+	check("capFade thins the low sides", taper(x, y, z) < full(x, y, z) - 0.2, string.format("%.2f vs %.2f", taper(x, y, z), full(x, y, z)))
+	check("capFade keeps the top", taper(tx, ty, tz) > 0.9, taper(tx, ty, tz))
+	check("unknown capFade is ignored", HK.CapCoverage(lk, "full", { cut = "style" }, S, "nope")(x, y, z) == full(x, y, z))
 end
 
 print(string.format("test_hairassets: %d passed, %d failed", pass, fail))

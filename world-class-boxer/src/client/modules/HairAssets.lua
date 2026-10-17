@@ -338,7 +338,7 @@ local function capImage(entry, look, htype, pal, lod, S, fit, shared, ctx, shell
 	local cap = Data.cap or {}
 	local grid = memo and memo.grid
 	if not grid then
-		local cov, S2, sharp = HK.CapCoverage(look, lod, entry.cap, S)
+		local cov, S2, sharp = HK.CapCoverage(look, lod, entry.cap, S, entry.capFade)
 		local gw, gh = HK.GridSize(sharp)
 		grid = HK.CapGrid(S2, cov, pal, tonumber(cap.thetaMax) or 2.2, gw, gh, fit)
 		if memo then
@@ -346,7 +346,8 @@ local function capImage(entry, look, htype, pal, lod, S, fit, shared, ctx, shell
 		end
 	end
 	local nu, nv = HK.CapRepeat(Data, entry)
-	local buf = HK.PaintCap(grid, src.buf, src.w, src.h, nu, nv, size, flipV(), tonumber(tex.gain), nil, shell)
+	local buf = HK.PaintCap(grid, src.buf, src.w, src.h, nu, nv, size, flipV(), tonumber(tex.gain), nil, shell,
+		HK.CapPole(Data, entry))
 	local img, ierr = newImage(size, size, buf)
 	if not img then
 		return nil, ierr, "tex", nil
