@@ -177,19 +177,20 @@ def _loc_core(h, w, seed):
     """a matted, felted rope: soft bulges (longer along the loc), a dim felt of fibres in every direction and,
     over it, sparser brighter fibres wrapping round and along the loc, with tiny kinks. Periodic in u and v."""
     rng = np.random.default_rng(seed)
+    k = h / 1024.0  # fibre counts per texel area
     bulge = _pnoise(h, w, 22, seed + 1, sy=28)
     small = _pnoise(h, w, 7, seed + 2)
     base = np.clip(0.5 + 0.55 * (bulge - 0.5) + 0.35 * (small - 0.5), 0, 1)
     under = Fibres(h, w)
-    under.strands(rng, 11000, (6, 22), lambda r, n: r.normal(0, 1.0, n) + (r.random(n) < 0.35) * math.pi / 2, 0,
+    under.strands(rng, int(11000 * k), (6, 22), lambda r, n: r.normal(0, 1.0, n) + (r.random(n) < 0.35) * math.pi / 2, 0,
                   1.5, (0.3, 0.75), curl=1.5)
-    under.coils(rng, 2200, (1.0, 3.0), (0.8, 2.0), (0.3, 0.7))
+    under.coils(rng, int(1300 * k), (1.0, 3.0), (0.8, 2.0), (0.3, 0.7))
     lu, au = under.result(0.6, 0.8)
     over = Fibres(h, w)
-    over.strands(rng, 3400, (8, 30), lambda r, n: np.where(r.random(n) < 0.4, r.normal(0, 0.45, n),
+    over.strands(rng, int(3400 * k), (8, 30), lambda r, n: np.where(r.random(n) < 0.4, r.normal(0, 0.45, n),
                                                            r.normal(1.25, 0.35, n) * r.choice([-1, 1], n)), 0,
                  2.2, (0.6, 1.0), curl=1.4)
-    over.coils(rng, 900, (1.5, 3.5), (0.8, 1.8), (0.6, 1.0))
+    over.coils(rng, int(500 * k), (1.5, 3.5), (0.8, 1.8), (0.6, 1.0))
     lo, ao = over.result(0.5, 1.4)
     felt = (0.1 + 0.36 * base) * (1 - au) + lu * (0.4 + 0.6 * base) * au
     lum = felt * (1 - ao) + lo * (0.6 + 0.4 * base) * ao
@@ -290,7 +291,8 @@ def make_loc_texture(path, size=TEX_SIZE, seed=61):
     cw = int(round((LOC_CORE[1] - LOC_CORE[0]) * size))
     lum = np.zeros((h, size))
     alp = np.zeros((h, size))
-    lc = _stretch(_loc_core(h, cw, seed), 0.45)
+    # two periods of the rope over the strip's height (each 512 px tall): the long locs' v_len is ~2.3 studs
+    lc = _stretch(np.vstack([_loc_core(h // 2, cw, seed)] * 2), 0.45)
     l, a = _strip(lc, fr, seed + 10)
     x0 = int(LOC_STRIP[0] * size)
     lum[:, x0:x0 + l.shape[1]], alp[:, x0:x0 + l.shape[1]] = l, a
@@ -1081,7 +1083,7 @@ def guard_short(p, rad):
 STYLES = {
     "dreadlocks": dict(
         entry=dict(styles=["Dreadlocks"], types=None, cap={"cut": "full", "density": 0.45}, capTile="shortcoil"),
-        kind="hang", spacing=0.14, fill=12, margin=0.03, seed=101, R=0.036, rvar=0.2, M=32, step=0.03,
+        kind="hang", spacing=0.14, fill=20, margin=0.03, seed=101, R=0.036, rvar=0.2, M=32, step=0.03,
         hang_len=1.05, side_short=0.25, L_max=2.25, sides=5, base_ds=0.2, min_ds=0.07, end_ds=0.045, bend_k=0.6,
         root_cap=False, lift=0.2,
         layer=0.022, repel=0.72, fins=1, chains=7, segs=2, stiff=0.35, mass=(1.5, 1.15), hang_split=0.5,
@@ -1184,9 +1186,9 @@ def build_guides_hanging(cfg, ref, log):
     def make(r):
         R = cfg["R"] * float(np.clip(1 + cfg["rvar"] * rng.normal(), 0.72, 1.35))
         if r.get("edge"):
-            R *= 0.85  # the hairline row: finer locs
+            R *= 0.72  # the hairline row: finer locs
         if r.get("sideburn"):
-            R *= 0.8
+            R *= 0.9
         sp = r["p"]
         # the hairline row lies down from the root (within ~10 degrees of the scalp), the rest lift a little
         lift = 0.1 if r.get("edge") else cfg["lift"]
@@ -1198,7 +1200,7 @@ def build_guides_hanging(cfg, ref, log):
             hl_ *= 0.5
 
         # the hairline row's roots taper more and over a shorter run (seen end-on from the front)
-        rk, rl = (0.35, 0.035) if r.get("edge") else (ROOT_K, root_len)
+        rk, rl = (0.45, 0.035) if r.get("edge") else (ROOT_K, root_len)
 
         def offs0(s, R=R, rk=rk, rl=rl):
             return CLEAR_MIN + 0.006 + R * (rk + (1 - rk) * float(smooth(0, rl, s)) ** 0.8)

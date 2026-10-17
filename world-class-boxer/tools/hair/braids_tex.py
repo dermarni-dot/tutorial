@@ -143,23 +143,84 @@ def plait_field(w, h, halves, seed, drop=0.95, over=0.10, wid=0.98, strands_acro
     return best, tone, fib, along, edge, crease, fine
 
 
-def tex_plait(w, h, seed=41, drop=1.15, over=0.06, wid=0.78, strands_across=150):
-    """the plait strip: steep lobes from alternate edges, each a bundle of fine strands (1-2 px) running along
-    it, rounded (bright crown, darker toward its edges) with a dark gap where it tucks under the next lobe"""
-    hgt, tone, fib, along, edge, crease, finef = plait_field(w, h, PLAIT_HALVES, seed, drop=drop, over=over, wid=wid,
-                                                             strands_across=strands_across, wobble=0.35)
+def plait_lobes(w, h, halves, seed, drop=1.65, over=0.16, wid=0.8, bow=0.06, strands_across=110, wobble=0.35):
+    """A three-strand plait seen from one side as overlapping lobes painted in ORDER (not by height): lobe k
+    enters from the right edge (k even) or the left (k odd) at v = k / halves, sweeps in and down along an
+    S-bowed axis past the centre (drop lobe units down, over: fraction of the width past the centre), and the
+    next lobe (k + 1, from the other edge) lies on top of its tail, which is where it tucks under. So the only
+    boundaries are each lobe's own outline over the one below it (a herringbone of offset almonds), never a
+    symmetric crease line running across the whole width. Periodic in v (halves lobes per repeat), wrapping in
+    u. Returns per pixel: the top lobe's k, its height 0..1 (rounded section x envelope), along a 0..1,
+    across b -1..1, fibre tone, fine fibre tone."""
+    yy, xx = np.mgrid[0:h, 0:w].astype(np.float64)
+    hp = h / halves
+    nz = _pnoise(h, w, 40, 40, seed + 1)
+    table = _fibres(2048, seed + 2, smooth=1.0)
+    K = np.full((h, w), -1, np.int64)
+    H = np.zeros((h, w))
+    Aa = np.zeros((h, w))
+    Bb = np.zeros((h, w))
+    F = np.zeros((h, w))
+    G = np.zeros((h, w))
+    order = sorted([(k * hp - wrap, k, wrap) for k in range(halves) for wrap in (h, 0, -h)])
+    for _vpos, k, wrap in order:
+        s = 1 if k % 2 == 0 else -1
+        E = np.array([w + 0.06 * w if s > 0 else -0.06 * w, k * hp])
+        T = np.array([w * 0.5 - s * over * w, k * hp + drop * hp])
+        ax = T - E
+        L = float(np.linalg.norm(ax))
+        ax /= L
+        nrm = np.array([-ax[1], ax[0]])
+        px = xx - E[0]
+        py = yy + wrap - E[1]
+        a = (px * ax[0] + py * ax[1]) / L
+        c = px * nrm[0] + py * nrm[1]
+        ac = np.clip(a, 0, 1)
+        c = c - bow * L * np.sin(ac * math.pi) * s  # S-bow: the lobe bulges downward in its middle
+        Wd = hp * wid * (0.8 + 0.2 * np.sin(np.clip(a * 1.1, 0, 1) * math.pi) ** 0.5) * (1 - 0.5 * _smooth(0.72, 1.08, a))
+        b = c / Wd
+        ok = (a > -0.3) & (a < 1.06) & (np.abs(b) < 1)
+        if not ok.any():
+            continue
+        prof = np.sqrt(np.clip(1 - b * b, 0, 1))
+        env = (0.55 + 0.45 * _smooth(-0.1, 0.35, a)) * (1 - 0.8 * _smooth(0.62, 1.06, a))
+        idx = (b * 0.5 + 0.5) * strands_across + k * 211.7 + wobble * nz + 0.8 * np.sin(ac * 2.6 + k)
+        f = 0.75 * _lookup(table, idx) + 0.25 * _lookup(table, idx * 2.3 + 977)
+        g = _lookup(table, idx * 3.7 + 431)
+        K = np.where(ok, k, K)
+        H = np.where(ok, prof * env, H)
+        Aa = np.where(ok, a, Aa)
+        Bb = np.where(ok, b, Bb)
+        F = np.where(ok, f, F)
+        G = np.where(ok, g, G)
+    return K, H, Aa, Bb, F, G
+
+
+def tex_plait(w, h, seed=41):
+    """the plait strip: steep S-bowed lobes from alternate edges, each a bundle of fine strands (1-2 px) running
+    along it, rounded (bright crown, darker toward its outline), a short soft shadow cast by each lobe onto the
+    one beneath (only there), and a dark pocket where a lobe's tail tucks under the next"""
+    halves = PLAIT_HALVES
+    K, H, A, B, F, G = plait_lobes(w, h, halves, seed)
     yy, xx = np.mgrid[0:h, 0:w].astype(np.float64)
     u = (xx + 0.5) / w
-    grain = _pnoise(h, w, 1.2, 14, seed + 5)  # hair-level grain
-    crown = np.clip(hgt, 0, 1) ** 0.75
-    lum = (0.34 + 0.66 * crown) * (0.70 + 0.30 * fib) * (0.9 + 0.1 * finef) * tone * (1 + 0.035 * grain)
-    # the gap where a lobe tucks under its neighbour: dark, narrow
-    lum *= 0.45 + 0.55 * _pblur(crease, 1.4, 1.4)
+    grain = _pnoise(h, w, 1.2, 14, seed + 5)
+    crown = np.clip(H, 0, 1) ** 0.6
+    lum = (0.30 + 0.70 * crown) * (0.66 + 0.34 * F) * (0.9 + 0.1 * G) * (1 + 0.035 * grain)
+    # per lobe a slightly different tone (three strands)
+    lum *= np.choose(np.clip(K, 0, halves - 1), [0.97, 1.0, 0.93, 1.03, 0.96, 1.0][:halves])
+    # the shadow each lobe casts on the one under it (a soft band just outside its outline, on the lower lobe)
+    sh = np.zeros((h, w))
+    for k in range(halves):
+        nxt = (K == (k + 1) % halves).astype(np.float64)
+        bl = np.clip(_pblur(nxt, 5, 7) * 2.0, 0, 1)
+        sh = np.where(K == k, bl, sh)
+    lum *= 1 - 0.45 * sh
+    # the tuck pocket: the tail of a lobe as it dives under (a > 0.8) goes dark
+    lum *= 1 - 0.5 * _smooth(0.78, 1.04, A)
     side = np.minimum(u, 1 - u)
-    lum *= 0.84 + 0.16 * _smooth(0.0, 0.18, side)
-    occl = _pblur(hgt, 4, 4)
-    lum *= 0.8 + 0.2 * np.clip(occl / 0.55, 0, 1)
-    lum = _pblur(lum, 0.5, 0.8)
+    lum *= 0.82 + 0.18 * _smooth(0.0, 0.16, side)
+    lum = _pblur(lum, 0.5, 0.7)
     return np.clip(lum, 0.25, 1.0), np.ones_like(lum)
 
 
@@ -218,24 +279,24 @@ def tex_braid(size=SIZE, seed=41):
 
 
 def tex_pad(w, h, seed=61, patches=4):
-    """box-parting patches (u .875-1 of the cornrow atlas): `patches` soft-edged patches stacked in v, each dense
-    short hair combed along v (toward the braid), alpha fading out over the patch border (ragged by the strands) so
-    the skin between neighbouring patches reads as the parting line"""
+    """box-parting pads (u .875-1 of the cornrow atlas): `patches` rounded squares stacked in v, each a uniform
+    fill of short hair combed along v (toward the braid), alpha feathered over the outer ~6 % so neighbouring
+    pads leave a thin, even skin line (the parting) between them and the hairline edge is soft, never ragged"""
     ph = h // patches
     lum = np.zeros((h, w))
     alp = np.zeros((h, w))
     for k in range(patches):
-        l, a = strands._strand_field(w, ph, seed + k, count=int(w * 2.2), width_px=1.7, waviness=0.6, curl_amp=0.3,
-                                     length=(0.55, 1.0), taper=0.5, dark_root=0.3, x_range=(0.0, 1.0), flyaway=0.05)
+        l, a = strands._strand_field(w, ph, seed + k, count=int(w * 2.6), width_px=1.6, waviness=0.5, curl_amp=0.3,
+                                     length=(0.6, 1.0), taper=0.5, dark_root=0.2, x_range=(0.0, 1.0), flyaway=0.03)
         yy, xx = np.mgrid[0:ph, 0:w].astype(np.float64)
-        u = (xx + 0.5) / w
-        v = (yy + 0.5) / ph
-        rag = _pnoise(ph, w, 3, 10, seed + 20 + k) * 0.012
-        edge = np.minimum(np.minimum(u, 1 - u), np.minimum(v, 1 - v)) + rag
-        mask = _smooth(0.015, 0.07, edge)
-        base = 0.55 + 0.45 * _pnoise(ph, w, 2, 30, seed + 40 + k).clip(-1, 1) * 0.3
-        lum[k * ph:(k + 1) * ph] = np.where(a > 0.05, l, base)
-        alp[k * ph:(k + 1) * ph] = np.clip(0.55 * mask + 0.45 * a * mask, 0, 1)
+        u = (xx + 0.5) / w * 2 - 1
+        v = (yy + 0.5) / ph * 2 - 1
+        q = 8.0  # superellipse: a rounded square
+        rr = (np.abs(u) ** q + np.abs(v) ** q) ** (1 / q)
+        mask = 1 - _smooth(0.86, 0.98, rr)
+        base = 0.6 + 0.12 * _pnoise(ph, w, 3, 24, seed + 40 + k).clip(-1.5, 1.5)
+        lum[k * ph:(k + 1) * ph] = np.where(a > 0.05, 0.5 * l + 0.5 * base, base)
+        alp[k * ph:(k + 1) * ph] = np.clip((0.8 + 0.2 * a) * mask, 0, 1)
     return np.clip(0.3 + 0.7 * lum, 0.25, 1.0), alp
 
 

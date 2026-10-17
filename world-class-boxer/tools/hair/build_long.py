@@ -120,7 +120,7 @@ class Canvas:
 
 
 def _strip(w, h, seed, n_strands, n_clumps, width_px, clump_k, fill, len_min, wave_amp=0.0, wave_per=0.0,
-           stray=0.03, shade_lo=0.5, edge=0.09, tip_spread=0.25, root_dark=0.3, clump_lo=0.75, spread=0.5, root_soft=0.07):
+           stray=0.03, shade_lo=0.5, edge=0.09, tip_spread=0.25, root_dark=0.3, clump_lo=0.75, spread=0.5, root_soft=0.07, root_fade=0.06):
     """one card strip (w x h at 2x), roots at the top. Returns lum, alpha (0..1)."""
     rng = np.random.default_rng(seed)
     cv = Canvas(w, h)
@@ -191,8 +191,10 @@ def _strip(w, h, seed, n_strands, n_clumps, width_px, clump_k, fill, len_min, wa
     eu = np.clip(np.minimum(u, 1 - u) / edge, 0, 1)
     eu = eu * eu * (3 - 2 * eu)
     alp = alp * eu[None, :]
-    # the very root row fades in (a card's root edge never shows a line)
-    ev = np.clip(tt / 0.012, 0, 1)
+    # the roots fade in (alpha 0 at v = 0, full by v = root_fade): a card's root edge never shows a line, and the
+    # hairline / parting read as hair growing out of the scalp
+    ev = np.clip(tt / root_fade, 0, 1)
+    ev = ev * ev * (3 - 2 * ev)
     alp = alp * ev[:, None]
     return lum, alp
 
@@ -219,17 +221,17 @@ def make_texture(path, size=TEX_SIZE, seed=1101, report=False):
     sw = W // 4
     specs = {
         # dense clump: the bulk of every layer; nearly opaque inside, strands breaking out at the edges and tips
-        "dense": dict(n_strands=int(sw * 0.55), spread=0.47, n_clumps=7, width_px=2.6, clump_k=0.8, fill=0.85, len_min=0.55, clump_lo=0.72,
-                      stray=0.03, shade_lo=0.72, edge=0.085, tip_spread=0.3),
+        "dense": dict(n_strands=int(sw * 0.55), spread=0.44, n_clumps=7, width_px=2.6, clump_k=0.8, fill=0.85, len_min=0.55, clump_lo=0.72,
+                      stray=0.03, shade_lo=0.72, edge=0.13, tip_spread=0.3),
         # medium: a lighter lock (gaps between clumps; the layer under it shows through)
         "medium": dict(n_strands=int(sw * 0.3), spread=0.45, n_clumps=6, width_px=2.4, clump_k=0.85, fill=0.35, len_min=0.45, clump_lo=0.65, root_soft=0.11,
-                       stray=0.05, shade_lo=0.6, edge=0.11, tip_spread=0.32),
+                       stray=0.05, shade_lo=0.6, edge=0.14, tip_spread=0.32),
         # wispy flyaways: a few loose strands, staggered lengths
         "wispy": dict(n_strands=int(sw * 0.12), n_clumps=4, width_px=2.0, clump_k=0.35, fill=0.0, len_min=0.3,
                       stray=0.35, shade_lo=0.6, edge=0.14, tip_spread=0.5),
         # wavy: dense clumps on broad S-waves (2.5 waves root to tip), crests lighter
         "wavy": dict(n_strands=int(sw * 0.48), spread=0.42, n_clumps=6, width_px=2.6, clump_k=0.75, fill=0.7, len_min=0.55, clump_lo=0.75,
-                     wave_amp=0.075, wave_per=2.5, stray=0.04, shade_lo=0.65, edge=0.12, tip_spread=0.3),
+                     wave_amp=0.075, wave_per=2.5, stray=0.04, shade_lo=0.65, edge=0.14, tip_spread=0.3),
     }
     lum = np.zeros((H, W), np.float32)
     alp = np.zeros((H, W), np.float32)
@@ -272,7 +274,7 @@ SKF_PATH = os.path.join(REF, "skull_f.json")
 SKF = hl.Skull(SKF_PATH) if os.path.exists(SKF_PATH) else None
 EARS = [(np.array(SKD["ears"][s]["min"]), np.array(SKD["ears"][s]["max"])) for s in ("left", "right")]
 FIT0 = dict(W=0.383, T=0.591, Fz=-0.460, Bz=0.520)  # HairAssetData fit0 (the default male skull)
-CLEAR_MIN = 0.0215  # every vertex over the head at least this far above the head mesh and the skull tables
+CLEAR_MIN = 0.0225  # every vertex over the head at least this far above the head meshes (both sexes, with ears) and the skull tables
 EAR_CLEAR = 0.022
 AXIS_Z = 0.04  # the neck / body's vertical axis (x = 0, z = AXIS_Z)
 
@@ -330,6 +332,10 @@ class Ref:
         keep = [t for t in F if not any(np.all((P[list(t)] > lo) & (P[list(t)] < hi)) for lo, hi in ears)]
         self.headP, self.headF = P, F
         self.head = BVHTree.FromPolygons([tuple(p) for p in P], keep)
+        # the whole head with the ears (unsigned distances: the clearance checks near the ears), in its own space
+        # and, for the female head, mapped back into nominal space through the inverse runtime fit
+        self.full = BVHTree.FromPolygons([tuple(p) for p in P], F)
+        self.full_inv = None
         Pt, Ft = load_obj_mesh(os.path.join(REF, f"torso_{sex}.obj"), "UpperTorso")
         self.torsoP, self.torsoF = Pt, Ft
         self.torso = BVHTree.FromPolygons([tuple(p) for p in Pt], Ft)
@@ -337,6 +343,14 @@ class Ref:
     def height(self, p):
         r = signed(self.head, p, 1.0)
         return r[2] if r else 9.0
+
+
+def make_refs():
+    ref_m, ref_f = Ref("m"), Ref("f")
+    Pn = inverse_fit(ref_f.headP, FIT_F)
+    ref_f.full_inv = BVHTree.FromPolygons([tuple(p) for p in Pn], ref_f.headF)
+    ref_m.full_inv = ref_m.full
+    return ref_m, ref_f
 
 
 def fit_of(sk):
@@ -361,6 +375,29 @@ def female_fit():
 
 
 FIT_F = female_fit()
+
+
+def inverse_fit(P, fit):
+    return (np.asarray(P) - [0, 0, fit["dz"]]) / [fit["ax"], fit["ay"], fit["az"]]
+
+
+def near_full(bvh, p, maxd):
+    """(unsigned distance, unit direction away from the surface) to the nearest point of a head with ears"""
+    loc, n, _i, d = bvh.find_nearest(Vector(p), maxd)
+    if loc is None:
+        return None
+    v = np.asarray(p) - np.array(loc)
+    if d > 1e-7:
+        u = v / d
+        # inside a closed part of the mesh (the normal disagrees): push out along the normal instead
+        if float(np.dot(u, np.array(n))) < -0.2 and not ear_zone(p):
+            return -d, np.array(n)
+        return d, u
+    return 0.0, np.array(n)
+
+
+def ear_zone(p):
+    return abs(p[0]) > 0.26 and -0.26 < p[1] < 0.1 and 0.0 < p[2] < 0.3
 
 
 def apply_fit(P, fit):
@@ -478,37 +515,40 @@ def theta_at(az, f_ok, lo=0.02, hi=2.55):
 # layers, innermost first: (name, strands per side, offset above the scalp, strips {strip: weight}, hairline margin,
 # tip y (at length 0.5) and its spread, card width at the root / over the head / hanging, shade)
 LAYERS = [
-    # the hairline layer: rooted along the front hairline (temple to centre), sweeping with the front hair; its
-    # front edge (wispy / medium strips) is the soft hairline
-    dict(name="edge", n=7, off=0.03, strips={"medium": 0.6, "wispy": 0.4}, margin=0.015, tip=-1.2, tip_var=0.06,
-         w=(0.055, 0.095, 0.1), shade=0.97, phase=0.0, rel=(0.03, 0.0), root="hairline", fmax=0.22),
-    dict(name="scalp", n=15, off=0.026, strips={"dense": 1.0}, margin=0.05, tip=-1.12, tip_var=0.05,
-         w=(0.07, 0.16, 0.12), shade=0.93, phase=0.0, rel=(0.0, -0.12)),
-    dict(name="inner", n=14, off=0.042, strips={"dense": 0.85, "medium": 0.15}, margin=0.055, tip=-1.30,
-         tip_var=0.06, w=(0.07, 0.15, 0.125), shade=0.97, phase=0.37, rel=(0.025, -0.02)),
-    dict(name="main", n=14, off=0.058, strips={"dense": 0.7, "medium": 0.3}, margin=0.05, tip=-1.42,
-         tip_var=0.07, w=(0.065, 0.145, 0.125), shade=0.985, phase=0.71, rel=(0.04, 0.06)),
-    dict(name="outer", n=11, off=0.074, strips={"dense": 0.4, "medium": 0.6}, margin=0.05, tip=-1.36,
-         tip_var=0.12, w=(0.06, 0.13, 0.11), shade=1.0, phase=0.19, rel=(0.05, 0.1)),
+    # the hairline layer: rooted along the front hairline (temple to centre), sweeping down the temple into the
+    # face-framing locks; under it a ring of short hairline cards (hairline_strands) makes the irregular edge
+    dict(name="edge", n=7, off=(0.032, 0.028), strips={"medium": 0.6, "wispy": 0.4}, margin=0.012, tip=-1.16,
+         tip_var=0.06, w=(0.055, 0.1, 0.11), shade=0.97, phase=0.0, rel=(0.03, 0.0), root="hairline", fmax=0.22),
+    # the dense scalp layer (hides the scalp; the cap under it)
+    dict(name="scalp", n=15, off=(0.03, 0.026), strips={"dense": 1.0}, margin=0.04, tip=-1.14, tip_var=0.06,
+         w=(0.075, 0.18, 0.13), shade=0.92, phase=0.0, rel=(0.0, -0.12)),
+    # the volume: each layer higher over the crown and the parting, tapering to the temples and the sides
+    dict(name="inner", n=14, off=(0.06, 0.046), strips={"dense": 0.85, "medium": 0.15}, margin=0.045,
+         tip=-1.30, tip_var=0.07, w=(0.075, 0.17, 0.135), shade=0.96, phase=0.37, rel=(0.03, -0.02)),
+    dict(name="main", n=15, off=(0.092, 0.066), strips={"dense": 0.8, "medium": 0.2}, margin=0.045, tip=-1.40,
+         tip_var=0.08, w=(0.07, 0.165, 0.135), shade=0.985, phase=0.71, rel=(0.05, 0.06)),
+    dict(name="outer", n=12, off=(0.12, 0.084), strips={"dense": 0.6, "medium": 0.4}, margin=0.05,
+         tip=-1.36, tip_var=0.12, w=(0.065, 0.15, 0.12), shade=1.0, phase=0.19, rel=(0.06, 0.1)),
 ]
-FLYAWAYS = dict(n=8, off=0.092, strip="wispy", w=(0.03, 0.05), len=(0.2, 0.4), shade=1.0)
+FLYAWAYS = dict(n=8, off=0.13, strip="wispy", w=(0.03, 0.05), len=(0.2, 0.4), shade=1.0)
 
 STYLES = {
     "long": dict(entry=dict(styles=["Long Hair"], types=["Straight"], cap={"cut": "full", "density": 1}),
                  wavy=False, volume=1.0, seed=7),
     "long_wavy": dict(entry=dict(styles=["Long Hair"], types=["Wavy"], cap={"cut": "full", "density": 1}),
-                      wavy=True, volume=1.15, seed=8),
+                      wavy=True, volume=1.25, seed=8),
 }
 
 PSI_FRONT = 1.125  # part angle (from +Y toward the face) just inside the front hairline
 PSI_BACK = -0.32  # the part's back end, behind the crown
-PART_X = 0.006  # the subtle centre parting: roots this far either side of x = 0
-F_SIDE = 0.24  # strands with f below this fall forward as the side locks
+PART_X = 0.009  # the subtle centre parting: roots this far either side of x = 0 (the cap shows as scalp between)
+F_SIDE = 0.25  # strands with f below this leave the head in front of the ear: the face-framing side locks
 ANCHOR_Y = {"back": -0.14, "side": -0.22}  # hanging chains start here (their pivot height)
 SEG2_Y = {"back": -0.80, "side": -0.74}  # and the second segment from here (the shoulders)
 CHAINS = ["HairClump01", "HairClump02", "HairClump03", "HairClump04", "HairClump05", "HairClump06"]
-HAIRLINE_CARDS = False  # short locks rooted across the hairline (off: the edge layer makes the hairline)
+HAIRLINE_CARDS = True  # a ring of short sparse cards rooted exactly on the hairline (an irregular growing edge)
 HAIRFX = dict(stiff=0.3, mass=1.0, mass2=0.8)
+SEG_OVERLAP = 0.05  # chain joints: segment 2 overlaps segment 1 by this much (no seam when they swing)
 
 
 def part_point(psi, side):
@@ -519,11 +559,19 @@ def part_point(psi, side):
 
 
 def release_point(f, side, rel):
-    """where a strand leaves the head: behind the ear (f = 0) round the back to the centre (f = 1), at the layer's
-    heights rel = (behind the ear, back centre): the outer layers leave near the widest part of the head and fall
-    straight, the inner ones follow the skull further under the occiput"""
-    az = side * math.radians(56.0) * (1 - f) ** 1.15
-    y = rel[0] + (rel[1] - rel[0]) * f
+    """where a strand leaves the head. The front strands (f < F_SIDE) leave in front of the ear, at ear-top
+    height (the face-framing locks fall from there past the jaw); the rest go over the top of the ear and leave
+    behind it (f = F_SIDE) round the back to the centre (f = 1), at the layer's heights rel = (behind the ear,
+    back centre): the outer layers leave near the widest part of the head and fall straight, the inner ones
+    follow the skull further under the occiput"""
+    if f < F_SIDE:
+        g = f / F_SIDE
+        az = side * math.radians(114.0 - 22.0 * g)
+        y = 0.11 - 0.04 * g + rel[0] * 0.3
+    else:
+        g = (f - F_SIDE) / (1 - F_SIDE)
+        az = side * math.radians(56.0) * (1 - g) ** 1.15
+        y = rel[0] + (rel[1] - rel[0]) * g
     th = theta_at(az, lambda p: p[1] > y)
     return SK.point(th, az)
 
@@ -579,9 +627,12 @@ def scalp_path(f, side, layer, vol, rng, n=48):
     s = np.concatenate([[0], np.cumsum(np.linalg.norm(np.diff(P, axis=0), axis=1))])
     ed = edge_dist(P)
     base = 0.0225
-    # fuller over the crown, and the hair stacks up as it runs down from the parting (volume over the sides)
-    tgt = layer["off"] * vol * (1 + 0.4 * smooth(0.25, 0.56, P[:, 1]) + 0.3 * smooth(0.1, 0.4, s))
-    ramp = np.minimum(smooth(0.0, 0.12, s), smooth(0.0, 0.11, ed))
+    # the volume: the layer's full height over the crown and the parting, tapering to the temples and the sides
+    o_top, o_side = layer["off"]
+    yk = smooth(0.14, 0.5, P[:, 1])
+    tgt = (o_side + (o_top - o_side) * yk) * vol
+    # rising out of the parting (a soft ridge, not a tent) and out of the hairline
+    ramp = np.minimum(smooth(0.0, 0.17, s), smooth(0.0, 0.15, ed))
     off = base + (tgt - base) * ramp
     Pn = C + unit(P - C) * (np.linalg.norm(P - C, axis=1) + off)[:, None]
     return Pn, off, s
@@ -590,13 +641,15 @@ def scalp_path(f, side, layer, vol, rng, n=48):
 # =========================================================================================== guides
 class Strand:
     __slots__ = ("side", "f", "layer", "li", "scalp", "off", "hang", "tip_y", "lock", "strip", "mirror", "v0",
-                 "seed", "G", "s_rel", "wave_ph", "body_off", "w", "fly", "vend", "shade")
+                 "seed", "G", "s_rel", "wave_ph", "body_off", "w", "fly", "vend", "shade", "order")
 
     def __init__(self, **kw):
         for k in self.__slots__:
             setattr(self, k, kw.get(k))
         if self.vend is None:
             self.vend = 1.0
+        if self.order is None:
+            self.order = self.li
 
 
 def pick(rng, weights):
@@ -617,23 +670,31 @@ def make_strands(cfg, log):
                 f = float(np.clip(f, 0.0, 1.0)) * L.get("fmax", 1.0)
                 P, off, _s = scalp_path(f, side, L, vol, rng)
                 lock = f < F_SIDE
-                # the hem: a soft U at the back (the centre longest), the side locks a little shorter
-                tip = L["tip"] - 0.05 * f - (0.0 if not lock else -0.04) + rng.uniform(-1, 1) * L["tip_var"]
+                # the hem: a soft U at the back (the centre longest), the face-framing locks shorter toward the
+                # face (layered), and every card staggered (no straight cut)
+                if lock:
+                    tip = L["tip"] + 0.1 - 0.12 * (f / F_SIDE)
+                else:
+                    tip = L["tip"] - 0.07 * smooth(F_SIDE, 1.0, f)
+                tip += rng.uniform(-1, 1) * L["tip_var"] + rng.normal(0, 0.035)
                 strip = pick(rng, L["strips"])
                 if cfg["wavy"] and strip in ("dense", "medium") and li >= 1 and rng.random() < 0.75:
                     strip = "wavy"
                 out.append(Strand(side=side, f=f, layer=L["name"], li=li, scalp=P, off=off, tip_y=tip, lock=lock,
-                                  strip=strip, mirror=bool(rng.random() < 0.5), v0=float(rng.uniform(0, 0.05)),
+                                  strip=strip, mirror=bool(rng.random() < 0.5), v0=float(rng.uniform(0, 0.025)),
                                   seed=int(rng.integers(1 << 30)), wave_ph=float(f * 2.2 + li * 0.5 + rng.normal(0, 0.25)),
-                                  body_off=0.03 + 0.016 * li, w=L["w"], fly=False))
+                                  body_off=0.017 + 0.0055 * li, w=L["w"], fly=False))
     log(f"  {len(out)} strands")
     return out
 
 
 class Sim:
     """position-based dynamics on the hanging parts (N chains of M points, the first pinned at the release
-    point): gravity, inextensible segments, bending stiffness, collisions against the skull tables, the head
-    mesh (jaw, neck), both torsos and the ear boxes, and the drape bias (back curtain back, side locks forward)"""
+    point): gravity, inextensible segments, soft bending stiffness, collisions against the skull tables, the head
+    mesh (jaw, neck), both torsos and the ear boxes, the drape (the hair's weight lays it on the upper back and
+    the shoulders: below the shoulder line every point is drawn to the nearest body surface, resting body_off
+    above it) and the side locks' bias (straight down from in front of the ear, then forward over the clavicle
+    onto the front of the shoulder)"""
 
     def __init__(self, refs, X, seg, off, body_off, lock, side):
         self.refs = refs
@@ -645,6 +706,7 @@ class Sim:
         self.body_off = body_off
         self.lock = lock
         self.side = side
+        self.bodies = [b for ref in refs for b in (ref.torso, ref.head)]
 
     def constraints(self, k=4):
         X = self.X
@@ -655,10 +717,10 @@ class Sim:
             X[:, :-1] += corr
             X[:, 1:] -= corr
             X[:, 0] = self.X0[:, 0]
-            # bending: keep every other point at least ~2 seg * 0.97 apart (a soft, mostly straight strand)
+            # bending: keep every other point at least ~2 seg * 0.93 apart (soft: the strand drapes over the body)
             d2 = X[:, 2:] - X[:, :-2]
             l2 = np.linalg.norm(d2, axis=2, keepdims=True)
-            c = np.minimum(0, l2 - 2 * self.seg[:, None, None] * 0.97) / np.maximum(l2, 1e-9) * d2 * 0.25
+            c = np.minimum(0, l2 - 2 * self.seg[:, None, None] * 0.93) / np.maximum(l2, 1e-9) * d2 * 0.25
             X[:, :-2] += c
             X[:, 2:] -= c
             X[:, 0] = self.X0[:, 0]
@@ -673,10 +735,11 @@ class Sim:
         for idx in range(len(P)):
             p = P[idx]
             if p[1] < 0.2:
+                oh = offs[idx] if p[1] > -0.4 else min(offs[idx], bo[idx] + 0.01)
                 for ref in self.refs:
-                    r = signed(ref.head, p, offs[idx] + 0.06)
-                    if r is not None and r[2] < offs[idx]:
-                        p = r[0] + r[1] * offs[idx]
+                    r = signed(ref.head, p, oh + 0.06)
+                    if r is not None and r[2] < oh:
+                        p = r[0] + r[1] * oh
             if p[1] < -0.45:
                 for ref in self.refs:
                     r = signed(ref.torso, p, bo[idx] + 0.06)
@@ -688,27 +751,54 @@ class Sim:
         X[:] = P.reshape(N, M, 3)
         X[:, 0] = self.X0[:, 0]
 
+    def attract(self, k=0.25):
+        """the drape: points below the shoulder line drawn toward the nearest body surface (torso or neck, either
+        sex: the outermost), to rest body_off above it"""
+        X = self.X
+        N, M, _ = X.shape
+        P = X.reshape(-1, 3)
+        bo = np.repeat(self.body_off, M)
+        y0 = np.repeat(np.where(self.lock, -0.78, -0.62), M)
+        y1 = y0 - 0.3
+        jj = np.tile(np.arange(M), N)
+        for idx in range(len(P)):
+            p = P[idx]
+            if p[1] > y0[idx] or jj[idx] < 3:
+                continue
+            w = float(smooth(y0[idx], y1[idx], p[1]))
+            best = None
+            for bv in self.bodies:
+                r = signed(bv, p, 0.4)
+                if r is not None and (best is None or r[2] < best[2]):
+                    best = r
+            if best is not None and best[2] > bo[idx]:
+                P[idx] = p - best[1] * (best[2] - bo[idx]) * k * w
+        X[:] = P.reshape(N, M, 3)
+
     def run(self, iters, log=None):
         lock = self.lock[:, None]
         side = self.side[:, None]
         for it in range(iters):
-            V = (self.X - self.Xp) * 0.9
+            V = (self.X - self.Xp) * 0.88
             self.Xp = self.X.copy()
             self.X += V
             self.X[:, :, 1] -= 0.0018
             y = self.X[:, :, 1]
-            # side locks: forward round the neck, in front of the shoulder (x ~ 0.47, z ~ -0.3)
-            # (only once on the shoulder: from behind the ear the lock falls straight, then over the shoulder top)
-            pull = lock & (y < -0.62)
-            k = np.where(pull, 0.012 * smooth(-0.62, -0.9, y), 0.0)
+            # side locks: straight down from in front of the ear; at the shoulder line forward over the clavicle
+            # onto the front of the shoulder (each lock its own target, tx / tz)
+            pull = lock & (y < -0.72)
+            k = np.where(pull, 0.02 * smooth(-0.72, -1.0, y), 0.0)
             self.X[:, :, 2] += k * (self.tz[:, None] - self.X[:, :, 2])
-            self.X[:, :, 0] += k * (side * self.tx[:, None] - self.X[:, :, 0]) * 0.5
+            self.X[:, :, 0] += k * (side * self.tx[:, None] - self.X[:, :, 0]) * 0.6
             self.X[:, 0] = self.X0[:, 0]
             self.constraints()
             if it % 2 == 0 or it > iters - 10:
+                if it > iters * 0.25:
+                    self.attract()
                 self.collide()
         for _ in range(4):
             self.constraints(2)
+            self.attract(0.5)
             self.collide()
         return self.X
 
@@ -734,7 +824,7 @@ def hang_strands(strands, refs, cfg, log, M=30):
         L = (Q[1] - st.tip_y) * 1.12 + 0.05
         seg[i] = L / (M - 1)
         off[i] = st.off[-1]
-        body[i] = st.body_off * cfg["volume"]
+        body[i] = st.body_off
         out = unit(np.array([Q[0], 0.0, Q[2] - AXIS_Z]))
         for j in range(M):
             X[i, j] = Q + np.array([0, -1.0, 0]) * seg[i] * j + out * 0.02 * j * seg[i]
@@ -743,8 +833,8 @@ def hang_strands(strands, refs, cfg, log, M=30):
     sim = Sim(refs, X, seg, off, body, lock, side)
     # the side locks spread over the front of the shoulder (each its own drape target)
     rs = np.random.default_rng(cfg["seed"] + 3)
-    sim.tx = np.array([0.36 + 0.26 * (st.f / F_SIDE) + rs.uniform(-0.04, 0.04) for st in strands])
-    sim.tz = np.array([-0.2 - 0.14 * (1 - st.f / F_SIDE) + rs.uniform(-0.04, 0.04) for st in strands])
+    sim.tx = np.array([0.4 + 0.12 * (st.f / F_SIDE) + rs.uniform(-0.035, 0.035) for st in strands])
+    sim.tz = np.array([-0.36 + 0.1 * (st.f / F_SIDE) + rs.uniform(-0.035, 0.035) for st in strands])
     t0 = time.time()
     Xs = sim.run(120)
     Xs = chain_smooth(Xs, 2, 0.3)
@@ -773,10 +863,11 @@ def collide_pts(P, off, body_off, refs, head=True):
     for idx in range(len(P)):
         p = P[idx]
         if head and p[1] < 0.2:
+            oh = off[idx] if p[1] > -0.4 else min(off[idx], body_off[idx] + 0.01)
             for ref in refs:
-                r = signed(ref.head, p, off[idx] + 0.06)
-                if r is not None and r[2] < off[idx]:
-                    p = r[0] + r[1] * off[idx]
+                r = signed(ref.head, p, oh + 0.06)
+                if r is not None and r[2] < oh:
+                    p = r[0] + r[1] * oh
         if p[1] < -0.45:
             for ref in refs:
                 r = signed(ref.torso, p, body_off[idx] + 0.06)
@@ -817,17 +908,39 @@ def finish_guides(strands, refs, cfg, log):
         s = np.concatenate([[0], np.cumsum(np.linalg.norm(np.diff(G, axis=0), axis=1))])
         st.s_rel = float(s[len(st.scalp) - 1])
         if cfg["wavy"]:
+            # low-frequency waves from below the ear line: every clump of cards (a 20 degree sector of release
+            # azimuth, the side locks their own) shares a phase, period and amplitude, so the hair waves in clumps
+            # and the hem does not repeat
+            Q = st.scalp[-1]
+            sector = int(math.floor(math.degrees(math.atan2(Q[0], Q[2] - AXIS_Z)) / 20.0)) + (100 if st.lock else 0)
+            cr = np.random.default_rng(abs(sector) * 7919 + cfg["seed"] * 31 + (1 if sector < 0 else 0))
+            c_amp, c_per, c_ph = cr.uniform(0.65, 1.3), cr.uniform(0.38, 0.5), cr.uniform(0, TAU)
             sh = np.maximum(0, s - st.s_rel)
-            amp = 0.03 * smooth(0.03, 0.3, sh) * (1 + 0.15 * math.sin(st.seed % 97))
+            amp = 0.036 * c_amp * smooth(0.04, 0.32, sh) * (1 + 0.12 * math.sin(st.seed % 97))
             T = unit(np.gradient(G, axis=0))
             out = unit(np.stack([G[:, 0], np.zeros(len(G)), G[:, 2] - AXIS_Z], 1))
             lat = unit(np.cross(T, out))
-            ph = TAU * sh / 0.34 + st.wave_ph
+            ph = TAU * sh / c_per + c_ph + 0.35 * math.sin(st.wave_ph)
             G = G + (np.sin(ph)[:, None] * lat * 0.85 + np.cos(ph)[:, None] * out * 0.4) * amp[:, None]
             m = sh > 0
-            G[m] = collide_pts(G[m], st.off[-1], st.body_off * cfg["volume"], refs)
+            G[m] = collide_pts(G[m], st.off[-1], st.body_off, refs)
         st.G = G
     return strands
+
+
+ROOT_V = 0.065  # the texture's root fade (v 0 .. ROOT_V) ...
+ROOT_LEN = 0.028  # ... is mapped onto this much of every card's root (studs), whatever the card's length
+
+
+def root_len(L):
+    return min(ROOT_LEN, L * 0.3)
+
+
+def card_v(s, L, v0, v1):
+    """v along a card: the root fade over the first root_len(L) studs, then linear to the tip"""
+    sr = root_len(L)
+    t = np.where(s < sr, ROOT_V * s / sr, ROOT_V + (1 - ROOT_V) * (s - sr) / max(1e-6, L - sr))
+    return v0 + (v1 - v0) * t
 
 
 def card_rows(st, cfg):
@@ -842,14 +955,17 @@ def card_rows(st, cfg):
             j = int(j[0])
             t = (D[j - 1, 1] - yv) / max(1e-9, D[j - 1, 1] - D[j, 1])
             splits[nm] = float(S[j - 1] + (S[j] - S[j - 1]) * t)
+    if "a" in splits and "b" in splits and splits["b"] - SEG_OVERLAP > splits["a"] + 0.05:
+        splits["b0"] = splits["b"] - SEG_OVERLAP  # segment 2 starts this far above its pivot (tucked under seg 1)
     # rows: finer where the guide bends (turning per stud), coarse down the straight hanging part
     Tn = unit(np.gradient(D, axis=0))
     ang = np.arccos(np.clip((Tn[1:] * Tn[:-1]).sum(1), -1, 1))
     kap = np.concatenate([[0], ang / np.maximum(np.diff(S), 1e-6)])
     kap = np.convolve(kap, np.ones(7) / 7, mode="same")
-    hmin_hang, hmax_hang = (0.082, 0.092) if cfg["wavy"] else (0.035, 0.13)
-    rows = [0.0]
-    s = 0.0
+    hmin_hang, hmax_hang = (0.098, 0.112) if cfg["wavy"] else (0.04, 0.13)
+    sr = root_len(L)
+    rows = [0.0, sr]
+    s = sr
     while s < L - 1e-6:
         k = float(np.interp(s, S, kap))
         hmin, hmax = (0.045, 0.085) if s < st.s_rel else (hmin_hang, hmax_hang)
@@ -895,6 +1011,9 @@ class Card:
         rad = unit(P - C)
         hor = unit(np.stack([P[:, 0], np.zeros(n), P[:, 2] - AXIS_Z], 1))
         b = smooth(st.s_rel - 0.05, st.s_rel + 0.25, s) if not st.fly else np.zeros(n)
+        if st.lock:
+            # the face-framing locks face forward and out (broad from the front and the 3/4, not edge-on)
+            hor = unit(hor * 0.62 + np.array([0.0, 0.0, -0.78]))
         nout = unit(rad * (1 - b)[:, None] + hor * b[:, None])
         side = unit(np.cross(T, nout))
         face = unit(np.cross(side, T))
@@ -936,16 +1055,20 @@ class Card:
         if st.mirror:
             u0, u1 = u1, u0
         self.u = (u0, u1)
-        self.v = st.v0 + (st.vend - st.v0) * s / L
+        self.v = card_v(s, L, st.v0, st.vend)
         self.s = s
         self.hangw = smooth(st.s_rel, st.s_rel + 0.35, s) if not st.fly else np.zeros(n)
         self.rootk = 0.82 + 0.18 * smooth(0.0, 0.08, s)
         # piece segments: (piece name, first row, last row)
         sp = rows["split"]
+        self.tuck = None
         if "a" in sp and "b" in sp and sp["a"] < sp["b"] < n - 1:
             a, bb = sp["a"], sp["b"]
+            b0 = sp.get("b0", bb)
+            b0 = bb if not (a < b0 < bb) else b0
             ch = chain_of(st, P[a])
-            self.segs = [("HairTop", 0, a), (ch, a, bb), (ch + "b", bb, n - 1)]
+            self.segs = [("HairTop", 0, a), (ch, a, bb), (ch + "b", b0, n - 1)]
+            self.tuck = (b0, bb)  # rows of segment 2 above its pivot: tucked under segment 1
         elif "a" in sp and sp["a"] < n - 1:
             a = sp["a"]
             ch = chain_of(st, P[a])
@@ -954,54 +1077,59 @@ class Card:
             self.segs = [("HairTop", 0, n - 1)]
 
 
-def hairline_strands(cfg, rng, spacing=0.028, length=0.24):
-    """short locks rooted on the natural hairline (front and temples), combed away from the parting and back: the
-    whole strip on each (staggered soft roots at the hairline, tapered tips under the main layers), so the
-    hairline is hair growing out of the scalp, not a card border"""
+def hairline_strands(cfg, rng, spacing=0.017, length=(0.045, 0.075)):
+    """a ring of short sparse cards rooted exactly on the natural hairline (front, temples, down to the
+    sideburns), lying flat in the comb direction (away from the parting at the front, back and down over the
+    temples), roots jittered across the line by about +-0.01: the hairline is hair growing out of the scalp at an
+    irregular edge, not a card border"""
     pts = HL_PTS[np.argsort(np.arctan2(HL_PTS[:, 0], 0.05 - HL_PTS[:, 2]))]
     da = np.arctan2(pts[:, 0], 0.05 - pts[:, 2])
-    keep = np.abs(da) < 1.16
+    keep = np.abs(da) < 1.2
     pts, da = pts[keep], da[keep]
     seg = np.linalg.norm(np.diff(pts, axis=0), axis=1)
     sl = np.concatenate([[0], np.cumsum(seg)])
     out = []
     n = int(sl[-1] / spacing)
     for k in range(n + 1):
-        sk = (k + rng.uniform(-0.25, 0.25)) * sl[-1] / n
-        h = at_s(pts, sl, np.clip(sk, 0, sl[-1]))[0]
+        sk = (k + rng.uniform(-0.35, 0.35)) * sl[-1] / n
+        sk = float(np.clip(sk, 0, sl[-1]))
+        h = at_s(pts, sl, sk)[0]
         dah = float(np.interp(sk, sl, da))
         sgn = 1.0 if dah > 0 else -1.0
-        if abs(dah) < 0.02:
+        if abs(dah) < 0.03:
             sgn = 1.0 if k % 2 else -1.0
-        a = min(1.0, abs(dah))
-        d0 = unit(np.array([sgn * (0.85 - 0.45 * a), 0.5, 0.2 + 0.75 * a]))
-        # straight in from the hairline (its root edge lies along the line), turning to the comb
-        h2 = at_s(pts, sl, np.clip(sk + 0.01, 0, sl[-1]))[0] - at_s(pts, sl, np.clip(sk - 0.01, 0, sl[-1]))[0]
+        a = float(smooth(0.1, 0.9, abs(dah)))
+        # the comb: sideways away from the parting at the front, back and a little down over the temples
+        d0 = unit(np.array([sgn * (1.0 - 0.7 * a), 0.1 - 0.4 * a, 0.3 + 0.8 * a]))
+        h2 = at_s(pts, sl, min(sl[-1], sk + 0.01))[0] - at_s(pts, sl, max(0.0, sk - 0.01))[0]
         nrm0 = unit(h - C)
         inward = unit(np.cross(nrm0, unit(h2)))
         if np.dot(inward, np.array([0.0, 1.0, 0.3])) < 0:
             inward = -inward
-        # walk on the scalp from just inside the hairline
+        # the root: on the line, jittered across it (mostly inward: nothing lands on the forehead)
         th, az = SK.angles(h - C)
-        p = SK.point(th - 0.006, az)
+        jit = float(np.clip(rng.normal(0.004, 0.006), -0.003, 0.014))
+        p = scalp_of((SK.point(th, az) + inward * jit)[None])[0]
         P = [p]
-        step = length / 5
-        for _i in range(5):
+        ln = rng.uniform(*length)
+        nst = 4
+        for _i in range(nst):
             nrm = unit(p - C)
-            kk = smooth(0.0, 3.5, _i)
-            dd = unit(inward * (1 - kk) + d0 * kk)
+            kk = smooth(0.0, 2.5, _i)
+            dd = unit(inward * (1 - kk) * 0.8 + d0 * (0.2 + 0.8 * kk))
             d = unit(dd - nrm * float(np.dot(dd, nrm)))
-            q = p + d * step
-            q = scalp_of(q)[0]
+            q = scalp_of((p + d * ln / nst)[None])[0]
             P.append(q)
             p = q
         P = np.array(P)
         t = np.linspace(0, 1, len(P))
-        P = C + unit(P - C) * (np.linalg.norm(P - C, axis=1) + 0.0225 + 0.014 * t ** 0.7)[:, None]
-        st = Strand(side=int(sgn), f=0.0, layer="hairline", li=0, scalp=P, off=np.full(len(P), 0.0225), hang=None,
-                    tip_y=P[-1, 1], lock=False, strip="medium" if rng.random() < 0.6 else "dense",
-                    mirror=bool(rng.random() < 0.5), v0=0.0, vend=1.0, seed=int(rng.integers(1 << 30)), wave_ph=0.0,
-                    body_off=0.05, w=(0.05, 0.065, 0.065), fly=True, shade=0.97)
+        P = C + unit(P - C) * (np.linalg.norm(P - C, axis=1) + 0.0228 + 0.004 * t)[:, None]
+        wd = rng.uniform(0.032, 0.05)
+        st = Strand(side=int(sgn), f=0.0, layer="hairline", li=len(LAYERS) + 1, scalp=P,
+                    off=np.full(len(P), 0.0228), hang=None, tip_y=P[-1, 1], lock=False,
+                    strip="wispy" if rng.random() < 0.6 else "medium", mirror=bool(rng.random() < 0.5), v0=0.0,
+                    vend=rng.uniform(0.75, 0.95), seed=int(rng.integers(1 << 30)), wave_ph=0.0, body_off=0.05,
+                    w=(wd, wd, wd), fly=True, shade=0.9, order=-1)
         st.G = P
         st.s_rel = float(np.linalg.norm(np.diff(P, axis=0), axis=1).sum())
         out.append(st)
@@ -1134,16 +1262,31 @@ def enforce_clearance(P, refs, hang_mask):
     P[over] = skull_push_v(P[over], CLEAR_MIN + 0.0005)
     ref_m, ref_f = refs
     sc = np.array([FIT_F["ax"], FIT_F["ay"], FIT_F["az"]])
+    cm = CLEAR_MIN + 0.0005
     for i in range(len(P)):
         p = P[i]
-        r = signed(ref_m.head, p, CLEAR_MIN + 0.03) if p[1] > -1.15 else None
-        if r is not None and r[2] < CLEAR_MIN:
-            p = r[0] + r[1] * (CLEAR_MIN + 0.0005)
-        q = apply_fit(p, FIT_F)
-        r = signed(ref_f.head, q, CLEAR_MIN + 0.03) if p[1] > -1.15 else None
-        if r is not None and r[2] < CLEAR_MIN:
-            q2 = r[0] + r[1] * (CLEAR_MIN + 0.0005)
-            p = p + (q2 - q) / sc
+        if p[1] > -0.75:
+            r = signed(ref_m.head, p, CLEAR_MIN + 0.03)
+            if r is not None and r[2] < CLEAR_MIN:
+                p = r[0] + r[1] * cm
+            # the whole male head with its ears
+            r = near_full(ref_m.full, p, CLEAR_MIN + 0.02) if p[1] > -0.5 else None
+            if r is not None and r[0] < CLEAR_MIN:
+                p = p + r[1] * (cm - r[0])
+            # the female head: forward (the hair carried onto it by the runtime fit, measured there) ...
+            q = apply_fit(p, FIT_F)
+            r = signed(ref_f.head, q, CLEAR_MIN + 0.03)
+            if r is not None and r[2] < CLEAR_MIN:
+                q2 = r[0] + r[1] * cm
+                p = p + (q2 - q) / sc
+                q = apply_fit(p, FIT_F)
+            r = near_full(ref_f.full, q, CLEAR_MIN + 0.02) if p[1] > -0.5 else None
+            if r is not None and r[0] < CLEAR_MIN:
+                p = p + r[1] * (cm - r[0]) / sc
+            # ... and inverse (the female head carried back into nominal space)
+            r = near_full(ref_f.full_inv, p, CLEAR_MIN + 0.02) if p[1] > -0.5 else None
+            if r is not None and r[0] < CLEAR_MIN:
+                p = p + r[1] * (cm - r[0])
         if -0.35 < p[1] < 0.15 and abs(p[0]) > 0.2:
             p = ear_push(p, EAR_CLEAR)
         if p[1] < -0.45:
@@ -1216,12 +1359,12 @@ def build_style(key, cfg, refs, coll, log):
     for cd in cards:
         by_layer.setdefault(cd.st.li, []).append(cd)
     mat = hair_material()
-    layer_names = [L["name"] for L in LAYERS] + ["flyaways"]
+    layer_names = [L["name"] for L in LAYERS] + ["flyaways", "hairline"]
     allP, allN, metas = [], [], []
     for li in sorted(by_layer):
         cl = sorted(by_layer[li], key=lambda c: (c.st.f, c.st.side))
         ob, bases = card_mesh(cl, f"{key} cards {layer_names[li]}", coll,
-                              displace=0.0 if li == len(LAYERS) else 0.016 + 0.004 * li, seed=li)
+                              displace=0.0 if li >= len(LAYERS) else 0.016 + 0.004 * li, seed=li)
         ob.data.materials.append(mat)
         P = evaluated_positions(ob)
         for cd, base in zip(cl, bases):
@@ -1268,12 +1411,15 @@ def build_style(key, cfg, refs, coll, log):
         if nm not in seg_rows:
             continue
         p = hl.Piece(nm, TEX_KEY)
-        for cd, r0, r1 in sorted(seg_rows[nm], key=lambda x: (x[0].st.li, x[0].st.f)):
+        for cd, r0, r1 in sorted(seg_rows[nm], key=lambda x: (x[0].st.order, x[0].st.f)):
             ids = []
             for i in range(r0, r1 + 1):
                 c = float(cd.col[i])
-                a = p.vert(cd.left[i], cd.N[i], (cd.u[0], cd.v[i]), (c, c, c, 1.0))
-                b = p.vert(cd.right[i], cd.N[i], (cd.u[1], cd.v[i]), (c, c, c, 1.0))
+                dl = np.zeros(3)
+                if nm.endswith("b") and cd.tuck and cd.tuck[0] <= i < cd.tuck[1]:
+                    dl = -cd.nout[i] * 0.004  # the overlap above the joint lies just under segment 1
+                a = p.vert(cd.left[i] + dl, cd.N[i], (cd.u[0], cd.v[i]), (c, c, c, 1.0))
+                b = p.vert(cd.right[i] + dl, cd.N[i], (cd.u[1], cd.v[i]), (c, c, c, 1.0))
                 ids.append((a, b))
             for i in range(len(ids) - 1):
                 a, b = ids[i]
@@ -1283,19 +1429,25 @@ def build_style(key, cfg, refs, coll, log):
         pieces[nm] = (p, seg_rows[nm])
     out = []
     for nm, (p, segs) in pieces.items():
+        # castShadow off: a card's shadow in the game's shadow map is its whole quad (texture alpha is not used),
+        # which would print hard rectangles on the face, the neck and the inner layers; the baked vertex
+        # occlusion stands in for the hair's self-shadowing
         if nm == "HairTop":
-            p.meta = dict(material="SmoothPlastic", castShadow=True)
+            p.meta = dict(material="SmoothPlastic", castShadow=False, hideUnder={"headgear": False, "hood": True})
         else:
             chain = nm.rstrip("b")
             seg = 2 if nm.endswith("b") else 1
             top = np.array([(cd.left[r0] + cd.right[r0]) / 2 for cd, r0, r1 in segs]).mean(0)
+            if seg == 1:
+                # the pivot at the piece's top: a 'hang' stretch about it never pushes geometry up into HairTop
+                top[1] = float(np.asarray(p.P)[:, 1].max())
             bot = np.array([(cd.left[r1] + cd.right[r1]) / 2 for cd, r0, r1 in segs]).mean(0)
             fx = dict(kind="swing", chain=chain.replace("Hair", ""), seg=seg, stiff=HAIRFX["stiff"],
                       mass=HAIRFX["mass"] if seg == 1 else HAIRFX["mass2"],
                       pivot=[round(float(x), 4) for x in top], tip=[round(float(x), 4) for x in bot])
             if seg == 2:
                 fx["parent"] = chain
-            p.meta = dict(hairfx=fx, length="hang", material="SmoothPlastic", castShadow=True,
+            p.meta = dict(hairfx=fx, length="hang", material="SmoothPlastic", castShadow=False,
                           hideUnder={"headgear": False, "hood": True})
         out.append(p)
     # seg 2 pivots are their seg 1 tips (the same rows): make them identical
@@ -1334,8 +1486,8 @@ def hair_material(name="hair_straight"):
 
 def clearance_report(pieces, refs):
     ref_m, ref_f = refs
-    out = dict(head_m=9.0, skull_m=9.0, head_f_fit=9.0, skull_f_fit=9.0, skull_m_narrow=9.0, inside_m=0,
-               ear_box=9.0, face_below_hairline=0, torso_m=9.0, torso_f=9.0)
+    out = dict(head_m=9.0, head_m_ears=9.0, skull_m=9.0, head_f_fit=9.0, head_f_inv=9.0, skull_f_fit=9.0,
+               skull_m_narrow=9.0, inside_m=0, ear_box=9.0, face_below_hairline=0, torso_m=9.0, torso_f=9.0)
     for p in pieces:
         P = np.asarray(p.P)
         for lo, hi in EARS:
@@ -1355,18 +1507,38 @@ def clearance_report(pieces, refs):
                 hf, thf = skull_height_v(SKF, Pf)
                 out["skull_f_fit"] = min(out["skull_f_fit"], float(hf[near].min()))
         for q, qf in zip(P, Pf):
-            if q[1] > -1.15:
+            if q[1] > -0.55:  # (lower down the neck is inside the torso: the torso checks below)
                 h = ref_m.height(q)
                 out["head_m"] = min(out["head_m"], h)
                 if h < 0:
                     out["inside_m"] += 1
-                out["head_f_fit"] = min(out["head_f_fit"], ref_f.height(qf))
+                rr = near_full(ref_m.full, q, 0.3) if q[1] > -0.5 else None
+                if rr is not None:
+                    out["head_m_ears"] = min(out["head_m_ears"], rr[0])
+                # the female head both ways: forward (hair through the fit, the whole head with ears) and inverse
+                # (the female head carried back into nominal space through the inverse fit)
+                hf = ref_f.height(qf)
+                rr = near_full(ref_f.full, qf, 0.3) if q[1] > -0.5 else None
+                if rr is not None:
+                    hf = min(hf, rr[0])
+                out["head_f_fit"] = min(out["head_f_fit"], hf)
+                rr = near_full(ref_f.full_inv, q, 0.3) if q[1] > -0.5 else signed(ref_f.full_inv, q, 0.3)
+                if rr is not None and q[1] <= -0.5:
+                    rr = (rr[2],)
+                if rr is not None:
+                    out["head_f_inv"] = min(out["head_f_inv"], rr[0])
             if q[1] < -0.45:
                 for nm, ref in (("torso_m", ref_m), ("torso_f", ref_f)):
                     r = signed(ref.torso, q, 0.3)
                     if r is not None:
                         out[nm] = min(out[nm], r[2])
-    return {k: (round(v, 4) if isinstance(v, float) else v) for k, v in out.items()}
+    res = {k: (round(v, 4) if isinstance(v, float) else v) for k, v in out.items()}
+    bad = [k for k in ("head_m", "head_m_ears", "head_f_fit", "head_f_inv", "skull_m", "skull_f_fit",
+                       "skull_m_narrow", "ear_box") if out[k] < 0.022]
+    bad += [k for k in ("inside_m", "face_below_hairline") if out[k]]
+    bad += [k for k in ("torso_m", "torso_f") if out[k] < 0.01]
+    assert not bad or os.environ.get("LONG_NOASSERT"), ("clearance below threshold", bad, res)
+    return res
 
 
 # =========================================================================================== blend file
@@ -1415,7 +1587,7 @@ def single_sided(piece):
 
 # =========================================================================================== renders
 TINTS = {"black": (0.09, 0.078, 0.07), "brown": (0.188, 0.129, 0.094), "blonde": (0.77, 0.61, 0.36),
-         "darkblonde": (0.42, 0.31, 0.19)}
+         "darkblonde": (0.30, 0.21, 0.12)}
 SKINS = {"mid": None, "light": (0.72, 0.52, 0.4), "tan": (0.56, 0.38, 0.27), "deep": (0.2, 0.12, 0.08)}
 LOOKS = {
     "f_brown": ("f", "brown", "light"),
@@ -1564,7 +1736,7 @@ def main():
         cfg = STYLES[key]
         if not args.no_build:
             bpy.ops.wm.read_factory_settings(use_empty=True)
-            refs = (Ref("m"), Ref("f"))
+            refs = make_refs()
             coll = bpy.data.collections.new(f"{key} (long family)")
             bpy.context.scene.collection.children.link(coll)
             log(f"style {key}")
