@@ -79,10 +79,16 @@ local MID = 60 -- blinking only up to here
 local player = Players.LocalPlayer
 -- per Graphics level (BoxerClient.Perf: 1 Low, 2 Medium, 3 High): the distances above and the head's blend-shape
 -- rate shrink on the lower levels (a face 30+ studs away on a phone is a dozen pixels: its blinks do not read);
--- your own face and the fighters' keep High's at every level
+-- your own face keeps High's at every level, the opponent's High's distances (FIGHT)
 -- paint = the damage painting's CPU per frame (all heads together; a texture repaint takes a few more frames on Low)
 local LEVELS = { { near = 18, mid = 32, hz = 8, paint = 0.0008 }, { near = 26, mid = 45, hz = 10, paint = 0.0015 }, { near = NEAR, mid = MID, hz = 14, paint = 0.0015 } }
 local HIGH = LEVELS[3]
+-- the opponent's face (the other fighter): High's distances at every level, the level's blend-shape rate (a fight
+-- is where a phone needs its frames; the face across the ring changes expression at 8 / 10 Hz on Low / Medium)
+local FIGHT = {}
+for _, L in ipairs(LEVELS) do
+	FIGHT[L] = { near = NEAR, mid = MID, hz = L.hz }
+end
 local lv = HIGH
 do
 	local m = script.Parent:FindFirstChild("Perf")
@@ -960,7 +966,7 @@ function FaceFX.Update(dt, t, camPos, rigs, budget)
 			continue
 		end
 		local rig = rigs and rigs[model]
-		local lvl = (model == player.Character or (rig and rig.isFighter)) and HIGH or lv
+		local lvl = model == player.Character and HIGH or (rig and rig.isFighter) and FIGHT[lv] or lv
 		-- clearly out of range by the root's distance (the Animator measured it this frame; the head is within a
 		-- few studs of the root): the head's position is not read at all
 		local cd = rig and rig.camT == t and rig.camDist
