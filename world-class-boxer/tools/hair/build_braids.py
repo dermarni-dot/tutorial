@@ -111,9 +111,10 @@ def load_obj_mesh(path, obj, scale=None):
 class Collider:
     """a closed-ish mesh with outward normals: nearest point, inside test, push-out"""
 
-    def __init__(self, P, F, name=""):
+    def __init__(self, P, F, name="", radial=None):
         self.P, self.F = P, F
         self.name = name
+        self.radial = radial  # a centre: inside = nearer than the outermost surface on the ray from it
         self.bvh = BVHTree.FromPolygons([tuple(p) for p in P], F)
         self.lo, self.hi = P.min(0) - 0.3, P.max(0) + 0.3
 
@@ -121,6 +122,17 @@ class Collider:
         loc, n, _i, d = self.bvh.find_nearest(V(p))
         if loc is None:
             return 9.0, None, None
+        if self.radial is not None:
+            # (the nearest face's normal is unreliable in the creases round the ears: a point behind an ear
+            # would read as inside; the ray from the skull centre decides instead)
+            dv = np.asarray(p) - self.radial
+            L = float(np.linalg.norm(dv))
+            u = dv / max(L, 1e-9)
+            hit = self.bvh.ray_cast(V(self.radial + u * 3.0), V(-u), 3.0)
+            inside = hit[0] is not None and L < 3.0 - hit[3]
+            s = -1.0 if inside else 1.0
+            nn = np.array(n) if (V(p) - loc).dot(n) * s >= 0 else -np.array(n)
+            return s * d, np.array(loc), nn
         s = 1.0 if (V(p) - loc).dot(n) >= 0 else -1.0
         return s * d, np.array(loc), np.array(n)
 
@@ -260,12 +272,9 @@ def ear_push(p, r=0.0):
         if np.all(p > lo) and np.all(p < hi):
             up = hi[1] - p[1]
             back = hi[2] - p[2]
-            out = (hi[0] - p[0]) if p[0] > 0 else (p[0] - lo[0])
             q = p.copy()
-            m = min(up, back, out)
-            if m == out:
-                q[0] = hi[0] if p[0] > 0 else lo[0]
-            elif m == back:
+            # (never out sideways: that would cover the ear) up over it or back behind it
+            if back < up:
                 q[2] = hi[2]
             else:
                 q[1] = hi[1]
@@ -417,7 +426,7 @@ def trace_scalp(root, spec, rng, r=None):
     r = spec.r if r is None else r
 
     def h_at(s):
-        return CLEAR + 0.002 + root_shape(spec, s, r)[1] + lift_of(spec, s)
+        return CLEAR + 0.005 + root_shape(spec, s, r)[1] + lift_of(spec, s)
     # start at the box's upstream edge
     p0, n0 = on_scalp(root, 0)
     up = -comb(p0, n0)
@@ -434,6 +443,7 @@ def trace_scalp(root, spec, rng, r=None):
         q = p + d * ds
         s += ds
         q, n = on_scalp(q, h_at(s))
+        q, _hit = ear_push(q, r * 1.15)
         pts.append(q)
         nrm.append(n)
         p = q
@@ -564,7 +574,7 @@ def drape(strands, colliders, spec, label=""):
             sp = s.sp + push[k:k + n]
             # at most about half a braid of extra lift over the combed height, never under it
             for i in range(2, n):
-                hmin = CLEAR + 0.002 + s.th[i] + lift_of(spec, s.s_al[i])
+                hmin = CLEAR + 0.005 + s.th[i] + lift_of(spec, s.s_al[i])
                 q, _ = on_scalp(sp[i], 0)
                 hh = float(np.dot(sp[i] - q, unit(sp[i] - C)))
                 hh2 = min(max(hh, hmin), hmin + 0.9 * s.r)
@@ -770,13 +780,26 @@ def build_braids(spec, colliders, coll):
     keep = []
     for (p, k, t) in roots:
         da = da_of(p)[0]
-        if 1.2 < da < 2.0 and p[1] < 0.14:
+        if 1.15 < da < 2.15 and p[1] < 0.12 + 1.6 * spec.r:
             continue
         keep.append((p, k, t))
     roots = keep
     print(f"  {spec.key}: {len(roots)} roots in {max(k for _, k, _ in roots) + 1} rings ({time.time() - t0:.1f}s)")
     strands = [Strand(i, p, k, spec, rng) for i, (p, k, t) in enumerate(roots)]
     drape(strands, colliders, spec, label=spec.key)
+    # a braid whose path over the scalp would run across an ear is left out (the ears stay visible)
+    keep = []
+    for s in strands:
+        bad = False
+        for lo, hi in EARS:
+            m = s.r * 0.6
+            if np.any(np.all((s.P[:s.n_scalp] > lo - m) & (s.P[:s.n_scalp] < hi + m), axis=1)):
+                bad = True
+        if not bad:
+            keep.append(s)
+    if len(keep) < len(strands):
+        print(f"  {spec.key}: {len(strands) - len(keep)} braids over the ears left out")
+    strands = keep
     return strands
 
 
@@ -869,6 +892,9 @@ def make_pieces(spec, strands, colliders):
             if len(pts) < 2:
                 continue
             pts = adaptive(pts, spec.ds_top[0] if kind == "top" else 0.03, spec.ds_top[1] if kind == "top" else spec.ds_hang)
+            # (resampling cuts corners: keep the sampled centre line clear of the ears by the braid's radius)
+            for _ in range(2):
+                pts = np.array([ear_push(q, r * 1.6 + 0.006)[0] for q in pts])
             seg_len = np.concatenate([[0], np.cumsum(np.linalg.norm(np.diff(pts, axis=0), axis=1))])
             s_abs = acc + seg_len
             ups = []
@@ -940,12 +966,25 @@ def head_object(coll, path=None, name="head_m (collider)"):
     return ob
 
 
-def shrinkwrap_clearance(piece, head_ob, coll, offset=CLEAR):
+def shrinkwrap_clearance(piece, head_ob, coll, offset=CLEAR, head=None):
     """Blender Shrinkwrap (nearest surface point, "outside" mode) against the game head mesh: every
-    vertex closer than `offset` to the head (or inside it) is moved out to `offset`; the rest stay. Reads the
-    evaluated positions back into the piece."""
+    vertex closer than `offset` to the head (or inside it) is moved out to `offset`; the rest stay. Limited by
+    a vertex group to the vertices that need it, away from the ears (in the crease behind an ear the nearest
+    surface is ambiguous and a vertex would be thrown onto the ear). Reads the evaluated positions back."""
     ob = piece_object(piece, coll, piece.name + "_sw")
+    vg = ob.vertex_groups.new(name="needs_clearance")
+    P0 = np.asarray(piece.P)
+    sel = []
+    for i, p in enumerate(P0):
+        near_ear = any(np.all((p > lo - 0.06) & (p < hi + 0.06)) for lo, hi in EARS)
+        if not near_ear and (head is None or head.signed(p)[0] < offset):
+            sel.append(i)
+    if not sel:
+        bpy.data.objects.remove(ob)
+        return 0
+    vg.add(sel, 1.0, "REPLACE")
     m = ob.modifiers.new("clearance", "SHRINKWRAP")
+    m.vertex_group = vg.name
     m.target = head_ob
     m.wrap_method = "NEAREST_SURFACEPOINT"
     m.wrap_mode = "OUTSIDE"
@@ -1211,7 +1250,7 @@ def render_style(key, pieces, cap, outdir, samples, looks, title=None):
 
 
 def colliders_for(head="m"):
-    hm = Collider(*load_obj_mesh(os.path.join(REF, "head_m.obj"), "Head"), name="head_m")
+    hm = Collider(*load_obj_mesh(os.path.join(REF, "head_m.obj"), "Head"), name="head_m", radial=C)
     tm = Collider(*load_obj_mesh(os.path.join(REF, "torso_m.obj"), "UpperTorso"), name="torso_m")
     tf = Collider(*load_obj_mesh(os.path.join(REF, "torso_f.obj"), "UpperTorso", scale=inv_fit_scale(FIT_F)),
                   name="torso_f (model space)")
@@ -1407,7 +1446,7 @@ def build_style(key, colliders):
                 self.P, self.r = P, 0.03
         guide_curves([_G(g) for g in guides], coll, f"{key}_guides")
     head_ob = head_object(work)
-    moved = {p.name: shrinkwrap_clearance(p, head_ob, work) for p in pieces}
+    moved = {p.name: shrinkwrap_clearance(p, head_ob, work, head=colliders["head"]) for p in pieces}
     torso = load_obj_mesh(os.path.join(REF, "torso_m.obj"), "UpperTorso")
     head = load_obj_mesh(os.path.join(REF, "head_m.obj"), "Head")
     extra = [torso] + ([head] if st["kind"] == "braids" else [])
@@ -1432,7 +1471,8 @@ def main():
         print(f"textures braid, cornrow: {time.time() - t0:.1f}s")
     print("female fit", {k: round(v, 4) for k, v in FIT_F.items()})
     colliders = colliders_for()
-    head_f = Collider(*load_obj_mesh(os.path.join(REF, "head_f.obj"), "Head"), name="head_f")
+    head_f = Collider(*load_obj_mesh(os.path.join(REF, "head_f.obj"), "Head"), name="head_f",
+                      radial=np.array(hl.Skull(SKF_PATH).c))
     skf = hl.Skull(SKF_PATH)
     keys = [k for k in STYLES if not args.only or k in args.only.split(",")]
     report = {}

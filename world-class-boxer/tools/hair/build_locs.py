@@ -227,25 +227,24 @@ def _twist_core(h, w, seed):
 
 
 def _frizz(h, w, seed):
-    """the frizz fins' strip: loose fibres and kinks on transparent, dense in the middle third (hidden inside the
-    loc the fin crosses) thinning out toward both u edges (the fuzz standing off the loc's silhouette); fibres
-    leave the middle at an angle. Periodic in v; alpha 0 at the u edges."""
+    """the frizz fins' strip: loose fibres and kinks on transparent. The middle (|u - centre| < 0.3 of the half
+    width, inside the loc the fin runs through) is clear, the fuzz is densest just outside the loc's silhouette
+    (0.45-0.6) and thins out to nothing at both u edges; fibres leave the loc at an angle. Periodic in v."""
     rng = np.random.default_rng(seed)
     f = Fibres(h, w)
 
     def prof(px, py, i):
         x = np.abs((px + 0.5) / w * 2 - 1)  # 0 middle .. 1 edge
-        return np.clip(1 - smooth(0.35, 1.0, x), 0, 1) ** 1.1
+        return smooth(0.28, 0.48, x) * (1 - smooth(0.6, 1.0, x))
 
     def ang(r, n):
         return r.normal(0, 0.6, n)
-    f.strands(rng, 2800, (16, 70), ang, 0, 3.0, (0.55, 1.0), mask=prof, curl=2.2)
+    f.strands(rng, 2600, (16, 60), ang, 0, 3.0, (0.55, 1.0), mask=prof, curl=2.2)
     f.strands(rng, 1300, (8, 26), lambda r, n: r.uniform(0, math.tau, n), 0, 2.5, (0.5, 0.9), mask=prof, curl=3.0)
-    f.coils(rng, 700, (1.5, 3.5), (0.8, 2.0), (0.55, 1.0))
     lum, a = f.result(0.45, 1.0)
     xx = np.abs((np.arange(w) + 0.5) / w * 2 - 1)[None, :]
-    a = a * np.clip(1 - smooth(0.4, 0.98, xx), 0, 1)
-    a = np.clip(a * 1.1, 0, 0.95)
+    a = a * smooth(0.3, 0.45, xx) * (1 - smooth(0.65, 0.99, xx))
+    a = np.clip(a * 1.1, 0, 0.92)
     return np.clip(lum, 0, 1), a
 
 
@@ -927,7 +926,7 @@ def build_halo(mb, loc_i, D, S, radius, L, vps_frizz, inward, seg_of=None, root_
             hw = r * (k + (root_k - k) * (1 - smooth(0.0, 0.1, s)))
             # two crossed fins; a single fin twists round the loc (a turn every ~0.8) so it frays the silhouette
             # from every side along the length
-            a = fin * math.pi / 2 + math.pi / 4 + rnd * 3.0 + s * (4.0 if fins > 1 else 7.5)
+            a = fin * math.pi / 2 + math.pi / 4 + rnd * 3.0 + s * (2.5 if fins > 1 else 4.0)
             side = nrm * math.cos(a) + bn * math.sin(a)
             v = rnd + s / vps_frizz
             wa = mb.wv(C_[i] - side * hw, loc_i, s, -side)
@@ -1696,7 +1695,7 @@ def single_sided(piece):
     return q
 
 
-MATTE = {"Roughness": 0.78, "Specular IOR Level": 0.3, "Anisotropic": 0.0}
+MATTE = {"Roughness": 0.82, "Specular IOR Level": 0.2, "Anisotropic": 0.0}
 TINTS = {"black": (0.09, 0.078, 0.07), "darkbrown": (0.188, 0.129, 0.094), "blonde": (0.77, 0.61, 0.36)}
 SKINS = {"mid": None, "deep": (0.2, 0.12, 0.08), "light": (0.72, 0.52, 0.4)}
 
@@ -1721,7 +1720,17 @@ def render_style(key, cfg, pieces, outdir, samples, looks, res=(520, 620), fit_f
             scl, off = (fit_f["ax"], fit_f["ay"], fit_f["az"]), (0, 0, fit_f["dz"])
         sc.add_piece(cap, texture=cap_tex, tint=tint, offset=off, scale=scl)
         for p in pieces:
-            ob = sc.add_piece(single_sided(p), texture=TEX_PATH, tint=tint, offset=off, scale=scl)
+            q = single_sided(p)
+            dbg = os.environ.get("LOCS_DEBUG", "")
+            if "nocol" in dbg:
+                q.C = [(1.0, 1.0, 1.0, 1.0)] * len(q.C)
+            if "nofins" in dbg:
+                U = np.asarray(q.U)
+                q.T = [t for t in q.T if U[t[0], 0] < FRIZZ_STRIP[0]]
+            if "notex" in dbg:
+                ob = sc.add_piece(q, texture=None, tint=tint, offset=off, scale=scl)
+            else:
+                ob = sc.add_piece(q, texture=TEX_PATH, tint=tint, offset=off, scale=scl)
             bs = ob.data.materials[0].node_tree.nodes["Principled BSDF"]
             for k, v in MATTE.items():
                 bs.inputs[k].default_value = v
@@ -1750,6 +1759,7 @@ def main():
     ap.add_argument("--samples", type=int, default=48)
     ap.add_argument("--quick", action="store_true")
     ap.add_argument("--no-export", action="store_true")
+    ap.add_argument("--views", default="", help="renders: only these views (black hair look)")
     args = ap.parse_args()
     t0 = time.time()
 
@@ -1792,6 +1802,8 @@ def main():
                      ("m", "darkbrown", "deep", ["34", "back"]), ("f", "blonde", "light", ["34"])]
             if args.quick:
                 looks = [("m", "black", "mid", ["34", "side", "back", "close", "top34"])]
+            if args.views:
+                looks = [("m", "black", "mid", args.views.split(","))]
             rep["sheet"] = render_style(key, cfg, pieces, args.render, args.samples, looks,
                                         res=(520, 620) if not args.quick else (390, 465), fit_f=fit_f)
             log("sheet", rep["sheet"])

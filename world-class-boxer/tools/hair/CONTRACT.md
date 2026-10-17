@@ -47,7 +47,7 @@ shows them upside down.
 One shared cap mesh (`cap` style entry) covers the scalp from the forehead to the nape, at 0.012-0.02
 nominal above the skull. UV is polar: `u = az / 2pi` (az = 0 at the back, increasing toward +X),
 `v = theta / CAP_THETA` (theta from +Y). The game paints its texture per boxer: a tile
-tile (the entry's `capTile`, else `shortcoil` for curly types, else `short`) repeated
+(the entry's `capTile`, else `shortcoil` for curly types, else `short`) repeated
 `tile = {nu, nv}` times, tinted, with alpha = tile alpha x the style's coverage mask (the same
 fade / hairline / growth coverage the generated HairCap uses, `Kit.Cut(...).cov`, evaluated at each
 texel's scalp point). So every fade height, hairline kind, line-up and growth stage comes from the
