@@ -1030,8 +1030,28 @@ local function liveCost()
 	return total
 end
 
--- estimated bytes of one section at one level: the cached generation if there is one, else the budget
-local function sectionCost(section, sig, lod)
+-- colour textures for a section's pieces right now (the Graphics level's textures / textureSections, and the
+-- API not paused). textureSections thins out NPCs only: with rec, you, your opponent and previews (priority
+-- 0 / 1) get every texture at every level (two characters: the shoe laces, trunk trims, skin and hair detail).
+-- Their builds paint the level's sections (rec = nil: quick) and a texture pass adds the rest (evaluate's
+-- retex; with their other builds, only your very first one waits behind the NPCs): on Low the body's and
+-- hair's take ~2 s of CPU a character
+local function texturesFor(section, rec)
+	local S = AnatomyClient.Settings
+	local secs = S.textureSections
+	return S.textures == true and api.textures and (type(secs) ~= "table" or secs[section] == true or (rec ~= nil and rec.priority <= 1))
+end
+
+-- estimated bytes of one section at one level: the cached generation if there is one, else the budget. Hair
+-- that would be drawn from the uploaded assets (rec given): their tinted images (MBs; the meshes are not
+-- Editable), HairAssets.Cost
+local function sectionCost(section, sig, lod, rec)
+	if section == "Hair" and rec and HairAssets and not assetOff then
+		local ok, n = pcall(HairAssets.Cost, rec.look, lod, texturesFor(section, rec), rec.priority)
+		if ok and type(n) == "number" then
+			return n
+		end
+	end
 	local c = cache[section .. "|" .. tostring(sig) .. "|" .. lod]
 	if c then
 		local total = 0
@@ -1068,18 +1088,6 @@ local function onCreateFailed(err)
 	warnOnce("pressure", "Editable memory is full (" .. tostring(err) .. "): fewer / lower-detail mesh characters from now on")
 	lastEval = 0
 	return true
-end
-
--- colour textures for a section's pieces right now (the Graphics level's textures / textureSections, and the
--- API not paused). textureSections thins out NPCs only: with rec, you, your opponent and previews (priority
--- 0 / 1) get every texture at every level (two characters: the shoe laces, trunk trims, skin and hair detail).
--- Their builds paint the level's sections (rec = nil: quick) and a texture pass adds the rest (evaluate's
--- retex; with their other builds, only your very first one waits behind the NPCs): on Low the body's and
--- hair's take ~2 s of CPU a character
-local function texturesFor(section, rec)
-	local S = AnatomyClient.Settings
-	local secs = S.textureSections
-	return S.textures == true and api.textures and (type(secs) ~= "table" or secs[section] == true or (rec ~= nil and rec.priority <= 1))
 end
 
 -- steps 1-2 of runJob for a generated section: the generation (or the cached one) and its MeshParts, unparented.
@@ -1181,15 +1189,23 @@ end
 -- never kind "gen" (that would switch the generated hair off) nor "api" (memory pressure) unless loading an
 -- image hit the memory budget; an image that cannot be made pauses textures, as makePiece's does
 local function assetHair(rec, look, lod, job)
-	local okF, entry = pcall(HairAssets.For, look, lod, job.tex)
+	-- you / your opponent / a preview: the asset hair's textures from the first build (texturesFor with rec; the
+	-- generated hair's quick pass keeps job.tex), not after every NPC as a texture pass
+	local wantTex = job.tex or ((rec.priority or 2) <= 1 and texturesFor("Hair", rec))
+	job.assetTex = wantTex
+	local okF, entry = pcall(HairAssets.For, look, lod, wantTex)
 	if not okF or not entry then
 		return nil
 	end
 	local ctx = {
 		priority = rec.priority, sig = job.sig, mpOptions = api.mpOptions,
-		-- after every yield: a fresh time slice, and the job may have been cancelled meanwhile
+		-- after every yield (the loads are serial engine calls: tick() may not run between them): a fresh time
+		-- slice; the job may have been cancelled meanwhile, or gives way to a first build waiting (as tick's)
 		resume = function(obj)
 			sliceStart = os.clock()
+			if currentJob and not currentJob.first and not currentJob.cancelled and firstWaiting() then
+				currentJob.cancelled = true
+			end
 			if currentJob and currentJob.cancelled then
 				if obj then
 					pcall(obj.Destroy, obj)
@@ -1228,7 +1244,24 @@ local function assetHair(rec, look, lod, job)
 		log("asset hair failed", rec.model.Name, res)
 		return nil
 	end
+	job.tex = wantTex
 	return made, res
+end
+
+-- a Hair section drawn from the generated hair while its asset hair waits for a retry (st.assetWait,
+-- HairAssets.Waiting): true once that retry is due (evaluate builds it again, behind every other build); a
+-- retry that failed for good forgets it (no rebuild loop)
+local function assetRetryDue(st)
+	local w = st and st.assetWait
+	if not w or not HairAssets or assetOff then
+		return false
+	end
+	local ok, r = pcall(HairAssets.Retry, w)
+	if not ok or r == "never" then
+		st.assetWait = nil
+		return false
+	end
+	return r == "due"
 end
 
 local function runJob(job)
@@ -1264,6 +1297,7 @@ local function runJob(job)
 	-- 1) asset hair (HairAssets: uploaded hair cards fitted to this boxer) when the look has a complete entry;
 	-- anything of it failing to load marks its id and this same job generates instead (the fallback)
 	local made, result
+	local assetWait
 	if section == "Hair" and HairAssets and not assetOff then
 		local status
 		made, result, status = assetHair(rec, look, lod, job)
@@ -1271,6 +1305,11 @@ local function runJob(job)
 			MeshKit.SetTick(nil)
 			currentJob = nil
 			return
+		end
+		if not made then
+			-- (the generated hair below; the asset hair again once its failed ids are due: assetRetryDue)
+			local okW, w = pcall(HairAssets.Waiting, look, lod, job.assetTex)
+			assetWait = okW and w or nil
 		end
 	end
 	if not made then
@@ -1307,6 +1346,7 @@ local function runJob(job)
 		end
 		st.pieces, st.rules, st.landmarks = {}, nil, nil
 		st.sig, st.lod, st.active, st.skipped, st.job = job.sig, lod, false, true, nil
+		st.assetWait = nil
 		rec.sections[section] = st
 		applyCovers(rec)
 		if had then
@@ -1332,6 +1372,7 @@ local function runJob(job)
 	st.sig, st.lod, st.active, st.skipped = job.sig, lod, true, nil
 	st.tex = job.tex
 	st.texOnce = st.texOnce or job.tex -- (it has shown its textures: the texture pass after a rebuild hurries)
+	st.assetWait = assetWait
 	st.rules = rulesFor(def, look, lod, result)
 	st.landmarks = landmarksOf(result, section)
 	st.builtAt = os.clock()
@@ -1486,7 +1527,7 @@ local function evaluate()
 					local c = 0
 					for section, def in pairs(registry) do
 						if not def.failed and not (def.lods and not def.lods[lvl]) then
-							c += sectionCost(section, rec.sigs[section], lvl)
+							c += sectionCost(section, rec.sigs[section], lvl, rec)
 						end
 					end
 					if used + c <= pressure.cap then
@@ -1551,6 +1592,11 @@ local function evaluate()
 				if retex then
 					fresh = false
 				end
+				-- generated hair standing in for asset hair that failed transiently: built again once it is due
+				local assetRetry = fresh and section == "Hair" and assetRetryDue(st)
+				if assetRetry then
+					fresh = false
+				end
 				-- you / your opponent / a preview showing round-1 parts here: low detail first (Head ~50 ms with its
 				-- face texture against ~500 at full, Body ~15 against ~800), full right after as an ordinary
 				-- rebuild; not when the full result is already generated (cached) or the section has no low level
@@ -1567,7 +1613,7 @@ local function evaluate()
 					-- does a texture pass, except your opponent's (or a preview's) and one that gives you back textures
 					-- a rebuild took off (your gear at the bell, a Creator edit): those go with their other builds
 					local hurry = retex and (rec.priority == 1 or (rec.priority == 0 and st.texOnce))
-					local down = (retex and not hurry) or (st ~= nil and st.active == true and st.sig == sig and LOD_RANK[st.lod] ~= nil and LOD_RANK[want] < LOD_RANK[st.lod])
+					local down = (retex and not hurry) or assetRetry or (st ~= nil and st.active == true and st.sig == sig and LOD_RANK[st.lod] ~= nil and LOD_RANK[want] < LOD_RANK[st.lod])
 					rec.sections[section] = st or { pieces = {} }
 					rec.sections[section].job = { rec = rec, section = section, lod = lod, sig = sig, look = rec.look, queued = now, down = down, retex = retex }
 				end
@@ -2676,5 +2722,17 @@ function AnatomyClient.Status()
 	end
 	return s
 end
+
+-- for the lune tests (tools/sim/test_hairassets_client.luau): the asset hair's wiring, without the worker
+AnatomyClient._test = {
+	sectionCost = sectionCost, assetHair = assetHair, assetRetryDue = assetRetryDue, texturesFor = texturesFor,
+	focus = focus,
+	setHairAssets = function(mod)
+		HairAssets = mod
+	end,
+	setJob = function(job)
+		currentJob = job
+	end,
+}
 
 return AnatomyClient

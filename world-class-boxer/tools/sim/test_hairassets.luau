@@ -142,15 +142,32 @@ do
 	check("points mapped", near(a.P[4], px, 1e-9) and near(a.P[5], py, 1e-9) and near(a.P[6], pz, 1e-9) and a.nv == 2)
 	print(string.format("long hair: Lf %.3f, chain k %.3f, real head k %.3f", Lf, k, S.ky))
 
-	-- volume: about the boxer's skull centre
+	-- volume: evenly by kc (clamped near 1) and outward by the rest, about the boxer's scalp point under the
+	-- piece's centre (on the ray from the skull centre)
 	local lk2 = look(1, { style = "Afro", type = "Kinky", length = 1, volume = 1 })
 	local S2 = Kit.Scalp(lk2)
 	local fit2 = HK.Fit(S2, fakeData.fit0)
 	local placed2, _, _, Vf = HK.Place(fakeData, fakeData.entries[1], lk2, S2, fit2)
 	local q = placed2.HairAfro01
-	local ny = S2.cy + (0.34 * fit2.ay - S2.cy) * Vf
-	check("volume centre y", near(q.centre[2], ny * S2.ky, 1e-9), q.centre[2])
-	check("volume size", near(q.size[1], 1.3 * fit2.ax * Vf * S2.kx, 1e-9))
+	local kc = math.clamp(Vf, HK.VOLUME_CENTRE[1], HK.VOLUME_CENTRE[2])
+	local bx, by, bz = 0, 0.34 * fit2.ay, 0.08 * fit2.az + fit2.dz
+	local dx, dy, dz = bx, by - S2.cy, bz - S2.cz
+	local l = math.sqrt(dx * dx + dy * dy + dz * dz)
+	dx, dy, dz = dx / l, dy / l, dz / l
+	local ax, ay, az = S2.ray(dx, dy, dz, 0)
+	local w = 1 / math.max(dx * dx, dy * dy, dz * dz)
+	local ky = kc * (1 + (Vf / kc - 1) * dy * dy * w)
+	local kx = kc * (1 + (Vf / kc - 1) * dx * dx * w)
+	check("volume centre y (about the scalp point)", near(q.centre[2], (ay + (by - ay) * ky) * S2.ky, 1e-9), q.centre[2])
+	check("volume size", near(q.size[1], 1.3 * fit2.ax * kx * S2.kx, 1e-9) and near(q.size[2], 1.1 * fit2.ay * ky * S2.ky, 1e-9))
+	-- the anchor stays where it was: on the scalp
+	local m = q.map
+	local qx, qy, qz = ax / fit2.ax, ay / fit2.ay, (az - fit2.dz) / fit2.az
+	local mx, my, mz = HK.Apply(m, qx, qy, qz)
+	check("volume anchor on the scalp", math.abs(S2.f(mx / S2.kx, my / S2.ky, mz / S2.kz)) < 1e-4 and near(my / S2.ky, ay, 1e-9))
+	-- HairFX's pivot / tip and points ride the same map
+	local px, py, pz = HK.Apply(m, 0, 0.9, 0)
+	check("volume points follow", near(q.P[1], px, 1e-9) and near(q.P[2], py, 1e-9) and near(q.P[3], pz, 1e-9))
 	check("no points -> box corners", placed2.HairCap.nv == 9)
 	print(string.format("afro: Vf %.3f", Vf))
 end
@@ -354,6 +371,193 @@ do
 	local aLow = buffer.readu8(cap, ((31 * 32) + 8) * 4 + 3) -- the last row, a side: under the hairline / fade
 	check("cap crown covered", a0 > 230, a0)
 	check("cap low edge bare", aLow < 30, aLow)
+end
+
+------------------------------------------------------------------------
+-- volume pieces grow outward: the scalp side stays on the head
+------------------------------------------------------------------------
+do
+	-- shells shaped as the afro build's mass pieces (tools/hair/out/afro: back, sides, top, front); inner points
+	-- 0.025 above the reference scalp, outer ones 0.3
+	local S0 = Kit.Scalp({})
+	local boxes = { back = { 0.006, 0.23, 0.436, 0.987, 1.034, 0.57 }, left = { -0.379, 0.289, 0.082, 0.416, 0.855, 0.956 },
+		right = { 0.37, 0.307, 0.096, 0.464, 0.842, 0.972 }, top = { 0.008, 0.624, 0.05, 0.966, 0.431, 0.967 },
+		front = { 0.002, 0.491, -0.317, 0.865, 0.436, 0.376 } }
+	local pieces, inner, outer = {}, {}, {}
+	for name, b in pairs(boxes) do
+		local pin, pout = {}, {}
+		for th = 0, 110, 5 do
+			for az = 0, 355, 10 do
+				local t, a = math.rad(th), math.rad(az)
+				local d = { math.sin(t) * math.sin(a), math.cos(t), math.sin(t) * math.cos(a) }
+				local x, y, z = S0.ray(d[1], d[2], d[3], 0)
+				local ix, iy, iz = x + d[1] * 0.025, y + d[2] * 0.025, z + d[3] * 0.025
+				if math.abs(ix - b[1]) <= b[4] / 2 and math.abs(iy - b[2]) <= b[5] / 2 and math.abs(iz - b[3]) <= b[6] / 2 then
+					table.insert(pin, { ix, iy, iz })
+					table.insert(pout, { x + d[1] * 0.3, y + d[2] * 0.3, z + d[3] * 0.3 })
+				end
+			end
+		end
+		pieces["HairAfro" .. name] = { mesh = 1, tex = "coily", bbox = b, points = {}, length = "volume" }
+		inner["HairAfro" .. name], outer["HairAfro" .. name] = pin, pout
+	end
+	local entry = { key = "afro", cap = { cut = "none" }, pieces = pieces }
+	local function clearances(hair, face, old)
+		local lk = look(1, hair, face)
+		local S = Kit.Scalp(lk)
+		local placed, fit, _, Vf = HK.Place(fakeData, entry, lk, S)
+		local out = {}
+		for name in pairs(pieces) do
+			local m = placed[name].map
+			local function f(p)
+				local x, y, z
+				if old then
+					-- the old placement: about the skull centre by Vf
+					x, y, z = p[1] * fit.ax, p[2] * fit.ay, p[3] * fit.az + fit.dz
+					x, y, z = x * Vf, S.cy + (y - S.cy) * Vf, S.cz + (z - S.cz) * Vf
+				else
+					x, y, z = HK.Apply(m, p[1], p[2], p[3])
+					x, y, z = x / S.kx, y / S.ky, z / S.kz
+				end
+				return S.f(x, y, z)
+			end
+			local lo, hi = math.huge, -math.huge
+			for _, p in ipairs(inner[name]) do
+				lo = math.min(lo, f(p))
+			end
+			for _, p in ipairs(outer[name]) do
+				hi = math.max(hi, f(p))
+			end
+			out[name] = { lo = lo, hi = hi }
+		end
+		return out, Vf
+	end
+	local face = { skullWidth = 1, skullLength = 1, crown = 1, forehead = 1 }
+	for _, fc in ipairs({ {}, face }) do
+		local base = clearances({ style = "Afro", type = "Kinky", length = 0.5, volume = 0 }, fc)
+		local big, Vf = clearances({ style = "Afro", type = "Kinky", length = 1, growth = 1.5, volume = 1 }, fc)
+		local old = clearances({ style = "Afro", type = "Kinky", length = 1, growth = 1.5, volume = 1 }, fc, true)
+		local small = clearances({ style = "Afro", type = "Kinky", length = 0, volume = -1 }, fc)
+		local lift, oldLift, grow, sink = 0, 0, math.huge, math.huge
+		for name, c in pairs(big) do
+			lift = math.max(lift, c.lo - base[name].lo)
+			oldLift = math.max(oldLift, old[name].lo - base[name].lo)
+			grow = math.min(grow, c.hi / base[name].hi)
+			sink = math.min(sink, small[name].lo)
+		end
+		print(string.format("volume Vf %.2f%s: scalp side lifts %.3f (about the centre %.3f), outward x%.2f at least; Vf min: lowest %.3f",
+			Vf, fc == face and " (big skull)" or "", lift, oldLift, grow, sink))
+		check("volume: scalp side stays on the head", lift <= 0.02 and oldLift > 0.1, string.format("%.3f / %.3f", lift, oldLift))
+		check("volume: grows outward", grow >= 1.12, grow)
+		check("volume: smallest does not sink far in", sink > -0.02, sink)
+	end
+end
+
+------------------------------------------------------------------------
+-- the cap's texels are read where the fitted cap mesh lies on this boxer
+------------------------------------------------------------------------
+do
+	local lk = look(2, { style = "High Fade", type = "Straight", hairline = "Line-Up" }, { skullWidth = -1, skullLength = -1, crown = -1, forehead = -1 })
+	local cov, S = HK.CapCoverage(lk, "full", { cut = "style" })
+	local fit = HK.Fit(S, Data.fit0)
+	local pal = HK.Palette(lk, "Straight")
+	local gw, gh = 48, 24
+	local grid = HK.CapGrid(S, cov, pal, 2.2, gw, gh, fit)
+	local S0 = Kit.Scalp({})
+	local same, moved = true, 0
+	for j = 0, gh - 1 do
+		for i = 0, gw - 1 do
+			local th, az = (j + 0.5) / gh * 2.2, (i + 0.5) / gw * math.pi * 2
+			local d = { math.sin(th) * math.sin(az), math.cos(th), math.sin(th) * math.cos(az) }
+			local x, y, z = S0.ray(d[1], d[2], d[3], 0)
+			x, y, z = x + d[1] * 0.02, y + d[2] * 0.02, z + d[3] * 0.02
+			local px, py, pz = S.onto(x * fit.ax, y * fit.ay, z * fit.az + fit.dz, 0)
+			-- (the cached grid's rays start warm: the same point within the ray's 6e-5, a line-up's edge is 3 mm)
+			if not near(grid.c[i + j * gw + 1], math.clamp(cov(px, py, pz), 0, 1), 0.05) then
+				same = false
+			end
+			-- where the old sampling read it: this boxer's skull along the reference direction
+			local ox, oy, oz = S.ray(d[1], d[2], d[3], 0)
+			moved = math.max(moved, math.sqrt((ox - px) ^ 2 + (oy - py) ^ 2 + (oz - pz) ^ 2))
+		end
+	end
+	print(string.format("cap texels on the fitted cap: up to %.4f nominal from the old (ray from the centre) sample, female min skull", moved))
+	check("cap grid samples the fitted cap point", same)
+	check("the old sample was off (the fix matters)", moved > 0.01, moved)
+	-- the reference skull's points are cached per grid size: a second boxer's grid costs no skull rays
+	local t0 = os.clock()
+	HK.CapGrid(S, cov, pal, 2.2, gw, gh, fit)
+	local t1 = os.clock()
+	HK.CapGrid(Kit.Scalp(look(1)), cov, pal, 2.2, gw + 2, gh, nil)
+	print(string.format("cap grid %dx%d warm %.1f ms, cold %.1f ms", gw, gh, (t1 - t0) * 1000, (os.clock() - t1) * 1000))
+end
+
+------------------------------------------------------------------------
+-- time slicing: the gaps between MeshKit ticks (the builder yields there) at real sizes
+------------------------------------------------------------------------
+do
+	local MeshKit = H.require("MeshKit")
+	-- every gap between ticks (ms); the one after the output buffer's allocation is that allocation alone
+	-- (a ~2 ms buffer.create of 4 MB: one engine-level step, kept apart by a tick on each side)
+	local function gaps(fn)
+		local last, list = os.clock(), {}
+		MeshKit.SetTick(function()
+			local t = os.clock()
+			list[#list + 1] = (t - last) * 1000
+			last = t
+		end)
+		fn()
+		MeshKit.SetTick(nil)
+		list[#list + 1] = (os.clock() - last) * 1000
+		return list
+	end
+	local function summary(name, fn, allocAt)
+		-- warm (the reference grid, the first big buffers), then the best of 3 runs (the machine's own pauses)
+		gaps(fn)
+		local best
+		for _ = 1, 3 do
+			local list = gaps(fn)
+			local work = {}
+			for i, v in ipairs(list) do
+				if i ~= allocAt then
+					work[#work + 1] = v
+				end
+			end
+			table.sort(work)
+			local r = { n = #list, max = work[#work], p99 = work[math.max(1, math.floor(#work * 0.99))], p50 = work[#work // 2 + 1],
+				alloc = allocAt and list[allocAt] or 0 }
+			if not best or r.max < best.max then
+				best = r
+			end
+		end
+		print(string.format("ticks %-16s n %5d  max %.2f ms  p99 %.2f  p50 %.3f  (allocation %.2f)", name, best.n, best.max, best.p99, best.p50, best.alloc))
+		check("tick gaps " .. name .. ": p99 under 1 ms", best.p99 < 1, best.p99)
+		check("tick gaps " .. name .. ": median well under 1 ms", best.p50 < 0.6, best.p50)
+		return best
+	end
+	local lk = look(1, { style = "High Fade", type = "Coiled", hairline = "Line-Up" })
+	local cov, S = HK.CapCoverage(lk, "full", { cut = "style" })
+	local pal = HK.Palette(lk, "Coiled")
+	local gw, gh = HK.GridSize(true)
+	local grid
+	summary("CapGrid 192x96", function()
+		grid = HK.CapGrid(S, cov, pal, 2.2, gw, gh)
+	end)
+	local tile = buffer.create(256 * 256 * 4)
+	buffer.fill(tile, 0, 200)
+	summary("PaintCap 1024", function()
+		HK.PaintCap(grid, tile, 256, 256, 8, 4, 1024, false)
+	end, 2)
+	local src = buffer.create(1024 * 1024 * 4)
+	buffer.fill(src, 0, 180)
+	local c1 = HK.Colors(pal, 1024, false, HK.BANDS)
+	summary("Tint 1024 f=1", function()
+		HK.Tint(src, 1024, 1024, 1, c1, false)
+	end, 2)
+	local c2 = HK.Colors(pal, 512, false, HK.BANDS)
+	summary("Tint 1024 f=2", function()
+		HK.Tint(src, 1024, 1024, 2, c2, false)
+	end, 2)
 end
 
 print(string.format("test_hairassets: %d passed, %d failed", pass, fail))

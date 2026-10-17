@@ -276,6 +276,171 @@ do
 	end
 end
 
+-- the retry: choosing an entry never uses it up; a build uses it when it really asks for that id, and an id
+-- is cleared the moment it loads (not only when the whole build succeeds)
+do
+	Data.textures.coily.id = 413
+	failTex[413] = "HTTP 503 (Service Unavailable)"
+	failMesh[31] = "HTTP 503 (Service Unavailable)"
+	HA.Build(model(), HA.For(afro, "full", true), afro, "full", ctx(0)) -- (fails on the texture: 413 marked)
+	failTex[413] = nil
+	check("first failure marked transient", HA._failed[413] and HA._failed[413].transient and not HA._failed[413].retried)
+	HA._failed[413].at -= 61
+	for _ = 1, 5 do
+		HA.For(afro, "full", true)
+		HA.Waiting(afro, "full", true)
+	end
+	check("For / Select have no side effect", HA._failed[413].retried == false)
+	-- the retry: 413 loads (cleared at once) although mesh 31 then fails (first time: transient)
+	local res = HA.Build(model(), HA.For(afro, "full", true), afro, "full", ctx(0))
+	check("texture cleared as soon as it loaded", res == nil and HA._failed[413] == nil)
+	check("the mesh that failed is marked, its retry unused", HA._failed[31] and HA._failed[31].transient and HA._failed[31].retried == false)
+	-- a build that fails before reaching a due id leaves that id's retry unused
+	HA._failed[31].at -= 61
+	Data.textures.coily.id = 414
+	failTex[414] = "HTTP 503 (Service Unavailable)"
+	HA.Build(model(), HA.For(afro, "full", true), afro, "full", ctx(0))
+	check("a due id never asked keeps its retry", HA._failed[31].retried == false and HA._failed[414] ~= nil)
+	failTex[414] = nil
+	HA._failed[414] = nil
+	-- 31's retry fails too: for the session
+	HA.Build(model(), HA.For(afro, "full", true), afro, "full", ctx(0))
+	check("second failure is for good", HA._failed[31] and HA._failed[31].transient == false and HA.For(afro, "full", true) == nil)
+	failMesh[31] = nil
+	HA._failed[31] = nil
+	Data.textures.coily.id = 13
+	check("nothing leaked (retries)", live.images == 0 and live.parts == 0, live.images .. " " .. live.parts)
+end
+
+-- a retry cut short is never stuck: loaded then cancelled -> cleared; failed then cancelled, or failed on the
+-- device's memory (not the asset's fault) -> the retry stays unused, still due
+do
+	local function cancelling()
+		local c = ctx(0)
+		c.resume = function(obj)
+			if obj then
+				obj:Destroy()
+			end
+			error("[AnatomyClient: build cancelled]", 0)
+		end
+		return c
+	end
+	Data.textures.coily.id = 613
+	HA._failed[613] = { at = os.clock() - 61, transient = true, retried = false, err = "x" }
+	local ok = pcall(HA.Build, model(), HA.For(afro, "full", true), afro, "full", cancelling())
+	check("loaded, then cancelled: mark cleared", not ok and HA._failed[613] == nil)
+	Data.textures.coily.id = 614
+	failTex[614] = "HTTP 503 (Service Unavailable)"
+	HA._failed[614] = { at = os.clock() - 61, transient = true, retried = false, err = "x" }
+	local ok2 = pcall(HA.Build, model(), HA.For(afro, "full", true), afro, "full", cancelling())
+	check("failed, then cancelled: retry kept", not ok2 and HA._failed[614] and HA._failed[614].retried == false
+		and HA.For(afro, "full", true) ~= nil)
+	failTex[614] = "Not enough memory: budget exceeded"
+	local r3, _, k3 = HA.Build(model(), HA.For(afro, "full", true), afro, "full", ctx(0))
+	check("memory on the retry: api, retry kept", r3 == nil and k3 == "api" and HA._failed[614].retried == false
+		and HA._failed[614].transient == true)
+	failTex[614] = nil
+	HA._failed[614] = nil
+	Data.textures.coily.id = 13
+	check("nothing leaked (retry cut short)", live.images == 0 and live.parts == 0, live.images .. " " .. live.parts)
+end
+
+-- AnatomyClient's side of it (its internals through _test; no worker runs)
+local AC = H.require("Client/AnatomyClient")
+local T = AC._test
+T.setHairAssets(HA)
+local function rec(priority, lk)
+	return { model = model(), priority = priority, look = lk or afro, sections = {}, sigs = { Hair = "s" } }
+end
+
+-- Waiting / Retry and the fallback's rebuild (evaluate's assetRetryDue): due once, never in a loop
+do
+	Data.textures.coily.id = 513
+	failTex[513] = "request timed out"
+	local job = { sig = "s", tex = true }
+	local made, _, status = T.assetHair(rec(2), afro, "full", job)
+	check("asset failure -> generated (nil, no stop)", made == nil and status == nil)
+	local w = HA.Waiting(afro, "full", job.assetTex)
+	check("Waiting: the failed id", w and w.ids[1] == 513 and w.key == "afro", w and w.ids[1])
+	local st = { assetWait = w }
+	check("not due before a minute", T.assetRetryDue(st) == false and st.assetWait == w and HA.Retry(w) == "wait")
+	HA._failed[513].at -= 61
+	check("due after a minute: the section is rebuilt", T.assetRetryDue(st) == true)
+	check("checking twice uses nothing", HA._failed[513].retried == false and T.assetRetryDue(st) == true)
+	-- the rebuild's retry fails again: never again, the record forgotten (no requeue loop)
+	T.assetHair(rec(2), afro, "full", { sig = "s", tex = true })
+	check("retry failed: never", HA.Retry(w) == "never" and HA.Waiting(afro, "full", true) == nil)
+	check("never: no rebuild, record dropped", T.assetRetryDue(st) == false and st.assetWait == nil)
+	-- a retry that loads: due (the rebuild draws the asset hair)
+	HA._failed[513] = { at = os.clock() - 61, transient = true, retried = false, err = "x" }
+	failTex[513] = nil
+	local st2 = { assetWait = HA.Waiting(afro, "full", true) }
+	check("due", T.assetRetryDue(st2) == true)
+	local m2 = T.assetHair(rec(2), afro, "full", { sig = "s", tex = true })
+	check("the rebuild draws the asset hair, mark cleared", m2 ~= nil and HA._failed[513] == nil and HA.Waiting(afro, "full", true) == nil)
+	check("loaded: still 'due' for a stale record (one rebuild, then fresh)", HA.Retry(st2.assetWait) == "due")
+	if m2 then
+		releaseAll(m2)
+	end
+	Data.textures.coily.id = 13
+end
+
+-- the memory cap's estimate: the asset hair's tinted images, not the (absent) mesh bytes
+do
+	local you, npc = rec(0), rec(2)
+	local cy = T.sectionCost("Hair", "s", "full", you)
+	local cn = T.sectionCost("Hair", "s", "full", npc)
+	local cl = T.sectionCost("Hair", "s", "low", you)
+	print(string.format("asset hair cost: you full %.1f MB, NPC full %.1f MB, you low %.2f MB", cy / 1048576, cn / 1048576, cl / 1048576))
+	-- coily 1024^2 x 4 (shared: half for an NPC) + the cap 1024^2 x 4 at full; 256^2 each at low
+	check("cost: private full", cy == 1024 * 1024 * 4 * 2, cy)
+	check("cost: NPC shares its tint", cn == 1024 * 1024 * 4 * 1.5, cn)
+	check("cost: low", cl == 256 * 256 * 4 * 2, cl)
+	local noEntry = T.sectionCost("Hair", "s", "full", rec(2, look(1, { style = "Long Hair", type = "Straight" })))
+	check("no entry: the generated estimate", noEntry < 1048576 and noEntry > 0, noEntry)
+	check("no rec: the generated estimate", T.sectionCost("Hair", "s", "full") == noEntry)
+end
+
+-- a first build of you / your opponent waiting preempts an asset-hair job between its serial loads
+do
+	local you = rec(0)
+	you.sections.Head = { job = { sig = "h" } } -- (round-1 parts showing, queued: a first build)
+	table.insert(T.focus, you)
+	local job = { sig = "s", tex = true, first = false }
+	T.setJob(job)
+	local y0 = yields
+	local made, _, status = T.assetHair(rec(2, look(1, { style = "Afro", type = "Kinky", color = { 90, 60, 30 } })), afro, "full", job)
+	check("preempted: stop, cancelled", made == nil and status == "stop" and job.cancelled == true)
+	check("preempted after one load", yields - y0 == 1, yields - y0)
+	check("nothing leaked (preempted)", live.images == 0 and live.parts == 0, live.images .. " " .. live.parts)
+	-- a first build itself is never preempted
+	local firstJob = { sig = "s", tex = true, first = true }
+	T.setJob(firstJob)
+	local m2 = T.assetHair(rec(0), afro, "full", firstJob)
+	check("a first build runs through", m2 ~= nil and not firstJob.cancelled)
+	if m2 then
+		releaseAll(m2)
+	end
+	table.remove(T.focus, table.find(T.focus, you))
+	T.setJob(nil)
+end
+
+-- on Low (textures for the Head only on NPCs) your hair's first build already takes the asset hair
+do
+	AC.Settings.textureSections = { Head = true }
+	local quick = T.texturesFor("Hair", nil)
+	check("Low: the quick pass has no Hair textures", quick == false)
+	local job = { sig = "s", tex = quick }
+	local m = T.assetHair(rec(0), afro, "full", job)
+	check("yours: asset hair on the first build", m ~= nil and job.tex == true)
+	if m then
+		releaseAll(m)
+	end
+	local npcJob = { sig = "s", tex = quick }
+	check("an NPC's: the generated low hair", T.assetHair(rec(2), afro, "full", npcJob) == nil and not npcJob.tex)
+	AC.Settings.textureSections = false
+end
+
 local st = HA.Stats()
 print(string.format("stats: built %d failedBuilds %d entries %d usable %d", st.built, st.failedBuilds, st.entries, st.usable))
 print(string.format("test_hairassets_client: %d passed, %d failed", pass, fail))

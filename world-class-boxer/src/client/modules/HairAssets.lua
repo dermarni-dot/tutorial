@@ -6,6 +6,9 @@
 -- * For(look, lod, wantTex) -> entry | nil: AnatomyHair's own style / type routing (HairAssetKit.Select);
 --   nil when Config.HairAssets is off, in BaldMode, without textures (NPCs on Low keep the generated low hair)
 --   or when one of the entry's ids failed (retried once a minute later when the failure looked transient)
+-- * Waiting(look, lod, wantTex) -> { ids, at } | nil: the entry the look would draw while its ids wait for
+--   that retry (the caller drew the generated hair: Retry(w) -> "due" | "wait" | "never" says when to build
+--   it again); Cost(look, lod, wantTex, priority) -> the Editable image bytes For's entry would take
 -- * Build(model, entry, look, lod, ctx) -> made, result | nil, err, kind: MeshParts from the uploaded meshes
 --   (AssetService:CreateMeshPartAsync, sized by the skull fit), each with its texture tinted to the look's
 --   hair colour in an EditableImage (the greyscale cards x Kit.Palette's colours), plus the scalp cap painted
@@ -89,18 +92,48 @@ local function markFailed(id, err)
 		.. " Group-owned assets load only in a place the same group owns.")
 end
 
--- true while an id is to be skipped (a transient failure gets one retry RETRY_AFTER s later; a build that
--- loads it clears the mark)
+-- true while an id is to be skipped: failed and not due for its one retry (a transient failure, RETRY_AFTER s
+-- later). No side effect: the retry is used up only when a build really asks for the id again (attempt)
 local function isFailed(id)
 	local f = failed[id]
 	if not f then
 		return false
 	end
-	if f.transient and not f.retried and os.clock() - f.at >= RETRY_AFTER then
+	return not (f.transient and not f.retried and os.clock() - f.at >= RETRY_AFTER)
+end
+
+-- a build is about to load id: a failed one is on its retry now; loaded(id) clears the mark the moment it loads
+local function attempt(id)
+	local f = failed[id]
+	if f then
+		local was = f.retried
 		f.retried = true
-		return false
+		return was
 	end
-	return true
+	return nil
+end
+local function loaded(id)
+	failed[id] = nil
+end
+-- after the engine call for id (attempt's was): the id is cleared when it loaded; a failure that is not the
+-- asset's (blame false: the device's Editable memory, kind "api", which Build does not mark) gives the retry
+-- back. Then ctx.resume, which may cancel the job (a first build waiting): a cancel after a failed retry also
+-- gives it back (Build's error path marks nothing), so an id is never left "retrying" for the session
+local function settle(id, was, ok, blame, obj, ctx)
+	local f = failed[id]
+	if ok then
+		loaded(id)
+	elseif not blame and f and was ~= nil then
+		f.retried = was
+	end
+	local okC, err = pcall(ctx.resume, obj)
+	if not okC then
+		f = failed[id]
+		if f and was ~= nil then
+			f.retried = was
+		end
+		error(err, 0)
+	end
 end
 
 -- every asset id an entry loads
@@ -128,9 +161,12 @@ local function entryFailed(entry)
 	return false
 end
 
+local function active(wantTex)
+	return cfg().enabled ~= false and not Config.BaldMode and wantTex
+end
+
 function HairAssets.For(look, lod, wantTex)
-	local c = cfg()
-	if c.enabled == false or Config.BaldMode or not wantTex then
+	if not active(wantTex) then
 		return nil
 	end
 	local ok, entry = pcall(HK.Select, Data, look, entryFailed)
@@ -168,10 +204,11 @@ local function source(id, ctx)
 		s.used = useN
 		return s
 	end
+	local was = attempt(id)
 	local okI, img = pcall(function()
 		return AssetService:CreateEditableImageAsync(Content.fromUri("rbxassetid://" .. id))
 	end)
-	ctx.resume(okI and img or nil)
+	settle(id, was, okI and img ~= nil, okI or not isMemory(img), okI and img or nil, ctx)
 	if not okI or not img then
 		-- (a nil is not taken for memory: an asset that never loads must not switch the meshes off)
 		local err = okI and "CreateEditableImageAsync returned nil" or img
@@ -273,7 +310,7 @@ local function tinted(key, look, htype, pal, lod, shared, ctx)
 end
 
 -- the cap texture of this boxer: the short tile tinted with the root colour, alpha = the style's coverage
-local function capImage(entry, look, htype, pal, lod, S, shared, ctx)
+local function capImage(entry, look, htype, pal, lod, S, fit, shared, ctx)
 	local tex = Data.textures and Data.textures.short
 	local id = tex and HK.Id(tex.id)
 	if not id then
@@ -291,7 +328,7 @@ local function capImage(entry, look, htype, pal, lod, S, shared, ctx)
 	local cap = Data.cap or {}
 	local cov, S2, sharp = HK.CapCoverage(look, lod, entry.cap, S)
 	local gw, gh = HK.GridSize(sharp)
-	local grid = HK.CapGrid(S2, cov, pal, tonumber(cap.thetaMax) or 2.2, gw, gh)
+	local grid = HK.CapGrid(S2, cov, pal, tonumber(cap.thetaMax) or 2.2, gw, gh, fit)
 	local tile = type(cap.tile) == "table" and cap.tile or { 8, 4 }
 	local buf = HK.PaintCap(grid, src.buf, src.w, src.h, tonumber(tile[1]) or 8, tonumber(tile[2]) or 4, size, flipV(), tonumber(tex.gain))
 	local img, ierr = newImage(size, size, buf)
@@ -323,6 +360,7 @@ end
 
 -- one MeshPart from an uploaded mesh, sized and coloured; nil, err, kind
 local function meshPart(id, pl, ap, mid, ctx)
+	local was = attempt(id)
 	local okMP, mp = pcall(function()
 		local uri = Content.fromUri("rbxassetid://" .. id)
 		if ctx.mpOptions == false then
@@ -332,7 +370,7 @@ local function meshPart(id, pl, ap, mid, ctx)
 			CollisionFidelity = Enum.CollisionFidelity.Box, RenderFidelity = Enum.RenderFidelity.Automatic,
 		})
 	end)
-	ctx.resume(okMP and mp or nil)
+	settle(id, was, okMP and mp ~= nil, true, okMP and mp or nil, ctx)
 	if not okMP or not mp then
 		return nil, okMP and "CreateMeshPartAsync returned nil" or mp, "asset"
 	end
@@ -377,7 +415,7 @@ local function buildInner(model, entry, look, lod, ctx, made, releases)
 	end
 	local style, htype = Gen.Resolve(look)
 	local S = HairKit.Scalp(look)
-	local placed = HK.Place(Data, entry, look, S)
+	local placed, fit = HK.Place(Data, entry, look, S)
 	local pal = HK.Palette(look, htype)
 	local mr, mg, mb = HK.MidColor(pal)
 	local mid = { mr, mg, mb }
@@ -403,7 +441,7 @@ local function buildInner(model, entry, look, lod, ctx, made, releases)
 		releases[#releases + 1] = acquire(hd)
 	end
 	if placed.HairCap then
-		local hd, err, kind, id = capImage(entry, look, htype, pal, lod, S, shared, ctx)
+		local hd, err, kind, id = capImage(entry, look, htype, pal, lod, S, fit, shared, ctx)
 		if not hd then
 			return nil, "cap texture: " .. tostring(err), kind, id
 		end
@@ -498,11 +536,79 @@ function HairAssets.Build(model, entry, look, lod, ctx)
 			rel()
 		end
 	end
-	for _, aid in ipairs(idsOf(entry)) do
-		failed[aid] = nil -- (a retried id loaded)
-	end
 	stats.built += 1
 	return made, result
+end
+
+-- the entry this look draws while ids of it wait for their retry: { ids, at (os.clock() when the last is
+-- due), key }; nil when none waits (nothing to draw, all loaded, or one failed for good)
+function HairAssets.Waiting(look, lod, wantTex)
+	if not active(wantTex) then
+		return nil
+	end
+	local ok, entry = pcall(HK.Select, Data, look)
+	if not ok or not entry then
+		return nil
+	end
+	local ids, at = {}, 0
+	for _, id in ipairs(idsOf(entry)) do
+		local f = failed[id]
+		if f then
+			if not f.transient or f.retried then
+				return nil
+			end
+			ids[#ids + 1] = id
+			at = math.max(at, f.at + RETRY_AFTER)
+		end
+	end
+	if #ids == 0 then
+		return nil
+	end
+	return { ids = ids, at = at, key = entry.key }
+end
+
+-- a Waiting record now: "due" (every id loaded or may be tried again: build the look again), "wait" (not
+-- yet, or another build is retrying one), "never" (one failed its retry too: the generated hair stays)
+function HairAssets.Retry(w)
+	local res = "due"
+	for _, id in ipairs(type(w) == "table" and w.ids or {}) do
+		local f = failed[id]
+		if f then
+			if not f.transient then
+				return "never"
+			elseif f.retried or os.clock() - f.at < RETRY_AFTER then
+				res = "wait"
+			end
+		end
+	end
+	return res
+end
+
+-- the Editable image bytes the asset hair takes for this look at lod (nil: For picks no entry): each texture
+-- key's tinted image at its wanted size (an NPC's are shared by colour: counted half, they are seldom alone)
+-- and the cap's own. Its meshes are not Editable (uploaded): nothing for them
+function HairAssets.Cost(look, lod, wantTex, priority)
+	local entry = HairAssets.For(look, lod, wantTex)
+	if not entry then
+		return nil
+	end
+	local shared = cfg().shareTints ~= false and (priority or 2) > 1
+	local n = 0
+	local seen = {}
+	for _, ap in pairs(entry.pieces or {}) do
+		local key = ap.tex
+		if type(key) == "string" and not seen[key] then
+			seen[key] = true
+			local tex = Data.textures and Data.textures[key]
+			local sz = wantSize("tex", lod, tex and tonumber(tex.size))
+			n += sz * sz * 4 * (shared and 0.5 or 1)
+		end
+	end
+	if HK.HasCap(entry) and Data.cap then
+		local sz = wantSize("cap", lod)
+		n += sz * sz * 4
+	end
+	return n
 end
 
 -- Editable bytes of the shared tinted images alive (AnatomyClient adds them to its memory estimate once)

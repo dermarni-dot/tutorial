@@ -22,6 +22,11 @@ local abs, floor, min, max, sin, cos, pi = math.abs, math.floor, math.min, math.
 local TAU = pi * 2
 local clamp, lerp, num = Kit.clamp, Kit.lerp, Kit.num
 local step = MeshKit.Step
+-- a tick at once (before and after one big allocation: a 4 MB buffer.create is ~1.7 ms that cannot be
+-- sliced, kept apart from the loop's own slices)
+local function stepNow()
+	step(MeshKit.TICK_EVERY)
+end
 local readu8, writeu8, writeu32 = buffer.readu8, buffer.writeu8, buffer.writeu32
 
 -- the default male skull's extents (skull.json fit0): the meshes are modelled on it
@@ -186,12 +191,15 @@ function HK.LengthFactor(look)
 	return clamp(0.6 + 0.8 * HK.Len(look), 0.6, 1.45)
 end
 
--- a volume's (afro, high top) scale about the skull centre: the volume slider and the length
+-- a volume's (afro, high top) scale: the volume slider and the length. Place splits it: at most
+-- VOLUME_CENTRE about the skull centre (the shell grows round the head a little), the rest about the scalp
+-- point under the piece (it grows outward: the inner surface stays on the head, never a hollow shell)
 function HK.VolumeFactor(look)
 	local hair = type(look) == "table" and type(look.hair) == "table" and look.hair or {}
 	local vol = clamp(num(hair.volume, 0), -1, 1)
 	return clamp(1 + 0.18 * vol + 0.25 * (HK.Len(look) - 0.5), 0.8, 1.3)
 end
+HK.VOLUME_CENTRE = { 0.94, 1.10 }
 
 ------------------------------------------------------------------------
 -- Placement
@@ -210,6 +218,10 @@ end
 -- p -> C + (p - C) * k after m
 local function scaleAbout(m, cx, cy, cz, k)
 	return xf(m[1] * k, m[2] * k, m[3] * k, cx + (m[4] - cx) * k, cy + (m[5] - cy) * k, cz + (m[6] - cz) * k)
+end
+-- p -> C + (p - C) * (kx, ky, kz) after m
+local function scaleAbout3(m, cx, cy, cz, kx, ky, kz)
+	return xf(m[1] * kx, m[2] * ky, m[3] * kz, cx + (m[4] - cx) * kx, cy + (m[5] - cy) * ky, cz + (m[6] - cz) * kz)
 end
 -- then nominal -> real (the head's size per axis)
 local function toReal(m, kx, ky, kz)
@@ -314,7 +326,26 @@ function HK.Place(data, entry, look, S, fit)
 			local ch = chains[rootOf(name)]
 			m = stretchY(m, ch.anchor, ch.k)
 		elseif ap.length == "volume" then
-			m = scaleAbout(m, 0, num(S.cy, 0.15), num(S.cz, 0.035), Vf)
+			-- about A, the boxer's scalp point under the piece's centre (on the ray from the skull centre C):
+			-- the scalp under it stays put and the piece grows away from the head (about C its scalp side
+			-- lifted ~0.15 at the largest: a hollow shell). Evenly by kc (kept near 1), then by the rest of Vf
+			-- per axis by how much the ray lies along it (a side piece thickens sideways, not up and down its
+			-- length, where its ends would leave the head)
+			local cy, cz = num(S.cy, 0.15), num(S.cz, 0.035)
+			local kc = clamp(Vf, HK.VOLUME_CENTRE[1], HK.VOLUME_CENTRE[2])
+			local bx, by, bz = HK.Apply(m, ap.bbox[1], ap.bbox[2], ap.bbox[3])
+			local dx, dy, dz = bx - num(S.cx, 0), by - cy, bz - cz
+			local l = math.sqrt(dx * dx + dy * dy + dz * dz)
+			if l > 1e-6 and type(S.ray) == "function" then
+				dx, dy, dz = dx / l, dy / l, dz / l
+				local px, py, pz = S.ray(dx, dy, dz, 0)
+				local ko = Vf / kc - 1
+				local w = 1 / max(dx * dx, dy * dy, dz * dz)
+				m = scaleAbout(m, px, py, pz, kc)
+				m = scaleAbout3(m, px, py, pz, 1 + ko * dx * dx * w, 1 + ko * dy * dy * w, 1 + ko * dz * dz * w)
+			else
+				m = scaleAbout(m, num(S.cx, 0), cy, cz, Vf)
+			end
 		end
 		out[name] = placeOf(name, ap, toReal(m, kx, ky, kz))
 	end
@@ -353,26 +384,57 @@ function HK.CapCoverage(look, lod, capSpec, S)
 	return cov, S, (cut.soft or 0.016) < 0.006
 end
 
--- the cap's coverage and colour on a gw x gh grid over its UV (texel centres; u = az / 2pi with az = 0 at the
--- back toward +X, v = theta / thetaMax): flat arrays r, g, b, c (index i + j * gw, 0-based i, j)
-function HK.CapGrid(S, cov, pal, thetaMax, gw, gh)
+-- the reference (default male) skull the cap mesh was modelled on, and per grid size its texel points: the
+-- cap vertex at UV (theta, az) is that skull's point along the ray (theta, az) from its centre, CAP_OFF out
+local CAP_OFF = 0.02
+local refScalp
+local refGrids = {}
+local function refGrid(thetaMax, gw, gh)
+	local key = table.concat({ thetaMax, gw, gh }, "|")
+	local g = refGrids[key]
+	if g then
+		return g
+	end
+	refScalp = refScalp or Kit.Scalp({})
 	local n = gw * gh
-	local R, G, B, C = table.create(n, 0), table.create(n, 0), table.create(n, 0), table.create(n, 0)
+	local X, Y, Z = table.create(n, 0), table.create(n, 0), table.create(n, 0)
 	local t0 = 0.5
 	for j = 0, gh - 1 do
 		local th = (j + 0.5) / gh * thetaMax
 		local st, ct = sin(th), cos(th)
 		for i = 0, gw - 1 do
 			local az = (i + 0.5) / gw * TAU
-			local x, y, z, t = S.ray(st * sin(az), ct, st * cos(az), 0, t0)
+			local dx, dy, dz = st * sin(az), ct, st * cos(az)
+			local x, y, z, t = refScalp.ray(dx, dy, dz, 0, t0)
 			t0 = t
-			local c = clamp(cov(x, y, z), 0, 1)
-			-- (scalp hair is short: the roots' colour; Split by its side, Ombre by its height)
-			local r, g, b = pal.at(0.5, 0, x, false, y)
 			local k = i + j * gw + 1
-			R[k], G[k], B[k], C[k] = r, g, b, c
-			step(6)
+			X[k], Y[k], Z[k] = x + dx * CAP_OFF, y + dy * CAP_OFF, z + dz * CAP_OFF
+			step(30) -- (a skull ray: ~30 field samples)
 		end
+	end
+	g = { x = X, y = Y, z = Z }
+	refGrids[key] = g
+	return g
+end
+
+-- the cap's coverage and colour on a gw x gh grid over its UV (texel centres; u = az / 2pi with az = 0 at the
+-- back toward +X, v = theta / thetaMax): flat arrays r, g, b, c (index i + j * gw, 0-based i, j). Each texel
+-- is read where the cap mesh shows it on this boxer: the reference skull's cap point, through the skull fit
+-- (Place's map for the cap), onto this boxer's scalp. fit = HK.Fit(S) when not given
+function HK.CapGrid(S, cov, pal, thetaMax, gw, gh, fit)
+	fit = fit or HK.Fit(S)
+	local ref = refGrid(thetaMax, gw, gh)
+	local ax, ay, az, dz = fit.ax, fit.ay, fit.az, fit.dz
+	local n = gw * gh
+	local R, G, B, C = table.create(n, 0), table.create(n, 0), table.create(n, 0), table.create(n, 0)
+	local RX, RY, RZ = ref.x, ref.y, ref.z
+	for k = 1, n do
+		local x, y, z = S.onto(RX[k] * ax, RY[k] * ay, RZ[k] * az + dz, 0)
+		local c = clamp(cov(x, y, z), 0, 1)
+		-- (scalp hair is short: the roots' colour; Split by its side, Ombre by its height)
+		local r, g, b = pal.at(0.5, 0, x, false, y)
+		R[k], G[k], B[k], C[k] = r, g, b, c
+		step(12) -- (onto the scalp: ~2 normal steps of 5 field samples, and the coverage: ~8 us)
 	end
 	return { r = R, g = G, b = B, c = C, w = gw, h = gh }
 end
@@ -402,10 +464,14 @@ end
 HK.GridAt = gridAt
 
 -- the cap texture (size x size RGBA8): the short tile (tw x th, RGBA8, wraps both ways) repeated nu x nv times,
--- its grey times the grid's colour, alpha = the tile's alpha x the coverage. flipV writes the rows bottom-up
+-- its grey times the grid's colour, alpha = the tile's alpha x the coverage. flipV writes the rows bottom-up.
+-- (MeshKit's step units are ~1-5 us: a texel here is ~0.5 us, so 18 units every 64 texels)
 function HK.PaintCap(grid, tile, tw, th, nu, nv, size, flipV, gain)
 	gain = gain or 1
+	local n64 = 0
+	stepNow()
 	local out = buffer.create(size * size * 4)
+	stepNow()
 	local gw, gh = grid.w, grid.h
 	local R, G, B, C = grid.r, grid.g, grid.b, grid.c
 	-- per output column (fixed for every row): the grid's columns and weight (wrapping round the head), the
@@ -420,6 +486,9 @@ function HK.PaintCap(grid, tile, tw, th, nu, nv, size, flipV, gain)
 		local tu = (u * nu * tw - 0.5) % tw
 		local t0 = floor(tu)
 		tx0s[i + 1], tx1s[i + 1], tfx[i + 1] = t0 * 4, ((t0 + 1) % tw) * 4, tu - t0
+		if i % 64 == 63 then
+			step(4)
+		end
 	end
 	-- one grid row interpolated in v (r, g, b, c over the gw columns), per output row
 	local rr, rg, rb, rc = table.create(gw, 0), table.create(gw, 0), table.create(gw, 0), table.create(gw, 0)
@@ -437,6 +506,7 @@ function HK.PaintCap(grid, tile, tw, th, nu, nv, size, flipV, gain)
 			rb[q] = B[b0 + q] + (B[b1 + q] - B[b0 + q]) * fv
 			rc[q] = C[b0 + q] + (C[b1 + q] - C[b0 + q]) * fv
 		end
+		step(gw // 16)
 		local tv = (v * nv * th - 0.5) % th
 		local ty0 = floor(tv)
 		local fy = tv - ty0
@@ -462,8 +532,12 @@ function HK.PaintCap(grid, tile, tw, th, nu, nv, size, flipV, gain)
 					+ min(255, floor(al * c + 0.5)) * 16777216)
 			end
 			o += 4
+			n64 += 1
+			if n64 == 64 then
+				n64 = 0
+				step(18)
+			end
 		end
-		step(size // 16)
 	end
 	return out
 end
@@ -504,12 +578,17 @@ end
 
 -- src (sw x sh RGBA8) box-filtered down by the integer factor f (1 = as is), times the colours, alpha kept:
 -- a new (sw / f) x (sh / f) buffer. The colours' rows run along the texture's own v (its rows as uploaded),
--- flipV writes them bottom-up
+-- flipV writes them bottom-up. (Step units of ~2.5 us: an output texel is ~0.12 us plus ~0.24 us per source
+-- texel read: 4 + 9 f^2 units every 64 texels, measured under ~1 ms between ticks)
 function HK.Tint(src, sw, sh, f, colors, flipV, gain)
 	f = max(1, floor(f or 1))
 	gain = gain or 1
+	local unit64 = 4 + 9 * f * f
+	local n64 = 0
 	local w, h = sw // f, sh // f
+	stepNow()
 	local out = buffer.create(w * h * 4)
+	stepNow()
 	local inv = gain / (f * f)
 	local flat = colors.flat
 	local rows, bands, cols = colors.rows, colors.bands, colors.cols
@@ -559,8 +638,12 @@ function HK.Tint(src, sw, sh, f, colors, flipV, gain)
 			writeu32(out, o, min(255, floor(r * mr[bi] + 0.5)) + min(255, floor(g * mg[bi] + 0.5)) * 256 + min(255, floor(b * mb[bi] + 0.5)) * 65536
 				+ min(255, floor(a + 0.5)) * 16777216)
 			o += 4
+			n64 += 1
+			if n64 == 64 then
+				n64 = 0
+				step(unit64)
+			end
 		end
-		step(w * f * f // 64 + 1)
 	end
 	return out, w, h
 end
