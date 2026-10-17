@@ -467,9 +467,39 @@ end
 -- cov(x, y, z) -> 0..1 at a nominal scalp point of THIS boxer's skull: the style's own cut (the coverage the
 -- generated HairCap draws: fades, hairline type, line-up, growth) for cut "style", else a natural hairline at
 -- the entry's density ("full"). capFade (an entry's optional Kit.FADES key) puts that fade on a natural
--- hairline instead (a crew cut's tapered sides, which its recipe draws without a fade). Also returns the scalp S
--- and whether the edge is sharp (a line-up)
-function HK.CapCoverage(look, lod, capSpec, S, capFade)
+-- hairline instead (a crew cut's tapered sides, which its recipe draws without a fade). earLine (the cap data's
+-- earLine, for entries with capEarLine): the barber's line round each ear, an ellipse in the side (y, z) plane
+-- beyond |x| > xmin with coverage 0 inside and a smoothstep over feather outside, so a fade's cap and shells end
+-- in a clean arc over the ear. Also returns the scalp S and whether the edge is sharp (a line-up)
+local function earLined(cov, E)
+	local cy, cz = num(E.centre and E.centre[1], -0.07), num(E.centre and E.centre[2], 0.148)
+	local ay, az = max(1e-3, num(E.axes and E.axes[1], 0.19)), max(1e-3, num(E.axes and E.axes[2], 0.128))
+	local xmin, feather = num(E.xmin, 0.24), max(1e-3, num(E.feather, 0.03))
+	return function(x, y, z)
+		local c = cov(x, y, z)
+		if c <= 0 then
+			return c
+		end
+		local qy, qz = (y - cy) / ay, (z - cz) / az
+		local k = math.sqrt(qy * qy + qz * qz) + 1e-9
+		local k2 = math.sqrt((qy / ay) ^ 2 + (qz / az) ^ 2) + 1e-9
+		local d = max((k - 1) * k / k2, xmin - abs(x))
+		if d >= feather then
+			return c
+		elseif d <= 0 then
+			return 0
+		end
+		local t = d / feather
+		return c * t * t * (3 - 2 * t)
+	end
+end
+HK.EarLined = earLined
+
+function HK.CapCoverage(look, lod, capSpec, S, capFade, earLine)
+	if type(earLine) == "table" then
+		local cov, S2, sharp = HK.CapCoverage(look, lod, capSpec, S, capFade)
+		return earLined(cov, earLine), S2, sharp
+	end
 	look = type(look) == "table" and look or {}
 	local hair = type(look.hair) == "table" and look.hair or {}
 	local density = clamp(num(capSpec and capSpec.density, 1), 0, 1)

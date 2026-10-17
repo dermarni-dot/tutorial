@@ -890,6 +890,25 @@ do
 	check("unknown capFade is ignored", HK.CapCoverage(lk, "full", { cut = "style" }, S, "nope")(x, y, z) == full(x, y, z))
 end
 
+------------------------------------------------------------------------
+-- capEarLine: the barber's line round each ear
+------------------------------------------------------------------------
+do
+	local E = { centre = { -0.07, 0.148 }, axes = { 0.19, 0.128 }, xmin = 0.24, feather = 0.03 }
+	local one = function()
+		return 1
+	end
+	local f = HK.EarLined(one, E)
+	check("ear line: 0 at the ear", f(0.38, -0.07, 0.148) == 0)
+	check("ear line: full well above the ear", f(0.38, 0.2, 0.148) == 1)
+	check("ear line: full on the crown (|x| < xmin)", f(0.1, -0.07, 0.148) == 1)
+	local mid = f(0.38, -0.07 + 0.19 + 0.015, 0.148)
+	check("ear line: feathered just outside", mid > 0 and mid < 1, mid)
+	local lk = look(1, { style = "Low Fade", type = "Kinky" })
+	local cov, S = HK.CapCoverage(lk, "full", { cut = "style" }, nil, nil, E)
+	check("CapCoverage applies the ear line", cov(0.38, -0.07, 0.148) == 0)
+end
+
 print(string.format("test_hairassets: %d passed, %d failed", pass, fail))
 if fail > 0 then
 	error("test_hairassets failed")

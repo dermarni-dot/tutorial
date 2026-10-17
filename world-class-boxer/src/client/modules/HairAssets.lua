@@ -338,7 +338,8 @@ local function capImage(entry, look, htype, pal, lod, S, fit, shared, ctx, shell
 	local cap = Data.cap or {}
 	local grid = memo and memo.grid
 	if not grid then
-		local cov, S2, sharp = HK.CapCoverage(look, lod, entry.cap, S, entry.capFade)
+		local cov, S2, sharp = HK.CapCoverage(look, lod, entry.cap, S, entry.capFade,
+			entry.capEarLine and cap.earLine or nil)
 		local gw, gh = HK.GridSize(sharp)
 		grid = HK.CapGrid(S2, cov, pal, tonumber(cap.thetaMax) or 2.2, gw, gh, fit)
 		if memo then
