@@ -12,38 +12,45 @@ LONG_NOASSERT=1 finishes a build whose clearance check fails.
 
 How the hair is built (game nominal head space, numerically; see CONTRACT.md):
 * Texture "straight" (owned here): 1024 x 1024, four 256-px strips (dense clump, medium, wispy flyaway, wavy), drawn
-  strand by strand at 2x and filtered down: long continuous strands from the root (v = 0) to tapered, staggered,
-  transparent tips (v = 1), gathered into clumps that tighten toward the tips, a light root darkening, a darker
-  under-fill in the dense strips, the dense / wavy strips covered nearly edge to edge with soft alpha edges (no card
-  borders, coverage without gaps), a root alpha fade, and colour bled into the transparent texels (mip-friendly).
-* Style: centre parting, everything combed from the parting over the top of the ear and behind it (ears stay
-  visible, tucked hair), the hair behind the ears falling onto the front of the shoulders (the side lock chains),
-  the rest falling down the back onto the upper back and shoulder blades (the back curtain, to y ~ -1.45 at
-  length 0.5). Wavy: the same layout with more volume, S-waves in clumps from the release line down, the wavy strip.
+  strand by strand at 2x and filtered down: long continuous strands from the root (v = 0) to tapered tips over the
+  last ~15% (no V-shaped strip, no dark stacked tips), clumps with their own brightness (low-frequency variation, no
+  wood grain), strand density, width and opacity thinning toward the strip's side edges (a feathered edge of loose
+  strands over ~13% of the strip, never a clamped opaque column), a light root darkening, a darker under-fill in the
+  dense strips, a transparent root (alpha 0 to v 0.015, full by ~0.085) and colour bled into the transparent texels.
+* Style: centre parting that ends before the crown, the hair combed from it over the top of the ear and behind it
+  (ears visible), falling as a continuous cone from ear to ear round the back (the hair's own volume holds it 0.08-0.2
+  off the neck by the jaw line, wider than the skull below the ears), the side hair falling beside the neck as a wide
+  sheet over the top of each shoulder, down its front onto the upper chest (the side chains), the rest down the back
+  over the shoulder blades (the back curtain, a level hem with a slight U at y ~ -1.5 at length 0.5). The style's
+  hairline recedes into the temple corners (0.05) and zigzags finely. Wavy: the same layout with planar S-waves in
+  clumps from the ear line down (a low wave on the head already) and the wavy strip.
 * Guides: every card is a guide strand (5 layers, innermost first: a hairline layer rooted along the front
   hairline, a dense scalp layer, inner, main and outer volume layers). Its scalp part is a great circle from its
   root on the parting (or the hairline) to its release point behind the ear / round the back, projected on the
-  default skull at the layer's height profile (rising out of the parting over 0.2-0.32 studs and out of the
-  hairline over 0.19, the sides fuller than the top, gathered in toward the ear, the frontmost strands lower so the
-  layers thin into the temple), kept inside the natural hairline and above the ear. Its hanging part is relaxed by
-  a position-based simulation (gravity, inextensible segments, soft bending, collisions against both skull tables,
-  both head meshes, the ear boxes and both torsos through Blender BVH trees; drape onto the body below the shoulder
-  line, the curtain sliding back off the shoulder top and spreading a little over the shoulder blades, the locks
-  resting forward on the shoulder). The guides are kept in the .blend as curve objects.
-* Cards: built from the guides as Blender meshes (one per layer, 3 vertices across every row: the middle column
-  keeps a card on the curve of the head across its width, so overlapping cards do not show shingle steps at the
-  silhouette), per-corner UVs, a "hang" vertex group and two Displace modifiers (Clouds) that break the hanging
-  part into clumps; the evaluated meshes are read back. Card widths come from the spacing to the nearest card of the
-  same layer on either side (x the layer's overlap 1.55-1.9), so the fan from the parting is covered everywhere.
-  Clearance is then enforced (male head with and without ears, female head forward through the runtime fit and
-  inverse, both skull tables, ear boxes, both torsos) and asserted >= 0.022. Soft occlusion is baked into the vertex
-  colours with BVH ray casts and smoothed spatially (no card reads as its own rectangle); a ring of short, light,
-  wispy cards on the hairline breaks its edge.
+  default skull at the layer's height profile (rising out of the parting and out of the hairline, the outer layers
+  over a longer distance so the mass builds up from the forehead; the volume layers' roots end at the end of the
+  parting and their back strands sweep over the crown at full height), kept inside the style hairline and above the
+  ear. Its hanging part is constructed, not simulated (drape_path): fanned out to the hanging cone at the jaw line,
+  down to the torso, then along the torso surface found with Blender BVH ray casts (forward over the shoulder for
+  the side sheets, back over the trapezius and down the shoulder blades for the curtain), then collided (both skull
+  tables, both heads, ear boxes, both torsos, the body proxy's neck + gap) and smoothed. The guides are kept in the
+  .blend as curve objects.
+* Cards: built from the guides as Blender meshes (one per layer; main and outer with 3 vertices across every row
+  over the head and a row every <= 0.04 of arc over the crown), per-corner UVs, a "hang" vertex group and two
+  Displace modifiers (Clouds) that break the hanging part into clumps; the evaluated meshes are read back. Card
+  widths come from the spacing to the nearest card of the same layer (x the layer's overlap); hanging cards face
+  away from the body (lying flat on the shoulder, never standing up as fins). Clearance is enforced on every vertex
+  of every piece (male head with and without ears down the neck to the torso, female head forward through the
+  runtime fit and inverse, both skull tables, ear boxes, both torsos) and asserted >= 0.022. Soft occlusion is
+  baked into the vertex colours with BVH ray casts and smoothed spatially; near the hairline every layer grades
+  into the painted cap's tone (no lighter rim on a darker band); tips are lifted to the mid-length's tone. A ring of
+  short wispy cards breaks the hairline edge and two short cards lie over the front end of the parting.
 * Pieces: static HairTop (everything over the head) and swinging chains split from the same cards: the back curtain
-  in 4 chains, a side lock each side (seg 1 below the anchor, pivot at its top; seg 2 'b' from the shoulders down,
+  in 4 chains, a side sheet each side (seg 1 below the anchor, pivot at its top; seg 2 'b' from the shoulders down,
   overlapping seg 1 by SEG_OVERLAP as a narrowing wedge tucked under it), hairfx swing, length "hang", hideUnder
   hood (HairTop too), castShadow false (a card's game shadow is its whole quad). Triangles of every piece are
-  emitted innermost layer first; every card is two-sided with outward shading normals.
+  emitted innermost layer first; cards are two-sided with outward shading normals, except the hidden layers lying
+  on the head (edge, scalp, inner, hairline ring, part cover: seen from outside only), which are one-sided there.
 """
 import argparse
 import json
@@ -587,17 +594,24 @@ LAYERS = [
     dict(name="inner", n=13, off=(0.076, 0.09), gap=0.12, strips={"dense": 0.85, "medium": 0.15}, margin=0.024, tip=-1.4,
          tip_var=0.06, wmax=(0.2, 0.17), overlap=1.7, shade=0.965, phase=0.37, lift0=0.0, ramp=0.2, rel=(0.05, -0.05)),
     dict(name="main", n=13, off=(0.114, 0.13), gap=0.16, strips={"dense": 0.75, "medium": 0.25}, margin=0.03,
-         tip=-1.48, tip_var=0.07, wmax=(0.2, 0.18), overlap=1.6, shade=0.985, phase=0.71, lift0=0.22, ramp=0.3,
+         tip=-1.48, tip_var=0.07, wmax=(0.2, 0.18), overlap=1.6, shade=0.985, phase=0.71, lift0=0.3, ramp=0.14,
          rel=(0.09, 0.03)),
-    dict(name="outer", n=12, off=(0.15, 0.165), gap=0.2, strips={"dense": 0.5, "medium": 0.5}, margin=0.036,
-         tip=-1.46, tip_var=0.08, wmax=(0.19, 0.18), overlap=1.55, shade=1.0, phase=0.19, lift0=0.25, ramp=0.36,
+    dict(name="outer", n=10, off=(0.15, 0.165), gap=0.2, strips={"dense": 0.5, "medium": 0.5}, margin=0.036,
+         tip=-1.46, tip_var=0.08, wmax=(0.23, 0.19), overlap=1.6, shade=1.0, phase=0.19, lift0=0.32, ramp=0.16,
          rel=(0.12, 0.08)),
 ]
 LAYER = {L["name"]: L for L in LAYERS}
 THREE_COL = ("main", "outer")
 # the layers rise out of the hairline over this distance (the outer ones over a longer one: the hair mass builds up
 # from the forehead instead of standing on it as a brim)
-HL_RAMP = {"edge": 0.19, "scalp": 0.19, "inner": 0.26, "main": 0.33, "outer": 0.4}  # layers whose cards get a middle column over the head (no shingle steps)
+HL_RAMP = {"edge": 0.19, "scalp": 0.19, "inner": 0.26, "main": 0.33, "outer": 0.4}
+
+
+def hl_ramp(layer, P):
+    """the rise distance from the hairline: the full HL_RAMP over the forehead, half of it over the temples and the
+    sides (the side silhouette stands off the head there)"""
+    r = HL_RAMP.get(layer, 0.19)
+    return r * (1 - 0.5 * smooth(0.4, 0.8, da_of(P)))  # layers whose cards get a middle column over the head (no shingle steps)
 SINGLE_SIDED = ("edge", "scalp", "inner", "hairline", "partx")
 FLYAWAYS = dict(n=0, strip="wispy", w=(0.03, 0.045), len=(0.16, 0.3), shade=1.0)
 
@@ -623,10 +637,20 @@ HAIRFX = dict(stiff=0.3, mass=1.0, mass2=0.8)
 SEG_OVERLAP = 0.05  # chain joints: segment 2 overlaps segment 1 by this much (no seam when they swing)
 
 
-def part_point(psi, side):
+def psi_root(f, layer):
+    """the root's part angle for a strand at f: the volume layers' roots end at the end of the parting (their back
+    strands sweep over the crown at full height: no root ends, no notch there); the layers under them run on to
+    behind the crown"""
+    pb = PSI_PART_END - 0.06 if layer["name"] in ("main", "outer") else PSI_BACK
+    return PSI_FRONT + (pb - PSI_FRONT) * f
+
+
+def part_point(psi, side, cross=None):
     d = np.array([0.0, math.cos(psi), -math.sin(psi)])
     p = C + d * SK.radius(*SK.angles(d))
-    p[0] = side * PART_X - side * PART_CROSS * float(smooth(PSI_PART_END, PSI_PART_END - 0.25, psi))
+    if cross is None:
+        cross = PART_CROSS * float(smooth(PSI_PART_END, PSI_PART_END - 0.25, psi))
+    p[0] = side * PART_X - side * cross
     return scalp_of(p)[0]
 
 
@@ -663,8 +687,11 @@ def scalp_path(f, side, layer, vol, rng, n=48):
         R = SK.point(theta_at(az, lambda q: style_edge(q[None])[0] >= layer["margin"], hi=th + 0.05), az)
         Q = release_point(0.05 + f * 0.5, side, layer["rel"])
     else:
-        psi = PSI_FRONT + (PSI_BACK - PSI_FRONT) * f
-        R = part_point(psi, side)
+        psi = psi_root(f, layer)
+        cross = None
+        if layer["name"] in ("main", "outer"):
+            cross = PART_CROSS * float(smooth(0.8, 1.0, f))  # the backmost cross the centre line
+        R = part_point(psi, side, cross)
         Q = release_point(f, side, layer["rel"])
     a, b = unit(R - C), unit(Q - C)
     om = math.acos(float(np.clip(np.dot(a, b), -1, 1)))
@@ -713,11 +740,11 @@ def scalp_path(f, side, layer, vol, rng, n=48):
     # the deeper layers rise out of the parting from the scalp; the upper ones lie over them already lifted (a
     # narrow parting groove under a smooth dome, not a ridge either side of the parting)
     k0 = layer.get("lift0", 0.0)
-    if layer.get("root") != "hairline":
+    if layer.get("root") != "hairline" and layer["name"] not in ("main", "outer"):
         # behind the end of the parting the roots cross the centre line already lifted (no groove to the crown)
         k0 = max(k0, 0.4 * float(smooth(PSI_PART_END, PSI_PART_END - 0.3, psi)))
     # (from the scalp at the parting: an upper layer starting lifted shows its root edge end-on along the part)
-    ramp = np.minimum(k0 + (1 - k0) * smooth(0.0, layer.get("ramp", 0.2), s), smooth(0.0, HL_RAMP[layer["name"]], ed))
+    ramp = np.minimum(k0 + (1 - k0) * smooth(0.0, layer.get("ramp", 0.2), s), smooth(0.0, hl_ramp(layer["name"], P), ed))
     off = base + (tgt - base) * ramp
     Pn = C + unit(P - C) * (np.linalg.norm(P - C, axis=1) + off)[:, None]
     return Pn, off, s
@@ -774,9 +801,11 @@ def make_strands(cfg, log):
                     strip = "wispy"  # a few loose outer cards, at the back only (never over the front 120 degrees)
                 if cfg["wavy"] and strip in ("dense", "medium") and li >= 2 and rng.random() < 0.85:
                     strip = "wavy"
-                psi = PSI_FRONT + (PSI_BACK - PSI_FRONT) * f
-                # (no darker roots where they cross over the crown: they show edge-on against the sky there)
-                rk = 1.0 if (L.get("root") == "hairline" or psi < PSI_PART_END + 0.1) else 0.86
+                psi = psi_root(f, L)
+                # (no darker roots where they cross over the crown or rise from the parting on top: they show
+                # edge-on against the sky there)
+                rk = 1.0 if (L.get("root") == "hairline" or psi < PSI_PART_END + 0.1
+                             or L["name"] in ("main", "outer")) else 0.86
                 out.append(Strand(side=side, f=f, layer=L["name"], li=li, scalp=P, off=off, tip_y=tip, lock=lock,
                                   strip=strip, mirror=bool(rng.random() < 0.5), v0=float(rng.uniform(0, 0.02)),
                                   seed=int(rng.integers(1 << 30)), wave_ph=float(f * 2.2 + li * 0.5 + rng.normal(0, 0.25)),
@@ -1110,7 +1139,7 @@ def card_rows(st, cfg, rng=None):
     ang = np.arccos(np.clip((Tn[1:] * Tn[:-1]).sum(1), -1, 1))
     kap = np.concatenate([[0], ang / np.maximum(np.diff(S), 1e-6)])
     kap = np.convolve(kap, np.ones(7) / 7, mode="same")
-    hmin_hang, hmax_hang = (0.11, 0.14) if cfg["wavy"] else (0.1, 0.2)
+    hmin_hang, hmax_hang = (0.12, 0.15) if cfg["wavy"] else (0.11, 0.22)
     # the volume layers' cards start at staggered points along their strands (no row of card ends lined up
     # along the parting)
     s0 = 0.0
@@ -1126,9 +1155,9 @@ def card_rows(st, cfg, rng=None):
             # over the head: a row every <= 0.04 of arc over the crown and the top (a smooth silhouette, no
             # stair steps), 0.06 down the sides
             yy = float(np.interp(s, S, D[:, 1]))
-            hmin, hmax, kk = 0.03, (0.04 if yy > 0.22 else 0.06), 0.3
+            hmin, hmax, kk = 0.038, (0.04 if yy > 0.36 else 0.07), 0.3
         elif s < st.s_rel and st.layer == "main":
-            hmin, hmax, kk = 0.045, 0.07, 0.3  # (under the outer layer)
+            hmin, hmax, kk = 0.07, 0.1, 0.3  # (under the outer layer)
         elif s < st.s_rel:
             # (the layers under them: hidden, coarse)
             hmin, hmax, kk = 0.09, 0.16, 0.3
@@ -1223,7 +1252,7 @@ class Card:
             for E in (self.left, self.right):
                 Pe = E[sc]
                 ed = style_edge(Pe)
-                oe = np.minimum(row_off, 0.0225 + (row_off - 0.0225) * smooth(0.0, HL_RAMP.get(st.layer, 0.19), ed))
+                oe = np.minimum(row_off, 0.0225 + (row_off - 0.0225) * smooth(0.0, hl_ramp(st.layer, Pe), ed))
                 oe = np.maximum(oe, 0.0225)
                 _d, _r, th, az = polar(Pe, C)
                 E[sc] = C + unit(Pe - C) * (skull_radius_v(SK, th, az) + oe)[:, None]

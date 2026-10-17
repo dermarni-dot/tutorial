@@ -244,7 +244,7 @@ def tex_shortcoil(seed=61):
         front = 0.5 + 0.5 * np.sin(a0 + t)
         up = 0.5 - 0.5 * np.clip((ys - y) / (r * 1.5), -1, 1)
         core = rho / r
-        lum = (0.47 + 0.26 * front ** 1.5 + 0.08 * up) * (0.7 + 0.3 * core) * rng.uniform(0.92, 1.06)
+        lum = (0.5 + 0.2 * front ** 1.5 + 0.06 * up) * (0.82 + 0.18 * core) * rng.uniform(0.92, 1.06)
         lum = np.clip(lum, 0.3, 0.86)  # (the rim highlights ~15 % lower than the old outlines)
         wid = np.maximum(3.0, 0.24 * r * (0.7 + 0.3 * core)) * rng.uniform(0.9, 1.1)
         cv.strand(xs, ys, wid, lum, np.full(m, 0.95))

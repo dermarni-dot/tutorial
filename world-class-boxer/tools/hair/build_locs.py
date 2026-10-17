@@ -194,6 +194,7 @@ def _loc_core(h, w, seed):
     nb = 3
     bund = np.zeros((h, w))
     best = np.full((h, w), 9.0)
+    lump_w = np.zeros((h, w))
     lump_all = np.zeros((h, w))
     for b in range(nb):
         wan = (_pnoise(h, 1, 30, seed + 100 + b)[:, 0] - 0.5) * w * 0.7
@@ -208,7 +209,12 @@ def _loc_core(h, w, seed):
         sel = dn < best
         best = np.where(sel, dn, best)
         bund = np.where(sel, 1 - np.clip(dn, 0, 1) ** 2.2, bund)
-        lump_all = np.where(sel, lump, lump_all)
+        # each bundle's lumps blended in by its nearness (not the nearest bundle's alone: where two wandering
+        # bundles cross, a hard switch made a horizontal seam - a ring round every loc at the same v)
+        wb = np.exp(-(dn / 0.55) ** 2)
+        lump_w += wb
+        lump_all += wb * lump
+    lump_all = lump_all / np.maximum(lump_w, 1e-9)
     # crease darkness: between bundles (broken up so it never runs as a long line) and between lumps
     brk = _pnoise(h, w, 14, seed + 7, sy=40)
     crease_u = (1 - bund) ** 1.5 * np.clip((brk - 0.45) / 0.2, 0, 1)
@@ -1069,7 +1075,7 @@ def build_tube(mb, loc_i, D, S, s_rings, radius, sides, strip, vps, v0, inward, 
 
 
 def build_halo(mb, loc_i, D, S, radius, L, vps_frizz, inward, seg_of=None, root_k=1.9, k=1.5, step=0.05,
-               s_start=0.006, rnd=0.0, fins=2):
+               s_start=0.006, rnd=0.0, fins=2, cuts=()):
     """the frizz round one loc: two crossed fins through its axis (two-sided cards of the frizz strip, k x the loc's
     diameter wide, a little wider round the root), so wherever the loc is seen from, fibres stand off its
     silhouette. The fins' shading normals point out from the loc's axis (they shade like its surface)."""
@@ -1077,8 +1083,24 @@ def build_halo(mb, loc_i, D, S, radius, L, vps_frizz, inward, seg_of=None, root_
     s_end = L - min(0.012, L * 0.1)
     n = max(2, int(math.ceil((s_end - s_start) / step)) + 1)
     s_rings = np.linspace(s_start, s_end, n)
+    # chain cuts (arc length, plane point, plane normal): a row of the fin on each cut, every row kept on its
+    # piece's side of the cut planes, so no fin quad crosses a joint
+    cuts = [c for c in cuts if c[0] is not None and s_start + 0.004 < c[0] < s_end - 0.004]
+    if cuts:
+        cs = [c[0] for c in cuts]
+        s_rings = np.array(sorted([x for x in s_rings if all(abs(x - c) > 0.012 for c in cs) or x in (s_start, s_end)]
+                                  + cs))
     fr = frames(D, S, s_rings, inward)
     C_ = at_s(D, S, s_rings)
+
+    def clip(q, s, t):
+        for sc, p0, ax in cuts:
+            h = float((q - p0) @ ax)
+            want = 0.0 if abs(s - sc) < 1e-7 else (min(h, 0.0) if s < sc else max(h, 0.0))
+            if h != want:
+                ta = float(t @ ax)
+                q = q - (t * ((h - want) / ta) if abs(ta) > 0.3 else ax * (h - want))
+        return q
     for fin in range(fins):
         rows = []
         for i, s in enumerate(s_rings):
@@ -1090,8 +1112,8 @@ def build_halo(mb, loc_i, D, S, radius, L, vps_frizz, inward, seg_of=None, root_
             a = fin * math.pi / 2 + math.pi / 4 + rnd * 3.0 + s * (2.5 if fins > 1 else 4.0)
             side = nrm * math.cos(a) + bn * math.sin(a)
             v = s / vps_frizz
-            wa = mb.wv(C_[i] - side * hw, loc_i, s, -side)
-            wb = mb.wv(C_[i] + side * hw, loc_i, s, side)
+            wa = mb.wv(clip(C_[i] - side * hw, s, t), loc_i, s, -side)
+            wb = mb.wv(clip(C_[i] + side * hw, s, t), loc_i, s, side)
             rows.append((wa, wb, v))
         for i in range(len(rows) - 1):
             (a0, b0, v0), (a1, b1, v1) = rows[i], rows[i + 1]
@@ -1180,7 +1202,8 @@ STYLES = {
         cov_dirs=("top", "back", "back34r", "back34l", "topback", "lowback")),
     "short_dreads": dict(
         entry=dict(styles=["Short Dreads"], types=None, cap={"cut": "full", "density": 0.5}, capTile="shortcoil"),
-        kind="short", spacing=0.118, fill=45, fill2=25, min_gap=0.013, margin=0.026, seed=202, R=0.028, rvar=0.25, M=14,
+        kind="short", spacing=0.118, fill=50, fill2=40, min_gap=0.009, fill3=30, min_gap3=0.006,
+        cov_dirs3=("top", "topback", "back", "back34r", "back34l", "sider", "sidel", "front34", "front34l"), margin=0.026, seed=202, R=0.028, rvar=0.25, M=14,
         edge_gap=0.25, edge_spacing=0.075,
         sides=7, base_ds=0.16, min_ds=0.06, end_ds=0.1, bend_k=0.7, clusters=6, stiff=0.75, mass=1.3, lobes=None,
         halo=dict(k=1.6, root_k=2.2, step=0.2), lump=0.07, tip_r=0.62, tip_k=0.55, dome=0, fins=1,
@@ -1236,6 +1259,15 @@ class Coverage:
     def add(self, lc):
         G, _S = densify(lc["G"] if "G" in lc else lc["P"], 3)
         R = lc["R"]
+        if lc.get("true_r"):
+            # the tube's real radius along it (thin root cone, tapered tip), not its full radius everywhere: the
+            # partings between thin roots (the crown whorl, a parting) count as gaps
+            L_ = max(float(_S[-1]), 1e-6)
+            rk, rl = lc.get("root_k", ROOT_K), max(lc.get("root_len", 0.04), 1e-3)
+            tr = lc.get("tip_r") or 0.62
+            tl = min(0.12, L_ * 0.3)
+            R = R * (rk + (1 - rk) * smooth(0, rl, _S) ** 0.8) * (1 - (1 - tr) * smooth(L_ - tl, L_, _S))
+            R = R[None, :]
         for di, d in enumerate(self.dirs):
             for i0 in range(0, len(self.P), 512):
                 q = self.P[i0:i0 + 512, None, :]
@@ -1453,7 +1485,12 @@ def side_zone(p):
     return abs(p[0]) > 0.22 and p[1] < 0.3 and -0.36 < p[2] < 0.24
 
 
-def short_flow(p, n, rot=0.0, back=False):
+def front_w(p):
+    """the front of the head above the forehead (the fringe zone), 0..1"""
+    return float(smooth(-0.12, -0.28, p[2])) * (1 - float(smooth(0.2, 0.3, abs(p[0]))))
+
+
+def short_flow(p, n, rot=0.0, back=False, fringe=0.0):
     """Short Dreads' flow on the scalp: out from the crown whorl with a slight swirl, turned +/-25 degrees by a
     smooth noise field and the loc's own angle; at the temples and over the ears back and a little down; the
     hairline row (back=True): up and back over the scalp, toward the whorl, a little to the side"""
@@ -1472,14 +1509,19 @@ def short_flow(p, n, rot=0.0, back=False):
     elif side_zone(p):
         k = float(smooth(0.22, 0.3, abs(p[0])))
         f = unit(f * (1 - k) + np.array([0.0, -0.35, 1.0]) * k)
-    a = math.radians(25) * _snoise(p, 0.0) + rot
+    wf = fringe * front_w(p)
+    if wf > 0:
+        # the fringe: forward off the hairline and a little down, splaying out to the sides
+        ff = np.array([math.copysign(0.45 * float(smooth(0.03, 0.25, abs(p[0]))), p[0]), -0.6, -1.0])
+        f = unit(f * (1 - wf) + unit(ff) * wf)
+    a = math.radians(25) * _snoise(p, 0.0) * (1 - 0.6 * wf) + rot
     f = tproj(f, n)
     f = unit(f * math.cos(a) + np.cross(n, f) * math.sin(a))
     return f
 
 
 def grow_short(r, L, R, lift, M, rnd, root_len, rk=ROOT_K, droop=1.0, curl=(5.0, 0.4, 0.0), back=False,
-               lie=0.0):
+               lie=0.0, rot=None, fringe=0.0):
     """one short loc grown from its root: off the scalp at `lift`, along the flow, its heading turning sideways
     with a soft S (curl: amplitude rad / stud, wavelength, phase) and drooping under gravity (droop) from about a
     fifth of its length; lie pulls it down onto the head over its second half. Kept off the skull, the face and
@@ -1490,8 +1532,9 @@ def grow_short(r, L, R, lift, M, rnd, root_len, rk=ROOT_K, droop=1.0, curl=(5.0,
     def rr(s):
         return R * (rk + (1 - rk) * float(smooth(0, root_len, s)) ** 0.8)
     p = SK.point(r["th"], r["az"], CLEAR_MIN + 0.006 + rr(0))
-    rot = math.radians(20) * (2 * rnd - 1)
-    f = short_flow(p, n, rot, back)
+    if rot is None:
+        rot = math.radians(20) * (2 * rnd - 1)
+    f = short_flow(p, n, rot, back, fringe)
     d = unit(n * lift + f * (1 - lift))
     pts = [p]
     G = (5.5 + 3.0 * r["rnd2"]) * droop
@@ -1500,7 +1543,7 @@ def grow_short(r, L, R, lift, M, rnd, root_len, rk=ROOT_K, droop=1.0, curl=(5.0,
         s = k * ds
         sp, th, az = SK.project(pts[-1])
         nk = SK.normal(th, az)
-        fk = short_flow(sp, nk, rot, back)
+        fk = short_flow(sp, nk, rot, back, fringe)
         # the S: the heading turns about the scalp normal, one way then the other
         ang = ca * math.sin(TAU * s / lam + ph) * ds
         d = d * math.cos(ang) + np.cross(nk, d) * math.sin(ang) + nk * float(np.dot(nk, d)) * (1 - math.cos(ang))
@@ -1542,12 +1585,18 @@ def side_roots(seed, spacing, margins):
 def build_guides_short(cfg, ref, log):
     rng = np.random.default_rng(cfg["seed"] + 1)
     pole = hl.Skull.direction(WHORL_TH, WHORL_AZ)
-    roots = box_roots(cfg["spacing"], cfg["margin"], cfg["seed"], pole=pole, whorl_ring=5, grade=0.15,
+    roots = box_roots(cfg["spacing"], cfg["margin"], cfg["seed"], pole=pole, whorl_ring=7, grade=0.15,
                       edge_gap=cfg.get("edge_gap", 0.3), edge_spacing=cfg.get("edge_spacing"))
     # the side zone gets its own rows of small locs (the box sections there are dropped)
     roots = [r for r in roots if not (side_zone(r["p"]) and not r.get("edge"))]
-    roots += side_roots(cfg["seed"] + 9, 0.062, (0.045, 0.1, 0.155))
+    roots += side_roots(cfg["seed"] + 9, 0.062, (0.045, 0.1, 0.155, 0.21))
     roots += sideburn_roots(cfg["seed"] + 5, cfg["sideburn_ys"])
+    # locs lying across the centre-back line below the whorl, from either side (no bare parting down the back)
+    for th, sgn in ((0.62, 1), (0.78, -1), (0.92, 1), (1.06, -1), (1.2, 1), (1.34, -1), (1.48, 1)):
+        az = (sgn * 0.11) % TAU
+        p = SK.point(th, az)
+        roots.append(dict(th=th, az=az, p=p, n=SK.normal(th, az), e=float(edge_dist(p)[0]), rnd=rng.random(),
+                          rnd2=rng.random(), rnd3=rng.random(), cross=True))
     M = cfg["M"]
     locs = []
     root_len = 0.04
@@ -1572,8 +1621,8 @@ def build_guides_short(cfg, ref, log):
         halo = True
         if r.get("whorl"):
             # the whorl: small locs curling round it and over it
-            R *= 0.85
-            lift, lie = 0.25, 0.7
+            R *= 0.95
+            lift, lie = 0.2, 0.9
             curl = (math.copysign(5.0, curl[0]), curl[1], curl[2])
         if r.get("edge") and not side_zone(sp):
             # the hairline row: rises off the scalp, then lies back over the next row (no bare band behind it)
@@ -1591,11 +1640,39 @@ def build_guides_short(cfg, ref, log):
             lift, droop, lie = 0.2, 0.8, 1.0
             halo = False
             tip_r = 0.7
+        # the front (fringe zone): the hairline row grows from just behind the hairline, forward and a little down
+        # and out to the sides (its roots show, the forehead stays clear); the rows behind it are no longer than
+        # their way to the hairline, so nothing piles up and lies sideways along the top of the forehead
+        fw = 0.0 if (r.get("side") or r.get("sideburn") or side_zone(sp)) else front_w(sp)
+        fringe, rot_o = 0.0, None
+        if fw > 0.05:
+            fringe = 1.0
+            if r.get("edge"):
+                L = float(rng.uniform(0.07, 0.12))
+                lift, droop, lie, back = 0.55, 0.8, 0.0, False
+            else:
+                L = L * (1 - fw) + min(L, 0.03 + 0.85 * float(r["e"])) * fw
+                lie = max(lie, 0.45)
+            rot_o = math.radians(8) * (2 * r["rnd3"] - 1)
+        if r.get("whorl") and r.get("pole_t", 0.0) > 0.03 and r["rnd"] < 0.6:
+            # some of the whorl ring lie in across the whorl itself (the ring alone leaves its centre bare)
+            w0 = SK.point(WHORL_TH, WHORL_AZ)
+            a = 1.2
+            f0 = short_flow(sp, r["n"], a)
+            rot_o = a if float(f0 @ (w0 - sp)) > 0 else -a
+            L = float(rng.uniform(0.16, 0.24))
+            lift, lie = 0.15, 1.0
+        if r.get("cross"):
+            # across the centre-back line: the heading turned toward the other side
+            a = 0.75
+            f0 = short_flow(sp, r["n"], a)
+            rot_o = a if f0[0] * sp[0] < 0 else -a
+            lie = 0.9
         L = float(np.clip(L, 0.05, 0.62))
         rk, rl = (0.4, 0.03) if (r.get("edge") or r.get("side")) else (ROOT_K, root_len)
         if r.get("sideburn"):
             rl = 0.02
-        P = grow_short(r, L, R, lift, M, r["rnd3"], rl, rk, droop, curl, back, lie)
+        P = grow_short(r, L, R, lift, M, r["rnd3"], rl, rk, droop, curl, back, lie, rot_o, fringe)
         Pm, L2 = resample(P, M)
         # fewer sides where the facets cannot be seen: the fine side / sideburn locs (R ~0.02) and the back
         sides = cfg["sides"]
@@ -1604,7 +1681,7 @@ def build_guides_short(cfg, ref, log):
         elif sp[2] > -0.05:
             sides = 6  # behind the front half: seen from further away
         return dict(root=r, R=R, P=Pm, L=L2, layer=0.0, scalp_len=0.0, root_len=rl, root_k=rk, halo=halo,
-                    tip_r=tip_r, sides=sides)
+                    tip_r=tip_r, sides=sides, true_r=True)
     for r in roots:
         locs.append(make(r))
     n0 = len(locs)
@@ -1655,6 +1732,12 @@ def build_guides_short(cfg, ref, log):
     fill_gaps(locs, grow_relaxed, cfg.get("fill2", 0), cfg.get("min_gap", 0.012), log,
               dirs=cfg.get("cov_dirs", ()))
     log(f"  second pass: +{len(locs) - n1} locs")
+    if cfg.get("fill3"):
+        # a last pass for what still shows from above, behind and the sides (the crown whorl, the centre-back
+        # parting, the temples), finer than the others
+        n2 = len(locs)
+        fill_gaps(locs, grow_relaxed, cfg["fill3"], cfg.get("min_gap3", 0.006), log, dirs=cfg["cov_dirs3"])
+        log(f"  third pass: +{len(locs) - n2} locs")
     main = [l_ for l_, lc in zip(Ls, locs) if not (lc["root"].get("side") or lc["root"].get("sideburn"))]
     log("  lengths %.2f..%.2f median %.2f (main locs %.2f..%.2f median %.2f)" % (
         min(Ls), max(Ls), float(np.median(Ls)), min(main), max(main), float(np.median(main))))
@@ -1702,7 +1785,12 @@ def split_hanging(cfg, locs, ref):
         sA = max(sA, 0.12)
         lc["sA"] = lc["sB"] = None
         if L - sA < 0.2:
-            continue  # stays on the head
+            if not (G[-1][1] < -0.45 and L > 0.4):
+                continue  # stays on the head
+            # a nape loc lying against the neck all the way down: it still hangs (and swings, and follows the
+            # length) from just below its root, never stays in the static HairTop
+            sA = 0.12
+            lc["nape"] = True
         lc["sA0"] = sA
         pA = at_s(D, S, np.array([sA]))[0]
         lc["pA0"] = pA
@@ -1715,7 +1803,8 @@ def split_hanging(cfg, locs, ref):
         mem = hang[gi * len(hang) // K:(gi + 1) * len(hang) // K]
         ax = unit(np.mean([unit(lc["D"][-1] - lc["pA0"]) for lc in mem], axis=0))
         # plane A: through the lowest leaving point along the axis
-        pa = max((lc["pA0"] for lc in mem), key=lambda p: float(p @ ax))
+        pa = max([lc["pA0"] for lc in mem if not lc.get("nape")] or [lc["pA0"] for lc in mem],
+                 key=lambda p: float(p @ ax))
         cuts = []
         for lc in mem:
             s = _plane_cross(lc["D"], lc["S"], 0.08, pa, ax)
@@ -1980,9 +2069,17 @@ def build_style(key, cfg, ref, coll, log):
                    lobes=cfg["lobes"], seg_of=seg_of, tip_k=cfg.get("tip_k", 0.9), dome=cfg.get("dome", 1),
                    root_k_apex=cfg.get("edge_root", (0, 0, 0.3))[2] if lc["root"].get("edge") else 0.6)
         hc = cfg["halo"]
+        cuts = []
+        if lc.get("chain") is not None and sA is not None:
+            ch = next(c for c in cfg["_chains"] if c["g"] == lc["chain"])
+            # the cut planes through the loc's own cut points (on the chain's planes, a nape loc's cut just
+            # below its root)
+            for sc in (sA, sB):
+                if sc is not None:
+                    cuts.append((sc, at_s(D, S, np.array([sc]))[0], ch["ax"]))
         if lc.get("halo", True):
             build_halo(halos, li, D, S, radius, L, vps, inward, seg_of=seg_of, root_k=hc["root_k"], k=hc["k"],
-                       step=hc["step"], rnd=rng.random(), fins=cfg.get("fins", 2))
+                       step=hc["step"], rnd=rng.random(), fins=cfg.get("fins", 2), cuts=cuts)
     log("  rings/loc %.1f, L %.2f..%.2f, sA/L %.2f, hanging %d" % (
         np.mean([lc["rings"] for lc in locs]), min(lc["L"] for lc in locs), max(lc["L"] for lc in locs),
         np.mean([(lc.get("sA") or lc["L"]) / lc["L"] for lc in locs]), sum(1 for lc in locs if lc.get("sA"))))
@@ -2031,7 +2128,9 @@ def build_style(key, cfg, ref, coll, log):
     if "dump" in os.environ.get("LOCS_DEBUG", ""):
         import pickle
         with open(os.path.join(os.environ.get("LOCS_DUMP_DIR", "/tmp"), f"locs_{key}.pkl"), "wb") as fh:
-            pickle.dump([dict(G=lc["G"], R=lc["R"], root={k: v for k, v in lc["root"].items()
+            pickle.dump([dict(G=lc["G"], R=lc["R"], true_r=lc.get("true_r"), root_k=lc.get("root_k"),
+                              root_len=lc.get("root_len"), tip_r=lc.get("tip_r"),
+                              root={k: v for k, v in lc["root"].items()
                                                           if k in ("p", "edge", "side", "sideburn", "whorl", "fill")})
                          for lc in locs], fh)
     # pieces
