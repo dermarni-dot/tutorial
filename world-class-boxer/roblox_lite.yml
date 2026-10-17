@@ -1,0 +1,119 @@
+---
+base: luau
+name: roblox_lite
+globals:
+  game:
+    any: true
+  workspace:
+    any: true
+  script:
+    any: true
+  Instance:
+    any: true
+  Vector3:
+    any: true
+  Vector2:
+    any: true
+  CFrame:
+    any: true
+  Color3:
+    any: true
+  Enum:
+    any: true
+  UDim2:
+    any: true
+  UDim:
+    any: true
+  Ray:
+    any: true
+  RaycastParams:
+    any: true
+  OverlapParams:
+    any: true
+  TweenInfo:
+    any: true
+  NumberSequence:
+    any: true
+  NumberSequenceKeypoint:
+    any: true
+  ColorSequence:
+    any: true
+  ColorSequenceKeypoint:
+    any: true
+  NumberRange:
+    any: true
+  Random:
+    any: true
+  task:
+    any: true
+  BrickColor:
+    any: true
+  Rect:
+    any: true
+  Region3:
+    any: true
+  PhysicalProperties:
+    any: true
+  DateTime:
+    any: true
+  shared:
+    any: true
+  plugin:
+    any: true
+  Font:
+    any: true
+  Faces:
+    any: true
+  Axes:
+    any: true
+  Content:
+    any: true
+  SharedTable:
+    any: true
+  Path2DControlPoint:
+    any: true
+  Vector3int16:
+    any: true
+  Region3int16:
+    any: true
+  RotationCurveKey:
+    any: true
+  FloatCurveKey:
+    any: true
+  CatalogSearchParams:
+    any: true
+  DockWidgetPluginGuiInfo:
+    any: true
+  tick:
+    args:
+      - type: "..."
+  warn:
+    args:
+      - type: "..."
+  wait:
+    args:
+      - type: "..."
+  delay:
+    args:
+      - type: "..."
+  spawn:
+    args:
+      - type: "..."
+  time:
+    args:
+      - type: "..."
+  elapsedTime:
+    args:
+      - type: "..."
+  settings:
+    args:
+      - type: "..."
+  typeof:
+    args:
+      - type: "..."
+  UserSettings:
+    args:
+      - type: "..."
+  require:
+    args:
+      - type: "..."
