@@ -1002,11 +1002,13 @@ local function headDown(rig, p, out, clear)
 end
 
 -- The corner: the post (and a cover pad) he is backed into, found once per fall (parts named Post / Pad within a
--- few studs; the pillow pads are soft dressing). The corner poses push his root back towards it on top of the
--- server's walk into the corner, without knowing where it is: the whole pose comes forward (on the canvas)
--- until his back, pelvis and head - with the hair a little past it - rest against the nearest face instead of
--- going through it. Probes: the joint whose part, the radius round the part's centre (the organic mesh's
--- half-depth when it is on; the upper arms' thickness)
+-- few studs), and the pillow turnbuckle pads on that post (TurnbucklePad: the first venues' corners; props that
+-- take no queries, so they are read from the post's own model). The corner poses push his root back towards it
+-- on top of the server's walk into the corner, without knowing where it is: the whole pose comes forward (on the
+-- canvas) until his back, pelvis and head - with the hair a little past it - rest against the nearest face
+-- instead of going through it. Probes: the joint whose part, the radius round the part's centre (the organic
+-- mesh's half-depth when it is on; the upper arms' thickness), and the upper back between the shoulder blades
+-- (what leans on a pad's face)
 local CORNER_PARTS = { Post = true, Pad = true }
 local CORNER_PROBES = { { "W", 0.15 }, { "Root", 0.12 }, { "Neck", 0.22 }, { "RS", 0.06 }, { "LS", 0.06 } }
 local function cornerObstacles(rig, d)
@@ -1030,7 +1032,76 @@ local function cornerObstacles(rig, d)
 			end
 		end
 	end
+	-- the post's pillow pads (their sphere shells: tested as ellipsoids, clearCorner), and for every pad (pillow
+	-- or cover) the way off it: level, from its post through the pad (into the ring)
+	d.padDir = {}
+	local n = #list
+	for i = 1, n do
+		local post = list[i]
+		if post.Name == "Post" and post.Parent then
+			for _, c in ipairs(post.Parent:GetChildren()) do
+				if c.Name == "TurnbucklePad" and c:IsA("BasePart") then
+					local dv = c.Position - post.Position
+					if dv.X * dv.X + dv.Z * dv.Z < 4 then
+						table.insert(list, c)
+					end
+				end
+			end
+		end
+	end
+	for _, pad in ipairs(list) do
+		if pad.Name ~= "Post" then
+			for i = 1, n do
+				local post = list[i]
+				local dv = pad.Position - post.Position
+				dv = V3(dv.X, 0, dv.Z)
+				if post.Name == "Post" and dv.Magnitude > 0.05 and dv.Magnitude < 2 then
+					d.padDir[pad] = dv.Unit
+					break
+				end
+			end
+		end
+	end
 	return list
+end
+
+-- how far along dir (level, unit: out of the corner) a probe sphere (w, r) must move to clear a pad - the
+-- ellipsoid of a pillow pad's size grown by r, a cover pad's box grown by r - or 0. Along the way out of the
+-- corner, not to the nearest face: the back sinks past the pad's middle, where the nearest face is the post's
+local function padClear(part, w, r, dir)
+	if not dir then
+		return 0
+	end
+	local lp = part.CFrame:PointToObjectSpace(w)
+	local h = part.Size * 0.5
+	local hx, hy, hz = h.X + r, h.Y + r, h.Z + r
+	local dl = part.CFrame:VectorToObjectSpace(dir)
+	if part.Name ~= "TurnbucklePad" then
+		if abs(lp.X) >= hx or abs(lp.Y) >= hy or abs(lp.Z) >= hz then
+			return 0
+		end
+		-- (out through the first face the way crosses)
+		local t = math.huge
+		for _, ax in ipairs({ { lp.X, dl.X, hx }, { lp.Y, dl.Y, hy }, { lp.Z, dl.Z, hz } }) do
+			if abs(ax[2]) > 1e-6 then
+				t = min(t, ((ax[2] > 0 and ax[3] or -ax[3]) - ax[1]) / ax[2])
+			end
+		end
+		return t < math.huge and t or 0
+	end
+	local ux, uy, uz = lp.X / hx, lp.Y / hy, lp.Z / hz
+	local c = ux * ux + uy * uy + uz * uz - 1
+	if c >= 0 then
+		return 0
+	end
+	local dx, dy, dz = dl.X / hx, dl.Y / hy, dl.Z / hz
+	local a = dx * dx + dy * dy + dz * dz
+	local b = 2 * (ux * dx + uy * dy + uz * dz)
+	local disc = b * b - 4 * a * c
+	if a < 1e-9 or disc < 0 then
+		return 0
+	end
+	return (-b + math.sqrt(disc)) / (2 * a), dir
 end
 
 local function clearCorner(rig, p, d)
@@ -1045,12 +1116,20 @@ local function clearCorner(rig, p, d)
 	for _ = 1, 2 do
 		R.fk(rig, p, out)
 		local need, dir = 0, nil
-		for _, pr in ipairs(CORNER_PROBES) do
-			local k = pr[1]
-			local cf = out[k]
+		for pi = 1, #CORNER_PROBES + 1 do
+			local pr = CORNER_PROBES[pi]
+			local k = pr and pr[1] or "UB"
+			local cf = out[pr and k or "W"]
 			if cf then
-				local r
-				if k == "Neck" then
+				local r, at
+				if k == "UB" then
+					-- the upper back: the torso's (mesh's) back face at the shoulder blades
+					local m = g.mesh and g.mesh.W
+					local sz = m and m.size or g.sz.W
+					local c = m and cf * m.cf or cf
+					r = 0.1
+					at = sz and (c * CF(0, sz.Y * 0.2, sz.Z * 0.5 - r)).Position or cf.Position
+				elseif k == "Neck" then
 					r = g.headR + pr[2]
 				elseif k == "RS" or k == "LS" then
 					-- (the upper arms, thrown out along the ropes either side of the post)
@@ -1061,9 +1140,15 @@ local function clearCorner(rig, p, d)
 					local sz = m and m.size or g.sz[k]
 					r = (sz and sz.Z * 0.5 or 0.5) + (m and abs(m.cf.Position.Z) or 0) + pr[2]
 				end
-				local w = rootCF:PointToWorldSpace(cf.Position)
+				local w = rootCF:PointToWorldSpace(at or cf.Position)
 				for _, part in ipairs(obst) do
-					if part.Parent then
+					local pd = d.padDir and d.padDir[part]
+					if part.Parent and pd then
+						local t = padClear(part, w, r, pd)
+						if t > need then
+							need, dir = t, pd
+						end
+					elseif part.Parent then
 						-- (the horizontal distance from the part's box: the post stands from the canvas to above his head)
 						local lp = part.CFrame:PointToObjectSpace(w)
 						local h = part.Size * 0.5
