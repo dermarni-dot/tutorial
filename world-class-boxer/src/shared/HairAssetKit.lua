@@ -2,6 +2,8 @@
 -- engine half). No Instances, deterministic, so lune tests run it as the client does.
 -- * Select(data, look): the HairAssetData entry a look draws (AnatomyHair's own style / type routing:
 --   Gen.Resolve), nil for Bald, an unknown look or an entry with an id still missing (Usable)
+-- * CapTile / NeedsCapImage / TexturesOf: the painted cap image (the HairCap's, and every tex "cap" piece's: the
+--   fades' shells and fur) and the tile it is painted from (entry.capTile, else short / shortcoil by hair type)
 -- * Fit(S, fit0): the per-boxer skull fit (W, T, Fz, Bz from the skull field, against the default male's)
 -- * LengthFactor / VolumeFactor(look): the per-style length / volume stretch
 -- * Place(data, entry, look, S): every piece's affine map nominal -> Head space (diagonal scale + offset),
@@ -32,7 +34,11 @@ local readu8, writeu8, writeu32 = buffer.readu8, buffer.writeu8, buffer.writeu32
 -- the default male skull's extents (skull.json fit0): the meshes are modelled on it
 HK.FIT0 = { W = 0.383, T = 0.591, Fz = -0.460, Bz = 0.520 }
 -- textures drawn as one flat colour (tileable: no root or tip along v) even when the data does not say so
-local FLAT = { short = true, braid = true, cornrow = true }
+local FLAT = { short = true, shortcoil = true, waves = true, braid = true, cornrow = true }
+-- hair types whose scalp cap takes the coiled tile (when the entry names none: data.cap.tiles, else this)
+local CURLY = { Curly = true, Kinky = true, Coiled = true }
+-- the cap's fade (PaintCap): the threshold's width is 1 / CAP_FADE_K of the tile's alpha rank
+HK.CAP_FADE_K = 4
 -- u bands a card texture's strands are coloured by (streaks, highlights, the per-lock variation): 3 per strip
 HK.BANDS = 12
 
@@ -57,27 +63,70 @@ local function listHas(list, v)
 	return false
 end
 
--- the texture keys an entry needs (its pieces' and, with a cap, "short")
-function HK.TexturesOf(data, entry)
-	local out = {}
-	for _, p in pairs(type(entry.pieces) == "table" and entry.pieces or {}) do
-		if type(p.tex) == "string" then
-			out[p.tex] = true
-		end
-	end
-	if HK.HasCap(entry) then
-		out.short = true
-	end
-	return out
-end
-
+-- the entry draws the shared HairCap mesh (data.cap): its cap spec paints one
 function HK.HasCap(entry)
 	local c = entry.cap
 	return type(c) == "table" and (c.cut == "style" or c.cut == "full")
 end
 
--- every mesh and texture id the entry needs is uploaded; the entry draws something (pieces or a cap)
-function HK.Usable(data, entry)
+-- the entry needs the boxer's painted cap image: for the HairCap, or for pieces drawn with it (tex "cap": the
+-- fades' shells and fur, on the cap's polar UV)
+function HK.NeedsCapImage(entry)
+	if HK.HasCap(entry) then
+		return true
+	end
+	for _, p in pairs(type(entry.pieces) == "table" and entry.pieces or {}) do
+		if type(p) == "table" and p.tex == "cap" then
+			return true
+		end
+	end
+	return false
+end
+
+local function texHasId(data, key)
+	local t = type(data) == "table" and type(data.textures) == "table" and data.textures[key] or nil
+	return type(t) == "table" and idOf(t.id) ~= nil
+end
+
+-- the tile texture the cap is painted with for this entry on hair type htype (Gen.Resolve's): the entry's own
+-- capTile ("waves"), else data.cap.tiles by type (tools/hair/out/cap: "shortcoil" for curly / coily hair),
+-- else "shortcoil" for Curly / Kinky / Coiled and "short" otherwise; "short" when the chosen one has no id
+function HK.CapTile(data, entry, htype)
+	local want = type(entry) == "table" and type(entry.capTile) == "string" and entry.capTile or nil
+	if not want then
+		local cap = type(data) == "table" and data.cap or nil
+		local tiles = type(cap) == "table" and type(cap.tiles) == "table" and cap.tiles or nil
+		if tiles then
+			want = (htype and tiles[htype]) or tiles.default
+		end
+		if type(want) ~= "string" then
+			want = CURLY[htype] and "shortcoil" or "short"
+		end
+	end
+	if want ~= "short" and not texHasId(data, want) then
+		want = "short"
+	end
+	return want
+end
+
+-- the texture keys an entry needs on hair type htype: its pieces' (tex "cap" is the painted cap, not a texture)
+-- and, when it paints the cap, the cap's tile (CapTile)
+function HK.TexturesOf(data, entry, htype)
+	local out = {}
+	for _, p in pairs(type(entry.pieces) == "table" and entry.pieces or {}) do
+		if type(p.tex) == "string" and p.tex ~= "cap" then
+			out[p.tex] = true
+		end
+	end
+	if HK.NeedsCapImage(entry) then
+		out[HK.CapTile(data, entry, htype)] = true
+	end
+	return out
+end
+
+-- every mesh and texture id the entry needs (on hair type htype: the cap's tile) is uploaded; the entry draws
+-- something (pieces or a cap)
+function HK.Usable(data, entry, htype)
 	if type(data) ~= "table" or type(entry) ~= "table" then
 		return false
 	end
@@ -96,7 +145,7 @@ function HK.Usable(data, entry)
 		end
 		any = true
 	end
-	for key in pairs(HK.TexturesOf(data, entry)) do
+	for key in pairs(HK.TexturesOf(data, entry, htype)) do
 		local t = textures[key]
 		if type(t) ~= "table" or not idOf(t.id) then
 			return false
@@ -107,7 +156,7 @@ end
 
 -- the entry the look draws, or nil: style / type as AnatomyHair routes them (a curly Long Hair is AnatomyHair's
 -- longCurly recipe: only an entry listing that type takes it), Bald never. skip(entry) -> true leaves an entry
--- out (its asset failed to load)
+-- out (its asset failed to load; it is given the look's resolved hair type too)
 function HK.Select(data, look, skip)
 	if type(data) ~= "table" or type(data.entries) ~= "table" then
 		return nil
@@ -124,7 +173,7 @@ function HK.Select(data, look, skip)
 		if want and (pass == 1 or want ~= style) then
 			for _, e in ipairs(data.entries) do
 				if type(e) == "table" and listHas(e.styles, want) and (e.types == nil or listHas(e.types, htype)) then
-					if HK.Usable(data, e) and not (skip and skip(e)) then
+					if HK.Usable(data, e, htype) and not (skip and skip(e, htype)) then
 						return e, style, htype
 					end
 				end
@@ -463,11 +512,63 @@ local function gridAt(arr, gw, gh, gu, gv)
 end
 HK.GridAt = gridAt
 
--- the cap texture (size x size RGBA8): the short tile (tw x th, RGBA8, wraps both ways) repeated nu x nv times,
--- its grey times the grid's colour, alpha = the tile's alpha x the coverage. flipV writes the rows bottom-up.
--- (MeshKit's step units are ~1-5 us: a texel here is ~0.5 us, so 18 units every 64 texels)
-function HK.PaintCap(grid, tile, tw, th, nu, nv, size, flipV, gain)
+-- a tile's texels ranked 0..1 (f32 per texel) by alpha, then grey: the order its strands / coils give way in
+-- as the cap's coverage falls (the faint edges and dark crevices first, the opaque bright cores last). Mid-rank
+-- of each (alpha, grey) value, so the ranks are spread evenly over the tile. Cached per tile buffer
+local rankCache = setmetatable({}, { __mode = "k" })
+function HK.TileRank(tile, tw, th)
+	local hit = rankCache[tile]
+	if hit and hit.w == tw and hit.h == th then
+		return hit.rank
+	end
+	local n = tw * th
+	local hist = table.create(65536, 0)
+	for k = 0, n - 1 do
+		local o = k * 4
+		local key = readu8(tile, o + 3) * 256 + readu8(tile, o) + 1
+		hist[key] += 1
+		if k % 256 == 255 then
+			step(8)
+		end
+	end
+	-- each value's mid-rank: (texels below + half its own) / n
+	local below = 0
+	for key = 1, 65536 do
+		local c = hist[key]
+		if c > 0 then
+			hist[key] = (below + c * 0.5) / n
+			below += c
+		end
+		if key % 1024 == 0 then
+			step(8)
+		end
+	end
+	local rank = buffer.create(n * 4)
+	for k = 0, n - 1 do
+		local o = k * 4
+		buffer.writef32(rank, o, hist[readu8(tile, o + 3) * 256 + readu8(tile, o) + 1])
+		if k % 256 == 255 then
+			step(8)
+		end
+	end
+	rankCache[tile] = { w = tw, h = th, rank = rank }
+	return rank
+end
+
+-- the cap texture (size x size RGBA8): the tile (tw x th, RGBA8, wraps both ways: short / shortcoil / waves)
+-- repeated nu x nv times, its grey times the grid's colour. Alpha: the tile's alpha where the coverage c is 1,
+-- none at 0; between, a threshold over the tile's rank (TileRank) that moves with c, so a fade thins out whole
+-- strands and coils (each texel is either kept at its own alpha or gone, over a 1 / k wide rank window) instead
+-- of turning every hair uniformly translucent: g = smoothstep(clamp((rank - t) * k)), t = (1 - c)(1 + 1/k) - 1/k,
+-- alpha = tileA * g (g = 1 at c = 1, 0 at c = 0, rising with c). fadeK (default CAP_FADE_K) <= 0: tileA * c.
+-- flipV writes the rows bottom-up. (MeshKit's step units are ~1-5 us: a texel here is ~0.6 us, so 22 units every
+-- 64 texels)
+function HK.PaintCap(grid, tile, tw, th, nu, nv, size, flipV, gain, fadeK)
 	gain = gain or 1
+	local K = tonumber(fadeK) or HK.CAP_FADE_K
+	local rank = K > 0 and HK.TileRank(tile, tw, th) or nil
+	local invK = K > 0 and 1 / K or 0
+	local readf32 = buffer.readf32
 	local n64 = 0
 	stepNow()
 	local out = buffer.create(size * size * 4)
@@ -528,14 +629,30 @@ function HK.PaintCap(grid, tile, tw, th, nu, nv, size, flipV, gain)
 				local a00, a10, a01, a11 = ro0 + x0, ro0 + x1, ro1 + x0, ro1 + x1
 				local grey = (readu8(tile, a00) * w00 + readu8(tile, a10) * w10 + readu8(tile, a01) * w01 + readu8(tile, a11) * w11) * gain
 				local al = readu8(tile, a00 + 3) * w00 + readu8(tile, a10 + 3) * w10 + readu8(tile, a01 + 3) * w01 + readu8(tile, a11 + 3) * w11
+				local keep
+				if not rank then
+					keep = c
+				elseif c >= 1 then
+					keep = 1
+				else
+					local rk = readf32(rank, a00) * w00 + readf32(rank, a10) * w10 + readf32(rank, a01) * w01 + readf32(rank, a11) * w11
+					local q = (rk - ((1 - c) * (1 + invK) - invK)) * K
+					if q <= 0 then
+						keep = 0
+					elseif q >= 1 then
+						keep = 1
+					else
+						keep = q * q * (3 - 2 * q)
+					end
+				end
 				writeu32(out, o, min(255, floor(r * grey + 0.5)) + min(255, floor(g * grey + 0.5)) * 256 + min(255, floor(b * grey + 0.5)) * 65536
-					+ min(255, floor(al * c + 0.5)) * 16777216)
+					+ min(255, floor(al * keep + 0.5)) * 16777216)
 			end
 			o += 4
 			n64 += 1
 			if n64 == 64 then
 				n64 = 0
-				step(18)
+				step(22)
 			end
 		end
 	end

@@ -136,8 +136,8 @@ local function settle(id, was, ok, blame, obj, ctx)
 	end
 end
 
--- every asset id an entry loads
-local function idsOf(entry)
+-- every asset id an entry loads (on hair type htype: the cap's tile depends on it)
+local function idsOf(entry, htype)
 	local out = {}
 	for _, p in pairs(entry.pieces or {}) do
 		out[#out + 1] = HK.Id(p.mesh)
@@ -145,15 +145,15 @@ local function idsOf(entry)
 	if HK.HasCap(entry) then
 		out[#out + 1] = Data.cap and HK.Id(Data.cap.mesh)
 	end
-	for key in pairs(HK.TexturesOf(Data, entry)) do
+	for key in pairs(HK.TexturesOf(Data, entry, htype)) do
 		local t = Data.textures and Data.textures[key]
 		out[#out + 1] = t and HK.Id(t.id)
 	end
 	return out
 end
 
-local function entryFailed(entry)
-	for _, id in ipairs(idsOf(entry)) do
+local function entryFailed(entry, htype)
+	for _, id in ipairs(idsOf(entry, htype)) do
 		if isFailed(id) then
 			return true
 		end
@@ -309,15 +309,20 @@ local function tinted(key, look, htype, pal, lod, shared, ctx)
 	return hd
 end
 
--- the cap texture of this boxer: the short tile tinted with the root colour, alpha = the style's coverage
+-- the cap texture of this boxer: the entry's cap tile (HK.CapTile: its capTile, else short / shortcoil by hair
+-- type) tinted with the root colour, alpha = the style's coverage. The HairCap and every tex "cap" piece (the
+-- fades' shells and fur, on the cap's UV) share it
 local function capImage(entry, look, htype, pal, lod, S, fit, shared, ctx)
-	local tex = Data.textures and Data.textures.short
+	local tileKey = HK.CapTile(Data, entry, htype)
+	local tex = Data.textures and Data.textures[tileKey]
 	local id = tex and HK.Id(tex.id)
 	if not id then
-		return nil, "texture short has no id", "asset", nil
+		return nil, "texture " .. tileKey .. " has no id", "asset", nil
 	end
 	local size = wantSize("cap", lod)
-	local skey = shared and table.concat({ "cap", tostring(ctx.sig), entry.key or "?", lod, size, flipV() and "f" or "" }, "|") or nil
+	local skey = shared
+			and table.concat({ "cap", tostring(ctx.sig), entry.key or "?", tileKey, id, lod, size, flipV() and "f" or "" }, "|")
+		or nil
 	if skey and tints[skey] then
 		return tints[skey]
 	end
@@ -426,7 +431,7 @@ local function buildInner(model, entry, look, lod, ctx, made, releases)
 	local owner = {} -- private image -> the first piece given it (HairFX wets it once, its memory counts once)
 	local keys = {}
 	for _, ap in pairs(entry.pieces or {}) do
-		if type(ap.tex) == "string" and not keys[ap.tex] then
+		if type(ap.tex) == "string" and ap.tex ~= "cap" and not keys[ap.tex] then
 			keys[ap.tex] = true
 			keys[#keys + 1] = ap.tex
 		end
@@ -440,7 +445,7 @@ local function buildInner(model, entry, look, lod, ctx, made, releases)
 		images[key] = hd
 		releases[#releases + 1] = acquire(hd)
 	end
-	if placed.HairCap then
+	if placed.HairCap or HK.NeedsCapImage(entry) then
 		local hd, err, kind, id = capImage(entry, look, htype, pal, lod, S, fit, shared, ctx)
 		if not hd then
 			return nil, "cap texture: " .. tostring(err), kind, id
@@ -464,7 +469,7 @@ local function buildInner(model, entry, look, lod, ctx, made, releases)
 		if not mp then
 			return nil, name .. ": " .. tostring(err), kind, id
 		end
-		local hd = isCap and images.__cap or images[ap.tex]
+		local hd = (isCap or ap.tex == "cap") and images.__cap or images[ap.tex]
 		local img, textured = nil, false
 		local cost = 0
 		local rel
@@ -546,12 +551,12 @@ function HairAssets.Waiting(look, lod, wantTex)
 	if not active(wantTex) then
 		return nil
 	end
-	local ok, entry = pcall(HK.Select, Data, look)
+	local ok, entry, _, htype = pcall(HK.Select, Data, look)
 	if not ok or not entry then
 		return nil
 	end
 	local ids, at = {}, 0
-	for _, id in ipairs(idsOf(entry)) do
+	for _, id in ipairs(idsOf(entry, htype)) do
 		local f = failed[id]
 		if f then
 			if not f.transient or f.retried then
@@ -597,14 +602,14 @@ function HairAssets.Cost(look, lod, wantTex, priority)
 	local seen = {}
 	for _, ap in pairs(entry.pieces or {}) do
 		local key = ap.tex
-		if type(key) == "string" and not seen[key] then
+		if type(key) == "string" and key ~= "cap" and not seen[key] then
 			seen[key] = true
 			local tex = Data.textures and Data.textures[key]
 			local sz = wantSize("tex", lod, tex and tonumber(tex.size))
 			n += sz * sz * 4 * (shared and 0.5 or 1)
 		end
 	end
-	if HK.HasCap(entry) and Data.cap then
+	if HK.NeedsCapImage(entry) then
 		local sz = wantSize("cap", lod)
 		n += sz * sz * 4
 	end

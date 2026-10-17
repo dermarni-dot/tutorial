@@ -1,6 +1,7 @@
 """Uploads the hair meshes and textures to Roblox with Open Cloud and writes the game's manifest.
 
-    python publish.py [--dry-run] [--only key,key] [--textures DIR]
+    python publish.py [--dry-run] [--no-manifest] [--only key,key] [--textures DIR]
+    python publish.py --local [OUT.lua]     # offline: fake ids, nothing uploaded (see below)
 
 * Creator: ROBLOX_CREATOR_ID / ROBLOX_CREATOR_TYPE (group | user) from the environment.
 * API key: x-api-key from ROBLOX_API_KEY, unless a proxy injects it (then leave it unset).
@@ -8,6 +9,10 @@
   assetType "Image" (PNG). Every upload is cached by the file's SHA-256 in uploaded.json, so a re-run
   uploads only what changed and the game's ids stay stable.
 * Writes src/shared/HairAssetData.lua from out/*/style.json + the cache.
+* --local [PATH] uploads nothing and leaves the cache and the game's manifest alone: it writes the manifest to
+  PATH (default /tmp/claude-0/HairAssetData_local.lua) with FAKE positive ids (LOCAL_ID0 + index, one per
+  file) and a JSON sidecar next to it (PATH with .ids.json) mapping each fake id to the local .mesh / .png file,
+  so a simulator can draw the real outputs offline.
 """
 import argparse
 import glob
@@ -26,6 +31,15 @@ OUT = os.path.join(HERE, "out")
 CACHE = os.path.join(HERE, "uploaded.json")
 MANIFEST = os.path.join(ROOT, "src", "shared", "HairAssetData.lua")
 API = "https://apis.roblox.com/assets/v1"
+LOCAL_DEFAULT = "/tmp/claude-0/HairAssetData_local.lua"
+LOCAL_ID0 = 9000000000
+# tileable textures (one flat colour, wrap both ways): the scalp cap's tiles. Every other key is a card texture
+# (roots at v = 0, tips at v = 1), crop included
+TILE_TEXTURES = {"short", "shortcoil", "waves"}
+# entry-level style.json fields carried into the manifest
+ENTRY_FIELDS = ("styles", "types", "cap", "capTile")
+# the cap entry's fields carried into data.cap (besides its one piece's mesh, bbox, points, nt, material, ...)
+CAP_FIELDS = ("thetaMax", "tile", "tiles")
 
 
 def sha(path):
@@ -114,7 +128,25 @@ def upload(path, asset_type, name, desc, content_type):
     return int(resp["assetId"]), state
 
 
-def ensure(cache, path, asset_type, name, desc, content_type, dry):
+class LocalIds:
+    """--local: a fake positive id per file (stable within one run), and the id -> file map for the sidecar."""
+
+    def __init__(self):
+        self.files = {}
+        self.by_path = {}
+
+    def __call__(self, path):
+        path = os.path.abspath(path)
+        if path not in self.by_path:
+            aid = LOCAL_ID0 + len(self.by_path) + 1
+            self.by_path[path] = aid
+            self.files[str(aid)] = path
+        return self.by_path[path]
+
+
+def ensure(cache, path, asset_type, name, desc, content_type, dry, local=None):
+    if local is not None:
+        return local(path)
     h = sha(path)
     hit = cache.get(h)
     if hit:
@@ -159,14 +191,43 @@ def lua(v, ind=0):
     raise TypeError(type(v))
 
 
+def read_style(sj):
+    """out/<key>/style.json, checked: None (with a warning) when it is unreadable or a mesh it names is missing
+    (a builder still writing it)."""
+    try:
+        with open(sj) as f:
+            st = json.load(f)
+    except (OSError, ValueError) as e:
+        print(f"  skip {os.path.relpath(sj, HERE)}: {e}", file=sys.stderr)
+        return None
+    if not isinstance(st, dict) or not isinstance(st.get("pieces"), dict):
+        print(f"  skip {os.path.relpath(sj, HERE)}: no pieces", file=sys.stderr)
+        return None
+    st.setdefault("key", os.path.basename(os.path.dirname(sj)))
+    d = os.path.dirname(sj)
+    for name, rec in st["pieces"].items():
+        mf = rec.get("mesh_file") if isinstance(rec, dict) else None
+        if not mf or not os.path.exists(os.path.join(d, mf)):
+            print(f"  skip {st['key']}: piece {name} has no mesh file ({mf})", file=sys.stderr)
+            return None
+        if "bbox" not in rec:
+            print(f"  skip {st['key']}: piece {name} has no bbox", file=sys.stderr)
+            return None
+    return st
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--only", default="")
     ap.add_argument("--textures", default=os.path.join(HERE, "textures"))
     ap.add_argument("--no-manifest", action="store_true")
+    ap.add_argument("--local", nargs="?", const=LOCAL_DEFAULT, default=None, metavar="OUT.lua",
+                    help=f"write the manifest with fake ids to OUT.lua (default {LOCAL_DEFAULT}) and an id -> file "
+                         "sidecar (OUT.ids.json); uploads nothing, touches neither the cache nor the game's manifest")
     args = ap.parse_args()
-    cache = load_cache()
+    local = LocalIds() if args.local else None
+    cache = {} if local else load_cache()
     only = set(filter(None, args.only.split(",")))
 
     tex_ids = {}
@@ -178,14 +239,15 @@ def main():
             size = im.size[0]
         tex_ids[key] = ensure(cache, png, "Image", f"WCB Hair {key}",
                               f"Become a World Class Boxer: hair strand texture '{key}' (greyscale, alpha)",
-                              "image/png", args.dry_run)
-        tex_meta[key] = {"id": tex_ids[key], "size": size, "tile": key == "short"}
+                              "image/png", args.dry_run, local)
+        tex_meta[key] = {"id": tex_ids[key], "size": size, "tile": key in TILE_TEXTURES}
 
     cap = None
     entries = []
     for sj in sorted(glob.glob(os.path.join(OUT, "*", "style.json"))):
-        with open(sj) as f:
-            st = json.load(f)
+        st = read_style(sj)
+        if st is None:
+            continue
         key = st["key"]
         if only and key not in only and key != "cap":
             continue
@@ -194,17 +256,26 @@ def main():
         for name, rec in sorted(st["pieces"].items()):
             mid = ensure(cache, os.path.join(d, rec["mesh_file"]), "Mesh", f"WCB Hair {key} {name}",
                          f"Become a World Class Boxer: hair card mesh {key}/{name}", "model/x-file-mesh-data",
-                         args.dry_run)
+                         args.dry_run, local)
+            # every piece field (tex, bbox, points, nt, hairfx, hideUnder, length, material, castShadow, ...)
             p = {k: v for k, v in rec.items() if k not in ("mesh_file", "nv")}
             p["mesh"] = mid
             pieces[name] = p
         if key == "cap":
+            if len(pieces) != 1:
+                raise SystemExit(f"out/cap/style.json: one piece expected, got {sorted(pieces)}")
             (name, p), = pieces.items()
-            cap = {"mesh": p["mesh"], "bbox": p["bbox"], "points": p["points"], "thetaMax": st["thetaMax"],
-                   "tile": st["tile"], "nt": p.get("nt")}
+            cap = dict(p)
+            cap.pop("tex", None)
+            for k in CAP_FIELDS:
+                if k in st:
+                    cap[k] = st[k]
             continue
-        e = {"key": key, "styles": st["styles"], "types": st.get("types"), "cap": st.get("cap"),
-             "pieces": pieces}
+        e = {"key": key, "pieces": pieces}
+        for k in ENTRY_FIELDS:
+            if k in st:
+                e[k] = st[k]
+        e.setdefault("styles", [])
         entries.append(e)
 
     if args.no_manifest:
@@ -219,10 +290,21 @@ def main():
             "-- Asset hair: hair-card meshes (Mesh assets) and strand textures (Image assets) owned by the\n"
             "-- game's group, in nominal head space (tools/hair/CONTRACT.md). An entry with a 0 id is unused\n"
             "-- and the generated hair draws that style instead.\n")
+    if local:
+        head = ("-- LOCAL manifest from tools/hair/publish.py --local: FAKE asset ids (nothing uploaded), for offline\n"
+                "-- simulation only. Each id's file is in the .ids.json sidecar next to this file.\n")
     body = "return " + lua(data) + "\n"
-    with open(MANIFEST, "w") as f:
+    out = os.path.abspath(args.local) if local else MANIFEST
+    os.makedirs(os.path.dirname(out), exist_ok=True)
+    with open(out, "w") as f:
         f.write(head + body)
-    print("wrote", os.path.relpath(MANIFEST, ROOT), len(entries), "entries")
+    if local:
+        side = os.path.splitext(out)[0] + ".ids.json"
+        with open(side, "w") as f:
+            json.dump({"ids": local.files, "manifest": out}, f, indent=1, sort_keys=True)
+        print("wrote", out, len(entries), "entries (fake ids);", side, len(local.files), "files")
+    else:
+        print("wrote", os.path.relpath(MANIFEST, ROOT), len(entries), "entries")
 
 
 if __name__ == "__main__":

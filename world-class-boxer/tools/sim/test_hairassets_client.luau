@@ -5,11 +5,13 @@
 --   lune run tools/sim/test_hairassets_client.luau
 local Host = require("./host")
 local Vector2 = require("@lune/roblox").Vector2
+local Enum = require("@lune/roblox").Enum
 
 -- fake engine objects -------------------------------------------------------------------------------------
 local live = { parts = 0, images = 0 }
 local made = { parts = 0, images = 0 }
 local failMesh, failTex, nilImage, yields = {}, {}, false, 0
+local texLoads = {} -- texture ids CreateEditableImageAsync was asked for
 local Content = {
 	fromUri = function(u)
 		return { uri = u }
@@ -64,6 +66,7 @@ local AssetService = {
 	CreateEditableImageAsync = function(_, content)
 		yields += 1
 		local id = idOf(content)
+		texLoads[id] = true
 		if failTex[id] then
 			error(failTex[id], 0)
 		end
@@ -274,6 +277,124 @@ do
 		check("cap texture size (capSize full, never above)", img and img.Size.X == 1024, img and img.Size.X)
 		releaseAll(res)
 	end
+end
+
+-- pieces drawn with the painted cap (tex "cap": the fades' shells / fur), the cap's tile by capTile and hair
+-- type, the piece's material
+do
+	Data.textures.shortcoil = { id = 16, size = 256, tile = true }
+	Data.textures.waves = { id = 17, size = 256, tile = true }
+	local fur = { mesh = 40, tex = "cap", bbox = { 0, 0.2, 0.03, 0.82, 0.86, 1.02 }, points = {}, material = "Plastic", castShadow = false }
+	local shell = { mesh = 41, tex = "cap", bbox = { 0, 0.4, 0.03, 0.8, 0.5, 1.0 }, points = {}, material = "Plastic" }
+	local edge = { mesh = 42, tex = "coily", bbox = { 0, 0.3, 0, 0.9, 0.6, 1.0 }, points = {}, material = "Fabric", castShadow = false }
+	local nEntries = #Data.entries
+	table.insert(Data.entries, { key = "buzz", styles = { "Buzz Cut" }, cap = { cut = "style", density = 1 }, pieces = { HairFur = fur } })
+	table.insert(Data.entries, { key = "waves", styles = { "360 Waves" }, capTile = "waves", cap = { cut = "style", density = 1 },
+		pieces = { HairFur = fur } })
+	table.insert(Data.entries, { key = "shells", styles = { "Caesar Cut" }, cap = { cut = "none" }, pieces = { HairTop1 = shell, HairTop2 = shell } })
+	table.insert(Data.entries, { key = "top", styles = { "High Top" }, cap = { cut = "style", density = 1 }, pieces = { HairTopEdge = edge } })
+
+	local function loadsOf(fn)
+		local before = table.clone(texLoads)
+		fn()
+		local new = {}
+		for id in pairs(texLoads) do
+			if not before[id] then
+				new[#new + 1] = id
+			end
+		end
+		table.sort(new)
+		return table.concat(new, ",")
+	end
+
+	-- buzz, kinky: fur + the shared cap, both on one image painted from the shortcoil tile
+	local bk = look(1, { style = "Buzz Cut", type = "Kinky" })
+	local res
+	local loads = loadsOf(function()
+		res = HA.Build(model(), HA.For(bk, "full", true), bk, "full", ctx(0))
+	end)
+	check("buzz kinky built", res ~= nil and res.HairFur ~= nil and res.HairCap ~= nil)
+	check("buzz kinky: the shortcoil tile loaded", loads == "16", loads)
+	if res then
+		check("fur draws the painted cap", res.HairFur.part.TextureContent.object == res.HairCap.part.TextureContent.object)
+		check("one image (the cap), no 'cap' texture tint", live.images == 1, live.images)
+		check("a private cap image carried once", (res.HairFur.img and 1 or 0) + (res.HairCap.img and 1 or 0) == 1)
+		check("fur material / shadow", res.HairFur.part.Material == Enum.Material.Plastic and res.HairFur.part.CastShadow == false)
+		res.HairCap.release()
+		res.HairCap.part:Destroy()
+		check("cap image kept while the fur uses it", live.images == 1)
+		res.HairFur.release()
+		res.HairFur.part:Destroy()
+		check("freed with its last user", live.images == 0 and live.parts == 0, live.images .. " " .. live.parts)
+	end
+	-- buzz, straight: the short tile
+	local bs = look(1, { style = "Buzz Cut", type = "Straight" })
+	loads = loadsOf(function()
+		res = HA.Build(model(), HA.For(bs, "full", true), bs, "full", ctx(0))
+	end)
+	check("buzz straight: the short tile", res ~= nil and (loads == "11" or loads == ""), loads)
+	if res then
+		releaseAll(res)
+	end
+	-- 360 waves: the entry's capTile, whatever the type
+	local wk = look(1, { style = "360 Waves", type = "Kinky" })
+	loads = loadsOf(function()
+		res = HA.Build(model(), HA.For(wk, "full", true), wk, "full", ctx(0))
+	end)
+	check("waves: the waves tile", res ~= nil and loads == "17", loads)
+	if res then
+		releaseAll(res)
+	end
+	-- shells with cap "none": no HairCap mesh, the cap still painted for them (shared by both shells)
+	local sh = look(1, { style = "Caesar Cut", type = "Straight" })
+	res = HA.Build(model(), HA.For(sh, "full", true), sh, "full", ctx(2, "sigS"))
+	check("shells: no HairCap piece, both shells", res ~= nil and res.HairCap == nil and res.HairTop1 ~= nil and res.HairTop2 ~= nil)
+	if res then
+		check("shells share the painted cap", res.HairTop1.textured and res.HairTop1.part.TextureContent.object == res.HairTop2.part.TextureContent.object
+			and live.images == 1, live.images)
+		local r2 = HA.Build(model(), HA.For(sh, "full", true), sh, "full", ctx(2, "sigS"))
+		check("an NPC with the same look shares it", r2 ~= nil and live.images == 1, live.images)
+		releaseAll(res)
+		check("shared cap kept for the other NPC", live.images == 1)
+		if r2 then
+			releaseAll(r2)
+		end
+		check("shells freed", live.images == 0 and live.parts == 0, live.images .. " " .. live.parts)
+	end
+	-- the high top's edge ring: Fabric (afro builds), its shared cap from data.cap
+	local ht = look(1, { style = "High Top", type = "Kinky" })
+	res = HA.Build(model(), HA.For(ht, "full", true), ht, "full", ctx(0))
+	check("high top: edge ring Fabric, no shadow", res ~= nil and res.HairTopEdge.part.Material == Enum.Material.Fabric
+		and res.HairTopEdge.part.CastShadow == false)
+	if res then
+		releaseAll(res)
+	end
+	-- Cost: shells add the cap image once, no 'cap' texture
+	local cs = HA.Cost(sh, "full", true, 0)
+	check("cost: shells = one cap image", cs == 1024 * 1024 * 4, cs)
+	-- a missing tile id: the short one; a missing short then: no entry
+	Data.textures.shortcoil = { id = 0, size = 256, tile = true }
+	loads = loadsOf(function()
+		res = HA.Build(model(), HA.For(bk, "full", true), bk, "full", ctx(0))
+	end)
+	check("no shortcoil id: kinky buzz on the short tile", res ~= nil, loads)
+	if res then
+		releaseAll(res)
+	end
+	local short = Data.textures.short
+	Data.textures.short = { id = 0, size = 256, tile = true }
+	check("no tile id at all: no entry", HA.For(bk, "full", true) == nil)
+	Data.textures.short = short
+	-- a failed tile id skips only the looks drawn with it
+	Data.textures.shortcoil = { id = 16, size = 256, tile = true }
+	HA._failed[16] = { at = os.clock(), transient = false, retried = true, err = "x" }
+	check("failed shortcoil: kinky buzz skipped", HA.For(bk, "full", true) == nil)
+	check("failed shortcoil: straight buzz unaffected", HA.For(bs, "full", true) ~= nil)
+	HA._failed[16] = nil
+	for _ = #Data.entries, nEntries + 1, -1 do
+		table.remove(Data.entries)
+	end
+	check("nothing leaked (cap users)", live.images == 0 and live.parts == 0, live.images .. " " .. live.parts)
 end
 
 -- the retry: choosing an entry never uses it up; a build uses it when it really asks for that id, and an id

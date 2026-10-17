@@ -30,7 +30,11 @@ through the same transform (Roblox recentres an uploaded mesh on its bounding bo
 | `coily` | tight 0-.5, loose .5-1 | afro, high top, curly |
 | `braid` | plait 0-.5, loc .5-1 (tileable in v) | braids, box braids, locs, twists |
 | `cornrow` | row 0-.75 (tileable in v), baby hairs .75-1 | cornrows |
-| `short` | tile 0-1 (tileable both ways) | the scalp cap (fades, buzz, under everything) |
+| `short` | tile 0-1 (tileable both ways) | the scalp cap for straight / wavy hair |
+| `shortcoil` | tile (tileable) | the scalp cap for curly / kinky / coiled hair |
+| `waves` | tile (tileable) | the scalp cap for 360 Waves (`capTile = "waves"`) |
+| `crop` | 4 tuft strips, root to tip | crop tops on straight / wavy fades |
+| `cap` | (not uploaded) | the boxer's painted cap image: pieces in the cap's polar UV (fur shells) |
 
 UVs: (0,0) is the top-left texel, v grows down. Card strips: roots at v = 0, tips at v = 1.
 
@@ -43,10 +47,13 @@ shows them upside down.
 One shared cap mesh (`cap` style entry) covers the scalp from the forehead to the nape, at 0.012-0.02
 nominal above the skull. UV is polar: `u = az / 2pi` (az = 0 at the back, increasing toward +X),
 `v = theta / CAP_THETA` (theta from +Y). The game paints its texture per boxer: the `short` tile
-repeated `tile = {nu, nv}` times, tinted, with alpha = tile alpha x the style's coverage mask (the same
+tile (the entry's `capTile`, else `shortcoil` for curly types, else `short`) repeated
+`tile = {nu, nv}` times, tinted, with alpha = tile alpha x the style's coverage mask (the same
 fade / hairline / growth coverage the generated HairCap uses, `Kit.Cut(...).cov`, evaluated at each
 texel's scalp point). So every fade height, hairline kind, line-up and growth stage comes from the
-game's own rules.
+game's own rules. The fade thins the tile's strands by rank (thresholded) rather than making them
+uniformly translucent. `out/cap/style.json` carries `thetaMax`, `tile` and `tiles`; pieces with
+`tex = "cap"` (fur shells) share the painted image.
 
 ## Style entry (`out/<key>/style.json`, then the manifest)
 

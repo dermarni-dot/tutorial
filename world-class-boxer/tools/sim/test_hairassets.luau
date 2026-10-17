@@ -560,6 +560,296 @@ do
 	end, 2)
 end
 
+------------------------------------------------------------------------
+-- the painted cap's users and its tile: tex "cap" pieces, capTile, hair type
+------------------------------------------------------------------------
+do
+	local d = table.clone(fakeData)
+	d.textures = table.clone(fakeData.textures)
+	d.textures.shortcoil = { id = 16, size = 256, tile = true }
+	d.textures.waves = { id = 17, size = 256, tile = true }
+	d.textures.crop = { id = 18, size = 512 }
+	local fur = { mesh = 40, tex = "cap", bbox = { 0, 0.2, 0.03, 0.82, 0.86, 1.02 }, points = {} }
+	local crop = { mesh = 41, tex = "crop", bbox = { 0, 0.5, -0.2, 0.6, 0.2, 0.3 }, points = {} }
+	local buzz = { key = "buzz", styles = { "Buzz Cut" }, cap = { cut = "style", density = 1 }, pieces = { HairFur = fur } }
+	local waves = { key = "waves", styles = { "360 Waves" }, capTile = "waves", cap = { cut = "style", density = 1 }, pieces = { HairFur = fur } }
+	local shells = { key = "shells", styles = { "High Fade" }, cap = { cut = "none" }, pieces = { HairTop1 = fur, HairCrop = crop } }
+	local bare = { key = "bare", styles = { "Cornrows" }, cap = { cut = "none" }, pieces = { HairCrop = crop } }
+	d.entries = { buzz, waves, shells, bare }
+
+	check("CapTile: straight -> short", HK.CapTile(d, buzz, "Straight") == "short")
+	check("CapTile: wavy -> short", HK.CapTile(d, buzz, "Wavy") == "short")
+	for _, ty in ipairs({ "Curly", "Kinky", "Coiled" }) do
+		check("CapTile: " .. ty .. " -> shortcoil", HK.CapTile(d, buzz, ty) == "shortcoil")
+	end
+	check("CapTile: no type -> short", HK.CapTile(d, buzz, nil) == "short")
+	check("CapTile: entry capTile wins over the type", HK.CapTile(d, waves, "Kinky") == "waves" and HK.CapTile(d, waves, "Straight") == "waves")
+	-- data.cap.tiles (out/cap/style.json) overrides the built-in rule
+	local dt = table.clone(d)
+	dt.cap = table.clone(d.cap)
+	dt.cap.tiles = { default = "short", Wavy = "shortcoil" }
+	check("CapTile: data.cap.tiles by type", HK.CapTile(dt, buzz, "Wavy") == "shortcoil" and HK.CapTile(dt, buzz, "Kinky") == "short")
+	-- a tile without an id: the short one
+	local dn = table.clone(d)
+	dn.textures = table.clone(d.textures)
+	dn.textures.shortcoil = { id = 0, size = 256, tile = true }
+	dn.textures.waves = nil
+	check("CapTile: shortcoil without id -> short", HK.CapTile(dn, buzz, "Kinky") == "short")
+	check("CapTile: capTile without id -> short", HK.CapTile(dn, waves, "Straight") == "short")
+
+	-- TexturesOf: "cap" is the painted image, not a texture; the tile goes by the hair type
+	local function keys(t)
+		local out = {}
+		for k in pairs(t) do
+			out[#out + 1] = k
+		end
+		table.sort(out)
+		return table.concat(out, ",")
+	end
+	check("TexturesOf buzz straight", keys(HK.TexturesOf(d, buzz, "Straight")) == "short", keys(HK.TexturesOf(d, buzz, "Straight")))
+	check("TexturesOf buzz kinky", keys(HK.TexturesOf(d, buzz, "Kinky")) == "shortcoil", keys(HK.TexturesOf(d, buzz, "Kinky")))
+	check("TexturesOf waves", keys(HK.TexturesOf(d, waves, "Kinky")) == "waves")
+	check("TexturesOf shells, cap none: still the tile", keys(HK.TexturesOf(d, shells, "Kinky")) == "crop,shortcoil", keys(HK.TexturesOf(d, shells, "Kinky")))
+	check("TexturesOf no cap user: no tile", keys(HK.TexturesOf(d, bare, "Kinky")) == "crop")
+	check("NeedsCapImage", HK.NeedsCapImage(buzz) and HK.NeedsCapImage(shells) and not HK.NeedsCapImage(bare) and not HK.HasCap(shells))
+
+	-- Usable / Select require the tile the look draws with
+	check("Usable: tex cap pieces need no 'cap' texture", HK.Usable(d, buzz, "Straight") and HK.Usable(d, shells, "Kinky"))
+	local dk = table.clone(d)
+	dk.textures = table.clone(d.textures)
+	dk.textures.short = { id = 0, size = 256, tile = true }
+	check("Usable: straight needs short", not HK.Usable(dk, buzz, "Straight") and HK.Usable(dk, buzz, "Kinky"))
+	local function sel(data, hair)
+		local e = HK.Select(data, look(1, hair))
+		return e and e.key or nil
+	end
+	check("Select: no short id -> no straight buzz", sel(dk, { style = "Buzz Cut", type = "Straight" }) == nil)
+	check("Select: no short id -> kinky buzz (shortcoil)", sel(dk, { style = "Buzz Cut", type = "Kinky" }) == "buzz")
+	check("Select: waves", sel(d, { style = "360 Waves", type = "Straight" }) == "waves")
+	local dw = table.clone(dk)
+	dw.textures = table.clone(dk.textures)
+	dw.textures.waves = { id = 0, size = 256, tile = true }
+	check("Select: waves without waves or short id -> none", sel(dw, { style = "360 Waves", type = "Kinky" }) == nil)
+	check("Select: shells (cap none) usable", sel(d, { style = "High Fade", type = "Coiled" }) == "shells")
+	-- the skip callback is given the hair type (the client's failed ids depend on the tile)
+	local gotType
+	HK.Select(d, look(1, { style = "Buzz Cut", type = "Coiled" }), function(_, ht)
+		gotType = ht
+		return false
+	end)
+	check("skip gets the hair type", gotType == "Coiled", gotType)
+	-- Place: an entry without HairCap in its pieces still gets the shared cap (cut style)
+	local lk = look(1, { style = "Buzz Cut", type = "Kinky" })
+	local placed = HK.Place(d, buzz, lk, Kit.Scalp(lk))
+	check("Place: the shared cap for a tex-cap entry", placed.HairCap ~= nil and placed.HairFur ~= nil)
+	local placedS = HK.Place(d, shells, lk, Kit.Scalp(lk))
+	check("Place: cap none -> no HairCap mesh", placedS.HairCap == nil and placedS.HairTop1 ~= nil)
+end
+
+------------------------------------------------------------------------
+-- the cap's fade: strands / coils thin out (thresholded over the tile's rank), not uniformly translucent
+------------------------------------------------------------------------
+do
+	-- a 32 x 32 tile of "coils": alpha and grey vary (a dome per 8 x 8 cell, a faint fringe, some empty texels)
+	local tw, th = 32, 32
+	local tile = buffer.create(tw * th * 4)
+	for j = 0, th - 1 do
+		for i = 0, tw - 1 do
+			local cx, cy = (i % 8) - 3.5, (j % 8) - 3.5
+			local r = math.sqrt(cx * cx + cy * cy) / 4.95
+			local a = math.clamp(1.15 - r * r * 1.3, 0, 1)
+			local h = math.sin(i * 12.9898 + j * 78.233) * 43758.5453
+			a = math.clamp(a * (0.85 + 0.15 * (h - math.floor(h))), 0, 1)
+			local grey = math.floor(255 * (0.35 + 0.6 * (1 - r)))
+			local o = (i + j * tw) * 4
+			buffer.writeu8(tile, o, math.clamp(grey, 0, 255))
+			buffer.writeu8(tile, o + 1, math.clamp(grey, 0, 255))
+			buffer.writeu8(tile, o + 2, math.clamp(grey, 0, 255))
+			buffer.writeu8(tile, o + 3, math.floor(a * 255 + 0.5))
+		end
+	end
+	-- a flat grid of one coverage c
+	local function gridOf(c)
+		local n = 4 * 4
+		local g = { r = table.create(n, 0.5), g = table.create(n, 0.4), b = table.create(n, 0.3), c = table.create(n, c), w = 4, h = 4 }
+		return g
+	end
+	-- the output is texel-aligned with the tile (size = tw x nu): alpha(c = 1) must be the tile's own alpha
+	local nu, size = 2, 64
+	local function paint(c, k)
+		return HK.PaintCap(gridOf(c), tile, tw, th, nu, nu, size, false, 1, k)
+	end
+	local full = paint(1)
+	local exact = true
+	for j = 0, size - 1 do
+		for i = 0, size - 1 do
+			local a = buffer.readu8(full, (i + j * size) * 4 + 3)
+			local ta = buffer.readu8(tile, ((i % tw) + (j % th) * tw) * 4 + 3)
+			if a ~= ta then
+				exact = false
+			end
+		end
+	end
+	check("cap fade: alpha(c = 1) = tile alpha", exact)
+	local function stats(buf)
+		local sum, semi, solid = 0, 0, 0
+		for j = 0, size - 1 do
+			for i = 0, size - 1 do
+				local a = buffer.readu8(buf, (i + j * size) * 4 + 3)
+				local ta = buffer.readu8(tile, ((i % tw) + (j % th) * tw) * 4 + 3)
+				sum += a
+				if ta > 76 then
+					solid += 1
+					local q = a / ta
+					if q > 0.1 and q < 0.9 then
+						semi += 1
+					end
+				end
+			end
+		end
+		return sum / (size * size * 255), semi / math.max(1, solid)
+	end
+	local fullMean = stats(full)
+	local prev, mono, curve = -1, true, {}
+	local semiT, semiM = 0, 0
+	for s = 0, 20 do
+		local c = s / 20
+		local m, semi = stats(paint(c))
+		local _, semiMul = stats(paint(c, 0))
+		if m < prev - 1e-9 then
+			mono = false
+		end
+		prev = m
+		if s % 5 == 0 then
+			curve[#curve + 1] = string.format("%.2f:%.2f", c, m / fullMean)
+		end
+		if s == 10 then
+			semiT, semiM = semi, semiMul
+		end
+	end
+	print("cap fade mean alpha / full by coverage: " .. table.concat(curve, " ")
+		.. string.format("; translucent texels at c 0.5: threshold %.2f, multiply %.2f", semiT, semiM))
+	check("cap fade: mean alpha rises with c", mono)
+	check("cap fade: none at c = 0", stats(paint(0)) == 0)
+	check("cap fade: continuous at c = 1", math.abs(stats(paint(0.999)) - fullMean) < 0.01, stats(paint(0.999)))
+	check("cap fade: continuous at c = 0", stats(paint(0.004)) < 0.01, stats(paint(0.004)))
+	local half = stats(paint(0.5)) / fullMean
+	check("cap fade: c 0.5 about half", half > 0.3 and half < 0.75, half)
+	check("cap fade: thins whole coils (few translucent texels)", semiT < 0.4 and semiM > 0.9, string.format("%.2f %.2f", semiT, semiM))
+	check("cap fade: k 0 = the old multiply", buffer.readu8(paint(0.5, 0), 3 + 4 * 3) == math.floor(buffer.readu8(tile, 3 + 4 * 3) * 0.5 + 0.5))
+	-- the rank is cached per tile
+	check("TileRank cached", HK.TileRank(tile, tw, th) == HK.TileRank(tile, tw, th))
+end
+
+------------------------------------------------------------------------
+-- the real builds: tools/hair/out/*/style.json through publish.py --local (fake ids, nothing uploaded)
+------------------------------------------------------------------------
+do
+	local fs = require("@lune/fs")
+	local process = require("@lune/process")
+	local luau = require("@lune/luau")
+	local out = "/tmp/claude-0/test_hairassets_local.lua"
+	local res = process.exec("python3", { "tools/hair/publish.py", "--local", out })
+	check("publish.py --local runs", res.ok, res.stderr)
+	local okL, real = pcall(function()
+		return luau.load(fs.readFile(out), { debugName = "HairAssetData_local" })()
+	end)
+	check("local manifest loads", okL and type(real) == "table", real)
+	if okL and type(real) == "table" then
+		local side = require("@lune/serde").decode("json", fs.readFile(out:gsub("%.lua$", "") .. ".ids.json"))
+		local nIds = 0
+		for _ in pairs(side.ids) do
+			nIds += 1
+		end
+		print(string.format("local manifest: %d entries, %d fake ids", #real.entries, nIds))
+		check("cap from out/cap", real.cap and real.cap.thetaMax and math.abs(real.cap.thetaMax - 2.58309) < 1e-4
+			and real.cap.tiles and real.cap.tiles.Kinky == "shortcoil" and HK.Id(real.cap.mesh) ~= nil)
+		check("tiles flagged", real.textures.short.tile and real.textures.shortcoil.tile and real.textures.waves.tile
+			and not real.textures.crop.tile)
+		local byKey = {}
+		for _, e in ipairs(real.entries) do
+			byKey[e.key] = e
+		end
+		check("waves360 carries capTile", byKey.waves360 and byKey.waves360.capTile == "waves")
+		check("afro pieces Fabric", byKey.afro and byKey.afro.pieces.HairAfroEdge.material == "Fabric")
+		check("every id resolves to a file", (function()
+			for _, e in ipairs(real.entries) do
+				for _, p in pairs(e.pieces) do
+					if not side.ids[tostring(p.mesh)] then
+						return false
+					end
+				end
+			end
+			return side.ids[tostring(real.cap.mesh)] ~= nil
+		end)())
+		local cases = {
+			{ "Buzz Cut", "Kinky", "buzz", "shortcoil" },
+			{ "Buzz Cut", "Straight", "buzz", "short" },
+			{ "High Fade", "Straight", "fade_high", "short" },
+			{ "High Fade", "Kinky", "fade_high_c", "shortcoil" },
+			{ "360 Waves", "Straight", "waves360", "waves" },
+			{ "360 Waves", "Kinky", "waves360", "waves" },
+			{ "Afro", "Kinky", "afro", "shortcoil" },
+			{ "Afro", "Curly", "afro_curly", "shortcoil" },
+			{ "High Top", "Kinky", "hightop", "shortcoil" },
+			{ "High Top", "Straight", "hightop", "short" },
+			{ "Mid Fade", "Wavy", "fade_mid", "short" },
+			{ "Fade", "Coiled", "fade_mid_c", "shortcoil" },
+			{ "Crew Cut", "Curly", "crew_c", "shortcoil" },
+			{ "Caesar Cut", "Straight", "caesar", "short" },
+		}
+		for _, cs in ipairs(cases) do
+			local lk = look(1, { style = cs[1], type = cs[2] })
+			local e, _, ht = HK.Select(real, lk)
+			local tileKey = e and HK.CapTile(real, e, ht)
+			check(string.format("real Select %s / %s -> %s (%s)", cs[1], cs[2], cs[3], cs[4]), e and e.key == cs[3] and tileKey == cs[4],
+				(e and e.key or "nil") .. " " .. tostring(tileKey))
+		end
+		-- every entry is usable on each of its types
+		local bad = {}
+		for _, e in ipairs(real.entries) do
+			for _, ty in ipairs(e.types or { "Straight", "Kinky" }) do
+				if not HK.Usable(real, e, ty) then
+					bad[#bad + 1] = e.key .. "/" .. ty
+				end
+			end
+		end
+		check("every real entry usable", #bad == 0, table.concat(bad, ","))
+
+		-- the afro at the volume extremes: the edge rings (no length flag) never move, the volume pieces stay
+		-- out of the head
+		for _, key in ipairs({ "afro", "afro_curly", "hightop" }) do
+			local e = byKey[key]
+			local worstIn, edgeMoved = math.huge, 0
+			for _, hair in ipairs({ { length = 0, volume = -1 }, { length = 0.5, volume = 0 }, { length = 1, growth = 1.5, volume = 1 } }) do
+				hair.style, hair.type = e.styles[1], (e.types and e.types[1]) or "Kinky"
+				local lk = look(1, hair)
+				local S = Kit.Scalp(lk)
+				local fit = HK.Fit(S, real.fit0)
+				local placed = HK.Place(real, e, lk, S, fit)
+				for name, p in pairs(e.pieces) do
+					local m = placed[name].map
+					if p.length == nil then
+						local bm = { fit.ax * S.kx, fit.ay * S.ky, fit.az * S.kz, 0, 0, fit.dz * S.kz }
+						for i = 1, 6 do
+							edgeMoved = math.max(edgeMoved, math.abs(m[i] - bm[i]))
+						end
+					else
+						local pts = p.points
+						for i = 1, #pts - 2, 3 do
+							local x, y, z = HK.Apply(m, pts[i], pts[i + 1], pts[i + 2])
+							worstIn = math.min(worstIn, S.f(x / S.kx, y / S.ky, z / S.kz))
+						end
+					end
+				end
+			end
+			print(string.format("%s volume extremes: edge ring moved %.2g, volume pieces' lowest point %.4f above the skull", key, edgeMoved, worstIn))
+			check(key .. ": edge ring fixed at every volume", edgeMoved < 1e-9, edgeMoved)
+			check(key .. ": volume pieces stay out of the head", worstIn > -0.01, worstIn)
+		end
+	end
+end
+
 print(string.format("test_hairassets: %d passed, %d failed", pass, fail))
 if fail > 0 then
 	error("test_hairassets failed")
