@@ -112,6 +112,25 @@ def save_tex(path, L, A, lo=0.25, hi=1.0):
     return path
 
 
+def rank_dither(A, seed, lo=0.84, hi=0.99, blur=0.6):
+    """Decorrelate the tile's alpha rank from its low-frequency structure. The game's PaintCap thins a fade (and
+    a < 1 density such as the Buzz Cut's 0.62) by thresholding each texel's (alpha, grey) rank: if the dense
+    texels all saturate, the grey's slow lock-to-lock variation decides the order and the cap thins in blotches.
+    A fine, uniform-rank noise (~1-2 texels: ~0.5 mm on the scalp) scales the alpha so the thinning is an even
+    stubble speckle; the gaps between strands (low alpha) still go first."""
+    h, w = A.shape
+    rng = np.random.default_rng(seed)
+    n = rng.random((h, w))
+    if blur > 0:
+        k = np.array([math.exp(-0.5 * (i / blur) ** 2) for i in (-2, -1, 0, 1, 2)])
+        k /= k.sum()
+        n = sum(kk * np.roll(n, i - 2, 0) for i, kk in enumerate(k))
+        n = sum(kk * np.roll(n, i - 2, 1) for i, kk in enumerate(k))
+    r = np.empty(h * w)
+    r[np.argsort(n.ravel(), kind="stable")] = (np.arange(h * w) + 0.5) / (h * w)
+    return A * (lo + (hi - lo) * r.reshape(h, w))
+
+
 # canvas for one cap tile: 1024 x 1024 px ~ 0.33 x 0.29 studs (px ~ 0.0003 studs ~ 0.06 mm), filtered 8 x 4
 TILE_CANVAS = 1024
 PX_PER_STUD = 3300.0
@@ -164,8 +183,8 @@ def tex_short(seed=21):
             op = np.clip(0.95 - 0.5 * t ** 2.5, 0, 1)
             cv.strand(xs, ys, wid, lum, op)
     L, A = cv.down(8, 4)
-    A = np.clip(0.06 + A * 1.08, 0, 0.98)
-    return L, A
+    A = np.clip(0.06 + A * 1.08, 0, 1.0)
+    return L, rank_dither(A, seed + 9)
 
 
 def tex_shortcoil(seed=61):
@@ -212,8 +231,8 @@ def tex_shortcoil(seed=61):
         lum = np.clip((0.52 + 0.36 * front ** 1.5 + 0.12 * up) * rng.uniform(0.92, 1.06), 0.3, 1.0)
         cv.strand(xs, ys, np.full(m, rng.uniform(2.6, 3.4)), lum, np.full(m, 0.95))
     L, A = cv.down(8, 4)
-    A = np.clip(0.06 + A * 1.04, 0, 0.98)
-    return L, A
+    A = np.clip(0.06 + A * 1.04, 0, 1.0)
+    return L, rank_dither(A, seed + 9, lo=0.86, blur=1.0)
 
 
 # ---------------------------------------------------------------------------------------- 360 waves

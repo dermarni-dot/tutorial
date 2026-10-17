@@ -1,46 +1,40 @@
-"""Braids family hair: "Braids" (about two dozen thick three-strand plaits to the shoulders), "Box Braids"
-(~90 thin plaits from square box partings, to mid back; the family's female default) and "Cornrows" (flat
-plaited rows from the front hairline to the nape, scalp showing between them, short tails at the nape).
-Modelled in Blender (bpy 4.2), exported with hairlib.
+"""Braids family hair: "Braids" (two dozen thick three-strand plaits to the shoulders), "Box Braids" (~100 thin
+plaits from square box partings, to mid back; the family's female default) and "Cornrows" (flat plaited rows from
+the front hairline to the nape, scalp showing between them, tucked at the nape). Modelled in Blender (bpy 4.2),
+exported with hairlib.
 
-    /opt/bpyenv/bin/python tools/hair/build_braids.py [--render DIR] [--only braids,box_braids,cornrows]
-                                                      [--no-tex] [--samples N] [--quick]
+    /opt/bpyenv/bin/python tools/hair/build_braids.py [--render DIR|''] [--only braids,box_braids,cornrows]
+                                                      [--no-tex] [--samples N] [--looks N] [--views 34,side]
 
 Writes tools/hair/textures/hair_braid.png + hair_cornrow.png (braids_tex.py), tools/hair/out/<key>/ (meshes +
-style.json), tools/hair/blend/<key>.blend; renders self-check sheets with --render (default: the family's
-scratchpad folder when run with no arguments).
+style.json), tools/hair/blend/<key>.blend and self-check render sheets (default: the family's scratchpad folder).
 
 How it is built (game nominal head space, numerically; CONTRACT.md):
-* Partings. Box braids / braids: the scalp inside the natural hairline is split into concentric rings of
-  constant distance from the hairline (offset curves of the hairline, traced on the skull from the point deepest
-  inside it), each ring cut into boxes of the style's size, alternate rings offset by half a box (brick lay).
-  One braid roots at every box centre; the gaps between the braids' flared roots are the partings, over the
-  game's low-density cap.
-* Guides. Every braid's guide is traced over the scalp along a combing field (straight back over the top,
-  back over the ears and down behind them), rising as it travels (braids from the front lie over the ones
-  rooted behind them), until the skull turns under (the occiput, behind the ears); from there it hangs.
-* Drape (Blender mathutils: BVH trees of the game head mesh and both torsos, a KD tree of the braids). On the
-  scalp, where two braids cross the one that has come further from its root rides over the other, braids side
-  by side are pushed apart over the scalp, all kept 0.02+ above the head mesh and the skull table and clear of
-  the ears (a braid that would cross an ear is left out). Where a braid leaves the head it bends to vertical
-  and falls, sliding out / back past the neck, the shoulders and the back (the male torso, the female torso
-  through the inverse of the female skull fit, and the Kit.Scalp body proxy: neck capsule, trapezius, torso
-  box) without returning inward under a bulge it passed, as a stiff braid would not; hanging braids are then
-  pushed apart sideways / back (the one nearer the body stays) and the guides smoothed.
-* Geometry. The guides are kept as Blender curve objects in the .blend; they are resampled by curvature and
-  swept into slightly flattened tubes (6 sides for the thick braids, 4 for box braids): the flat face against
-  the scalp, a flat flared knot at the root, a tapered sealed tip, the plait texture wrapped twice round (u, the
-  strip covers half the circumference) and tiled by arc length (v, square texels). A Shrinkwrap modifier
-  ("outside" mode, limited by a vertex group to the vertices that need it, away from the ears) against the
-  game head mesh guarantees the clearance, and ambient occlusion is baked into the vertex colours by BVH ray
-  casts against all the hair, the head and the torso.
-* Cornrows: rows lie in planes through an axis deep under the head (parallel front to back, the outer ones
-  over the ears and behind them), clipped to the hairline; each row is a ribbon with an arched cross-section
-  (the plait's crown), narrow where it starts at the hairline, full in the middle, narrowing into the nape where
-  it turns into a short hanging plaited tail. Ribbon alpha (texture "cornrow") leaves the partings' skin.
-* Pieces: a static scalp piece (HairTop: every braid's scalp part down to where it leaves the head) and the
-  hanging parts in swing chains by sector round the head (HairBraidNN, HairBraidNNb = the lower half), as the
-  generated hair does; each chain's pivot / tip are the means of its braids' joint points.
+* Partings. The scalp inside the natural hairline is split into rings of constant distance from the hairline,
+  the first ON the hairline (inset 0.013 + 0.4 r) from the centre front round the temples, the sideburns, over and
+  behind the ears to the nape; each ring is cut into boxes, alternate rings offset by half a box (brick lay).
+  One braid roots in every box. HairBase: a square patch of short hair per box (strands running toward its braid,
+  darker edges) lying flat at 0.025; the skin lines between the patches (the low-density cap) are the partings.
+* Guides (traced on the skull table). Over the top the braids run straight back (round the X axis); at the
+  sides back and down, held above the ear (centre >= ear top + 0.025 + r) until behind it, then down behind it;
+  braids rooted in front of the ear run straight down past its front edge. Every root starts tangent to the
+  scalp along that flow, flat (flatten 0.6), at 40 % radius growing to full over the first 0.08-0.11.
+* Stacking: braids are laid inner ring first; one that runs over a braid already laid rises just enough to
+  ride over it (mathutils KD tree), ramped, and never more than r + 0.03 above the skull over its first 0.25.
+* Hanging: each braid falls from where the skull turns under as a gravity rope (its direction bends toward
+  straight down), resting 0.02-0.03 off the head mesh, the ears, both torsos (the female one through the inverse
+  of the female skull fit) and the Kit.Scalp body proxy (BVH trees + the proxy SDF), and on the braids laid
+  before it: it only moves outward over them, sideways at most half a radius; then smoothed.
+* Geometry: the guides are kept as Blender curve objects; each is swept into a flattened tube: thick braids get
+  a real plait silhouette (alternating lobes on the two edges, pinched between, rings every quarter period), the
+  texture once round (front half left->right, mirrored at the back) with its lobe period locked to the geometry.
+  A Shrinkwrap modifier ("outside" mode, vertex group) against the head mesh guarantees the clearance and AO is
+  baked into the vertex colours with BVH ray casts.
+* Cornrows: rows in planes through an axis deep under the head, clipped to the hairline; each an arched ribbon
+  (texture "cornrow": alpha 0 at the row edges), thin where it feeds in at the hairline with crisp baby hairs
+  over its start, narrowing and tucked just above the nape hairline.
+* Pieces: HairTop (all the scalp parts), HairBase (partings), and the hanging parts as swing chains by azimuth
+  round the neck (chain BraidNN: HairBraidNN upper, HairBraidNNb lower, parent / pivot / tip, length "hang").
 """
 import argparse
 import json
@@ -70,7 +64,8 @@ EAR_CLEAR = 0.025
 TAU = 2 * math.pi
 PLAIT = hl.ATLAS["braid"]["plait"]
 ROW = hl.ATLAS["cornrow"]["row"]
-BABY = hl.ATLAS["cornrow"]["baby"]
+BABY = (0.75, 0.875)  # (hairlib's baby range 0.75-1 is split: baby hairs | parting patches)
+PAD = (0.875, 1.0)
 
 SK = hl.Skull()
 C = SK.c.copy()
@@ -303,13 +298,57 @@ def rotate(v, axis, a):
     return v * math.cos(a) + np.cross(axis, v) * math.sin(a) + axis * np.dot(axis, v) * (1 - math.cos(a))
 
 
+# ------------------------------------------------------------------------------------------- ears
+_EL, _ER = SKD["ears"]["left"], SKD["ears"]["right"]
+EAR_TOP = max(_EL["max"][1], _ER["max"][1])
+EAR_FRONT = min(_EL["min"][2], _ER["min"][2])
+EAR_BACK = max(_EL["max"][2], _ER["max"][2])
+EAR_RAW = [(np.array(_EL["min"]), np.array(_EL["max"])), (np.array(_ER["min"]), np.array(_ER["max"]))]
+
+
+def y_over(r):
+    """the lowest a braid's centre may run where it passes over an ear"""
+    return EAR_TOP + EAR_CLEAR + r + 0.012
+
+
+def z_pass(r):
+    """behind this a braid may turn down behind the ear"""
+    return EAR_BACK + EAR_CLEAR + r + 0.02
+
+
+def ear_avoid(q, r, cls):
+    """out of either (grown) ear box: forward for the braids in front of the ear, else up over it (front half)
+    or back behind it (back half). Never out sideways (that would cover the ear)."""
+    for lo, hi in EARS:
+        lo2, hi2 = lo - r, hi + r
+        if np.all(q > lo2) and np.all(q < hi2):
+            q = q.copy()
+            if cls == "front":
+                q[2] = lo2[2]
+            elif q[2] < (lo2[2] + hi2[2]) * 0.5 + 0.03:
+                q[1] = hi2[1]
+            else:
+                q[2] = hi2[2]
+    return q
+
+
+def ear_dist(P):
+    """min distance of points to either raw ear AABB (0 inside)"""
+    P = np.atleast_2d(P)
+    m = 9.0
+    for lo, hi in EAR_RAW:
+        d = np.linalg.norm(np.maximum(np.maximum(lo - P, P - hi), 0), axis=1)
+        m = min(m, float(d.min()))
+    return m
+
+
 # ------------------------------------------------------------------------------------------- partings
 def ring_layout(box, kind="Natural", inset=None, brick=True, max_rings=12, seed=3):
-    """box-parting roots: rings of constant distance from the hairline, each cut into boxes of size `box`,
-    alternate rings offset by half a box. Returns a list of (point, ring index, along-ring tangent)."""
+    """box-parting roots: rings of constant distance from the hairline (the first ON the natural hairline,
+    inset by `inset`), each cut into boxes of size `box`, alternate rings offset by half a box (brick lay).
+    Returns a list of (point, ring index, along-ring tangent)."""
     rng = np.random.default_rng(seed)
     inset = box * 0.5 if inset is None else inset
-    # the point deepest inside the hairline
     best, bestd = None, -1
     for th in np.radians(np.arange(0, 120, 3)):
         for az in np.radians(np.arange(0, 360, 6)):
@@ -321,14 +360,13 @@ def ring_layout(box, kind="Natural", inset=None, brick=True, max_rings=12, seed=
     ref = np.array([1.0, 0, 0]) if abs(dM[0]) < 0.9 else np.array([0, 0, 1.0])
     e1 = unit(np.cross(dM, ref))
     e2 = np.cross(dM, e1)
-    n_phi = 240
+    n_phi = 360
     phis = np.linspace(0, TAU, n_phi, endpoint=False)
-    rhos = np.radians(np.linspace(0, 150, 600))
-    # distance along each ray
+    rhos = np.radians(np.linspace(0, 150, 700))
     D = np.zeros((n_phi, len(rhos)))
     PTS = np.zeros((n_phi, len(rhos), 3))
     for i, ph in enumerate(phis):
-        ax = unit(np.cos(ph) * e2 - np.sin(ph) * e1)  # rotation axis for this ray
+        ax = unit(np.cos(ph) * e2 - np.sin(ph) * e1)
         dirs = np.array([rotate(dM, ax, r) for r in rhos])
         pts = np.array([SK.point(*SK.angles(d)) for d in dirs])
         PTS[i] = pts
@@ -345,7 +383,7 @@ def ring_layout(box, kind="Natural", inset=None, brick=True, max_rings=12, seed=
             j = np.where((d[:-1] >= target) & (d[1:] < target))[0]
             if len(j) == 0:
                 continue
-            j = j[0]
+            j = j[-1]  # the outermost crossing (follows the sideburn tongue down)
             t = (d[j] - target) / max(1e-9, d[j] - d[j + 1])
             ring.append(PTS[i, j] * (1 - t) + PTS[i, j + 1] * t)
         if len(ring) < 8:
@@ -362,102 +400,11 @@ def ring_layout(box, kind="Natural", inset=None, brick=True, max_rings=12, seed=
             j = max(0, min(len(ring) - 1, j))
             t = (s - cum[j]) / max(1e-9, seg[j])
             a, b = ring[j], ring[(j + 1) % len(ring)]
-            p = a * (1 - t) + b * t
-            roots.append((p, k, unit(b - a)))
+            roots.append((a * (1 - t) + b * t, k, unit(b - a)))
         k += 1
-    # the last few at the centre
     if bestd - (inset + k * box) > -box * 0.35:
         roots.append((SK.point(*best), k, e1))
     return roots
-
-
-# ------------------------------------------------------------------------------------------- combing field
-def comb(p, n):
-    """the direction a braid runs over the scalp at p (outward normal n): straight back over the top (round
-    the X axis), back over the ears, down behind them"""
-    r = p - C
-    sag = np.cross(np.array([1.0, 0, 0]), r)
-    ax = abs(p[0])
-    side = float(smooth(0.12, 0.34, ax))
-    ear = side * float(1 - smooth(0.2, 0.32, p[2])) * float(1 - smooth(0.16, 0.34, p[1]))
-    back = np.array([0, 0, 1.0])
-    down = np.array([0, -1.0, 0])
-    d = unit(sag) * (1 - 0.6 * side) + side * (back * (0.9 + 1.4 * ear) + down * (0.7 * (1 - 0.9 * ear)))
-    d = d - n * np.dot(d, n)
-    return unit(d)
-
-
-# ------------------------------------------------------------------------------------------- braids
-class BraidSpec:
-    def __init__(self, key, box, r, length_y, count_hint, sides, flatten, seed, lift, groups, stiff, mass,
-                 root_flare, end_jitter, hang_ds, ds_top=(0.02, 0.06), ds_hang=0.14):
-        self.__dict__.update(locals())
-        del self.__dict__["self"]
-
-
-BRAIDS = BraidSpec("braids", box=0.235, r=0.05, length_y=(-1.12, -1.3), count_hint=24, sides=6, flatten=0.82,
-                   seed=11, lift=0.025, groups=6, stiff=0.45, mass=1.3, root_flare=1.3, end_jitter=0.06,
-                   hang_ds=0.035)
-BOX = BraidSpec("box_braids", box=0.13, r=0.022, length_y=(-1.62, -1.74), count_hint=90, sides=4, flatten=0.85,
-                seed=23, lift=0.012, groups=7, stiff=0.4, mass=1.2, root_flare=1.35, end_jitter=0.05,
-                hang_ds=0.04, ds_top=(0.04, 0.12), ds_hang=0.3)
-
-
-def root_shape(spec, s, r=None):
-    """(across radius, thickness) of the braid at arc length s from its root. The braid starts at the
-    upstream edge of its box as a wide flat fan lying on the scalp (the box's hair gathered into the first
-    crossings of the plait) and narrows to the full round-ish braid by ROOT_LEN(box)"""
-    r = spec.r if r is None else r
-    L = root_len(spec)
-    k = float(smooth(0.0, L, s)) ** 0.8
-    across = r * (spec.root_flare * (1 - k) + k)
-    thick = r * (0.42 * (1 - k) + spec.flatten * k)
-    return across, thick
-
-
-def root_len(spec):
-    return 0.03 + spec.r * 1.2
-
-
-def lift_of(spec, s):
-    return spec.lift * float(smooth(0.05, 0.6, s))
-
-
-def trace_scalp(root, spec, rng, r=None):
-    """the braid's path over the scalp from its root along the combing field; returns (points, normals,
-    leave) where leave says it hangs from the last point"""
-    r = spec.r if r is None else r
-
-    def h_at(s):
-        return CLEAR + 0.005 + root_shape(spec, s, r)[1] + lift_of(spec, s)
-    # start at the box's upstream edge
-    p0, n0 = on_scalp(root, 0)
-    up = -comb(p0, n0)
-    root = root + up * spec.r * 0.8
-    p, n = on_scalp(root, h_at(0.0))
-    pts, nrm = [p], [n]
-    s = 0.0
-    ds = 0.018
-    leave = False
-    jit = rng.normal(0, 0.12)
-    for _ in range(400):
-        d = comb(p, n)
-        d = unit(d + np.cross(n, d) * jit * 0.3)
-        q = p + d * ds
-        s += ds
-        q, n = on_scalp(q, h_at(s))
-        q, _hit = ear_push(q, r * 1.15)
-        pts.append(q)
-        nrm.append(n)
-        p = q
-        # the skull turns under (the occiput, behind the ears, the nape): from here the braid hangs
-        if s > 0.06 and (n[1] < -0.3 or (d[1] < -0.85 and n[1] < 0.05)):
-            leave = True
-            break
-        if p[1] < -0.3:
-            leave = True
-            break
-    return np.array(pts), np.array(nrm), s
 
 
 def resample(P, ds):
@@ -466,488 +413,544 @@ def resample(P, ds):
     n = max(2, int(math.ceil(L / ds)) + 1)
     cum = np.concatenate([[0], np.cumsum(seg)])
     s = np.linspace(0, L, n)
-    out = np.stack([np.interp(s, cum, P[:, k]) for k in range(3)], axis=1)
-    return out
+    return np.stack([np.interp(s, cum, P[:, k]) for k in range(3)], axis=1)
 
 
-class Strand:
-    def __init__(self, idx, root, ring, spec, rng):
-        self.idx = idx
-        self.ring = ring
-        self.r = spec.r * rng.uniform(0.92, 1.08)
-        sp, sn, s = trace_scalp(root, spec, rng, self.r)
-        self.sp = resample(sp, 0.02)
-        self.n_scalp = len(self.sp)
-        self.scalp_s = s
-        self.y_end = rng.uniform(min(spec.length_y), max(spec.length_y)) + rng.normal(0, spec.end_jitter * 0.3)
-        self.s_al = np.concatenate([[0], np.cumsum(np.linalg.norm(np.diff(self.sp, axis=0), axis=1))])
-        self.th = np.array([root_shape(spec, sa, self.r)[1] for sa in self.s_al])
-        self.sway = (rng.uniform(0, TAU), rng.uniform(2.0, 4.0), rng.uniform(0.006, 0.016), rng.uniform(0, TAU))
+def arclen(P):
+    return np.concatenate([[0], np.cumsum(np.linalg.norm(np.diff(P, axis=0), axis=1))])
 
 
-def point_clear(p, r, colliders, th=None, level=False):
-    """p pushed out of the head mesh (ears too), both torsos and the body proxy. level: keep its height (a
-    hanging braid only moves sideways / back as it passes the body), stepping back behind a ledge it lands on"""
+def at_s(P, S, s):
+    return np.stack([np.interp(s, S, P[:, k]) for k in range(3)], axis=-1)
+
+
+def adaptive_s(P, s0, s1, ds_min, ds_max, ang=math.radians(8)):
+    """arc-length samples in [s0, s1] of the polyline P: dense where it bends, sparse where it runs straight"""
+    S = arclen(P)
+    ss = np.arange(s0, s1, ds_min * 0.5)
+    if len(ss) < 2:
+        return np.array([s0, s1])
+    Q = at_s(P, S, ss)
+    keep = [s0]
+    acc_a, last = 0.0, s0
+    for i in range(1, len(Q) - 1):
+        a = Q[i] - Q[i - 1]
+        b = Q[i + 1] - Q[i]
+        cosv = np.dot(a, b) / max(1e-12, np.linalg.norm(a) * np.linalg.norm(b))
+        acc_a += math.acos(max(-1, min(1, cosv)))
+        if (acc_a > ang and ss[i] - last >= ds_min) or ss[i] - last >= ds_max:
+            keep.append(ss[i])
+            acc_a, last = 0.0, ss[i]
+    if s1 - keep[-1] < ds_min * 0.4 and len(keep) > 1:
+        keep[-1] = s1
+    else:
+        keep.append(s1)
+    return np.array(keep)
+
+
+# ------------------------------------------------------------------------------------------- braids
+class BraidSpec:
+    def __init__(self, **kw):
+        self.__dict__.update(kw)
+
+
+BRAIDS = BraidSpec(key="braids", box=0.27, r=0.047, length_y=(-1.13, -1.25), flatten=0.8, root_flat=0.6,
+                   sides=6, lobes=True, amp=0.17, groups=6, stiff=0.45, mass=1.3, seed=11, root_len=0.11,
+                   slope=0.5, pad=1.05, layers=0.35, ride=0.7, grav_back=0.3)
+BOX = BraidSpec(key="box_braids", box=0.132, r=0.0205, length_y=(-1.6, -1.74), flatten=0.84, root_flat=0.6,
+                sides=4, lobes=False, amp=0.0, groups=7, stiff=0.4, mass=1.2, seed=23, root_len=0.075,
+                slope=0.5, pad=1.08, layers=0.5, ride=0.75, grav_back=0.3)
+A0 = 0.5  # the side braids' natural slope back / down over the scalp
+DOWN = np.array([0, -1.0, 0])
+
+
+def classify(p, r):
+    if abs(p[0]) > 0.26 and p[2] < EAR_FRONT - EAR_CLEAR - r - 0.004 and p[1] < y_over(r) + 0.03:
+        return "front"  # in front of the ear: hangs straight down past the ear's front edge
+    return "back"
+
+
+def flow(p, n, r, cls):
+    """the direction a braid runs over the scalp at p (outward normal n): over the top straight back (round the
+    X axis through the skull centre), at the sides back and down at slope A0 but held above the ear until it
+    is behind it (then down behind it); braids rooted in front of the ear run straight down"""
+    if cls == "front":
+        g = np.array([0, -1.0, -0.06])
+    else:
+        sag = unit(np.cross(np.array([1.0, 0, 0]), p - C))
+        ax = abs(p[0])
+        ws = float(smooth(0.12, 0.3, ax))
+        zp, yo = z_pass(r), y_over(r)
+        if p[2] < zp:
+            a_g = max(-0.9, min(A0, (p[1] - yo) / max(zp - p[2], 0.04)))
+        else:
+            a_g = A0 + 1.3 * float(smooth(zp, zp + 0.08, p[2]))
+        wg = float(smooth(0.18, 0.28, ax))
+        a = A0 * (1 - wg) + a_g * wg
+        g = sag * (1 - ws) + unit(np.array([0, -a, 1.0])) * ws
+    d = g - n * np.dot(g, n)
+    return unit(d)
+
+
+class Braid:
+    pass
+
+
+def profile(spec, s, r, L):
+    """(across radius, flatten) at arc length s: the root starts at 40 % of the radius, flat on the scalp,
+    reaching the full braid over root_len; the tip tapers over the last 0.1"""
+    k = float(smooth(0.0, spec.root_len, s))
+    w = r * (0.8 + 0.2 * k) * (1 - 0.45 * float(smooth(L - 0.1, L, s)))
+    fl = spec.root_flat * (1 - k) + spec.flatten * k
+    return w, fl
+
+
+def trace(root, spec, cls, r):
+    h0 = CLEAR + 0.004 + r * spec.flatten
+    p, n = on_scalp(root, h0)
+    for _ in range(3):
+        p, n = on_scalp(ear_avoid(p, r * 1.1 + 0.004, cls), h0)
+    pts, nrm = [p], [n]
+    s, ds = 0.0, 0.012
+    for _ in range(400):
+        d = flow(p, n, r, cls)
+        q, n = on_scalp(p + d * ds, h0)
+        q = ear_avoid(q, r, cls)
+        q, n = on_scalp(q, h0)
+        s += float(np.linalg.norm(q - p))
+        pts.append(q)
+        nrm.append(n)
+        p = q
+        th, _ = SK.angles(p - C)
+        if cls == "front":
+            if p[1] < -0.1:
+                break
+        elif s > 0.05 and (n[1] < -0.3 or p[1] < -0.25):
+            break
+        if th >= SK.th[-1] - 0.01:
+            break
+    P = resample(np.array(pts), 0.012)
+    return P
+
+
+def stack_scalp(braids, spec):
+    """the scalp parts' heights: braids are laid inner ring first; where a braid runs over one already laid it
+    rises just enough to ride over it (KD tree of laid points), ramped at `slope`, and never more than r + 0.03
+    over its first 0.25 (no arches at the roots)"""
+    order = sorted(braids, key=lambda b: (-b.ring, b.idx))
+    LQ, LH, LT, LW = [], [], [], []
+    kd = None
+    for b in order:
+        P = b.sp
+        S = arclen(P)
+        Q, N, TH, AZ = [], [], [], []
+        for p in P:
+            th, az = SK.angles(p - C)
+            th = min(th, SK.th[-1])
+            Q.append(SK.point(th, az))
+            N.append(SK.normal(th, az))
+            TH.append(th)
+            AZ.append(az)
+        Q, N = np.array(Q), np.array(N)
+        L_guess = S[-1] + 1.5
+        prof = [profile(spec, s, b.r, L_guess) for s in S]
+        w = np.array([x[0] for x in prof])
+        t = np.array([x[0] * x[1] for x in prof])
+        h = CLEAR + 0.004 + t
+        if kd is not None:
+            wmax = max(LW)
+            for i in range(len(P)):
+                for (_co, j, _d) in kd.find_range(V(Q[i]), float(w[i] + wmax)):
+                    dv = Q[i] - LQ[j]
+                    lat = dv - N[i] * np.dot(dv, N[i])
+                    ll = float(np.linalg.norm(lat))
+                    lim = (w[i] + LW[j]) * 0.92
+                    if ll < lim:
+                        f = math.sqrt(max(0.0, 1 - (ll / lim) ** 2))
+                        h[i] = max(h[i], LH[j] + (t[i] + LT[j]) * spec.ride * f)
+        # ramps (no steps), then the root cap
+        for _ in range(2):
+            for i in range(1, len(h)):
+                h[i] = max(h[i], h[i - 1] - spec.slope * (S[i] - S[i - 1]))
+            for i in range(len(h) - 2, -1, -1):
+                h[i] = max(h[i], h[i + 1] - spec.slope * (S[i + 1] - S[i]))
+        cap = b.r + 0.03 + spec.slope * np.maximum(0, S - 0.25)
+        cap = np.minimum(cap, CLEAR + 0.004 + t * (1 + 2 * spec.layers))  # at most ~layers braids deep
+        h = np.maximum(np.minimum(h, cap), CLEAR + 0.004 + t)
+        for _ in range(3):
+            h[1:-1] = h[1:-1] * 0.5 + (h[:-2] + h[2:]) * 0.25
+        b.h = h
+        b.sp = np.array([SK.point(TH[i], AZ[i], h[i]) for i in range(len(P))])
+        for i in range(len(P)):
+            LQ.append(Q[i])
+            LH.append(h[i])
+            LT.append(t[i])
+            LW.append(w[i])
+        kd = KDTree(len(LQ))
+        for i, q in enumerate(LQ):
+            kd.insert(V(q), i)
+        kd.balance()
+
+
+def point_clear(p, r, colliders):
+    """p pushed out of the head mesh, the ears, both torsos (r + 0.02), the body proxy (r + 0.025) and the
+    skull table"""
     head = colliders["head"]
-    y0 = p[1]
     for _ in range(6):
         moved = False
-        q, hit = head.push(p, (th if th is not None else r) + CLEAR + 0.005)
+        q, hit = head.push(p, r + CLEAR + 0.004)
         if hit:
             p, moved = q, True
         for tc in colliders["torsos"]:
-            q, hit = tc.push(p, r + 0.012)
+            q, hit = tc.push(p, r + 0.02)
             if hit:
                 p, moved = q, True
         d = float(body_sdf(p)[0])
-        need = r + 0.014
+        need = r + 0.025
         if d < need:
             e = 0.004
             gg = unit(np.array([body_sdf(p + [e, 0, 0])[0] - body_sdf(p - [e, 0, 0])[0],
                                 body_sdf(p + [0, e, 0])[0] - body_sdf(p - [0, e, 0])[0],
                                 body_sdf(p + [0, 0, e])[0] - body_sdf(p - [0, 0, e])[0]]))
             p, moved = p + gg * (need - d), True
-        q, hit = ear_push(p, r)
-        if hit:
-            p, moved = q, True
-        # the skull table too (the runtime fit is made on it): hanging hair near the head keeps r + 0.02 off it
+        for lo, hi in EARS:
+            lo2, hi2 = lo - r, hi + r
+            if np.all(p > lo2) and np.all(p < hi2):
+                p = p.copy()
+                if p[2] < (lo2[2] + hi2[2]) * 0.5:
+                    p[2] = lo2[2]
+                else:
+                    p[2] = hi2[2]
+                moved = True
         th_, az_ = SK.angles(p - C)
         if th_ < SK.th[-1] - 0.02:
             hh = SK.height(p)
-            need = (th if th is not None else r) + 0.026
-            if hh < need:
-                p, moved = p + unit(p - C) * (need - hh), True
-        if level and moved:
-            dy = p[1] - y0
-            if dy > 0.002:  # pushed up by a ledge (shoulder top): go behind it instead
-                p = p + np.array([0, 0, 1.0]) * dy * 0.8 + np.array([math.copysign(dy * 0.15, p[0]), 0, 0])
-            p[1] = y0
+            if hh < r + CLEAR + 0.004:
+                p, moved = p + unit(p - C) * (r + CLEAR + 0.004 - hh), True
         if not moved:
             break
     return p
 
 
-def drape(strands, colliders, spec, label=""):
-    """the braids' final guides. Scalp parts: where two cross, the one that has come further from its root
-    is lifted over the other (KD tree contacts, radial only), braids side by side are pushed apart over
-    the scalp. Hanging parts: from where each leaves the head it bends to vertical and falls, sliding out
-    / back past the head, the neck, the shoulders and the back (both torsos and the body proxy: it never
-    returns inward under a bulge it passed, as a stiff braid would not), then braid-braid contacts push
-    the hanging braids apart sideways and back (the one nearer the body stays), and the guides are smoothed"""
+def outward(p):
+    o = np.array([p[0], 0.0, p[2] - 0.03])
+    return unit(o)
+
+
+def hang_all(braids, spec, colliders):
+    """each braid's hanging part as a gravity rope from where it leaves the scalp: its direction bends toward
+    straight down (stiff braid: about 0.15 radius), it rests on the head, neck, shoulders and back 0.02-0.03 off
+    them, and on the braids laid before it (inner rings first): a later braid only moves outward from the
+    body over an earlier one, sideways at most half a radius; then the curve is smoothed"""
+    order = sorted(braids, key=lambda b: (-b.ring, b.idx))
+    HP, HR = [], []
+    kd = None
+    ds = 0.03
+    for b in order:
+        r = b.r
+        p = b.sp[-1].copy()
+        t = unit(b.sp[-1] - b.sp[-3])
+        pts = [p.copy()]
+        L = 0.0
+        Lmax = 1.6 * (p[1] - b.y_end) + 0.3
+        rmax = max(HR) if HR else r
+        gdir = unit(DOWN + np.array([0, 0, -0.25 if b.cls == "front" else spec.grav_back]))
+        while p[1] > b.y_end and L < Lmax:
+            t = unit(t + gdir * 0.2)
+            q = p + t * ds
+            for _it in range(4):
+                q = point_clear(q, r, colliders)
+                if kd is not None:
+                    push = np.zeros(3)
+                    side_used = 0.0
+                    for (_co, j, _d) in kd.find_range(V(q), float(r + rmax)):
+                        pj = HP[j]
+                        need = (r + HR[j]) * 0.85
+                        if abs(q[1] - pj[1]) > need:
+                            continue
+                        dv = q - pj
+                        dv[1] = 0
+                        ll = float(np.linalg.norm(dv))
+                        if ll >= need:
+                            continue
+                        o = outward(q)
+                        dn = dv / ll if ll > 1e-6 else o
+                        rad = float(np.dot(dn, o))
+                        tang = dn - o * rad
+                        push += o * (need - ll) * max(rad, 0.45) * 0.75
+                        tn = float(np.linalg.norm(tang))
+                        if tn > 1e-6 and side_used < 0.5 * r:
+                            st = min((need - ll) * tn, 0.5 * r - side_used)
+                            push += tang / tn * st
+                            side_used += st
+                    q = q + push
+                q = p + unit(q - p) * ds
+            t = unit(q - p)
+            p = q
+            pts.append(p.copy())
+            L += ds
+        H = np.array(pts)
+        for _ in range(10):
+            H[2:-1] = H[2:-1] * 0.5 + (H[1:-2] + H[3:]) * 0.25
+            H[-1] = H[-1] * 0.5 + H[-2] * 0.5 + (H[-1] - H[-2]) * 0.5
+            for i in range(2, len(H)):
+                H[i] = point_clear(H[i], r, colliders)
+        b.hang = H
+        for q in H[1:]:
+            HP.append(q)
+            HR.append(r)
+        kd = KDTree(len(HP))
+        for i, q in enumerate(HP):
+            kd.insert(V(q), i)
+        kd.balance()
+
+
+def build_braids(spec, colliders):
+    rng = np.random.default_rng(spec.seed)
     t0 = time.time()
-    # --- scalp layering
-    for it in range(10):
-        X = np.concatenate([s.sp for s in strands])
-        own = np.concatenate([np.full(len(s.sp), i) for i, s in enumerate(strands)])
-        loc = np.concatenate([np.arange(len(s.sp)) for s in strands])
-        S = np.concatenate([s.s_al for s in strands])
-        TH = np.concatenate([s.th for s in strands])
-        R = np.concatenate([np.full(len(s.sp), s.r) for s in strands])
-        kd = KDTree(len(X))
-        for i, p in enumerate(X):
-            kd.insert(V(p), i)
-        kd.balance()
-        push = np.zeros_like(X)
-        for i in range(len(X)):
-            if loc[i] < 2:
-                continue
-            for (_co, j, dist) in kd.find_range(V(X[i]), float(R.max()) * 2.1):
-                if own[j] == own[i]:
-                    continue
-                rd = unit(X[i] - C)
-                dv = X[i] - X[j]
-                h = float(np.dot(dv, rd))
-                lat = dv - rd * h
-                ll = float(np.linalg.norm(lat))
-                need_l = (R[i] + R[j]) * 0.92
-                if ll > need_l:
-                    continue
-                need = (TH[i] + TH[j]) * 0.95
-                if h > need:
-                    continue
-                if S[i] > S[j] + 0.03 and ll < 0.45 * need_l:
-                    # crossing nearly on top: the one that has come further rides over
-                    push[i] += rd * (need - h) * 0.5
-                elif ll > 1e-6:
-                    # side by side: spread over the scalp
-                    push[i] += lat / ll * (need_l - ll) * 0.35
-        k = 0
-        for s in strands:
-            n = len(s.sp)
-            sp = s.sp + push[k:k + n]
-            # at most about half a braid of extra lift over the combed height, never under it
-            for i in range(2, n):
-                hmin = CLEAR + 0.005 + s.th[i] + lift_of(spec, s.s_al[i])
-                q, _ = on_scalp(sp[i], 0)
-                hh = float(np.dot(sp[i] - q, unit(sp[i] - C)))
-                hh2 = min(max(hh, hmin), hmin + 0.9 * s.r)
-                if abs(hh2 - hh) > 1e-6:
-                    sp[i] = sp[i] + unit(sp[i] - C) * (hh2 - hh)
-            s.sp = sp
-            k += n
-    for s in strands:
-        # smooth the heights along the braid (no kinks where it rides over another) and re-clear the head
-        sp = s.sp.copy()
-        for _ in range(4):
-            sp[2:-1] = sp[2:-1] * 0.5 + (sp[1:-2] + sp[3:]) * 0.25
-        for i in range(2, len(sp)):
-            sp[i] = point_clear(sp[i], s.r, colliders, th=s.th[i])
-        s.sp = sp
-    # --- hang
-    ds = spec.hang_ds
-    for s in strands:
-        p = s.sp[-1].copy()
-        d = unit(s.sp[-1] - s.sp[-2])
-        hang = [p.copy()]
-        n_tr = 0
-        while d[1] > -0.985 and n_tr < 14:
-            d = unit(d + np.array([0, -1.0, 0]) * 0.3)
-            p = point_clear(p + d * ds, s.r, colliders)
-            hang.append(p.copy())
-            n_tr += 1
-        ph, fr, amp, ph2 = s.sway
-        y_top = p[1]
-        while p[1] > s.y_end:
-            t = (y_top - p[1])
-            q = p + np.array([0, -ds, 0])
-            q[0] += amp * ds * 1.0 * math.cos(ph + t * fr) * min(1.0, t * 2)
-            q[2] += amp * ds * 0.5 * math.cos(ph2 + t * fr * 0.7) * min(1.0, t * 2)
-            p = point_clear(q, s.r, colliders, level=True)
-            hang.append(p.copy())
-        s.hang = np.array(hang)
-        s.n_tr = n_tr
-    # --- hanging braid-braid contacts (sideways / back only)
-    for it in range(12):
-        X = np.concatenate([s.hang[1:] for s in strands])
-        own = np.concatenate([np.full(len(s.hang) - 1, i) for i, s in enumerate(strands)])
-        R = np.concatenate([np.full(len(s.hang) - 1, s.r) for s in strands])
-        kd = KDTree(len(X))
-        for i, p in enumerate(X):
-            kd.insert(V(p), i)
-        kd.balance()
-        push = np.zeros_like(X)
-        axis_d = np.linalg.norm((X - np.array([0, 0, 0.03]))[:, [0, 2]], axis=1)
-        for i in range(len(X)):
-            for (_co, j, dist) in kd.find_range(V(X[i]), float(R.max()) * 2.0):
-                if own[j] == own[i]:
-                    continue
-                need = (R[i] + R[j]) * 0.93
-                dv = X[i] - X[j]
-                dv[1] = 0
-                ll = float(np.linalg.norm(dv))
-                if ll >= need:
-                    continue
-                if ll < 1e-6:
-                    dv, ll = np.array([0, 0, 1.0]), 1.0
-                w = 0.7 if axis_d[i] >= axis_d[j] else 0.3  # the outer one gives way
-                push[i] += dv / ll * (need - ll) * w
-        k = 0
-        for s in strands:
-            n = len(s.hang) - 1
-            h = s.hang.copy()
-            # a push spreads along the braid (it is stiff): smooth the push, fade it in from the joint
-            pu = push[k:k + n]
-            for _ in range(30):
-                pu[1:-1] = pu[1:-1] * 0.5 + (pu[:-2] + pu[2:]) * 0.25
-                pu[-1] = pu[-2]
-            fade = np.clip(np.arange(1, n + 1) / 6.0, 0, 1)[:, None]
-            h[1:] = h[1:] + pu * fade
-            for i in range(1, len(h)):
-                h[i] = point_clear(h[i], s.r, colliders, level=i > s.n_tr)
-            s.hang = h
-            k += n
-    for s in strands:
-        h = s.hang
-        for _ in range(14):
-            h[1:-1] = h[1:-1] * 0.5 + (h[:-2] + h[2:]) * 0.25
-        for i in range(1, len(h)):
-            h[i] = point_clear(h[i], s.r, colliders)
-        s.P = np.concatenate([s.sp, h[1:]])
-    print(f"  drape {label}: {len(strands)} braids, {time.time() - t0:.1f}s")
+    roots = ring_layout(spec.box, inset=0.013 + 0.4 * spec.r, seed=spec.seed)
+    braids = []
+    for i, (p, k, tg) in enumerate(roots):
+        b = Braid()
+        b.idx, b.ring = i, k
+        b.r = spec.r * rng.uniform(0.93, 1.07)
+        b.cls = classify(p, b.r)
+        b.root = p
+        b.y_end = rng.uniform(min(spec.length_y), max(spec.length_y))
+        b.sp = trace(p, spec, b.cls, b.r)
+        braids.append(b)
+    n_front = sum(b.cls == "front" for b in braids)
+    print(f"  {spec.key}: {len(braids)} braids in {max(b.ring for b in braids) + 1} rings, {n_front} in front of "
+          f"the ears ({time.time() - t0:.1f}s)")
+    stack_scalp(braids, spec)
+    for b in braids:
+        b.sp = np.array([point_clear(q, b.r * spec.flatten, colliders) if i > 1 else q for i, q in enumerate(b.sp)])
+    print(f"  scalp stacking {time.time() - t0:.1f}s")
+    hang_all(braids, spec, colliders)
+    for b in braids:
+        b.P = np.concatenate([b.sp, b.hang[1:]])
+        b.n_scalp = len(b.sp)
+    print(f"  hang {time.time() - t0:.1f}s")
+    return braids
 
 
 # ------------------------------------------------------------------------------------------- tube sweep
-def adaptive(P, ds_min, ds_max, ang=math.radians(7)):
-    """resample a polyline: dense where it bends, sparse where it runs straight"""
-    P = resample(P, ds_min * 0.5)
-    keep = [0]
-    acc_a, acc_s = 0.0, 0.0
-    for i in range(1, len(P) - 1):
-        a = P[i] - P[i - 1]
-        b = P[i + 1] - P[i]
-        cosv = np.dot(a, b) / max(1e-12, np.linalg.norm(a) * np.linalg.norm(b))
-        acc_a += math.acos(max(-1, min(1, cosv)))
-        acc_s += np.linalg.norm(a)
-        if (acc_a > ang and acc_s >= ds_min) or acc_s >= ds_max:
-            keep.append(i)
-            acc_a, acc_s = 0.0, 0.0
-    keep.append(len(P) - 1)
-    return P[keep]
+def u_of(a):
+    """single wrap, mirrored at the back: the front half (a in -pi/2..pi/2 from the outward axis) maps the
+    plait strip across once (left edge u 0 .. right edge u 1), the back half mirrors it"""
+    a = (a + math.pi / 2) % TAU - math.pi / 2
+    return (a + math.pi / 2) / math.pi if a <= math.pi / 2 else 1 - (a - math.pi / 2) / math.pi
 
 
-def sweep_tube(piece, pts, ups, radius_fn, sides, flatten, strip, v_tile, shade_fn, v0=0.0, cap_tip=True,
-               cap_root=False, nrm0=None):
-    """a flattened tube along pts (the flat face against `ups`, the scalp normal near the root), the plait
-    strip wrapped twice round (seam vertices at 0 and half way), v by arc length / v_tile"""
-    n = len(pts)
-    u0, u1 = strip
-    tan = np.zeros_like(pts)
-    tan[0] = pts[1] - pts[0]
-    tan[-1] = pts[-1] - pts[-2]
-    tan[1:-1] = pts[2:] - pts[:-2]
-    tan = unit(tan)
-    # frame: up projected off the tangent, parallel-transported where no up is given
-    frames = []
-    nrm = None if nrm0 is None else np.asarray(nrm0, dtype=np.float64)
+def braid_rings(spec, b):
+    """ring samples (arc lengths) of the whole braid and the indices where it splits into pieces"""
+    P = b.P
+    S = arclen(P)
+    L = S[-1]
+    s_leave = S[b.n_scalp - 1]
+    s_mid = s_leave + (L - s_leave) * 0.48
+    if spec.lobes:
+        per = math.pi * b.r  # plait period (one lobe per side) = texture v repeat / 2
+        step = per / 4
+        ss = list(np.arange(0, L, step)) + [L]
+        ss = np.array(ss)
+        cut = [int(np.argmin(np.abs(ss - s_leave))), int(np.argmin(np.abs(ss - s_mid)))]
+        ss[cut[0]] = s_leave
+        ss[cut[1]] = s_mid
+    else:
+        a = adaptive_s(P, 0, s_leave, 0.045, 0.13, ang=math.radians(10))
+        bb = adaptive_s(P, s_leave, s_mid, 0.05, 0.42, ang=math.radians(14))
+        c = adaptive_s(P, s_mid, L, 0.05, 0.42, ang=math.radians(14))
+        ss = np.concatenate([a, bb[1:], c[1:]])
+        cut = [len(a) - 1, len(a) + len(bb) - 2]
+    return ss, cut, L
+
+
+def emit_braid(spec, b, pieces_by_part, strip, base_shade=1.0):
+    """sweeps braid b into the pieces (scalp part, upper hang, lower hang), one flattened tube: flat side against
+    the scalp / body, plait lobes in the silhouette (thick braids), u once round (mirrored), v by arc length
+    (v repeat = 2 plait periods), a closed taper at the root that dips to the scalp, a sealed tapered tip"""
+    ss, cut, L = braid_rings(spec, b)
+    P = b.P
+    S = arclen(P)
+    C_ = at_s(P, S, ss)
+    n = len(ss)
+    T = np.zeros_like(C_)
+    T[0] = C_[1] - C_[0]
+    T[-1] = C_[-1] - C_[-2]
+    T[1:-1] = C_[2:] - C_[:-2]
+    T = unit(T)
+    s_leave = ss[cut[0]]
+    per = math.pi * b.r
+    v_tile = 2 * per
+    sides = spec.sides
+    ring_data = []
     for i in range(n):
-        t = tan[i]
-        if ups[i] is not None:
-            u = np.asarray(ups[i]) - t * np.dot(ups[i], t)
-            if np.linalg.norm(u) > 1e-6:
-                u = unit(u)
-                if nrm is not None:
-                    # blend toward transported to avoid flips
-                    tr = nrm - t * np.dot(nrm, t)
-                    tr = unit(tr)
-                    u = unit(u * 0.7 + tr * 0.3)
-                nrm = u
-        if nrm is None:
-            ref = np.array([0, 0, 1.0]) if abs(t[2]) < 0.9 else np.array([1.0, 0, 0])
-            nrm = unit(np.cross(np.cross(t, ref), t))
+        s = ss[i]
+        if s <= s_leave + 1e-9:
+            th, az = SK.angles(C_[i] - C)
+            U = SK.normal(min(th, SK.th[-1]), az)
         else:
-            nrm = unit(nrm - t * np.dot(nrm, t))
-        frames.append((nrm.copy(), unit(np.cross(t, nrm))))
-    acc = v0
-    rings = []
-    half = sides // 2
-    for i in range(n):
-        if i > 0:
-            acc += float(np.linalg.norm(pts[i] - pts[i - 1]))
-        v = acc / v_tile
-        nr, bi = frames[i]
-        rad, fl = radius_fn(i / (n - 1), i)
-        sh = shade_fn(i / (n - 1), i)
-        ring = []
-        for k in range(sides + 2):
-            # k = 0..half: first copy (u 0..1), k = half+1 .. sides+1: second copy
-            if k <= half:
-                kk, uu = k, k / half
-            else:
-                kk, uu = k - 1, (k - 1 - half) / half
-            a = TAU * kk / sides + math.pi / 2  # seams at the tube's sides (the flat face's edges)
-            dvec = nr * math.cos(a) * fl + bi * math.sin(a)
-            dn = unit(nr * math.cos(a) / max(0.3, fl) + bi * math.sin(a))
-            vid = piece.vert(pts[i] + dvec * rad, dn, (u0 + (u1 - u0) * uu, v), sh(dn) if callable(sh) else sh)
-            ring.append(vid)
-        rings.append(ring)
-    for i in range(n - 1):
-        r0, r1 = rings[i], rings[i + 1]
-        for k in range(sides + 1):
-            if k == half:
-                continue  # the seam (duplicated vertices)
-            piece.quad(r0[k], r0[k + 1], r1[k + 1], r1[k])  # counter-clockwise from outside
-    if cap_tip:
-        tip = pts[-1] + tan[-1] * radius_fn(1.0, n - 1)[0] * 0.5
-        sh = shade_fn(1.0, n - 1)
-        c = piece.vert(tip, tan[-1], ((u0 + u1) / 2, acc / v_tile), sh(tan[-1]) if callable(sh) else sh)
-        r = rings[-1]
-        for k in range(sides + 1):
-            if k == half:
-                continue
-            piece.tri(r[k], r[k + 1], c)
-    if cap_root:
-        root = pts[0] - tan[0] * radius_fn(0.0, 0)[0] * 0.35
-        sh = shade_fn(0.0, 0)
-        c = piece.vert(root, -tan[0], ((u0 + u1) / 2, v0 / v_tile), sh(-tan[0]) if callable(sh) else sh)
-        r = rings[0]
-        for k in range(sides + 1):
-            if k == half:
-                continue
-            piece.tri(r[k + 1], r[k], c)
-    piece._last_nrm = frames[-1][0]
-    return rings
-
-
-# ------------------------------------------------------------------------------------------- pieces
-def sector_of(p, G):
-    a = math.atan2(p[0], p[2])  # 0 at the back, + toward the right
-    u = (a + math.pi) / TAU  # 0 = left front .. 0.5 back .. 1 right front
-    return min(G - 1, int(u * G))
-
-
-def build_braids(spec, colliders, coll):
-    rng = np.random.default_rng(spec.seed)
-    t0 = time.time()
-    roots = ring_layout(spec.box, inset=0.04 + spec.r, seed=spec.seed)
-    # (no braids in front of the ears: their hair is too short to plait over the ear; the cap covers it)
-    keep = []
-    for (p, k, t) in roots:
-        da = da_of(p)[0]
-        if 1.15 < da < 2.15 and p[1] < 0.12 + 1.6 * spec.r:
+            th, az = SK.angles(C_[i] - C)
+            Us = SK.normal(min(th, SK.th[-1]), az)
+            k = float(smooth(s_leave, s_leave + 0.18, s))
+            U = unit(Us * (1 - k) + outward(C_[i]) * k)
+        nr = unit(U - T[i] * np.dot(U, T[i]))
+        bi = unit(np.cross(T[i], nr))
+        w, fl = profile(spec, s, b.r, L)
+        if spec.lobes:
+            psi = math.pi * s / per
+            amp = spec.amp * float(smooth(0.02, spec.root_len, s))
+            eL = 1 - amp + amp * abs(math.sin(psi))
+            eR = 1 - amp + amp * abs(math.cos(psi))
+            w = w / (1 - 0.36 * spec.amp)
+        else:
+            eL = eR = 1.0
+        verts = []
+        for k in range(sides):
+            a = -math.pi / 2 + TAU * k / sides
+            sa, ca = math.sin(a), math.cos(a)
+            E = eL * (1 - sa) / 2 + eR * (1 + sa) / 2
+            pos = C_[i] + nr * ca * w * fl + bi * sa * w * E
+            nn = unit(nr * ca / fl + bi * sa)
+            uu = u_of(a)
+            uu = strip[0] + 0.006 + (strip[1] - strip[0] - 0.012) * uu
+            sh = base_shade * (0.78 + 0.22 * (ca * 0.5 + 0.5))
+            verts.append((pos, nn, (uu, s / v_tile), (sh, sh, sh)))
+        ring_data.append(verts)
+    parts = [(0, cut[0]), (cut[0], cut[1]), (cut[1], n - 1)]
+    for pi_, (i0, i1) in enumerate(parts):
+        piece = pieces_by_part[pi_]
+        if piece is None or i1 <= i0:
             continue
-        keep.append((p, k, t))
-    roots = keep
-    print(f"  {spec.key}: {len(roots)} roots in {max(k for _, k, _ in roots) + 1} rings ({time.time() - t0:.1f}s)")
-    strands = [Strand(i, p, k, spec, rng) for i, (p, k, t) in enumerate(roots)]
-    drape(strands, colliders, spec, label=spec.key)
-    # a braid whose path over the scalp would run across an ear is left out (the ears stay visible)
-    keep = []
-    for s in strands:
-        bad = False
-        for lo, hi in EARS:
-            m = s.r * 0.6
-            if np.any(np.all((s.P[:s.n_scalp] > lo - m) & (s.P[:s.n_scalp] < hi + m), axis=1)):
-                bad = True
-        if not bad:
-            keep.append(s)
-    if len(keep) < len(strands):
-        print(f"  {spec.key}: {len(strands) - len(keep)} braids over the ears left out")
-    strands = keep
-    return strands
-
-
-def make_bases(spec, strands):
-    """HairBase: the box under every braid's root, the hair of the box gathered toward the root (a trapezoid
-    lying on the scalp, wide at the box's upstream edge, braid-wide at the root, a short plait start: the
-    cornrow row strip); the gaps between them are the partings"""
-    piece = hl.Piece("HairBase", "cornrow", material="Fabric", castShadow=False)
-    box = spec.box
-    for s in strands:
-        root = s.P[0]
-        _q, n = on_scalp(root, 0)
-        d = s.P[min(3, len(s.P) - 1)] - root
-        d = unit(d - n * np.dot(d, n))
-        side = unit(np.cross(n, d))
-        s0, s1 = -0.5 * box * 0.84, 0.03 + box * 0.12
-        rows, cols = 4, 3
         ids = []
-        knot = 2 * s.r * 0.6
-        for i in range(rows + 1):
-            t = i / rows
-            sa = s0 + (s1 - s0) * t
-            w = max(knot, box * 0.82 * (1 - 0.75 * t ** 2.2))
+        for i in range(i0, i1 + 1):
+            ids.append([piece.vert(*vd) for vd in ring_data[i]])
+        for i in range(len(ids) - 1):
+            r0, r1 = ids[i], ids[i + 1]
+            for k in range(sides):
+                k2 = (k + 1) % sides
+                piece.quad(r0[k], r0[k2], r1[k2], r1[k])
+        if pi_ == 0:
+            # root: a closed taper dipping to the scalp
+            w0 = profile(spec, 0.0, b.r, L)[0]
+            c0 = C_[0] - T[0] * w0 * 0.9
+            th, az = SK.angles(c0 - C)
+            c0 = SK.point(th, az, CLEAR + 0.004)
+            sh = 0.7 * base_shade
+            ci = piece.vert(c0, -T[0], ((strip[0] + strip[1]) / 2, -w0 / v_tile), (sh, sh, sh))
+            for k in range(sides):
+                piece.tri(ids[0][(k + 1) % sides], ids[0][k], ci)
+        if pi_ == 2:
+            we = profile(spec, L, b.r, L)[0]
+            ce = C_[-1] + T[-1] * we * 0.7
+            sh = base_shade
+            ci = piece.vert(ce, T[-1], ((strip[0] + strip[1]) / 2, (L + we) / v_tile), (sh, sh, sh))
+            for k in range(sides):
+                piece.tri(ids[-1][k], ids[-1][(k + 1) % sides], ci)
+    return C_[cut[0]], C_[cut[1]], C_[-1]
+
+
+def make_pads(spec, braids):
+    """HairBase: the box parting under every braid: a square-ish patch of short hair (the shared `short` tile, its
+    strands running toward the braid) lying flat at 0.025 on the scalp round the root, darker at its edges; the
+    skin lines between the patches (the low-density cap) are the partings. Clipped to the hairline."""
+    piece = hl.Piece("HairBase", "cornrow", material="Fabric", castShadow=False)
+    rng = np.random.default_rng(spec.seed + 7)
+    size = spec.box * spec.pad
+    m = 3
+    for b in braids:
+        q0, n0 = on_scalp(b.root, 0)
+        if ear_dist(q0) < EAR_CLEAR + 0.01:
+            continue
+        d = b.sp[min(4, len(b.sp) - 1)] - b.sp[0]
+        d = unit(d - n0 * np.dot(d, n0))
+        side = unit(np.cross(n0, d))
+        ctr = q0 - d * size * 0.22
+        patch = int(rng.integers(0, 4))
+        flip = bool(rng.integers(0, 2))
+        ids = []
+        for i in range(m):
             row = []
-            for j in range(cols + 1):
-                c = j / cols - 0.5
-                p = root + d * sa + side * c * w
-                p, nn = on_scalp(p, CLEAR + 0.0005)
-                occ = 1.0 - 0.3 * t - 0.15 * (2 * abs(c)) ** 2
-                row.append(piece.vert(p, nn, (ROW[0] + (ROW[1] - ROW[0]) * (j / cols), (sa - s0) / (box * 1.4)),
-                                      (occ, occ, occ)))
+            for j in range(m):
+                a = (i / (m - 1) - 0.5) * size  # along the flow (toward the root = +)
+                c = (j / (m - 1) - 0.5) * size
+                p = ctr + d * a + side * c
+                # keep inside the hairline: slide toward the root
+                for _ in range(8):
+                    if hair_inside(p)[0] > 0.004 and ear_dist(p) > EAR_CLEAR:
+                        break
+                    p = p + (q0 - p) * 0.3
+                pp, nn = on_scalp(p, CLEAR + 0.0012)
+                edge = max(abs(i / (m - 1) - 0.5), abs(j / (m - 1) - 0.5)) * 2
+                sh = 0.8 - 0.12 * edge
+                uu = PAD[0] + 0.003 + (PAD[1] - PAD[0] - 0.006) * (1 - j / (m - 1) if flip else j / (m - 1))
+                vv = (patch + 0.01 + 0.98 * i / (m - 1)) / 4
+                row.append(piece.vert(pp, nn, (uu, vv), (sh, sh, sh)))
             ids.append(row)
-        for i in range(rows):
-            for j in range(cols):
-                a, b, c_, e = ids[i][j], ids[i][j + 1], ids[i + 1][j + 1], ids[i + 1][j]
-                # counter-clockwise seen from outside (normal = n): a(left,up) e(left,down) c(right,down) b
-                piece.quad(a, e, c_, b) if np.dot(np.cross(np.subtract(piece.P[e], piece.P[a]),
-                                                            np.subtract(piece.P[b], piece.P[a])), n) > 0 \
-                    else piece.quad(a, b, c_, e)
+        for i in range(m - 1):
+            for j in range(m - 1):
+                piece.quad(ids[i][j], ids[i][j + 1], ids[i + 1][j + 1], ids[i + 1][j])
     return piece
 
 
-def guide_curves(strands, coll, name):
+def guide_curves(braids, coll, name, attr="P"):
     cu = bpy.data.curves.new(name, "CURVE")
     cu.dimensions = "3D"
-    for s in strands:
+    for b in braids:
+        P = getattr(b, attr)
         sp = cu.splines.new("POLY")
-        sp.points.add(len(s.P) - 1)
-        for i, p in enumerate(s.P):
+        sp.points.add(len(P) - 1)
+        for i, p in enumerate(P):
             sp.points[i].co = (p[0], p[1], p[2], 1.0)
-            sp.points[i].radius = s.r * 20
+            sp.points[i].radius = b.r * 20
     ob = bpy.data.objects.new(name, cu)
     cu.bevel_depth = 0.0
     coll.objects.link(ob)
     return ob
 
 
-def make_pieces(spec, strands, colliders):
-    """HairTop (every scalp part) + per sector a swing chain HairBraidNN (upper hang) / HairBraidNNb (lower)"""
+def make_pieces(spec, braids):
+    """HairTop (every scalp part) + HairBase (box partings) + per azimuth sector a swing chain BraidNN:
+    HairBraidNN (upper hang) / HairBraidNNb (lower hang)"""
     G = spec.groups
     top = hl.Piece("HairTop", "braid", material="Fabric", castShadow=True)
-    segs = {}
-    joint = {}
-    v_tile = 6.4 * spec.r  # square texels: the strip spans half the circumference (pi r) over 512 px
-    # chains: equal-count sectors of the hanging azimuths (left front .. back .. right front)
-    azs = np.array([math.atan2(s.P[s.n_scalp - 1][0], s.P[s.n_scalp - 1][2]) for s in strands])
-    order = np.argsort(azs)
+    # chains: equal-count sectors of the hanging parts' azimuth round the neck (left .. back .. right)
+    azs = np.array([math.atan2(np.mean(b.hang[:, 0]), np.mean(b.hang[:, 2]) - 0.03) for b in braids])
+    azs = np.where(azs < -math.pi / 2 - 0.6, azs + TAU, azs)  # (left front .. back .. right front, no wrap)
+    order = np.argsort(-azs)
     group_of = {}
-    for rank, si in enumerate(order):
-        group_of[int(si)] = min(G - 1, rank * G // len(strands))
-    for si, s in enumerate(strands):
-        n_sc = s.n_scalp
-        P = s.P
-        # split: scalp part | upper hang | lower hang
-        hang = P[n_sc - 1:]
-        hs = np.concatenate([[0], np.cumsum(np.linalg.norm(np.diff(hang, axis=0), axis=1))])
-        Lh = hs[-1]
-        mid = int(np.searchsorted(hs, Lh * 0.48))
-        mid = max(1, min(len(hang) - 2, mid))
-        parts = [("top", P[:n_sc]), ("s1", hang[: mid + 1]), ("s2", hang[mid:])]
-        g = group_of[si]
-        L_total = float(np.sum(np.linalg.norm(np.diff(P, axis=0), axis=1)))
-        acc = 0.0
-        r = s.r
-        flare = spec.root_flare
-        L_sc = float(np.sum(np.linalg.norm(np.diff(P[:n_sc], axis=0), axis=1)))
-        last_nrm = None
-        # (scalp normals for the flat face)
-        for pi_, (kind, pts) in enumerate(parts):
-            if len(pts) < 2:
-                continue
-            pts = adaptive(pts, spec.ds_top[0] if kind == "top" else 0.03, spec.ds_top[1] if kind == "top" else spec.ds_hang)
-            # (resampling cuts corners: keep the sampled centre line clear of the ears by the braid's radius)
-            for _ in range(2):
-                pts = np.array([ear_push(q, r * 1.6 + 0.006)[0] for q in pts])
-            seg_len = np.concatenate([[0], np.cumsum(np.linalg.norm(np.diff(pts, axis=0), axis=1))])
-            s_abs = acc + seg_len
-            ups = []
-            for p in pts:
-                if kind == "top":
-                    ups.append(on_scalp(p, 0)[1])
-                else:
-                    ups.append(None)
-            if kind != "top":
-                ups[0] = None
-
-            def radius_fn(t, i, s_abs=s_abs):
-                sa = s_abs[i]
-                # flared knot at the root, full, then a taper over the last 9%
-                across, thick = root_shape(spec, sa, r)
-                tip = 1.0 - 0.45 * float(smooth(L_total * 0.9, L_total, sa))
-                return across * tip, thick / across
-
-            def shade_fn(t, i, s_abs=s_abs, pts=pts, kind=kind):
-                return (1.0, 1.0, 1.0)
-
-            piece = top if kind == "top" else None
-            if piece is None:
-                name = f"HairBraid{g + 1:02d}" + ("" if kind == "s1" else "b")
-                piece = segs.get(name)
-                if piece is None:
-                    piece = hl.Piece(name, "braid", material="Fabric", castShadow=True)
-                    segs[name] = piece
-                    joint[name] = dict(piv=[], tip=[], g=g, seg=1 if kind == "s1" else 2)
-                joint[name]["piv"].append(pts[0])
-                joint[name]["tip"].append(pts[-1])
-            sweep_tube(piece, pts, ups, radius_fn, spec.sides, 1.0, PLAIT, v_tile, shade_fn, v0=acc / 1.0,
-                       cap_tip=(kind == "s2"), cap_root=(kind == "top"), nrm0=last_nrm)
-            last_nrm = piece._last_nrm
-            acc = s_abs[-1]
-    pieces = [top]
-    for name in sorted(segs):
-        p = segs[name]
-        j = joint[name]
-        piv = np.mean(j["piv"], axis=0)
-        tip = np.mean(j["tip"], axis=0)
-        parent = f"HairBraid{j['g'] + 1:02d}" if j["seg"] == 2 else None
-        p.meta["hairfx"] = {"kind": "swing", "chain": f"HairBraid{j['g'] + 1}", "seg": j["seg"], "parent": parent,
-                            "stiff": spec.stiff, "mass": spec.mass,
-                            "pivot": [round(float(x), 4) for x in piv], "tip": [round(float(x), 4) for x in tip]}
+    for rank, bi in enumerate(order):
+        group_of[int(bi)] = min(G - 1, rank * G // len(braids))
+    segs = {}
+    joints = {}
+    for bi, b in enumerate(braids):
+        g = group_of[bi]
+        n1, n2 = f"HairBraid{g + 1:02d}", f"HairBraid{g + 1:02d}b"
+        for nm in (n1, n2):
+            if nm not in segs:
+                segs[nm] = hl.Piece(nm, "braid", material="Fabric", castShadow=True)
+                joints[nm] = dict(piv=[], tip=[], g=g, seg=1 if nm == n1 else 2)
+        j0, j1, j2 = emit_braid(spec, b, [top, segs[n1], segs[n2]], PLAIT)
+        joints[n1]["piv"].append(j0)
+        joints[n1]["tip"].append(j1)
+        joints[n2]["piv"].append(j1)
+        joints[n2]["tip"].append(j2)
+    pieces = [top, make_pads(spec, braids)]
+    for nm in sorted(segs):
+        p = segs[nm]
+        j = joints[nm]
+        fx = {"kind": "swing", "chain": f"Braid{j['g'] + 1:02d}", "seg": j["seg"], "stiff": spec.stiff,
+              "mass": spec.mass if j["seg"] == 1 else round(spec.mass * 0.8, 3),
+              "pivot": [round(float(x), 4) for x in np.mean(j["piv"], axis=0)],
+              "tip": [round(float(x), 4) for x in np.mean(j["tip"], axis=0)]}
+        if j["seg"] == 2:
+            fx["parent"] = f"HairBraid{j['g'] + 1:02d}"
+        p.meta["hairfx"] = fx
         p.meta["length"] = "hang"
         p.meta["hideUnder"] = {"headgear": False, "hood": True}
         pieces.append(p)
     return pieces
-
 
 # ------------------------------------------------------------------------------------------- Blender passes
 def piece_object(piece, coll, name=None):
@@ -1042,13 +1045,15 @@ def bake_ao(pieces, extra, rays=6, dist=0.16, lo=0.5, seed=5):
 
 
 # ------------------------------------------------------------------------------------------- checks
-def clearance(pieces, head, fit=None, sample=3000):
+def clearance(pieces, head, fit=None, sample=10**9, ymin=None):
     """min distance of any vertex to the head surface and how many are inside it (optionally after a fit)"""
     mind, inside = 9.0, 0
     for p in pieces:
         P = np.asarray(p.P)
         if fit is not None:
             P = P * [fit["ax"], fit["ay"], fit["az"]] + [0, 0, fit["dz"]]
+        if ymin is not None:
+            P = P[P[:, 1] > ymin]
         for q in P[:: max(1, len(P) // sample)]:
             sd, _, _ = head.signed(q)
             if sd < 0:
@@ -1057,7 +1062,7 @@ def clearance(pieces, head, fit=None, sample=3000):
     return mind, inside
 
 
-def skull_height(pieces, skull, fit=None, sample=3000, ymin=-0.32):
+def skull_height(pieces, skull, fit=None, sample=10**9, ymin=-0.32):
     """min radial height above the skull table of the vertices over the scalp (y > ymin)"""
     m = 9.0
     for p in pieces:
@@ -1216,6 +1221,15 @@ def render_style(key, pieces, cap, outdir, samples, looks, title=None):
     for (head_name, tint_name, skin_name, views) in looks:
         tint = TINTS[tint_name]
         sc = render.Scene(res=(520, 620), samples=samples, focus=(0.0, -0.05, 0.02), dist=4.9)
+        # (speed: adaptive sampling, fewer diffuse / glossy bounces; the alpha stack keeps its 64 bounces)
+        cy = sc.sc.cycles
+        cy.use_adaptive_sampling = True
+        cy.adaptive_threshold = 0.03
+        cy.max_bounces = 4
+        cy.diffuse_bounces = 2
+        cy.glossy_bounces = 1
+        cy.transmission_bounces = 2
+        sc.sc.render.threads_mode = "AUTO"
         skin = SKINS[skin_name] or render.SKIN
         render.add_obj(sc, os.path.join(REF, f"head_{head_name}.obj"), tint=skin)
         for nm, md in render.load_obj(os.path.join(REF, f"torso_{head_name}.obj")).items():
@@ -1238,6 +1252,8 @@ def render_style(key, pieces, cap, outdir, samples, looks, title=None):
             path = os.path.join(outdir, f"{key}_{head_name}_{tint_name}_{v}.png")
             if v == "close":
                 sc.render(path, view=(14, 6, 1.0), dist=2.3, focus=(0, 0.25, -0.2))
+            elif v == "sideclose":
+                sc.render(path, view=(70, 10, 1.0), dist=2.4, focus=(0, 0.25, -0.1))
             elif v == "top34":
                 sc.render(path, view="top34", dist=3.6, focus=(0, 0.15, 0.02))
             else:
@@ -1261,8 +1277,7 @@ def colliders_for(head="m"):
 
 
 # ------------------------------------------------------------------------------------------- cornrows
-CORN = dict(n=10, axis=1.5, tan_max=0.205, width=0.07, ridge=0.021, v_tile=0.15, across=7, tail=(0.12, 0.2),
-            tail_r=0.021, seed=31)
+CORN = dict(n=10, axis=1.5, tan_max=0.205, width=0.07, ridge=0.021, v_tile=0.15, across=7, seed=31)
 
 
 def surface_on_ray(o, d, t_hi=1.2):
@@ -1312,121 +1327,115 @@ def row_path(tpsi, spec, rng):
     return resample(pts[a: b + 1], 0.012)
 
 
-def build_cornrows(spec, colliders, coll):
-    rng = np.random.default_rng(spec["seed"])
+def build_cornrows(spec, colliders):
+    """rows as arched ribbons on the scalp (texture "cornrow" row strip, alpha 0 at the row edges: the partings'
+    skin shows between them). Each row starts at the hairline as a thin feed-in point (35 % width growing to full
+    over 0.07, the v phase starting between two lobes) with a few crisp baby hairs laid over its start, and is
+    tucked at the nape: it narrows to 30 % just above the nape hairline, no tails."""
     n = spec["n"]
     top = hl.Piece("HairTop", "cornrow", material="Fabric", castShadow=True)
-    tails = {"HairBraid01": [], "HairBraid02": []}
     guides = []
     rows = []
     for i in range(n):
         tp = -spec["tan_max"] + 2 * spec["tan_max"] * i / (n - 1)
-        rows.append((tp, row_path(tp, spec, rng)))
+        rows.append((tp, row_path(tp, spec, None)))
     A = spec["axis"]
+    k = spec["across"]
     for i, (tp, P) in enumerate(rows):
-        L = float(np.sum(np.linalg.norm(np.diff(P, axis=0), axis=1)))
-        s_al = np.concatenate([[0], np.cumsum(np.linalg.norm(np.diff(P, axis=0), axis=1))])
-        Pc = adaptive(P, 0.016, 0.03, ang=math.radians(5))
-        sc = np.concatenate([[0], np.cumsum(np.linalg.norm(np.diff(Pc, axis=0), axis=1))])
+        S = arclen(P)
+        L = S[-1]
+        ss = adaptive_s(P, 0, L, 0.014, 0.03, ang=math.radians(5))
+        Pc = at_s(P, S, ss)
         guides.append(Pc)
         ids = []
-        k = spec["across"]
+        v0 = 0.125 * spec["v_tile"]  # the row starts between two lobes
         for j, p in enumerate(Pc):
-            s = sc[j]
+            s = ss[j]
             q, nn = on_scalp(p, 0)
             t = Pc[min(j + 1, len(Pc) - 1)] - Pc[max(j - 1, 0)]
             t = unit(t - nn * np.dot(t, nn))
             side = unit(np.cross(t, nn))
-            # width: narrow at the hairline start, full, narrowing where the rows converge toward the nape
             w = spec["width"] * min(1.0, (p[1] + A) / (0.32 + A)) ** 1.5
-            w *= 0.4 + 0.6 * float(smooth(0.0, 0.08, s))
-            w *= 1.0 - 0.35 * float(smooth(L - 0.08, L, s))
+            w *= 0.35 + 0.65 * float(smooth(0.0, 0.07, s))
+            w *= 1.0 - 0.7 * float(smooth(L - 0.09, L, s))
             ridge = spec["ridge"] * (w / spec["width"])
             row = []
             for c in range(k):
                 cc = c / (k - 1) * 2 - 1
                 arch = (1 - cc * cc) ** 0.6
-                pp, n2 = on_scalp(q + side * cc * w * 0.5, CLEAR + 0.001 + ridge * arch)
+                pp, n2 = on_scalp(q + side * cc * w * 0.5, CLEAR + 0.004 + ridge * arch)
                 nrm = unit(n2 + side * cc * 0.85)
                 occ = 0.62 + 0.38 * arch
-                uu = ROW[0] + (ROW[1] - ROW[0]) * (c / (k - 1))
-                row.append(top.vert(pp, nrm, (uu, s / spec["v_tile"]), (occ, occ, occ)))
+                uu = ROW[0] + 0.004 + (ROW[1] - ROW[0] - 0.008) * (c / (k - 1))
+                row.append(top.vert(pp, nrm, (uu, (s + v0) / spec["v_tile"]), (occ, occ, occ)))
             ids.append(row)
         for j in range(len(ids) - 1):
             for c in range(k - 1):
-                a_, b_ = ids[j][c], ids[j][c + 1]
-                d_, c_ = ids[j + 1][c], ids[j + 1][c + 1]
-                # outward-facing: check against the scalp normal
-                pa, pb, pd = (np.asarray(top.P[x]) for x in (a_, b_, d_))
-                if np.dot(np.cross(pb - pa, pd - pa), unit(pa - C)) > 0:
-                    top.quad(a_, b_, c_, d_)
-                else:
-                    top.quad(a_, d_, c_, b_)
-        # the nape end: a short plaited tail hanging from the row's end
-        end = Pc[-1]
-        d = unit(Pc[-1] - Pc[-3])
-        Lt = rng.uniform(*spec["tail"])
-        r = spec["tail_r"] * (spec["width"] * min(1.0, (end[1] + A) / (0.32 + A)) ** 1.5) / spec["width"] * 1.2
-        p = point_clear(end.copy(), r, colliders)
-        tail = [p.copy()]
-        while float(np.sum(np.linalg.norm(np.diff(np.array(tail), axis=0), axis=1))) < Lt if len(tail) > 1 else True:
-            d = unit(d + np.array([-0.3 * math.copysign(1, p[0]), -1.0, 0.1]) * 0.45)
-            p = point_clear(p + d * 0.02, r, colliders)
-            tail.append(p.copy())
-        tails["HairBraid01" if tp < 0 else "HairBraid02"].append((np.array(tail), r, L))
-    # baby hairs: at each row's start, a few short laid edge hairs swept back into the row (softens the start)
+                top.quad(ids[j][c], ids[j][c + 1], ids[j + 1][c + 1], ids[j + 1][c])
+    # baby hairs: at each row's start two small cards lying flat on the skin, roots in the row, tips laid
+    # forward over the hairline edge (crisp single strands from the baby strip)
+    rng = np.random.default_rng(spec["seed"])
     for i, (tp, P) in enumerate(rows):
         q0, nn = on_scalp(P[0], 0)
-        t0 = unit(P[3] - P[0])
+        t0 = unit(P[4] - P[0])
         t0 = unit(t0 - nn * np.dot(t0, nn))
-        A_ = spec["axis"]
-        w0 = spec["width"] * min(1.0, (P[0][1] + A_) / (0.32 + A_)) ** 1.5
-        pts_c = []
-        for t in np.linspace(0, 1, 4):
-            pp, _n = on_scalp(q0 - t0 * 0.008 + t0 * 0.034 * t, CLEAR + 0.0012)
-            pts_c.append(pp)
-        ups = [on_scalp(pp, 0)[1] for pp in pts_c]
-        top.card(pts_c, [w0 * 1.25] * 4, ups, BABY, v0=0.0, v1=0.55, shade=lambda t: (0.85, 0.85, 0.85), double=False)
-    pieces = [top]
-    v_tile = 6.4 * spec["tail_r"]
-    for name, lst in tails.items():
-        if not lst:
-            continue
-        piece = hl.Piece(name, "braid", material="Fabric", castShadow=False)
-        pivs, tips = [], []
-        for (tp_pts, r, L) in lst:
-            Lt = float(np.sum(np.linalg.norm(np.diff(tp_pts, axis=0), axis=1)))
-            sa = np.concatenate([[0], np.cumsum(np.linalg.norm(np.diff(tp_pts, axis=0), axis=1))])
-
-            def radius_fn(t, i, sa=sa, Lt=Lt, r=r):
-                return r * (1 - 0.5 * float(smooth(Lt * 0.75, Lt, sa[i]))), 0.85
-
-            sweep_tube(piece, tp_pts, [None] * len(tp_pts), radius_fn, 4, 1.0, PLAIT, v_tile,
-                       lambda t, i: (0.85, 0.85, 0.85), cap_tip=True, cap_root=True)
-            pivs.append(tp_pts[0])
-            tips.append(tp_pts[-1])
-        piece.meta["hairfx"] = {"kind": "swing", "chain": name, "seg": 1, "parent": None, "stiff": 0.6, "mass": 0.6,
-                                "pivot": [round(float(x), 4) for x in np.mean(pivs, axis=0)],
-                                "tip": [round(float(x), 4) for x in np.mean(tips, axis=0)]}
-        piece.meta["length"] = "hang"
-        piece.meta["hideUnder"] = {"headgear": False, "hood": True}
-        pieces.append(piece)
-    return pieces, guides
+        side = unit(np.cross(t0, nn))
+        w0 = spec["width"] * min(1.0, (P[0][1] + A) / (0.32 + A)) ** 1.5
+        for kk in (-1, 1):
+            ang = kk * rng.uniform(0.25, 0.45)
+            dirn = unit(-t0 * math.cos(ang) + side * math.sin(ang))  # root -> tip: forward and a little out
+            base = q0 + t0 * 0.02 + side * kk * w0 * 0.12
+            pts_c, ups = [], []
+            for tt in np.linspace(0, 1, 4):
+                p = base + dirn * 0.028 * tt
+                if hair_inside(p)[0] < 0.002:
+                    p = p + t0 * (0.002 - hair_inside(p)[0])
+                pp, n2 = on_scalp(p, CLEAR + 0.002)
+                pts_c.append(pp)
+                ups.append(n2)
+            u0 = BABY[0] + rng.uniform(0.002, 0.004)
+            top.card(pts_c, [w0 * 0.75] * 4, ups, (u0, u0 + 0.118), v0=0.02, v1=0.5,
+                     shade=lambda t: (0.8, 0.8, 0.8), double=False)
+    return [top], guides
 
 
 # ------------------------------------------------------------------------------------------- styles / main
 STYLES = {
     "braids": dict(kind="braids", spec=BRAIDS, head="f",
-                   entry=dict(styles=["Braids"], types=None, cap={"cut": "full", "density": 0.35})),
+                   entry=dict(styles=["Braids"], types=None, cap={"cut": "full", "density": 0.3})),
     "box_braids": dict(kind="braids", spec=BOX, head="f",
-                       entry=dict(styles=["Box Braids"], types=None, cap={"cut": "full", "density": 0.35})),
+                       entry=dict(styles=["Box Braids"], types=None, cap={"cut": "full", "density": 0.3})),
     "cornrows": dict(kind="cornrows", spec=CORN, head="m",
                      entry=dict(styles=["Cornrows"], types=None, cap={"cut": "full", "density": 0.15})),
 }
+NARROW = dict(ax=0.965, ay=1.0, az=1.0, dz=0.0)
 
 
 def clear_scene():
     bpy.ops.wm.read_factory_settings(use_empty=True)
+
+
+def skull_collider(skull, sx=1.0):
+    """the skull table as a closed-ish triangle mesh (x scaled by sx: the female-narrow skull) for true
+    (euclidean) clearance measurements"""
+    ths = np.radians(np.linspace(0, float(np.degrees(skull.th[-1])), 61))
+    azs = np.radians(np.arange(0, 360, 3))
+    P = [skull.point(0.0, 0.0)]
+    for th in ths[1:]:
+        for az in azs:
+            P.append(skull.point(th, az))
+    P = np.array(P) - skull.c
+    P[:, 0] *= sx
+    P += skull.c
+    na = len(azs)
+    F = [(0, 1 + (j + 1) % na, 1 + j) for j in range(na)]
+    for i in range(len(ths) - 2):
+        for j in range(na):
+            a = 1 + i * na + j
+            b = 1 + i * na + (j + 1) % na
+            F.append((a, b, b + na))
+            F.append((a, b + na, a + na))
+    return Collider(P, F, name=f"skull x{sx}", radial=skull.c)
 
 
 def build_style(key, colliders):
@@ -1438,11 +1447,11 @@ def build_style(key, colliders):
     bpy.context.scene.collection.children.link(work)
     t0 = time.time()
     if st["kind"] == "braids":
-        strands = build_braids(st["spec"], colliders, coll)
-        guide_curves(strands, coll, f"{key}_guides")
-        pieces = make_pieces(st["spec"], strands, colliders)
+        braids = build_braids(st["spec"], colliders)
+        guide_curves(braids, coll, f"{key}_guides")
+        pieces = make_pieces(st["spec"], braids)
     else:
-        pieces, guides = build_cornrows(st["spec"], colliders, coll)
+        pieces, guides = build_cornrows(st["spec"], colliders)
 
         class _G:
             def __init__(self, P):
@@ -1466,6 +1475,7 @@ def main():
     ap.add_argument("--no-tex", action="store_true")
     ap.add_argument("--samples", type=int, default=48)
     ap.add_argument("--looks", type=int, default=2, help="looks (hair colour / skin) rendered per style")
+    ap.add_argument("--views", default="", help="override the rendered views (comma list)")
     args = ap.parse_args()
     t0 = time.time()
     os.makedirs(TEX_DIR, exist_ok=True)
@@ -1476,6 +1486,9 @@ def main():
     colliders = colliders_for()
     head_f = Collider(*load_obj_mesh(os.path.join(REF, "head_f.obj"), "Head"), name="head_f",
                       radial=np.array(hl.Skull(SKF_PATH).c))
+    Pn, Fn = load_obj_mesh(os.path.join(REF, "head_m.obj"), "Head")
+    head_n = Collider(Pn * [0.965, 1, 1], Fn, name="head_m x0.965", radial=C)
+    skull_n = skull_collider(SK, 0.965)
     skf = hl.Skull(SKF_PATH)
     keys = [k for k in STYLES if not args.only or k in args.only.split(",")]
     report = {}
@@ -1485,41 +1498,36 @@ def main():
         st = STYLES[key]
         cm, ci = clearance(pieces, colliders["head"])
         cf, cfi = clearance(pieces, head_f, FIT_F)
+        cn, cni = clearance(pieces, head_n, NARROW)
         sm = skull_height(pieces, SK)
         sf = skull_height(pieces, skf, FIT_F)
-        sf_n = skull_height(pieces, SK, dict(ax=0.965, ay=1.0, az=1.0, dz=0.0))
+        sn, sni = clearance([p for p in pieces], skull_n, NARROW, ymin=-0.3)
+        ed = min(ear_dist(np.asarray(p.P)) for p in pieces)
         eh = ear_hits(pieces)
         bm = body_min(pieces)
         entry = dict(st["entry"])
-        entry["notes"] = (f"braids family (build_braids.py). min clearance: head mesh male {cm:.4f}, female (fit) "
-                          f"{cf:.4f}; skull table male {sm:.4f}, female (fit) {sf:.4f}, male skull 0.965x narrow "
-                          f"{sf_n:.4f}")
+        entry["family"] = "braids"
+        entry["texture_strips"] = {"braid": {"plait": list(PLAIT)}, "cornrow": {"row": list(ROW), "baby": list(BABY),
+                                                                         "pad": list(PAD)}}
+        entry["clearance"] = dict(head_m=round(cm, 4), head_f_fit=round(cf, 4), head_m_narrow=round(cn, 4),
+                                  skull_m=round(sm, 4), skull_f_fit=round(sf, 4), skull_m_narrow=round(sn, 4),
+                                  inside_m=ci, ear_box=round(ed, 4), body=round(bm, 4) if bm < 9 else None)
+        entry["notes"] = "braids family (build_braids.py); clearance: nominal studs (narrow = x 0.965 head + fit)"
         data = hl.export_style(key, entry, pieces)
         save_blend(key, pieces, coll, os.path.join(BLEND_DIR, f"{key}.blend"), head_name=st["head"])
         rep = dict(styles=entry["styles"], types=entry["types"], cap=entry["cap"], tris=data["tris"],
-                   pieces={p.name: dict(nt=p.nt, tex=p.tex, hairfx=(p.meta.get("hairfx") or {}).get("kind"))
-                           for p in pieces},
-                   clear_head_m=round(cm, 4), inside_m=ci, clear_head_f=round(cf, 4), inside_f=cfi,
-                   skull_m=round(sm, 4), skull_f=round(sf, 4), skull_m_narrow=round(sf_n, 4), ear_hits=eh,
-                   body_min=round(bm, 4))
-        rep["per_piece"] = {p.name: dict(head_m=round(clearance([p], colliders["head"])[0], 4),
-                                         skull_m=round(skull_height([p], SK), 4),
-                                         skull_f=round(skull_height([p], skf, FIT_F), 4),
-                                         ears=ear_hits([p])) for p in pieces}
+                   pieces={p.name: dict(nt=p.nt, tex=p.tex, hairfx=p.meta.get("hairfx"))
+                           for p in pieces}, clearance=entry["clearance"], inside_f=cfi, inside_narrow=cni,
+                   skull_narrow_inside=sni, ear_hits=eh)
         report[key] = rep
-        if os.environ.get("BRAIDS_DUMP"):
-            import pickle
-            with open(os.path.join(SCRATCH, f"{key}.pkl"), "wb") as f:
-                pickle.dump(pieces, f)
-        print(json.dumps(rep))
+        print(json.dumps({k: v for k, v in rep.items() if k != "pieces"}))
         if args.render:
+            views = args.views.split(",") if args.views else ["34", "side", "back", "close", "top34"]
             looks_all = {
-                "f": [("f", "darkbrown", "deep", ["34", "side", "back", "close", "top34"]),
-                      ("f", "blonde", "light", ["34", "close"] if args.looks < 3 else ["34", "side", "back", "close", "top34"]),
-                      ("f", "black", "mid", ["34", "side", "back", "close", "top34"])],
-                "m": [("m", "black", "deep", ["34", "side", "back", "close", "top34"]),
-                      ("m", "blonde", "light", ["34", "close"] if args.looks < 3 else ["34", "side", "back", "close", "top34"]),
-                      ("m", "darkbrown", "mid", ["34", "side", "back", "close", "top34"])],
+                "f": [("f", "darkbrown", "deep", views), ("f", "blonde", "light", ["34"]),
+                      ("f", "black", "mid", views)],
+                "m": [("m", "black", "deep", views), ("m", "blonde", "light", ["34"]),
+                      ("m", "darkbrown", "mid", views)],
             }[st["head"]][: max(1, args.looks)]
             cap = (st["entry"]["cap"]["density"], "Natural")
             sheet = render_style(key, pieces, cap, os.path.join(args.render, "renders"), args.samples, looks_all,
@@ -1529,7 +1537,6 @@ def main():
             print("sheet", sheet)
     with open(os.path.join(args.render or SCRATCH, "report.json"), "w") as f:
         json.dump(report, f, indent=1)
-    print(json.dumps(report, indent=1))
     print(f"total {time.time() - t0:.1f}s")
 
 

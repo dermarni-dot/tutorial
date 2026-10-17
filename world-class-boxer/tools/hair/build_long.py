@@ -182,7 +182,7 @@ def _strip(w, h, seed, n_strands, n_clumps, width_px, clump_k, fill, len_min, wa
         uu = (np.arange(w) + 0.5) / w
         core = np.exp(-((uu - 0.5) / 0.2) ** 2)[None, :]
         body = np.clip(body * 1.25, 0, 1) ** 2 * fill * core
-        bl = 0.42 + 0.25 * _blur(lum, w * 0.02) / np.maximum(_blur(alp, w * 0.02), 1e-3)
+        bl = 0.55 + 0.25 * _blur(lum, w * 0.02) / np.maximum(_blur(alp, w * 0.02), 1e-3)
         lum = lum * alp + bl * body * (1 - alp)
         alp = alp + body * (1 - alp)
         lum = lum / np.maximum(alp, 1e-4)
@@ -219,17 +219,17 @@ def make_texture(path, size=TEX_SIZE, seed=1101, report=False):
     sw = W // 4
     specs = {
         # dense clump: the bulk of every layer; nearly opaque inside, strands breaking out at the edges and tips
-        "dense": dict(n_strands=int(sw * 0.5), spread=0.42, n_clumps=7, width_px=2.6, clump_k=0.8, fill=0.85, len_min=0.55, clump_lo=0.72,
-                      stray=0.03, shade_lo=0.62, edge=0.10, tip_spread=0.3),
+        "dense": dict(n_strands=int(sw * 0.55), spread=0.47, n_clumps=7, width_px=2.6, clump_k=0.8, fill=0.85, len_min=0.55, clump_lo=0.72,
+                      stray=0.03, shade_lo=0.72, edge=0.085, tip_spread=0.3),
         # medium: a lighter lock (gaps between clumps; the layer under it shows through)
         "medium": dict(n_strands=int(sw * 0.3), spread=0.45, n_clumps=6, width_px=2.4, clump_k=0.85, fill=0.35, len_min=0.45, clump_lo=0.65, root_soft=0.11,
-                       stray=0.05, shade_lo=0.5, edge=0.12, tip_spread=0.32),
+                       stray=0.05, shade_lo=0.6, edge=0.11, tip_spread=0.32),
         # wispy flyaways: a few loose strands, staggered lengths
         "wispy": dict(n_strands=int(sw * 0.12), n_clumps=4, width_px=2.0, clump_k=0.35, fill=0.0, len_min=0.3,
                       stray=0.35, shade_lo=0.6, edge=0.14, tip_spread=0.5),
         # wavy: dense clumps on broad S-waves (2.5 waves root to tip), crests lighter
         "wavy": dict(n_strands=int(sw * 0.48), spread=0.42, n_clumps=6, width_px=2.6, clump_k=0.75, fill=0.7, len_min=0.55, clump_lo=0.75,
-                     wave_amp=0.075, wave_per=2.5, stray=0.04, shade_lo=0.55, edge=0.13, tip_spread=0.3),
+                     wave_amp=0.075, wave_per=2.5, stray=0.04, shade_lo=0.65, edge=0.12, tip_spread=0.3),
     }
     lum = np.zeros((H, W), np.float32)
     alp = np.zeros((H, W), np.float32)
@@ -480,18 +480,18 @@ def theta_at(az, f_ok, lo=0.02, hi=2.55):
 LAYERS = [
     # the hairline layer: rooted along the front hairline (temple to centre), sweeping with the front hair; its
     # front edge (wispy / medium strips) is the soft hairline
-    dict(name="edge", n=7, off=0.03, strips={"medium": 0.6, "wispy": 0.4}, margin=0.028, tip=-1.2, tip_var=0.06,
-         w=(0.05, 0.085, 0.1), shade=0.97, phase=0.0, rel=(0.03, 0.0), root="hairline", fmax=0.22),
-    dict(name="scalp", n=15, off=0.025, strips={"dense": 1.0}, margin=0.06, tip=-1.12, tip_var=0.05,
-         w=(0.065, 0.14, 0.12), shade=0.93, phase=0.0, rel=(0.0, -0.12)),
-    dict(name="inner", n=14, off=0.037, strips={"dense": 0.85, "medium": 0.15}, margin=0.055, tip=-1.30,
-         tip_var=0.06, w=(0.065, 0.13, 0.125), shade=0.96, phase=0.37, rel=(0.025, -0.02)),
-    dict(name="main", n=14, off=0.05, strips={"dense": 0.7, "medium": 0.3}, margin=0.05, tip=-1.42,
-         tip_var=0.07, w=(0.06, 0.125, 0.125), shade=0.98, phase=0.71, rel=(0.04, 0.06)),
-    dict(name="outer", n=11, off=0.063, strips={"dense": 0.4, "medium": 0.6}, margin=0.05, tip=-1.36,
-         tip_var=0.12, w=(0.055, 0.11, 0.11), shade=1.0, phase=0.19, rel=(0.05, 0.1)),
+    dict(name="edge", n=7, off=0.03, strips={"medium": 0.6, "wispy": 0.4}, margin=0.015, tip=-1.2, tip_var=0.06,
+         w=(0.055, 0.095, 0.1), shade=0.97, phase=0.0, rel=(0.03, 0.0), root="hairline", fmax=0.22),
+    dict(name="scalp", n=15, off=0.026, strips={"dense": 1.0}, margin=0.05, tip=-1.12, tip_var=0.05,
+         w=(0.07, 0.16, 0.12), shade=0.93, phase=0.0, rel=(0.0, -0.12)),
+    dict(name="inner", n=14, off=0.042, strips={"dense": 0.85, "medium": 0.15}, margin=0.055, tip=-1.30,
+         tip_var=0.06, w=(0.07, 0.15, 0.125), shade=0.97, phase=0.37, rel=(0.025, -0.02)),
+    dict(name="main", n=14, off=0.058, strips={"dense": 0.7, "medium": 0.3}, margin=0.05, tip=-1.42,
+         tip_var=0.07, w=(0.065, 0.145, 0.125), shade=0.985, phase=0.71, rel=(0.04, 0.06)),
+    dict(name="outer", n=11, off=0.074, strips={"dense": 0.4, "medium": 0.6}, margin=0.05, tip=-1.36,
+         tip_var=0.12, w=(0.06, 0.13, 0.11), shade=1.0, phase=0.19, rel=(0.05, 0.1)),
 ]
-FLYAWAYS = dict(n=7, off=0.072, strip="wispy", w=(0.03, 0.05), len=(0.2, 0.4), shade=1.0)
+FLYAWAYS = dict(n=8, off=0.092, strip="wispy", w=(0.03, 0.05), len=(0.2, 0.4), shade=1.0)
 
 STYLES = {
     "long": dict(entry=dict(styles=["Long Hair"], types=["Straight"], cap={"cut": "full", "density": 1}),
@@ -579,7 +579,8 @@ def scalp_path(f, side, layer, vol, rng, n=48):
     s = np.concatenate([[0], np.cumsum(np.linalg.norm(np.diff(P, axis=0), axis=1))])
     ed = edge_dist(P)
     base = 0.0225
-    tgt = layer["off"] * vol * (1 + 0.55 * smooth(0.25, 0.56, P[:, 1]))
+    # fuller over the crown, and the hair stacks up as it runs down from the parting (volume over the sides)
+    tgt = layer["off"] * vol * (1 + 0.4 * smooth(0.25, 0.56, P[:, 1]) + 0.3 * smooth(0.1, 0.4, s))
     ramp = np.minimum(smooth(0.0, 0.12, s), smooth(0.0, 0.11, ed))
     off = base + (tgt - base) * ramp
     Pn = C + unit(P - C) * (np.linalg.norm(P - C, axis=1) + off)[:, None]
@@ -846,7 +847,7 @@ def card_rows(st, cfg):
     ang = np.arccos(np.clip((Tn[1:] * Tn[:-1]).sum(1), -1, 1))
     kap = np.concatenate([[0], ang / np.maximum(np.diff(S), 1e-6)])
     kap = np.convolve(kap, np.ones(7) / 7, mode="same")
-    hmin_hang, hmax_hang = (0.075, 0.085) if cfg["wavy"] else (0.035, 0.13)
+    hmin_hang, hmax_hang = (0.082, 0.092) if cfg["wavy"] else (0.035, 0.13)
     rows = [0.0]
     s = 0.0
     while s < L - 1e-6:
@@ -1009,7 +1010,8 @@ def hairline_strands(cfg, rng, spacing=0.028, length=0.24):
 
 def flyaway_strands(strands, cfg, rng):
     """short wispy cards lifting off the outer layer over the top and the crown"""
-    outer = [st for st in strands if st.li == len(LAYERS) - 1]
+    # from the outer layer behind the temples only (wisps over the temples stick out of the silhouette)
+    outer = [st for st in strands if st.li == len(LAYERS) - 1 and st.f > F_SIDE + 0.05]
     out = []
     for i in range(FLYAWAYS["n"] * 2):
         src = outer[int(rng.integers(len(outer)))]
@@ -1019,9 +1021,9 @@ def flyaway_strands(strands, cfg, rng):
         ss = np.linspace(s0, s0 + ln, 9)
         P = at_s(D, S, ss)
         t = np.linspace(0, 1, 9)
-        lift = 0.01 + 0.022 * t ** 1.5
+        lift = 0.006 + 0.014 * t ** 1.5
         P = P + unit(P - C) * lift[:, None]
-        P = P + np.cross(unit(P - C), unit(np.gradient(P, axis=0))) * (rng.normal(0, 0.03) * t ** 2)[:, None]
+        P = P + np.cross(unit(P - C), unit(np.gradient(P, axis=0))) * (rng.normal(0, 0.018) * t ** 2)[:, None]
         st = Strand(side=src.side, f=src.f, layer="fly", li=len(LAYERS), scalp=P, off=None, hang=None,
                     tip_y=P[-1, 1], lock=False, strip=FLYAWAYS["strip"], mirror=bool(rng.random() < 0.5),
                     v0=float(rng.uniform(0.25, 0.5)), seed=int(rng.integers(1 << 30)), wave_ph=0.0,
@@ -1253,7 +1255,7 @@ def build_style(key, cfg, refs, coll, log):
     for cd in metas:
         a = ao[k:k + 2 * cd.n].reshape(-1, 2).mean(1)
         shade = cd.st.shade or (LAYERS[cd.st.li]["shade"] if cd.st.li < len(LAYERS) else FLYAWAYS["shade"])
-        cd.col = np.clip((0.58 + 0.42 * a) * shade * cd.rootk, 0.45, 1.0)
+        cd.col = np.clip((0.62 + 0.38 * a) * shade * cd.rootk, 0.45, 1.0)
         k += 2 * cd.n
     # pieces: innermost layer first, front to back within a layer
     pieces = {}
@@ -1484,6 +1486,10 @@ def render_style(key, pieces, outdir, samples, looks, views, res=(520, 620), tex
             if "nocol" in dbg:
                 q.C = [(1.0, 1.0, 1.0, 1.0)] * len(q.C)
             ob = sc.add_piece(q, texture=None if "notex" in dbg else tex, tint=tint, offset=off, scale=scl)
+            # no ray-traced card-on-card shadows: Roblox's shadow maps do not resolve hair self-shadowing at this
+            # scale (the baked vertex occlusion stands in for it); without this every card edge draws a shadow line
+            if "shadow" not in dbg:
+                ob.visible_shadow = False
             bs = ob.data.materials[0].node_tree.nodes["Principled BSDF"]
             for k, v in MATTE.items():
                 bs.inputs[k].default_value = v

@@ -18,8 +18,8 @@ Both are 1024 x 1024 greyscale albedo (0.25..1) with straight alpha, laid out as
                        4 lobes per v repeat, tileable in v. The lobes reach the row's sides as the hair fed in
                        from the partings: their outer ends fray into single strands and the alpha falls to 0 at
                        both u edges, so the scalp shows along the partings.
-          u 0.75-1.00  "baby": fine short edge hairs (roots at v = 0, tips at v = 1), alpha, for the
-                       hairline / nape edge strip.
+          u 0.75-0.875 "baby": sparse crisp edge hairs (roots at v = 0, tips at v = 1), alpha 0 between them.
+          u 0.875-1.0  "pad": 4 soft-edged patches of short combed hair stacked in v (box-braid partings).
 Mip friendly: strands are >= 2 px wide, the fine detail is band-limited, and colour bleeds into transparent texels.
 """
 import math
@@ -143,56 +143,57 @@ def plait_field(w, h, halves, seed, drop=0.95, over=0.10, wid=0.98, strands_acro
     return best, tone, fib, along, edge, crease, fine
 
 
-def tex_plait(w, h, seed=41):
-    hgt, tone, fib, along, edge, crease, finef = plait_field(w, h, PLAIT_HALVES, seed)
+def tex_plait(w, h, seed=41, drop=1.15, over=0.06, wid=0.78, strands_across=150):
+    """the plait strip: steep lobes from alternate edges, each a bundle of fine strands (1-2 px) running along
+    it, rounded (bright crown, darker toward its edges) with a dark gap where it tucks under the next lobe"""
+    hgt, tone, fib, along, edge, crease, finef = plait_field(w, h, PLAIT_HALVES, seed, drop=drop, over=over, wid=wid,
+                                                             strands_across=strands_across, wobble=0.35)
     yy, xx = np.mgrid[0:h, 0:w].astype(np.float64)
     u = (xx + 0.5) / w
-    fine = _pnoise(h, w, 1.6, 9, seed + 5)  # hair-level grain along v
-    crown = hgt ** 0.9
-    lum = (0.30 + 0.70 * crown) * (0.5 + 0.5 * fib) * tone * (1 + 0.04 * fine)
-    lum *= 0.62 + 0.38 * _pblur(crease, 2.0, 2.0)
-    # where the lobes come round the tube's sides (the strip's u edges) they sit in the shadow of the
-    # stacked side lobes: a soft darkening, not a hard seam
+    grain = _pnoise(h, w, 1.2, 14, seed + 5)  # hair-level grain
+    crown = np.clip(hgt, 0, 1) ** 0.75
+    lum = (0.34 + 0.66 * crown) * (0.70 + 0.30 * fib) * (0.9 + 0.1 * finef) * tone * (1 + 0.035 * grain)
+    # the gap where a lobe tucks under its neighbour: dark, narrow
+    lum *= 0.45 + 0.55 * _pblur(crease, 1.4, 1.4)
     side = np.minimum(u, 1 - u)
-    lum *= 0.88 + 0.12 * _smooth(0.0, 0.16, side)
-    # deep creases where a lobe tucks under: ambient occlusion from the neighbour's height
-    occl = _pblur(hgt, 3, 3)
-    lum *= 0.82 + 0.18 * np.clip(occl / 0.6, 0, 1)
-    lum = _pblur(lum, 0.6, 0.9)
+    lum *= 0.84 + 0.16 * _smooth(0.0, 0.18, side)
+    occl = _pblur(hgt, 4, 4)
+    lum *= 0.8 + 0.2 * np.clip(occl / 0.55, 0, 1)
+    lum = _pblur(lum, 0.5, 0.8)
     return np.clip(lum, 0.25, 1.0), np.ones_like(lum)
 
 
 def tex_row(w, h, seed=51):
-    """a cornrow seen from above: plait lobes across the full row; the outer third of every lobe is hair
-    fed in from the parting: it thins into separate strands and the alpha frays out to 0 at the edges"""
-    hgt, tone, fib, along, edge, crease, finef = plait_field(w, h, ROW_HALVES, seed, drop=0.85, over=0.12, wid=0.8,
-                                              strands_across=36)
+    """a cornrow seen from above: plait lobes across the row; toward the row's sides every lobe thins into
+    separate strands (the hair fed in from the parting) and the alpha reaches 0 BEFORE the lobe's darker
+    outline, so no dark rim lands on the parting skin"""
+    hgt, tone, fib, along, edge, crease, finef = plait_field(w, h, ROW_HALVES, seed, drop=0.95, over=0.10, wid=0.8,
+                                                             strands_across=90, wobble=0.35)
     yy, xx = np.mgrid[0:h, 0:w].astype(np.float64)
     u = (xx + 0.5) / w
-    fine = _pnoise(h, w, 1.6, 9, seed + 5)
-    crown = hgt ** 0.8
+    grain = _pnoise(h, w, 1.2, 12, seed + 5)
+    crown = np.clip(hgt, 0, 1) ** 0.7
     side = np.minimum(u, 1 - u) * 2  # 0 at the row's edges, 1 in the middle
-    lum = (0.30 + 0.70 * crown) * (0.5 + 0.5 * fib) * tone * (1 + 0.05 * fine)
-    lum *= 0.45 + 0.55 * _pblur(crease, 1.5, 1.5)
-    lum *= 0.85 + 0.15 * _smooth(0.0, 0.5, side)
+    lum = (0.48 + 0.52 * crown) * (0.72 + 0.28 * fib) * (0.9 + 0.1 * finef) * tone * (1 + 0.04 * grain)
+    lum *= 0.62 + 0.38 * _pblur(crease, 1.4, 1.4)  # a soft gap between lobes, not a cartoon outline
     occl = _pblur(hgt, 3, 3)
-    lum *= 0.84 + 0.16 * np.clip(occl / 0.6, 0, 1)
-    # alpha: solid over the braided core, strands toward the sides (fibre-modulated threshold), 0 at the edges
-    # a threshold on the fine fibres that rises toward the edges: solid in the braided middle, separate
-    # strands toward the partings, nothing at the edge (no hard line where the solid part ends)
-    thr = 1.05 - 1.25 * _smooth(0.02, 0.42, side)
+    lum *= 0.86 + 0.14 * np.clip(occl / 0.6, 0, 1)
+    # alpha: solid over the braided core, single strands toward the partings, 0 at the edges
+    thr = 1.05 - 1.25 * _smooth(0.04, 0.45, side)
     alp = np.clip((0.55 * finef + 0.45 * fib - thr) * 4.0, 0, 1)
-    alp *= _smooth(0.0, 0.05, side)
-    alp *= _smooth(0.02, 0.14, hgt)  # the lobes' rounded outlines: a scalloped row edge
+    alp *= _smooth(0.02, 0.10, side)
+    alp *= _smooth(0.10, 0.26, hgt)  # the lobe outline (low height, dark) is already transparent
     alp = np.clip(_pblur(alp, 0.5, 0.7), 0, 1)
-    lum = _pblur(lum, 0.6, 0.9)
+    lum = _pblur(lum, 0.5, 0.8)
     return np.clip(lum, 0.25, 1.0), alp
 
 
 def tex_baby(w, h, seed=57):
-    l, a = strands._strand_field(w, h, seed, count=int(w * 0.9), width_px=2.2, waviness=2.5, curl_amp=1.0,
-                                 length=(0.3, 0.75), taper=0.8, dark_root=0.25, x_range=(0.02, 0.98), flyaway=0.1)
-    return np.clip(0.25 + 0.75 * l, 0.25, 1.0), np.clip(a * 0.9, 0, 1)
+    """sparse, crisp edge hairs: 1-2 px curling strands with clear alpha 0 between them"""
+    l, a = strands._strand_field(w, h, seed, count=int(w * 0.3), width_px=1.5, waviness=3.0, curl_amp=1.6,
+                                 length=(0.35, 0.8), taper=0.7, dark_root=0.2, x_range=(0.04, 0.96), flyaway=0.15)
+    a = np.where(a > 0.12, a, 0.0)
+    return np.clip(0.3 + 0.7 * l, 0.25, 1.0), np.clip(a, 0, 1)
 
 
 def tex_braid(size=SIZE, seed=41):
@@ -216,13 +217,38 @@ def tex_braid(size=SIZE, seed=41):
     return lum, alp
 
 
+def tex_pad(w, h, seed=61, patches=4):
+    """box-parting patches (u .875-1 of the cornrow atlas): `patches` soft-edged patches stacked in v, each dense
+    short hair combed along v (toward the braid), alpha fading out over the patch border (ragged by the strands) so
+    the skin between neighbouring patches reads as the parting line"""
+    ph = h // patches
+    lum = np.zeros((h, w))
+    alp = np.zeros((h, w))
+    for k in range(patches):
+        l, a = strands._strand_field(w, ph, seed + k, count=int(w * 2.2), width_px=1.7, waviness=0.6, curl_amp=0.3,
+                                     length=(0.55, 1.0), taper=0.5, dark_root=0.3, x_range=(0.0, 1.0), flyaway=0.05)
+        yy, xx = np.mgrid[0:ph, 0:w].astype(np.float64)
+        u = (xx + 0.5) / w
+        v = (yy + 0.5) / ph
+        rag = _pnoise(ph, w, 3, 10, seed + 20 + k) * 0.012
+        edge = np.minimum(np.minimum(u, 1 - u), np.minimum(v, 1 - v)) + rag
+        mask = _smooth(0.015, 0.07, edge)
+        base = 0.55 + 0.45 * _pnoise(ph, w, 2, 30, seed + 40 + k).clip(-1, 1) * 0.3
+        lum[k * ph:(k + 1) * ph] = np.where(a > 0.05, l, base)
+        alp[k * ph:(k + 1) * ph] = np.clip(0.55 * mask + 0.45 * a * mask, 0, 1)
+    return np.clip(0.3 + 0.7 * lum, 0.25, 1.0), alp
+
+
 def tex_cornrow(size=SIZE, seed=51):
+    """row u 0-.75, baby hairs u .75-.875, box-parting patches u .875-1 (4 patches stacked in v)"""
     w = h = size
     rw = int(w * 0.75)
+    bw = int(w * 0.875)
     lum = np.zeros((h, w), np.float32)
     alp = np.zeros((h, w), np.float32)
     lum[:, :rw], alp[:, :rw] = tex_row(rw, h, seed)
-    lum[:, rw:], alp[:, rw:] = tex_baby(w - rw, h, seed + 6)
+    lum[:, rw:bw], alp[:, rw:bw] = tex_baby(bw - rw, h, seed + 6)
+    lum[:, bw:], alp[:, bw:] = tex_pad(w - bw, h, seed + 10)
     return lum, alp
 
 
@@ -230,8 +256,8 @@ def save(path, lum, alp):
     lum = np.asarray(lum, np.float64)
     alp = np.clip(np.asarray(alp, np.float64), 0, 1)
     # bleed: transparent texels take the local mean colour of the hair around them (no dark mip halos)
-    wsum = _pblur(alp, 6, 6)
-    csum = _pblur(lum * alp, 6, 6)
+    wsum = _pblur(alp, 10, 10)
+    csum = _pblur(lum * alp, 10, 10)
     near = np.where(wsum > 1e-4, csum / np.maximum(wsum, 1e-4), float((lum * alp).sum() / max(1e-6, alp.sum())))
     lum = np.where(alp > 0.03, lum, near)
     lum = np.clip(lum, 0.25, 1.0)
