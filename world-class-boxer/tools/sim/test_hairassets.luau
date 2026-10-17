@@ -199,16 +199,31 @@ do
 		return en.key == "afro"
 	end)
 	check("skip callback", e == nil)
-	-- the shipped data (ids 0): nothing anywhere
-	local any = false
-	for _, st in ipairs({ "Afro", "Long Hair", "Fade", "High Fade", "Buzz Cut", "Dreadlocks", "Braids", "Cornrows" }) do
-		for _, ty in ipairs({ "Straight", "Kinky" }) do
-			if HK.Select(Data, look(1, { style = st, type = ty })) then
-				any = true
+	-- the shipped data (uploaded ids): every asset style draws its asset hair, the rest stays generated
+	local missing = {}
+	for _, st in ipairs({ "Afro", "Long Hair", "Fade", "High Fade", "Buzz Cut", "Dreadlocks", "Short Dreads", "Braids", "Box Braids", "Cornrows", "360 Waves", "Crew Cut" }) do
+		local ty = st == "Long Hair" and "Straight" or "Kinky"
+		if not HK.Select(Data, look(1, { style = st, type = ty })) then
+			table.insert(missing, st)
+		end
+	end
+	check("HairAssetData: every asset style selects", #missing == 0, table.concat(missing, ", "))
+	check("HairAssetData: generated styles stay generated", HK.Select(Data, look(1, { style = "Mohawk", type = "Straight" })) == nil
+		and HK.Select(Data, look(1, { style = "Long Hair", type = "Curly" })) == nil)
+	local zero = 0
+	for _, e in ipairs(Data.entries) do
+		for _, p in pairs(e.pieces) do
+			if not HK.Id(p.mesh) then
+				zero += 1
 			end
 		end
 	end
-	check("HairAssetData ids 0 -> no entry", not any)
+	for _, t in pairs(Data.textures) do
+		if not HK.Id(t.id) then
+			zero += 1
+		end
+	end
+	check("HairAssetData: no id left at 0", zero == 0 and HK.Id(Data.cap.mesh) ~= nil, zero)
 	-- one missing texture id makes an entry unusable
 	local d2 = table.clone(fakeData)
 	d2.textures = table.clone(fakeData.textures)

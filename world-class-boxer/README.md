@@ -383,18 +383,92 @@ blinks, moves the eyes (saccades, gaze at the opponent, dazed drift) and blends 
 neutral, confident, determined, anger, fear, fatigue, pain, dazed, effort, happy and KO.
 
 **Hair.** 30 styles plus bald across five hair types (straight, wavy, curly, kinky, coiled). They
-include fades from skin to high (as gradients), crops, curly tops, afros made of curl clusters, 360
-waves, twists, cornrows, box braids, dreadlocks, long hair, ponytails and wolf cuts. Hair follows the
-skull in layered clumps and strands, with sliders for volume, curl size, frizz, density and length.
-Dyes come as tips, streaks, ombre or split. Hair and beards grow a little every in-game day. HairFX
-swings long hair, locs and braids and bounces curly volumes. Up close, swinging hair is tested
-against the body's own meshes (radial maps of the upper torso, arms and gloves, made the first time
-swinging hair comes that near), so it lies on the shoulders and back instead of sinking in; hair that
-reaches the canvas in a knockdown rests on it. Sweaty hair turns heavier and darker.
+include fades from skin to high (as gradients), crops, curly tops, afros, 360 waves, twists,
+cornrows, box braids, dreadlocks, long hair, ponytails and wolf cuts, with sliders for volume, curl
+size, frizz, density and length. Dyes come as tips, streaks, ombre or split. Hair and beards grow a
+little every in-game day. HairFX swings long hair, locs and braids and bounces curly volumes. Up close,
+swinging hair is tested against the body's own meshes (radial maps of the upper torso, arms and
+gloves, made the first time swinging hair comes that near), so it lies on the shoulders and back
+instead of sinking in; hair that reaches the canvas in a knockdown rests on it. Sweaty hair turns
+heavier and darker.
+
+Most styles are drawn with **asset hair**: hair-card meshes and alpha strand textures modelled in
+Blender and uploaded to the group (see [Asset hair](#asset-hair)). Every other style, and any style
+whose assets fail to load, keeps the generated hair (layered clumps and strands that follow the skull).
 
 **Damage and condition.** Sweat, grime, bruises, swelling, cuts, a black eye, a bloody nose and a
 split lip show on the meshes. Face damage persists after a fight (stages: fresh, light, moderate,
 heavy, severe) and heals over in-game days.
+
+### Asset hair
+
+Hair cards (`tools/hair`) replace the generated hair for these styles:
+
+| Family | Styles (types) |
+|---|---|
+| Fades and short | Buzz Cut, 360 Waves, Low / Mid / High / Taper / Burst Fade, Fade, Crew Cut, Caesar Cut (straight and wavy get a combed crop top, curly / kinky / coiled a sponge-curl top) |
+| Afro | Afro (Kinky, Coiled, Straight, Wavy; a looser Curly version), High Top |
+| Locs | Short Dreads, Dreadlocks, Twists |
+| Braids | Braids, Box Braids, Cornrows |
+| Long | Long Hair (Straight; Wavy has its own cards) |
+
+Everything else keeps the generated hair: Bald, Short Curly, Curly Top, Long Curly, Messy Hair, Slick
+Back, Undercut, Mohawk, Ponytail, Wolf Cut, Modern Athlete, Textured Crop, and Long Hair on curly types
+(which AnatomyHair draws as long curls).
+
+**How it is drawn.**
+- **Meshes** are uploaded `Mesh` assets, one per piece (at most 16 a style), built in the game's
+  nominal head space. The client loads them with `AssetService:CreateMeshPartAsync` and welds them to
+  the Head.
+- **Skull fit:** each piece is sized to the boxer's own skull (width, crown, front and back from the
+  skull field, against the default skull the cards were modelled on) and to the Head part.
+  Hanging pieces stretch with the hair length; volume pieces grow outward from the scalp with the
+  volume slider.
+- **Textures** are greyscale strand atlases with alpha (`Image` assets). The client tints them per
+  boxer in an EditableImage with the generated hair's own palette: darker roots, lighter tips, dyes,
+  highlights and greying with age. Dark colours keep their strand contrast.
+- **The scalp cap.** One shared cap mesh carries the short hair of every cut. Its texture is painted
+  per boxer: a strand tile (`short` for straight / wavy, `shortcoil` for curly types, `waves` for 360
+  Waves) times the style's own coverage. That coverage uses the same fade height, hairline type,
+  line-up and growth as the generated hair, plus a barber's line round each ear. Fades thin the tile's
+  strands as they go down. Fur shells over the cap give the top its depth.
+- **Animation:** HairFX swings and bounces the cards exactly as it did the generated pieces.
+- **Sharing:** NPCs share their tinted images by hair colour. You, your opponent and previews keep
+  their own, so sweat can darken them.
+
+**Fallback.** Whenever a style has no assets, an asset fails to load (permissions, moderation,
+network), an image cannot be made, or Editable images are unavailable, the same build draws the
+generated hair instead. Nothing is lost:
+- A failed id is retried once a minute later, and boxers already drawn with the fallback are rebuilt
+  then.
+- Below that, the round-1 part-built hair still applies.
+- `Config.HairAssets.enabled = false` turns asset hair off for everyone.
+
+**Requirements.**
+- The assets belong to the group (creator id 524947123). Roblox only lets an experience load
+  group-owned meshes and images when the **experience is owned by the same group**, so publish the
+  place under the group.
+- The Editable APIs must be on (see [Organic characters](#organic-characters-editablemesh--editableimage)).
+- New images can take a while to pass moderation. Until they do, those styles fall back.
+
+**Rebuilding the assets.** Run each family's builder in Blender's Python (bpy 4.2:
+`python build_fades.py`, `build_afro.py`, `build_locs.py`, `build_braids.py`, `build_long.py`). Then
+`python publish.py` uploads only what changed (cached by file hash in `tools/hair/uploaded.json`)
+and rewrites `src/shared/HairAssetData.lua`. `tools/hair/CONTRACT.md` is the format. The `.blend`
+files are not committed; each builder writes them to `tools/hair/blend/`.
+
+**Cost.**
+- About 8-27k triangles a head: the cap is about 7k, and locs are the most.
+- Image memory: 4 MB per 1024² texture. Texture size follows the detail level (1024² full, 512²
+  medium, 256² low; fur shells at half size), and NPCs share theirs by colour.
+- The tint and cap paint take 0.5-2 s of time-sliced CPU per build in the simulator (lune).
+
+**Not verified in Roblox.** The renders and tests come from the offline simulator and Blender, not
+Studio, so check these in Studio:
+- Alpha sorting across the overlapping card pieces.
+- Whether card alpha needs the parts' 0.02 Transparency (`Config.HairAssets.alphaTransparency`).
+- The `.mesh` UV direction. If strands show upside down, set `HairAssetData.flipV` /
+  `Config.HairAssets.flipV`.
 
 ## Animation
 
@@ -904,6 +978,12 @@ review renders, interface and training screens, lighting, Graphics level compari
 | `perf_gym_levels.jpg`, `perf_stadium_levels.jpg`, `perf_city_night_levels.jpg` | The gym, the stadium and Main Street before the optimization pass, after at High and after at Low |
 | `perf_fight_hud_low_vs_high.jpg`, `perf_fight_hud_phone_low_vs_high.jpg`, `perf_settings_graphics_note.jpg` | The fight HUD at Low and High (identical), and the Settings Graphics note at each level |
 
+**`previews/final/hair_assets/`** compares the hair before and after the asset hair: one sheet per look
+(`hair_<look>.jpg`: 3/4, side, back, front), the generated hair above and the asset hair below, on the
+game's own painted head. Both rows are Blender Cycles renders (`tools/hair/previews.py`, matte hair).
+The after row is exactly what the client builds: the offline simulator ran the real `HairAssets.Build`
+(placement, skull fit, cap paint and tint) on each look (`tools/sim/after_scene.luau`).
+
 **`previews/rework/`** has the round-2 working renders, one folder per area: `R-anim`, `R-body`,
 `R-hair`, `R-head`, `R-ui` and `integration-A`.
 
@@ -934,6 +1014,19 @@ them.
   the chest and its elbow sinks into the pec for about 4 frames.
 - **Hair against ring parts.** Hair is tested against its own body and the canvas, not the ring:
   heavy locs can dip into a cover corner pad for a moment as the back lands against it.
+- **Asset hair, not yet seen in Studio.** Everything about the hair cards was checked offline (Blender
+  renders, the lune simulator), not in Roblox. To check in Studio:
+  - card alpha and its sorting across up to 16 overlapping parts;
+  - the `.mesh` UV direction (`flipV`);
+  - the 0.02 part transparency the cards use for their alpha.
+
+  Known looks:
+  - long hair is sleek, sits close to the head and shows some card banding from behind;
+  - the afro is on the small side, a little mushroom-shaped;
+  - cornrows stand about 0.03 studs proud of the scalp (the clearance floor);
+  - fades still show faint shell edges at the bottom of the gradient.
+
+  Locs cost the most, up to 27k triangles a head with the cap.
 - **Measured, not felt.** The Graphics levels' numbers come from the headless simulator on a desktop
   CPU (client Lua; a phone runs Lua 3-5 times slower). GPU work (shadows, lights, particles, depth of
   field) is not simulated, and the levels have not been timed on a real phone.

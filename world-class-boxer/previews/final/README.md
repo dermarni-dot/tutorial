@@ -438,3 +438,20 @@ Suffixes: `_f` / `_m` female / male, `_k` / `_s` kinky / straight hair type.
 | `lighting_menu.jpg` | Lighting: menu |
 | `lighting_sparring_room.jpg` | Lighting: sparring room |
 | `lighting_stadium_round.jpg` | Lighting: stadium round |
+
+## Asset hair (hair cards)
+
+`hair_assets/hair_<look>.jpg`: one sheet per look, BEFORE (the generated hair) over AFTER (the uploaded
+hair cards as the client places and tints them). Views: 3/4, side, back, front, on the game's own head
+with its painted skin. Both rows are Blender Cycles renders with matte hair. The scenes came from the
+lune simulator: `tools/sim/export_ref.luau` (before) and `tools/sim/after_scene.luau` (after, the real
+`HairAssets.Build`).
+
+| Look | Style / type |
+|---|---|
+| buzz_k, waves_k | Buzz Cut, 360 Waves / Kinky |
+| lowfade_k, highfade_k, midfade_s, taper_c, burst_cu | Low / High Fade (Kinky), Mid Fade (Straight), Taper Fade (Coiled), Burst Fade (Curly) |
+| afro_k, afro_c_f | Afro / Kinky, Afro / Coiled (female) |
+| shortdreads_c, dreads_k, twists_k | Short Dreads, Dreadlocks, Twists |
+| braids_k_f, boxbraids_k_f, cornrows_k | Braids, Box Braids (female), Cornrows |
+| long_s_f, long_w_m | Long Hair / Straight (female), Long Hair / Wavy (male) |
