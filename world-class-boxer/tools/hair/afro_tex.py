@@ -4,8 +4,9 @@ Layout (1024 x 1024; hairlib.ATLAS["coily"]: u 0..0.5 "tight", u 0.5..1 "loose")
 
     cell        u range      v range     what
     CLOUD_A     0.00-0.50    0.00-0.50   a soft round cloud of tight kinky coils (dense, near-opaque core)
-    CLOUD_B     0.00-0.50    0.50-1.00   the same, a little sparser and lumpier (outer layers)
-    CURL        0.50-1.00    0.00-0.50   a soft cloud of looser curls / short ringlets (the Curly variant)
+    TILE_D      0.00-0.50    0.50-1.00   a tileable dense coil tile (inner shells, near-opaque)
+    TILE_S      0.50-1.00    0.00-0.25   a tileable sparse tight-coil tile (outer shells: the fuzzy edge)
+    TILE_L      0.50-1.00    0.25-0.50   a tileable sparse loose-curl tile (the Curly variant's outer shells)
     FIN_T       0.50-0.75    0.50-1.00   a fuzz tuft of tight coils, root at its top (v 0.5) .. sparse tips
     FIN_L       0.75-1.00    0.50-1.00   a tuft of 2-3 loose ringlets, root at its top
 
@@ -31,7 +32,8 @@ SS = 2  # supersampling of the splat canvases
 CELLS = {
     "CLOUD_A": (0.0, 0.0, 0.5, 0.5),
     "TILE_D": (0.0, 0.5, 0.5, 1.0),
-    "TILE_S": (0.5, 0.0, 1.0, 0.5),
+    "TILE_S": (0.5, 0.0, 1.0, 0.25),
+    "TILE_L": (0.5, 0.25, 1.0, 0.5),
     "FIN_T": (0.5, 0.5, 0.75, 1.0),
     "FIN_L": (0.75, 0.5, 1.0, 1.0),
 }
@@ -271,7 +273,7 @@ def pnoise(H, W, seed, scale):
     return np.clip((n - lo) / (hi - lo + 1e-9), 0, 1)
 
 
-def tile(w, h, seed, n, fill, fill_tone=0.36, stroke=1.0, nb=6, holes=0.0, **prm):
+def tile(w, h, seed, n, fill, fill_tone=0.36, stroke=1.0, nb=6, holes=0.0, dark_deep=0.5, **prm):
     """a tileable coil tile (continuous shells): coils spread evenly (wrapping), over a fill"""
     rng = RNG(seed)
     W, H = w * SS, h * SS
@@ -282,7 +284,7 @@ def tile(w, h, seed, n, fill, fill_tone=0.36, stroke=1.0, nb=6, holes=0.0, **prm
     fa = np.clip(fill * (0.75 + 0.5 * (cl - 0.5)) - holes * sstep(0.35, 0.0, cl), 0, 1)
     layers.append((fa, fill_tone + 0.12 * pnoise(H, W, seed + 4, 3 * SS)))
     p = dict(prm, axis=None, axis_jit=0.0)
-    layers += coil_batches(rng, H, W, cents, depth, nb, p, stroke * SS, 1.0, wrap=True)
+    layers += coil_batches(rng, H, W, cents, depth, nb, p, stroke * SS, 1.0, dark_deep=dark_deep, wrap=True)
     C, A = composite(H, W, layers)
     return down(C, A, w, h)
 
@@ -322,8 +324,12 @@ def tex_coily(size=SIZE, seed=31):
     cells = {
         "CLOUD_A": cloud(half, half, seed + 10, n=420, fill=0.9, r0=0.37, spread=0.55, stroke=1.0, **tight),
         # the shells: dense (inner, near-opaque) and sparse (outer: single coils, the fuzzy silhouette by stacking)
-        "TILE_D": tile(half, half, seed + 20, n=820, fill=0.93, stroke=1.0, **tight),
-        "TILE_S": tile(half, half, seed + 30, n=360, fill=0.0, stroke=1.0, nb=4, **tight),
+        "TILE_D": tile(half, half, seed + 20, n=820, fill=0.93, fill_tone=0.44, stroke=1.0, dark_deep=0.66, **tight),
+        "TILE_S": tile(half, quarter, seed + 30, n=190, fill=0.0, stroke=1.0, nb=4, **tight),
+        # the Curly variant's outer shells: looser, larger curls (open loops, short ringlet arcs)
+        "TILE_L": tile(half, quarter, seed + 35, n=70, fill=0.0, stroke=1.25, nb=4,
+                       radius=(22 * s * SS, 34 * s * SS), turns=(1.1, 2.0), pitch=(0.8, 1.4), tilt=(0.35, 0.7),
+                       wander=0.35),
         "FIN_T": tuft(quarter, half, seed + 40, n=110, fill=0.15, stroke=1.0, **tight),
         "FIN_L": tuft(quarter, half, seed + 50, n=20, radius=(16 * s * SS, 24 * s * SS), turns=(1.2, 2.2),
                       pitch=(0.9, 1.4), tilt=(0.3, 0.6), wander=0.3, fill=0.3, stroke=1.3, ringlets=3),
