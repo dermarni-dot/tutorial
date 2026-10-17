@@ -193,7 +193,7 @@ def main():
         pieces = {}
         for name, rec in sorted(st["pieces"].items()):
             mid = ensure(cache, os.path.join(d, rec["mesh_file"]), "Mesh", f"WCB Hair {key} {name}",
-                         f"Become a World Class Boxer: hair card mesh {key}/{name}", "model/x-rbxm",
+                         f"Become a World Class Boxer: hair card mesh {key}/{name}", "model/x-file-mesh-data",
                          args.dry_run)
             p = {k: v for k, v in rec.items() if k not in ("mesh_file", "nv")}
             p["mesh"] = mid
