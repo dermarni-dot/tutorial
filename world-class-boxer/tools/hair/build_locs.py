@@ -1159,12 +1159,12 @@ def guard_short(p, rad):
 STYLES = {
     "dreadlocks": dict(
         entry=dict(styles=["Dreadlocks"], types=None, cap={"cut": "full", "density": 0.45}, capTile="shortcoil"),
-        kind="hang", spacing=0.16, fill=12, fill2=10, min_gap=0.014, margin=0.03, seed=101, R=0.036, rvar=0.2, M=32,
-        step=0.03, hang_len=1.05, side_short=0.25, L_max=2.25, sides=6, base_ds=0.42, base_scalp=0.25, min_ds=0.09, end_ds=0.06,
+        kind="hang", spacing=0.16, fill=10, fill2=16, min_gap=0.012, margin=0.03, seed=101, R=0.036, rvar=0.2, M=32,
+        step=0.03, hang_len=1.05, side_short=0.25, L_max=2.25, sides=6, base_ds=0.5, base_scalp=0.25, min_ds=0.09, end_ds=0.06,
         bend_k=1.0, root_k=0.5, edge_root_k=0.3, lift=0.2, crown_lift=0.045, rot_deg=20,
         layer=0.024, repel=0.72, fins=1, chains=7, segs=2, stiff=0.35, mass=(1.5, 1.15), hang_split=0.5,
         edge_root=(0.55, 0.05, 0.25),
-        prefix="HairLoc", chain="Loc", lobes=None, halo=dict(k=1.9, root_k=2.6, step=0.34), lump=0.12,
+        prefix="HairLoc", chain="Loc", lobes=None, halo=dict(k=1.9, root_k=2.6, step=0.45), lump=0.12,
         tip_r=(0.55, 0.9), tip_k=0.9, dome=1, back_front=1.8, splay=0.24, wave=(0.012, 0.35), body_off=0.07,
         short_top=0.14, sideburn_ys=(0.17,),
         cov_dirs=("top", "back", "back34r", "back34l", "topback", "lowback")),
@@ -1355,9 +1355,9 @@ def build_guides_hanging(cfg, ref, log):
         lc = make(r)
         if lc is not None:
             locs.append(lc)
-    # two crown locs lying over the centre-back parting, crossing it from either side
-    for sgn in (-1, 1):
-        th, az = 0.55, (-sgn * 0.22) % TAU
+    # crown locs lying over the centre-back parting, crossing it from either side
+    for th, sgn in ((0.5, -1), (0.55, 1), (0.85, -1), (0.95, 1)):
+        az = (-sgn * (0.2 if th < 0.7 else 0.13)) % TAU
         p = SK.point(th, az)
         r = dict(th=th, az=az, p=p, n=SK.normal(th, az), e=float(edge_dist(p)[0]), rnd=rng.random(),
                  rnd2=rng.random(), rnd3=1.0, crossing=True)

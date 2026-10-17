@@ -244,7 +244,7 @@ def tex_row(w, h, seed=51):
     """a cornrow seen from above: overlapping plait lobes across the whole row (no skin between them: only a darker
     tuck where one lobe dives under the next), opaque from edge to edge; the alpha only feathers over the outer
     ~4 % of the row width, broken by a few short fine flyaways, so the edge reads soft and never serrated"""
-    hgt, tone, fib, along, edge, crease, finef = plait_field(w, h, ROW_HALVES, seed, drop=1.0, over=0.06, wid=1.15,
+    hgt, tone, fib, along, edge, crease, finef = plait_field(w, h, ROW_HALVES, seed, drop=0.95, over=0.08, wid=0.9,
                                                              strands_across=90, wobble=0.35)
     yy, xx = np.mgrid[0:h, 0:w].astype(np.float64)
     u = (xx + 0.5) / w
@@ -253,9 +253,12 @@ def tex_row(w, h, seed=51):
     side = np.minimum(u, 1 - u)  # 0 at the row's edges, 0.5 in the middle
     lum = (0.5 + 0.5 * crown) * (0.72 + 0.28 * fib) * (0.9 + 0.1 * finef) * tone * (1 + 0.04 * grain)
     lum *= 0.66 + 0.34 * _pblur(crease, 1.6, 1.6)  # a soft tuck shadow between lobes
-    lum *= 0.8 + 0.2 * _smooth(0.0, 0.12, side)  # the row's sides turn down onto the scalp: a little darker
-    fr = _pnoise(h, w, 1.5, 9, seed + 8)  # fine flyaways along the edge band
-    alp = np.clip((side - 0.022 + 0.012 * fr) / 0.016, 0, 1)
+    lum = np.where(hgt > 0.02, lum, 0.42 * (0.8 + 0.2 * fib))  # between lobes: darker hair, never a hole
+    lum *= 0.7 + 0.3 * _smooth(0.0, 0.16, side)  # the row's sides turn down onto the scalp: darker
+    # alpha: opaque core; over the outer ~12 % of each side a soft feather (broken up along the strands by fine
+    # noise, no regular teeth), so the row's raised edge melts into the parting instead of floating over it
+    fr = _pnoise(h, w, 1.2, 10, seed + 8)
+    alp = np.clip(_smooth(0.015, 0.12, side + 0.012 * fr), 0, 1)
     alp = np.clip(_pblur(alp, 0.6, 0.8), 0, 1)
     lum = _pblur(lum, 0.5, 0.8)
     return np.clip(lum, 0.25, 1.0), alp
@@ -310,8 +313,7 @@ def tex_pad(w, h, seed=61, patches=4):
         f = 0.7 * _lookup(table, idx) + 0.3 * _lookup(table, idx * 2.1 + 51)
         rn = np.clip(rho / 0.55, 0, 1.4)  # 0 at the root .. 1 toward the box's corners
         dens = 1.0 - 0.72 * _smooth(0.1, 1.0, rn)
-        a = np.clip((f - (1 - dens)) * 3.2 + 0.25 * dens, 0, 1) * mask
-        a = np.where(rn < 0.12, np.maximum(a, mask), a)
+        a = np.clip(dens * (0.78 + 0.3 * (f - 0.5)), 0, 1) * mask  # continuous: thinning, not spiky tufts
         tone = (0.5 + 0.5 * f) * (0.8 + 0.2 * _smooth(0.0, 0.5, rn)) * (1 + 0.05 * _pnoise(ph, w, 2, 2, seed + 40 + k))
         lum[k * ph:(k + 1) * ph] = tone
         alp[k * ph:(k + 1) * ph] = _pblur(a, 0.6, 0.6)

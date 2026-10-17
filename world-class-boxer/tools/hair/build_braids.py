@@ -12,15 +12,17 @@ style.json), tools/hair/blend/<key>.blend and self-check render sheets (default:
 How it is built (game nominal head space, numerically; CONTRACT.md):
 * Parting grid. Lanes are the scalp's sections by planes through one axis under the head (0, -1.6, z): spaced
   spec.lane apart over the crown, the lowest passing over the ear, each clipped to the natural hairline (inset
-  0.012) and the grown ears. Planes of one fan never cross, so braids running down their own lane are parallel
+  0.007) and the grown ears. Planes of one fan never cross, so braids running down their own lane are parallel
   and never cross. Brick lay: lane k carries rows of k's parity, row i at s = s_first + i box from the lane's
-  hairline end, so a box is two lanes wide and a lane's roots are two boxes apart. Roots low on the back
+  hairline end (rows after the first shifted by a per-lane offset, so no parting line runs on across the head),
+  so a box is two lanes wide and a lane's roots are two boxes apart. Roots low on the back
   centre are left out (the braids from above cover it). A candidate whose pinned span would touch an accepted
   braid's pinned span (lanes converge at the temples and nape) is moved back along its lane or dropped.
   Sideburn braids (in front of the ears) hang straight down.
 * Heights: every braid's first s_pin (0.34 thick, 0.19 thin) lies flat on the scalp, centre at clearance +
   half thickness, no stacking; after that, back rows laid first, a braid that runs over one already laid rises,
-  ramped, to lie on it. Roots taper into a small flat knot closing onto the scalp, pointing back along the lane.
+  ramped, settling half into it (ride 0.25: the one below is hidden under it, so no arches / cavities). Roots are a
+  wide, very flat fan (the box's hair gathered in) narrowing into the braid, starting 0.017 inside the hairline.
 * Hanging: each braid falls from where the skull turns under as a gravity rope resting 0.02-0.03 off the head,
   ears, both torsos and the Kit.Scalp body proxy, layered over the braids laid before it, and drawn toward an
   evenly spread target azimuth round the back (so they hang side by side instead of piling up). Sideburn
@@ -29,12 +31,15 @@ How it is built (game nominal head space, numerically; CONTRACT.md):
   get a plait silhouette (alternating lobes, notch 28 % of the radius, a random phase per braid locked to the
   texture's lobes), u once round (mirrored at the back). A Shrinkwrap modifier ("outside" mode, vertex group)
   against the head mesh guarantees the clearance and AO is baked into the vertex colours with BVH ray casts.
-* HairBase: one rounded-square pad of short hair per grid box (two lanes x one box, from the neighbouring
-  lanes' centre lines) lying flat at 0.024, feathered at its border, so thin skin lines between pads are the
-  partings; baby-hair cards over the front hairline.
+* HairBase: one pad per grid box (two lanes x one box round its own root, from the neighbouring lanes' centre
+  lines) lying flat at clearance + 0.0012: the box's hair gathered radially into the root, thinning toward the box
+  edge and covering ~85 % of it, so the partings are skin gaps broken box by box; baby-hair cards over the hairline.
+* Every piece's triangles are sorted innermost first (height above the skull / body) for Roblox's per-part
+  transparency sorting.
 * Cornrows: rows in planes through an axis deep under the head, clipped to the hairline; each an arched ribbon
-  (texture "cornrow": alpha 0 at the row edges), fading in at the hairline under denser baby hairs, ending in
-  a rounded tuck just above the nape hairline.
+  (texture "cornrow": opaque overlapping lobes, a soft feather over the outer ~12 % of each side), starting
+  at a point on the hairline with a few fine baby hairs, running on 0.045-0.085 past the nape hairline into a
+  short narrowing tail with a rounded end. Cap cut "none": bare skin between the rows.
 * Pieces: HairTop (all the scalp parts), HairBase (partings), one single-segment swing chain per side for the
   sideburn braids, and up to 6 back chains of contiguous azimuth (chain BraidNN: HairBraidNN upper,
   HairBraidNNb lower, parent / pivot / tip, length "hang"); asserts that no piece's pivots (nor its tips) spread
@@ -400,11 +405,11 @@ class BraidSpec:
 # box: parting size along the flow (same-lane roots are 2 boxes apart: brick lay); lane: lane spacing over the
 # crown (a box is 2 lanes wide); s_pin: the length of every braid pinned flat to the scalp
 BRAIDS = BraidSpec(key="braids", box=0.26, front_y_end=-0.74, lane=0.1, r=0.044, length_y=(-0.75, -0.85), flatten=0.8,
-                   root_flat=0.18, root_w=1.25, sides=6, lobes=True, amp=0.28, back_groups=6, n_front=1, stiff=0.45, mass=1.3,
-                   seed=11, root_len=0.07, row_jit=0.045, slope=0.42, strip="plait", v_rep=2.0, leave_jit=0.0, hang_var=0.04, drift=0.015, s_pin=0.34, ride=0.45, grav_back=0.0, hang_need=0.65, hang_side=1.5, fan_deg=40, lane_ymin=0.1, root_ymin=0.05)
+                   root_flat=0.2, root_w=0.9, sides=6, lobes=True, amp=0.28, back_groups=6, n_front=1, stiff=0.45, mass=1.3,
+                   seed=11, root_len=0.07, row_jit=0.045, slope=0.42, strip="plait", v_rep=2.0, soft_bend=0.0, leave_jit=0.04, hang_var=0.04, drift=0.015, s_pin=0.34, ride=0.25, grav_back=0.0, hang_need=0.65, hang_side=1.5, fan_deg=40, lane_ymin=0.1, root_ymin=0.05)
 BOX = BraidSpec(key="box_braids", box=0.14, front_y_end=-0.78, lane=0.07, r=0.0205, length_y=(-1.6, -1.74), flatten=0.84,
-                root_flat=0.18, root_w=1.35, sides=4, lobes=False, amp=0.0, back_groups=6, n_front=3, stiff=0.4, mass=1.2,
-                seed=23, root_len=0.05, row_jit=0.032, slope=0.42, strip="plait_thin", v_rep=2.6, leave_jit=0.05, hang_var=0.06, drift=0.022, s_pin=0.19, ride=0.45, grav_back=0.0, hang_need=0.64, hang_side=1.5, fan_deg=45, lane_ymin=0.1, root_ymin=-0.05)
+                root_flat=0.2, root_w=0.95, sides=4, lobes=False, amp=0.0, back_groups=6, n_front=3, stiff=0.4, mass=1.2,
+                seed=23, root_len=0.05, row_jit=0.032, slope=0.42, strip="plait_thin", v_rep=2.6, soft_bend=1.0, leave_jit=0.05, hang_var=0.06, drift=0.022, s_pin=0.19, ride=0.25, grav_back=0.0, hang_need=0.58, hang_side=1.5, fan_deg=45, lane_ymin=0.1, root_ymin=-0.05)
 FAN_A = 1.6  # the parting lanes are the scalp's sections by planes through the line (0, -FAN_A, z)
 DOWN = np.array([0, -1.0, 0])
 CHAIN_SPREAD = 0.35  # no swing piece's pivot points (nor its tip points) may spread more than this in x or z
@@ -821,7 +826,7 @@ def hang_all(braids, spec, colliders):
         rmax = max(HR) if HR else r
         gdir = unit(DOWN + np.array([0, 0, -0.08 if b.cls == "front" else spec.grav_back]))
         while p[1] > b.y_end and L < Lmax:
-            t = unit(t + gdir * 0.2 * (0.35 + 0.65 * float(smooth(0.0, 0.15, L))))  # a soft bend, not a corner
+            t = unit(t + gdir * 0.2 * (1 - spec.soft_bend * 0.65 * (1 - float(smooth(0.0, 0.15, L)))))  # soft bend
             if b.idx in target:
                 phi = math.atan2(p[0], p[2] - 0.03)
                 e = max(-0.6, min(0.6, target[b.idx] - phi))
@@ -1120,7 +1125,7 @@ def make_pads(spec, lanes, braids):
                 uu = PAD[0] + 0.003 + (PAD[1] - PAD[0] - 0.006) * fu
                 vv = (patch + 0.004 + 0.992 * float(np.clip(vloc[i], 0, 1))) / 4
                 edge = max(abs(vloc[i] - rv) / (1 - rv), abs(j / (m - 1) - 0.5) * 2)
-                sh = 0.82 - 0.14 * min(1.0, edge)
+                sh = 0.9 - 0.12 * min(1.0, edge)
                 row.append(piece.vert(pp, nn, (uu, vv), (sh, sh, sh)))
             ids.append(row)
         for i in range(m - 1):
@@ -1150,8 +1155,8 @@ def make_pads(spec, lanes, braids):
                 pts_c.append(pp)
                 ups.append(n2)
             u0 = BABY[0] + rng.uniform(0.002, 0.004)
-            piece.card(pts_c, [spec.lane * 0.42] * 3, ups, (u0, u0 + 0.118), v0=0.02, v1=0.55,
-                       shade=lambda t: (0.85, 0.85, 0.85), double=False)
+            piece.card(pts_c, [spec.lane * 0.3] * 3, ups, (u0, u0 + 0.07), v0=0.02, v1=0.55,
+                       shade=lambda t: (0.95, 0.95, 0.95), double=False)
     return piece
 
 
@@ -1187,34 +1192,45 @@ def chain_groups(braids, joints, n_back):
         if g:
             groups.append(g)
     back = [b for b in braids if b.cls != "front"]
-    az = np.array([math.atan2(joints[b.idx][0][0], joints[b.idx][0][2] - 0.03) for b in back])
-    order = [back[i].idx for i in np.argsort(az)]
-    n = len(order)
-    G = min(n_back, n)
-    cost = {}
 
-    def spread(i, j):
-        if (i, j) not in cost:
-            cost[(i, j)] = max(_spread([joints[bi][q] for bi in order[i:j]]) for q in range(3))
-        return cost[(i, j)]
-    INF = 9.0
-    best = [[INF] * (n + 1) for _ in range(G + 1)]
-    cut = [[0] * (n + 1) for _ in range(G + 1)]
-    best[0][0] = 0.0
-    for g in range(1, G + 1):
-        for j in range(g, n + 1):
-            for i in range(g - 1, j):
-                if best[g - 1][i] >= INF:
-                    continue
-                v = max(best[g - 1][i], spread(i, j))
-                if v < best[g][j]:
-                    best[g][j], cut[g][j] = v, i
-    j = n
-    segs = []
-    for g in range(G, 0, -1):
-        i = cut[g][j]
-        segs.append(order[i:j])
-        j = i
+    def partition(order):
+        n = len(order)
+        G = min(n_back, n)
+        cost = {}
+
+        def spread(i, j):
+            if (i, j) not in cost:
+                cost[(i, j)] = max(_spread([joints[bi][q] for bi in order[i:j]]) for q in range(3))
+            return cost[(i, j)]
+        INF = 9.0
+        best = [[INF] * (n + 1) for _ in range(G + 1)]
+        cut = [[0] * (n + 1) for _ in range(G + 1)]
+        best[0][0] = 0.0
+        for g in range(1, G + 1):
+            for j in range(g, n + 1):
+                for i in range(g - 1, j):
+                    if best[g - 1][i] >= INF:
+                        continue
+                    v = max(best[g - 1][i], spread(i, j))
+                    if v < best[g][j]:
+                        best[g][j], cut[g][j] = v, i
+        j = n
+        segs = []
+        for g in range(G, 0, -1):
+            i = cut[g][j]
+            segs.append(order[i:j])
+            j = i
+        return best[G][n], segs
+    # contiguous runs round the neck, ordered by the azimuth of where the braids leave the scalp, of their
+    # mid joints, of their tips or of the mean of the three: the ordering with the smallest worst spread wins
+    cands = []
+    for q in (0, 1, 2, None):
+        def azq(b, q=q):
+            p = np.mean(joints[b.idx], axis=0) if q is None else joints[b.idx][q]
+            return math.atan2(p[0], p[2] - 0.03)
+        order = [b.idx for b in sorted(back, key=lambda b: (azq(b), b.idx))]
+        cands.append(partition(order))
+    _v, segs = min(cands, key=lambda c: c[0])
     groups += segs[::-1]
     return groups
 
@@ -1609,6 +1625,8 @@ def render_style(key, pieces, cap, outdir, samples, looks, title=None):
                 sc.render(path, view=(14, 6, 1.0), dist=2.3, focus=(0, 0.25, -0.2))
             elif v == "sideclose":
                 sc.render(path, view=(70, 10, 1.0), dist=2.4, focus=(0, 0.25, -0.1))
+            elif v == "scalp":  # (debug: the partings from above the forehead)
+                sc.render(path, view=(10, 42, 1.0), dist=2.1, focus=(0, 0.35, -0.2))
             elif v == "top":
                 sc.render(path, view=(0, 80, 1.0), dist=3.4, focus=(0, 0.3, 0.05))
             elif v == "top34":
@@ -1634,7 +1652,7 @@ def colliders_for(head="m"):
 
 
 # ------------------------------------------------------------------------------------------- cornrows
-CORN = dict(n=10, axis=1.5, tan_max=0.205, width=0.07, ridge=0.021, v_tile=0.15, across=9, seed=31,
+CORN = dict(n=10, axis=1.5, tan_max=0.205, width=0.07, ridge=0.017, v_tile=0.15, across=9, seed=31,
             ext=(0.045, 0.085))  # ext: how far each row runs on past the nape hairline cut (a short tail)
 
 
@@ -1762,14 +1780,14 @@ def build_cornrows(spec, colliders):
             base = q0 + t0 * rng.uniform(0.004, 0.01) + side * kk * w0 * 0.12
             pts_c, ups = [], []
             for tt in np.linspace(0, 1, 4):
-                p = base + dirn * 0.028 * tt
+                p = base + dirn * 0.034 * tt
                 if hair_inside(p)[0] < 0.002:
                     p = p + t0 * (0.002 - hair_inside(p)[0])
                 pp, n2 = on_scalp(p, CLEAR + 0.002)
                 pts_c.append(pp)
                 ups.append(n2)
             u0 = BABY[0] + rng.uniform(0.002, 0.004)
-            top.card(pts_c, [w0 * 0.42] * 4, ups, (u0, u0 + 0.06), v0=0.02, v1=0.5,
+            top.card(pts_c, [w0 * 0.36] * 4, ups, (u0, u0 + 0.05), v0=0.04, v1=0.36,
                      shade=lambda t: (0.8, 0.8, 0.8), double=False)
     return [top], guides
 
