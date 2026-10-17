@@ -183,6 +183,21 @@ class Ref:
                 out[i] = self._hl_kd.find(Vector(tuple(p)))[2]
         return out
 
+    def skull_gap(self, S, head):
+        """how far each skull-table point stands outside the head mesh (0 where the mesh is on or outside it)"""
+        return np.array([max(0.0, head.signed(p)) for p in S])
+
+    @staticmethod
+    def smooth_field(S, f, sig):
+        """gaussian-weighted average of a per-point field over the surface (chord distance, sigma sig)"""
+        out = np.zeros(len(S))
+        for k in range(0, len(S), 512):
+            blk = S[k:k + 512]
+            d2 = ((blk[:, None, :] - S[None, :, :]) ** 2).sum(-1)
+            w = np.exp(-0.5 * d2 / sig ** 2)
+            out[k:k + 512] = (w * f[None, :]).sum(1) / w.sum(1)
+        return out
+
     def in_ear(self, p, pad=0.02):
         for lo, hi in self.ears:
             if np.all(p > lo - pad) and np.all(p < hi + pad):
@@ -416,10 +431,17 @@ class CapBase:
         # ~3.5 cm (no lip at the front edge or the temple corners); 0 outside it
         self.dist_hl = ref.dist_to_hairline(S)
         self.covr = {k: ref.grid_at(g, th, az) for k, g in ref.covr.items()}
+        # where the skull table stands outside the game's head mesh (behind the ears / the nape corners: up to
+        # ~0.023), the cap follows the inner of the two surfaces: CAP_OFF above the head mesh there, CAP_OFF above
+        # the skull elsewhere, blended over ~0.05 (allow = how far below skull + CAP_OFF the cap may sit)
+        self.gap = ref.skull_gap(S, head)
+        self.allow = ref.smooth_field(S, self.gap, 0.025)
+        self.allow = np.minimum(self.allow, self.gap + 0.004)
 
     def layer(self, off, T=None):
-        """positions at off above the skull, pushed out to the head mesh clearance"""
-        P = self.S + self.D * np.asarray(off).reshape(-1, 1)
+        """positions at off above the skull (less the skull / head-mesh gap allowance), pushed out to the head mesh
+        clearance (CLEAR) and, on the fitted female skull, to CLEAR less the same allowance"""
+        P = self.S + self.D * (np.asarray(off).reshape(-1, 1) - self.allow[:, None])
         idx = np.unique((self.keepT if T is None else T).ravel())
         for i in idx:
             for _ in range(4):
@@ -431,9 +453,10 @@ class CapBase:
                 fs, fdz, skf = self.fit
                 for _ in range(3):
                     hf = skf.height(P[i] * fs + np.array([0, 0, fdz]))
-                    if hf >= CLEAR + 0.0003:
+                    need = CLEAR - self.allow[i]
+                    if hf >= need + 0.0003:
                         break
-                    P[i] = P[i] + self.D[i] * (CLEAR + 0.0006 - hf) / float(np.dot(np.abs(self.D[i]), fs))
+                    P[i] = P[i] + self.D[i] * (need + 0.0006 - hf) / float(np.dot(np.abs(self.D[i]), fs))
         return P
 
 
@@ -468,10 +491,10 @@ def cap_layer(cb, T=None):
 # the painted cap's variants the shells use (at most 4 per entry: each costs one half-size image per boxer). The
 # coverage floors are low: down a fade every shell thins with the cap over the whole band (the shells' own height
 # converges there, so they never stand off the scalp where the hair is short); outer shells only a little sooner
-VAR_1 = {"rank": 0.0, "cov": 0.12}  # the inner shells: the cap's own strands
-VAR_A = {"rank": 0.25, "cov": 0.25}
-VAR_B = {"rank": 0.42, "cov": 0.38}
-VAR_C = {"rank": 0.58, "cov": 0.5}
+VAR_1 = {"rank": 0.0, "cov": 0.3}  # the inner shells: the cap's own strands
+VAR_A = {"rank": 0.25, "cov": 0.42}
+VAR_B = {"rank": 0.42, "cov": 0.55}
+VAR_C = {"rank": 0.58, "cov": 0.66}  # (outer shells gone where the cap's coverage is < ~0.5: no veil at the edge)
 # a buzz / waves cut's one fur shell: its UV shifted 4 cap texels across the strands (u), so its hairs fall between
 # the cap's (the stubble reads denser and even, not the same strands twice). (u up to 1.004 at the seam: the
 # texture wraps; were it clamped, a 0.4 % strip would show the edge texel)
@@ -523,7 +546,9 @@ def profile(cb, spec):
         de = np.minimum(de, dd)
     e = e * sstep(0.015, 0.075, de)
     c = np.clip(cb.covr[spec.get("capFade") or kind], 0, 1)
-    g = sstep(0.02, 1.0, c) ** 0.9
+    # the volume is gone before the fade's coverage drops below ~0.45: the lower fade band is cap-only stubble
+    # thinning out (a visible gradient, not a line-up), and only the cap and the inner shell exist at its edge
+    g = sstep(0.45, 1.0, c)
     up = sstep(0.12, 0.72, ny)
     dome = 0.85 + 0.15 * sstep(0.2, 0.55, y)
     if shape == "fur":
@@ -551,6 +576,9 @@ def profile(cb, spec):
             else:
                 ramp = sstep(ft - 0.05, ft + 0.08, y)
             H = SHORT_SIDE + (H - SHORT_SIDE) * ramp
+    # where the skull table stands off the head mesh (behind the ears, nape corners: the cap follows the mesh
+    # there) the length stays short: the weight line passes above that zone (taper, burst)
+    H = SHORT_SIDE + (H - SHORT_SIDE) * (1 - 0.65 * sstep(0.006, 0.017, cb.gap))
     t = H * g * e
     return np.maximum(t, 0.0) * spec.get("scale", 1.0)
 
@@ -608,6 +636,26 @@ def build_shells(cb, spec, name, n, ts, tufts=0.006, lean=0.9, seed=5):
         q = Pc[i] + cb.Dn[i] * dmax[i]
         bad[i] = cb.head.signed(q) < CLEAR or cb.ref.in_ear(q, 0.01)
     T0 = T0[~bad[T0].any(axis=1)]
+    # the stack closes up onto the cap toward its own footprint's border (round the ears, where the coarse shell
+    # grid's footprint is cut): no stepped shelf edge where the painted coverage is still full there
+    from collections import Counter
+    ec = Counter()
+    for t in T0:
+        for a_, b_ in ((t[0], t[1]), (t[1], t[2]), (t[2], t[0])):
+            ec[(min(a_, b_), max(a_, b_))] += 1
+    # (edges along the u = 0 / 1 seam are not a border: their twins on the other side close it)
+    U0 = cb.U
+    seam = lambda e_: (U0[e_[0]] < 1e-6 and U0[e_[1]] < 1e-6) or (U0[e_[0]] > 1 - 1e-6 and U0[e_[1]] > 1 - 1e-6)
+    bverts = np.array(sorted({i for e_, c_ in ec.items() if c_ == 1 and not seam(e_) for i in e_}), np.int64)
+    bf = np.ones(len(Pc))
+    if len(bverts):
+        Bp = Pc[bverts]
+        dB = np.full(len(Pc), 9.0)
+        for k0 in range(0, len(Pc), 512):
+            dB[k0:k0 + 512] = np.sqrt(((Pc[k0:k0 + 512, None, :] - Bp[None, :, :]) ** 2).sum(-1)).min(1)
+        bf = sstep(0.0, 0.04, dB)
+    ts = ts * bf
+    cb._border_f = bf
     tex = bpy.data.textures.get("TuftNoise") or bpy.data.textures.new("TuftNoise", "CLOUDS")
     tex.noise_scale = 0.04
     tex.noise_depth = 2
@@ -617,7 +665,7 @@ def build_shells(cb, spec, name, n, ts, tufts=0.006, lean=0.9, seed=5):
     material = spec.get("material", "Plastic")
     lean_w = sstep(0.5, 0.9, cb.th)  # (no lean round the crown: the painter samples it flat, POLE)
     for k in range(1, n + 1):
-        d = shell_heights(ts, k, n)
+        d = shell_heights(ts, k, n) - SHELL_BASE * 0.65 * (1 - bf)
         P = Pc + cb.Dn * d[:, None]
         T = orient_outward(P, T0, cb.ref.sk.c)
         T2, (P2, N2, U2, V2, t2, d2, th2, D2, lw2) = compact(T, P, cb.N, cb.U, cb.V, ts, d, cb.th, cb.Dn, lean_w)
@@ -650,13 +698,14 @@ def build_shells(cb, spec, name, n, ts, tufts=0.006, lean=0.9, seed=5):
             piece.meta["capShell"] = {kk: vv for kk, vv in var.items() if kk != "shift"}
         su, sv = (var or {}).get("shift", (0.0, 0.0))
         for i in range(len(PE)):
-            hgt = d2[i] - SHELL_SAG - SHELL_BASE
+            hgt = max(0.0, d2[i] - SHELL_SAG - SHELL_BASE)
             q = Vector(tuple(PE[i] * 70.0))
             nv = np.array(mnoise.noise_vector(q))
             amp = float(np.clip(t2[i] / tsmax, 0, 1)) * float(np.clip(hgt / 0.03, 0, 1))
             nn = N2[i] + nv * spec.get("nrm_noise", 0.16) * amp
             # occlusion by height above the cap (shells that close up keep one tone), a little clump variation
-            occ = 0.72 + 0.28 * float(sstep(0.0, 0.075, hgt))
+            # (and toward the root tone where the stack has closed up onto the cap: no light rim at the edge)
+            occ = (0.72 + 0.28 * float(sstep(0.0, 0.075, hgt))) * (0.84 + 0.16 * float(sstep(0.0, 0.006, hgt)))
             c = occ * (1 - 0.1 * amp * (0.5 + 0.5 * mnoise.noise(Vector(tuple(PE[i] * 14.0 + 3.1)))))
             # the hair leans back: the shell shows the cap's texels from nearer the crown (strands lie along +v)
             # (never more than half its v: round the crown no texel row collapses onto the pole's)
@@ -737,10 +786,10 @@ def build_crop(cb, spec, t_full, t_shell, seed=11, name="HairCrop"):
         flow /= np.linalg.norm(flow)
         tf0, ts0 = t_at(p)
         tfrac = float(np.clip(tf0 / peak, 0, 1))
-        lo, hi = spec.get("card_len", (0.045, 0.085))
+        lo, hi = spec.get("card_len", (0.055, 0.095))
         L = (lo + (hi - lo) * tfrac ** 1.5) * rng.uniform(0.85, 1.1)
         # lift off the scalp: 20-35 deg (the crew's front brushed up: up to ~50 deg at the hairline)
-        lift = math.radians(rng.uniform(20, 35))
+        lift = math.radians(rng.uniform(14, 26))  # (lying combed, not standing: no edge-on slivers)
         fr = 0.0
         if crew:
             fr = smoothstep(0.08, 0.0, float(cb.dist_hl[i])) * smoothstep(-0.15, -0.32, p[2])
@@ -821,14 +870,15 @@ def build_crop(cb, spec, t_full, t_shell, seed=11, name="HairCrop"):
         for x in pts:
             th, az = Skull.angles(x - sk.c)
             ups.append(sk.normal(max(th, 0.03), az))
-        w0 = rng.uniform(0.016, 0.026) if not guides[g][2] else rng.uniform(0.022, 0.032)
+        # (fewer, wider clumps that overlap: one combed mass; the fringe's roots wide, tucked under the shells)
+        w0 = rng.uniform(0.024, 0.036) if not guides[g][2] else rng.uniform(0.026, 0.038)
         taper = 0.08 if guides[g][2] else 0.3  # (the fringe is cut blunt: nearly as wide at its tip)
         npt = len(pts)
         widths = [w0 * (1.0 - taper * (i / (npt - 1)) ** 1.5) for i in range(npt)]
         # (strip 0 is the blunt-cut tuft: the Caesar's fringe and much of its top; the others end in points)
         # (the fringe: mostly the blunt tuft, some pointed ones, so its line is soft, not a broom)
         if guides[g][2]:
-            s = 0 if rng.random() < 0.65 else int(rng.integers(1, CROP_STRIPS))
+            s = 0 if rng.random() < 0.4 else int(rng.integers(1, CROP_STRIPS))
         else:
             s = 0 if (caesar and rng.random() < 0.4) else int(rng.integers(1, CROP_STRIPS))
         # occlusion: dark at the root (inside the shells), the tips no brighter than the outer shell's own tone
@@ -837,7 +887,7 @@ def build_crop(cb, spec, t_full, t_shell, seed=11, name="HairCrop"):
             base = rng.uniform(0.45, 0.55)  # (the fringe's roots sink into the shells' shade)
         # (a mix of facings: flat tufts read from above, turned ones from the side, so no view sees only card
         # edges; the fringe stays flat over the forehead)
-        tw = rng.normal(0, 0.08) if guides[g][2] else rng.uniform(-0.35, 0.35)
+        tw = rng.normal(0, 0.06) if guides[g][2] else rng.uniform(-0.12, 0.12)
         piece.card(list(pts), widths, ups, (s / CROP_STRIPS, (s + 1) / CROP_STRIPS),
                    shade=lambda t, b=base, c=tipv: (b + (c - b) * t,) * 3, twist=[tw] * npt)
     return piece, gob, len(guides)
@@ -874,12 +924,12 @@ def caesar_fringe(cb, spec, t_shell, rng):
         yf = min(FRINGE_Y, hl - 0.022) + rng.uniform(-0.004, 0.004)  # (the blunt line a little staggered)
         th_tip = theta_for_y(az, yf)
         R = float(np.linalg.norm(sk.point(th_tip, az, 0.0) - sk.c))
-        arc = rng.uniform(0.07, 0.1)
+        arc = 0.075 * rng.uniform(0.7, 1.3)  # (lengths +-30 %: no even comb row)
         th_root = th_tip - arc / R
         sway = rng.normal(0, 0.035)
         pts = []
         j = int(np.argmin(((cb.S - sk.point(th_root, az, 0.0)) ** 2).sum(1)))
-        root_h = CAP_OFF + rng.uniform(0.45, 0.75) * float(t_shell[j])
+        root_h = CAP_OFF + rng.uniform(0.2, 0.45) * float(t_shell[j])  # (tucked under the first shells)
         tip_h = CAP_OFF + 0.0035 + rng.uniform(0, 0.003)
         bulge = rng.uniform(0.004, 0.008)
         for f in np.linspace(0, 1, 4):
@@ -920,7 +970,7 @@ FAMILY = [
     # gradient from the ear top / nape up to y 0.21 / 0.08 that leaves 12 % at the hairline: clippered, not skin)
     ("crew", ["Crew Cut"], "none", dict(shape="crew", top=0.1, crown=0.056, capFade="fade")),
     ("caesar", ["Caesar Cut"], "none", dict(shape="caesar", side=0.026, top=0.05, card_len=(0.05, 0.075),
-                                            root_min=0.55, tip_min=0.45, fringe_cards=170)),
+                                            root_min=0.55, tip_min=0.45, fringe_cards=110)),
 ]
 SHELL_CAP_STRAIGHT = 0.07  # straight / wavy tops: the shells carry this much (the silhouette), the cards the rest
 SHELL_STEP_STRAIGHT = 0.0135
@@ -935,7 +985,7 @@ def entries():
         if spec["shape"] == "fur":
             out.append(dict(base, key=key, styles=styles, types=None, cards=0, material="Plastic"))
             continue
-        out.append(dict(base, key=key, styles=styles, types=STRAIGHT, cards=540 if spec["shape"] != "caesar" else 360,
+        out.append(dict(base, key=key, styles=styles, types=STRAIGHT, cards=360 if spec["shape"] != "caesar" else 260,
                         material="SmoothPlastic"))
         out.append(dict(base, key=key + "_c", styles=styles, types=CURLY, cards=0, scale=CURLY_SCALE,
                         material="Plastic"))
@@ -961,7 +1011,15 @@ class Clearance:
             P = np.asarray(p.P)
             if len(P) > 4000:
                 P = P[:: max(1, len(P) // 4000)]
-            r["skull_m"] = min(r["skull_m"], min(sk.height(x) for x in P))
+            hs = np.array([sk.height(x) for x in P])
+            r["skull_m"] = min(r["skull_m"], float(hs.min()))
+            # the skull table vs the head mesh under each point: where they agree (gap < 0.002) the layer must be
+            # >= CLEAR above the skull; where the table stands off the mesh the cap follows the mesh (CapBase.allow)
+            gp = np.array([max(0.0, self.head_m.signed(sk.point(*Skull.angles(x - sk.c), 0.0))) for x in P])
+            agree = gp < 0.002
+            if agree.any():
+                r["skull_m_where_mesh_agrees"] = min(r.get("skull_m_where_mesh_agrees", 9.0), float(hs[agree].min()))
+            r["max_skull_mesh_gap_under"] = max(r.get("max_skull_mesh_gap_under", 0.0), float(gp.max()))
             r["head_m"] = min(r["head_m"], min(self.head_m.signed(x) for x in P))
             if skf is not None:
                 Pf = P * self.fit_s + np.array([0, 0, self.fit_dz])
@@ -970,9 +1028,12 @@ class Clearance:
                     r["head_f_fit"] = min(r["head_f_fit"], min(self.head_f.signed(x) for x in Pf))
             # the male skull 0.965x narrower, the mesh fitted by the runtime's ax = 0.965: distance along the ray
             Pn = P * self.narrow
-            r["skull_m_narrow_fit"] = min(r["skull_m_narrow_fit"], min(
-                float(np.linalg.norm(x - sk.c) - np.linalg.norm(
-                    (sk.point(*Skull.angles((x - sk.c) / self.narrow)) - sk.c) * self.narrow)) for x in Pn))
+            hn = np.array([float(np.linalg.norm(x - sk.c) - np.linalg.norm(
+                (sk.point(*Skull.angles((x - sk.c) / self.narrow)) - sk.c) * self.narrow)) for x in Pn])
+            r["skull_m_narrow_fit"] = min(r["skull_m_narrow_fit"], float(hn.min()))
+            if agree.any():
+                r["skull_m_narrow_where_mesh_agrees"] = min(r.get("skull_m_narrow_where_mesh_agrees", 9.0),
+                                                            float(hn[agree].min()))
         return {k: round(float(v), 4) for k, v in r.items()}
 
 
@@ -1076,7 +1137,7 @@ def tile_rank(tile8):
 # crossfades to the polar sampling between POLE[0] and POLE[1] (smoothstep). su matches the polar tile's width at
 # the crossfade's middle (2 pi / nu * sin 32.5 deg) and sv its height (thetaMax / nv), so the strands keep their
 # size through the blend. Only for tiled caps (nu > 1: the waves' whole-cap image has its own calm crown).
-POLE = (math.radians(25.0), math.radians(40.0))
+POLE = (math.radians(35.0), math.radians(62.0))  # (wide: no meridian streaks from the polar u-squeeze above)
 
 
 def pole_spec(nu=TILE[0], nv=TILE[1]):

@@ -1,14 +1,16 @@
 """The "coily" atlas for the afro family (owned by build_afro.py). numpy + PIL only, deterministic.
 
-Layout (1024 x 1024; hairlib.ATLAS["coily"]: u 0..0.5 "tight", u 0.5..1 "loose"):
+Layout (1024 x 1024). The game tints the atlas by v from root (v 0, darker) to tip (v 1, lighter; Tips / Ombre
+dyes), so v grows with how far out a cell is worn: the dense core at the top, the outer shells and fins below.
 
     cell        u range      v range     what
-    CLOUD_A     0.00-0.50    0.00-0.50   a soft round cloud of tight kinky coils (dense, near-opaque core)
-    TILE_D      0.00-0.50    0.50-1.00   a tileable dense coil tile (inner shells, near-opaque)
-    TILE_S      0.50-1.00    0.00-0.25   a tileable sparse tight-coil tile (outer shells: the fuzzy edge)
-    TILE_L      0.50-1.00    0.25-0.50   a tileable sparse loose-curl tile (the Curly variant's outer shells)
-    FIN_T       0.50-0.75    0.50-1.00   a fuzz tuft of tight coils, root at its top (v 0.5) .. sparse tips
-    FIN_L       0.75-1.00    0.50-1.00   a fuzz tuft of loose curls, root at its top
+    TILE_D      0.00-0.50    0.00-0.50   a tileable dense coil tile (inner shells, near-opaque)
+    CLOUD_A     0.50-1.00    0.00-0.50   a soft round cloud of tight kinky coils (hairline patches)
+    FIN_T       0.00-0.25    0.50-0.75   a fuzz tuft of tight coils, root at its top (v 0.5) .. sparse tips
+    FIN_L       0.25-0.50    0.50-0.75   a fuzz tuft of loose curls, root at its top
+    TILE_S2     0.50-1.00    0.50-0.75   a tileable sparse tight-coil tile, another draw (the middle shells)
+    TILE_S      0.00-0.50    0.75-1.00   a tileable sparse tight-coil tile (outer shells: the fuzzy edge)
+    TILE_L      0.50-1.00    0.75-1.00   a tileable sparse loose-curl tile (the Curly variant's outer shells)
 
 The clouds have no outline to trace: the coil density falls off gradually (noise-modulated) over the
 outer ~35% of the cell, so a cloud's edge is made of single loops. The surface cards are laid tangent to
@@ -30,12 +32,13 @@ SS = 2  # supersampling of the splat canvases
 
 # cell -> (u0, v0, u1, v1) in the atlas
 CELLS = {
-    "CLOUD_A": (0.0, 0.0, 0.5, 0.5),
-    "TILE_D": (0.0, 0.5, 0.5, 1.0),
-    "TILE_S": (0.5, 0.0, 1.0, 0.25),
-    "TILE_L": (0.5, 0.25, 1.0, 0.5),
-    "FIN_T": (0.5, 0.5, 0.75, 1.0),
-    "FIN_L": (0.75, 0.5, 1.0, 1.0),
+    "TILE_D": (0.0, 0.0, 0.5, 0.5),
+    "CLOUD_A": (0.5, 0.0, 1.0, 0.5),
+    "FIN_T": (0.0, 0.5, 0.25, 0.75),
+    "FIN_L": (0.25, 0.5, 0.5, 0.75),
+    "TILE_S2": (0.5, 0.5, 1.0, 0.75),
+    "TILE_S": (0.0, 0.75, 0.5, 1.0),
+    "TILE_L": (0.5, 0.75, 1.0, 1.0),
 }
 
 
@@ -273,7 +276,7 @@ def pnoise(H, W, seed, scale):
     return np.clip((n - lo) / (hi - lo + 1e-9), 0, 1)
 
 
-def tile(w, h, seed, n, fill, fill_tone=0.36, stroke=1.0, nb=6, holes=0.0, dark_deep=0.5, **prm):
+def tile(w, h, seed, n, fill, fill_tone=0.36, stroke=1.0, nb=6, holes=0.0, dark_deep=0.5, bright=1.0, **prm):
     """a tileable coil tile (continuous shells): coils spread evenly (wrapping), over a fill"""
     rng = RNG(seed)
     W, H = w * SS, h * SS
@@ -284,7 +287,7 @@ def tile(w, h, seed, n, fill, fill_tone=0.36, stroke=1.0, nb=6, holes=0.0, dark_
     fa = np.clip(fill * (0.75 + 0.5 * (cl - 0.5)) - holes * sstep(0.35, 0.0, cl), 0, 1)
     layers.append((fa, fill_tone + 0.12 * pnoise(H, W, seed + 4, 3 * SS)))
     p = dict(prm, axis=None, axis_jit=0.0)
-    layers += coil_batches(rng, H, W, cents, depth, nb, p, stroke * SS, 1.0, dark_deep=dark_deep, wrap=True)
+    layers += coil_batches(rng, H, W, cents, depth, nb, p, stroke * SS, bright, dark_deep=dark_deep, wrap=True)
     C, A = composite(H, W, layers)
     return down(C, A, w, h)
 
@@ -325,14 +328,15 @@ def tex_coily(size=SIZE, seed=31):
         "CLOUD_A": cloud(half, half, seed + 10, n=420, fill=0.9, r0=0.37, spread=0.55, stroke=1.0, **tight),
         # the shells: dense (inner, near-opaque) and sparse (outer: single coils, the fuzzy silhouette by stacking)
         "TILE_D": tile(half, half, seed + 20, n=820, fill=0.93, fill_tone=0.44, stroke=1.0, dark_deep=0.66, **tight),
-        "TILE_S": tile(half, quarter, seed + 30, n=190, fill=0.0, stroke=1.0, nb=4, **tight),
+        "TILE_S": tile(half, quarter, seed + 30, n=190, fill=0.0, stroke=1.0, nb=4, bright=0.86, **tight),
+        "TILE_S2": tile(half, quarter, seed + 33, n=210, fill=0.0, stroke=1.0, nb=4, bright=0.8, **tight),
         # the Curly variant's outer shells: looser, larger curls (open loops, short ringlet arcs)
-        "TILE_L": tile(half, quarter, seed + 35, n=70, fill=0.0, stroke=1.25, nb=4,
+        "TILE_L": tile(half, quarter, seed + 35, n=70, fill=0.0, stroke=1.25, nb=4, bright=0.86,
                        radius=(22 * s * SS, 34 * s * SS), turns=(1.1, 2.0), pitch=(0.8, 1.4), tilt=(0.35, 0.7),
                        wander=0.35),
-        "FIN_T": tuft(quarter, half, seed + 40, n=110, fill=0.15, stroke=1.0, **tight),
+        "FIN_T": tuft(quarter, quarter, seed + 40, n=110, fill=0.15, stroke=1.0, **tight),
         # a tuft of loose curls (the Curly fins): open loops, no spring ladders
-        "FIN_L": tuft(quarter, half, seed + 50, n=48, radius=(15 * s * SS, 24 * s * SS), turns=(1.1, 2.0),
+        "FIN_L": tuft(quarter, quarter, seed + 50, n=48, radius=(15 * s * SS, 24 * s * SS), turns=(1.1, 2.0),
                       pitch=(0.8, 1.3), tilt=(0.35, 0.7), wander=0.35, fill=0.12, stroke=1.2, width=0.4),
     }
     for k, (c, a) in cells.items():

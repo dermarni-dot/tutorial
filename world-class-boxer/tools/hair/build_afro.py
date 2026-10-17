@@ -4,34 +4,43 @@ hairlib (see CONTRACT.md).
 
     /opt/bpyenv/bin/python tools/hair/build_afro.py [--only afro,afro_curly,hightop] [--no-tex]
                                                     [--render] [--quick] [--views 34,side] [--looks m_black]
+                                                    [--stock] [--volume 0.8,1.3] [--dye Tips]
 
 Writes tools/hair/textures/hair_coily.png (afro_tex.py), tools/hair/out/<key>/ (meshes + style.json),
 tools/hair/blend/<key>.blend; with --render, Cycles self-check renders and one sheet per style in FAM_DIR.
 
 How a style is built (game nominal head space, numerically):
-* Envelope: the style's outer surface as a thickness field H over the scalp (rays from the skull centre):
-  an egg for the afro (fullest at the top-back and above the ears, narrowing below), a superellipse
-  column with a domed, round-cornered top for the high top. Near the hairline (the natural hairline; for
-  the high top the high fade's top line and the front line-up) the thickness eases from the root layer up
-  to the envelope over a soft, rounded span: the mass rises out of the hairline with no brim or ledge.
-* Layers: each nested card layer (a fraction f of H) is a Blender mesh (a polar grid on the scalp) with
-  modifiers: two Displace modifiers on Clouds textures (broad asymmetric lumps, then curl-cluster lumps),
-  weighted by a vertex group that fades them out toward the hairline, and a Smooth. The evaluated layers
-  become BVH trees.
-* Cards: surface patches laid on each layer (every vertex of a patch ray-cast onto the evaluated layer, so
-  a patch follows the lumps; random rotation and tilt, heavy overlap, a soft cloud texture with no outline),
-  innermost layer first; fuzz fins (two-sided cards standing out of the outer layer) break up the
-  silhouette; short tufts rooted along the hairline grow up and back out of it (sparse and short at the
-  line, denser and longer behind it), over the shared scalp cap (entry cap). Shading normals are the
-  layer's outward normals; vertex colours bake occlusion (deeper layers darker, lump valleys a little
-  darker, the underside darker).
-* Pieces: the root layer, the hairline tufts and anything lower than VOL_MIN over the scalp in one
-  unscaled piece (length null: the volume slider never moves the hairline or sinks it into the head);
-  the mass by region (front, top, back, left, right: length "volume"); the outer layer + fins of the top,
-  back and sides as HairClump bounce pieces (stiff, small: they ride on the dense mass under them).
+* Envelope: the style's outer surface as a thickness field H over the scalp (rays from the skull centre).
+  Afro: an egg, fullest at the top-back and over the sides, the front held back; it rolls down to the
+  natural hairline (a rounded, quarter-circle-like ease, no shelf), and over the ears comes down at full
+  thickness to just above the ear tops before rounding under into the sideburn. High top: a rounded-rectangle
+  column (slightly barrel-curved, tapering a little toward its top, raked forward) with a flat top sloping
+  down to the back and a fairly crisp edge; it grows out of the high fade: from cap height at the fade's top
+  line the thickness lengthens smoothly (zero slope at the line) over ~0.2 of height, no foot ring.
+* Layers: each nested layer (a fraction f of H) is a Blender mesh (a polar grid on the scalp) with modifiers:
+  two Displace modifiers on Clouds textures (broad asymmetric lumps, then curl-cluster lumps; the layers
+  from f 0.5 out take the same lumps, so they move in parallel and a trough never shows the core), weighted
+  by a vertex group that fades them out toward the hairline, and a Smooth. The evaluated layers become BVH
+  trees.
+* Shells: each layer is covered by a continuous shell of quads on a cube-sphere grid of rays from the skull
+  centre (each layer turned at random), ray-cast onto the evaluated layer, 4 quads per repeat of a tileable
+  coil tile (dense tile inside, sparse tiles outside). At the shell's edge near the line a quad's outside
+  corners are pulled in along the quad to the edge (no stair steps, no holes); the high top's shells start
+  further back layer by layer, along a ragged line, so coverage builds up out of the fade.
+* Occlusion (vertex colour) from each vertex's depth under the outer surface (gentle: ~0.94 at the surface,
+  ~0.6 in the core), a little darker in curl-cluster valleys and underneath; shading normals are the
+  layer's outward normals, biased up a little.
+* Hairline: small soft coil-cloud patches on the outer layer within ~0.1 of the line (drawn over every
+  shell's edge), short tufts rooted along the line growing up and back (not along the sideburns), over the
+  shared scalp cap (entry cap). Fins: fuzz cards rooted under the outer layer, laid 25-50 degrees off it and
+  curving round it, facing outward.
+* Pieces: the root (unscaled, length null): layers 0-1, every shell within 0.09 of the line, the hairline
+  patches and tufts; the mass by region (front, top, back, left, right; length "volume"): every layer from 2
+  out, so the whole mass scales with the slider; bounce clumps (HairClump01-04, volume + bounce): round
+  patches of the outermost shell with their fins, cut out of the mass (the shells under them stay whole).
 * Clearance: every vertex at least CLEAR over the male skull table and the head mesh (head_m.obj), and,
-  through the runtime skull fit, over the female skull table and head_f.obj; checked again with the
-  runtime's volume transform at volume factors 0.8 and 1.3.
+  through the runtime skull fit, over the female skull table and head_f.obj; the volume pieces also at the
+  slider's extremes (0.8, 1.3) through the runtime's volume transform.
 """
 import argparse
 import json
@@ -61,12 +70,11 @@ TAU = 2 * math.pi
 
 CLEAR = 0.023  # min height of any vertex over the skull tables / head meshes (male, female through the fit)
 H0 = 0.034  # the root layer's height over the skull
-VOL_MIN = 0.068  # a card with any vertex lower than this goes to the unscaled piece
 EAR_PAD = 0.022
 SMIN = 0.08  # smallest surface patch (near the line)
 CELLS = afro_tex.CELLS
-FIN_T = (0.5, 0.75)
-FIN_L = (0.75, 1.0)
+FIN_T = CELLS["FIN_T"]
+FIN_L = CELLS["FIN_L"]
 
 SK = Skull()
 SKF = Skull(os.path.join(REF, "skull_f.json"))
@@ -274,8 +282,8 @@ def hightop_sdf():
         x, y, z = P[:, 0], P[:, 1], P[:, 2]
         k = np.clip((y - yb) / (y1 - yb), 0, 1)
         barrel = 0.018 * np.sin(math.pi * k)
-        hx = 0.455 + barrel - 0.035 * k
-        hz = 0.53 + barrel - 0.035 * k
+        hx = 0.455 + barrel - 0.05 * k
+        hz = 0.53 + barrel - 0.045 * k
         cz = 0.05 - 0.055 * k
         ax, az_ = np.abs(x) / hx, np.abs(z - cz) / hz
         p = 2.5
@@ -348,25 +356,25 @@ STYLES = {
     "afro": dict(
         styles=["Afro"], types=["Kinky", "Coiled", "Straight", "Wavy"], cap={"cut": "full", "density": 1},
         cover="none", line="natural", shape="afro", scale=1.0, prefix="HairAfro",
-        layers=[(0.0, "TILE_D"), (0.3, "TILE_D"), (0.55, "TILE_D"), (0.74, "TILE_S"), (0.87, "TILE_S"),
+        layers=[(0.0, "TILE_D"), (0.3, "TILE_D"), (0.55, "TILE_D"), (0.74, "TILE_S2"), (0.87, "TILE_S"),
                 (1.0, "TILE_S")],
         band=[(0, (0.0, 0.12, 1.6, "CLOUD_A")), (1, (0.3, 0.12, 1.2, "CLOUD_A"))],
         fins=dict(n=420, cell=FIN_T, length=(0.05, 0.08), width=(0.04, 0.055), sink=0.03, angle=(28, 50)),
-        puffs=dict(n=26, size=(0.09, 0.13), cell="CLOUD_A", radius=0.15),
-        lumps=(0.075, 0.05), span=(0.24, 0.2, 0.2, 0.24), edge=True, notes="rounded afro"),
+        puffs=dict(radius=0.17),
+        lumps=(0.075, 0.05), span=(0.24, 0.22, 0.27, 0.24), edge=True, notes="rounded afro"),
     "afro_curly": dict(
         styles=["Afro"], types=["Curly"], cap={"cut": "full", "density": 1},
         cover="none", line="natural", shape="afro", scale=0.88, prefix="HairAfro",
-        layers=[(0.0, "TILE_D"), (0.32, "TILE_D"), (0.6, "TILE_D"), (0.8, "TILE_L"), (1.0, "TILE_L")],
+        layers=[(0.0, "TILE_D"), (0.32, "TILE_D"), (0.6, "TILE_D"), (0.8, "TILE_S2"), (1.0, "TILE_L")],
         band=[(0, (0.0, 0.12, 1.6, "CLOUD_A")), (1, (0.32, 0.12, 1.2, "CLOUD_A"))],
-        fins=dict(n=300, cell=FIN_L, length=(0.06, 0.09), width=(0.05, 0.07), sink=0.03, angle=(30, 50)),
-        puffs=dict(n=22, size=(0.1, 0.14), cell="CLOUD_A", radius=0.15),
-        lumps=(0.085, 0.065), span=(0.24, 0.2, 0.2, 0.24), edge=True,
+        fins=dict(n=380, cell=FIN_L, length=(0.06, 0.09), width=(0.05, 0.07), sink=0.03, angle=(30, 50)),
+        puffs=dict(radius=0.17),
+        lumps=(0.085, 0.065), span=(0.24, 0.22, 0.27, 0.24), edge=True,
         notes="curly afro: looser curl surface, bigger curl clusters"),
     "hightop": dict(
         styles=["High Top"], types=None, cap={"cut": "style", "density": 1},
         cover="high", line="hightop", shape="hightop", prefix="HairTop",
-        layers=[(0.0, "TILE_S"), (0.35, "TILE_D"), (0.62, "TILE_D"), (0.8, "TILE_S"), (0.91, "TILE_S"),
+        layers=[(0.0, "TILE_S2"), (0.35, "TILE_D"), (0.62, "TILE_D"), (0.8, "TILE_S2"), (0.91, "TILE_S"),
                 (1.0, "TILE_S")],
         band=[], stagger=0.018, edge_jitter=0.022,
         fins=dict(n=300, cell=FIN_T, length=(0.04, 0.06), width=(0.035, 0.045), sink=0.02, angle=(25, 45)),
@@ -565,6 +573,9 @@ def region_of(d):
     return "back"
 
 
+NORMAL_UP = np.array([0.0, 0.35, 0.0])
+
+
 class Card:
     __slots__ = ("P", "N", "U", "C", "T", "layer", "region", "kind", "clump", "dline")
 
@@ -579,6 +590,9 @@ class Card:
     def to_piece(self, piece):
         base = piece.nv
         for p, n, u, c in zip(self.P, self.N, self.U, self.C):
+            # shading normals biased up a little (a soft volume lit from above: the underside of the mass does
+            # not go black where it faces down)
+            n = unit(np.asarray(n, np.float64) + NORMAL_UP)
             piece.vert(p, n, u, c)
         for a, b, c in self.T:
             piece.tri(a + base, b + base, c + base)
@@ -838,13 +852,15 @@ def patch_cards(layer, li, spec, line, rng, params, band=None, select=None, lift
 
 
 def strand_card(cd, pts, widths, side, normal, strip, v0, v1, occ):
-    """a two-sided strip card along pts (root first) in the plane of the strand and `side`"""
+    """a two-sided strip card along pts (root first) in the plane of the strand and `side`; strip: the atlas
+    cell (u0, v0, u1, v1), v0 / v1 the root / tip as fractions of the cell's height"""
     n = len(pts)
-    u0, u1 = strip
+    e = 1.5 / 1024
+    u0, cv0, u1, cv1 = strip[0] + e, strip[1] + e, strip[2] - e, strip[3] - e
     rows = []
     for i, p in enumerate(pts):
         t = i / (n - 1)
-        v = v0 + (v1 - v0) * t
+        v = cv0 + (cv1 - cv0) * (v0 + (v1 - v0) * t)
         o = occ(t)
         hw = widths[i] * 0.5
         a = len(cd.P)
@@ -896,7 +912,7 @@ def fin_cards(layer, li, spec, line, rng, region_fn=region_of):
         curl = rng.normal(0, 0.12)
         pts = [root + dirv * L * t - n * (L * 0.22 * t * t) + side * (L * curl * t * t) for t in (0.0, 0.55, 1.0)]
         cd = Card(li + 1, "fin")
-        strand_card(cd, pts, [w, w * 0.95, w * 0.8], side, n, fs["cell"], 0.5, 1.0,
+        strand_card(cd, pts, [w, w * 0.95, w * 0.8], side, n, fs["cell"], 0.0, 1.0,
                     lambda t: float(np.clip(0.86 + 0.14 * t, 0.4, 1)))
         cd.region = region_fn(unit(c - C))
         cards.append(cd)
@@ -932,6 +948,8 @@ def edge_cards(line, spec, rng, step=0.0135):
                 if not spec.get("edge_fade", True) and float(da_of(q)[0]) > 0.6:
                     continue  # (the high top: tufts only at the front line-up, not along the fade)
                 tang = unit(P[i + 1] - P[i])
+                if abs(tang[1]) > 0.6:
+                    continue  # (not along the sideburns: there a tuft is seen edge-on, as a streak)
                 n = scalp_normal(q)
                 g = unit(np.cross(n, tang))
                 if line.dist((q + g * 0.02)[None])[0] < line.dist((q - g * 0.02)[None])[0]:
@@ -960,7 +978,7 @@ def edge_cards(line, spec, rng, step=0.0135):
                 side = unit(np.cross(dirv, n))
                 cd = Card(1, "edge")  # drawn over the root shell and its patches (they grow out through it)
                 o0 = 0.74 + 0.06 * row
-                strand_card(cd, pts, [w, w, w * 0.85][-len(pts):], side, n, FIN_T, 0.5, 0.97,
+                strand_card(cd, pts, [w, w, w * 0.85][-len(pts):], side, n, FIN_T, 0.0, 0.94,
                             lambda t, o0=o0: o0 + (0.96 - o0) * t)
                 cd.region = "base"
                 cards.append(cd)
@@ -968,10 +986,6 @@ def edge_cards(line, spec, rng, step=0.0135):
 
 
 # =============================================================================================== pieces
-def card_min_height(cd):
-    return float(skull_height(SK, np.asarray(cd.P)).min())
-
-
 BAND_D = 0.09  # shells this close to the line stay in the root piece too (the layers have converged there)
 BASE_LAYERS = 1  # layers 0..BASE_LAYERS (with the hairline patches and tufts) form the unscaled root piece
 MIN_MASS_TRIS = 300  # a region mass smaller than this joins its neighbour (no MeshPart for a label)
@@ -1205,31 +1219,29 @@ def build_style(key, spec, clr, rng_seed=7):
     # the shells' edges near the line hide under small cloud patches (and the tufts over them)
     # (on the outer layer, lifted a little: over every shell's edge near the line)
     for bi, (li, prm) in enumerate(spec["band"]):
-        cards += patch_cards(layers[-1], len(layers) - 1, spec, line, rng, prm, band=0.13, lift=(0.001, 0.004),
+        cards += patch_cards(layers[-1], len(layers) - 1, spec, line, rng, prm, band=0.1, lift=(0.001, 0.004),
                              seed=bi * 3)
     fins = fin_cards(layers[-1], len(layers) - 1, spec, line, rng)
     cards += fins
     if spec.get("edge", True):
         cards += edge_cards(line, spec, rng)
-    # bounce puffs: small clusters of cloud patches lifted just over the outer shell (which stays whole in the
-    # static mass, so a puff moving never opens a gap), with the fins rooted in the same spot
+    # bounce clumps: round patches (radius ~0.17) of the outermost shell, with the fins rooted in them, cut out of
+    # the static mass; the next shell in (sparse) and the dense core stay whole under them, so a clump moving a
+    # little never opens a gap
     if spec.get("puffs"):
         pf = spec["puffs"]
         r_out = float(np.linalg.norm(layers[-1].P - C, axis=1).mean())
+        last = len(layers) - 1
         for ci, (cname, cdir) in enumerate(CLUMPS):
             cdir = unit(np.array(cdir))
             lim = math.cos(pf["radius"] / r_out)
-            sel = (lambda D, cdir=cdir, lim=lim: unit(D) @ cdir > lim)
-            pc = patch_cards(layers[-1], len(layers) - 1, spec, line, rng,
-                             (1.0, pf["size"][1], 2.6, pf["cell"]), select=sel, lift=(0.004, 0.012), kind="puff",
-                             seed=31 * (ci + 1))
-            pc = pc[:pf["n"]]
-            for cd in pc:
-                cd.clump = cname
-            cards += pc
-            for cd in fins:
-                if cd.clump is None and unit(np.asarray(cd.P[0]) - C) @ cdir > lim:
-                    cd.clump = cname
+            for cd in cards:
+                if cd.clump is not None or cd.dline < BAND_D:
+                    continue
+                if (cd.kind == "shell" and cd.layer == last) or cd.kind == "fin":
+                    d = unit(np.asarray(cd.P).mean(axis=0) - C) if cd.kind == "shell" else unit(np.asarray(cd.P[0]) - C)
+                    if d @ cdir > lim:
+                        cd.clump = cname
     # cards whose vertices reach into an ear's box are dropped
     cards = [c for c in cards if not any(in_ear(np.asarray(p)) for p in c.P)]
     pre = spec["prefix"]
@@ -1388,6 +1400,7 @@ VIEWS = {  # name -> (render view, dist, focus)
     "top34": ("top34", 3.9, (0.0, 0.2, 0.03)),
     "closeside": ((100, 4, 1.0), 1.9, (0.3, 0.36, 0.08)),
     "front": ("front", 3.9, (0.0, 0.17, 0.03)),
+    "closeback": ((180, 10, 1.0), 1.6, (0.0, 0.3, 0.4)),
 }
 
 
@@ -1419,7 +1432,27 @@ def cull_backfaces(mat):
     mat["culled"] = 1
 
 
-def render_style(key, spec, pieces, looks, views, res, samples, cull=True, vol=None, tag=""):
+def bake_dye(tex, base, alt, dye, out, bands=12):
+    """the game's tint (HairAssetKit.Tint with Kit.Palette's pal.at, approximately): per row v (root 0 .. tip 1)
+    the base colour lerped to the dye's by smoothstep(0.6, 0.85, v) (Tips) or (0.25, 0.95, v) (Ombre), darker
+    roots / lighter tips for coily hair, a band's own +-10% across u (12 bands), times the greyscale; alpha kept"""
+    from PIL import Image
+    im = np.asarray(Image.open(tex).convert("RGBA")).astype(np.float64) / 255
+    h, w = im.shape[:2]
+    v = (np.arange(h) + 0.5) / h
+    k = sstep(0.6, 0.85, v) if dye == "Tips" else sstep(0.25, 0.95, v)
+    col = np.asarray(base)[None] * (1 - k[:, None]) + np.asarray(alt)[None] * k[:, None]
+    shade = (0.9 + 0.1 * sstep(0, 0.4, v)) * (1 + 0.02 * sstep(0.5, 1, v))
+    col *= shade[:, None]
+    bi = np.minimum(bands - 1, ((np.arange(w) + 0.5) / w * bands).astype(int))
+    rnd = np.array([(math.sin(b * 12.9898 + 4.1414) * 43758.5453) % 1 for b in range(bands)])
+    bv = 0.9 + 0.2 * ((rnd * 13.7) % 1)
+    rgb = im[..., :3] * col[:, None, :] * bv[bi][None, :, None]
+    Image.fromarray((np.dstack([np.clip(rgb, 0, 1), im[..., 3:]]) * 255 + 0.5).astype(np.uint8), "RGBA").save(out)
+    return out
+
+
+def render_style(key, spec, pieces, looks, views, res, samples, cull=True, vol=None, tag="", dye=None):
     import render
     os.makedirs(FAM_DIR, exist_ok=True)
     capP = read_mesh_v2(os.path.join(hl.OUT, "cap", "HairCap.mesh"), "HairCap")
@@ -1430,6 +1463,11 @@ def render_style(key, spec, pieces, looks, views, res, samples, cull=True, vol=N
     for look in looks:
         head, torso, skin, tint_name, female = LOOKS[look]
         tint = HAIR_TINTS[tint_name]
+        htint = tint
+        if dye:
+            tex = bake_dye(os.path.join(TEX_DIR, "hair_coily.png"), tint, HAIR_TINTS["blonde"], dye,
+                           os.path.join(FAM_DIR, f"dye_{dye}_{tint_name}.png"))
+            htint = (1.0, 1.0, 1.0)
         s, dz = (clr_fit if female else (np.ones(3), 0.0))
         sc = render.Scene(res=res, samples=samples)
         render.add_obj(sc, os.path.join(REF, f"{head}.obj"), tint=SKINS[skin])
@@ -1442,7 +1480,7 @@ def render_style(key, spec, pieces, looks, views, res, samples, cull=True, vol=N
             P = p
             if vol is not None and p.meta.get("length") == "volume":
                 P = volume_placed(p, vol)
-            ob = sc.add_piece(P, texture=tex, tint=tint, offset=off, scale=tuple(s))
+            ob = sc.add_piece(P, texture=tex, tint=htint, offset=off, scale=tuple(s))
             if cull:
                 cull_backfaces(ob.data.materials[0])
                 fabric(ob.data.materials[0])
@@ -1483,6 +1521,7 @@ def main():
     ap.add_argument("--looks", default="")
     ap.add_argument("--stock", action="store_true", help="also one stock-material, all-triangles view")
     ap.add_argument("--volume", default="", help="also render at these volume factors, e.g. 0.8,1.3")
+    ap.add_argument("--dye", default="", help="also a dye preview (Tips / Ombre, blonde over the look's colour)")
     args = ap.parse_args(sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else sys.argv[1:])
     t0 = time.time()
     if not args.no_tex:
@@ -1523,6 +1562,10 @@ def main():
                 p2, l2 = render_style(key, STYLES[key], built[key], [looks[0]], ["34"], res, samples, cull=False,
                                       tag="_stock")
                 print("stock", p2, flush=True)
+            for dy in [x for x in args.dye.split(",") if x]:
+                p4, l4 = render_style(key, STYLES[key], built[key], [looks[1] if len(looks) > 1 else looks[0]],
+                                      ["34", "close34"], res, samples, tag=f"_dye{dy}", dye=dy)
+                print("dye", p4, flush=True)
             for vf in [float(x) for x in args.volume.split(",") if x]:
                 p3, l3 = render_style(key, STYLES[key], built[key], [looks[0]], ["34", "side", "back", "top34"], res, samples,
                                       vol=vf, tag=f"_vol{vf}")

@@ -252,7 +252,7 @@ def tex_shortcoil(seed=61):
 
 # ---------------------------------------------------------------------------------------- 360 waves
 WAVES_SIZE = 1024
-WAVES_N = 23  # ridges from the calm crown to the cap's edge (the nape)
+WAVES_N = 19  # ridges from the calm crown to the cap's edge (the nape)
 WAVES_TIGHT = 1.4  # how much tighter the pitch is at the hairline than next to the crown (1 + this)
 WAVES_CALM = 0.12  # v below this: the crown's whorl (no ridges)
 
@@ -294,6 +294,39 @@ def tex_waves(theta_max, seed=71, size=WAVES_SIZE):
     cph = 13.0 * u + 1.7 * v + 0.6 * harmonics(3, 1.0, seed + 5)
     chev = 0.32 * (2 * np.abs(cph - np.floor(cph) - 0.5) - 0.5) * np.clip((v - WAVES_CALM) / 0.25, 0, 1)
     phase = np.interp(v, vv, F) + (drift + chev) * calm
+    # uneven, broken crests: the head split into irregular azimuth sectors (5-7 a turn, 1/7..1/4 turn each), each
+    # ridge shifted by its own +-0.3 period per sector, blended over a short width at the sector borders (the
+    # crests jog there: broken lines, not continuous corduroy rings)
+    rs = np.random.default_rng(seed + 11)
+    nsec = 6
+    cuts = np.sort(rs.uniform(0, 1, nsec))
+    ridge0 = np.floor(phase)
+    fr0 = phase - ridge0
+    sec_off = {}
+
+    def off_of(r0, uu):
+        """ridge r0's sector offset at u (sector borders blended over 0.024 turn: the crest jogs there)"""
+        if r0 not in sec_off:
+            rr = np.random.default_rng(seed * 1000 + 31 * r0 + 5)
+            cr = np.sort((cuts + rr.normal(0, 0.03, nsec)) % 1.0)
+            sec_off[r0] = (cr, rr.uniform(-0.3, 0.3, nsec))
+        cr, offs = sec_off[r0]
+        k = np.searchsorted(cr, uu) % nsec
+        kp = (k - 1) % nsec
+        d_next = (cr[k] - uu) % 1.0
+        d_prev = (uu - cr[kp]) % 1.0
+        w1 = np.clip(0.5 - d_next / 0.024, 0, 0.5)
+        w0 = np.clip(0.5 - d_prev / 0.024, 0, 0.5)
+        return offs[kp] * (1 - w1 - w0) + offs[k] * w1 + offs[(kp - 1) % nsec] * w0
+    jit = np.zeros_like(u)
+    for r0 in range(-4, 40):
+        m = ridge0 == r0
+        if not m.any():
+            continue
+        # continuous in v: ridge r0's offset blended into r0 + 1's across the ridge (no seams between ridges)
+        t = fr0[m] * fr0[m] * (3 - 2 * fr0[m])
+        jit[m] = off_of(r0, u[m]) * (1 - t) + off_of(r0 + 1, u[m]) * t
+    phase = phase + jit * calm
     ridge = np.floor(phase)
     # per-ridge amplitude and extra phase (by ridge index, varying round the head)
     amp = np.ones_like(u)
@@ -333,9 +366,13 @@ def tex_waves(theta_max, seed=71, size=WAVES_SIZE):
     lic = acc / wsum
     lic = (lic - lic.mean()) / (lic.std() + 1e-9)
     strands = np.clip(0.5 + 0.22 * lic, 0, 1)
-    lum = 0.74 + 0.11 * lit * amp + 0.08 * (h - 0.5) * amp + 0.18 * (strands - 0.5)
-    lum = lum - 0.06 * amp * np.clip(-lit, 0, 1)  # the trough's soft shadow
-    A = np.clip(0.9 + 0.14 * (strands - 0.5) - 0.05 * np.clip(-lit, 0, 1) * amp, 0, 0.98)
+    # the ridge's sheen carried in the albedo (a light crest band), the trough only a little darker and its
+    # depth varying along the ridge (breaks), alpha nearly flat (no dark see-through grooves)
+    brk = 0.55 + 0.45 * (0.5 + 0.5 * np.cos(TAU * 4 * u + ridge * 2.39 + harmonics(5, 1.5, seed + 13)))
+    crest = np.clip(1 - np.abs(f - 0.38) / 0.16, 0, 1) ** 1.5
+    lum = 0.7 + 0.16 * crest * amp + 0.07 * lit * amp + 0.18 * (strands - 0.5)
+    lum = lum - 0.035 * amp * brk * np.clip(-lit, 0, 1)  # the trough's soft shadow
+    A = np.clip(0.91 + 0.14 * (strands - 0.5) - 0.02 * np.clip(-lit, 0, 1) * amp * brk, 0, 0.98)
     return lum, A
 
 
@@ -344,41 +381,50 @@ CROP_STRIPS = 4
 
 
 def tex_crop(w=512, h=512, seed=81, ss=2):
-    """Short tufts for the crop-top cards: CROP_STRIPS strips across u, each a tuft of fine hairs from a broad
-    root (v 0) converging into a few tapered points (v 1). Alpha fades in over the first ~30 % (the card grows
-    out of the hair under it: no visible card start), at both sides, and to the tips. Mean grey ~0.8."""
+    """Short tufts for the crop-top cards: CROP_STRIPS strips across u, each one tapered tuft (a strand group) from
+    a broad root (v 0) converging into 2-4 fine points (v 1); strip 0 is a blunt-cut tuft (the Caesar's fringe).
+    Strands are distinct (each its own value: dark gaps between groups, no felt), darker at the root (~0.55) and
+    ~15 % lighter toward the tip (max albedo 0.86: a multiplied blonde never washes out to straw). Alpha fades in
+    over the first ~22 % (the card grows out of the shells: no visible start), at the strip's sides, and to the
+    points (tips taper to sub-texel width and fade: no blunt quads)."""
     W, H = w * ss, h * ss
-    cv = Canvas(W, H, tile=False, base_lum=0.7)
+    cv = Canvas(W, H, tile=False, base_lum=0.6)
     rng = np.random.default_rng(seed)
     sw = W / CROP_STRIPS
     for s in range(CROP_STRIPS):
         x0 = s * sw
-        blunt = s == 0  # strip 0: a blunt-cut tuft (hairs side by side, ending together near v 1: a fringe)
-        npts = 3 + s % 3
-        tips = [x0 + sw * (0.22 + 0.56 * (i + rng.uniform(0.25, 0.75)) / npts) for i in range(npts)]
-        for _ in range(170 + 20 * s):
-            rx = x0 + sw * (0.5 + 0.4 * rng.uniform(-1, 1) * abs(rng.uniform(-1, 1)) ** 0.3)
-            tx = tips[rng.integers(npts)] + rng.normal(0, sw * 0.035)
+        blunt = s == 0
+        npts = (2, 3, 4)[s % 3] if not blunt else 1
+        tips = [x0 + sw * (0.2 + 0.6 * (i + rng.uniform(0.3, 0.7)) / npts) for i in range(npts)]
+        nstr = 260 if blunt else 300
+        for k in range(nstr):
+            # root spread: dense in the middle of the strip, thinning to its sides
+            rx = x0 + sw * (0.5 + 0.42 * np.clip(rng.normal(0, 0.45), -1, 1))
+            g = int(rng.integers(npts))
+            tx = tips[g] + rng.normal(0, sw * 0.02)
             if blunt:
-                tx = rx + rng.normal(0, sw * 0.03)
-            L = H * (rng.uniform(0.86, 0.95) if blunt else rng.uniform(0.55, 0.97))
-            m = 10
+                tx = rx + rng.normal(0, sw * 0.02)
+            # strands of a point's group end at different lengths (the point tapers), outer ones shorter
+            far = abs(rx - tx) / sw
+            L = H * (rng.uniform(0.84, 0.96) if blunt else np.clip(rng.uniform(0.62, 0.98) - 0.5 * far, 0.35, 0.98))
+            m = 12
             t = np.linspace(0, 1, m)
-            pull = t ** 1.3
-            xs = rx + (tx - rx) * pull * (L / H) + np.sin(t * 3 + rng.uniform(0, TAU)) * sw * 0.012
-            ys = H * rng.uniform(0.0, 0.06) + t * L
-            lum = np.clip(rng.uniform(0.88, 1.05) * (0.66 + 0.36 * t ** 0.7), 0.3, 1.0)
-            wid = np.maximum(0.8, (3.2 - 2.2 * t ** 1.2)) * rng.uniform(0.8, 1.2)
+            pull = t ** 1.2
+            xs = rx + (tx - rx) * pull * (L / H) + np.sin(t * 2.6 + rng.uniform(0, TAU)) * sw * 0.008
+            ys = H * rng.uniform(0.0, 0.05) + t * L
+            base = rng.uniform(0.5, 0.62) if rng.random() > 0.12 else rng.uniform(0.38, 0.46)  # some dark strands
+            lum = np.clip(base * (1.0 + 0.17 * t ** 0.8) + 0.06 * (1 - far), 0.3, 0.86)
             if blunt:
-                op = 0.85 * np.clip(np.minimum(t / 0.3, 1) ** 1.6 * (1 - np.maximum(0, t - 0.9) / 0.1 * 0.4), 0, 1)
-                wid = np.maximum(1.2, 2.8 - 0.8 * t)
+                wid = np.maximum(1.4, 3.6 - 1.2 * t) * rng.uniform(0.8, 1.2)
+                op = np.clip(np.minimum(t / 0.22, 1) ** 1.5, 0, 1) * (1 - 0.35 * np.clip((t - 0.9) / 0.1, 0, 1))
             else:
-                op = 0.85 * np.clip(np.minimum(t / 0.3, 1) ** 1.6 * (1 - np.maximum(0, t - 0.72) / 0.28 * 0.9), 0, 1)
-            cv.strand(xs, ys, wid, lum, op * rng.uniform(0.8, 1.0))
+                wid = np.maximum(0.5, 3.8 * (1 - t ** 1.4)) * rng.uniform(0.8, 1.2)
+                op = np.clip(np.minimum(t / 0.22, 1) ** 1.5, 0, 1) * (1 - np.clip((t - 0.78) / 0.22, 0, 1) ** 1.3)
+            cv.strand(xs, ys, wid, lum, op * rng.uniform(0.85, 1.0))
     L, A = cv.down(ss)
     hh, ww = A.shape
     uu = (np.arange(ww) + 0.5) / ww * CROP_STRIPS
     fu = uu - np.floor(uu)
-    side = np.clip(np.minimum(fu, 1 - fu) / 0.12, 0, 1)
+    side = np.clip(np.minimum(fu, 1 - fu) / 0.1, 0, 1)
     A = A * side[None, :]
-    return L, A
+    return np.minimum(L, 0.86), A
