@@ -232,10 +232,10 @@ class Afro(Style):
         self.key = key
         self.curly = curly
         k = 0.93 if curly else 1.0
-        self.E0 = np.array([0.0, 0.17, 0.075])
-        self.R = np.array([0.67, 0.685, 0.69]) * k
+        self.E0 = np.array([0.0, 0.145, 0.1])
+        self.R = np.array([0.67, 0.685, 0.675]) * k
         self.h_root = 0.032
-        self.bands = [0.14, 0.15, 0.17, 0.2, 0.24]
+        self.bands = [0.17, 0.17, 0.21, 0.23, 0.26]
         self.tuck_pow = 1.7
         self.lobes = lobes_fn(401 + (7 if curly else 0), 12, 0.06, 0.045)
         self.vor_amp = 0.07 if not curly else 0.06
@@ -249,11 +249,101 @@ class Afro(Style):
         t = ray_ellipsoid(o, d, self.E0, R)
         for _ in range(2):  # egg: fullest above the ears, narrower toward the bottom of the mass
             y = C[1] + d[:, 1] * t
-            nk = 1 - 0.16 * smooth(self.E0[1] + 0.1, self.E0[1] - 0.45, y)
+            nk = 1 - 0.1 * smooth(self.E0[1] + 0.1, self.E0[1] - 0.45, y)
             R = np.stack([self.R[0] * nk, self.R[1] * np.ones_like(nk), self.R[2] * nk], 1)
             t = ray_ellipsoid(o, d, self.E0, R)
         h = t - r + self.lobes(d)
         return np.maximum(h, 0.07)
+
+
+def smin(a, b, k):
+    h = np.clip(0.5 + 0.5 * (b - a) / k, 0, 1)
+    return b * (1 - h) + a * h - k * h * (1 - h)
+
+
+def smax(a, b, k):
+    return -smin(-a, -b, k)
+
+
+def _topline(kind="high"):
+    tl = SKD["fades"]["topLines"][kind]
+    pts = []
+    for side in ("right", "left"):
+        for e in tl.get(side) or []:
+            if e and len(e) >= 4:
+                pts.append(e)
+    pts = np.array(pts, dtype=np.float64)
+    order = np.argsort(pts[:, 0])
+    return pts[order]
+
+
+class HighTop(Style):
+    """the high top: a tall column of coils over a high fade (the cap paints the fade: cut "style"). Its
+    section a superellipse (rounded, not a box), a little wider toward the soft-domed top, the front face
+    leaning back, its foot rising from the fade's top line at the sides and back and from the line-up at the
+    front. (After AnatomyHair R["High Top"].)"""
+
+    def __init__(self, key="hightop"):
+        self.key = key
+        self.yb, self.yTop = 0.18, 0.86
+        self.h_root = 0.03
+        self.bands = [0.05, 0.06, 0.09, 0.1, 0.1]
+        self.tuck_pow = 1.25
+        self.lobes = lobes_fn(77, 10, 0.012, 0.035)
+        self.vor_amp = 0.035
+        self.vor_size = 0.13
+        self.top = _topline("high")
+        self.fade_top = SKD["fades"]["FADE_TOP"]["high"]
+        self.names = {"mass": {"front": "HairTop01", "right": "HairTop02", "left": "HairTop03", "back": "HairTop04",
+                               "top": "HairTop05"},
+                      "clumps": CLUMPS, "edge": "HairTopEdge"}
+
+    def sdf(self, P):
+        P = np.atleast_2d(P)
+        x, y, z = P[:, 0], P[:, 1], P[:, 2]
+        k = np.clip((y - self.yb) / (self.yTop - self.yb), 0, 1)
+        hx = 0.44 + 0.03 * k
+        lean = 0.07 * (y - self.yb)
+        hz = 0.5 - lean
+        cz = 0.04 + lean
+        ax, az = np.abs(x) / hx, np.abs(z - cz) / hz
+        r = (ax ** 2.6 + az ** 2.6) ** (1 / 2.6)
+        d_side = (r - 1) * np.minimum(hx, hz)
+        d_top = y - (self.yTop + 0.04 * (1 - np.minimum(1, r * r)))
+        return smax(d_side, d_top, 0.1)
+
+    def normal_hint(self, p):
+        e = 0.01
+        g = np.array([(self.sdf(p + dv)[0] - self.sdf(p - dv)[0]) for dv in np.eye(3) * e])
+        return unit(g)
+
+    def outer(self, d):
+        d = np.atleast_2d(d)
+        r = np.array([SK.radius(*SK.angles(di)) for di in d])
+        ts = np.arange(0.0, 0.75, 0.004)
+        out = np.empty(len(d))
+        for i, di in enumerate(d):
+            P = C + di[None] * (r[i] + ts)[:, None]
+            s = self.sdf(P)
+            j = np.argmax(s > 0) if (s > 0).any() else len(ts) - 1
+            out[i] = ts[j]
+        return np.maximum(out + self.lobes(d), 0.05)
+
+    def region(self, p):
+        s, _ = scalp_of(p)
+        e_front = edge_dist(s)
+        da = da_of(s)
+        yl = np.interp(da, self.top[:, 0], self.top[:, 2], left=np.nan, right=self.top[-1, 2])
+        e_top = np.where(np.isnan(yl), 9.0, s[:, 1] - np.nan_to_num(yl, nan=0.0))
+        return np.minimum(e_front, e_top)
+
+    def cap_region(self, p):  # preview stand-in only: the high fade's coverage, roughly (full above the top line)
+        s, _ = scalp_of(p)
+        e = edge_dist(s)
+        da = da_of(s)
+        yl = np.interp(da, self.top[:, 0], self.top[:, 2], left=np.nan, right=self.top[-1, 2])
+        fade = np.where(np.isnan(yl), 9.0, (s[:, 1] - np.nan_to_num(yl, nan=0.0)) + 0.06)
+        return np.minimum(e, fade)
 
 
 # ------------------------------------------------------------------------------------------- Blender layers
@@ -361,7 +451,8 @@ class Layer:
         if np.dot(n, d) < 0:
             n = -n
         # shading: mostly the smooth envelope's direction (one soft volume), a little of the lumps
-        e = unit(p0 - self.style.E0) if hasattr(self.style, "E0") else d
+        e = self.style.normal_hint(p0) if hasattr(self.style, "normal_hint") else (
+            unit(p0 - self.style.E0) if hasattr(self.style, "E0") else d)
         n = unit(0.85 * e + 0.15 * n)
         return p0, n
 
@@ -506,17 +597,19 @@ def build_afro(style, head, coll):
     t0 = time.time()
     B = Builder(style, head)
     rng = B.rng
-    curly = style.curly
+    curly = getattr(style, "curly", False)
+    names = getattr(style, "names", {"mass": MASS, "clumps": CLUMPS, "edge": "HairAfroEdge"})
     fr = [None, 0.34, 0.62, 0.86, 1.0, 1.15, 1.3]
     layers = []
     for i, f in enumerate(fr):
         ob = make_layer(style, f, f"{style.key}_layer{i}", coll)
         layers.append(Layer(style, ob, f))
-    mass = {k: hl.Piece(v, "coily", length="volume", material="SmoothPlastic", castShadow=True)
-            for k, v in MASS.items()}
-    clumps = {k: hl.Piece(v, "coily", length="volume", material="SmoothPlastic", castShadow=False)
-              for k, v in CLUMPS.items()}
-    edge = hl.Piece("HairAfroEdge", "coily", material="SmoothPlastic", castShadow=False)
+    # Fabric: matte (kinky hair has almost no sheen; the generated afro uses it too)
+    mass = {k: hl.Piece(v, "coily", length="volume", material="Fabric", castShadow=True)
+            for k, v in names["mass"].items()}
+    clumps = {k: hl.Piece(v, "coily", length="volume", material="Fabric", castShadow=False)
+              for k, v in names["clumps"].items()}
+    edge = hl.Piece(names["edge"], "coily", material="Fabric", castShadow=False)
 
     def under(p):  # the underside of the mass (nape, over the ears) is in its own shadow
         return 1 - 0.22 * float(smooth(0.12, -0.25, p[1]))
@@ -536,8 +629,8 @@ def build_afro(style, head, coll):
         (2, 420, 0.30, 0.16, 3, 0.06, st_in, 0.84, False, 0.015),
         (3, 640, 0.28, 0.15, 3, 0.07, st_out, 0.94, False, 0.025),
         # frizz shells: airy ringlet cards on the outside (the soft, broken silhouette); they bounce
-        (5, 330, 0.26, 0.15, 3, 0.1, LOOSE, 1.0, False, 0.05),
-        (6, 260, 0.24, 0.14, 3, 0.12, LOOSE, 1.0, False, 0.07),
+        (5, 330, 0.26, 0.15, 3, 0.05, LOOSE, 1.0, False, 0.05),
+        (6, 260, 0.24, 0.14, 3, 0.06, LOOSE, 1.0, False, 0.07),
     ]
     for (li, n, L, W, rows, lift, strip, ao, double, min_edge) in plan:
         lay = layers[li]
@@ -784,6 +877,7 @@ def single_sided(piece):
     return q
 
 
+MATTE = {"Roughness": 0.8, "Specular IOR Level": 0.25, "Anisotropic": 0.0}
 TINTS = {"black": (0.09, 0.078, 0.07), "darkbrown": (0.188, 0.129, 0.094), "blonde": (0.77, 0.61, 0.36)}
 SKINS = {"mid": None, "deep": (0.2, 0.12, 0.08), "light": (0.72, 0.52, 0.4)}
 
@@ -814,9 +908,11 @@ def render_style(key, pieces, style, outdir, samples, looks):
             ob = sc.add_piece(single_sided(p), texture=tex, tint=tint, offset=off, scale=scl)
             if os.environ.get("AFRO_NOSHADOW"):
                 ob.visible_shadow = False
-            if os.environ.get("AFRO_MAT"):
+            mat = json.loads(os.environ["AFRO_MAT"]) if os.environ.get("AFRO_MAT") else (
+                MATTE if p.meta.get("material") == "Fabric" else None)
+            if mat:  # Roblox Fabric is matte: the preview's hair material made rough, low specular, isotropic
                 bs = ob.data.materials[0].node_tree.nodes["Principled BSDF"]
-                for k, v in json.loads(os.environ["AFRO_MAT"]).items():
+                for k, v in mat.items():
                     bs.inputs[k].default_value = v
         paths = []
         for v in views:
@@ -841,6 +937,8 @@ STYLES = {
                                                        cap={"cut": "full", "density": 1})),
     "afro_curly": dict(cls=lambda: Afro("afro_curly", curly=True),
                        entry=dict(styles=["Afro"], types=["Curly"], cap={"cut": "full", "density": 1})),
+    "hightop": dict(cls=lambda: HighTop("hightop"),
+                    entry=dict(styles=["High Top"], types=None, cap={"cut": "style", "density": 1})),
 }
 
 FIT_F = None
@@ -885,7 +983,7 @@ def main():
         coll = bpy.data.collections.new("guides (card layers)")
         bpy.context.scene.collection.children.link(coll)
         print(f"style {key}")
-        pieces, layers = build_afro(style, head_m, coll) if isinstance(style, Afro) else style.build(head_m, coll)
+        pieces, layers = build_afro(style, head_m, coll)
         entry = dict(STYLES[key]["entry"])
         cm, ci, _ = clearance(pieces, head_m)
         cf, cfi, _ = clearance(pieces, head_f, FIT_F)

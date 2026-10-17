@@ -304,7 +304,7 @@ def tex_waves(size=256, seed=71, ss=4):
         ph = phase(x, ys)
         xs = x + np.sin(TAU * ph) * lam * 0.07 + t * rng.normal(0, 0.1) * lam
         crest = 0.5 + 0.5 * np.cos(TAU * ph)
-        lum = np.clip((0.36 + 0.5 * crest ** 1.3) * rng.uniform(0.8, 1.15), 0.25, 1.0)
+        lum = np.clip((0.4 + 0.42 * crest ** 1.3) * rng.uniform(0.8, 1.15), 0.25, 1.0)
         wid = (3.0 - 1.2 * t) * k
         op = np.full(m, rng.uniform(0.75, 0.95))
         cv.strand(xs, ys, wid, lum, op)
@@ -739,6 +739,9 @@ def build_shells(cb, spec, name="HairTop", tufts=0.006, lean=0.0035, seed=5):
         # vertex group: how much this shell's tufts may rise (0 at its edge, more on the outer shells)
         vg = ob.vertex_groups.new(name="tuft")
         frac = np.clip((t2 - (k - 1) * SHELL_STEP) / SHELL_STEP, 0, 1) * (k / max(1, nsh)) * np.clip(t2 / max(1e-6, tmax), 0, 1)
+        # (the pole's duplicated vertices, one per segment, must move together: no tufts right at the crown)
+        th2 = np.array([Skull.angles(x - cb.ref.sk.c)[0] for x in P2])
+        frac = frac * np.clip((th2 - 0.04) / 0.08, 0, 1)
         for i, w in enumerate(frac):
             vg.add([i], float(w), "REPLACE")
         mod = ob.modifiers.new("Tufts", "DISPLACE")
@@ -765,7 +768,7 @@ def build_shells(cb, spec, name="HairTop", tufts=0.006, lean=0.0035, seed=5):
             wn = 0.18 * float(np.clip(t2[i] / max(1e-6, tmax), 0, 1))
             nn = N2[i] + nv * wn
             c = occ * (0.86 + 0.14 * (0.5 + 0.5 * mnoise.noise(Vector(tuple(PE[i] * 14.0 + 3.1)))))
-            piece.vert(PE[i], nn, (U2[i], V2[i] - lean * k), (c, c, c, 1.0))
+            piece.vert(PE[i], nn, (U2[i], V2[i] - lean * k * min(1.0, V2[i] / 0.05)), (c, c, c, 1.0))
         for tt in T2:
             piece.T.append(tuple(int(x) for x in tt))
         pieces.append(piece)
