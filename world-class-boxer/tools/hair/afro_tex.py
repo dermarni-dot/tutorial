@@ -30,8 +30,8 @@ SS = 2  # supersampling of the splat canvases
 # cell -> (u0, v0, u1, v1) in the atlas
 CELLS = {
     "CLOUD_A": (0.0, 0.0, 0.5, 0.5),
-    "CLOUD_B": (0.0, 0.5, 0.5, 1.0),
-    "CURL": (0.5, 0.0, 1.0, 0.5),
+    "TILE_D": (0.0, 0.5, 0.5, 1.0),
+    "TILE_S": (0.5, 0.0, 1.0, 0.5),
     "FIN_T": (0.5, 0.5, 0.75, 1.0),
     "FIN_L": (0.75, 0.5, 1.0, 1.0),
 }
@@ -43,19 +43,19 @@ def sstep(e0, e1, x):
     return t * t * (3 - 2 * t)
 
 
-def blur(a, sigma):
-    """gaussian blur by FFT (zero padded so nothing wraps)"""
+def blur(a, sigma, wrap=False):
+    """gaussian blur by FFT (zero padded so nothing wraps, or periodic)"""
     if sigma <= 0:
         return a
     h, w = a.shape
-    p = int(math.ceil(sigma * 3)) + 1
+    p = 0 if wrap else int(math.ceil(sigma * 3)) + 1
     A = np.pad(a, p)
     H, W = A.shape
     fy = np.fft.fftfreq(H)[:, None]
     fx = np.fft.rfftfreq(W)[None, :]
     g = np.exp(-2 * (math.pi * sigma) ** 2 * (fx * fx + fy * fy))
     out = np.fft.irfft2(np.fft.rfft2(A) * g, s=A.shape)
-    return out[p:p + h, p:p + w]
+    return out[p:p + h, p:p + w] if p else out
 
 
 def fbm(h, w, seed, cells=4, octaves=4, decay=0.55):
@@ -76,8 +76,10 @@ def fbm(h, w, seed, cells=4, octaves=4, decay=0.55):
     return np.clip((out - lo) / (hi - lo + 1e-9), 0, 1)
 
 
-def splat(H, W, xs, ys, vals, sigma):
+def splat(H, W, xs, ys, vals, sigma, wrap=False):
     """bilinear deposit of samples (canvas px) -> (coverage density, value sum), then blurred"""
+    if wrap:
+        xs, ys = xs % W, ys % H
     acc = np.zeros(H * W)
     accv = np.zeros(H * W)
     x0 = np.floor(xs).astype(np.int64)
@@ -86,12 +88,14 @@ def splat(H, W, xs, ys, vals, sigma):
     fy = ys - y0
     for dx, dy, wgt in ((0, 0, (1 - fx) * (1 - fy)), (1, 0, fx * (1 - fy)), (0, 1, (1 - fx) * fy), (1, 1, fx * fy)):
         xi, yi = x0 + dx, y0 + dy
+        if wrap:
+            xi, yi = xi % W, yi % H
         ok = (xi >= 0) & (xi < W) & (yi >= 0) & (yi < H)
         idx = yi[ok] * W + xi[ok]
         acc += np.bincount(idx, weights=wgt[ok], minlength=H * W)
         accv += np.bincount(idx, weights=(wgt * vals)[ok], minlength=H * W)
-    acc = blur(acc.reshape(H, W), sigma)
-    accv = blur(accv.reshape(H, W), sigma)
+    acc = blur(acc.reshape(H, W), sigma, wrap)
+    accv = blur(accv.reshape(H, W), sigma, wrap)
     return acc, accv
 
 
@@ -150,7 +154,7 @@ def composite(H, W, layers):
     return C / np.maximum(A, 1e-6) * (A > 1e-6), A
 
 
-def coil_batches(rng, H, W, cents, depth, nb, prm, stroke, bright, dark_deep=0.5):
+def coil_batches(rng, H, W, cents, depth, nb, prm, stroke, bright, dark_deep=0.5, wrap=False):
     """the coils in nb depth batches (deep first, darker), each splatted and turned into (coverage, albedo)"""
     order = np.argsort(depth)
     out = []
@@ -165,7 +169,7 @@ def coil_batches(rng, H, W, cents, depth, nb, prm, stroke, bright, dark_deep=0.5
         base = rng.uniform(0.78, 1.0, len(sel))[ids]
         # near side of each loop catches the light; deeper coils are darker
         val = base * (0.5 + 0.5 * (z * 0.5 + 0.5) ** 0.8) * (dark_deep + (1 - dark_deep) * d) * bright
-        acc, accv = splat(H, W, x, y, val, stroke)
+        acc, accv = splat(H, W, x, y, val, stroke, wrap)
         cov = 1 - np.exp(-acc * 4.0)
         alb = accv / np.maximum(acc, 1e-6)
         out.append((cov, np.clip(alb, 0, 1)))
@@ -258,6 +262,31 @@ def tuft(w, h, seed, n, radius, turns, pitch, tilt, wander, fill, stroke=1.25, w
     return down(C, A, w, h)
 
 
+def pnoise(H, W, seed, scale):
+    """periodic smooth noise 0..1 (FFT-filtered white noise)"""
+    rng = RNG(seed)
+    n = rng.normal(size=(H, W))
+    n = blur(n, scale, wrap=True)
+    lo, hi = np.percentile(n, 1), np.percentile(n, 99)
+    return np.clip((n - lo) / (hi - lo + 1e-9), 0, 1)
+
+
+def tile(w, h, seed, n, fill, fill_tone=0.36, stroke=1.0, nb=6, holes=0.0, **prm):
+    """a tileable coil tile (continuous shells): coils spread evenly (wrapping), over a fill"""
+    rng = RNG(seed)
+    W, H = w * SS, h * SS
+    cents = np.stack([rng.random(n) * W, rng.random(n) * H], axis=1)
+    depth = rng.random(n)
+    layers = []
+    cl = pnoise(H, W, seed + 3, 30 * SS / 2)  # clump-scale variation of the fill
+    fa = np.clip(fill * (0.75 + 0.5 * (cl - 0.5)) - holes * sstep(0.35, 0.0, cl), 0, 1)
+    layers.append((fa, fill_tone + 0.12 * pnoise(H, W, seed + 4, 3 * SS)))
+    p = dict(prm, axis=None, axis_jit=0.0)
+    layers += coil_batches(rng, H, W, cents, depth, nb, p, stroke * SS, 1.0, wrap=True)
+    C, A = composite(H, W, layers)
+    return down(C, A, w, h)
+
+
 def down(C, A, w, h):
     """supersampled -> cell resolution (premultiplied box filter)"""
     H, W = A.shape
@@ -292,10 +321,9 @@ def tex_coily(size=SIZE, seed=31):
                  wander=0.5)
     cells = {
         "CLOUD_A": cloud(half, half, seed + 10, n=420, fill=0.9, r0=0.37, spread=0.55, stroke=1.0, **tight),
-        "CLOUD_B": cloud(half, half, seed + 20, n=330, fill=0.72, r0=0.35, spread=0.6, lump=0.45, stroke=1.0, **tight),
-        "CURL": cloud(half, half, seed + 30, n=150, radius=(20 * s * SS, 30 * s * SS), turns=(1.3, 2.4),
-                      pitch=(0.9, 1.5), tilt=(0.25, 0.6), wander=0.35, fill=0.55, r0=0.36, spread=0.55, stroke=1.4,
-                      lump=0.4),
+        # the shells: dense (inner, near-opaque) and sparse (outer: single coils, the fuzzy silhouette by stacking)
+        "TILE_D": tile(half, half, seed + 20, n=820, fill=0.93, stroke=1.0, **tight),
+        "TILE_S": tile(half, half, seed + 30, n=360, fill=0.0, stroke=1.0, nb=4, **tight),
         "FIN_T": tuft(quarter, half, seed + 40, n=110, fill=0.15, stroke=1.0, **tight),
         "FIN_L": tuft(quarter, half, seed + 50, n=20, radius=(16 * s * SS, 24 * s * SS), turns=(1.2, 2.2),
                       pitch=(0.9, 1.4), tilt=(0.3, 0.6), wander=0.3, fill=0.3, stroke=1.3, ringlets=3),

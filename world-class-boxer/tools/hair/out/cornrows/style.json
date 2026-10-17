@@ -8,6 +8,28 @@
   "density": 0.15
  },
  "family": "braids",
+ "texture_strips": {
+  "braid": {
+   "plait": [
+    0.0,
+    0.5
+   ]
+  },
+  "cornrow": {
+   "row": [
+    0.0,
+    0.75
+   ],
+   "baby": [
+    0.75,
+    0.875
+   ],
+   "pad": [
+    0.875,
+    1.0
+   ]
+  }
+ },
  "clearance": {
   "head_m": 0.0254,
   "head_f_fit": 0.0249,

@@ -1513,6 +1513,11 @@ def main():
                                   skull_m=round(sm, 4), skull_f_fit=round(sf, 4), skull_m_narrow=round(sn, 4),
                                   inside_m=ci, ear_box=round(ed, 4), body=round(bm, 4) if bm < 9 else None)
         entry["notes"] = "braids family (build_braids.py); clearance: nominal studs (narrow = x 0.965 head + fit)"
+        od = os.path.join(hl.OUT, key)
+        if os.path.isdir(od):  # (no stale meshes from an earlier piece layout)
+            for fn in os.listdir(od):
+                if fn.endswith(".mesh"):
+                    os.remove(os.path.join(od, fn))
         data = hl.export_style(key, entry, pieces)
         save_blend(key, pieces, coll, os.path.join(BLEND_DIR, f"{key}.blend"), head_name=st["head"])
         rep = dict(styles=entry["styles"], types=entry["types"], cap=entry["cap"], tris=data["tris"],

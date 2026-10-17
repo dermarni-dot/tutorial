@@ -228,6 +228,8 @@ def ray_hit(F, D, t0, t1, n=60):
         prev_t, prev_in = t, cur_in
     m = np.isnan(hit)
     lo[m], hi[m] = t1[m], t1[m]
+    start_out = F(C + D * t0[:, None]) >= 0  # the scalp is already outside the envelope: no hair above it
+    lo[start_out], hi[start_out] = t0[start_out], t0[start_out]
     for _ in range(30):
         mid = (lo + hi) / 2
         ins = F(C + D * mid[:, None]) < 0
@@ -257,21 +259,24 @@ def smax(a, b, k):
 
 
 def hightop_sdf(y_top=0.875):
+    """a column of superellipse section that widens a little toward its top (its foot hugs the scalp at the
+    fade's top line), the front face leaning back, a gently domed top with well-rounded corners"""
     yb = 0.2
 
     def F(P):
         x, y, z = P[:, 0], P[:, 1], P[:, 2]
         k = np.clip((y - yb) / (y_top - yb), 0, 1)
-        hx = 0.425 + 0.045 * k
+        kk = k ** 0.7
+        hx = 0.385 + 0.085 * kk
         lean = 0.07 * (y - yb)
-        hz = 0.5 - lean + 0.02 * k
+        hz = 0.47 - lean + 0.05 * kk
         cz = 0.045 + lean
         ax, az_ = np.abs(x) / hx, np.abs(z - cz) / hz
-        p = 2.7
+        p = 2.6
         r = (ax ** p + az_ ** p) ** (1 / p)
         d_side = (r - 1) * np.minimum(hx, hz)
-        d_top = y - (y_top + 0.035 * (1 - np.minimum(1, r * r)))
-        return smax(d_side, d_top, 0.1)
+        d_top = y - (y_top + 0.05 * (1 - np.minimum(1, r * r)))
+        return smax(d_side, d_top, 0.15)
 
     return F
 
@@ -333,25 +338,28 @@ STYLES = {
     "afro": dict(
         styles=["Afro"], types=["Kinky", "Coiled", "Straight", "Wavy"], cap={"cut": "full", "density": 1},
         cover="none", line="natural", shape="afro", scale=1.0, prefix="HairAfro",
-        # layers: (f, patch size, coverage, cell, ao)
-        layers=[(0.0, 0.17, 2.0, "CLOUD_A", 0.52), (0.38, 0.2, 1.7, "CLOUD_A", 0.6), (0.66, 0.2, 1.51, "CLOUD_A", 0.7),
-                (0.86, 0.19, 1.58, "CLOUD_B", 0.88), (1.0, 0.17, 1.66, "CLOUD_B", 0.97)],
-        fins=dict(n=420, cell=FIN_T, length=(0.055, 0.085), width=(0.04, 0.055), sink=0.024),
-        lumps=(0.05, 0.03), span=(0.15, 0.2, 0.22, 0.26), notes="rounded afro"),
+        # shells: (f, tile size, -, cell, ao); band patches near the line: (layer, (f, size, cover, cell, ao))
+        layers=[(0.0, 0.2, 0, "TILE_D", 0.5), (0.35, 0.2, 0, "TILE_D", 0.6), (0.62, 0.2, 0, "TILE_D", 0.7),
+                (0.8, 0.2, 0, "TILE_S", 0.82), (0.91, 0.2, 0, "TILE_S", 0.9), (1.0, 0.2, 0, "TILE_S", 0.97)],
+        band=[(0, (0.0, 0.12, 1.6, "CLOUD_A", 0.55)), (1, (0.35, 0.12, 1.3, "CLOUD_A", 0.65))],
+        fins=dict(n=480, cell=FIN_T, length=(0.065, 0.095), width=(0.035, 0.05), sink=0.035),
+        lumps=(0.11, 0.05), span=(0.2, 0.21, 0.22, 0.26), notes="rounded afro"),
     "afro_curly": dict(
         styles=["Afro"], types=["Curly"], cap={"cut": "full", "density": 1},
         cover="none", line="natural", shape="afro", scale=0.88, prefix="HairAfro",
-        layers=[(0.0, 0.17, 2.0, "CLOUD_A", 0.52), (0.38, 0.2, 1.7, "CLOUD_A", 0.6), (0.66, 0.2, 1.44, "CLOUD_B", 0.7),
-                (0.86, 0.2, 1.22, "CURL", 0.84), (1.0, 0.19, 1.08, "CURL", 0.97)],
-        fins=dict(n=170, cell=FIN_L, length=(0.08, 0.12), width=(0.06, 0.08), sink=0.03),
-        lumps=(0.06, 0.045), span=(0.15, 0.2, 0.22, 0.26), notes="curly afro: open curl clusters"),
+        layers=[(0.0, 0.2, 0, "TILE_D", 0.5), (0.38, 0.2, 0, "TILE_D", 0.62), (0.68, 0.2, 0, "TILE_D", 0.72),
+                (0.86, 0.22, 0, "TILE_S", 0.86), (1.0, 0.22, 0, "TILE_S", 0.95)],
+        band=[(0, (0.0, 0.12, 1.6, "CLOUD_A", 0.55)), (1, (0.38, 0.12, 1.3, "CLOUD_A", 0.65))],
+        fins=dict(n=340, cell=FIN_L, length=(0.1, 0.15), width=(0.05, 0.07), sink=0.035),
+        lumps=(0.12, 0.07), span=(0.2, 0.21, 0.22, 0.26), notes="curly afro: open curl clusters, ringlets"),
     "hightop": dict(
         styles=["High Top"], types=None, cap={"cut": "style", "density": 1},
         cover="high", line="hightop", shape="hightop", prefix="HairTop",
-        layers=[(0.0, 0.15, 2.0, "CLOUD_A", 0.52), (0.4, 0.19, 1.7, "CLOUD_A", 0.6), (0.68, 0.19, 1.51, "CLOUD_A", 0.7),
-                (0.87, 0.18, 1.58, "CLOUD_B", 0.88), (1.0, 0.16, 1.66, "CLOUD_B", 0.97)],
+        layers=[(0.0, 0.2, 0, "TILE_D", 0.5), (0.38, 0.2, 0, "TILE_D", 0.6), (0.65, 0.2, 0, "TILE_D", 0.7),
+                (0.82, 0.2, 0, "TILE_S", 0.82), (0.92, 0.2, 0, "TILE_S", 0.9), (1.0, 0.2, 0, "TILE_S", 0.97)],
+        band=[(0, (0.0, 0.1, 1.6, "CLOUD_A", 0.55)), (1, (0.38, 0.1, 1.3, "CLOUD_A", 0.65))],
         fins=dict(n=340, cell=FIN_T, length=(0.05, 0.075), width=(0.04, 0.05), sink=0.022),
-        lumps=(0.025, 0.02), span=(0.035, 0.05, 0.05, 0.05), notes="high top column over a high fade"),
+        lumps=(0.03, 0.025), span=(0.06, 0.1, 0.1, 0.1), notes="high top column over a high fade"),
 }
 
 
@@ -420,7 +428,8 @@ class Layer:
 
     def __init__(self, idx, f, spec, grid, H, span, collection, texs):
         self.f = f
-        h = H0 + f * (H - H0)
+        # (the layers keep a little apart where they converge toward the line: no coincident shells)
+        h = np.maximum(H0 + f * (H - H0), np.where(grid.d > 0, H0 + 0.006 * idx, H0))
         self.h = h
         P = grid.S + grid.D * h[:, None]
         used = sorted({i for q in grid.quads for i in q})
@@ -571,9 +580,85 @@ def blue_noise(S, rad, ok, rng, cell=0.04):
     return keep
 
 
-def patch_cards(layer, li, spec, line, rng, prev=None, region_fn=region_of):
-    """surface patches on a layer: 3 x 3 vertex grids ray-cast onto it, rotated, tilted, domed"""
-    f, size, cover, cell, ao = spec["layers"][li]
+def cube_dirs(N, R):
+    """an equi-angular cube-sphere grid: per face (N+1) x (N+1) directions, rotated by R"""
+    out = []
+    a = np.tan(np.linspace(-math.pi / 4, math.pi / 4, N + 1))
+    A, B = np.meshgrid(a, a, indexing="ij")
+    one = np.ones_like(A)
+    for axis in range(3):
+        for sgn in (1.0, -1.0):
+            V = np.zeros(A.shape + (3,))
+            V[..., axis] = sgn * one
+            V[..., (axis + 1) % 3] = A * sgn
+            V[..., (axis + 2) % 3] = B
+            out.append(unit(V.reshape(-1, 3) @ R.T).reshape(N + 1, N + 1, 3))
+    return out
+
+
+def rand_rot(rng):
+    q = rng.normal(size=4)
+    q /= np.linalg.norm(q)
+    w, x, y, z = q
+    return np.array([[1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)],
+                     [2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)],
+                     [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)]])
+
+
+def shell_cards(layer, li, spec, line, rng, dmin=0.03, region_fn=region_of):
+    """a continuous shell on the evaluated layer: a cube-sphere grid of rays (each layer turned at random, so
+    no seam lines up through the layers), two quads per tile of a tileable coil cell"""
+    f, tile_sz, _, cell, ao = spec["layers"][li]
+    u0, v0, u1, v1 = CELLS[cell]
+    e = 0.6 / 1024
+    u0, v0, u1, v1 = u0 + e, v0 + e, u1 - e, v1 - e
+    r = float(np.linalg.norm(layer.P - C, axis=1).mean())
+    N = 2 * int(math.ceil(r * math.pi / 2 / tile_sz))
+    cards = []
+    for face in cube_dirs(N, rand_rot(rng)):
+        D = face.reshape(-1, 3)
+        S = C + D * skull_r(SK, *angles_of(D))[:, None]
+        dd = line.dist(S).reshape(N + 1, N + 1)
+        gap = layer.grid.interp(D, layer.h - H0).reshape(N + 1, N + 1)
+        okv = dd > dmin
+        if li:
+            okv &= gap > 0.004 + 0.0075 * li
+        P = np.full((N + 1, N + 1, 3), np.nan)
+        for i in range(N + 1):
+            for j in range(N + 1):
+                if okv[i, j]:
+                    h = layer.hit(face[i, j])
+                    if h is not None:
+                        P[i, j] = h
+        Nn = layer.normal(D).reshape(N + 1, N + 1, 3)
+        Lu = layer.lump_at(D).reshape(N + 1, N + 1)
+        for i in range(N):
+            for j in range(N):
+                q = P[i:i + 2, j:j + 2]
+                if np.isnan(q).any():
+                    continue
+                cd = Card(li, "shell")
+                for (a, b) in ((0, 0), (1, 0), (1, 1), (0, 1)):
+                    ii, jj = i + a, j + b
+                    nn = Nn[ii, jj]
+                    occ = ao * (1 + 0.06 * Lu[ii, jj]) * (1 - 0.22 * sstep(0.0, -0.7, nn[1]) * (1 - f * 0.5))
+                    occ = float(np.clip(occ, 0.4, 1.0))
+                    fu = ((i % 2) + a) / 2
+                    fv = ((j % 2) + b) / 2
+                    cd.P.append(P[ii, jj])
+                    cd.N.append(nn)
+                    cd.U.append((u0 + (u1 - u0) * fu, v0 + (v1 - v0) * fv))
+                    cd.C.append((occ, occ, occ, 1.0))
+                cd.T = [(0, 1, 2), (0, 2, 3)]
+                cd.region = region_fn(unit(P[i:i + 2, j:j + 2].reshape(-1, 3).mean(axis=0) - C))
+                cards.append(cd)
+    return cards
+
+
+def patch_cards(layer, li, spec, line, rng, prev=None, region_fn=region_of, band=None, params=None):
+    """surface patches on a layer: 3 x 3 vertex grids ray-cast onto it, rotated, tilted, domed (band: only
+    within that distance of the line)"""
+    f, size, cover, cell, ao = params or spec["layers"][li]
     u0, v0, u1, v1 = CELLS[cell]
     ncand = 30000
     D = fib_dirs(ncand, 101 + li * 7 + len(spec["prefix"]))
@@ -582,6 +667,8 @@ def patch_cards(layer, li, spec, line, rng, prev=None, region_fn=region_of):
     # patch size shrinks toward the line (its visible cloud stays inside the hairline)
     s = np.minimum(size, np.maximum(SMIN, dd / 0.42))
     ok = dd > 0.42 * SMIN
+    if band is not None:
+        ok &= dd < band
     if prev is not None:
         # where the layers have converged toward the line, the layer under this one already covers it
         gap = layer.grid.interp(D, layer.h - H0)
@@ -688,7 +775,7 @@ def fin_cards(layer, li, spec, line, rng, region_fn=region_of):
         t2 = np.cross(n, t1)
         phi = rng.uniform(0, TAU)
         tang = t1 * math.cos(phi) + t2 * math.sin(phi)
-        lean = rng.uniform(0.15, 0.6)
+        lean = rng.uniform(0.4, 1.1)
         g = np.array([0, -1.0, 0])
         dirv = unit(n + tang * lean + g * 0.12)
         L = rng.uniform(*fs["length"])
@@ -701,7 +788,7 @@ def fin_cards(layer, li, spec, line, rng, region_fn=region_of):
         side = unit(tv - dirv * np.dot(tv, dirv))
         cd = Card(li + 1, "fin")
         strand_card(cd, pts, [w, w * 0.85], side, n, fs["cell"], 0.5, 1.0,
-                    lambda t: float(np.clip(spec["layers"][-1][4] * (0.82 + 0.18 * t), 0.4, 1)))
+                    lambda t: float(np.clip(0.9 + 0.1 * t, 0.4, 1)))
         cd.region = region_fn(unit(c - C))
         cards.append(cd)
     return cards
@@ -760,7 +847,7 @@ def edge_cards(line, spec, rng, step=0.0135):
                 if any(in_ear(p) for p in pts):
                     continue
                 side = unit(np.cross(dirv, n))
-                cd = Card(0, "edge")
+                cd = Card(1, "edge")  # drawn over the root shell and its patches (they grow out through it)
                 o0 = 0.5 + 0.08 * row
                 strand_card(cd, pts, [w, w, w * 0.85][-len(pts):], side, n, FIN_T, 0.5, 0.97,
                             lambda t, o0=o0: o0 + (0.9 - o0) * t)
@@ -792,7 +879,7 @@ def make_pieces(spec, cards, names):
         if not cs:
             continue
         # innermost layer first (scalp side first), patches before fins / tufts of the same layer
-        kind_rank = {"edge": 0, "patch": 1, "fin": 2}
+        kind_rank = {"shell": 0, "patch": 1, "edge": 2, "fin": 3}
         cs.sort(key=lambda c: (c.layer, kind_rank[c.kind]))
         if key == "base":
             name = names["base"]
@@ -963,7 +1050,10 @@ def build_style(key, spec, clr, rng_seed=7):
     layers = [Layer(i, L[0], spec, grid, H, span, c_layers, texs) for i, L in enumerate(spec["layers"])]
     cards = []
     for li, layer in enumerate(layers):
-        cards += patch_cards(layer, li, spec, line, rng, layers[li - 1] if li else None)
+        cards += shell_cards(layer, li, spec, line, rng)
+    # the shells' edges near the line hide under small cloud patches (and the tufts over them)
+    for li, prm in spec["band"]:
+        cards += patch_cards(layers[li], li, spec, line, rng, None, band=0.13, params=prm)
     cards += fin_cards(layers[-1], len(layers) - 1, spec, line, rng)
     cards += edge_cards(line, spec, rng)
     # cards whose vertices reach into an ear's box are dropped
@@ -1123,6 +1213,17 @@ VIEWS = {  # name -> (render view, dist, focus)
 }
 
 
+def fabric(mat):
+    """Roblox Fabric (what the pieces use): matte, no sheen (render.py's hair material is a little glossy)"""
+    if mat.get("fabric"):
+        return
+    bs = mat.node_tree.nodes["Principled BSDF"]
+    bs.inputs["Roughness"].default_value = 0.92
+    bs.inputs["Specular IOR Level"].default_value = 0.12
+    bs.inputs["Anisotropic"].default_value = 0.0
+    mat["fabric"] = 1
+
+
 def cull_backfaces(mat):
     """Roblox draws one side of a triangle: the back side transparent (Cycles: Geometry.Backfacing)"""
     if mat.get("culled"):
@@ -1166,6 +1267,7 @@ def render_style(key, spec, pieces, looks, views, res, samples, cull=True, vol=N
             ob = sc.add_piece(P, texture=tex, tint=tint, offset=off, scale=tuple(s))
             if cull:
                 cull_backfaces(ob.data.materials[0])
+                fabric(ob.data.materials[0])
         for v in views:
             view, dist, focus = VIEWS[v]
             fn = os.path.join(FAM_DIR, f"{key}{tag}_{look}_{v}.png")

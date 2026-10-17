@@ -317,6 +317,7 @@ ROOT_K = 0.55  # a loc's radius at the scalp / its full radius (the root cone)
 CLEAR = 0.026  # target height of every loc surface above the head (nominal studs)
 CLEAR_MIN = 0.0215  # enforced after the modifiers (male head mesh; the skull table and the female fit checked)
 EAR_CLEAR = 0.024
+EAR_BOX_MIN = 0.021  # every vertex at least this far outside the ear boxes (skull.json ears.clearance 0.02)
 SK = hl.Skull()
 C = SK.c.copy()
 SKD = SK.data
@@ -1084,7 +1085,7 @@ STYLES = {
         hang_len=1.05, side_short=0.25, L_max=2.25, sides=5, base_ds=0.2, min_ds=0.07, end_ds=0.045, bend_k=0.6,
         root_cap=False, lift=0.2,
         layer=0.022, repel=0.72, fins=1, chains=7, segs=2, stiff=0.35, mass=(1.5, 1.15), hang_split=0.5,
-        prefix="HairLoc", chain="Loc", lobes=None, halo=dict(k=2.2, root_k=3.0, step=0.26), lump=0.12,
+        prefix="HairLoc", chain="Loc", lobes=None, halo=dict(k=2.2, root_k=3.0, step=0.28), lump=0.12,
         blunt_frac=0.6, back_front=1.8, splay=0.24, wave=(0.012, 0.35), body_off=0.07, short_top=0.14,
         sideburn_ys=(0.15, 0.08)),
     "twists": dict(
@@ -1542,7 +1543,7 @@ def enforce_clearance(P, N, ref, minh, body_min=0.0):
         if r is not None and r[2] < minh:
             q = r[0] + r[1] * (minh + 0.0005)
         q = skull_push(q, minh + 0.0005)
-        q = ear_push(q, 0.004)
+        q = ear_push(q, EAR_BOX_MIN)
         if body_min > 0 and q[1] < -0.3:
             r = Ref.signed(ref.torso, q, body_min + 0.01)
             if r is not None and r[2] < body_min:
@@ -2113,7 +2114,7 @@ def main():
         report[key] = rep
         log(json.dumps(rep))
         if args.render:
-            looks = [("m", "black", "mid", ["34", "side", "back", "close", "top34"]),
+            looks = [("m", "black", "mid", ["34", "side", "back", "close", "top34", "top", "sideclose", "front"]),
                      ("m", "darkbrown", "deep", ["34", "back"]), ("f", "blonde", "light", ["34"])]
             if args.quick:
                 looks = [("m", "black", "mid", ["34", "side", "back", "close", "top34"])]
