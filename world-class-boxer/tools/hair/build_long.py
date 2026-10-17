@@ -154,7 +154,10 @@ def _strip(w, h, seed, n_strands, n_clumps, width_px, clump_k, fill, len_min, wa
     for k in range(n_strands):
         c = int(rng.integers(n_clumps))
         # roots spread over the strip, thinning toward its edges (a ragged edge made of strands, not a cut)
-        x0 = w * 0.5 + (w * 0.5 - margin) * float(np.clip(rng.normal(0, spread), -1.15, 1.15))
+        if spread is None:  # spread evenly over the strip (a card reads as a full lock edge to edge)
+            x0 = w * 0.5 + (w * 0.5 - margin * 0.6) * float(rng.uniform(-1, 1))
+        else:
+            x0 = w * 0.5 + (w * 0.5 - margin) * float(np.clip(rng.normal(0, spread), -1.15, 1.15))
         y0 = int(h * root_soft * rng.uniform(0.0, 1.0) ** 2.2)  # staggered roots: a soft root edge
         lmax = clump_len[c]
         L = rng.uniform(len_min, 1.0) ** 0.6 * lmax  # most strands reach near the tip
@@ -189,7 +192,8 @@ def _strip(w, h, seed, n_strands, n_clumps, width_px, clump_k, fill, len_min, wa
         # the deeper hair under the strands: a darker blurred body, strongest in the clump cores
         body = _blur(alp, w * 0.02)
         uu = (np.arange(w) + 0.5) / w
-        core = np.exp(-((uu - 0.5) / 0.2) ** 2)[None, :]
+        core = np.clip((0.5 - np.abs(uu - 0.5)) / 0.2, 0, 1)
+        core = (core * core * (3 - 2 * core))[None, :]
         body = np.clip(body * 1.25, 0, 1) ** 2 * fill * core
         bl = 0.55 + 0.25 * _blur(lum, w * 0.02) / np.maximum(_blur(alp, w * 0.02), 1e-3)
         lum = lum * alp + bl * body * (1 - alp)
@@ -229,18 +233,20 @@ def make_texture(path, size=TEX_SIZE, seed=1101, report=False):
     W, H = size * ss, size * ss
     sw = W // 4
     specs = {
-        # dense clump: the bulk of every layer; nearly opaque inside, strands breaking out at the edges and tips
-        "dense": dict(n_strands=int(sw * 0.55), spread=0.44, n_clumps=7, width_px=2.6, clump_k=0.8, fill=0.85, len_min=0.55, clump_lo=0.72,
-                      stray=0.03, shade_lo=0.72, edge=0.2, tip_spread=0.3),
+        # dense clump: the bulk of every layer; opaque nearly edge to edge, strands breaking out at the edges and tips
+        "dense": dict(n_strands=int(sw * 0.75), spread=None, n_clumps=8, width_px=2.6, clump_k=0.55, fill=0.9,
+                      len_min=0.55, clump_lo=0.75, stray=0.03, shade_lo=0.7, edge=0.11, tip_spread=0.3, root_dark=0.14),
         # medium: a lighter lock (gaps between clumps; the layer under it shows through)
-        "medium": dict(n_strands=int(sw * 0.3), spread=0.45, n_clumps=6, width_px=2.4, clump_k=0.85, fill=0.35, len_min=0.45, clump_lo=0.65, root_soft=0.11,
-                       stray=0.05, shade_lo=0.6, edge=0.2, tip_spread=0.32),
+        "medium": dict(n_strands=int(sw * 0.42), spread=0.7, n_clumps=6, width_px=2.4, clump_k=0.7, fill=0.45,
+                       len_min=0.45, clump_lo=0.65, root_soft=0.11, stray=0.05, shade_lo=0.6, edge=0.13,
+                       tip_spread=0.32, root_dark=0.14),
         # wispy flyaways: a few loose strands, staggered lengths
-        "wispy": dict(n_strands=int(sw * 0.12), n_clumps=4, width_px=2.0, clump_k=0.35, fill=0.0, len_min=0.3,
-                      stray=0.35, shade_lo=0.6, edge=0.14, tip_spread=0.5),
+        "wispy": dict(n_strands=int(sw * 0.14), n_clumps=4, width_px=2.0, clump_k=0.35, fill=0.0, len_min=0.3,
+                      stray=0.35, shade_lo=0.65, edge=0.12, tip_spread=0.5, root_dark=0.05),
         # wavy: dense clumps on broad S-waves (2.5 waves root to tip), crests lighter
-        "wavy": dict(n_strands=int(sw * 0.48), spread=0.42, n_clumps=6, width_px=2.6, clump_k=0.75, fill=0.7, len_min=0.55, clump_lo=0.75,
-                     wave_amp=0.075, wave_per=2.5, stray=0.04, shade_lo=0.65, edge=0.2, tip_spread=0.3),
+        "wavy": dict(n_strands=int(sw * 0.7), spread=None, n_clumps=7, width_px=2.6, clump_k=0.6, fill=0.85,
+                     len_min=0.55, clump_lo=0.75, wave_amp=0.06, wave_per=2.5, stray=0.04, shade_lo=0.65, edge=0.12,
+                     tip_spread=0.3, root_dark=0.14),
     }
     lum = np.zeros((H, W), np.float32)
     alp = np.zeros((H, W), np.float32)
@@ -406,7 +412,7 @@ def near_full(bvh, p, maxd):
 
 
 def ear_zone(p):
-    return abs(p[0]) > 0.26 and -0.26 < p[1] < 0.1 and 0.0 < p[2] < 0.3
+    return abs(p[0]) > 0.26 and -0.26 < p[1] < 0.12 and -0.02 < p[2] < 0.42
 
 
 def apply_fit(P, fit):
@@ -535,12 +541,12 @@ LAYERS = [
     dict(name="scalp", n=16, off=(0.029, 0.031), strips={"dense": 1.0}, margin=0.016, tip=-1.3, tip_var=0.05,
          wmax=(0.2, 0.17), overlap=1.9, shade=0.9, phase=0.0, rel=(0.0, -0.13)),
     # the volume: every layer higher, the sides fuller than the top
-    dict(name="inner", n=15, off=(0.05, 0.058), strips={"dense": 0.85, "medium": 0.15}, margin=0.024, tip=-1.4,
-         tip_var=0.06, wmax=(0.2, 0.17), overlap=1.7, shade=0.95, phase=0.37, lift0=0.15, rel=(0.05, -0.05)),
-    dict(name="main", n=15, off=(0.072, 0.086), strips={"dense": 0.75, "medium": 0.25}, margin=0.03, tip=-1.48,
-         tip_var=0.07, wmax=(0.2, 0.17), overlap=1.6, shade=0.985, phase=0.71, lift0=0.25, rel=(0.09, 0.03)),
-    dict(name="outer", n=13, off=(0.092, 0.11), strips={"dense": 0.45, "medium": 0.4, "wispy": 0.15}, margin=0.036,
-         tip=-1.46, tip_var=0.1, wmax=(0.19, 0.16), overlap=1.35, shade=1.0, phase=0.19, lift0=0.3, rel=(0.12, 0.08)),
+    dict(name="inner", n=15, off=(0.05, 0.068), strips={"dense": 0.85, "medium": 0.15}, margin=0.024, tip=-1.4,
+         tip_var=0.06, wmax=(0.2, 0.17), overlap=1.7, shade=0.95, phase=0.37, lift0=0.0, ramp=0.2, rel=(0.05, -0.05)),
+    dict(name="main", n=15, off=(0.072, 0.098), strips={"dense": 0.75, "medium": 0.25}, margin=0.03, tip=-1.48,
+         tip_var=0.07, wmax=(0.2, 0.17), overlap=1.6, shade=0.985, phase=0.71, lift0=0.0, ramp=0.26, rel=(0.09, 0.03)),
+    dict(name="outer", n=13, off=(0.094, 0.124), strips={"dense": 0.45, "medium": 0.4, "wispy": 0.15}, margin=0.036,
+         tip=-1.46, tip_var=0.1, wmax=(0.19, 0.16), overlap=1.35, shade=1.0, phase=0.19, lift0=0.0, ramp=0.32, rel=(0.12, 0.08)),
 ]
 LAYER = {L["name"]: L for L in LAYERS}
 FLYAWAYS = dict(n=4, strip="wispy", w=(0.03, 0.045), len=(0.16, 0.3), shade=1.0)
@@ -647,7 +653,8 @@ def scalp_path(f, side, layer, vol, rng, n=48):
     # the deeper layers rise out of the parting from the scalp; the upper ones lie over them already lifted (a
     # narrow parting groove under a smooth dome, not a ridge either side of the parting)
     k0 = layer.get("lift0", 0.0)
-    ramp = np.minimum(k0 + (1 - k0) * smooth(0.0, 0.2, s), smooth(0.0, 0.11, ed))
+    # (from the scalp at the parting: an upper layer starting lifted shows its root edge end-on along the part)
+    ramp = np.minimum(k0 + (1 - k0) * smooth(0.0, layer.get("ramp", 0.2), s), smooth(0.0, 0.11, ed))
     off = base + (tgt - base) * ramp
     Pn = C + unit(P - C) * (np.linalg.norm(P - C, axis=1) + off)[:, None]
     return Pn, off, s
@@ -804,8 +811,8 @@ class Sim:
             y = self.X[:, :, 1]
             # forward locks: down behind the ear; from the trapezius forward over the shoulder onto the upper chest
             # (each lock its own target, tx / tz)
-            pull = lock & (y < -0.72)
-            k = np.where(pull, 0.035 * smooth(-0.72, -0.92, y), 0.0)
+            pull = lock & (y < -0.8)
+            k = np.where(pull, 0.02 * smooth(-0.8, -0.95, y), 0.0)
             self.X[:, :, 2] += k * (self.tz[:, None] - self.X[:, :, 2])
             self.X[:, :, 0] += k * (side * self.tx[:, None] - self.X[:, :, 0]) * 0.6
             # the back curtain spreads a little over the shoulder blades (wider at the hem, not a tail)
@@ -843,7 +850,7 @@ def hang_strands(strands, refs, cfg, log, M=30):
     body = np.zeros(N)
     for i, st in enumerate(strands):
         Q = st.scalp[-1]
-        L = (Q[1] - st.tip_y) * 1.15 + (0.75 if st.lock else 0.05)
+        L = (Q[1] - st.tip_y) * 1.15 + (0.35 if st.lock else 0.05)
         seg[i] = L / (M - 1)
         off[i] = st.off[-1]
         body[i] = st.body_off
@@ -865,8 +872,8 @@ def hang_strands(strands, refs, cfg, log, M=30):
             ids.sort(key=lambda i: abs(math.atan2(strands[i].scalp[-1][0], strands[i].scalp[-1][2] - AXIS_Z)))
             for r, i in enumerate(ids):
                 g = (r + 0.5) / max(1, len(ids))
-                sim.tx[i] = 0.34 + 0.24 * g + rs.uniform(-0.025, 0.025)
-                sim.tz[i] = -0.5 + 0.08 * g + rs.uniform(-0.04, 0.04)
+                sim.tx[i] = 0.36 + 0.24 * g + rs.uniform(-0.025, 0.025)
+                sim.tz[i] = -0.28 + 0.14 * g + rs.uniform(-0.04, 0.04)
     # the back curtain's hem target x: the release x spread out (x 0.33 behind the ear -> ~0.42 at the hem)
     sim.sx = np.array([st.scalp[-1][0] * 1.3 for st in strands])
     t0 = time.time()
@@ -1396,6 +1403,23 @@ def enforce_clearance(P, refs, hang_mask):
     return P
 
 
+def smooth_field(P, val, radius):
+    """per-vertex values averaged over every vertex within radius (gaussian weights; Blender KD tree)"""
+    from mathutils.kdtree import KDTree
+    kd = KDTree(len(P))
+    for i, p in enumerate(P):
+        kd.insert(Vector(p), i)
+    kd.balance()
+    out = np.empty(len(P))
+    for i, p in enumerate(P):
+        hits = kd.find_range(Vector(p), radius)
+        idx = np.array([h[1] for h in hits])
+        d = np.array([h[2] for h in hits])
+        w = np.exp(-(d / (radius * 0.5)) ** 2)
+        out[i] = float((val[idx] * w).sum() / w.sum())
+    return out
+
+
 def hemi_dirs(n=12, seed=3):
     rng = np.random.default_rng(seed)
     out = []
@@ -1436,6 +1460,9 @@ def bake_ao(P, Nout, hair_tris, refs, dist=0.08):
 
 
 # =========================================================================================== build
+LAYER_DEBUG_COL = [(1, 1, 0), (1, 0.2, 0.2), (0.2, 1, 0.2), (0.2, 0.4, 1), (1, 0.3, 1), (0, 1, 1), (1, 1, 1)]
+
+
 def build_style(key, cfg, refs, coll, log):
     rng = np.random.default_rng(cfg["seed"] * 101 + 5)
     strands = make_strands(cfg, log)
@@ -1491,6 +1518,7 @@ def build_style(key, cfg, refs, coll, log):
     NO = np.vstack(NO)
     t0 = time.time()
     ao = bake_ao(V, NO, tris, refs)
+    ao = smooth_field(V, ao, 0.045)  # spatially smooth: no card reads as its own lighter / darker rectangle
     log(f"  occlusion {len(V)} verts: {time.time() - t0:.1f}s")
     k = 0
     for cd in metas:
@@ -1521,8 +1549,11 @@ def build_style(key, cfg, refs, coll, log):
                 dl = np.zeros(3)
                 if nm.endswith("b") and cd.tuck and cd.tuck[0] <= i < cd.tuck[1]:
                     dl = -cd.nout[i] * 0.004  # the overlap above the joint lies just under segment 1
-                a = p.vert(cd.left[i] + dl, cd.N[i], (cd.u[0], cd.v[i]), (c, c, c, 1.0))
-                b = p.vert(cd.right[i] + dl, cd.N[i], (cd.u[1], cd.v[i]), (c, c, c, 1.0))
+                rgb = (c, c, c)
+                if "layercol" in os.environ.get("LONG_DEBUG", ""):  # debug: every layer its own colour
+                    rgb = LAYER_DEBUG_COL[min(cd.st.li, len(LAYER_DEBUG_COL) - 1)]
+                a = p.vert(cd.left[i] + dl, cd.N[i], (cd.u[0], cd.v[i]), (*rgb, 1.0))
+                b = p.vert(cd.right[i] + dl, cd.N[i], (cd.u[1], cd.v[i]), (*rgb, 1.0))
                 ids.append((a, b))
             for i in range(len(ids) - 1):
                 a, b = ids[i]
@@ -1707,7 +1738,9 @@ def cap_standin(density, outdir):
     """the shared scalp cap as the game paints it for cut "full": the short tile (8 x 4), alpha = tile alpha x
     natural-hairline coverage x density"""
     gw, gh = 256, 128
-    th = (np.arange(gh) + 0.5) / gh * 2.2
+    capj = json.load(open(os.path.join(hl.OUT, "cap", "style.json")))
+    theta_max = float(capj.get("thetaMax", 2.2))
+    th = (np.arange(gh) + 0.5) / gh * theta_max
     az = (np.arange(gw) + 0.5) / gw * TAU
     TH, AZ = np.meshgrid(th, az, indexing="ij")
     s_ = np.sin(TH.ravel())
@@ -1721,6 +1754,9 @@ def cap_standin(density, outdir):
     t[..., 3] *= cov
     path = os.path.join(outdir, "capstandin_long.png")
     Image.fromarray((np.clip(t, 0, 1) * 255).astype(np.uint8), "RGBA").save(path)
+    # the game's shared cap mesh (out/cap) when it exists: its polar UV (v = theta / thetaMax), vertex colour 0.86
+    if os.path.exists(os.path.join(hl.OUT, "cap", "HairCap.mesh")):
+        return load_pieces("cap")[0], path
     p = hl.Piece("HairCap", "short")
     n_th, n_az = 60, 96
     ids = {}
@@ -1737,7 +1773,6 @@ def cap_standin(density, outdir):
     return p, path
 
 
-MATTE = {"Roughness": 0.5, "Specular IOR Level": 0.35}
 
 
 def render_style(key, pieces, outdir, samples, looks, views, res=(520, 620), tex=TEX_PATH):
@@ -1756,8 +1791,11 @@ def render_style(key, pieces, outdir, samples, looks, views, res=(520, 620), tex
         scl, off = (1, 1, 1), (0, 0, 0)
         if head_name == "f":
             scl, off = (FIT_F["ax"], FIT_F["ay"], FIT_F["az"]), (0, 0, FIT_F["dz"])
-        sc.add_piece(cap, texture=cap_tex, tint=tint, offset=off, scale=scl)
         dbg = os.environ.get("LONG_DEBUG", "")
+        if "nocap" not in dbg:
+            sc.add_piece(cap, texture=cap_tex, tint=tint, offset=off, scale=scl)
+        if "nodenoise" in dbg:
+            sc.sc.cycles.use_denoising = False
         for p in pieces:
             q = single_sided(p)
             if "nocol" in dbg:
@@ -1769,9 +1807,6 @@ def render_style(key, pieces, outdir, samples, looks, views, res=(520, 620), tex
             # true would do)
             if "shadow" not in dbg:
                 ob.visible_shadow = False
-            bs = ob.data.materials[0].node_tree.nodes["Principled BSDF"]
-            for k, v in MATTE.items():
-                bs.inputs[k].default_value = v
         for v in views:
             path = os.path.join(outdir, f"{key}_{look}_{v}.png")
             if v == "close":

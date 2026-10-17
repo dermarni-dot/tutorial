@@ -412,7 +412,7 @@ def tex_crop(w=512, h=512, seed=81, ss=2):
             pull = t ** 1.2
             xs = rx + (tx - rx) * pull * (L / H) + np.sin(t * 2.6 + rng.uniform(0, TAU)) * sw * 0.008
             ys = H * rng.uniform(0.0, 0.05) + t * L
-            base = rng.uniform(0.5, 0.62) if rng.random() > 0.12 else rng.uniform(0.38, 0.46)  # some dark strands
+            base = rng.uniform(0.54, 0.64) if rng.random() > 0.06 else rng.uniform(0.44, 0.5)  # a few darker strands
             lum = np.clip(base * (1.0 + 0.17 * t ** 0.8) + 0.06 * (1 - far), 0.3, 0.86)
             if blunt:
                 wid = np.maximum(1.4, 3.6 - 1.2 * t) * rng.uniform(0.8, 1.2)

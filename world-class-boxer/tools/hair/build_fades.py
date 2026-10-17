@@ -198,6 +198,16 @@ class Ref:
             out[k:k + 512] = (w * f[None, :]).sum(1) / w.sum(1)
         return out
 
+    def ear_sdf(self, p, pad=0.012):
+        """signed distance to the nearer ear's AABB grown by pad (rounded corners): < 0 inside"""
+        best = 9.0
+        for lo, hi in self.ears:
+            c, h = (lo + hi) / 2, (hi - lo) / 2
+            q = np.abs(p - c) - h
+            d = np.linalg.norm(np.maximum(q, 0.0)) + min(float(q.max()), 0.0) - pad
+            best = min(best, d)
+        return best
+
     def in_ear(self, p, pad=0.02):
         for lo, hi in self.ears:
             if np.all(p > lo - pad) and np.all(p < hi + pad):
@@ -394,9 +404,39 @@ class CapBase:
             dist[k:k + 512] = dd
         dist[ins] = 0.0
         ok = dist < margin
-        ear = np.array([ref.in_ear(S[i] + D[i] * CAP_OFF, 0.012) for i in range(n)])
-        ok &= ~ear
-        keepT = T[ok[T].all(axis=1)]
+        # the ears: a rounded box (the ear AABB padded 0.012, rounded by that pad) cut out of the cap. Triangles with
+        # at least one vertex outside it are kept and their inside vertices are snapped onto its smooth contour
+        # (re-projected on the skull, UV from the new angles): the hair's edge round the ear root is a smooth
+        # curve, not the grid's staircase
+        f = np.array([ref.ear_sdf(S[i] + D[i] * CAP_OFF, 0.012) for i in range(n)])
+        outside = f > 0
+        cand = T[ok[T].all(axis=1)]
+        keepT = cand[outside[cand].any(axis=1)]
+        snap = np.unique(keepT.ravel())
+        snap = snap[~outside[snap]]
+        for i in snap:
+            th_i, az_i = th[i], az[i]
+            for _ in range(6):
+                p = sk.point(th_i, az_i, CAP_OFF)
+                fv = ref.ear_sdf(p, 0.012)
+                if fv >= 0.0005:
+                    break
+                gr = np.array([(ref.ear_sdf(p + e, 0.012) - ref.ear_sdf(p - e, 0.012)) / 2e-4
+                               for e in np.eye(3) * 1e-4])
+                p = p + gr / (np.linalg.norm(gr) + 1e-9) * (0.0008 - fv)
+                th_i, az_i = Skull.angles(p - sk.c)
+            if az_i - az[i] > math.pi:
+                az_i -= TAU
+            elif az[i] - az_i > math.pi:
+                az_i += TAU
+            th[i], az[i] = th_i, az_i
+            U[i], V[i] = az_i / TAU, th_i / THETA_MAX
+            S[i] = sk.point(th_i, az_i, 0.0)
+            N[i] = sk.normal(max(th_i, 0.02), az_i)
+            D[i] = Skull.direction(th_i, az_i)
+            R[i] = sk.radius(th_i, az_i)
+        ok = np.zeros(n, bool)
+        ok[keepT.ravel()] = True
         self.th, self.az, self.U, self.V = th, az, U, V
         self.S, self.N, self.D, self.R = S, N, D, R
         # the shells' lift direction: the scalp normal (so stacked shells keep their gap where the skull slopes),
@@ -436,7 +476,8 @@ class CapBase:
         # the skull elsewhere, blended over ~0.05 (allow = how far below skull + CAP_OFF the cap may sit)
         self.gap = ref.skull_gap(S, head)
         self.allow = ref.smooth_field(S, self.gap, 0.025)
-        self.allow = np.minimum(self.allow, self.gap + 0.004)
+        # (none where the two agree within 0.002: there the cap keeps the full CAP_OFF above the skull)
+        self.allow = np.minimum(self.allow, np.maximum(0.0, (self.gap - 0.002) * 1.25))
 
     def layer(self, off, T=None):
         """positions at off above the skull (less the skull / head-mesh gap allowance), pushed out to the head mesh
@@ -450,13 +491,21 @@ class CapBase:
                     break
                 P[i] = P[i] + self.D[i] * (CLEAR + 0.001 - s)
             if self.fit is not None:
-                fs, fdz, skf = self.fit
+                fs, fdz, skf = self.fit[:3]
+                hf_mesh = self.fit[3] if len(self.fit) > 3 else None
                 for _ in range(3):
                     hf = skf.height(P[i] * fs + np.array([0, 0, fdz]))
                     need = CLEAR - self.allow[i]
                     if hf >= need + 0.0003:
                         break
                     P[i] = P[i] + self.D[i] * (need + 0.0006 - hf) / float(np.dot(np.abs(self.D[i]), fs))
+                if hf_mesh is not None:
+                    # and CLEAR above the female head mesh itself, fitted (the inner surface there, too)
+                    for _ in range(4):
+                        sf = hf_mesh.signed(P[i] * fs + np.array([0, 0, fdz]))
+                        if sf >= CLEAR + 0.0005:
+                            break
+                        P[i] = P[i] + self.D[i] * (CLEAR + 0.001 - sf) / float(np.dot(np.abs(self.D[i]), fs))
         return P
 
 
@@ -635,18 +684,25 @@ def build_shells(cb, spec, name, n, ts, tufts=0.006, lean=0.9, seed=5):
     for i in np.unique(T0.ravel()):
         q = Pc[i] + cb.Dn[i] * dmax[i]
         bad[i] = cb.head.signed(q) < CLEAR or cb.ref.in_ear(q, 0.01)
+        if not bad[i] and cb.fit is not None and len(cb.fit) > 3 and cb.fit[3] is not None:
+            # (and clear of the fitted female head: behind the ear the outer shells run along the ear's back)
+            bad[i] = cb.fit[3].signed(q * cb.fit[0] + np.array([0, 0, cb.fit[1]])) < CLEAR + 0.0005
     T0 = T0[~bad[T0].any(axis=1)]
     # the stack closes up onto the cap toward its own footprint's border (round the ears, where the coarse shell
     # grid's footprint is cut): no stepped shelf edge where the painted coverage is still full there
     from collections import Counter
+    # (edges keyed by vertex position: the u = 0 / 1 seam's twins and the crown's pole-fan vertices share
+    # positions, so they are no border)
+    _, pid = np.unique(np.round(Pc / 1e-6).astype(np.int64), axis=0, return_inverse=True)
+    pid = pid.ravel()
     ec = Counter()
     for t in T0:
         for a_, b_ in ((t[0], t[1]), (t[1], t[2]), (t[2], t[0])):
-            ec[(min(a_, b_), max(a_, b_))] += 1
-    # (edges along the u = 0 / 1 seam are not a border: their twins on the other side close it)
-    U0 = cb.U
-    seam = lambda e_: (U0[e_[0]] < 1e-6 and U0[e_[1]] < 1e-6) or (U0[e_[0]] > 1 - 1e-6 and U0[e_[1]] > 1 - 1e-6)
-    bverts = np.array(sorted({i for e_, c_ in ec.items() if c_ == 1 and not seam(e_) for i in e_}), np.int64)
+            pa_, pb_ = pid[a_], pid[b_]
+            if pa_ != pb_:
+                ec[(min(pa_, pb_), max(pa_, pb_))] += 1
+    bpos = {i for e_, c_ in ec.items() if c_ == 1 for i in e_}
+    bverts = np.array([i for i in np.unique(T0.ravel()) if pid[i] in bpos], np.int64)
     bf = np.ones(len(Pc))
     if len(bverts):
         Bp = Pc[bverts]
@@ -665,7 +721,7 @@ def build_shells(cb, spec, name, n, ts, tufts=0.006, lean=0.9, seed=5):
     material = spec.get("material", "Plastic")
     lean_w = sstep(0.5, 0.9, cb.th)  # (no lean round the crown: the painter samples it flat, POLE)
     for k in range(1, n + 1):
-        d = shell_heights(ts, k, n) - SHELL_BASE * 0.65 * (1 - bf)
+        d = shell_heights(ts, k, n) - SHELL_BASE * 0.5 * (1 - bf)
         P = Pc + cb.Dn * d[:, None]
         T = orient_outward(P, T0, cb.ref.sk.c)
         T2, (P2, N2, U2, V2, t2, d2, th2, D2, lw2) = compact(T, P, cb.N, cb.U, cb.V, ts, d, cb.th, cb.Dn, lean_w)
@@ -692,6 +748,16 @@ def build_shells(cb, spec, name, n, ts, tufts=0.006, lean=0.9, seed=5):
             PE = np.array([v.co[:] for v in me.vertices])
             ev.to_mesh_clear()
             assert len(PE) == len(P2)
+        if cb.fit is not None and len(cb.fit) > 3 and cb.fit[3] is not None:
+            # every shell also CLEAR above the fitted female head mesh (its border, where the stack closes up)
+            fs, fdz, _, hfm = cb.fit
+            PE = PE.copy()
+            for i in range(len(PE)):
+                for _ in range(3):
+                    sf = hfm.signed(PE[i] * fs + np.array([0, 0, fdz]))
+                    if sf >= CLEAR + 0.0003:
+                        break
+                    PE[i] = PE[i] + D2[i] * (CLEAR + 0.0006 - sf) / float(np.dot(np.abs(D2[i]), fs))
         var = shell_variant(k, n) if spec.get("shell_var") is None else spec["shell_var"]
         piece = Piece(nm, "cap", material=material, castShadow=False)
         if var:
@@ -878,11 +944,11 @@ def build_crop(cb, spec, t_full, t_shell, seed=11, name="HairCrop"):
         # (strip 0 is the blunt-cut tuft: the Caesar's fringe and much of its top; the others end in points)
         # (the fringe: mostly the blunt tuft, some pointed ones, so its line is soft, not a broom)
         if guides[g][2]:
-            s = 0 if rng.random() < 0.4 else int(rng.integers(1, CROP_STRIPS))
+            s = 0 if rng.random() < 0.25 else int(rng.integers(1, CROP_STRIPS))
         else:
             s = 0 if (caesar and rng.random() < 0.4) else int(rng.integers(1, CROP_STRIPS))
         # occlusion: dark at the root (inside the shells), the tips no brighter than the outer shell's own tone
-        base, tipv = rng.uniform(0.58, 0.7), rng.uniform(0.8, 0.9)
+        base, tipv = rng.uniform(0.6, 0.7), rng.uniform(0.78, 0.86)  # (tips at the outer shell's own tone: no flecks)
         if guides[g][2]:
             base = rng.uniform(0.45, 0.55)  # (the fringe's roots sink into the shells' shade)
         # (a mix of facings: flat tufts read from above, turned ones from the side, so no view sees only card
@@ -1259,7 +1325,10 @@ def render_style(ref, e, pieces, capP, tint_name, views, res=(520, 620), samples
                 tex = shells[(s["rank"], s["cov"])] if s else capimg
             else:
                 tex = os.path.join(TEX, f"hair_{p.tex}.png")
-            matte(sc.add_piece(p, texture=tex, tint=tint))
+            ob = sc.add_piece(p, texture=tex, tint=tint)
+            matte(ob)
+            if not p.meta.get("castShadow", getattr(p, "castShadow", True)):
+                ob.visible_shadow = False  # (the game's castShadow = false: no card shadows on the shells)
         vname = view if isinstance(view, str) else "view"
         fn = os.path.join(FAM_DIR, f"{e['key']}{tag}_{tint_name}_{vname}.png")
         if view == "close":
@@ -1364,7 +1433,7 @@ def main():
     ref = Ref()
     head = HeadBVH(os.path.join(REF, "head_m.obj"))
     clr = Clearance(ref)
-    fit = (clr.fit_s, clr.fit_dz, ref.skf) if ref.skf is not None else None
+    fit = (clr.fit_s, clr.fit_dz, ref.skf, clr.head_f) if ref.skf is not None else None
     cb = CapBase(ref, head, fit=fit)
     cbs = CapBase(ref, head, dth=5.0, nmax=40, fit=fit, margin=0.06)  # the shells' coarser grid (same UV mapping)
     print(f"cap grid: {len(cb.S)} verts, {len(cb.keepT)} tris kept; shell grid {len(cbs.keepT)} tris "
