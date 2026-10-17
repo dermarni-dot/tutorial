@@ -8,7 +8,7 @@ Layout (1024 x 1024; hairlib.ATLAS["coily"]: u 0..0.5 "tight", u 0.5..1 "loose")
     TILE_S      0.50-1.00    0.00-0.25   a tileable sparse tight-coil tile (outer shells: the fuzzy edge)
     TILE_L      0.50-1.00    0.25-0.50   a tileable sparse loose-curl tile (the Curly variant's outer shells)
     FIN_T       0.50-0.75    0.50-1.00   a fuzz tuft of tight coils, root at its top (v 0.5) .. sparse tips
-    FIN_L       0.75-1.00    0.50-1.00   a tuft of 2-3 loose ringlets, root at its top
+    FIN_L       0.75-1.00    0.50-1.00   a fuzz tuft of loose curls, root at its top
 
 The clouds have no outline to trace: the coil density falls off gradually (noise-modulated) over the
 outer ~35% of the cell, so a cloud's edge is made of single loops. The surface cards are laid tangent to
@@ -230,7 +230,7 @@ def tuft(w, h, seed, n, radius, turns, pitch, tilt, wander, fill, stroke=1.25, w
     D = sideD * sstep(0.98, 0.3, t + 0.25 * (nz - 0.5)) * (0.35 + 0.65 * sstep(0.0, 0.2, t)) * keep
     layers = []
     fa = fill * sideD * sstep(0.6, 0.1, t) * (0.7 + 0.3 * fbm(H, W, seed + 3, cells=12, octaves=3)) * keep
-    layers.append((fa, 0.32 + 0.1 * fbm(H, W, seed + 4, cells=20, octaves=2)))
+    layers.append((fa, 0.46 + 0.1 * fbm(H, W, seed + 4, cells=20, octaves=2)))
     if n:
         cents = sample_centres(rng, n, D)
         depth = rng.random(n)
@@ -331,8 +331,9 @@ def tex_coily(size=SIZE, seed=31):
                        radius=(22 * s * SS, 34 * s * SS), turns=(1.1, 2.0), pitch=(0.8, 1.4), tilt=(0.35, 0.7),
                        wander=0.35),
         "FIN_T": tuft(quarter, half, seed + 40, n=110, fill=0.15, stroke=1.0, **tight),
-        "FIN_L": tuft(quarter, half, seed + 50, n=20, radius=(16 * s * SS, 24 * s * SS), turns=(1.2, 2.2),
-                      pitch=(0.9, 1.4), tilt=(0.3, 0.6), wander=0.3, fill=0.3, stroke=1.3, ringlets=3),
+        # a tuft of loose curls (the Curly fins): open loops, no spring ladders
+        "FIN_L": tuft(quarter, half, seed + 50, n=48, radius=(15 * s * SS, 24 * s * SS), turns=(1.1, 2.0),
+                      pitch=(0.8, 1.3), tilt=(0.35, 0.7), wander=0.35, fill=0.12, stroke=1.2, width=0.4),
     }
     for k, (c, a) in cells.items():
         u0, v0, u1, v1 = CELLS[k]

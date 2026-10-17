@@ -83,7 +83,9 @@ FRIZZ_STRIP = (0.75, 1.0)
 FRINGE = 32 / 1024
 LOC_CORE = (LOC_STRIP[0] + FRINGE, LOC_STRIP[1] - FRINGE)
 TWIST_CORE = (TWIST_STRIP[0] + FRINGE, TWIST_STRIP[1] - FRINGE)
-TWIST_TURNS = 6  # full turns of the strand pair per v unit (the texture's height)
+TWIST_TURNS = 4  # full turns of the strand pair per v unit (root to tip of every twist)
+LOC_PERIOD = (LOC_CORE[1] - LOC_CORE[0]) / 2  # the loc core holds two identical u-periods
+LOC_LUMPS = 4.5  # felted lumps per v unit (root to tip) along each bundle
 
 
 def _pnoise(h, w, scale, seed, sy=None):
@@ -174,65 +176,105 @@ class Fibres:
 
 
 def _loc_core(h, w, seed):
-    """a matted, felted rope: soft bulges (longer along the loc), a dim felt of fibres in every direction and,
-    over it, sparser brighter fibres wrapping round and along the loc, with tiny kinks. Periodic in u and v."""
+    """one u-period of the matted rope (w px round, h px root to tip): bundles of fine fibres running mostly
+    along the loc (v), each bundle pinched into felted lumps (~LOC_LUMPS per v unit) with short dark creases of
+    occlusion between bundles and lumps, crossing fibres that wrap round the loc, small loops and knots, and a
+    faint low-frequency variation (amplitude < 0.15). Anisotropic (fibres along v), periodic in u."""
     rng = np.random.default_rng(seed)
-    k = h / 1024.0  # fibre counts per texel area
-    bulge = _pnoise(h, w, 22, seed + 1, sy=28)
-    small = _pnoise(h, w, 7, seed + 2)
-    base = np.clip(0.5 + 0.55 * (bulge - 0.5) + 0.35 * (small - 0.5), 0, 1)
+    yy, xx = np.mgrid[0:h, 0:w].astype(np.float64)
+    # bundles: 3 per period, their centre lines wandering a little; a lump profile along each
+    nb = 3
+    bund = np.zeros((h, w))
+    best = np.full((h, w), 9.0)
+    lump_all = np.zeros((h, w))
+    for b in range(nb):
+        wan = (_pnoise(h, 1, 40, seed + 100 + b)[:, 0] - 0.5) * w * 0.35
+        cx = (b + 0.5 + 0.2 * rng.uniform(-1, 1)) * w / nb + wan
+        dx = (xx - cx[:, None] + w / 2) % w - w / 2
+        dn = np.abs(dx) / (w / nb / 2)  # 0 at the bundle's centre line .. 1 at its edge
+        ph = rng.uniform(0, 1)
+        fq = LOC_LUMPS * rng.uniform(0.85, 1.2)
+        # felted lumps along the bundle: a rounded bump per lump, irregular spacing
+        t = (yy / h * fq + ph + 0.12 * np.sin(yy / h * TAU * 2 + b * 2.1)) % 1.0
+        lump = np.sin(math.pi * t) ** 0.6
+        sel = dn < best
+        best = np.where(sel, dn, best)
+        bund = np.where(sel, 1 - np.clip(dn, 0, 1) ** 2.2, bund)
+        lump_all = np.where(sel, lump, lump_all)
+    # crease darkness: between bundles (broken up so it never runs as a long line) and between lumps
+    brk = _pnoise(h, w, 18, seed + 7, sy=60)
+    crease_u = (1 - bund) * np.clip((brk - 0.38) / 0.25, 0, 1)
+    shade = 1 - 0.55 * crease_u - 0.35 * (1 - lump_all) * (0.5 + 0.5 * bund)
+    low = _pnoise(h, w, 70, seed + 9, sy=160)
+    shade = shade * (1 + 0.28 * (low - 0.5))  # +/- ~0.1
+    k = h * w / (1024.0 * 160.0)
+    # fibres: long fine ones along v (the bulk), crossing / wrapping ones, short loops and knots
     under = Fibres(h, w)
-    under.strands(rng, int(11000 * k), (6, 22), lambda r, n: r.normal(0, 1.0, n) + (r.random(n) < 0.35) * math.pi / 2, 0,
-                  1.5, (0.3, 0.75), curl=1.5)
-    under.coils(rng, int(1300 * k), (1.0, 3.0), (0.8, 2.0), (0.3, 0.7))
-    lu, au = under.result(0.6, 0.8)
+    under.strands(rng, int(5200 * k), (30, 90), 0.0, 0.22, 2.0, (0.35, 0.7), curl=0.8)
+    under.strands(rng, int(1400 * k), (10, 30), lambda r, n: r.normal(1.0, 0.35, n) * r.choice([-1, 1], n), 0,
+                  1.5, (0.3, 0.6), curl=1.2)
+    lu, au = under.result(0.55, 0.9)
     over = Fibres(h, w)
-    over.strands(rng, int(3400 * k), (8, 30), lambda r, n: np.where(r.random(n) < 0.4, r.normal(0, 0.45, n),
-                                                           r.normal(1.25, 0.35, n) * r.choice([-1, 1], n)), 0,
-                 2.2, (0.6, 1.0), curl=1.4)
-    over.coils(rng, int(500 * k), (1.5, 3.5), (0.8, 1.8), (0.6, 1.0))
-    lo, ao = over.result(0.5, 1.4)
-    felt = (0.1 + 0.36 * base) * (1 - au) + lu * (0.4 + 0.6 * base) * au
-    lum = felt * (1 - ao) + lo * (0.6 + 0.4 * base) * ao
-    # crevices between the bulges
-    lum = lum * (0.66 + 0.34 * np.clip((bulge - 0.25) / 0.4, 0, 1))
-    return np.clip(lum * 1.18, 0, 1)
+    over.strands(rng, int(2600 * k), (40, 120), 0.0, 0.18, 2.5, (0.7, 1.0), curl=0.6)
+    over.strands(rng, int(700 * k), (12, 34), lambda r, n: r.normal(1.15, 0.3, n) * r.choice([-1, 1], n), 0,
+                 2.0, (0.6, 0.95), curl=1.0)
+    over.coils(rng, int(260 * k), (1.2, 3.0), (0.8, 1.6), (0.6, 0.95))
+    # knots: little clusters of loops
+    for _ in range(int(40 * k)):
+        cx, cy = rng.uniform(0, w), rng.uniform(0, h)
+        for _j in range(rng.integers(4, 9)):
+            r = rng.uniform(1.0, 2.8)
+            a = rng.uniform(0, TAU) + np.linspace(0, TAU * rng.uniform(0.8, 1.5), 20)
+            ox, oy = rng.normal(0, 3.0, 2)
+            over.add(cx + ox + r * np.cos(a), cy + oy + r * np.sin(a) * 1.3, np.full(20, rng.uniform(0.6, 0.9)),
+                     np.full(20, 1.0))
+    lo, ao = over.result(0.5, 1.3)
+    felt = 0.18 * (1 - au) + lu * au
+    lum = felt * (1 - ao) + lo * ao
+    lum = lum * (0.45 + 0.55 * np.clip(shade, 0, 1.1))
+    return np.clip(lum, 0, 1)
 
 
 def _twist_core(h, w, seed):
-    """two strands twisted round each other: helical lobes (grooves where u - TWIST_TURNS v = 0 mod 0.5, a little
-    wavy), each a rounded bundle of fibres running along its strand with a slight twist of its own, kinky fuzz"""
+    """two strands twisted round each other, TWIST_TURNS full turns per v unit: lobes between helical grooves
+    (u - TWIST_TURNS v = 0 mod 0.5); the lobes alternate strand A / strand B (each its own fibre direction, a
+    counter-twist along its strand, and its own shade), each lobe rounded with a dark groove on both sides"""
     rng = np.random.default_rng(seed)
     yy, xx = np.mgrid[0:h, 0:w].astype(np.float64)
-    wob = (_pnoise(h, w, 14, seed + 5) - 0.5) * 0.09
+    wob = (_pnoise(h, w, 14, seed + 5) - 0.5) * 0.05
     uc = (xx + 0.5) / w
     vv = (yy + 0.5) / h
 
     def qof(u, v, wb=0.0):
         return ((u - TWIST_TURNS * v + wb) % 0.5) / 0.5  # 0 / 1 grooves, 0.5 the middle of a strand
 
+    def strand_of(u, v, wb=0.0):
+        return np.floor(((u - TWIST_TURNS * v + wb) % 1.0) / 0.5).astype(np.int64)  # 0: A, 1: B
+
     q = qof(uc, vv, wob)
-    lobe = np.sin(math.pi * q) ** 0.45 * (0.82 + 0.18 * np.cos(math.pi * (q - 0.3)))  # rounder near the top edge
+    sid = strand_of(uc, vv, wob)
+    lobe = np.sin(math.pi * q) ** 0.55
     lumpy = _pnoise(h, w, 9, seed + 1)
-    base = lobe * (0.8 + 0.5 * (lumpy - 0.5))
-    helix = math.atan2(TWIST_TURNS * w, h)
-    under = Fibres(h, w)
-    under.strands(rng, 7000, (10, 36), helix - math.radians(25), 0.3, 1.2, (0.35, 0.8), curl=1.2)
-    under.coils(rng, 1600, (1.0, 2.6), (0.8, 1.8), (0.35, 0.75))
-    lu, au = under.result(0.6, 0.9)
-
-    def band_mask(px, py, i):
-        qq = qof((px + 0.5) / w, (py + 0.5) / h)
-        return np.clip(np.sin(math.pi * qq) * 1.8 - 0.2, 0, 1)
-
-    over = Fibres(h, w)
-    over.strands(rng, 3200, (16, 46), helix - math.radians(20), 0.15, 1.0, (0.65, 1.0), mask=band_mask, curl=0.8)
-    over.coils(rng, 700, (1.2, 3.0), (0.8, 1.6), (0.6, 1.0))
-    lo, ao = over.result(0.5, 1.3)
-    felt = (0.15 + 0.45 * base) * (1 - au) + lu * (0.3 + 0.7 * base) * au
-    lum = felt * (1 - ao) + lo * (0.3 + 0.7 * lobe) * ao
-    groove = np.clip(q * (1 - q) * 4 / 0.3, 0, 1) ** 0.7
-    lum = lum * (0.35 + 0.65 * groove)
+    helix = math.atan2(TWIST_TURNS * w, h)  # angle of the grooves from +v
+    lums = []
+    for s_i, (dang, shd) in enumerate(((math.radians(-22), (0.62, 1.0)), (math.radians(-12), (0.5, 0.88)))):
+        def mask(px, py, i, s_i=s_i):
+            uu, vq = (px + 0.5) / w, (py + 0.5) / h
+            qq = qof(uu, vq)
+            return (strand_of(uu, vq) == s_i) * np.clip(np.sin(math.pi * qq) * 2.2 - 0.25, 0, 1)
+        under = Fibres(h, w)
+        under.strands(rng, 4200, (10, 30), helix + dang, 0.25, 1.0, (shd[0] * 0.6, shd[1] * 0.75), mask=mask,
+                      curl=1.0)
+        lu, au = under.result(0.6, 1.0)
+        over = Fibres(h, w)
+        over.strands(rng, 2400, (14, 40), helix + dang, 0.14, 0.9, shd, mask=mask, curl=0.6)
+        over.coils(rng, 300, (1.2, 2.6), (0.8, 1.5), (0.6, 0.95))
+        lo, ao = over.result(0.5, 1.3)
+        lums.append(((0.2 * (1 - au) + lu * au) * (1 - ao) + lo * ao))
+    lum = np.where(sid == 0, lums[0], lums[1])
+    lum = lum * (0.55 + 0.45 * lobe) * (0.9 + 0.2 * (lumpy - 0.5))
+    groove = np.clip(q * (1 - q) * 4 / 0.28, 0, 1) ** 0.8
+    lum = lum * (0.3 + 0.7 * groove)
     return np.clip(lum * 1.1, 0, 1)
 
 
@@ -291,8 +333,9 @@ def make_loc_texture(path, size=TEX_SIZE, seed=61):
     cw = int(round((LOC_CORE[1] - LOC_CORE[0]) * size))
     lum = np.zeros((h, size))
     alp = np.zeros((h, size))
-    # two periods of the rope over the strip's height (each 512 px tall): the long locs' v_len is ~2.3 studs
-    lc = _stretch(np.vstack([_loc_core(h // 2, cw, seed)] * 2), 0.45)
+    # the loc core: two identical u-periods (LOC_PERIOD wide each) of one rope tile, 1024 px root to tip
+    tile = _loc_core(h, cw // 2, seed)
+    lc = _stretch(np.hstack([tile, tile]), 0.45)
     l, a = _strip(lc, fr, seed + 10)
     x0 = int(LOC_STRIP[0] * size)
     lum[:, x0:x0 + l.shape[1]], alp[:, x0:x0 + l.shape[1]] = l, a
@@ -315,6 +358,7 @@ def make_loc_texture(path, size=TEX_SIZE, seed=61):
 
 
 # ------------------------------------------------------------------------------------------- reference
+JOINT_SLEEVE = 0.03  # the ring interval just below a chain joint, emitted into both pieces
 ROOT_K = 0.55  # a loc's radius at the scalp / its full radius (the root cone)
 CLEAR = 0.026  # target height of every loc surface above the head (nominal studs)
 CLEAR_MIN = 0.0215  # enforced after the modifiers (male head mesh; the skull table and the female fit checked)
@@ -540,7 +584,7 @@ def hairline_row(spacing, margin, rng, jitter=0.15):
         sp, th, az = SK.project(p)
         nn = SK.normal(th, az)
         inward = tproj(crown - sp, nn)
-        q = sp + inward * (margin + rng.uniform(0, 0.012))
+        q = sp + inward * (margin + rng.uniform(-0.003, 0.015))
         q, th, az = SK.project(q)
         e = float(edge_dist(q)[0])
         if e < margin * 0.6:
@@ -569,7 +613,7 @@ def box_roots(spacing, margin, seed, jitter=0.2, region=None, edge_spacing=None,
     tight ring of small locs round the pole, so the whorl is not a bald spot). grade: the sections are
     (1 - grade) x spacing near the pole, growing to (1 + grade) x spacing down the sides"""
     rng = np.random.default_rng(seed)
-    edge = hairline_row(edge_spacing or spacing * 0.85, margin, rng) if edge_spacing != 0 else []
+    edge = hairline_row(edge_spacing or spacing * 0.85, margin, rng, jitter=0.3) if edge_spacing != 0 else []
     if region is not None:
         edge = [r for r in edge if region(r["p"], r["e"])]
     Rm = _rot_from_y(pole) if pole is not None else np.eye(3)
@@ -925,71 +969,84 @@ def frames(D, S, s_list, inward):
     return out
 
 
-def loc_radius(s, L, R, rnd, root_len=0.08, blunt=True, lump=0.1, root_k=None):
-    """a loc's radius along its length: thinner at the root, lumpy, blunt (rounded) or tapered at the tip"""
+def loc_radius(s, L, R, rnd, root_len=0.08, tip_r=0.6, lump=0.1, root_k=None, tip_len=None):
+    """a loc's radius along its length: a thin root cone growing out of the scalp, lumpy, tapering to tip_r x R
+    over the last tip_len (the tube builder then rounds the end with a dome)"""
     s = np.asarray(s, dtype=np.float64)
     ph1, ph2 = rnd * 17.0, rnd * 31.0
-    # the root is a short cone growing out of the scalp (no flat cut end at the hairline)
     rk = ROOT_K if root_k is None else root_k
     r = R * (rk + (1 - rk) * smooth(0.0, root_len, s) ** 0.8)
     r = r * (1 + lump * (0.6 * np.sin(s * 23 + ph1) + 0.4 * np.sin(s * 57 + ph2)))
-    if blunt:
-        tb = min(0.05, L * 0.2)
-        r = r * (0.55 + 0.45 * np.sqrt(np.clip((L - s) / tb, 0, 1)))
-    else:
-        r = r * (0.32 + 0.68 * (1 - smooth(L - min(0.14, L * 0.4), L, s)))
+    tl = min(0.12, L * 0.3) if tip_len is None else tip_len
+    r = r * (1 - (1 - tip_r) * smooth(L - tl, L, s))
     return r
 
 
-def build_tube(mb, loc_i, D, S, s_rings, radius, sides, strip, vps, v0, inward, lobes=None, ellipse=0.88,
-               seg_of=None, tip_k=0.5, root_cap=True):
-    """one loc tube into MeshBuild mb. radius(s) -> r; lobes: None (round, a slightly elliptical section turning
-    slowly) or 'twist' (two helical grooves, phase from v). Faces wind counter-clockwise seen from outside."""
+def build_tube(mb, loc_i, D, S, s_rings, radius, sides, strip, vps, v0, inward, lobes=None, ellipse=0.9,
+               seg_of=None, tip_k=0.8, dome=1, root_k_apex=0.7):
+    """one loc tube into MeshBuild mb, closed at both ends: a short cone into the scalp at the root (its apex just
+    under the root ring) and a rounded dome (`dome` rings shrinking on a quarter circle, then an apex) at the tip.
+    radius(s) -> r; lobes: None (round, a slightly elliptical section turning slowly, a little irregular ring to
+    ring) or 'twist' (two strands: two lobes whose phase turns with v, TWIST_TURNS turns root to tip, lined up
+    with the twist strip's grooves). u wraps once round the tube over `strip`; v = v0 + s / vps.
+    Where the segment (piece) changes between two rings, that ring interval is emitted into both pieces (the upper
+    piece's copy is a sleeve over the joint, so a swinging lower piece never opens a gap). Faces wind counter-
+    clockwise seen from outside."""
     u0, u1 = strip
     fr = frames(D, S, s_rings, inward)
     C_ = at_s(D, S, s_rings)
-    rings = []
     psi0 = loc_i * 1.7
-    for i, s in enumerate(s_rings):
-        t, nrm, bn = fr[i]
-        r = float(radius(s))
-        v = v0 + s / vps
+
+    def ring(i, centre, t, nrm, bn, r, v, s, irregular):
         wids = []
         for k in range(sides):
             a = TAU * k / sides
             if lobes == "twist":
                 ph = TAU * TWIST_TURNS * v
-                rr = r * (0.74 + 0.36 * abs(math.sin(a - ph)) ** 0.8)
+                rr = r * (0.76 + 0.34 * abs(math.sin(a - ph)) ** 0.7)
             else:
                 psi = psi0 + s * 2.5
                 rr = r / math.sqrt(math.cos(a - psi) ** 2 + (math.sin(a - psi) / ellipse) ** 2)
-                # a slightly irregular section ring to ring (no perfect cylinders)
-                hsh = math.sin(i * 12.9898 + k * 78.233 + loc_i * 3.71) * 43758.5453
-                rr *= 1 + 0.07 * ((hsh - math.floor(hsh)) - 0.5) * (1 if 0 < i < len(s_rings) - 1 else 0)
-            p = C_[i] + (nrm * math.cos(a) + bn * math.sin(a)) * rr
+                if irregular:
+                    hsh = math.sin(i * 12.9898 + k * 78.233 + loc_i * 3.71) * 43758.5453
+                    rr *= 1 + 0.06 * ((hsh - math.floor(hsh)) - 0.5)
+            p = centre + (nrm * math.cos(a) + bn * math.sin(a)) * rr
             wids.append(mb.wv(p, loc_i, s))
-        g = [mb.gv(wids[k % sides], u0 + (u1 - u0) * k / sides, v) for k in range(sides + 1)]
-        rings.append(g)
+        return [mb.gv(wids[k % sides], u0 + (u1 - u0) * k / sides, v) for k in range(sides + 1)]
+    rings, ring_s = [], []
+    nR0 = len(s_rings)
+    for i, s in enumerate(s_rings):
+        t, nrm, bn = fr[i]
+        rings.append(ring(i, C_[i], t, nrm, bn, float(radius(s)), v0 + s / vps, s, 0 < i < nR0 - 1))
+        ring_s.append(s)
+    # the dome
+    tl, nl, bl = fr[-1]
+    rl = float(radius(s_rings[-1]))
+    L = s_rings[-1]
+    for j in range(1, dome + 1):
+        phi = j / (dome + 1) * math.pi / 2
+        ds = rl * tip_k * math.sin(phi)
+        rings.append(ring(nR0 + j, C_[-1] + tl * ds, tl, nl, bl, rl * math.cos(phi), v0 + (L + ds) / vps, L, False))
+        ring_s.append(L)
     nR = len(rings)
-    segs = [seg_of(0.5 * (s_rings[i] + s_rings[i + 1])) if seg_of else 0 for i in range(nR - 1)]
+    segs = [seg_of(0.5 * (ring_s[i] + ring_s[i + 1])) if seg_of else 0 for i in range(nR - 1)]
     for i in range(nR - 1):
         r0, r1 = rings[i], rings[i + 1]
         for k in range(sides):
-            # outward: (r0[k], r0[k+1], r1[k+1], r1[k]) is counter-clockwise seen from outside
             mb.face((r0[k], r0[k + 1], r1[k + 1], r1[k]), (loc_i, segs[i]))
-    # root cap (faces back along the loc, toward the scalp); none when the root cone's narrow end sits on the
-    # scalp cap anyway
-    if root_cap:
-        t0 = fr[0][0]
-        wc = mb.wv(C_[0] - t0 * 0.004, loc_i, 0.0)
-        gc = mb.gv(wc, (u0 + u1) / 2, v0)
-        for k in range(sides):
-            mb.face((gc, rings[0][k + 1], rings[0][k]), (loc_i, segs[0] if segs else 0))
-    # tip cap: rounded (blunt) or pointed (tapered)
-    tl = fr[-1][0]
-    rl = float(radius(s_rings[-1]))
-    wt = mb.wv(C_[-1] + tl * rl * tip_k, loc_i, s_rings[-1])
-    gt = mb.gv(wt, (u0 + u1) / 2, min(1.0, v0 + s_rings[-1] / vps + 0.01))
+        if i > 0 and segs[i] > segs[i - 1]:
+            for k in range(sides):  # the sleeve over the joint, in the upper piece
+                mb.face((r0[k], r0[k + 1], r1[k + 1], r1[k]), (loc_i, segs[i - 1]), dup=True)
+    # root: a short cone into the scalp (no open ring anywhere)
+    t0 = fr[0][0]
+    r0_ = float(radius(s_rings[0]))
+    wc = mb.wv(C_[0] - t0 * r0_ * root_k_apex, loc_i, 0.0)
+    gc = mb.gv(wc, (u0 + u1) / 2, v0)
+    for k in range(sides):
+        mb.face((gc, rings[0][k + 1], rings[0][k]), (loc_i, segs[0] if segs else 0))
+    # tip apex
+    wt = mb.wv(C_[-1] + tl * rl * tip_k, loc_i, L)
+    gt = mb.gv(wt, (u0 + u1) / 2, min(0.999, v0 + (L + rl * tip_k) / vps))
     for k in range(sides):
         mb.face((rings[-1][k], rings[-1][k + 1], gt), (loc_i, segs[-1] if segs else 0))
     return rings
@@ -1074,37 +1131,41 @@ def guard_short(p, rad):
     if h > hmax:
         d = p - C
         p = C + d * (1 - (h - hmax) / float(np.linalg.norm(d)))
-    if abs(p[0]) > 0.47:
+    if abs(p[0]) > 0.45:
         p = p.copy()
-        p[0] = math.copysign(0.47, p[0])
+        p[0] = math.copysign(0.45, p[0])
     return p
 
 
 STYLES = {
     "dreadlocks": dict(
         entry=dict(styles=["Dreadlocks"], types=None, cap={"cut": "full", "density": 0.45}, capTile="shortcoil"),
-        kind="hang", spacing=0.14, fill=20, margin=0.03, seed=101, R=0.036, rvar=0.2, M=32, step=0.03,
-        hang_len=1.05, side_short=0.25, L_max=2.25, sides=5, base_ds=0.22, min_ds=0.075, end_ds=0.045, bend_k=0.65,
-        root_cap=False, root_k=0.6, edge_root_k=0.7, lift=0.2,
-        layer=0.022, repel=0.72, fins=1, chains=7, segs=2, stiff=0.35, mass=(1.5, 1.15), hang_split=0.5,
-        prefix="HairLoc", chain="Loc", lobes=None, halo=dict(k=2.2, root_k=3.0, step=0.32), lump=0.12,
-        blunt_frac=0.6, back_front=1.8, splay=0.24, wave=(0.012, 0.35), body_off=0.07, short_top=0.14,
-        sideburn_ys=(0.15, 0.08)),
+        kind="hang", spacing=0.14, fill=24, min_gap=0.014, margin=0.03, seed=101, R=0.036, rvar=0.2, M=32,
+        step=0.03, hang_len=1.05, side_short=0.25, L_max=2.25, sides=6, base_ds=0.24, min_ds=0.08, end_ds=0.05,
+        bend_k=0.7, root_k=0.5, edge_root_k=0.4, lift=0.2, crown_lift=0.045, rot_deg=20,
+        layer=0.024, repel=0.72, fins=1, chains=7, segs=2, stiff=0.35, mass=(1.5, 1.15), hang_split=0.5,
+        prefix="HairLoc", chain="Loc", lobes=None, halo=dict(k=1.9, root_k=2.6, step=0.34), lump=0.12,
+        tip_r=(0.55, 0.9), tip_k=0.9, dome=1, back_front=1.8, splay=0.24, wave=(0.012, 0.35), body_off=0.07,
+        short_top=0.14, sideburn_ys=(0.15, 0.08),
+        cov_dirs=("top", "back", "back34r", "back34l", "topback", "lowback")),
     "twists": dict(
         entry=dict(styles=["Twists"], types=None, cap={"cut": "full", "density": 0.45}, capTile="shortcoil"),
-        kind="hang", spacing=0.175, fill=13, margin=0.03, seed=303, R=0.044, rvar=0.14, M=24, step=0.025,
-        root_k=0.8, edge_root_k=0.68, edge_cap=False,
-        repel=0.72, fins=1, L_max=1.35, hang_len=0.4, side_short=0.2, sides=5, base_ds=0.064, min_ds=0.055,
-        end_ds=0.05, bend_k=0.4, root_cap=False, lift=0.3,
+        kind="hang", spacing=0.175, fill=16, min_gap=0.014, margin=0.03, seed=303, R=0.044, rvar=0.14, M=24,
+        step=0.025, root_k=0.5, edge_root_k=0.4, crown_lift=0.03, rot_deg=15,
+        repel=0.72, fins=1, L_max=1.3, hang_len=0.4, side_short=0.2, sides=6, base_ds=0.064, min_ds=0.055,
+        end_ds=0.05, bend_k=0.4, lift=0.3,
         layer=0.02, chains=8, segs=1, stiff=0.4, mass=(1.3,), hang_split=None, prefix="HairTwist", chain="Twist",
-        lobes="twist", halo=dict(k=2.0, root_k=2.8, step=0.24), lump=0.05, blunt_frac=0.0, back_front=1.8,
-        splay=0.14, wave=(0.008, 0.4), body_off=0.07, short_top=0.1, sideburn_ys=(0.15, 0.08)),
+        lobes="twist", halo=dict(k=1.8, root_k=2.4, step=0.24), lump=0.04, tip_r=0.42, tip_k=1.0, dome=2,
+        back_front=1.8, splay=0.14, wave=(0.008, 0.4), body_off=0.07, short_top=0.1, sideburn_ys=(0.15, 0.08),
+        cov_dirs=("top", "back", "back34r", "back34l", "topback", "lowback")),
     "short_dreads": dict(
-        entry=dict(styles=["Short Dreads"], types=None, cap={"cut": "full", "density": 0.6}, capTile="shortcoil"),
-        kind="short", spacing=0.12, fill=40, v_len=1.2, margin=0.028, seed=202, R=0.039, rvar=0.22, M=12,
-        sides=5, base_ds=0.11, min_ds=0.045, end_ds=0.055, bend_k=0.36, root_cap=False, clusters=6, stiff=0.75, mass=1.3, lobes=None,
-        halo=dict(k=2.2, root_k=3.0, step=0.08), lump=0.08, blunt_frac=0.75, fins=1,
-        sideburn_ys=(0.15, 0.08, 0.01)),
+        entry=dict(styles=["Short Dreads"], types=None, cap={"cut": "full", "density": 0.5}, capTile="shortcoil"),
+        kind="short", spacing=0.1, fill=60, min_gap=0.012, margin=0.026, seed=202, R=0.028, rvar=0.25, M=14,
+        edge_gap=0.25, edge_spacing=0.075,
+        sides=7, base_ds=0.12, min_ds=0.05, end_ds=0.07, bend_k=0.45, clusters=6, stiff=0.75, mass=1.3, lobes=None,
+        halo=dict(k=1.6, root_k=2.2, step=0.14), lump=0.07, tip_r=0.6, tip_k=0.9, dome=1, fins=1,
+        sideburn_ys=(0.17, 0.11, 0.05, -0.01),
+        cov_dirs=("top", "back", "back34r", "back34l", "lowback", "sider", "sidel", "front34", "front34l")),
 }
 
 
@@ -1130,49 +1191,81 @@ def scalp_grid(step=0.028, e_min=0.035):
     return P[m], Nn[m]
 
 
-def coverage(locs, P, Nn, k=0.95):
-    """per scalp point: the gap to the nearest loc seen straight down the scalp normal (0 = covered: some loc
-    passes over it within k x its radius of the normal line), else the distance to the nearest loc axis"""
-    G, Rg = [], []
+VIEW_DIRS = {
+    # directions from the scalp toward the camera (unit after normalising): the coverage pass checks all of them
+    "top": (0.0, 1.0, 0.0), "back": (0.0, 0.1, 1.0), "back34r": (0.6, 0.3, 0.75), "back34l": (-0.6, 0.3, 0.75),
+    "lowback": (0.0, -0.3, 1.0), "sider": (1.0, 0.15, 0.1), "sidel": (-1.0, 0.15, 0.1),
+    "topback": (0.0, 0.75, 0.66), "front34": (0.5, 0.45, -0.75), "front34l": (-0.5, 0.45, -0.75),
+}
+
+
+class Coverage:
+    """per scalp point and view direction: the gap between the line from the point toward the camera and the
+    nearest loc surface (0 = some loc covers the point from that side). Directions: the point's own normal and
+    VIEW_DIRS (only where the scalp faces the camera). Incremental: adding a loc only lowers gaps."""
+
+    def __init__(self, P, Nn, dirs, k=0.95):
+        self.P, self.Nn, self.k = P, Nn, k
+        D = [None] + [unit(np.array(VIEW_DIRS[d], dtype=np.float64)) for d in dirs]
+        self.dirs = D
+        self.vis = np.stack([np.ones(len(P), bool) if d is None else (Nn @ d) > 0.25 for d in D])
+        self.best = np.full((len(D), len(P)), 9.0)
+
+    def add(self, lc):
+        G, _S = densify(lc["G"] if "G" in lc else lc["P"], 3)
+        R = lc["R"]
+        for di, d in enumerate(self.dirs):
+            for i0 in range(0, len(self.P), 512):
+                q = self.P[i0:i0 + 512, None, :]
+                n = self.Nn[i0:i0 + 512, None, :] if d is None else d[None, None, :]
+                v = G[None, :, :] - q
+                along = (v * n).sum(-1)
+                perp = np.sqrt(np.maximum((v * v).sum(-1) - along ** 2, 0))
+                over = np.where(along > -0.01, perp - R * self.k, 9.0).min(1)
+                self.best[di, i0:i0 + 512] = np.minimum(self.best[di, i0:i0 + 512], over)
+
+    def gaps(self):
+        g = np.where(self.vis, np.maximum(self.best, 0), 0.0)
+        return g.max(0), g
+
+    def stats(self):
+        g, per = self.gaps()
+        return float((g > 0.004).mean()), float(g.max())
+
+
+def coverage(locs, P, Nn, dirs=(), k=0.95):
+    cv = Coverage(P, Nn, dirs, k)
     for lc in locs:
-        D, S = densify(lc["G"] if "G" in lc else lc["P"], 3)
-        G.append(D)
-        Rg.append(np.full(len(D), lc["R"]))
-    G = np.vstack(G)
-    Rg = np.concatenate(Rg)
-    gap = np.zeros(len(P))
-    for i0 in range(0, len(P), 256):
-        q = P[i0:i0 + 256, None, :]
-        n = Nn[i0:i0 + 256, None, :]
-        v = G[None, :, :] - q
-        along = (v * n).sum(-1)
-        perp = np.sqrt(np.maximum((v * v).sum(-1) - along ** 2, 0))
-        over = np.where(along > -0.01, perp - Rg[None, :] * k, 9.0)
-        gap[i0:i0 + 256] = np.maximum(over.min(1), 0)
-    return gap
+        cv.add(lc)
+    return cv.gaps()[0]
 
 
-def fill_gaps(locs, grow_at, max_add, min_gap, log):
-    """adds locs where the scalp shows through from straight above it (the largest gap first); grow_at(th, az)
-    -> a new loc dict or None"""
+def fill_gaps(locs, grow_at, max_add, min_gap, log, dirs=(), extra_dirs_gap=None):
+    """adds locs where the scalp shows through (the largest gap first, from straight above the scalp and from the
+    view directions); grow_at(th, az) -> a new loc dict or None"""
     P, Nn = scalp_grid()
+    cv = Coverage(P, Nn, dirs)
+    for lc in locs:
+        cv.add(lc)
     added = 0
-    tried = set()
+    tried = np.zeros(len(P), bool)
     while added < max_add:
-        gap = coverage(locs, P, Nn)
-        order = np.argsort(-gap)
-        i = next((int(j) for j in order if int(j) not in tried), None)
-        if i is None or gap[i] < min_gap:
+        gap, _per = cv.gaps()
+        gap = np.where(tried, 0.0, gap)
+        i = int(np.argmax(gap))
+        if gap[i] < min_gap:
             break
-        tried.add(i)
+        # don't retry next to a point that was tried
+        tried |= np.linalg.norm(P - P[i], axis=1) < 0.012
         th, az = SK.angles(P[i] - C)
         lc = grow_at(th, az)
         if lc is not None:
             locs.append(lc)
+            cv.add(lc)
             added += 1
-    gap = coverage(locs, P, Nn)
-    log(f"  gap fill: +{added} locs, scalp seen from above {100 * float((gap > 0).mean()):.0f}% of points,"
-        f" largest gap {float(gap.max()):.3f}")
+    frac, mx = cv.stats()
+    log(f"  gap fill: +{added} locs; scalp showing at {100 * frac:.0f}% of (point, view) maxima, largest gap"
+        f" {mx:.3f} (views: normal, {', '.join(dirs) or '-'})")
     return added
 
 
@@ -1184,10 +1277,10 @@ def build_guides_hanging(cfg, ref, log):
     locs = []
     root_len = 0.05
 
-    def make(r):
+    def make(r, rot=None, head_fn=None):
         R = cfg["R"] * float(np.clip(1 + cfg["rvar"] * rng.normal(), 0.72, 1.35))
         if r.get("edge"):
-            R *= 0.72  # the hairline row: finer locs
+            R *= float(rng.uniform(0.6, 0.85))  # the hairline row: finer locs, uneven
         if r.get("sideburn"):
             R *= 0.9
         sp = r["p"]
@@ -1199,33 +1292,56 @@ def build_guides_hanging(cfg, ref, log):
         hl_ = cfg["hang_len"] * (0.8 + 0.4 * r["rnd"]) * (1 - cfg["side_short"] * (1 - backness))
         if not r.get("edge") and r["rnd3"] < cfg["short_top"] and sp[1] > 0.4:
             hl_ *= 0.5
+        # each section's own direction off the flow (neighbours cross), less at the hairline
+        if rot is None:
+            rot = math.radians(cfg.get("rot_deg", 20)) * float(rng.uniform(-1, 1)) * (0.5 if r.get("edge") else 1.0)
+        base_heading = head_fn or heading
 
+        def hdg(p, n, rot=rot):
+            f = base_heading(p, n)
+            return unit(f * math.cos(rot) + np.cross(n, f) * math.sin(rot))
         # the hairline row's roots taper more and over a shorter run (seen end-on from the front)
-        rk, rl = ((cfg.get("edge_root_k", 0.45), 0.035) if r.get("edge")
+        rk, rl = ((cfg.get("edge_root_k", 0.45), 0.045) if r.get("edge")
                   else (cfg.get("root_k", ROOT_K), root_len))
+        # crown volume: locs from the top rise off the scalp over the first ~30% of their run on it
+        crown = float(smooth(0.3, 0.5, sp[1])) * (0.0 if r.get("edge") else 1.0)
+        bump_h = cfg.get("crown_lift", 0.0) * crown * (0.7 + 0.6 * r["rnd2"])
 
         def offs0(s, R=R, rk=rk, rl=rl):
             return CLEAR_MIN + 0.006 + R * (rk + (1 - rk) * float(smooth(0, rl, s)) ** 0.8)
-        P, sl = scalp_walk(r, heading, cfg["step"], offs0, 400, -3.0, lift, rad=R)
+        P, sl = scalp_walk(r, hdg, cfg["step"], offs0, 400, -3.0, lift, rad=R)
         layer = cfg["layer"] * float(np.clip(sl / 0.75, 0, 1)) * (0.75 + 0.5 * r["rnd2"])
         layer *= 0.0 if r.get("edge") else 1.0
 
+        def bump(s, sl=sl, bump_h=bump_h):
+            return bump_h * float(smooth(0.02, 0.3 * sl, s)) * (1 - 0.6 * float(smooth(0.35 * sl, 0.9 * sl, s)))
+
         def offs(s, R=R, layer=layer):
-            return offs0(s, R) + layer * float(smooth(0.03, 0.2, s))
-        P, sl = scalp_walk(r, heading, cfg["step"], offs, 400, -3.0, lift, rad=R)
+            return offs0(s, R) + layer * float(smooth(0.03, 0.2, s)) + bump(s)
+        P, sl = scalp_walk(r, hdg, cfg["step"], offs, 400, -3.0, lift, rad=R)
         L = min(cfg["L_max"], sl + hl_)
         D, S = densify(P, 2)
         P = at_s(D, S, np.linspace(0, min(L, S[-1]), max(8, int(L / cfg["step"]) + 1)))
-        return dict(root=r, R=R, P=P, scalp_len=sl, layer=layer, root_len=rl, root_k=rk)
+        return dict(root=r, R=R, P=P, scalp_len=sl, layer=layer, root_len=rl, root_k=rk, bump=bump)
     for r in roots:
         locs.append(make(r))
+    # two crown locs lying over the centre-back parting, crossing it from either side
+    for sgn in (-1, 1):
+        th, az = 0.55, (-sgn * 0.22) % TAU
+        p = SK.point(th, az)
+        r = dict(th=th, az=az, p=p, n=SK.normal(th, az), e=float(edge_dist(p)[0]), rnd=rng.random(),
+                 rnd2=rng.random(), rnd3=1.0, crossing=True)
+
+        def cross_head(p_, n_, sgn=sgn):
+            return tproj(np.array([0.3 * sgn, -1.0, 0.45]), n_)
+        locs.append(make(r, rot=0.0, head_fn=cross_head))
 
     def grow_at(th, az):
         p = SK.point(th, az)
         r = dict(th=th, az=az, p=p, n=SK.normal(th, az), e=float(edge_dist(p)[0]), rnd=rng.random(),
                  rnd2=rng.random(), rnd3=1.0, fill=True)
         return make(r)
-    fill_gaps(locs, grow_at, cfg.get("fill", 0), 0.02, log)
+    fill_gaps(locs, grow_at, cfg.get("fill", 0), cfg.get("min_gap", 0.014), log, dirs=cfg.get("cov_dirs", ()))
     log(f"  {len(locs)} locs from box-parted roots ({sum(1 for lc in locs if lc['root'].get('sideburn'))} sideburn)")
     M = cfg["M"]
     N = len(locs)
@@ -1242,7 +1358,7 @@ def build_guides_hanging(cfg, ref, log):
         s = np.linspace(0, L, M)
         rk, rl = lc["root_k"], lc["root_len"]
         rad[i] = lc["R"] * (rk + (1 - rk) * smooth(0, rl, s) ** 0.8)
-        off[i] = CLEAR_MIN + 0.006 + rad[i] + lc["layer"] * smooth(0.03, 0.2, s)
+        off[i] = CLEAR_MIN + 0.006 + rad[i] + lc["layer"] * smooth(0.03, 0.2, s) + np.array([lc["bump"](x) for x in s])
         # the styled part keeps its shape (combed back off the face), the hanging part follows gravity
         # (the hairline row firmly: it is combed back, it must not slide forward over the forehead)
         k_sh = 0.3 if lc["root"].get("edge") else 0.08
@@ -1287,9 +1403,15 @@ def _snoise(p, seed):
     return max(-1.0, min(1.0, v / 2.2))
 
 
-def short_flow(p, n, seed=0.0, fan=0.0, rot=0.0):
+def side_zone(p):
+    """the temples, the strip over the ears and just behind them (short, fine locs lying back over the ear)"""
+    return abs(p[0]) > 0.22 and p[1] < 0.3 and -0.36 < p[2] < 0.24
+
+
+def short_flow(p, n, rot=0.0, back=False):
     """Short Dreads' flow on the scalp: out from the crown whorl with a slight swirl, turned +/-25 degrees by a
-    smooth noise field; at the front it fans out sideways toward the temples"""
+    smooth noise field and the loc's own angle; at the temples and over the ears back and a little down; the
+    hairline row (back=True): up and back over the scalp, toward the whorl, a little to the side"""
     w = SK.point(WHORL_TH, WHORL_AZ)
     rad = p - w
     rad = rad - n * float(np.dot(rad, n))
@@ -1298,35 +1420,46 @@ def short_flow(p, n, seed=0.0, fan=0.0, rot=0.0):
     rad = unit(rad)
     sw = unit(np.cross(n, rad))
     f = unit(rad + 0.2 * sw)
+    if back:
+        f = unit(-rad + 0.5 * unit(np.array([p[0], 0.0, 0.0]) + 1e-9) * float(smooth(0.05, 0.25, abs(p[0]))))
+    elif side_zone(p):
+        k = float(smooth(0.22, 0.3, abs(p[0])))
+        f = unit(f * (1 - k) + np.array([0.0, -0.35, 1.0]) * k)
     a = math.radians(25) * _snoise(p, 0.0) + rot
+    f = tproj(f, n)
     f = unit(f * math.cos(a) + np.cross(n, f) * math.sin(a))
-    fr = float(smooth(-0.2, -0.4, p[2])) * fan
-    if fr > 0:  # the hairline row: forward and a little sideways
-        f = tproj(f + np.array([math.copysign(0.45, p[0] if abs(p[0]) > 0.02 else seed - 0.5), 0.0, -0.3]) * fr, n)
     return f
 
 
-def grow_short(r, L, R, lift, M, seed, root_len, spring=0.0, fan=0.0, rk=ROOT_K):
-    """one short loc grown from its root: out along the flow at `lift` off the scalp for its first ~35%, then
-    gravity wins (the loc arcs over and falls down against the head), kept off the skull"""
+def grow_short(r, L, R, lift, M, rnd, root_len, rk=ROOT_K, droop=1.0, curl=(5.0, 0.4, 0.0), back=False,
+               lie=0.0):
+    """one short loc grown from its root: off the scalp at `lift`, along the flow, its heading turning sideways
+    with a soft S (curl: amplitude rad / stud, wavelength, phase) and drooping under gravity (droop) from about a
+    fifth of its length; lie pulls it down onto the head over its second half. Kept off the skull, the face and
+    the ears, within the silhouette."""
     n = r["n"]
     ds = L / (M - 1)
 
     def rr(s):
         return R * (rk + (1 - rk) * float(smooth(0, root_len, s)) ** 0.8)
     p = SK.point(r["th"], r["az"], CLEAR_MIN + 0.006 + rr(0))
-    rot = math.radians(20) * (2 * seed - 1)  # each loc's own angle off the flow (neighbours cross)
-    f = short_flow(p, n, seed, fan, rot)
+    rot = math.radians(20) * (2 * rnd - 1)
+    f = short_flow(p, n, rot, back)
     d = unit(n * lift + f * (1 - lift))
     pts = [p]
-    G = (7.5 + 3.0 * r["rnd2"]) * (1 - 0.6 * spring)
+    G = (5.5 + 3.0 * r["rnd2"]) * droop
+    ca, lam, ph = curl
     for k in range(1, M):
         s = k * ds
-        w = float(smooth((0.3 + 0.1 * spring) * L, (0.48 + 0.12 * spring) * L, s))
         sp, th, az = SK.project(pts[-1])
         nk = SK.normal(th, az)
-        fk = short_flow(sp, nk, seed, fan, rot)
-        d = unit(d + ds * (G * w * DOWN + 1.5 * fk))
+        fk = short_flow(sp, nk, rot, back)
+        # the S: the heading turns about the scalp normal, one way then the other
+        ang = ca * math.sin(TAU * s / lam + ph) * ds
+        d = d * math.cos(ang) + np.cross(nk, d) * math.sin(ang) + nk * float(np.dot(nk, d)) * (1 - math.cos(ang))
+        wg = float(smooth(0.15 * L, 0.55 * L, s))
+        wl = float(smooth(0.4 * L, 0.9 * L, s)) * lie
+        d = unit(d + ds * (G * wg * DOWN + 1.2 * fk - 6.0 * wl * nk))
         q = pts[-1] + d * ds
         q = skull_push(q, CLEAR_MIN + 0.006 + rr(s))
         q = guard_short(q, rr(s))
@@ -1338,7 +1471,7 @@ def grow_short(r, L, R, lift, M, seed, root_len, spring=0.0, fan=0.0, rk=ROOT_K)
     cut = len(P)
     for k, q in enumerate(P):
         for lo, hi in EARS:
-            g = EAR_CLEAR + R + 0.01
+            g = EAR_CLEAR + R + 0.008
             if np.all(q > lo - g) and np.all(q < hi + g):
                 cut = min(cut, k)
     if cut < len(P):
@@ -1346,44 +1479,75 @@ def grow_short(r, L, R, lift, M, seed, root_len, spring=0.0, fan=0.0, rk=ROOT_K)
     return P
 
 
+def side_roots(seed, spacing, margins):
+    """extra rows of small locs at the temples and over / behind the ears (margins inside the natural hairline)"""
+    rng = np.random.default_rng(seed)
+    out = []
+    for m in margins:
+        for r in hairline_row(spacing, m, rng, jitter=0.3):
+            if side_zone(r["p"]):
+                r["side"] = True
+                r["edge"] = False
+                out.append(r)
+    return out
+
+
 def build_guides_short(cfg, ref, log):
     rng = np.random.default_rng(cfg["seed"] + 1)
     pole = hl.Skull.direction(WHORL_TH, WHORL_AZ)
-    roots = box_roots(cfg["spacing"], cfg["margin"], cfg["seed"], pole=pole, whorl_ring=5, grade=0.18,
-                      edge_gap=0.5)
+    roots = box_roots(cfg["spacing"], cfg["margin"], cfg["seed"], pole=pole, whorl_ring=5, grade=0.15,
+                      edge_gap=cfg.get("edge_gap", 0.3), edge_spacing=cfg.get("edge_spacing"))
+    # the side zone gets its own rows of small locs (the box sections there are dropped)
+    roots = [r for r in roots if not (side_zone(r["p"]) and not r.get("edge"))]
+    roots += side_roots(cfg["seed"] + 9, 0.062, (0.045, 0.1))
     roots += sideburn_roots(cfg["seed"] + 5, cfg["sideburn_ys"])
     M = cfg["M"]
     locs = []
-    root_len = 0.045
+    root_len = 0.04
 
     def make(r):
         sp = r["p"]
-        R = cfg["R"] * float(np.clip(1 + cfg["rvar"] * rng.normal(), 0.75, 1.3))
+        R = cfg["R"] * float(np.clip(1 + cfg["rvar"] * rng.normal(), 0.7, 1.35))
         top = float(smooth(0.3, 0.55, sp[1]))
-        low = float(smooth(0.3, 0.08, sp[1]))
-        front_edge = r.get("edge") and sp[2] < -0.12
-        # longer on top and at the crown, shorter at the front edge, the sides and the nape; uneven
-        L = (0.23 + 0.13 * top - 0.07 * low) * (0.72 + 0.56 * r["rnd"])
-        # the top springs up and out (more lift, gravity wins later), the sides and back fall against the head
-        lift = 0.4 + 0.25 * top + 0.1 * (1 - float(smooth(0.1, 0.4, r.get("pole_t", 1.0))))
-        spring = top
+        front = float(smooth(-0.1, -0.35, sp[2]))
+        # lengths 0.3..0.6 (median ~0.4), a little shorter toward the front; uneven
+        L = (0.3 + 0.22 * float(rng.beta(2.0, 2.2))) * (1.0 + 0.12 * top) * (1 - 0.12 * front) \
+            * (0.85 + 0.3 * r["rnd"])
+        lift = 0.28 + 0.3 * top + 0.12 * (1 - float(smooth(0.1, 0.4, r.get("pole_t", 1.0))))
+        droop = 1.0 - 0.35 * top
+        lie = 0.6 * (1 - top)
+        curl = (float(rng.uniform(3.0, 7.0)) * rng.choice([-1, 1]), L * float(rng.uniform(0.8, 1.4)),
+                float(rng.uniform(0, TAU)))
+        back = False
+        tip_r = None
+        halo = True
         if r.get("whorl"):
             R *= 0.9
-            lift = 0.7
-        if front_edge:
-            L = 0.14 + 0.07 * r["rnd"]
-            lift = 0.55
-            spring = 0.7
-            R *= 0.9
+            lift = 0.6
+        if r.get("edge") and not side_zone(sp):
+            # the hairline row: rises off the scalp, then lies back over the next row (no bare band behind it)
+            L = float(rng.uniform(0.2, 0.32))
+            lift, droop, lie, back = 0.55, 0.5, 0.8, True
+            R *= 0.85
+        if r.get("side") or (r.get("edge") and side_zone(sp)):
+            R = cfg["R"] * float(rng.uniform(0.62, 0.82))
+            L = float(rng.uniform(0.07, 0.15))
+            lift, droop, lie = 0.25, 0.6, 1.0
+            curl = (curl[0] * 0.5, curl[1], curl[2])
         if r.get("sideburn"):
-            L = 0.1 + 0.04 * r["rnd"]
-            lift = 0.25
-            R *= 0.75
-        L = float(np.clip(L, 0.1 if r.get("sideburn") else 0.12, 0.45))
-        rk, rl = (0.35, 0.035) if r.get("edge") else (ROOT_K, root_len)
-        P = grow_short(r, L, R, lift, M, r["rnd3"], rl, spring, 1.0 if front_edge else 0.0, rk)
+            R = cfg["R"] * float(rng.uniform(0.55, 0.7))
+            L = float(rng.uniform(0.05, 0.08))
+            lift, droop, lie = 0.2, 0.8, 1.0
+            halo = False
+            tip_r = 0.7
+        L = float(np.clip(L, 0.05, 0.62))
+        rk, rl = (0.4, 0.03) if (r.get("edge") or r.get("side")) else (ROOT_K, root_len)
+        if r.get("sideburn"):
+            rl = 0.02
+        P = grow_short(r, L, R, lift, M, r["rnd3"], rl, rk, droop, curl, back, lie)
         Pm, L2 = resample(P, M)
-        return dict(root=r, R=R, P=Pm, L=L2, layer=0.0, scalp_len=0.0, root_len=rl, root_k=rk)
+        return dict(root=r, R=R, P=Pm, L=L2, layer=0.0, scalp_len=0.0, root_len=rl, root_k=rk, halo=halo,
+                    tip_r=tip_r)
     for r in roots:
         locs.append(make(r))
     n0 = len(locs)
@@ -1392,10 +1556,11 @@ def build_guides_short(cfg, ref, log):
         p = SK.point(th, az)
         d = np.linalg.inv(_rot_from_y(pole)) @ unit(p - C)
         r = dict(th=th, az=az, p=p, n=SK.normal(th, az), e=float(edge_dist(p)[0]), rnd=rng.random(),
-                 rnd2=rng.random(), rnd3=rng.random(), pole_t=math.acos(max(-1.0, min(1.0, d[1]))), fill=True)
+                 rnd2=rng.random(), rnd3=rng.random(), pole_t=math.acos(max(-1.0, min(1.0, d[1]))), fill=True,
+                 side=side_zone(p))
         return make(r)
-    fill_gaps(locs, grow_at, cfg.get("fill", 0), 0.02, log)
-    log(f"  {len(locs)} short locs ({n0} from box-parted roots round the whorl)")
+    fill_gaps(locs, grow_at, cfg.get("fill", 0), cfg.get("min_gap", 0.012), log, dirs=cfg.get("cov_dirs", ()))
+    log(f"  {len(locs)} short locs ({n0} from box-parted roots round the whorl, the side rows and sideburns)")
     N = len(locs)
     X = np.stack([lc["P"] for lc in locs])
     seg = np.array([lc["L"] / (M - 1) for lc in locs])
@@ -1408,11 +1573,11 @@ def build_guides_short(cfg, ref, log):
         rad[i] = lc["R"] * (rk + (1 - rk) * smooth(0, rl, s) ** 0.8)
         off[i] = CLEAR_MIN + 0.006 + rad[i]
         # springy: they keep their grown shape, the tips settle a little and the locs push each other apart
-        wsh[i] = 0.14 * (1 - 0.6 * s / max(lc["L"], 1e-6))
-    sim = Sim(ref, X, seg, rad, off, rest=X.copy(), wshape=wsh, pin=2, gravity=0.0007, damp=0.85, bend=0.99,
+        wsh[i] = 0.16 * (1 - 0.6 * s / max(lc["L"], 1e-6))
+    sim = Sim(ref, X, seg, rad, off, rest=X.copy(), wshape=wsh, pin=2, gravity=0.0006, damp=0.85, bend=0.99,
               guard=guard_short, repel=0.9, body=False)
     t = time.time()
-    X = sim.run(90)
+    X = sim.run(80)
     X = smooth_chain(X, passes=1)
     sim.X = X
     sim.collide()
@@ -1421,45 +1586,86 @@ def build_guides_short(cfg, ref, log):
     for i, lc in enumerate(locs):
         lc["G"] = sim.X[i].copy()
         Ls.append(float(np.linalg.norm(np.diff(lc["G"], axis=0), axis=1).sum()))
-    log("  lengths %.2f..%.2f median %.2f" % (min(Ls), max(Ls), float(np.median(Ls))))
+    main = [l_ for l_, lc in zip(Ls, locs) if not (lc["root"].get("side") or lc["root"].get("sideburn"))]
+    log("  lengths %.2f..%.2f median %.2f (main locs %.2f..%.2f median %.2f)" % (
+        min(Ls), max(Ls), float(np.median(Ls)), min(main), max(main), float(np.median(main))))
     P_, N_ = scalp_grid()
-    gap = coverage(locs, P_, N_)
-    log(f"  relaxed: scalp seen from above {100 * float((gap > 0).mean()):.0f}% of points, largest gap"
-        f" {float(gap.max()):.3f}")
+    cv = Coverage(P_, N_, cfg.get("cov_dirs", ()))
+    for lc in locs:
+        cv.add(lc)
+    frac, mx = cv.stats()
+    log(f"  relaxed: scalp showing at {100 * frac:.0f}% of points, largest gap {mx:.3f}")
     return locs
 
 
 # ------------------------------------------------------------------------------------------- splitting
+def _plane_cross(D, S, s_from, p0, ax):
+    """the first arc length >= s_from where the dense curve D passes the plane through p0 normal to ax (going
+    along ax), or None"""
+    h = (D - p0) @ ax
+    i0 = int(np.searchsorted(S, s_from))
+    for i in range(max(1, i0), len(D)):
+        if h[i - 1] < 0 <= h[i]:
+            t = -h[i - 1] / max(1e-12, h[i] - h[i - 1])
+            return float(S[i - 1] + t * (S[i] - S[i - 1]))
+    if i0 < len(D) and h[min(i0, len(D) - 1)] >= 0 and i0 > 0:
+        return float(S[i0])
+    return None
+
+
 def split_hanging(cfg, locs, ref):
-    """per loc: the arc length where it leaves the head (sA: HairTop above) and, for two-segment chains, the
-    split of its hanging part (sB); chains grouped by the azimuth round the head of the leaving point"""
+    """chains: the hanging locs grouped by the azimuth round the head of the point where they leave it. Per chain
+    one axis (its mean hanging direction) and cut planes normal to it: plane A through the chain's lowest leaving
+    point (everything above it - the scalp-lying parts and the tops of the locs that leave higher - stays in the
+    static HairTop), and for two-segment chains plane B part way down the hanging part. Every member loc is cut
+    exactly where it crosses each plane, so all its breaks lie on the plane of the joint (0 along the axis)."""
     for lc in locs:
         G = lc["G"]
         D, S = densify(G, 6)
         lc["D"], lc["S"] = D, S
         L = S[-1]
         lc["L"] = L
-        # leaving point: the last dense point within the contact band of the head (its offset + 0.035)
         h = np.array([ref.height(p) for p in D[::3]])
         sidx = S[::3]
         offc = CLEAR + lc["R"] + lc["layer"] + 0.04
         touching = np.where(h < offc)[0]
         sA = float(sidx[touching[-1]]) if len(touching) else 0.0
         sA = max(sA, 0.12)
-        if L - sA < 0.12:
-            lc["sA"] = None  # stays on the head
-            continue
-        lc["sA"] = sA
-        lc["sB"] = sA + (L - sA) * cfg["hang_split"] if cfg["segs"] > 1 else None
+        lc["sA"] = lc["sB"] = None
+        if L - sA < 0.2:
+            continue  # stays on the head
+        lc["sA0"] = sA
         pA = at_s(D, S, np.array([sA]))[0]
+        lc["pA0"] = pA
         lc["azA"] = math.atan2(pA[0], pA[2] - C[2])
-    hang = [lc for lc in locs if lc.get("sA") is not None]
+    hang = [lc for lc in locs if lc.get("sA0") is not None]
     hang.sort(key=lambda lc: lc["azA"])
     K = cfg["chains"]
+    chains = []
     for gi in range(K):
-        for lc in hang[gi * len(hang) // K:(gi + 1) * len(hang) // K]:
+        mem = hang[gi * len(hang) // K:(gi + 1) * len(hang) // K]
+        ax = unit(np.mean([unit(lc["D"][-1] - lc["pA0"]) for lc in mem], axis=0))
+        # plane A: through the lowest leaving point along the axis
+        pa = max((lc["pA0"] for lc in mem), key=lambda p: float(p @ ax))
+        cuts = []
+        for lc in mem:
+            s = _plane_cross(lc["D"], lc["S"], 0.08, pa, ax)
+            if s is not None and lc["L"] - s > 0.15:
+                cuts.append((lc, s))
+        if not cuts:
+            continue
+        ends = np.array([float((lc["D"][-1] - pa) @ ax) for lc, _s in cuts])
+        pb = pa + ax * float(np.median(ends)) * cfg["hang_split"] if cfg["segs"] > 1 else None
+        for lc, s in cuts:
+            lc["sA"] = s
             lc["chain"] = gi
-    return hang
+            if pb is not None:
+                sb = _plane_cross(lc["D"], lc["S"], s + 0.05, pb, ax)
+                if sb is not None and lc["L"] - sb > 0.08:
+                    lc["sB"] = sb
+        chains.append(dict(g=gi, ax=ax, pa=pa, pb=pb))
+    cfg["_chains"] = chains
+    return [lc for lc in locs if lc.get("sA") is not None]
 
 
 def split_short(cfg, locs):
@@ -1638,25 +1844,28 @@ def build_style(key, cfg, ref, coll, log):
 
     rng = np.random.default_rng(cfg["seed"] + 7)
     tubes, halos = MeshBuild(), MeshBuild()
-    strip = TWIST_CORE if cfg["lobes"] == "twist" else LOC_CORE
-    # v runs from the root (0) toward the tip along every loc at one texel density per style (studs per v unit:
-    # the style's v_len, else its longest loc), so every tip ends at v <= 1: the game tints the texture's rows
-    # root to tip (darker roots, Tips / Ombre dyes) and does not tile this key
-    Lref = float(cfg.get("v_len") or max(lc["L"] for lc in locs))
+    # v runs from the root (0) to the tip (~1) of every loc (the game tints the texture's rows root to tip: darker
+    # roots, Tips / Ombre dyes; it does not tile this key). u wraps once round each tube: twists over the whole
+    # twist core; locs over one or both of the loc core's two identical u-periods, whichever keeps the texel
+    # density round the loc closest to the density along it (no bark-like stretching on the long locs)
     for li, lc in enumerate(locs):
         D, S, L = lc["D"], lc["S"], lc["L"]
-        blunt = rng.random() < cfg["blunt_frac"]
         rnd = rng.random()
-        lc["blunt"] = blunt
         R = lc["R"]
         root_len = lc.get("root_len", 0.08)
-
         root_k = lc.get("root_k", ROOT_K)
+        tr = cfg["tip_r"]
+        tip_r = float(rng.uniform(*tr)) if isinstance(tr, tuple) else tr
+        if lc.get("tip_r") is not None:
+            tip_r = lc["tip_r"]
 
-        def radius(s, L=L, R=R, rnd=rnd, blunt=blunt, root_len=root_len, root_k=root_k):
-            return loc_radius(s, L, R, rnd, root_len=root_len, blunt=blunt, lump=cfg["lump"], root_k=root_k)
+        def radius(s, L=L, R=R, rnd=rnd, root_len=root_len, root_k=root_k, tip_r=tip_r):
+            return loc_radius(s, L, R, rnd, root_len=root_len, tip_r=tip_r, lump=cfg["lump"], root_k=root_k)
         sA, sB = lc.get("sA"), lc.get("sB")
-        forced = [x for x in (sA, sB) if x is not None]
+        forced = []
+        for x in (sA, sB):
+            if x is not None:
+                forced += [x, x + JOINT_SLEEVE]
 
         def seg_of(s, sA=sA, sB=sB):
             if sA is None or s < sA:
@@ -1664,18 +1873,37 @@ def build_style(key, cfg, ref, coll, log):
             if sB is None or s < sB:
                 return 1
             return 2
-        s_r = ring_positions(D, S, cfg["base_ds"], (root_len, 0.05, cfg.get("end_ds", 0.034)), forced,
-                             cfg.get("min_ds", 0.016), cfg.get("bend_k", 0.3))
+        if cfg["lobes"] == "twist":
+            # a ring every quarter turn of the strand pair: the lobes' silhouette zig-zags round the twist
+            n_iv = int(round(4 * TWIST_TURNS))
+            s_r = np.linspace(0, L, n_iv + 1)
+            for f in forced:
+                j = int(np.argmin(np.abs(s_r - f)))
+                if 0 < j < n_iv:
+                    s_r[j] = f
+            s_r = np.array(sorted(set(np.round(s_r, 6))))
+        else:
+            s_r = ring_positions(D, S, cfg["base_ds"], (root_len, 0.05, cfg.get("end_ds", 0.034)), forced,
+                                 cfg.get("min_ds", 0.016), cfg.get("bend_k", 0.3))
         lc["rings"] = len(s_r)
         inward = unit(C - D[0])
-        v0 = 0.04 * rng.random()
-        vps = max(L, Lref) / (1 - v0 - 0.012)
-        build_tube(tubes, li, D, S, s_r, radius, cfg["sides"], strip, vps, v0, inward, lobes=cfg["lobes"],
-                   seg_of=seg_of, tip_k=0.55 if blunt else 1.6,
-                   root_cap=cfg.get("root_cap", True) or (bool(lc["root"].get("edge")) and cfg.get("edge_cap", True)))
+        if cfg["lobes"] == "twist":
+            strip = TWIST_CORE
+            v0 = 0.0
+        else:
+            k = 2 if 40.2 * R / max(L, 1e-3) > 1.5 else 1
+            off = 0.0 if k == 2 else float(rng.uniform(0, LOC_PERIOD))
+            strip = (LOC_CORE[0] + off, LOC_CORE[0] + off + k * LOC_PERIOD)
+            v0 = 0.03 * rng.random()
+        lc["u_periods"] = (strip[1] - strip[0]) / LOC_PERIOD if cfg["lobes"] is None else None
+        vps = (L + 1.1 * R) / (0.995 - v0)
+        lc["vps"] = vps
+        build_tube(tubes, li, D, S, s_r, radius, lc.get("sides", cfg["sides"]), strip, vps, v0, inward,
+                   lobes=cfg["lobes"], seg_of=seg_of, tip_k=cfg.get("tip_k", 0.9), dome=cfg.get("dome", 1))
         hc = cfg["halo"]
-        build_halo(halos, li, D, S, radius, L, vps, inward, seg_of=seg_of, root_k=hc["root_k"], k=hc["k"],
-                   step=hc["step"], rnd=rng.random(), fins=cfg.get("fins", 2))
+        if lc.get("halo", True):
+            build_halo(halos, li, D, S, radius, L, vps, inward, seg_of=seg_of, root_k=hc["root_k"], k=hc["k"],
+                       step=hc["step"], rnd=rng.random(), fins=cfg.get("fins", 2))
     log("  rings/loc %.1f, L %.2f..%.2f, sA/L %.2f, hanging %d" % (
         np.mean([lc["rings"] for lc in locs]), min(lc["L"] for lc in locs), max(lc["L"] for lc in locs),
         np.mean([(lc.get("sA") or lc["L"]) / lc["L"] for lc in locs]), sum(1 for lc in locs if lc.get("sA"))))
@@ -1808,7 +2036,8 @@ def make_pieces(key, cfg, locs, ref, tubes, Pt, Nt, col_t, halos, Ph, Nh, col_h)
             n1 = f"{cfg['prefix']}{g + 1:02d}"
             n2 = n1 + "b"
             if cfg["segs"] > 1:
-                pB = np.mean([at_s(lc["D"], lc["S"], np.array([lc["sB"]]))[0] for lc in mem], axis=0)
+                pB = np.mean([at_s(lc["D"], lc["S"], np.array([lc["sB"]]))[0] for lc in mem
+                              if lc.get("sB") is not None], axis=0)
             else:
                 pB = pE
             fx1 = dict(kind="swing", chain=f"{cfg['chain']}{g + 1:02d}", seg=1, stiff=cfg["stiff"],
@@ -2079,6 +2308,7 @@ def main():
     ap.add_argument("--render", default="")
     ap.add_argument("--only", default="")
     ap.add_argument("--no-tex", action="store_true")
+    ap.add_argument("--tex-only", action="store_true")
     ap.add_argument("--samples", type=int, default=48)
     ap.add_argument("--quick", action="store_true")
     ap.add_argument("--no-export", action="store_true")
@@ -2092,6 +2322,8 @@ def main():
     if not args.no_tex or not os.path.exists(TEX_PATH):
         make_loc_texture(TEX_PATH)
         log("texture", TEX_PATH)
+    if args.tex_only:
+        return
     global FIT_F
     fit_f, skf = female_fit()
     FIT_F = fit_f
