@@ -1,45 +1,49 @@
 """Long family hair: "Long Hair" for the Straight and Wavy hair types (two entries: "long" for Straight, "long_wavy"
 for Wavy). Modelled in Blender (bpy 4.2), exported with hairlib.
 
-    /opt/bpyenv/bin/python tools/hair/build_long.py [--render DIR] [--only long,long_wavy] [--no-tex]
-                                                    [--samples N] [--views 34,side] [--looks f_brown]
+    /opt/bpyenv/bin/python tools/hair/build_long.py [--render DIR] [--only long,long_wavy] [--no-tex] [--no-build]
+                                                    [--samples N] [--views 34,side] [--looks f_brown] [--res WxH]
 
 Writes tools/hair/textures/hair_straight.png, tools/hair/out/<key>/ (meshes + style.json) and
 tools/hair/blend/<key>.blend; with --render, Cycles self-check renders and a sheet per style.
+Debug: LONG_DEBUG=layercol (every layer its own vertex colour; needs a build), nocap, nocol, notex, shadow
+(hair-on-hair shadows on: what castShadow = true would do), denoise; LONG_LAYERS=outer,... builds only those layers;
+LONG_NOASSERT=1 finishes a build whose clearance check fails.
 
 How the hair is built (game nominal head space, numerically; see CONTRACT.md):
-* Texture "straight" (owned here): 1024 x 1024, four 256-px strips (dense clump, medium, wispy flyaway, wavy).
-  Every strip is drawn strand by strand at 2x and filtered down: long continuous strands from the root (v = 0)
-  to tapered, staggered, transparent tips (v = 1), gathered into natural clumps that tighten toward the tips,
-  root darkening, a darker under-fill inside the dense strips (the deeper hair), alpha falling to zero at both
-  strip edges (no card borders) and colour bled into the transparent texels (mip-friendly).
-* Guides: every card is a guide strand. Its scalp part is a spline through waypoints - its root on a subtle
-  centre parting (the front ones run just inside the natural hairline), the temple, over the top of the ear
-  and down to a release line behind the ears and round the back of the head - projected on the default
-  skull at the layer's height. Its hanging part is relaxed by a position-based simulation (gravity,
-  inextensible segments, bending stiffness, collisions against the skull table and the head mesh, the ear
-  boxes and BOTH torso meshes - male and female - through Blender BVH trees; the back curtain drifts back
-  over the trapezius onto the upper back, the side locks forward in front of the shoulders). The relaxed
-  guides are kept in the .blend as curve objects.
-* Cards: strips along the guides (4 layers: a dense scalp layer, two main layers, an outer layer of finer
-  locks and flyaways), wider down the hanging part, outward-facing shading normals, built as Blender meshes
-  with per-corner UVs and colours. A Displace modifier (Clouds noise, vertex-group weighted off on the
-  scalp) breaks the hanging curtain into clumps; the Wavy entry adds S-waves to the guides and uses the wavy
-  strip outside. The evaluated meshes come back as the game pieces; clearance is then enforced against the
-  head mesh and the skull table (also at the female fit and 0.965x narrow). Soft occlusion is baked into
-  the vertex colours with BVH ray casts (hair, head, torso) times a per-layer shade.
-* Pieces: static HairTop (everything over the head) and swinging chains split from the same cards: the back
-  curtain in 4 chains and a face-framing side lock each side (seg 1 below the anchor, pivot at its top; seg 2
-  'b' from the shoulders down, overlapping seg 1 by SEG_OVERLAP and tucked under it), hairfx swing, length
-  "hang", hideUnder hood (HairTop too), castShadow false (a card's game shadow is its whole quad). Triangles of
-  every piece are emitted innermost layer first.
-* Shape (v2, after review): layer heights (top, side) rising to ~0.12 over the crown and ~0.08 at the sides
-  (Wavy x1.2), the upper layers lying over a narrow parting groove; front strands leave the head in front of the
-  ear as broad forward-facing face-framing locks resting on the upper chest; the rest go over the top of the ear
-  and behind it; the hanging guides drape onto the upper back / shoulders (drawn to the nearest torso surface,
-  resting 0.013-0.03 above it); a ring of short cards rooted on the hairline; root alpha fade in the texture.
-* Clearance is enforced and asserted (>= 0.022) against the male head (with and without ears), the female head
-  through the runtime fit (forward) and carried back into nominal space (inverse), and both skull tables.
+* Texture "straight" (owned here): 1024 x 1024, four 256-px strips (dense clump, medium, wispy flyaway, wavy), drawn
+  strand by strand at 2x and filtered down: long continuous strands from the root (v = 0) to tapered, staggered,
+  transparent tips (v = 1), gathered into clumps that tighten toward the tips, a light root darkening, a darker
+  under-fill in the dense strips, the dense / wavy strips covered nearly edge to edge with soft alpha edges (no card
+  borders, coverage without gaps), a root alpha fade, and colour bled into the transparent texels (mip-friendly).
+* Style: centre parting, everything combed from the parting over the top of the ear and behind it (ears stay
+  visible, tucked hair), the hair behind the ears falling onto the front of the shoulders (the side lock chains),
+  the rest falling down the back onto the upper back and shoulder blades (the back curtain, to y ~ -1.45 at
+  length 0.5). Wavy: the same layout with more volume, S-waves in clumps from the release line down, the wavy strip.
+* Guides: every card is a guide strand (5 layers, innermost first: a hairline layer rooted along the front
+  hairline, a dense scalp layer, inner, main and outer volume layers). Its scalp part is a great circle from its
+  root on the parting (or the hairline) to its release point behind the ear / round the back, projected on the
+  default skull at the layer's height profile (rising out of the parting over 0.2-0.32 studs and out of the
+  hairline over 0.19, the sides fuller than the top, gathered in toward the ear, the frontmost strands lower so the
+  layers thin into the temple), kept inside the natural hairline and above the ear. Its hanging part is relaxed by
+  a position-based simulation (gravity, inextensible segments, soft bending, collisions against both skull tables,
+  both head meshes, the ear boxes and both torsos through Blender BVH trees; drape onto the body below the shoulder
+  line, the curtain sliding back off the shoulder top and spreading a little over the shoulder blades, the locks
+  resting forward on the shoulder). The guides are kept in the .blend as curve objects.
+* Cards: built from the guides as Blender meshes (one per layer, 3 vertices across every row: the middle column
+  keeps a card on the curve of the head across its width, so overlapping cards do not show shingle steps at the
+  silhouette), per-corner UVs, a "hang" vertex group and two Displace modifiers (Clouds) that break the hanging
+  part into clumps; the evaluated meshes are read back. Card widths come from the spacing to the nearest card of the
+  same layer on either side (x the layer's overlap 1.55-1.9), so the fan from the parting is covered everywhere.
+  Clearance is then enforced (male head with and without ears, female head forward through the runtime fit and
+  inverse, both skull tables, ear boxes, both torsos) and asserted >= 0.022. Soft occlusion is baked into the vertex
+  colours with BVH ray casts and smoothed spatially (no card reads as its own rectangle); a ring of short, light,
+  wispy cards on the hairline breaks its edge.
+* Pieces: static HairTop (everything over the head) and swinging chains split from the same cards: the back curtain
+  in 4 chains, a side lock each side (seg 1 below the anchor, pivot at its top; seg 2 'b' from the shoulders down,
+  overlapping seg 1 by SEG_OVERLAP as a narrowing wedge tucked under it), hairfx swing, length "hang", hideUnder
+  hood (HairTop too), castShadow false (a card's game shadow is its whole quad). Triangles of every piece are
+  emitted innermost layer first; every card is two-sided with outward shading normals.
 """
 import argparse
 import json
@@ -235,7 +239,7 @@ def make_texture(path, size=TEX_SIZE, seed=1101, report=False):
     specs = {
         # dense clump: the bulk of every layer; opaque nearly edge to edge, strands breaking out at the edges and tips
         "dense": dict(n_strands=int(sw * 0.75), spread=None, n_clumps=8, width_px=2.6, clump_k=0.55, fill=0.9,
-                      len_min=0.8, clump_lo=0.88, stray=0.03, shade_lo=0.7, edge=0.11, tip_spread=0.3, root_dark=0.14),
+                      len_min=0.8, clump_lo=0.88, stray=0.03, shade_lo=0.7, edge=0.17, tip_spread=0.3, root_dark=0.14),
         # medium: a lighter lock (gaps between clumps; the layer under it shows through)
         "medium": dict(n_strands=int(sw * 0.42), spread=0.7, n_clumps=6, width_px=2.4, clump_k=0.7, fill=0.5,
                        len_min=0.65, clump_lo=0.8, root_soft=0.11, stray=0.05, shade_lo=0.6, edge=0.13,
@@ -245,7 +249,7 @@ def make_texture(path, size=TEX_SIZE, seed=1101, report=False):
                       stray=0.35, shade_lo=0.65, edge=0.12, tip_spread=0.5, root_dark=0.05),
         # wavy: dense clumps on broad S-waves (2.5 waves root to tip), crests lighter
         "wavy": dict(n_strands=int(sw * 0.7), spread=None, n_clumps=7, width_px=2.6, clump_k=0.6, fill=0.85,
-                     len_min=0.8, clump_lo=0.88, wave_amp=0.06, wave_per=2.5, stray=0.04, shade_lo=0.65, edge=0.12,
+                     len_min=0.8, clump_lo=0.88, wave_amp=0.06, wave_per=2.5, stray=0.04, shade_lo=0.65, edge=0.17,
                      tip_spread=0.3, root_dark=0.14),
     }
     lum = np.zeros((H, W), np.float32)
@@ -550,13 +554,13 @@ LAYERS = [
 ]
 LAYER = {L["name"]: L for L in LAYERS}
 THREE_COL = ("inner", "main", "outer")  # layers whose cards get a middle column over the head (no shingle steps)
-FLYAWAYS = dict(n=4, strip="wispy", w=(0.03, 0.045), len=(0.16, 0.3), shade=1.0)
+FLYAWAYS = dict(n=0, strip="wispy", w=(0.03, 0.045), len=(0.16, 0.3), shade=1.0)
 
 STYLES = {
     "long": dict(entry=dict(styles=["Long Hair"], types=["Straight"], cap={"cut": "full", "density": 1}),
                  wavy=False, volume=1.0, seed=7),
     "long_wavy": dict(entry=dict(styles=["Long Hair"], types=["Wavy"], cap={"cut": "full", "density": 1}),
-                      wavy=True, volume=1.32, seed=8),
+                      wavy=True, volume=1.22, seed=8),
 }
 
 PSI_FRONT = 1.125  # part angle (from +Y toward the face) just inside the front hairline
@@ -657,12 +661,12 @@ def scalp_path(f, side, layer, vol, rng, n=48):
     if layer.get("root") != "hairline":
         # the frontmost strands (the lower edge of every layer, over the temple and the ear) lie lower: the layers
         # thin out into the temple instead of ending in stacked shelves
-        tgt = base + (tgt - base) * (0.3 + 0.7 * smooth(0.0, 0.3, f))
+        tgt = base + (tgt - base) * (0.45 + 0.55 * smooth(0.0, 0.55, f))
     # the deeper layers rise out of the parting from the scalp; the upper ones lie over them already lifted (a
     # narrow parting groove under a smooth dome, not a ridge either side of the parting)
     k0 = layer.get("lift0", 0.0)
     # (from the scalp at the parting: an upper layer starting lifted shows its root edge end-on along the part)
-    ramp = np.minimum(k0 + (1 - k0) * smooth(0.0, layer.get("ramp", 0.2), s), smooth(0.0, 0.11, ed))
+    ramp = np.minimum(k0 + (1 - k0) * smooth(0.0, layer.get("ramp", 0.2), s), smooth(0.0, 0.19, ed))
     off = base + (tgt - base) * ramp
     Pn = C + unit(P - C) * (np.linalg.norm(P - C, axis=1) + off)[:, None]
     return Pn, off, s
@@ -702,10 +706,10 @@ def make_strands(cfg, log):
                 Q = P[-1]
                 az = math.degrees(abs(math.atan2(Q[0], Q[2] - AXIS_Z)))
                 lock = az > LOCK_AZ
-                # the hem: nearly straight across the back (a slight U), the forward locks ending on the upper chest
-                # (where the male and female torsos agree: resting on both), every card staggered (no straight cut)
+                # the hem: nearly straight across the back (a slight U), the side locks ending on the front of the
+                # shoulder (resting on it), every card staggered (no straight cut)
                 if lock:
-                    tip = -1.2 - 0.08 * rng.uniform(0, 1) + rng.normal(0, 0.02)
+                    tip = -1.02 - 0.08 * rng.uniform(0, 1) + rng.normal(0, 0.02)
                 else:
                     tip = L["tip"] - 0.03 * smooth(0.2, 1.0, f)
                     tip += rng.uniform(-1, 1) * L["tip_var"] + rng.normal(0, 0.03)
@@ -716,7 +720,7 @@ def make_strands(cfg, log):
                 out.append(Strand(side=side, f=f, layer=L["name"], li=li, scalp=P, off=off, tip_y=tip, lock=lock,
                                   strip=strip, mirror=bool(rng.random() < 0.5), v0=float(rng.uniform(0, 0.02)),
                                   seed=int(rng.integers(1 << 30)), wave_ph=float(f * 2.2 + li * 0.5 + rng.normal(0, 0.25)),
-                                  body_off=0.013 + 0.005 * li, w=None, fly=False, rootk=rk))
+                                  body_off=(0.02 if lock else 0.013) + 0.005 * li, w=None, fly=False, rootk=rk))
     log(f"  {len(out)} strands ({sum(st.lock for st in out)} forward locks)")
     return out
 
@@ -726,8 +730,8 @@ class Sim:
     point): gravity, inextensible segments, soft bending stiffness, collisions against the skull tables, the head
     mesh (jaw, neck), both torsos and the ear boxes, the drape (the hair's weight lays it on the upper back and
     the shoulders: below the shoulder line every point is drawn to the nearest body surface, resting body_off
-    above it) and the forward locks' bias (from behind the ear down onto the trapezius, then forward over the
-    shoulder onto the upper chest)"""
+    above it) and the side locks' bias (from behind the ear down onto the trapezius, then a little forward to rest
+    on the front of the shoulder)"""
 
     def __init__(self, refs, X, seg, off, body_off, lock, side):
         self.refs = refs
@@ -817,15 +821,15 @@ class Sim:
             self.X += V
             self.X[:, :, 1] -= 0.0018
             y = self.X[:, :, 1]
-            # forward locks: down behind the ear; from the trapezius forward over the shoulder onto the upper chest
+            # side locks: down behind the ear onto the trapezius, then a little forward onto the front of the shoulder
             # (each lock its own target, tx / tz)
             pull = lock & (y < -0.8)
-            k = np.where(pull, 0.02 * smooth(-0.8, -0.95, y), 0.0)
+            k = np.where(pull, 0.012 * smooth(-0.8, -0.95, y), 0.0)
             self.X[:, :, 2] += k * (self.tz[:, None] - self.X[:, :, 2])
             self.X[:, :, 0] += k * (side * self.tx[:, None] - self.X[:, :, 0]) * 0.6
             # the back curtain spreads a little over the shoulder blades (wider at the hem, not a tail)
             spread = (~lock) & (y < -0.55)
-            ks = np.where(spread, 0.012 * smooth(-0.55, -1.1, y), 0.0)
+            ks = np.where(spread, 0.02 * smooth(-0.9, -1.35, y), 0.0)
             self.X[:, :, 0] += ks * (self.sx[:, None] - self.X[:, :, 0])
             # ... and slides back off the top of the shoulder over the shoulder blades (falls down the back, not along
             # the shoulder top)
@@ -862,7 +866,7 @@ def hang_strands(strands, refs, cfg, log, M=30):
     body = np.zeros(N)
     for i, st in enumerate(strands):
         Q = st.scalp[-1]
-        L = (Q[1] - st.tip_y) * 1.35 + (0.3 if st.lock else 0.05)
+        L = (Q[1] - st.tip_y) * 1.35 + (0.08 if st.lock else 0.05)
         seg[i] = L / (M - 1)
         off[i] = st.off[-1]
         body[i] = st.body_off
@@ -887,7 +891,7 @@ def hang_strands(strands, refs, cfg, log, M=30):
                 sim.tx[i] = 0.36 + 0.24 * g + rs.uniform(-0.025, 0.025)
                 sim.tz[i] = -0.28 + 0.14 * g + rs.uniform(-0.04, 0.04)
     # the back curtain's hem target x: the release x spread out (x 0.33 behind the ear -> ~0.42 at the hem)
-    sim.sx = np.array([st.scalp[-1][0] * 1.12 for st in strands])
+    sim.sx = np.array([st.scalp[-1][0] * 1.4 for st in strands])
     t0 = time.time()
     Xs = sim.run(130)
     Xs = chain_smooth(Xs, 2, 0.3)
@@ -1017,7 +1021,7 @@ def card_rows(st, cfg):
     ang = np.arccos(np.clip((Tn[1:] * Tn[:-1]).sum(1), -1, 1))
     kap = np.concatenate([[0], ang / np.maximum(np.diff(S), 1e-6)])
     kap = np.convolve(kap, np.ones(7) / 7, mode="same")
-    hmin_hang, hmax_hang = (0.085, 0.105) if cfg["wavy"] else (0.08, 0.16)
+    hmin_hang, hmax_hang = (0.095, 0.115) if cfg["wavy"] else (0.08, 0.16)
     sr = root_len(L)
     rows = [0.0, sr]
     s = sr
@@ -1030,6 +1034,8 @@ def card_rows(st, cfg):
         else:
             hmin, hmax, kk = hmin_hang, hmax_hang, 0.22
         h = float(np.clip(kk / max(k, 1e-6), hmin, hmax))
+        if st.lock and s > st.s_rel and float(np.interp(s, S, D[:, 1])) < -0.72:
+            h = min(h, 0.055)  # over the rounded shoulder: short rows (a long chord would cut into it)
         if s < 0.1:
             h = min(h, 0.05)
         s = min(L, s + h)
@@ -1112,7 +1118,7 @@ class Card:
             for E in (self.left, self.right):
                 Pe = E[sc]
                 ed = edge_dist(Pe)
-                oe = np.minimum(row_off, 0.0225 + (row_off - 0.0225) * smooth(0.0, 0.11, ed))
+                oe = np.minimum(row_off, 0.0225 + (row_off - 0.0225) * smooth(0.0, 0.19, ed))
                 oe = np.maximum(oe, 0.0225)
                 _d, _r, th, az = polar(Pe, C)
                 E[sc] = C + unit(Pe - C) * (skull_radius_v(SK, th, az) + oe)[:, None]
@@ -1571,13 +1577,21 @@ def build_style(key, cfg, refs, coll, log):
             for i in range(r0, r1 + 1):
                 c = float(cd.col[i])
                 dl = np.zeros(3)
+                wk = 1.0
                 if nm.endswith("b") and cd.tuck and cd.tuck[0] <= i < cd.tuck[1]:
-                    dl = -cd.nout[i] * 0.004  # the overlap above the joint lies just under segment 1
+                    # the overlap above the joint lies just under segment 1 and narrows to a point toward its top
+                    # (no doubled, darker band across the card at the joint; no seam when the chain swings)
+                    dl = -cd.face[i] * 0.005
+                    t = (cd.s[i] - cd.s[cd.tuck[0]]) / max(1e-6, cd.s[cd.tuck[1]] - cd.s[cd.tuck[0]])
+                    wk = 0.25 + 0.75 * float(smooth(0.0, 1.0, t))
                 rgb = (c, c, c)
                 if "layercol" in os.environ.get("LONG_DEBUG", ""):  # debug: every layer its own colour
                     rgb = LAYER_DEBUG_COL[min(cd.st.li, len(LAYER_DEBUG_COL) - 1)]
-                a = p.vert(cd.left[i] + dl, cd.N[i], (cd.u[0], cd.v[i]), (*rgb, 1.0))
-                b = p.vert(cd.right[i] + dl, cd.N[i], (cd.u[1], cd.v[i]), (*rgb, 1.0))
+                mc = (cd.left[i] + cd.right[i]) / 2
+                L_ = mc + (cd.left[i] - mc) * wk
+                R_ = mc + (cd.right[i] - mc) * wk
+                a = p.vert(L_ + dl, cd.N[i], (cd.u[0], cd.v[i]), (*rgb, 1.0))
+                b = p.vert(R_ + dl, cd.N[i], (cd.u[1], cd.v[i]), (*rgb, 1.0))
                 m = None
                 if cd.k3[i]:  # a middle column: the card follows the curve of the head across its width
                     m = p.vert(cd.mid[i] + dl, cd.N[i], ((cd.u[0] + cd.u[1]) / 2, cd.v[i]), (*rgb, 1.0))
@@ -1704,7 +1718,20 @@ def clearance_report(pieces, refs):
                     r = signed(ref.torso, q, 0.3)
                     if r is not None:
                         out[nm] = min(out[nm], r[2])
+    # how the hanging hair rests on the body: per 'b' segment, the median gap from its lower 30% to each torso
+    gaps = {}
+    for p in pieces:
+        if not p.name.endswith("b"):
+            continue
+        P = np.asarray(p.P)
+        lo = P[P[:, 1] <= np.quantile(P[:, 1], 0.3)]
+        g = []
+        for ref in (ref_m, ref_f):
+            d = [signed(ref.torso, q, 1.0) for q in lo]
+            g.append(round(float(np.median([r[2] for r in d if r is not None])), 3))
+        gaps[p.name] = g
     res = {k: (round(v, 4) if isinstance(v, float) else v) for k, v in out.items()}
+    res["rest_gap_m_f"] = gaps
     bad = [k for k in ("head_m", "head_m_ears", "head_f_fit", "head_f_inv", "skull_m", "skull_f_fit",
                        "skull_m_narrow", "ear_box") if out[k] < 0.022]
     bad += [k for k in ("inside_m", "face_below_hairline") if out[k]]
@@ -1767,7 +1794,7 @@ LOOKS = {
     "m_darkblonde": ("m", "darkblonde", "mid"),
     "m_black": ("m", "black", "deep"),
 }
-VIEWS = ["front", "34", "side", "back", "close", "top34"]
+VIEWS = ["front", "34", "side", "back", "close", "top34", "top34L"]
 
 
 def cap_standin(density, outdir):
@@ -1830,8 +1857,9 @@ def render_style(key, pieces, outdir, samples, looks, views, res=(520, 620), tex
         dbg = os.environ.get("LONG_DEBUG", "")
         if "nocap" not in dbg:
             sc.add_piece(cap, texture=cap_tex, tint=tint, offset=off, scale=scl)
-        if "nodenoise" in dbg:
-            sc.sc.cycles.use_denoising = False
+        # no denoiser by default: it smears the strand texture into plastic (the game shows the texels as they are);
+        # LONG_DEBUG=denoise turns it back on
+        sc.sc.cycles.use_denoising = "denoise" in dbg.replace("nodenoise", "")
         for p in pieces:
             q = single_sided(p)
             if "nocol" in dbg:

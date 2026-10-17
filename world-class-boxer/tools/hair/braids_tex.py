@@ -12,14 +12,17 @@ Both are 1024 x 1024 greyscale albedo (0.25..1) with straight alpha, laid out as
                        from the other side; every lobe is a bundle of fine strands running along it, rounded
                        (bright crown, dark creases where it meets its neighbours). 4 lobes (2 plait periods)
                        per v repeat, tileable in v and wrapping in u. Opaque (alpha 1).
-          u 0.50-1.00  "loc": strands.py's matted rope, unchanged (kept for compatibility; the locs family
-                       has its own atlas).
+          u 0.50-1.00  "plait_thin": the same plait for thin braids (box braids): broader strands, rounder
+                       lobes, softer tuck shading (no aliasing into a diamond grid). (The old "loc" strip
+                       is gone: no style uses the braid atlas's loc half; the locs family has its own atlas.)
+                       Both strips are mapped MIRRORED round the tube (they do not wrap in u on their own).
 * cornrow u 0.00-0.75  "row": a flat underhand plait lying on the scalp seen from above (v runs along the row),
-                       4 lobes per v repeat, tileable in v. The lobes reach the row's sides as the hair fed in
-                       from the partings: their outer ends fray into single strands and the alpha falls to 0 at
-                       both u edges, so the scalp shows along the partings.
+                       4 overlapping lobes per v repeat, tileable in v, opaque edge to edge; the alpha feathers
+                       to 0 over the outer ~4 % of each side (short fine flyaways), so the scalp shows along
+                       the partings.
           u 0.75-0.875 "baby": sparse crisp edge hairs (roots at v = 0, tips at v = 1), alpha 0 between them.
-          u 0.875-1.0  "pad": 4 soft-edged patches of short combed hair stacked in v (box-braid partings).
+          u 0.875-1.0  "pad": 4 rounded-square patches stacked in v (box-braid partings): hair gathered
+                       radially toward the braid's root (PAD_ROOT), thinning toward the box edges.
 Mip friendly: strands are >= 2 px wide, the fine detail is band-limited, and colour bleeds into transparent texels.
 """
 import math
@@ -196,16 +199,29 @@ def plait_lobes(w, h, halves, seed, drop=1.65, over=0.16, wid=0.8, bow=0.06, str
     return K, H, Aa, Bb, F, G
 
 
-def tex_plait(w, h, seed=41):
-    """the plait strip: steep S-bowed lobes from alternate edges, each a bundle of fine strands (1-2 px) running
-    along it, rounded (bright crown, darker toward its outline), a short soft shadow cast by each lobe onto the
-    one beneath (only there), and a dark pocket where a lobe's tail tucks under the next"""
+def tex_plait(w, h, seed=41, thin=False):
+    """the plait strip: S-bowed lobes from alternate edges meeting at a centre spine (a herringbone: two lobe
+    columns meeting in the middle of the strip, which the builders keep on each braid's outward axis), each a
+    bundle of fine strands (1-2 px) running along it, rounded (bright crown, darker toward its outline), a short
+    soft shadow cast by each lobe onto the one beneath (only there), and a dark pocket where a lobe's tail tucks
+    under the next. thin=True: the variant for thin braids (box braids): fewer, broader strands, rounder lobes and
+    softer, wider tuck shading, so at a few pixels across the lobes read as soft bumps and never alias into a
+    diamond / fishnet grid of crossing lines."""
     halves = PLAIT_HALVES
-    K, H, A, B, F, G = plait_lobes(w, h, halves, seed)
+    if thin:
+        K, H, A, B, F, G = plait_lobes(w, h, halves, seed, drop=1.25, over=0.02, wid=0.95, bow=0.04,
+                                       strands_across=34, wobble=0.2)
+    else:
+        K, H, A, B, F, G = plait_lobes(w, h, halves, seed, drop=1.3, over=0.03, wid=0.86, bow=0.06)
     yy, xx = np.mgrid[0:h, 0:w].astype(np.float64)
     u = (xx + 0.5) / w
     grain = _pnoise(h, w, 1.2, 14, seed + 5)
     crown = np.clip(H, 0, 1) ** 0.6
+    if thin:
+        F = _pblur(F, 2.0, 1.0)
+        G = _pblur(G, 2.0, 1.0)
+        F = (F - F.min()) / (F.max() - F.min() + 1e-9)
+        G = (G - G.min()) / (G.max() - G.min() + 1e-9)
     lum = (0.30 + 0.70 * crown) * (0.66 + 0.34 * F) * (0.9 + 0.1 * G) * (1 + 0.035 * grain)
     # per lobe a slightly different tone (three strands)
     lum *= np.choose(np.clip(K, 0, halves - 1), [0.97, 1.0, 0.93, 1.03, 0.96, 1.0][:halves])
@@ -213,38 +229,34 @@ def tex_plait(w, h, seed=41):
     sh = np.zeros((h, w))
     for k in range(halves):
         nxt = (K == (k + 1) % halves).astype(np.float64)
-        bl = np.clip(_pblur(nxt, 5, 7) * 2.0, 0, 1)
+        bl = np.clip(_pblur(nxt, 12 if thin else 5, 14 if thin else 7) * 2.0, 0, 1)
         sh = np.where(K == k, bl, sh)
-    lum *= 1 - 0.45 * sh
+    lum *= 1 - (0.3 if thin else 0.45) * sh
     # the tuck pocket: the tail of a lobe as it dives under (a > 0.8) goes dark
-    lum *= 1 - 0.5 * _smooth(0.78, 1.04, A)
+    lum *= 1 - (0.32 if thin else 0.5) * _smooth(0.72 if thin else 0.78, 1.04, A)
     side = np.minimum(u, 1 - u)
     lum *= 0.82 + 0.18 * _smooth(0.0, 0.16, side)
-    lum = _pblur(lum, 0.5, 0.7)
+    lum = _pblur(lum, 2.5 if thin else 0.5, 2.5 if thin else 0.7)
     return np.clip(lum, 0.25, 1.0), np.ones_like(lum)
 
 
 def tex_row(w, h, seed=51):
-    """a cornrow seen from above: plait lobes across the row; toward the row's sides every lobe thins into
-    separate strands (the hair fed in from the parting) and the alpha reaches 0 BEFORE the lobe's darker
-    outline, so no dark rim lands on the parting skin"""
-    hgt, tone, fib, along, edge, crease, finef = plait_field(w, h, ROW_HALVES, seed, drop=0.95, over=0.10, wid=0.8,
+    """a cornrow seen from above: overlapping plait lobes across the whole row (no skin between them: only a darker
+    tuck where one lobe dives under the next), opaque from edge to edge; the alpha only feathers over the outer
+    ~4 % of the row width, broken by a few short fine flyaways, so the edge reads soft and never serrated"""
+    hgt, tone, fib, along, edge, crease, finef = plait_field(w, h, ROW_HALVES, seed, drop=1.0, over=0.06, wid=1.15,
                                                              strands_across=90, wobble=0.35)
     yy, xx = np.mgrid[0:h, 0:w].astype(np.float64)
     u = (xx + 0.5) / w
     grain = _pnoise(h, w, 1.2, 12, seed + 5)
     crown = np.clip(hgt, 0, 1) ** 0.7
-    side = np.minimum(u, 1 - u) * 2  # 0 at the row's edges, 1 in the middle
-    lum = (0.48 + 0.52 * crown) * (0.72 + 0.28 * fib) * (0.9 + 0.1 * finef) * tone * (1 + 0.04 * grain)
-    lum *= 0.62 + 0.38 * _pblur(crease, 1.4, 1.4)  # a soft gap between lobes, not a cartoon outline
-    occl = _pblur(hgt, 3, 3)
-    lum *= 0.86 + 0.14 * np.clip(occl / 0.6, 0, 1)
-    # alpha: solid over the braided core, single strands toward the partings, 0 at the edges
-    thr = 1.05 - 1.25 * _smooth(0.04, 0.45, side)
-    alp = np.clip((0.55 * finef + 0.45 * fib - thr) * 4.0, 0, 1)
-    alp *= _smooth(0.02, 0.10, side)
-    alp *= _smooth(0.10, 0.26, hgt)  # the lobe outline (low height, dark) is already transparent
-    alp = np.clip(_pblur(alp, 0.5, 0.7), 0, 1)
+    side = np.minimum(u, 1 - u)  # 0 at the row's edges, 0.5 in the middle
+    lum = (0.5 + 0.5 * crown) * (0.72 + 0.28 * fib) * (0.9 + 0.1 * finef) * tone * (1 + 0.04 * grain)
+    lum *= 0.66 + 0.34 * _pblur(crease, 1.6, 1.6)  # a soft tuck shadow between lobes
+    lum *= 0.8 + 0.2 * _smooth(0.0, 0.12, side)  # the row's sides turn down onto the scalp: a little darker
+    fr = _pnoise(h, w, 1.5, 9, seed + 8)  # fine flyaways along the edge band
+    alp = np.clip((side - 0.022 + 0.012 * fr) / 0.016, 0, 1)
+    alp = np.clip(_pblur(alp, 0.6, 0.8), 0, 1)
     lum = _pblur(lum, 0.5, 0.8)
     return np.clip(lum, 0.25, 1.0), alp
 
@@ -258,46 +270,52 @@ def tex_baby(w, h, seed=57):
 
 
 def tex_braid(size=SIZE, seed=41):
+    """plait u 0-.5 (thick braids), plait_thin u .5-1 (thin braids). Both strips are meant to be MIRRORED round a
+    tube (u 0 -> 1 over the front half, 1 -> 0 over the back), which is what makes them continuous; they do not
+    wrap in u on their own."""
     w = h = size
     half = w // 2
     lum = np.zeros((h, w), np.float32)
-    alp = np.zeros((h, w), np.float32)
-    lum[:, :half], alp[:, :half] = tex_plait(half, h, seed)
-    # the loc strip exactly as strands.py makes it
-    rng = np.random.default_rng(seed)  # noqa: F841 (strands draws its own)
-    yy, xx = np.mgrid[0:h, 0:half].astype(np.float32)
-    uu = (xx + 0.5) / half
-    rim = np.abs(np.sin(uu * math.pi))
-    n1 = strands._noise(h, half, seed + 3, 10)
-    n2 = strands._noise(h, half, seed + 4, 3)
-    fibre = 0.6 + 0.4 * np.sin((xx / half * 31 + n1 * 6 + yy / h * 3) * math.tau)
-    lum[:, half:] = np.clip((0.35 + 0.5 * n1 + 0.15 * n2) * fibre * (0.6 + 0.4 * rim), 0, 1)
-    alp[:, half:] = 1.0
-    l, a = strands._coil_field(half, h, seed + 9, coils=int(size * 0.8), radius_px=size / 260, tight=0.8, fill=0)
-    lum[:, half:] = lum[:, half:] * (1 - a * 0.5) + l * a * 0.5
+    alp = np.ones((h, w), np.float32)
+    lum[:, :half], _a = tex_plait(half, h, seed)
+    lum[:, half:], _a = tex_plait(w - half, h, seed + 17, thin=True)
     return lum, alp
 
 
+PAD_ROOT = (0.5, 0.3)  # where (u, v within a pad patch) the braid's root sits: the builders align it
+
+
 def tex_pad(w, h, seed=61, patches=4):
-    """box-parting pads (u .875-1 of the cornrow atlas): `patches` rounded squares stacked in v, each a uniform
-    fill of short hair combed along v (toward the braid), alpha feathered over the outer ~6 % so neighbouring
-    pads leave a thin, even skin line (the parting) between them and the hairline edge is soft, never ragged"""
+    """box-parting pads (u .875-1 of the cornrow atlas): `patches` rounded squares stacked in v. Each is the hair
+    of one box gathered toward its own braid's root (PAD_ROOT): strands run radially into the root, dense and
+    opaque round it, thinning toward the box's edge (the alpha falls off radially, then feathers at the rounded
+    square), so the partings between neighbouring boxes read as skin-coloured gaps broken box by box."""
     ph = h // patches
     lum = np.zeros((h, w))
     alp = np.zeros((h, w))
+    table = _fibres(4096, seed + 3, smooth=0.9)
     for k in range(patches):
-        l, a = strands._strand_field(w, ph, seed + k, count=int(w * 2.6), width_px=1.6, waviness=0.5, curl_amp=0.3,
-                                     length=(0.6, 1.0), taper=0.5, dark_root=0.2, x_range=(0.0, 1.0), flyaway=0.03)
         yy, xx = np.mgrid[0:ph, 0:w].astype(np.float64)
-        u = (xx + 0.5) / w * 2 - 1
-        v = (yy + 0.5) / ph * 2 - 1
-        q = 8.0  # superellipse: a rounded square
-        rr = (np.abs(u) ** q + np.abs(v) ** q) ** (1 / q)
-        mask = 1 - _smooth(0.93, 0.995, rr)
-        base = 0.6 + 0.12 * _pnoise(ph, w, 3, 24, seed + 40 + k).clip(-1.5, 1.5)
-        lum[k * ph:(k + 1) * ph] = np.where(a > 0.05, 0.5 * l + 0.5 * base, base)
-        alp[k * ph:(k + 1) * ph] = np.clip((0.8 + 0.2 * a) * mask, 0, 1)
-    return np.clip(0.3 + 0.7 * lum, 0.25, 1.0), alp
+        u = (xx + 0.5) / w
+        v = (yy + 0.5) / ph
+        uc, vc = u * 2 - 1, v * 2 - 1
+        q = 6.0  # superellipse: a rounded square
+        rr = (np.abs(uc) ** q + np.abs(vc) ** q) ** (1 / q)
+        mask = 1 - _smooth(0.76, 0.92, rr)  # (the box's hair covers ~85 % of it: skin gaps between boxes)
+        du, dv = (u - PAD_ROOT[0]) * w / ph, v - PAD_ROOT[1]  # isotropic (texel) offsets from the root
+        rho = np.sqrt(du * du + dv * dv)
+        phi = np.arctan2(du, dv)
+        nz = _pnoise(ph, w, 10, 10, seed + 20 + k)
+        idx = (phi / (2 * math.pi)) * 900 + 2.0 * nz + k * 313.3 + 8 * rho
+        f = 0.7 * _lookup(table, idx) + 0.3 * _lookup(table, idx * 2.1 + 51)
+        rn = np.clip(rho / 0.55, 0, 1.4)  # 0 at the root .. 1 toward the box's corners
+        dens = 1.0 - 0.72 * _smooth(0.1, 1.0, rn)
+        a = np.clip((f - (1 - dens)) * 3.2 + 0.25 * dens, 0, 1) * mask
+        a = np.where(rn < 0.12, np.maximum(a, mask), a)
+        tone = (0.5 + 0.5 * f) * (0.8 + 0.2 * _smooth(0.0, 0.5, rn)) * (1 + 0.05 * _pnoise(ph, w, 2, 2, seed + 40 + k))
+        lum[k * ph:(k + 1) * ph] = tone
+        alp[k * ph:(k + 1) * ph] = _pblur(a, 0.6, 0.6)
+    return np.clip(0.3 + 0.7 * lum, 0.25, 1.0), np.clip(alp, 0, 1)
 
 
 def tex_cornrow(size=SIZE, seed=51):

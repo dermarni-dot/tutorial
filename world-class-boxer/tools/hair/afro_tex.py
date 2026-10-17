@@ -1,16 +1,20 @@
 """The "coily" atlas for the afro family (owned by build_afro.py). numpy + PIL only, deterministic.
 
-Layout (1024 x 1024). The game tints the atlas by v from root (v 0, darker) to tip (v 1, lighter; Tips / Ombre
-dyes), so v grows with how far out a cell is worn: the dense core at the top, the outer shells and fins below.
+Layout (1024 x 1024). The game tints the atlas by v from root (v 0) to tip (v 1): Tips dyes
+smoothstep(0.6, 0.85, v), Ombre smoothstep(0.25, 0.95, v), the roots are darkened below v 0.4. An afro shows
+every layer (the core through the gaps of the outer shells, the hairline clouds at the forehead), so every cell
+sits in the bottom rows v 0.8125-1 (Tips >= 0.92 there, Ombre >= 0.87): a dyed afro takes the dye all over and
+evenly (no undyed core blotches, no undyed band at the hairline, no dye gradient across a tile's repeat); the
+core is darker by its own albedo. The rows above are empty (transparent).
 
-    cell        u range      v range     what
-    TILE_D      0.00-0.50    0.00-0.50   a tileable dense coil tile (inner shells, near-opaque)
-    CLOUD_A     0.50-1.00    0.00-0.50   a soft round cloud of tight kinky coils (hairline patches)
-    FIN_T       0.00-0.25    0.50-0.75   a fuzz tuft of tight coils, root at its top (v 0.5) .. sparse tips
-    FIN_L       0.25-0.50    0.50-0.75   a fuzz tuft of loose curls, root at its top
-    TILE_S2     0.50-1.00    0.50-0.75   a tileable sparse tight-coil tile, another draw (the middle shells)
-    TILE_S      0.00-0.50    0.75-1.00   a tileable sparse tight-coil tile (outer shells: the fuzzy edge)
-    TILE_L      0.50-1.00    0.75-1.00   a tileable sparse loose-curl tile (the Curly variant's outer shells)
+    cell     u range        v range          px         what (world repeat on the head, see build_afro)
+    TILE_S   0.000-0.375    0.8125-1.0       384 x 192  tileable sparse tight coils (middle / outer shells, 0.32 x 0.16)
+    TILE_L   0.375-0.750    0.8125-1.0       384 x 192  tileable sparse loose curls (Curly outer shells, 0.32 x 0.16)
+    TILE_D   0.750-0.875    0.8125-1.0       128 x 192  tileable dense coils (inner shells, near-opaque, darker; 0.2 x 0.3)
+    CLOUD_A  0.875-1.000    0.8125-0.9375    128 x 128  a soft round cloud of short tight coils (hairline patches)
+    FIN_T    0.875-0.9375   0.9375-1.0        64 x 64   a fuzz tuft of tight coils, root at its top .. sparse tips
+    FIN_L    0.9375-1.000   0.9375-1.0        64 x 64   a fuzz tuft of loose curls, root at its top
+    (TILE_S2: the middle shells, TILE_S drawn at another phase)
 
 The clouds have no outline to trace: the coil density falls off gradually (noise-modulated) over the
 outer ~35% of the cell, so a cloud's edge is made of single loops. The surface cards are laid tangent to
@@ -32,13 +36,13 @@ SS = 2  # supersampling of the splat canvases
 
 # cell -> (u0, v0, u1, v1) in the atlas
 CELLS = {
-    "TILE_D": (0.0, 0.0, 0.5, 0.5),
-    "CLOUD_A": (0.5, 0.0, 1.0, 0.5),
-    "FIN_T": (0.0, 0.5, 0.25, 0.75),
-    "FIN_L": (0.25, 0.5, 0.5, 0.75),
-    "TILE_S2": (0.5, 0.5, 1.0, 0.75),
-    "TILE_S": (0.0, 0.75, 0.5, 1.0),
-    "TILE_L": (0.5, 0.75, 1.0, 1.0),
+    "TILE_S": (0.0, 0.8125, 0.375, 1.0),
+    "TILE_S2": (0.0, 0.8125, 0.375, 1.0),
+    "TILE_L": (0.375, 0.8125, 0.75, 1.0),
+    "TILE_D": (0.75, 0.8125, 0.875, 1.0),
+    "CLOUD_A": (0.875, 0.8125, 1.0, 0.9375),
+    "FIN_T": (0.875, 0.9375, 0.9375, 1.0),
+    "FIN_L": (0.9375, 0.9375, 1.0, 1.0),
 }
 
 
@@ -318,30 +322,38 @@ def bleed(lum, alp, passes=12):
 
 def tex_coily(size=SIZE, seed=31):
     """the whole atlas -> (lum 0..1, alpha 0..1) at size x size"""
-    half, quarter = size // 2, size // 4
     s = size / 1024
     L = np.zeros((size, size))
     A = np.zeros((size, size))
-    tight = dict(radius=(13 * s * SS, 21 * s * SS), turns=(1.6, 3.2), pitch=(0.5, 1.0), tilt=(0.5, 1.0),
+    px = lambda n: int(round(n * s))  # noqa: E731
+    tight = dict(radius=(11 * s * SS, 18 * s * SS), turns=(1.6, 3.2), pitch=(0.5, 1.0), tilt=(0.5, 1.0),
+                 wander=0.5)
+    # the hairline clouds: shorter, tighter coils (the hair at the edge is shorter)
+    small = dict(radius=(7 * s * SS, 11 * s * SS), turns=(1.6, 3.0), pitch=(0.5, 1.0), tilt=(0.5, 1.0),
                  wander=0.5)
     cells = {
-        "CLOUD_A": cloud(half, half, seed + 10, n=420, fill=0.9, r0=0.37, spread=0.55, stroke=1.0, **tight),
-        # the shells: dense (inner, near-opaque) and sparse (outer: single coils, the fuzzy silhouette by stacking)
-        "TILE_D": tile(half, half, seed + 20, n=820, fill=0.93, fill_tone=0.44, stroke=1.0, dark_deep=0.66, **tight),
-        "TILE_S": tile(half, quarter, seed + 30, n=190, fill=0.0, stroke=1.0, nb=4, bright=0.86, **tight),
-        "TILE_S2": tile(half, quarter, seed + 33, n=210, fill=0.0, stroke=1.0, nb=4, bright=0.8, **tight),
+        "CLOUD_A": cloud(px(128), px(128), seed + 10, n=150, fill=0.9, r0=0.37, spread=0.55, stroke=1.0, **small),
+        # the shells: dense (inner, near-opaque, darker: the core keeps its depth by albedo, not by the dye
+        # row; at half the texel density of the outer tiles, so its coils are drawn half size) and sparse (outer:
+        # single coils, the fuzzy silhouette by stacking)
+        "TILE_D": tile(px(128), px(192), seed + 20, n=330, fill=0.95, fill_tone=0.38, stroke=0.8, dark_deep=0.62,
+                       bright=0.9, radius=(6 * s * SS, 9.5 * s * SS), turns=(1.6, 3.2), pitch=(0.5, 1.0),
+                       tilt=(0.5, 1.0), wander=0.5),
+        "TILE_S": tile(px(384), px(192), seed + 30, n=175, fill=0.0, stroke=1.0, nb=4, bright=0.86, **tight),
         # the Curly variant's outer shells: looser, larger curls (open loops, short ringlet arcs)
-        "TILE_L": tile(half, quarter, seed + 35, n=70, fill=0.0, stroke=1.25, nb=4, bright=0.86,
-                       radius=(22 * s * SS, 34 * s * SS), turns=(1.1, 2.0), pitch=(0.8, 1.4), tilt=(0.35, 0.7),
+        "TILE_L": tile(px(384), px(192), seed + 35, n=56, fill=0.0, stroke=1.2, nb=4, bright=0.86,
+                       radius=(19 * s * SS, 29 * s * SS), turns=(1.1, 2.0), pitch=(0.8, 1.4), tilt=(0.35, 0.7),
                        wander=0.35),
-        "FIN_T": tuft(quarter, quarter, seed + 40, n=110, fill=0.15, stroke=1.0, **tight),
+        "FIN_T": tuft(px(64), px(64), seed + 40, n=45, fill=0.15, stroke=0.8,
+                      radius=(4 * s * SS, 6.5 * s * SS), turns=(1.6, 3.0), pitch=(0.5, 1.0), tilt=(0.5, 1.0),
+                      wander=0.5),
         # a tuft of loose curls (the Curly fins): open loops, no spring ladders
-        "FIN_L": tuft(quarter, quarter, seed + 50, n=48, radius=(15 * s * SS, 24 * s * SS), turns=(1.1, 2.0),
-                      pitch=(0.8, 1.3), tilt=(0.35, 0.7), wander=0.35, fill=0.12, stroke=1.2, width=0.4),
+        "FIN_L": tuft(px(64), px(64), seed + 50, n=24, radius=(5 * s * SS, 8 * s * SS), turns=(1.1, 2.0),
+                      pitch=(0.8, 1.3), tilt=(0.35, 0.7), wander=0.35, fill=0.12, stroke=0.9, width=0.4),
     }
     for k, (c, a) in cells.items():
         u0, v0, u1, v1 = CELLS[k]
-        x0, y0 = int(u0 * size), int(v0 * size)
+        x0, y0 = int(round(u0 * size)), int(round(v0 * size))
         L[y0:y0 + c.shape[0], x0:x0 + c.shape[1]] = c
         A[y0:y0 + a.shape[0], x0:x0 + a.shape[1]] = a
     return L, A

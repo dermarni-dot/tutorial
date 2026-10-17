@@ -1159,7 +1159,7 @@ def guard_short(p, rad):
 STYLES = {
     "dreadlocks": dict(
         entry=dict(styles=["Dreadlocks"], types=None, cap={"cut": "full", "density": 0.45}, capTile="shortcoil"),
-        kind="hang", spacing=0.16, fill=12, fill2=14, min_gap=0.014, margin=0.03, seed=101, R=0.036, rvar=0.2, M=32,
+        kind="hang", spacing=0.16, fill=12, fill2=10, min_gap=0.014, margin=0.03, seed=101, R=0.036, rvar=0.2, M=32,
         step=0.03, hang_len=1.05, side_short=0.25, L_max=2.25, sides=6, base_ds=0.42, base_scalp=0.25, min_ds=0.09, end_ds=0.06,
         bend_k=1.0, root_k=0.5, edge_root_k=0.3, lift=0.2, crown_lift=0.045, rot_deg=20,
         layer=0.024, repel=0.72, fins=1, chains=7, segs=2, stiff=0.35, mass=(1.5, 1.15), hang_split=0.5,
@@ -1310,7 +1310,7 @@ def build_guides_hanging(cfg, ref, log):
             R *= 0.9
         sp = r["p"]
         # the hairline row lies down from the root (within ~10 degrees of the scalp), the rest lift a little
-        lift = 0.05 if r.get("edge") else cfg["lift"]
+        lift = 0.05 if r.get("edge") else (cfg["lift"] if r["e"] > 0.14 else 0.1)
         # front and side locs are a little shorter (they frame the face), back ones longest; ~14% of the top
         # locs (outer layer) much shorter, so the tips do not end on one line
         backness = float(smooth(-0.3, 0.45, sp[2]))
@@ -1330,7 +1330,7 @@ def build_guides_hanging(cfg, ref, log):
         rk, rl = ((er[0], er[1]) if r.get("edge")
                   else (cfg.get("root_k", ROOT_K), root_len))
         # crown volume: locs from the top rise off the scalp over the first ~30% of their run on it
-        crown = float(smooth(0.3, 0.5, sp[1])) * (0.0 if r.get("edge") else 1.0)
+        crown = float(smooth(0.42, 0.56, sp[1])) * float(smooth(-0.32, -0.12, sp[2])) * (0.0 if r.get("edge") else 1.0)
         bump_h = cfg.get("crown_lift", 0.0) * crown * (0.7 + 0.6 * r["rnd2"])
 
         def offs0(s, R=R, rk=rk, rl=rl):
@@ -1368,8 +1368,10 @@ def build_guides_hanging(cfg, ref, log):
 
     def grow_at(th, az):
         p = SK.point(th, az)
-        r = dict(th=th, az=az, p=p, n=SK.normal(th, az), e=float(edge_dist(p)[0]), rnd=rng.random(),
-                 rnd2=rng.random(), rnd3=1.0, fill=True)
+        e = float(edge_dist(p)[0])
+        # a fill root close to the hairline belongs to the hairline row (lies down, finer, rounder)
+        r = dict(th=th, az=az, p=p, n=SK.normal(th, az), e=e, rnd=rng.random(),
+                 rnd2=rng.random(), rnd3=1.0, fill=True, edge=e < 0.07)
         return make(r)
     fill_gaps(locs, grow_at, cfg.get("fill", 0), cfg.get("min_gap", 0.014), log, dirs=cfg.get("cov_dirs", ()))
     log(f"  {len(locs)} locs from box-parted roots ({sum(1 for lc in locs if lc['root'].get('sideburn'))} sideburn)")
@@ -1954,12 +1956,14 @@ def build_style(key, cfg, ref, coll, log):
             base = cfg["base_ds"]
             if bs and lc.get("scalp_len"):
                 # finer over the scalp (the loc follows its curve), coarse down the straight hanging part
-                base = (lambda s, sl=lc["scalp_len"], bs=bs, bh=cfg["base_ds"]: bs if s < sl + 0.05 else bh)
+                fine = 0.45 if (lc["root"].get("edge") and lc["root"]["p"][2] < -0.1) else 0.0
+                base = (lambda s, sl=lc["scalp_len"], bs=bs, bh=cfg["base_ds"], fine=fine:
+                        0.085 if s < fine else (bs if s < sl + 0.05 else bh))
             s_r = ring_positions(D, S, base, (root_len, 0.05, cfg.get("end_ds", 0.034)), forced,
                                  cfg.get("min_ds", 0.016), cfg.get("bend_k", 0.3))
         lc["rings"] = len(s_r)
-        if os.environ.get("LOCS_RINGS") and li % 20 == 0:
-            print("rings", li, round(L, 2), lc.get("scalp_len"), np.round(s_r, 2).tolist())
+        if os.environ.get("LOCS_RINGS") and lc["root"].get("edge") and lc["root"]["p"][2] < -0.3:
+            print("rings", li, round(L, 2), lc.get("scalp_len"), lc.get("sides"), np.round(s_r, 2).tolist())
         inward = unit(C - D[0])
         if cfg["lobes"] == "twist":
             strip = TWIST_CORE

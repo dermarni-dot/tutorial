@@ -13,7 +13,8 @@ How a style is built (game nominal head space, numerically):
 * Envelope: the style's outer surface as a thickness field H over the scalp (rays from the skull centre).
   Afro: an egg, fullest at the top-back and over the sides, the front held back; it rolls down to the
   natural hairline (a rounded, quarter-circle-like ease, no shelf), and over the ears comes down at full
-  thickness to just above the ear tops before rounding under into the sideburn. High top: a rounded-rectangle
+  thickness to just above the ear tops before rounding under into the sideburn; fuller over the sides
+  (y 0.2-0.5) and at the upper back. High top: a rounded-rectangle
   column (slightly barrel-curved, tapering a little toward its top, raked forward) with a flat top sloping
   down to the back and a fairly crisp edge; it grows out of the high fade: from cap height at the fade's top
   line the thickness lengthens smoothly (zero slope at the line) over ~0.2 of height, no foot ring.
@@ -25,11 +26,15 @@ How a style is built (game nominal head space, numerically):
 * Shells: each layer is covered by a continuous shell of quads on a cube-sphere grid of rays from the skull
   centre (each layer turned at random), ray-cast onto the evaluated layer, 4 quads per repeat of a tileable
   coil tile (dense tile inside, sparse tiles outside). At the shell's edge near the line a quad's outside
-  corners are pulled in along the quad to the edge (no stair steps, no holes); the high top's shells start
-  further back layer by layer, along a ragged line, so coverage builds up out of the fade.
+  corners are pulled in along the quad to the edge (no stair steps, no holes); the high top's sparse
+  outer shells start at the fade's top line (along a ragged line), the dense core further up under them, so
+  coverage builds up out of the fade with no dark rim at the foot.
 * Occlusion (vertex colour) from each vertex's depth under the outer surface (gentle: ~0.94 at the surface,
-  ~0.6 in the core), a little darker in curl-cluster valleys and underneath; shading normals are the
+  >= ~0.66 in the core), a little darker in curl-cluster valleys and underneath; shading normals are the
   layer's outward normals, biased up a little.
+* Texture (afro_tex.py): every cell in the atlas's bottom quarter (v 0.75-1), the outer tiles in the bottom
+  eighth: the game dyes by v (Tips / Ombre), and an afro shows all its layers, so all of it takes the dye alike
+  (no undyed core blotches, no undyed band at the hairline); the core is darker by its own albedo.
 * Hairline: small soft coil-cloud patches on the outer layer within ~0.1 of the line (drawn over every
   shell's edge), short tufts rooted along the line growing up and back (not along the sideburns), over the
   shared scalp cap (entry cap). Fins: fuzz cards rooted under the outer layer, laid 25-50 degrees off it and
@@ -38,6 +43,8 @@ How a style is built (game nominal head space, numerically):
   patches and tufts; the mass by region (front, top, back, left, right; length "volume"): every layer from 2
   out, so the whole mass scales with the slider; bounce clumps (HairClump01-04, volume + bounce): round
   patches of the outermost shell with their fins, cut out of the mass (the shells under them stay whole).
+  Cards low on the sides, behind the ears and at the nape (centre y < LOW_Y) stay in the root piece (scaled,
+  they would swing out under the mass at the slider's extremes); no fins there.
 * Clearance: every vertex at least CLEAR over the male skull table and the head mesh (head_m.obj), and,
   through the runtime skull fit, over the female skull table and head_f.obj; the volume pieces also at the
   slider's extremes (0.8, 1.3) through the runtime's volume transform.
@@ -254,9 +261,11 @@ def afro_sdf(scale=1.0):
     def F(P):
         x, y, z = P[:, 0], P[:, 1] - E[1], P[:, 2] - E[2]
         nar = 1 - 0.14 * sstep(0.05, -0.45, y)
-        rx = (0.235 + 0.39 * scale) * nar
-        ry = np.where(y > 0, 0.4 + 0.27 * scale, 0.45 + 0.2 * scale)
-        rz = np.where(z > 0, 0.48 + 0.24 * scale, 0.42 + 0.18 * scale) * nar
+        side = 0.05 * sstep(-0.15, 0.1, y) * sstep(0.55, 0.3, y)  # fuller over the sides (y 0.2-0.5 nominal)
+        back = 0.04 * sstep(-0.1, 0.15, y)  # and the upper back
+        rx = (0.235 + 0.39 * scale + side) * nar
+        ry = np.where(y > 0, 0.41 + 0.27 * scale, 0.45 + 0.2 * scale)
+        rz = np.where(z > 0, 0.48 + 0.24 * scale + back, 0.42 + 0.18 * scale) * nar
         return np.sqrt((x / rx) ** 2 + (y / ry) ** 2 + (z / rz) ** 2) - 1
 
     return F
@@ -291,7 +300,7 @@ def hightop_sdf():
         d_side = (r - 1) * np.minimum(hx, hz)
         ytop = 0.855 + 0.045 * np.clip(-(z - cz) / hz, -1, 1)
         d_top = y - ytop
-        return smax(d_side, d_top, 0.065)
+        return smax(d_side, d_top, 0.085)
 
     return F
 
@@ -361,7 +370,7 @@ STYLES = {
         band=[(0, (0.0, 0.12, 1.6, "CLOUD_A")), (1, (0.3, 0.12, 1.2, "CLOUD_A"))],
         fins=dict(n=420, cell=FIN_T, length=(0.05, 0.08), width=(0.04, 0.055), sink=0.03, angle=(28, 50)),
         puffs=dict(radius=0.17),
-        lumps=(0.075, 0.05), span=(0.24, 0.22, 0.27, 0.24), edge=True, notes="rounded afro"),
+        lumps=(0.08, 0.032), span=(0.24, 0.22, 0.27, 0.24), edge=True, notes="rounded afro"),
     "afro_curly": dict(
         styles=["Afro"], types=["Curly"], cap={"cut": "full", "density": 1},
         cover="none", line="natural", shape="afro", scale=0.88, prefix="HairAfro",
@@ -369,22 +378,24 @@ STYLES = {
         band=[(0, (0.0, 0.12, 1.6, "CLOUD_A")), (1, (0.32, 0.12, 1.2, "CLOUD_A"))],
         fins=dict(n=380, cell=FIN_L, length=(0.06, 0.09), width=(0.05, 0.07), sink=0.03, angle=(30, 50)),
         puffs=dict(radius=0.17),
-        lumps=(0.085, 0.065), span=(0.24, 0.22, 0.27, 0.24), edge=True,
+        lumps=(0.085, 0.045), span=(0.24, 0.22, 0.27, 0.24), edge=True,
         notes="curly afro: looser curl surface, bigger curl clusters"),
     "hightop": dict(
         styles=["High Top"], types=None, cap={"cut": "style", "density": 1},
         cover="high", line="hightop", shape="hightop", prefix="HairTop",
-        layers=[(0.0, "TILE_S2"), (0.35, "TILE_D"), (0.62, "TILE_D"), (0.8, "TILE_S2"), (0.91, "TILE_S"),
+        layers=[(0.0, "TILE_D"), (0.35, "TILE_D"), (0.62, "TILE_D"), (0.8, "TILE_S2"), (0.91, "TILE_S"),
                 (1.0, "TILE_S")],
-        band=[], stagger=0.018, edge_jitter=0.022,
-        fins=dict(n=300, cell=FIN_T, length=(0.04, 0.06), width=(0.035, 0.045), sink=0.02, angle=(25, 45)),
-        puffs=None, edge_fade=False, dense_back=0.042,
-        lumps=(0.04, 0.03), span=(0.06, 0.1, 0.2, 0.2), edge=True,
+        band=[], stagger=True, edge_jitter=0.022,
+        fins=dict(n=300, cell=FIN_T, length=(0.04, 0.06), width=(0.035, 0.045), sink=0.02, angle=(25, 45),
+                  above=0.13, gravity=0.0),
+        puffs=None, edge_fade=False,
+        lumps=(0.058, 0.026), span=(0.06, 0.1, 0.2, 0.2), edge=True,
         notes="high top: a column grown out of a high fade"),
 }
 
-SHELL_CELL = 0.36  # world size of one repeat of a square tile cell (a 2:1 cell repeats every half of it in v)
-SHELL_SUB = 4  # quads per repeat (u)
+# per tile cell: (world size of one repeat in u, quads per repeat in u, in v): square quads, ~1200 px / stud
+# on the outer tiles (384 x 192 px -> 0.32 x 0.16), half that on the dense core (128 x 192 px -> 0.2 x 0.3)
+SHELL_REPEAT = {"TILE_S": (0.32, 4, 2), "TILE_S2": (0.32, 4, 2), "TILE_L": (0.32, 4, 2), "TILE_D": (0.2, 2, 3)}
 
 
 def thickness(spec, grid, line):
@@ -539,11 +550,12 @@ class Layer:
 
 
 def occlusion(depth, lump, ny):
-    """soft occlusion from the depth under the outer surface (gentle: 1 at the surface, ~0.6 deep in the core),
+    """soft occlusion from the depth under the outer surface (gentle: 0.94 at the surface, >= ~0.66 deep in the core:
+    the deepest visible hair is no darker than ~0.7x the surface; the core's dense tile is darker by albedo too),
     a little darker in curl-cluster valleys and on the underside"""
-    o = 0.94 - 0.38 * np.clip(depth / 0.22, 0, 1) ** 0.9
-    o = o * (1 + 0.05 * lump) * (1 - 0.1 * sstep(-0.2, -0.8, ny))
-    return np.clip(o, 0.5, 1.0)
+    o = 0.94 - 0.27 * np.clip(depth / 0.24, 0, 1) ** 0.85
+    o = o * (1 + 0.03 * lump) * (1 - 0.08 * sstep(-0.2, -0.8, ny))
+    return np.clip(o, 0.64, 1.0)
 
 
 # =============================================================================================== cards
@@ -660,7 +672,13 @@ def shell_dmin(spec, li):
     f, cell = spec["layers"][li]
     k = spec.get("dense_back", 0.012)
     if spec.get("stagger"):
-        return 0.022 + spec["stagger"] * li  # (the high top: coverage builds up layer by layer out of the fade)
+        # (the high top: coverage builds up out of the fade: the sparse outer shells start at the fade's top line,
+        # the dense core further up, so its edge sits under three sparse shells, never a dark rim at the foot)
+        if cell == "TILE_D":
+            # (at the front line-up and its temple corners the dense core comes close: no translucent strip of
+            # sparse shells over the skin there)
+            return 0.045 + 0.012 * li
+        return 0.025 + 0.006 * (len(spec["layers"]) - 1 - li)
     if cell == "TILE_D":
         return 0.026 + k * li
     return 0.024 + 0.002 * li
@@ -668,19 +686,19 @@ def shell_dmin(spec, li):
 
 def shell_cards(layer, li, spec, line, rng, region_fn=region_of):
     """a continuous shell on the evaluated layer: a cube-sphere grid of rays (each layer turned at random, so
-    no seam lines up through the layers), SHELL_SUB quads per repeat of a tileable coil cell (UVs inset by
+    no seam lines up through the layers), SHELL_REPEAT quads per repeat of a tileable coil cell (UVs inset by
     1.5 texels, so no quad samples the neighbouring cell)"""
     f, cell = spec["layers"][li]
     u0, v0, u1, v1 = CELLS[cell]
     e = 1.5 / 1024
     u0, v0, u1, v1 = u0 + e, v0 + e, u1 - e, v1 - e
-    su = SHELL_SUB
-    sv = su if abs((CELLS[cell][2] - CELLS[cell][0]) - (CELLS[cell][3] - CELLS[cell][1])) < 1e-6 else su // 2
+    rep_u, su, sv = SHELL_REPEAT[cell]
     r = float(np.linalg.norm(layer.P - C, axis=1).mean())
-    N = su * int(math.ceil(r * math.pi / 2 / SHELL_CELL))
+    N = su * int(math.ceil(r * math.pi / 2 / rep_u))
     dmin = shell_dmin(spec, li)
     jit = spec.get("edge_jitter", 0.0) * min(1.0, li)
     ph = rng.uniform(0, TAU, 4)
+    ph_i, ph_j = (2, 1) if cell == "TILE_S2" else (0, 0)  # (the middle shells: TILE_S at another phase)
 
     def ragged(D):
         """a ragged shell edge (irregular along the line, so no ruled horizontal edge)"""
@@ -691,11 +709,18 @@ def shell_cards(layer, li, spec, line, rng, region_fn=region_of):
              + np.sin(5 * th + 3 * az + ph[3]) * 0.3)
         return jit * n
 
+    def bias(D, S):
+        """the high top's dense core comes close at the front line-up and its temple corners (no translucent
+        strip of sparse shells over the skin there)"""
+        if not (spec.get("stagger") and cell == "TILE_D"):
+            return 0.0
+        return (0.03 + 0.008 * li) * sstep(1.05, 0.55, da_of(S))
+
     cards = []
     for face in cube_dirs(N, rand_rot(rng)):
         D = face.reshape(-1, 3)
         S = C + D * skull_r(SK, *angles_of(D))[:, None]
-        dd = (line.dist(S) - ragged(D)).reshape(N + 1, N + 1)
+        dd = (line.dist(S) - ragged(D) + bias(D, S)).reshape(N + 1, N + 1)
         okv = dd > dmin
         P = np.full((N + 1, N + 1, 3), np.nan)
         for i in range(N + 1):
@@ -709,8 +734,8 @@ def shell_cards(layer, li, spec, line, rng, region_fn=region_of):
         Dp = layer.depth_at(D).reshape(N + 1, N + 1)
 
         def dd_of(d):
-            return float(line.dist((C + d * skull_r(SK, *angles_of(d[None]))[:, None])[0][None])[0]
-                         - np.ravel(ragged(d))[0])
+            sd = (C + d * skull_r(SK, *angles_of(d[None]))[:, None])
+            return float(line.dist(sd)[0] - np.ravel(ragged(d))[0] + np.ravel(bias(d[None], sd))[0])
 
         for i in range(N):
             for j in range(N):
@@ -725,14 +750,14 @@ def shell_cards(layer, li, spec, line, rng, region_fn=region_of):
                     if any(dd[i + a, j + b] < -0.2 for (a, b) in corners):
                         continue
                 dc = unit(np.mean([face[i + a, j + b] for (a, b), v in zip(corners, valid) if v], axis=0))
-                fuv_c = np.mean([(((i % su) + a) / su, ((j % sv) + b) / sv) for (a, b), v in zip(corners, valid) if v],
+                fuv_c = np.mean([((((i + ph_i) % su) + a) / su, (((j + ph_j) % sv) + b) / sv) for (a, b), v in zip(corners, valid) if v],
                                 axis=0)
                 cd = Card(li, "shell")
                 okq = True
                 for (a, b), v in zip(corners, valid):
                     ii, jj = i + a, j + b
-                    fu = ((i % su) + a) / su
-                    fv = ((j % sv) + b) / sv
+                    fu = (((i + ph_i) % su) + a) / su
+                    fv = (((j + ph_j) % sv) + b) / sv
                     if v:
                         p, d = P[ii, jj], face[ii, jj]
                         nn, lu, dp = Nn[ii, jj], Lu[ii, jj], Dp[ii, jj]
@@ -777,10 +802,8 @@ def patch_cards(layer, li, spec, line, rng, params, band=None, select=None, lift
                 seed=0, region_fn=region_of):
     """surface patches on a layer: 3 x 3 vertex grids ray-cast onto it, rotated, tilted, domed (band: only
     within that distance of the line; select: a direction filter; lift: raised off the layer)"""
-    f, size, cover, cell = params
-    u0, v0, u1, v1 = CELLS[cell]
+    f, size, cover, cell0 = params
     e = 1.5 / 1024
-    u0, v0, u1, v1 = u0 + e, v0 + e, u1 - e, v1 - e
     ncand = 30000
     D = fib_dirs(ncand, 101 + li * 7 + len(spec["prefix"]) + seed)
     S = C + D * skull_r(SK, *angles_of(D))[:, None]
@@ -810,6 +833,9 @@ def patch_cards(layer, li, spec, line, rng, params, band=None, select=None, lift
         dome = rng.uniform(0.003, 0.008) * (0.4 + f)
         lf = rng.uniform(*lift)
         flip = rng.random(2) < 0.5
+        cell = cell0
+        u0, v0, u1, v1 = CELLS[cell]
+        u0, v0, u1, v1 = u0 + e, v0 + e, u1 - e, v1 - e
         cd = Card(li, kind)
         okc = True
         grid_idx = {}
@@ -883,7 +909,12 @@ def fin_cards(layer, li, spec, line, rng, region_fn=region_of):
     D = fib_dirs(fs["n"] * 6, 977 + len(spec["prefix"]))
     S = C + D * skull_r(SK, *angles_of(D))[:, None]
     dd = line.dist(S)
-    ok = np.nonzero(dd > 0.07)[0]
+    ok = dd > fs.get("above", 0.07)
+    if spec["shape"] == "hightop":
+        ok &= (S[:, 1] - line.y_at(da_of(S))) > fs.get("above", 0.07)
+    else:
+        ok &= ~((S[:, 1] < 0.06) & (da_of(S) > 0.8))  # (not low on the sides, behind the ears or at the nape)
+    ok = np.nonzero(ok)[0]
     rng.shuffle(ok)
     cards = []
     for k in ok:
@@ -902,7 +933,7 @@ def fin_cards(layer, li, spec, line, rng, region_fn=region_of):
         g = np.array([0, -1.0, 0])
         gt = g - n * np.dot(g, n)
         if np.linalg.norm(gt) > 0.2:
-            tang = unit(tang + 0.5 * unit(gt))
+            tang = unit(tang + fs.get("gravity", 0.5) * unit(gt))
         a = math.radians(rng.uniform(*fs["angle"]))
         dirv = unit(tang * math.cos(a) + n * math.sin(a))
         L = rng.uniform(*fs["length"])
@@ -991,6 +1022,18 @@ BASE_LAYERS = 1  # layers 0..BASE_LAYERS (with the hairline patches and tufts) f
 MIN_MASS_TRIS = 300  # a region mass smaller than this joins its neighbour (no MeshPart for a label)
 
 
+def low_card(cd):
+    """a card low on the sides, behind the ears or at the nape (y < LOW_Y, not at the front): it stays in the
+    unscaled root piece (scaled about the piece's scalp point it would swing out below the mass at the slider's
+    extremes, as flakes under the ear and at the nape)"""
+    P = np.asarray(cd.P)
+    c = P.mean(axis=0)
+    return c[1] < LOW_Y and float(da_of(c[None])[0]) > 0.8
+
+
+LOW_Y = 0.08
+
+
 def make_pieces(spec, cards, names):
     """cards -> hairlib Pieces: the root (unscaled: layers 0-1, the hairline patches and tufts), the mass by
     region (volume: every layer from 2 out, down to the line, so the whole mass scales with the slider), the
@@ -999,7 +1042,8 @@ def make_pieces(spec, cards, names):
     for cd in cards:
         if cd.clump:
             key = "clump:" + cd.clump
-        elif cd.kind in ("edge", "patch") or cd.layer <= BASE_LAYERS or (cd.kind == "shell" and cd.dline < BAND_D):
+        elif cd.kind in ("edge", "patch") or cd.layer <= BASE_LAYERS or (cd.kind == "shell" and cd.dline < BAND_D) \
+                or low_card(cd):
             key = "base"
         else:
             key = "mass:" + cd.region
@@ -1432,6 +1476,25 @@ def cull_backfaces(mat):
     mat["culled"] = 1
 
 
+def clip_alpha(mat, thr=0.5):
+    """the worst case of the game's alpha (a hard cut-out at thr instead of blending: no soft card edge left to
+    hide behind), for the --roblox check"""
+    if mat.get("clipped"):
+        return
+    nt = mat.node_tree
+    bs = nt.nodes["Principled BSDF"]
+    links = [l for l in nt.links if l.to_socket == bs.inputs["Alpha"]]
+    if links:
+        src = links[0].from_socket
+        nt.links.remove(links[0])
+        gt = nt.nodes.new("ShaderNodeMath")
+        gt.operation = "GREATER_THAN"
+        gt.inputs[1].default_value = thr
+        nt.links.new(src, gt.inputs[0])
+        nt.links.new(gt.outputs[0], bs.inputs["Alpha"])
+    mat["clipped"] = 1
+
+
 def bake_dye(tex, base, alt, dye, out, bands=12):
     """the game's tint (HairAssetKit.Tint with Kit.Palette's pal.at, approximately): per row v (root 0 .. tip 1)
     the base colour lerped to the dye's by smoothstep(0.6, 0.85, v) (Tips) or (0.25, 0.95, v) (Ombre), darker
@@ -1452,7 +1515,7 @@ def bake_dye(tex, base, alt, dye, out, bands=12):
     return out
 
 
-def render_style(key, spec, pieces, looks, views, res, samples, cull=True, vol=None, tag="", dye=None):
+def render_style(key, spec, pieces, looks, views, res, samples, cull=True, vol=None, tag="", dye=None, clip=False):
     import render
     os.makedirs(FAM_DIR, exist_ok=True)
     capP = read_mesh_v2(os.path.join(hl.OUT, "cap", "HairCap.mesh"), "HairCap")
@@ -1484,6 +1547,8 @@ def render_style(key, spec, pieces, looks, views, res, samples, cull=True, vol=N
             if cull:
                 cull_backfaces(ob.data.materials[0])
                 fabric(ob.data.materials[0])
+            if clip:
+                clip_alpha(ob.data.materials[0])
         for v in views:
             view, dist, focus = VIEWS[v]
             fn = os.path.join(FAM_DIR, f"{key}{tag}_{look}_{v}.png")
@@ -1520,6 +1585,8 @@ def main():
     ap.add_argument("--views", default="")
     ap.add_argument("--looks", default="")
     ap.add_argument("--stock", action="store_true", help="also one stock-material, all-triangles view")
+    ap.add_argument("--roblox", action="store_true",
+                    help="also a game-like check: one-sided (culled), Fabric, alpha cut out at 0.5 (34, close34)")
     ap.add_argument("--volume", default="", help="also render at these volume factors, e.g. 0.8,1.3")
     ap.add_argument("--dye", default="", help="also a dye preview (Tips / Ombre, blonde over the look's colour)")
     args = ap.parse_args(sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else sys.argv[1:])
@@ -1562,6 +1629,10 @@ def main():
                 p2, l2 = render_style(key, STYLES[key], built[key], [looks[0]], ["34"], res, samples, cull=False,
                                       tag="_stock")
                 print("stock", p2, flush=True)
+            if args.roblox:
+                p5, l5 = render_style(key, STYLES[key], built[key], [looks[0]], ["34", "close34"], res, samples,
+                                      tag="_roblox", clip=True)
+                print("roblox", p5, flush=True)
             for dy in [x for x in args.dye.split(",") if x]:
                 p4, l4 = render_style(key, STYLES[key], built[key], [looks[1] if len(looks) > 1 else looks[0]],
                                       ["34", "close34"], res, samples, tag=f"_dye{dy}", dye=dy)
