@@ -5,6 +5,7 @@
   "id": 88137314268518,
   "moderation": "Approved",
   "name": "WCB Body T4 LowerTorso",
+  "state": "Active",
   "type": "Mesh"
  },
  "028bd5cc7ce0d973d2b7c2ca0f8e51b0a65bbf0f99ab0925b14dd0865e38176b": {
@@ -13,14 +14,16 @@
   "id": 75098596094094,
   "moderation": "Approved",
   "name": "WCB Body T4 RightUpperArm",
+  "state": "Active",
   "type": "Mesh"
  },
  "04907129aae4d4245575e7e1764fc7f73191d708d4bca387251e3f89db4b76d3": {
   "at": "2026-10-18T01:58:57Z",
   "file": "out/faces/face_tired.png",
   "id": 78990653184355,
-  "moderation": "Reviewing",
+  "moderation": "Approved",
   "name": "WCB Face Tired",
+  "state": "Active",
   "type": "Image"
  },
  "0a79eb6e2393b5f87d38ddca7bd50e514cc53b10626c934cabbe9949fec2062f": {
@@ -29,6 +32,7 @@
   "id": 81779930210942,
   "moderation": "Approved",
   "name": "WCB Body T2 UpperTorso",
+  "state": "Active",
   "type": "Mesh"
  },
  "0d4fd48be491e5d5f64c7e594b044f94df66f17316ac57e4116a7e1fc51fe98a": {
@@ -37,6 +41,7 @@
   "id": 124051230280598,
   "moderation": "Approved",
   "name": "WCB Body T1 RightUpperLeg",
+  "state": "Active",
   "type": "Mesh"
  },
  "10148c051bca7ec7aad51d4eb3d3da7b3813378084651d5696f5cedd45568a24": {
@@ -45,6 +50,7 @@
   "id": 106576219524465,
   "moderation": "Approved",
   "name": "WCB Body T2 RightLowerArm",
+  "state": "Active",
   "type": "Mesh"
  },
  "1396687906143349d6a49048b5118494822d63b3ea94b4aaaebad7cba9017f81": {
@@ -53,6 +59,7 @@
   "id": 120107226849740,
   "moderation": "Approved",
   "name": "WCB Body T3 LeftHand",
+  "state": "Active",
   "type": "Mesh"
  },
  "18b253df2fbb47cf385102ac843487b675e9f5e191ab5bef31fab105deae17a2": {
@@ -61,6 +68,7 @@
   "id": 76823071334152,
   "moderation": "Approved",
   "name": "WCB Body T5 UpperTorso",
+  "state": "Active",
   "type": "Mesh"
  },
  "1c4f324afce8e31da3313a5601dd5bc114c1b9e5b813bf015983af1d8282bb25": {
@@ -69,6 +77,7 @@
   "id": 116926465573723,
   "moderation": "Approved",
   "name": "WCB Body T1 RightFoot",
+  "state": "Active",
   "type": "Mesh"
  },
  "25222dcbbe5a66f1da43ad29af6ecb6738ba321ba456b17c685ca6aacc922c82": {
@@ -77,6 +86,7 @@
   "id": 71207216067879,
   "moderation": "Approved",
   "name": "WCB Body T1 LeftHand",
+  "state": "Active",
   "type": "Mesh"
  },
  "2e059816bff732535a7238e1c37f65e7aef4c1dd67d5e45e8659934adb28ca90": {
@@ -85,6 +95,7 @@
   "id": 127447535541049,
   "moderation": "Approved",
   "name": "WCB Body T1 LeftLowerLeg",
+  "state": "Active",
   "type": "Mesh"
  },
  "30ab26d03ab3650b2dd5ad21f2ad24b0722fabcc6c3024dec0fd80220897b57e": {
@@ -93,6 +104,7 @@
   "id": 77607432012873,
   "moderation": "Approved",
   "name": "WCB Body T2 LeftUpperArm",
+  "state": "Active",
   "type": "Mesh"
  },
  "38bef7b0c5668e4965a19ebbb8998d88f67a3b4ed0ec72fd929e670562a9316c": {
@@ -101,6 +113,7 @@
   "id": 93371064248635,
   "moderation": "Approved",
   "name": "WCB Body T2 LeftLowerLeg",
+  "state": "Active",
   "type": "Mesh"
  },
  "41b0b315ec92a8224f2759bf6626e658195209ce53b45c5de79253b6861eedfc": {
@@ -109,6 +122,7 @@
   "id": 117392376447793,
   "moderation": "Approved",
   "name": "WCB Body T3 RightLowerLeg",
+  "state": "Active",
   "type": "Mesh"
  },
  "4d6a7f84d22cc512bbe4ace7369a57f2996a8cccf55f65d3c4e7326ea3027475": {
@@ -117,14 +131,16 @@
   "id": 121360273479189,
   "moderation": "Approved",
   "name": "WCB Body T3 RightUpperArm",
+  "state": "Active",
   "type": "Mesh"
  },
  "504cc1a546318dc4ae56e5c986426f903a49dbe8eede369672decd59da7221d8": {
   "at": "2026-10-18T01:58:29Z",
   "file": "out/faces/face_smirk.png",
   "id": 70899326493201,
-  "moderation": "Reviewing",
+  "moderation": "Approved",
   "name": "WCB Face Smirk",
+  "state": "Active",
   "type": "Image"
  },
  "512b97617b749bfae98902070772a64e477a1f0645f57fd9cb47994002f88c89": {
@@ -133,14 +149,16 @@
   "id": 131624372967132,
   "moderation": "Approved",
   "name": "WCB Body T3 RightUpperLeg",
+  "state": "Active",
   "type": "Mesh"
  },
  "51cfa7c70dbd8ca7e31aae42598d936b70262774bee3eebc9439e42af2d9baa9": {
   "at": "2026-10-18T01:59:00Z",
   "file": "out/faces/face_hurt.png",
   "id": 96227224894673,
-  "moderation": "Reviewing",
+  "moderation": "Approved",
   "name": "WCB Face Hurt",
+  "state": "Active",
   "type": "Image"
  },
  "531aef065645f658c2391c9f33184cce5ed4239fdf94f39a657d22e97bb026f6": {
@@ -149,6 +167,7 @@
   "id": 101027366355600,
   "moderation": "Approved",
   "name": "WCB Body T5 LeftHand",
+  "state": "Active",
   "type": "Mesh"
  },
  "59c54b4ef42f12f3cf14c92416c73ec5738765806187e13151df9df960b39000": {
@@ -157,6 +176,7 @@
   "id": 117303947525026,
   "moderation": "Approved",
   "name": "WCB Body T2 RightUpperArm",
+  "state": "Active",
   "type": "Mesh"
  },
  "5c4f130aa41095b271960ee92feb1e75fcb389c8d1ed9fce684fece6b7427ebe": {
@@ -165,14 +185,16 @@
   "id": 86367632135403,
   "moderation": "Approved",
   "name": "WCB Body T3 LowerTorso",
+  "state": "Active",
   "type": "Mesh"
  },
  "5e4b311bbef0d356c484abeb345675c5d997b905a9ac92bd3291697619bf580e": {
   "at": "2026-10-18T01:58:32Z",
   "file": "out/faces/face_confident.png",
   "id": 138258537581099,
-  "moderation": "Reviewing",
+  "moderation": "Approved",
   "name": "WCB Face Confident",
+  "state": "Active",
   "type": "Image"
  },
  "646f690f38174e81286bb7f9848b22ab1a37bd1ee0bd8b05c35fae03090bc01a": {
@@ -181,6 +203,7 @@
   "id": 77369497997162,
   "moderation": "Approved",
   "name": "WCB Body T5 LowerTorso",
+  "state": "Active",
   "type": "Mesh"
  },
  "65e54ea6761b1cd19bbcc6e72c01cb32208c5b68231c60f5ee2897b28c6c70a2": {
@@ -189,14 +212,16 @@
   "id": 112571784658040,
   "moderation": "Approved",
   "name": "WCB Body T2 LowerTorso",
+  "state": "Active",
   "type": "Mesh"
  },
  "66fb4d34196257c06ad746b64bb22e6e5e181648777da4b9f47bd78eed870d75": {
   "at": "2026-10-18T01:58:34Z",
   "file": "out/faces/face_cool.png",
   "id": 108494098331099,
-  "moderation": "Reviewing",
+  "moderation": "Approved",
   "name": "WCB Face Cool",
+  "state": "Active",
   "type": "Image"
  },
  "67a0b46738749e423622ad5b5edcc655288d0e81a1b632b82b4994de3121e69c": {
@@ -205,6 +230,7 @@
   "id": 85174395677159,
   "moderation": "Approved",
   "name": "WCB Body T1 UpperTorso",
+  "state": "Active",
   "type": "Mesh"
  },
  "67caa07b4a15f70440771f32ff40c5fe39dcc728ef1922efad91d7b401dda6f3": {
@@ -213,6 +239,7 @@
   "id": 95494471719279,
   "moderation": "Approved",
   "name": "WCB Body T2 LeftLowerArm",
+  "state": "Active",
   "type": "Mesh"
  },
  "69d9ee085bc36de9009dc5f02fcfeff9c99e8a9a2111d693d64562a2b8b29211": {
@@ -221,14 +248,16 @@
   "id": 85801687461155,
   "moderation": "Approved",
   "name": "WCB Body T5 RightLowerLeg",
+  "state": "Active",
   "type": "Mesh"
  },
  "6fe5e552e234fd33ef82972298639d743ad864d7fa3bd4db5ee4606474a61a2f": {
   "at": "2026-10-18T01:58:24Z",
   "file": "out/faces/face_smile.png",
   "id": 103981745933207,
-  "moderation": "Reviewing",
+  "moderation": "Approved",
   "name": "WCB Face Smile",
+  "state": "Active",
   "type": "Image"
  },
  "72fb7a1ce9a667507cd52dd3f025cc9ee0cee155fd4734b2ee573c1ab2ea7d81": {
@@ -237,6 +266,7 @@
   "id": 140216850236411,
   "moderation": "Approved",
   "name": "WCB Body T3 RightLowerArm",
+  "state": "Active",
   "type": "Mesh"
  },
  "7c7caceac1bcde52cf835f4bf44d970598d06057b906e88a9567148f6d595909": {
@@ -245,6 +275,7 @@
   "id": 109454227123218,
   "moderation": "Approved",
   "name": "WCB Body T5 RightUpperArm",
+  "state": "Active",
   "type": "Mesh"
  },
  "83108fcdec3f212a925dc71a5c5d29d06f2f7d8eb6411f9fa83774687b2ac7cb": {
@@ -253,6 +284,7 @@
   "id": 115871315467838,
   "moderation": "Approved",
   "name": "WCB Body T4 LeftLowerLeg",
+  "state": "Active",
   "type": "Mesh"
  },
  "85a9088cea91d8bfeeade62717871147ac59f1aab7142a64c80898136cce3b34": {
@@ -261,6 +293,7 @@
   "id": 90392223037580,
   "moderation": "Approved",
   "name": "WCB Body T3 LeftLowerLeg",
+  "state": "Active",
   "type": "Mesh"
  },
  "861307daca78a992660aebc6ff6c65c51763911440a059724dee70a406e9db62": {
@@ -269,6 +302,7 @@
   "id": 80356768826973,
   "moderation": "Approved",
   "name": "WCB Body T1 RightLowerArm",
+  "state": "Active",
   "type": "Mesh"
  },
  "8acfdf2dcbb99e68758d9d94f763e55cec00ed9c0c91a5d305bd8cfaf2bec9c5": {
@@ -277,14 +311,16 @@
   "id": 88728812108031,
   "moderation": "Approved",
   "name": "WCB Body T1 RightUpperArm",
+  "state": "Active",
   "type": "Mesh"
  },
  "8c6270c21d0cca3162cc0edd25ee479fb1b5c91798e9b62cf0aa1c8f861d369d": {
   "at": "2026-10-18T01:59:03Z",
   "file": "out/faces/face_dazed.png",
   "id": 119280637054713,
-  "moderation": "Reviewing",
+  "moderation": "Approved",
   "name": "WCB Face Dazed",
+  "state": "Active",
   "type": "Image"
  },
  "8d83ee0ebecf0c3a29cb825dd7464361e8a003d8b8b38ebef2759c5baa3d5554": {
@@ -293,14 +329,16 @@
   "id": 121473614893469,
   "moderation": "Approved",
   "name": "WCB Body T2 LeftHand",
+  "state": "Active",
   "type": "Mesh"
  },
  "8f80e7c840628426dab572eb3894fa1d9bfcc67345ef7b16924fe5e303746d95": {
   "at": "2026-10-18T01:58:37Z",
   "file": "out/faces/face_happy.png",
   "id": 74637287931880,
-  "moderation": "Reviewing",
+  "moderation": "Approved",
   "name": "WCB Face Happy",
+  "state": "Active",
   "type": "Image"
  },
  "9183cd6556ea04ba33e0b691dc787a1a36c8b2fee4bc26d4cf98c4a08613cc1a": {
@@ -309,6 +347,7 @@
   "id": 90397640258858,
   "moderation": "Approved",
   "name": "WCB Body T4 LeftUpperLeg",
+  "state": "Active",
   "type": "Mesh"
  },
  "932f2efaf0dab0363fb2e9cfc241f804814c836586bcbfebab588f4d35a180c1": {
@@ -317,6 +356,7 @@
   "id": 138890711199005,
   "moderation": "Approved",
   "name": "WCB Body T1 RightHand",
+  "state": "Active",
   "type": "Mesh"
  },
  "951b5e4715f226036ead4986d6fd826b0f913b4a72abe7dde77ec0a98fc51581": {
@@ -325,14 +365,16 @@
   "id": 94857775094052,
   "moderation": "Approved",
   "name": "WCB Body T4 LeftUpperArm",
+  "state": "Active",
   "type": "Mesh"
  },
  "994cab4f611e778102ac51fa58fe3a556ae7aac7c5c4efc8156c1ad1a629b612": {
   "at": "2026-10-18T01:58:42Z",
   "file": "out/faces/face_determined.png",
   "id": 72204292530663,
-  "moderation": "Reviewing",
+  "moderation": "Approved",
   "name": "WCB Face Determined",
+  "state": "Active",
   "type": "Image"
  },
  "9ca8239d58782650e2ed7a4c0d432843a2cd8ce7b8d8ed6c61da0ab3baa3e5d3": {
@@ -341,6 +383,7 @@
   "id": 120559251878192,
   "moderation": "Approved",
   "name": "WCB Body T3 RightHand",
+  "state": "Active",
   "type": "Mesh"
  },
  "9e9aa21ef7d614c8ecdc4bd7234491ba8cd438ddcb3fc40ae2c86775d54ff569": {
@@ -349,6 +392,7 @@
   "id": 93177593986028,
   "moderation": "Approved",
   "name": "WCB Body T4 RightLowerLeg",
+  "state": "Active",
   "type": "Mesh"
  },
  "9ffce5984833498bdf9bb0d956cc861c251dfd1e962d31382638250be8e40e1e": {
@@ -357,6 +401,7 @@
   "id": 91989701350117,
   "moderation": "Approved",
   "name": "WCB Body T4 LeftLowerArm",
+  "state": "Active",
   "type": "Mesh"
  },
  "a2751de7c84cde43d1cf941114f737c7979ea5779b1c69fac4be1630e8053855": {
@@ -365,6 +410,7 @@
   "id": 126665075994944,
   "moderation": "Approved",
   "name": "WCB Body T4 LeftHand",
+  "state": "Active",
   "type": "Mesh"
  },
  "a5f028e70247ec55fa6323f0bf846b4a03485ee5260e5cb8afadc40e230a790a": {
@@ -373,6 +419,7 @@
   "id": 104443122304387,
   "moderation": "Approved",
   "name": "WCB Body T4 RightUpperLeg",
+  "state": "Active",
   "type": "Mesh"
  },
  "a6a17cc02efcd464f26fa451f9b702eeeb7dae6cac6bdc61204e3261c4c939b3": {
@@ -381,14 +428,16 @@
   "id": 85603334048217,
   "moderation": "Approved",
   "name": "WCB Body T1 LowerTorso",
+  "state": "Active",
   "type": "Mesh"
  },
  "ae30fa187692041b2f1dd4b653e79c94b98d9ca949ab6a388a9a4d9b7a7f86d4": {
   "at": "2026-10-18T01:58:45Z",
   "file": "out/faces/face_focused.png",
   "id": 100205117170851,
-  "moderation": "Reviewing",
+  "moderation": "Approved",
   "name": "WCB Face Focused",
+  "state": "Active",
   "type": "Image"
  },
  "b14c9af8a4d62e71ed5b14ad26f764b3aedd6ba39d6b572694c46e00f9388d28": {
@@ -397,6 +446,7 @@
   "id": 129333792746726,
   "moderation": "Approved",
   "name": "WCB Body T2 RightHand",
+  "state": "Active",
   "type": "Mesh"
  },
  "b40f7a1ef1fb996a84eda857284846a93ff1b49b726974bfbb2d4f3e30a0073d": {
@@ -405,6 +455,7 @@
   "id": 110962755843802,
   "moderation": "Approved",
   "name": "WCB Body T4 RightLowerArm",
+  "state": "Active",
   "type": "Mesh"
  },
  "b59e6f8fd32a607703eac3ee8c17b17d7165da80f190b1060067fd19b85405a6": {
@@ -413,6 +464,7 @@
   "id": 97002096745063,
   "moderation": "Approved",
   "name": "WCB Body T5 LeftLowerArm",
+  "state": "Active",
   "type": "Mesh"
  },
  "b5c998e58ad9978df6e16dbdaa79e3022ab269d27fb3159331c6062321ea5b42": {
@@ -421,6 +473,7 @@
   "id": 100154461485911,
   "moderation": "Approved",
   "name": "WCB Body T5 LeftUpperLeg",
+  "state": "Active",
   "type": "Mesh"
  },
  "b77b166afcb0e46fddd25a9d95e32597811aedd486eadbb1e094f4698af8c84e": {
@@ -429,22 +482,25 @@
   "id": 132317256394643,
   "moderation": "Approved",
   "name": "WCB Body T4 UpperTorso",
+  "state": "Active",
   "type": "Mesh"
  },
  "ba2da3ad7765ed78b3bc3b7d10e03bcd81685376cc56c4fd1bd20f6e3a338dc4": {
   "at": "2026-10-18T01:58:47Z",
   "file": "out/faces/face_stern.png",
   "id": 91406902077948,
-  "moderation": "Reviewing",
+  "moderation": "Approved",
   "name": "WCB Face Stern",
+  "state": "Active",
   "type": "Image"
  },
  "bd2f0b672031da72dcb7e0980e83a35baa379d16decb36ed7096d383fcbdef3f": {
   "at": "2026-10-18T01:59:05Z",
   "file": "out/faces/face_ko.png",
   "id": 115777324853187,
-  "moderation": "Reviewing",
+  "moderation": "Approved",
   "name": "WCB Face KO",
+  "state": "Active",
   "type": "Image"
  },
  "bf2413972cb47e04339a73219acd3b552277beab437e024e6c286d3102f504cb": {
@@ -453,6 +509,7 @@
   "id": 138408914455701,
   "moderation": "Approved",
   "name": "WCB Body T3 LeftUpperLeg",
+  "state": "Active",
   "type": "Mesh"
  },
  "c73bdbcaee9d5277925b097f4fac2e14a3e052a352b3daa55a37c09206f04c99": {
@@ -461,6 +518,7 @@
   "id": 84973416087823,
   "moderation": "Approved",
   "name": "WCB Body T4 RightHand",
+  "state": "Active",
   "type": "Mesh"
  },
  "caf8df5c5e83def6037f1e9476145bec4ab44f8dcb28cfc2a405f240c96652a0": {
@@ -469,6 +527,7 @@
   "id": 129664227767813,
   "moderation": "Approved",
   "name": "WCB Body T5 RightUpperLeg",
+  "state": "Active",
   "type": "Mesh"
  },
  "cba46129c4deaf40ff2ad66b6531732a67bf4b6ed3ef58421088e3767e22d74e": {
@@ -477,6 +536,7 @@
   "id": 84440841349512,
   "moderation": "Approved",
   "name": "WCB Body T1 LeftUpperLeg",
+  "state": "Active",
   "type": "Mesh"
  },
  "d3c15a560d4b9925f883201d47ae3c4637f4ab5226f3acfa90439d8bb1c02915": {
@@ -485,6 +545,7 @@
   "id": 80111342463314,
   "moderation": "Approved",
   "name": "WCB Body T3 LeftUpperArm",
+  "state": "Active",
   "type": "Mesh"
  },
  "d5c1f7ae8d94c3c3f07a55036c0d7fb0b1c93871a1db6e12b2b951083595e593": {
@@ -493,14 +554,16 @@
   "id": 73860803400441,
   "moderation": "Approved",
   "name": "WCB Body T1 LeftLowerArm",
+  "state": "Active",
   "type": "Mesh"
  },
  "d93ff93d81ed6104c68592b3fcbbbadc1f092437f61f78d879dc73f82694e8c0": {
   "at": "2026-10-18T01:58:55Z",
   "file": "out/faces/face_surprised.png",
   "id": 116588266731936,
-  "moderation": "Reviewing",
+  "moderation": "Approved",
   "name": "WCB Face Surprised",
+  "state": "Active",
   "type": "Image"
  },
  "d97255495c5705745558e8283be48700e2b1b34f64fec0cc7114976a1b65192e": {
@@ -509,6 +572,7 @@
   "id": 121865584013263,
   "moderation": "Approved",
   "name": "WCB Body T3 LeftLowerArm",
+  "state": "Active",
   "type": "Mesh"
  },
  "da048eedf9a7b7f6d4c2241e59afe1ae795c2ee71821d5643256b904fd33f841": {
@@ -517,6 +581,7 @@
   "id": 91578364885928,
   "moderation": "Approved",
   "name": "WCB Body T1 LeftUpperArm",
+  "state": "Active",
   "type": "Mesh"
  },
  "dbb01b333a03dcf36254f8ff405e6048551428054134123208683d3c92d62ebe": {
@@ -525,22 +590,25 @@
   "id": 120579277665388,
   "moderation": "Approved",
   "name": "WCB Body T2 RightLowerLeg",
+  "state": "Active",
   "type": "Mesh"
  },
  "df6781f12b44c1a6630a1865204aa56440275c7d3710d0647f7b9914e8e23d7e": {
   "at": "2026-10-18T01:58:50Z",
   "file": "out/faces/face_angry.png",
   "id": 88333164372231,
-  "moderation": "Reviewing",
+  "moderation": "Approved",
   "name": "WCB Face Angry",
+  "state": "Active",
   "type": "Image"
  },
  "e58872a085e29f65bdb298cdbaa605fa5c73718811911eb01e121804efe38324": {
   "at": "2026-10-18T01:58:26Z",
   "file": "out/faces/face_grin.png",
   "id": 135197351903669,
-  "moderation": "Reviewing",
+  "moderation": "Approved",
   "name": "WCB Face Grin",
+  "state": "Active",
   "type": "Image"
  },
  "e7cfd4e350c79c43dd5e306305264e8d8f31515746d092a858a6512da5d6a252": {
@@ -549,6 +617,7 @@
   "id": 98913604741444,
   "moderation": "Approved",
   "name": "WCB Body T1 RightLowerLeg",
+  "state": "Active",
   "type": "Mesh"
  },
  "e8ef605d69b3bfb014970a175c6ee110fc01bc974e69a5b215a721e971b27a10": {
@@ -557,6 +626,7 @@
   "id": 81758027553623,
   "moderation": "Approved",
   "name": "WCB Body T2 LeftUpperLeg",
+  "state": "Active",
   "type": "Mesh"
  },
  "ea60670ae0da6dfed6d558537df3d5ffc2ffd7eb9ad21108fe273cfd5187e931": {
@@ -565,6 +635,7 @@
   "id": 96366608432581,
   "moderation": "Approved",
   "name": "WCB Body T5 RightLowerArm",
+  "state": "Active",
   "type": "Mesh"
  },
  "ec968fff330618c6e2a70500c70cd95783029fe1ac7a1a17115309930ca53739": {
@@ -573,14 +644,16 @@
   "id": 75848892860085,
   "moderation": "Approved",
   "name": "WCB Body T5 LeftLowerLeg",
+  "state": "Active",
   "type": "Mesh"
  },
  "ed05af04f5292ecf2977c6a0d0f4e1056150e79e67cf203e7672ef9f4cf48792": {
   "at": "2026-10-18T01:58:39Z",
   "file": "out/faces/face_wink.png",
   "id": 75953893163720,
-  "moderation": "Reviewing",
+  "moderation": "Approved",
   "name": "WCB Face Wink",
+  "state": "Active",
   "type": "Image"
  },
  "f035fa7a118bfd47f943808610e0433027a0f15f84af162696fde418be9b5bda": {
@@ -589,6 +662,7 @@
   "id": 89796138800372,
   "moderation": "Approved",
   "name": "WCB Body T2 RightUpperLeg",
+  "state": "Active",
   "type": "Mesh"
  },
  "f067b0d0adb88b0713f0a0c2209d57da1ec30c25feaec47df0f423aaca956440": {
@@ -597,6 +671,7 @@
   "id": 94630907519359,
   "moderation": "Approved",
   "name": "WCB Body T5 LeftUpperArm",
+  "state": "Active",
   "type": "Mesh"
  },
  "f1702100b71565bbb7f5300fa3edbe16b64dd8f64194e74e1056365fa43bccba": {
@@ -605,6 +680,7 @@
   "id": 123371289437927,
   "moderation": "Approved",
   "name": "WCB Body T1 LeftFoot",
+  "state": "Active",
   "type": "Mesh"
  },
  "f3525a9197ae569779c19282469a61032abaa1f1216975bdc77447147800f038": {
@@ -613,14 +689,16 @@
   "id": 110259184297958,
   "moderation": "Approved",
   "name": "WCB Body T3 UpperTorso",
+  "state": "Active",
   "type": "Mesh"
  },
  "f4e0e2b0de12a6b3a848e56c1bcad6a4b35bf07ad2e6b2f1df3d4f45d569bd5c": {
   "at": "2026-10-18T01:58:52Z",
   "file": "out/faces/face_grit.png",
   "id": 78395293730448,
-  "moderation": "Reviewing",
+  "moderation": "Approved",
   "name": "WCB Face Grit",
+  "state": "Active",
   "type": "Image"
  },
  "fe4ab21411d2f166f906001668295bc41ad159451fad29c10bde3dae7c23618c": {
@@ -629,6 +707,7 @@
   "id": 75759054184438,
   "moderation": "Approved",
   "name": "WCB Body T5 RightHand",
+  "state": "Active",
   "type": "Mesh"
  }
 }
