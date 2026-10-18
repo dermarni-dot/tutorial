@@ -56,6 +56,8 @@ for s in (args.clips or "walk,jog,punch"):gmatch("[^,]+") do
 end
 local NFRAMES = tonumber(args.frames) or 8
 local NOMESH = args["no-mesh"] == true
+local BARE = args.bare ~= nil and args.bare ~= "0" -- hide the gear (the body's own surfaces)
+local HANDS = args.hands or "gloves" -- gloves | wraps | bare
 
 ------------------------------------------------------------------------
 -- host: fake engine, virtual clock, the asset simulator (Content)
@@ -389,7 +391,7 @@ local function makeBoxer(tier, spec)
 	local model, hum = newRig(Vector3.new(sc.width, sc.height, sc.depth), 1.2 * sc.head)
 	model.Parent = E.workspace
 	currentModel = model
-	local ok, err = pcall(Builder.Cosmetics, model, app, b, nil, { hands = spec.hands or "gloves", detail = "full" })
+	local ok, err = pcall(Builder.Cosmetics, model, app, b, nil, { hands = spec.hands or HANDS, detail = "full" })
 	if not ok then
 		error("Cosmetics failed: " .. tostring(err))
 	end
@@ -467,6 +469,9 @@ local function exportFrame(model, t)
 			continue
 		end
 		if (p.Transparency or 0) >= 0.99 then
+			continue
+		end
+		if BARE and not p:GetAttribute("BodyTier") and p.Name ~= "Head" then
 			continue
 		end
 		local file = cls == "MeshPart" and fileOf(p)
@@ -838,7 +843,30 @@ local function punchClip(tier)
 	end
 end
 
+local function restClip(tier)
+	local model = makeBoxer(tier)
+	model.Name = "Stander"
+	player.Character = model
+	player.CharacterAdded:Fire(model)
+	for _ = 1, 120 do
+		frame({ model })
+	end
+	local out = { clip = "rest", tier = tier, frames = { exportFrame(model, VT) } }
+	out.frames[1].root = cfList(model:FindFirstChild("HumanoidRootPart").CFrame)
+	local file = string.format("rest_t%d.json", tier)
+	Host.WriteJSON(OUT .. "/" .. file, out)
+	table.insert(index.clips, { id = string.format("rest_t%d", tier), file = file, clip = "rest", tier = tier, n = 1 })
+	player.Character = nil
+	model:Destroy()
+	for _ = 1, 3 do
+		frame({})
+	end
+end
+
 for _, tier in ipairs(TIERS) do
+	if CLIPS.rest then
+		restClip(tier)
+	end
 	for _, clip in ipairs({ "walk", "jog", "run" }) do
 		if CLIPS[clip] then
 			walkClip(clip, tier)

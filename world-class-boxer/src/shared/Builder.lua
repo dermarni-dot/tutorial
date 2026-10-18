@@ -5,7 +5,7 @@
 --   caching, detail levels and the CONTRACTS section 4 opts
 -- The layers live in sub-modules that share the part helpers in BuilderKit:
 -- * BuilderTiers: the 14 muscle-tier body parts (Humanoid:ReplaceBodyPartR15, only on a tier change)
--- * BuilderHead: the classic head and its face decal, beard, fight damage, sweat shine, sparring headgear
+-- * BuilderHead: the classic head and the face built on it (Parts, a FaceFX rig), beard, fight damage, sweat, headgear
 -- * BuilderHair: hair styles x hair types, strands, sway joints, hair under headgear / hoods, wet hair
 -- * BuilderBody: skin/trunks/shoe colours, attire, gloves and wraps, robe, body sweat / bruises
 -- FaceLayout, SetDamage, SetSweat, SetHeadgear, SetHairHidden and SetRobe are forwarded from them.
@@ -199,16 +199,16 @@ local HEAD_SIG_SKIP = {
 	fightNight = true, physique = true, tier = true, sponsorTrunks = true, sponsorRobe = true, grime = true,
 	mouthguard = true, damage = true,
 }
--- Inputs the head steps read. Face = the classic head swap and its decal: the face key and the head's size
--- only (a barber visit, a fight or the sliders never rebuild it). Hair / Beard: the look's hair / beard, the
--- face's FaceLayout inputs and the plain opts (detail, age, ...).
+-- Inputs the head steps read beyond the plain opts. Face = the built face's sliders, face fat, opts.grime (stored
+-- on the face folder as OptGrime), the mouthguard colour and its bloodied tint (opts.damage.lip > 0.6), the fight
+-- wear (app.battle) and only the hair / beard fields it really uses (Head.FaceSigParts: brow colour, lips
+-- covered), so a barber visit never rebuilds the face. The Grime ATTRIBUTE (CONTRACTS section 7: set after
+-- roadwork, cleared by the shower) is deliberately not in the key: BuilderHead draws face dirt in its own
+-- FaceGrime folder from it on every Head.SetSweat, which Cosmetics always runs last, so roadwork and the shower
+-- never cost a face rebuild. HD4: the built face is back (folders sealed under HD3's decal face rebuild once).
 local function headSig(model, app, build, opts, name)
 	local head = model:FindFirstChild("Head")
-	local f = type(app.face) == "table" and app.face or {}
 	local avHair, avFace = model:GetAttribute("AvatarHair") == true, model:GetAttribute("AvatarFace") == true
-	if name == "Face" then
-		return Kit.sig("HD3", name, f.key or "smile", head and head.Size or false, avFace)
-	end
 	local o = {}
 	for k, v in pairs(opts) do
 		local t = type(v)
@@ -216,12 +216,33 @@ local function headSig(model, app, build, opts, name)
 			o[k] = v
 		end
 	end
-	return Kit.sig("HD3", name, app.gender, app.skin, app.height, app.face, app.hair, app.beard, o,
-		head and head.Size or false, Config.BaldMode, name == "Hair" and avHair or false)
+	local fat, extra = 0, false
+	local hair, beard = app.hair, app.beard
+	if name == "Face" then
+		-- whole percent steps are plenty for cheeks / jowls
+		fat = build and tonumber(build.fat) or 0
+		local at = type(app.attire) == "table" and app.attire or {}
+		local og = tonumber(opts.grime)
+		local dmg = type(opts.damage) == "table" and opts.damage or nil
+		extra = {
+			grime = og and math.floor(math.clamp(og, 0, 1) * 10 + 0.5) or "attr",
+			guard = opts.mouthguard and (at.mouthguard or true) or false,
+			guardBlood = opts.mouthguard and dmg ~= nil and (tonumber(dmg.lip) or 0) > 0.6 or false,
+			avatar = avFace,
+		}
+		if type(Head.FaceSigParts) == "function" then
+			local ok, parts = pcall(Head.FaceSigParts, app)
+			if ok and type(parts) == "table" then
+				hair, beard = parts, false
+			end
+		end
+	end
+	return Kit.sig("HD4", name, app.gender, app.skin, app.height, app.face, hair, beard, app.battle, o,
+		math.floor(fat + 0.5), head and head.Size or false, Config.BaldMode, extra, name == "Hair" and avHair or false)
 end
 
 -- The head is scaled (HeadScale), and BuilderHead swaps the engine's default head (a MeshPart) for the classic
--- head (a plain Part with the Head SpecialMesh, which takes the face Decal) of the same size once. Humanoid:ReplaceBodyPartR15 scales the new part "as
+-- head (a plain Part with the Head SpecialMesh, the built face sits on it) of the same size once. Humanoid:ReplaceBodyPartR15 scales the new part "as
 -- normal", so the engine may take that already-scaled size as unscaled and scale it a second time (with the
 -- old Classic HeadScale 1 that was harmless). headRecord / keepHeadScale put back the size, the OriginalSize
 -- record and the attachments the engine gave the original head, and re-aim the neck: the head is scaled
@@ -321,7 +342,7 @@ local function headStep(model, app, build, opts, name)
 	end
 end
 
--- the Face step (the classic head swap and its face decal), kept at the engine's head scale; the face is rebuilt
+-- the Face step (the classic head swap and the built face), kept at the engine's head scale; the face is rebuilt
 -- once on the corrected head (its size is in the Face cache key) when the swap changed it
 local function faceStep(model, app, build, opts)
 	-- quiet pcalls: the guard is a safety net, it must never cost a face
