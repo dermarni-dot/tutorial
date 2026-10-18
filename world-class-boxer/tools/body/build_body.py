@@ -99,10 +99,19 @@ def arm_x(tr):
     return 1.20 + 0.22 * tr["m"]
 
 
+# the shoulder pivot (v9): on the arm's own axis, where the upper arm's top dome is centred, a little under the R15
+# height (the dome is a ball joint: it turns in place, never swinging out through the chest or up past the neck).
+# The R15 position (x = +-1, Y_LT + 1.563) is kept as R15_SHOULDER: the elbow / wrist chain still hangs from it, so the
+# arm's place and length stay what they were
+YS_PIVOT = 3.53
+R15_SHOULDER = (1.0, Y_LT + 1.563, 0.0)
+
+
 def tier_joints(tr):
     Jt = dict(J)
     ax = arm_x(tr)
     for side, sg in (("Right", 1), ("Left", -1)):
+        Jt[side + "Shoulder"] = (sg * ax, YS_PIVOT, 0.0)
         for jn in ("Elbow", "Wrist"):
             x, y, z = J[side + jn]
             Jt[side + jn] = (sg * ax, y, z)
@@ -175,14 +184,16 @@ def game_joints(tr, n=None):
         G[k] = ST * (Jo[k] - r)
     dx = ARM_DX.get(n, 0.0) if n is not None else 0.0
     for side, sg in (("Right", 1), ("Left", -1)):
-        for k in ("Shoulder", "Hip"):
-            G[side + k] = ST * (Jo[side + k] - r)
+        G[side + "Hip"] = ST * (Jo[side + "Hip"] - r)
         G[side + "Knee"] = G[side + "Hip"] + SL * (Jo[side + "Knee"] - Jo[side + "Hip"])
         G[side + "Ankle"] = G[side + "Knee"] + SL * (Jo[side + "Ankle"] - Jo[side + "Knee"])
-        G[side + "Elbow"] = G[side + "Shoulder"] + SA * (Jo[side + "Elbow"] - Jo[side + "Shoulder"])
+        s15 = np.array([sg * R15_SHOULDER[0], R15_SHOULDER[1], R15_SHOULDER[2]])
+        G[side + "Elbow"] = ST * (s15 - r) + SA * (Jo[side + "Elbow"] - s15)
         G[side + "Elbow"][0] += sg * dx
         G[side + "Wrist"] = G[side + "Elbow"] + SA * (Jo[side + "Wrist"] - Jo[side + "Elbow"])
         G[side + "Grip"] = G[side + "Wrist"] + SH * (Jo[side + "Grip"] - Jo[side + "Wrist"])
+        # the shoulder pivot on the arm's axis (the upper arm is mapped about the elbow: this is where its dome lands)
+        G[side + "Shoulder"] = G[side + "Elbow"] + SA * (Jo[side + "Shoulder"] - Jo[side + "Elbow"])
     floor = G["RightAnkle"][1] - SF[1] * Jo["RightAnkle"][1]  # the foot's sole is at prototype Y = 0
     for k in G:
         G[k] = G[k] - np.array([0.0, floor, 0.0])
@@ -596,6 +607,16 @@ def sym(bumps):
     return out
 
 
+# ------------------------------------------------------------------------------------------ joints
+# the height (prototype units along the bone) of the domes that close each limb part at a joint. Every dome is a
+# near-sphere ABOUT ITS PIVOT in game space (height x the part's game Y scale ~ its game radius there), so turning
+# the joint turns the dome in place: nothing swings out through the neighbour (the v8 domes reached 1.5-2 radii past
+# the pivot and showed through the seat, the back of the knee, the elbow and the chest on every step and punch).
+# shoulder: 0.30 / 1.342 (upper arm Y scale); elbow 0.26 / 1.342; wrist 0.155 / 1.342; hip 0.35 / 1.506 (upper
+# leg); knee 0.25 / 1.506
+JOINT_DOME = {"shoulder": 0.224, "elbow": 0.194, "wrist": 0.115, "hip": 0.232, "knee": 0.166}
+
+
 # ------------------------------------------------------------------------------------------ parts
 def torso_prof():
     s = [1.58, 1.80, 2.00, 2.21, 2.45, 2.75, 3.05, 3.30, 3.48, 3.60]
@@ -667,13 +688,16 @@ def upper_arm(tr):
     b = [
         Bp((X + 0.08, 3.50, 0.0), (0.32, 0.28, 0.40, 0.30, 0.36, 0.36), amp(tr, 0.012, 0.075, 0.0)),  # delt cap
         Bp((X - 0.02, 3.48, -0.20), (0.26, 0.24, 0.32, 0.25, 0.20, 0.25), amp(tr, 0.0, 0.05, 0.0)),  # front delt
-        Bp((X - 0.17, 3.62, 0.0), (0.18, 0.22, 0.24, 0.20, 0.34, 0.34), amp(tr, 0.02, 0.05, 0.0)),  # delt wrap over the shoulder
+        Bp((X - 0.17, 3.58, 0.0), (0.18, 0.22, 0.24, 0.16, 0.34, 0.34), amp(tr, 0.01, 0.025, 0.0)),  # delt wrap over the shoulder
         Bp((X - 0.02, 3.48, 0.20), (0.26, 0.24, 0.30, 0.25, 0.25, 0.20), amp(tr, 0.0, 0.035, 0.0)),  # rear delt
         Bp((X, 3.08, -0.22), (0.24, 0.24, 0.22, 0.32, 0.26, 0.26), amp(tr, 0.008, 0.08, 0.008)),  # biceps
         Bp((X + 0.04, 3.20, 0.22), (0.20, 0.24, 0.30, 0.24, 0.25, 0.25), amp(tr, 0.008, 0.075, 0.005)),  # triceps
         Bp((X + 0.22, 3.22, 0.0), (0.06, 0.08, 0.10, 0.08, 0.25, 0.25), amp(tr, 0, 0, -0.008)),  # delt insertion
     ]
-    return loft(pr, tr["m"], YE, 3.52, (0.27, 1.0, 2, 0.88), (0.33, 0.7, 4), nb=8, nseg=16, frame=VERT(X), bumps=b)
+    # (both ends are ball joints: the elbow dome and the shoulder dome are near-spheres about their pivots in game
+    # space - JOINT_DOME - so the arm turns in place at both)
+    return loft(pr, tr["m"], YE, YS_PIVOT, (JOINT_DOME["elbow"], 1.0, 2, 0.88), (JOINT_DOME["shoulder"], 1.0, 4), nb=8,
+                nseg=16, frame=VERT(X), bumps=b)
 
 
 def lower_arm(tr):
@@ -686,17 +710,19 @@ def lower_arm(tr):
         Bp((X + 0.07, 2.64, -0.08), (0.22, 0.22, 0.38, 0.22, 0.24, 0.24), amp(tr, 0.006, 0.045, 0.0)),  # brachioradialis
         Bp((X - 0.10, 2.62, -0.04), (0.18, 0.18, 0.32, 0.18, 0.22, 0.22), amp(tr, 0.004, 0.04, 0.0)),  # flexors
     ]
-    return loft(pr, tr["m"], YWR, YE, (0.15, 1.0, 2), (0.27, 1.0, 2), nb=8, nseg=14, frame=VERT(X),
-                shrink=[(YE, 0.10, 0.06)], bumps=b)
+    return loft(pr, tr["m"], YWR, YE, (JOINT_DOME["wrist"], 1.0, 2, 0.9), (JOINT_DOME["elbow"], 1.0, 2), nb=8, nseg=14,
+                frame=VERT(X), shrink=[(YE, 0.10, 0.06)], bumps=b)
 
 
 def hand(tr):
     X = arm_x(tr)
-    pr = Prof([1.93, 2.05, 2.17],
-              ax=([0.125, 0.15, 0.14], [0.01, 0.01, 0.01]),
-              af=([0.215, 0.215, 0.18], [0.01, 0.01, 0.01]),
+    # (the back of the hand narrows into the wrist, a little thinner than the forearm's tucked rim there, so the seam
+    # is the forearm's clean ring, never the two surfaces crossing)
+    pr = Prof([1.93, 2.05, YWR],
+              ax=([0.125, 0.15, 0.132], [0.01, 0.01, 0.006]),
+              af=([0.215, 0.212, 0.158], [0.01, 0.01, 0.004]),
               p=[3.0, 3.0, 2.4], cx=[-0.02, 0.0, 0.0])
-    shells = [loft(pr, tr["m"], 1.93, 2.17, (0.06, 1.0, 2), (0.13, 1.0, 2), nb=4, nseg=12, frame=VERT(X))]
+    shells = [loft(pr, tr["m"], 1.93, YWR, (0.06, 1.0, 2), (0.12, 1.0, 2), nb=4, nseg=12, frame=VERT(X))]
     # fingers: index at the front (-Z), relaxed curl toward the body (-X for the right hand)
     for i, (z, L, r) in enumerate(((-0.15, 0.17, 0.056), (-0.05, 0.185, 0.058), (0.05, 0.175, 0.056),
                                    (0.148, 0.145, 0.052))):
@@ -724,8 +750,10 @@ def upper_leg(tr):
         Bp((X, 1.36, 0.32), (0.28, 0.28, 0.35, 0.30, 0.25, 0.25), amp(tr, 0.004, 0.04, 0.0)),  # hamstrings
         Bp((X - 0.02, 1.72, 0.36), (0.32, 0.30, 0.18, 0.09, 0.25, 0.25), amp(tr, 0.012, 0.035, 0.0)),  # glute fold (stays under the hem)
     ]
-    return loft(pr, tr["m"], YK, 1.96, (0.29, 1.0, 2, 0.88), (0.22, 0.9, 3), nb=10, nseg=14, frame=VERT(X),
-                shrink=[(1.96, 0.20, 0.12)], bumps=b)
+    # (the top is a ball joint centred on the hip pivot - JOINT_DOME: the thigh turns inside the pelvis without its
+    # top swinging out through the seat; the knee end the same)
+    return loft(pr, tr["m"], YK, YH, (JOINT_DOME["knee"], 1.0, 2, 0.88), (JOINT_DOME["hip"], 1.0, 3), nb=10, nseg=14,
+                frame=VERT(X), shrink=[(YH, 0.16, 0.06)], bumps=b)
 
 
 def lower_leg(tr):
@@ -740,7 +768,7 @@ def lower_leg(tr):
         Bp((X + 0.09, 0.75, 0.22), (0.15, 0.17, 0.22, 0.20, 0.20, 0.20), amp(tr, 0.005, 0.045, 0.0)),  # lateral calf
         Bp((X + 0.06, 0.70, -0.20), (0.12, 0.14, 0.30, 0.20, 0.20, 0.20), amp(tr, 0.0, 0.02, 0.0)),  # tibialis
     ]
-    return loft(pr, tr["m"], YA, YK, (0.18, 1.0, 3), (0.29, 1.0, 2), nb=8, nseg=14, frame=VERT(X),
+    return loft(pr, tr["m"], YA, YK, (0.18, 1.0, 3), (JOINT_DOME["knee"], 1.0, 2), nb=8, nseg=14, frame=VERT(X),
                 shrink=[(YK, 0.10, 0.06)], bumps=b)
 
 

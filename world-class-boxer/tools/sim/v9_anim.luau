@@ -127,7 +127,9 @@ local BuilderHair = H.require("BuilderHair")
 local Builder = H.require("Builder")
 local BuilderGear = H.require("BuilderGear")
 local Kit = H.require("AnatomyHairKit")
-local REAL = BodyTiers.Data()
+-- --body PATH / --gear PATH: a local manifest (publish_body.py / publish_gear.py --local: fake ids + an .ids.json sidecar
+-- mapping each id to its file) instead of src/shared's: the rebuilt meshes before they are uploaded
+local REAL = args.body and luau.load(fs.readFile(args.body), { debugName = args.body })() or BodyTiers.Data()
 BodyTiers.SetData(REAL)
 
 -- mesh id -> file (tier parts and gear): through tools/body/uploaded.json
@@ -142,6 +144,14 @@ do
 		end
 	end
 end
+for _, path in ipairs({ args.body or "", args.gear or "" }) do
+	local side = path:gsub("%.lua$", "") .. ".ids.json"
+	if path ~= "" and fs.isFile(side) then
+		for id, f in pairs(serde.decode("json", fs.readFile(side)).ids or {}) do
+			MESH_FILES[tonumber(id)] = f
+		end
+	end
+end
 local FACE_FILES = {}
 for _, f in ipairs(REAL.faces or {}) do
 	if f.id and f.id ~= 0 then
@@ -149,7 +159,7 @@ for _, f in ipairs(REAL.faces or {}) do
 	end
 end
 do
-	local path = srcDir .. "/shared/GearAssetData.lua"
+	local path = args.gear or (srcDir .. "/shared/GearAssetData.lua")
 	BuilderGear.SetData(luau.load(fs.readFile(path), { debugName = path })())
 end
 
@@ -774,7 +784,7 @@ local function punchClip(tier)
 		local handPart = a:FindFirstChild(hand == "L" and "LeftHand" or "RightHand")
 		local glove
 		for _, d in ipairs(a:GetDescendants()) do
-			if (d.ClassName == "MeshPart" or d.ClassName == "Part") and d:GetAttribute("GearSlot") == "gloves" and d.Name:find(hand == "L" and "_L" or "_R") then
+			if (d.ClassName == "MeshPart" or d.ClassName == "Part") and d.Name == "Glove" .. hand then
 				glove = d
 			end
 		end
