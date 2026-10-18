@@ -106,6 +106,7 @@ function FE.new()
 			raw._props.Size = Vector3.new(1, 1, 1)
 			raw._props.Transparency = 0
 			raw._props.LocalTransparencyModifier = 0
+			raw._props.Reflectance = 0
 		end
 		if parent then
 			o.Parent = parent
@@ -187,6 +188,10 @@ function FE.new()
 			setParent(o, v)
 		elseif k == "Name" then
 			rawset(o, "_name", v)
+		elseif k == "Position" and typeof(v) == "Vector3" then
+			-- (as the engine: Position moves the CFrame, its rotation kept)
+			local cf = rawget(o, "_props").CFrame
+			rawget(o, "_props").CFrame = cf and (CFrame.new(v) * cf.Rotation) or CFrame.new(v)
 		else
 			rawget(o, "_props")[k] = v
 		end
@@ -321,6 +326,10 @@ function FE.new()
 		end
 		for k, v in pairs(rawget(o, "_attr")) do
 			rawget(c, "_attr")[k] = v
+		end
+		-- the children too (as the engine's Clone; Archivable is always on here)
+		for _, k in ipairs(rawget(o, "_kids")) do
+			k:Clone().Parent = c
 		end
 		return c
 	end

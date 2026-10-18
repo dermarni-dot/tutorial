@@ -17,7 +17,7 @@
 -- Other players' training punches are re-synthesized locally and published as client-local
 -- AutoAct / AutoActId so the gym's bags react (CONTRACTS section 7).
 -- Faces (blinks, gaze, expressions), muscles (contraction, pump, jiggle, veins) and hair (spring
--- physics) live in BoxerClient.FaceFX / BodyFX / HairFX; this script drives them every frame.
+-- physics) live in BoxerClient.FaceFX / HairFX; this script drives them every frame.
 local RunService = game:GetService("RunService")
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
@@ -42,10 +42,11 @@ local function optional(name)
 	warn("[Animator] " .. name .. " unavailable: " .. tostring(mod))
 	return nil
 end
-local BodyFX = optional("BodyFX")
+-- (BodyFX, the organic body's flex / pump / jiggle, is retired with the organic body: the muscle-tier parts are
+-- rigid; FaceFX is the classic face's expression swap)
 local FaceFX = optional("FaceFX")
 local HairFX = optional("HairFX")
-R.setFX({ BodyFX = BodyFX, FaceFX = FaceFX, HairFX = HairFX })
+R.setFX({ FaceFX = FaceFX, HairFX = HairFX })
 
 local A = CFrame.Angles
 local CF = CFrame.new
@@ -171,7 +172,7 @@ local function onAttr(rig, name)
 		end
 	elseif name == "Count" then
 		rig.countT = now
-	elseif name == "ScaleKey" then
+	elseif name == "ScaleKey" or name == "BodyTiers" then
 		-- the body was rescaled (ApplyDescription): re-measure the legs now (and once more when the
 		-- replicated joints have surely arrived), never plant the feet at the old floor height
 		rig.geoNow = true
@@ -290,9 +291,6 @@ local function setup(model)
 	nextSlot += 1
 	rig.slot = nextSlot
 	rigs[model] = rig
-	if BodyFX then
-		BodyFX.Track(model)
-	end
 end
 
 local function teardown(model)
@@ -315,10 +313,6 @@ local function teardown(model)
 		rig.rope.a1:Destroy()
 	end
 	dropConns(rig)
-	-- players keep their pump visible after training; NPC rigs are done
-	if BodyFX and not Players:GetPlayerFromCharacter(model) then
-		BodyFX.Untrack(model)
-	end
 	rigs[model] = nil
 end
 
@@ -1280,9 +1274,6 @@ RunService.PreSimulation:Connect(function(dt)
 	end
 	if FaceFX then
 		fxStep("FaceFX", FaceFX.Update, dt, t, camPos, rigs, 3)
-	end
-	if BodyFX then
-		fxStep("BodyFX", BodyFX.Update, dt, t, camPos, rigs)
 	end
 	if HairFX then
 		fxStep("HairFX", HairFX.Update, dt, t, camPos, cam, rigs)

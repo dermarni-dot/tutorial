@@ -19,6 +19,7 @@ local Config = require(Shared:WaitForChild("Config"))
 local Catalog = require(Shared:WaitForChild("Catalog"))
 local Looks = require(Shared:WaitForChild("Looks"))
 local Kit = require(script.Parent:WaitForChild("BuilderKit"))
+local BodyTiers = require(script.Parent:WaitForChild("BodyTiers"))
 
 local Body = {}
 
@@ -560,6 +561,31 @@ local function waistBand(lt)
 	return h, top + 0.03 * h - h / 2
 end
 
+-- a tier part's measured girth (BodyAssetData tiers[n].fit[key]) at the part's scale: width (X), depth (Z), or nil
+local function fitOf(p, key)
+	local t = p and tonumber(p:GetAttribute("BodyTier"))
+	local f = t and BodyTiers.Fit(t, key)
+	if not f then
+		return nil
+	end
+	local r = p:GetAttribute("BodyRatio")
+	local kx, kz = 1, 1
+	if typeof(r) == "Vector3" then
+		kx, kz = r.X, r.Z
+	end
+	return f.width * kx, f.depth * kz
+end
+
+-- a joint's frame in world space from a part's rig attachment (the arm axis moves out per tier: gloves and wraps
+-- follow the wrist joint, never a fixed offset), else the fallback offset
+local function jointCF(p, attName, fallback)
+	local a = p and p:FindFirstChild(attName)
+	if a and a:IsA("Attachment") and p:GetAttribute("BodyTier") ~= nil then
+		return p.CFrame * CF(a.Position)
+	end
+	return p.CFrame * fallback
+end
+
 local ATTIRE_PARTS = { "LowerTorso", "LeftUpperLeg", "LeftLowerLeg", "LeftFoot", "LeftUpperArm", "UpperTorso", "Head" }
 
 -- top of the trunk leg shells relative to the thigh (depends on the hip, so it goes in the signature)
@@ -730,7 +756,9 @@ local function wrapsBuild(folder, model, app, gear, opts, sp)
 		end
 		if la then
 			local s = la.Size
-			wet(mk(folder, la, "WrapWrist", V3(s.X * 1.06, s.Y * 0.3, s.Z * 1.06), la.CFrame * CF(0, -s.Y * 0.36, 0), wc, "Block", FABRIC), "wrap")
+			local ww, wd = fitOf(la, "wrist")
+			local wristSize = ww and V3(ww * 1.12, s.Y * 0.3, wd * 1.12) or V3(s.X * 1.06, s.Y * 0.3, s.Z * 1.06)
+			wet(mk(folder, la, "WrapWrist", wristSize, jointCF(la, side .. "WristRigAttachment", CF(0, -s.Y * 0.5, 0)) * CF(0, s.Y * 0.14, 0), wc, "Block", FABRIC), "wrap")
 			if lod >= 3 then
 				-- stepped top layer and the velcro closure tab with the brand label
 				wet(mk(folder, la, "WrapLayer", V3(s.X * 1.09, s.Y * 0.1, s.Z * 1.09), la.CFrame * CF(0, -s.Y * 0.25, 0), c3, "Block", FABRIC), "wrap")
@@ -825,6 +853,11 @@ local function glovesBuild(folder, model, app, gear, opts, sp)
 		if la then
 			local s = la.Size
 			dF = lod >= 2 and 0.96 * math.max(s.X, s.Z) or math.sqrt(s.X * s.X + s.Z * s.Z)
+			-- a tier forearm: its measured girth (the box holds the forearm's widest bulge)
+			local fw, fd = fitOf(la, "forearm")
+			if fw then
+				dF = 1.04 * math.max(fw, fd)
+			end
 		end
 		local dc = dF * (lod >= 2 and 1.1 or 1.02) -- the cuff: padding round the forearm
 		if hand then
@@ -832,7 +865,7 @@ local function glovesBuild(folder, model, app, gear, opts, sp)
 			-- the knuckles, z = thumb side; a padded fist ~1.3 x the forearm wide, as deep as 0.92 x its
 			-- width, ~1.15 x its width from the wrist to the striking face (a glove, not a ball or a mitten)
 			local hs = hand.Size
-			local base = hand.CFrame * CF(0, hs.Y / 2, 0)
+			local base = jointCF(hand, side .. "WristRigAttachment", CF(0, hs.Y / 2, 0))
 			local function at(x, y, z)
 				return base * CF(sign * x, -y, -z)
 			end
@@ -926,7 +959,7 @@ local function glovesBuild(folder, model, app, gear, opts, sp)
 			local cuffLen = s.Y * 0.48 * cK
 			local r = dc / 2
 			-- cylinders along the forearm (a Part cylinder's axis is its X: turned up onto the arm)
-			local wristCF = la.CFrame * CF(0, -s.Y * 0.5, 0)
+			local wristCF = jointCF(la, side .. "WristRigAttachment", CF(0, -s.Y * 0.5, 0))
 			local function band(y, len, grow)
 				return V3(len, dc * grow, dc * grow), wristCF * CF(0, y, 0) * ANG(0, 0, RAD(90))
 			end

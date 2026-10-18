@@ -1,5 +1,7 @@
--- LookData: the exact inputs the anatomy mesh generators read, published by the server on every
--- character model so each client can build the same meshes (EditableMeshes do not replicate).
+-- LookData: the exact inputs the client-side asset hair (and its generated fallback) reads, published by the
+-- server on every character model so each client builds the same hair (EditableMeshes do not replicate). The
+-- organic Body and Head sections are retired (the body is the standard R15 rig with muscle-tier parts and the
+-- classic head, built on the server); only Hair is built on the clients now.
 -- * Model attributes (server writes them change-only in Builder.Cosmetics / Builder.SetDamage):
 --     LookData  compact deterministic JSON of the look table below (slow-changing: look, build, rig)
 --     LookSig   digest of LookData;  BodySig / HeadSig / HairSig  digests of each section's inputs, so a
@@ -14,7 +16,7 @@
 --   ReadRig / FromBuilder / Publish / PublishFx / Get / Fx take Instances.
 --
 -- look = {
---   v = 1, g = 1 | 2 (2 = female), skin = Looks.SkinTones index, skinRGB = { r, g, b } (0..255),
+--   v = 1, g = 1 | 2 (2 = female), headShape = "classic" (the standard R15 classic head the hair sits on), skin = Looks.SkinTones index, skinRGB = { r, g, b } (0..255),
 --   height (inches), age (years or nil), detail ("full" | "medium" | "low": the server build's detail),
 --   scale = { h, w, d } (HumanoidDescription Height / Width / DepthScale),
 --   rig = { parts = { [R15 part] = { sx, sy, sz } }, joints = { [Motor6D name] = { p0, p1, c0 = {x,y,z},
@@ -41,8 +43,8 @@ LookData.ATTR = "LookData"
 LookData.SIG_ATTR = "LookSig"
 LookData.FX_ATTR = "LookFx"
 LookData.TAG = "Anatomy"
-LookData.SECTION_ATTR = { Body = "BodySig", Head = "HeadSig", Hair = "HairSig" }
-LookData.SECTION_ORDER = { "Body", "Head", "Hair" }
+LookData.SECTION_ATTR = { Hair = "HairSig" }
+LookData.SECTION_ORDER = { "Hair" }
 
 -- the inputs each section's generator may read (dotted paths into the look table). A generator that
 -- reads anything else must have it added here, or its meshes go stale when that input changes.
@@ -57,7 +59,7 @@ LookData.SECTIONS = {
 	},
 	-- rig.joints.Neck / rig.parts.UpperTorso: where long hair, locs and ponytails meet the neck and shoulders
 	Hair = {
-		"v", "g", "skinRGB", "age", "rig.parts.Head", "rig.joints.Neck", "rig.parts.UpperTorso", "hair", "face.seed",
+		"v", "g", "skinRGB", "age", "headShape", "rig.parts.Head", "rig.joints.Neck", "rig.parts.UpperTorso", "hair", "face.seed",
 		"face.shape", "face.forehead", "face.skullWidth", "face.skullLength", "face.crown", "face.browRidge", "face.asym",
 	},
 }
@@ -525,6 +527,7 @@ function LookData.FromBuilder(model, app, build, opts, sp, scales)
 	local look = {
 		v = LookData.VERSION,
 		g = app.gender == 2 and 2 or 1,
+		headShape = "classic",
 		skin = skin,
 		skinRGB = copyRGB(Looks.SkinTones[skin]),
 		height = tonumber(app.height) or 70,

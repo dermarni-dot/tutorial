@@ -5,6 +5,8 @@
 -- Slider entries marked v2 were added by the visual overhaul: Looks.Random draws them from a
 -- separate Random stream so every existing AI boxer / gym NPC keeps its old face.
 local Config = require(script.Parent:WaitForChild("Config"))
+-- the classic faces (face.key): the list, the sanitiser and the default smile
+local BodyTiers = require(script.Parent:WaitForChild("BodyTiers"))
 
 local Looks = {}
 
@@ -194,6 +196,8 @@ function Looks.Defaults(gender)
 		skin = 6,
 		height = female and 66 or 70,
 		face = {
+			-- the classic face (BodyAssetData.faces, BodyTiers): old saves get the smile through Fill
+			key = BodyTiers.DEFAULT_FACE,
 			shape = "Oval", jawWidth = 0, jawDef = 0.5, chin = 0, cheek = 0, forehead = 0,
 			noseWidth = 0, noseLength = 0, noseBridge = 0, lips = female and 0.2 or 0, browThick = female and -0.4 or 0,
 			eyeShape = 0.5, eyeSize = 0, eyeDist = 0, lashes = female and 0.8 or 0.2, eyeColor = 2,
@@ -333,6 +337,7 @@ function Looks.Sanitize(input, old)
 
 	local f = type(input.face) == "table" and input.face or {}
 	local bf = type(base.face) == "table" and base.face or out.face
+	out.face.key = BodyTiers.SanitizeFace(f.key, bf.key)
 	out.face.shape = pick(f.shape, Looks.FaceShapes, pick(bf.shape, Looks.FaceShapes, "Oval"))
 	for _, list in ipairs({ Looks.FaceSliders, Looks.EyeSliders, Looks.SkinSliders, Looks.WearSliders, Looks.SculptSliders }) do
 		for _, sl in ipairs(list) do
@@ -497,6 +502,12 @@ function Looks.Random(seed, gender, opts)
 	f.shine = rng:NextNumber() * 0.4
 	f.smooth = rng:NextNumber()
 	f.seed = rng:NextInteger(1, 1000000)
+	-- a classic face from its own stream (no other draw shifts): the smile most often, then any creator face
+	do
+		local faces = BodyTiers.Pickable()
+		local frng = Random.new(seed + 4477)
+		f.key = (#faces > 1 and frng:NextNumber() < 0.6) and faces[frng:NextInteger(2, #faces)].key or BodyTiers.DEFAULT_FACE
+	end
 
 	local h = app.hair
 	local styles = female and femaleStyles or maleStyles

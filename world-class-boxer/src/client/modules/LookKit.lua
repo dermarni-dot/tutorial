@@ -1,6 +1,6 @@
 -- LookKit: the look editors' shared parts (Creator, barber): plain-word readouts, short labels and
 -- one-line hints for every look slider, the defaults their reset buttons and notches use, colour names,
--- face / gear presets, and small frame-drawn glyphs (hairstyle, face shape, build, kit) for the
+-- gear presets, and small frame-drawn glyphs (hairstyle, build, kit) for the
 -- preset grids. Client-only and data-only apart from the glyph builders; nothing here is saved.
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
@@ -140,18 +140,6 @@ end
 ------------------------------------------------------------------------
 -- Presets
 ------------------------------------------------------------------------
--- face presets: a shape, a nose type and the face / sculpt keys that differ from the gender default
-LookKit.FacePresets = {
-	{ id = "Classic", shape = "Oval", desc = "Even features", set = {} },
-	{ id = "Chiselled", shape = "Square", desc = "Strong jaw", set = { jawWidth = 0.5, jawDef = 0.9, cheek = 0.5, chin = 0.3, jawAngle = 0.85, cheekHeight = 0.4 } },
-	{ id = "Rugged", shape = "Square", nose = "Boxer", desc = "Heavy brow", set = { jawWidth = 0.6, browRidge = 0.85, noseWidth = 0.4, noseBridge = 0.3, chin = 0.4, eyeDepth = 0.7, browThick = 0.4 } },
-	{ id = "Baby Face", shape = "Round", nose = "Button", desc = "Soft and young", set = { jawWidth = -0.4, jawDef = 0.2, cheekFull = 0.6, chin = -0.3, eyeSize = 0.3, noseLength = -0.3, lips = 0.2, browRidge = 0.1, jawAngle = 0.2 } },
-	{ id = "Sharp", shape = "Diamond", nose = "Greek", desc = "High cheekbones", set = { cheek = 0.7, cheekHeight = 0.6, cheekFull = -0.5, jawWidth = -0.2, chin = 0.3, noseLength = 0.2, noseWidth = -0.3, jawAngle = 0.75 } },
-	{ id = "Long", shape = "Long", desc = "Long and lean", set = { forehead = 0.3, chin = 0.4, noseLength = 0.4, jawWidth = -0.2, skullLength = 0.3 } },
-	{ id = "Heart", shape = "Heart", desc = "Narrow chin", set = { forehead = 0.3, chin = -0.3, jawWidth = -0.4, cheek = 0.4, lips = 0.3 } },
-	{ id = "Brawler", shape = "Round", nose = "Flat", desc = "Flat nose", set = { noseWidth = 0.6, noseBridge = -0.4, lips = 0.4, jawWidth = 0.5, browThick = 0.5, browRidge = 0.95, noseBreak = 0.35 } },
-}
-
 -- gear kits: trunks, trim, socks, shoes, laces, gloves (+ cuff), robe (+ trim), wraps
 LookKit.KitPresets = {
 	{ id = "Champion", desc = "Black & red", trunks = { 20, 20, 20 }, trim = { 200, 25, 30 }, socks = { 240, 240, 240 }, shoes = { 20, 20, 20 }, laces = { 200, 25, 30 },
@@ -278,28 +266,6 @@ function LookKit.HairGlyph(parent, style, hairRGB, skinRGB)
 			box(g, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.3 + i * 0.13, 0.22), Size = UDim2.fromScale(0.06, 0.16), Rotation = -30 + i * 20, BackgroundColor3 = hair, ZIndex = front }, ROUND)
 		end
 	end
-	return g
-end
-
--- a face outline for a face shape (width / chin read at a glance)
-local FACE_SHAPE = {
-	Oval = { 0.56, 0.74, 0.5 }, Square = { 0.64, 0.72, 0.22 }, Round = { 0.68, 0.7, 0.5 }, Long = { 0.5, 0.82, 0.42 },
-	Diamond = { 0.56, 0.76, 0.36 }, Heart = { 0.62, 0.74, 0.44 },
-}
-function LookKit.FaceGlyph(parent, shape, skinRGB)
-	local skin = UI.ToColor(skinRGB)
-	local g = glyphRoot(parent)
-	local s = FACE_SHAPE[shape] or FACE_SHAPE.Oval
-	box(g, { Name = "Head", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromScale(s[1], s[2]), BackgroundColor3 = skin, ZIndex = 2 }, UDim.new(s[3], 0))
-	if shape == "Heart" or shape == "Diamond" then
-		-- a narrower chin under a wider brow / cheek line
-		box(g, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.8), Size = UDim2.fromScale(s[1] * 0.42, 0.16), BackgroundColor3 = skin, ZIndex = 2, Rotation = 45 }, UDim.new(0.2, 0))
-	end
-	local ink = T.ink
-	for _, x in ipairs({ 0.4, 0.6 }) do
-		box(g, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(x, 0.45), Size = UDim2.fromScale(0.08, 0.05), BackgroundColor3 = ink, ZIndex = 3 }, ROUND)
-	end
-	box(g, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.66), Size = UDim2.fromScale(0.18, 0.035), BackgroundColor3 = ink, BackgroundTransparency = 0.3, ZIndex = 3 }, ROUND)
 	return g
 end
 

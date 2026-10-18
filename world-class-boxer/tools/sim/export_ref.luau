@@ -9,6 +9,10 @@
 --   --before  (default tools/sim/out/before) one JSON per look of the CURRENT generated hair + head
 --                                            (real head space) with .rgba textures, and index.json
 -- Schemas: tools/sim/README.md.
+-- RETIRED with the organic head and body (AnatomyHead / AnatomyBody are gone from src: the boxers have the classic
+-- head and the muscle-tier R15 parts now). The reference it wrote (tools/hair/ref) was made against the organic
+-- head the hair cards were modelled on; to write it again, run it on a commit before the retirement:
+--   git archive 90fbad6 src | tar -x -C /tmp/organic && lune run tools/sim/export_ref.luau --src /tmp/organic/src
 local fs = require("@lune/fs")
 local process = require("@lune/process")
 local luau = require("@lune/luau")
@@ -37,8 +41,13 @@ local BEFORE = args.before or (ROOT .. "/tools/sim/out/before")
 local Skull = H.require("AnatomySkull")
 local Kit = H.require("AnatomyHairKit")
 local Hair = H.require("AnatomyHair")
-local Head = H.require("AnatomyHead")
-local Body = H.require("AnatomyBody")
+local okHead, Head = pcall(H.require, "AnatomyHead")
+local okBody, Body = pcall(H.require, "AnatomyBody")
+if not (okHead and okBody) then
+	print("export_ref: AnatomyHead / AnatomyBody are retired in this src (the classic head and the tier body);"
+		.. " run it with --src on a commit before the retirement (see the header)")
+	process.exit(1)
+end
 local MeshKit = H.require("MeshKit")
 local Looks = H.require("Looks")
 

@@ -234,10 +234,22 @@ function BodyTiers.PartEntry(tier, name, d)
 	return { id = id, size = size, attachments = atts, tier = tier, name = name }
 end
 
+-- a tier's gear-fit measure (BodyAssetData tiers[n].fit[key]: { width, depth, girth, y }, unscaled studs), or nil
+function BodyTiers.Fit(tier, key, d)
+	d = d or load()
+	local tiers = type(d) == "table" and type(d.tiers) == "table" and d.tiers or nil
+	local t = tiers and (tiers[tier] or tiers[tostring(tier)])
+	local f = type(t) == "table" and type(t.fit) == "table" and t.fit[key] or nil
+	if type(f) == "table" and tonumber(f.width) and tonumber(f.depth) then
+		return f
+	end
+	return nil
+end
+
 ------------------------------------------------------------------------
 -- Faces
 ------------------------------------------------------------------------
-BodyTiers.DEFAULT_FACE = "smile"
+BodyTiers.DEFAULT_FACE = "smile" -- (BodyAssetData.defaultFace)
 -- the engine's own classic smile (what an id 0 draws)
 BodyTiers.DEFAULT_TEXTURE = "rbxasset://textures/face.png"
 

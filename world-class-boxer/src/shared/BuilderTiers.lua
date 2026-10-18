@@ -86,6 +86,10 @@ local function prepare(mp, e)
 		local a = Instance.new("Attachment")
 		a.Name = name
 		a.Position = vec(p)
+		if string.find(name, "GripAttachment", 1, true) then
+			-- the tool grip points down the fist (the engine's default hands' grip orientation)
+			a.CFrame = CFrame.new(vec(p)) * CFrame.Angles(-math.pi / 2, 0, 0)
+		end
 		valueChild(a, "Vector3Value", "OriginalPosition", vec(p))
 		a.Parent = mp
 	end
@@ -318,9 +322,10 @@ function BuilderTiers.Apply(model, tiers, scale)
 		local want = tiers[name]
 		local cur = model:FindFirstChild(name)
 		if want and cur and cur:GetAttribute("BodyTier") ~= want then
+			local wasIn = model.Parent ~= nil
 			local template = BuilderTiers.Template(want, name)
-			-- (the load may have yielded: the model may be gone)
-			if template and model.Parent ~= nil and swap(model, hum, name, template, scale) then
+			-- (the load may have yielded: a model in the world may be gone; a new NPC is built before it is parented)
+			if template and not (wasIn and model.Parent == nil) and swap(model, hum, name, template, scale) then
 				n += 1
 			end
 		elseif cur and scale and cur:GetAttribute("BodyTier") ~= nil then
@@ -344,7 +349,8 @@ function BuilderTiers.Apply(model, tiers, scale)
 		shown[name] = p and tonumber(p:GetAttribute("BodyTier")) or 0
 	end
 	local key = BodyTiers.Key(shown)
-	if n > 0 or model:GetAttribute("BodyTiers") ~= key then
+	-- (a body of default parts keeps the engine's HipHeight)
+	if n > 0 or (model:GetAttribute("BodyTiers") ~= key and string.find(key, "[1-9]") ~= nil) then
 		fixHipHeight(model, hum)
 	end
 	if model:GetAttribute("BodyTiers") ~= key then

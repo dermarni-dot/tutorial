@@ -4,7 +4,8 @@ A Roblox boxing career game, written entirely in procedural Luau. You create a b
 eat, rest and spar, take fights from the amateurs up to world title nights in big arenas, earn money
 and fame, buy homes and gear, and upgrade your gym. Nothing in the world is an uploaded model: the
 city, the gyms, the arenas, the equipment and every character are built from code when the server
-starts. On each client, the characters are then given organic, generated meshes.
+starts. The boxers themselves are the standard Roblox R15 body with Blender-modelled muscle-tier body
+parts, the classic head with classic faces, and Blender-modelled hair cards.
 
 ## Opening the game
 
@@ -28,30 +29,30 @@ Lint with `selene src`.
 
 ## Publishing requirements
 
-### Organic characters (EditableMesh / EditableImage)
-Characters are drawn with procedurally generated meshes and textures (see [Characters](#characters)).
-In a **published** game these need two things:
+### Bodies and faces: nothing to switch on
+The bodies (the muscle-tier MeshParts) and the faces (Decals) are ordinary uploaded **Mesh** and **Image**
+assets (`src/shared/BodyAssetData.lua`). The server loads the meshes with `AssetService:CreateMeshPartAsync`
+and swaps them into the rig; the faces are plain Decal textures. They need no Editable APIs and no ID
+verification. Like the hair, they belong to the group, so **publish the place under the group** (see
+[Asset hair](#asset-hair)). A mesh that fails to load keeps the default R15 part; an id of 0 means the
+default part / the engine's classic smile.
+
+### Hair tinting and cap painting (EditableImage / EditableMesh)
+Only the asset hair's per-boxer tint and its scalp-cap painting (and its generated fallback hair) use the
+Editable APIs. In a **published** game these need:
 - **Game Settings > Security > Allow Mesh / Image APIs** turned on for the experience.
-- An **ID-verified** creator account. Roblox requires this for EditableMesh / EditableImage in live
-  games.
+- An **ID-verified** creator account (Roblox requires it for EditableMesh / EditableImage in live games).
 
-Studio play works without either.
+Studio play works without either. Without them every boxer keeps the part-built round-1 hair (fully
+animated, nothing breaks, a warning is logged once); bodies and faces are unaffected. Under memory
+pressure AnatomyClient first lowers the hair's detail level and returns far-away characters to the
+round-1 hair. The training screen's anatomical body map is painted into an EditableImage too, and falls back
+to plain frames the same way.
 
-**Automatic fallback.** The game falls back to the part-built characters on its own in three cases:
-- the APIs are unavailable (the setting is off, or the creator is not verified),
-- a mesh cannot be created,
-- a device runs out of Editable memory.
-
-In that case every character keeps the part-built look. It is fully dressed and animated, nothing
-breaks, and a warning is logged once. Under memory pressure, AnatomyClient first lowers the detail
-level and returns far-away characters to parts before it gives up on meshes. The training screen's
-anatomical body map is painted into an EditableImage too, and falls back to plain frames the same way.
-
-Players can lower the meshes in **Settings > Graphics detail** (Auto / High / Medium / Low; see
-[Performance](#performance)). To switch
-the meshes off for everyone, set `Config.Anatomy.enabled = false` in `src/shared/Config.lua`. Budgets
-(full-detail characters, ranges, per-frame build time, triangle budgets per section) are set in the
-same table.
+Players can lower the hair's detail in **Settings > Graphics detail** (Auto / High / Medium / Low; see
+[Performance](#performance)). `Config.Anatomy.enabled = false` (in `src/shared/Config.lua`) switches the
+client-built hair off for everyone; budgets (full-detail characters, ranges, per-frame build time) are set
+in the same table.
 
 ### Saving (DataStore)
 Careers are saved with DataStoreService in the store `Config.DataStoreName` (`WorldClassBoxer_v2`).
@@ -118,12 +119,12 @@ to select and **B** to go back.
 - With the mouse resting on a bar, the wheel steps it.
 - A notch marks the default, and the round button at the top right puts the slider back on it.
 
-**Character creator.** Seven steps: Name, Face, Skin & Eyes, Hair, Body, Gear and Style.
+**Character creator.** Seven steps: Name, Face, Skin, Hair, Body, Gear and Style.
 - **Moving between steps:** the step bar under the title (click a step to jump to it), **BACK** /
   **NEXT**, or **LB / RB** on a controller.
-- **Presets first:** each step opens with them. Face presets, skin and eye swatches, hairstyle cards
-  with a little head wearing each style (filtered by Short / Fades / Curly / Locs / Long), body types,
-  gear kits and boxing styles.
+- **Presets first:** each step opens with them. The classic faces (a grid of face swatches, each drawn with
+  its own texture on your skin tone), skin swatches, hairstyle cards with a little head wearing each style
+  (filtered by Short / Fades / Curly / Locs / Long), body types, gear kits and boxing styles.
 - **Main controls:** the four to six that matter most, each with a one-line hint. **ADVANCED** opens
   every other slider of that step.
 - **UNDO** (also **Ctrl+Z**, or **Y** on a controller) steps back through the last 20 changes. A whole
@@ -133,6 +134,10 @@ to select and **B** to go back.
 - **Colours** are swatch grids, with the picked colour ticked and named. A free colour wheel sits
   under Advanced.
 - **Camera:** it frames the face on the face, skin and hair steps and the whole body on the others.
+- **Face:** pick one of ten classic faces (the smile is the default); the step's preview cyclers show the
+  fight moods and fight damage on your boxer. **Skin:** tone and finish (smoothness, sheen). **Body:** body
+  type, height, division, weight and reach; training builds the muscle (the face sculpt, eye and body-shape
+  sliders of the organic characters are gone with them).
   - Turn: drag the boxer (mouse or finger), use the arrows on the dock, or the right stick.
   - Zoom: the mouse wheel over the 3D view, the dock's - / +, or **LT / RT**.
 - **Live preview:** every change shows on your boxer. While a slider moves, the preview goes to the
@@ -333,72 +338,86 @@ the session report, **A** continues, **X** flexes and **B** closes.
 
 ## Characters
 
-Every boxer is generated from his look (face sculpt, skin, hair, physique, gear) and his training, so
-no two look alike.
+Every boxer is the standard Roblox R15 body: Blender-modelled muscle-tier body parts that change as he
+trains, the classic head with a classic face, his own hair and his gear.
 
-**How a character is made.**
-1. The server (`src/shared/Builder*.lua`) scales an R15 rig to athletic proportions for the frame and
-   physique and builds the round-1 part-built look on it: layered muscle parts, a face rig, hair,
-   beard, gear. This is the fallback, and it carries collisions and animation. The Builder also
-   lowers the Neck joint's pivot below the head (by 0.26 of the head's height for men, 0.22 for
-   women), so the head sits on a visible neck instead of on the trapezius.
-2. It publishes `LookData` (a compact JSON attribute) and a signature per section on the model.
-   Meshes do not replicate, so each client generates them itself.
-3. On each client, `AnatomyClient` runs the shared generators (`MeshKit`, `AnatomyBody*`,
-   `AnatomyHead*`, `AnatomySkull`, `AnatomyHair*`) within a per-frame time budget. It welds the meshes
-   to the rig, and hides the parts they replace only once the replacement exists.
+**How a character is made** (server, `src/shared/Builder*.lua`).
+1. A HumanoidDescription with empty body-part ids (the engine's default parts), `BodyTypeScale = 0` and
+   `ProportionScale = 0`. Only Height (inches / 70), Width / Depth (the frame: `Config.BodyTypes` width /
+   depth; women x 0.92 / 0.94) and Head (the frame's head share x 0.942: a 0.927-stud head on the Athletic
+   man) scale it. Training never widens the frame: the tiers carry the muscle. `Builder.ScaleKey` re-applies
+   the description only on a real change.
+2. `BuilderTiers` swaps each of the 14 non-head parts for its tier's MeshPart (`Humanoid:ReplaceBodyPartR15`),
+   only when that part's tier changed (one part replicates). See **Body** below.
+3. `BuilderHead` swaps the default head for the classic head (a Part with the Head SpecialMesh) once and gives
+   it a Decal `face`. The head sits on the Neck pivot (no neck lift: the tier torso has no neck stub).
+4. The layers on top: the round-1 hair (the fallback under the asset hair), the beard, trunks, boots,
+   gloves / wraps, robe, headgear, damage marks and sweat.
+5. `LookData` (a compact JSON attribute) carries what the clients build the hair from (`headShape =
+   "classic"`, the rig, the hair look). Only the hair is built on the clients (AnatomyClient, Hair section).
 
-**Levels of detail.** The local player, the fight opponent and the nearest few characters (default 6
-within 70 studs; fewer and nearer on Medium and Low, see [Performance](#performance)) get full detail.
-Others get medium or low. Beyond 160 studs characters stay part-built. Your boxer and your opponent
-come first: a section of theirs still showing round-1 parts is built at low detail at once, then at
-full detail, face first. Mesh builds are cached by signature, so identical NPCs share work.
+**Body: the muscle tiers.** Five tiers per part (1 lean, 2 toned, 3 athletic, 4 muscular, 5 elite), modelled
+in Blender at the game's proportions (`tools/body`, `tools/body/CONTRACT.md`; uploaded meshes in
+`BodyAssetData.lua`). Each part reads the muscles it carries (`BodyTiers.MAP`):
 
-**Body.** One continuous skin over a real ribcage, with:
-- chest: upper and lower pecs, serratus;
-- shoulders and back: deltoid caps that blend into the chest and arms, traps, lats;
-- arms: biceps, triceps and a tapering forearm;
-- core: abs (upper and lower), obliques;
-- legs: glutes, quads, hamstrings, calves.
+| Part | Muscles (weight) |
+|---|---|
+| UpperTorso | pecs .22, upper chest .14, lats .18, upper back .10, traps .10, abs .14, obliques .06, serratus .06 |
+| LowerTorso | lower abs .25, obliques .15, glutes .40, lower back .20 |
+| Upper arms | biceps .34, triceps .34, front delts .10, side delts .16, rear delts .06 |
+| Lower arms | forearms |
+| Upper legs | quads .55, hamstrings .30, glutes .15 |
+| Lower legs | calves |
+| Hands / feet | their forearm's / calf's tier |
 
-Muscle definition comes from smooth geometry and painted shading (separation grooves, crowns, veins),
-not hard edges. Blend shapes flex muscles in punches and poses, show the pump after training, follow
-breathing and jiggle on impacts.
+A muscle's level is its value / 100 x (0.55 + 0.45 / the frame's potential) (the rule the physique uses:
+a maxed Lean frame still looks trained, a Heavyweight frame still out-sizes it; women x 0.8). Tier 2 starts
+at level 0.18, tier 3 at 0.36, tier 4 at 0.56, tier 5 at 0.78 (an Athletic frame: 76 of its 95 cap), with a
+0.03 hysteresis so a part never flickers at a boundary. A part jumps straight to its tier (several at once
+when a group grows a lot). NPCs get their tiers from their own builds.
 
-**Gear.** These are organic meshes too:
-- padded gloves with stitching, laces, brand marks, finishes and wear;
-- boots or trainers with soles, welts and criss-cross laces;
-- layered hand wraps under the gloves;
-- trunks (four cuts), sports tops, robes.
+**How a part is swapped.** One template per (tier, part) is made per server with
+`AssetService:CreateMeshPartAsync` (in the background from boot; a failure keeps the default part and is
+retried after 2 minutes) with its RigAttachments and accessory attachments at their part-space positions,
+an `OriginalSize` (the mesh's bounding box) and an `OriginalPosition` per attachment. The engine scales a
+replaced part "as normal" (from its OriginalSize by the humanoid's scales); BuilderTiers then checks the part
+ended at exactly OriginalSize x the ratio the default part had (its Size / OriginalSize) and re-aims the
+joints at the attachments, so a part is scaled once, never twice (the head swap is guarded the same way).
+Welds that held on to the old part move to the new one, and `HipHeight` is recomputed from the legs. The
+model attribute `BodyTiers` (one digit per part, 0 = a default part) tells the clients the rig changed.
 
-**Faces.** A rounded skull with forehead, cheekbones, jaw and chin, sculpted by six face shapes plus
-sliders, with subtle asymmetry. The face also has:
-- eyes that sit in sockets: lids, lashes, iris texture, wet highlights;
-- ten nose types with bridge, nostrils and cartilage;
-- lips with a vermilion and corners;
-- ears, cauliflower ear and broken-nose options.
+**Faces.** Ten classic faces to pick from (smile, grin, smirk, confident, cool, happy, wink, determined,
+focused, stern; `look.face.key`, saved and sanitised: old saves get the smile) and seven mood faces (angry,
+grit, surprised, tired, hurt, dazed, KO). FaceFX swaps the Decal's texture by mood (`BodyAssetData.expressions`):
+a hit shows the hurt face for 0.4-0.9 s, a knockdown the dazed face, a KO the KO face, the server's Expr
+attribute its mood (pain, dazed, effort, happy, anger, fatigue, ...), heavy work the grit face, a spent
+fighter the tired face; neutral is his own face. A mood whose face is not uploaded keeps his own face.
 
-The skin is painted with pores, freckles, moles, scars, wrinkles with age, stubble and flush. FaceFX
-blinks, moves the eyes (saccades, gaze at the opponent, dazed drift) and blends eleven expressions:
-neutral, confident, determined, anger, fear, fatigue, pain, dazed, effort, happy and KO.
+**Beards** stay as 3D shells on the classic head (the way a beard accessory sits on a classic face), with
+the moustache in the gap the classic faces leave between the eyes and the mouth.
+
+**Gear** is sized from the tier parts' own boxes (the meshes' bounding boxes at the boxer's scale) and
+placed at their joints: gloves from the forearm's measured girth (`tiers[n].fit`) at the wrist joint (the arm
+axis moves out per tier), wraps at the wrist joint and over the palm, the waistband from the waist joint,
+trunks, boots, robe and headgear from the part sizes.
 
 **Hair.** 30 styles plus bald across five hair types (straight, wavy, curly, kinky, coiled). They
 include fades from skin to high (as gradients), crops, curly tops, afros, 360 waves, twists,
 cornrows, box braids, dreadlocks, long hair, ponytails and wolf cuts, with sliders for volume, curl
 size, frizz, density and length. Dyes come as tips, streaks, ombre or split. Hair and beards grow a
-little every in-game day. HairFX swings long hair, locs and braids and bounces curly volumes. Up close,
-swinging hair is tested against the body's own meshes (radial maps of the upper torso, arms and
-gloves, made the first time swinging hair comes that near), so it lies on the shoulders and back
-instead of sinking in; hair that reaches the canvas in a knockdown rests on it. Sweaty hair turns
-heavier and darker.
+little every in-game day. HairFX swings long hair, locs and braids and bounces curly volumes (tested against
+a proxy of the body's boxes), and hair that reaches the canvas in a knockdown rests on it. Sweaty hair
+turns heavier and darker.
 
-Most styles are drawn with **asset hair**: hair-card meshes and alpha strand textures modelled in
-Blender and uploaded to the group (see [Asset hair](#asset-hair)). Every other style, and any style
-whose assets fail to load, keeps the generated hair (layered clumps and strands that follow the skull).
+Most styles are drawn with **asset hair** (see [Asset hair](#asset-hair)); every other style, and any
+style whose assets fail to load, keeps the generated hair, laid on the classic head's own shape
+(`AnatomyHairKit.CLASSIC`, a rounded cylinder).
 
-**Damage and condition.** Sweat, grime, bruises, swelling, cuts, a black eye, a bloody nose and a
-split lip show on the meshes. Face damage persists after a fight (stages: fresh, light, moderate,
-heavy, severe) and heals over in-game days.
+**Damage and condition.** Black eyes, cuts, bruises, swelling, a bloody nose and a split lip show as simple
+overlays on the head at the classic face's features (translucent marks, blood as Beams); a damage layer
+uploaded as a full-face decal (`BodyAssetData.damage`, optional) is shown instead, faded by the damage.
+Rib bruises show on the torso. Face damage persists after a fight (stages: fresh, light, moderate, heavy,
+severe) and heals over in-game days. Sweat shines the skin.
 
 ### Asset hair
 
@@ -420,8 +439,13 @@ Back, Undercut, Mohawk, Ponytail, Wolf Cut, Modern Athlete, Textured Crop, and L
 - **Meshes** are uploaded `Mesh` assets, one per piece (at most 16 a style), built in the game's
   nominal head space. The client loads them with `AssetService:CreateMeshPartAsync` and welds them to
   the Head.
-- **Skull fit:** each piece is sized to the boxer's own skull (width, crown, front and back from the
-  skull field, against the default skull the cards were modelled on) and to the Head part.
+- **Skull fit:** each piece is sized to the head (width, crown, front and back of the head's field, against
+  the organic skull the cards were modelled on) and to the Head part. On the classic head (a rounded
+  cylinder 1.2 nominal studs wide, where the cards' skull was 0.77) the four extents give x 1.567 / 1.015 /
+  1.224; matched only there the scalp cap sank up to 0.141 nominal studs into the head's upper corners, so the
+  classic head takes `HK.CLASSIC_FIT` on top (x 1.06 / 1.20 / 1.20, 0.06 down): the cap's worst point is
+  0.055 under the surface (the top corners), its middle 0.066 above it, and every card piece's 10th percentile
+  is outside the head (`lune run tools/sim/fit_classic_hair.luau`).
   Hanging pieces stretch with the hair length; volume pieces grow outward from the scalp with the
   volume slider.
 - **Textures** are greyscale strand atlases with alpha (`Image` assets). The client tints them per
@@ -448,7 +472,7 @@ generated hair instead. Nothing is lost:
 - The assets belong to the group (creator id 524947123). Roblox only lets an experience load
   group-owned meshes and images when the **experience is owned by the same group**, so publish the
   place under the group.
-- The Editable APIs must be on (see [Organic characters](#organic-characters-editablemesh--editableimage)).
+- The Editable APIs must be on for the tint and the cap paint (see [Hair tinting and cap painting](#hair-tinting-and-cap-painting-editableimage--editablemesh)).
 - New images can take a while to pass moderation. Until they do, those styles fall back.
 
 **Rebuilding the assets.** Run each family's builder in Blender's Python (bpy 4.2:
@@ -543,7 +567,7 @@ Everything is procedural, driven on each client by `Animator.client.lua` and the
 - **Muscle Progression screen** (`MuscleScreen.lua`, Hub Body tab "3D MUSCLE VIEW", the "3D" button
   of every group row - finger-high on touch, with a sore group's soreness on its own line under the
   name - or MUSCLES on a training report): a rotating 3D figure (a frozen copy of
-  your character in a ViewportFrame, meshes included) with tabs for Arms, Chest, Core, Legs,
+  your character in a ViewportFrame: his tier parts, face and hair) with tabs for Arms, Chest, Core, Legs,
   Shoulders, Back and Neck. The picked group lights up on the figure (neon shells over the region,
   the round-1 muscle overlays tint) and the panel shows its level against your frame's potential,
   every sub-muscle, soreness, the week's change and a **growth-over-time graph** from the daily
@@ -581,8 +605,10 @@ Build or Heavyweight Build):
 | Heavy bag, mitts, speed bag, double-end bag, shadow boxing, sparring | Shoulders, arms, core, neck |
 | Roadwork, rope, ladder, treadmill, bike, rower, swimming | Legs and conditioning, lower body fat |
 
-Body fat, definition, vascularity, pump, soreness, recovery and detraining all show on the body. The
-trained body is classified into a physique, which sets the visible shape:
+The body shows the training through the muscle tiers (see [Characters](#characters)): every part jumps up
+a tier as the muscles it carries grow, and back down with detraining. Body fat, definition, vascularity,
+pump and soreness are tracked (and shown on the training screens) but no longer drawn on the body. The
+trained body is classified into a physique:
 - Beginner Lean
 - Lean Technical
 - Balanced Pro
@@ -824,19 +850,17 @@ like this:
 | Other settings | a change to any other setting re-applies Graphics without moving Auto's level |
 
 **What the levels change.** High is the full look. Medium and Low only take work away; they keep every
-character, every piece of UI and all gameplay information. Your own boxer keeps High's animation, face,
-hair and muscle settings at every level. Your opponent keeps High's distances too; below High his face
-changes expression at the level's rate (8 / 10 Hz) and his hair moves every second frame (still tested
-against his body). Both are built first.
+character, every piece of UI and all gameplay information. Your own boxer keeps High's animation and hair
+settings at every level. Your opponent keeps High's distances too; below High his hair moves every second
+frame. Both are built first. The bodies and faces cost the same at every level: they are ordinary MeshParts
+and Decals the server builds (no client generation, no Editable memory).
 
 | System | Medium | Low |
 |---|---|---|
-| Mesh characters (`AnatomyClient.DETAIL`) | 4 full-detail characters, full detail to 50 studs, low-detail meshes to 160, 2 ms of build time a frame, every colour texture | 1 full-detail character, 30 / 140 studs, 1.5 ms a frame. NPCs paint only the face's texture (hair and body in vertex colours); you, your opponent and previews keep every texture |
+| Client-built hair (`AnatomyClient.DETAIL`) | 4 full-detail characters, full detail to 50 studs, low-detail hair to 160, 2 ms of build time a frame, every colour texture | 1 full-detail character, 30 / 140 studs, 1.5 ms a frame. NPCs' hair in vertex colours; you, your opponent and previews keep every texture |
 | Character animation (Animator LOD bands) | full detail to 30 studs; every 2nd frame past 60, every 3rd past 90, none past 150; still background figures at half rate from 15 studs | 25 / 60 / 80 / 140 studs; still figures every 3rd frame |
-| Faces (FaceFX) | full face to 26 studs, blinks to 45, blend shapes at 10 Hz | 18 / 32 studs, 8 Hz, damage painting 0.8 ms a frame (1.5) |
-| Hair (HairFX) | full rate to 20 studs, half rate to 45; swinging hair tested against the body's own meshes to 20 (a simpler proxy beyond) | 15 / 30 studs; the mesh test to 15 |
-| Hair's body maps (HairFX, every level) | made only for a body whose hair swings, the first time it comes inside the mesh-test distance, one part a frame in slices of the level's mesh build budget (2 ms) | the same, 1.5 ms slices |
-| Muscles (BodyFX) | flex to 35 studs, breathing to 22, full-rate blend shapes to 15; the correctives (seat, shoulders, belly fold) to 70 | 25 / 14 / 10 studs; correctives to 50 |
+| Faces (FaceFX) | the mood's face texture checked 12 times a second within 60 studs (the opponent and you at any distance): one compare per head, a swap is one local Decal write | the same (it costs next to nothing) |
+| Hair (HairFX) | full rate to 20 studs, half rate to 45; swinging hair tested against a proxy of the body's boxes | 15 / 30 studs |
 | Character lights (CharacterLight) | fill and rim light | fill light only |
 | Full-screen effects (LightLevels) | no depth of field | no depth of field, bloom or sun rays (colour grades, blur and atmosphere stay at every level) |
 | Fights (FightClient) | sweat / blood spray x0.75, 8 blood drops on the canvas, ropes in front of the camera checked every 0.1 s | no impact lights, spray x0.5, 4 drops, no blur pulse on a heavy shot taken, ropes every 0.16 s, the built-in crowd at 15 Hz |
@@ -851,11 +875,21 @@ against his body). Both are built first.
 
 High is the full look: AnatomyClient's own defaults on Auto (`Config.Anatomy`: 6 full-detail characters,
 70 / 160 studs, 2.5 ms a frame) and its "full" preset when High is picked by name (10, 90 / 200 studs,
-4 ms); animation bands 45 / 110 / 170 / 230; faces 34 / 60 studs at 14 Hz; hair 25 / 60; muscles 45 / 30 /
-20, correctives to 100; 3 arena key shadows, spot rays at 12 Hz, crowd budget 420 / 300; mirror at 30 Hz.
+4 ms); animation bands 45 / 110 / 170 / 230; hair 25 / 60; 3 arena key shadows, spot rays at 12 Hz, crowd budget 420 / 300; mirror at 30 Hz.
 High also gains two savings nobody can see: the gym and city lights far beyond any view switch off
 (an arena fight is 5,700 studs from the gym, whose 170 lights used to stay on through every bout), and
 the gym's ambience loops pause while the camera is that far away.
+
+**Bodies and faces.**
+- A tier body is 14 MeshParts of 190-1,800 triangles (about 6.7k a body for the tiers; the classic head is the
+  engine's own), uploaded Mesh assets the engine streams and instances like any avatar part: no Lua at run
+  time on the clients, nothing generated, no EditableMesh / EditableImage memory.
+- The server makes at most 70 templates (5 tiers x 14 parts) once, in the background from boot. A tier
+  change swaps only the parts whose tier moved (one replicated part each); an unchanged build swaps nothing.
+- A face expression is a local Decal texture write when the mood changes (the 17 face images load once).
+- Retired with the organic characters: the per-client mesh generation of the bodies and heads (the "Time until
+  every character's meshes are built" and most of the Editable memory in the tables below), the head's damage
+  painting, BodyFX's blend shapes and the round-1 muscle parts (the gym members' part counts below are older).
 
 **Server.**
 - The fight venues' templates (8,600 instances in ServerStorage, about a fifth of the boot's Lua) are
@@ -863,9 +897,10 @@ the gym's ambience loops pause while the camera is that far away.
   them at once if a fight ever comes first).
 - Map and venue parts have CanTouch off (nothing listens to `.Touched`), and the posed gym NPCs skip
   the Humanoid state machine.
-- Gym members' part bodies are built at low detail when the clients draw them with meshes anyway
-  (decided once at boot by a probe EditableMesh on the server): 10,703 -> 9,108 instances and
-  2,788 -> 2,180 parts replicated to every join. Without the Editable APIs they stay at medium detail.
+- Gym members' gear and round-1 hair are built at low detail when the clients draw their hair themselves
+  anyway (decided once at boot by a probe EditableMesh on the server); without the Editable APIs they stay at
+  medium detail. (Measured with the retired round-1 muscle layer: 10,703 -> 9,108 instances and 2,788 ->
+  2,180 parts replicated to every join; the muscle layer itself, ~30-60 parts a boxer, is gone now.)
 - Fighters slide by their root (one assembly move instead of `Model:PivotTo` of ~270 parts), and the
   10 Hz fight state message is a 42-byte buffer (64 B on the wire, was ~387 B).
 - **StreamingEnabled is off**, and `default.project.json` now says so for Workspace, so a `rojo serve`
@@ -951,7 +986,9 @@ a warning.
 
 ## Preview images
 
-Offline renders of the real generators and Builder, made outside Roblox with a three.js renderer.
+Offline renders of the real generators and Builder, made outside Roblox with a three.js renderer. They show
+the organic characters that the tier body and the classic head replaced (renders of the tier body and the
+faces are made by `tools/body/build_body.py` / `faces.py`).
 Lighting approximates Roblox's Future lighting, so expect small differences in Studio.
 
 **`previews/final/`** shows the current characters, and holds every later pass's previews too. Its
@@ -992,15 +1029,27 @@ them.
 
 ## Known limitations
 
-- The preview renders are not Roblox screenshots. Test the look in Studio with the mesh APIs on.
-- On the most muscular builds, a soft crease still shows where the deltoid meets the torso. Some
-  glove angles still read a little like mittens.
-- The neck is a plain column. The trapezius does not slope up into it, so from behind it can look
-  like a pipe standing on the shoulders. Women's necks can look a little long in profile.
+- **The tier body and classic faces, not yet seen in Studio.** The swap, the scaling and the faces were checked
+  in the lune simulator with a fake engine (`tools/sim/test_bodytiers.luau`), not in Roblox. To check in Studio:
+  - that `ReplaceBodyPartR15` scales the tier part once (BuilderTiers corrects either way; a part visibly the
+    wrong size, or joints off their attachments, means the engine did something else again);
+  - the `HipHeight` BuilderTiers computes (feet on the floor), the `RootRigAttachment` at the LowerTorso
+    centre (unverified against the live rig) and the Grip attachment's orientation (a held tool);
+  - that the default head is swapped for the classic head (the Decal must show on its front) and that
+    the classic head's shape matches `AnatomyHairKit.CLASSIC` (rounded cylinder, round 0.24 of 0.6: read off
+    its silhouette, not measured).
+- **Hair on the classic head.** The cards were modelled on the organic skull (0.77 studs wide nominal) and are
+  mapped onto the classic head (1.2 wide) per axis (`HK.CLASSIC_FIT`): short cuts' scalp cap stands about
+  0.05 studs off the head in the middle of its sides and still dips up to 0.04 studs into the head's upper
+  corners; long hair and locs hang a little wider than before. A proper fix is a cap and cards modelled on
+  the classic head.
+- **No muscle definition or pump on the body.** The tiers are rigid meshes: fat, definition, veins, the
+  post-workout pump and flexing are tracked but no longer drawn; a part jumps a whole tier at a time.
+- **Faces don't animate** (no blinks or eye movement): an expression is a texture swap. Damage marks are simple
+  overlays (no decals uploaded for them yet: `BodyAssetData.damage`).
 - A much shorter boxer cannot always reach a much taller one's chin. When the smallest women punch
   up at a Balanced man, some overhands and uppercuts land under the chin. In an offline test of 200
   such punches, 31 missed or broke a quality check, against 30 before the neck was lengthened.
-- On the palest skin tones, the chest highlights can look a little chalkier than the face.
 - **Clinch arms and heads.** The tie-up holds the chests apart, but its arms are fixed angles: the
   forearms and gloves sink up to about 17 cm into the partner's chest for the whole hold, and both
   men turn the head the same way, so the foreheads press into each other. Fighters keep High's detail

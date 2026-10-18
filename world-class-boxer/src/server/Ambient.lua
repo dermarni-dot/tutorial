@@ -122,13 +122,11 @@ local function yawTo(from, to)
 	return math.atan2(-d.X, -d.Z)
 end
 
--- The part-built detail of a member whose def names none. Where the Editable APIs work, every client
--- draws the members with its own meshes (AnatomyClient builds them from LookData, the same at any part
--- detail) and hides the part body: built at low detail it is ~1,600 instances and ~600 parts fewer
--- for the 25 members, off every join and every client's memory, and only shows past the mesh range
--- (the track's far side) or on a device that runs out of Editable memory. Where they do not work
--- (the experience setting off, an unverified creator) the part body is what everyone sees all the
--- time: medium keeps its hull and mass domes (low is the bare R15 blocks with a few domes).
+-- The part-built detail of a member whose def names none. The body (the muscle-tier parts) and the face are the
+-- same at every detail; the detail sets the gear's and the round-1 hair's part counts. Where the Editable APIs
+-- work, every client draws the members' hair itself (AnatomyClient, the asset hair) over the round-1 hair, so
+-- they are built at low detail (fewer hair and gear parts off every join); where they do not (the experience
+-- setting off, an unverified creator) the round-1 hair is what everyone sees: medium.
 -- The server's own EditableMesh is the probe; decided once, before the first member is built.
 local defaultDetail
 local function memberDetail()

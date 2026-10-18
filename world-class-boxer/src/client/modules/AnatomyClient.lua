@@ -1,6 +1,10 @@
--- AnatomyClient: organic anatomy meshes on every character, generated on this client from the LookData
--- the server publishes (EditableMeshes do not replicate). The round-1 part-built look stays underneath
--- as the fallback and is hidden LOCALLY only once its replacement exists.
+-- AnatomyClient: the client-built meshes on every character: today only the HAIR (the uploaded hair cards,
+-- HairAssets, with the generated AnatomyHair as their fallback), from the LookData the server publishes
+-- (EditableMeshes do not replicate). The organic Body and Head sections are retired: the body is the standard
+-- R15 rig with the server's muscle-tier parts (BuilderTiers) and the classic head with its face decal, so this
+-- module registers the Hair generator only (GENERATORS); the section machinery below still takes any section a
+-- module registers. The round-1 part-built hair stays underneath as the fallback and is hidden LOCALLY only
+-- once its replacement exists.
 -- * watches models tagged "Anatomy" (Builder.Cosmetics tags every model it publishes LookData on),
 --   Fighter / Trainee / Ambient / Referee / Preview models and player characters
 -- * sections ("Body", "Head", "Hair") are generators registered by the shared modules AnatomyBody /
@@ -73,7 +77,8 @@ local FOCUS_ORDER = { Head = 1, Body = 2, Hair = 3 }
 -- seconds of work per frame for a first look at you / your opponent / a preview (High's frameBudget at every
 -- level: the low-detail pass is short, and a round-1 head on the opponent is the worst thing a fight can show)
 local FIRST_BUDGET = 0.004
-local GENERATORS = { AnatomyBody = "Body", AnatomyHead = "Head", AnatomyHair = "Hair" }
+-- (the retired AnatomyBody / AnatomyHead generators are gone: the hair is the only client-built section)
+local GENERATORS = { AnatomyHair = "Hair" }
 local LOD_RANK = { full = 3, medium = 2, low = 1 }
 -- raised through MeshKit's tick to abandon a build (printable: it shows up in logs as a caught error)
 local CANCEL = "[AnatomyClient: build cancelled]"

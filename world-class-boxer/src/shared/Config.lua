@@ -1204,7 +1204,7 @@ Config.Anatomy = {
 	-- plus the chest, shoulder caps, biceps, traps (and abs when defined) - the Body meshes replace it on
 	-- every client that has Editable meshes; that much still reads as a boxer on one without them
 	-- (Builder hullOnly: ~18 domes, ~55 instances less per NPC to replicate and walk)
-	npcHullOnly = true,
+	npcHullOnly = true, -- (retired: the round-1 muscle layer is gone; kept so older tools reading it still load)
 	tris = {
 		Body = { full = 9000, medium = 4000, low = 1500 },
 		Head = { full = 5000, medium = 2000, low = 700 },

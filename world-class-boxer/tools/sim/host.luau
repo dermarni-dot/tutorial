@@ -353,7 +353,32 @@ function Host.new(opts)
 			return n
 		end,
 	}
+	-- Roblox's Random (deterministic per seed; not the engine's sequence, only its interface)
+	local RandomStub = {
+		new = function(seed)
+			local st = math.floor(math.abs(tonumber(seed) or os.clock() * 1e6)) % 2147483647
+			if st == 0 then
+				st = 1
+			end
+			local r = {}
+			local function nxt()
+				st = (st * 48271) % 2147483647
+				return st / 2147483647
+			end
+			function r:NextNumber(a, b)
+				if a == nil then
+					return nxt()
+				end
+				return a + (b - a) * nxt()
+			end
+			function r:NextInteger(a, b)
+				return math.min(b, a + math.floor(nxt() * (b - a + 1)))
+			end
+			return r
+		end,
+	}
 	local G = {
+		Random = RandomStub,
 		game = game, workspace = ws, Workspace = ws, task = taskLib,
 		tick = function()
 			return os.time() + (os.clock() % 1)
@@ -517,7 +542,8 @@ end
 --   hair = { style, type, color = {r,g,b} | HairColors index, length, density, thickness, clump, frizz, volume,
 --            curlSize, growth, dye, hairline, part, hl, hcolor }  (merged over the defaults)
 --   face = { ... } (merged over the defaults), beard = { style, growth }, build = { fat, ... }, opts = { ... }
---   rig = a rig table (replaces Host.Rig(g)), app = fn(app) to edit the app table before conversion
+--   rig = a rig table (replaces Host.Rig(g)), app = fn(app) to edit the app table before conversion,
+--   headShape = "classic" (the game's head; default nil: the organic skull the hair was modelled on)
 function Host.Look(H, spec)
 	spec = spec or {}
 	local Looks = H.require("Looks")
@@ -557,6 +583,9 @@ function Host.Look(H, spec)
 		look.scale.h = math.clamp(spec.height / 70, 0.86, 1.2)
 	end
 	look.body.frame = look.body.frame or "Athletic"
+	-- the head: the game publishes headShape "classic" (the standard R15 classic head); the hair tests written for
+	-- the organic skull it replaced keep that skull unless spec.headShape = "classic"
+	look.headShape = spec.headShape
 	return look, app
 end
 

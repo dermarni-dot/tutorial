@@ -259,8 +259,24 @@ local function fallbackParams(look)
 	return P
 end
 
+-- the classic Roblox head every boxer has now (BuilderHead: a Part with the Head SpecialMesh, look.headShape =
+-- "classic"): a vertical cylinder filling its box (radius = half the width, nominal 0.6) whose top and bottom
+-- edges round off (radius `round`). VERIFY in Studio: the round is read off the classic head's silhouette
+-- (about 40 % of the half width), not measured from the engine's mesh.
+Kit.CLASSIC = { r = 0.6, h = 0.6, round = 0.24 }
+local function sdClassic(x, y, z)
+	local C = Kit.CLASSIC
+	local rr = C.round
+	local qx = sqrt(x * x + z * z) - (C.r - rr)
+	local qy = abs(y) - (C.h - rr)
+	local ox, oy = max(qx, 0), max(qy, 0)
+	return sqrt(ox * ox + oy * oy) + min(max(qx, qy), 0) - rr
+end
+Kit.ClassicField = sdClassic
+
 -- S = Kit.Scalp(look): the skull field (nominal), rays / normals / projection, the hairline keys and a
--- body proxy. Reads only Hair-section look paths (rig.parts.Head, rig.joints.Neck, rig.parts.UpperTorso,
+-- body proxy. look.headShape == "classic": the classic head's field (the hairline, age, gender and seed still
+-- come from AnatomySkull's parameters). Reads only Hair-section look paths (rig.parts.Head, rig.joints.Neck, rig.parts.UpperTorso,
 -- face.*, g, age through AnatomySkull).
 function Kit.Scalp(look)
 	local P, field, keys
@@ -287,9 +303,15 @@ function Kit.Scalp(look)
 		end
 	end
 	keys = keys or fallbackKeys(P)
+	if look.headShape == "classic" then
+		P = table.clone(P)
+		P.cy, P.cz = 0.05, 0
+		field = sdClassic
+	end
 	local S = {
 		P = P, f = field, keys = keys, kx = num(P.kx, 1), ky = num(P.ky, 1), kz = num(P.kz, 1),
 		cx = 0, cy = num(P.cy, 0.15), cz = num(P.cz, 0.06), seed = floor(num(P.seed, 7)), female = P.female == true,
+		classic = look.headShape == "classic",
 		age = num(P.age, 26),
 	}
 	local f = field

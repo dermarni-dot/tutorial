@@ -272,15 +272,28 @@ function HK.Measure(S)
 	return W, T, Fz, Bz
 end
 
+-- The classic head (S.classic: Kit.Scalp of a look.headShape "classic") is a rounded cylinder, the cards' skull an
+-- ellipsoid: matched only at the four extents above, the cap sank up to 0.141 (nominal) into the classic head's
+-- upper corners (10 % of its points more than 0.059 under the surface; tools/sim/fit_classic_hair.luau). On it
+-- the fit takes CLASSIC_FIT on top (per-axis x 1.06 / 1.20 / 1.20 and 0.06 down: the best per-axis map found
+-- for the cap, 2 % of its points at most 0.01 under the surface, worst 0.055 at the top corners, its middle
+-- 0.066 above the head)
+HK.CLASSIC_FIT = { kx = 1.06, ky = 1.2, kz = 1.2, dy = -0.06 }
+
 function HK.Fit(S, fit0)
 	fit0 = type(fit0) == "table" and fit0 or HK.FIT0
 	local W0, T0 = num(fit0.W, HK.FIT0.W), num(fit0.T, HK.FIT0.T)
 	local F0, B0 = num(fit0.Fz, HK.FIT0.Fz), num(fit0.Bz, HK.FIT0.Bz)
 	local W, T, Fz, Bz = HK.Measure(S)
-	return {
+	local fit = {
 		W = W, T = T, Fz = Fz, Bz = Bz,
-		ax = W / W0, ay = T / T0, az = (Bz - Fz) / (B0 - F0), dz = (Bz + Fz) / 2 - (B0 + F0) / 2,
+		ax = W / W0, ay = T / T0, az = (Bz - Fz) / (B0 - F0), dz = (Bz + Fz) / 2 - (B0 + F0) / 2, dy = 0,
 	}
+	if S.classic then
+		local C = HK.CLASSIC_FIT
+		fit.ax, fit.ay, fit.az, fit.dy = fit.ax * C.kx, fit.ay * C.ky, fit.az * C.kz, C.dy
+	end
+	return fit
 end
 
 ------------------------------------------------------------------------
@@ -384,7 +397,7 @@ end
 function HK.Place(data, entry, look, S, fit)
 	fit = fit or HK.Fit(S, data.fit0)
 	local kx, ky, kz = num(S.kx, 1), num(S.ky, 1), num(S.kz, 1)
-	local base = xf(fit.ax, fit.ay, fit.az, 0, 0, fit.dz)
+	local base = xf(fit.ax, fit.ay, fit.az, 0, num(fit.dy, 0), fit.dz)
 	local Lf, Vf = HK.LengthFactor(look), HK.VolumeFactor(look)
 	local pieces = type(entry.pieces) == "table" and entry.pieces or {}
 	-- hanging chains stretch as one about their root's pivot (a lower segment about its own would tear open at
@@ -411,10 +424,10 @@ function HK.Place(data, entry, look, S, fit)
 				local rp = pieces[root]
 				local fx = rp.hairfx
 				local ay = type(fx) == "table" and type(fx.pivot) == "table" and fx.pivot[2] or (rp.bbox[2] + rp.bbox[5] / 2)
-				ch = { anchor = ay * fit.ay, bottom = math.huge }
+				ch = { anchor = ay * fit.ay + num(fit.dy, 0), bottom = math.huge }
 				chains[root] = ch
 			end
-			ch.bottom = min(ch.bottom, (ap.bbox[2] - ap.bbox[5] / 2) * fit.ay)
+			ch.bottom = min(ch.bottom, (ap.bbox[2] - ap.bbox[5] / 2) * fit.ay + num(fit.dy, 0))
 		end
 	end
 	local yFloor = hangFloor(S)
@@ -568,12 +581,12 @@ end
 function HK.CapGrid(S, cov, pal, thetaMax, gw, gh, fit)
 	fit = fit or HK.Fit(S)
 	local ref = refGrid(thetaMax, gw, gh)
-	local ax, ay, az, dz = fit.ax, fit.ay, fit.az, fit.dz
+	local ax, ay, az, dz, dy = fit.ax, fit.ay, fit.az, fit.dz, num(fit.dy, 0)
 	local n = gw * gh
 	local R, G, B, C = table.create(n, 0), table.create(n, 0), table.create(n, 0), table.create(n, 0)
 	local RX, RY, RZ = ref.x, ref.y, ref.z
 	for k = 1, n do
-		local x, y, z = S.onto(RX[k] * ax, RY[k] * ay, RZ[k] * az + dz, 0)
+		local x, y, z = S.onto(RX[k] * ax, RY[k] * ay + dy, RZ[k] * az + dz, 0)
 		local c = clamp(cov(x, y, z), 0, 1)
 		-- (scalp hair is short: the roots' colour; Split by its side, Ombre by its height)
 		local r, g, b = pal.at(0.5, 0, x, false, y)
@@ -842,7 +855,7 @@ end
 function HK.Tint(src, sw, sh, f, colors, flipV, gain)
 	f = max(1, floor(f or 1))
 	gain = gain or 1
-	local unit64 = 4 + 9 * f * f
+	local unit64 = 6 + 12 * f * f -- (the dark-colour lift costs a little per texel)
 	local n64 = 0
 	local w, h = sw // f, sh // f
 	stepNow()
