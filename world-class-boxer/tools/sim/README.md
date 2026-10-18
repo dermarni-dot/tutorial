@@ -113,3 +113,16 @@ lune run tools/sim/test_hairassets_e2e.luau      # ~20 s, exits non-zero on a fa
   nothing left after Stop. Simulated: the engine (welds as records, calls answer at once). Body / Head are
   registered as empty generators and Perf / State / AnatomyStatus left out; not covered: rendering, the
   engine's memory budget, real asset permissions, network latency.
+
+## v8 previews and the gear
+
+`v8_scene.luau` runs `Builder.Cosmetics` on a fake rig for the v8 cast (tier bodies, classic heads, the asset hair
+and the mesh gear of `BuilderGear`: the gear manifest is `src/shared/GearAssetData.lua` when it has uploaded ids,
+else `publish_gear.py --local`'s, `--gear PATH` to choose; ids map to `tools/body/out/gear` files through
+`tools/body/uploaded.json` or the local sidecar). `v8_render.py SCENE OUT` renders the sheets and `lineup.jpg`
+(`previews/final/v8/`).
+
+`test_gear.luau [--gear PATH]`: the gear manifest (every piece at every tier, sets, sides, < 6k triangles an
+outfit), the piece per body-part tier (mixed tiers, a tier change), styles, size x ratio / weld offsets, colours,
+gloves / wraps / bare hands, the women's top, officials, sweat, the rebuild cache, and the fallback to the
+part-built gear (ids 0, failed loads, default parts).

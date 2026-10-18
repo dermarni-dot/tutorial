@@ -397,10 +397,37 @@ fighter the tired face; neutral is his own face. A mood whose face is not upload
 **Beards** stay as 3D shells on the classic head (the way a beard accessory sits on a classic face), with
 the moustache in the gap the classic faces leave between the eyes and the mouth.
 
-**Gear** is sized from the tier parts' own boxes (the meshes' bounding boxes at the boxer's scale) and
-placed at their joints: gloves from the forearm's measured girth (`tiers[n].fit`) at the wrist joint (the arm
-axis moves out per tier), wraps at the wrist joint and over the palm, the waistband from the waist joint,
-trunks, boots, robe and headgear from the part sizes.
+**Gear** is modelled in Blender in the same smooth style as the tier bodies and fitted to every tier
+(`tools/body/build_gear.py`; uploaded meshes in `GearAssetData.lua`, written by `tools/body/publish_gear.py`).
+Each piece is fitted to the one body part it is welded to, at that part's tier: cloth follows the convex hull of
+the body's cross-sections plus an offset (snug elastic, loose satin), and where it reaches over a neighbour whose
+tier can differ (the waistband over the UpperTorso, the seat over both thighs, the cuff over the glove) it clears
+that neighbour at every tier. Openings end in a rolled lip; ends that dive under another piece close on themselves.
+- **Trunks** (`Looks.TrunkStyles`): a waistband (trim colour) on the waist / hip surface and the seat on the
+  LowerTorso, one loose, flared satin leg per UpperLeg ending mid-thigh (Long: just above the knee). The legs'
+  tops stay inside the seat through the thigh's swing (-12 to +18 degrees about the hip: the stance, the
+  punches), so no gap opens. Striped adds a side stripe, Pro a side stripe and a hem (trim colour); Long has a
+  long hem. The waist text and the trunks sponsor go on the band's / right leg's front.
+- **Gloves**: one glove per hand (left / right mirrored; a padded fist about 1.5 x the hand's knuckle span, the
+  thumb sewn on, the striking face at the end), the same at every tier and welded to the Hand (the hand is
+  hidden inside it); a cuff and a hook-and-loop strap per tier on the LowerArm, covering the forearm's end at
+  every tier. The glove's colour, finish (leather / matte / patent / metallic), wear colour, logo, sparkles
+  and sweat stay as before; the strap takes the brand's strap colour (lace-ups: the trim, fight night: tape white).
+- **Hand wraps** in the gym: a wrap over the palm and knuckles (fingers free) and turns round the wrist.
+- **Boots / shoes** (`Looks.ShoeStyles`): the boot foot, sole (its colour and material by the sole kind) and
+  instep laces on the Foot; High-Top adds the laced shaft to mid-calf and a sock rim on the LowerLeg (per tier,
+  for the calf), Low-Top a padded collar and an ankle sock. Boxing boots are leather, the starter sneakers fabric.
+- **The women's sports top** on the UpperTorso (per tier, following the chest, racer straps) in the top colour
+  with an underband in the trunks colour.
+
+A worn outfit is 5.3-5.9k triangles. `BuilderGear` makes one template per mesh id per server
+(`AssetService:CreateMeshPartAsync`, in the background from boot, a failure retried after 2 minutes), clones it,
+sizes it once to the template's size x the body part's scale ratio (Size / OriginalSize: exactly the scaling of
+the tier mesh under it) and welds it at `part.CFrame * CFrame.new(offset x ratio)`. A tier change rebuilds the
+pieces for the new tier (the rebuild caches carry the mesh ids and part sizes). Whatever cannot be built from
+meshes (a default part, an id 0, a failed load) falls back, per group, to the part-built gear (gloves from the
+forearm's measured girth at the wrist joint, wraps, trunks and boots from the part boxes); a woman without the
+mesh top wears the torso in the top colour. The robe (walkouts) and the sparring headgear are still part-built.
 
 **Hair.** 30 styles plus bald across five hair types (straight, wavy, curly, kinky, coiled). They
 include fades from skin to high (as gradients), crops, curly tops, afros, 360 waves, twists,
@@ -913,6 +940,9 @@ the gym's ambience loops pause while the camera is that far away.
   time on the clients, nothing generated, no EditableMesh / EditableImage memory.
 - The server makes at most 70 templates (5 tiers x 14 parts) once, in the background from boot. A tier
   change swaps only the parts whose tier moved (one replicated part each); an unchanged build swaps nothing.
+- The gear is 160 Mesh assets (40 pieces x 5 tiers, the shared glove / wrap / boot foot once): one template
+  each, made in the background from boot; a boxer wears 26-30 gear MeshParts (5.3-5.9k triangles) instead of
+  the part-built gear's 60-90 parts.
 - A face expression is a local Decal texture write when the mood changes (the 17 face images load once).
 - Retired with the organic characters: the per-client mesh generation of the bodies and heads (the "Time until
   every character's meshes are built" and most of the Editable memory in the tables below), the head's damage
@@ -1070,6 +1100,12 @@ them.
   0.05 studs off the head in the middle of its sides and still dips up to 0.04 studs into the head's upper
   corners; long hair and locs hang a little wider than before. A proper fix is a cap and cards modelled on
   the classic head.
+- **The mesh gear, not yet seen in Studio.** Placement, sizing, welds, colours and the fallback were checked in
+  the lune simulator (`tools/sim/test_gear.luau`) and in the Blender renders (`previews/final/v8/`). To check in
+  Studio: that `CreateMeshPartAsync` gives each gear MeshPart the mesh's bounding box as its size (the offsets
+  assume it), the satin / leather materials under Future lighting, and the trunks in the real animations (the
+  legs are kept hidden in the seat for a thigh swing of -12 to +18 degrees; a deeper kick or crouch can show
+  a leg's top edge). The robe and the headgear are still part-built.
 - **No muscle definition or pump on the body.** The tiers are rigid meshes: fat, definition, veins, the
   post-workout pump and flexing are tracked but no longer drawn; a part jumps a whole tier at a time.
 - **Faces don't animate** (no blinks or eye movement): an expression is a texture swap. Damage marks are simple

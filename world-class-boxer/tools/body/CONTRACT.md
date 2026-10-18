@@ -58,3 +58,28 @@ space, feet on Y = 0, right side; the left mirrors X), `armAxisX` per tier, `hea
 `shoulderHeight`, `neckHeight`, `wristHeight`, `standingHeight`. Attachment positions carry no rotation: every
 one is axis-aligned with its part, except the Grip, which takes R15's usual orientation
 (CFrame.Angles(-math.pi / 2, 0, 0)).
+
+## The gear (GearAssetData.lua, generated)
+
+`tools/body/build_gear.py` models the boxing gear on the tier bodies (rest space) and writes
+`tools/body/out/gear/{tier<N>,shared}/<Piece>.mesh` + `gear.json`; `tools/body/publish_gear.py` uploads them (Mesh,
+same hash cache `uploaded.json`) and writes `src/shared/GearAssetData.lua`:
+
+```lua
+return {
+	version = 1,
+	slots = { "trunks", "trim", "gloves", "gloveTrim", "wraps", "wraps2", "shoes", "soles", "laces", "socks", "top", "topTrim" },
+	sets = { trunks = { Classic = {...}, Striped = {...}, Pro = {...}, Long = {...} }, shoes = { ["High-Top"] = {...},
+	         ["Low-Top"] = {...} }, gloves = { Gloves = {...} }, wraps = { Wraps = {...} }, top = { Top = {...} } },
+	                               -- piece names; a sided name (Glove) stands for Glove_L and Glove_R
+	pieces = { Glove_R = { part = "RightHand", slot = "gloves", group = "gloves" }, ... },  -- 40 pieces
+	tiers = { { Glove_R = { mesh = id, offset = { x, y, z }, size = { x, y, z }, nt = tris }, ... }, ... },  -- [1..5]
+}
+```
+
+`tiers[n][piece]` is the piece for a body part showing tier n (the game reads the part's `BodyTier`). `offset` = the
+piece's bbox centre in that part's space (rest pose, unscaled), `size` = the mesh bbox; the game sizes a clone to
+`size x ratio` and welds it at `part.CFrame * CFrame.new(offset x ratio)` (ratio = the part's Size / OriginalSize).
+The glove, wrap, boot foot, sole and instep laces are one mesh at every tier (the hand and foot do not change), with
+a per-tier offset. An id of 0 = not uploaded: `BuilderGear.Resolve` returns nil and BuilderBody builds the
+part-built gear for that group.
