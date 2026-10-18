@@ -4,9 +4,10 @@
 --   * a ring with your corner behind you (red pad, ropes and ties), the canvas under your feet
 --   * the gym beyond the ropes: brick walls, a club banner, old fight posters, heavy bags on chains,
 --     hanging lamps, a high window with a shaft of light and dust in it, steel girders
---   * a CLONE of your character on the canvas. The Animator animates it (tag "Preview", Pose / Expr
---     attributes) and AnatomyClient dresses it like any other character; your real character stays
---     exactly where it is
+--   * a CLONE of your character on the canvas (the server's muscle-tier body parts, classic head and gear come
+--     along; MenuStage.CloneCharacter copies non-Archivable parts too). The Animator animates it (tag
+--     "Preview", Pose / Expr attributes) and AnatomyClient builds its hair like any other character's; your
+--     real character stays exactly where it is. MainMenu re-stages it when the server swaps parts later
 -- MenuStage.Build() -> stage; MenuStage.Place(stage, char) -> clone; MenuStage.Step(stage, t) every
 -- frame (swinging bags and lamp, breathing rim light); MenuStage.Shot(stage, view, t) -> camera CFrame,
 -- field of view, focus distance; MenuStage.Destroy(stage).
@@ -347,30 +348,109 @@ end
 local STRIP = { Script = true, LocalScript = true, ModuleScript = true, Sound = true, ProximityPrompt = true, ClickDetector = true, BillboardGui = true,
 	AlignPosition = true, AlignOrientation = true, LinearVelocity = true, AngularVelocity = true, VectorForce = true, Torque = true }
 
+-- the body parts a boxer needs before a copy of him is worth staging (the server swaps the 14 limbs and torsos for
+-- their muscle-tier MeshParts asynchronously, the head for the classic head: a missing one is mid-swap)
+local REQUIRED = { "HumanoidRootPart", "Head", "UpperTorso", "LowerTorso", "LeftUpperArm", "RightUpperArm", "LeftUpperLeg", "RightUpperLeg" }
+
+-- (char) -> true | false, reason: the character can be copied now
+function MenuStage.Ready(char)
+	if not (char and char.Parent) then
+		return false, "no character"
+	end
+	if not char:FindFirstChildOfClass("Humanoid") then
+		return false, "no Humanoid yet"
+	end
+	for _, n in ipairs(REQUIRED) do
+		local p = char:FindFirstChild(n)
+		if not (p and p:IsA("BasePart")) then
+			return false, n .. " missing (still loading / being swapped)"
+		end
+	end
+	return true
+end
+
+-- a full copy of a character: Clone() skips every non-Archivable descendant (and returns nil for a non-Archivable
+-- root: a player's character is one), so each one is made Archivable for the copy and put back after
+function MenuStage.CloneCharacter(char)
+	local flipped = {}
+	local ok, clone = pcall(function()
+		if char.Archivable == false then
+			char.Archivable = true
+			flipped[#flipped + 1] = char
+		end
+		for _, d in ipairs(char:GetDescendants()) do
+			if d.Archivable == false then
+				d.Archivable = true
+				flipped[#flipped + 1] = d
+			end
+		end
+		return char:Clone()
+	end)
+	for _, d in ipairs(flipped) do
+		pcall(function()
+			d.Archivable = false
+		end)
+	end
+	if ok and clone then
+		return clone
+	end
+	return nil, ok and "Clone returned nil" or tostring(clone)
+end
+
+-- the parts of model joined to root through its joints (Motor6D / Weld / WeldConstraint / AnimationConstraint, both
+-- parts inside the model): { [part] = true }. Read from the joints themselves, so it does not depend on the
+-- engine's assembly state of a model that was just parented
+function MenuStage.Connected(model, root)
+	local links = {}
+	local function link(a, b)
+		if a and b and a:IsA("BasePart") and b:IsA("BasePart") and a:IsDescendantOf(model) and b:IsDescendantOf(model) then
+			links[a] = links[a] or {}
+			links[b] = links[b] or {}
+			table.insert(links[a], b)
+			table.insert(links[b], a)
+		end
+	end
+	for _, d in ipairs(model:GetDescendants()) do
+		if d:IsA("JointInstance") or d:IsA("WeldConstraint") then
+			link(d.Part0, d.Part1)
+		elseif d:IsA("AnimationConstraint") then
+			local a0, a1 = d.Attachment0, d.Attachment1
+			link(a0 and a0.Parent, a1 and a1.Parent)
+		end
+	end
+	local seen = { [root] = true }
+	local queue = { root }
+	local i = 1
+	while i <= #queue do
+		for _, q in ipairs(links[queue[i]] or {}) do
+			if not seen[q] then
+				seen[q] = true
+				table.insert(queue, q)
+			end
+		end
+		i += 1
+	end
+	return seen
+end
+
+-- (st, char) -> clone | nil, reason
 function MenuStage.Place(st, char)
 	if st.clone then
 		st.clone:Destroy()
 		st.clone = nil
 	end
-	local root0 = char and char:FindFirstChild("HumanoidRootPart")
-	local hum0 = char and char:FindFirstChildOfClass("Humanoid")
-	if not (root0 and hum0) then
-		return nil
+	local ready, why = MenuStage.Ready(char)
+	if not ready then
+		return nil, why
 	end
-	local was = char.Archivable
-	local ok, clone = pcall(function()
-		char.Archivable = true
-		return char:Clone()
-	end)
-	pcall(function()
-		char.Archivable = was
-	end)
-	if not (ok and clone) then
-		return nil
+	local hum0 = char:FindFirstChildOfClass("Humanoid")
+	local clone, err = MenuStage.CloneCharacter(char)
+	if not clone then
+		return nil, "clone failed: " .. tostring(err)
 	end
-	-- the generated anatomy meshes belong to the real character (their EditableMeshes die with its next
-	-- rebuild): AnatomyClient builds the clone its own (tag "Preview" below), and until then, or when
-	-- meshes are unavailable, the clone shows the round-1 parts
+	-- client-built pieces (the asset / generated hair, model.Anatomy) belong to the real character (their
+	-- EditableMeshes die with its next rebuild): AnatomyClient builds the clone its own (tag "Preview" below),
+	-- and until then, or when it builds nothing, the clone shows the server's parts
 	local anatomy = clone:FindFirstChild("Anatomy")
 	if anatomy and anatomy:IsA("Folder") then
 		anatomy:Destroy()
@@ -382,8 +462,7 @@ function MenuStage.Place(st, char)
 		if STRIP[d.ClassName] or d:IsA("BodyMover") then
 			d:Destroy()
 		elseif d:IsA("SurfaceGui") and d:GetAttribute("AnatomyHid") == true then
-			-- a gui the live character's meshes hid (Enabled is copied, LocalTransparencyModifier is not):
-			-- the copy starts with the round-1 look, which stays if AnatomyClient never builds this clone
+			-- a gui the live character's meshes hid (Enabled is copied, LocalTransparencyModifier is not)
 			d.Enabled = true
 			d:SetAttribute("AnatomyHid", nil)
 		elseif d:IsA("BasePart") then
@@ -391,7 +470,7 @@ function MenuStage.Place(st, char)
 			d.CanQuery = false
 			d.CanTouch = false
 			d.Anchored = false
-			-- whatever the live character's camera / meshes hid stays the live character's business
+			-- whatever the live character's camera hid stays the live character's business
 			d.LocalTransparencyModifier = 0
 		elseif d:IsA("Decal") then
 			d.LocalTransparencyModifier = 0
@@ -402,15 +481,23 @@ function MenuStage.Place(st, char)
 	end
 	local hum = clone:FindFirstChildOfClass("Humanoid")
 	local root = clone:FindFirstChild("HumanoidRootPart")
-	if not (hum and root) then
+	if not (hum and root and root:IsA("BasePart")) then
 		clone:Destroy()
-		return nil
+		return nil, "the copy has no Humanoid / HumanoidRootPart"
 	end
 	hum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
 	pcall(function()
 		hum.EvaluateStateMachine = false -- an anchored puppet: no falling / getting-up states
 		hum.BreakJointsOnDeath = false
+		hum.RequiresNeck = false
 	end)
+	-- every part where it sits relative to the root on the live character (for parts no joint holds, below)
+	local rel = {}
+	for _, d in ipairs(clone:GetDescendants()) do
+		if d:IsA("BasePart") and d ~= root then
+			rel[d] = root.CFrame:ToObjectSpace(d.CFrame)
+		end
+	end
 	-- the root stands on the canvas (a humanoid's root rides HipHeight + half its size above the floor);
 	-- only the root is anchored, the limbs follow the Motor6Ds the Animator drives
 	root.Anchored = true
@@ -421,11 +508,29 @@ function MenuStage.Place(st, char)
 	clone:SetAttribute("Act", nil)
 	clone:SetAttribute("Guard", nil)
 	clone.Parent = st.folder
-	-- the Animator gives a Preview rig the proud stance; AnatomyClient builds its meshes (LookData came along)
+	-- a part no joint ties to the root (copied in the middle of a server-side part swap, a weld to something
+	-- outside the character) would be left behind in the gym or fall out of the set: put it where it sat on the
+	-- live character and weld it to the root
+	local inSet = MenuStage.Connected(clone, root)
+	local loose = 0
+	for part, cf in pairs(rel) do
+		if not inSet[part] and part.Parent then
+			part.CFrame = root.CFrame * cf
+			local w = Instance.new("WeldConstraint")
+			w.Name = "MenuHold"
+			w.Part0 = root
+			w.Part1 = part
+			w.Parent = part
+			loose += 1
+		end
+	end
+	st.loose = loose
+	-- the Animator gives a Preview rig the proud stance; AnatomyClient builds its hair (LookData came along)
 	CollectionService:AddTag(clone, "Preview")
 	st.clone = clone
 	st.root = root
 	st.head = clone:FindFirstChild("Head")
+	st.source = char
 	return clone
 end
 
@@ -504,7 +609,7 @@ function MenuStage.Destroy(st)
 		st.folder = nil
 	end
 	if st then
-		st.clone, st.root, st.head = nil, nil, nil
+		st.clone, st.root, st.head, st.source = nil, nil, nil, nil
 	end
 end
 

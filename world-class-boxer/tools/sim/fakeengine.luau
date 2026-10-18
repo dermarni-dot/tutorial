@@ -349,18 +349,40 @@ function FE.new()
 			c:Destroy()
 		end
 	end
-	function methods.Clone(o)
+	-- as the engine's Clone: nil for a non-Archivable instance (Archivable = false; unset counts as on), its
+	-- non-Archivable descendants left out, and instance references inside the copied tree (a joint's Part0 /
+	-- Part1, an ObjectValue) pointed at the copies
+	local function copyTree(o, map)
+		if rawget(o, "_props").Archivable == false then
+			return nil
+		end
 		local c = new(rawget(o, "_class"))
 		c.Name = rawget(o, "_name")
+		map[o] = c
 		for k, v in pairs(rawget(o, "_props")) do
 			rawget(c, "_props")[k] = v
 		end
 		for k, v in pairs(rawget(o, "_attr")) do
 			rawget(c, "_attr")[k] = v
 		end
-		-- the children too (as the engine's Clone; Archivable is always on here)
 		for _, k in ipairs(rawget(o, "_kids")) do
-			k:Clone().Parent = c
+			local kc = copyTree(k, map)
+			if kc then
+				kc.Parent = c
+			end
+		end
+		return c
+	end
+	function methods.Clone(o)
+		local map = {}
+		local c = copyTree(o, map)
+		for _, copy in pairs(map) do
+			local props = rawget(copy, "_props")
+			for k, v in pairs(props) do
+				if type(v) == "table" and map[v] then
+					props[k] = map[v]
+				end
+			end
 		end
 		return c
 	end

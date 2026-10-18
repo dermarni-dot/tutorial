@@ -287,19 +287,32 @@ local function buildFigure(char)
 	if not (char and char:FindFirstChild("HumanoidRootPart") and char:FindFirstChild("Head")) then
 		return nil
 	end
-	local was = char.Archivable
+	-- every non-Archivable descendant too (Clone() leaves those out: the server-made body / gear parts must
+	-- come along), paired while the flags are still on (pairTrees walks the Archivable children, as Clone did)
+	local flipped = {}
 	local ok, clone = pcall(function()
-		char.Archivable = true
+		local all = char:GetDescendants()
+		table.insert(all, char)
+		for _, d in ipairs(all) do
+			if d.Archivable == false then
+				d.Archivable = true
+				table.insert(flipped, d)
+			end
+		end
 		return char:Clone()
 	end)
-	pcall(function()
-		char.Archivable = was
-	end)
+	local map = {}
+	if ok and clone then
+		pcall(pairTrees, char, clone, map)
+	end
+	for _, d in ipairs(flipped) do
+		pcall(function()
+			d.Archivable = false
+		end)
+	end
 	if not (ok and clone) then
 		return nil
 	end
-	local map = {}
-	pcall(pairTrees, char, clone, map)
 	pcall(copyHidden, char, map, keepMeshes(clone))
 	for _, d in ipairs(clone:GetDescendants()) do
 		for _, tag in ipairs(CollectionService:GetTags(d)) do

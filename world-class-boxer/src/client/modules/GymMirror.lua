@@ -151,13 +151,25 @@ local function copyCharacter(char, parent)
 			list[i] = d
 		end
 	end
+	-- (every non-Archivable descendant too: Clone() leaves those out, and the server-made body / gear parts
+	-- must come along)
+	local flipped = {}
 	local ok, clone = pcall(function()
-		local was = char.Archivable
-		char.Archivable = true
-		local c = char:Clone()
-		char.Archivable = was
-		return c
+		local all = char:GetDescendants()
+		table.insert(all, char)
+		for _, d in ipairs(all) do
+			if d.Archivable == false then
+				d.Archivable = true
+				table.insert(flipped, d)
+			end
+		end
+		return char:Clone()
 	end)
+	for _, d in ipairs(flipped) do
+		pcall(function()
+			d.Archivable = false
+		end)
+	end
 	if not ok or not clone then
 		return nil, nil
 	end

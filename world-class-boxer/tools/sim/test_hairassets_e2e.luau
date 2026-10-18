@@ -56,6 +56,8 @@ for _, name in ipairs({ "Perf", "State", "AnatomyStatus" }) do
 	end
 end
 
+-- the hair path under test: the shipping Config may have every boxer bald for now (Config.BaldMode)
+H.require("Config").BaldMode = false
 local LookData = H.require("LookData")
 local HK = H.require("HairAssetKit")
 local Kit = H.require("AnatomyHairKit")
@@ -80,6 +82,7 @@ end
 AC.Settings.profileWait = 0
 AC.Settings.frameBudget = 0.02
 AC.Settings.debug = false
+AC.Settings.generatedHair = "all" -- (the NPCs' generated fallback is tested too; the game's default is "focus")
 local EMPTY = function()
 	return { pieces = {}, landmarks = {} }
 end
@@ -290,6 +293,26 @@ end
 print(string.format("initial builds: %.1f s wall", os.clock() - t0))
 if noEntry then
 	check("no entry -> generated pieces", isAsset(hair(models.NoEntry)) == false)
+	-- the game's default (generatedHair "focus"): an NPC with no asset hair keeps its round-1 hair, no EditableMesh
+	AC.Settings.generatedHair = "focus"
+	local meshes0 = sim.made.meshes
+	local npc = boxer("NoEntryFocus", noEntry, -40)
+	-- (with "all" it is built within a few seconds: waitBuilt would succeed)
+	local built = waitBuilt(npc, nil, 20)
+	local v = hair(npc)
+	check("focus: an NPC without asset hair builds no generated hair", not built and (v == nil or next(v) == nil), v and count(v))
+	check("focus: no EditableMesh made for it", sim.made.meshes == meshes0, sim.made.meshes - meshes0)
+	local pv = boxer("NoEntryPreview", noEntry, -42, "Preview")
+	local okP = waitBuilt(pv, function(view)
+		return isAsset(view) == false
+	end, 60)
+	check("focus: a preview without asset hair still gets the generated hair", okP)
+	for _, m in ipairs({ npc, pv }) do
+		models[m.Name] = nil
+		m:Destroy()
+	end
+	E.step(5)
+	AC.Settings.generatedHair = "all"
 end
 do
 	-- NPCs of one colour share the tinted card texture; a preview keeps its own image (HairFX may wet it)

@@ -33,6 +33,10 @@ local E = FE.new()
 local H = Host.new({ globals = { Instance = E.Instance, workspace = E.workspace, Workspace = E.workspace } })
 E.install(H)
 local Config = H.require("Config")
+-- the feature under test, whatever the shipping Config has switched off for now (BaldMode, avatar hair / face off)
+Config.BaldMode = false
+Config.AvatarLook.hair = true
+Config.AvatarLook.face = true
 local AvatarLook = H.require("AvatarLook")
 local Builder = H.require("Builder")
 local Looks = H.require("Looks")

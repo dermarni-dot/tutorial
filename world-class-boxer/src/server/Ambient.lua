@@ -133,7 +133,10 @@ local function memberDetail()
 	if defaultDetail == nil then
 		defaultDetail = "medium"
 		local anatomy = Config.Anatomy
-		if anatomy and anatomy.enabled then
+		if Config.BaldMode then
+			-- no hair is drawn anywhere: no probe mesh (in Studio the server shares the client's Editable budget)
+			defaultDetail = "low"
+		elseif anatomy and anatomy.enabled then
 			local ok, em = pcall(function()
 				return AssetService:CreateEditableMesh()
 			end)

@@ -64,6 +64,10 @@ AnatomyClient.Settings = {
 	promoteHold = 1.5, -- seconds a model must want a higher level of detail before it is rebuilt
 	demoteHold = 12, -- ... and a lower one (or out of range): lowering only saves memory, so it waits
 	profileWait = 20, -- seconds NPC meshes wait at most for the player's profile (see npcsAllowed)
+	-- the GENERATED hair (AnatomyHair: one EditableMesh per piece, alive as long as the piece) where the asset hair
+	-- does not draw a look: "all" | "focus" (you, your opponent, previews; NPCs keep their round-1 hair: dozens of
+	-- gym members' generated hair is what exhausts the device's Editable memory) | "off"
+	generatedHair = "focus",
 	debug = false,
 }
 
@@ -105,6 +109,7 @@ local HairAssets
 local assetOff = false -- the asset loader faulted this session (runJob generates every Hair section)
 local followPerf -- (the detail presets section)
 local hullTrims -- (the far hull, after onDescendantAdded)
+local generatedHairAllowed -- (before runJob)
 local warned = {}
 local listeners = { built = {}, restored = {} }
 local conns = {}
@@ -1275,6 +1280,21 @@ local function assetRetryDue(st)
 	return r == "due"
 end
 
+-- may this character's Hair be generated (AnatomyHair EditableMeshes) when the asset hair does not draw it?
+-- (an avatar-hair look generates nothing: always allowed)
+function generatedHairAllowed(rec, look)
+	if avatarHair(look) then
+		return true
+	end
+	local mode = AnatomyClient.Settings.generatedHair
+	if mode == "off" or mode == false then
+		return false
+	elseif mode == "focus" then
+		return (rec.priority or 2) <= 1
+	end
+	return true
+end
+
 local function runJob(job)
 	local rec, section, lod = job.rec, job.section, job.lod
 	local def = registry[section]
@@ -1323,6 +1343,11 @@ local function runJob(job)
 			assetWait = okW and w or nil
 		end
 	end
+	if not made and section == "Hair" and not generatedHairAllowed(rec, look) then
+		-- no asset hair for this look and no generated hair for this character: the round-1 hair stays (the
+		-- asset hair is still tried again when its failed ids are due)
+		made, result = {}, nil
+	end
 	if not made then
 		-- 2) generate (or reuse) and make the MeshParts
 		made, result = generateSection(job, def, look, lod)
@@ -1357,7 +1382,7 @@ local function runJob(job)
 		end
 		st.pieces, st.rules, st.landmarks = {}, nil, nil
 		st.sig, st.lod, st.active, st.skipped, st.job = job.sig, lod, false, true, nil
-		st.assetWait = nil
+		st.assetWait = assetWait
 		rec.sections[section] = st
 		applyCovers(rec)
 		if had then
@@ -1919,10 +1944,18 @@ function AnatomyClient.Register(section, def)
 	return true
 end
 
+-- Config.BaldMode: every boxer is bald (Builder draws no round-1 hair, HairAssets no asset hair), so the client
+-- builds no hair either: no generator, no EditableMesh, not even the probe (the module stays idle)
+local function bald()
+	return Config ~= nil and Config.BaldMode == true
+end
+
 local function findGenerators()
 	for modName, section in pairs(GENERATORS) do
 		local ms = Shared and Shared:FindFirstChild(modName)
-		if ms and ms:IsA("ModuleScript") and not registry[section] then
+		if section == "Hair" and bald() then
+			log("BaldMode: no hair generator")
+		elseif ms and ms:IsA("ModuleScript") and not registry[section] then
 			local ok, mod = pcall(require, ms)
 			if ok and type(mod) == "table" and type(mod.Generate) == "function" then
 				AnatomyClient.Register(mod.Section or section, {
@@ -2547,6 +2580,10 @@ function AnatomyClient.MeshState()
 		return "pending", nil, nil
 	end
 	if next(registry) == nil then
+		if bald() then
+			-- nothing to build on purpose: reported, never shown to the player as a fault
+			return "off", "BaldMode (no client-built hair)", "setting"
+		end
 		return "off", "no mesh generators found in ReplicatedStorage.Shared", "generators"
 	end
 	local anyOk = false

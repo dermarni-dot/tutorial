@@ -82,6 +82,8 @@ local AssetService = {
 
 local H = Host.new({ globals = { Content = Content } })
 H.Service("AssetService")._props = AssetService
+-- the hair path under test: the shipping Config may have every boxer bald for now (Config.BaldMode)
+H.require("Config").BaldMode = false
 local HA = H.require("Client/HairAssets")
 local Data = HA._data
 

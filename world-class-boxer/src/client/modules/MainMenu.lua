@@ -97,9 +97,78 @@ local function releaseControls(s)
 	end
 end
 
--- (re)stage the clone of the current character
-local function stageBoxer()
+-- (re)stage the clone of the current character. The server finishes the boxer after the character appears (the
+-- muscle-tier parts load with CreateMeshPartAsync and swap in one by one, then the classic head, the gear and the
+-- look): a character not ready yet is retried, and every later change the server makes to it (LookSig, BodyTiers,
+-- a body part or gear swapped in) re-stages the copy a moment after the changes settle
+local RESTAGE_DELAY = 0.75 -- seconds of quiet before a re-stage (a tier swap is 14 part swaps in a row)
+local RETRY_EVERY, RETRY_FOR = 0.5, 30 -- a character not ready yet: tried again every RETRY_EVERY s for RETRY_FOR s
+local stageWarned = false
+
+local function unwatchBoxer()
+	if scene and scene.charConns then
+		for _, c in ipairs(scene.charConns) do
+			c:Disconnect()
+		end
+		scene.charConns = nil
+	end
+end
+
+local stageBoxer, watchBoxerSafe
+local function restageSoon(char, delay)
 	if not scene then
+		return
+	end
+	scene.stageToken = (scene.stageToken or 0) + 1
+	local mine, s = scene.stageToken, scene
+	task.delay(delay or RESTAGE_DELAY, function()
+		if scene == s and mine == s.stageToken and isOpen and player.Character == char then
+			stageBoxer()
+		end
+	end)
+end
+
+local function watchBoxer(char)
+	local look = char:FindFirstChild("BoxerLook")
+	if scene.watched == char and scene.watchedLook == look and scene.charConns then
+		return
+	end
+	unwatchBoxer()
+	scene.watched, scene.watchedLook = char, look
+	local conns = {}
+	local function changed()
+		restageSoon(char)
+	end
+	for _, attr in ipairs({ "LookSig", "BodyTiers", "AvatarHair", "AvatarFace" }) do
+		table.insert(conns, char:GetAttributeChangedSignal(attr):Connect(changed))
+	end
+	-- body parts / the head swapped, accessories, the server's look folders (gear and the rest of BoxerLook live
+	-- under them: a part added inside one is a rebuild of the look)
+	local function part(inst)
+		return inst:IsA("BasePart") or inst:IsA("Accessory") or (inst:IsA("Folder") and inst.Name ~= "Anatomy")
+	end
+	table.insert(conns, char.ChildAdded:Connect(function(c)
+		if part(c) then
+			changed()
+		end
+	end))
+	table.insert(conns, char.ChildRemoved:Connect(function(c)
+		if part(c) then
+			changed()
+		end
+	end))
+	if look then
+		table.insert(conns, look.DescendantAdded:Connect(function(d)
+			if d:IsA("BasePart") and d:GetAttribute("GearPiece") ~= nil then
+				changed()
+			end
+		end))
+	end
+	scene.charConns = conns
+end
+
+function stageBoxer()
+	if not scene or not scene.stage then
 		return
 	end
 	local char, hum, rootPart = State.char()
@@ -111,22 +180,27 @@ local function stageBoxer()
 				SoundService:SetListener(Enum.ListenerType.ObjectCFrame, rootPart)
 			end)
 		end
-		MenuStage.Place(scene.stage, char)
-		scene.guard = nil
-		-- a new look (barber, creator, a new career) re-stages the clone a moment later
-		if scene.lookConn then
-			scene.lookConn:Disconnect()
-		end
-		local token = 0
-		scene.lookConn = char:GetAttributeChangedSignal("LookSig"):Connect(function()
-			token += 1
-			local mine = token
-			task.delay(1, function()
-				if mine == token and scene and isOpen then
-					MenuStage.Place(scene.stage, char)
-				end
-			end)
-		end)
+	end
+	watchBoxerSafe(char)
+	local clone, why = MenuStage.Place(scene.stage, char)
+	scene.guard = nil
+	if clone then
+		scene.stageFails = 0
+		return
+	end
+	-- not ready (no character yet, a body part mid-swap): try again shortly, for a while
+	scene.stageFails = (scene.stageFails or 0) + 1
+	if scene.stageFails * RETRY_EVERY <= RETRY_FOR then
+		restageSoon(char, RETRY_EVERY)
+	elseif not stageWarned then
+		stageWarned = true
+		warn("[MainMenu] your boxer could not be staged in the menu: " .. tostring(why))
+	end
+end
+
+function watchBoxerSafe(char)
+	if char then
+		pcall(watchBoxer, char)
 	end
 end
 
@@ -206,8 +280,11 @@ local function sceneStop()
 	for _, fx in pairs(s.fx) do
 		fx:Destroy()
 	end
-	if s.lookConn then
-		s.lookConn:Disconnect()
+	if s.charConns then
+		for _, c in ipairs(s.charConns) do
+			c:Disconnect()
+		end
+		s.charConns = nil
 	end
 	MenuStage.Destroy(s.stage)
 	local cam = workspace.CurrentCamera
@@ -1374,10 +1451,10 @@ function MainMenu.Open(which)
 	-- the canvas also changes at a constant scale (two phone sizes both at the 0.78 floor)
 	track(gui:GetPropertyChangedSignal("AbsoluteSize"):Connect(rebuildSoon))
 	-- the character respawned under the menu: stage the new one
-	track(player.CharacterAdded:Connect(function()
-		task.wait(1)
+	track(player.CharacterAdded:Connect(function(char)
 		if isOpen and scene then
-			stageBoxer()
+			scene.stageFails = 0
+			restageSoon(char, 1)
 		end
 	end))
 	-- live numbers on the home screen
