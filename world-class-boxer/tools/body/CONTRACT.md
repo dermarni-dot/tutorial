@@ -14,6 +14,11 @@ bodies and faces (AnatomyBody, AnatomyHead) are retired; the asset hair stays.
   RightHand, LeftUpperLeg, LeftLowerLeg, LeftFoot, RightUpperLeg, RightLowerLeg, RightFoot.
 - Tiers 1-5: 1 lean, 2 toned, 3 athletic, 4 muscular, 5 elite. Every tier has the same joint pivots
   for the torso and legs; the arm axis moves out a little per tier (parts.json has every attachment).
+- Joints (v9): every limb end that meets a neighbour is a near-sphere about its joint pivot in game space (the hip, knee,
+  shoulder, elbow and wrist domes, build_body.JOINT_DOME), so a turning joint turns its dome in place and nothing swings
+  out through the neighbour. The shoulder pivot sits on the arm's own axis (x = armAxisX of the tier, y =
+  shoulderHeight 4.92), the centre of the upper arm's top dome; the elbow / wrist chain hangs where it did.
+  `tools/body/check_joints.py` measures each joint through the Animator's ranges.
 - Modelled at the game's proportions (the athletic rig `Builder.Scales` makes today), so the
   description that applies them uses `BodyTypeScale = 0, ProportionScale = 0` and only Height / Width /
   Depth / Head scales for the frame, height and gender. Training never widens the frame: the tiers
@@ -72,12 +77,18 @@ return {
 	sets = { trunks = { Classic = {...}, Striped = {...}, Pro = {...}, Long = {...} }, shoes = { ["High-Top"] = {...},
 	         ["Low-Top"] = {...} }, gloves = { Gloves = {...} }, wraps = { Wraps = {...} }, top = { Top = {...} } },
 	                               -- piece names; a sided name (Glove) stands for Glove_L and Glove_R
-	pieces = { Glove_R = { part = "RightHand", slot = "gloves", group = "gloves" }, ... },  -- 40 pieces
+	pieces = { Glove_R = { part = "RightHand", slot = "gloves", group = "gloves" }, ... },  -- 40 pieces (+ tierOf)
 	tiers = { { Glove_R = { mesh = id, offset = { x, y, z }, size = { x, y, z }, nt = tris }, ... }, ... },  -- [1..5]
 }
 ```
 
-`tiers[n][piece]` is the piece for a body part showing tier n (the game reads the part's `BodyTier`). `offset` = the
+`tiers[n][piece]` is the piece for a body part showing tier n (the game reads the part's `BodyTier`). A piece with
+`pieces[piece].tierOf = { part, ... }` (the trunks' Waistband and TrunkSeat: LowerTorso, UpperTorso and both UpperLegs)
+is the one of the HIGHEST tier among those parts, modelled round those parts of that tier and every tier under it; its
+offset is in the LowerTorso space of that tier, moved onto the LowerTorso the model shows by the difference of the two
+tiers' RootRigAttachment positions (the LowerTorso's rest frame is the same at every tier). The trunks are cut round the
+walk (thigh swing -14..+16 deg for the seat, the leg tops hidden through -28..+36) and the punches' waist turn
+(`tools/body/check_gear.py`). `offset` = the
 piece's bbox centre in that part's space (rest pose, unscaled), `size` = the mesh bbox; the game sizes a clone to
 `size x ratio` and welds it at `part.CFrame * CFrame.new(offset x ratio)` (ratio = the part's Size / OriginalSize).
 The glove, wrap, boot foot, sole and instep laces are one mesh at every tier (the hand and foot do not change), with

@@ -126,3 +126,32 @@ else `publish_gear.py --local`'s, `--gear PATH` to choose; ids map to `tools/bod
 outfit), the piece per body-part tier (mixed tiers, a tier change), styles, size x ratio / weld offsets, colours,
 gloves / wraps / bare hands, the women's top, officials, sweat, the rebuild cache, and the fallback to the
 part-built gear (ids 0, failed loads, default parts).
+
+## v9: the client Animator on the tier boxers
+
+`v9_anim.luau` runs the REAL `src/client/Animator.client.lua` (and every Anim* module) on complete boxers built by the
+server's `Builder.Cosmetics` (v8_scene's fake rig: the tier swap, the classic head, the mesh gear), on a virtual clock
+(`os.clock` / `time` are the simulator's; `RunService.PreSimulation` is stepped at 60 Hz; `workspace:Raycast` hits a
+floor at Y = 0); the joints are solved from the Motor6D Transforms the Animator writes, every frame.
+
+```sh
+lune run tools/sim/v9_anim.luau [--out DIR] [--tiers 1,3,5] [--clips rest,walk,jog,run,punch] [--frames 8]
+         [--bare 1] [--hands gloves|wraps|bare] [--gap 4.0] [--no-mesh]
+         [--body BodyLocal.lua --gear GearLocal.lua]   # publish_body.py / publish_gear.py --local manifests
+         [--src DIR --meshroot DIR]                     # another commit's src and its tools/body/out copy
+/opt/bpyenv/bin/python tools/sim/v9_render.py SCENE_DIR OUT_DIR [--tag after] [--samples 20] [--only id,id]
+```
+
+- walk / jog / run: `Players.LocalPlayer.Character` glides along -Z at 5 / 11 / 16 studs/s; one gait cycle recorded
+  (`--frames`), and printed: the pelvis / chest / head sway across the HumanoidRootPart's line, the pelvis roll, the
+  hip flexion range, the LowerTorso surface the thighs cover (pelvis-in-thigh)
+- punch: two "Fighter" models `--gap` studs apart; jab, cross, lead / rear hook, uppercut and a body jab (Act / ActId as
+  FightEngine sends them), 6 frames each (start .. peak .. return); printed: the glove's reach, its distance and height
+  to the target, the elbow angle, the waist's turn
+- rest: one standing frame (front / 3/4 / side / back and close-ups of the arm, the hand, the hips)
+- v9_render: walk clips as orthographic filmstrips (front, side; the red line = the root's centre line), punches as
+  panels (side, 3/4 front) plus arm close-ups, rest as a sheet
+
+`tools/body/check_joints.py` (each joint of the tier bodies through the Animator's ranges: the parent's surface the child
+covers / the parent's end it uncovers) and `tools/body/check_gear.py` (the trunks over the body, the thighs swung) are
+the numeric side of the same checks, numpy only.

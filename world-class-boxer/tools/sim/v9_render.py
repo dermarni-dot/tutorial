@@ -110,6 +110,68 @@ def part_pos(fr, name):
     return None
 
 
+def render_punches(scene_dir, out_dir, clip, samples, tag, views=("side", "34")):
+    """one panel per recorded frame (windup / mid / peak per punch), the opponent drawn at the peaks; per view one
+    sheet: side (from the puncher's right) and 3/4 from behind the opponent's shoulder (the punch coming at you)"""
+    data = json.load(open(os.path.join(scene_dir, clip["file"])))
+    frames = data["frames"]
+    outs = []
+    for view in views:
+        paths, labels = [], []
+        for i, fr in enumerate(frames):
+            sc = v8.V8Scene(res=(420, 470), samples=samples, lens=50, bg=(0.11, 0.115, 0.125))
+            root = fr.get("root") or [0, 0, 0]
+            v8.add_boxer(sc, scene_dir, frame_dict(fr))
+            if fr.get("opp"):
+                v8.add_boxer(sc, scene_dir, frame_dict(fr["opp"]))
+            # the boxer stands at z = +1.7 facing -Z, the opponent at z = -1.7
+            focus = (0, 4.3, 0.0)
+            sc.rig(focus, 4.0)
+            p = os.path.join(out_dir, f"_{tag}_{clip['id']}_{view}_{i}.png")
+            if view == "side":
+                sc.render(p, view=(90, 4, 1.0), dist=14.0, focus=(0, 3.6, 0.0))
+            else:
+                # from behind the puncher's rear shoulder, above: the punch's path to the target
+                sc.render(p, view=(55, 12, 1.0), dist=12.0, focus=(0, 4.0, 0.0))
+            paths.append(p)
+            labels.append(fr.get("label") or str(i))
+        out = os.path.join(out_dir, f"{tag}_{clip['id']}_{view}.jpg")
+        render.sheet(paths, out, cols=6, labels=labels, title=f"{tag}: {clip['id']} punches ({view}; tier {clip['tier']} boxer in black, a tier 3 opponent 4 studs away)",
+                     cell=(300, 336))
+        for p in paths:
+            os.remove(p)
+        print("rendered", out, flush=True)
+        outs.append(out)
+    return outs
+
+
+def render_arm_closeups(scene_dir, out_dir, clip, samples, tag):
+    """the puncher's arms close up: the guard (a punch's first frame) and the jab / cross / hook peaks, from the
+    outside and from above-behind the shoulder: the shoulder ball, the elbow, the wrist under the glove"""
+    data = json.load(open(os.path.join(scene_dir, clip["file"])))
+    want = ["jab start", "jab peak", "cross peak", "leadhook peak", "rearhook peak", "uppercut peak"]
+    frames = [fr for fr in data["frames"] if fr.get("label") in want]
+    paths, labels = [], []
+    for fr in frames:
+        sc = v8.V8Scene(res=(420, 470), samples=samples, lens=85, bg=(0.11, 0.115, 0.125))
+        v8.add_boxer(sc, scene_dir, frame_dict(fr))
+        hand = "Left" if fr["label"].startswith(("jab", "leadhook")) else "Right"
+        el = part_pos(fr, hand + "UpperArm")
+        f = tuple(el + np.array([0, -0.2, 0]))
+        sc.rig(f, 1.5)
+        for nm, v in (("out", (-80 if hand == "Left" else 80, 10, 1.0)), ("top", (160, 40, 1.0))):
+            p = os.path.join(out_dir, f"_{tag}_{clip['id']}_arm_{len(paths)}.png")
+            sc.render(p, view=v, dist=2.9 / math.tan(math.atan(18 / 85)), focus=f)
+            paths.append(p)
+            labels.append(f"{fr['label']} ({hand.lower()} arm, {nm})")
+    out = os.path.join(out_dir, f"{tag}_{clip['id']}_arms.jpg")
+    render.sheet(paths, out, cols=4, labels=labels, title=f"{tag}: {clip['id']} arms close up (guard and punch peaks)", cell=(360, 403))
+    for p in paths:
+        os.remove(p)
+    print("rendered", out, flush=True)
+    return [out]
+
+
 def render_rest(scene_dir, out_dir, clip, samples, tag):
     """the standing boxer: full body front / side / back / 3/4, and close-ups of the right arm, the hands, the hips"""
     data = json.load(open(os.path.join(scene_dir, clip["file"])))
@@ -177,7 +239,10 @@ if __name__ == "__main__":
     for c in idx["clips"]:
         if only and c["id"] not in only:
             continue
-        if c["clip"] == "rest":
+        if c["clip"] == "punch":
+            render_punches(scene_dir, out_dir, c, samples, tag)
+            render_arm_closeups(scene_dir, out_dir, c, samples, tag)
+        elif c["clip"] == "rest":
             render_rest(scene_dir, out_dir, c, samples, tag)
         else:
             render_clip(scene_dir, out_dir, c, samples, views, tag)

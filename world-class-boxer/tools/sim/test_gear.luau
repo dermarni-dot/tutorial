@@ -332,10 +332,17 @@ local function placed(p, model)
 	local name = p:GetAttribute("GearPiece")
 	local info = GEAR.pieces[name]
 	local body = model:FindFirstChild(info.part)
-	local tier = body and body:GetAttribute("BodyTier")
+	-- (the band and the seat: the highest tier among their tierOf parts, the offset moved onto the part's own tier)
+	local tier, _, own = BuilderGear.PieceTier(model, info)
 	local e = tier and BuilderGear.Entry(tier, name)
 	if not e then
 		return false, name .. ": no entry"
+	end
+	if tier ~= own then
+		local BT = H.require("BodyTiers")
+		local pa = BT.PartEntry(own, info.part).attachments.RootRigAttachment
+		local pb = BT.PartEntry(tier, info.part).attachments.RootRigAttachment
+		e.offset += Vector3.new(pa[1] - pb[1], pa[2] - pb[2], pa[3] - pb[3])
 	end
 	local ratio = BuilderTiers.RatioOf(body)
 	if p:GetAttribute("GearMesh") ~= e.id then
@@ -465,7 +472,10 @@ do
 	check("shorts legs swapped to tier 5", att.TrunkLeg_R and att.TrunkLeg_R:GetAttribute("GearMesh") == BuilderGear.Entry(5, "TrunkLeg_R").id)
 	check("boot shaft follows the calf's tier", att.BootShaft_L and att.BootShaft_L:GetAttribute("GearMesh") == BuilderGear.Entry(model.LeftLowerLeg:GetAttribute("BodyTier"), "BootShaft_L").id)
 	local lt = model.LowerTorso:GetAttribute("BodyTier")
-	check("waistband follows the lower torso's own tier (mixed tiers)", att.Waistband:GetAttribute("GearMesh") == BuilderGear.Entry(lt, "Waistband").id, lt)
+	check("mixed tiers: the lower torso stays under tier 5", lt < 5, lt)
+	check("waistband / seat follow the highest tier of the hips, chest and thighs (mixed tiers)",
+		att.Waistband:GetAttribute("GearMesh") == BuilderGear.Entry(5, "Waistband").id
+			and att.TrunkSeat:GetAttribute("GearMesh") == BuilderGear.Entry(5, "TrunkSeat").id, lt)
 	bad = {}
 	for _, p in pairs(att) do
 		local okp, whyp = placed(p, model)

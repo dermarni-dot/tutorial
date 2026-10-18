@@ -54,6 +54,11 @@ Y_LEG_TOP = 2.80            # shorts leg top (closed, inside the seat)
 Y_HEM = {"short": 1.99, "long": 1.62}   # mid-thigh / just above the knee
 Y_TOP = (4.12, 4.66)        # sports top: underband to the armpit line (the straps go on over the shoulders)
 
+# pieces worn by the HIGHEST tier among several body parts (BuilderGear: the entry of that tier, its offset moved
+# onto the part's own tier by the RootRigAttachment's - the LowerTorso's rest frame is the same at every tier)
+TIER_OF = {"Waistband": ["LowerTorso", "UpperTorso", "LeftUpperLeg", "RightUpperLeg"],
+           "TrunkSeat": ["LowerTorso", "UpperTorso", "LeftUpperLeg", "RightUpperLeg"]}
+
 SLOTS = ["trunks", "trim", "gloves", "gloveTrim", "wraps", "wraps2", "shoes", "soles", "laces", "socks", "top",
          "topTrim"]
 
@@ -377,15 +382,35 @@ def band_and_seat(B, n):
     phis = 2 * math.pi * (np.arange(NSEG_DENSE) / NSEG_DENSE - 0.5)
     lt = B.part(n, "LowerTorso")
     c = np.array([0.0, float((lt["P"][:, 2].min() + lt["P"][:, 2].max()) / 2)])
-    ut_all = [(B.part(k, "UpperTorso"), dict(ymin=3.05, yaw=(-12, 12), c=(0.0, 0.0))) for k in TIER_IDS]
-    legs_all = [(B.part(k, s + "UpperLeg"), {}) for k in TIER_IDS for s in ("Right", "Left")]
+    # (v9) the band and the seat of tier n are worn when the HIGHEST tier among the LowerTorso, the UpperTorso and
+    # both thighs is n (BuilderGear: the piece's tierOf), so they hull those parts of tier n and every tier under it -
+    # never a tier-5 thigh round a tier-1 boxer's hips (v8 hulled all five: the trunks hung loose on every body)
+    lower = [k for k in TIER_IDS if k <= n]
+    # (the chest turns over the hips in a punch: v9_anim.luau measures the waist up to 32 deg of twist, 12 of side bend
+    # and 13 forward; the UpperTorso's hem under the band is hulled through that, about the waist pivot)
+    wj = B.J(n, "Waist")
+    ut_all = []
+    for k in lower:
+        ut = B.part(k, "UpperTorso")
+        ut_all.append((ut, dict(ymin=3.05, yaw=(-12, 12), c=(0.0, 0.0))))
+        for yw, rl, pt in WAIST_TURNS:
+            R = bb.roty(yw) @ bb.rotz(rl) @ bb.rotx(pt)
+            ut_all.append(({"P": (ut["P"] - wj) @ R.T + wj, "T": ut["T"]}, dict(ymin=3.05)))
+    legs_all = [(B.part(k, s + "UpperLeg"), {}) for k in lower for s in ("Right", "Left")]
+    # (and the thighs of tier n swung through the walk, the seat cut round them: walking never pushes a thigh - or the
+    # shorts leg over it - out through the seat's lower edge)
+    for s in ("Right", "Left"):
+        ul = B.part(n, s + "UpperLeg")
+        hip = B.J(n, s + "Hip")
+        for deg in SEAT_SWING:
+            legs_all.append(({"P": swung(ul["P"], hip, deg) + np.array([0, 0, 0]), "T": ul["T"]}, dict(ymin=Y_SEAT[0] - 0.05)))
     srcs = [lt] + ut_all + legs_all
     s0, s1 = Y_SEAT
 
     def seat_off(y):
         # snug where the band covers it, loose satin toward the bottom
         tt = np.clip((Y_BAND[0] + 0.02 - y) / (Y_BAND[0] + 0.02 - s0), 0, 1)
-        return 0.016 + 0.026 * tt ** 1.1
+        return 0.012 + 0.016 * tt ** 1.1
     # ---- the waistband: snug elastic, a little rounded out in the middle
     y0, y1 = Y_BAND
     ys = np.linspace(y0, y1, 4)
@@ -393,17 +418,20 @@ def band_and_seat(B, n):
     for i, y in enumerate(ys):
         tt = i / (len(ys) - 1)
         r = radial(srcs, y, c, phis, sigma=2.5)
-        rings.append(ring(c, r + 0.036 + 0.010 * math.sin(math.pi * tt), phis, y))
+        rings.append(ring(c, r + 0.030 + 0.008 * math.sin(math.pi * tt), phis, y))
     top = lip(rings[-1], c, (0, 1, 0), 0.035)
     bot = lip(rings[0], c, (0, -1, 0), 0.03)
     G = bot[::-1] + rings + top
     band = sheet(np.array(G)[:, ::4], nref=range(len(bot), len(bot) + len(rings)))
     # ---- the seat: from inside the band down to under the crotch, looser toward the bottom
-    ys = [s1, 2.92, 2.72, 2.56, s0]
+    ys = [s1, y0, 2.92, 2.72, 2.56, s0]
     rings = []
     for y in ys:
-        r = radial(srcs, y, c, phis, sigma=3.0)
-        rings.append(ring(c, r + seat_off(y), phis, y))
+        r = radial(srcs, y, c, phis, sigma=3.0) + seat_off(y)
+        if y >= y0 - 0.001:
+            # (inside the band, clear of its rolled-in bottom lip: the seat never shows through the elastic)
+            r = np.minimum(r, radial(srcs, y, c, phis, sigma=2.5) + 0.030 - 0.032)
+        rings.append(ring(c, r, phis, y))
     # under the crotch: a short roll inward, then a flat close (between the legs, under the leg tubes)
     e = rings[-1]
     w = inward(e, c)
@@ -445,7 +473,13 @@ class SeatField:
         return ~above | (dist <= self.radius(P[:, 1], ang) - clr)
 
 
-HIP_SWING = (-12, -6, 0, 6, 12, 18)  # thigh pitch (deg, + = knee forward) the leg top must stay hidden through
+# the waist turns (yaw, side bend, forward bend; deg) the band is cut round
+WAIST_TURNS = ((22, 0, 0), (-22, 0, 0), (16, 8, 5), (-16, -8, 5), (0, 9, 0), (0, -9, 0), (0, 0, 10), (0, 0, -5))
+# the thigh swings the seat is cut round (its hull): the walk's
+SEAT_SWING = (-14, 16)
+# thigh pitch (deg, + = knee forward) the leg top must stay hidden through: the town walk's -23..+33 (v9_anim.luau
+# measures it) and the stance / punches; a jog's and a run's high knee goes further and creases the seat
+HIP_SWING = (-28, -18, -9, 0, 9, 18, 27, 36)
 
 
 def swung(P, hip, deg):
@@ -475,7 +509,9 @@ def trunk_leg(B, n, length, field):
         c = cs[i]
         r = radial([ul], min(y, 2.75), c, phis, nfin=16, sigma=3.0)
         tt = np.clip((2.50 - y) / (2.50 - yh), 0, 1)  # 0 at the crotch line .. 1 at the hem
-        off = 0.048 + 0.040 * tt ** 1.2 + 0.020 * np.maximum(side, 0) * (0.5 + tt) - 0.022 * np.maximum(-side, 0)
+        # (v9: fitted - a little ease over the thigh, the outer side a touch fuller toward the hem, the leg opening
+        # close to the thigh; v8's 0.05-0.11 hung like a skirt)
+        off = 0.026 + 0.022 * tt ** 1.2 + 0.012 * np.maximum(side, 0) * (0.5 + tt) - 0.012 * np.maximum(-side, 0)
         rr = r + off
         Rg = ring(c, rr, phis, y)
         # under the seat the leg stays inside it (every LowerTorso tier) through the thigh's swing in the stance
@@ -491,7 +527,8 @@ def trunk_leg(B, n, length, field):
             if y <= ys_ - 0.01:
                 w = np.clip(1 - (ys_ - y) / 0.16, 0, 1) ** 1.5
                 gap = lim - dist
-                near = np.clip(1 - (gap - 0.02) / 0.10, 0, 1) * np.clip(side * 1.4 - 0.2, 0, 1)
+                # (v9: front and back too - only the inner side, between the legs, keeps its line)
+                near = np.clip(1 - (gap - 0.02) / 0.18, 0, 1) * np.clip(1.0 + side * 1.4, 0, 1)
                 want = np.maximum(dist, dist + (lim - 0.018 - dist) * w * near)
                 kk = want / np.maximum(dist, 1e-9)
                 Rg[:, 0] = field.c[0] + ds[:, 0] * kk
@@ -515,6 +552,10 @@ def trunk_leg(B, n, length, field):
                 if done.all():
                     break
             kbest[~done] = 0.4
+            # (never inside the thigh itself: under the seat's edge the leg stays over the skin it covers - a seat
+            # creased by a high knee is better than skin between the seat and the leg)
+            kfloor = (r + 0.008) / np.maximum(np.linalg.norm(d, axis=1), 1e-9)
+            kbest = np.minimum(1.0, np.maximum(kbest, kfloor))
             Rg[:, 0] = c[0] + d[:, 0] * kbest
             Rg[:, 2] = c[1] + d[:, 1] * kbest
         rings.append(Rg)
@@ -911,10 +952,12 @@ def build_all(B):
         seats[n] = (band, seat)
         seat_fns.append(fn)
         seat_c = c
-    field = SeatField(seat_fns, seat_c)
+    # a shorts leg of tier n is worn under a seat of tier n or higher (the seat's tier is the highest of its parts)
+    fields = {n: SeatField([f for k, f in zip(TIER_IDS, seat_fns) if k >= n], seat_c) for n in TIER_IDS}
     out = {}
     for n in TIER_IDS:
         d = {}
+        field = fields[n]
         band, seat = seats[n]
         d["Waistband"] = (band, "LowerTorso")
         d["TrunkSeat"] = (seat, "LowerTorso")
@@ -970,6 +1013,8 @@ def export(B, gear):
             key = name + ("_" + side if side else "")
             data["pieces"][key] = {"part": (("Right" if side == "R" else "Left") + base) if side else base,
                                    "slot": slot, "group": group, "shared": shared}
+            if name in TIER_OF:
+                data["pieces"][key]["tierOf"] = TIER_OF[name]
     written = {}
     for n in TIER_IDS:
         td = os.path.join(OUT, "tier%d" % n)

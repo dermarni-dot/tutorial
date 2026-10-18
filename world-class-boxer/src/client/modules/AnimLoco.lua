@@ -598,15 +598,20 @@ function AnimLoco.bodyOffsets(rig, dt, t)
 			local landL = 1 - duty
 			local midL = 1 - duty * 0.5
 			local fw = lo.fwd
-			-- sway over the stance leg
-			rootX = -lerp(0.072, 0.035, run) * amp * prof.pelvis * cos(2 * PI * (ph - midL)) * w
+			-- sway over the stance leg (a little: the tier body's hips are its own width apart and the feet track
+			-- nearly under them, so the weight shifts less than on a line walk; v8's 0.072 swung the whole figure)
+			rootX = -lerp(0.045, 0.03, run) * amp * prof.pelvis * cos(2 * PI * (ph - midL)) * w
 			-- pelvis rotation (the stepping leg's hip goes with the step), shoulders counter-rotate
 			local c1 = cos(2 * PI * (ph - landL)) * fw
 			local pyA = lerp(0.075, 0.13, run) * amp * prof.pelvis
 			yawP = -pyA * c1 * w
 			wYaw = pyA * lerp(1.45, 1.7, run) * c1 * w
 			-- the swing side's hip drops (pelvic obliquity: ~4 degrees, the stance hip takes the weight)
-			rollP += -lerp(0.065, 0.05, run) * prof.pelvis * cos(2 * PI * (ph - midL)) * w
+			-- (the spine bends back over it: the chest stays level, so the obliquity rolls the pelvis only and never
+			-- rocks the shoulders and head side to side about the hips)
+			local obl = -lerp(0.065, 0.05, run) * prof.pelvis * cos(2 * PI * (ph - midL)) * w
+			rollP += obl
+			wRoll -= obl * 0.9
 			-- (a diagonal: the pelvis turned toward the way he goes, the chest kept facing)
 			local ly = lo.legYaw or 0
 			yawP -= ly
@@ -1090,7 +1095,13 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 		-- (pulling up, the braking steps already land at the width he will stand at: no shuffle sideways after)
 		-- (a big man walks and runs on a wider track: his thick thighs pass, not through each other)
 		local bk = clamp((R.bulkOf(rig) - 0.4) / 0.6, 0, 1)
-		kx = 1 - (1 - clamp(lerp(lerp(0.42 + 0.17 * bk, 0.27 + 0.36 * bk, run), 0.85, lo.side) * prof.width, 0.2, 1)) * lo.gaitW * (1 - (lo.brake or 0))
+		local kw = lerp(lerp(0.42 + 0.17 * bk, 0.27 + 0.36 * bk, run), 0.85, lo.side) * prof.width
+		-- (never so narrow that the feet - the boots over them - overlap or the thighs rub through each other: the
+		-- muscle-tier legs hang their own width apart; a runner's track may come a little closer)
+		if g.ok and g.hipW and g.hipW > 0.1 then
+			kw = max(kw, (g.footW * 1.12 + 0.1) / g.hipW * lerp(1, 0.88, run))
+		end
+		kx = 1 - (1 - clamp(kw, 0.2, 1)) * lo.gaitW * (1 - (lo.brake or 0))
 	end
 	-- per-foot desired ground point and yaw
 	for _, s in ipairs(SIDES) do
@@ -1410,7 +1421,8 @@ function AnimLoco.feet(rig, p, rootT, t, dt, lock)
 				local lt = lcf:PointToObjectSpace(tgt)
 				local lo2 = lcf:PointToObjectSpace(oP)
 				-- (sideways a little more: the side shuffle's closing foot never brushes the other)
-				local gap = walking and lerp(WALK_GAP * lerp(1, 0.65, lo.run), 0.47, lo.side) or FOOT_GAP * (kind == "stagger" and 0.6 or 1)
+				local wg = max(WALK_GAP * lerp(1, 0.65, lo.run), g.ok and (g.footW or 0) + 0.06 or 0)
+				local gap = walking and lerp(wg, max(0.47, wg), lo.side) or FOOT_GAP * (kind == "stagger" and 0.6 or 1)
 				if s == "L" and lt.X > lo2.X - gap then
 					lt = V3(lo2.X - gap, lt.Y, lt.Z)
 					tgt = lcf:PointToWorldSpace(lt)

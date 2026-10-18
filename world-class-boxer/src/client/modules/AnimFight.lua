@@ -1288,11 +1288,13 @@ local STRAIGHT_LUNGE_FAR = 0.85
 local RISE_HEEL = 0.1
 local GIVE_MARGIN = 0.15
 local STRAIGHT_THROUGH = 0.3
--- tan of the steepest a straight's shoulder-to-fist line climbs or drops to the head (10 degrees),
+-- tan of the steepest a straight's shoulder-to-fist line climbs or drops to the head (15 degrees),
 -- unless that would land it more than LEVEL_GIVE under / over the aim (a much taller man is still hit
--- on the jaw, not in the throat)
-local STRAIGHT_PITCH = math.tan(math.rad(10))
-local LEVEL_GIVE = 0.25
+-- on the jaw, not in the throat). (v9: the tier body's shoulder sits a good half stud under an equal man's chin
+-- - the classic head stands tall on the neck - so a 10 degree line with a quarter stud of give landed every
+-- jab and cross on his collarbone, 0.2 under the jaw it was aimed at)
+local STRAIGHT_PITCH = math.tan(math.rad(15))
+local LEVEL_GIVE = 0.15
 local function levelY(vy, h, pitch)
 	local lim = h * (pitch or STRAIGHT_PITCH)
 	return clamp(clamp(vy, -lim, lim), vy - LEVEL_GIVE, vy + LEVEL_GIVE)

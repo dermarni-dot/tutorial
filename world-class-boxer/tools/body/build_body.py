@@ -719,7 +719,7 @@ def hand(tr):
     # (the back of the hand narrows into the wrist, a little thinner than the forearm's tucked rim there, so the seam
     # is the forearm's clean ring, never the two surfaces crossing)
     pr = Prof([1.93, 2.05, YWR],
-              ax=([0.125, 0.15, 0.132], [0.01, 0.01, 0.006]),
+              ax=([0.135, 0.165, 0.132], [0.01, 0.01, 0.006]),
               af=([0.215, 0.212, 0.158], [0.01, 0.01, 0.004]),
               p=[3.0, 3.0, 2.4], cx=[-0.02, 0.0, 0.0])
     shells = [loft(pr, tr["m"], 1.93, YWR, (0.06, 1.0, 2), (0.12, 1.0, 2), nb=4, nseg=12, frame=VERT(X))]

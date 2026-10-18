@@ -5,7 +5,8 @@
 -- * templates: one MeshPart per mesh id, made once per server with AssetService:CreateMeshPartAsync (pcall;
 --   concurrent callers wait for the same load; a failed id is retried after RETRY seconds), like BuilderTiers
 -- * Resolve(model, group, style): the pieces a style wears (GearAssetData.sets) for the tiers the model's parts show
---   (their BodyTier attribute). Nothing is half built: when a part is not a tier part, an id is 0 or a load failed,
+--   (their BodyTier attribute; a piece with tierOf - the trunks' band and seat - takes the highest tier among those
+--   parts, its offset moved onto the part's own tier: PieceTier). Nothing is half built: when a part is not a tier part, an id is 0 or a load failed,
 --   it returns nil and the caller builds its part-built gear (BuilderBody's blocks)
 -- * Build(folder, pieces, paint): a clone per piece, sized ONCE to the template's size x the body part's scale
 --   ratio (Size / OriginalSize: the ratio BuilderTiers gave the part, so the gear scales exactly with the mesh under
@@ -18,6 +19,7 @@ local BuilderGear = {}
 
 local Shared = script.Parent
 local BuilderTiers = require(Shared:WaitForChild("BuilderTiers"))
+local BodyTiers = require(Shared:WaitForChild("BodyTiers"))
 
 local V3 = Vector3.new
 BuilderGear.RETRY = 120
@@ -196,6 +198,48 @@ end
 ------------------------------------------------------------------------
 -- Resolve / build
 ------------------------------------------------------------------------
+-- the tier whose piece a model wears and the body part it welds to: the part's own BodyTier, or for a piece with
+-- tierOf (the trunks' band and seat: fitted round the LowerTorso, the UpperTorso's hem and both thighs) the highest
+-- tier among those parts, the piece then fitted to them all. nil when a part is not a tier part
+local function pieceTier(model, p)
+	local body = model:FindFirstChild(p.part)
+	local own = body and tonumber(body:GetAttribute("BodyTier"))
+	if not own then
+		return nil
+	end
+	local tier = own
+	if type(p.tierOf) == "table" then
+		for _, pn in ipairs(p.tierOf) do
+			local o = model:FindFirstChild(pn)
+			local t = o and tonumber(o:GetAttribute("BodyTier"))
+			if not t then
+				return nil
+			end
+			tier = math.max(tier, t)
+		end
+	end
+	return tier, body, own
+end
+BuilderGear.PieceTier = pieceTier
+
+-- a piece of tier `tier` worn on a body part of tier `own`: the offset is in the part's space of ITS tier; the
+-- LowerTorso's rig attachments are the same rest-space points at every tier, so the difference of the RootRigAttachment's
+-- part-space positions moves the offset onto the part the model really shows
+local function onPart(e, partName, tier, own)
+	if tier == own then
+		return e
+	end
+	local a = BodyTiers.PartEntry(own, partName)
+	local b = BodyTiers.PartEntry(tier, partName)
+	local pa = a and a.attachments.RootRigAttachment
+	local pb = b and b.attachments.RootRigAttachment
+	if not (pa and pb) then
+		return e
+	end
+	local out = table.clone(e)
+	out.offset = e.offset + V3(pa[1] - pb[1], pa[2] - pb[2], pa[3] - pb[3])
+	return out
+end
 -- the pieces `style` of `group` puts on this model: { { name, entry, body, template, ratio } ... }, or nil + reason
 -- (the caller builds its part-built gear). Every body part must be a muscle-tier part (BodyTier attribute)
 function BuilderGear.Resolve(model, group, style)
@@ -207,8 +251,10 @@ function BuilderGear.Resolve(model, group, style)
 	for _, name in ipairs(names) do
 		local d = load()
 		local p = type(d.pieces) == "table" and d.pieces[name] or nil
-		local body = p and model:FindFirstChild(p.part)
-		local tier = body and tonumber(body:GetAttribute("BodyTier"))
+		local tier, body, own
+		if p then
+			tier, body, own = pieceTier(model, p)
+		end
 		if not tier then
 			return nil, "not a tier part: " .. tostring(p and p.part or name)
 		end
@@ -216,6 +262,7 @@ function BuilderGear.Resolve(model, group, style)
 		if not e then
 			return nil, "not uploaded: " .. name
 		end
+		e = onPart(e, p.part, tier, own)
 		local template = BuilderGear.Template(e.id, e.size)
 		if not template then
 			return nil, "failed: " .. name
@@ -284,8 +331,7 @@ function BuilderGear.Available(model, group, style)
 	local d = load()
 	for _, name in ipairs(names) do
 		local p = type(d.pieces) == "table" and d.pieces[name] or nil
-		local body = p and model:FindFirstChild(p.part)
-		local tier = body and tonumber(body:GetAttribute("BodyTier"))
+		local tier = p and pieceTier(model, p)
 		local e = tier and BuilderGear.Entry(tier, name, d)
 		if not e then
 			return false

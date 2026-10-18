@@ -202,6 +202,18 @@ function AnimRig.computeGeo(rig)
 		leg.soleY = sole
 	end
 	g.groundY = lowest
+	-- the feet's and thighs' widths (the walking track keeps the feet and the thighs from passing through each
+	-- other: AnimLoco's track and WALK_GAP)
+	do
+		local fw, tw = 0, 0
+		for _, s in ipairs(SIDES) do
+			local ft = J[s .. "A"].motor.Part1
+			local th = J[s .. "H"].motor.Part1
+			fw = max(fw, ft and ft.Size.X or 0.7)
+			tw = max(tw, th and th.Size.X or 1)
+		end
+		g.footW, g.thighW = fw, tw
+	end
 	-- the standing height (sole to the top of the head, at rest): the organic shoe's length
 	local FL
 	if meshFeet then

@@ -631,23 +631,23 @@
     "RightHand": {
      "mesh_file": "RightHand.mesh",
      "size": [
-      0.2615,
+      0.2715,
       0.6302,
       0.5433
      ],
      "rest_center": [
-      0.9589,
+      0.9638,
       2.8978,
       -0.0493
      ],
      "attachments": {
       "RightWristRigAttachment": [
-       0.0104,
+       0.0054,
        0.1742,
        0.0493
       ],
       "RightGripAttachment": [
-       -0.0388,
+       -0.0438,
        -0.0289,
        0.0493
       ]
@@ -798,23 +798,23 @@
     "LeftHand": {
      "mesh_file": "LeftHand.mesh",
      "size": [
-      0.2615,
+      0.2715,
       0.6302,
       0.5433
      ],
      "rest_center": [
-      -0.9589,
+      -0.9638,
       2.8978,
       -0.0493
      ],
      "attachments": {
       "LeftWristRigAttachment": [
-       -0.0104,
+       -0.0054,
        0.1742,
        0.0493
       ],
       "LeftGripAttachment": [
-       0.0388,
+       0.0438,
        -0.0289,
        0.0493
       ]
@@ -1156,23 +1156,23 @@
     "RightHand": {
      "mesh_file": "RightHand.mesh",
      "size": [
-      0.2634,
+      0.2734,
       0.6302,
       0.5459
      ],
      "rest_center": [
-      1.0076,
+      1.0126,
       2.8978,
       -0.048
      ],
      "attachments": {
       "RightWristRigAttachment": [
-       0.0095,
+       0.0045,
        0.1742,
        0.048
       ],
       "RightGripAttachment": [
-       -0.0398,
+       -0.0448,
        -0.0289,
        0.048
       ]
@@ -1323,23 +1323,23 @@
     "LeftHand": {
      "mesh_file": "LeftHand.mesh",
      "size": [
-      0.2634,
+      0.2734,
       0.6302,
       0.5459
      ],
      "rest_center": [
-      -1.0076,
+      -1.0126,
       2.8978,
       -0.048
      ],
      "attachments": {
       "LeftWristRigAttachment": [
-       -0.0095,
+       -0.0045,
        0.1742,
        0.048
       ],
       "LeftGripAttachment": [
-       0.0398,
+       0.0448,
        -0.0289,
        0.048
       ]
@@ -1681,23 +1681,23 @@
     "RightHand": {
      "mesh_file": "RightHand.mesh",
      "size": [
-      0.2653,
+      0.2753,
       0.6302,
       0.5485
      ],
      "rest_center": [
-      1.0564,
+      1.0614,
       2.8978,
       -0.0467
      ],
      "attachments": {
       "RightWristRigAttachment": [
-       0.0085,
+       0.0035,
        0.1742,
        0.0467
       ],
       "RightGripAttachment": [
-       -0.0407,
+       -0.0457,
        -0.0289,
        0.0467
       ]
@@ -1848,23 +1848,23 @@
     "LeftHand": {
      "mesh_file": "LeftHand.mesh",
      "size": [
-      0.2653,
+      0.2753,
       0.6302,
       0.5485
      ],
      "rest_center": [
-      -1.0564,
+      -1.0614,
       2.8978,
       -0.0467
      ],
      "attachments": {
       "LeftWristRigAttachment": [
-       -0.0085,
+       -0.0035,
        0.1742,
        0.0467
       ],
       "LeftGripAttachment": [
-       0.0407,
+       0.0457,
        -0.0289,
        0.0467
       ]
@@ -2206,23 +2206,23 @@
     "RightHand": {
      "mesh_file": "RightHand.mesh",
      "size": [
-      0.2672,
+      0.2772,
       0.6302,
       0.551
      ],
      "rest_center": [
-      1.1051,
+      1.1101,
       2.8978,
       -0.0455
      ],
      "attachments": {
       "RightWristRigAttachment": [
-       0.0076,
+       0.0026,
        0.1742,
        0.0455
       ],
       "RightGripAttachment": [
-       -0.0417,
+       -0.0467,
        -0.0289,
        0.0455
       ]
@@ -2373,23 +2373,23 @@
     "LeftHand": {
      "mesh_file": "LeftHand.mesh",
      "size": [
-      0.2672,
+      0.2772,
       0.6302,
       0.551
      ],
      "rest_center": [
-      -1.1051,
+      -1.1101,
       2.8978,
       -0.0455
      ],
      "attachments": {
       "LeftWristRigAttachment": [
-       -0.0076,
+       -0.0026,
        0.1742,
        0.0455
       ],
       "LeftGripAttachment": [
-       0.0417,
+       0.0467,
        -0.0289,
        0.0455
       ]
@@ -2731,23 +2731,23 @@
     "RightHand": {
      "mesh_file": "RightHand.mesh",
      "size": [
-      0.2691,
+      0.2791,
       0.6302,
       0.5536
      ],
      "rest_center": [
-      1.1539,
+      1.1589,
       2.8978,
       -0.0442
      ],
      "attachments": {
       "RightWristRigAttachment": [
-       0.0066,
+       0.0016,
        0.1742,
        0.0442
       ],
       "RightGripAttachment": [
-       -0.0426,
+       -0.0476,
        -0.0289,
        0.0442
       ]
@@ -2898,23 +2898,23 @@
     "LeftHand": {
      "mesh_file": "LeftHand.mesh",
      "size": [
-      0.2691,
+      0.2791,
       0.6302,
       0.5536
      ],
      "rest_center": [
-      -1.1539,
+      -1.1589,
       2.8978,
       -0.0442
      ],
      "attachments": {
       "LeftWristRigAttachment": [
-       -0.0066,
+       -0.0016,
        0.1742,
        0.0442
       ],
       "LeftGripAttachment": [
-       0.0426,
+       0.0476,
        -0.0289,
        0.0442
       ]

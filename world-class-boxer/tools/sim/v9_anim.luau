@@ -63,6 +63,9 @@ local HANDS = args.hands or "gloves" -- gloves | wraps | bare
 -- host: fake engine, virtual clock, the asset simulator (Content)
 ------------------------------------------------------------------------
 local root = Host.FindRoot()
+-- --meshroot DIR: the folder holding out/tier<N>/ and out/gear/ (default tools/body: a copy of an older build for the
+-- "before" set, with that commit's --src)
+local MESHROOT = (args.meshroot or (root .. "/tools/body")):gsub("/$", "")
 local srcDir = args.src or (root .. "/src")
 local MANIFEST = AssetSim.LOCAL_MANIFEST
 if not args["no-regen"] then
@@ -139,7 +142,7 @@ do
 	if fs.isFile(up) then
 		for _, e in pairs(serde.decode("json", fs.readFile(up))) do
 			if type(e.file) == "string" and type(e.id) == "number" then
-				MESH_FILES[e.id] = root .. "/tools/body/" .. e.file
+				MESH_FILES[e.id] = MESHROOT .. "/" .. e.file
 			end
 		end
 	end
@@ -466,7 +469,7 @@ local function fileOf(p)
 	if p:GetAttribute("GearMesh") then
 		return MESH_FILES[id]
 	elseif tier then
-		return string.format("%s/tools/body/out/tier%d/%s.mesh", root, tier, p.Name)
+		return string.format("%s/out/tier%d/%s.mesh", MESHROOT, tier, p.Name)
 	end
 	return nil
 end
@@ -723,7 +726,20 @@ local function walkClip(clip, tier)
 		frame({ model })
 		local pr = {}
 		partPen(model, pr)
-		for _, key in ipairs({ "LeftThighInPelvis", "RightThighInPelvis" }) do
+		do
+			local ltp = model:FindFirstChild("LowerTorso")
+			for _, sd in ipairs({ "Left", "Right" }) do
+				local ul = model:FindFirstChild(sd .. "UpperLeg")
+				local d = ltp.CFrame:VectorToObjectSpace(-ul.CFrame.UpVector)
+				local flex = math.deg(math.atan2(-d.Z, -d.Y)) -- + = knee forward
+				local abd = math.deg(math.atan2(d.X * (sd == "Right" and 1 or -1), -d.Y))
+				rec.hipFlexMin = math.min(rec.hipFlexMin or 999, flex)
+				rec.hipFlexMax = math.max(rec.hipFlexMax or -999, flex)
+				rec.hipAbdMin = math.min(rec.hipAbdMin or 999, abd)
+				rec.hipAbdMax = math.max(rec.hipAbdMax or -999, abd)
+			end
+		end
+		for _, key in ipairs({ "LeftPelvisInThigh", "RightPelvisInThigh" }) do
 			if pr[key].deep > worst.deep then
 				worst = { n = pr[key].n, deep = pr[key].deep, key = key, phase = r4(k / nCycle) }
 			end
@@ -737,11 +753,12 @@ local function walkClip(clip, tier)
 		end
 	end
 	rec.worstPen = worst
+	print(string.format("      hip flex %.0f..%.0f deg, abduction %.0f..%.0f deg", rec.hipFlexMin, rec.hipFlexMax, rec.hipAbdMin, rec.hipAbdMax))
 	local file = string.format("%s_t%d.json", clip, tier)
 	Host.WriteJSON(OUT .. "/" .. file, out)
 	table.insert(index.clips, { id = string.format("%s_t%d", clip, tier), file = file, clip = clip, tier = tier, n = #out.frames })
 	table.insert(metrics, rec)
-	print(string.format("%-5s T%d v=%4.1f period %.3f  pelvis sway %.3f  chest sway %.3f  head sway %.3f  pelvis roll %.1f deg  hip %.3f  worst thigh-in-pelvis %d verts %.3f (%s @%.2f)",
+	print(string.format("%-5s T%d v=%4.1f period %.3f  pelvis sway %.3f  chest sway %.3f  head sway %.3f  pelvis roll %.1f deg  hip %.3f  worst pelvis-in-thigh %d verts %.3f (%s @%.2f)",
 		clip, tier, speed, period, rec.pelvisSwayX, rec.chestSwayX, rec.headSwayX, rec.pelvisRollDeg, rec.hipHeight, worst.n, worst.deep,
 		tostring(worst.key), worst.phase or 0))
 	player.Character = nil
@@ -763,7 +780,7 @@ local function punchClip(tier)
 	a.Name = "BoxerA"
 	local b, humB = makeBoxer(3, { gloves = 2, trunks = 4 })
 	b.Name = "BoxerB"
-	local GAP = 3.4
+	local GAP = tonumber(args.gap) or 4.0
 	local ha, hb = a:FindFirstChild("HumanoidRootPart"), b:FindFirstChild("HumanoidRootPart")
 	ha.CFrame = CFrame.new(0, ha.CFrame.Y, GAP / 2) -- faces -Z (towards B)
 	hb.CFrame = CFrame.new(0, hb.CFrame.Y, -GAP / 2) * CFrame.Angles(0, math.pi, 0)
@@ -794,8 +811,16 @@ local function punchClip(tier)
 		a:SetAttribute("ActId", actId)
 		local best, bestK, samples = -math.huge, 0, {}
 		local nF = 60
+		local wmax = { 0, 0, 0 }
 		for k = 1, nF do
 			frame({ a, b })
+			do
+				local rel = a:FindFirstChild("LowerTorso").CFrame:Inverse() * a:FindFirstChild("UpperTorso").CFrame
+				local rx, ry, rz = rel:ToEulerAnglesYXZ()
+				wmax[1] = math.max(wmax[1], math.abs(math.deg(rx)))
+				wmax[2] = math.max(wmax[2], math.abs(math.deg(ry)))
+				wmax[3] = math.max(wmax[3], math.abs(math.deg(rz)))
+			end
 			-- reach: how far the glove went toward B (along -Z from A's root)
 			local reach = -(glove.Position.Z - ha.Position.Z)
 			samples[k] = { reach = reach, t = VT, gp = glove.Position }
@@ -810,14 +835,16 @@ local function punchClip(tier)
 		end
 		a:SetAttribute("Act", act)
 		a:SetAttribute("ActId", actId)
-		local capture = { [math.max(1, math.floor(bestK * 0.35))] = "windup", [math.max(1, math.floor(bestK * 0.7))] = "mid", [bestK] = "peak" }
+		local capture = { [math.max(1, math.floor(bestK * 0.2))] = "start", [math.max(1, math.floor(bestK * 0.45))] = "windup",
+			[math.max(1, math.floor(bestK * 0.7))] = "drive", [math.max(1, math.floor(bestK * 0.87))] = "extend", [bestK] = "peak",
+			[math.min(nF, bestK + math.max(3, math.floor(bestK * 0.5)))] = "return" }
 		local peakPen
 		for k = 1, nF do
 			frame({ a, b })
 			if capture[k] then
 				local fr = NOMESH and { t = r4(VT) } or exportFrame(a, VT)
 				fr.label = name .. " " .. capture[k]
-				fr.opp = (capture[k] == "peak" and not NOMESH) and exportFrame(b, VT) or nil
+				fr.opp = (not NOMESH) and exportFrame(b, VT) or nil
 				table.insert(out.frames, fr)
 				if capture[k] == "peak" then
 					local headB = b:FindFirstChild("Head")
@@ -837,6 +864,7 @@ local function punchClip(tier)
 			frame({ a, b })
 		end
 		table.insert(recs, { punch = name, reach = r4(best), peakFrame = bestK, peak = peakPen })
+		print(string.format("      waist max |pitch| %.0f |yaw| %.0f |roll| %.0f deg", wmax[1], wmax[2], wmax[3]))
 		print(string.format("punch T%d %-9s reach %.3f (frame %d)  glove->target %.3f  dy %+.3f  elbow %.0f deg", tier, name, best, bestK,
 			peakPen and peakPen.toTarget or -1, peakPen and peakPen.dy or 0, peakPen and peakPen.elbowDeg or -1))
 	end
