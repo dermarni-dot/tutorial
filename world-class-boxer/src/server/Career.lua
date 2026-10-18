@@ -5,6 +5,14 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
 local Catalog = require(Shared:WaitForChild("Catalog"))
 local Looks = require(Shared:WaitForChild("Looks"))
+-- the special moves (unlocks from the career's bouts, wins and KOs), nil-safe if the module is missing
+local Moves
+do
+	local ok, mod = pcall(function()
+		return require(Shared:WaitForChild("Moves"))
+	end)
+	Moves = (ok and type(mod) == "table") and mod or nil
+end
 local World = require(script.Parent.World)
 local Training = require(script.Parent.Training)
 
@@ -860,6 +868,8 @@ function Career.ApplyResult(profile, res)
 	local win, loss, draw = res.outcome == "win", res.outcome == "loss", res.outcome == "draw"
 	local isKO = res.method == "KO" or res.method == "TKO" or res.method == "RTD"
 	local rec = profile.tier == 1 and profile.amateurRecord or profile.record
+	-- the special moves before this result (a bout, a win, a KO or a promotion may unlock new ones)
+	local movesBefore = Moves and Moves.Unlocked(Moves.Info(profile)) or nil
 
 	if win then
 		rec.w += 1
@@ -1053,6 +1063,18 @@ function Career.ApplyResult(profile, res)
 	if profile.tier == 9 and profile.defenses >= 2 and Career.Legacy(profile).score >= 500 then
 		profile.tier = 10
 		table.insert(notes, "You are now a BOXING LEGEND.")
+	end
+
+	-- new special moves: one note each on the result screen (ClientMain shows them in gold), with what
+	-- unlocked it ("NEW SPECIAL MOVE: Double jab (3 bouts fought)")
+	if movesBefore then
+		local info = Moves.Info(profile)
+		local now = Moves.Unlocked(info)
+		for _, id in ipairs(Moves.List) do
+			if now[id] and not movesBefore[id] then
+				table.insert(notes, string.format("NEW SPECIAL MOVE: %s (%s). Moves & Controls has its keys.", Moves.Data[id].name, tostring(Moves.UnlockedBy(id, info))))
+			end
+		end
 	end
 
 	local entry = {

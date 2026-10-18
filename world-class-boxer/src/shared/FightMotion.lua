@@ -332,10 +332,12 @@ end
 -- (a southpaw's check hook is thrown with the right hand). The server lands each punch at
 -- FightMotion.SpecialHits(id, windup)[i] seconds after it sets the act.
 ------------------------------------------------------------------------
-export type SpecialPunch = { kind: string, hand: string?, after: number?, wk: number? }
+export type SpecialPunch = { kind: string, hand: string?, after: number?, wk: number?, zone: string? }
 export type Special = { pre: number, hand: string, zone: string, punches: { SpecialPunch }, move: number?, label: string }
 -- (move = how far the root should travel forward over the set-up for the move to read fully, studs;
--- negative = back. The Animator steps the feet in place; the server may move the root.)
+-- negative = back. The Animator steps the feet in place; the server may move the root. A punch's own zone
+-- overrides the move's: the body-head hook's first hook goes low. The punches' hands and zones match
+-- Moves.Data hands / bodies.)
 FightMotion.Specials = {
 	checkhook = { pre = 0.06, hand = "L", zone = "head", punches = { { kind = "leadhook" } }, move = 0, label = "Check hook" },
 	phillyshell = { pre = 0.3, hand = "R", zone = "head", punches = { { kind = "cross" } }, move = 0, label = "Philly shell counter" },
@@ -346,6 +348,12 @@ FightMotion.Specials = {
 	stepback = { pre = 0.26, hand = "R", zone = "head", punches = { { kind = "cross" } }, move = -0.8, label = "Step-back counter" },
 	overhand = { pre = 0.12, hand = "R", zone = "head", punches = { { kind = "overhand" } }, move = 0, label = "Loaded overhand" },
 	leaduppercut = { pre = 0.12, hand = "L", zone = "head", punches = { { kind = "uppercut" } }, move = 0, label = "Lead uppercut" },
+	-- the fight moves (Moves.lua: unlocked by bouts, wins and KOs)
+	doublejab = { pre = 0.06, hand = "L", zone = "head", punches = { { kind = "jab" }, { kind = "jab", hand = "L", after = 1.25, wk = 0.75 } }, move = 0.35, label = "Double jab" },
+	feintcross = { pre = 0.24, hand = "R", zone = "head", punches = { { kind = "cross" } }, move = 0, label = "Feint-cross" },
+	bodyhead = { pre = 0.12, hand = "L", zone = "head", punches = { { kind = "leadhook", zone = "body" }, { kind = "leadhook", hand = "L", after = 1.4, wk = 0.85 } }, move = 0, label = "Body-head hook" },
+	onetwothree = { pre = 0.04, hand = "L", zone = "head", punches = { { kind = "jab" }, { kind = "cross", hand = "R", after = 0.9, wk = 1.4 }, { kind = "leadhook", hand = "L", after = 2.2, wk = 1.5 } }, move = 0.3, label = "Jab-cross-hook" },
+	shovelhook = { pre = 0.14, hand = "L", zone = "head", punches = { { kind = "leadhook" } }, move = 0, label = "Shovel hook" },
 } :: { [string]: Special }
 -- (older names of the same moves, accepted everywhere an id is)
 FightMotion.SpecialAlias = { phillycounter = "phillyshell", overhandright = "overhand" } :: { [string]: string }

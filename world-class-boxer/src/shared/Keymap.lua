@@ -93,7 +93,7 @@ Keymap.Actions = {
 		how = "On a pad: flick the right stick left, then X within half a second. On touch: a slip on the BLOCK pad, then JAB within half a second." },
 	{ id = "countercross", label = "Counter cross", section = "advanced", kbd = { "E+MouseButton2" }, pad = "Thumbstick2Right+ButtonY", touch = "Swipe BLOCK, then CROSS",
 		desc = "Slip right and fire the cross over his jab: hold E and right-click.", how = "On a pad: flick right, then Y." },
-	-- SPECIAL (Moves.lua: unlocked per style, career tier and training)
+	-- SPECIAL (Moves.lua: unlocked per style, career tier, training and fights)
 	{ id = "special_checkhook", special = "checkhook", label = "Check hook", section = "special", kbd = { "One" }, pad = "ButtonR1+ButtonX", touch = "CHECK" },
 	{ id = "special_phillyshell", special = "phillyshell", label = "Philly shell counter", section = "special", kbd = { "Two" }, pad = "ButtonR1+ButtonL2", touch = "SHELL" },
 	{ id = "special_pullcounter", special = "pullcounter", label = "Pull counter", section = "special", kbd = { "Three" }, pad = "ButtonR1+ButtonY", touch = "PULL" },
@@ -103,12 +103,18 @@ Keymap.Actions = {
 	{ id = "special_stepback", special = "stepback", label = "Step-back counter", section = "special", kbd = { "Seven" }, pad = "ButtonR1+ButtonL1", touch = "STEP" },
 	{ id = "special_overhand", special = "overhand", label = "Loaded overhand", section = "special", kbd = { "Eight" }, pad = "ButtonR1+ButtonA", touch = "LOADED" },
 	{ id = "special_leaduppercut", special = "leaduppercut", label = "Lead uppercut", section = "special", kbd = { "Nine" }, pad = "ButtonR1+ButtonR2", touch = "L.UPPER" },
+	-- (the fight moves: unlocked by bouts, wins and KOs)
+	{ id = "special_doublejab", special = "doublejab", label = "Double jab", section = "special", kbd = { "Zero" }, pad = "ButtonR1+DPadLeft", touch = "2x JAB" },
+	{ id = "special_feintcross", special = "feintcross", label = "Feint-cross", section = "special", kbd = { "Minus" }, pad = "ButtonR1+DPadRight", touch = "FEINT" },
+	{ id = "special_bodyhead", special = "bodyhead", label = "Body-head hook", section = "special", kbd = { "Equals" }, pad = "ButtonR1+ButtonR3", touch = "BODY-HD" },
+	{ id = "special_onetwothree", special = "onetwothree", label = "Jab-cross-hook", section = "special", kbd = { "I" }, pad = "ButtonR1+ButtonL3", touch = "1-2-3" },
+	{ id = "special_shovelhook", special = "shovelhook", label = "Shovel hook", section = "special", kbd = { "P" }, pad = "ButtonR1+ButtonSelect", touch = "SHOVEL" },
 }
 Keymap.Sections = {
 	{ id = "basic", title = "Basic", blurb = "Moving, guarding and holding on." },
 	{ id = "punch", title = "Punches", blurb = "Every punch goes to the head unless the body shot is armed. Punching drops a tapped guard." },
 	{ id = "advanced", title = "Advanced", blurb = "Head movement, footwork and counters. A punch you land right after a slip, roll, parry or pivot counts as a counter." },
-	{ id = "special", title = "Special moves", blurb = "Signature moves unlocked by your style, your career and your training (Moves & Controls > Special)." },
+	{ id = "special", title = "Special moves", blurb = "Signature moves unlocked by your style, your career, your training and your fights: every bout, win and KO counts (Moves & Controls > Special)." },
 }
 
 Keymap.ById = {}

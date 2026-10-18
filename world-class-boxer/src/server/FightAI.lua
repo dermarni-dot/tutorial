@@ -395,8 +395,11 @@ end
 -- is for. Counters (shell, pull, step back) answer a punch that is on its way or the counter window; the
 -- check hook meets a man walking in; the liver shot goes under a high guard or at a worn body; the gazelle
 -- closes from long range; the rush is pressure; the overhand goes over a shell; the lead uppercut opens a
--- tight guard. At most one every few seconds, more from an aggressive or finishing fighter.
-local SPECIAL_RANGE = { gazelle = "cross", stepback = "jab", peekaboo = "cross" } -- the range the move needs (else its own punch's)
+-- tight guard. The fight moves: the double jab works the outside, the feint-cross beats a high guard, the
+-- body-head hook brings it down and goes over it, the jab-cross-hook presses and finishes, the shovel hook
+-- is for a hurt man up close. At most one every few seconds, more from an aggressive or finishing fighter.
+-- the range the move needs (else its own first punch's): the 1-2-3 is started at cross range so its hook reaches
+local SPECIAL_RANGE = { gazelle = "cross", stepback = "jab", peekaboo = "cross", onetwothree = "cross" }
 -- a gym partner keeps his tricks for the harder sessions: none in a Light spar, fewer and further apart in
 -- a Medium or Hard one (fight night = 1); the punch pacing of the spar (SPAR.work) never adds to these
 local SPAR_SPECIALS = { Light = 0, Medium = 0.4, Hard = 0.7 }
@@ -432,6 +435,12 @@ function FightAI:TrySpecial(now, dist)
 	add("peekaboo", (finishing and 0.6 or 0.15))
 	add("overhand", (blocking and 0.55 or 0.1) + (finishing and 0.25 or 0))
 	add("leaduppercut", (blocking and 0.35 or 0.1) + (now < O.rollUntil and 0.6 or 0))
+	local hurt = engine:IsHurt(O)
+	add("doublejab", (dist > engine:PunchRange(F, "leadhook") and 0.45 or 0.1) + (self.mode == "survive" and 0.2 or 0))
+	add("feintcross", (blocking and 0.55 or 0.15))
+	add("bodyhead", (blocking and 0.4 or 0.15) + (O.body < 70 and 0.25 or 0))
+	add("onetwothree", (finishing and 0.4 or 0.2) + (hurt and 0.2 or 0))
+	add("shovelhook", (hurt and 0.6 or 0.1) + (finishing and 0.3 or 0))
 	if total <= 0 then
 		return false
 	end

@@ -825,9 +825,17 @@ function Fight:Special(F, id)
 	F.tally.thrown += #hits
 	F.totals.thrown += #hits
 	self:Send({ t = "special", who = self:Who(F), id = sid, name = M.name })
+	-- each punch's body flag: Moves.Data bodies[i] (the body-head hook goes low, then high), else the move's
+	local function bodyOf(i)
+		local b = M.bodies and M.bodies[i]
+		if b == nil then
+			return M.body == true
+		end
+		return b == true
+	end
 	if O.ai then
 		for i, at in ipairs(hits) do
-			O.ai:OnOppPunch(M.punch[i] or M.punch[1], M.body == true, at)
+			O.ai:OnOppPunch(M.punch[i] or M.punch[1], bodyOf(i), at)
 		end
 	end
 	local fightId = self.id
@@ -835,10 +843,11 @@ function Fight:Special(F, id)
 		local kind = M.punch[i] or M.punch[1]
 		task.delay(at, function()
 			if self.id == fightId and not self.finished and F.special and F.special.token == token then
-				-- the second punch of a rush is the other hand
-				F.hand = (i % 2 == 0) and (M.hand == "L" and "R" or "L") or M.hand
+				-- the second punch of a rush is the other hand (a double jab's / body-head hook's hands are
+				-- listed: Moves.Data hands)
+				F.hand = (M.hands and M.hands[i]) or ((i % 2 == 0) and (M.hand == "L" and "R" or "L") or M.hand)
 				F.punchesUsed[kind] = (F.punchesUsed[kind] or 0) + 1
-				self:Resolve(F, O, kind, M.body == true, stamPct, M)
+				self:Resolve(F, O, kind, bodyOf(i), stamPct, M)
 				if i == #hits and F.special and F.special.token == token then
 					F.special = nil
 				end

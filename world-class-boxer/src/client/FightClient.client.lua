@@ -12,7 +12,7 @@
 -- Settings.Keymap()). Keyboard defaults: left click jab, right click cross, F lead hook, R rear hook, T
 -- uppercut, G body hook, middle click overhand, C = to the body, B block, V parry, Q / E slip, Space dodge,
 -- Shift + Space quick dodge, double-tap A / D pivot, Ctrl clinch, Q + click counter jab, E + right click
--- counter cross, 1-9 the special moves, H the controls strip, Tab (or `) the Moves & Controls menu (the
+-- counter cross, 1-9 / 0 / - / = / I / P the special moves, H the controls strip, Tab (or `) the Moves & Controls menu (the
 -- fight hides Roblox's player list, which owns Tab), Shift sprints (in the ring: the server's quicker
 -- footwork). Block, body and the controls legend are TAP TOGGLES on every device (tap: on, tap again:
 -- off); a press held longer than Tog.HOLD still works as a hold (released when you let go). A punch drops
@@ -1553,7 +1553,7 @@ do
 	end
 
 	-- the unlocked special moves (setTouchSpecials, from the fight's start message): a grid of gold pads left
-	-- of the punch cluster, up to three a row, filled from the bottom right so a short list hugs the punches.
+	-- of the punch cluster, up to three a row (four past nine moves), filled from the bottom right so a short list hugs the punches.
 	-- KM.paintSpecials dims a pad while the shared cooldown runs or the gas is not there for it
 	local touchSpecials
 	KM.specialPads = {}
@@ -1566,7 +1566,8 @@ do
 		list = list or {}
 		local cell = math.max(50, UI.MinHit(touchPad))
 		local gap = 6
-		local cols = math.min(3, #list)
+		-- (more than nine: four a row, so the full set of fourteen stays four rows high)
+		local cols = math.min(#list > 9 and 4 or 3, #list)
 		local rows = math.ceil(#list / math.max(1, cols))
 		touchSpecials.Size = UDim2.fromOffset(cols * cell + math.max(0, cols - 1) * gap, rows * cell + math.max(0, rows - 1) * gap)
 		for i, id in ipairs(list) do

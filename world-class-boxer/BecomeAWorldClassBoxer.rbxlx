@@ -19439,10 +19439,12 @@ end
 -- (a southpaw's check hook is thrown with the right hand). The server lands each punch at
 -- FightMotion.SpecialHits(id, windup)[i] seconds after it sets the act.
 ------------------------------------------------------------------------
-export type SpecialPunch = { kind: string, hand: string?, after: number?, wk: number? }
+export type SpecialPunch = { kind: string, hand: string?, after: number?, wk: number?, zone: string? }
 export type Special = { pre: number, hand: string, zone: string, punches: { SpecialPunch }, move: number?, label: string }
 -- (move = how far the root should travel forward over the set-up for the move to read fully, studs;
--- negative = back. The Animator steps the feet in place; the server may move the root.)
+-- negative = back. The Animator steps the feet in place; the server may move the root. A punch's own zone
+-- overrides the move's: the body-head hook's first hook goes low. The punches' hands and zones match
+-- Moves.Data hands / bodies.)
 FightMotion.Specials = {
 	checkhook = { pre = 0.06, hand = "L", zone = "head", punches = { { kind = "leadhook" } }, move = 0, label = "Check hook" },
 	phillyshell = { pre = 0.3, hand = "R", zone = "head", punches = { { kind = "cross" } }, move = 0, label = "Philly shell counter" },
@@ -19453,6 +19455,12 @@ FightMotion.Specials = {
 	stepback = { pre = 0.26, hand = "R", zone = "head", punches = { { kind = "cross" } }, move = -0.8, label = "Step-back counter" },
 	overhand = { pre = 0.12, hand = "R", zone = "head", punches = { { kind = "overhand" } }, move = 0, label = "Loaded overhand" },
 	leaduppercut = { pre = 0.12, hand = "L", zone = "head", punches = { { kind = "uppercut" } }, move = 0, label = "Lead uppercut" },
+	-- the fight moves (Moves.lua: unlocked by bouts, wins and KOs)
+	doublejab = { pre = 0.06, hand = "L", zone = "head", punches = { { kind = "jab" }, { kind = "jab", hand = "L", after = 1.25, wk = 0.75 } }, move = 0.35, label = "Double jab" },
+	feintcross = { pre = 0.24, hand = "R", zone = "head", punches = { { kind = "cross" } }, move = 0, label = "Feint-cross" },
+	bodyhead = { pre = 0.12, hand = "L", zone = "head", punches = { { kind = "leadhook", zone = "body" }, { kind = "leadhook", hand = "L", after = 1.4, wk = 0.85 } }, move = 0, label = "Body-head hook" },
+	onetwothree = { pre = 0.04, hand = "L", zone = "head", punches = { { kind = "jab" }, { kind = "cross", hand = "R", after = 0.9, wk = 1.4 }, { kind = "leadhook", hand = "L", after = 2.2, wk = 1.5 } }, move = 0.3, label = "Jab-cross-hook" },
+	shovelhook = { pre = 0.14, hand = "L", zone = "head", punches = { { kind = "leadhook" } }, move = 0, label = "Shovel hook" },
 } :: { [string]: Special }
 -- (older names of the same moves, accepted everywhere an id is)
 FightMotion.SpecialAlias = { phillycounter = "phillyshell", overhandright = "overhand" } :: { [string]: string }
@@ -26524,7 +26532,7 @@ Keymap.Actions = {
 		how = "On a pad: flick the right stick left, then X within half a second. On touch: a slip on the BLOCK pad, then JAB within half a second." },
 	{ id = "countercross", label = "Counter cross", section = "advanced", kbd = { "E+MouseButton2" }, pad = "Thumbstick2Right+ButtonY", touch = "Swipe BLOCK, then CROSS",
 		desc = "Slip right and fire the cross over his jab: hold E and right-click.", how = "On a pad: flick right, then Y." },
-	-- SPECIAL (Moves.lua: unlocked per style, career tier and training)
+	-- SPECIAL (Moves.lua: unlocked per style, career tier, training and fights)
 	{ id = "special_checkhook", special = "checkhook", label = "Check hook", section = "special", kbd = { "One" }, pad = "ButtonR1+ButtonX", touch = "CHECK" },
 	{ id = "special_phillyshell", special = "phillyshell", label = "Philly shell counter", section = "special", kbd = { "Two" }, pad = "ButtonR1+ButtonL2", touch = "SHELL" },
 	{ id = "special_pullcounter", special = "pullcounter", label = "Pull counter", section = "special", kbd = { "Three" }, pad = "ButtonR1+ButtonY", touch = "PULL" },
@@ -26534,12 +26542,18 @@ Keymap.Actions = {
 	{ id = "special_stepback", special = "stepback", label = "Step-back counter", section = "special", kbd = { "Seven" }, pad = "ButtonR1+ButtonL1", touch = "STEP" },
 	{ id = "special_overhand", special = "overhand", label = "Loaded overhand", section = "special", kbd = { "Eight" }, pad = "ButtonR1+ButtonA", touch = "LOADED" },
 	{ id = "special_leaduppercut", special = "leaduppercut", label = "Lead uppercut", section = "special", kbd = { "Nine" }, pad = "ButtonR1+ButtonR2", touch = "L.UPPER" },
+	-- (the fight moves: unlocked by bouts, wins and KOs)
+	{ id = "special_doublejab", special = "doublejab", label = "Double jab", section = "special", kbd = { "Zero" }, pad = "ButtonR1+DPadLeft", touch = "2x JAB" },
+	{ id = "special_feintcross", special = "feintcross", label = "Feint-cross", section = "special", kbd = { "Minus" }, pad = "ButtonR1+DPadRight", touch = "FEINT" },
+	{ id = "special_bodyhead", special = "bodyhead", label = "Body-head hook", section = "special", kbd = { "Equals" }, pad = "ButtonR1+ButtonR3", touch = "BODY-HD" },
+	{ id = "special_onetwothree", special = "onetwothree", label = "Jab-cross-hook", section = "special", kbd = { "I" }, pad = "ButtonR1+ButtonL3", touch = "1-2-3" },
+	{ id = "special_shovelhook", special = "shovelhook", label = "Shovel hook", section = "special", kbd = { "P" }, pad = "ButtonR1+ButtonSelect", touch = "SHOVEL" },
 }
 Keymap.Sections = {
 	{ id = "basic", title = "Basic", blurb = "Moving, guarding and holding on." },
 	{ id = "punch", title = "Punches", blurb = "Every punch goes to the head unless the body shot is armed. Punching drops a tapped guard." },
 	{ id = "advanced", title = "Advanced", blurb = "Head movement, footwork and counters. A punch you land right after a slip, roll, parry or pivot counts as a counter." },
-	{ id = "special", title = "Special moves", blurb = "Signature moves unlocked by your style, your career and your training (Moves & Controls > Special)." },
+	{ id = "special", title = "Special moves", blurb = "Signature moves unlocked by your style, your career, your training and your fights: every bout, win and KO counts (Moves & Controls > Special)." },
 }
 
 Keymap.ById = {}
@@ -31189,87 +31203,141 @@ return MeshKit
 -- with the ordinary hit / hitbody acts, so the Animator's reactions play as for any punch.
 --
 -- Unlocks: a move is unlocked by STYLE and career TIER (its home styles get it early, everyone gets it a
--- few tiers later) or by a TRAINING milestone (session count on one exercise). Nothing is stored: the set
--- is computed from the profile whenever it is needed (old saves need no new field).
---   Moves.Unlocked(info)        { id = true } for info = { style, tier, sessions = { actId = n } }
---   Moves.Info(profileOrSummary) that info, nil-safe (profile.records[act].sessions / summary.records)
---   Moves.ForAI(data)            an AI boxer's set: its style's home moves once it is good enough
---   Moves.UnlockText(id)         how to unlock it, for the menu
+-- few tiers later), by a TRAINING milestone (session count on one exercise) or by a FIGHT milestone (bouts
+-- fought, wins or KO wins over the whole career, amateur and pro: Moves.FIGHT_STATS). Every move has a
+-- fight milestone, so fighting alone opens them all; the fight moves (no home style: double jab, feint-cross,
+-- body-head hook, jab-cross-hook, shovel hook) open only that way. Nothing is stored: the set is computed
+-- from the profile whenever it is needed (old saves need no new field: the records are already there).
+--   Moves.Unlocked(info)        { id = true } for info = { style, tier, sessions = { actId = n }, fights, wins, kos }
+--   Moves.Info(profileOrSummary) that info, nil-safe (profile.records[act].sessions / summary.records,
+--                                profile.record + profile.amateurRecord { w, l, d, ko })
+--   Moves.ForAI(data)            an AI boxer's set: its style's home moves once it is good enough, and the
+--                                fight moves its record and tier have earned
+--   Moves.UnlockText(id, info?)  how to unlock it, for the menu (with info: the progress, "Win 15 fights (9/15)")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Config = require(ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Config"))
 
 local Moves = {}
 
-Moves.List = { "checkhook", "phillyshell", "pullcounter", "livershot", "gazelle", "peekaboo", "stepback", "overhand", "leaduppercut" }
+Moves.List = {
+	"checkhook", "phillyshell", "pullcounter", "livershot", "gazelle", "peekaboo", "stepback", "overhand", "leaduppercut",
+	-- the fight moves (unlocked only by fighting), in ladder order
+	"doublejab", "feintcross", "bodyhead", "onetwothree", "shovelhook",
+}
+
+-- the fight milestones' counters (Moves.Info): bouts fought (w + l + d), wins, wins inside the distance
+Moves.FIGHT_STATS = { "fights", "wins", "kos" }
 
 -- punch = the Config.Punches kind each hit is scored as (the second entry for a two-punch move), hand = the
 -- act's hand for an orthodox fighter, body = to the body, stam = stamina cost, dmg / hit / range = multipliers
 -- and additions on the ordinary punch, kd = knockdown-odds multiplier, counter = a counter move (the set-up
 -- evades: shell = "straight" | "head" | "all", shellText = the HUD's call-out), liver = the liver-shot delayed knockdown, lunge = root travel
--- over the set-up (studs, negative = back), power = the act's power field, cooldown = seconds before the next
+-- over the set-up (studs, negative = back), power = the act's power field, cooldown = seconds before the next.
+-- hands / bodies (optional, per punch) = each punch's hand and body flag when they do not simply alternate
+-- from `hand` and all share `body` (a double jab is two lefts; a body-head hook digs low, then goes high).
+-- Unlocks: styles + tier (home styles), anyTier (every style), training = { activity, sessions },
+-- fight = { stat = "fights" | "wins" | "kos", n } (Moves.FIGHT_STATS); aiTier = the career tier an AI boxer
+-- needs for a fight move (Moves.ForAI)
 Moves.Data = {
 	checkhook = {
 		id = "checkhook", name = "Check hook", short = "CHECK HOOK", punch = { "leadhook" }, hand = "L", body = false,
 		stam = 7, dmg = 1.1, hit = 0.04, range = 1.0, kd = 1.15, power = 1.0, cooldown = 1.6, pivotOut = true,
-		styles = { "OutBoxer", "CounterPuncher" }, tier = 2, anyTier = 5, training = { activity = "Ladder", sessions = 10 },
+		styles = { "OutBoxer", "CounterPuncher" }, tier = 2, anyTier = 5, training = { activity = "Ladder", sessions = 10 }, fight = { stat = "fights", n = 12 },
 		desc = "A lead hook thrown as he steps in, then a pivot out of his line.",
 		how = "Throw it as he comes forward: it counts as a counter when it catches him punching, and the pivot leaves you at an angle for the next shot.",
 	},
 	phillyshell = {
 		id = "phillyshell", name = "Philly shell counter", short = "SHELL COUNTER", punch = { "cross" }, hand = "R", body = false,
 		stam = 8, dmg = 1.15, hit = 0.03, range = 1.05, kd = 1.1, power = 1.1, cooldown = 1.8, counter = true, shell = "head", shellText = "SHOULDER ROLL",
-		styles = { "CounterPuncher", "BoxerPuncher" }, tier = 3, anyTier = 6, training = { activity = "Shadow", sessions = 12 },
+		styles = { "CounterPuncher", "BoxerPuncher" }, tier = 3, anyTier = 6, training = { activity = "Shadow", sessions = 12 }, fight = { stat = "fights", n = 20 },
 		desc = "Shoulder roll: his head shot slides off the shoulder, and the right hand comes back over it.",
 		how = "Start it as his punch leaves. The roll covers the head for a third of a second; whatever it rolls makes the cross a counter.",
 	},
 	pullcounter = {
 		id = "pullcounter", name = "Pull counter", short = "PULL COUNTER", punch = { "cross" }, hand = "R", body = false,
 		stam = 7, dmg = 1.2, hit = 0.02, range = 1.1, kd = 1.15, power = 1.1, cooldown = 1.8, counter = true, shell = "straight", shellText = "PULLED BACK",
-		styles = { "CounterPuncher", "OutBoxer" }, tier = 3, anyTier = 6, training = { activity = "DoubleEnd", sessions = 10 },
+		styles = { "CounterPuncher", "OutBoxer" }, tier = 3, anyTier = 6, training = { activity = "DoubleEnd", sessions = 10 }, fight = { stat = "fights", n = 20 },
 		desc = "Lean back out of his jab and land the right hand as he resets.",
 		how = "Only straight punches miss the pull. Time it on his jab, not on a hook.",
 	},
 	livershot = {
 		id = "livershot", name = "Liver shot", short = "LIVER SHOT", punch = { "leadhook" }, hand = "L", body = true,
 		stam = 8, dmg = 1.2, hit = 0.02, range = 0.95, kd = 1.0, power = 1.1, cooldown = 2.0, liver = true,
-		styles = { "Swarmer", "Slugger" }, tier = 2, anyTier = 5, training = { activity = "HeavyBag", sessions = 12 },
+		styles = { "Swarmer", "Slugger" }, tier = 2, anyTier = 5, training = { activity = "HeavyBag", sessions = 12 }, fight = { stat = "fights", n = 12 },
 		desc = "A dipping left hook under the right elbow, straight to the liver.",
 		how = "Inside range, under a high guard. A clean one folds a man up a beat after it lands, the more so when his body is already worn.",
 	},
 	gazelle = {
 		id = "gazelle", name = "Gazelle punch", short = "GAZELLE", punch = { "leadhook" }, hand = "L", body = false,
 		stam = 10, dmg = 1.3, hit = -0.04, range = 1.45, kd = 1.25, power = 1.2, cooldown = 2.4, lunge = 1.2,
-		styles = { "Slugger", "Swarmer" }, tier = 4, anyTier = 7, training = { activity = "Rope", sessions = 10 },
+		styles = { "Slugger", "Swarmer" }, tier = 4, anyTier = 7, training = { activity = "Rope", sessions = 10 }, fight = { stat = "wins", n = 20 },
 		desc = "A leaping lead hook from outside jab range: the legs cover the distance, the hips bring the power.",
 		how = "From long range, when he thinks he is safe. Slow and easy to see coming: feint first.",
 	},
 	peekaboo = {
 		id = "peekaboo", name = "Peek-a-boo rush", short = "RUSH", punch = { "leadhook", "rearhook" }, hand = "L", body = false,
 		stam = 12, dmg = 1.0, hit = 0.06, range = 1.3, kd = 1.0, power = 0.95, cooldown = 2.6, lunge = 1.5, shell = "head", shellText = "WEAVED",
-		styles = { "Swarmer" }, tier = 4, anyTier = 7, training = { activity = "MittWork", sessions = 15 },
+		styles = { "Swarmer" }, tier = 4, anyTier = 7, training = { activity = "MittWork", sessions = 15 }, fight = { stat = "wins", n = 20 },
 		desc = "Bob and weave in behind a tight guard, then a left hook and a right hook on arrival.",
 		how = "Pressure. The weave slips head shots on the way in; the two hooks land on the inside.",
 	},
 	stepback = {
 		id = "stepback", name = "Step-back counter", short = "STEP-BACK", punch = { "cross" }, hand = "R", body = false,
 		stam = 7, dmg = 1.15, hit = 0.03, range = 1.3, kd = 1.1, power = 1.1, cooldown = 1.8, counter = true, shell = "all", shellText = "STEPPED BACK", lunge = -0.8,
-		styles = { "OutBoxer", "BoxerPuncher" }, tier = 3, anyTier = 6, training = { activity = "Treadmill", sessions = 10 },
+		styles = { "OutBoxer", "BoxerPuncher" }, tier = 3, anyTier = 6, training = { activity = "Treadmill", sessions = 10 }, fight = { stat = "fights", n = 20 },
 		desc = "Two quick steps back out of range, and the cross meets him as he follows.",
 		how = "Everything misses while you step; the cross reaches further than usual. The ropes stop it: use it from the middle of the ring.",
 	},
 	overhand = {
 		id = "overhand", name = "Loaded overhand", short = "LOADED OVERHAND", punch = { "overhand" }, hand = "R", body = false,
 		stam = 10, dmg = 1.2, hit = -0.02, range = 1.0, kd = 1.2, power = 1.2, cooldown = 2.0, overGuard = 0.65,
-		styles = { "Slugger", "BoxerPuncher" }, tier = 1, anyTier = 4, training = { activity = "HeavyBag", sessions = 8 },
+		styles = { "Slugger", "BoxerPuncher" }, tier = 1, anyTier = 4, training = { activity = "HeavyBag", sessions = 8 }, fight = { stat = "fights", n = 10 },
 		desc = "The slugger's big one: a dip to the right loads the back leg, then the overhand comes with the whole body behind it. Not the everyday overhand (Punches): heavier, and it drops men more often.",
 		how = "On a man who shells up or stands still: two thirds of it lands through a block (the plain overhand gets half through).",
 	},
 	leaduppercut = {
 		id = "leaduppercut", name = "Lead uppercut", short = "LEAD UPPERCUT", punch = { "uppercut" }, hand = "L", body = false,
 		stam = 7, dmg = 1.05, hit = 0.03, range = 0.9, kd = 1.1, power = 1.0, cooldown = 1.4,
-		styles = { "BoxerPuncher", "Swarmer" }, tier = 2, anyTier = 5, training = { activity = "SpeedBag", sessions = 10 },
+		styles = { "BoxerPuncher", "Swarmer" }, tier = 2, anyTier = 5, training = { activity = "SpeedBag", sessions = 10 }, fight = { stat = "fights", n = 12 },
 		desc = "A short left uppercut from the stance: no wind-up to see.",
 		how = "Inside, on a man who ducks or rolls (it lands bigger on a rolling head), or to open a tight guard.",
+	},
+	-- THE FIGHT MOVES: no home style, no tier, no drill. They come with ring time only (Moves.FIGHT_STATS)
+	doublejab = {
+		id = "doublejab", name = "Double jab", short = "DOUBLE JAB", punch = { "jab", "jab" }, hand = "L", hands = { "L", "L" }, body = false,
+		stam = 5, dmg = 1.1, hit = 0.06, range = 1.05, kd = 1.0, power = 0.9, cooldown = 1.4, lunge = 0.35,
+		styles = {}, fight = { stat = "fights", n = 3 }, aiTier = 2,
+		desc = "Two lefts off one step: a long one to find the range, a short snap behind it before his guard resets.",
+		how = "From the outside, to take the centre of the ring or set up the right hand. Cheap on the gas, light on damage.",
+	},
+	feintcross = {
+		id = "feintcross", name = "Feint-cross", short = "FEINT-CROSS", punch = { "cross" }, hand = "R", body = false,
+		stam = 7, dmg = 1.05, hit = 0.1, range = 1.05, kd = 1.05, power = 1.05, cooldown = 1.8, overGuard = 0.3,
+		styles = {}, fight = { stat = "fights", n = 8 }, aiTier = 3,
+		desc = "A twitch of the lead shoulder sells the jab; the cross comes down the middle while his guard reaches for it.",
+		how = "On a man who blocks a lot: the feint pulls the gloves out of place, so it lands more often and a third of it gets through a high guard.",
+	},
+	bodyhead = {
+		id = "bodyhead", name = "Body-head hook", short = "BODY-HEAD", punch = { "leadhook", "leadhook" }, hand = "L", hands = { "L", "L" },
+		body = true, bodies = { true, false },
+		stam = 10, dmg = 1.05, hit = 0.03, range = 0.95, kd = 1.1, power = 1.0, cooldown = 2.2,
+		styles = {}, fight = { stat = "wins", n = 15 }, aiTier = 3,
+		desc = "Double up the left hook: dig it into the ribs, and when his elbow drops to cover, the same hand comes back upstairs.",
+		how = "Inside range. The body hook brings the guard down; the second hook finds the open jaw.",
+	},
+	onetwothree = {
+		id = "onetwothree", name = "Jab-cross-hook", short = "1-2-3", punch = { "jab", "cross", "leadhook" }, hand = "L", body = false,
+		stam = 13, dmg = 0.95, hit = 0.02, range = 1.0, kd = 1.0, power = 1.0, cooldown = 2.6, lunge = 0.3,
+		styles = {}, fight = { stat = "fights", n = 25 }, aiTier = 4,
+		desc = "The bread-and-butter three: jab to blind him, the cross down the pipe, the lead hook round the side as he slips it.",
+		how = "From jab range stepping in: the hook has the shortest reach, so start it close enough for the third punch to land.",
+	},
+	shovelhook = {
+		id = "shovelhook", name = "Shovel hook", short = "SHOVEL HOOK", punch = { "leadhook" }, hand = "L", body = false,
+		stam = 9, dmg = 1.25, hit = 0.0, range = 0.85, kd = 1.3, power = 1.15, cooldown = 2.2,
+		styles = {}, fight = { stat = "kos", n = 5 }, aiTier = 4,
+		desc = "Half hook, half uppercut: the elbow tucked to the hip, the fist scooped up and in under the chin. A finisher's punch.",
+		how = "Up close on a hurt man. Short, and it drops men more than any other special.",
 	},
 }
 
@@ -31299,35 +31367,64 @@ local function activityName(id)
 end
 Moves.ActivityName = activityName
 
--- how a move unlocks (for the menu)
-function Moves.UnlockText(id)
+-- a fight milestone in words: "Fight 8 bouts", "Win 15 fights", "Win 5 fights by KO"
+local FIGHT_GOAL = { fights = "Fight %d bouts", wins = "Win %d fights", kos = "Win %d fights by KO" }
+-- the same once it is met: "8 bouts fought", "15 wins", "5 KO wins"
+local FIGHT_DONE = { fights = "%d bouts fought", wins = "%d wins", kos = "%d KO wins" }
+
+-- how far a fighter is along a move's fight milestone: have, need (nil when the move has none)
+function Moves.FightProgress(id, info)
+	local m = Moves.Data[Moves.Id(id) or ""]
+	local f = m and m.fight
+	if not f then
+		return nil, nil
+	end
+	local have = type(info) == "table" and tonumber(info[f.stat]) or 0
+	return math.max(0, math.floor(have or 0)), f.n
+end
+
+-- how a move unlocks (for the menu); with info (Moves.Info) the training and fight milestones carry the
+-- progress: "Slugger or Swarmer from Local Pro  ·  any style from ...  ·  12 Heavy Bag sessions (4/12)  ·
+-- Fight 12 bouts (5/12)". A fight move reads "Win 15 fights (9/15)".
+function Moves.UnlockText(id, info)
 	local m = Moves.Data[Moves.Id(id) or ""]
 	if not m then
 		return ""
 	end
-	local names = {}
-	for _, s in ipairs(m.styles) do
-		table.insert(names, Moves.StyleName(s))
+	local withInfo = type(info) == "table"
+	local function progress(have, need)
+		return withInfo and string.format(" (%d/%d)", math.min(have, need), need) or ""
 	end
-	local who = table.concat(names, " or ")
-	local parts = { string.format("%s from %s", who, tierName(m.tier)) }
+	local parts = {}
+	if m.styles and #m.styles > 0 and m.tier then
+		local names = {}
+		for _, s in ipairs(m.styles) do
+			table.insert(names, Moves.StyleName(s))
+		end
+		table.insert(parts, string.format("%s from %s", table.concat(names, " or "), tierName(m.tier)))
+	end
 	if m.anyTier then
 		table.insert(parts, string.format("any style from %s", tierName(m.anyTier)))
 	end
 	if m.training then
-		table.insert(parts, string.format("%d %s sessions", m.training.sessions, activityName(m.training.activity)))
+		local n = withInfo and type(info.sessions) == "table" and tonumber(info.sessions[m.training.activity]) or 0
+		table.insert(parts, string.format("%d %s sessions", m.training.sessions, activityName(m.training.activity)) .. progress(math.floor(n or 0), m.training.sessions))
+	end
+	if m.fight then
+		local have, need = Moves.FightProgress(id, info)
+		table.insert(parts, string.format(FIGHT_GOAL[m.fight.stat] or "%d fights", need) .. progress(have, need))
 	end
 	return table.concat(parts, "  ·  ")
 end
 
--- the plain condition a fighter meets, or nil: "Slugger at Local Pro", "12 Heavy Bag sessions"
+-- the plain condition a fighter meets, or nil: "Slugger at Local Pro", "12 Heavy Bag sessions", "8 bouts fought"
 function Moves.UnlockedBy(id, info)
 	local m = Moves.Data[Moves.Id(id) or ""]
 	if not (m and type(info) == "table") then
 		return nil
 	end
 	local tier = tonumber(info.tier) or 1
-	local home = table.find(m.styles, info.style) ~= nil
+	local home = m.styles ~= nil and m.tier ~= nil and table.find(m.styles, info.style) ~= nil
 	if home and tier >= m.tier then
 		return string.format("%s at %s", Moves.StyleName(info.style), tierName(m.tier))
 	end
@@ -31338,6 +31435,10 @@ function Moves.UnlockedBy(id, info)
 	local n = tr and type(info.sessions) == "table" and tonumber(info.sessions[tr.activity]) or 0
 	if tr and n >= tr.sessions then
 		return string.format("%d %s sessions", tr.sessions, activityName(tr.activity))
+	end
+	local have, need = Moves.FightProgress(id, info)
+	if need and have >= need then
+		return string.format(FIGHT_DONE[m.fight.stat] or "%d fights", need)
 	end
 	return nil
 end
@@ -31353,9 +31454,33 @@ function Moves.Unlocked(info)
 	return out
 end
 
+-- a whole, finite, non-negative count (0 for anything else)
+local function count(v)
+	v = tonumber(v)
+	if not v or v ~= v or v == math.huge then
+		return 0
+	end
+	return math.max(0, math.floor(v))
+end
+
+-- the career fight counters from a { w, l, d, ko } record (or the sum of several): fights, wins, kos
+function Moves.FightCounts(...)
+	local fights, wins, kos = 0, 0, 0
+	for i = 1, select("#", ...) do
+		local r = select(i, ...)
+		if type(r) == "table" then
+			local w = count(r.w)
+			fights += w + count(r.l) + count(r.d)
+			wins += w
+			kos += math.min(w, count(r.ko))
+		end
+	end
+	return fights, wins, kos
+end
+
 -- the info a profile (server) or the summary the client holds (State.P) gives: nil-safe for old saves
 function Moves.Info(P)
-	local info = { style = nil, tier = 1, sessions = {} }
+	local info = { style = nil, tier = 1, sessions = {}, fights = 0, wins = 0, kos = 0 }
 	if type(P) ~= "table" then
 		return info
 	end
@@ -31372,12 +31497,17 @@ function Moves.Info(P)
 			info.sessions[act] = math.max(0, math.floor(n))
 		end
 	end
+	-- the whole career's bouts: the amateur record and the pro one (both in the profile and the summary)
+	info.fights, info.wins, info.kos = Moves.FightCounts(P.amateurRecord, P.record)
 	return info
 end
 
 -- an AI boxer's moves: its style's home moves once it is good enough (an overall of 55 is a Local Pro,
 -- 65 Regional, 75 Top 10, 85 a champion), and every move at the top. Amateurs (tier 1) keep it simple:
--- no special moves, even the ones a style gets from tier 1 (the player's own unlocks are unaffected)
+-- no special moves, even the ones a style gets from tier 1 (the player's own unlocks are unaffected).
+-- The fight moves come with experience: the move's aiTier, and its fight milestone met by the boxer's
+-- record when the data carries one ({ w, l, d, ko }; a partner without a record goes by the tier alone).
+-- (The older moves' fight milestones are the player's way in only: an AI boxer's set keeps its style.)
 function Moves.ForAI(data)
 	if type(data) ~= "table" then
 		return {}
@@ -31390,10 +31520,27 @@ function Moves.ForAI(data)
 	if tier <= 1 then
 		return {}
 	end
-	return Moves.Unlocked({ style = data.style, tier = tier, sessions = {} })
+	local base = { style = data.style, tier = tier, sessions = {} }
+	local out = {}
+	for _, id in ipairs(Moves.List) do
+		-- (UnlockedBy without the fight counters: style, tier and an empty training log)
+		if Moves.UnlockedBy(id, base) then
+			out[id] = true
+		end
+	end
+	local rec = type(data.record) == "table" and data.record or nil
+	local fights, wins, kos = Moves.FightCounts(rec)
+	local have = { fights = fights, wins = wins, kos = kos }
+	for _, id in ipairs(Moves.List) do
+		local m = Moves.Data[id]
+		if m.aiTier and m.fight and tier >= m.aiTier and (rec == nil or have[m.fight.stat] >= m.fight.n) then
+			out[id] = true
+		end
+	end
+	return out
 end
 
--- the number of the Keymap action for a move, in the special list's order (the keyboard's 1..9)
+-- the number of the Keymap action for a move, in the special list's order (the keyboard's 1..9, then 0 - = I P)
 function Moves.Index(id)
 	return table.find(Moves.List, Moves.Id(id) or "")
 end
@@ -34035,6 +34182,14 @@ local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("Config"))
 local Catalog = require(Shared:WaitForChild("Catalog"))
 local Looks = require(Shared:WaitForChild("Looks"))
+-- the special moves (unlocks from the career's bouts, wins and KOs), nil-safe if the module is missing
+local Moves
+do
+	local ok, mod = pcall(function()
+		return require(Shared:WaitForChild("Moves"))
+	end)
+	Moves = (ok and type(mod) == "table") and mod or nil
+end
 local World = require(script.Parent.World)
 local Training = require(script.Parent.Training)
 
@@ -34890,6 +35045,8 @@ function Career.ApplyResult(profile, res)
 	local win, loss, draw = res.outcome == "win", res.outcome == "loss", res.outcome == "draw"
 	local isKO = res.method == "KO" or res.method == "TKO" or res.method == "RTD"
 	local rec = profile.tier == 1 and profile.amateurRecord or profile.record
+	-- the special moves before this result (a bout, a win, a KO or a promotion may unlock new ones)
+	local movesBefore = Moves and Moves.Unlocked(Moves.Info(profile)) or nil
 
 	if win then
 		rec.w += 1
@@ -35083,6 +35240,18 @@ function Career.ApplyResult(profile, res)
 	if profile.tier == 9 and profile.defenses >= 2 and Career.Legacy(profile).score >= 500 then
 		profile.tier = 10
 		table.insert(notes, "You are now a BOXING LEGEND.")
+	end
+
+	-- new special moves: one note each on the result screen (ClientMain shows them in gold), with what
+	-- unlocked it ("NEW SPECIAL MOVE: Double jab (3 bouts fought)")
+	if movesBefore then
+		local info = Moves.Info(profile)
+		local now = Moves.Unlocked(info)
+		for _, id in ipairs(Moves.List) do
+			if now[id] and not movesBefore[id] then
+				table.insert(notes, string.format("NEW SPECIAL MOVE: %s (%s). Moves & Controls has its keys.", Moves.Data[id].name, tostring(Moves.UnlockedBy(id, info))))
+			end
+		end
 	end
 
 	local entry = {
@@ -38800,8 +38969,11 @@ end
 -- is for. Counters (shell, pull, step back) answer a punch that is on its way or the counter window; the
 -- check hook meets a man walking in; the liver shot goes under a high guard or at a worn body; the gazelle
 -- closes from long range; the rush is pressure; the overhand goes over a shell; the lead uppercut opens a
--- tight guard. At most one every few seconds, more from an aggressive or finishing fighter.
-local SPECIAL_RANGE = { gazelle = "cross", stepback = "jab", peekaboo = "cross" } -- the range the move needs (else its own punch's)
+-- tight guard. The fight moves: the double jab works the outside, the feint-cross beats a high guard, the
+-- body-head hook brings it down and goes over it, the jab-cross-hook presses and finishes, the shovel hook
+-- is for a hurt man up close. At most one every few seconds, more from an aggressive or finishing fighter.
+-- the range the move needs (else its own first punch's): the 1-2-3 is started at cross range so its hook reaches
+local SPECIAL_RANGE = { gazelle = "cross", stepback = "jab", peekaboo = "cross", onetwothree = "cross" }
 -- a gym partner keeps his tricks for the harder sessions: none in a Light spar, fewer and further apart in
 -- a Medium or Hard one (fight night = 1); the punch pacing of the spar (SPAR.work) never adds to these
 local SPAR_SPECIALS = { Light = 0, Medium = 0.4, Hard = 0.7 }
@@ -38837,6 +39009,12 @@ function FightAI:TrySpecial(now, dist)
 	add("peekaboo", (finishing and 0.6 or 0.15))
 	add("overhand", (blocking and 0.55 or 0.1) + (finishing and 0.25 or 0))
 	add("leaduppercut", (blocking and 0.35 or 0.1) + (now < O.rollUntil and 0.6 or 0))
+	local hurt = engine:IsHurt(O)
+	add("doublejab", (dist > engine:PunchRange(F, "leadhook") and 0.45 or 0.1) + (self.mode == "survive" and 0.2 or 0))
+	add("feintcross", (blocking and 0.55 or 0.15))
+	add("bodyhead", (blocking and 0.4 or 0.15) + (O.body < 70 and 0.25 or 0))
+	add("onetwothree", (finishing and 0.4 or 0.2) + (hurt and 0.2 or 0))
+	add("shovelhook", (hurt and 0.6 or 0.1) + (finishing and 0.3 or 0))
 	if total <= 0 then
 		return false
 	end
@@ -39713,9 +39891,17 @@ function Fight:Special(F, id)
 	F.tally.thrown += #hits
 	F.totals.thrown += #hits
 	self:Send({ t = "special", who = self:Who(F), id = sid, name = M.name })
+	-- each punch's body flag: Moves.Data bodies[i] (the body-head hook goes low, then high), else the move's
+	local function bodyOf(i)
+		local b = M.bodies and M.bodies[i]
+		if b == nil then
+			return M.body == true
+		end
+		return b == true
+	end
 	if O.ai then
 		for i, at in ipairs(hits) do
-			O.ai:OnOppPunch(M.punch[i] or M.punch[1], M.body == true, at)
+			O.ai:OnOppPunch(M.punch[i] or M.punch[1], bodyOf(i), at)
 		end
 	end
 	local fightId = self.id
@@ -39723,10 +39909,11 @@ function Fight:Special(F, id)
 		local kind = M.punch[i] or M.punch[1]
 		task.delay(at, function()
 			if self.id == fightId and not self.finished and F.special and F.special.token == token then
-				-- the second punch of a rush is the other hand
-				F.hand = (i % 2 == 0) and (M.hand == "L" and "R" or "L") or M.hand
+				-- the second punch of a rush is the other hand (a double jab's / body-head hook's hands are
+				-- listed: Moves.Data hands)
+				F.hand = (M.hands and M.hands[i]) or ((i % 2 == 0) and (M.hand == "L" and "R" or "L") or M.hand)
 				F.punchesUsed[kind] = (F.punchesUsed[kind] or 0) + 1
-				self:Resolve(F, O, kind, M.body == true, stamPct, M)
+				self:Resolve(F, O, kind, bodyOf(i), stamPct, M)
 				if i == #hits and F.special and F.special.token == token then
 					F.special = nil
 				end
@@ -67110,6 +67297,42 @@ local SPECIAL_ANIM = {
 			p.Root = CF(-0.1 * k * sd, -0.22 * k, -0.04 * k) * p.Root
 			p.W = p.W * A(-0.08 * k, -0.06 * k * sd, -0.1 * k * sd)
 		end },
+	-- the fight moves (Moves.lua: unlocked by bouts, wins and KOs), on the same layers
+	-- double jab: a little forward weight, the first jab off the step, the second the short "paw" behind it
+	doublejab = { variant = "step", over = {},
+		setup = function(p, rig, sp, k, x, sd)
+			p.Root = CF(0, -0.05 * k, -0.06 * k) * p.Root
+			p.W = p.W * A(-0.04 * k, 0.04 * k * sd, 0)
+		end },
+	-- feint-cross: the lead shoulder twitches forward as if the jab were coming (and back), then the cross
+	feintcross = { variant = "standard", over = { load = 0.22 },
+		setup = function(p, rig, sp, k, x, sd)
+			local f = sin(PI * min(1, max(0, x))) * k
+			p.Root = CF(0, -0.06 * k, -0.04 * f) * p.Root
+			p.W = p.W * A(-0.06 * f, 0.2 * f * sd, 0.04 * f * sd)
+			p.Neck = p.Neck * A(0.04 * f, -0.12 * f * sd, 0)
+		end },
+	-- body-head hook: down to the lead side for the hook to the ribs, back up for the one to the head
+	bodyhead = { variant = "tight", over = { dip = 0.16, side = 0.18, roll = 0.18, aDip = 0.14 },
+		setup = function(p, rig, sp, k, x, sd)
+			p.Root = CF(-0.12 * k * sd, -0.2 * k, -0.04 * k) * p.Root
+			p.W = p.W * A(-0.1 * k, 0, -0.12 * k * sd)
+			p.Neck = p.Neck * A(0.08 * k, 0, 0.06 * k * sd)
+		end },
+	-- jab-cross-hook: a lean in behind the jab; the cross and the hook are the ordinary punches after it
+	onetwothree = { variant = "step", over = {},
+		setup = function(p, rig, sp, k, x, sd)
+			p.Root = CF(0, -0.06 * k, -0.05 * k) * p.Root
+			p.W = p.W * A(-0.05 * k, 0.03 * k * sd, 0)
+		end },
+	-- shovel hook: a sit over the lead hip with the elbow tucked, then the hook scooped up under the chin
+	shovelhook = { variant = "tight", over = { arc = 0.3, aDip = 0.38, dip = 0.12, load = 0.2 },
+		setup = function(p, rig, sp, k, x, sd)
+			p.Root = CF(-0.12 * k * sd, -0.24 * k, -0.02 * k) * p.Root
+			p.W = p.W * A(-0.1 * k, -0.08 * k * sd, -0.12 * k * sd)
+			p.Neck = p.Neck * A(0.06 * k, 0, 0.04 * k * sd)
+			flex(rig, "quads", k * 0.6)
+		end },
 }
 AnimFight.SPECIAL_ANIM = SPECIAL_ANIM
 
@@ -67223,7 +67446,7 @@ function AnimFight.specialTick(p, rig, t)
 		end
 		local pw = w * (nxt.wk or 1)
 		local act = {
-			kind = kind, hand = hand, zone = def.zone, windup = pw, power = sp.power, start = t, dur = pw * 2.05 + 0.045,
+			kind = kind, hand = hand, zone = nxt.zone or def.zone, windup = pw, power = sp.power, start = t, dur = pw * 2.05 + 0.045,
 			f2 = hand, variant = sp.fired == 1 and anim.variant or nil, over = sp.fired == 1 and anim.over or nil,
 		}
 		AnimFight.startPunch(rig, act, t)
@@ -75882,7 +76105,8 @@ return CityVisuals
 -- closes it again.
 --   MOVES       Basic, Punches, Advanced and Special moves with the key / button / touch glyph of the device
 --               shown (a cycler picks the device; it starts on the one in use), what each move does and when
---               to use it; special moves say whether they are unlocked and how to unlock them (Moves.lua)
+--               to use it; special moves say whether they are unlocked and how to unlock them, with the progress
+--               ("Win 15 fights (9/15)", Moves.lua)
 --   KEYBOARD    rebind any action: click a key cap, press the key (a second key while one is held makes a
 --               chord, two quick taps a double tap, Backspace clears the slot, Escape cancels). A key that
 --               another action holds is swapped over, so no two actions share a key. Two slots per action.
@@ -76022,7 +76246,7 @@ local function movesTab()
 				end
 				if M then
 					local by = Moves.UnlockedBy(a.special, info)
-					UI.Text(card, (isUnlocked and ("Unlocked: " .. tostring(by)) or ("Unlock: " .. Moves.UnlockText(a.special))), { TextSize = 12, TextColor3 = isUnlocked and T.green or T.gold, LayoutOrder = 4 })
+					UI.Text(card, (isUnlocked and ("Unlocked: " .. tostring(by)) or ("Unlock: " .. Moves.UnlockText(a.special, info))), { TextSize = 12, TextColor3 = isUnlocked and T.green or T.gold, LayoutOrder = 4 })
 				end
 			end
 		end
@@ -100683,7 +100907,7 @@ local function showResult(data)
 	UI.Kicker(purse, "EARNINGS", T.green, { Size = UDim2.new(1, 0, 0, 18) })
 	UI.Title(purse, Config.Money(data.earnings or 0), { TextSize = 38, TextColor3 = T.green, Position = UDim2.fromOffset(0, 16), Size = UDim2.new(1, 0, 0, 42) })
 	for _, n in ipairs(data.notes or {}) do
-		local bigNote = n:find("CHAMPION") or n:find("PRO") or n:find("LEGEND") or n:find("TOP 10") or n:find("Promoted")
+		local bigNote = n:find("CHAMPION") or n:find("PRO") or n:find("LEGEND") or n:find("TOP 10") or n:find("Promoted") or n:find("SPECIAL MOVE")
 		UI.Line(body, n, { TextColor3 = bigNote and T.gold or T.text, Font = bigNote and T.semi or T.font, TextSize = 14 })
 	end
 	UI.PadStart(UI.Button(win, "CONTINUE", { Size = UDim2.new(0, 260, 0, 48), Position = UDim2.new(0.5, -130, 1, -62), BackgroundColor3 = T.gold }, close))
@@ -101119,7 +101343,7 @@ end)
 -- Settings.Keymap()). Keyboard defaults: left click jab, right click cross, F lead hook, R rear hook, T
 -- uppercut, G body hook, middle click overhand, C = to the body, B block, V parry, Q / E slip, Space dodge,
 -- Shift + Space quick dodge, double-tap A / D pivot, Ctrl clinch, Q + click counter jab, E + right click
--- counter cross, 1-9 the special moves, H the controls strip, Tab (or `) the Moves & Controls menu (the
+-- counter cross, 1-9 / 0 / - / = / I / P the special moves, H the controls strip, Tab (or `) the Moves & Controls menu (the
 -- fight hides Roblox's player list, which owns Tab), Shift sprints (in the ring: the server's quicker
 -- footwork). Block, body and the controls legend are TAP TOGGLES on every device (tap: on, tap again:
 -- off); a press held longer than Tog.HOLD still works as a hold (released when you let go). A punch drops
@@ -102660,7 +102884,7 @@ do
 	end
 
 	-- the unlocked special moves (setTouchSpecials, from the fight's start message): a grid of gold pads left
-	-- of the punch cluster, up to three a row, filled from the bottom right so a short list hugs the punches.
+	-- of the punch cluster, up to three a row (four past nine moves), filled from the bottom right so a short list hugs the punches.
 	-- KM.paintSpecials dims a pad while the shared cooldown runs or the gas is not there for it
 	local touchSpecials
 	KM.specialPads = {}
@@ -102673,7 +102897,8 @@ do
 		list = list or {}
 		local cell = math.max(50, UI.MinHit(touchPad))
 		local gap = 6
-		local cols = math.min(3, #list)
+		-- (more than nine: four a row, so the full set of fourteen stays four rows high)
+		local cols = math.min(#list > 9 and 4 or 3, #list)
 		local rows = math.ceil(#list / math.max(1, cols))
 		touchSpecials.Size = UDim2.fromOffset(cols * cell + math.max(0, cols - 1) * gap, rows * cell + math.max(0, rows - 1) * gap)
 		for i, id in ipairs(list) do

@@ -2212,6 +2212,42 @@ local SPECIAL_ANIM = {
 			p.Root = CF(-0.1 * k * sd, -0.22 * k, -0.04 * k) * p.Root
 			p.W = p.W * A(-0.08 * k, -0.06 * k * sd, -0.1 * k * sd)
 		end },
+	-- the fight moves (Moves.lua: unlocked by bouts, wins and KOs), on the same layers
+	-- double jab: a little forward weight, the first jab off the step, the second the short "paw" behind it
+	doublejab = { variant = "step", over = {},
+		setup = function(p, rig, sp, k, x, sd)
+			p.Root = CF(0, -0.05 * k, -0.06 * k) * p.Root
+			p.W = p.W * A(-0.04 * k, 0.04 * k * sd, 0)
+		end },
+	-- feint-cross: the lead shoulder twitches forward as if the jab were coming (and back), then the cross
+	feintcross = { variant = "standard", over = { load = 0.22 },
+		setup = function(p, rig, sp, k, x, sd)
+			local f = sin(PI * min(1, max(0, x))) * k
+			p.Root = CF(0, -0.06 * k, -0.04 * f) * p.Root
+			p.W = p.W * A(-0.06 * f, 0.2 * f * sd, 0.04 * f * sd)
+			p.Neck = p.Neck * A(0.04 * f, -0.12 * f * sd, 0)
+		end },
+	-- body-head hook: down to the lead side for the hook to the ribs, back up for the one to the head
+	bodyhead = { variant = "tight", over = { dip = 0.16, side = 0.18, roll = 0.18, aDip = 0.14 },
+		setup = function(p, rig, sp, k, x, sd)
+			p.Root = CF(-0.12 * k * sd, -0.2 * k, -0.04 * k) * p.Root
+			p.W = p.W * A(-0.1 * k, 0, -0.12 * k * sd)
+			p.Neck = p.Neck * A(0.08 * k, 0, 0.06 * k * sd)
+		end },
+	-- jab-cross-hook: a lean in behind the jab; the cross and the hook are the ordinary punches after it
+	onetwothree = { variant = "step", over = {},
+		setup = function(p, rig, sp, k, x, sd)
+			p.Root = CF(0, -0.06 * k, -0.05 * k) * p.Root
+			p.W = p.W * A(-0.05 * k, 0.03 * k * sd, 0)
+		end },
+	-- shovel hook: a sit over the lead hip with the elbow tucked, then the hook scooped up under the chin
+	shovelhook = { variant = "tight", over = { arc = 0.3, aDip = 0.38, dip = 0.12, load = 0.2 },
+		setup = function(p, rig, sp, k, x, sd)
+			p.Root = CF(-0.12 * k * sd, -0.24 * k, -0.02 * k) * p.Root
+			p.W = p.W * A(-0.1 * k, -0.08 * k * sd, -0.12 * k * sd)
+			p.Neck = p.Neck * A(0.06 * k, 0, 0.04 * k * sd)
+			flex(rig, "quads", k * 0.6)
+		end },
 }
 AnimFight.SPECIAL_ANIM = SPECIAL_ANIM
 
@@ -2325,7 +2361,7 @@ function AnimFight.specialTick(p, rig, t)
 		end
 		local pw = w * (nxt.wk or 1)
 		local act = {
-			kind = kind, hand = hand, zone = def.zone, windup = pw, power = sp.power, start = t, dur = pw * 2.05 + 0.045,
+			kind = kind, hand = hand, zone = nxt.zone or def.zone, windup = pw, power = sp.power, start = t, dur = pw * 2.05 + 0.045,
 			f2 = hand, variant = sp.fired == 1 and anim.variant or nil, over = sp.fired == 1 and anim.over or nil,
 		}
 		AnimFight.startPunch(rig, act, t)

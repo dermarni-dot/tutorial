@@ -4,7 +4,8 @@
 -- closes it again.
 --   MOVES       Basic, Punches, Advanced and Special moves with the key / button / touch glyph of the device
 --               shown (a cycler picks the device; it starts on the one in use), what each move does and when
---               to use it; special moves say whether they are unlocked and how to unlock them (Moves.lua)
+--               to use it; special moves say whether they are unlocked and how to unlock them, with the progress
+--               ("Win 15 fights (9/15)", Moves.lua)
 --   KEYBOARD    rebind any action: click a key cap, press the key (a second key while one is held makes a
 --               chord, two quick taps a double tap, Backspace clears the slot, Escape cancels). A key that
 --               another action holds is swapped over, so no two actions share a key. Two slots per action.
@@ -144,7 +145,7 @@ local function movesTab()
 				end
 				if M then
 					local by = Moves.UnlockedBy(a.special, info)
-					UI.Text(card, (isUnlocked and ("Unlocked: " .. tostring(by)) or ("Unlock: " .. Moves.UnlockText(a.special))), { TextSize = 12, TextColor3 = isUnlocked and T.green or T.gold, LayoutOrder = 4 })
+					UI.Text(card, (isUnlocked and ("Unlocked: " .. tostring(by)) or ("Unlock: " .. Moves.UnlockText(a.special, info))), { TextSize = 12, TextColor3 = isUnlocked and T.green or T.gold, LayoutOrder = 4 })
 				end
 			end
 		end

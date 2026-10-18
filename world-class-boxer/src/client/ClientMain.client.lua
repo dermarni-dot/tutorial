@@ -357,7 +357,7 @@ local function showResult(data)
 	UI.Kicker(purse, "EARNINGS", T.green, { Size = UDim2.new(1, 0, 0, 18) })
 	UI.Title(purse, Config.Money(data.earnings or 0), { TextSize = 38, TextColor3 = T.green, Position = UDim2.fromOffset(0, 16), Size = UDim2.new(1, 0, 0, 42) })
 	for _, n in ipairs(data.notes or {}) do
-		local bigNote = n:find("CHAMPION") or n:find("PRO") or n:find("LEGEND") or n:find("TOP 10") or n:find("Promoted")
+		local bigNote = n:find("CHAMPION") or n:find("PRO") or n:find("LEGEND") or n:find("TOP 10") or n:find("Promoted") or n:find("SPECIAL MOVE")
 		UI.Line(body, n, { TextColor3 = bigNote and T.gold or T.text, Font = bigNote and T.semi or T.font, TextSize = 14 })
 	end
 	UI.PadStart(UI.Button(win, "CONTINUE", { Size = UDim2.new(0, 260, 0, 48), Position = UDim2.new(0.5, -130, 1, -62), BackgroundColor3 = T.gold }, close))
